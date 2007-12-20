@@ -129,6 +129,7 @@ UNKNOWN_OPTION () {
 PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		SUFFIX_COUNT=${#SUFFIX_ARRAY[@]}
+		LOG_MSG "[INFO]:----------------------------------" 1
 		LOG_MSG "[INFO]:-Partitioning deletion parameters:" 1
 		LOG_MSG "[INFO]:----------------------------------" 1
 		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME" 1
@@ -136,6 +137,7 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Constraint type obtained   = $TYPE_NAME" 1
 	 	LOG_MSG "[INFO]:-Current max rule date      = $MAX_DATE" 1
 		LOG_MSG "[INFO]:-Current min rule date      = $MIN_DATE" 1
+		LOG_MSG "[INFO]:-Delete before date         = $WINDOW_START_DATE" 1
 		case $TYPE_NAME in
 			hour|daily) WINDOW_TEXT="Day(s)" ;;
 			week) WINDOW_TEXT="Week(s)" ;;
@@ -155,12 +157,13 @@ PROMPT_CONTINUE () {
 		if [ $ARCHIVE -eq 0 ];then
 		LOG_MSG "[INFO]:-Archive records            = Off" 1
 		if [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
-			LOG_MSG "[INFO]:-----------------WARNING-------------------" 1
+			LOG_MSG "[INFO]:-----------------WARNING---------------------" 1
 			LOG_MSG "[WARN]:-Child tables have records" 1
 			LOG_MSG "[WARN]:-Records in child tables will be DELETED" 1
 			LOG_MSG "[INFO]:-To save records abort this current session" 1
 			LOG_MSG "[INFO]:-Then use -s <archive tablename> option" 1
-			LOG_MSG "[INFO]:-------------------------------------------" 1
+			LOG_MSG "[INFO]:-If there is a requirement to secure records" 1
+			LOG_MSG "[INFO]:---------------------------------------------" 1
 			EXIT_STATUS=1
 		fi
 		else
@@ -230,9 +233,9 @@ CHK_PARAM () {
 		fi
 	fi
 	if [ x"" != x"$ALT_DB_NAME" ];then
-		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $ALT_DB_NAME -l > /dev/null 2>&1
+		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$ALT_DB_NAME" -l > /dev/null 2>&1
 		ERROR_CHK $? "connect to $ALT_DB_NAME database" 2
-		QD_DBNAME=$ALT_DB_NAME
+		QD_DBNAME="$ALT_DB_NAME"
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -240,24 +243,24 @@ CHK_PARAM () {
 VALIDATE_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Check that the table exists
-	CHK_EXISTS_TABLE $PARENT_TABLE_NAME $MASTER_PORT $QD_DBNAME
+	CHK_EXISTS_TABLE $PARENT_TABLE_NAME $MASTER_PORT "$QD_DBNAME"
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Parent table $PARENT_TABLE_NAME does not exist in $QD_DBNAME database" 2
 	fi
 	if [ x"" != x"$ARCHIVE_TABLE" ];then
-		CHK_EXISTS_TABLE $ARCHIVE_TABLE $MASTER_PORT $QD_DBNAME
+		CHK_EXISTS_TABLE $ARCHIVE_TABLE $MASTER_PORT "$QD_DBNAME"
 		if [ $EXISTS -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Archive table $ARCHIVE_TABLE does not exist." 2
+			ERROR_EXIT "[FATAL]:-Archive table $ARCHIVE_TABLE does not exist in $QD_DBNAME database" 2
 		fi
 	fi
 	#Check to see if table has any child tables already
-	HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select relhassubclass from $CLASS_TABLE where relname = '$TABLE_NAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME');"`
 	ERROR_CHK $? "obtain sub class information" 2
 	if [ $HAS_CHILD_TABLES != 't' ];then
 		ERROR_EXIT "[FATAL]:-Table $PARENT_TABLE_NAME does not have any child tables defined." 2
 	fi
 	#Now get partition type
-	CHILD_NAME=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'))) limit 1;"`
+	CHILD_NAME=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t "$QD_DBNAME" -c"select relname from $CLASS_TABLE where oid in (select inhrelid from $INHERIT_TABLE where inhparent in (select oid from $CLASS_TABLE where relname='$TABLE_NAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}'))) limit 1;"`
         ERROR_CHK $? "obtain child table name" 2
         TYPE_NAME=`$ECHO $CHILD_NAME|$AWK -F"_" '{print $NF}'`
 	case $TYPE_NAME in
@@ -278,12 +281,12 @@ VALIDATE_PROCESS () {
 GATHER_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Obtaining child table list"
-	CHILD_NAME_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select relname from pg_class where oid in (select inhrelid from pg_inherits where inhparent in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'))) order by relname;"`)
+	CHILD_NAME_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t "$QD_DBNAME" -c"select relname from $CLASS_TABLE where oid in (select inhrelid from $INHERIT_TABLE where inhparent in (select oid from $CLASS_TABLE where relname='$TABLE_NAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME'))) order by relname;"`)
 	ERROR_CHK $? "child table list" 2
 	CHILD_NAME_ARRAY_COUNT=${#CHILD_NAME_ARRAY[@]}
 	LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_NAME_ARRAY_COUNT child tables" 1
 	LOG_MSG "[INFO]:-Checking for rules on child tables" 1
-	CHILD_RULE_ARRAY_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select count(*) from pg_rules where tablename='$TABLE_NAME' and schemaname='${SCHEMA_NAME}';"`
+	CHILD_RULE_ARRAY_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t "$QD_DBNAME" -c"select count(*) from $RULES_TABLE where tablename='$TABLE_NAME' and schemaname='${SCHEMA_NAME}';"`
 	ERROR_CHK $? "obtain count of number of rules" 2
 	if [ $CHILD_RULE_ARRAY_COUNT -ne 0 ];then
 		LOG_MSG "[INFO]:-Table $TABLE_NAME has $CHILD_RULE_ARRAY_COUNT rules" 1
@@ -293,12 +296,12 @@ GATHER_INFO () {
 	fi
 	for C_NAME in ${CHILD_NAME_ARRAY[@]}
 	do
-		CHILD_INDEX=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t $QD_DBNAME -c"select indexname from pg_indexes where tablename='$C_NAME' and schemaname='$SCHEMA_NAME';"`
+		CHILD_INDEX=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -R" " -A -t "$QD_DBNAME" -c"select indexname from $INDEX_TABLE where tablename='$C_NAME' and schemaname='$SCHEMA_NAME';"`
 		ERROR_CHK $? "obtain child index list for $C_NAME" 1
 		CHILD_INDEX_ARRAY=(${CHILD_INDEX_ARRAY[@]} $CHILD_INDEX)
 		#Now check to see if child table is a parent
 		CHILD_TAB_NAME=`$ECHO $C_NAME|$CUT -d"." -f2`
-		CHILD_IS_PARENT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$CHILD_TAB_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		CHILD_IS_PARENT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select relhassubclass from $CLASS_TABLE where relname = '$CHILD_TAB_NAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME');"`
 		ERROR_CHK $? "obtain has sub class for $C_NAME" 1
 		if [ $CHILD_IS_PARENT == 't' ];then
 			LOG_MSG "[WARN]:-Child table $C_NAME is also a parent" 1
@@ -312,92 +315,82 @@ GATHER_INFO () {
 	if [ ${#CHILD_IS_PARENT_ARRAY[@]} -ne 0 ] && [ $FORCE_DELETE -eq 1 ];then
 		LOG_MSG "[INFO]:-Nested partitioning detected will cascade delete" 1
 	fi
-	if [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ] && [ x"" == x"$ARCHIVE_TABLE" ];then
-		LOG_MSG "[WARN]:-${#CHILD_WITH_REC_ARRAY[@]} child tables contain records and no archive table name supplied" 1
-		LOG_MSG "[WARN]:-Data will be lost following child table deletion" 1
-		EXIT_STATUS=1
-	else
-		LOG_MSG "[INFO]:-Records detected in child tables, will secure to $ARCHIVE_TABLE" 1
-	fi
 	CHILD_INDEX_ARRAY_COUNT=${#CHILD_INDEX_ARRAY[@]}
-	#Now get the min and max date ranges from the rules table if number of rules <> 0
-	if [ $CHILD_RULE_ARRAY_COUNT -ne 0 ] && [ $CHILD_RULE_ARRAY_COUNT -eq $CHILD_NAME_ARRAY_COUNT ] ;then
-		#MIN_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $2}'|$GREP "-"|$SORT|$HEAD -1|$AWK '{print $1}'`
-		MIN_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$TR '\047' '\n'|$GREP "-"|$SORT|$HEAD -1`
-		ERROR_CHK $? "obtain start partition date " 2
-		case $TYPE_NAME in
-			hour|week|month|year )
-			MAX_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $4}'|$GREP "-"|$SORT|$TAIL -1|$AWK '{print $1}'`
-			ERROR_CHK $? "obtain end partition date " 2
-			;;
-			daily )
-			MAX_DATE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d $QD_DBNAME -A -t -c"select definition from pg_rules where tablename='$TABLE_NAME' and schemaname='$SCHEMA_NAME';"|$AWK -F"'" '{print $2}'|$GREP "-"|$SORT|$TAIL -1|$AWK '{print $1}'`
-			ERROR_CHK $? "obtain end partition date " 2
-			;;
-		esac
-		LOG_MSG "[INFO]:-Partition minimum date   = $MIN_DATE" 1
-		LOG_MSG "[INFO]:-Partition maximum date   = $MAX_DATE" 1
-	else
-		if [ $CHILD_RULE_ARRAY_COUNT -eq 0 ];then
-			LOG_MSG "[WARN]:-Unable to process rule table as no rules defined for partitioning" 1
-		else
-			LOG_MSG "[WARN]:-Unable to process rule table as #rules <> #child tables" 1
-		fi
-		EXIT_STATUS=1
-		((LAST=$CHILD_NAME_ARRAY_COUNT-1))
-		case $TYPE_NAME in
-			hour )
-				MIN_DATE=`$ECHO ${CHILD_NAME_ARRAY[0]}|$AWK -F"_" '{print $(NF-4)$(NF-3)$(NF-2)}'`
-				MAX_DATE=`$ECHO ${CHILD_NAME_ARRAY[${LAST}]}|$AWK -F"_" '{print $(NF-4)$(NF-3)$(NF-2)}'`
-				;;
-			daily )
-				MIN_DATE=`$ECHO ${CHILD_NAME_ARRAY[0]}|$AWK -F"_" '{print $(NF-3)$(NF-2)$(NF-1)}'`
-				MIN_DATE=`$ECHO ${CHILD_NAME_ARRAY[${LAST}]}|$AWK -F"_" '{print $(NF-3)$(NF-2)$(NF-1)}'`			
-				;;
-			week )
-				MIN_DATE=`$ECHO ${CHILD_NAME_ARRAY[0]}|$AWK -F"_" '{print $(NF-3)$(NF-2)$(NF-1)}'|$TR -d 'w'`
-				MAX_DATE=`$ECHO ${CHILD_NAME_ARRAY[${LAST}]}|$AWK -F"_" '{print $(NF-3)$(NF-2)$(NF-1)}'|$TR -d 'w'`
-				;;
-			month )
-				MIN_DATE=`$ECHO ${CHILD_NAME_ARRAY[0]}|$AWK -F"_" '{print $(NF-2)$(NF-1)}'`	
-				MAX_DATE=`$ECHO ${CHILD_NAME_ARRAY[${LAST}]}|$AWK -F"_" '{print $(NF-2)$(NF-1)}'`	
-				;;
-			year )
-				MIN_DATE=`$ECHO ${CHILD_NAME_ARRAY[0]}|$AWK -F"_" '{print $(NF-1)}'`
-				MAX_DATE=`$ECHO ${CHILD_NAME_ARRAY[${LAST}]}|$AWK -F"_" '{print $(NF-1)}'`
-				;;
-		esac
-		LOG_MSG "[INFO]:-Min date from child name array is $MIN_DATE" 1
-		LOG_MSG "[INFO]:-Max date from child name array is $MAX_DATE" 1
-	fi	
-	PARENT_TABLE_COUNT=`$EXPORT_LIB_PATH; $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $PARENT_TABLE_NAME;"`
+	#Now get the min and max date ranges from the CHECK constraint values on the child tables 
+		LOG_MSG "[INFO]:-Processing child table check constraints to obtain date information, please wait..." 1
+		for C_NAME in ${CHILD_NAME_ARRAY[@]}
+		do
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+			CONSTRAINT_TEXT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -d "$QD_DBNAME" -A -t -c"select pg_catalog.pg_get_constraintdef(r.oid, true) FROM pg_catalog.pg_constraint r where r.conrelid in (SELECT c.oid FROM pg_catalog.pg_class c LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE c.relname ~ '^(${C_NAME})$' AND pg_catalog.pg_table_is_visible(c.oid)) AND r.contype = 'c' ORDER BY 1;"` >> $LOG_FILE 2>&1
+			ERROR_CHK $? "obtain check column for $C_NAME" 2
+			if [ `$ECHO $CONSTRAINT_TEXT|$GREP -ci " AND "` -eq 1 ];then
+				MIN_CDATE=`$ECHO $CONSTRAINT_TEXT|$AWK -F"'" '{print $2}'|$AWK '{print $1}'`
+				MAX_CDATE=`$ECHO $CONSTRAINT_TEXT|$AWK -F"'" '{print $4}'|$AWK '{print $1}'`
+			else
+				MIN_CDATE=`$ECHO $CONSTRAINT_TEXT|$AWK -F"'" '{print $2}'|$AWK '{print $1}'`
+				MAX_CDATE=$MIN_CDATE
+			fi
+			TAB_DEL_ARRAY=(${TAB_DEL_ARRAY[@]} ${C_NAME}:${MIN_CDATE}:${MAX_CDATE})
+			MIN_DATE_ARRAY=(${MIN_DATE_ARRAY[@]} $MIN_CDATE)
+			MAX_DATE_ARRAY=(${MAX_DATE_ARRAY[@]} $MAX_CDATE)
+		done
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+		MIN_DATE=`$ECHO ${MIN_DATE_ARRAY[@]}|$TR ' ' '\n'|$SORT|$HEAD -1`
+		MAX_DATE=`$ECHO ${MAX_DATE_ARRAY[@]}|$TR ' ' '\n'|$SORT|$TAIL -1`
+	#fi	
+	PARENT_TABLE_COUNT=`$EXPORT_LIB_PATH; $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from only $PARENT_TABLE_NAME;"`
 	ERROR_CHK $? "obtain parent record count" 2
 	LOG_MSG "[INFO]:-Parent table $PARENT_TABLE_NAME has $PARENT_TABLE_COUNT records" 1
+	LOG_MSG "[INFO]:-Obtained minimun date = $MIN_DATE" 1
+	LOG_MSG "[INFO]:-Obtained maximum date = $MAX_DATE" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 COMPUTE_WINDOW () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Calculate rolling window period
-	CURRENT_DB_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select date(now());"`
+	CURRENT_DB_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select date(now());"`
 	ERROR_CHK $? "obtain current database date" 2
 	LOG_MSG "[INFO]:-Current database date is $CURRENT_DB_DATE" 1
 	case $TYPE_NAME in
-		hour)
-			PROCESS_HOUR ;;
-		daily) 
-			PROCESS_DAILY ;;
+		hour|daily)
+			WINDOW_START_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select date('$CURRENT_DB_DATE') - $DELETION_WINDOW;"`
+			ERROR_CHK $? "obtain rolling date window" 2
+			WINDOW_START_NUM=`$ECHO $WINDOW_START_DATE|$TR -d '-'`
+			;;
 		week) 
-			PROCESS_WEEKLY ;;
+			((DAYS_BACK=$DELETION_WINDOW*7))
+			WINDOW_START_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select date('$CURRENT_DB_DATE') - $DAYS_BACK;"`
+			ERROR_CHK $? "obtain rolling date window" 2
+			WINDOW_START_NUM=`$ECHO $WINDOW_START_DATE|$TR -d '-'`
+			;;
+	#		PROCESS_WEEKLY ;;
 		month) 
-			PROCESS_MONTHLY ;;
+			CURRENT_MONTH=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select LPAD(extract (month from date('now()')),2, '0');"`
+			ERROR_CHK $? "obtain current month" 2
+			CURRENT_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select extract (year from date('now()'));"`	
+			ERROR_CHK $? "obtain current year" 2
+			#Now get the year going back $DELETION_WINDOW months
+			DELETE_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select extract (year from (select now() - interval '$DELETION_WINDOW months'));"`
+			ERROR_CHK $? "obtain delete start year" 2
+			DELETE_MONTH=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select LPAD(extract (month from (select now() - interval '$DELETION_WINDOW months')),2, '0');"`
+			ERROR_CHK $? "obtain delete start month" 2
+			WINDOW_START_NUM="${DELETE_YEAR}${DELETE_MONTH}01"
+			WINDOW_START_DATE="${DELETE_YEAR}-${DELETE_MONTH}-01"
+			;;
 		year)
-			PROCESS_YEARLY ;;
+			CURRENT_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select LPAD(extract (year from date('now()')),4, '0');"`
+			ERROR_CHK $? "obtain current year" 2
+			((DELETE_YEAR=$CURRENT_YEAR-$DELETION_WINDOW))
+			WINDOW_START_NUM="${DELETE_YEAR}0101"
+			WINDOW_START_DATE="${DELETE_YEAR}-01-01"
+			;;
 	esac
+	CHK_DELETE_CHILD
 	if [ ${#CHILD_DELETE_ARRAY[@]} -ne 0 ];then
 		for C_NAME in ${CHILD_DELETE_ARRAY[@]}
 		do
-			CHILD_REC_COUNT=`$EXPORT_LIB_PATH; $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from ${SCHEMA_NAME}.$C_NAME ;"`
+			CHILD_REC_COUNT=`$EXPORT_LIB_PATH; $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from ${SCHEMA_NAME}.$C_NAME ;"`
 			if [ $CHILD_REC_COUNT -ne 0 ];then
 				CHILD_WITH_REC_ARRAY=(${CHILD_WITH_REC_ARRAY[@]} ${SCHEMA_NAME}.$C_NAME)
 				LOG_MSG "[INFO]:-Child table $C_NAME has record count = $CHILD_REC_COUNT" 1
@@ -408,103 +401,28 @@ COMPUTE_WINDOW () {
                 	LOG_MSG "[WARN]:-Data will be lost following child table deletion" 1
                 	EXIT_STATUS=1
         	else
-                	LOG_MSG "[INFO]:-Records detected in child tables, will secure to $ARCHIVE_TABLE" 1
+			
+			if [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
+                		LOG_MSG "[INFO]:-Records detected in child tables, will secure to $ARCHIVE_TABLE" 1
+			else
+				LOG_MSG "[INFO]:-No records detected in child tables to be deleted" 1
+			fi
         	fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-PROCESS_HOUR () {
+CHK_DELETE_CHILD () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	WINDOW_START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select date('$CURRENT_DB_DATE') - $DELETION_WINDOW;"`
-	ERROR_CHK $? "obtain rolling date window" 2
-	WINDOW_START_NUM=`$ECHO $WINDOW_START_DATE|$TR -d '-'`
-	for C_NAME in ${CHILD_NAME_ARRAY[@]}
+	for C_NAME in ${TAB_DEL_ARRAY[@]}
 	do
-		CHILD_NUM=`$ECHO $C_NAME|$AWK -F"_" '{print $(NF-4)$(NF-3)$(NF-2)}'`
+		CHILD_NAME=`$ECHO $C_NAME|$AWK -F":" '{print $1}'`
+		CHILD_NUM=`$ECHO $C_NAME|$AWK -F":" '{print $3}'|$TR -d '-'`
 		if [ $CHILD_NUM -le $WINDOW_START_NUM ];then
-			CHILD_DELETE_ARRAY=(${CHILD_DELETE_ARRAY[@]} $C_NAME)
-			LOG_MSG "[INFO]:-Marked $C_NAME table for deletion" 1
+			CHILD_DELETE_ARRAY=(${CHILD_DELETE_ARRAY[@]} $CHILD_NAME)
+			LOG_MSG "[INFO]:-Marked $C_NAME table for deletion"
 		fi
 	done	
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-PROCESS_DAILY () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	#Check to see if there are any child tables that are older than rolling delete window
-	WINDOW_START_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select date('$CURRENT_DB_DATE') - $DELETION_WINDOW;"`
-	ERROR_CHK $? "obtain rolling date window" 2
-	WINDOW_START_NUM=`$ECHO $WINDOW_START_DATE|$TR -d '-'`
-	for C_NAME in ${CHILD_NAME_ARRAY[@]}
-	do
-		CHILD_NUM=`$ECHO $C_NAME|$AWK -F"_" '{print $(NF-3)$(NF-2)$(NF-1)}'`
-		if [ $CHILD_NUM -le $WINDOW_START_NUM ];then
-			CHILD_DELETE_ARRAY=(${CHILD_DELETE_ARRAY[@]} $C_NAME)
-			LOG_MSG "[INFO]:-Marked $C_NAME table for deletion" 1
-		fi
-	done	
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-PROCESS_WEEKLY () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	((DAYS_BACK=$DELETION_WINDOW*7))
-	WINDOW_START_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select date('$CURRENT_DB_DATE') - $DAYS_BACK ;"`
-	ERROR_CHK $? "obtain start delete date" 2
-	WINDOW_START_WEEK=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select LPAD(extract (week from date'$WINDOW_START_DATE'),2,'0');"`
-	ERROR_CHK $? "obtain start delete week" 2
-	WINDOW_DEL_SUFFIX=`$ECHO $WINDOW_START_DATE|$CUT -d'-' -f1-2|$TR -d '-'`$WINDOW_START_WEEK
-	for C_NAME in ${CHILD_NAME_ARRAY[@]}
-	do
-		CHILD_NUM=`$ECHO $C_NAME|$AWK -F"_" '{print $(NF-3)$(NF-2)$(NF-1)}'|$TR -d 'w'`
-		if [ $CHILD_NUM -le $WINDOW_DEL_SUFFIX ];then
-			CHILD_DELETE_ARRAY=(${CHILD_DELETE_ARRAY[@]} $C_NAME)
-		fi
-	done	
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-PROCESS_MONTHLY () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CURRENT_MONTH=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select LPAD(extract (month from date('now()')),2, '0');"`
-	ERROR_CHK $? "obtain current month" 2
-	LOG_MSG "[INFO]:-Current month is $CURRENT_MONTH" 1
-	CURRENT_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select extract (year from date('now()'));"`	
-	ERROR_CHK $? "obtain current year" 2
-	LOG_MSG "[INFO]:-Current year is $CURRENT_YEAR" 1
-	COUNT=1
-	#Now get the year going back $DELETION_WINDOW months
-	DELETE_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select extract (year from (select now() - interval '$DELETION_WINDOW months'));"`
-	ERROR_CHK $? "obtain delete start year" 2
-	DELETE_MONTH=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select LPAD(extract (month from (select now() - interval '$DELETION_WINDOW months')),2, '0');"`
-	ERROR_CHK $? "obtain delete start month" 2
-	WINDOW_DEL_SUFFIX=$DELETE_YEAR$DELETE_MONTH
-	for C_NAME in ${CHILD_NAME_ARRAY[@]}
-	do
-		CHILD_NUM=`$ECHO $C_NAME|$AWK -F"_" '{print $(NF-2)$(NF-1)}'`	
-		if [ $CHILD_NUM -le $WINDOW_DEL_SUFFIX ];then
-			CHILD_DELETE_ARRAY=(${CHILD_DELETE_ARRAY[@]} $C_NAME)
-		fi
-	done
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-PROCESS_YEARLY () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	CURRENT_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select LPAD(extract (year from date('now()')),4, '0');"`
-	ERROR_CHK $? "obtain current year" 2
-	LOG_MSG "[INFO]:-Current year is $CURRENT_YEAR" 1
-	COUNT=1
-	((DELETE_YEAR=$CURRENT_YEAR-$DELETION_WINDOW))
-	WINDOW_DEL_SUFFIX=$DELETE_YEAR
-	for C_NAME in ${CHILD_NAME_ARRAY[@]}
-	do
-		CHILD_NUM=`$ECHO $C_NAME|$AWK -F"_" '{print $(NF-1)}'`
-		if [ $CHILD_NUM -le $WINDOW_DEL_SUFFIX ];then
-			CHILD_DELETE_ARRAY=(${CHILD_DELETE_ARRAY[@]} $C_NAME)
-		fi
-	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -513,15 +431,18 @@ PROCESS_DELETION () {
 	if [ $ARCHIVE -eq 1 ] && [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
 			SECURE_RECORDS
 	fi
+	LOG_MSG "[INFO]:-Commencing child table deletion, please wait..." 1
 	for C_NAME in ${CHILD_DELETE_ARRAY[@]}
 	do
+		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		LOG_MSG "[INFO]:-Starting delete cascade of $C_NAME"
-		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"drop table ${SCHEMA_NAME}.$C_NAME cascade;"	
+		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"drop table ${SCHEMA_NAME}.$C_NAME cascade;"	>> $LOG_FILE 2>&1
 		ERROR_CHK $? "delete of child table $C_NAME" 1	
 	done
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	if [ $ARCHIVE -eq 1 ] && [ ${#CHILD_WITH_REC_ARRAY[@]} -ne 0 ];then
 		LOG_MSG "[INFO]:-Running analyze on $ARCHIVE_TABLE" 1
-		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"analyze $ARCHIVE_TABLE;"
+		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"analyze $ARCHIVE_TABLE;"
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -532,7 +453,7 @@ SECURE_RECORDS () {
 	for SAVE_NAME in ${CHILD_WITH_REC_ARRAY[@]}
 	do
 		LOG_MSG "[INFO]:-Securing records from $SAVE_NAME to $ARCHIVE_TABLE" 1
-		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"insert into $ARCHIVE_TABLE (select * from $SAVE_NAME);"
+		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"insert into $ARCHIVE_TABLE (select * from $SAVE_NAME);"
 	ERROR_CHK $? "secure ${SCHEMA_NAME}.$SAVE_NAME records to $ARCHIVE_TABLE" 2
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -573,10 +494,11 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_GPDB_ID
 if [ x"" != x"$GPHOME" ];then
 	APP_PATH=${GPHOME}/bin
 else
-	APP_PATH=${MPPHOME}/bin
+	ERROR_EXIT "[FATAL]:-Environment variable \$GPHOME unset" 2
 fi
 #Check to ensure mandatory parameters have been supplied
 CHK_ON_PASSIVE_STANDBY

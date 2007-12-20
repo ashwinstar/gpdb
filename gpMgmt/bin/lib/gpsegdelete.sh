@@ -65,6 +65,10 @@ CHK_DUMP () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO][$INST_COUNT]:-Checking host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR"
 	DUMP_COUNT=`$TRUSTED_SHELL $DELETE_HOSTNAME "$FIND $DELETE_DATADIR -name 'gp_dump*' -print|$WC -l"`
+	if [ x"" == x"$DUMP_COUNT" ];then
+		LOG_MSG "[WARN]:-Issue with count of dump directories on $DELETE_HOSTNAME"
+		DUMP_COUNT=0
+	fi
 	if [ $DUMP_COUNT -ne 0 ];then 
 		QE_LINE="${QE_LINE}:DUMP_LOCATED"
 	else
@@ -85,7 +89,7 @@ DEL_SEGMENT () {
 	else
 		LOG_MSG "[INFO][$INST_COUNT]:-Completed $RM -Rf $DELETE_DATADIR on $DELETE_HOSTNAME"
 	fi
-	$TRUSTED_SHELL $DELETE_HOSTNAME "$RM -f ${DELETE_DATADIR}.log"	
+	$TRUSTED_SHELL $DELETE_HOSTNAME "$RM -f ${DELETE_DATADIR}.log*"	
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Issue with $RM -Rf ${DELETE_DATADIR}.log n $DELETE_HOSTNAME" 1

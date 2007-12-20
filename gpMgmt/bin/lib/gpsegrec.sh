@@ -92,7 +92,7 @@ RECOVER_SEGMENT () {
 			$TRUSTED_SHELL $FAIL_QE_HOST "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}" >> $LOG_FILE 2>&1
 			$TRUSTED_SHELL $FAIL_QE_HOST "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}.lock" >> $LOG_FILE 2>&1
 		fi
-		LOG_MSG "[INFO][$INST_COUNT]:-Deleting failed database directory on ${FAIL_QE_HOST}"
+		LOG_MSG "[INFO][$INST_COUNT]:-Clearing failed database directory on ${FAIL_QE_HOST}"
 		$TRUSTED_SHELL ${FAIL_QE_HOST} "$RM -Rf ${FAIL_QE_DIR}"
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ];then
@@ -119,11 +119,11 @@ RECOVER_SEGMENT () {
 			exit 1
 		fi
 	fi
-	if [ $STOPDB -eq 0 ] && [ $FORCESTOP -eq 0 ]; then
-		LOG_MSG "[INFO][$INST_COUNT]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT"
-		$TRUSTED_SHELL $MIR_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MIR_QE_PORT $DEFAULTDB -c \"checkpoint;\" > /dev/null 2>&1"
-		ERROR_CHK $? "instance checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT" 1
-	fi
+	#if [ $STOPDB -eq 0 ] && [ $FORCESTOP -eq 0 ]; then
+	#	LOG_MSG "[INFO][$INST_COUNT]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT"
+	#	$TRUSTED_SHELL $MIR_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MIR_QE_PORT $DEFAULTDB -c \"checkpoint;\" > /dev/null 2>&1"
+	#	ERROR_CHK $? "instance checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT" 1
+	#fi
 	#Now check to see if we are recovering to a pool host or pool directory
 	if [ `$ECHO $POOL_ARRAY|$WC -c` -gt 2 ];then
 	#Pool host or pool directory set
@@ -136,10 +136,16 @@ RECOVER_SEGMENT () {
 	KB_COPY=`$TRUSTED_SHELL ${MIR_QE_HOST} "$DU -k -s $DU_TXT ${MIR_QE_DIR}|$TAIL -1"|$AWK '{print $1}'`
 	LOG_MSG "[INFO][$INST_COUNT]:-Copy will transfer $KB_COPY KBytes of data"  1
 	LOG_MSG "[INFO][$INST_COUNT]:-Commencing data transfer, please wait..." 1
-	$TRUSTED_SHELL ${MIR_QE_HOST} "$TRUSTED_COPY -pr ${MIR_QE_DIR} ${FAIL_QE_HOST}:${FAIL_QE_DIR}"
+	#Make the remote directory
+	$TRUSTED_SHELL ${FAIL_QE_HOST} "mkdir ${FAIL_QE_DIR};chmod 700 ${FAIL_QE_DIR}"
+	ERROR_CHK "make segment directory on ${FAIL_QE_HOST}" 2
+	#Get list of files and directories to tar and exclude db_dumps directory
+	OBJECT_LIST=(`$TRUSTED_SHELL ${MIR_QE_HOST} "ls ${MIR_QE_DIR}|$GREP -v db_dumps|$TR '\n' ' '"`)
+	ERROR_CHK "obtain object transfer list" 2
+	$TRUSTED_SHELL ${MIR_QE_HOST} "cd ${MIR_QE_DIR};$TAR cf - ${OBJECT_LIST[@]}|$TRUSTED_SHELL ${FAIL_QE_HOST} \"cd ${FAIL_QE_DIR};$TAR xf -\"">/dev/null 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
-		LOG_MSG "[FATAL][$INST_COUNT]:-$TRUSTED_COPY -pr ${MIR_QE_DIR} ${FAIL_QE_HOST}:${FAIL_QE_DIR} failed" 1
+		LOG_MSG "[FATAL][$INST_COUNT]:-$TAR ${MIR_QE_DIR} ${FAIL_QE_HOST}:${FAIL_QE_DIR} failed" 1
 		$ECHO "FAILED:${QE_LINE}" >> $PARALLEL_STATUS_FILE
 		exit 1
 	else

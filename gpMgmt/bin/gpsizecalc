@@ -112,7 +112,7 @@ fi
 
 GET_DB_OID_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	DB_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_database where datname='${QD_DBNAME}';"`
+	DB_OID=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select oid from pg_database where datname='${QD_DBNAME}';"`
 	ERROR_CHK $? "obtain database OID from $QD_DBNAME database" 2
 	LOG_MSG "[INFO]:-Obtained database OID value $DB_OID"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -121,13 +121,13 @@ GET_DB_OID_DATA () {
 GET_TABLE_RELN_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		#Get schema oid
-		SCHEMA_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_namespace where nspname='${SCHEMA_NAME}';"`
+		SCHEMA_OID=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select oid from pg_namespace where nspname='${SCHEMA_NAME}';"`
 		ERROR_CHK $? "obtain schema oid value" 2
 		if [ x"" == x"$SCHEMA_OID" ]; then
 			ERROR_EXIT "[FATAL]:-Schema $SCHEMA_NAME does not exist";fi
 		#Get table oid
-		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLE_NAME' and relnamespace=${SCHEMA_OID};"`
-		TABLE_RELN=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select relfilenode from pg_class where relname='$TABLE_NAME' and relnamespace=${SCHEMA_OID};"`
+		TABLE_OID=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select oid from pg_class where relname='$TABLE_NAME' and relnamespace=${SCHEMA_OID};"`
+		TABLE_RELN=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select relfilenode from pg_class where relname='$TABLE_NAME' and relnamespace=${SCHEMA_OID};"`
 		ERROR_CHK $? "obtain table relfilenode value" 2
 		if [ x"" == x"$TABLE_RELN" ];then
 			ERROR_EXIT "[FATAL]:Table relfilenode is NULL" 2
@@ -141,7 +141,7 @@ GET_OID_DATA () {
 	GET_DB_OID_DATA
 	GET_TABLE_RELN_DATA
 	if [ $SIZE_TYPE -eq 1 ]; then
-		INDEX_OID=(`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select indexrelid from pg_index where indrelid=${TABLE_OID};"`)
+		INDEX_OID=(`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select indexrelid from pg_index where indrelid=${TABLE_OID};"`)
 		INDEX_COUNT=${#INDEX_OID[@]}
 		if [ $INDEX_COUNT -eq 0 ];then
 			if [ $DO_CHILD -eq 0 ];then
@@ -155,8 +155,8 @@ GET_OID_DATA () {
 			#Get additional index data
 			for IDX_OID in ${INDEX_OID[@]}
 			do
-				IDX_NAME=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select relname from pg_class where oid=${IDX_OID}"`
-				IDX_SIZE=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select * from pg_relation_size ('${IDX_NAME}');"`
+				IDX_NAME=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select relname from pg_class where oid=${IDX_OID}"`
+				IDX_SIZE=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select * from pg_relation_size ('${IDX_NAME}');"`
 				IDX_DATA="$IDX_DATA ${IDX_NAME}:${IDX_SIZE}"
 			done	
 			SKIP_INDEX=0
@@ -167,15 +167,14 @@ GET_OID_DATA () {
 
 SEND_TABLE_SIZE_REQUEST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	PG_REL_SIZEB=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select * from pg_relation_size ('${SCHEMA_NAME}.${TABLE_NAME}');"`
+	PG_REL_SIZEB=`${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select * from pg_relation_size ('${SCHEMA_NAME}.${TABLE_NAME}');"`
 	BATCH_LIMIT=${#QE_ARRAY[@]}
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for I in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		#$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE $TABLE_RELN ${DB_OID} 1 $TMPFILE &
-		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE ${SCHEMA_NAME}.$TABLE_NAME ${QD_DBNAME} 1 $TMPFILE $QD_DBNAME &
+		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE ${SCHEMA_NAME}.$TABLE_NAME "${QD_DBNAME}" 1 $TMPFILE "$QD_DBNAME" &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -195,7 +194,7 @@ SEND_INDEX_SIZE_REQUEST () {
 	do
 		SET_VAR
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE ${SCHEMA_NAME}.$TABLE_NAME ${QD_DBNAME} 2 $TMPFILE $QD_DBNAME &
+		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE ${SCHEMA_NAME}.$TABLE_NAME "${QD_DBNAME}" 2 $TMPFILE "$QD_DBNAME" &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -203,8 +202,8 @@ SEND_INDEX_SIZE_REQUEST () {
 
 GET_CHILD_NAMES () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select oid from pg_class where relname='$TABLE_NAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-	CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relkind='r' and oid in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
+	PARENT_TABLE_RELFILENODE=`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select oid from pg_class where relname='$TABLE_NAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	CHILD_NAME_ARRAY=(`${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select relname from pg_class where relkind='r' and oid in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -231,7 +230,7 @@ SEND_DB_SIZE_REQUEST () {
 		QE_DIR=`$ECHO $I|$CUT -d'|' -f2`
 		QE_PORT=`$ECHO $I|$CUT -d'|' -f3`
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE 0 $DB_OID 3 $TMPFILE $QD_DBNAME &
+		$GPSEGSIZE $$ $QE_HOST $QE_PORT $QE_DIR $INST_COUNT $LOG_FILE 0 $DB_OID 3 $TMPFILE "$QD_DBNAME" &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -378,6 +377,7 @@ else
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_GPDB_ID
 GET_QD_DB_NAME
 READ_CHK
 if [ $READ_COUNT -ne 0 ];then
@@ -386,7 +386,7 @@ fi
 case $SIZE_TARGET in 
 	0) GET_QE_DETAILS 
 	   GET_MIRROR_TYPE
-	   if [ $MIR_NUM -eq 0 ];then
+	   if [ $MIR_TYPE_NUM -eq 0 ];then
 	   TYPE_TEXT="Primary [No mirrors configured]"
 	   else
 	   TYPE_TEXT="Primary and Mirror Segments" 
@@ -402,7 +402,7 @@ case $SIZE_TARGET in
 	   TYPE_TEXT="Mirror Segments Only" ;;
 esac
 if [ x"" != x"$ALT_DBNAME" ];then
-	QD_DBNAME=$ALT_DBNAME
+	QD_DBNAME="$ALT_DBNAME"
 fi
 if [ x"" != x"$SIZE_DB" ];then
 	QD_DBNAME=$SIZE_DB
@@ -425,7 +425,6 @@ if [ $SIZE_TYPE -le 1 ];then
 			LOG_MSG "[INFO]:-Processing child tables"
 			for CHILD_TABLE_NAME in ${CHILD_NAME_ARRAY[@]}
 			do
-				#TABLE_NAME=${SCHEMA_NAME}.$CHILD_TABLE_NAME
 				TABLE_NAME=$CHILD_TABLE_NAME
 				LOG_MSG "[INFO]:-Processing child table $TABLE_NAME" 1
 				CHK_EXISTS_TABLE ${SCHEMA_NAME}.$TABLE_NAME $MASTER_PORT $QD_DBNAME

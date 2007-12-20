@@ -61,14 +61,12 @@ PARALLEL_STATUS_FILE=/tmp/gpstop_parallel_status_file.$$
 WAIT_LIMIT=600
 BATCH_DEFAULT=60
 CANCEL_ACTIVE=0
-
-CONNECTED_BACKEND_QUERY="select * from (select backendid, 
+CONNECTED_BACKEND_QUERY="select * from (select backendid,
 pg_stat_get_backend_activity(s.backendid) as current_query,
- pg_stat_get_backend_pid(s.backendid) AS procpid
+pg_stat_get_backend_pid(s.backendid) AS procpid
 from
- (SELECT pg_stat_get_backend_idset() AS backendid) as s) as t where  
+(SELECT pg_stat_get_backend_idset() AS backendid) as s) as t where
 pg_stat_get_backend_pid(t.backendid) != pg_backend_pid()"
-
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -162,7 +160,7 @@ CANCEL_BACKEND () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Expects a PROCPID value to cancel
 	LOG_MSG "[INFO]:-Calling pg_cancel_backend on procpid $1" 1
-	${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select pg_cancel_backend($1);" >> $LOG_FILE 2>&1	
+	${EXPORT_LIB_PATH};$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select pg_cancel_backend($1);" >> $LOG_FILE 2>&1	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -172,7 +170,8 @@ STOP_ADMIN () {
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is instance already stopped?" 1
 		fi
 		#Check to see if we have any connections to the database at this stage
-		ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select * from ($CONNECTED_BACKEND_QUERY) connected WHERE current_query<>'<IDLE>';"`)
+		#ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select procpid from $ACTIVITY_TABLE where procpid != pg_backend_pid() and current_query<>'idle';"`)
+		ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select * from ($CONNECTED_BACKEND_QUERY) connected WHERE current_query<>'<IDLE>';"`)
 		if [ ${#ACTIVE_CONNECTIONS[@]} -ne 0 ] && [ $CANCEL_ACTIVE -eq 0 ];then
 			LOG_MSG "[FATAL]:-There are ${#ACTIVE_CONNECTIONS[@]} active connections to the database" 1
 			LOG_MSG "[FATAL]:-Option -C not supplied to cancel backend processes" 1
@@ -184,7 +183,8 @@ STOP_ADMIN () {
 				CANCEL_BACKEND $PROCPID
 			done
 		fi
-		TOTAL_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from ($CONNECTED_BACKEND_QUERY) connected  where procpid != pg_backend_pid();" | wc -l` 
+		#TOTAL_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select count(*) from $ACTIVITY_TABLE where procpid != pg_backend_pid();"` 
+		TOTAL_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select 1 from ($CONNECTED_BACKEND_QUERY) connected  where procpid != pg_backend_pid();"|$WC -l`
 		if [ $TOTAL_CONNECTIONS -ne 0 ];then
 			LOG_MSG "[INFO]:-There are $TOTAL_CONNECTIONS connections to the database" 1
 			LOG_MSG "[INFO]:-Setting shutdown mode to immediate" 1
@@ -231,40 +231,43 @@ CHK_QD_DB_RUNNING () {
 
 PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		$ECHO
+		GET_MAX_LEN
+		LOG_MSG "[INFO]:---------------------------------------------" 1
 		LOG_MSG "[INFO]:-Master instance parameters:" 1
-		LOG_MSG "[INFO]:----------------------------" 1
+		LOG_MSG "[INFO]:---------------------------------------------" 1
 		LOG_MSG "[INFO]:-Master Greenplum instance process active PID = $QD_PID" 1
-		LOG_MSG "[INFO]:-Database                               = $QD_DBNAME" 1
-		LOG_MSG "[INFO]:-Master port                            = $MASTER_PORT" 1
-		LOG_MSG "[INFO]:-Master directory                       = $MASTER_DATA_DIRECTORY" 1
-		LOG_MSG "[INFO]:-Shutdown mode                          = $MODE" 1
+		LOG_MSG "[INFO]:-Database                                     = "$QD_DBNAME"" 1
+		LOG_MSG "[INFO]:-Master port                                  = $MASTER_PORT" 1
+		LOG_MSG "[INFO]:-Master directory                             = $MASTER_DATA_DIRECTORY" 1
+		LOG_MSG "[INFO]:-Shutdown mode                                = $MODE" 1
 		if [ $STOP_INVALID -eq 1 ];then
-		LOG_MSG "[INFO]:-Invalid segment shutdown               = On <<<<<" 1
+		LOG_MSG "[INFO]:-Invalid segment shutdown                     = On <<<<<" 1
 		else
-		LOG_MSG "[INFO]:-Invalid segment shutdown               = Off" 1
+		LOG_MSG "[INFO]:-Invalid segment shutdown                     = Off" 1
 		fi
 		if [ x"" == x"$STOP_SYNC" ];then
-		LOG_MSG "[INFO]:-Shutdown Master standby host           = Off" 1
+		LOG_MSG "[INFO]:-Shutdown Master standby host                 = Off" 1
 		else
-		LOG_MSG "[INFO]:-Shutdown Master standby host           = On" 1
+		if [ $STANDBY_COUNT -ne 0 ];then
+		LOG_MSG "[INFO]:-Shutdown Master standby host                 = On" 1
 		fi
+		fi
+		LOG_MSG "[INFO]:---------------------------------------------" 1
 		LOG_MSG "[INFO]:-Segment instances that will be shutdown:" 1
-		LOG_MSG "[INFO]:-----------------------------------------" 1
+		LOG_MSG "[INFO]:---------------------------------------------" 1
+		HEADER=`$ECHO "Host:Datadir:Port"|$AWK -F":" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s\n", $1, $2, $3}'`
+		LOG_MSG "[INFO]:-$HEADER" 1
+		$ECHO
 		if [ ${#QE_ARRAY[@]} -eq 0 ]; then
 				LOG_MSG "[WARN]:-Failed to obtain any Segment instance details, will only be able to shutdown Master host" 1
 				LOG_MSG "[WARN]:-This may indicate an inconsistent Greenplum database state" 1
 				EXIT_STATUS=1
 		else
-				COUNT=1
 				for QNODE in "${QE_ARRAY[@]}"
-						do
-						QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
-						QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
-						QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
-						QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
-						LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT" 1
-						((COUNT=$COUNT+1))
+				do
+					#TXT=`$ECHO $QNODE|$AWK -F"|" '{print "Host "$1" \t Datadir "$2" \t Port "$3}'`
+					TXT=`$ECHO $QNODE|$AWK -F"|" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s",$1, $2, $3}'`
+					LOG_MSG "[INFO]:-$TXT" 1
 				done
 		fi
 		$ECHO
@@ -282,6 +285,13 @@ PROMPT_CONTINUE () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
 
+ARRAY_REORDER () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	QE_REORDER_ARRAY=(`$ECHO ${QE_ARRAY[@]}|$TR ' ' '\n'|$SORT -t"|" -k3,3|$TR '\n' ' '`)
+	QE_ARRAY=(${QE_REORDER_ARRAY[@]})
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 PROCESS_SHUTDOWN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		TOTAL_BATCH_LIMIT=$QE_ARRAY_COUNT
@@ -289,10 +299,11 @@ PROCESS_SHUTDOWN () {
 		if [ $STOP_INVALID -eq 1 ];then
 			BATCH_LIMIT=$QE_ARRAY_COUNT
 		else
-			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $GP_PG_VIEW gppg where valid ='t' and content<>-1;" | wc -l`
+			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where valid ='t' and content<>-1;"`
 		fi
 #		count connected processes, but don't count ourself.
-		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c " select 1 from ($CONNECTED_BACKEND_QUERY) connected" | wc -l`
+		#CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c "select count(*) from pg_stat_activity where procpid != pg_backend_pid();"`
+		CONNECTED=` env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT "$DEFAULTDB" -A -t -c "select 1 from ($CONNECTED_BACKEND_QUERY) connected"|$WC -l`
 		if [ $MODE == "smart" ]; then
 		if [ $CONNECTED -gt 0 ];then
 			LOG_MSG "[WARN]:-There are other connections to this instance, shutdown mode smart aborted" 1
@@ -303,12 +314,7 @@ PROCESS_SHUTDOWN () {
 			LOG_MSG "[INFO]:-No current instance connections identified, will continue with shutdown"
 		fi	
 		fi
-
 		#Collect information for QD standby shutdown
-		if [ x"" != x"$STOP_SYNC" ];then
-			STOP_STANDBY_SERVER_COLLECT
-		fi
-		
 		LOG_MSG "[INFO]:-Commencing Master instance shutdown with mode=$MODE" 1
 		LOG_MSG "[INFO]:-Master host=$QD_NAME" 1
 		LOG_MSG "[INFO]:-Master segment instance directory=$MASTER_DATA_DIRECTORY" 1
@@ -335,12 +341,9 @@ PROCESS_SHUTDOWN () {
 				$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
 				ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2 ;;
 		esac
-		
-		#Shutdown QD standby second
 		if [ x"" != x"$STOP_SYNC" ];then
 			STOP_STANDBY_SERVER_EXECUTE
-		fi		
-		
+		fi
 		PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 		TOTAL_FAILED_COUNT=0
 		for QNODE in "${QE_ARRAY[@]}"
@@ -354,13 +357,13 @@ PROCESS_SHUTDOWN () {
 					$GPSEGSTOP $$ $STOP_INVALID $QE_NAME $QE_PORT $QE_DIR $QE_VALID $MODE $INST_COUNT $LOG_FILE &
 					PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 				else
-					if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+					if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
 					LOG_MSG "[WARN]:-Not processing $QE_NAME directory $QE_DIR marked invalid" 1
 					((INVALID_START_COUNT=$INVALID_START_COUNT+1))
 					EXIT_STATUS=1
 				fi
 		done
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ]; then $ECHO;fi
+	if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
 	DUMP_STAT=0
 	TOTAL_FAILED_COUNT=$INVALID_START_COUNT
 	PARALLEL_SUMMARY_STATUS_REPORT $PARALLEL_STATUS_FILE
@@ -421,43 +424,29 @@ PROCESS_SHUTDOWN () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-STOP_STANDBY_SERVER () {
-	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Processing standby server shutdown" 1
-	GET_STANDBY_COUNT
-	if [ $STANDBY_COUNT -ne 0 ];then
-		GET_STANDBY_DETAILS
-		STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
-		STANDBY_DATADIR=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f2`
-		STOP_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR
-	else
-		LOG_MSG "[INFO]:-No standby master host configured" 1
-	fi
-	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
 STOP_STANDBY_SERVER_COLLECT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Collecting information for standby server shutdown" 1
 	GET_STANDBY_COUNT
 	if [ $STANDBY_COUNT -ne 0 ];then
+	LOG_MSG "[INFO]:-Collecting information for standby server shutdown" 1
 		GET_STANDBY_DETAILS
 		STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
 		STANDBY_DATADIR=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f2`
+	else
+		LOG_MSG "[INFO]:-No standby master host configured" 1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 STOP_STANDBY_SERVER_EXECUTE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Processing standby server shutdown" 1
 	if [ $STANDBY_COUNT -ne 0 ];then
+		LOG_MSG "[INFO]:-Processing standby server shutdown" 1
 		STOP_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR
-	else
-		LOG_MSG "[INFO]:-No standby master host configured" 1
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
+
 RELOAD_PSQL_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Signalling Master postmaster process to reload" 1
@@ -511,6 +500,7 @@ else
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_GPDB_ID
 if [ x"" == x"$CHK_STANDBY" ];then
 	CHK_ON_PASSIVE_STANDBY
 fi
@@ -518,7 +508,6 @@ CHK_DB_QD_SET
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 CHK_QD_DB_RUNNING
 READ_CHK
-GET_QD_DB_NAME # gpstop needs to know the QD_DB_NAME
 if [ $ADMIN -eq 1 ] || [ $READ_COUNT -ne 0 ]; then
 		STOP_ADMIN
 		exit
@@ -529,12 +518,16 @@ if [ x"" != x"$RELOAD_PARAM" ];then
 	exit
 fi
 GET_QE_DETAILS
+if [ x"" != x"$STOP_SYNC" ];then
+	STOP_STANDBY_SERVER_COLLECT
+fi
 if [ ! -f $GPSEGSTOP ];then
 	ERROR_EXIT "[FATAL]:-No $GPSEGSTOP program" 2
 fi
 if [ $INTERACTIVE ]; then
 		PROMPT_CONTINUE
 fi
+ARRAY_REORDER
 PROCESS_SHUTDOWN
 if [ $RESTART ]; then
 	if [ -f $GPSTART ]; then
@@ -548,9 +541,6 @@ if [ $RESTART ]; then
 		fi
 		if [ x"" == x"$INTERACTIVE" ];then
 			GPSTART_OPTIONS=$GPSTART_OPTIONS"a"
-		fi
-		if [ $STOP_INVALID -eq 1 ];then
-			GPSTART_OPTIONS=$GPSTART_OPTIONS"z"
 		fi
 		if [ $DEBUG_LEVEL -eq 1 ];then
 			GPSTART_OPTIONS=$GPSTART_OPTIONS"D"

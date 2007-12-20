@@ -127,7 +127,7 @@ BUILD_QUERY () {
 
 VALIDATE_QUERY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	$PSQL -q -p $MASTER_PORT $QD_DBNAME  -A -t -c"explain $QUERY_TEXT" > /dev/null 2>&1
+	$EXPORT_LIB_PATH;$PSQL -q -p $MASTER_PORT "$QD_DBNAME"  -A -t -c"explain $QUERY_TEXT" > /dev/null 2>&1
 	if [ $? -ne 0 ];then
 		LOG_MSG "[FATAL]:-Validation of $WHERE_CLAUSE failed" 1
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
@@ -139,15 +139,15 @@ VALIDATE_QUERY () {
 
 GET_DISTRIB_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	GET_TABLE_TYPE $TARGETTBL $MASTER_PORT $QD_DBNAME
+	GET_TABLE_TYPE $TARGETTBL $MASTER_PORT "$QD_DBNAME"
 	PARENT_TAB_TYPE=$TAB_TYPE
 	PARENT_TAB_PARENT_NAME=$TAB_PARENT_NAME
 	if [ $DISTRIB_COLS != "0" ];then
 		LOG_MSG "[INFO]:-Obtaining OID for $TABLENAME on Master instance"
-		TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		TABLE_OID=`$EXPORT_LIB_PATH;$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 		if [ $? -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Failed obtain table oid value" 2;fi
-	TOTAL_COLS=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(attnum) from pg_attribute where attrelid=${TABLE_OID};"`
+	TOTAL_COLS=`$EXPORT_LIB_PATH;$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select max(attnum) from pg_attribute where attrelid=${TABLE_OID};"`
 	if [ $? -ne 0 ];then
 	ERROR_EXIT "[FATAL]:-Failed to obtain table column count" 2;fi
 	LOG_MSG "[INFO]:-------------------------------------------" 1
@@ -155,9 +155,8 @@ GET_DISTRIB_INFO () {
 	COLNUM=0
 	for ATT_NUM in `echo $DISTRIB_COLS|$TR -d '{'|$TR -d '}'|$TR ',' ' '`
 	do
-		DIS_COL_NAME=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select attname from pg_attribute where attrelid=${TABLE_OID} and attnum=${ATT_NUM};"`
+		DIS_COL_NAME=`$EXPORT_LIB_PATH;$PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select attname from pg_attribute where attrelid=${TABLE_OID} and attnum=${ATT_NUM};"`
 		((COLNUM=$COLNUM+1))
-#	LOG_MSG "[INFO]:-Distrib col  = $COLNUM at DDL position $ATT_NUM is named $DIS_COL_NAME"
 	LOG_MSG "[INFO]:-Distrib column count    = $COLNUM" 1
 	LOG_MSG "[INFO]:-Distrib column name     = $DIS_COL_NAME" 1
 	LOG_MSG "[INFO]:-Distrib column position = $ATT_NUM" 1
@@ -165,7 +164,7 @@ GET_DISTRIB_INFO () {
 	LOG_MSG "[INFO]:-Total columns           = $TOTAL_COLS" 1
 	LOG_MSG "[INFO]:-Table is type           = $TAB_TYPE_TXT" 1
 	if [ $PARTITIONED == 't' ];then
-		PARENT_TABLE_COUNT=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $TARGETTBL;"`
+		PARENT_TABLE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from only $TARGETTBL;"`
 		LOG_MSG "[INFO]:-Physical record count   = $PARENT_TABLE_COUNT"	 1
 		LOG_MSG "[INFO]:-Table type              = Partitioned" 1
 		GET_CHILD_NAMES
@@ -174,8 +173,8 @@ GET_DISTRIB_INFO () {
 		LOG_MSG "[INFO]:-------------------------------------------" 1
 		for C_NAME in ${CHILD_NAME_ARRAY[@]}
 		do
-			GET_DISTRIB_COLS ${SCHEMA_NAME}.$C_NAME $MASTER_PORT $QD_DBNAME
-			GET_TABLE_TYPE ${SCHEMA_NAME}.$C_NAME $MASTER_PORT $QD_DBNAME
+			GET_DISTRIB_COLS ${SCHEMA_NAME}.$C_NAME $MASTER_PORT "$QD_DBNAME"
+			GET_TABLE_TYPE ${SCHEMA_NAME}.$C_NAME $MASTER_PORT "$QD_DBNAME"
 			LOG_MSG "[INFO]:-$C_NAME distribution columns=$DISTRIB_COLS" 1
 		done	
 		LOG_MSG "[INFO]:-------------------------------------------" 1
@@ -192,8 +191,8 @@ GET_DISTRIB_INFO () {
 
 GET_CHILD_NAMES () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		PARENT_TABLE_RELFILENODE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-		CHILD_NAME_ARRAY=(`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relname from pg_class where relkind='r' and oid in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
+		PARENT_TABLE_RELFILENODE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select oid from pg_class where relname='$TABLENAME' and relkind='r' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+		CHILD_NAME_ARRAY=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select relname from pg_class where relkind='r' and oid in (select inhrelid from pg_inherits where inhparent=$PARENT_TABLE_RELFILENODE);"|$TR '\n' ' '`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -205,10 +204,10 @@ GET_NODE_COUNT () {
 		T_NAME=`$ECHO $TARGETTBL|$CUT -d. -f2`
 	fi
 	SEGCOUNT=0
-	DIS_COL_ARRAY=(`$PSQL -p $MASTER_PORT  $QD_DBNAME -R" " -A -t -c "select  a.attname from pg_class c,  gp_distribution_policy d, pg_attribute a where c.oid = d.localoid and a.attrelid = d.localoid and  a.attnum = ANY ( d.attrnums ) and c.relname='$T_NAME' and c.relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`)
-	NUM_SEGMENTS=`$PSQL -p $MASTER_PORT  $QD_DBNAME -A -t -c "select count(*) from $CONFIG_TABLE where content<>-1 and isprimary='t';"`
+	DIS_COL_ARRAY=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT  "$QD_DBNAME" -R" " -A -t -c "select  a.attname from pg_class c,  gp_distribution_policy d, pg_attribute a where c.oid = d.localoid and a.attrelid = d.localoid and  a.attnum = ANY ( d.attrnums ) and c.relname='$T_NAME' and c.relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`)
+	NUM_SEGMENTS=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT  "$QD_DBNAME" -A -t -c "select count(*) from $CONFIG_TABLE where content<>-1 and isprimary='t';"`
 	ERROR_CHK $? "obtain number of segment instances" 2
-	RELPAGE_NUM_PER_SEG_WAIT=`$PSQL -p $MASTER_PORT  $QD_DBNAME -R" " -A -t -c "select relpages/${NUM_SEGMENTS}/800 from pg_class where relname='$T_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
+	RELPAGE_NUM_PER_SEG_WAIT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT  "$QD_DBNAME" -R" " -A -t -c "select relpages/${NUM_SEGMENTS}/800 from pg_class where relname='$T_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
 	ERROR_CHK $? "obtain relpages for $T_NAME" 2
 	if [ $RELPAGE_NUM_PER_SEG_WAIT -ge $WAIT_LIMIT ];then
 		LOG_MSG "[INFO]:-Reset default time out from $WAIT_LIMIT to $RELPAGE_NUM_PER_SEG_WAIT seconds" 1
@@ -227,7 +226,7 @@ GET_NODE_COUNT () {
 		QE_ARRAY=(${QE_MIRROR_ARRAY[@]})
 	fi
 	if [ x"" != x"$ALT_DBNAME" ];then
-		QD_DBNAME=$ALT_DBNAME;fi
+		QD_DBNAME="$ALT_DBNAME";fi
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	if [ `$ECHO $TARGETTBL|$GREP -c "\."` -eq 0 ];then
 		TARGETTBL="${SCHEMA_NAME}.$TARGETTBL"
@@ -242,9 +241,9 @@ GET_NODE_COUNT () {
 		QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 		if [ x"" == x"$QUERY_TEXT" ];then
-		$GPSEGSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $QD_DBNAME $TARGETTBL 0 &
+		$GPSEGSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE "$QD_DBNAME" $TARGETTBL 0 &
 		else
-		$GPSEGSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE $QD_DBNAME $TARGETTBL "${WHERE_CLAUSE}" &
+		$GPSEGSKEW $$ $QE_NAME $QE_PORT $QE_DIR $QE_VALID $QE_PRIMARY $INST_COUNT $LOG_FILE "$QD_DBNAME" $TARGETTBL "${WHERE_CLAUSE}" &
 		fi	
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
@@ -306,9 +305,10 @@ GET_NODE_COUNT () {
 		Seg=`$ECHO $LINE|$CUT -d '|' -f4`
 		Port=`$ECHO $LINE|$CUT -d '|' -f3`
 		if [ $STATUS == "COMPLETED" ];then
-			LOG_MSG "[INFO]:-$Host $Seg $Port time = $Time" 1
+			TXT=`$ECHO $LINE|$AWK -F"|" '{print $5"\t Segment "$4" \t Time = "$6}'`
+			LOG_MSG "[INFO]:-$TXT" 1
 		else
-			LOG_MSG "[INFO]:-$Host $Seg $Port time = $STATUS $WARN_MARK" 1
+			LOG_MSG "[INFO]:-$TXT $STATUS $WARN_MARK" 1
 		fi
 	done < $PARALLEL_STATUS_FILE
 	fi
@@ -328,7 +328,7 @@ GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Database                             = $QD_DBNAME" 1
 	if [ $PARTITIONED == 't' ];then
 	LOG_MSG "[INFO]:-Table type                           = Partitioned and $TAB_TYPE_TXT"
-		PARENT_TABLE_COUNT=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $TARGETTBL;"`
+		PARENT_TABLE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from only $TARGETTBL;"`
 		TOTAL_TXT="(inc child tables)"
 	LOG_MSG "[INFO]:-Parent table physical record count   = $PARENT_TABLE_COUNT"	 1
 	else
@@ -360,7 +360,8 @@ GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Segment instance name                = $MinSeg" 1
 	LOG_MSG "[INFO]:-Record count variance                = $RecDiff $HILITE" 1
 	if [ $REPORT_FAIL -ne 0 ];then
-	LOG_MSG "[INFO]:-Partial value due to failures" 1
+	LOG_MSG "[WARN]:-Partial value due to segment failures $WARN_MARK" 1
+	EXIT_STATUS=1
 	fi
 	LOG_MSG "[INFO]:---------------------------------------" 1
 	rm -f $PARALLEL_STATUS_FILE
@@ -411,6 +412,7 @@ fi
 CHK_DB_RUNNING
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_GPDB_ID
 READ_CHK
 if [ $READ_COUNT -ne 0 ];then
         ERROR_EXIT "[FATAL]:-This script cannot be used on a read-only Master instance" 2
@@ -430,9 +432,9 @@ fi
 if [ x"" != x"$TARGETTBL" ];then
 	GET_QD_DB_NAME
 	if [ x"" != x"$ALT_DBNAME" ];then
-        	QD_DBNAME=$ALT_DBNAME
+        	QD_DBNAME="$ALT_DBNAME"
 	fi
-	CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT $QD_DBNAME
+	CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT "$QD_DBNAME"
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TARGETTBL does not exist" 2
 	else
@@ -440,11 +442,11 @@ if [ x"" != x"$TARGETTBL" ];then
 			BUILD_QUERY $TARGETTBL
 			VALIDATE_QUERY
 		fi
-		GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT $QD_DBNAME
+		GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT "$QD_DBNAME"
 		if [ $DISTRIB -eq 1 ];then
 			GET_DISTRIB_INFO
 		else
-			GET_TABLE_TYPE $TARGETTBL $MASTER_PORT $QD_DBNAME
+			GET_TABLE_TYPE $TARGETTBL $MASTER_PORT "$QD_DBNAME"
 			GET_NODE_COUNT
 		fi
 		if [ $DO_CHILD -eq 1 ] && [ $PARTITIONED == 't' ];then
@@ -453,12 +455,12 @@ if [ x"" != x"$TARGETTBL" ];then
 			for CHILD_TABLE_NAME in ${CHILD_NAME_ARRAY[@]}
 			do
 				TARGETTBL=${SCHEMA_NAME}.$CHILD_TABLE_NAME
-				CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT $QD_DBNAME
-				GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT $QD_DBNAME
+				CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT "$QD_DBNAME"
+				GET_DISTRIB_COLS $TARGETTBL $MASTER_PORT "$QD_DBNAME"
 				if [ $DISTRIB -eq 1 ];then
 					GET_DISTRIB_INFO
 				else
-					GET_TABLE_TYPE $TARGETTBL $MASTER_PORT $QD_DBNAME
+					GET_TABLE_TYPE $TARGETTBL $MASTER_PORT "$QD_DBNAME"
 					GET_NODE_COUNT
 				fi
 			done

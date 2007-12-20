@@ -53,7 +53,6 @@ VERBOSE=1
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
-HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 PG_PID=postmaster.pid
 EXIT_STATUS=0
 FORCESTOP=0
@@ -61,16 +60,12 @@ TMP_FILE=/tmp/${PROG_NAME}_${CUR_DATE}.$$
 PARALLEL_STATUS_FILE=/tmp/gpstate_parallel_status_file.$$
 GPSEGREC=$WORKDIR/lib/gpsegrec.sh
 BATCH_DEFAULT=4 #Specific limit for segment recovery
+FAILED_RECOVERY=0
 #******************************************************************************
 # Functions
 #******************************************************************************
 USAGE () {
-    if [ -f ${GPDOCDIR}/$HELP_DOC_NAME ] && [ x"" == x"$SCRIPT_USAGE" ];then
-
-        $MORE ${GPDOCDIR}/$HELP_DOC_NAME
-        exit 0
-    else
-       	$ECHO
+        	$ECHO
 		$ECHO "      `basename $0`"
 		$ECHO
 		$ECHO "      Recovers Greenplum segment instances that are marked as invalid, if"
@@ -99,7 +94,7 @@ USAGE () {
 		$ECHO "         5. Greenplum superuser account configured"
 		$ECHO "         6. Sufficient capacity left to accommodate recovered segments"
 		$ECHO "      -s <Primary segment directory,Mirror segment directory>"
-		$ECHO "         example -s /data_p4/pri,/data_m4/mir, this assumes that the Greenplum array was"
+		$ECHO "         example -p /data_p4/pri,/data_m4/mir, this assumes that the Greenplum array was"
 		$ECHO "         configured with spare pool segment instance directories on each segment"
 		$ECHO "         instance host"
 		$ECHO "      -f, force Greenplum Database instance shutdown and restart"
@@ -117,8 +112,7 @@ USAGE () {
 		$ECHO "      1 Warning generated, but recovery completed"
 		$ECHO "      2 Fatal error, recovery failed"
 		$ECHO
-       	exit 0
-	fi
+        	exit 0
 }
 
 GET_SETTING () {
@@ -244,7 +238,7 @@ GET_MIRROR () {
 	if [ $FAILED_INST_COUNT -eq 0 ]; then
 		LOG_MSG "[INFO]:-No invalid segment instances located" 1
 		LOG_MSG "[INFO]:-Commencing general user database access check" 1
-		$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"show gp_fault_action;" >> $LOG_FILE 2>&1
+		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"show gp_fault_action;" >> $LOG_FILE 2>&1
 		RET_STATUS=$?
 		if [ $RET_STATUS -ne 0 ];then
 			LOG_MSG "[WARN]:-Issue with general access to the database" 1
@@ -262,7 +256,7 @@ GET_MIRROR () {
 		LOG_MSG "[INFO]:-Located $FAILED_INST_COUNT invalid segment instances" 1
 	fi
 	#Now check to make sure that we can initiate recovery
-	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from $CONFIG_TABLE where content<>-1;"`
+	TOTAL_INST_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from $CONFIG_TABLE where content<>-1;"`
 	ERROR_CHK $? "obtain total segement count from master instance" 2
 	if [ $FAILED_INST_COUNT -gt $TOTAL_INST_COUNT ]; then
 		LOG_MSG "[FATAL]:-Insufficient remaining active instances to be able to recover instance" 1
@@ -275,10 +269,10 @@ GET_MIRROR () {
 	ARRAY_INDEX=0
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
-		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where dbid=${DBID};"`
+		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where dbid=${DBID};"`
 		ERROR_CHK $? "obtain failed segment details from master instance" 2
-		ACTIVE_DBID=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content in (select content from $GP_PG_VIEW as _gp_pg_view2 where dbid=${DBID}) and dbid<>${DBID};"`
-		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where valid='t' and content in (select content from $CONFIG_TABLE where dbid=${ACTIVE_DBID}) and dbid<>${DBID};"`
+		ACTIVE_DBID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content in (select content from $GP_PG_VIEW  as _gp_pg_view2 where dbid=${DBID}) and dbid<>${DBID};"`
+		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where valid='t' and content in (select content from $CONFIG_TABLE where dbid=${ACTIVE_DBID}) and dbid<>${DBID};"`
 		ERROR_CHK $? "obtain recovery segment details from master instance" 2
 		((ARRAY_INDEX=$ARRAY_INDEX+1))
 	done	
@@ -381,7 +375,6 @@ TEST_ACCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Testing remote access" 1
 	LOG_MSG "[INFO]:-Trusted shell = $TRUSTED_SHELL" 1
-	LOG_MSG "[IMFO]:-Trusted copy  = $TRUSTED_COPY" 1
 	LOG_MSG "[INFO]:-Please wait..." 1
 	COUNT=0
 	while [ $COUNT -lt $ARRAY_INDEX ]
@@ -396,7 +389,8 @@ TEST_ACCESS () {
 		LOG_MSG "[INFO]:-Test 2, create temporary file on ${MIR_QE_HOST}"
 		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$ECHO test >/tmp/remote_test2.$$" 
 		LOG_MSG "[INFO]:-Test 3, copy file from ${MIR_QE_HOST} to ${FAIL_QE_HOST}"
-		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$SCP -pr /tmp/remote_test2.$$ ${FAIL_QE_HOST}:/tmp"
+		#RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$SCP -pr /tmp/remote_test2.$$ ${FAIL_QE_HOST}:/tmp"
+		$TRUSTED_SHELL ${MIR_QE_HOST} "cd /tmp;$TAR cf - /remote_test2.$$|$TRUSTED_SHELL ${FAIL_QE_HOST}\"cd /tmp;$TAR xf - \"" >> $LOG_FILE 2>&1
 		LOG_MSG "[INFO]:-Clearing temporary files"
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f /tmp/remote_test1.$$" 
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f /tmp/remote_test2.$$" 
@@ -410,6 +404,14 @@ TEST_ACCESS () {
 	LOG_MSG "[INFO]:-Set time out limit to $WAIT_LIMIT seconds" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
+
+CHKPOINT_DB () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Issuing a checkpoint against database" 1
+	${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -c "checkoint;" >> $LOG_FILE 2>&1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 STOP_DATABASE () { 
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $STOPDB -eq 1 ] || [ $FORCESTOP -ne 0 ]; then
@@ -417,6 +419,7 @@ STOP_DATABASE () {
         	if [ $EXISTS -ne 0 ];then
                 	ERROR_EXIT "[FATAL]:-Could not locate $GPSTOP script"
 		fi
+		CHKPOINT_DB
         	LOG_MSG "[INFO]:-Shutting down the instance ... Please wait ..." 1
         	$GPSTOP -zfa
 		if [ x"" == x"$FORCE_RECOVER_STRING" ];then
@@ -426,6 +429,7 @@ STOP_DATABASE () {
 		fi
         	LOG_MSG "[INFO]:-Successfully shutdown the Greenplum Database instance" 1
 	else
+		CHKPOINT_DB
 		COUNT=0
 		while [ $COUNT -lt $FAILED_INST_COUNT ]
 		do
@@ -435,7 +439,7 @@ STOP_DATABASE () {
 			ERROR_CHK $? "force shutdown of $FAIL_QE_DIR on $FAIL_QE_HOST" 1
 			LOG_MSG "[INFO]:-Checking for postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT" 1
 			GET_PG_PID_ACTIVE $FAIL_QE_PORT $FAIL_QE_HOST
-			if [ $PID -ne 0 ];then
+			if [ $PID -ne 0 ] && [ $PID -ne 1 ];then
 				LOG_MSG "[WARN]:-Found postmaster process on $FAIL_QE_HOST port $FAIL_QE_PORT" 1
 				LOG_MSG "[WARN]:-Will kill process $PID" 1
 				$TRUSTED_SHELL $FAIL_QE_HOST "$KILL -9 $PID 2>/dev/null"
@@ -483,6 +487,7 @@ RECOVER_DATA () {
 
 UPDATE_MPP_MPP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	RECOVER_COUNT=0
 	COUNT=0
 	while [ $COUNT -lt $ARRAY_INDEX ]
 	do
@@ -494,15 +499,39 @@ UPDATE_MPP_MPP () {
 		((COUNT=$COUNT+1))
 		LOG_MSG "[INFO]:-Updating instance catalog on $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
 		LOG_MSG "[INFO]:-Starting instance on $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
-		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start" 
-		ERROR_CHK $? "segment start $FAIL_QE_HOST instance $FAIL_QE_DIR port=$FAIL_QE_PORT" 2
-		# Update table
-		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $DEFAULTDB -c \"update $GP_ID_TABLE set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
-		ERROR_CHK $? "update segment $GP_ID_TABLE on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
-		if [ $STOPDB -eq 1 ] || [ $FORCESTOP -eq 1 ]; then
-				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
-				$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
-				ERROR_CHK $? "segment instance stop $FAIL_QE_HOST port=$FAIL_QE_PORT" 2
+		$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start"  >> $LOG_FILE 2>&1
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ];then
+			$RM -f $TMP_FILE
+			LOG_MSG "[WARN]:-Failed to start segment on $FAIL_QE_HOST datadir FAIL_QE_DIR port FAIL_QE_PORT" 1
+			LOG_MSG "[INFO]:-Please check the log file ${FAIL_QE_DIR}.log on $FAIL_QE_HOST to ascertain cause of failure" 1
+			LOG_MSG "[INFO]:-If this problem continues on recovery, consider use of -f option to close done database" 1
+			LOG_MSG "[INFO]:-and attempt recovery process again" 1
+			FAILED_RECOVERY=1
+		else
+			# Update table
+			$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $DEFAULTDB -c \"update $GP_ID_TABLE set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\"" >> $LOG_FILE 2>&1
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ];then
+				LOG_MSG  "[WARN]:-Failed to update segment $GP_ID_TABLE on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 1
+				FAILED_RECOVERY=1
+			else
+				LOG_MSG  "[INFO]:-Successfully updated $GP_ID_TABLE on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 1
+				if [ $STOPDB -eq 1 ] || [ $FORCESTOP -eq 1 ]; then
+					LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
+					$TRUSTED_SHELL $FAIL_QE_HOST "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log" >> $LOG_FILE 2>&1
+					RETVAL=$?
+					if [ $RETVAL -ne 0 ];then
+						LOG_MSG  "[WARN]:-Failed segment instance stop $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
+						FAILED_RECOVERY=1
+					else
+						LOG_MSG  "[INFO]:-Completed segment instance stop $FAIL_QE_HOST port=$FAIL_QE_PORT" 1
+						((RECOVER_COUNT=$RECOVER_COUNT+1))
+					fi
+				else
+					((RECOVER_COUNT=$RECOVER_COUNT+1))
+				fi
+			fi
 		fi
 	done
 	if [ x"" != x"$POOL_DIR_SET" ] || [ x"" != x"$POOL_HOST" ];then
@@ -513,9 +542,9 @@ UPDATE_MPP_MPP () {
 
 RESET_QE_CONNECT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	TABLE_NAME=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select relname from pg_class where relkind='r' order by reltype desc limit(1);"`
-	$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from ${TABLE_NAME};" >> $LOG_FILE 2>&1
-	$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select * from ${GP_PG_VIEW} as _gp_pg_view;" >> $LOG_FILE 2>&1
+	TABLE_NAME=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select relname from pg_class where relkind='r' order by reltype desc limit(1);"`
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from ${TABLE_NAME};" >> $LOG_FILE 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select * from ${GP_PG_VIEW} as _gp_pg_view;" >> $LOG_FILE 2>&1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -527,7 +556,7 @@ START_DATABASE () {
 	LOG_MSG "[INFO]:-Resetting invalid segment status values" 1
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
-		env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set valid='t' where dbid=${DBID}"
+		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set valid='t' where dbid=${DBID}"
 		ERROR_CHK $? "reset dbid $DBID as valid" 1
 	done
 	LOG_MSG "[INFO]:-Commencing shutdown of the Greenplum Database instance from admin mode... Please wait..." 1
@@ -555,18 +584,18 @@ FORCE_RECOVER () {
 		ERROR_EXIT "[FATAL]:Option -z string $FORCE_RECOVER_STRING incorrect" 2;fi
 	GET_QD_DB_NAME
 	#Obtain hostname for segment instance directory that is to be recovered
-	FAILED_INSTANCE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`
+	FAILED_INSTANCE_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`
 	ERROR_CHK $? "obtain failed instance count" 2
 	if [ $FAILED_INSTANCE_COUNT -eq 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
 	if [ $FAILED_INSTANCE_COUNT -gt 1 ];then
 		ERROR_EXIT "[FATAL]:-Found multiple records for $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
-	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
+	FAILED_INSTANCE_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid, content from $CONFIG_TABLE where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
 	ERROR_CHK $? "obtain failed segment instance details" 2
 	FAIL_SET_VAR "${FAILED_INSTANCE_ARRAY[@]}" 
 	FAILED_INST_LIST=($FAIL_QE_DBID)
 	#Get active mirror details
-	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid<>$FAIL_QE_DBID and content in (select content from $CONFIG_TABLE where dbid=${FAIL_QE_DBID});"`)
+	ACTIVE_INSTANCE_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from $CONFIG_TABLE where dbid<>$FAIL_QE_DBID and content in (select content from $CONFIG_TABLE where dbid=${FAIL_QE_DBID});"`)
 	ERROR_CHK $? "obtain recovery segment instance details" 2
 	if [ ${#ACTIVE_INSTANCE_ARRAY[@]} -ne 1 ];then
 		ERROR_EXIT "[FATAL]:-Did not locate 1 recovery segment instance, obtained  ${#ACTIVE_INSTANCE_ARRAY[@]}" 2
@@ -687,7 +716,7 @@ GET_FAIL_COUNT_TYPE () {
 	PRI_FAIL_COUNT=0;MIR_FAIL_COUNT=0
 	for FAIL_DBID in ${FAILED_INST_LIST[@]}
 	do
-		DBID_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select definedprimary from $GP_PG_VIEW as _gp_pg_view where dbid=${FAIL_DBID};"`
+		DBID_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select definedprimary from $GP_PG_VIEW  as _gp_pg_view where dbid=${FAIL_DBID};"`
 		ERROR_CHK $? "obtain type for dbid = $FAIL_DBID" 2
 		case $DBID_TYPE in
 			t ) ((PRI_FAIL_COUNT=$PRI_FAIL_COUNT+1)) ;;
@@ -1050,7 +1079,7 @@ UPDATE_STATUS () {
 	do
 		FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 		LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active" 1
-		 env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c "BEGIN; update $CONFIG_TABLE set valid = 't' where dbid = CAST($FAIL_QE_DBID AS smallint); update $CONFIG_TABLE set isprimary = definedprimary where content = CAST($FAIL_QE_CONTENTID AS smallint); COMMIT;" > /dev/null 2>&1
+		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c "BEGIN; update $CONFIG_TABLE set valid = 't' where dbid = CAST($FAIL_QE_DBID AS smallint); update $CONFIG_TABLE set isprimary = definedprimary where content = CAST($FAIL_QE_CONTENTID AS smallint); COMMIT;" > /dev/null 2>&1
 		RETVAL=$?
 		ERROR_CHK $RETVAL "update status on Master database" 2
 		((COUNT=$COUNT+1))
@@ -1058,6 +1087,12 @@ UPDATE_STATUS () {
 	LOG_MSG "[INFO]:-Shutting down master database in utility mode" 1
 	$GPSTOP -m
 LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+DISPLAY_HELP () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 #******************************************************************************
@@ -1093,6 +1128,11 @@ else
 	fi
 fi
 LOG_MSG "[INFO]:-Start Main"
+CHK_GPDB_ID
+CHK_DB_RUNNING 1
+if [ $EXIT_STATUS -ne 0 ];then
+	ERROR_EXIT "[FATAL]:-Unable to continue" 2
+fi
 CHK_DB_QD_SET
 CHK_ON_PASSIVE_STANDBY
 VALIDATE_PARAMS
@@ -1123,6 +1163,13 @@ if [ $STOPDB -eq 1 ] || [ $FORCESTOP -ne 0 ];then
 else
 	RESET_QE_CONNECT
 fi
-LOG_MSG "[INFO]:-Recovery completed successfully" 1
+if [ $EXIT_STATUS -eq 0 ] || [ $FAILED_RECOVERY -eq 0 ];then
+	LOG_MSG "[INFO]:-Recovery completed successfully" 1
+else
+	if [ $FAILED_RECOVERY -eq 1 ];then
+		LOG_MSG "[WARN]:-Segment recovery failures detected, please review log file $LOG_FILE" 1
+	fi
+fi
+LOG_MSG "[INFO]:-Recovered $RECOVER_COUNT of $ARRAY_INDEX failed segments" 1
 LOG_MSG "[INFO]:-End Main"
-
+exit $EXIT_STATUS

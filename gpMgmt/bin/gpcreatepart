@@ -49,7 +49,6 @@ WAIT="-w"
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
-PROG_NAME=`$BASENAME $0`
 HELP_DOC_NAME=`$ECHO $PROG_NAME|$AWK -F'.' '{print $1}'`_help
 QD_NAME=`hostname`
 EXIT_STATUS=0
@@ -64,11 +63,17 @@ ABORT=0
 CREATE_PART_INDEX=0
 PROCESS_CONVERSION=0
 STEP_BACK=0
-CHILD_TABLE_ID="_child_depth_"
-REQD_CHAR=30
+REQD_CHAR=20
 MAX_CHAR=64
 KEEP_TMP=0
 CASCADE_PERMS=0
+SEQ_NUM=1
+DIRECT_INSERT=0
+GPSEGPART=$WORKDIR/lib/gpsegpart.sh
+BATCH_DEFAULT=4
+PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
+TMP_COUNT_FILE=/tmp/${PROG_NAME}_${CUR_DATE}_TMP_COUNT_FILE.$$
+FAIL_RECOVER=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -86,6 +91,19 @@ USAGE () {
 		$ECHO "      Will secure the parent table if records exist within that table and"
 		$ECHO "      inserts records back into the partitioned tables when creation of"
 		$ECHO "      child tables and rules have completed successfully"
+		$ECHO "      Child naming convention  is as listed below"
+		$ECHO "      <top level parent table_name>_c_d_<depth>_<types list>_<sequence #>_<parent OID>_<type>"
+		$ECHO "      Where.."
+		$ECHO "      <top level parent table_name> = name of the top most table name in the partitioning hierarchy"
+		$ECHO "      <depth> numeric depth within the partitioning hierarchy, starting at 1"
+		$ECHO "      <types list> list of types starting with top level partition type"
+		$ECHO "      <sequence #> unique sequence number starting at 1 [one]"
+		$ECHO "      <parent OID> OID value of parent from $CLASS_TABLE table"
+		$ECHO "      <type> full type name"
+		$ECHO "      Example child table name"
+		$ECHO "      web_fact_c_d_2_wr_30_36001_range top parent table is web_fact, this child table is at depth 2"
+		$ECHO "      parent table is a child table that is partitioned on week (w), this child table partitioned"
+		$ECHO "      by range (r) and is the 30th such child at this depth, and the parent table has OID 36001"
 		$ECHO
 		$ECHO "      Usage:"
 		$ECHO "      $0 [OPTIONS]"
@@ -132,6 +150,13 @@ USAGE () {
 		$ECHO "          gpaddpart would result in a large number of redundant child tables" 
 		$ECHO "      -N, do not cascade parent table permissions down to child tables"
 		$ECHO "          [default:-cascade permissions]"
+		$ECHO "      -C, copy records back doing a direct insert into appropriate child table using CHECK constraint"
+		$ECHO "          criteria to select required records. Use this option if all records secured from parent will"
+		$ECHO "          have an associated new child table. If total records inserted do not equal total records in"
+		$ECHO "          the temporary holding table, utility will have to identify missing records and insert those"
+		$ECHO "          into the parent, which will take some time if number of records large"
+		$ECHO "          [default:-insert records into parent table]"
+		$ECHO "      -B, parallel batch insert limit [default:-$BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Date range partitioning options:"
 		$ECHO "      Use this partitioning policy for date, timestamp and timestamp with time zone columns"
@@ -153,7 +178,10 @@ USAGE () {
 		$ECHO "      -o, <value list> comma separated list of values, example -c CA,MS,NY,WS [mandatory]"
 		$ECHO "          If spaces are required within list items enclose the list in \" \" "
 		$ECHO "          For example -o \"CA MS,NY WS\""
-		#$ECHO "          To add a null check/rule constraint add text NULL to the list"
+		$ECHO "          Note, list values supplied are case sensitive"
+		$ECHO "      -O, create a partition table which will hold all values not in -o <value list>"
+		$ECHO "          For example if value list="CA,MS", then this partition table will hold all"
+		$ECHO "          records which do not contain values CA or MA in <column name>"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -200,6 +228,11 @@ PROMPT_CONTINUE () {
 			LOG_MSG "[INFO]:-List column                = $PART_COLUMN" 1
 			LOG_MSG "[INFO]:-List column type           = $PART_COL_TYPE" 1
 			LOG_MSG "[INFO]:-List values                = $PART_LIST" 1
+			if [ x"" == x"$XOR_TABLE" ];then
+			LOG_MSG "[INFO]:-Create XOR table           = Off" 1
+			else
+			LOG_MSG "[INFO]:-Create XOR table           = On" 1
+			fi
 			;;
 		esac
 		LOG_MSG "[INFO]:-Partition depth            = $DEPTH" 1
@@ -223,7 +256,14 @@ PROMPT_CONTINUE () {
 		if [ $COPY_REC -eq 0 ];then
 		LOG_MSG "[INFO]:-Transfer existing records  = Off" 1
 		else
-		LOG_MSG "[INFO]:-Transfer existing records  = On" 1;fi
+			LOG_MSG "[INFO]:-Transfer existing records  = On" 1
+			if [ $DIRECT_INSERT -eq 0 ];then
+			LOG_MSG "[INFO]:-Transfer method            = Insert to parent" 1
+			else
+                        LOG_MSG "[INFO]:-Transfer method            = Insert direct to child" 1
+			LOG_MSG "[INFO]:-Insert batch # in parallel = $BATCH_DEFAULT" 1
+			fi
+		fi
 		if [ $CREATE_PART_INDEX -eq 1 ];then
 		LOG_MSG "[INFO]:-Index partition column     = On" 1
 		else
@@ -308,6 +348,7 @@ CHK_PARAM () {
 				ERROR_EXIT "[FATAL]:-Mandatory parameter -s not supplied for -p<date> option" 2;fi
 			if [ x"" == x"$GENERATION_COUNT" ];then
 				ERROR_EXIT "[FATAL]:-Mandatory parameter -n not supplied for -p<date> option" 2;fi
+			XOR_TABLE_CHK
 			;;
 		r )
 			if [ x"" == x"$START_DATE_OR_VALUE" ];then
@@ -316,6 +357,7 @@ CHK_PARAM () {
 				ERROR_EXIT "[FATAL]:-Mandatory parameter -e not supplied for -p<range> option" 2;fi
 			if [ x"" == x"$NUMERIC_INCREMENT" ];then
 				ERROR_EXIT "[FATAL]:-Mandatory parameter -g not supplied for -p<range> option" 2;fi
+			XOR_TABLE_CHK
 			;;
 		l )
 			if [ x"" == x"$PART_LIST" ];then
@@ -325,6 +367,15 @@ CHK_PARAM () {
 			ERROR_EXIT "[FATAL]:-Mandatory parameter -p has invalid value, must be d,r or l" 2
 			;;
 	esac
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+XOR_TABLE_CHK () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ x"" != x"$XOR_TABLE" ];then
+		LOG_MSG "[WARN]:-Invalid option -O supplied for partition type requested, ignoring this option" 1
+		unset XOR_TABLE
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -342,17 +393,20 @@ DATE_CHK () {
 VALIDATE_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Check to ensure that the table exists
-	CHK_EXISTS_TABLE $PARENT_TABLE_NAME $MASTER_PORT $QD_DBNAME
+	CHK_EXISTS_TABLE $PARENT_TABLE_NAME $MASTER_PORT "$QD_DBNAME"
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Parent table $PARENT_TABLE_NAME does not exist in $QD_DBNAME database" 2
 	else
+	#Get OID of parent table from pg_class
+	P_OID=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select oid from $CLASS_TABLE where relname = '$TABLE_NAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}');"`
+	ERROR_CHK $? "get OID of $TABLE_NAME" 2
 	#Check to see if table has any child tables already
-		HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select relhassubclass from pg_class where relname = '$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}');"`
+		HAS_CHILD_TABLES=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select relhassubclass from $CLASS_TABLE where relname = '$TABLE_NAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}');"`
 		ERROR_CHK $? "check for child tables" 2
 	if [ $HAS_CHILD_TABLES == 't' ];then
 		LOG_MSG "[WARN]:-Table $PARENT_TABLE_NAME appears to have child tables" 1
 		LOG_MSG "[INFO]:-Checking for child tables" 1
-		CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_inherits where inhparent in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}'));"`
+		CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from $INHERIT_TABLE where inhparent in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}'));"`
 		ERROR_CHK $? "obtain child table count" 2
 		if [ $CHILD_COUNT -ne 0 ] && [ x"" == x"$FORCE_CREATE" ];then
 			LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME has $CHILD_COUNT child tables defined." 1
@@ -360,10 +414,12 @@ VALIDATE_PARAM () {
 			ERROR_EXIT "[FATAL]:-Use gpaddpart to increase number of child tables" 2
 		else
 			LOG_MSG "[INFO]:-Table $PARENT_TABLE_NAME has $CHILD_COUNT child tables, will continue" 1
+			#Set SEQ_NUM
+			((SEQ_NUM=$CHILD_COUNT+1))
 		fi
 	fi
 	#Check that partition column exists
-	COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${PART_COLUMN}' and attnum > 0;"`
+	COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from $ATTRIBUTE_TABLE where attrelid in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}')) and attname='${PART_COLUMN}' and attnum > 0;"`
 	ERROR_CHK $? "check for \"$PART_COLUMN\" column" 2
 	if [ $COL_THERE -ne 1 ];then
 		ERROR_EXIT "[FATAL]:-Column $PART_COLUMN does not exist in $PARENT_TABLE_NAME" 2
@@ -381,7 +437,7 @@ VALIDATE_PARAM () {
 		NEW_DIST_ARRAY=(`$ECHO $NEW_DIST_COL|$TR ',' ' '`)
 		for COL_DIST in ${NEW_DIST_ARRAY[@]}
 		do
-			COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${COL_DIST}' and attnum > 0;"`
+			COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from $ATTRIBUTE_TABLE where attrelid in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}')) and attname='${COL_DIST}' and attnum > 0;"`
 			ERROR_CHK $? "check for \"$COL_DIST\" column" 2
 			if [ $COL_THERE -ne 1 ];then
 				ERROR_EXIT "[FATAL]:-New distribution column $COL_DIST does not exist in $PARENT_TABLE_NAME" 2
@@ -397,7 +453,7 @@ VALIDATE_PARAM () {
 		fi
 		for INDEX_NAME in ${INDEX_ARRAY_LIST[@]}
 		do
-		COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')) and attname='${INDEX_NAME}' and attnum > 0;"`
+		COL_THERE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from $ATTRIBUTE_TABLE where attrelid in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}')) and attname='${INDEX_NAME}' and attnum > 0;"`
 		ERROR_CHK $? "check for \"$INDEX_NAME\" column in $TABLE_NAME" 2
 		if [ $COL_THERE -ne 1 ];then
 			ERROR_EXIT "[FATAL]:-Column $INDEX_NAME requested for indexing does not exist in $PARENT_TABLE_NAME" 2
@@ -457,7 +513,7 @@ VALIDATE_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Check to see if parent table has any records, if so enter into transfer record mode
 	LOG_MSG "[INFO]:-Checking record count on $PARENT_TABLE_NAME, please wait..." 1
-	PARENT_TABLE_REC_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select count(*) from only $PARENT_TABLE_NAME;"`
+	PARENT_TABLE_REC_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from only $PARENT_TABLE_NAME;"`
 	ERROR_CHK $? "get table record count for $PARENT_TABLE_NAME" 2
 	if [ $PARENT_TABLE_REC_NUM -ne 0 ];then
 		LOG_MSG "[INFO]:-Counted $PARENT_TABLE_REC_NUM records in $PARENT_TABLE_NAME" 1
@@ -470,7 +526,7 @@ VALIDATE_PROCESS () {
 	#Determine if the source table has random distribution
 	#Now validate the columns to ensure that they are the correct data type for the partitioning requested
 	#First get column type
-	PART_COL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select typname from pg_type where oid in (select atttypid from pg_attribute where attname='${PART_COLUMN}'and attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}')));"`
+	PART_COL_TYPE=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select typname from $TYPE_TABLE where oid in (select atttypid from $ATTRIBUTE_TABLE where attname='${PART_COLUMN}'and attrelid in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}')));"`
 	ERROR_CHK $? "get \"$PART_COLUMN\" data type" 2
 	LOG_MSG "[INFO]:-Partition column \"$PART_COLUMN\" is of type $PART_COL_TYPE" 1
 	LOG_MSG "[INFO]:-Validating this data type against partition type selected" 1
@@ -523,8 +579,7 @@ VALIDATE_PROCESS () {
 	#Check to see if an additional conversion command has been applied and if so it is valid for partition column
 	if [ x"" != x"$CONVERSION_CMD" ];then
 		LOG_MSG "[INFO]:-Checking to ensure that $CONVERSION_CMD can be applied to $PART_COLUMN"  1
-		#$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select ${CONVERSION_CMD}(${PART_COLUMN}) from $PARENT_TABLE_NAME limit 1;" >/dev/null 2>&1
-		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c"select $CONVERT_STRING from $PARENT_TABLE_NAME limit 1;" >/dev/null 2>&1
+		$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select $CONVERT_STRING from $PARENT_TABLE_NAME limit 1;" >/dev/null 2>&1
 		if [ $? -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Conversion $CONVERT_STRING fails on column $PART_COLUMN" 2
 		else
@@ -537,7 +592,7 @@ VALIDATE_PROCESS () {
 
 SELECT_PROCESS_TYPE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	PARENT_COLUMN_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -R" " $QD_DBNAME -c "select attname from pg_attribute where attrelid in (select oid from pg_class where relname='${TABLE_NAME}' and relnamespace in (select oid from pg_namespace where nspname='${SCHEMA_NAME}' )) and attnum > 0 order by attnum;"`)
+	PARENT_COLUMN_LIST=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -R" " "$QD_DBNAME" -c "select attname from $ATTRIBUTE_TABLE where attrelid in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}' )) and attnum > 0 order by attnum;"`)
 	ERROR_CHK $? "obtain parent column list for $TABLE_NAME" 2
 	case $PART_TYPE in 
 		d )
@@ -556,7 +611,7 @@ SELECT_PROCESS_TYPE () {
 				    TYPE_NAME=hour
 				    PROCESS_HOURLY ;;
 			esac
-			CORRECTED_END_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$END_DATE' -1;"`
+			CORRECTED_END_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select date '$END_DATE' -1;"`
 			;;
 		r )
 			LOG_MSG "[INFO]:-Selected process type range partitioning" 1
@@ -569,7 +624,7 @@ SELECT_PROCESS_TYPE () {
 			PROCESS_LIST
 			;;
 	esac
-	#Now check to see if the supplied table name has format child_depth_[0-9]_<table name>_<partition suffix>
+	#Now check to see if the supplied table name has format c_d_[0-9]_<table name>_<partition suffix>
 	if [ `$ECHO $TABLE_NAME|$GREP -c "${CHILD_TABLE_ID}"` -eq 0 ];then
 		#Parent table is not itself a child table
 		DEPTH=1
@@ -595,12 +650,13 @@ PROCESS_NUMERIC () {
 		((COUNT=$COUNT+$NUMERIC_INCREMENT))
 		TO=$CURRENT_COUNT
 		((FROM=$COUNT-1))
-		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${TO}_to_${FROM}_${TYPE_NAME}")
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${SEQ_NUM}_${P_OID}_${TYPE_NAME}")
 		if [ $PROCESS_CONVERSION -eq 1 ];then
 			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=$CURRENT_COUNT~AND~${CONVERT_STRING}~<=$FROM")
 		else
 			RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=$CURRENT_COUNT~AND~$PART_COLUMN~<=$FROM")
 		fi
+		((SEQ_NUM=$SEQ_NUM+1))
 	done
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -612,14 +668,41 @@ PROCESS_LIST () {
 	for LIST_ITEM in `$ECHO $PART_LIST|$TR ' ' '_'|$TR ',' ' '`
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${LIST_ITEM}_${TYPE_NAME}")
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${SEQ_NUM}_${P_OID}_${TYPE_NAME}")
 		LIST_TXT=`$ECHO $LIST_ITEM|$TR '_' '~'`
 		if [ $PROCESS_CONVERSION -eq 1 ];then
 			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~=~'${LIST_TXT}'")
 		else
 			RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~=~'${LIST_TXT}'")
 		fi
+		((SEQ_NUM=$SEQ_NUM+1))
 	done 
+	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
+	if [ x"" != x"$XOR_TABLE" ];then
+		LOG_MSG "[INFO]:-Creating XOR table as -O option supplied, please wait..." 1
+		COUNT=0
+		for LIST_ITEM in `$ECHO $PART_LIST|$TR ' ' '_'|$TR ',' ' '`
+		do
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+			LIST_TXT=`$ECHO $LIST_ITEM|$TR '_' '~'`
+			if [ $PROCESS_CONVERSION -eq 1 ];then
+				if [ $COUNT -eq 0 ];then
+					XOR_RULE="${CONVERT_STRING}~<>~'${LIST_TXT}'"
+				else
+					XOR_RULE="${XOR_RULE}~AND~${CONVERT_STRING}~<>~'${LIST_TXT}'"
+				fi
+			else
+				if [ $COUNT -eq 0 ];then
+					XOR_RULE="$PART_COLUMN~<>~'${LIST_TXT}'"
+				else
+					XOR_RULE="${XOR_RULE}~AND~$PART_COLUMN~<>~'${LIST_TXT}'"
+				fi
+			fi
+			COUNT=1
+		done
+		RULE_ARRAY=(${RULE_ARRAY[@]} "${XOR_RULE}")
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${SEQ_NUM}_${P_OID}_${TYPE_NAME}")
+	fi
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -633,7 +716,7 @@ PROCESS_HOURLY () {
 	while [ $VECTOR -le $GENERATION_COUNT ]
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "`$ECHO $START_DATE|$TR '-' '_'`_${HOUR_ARRAY[$HOUR_VECTOR]}_${TYPE_NAME}")
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${SEQ_NUM}_${P_OID}_${TYPE_NAME}")
 		if [ $PROCESS_CONVERSION -eq 1 ];then
 			RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>='$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:00:00'~AND~${CONVERT_STRING}~<=~'$START_DATE~${HOUR_ARRAY[$HOUR_VECTOR]}:59:59.99999'")
 		else
@@ -641,11 +724,12 @@ PROCESS_HOURLY () {
 		fi
 		((VECTOR=$VECTOR+1))
 		if [ $HOUR_VECTOR -ge 23 ];then
-			START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$START_DATE' +1;"`
+			START_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select date '$START_DATE' +1;"`
 			HOUR_VECTOR=0
 		else
 			((HOUR_VECTOR=$HOUR_VECTOR+1))
 		fi
+		((SEQ_NUM=$SEQ_NUM+1))
 	done
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	END_DATE=$START_DATE
@@ -659,12 +743,12 @@ PROCESS_DAILY () {
 	while [ $VECTOR -le $GENERATION_COUNT ]
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} `$ECHO $START_DATE|$TR '-' '_'`"_${TYPE_NAME}")
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${SEQ_NUM}_${P_OID}_${TYPE_NAME}")
 		if [ $DATE_TYPE -eq 0 ];then
 			if [ $PROCESS_CONVERSION -eq 1 ];then
-				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~=~'$START_DATE}'")
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$START_DATE}'~AND~${CONVERT_STRING}~<=~'$START_DATE'")
 			else
-				RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~=~'$START_DATE}'")	
+				RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=~'$START_DATE}'~AND~$PART_COLUMN~<=~'$START_DATE'")	
 			fi
 		else
 			if [ $PROCESS_CONVERSION -eq 1 ];then
@@ -673,8 +757,9 @@ PROCESS_DAILY () {
 				RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>='$START_DATE~00:00:00'~AND~$PART_COLUMN~<=~'$START_DATE~23:59:59.99999'")
 			fi
 		fi
-		START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$START_DATE' +1;"`
+		START_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select date '$START_DATE' +1;"`
 		((VECTOR=$VECTOR+1))
+		((SEQ_NUM=$SEQ_NUM+1))
 	done
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	END_DATE=$START_DATE
@@ -683,59 +768,55 @@ PROCESS_DAILY () {
 
 PROCESS_WEEKLY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	START_WEEK_NUM=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(extract (week from date '$START_DATE'),2,'0');"`
 	WEEK_START_DATE=$START_DATE
 	LOG_MSG "[INFO]:-Generating weekly array, please wait..." 1
 	VECTOR=1
 	while [ $VECTOR -le $GENERATION_COUNT ]
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		PREV_DATE=$START_DATE
-		START_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select date '$START_DATE' +1;"`
-		CURRENT_WEEK_NUM=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(extract (week from date '$START_DATE'),2,'0');"`
-		if [ $CURRENT_WEEK_NUM -ne $START_WEEK_NUM ];then
-			SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} `$ECHO $START_DATE|$CUT -d"-" -f1-2|$TR '-' '_'`"_W${START_WEEK_NUM}_${TYPE_NAME}")
-			START_WEEK_NUM="$CURRENT_WEEK_NUM"
-			if [ $DATE_TYPE -eq 0 ];then
-				if [ $PROCESS_CONVERSION -eq 1 ];then
-					RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$WEEK_START_DATE'~AND~${CONVERT_STRING}~<~'$START_DATE'")
-				else	
-					RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=~'$WEEK_START_DATE'~AND~$PART_COLUMN~<~'$START_DATE'")
-				fi
-			else
-				if [ $PROCESS_CONVERSION -eq 1 ];then
-					RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$WEEK_START_DATE~00:00:00'~AND~${CONVERT_STRING}~<~'$START_DATE~00:00:00'")
-				else
-					RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=~'$WEEK_START_DATE~00:00:00'~AND~$PART_COLUMN~<~'$START_DATE~00:00:00'")
-				fi
+		START_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select date '$START_DATE' ;"`
+		WEEK_END_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select date '$START_DATE' +7"`
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${SEQ_NUM}_${P_OID}_${TYPE_NAME}")
+		if [ $DATE_TYPE -eq 0 ];then
+			if [ $PROCESS_CONVERSION -eq 1 ];then
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$START_DATE'~AND~${CONVERT_STRING}~<~'$WEEK_END_DATE'")
+			else	
+				RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=~'$START_DATE'~AND~$PART_COLUMN~<~'$WEEK_END_DATE'")
 			fi
-			WEEK_START_DATE=$START_DATE
-			((VECTOR=$VECTOR+1))
+		else
+			if [ $PROCESS_CONVERSION -eq 1 ];then
+				RULE_ARRAY=(${RULE_ARRAY[@]} "${CONVERT_STRING}~>=~'$START_DATE~00:00:00'~AND~${CONVERT_STRING}~<~'$WEEK_END_DATE~00:00:00'")
+			else
+				RULE_ARRAY=(${RULE_ARRAY[@]} "$PART_COLUMN~>=~'$START_DATE~00:00:00'~AND~$PART_COLUMN~<~'$WEEK_END_DATE~00:00:00'")
+			fi
 		fi
+		START_DATE=$WEEK_END_DATE
+		((VECTOR=$VECTOR+1))
+		((SEQ_NUM=$SEQ_NUM+1))
 	done
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
-	END_DATE=$WEEK_START_DATE
+	END_DATE=$WEEK_END_DATE
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 PROCESS_MONTHLY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Generating monthy array, please wait..." 1
-	CURRENT_MONTH=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE'),2,'0');"`
+	CURRENT_MONTH=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE'),2,'0');"`
 	VECTOR=1
 	DAY_COUNT=1
 	while [ $VECTOR -le $GENERATION_COUNT ]
 	do
 		if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-		NEXT_MONTH=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE' +$DAY_COUNT),2,'0');"`
+		NEXT_MONTH=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE' +$DAY_COUNT),2,'0');"`
 		while [ "$CURRENT_MONTH" == "$NEXT_MONTH" ]
 		do
 			((DAY_COUNT=$DAY_COUNT+1))
-			NEXT_MONTH=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE' +$DAY_COUNT),2,'0');"`
+			NEXT_MONTH=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "SELECT LPAD(EXTRACT(MONTH FROM DATE '$START_DATE' +$DAY_COUNT),2,'0');"`
 		done
-		END_DATE=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT DATE('$START_DATE') + $DAY_COUNT;"`
-		START_YEAR=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT EXTRACT(YEAR FROM DATE '$START_DATE' + $DAY_COUNT -1);"`
-		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "$START_YEAR"_"${CURRENT_MONTH}_${TYPE_NAME}")
+		END_DATE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "SELECT DATE('$START_DATE') + $DAY_COUNT;"`
+		START_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "SELECT EXTRACT(YEAR FROM DATE '$START_DATE' + $DAY_COUNT -1);"`
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${SEQ_NUM}_${P_OID}_${TYPE_NAME}")
 		if [ `$ECHO $CURRENT_MONTH|$AWK '{print $1}'|$WC -c` -eq 1 ];then CURRENT_MONTH="0$CURRENT_MONTH";fi
 		if [ $DATE_TYPE -eq 0 ];then
 			if [ $PROCESS_CONVERSION -eq 1 ];then
@@ -752,6 +833,7 @@ PROCESS_MONTHLY () {
 		fi
 		CURRENT_MONTH="$NEXT_MONTH"
 		((VECTOR=$VECTOR+1))
+		((SEQ_NUM=$SEQ_NUM+1))
 	done
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -760,12 +842,11 @@ PROCESS_MONTHLY () {
 PROCESS_YEARLY () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Generating yearly array, please wait..." 1
-	START_YEAR=`$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT LPAD(EXTRACT(YEAR FROM DATE '$START_DATE'),4,'0');"`
-	#((END_YEAR=$START_YEAR+$GENERATION_COUNT))
+	START_YEAR=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "SELECT LPAD(EXTRACT(YEAR FROM DATE '$START_DATE'),4,'0');"`
 	VECTOR=1
 	while [ $VECTOR -le $GENERATION_COUNT ]
 	do
-		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "$START_YEAR"_"${TYPE_NAME}")
+		SUFFIX_ARRAY=(${SUFFIX_ARRAY[@]} "${SEQ_NUM}_${P_OID}_${TYPE_NAME}")
 		((RULE_END_YEAR=$START_YEAR+1))
 		if [ $DATE_TYPE -eq 0 ];then
 			if [ $PROCESS_CONVERSION -eq 1 ];then
@@ -782,6 +863,7 @@ PROCESS_YEARLY () {
 		fi
 		((START_YEAR=$START_YEAR+1))
 		((VECTOR=$VECTOR+1))
+		((SEQ_NUM=$SEQ_NUM+1))
 	done
 		END_DATE="${START_YEAR}-01-01"
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
@@ -790,16 +872,16 @@ PROCESS_YEARLY () {
 SECURE_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Creating temporary holding table to secure records" 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "create table ${SECURE_TABLE_NAME} (like $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "create table ${SECURE_TABLE_NAME} (like $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	LOG_MSG "[INFO]:-Commencing record transfer, please wait..." 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into ${SECURE_TABLE_NAME} (select * from only $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "insert into ${SECURE_TABLE_NAME} (select * from only $PARENT_TABLE_NAME);" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "secure records to temporary table" 2
-	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from only $PARENT_TABLE_NAME;"`
+	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select count(*) from only $PARENT_TABLE_NAME;"`
 	LOG_MSG "[INFO]:-Parent table has $SECURE_COUNT records" 1
-	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(*) from ${SECURE_TABLE_NAME};"`
+	SECURE_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select count(*) from ${SECURE_TABLE_NAME};"`
 	LOG_MSG "[INFO]:-Secure table has $SECURE_COUNT records" 1
 	LOG_MSG "[INFO]:-Clearing down $PARENT_TABLE_NAME" 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "truncate table $PARENT_TABLE_NAME;"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "truncate table $PARENT_TABLE_NAME;" >> $LOG_FILE 2>&1
 	ERROR_CHK $? "truncate $PARENT_TABLE_NAME" 2
 	STEP_BACK=1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -813,10 +895,10 @@ REVERT_BACK () {
 		1 )
 			if [ $COPY_REC -eq 1 ];then
 			LOG_MSG "[INFO]:-Copying records back to original table" 1
-			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into $PARENT_TABLE_NAME (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "insert into $PARENT_TABLE_NAME (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "copy back records to original table" 2
 			LOG_MSG "[INFO]:-Removing temporary holding table" 1
-			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "drop table ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "drop table ${SECURE_TABLE_NAME}" 1
 			fi
 			;;
@@ -824,24 +906,24 @@ REVERT_BACK () {
 			LOG_MSG "[INFO]:-Removing child tables" 1
 			for SUFFIX in "${SUFFIX_ARRAY[@]}"
 			do
-			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${PARENT_TABLE_NAME}_${SUFFIX} cascade;" >> $LOG_FILE 2>&1
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "drop table ${PARENT_TABLE_NAME}_${SUFFIX} cascade;" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "drop child table ${PARENT_TABLE_NAME}_${SUFFIX}" 1
 			if [ $RULE_GEN -eq 1 ];then
 			#Rules have been requested, drop these of parent table
-				$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop rule rule_${PARENT_TABLE_NAME}_${SUFFIX} on ${PARENT_TABLE_NAME};" >> $LOG_FILE 2>&1
+				$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "drop rule rule_${PARENT_TABLE_NAME}_${SUFFIX} on ${PARENT_TABLE_NAME};" >> $LOG_FILE 2>&1
 			fi
 			done
 			if [ $COPY_REC -eq 1 ];then
 			LOG_MSG "[INFO]:-Copying records back to original table" 1
-			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "insert into $PARENT_TABLE_NAME (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "insert into $PARENT_TABLE_NAME (select * from ${SECURE_TABLE_NAME});" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "copy back records to original table" 2
 			LOG_MSG "[INFO]:-Removing temporary holding table" 1
-			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "drop table ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "drop table ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
 			ERROR_CHK $? "drop table ${SECURE_TABLE_NAME}" 1
 			fi
 			LOG_MSG "[INFO]:-Removing reference for subclass for $PARENT_TABLE_NAME" 1
-			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "update pg_class set relhassubclass='f' where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" >> $LOG_FILE 2>&1
-			ERROR_CHK $? "updated relhassubclass in pg_class" 1
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "update $CLASS_TABLE set relhassubclass='f' where relname='$TABLE_NAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME');" >> $LOG_FILE 2>&1
+			ERROR_CHK $? "updated relhassubclass in $CLASS_TABLE" 1
 			;;
 	esac
 	LOG_MSG "[INFO]:-Completed revert back" 1
@@ -850,11 +932,10 @@ REVERT_BACK () {
 
 GENERATE_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SECURE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-	SOURCE_TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select oid from pg_class where relname='$SOURCE_TAB' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-	#ATTNUM_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select count(attrnums) from gp_distribution_policy where localoid=$SOURCE_TAB_OID ;"`
+	TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select oid from $CLASS_TABLE where relname='$SECURE_TAB' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME');"`
+	SOURCE_TAB_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select oid from $CLASS_TABLE where relname='$SOURCE_TAB' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME');"`
 	if [ $CASCADE_PERMS -eq 0 ];then
-		PARSE_PERMISSIONS $PARENT_TABLE_NAME $MASTER_PORT $QD_DBNAME
+		PARSE_PERMISSIONS $PARENT_TABLE_NAME $MASTER_PORT "$QD_DBNAME"
 	fi	
 	LOG_MSG "[INFO]:-Generating SQL file to build child tables, please wait" 1
 	VECTOR=0
@@ -863,28 +944,7 @@ GENERATE_SQL () {
 		if [ $CREATE_PART_INDEX -eq 1 ] || [ x"" != x"$INDEX_COLUMN" ];then $ECHO "BEGIN;" >> $IDX_TMP_FILE;fi
 	#Check to see if the parent is already a child
 	if [ $DEPTH -gt 1 ];then
-		case $PARENT_TYPE_NAME in 
-			hour )
-				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_[0-9]*_[0-9]*_hour$//g`
-				;;
-			daily )
-				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_[0-9]*_daily$//g`
-				;;
-			week )
-				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_w[0-9]*_week$//g`
-				;;
-			month )
-				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_[0-9]*_month$//g`
-				;;
-			year )
-				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_year$//g`
-				;;
-			list )
-				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[a-z]*[A-Z]*_list$//g`
-				;;
-			range )
-				CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}[0-9]*_\${PREV_TYPES}_[0-9]*_to_[0-9]*_range$//g`
-		esac
+		CHILD_STRING=`$ECHO $TABLE_NAME|$SED -e s/\${CHILD_TABLE_ID}/-/g|$AWK -F"-" '{print $1}'`
 	else
 		CHILD_STRING=$TABLE_NAME
 	fi
@@ -893,8 +953,9 @@ GENERATE_SQL () {
 		#Check if a table of that name exists
 		CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
 		CHILD_NAME=${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
-		CHK_EXISTS_TABLE $CHILD_TAB_FULL $MASTER_PORT $QD_DBNAME 
+		CHK_EXISTS_TABLE $CHILD_TAB_FULL $MASTER_PORT "$QD_DBNAME" 
 		if [ $EXISTS -gt 0 ];then	
+			INSERT_TAB_ARRAY=(${INSERT_TAB_ARRAY[@]} ${CHILD_TAB_FULL})
 			$ECHO "CREATE TABLE ${CHILD_TAB_FULL}" >> $TMP_FILE
 			$ECHO "(CHECK ( `$ECHO ${RULE_ARRAY[$VECTOR]}|$TR '~' ' '` ) )" >> $TMP_FILE
 			if [ x"" != x"$NEW_DIST_COL" ];then
@@ -917,14 +978,14 @@ GENERATE_SQL () {
 				done
 			fi
 			if [ $CREATE_PART_INDEX -eq 1 ];then
-				COL_ATT_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select attnum from pg_attribute where attname='$PART_COLUMN' and attrelid in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"` >> $LOG_FILE 2>&1
+				COL_ATT_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select attnum from $ATTRIBUTE_TABLE where attname='$PART_COLUMN' and attrelid in (select oid from $CLASS_TABLE where relname='$TABLE_NAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME'));"` >> $LOG_FILE 2>&1
 				ERROR_CHK $? "obtain column attribute number" 2
 				$ECHO "CREATE INDEX idx_${COL_ATT_NUM}_${CHILD_NAME} on ${CHILD_NAME} ($PART_COLUMN);" >> $IDX_TMP_FILE
 			fi
 			if [ x"" != x"$INDEX_COLUMN" ];then
 				for ADDITIONAL_INDEX in `$ECHO ${INDEX_COLUMN[@]}|$TR ',' ' '`
 				do
-				COL_ATT_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "select attnum from pg_attribute where attname='$ADDITIONAL_INDEX' and attrelid in (select oid from pg_class where relname='$TABLE_NAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME'));"` >> $LOG_FILE 2>&1
+				COL_ATT_NUM=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select attnum from $ATTRIBUTE_TABLE where attname='$ADDITIONAL_INDEX' and attrelid in (select oid from $CLASS_TABLE where relname='$TABLE_NAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME'));"` >> $LOG_FILE 2>&1
                                 ERROR_CHK $? "obtain column attribute number" 2
 
 				$ECHO "CREATE INDEX idx_${COL_ATT_NUM}_${CHILD_NAME} on ${CHILD_NAME} ($ADDITIONAL_INDEX);" >> $IDX_TMP_FILE
@@ -944,8 +1005,8 @@ GENERATE_SQL () {
 			done
 			$ECHO "NEW.${PARENT_COLUMN_LIST[$COL_VEC]});"  >> $TMP_FILE	
 			$ECHO >> $TMP_FILE
-			((VECTOR=$VECTOR+1))
 			fi
+			((VECTOR=$VECTOR+1))
 		else
 			ABORT=1
 			LOG_MSG "[WARN]:-Table ${CHILD_TAB_FULL} already exists" 1
@@ -966,7 +1027,7 @@ GENERATE_SQL () {
 RUN_GENERATE_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Running generated SQL file" 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $TMP_FILE > $TMP_OUTPUT_FILE 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -f $TMP_FILE > $TMP_OUTPUT_FILE 2>&1
 	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
 		LOG_MSG "[FATAL]:-Error generated from SQL file, dumping out to log file" 1
 		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
@@ -983,7 +1044,7 @@ RUN_GENERATE_SQL () {
 RUN_CASCADE_PERMS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Running generated permissions file" 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $PERM_TMP_FILE > $TMP_OUTPUT_FILE 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -f $PERM_TMP_FILE > $TMP_OUTPUT_FILE 2>&1
 	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
 		LOG_MSG "[FATAL]:-Error generated from permissions file, dumping out to log file" 1
 		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
@@ -1001,7 +1062,7 @@ RUN_CASCADE_PERMS () {
 RUN_INDEX_SQL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Running generated index creation SQL file" 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -f $IDX_TMP_FILE > $TMP_OUTPUT_FILE 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -f $IDX_TMP_FILE > $TMP_OUTPUT_FILE 2>&1
 	if [ `$GREP -ci ERROR $TMP_OUTPUT_FILE` -ne 0 ];then
 		LOG_MSG "[FATAL]:-Error generated from SQL IDX file, dumping out to log file" 1
 		$CAT $TMP_OUTPUT_FILE >> $LOG_FILE
@@ -1017,34 +1078,107 @@ RUN_INDEX_SQL () {
 }
 COPY_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Starting record insert into new partitioned master table" 1
-	STEP_BACK=2
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "INSERT into $PARENT_TABLE_NAME (select * from $SECURE_TABLE_NAME);" >> $LOG_FILE 2>&1
-	if [ $? -ne 0 ];then
-		LOG_MSG "[WARN]:-Failed to copy records to new partitioned master table" 1
-		LOG_MSG "[INFO]:-Will leave $SECURE_TABLE_NAME with records from $PARENT_TABLE_NAME available" 1
+	if [ $DIRECT_INSERT -eq 0 ];then
+		LOG_MSG "[INFO]:-Starting record insert into new partitioned parent table, please wait..." 1
 		STEP_BACK=2
-		COPY_REC=0
-		REVERT_BACK
+		$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "INSERT into $PARENT_TABLE_NAME (select * from $SECURE_TABLE_NAME);" >> $LOG_FILE 2>&1
+		if [ $? -ne 0 ];then
+			LOG_MSG "[WARN]:-Failed to copy records to new partitioned master table" 1
+			LOG_MSG "[INFO]:-Will leave $SECURE_TABLE_NAME with records from $PARENT_TABLE_NAME available" 1
+			STEP_BACK=2
+			COPY_REC=0
+			REVERT_BACK
+			FAIL_RECOVER=1
+		else
+			LOG_MSG "[INFO]:-Successfully copied records to new partitioned master table" 1
+			LOG_MSG "[INFO]:-Removing secured table $SECURE_TABLE_NAME" 1
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "DROP TABLE ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
+		fi	
 	else
-		LOG_MSG "[INFO]:-Successfully copied records to new partitioned master table" 1
-	fi	
-	LOG_MSG "[INFO]:-Removing secured table $SECURE_TABLE_NAME" 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "DROP TABLE ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
-	ERROR_CHK $? "drop of ${SECURE_TABLE_NAME}" 1
+		LOG_MSG "[INFO]:-Starting direct child table insert, please wait..." 1
+		VECTOR=0
+		PARALLEL_SETUP  $PARALLEL_STATUS_FILE
+		BATCH_LIMIT=${#RULE_ARRAY[@]}
+		if [ $BATCH_LIMIT -lt $BATCH_DEFAULT ];then BATCH_DEFAULT=$BATCH_LIMIT;fi
+		for CRITERIA_TEXT in ${RULE_ARRAY[@]}
+		do
+			CHILD_TARGET=${INSERT_TAB_ARRAY[$VECTOR]}
+			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
+			$GPSEGPART $$ $MASTER_PORT $VECTOR $LOG_FILE "$QD_DBNAME" $CHILD_TARGET $SECURE_TABLE_NAME $CRITERIA_TEXT &
+			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
+			((VECTOR=$VECTOR+1))
+		done
+		if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi	
+		#Now get total record count from parallel count files
+		TOTAL_INSERT_COUNT=0
+		while read C_LINE
+		do
+			C_COUNT=`$ECHO $C_LINE|$AWK -F":" '{print $5}'`
+			if [ x"" == x"$C_COUNT" ];then C_COUNT=0;fi
+			((TOTAL_INSERT_COUNT=${TOTAL_INSERT_COUNT}+$C_COUNT))
+		done < $PARALLEL_STATUS_FILE
+		PARALLEL_SUMMARY_STATUS_REPORT
+		$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE
+		$RM -f $PARALLEL_STATUS_FILE
+		if [ $PARENT_TABLE_REC_NUM -ne $TOTAL_INSERT_COUNT ];then
+			LOG_MSG "[WARN]:-Detected record count variance" 1
+			LOG_MSG "[INFO]:-Inserted $TOTAL_INSERT_COUNT records, secure table has $PARENT_TABLE_REC_NUM records" 1
+			LOG_MSG "[INFO]:-Commencing record recovery process, please wait..." 1
+			EXIT_STATUS=1
+			FAIL_RECOVER=1
+			VECTOR=0
+			for CHILD_TABLE in ${INSERT_TAB_ARRAY[@]}
+			do
+				LOG_MSG "[INFO]:-Commencing drop cascade of $CHILD_TABLE" 1
+				$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "drop table $CHILD_TABLE cascade;" >> $LOG_FILE 2>&1
+				if [ $? -ne 0 ];then
+					LOG_MSG "[WARN]:-Failed to drop table $CHILD_TABLE cascade" 1
+					LOG_MSG "[INFO]:-Will leave $SECURE_TABLE_NAME with records from $PARENT_TABLE_NAME available" 1
+					ERROR_EXIT "[FATAL]:-Error failed to drop child table" 2
+				fi
+			done
+			LOG_MSG "[INFO]:-Inserting records back into parent table $PARENT_TABLE_NAME"
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "insert into $PARENT_TABLE_NAME select * from $SECURE_TABLE_NAME;" > $TMP_COUNT_FILE 2>&1
+			if [ $? -ne 0 ];then
+				$CAT $TMP_COUNT_FILE >> $LOG_FILE
+				$RM -f $TMP_COUNT_FILE
+				LOG_MSG "[WARN]:-Failed to insert records into parent table" 1
+				LOG_MSG "[INFO]:-Will leave $SECURE_TABLE_NAME with records from $PARENT_TABLE_NAME available" 1
+				ERROR_EXIT "[FATAL]:-Error failed to insert remaining records into parent table" 2
+			else
+				RECOVER_COUNT=`$CAT $TMP_COUNT_FILE|$GREP INSERT|$AWK '{print $3}'`
+				LOG_MSG "[INFO]:-Inserted $RECOVER_COUNT records back into $PARENT_TABLE_NAME" 1
+				if [ $PARENT_TABLE_REC_NUM -ne $RECOVER_COUNT ];then
+					LOG_MSG "[WARN]:-Not all records inserted back into $PARENT_TABLE_NAME expected $PARENT_TABLE_REC_NUM" 1
+					LOG_MSG "[INFO]:-Will leave $SECURE_TABLE_NAME with records from $PARENT_TABLE_NAME available" 1
+					ERROR_EXIT "[FATAL]:-Error failed to recover all records" 2	
+				else
+					LOG_MSG "[INFO]:-Successfully recoved all records to $PARENT_TABLE_NAME" 1
+				fi
+			fi
+			$RM -f $TMP_COUNT_FILE
+			LOG_MSG "[INFO]:-Completed record recovery" 1
+		else
+			LOG_MSG "[INFO]:-$PARENT_TABLE_REC_NUM records inserted into child tables from secure table" 1
+			LOG_MSG "[INFO]:-Removing secured table $SECURE_TABLE_NAME" 1
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "DROP TABLE ${SECURE_TABLE_NAME};" >> $LOG_FILE 2>&1
+			ERROR_CHK $? "drop of ${SECURE_TABLE_NAME}" 1
+			ANALYZE_CHILD_TABLES
+		fi
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 ANALYZE_CHILD_TABLES () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing analyze of child tables, please wait..." 1
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE ${PARENT_TABLE_NAME};" >> $LOG_FILE 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "ANALYZE ${PARENT_TABLE_NAME};" >> $LOG_FILE 2>&1
 	for SUFFIX in "${SUFFIX_ARRAY[@]}"
 	do
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
 	CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
 	LOG_MSG "[INFO]:-Running analyze on $CHILD_TAB_FULL"
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "ANALYZE $CHILD_TAB_FULL ;" >> $LOG_FILE 2>&1
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "ANALYZE $CHILD_TAB_FULL ;" >> $LOG_FILE 2>&1
 	done
 	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
 	LOG_MSG "[INFO]:-Completed analyze of child tables" 1
@@ -1053,12 +1187,12 @@ ANALYZE_CHILD_TABLES () {
 
 DISPLAY_COUNTS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT COUNT(*) from only ${PARENT_TABLE_NAME};"`
+	MASTER_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "SELECT COUNT(*) from only ${PARENT_TABLE_NAME};"`
 	LOG_MSG "[INFO]:-Master table $TABLE_NAME has record count = $MASTER_COUNT" 1
 	for SUFFIX in "${SUFFIX_ARRAY[@]}"
 	do
 		CHILD_TAB_FULL=${SCHEMA_NAME}.${CHILD_STRING}${CHILD_TABLE_ID}${DEPTH}_${CUR_TYPES}_$SUFFIX
-		SUFFIX_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t $QD_DBNAME -c "SELECT COUNT(*) from $CHILD_TAB_FULL;"`
+		SUFFIX_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "SELECT COUNT(*) from $CHILD_TAB_FULL;"`
 		if [ $SUFFIX_COUNT -gt 0 ];then
 		LOG_MSG "[INFO]:-Table $CHILD_TAB_FULL records = $SUFFIX_COUNT" 1
 		fi
@@ -1082,7 +1216,7 @@ RM_TMP_FILE () {
 #******************************************************************************
 trap 'RM_TMP_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:kF!DA:N" opt;do
+		while getopts ":vt:'?'aql:d:c:x:p:rn:s:f:bi:e:g:o:um:kF!DA:NCB:O" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -1112,6 +1246,9 @@ if [ $# -ne 0 ]; then
 				D ) DEBUG_LEVEL=1 ;;
 				A ) NEW_DIST_COL=$OPTARG ;;
 				N ) CASCADE_PERMS=1 ;;
+				C ) DIRECT_INSERT=1 ;;
+				B ) BATCH_DEFAULT=$OPTARG ;;
+				O ) XOR_TABLE=1 ;;
 				* ) USAGE ;;
 				esac
 		done	
@@ -1126,19 +1263,20 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_GPDB_ID
 if [ x"" != x"$GPHOME" ];then
 	APP_PATH=${GPHOME}/bin
 else
-	APP_PATH=${MPPHOME}/bin
+	ERROR_EXIT "[FATAL]:-Environment variable \$GPHOME unset" 2
 fi
 CHK_ON_PASSIVE_STANDBY
 GET_QD_DB_NAME
 if [ x"" != x"$ALT_DB_NAME" ];then 
-		QD_DBNAME=$ALT_DB_NAME
+		QD_DBNAME="$ALT_DB_NAME"
 fi
 if [ x"" != x"$CONVERSION_CMD" ];then
 #Check to see if a complex conversion is being used
-	if [ `$ECHO $CONVERSION_CMD|$GREP -c "^"` -eq 1 ];then
+	if [ `$ECHO $CONVERSION_CMD|$GREP -c "\^"` -eq 1 ];then
 		STRLEFT=`$ECHO $CONVERSION_CMD|$AWK -F'^' '{print $1}'`
 		STRRIGHT=`$ECHO $CONVERSION_CMD|$AWK -F'^' '{print $2}'`
 		CONVERT_STRING="${STRLEFT}${PART_COLUMN}$STRRIGHT"
@@ -1166,14 +1304,13 @@ else
 fi
 if [ $COPY_REC -eq 1 ];then
 	COPY_DATA
-	if [ $CHILD_COUNT_REC -eq 1 ];then
+	if [ $CHILD_COUNT_REC -eq 1 ] && [ $FAIL_RECOVER -eq 0 ];then
 		DISPLAY_COUNTS
 	fi
 fi
 if [ x"" != x"$INDEX_COLUMN" ] || [ $CREATE_PART_INDEX -eq 1 ];then
 	RUN_INDEX_SQL
 fi
-ANALYZE_CHILD_TABLES
 RM_TMP_FILE
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS

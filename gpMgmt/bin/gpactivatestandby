@@ -128,6 +128,11 @@ CHECK_PARAM () {
 	#Check to ensure that we do not have a clash with a current setting of MASTER_DATA_DIRECTORY
 	if [ x"" != x"$MASTER_DATA_DIRECTORY" ];then
 		LOG_MSG "[INFO]:-MASTER_DATA_DIRECTORY value set, checking for conflict"
+		#Now check to see if path pre-pended with /, if not add /
+		if [ `$ECHO $MASTER_STANDBY_DATA_DIRECTORY|$CUT -b1` != "/" ];then
+			LOG_MSG "[INFO]:-Pre-pending / to MASTER_STANDBY_DATA_DIRECTORY variable" 1
+			MASTER_STANDBY_DATA_DIRECTORY="/"${MASTER_STANDBY_DATA_DIRECTORY}
+		fi
 		if [ $MASTER_STANDBY_DATA_DIRECTORY != $MASTER_DATA_DIRECTORY ];then
 			ERROR_EXIT "[FATAL]:-Current setting of MASTER_DATA_DIRECTORY not same as -d parameter" 2
 		fi
@@ -190,13 +195,13 @@ CHK_CATALOG_DATA () {
 	LOG_MSG "[INFO]:-Starting standby master instance in admin mode"
 	$GPSTART -bm -d $MASTER_STANDBY_DATA_DIRECTORY
 	ERROR_CHK $? "start standby master in admin mode" 2
-	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
-	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select hostname from $CONFIG_TABLE where dbid in ($MASTER_DBID)"`
+	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"select min(dbid) from $CONFIG_TABLE where content=-1;"`
+	MASTER_HOSTNAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"select hostname from $CONFIG_TABLE where dbid in ($MASTER_DBID)"`
 	ERROR_CHK $? "obtain master hostname" 1
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
 		ERROR_EXIT "[FATAL]:-Unable to obtain master hostname" 2;fi
-	MASTER_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select port from $CONFIG_TABLE where dbid=$MASTER_DBID;"`
+	MASTER_PORT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"select port from $CONFIG_TABLE where dbid=$MASTER_DBID;"`
 	ERROR_CHK $? "obtain master port number" 1
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
@@ -220,7 +225,7 @@ CHK_CATALOG_DATA () {
 		LOG_MSG "[INFO]:-Unable to establish contact with $MASTER_HOSTNAME" 1
 		LOG_MSG "[INFO]:-Continuing activation of standby master" 1
 	fi	
-	MASTER_STANDBY_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='f' and isprimary='f';"`
+	MASTER_STANDBY_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='f' and isprimary='f';"`
 	ERROR_CHK $? "obtain standby dbid" 2
 	LOG_MSG "[INFO]:-Obtained standby master dbid as $MASTER_STANDBY_DBID"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -229,16 +234,16 @@ CHK_CATALOG_DATA () {
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Standby Master: $MASTER_STANDBY_HOSTNAME"
-	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='t' and isprimary='t';"`
+	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='t' and isprimary='t';"`
 	LOG_MSG "[INFO}:-Obtained MASTER_DBID as $MASTER_DBID"
-	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where dbid=$MASTER_DBID ;"
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where dbid=$MASTER_DBID ;"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN
 	    ERROR_EXIT "[FATAL]:-Unable to continue, unable to update $CONFIG_TABLE catalog" 2
 	fi
 	LOG_MSG "[INFO]:-Deleting original master host details"
-	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"delete from $CONFIG_TABLE where dbid=$MASTER_STANDBY_DBID;"
+	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"delete from $CONFIG_TABLE where dbid=$MASTER_STANDBY_DBID;"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		ADMIN_SHUTDOWN
@@ -362,6 +367,7 @@ if [ x"" != x"$LOG_DIR" ];then
 	fi
 fi
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_GPDB_ID
 MASTER_STANDBY_HOSTNAME=`$HOSTNAME`
 if  [ x"" == x"$MASTER_STANDBY_DATA_DIRECTORY" ];then
 	ERROR_EXIT "[FATAL]:-Must supply -d <master data directory> option" 2

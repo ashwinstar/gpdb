@@ -77,13 +77,10 @@ CHK_CALL () {
 SET_VAR () {
                 I=$1
                 GP_HOSTNAME=`$ECHO $I|$CUT -d: -f1`
-                MPP_HOSTID=`$ECHO $I|$CUT -d: -f2`
-                MPP_LISTENID=`$ECHO $I|$CUT -d: -f3`
-                GP_PORT=`$ECHO $I|$CUT -d: -f4`
-                GP_DIR=`$ECHO $I|$CUT -d: -f5`
-                MPP_DBID=`$ECHO $I|$CUT -d: -f6`
-                MPP_DBNAME=`$ECHO $I|$CUT -d: -f7`
-                MPP_CONTENT=`$ECHO $I|$CUT -d: -f8`
+                GP_PORT=`$ECHO $I|$CUT -d: -f2`
+                GP_DIR=`$ECHO $I|$CUT -d: -f3`
+                GP_DBID=`$ECHO $I|$CUT -d: -f4`
+                GP_CONTENT=`$ECHO $I|$CUT -d: -f5`
 }
 
 PARA_EXIT () {
@@ -162,26 +159,25 @@ PROCESS_QE () {
 		BACKOUT_COMMAND "$TRUSTED_SHELL $GP_HOSTNAME \"${EXPORT_LIB_PATH};export PGPORT=${GP_PORT}; $PG_CTL -w -D $GP_DIR -l ${GP_DIR}.log -o \"-i -p ${GP_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $GP_HOSTNAME\""
 		LOG_MSG "[INFO][$INST_COUNT]:-Successfully started segment instance on $GP_HOSTNAME"
-		UPDATE_MPP $MPP_DBNAME $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $GP_HOSTNAME
+		UPDATE_MPP $GP_PORT "$ARRAY_NAME" $TOTAL_SEG $GP_DBID $GP_CONTENT 1 $GP_HOSTNAME
 		LOG_MSG "[INFO]:-[$INST_COUNT]-End Function $FUNCNAME"
 }
 
 UPDATE_MPP () {
                 LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
-                U_DB=$1
                 U_DB=$DEFAULTDB
-                U_PT=$2
-                U_MPPNAME="$3"
-                U_NUMSEG=$4
-                U_DBID=$5
-                U_CONTENT=$6
-                TYPE=$7
-                U_HOST=$8
+                U_PT=$1
+                U_MPPNAME="$2"
+                U_NUMSEG=$3
+                U_DBID=$4
+                U_CONTENT=$5
+                TYPE=$6
+                U_HOST=$7
                 if [ $TYPE -eq 0 ]; then
-                                $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $GP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+                                $EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $U_PT "$U_DB" -c "insert into $GP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
                                 PARA_EXIT $? "add $U_DBID to Master gp_id"
                 else
-                                $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" " >> $LOG_FILE 2>&1
+                                $TRUSTED_SHELL $U_HOST "$EXPORT_LIB_PATH;env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $U_PT \"$U_DB\" -c \"insert into $GP_TBL (gpname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" " >> $LOG_FILE 2>&1
 				PARA_EXIT $? "add $U_DBID to Master gp_id"
                 fi
                 LOG_MSG "[INFO][$INST_COUNT]:-Successfully updated GPDB system table"
@@ -218,6 +214,7 @@ case $TYPE in
 		TMP_QE_IP_ARRAY=$1;shift	#List of segment IP addresses
 		QE_IP_ARRAY=(`$ECHO $TMP_QE_IP_ARRAY|$TR '~' ' '`)	
 		TMP_STANDBY_IP_ADDRESS=$1;shift #List of IP addresses for standby master
+		STANDBY_IP_ADDRESS=(`$ECHO $TMP_STANDBY_IP_ADDRESS|$TR '~' ' '`)
 		PROCESS_QE
 		$ECHO "COMPLETED:$SEGMENT_LINE" >> $PARALLEL_STATUS_FILE
 		;;

@@ -55,7 +55,6 @@ EXIT_STATUS=0
 TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
-START_GPSYNC=1
 UPDATE_CATALOG=1
 TMP_PG_COMMENTS=/tmp/tmp_pga_comments.$$
 TMP_PG_VALUES=/tmp/tmp_pga_values.$$
@@ -63,6 +62,7 @@ TMP_PG_NEW=/tmp/tmp_pga_new.$$
 PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
 BATCH_DEFAULT=40
 GPSEGINITSB=${WORKDIR}/lib/gpseginitsb.sh
+REMOVE_STANDBY=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -75,7 +75,7 @@ USAGE () {
 		$ECHO	
 		$ECHO "      `basename $0 `"
 		$ECHO
-		$ECHO "      Initalizes a standby Master host instance. Script will shutdown the"
+		$ECHO "      Initializes a standby Master host instance. Script will shutdown the"
 		$ECHO "      Master instance to be able to complete this operation"
 		$ECHO "      Will create a copy of the Master data directory on the designated"
 		$ECHO "      standby host and start the database replication process"
@@ -95,10 +95,11 @@ USAGE () {
 		$ECHO
 		$ECHO "      Standby initialization options:"
 		$ECHO "      -s, <standby hostname> [mandatory]" 
-		$ECHO "      -i, do not initialize gpsynchmaster process on standby master host [default:- initialize]"
 		$ECHO "      -n, do not update system catalog tables [default:- add standby host details]"
 		$ECHO "          Only use this option if standby host already recorded in the Greenplum Database system catalog"
 		$ECHO "          tables and only need to re-sync the standby master data directory"
+		$ECHO "      -r, remove current warm master standby, use this option if the warm master standby host has"
+		$ECHO "          failed, this option will need to shutdown the GPDB array to be able to complete request"
 		$ECHO "      -B, <number> number of pg_hba.conf updates to run in parallel [default:-$BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Return codes:"
@@ -116,6 +117,108 @@ UNKNOWN_OPTION () {
 		USAGE
 }
 
+DELETE_STANDBY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	GET_STANDBY_COUNT
+	if [ $STANDBY_COUNT -eq 0 ];then
+		ERROR_EXIT "[FATAL]:-Request made to remove warm master standby, but no standby located" 2
+	else
+		LOG_MSG "[INFO]:-Located a warm master standby, will continue" 1
+	fi
+	GET_STANDBY_DETAILS
+	MASTER_STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$AWK -F"|" '{print $1}'`
+	MASTER_STANDBY_DIRECTORY=`$ECHO ${STANDBY_ARRAY[@]}|$AWK -F"|" '{print $2}'`
+	MASTER_STANDBY_PORT=`$ECHO ${STANDBY_ARRAY[@]}|$AWK -F"|" '{print $3}'`
+	PING_HOST $MASTER_STANDBY_HOSTNAME 1
+	CLEAN_STANDBY=$RETVAL
+	if [ x"" != x"$INTERACTIVE" ];then 
+		DISPLAY_REMOVE_PARAM
+	fi
+	#Shutdown the cluster
+	LOG_MSG "[INFO]:-Commencing GPDB array shutdown, please wait..." 1
+	$GPSTOP -a
+	if [ $? -ne 0 ];then
+		LOG_MSG "[WARN]:-Attempt to shutdown the GPDB array with mode=smart failed" 1
+		LOG_MSG "[INFO]:-Ensure that all connections to the GPDB array are removed" 1
+		LOG_MSG "[INFO]:-Then re-call this utility" 1
+		ERROR_EXIT "[FATAL]:-Unable to continue due to active database connections" 2
+	else
+		LOG_MSG "[INFO]:-Successfully completed GPDB array shutdown" 1
+	fi
+	LOG_MSG "[INFO]:-Starting master in admin mode" 1
+	$GPSTART -am
+	if [ $? -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Failed to start master instance in admin mode, check the gpstart log file" 2
+	fi
+	LOG_MSG "[INFO]:-Deleting catalog entry for $MASTER_STANDBY_HOSTNAME" 1
+	${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -c "delete from $CONFIG_TABLE where content=-1 and dbid<>1 and isprimary='f';" >> $LOG_FILE 2>&1
+	if [ $? -ne 0 ];then
+		LOG_MSG "[FATAL]:-Failed to delete catalog entry for $MASTER_STANDBY_HOSTNAME" 1
+		LOG_MSG "[INFO]:-Restarting the GPDB array" 1
+		$GPSTOP -am
+		$GPSTART -a
+		ERROR_EXIT "[FATAL]:-Unable to continue" 2
+	else
+		LOG_MSG "[INFO]:-Completed delete of catalog entry for $MASTER_STANDBY_HOSTNAME" 1
+	fi
+	LOG_MSG "[INFO]:-Restarting the GPDB array" 1
+	$GPSTOP -am
+	$GPSTART -a
+	if [ $CLEAN_STANDBY -eq 0 ];then
+		LOG_MSG "[INFO]:-Commencing clear down of $MASTER_STANDBY_HOSTNAME" 1
+		GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
+		if [ $PID -gt 1 ];then
+			#Appears that we have a process running
+			STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_DATA_DIRECTORY
+		fi
+		#Now remove data directory
+		LOG_MSG "[INFO]:-Attempting to remove data directory $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
+		$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$RM -Rf $MASTER_DATA_DIRECTORY"
+		if [ $? -ne 0 ];then
+			LOG_MSG "[WARN]:-Issue with $RM -Rf $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
+		else
+			LOG_MSG "[INFO]:-Successfully completed $RM -Rf $MASTER_DATA_DIRECTORY on $MASTER_STANDBY_HOSTNAME" 1
+		fi
+		$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$RM -f ${MASTER_DATA_DIRECTORY}.log"
+		if [ $? -ne 0 ];then
+			LOG_MSG "[WARN]:-Issue with $RM -f ${MASTER_DATA_DIRECTORY}.log on $MASTER_STANDBY_HOSTNAME" 1
+		else
+			LOG_MSG "[INFO]:-Successfully completed $RM -f ${MASTER_DATA_DIRECTORY}.log on $MASTER_STANDBY_HOSTNAME" 1
+		fi
+	fi
+	LOG_MSG "[INFO]:-Warm master standby removal processing complete" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+DISPLAY_REMOVE_PARAM () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:--------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Warm master standby removal parameters" 1
+	LOG_MSG "[INFO]:--------------------------------------------------" 1
+	LOG_MSG "[INFO]:-Warm master hostname                            = $MASTER_STANDBY_HOSTNAME" 1
+	LOG_MSG "[INFO]:-Warm master data directory                      = $MASTER_STANDBY_DIRECTORY" 1
+	LOG_MSG "[INFO]:-Warm master port                                = $MASTER_STANDBY_PORT" 1
+	if [ $CLEAN_STANDBY -eq 0 ];then
+	LOG_MSG "[INFO]:-Clear warm master standby files and PID         = On" 1
+	else
+	LOG_MSG "[INFO]:-Clear warm master standby files and PID         = Off, unable to access host" 1
+	fi
+	$ECHO	
+	$ECHO  "Continue with Greenplum standby master removal Yy/Nn>"
+	read REPLY
+	if [ -z $REPLY ]; then
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
+		EXIT_STATUS=1
+		exit $EXIT_STATUS
+	fi
+	if [ $REPLY != Y ] && [ $REPLY != y ]; then
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!" 1
+		EXIT_STATUS=1
+		exit $EXIT_STATUS
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 CHECK_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Check that we are not trying to create a standby instance on this host
@@ -125,7 +228,7 @@ CHECK_PARAM () {
 	#Check to see that hostname exists and can be reached
 	PING_HOST $MASTER_STANDBY_HOSTNAME
 	#Check to see if we already have a standby master configured
-	STANDBY_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
+	STANDBY_NAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from $CONFIG_TABLE where content=-1 and dbid<>1 ;"`
 	ERROR_CHK $? "obtained standby master host count" 2
 	if [ $UPDATE_CATALOG -eq 1 ];then
 		if [ x"" != x"$STANDBY_NAME" ];then
@@ -157,7 +260,7 @@ CHECK_PARAM () {
 			if [ $PID -ne 0 ] && [ x"" != x"$FAIL_PRI_SEG" ];then
 				LOG_MSG "[WARN]:-Active read only master detected on $MASTER_STANDBY_HOSTNAME" 1
 				LOG_MSG "[INFO]:-Calling close down routine" 1
-				$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
+				$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
 			fi
 		else
 			#Do not have a directory, but check to ensure we do not have a sync process
@@ -181,13 +284,18 @@ CHECK_PARAM () {
 			fi
 		fi
 	fi
-	#Now check to ensure that hostname supplied matches unix hostname output
-	SSH_HOSTNAME=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME $HOSTNAME|$TR -d ' '`
-	ERROR_CHK $? "obtain remote hostname value" 2
-	if [ $SSH_HOSTNAME != $MASTER_STANDBY_HOSTNAME ];then
-		LOG_MSG "[WARN]:-Hostname supplied does not match hostname output on $MASTER_STANDBY_HOSTNAME" 1
-		LOG_MSG "[INFO]:-Setting standby hostname to $SSH_HOSTNAME" 1
-		MASTER_STANDBY_HOSTNAME=$SSH_HOSTNAME
+	CHK_MULTI_HOME
+	if [ $MULTI_HOME -eq 0 ];then
+		#Now check to ensure that hostname supplied matches unix hostname output
+		SSH_HOSTNAME=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME $HOSTNAME|$TR -d ' '`
+		ERROR_CHK $? "obtain remote hostname value" 2
+		if [ $SSH_HOSTNAME != $MASTER_STANDBY_HOSTNAME ];then
+			LOG_MSG "[WARN]:-Hostname supplied does not match hostname output on $MASTER_STANDBY_HOSTNAME" 1
+			LOG_MSG "[INFO]:-Setting standby hostname to $SSH_HOSTNAME" 1
+			MASTER_STANDBY_HOSTNAME=$SSH_HOSTNAME
+		fi
+	else
+		LOG_MSG "[INFO]:-Multi-home array, bypassing hostname check" 1
 	fi
 	LOG_MSG "[INFO]:-Obtaining a list of segment instances" 1
 	GET_QE_DETAILS
@@ -203,10 +311,10 @@ CHECK_PARAM () {
 	ERROR_CHK $? "obtain IP address of standby Master host" 2
 	LOG_MSG "[INFO]:-Standby address array = ${STANDBY_IP_ADDRESS_ALL[@]}" 1
 	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
-	MASTER_MPP_NAME=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select gpname from $GP_ID_TABLE;"`
+	MASTER_MPP_NAME=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select gpname from $GP_ID_TABLE;"`
 	ERROR_CHK $? "obtain master array name" 2
 	#Check to see if there are any other Greenplum instances on the proposed standby host
-	IN_USE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
+	IN_USE_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
 	ERROR_CHK $? "obtain standby host in use count" 2
 	if [ $UPDATE_CATALOG -eq 1 ];then
 		if [ $IN_USE_COUNT -ne 0 ];then
@@ -214,7 +322,7 @@ CHECK_PARAM () {
 			LOG_MSG "[WARN]:-This may have an impact on overall Greenplum Database segment instance performance" 1
 		fi
 		#Check to ensure that port requested not already in use on that host
-		PORT_IN_USE_COUNT=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
+		PORT_IN_USE_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from $CONFIG_TABLE where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
 		ERROR_CHK $? "obtain standby port check" 2
 		if [ $PORT_IN_USE_COUNT -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Port $MASTER_STANDBY_PORT already assigned on ${MASTER_STANDBY_HOSTNAME}" 2
@@ -323,11 +431,6 @@ DISPLAY_PARAM () {
 	LOG_MSG "[INFO]:-Greenplum array name                    = $MASTER_MPP_NAME" 1
 	LOG_MSG "[INFO]:-Greenplum standby master data directory = $MASTER_STANDBY_DATA_DIRECTORY" 1
 	LOG_MSG "[INFO]:-Parallel batch value                    = $BATCH_DEFAULT" 1
-	if [ x"" == x"$START_GPSYNC" ];then
-		LOG_MSG "[INFO]:-Greenplum Start gpsyncmaster process    = Off" 1
-	else
-		LOG_MSG "[INFO]:-Greenplum Start gpsyncmaster process    = On" 1
-	fi
 	if [ $UPDATE_CATALOG -eq 1 ];then
 		LOG_MSG "[INFO]:-Greenplum update system catalog         = On" 1
 	else
@@ -379,11 +482,6 @@ STANDBY_ACTIVATE () {
 	C_DIR=`pwd`;cd ${MASTER_DATA_DIRECTORY};sync;cd $C_DIR
 	$TRUSTED_COPY -pr $MASTER_DATA_DIRECTORY ${MASTER_STANDBY_HOSTNAME}:${MASTER_STANDBY_DATA_DIRECTORY} 2>>$LOG_FILE
 	ERROR_CHK $? "remote copy of $MASTER_DATA_DIRECTORY to $MASTER_STANDBY_HOSTNAME" 2
-	if [ x"" != x"$START_GPSYNC" ];then
-		START_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_PORT
-	else
-		LOG_MSG "[INFO]:-Process gpsyncmaster not started on $MASTER_STANDBY_HOSTNAME as -i supplied" 1
-	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -412,25 +510,25 @@ FAIL_PRIMARY_SEGMENTS () {
         fi
 	#Start the readonly master segment in utility mode
 	LOG_MSG "[INFO]:-Starting read only master segment instance in utility mode" 1
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$GPSTART -d $MASTER_DATA_DIRECTORY -m"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTART -d $MASTER_DATA_DIRECTORY -m"
 	ERROR_CHK $? "start read only master segment instance" 2
 	#Now set primary segment instances port numbers to a negative number
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set port=dbid*-1 where definedprimary='t' and content<>-1;\""
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set port=dbid*-1 where definedprimary='t' and content<>-1;\""
 	ERROR_CHK $? "update primary segment port numbers" 2
 	#Now delete any reference to a master standby instance
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" delete from $CONFIG_TABLE where content=-1 and definedprimary='f';\""
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" delete from $CONFIG_TABLE where content=-1 and definedprimary='f';\""
 	ERROR_CHK $? "delete master standby record" 2
 	#Now change the master segment instance hostname
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where content=-1;\""
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};env PGOPTIONS=\"-c gp_session_role=utility\" $PSQL -p $MASTER_PORT $DEFAULTDB -c\" update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where content=-1;\""
 	ERROR_CHK $? "update master instance hostname" 2
 	#Now shutdown the read only master from utility mode
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
 	#Now start up the read only master
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export BIZHOME=$BIZHOME;export GPHOME=$GPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log start"
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$PG_CTL -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log start"
 	ERROR_CHK $? "start readonly master instance" 2
 	#Now force an update of gp_pgdatabase
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
-	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
+	$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -c\" \l\"" >/dev/null 2>&1
 	LOG_MSG "[INFO]:-Forced update of gp_pgdatabase complete" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -439,7 +537,7 @@ FAIL_PRIMARY_SEGMENTS () {
 #******************************************************************************
 trap '$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE;$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":v'?'ainfqs:l:!DB:" opt;do
+	while getopts ":v'?'anfqs:l:!DB:r" opt;do
 		case $opt in
 			v ) VERSION_INFO ;;
 			'?' ) USAGE ;;
@@ -449,11 +547,11 @@ if [ $# -ne 0 ]; then
 			a ) unset INTERACTIVE ;;
 			q ) unset VERBOSE ;;
 			l ) LOG_DIR=$OPTARG ;;
-			i ) unset START_GPSYNC ;;
 			n ) UPDATE_CATALOG=0 ;;
 			f ) FAIL_PRI_SEG=1 ;;
 			D ) DEBUG_LEVEL=1 ;;
 			B ) BATCH_DEFAULT=$OPTARG ;;
+			r ) REMOVE_STANDBY=1 ;;
 			* ) USAGE ;;
 		esac
 	done	
@@ -471,18 +569,21 @@ if [ x"" != x"$LOG_DIR" ];then
 else
 	BACKOUT_FILE=$DEFLOGDIR/backout_${PROG_NAME}_${USER_NAME}_${CUR_DATE}_$TIME
 fi
+CHK_GPDB_ID
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ $FAIL_PRI_SEG ] && [ $UPDATE_CATALOG -eq 1 ];then
 	LOG_MSG "[INFO]:-Option -f supplied setting update catalog to off" 1
 	UPDATE_CATALOG=0
 fi
-if [ $FAIL_PRI_SEG ] && [ $START_GPSYNC ];then
-	LOG_MSG "[INFO]:-Option -f supplied setting start gpsync process to off"
-	unset START_GPSYNC
-fi
 CHK_ON_PASSIVE_STANDBY
 MASTER_HOSTNAME=`$HOSTNAME`
 CHK_DB_RUNNING
+LOG_MSG "[INFO]:-Start Main"
+if [ $REMOVE_STANDBY -eq 1 ];then
+	DELETE_STANDBY
+	LOG_MSG "[INFO]:-End Main" 
+	exit $EXIT_STATUS
+fi
 CHK_MIRRORS_CONFIGURED
 if [ $FAIL_PRI_SEG ] && [ $MIRROR_COUNT -eq 1 ];then
 	ERROR_EXIT "[FATAL]:-Cannot use -f option if mirroring is not configured" 2
@@ -493,7 +594,6 @@ if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
 fi
 MASTER_STANDBY_DATA_DIRECTORY=$MASTER_DATA_DIRECTORY
 MASTER_STANDBY_PORT=$MASTER_PORT
-LOG_MSG "[INFO]:-Start Main"
 CHECK_PARAM
 if [ x"" != x"$INTERACTIVE" ];then 
 	DISPLAY_PARAM
@@ -521,6 +621,7 @@ else
 	LOG_MSG "[INFO]:------------------------------------------------" 1
 	if [ $UPDATE_CATALOG -eq 1 ];then
 	LOG_MSG "[INFO]:-Successfully created master standby host on $MASTER_STANDBY_HOSTNAME " 1
+	LOG_MSG "[INFO]:-To review current process state use gpstate -f" 1
 	else
 	LOG_MSG "[INFO]:-Successfully completed standby master re-synch on host $MASTER_STANDBY_HOSTNAME " 1
 	fi

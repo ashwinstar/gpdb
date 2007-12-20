@@ -65,11 +65,12 @@ VACUUM_MODE=0 # 1=run before dump starts, 2=run after dump has completed.
 TRY_COMPRESSION=0
 IS_RUNNING_FLAG=/tmp/${PROG_NAME}_is_running_flag
 DUMP_CONFIG=0
-DUMP_PG_DUMP=0
+DUMP_GLOBAL=0
 CATALOG=pg_catalog
 RUN_PROG=0
 PARALLEL_STATUS_FILE=/tmp/gpcrondump_parallel_status_file.$$
 GPSEGCRON=$WORKDIR/lib/gpsegcron.sh
+PG_DUMPALL_PREFIX="gp_global_1_1_"
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -124,8 +125,8 @@ USAGE () {
 		$ECHO "      -g, secure master configuration files postgresql.conf pg_ident.conf and pg_hba.conf"
 		$ECHO "          Data will be written in tar format to "
 		$ECHO "          ${DUMP_SUB_DIR}/$DUMP_DATE/$CONFIG_BACKUP_FILE directory on this host"  
-		$ECHO "      -t, use pg_dump to secure pg_catalog schema for database"
-		$ECHO "          Data will be dumped to ${DUMP_SUB_DIR}/$DUMP_DATE/<database name>_${CATALOG}_$DUMP_DATE"
+		$ECHO "      -G, use pg_dumpall to dump global objects, i.e. user accounts"
+		$ECHO "          Data will be dumped to ${DUMP_SUB_DIR}/$DUMP_DATE/${PG_DUMPALL_PREFIX}<timestamp>"
 		$ECHO "      -C, clean (drop) schema prior to create [default do not clean]"
 		$ECHO "      -R, <program name> run named program after successful dump completed, include full path name"
 		$ECHO "          if program name not in path. Note, program will only be called once if multi database"
@@ -140,7 +141,7 @@ USAGE () {
 		$ECHO
 		$ECHO "      Mail configuration"
 		$ECHO "      This utility will send an email to a list of email addresses contained in a file"
-		$ECHO "      named mail_contacts. This file can be located in the MPP super user home directory"
+		$ECHO "      named mail_contacts. This file can be located in the GPDB super user home directory"
 		$ECHO "      or the utility bin directory. The format of the file is one email address per line"
 		$ECHO "      If no mail_contacts file is found in either location, a warning message will be"
 		$ECHO "      displayed."
@@ -174,7 +175,7 @@ CHK_QD_DB_RUNNING () {
 VACUUM_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Processing vacuum request for database $DUMP_DATABASE" 1
-	$PSQL -p $MASTER_PORT $DUMP_DATABASE -c"vacuum;"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DUMP_DATABASE" -c"vacuum;"
 	ERROR_CHK $? "complete vacuum on database $DUMP_DATABASE" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -183,24 +184,25 @@ GET_DUMP_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	case $DUMP_TYPE in
 		0) LOG_MSG "[INFO]:-Gathering dbid data for dump type all" 1
-		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1;"`)  ;;
+		   DBID_LIST=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1;"`)  ;;
 		1) LOG_MSG "[INFO]:-Gathering dbid data for dump type primary"  1
-		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1 and definedprimary='t';"`)  ;;
+		   DBID_LIST=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1 and definedprimary='t';"`)  ;;
 	
 		2) LOG_MSG "[INFO]:-Gathering dbid data for dump type mirror" 1
-		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1 and definedprimary='f';"`)  ;;
+		   DBID_LIST=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1 and definedprimary='f';"`)  ;;
 		3) LOG_MSG "[WARN]:-Gathering dbid data for dump type available active"  1
-		   DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1 and isprimary='t';"`) ;;
+		   DBID_LIST=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1 and isprimary='t';"`) ;;
 	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		CHK_DIR_TARGET=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select hostname, datadir from $CONFIG_TABLE where dbid=${DBID};"`
-		ERROR_CHK $? "obtained host datadir for DBID $DBID" 2
+		CHK_DIR_TARGET=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select hostname, datadir, port from $CONFIG_TABLE where dbid=${DBID};"`
+		ERROR_CHK $? "obtained host datadir and port for DBID $DBID" 2
 		DIR_HOST=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f1`
 		DIR=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f2`
+		DIR_PORT=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f3`
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -274,7 +276,7 @@ CHK_DUMP_DIR () {
 
 DUMP_MIR_CHK () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	DB_CHK=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from pg_database where datname='${DUMP_DATABASE}';"`
+	DB_CHK=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select count(*) from pg_database where datname='${DUMP_DATABASE}';"`
 	if [ $DB_CHK -eq 0 ];then
 		ERROR_EXIT "[FATAL]:-Database $DUMP_DATABASE does not exist" 2
 	fi
@@ -311,19 +313,19 @@ CHK_PARAM () {
 	#Check to see if there are any segment failures
 	if [ x"" != x"$SCHEMA_NAME" ];then
 		LOG_MSG "[INFO]:-Schema option -n $SCHEMA_NAME supplied, checking for schema in database $DUMP_DATABASE" 1
-		SCHEMA_COUNT=`$PSQL -p $MASTER_PORT $DUMP_DATABASE -R" " -A -t -c"select count(*) from pg_namespace where nspname='${SCHEMA_NAME}';"`
+		SCHEMA_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DUMP_DATABASE" -R" " -A -t -c"select count(*) from pg_namespace where nspname='${SCHEMA_NAME}';"`
 		if [ $SCHEMA_COUNT -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-Schema $SCHEMA_NAME does not exist in database $DUMP_DATABASE" 2
 		fi
 	fi
-	FAILED_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where valid='f';"`
+	FAILED_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where valid='f';"`
 	if [ $FAILED_COUNT -eq 0 ];then
 		LOG_MSG "[INFO]:-No failed segment instances detected" 1
 	else
 		LOG_MSG "[WARN]:-Failed segment instances detected, analyzing dump options" 1
-		FAILED_MIRROR_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where content <> -1 and definedprimary='f' and valid='f';"`
+		FAILED_MIRROR_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where content <> -1 and definedprimary='f' and valid='f';"`
 		ERROR_CHK $? "obtained failed mirror count" 2
-		FAILED_PRIMARY_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where content <> -1 and definedprimary='t' and valid='f';"`
+		FAILED_PRIMARY_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where content <> -1 and definedprimary='t' and valid='f';"`
 		ERROR_CHK $? "obtained failed primary count" 2
 		if [ $FAILED_MIRROR_COUNT -ne 0 ] && [ $FAILED_PRIMARY_COUNT  -ne 0 ];then
 			LOG_MSG "[WARN]:-Have detected both primary and mirror segment failures" 1
@@ -394,7 +396,7 @@ CHK_DUMP_SPACE () {
 	LOG_MSG "[INFO]:-Commencing free disk space checks, please wait..." 1
 	#Check to see if we have sufficient space to be able to dump data to disks
 	LOG_MSG "[INFO]:-Obtaining $DUMP_DATABASE disk allocation" 1
-	ACTUAL_DB_SIZE=(`$GPSIZECALC -x $DUMP_DATABASE -fq|$GREP "|"`)
+	ACTUAL_DB_SIZE=(`$GPSIZECALC -x "$DUMP_DATABASE" -fq|$GREP "|"`)
 	LOG_MSG "[INFO]:-Checking free space on segment instances"	
 	BATCH_LIMIT=${#DBID_LIST[@]}
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
@@ -408,7 +410,7 @@ CHK_DUMP_SPACE () {
 		fi 
 		CHK_DATA
 		SEG=`$BASENAME $DIR`
-		DIR_HOST_USED_B=`$ECHO ${ACTUAL_DB_SIZE[@]}|$TR ' ' '\n'|$TR '|' '~'|$GREP "${DIR_HOST}~${SEG}~"|$TR '~' '|'|$AWK -F'|' '{print $NF}'`
+		DIR_HOST_USED_B=`$ECHO ${ACTUAL_DB_SIZE[@]}|$TR ' ' '\n'|$TR '|' '~'|$GREP "${DIR_HOST}~${SEG}~${DIR_PORT}~"|$TR '~' '|'|$AWK -F'|' '{print $NF}'`
 		$GPSEGCRON $$ 1 $DIR_HOST $DIR $DIR_HOST_USED_B $INST_COUNT $LOG_FILE $ZIP_STATE $FREE_SPACE_PERCENT $COMPRESSION_FACTOR &
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 	done
@@ -531,8 +533,8 @@ PROMPT_CONTINUE () {
 		fi	
 		if [ $DUMP_CONFIG -eq 1 ];then SWITCH_TXT=On;else SWITCH_TXT=Off;fi
 		LOG_MSG "[INFO]:-Secure config files              = $SWITCH_TXT" 1
-		if [ $DUMP_PG_DUMP -eq 1 ];then SWITCH_TXT=On;else SWITCH_TXT=Off;fi
-		LOG_MSG "[INFO]:-Dump catalog via pg_dump         = $SWITCH_TXT" 1
+		if [ $DUMP_GLOBAL -eq 1 ];then SWITCH_TXT=On;else SWITCH_TXT=Off;fi
+		LOG_MSG "[INFO]:-Dump global objects              = $SWITCH_TXT" 1
 		if [ x"" != x"$ADD_DUMP_OPTIONS" ];then
 			LOG_MSG "[INFO]:-Additional options               = $ADD_DUMP_OPTIONS" 1
 		fi
@@ -563,11 +565,11 @@ PROCESS_DUMP_CONFIG () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-PROCESS_DUMP_PG_DUMP () {
+PROCESS_DUMP_GLOBAL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing pg_catalog dump for database $DUMP_DATABASE" 1
-	$PG_DUMP -f ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/gp_${DUMP_DATABASE}_database_${CATALOG}_dump_$TIMESTAMP_KEY -n $CATALOG $DUMP_DATABASE
-	ERROR_CHK $? "dump $CATALOG" 1
+	$PG_DUMPALL -g --gp-syntax > ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${PG_DUMPALL_PREFIX}$TIMESTAMP_KEY
+	ERROR_CHK $? "dump global objects" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -583,7 +585,7 @@ PROCESS_DUMP () {
 	fi
 	if [ x"" != x"$SCHEMA_NAME" ];then
 		LOG_MSG "[INFO]:-Adding schema name $SCHEMA_NAME" 1
-		DUMP_TEXT=$DUMP_TEXT" -s $SCHEMA_NAME"
+		DUMP_TEXT=$DUMP_TEXT" -n $SCHEMA_NAME"
 	fi
 	DUMP_TEXT=$DUMP_TEXT" $DUMP_DATABASE"
 	LOG_MSG "[INFO]:-Dump command line $DUMP_TEXT" 1
@@ -699,7 +701,7 @@ DELETE_CURRENT_DUMP () {
 DELETE_OLD_DUMPS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Get a list of all dbids
-	DBID_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1;"`)
+	DBID_LIST=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1;"`)
 	COUNT=0
 	for DBID in ${DBID_LIST[@]}
 	do
@@ -783,7 +785,7 @@ STATUS_REPORT () {
 #******************************************************************************
 trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgtC!DR:B:" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -814,7 +816,7 @@ if [ $# -ne 0 ]; then
 				l ) LOG_DIR=$OPTARG ;;
 				x ) DUMP_DATABASE=$OPTARG ;;
 				g ) DUMP_CONFIG=1 ;;
-				t ) DUMP_PG_DUMP=1 ;;
+				G ) DUMP_GLOBAL=1 ;;
 				C ) ADD_DUMP_OPTIONS="$ADD_DUMP_OPTIONS -c" ;;
 				D ) DEBUG_LEVEL=1 ;;
 				R ) RUN_PROG=$OPTARG ;;
@@ -838,6 +840,7 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_GPDB_ID
 OPTIONS_LIST="$*"
 CHK_DB_QD_SET
 if [ x"" == x"$DUMP_DATABASE" ];then
@@ -882,7 +885,7 @@ fi
 #Check that all databases exist
 for DUMP_DATABASE in ${DUMP_DATABASE_LIST[@]}
 do
-	DB_THERE=`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select oid from pg_database where datname='${DUMP_DATABASE}';"`
+	DB_THERE=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select oid from pg_database where datname='${DUMP_DATABASE}';"`
 	if [ x"" == x"$DB_THERE" ];then
 		ERROR_EXIT "[FATAL]:-Database $DUMP_DATABASE does not exist" 2
 	fi
@@ -919,8 +922,8 @@ do
 	fi
 	PROCESS_DUMP
 	CHK_POST_DUMP
-	if [ $DUMP_PG_DUMP -eq 1 ];then
-		PROCESS_DUMP_PG_DUMP
+	if [ $DUMP_GLOBAL -eq 1 ];then
+		PROCESS_DUMP_GLOBAL
 	fi
 	if [ $ROLLBACK_DUMPS ];then
 		if [ $ROLLBACK -eq 1 ];then

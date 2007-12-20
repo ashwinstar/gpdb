@@ -57,7 +57,6 @@ unset FAILED
 unset ADMIN
 FAILED_COUNT=0
 TAIL_COUNT=0
-START_INVALID=0
 STANDBY_COUNT=0
 FORCE=0
 START_SYNC=1
@@ -65,8 +64,8 @@ STOP_PROG=$GPSTOP
 PARALLEL_STATUS_FILE=/tmp/gpstart_parallel_status_file.$$
 GPSEGSTART=$WORKDIR/lib/gpsegstart.sh
 WAIT_LIMIT=600
-UPGRADE_TO=0
-PGCONTROL_UPGRADE=1
+DISPLAY_ERROR=0
+INVALID_START_COUNT=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -100,16 +99,11 @@ USAGE () {
 		$ECHO
 		$ECHO "      Database startup options:"
 		$ECHO "      -m, start master instance only in maintenance mode [default:- full Greenplum database startup]"
-		$ECHO "      -z, force startup of segment instance marked as invalid"
 		$ECHO "      -y, do not start master standby server [default:- start standby server process]"
 		$ECHO "      -s, switch master log file, moves current logfile to <log file>.YYYYMMDD"
 		$ECHO "      -e, switch segment instance log files, moves current logfile to <log file>.YYYYMMDD"
 		$ECHO "          not applicable in master maintenance mode startup"
 		$ECHO "      -B, <number> run this batch of start segment processes in parallel [default $BATCH_DEFAULT]"
-		$ECHO
-		$ECHO "      Upgrade options (shouldn't be used directly):"
-		$ECHO "      -u <3.1 | 3.0>, Upgrade (downgrade) to 3.1 (3.0)"
-		$ECHO "      -N, don't attempt to upgrade pg_control files"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -213,8 +207,17 @@ GET_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		export PGPORT=$MASTER_PORT
 		LOG_MSG "[INFO]:-Starting Master instance in admin mode" 1
-		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT -c gp_role=utility"  start >/dev/null 2>&1
-		ERROR_CHK $? "startup Master instance" 2
+		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT -c gp_role=utility"  start >> $LOG_FILE 2>&1
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ];then
+			LOG_MSG "[FATAL]:-Failed to start Master instance in admin mode" 1
+			LOG_MSG "[INFO]:-Dumping end of Master instance log file to gpstart log file" 1
+			LOG_MSG "[INFO]:-********************************Diagnostic Dump Start*********************************"
+			$TAIL -15 ${MASTER_DATA_DIRECTORY}.log >> $LOG_FILE
+			LOG_MSG "[INFO]:-********************************Diagnostic Dump End***********************************" 
+			LOG_MSG "[INFO]:-Check $LOG_FILE for start up error message from $PG_CTL" 1
+			ERROR_EXIT "[FATAL]:-Unable to continue GPDB array startup" 2
+		fi
 		READ_CHK
 		if [ $READ_COUNT -ne 0 ];then
 			unset INTERACTIVE;fi
@@ -228,40 +231,28 @@ GET_DETAILS () {
 				GET_STANDBY_DETAILS
 			fi
 		fi
-		if [ $START_INVALID -eq 1 ];then
-			BATCH_LIMIT=$QE_ARRAY_COUNT
-			#Now get value of gp_fault_action
-			FAULT_ACTION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show gp_fault_action;"`
-			if [ $FAULT_ACTION == "continue" ];then
-				#Need to update gp_configuration file to set all segments marked as invalid to valid
-				LOG_MSG "[INFO]:-Utility requested to attempt startup of segments marked as invalid" 1
-				#See if any segments marked as invalid
-				INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $CONFIG_TABLE where valid='f' and content<>-1;" | wc -l` 
-				if [ $INVALID_COUNT -gt 0 ];then
-					LOG_MSG "[INFO]:-There are $INVALID_COUNT segments marked as invalid" 1
-					#Update these to be valid
-					${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set valid='t' where valid='f' and content<>-1;"
-					${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set isprimary='t' where definedprimary='t' and isprimary='f' and content<>-1;"
-					LOG_MSG "[INFO]:-Updated configuration table to mark invalid segments as valid" 1
-					#Now reset the associated mirrors
-					${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"update $CONFIG_TABLE set isprimary='f' where definedprimary='f' and isprimary='t' and content<>-1;"
-					LOG_MSG "[INFO]:-Updated configuration table to reset mirrors to passive" 1
-				else
-					LOG_MSG "[INFO]:-No segments marked as invalid" 1
-				fi
-			fi
+		#See if we have any invalid segment instance databases
+		GET_MAX_LEN
+		INVALID_COUNT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select 1 from $CONFIG_TABLE where valid='f' and content<>-1;"|$WC -l` 
+		#Get the gp_fault_action setting
+		FAULT_ACTION=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show gp_fault_action;"`
+		if [ $FAULT_ACTION == "continue" ] && [ $INVALID_COUNT -gt 0 ];then
+			DISPLAY_ERROR=1
 		else
-			BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select 1 from $GP_PG_VIEW as gppg where valid ='t' and content<>-1;" | wc -l`
+			if [ $INVALID_COUNT -eq 0 ];then
+				LOG_MSG "[INFO]:-No segments marked as invalid" 1
+			fi
 		fi
+		BATCH_LIMIT=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select 1 from $GP_PG_VIEW as _gp_pg_view where valid ='t' and content<>-1;"|$WC -l`
 		TOTAL_BATCH_LIMIT=$QE_ARRAY_COUNT
 		#Gather locale information MPP-972
-		LC_COLLATE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_collate;"`
+		LC_COLLATE=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show lc_collate;"`
 		ERROR_CHK $? "obtain lc_collate info" 1
 		LOG_MSG "[INFO]:-Master lc_collate=$LC_COLLATE"
-		LC_MONETARY=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_monetary;"`
+		LC_MONETARY=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show lc_monetary;"`
 		ERROR_CHK $? "obtain lc_monetary info" 1
 		LOG_MSG "[INFO]:-Master lc_monetary=$LC_MONETARY"
-		LC_NUMERIC=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"show lc_numeric;"`	
+		LC_NUMERIC=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show lc_numeric;"`	
 		ERROR_CHK $? "obtain lc_numeric info" 1
 		LOG_MSG "[INFO]:-Master lc_numeric=$LC_NUMERIC"
 		#Shutdown the QD database
@@ -290,16 +281,13 @@ START_ADMIN () {
 
 
 PROMPT_CONTINUE () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[INFO]:----------------------------" 1
 		LOG_MSG "[INFO]:-Master instance parameters:" 1
 		LOG_MSG "[INFO]:----------------------------" 1
 		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME" 1
 		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY" 1
-		if [ $START_INVALID -eq 1 ];then
-		LOG_MSG "[INFO]:-Start invalid segments     = On <<<<<" 1
-		else
-		LOG_MSG "[INFO]:-Start invalid segments     = Off" 1
-		fi
 		if [ x"" == x"$SWITCH_LOG" ];then
 		LOG_MSG "[INFO]:-Master switch log file     = Off" 1
 		else
@@ -320,27 +308,25 @@ PROMPT_CONTINUE () {
 		else
 		LOG_MSG "[INFO]:-Master standby start       = Off" 1
 		fi
+		LOG_MSG "[INFO]:----------------------------------------" 1
 		LOG_MSG "[INFO]:-Segment instances that will be started:" 1
 		LOG_MSG "[INFO]:----------------------------------------" 1
-		COUNT=1
+		HEADER=`$ECHO "Host:Datadir:Port:Status"|$AWK -F":" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s %s\n", $1, $2, $3, $4}'`
+		LOG_MSG "[INFO]:-$HEADER" 1
+		$ECHO
 		for QNODE in "${QE_ARRAY[@]}"
 				do
-				QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
-				QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
-				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
-				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
+				TXT=`$ECHO $QNODE|$AWK -F"|" '{printf "%-'"${LEN_ARRAY[0]}"'s %-'"${LEN_ARRAY[2]}"'s %-'"${LEN_ARRAY[1]}"'s",$1, $2, $3}'`
 				if [ "$QE_VALID" == "t" ]; then
-					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT" 1
+					LOG_MSG "[INFO]:-$TXT Valid" 1
 				else
-					if [ $START_INVALID -eq 0 ];then
-						LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT invalid will not start" 1
-					else
-						LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME segment = $QE_DIR port = $QE_PORT invalid will attempt forced start" 1
-					fi
+					LOG_MSG "[INFO]:-$TXT Invalid will not start $WARN_MARK" 1
 				fi
-				((COUNT=$COUNT+1))
 		done
+		if [ $DISPLAY_ERROR -eq 1 ];then
+			CHK_START_ERROR_TXT
+		fi
 		$ECHO
 		$ECHO "Continue with Greenplum instance startup yY|nN >"
 		read REPLY
@@ -354,6 +340,13 @@ PROMPT_CONTINUE () {
 		fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
+
+ARRAY_REORDER () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	QE_REORDER_ARRAY=(`$ECHO ${QE_ARRAY[@]}|$TR ' ' '\n'|$SORT -t"|" -k3,3|$TR '\n' ' '`)
+	QE_ARRAY=(${QE_REORDER_ARRAY[@]})
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 
 PROCESS_STARTUP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
@@ -373,7 +366,11 @@ PROCESS_STARTUP () {
 			fi
 		fi
 	fi
-	
+			if [ $PID -eq 0 ];then
+			SYNC_STATUS=1
+			else
+			SYNC_STATUS=0
+			fi
 	LOG_MSG "[INFO]:-Commencing parallel segment instance startup, please wait..." 1
 	export LC_COLLATE=$LC_COLLATE
 	export LC_MONETARY=$LC_MONETARY
@@ -382,7 +379,7 @@ PROCESS_STARTUP () {
 	if [ x"" == x"$SWITCH_QE_LOG" ];then
 		SWITCH_QE_LOG=0
 	fi
-	INVALID_START_COUNT=0
+	#INVALID_START_COUNT=0
 	TOTAL_FAILED_COUNT=0
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
 	for QNODE in "${QE_ARRAY[@]}"
@@ -392,27 +389,18 @@ PROCESS_STARTUP () {
 		QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 		QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 		QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
-		#If valid is false and no request to start invalis segment skip this instance
-		if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 'f' ];then
-			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $ECHO;fi
-			LOG_MSG "[WARN]:-Skipping startup of $QE_NAME $QE_DIR as marked as invalid" 1
+		if [ $QE_VALID == 'f' ];then
+			if [ $DEBUG_LEVEL -eq 0 ];then $ECHO;fi
+			LOG_MSG "[WARN]:-Skipping startup of $QE_NAME $QE_DIR as marked as invalid $WARN_MARK" 1
 			((INVALID_START_COUNT=$INVALID_START_COUNT+1))
 		else
-			if [ $START_INVALID -eq 1 ] && [ $QE_VALID == 'f' ];then
-				VALID_SETTING=1
-			fi
-			if [ $START_INVALID -eq 1 ] && [ $QE_VALID == 't' ];then
-				VALID_SETTING=0
-			fi
-			if [ $START_INVALID -eq 0 ] && [ $QE_VALID == 't' ];then
-				VALID_SETTING=0
-			fi	
+			VALID_SETTING=0
 			if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO ".\c";fi
-			$GPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE $UPGRADE_TO $PGCONTROL_UPGRADE $QD_DBNAME $BACKOUT_FILE &
+			$GPSEGSTART $$ $SWITCH_QE_LOG $QE_NAME $QE_PORT $QE_DIR $QE_VALID $VALID_SETTING $INST_COUNT $LOG_FILE "$QD_DBNAME" &
 			PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT
 		fi
 	done
-	if [ $DEBUG_LEVEL -eq 0 ] && [ x"" != x"$VERBOSE" ];then $NOLINE_ECHO;fi
+	if [ $DEBUG_LEVEL -eq 0 ];then $NOLINE_ECHO;fi
 	DUMP_STAT=0
 	TOTAL_FAILED_COUNT=$INVALID_START_COUNT
 	#Now check the status of the segment responses in the status file
@@ -505,17 +493,12 @@ PROCESS_STARTUP () {
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		EXIT_STATUS=1
 	fi
+	CHK_START_ERROR_TXT
 	$RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY" 1
 	export PGPORT=${MASTER_PORT}
 	export PGPATH=${APP_PATH}
-
-	EXTRA_START_OPTS=""
-	if [ "$UPGRADE_TO" != "0" ]; then
-		EXTRA_START_OPTS=" -c allow_system_table_mods=true "
-	fi
-
-	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT $EXTRA_START_OPTS" start -m $MODE  > /dev/null 2>&1
+	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
 	ERROR_CHK $? "startup Master instance" 2
 	RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 	RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
@@ -525,7 +508,7 @@ PROCESS_STARTUP () {
 	else
 		LOG_MSG "[INFO]:-Command pg_ctl reports Master $QD_NAME instance active" 1
 	fi
-	$PSQL -p $MASTER_PORT $DEFAULTDB -c"$GPLISTDATABASEQTY" >/dev/null 2>&1
+	${EXPORT_LIB_PATH};$PSQL -p $MASTER_PORT $DEFAULTDB -c"\l" >/dev/null 2>&1
 	if [ $DUMP_STAT -ne 1 ] && [ $EXIT_STATUS -eq 0 ];then
 		LOG_MSG "[INFO]:-Database successfully started with no errors reported" 1
 	else
@@ -540,7 +523,7 @@ PROCESS_STARTUP () {
 #******************************************************************************
 trap '$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'abqyzsml:d:e!DB:u:N" opt;do
+		while getopts ":vt'?'aqysmbl:d:e!DB:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -551,24 +534,17 @@ if [ $# -ne 0 ]; then
 						m ) ADMIN=1 ;;
 						s ) SWITCH_LOG=1 ;;
 						e ) SWITCH_QE_LOG=1 ;;
-						z ) START_INVALID=1 ;;
 						l ) LOG_DIR=$OPTARG ;;
 						y ) unset START_SYNC ;;
 						b ) CHK_STANDBY=1 ;;
-						! ) SCRIPT_USAGE=1 
+						B ) BATCH_DEFAULT=$OPTARG ;;
+						! ) SCRIPT_USAGE=1
 						    USAGE ;;
 						D ) DEBUG_LEVEL=1 ;;
-						B ) BATCH_DEFAULT=$OPTARG ;;
-						u ) UPGRADE_TO=$OPTARG ;;
-						N ) PGCONTROL_UPGRADE=0 ;;
 						* ) USAGE ;;
 				esac
 		done	
 fi
-
-BACKOUT_FILE=/tmp/gpstart_backout.$$
-MASTER_HOSTNAME=`$HOSTNAME`
-
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
@@ -579,35 +555,14 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
-
-
-# upgrade mode, upgrade the master database's control file
-if [ "$UPGRADE_TO" != "0" ]; then
-	LOG_MSG "[INFO]:-Running in upgrade mode"
-	if [ "$UPGRADE_TO" == "3.1" ] && [ $PGCONTROL_UPGRADE -eq 1 ]; then
-
-		LOG_MSG "[INFO]:-Upgrading master control file to $UPGRADE_TO"
-		$GPCONTROLMOD --catversion $UPGRADE_TO $MASTER_DATA_DIRECTORY
-		# include downgrade command
-		BACKOUT_COMMAND "$ECHO \"Reverting master control file to 3.0\""
-		BACKOUT_COMMAND "$GPCONTROLMOD --catversion 3.0 $MASTER_DATA_DIRECTORY"
-	fi
-
-	RETVAL=$?
-
-	if [ $RETVAL -ne 0 ]
-	then
-		LOG_MSG "[WARN]:-Control file update seems to have failed"
-	fi
-fi
-
+CHK_GPDB_ID
 if [ x"" == x"$CHK_STANDBY" ];then
 	CHK_ON_PASSIVE_STANDBY
 fi
 if [ x"" != x"$GPHOME" ];then
 	APP_PATH=${GPHOME}/bin
 else
-	APP_PATH=${MPPHOME}/bin
+	ERROR_EXIT "[FATAL]:-Environment variable \$GPHOME unset" 2
 fi
 CHK_QD_DB_RUNNING
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
@@ -622,6 +577,7 @@ fi
 if [ ! -f $GPSEGSTART ];then
 	ERROR_EXIT "[FATAL]:-Parallel mode selected but no $GPSEGSTART exists" 2
 fi
+ARRAY_REORDER
 PROCESS_STARTUP
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
