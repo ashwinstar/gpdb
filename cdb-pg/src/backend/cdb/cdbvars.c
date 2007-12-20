@@ -679,7 +679,8 @@ gpvars_assign_gp_interconnect_type(const char *newval, bool doit, GucSource sour
 {
 	int newtype = 0;
 
-	if (!pg_strcasecmp("tcp", newval))
+	if (newval == NULL || newval[0] == 0 ||
+		!pg_strcasecmp("tcp", newval))
 		newtype = INTERCONNECT_TYPE_TCP;
 	else if (!pg_strcasecmp("udp", newval))
 		newtype = INTERCONNECT_TYPE_UDP;
