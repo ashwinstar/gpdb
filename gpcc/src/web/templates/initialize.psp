@@ -11,24 +11,6 @@ except ImportError, e:
 %>
 
 <%
-    cfg = None
-    response = gpcc.hitMA(sctx['ma'], '/gpcc/lscfg', {})
-    if response is None:
-       cfg = None
-       sctx['ma'] = gpcc.getMA(sctx['ma_list'], sctx['ma'])
-    else:
-       cfgjson = simplejson.loads(response.read())
-       x = cfgjson.get('rset', {})
-       cfg = x.get('result', [])
-
-    max_node = 0
-    if cfg is not None:
-       i = 0
-       for (key, value) in cfg:
-           if key.startswith('node.'):
-       	       i += 1
-       max_node = i
-
     web.header('Content-Type', 'text/html;charset=utf-8')
 %>
 
@@ -104,18 +86,13 @@ $(function() {
           $("#msg").html("Internal server error. Please try later.");
       }
   }
-/*
-  $("#msg").ajaxError(function(request, settings) {
-       $(this).html("Error requesting page " + settings.url);
-  });
-*/
+
   $.getJSON("/status.psp", function(json) {
        BEGIN_status_response(json);
   });
 
 
-  function initdb_response(msg, textstatus) {
-      var json = eval('(' + msg + ')');
+  function initdb_response(json) {
       if (json.status == "ok") {
            $("#initdb").hide();
            $("#msg").text('Greenplum database was initialized.');
@@ -132,11 +109,17 @@ $(function() {
       }, 1000);
   }
 
+  /* multiple form input form */
+  function initdb_response_plain_text(msg, textstatus) {
+      var json = eval('(' + msg + ')');
+      initdb_response(json);
+  }
+
   function ajaxConfig() {
 
   	var i = 0;
   	var err = []
-        var myform = $("#initdb_form").getForm();
+        var myform = $("#initdb_input_form").getForm();
 
 	for (i = 0 ; i < myform.vars.length ; i++) {
 	    a = myform.vars[i];
@@ -160,9 +143,9 @@ $(function() {
 	  	$(this).text('Greenplum database is initializing.');
 	    });
 	
-	    $.post('/initdb.psp', myform.vars, initdb_response);
+	    $.post('/initdb.psp', myform.vars, initdb_response_plain_text);
 	} else {
-	    var item = "#initdb_form ";
+	    var item = "#initdb_input_form ";
 	    for (i = 0 ; i < err.length ; i++) {
 	       item += 'td[@name=' + err[i] + '],';
 	    }
@@ -173,7 +156,81 @@ $(function() {
 	return false;
   }
 
-  $("#submit").click(ajaxConfig);
+  $("#multi_input_submit").click(ajaxConfig);
+
+
+  /* file upload form */
+  function ajaxFileUpload() {
+      $(this).unbind('click', ajaxFileUpload);
+      $("#msg")
+	.ajaxStart(function(){
+  	    $(this).text('Greenplum database is initializing.');
+ 	})
+ 	.ajaxComplete(function(){
+ 	    ;
+ 	});
+ 
+ 	$.ajaxFileUpload
+ 	(
+ 		{
+ 			url:'/initdb.psp',
+ 			secureuri:false,
+ 			fileElementId:'fileToUpload',
+ 			dataType: 'json',
+ 			success: function (data, status) {
+ 				initdb_response(data);
+ 			},
+ 			error: function (data, status, e) {
+ 				initdb_response(data);
+ 			}
+ 		}
+ 	)
+
+	return false; 		
+  }
+
+
+  $("#file_upload_submit").click(ajaxFileUpload);
+
+
+
+  /* big text area form */
+
+  function ajaxText() {
+
+  	var i = 0;
+  	var err = []
+        var myform = $("#initdb_textarea_form").getForm();
+
+	for (i = 0 ; i < myform.vars.length ; i++) {
+	    a = myform.vars[i];
+	    if (a.name == 'text_config' && isBlank(a.value))
+	       err.push(a.name);
+	}
+
+	if (err.length == 0) {
+  	    $(this).unbind('click', ajaxText);
+	    $("#msg")
+	    .ajaxStart(function() {
+	        $("#initdb").hide();
+	  	$(this).text('Greenplum database is initializing.');
+	    });
+	
+	    $.post('/initdb.psp', myform.vars, initdb_response_plain_text);
+	} else {
+	    var item = "#initdb_textarea_form ";
+	    for (i = 0 ; i < err.length ; i++) {
+	       item += 'td[@name=' + err[i] + '],';
+	    }
+	    $("#initdb_form td[@name]").css('color', 'black');
+	    $(item).css('color', 'red');
+	}
+
+	return false;
+  }
+
+  $("#textarea_submit").click(ajaxText);
+
 
 
 })
@@ -232,14 +289,18 @@ $(function() {
 
             <p style="margin-top: 0pt;">
 
-
-% if max_node == 0:
-            <span id="msg">Internal server error. Please try later.</span>
-% else:
 	    <span id="msg"></span>
-	    <div id="initdb" style="display:none">
-	    <form id="initdb_form" method="POST" enctype="multipart/form-data">
+
+<!-- initdb form input -->
+
+         <div id="initdb" style="display:none">
+
+<!--
+	    <div id="initdb_input_form_div">
+	    <form id="initdb_input_form" method="POST" enctype="multipart/form-data">
+<%doc>
 	       <input name="max_node" type="hidden" value="${max_node}">
+</%doc>
 	       <table cellpadding="0" cellspacing="3">
 	         <thead> <tr> <th>Fill in the configuration</th></tr>
 		 </thead>
@@ -264,6 +325,7 @@ $(function() {
 		      <td name="qe_mirror_base_port">Mirror query executor base port:</td>
 		      <td><input name="qe_mirror_base_port" type="text"></td>
 		   </tr>
+<%doc>
 		   <tr>
 		      <td>Query dispatcher resides on:</td>
 		      <td><select name="qd_resides">
@@ -290,18 +352,63 @@ $(function() {
 			  </select>
 		      </td>
 		   </tr>
+</%doc>
 		   <tr>
 		      <td>Has Mirror Segment:</td>
 		      <td><input type="checkbox" name="mirror" checked></td>
 		   </tr>
 		   <tr>
-		       <td><button id="submit">Submit</button></td>
+		       <td><button id="multi_input_submit">Submit</button></td>
 		   </tr>
 		 </tbody>
 	       </table>
             </form>
 	    </div>
-% endif
+-->
+<!-- END of initdb form input -->
+            <hr/>
+<!-- initdb file upload input -->
+            <div id="initdb_file_upload_div">
+	    <form id="initdb_file_upload_form" method="POST" enctype="multipart/form-data">
+	       <table cellpadding="0" cellspacing="0">
+	          <thead><tr><th>Upload the configuration file</th></tr>
+		  </thead>
+		  <tbody>
+		  <tr>
+		     <td><input id="fileToUpload" type="file" size="35" name="fileToUpload"></td>
+ 		  </tr>
+		  <tr>
+		     <td><button id="file_upload_submit">Submit</button></td>
+		  </tr>
+		  </tbody>
+	       </table>
+	    </form>
+            </div>
+
+<!-- END of file upload input -->
+
+            <hr/>
+<!-- initdb big textarea input -->
+            <div id="initdb_textarea_div">
+	    <form id="initdb_textarea_form" method="POST" enctype="multipart/form-data">
+	       <table cellpadding="0" cellspacing="0">
+	          <thead><tr><th>Please type in your database configuration</th></tr>
+		  </thead>
+		  <tbody>
+		  <tr>
+		     <td name="text_config"><textarea name="text_config" rows="20" cols="50"></textarea></td>
+		  </tr>
+		  <tr>
+		     <td><button id="textarea_submit">Submit</button></td>
+		  </tr>
+		  </tbody>
+	       </table>
+	    </form>
+	    </div>
+
+<!-- END of big textarea input -->
+
+         </div>
 	    </p>
 
 

@@ -52,6 +52,12 @@ def print_version():
     print '%s version $Revision$' % script_name
     sys.exit(0)
 
+def verify_address(addr):
+    a = addr.split(':')
+    if len(a) != 2:
+        return False
+    return True
+
 def parseCommandLine():
     global opt, sctx
     try:
@@ -67,6 +73,10 @@ def parseCommandLine():
     if len(args) == 0:
         usage('Error: please specify at least one MA address')
     
+    for arg in args:
+        if verify_address(arg) == False:
+            usage('Error: MA address format error')
+
     sctx['ma_list'] = args
     sctx['ma'] = args[0]
 

@@ -10,55 +10,83 @@ except ImportError, e:
 <%
 def get_mirror_id(nodes, cid):
     if len(nodes) == 1:
-       return nodes[0]
+        return nodes[0]
 
     idx = nodes.index(cid)
     newidx = idx - len(nodes)/2
     return nodes[newidx]
+
+def get_config_from_multi_input():
+    array_name = param['array_name']
+    base_dir = param['base_directory']
+    qd_port = int(param['qd_port'])
+    qe_base_port = int(param['qe_base_port'])
+    qe_mirror_base_port = int(param['qe_mirror_base_port'])
+    nseg_per_node = int(param['nseg_per_node'])
+    mirror = ('mirror' in param) and True or False
+    qd_resides = int(param['qd_resides'])
+    qe_resides_opt = int(param['qe_resides_opt'])
+    max_node = int(param['max_node'])
+
+    nodes = range(0, max_node)
+    if qe_resides_opt == 1:
+        nodes.remove(qd_resides)
+
+
+    cfg = StringIO.StringIO()
+    cfg.write('gpdb.name=%s\n' % array_name.strip())
+    cfg.write('gpdb.seg.master_port=%d\n' % qd_port)
+    cfg.write('gpdb.seg.base_port=%d\n' % qe_base_port)
+    cfg.write('gpdb.seg.mirror_base_port=%d\n' % qe_mirror_base_port)
+
+    cfg.write('gpdb.seg.m.0=node.%d:%s/seg.m.0\n' % (qd_resides, base_dir))
+
+    i = 0
+    for id in nodes:
+    	for j in range (0, nseg_per_node):
+    	    cfg.write('gpdb.seg.%d.0=node.%d:%s/seg.%d.0\n' % (i, id, base_dir, i))
+	    if mirror:
+	        mirror_id = get_mirror_id(nodes, id)
+	        cfg.write('gpdb.seg.%d.1=node.%d:%s/seg.%d.1\n' % (i, mirror_id, base_dir, i))
+  	    i += 1
+
+    data = cfg.getvalue()
+    cfg.close()
+    return data
+
+
+def get_config_from_file_upload():
+    if 'fileToUpload' in param:
+        return param['fileToUpload']
+    return None
+
+
+def get_config_from_textarea():
+    if 'text_config' in param:
+        return param['text_config']
+    return None
 
 %>
 
 <%
 web.header('Content-Type', 'text/html;charset=utf-8')
 
-array_name = param['array_name']
-base_dir = param['base_directory']
-qd_port = int(param['qd_port'])
-qe_base_port = int(param['qe_base_port'])
-qe_mirror_base_port = int(param['qe_mirror_base_port'])
-nseg_per_node = int(param['nseg_per_node'])
-mirror = ('mirror' in param) and True or False
-qd_resides = int(param['qd_resides'])
-qe_resides_opt = int(param['qe_resides_opt'])
-max_node = int(param['max_node'])
+data = None
+if 'multi_input_submit' in param:
+   data = get_config_from_multi_input()
+elif 'fileToUpload' in param:
+   data = get_config_from_file_upload()
+elif 'text_config' in param:
+   data = get_config_from_textarea()
 
-nodes = range(0, max_node)
-if qe_resides_opt == 1:
-   nodes.remove(qd_resides)
-
-
-cfg = StringIO.StringIO()
-cfg.write('gpdb.name=%s\n' % array_name.strip())
-cfg.write('gpdb.seg.master_port=%d\n' % qd_port)
-cfg.write('gpdb.seg.base_port=%d\n' % qe_base_port)
-cfg.write('gpdb.seg.mirror_base_port=%d\n' % qe_mirror_base_port)
-
-cfg.write('gpdb.seg.m.0=node.%d:%s/seg.m.0\n' % (qd_resides, base_dir))
-
-i = 0
-for id in nodes:
-    for j in range (0, nseg_per_node):
-    	cfg.write('gpdb.seg.%d.0=node.%d:%s/seg.%d.0\n' % (i, id, base_dir, i))
-	if mirror:
-	   mirror_id = get_mirror_id(nodes, id)
-	   cfg.write('gpdb.seg.%d.1=node.%d:%s/seg.%d.1\n' % (i, mirror_id, base_dir, i))
-  	i += 1
-
+if data is None or data == '':
+    web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "empty config" }}}')
+    return
 
 redirect=0
 deadma = []
 while redirect < 5:
-    response = gpcc.hitMAbyPost(sctx['ma'], '/gpcc/init', {}, cfg.getvalue())
+    response = gpcc.hitMAbyPost(sctx['ma'], '/gpcc/init', {}, data)
     if response is None:
 	deadma.append(sctx['ma'])
         ma = gpcc.getMA(sctx['ma_list'], deadma)
@@ -75,9 +103,6 @@ while redirect < 5:
 	sctx['ma'] = json.get('location')
         sys.stderr.write('redirect to %s' % location);
 	redirect += 1     
-
-
-cfg.close()
 
 
 %>
