@@ -19,7 +19,7 @@ DESCRIPTION
 The gpcheckperf utility starts a session on the specified hosts 
 and runs the following performance tests:
 
-* Disk I/O Test (dd test) — To test the sequential throughput 
+* Disk I/O Test (dd test) - To test the sequential throughput 
   performance of a logical disk or file system, the utility uses 
   the dd command, which is a standard UNIX utility. It times how 
   long it takes to write and read a large file to and from disk 
@@ -29,7 +29,7 @@ and runs the following performance tests:
   that the test is truly testing disk I/O and not using the 
   memory cache.
 
-* Memory Bandwidth Test (stream) — To test memory bandwidth, the 
+* Memory Bandwidth Test (stream) - To test memory bandwidth, the 
   utility uses the STREAM benchmark program to measure sustainable 
   memory bandwidth (in MB/s). This tests that your system is not 
   limited in performance by the memory bandwidth of the system in 
@@ -40,7 +40,7 @@ and runs the following performance tests:
   then it can cause the CPU to spend significant amounts of time 
   waiting for data to arrive from system memory.
 
-* Network Performance Test (netperf) — To test network performance 
+* Network Performance Test (netperf) - To test network performance 
   (and thereby the performance of the Greenplum Database Interconnect), 
   the utility runs the netperf benchmark program. gpcheckperf runs 
   the netperf TCP_STREAM test, which transfers a 15 second stream 

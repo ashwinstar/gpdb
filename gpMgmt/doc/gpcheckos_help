@@ -7,7 +7,7 @@ make sure the configuration is compatible with Greenplum Database.
 SYNOPSIS
 *****************************************************
 
-gpcheckos { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
+gpcheckos { [-m] -f <host_file> | - h <hostname> [-h <hostname> ...] } 
 [-u <os_user>] [-p <ssh_port>] [-c <config_file>] [-v]
 
 gpcheckos -? | --version
@@ -20,23 +20,27 @@ The gpcheckos utility checks the operating system environment of
 the specified hosts to make sure it complies with the requirements 
 for running Greenplum Database. It performs the following checks:
 
-* Software Binaries — Makes sure that each host has the same 
+* Software Binaries - Makes sure that each host has the same 
   Greenplum Database server binaries installed by comparing 
   the checksum.
-* Software Version — Makes sure that the Greenplum Database 
+* Software Version - Makes sure that the Greenplum Database 
   software version installed on each host is the same.
-* Python Version — Makes sure that Python 2.3.5 is installed on 
-  each host. This exact version of Python is bundled with your 
-  Greenplum Database installation for use with the management 
-  utilities.
-* System Clocks — Makes sure the system clocks are synchronized 
+* Python Version (master only) - Makes sure that Python 2.3.5 
+  is installed on each host. This exact version of Python is 
+  bundled with your Greenplum Database installation for use with 
+  the management utilities. This test is only run if you specify 
+  the -m option.
+* Greenplum Path (master only) - Makes sure that $GPHOME is set 
+  on the specified hosts. This test is only run if you specify the 
+  -m option.
+* System Clocks - Makes sure the system clocks are synchronized 
   on all hosts 
-* OS Platform — Makes sure that all hosts have a supported OS 
+* OS Platform - Makes sure that all hosts have a supported OS 
   platform installed and that all hosts have the same OS 
   platform version installed.
-* OS Settings — Makes sure that the recommended Greenplum Database 
+* OS Settings - Makes sure that the recommended Greenplum Database 
   system settings are correct in /etc/sysctl.conf
-* OS User Limits — Makes sure that the recommended Greenplum 
+* OS User Limits - Makes sure that the recommended Greenplum 
   Database user limits are set correctly for the current user.
 
 *****************************************************
@@ -57,6 +61,12 @@ OPTIONS
    times to specify multiple host names. The syntax of the 
    host name is:
    [<username>@]<hostname>[:<ssh_port>]
+
+-m (check master environment)
+   If provided, gpcheckos will also check the specified hosts 
+   to make sure the $GPHOME environment variable is set and that 
+   the correct version of Python is installed. These checks are only 
+   relevant for the master host (or standby master).
 
 -u <os_user>
    Specifies the OS user to use when logging in to a remote 
