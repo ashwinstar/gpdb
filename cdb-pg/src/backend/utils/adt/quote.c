@@ -60,39 +60,22 @@ quote_literal(PG_FUNCTION_ARGS)
 {
 	text	   *t = PG_GETARG_TEXT_P(0);
 	text	   *result;
-	char	   *cp1;
-	char	   *cp2;
+	const char *qstr;
+	char	   *str;
 	int			len;
 
+	/* We have to convert to a C string to use quote_literal_internal */
 	len = VARSIZE(t) - VARHDRSZ;
-	/* We make a worst-case result area; wasting a little space is OK */
-	result = (text *) palloc(len * 2 + 3 + VARHDRSZ);
+	str = (char *) palloc(len + 1);
+	memcpy(str, VARDATA(t), len);
+	str[len] = '\0';
 
-	cp1 = VARDATA(t);
-	cp2 = VARDATA(result);
+	qstr = quote_literal_internal(str);
 
-	for (; len-- > 0; cp1++)
-	{
-		if (*cp1 == '\\')
-		{
-			*cp2++ = ESCAPE_STRING_SYNTAX;
-			break;
-		}
-	}
-
-	len = VARSIZE(t) - VARHDRSZ;
-	cp1 = VARDATA(t);
-
-	*cp2++ = '\'';
-	while (len-- > 0)
-	{
-		if (SQL_STR_DOUBLE(*cp1, true))
-			*cp2++ = *cp1;
-		*cp2++ = *cp1++;
-	}
-	*cp2++ = '\'';
-
-	SET_VARSIZE(result, cp2 - ((char *) result));
+	len = strlen(qstr);
+	result = (text *) palloc(len + VARHDRSZ);
+	SET_VARSIZE(result, len + VARHDRSZ);
+	memcpy(VARDATA(result), qstr, len);
 
 	PG_RETURN_TEXT_P(result);
 }

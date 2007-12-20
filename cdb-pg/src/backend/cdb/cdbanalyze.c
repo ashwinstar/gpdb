@@ -197,13 +197,13 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 {
 	StringInfoData buffer;
 	Cdbanalyze_Ctx ctx;
-	char	   *relname;
+	const char	*relname;
 	Oid			namespace;
 
 	*pages = 0;
 	*tuples = 0;
 
-	relname = RelationGetRelationName(rel);
+	relname = quote_literal_internal(RelationGetRelationName(rel));
 	namespace = RelationGetNamespace(rel);
 
 	/*
@@ -212,7 +212,7 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 	initStringInfo(&buffer);
 	appendStringInfo(&buffer, "select max(reltuples), max(relpages)");
 	appendStringInfo(&buffer, " from pg_class join pg_namespace on relnamespace=pg_namespace.oid");
-	appendStringInfo(&buffer, " where relname='%s' and nspname='%s'", relname, get_namespace_name(namespace));
+	appendStringInfo(&buffer, " where relname=%s and nspname='%s'", relname, get_namespace_name(namespace));
 
 	/*
 	 * Next, use SPI to execute it.
@@ -553,7 +553,7 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 {
 	StringInfoData buffer;
 	Cdbanalyze_columns_Ctx ctx;
-	char	   *relname;
+	const char	*relname;
 	Oid			namespace;
 	
 	Assert(stats != NULL);
@@ -563,7 +563,7 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 	
 	ctx.stats = stats;
 
-	relname = RelationGetRelationName(rel);
+	relname = quote_literal_internal(RelationGetRelationName(rel));
 	namespace = RelationGetNamespace(rel);
 
 	/*
@@ -578,7 +578,7 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 
 	appendStringInfo(&buffer, " from pg_statistic JOIN pg_class ON pg_class.oid=pg_statistic.starelid ");
 	appendStringInfo(&buffer, " JOIN pg_namespace ON relnamespace=pg_namespace.oid ");
-	appendStringInfo(&buffer, " where relname='%s' and nspname='%s' and staattnum=%hd", relname, get_namespace_name(namespace), (stats->attr->attnum));
+	appendStringInfo(&buffer, " where relname=%s and nspname='%s' and staattnum=%hd", relname, get_namespace_name(namespace), (stats->attr->attnum));
 
 	
 
