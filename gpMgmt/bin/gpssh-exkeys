@@ -345,5 +345,7 @@ try:
 
     print; print '[INFO] completed successfully'
 
+    sys.exit(0)
+
 except KeyboardInterrupt:
     sys.exit('\n\nInterrupted...')
