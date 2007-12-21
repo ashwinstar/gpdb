@@ -72,7 +72,6 @@ def get_config_from_multi_input():
     cfg.close()
 
     sys.stderr.write(data);
-    return None
     return data
 
 
