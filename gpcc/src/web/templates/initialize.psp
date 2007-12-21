@@ -122,6 +122,7 @@ $(function() {
   	var err = []
         var myform = $("#initdb_input_form").getForm();
 	var n = 0;
+	var qd, standby_qd;
 
 	for (i = 0 ; i < myform.vars.length ; i++) {
 	    a = myform.vars[i];
@@ -145,8 +146,19 @@ $(function() {
 	       }
 	       n++;
 	    }
+	    if (a.name == 'qd_resides') {
+		qd = a.value;
+ 	    }
+	    if (a.name == 'standby_qd_resides') {
+		standby_qd = a.value;
+	    }
 	}
 	
+	if (qd == standby_qd) {
+	   err.push('qd_resides');
+	   err.push('standby_qd_resides');
+        }
+
 	if (err.length == 0) {
   	    //$(this).unbind('click', ajaxConfig);
 	    $("#initdb_input_form td[@name]").css('color', 'black');
