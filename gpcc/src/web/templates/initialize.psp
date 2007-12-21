@@ -250,6 +250,7 @@ $(function() {
 	$("#initdb_input_form td[@name='node." + (g_nnode-1) + "']")
   	.parent("tr")
   	.after("<tr><td name=\"node."+g_nnode+"\">Node."+ g_nnode +" (hostN IP1 IP2 IP3 IP4):</td><td><input name=\"node\" type=\"text\"></td></tr>");
+	$("#initdb_input_form select[@name='qd_resides']").append("<option value='" + g_nnode + "'>node." + g_nnode + "</option>");
 	g_nnode++;
 	return false;
   }
