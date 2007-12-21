@@ -11,6 +11,7 @@ except ImportError, e:
 %>
 
 <%
+    NNODE=4
     web.header('Content-Type', 'text/html;charset=utf-8')
 %>
 
@@ -243,7 +244,17 @@ $(function() {
 
   $("#textarea_submit").click(ajaxText);
 
+  var g_nnode = ${NNODE};
 
+  function addNode() {
+	$("#initdb_input_form td[@name='node." + (g_nnode-1) + "']")
+  	.parent("tr")
+  	.after("<tr><td name=\"node."+g_nnode+"\">Node."+ g_nnode +" (hostN IP1 IP2 IP3 IP4):</td><td><input name=\"node\" type=\"text\"></td></tr>");
+	g_nnode++;
+	return false;
+  }
+
+  $("#add_node").click(addNode);
 
 })
 
@@ -315,6 +326,16 @@ $(function() {
 	         <thead> <tr> <th>Fill in the configuration</th></tr>
 		 </thead>
 		 <tbody>
+		 <tr>
+		     <td><a href="#" id="add_node">Add node</a></td>
+		 </tr>
+% for i in range(NNODE):
+                  <tr>
+		      <td name="node.${i}">Node.${i} (host${i} IP1 IP2 IP3 IP4):</td>
+		      <td><input name="node" type="text"></td>
+                  </tr>
+% endfor
+
 		   <tr>
 		      <td name="array_name">Array name:</td>
 		      <td><input name="array_name" type="text"></td>
@@ -336,17 +357,10 @@ $(function() {
 		      <td><input name="qe_mirror_base_port" type="text"></td>
 		   </tr>
 
-% for i in range(4):
-                  <tr>
-		      <td name="node.${i}">Node.${i} (host${i} IP1 IP2 IP3 IP4):</td>
-		      <td><input name="node" type="text"></td>
-                  </tr>
-% endfor
-
 		   <tr>
 		      <td>Query dispatcher resides on:</td>
 		      <td><select name="qd_resides">
-% for i in range(4):
+% for i in range(NNODE):
 		             <option value="${i}">node.${i}</option>
 % endfor
 			  </select>
