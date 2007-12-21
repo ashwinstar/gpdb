@@ -251,6 +251,7 @@ $(function() {
   	.parent("tr")
   	.after("<tr><td name=\"node."+g_nnode+"\">Node."+ g_nnode +" (hostN IP1 IP2 IP3 IP4):</td><td><input name=\"node\" type=\"text\"></td></tr>");
 	$("#initdb_input_form select[@name='qd_resides']").append("<option value='" + g_nnode + "'>node." + g_nnode + "</option>");
+	$("#initdb_input_form select[@name='standby_qd_resides']").append("<option value='" + g_nnode + "'>node." + g_nnode + "</option>");
 	g_nnode++;
 	return false;
   }
@@ -367,6 +368,15 @@ $(function() {
 			  </select>
 		      </td>
 		  </tr>
+		  <tr>
+		      <td>Standby QD resides on:</td>
+		      <td><select name="standby_qd_resides">
+		      	     <option value="-1" selected>No standby QD</option>
+% for i in range(NNODE):
+		             <option value="${i}">node.${i}</option>
+% endfor		  </select>
+                      </td>
+		  </tr>			    
 		  <tr>
 		      <td>Query executor resides on:</td>
 		      <td><select name="qe_resides_opt">
