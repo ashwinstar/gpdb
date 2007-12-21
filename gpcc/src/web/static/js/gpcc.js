@@ -101,3 +101,8 @@ function isPort(val) {
 	 if (intval <= 0 || intval > (1 << 16)) return false;
 	 return true;
 }
+
+function isValidNode(val) {
+  if (isBlank(val)) return false;
+  return true;
+}
