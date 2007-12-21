@@ -1232,6 +1232,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_dqa_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Experimental feature: 2-phase aggregation with single distinct-qualified aggregate."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_enable_dqa_pruning,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_enable_explain_allstat", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Experimental feature: dump stats for all segments in EXPLAIN ANALYZE."),
 			NULL,

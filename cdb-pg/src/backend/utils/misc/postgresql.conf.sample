@@ -195,6 +195,8 @@
 
 #enable_agg_restructure = on
 #gp_enable_preunique = on
+#gp_enable_agg_distinct = off
+#gp_enable_dqa_pruning = off
 #enable_groupagg = on
 #enable_hashagg = on
 

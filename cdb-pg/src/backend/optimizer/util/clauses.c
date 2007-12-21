@@ -417,16 +417,21 @@ count_agg_clauses_walker(Node *node, AggClauseCounts *counts)
 		counts->numAggs++;
 		if (aggref->aggdistinct)
 		{
-			ListCell *a;
+			Node *arg;
 			
 			counts->numDistinctAggs++;
 			
-			foreach ( a, aggref->args )
-			{
-				Node *arg = (Node*)lfirst(a);
-				if ( !list_member(counts->dqaArgs, arg) )
-					counts->dqaArgs = lappend(counts->dqaArgs, arg);
-			}
+			/* This check anticipates the one in ExecInitAgg().  Eventually
+			 * the restriction should be relaxed in both places. FIXME.
+			 */
+			if ( list_length(aggref->args) != 1 )
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("DISTINCT is supported only for single-argument aggregates")));
+				
+			arg = (Node*)linitial(aggref->args);
+			if ( !list_member(counts->dqaArgs, arg) )
+				counts->dqaArgs = lappend(counts->dqaArgs, arg);
 		}
 
 		/* extract argument types */

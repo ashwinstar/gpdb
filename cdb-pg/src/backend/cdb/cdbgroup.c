@@ -94,6 +94,10 @@ typedef enum MppGroupPrep
  *    Ungrouped, 2-stage aggregation.
  * MPP_GRP_TYPE_GROUPED_2STAGE,
  *    Grouped, 2-stage aggregation.
+ * MPP_GRP_TYPE_PLAIN_DQA_2STAGE,
+ *    Ungrouped, 2-stage aggregation.
+ * MPP_GRP_TYPE_GROUPED_DQA_2STAGE,
+ *    Grouped, 2-stage aggregation.
  *
  * TODO: Add types for min-max optimization, when ready:
  *
@@ -108,6 +112,8 @@ typedef enum MppGroupType
 	MPP_GRP_TYPE_BASEPLAN,
 	MPP_GRP_TYPE_PLAIN_2STAGE,
 	MPP_GRP_TYPE_GROUPED_2STAGE,
+	MPP_GRP_TYPE_PLAIN_DQA_2STAGE,
+	MPP_GRP_TYPE_GROUPED_DQA_2STAGE,
 } MppGroupType;
 
 typedef struct MppGroupContext
@@ -147,22 +153,28 @@ typedef struct two_stage_agg_context
 	Node *havingQual;
 	int numGroupCols;
 	AttrNumber *groupColIdx;
+	int numDistinctCols;
+	AttrNumber *distinctColIdx;
 	
 	/* Work */
 	Index final_varno;
-	List *refs_tlist; /* Aggref attributes for  prelim_tlist */
+	List *refs_tlist; /* Aggref attributes for prelim_tlist */
+	List *dqa_tlist; /* DQA argument attributes for prelim_tlist */
 	List *grps_tlist; /* Grouping attributes for prelim_tlist */
 } two_stage_agg_context;
 
 
 static Plan * make_one_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx);
 static Plan * make_two_stage_agg_plan(PlannerInfo *root, MppGroupContext *ctx);
+static Plan * make_two_stage_agg_plan_with_dqas(PlannerInfo *root, MppGroupContext *ctx);
 static List *make_subplan_tlist(List *tlist, Node *havingQual,
 						List *grp_clauses, int *pnum, AttrNumber **pcols);
+static List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pcols);
 static Expr *deconstruct_expr(Expr *expr, two_stage_agg_context *ctx);
 static Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx);
 static Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx);
 static Oid lookup_agg_transtype(Aggref *aggref);
+static bool hash_safe_type(Oid type);
 
 /*
  * Function: cdb_grouping_planner
@@ -218,6 +230,13 @@ cdb_grouping_planner(PlannerInfo* root,
 
 	*querynode_changed = false;
 
+	/* We always use sequential plans for distinct-qualified rollup queries,
+	 * so don't waste time working on alternatives.
+	 */
+	if (is_grouping_extension(canonical_grpsets) &&
+		agg_counts->numDistinctAggs > 0)
+		return NULL;
+
 	/*
 	 * First choose a one-stage plan.  Since there's always a way to do this,
 	 * it serves as our default choice.
@@ -244,12 +263,6 @@ cdb_grouping_planner(PlannerInfo* root,
 			group_prep = MPP_GRP_PREP_HASH_GROUPS;
 			CdbPathLocus_MakeHashed(&output_locus, root->group_pathkeys);
 		}
-
-		/* Note that we could explore other approaches to using the base
-		 * plan on a grouped query.  For example, cull a replicated input
-		 * locus to obtain a group-wise hashed one, but it isn't clear that
-		 * this is worthwhile.
-		 */
 	}
 	else if ( has_aggs ) /* and not grouped and not single or replicated  */
 	{
@@ -302,7 +315,7 @@ cdb_grouping_planner(PlannerInfo* root,
 	 * Now look into doing a two-stage plan. Sometimes this isn't possible.
 	 */
 	if (has_aggs &&
-			agg_counts->numDistinctAggs<=1 && 
+			list_length(agg_counts->dqaArgs)<=1 && 
 			!agg_counts->missing_prelimfunc)
 	{
 		MppGroupPrep group_prep_2s = MPP_GRP_PREP_NONE;
@@ -314,60 +327,80 @@ cdb_grouping_planner(PlannerInfo* root,
 
 		/* We can to do a two-stage plan.  But do we want to?  If not,
 		 * fall out of the if and stick with the one-stage approach. */
-		if ( ! enable_agg_restruct
-				|| !CdbPathLocus_IsPartitioned(input_locus) )
+		if ( ! enable_agg_restruct )
+		{
+			; /* 2-phase disallowed by configuration. */
+					}
+		else if ( ! CdbPathLocus_IsPartitioned(input_locus) )
 		{
 			; /* Already collocated, don't bother.  This code is purely
 			   * defensive since we will have taken an early exit above.
 			   */
 		}
-		else if ( has_groups && agg_counts->numDistinctAggs==1 && !gp_enable_agg_distinct )
+		else if ( ! gp_enable_dqa_pruning || list_length(agg_counts->dqaArgs)==0 )
 		{
-			; /* If we continue, we'll use an initial redistibute motion to
-			   * allow use of 2-phase aggregation with the lone agg distinct.
-			   * Here, that is not enabled, so we bail out and use the
-			   * 1-phase plan.
-			   *
-			   * Since HashAgg can't handle distinct, the 2-phase plan will be
-			   *    (Agg (Sort (Motion (Agg (Sort (Motion R))))))
-			   * which we probably won't like.  However, the 2-phase approach
-			   * may be enabled using the GUC gp_enable_agg_distinct.
-			   */
-		}
-		else /* Pick a 2-stage plan to compare to the 1-stage plan in hand. */
-		{
-			if ( agg_counts->numDistinctAggs ==  1 )
+			if ( has_groups && list_length(agg_counts->dqaArgs)==1 && !gp_enable_agg_distinct )
 			{
-				List *dqaArgList;
-				List *distinct_pathkeys;
-				
-				Insist( IsA(agg_counts->dqaArgs, List) &&
-				        list_length((List*)agg_counts->dqaArgs) == 1 );
-				dqaArgList = list_make1(linitial(agg_counts->dqaArgs));
-				distinct_pathkeys = cdb_make_pathkey_for_expr(root,
-						linitial(dqaArgList),
-						list_make1(makeString("=")));
-				distinct_pathkeys =list_make1(distinct_pathkeys);
+				; /* If we continue, we'll use an initial redistibute motion to
+				   * allow use of 2-phase aggregation with the lone agg distinct.
+				   * Here, that is not enabled, so we bail out and use the
+				   * 1-phase plan.
+				   *
+				   * Since HashAgg can't handle distinct, the 2-phase plan will be
+				   *    (Agg (Sort (Motion (Agg (Sort (Motion R))))))
+				   * which we probably won't like.  However, the 2-phase approach
+				   * may be enabled using the GUC gp_enable_agg_distinct.
+				   */
+			}
+			else /* Pick a 2-stage plan to compare to the 1-stage plan in hand. */
+			{
+				if ( list_length(agg_counts->dqaArgs) ==  1 )
+				{
+					List *dqaArgList;
+					List *distinct_pathkeys;
+					
+					Insist( IsA(agg_counts->dqaArgs, List) &&
+							list_length((List*)agg_counts->dqaArgs) == 1 );
+					dqaArgList = list_make1(linitial(agg_counts->dqaArgs));
+					distinct_pathkeys = cdb_make_pathkey_for_expr(root,
+							linitial(dqaArgList),
+							list_make1(makeString("=")));
+					distinct_pathkeys =list_make1(distinct_pathkeys);
 
-				if ( cdbpathlocus_collocates(input_locus, distinct_pathkeys))
-					group_prep_2s = MPP_GRP_PREP_NONE;
+					if ( cdbpathlocus_collocates(input_locus, distinct_pathkeys))
+						group_prep_2s = MPP_GRP_PREP_NONE;
+					else
+					{
+						group_prep_2s = MPP_GRP_PREP_HASH_DISTINCT;
+						CdbPathLocus_MakeHashed(&input_locus_2s, distinct_pathkeys);
+					}
+				}
+
+				if ( has_groups )
+				{
+					group_type_2s = MPP_GRP_TYPE_GROUPED_2STAGE;
+					CdbPathLocus_MakeHashed(&output_locus_2s, root->group_pathkeys);
+				}
 				else
 				{
-					group_prep_2s = MPP_GRP_PREP_HASH_DISTINCT;
-					CdbPathLocus_MakeHashed(&input_locus_2s, distinct_pathkeys);
+					group_type_2s = MPP_GRP_TYPE_PLAIN_2STAGE;
+					CdbPathLocus_MakeSingleQE(&output_locus_2s);
 				}
 			}
-
+		}
+		else
+		{
+			group_prep_2s = MPP_GRP_PREP_NONE;
 			if ( has_groups )
 			{
-				group_type_2s = MPP_GRP_TYPE_GROUPED_2STAGE;
+				group_type_2s = MPP_GRP_TYPE_GROUPED_DQA_2STAGE;
 				CdbPathLocus_MakeHashed(&output_locus_2s, root->group_pathkeys);
 			}
 			else
 			{
-				group_type_2s = MPP_GRP_TYPE_PLAIN_2STAGE;
+				group_type_2s = MPP_GRP_TYPE_PLAIN_DQA_2STAGE;
 				CdbPathLocus_MakeSingleQE(&output_locus_2s);
-			}
+			}			
 		}
 
 		/* If we found a two-stage approach, compare it to the one-stage
@@ -396,6 +429,8 @@ cdb_grouping_planner(PlannerInfo* root,
 		{
 			case MPP_GRP_TYPE_GROUPED_2STAGE:		
 			case MPP_GRP_TYPE_PLAIN_2STAGE:
+			case MPP_GRP_TYPE_GROUPED_DQA_2STAGE:		
+			case MPP_GRP_TYPE_PLAIN_DQA_2STAGE:
 				/* TODO: Use cost to decide whether to implement 2 stage.*/
 				group_prep = group_prep_2s;
 				group_type = group_type_2s;
@@ -434,14 +469,6 @@ cdb_grouping_planner(PlannerInfo* root,
 	ctx.current_pathkeys = NIL; /* Initialize to be tidy. */
 	ctx.querynode_changed = false;
 
-	/*
-	 * XXX We always use sequential plans for distinct-qualified
-	 * rollup queries.
-	 */
-	if (is_grouping_extension(ctx.canonical_grpsets) &&
-		agg_counts->numDistinctAggs > 0)
-		return NULL;
-
 	/* Call appropriate planner. */
 	if (group_type == MPP_GRP_TYPE_BASEPLAN)
 	{
@@ -453,6 +480,9 @@ cdb_grouping_planner(PlannerInfo* root,
 	else if (group_type == MPP_GRP_TYPE_PLAIN_2STAGE || 
 			 group_type == MPP_GRP_TYPE_GROUPED_2STAGE)
 		result_plan = make_two_stage_agg_plan(root, &ctx);
+	else if (group_type == MPP_GRP_TYPE_PLAIN_DQA_2STAGE || 
+			 group_type == MPP_GRP_TYPE_GROUPED_DQA_2STAGE)
+		result_plan = make_two_stage_agg_plan_with_dqas(root, &ctx);
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
@@ -842,7 +872,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 		break;
 			
 	case MPP_GRP_PREP_HASH_DISTINCT:
-		Assert( ctx->agg_counts->numDistinctAggs == 1 );
+		Assert(list_length( ctx->agg_counts->dqaArgs) == 1 );
 		Assert( ctx->agg_counts->dqaArgs != NIL);
 		distinctExpr = list_make1(linitial(ctx->agg_counts->dqaArgs));
 		distinctExpr = copyObject(distinctExpr);
@@ -872,6 +902,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 					parse->havingQual,
 					numGroupCols,
 					groupColIdx,
+					0,
+					NULL,
 					&prelim_tlist,
 					&final_tlist,
 					&final_qual);
@@ -1018,6 +1050,8 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	
 	case MPP_GRP_TYPE_NONE:
 	case MPP_GRP_TYPE_BASEPLAN:
+	case MPP_GRP_TYPE_GROUPED_DQA_2STAGE:
+	case MPP_GRP_TYPE_PLAIN_DQA_2STAGE:
 		ereport(ERROR,
 			(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 			errmsg("unexpected use of 2-stage aggregation")));	
@@ -1063,6 +1097,274 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	/* Marshal implicit results. Return explicit result. */
 	ctx->current_pathkeys = current_pathkeys;
 	ctx->querynode_changed = true;
+	return result_plan;
+}
+
+
+/*
+ * Function make_two_stage_agg_plan_with_dqas
+ *
+ * Construct a two-stage aggregation plan involving DQAs (DISTINCT-qualified
+ * aggregate functions.
+ */
+static Plan *
+make_two_stage_agg_plan_with_dqas(PlannerInfo *root, MppGroupContext *ctx)
+{
+	Query	   *parse = root->parse;
+	List	   *tlist = ctx->tlist;
+	List	   *sub_tlist = ctx->sub_tlist;
+	List	   *prelim_tlist = NIL;
+	List	   *final_tlist = NIL;
+	List	   *final_qual = NIL;
+	List	   *distinctExpr = NIL;
+	List	   *groupExprs = NIL;
+	List	   *current_pathkeys;
+	Plan       *result_plan;
+	QualCost	tlist_cost;
+	double      motion_cost_per_row;
+	AggStrategy aggstrategy;
+	int			i,n;
+	int			numGroupCols = ctx->numGroupCols;
+	AttrNumber *groupColIdx = ctx->groupColIdx;
+	int			numDistinctCols = 0;
+	AttrNumber *distinctColIdx = NULL;
+	AttrNumber *prelimGroupColIdx;
+	AttrNumber *inputGroupColIdx;
+	Path       *path = ctx->best_path; /* no use for ctx->cheapest_path */
+	bool        can_use_hashed_grouping = ctx->agg_counts->canHashAgg;
+	bool		can_hash_distinct;
+	long		numGroups = (*(ctx->p_dNumGroups) < 0) ? 0 :
+	                        (*(ctx->p_dNumGroups) > LONG_MAX) ? LONG_MAX :
+							(long)*(ctx->p_dNumGroups);
+	
+	motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
+				gp_motion_cost_per_row :
+				2.0 * cpu_tuple_cost;
+
+	/* We assume that we are called only when
+	 * - there are no grouping extensions (like ROLLUP),
+	 * - the input is partitioned and needs no preparatory Motion,
+	 * - the required transformation involves DQAs.
+	 */
+	Assert ( !is_grouping_extension(ctx->canonical_grpsets) );
+	Assert ( ctx->prep == MPP_GRP_PREP_NONE );
+	Assert ( ctx->type == MPP_GRP_TYPE_GROUPED_DQA_2STAGE
+			|| ctx->type == MPP_GRP_TYPE_PLAIN_DQA_2STAGE );
+	
+	/* XXX We also, for the nonce, require that there be exactly one 
+	 *     DQA argument!  This could occur multiple times as in
+	 *     COUNT(DISTINCT x), SUM(DISTINCT x).  We hope to relax 
+	 *     this shortly and to support several by modularizing
+	 *     what follows and planning one DQA at a time with a
+	 *     join at the end. TODO
+	 *
+	 *     Finally, like PG, we assume that a DQA may take only a
+	 *     single argument -- no REGR_SXY(DISTINCT X,Y).  This is
+	 *     why ctx->agg_counts->dqaArgs is a list of expressions
+	 *     instead of a list of argument lists.  This won't change
+	 *     unless PG and a bunch of other stuff does.  FIXME
+	 */
+	Assert ( list_length(ctx->agg_counts->dqaArgs) == 1 );
+	distinctExpr = linitial(ctx->agg_counts->dqaArgs);
+	can_hash_distinct = hash_safe_type(exprType((Node*)distinctExpr));
+
+	/* Create the base plan which will serve as the outer plan (argument)
+	 * of the partial Agg node.
+	 */
+	result_plan = create_plan(root, path);
+	current_pathkeys = path->pathkeys;
+
+	/* Make sure the DQA argument is included in the targetlist for the 
+	 * first phase of aggregation. 
+	 */
+	sub_tlist = augment_subplan_tlist(sub_tlist, list_make1(distinctExpr), 
+									  &numDistinctCols, 
+									  &distinctColIdx);
+	
+	result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
+	
+	/* Account for the cost of evaluation of the sub_tlist. */
+	cost_qual_eval(&tlist_cost, sub_tlist);
+	result_plan->startup_cost += tlist_cost.startup;
+	result_plan->total_cost +=
+		tlist_cost.startup +
+		tlist_cost.per_tuple * result_plan->plan_rows;	
+
+	/*
+	 * Get the target lists for the preliminary and final aggregations and
+	 * the qual (HAVING clause) for the final aggregation based on the target
+	 * list of the base plan. Grouping attributes go on front of preliminary
+	 * target list.
+	 */
+	generate_two_stage_tlists(tlist,
+					sub_tlist,
+					parse->havingQual,
+					numGroupCols,
+					groupColIdx,
+					numDistinctCols,
+					distinctColIdx,
+					&prelim_tlist,
+					&final_tlist,
+					&final_qual);
+	
+	/*
+	 * The grouping attributes are on the front and in order on the
+	 * preliminary targetlist so we need a new vector of grouping
+	 * attribute numbers: (1, 2, 3, ...) for use with that targetlist.
+	 * Also, the original grouping attributes (maybe zero of them)
+	 * must be extended to include the distinct attributes (at least
+	 * one of them).
+	 */
+	prelimGroupColIdx = inputGroupColIdx = NULL;
+	
+	n = numGroupCols + numDistinctCols;
+	Assert( n > 0 );
+	
+	prelimGroupColIdx = (AttrNumber*)palloc(n * sizeof(AttrNumber));
+	inputGroupColIdx = (AttrNumber*)palloc(n * sizeof(AttrNumber));
+	
+	for ( i = 0; i < n; i++ )
+		prelimGroupColIdx[i] = i+1;
+	for ( i = 0; i < numGroupCols; i++ )
+		inputGroupColIdx[i] = groupColIdx[i];
+	for ( i = 0; i < numDistinctCols; i++ )
+		inputGroupColIdx[numGroupCols+i] = distinctColIdx[i];
+	
+	/* Determine the aggregation strategy to use. */
+	
+	if ( can_hash_distinct 
+		 && (ctx->type == MPP_GRP_TYPE_PLAIN_DQA_2STAGE 
+			 || can_use_hashed_grouping) )
+	{
+		aggstrategy = AGG_HASHED;
+		current_pathkeys = NIL;
+	}
+	else
+	{
+		/* Here we need to sort! The input pathkeys won't contain the
+		 * DQA argument, so just do it.
+		 *
+		 * XXX The code below is suggestive, but wrong!
+		 */	
+		elog(ERROR,"No DQA pruning with sort grouping implemented yet.");
+		result_plan = (Plan *)
+			make_sort_from_groupcols(root,
+									 parse->groupClause,
+									 groupColIdx,
+									 false,
+									 result_plan);
+		current_pathkeys = root->group_pathkeys;
+		mark_sort_locus(result_plan);
+		aggstrategy = AGG_SORTED;
+		/* The AGG node will not change the sort ordering of its
+		 * groups, so current_pathkeys describes the result too.
+		 */
+	}
+	
+	result_plan = (Plan *) make_agg(root,
+								prelim_tlist,
+								NIL, /* no havingQual */
+								aggstrategy, gp_hashagg_streambottom,
+								numGroupCols + numDistinctCols,
+								inputGroupColIdx,
+								numGroups, /* too low, but how do we correct? */
+								0, /* num_nullcols */
+								0, /* input_grouping */
+								0, /* grouping */
+								0, /* rollup_gs_times */
+								ctx->agg_counts->numAggs - ctx->agg_counts->numDistinctAggs + 1,
+								ctx->agg_counts->transitionSpace, /* worst case */
+								result_plan);
+	/* May lose useful locus and sort. Unlikely, but could do better. */
+	mark_plan_strewn(result_plan);
+	current_pathkeys = NIL;
+	
+	/*
+	 * Add Intermediate Motion to Gather or Hash on Groups
+	 */
+
+	switch ( ctx->type )
+	{
+	case MPP_GRP_TYPE_GROUPED_DQA_2STAGE:
+		groupExprs = NIL;
+		Assert(numGroupCols > 0);
+		for ( i = 0; i < numGroupCols; i++)
+		{
+			TargetEntry *tle;
+
+			tle = get_tle_by_resno(prelim_tlist, prelimGroupColIdx[i]);
+			groupExprs = lappend(groupExprs, copyObject(tle->expr));
+		}
+		result_plan = (Plan*)make_motion_hash(root, result_plan, groupExprs);
+		result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
+		break;
+			
+	case MPP_GRP_TYPE_PLAIN_DQA_2STAGE:
+		result_plan = (Plan*)make_motion_gather_to_QE(result_plan, false);
+		result_plan->total_cost += motion_cost_per_row * result_plan->plan_rows;
+		break;
+	
+	case MPP_GRP_TYPE_NONE:
+	case MPP_GRP_TYPE_BASEPLAN:
+	case MPP_GRP_TYPE_GROUPED_2STAGE:
+	case MPP_GRP_TYPE_PLAIN_2STAGE:
+		ereport(ERROR,
+			(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			errmsg("unexpected use of DQA pruned 2-phase aggregation")));	
+		break; /* Never */
+	}
+	
+	/* Revisit strategy decision for final stage.  Could be different.
+	 */
+	if ( ctx->type == MPP_GRP_TYPE_PLAIN_DQA_2STAGE )
+	{
+		aggstrategy = AGG_PLAIN;
+	}
+	else
+	{
+		aggstrategy = AGG_SORTED;
+	}
+	current_pathkeys = NIL;
+
+	/*
+	 * Add Sort on Groups if needed for AGG_SORTED strategy
+	 */
+	if (aggstrategy == AGG_SORTED)
+	{
+		result_plan = (Plan *)
+			make_sort_from_groupcols(root,
+									 parse->groupClause,
+									 prelimGroupColIdx,
+									 false,
+									 result_plan);
+		current_pathkeys = root->group_pathkeys;
+		mark_sort_locus(result_plan);
+	}
+
+
+	result_plan = add_second_stage_agg(root,
+									   true,
+									   prelim_tlist,
+									   final_tlist,
+									   final_qual,
+									   aggstrategy,
+									   numGroupCols,
+									   prelimGroupColIdx,
+									   0, /* num_nullcols */
+									   0, /* input_grouping */
+									   0, /* grouping */
+									   0, /* rollup_gs_times */
+									   *ctx->p_dNumGroups,
+									   ctx->agg_counts->numAggs,
+									   ctx->agg_counts->transitionSpace,
+									   "partial_aggregation",
+									   &current_pathkeys,
+									   result_plan);
+	
+	/* Marshal implicit results. Return explicit result. */
+	ctx->current_pathkeys = current_pathkeys;
+	ctx->querynode_changed = true;
+	
 	return result_plan;
 }
 
@@ -1151,6 +1453,87 @@ List *make_subplan_tlist(List *tlist, Node *havingQual, List *grp_clauses,
 		*pcols = NULL;
 	}
 	return sub_tlist; /* Possibly modified by appending expression entries. */
+}
+/* Function augment_subplan_tlist
+ *
+ * Make a target list like the input that includes sortgroupref'd entries
+ * for the expressions in exprs.
+ *
+ * Return a copy of the input targetlist adding (if necessary) targets
+ * corresponding to the expressions in the input exprs list.  Be sure
+ * that targets corresponding to exprs have non-zero sortgroupref values.
+ * Return an array of resno values for exprs in (pnum, *pcols).
+ */
+List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pcols)
+{
+	List	   *sub_tlist;
+
+	int num;
+	AttrNumber *cols;
+
+	sub_tlist = copyObject(tlist); /* Must copy, since we may modify. */
+	
+	num = list_length(exprs); /* Known to be distinct. */
+	if (num > 0)
+	{
+		int			keyno = 0;
+		ListCell   *lx, *lt;
+		TargetEntry *tle, *matched_tle;
+		Index max_sortgroupref = 0;
+		
+		foreach (lt, sub_tlist)
+		{
+			tle = (TargetEntry*)lfirst(lt);
+			if ( tle->ressortgroupref > max_sortgroupref )
+				max_sortgroupref = tle->ressortgroupref;
+		}
+
+		cols = (AttrNumber*) palloc(sizeof(AttrNumber) * num);
+
+		foreach (lx, exprs)
+		{
+			Node *expr = (Node*)lfirst(lx);
+			matched_tle = NULL;
+			
+			foreach (lt, sub_tlist)
+			{
+				tle = (TargetEntry*)lfirst(lt);
+				
+				if ( equal(expr, tle->expr) )
+				{
+					matched_tle = tle;
+					break;
+				}
+			}
+
+			if ( matched_tle == NULL )
+			{
+				matched_tle = makeTargetEntry((Expr*) expr,
+											  list_length(sub_tlist) + 1,
+											  NULL,
+											  false);
+				sub_tlist = lappend(sub_tlist, matched_tle);
+			}
+			
+			if ( matched_tle->ressortgroupref == 0 )
+				matched_tle->ressortgroupref = ++max_sortgroupref;
+	
+			cols[keyno++] = matched_tle->resno;
+		}
+	
+		*pnum = num;
+		*pcols = cols;
+	}
+	else
+	{
+		*pnum = 0;
+		*pcols = NULL;
+	}
+	
+	/* Note that result is a copy, possibly modified by appending expression 
+	 * targetlist entries and/or updating sortgroupref values. 
+	 */
+	return sub_tlist; 
 }
 
 
@@ -1317,6 +1700,8 @@ void generate_three_tlists(List *tlist,
 							  havingQual,
 							  numGroupCols,
 							  groupColIdx,
+							  0,
+							  NULL,
 							  p_tlist1,
 							  p_tlist3,
 							  p_final_qual);
@@ -1405,6 +1790,8 @@ void generate_three_tlists(List *tlist,
  *	havingQual - the original having qual of the query (list of Expr)
  *	numGroupCols - number of grouping attributes
  *	groupColIdx - resnos (= attr numbers) of the grouping attributes
+ *	numDistinctCols - number of DISTINCT-qualified argument attributes
+ *	distinctColIdx - resnos (= attr numbers) of the DQA argument attributes
  *
  * Output is pointers to
  *
@@ -1417,6 +1804,8 @@ void generate_two_stage_tlists(List *tlist,
 						Node *havingQual,
 						int numGroupCols,
 						AttrNumber *groupColIdx,
+						int numDistinctCols,
+						AttrNumber *distinctColIdx,
 						List **p_prelim_tlist,
 						List **p_final_tlist,
 						List **p_final_qual)
@@ -1434,14 +1823,17 @@ void generate_two_stage_tlists(List *tlist,
 	ctx_data.havingQual = havingQual;
 	ctx_data.numGroupCols = numGroupCols;
 	ctx_data.groupColIdx = groupColIdx;
+	ctx_data.numDistinctCols = numDistinctCols;
+	ctx_data.distinctColIdx = distinctColIdx;
 	
 	/* Use consistent varno in final tlist entries.  It will refer to the
 	 * sole RTE (a Subquery RTE) of a SubqueryScan. */
 	ctx_data.final_varno = 1;
 	
-	/* Initialize temporaries to hold the two parts of the preliminary
-	 * target list under construction. */
+	/* Initialize temporaries to hold the parts of the preliminary target
+	 * list under construction. */
 	ctx_data.grps_tlist = NIL;
+	ctx_data.dqa_tlist = NIL;
 	ctx_data.refs_tlist = NIL;
 
 	/*
@@ -1464,6 +1856,30 @@ void generate_two_stage_tlists(List *tlist,
 		prelim_tle->ressortgroupref = sub_tle->ressortgroupref;
 		prelim_tle->resjunk = false;
 		ctx_data.grps_tlist = lappend(ctx_data.grps_tlist, prelim_tle);
+	}
+
+	/*
+	 * Continue to construct the target list for the preliminary Agg node
+	 * by placing targets for the attributes of the argument of any DQA
+	 * being pruned on the dqa_tlist temporary. Make sure ressortgroupref
+	 * matches the original.
+	 */
+	for ( i = 0; i < numDistinctCols; i++ )
+	{
+		TargetEntry *sub_tle, *prelim_tle;
+		
+		sub_tle = get_tle_by_resno(ctx_data.sub_tlist, distinctColIdx[i]);
+		prelim_tle = makeTargetEntry(copyObject(sub_tle->expr),
+									list_length(ctx_data.grps_tlist) 
+										+ list_length(ctx_data.dqa_tlist)
+										+ 1,
+									(sub_tle->resname == NULL) ?
+											NULL :
+											pstrdup(sub_tle->resname),
+									false);
+		prelim_tle->ressortgroupref = sub_tle->ressortgroupref;
+		prelim_tle->resjunk = false;
+		ctx_data.dqa_tlist = lappend(ctx_data.dqa_tlist, prelim_tle);
 	}
 	
 	/*
@@ -1494,7 +1910,9 @@ void generate_two_stage_tlists(List *tlist,
 	final_qual = (List*)deconstruct_expr((Expr*)ctx_data.havingQual, &ctx_data);
 	
 	/* Glue the grps and refs parts together. (We kept resno current.) */
-	prelim_tlist = list_concat(ctx_data.grps_tlist, ctx_data.refs_tlist);
+	prelim_tlist = ctx_data.grps_tlist;
+	prelim_tlist = list_concat(prelim_tlist, ctx_data.dqa_tlist);
+	prelim_tlist = list_concat(prelim_tlist, ctx_data.refs_tlist);
 
 	/* Set implicit results */
 	*p_prelim_tlist = prelim_tlist;
@@ -1556,10 +1974,15 @@ Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx)
  * Find or add a partial-stage Aggref expression for the argument in the
  * preliminary target list under construction.  Return the final-stage
  * Aggref with a single Var node argument referring to the partial-stage
- * Aggref.
+ * Aggref.  In case of a DQA argument reduction, however, there is no 
+ * partial-stage Aggref and the final-stage Aggref differs from the original
+ * in that (1) it does not specify DISTINCT and (2) it refers to its arguments 
+ * via Vars on the lower range.
  *
- * Note that he result type of the partial-stage Aggref will be the transition
- * type of the aggregate function.
+ * For the normal 2-phase case: 
+ *
+ * Note that he result type of the partial-stage Aggref will be the
+ * transition type of the aggregate function.
  *
  * At execution, the function used to compute the transition type in the
  * lower aggregation will be the normal accumulator function for the
@@ -1584,63 +2007,110 @@ Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx)
 
 	Assert(aggref != NULL  && aggref->agglevelsup == 0);
 	
-	/*
-	 * We may have seen an Aggref just like this one already.  Look for
-	 * the preliminary form of such in the preliminary Aggref target
-	 * list to date.
-	 */
-	foreach( cell, ctx->refs_tlist )
+	if ( aggref->aggdistinct && gp_enable_dqa_pruning )
 	{
-		TargetEntry *tle = (TargetEntry*)lfirst(cell);
-		Aggref *ref = (Aggref*)tle->expr;
+		Index dqa_attno;
+		ListCell *lct;
 		
-		/* Check similarity, avoid aggtype and aggstage (which we control)
-		 * and don't bother with agglevelsup (which is always 0 here).
+		/* Since this is a DQA, its argument list must match the expressions
+		 * in ctx->dqa_tlist exactly. If not, we screwed up.  Check for this.
+		 * If the match is good, there is no preliminary Aggref so don't do 
+		 * the matching below.
 		 */
-		if ( aggref->aggfnoid == ref->aggfnoid
-			&& aggref->aggstar == ref->aggstar
-			&& aggref->aggdistinct == ref->aggdistinct
-			&& equal(aggref->args, ref->args) )
+		bool match = (list_length(aggref->args) == ctx->numDistinctCols);
+		if ( match )
 		{
-			prelim_tle = tle;
-			transtype = ref->aggtype;
-			attrno = prelim_tle->resno;
-			break;
+			ListCell *lca;
+			forboth (lca, aggref->args, lct, ctx->dqa_tlist)
+			{
+				TargetEntry *tle = (TargetEntry*)lfirst(lct);
+				match = equal(lfirst(lca), tle->expr);
+				if (!match)
+					break;
+			}
+		}
+		if (!match)
+			elog(ERROR,"Unexpected use of DISTINCT-qualified aggregation");
+		
+		/* Make the "final" Aggref for the DQA case. */
+		final_aggref = makeNode(Aggref);
+		memcpy(final_aggref, aggref, sizeof(Aggref)); /* flat copy */
+
+		final_aggref->args = NIL;
+		dqa_attno = list_length(ctx->grps_tlist) + 1;
+		foreach ( lct, ctx->dqa_tlist )
+		{
+			TargetEntry *tle = (TargetEntry*)lfirst(lct);
+			Var *var = makeVar(ctx->final_varno, dqa_attno, 
+							   exprType((Node*)tle->expr), 
+							   exprTypmod((Node*)tle->expr), 
+							   0);
+			final_aggref->args = lappend(final_aggref->args, var);
 		}
 	}
-
-	/*
-	 * If no existing preliminary Aggref target matched, add one that does.
-	 */
-	if ( prelim_tle == NULL )
+	else
 	{
-		Aggref *ref;
-		
-		/* Get type information for the Aggref */
-		transtype = lookup_agg_transtype(aggref);
-		
-		/* Make a new preliminary Aggref wrapped as a new target entry. */		
-		ref = (Aggref*)copyObject(aggref);
-		ref->aggtype = transtype;
-		ref->aggstage = AGGSTAGE_PARTIAL;
+		/*
+		 * We may have seen an Aggref just like this one already.  Look for
+		 * the preliminary form of such in the preliminary Aggref target
+		 * list to date.
+		 */
+		foreach( cell, ctx->refs_tlist )
+		{
+			TargetEntry *tle = (TargetEntry*)lfirst(cell);
+			Aggref *ref = (Aggref*)tle->expr;
+			
+			/* Check similarity, avoid aggtype and aggstage 
+			 * (which we control) and don't bother with agglevelsup 
+			 * (which is always 0 here).
+			 */
+			if ( aggref->aggfnoid == ref->aggfnoid
+				&& aggref->aggstar == ref->aggstar
+				&& aggref->aggdistinct == ref->aggdistinct
+				&& equal(aggref->args, ref->args) )
+			{
+				prelim_tle = tle;
+				transtype = ref->aggtype;
+				attrno = prelim_tle->resno;
+				break;
+			}
+		}
 
-		attrno = 1+list_length(ctx->grps_tlist) + list_length(ctx->refs_tlist);
-		prelim_tle = makeTargetEntry((Expr*)ref, attrno, NULL, false);
-		ctx->refs_tlist = lappend(ctx->refs_tlist, prelim_tle);
+		/*
+		 * If no existing preliminary Aggref target matched, add one that does.
+		 */
+		if ( prelim_tle == NULL )
+		{
+			Aggref *ref;
+			
+			/* Get type information for the Aggref */
+			transtype = lookup_agg_transtype(aggref);
+			
+			/* Make a new preliminary Aggref wrapped as a new target entry. */		
+			ref = (Aggref*)copyObject(aggref);
+			ref->aggtype = transtype;
+			ref->aggstage = AGGSTAGE_PARTIAL;
+
+			attrno = 1 + list_length(ctx->grps_tlist) 
+					   + list_length(ctx->dqa_tlist)
+					   + list_length(ctx->refs_tlist);
+			prelim_tle = makeTargetEntry((Expr*)ref, attrno, NULL, false);
+			ctx->refs_tlist = lappend(ctx->refs_tlist, prelim_tle);
+		}
+		
+		/*
+		 * Make and return the final Aggref node corresponding to the preliminary
+		 * one we found or made above.
+		 */
+		final_aggref = makeNode(Aggref);
+		final_aggref->aggfnoid = aggref->aggfnoid;
+		final_aggref->aggtype = aggref->aggtype;
+		final_aggref->args = list_make1((Expr*)makeVar(ctx->final_varno, attrno, transtype, -1, 0));
+		final_aggref->agglevelsup = 0;
+		final_aggref->aggstar = false;
+		final_aggref->aggdistinct = false; /* handled in preliminary aggregation */
+		final_aggref->aggstage = AGGSTAGE_FINAL;
 	}
-	
-	/*
-	 * Make and return the final Aggref node corresponding to the preliminary
-	 * one we found or made above.
-	 */
-	final_aggref = makeNode(Aggref);
-	final_aggref->aggfnoid = aggref->aggfnoid;
-	final_aggref->aggtype = aggref->aggtype;
-	final_aggref->args = list_make1((Expr*)makeVar(ctx->final_varno, attrno, transtype, -1, 0));
-	final_aggref->agglevelsup = 0;
-	final_aggref->aggstar = false;
-	final_aggref->aggdistinct = false; /* handled in preliminary aggregation */
-	final_aggref->aggstage = AGGSTAGE_FINAL;
 	
 	return final_aggref;
 }
@@ -1898,4 +2368,28 @@ add_second_stage_agg(PlannerInfo *root,
 								  (*p_current_pathkeys != NIL));
 
 	return agg_node;
+}
+
+
+/*
+ * hash_safe_type - is the given type hashable?
+ *
+ * Modelled on function hash_safe_grouping in planner.c, we assume
+ * the type is hashable if its equality operator is marked hashjoinable.
+ */
+static bool
+hash_safe_type(Oid type)
+{
+	Operator	optup;
+	bool		oprcanhash;
+
+	optup = equality_oper(type, true);
+	if (!optup)
+		return false;
+	oprcanhash = ((Form_pg_operator) GETSTRUCT(optup))->oprcanhash;
+	ReleaseSysCache(optup);
+	if (!oprcanhash)
+		return false;
+
+	return true;
 }

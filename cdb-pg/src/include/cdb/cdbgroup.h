@@ -38,6 +38,7 @@ extern void adapt_flow_to_targetlist(Plan *plan);
 extern void generate_two_stage_tlists(List *tlist, List *sub_tlist,
 									  Node *havingQual,
 									  int numGroupCols, AttrNumber *groupColIdx,
+									  int numDistinctCols, AttrNumber *distinctColIdx,
 									  List **p_prelim_tlist, List **p_final_tlist,
 									  List **p_final_qual);
 extern void generate_three_tlists(List *tlist,

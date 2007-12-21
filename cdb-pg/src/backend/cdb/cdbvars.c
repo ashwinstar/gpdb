@@ -190,6 +190,7 @@ int 	 	gp_hashjoin_bloomfilter = 0;
 
 /* Greenplum Database Experimental Feature GUCs */
 bool		gp_enable_agg_distinct = FALSE;
+bool		gp_enable_dqa_pruning = FALSE;
 bool		gp_enable_explain_allstat = FALSE;
 bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;
