@@ -114,6 +114,8 @@ $(function() {
       $.getJSON(url, function(json) {
           command_response(json);
       })
+
+      return false;
   }
 
   $("#switch").click(switch_click);
