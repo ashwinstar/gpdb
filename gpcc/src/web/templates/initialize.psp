@@ -130,6 +130,10 @@ $(function() {
 	       err.push(a.name);
 	    if (a.name == 'base_directory' && ! isPath(a.value))
 	       err.push(a.name);
+	    if (a.name == 'qe_base_directory' && ! isPath(a.value))
+	       err.push(a.name);
+	    if (a.name == 'mirror_qe_base_directory' && ! isPath(a.value))
+  	       err.push(a.name);
 	    if (a.name == 'qd_port' && ! isPort(a.value))
 	       err.push(a.name);
 	    if (a.name == 'qe_base_port' && ! isPort(a.value))
@@ -355,8 +359,16 @@ $(function() {
 		      <td><input name="array_name" type="text"></td>
 		   </tr>
 		   <tr>
-		      <td name="base_directory">Base directory:</td>
+		      <td name="base_directory">QD base directory:</td>
 		      <td><input name="base_directory" type="text"></td>
+		   </tr>
+		   <tr>
+		      <td name="qe_base_directory">QE base directories:</td>
+		      <td><input name="qe_base_directory" type="text"></td>
+		   </tr>
+		   <tr>
+		      <td name="mirror_qe_base_directory">Mirror QE base directories:</td>
+		      <td><input name="mirror_qe_base_directory" type="text"></td>
 		   </tr>
 		   <tr>
 		      <td name="qd_port">Query dispatcher port:</td>
@@ -396,19 +408,6 @@ $(function() {
 			     <option value="1">All nodes except QD</option>
 			  </select>
 	              </td>
-		   </tr>
-		   <tr>
-		      <td>Number of segments per machine:</td>
-		      <td><select name="nseg_per_node">
-% for i in range(1, 9):
-		              <option value="${i}">${i}</option>	
-% endfor
-			  </select>
-		      </td>
-		   </tr>
-		   <tr>
-		      <td>Has Mirror Segment:</td>
-		      <td><input type="checkbox" name="mirror" checked></td>
 		   </tr>
 		   <tr>
 		       <td><button id="multi_input_submit">Submit</button></td>

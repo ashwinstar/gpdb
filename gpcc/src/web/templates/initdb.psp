@@ -20,11 +20,11 @@ def get_config_from_multi_input():
     param = web.input(node=[])
     array_name = param['array_name']
     base_dir = param['base_directory']
+    qe_base_dir = param['qe_base_directory']
+    mirror_qe_base_dir = param['mirror_qe_base_directory']
     qd_port = int(param['qd_port'])
     qe_base_port = int(param['qe_base_port'])
     qe_mirror_base_port = int(param['qe_mirror_base_port'])
-    nseg_per_node = int(param['nseg_per_node'])
-    mirror = ('mirror' in param) and True or False
     qd_resides = int(param['qd_resides'])
     standby_qd_resides = int(param['standby_qd_resides'])
     qe_resides_opt = int(param['qe_resides_opt'])
@@ -36,6 +36,13 @@ def get_config_from_multi_input():
     if qe_resides_opt == 1:
         nodes.remove(qd_resides)
 
+    qe_dirs = qe_base_dir.split()
+    mirror_qe_dirs = mirror_qe_base_dir.split()
+
+    mirror = len(mirror_qe_dirs) > 0 and True or False
+
+    if mirror and len(qe_dirs) != len(mirror_qe_dirs):
+       return None
 
     cfg = StringIO.StringIO()
     i = 0;
@@ -54,15 +61,18 @@ def get_config_from_multi_input():
      
     i = 0
     for id in nodes:
-    	for j in range (0, nseg_per_node):
-    	    cfg.write('gpdb.seg.%d.0=node.%d:%s/seg.%d.0\n' % (i, id, base_dir, i))
+    	for j in range (len(qe_dirs)):
+    	    cfg.write('gpdb.seg.%d.0=node.%d:%s/seg.%d.0\n' % (i, id, qe_dirs[j], i))
 	    if mirror:
 	        mirror_id = get_mirror_id(nodes, id)
-	        cfg.write('gpdb.seg.%d.1=node.%d:%s/seg.%d.1\n' % (i, mirror_id, base_dir, i))
+	        cfg.write('gpdb.seg.%d.1=node.%d:%s/seg.%d.1\n' % (i, mirror_id, mirror_qe_dirs[j], i))
   	    i += 1
 
     data = cfg.getvalue()
     cfg.close()
+
+    sys.stderr.write(data);
+    return None
     return data
 
 
