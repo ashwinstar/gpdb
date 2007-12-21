@@ -194,7 +194,7 @@ static void
 addexttablerows(config_t *conf)
 {
 	PGresult *exttableres;
-	int i;
+	int i = 0;
 	char query[8196];
 	
 	exttableres = dbgetexttableres(conf);
@@ -263,6 +263,11 @@ addexttablerows(config_t *conf)
 		
 		run_query(conf, 0, query);
 	}
+	
+	/* add the default encoding (client_encoding) to each external table */
+	if(upgrade && i > 0)
+		run_query(conf, 0, "UPDATE pg_catalog.pg_exttable SET encoding="
+				  "(SELECT pg_char_to_encoding(pg_client_encoding()));");
 }
 
 static void
@@ -1008,7 +1013,7 @@ readd_pg_tablespace_rows(config_t **segdbs, config_t *conf)
 
 	oset = conf->content + 1;
 	
-	res = conf->definedprimary ? tblspc_locs.prilocs[oset] : 
+	res = conf->definedprimary ? tblspc_locs.prilocs[oset] :
 		tblspc_locs.mirlocs[oset];
 	
 	for (i = 0; i < PQntuples(res); i++)
