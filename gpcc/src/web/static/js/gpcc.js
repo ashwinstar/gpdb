@@ -53,6 +53,9 @@ $.fn.getForm = function() {
   return this;
 }
 
+String.prototype.trim = function () {
+  return this.replace(/^\s*/, "").replace(/\s*$/, "");
+}
 
 //-------------------------------------------------------------------
 // isBlank(value)
@@ -105,4 +108,23 @@ function isPort(val) {
 function isValidNode(val) {
   if (isBlank(val)) return false;
   return true;
+}
+
+
+function isPathList(val) {
+  var i;
+  var paths;
+  var path;
+  
+  if (isBlank(val)) return false;
+  paths = val.split(" ");
+  for (i = 0 ; i < paths.length ; i++) {
+    path = paths[i].trim();
+    if (path == "")
+      continue;
+    if (! isPath(path))
+      return false;
+  }
+  return true;
+
 }

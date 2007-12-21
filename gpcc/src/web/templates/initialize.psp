@@ -130,10 +130,12 @@ $(function() {
 	       err.push(a.name);
 	    if (a.name == 'base_directory' && ! isPath(a.value))
 	       err.push(a.name);
-	    if (a.name == 'qe_base_directory' && ! isPath(a.value))
+	    if (a.name == 'qe_base_directory' && ! isPathList(a.value))
 	       err.push(a.name);
-	    if (a.name == 'mirror_qe_base_directory' && ! isPath(a.value))
-  	       err.push(a.name);
+	    if (a.name == 'mirror_qe_base_directory') {
+	       if (! isBlank(a.value) && ! isPathList(a.value))
+  	       	  err.push(a.name);
+	    }
 	    if (a.name == 'qd_port' && ! isPort(a.value))
 	       err.push(a.name);
 	    if (a.name == 'qe_base_port' && ! isPort(a.value))
