@@ -102,36 +102,42 @@ USAGE () {
 		$ECHO "      -d, <Master instance directory> name of alternative Master instance to start up [optional]"
 		$ECHO
 		$ECHO "      Database dump options:"
-		$ECHO "      -p, dump primary segment instances only [default dump primary and mirror]"
-		$ECHO "      -m, dump mirror segment instances only [default dump primary and mirror]"
-		$ECHO "      -c, clear old dump directories [default do not clear]"
+		if [ x"" == x"$PGDATABASE" ];then
+		$ECHO "      -x, database name to dump [mandatory \$PGDATABASE is not set]"
+		else
+		$ECHO "      -x, database name to dump [default:- $PGDATABASE ]"
+		fi
+		$ECHO "          For multiple databases, use a comma separated list to -x option"
+		$ECHO "          Example -x template1,userdb1,userdb2"
+		$ECHO "      -p, dump primary segment instances only [default:- dump primary and mirror]"
+		$ECHO "      -m, dump mirror segment instances only [default:- dump primary and mirror]"
+		$ECHO "      -c, clear old dump directories [default:- do not clear]"
 		$ECHO "          will remove the oldest dump directory except the current dump directory"
 		$ECHO "          named $DUMP_DATE if it exists, NOTE:-deletes all dump sets within that directory"
 		$ECHO "      -o, clear dump files only, do not run a dump"
 		$ECHO "          will remove the oldest dump directory except the current dump directory"
 		$ECHO "          named $DUMP_DATE if it exists, NOTE:-deletes all dump sets within that directory"
-		$ECHO "      -z, do not use compression [default use compression]"
-		$ECHO "      -x, database name to dump [mandatory]"
-		$ECHO "          For multiple databases, use a comma separated list to -x option"
-		$ECHO "          Example -x template1,userdb1,userdb2"
-		$ECHO "      -r, rollback dump files if dump failure detected [default no rollback]"
+		$ECHO "      -z, do not use compression [default:- use compression]"
+		$ECHO "      -r, rollback dump files if dump failure detected [default:- no rollback]"
 		$ECHO "      -f, % free disk value to reserve when calculating available free space for dump"
-		$ECHO "          files [default $FREE_SPACE_PERCENT %]"
-		$ECHO "      -b, bypass disk space checking [default check disk space]"
-		$ECHO "      -i, ignore initial parameter check phase [default check parameters]"
+		$ECHO "          files [default:- $FREE_SPACE_PERCENT %]"
+		$ECHO "      -b, bypass disk space checking [default:- check disk space]"
+		$ECHO "      -i, ignore initial parameter check phase [default:- check parameters]"
 		$ECHO "      -s, <schema name> dump the schema contained within the database name supplied via -x"
 		$ECHO "      -j, run vacuum before dump starts"
 		$ECHO "      -k, run vacuum after dump has completed successfully"
 		$ECHO "      -g, secure master configuration files postgresql.conf pg_ident.conf and pg_hba.conf"
 		$ECHO "          Data will be written in tar format to "
 		$ECHO "          ${DUMP_SUB_DIR}/$DUMP_DATE/$CONFIG_BACKUP_FILE directory on this host"  
+		$ECHO "      -t, <schema.table1> dump the named table only for the database" 
+		$ECHO "      -T, <schema.table1,schema.table2...> exclude the named tables from the database dump"
 		$ECHO "      -G, use pg_dumpall to dump global objects, i.e. user accounts"
 		$ECHO "          Data will be dumped to ${DUMP_SUB_DIR}/$DUMP_DATE/${PG_DUMPALL_PREFIX}<timestamp>"
-		$ECHO "      -C, clean (drop) schema prior to create [default do not clean]"
+		$ECHO "      -C, clean (drop) schema prior to create [default:- do not clean]"
 		$ECHO "      -R, <program name> run named program after successful dump completed, include full path name"
 		$ECHO "          if program name not in path. Note, program will only be called once if multi database"
 		$ECHO "          dump requested"
-		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default $BATCH_DEFAULT]"
+		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default:- $BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Crontab entry (example):"
 		$ECHO "      SHELL=/bin/bash"
@@ -142,9 +148,9 @@ USAGE () {
 		$ECHO "      Mail configuration"
 		$ECHO "      This utility will send an email to a list of email addresses contained in a file"
 		$ECHO "      named mail_contacts. This file can be located in the GPDB super user home directory"
-		$ECHO "      or the utility bin directory. The format of the file is one email address per line"
-		$ECHO "      If no mail_contacts file is found in either location, a warning message will be"
-		$ECHO "      displayed."
+		$ECHO "      or the utility bin directory ${GPHOME}/bin. The format of the file is one email"
+		$ECHO "      address per line. If no mail_contacts file is found in either location, a warning message"
+		$ECHO "      will be displayed."
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -311,11 +317,11 @@ CHK_PARAM () {
 		LOG_MSG "[INFO]:-Greenplum array has mirroring implemented" 1
 	fi
 	#Check to see if there are any segment failures
-	if [ x"" != x"$SCHEMA_NAME" ];then
-		LOG_MSG "[INFO]:-Schema option -n $SCHEMA_NAME supplied, checking for schema in database $DUMP_DATABASE" 1
-		SCHEMA_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DUMP_DATABASE" -R" " -A -t -c"select count(*) from pg_namespace where nspname='${SCHEMA_NAME}';"`
+	if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
+		LOG_MSG "[INFO]:-Schema option -n $DUMP_SCHEMA_NAME supplied, checking for schema in database $DUMP_DATABASE" 1
+		SCHEMA_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DUMP_DATABASE" -R" " -A -t -c"select count(*) from pg_namespace where nspname='${DUMP_SCHEMA_NAME}';"`
 		if [ $SCHEMA_COUNT -eq 0 ];then
-			ERROR_EXIT "[FATAL]:-Schema $SCHEMA_NAME does not exist in database $DUMP_DATABASE" 2
+			ERROR_EXIT "[FATAL]:-Schema $DUMP_SCHEMA_NAME does not exist in database $DUMP_DATABASE" 2
 		fi
 	fi
 	FAILED_COUNT=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select count(*) from $GP_PG_VIEW as _gp_pg_view where valid='f';"`
@@ -395,8 +401,13 @@ CHK_DUMP_SPACE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing free disk space checks, please wait..." 1
 	#Check to see if we have sufficient space to be able to dump data to disks
-	LOG_MSG "[INFO]:-Obtaining $DUMP_DATABASE disk allocation" 1
-	ACTUAL_DB_SIZE=(`$GPSIZECALC -x "$DUMP_DATABASE" -fq|$GREP "|"`)
+	if [ x"" == x"$DUMP_TABLE_NAME" ];then
+		LOG_MSG "[INFO]:-Obtaining $DUMP_DATABASE disk allocation" 1
+		ACTUAL_DB_SIZE=(`$GPSIZECALC -x "$DUMP_DATABASE" -fq|$GREP "|"`)
+	else
+		LOG_MSG "[INFO]:-Obtaining specific table disk allocations, please wait..." 1
+		ACTUAL_DB_SIZE=(`$GPSIZECALC -x "$DUMP_DATABASE" -t $DUMP_TABLE_NAME -fq|$GREP "|"`)
+	fi
 	LOG_MSG "[INFO]:-Checking free space on segment instances"	
 	BATCH_LIMIT=${#DBID_LIST[@]}
 	PARALLEL_SETUP  $PARALLEL_STATUS_FILE
@@ -481,16 +492,36 @@ SET_VAC_TXT () {
 
 PROMPT_CONTINUE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		LOG_MSG "[INFO]:------------------------------------------------" 1
 		LOG_MSG "[INFO]:-Master Greenplum Instance dump parameters:" 1
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		if [ $MULTIDB -eq 1 ];then
 		LOG_MSG "[INFO]:-Dump type                        = Multiple database" 1
 		else
+		if [ x"" == x"$DUMP_TABLE_NAME" ];then
 		LOG_MSG "[INFO]:-Dump type                        = Single database" 1
+		else
+		LOG_MSG "[INFO]:-Dump type                        = Single database specifc table" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Table to be dumped" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Table name                       = $DUMP_TABLE_NAME" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		fi
+		fi
+		if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		LOG_MSG "[INFO]:-Table exclusion list" 1
+		LOG_MSG "[INFO]:------------------------------------------------" 1
+		for EXC_NAME in `$ECHO $EXC_DUMP_TABLE_LIST|$TR ',' ' '`
+		do
+		LOG_MSG "[INFO]:-Table name                       = $EXC_NAME" 1
+		done
+		LOG_MSG "[INFO]:------------------------------------------------" 1
 		fi
 		LOG_MSG "[INFO]:-Database to be dumped            = $DUMP_DATABASE" 1
-		if [ x"" != x"$SCHEMA_NAME" ];then
-		LOG_MSG "[INFO]:-Schema to dump                   = $SCHEMA_NAME" 1
+		if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
+		LOG_MSG "[INFO]:-Schema to dump                   = $DUMP_SCHEMA_NAME" 1
 		fi
 		LOG_MSG "[INFO]:-Master Port                      = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Master directory                 = $MASTER_DATA_DIRECTORY" 1
@@ -555,6 +586,61 @@ PROMPT_CONTINUE () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
 
+CHK_DUMP_TABLE_NAME () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing checks of table $DUMP_TABLE_NAME"
+	if [ `$ECHO $DUMP_TABLE_NAME|$GREP -c "\."` -ne 1 ];then
+		ERROR_EXIT "[FATAL]:-No schema name supplied for table $DUMP_TABLE_NAME" 2
+	fi
+	CHK_EXISTS_TABLE $DUMP_TABLE_NAME $MASTER_PORT $DUMP_DATABASE
+	if [ $EXISTS -eq 0 ];then
+		LOG_MSG "[INFO]:-Located table $DUMP_TABLE_NAME in $DUMP_DATABASE database"
+	else
+		ERROR_EXIT "[FATAL]:-Table $DUMP_TABLE_NAME does not exist in $DUMP_DATABASE database" 2
+	fi
+	if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
+		if [ $DUMP_SCHEMA_NAME != `$ECHO $DUMP_TABLE_NAME|$AWK -F"." '{print $1}'` ];then
+			ERROR_EXIT "[FATAL]:-Schema name $DUMP_SCHEMA_NAME not same as schema on $DUMP_TABLE_NAME" 2
+		fi
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+	
+CHK_EXC_DUMP_TABLE_LIST () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	NEW_LIST=()
+	for EXC_DUMP_NAME in `$ECHO $EXC_DUMP_TABLE_LIST|$TR -d ' '|$TR ',' ' '`
+	do
+		if [ `$ECHO $EXC_DUMP_NAME|$GREP -c "\."` -ne 1 ];then
+			ERROR_EXIT "[FATAL]:-No schema name supplied for exclude table $EXC_DUMP_NAME" 2
+		fi
+		CHK_EXISTS_TABLE $EXC_DUMP_NAME $MASTER_PORT $DUMP_DATABASE
+		if [ $EXISTS -eq 0 ];then
+			LOG_MSG "[INFO]:-Located table $EXC_DUMP_NAME in $DUMP_DATABASE database " 1
+			if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
+				#Check to see if schema names the same
+				if [ `$ECHO $EXC_DUMP_NAME|$AWK -F"." '{print $1}` == $DUMP_SCHEMA_NAME ];then
+					LOG_MSG "[INFO]:-Adding table $EXC_DUMP_NAME to exclude list" 1
+					NEW_LIST=(${NEW_LIST[@]} $EXC_DUMP_NAME)
+				else
+					LOG_MSG "[WARN]:-Schema dump requested and exclude table $EXC_DUMP_NAME not in that schema, ignoring" 1
+				fi
+			else
+				LOG_MSG "[INFO]:-Adding table $EXC_DUMP_NAME to exclude list" 1
+				NEW_LIST=(${NEW_LIST[@]} $EXC_DUMP_NAME)
+			fi
+		else
+			 LOG_MSG "[WARN]:-Exclude table $EXC_DUMP_NAME does not exist in $DUMP_DATABASE database, ignoring" 1
+		fi
+	done
+	if [ ${#NEW_LIST[@]} -eq 0 ];then
+		LOG_MSG "[WARN]:-All exclude table names have been removed due to issues, see log file" 1
+	else
+		EXC_DUMP_TABLE_LIST=`$ECHO ${NEW_LIST[@]}|$TR ' ' ','`
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 PROCESS_DUMP_CONFIG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Securing master configuration files" 1
@@ -583,11 +669,18 @@ PROCESS_DUMP () {
 		LOG_MSG "[INFO]:-Adding compression parameter" 1
 		DUMP_TEXT=$DUMP_TEXT" --gp-c"
 	fi
-	if [ x"" != x"$SCHEMA_NAME" ];then
-		LOG_MSG "[INFO]:-Adding schema name $SCHEMA_NAME" 1
-		DUMP_TEXT=$DUMP_TEXT" -n $SCHEMA_NAME"
+	if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
+		LOG_MSG "[INFO]:-Adding schema name $DUMP_SCHEMA_NAME" 1
+		DUMP_TEXT=$DUMP_TEXT" -n $DUMP_SCHEMA_NAME"
 	fi
 	DUMP_TEXT=$DUMP_TEXT" $DUMP_DATABASE"
+	if [ x"" != x"$DUMP_TABLE_NAME" ];then
+		DUMP_TEXT=$DUMP_TEXT" --table=${DUMP_TABLE_NAME}"
+	fi
+	if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+		EXCLUDE_LIST=`$ECHO $EXC_DUMP_TABLE_LIST|$TR ',' ' '`
+		DUMP_TEXT=$DUMP_TEXT" --exclude-table=${EXCLUDE_LIST}"
+	fi
 	LOG_MSG "[INFO]:-Dump command line $DUMP_TEXT" 1
 	LOG_MSG "[INFO]:-Starting dump process" 1
 	TIME_START=`$DATE +%H":"%M":"%S`
@@ -785,7 +878,7 @@ STATUS_REPORT () {
 #******************************************************************************
 trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:t:T:" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -812,7 +905,7 @@ if [ $# -ne 0 ]; then
 				    DELETE_OLD_DUMPS
 				    LOG_MSG "[INFO]:-End Main"
 				    exit $EXIT_STATUS ;;
-				s ) SCHEMA_NAME=$OPTARG ;;
+				s ) DUMP_SCHEMA_NAME=$OPTARG ;;
 				l ) LOG_DIR=$OPTARG ;;
 				x ) DUMP_DATABASE=$OPTARG ;;
 				g ) DUMP_CONFIG=1 ;;
@@ -821,6 +914,8 @@ if [ $# -ne 0 ]; then
 				D ) DEBUG_LEVEL=1 ;;
 				R ) RUN_PROG=$OPTARG ;;
 				B ) BATCH_DEFAULT=$OPTARG ;;
+				t ) DUMP_TABLE_NAME=$OPTARG ;;
+				T ) EXC_DUMP_TABLE_LIST=$OPTARG ;;
 				* ) USAGE ;;
 				esac
 		done	
@@ -843,8 +938,12 @@ LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_GPDB_ID
 OPTIONS_LIST="$*"
 CHK_DB_QD_SET
-if [ x"" == x"$DUMP_DATABASE" ];then
-	ERROR_EXIT "[FATAL]:-Must supply -x <database name to dump> " 2
+if [ x"" == x"$DUMP_DATABASE" ] && [ x"" == x"$PGDATABASE" ];then
+	ERROR_EXIT "[FATAL]:-Must supply -x <database name to dump>  as \$PGDATABASE is not set" 2
+fi
+if [ x"" == x"$DUMP_DATABASE" ] && [ x"" != x"$PGDATABASE" ];then
+	LOG_MSG "[INFO]:-Setting dump database to value of \$PGDATABASE which is $PGDATABASE" 1
+	DUMP_DATABASE=$PGDATABASE
 fi
 if [ $FREE_SPACE_PERCENT -gt 100 ] || [ $FREE_SPACE_PERCENT -lt 1 ];then
 	ERROR_EXIT "[FATAL]:-Invalid value $FREE_SPACE_PERCENT % for  -f option" 2
@@ -856,15 +955,34 @@ GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 if [ `$ECHO $DUMP_DATABASE|$GREP -c ","` -ne 0 ];then
 	#Have more than one database to dump
 	MULTIDB=1
-	if [ x"" != x"$SCHEMA_NAME" ];then
+	if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
 		ERROR_EXIT "[FATAL]:-Cannot supply schema name if multiple database dump requested" 2
+	fi
+	if [ x"" != x"$DUMP_TABLE_NAME" ];then
+		ERROR_EXIT "[FATAL]:-Cannot supply a table dump list if multiple database dump requested" 2
+	fi
+	if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+		ERROR_EXIT "[FATAL]:-Cannot exclude specific tables if multiple database dump requested" 2
 	fi
 	DUMP_DATABASE_LIST=(`$ECHO $DUMP_DATABASE|$TR ',' ' '`)
 	LOG_MSG "[INFO]:-Configuring for multiple database dump" 1
 else
 	MULTIDB=0
 	DUMP_DATABASE_LIST=($DUMP_DATABASE)
-	LOG_MSG "[INFO]:-Configuring for single database dump" 1
+	if [ x"" != x"$DUMP_TABLE_NAME" ] && [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+		ERROR_EXIT "[FATAL]:-Cannot use -t and -T options at same time" 2
+	fi
+	if [ x"" != x"$DUMP_TABLE_NAME" ];then
+		LOG_MSG "[INFO]:-Configuring for single database specific table dump" 1
+		CHK_DUMP_TABLE_NAME
+	else
+		if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+			LOG_MSG "[INFO]:-Configuring for single database with table exclusion(s) dump" 1
+			CHK_EXC_DUMP_TABLE_LIST
+		else
+			LOG_MSG "[INFO]:-Configuring for single database dump" 1
+		fi
+	fi
 fi
 #Check if RUN_PROG has been set
 if [ $RUN_PROG != "0" ];then
