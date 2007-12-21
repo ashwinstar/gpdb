@@ -542,9 +542,29 @@ UPDATE_MPP_MPP () {
 
 RESET_QE_CONNECT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	TABLE_NAME=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select relname from pg_class where relkind='r' order by reltype desc limit(1);"`
-	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from ${TABLE_NAME};" >> $LOG_FILE 2>&1
+	GET_QD_DB_NAME
+	#Get oid of public schema
+	PUBLIC_OID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select oid from $SCHEMA_TABLE where nspname='public';"` >> $LOG_FILE 2>&1	
+	if [ x"" != x"$PUBLIC_OID" ];then
+		LOG_MSG "[INFO]:-Obtained public schema OID value of $PUBLIC_OID"
+		TABLE_NAME=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select relname from $CLASS_TABLE where relkind='r' and relnamespace=$PUBLIC_OID order by reltype desc limit(1);"` >> $LOG_FILE 2>&1
+		if [ x"" != x"$TABLE_NAME" ];then
+			#Have found a user table in the public schema that we can use to test access to segment db's
+			LOG_MSG "[INFO]:-Testing database access using table ${TABLE_NAME}"
+			$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select * from ${TABLE_NAME} limit 1;" >> $LOG_FILE 2>&1
+			if [ $? -ne 0 ];then
+				LOG_MSG "[WARN]:-Issue with test select from table ${TABLE_NAME} in public schema, check log file" 1
+			fi
+		else
+			LOG_MSG "[INFO]:-Could not locate a user table in public schema to test database access"
+		fi
+	else
+		LOG_MSG "[INFO]:-Unable to run a database table access test as public schema does not exist"
+	fi
+	LOG_MSG "[INFO]:-Dump of gp_pgdatabase *******************************************"
 	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select * from ${GP_PG_VIEW} as _gp_pg_view;" >> $LOG_FILE 2>&1
+	LOG_MSG "[INFO]:-Dump of ${CONFIG_TABLE} *****************************************"
+	$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select * from $CONFIG_TABLE;" >> $LOG_FILE 2>&1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
