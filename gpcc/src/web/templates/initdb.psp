@@ -26,6 +26,7 @@ def get_config_from_multi_input():
     nseg_per_node = int(param['nseg_per_node'])
     mirror = ('mirror' in param) and True or False
     qd_resides = int(param['qd_resides'])
+    standby_qd_resides = int(param['standby_qd_resides'])
     qe_resides_opt = int(param['qe_resides_opt'])
     node_arr = param['node']
     node_arr = filter(lambda x: (x.strip() != ''), node_arr)
@@ -48,7 +49,9 @@ def get_config_from_multi_input():
     cfg.write('gpdb.seg.mirror_base_port=%d\n' % qe_mirror_base_port)
 
     cfg.write('gpdb.seg.m.0=node.%d:%s/seg.m.0\n' % (qd_resides, base_dir))
-
+    if standby_qd_resides != -1:
+       cfg.write('gpdb.seg.m.1=node.%d:%s/seg.m.1\n' % (standby_qd_resides, base_dir))
+     
     i = 0
     for id in nodes:
     	for j in range (0, nseg_per_node):

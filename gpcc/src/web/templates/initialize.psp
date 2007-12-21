@@ -360,7 +360,7 @@ $(function() {
 		   </tr>
 
 		   <tr>
-		      <td>Query dispatcher resides on:</td>
+		      <td name="qd_resides">Query dispatcher resides on:</td>
 		      <td><select name="qd_resides">
 % for i in range(NNODE):
 		             <option value="${i}">node.${i}</option>
@@ -369,7 +369,7 @@ $(function() {
 		      </td>
 		  </tr>
 		  <tr>
-		      <td>Standby QD resides on:</td>
+		      <td name="standby_qd_resides">Standby QD resides on:</td>
 		      <td><select name="standby_qd_resides">
 		      	     <option value="-1" selected>No standby QD</option>
 % for i in range(NNODE):
