@@ -102,7 +102,6 @@ PROMPT="$ECHO"
 #TABECHO="$ECHO -e \t"
 #PROMPT="$ECHO -n -e \t"
 GREP=`findCmdInPath grep`
-GTAR=`findCmdInPath gtar`
 GZIP=`findCmdInPath gzip`
 EGREP=`findCmdInPath egrep`
 HEAD=`findCmdInPath head`
@@ -1546,6 +1545,7 @@ case $OS_TYPE in
 		DEFAULT_LOCALE_SETTING=en_US.UTF-8
 		MAIL=/bin/mailx
 		PING_TIME="1"
+		GTAR=`findCmdInPath gtar`
 		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT=""
 		PS_TXT="ax"
@@ -1555,6 +1555,7 @@ case $OS_TYPE in
 		NOLINE_ECHO="$ECHO -e"
 		DEFAULT_LOCALE_SETTING=en_US.utf8
 		PING_TIME="-c 1"
+		GTAR=`findCmdInPath gtar`
 		ID=`whoami`
 		DU_TXT="-c" ;;
 	darwin ) IFCONFIG_TXT=""
@@ -1565,6 +1566,7 @@ case $OS_TYPE in
 		NOLINE_ECHO=$ECHO
 		DEFAULT_LOCALE_SETTING=en_US.utf-8
 		PING_TIME="-c 1"
+		GTAR=`findCmdInPath gnutar`
 		DU_TXT="-c" ;;	
 	freebsd ) IFCONFIG_TXT=""
 		PS_TXT="ax"
@@ -1574,6 +1576,7 @@ case $OS_TYPE in
 		NOLINE_ECHO="$ECHO -e"
 		DEFAULT_LOCALE_SETTING=en_US.utf8
 		PING_TIME="-c 1"
+		GTAR=`findCmdInPath gtar`
 		DU_TXT="-c" ;;	
 	* ) echo unknown ;;
 esac
