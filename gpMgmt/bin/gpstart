@@ -63,7 +63,7 @@ START_SYNC=1
 STOP_PROG=$GPSTOP
 PARALLEL_STATUS_FILE=/tmp/gpstart_parallel_status_file.$$
 GPSEGSTART=$WORKDIR/lib/gpsegstart.sh
-WAIT_LIMIT=600
+WAIT_LIMIT=1800
 DISPLAY_ERROR=0
 INVALID_START_COUNT=0
 #******************************************************************************
