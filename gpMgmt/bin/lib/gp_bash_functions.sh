@@ -1432,6 +1432,11 @@ RESTORE_BATCH_VALUE () {
 CHK_GPDB_ID () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"	
 	GPDB_ID=`id|$TR '(' ' '|$TR ')' ' '|$AWK '{print $2}'`
+	#Check to see if GPDB_ID more than 8 characters
+	if [ `$ECHO $GPDB_ID|$TR -d '\n'|$WC -c` -gt 8 ];then
+		ID_TMP=`$ECHO $GPDB_ID|$CUT -c1-8`
+		GPDB_ID=$ID_TMP
+	fi
 	if [ -f ${INITDB} ];then
 		MASTER_INITDB_ID=`ls -al ${INITDB}|$AWK '{print $3}'`
 		if [ $GPDB_ID != $MASTER_INITDB_ID ];then
