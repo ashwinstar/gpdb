@@ -1431,30 +1431,41 @@ RESTORE_BATCH_VALUE () {
 
 CHK_GPDB_ID () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"	
-	GPDB_ID=`id|$TR '(' ' '|$TR ')' ' '|$AWK '{print $2}'`
-	#Check to see if GPDB_ID more than 8 characters
-	if [ `$ECHO $GPDB_ID|$TR -d '\n'|$WC -c` -gt 8 ];then
-		ID_TMP=`$ECHO $GPDB_ID|$CUT -c1-8`
-		GPDB_ID=$ID_TMP
-	fi
 	if [ -f ${INITDB} ];then
 		MASTER_INITDB_ID=`ls -al ${INITDB}|$AWK '{print $3}'`
-		if [ $GPDB_ID != $MASTER_INITDB_ID ];then
-			ERROR_EXIT "[FATAL]:-User id mismatch, id returns $GPDB_ID, initdb owner is $MASTER_INITDB_ID" 2
+		INIT_CHAR=`$ECHO $MASTER_INITDB_ID|$TR -d '\n'|$WC -c`
+		GPDB_ID=`id|$TR '(' ' '|$TR ')' ' '|$AWK '{print $2}'`
+		if [ `$ECHO $GPDB_ID|$TR -d '\n'|$WC -c` -gt $INIT_CHAR ];then
+			GPDB_ID_CHK=`$ECHO $GPDB_ID|$CUT -c1-$INIT_CHAR`
+		else
+			GPDB_ID_CHK=$GPDB_ID
+		fi
+		if [ $GPDB_ID_CHK != $MASTER_INITDB_ID ];then
+			ERROR_EXIT "[FATAL]:-User id mismatch, id returns $GPDB_ID_CHK, initdb owner is $MASTER_INITDB_ID" 2
 		else
 			LOG_MSG "[INFO]:-Current user id of $GPDB_ID, matches initdb id of $MASTER_INITDB_ID"
 		fi
 		if [ x"" != x"$USER" ];then
-			if [ $GPDB_ID != $USER ];then
-			ERROR_EXIT "[FATAL]:-\$USER mismatch, id returns $GPDB_ID, \$USER returns $USER" 2
+			if [ `$ECHO $USER|$TR -d '\n'|$WC -c` -gt $INIT_CHAR ];then
+				USER_CHK=`$ECHO $USER|$CUT -c1-$INIT_CHAR`
+			else
+				USER_CHK=$USER
+			fi
+			if [ $GPDB_ID_CHK != $USER_CHK ];then
+				ERROR_EXIT "[FATAL]:-\$USER mismatch, id returns $GPDB_ID, \$USER returns $USER" 2
 			fi
 		else
 			LOG_MSG "[WARN]:-Environment variable \$USER unset, will set to $GPDB_ID" 1
 			export USER=$GPDB_ID
 		fi
 		if [ x"" != x"$LOGNAME" ];then
-			if [ $GPDB_ID != $LOGNAME ];then
-			ERROR_EXIT "[FATAL]:-\$LOGNAME mismatch, id returns $GPDB_ID, \$LOGNAME returns $LOGNAME" 2
+			if [ `$ECHO $LOGNAME|$TR -d '\n'|$WC -c` -gt $INIT_CHAR ];then
+				LOGNAME_CHK=`$ECHO $LOGNAME|$CUT -c1-$INIT_CHAR`
+			else
+				LOGNAME_CHK=$LOGNAME
+			fi
+			if [ $GPDB_ID_CHK != $LOGNAME_CHK ];then
+			ERROR_EXIT "[FATAL]:-\$LOGNAME mismatch, id returns $GPDB_ID_CHK, \$LOGNAME returns $LOGNAME_CHK" 2
 			fi
 		else
 			LOG_MSG "[WARN]:-Environment variable \$LOGNAME unset, will set to $GPDB_ID" 1
