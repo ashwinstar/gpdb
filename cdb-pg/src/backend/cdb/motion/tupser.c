@@ -1003,6 +1003,13 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 			nullslen = BITMAPLEN(tshp->natts);
 		else
 			nullslen = 0;
+
+		if (tshp->tuplen < sizeof(TupSerHeader) + nullslen)
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error: cannot convert chunks to a  heap tuple."),
+							errdetail("tuple len %d < nullslen %d + headersize (%d)",
+									  tshp->tuplen, nullslen, (int)sizeof(TupSerHeader))));
+
 		datalen = tshp->tuplen - sizeof(TupSerHeader) - nullslen;
 
 		/* determine overhead size of tuple (should match heap_form_tuple) */

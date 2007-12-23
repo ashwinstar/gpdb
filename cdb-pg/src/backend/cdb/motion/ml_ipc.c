@@ -506,7 +506,7 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 	TupleChunkListItem tcItem;
 	TupleChunkListItem firstTcItem = NULL;
 	TupleChunkListItem lastTcItem = NULL;
-	uint16		tcSize;
+	uint32		tcSize;
 	int			bytesProcessed = 0;
 
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
