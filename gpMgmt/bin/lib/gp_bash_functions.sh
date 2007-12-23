@@ -1441,7 +1441,9 @@ CHK_GPDB_ID () {
 			GPDB_ID_CHK=$GPDB_ID
 		fi
 		if [ $GPDB_ID_CHK != $MASTER_INITDB_ID ];then
-			ERROR_EXIT "[FATAL]:-User id mismatch, id returns $GPDB_ID_CHK, initdb owner is $MASTER_INITDB_ID" 2
+			LOG_MSG "[WARN]:-User id mismatch, id returns $GPDB_ID_CHK, initdb owner is $MASTER_INITDB_ID" 1
+			LOG_MSG "[WARN]:-The GPDB super user account that owns the initdb binary should run these utilities" 1
+			LOG_MSG "[WARN]:-This may cause problems when these utilities are run as $GPDB_ID" 1
 		else
 			LOG_MSG "[INFO]:-Current user id of $GPDB_ID, matches initdb id of $MASTER_INITDB_ID"
 		fi
@@ -1452,7 +1454,9 @@ CHK_GPDB_ID () {
 				USER_CHK=$USER
 			fi
 			if [ $GPDB_ID_CHK != $USER_CHK ];then
-				ERROR_EXIT "[FATAL]:-\$USER mismatch, id returns $GPDB_ID, \$USER returns $USER" 2
+				LOG_MSG "[WARN]:-\$USER mismatch, id returns $GPDB_ID, \$USER returns $USER" 1
+				LOG_MSG "[WARN]:-The GPDB super user account that owns the initdb binary should run these utilities" 1
+				LOG_MSG "[WARN]:-This may cause problems when these utilities are run as $USER" 1
 			fi
 		else
 			LOG_MSG "[WARN]:-Environment variable \$USER unset, will set to $GPDB_ID" 1
@@ -1465,7 +1469,9 @@ CHK_GPDB_ID () {
 				LOGNAME_CHK=$LOGNAME
 			fi
 			if [ $GPDB_ID_CHK != $LOGNAME_CHK ];then
-			ERROR_EXIT "[FATAL]:-\$LOGNAME mismatch, id returns $GPDB_ID_CHK, \$LOGNAME returns $LOGNAME_CHK" 2
+				LOG_MSG "[WARN]:-\$LOGNAME mismatch, id returns $GPDB_ID_CHK, \$LOGNAME returns $LOGNAME_CHK" 1
+				LOG_MSG "[WARN]:-The GPDB super user account that owns the initdb binary should run these utilities" 1
+				LOG_MSG "[WARN]:-This may cause problems when these utilities are run as $LOGNAME" 1
 			fi
 		else
 			LOG_MSG "[WARN]:-Environment variable \$LOGNAME unset, will set to $GPDB_ID" 1
