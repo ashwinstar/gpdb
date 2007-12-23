@@ -1690,7 +1690,7 @@ pg_resqueue_status(PG_FUNCTION_ARGS)
 		LWLockRelease(ResQueueLock);
 
 		/* ...and the partition locks. */
-		for (partition = 0; partition < NUM_LOCK_PARTITIONS; partition++)
+		for (partition = NUM_LOCK_PARTITIONS; --partition >= 0;)
 		{
 			partitionLock = FirstLockMgrLock + partition;
 			LWLockRelease(partitionLock);
