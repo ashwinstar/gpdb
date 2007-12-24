@@ -1433,7 +1433,7 @@ CHK_GPDB_ID () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"	
 	if [ -f ${INITDB} ];then
 		MASTER_INITDB_ID=`ls -al ${INITDB}|$AWK '{print $3}'`
-		INIT_CHAR=`$ECHO $MASTER_INITDB_ID|$TR -d '\n'|$WC -c`
+		INIT_CHAR=`$ECHO $MASTER_INITDB_ID|$TR -d '\n'|$WC -c|$TR -d ' '`
 		GPDB_ID=`id|$TR '(' ' '|$TR ')' ' '|$AWK '{print $2}'`
 		if [ `$ECHO $GPDB_ID|$TR -d '\n'|$WC -c` -gt $INIT_CHAR ];then
 			GPDB_ID_CHK=`$ECHO $GPDB_ID|$CUT -c1-$INIT_CHAR`
