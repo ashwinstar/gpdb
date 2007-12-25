@@ -89,6 +89,8 @@ bool		gp_reraise_signal=true;	/* try to dump core when we get SIGABRT & SIGSEGV 
 
 bool		gp_set_proc_affinity=false; /* set processor affinity (if platform supports it) */
 
+int			gp_reject_percent_threshold; /* SREH reject % kicks off only after *
+										  * <num> records have been processed  */
 /*
  * TCP port the Interconnect listens on for incoming connections from other
  * backends.  Assigned by initMotionLayerIPC() at process startup.  This port

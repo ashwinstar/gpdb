@@ -7,13 +7,13 @@
 CREATE TABLE sreh_copy(a int, b int, c int) distributed by(a);
 
 -- 
--- reject limit only
+-- ROW reject limit only
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 1000;
 SELECT * FROM sreh_copy ORDER BY a,b,c;
 
 -- 
--- reject limit only - low value that gets reached
+-- ROW reject limit only - low value that gets reached
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 2;
 SELECT * FROM sreh_copy ORDER BY a,b,c;
@@ -115,6 +115,21 @@ bad format (not int) data should get inserted into error table but later rolledb
 \.
 SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
 SELECT * FROM sreh_constr; -- should exist and be empty
+
+--
+-- test PERCENT reject limit logic with default threshold (100)
+-- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+--
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --pass
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 2 PERCENT; --fail
+
+--
+-- test PERCENT reject limit logic with custom threshold 10 (only practical for test purposes)
+--
+set gp_reject_percent_threshold = 10;
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --fail
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 20 PERCENT; --pass
+set gp_reject_percent_threshold = 100; -- reset
 
 -- cleanup
 DROP TABLE sreh_copy;
@@ -224,10 +239,45 @@ INSERT INTO sreh_constr SELECT * FROM sreh_ext;
 SELECT COUNT(*) FROM sreh_ext_errtbl; -- should be empty
 SELECT COUNT(*) FROM sreh_constr; -- should be empty
 
+--
+-- test PERCENT reject limit logic with default threshold (100)
+-- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+--
+CREATE EXTERNAL TABLE sreh_ext_10percent(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 10 PERCENT;
+
+SELECT count(*) FROM sreh_ext_10percent; -- pass
+
+CREATE EXTERNAL TABLE sreh_ext_2percent(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 2 PERCENT;
+
+SELECT count(*) FROM sreh_ext_2percent; -- fail
+
+--
+-- test PERCENT reject limit logic with custom threshold 10 (only practical for test purposes)
+--
+set gp_reject_percent_threshold = 10;
+SELECT count(*) FROM sreh_ext_10percent; -- fail
+
+CREATE EXTERNAL TABLE sreh_ext_20percent(a int, b int, c int)
+LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 20 PERCENT;
+
+SELECT count(*) FROM sreh_ext_20percent; -- pass
+set gp_reject_percent_threshold = 100; -- reset
+
 -- cleanup
 select * from gpfdist_stop;
 DROP EXTERNAL WEB TABLE gpfdist_stop;
 DROP EXTERNAL WEB TABLE gpfdist_start;
+DROP EXTERNAL TABLE sreh_ext_2percent;
+DROP EXTERNAL TABLE sreh_ext_10percent;
+DROP EXTERNAL TABLE sreh_ext_20percent;
 DROP TABLE sreh_target;
 DROP TABLE sreh_ext_errtbl; -- should fail by dependency
 DROP TABLE sreh_ext_errtbl CASCADE;

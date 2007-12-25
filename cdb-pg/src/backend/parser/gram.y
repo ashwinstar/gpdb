@@ -3072,6 +3072,12 @@ OptSingleRowErrorHandling:
 			n->is_keep = $2;
 			n->rejectlimit = $6;
 			n->is_limit_in_rows = $7; /* true for ROWS false for PERCENT */
+			
+			if(!n->is_limit_in_rows && n->rejectlimit > 100)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("PERCENT value is larger than 100")));
+			
 			$$ = (Node *)n;
 		}
 		| /* empty */	{ $$ = NULL; }

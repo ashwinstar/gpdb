@@ -52,6 +52,7 @@ typedef struct CdbSreh
 	char	*filename;		/* file where data comes from */
 	char	*relname;		/* target relation */
 	int		linenumber;		/* line number of error in original file */
+	uint64  processed;      /* num logical input rows processed so far */
 	bool	is_server_enc;	/* was bad row converted to server encoding? */
 
 	/* reject limit state */

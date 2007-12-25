@@ -59,6 +59,7 @@ makeCdbSreh(bool is_keep, bool reusing_existing_errtable,
 	h->errmsg = NULL;
 	h->rawdata = NULL;
 	h->linenumber = 0;
+	h->processed = 0;
 	h->relname = relname;
 	h->rejectlimit = rejectlimit;
 	h->is_limit_in_rows = is_limit_in_rows;
@@ -521,7 +522,28 @@ SetErrorTableVerdict(CdbSreh *cdbsreh, int total_rejected)
  */
 bool IsRejectLimitReached(CdbSreh *cdbsreh)
 {
-	return (cdbsreh->rejectcount >= cdbsreh->rejectlimit);
+	bool	limit_reached = false;
+	
+	if(cdbsreh->is_limit_in_rows)
+	{
+		/* limit is in ROWS */
+		
+		limit_reached = (cdbsreh->rejectcount >= cdbsreh->rejectlimit ? true : false);
+		
+	}
+	else
+	{
+		/* limit is in PERCENT */
+		
+		/* calculate the percent only if threshold is satisfied */
+		if(cdbsreh->processed > gp_reject_percent_threshold)
+		{
+			if( (cdbsreh->rejectcount * 100) / cdbsreh->processed >= cdbsreh->rejectlimit)
+				limit_reached = true;
+		}
+	}
+
+	return limit_reached;
 }
 
 /*

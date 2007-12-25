@@ -2488,6 +2488,15 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_hashjoin_bloomfilter,
 		0, 0, 1, NULL, NULL
 	},
+	
+	{
+		{"gp_reject_percent_threshold", PGC_USERSET, GP_ERROR_HANDLING,
+			gettext_noop("Reject limit in percent starts calculating after this number of rows processed"),
+			NULL
+		},
+		&gp_reject_percent_threshold,
+		100, 0, INT_MAX, NULL, NULL
+	},	
 
 	{
 		{"gp_use_mpool", PGC_USERSET, GP_ARRAY_TUNING,

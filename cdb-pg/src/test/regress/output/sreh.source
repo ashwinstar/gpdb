@@ -4,7 +4,7 @@
 -- ###########################################################
 CREATE TABLE sreh_copy(a int, b int, c int) distributed by(a);
 -- 
--- reject limit only
+-- ROW reject limit only
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 1000;
 NOTICE:  Rejected 10 badly formatted rows.
@@ -20,7 +20,7 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 (6 rows)
 
 -- 
--- reject limit only - low value that gets reached
+-- ROW reject limit only - low value that gets reached
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 2;
 ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "bad", column a
@@ -324,6 +324,25 @@ SELECT * FROM sreh_constr; -- should exist and be empty
 ---
 (0 rows)
 
+--
+-- test PERCENT reject limit logic with default threshold (100)
+-- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+--
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --pass
+NOTICE:  Rejected 9 badly formatted rows.
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 2 PERCENT; --fail
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
+CONTEXT:  COPY sreh_copy, line 107: "BAD|1|1"
+--
+-- test PERCENT reject limit logic with custom threshold 10 (only practical for test purposes)
+--
+set gp_reject_percent_threshold = 10;
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --fail
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
+CONTEXT:  COPY sreh_copy, line 15: "BAD|1|1"
+COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 20 PERCENT; --pass
+NOTICE:  Rejected 9 badly formatted rows.
+set gp_reject_percent_threshold = 100; -- reset
 -- cleanup
 DROP TABLE sreh_copy;
 DROP TABLE sreh_constr;
@@ -555,6 +574,47 @@ SELECT COUNT(*) FROM sreh_constr; -- should be empty
      0
 (1 row)
 
+--
+-- test PERCENT reject limit logic with default threshold (100)
+-- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+--
+CREATE EXTERNAL TABLE sreh_ext_10percent(a int, b int, c int)
+LOCATION ('gpfdist://localhost:8080/bad_data3.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 10 PERCENT;
+SELECT count(*) FROM sreh_ext_10percent; -- pass
+NOTICE:  Rejected 9 badly formatted rows.
+ count 
+-------
+   291
+(1 row)
+
+CREATE EXTERNAL TABLE sreh_ext_2percent(a int, b int, c int)
+LOCATION ('gpfdist://localhost:8080/bad_data3.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 2 PERCENT;
+SELECT count(*) FROM sreh_ext_2percent; -- fail
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
+DETAIL: External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION
+--
+-- test PERCENT reject limit logic with custom threshold 10 (only practical for test purposes)
+--
+set gp_reject_percent_threshold = 10;
+SELECT count(*) FROM sreh_ext_10percent; -- fail
+ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
+DETAIL: External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION
+CREATE EXTERNAL TABLE sreh_ext_20percent(a int, b int, c int)
+LOCATION ('gpfdist://localhost:8080/bad_data3.data' )
+FORMAT 'text' (delimiter '|')
+SEGMENT REJECT LIMIT 20 PERCENT;
+SELECT count(*) FROM sreh_ext_20percent; -- pass
+NOTICE:  Rejected 9 badly formatted rows.
+ count 
+-------
+   291
+(1 row)
+
+set gp_reject_percent_threshold = 100; -- reset
 -- cleanup
 select * from gpfdist_stop;
       x      
@@ -564,6 +624,9 @@ select * from gpfdist_stop;
 
 DROP EXTERNAL WEB TABLE gpfdist_stop;
 DROP EXTERNAL WEB TABLE gpfdist_start;
+DROP EXTERNAL TABLE sreh_ext_2percent;
+DROP EXTERNAL TABLE sreh_ext_10percent;
+DROP EXTERNAL TABLE sreh_ext_20percent;
 DROP TABLE sreh_target;
 DROP TABLE sreh_ext_errtbl; -- should fail by dependency
 NOTICE:  external table sreh_ext depends on table sreh_ext_errtbl

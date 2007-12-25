@@ -760,12 +760,6 @@ DoCopy(const CopyStmt *stmt)
 						errmsg("KEEP may only be specified with a LOG INTO errortable clause")));
 			
 		}
-		
-		if (!sreh->is_limit_in_rows)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-					 errmsg("Segment reject limit in percentage is not yet supported")));			
-		
 	
 		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, 
 									  sreh->reusing_existing_errtable,
@@ -2140,6 +2134,7 @@ else \
 \
 	cstate->cdbsreh->is_server_enc = cstate->line_buf_converted; \
 	cstate->cdbsreh->linenumber = cstate->cur_lineno; \
+	cstate->cdbsreh->processed = cstate->processed; \
 \
 	/* set the error message. Use original msg and add column name if availble */ \
 	if (cstate->cur_attname)\
@@ -6289,12 +6284,6 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 			
 		}
 		
-		if (!sreh->is_limit_in_rows)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-					 errmsg("Segment reject limit in percentage is not yet supported")));			
-		
-	
 		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, 
 									  sreh->reusing_existing_errtable,
 									  sreh->rejectlimit, 

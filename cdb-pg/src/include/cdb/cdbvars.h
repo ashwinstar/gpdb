@@ -191,6 +191,20 @@ extern bool gp_use_dispatch_agent;
 /*How many gangs to keep around from stmt to stmt.*/
 extern int			gp_cached_gang_threshold;
 
+/*
+ * gp_reject_percent_threshold
+ *
+ * When reject limit in single row error handling is specified in PERCENT,
+ * we don't want to start calculating the percent of rows rejected right
+ * from the 1st row, since for example, if the second row is bad this will
+ * mean that 50% of the data is bad even if all the following rows are valid.
+ * Therefore we want to keep track of count of bad rows but start calculating
+ * the percent at a later stage in the game. By default we'll start the 
+ * calculation after 100 rows were processed, but this GUC can be set for
+ * some other number if it makes more sense in certain situations.
+ */
+extern int			gp_reject_percent_threshold;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter

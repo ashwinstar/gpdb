@@ -46,7 +46,7 @@ enum config_group
 	CONN_AUTH,
 	CONN_AUTH_SETTINGS,
 	CONN_AUTH_SECURITY,
-	EXTERNAL_TABLES,                    /*CDB*/    
+	EXTERNAL_TABLES,                    /*CDB*/
 	RESOURCES,
 	RESOURCES_MEM,
 	RESOURCES_FSM,
@@ -81,6 +81,7 @@ enum config_group
     GP_ARRAY_CONFIGURATION,            /*CDB*/
     GP_ARRAY_TUNING,                   /*CDB*/
     GP_WORKER_IDENTITY,                /*CDB*/
+	GP_ERROR_HANDLING,				   /*CDB*/
 	PRESET_OPTIONS,
 	CUSTOM_OPTIONS,
 	DEVELOPER_OPTIONS
