@@ -835,6 +835,13 @@ DoCopy(const CopyStmt *stmt)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			errmsg("COPY escape in CSV format must be a single character")));
 
+	if (!cstate->csv_mode && !cstate->binary &&
+		(strchr(cstate->escape, '\r') != NULL ||
+		strchr(cstate->escape, '\n') != NULL))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("COPY escape representation in text format cannot use newline or carriage return")));	
+		
 	if (!cstate->csv_mode && !cstate->binary && strlen(cstate->escape) != 1)
 	{
 		if (!pg_strcasecmp(cstate->escape, "off"))
