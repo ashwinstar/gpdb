@@ -8733,6 +8733,13 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 					 errmsg("escape must be a single character, or [OFF/off] to disable escapes")));
 	}
 	
+	if (!csv_mode &&
+		(strchr(escape, '\r') != NULL ||
+		 strchr(escape, '\n') != NULL))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("COPY escape representation in text format cannot use newline or carriage return")));	
+	
 	/*
 	 * Don't allow the delimiter to appear in the null string.
 	 */
