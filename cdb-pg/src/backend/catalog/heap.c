@@ -810,7 +810,8 @@ heap_create_with_catalog(const char *relname,
 	else							
 		if (IsUnderPostmaster)
 		{
-			CheckNewRelFileNodeIsOk(relid, reltablespace, shared_relation, pg_class_desc);
+			CheckNewRelFileNodeIsOk(relid, reltablespace, shared_relation,
+									pg_class_desc);
 		}
 
 	/*
@@ -1729,6 +1730,10 @@ AddRelationRawConstraints(Relation rel,
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
 			   errmsg("cannot use aggregate function in check constraint")));
+		if (pstate->p_hasWindFuncs)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+			   errmsg("cannot use window function in check constraint")));
 
 		/*
 		 * Check name uniqueness, or generate a name if none was given.
@@ -1923,7 +1928,10 @@ cookDefault(ParseState *pstate,
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
 			 errmsg("cannot use aggregate function in default expression")));
-
+	if (pstate->p_hasWindFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("cannot use window function in default expression")));
 	/*
 	 * Coerce the expression to the correct type and typmod, if given. This
 	 * should match the parser's processing of non-defaulted expressions ---

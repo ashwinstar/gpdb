@@ -408,7 +408,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		if (checkExprHasWindFuncs((Node *)ws))
 		{
 			ereport(ERROR,
-					(errcode(ERRCODE_GROUPING_ERROR),
+					(errcode(ERRCODE_SYNTAX_ERROR),
 					 errmsg("cannot use window function in a window "
 							"specification")));
 		}

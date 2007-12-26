@@ -52,6 +52,7 @@
 #include "optimizer/prep.h"
 #include "parser/analyze.h"
 #include "parser/gramparse.h"
+#include "parser/parse_agg.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
@@ -285,12 +286,10 @@ static Datum transformLocationUris(List *locs, bool isweb);
 static Datum transformExecOnClause(List	*on_clause);
 static char transformFormatType(char *formatname);
 static Datum transformFormatOpts(char formattype, List *formatOpts);
-static Oid
-DefineRelation_int(CreateStmt *stmt,
-                   char        relkind,
-                   struct CdbDispatchResults  **pPrimaryResults,
-                   struct CdbDispatchResults  **pMirrorResults,
-				   struct CdbDispatchCmdThreads     **pDispatchThreads);
+static Oid DefineRelation_int(CreateStmt *stmt, char relkind,
+							  struct CdbDispatchResults **pPrimaryResults,
+							  struct CdbDispatchResults **pMirrorResults,
+							  struct CdbDispatchCmdThreads **pDispatchThreads);
 
 
 /* ----------------------------------------------------------------
@@ -338,10 +337,10 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 Oid
 DefineRelation_int(CreateStmt *stmt,
-                   char        relkind,
-                   struct CdbDispatchResults  **pPrimaryResults,
-                   struct CdbDispatchResults  **pMirrorResults,
-				   struct CdbDispatchCmdThreads     **pDispatchThreads)
+                   char relkind,
+                   struct CdbDispatchResults **pPrimaryResults,
+                   struct CdbDispatchResults **pMirrorResults,
+				   struct CdbDispatchCmdThreads **pDispatchThreads)
 {
 	char		relname[NAMEDATALEN];
 	Oid			namespaceId;
@@ -5898,6 +5897,11 @@ ATPrepAlterColumnType(List **wqueue,
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
 			errmsg("cannot use aggregate function in transform expression")));
+		if (pstate->p_hasWindFuncs)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+			errmsg("cannot use window function in transform expression")));
+
 	}
 	else
 	{

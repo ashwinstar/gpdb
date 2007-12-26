@@ -1281,3 +1281,28 @@ select ord, pn,cn,vn,sum(vn) over (order by ord, pn rows between cn following an
 
 -- MPP-2323
 select ord, cn,vn,sum(vn) over (order by ord rows between 3 following and floor(cn) following ) from sale_ord;
+
+-- Test use of window functions in places they shouldn't be allowed: MPP-2382
+-- CHECK constraints
+CREATE TABLE wintest (i int check (i < count(*) over (order by i)));
+
+CREATE TABLE wintest (i int default count(*) over (order by i));
+
+-- index expression and function
+CREATE TABLE wintest (i int);
+CREATE INDEX wintest_idx on wintest (i) where i < count(*) over (order by i);
+CREATE INDEX wintest_idx on wintest (sum(i) over (order by i));
+-- alter table
+ALTER TABLE wintest alter i set default count(*) over (order by i);
+alter table wintest alter column i type float using count(*) over (order by
+i)::float;
+
+-- update
+insert into wintest values(1);
+update wintest set i = count(*) over (order by i);
+
+-- domain suport
+create domain wintestd as int default count(*) over (order by i);
+create domain wintestd as int check (value < count(*) over (order by i));
+
+drop table wintest;

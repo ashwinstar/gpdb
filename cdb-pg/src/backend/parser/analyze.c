@@ -7456,7 +7456,7 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 
 	if (pstate->p_hasWindFuncs)
 		ereport(ERROR,
-				(errcode(ERRCODE_GROUPING_ERROR),
+				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("cannot use window function in UPDATE")));
 
 	/*
