@@ -5319,7 +5319,8 @@ waitOnOutbound(ChunkTransportStateEntry *pEntry)
 			return;
 		}
 
-		timeout = tval;
+		timeout.tv_sec = 0;
+		timeout.tv_usec = 500000;
 
 		memcpy(&curset, &waitset, sizeof(mpp_fd_set));
 
@@ -5347,7 +5348,7 @@ waitOnOutbound(ChunkTransportStateEntry *pEntry)
 		{
 			conn = pEntry->conns + i;
 
-			if (conn->sockfd >= 0 && MPP_FD_ISSET(conn->sockfd, &waitset))
+			if (conn->sockfd >= 0 && MPP_FD_ISSET(conn->sockfd, &curset))
 			{
 				int		count;
 				char	buf;
