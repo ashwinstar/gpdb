@@ -229,6 +229,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo)
 	} while (0);
 
 	PQfinish(conn);
+	free(buffer->data);
 	return ret;
 }
 
