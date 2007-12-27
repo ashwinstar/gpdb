@@ -66,7 +66,7 @@ typedef enum TupleChunkType
 	(((tcItem)->inplace != NULL) ? ((char *)((tcItem)->inplace)) : ((char *)((tcItem)->chunk_data)))
 
 #define GetChunkDataSize(tcItem, sizep)	\
-	do { uint16 sizeid; memcpy(&sizeid, (GetChunkDataPtr(tcItem)), sizeof(uint16)); *typep = typeid; } while (0)
+	do { uint16 sizeid; memcpy(&sizeid, (GetChunkDataPtr(tcItem)), sizeof(uint16)); *sizep = sizeid; } while (0)
 
 #define GetChunkType(/* uint 8 * */tcItem, /* TupleChunkType * */typep) \
 	do { uint16 typeid; memcpy(&typeid, (GetChunkDataPtr(tcItem) + 2), sizeof(uint16)); *typep = typeid; } while (0)
