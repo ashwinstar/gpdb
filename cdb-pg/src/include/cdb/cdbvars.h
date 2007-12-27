@@ -322,7 +322,7 @@ extern int	Gp_max_packet_size;	/* GUC var */
 
 #define DEFAULT_PACKET_SIZE 8192
 #define MIN_PACKET_SIZE 512
-#define MAX_PACKET_SIZE 65535
+#define MAX_PACKET_SIZE 65507 /* Max payload for IPv4/UDP (subtract 20 more for IPv6 without extensions) */
 
 /*
  * Support for multiple "types" of interconnect
