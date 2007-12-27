@@ -524,12 +524,15 @@ bool IsRejectLimitReached(CdbSreh *cdbsreh)
 {
 	bool	limit_reached = false;
 	
+	/* check for the case that we are rejecting every single row */
+	if(FIRST_1000_BAD(cdbsreh))
+		return true;
+	
 	if(cdbsreh->is_limit_in_rows)
 	{
 		/* limit is in ROWS */
 		
 		limit_reached = (cdbsreh->rejectcount >= cdbsreh->rejectlimit ? true : false);
-		
 	}
 	else
 	{

@@ -2107,9 +2107,6 @@ else \
 \
 	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT)\
 	{\
-		/* count this row in total rows processed on QD */ \
-		cstate->processed++; \
-\
 		Insist(cstate->err_loc_type == ROWNUM_ORIGINAL);\
 		cstate->cdbsreh->rawdata = (char *) palloc(strlen(cstate->line_buf.data) * \
 												   sizeof(char) + 1 + 24); \
@@ -2141,7 +2138,7 @@ else \
 \
 	cstate->cdbsreh->is_server_enc = cstate->line_buf_converted; \
 	cstate->cdbsreh->linenumber = cstate->cur_lineno; \
-	cstate->cdbsreh->processed = cstate->processed; \
+	cstate->cdbsreh->processed = ++cstate->processed; \
 \
 	/* set the error message. Use original msg and add column name if availble */ \
 	if (cstate->cur_attname)\
@@ -2189,17 +2186,30 @@ continue; /* move on to the next data line */
 
 #define IF_REJECT_LIMIT_REACHED_ABORT \
 if(IsRejectLimitReached(cstate->cdbsreh)) \
-{ \
+{\
+	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
+	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
+	char *finalmsg;\
 \
-	char *rejectmsg = "Segment reject limit reached. Aborting operation. Last error was:";\
-	char *finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
-									  strlen(rejectmsg) + 12 + 1)\
-									  * sizeof(char)); \
+	if(!FIRST_1000_BAD(cstate->cdbsreh))\
+	{\
+		/* the normal case */\
+		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_normal) + 12 + 1)\
+								   * sizeof(char)); \
+ 	    sprintf(finalmsg, "%s %s", rejectmsg_normal, cstate->cdbsreh->errmsg);\
+	}\
+	else\
+	{\
+		/* the special "first 1000 are bad" case */\
+		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_allbad) + 12 + 1)\
+								   * sizeof(char)); \
+		sprintf(finalmsg, "%s %s", rejectmsg_allbad, cstate->cdbsreh->errmsg);\
+	}\
 \
 	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
 		cdbCopyEnd(cdbCopy); \
-\
-	sprintf(finalmsg, "%s %s", rejectmsg, cstate->cdbsreh->errmsg); \
 \
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \

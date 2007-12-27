@@ -39,6 +39,13 @@
 #define errtable_rawbytes 8   
 
 /*
+ * If the 1st 1000 rows got rejected (ALL of them) - there's no point
+ * in resuming the load. Better if we abort even if REJECT LIMIT is more
+ * than 1000.
+ */
+#define FIRST_1000_BAD(sreh) ((sreh->processed == 1000 && sreh->rejectcount >= 1000) ? (true) : (false))
+
+/*
  * All the Single Row Error Handling state is kept here.
  * When an error happens and we are in single row error handling
  * mode this struct is updated and handed to the single row

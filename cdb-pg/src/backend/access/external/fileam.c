@@ -406,7 +406,7 @@ else \
 	pstate->cdbsreh->rawdata = pstate->line_buf.data; \
 	pstate->cdbsreh->is_server_enc = pstate->line_buf_converted; \
 	pstate->cdbsreh->linenumber = pstate->cur_lineno; \
-	pstate->cdbsreh->processed = pstate->processed; \
+	pstate->cdbsreh->processed = ++pstate->processed; \
 \
 	/* set the error message. Use original msg and add column name if availble */ \
 	if (pstate->cur_attname)\
@@ -443,12 +443,26 @@ continue; /* move on to the next data line */
 #define FILEAM_IF_REJECT_LIMIT_REACHED_ABORT \
 if(IsRejectLimitReached(pstate->cdbsreh)) \
 { \
-	char *rejectmsg = "Segment reject limit reached. Aborting operation. Last error was:";\
-	char *finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
-									  strlen(rejectmsg) + 12 + 1)\
-									  * sizeof(char)); \
+	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
+	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
+	char *finalmsg;\
 \
-    sprintf(finalmsg, "%s %s", rejectmsg, pstate->cdbsreh->errmsg); \
+	if(!FIRST_1000_BAD(pstate->cdbsreh))\
+	{\
+		/* the normal case */\
+		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_normal) + 12 + 1)\
+								   * sizeof(char)); \
+	    sprintf(finalmsg, "%s %s", rejectmsg_normal, pstate->cdbsreh->errmsg);\
+	}\
+	else\
+	{\
+		/* the special "first 1000 are bad" case */\
+		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_allbad) + 12 + 1)\
+								   * sizeof(char)); \
+ 	    sprintf(finalmsg, "%s %s", rejectmsg_allbad, pstate->cdbsreh->errmsg);\
+	}\
 \
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
@@ -1041,6 +1055,7 @@ open_external_file(FileScanDesc scan)
 	sprintf(extvar.GP_SEGMENT_ID, "%d", Gp_segment);
     sprintf(extvar.GP_SEG_PORT, "%d", PostPortNumber);
     sprintf(extvar.GP_SESSION_ID, "%d", gp_session_id);
+    
     /*
      * Open the url with url_open().
      */
