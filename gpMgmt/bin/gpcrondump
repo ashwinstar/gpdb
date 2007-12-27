@@ -71,6 +71,7 @@ RUN_PROG=0
 PARALLEL_STATUS_FILE=/tmp/gpcrondump_parallel_status_file.$$
 GPSEGCRON=$WORKDIR/lib/gpsegcron.sh
 PG_DUMPALL_PREFIX="gp_global_1_1_"
+HISTORY_TABLE=public.gpcrondump_history
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -111,6 +112,8 @@ USAGE () {
 		$ECHO "          Example -x template1,userdb1,userdb2"
 		$ECHO "      -p, dump primary segment instances only [default:- dump primary and mirror]"
 		$ECHO "      -m, dump mirror segment instances only [default:- dump primary and mirror]"
+		$ECHO "      -h, Record details of database dump in database table $HISTORY_TABLE in database name"
+		$ECHO "          supplied via -x option. Utility will create table if does not exist in database"
 		$ECHO "      -c, clear old dump directories [default:- do not clear]"
 		$ECHO "          will remove the oldest dump directory except the current dump directory"
 		$ECHO "          named $DUMP_DATE if it exists, NOTE:-deletes all dump sets within that directory"
@@ -562,6 +565,11 @@ PROMPT_CONTINUE () {
 		else
 			LOG_MSG "[INFO]:-Clear old dump files             = Off" 1
 		fi	
+		if [ x"" = x"$HISTORY" ];then
+			LOG_MSG "[INFO]:-Update history table             = Off" 1
+		else
+			LOG_MSG "[INFO]:-Update history table             = On" 1
+		fi
 		if [ $DUMP_CONFIG -eq 1 ];then SWITCH_TXT=On;else SWITCH_TXT=Off;fi
 		LOG_MSG "[INFO]:-Secure config files              = $SWITCH_TXT" 1
 		if [ $DUMP_GLOBAL -eq 1 ];then SWITCH_TXT=On;else SWITCH_TXT=Off;fi
@@ -684,7 +692,7 @@ PROCESS_DUMP () {
 	LOG_MSG "[INFO]:-Dump command line $DUMP_TEXT" 1
 	LOG_MSG "[INFO]:-Starting dump process" 1
 	TIME_START=`$DATE +%H":"%M":"%S`
-	$DUMP_TEXT
+	$DUMP_TEXT >> $LOG_FILE 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
 		LOG_MSG "[WARN]:-Dump process returned exit code $RETVAL" 1
@@ -713,6 +721,7 @@ CHK_POST_DUMP () {
 			TIMESTAMP_KEY=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$DUMP_DATE*|$CUT -d'_' -f7"`
 			LOG_MSG "[INFO]:-Time stamp key = $TIMESTAMP_KEY" 1
 		else
+			TIMESTAMP_KEY=0
 			LOG_MSG "[WARN]:-Failed to locate a dump status file on $DIR_HOST in directory $DIR" 1
 		fi
 	else	
@@ -873,12 +882,49 @@ STATUS_REPORT () {
 	LOG_MSG "[INFO]:------------------------------------------------" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
+
+UPDATE_HISTORY_TABLE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	CREATE_ERROR=0
+	CHK_EXISTS_TABLE $HISTORY_TABLE $MASTER_PORT $DUMP_DATABASE
+	if [ $EXISTS -eq 1 ];then
+		#Need to create the history table
+		$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$DUMP_DATABASE" -c "create table $HISTORY_TABLE \
+(rec_date timestamp, start_time char(8), end_time char(8), options text, dump_key varchar(20), exit_status smallint, exit_text varchar(10)) \
+distributed by (rec_date);" >> $LOG_FILE 2>&1
+		if [ $? -ne 0 ];then
+			LOG_MSG "[WARN]:-Unable to create $HISTORY_TABLE in $DUMP_DATABASE database" 1
+			CREATE_ERROR=1
+		else
+			LOG_MSG "[INFO]:-Created $HISTORY_TABLE in $DUMP_DATABASE database"
+		fi
+	fi
+	if [ $CREATE_ERROR -eq 0 ];then
+		#Can update table
+		case $EXIT_STATUS in
+			0) EXIT_MSG="COMPLETED" ;;
+			1) EXIT_MSG="WARNING" ;;
+			2) EXIT_MSG="FATAL" ;;
+		esac
+		$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$DUMP_DATABASE" -c "insert into $HISTORY_TABLE values \
+(now(), '$TIME_START', '$TIME_END', '$OPTIONS_LIST', '$TIMESTAMP_KEY', $EXIT_STATUS, '$EXIT_MSG');" >> $LOG_FILE 2>&1
+		if [ $? -ne 0 ];then
+			LOG_MSG "[WARN]:-Failed to insert record into $HISTORY_TABLE in $DUMP_DATABASE database" 1
+		else
+			LOG_MSG "[INFO]:-Insert dump record into $HISTORY_TABLE in $DUMP_DATABASE database"
+		fi
+	else
+		LOG_MSG "[WARN]:-Unable to insert dump record due to table creation error" 1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 #******************************************************************************
 # Main Section
 #******************************************************************************
 trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:t:T:" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:t:T:h" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -916,6 +962,7 @@ if [ $# -ne 0 ]; then
 				B ) BATCH_DEFAULT=$OPTARG ;;
 				t ) DUMP_TABLE_NAME=$OPTARG ;;
 				T ) EXC_DUMP_TABLE_LIST=$OPTARG ;;
+				h ) HISTORY=1 ;;
 				* ) USAGE ;;
 				esac
 		done	
@@ -1047,10 +1094,12 @@ do
 		if [ $ROLLBACK -eq 1 ];then
 			LOG_MSG "[WARN]:-Dump request was incomplete, rolling back dump" 1
 			DELETE_CURRENT_DUMP
+			if [ x"" != x"$HISTORY" ];then UPDATE_HISTORY_TABLE;fi
 			EVENT_MAIL "Report from gpcrondump on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 			ERROR_EXIT "[FATAL]:-Dump incomplete, completed rollback" 2
 		else
 			LOG_MSG "[WARN]:-Dump request was incomplete, not rolling back dump as -r option not supplied" 1
+			if [ x"" != x"$HISTORY" ];then UPDATE_HISTORY_TABLE;fi
 			EVENT_MAIL "Report from gpcrondump on host $CUR_HOST [FAILED]" "Failed for database $DUMP_DATABASE with return code $EXIT_STATUS dump files not rolled back. [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 			ERROR_EXIT "[FATAL]:-Dump incomplete, rollback not processed" 2
 		fi
@@ -1063,6 +1112,7 @@ do
 		VACUUM_PROCESS
 	fi
 	STATUS_REPORT
+	if [ x"" != x"$HISTORY" ];then UPDATE_HISTORY_TABLE;fi
 	EVENT_MAIL "Report from gpcrondump on host $CUR_HOST[COMPLETED]" "Completed for database $DUMP_DATABASE with return code $EXIT_STATUS [Start=$TIME_START End=$TIME_END] Options passed [$OPTIONS_LIST]"
 done
 if [ $DUMP_CONFIG -eq 1 ];then
