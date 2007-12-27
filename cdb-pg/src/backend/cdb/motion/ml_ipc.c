@@ -532,6 +532,13 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 	{
 		tcSize = TUPLE_CHUNK_HEADER_SIZE + (*(uint16 *) (conn->msgPos + bytesProcessed));
 
+		/* sanity check */
+		if (tcSize > Gp_max_packet_size)
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect error parsing message"),
+								errdetail("tcSize %d > max %d", tcSize, Gp_max_packet_size)));
+			
+
 		/* we only check for interrupts here when we don't have a guaranteed full-message */
 		if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
 		{
@@ -2718,7 +2725,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 
 		aSlice = (Slice *) list_nth(transportStates->sliceTable->slices, childId);
 
-		pEntry = removeChunkTransportState(transportStates, aSlice->sliceIndex);
+		getChunkTransportState(transportStates, aSlice->sliceIndex, &pEntry);
 
         if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
             elog(DEBUG3, "Interconnect closing connections from slice%d",
@@ -2742,6 +2749,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 				conn->sockfd = -1;
 			}
 		}
+		removeChunkTransportState(transportStates, aSlice->sliceIndex);
 		pfree(pEntry->conns);
 	}
 
@@ -2752,7 +2760,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
-		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
+		getChunkTransportState(transportStates, mySlice->sliceIndex, &pEntry);
 
 		if (!forceEOS)
 			waitOnOutbound(pEntry);
@@ -2767,6 +2775,7 @@ TeardownInterconnect(ChunkTransportState *transportStates,
 				conn->sockfd = -1;
 			}
 		}
+		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
 	}
 
 	/*
