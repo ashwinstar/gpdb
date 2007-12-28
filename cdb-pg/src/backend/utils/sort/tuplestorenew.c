@@ -367,6 +367,16 @@ static void nts_return_free_page(NTupleStore *nts, NTupleStorePage *page)
 	nts->first_free_page = NTS_PREPEND_1(nts->first_free_page, page);
 }
 
+static inline void *check_malloc(int size)
+{
+	void *ptr = malloc(size);
+	if(!ptr)
+		ereport(FATAL,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("NTupleStore failed to malloc: out of memory")));
+	return ptr;
+}
+
 /* Get a free page.  Will shrink if necessary.
  * The page returned still belong to the store (accounted by nts->page_cnt), but it is
  * not on any list.  Caller is responsible to put it back onto a list.
@@ -443,7 +453,7 @@ static NTupleStorePage *nts_get_free_page(NTupleStore *nts)
 	}
 
 	Assert(page_next == NULL && nts->page_cnt < page_max);
-	page = (NTupleStorePage *) malloc(sizeof(NTupleStorePage));
+	page = (NTupleStorePage *) check_malloc(sizeof(NTupleStorePage));
 	init_page(page);
 	++nts->page_cnt;
 
@@ -577,12 +587,8 @@ static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
 {
 	NTupleStorePage *p = ts->first_page;
 
-#ifdef DEBUG
-	verify_ts_page_list(ts);
-#endif
-
 	/* normal case: for each accessor, we mark it has no owning store.
-     * This do not need to, actually, cannot be called in error out case,
+	 * This do not need to, actually, cannot be called in error out case,
 	 * because the memory context of ts->accessor has already been 
 	 * cleaned up
 	 */
@@ -630,11 +636,8 @@ static void XCallBack_NTS(XactEvent event, void *nts)
 
 extern NTupleStore *ntuplestore_create(int maxBytes)
 {
-	NTupleStore *store = (NTupleStore *) malloc(sizeof(NTupleStore));
+	NTupleStore *store = (NTupleStore *) check_malloc(sizeof(NTupleStore));
 
-#ifdef DEBUG
-	verify_ts_page_sane();
-#endif
 	store->pfile = NULL;
 	store->first_ondisk_blockn = 0;
 
@@ -647,7 +650,7 @@ extern NTupleStore *ntuplestore_create(int maxBytes)
 	if(store->page_max < 16)
 		store->page_max = 16;
 
-	store->first_page = (NTupleStorePage *) malloc(sizeof(NTupleStorePage));
+	store->first_page = (NTupleStorePage *) check_malloc(sizeof(NTupleStorePage));
 	init_page(store->first_page);
 	nts_page_set_blockn(store->first_page, 0);
 
@@ -692,7 +695,7 @@ extern NTupleStore *ntuplestore_create_readerwriter(const char *filename, int ma
 	}
 	else
 	{
-		store = (NTupleStore *) malloc(sizeof(NTupleStore));
+		store = (NTupleStore *) check_malloc(sizeof(NTupleStore));
 		store->pfile = BufFileCreateTemp_ReaderWriter(filename, isWriter);
 		store->first_ondisk_blockn = 0;
 		store->rwflag = NTS_IS_READER;
@@ -706,7 +709,7 @@ extern NTupleStore *ntuplestore_create_readerwriter(const char *filename, int ma
 		if(store->page_max < 16)
 			store->page_max = 16;
 
-		store->first_page = (NTupleStorePage *) malloc(sizeof(NTupleStorePage));
+		store->first_page = (NTupleStorePage *) check_malloc(sizeof(NTupleStorePage));
 		init_page(store->first_page);
 
 		fOK = ntsReadBlock(store, 0, store->first_page);
@@ -779,11 +782,6 @@ extern void ntuplestore_flush(NTupleStore *ts)
 	NTupleStorePage *p = ts->first_page;
 
 	Assert(ts->rwflag == NTS_IS_WRITER || !"Flush NYI for Non ReaderWriter or Reader");
-	
-#ifdef DEBUG
-	verify_ts_page_list(ts);
-#endif
-
 	Assert(ts->pfile);
 
 	while(p)
