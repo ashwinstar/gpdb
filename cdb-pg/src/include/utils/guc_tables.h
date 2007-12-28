@@ -38,6 +38,9 @@ union config_var_value
 
 /*
  * Groupings to help organize all the run-time options for display
+ *
+ * Note: When you modify this, you need to modify config_group_names[]
+ *       as well, which is located in guc.c.
  */
 enum config_group
 {

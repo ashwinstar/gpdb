@@ -352,6 +352,8 @@ const char *const config_group_names[] =
 	gettext_noop("Connections and Authentication / Connection Settings"),
 	/* CONN_AUTH_SECURITY */
 	gettext_noop("Connections and Authentication / Security and Authentication"),
+	/* EXTERNAL_TABLES */
+	gettext_noop("External Tables"),
 	/* RESOURCES */
 	gettext_noop("Resource Usage"),
 	/* RESOURCES_MEM */
@@ -420,6 +422,8 @@ const char *const config_group_names[] =
     gettext_noop(PACKAGE_NAME " / Array Tuning"),
     /* GP_WORKER_IDENTITY */
     gettext_noop(PACKAGE_NAME " / Worker Process Identity"),
+	/* GP_ERROR_HANDLING */
+	gettext_noop("GPDB Error Handling"),
 	/* PRESET_OPTIONS */
 	gettext_noop("Preset Options"),
 	/* CUSTOM_OPTIONS */
