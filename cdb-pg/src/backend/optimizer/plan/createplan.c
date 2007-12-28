@@ -1041,19 +1041,24 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		/* 
 		 * single row error handling is requested, make sure reject 
 		 * limit and error table (if requested) are valid.
+		 *
+		 * NOTE: this should never happen unless somebody modified the 
+		 * catalog manually. We are just being pedantic here.
 		 */
-		if(rel->rejectlimit < 2)
+		if(rel->rejectlimittype == 'r' && rel->rejectlimit < 2)
 		{
-			/* this should never happen unless somebody modified the catalog manually */
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("Segment reject limit for single row error handling "
+					 errmsg("Segment reject limit in ROWS "
 							"must be 2 or larger (got %d)", rel->rejectlimit)));
 		}
-		
-		/* TODO: if error table requested, call a function in cdbsreh that 
-				 validates existance and format of this error table. */
-			
+		else if(rel->rejectlimittype == 'p' && (rel->rejectlimit < 1 || rel->rejectlimit > 100))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Segment reject limit in PERCENT "
+							"must be between 1 and 100 (got %d)", rel->rejectlimit)));
+		}
 	}
 	
 	if(using_execute && !gp_external_enable_exec)

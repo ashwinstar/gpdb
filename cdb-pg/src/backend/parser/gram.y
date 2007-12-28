@@ -3073,15 +3073,17 @@ OptSingleRowErrorHandling:
 			n->rejectlimit = $6;
 			n->is_limit_in_rows = $7; /* true for ROWS false for PERCENT */
 			
+			/* PERCENT value check */
 			if(!n->is_limit_in_rows && (n->rejectlimit < 1 || n->rejectlimit > 100))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("invalid PERCENT value. Should be (1 - 100)")));
 			
-			if(n->rejectlimit < 1)
+			/* ROW values check */
+			if(n->rejectlimit < 2)
 			   ereport(ERROR,
 					   (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("invalid (ROWS) reject limit. Should be > 1")));
+						errmsg("invalid (ROWS) reject limit. Should be 2 or larger")));
 			
 			$$ = (Node *)n;
 		}
