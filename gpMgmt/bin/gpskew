@@ -438,6 +438,9 @@ if [ x"" != x"$TARGETTBL" ];then
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TARGETTBL does not exist" 2
 	else
+		if [ $EXTERNAL -eq 1 ];then
+			 ERROR_EXIT "[FATAL]:-Table $TARGETTBL is an external table" 2
+		fi
 		if [ x"" != x"$WHERE_CLAUSE" ];then
 			BUILD_QUERY $TARGETTBL
 			VALIDATE_QUERY
