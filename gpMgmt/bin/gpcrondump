@@ -144,9 +144,10 @@ USAGE () {
 		$ECHO
 		$ECHO "      Crontab entry (example):"
 		$ECHO "      SHELL=/bin/bash"
-		$ECHO "      5 0 * * * . \$HOME/.bashrc;\$MPPUTIL/gpcrondump -x template1 -aq >> <name of cronout file>" 
+		$ECHO "      5 0 * * * . \$HOME/.bashrc;\$GPUTIL/gpcrondump -x template1 -aq >> <name of cronout file>" 
 		$ECHO "      Set the shell to /bin/bash (default for cron is /bin/sh"
 		$ECHO "      Dump the template1 database, start process 5 minutes past midnight on a daily basis"
+		$ECHO "      In \$HOME/.bashrc file set GPUTIL=\$GPHOME/bin"
 		$ECHO
 		$ECHO "      Mail configuration"
 		$ECHO "      This utility will send an email to a list of email addresses contained in a file"
@@ -699,6 +700,7 @@ PROCESS_DUMP () {
 	else
 		LOG_MSG "[INFO]:-Dump process returned exit code $RETVAL" 1
 	fi
+	DUMP_EXIT_STATUS=$RETVAL
 	TIME_END=`$DATE +%H":"%M":"%S`
 	LOG_MSG "[INFO]:-Deleting dump running flag" 1
 	$RM -f $IS_RUNNING_FLAG
@@ -890,7 +892,7 @@ UPDATE_HISTORY_TABLE () {
 	if [ $EXISTS -eq 1 ];then
 		#Need to create the history table
 		$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$DUMP_DATABASE" -c "create table $HISTORY_TABLE \
-(rec_date timestamp, start_time char(8), end_time char(8), options text, dump_key varchar(20), exit_status smallint, exit_text varchar(10)) \
+(rec_date timestamp, start_time char(8), end_time char(8), options text, dump_key varchar(20), dump_exit_status smallint, script_exit_status smallint, exit_text varchar(10)) \
 distributed by (rec_date);" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
 			LOG_MSG "[WARN]:-Unable to create $HISTORY_TABLE in $DUMP_DATABASE database" 1
@@ -907,7 +909,7 @@ distributed by (rec_date);" >> $LOG_FILE 2>&1
 			2) EXIT_MSG="FATAL" ;;
 		esac
 		$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$DUMP_DATABASE" -c "insert into $HISTORY_TABLE values \
-(now(), '$TIME_START', '$TIME_END', '$OPTIONS_LIST', '$TIMESTAMP_KEY', $EXIT_STATUS, '$EXIT_MSG');" >> $LOG_FILE 2>&1
+(now(), '$TIME_START', '$TIME_END', '$OPTIONS_LIST', '$TIMESTAMP_KEY', $DUMP_EXIT_STATUS, $EXIT_STATUS, '$EXIT_MSG');" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
 			LOG_MSG "[WARN]:-Failed to insert record into $HISTORY_TABLE in $DUMP_DATABASE database" 1
 		else
