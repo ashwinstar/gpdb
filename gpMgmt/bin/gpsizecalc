@@ -413,6 +413,9 @@ if [ $SIZE_TYPE -le 1 ];then
 	if [ $EXISTS -ne 0 ];then
 		ERROR_EXIT "[FATAL]:-Table $TABLE_NAME does not exist in $QD_DBNAME database" 2
 	fi
+	if [ $EXTERNAL -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Table $TABLE_NAME is an external table" 2
+	fi
 	GET_OID_DATA
 	GET_TABLE_TYPE ${SCHEMA_NAME}.$TABLE_NAME $MASTER_PORT $QD_DBNAME
 	if [ $SIZE_TYPE -eq 0 ];then
