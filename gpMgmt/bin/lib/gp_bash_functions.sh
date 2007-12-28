@@ -230,6 +230,7 @@ GP_PG_VIEW="(SELECT l.dbid, l.isprimary, l.content, l.\"valid\",
 ACTIVITY_TABLE=pg_stat_activity
 GP_INITDB_VER_TABLE=gp_version_at_initdb
 CLASS_TABLE=pg_class
+EXTERNAL_TABLE=pg_exttable
 SCHEMA_TABLE=pg_namespace
 ATTRIBUTE_TABLE=pg_attribute
 INHERIT_TABLE=pg_inherits
@@ -314,7 +315,7 @@ ERROR_EXIT () {
 		DEBUG_LEVEL=1
 		if [ $BACKOUT_FILE ]; then
 				if [ -s $BACKOUT_FILE ]; then
-						LOG_MSG "[WARN]:-Script has left Greenplum Database configuration in an incomplete state"
+						LOG_MSG "[WARN]:-Script has left Greenplum Database in an incomplete state"
 						LOG_MSG "[WARN]:-Run command /bin/bash $BACKOUT_FILE to remove these changes"
 						BACKOUT_COMMAND "if [ $MASTER_HOSTNAME != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
 						$ECHO "$RM -f $BACKOUT_FILE" >> $BACKOUT_FILE
@@ -482,40 +483,47 @@ fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CHK_EXTERNAL () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	EXTERNAL=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select 1 from $EXTERNAL_TABLE where reloid in (select oid from $CLASS_TABLE where relname='$TABLENAME' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='$SCHEMA_NAME'));"|$WC -l`
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 
 CHK_EXISTS_TABLE () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		TABLENAME=$1
-		MASTER_PORT=$2
-		QD_DBNAME=$3
-		if [ $# -ne 3 ];then
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	TABLENAME=$1
+	MASTER_PORT=$2
+	QD_DBNAME=$3
+	if [ $# -ne 3 ];then
 		ERROR_EXIT "[FATAL]:-Incorrect number of parameters passed expected 3 got $#" 2;fi
-		DB_THERE=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$DEFAULTDB" -c"select 1 from pg_database where datname='$QD_DBNAME';" |$WC -l`
-		if [ $DB_THERE -eq 0 ];then
-			ERROR_EXIT "[FATAL]:-Database $QD_DBNAME does not exist" 2;fi
-		LOG_MSG "[INFO]:-Checking for table $TABLENAME in database $QD_DBNAME"
-		if [ `$ECHO $TABLENAME|$GREP -c "\."` -eq 1 ];then
-			SCHEMA_NAME=`$ECHO $TABLENAME|$CUT -d"." -f1`
-                        TABLENAME=`$ECHO $TABLENAME|$CUT -d"." -f2`
-			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" |$WC -l`
-			if [ $TAB_COUNT -eq 1 ];then
+	DB_THERE=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$DEFAULTDB" -c"select 1 from pg_database where datname='$QD_DBNAME';" |$WC -l`
+	if [ $DB_THERE -eq 0 ];then
+		ERROR_EXIT "[FATAL]:-Database $QD_DBNAME does not exist" 2;fi
+	LOG_MSG "[INFO]:-Checking for table $TABLENAME in database $QD_DBNAME"
+	if [ `$ECHO $TABLENAME|$GREP -c "\."` -eq 1 ];then
+		SCHEMA_NAME=`$ECHO $TABLENAME|$CUT -d"." -f1`
+                TABLENAME=`$ECHO $TABLENAME|$CUT -d"." -f2`
+		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');" |$WC -l`
+		if [ $TAB_COUNT -eq 1 ];then
 			LOG_MSG "[INFO]:-Found table ${SCHEMA_NAME}.$TABLENAME in database $QD_DBNAME"
+			CHK_EXTERNAL
 			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"`
-			fi
-		else
-			TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME';" |$WC -l`
-			if [ $TAB_COUNT -eq 1 ];then
+		fi
+	else
+		TAB_COUNT=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select 1 from pg_class where relname='$TABLENAME';" |$WC -l`
+		if [ $TAB_COUNT -eq 1 ];then
 			PARTITIONED=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select relhassubclass from pg_class where relname='$TABLENAME';"`
 			SCHEMA_NAME=`$EXPORT_LIB_PATH;$PSQL -A -t -q -p  $MASTER_PORT "$QD_DBNAME" -c"select nspname from pg_namespace where oid in(select relnamespace from pg_class where relname='$TABLENAME');"`
-			fi
+			CHK_EXTERNAL
 		fi
+	fi
 #		$EXPORT_LIB_PATH;$PSQL -q -p  $MASTER_PORT "$QD_DBNAME" -c"\d $TABLENAME;" -o /dev/null
-		if [ $TAB_COUNT -eq 0 ] || [ $TAB_COUNT -gt 1 ];then
-			EXISTS=1
-		else
-			EXISTS=0
-		fi
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+	if [ $TAB_COUNT -eq 0 ] || [ $TAB_COUNT -gt 1 ];then
+		EXISTS=1
+	else
+		EXISTS=0
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 EVENT_MAIL () {
