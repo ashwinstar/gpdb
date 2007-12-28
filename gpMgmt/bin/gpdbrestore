@@ -114,6 +114,8 @@ USAGE () {
 		$ECHO "      -T, <schema.tablename> restore a single table from a backup set, for multiple tables"
 		$ECHO "          supply a comma separated list of schema.tablenames. Note, table must exist in target"
 		$ECHO "          database"
+		$ECHO "      -L, list table names in dump file, can only be used with -t <timestamp> option"
+		$ECHO "          Will display all tables in dump file and then exit"
 		$ECHO "      -B, <number> run this batch of table restore create dump file processes in parallel"
 		$ECHO "          [default $BATCH_DEFAULT]"
 		$ECHO
@@ -228,6 +230,9 @@ PRE_RESTORE_CHECKS () {
 
 CHK_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ x"" == x"$DB_TIMESTAMP" ] && [ x"" != x"$LIST_TABLES" ];then
+		ERROR_EXIT "[FATAL]:-Need to supply -t <timestamp> for -L option" 2
+	fi
 	if [ x"" != x"$DB_TIMESTAMP" ] && [ x"" != x"$DB_DATE_DIR" ];then
 		ERROR_EXIT "[FATAL]:-Cannot supply both -t and -b options" 2
 	fi
@@ -316,6 +321,30 @@ VALIDATE_PARAMS () {
 			 ERROR_EXIT "[FATAL]:-Invalid -R<hostname:dir_path> full path incorrect" 2
 		fi
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+LIST_DUMP_TABLES () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	VALIDATE_TIMESTAMP
+	if [ x"" != x"$COMPRESS" ];then
+		DUMP_TABLE_ARRAY=(`$ZCAT ${MASTER_DATA_DIRECTORY}/${DUMP_DIR}/$RESTORE_DIR_DATE/${MASTER_DBDUMP_PREFIX}_${RESTORE_TIMESTAMP}.gz| \
+$GREP -i "data for name:"|$TR -d ';'|$AWK '{print $10"."$5"|"$NF}'`)
+	else
+		DUMP_TABLE_ARRAY=(`$CAT ${MASTER_DATA_DIRECTORY}/${DUMP_DIR}/$RESTORE_DIR_DATE/${MASTER_DBDUMP_PREFIX}_${RESTORE_TIMESTAMP}| \
+$GREP -i "data for name:"|$TR -d ';'|$AWK '{print $10"."$5"|"$NF}'`)
+	fi
+	LOG_MSG "[INFO]:---------------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:-List of database tables for dump file with time stamp $RESTORE_TIMESTAMP" 1
+	LOG_MSG "[INFO]:---------------------------------------------------------------------" 1
+	for DUMP_ITEM in ${DUMP_TABLE_ARRAY[@]}
+	do
+		TAB=`$ECHO $DUMP_ITEM|$AWK -F"|" '{print $1}'`
+		OWNER=`$ECHO $DUMP_ITEM|$AWK -F"|" '{print $2}'`	
+		LOG_MSG "[INFO]:-Table $TAB Owner $OWNER" 1
+	done
+	LOG_MSG "[INFO]:---------------------------------------------------------------------" 1
+	exit 0
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -1010,7 +1039,7 @@ CLEAR_RESTORE_TABLE_DUMP_FILES () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-	while getopts ":vt:'?'aql:d:!Dt:b:R:es:GT:B:K" opt;do
+	while getopts ":vt:'?'aql:d:!Dt:b:R:es:GT:B:KL" opt;do
 	case $opt in
 		v ) VERSION_INFO ;;
 		'?' ) USAGE ;;
@@ -1030,6 +1059,7 @@ if [ $# -ne 0 ]; then
 		T ) RESTORE_TABLE=$OPTARG ;;
 		B ) BATCH_DEFAULT=$OPTARG ;;
 		K ) KEEP_DUMP_FILES=1 ;;
+		L ) LIST_TABLES=1 ;;
 		* ) USAGE ;;
 	esac
 	done	
@@ -1060,6 +1090,9 @@ if [ x"" != x"$SEARCH_FOR_DBNAME" ];then
 	unset DB_FILE_HOST
 fi
 VALIDATE_PARAMS
+if [ x"" != x"$DB_TIMESTAMP" ] && [ x"" != x"$LIST_TABLES" ];then
+	LIST_DUMP_TABLES
+fi
 PRE_RESTORE_CHECKS
 GATHER_INFO
 if [ x"" != x"$RESTORE_TABLE" ];then
