@@ -371,7 +371,7 @@ static inline void *check_malloc(int size)
 {
 	void *ptr = malloc(size);
 	if(!ptr)
-		ereport(FATAL,
+		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("NTupleStore failed to malloc: out of memory")));
 	return ptr;
