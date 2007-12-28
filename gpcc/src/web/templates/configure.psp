@@ -44,52 +44,18 @@ while redirect < 5:
 %>
 
 
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en"><head><title>Greenplum Database Configuration</title>
-
-
-
 <!-- base href="http://www.greenplum.com/" -->
-<meta name="Generator" content="CMS Made Simple - Copyright (C) 2004-6 Ted Kulp. All rights reserved.">
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<meta name="description" content="Overview of Greenplum's Database Products">
- 
-<link rel="stylesheet" type="text/css" media="screen" href="http://www.greenplum.com/stylesheet.php?templateid=23&amp;mediatype=screen">
-
 <script type="text/javascript" src="/static/js/jquery-1.2.1.min.js"></script>
 
 
 </head><body>
 <div id="pagewrapper">
-   <div id="header">
-           <a href="http://www.greenplum.com/index.php"><img src="http://www.greenplum.com/images/greenplum_logo.gif" alt="Greenplum - World's Best Database for BI" id="siteLogo"></a>
-          
-   </div>
    <div id="content">
-      <div id="submain">
-      <table>
-        <tbody><tr>
-          <td colspan="3"></td>
-          <td><h1>Database Configuration</h1></td>
-        </tr>
-        <tr>
-         <td width="25"></td>
-         <td><img src="http://www.greenplum.com/images/menu_top.gif"></td>
-         <td width="15"></td>
-         <td><img src="http://www.greenplum.com/images/content_top.gif"></td>
-       </tr>
-       <tr>
-         <td width="25"></td>
-         <td valign="top" width="200">
          <div id="leftNav">
           
 <ul id="leftMenu">
-<li><a href="/index.psp"> Database Management
- </a></li>
-</ul>
-
-          
-<ul id="leftMenu">
+<li><a href="/index.psp"> Database Management </a></li>
 <li><a href="/initialize.psp"> Database Initialization </a></li>
 <li><a href="/configure.psp" id="current"> Database Configuration </a></li>
 <li><a href="/control.psp"> Database Control </a></li>
@@ -97,16 +63,8 @@ while redirect < 5:
 
 
 
-         </div></td>
-         <td width="15"></td>
-         <td valign="top" width="720">
-
-         <table cellspacing="0" cellpadding="4" border="0">
-    <tbody>
-        <tr valign="top">
-            <td width="435">
-
-<div id="clear">&nbsp;</div>
+         </div>
+	 <div id="rightNav">
 
             <p style="margin-top: 0pt;">
 % if cfg is None:
@@ -127,31 +85,8 @@ while redirect < 5:
 % endfor
 	    </table>
 % endif
-            <p>&nbsp;</p>
-            </td>
-        </tr>
-    </tbody>
-</table>
-         </td>
-       </tr>
-       <tr>
-         <td colspan="3"></td>
-         <td><img src="http://www.greenplum.com/images/submain_footer.gif"></td>
-       </tr>
-       <tr>
-         <td colspan="4">
-        <div id="footer"><table>
-    <tbody>
-        <tr>
-            <td width="25">&nbsp;</td>
-            <td width="450">&copy; 2007 Greenplum</td>
-            <td width="225">Phone: 650.286.8012</td>
-            <td width="220">Email: <a href="mailto:info@greenplum.com">info@greenplum.com</a></td>
-        </tr>
-    </tbody>
-</table></div>
-        </td>
-     </tr></tbody></table>
+
+         </div>
    </div>
 </div>
-</div></body></html>
+</body></html>
