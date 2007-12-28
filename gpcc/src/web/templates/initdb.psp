@@ -19,6 +19,7 @@ def get_mirror_id(nodes, cid):
 def get_config_from_multi_input():
     param = web.input(node=[])
     array_name = param['array_name']
+    segment_prefix = param['segment_prefix']
     base_dir = param['base_directory']
     qe_base_dir = param['qe_base_directory']
     mirror_qe_base_dir = param['mirror_qe_base_directory']
@@ -55,18 +56,25 @@ def get_config_from_multi_input():
     cfg.write('gpdb.seg.base_port=%d\n' % qe_base_port)
     cfg.write('gpdb.seg.mirror_base_port=%d\n' % qe_mirror_base_port)
 
-    cfg.write('gpdb.seg.m.0=node.%d:%s/seg.m.0\n' % (qd_resides, base_dir))
-    if standby_qd_resides != -1:
-       cfg.write('gpdb.seg.m.1=node.%d:%s/seg.m.1\n' % (standby_qd_resides, base_dir))
+
+    gpid = -1
+    cfg.write('gpdb.seg.m.0=node.%d:%s/%s%d\n' % (qd_resides, base_dir, segment_prefix, gpid))
+    gpid += 1
      
     i = 0
     for id in nodes:
     	for j in range (len(qe_dirs)):
-    	    cfg.write('gpdb.seg.%d.0=node.%d:%s/seg.%d.0\n' % (i, id, qe_dirs[j], i))
+    	    cfg.write('gpdb.seg.%d.0=node.%d:%s/%s%d\n' % (i, id, qe_dirs[j], segment_prefix, gpid))
+	    gpid += 1
 	    if mirror:
 	        mirror_id = get_mirror_id(nodes, id)
-	        cfg.write('gpdb.seg.%d.1=node.%d:%s/seg.%d.1\n' % (i, mirror_id, mirror_qe_dirs[j], i))
+	        cfg.write('gpdb.seg.%d.1=node.%d:%s/%s%d\n' % (i, mirror_id, mirror_qe_dirs[j], segment_prefix, gpid))
+		gpid += 1
   	    i += 1
+
+    if standby_qd_resides != -1:
+       cfg.write('gpdb.seg.m.1=node.%d:%s/%s%d\n' % (standby_qd_resides, base_dir, segment_prefix, gpid))
+
 
     data = cfg.getvalue()
     cfg.close()

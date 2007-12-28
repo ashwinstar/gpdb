@@ -128,6 +128,8 @@ $(function() {
 	    a = myform.vars[i];
 	    if (a.name == 'array_name' && isBlank(a.value))
 	       err.push(a.name);
+	    if (a.name == 'segment_prefix' && isBlank(a.value))
+	       err.push(a.name);
 	    if (a.name == 'base_directory' && ! isPath(a.value))
 	       err.push(a.name);
 	    if (a.name == 'qe_base_directory' && ! isPathList(a.value))
@@ -359,6 +361,10 @@ $(function() {
 		   <tr>
 		      <td name="array_name">Array name:</td>
 		      <td><input name="array_name" type="text"></td>
+		   </tr>
+		   <tr>
+		      <td name="segment_prefix">Segment Prefix:</td>
+		      <td><input name="segment_prefix" type="text"></td>
 		   </tr>
 		   <tr>
 		      <td name="base_directory">QD base directory:</td>
