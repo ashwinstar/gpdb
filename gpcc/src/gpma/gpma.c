@@ -30,7 +30,7 @@ static void usage(const char* msg)
     fprintf(stderr, "    ma_dir     : the data directory for storing Master Agent data files\n");
     fprintf(stderr, "    ma_addrN   : ma address with the format IP:PORT\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "e.g. %s mycluster ma.0\n", gpma.progname);
+    fprintf(stderr, "e.g. %s ma.0 /db/ma localhost:11000\n", gpma.progname);
     fprintf(stderr, "\n");
     if (msg)
 	fprintf(stderr, "Error: %s\n\n", msg);
