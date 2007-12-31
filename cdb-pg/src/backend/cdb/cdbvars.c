@@ -208,6 +208,9 @@ bool		gp_enable_tablespace_auto_mkdir = FALSE;
 /* Greenplum memory context use mpool */
 int 		gp_use_mpool = 0;
 
+/* Disable setting of tuple hints while reading */
+bool		gp_disable_tuple_hints = true;
+
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
  */

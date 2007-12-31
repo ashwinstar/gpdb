@@ -15,9 +15,7 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha
-
-#mkgpma mkgp 
+all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp
 
 mkgpfdist: 
 	@echo --- gpfdist --------------------------------------------------
@@ -30,16 +28,23 @@ mkgpfdist:
 
 mkgp:
 	@echo --- gp -------------------------------------------------------
+	@mkdir -p build/bin
+	@cp src/gp/gp build/bin/
 
 mkgpma:
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o gpma *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson)
+	@mkdir -p build/bin
+	@cp src/gpma/gpma build/bin/
+
 
 mkgpha:
 	@echo --- gpha -----------------------------------------------------
 	@(cd src/gpha; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson)
+	@mkdir -p build/bin
+	@cp src/gpha/gpha build/bin/
 
 mkfts:
 	@echo --- fts -----------------------------------------------------

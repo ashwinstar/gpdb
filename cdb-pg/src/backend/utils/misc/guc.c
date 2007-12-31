@@ -1603,6 +1603,17 @@ static struct config_bool ConfigureNamesBool[] =
 		&Debug_dtm_action_primary,
 		DEBUG_DTM_ACTION_PRIMARY_DEFAULT, NULL, NULL
 	},
+
+	{
+		{"gp_disable_tuple_hints", PGC_BACKEND, DEVELOPER_OPTIONS,
+		 gettext_noop("Specify if reader should set hint bits on tuples."),
+		 NULL
+		},
+		&gp_disable_tuple_hints,
+		true, NULL, NULL
+	},
+		
+
 	
 	/* End-of-list marker */
 	{

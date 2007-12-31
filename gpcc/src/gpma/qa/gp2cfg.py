@@ -148,7 +148,7 @@ def getIPAddress(host):
         print '[%s] %s' % (host, addr)
 
 
-print '# please add the IP addresses of the nodes'
+print '# all nodes participating in the array'
 node = getnode()
 i = 0
 for n in node:
@@ -200,7 +200,8 @@ for c in config.get():
 
 
 print
-print '# please modify the value belows'
+print '# These are placeholder values'
+print '# please modify: ma and ha data dir'
 print 'ma.datadir=/db/ma'
 print 'ha.datadir=/db/ha'
 print 'ma.0=node.0:11000'

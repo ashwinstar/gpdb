@@ -1534,7 +1534,7 @@ IndexBuildHeapScan(Relation heapRelation,
 			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
 			switch (HeapTupleSatisfiesVacuum(heapTuple->t_data, OldestXmin,
-											 scan->rs_cbuf))
+											 scan->rs_cbuf, true))
 			{
 				case HEAPTUPLE_DEAD:
 					/* Definitely dead, we can ignore it */

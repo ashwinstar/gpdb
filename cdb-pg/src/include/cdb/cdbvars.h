@@ -681,6 +681,9 @@ extern int gp_hashjoin_bloomfilter;
 /* Memory context mpool */
 extern int gp_use_mpool;
 
+/* Disable setting of hint-bits while reading db pages */
+extern bool gp_disable_tuple_hints;
+
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
  */
