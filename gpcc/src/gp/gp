@@ -14,6 +14,7 @@ Usage: gp [gp_options] command [command_options] [command_args]
 	    start 
 	    stop
             init config_file
+            segment segidx [start|stop|status]
 
 """
 
@@ -379,6 +380,144 @@ def doInit(args):
             printError(json)
             return
             
+def getSegmentStatus(args):
+    params = { 'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0] }
+    redirect = 0
+    while redirect < 5:
+        (retcode, json) = hitMA('/gpcc/segment/status', params)
+    # print '/gpcc/status:', json
+        if retcode == 200:
+            status = json.get('status', '')
+            x = json.get('rset', {})
+            x = x.get('result', [])
+            if len(x): 
+                x = x[0] 
+            else:
+                x = ''
+            break
+        elif retcode == 301:
+            location = json.get('location')
+            addr = location.split(':')
+            gp_opt['-h'] = addr[0]
+            gp_opt['-p'] = int(addr[1])
+            redirect += 1
+            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+        else:
+            return (json, 'failure', '')
+    return (json, status, x)
+
+
+def doSegmentStatus(args):
+    params = {'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0]}
+    (json, status, array_status) = getSegmentStatus(args)
+    if status != 'ok':
+        printError(json)
+        return
+    print array_status
+
+
+def doSegmentStart(args):
+    params = {'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0]}
+    redirect = 0
+    while redirect < 5:
+        (retcode, json) = hitMA('/gpcc/segment/start', params)
+        if retcode == 200:
+            if not json.get('status') in ('ok', 'pending'):
+                printError(json)
+                return
+            cur = 'starting'
+            for i in xrange(30):
+                printDotSleep()
+                (json, status, array_status) = getSegmentStatus(args)
+                if status != 'ok':
+                    print
+                    printError(json)
+                    return
+                if array_status != cur:
+                    cur = array_status
+                    break
+            print
+            if cur == 'starting':
+                print 'error: timeout'
+            elif cur == 'running':
+                print 'ok:', cur
+            elif cur == 'stopping' or cur == 'stopped':
+                print 'error:', cur
+            else:
+                print 'error: unknown; not started.'
+            return
+        elif retcode == 301:
+            location = json.get('location')
+            addr = location.split(':')
+            gp_opt['-h'] = addr[0]
+            gp_opt['-p'] = int(addr[1])
+            redirect += 1
+            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+        else:
+            printError(json)
+            return
+    
+
+def doSegmentStop(args):
+    params = {'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0]}
+    redirect = 0
+    while redirect < 5:
+        (retcode, json) = hitMA('/gpcc/segment/stop', params)
+        if retcode == 200:
+            if not json.get('status') in ('ok', 'pending'):
+                printError(json)
+                return
+            cur = 'stopping'
+            for i in xrange(30):
+                printDotSleep()
+                (json, status, array_status) = getSegmentStatus(args)
+                if status != 'ok':
+                    print
+                    printError(json)
+                    return
+                if array_status != cur:
+                    cur = array_status
+                    break
+            print
+            if cur == 'stopping':
+                print 'error: timeout'
+            elif cur == 'stopped':
+                print 'ok:', cur
+            elif cur == 'starting' or cur == 'running':
+                print 'error:', cur
+            else:
+                print 'error: unknown; not stopped.'
+            return
+        elif retcode == 301:
+            location = json.get('location')
+            addr = location.split(':')
+            gp_opt['-h'] = addr[0]
+            gp_opt['-p'] = int(addr[1])
+            redirect += 1
+            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+        else:
+            printError(json)
+            return
+
+
+def doSegment(args):
+
+    if len(args) < 2:
+        usage(1)
+
+    cmd = args[1]
+    
+    if cmd == 'start':
+        doSegmentStart(args)
+    elif cmd == 'stop':
+        doSegmentStop(args)
+    elif cmd == 'status':
+        doSegmentStatus(args)
+    else:
+        usage('Invalid command')
+
+    
+    
 
 def main():
     resetCommandOptions()
@@ -395,6 +534,8 @@ def main():
         doListConfig(gp_args)
     elif gp_cmd == 'init':
         doInit(gp_args)
+    elif gp_cmd == 'segment':
+        doSegment(gp_args)
     else:
         usage('Invalid command')
 
