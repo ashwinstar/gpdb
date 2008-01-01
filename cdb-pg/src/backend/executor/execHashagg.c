@@ -33,13 +33,15 @@
 #include "utils/memutils.h"
 #include "access/htup.h"
 #include "cdb/cdbvars.h"
+#include "storage/bfz.h"
 
 #include "executor/execHashagg.h"
 
 struct BatchFileInfo
 {
 	long ntuples;
-	BufFile *file;
+	bfz_t* file;
+	bfz_t  bfz;
 };
 
 typedef struct BatchTupleHeader BatchTupleHeader;
@@ -1285,10 +1287,8 @@ batch_put_tuple(HashAggTable *hashtable,
 				uint32 hkey,
 				char* buf, int buflen)
 {
-	static const char *msg = "could not write to temporary batch file: %m";
-
 	BatchFileInfo *info;
-	BufFile    *file;
+	bfz_t    *file;
 	BatchTupleHeader hth;
 
 	hth.hkey = hkey;
@@ -1302,17 +1302,13 @@ batch_put_tuple(HashAggTable *hashtable,
 		char tmpprefix[50];
 		snprintf(tmpprefix, 50, "HashAgg_Slice%d", currentSliceId);
 
-		file = BufFileCreateTemp(tmpprefix, false);
+		file = bfz_create(&info->bfz, tmpprefix, true);
 		info->file = file;
 		info->ntuples = 0L;
 	}
 
-	if (sizeof(hth) != BufFileWrite(file, (void*) &hth, sizeof(hth)))
-		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
-
-	if (hth.tuplen != BufFileWrite(file, buf, buflen))
-		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
-	
+	bfz_append(file, (void*) &hth, sizeof(hth));
+	bfz_append(file, buf, buflen);
 	info->ntuples++;
 }
 
@@ -1358,15 +1354,12 @@ batch_get_tuple(HashAggTable *hashtable,
 	return ExecStoreMinimalTuple(minTuple, tupleSlot, true);
 #else
 	/* copyless / pallocless read */
-	static const char *msg = "could not read temporary batch file: %m";
-	BatchTupleHeader *hth;
+	BatchTupleHeader hth;
 	BatchFileInfo *info = &hashtable->batches[batch];
-	BufFile *file = info->file;
+	bfz_t *file = info->file;
 	MinimalTuple minTuple;
-	int tuplen;
 
-	hth = (BatchTupleHeader*) BufFilePeek(file, sizeof(*hth));
-	if (! hth)
+	if (sizeof(hth) != bfz_scan_next(file, (char*) &hth, sizeof(hth))) 
 	{
 		/* Don't leave exhausted batch files lying around. */
 		if (info->ntuples) 
@@ -1376,15 +1369,20 @@ batch_get_tuple(HashAggTable *hashtable,
 		return NULL; /* end of file */
 	}
 
-	*hkey = hth->hkey;
-	tuplen = hth->tuplen;
+	*hkey = hth.hkey;
 
-	minTuple = (MinimalTuple) BufFilePeek(file, tuplen);
-	if (! minTuple)
-		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
+	minTuple = (MinimalTuple) bfz_scan_peek(file, hth.tuplen);
+	if (minTuple) {
+		info->ntuples--;
+		return ExecStoreMinimalTuple(minTuple, tupleSlot, false);
+	}
 
+	minTuple = (MinimalTuple) palloc(hth.tuplen);
+	if (hth.tuplen != bfz_scan_next(file, (char*) minTuple, hth.tuplen)) 
+		elog(ERROR, "unable to read from batch file");
 	info->ntuples--;
-	return ExecStoreMinimalTuple(minTuple, tupleSlot, false);
+	
+	return ExecStoreMinimalTuple(minTuple, tupleSlot, true);
 #endif
 }
 
@@ -1395,7 +1393,6 @@ batch_get_tuple(HashAggTable *hashtable,
 void
 batch_rewind(HashAggTable *hashtable, unsigned int batch)
 {
-	int n;
 	BatchFileInfo *info;
 	
 	Assert(hashtable != NULL && 0 <= (int)batch && batch < hashtable->nbatch);
@@ -1408,9 +1405,7 @@ batch_rewind(HashAggTable *hashtable, unsigned int batch)
 		return;
 	}
 	
-	n = BufFileSeek(info->file, 0, 0L, 0);
-	
-	Assert( n == 0);
+	bfz_scan_begin(info->file);
 }
 
 
@@ -1429,7 +1424,7 @@ batch_close(HashAggTable *hashtable, unsigned int batch)
 	
 	if (info->file != NULL)
 	{
-		BufFileClose(info->file);
+		bfz_close(info->file);
 		info->file = NULL;
 	}
 	
