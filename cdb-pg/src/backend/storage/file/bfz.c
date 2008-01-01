@@ -136,7 +136,7 @@ static size_t
 {
 	uint8 *src = s_start;
 	uint8 *dst = d_start;
-	uint8 *cpy, *copymap;
+	uint8 *cpy, *copymap = 0;
 	int copymask = 1 << (NBBY - 1);
 	int mlen, offset;
 	uint16 *hp;
@@ -194,7 +194,7 @@ static size_t
 	uint8 *dst = d_start;
 	uint8 *s_end = (uint8 *)s_start + s_len;
 	uint8 *d_end = (uint8 *)d_start + d_len;
-	uint8 *cpy, copymap;
+	uint8 *cpy, copymap = 0;
 	int copymask = 1 << (NBBY - 1);
 
 	if (s_len >= d_len) 
