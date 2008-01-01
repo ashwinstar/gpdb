@@ -158,7 +158,9 @@ typedef struct two_stage_agg_context
 	
 	/* Work */
 	Index final_varno;
+	bool use_irefs_tlist;
 	List *refs_tlist; /* Aggref attributes for prelim_tlist */
+	List *irefs_tlist; /* Aggref attributes for optional inter_tlist */
 	List *dqa_tlist; /* DQA argument attributes for prelim_tlist */
 	List *grps_tlist; /* Grouping attributes for prelim_tlist */
 } two_stage_agg_context;
@@ -173,6 +175,7 @@ static List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumb
 static Expr *deconstruct_expr(Expr *expr, two_stage_agg_context *ctx);
 static Node* deconstruct_expr_mutator(Node *node, two_stage_agg_context *ctx);
 static Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx);
+static List *fix_inter_tlist_header(List *tlist, two_stage_agg_context *ctx);
 static Oid lookup_agg_transtype(Aggref *aggref);
 static bool hash_safe_type(Oid type);
 
@@ -905,6 +908,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 					0,
 					NULL,
 					&prelim_tlist,
+					NULL,
 					&final_tlist,
 					&final_qual);
 	
@@ -1114,6 +1118,7 @@ make_two_stage_agg_plan_with_dqas(PlannerInfo *root, MppGroupContext *ctx)
 	List	   *tlist = ctx->tlist;
 	List	   *sub_tlist = ctx->sub_tlist;
 	List	   *prelim_tlist = NIL;
+	List	   *inter_tlist = NIL;
 	List	   *final_tlist = NIL;
 	List	   *final_qual = NIL;
 	List	   *distinctExpr = NIL;
@@ -1191,10 +1196,10 @@ make_two_stage_agg_plan_with_dqas(PlannerInfo *root, MppGroupContext *ctx)
 		tlist_cost.per_tuple * result_plan->plan_rows;	
 
 	/*
-	 * Get the target lists for the preliminary and final aggregations and
-	 * the qual (HAVING clause) for the final aggregation based on the target
-	 * list of the base plan. Grouping attributes go on front of preliminary
-	 * target list.
+	 * Get the target lists for the preliminary, intermediate and final 
+	 * aggregations and the qual (HAVING clause) for the final aggregation 
+	 * based on the target list of the base plan. Grouping attributes go on 
+	 * front of preliminary and intermediate target lists.
 	 */
 	generate_two_stage_tlists(tlist,
 					sub_tlist,
@@ -1204,6 +1209,7 @@ make_two_stage_agg_plan_with_dqas(PlannerInfo *root, MppGroupContext *ctx)
 					numDistinctCols,
 					distinctColIdx,
 					&prelim_tlist,
+					&inter_tlist,
 					&final_tlist,
 					&final_qual);
 	
@@ -1313,17 +1319,6 @@ make_two_stage_agg_plan_with_dqas(PlannerInfo *root, MppGroupContext *ctx)
 			errmsg("unexpected use of DQA pruned 2-phase aggregation")));	
 		break; /* Never */
 	}
-	
-	/* Revisit strategy decision for final stage.  Could be different.
-	 */
-	if ( ctx->type == MPP_GRP_TYPE_PLAIN_DQA_2STAGE )
-	{
-		aggstrategy = AGG_PLAIN;
-	}
-	else
-	{
-		aggstrategy = AGG_SORTED;
-	}
 	current_pathkeys = NIL;
 
 	/*
@@ -1340,11 +1335,42 @@ make_two_stage_agg_plan_with_dqas(PlannerInfo *root, MppGroupContext *ctx)
 		current_pathkeys = root->group_pathkeys;
 		mark_sort_locus(result_plan);
 	}
-
-
+	
+	/* Now add the intermediate stage to eliminate duplicate DQA argument 
+	 * values introduced by the motion above. (The same DQA argument value 
+	 * may appear on several segments.  The motion might have brought them
+	 * together.) 
+	 */
 	result_plan = add_second_stage_agg(root,
 									   true,
 									   prelim_tlist,
+									   inter_tlist,
+									   NULL,
+									   aggstrategy,
+									   numGroupCols + numDistinctCols,
+									   prelimGroupColIdx,
+									   0, /* num_nullcols */
+									   0, /* input_grouping */
+									   0, /* grouping */
+									   0, /* rollup_gs_times */
+									   *ctx->p_dNumGroups,
+									   ctx->agg_counts->numAggs,
+									   ctx->agg_counts->transitionSpace,
+									   "partial_aggregation",
+									   &current_pathkeys,
+									   result_plan);
+	 
+	 
+	
+	/* Revisit strategy decision for final stage. */
+	if ( ctx->type == MPP_GRP_TYPE_PLAIN_DQA_2STAGE )
+	{
+		aggstrategy = AGG_PLAIN;
+	}
+
+	result_plan = add_second_stage_agg(root,
+									   true,
+									   inter_tlist,
 									   final_tlist,
 									   final_qual,
 									   aggstrategy,
@@ -1703,6 +1729,7 @@ void generate_three_tlists(List *tlist,
 							  0,
 							  NULL,
 							  p_tlist1,
+							  NULL,
 							  p_tlist3,
 							  p_final_qual);
 
@@ -1796,6 +1823,8 @@ void generate_three_tlists(List *tlist,
  * Output is pointers to
  *
  *	prelim_tlist - the target list of the preliminary Agg node.
+ *  inter_tlist - an optional intermediate target list for an Agg node
+ *                used in multi-phase DQA pruning (p_inter_tlist non-null).
  *	final_tlist - the target list of the final Agg node.
  *	final_qual - the qual of the final Agg node.
  */
@@ -1807,11 +1836,13 @@ void generate_two_stage_tlists(List *tlist,
 						int numDistinctCols,
 						AttrNumber *distinctColIdx,
 						List **p_prelim_tlist,
+						List **p_inter_tlist,
 						List **p_final_tlist,
 						List **p_final_qual)
 {
 	two_stage_agg_context ctx_data;
 	List *prelim_tlist = NIL;
+	List *inter_tlist = NIL;
 	List *final_tlist = NIL;
 	List *final_qual = NIL;
 	int i;
@@ -1826,15 +1857,19 @@ void generate_two_stage_tlists(List *tlist,
 	ctx_data.numDistinctCols = numDistinctCols;
 	ctx_data.distinctColIdx = distinctColIdx;
 	
-	/* Use consistent varno in final tlist entries.  It will refer to the
-	 * sole RTE (a Subquery RTE) of a SubqueryScan. */
+	/* Use consistent varno in final and intermediate tlist entries.  It will 
+	 * refer to the sole RTE (a Subquery RTE) of a SubqueryScan. */
 	ctx_data.final_varno = 1;
+	
+	/* Do we need to build an intermediate tlist in irefs_tlist? */
+	ctx_data.use_irefs_tlist = ( p_inter_tlist != NULL );
 	
 	/* Initialize temporaries to hold the parts of the preliminary target
 	 * list under construction. */
 	ctx_data.grps_tlist = NIL;
 	ctx_data.dqa_tlist = NIL;
 	ctx_data.refs_tlist = NIL;
+	ctx_data.irefs_tlist = NIL;
 
 	/*
 	 * Begin constructing the target list for the preliminary Agg node
@@ -1912,10 +1947,18 @@ void generate_two_stage_tlists(List *tlist,
 	/* Glue the grps and refs parts together. (We kept resno current.) */
 	prelim_tlist = ctx_data.grps_tlist;
 	prelim_tlist = list_concat(prelim_tlist, ctx_data.dqa_tlist);
+	
+	if ( p_inter_tlist != NULL )
+		inter_tlist = fix_inter_tlist_header(prelim_tlist, &ctx_data);
+	
 	prelim_tlist = list_concat(prelim_tlist, ctx_data.refs_tlist);
+	
+	if ( p_inter_tlist != NULL )
+		inter_tlist = list_concat(inter_tlist, ctx_data.irefs_tlist);
 
 	/* Set implicit results */
 	*p_prelim_tlist = prelim_tlist;
+	if ( p_inter_tlist != NULL ) *p_inter_tlist = inter_tlist;
 	*p_final_tlist = final_tlist;
 	*p_final_qual = final_qual;
 }
@@ -2047,6 +2090,7 @@ Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx)
 							   0);
 			final_aggref->args = lappend(final_aggref->args, var);
 		}
+		final_aggref->aggdistinct = false; 
 	}
 	else
 	{
@@ -2096,6 +2140,23 @@ Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx)
 					   + list_length(ctx->refs_tlist);
 			prelim_tle = makeTargetEntry((Expr*)ref, attrno, NULL, false);
 			ctx->refs_tlist = lappend(ctx->refs_tlist, prelim_tle);
+			
+			if ( ctx->use_irefs_tlist )
+			{
+				TargetEntry *inter_tle;
+				Aggref *iref = makeNode(Aggref);
+				
+				iref->aggfnoid = ref->aggfnoid;
+				iref->aggtype = transtype;
+				iref->args = list_make1((Expr*)makeVar(ctx->final_varno, attrno, transtype, -1, 0));
+				iref->agglevelsup = 0;
+				iref->aggstar = false;
+				iref->aggdistinct = false;
+				iref->aggstage = AGGSTAGE_INTERMEDIATE;
+				
+				inter_tle =  makeTargetEntry((Expr*)iref, attrno, NULL, false);
+				ctx->irefs_tlist = lappend(ctx->irefs_tlist, inter_tle);
+			}
 		}
 		
 		/*
@@ -2113,6 +2174,36 @@ Aggref *split_aggref(Aggref *aggref, two_stage_agg_context *ctx)
 	}
 	
 	return final_aggref;
+}
+
+/* The prefix of an intermediate aggregation target list is like that of
+ * the preliminary target list, except that it refers to the range of the
+ * preliminary list.  Make a copy of the preliminary list prefix to use
+ * in the intermediate list.
+ */
+List *fix_inter_tlist_header(List *tlist, two_stage_agg_context *ctx)
+{
+	List *new_tlist = NIL;
+	ListCell *lc;
+	
+	foreach(lc, tlist)
+	{
+		Var *var;
+		TargetEntry *tle = (TargetEntry*)lfirst(lc);
+		
+		var = makeVar(ctx->final_varno, tle->resno,
+					  exprType((Node*)tle->expr),
+					  exprTypmod((Node*)tle->expr), 0);
+		
+		tle = makeTargetEntry(
+				  (Expr*)var, 
+				  tle->resno, 
+				  (tle->resname == NULL) ? NULL : pstrdup(tle->resname),
+				  false);
+		
+		new_tlist = lappend(new_tlist, tle);
+	}
+	return new_tlist;
 }
 
 
