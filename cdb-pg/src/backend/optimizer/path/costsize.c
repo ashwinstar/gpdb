@@ -2151,6 +2151,7 @@ calculate_rows_for_join(JoinType jointype, double outer_rows, double inner_rows,
 	 */
 	switch (jointype)
 	{
+		case JOIN_IN:
 		case JOIN_INNER:
 			nrows = outer_rows * inner_rows * jselec;
 			break;
