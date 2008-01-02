@@ -3743,7 +3743,13 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	n = sendto(pEntry->txfd, (const char *)&conn->conn_info, sizeof(conn->conn_info), 0,
 			   (struct sockaddr *)&saddr, (socklen_t)sizeof(saddr));
 
-	/* XXX: need to handle EAGAIN here ? */
+	/* we'll let this packet drop. */
+	if (n < 0 && errno == EAGAIN)
+	{
+		if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+			elog(DEBUG4, "setupOutgoingUDPConnection: sendto() return EAGAIN, dropped packet.");
+		return;
+	}
 
 	if (n != sizeof(conn->conn_info))
 	{
