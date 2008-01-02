@@ -336,7 +336,7 @@ void bfz_scan_begin(bfz_t* bfz)
 	bfz->top = bfz->bot = 0;
 	bfz->eof = 0;
 
-	elog(LOG, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", bfz->tot_bytes, bfz->tot_compressed, 
+	elog(LOG, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", (long long)bfz->tot_bytes, (long long)bfz->tot_compressed, 
 		 bfz->tot_bytes == 0 ? 0 : 
 		 (int) ((bfz->tot_bytes - bfz->tot_compressed) * 100 / bfz->tot_bytes));
 }
