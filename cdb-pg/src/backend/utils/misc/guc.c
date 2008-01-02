@@ -1391,6 +1391,15 @@ static struct config_bool ConfigureNamesBool[] =
     },
 
     {
+    	{"gp_propagate_broadcast_cost", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables propagation of broadcast motion row counts upward during planning."),
+			NULL
+    	},
+    	&gp_propagate_broadcast_cost,
+    	true, NULL, NULL
+    },
+
+    {
     	{"gp_is_writer", PGC_BACKEND, GP_WORKER_IDENTITY,
     		gettext_noop("True in a worker process which can directly update its local database segment."),
     		NULL,

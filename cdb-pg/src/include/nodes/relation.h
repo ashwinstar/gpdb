@@ -307,6 +307,10 @@ typedef struct RelOptInfo
 	List	   *joininfo;		/* RestrictInfo structures for join clauses
 								 * involving this rel */
 
+	/* join selectivities */
+	double		jselec;
+	double		pselec;
+
 	/* cached info about inner indexscan paths for relation: */
 	Relids		index_outer_relids;		/* other relids in indexable join
 										 * clauses */
@@ -753,6 +757,8 @@ typedef struct JoinPath
 	Path	   *innerjoinpath;	/* path for the inner side of the join */
 
 	List	   *joinrestrictinfo;		/* RestrictInfos to apply to join */
+
+	double		rows; /* CDB: the cardinality may be path dependent if we've added Broadcast-motion. */
 
 	/*
 	 * See the notes for RelOptInfo to understand why joinrestrictinfo is

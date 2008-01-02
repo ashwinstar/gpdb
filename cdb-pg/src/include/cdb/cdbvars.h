@@ -496,6 +496,12 @@ cdbvars_show_gp_process_memory_cutoff(void);
 extern bool enable_adaptive_nestloop;
 
 /*
+ * gp_propagate_broadcast_cost: propagate costs of changes related to
+ * broadcast motion up the tree. (MPP-2313).
+ */
+extern bool	gp_propagate_broadcast_cost;
+
+/*
  * "gp_motion_cost_per_row"
  *
  * If >0, the planner uses this value -- instead of 2 * "cpu_tuple_cost" --
