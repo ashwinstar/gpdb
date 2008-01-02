@@ -124,6 +124,10 @@
 
 #include <sys/types.h>
 
+#ifndef NBBY
+#define NBBY 8
+#endif
+
 #define	MATCH_BITS	6
 #define	MATCH_MIN	3
 #define	MATCH_MAX	((1 << MATCH_BITS) + (MATCH_MIN - 1))
