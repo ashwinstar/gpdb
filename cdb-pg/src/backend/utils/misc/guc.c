@@ -1613,7 +1613,15 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 		
-
+	{
+		{"gp_hashagg_compress_spill_files", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Specify if spill files should be compressed."),
+		 NULL
+		},
+		&gp_hashagg_compress_spill_files,
+		false, NULL, NULL
+	},
+		
 	
 	/* End-of-list marker */
 	{

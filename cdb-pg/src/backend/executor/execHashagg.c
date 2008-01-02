@@ -1300,9 +1300,10 @@ batch_put_tuple(HashAggTable *hashtable,
 	{
 		/* First write to this batch file, so open it. */
 		char tmpprefix[50];
+		bool compress = gp_hashagg_compress_spill_files;
 		snprintf(tmpprefix, 50, "HashAgg_Slice%d", currentSliceId);
 
-		file = bfz_create(&info->bfz, tmpprefix, true);
+		file = bfz_create(&info->bfz, tmpprefix, compress);
 		info->file = file;
 		info->ntuples = 0L;
 	}

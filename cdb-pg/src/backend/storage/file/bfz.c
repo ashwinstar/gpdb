@@ -244,6 +244,7 @@ bfz_t* bfz_create(bfz_t* bfz, const char* filePrefix, bool compress)
 	bfz->mode = BFZ_MODE_APPEND;
 	bfz->bot = bfz->top = 0;
 	bfz->compress = compress;
+	bfz->tot_bytes = bfz->tot_compressed = 0;
 	return bfz;
 }
 
@@ -262,31 +263,30 @@ static void writeFully(File f, char* p, int n)
 }
 
 
-typedef struct chunk_t chunk_t;
-struct chunk_t {
-	int n;
-	char b[BLCKSZ];
-};
-
 
 static void bfz_flush(bfz_t* bfz)
 {
 	char chunkbuf[sizeof(int) + BLCKSZ];
 	int* n = (int*) chunkbuf;
 	char* chunk = chunkbuf + sizeof(int);
+	int nn;
 
 	if (bfz->mode == BFZ_MODE_APPEND && bfz->bot != bfz->top) 
 	{
+		bfz->tot_bytes += bfz->top - bfz->bot;
 		if (bfz->compress) 
 		{
 			*n = compress(bfz->buf + bfz->bot, 
 						  chunk, bfz->top - bfz->bot);
-			writeFully(bfz->fp, chunkbuf, chunk + (*n) - chunkbuf);
+			nn = chunk + (*n) - chunkbuf;
+			writeFully(bfz->fp, chunkbuf, nn);
 		}
 		else 
 		{
-			writeFully(bfz->fp, bfz->buf + bfz->bot, bfz->top - bfz->bot);
+			nn = bfz->top - bfz->bot;
+			writeFully(bfz->fp, bfz->buf + bfz->bot, nn);
 		}
+		bfz->tot_compressed += nn;
 		bfz->bot = bfz->top = 0;
 	}
 }
@@ -295,12 +295,13 @@ static void bfz_flush(bfz_t* bfz)
 void bfz_close(bfz_t* bfz)
 {
 	bfz_flush(bfz);
+	FileClose(bfz->fp);
 	bfz->mode = BFZ_MODE_CLOSED;
 	bfz->top = bfz->bot = 0;
 }
 
 
-void bfz_append(bfz_t* bfz, char* inbuf, int inbufsz)
+void bfz_append_ex(bfz_t* bfz, char* inbuf, int inbufsz)
 {
 	int n;
 
@@ -334,6 +335,10 @@ void bfz_scan_begin(bfz_t* bfz)
 	bfz->mode = BFZ_MODE_SCAN;
 	bfz->top = bfz->bot = 0;
 	bfz->eof = 0;
+
+	elog(LOG, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", bfz->tot_bytes, bfz->tot_compressed, 
+		 bfz->tot_bytes == 0 ? 0 : 
+		 (int) ((bfz->tot_bytes - bfz->tot_compressed) * 100 / bfz->tot_bytes));
 }
 
 
@@ -351,7 +356,7 @@ static int readFully(int fp, char* buf, int n)
 }
 
 
-int bfz_scan_next(bfz_t* bfz, char* outbuf, int outbufsz)
+int bfz_scan_next_ex(bfz_t* bfz, char* outbuf, int outbufsz)
 {
 	char* orig = outbuf;
 	char chunk[BLCKSZ];
@@ -402,20 +407,3 @@ int bfz_scan_next(bfz_t* bfz, char* outbuf, int outbufsz)
 	return outbuf - orig;
 }
 
-
-void* bfz_scan_peek(bfz_t* bfz, int size)
-{
-	char* ret = 0;
-	int n = bfz->top - bfz->bot;
-
-	if (bfz->mode != BFZ_MODE_SCAN)
-		elog(ERROR, "internal error - temp file in unexpected mode %d", bfz->mode);
-
-	if (n >= size) 
-	{
-		ret = bfz->buf + bfz->bot;
-		bfz->bot += size;
-	}
-		
-	return ret;
-}

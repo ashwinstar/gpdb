@@ -684,6 +684,8 @@ extern int gp_use_mpool;
 /* Disable setting of hint-bits while reading db pages */
 extern bool gp_disable_tuple_hints;
 
+extern bool gp_hashagg_compress_spill_files;
+
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
  */
