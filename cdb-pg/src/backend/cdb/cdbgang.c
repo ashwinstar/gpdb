@@ -1508,7 +1508,7 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 	appendPQExpBuffer(buffer, " -c gp_debug_linger=%d", gp_debug_linger);
 
 	/*
-	 * It doesn't seem to work to quote the entire sath,
+	 * It doesn't seem to work to quote the entire path,
 	 * so we need to remove any spaces so it's treated as one parameter.
 	 * and remove any quotes surrounding the whole thing.
 	 *
