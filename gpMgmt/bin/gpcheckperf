@@ -109,14 +109,14 @@ def getMemory():
 	return 0
 
     if getPlatform() == 'darwin':
-	ok, out = run("sysctl hw.physmem")
+	ok, out = run("/usr/sbin/sysctl hw.physmem")
 	if not ok: return 0
 	list = out.strip().split(' ')
 	val = int(list[1])
 	return val
 	
     if getPlatform() == 'sunos5':
-	ok, out = run("sh -c \"prtconf | awk '/^Memory/{print}'\"")
+	ok, out = run("sh -c \"/usr/sbin/prtconf | awk '/^Memory/{print}'\"")
 	if not ok: return 0
 	list = out.strip().split(' ')
 	val = int(list[2])
