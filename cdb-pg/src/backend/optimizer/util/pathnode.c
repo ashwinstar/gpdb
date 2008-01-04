@@ -2381,6 +2381,32 @@ create_nestloop_path(PlannerInfo *root,
     else if (IsA(inner_path, BitmapHeapPath) &&
              ((BitmapHeapPath *)inner_path)->isjoininner)
         inner_must_be_local = true;
+	else if (IsA(inner_path, AppendPath))
+	{
+		/* MPP-2377: Append paths may conceal inner-index scans, if
+		 * any of the subpaths are indexpaths or bitmapheap-paths we
+		 * have to do more checking */
+		ListCell   *l;
+
+		/* scan the subpaths of the Append */
+		foreach(l, ((AppendPath *)inner_path)->subpaths)
+		{
+			Path *subpath = (Path *)lfirst(l);
+
+			if (IsA(subpath, IndexPath) &&
+				((IndexPath *)subpath)->isjoininner)
+			{
+				inner_must_be_local = true;
+				break;
+			}
+			else if (IsA(subpath, BitmapHeapPath) &&
+					 ((BitmapHeapPath *)subpath)->isjoininner)
+			{
+				inner_must_be_local = true;
+				break;
+			}
+		}
+	}
 
     /* Add motion nodes above subpaths and decide where to join. */
     join_locus = cdbpath_motion_for_join(root,
