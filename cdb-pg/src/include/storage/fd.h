@@ -102,4 +102,9 @@ extern int	pg_fdatasync(int fd);
 #define PG_TEMP_FILES_DIR "pgsql_tmp"
 #define PG_TEMP_FILE_PREFIX "pgsql_tmp"
 
+/* Create a filename in temp dir.
+ * Caller is responsible for making sure tmpdir exists.
+ * Caller is responsible for check ret value, if ret val <= buflen, it is success 
+ */ 
+extern size_t MakeTempFileName(char *buf, size_t buflen, char *relativepath);
 #endif   /* FD_H */

@@ -1737,3 +1737,23 @@ RemovePgTempFilesInDir(const char *tmpdirname)
 
 	FreeDir(temp_dir);
 }
+
+size_t MakeTempFileName(char *buf, size_t buflen, char *relativepath)
+{
+	size_t needlen = strlen(DatabasePath) 
+		+ strlen(PG_TEMP_FILES_DIR) 
+		+ strlen(relativepath)
+		+ 4;
+
+	if(buflen < needlen)
+		return needlen;
+
+	snprintf(buf, buflen, "%s/%s/%s",
+			DatabasePath, 
+			PG_TEMP_FILES_DIR,
+			relativepath
+		);
+
+	return needlen;
+}
+	
