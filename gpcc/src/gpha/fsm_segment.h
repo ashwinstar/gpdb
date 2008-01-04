@@ -65,12 +65,10 @@ static apr_status_t ma_stop_reply(gpcc_event_t *ev, void *_cmdslot)
     char *seg;
     gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
-    gpcc_log_info("ma_stop_reply");
-
     obj = json_tokener_parse((char *) pkt->payload);
     status = gpcc_json_object_get_string(obj, "status", 0);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
-    gpcc_log_info("seg = %s, status = %s", seg, status);
+    gpcc_log_info("[%s] segment stop reply [status = %s]", seg, status);
 
     json_object_put(obj);
     return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
@@ -86,12 +84,10 @@ static apr_status_t ma_start_reply(gpcc_event_t *ev, void *_cmdslot)
     char *seg;
     gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
-    gpcc_log_info("ma_start_reply");
-
     obj = json_tokener_parse((char *) pkt->payload);
     status = gpcc_json_object_get_string(obj, "status", 0);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
-    gpcc_log_info("seg = %s, status = %s", seg, status);
+    gpcc_log_info("[%s] segment start reply [status = %s]", seg, status);
 
     json_object_put(obj);
     return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
@@ -107,12 +103,10 @@ static apr_status_t ma_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     char *seg;
     gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
 
-    gpcc_log_info("ma_initdb_reply");
-
     obj = json_tokener_parse((char *) pkt->payload);
     status = gpcc_json_object_get_string(obj, "status", 0);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
-    gpcc_log_info("seg = %s, status = %s", seg, status);
+    gpcc_log_info("[%s] segment initdb reply [status = %s]", seg, status);
 
     json_object_put(obj);
     return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
@@ -292,7 +286,7 @@ static apr_status_t seg_initialize(gpcc_event_t* ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     int e;
     gpcc_event_t *evt;
-
+    
     memset(&cmdslot->u.seg, 0, sizeof(cmdslot->u.seg));
     if (0 != (e = seg_cmdname_parse(cmdslot->cmdname,
 				    &cmdslot->u.seg.isqd,
@@ -363,9 +357,16 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
 
+    gpcc_log_info("[%s] initdb standby QD with port = %d, data_dir = %s and mode = %s", 
+		  cmdslot->cmdname,
+		  cmdslot->u.seg.request.port,
+		  cmdslot->u.seg.request.data_dir,
+		  cmdslot->u.seg.request.mode);
+		  
     /* check environment variable */
     
     /* check initdb is valid */
+    gpcc_log_info("[%s] checking gpsyncmaster exists", cmdslot->cmdname);
     apr_filepath_merge(&initdbfn, gpha.gphome, "bin/gpsyncmaster", 0, cmdslot->u.seg.request.subpool);
     if (! gpcc_file_exists(initdbfn)) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "gpsyncmaster not found");
@@ -374,6 +375,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     }
 
     /* check data_dir exists */
+    gpcc_log_info("[%s] checking data directory %s exists", cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
     if (gpcc_file_directory_exists(cmdslot->u.seg.request.data_dir)) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "data directory exists");
 	json_object_put(obj);
@@ -381,6 +383,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     }	
 
     /* check database is running (port)*/
+    gpcc_log_info("[%s] checking database is running", cmdslot->cmdname);
     if (0 == (e = gpcc_pg_pid_active(cmdslot->u.seg.request.port, &pid, cmdslot->u.seg.request.subpool))) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "gpsyncmaster is running");
 	json_object_put(obj);
@@ -407,6 +410,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
    
     host = json_object_get_string(json_object_array_get_idx(nodeobj, 0));
 
+    gpcc_log_info("[%s] copy the master QD directory to standby QD", cmdslot->cmdname);
     source = apr_psprintf(cmdslot->u.seg.request.subpool, "%s@%s:%s", user, host, m_data_dir);
     if (0 != (e = gpcc_proc_scp(&cmdslot->u.seg.request.proc,
 				cmdslot->u.seg.request.port,
@@ -444,8 +448,6 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
 	return 0;
     }
 
-    gpcc_log_info("json msg = %s", packet->payload);
-
     obj = json_tokener_parse(packet->payload);
     if (!obj) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "json_tokener_parse error");
@@ -468,9 +470,16 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
 	return 0;
     }
 
+    gpcc_log_info("[%s] initdb QE or Master QD with port = %d, data_dir = %s, mode = %s",
+		  cmdslot->cmdname,
+		  cmdslot->u.seg.request.port,
+		  cmdslot->u.seg.request.data_dir,
+		  cmdslot->u.seg.request.mode);
+
     /* check environment variable */
     
     /* check initdb is valid */
+    gpcc_log_info("[%s] checking initdb exists", cmdslot->cmdname);
     apr_filepath_merge(&initdbfn, gpha.gphome, "bin/initdb", 0, cmdslot->u.seg.request.subpool);
     if (! gpcc_file_exists(initdbfn)) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "initdb not found");
@@ -479,6 +488,7 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
     }
 
     /* check data_dir exists */
+    gpcc_log_info("[%s] checking data directory %s exists", cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
     if (gpcc_file_directory_exists(cmdslot->u.seg.request.data_dir)) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "[%s] data directory %s exists", 
 			  cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
@@ -487,6 +497,7 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
     }	
 
     /* check database is running (port)*/
+    gpcc_log_info("[%s] checking database is running", cmdslot->cmdname);
     if (0 == (e = gpcc_pg_pid_active(cmdslot->u.seg.request.port, &pid, cmdslot->u.seg.request.subpool))) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "[%s] database is running", cmdslot->cmdname);
 	json_object_put(obj);
@@ -500,7 +511,7 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
 	max_connect *= 5;
     }
 
-    gpcc_log_info("[%s] start initdb", cmdslot->cmdname);
+    gpcc_log_info("[%s] running initdb", cmdslot->cmdname);
     if (0 != (e = gpcc_proc_initdb(&cmdslot->u.seg.request.proc,
 				   cmdslot->u.seg.request.data_dir,
 				   gpcc_json_object_get_string(obj, CONFIG_ENCODING_KEY, CONFIG_ENCODING_VALUE),
@@ -525,6 +536,7 @@ static apr_status_t seg_initdb(gpcc_event_t* ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
 
+    gpcc_log_info("[%s] initdb request received", cmdslot->cmdname);
     if (seg_is_standby_qd(cmdslot)) {
 	return seg_initdb_standby_qd(ev, _cmdslot);
     } else {
@@ -545,6 +557,8 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
     char **hosts;
     struct json_object *hostarray;
 
+    gpcc_log_info("[%s] adding the entries in pg_hba.conf", cmdslot->cmdname);
+    
     if (seg_is_qd(cmdslot)) {
 	char *user = gpcc_json_object_get_string(cmdslot->u.seg.request.msg, CONFIG_USER_KEY, getenv("USER"));
 
@@ -1014,6 +1028,7 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 	cmdslot->u.seg.data_dir = apr_pstrdup(cmdslot->pool, cmdslot->u.seg.request.data_dir);
     }
     
+    gpcc_log_info("[%s] initdb finished successfully", cmdslot->cmdname);
     
     return 0;
 }
@@ -1032,6 +1047,8 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->pdata;
     struct json_object *obj;
     int e;
+
+    gpcc_log_info("[%s] segment start command received", cmdslot->cmdname);
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
     cmdslot->u.seg.request.maidx = packet->mh.sndidx;
@@ -1064,7 +1081,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     if (! seg_is_qd(cmdslot)) {
 	/* this is QE */
 
-	gpcc_log_info("start segment %s"), gpcc_json_object_get_string(obj, "seg", "");
+	gpcc_log_info("[%s] starting segment", gpcc_json_object_get_string(obj, "seg", ""));
 	if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
 						     cmdslot->u.seg.request.port,
 						     cmdslot->u.seg.request.data_dir,
@@ -1083,7 +1100,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 	if (seg_is_master_qd(cmdslot)) {
 	    int utility = 0;
 	    /* start master in utility mode or production mode */
-	    gpcc_log_info("start master %s in mode = %s", 
+	    gpcc_log_info("[%s] start master in mode = %s", 
 			  gpcc_json_object_get_string(obj, "seg", ""),
 			  gpcc_json_object_get_string(obj, "mode", ""));
 	    if (strcmp(gpcc_json_object_get_string(obj, "mode", "normal"), "utility") == 0)
@@ -1139,7 +1156,7 @@ static apr_status_t seg_start_wait(gpcc_event_t* ev, void *_cmdslot)
 	cmdslot->u.seg.request.exitcode = ret;
 	cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
 
-	gpcc_log_info("seg_start exit = %d", ret);
+	gpcc_log_info("[%s] segment start exited [retval = %d]", cmdslot->cmdname, ret);
 	gpcc_evqueue_put(gpha.evq, evt);
 
 	/* save the setting port and data_dir permanently */
@@ -1175,6 +1192,8 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     int e;
     char status[1024];
     int len = sizeof(status);
+
+    gpcc_log_info("[%s] segment stop command received", cmdslot->cmdname);
 
     memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
     cmdslot->u.seg.request.maidx = packet->mh.sndidx;
@@ -1259,7 +1278,7 @@ static apr_status_t seg_stop_wait(gpcc_event_t* ev, void *_cmdslot)
 	cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
 	gpcc_evqueue_put(gpha.evq, evt);
 
-	gpcc_log_info("seg_stop_wait exit ret=%d reason =%s", ret, cmdslot->u.seg.request.reason);
+	gpcc_log_info("[%s] segment stop exited [retval = %d, reason =%s]", cmdslot->cmdname, ret, cmdslot->u.seg.request.reason);
 	/* save the setting port and data_dir permanently */
 	if (cmdslot->u.seg.port == 0) {
 	    cmdslot->u.seg.port = cmdslot->u.seg.request.port;
