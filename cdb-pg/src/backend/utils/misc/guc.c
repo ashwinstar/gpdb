@@ -544,7 +544,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_nestloop,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 	{
 		{"enable_mergejoin", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -552,7 +552,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_mergejoin,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 	{
 		{"enable_hashjoin", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -1232,7 +1232,7 @@ static struct config_bool ConfigureNamesBool[] =
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_agg_distinct,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 
 	{
@@ -1300,7 +1300,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&gp_adjust_selectivity_for_outerjoins,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	
 	{
@@ -1689,7 +1689,7 @@ static struct config_int ConfigureNamesInt[] =
 						 "than this many items would result.")
 		},
 		&join_collapse_limit,
-		1, 1, INT_MAX, NULL, NULL
+		8, 1, INT_MAX, NULL, NULL
 	},
 	{
 		{"geqo_threshold", PGC_USERSET, COMPAT_OPTIONS_IGNORED,

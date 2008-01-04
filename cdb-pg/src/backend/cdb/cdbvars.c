@@ -176,8 +176,8 @@ bool 		gp_hashagg_streambottom = true;
 
 bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 bool		gp_adjust_selectivity_for_outerjoins = TRUE;
-bool		gp_selectivity_damping_for_scans = true;
-bool		gp_selectivity_damping_for_joins = true;
+bool		gp_selectivity_damping_for_scans = false;
+bool		gp_selectivity_damping_for_joins = false;
 double		gp_selectivity_damping_factor = 1;
 bool		gp_selectivity_damping_sigsort = true;
 
@@ -192,7 +192,7 @@ int 		gp_hashagg_spillbatch_max = 0;
 int 	 	gp_hashjoin_bloomfilter = 0;
 
 /* Greenplum Database Experimental Feature GUCs */
-bool		gp_enable_agg_distinct = true;
+bool		gp_enable_agg_distinct = false;
 bool		gp_enable_dqa_pruning = FALSE;
 bool		gp_enable_explain_allstat = FALSE;
 bool		gp_enable_sort_limit = FALSE;
