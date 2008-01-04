@@ -1740,18 +1740,27 @@ RemovePgTempFilesInDir(const char *tmpdirname)
 
 size_t MakeTempFileName(char *buf, size_t buflen, char *relativepath)
 {
+	extern int Gp_segment;
+	extern int gp_session_id;
+	extern int gp_command_count;
+	extern int currentSliceId;
+
 	size_t needlen = strlen(DatabasePath) 
 		+ strlen(PG_TEMP_FILES_DIR) 
 		+ strlen(relativepath)
-		+ 4;
+		+ 60; /* enough for two slash, four _%d, and eos */
 
 	if(buflen < needlen)
 		return needlen;
 
-	snprintf(buf, buflen, "%s/%s/%s",
+	snprintf(buf, buflen, "%s/%s/%s_%d_%d_%d_%d",
 			DatabasePath, 
 			PG_TEMP_FILES_DIR,
-			relativepath
+			relativepath,
+			Gp_segment,
+			gp_session_id,
+			gp_command_count,
+			currentSliceId
 		);
 
 	return needlen;
