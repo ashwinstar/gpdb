@@ -156,6 +156,11 @@ static apr_status_t a_initdb_init(gpcc_event_t *ev, void *_cmdslot)
     cmdslot->u.initdb.config = apr_pstrdup(cmdslot->pool, msg);
     json_object_put(obj);
     cmdslot->u.initdb.node = apr_pcalloc(cmdslot->pool, sizeof(*cmdslot->u.initdb.node) * gpma.node_max);
+
+    gpcc_log_info("-------------------------- array init -------------------------------");
+    gpcc_log_info("total number of segments = %d", cmdslot->u.initdb.ntotal);
+
+
     return 0;
 }
 
@@ -184,7 +189,9 @@ static apr_status_t a_initdb_do(gpcc_event_t *ev, void *_cmdslot)
 	cmdslot->u.initdb.req[i].status = 1; /* running */
 	cmdslot->u.initdb.idx++;
 	    
-	gpcc_log_info("initdb segment %s", cmdslot->u.initdb.req[i].unit);
+	gpcc_log_info("sending initdb request to segment %s at %s", 
+		      cmdslot->u.initdb.req[i].unit, 
+		      cmdslot->u.initdb.req[i].host);
 
 	obj = json_tokener_parse(cmdslot->u.initdb.config);
 	obj = gpcc_json_segment_request(obj,
@@ -268,11 +275,12 @@ static apr_status_t a_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     
     
     if (strcmp(status, "ok") == 0) {
+	gpcc_log_info("segment %s initdb reply ok");
 	cmdslot->u.initdb.nsuccess++;
 	success = 1;
     } else {
 	cmdslot->u.initdb.nfailed++;
-	gpcc_warning(FLINE, "[Error] segment reply failed: segment=%s, status=%s, reason=%s", seg, status, reason);
+	gpcc_warning(FLINE, "[Error] segment %s initdb reply failed: segment=%s, status=%s, reason=%s", seg, status, reason);
     }
 
     if (cmdslot->u.initdb.nsuccess + cmdslot->u.initdb.nfailed == cmdslot->u.initdb.ntotal) {
@@ -348,6 +356,8 @@ static apr_status_t a_initdb_success(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
+    gpcc_log_info("initdb finished successfully");
+    gpcc_log_info("-------------------------------------------------------");
     obj = mkjson_initdb_reply(ev, _cmdslot, "init", "ok", 0);
     a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
@@ -361,6 +371,8 @@ static apr_status_t a_initdb_failure(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
+    gpcc_log_info("initdb failed");
+    gpcc_log_info("-------------------------------------------------------");
     obj = mkjson_initdb_reply(ev, _cmdslot, "init", "failure", 0);
     a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
@@ -372,6 +384,8 @@ static apr_status_t a_initdb_timeout(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
+    gpcc_log_info("initdb timed out");
+    gpcc_log_info("-------------------------------------------------------");
     obj = mkjson_initdb_reply(ev, _cmdslot, "init", "failure", "timeout");
     a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);

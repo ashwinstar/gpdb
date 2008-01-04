@@ -6,17 +6,12 @@ static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt;
     gpcc_net_packet_t *pkt;
 
-    gpcc_log_info("a_stop_do...total = %d", cmdslot->u.stop.ntotal);
+    gpcc_log_info("-------------------- segments stop -----------------------");
+    gpcc_log_info("total number of segments stop = %d", cmdslot->u.stop.ntotal);
     for (i = 0 ; i < cmdslot->u.stop.ntotal ; i++) {
 	char *msg;
 	int len = 0;
 	int j = 0;
-	gpcc_log_info("node=%s, mode = %s, host = %s, port =%d, dir=%s",
-		      cmdslot->u.stop.req[i].node,
-		      cmdslot->u.stop.req[i].mode,
-		      cmdslot->u.stop.req[i].host,
-		      cmdslot->u.stop.req[i].port,
-		      cmdslot->u.stop.req[i].datadir);	
 
 	for (j = 0 ; j < gpma.unit_max ; j++) {
 	    if (strcmp(cmdslot->u.start.req[i].unit, gpma.unit_cmdtab[j]->cmdname) == 0)
@@ -38,6 +33,10 @@ static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
 					cmdslot->u.stop.req[i].datadir);
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;
+
+	gpcc_log_info("sending stop command to %s at %s", 
+		      cmdslot->u.stop.req[i].unit,
+		      cmdslot->u.stop.req[i].host);
 
 	evt = gpcc_event_alloc(UNIT_STOP_EVENT, gpma.unit_cmdtab[j]->cmdidx, sizeof(*pkt) + len);
 	pkt = (gpcc_net_packet_t *) evt->pdata;
@@ -85,10 +84,11 @@ static apr_status_t a_stop_reply(gpcc_event_t *ev, void *_cmdslot)
     cmdslot->u.stop.req[i].reply = apr_pstrdup(cmdslot->pool, pkt->payload);
     
     if (strcmp(status, "ok") == 0) {
+	gpcc_log_info("segment %s stop reply ok", seg);
 	cmdslot->u.stop.nsuccess++;
     } else {
 	cmdslot->u.stop.nfailed++;
-	gpcc_warning(FLINE, "[Error] segment reply failed: segment=%s, status=%s, reason=%s", seg, status, reason);
+	gpcc_warning(FLINE, "[Error] segment %s stop reply failed. [status=%s, reason=%s]", seg, status, reason);
     }
 
     if (cmdslot->u.stop.nsuccess + cmdslot->u.stop.nfailed == cmdslot->u.stop.ntotal) {
@@ -154,6 +154,8 @@ static apr_status_t a_stop_success(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
+    gpcc_log_info("segments stop finished successfully");
+    gpcc_log_info("----------------------------------------------------------");
     obj = mkjson_stop_reply(ev, _cmdslot, "stop", "ok", 0);
     a_stop_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
@@ -167,6 +169,8 @@ static apr_status_t a_stop_failure(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
+    gpcc_log_info("segments stop failed");
+    gpcc_log_info("----------------------------------------------------------");
     obj = mkjson_stop_reply(ev, _cmdslot, "stop", "failure", 0);
     a_stop_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
@@ -178,6 +182,8 @@ static apr_status_t a_stop_timeout(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *obj;
 
+    gpcc_log_info("segments stop timed out");
+    gpcc_log_info("----------------------------------------------------------");
     obj = mkjson_stop_reply(ev, _cmdslot, "stop", "failure", "timeout");
     a_stop_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
