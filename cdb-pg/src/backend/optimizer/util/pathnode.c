@@ -2339,6 +2339,34 @@ cdb_jointype_to_join_in(RelOptInfo *joinrel, JoinType jointype, Path *inner_path
     return jointype;
 }                               /* cdb_jointype_to_join_in */
 
+static bool
+path_contains_inner_index(Path *path)
+{
+    if (IsA(path, IndexPath) &&
+        ((IndexPath *)path)->isjoininner)
+		return true;
+    else if (IsA(path, BitmapHeapPath) &&
+             ((BitmapHeapPath *)path)->isjoininner)
+		return true;
+	else if (IsA(path, AppendPath))
+	{
+		/* MPP-2377: Append paths may conceal inner-index scans, if
+		 * any of the subpaths are indexpaths or bitmapheap-paths we
+		 * have to do more checking */
+		ListCell   *l;
+
+		/* scan the subpaths of the Append */
+		foreach(l, ((AppendPath *)path)->subpaths)
+		{
+			Path *subpath = (Path *)lfirst(l);
+
+			if (path_contains_inner_index(subpath))
+				return true;
+		}
+	}
+
+	return false;
+}
 
 /*
  * create_nestloop_path
@@ -2375,38 +2403,7 @@ create_nestloop_path(PlannerInfo *root,
     /* CDB: Inner indexpath must execute in the same backend as the
      * nested join to receive input values from the outer rel.
      */
-    if (IsA(inner_path, IndexPath) &&
-        ((IndexPath *)inner_path)->isjoininner)
-        inner_must_be_local = true;
-    else if (IsA(inner_path, BitmapHeapPath) &&
-             ((BitmapHeapPath *)inner_path)->isjoininner)
-        inner_must_be_local = true;
-	else if (IsA(inner_path, AppendPath))
-	{
-		/* MPP-2377: Append paths may conceal inner-index scans, if
-		 * any of the subpaths are indexpaths or bitmapheap-paths we
-		 * have to do more checking */
-		ListCell   *l;
-
-		/* scan the subpaths of the Append */
-		foreach(l, ((AppendPath *)inner_path)->subpaths)
-		{
-			Path *subpath = (Path *)lfirst(l);
-
-			if (IsA(subpath, IndexPath) &&
-				((IndexPath *)subpath)->isjoininner)
-			{
-				inner_must_be_local = true;
-				break;
-			}
-			else if (IsA(subpath, BitmapHeapPath) &&
-					 ((BitmapHeapPath *)subpath)->isjoininner)
-			{
-				inner_must_be_local = true;
-				break;
-			}
-		}
-	}
+	inner_must_be_local = path_contains_inner_index(inner_path);
 
     /* Add motion nodes above subpaths and decide where to join. */
     join_locus = cdbpath_motion_for_join(root,
