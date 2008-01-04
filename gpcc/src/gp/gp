@@ -19,7 +19,7 @@ Usage: gp [gp_options] command [command_options] [command_args]
 
 """
 
-import os, sys, getopt, types, time, popen2, urllib, httplib, socket
+import os, sys, getopt, types, time, popen2, urllib, httplib, socket, StringIO
 
 
 if sys.version_info < (2, 3):
@@ -322,9 +322,10 @@ def doStatus(args):
     if gp_opt['-n']:
         if status != 'ok':
             printNagiosError(json)
-            return
+            sys.exit(2)
         if array_status == 'invalid':
             print 'CRITICAL: system invalid'
+	    sys.exit(2)
         else:
             print 'OK: %s' % array_status
     else:
@@ -441,9 +442,10 @@ def doSegmentStatus(args):
     if gp_opt['-n']:
         if status != 'ok':
             printNagiosError(json)
-            return
+	    sys.exit(2)
         if array_status == 'invalid':
             print 'CRITICAL: system invalid'
+	    sys.exit(2)
         else:
             print 'OK: %s' % array_status
     else:
