@@ -9,7 +9,6 @@ Usage: gp [gp_options] command [command_options] [command_args]
 	    -a array_name
 	    -h host_name
 	    -p port
-            -n status in nagios format
 
 	command:
 	    start 
@@ -52,7 +51,6 @@ def resetCommandOptions():
     gp_opt = { 
         '-v': False,
         '-?': False,
-        '-n': False,
         '-a': os.environ.get('GPARRAY', None),
         '-h': os.environ.get('GPHOST', None),
         '-p': os.environ.get('GPPORT', None),
@@ -63,11 +61,10 @@ def resetCommandOptions():
 
 def parseCommandLine(argv):
     global gp_opt, gp_cmd, gp_args
-    (options, args) = getopt.getopt(argv[1:], '?vna:h:p:')
+    (options, args) = getopt.getopt(argv[1:], '?va:h:p:')
     for (switch, val) in options:
         if switch == '-?': gp_opt[switch] = True
         elif switch == '-v': gp_opt[switch] = True
-        elif switch == '-n': gp_opt[switch] = True
         elif switch[1] in ('a', 'h', 'p'): gp_opt[switch] = val
     if args:
         gp_cmd = args[0]
@@ -168,21 +165,6 @@ def hitMAbyPost(cmd, params, data):
     return (-1, json)
 
 def printError(json):
-    status = json.get('status')
-    if status:
-        print 'status:', status
-    errmsg = json.get('errmsg')
-    if not errmsg:
-        print '%s: %s' % ('Error', 'unknown error')
-        return
-    if errmsg.get('_', None):
-        print '%s: %s' % ('Error', errmsg.get('_'))
-    for key in errmsg: 
-        if key != '_': 
-            print '%s: %s' % (key, errmsg.get(key))
-
-
-def printNagiosError(json):
     output = StringIO.StringIO()
     output.write('CRITICAL: ')
     errmsg = json.get('errmsg')
@@ -319,20 +301,14 @@ def doStop(args):
 def doStatus(args):
     params = { 'a': gp_opt['-a'] }
     (json, status, array_status) = getStatus()
-    if gp_opt['-n']:
-        if status != 'ok':
-            printNagiosError(json)
-            sys.exit(2)
-        if array_status == 'invalid':
-            print 'CRITICAL: system invalid'
-	    sys.exit(2)
-        else:
-            print 'OK: %s' % array_status
+    if status != 'ok':
+        printError(json)
+        sys.exit(2)
+    if array_status == 'invalid':
+        print 'CRITICAL: system invalid'
+        sys.exit(2)
     else:
-        if status != 'ok':
-            printError(json)
-            return
-        print array_status
+        print 'OK: %s' % array_status
 
 
 def doListConfig(args):
@@ -439,20 +415,14 @@ def getSegmentStatus(args):
 def doSegmentStatus(args):
     params = {'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0]}
     (json, status, array_status) = getSegmentStatus(args)
-    if gp_opt['-n']:
-        if status != 'ok':
-            printNagiosError(json)
-	    sys.exit(2)
-        if array_status == 'invalid':
-            print 'CRITICAL: system invalid'
-	    sys.exit(2)
-        else:
-            print 'OK: %s' % array_status
+    if status != 'ok':
+        printError(json)
+        sys.exit(2)
+    if array_status == 'invalid':
+        print 'CRITICAL: system invalid'
+        sys.exit(2)
     else:
-        if status != 'ok':
-            printError(json)
-            return
-        print array_status
+        print 'OK: %s' % array_status
 
 def doSegmentStart(args):
     params = {'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0]}
