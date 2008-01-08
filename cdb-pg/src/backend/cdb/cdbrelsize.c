@@ -133,7 +133,7 @@ int64 cdbRelSize(Oid relOid)
 	}
 	
 
-	if (size > 0)
+	if (size >= 0)	/* Cache the size even if it is zero, as table might be empty */
 	{
 		if (last_cache_entry < 0)
 			last_cache_entry = 0;
