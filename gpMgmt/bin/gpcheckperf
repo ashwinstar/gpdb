@@ -182,7 +182,7 @@ def parseCommandLine():
 	usage('Error: maximum size for -B parameter is 1MB')
 
     if opt['-S'] == 0:
-        opt['-S'] = getMemory() / len(opt['-d'])
+        opt['-S'] = 2 * getMemory() / len(opt['-d'])
     else:
         opt['-S'] /= len(opt['-d'])
 
