@@ -237,8 +237,9 @@ def runTeardown():
 	pass
 
     try:
-        cmd = gpssh(killall('netserver'))
-        (ok, out) = run(cmd)
+        if opt['-r'].find('n') >= 0 or opt['-r'].find('N') >= 0:
+            cmd = gpssh(killall('netserver'))
+            (ok, out) = run(cmd)
     except:
         pass
 
