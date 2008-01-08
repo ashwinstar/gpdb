@@ -72,7 +72,7 @@ static void set_values_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					RangeTblEntry *rte);
 static RelOptInfo *make_rel_from_joinlist(PlannerInfo *root, List *joinlist);
 static RelOptInfo *make_one_rel_by_joins(PlannerInfo *root, int levels_needed,
-					  List *initial_rels);
+										 List *initial_rels, bool fallback);
 static bool subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 						  bool *differentTypes);
 static bool recurse_pushdown_safe(Node *setOp, Query *topquery,
@@ -821,7 +821,13 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
 			return geqo(root, levels_needed, initial_rels);
 		else
 */		
-			return make_one_rel_by_joins(root, levels_needed, initial_rels);
+		RelOptInfo *rel;
+
+		rel = make_one_rel_by_joins(root, levels_needed, initial_rels, false);
+
+		if (rel == NULL && gp_enable_fallback_plan)
+			rel = make_one_rel_by_joins(root, levels_needed, initial_rels, true);
+		return rel;
 	}
 }
 
@@ -840,13 +846,13 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
  * the result of joining all the original relations together.
  */
 static RelOptInfo *
-make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
+make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, bool fallback)
 {
 	List	  **joinitems;
 	int			lev;
 	RelOptInfo *rel;
 
-    mpp_trying_fallback_plan = false;
+    mpp_trying_fallback_plan = fallback;
 
 	/*
 	 * We employ a simple "dynamic programming" algorithm: we first find all
@@ -898,17 +904,15 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 			debug_print_rel(root, rel);
 #endif
 		}
+		/* If no paths found because enable_xxx=false, enable all & retry. */
+		if (!joinitems[lev] &&
+			gp_enable_fallback_plan &&
+			!mpp_trying_fallback_plan)
+		{
+			mpp_trying_fallback_plan = true;
+			lev--;
+		}
 
-        /* If no paths found because enable_xxx=false, enable all & retry. */
-        if (!joinitems[lev] &&
-            gp_enable_fallback_plan &&
-            !mpp_trying_fallback_plan)
-        {
-            mpp_trying_fallback_plan = true;
-            lev--;
-        }
-        else
-            mpp_trying_fallback_plan = false;
 	}
 
 	/*
