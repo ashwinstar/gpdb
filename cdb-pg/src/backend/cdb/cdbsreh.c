@@ -459,10 +459,11 @@ void VerifyErrorTableAttr(Form_pg_attribute *attr,
 	int4		cur_attndims = attr[attrnum - 1]->attndims;
 		
 	if(cur_attisdropped)
-		(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-		 errmsg("Relation \"%s\" includes dropped attributes and is "
-				"therefore not of a valid error table format",
-				relname));
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("Relation \"%s\" includes dropped attributes and is "
+						"therefore not of a valid error table format",
+						relname)));
 
 	if (namestrcmp(cur_attname, expected_attname) != 0)
 		ereport(ERROR,
@@ -549,6 +550,29 @@ bool IsRejectLimitReached(CdbSreh *cdbsreh)
 	return limit_reached;
 }
 
+/*
+ * emitSameTxnWarning()
+ *
+ * Warn the user that it's better to have the error table created in a
+ * transaction that is older than the one that is using it. This mostly
+ * can happen in COPY but also in some not so common external table use
+ * cases (BEGIN, CREATE EXTERNAL TABLE with errtable, SELECT..., ...).
+ */
+void emitSameTxnWarning(void)
+{	
+	ereport(WARNING, 
+			(errcode(ERRCODE_T_R_GP_ERROR_TABLE_MAY_DROP),
+			 errmsg("The error table was created in the same "
+					"transaction as this operation. It will get "
+					"dropped if transaction rolls back even if bad "
+					"rows are present"),
+			 errhint("To avoid this create the error table ahead "
+					"of time using: CREATE TABLE <name> (cmdtime "
+					"timestamp with time zone, relname text, "
+					"filename text, linenum integer, bytenum "
+					"integer, errmsg text, rawdata text, rawbytes "
+					"bytea)")));
+}
 /*
  * GetNextSegid
  *

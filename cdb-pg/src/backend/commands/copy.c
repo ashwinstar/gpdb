@@ -768,6 +768,10 @@ DoCopy(const CopyStmt *stmt)
 									  sreh->errtable,
 									  stmt->filename, 
 									  stmt->relation->relname);
+		
+		/* if necessary warn the user of the risk of table getting dropped */
+		if(Gp_role == GP_ROLE_DISPATCH && !sreh->reusing_existing_errtable)
+			emitSameTxnWarning();
 	}
 	else
 	{

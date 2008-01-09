@@ -814,7 +814,8 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	else
 	{
 		RangeVar *errtbl_rv;
-		
+		bool	  curTxnCreatedErrtbl = false; /* errtbl created in current txn? */
+
 		/* select the SREH mode */
 		if(fmterrtbl == InvalidOid)
 		{
@@ -852,6 +853,9 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 			errtbl_rv = makeRangeVar(get_namespace_name(get_rel_namespace(fmterrtbl)),
 									 get_rel_name(fmterrtbl));
 			
+			if (rel->rd_createSubid != InvalidSubTransactionId)
+				curTxnCreatedErrtbl = true;
+				
  #ifdef nothing			
 			/* bummer... a non writer gang can't write to an error table! */
 			if(!Gp_is_writer && Gp_role != GP_ROLE_DISPATCH)
@@ -867,12 +871,16 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		
 		/* Single row error handling */
 		pstate->cdbsreh = makeCdbSreh(true, /* don't DROP errtable at end of execution */
-									  true, /* only relevant to COPY */
+									  !curTxnCreatedErrtbl, /* really only relevant to COPY though */
 									  rejectlimit, 
 									  islimitinrows, 
 									  errtbl_rv, 
 									  pstate->filename,
 									  (char *)pstate->cur_relname);
+
+		/* if necessary warn the user of the risk of table getting dropped */
+		if(Gp_role == GP_ROLE_DISPATCH && curTxnCreatedErrtbl)
+			emitSameTxnWarning();
 	}
 			
 	initStringInfo(&pstate->attribute_buf);
