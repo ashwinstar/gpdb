@@ -579,7 +579,7 @@ SELECT COUNT(*) FROM sreh_constr; -- should be empty
 -- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
 --
 CREATE EXTERNAL TABLE sreh_ext_10percent(a int, b int, c int)
-LOCATION ('gpfdist://localhost:8080/bad_data3.data' )
+LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
 FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 10 PERCENT;
 SELECT count(*) FROM sreh_ext_10percent; -- pass
@@ -590,7 +590,7 @@ NOTICE:  Rejected 9 badly formatted rows.
 (1 row)
 
 CREATE EXTERNAL TABLE sreh_ext_2percent(a int, b int, c int)
-LOCATION ('gpfdist://localhost:8080/bad_data3.data' )
+LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
 FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 2 PERCENT;
 SELECT count(*) FROM sreh_ext_2percent; -- fail
@@ -604,7 +604,7 @@ SELECT count(*) FROM sreh_ext_10percent; -- fail
 ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
 DETAIL: External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION
 CREATE EXTERNAL TABLE sreh_ext_20percent(a int, b int, c int)
-LOCATION ('gpfdist://localhost:8080/bad_data3.data' )
+LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
 FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 20 PERCENT;
 SELECT count(*) FROM sreh_ext_20percent; -- pass
