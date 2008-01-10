@@ -41,6 +41,8 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
 NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
+WARNING:  The error table was created in the same transaction as this operation. It will get dropped if transaction rolls back even if bad rows are present
+HINT:  To avoid this create the error table ahead of time using: CREATE TABLE <name> (cmdtime timestamp with time zone, relname text, filename text, linenum integer, bytenum integer, errmsg text, rawdata text, rawbytes bytea)
 NOTICE:  Rejected 10 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
 SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
@@ -248,6 +250,8 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
 DROP TABLE sreh_copy_errtbl; 
 COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
 NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
+WARNING:  The error table was created in the same transaction as this operation. It will get dropped if transaction rolls back even if bad rows are present
+HINT:  To avoid this create the error table ahead of time using: CREATE TABLE <name> (cmdtime timestamp with time zone, relname text, filename text, linenum integer, bytenum integer, errmsg text, rawdata text, rawbytes bytea)
 NOTICE:  Dropping the auto-generated unused error table
 HINT:  Use KEEP in LOG INTO clause to force keeping the error table alive
 SELECT * FROM sreh_copy_errtbl; -- it should not exist
@@ -256,6 +260,8 @@ ERROR:  relation "sreh_copy_errtbl" does not exist
 -- autodrop - error table not auto-dropped when KEEP specified
 --
 COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
+WARNING:  The error table was created in the same transaction as this operation. It will get dropped if transaction rolls back even if bad rows are present
+HINT:  To avoid this create the error table ahead of time using: CREATE TABLE <name> (cmdtime timestamp with time zone, relname text, filename text, linenum integer, bytenum integer, errmsg text, rawdata text, rawbytes bytea)
 NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
 SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
  cmdtime | relname | filename | linenum | bytenum | errmsg | rawdata | rawbytes 
@@ -277,6 +283,8 @@ SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
 DROP TABLE sreh_copy_errtbl; 
 COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
 NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
+WARNING:  The error table was created in the same transaction as this operation. It will get dropped if transaction rolls back even if bad rows are present
+HINT:  To avoid this create the error table ahead of time using: CREATE TABLE <name> (cmdtime timestamp with time zone, relname text, filename text, linenum integer, bytenum integer, errmsg text, rawdata text, rawbytes bytea)
 NOTICE:  Rejected 1 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
 SELECT rawdata FROM sreh_copy_errtbl; -- should exist and have 1 row
  rawdata 
