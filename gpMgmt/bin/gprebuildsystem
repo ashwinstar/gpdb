@@ -113,7 +113,7 @@ USAGE () {
 		$ECHO "      -x, do not create database if *cdatabase* file exists in same directory as the"
 		$ECHO "          <sql catalog dump file name> [default create database if file exists]"
 		$ECHO "      -p, set temporary database port number [default $TEMP_PORT]"
-		$ECHO "      -C, <#> alternative number of check point segments [default $CHECK_POINT_SEGMENTS"
+		$ECHO "      -C, <#> alternative number of check point segments [default $CHECK_POINT_SEGMENTS]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"

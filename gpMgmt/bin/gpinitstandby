@@ -263,6 +263,12 @@ CHECK_PARAM () {
 				$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "export GPHOME=$GPHOME;$GPSTOP -d $MASTER_DATA_DIRECTORY -m"
 			fi
 		else
+			#Now make sure we have the top level directory
+			TL_DIR=`dirname $MASTER_DATA_DIRECTORY`
+			CHK_DIR $TL_DIR $MASTER_STANDBY_HOSTNAME
+			if [ $EXISTS -ne 0 ];then
+				ERROR_EXIT "[FATAL]:-Directory $TL_DIR does not exist on $MASTER_STANDBY_HOSTNAME, please create and re-run this script" 2
+			fi
 			#Do not have a directory, but check to ensure we do not have a sync process
 			GET_PG_PID_ACTIVE $MASTER_PORT $MASTER_STANDBY_HOSTNAME
 			if [ $PID -ne 0 ];then

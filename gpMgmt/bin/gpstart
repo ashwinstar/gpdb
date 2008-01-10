@@ -223,7 +223,7 @@ GET_DETAILS () {
 			unset INTERACTIVE;fi
 		LOG_MSG "[INFO]:-Obtaining Greenplum Master catalog information"
 		#Now get tail details
-		GET_QE_DETAILS
+		GET_QE_DETAILS 1
 		QE_COUNT=${#QE_ARRAY[@]}
 		if [ x"" != x"$START_SYNC" ];then
 			GET_STANDBY_COUNT

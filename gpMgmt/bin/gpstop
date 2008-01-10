@@ -515,7 +515,7 @@ if [ x"" != x"$RELOAD_PARAM" ];then
 	LOG_MSG "[INFO]:-End Main"
 	exit
 fi
-GET_QE_DETAILS
+GET_QE_DETAILS 1
 if [ x"" != x"$STOP_SYNC" ];then
 	STOP_STANDBY_SERVER_COLLECT
 fi
