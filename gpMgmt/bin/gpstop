@@ -169,6 +169,7 @@ STOP_ADMIN () {
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is instance already stopped?" 1
 		fi
+		GET_QD_DB_NAME
 		#Check to see if we have any connections to the database at this stage
 		#ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select procpid from $ACTIVITY_TABLE where procpid != pg_backend_pid() and current_query<>'idle';"`)
 		ACTIVE_CONNECTIONS=(`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"select * from ($CONNECTED_BACKEND_QUERY) connected WHERE current_query<>'<IDLE>';"`)
