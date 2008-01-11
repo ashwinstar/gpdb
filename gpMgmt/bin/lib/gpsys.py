@@ -140,7 +140,7 @@ def do_platform(res):
     s = res['platform.system']
     mem = 0
     if (s.find('sunos') >= 0): 
-        (ok, out) = run('''sh -c "prtconf | awk '/^Memory/{print}'"''')
+        (ok, out) = run('''sh -c "/usr/sbin/prtconf | awk '/^Memory/{print}'"''')
         if ok: 
             list = out[0].strip().split(' ')
             val = int(list[2])
@@ -156,7 +156,7 @@ def do_platform(res):
             if factor == 'kB': 
                 mem = val * 1024
     elif (s.find('darwin') >= 0):
-	(ok, out) = run("sysctl hw.physmem")
+	(ok, out) = run("/usr/sbin/sysctl hw.physmem")
         if ok:
             list = out[0].strip().split(' ')
             mem = int(list[1])
@@ -222,7 +222,7 @@ def do_solaris(res):
 	i = i.strip()
         if i.startswith('Solaris 10'):
             res['solaris.release'] = i
-    
+
 
 parseCommandLine()
 res = {}
