@@ -193,7 +193,8 @@ static bool readRegisterMessage(ChunkTransportState *transportStates,
 								MotionConn *conn);
 static MotionConn *acceptIncomingConnection(void);
 
-static bool sendChunk(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
+static bool sendChunk(MotionLayerState *mlStates, ChunkTransportState *transportStates,
+					  ChunkTransportStateEntry *pEntry, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
 static inline void readPacket(MotionConn * conn, bool inTeardown);
 static inline int doBroadcast(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 							  ChunkTransportStateEntry *pEntry, TupleChunkListItem tcItem);
@@ -950,8 +951,9 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 	ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "sendtuplechunktoams: calling get_transport_state w/transportStates %p transportState->size %d motnodeid %d",
-		 transportStates, transportStates->size, motNodeID);
+	elog(DEBUG3, "sendtuplechunktoams: calling get_transport_state"
+		 "w/transportStates %p transportState->size %d motnodeid %d route %d",
+		 transportStates, transportStates->size, motNodeID, targetRoute);
 #endif
 
 	getChunkTransportState(transportStates, motNodeID, &pEntry);
@@ -4508,7 +4510,9 @@ handleStopMsgs(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 	int i=0;
 	bool res=false;
 
+#ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "handleStopMsgs: node %d", motionId);
+#endif
 
 	while (i < pEntry->numConns)
 	{
@@ -4516,10 +4520,23 @@ handleStopMsgs(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 
 		conn = pEntry->conns + i;
 
-		/* we're guaranteed to have recently flushed ... so the
+#ifdef AMS_VERBOSE_LOGGING
+		elog(DEBUG3, "handleStopMsgs: node %d route %d %s %s", motionId, conn->route,
+			(conn->stillActive ? "active" : "NOT active"), (conn->stopRequested ? "stop requested" : ""));
+		elog(DEBUG3, "handleStopMsgs: node %d route %d msgSize %d", motionId, conn->route, conn->msgSize);
+#endif
+
+		/* MPP-2427: we're guaranteed to have recently flushed, but
+		 * this might not be empty (if we got a stop on a buffer that
+		 * wasn't the one we were sending) ... empty it first so the
 		 * outbound buffer is empty when we get here. */
 		if (conn->stillActive && conn->stopRequested)
 		{
+			/* mark buffer empty */
+			conn->tupleCount = 0;
+			conn->msgSize = sizeof(conn->conn_info);
+
+			/* now send our stop-ack EOS */
 			conn->conn_info.flags |= FLAGS_EOS;
 			conn->pBuff[conn->msgSize] = 'S';
 			conn->msgSize += 1;
@@ -4575,7 +4592,7 @@ flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 	bool		result = true; /* assume that the connection is going to stay "live" */
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(LOG, "flushUDPBUffer: msgSize %d tuplecount %d", conn->msgSize, conn->tupleCount);
+	elog(LOG, "flushUDPBUffer: msgSize %d tuplecount %d route %d", conn->msgSize, conn->tupleCount, conn->route);
 #endif
 
 	/* first set up our header */
@@ -4814,7 +4831,12 @@ flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 		if (!flushUDPBuffer(mlStates, transportStates, pEntry, conn, motionId))
 		{
 			handleStopMsgs(mlStates, transportStates, pEntry, motionId);
-			return false;
+			/* MPP-2427: handleStopMsgs() does all of the updating, we
+			 * must return true or we will confuse our caller
+			 *
+			 * return false;
+			 */
+			return true;
 		}
 		else
 			return true;
