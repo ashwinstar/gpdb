@@ -187,7 +187,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
 (22 rows)
 
 --
--- error table - have low reject limit that gets reached, and see that data rolled back from both target table and err table
+-- error table - have low reject limit that gets reached, and see that data rolled back from target table and appended to err table
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
 ERROR:  Segment reject limit reached. Aborting operation. Last error was: missing data for column "c"  (seg0 @hostname@:11001 pid=14901)
@@ -222,12 +222,14 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
 -----------+---------+-------------------------------------------------------------------------+-----------------------------------
  sreh_copy |       2 | missing data for column "b"                                             | 2
  sreh_copy |       2 | missing data for column "b"                                             | 2
+ sreh_copy |       2 | missing data for column "b"                                             | 2
  sreh_copy |       2 | missing data for column "b"                                             | 200 bad data from stdin
  sreh_copy |       3 | missing data for column "c"                                             | 3|
  sreh_copy |       3 | missing data for column "c"                                             | 3|
  sreh_copy |       4 | invalid input syntax for integer: " more bad data from stdin", column c | 400|400| more bad data from stdin
  sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
  sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
+ sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
  sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
  sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
  sreh_copy |       8 | invalid input syntax for integer: "bad", column a                       | bad|8|8
@@ -242,7 +244,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
  sreh_copy |      15 | missing data for column "b"                                             | 15
  sreh_copy |      16 | missing data for column "b"                                             | sixteen
  sreh_copy |      16 | missing data for column "b"                                             | sixteen
-(22 rows)
+(24 rows)
 
 --
 -- autodrop - error table auto-dropped when auto created and no bad data
@@ -293,7 +295,7 @@ SELECT rawdata FROM sreh_copy_errtbl; -- should exist and have 1 row
 (1 row)
 
 --
--- constraint errors - data is rolled back from both target and error tables (CHECK)
+-- constraint errors - data is rolled back from target table (CHECK)
 --
 TRUNCATE sreh_copy_errtbl;
 CREATE TABLE sreh_constr(a int check (a > 10));
@@ -302,10 +304,11 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 COPY sreh_constr FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
 ERROR:  new row for relation "sreh_constr" violates check constraint "sreh_constr_a_check"  (seg0 @hostname@:11001 pid=14901)
 CONTEXT:  COPY sreh_constr, line 5: "9"
-SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
- cmdtime | relname | filename | linenum | bytenum | errmsg | rawdata | rawbytes 
----------+---------+----------+---------+---------+--------+---------+----------
-(0 rows)
+SELECT COUNT(*) FROM sreh_copy_errtbl; -- should exist and have 1 bad format row
+ count 
+-------
+     1
+(1 row)
 
 SELECT * FROM sreh_constr; -- should exist and be empty
  a 
@@ -314,7 +317,7 @@ SELECT * FROM sreh_constr; -- should exist and be empty
 
 DROP TABLE sreh_constr;
 --
--- constraint errors - data is rolled back from both target and error tables (UNIQUE)
+-- constraint errors - data is rolled back from target table (UNIQUE)
 --
 TRUNCATE sreh_copy_errtbl;
 CREATE TABLE sreh_constr(a int unique);
@@ -322,10 +325,11 @@ NOTICE:  CREATE TABLE / UNIQUE will create implicit index "sreh_constr_a_key" fo
 COPY sreh_constr FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl KEEP SEGMENT REJECT LIMIT 1000;
 ERROR:  duplicate key violates unique constraint "sreh_constr_a_key"  (seg0 @hostname@:11001 pid=14901)
 CONTEXT:  COPY sreh_constr, line 5: "9"
-SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
- cmdtime | relname | filename | linenum | bytenum | errmsg | rawdata | rawbytes 
----------+---------+----------+---------+---------+--------+---------+----------
-(0 rows)
+SELECT COUNT(*) FROM sreh_copy_errtbl; -- should exist and have 1 bad format row
+ count 
+-------
+     1
+(1 row)
 
 SELECT * FROM sreh_constr; -- should exist and be empty
  a 
@@ -573,7 +577,7 @@ ERROR:  new row for relation "sreh_constr" violates check constraint "sreh_const
 SELECT COUNT(*) FROM sreh_ext_errtbl; -- should be empty
  count 
 -------
-     0
+    10
 (1 row)
 
 SELECT COUNT(*) FROM sreh_constr; -- should be empty

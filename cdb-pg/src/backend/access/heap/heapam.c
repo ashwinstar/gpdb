@@ -2012,6 +2012,11 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
  * use_fsm is passed directly to RelationGetBufferForTuple, which see for
  * more info.
  *
+ * freeze is used when we want to force the inserted tuple to be always
+ * visible. This is currently only used for error tables during COPY or
+ * external tables since we want to keep bad rows in the error table even
+ * if the transaction rolls back.
+ *
  * The return value is the OID assigned to the tuple (either here or by the
  * caller), or InvalidOid if no OID.  The header fields of *tup are updated
  * to match the stored tuple; in particular tup->t_self receives the actual
@@ -2020,11 +2025,13 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
  */
 Oid
 heap_insert(Relation relation, HeapTuple tup, CommandId cid,
-			bool use_wal, bool use_fsm)
+			bool use_wal, bool use_fsm, bool freeze)
 {
-	TransactionId xid = GetCurrentTransactionId();
+	TransactionId xid;
 	HeapTuple	heaptup;
 	Buffer		buffer;
+
+	xid = (freeze ? FrozenTransactionId : GetCurrentTransactionId());
 
 	if (relation->rd_rel->relhasoids)
 	{
@@ -2125,7 +2132,20 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 Oid
 simple_heap_insert(Relation relation, HeapTuple tup)
 {
-	return heap_insert(relation, tup, GetCurrentCommandId(), true, true);
+	return heap_insert(relation, tup, GetCurrentCommandId(), true, true, false);
+}
+
+/*
+ *	freeze_heap_insert - insert a tuple and freeze it (always visible).
+ *
+ * Same as simple_heap_insert, but without a default command id and also
+ * passing in a 'freeze' request so that heap_insert will set the MVCC
+ * information accordingly.
+ */
+Oid
+freeze_heap_insert(Relation relation, HeapTuple tup)
+{
+	return heap_insert(relation, tup, GetCurrentCommandId(), true, true, true);
 }
 
 /*

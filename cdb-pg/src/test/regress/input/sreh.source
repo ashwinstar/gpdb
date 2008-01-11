@@ -45,7 +45,7 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
 SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
 
 --
--- error table - have low reject limit that gets reached, and see that data rolled back from both target table and err table
+-- error table - have low reject limit that gets reached, and see that data rolled back from target table and appended to err table
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
 SELECT * FROM sreh_copy ORDER BY a,b,c;
@@ -86,7 +86,7 @@ COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT
 SELECT rawdata FROM sreh_copy_errtbl; -- should exist and have 1 row
 
 --
--- constraint errors - data is rolled back from both target and error tables (CHECK)
+-- constraint errors - data is rolled back from target table (CHECK)
 --
 TRUNCATE sreh_copy_errtbl;
 CREATE TABLE sreh_constr(a int check (a > 10));
@@ -97,12 +97,12 @@ bad format (not int) data should get inserted into error table but later rolledb
 10
 9
 \.
-SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+SELECT COUNT(*) FROM sreh_copy_errtbl; -- should exist and have 1 bad format row
 SELECT * FROM sreh_constr; -- should exist and be empty
 DROP TABLE sreh_constr;
 
 --
--- constraint errors - data is rolled back from both target and error tables (UNIQUE)
+-- constraint errors - data is rolled back from target table (UNIQUE)
 --
 TRUNCATE sreh_copy_errtbl;
 CREATE TABLE sreh_constr(a int unique);
@@ -113,7 +113,7 @@ bad format (not int) data should get inserted into error table but later rolledb
 9
 9
 \.
-SELECT * FROM sreh_copy_errtbl; -- should exist and be empty
+SELECT COUNT(*) FROM sreh_copy_errtbl; -- should exist and have 1 bad format row
 SELECT * FROM sreh_constr; -- should exist and be empty
 
 --

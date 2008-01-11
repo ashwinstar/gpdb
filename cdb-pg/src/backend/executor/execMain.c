@@ -2094,7 +2094,7 @@ ExecInsert(TupleTableSlot *slot,
 	{
 		newId = heap_insert(resultRelationDesc, tuple,
 							estate->es_snapshot->curcid,
-							true, true);
+							true, true, false);
 	}
 	IncrAppended();
 	(estate->es_processed)++;
@@ -3272,7 +3272,8 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 				tuple,
 				estate->es_snapshot->curcid,
 				estate->es_into_relation_use_wal,
-				false);			/* never any point in using FSM */
+				false,		/* never any point in using FSM */
+				false);			
 
 	/* We know this is a newly created relation, so there are no indexes */
 
