@@ -1012,6 +1012,9 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
 		LockRelationOid(DependRelationId, RowExclusiveLock);
 	}
 
+	/* Lock the relation to be dropped */
+	LockRelationOid(relOid, AccessExclusiveLock);
+
 	performDeletion(&object, behavior);
 }
 
