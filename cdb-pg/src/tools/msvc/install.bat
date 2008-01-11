@@ -1,5 +1,5 @@
 @echo off
-REM $PostgreSQL: pgsql/src/tools/msvc/install.bat,v 1.2 2007/06/26 11:43:56 mha Exp $
+REM $PostgreSQL: pgsql/src/tools/msvc/install.bat,v 1.3 2007/12/19 12:29:36 mha Exp $
 
 if NOT "%1"=="" GOTO RUN_INSTALL
 
@@ -13,9 +13,13 @@ exit /b 1
 :RUN_INSTALL
 
 SETLOCAL
-if exist buildenv.bat call buildenv.bat
 
-attrib /S -r %1\*
+IF NOT EXIST buildenv.pl goto nobuildenv
+perl -e "require 'buildenv.pl'; while(($k,$v) = each %ENV) { print qq[\@SET $k=$v\n]; }" > bldenv.bat
+CALL bldenv.bat
+del bldenv.bat
+:nobuildenv 
+
 perl install.pl "%1"
 
 REM exit fix for pre-2003 shell especially if used on buildfarm

@@ -484,8 +484,6 @@ sub WriteConfiguration
     }
     $libs =~ s/ $//;
     $libs =~ s/__CFGNAME__/$cfgname/g;
-    my $pth = $self->{solution}->{options}->{pthread};
-    $pth = '' unless $pth;
     print $f <<EOF;
   <Configuration Name="$cfgname|Win32" OutputDirectory=".\\$cfgname\\$self->{name}" IntermediateDirectory=".\\$cfgname\\$self->{name}"
 	ConfigurationType="$cfgtype" UseOfMFC="0" ATLMinimizesCRunTimeLibraryUsage="FALSE" CharacterSet="2" WholeProgramOptimization="$p->{wholeopt}">

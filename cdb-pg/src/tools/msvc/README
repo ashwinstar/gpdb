@@ -10,7 +10,6 @@ If the perl code is modified, use perltidy on it since pgindent won't
 touch perl code. Use the following commandline:
 perltidy -b -bl -nsfs -naws -l=100 -ole=unix *.pl *.pm
 
-
 Notes about Visual Studio Express
 ---------------------------------
 To build PostgreSQL using Visual Studio Express, the Platform SDK
@@ -30,7 +29,7 @@ This should work for both GUI and commandline builds, but a restart
 may be necessary.
 
 
-Build Notes
+Build Notes  (old... I left these in for now)
 -----------
 
 Note that PostgreSQL builds natively with Visual C++. You must therefore

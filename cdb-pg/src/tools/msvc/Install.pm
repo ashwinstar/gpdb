@@ -59,7 +59,7 @@ sub Install
 
     CopySolutionOutput($conf, $target);
     lcopy($target . '/lib/libpq.dll', $target . '/bin/libpq.dll');
-    my $sample_files = [];
+	my $sample_files = [];
 	File::Find::find({wanted => 
 						  sub { /^.*\.sample\z/s && 
 									push(@$sample_files, $File::Find::name); 

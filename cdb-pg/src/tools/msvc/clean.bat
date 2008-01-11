@@ -1,5 +1,5 @@
 @echo off
-REM $PostgreSQL: pgsql/src/tools/msvc/clean.bat,v 1.7 2007/10/03 13:43:24 mha Exp $
+REM $PostgreSQL: pgsql/src/tools/msvc/clean.bat,v 1.9 2007/12/19 12:31:35 mha Exp $
 
 set D=%CD%
 if exist ..\msvc if exist ..\..\..\src cd ..\..\..
@@ -57,14 +57,11 @@ call :del src\test\regress\regress.dll
 REM Clean up datafiles built with contrib
 cd contrib
 for /r %%f in (*.sql) do if exist %%f.in del %%f
-REM Clean up tsearch2 which uses inconsistent names
-call :del tsearch2\tsearch2.sql
-call :del tsearch2\uninstall_tsearch2.sql
 
 cd %D%
 
 REM Clean up ecpg regression test files
-msbuild ecpg_regression.proj /t:clean /v:q
+msbuild /NoLogo ecpg_regression.proj /t:clean /v:q
 
 goto :eof
 
