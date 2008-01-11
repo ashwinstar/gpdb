@@ -350,8 +350,8 @@ def print_fix():
 	    print
             print '[FIX %s] please add/modify the following line(s) in /etc/security/limits.conf' % h
             for (key, value) in errors[h]['ulimit']:
-                print 'soft %s %s' % (key, value)
-                print 'hard %s %s' % (key, value)
+                print '* soft %s %s' % (key, value)
+                print '* hard %s %s' % (key, value)
 
         if 'sync' in errors[h]:
             print
