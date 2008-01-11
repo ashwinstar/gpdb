@@ -448,7 +448,7 @@ CREATE_MIRRORS () {
 	PRI_DETAILS=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select hostname, datadir from $CONFIG_TABLE where content<>-1 limit 1;"`
 	PRI_HOST=`$ECHO $PRI_DETAILS|$AWK -F"|" '{print $1}'`
 	PRI_DIR=`$ECHO $PRI_DETAILS|$AWK -F"|" '{print $2}'`
-	SEG_SIZE_KB=`$TRUSTED_SHELL $PRI_HOST "$DF -k ${PRI_DIR}"|$TAIL -1|$AWK '{print $1}'`
+	SEG_SIZE_KB=`$TRUSTED_SHELL $PRI_HOST "$DF -k ${PRI_DIR}"|$TAIL -1|$AWK '{print $2}'`
 	((CALC_TIME=$SEG_SIZE_KB/1000))
 	if [ $CALC_TIME -gt $WAIT_LIMIT ];then
 		LOG_MSG "[INFO]:-Changing time out value from $WAIT_LIMIT to $CALC_TIME seconds" 1
