@@ -1785,7 +1785,7 @@ sub get_rows_out
     my ($node, $ctx, $edge) = @_;
 
     return 
-        unless ($node->{txt} =~ m/Rows out\:/);
+        unless ($node->{txt} =~ m/(Rows out\:)|(\(cost\=.*\s+rows=.*\s+width\=.*\))/);
 
     my $long = ($edge =~ m/long|med/i);
 
@@ -1798,7 +1798,7 @@ sub get_rows_out
                 ($node->{txt} =~ 
                  m/Rows out\:\s+Avg\s+(.*)\s+rows\s+x\s+(.*)\s+workers/);
         
-            return unless (2 == scalar(@foo));
+            goto L_get_est unless (2 == scalar(@foo));
 
             # calculate row count as avg x num workers
             $node->{rows_out} = $foo[0] * $foo[1];
@@ -1809,7 +1809,7 @@ sub get_rows_out
                 ($node->{txt} =~ 
                  m/Rows out\:\s+(Avg.*workers)/);
         
-            return unless (1 == scalar(@foo));
+            goto L_get_est unless (1 == scalar(@foo));
 
             # just print the string
             $node->{rows_out} = $foo[0];
@@ -1829,39 +1829,46 @@ sub get_rows_out
             ($node->{txt} =~ 
              m/Rows out\:\s+(.*)\s+rows/);
         
-        return unless (1 == scalar(@foo));
+        goto L_get_est unless (1 == scalar(@foo));
 
         $node->{rows_out} = $foo[0];
     }
 
-    if (($node->{rows_out} !~ m/avg/i) &&
-        ($node->{rows_out} =~ m/x/))
+    if (
+        exists($node->{rows_out}) &&
+        length($node->{rows_out})
+        )
     {
-        my @foo = ($node->{rows_out} =~ m/(x.*)$/);
-
-        my $tail = $foo[0];
-        
-        @foo = ($node->{rows_out} =~ m/(.*)\s+x.*/);
-
-        my $head = $foo[0];
-
-        if (defined($tail) && defined($head))
+        if (
+            ($node->{rows_out} !~ m/avg/i) &&
+            ($node->{rows_out} =~ m/x/))
         {
-            $head = human_num($head);
+            my @foo = ($node->{rows_out} =~ m/(x.*)$/);
 
-            $node->{rows_out} = $head . " " . $tail;
+            my $tail = $foo[0];
+        
+            @foo = ($node->{rows_out} =~ m/(.*)\s+x.*/);
+
+            my $head = $foo[0];
+
+            if (defined($tail) && defined($head))
+            {
+                $head = human_num($head);
+
+                $node->{rows_out} = $head . " " . $tail;
+            }
+
         }
+        elsif ($node->{rows_out} =~ m/^\d+$/)
+        {
+            $node->{rows_out} = human_num($node->{rows_out});
+        }
+    }
 
-    }
-    elsif ($node->{rows_out} =~ m/^\d+$/)
-    {
-        $node->{rows_out} = human_num($node->{rows_out});
-    }
+L_get_est:
 
     # add row estimates
     if ($long && 
-        exists($node->{rows_out}) &&
-        length($node->{rows_out}) &&
         ($node->{txt} =~ m/\(cost\=.*\s+rows=.*\s+width\=.*\)/))
     {
         my @foo = ($node->{txt} =~ m/cost\=.*\s+rows=(\d+)\s+width\=.*/);
@@ -1874,13 +1881,17 @@ sub get_rows_out
 
             $esti = human_num($esti);
 
+            unless (exists($node->{rows_out}) &&
+                    length($node->{rows_out}))
+            {
+                $node->{rows_out} = "";
+            }
+
             $node->{rows_out} .= " (est $esti)";
         }
     }
 
-
-
-}
+} # end get_rows_out
 
 sub calc_color_rank
 {
@@ -1993,18 +2004,19 @@ sub dodotfile
             undef,
             $ctx);
 
-   if (defined($glob_edge) && length($glob_edge))
-   {
-       treeMap($plantree, 
-               'nestedloop_fixup($node, $ctx); ',
-               undef,
-               $ctx);
+    # always label the left/right sides of nested loop
+    treeMap($plantree, 
+            'nestedloop_fixup($node, $ctx); ',
+            undef,
+            $ctx);
 
-       treeMap($plantree, 
-               'get_rows_out($node, $ctx, $glob_edge); ',
-               undef,
-               $ctx);
-   }
+    if (defined($glob_edge) && length($glob_edge))
+    {
+        treeMap($plantree, 
+                'get_rows_out($node, $ctx, $glob_edge); ',
+                undef,
+                $ctx);
+    }
 
     my $dotimeline = $glob_timeline;
 
