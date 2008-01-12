@@ -131,7 +131,7 @@ START_SEG () {
 		fi
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting Segment instance $QE_NAME directory $QE_DIR"
-	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start >/dev/null 2>&1"
+	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};${EXPORT_GPHOME};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start >/dev/null 2>&1"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ] && [ $START_INVALID -eq 1 ];then
 	#Have attempted to start an invalid segment which did not start
@@ -147,7 +147,7 @@ START_SEG () {
 	#So exit with fatal message and exit code 2
 		LOG_MSG "[WARN][$INST_COUNT]:-Startup request returned error code $RETVAL" 1
 		LOG_MSG "[INFO][$INST_COUNT]:-Command string called which resulted in error" 1
-		LOG_MSG "[INFO][$INST_COUNT]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start"  1
+		LOG_MSG "[INFO][$INST_COUNT]:-$TRUSTED_SHELL $QE_NAME ${EXPORT_LIB_PATH};${EXPORT_GPHOME};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start"  1
 		LOG_MSG "[INFO][$INST_COUNT]:-Tail'ing Segment instance log file" 1
 		$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
 		if [ $? -ne 0 ]; then
@@ -176,7 +176,7 @@ START_SEG () {
 	#*************************************************************************************************************
 	#Now check status of postmaster on the segment instance
 	LOG_MSG "[INFO][$INST_COUNT]:-Checking status via pg_ctl"
-	RET_TEXT=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};$PG_CTL status -D $QE_DIR"`
+	RET_TEXT=`$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};${EXPORT_GPHOME};$PG_CTL status -D $QE_DIR"`
 	RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 	if [ $RUNNING -ne 0 ]; then
 		LOG_MSG "[FATAL][$INST_COUNT]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running" 1
