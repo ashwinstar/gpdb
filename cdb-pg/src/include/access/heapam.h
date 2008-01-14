@@ -231,12 +231,23 @@ extern Datum nocachegetattr(HeapTuple tup, int attnum,
 			   TupleDesc att, bool *isnull);
 extern Datum heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 				bool *isnull);
-extern HeapTuple heap_copytuple(HeapTuple tuple);
+
+extern HeapTuple heaptuple_copy_to(HeapTuple tup, HeapTuple result, uint32 *len);
+
+static inline HeapTuple heap_copytuple(HeapTuple tuple) 
+{
+	return heaptuple_copy_to(tuple, NULL, NULL);
+}
+
 extern void heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest);
-extern HeapTuple heap_form_tuple(TupleDesc tupleDescriptor,
-				Datum *values, bool *isnull);
-extern HeapTuple heap_formtuple(TupleDesc tupleDescriptor,
-			   Datum *values, char *nulls);
+
+extern HeapTuple heaptuple_form_to(TupleDesc tupdesc, Datum* values, bool *isnull, HeapTuple tup, uint32 *len);
+static inline HeapTuple heap_form_tuple(TupleDesc tupleDescriptor, Datum *values, bool *isnull)
+{
+	return heaptuple_form_to(tupleDescriptor, values, isnull, NULL, NULL);
+}
+extern HeapTuple heap_formtuple(TupleDesc tupleDescriptor, Datum *values, char *nulls);
+
 extern HeapTuple heap_modify_tuple(HeapTuple tuple,
 				  TupleDesc tupleDesc,
 				  Datum *replValues,
@@ -252,12 +263,6 @@ extern void heap_deform_tuple(HeapTuple tuple, TupleDesc tupleDesc,
 extern void heap_deformtuple(HeapTuple tuple, TupleDesc tupleDesc,
 				 Datum *values, char *nulls);
 extern void heap_freetuple(HeapTuple htup);
-extern MinimalTuple heap_form_minimal_tuple(TupleDesc tupleDescriptor,
-						Datum *values, bool *isnull);
-extern void heap_free_minimal_tuple(MinimalTuple mtup);
-extern MinimalTuple heap_copy_minimal_tuple(MinimalTuple mtup);
-extern HeapTuple heap_tuple_from_minimal_tuple(MinimalTuple mtup);
-extern MinimalTuple minimal_tuple_from_heap_tuple(HeapTuple htup);
 extern HeapTuple heap_addheader(int natts, bool withoid,
 			   Size structlen, void *structure);
 

@@ -23,6 +23,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "access/memtup.h"
+
 /* A MemoryContext used within the tuple serialize code, so that freeing of
  * space is SUPAFAST.  It is initialized in the first call to InitSerTupInfo()
  * since that must be called before any tuple serialization or deserialization
@@ -393,6 +395,11 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 
 	AssertState(s_tupSerMemCtxt != NULL);
 
+	if(is_heaptuple_memtuple(tuple))
+	{
+		addByteStringToChunkList(tcList, (char *)tuple, memtuple_get_size((MemTuple) tuple, NULL), &pSerInfo->chunkCache);
+	}
+	else
 	{
 		TupSerHeader tsh;
 
@@ -984,78 +991,90 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 		char *pos = (char *)serData.data;
 
 		tshp = (TupSerHeader *)pos;
-		pos += sizeof(TupSerHeader);	
-		/* if the tuple had toasted elements we have to deserialize
-		 * the old slow way. */
-		if ((tshp->infomask & (HEAP_HASEXTERNAL | HEAP_HASEXTENDED)) != 0)
+
+		if((tshp->tuplen & MEMTUP_LEAD_BIT) != 0)
 		{
-			serData.cursor += sizeof(TupSerHeader);
+			uint32 tuplen = memtuple_size_from_uint32(tshp->tuplen);
+			htup = (HeapTuple) palloc(tuplen);
+			memcpy(htup, pos, tuplen);
 
-			htup = DeserializeTuple(pSerInfo, &serData);
-
-			/* Free up memory we used. */
-			pfree(serData.data);
-			return htup;
+			pos += tuplen;
 		}
-
-		/* reconstruct lengths of null bitmap and data part */
-		if (tshp->infomask & HEAP_HASNULL)
-			nullslen = BITMAPLEN(tshp->natts);
 		else
-			nullslen = 0;
+		{
+			pos += sizeof(TupSerHeader);	
+			/* if the tuple had toasted elements we have to deserialize
+			 * the old slow way. */
+			if ((tshp->infomask & (HEAP_HASEXTERNAL | HEAP_HASEXTENDED)) != 0)
+			{
+				serData.cursor += sizeof(TupSerHeader);
 
-		if (tshp->tuplen < sizeof(TupSerHeader) + nullslen)
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+				htup = DeserializeTuple(pSerInfo, &serData);
+
+				/* Free up memory we used. */
+				pfree(serData.data);
+				return htup;
+			}
+
+			/* reconstruct lengths of null bitmap and data part */
+			if (tshp->infomask & HEAP_HASNULL)
+				nullslen = BITMAPLEN(tshp->natts);
+			else
+				nullslen = 0;
+
+			if (tshp->tuplen < sizeof(TupSerHeader) + nullslen)
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect error: cannot convert chunks to a  heap tuple."),
 							errdetail("tuple len %d < nullslen %d + headersize (%d)",
-									  tshp->tuplen, nullslen, (int)sizeof(TupSerHeader))));
+								tshp->tuplen, nullslen, (int)sizeof(TupSerHeader))));
 
-		datalen = tshp->tuplen - sizeof(TupSerHeader) - nullslen;
+			datalen = tshp->tuplen - sizeof(TupSerHeader) - nullslen;
 
-		/* determine overhead size of tuple (should match heap_form_tuple) */
-		hoff = offsetof(HeapTupleHeaderData, t_bits) + nullslen;
-		if (tshp->infomask & HEAP_HASOID)
-			hoff += sizeof(Oid);
-		hoff = MAXALIGN(hoff);
+			/* determine overhead size of tuple (should match heap_form_tuple) */
+			hoff = offsetof(HeapTupleHeaderData, t_bits) + nullslen;
+			if (tshp->infomask & HEAP_HASOID)
+				hoff += sizeof(Oid);
+			hoff = MAXALIGN(hoff);
 
-		/* Allocate the space in one chunk, like heap_form_tuple */
-		htup = (HeapTuple)palloc(HEAPTUPLESIZE + hoff + datalen);
+			/* Allocate the space in one chunk, like heap_form_tuple */
+			htup = (HeapTuple)palloc(HEAPTUPLESIZE + hoff + datalen);
 
-		t_data = (HeapTupleHeader) ((char *)htup + HEAPTUPLESIZE);
+			t_data = (HeapTupleHeader) ((char *)htup + HEAPTUPLESIZE);
 
-		/* make sure unused header fields are zeroed */
-		MemSetAligned(t_data, 0, hoff);
+			/* make sure unused header fields are zeroed */
+			MemSetAligned(t_data, 0, hoff);
 
-		/* reconstruct the HeapTupleData fields */
-		htup->t_len = hoff + datalen;
-		ItemPointerSetInvalid(&(htup->t_self));
-		htup->t_tableOid = InvalidOid;
-		htup->t_data = t_data;
+			/* reconstruct the HeapTupleData fields */
+			htup->t_len = hoff + datalen;
+			ItemPointerSetInvalid(&(htup->t_self));
+			htup->t_tableOid = InvalidOid;
+			htup->t_data = t_data;
 
-		/* reconstruct the HeapTupleHeaderData fields */
-		ItemPointerSetInvalid(&(t_data->t_ctid));
-		HeapTupleHeaderSetNatts(t_data, tshp->natts);
-		t_data->t_infomask = tshp->infomask & ~HEAP_XACT_MASK;
-		t_data->t_infomask |= HEAP_XMIN_INVALID | HEAP_XMAX_INVALID;
-		t_data->t_hoff = hoff;
+			/* reconstruct the HeapTupleHeaderData fields */
+			ItemPointerSetInvalid(&(t_data->t_ctid));
+			HeapTupleHeaderSetNatts(t_data, tshp->natts);
+			t_data->t_infomask = tshp->infomask & ~HEAP_XACT_MASK;
+			t_data->t_infomask |= HEAP_XMIN_INVALID | HEAP_XMAX_INVALID;
+			t_data->t_hoff = hoff;
 
-		if (nullslen)
-		{
-			memcpy((void *)t_data->t_bits, pos, nullslen);
-			pos += nullslen;
+			if (nullslen)
+			{
+				memcpy((void *)t_data->t_bits, pos, nullslen);
+				pos += nullslen;
+			}
+
+			/* does the tuple descriptor expect an OID ? Note: we don't
+			 * have to set the oid itself, just the flag! (see heap_formtuple()) */
+			if (pSerInfo->tupdesc->tdhasoid)		/* else leave infomask = 0 */
+			{
+				t_data->t_infomask |= HEAP_HASOID;
+			}
+
+			/* and now the data proper (it would be nice if we could just
+			 * point our caller into our existing buffer in-place, but
+			 * we'll leave that for another day) */
+			memcpy((char *)t_data + hoff, pos, datalen);
 		}
-
-		/* does the tuple descriptor expect an OID ? Note: we don't
-		 * have to set the oid itself, just the flag! (see heap_formtuple()) */
-		if (pSerInfo->tupdesc->tdhasoid)		/* else leave infomask = 0 */
-		{
-			t_data->t_infomask |= HEAP_HASOID;
-		}
-
-		/* and now the data proper (it would be nice if we could just
-		 * point our caller into our existing buffer in-place, but
-		 * we'll leave that for another day) */
-		memcpy((char *)t_data + hoff, pos, datalen);
 	}
 
 	/* Free up memory we used. */

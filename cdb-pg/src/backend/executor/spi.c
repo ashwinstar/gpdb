@@ -1420,15 +1420,15 @@ SPI_cursor_open(const char *name, void *plan,
         {
         	int i;
         	int j;
-        	HeapTuple tuple;
         	Datum *values;
-			char *nulls;
-			TupleDesc tempTupleDesc;
-			TupleTableSlot slot;
-			Oid			typrecv;
-			Oid			typioparam;
-			FmgrInfo finfo;
-			elog(DEBUG1,"PGRES_TUPLES_OK");
+		bool  *isnull;
+
+		TupleDesc tempTupleDesc;
+		TupleTableSlot slot;
+		Oid			typrecv;
+		Oid			typioparam;
+		FmgrInfo finfo;
+		elog(DEBUG1,"PGRES_TUPLES_OK");
         	
         	_SPI_current->processed = PQntuples(res);
         	
@@ -1439,23 +1439,26 @@ SPI_cursor_open(const char *name, void *plan,
         
         	if (tempTupleDesc->tdtypeid == RECORDOID && tempTupleDesc->tdtypmod < 0)
 				assign_record_type_typmod(tempTupleDesc);
+
+		
+		init_slot(&slot, tempTupleDesc);
+		ExecStoreAllNullTuple(&slot);
 				
         	/* This sets up tuptable */
         	spi_dest_startup(NULL, 0, tempTupleDesc);
         	
-        	
-			nulls = palloc(PQnfields(res)+1);
-			values = palloc(PQnfields(res)*sizeof(Datum));
+		isnull = slot_get_isnull(&slot);
+		values = slot_get_values(&slot); 
         	
         	for(i=0;i<PQntuples(res);i++)
         	{
         		for(j=0;j<PQnfields(res);j++)
         		{
         			char * v;
-        			nulls[j] = ' ';
+        			isnull[j] = false;
         			if (PQgetisnull(res,i,j))
         			{
-        				nulls[j] = 'n';
+        				isnull[j] = true;
         				values[j] = 0;
         			}
         			else
@@ -1481,14 +1484,9 @@ SPI_cursor_open(const char *name, void *plan,
         			}
         			 
         		}
-        		tuple = heap_formtuple(tempTupleDesc, values, nulls);
-				//if (objectid != (Oid) 0)
-					//HeapTupleSetOid(tuple, objectid);
-				memset(&slot,0,sizeof(TupleTableSlot));
-				slot.tts_tuple = tuple;
-				slot.tts_tupleDescriptor = tempTupleDesc;
-				slot.tts_isempty = false;
-				spi_printtup(&slot, NULL);
+
+			ExecStoreVirtualTuple(&slot); 
+			spi_printtup(&slot, NULL);
 				
         	}
         			
@@ -1950,8 +1948,15 @@ spi_printtup(TupleTableSlot *slot, DestReceiver *self)
 									  tuptable->alloced * sizeof(HeapTuple));
 	}
 
-	tuptable->vals[tuptable->alloced - tuptable->free] =
-		ExecCopySlotTuple(slot);
+	/* XXX 
+	 * TODO:
+	 * This is extremely stupid.  Most likely we only need a memtuple.
+	 * However, TONS of places, assumes heaptuple.
+	 *
+	 * Suggested fix: In SPITupleTable, change TupleDesc tupdesc to a 
+	 * slot, and access everything through slot_XXX intreface.
+	 */
+	tuptable->vals[tuptable->alloced - tuptable->free] = ExecCopySlotHeapTuple(slot);
 	(tuptable->free)--;
 
 	MemoryContextSwitchTo(oldcxt);
@@ -2517,16 +2522,15 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
         {
         	int i;
         	int j;
-        	HeapTuple tuple;
         	Datum *values;
-			char *nulls;
-			TupleDesc tempTupleDesc;
-			TupleTableSlot slot;
-			Oid			typrecv;
-			Oid			typioparam;
-			FmgrInfo finfo;
-			
-        	
+		bool *isnull;
+		TupleDesc tempTupleDesc;
+		TupleTableSlot slot;
+		Oid			typrecv;
+		Oid			typioparam;
+		FmgrInfo finfo;
+
+
         	_SPI_current->processed = PQntuples(pgres);
         	
         	/*
@@ -2548,26 +2552,28 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
         	/* This sets up and initializes tuptable */
         	spi_dest_startup(NULL, 0, tempTupleDesc);
         	
+		init_slot(&slot, tempTupleDesc);
+		ExecStoreAllNullTuple(&slot);
         	
-			nulls = palloc(PQnfields(pgres)+1);
-			values = palloc(PQnfields(pgres)*sizeof(Datum));
-			
-			/*
-			 * Ok, now get each field that's being returned.  We need to use it's "input" function (based on
-			 * it's datatype) to convert from the "external" representation libpq gives us, back to the
-			 * "internal" representation needed in the tuptable.
-			 */
-        	
+		isnull = slot_get_isnull(&slot); 
+		values = slot_get_values(&slot); 
+
+		/*
+		 * Ok, now get each field that's being returned.  We need to use it's "input" function (based on
+		 * it's datatype) to convert from the "external" representation libpq gives us, back to the
+		 * "internal" representation needed in the tuptable.
+		 */
+
         	for(i=0;i<PQntuples(pgres);i++)
         	{
         		for(j=0;j<PQnfields(pgres);j++)
         		{
         			char * v;
-        			nulls[j] = ' ';
+        			isnull[j] = false;
         			if (PQgetisnull(pgres,i,j))
         			{
-        				nulls[j] = 'n';
         				values[j] = 0;
+					isnull[j] = true;
         			}
         			else
         			{
@@ -2592,30 +2598,9 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
         			}
         			 
         		}
-        		/*
-        		 * We've converted one row into the values[] and nulls[] arrays.
-        		 * 
-        		 * Now we can use heap_formtuple to make it into a tuple.
-        		 */
-        		tuple = heap_formtuple(tempTupleDesc, values, nulls);
-        		/* Do we need to set a tuple oid? I don't think so */
-				/*if (objectid != (Oid) 0)
-					 HeapTupleSetOid(tuple, objectid);*/
-					
-				/*
-				 * To get it into the tuptable we are building, we need to 
-				 * call spi_printtup.  But that wants a Tuple Table Slot, not
-				 * a heap tuple.  Lucky for us, one of the possible ways a Slot
-				 * can be is just a pointer to a heap tuple.
-				 * 
-				 * So, let's make a dummy slot, point it at the heap tuple,
-				 * and call spi_printtup to save it away
-				 */
-				memset(&slot,0,sizeof(TupleTableSlot));
-				slot.tts_tuple = tuple;
-				slot.tts_tupleDescriptor = tempTupleDesc;
-				slot.tts_isempty = false;
-				spi_printtup(&slot, NULL);
+
+			ExecStoreVirtualTuple(&slot);
+			spi_printtup(&slot, NULL);
 				
         	}
         	/*

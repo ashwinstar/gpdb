@@ -2030,7 +2030,7 @@ ExecInsert(TupleTableSlot *slot,
 	 * get the heap tuple out of the tuple table slot, making sure we have a
 	 * writable copy
 	 */
-	tuple = ExecMaterializeSlot(slot);
+	tuple = ExecFetchSlotHeapTuple(slot); 
 
 	/*
 	 * get information on the (current) result relation
@@ -2061,7 +2061,7 @@ ExecInsert(TupleTableSlot *slot,
 
 			if (newslot->tts_tupleDescriptor != slot->tts_tupleDescriptor)
 				ExecSetSlotDescriptor(newslot, slot->tts_tupleDescriptor);
-			ExecStoreTuple(newtuple, newslot, InvalidBuffer, false);
+			ExecStoreGenericTuple(newtuple, newslot, false);
 			slot = newslot;
 			tuple = newtuple;
 		}
@@ -2238,7 +2238,7 @@ ldelete:;
 
 		if (slot->tts_tupleDescriptor != RelationGetDescr(resultRelationDesc))
 			ExecSetSlotDescriptor(slot, RelationGetDescr(resultRelationDesc));
-		ExecStoreTuple(&deltuple, slot, InvalidBuffer, false);
+		ExecStoreGenericTuple(&deltuple, slot, false);
 
 		ExecProcessReturning(resultRelInfo->ri_projectReturning,
 							 slot, planSlot, dest);
@@ -2283,7 +2283,7 @@ ExecUpdate(TupleTableSlot *slot,
 	 * get the heap tuple out of the tuple table slot, making sure we have a
 	 * writable copy
 	 */
-	tuple = ExecMaterializeSlot(slot);
+	tuple = ExecFetchSlotHeapTuple(slot); 
 
 	/*
 	 * get information on the (current) result relation
@@ -2316,7 +2316,7 @@ ExecUpdate(TupleTableSlot *slot,
 
 			if (newslot->tts_tupleDescriptor != slot->tts_tupleDescriptor)
 				ExecSetSlotDescriptor(newslot, slot->tts_tupleDescriptor);
-			ExecStoreTuple(newtuple, newslot, InvalidBuffer, false);
+			ExecStoreGenericTuple(newtuple, newslot, false);
 			slot = newslot;
 			tuple = newtuple;
 		}
@@ -2375,7 +2375,7 @@ lreplace:;
 				{
 					*tupleid = update_ctid;
 					slot = ExecFilterJunk(estate->es_junkFilter, epqslot);
-					tuple = ExecMaterializeSlot(slot);
+					tuple = ExecFetchSlotHeapTuple(slot);
 					goto lreplace;
 				}
 			}
@@ -3266,7 +3266,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	EState	   *estate = myState->estate;
 	HeapTuple	tuple;
 
-	tuple = ExecCopySlotTuple(slot);
+	tuple = ExecCopySlotHeapTuple(slot);
 
 	heap_insert(estate->es_into_relation_descriptor,
 				tuple,

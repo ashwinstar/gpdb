@@ -908,6 +908,7 @@ exec_mpp_query(const char *query_string,
 		{
 			ereport(LOG, (errmsg("statement: %s", query_string),
 					          errdetail_execute(querytree_list) ));
+			debug_break();
 			was_logged = true;
 		}
 		
@@ -1424,6 +1425,7 @@ exec_simple_query(const char *query_string)
 	{
 		ereport(LOG, (errmsg("statement: %s", query_string),
 				          errdetail_execute(parsetree_list) ));
+		debug_break();
 		was_logged = true;
 	}
 

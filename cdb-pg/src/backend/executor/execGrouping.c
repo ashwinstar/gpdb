@@ -387,7 +387,7 @@ LookupTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 
 			/* Copy the first tuple into the table context */
 			MemoryContextSwitchTo(hashtable->tablecxt);
-			entry->firstTuple = ExecCopySlotMinimalTuple(slot);
+			entry->firstTuple = ExecCopySlotMemTuple(slot);
 
 			*isnew = true;
 		}
@@ -419,7 +419,7 @@ LookupTupleHashEntry(TupleHashTable hashtable, TupleTableSlot *slot,
 static uint32
 TupleHashTableHash(const void *key, Size keysize)
 {
-	MinimalTuple tuple = ((const TupleHashEntryData *) key)->firstTuple;
+	MemTuple tuple = ((const TupleHashEntryData *) key)->firstTuple;
 	TupleTableSlot *slot;
 	TupleHashTable hashtable = CurTupleHashTable;
 	int			numCols = hashtable->numCols;
@@ -437,7 +437,7 @@ TupleHashTableHash(const void *key, Size keysize)
 		/* Process a tuple already stored in the table */
 		/* (this case never actually occurs in current dynahash.c code) */
 		slot = hashtable->tableslot;
-		ExecStoreMinimalTuple(tuple, slot, false);
+		ExecStoreMemTuple(tuple, slot, false);
 	}
 
 	for (i = 0; i < numCols; i++)
@@ -478,10 +478,10 @@ TupleHashTableHash(const void *key, Size keysize)
 static int
 TupleHashTableMatch(const void *key1, const void *key2, Size keysize)
 {
-	MinimalTuple tuple1 = ((const TupleHashEntryData *) key1)->firstTuple;
+	MemTuple tuple1 = ((const TupleHashEntryData *) key1)->firstTuple;
 
 #ifdef USE_ASSERT_CHECKING
-	MinimalTuple tuple2 = ((const TupleHashEntryData *) key2)->firstTuple;
+	MemTuple tuple2 = ((const TupleHashEntryData *) key2)->firstTuple;
 #endif
 	TupleTableSlot *slot1;
 	TupleTableSlot *slot2;
@@ -495,7 +495,7 @@ TupleHashTableMatch(const void *key1, const void *key2, Size keysize)
 	 */
 	Assert(tuple1 != NULL);
 	slot1 = hashtable->tableslot;
-	ExecStoreMinimalTuple(tuple1, slot1, false);
+	ExecStoreMemTuple(tuple1, slot1, false);
 	Assert(tuple2 == NULL);
 	slot2 = hashtable->inputslot;
 

@@ -362,63 +362,6 @@ do { \
 #define gpsegmentIdAttributeNumber			    (-8)    /*CDB*/
 #define FirstLowInvalidHeapAttributeNumber		(-9)    /*CDB*/
 
-
-/*
- * MinimalTuple is an alternate representation that is used for transient
- * tuples inside the executor, in places where transaction status information
- * is not required, the tuple rowtype is known, and shaving off a few bytes
- * is worthwhile because we need to store many tuples.	The representation
- * is chosen so that tuple access routines can work with either full or
- * minimal tuples via a HeapTupleData pointer structure.  The access routines
- * see no difference, except that they must not access the transaction status
- * or t_ctid fields because those aren't there.
- *
- * For the most part, MinimalTuples should be accessed via TupleTableSlot
- * routines.  These routines will prevent access to the "system columns"
- * and thereby prevent accidental use of the nonexistent fields.
- *
- * MinimalTupleData contains a length word, some padding, and fields matching
- * HeapTupleHeaderData beginning with t_infomask2. The padding is chosen so
- * that offsetof(t_infomask2) is the same modulo MAXIMUM_ALIGNOF in both
- * structs.   This makes data alignment rules equivalent in both cases.
- *
- * When a minimal tuple is accessed via a HeapTupleData pointer, t_data is
- * set to point MINIMAL_TUPLE_OFFSET bytes before the actual start of the
- * minimal tuple --- that is, where a full tuple matching the minimal tuple's
- * data would start.  This trick is what makes the structs seem equivalent.
- *
- * Note that t_hoff is computed the same as in a full tuple, hence it includes
- * the MINIMAL_TUPLE_OFFSET distance.  t_len does not include that, however.
- */
-#define MINIMAL_TUPLE_OFFSET \
-	((offsetof(HeapTupleHeaderData, t_infomask2) - sizeof(uint32)) / MAXIMUM_ALIGNOF * MAXIMUM_ALIGNOF)
-#define MINIMAL_TUPLE_PADDING \
-	((offsetof(HeapTupleHeaderData, t_infomask2) - sizeof(uint32)) % MAXIMUM_ALIGNOF)
-
-typedef struct MinimalTupleData
-{
-	uint32		t_len;			/* actual length of minimal tuple */
-
-	char		mt_padding[MINIMAL_TUPLE_PADDING];
-
-	/* Fields below here must match HeapTupleHeaderData! */
-
-	uint16		t_infomask2;	/* number of attributes + various flags */
-
-	uint16		t_infomask;		/* various flag bits, see below */
-
-	uint8		t_hoff;			/* sizeof header incl. bitmap, padding */
-
-	/* ^ - 23 bytes - ^ */
-
-	bits8		t_bits[1];		/* bitmap of NULLs -- VARIABLE LENGTH */
-
-	/* MORE DATA FOLLOWS AT END OF STRUCT */
-} MinimalTupleData;
-
-typedef MinimalTupleData *MinimalTuple;
-
-
 /*
  * HeapTupleData is an in-memory data structure that points to a tuple.
  *
@@ -455,11 +398,21 @@ typedef struct HeapTupleData
 {
 	uint32		t_len;			/* length of *t_data */
 	ItemPointerData t_self;		/* SelfItemPointer */
-	Oid			t_tableOid;		/* table the tuple came from */
+	Oid		t_tableOid;		/* table the tuple came from */
 	HeapTupleHeader t_data;		/* -> tuple header and data */
 } HeapTupleData;
 
 typedef HeapTupleData *HeapTuple;
+
+/* XXX Hack Hack Hack 
+ * heaptuple, or memtuple, cannot be more than 2G, so, if
+ * the first bit is ever set, it is really a memtuple
+ */
+
+static inline bool is_heaptuple_memtuple(HeapTuple htup)
+{
+	return ((htup->t_len & 0x80000000) != 0);
+}
 
 #define HEAPTUPLESIZE	MAXALIGN(sizeof(HeapTupleData))
 
@@ -645,8 +598,6 @@ typedef struct xl_heap_freeze
 /* HeapTupleHeader functions implemented in utils/time/combocid.c */
 extern CommandId HeapTupleHeaderGetCmin(HeapTupleHeader tup);
 extern CommandId HeapTupleHeaderGetCmax(HeapTupleHeader tup);
-extern void HeapTupleHeaderAdjustCmax(HeapTupleHeader tup,
-									  CommandId *cmax,
-									  bool *iscombo);
+extern void HeapTupleHeaderAdjustCmax(HeapTupleHeader tup, CommandId *cmax, bool *iscombo);
 
 #endif   /* HTUP_H */

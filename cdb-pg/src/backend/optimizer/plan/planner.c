@@ -2001,7 +2001,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 		 *  attributes are saved in a hash table entry's
 		 *  grouping key tuple.)
 		 */
-		hashentrysize = MAXALIGN(cheapest_path_width) + MAXALIGN(sizeof(MinimalTupleData));
+		hashentrysize = MAXALIGN(cheapest_path_width) + MAXALIGN(sizeof(MemTupleData));
 		/* plus space for pass-by-ref transition values... */
 		hashentrysize += agg_counts->transitionSpace;
 		/* plus the per-hash-entry overhead */

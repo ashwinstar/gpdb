@@ -26,7 +26,7 @@ extern TupleTableSlot *ExecHashJoin(HashJoinState *node);
 extern void ExecEndHashJoin(HashJoinState *node);
 extern void ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt);
 
-extern void ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
+extern void ExecHashJoinSaveTuple(MemTuple tuple, uint32 hashvalue,
 					              struct HashJoinBatchSide *batchside,
 								  MemoryContext bfCxt);
 

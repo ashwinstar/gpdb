@@ -996,7 +996,6 @@ agg_retrieve_direct(AggState *aggstate)
 	TupleTableSlot *firstSlot;
 	int			aggno;
 
-	HeapTuple   copytuple = NULL;
 	bool        passthru_ready = false;
 	bool        has_partial_agg = aggstate->has_partial_agg;
 
@@ -1087,7 +1086,7 @@ agg_retrieve_direct(AggState *aggstate)
 				 * Make a copy of the first tuple; we will use this for
 				 * comparison (in group mode) and for projection.
 				 */
-				aggstate->grp_firstTuple = ExecCopySlotTuple(outerslot);
+				aggstate->grp_firstTuple = ExecCopySlotMemTuple(outerslot);
 			}
 			else
 			{
@@ -1130,9 +1129,8 @@ agg_retrieve_direct(AggState *aggstate)
 				 * reserved for it. The tuple will be deleted when it is cleared
 				 * from the slot.
 				 */
-				ExecStoreTuple(aggstate->grp_firstTuple,
+				ExecStoreMemTuple(aggstate->grp_firstTuple,
 							   firstSlot,
-							   InvalidBuffer,
 							   true);
 				aggstate->grp_firstTuple = NULL;        /* don't keep two pointers */
 
@@ -1237,7 +1235,7 @@ agg_retrieve_direct(AggState *aggstate)
 						{
 							/* We've crossed a group boundary. */
 							/* Make a copy of the first tuple for the new group. */
-							aggstate->grp_firstTuple = ExecCopySlotTuple(outerslot);
+							aggstate->grp_firstTuple = ExecCopySlotMemTuple(outerslot);
 							aggstate->has_partial_agg = false;
 							break;
 						}
@@ -1389,23 +1387,11 @@ agg_retrieve_direct(AggState *aggstate)
 			 */
 			if (node->numNullCols > 0)
 			{
-				HeapTuple newtuple;
-
-				copytuple = ExecCopySlotTuple(econtext->ecxt_scantuple);
-				newtuple =
-					heap_modify_tuple(copytuple,
-									  firstSlot->tts_tupleDescriptor,
-									  aggstate->replValues,
-									  aggstate->replIsnull,
-									  aggstate->doReplace);
-				/* free copytuple */
-				heap_freetuple(copytuple);
-				copytuple = newtuple;
-
-				ExecStoreTuple(copytuple,
-							   econtext->ecxt_scantuple,
-							   InvalidBuffer,
-							   true);
+				ExecModifyMemTuple(econtext->ecxt_scantuple,
+							aggstate->replValues,
+							aggstate->replIsnull,
+							aggstate->doReplace
+							);
 			}
 		}
 
@@ -1518,16 +1504,7 @@ agg_retrieve_hash_table(AggState *aggstate)
 		 * Store the copied first input tuple in the tuple table slot reserved
 		 * for it, so that it can be used in ExecProject.
 		 */
-		
-		/* Retain "PostgreSQL way" as comment since we want to adopt the
-		 * MinimalTuple approach eventually
-		 
-		ExecStoreMinimalTuple(entry->shared.firstTuple,
-							  firstSlot,
-							  false);
-		 *
-		 */
-		ExecStoreTuple(entry->heaptuple, firstSlot, InvalidBuffer, false);
+		ExecStoreMemTuple(entry->memtuple, firstSlot, false);
 
 		pergroup = entry->pergroup;
 
@@ -1682,6 +1659,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	ExecInitScanTupleSlot(estate, &aggstate->ss);
 	ExecInitResultTupleSlot(estate, &aggstate->ss.ps);
 	aggstate->hashslot = ExecInitExtraTupleSlot(estate);
+
 	/*
 	 * initialize child expressions
 	 *
@@ -2180,7 +2158,7 @@ ExecReScanAgg(AggState *node, ExprContext *exprCtxt)
 	/* Release first tuple of group, if we have made a copy */
 	if (node->grp_firstTuple != NULL)
 	{
-		heap_freetuple(node->grp_firstTuple);
+		pfree(node->grp_firstTuple);
 		node->grp_firstTuple = NULL;
 	}
 

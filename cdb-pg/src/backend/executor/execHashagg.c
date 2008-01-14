@@ -312,7 +312,6 @@ agg_hash_initial_pass(AggState *aggstate)
 	unsigned int spillbuflen = 0;
 	bool streaming = ((Agg *) aggstate->ss.ps.plan)->streaming;
 	bool tupRemaining = true;
-	const int attrTop = linitial_int(aggstate->hash_needed);
 
 	Assert(ht);
 	AssertImply(!streaming, ht->state == HASHAGG_BEFORE_FIRST_PASS);
@@ -327,7 +326,6 @@ agg_hash_initial_pass(AggState *aggstate)
 
 	while(true)
 	{
-		MemoryContext oldContext;
 		uint32 hashkey;
 
 		/* Streaming case: break out loop (initial_pass) if hashtable is full */
@@ -350,16 +348,8 @@ agg_hash_initial_pass(AggState *aggstate)
 		{
 			/* Initialize hashslot by cloning input slot. */
 			hashslot = aggstate->hashslot;
-			ExecSetSlotDescriptor(hashslot, outerslot->tts_tupleDescriptor);
+			ExecSetSlotDescriptor(hashslot, outerslot->tts_tupleDescriptor); 
 			ExecStoreAllNullTuple(hashslot);
-		}
-		
-		/* get the attrs, need them for calc_hash_value() later */
-		if (outerslot->tts_nvalid < attrTop)
-		{
-			oldContext = MemoryContextSwitchTo(outerslot->tts_mcxt);
-			slot_getsomeattrs(outerslot, linitial_int(aggstate->hash_needed));
-			MemoryContextSwitchTo(oldContext);
 		}
 
 		/* set up for advance_aggregates call */
@@ -434,7 +424,7 @@ agg_hash_initial_pass(AggState *aggstate)
 			/* Write the tuple to the appropriate overflow batch. */
 			{
 				unsigned int len = spillbuflen;
-				if (! ExecCopySlotMinimalTupleTo(outerslot, spillbuf, &len))
+				if (! ExecCopySlotMemTupleTo(outerslot, NULL, spillbuf, &len))
 				{
 					MemoryContext oldContext = MemoryContextSwitchTo(aggstate->aggcontext);
 					if (spillbuf)
@@ -442,7 +432,7 @@ agg_hash_initial_pass(AggState *aggstate)
 
 					spillbuf = palloc(len);
 					spillbuflen = len;
-					if (! ExecCopySlotMinimalTupleTo(outerslot, spillbuf, &len))
+					if (! ExecCopySlotMemTupleTo(outerslot, NULL, spillbuf, &len))
 						ereport(ERROR,
 								(errcode(ERRCODE_INTERNAL_ERROR),
 								 errmsg("hybrid hash aggregation faillure")));
@@ -718,8 +708,9 @@ agg_hash_reload(AggState *aggstate)
 		else
 		{			
 			/* Write the input tuple to the overflow. */
+			MemTuple mtup = ExecFetchSlotMemTuple(outerslot);
+			batch_put_tuple(ht, overflow, hkey, (char*) mtup, memtuple_get_size(mtup, NULL)); 
 			noverflow++;
-			batch_put_tuple(ht, overflow, hkey, (char*) outerslot->tts_mintuple, outerslot->tts_mintuple->t_len);
 		}
 
 		/* Reset per-input-tuple context after each tuple */
@@ -810,8 +801,7 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 	MemoryContext oldContext;
 	uint32		hashkey = 0;
 	int			i;
-	Datum* values = inputslot->tts_values;
-	bool* isnull = inputslot->tts_isnull;
+
 	FmgrInfo* info = aggstate->hashfunctions;
 	
 	agg = (Agg*)aggstate->ss.ps.plan;
@@ -822,13 +812,15 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 	for (i = 0; i < agg->numCols; i++, info++)
 	{
 		AttrNumber	att = agg->grpColIdx[i];
+		bool isnull;
+		Datum value = slot_getattr(inputslot, att, &isnull);
 
 		/* rotate hashkey left 1 bit at each step */
 		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
 
-		if (!isnull[att-1])			/* treat nulls as having hash key 0 */
+		if (!isnull) 
 		{
-			hashkey ^= DatumGetUInt32(FunctionCall1(info, values[att-1]));
+			hashkey ^= DatumGetUInt32(FunctionCall1(info, value)); 
 		}
 	}
 
@@ -857,7 +849,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 	Agg *agg = (Agg*)aggstate->ss.ps.plan;
 	ExprContext *econtext = aggstate->tmpcontext; /* short-lived, per-input-tuple */
 	HashAggTable *ht = aggstate->hhashtable;
-	TupleDesc entry_tuple_desc = aggstate->ss.ss_ScanTupleSlot->tts_tupleDescriptor;
+	MemTupleBinding *mt_bind = aggstate->hashslot->tts_mt_bind;
 	MemoryContext oldContext;
 	HashAggEntry *entry;
 	unsigned int bucket_idx;
@@ -873,13 +865,11 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 	entry = (0 == (ht->bloom[bucket_idx] & bloomval) ? NULL : ht->buckets[bucket_idx]);
 	
 	/* Search entry chain for the bucket. */
-	for ( ;
-		  entry != NULL;
-		  entry = entry->next )
+	for ( ; entry != NULL; entry = entry->next )
 	{
 		if ( hashkey == entry->hashvalue )
 		{
-			HeapTuple heapTuple = entry->heaptuple;
+			MemTuple mtup = entry->memtuple;
 			int i;
 			bool match = true;
 			
@@ -890,7 +880,7 @@ lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hash
 				bool		input_isNull, entry_isNull;
 
 				input_datum = slot_getattr(inputslot, att, &input_isNull);
-				entry_datum = heap_getattr(heapTuple, att, entry_tuple_desc, &entry_isNull);
+				entry_datum = memtuple_getattr(mtup, mt_bind, att, &entry_isNull);
 
 				if ( !input_isNull && !entry_isNull &&
 					 (DatumGetBool(FunctionCall2(&aggstate->eqfunctions[i],
@@ -946,31 +936,17 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 	HashAggEntry *entry;
 	MemoryContext oldContext;
 	HashAggTable *ht = aggstate->hhashtable;
-	Datum *values = aggstate->hashslot->tts_values;
-	bool *isnull = aggstate->hashslot->tts_isnull;
+
+	Datum *values = slot_get_values(aggstate->hashslot); 
+	bool *isnull = slot_get_isnull(aggstate->hashslot); 
+
 	ListCell *lc;
 	unsigned int tuplen;
 
-	if (inputslot->tts_nvalid >= linitial_int(aggstate->hash_needed))
+	foreach (lc, aggstate->hash_needed)
 	{
-		foreach (lc, aggstate->hash_needed)
-		{
-			const int n = lfirst_int(lc) - 1;
-			values[n] = inputslot->tts_values[n];
-			isnull[n] = inputslot->tts_isnull[n];
-		}
-	}
-	else 
-	{
-		oldContext = MemoryContextSwitchTo(inputslot->tts_mcxt);
-		foreach (lc, aggstate->hash_needed)
-		{
-			const int n = lfirst_int(lc) - 1;
-			values[n] = heap_getattr(inputslot->tts_tuple, n + 1, 
-									 inputslot->tts_tupleDescriptor, 
-									 &isnull[n]);
-		}
-		MemoryContextSwitchTo(oldContext);
+		const int n = lfirst_int(lc);
+		values[n-1] = slot_getattr(inputslot, n, &(isnull[n-1])); 
 	}
 
 	oldContext = MemoryContextSwitchTo(ht->entry_cxt);
@@ -1007,8 +983,8 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 		ht->tuplebuf.cur = ht->tuplebuf.base;
 	}
 	tuplen = ht->tuplebuf.end - ht->tuplebuf.cur;
-	entry->heaptuple = ExecCopySlotHeapTupleTo(aggstate->hashslot, 0, ht->tuplebuf.cur, &tuplen);
-	if (! entry->heaptuple) 
+	entry->memtuple = ExecCopySlotMemTupleTo(aggstate->hashslot, 0, ht->tuplebuf.cur, &tuplen);
+	if (! entry->memtuple) 
 	{
 		if (ht->tuplebuf.end - ht->tuplebuf.cur < 8 * 1024) 
 		{
@@ -1017,12 +993,12 @@ makeHashAggEntry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashvalue
 			ht->tuplebuf.end = ht->tuplebuf.base + n;
 			ht->tuplebuf.cur = ht->tuplebuf.base;
 			tuplen = ht->tuplebuf.end - ht->tuplebuf.cur;
-			entry->heaptuple = ExecCopySlotHeapTupleTo(aggstate->hashslot, 0, ht->tuplebuf.cur, &tuplen);
+			entry->memtuple = ExecCopySlotMemTupleTo(aggstate->hashslot, 0, ht->tuplebuf.cur, &tuplen);
 		}
 
-		if (! entry->heaptuple)
+		if (! entry->memtuple)
 		{
-			entry->heaptuple = ExecCopySlotHeapTupleTo(aggstate->hashslot, 
+			entry->memtuple = ExecCopySlotMemTupleTo(aggstate->hashslot, 
 													   ht->entry_cxt, 0, 0);
 			tuplen = 0;
 		}
@@ -1331,7 +1307,7 @@ batch_get_tuple(HashAggTable *hashtable,
 	BatchTupleHeader hth;
 	BatchFileInfo *info = &hashtable->batches[batch];
 	BufFile *file = info->file;
-	MinimalTuple minTuple;
+	MemTuple mTuple;
 	int n;
 
 	if (sizeof(hth) != (n = BufFileRead(file, &hth, sizeof(hth))))
@@ -1347,18 +1323,18 @@ batch_get_tuple(HashAggTable *hashtable,
 	}
 
 	*hkey = hth.hkey;
-	minTuple = (MinimalTuple) palloc(hth.tuplen);
-	if (hth.tuplen != BufFileRead(file, minTuple, hth.tuplen))
+	mTuple = (MemTuple) palloc(hth.tuplen);
+	if (hth.tuplen != BufFileRead(file, mTuple, hth.tuplen))
 		ereport(ERROR, (errcode_for_file_access(), errmsg(msg)));
 
 	info->ntuples--;
-	return ExecStoreMinimalTuple(minTuple, tupleSlot, true);
+	return ExecStoreMemTuple(mTuple, tupleSlot, true);
 #else
 	/* copyless / pallocless read */
 	BatchTupleHeader hth;
 	BatchFileInfo *info = &hashtable->batches[batch];
 	bfz_t *file = info->file;
-	MinimalTuple minTuple;
+	MemTuple memTuple;
 
 	if (sizeof(hth) != bfz_scan_next(file, (char*) &hth, sizeof(hth))) 
 	{
@@ -1372,18 +1348,18 @@ batch_get_tuple(HashAggTable *hashtable,
 
 	*hkey = hth.hkey;
 
-	minTuple = (MinimalTuple) bfz_scan_peek(file, hth.tuplen);
-	if (minTuple) {
+	memTuple = (MemTuple) bfz_scan_peek(file, hth.tuplen);
+	if (memTuple) {
 		info->ntuples--;
-		return ExecStoreMinimalTuple(minTuple, tupleSlot, false);
+		return ExecStoreMemTuple(memTuple, tupleSlot, false);
 	}
 
-	minTuple = (MinimalTuple) palloc(hth.tuplen);
-	if (hth.tuplen != bfz_scan_next(file, (char*) minTuple, hth.tuplen)) 
+	memTuple = (MemTuple) palloc(hth.tuplen);
+	if (hth.tuplen != bfz_scan_next(file, (char*) memTuple, hth.tuplen)) 
 		elog(ERROR, "unable to read from batch file");
 	info->ntuples--;
 	
-	return ExecStoreMinimalTuple(minTuple, tupleSlot, true);
+	return ExecStoreMemTuple(memTuple, tupleSlot, true);
 #endif
 }
 

@@ -525,7 +525,7 @@ typedef struct TupleHashTableData *TupleHashTable;
 typedef struct TupleHashEntryData
 {
 	/* firstTuple must be the first field in this struct! */
-	MinimalTuple firstTuple;	/* copy of first tuple in this group */
+	MemTuple firstTuple;	/* copy of first tuple in this group */
 	/* there may be additional data beyond the end of this struct */
 } TupleHashEntryData;			/* VARIABLE LENGTH STRUCT */
 
@@ -765,7 +765,8 @@ typedef struct SubPlanState
 	ExprState  *testexpr;		/* state of combining expression */
 	List	   *args;			/* states of argument expression(s) */
 	bool		needShutdown;	/* TRUE = need to shutdown subplan */
-	HeapTuple	curTuple;		/* copy of most recent tuple from subplan */
+
+	MemTuple	curTuple;		/* copy of most recent tuple from subplan */
 	/* these are used when hashing the subselect's output: */
 	ProjectionInfo *projLeft;	/* for projecting lefthand exprs */
 	ProjectionInfo *projRight;	/* for projecting subselect output */
@@ -1367,8 +1368,8 @@ typedef struct NestLoopState
 	JoinState	js;				/* its first field is NodeTag */
 	bool		nl_NeedNewOuter;
 	bool		nl_MatchedOuter;
-    bool        nl_Untouched;           /*CDB*/
-    bool        nl_QuitIfEmptyInner;    /*CDB*/
+	bool        nl_Untouched;           /*CDB*/
+	bool        nl_QuitIfEmptyInner;    /*CDB*/
 
 	executorTupleQueue *outer_q;
 
@@ -1568,7 +1569,7 @@ typedef struct GroupState
 	FmgrInfo   *eqfunctions;	/* per-field lookup data for equality fns */
 	bool		grp_done;		/* indicates completion of Group scan */
 
-	HeapTuple	grp_firstTuple; /* copy of first tuple of current group */
+	MemTuple	grp_firstTuple; /* copy of first tuple of current group */
 	bool        is_passthru;     /* indicate if grp_firstTuple is a pass-thru tuple. */
 
 	/*
@@ -1624,7 +1625,7 @@ typedef struct AggState
 
 	/* these fields are used in AGG_PLAIN and AGG_SORTED modes: */
 	AggStatePerGroup pergroup;	/* per-Aggref-per-group working state */
-	HeapTuple	grp_firstTuple; /* copy of first tuple of current group */
+	MemTuple	grp_firstTuple; /* copy of first tuple of current group */
 	/* these fields are used in AGG_HASHED mode: */
 	TupleHashTable hashtable;	/* hash table with one entry per group */
 	TupleTableSlot *hashslot;	/* slot for loading hash table */

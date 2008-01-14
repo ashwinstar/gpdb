@@ -3548,7 +3548,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 				 * Process supplied expressions to replace selected columns.
 				 * Expression inputs come from the old tuple.
 				 */
-				ExecStoreTuple(tuple, oldslot, InvalidBuffer, false);
+				ExecStoreHeapTuple(tuple, oldslot, InvalidBuffer, false);
 				econtext->ecxt_scantuple = oldslot;
 
 				foreach(l, tab->newvals)
@@ -3573,7 +3573,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			}
 
 			/* Now check any constraints on the possibly-changed tuple */
-			ExecStoreTuple(tuple, newslot, InvalidBuffer, false);
+			ExecStoreHeapTuple(tuple, newslot, InvalidBuffer, false);
 			econtext->ecxt_scantuple = newslot;
 
 			foreach(l, notnull_attrs)

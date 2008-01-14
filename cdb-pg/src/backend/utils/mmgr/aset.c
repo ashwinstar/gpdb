@@ -852,6 +852,7 @@ AllocSetAlloc(MemoryContext context, Size size)
 	set->isReset = false;
 
 	AllocAllocInfo(set, chunk);
+
 	return AllocChunkGetPointer(chunk);
 }
 

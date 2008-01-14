@@ -251,7 +251,7 @@ ExecHashJoin(HashJoinState *node)
 				 * in the corresponding outer-batch file.
 				 */
 				Assert(batchno > hashtable->curbatch);
-				ExecHashJoinSaveTuple(ExecFetchSlotMinimalTuple(outerTupleSlot),
+				ExecHashJoinSaveTuple(ExecFetchSlotMemTuple(outerTupleSlot),
 									  hashvalue,
                                       &hashtable->batches[batchno]->outerside,
 									  hashtable->bfCxt);
@@ -272,7 +272,7 @@ ExecHashJoin(HashJoinState *node)
 			/*
 			 * we've got a match, but still need to test non-hashed quals
 			 */
-			inntuple = ExecStoreMinimalTuple(HJTUPLE_MINTUPLE(curtuple),
+			inntuple = ExecStoreMemTuple(HJTUPLE_MINTUPLE(curtuple),
 											 node->hj_HashTupleSlot,
 											 false);	/* don't pfree */
 			econtext->ecxt_innertuple = inntuple;
@@ -797,7 +797,7 @@ start_over:
  * will get messed up.
  */
 void
-ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
+ExecHashJoinSaveTuple(MemTuple tuple, uint32 hashvalue,
 					  struct HashJoinBatchSide *batchside,
 					  MemoryContext bfCxt)
 {
@@ -826,8 +826,8 @@ ExecHashJoinSaveTuple(MinimalTuple tuple, uint32 hashvalue,
 				(errcode_for_file_access(),
 				 errmsg("could not write to hash-join temporary file: %m")));
 
-	written = BufFileWrite(file, (void *) tuple, tuple->t_len);
-	if (written != tuple->t_len)
+	written = BufFileWrite(file, (void *) tuple, memtuple_get_size(tuple, NULL)); 
+	if (written != memtuple_get_size(tuple, NULL))
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not write to hash-join temporary file: %m")));
@@ -845,10 +845,10 @@ ExecHashJoinGetSavedTuple(HashJoinBatchSide *batchside,
 						  uint32 *hashvalue,
 						  TupleTableSlot *tupleSlot)
 {
-    BufFile    *file = batchside->bufFile;
+	BufFile    *file = batchside->bufFile;
 	uint32		header[2];
 	size_t		nread;
-	MinimalTuple tuple;
+	MemTuple tuple;
 
 	/*
 	 * Since both the hash value and the MinimalTuple length word are uint32,
@@ -866,16 +866,17 @@ ExecHashJoinGetSavedTuple(HashJoinBatchSide *batchside,
 				(errcode_for_file_access(),
 				 errmsg("could not read from hash-join temporary file: %m")));
 	*hashvalue = header[0];
-	tuple = (MinimalTuple) palloc(header[1]);
-	tuple->t_len = header[1];
+	tuple = (MemTuple) palloc(memtuple_size_from_uint32(header[1]));
+	memtuple_set_mtlen(tuple, NULL, header[1]);
 	nread = BufFileRead(file,
 						(void *) ((char *) tuple + sizeof(uint32)),
-						header[1] - sizeof(uint32));
-	if (nread != header[1] - sizeof(uint32))
+						memtuple_size_from_uint32(header[1]) - sizeof(uint32));
+
+	if (nread != memtuple_size_from_uint32(header[1]) - sizeof(uint32))
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not read from hash-join temporary file: %m")));
-	return ExecStoreMinimalTuple(tuple, tupleSlot, true);
+	return ExecStoreMemTuple(tuple, tupleSlot, true);
 }
 
 
@@ -971,8 +972,6 @@ makeTQ(int size, struct Instrumentation *instr)
 void
 enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot)
 {
-	HeapTuple newt=NULL;
-
 	Assert(tq != NULL);
 	Assert(tq->size < tq->maxsize);
 
@@ -982,8 +981,7 @@ enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot)
 	if (tq->slot == NULL)
 		tq->slot = slot;
 
-	newt = ExecFetchSlotTuple(slot);
-	tq->tuples[tq->size] = heap_copytuple(newt);
+	tq->tuples[tq->size] = ExecCopyGenericTuple(slot);
 	tq->size++;
 }
 
@@ -1003,8 +1001,7 @@ TupleTableSlot *dequeueTQ(executorTupleQueue *tq)
 
 	tq->pos++;
 
-	tts = ExecStoreTuple(curtup, tq->slot, InvalidBuffer, true /* ignored, buffer is invalid */);
-
+	tts = ExecStoreGenericTuple(curtup, tq->slot, true); 
 	return tts;
 }
 

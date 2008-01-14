@@ -39,8 +39,8 @@ typedef struct BatchFileInfo BatchFileInfo;
 typedef struct HashAggEntry
 {
 	struct HashAggEntry	   *next; /* Next entry in chain. */
-	uint32					hashvalue;
-	HeapTuple				heaptuple; /* Tuple representing the grouping key. */
+	uint32			hashvalue;
+	MemTuple		memtuple; /* Tuple representing the grouping key. */
 	AggStatePerGroupData	pergroup[1]; /* 0 or more AggStatePerGroupData */
 } HashAggEntry;
 

@@ -301,10 +301,11 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 	for (i = 0; i < natts; ++i)
 	{
 		PrinttupAttrInfo *thisState = myState->myinfo + i;
-		Datum		origattr = slot->tts_values[i],
-					attr;
-
-		if (slot->tts_isnull[i])
+		bool 		orignull;
+		Datum		origattr = slot_getattr(slot, i+1, &orignull);
+		Datum 		attr;
+		
+		if (orignull) 
 		{
 			/* -1 is the same in both byte orders.  This is the same as pg_sendint */
 			int32 n32 = -1;
@@ -589,7 +590,7 @@ printtup_20(TupleTableSlot *slot, DestReceiver *self)
 	k = 1 << 7;
 	for (i = 0; i < natts; ++i)
 	{
-		if (!slot->tts_isnull[i])
+		if (slot_attisnull(slot, i+1)) 
 			j |= k;				/* set bit if not null */
 		k >>= 1;
 		if (k == 0)				/* end of byte? */
@@ -608,11 +609,12 @@ printtup_20(TupleTableSlot *slot, DestReceiver *self)
 	for (i = 0; i < natts; ++i)
 	{
 		PrinttupAttrInfo *thisState = myState->myinfo + i;
-		Datum		origattr = slot->tts_values[i],
-					attr;
+		bool orignull;
+		Datum	origattr = slot_getattr(slot, i+1, &orignull); 
+		Datum attr;
 		char	   *outputstr;
 
-		if (slot->tts_isnull[i])
+		if (orignull)
 			continue;
 
 		Assert(thisState->format == 0);
@@ -790,7 +792,7 @@ printtup_internal_20(TupleTableSlot *slot, DestReceiver *self)
 	k = 1 << 7;
 	for (i = 0; i < natts; ++i)
 	{
-		if (!slot->tts_isnull[i])
+		if (slot_attisnull(slot, i+1)); 
 			j |= k;				/* set bit if not null */
 		k >>= 1;
 		if (k == 0)				/* end of byte? */
@@ -809,11 +811,12 @@ printtup_internal_20(TupleTableSlot *slot, DestReceiver *self)
 	for (i = 0; i < natts; ++i)
 	{
 		PrinttupAttrInfo *thisState = myState->myinfo + i;
-		Datum		origattr = slot->tts_values[i],
-					attr;
+		bool orignull;
+		Datum	origattr = slot_getattr(slot, i+1, &orignull); 
+		Datum 	attr;
 		bytea	   *outputbytes;
 
-		if (slot->tts_isnull[i])
+		if (orignull)
 			continue;
 
 		Assert(thisState->format == 1);

@@ -117,7 +117,7 @@ FunctionNext(FunctionScanState *node)
         /* CDB: Label each row with a synthetic ctid for subquery dedup. */
         if (node->cdb_want_ctid)
         {
-            HeapTuple   tuple = ExecMaterializeSlot(slot);
+            HeapTuple   tuple = ExecFetchSlotHeapTuple(slot); 
 
             /* Increment 48-bit row count */
             node->cdb_fake_ctid.ip_posid++;

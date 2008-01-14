@@ -50,7 +50,6 @@ ExecGroup(GroupState *node)
 	bool   is_final_rollup_group;
 	bool   is_middle_rollup_group;
 
-	HeapTuple copytuple;
 	bool passthru_ready = false;
 
 	/*
@@ -130,8 +129,7 @@ ExecGroup(GroupState *node)
 
 			if (node->grp_firstTuple != NULL)
 			{
-				ExecStoreTuple(node->grp_firstTuple, firsttupleslot,
-							   InvalidBuffer, true);
+				ExecStoreMemTuple(node->grp_firstTuple, firsttupleslot, true);
 				node->grp_firstTuple = NULL;
 
 				outer_grouping =
@@ -209,7 +207,7 @@ ExecGroup(GroupState *node)
 					/*
 					 * Make a copy of the first tuple in a new group.
 					 */
-					node->grp_firstTuple = ExecCopySlotTuple(outerslot);
+					node->grp_firstTuple = ExecCopySlotMemTuple(outerslot);
 					break;
 				}
 			}
@@ -293,24 +291,10 @@ ExecGroup(GroupState *node)
 			/* modify the tuple */
 			if (group_node->numNullCols > 0)
 			{
-				HeapTuple newtuple;
-
-				copytuple = ExecCopySlotTuple(econtext->ecxt_scantuple);
-				/* modify this tuple */
-				newtuple =
-					heap_modify_tuple(copytuple,
-									  firsttupleslot->tts_tupleDescriptor,
-									  node->replValues,
-									  node->replIsnull,
-									  node->doReplace);
-				/* free copytuple */
-				heap_freetuple(copytuple);
-				copytuple = newtuple;
-
-				ExecStoreTuple(copytuple,
-							   econtext->ecxt_scantuple,
-							   InvalidBuffer,
-							   true);
+				ExecModifyMemTuple(econtext->ecxt_scantuple,
+						node->replValues,
+						node->replIsnull,
+						node->doReplace);
 			}
 		}
 		
@@ -463,7 +447,7 @@ ExecEndGroup(GroupState *node)
 	node->is_passthru = false;
 	if (node->grp_firstTuple != NULL)
 	{
-		heap_freetuple(node->grp_firstTuple);
+		pfree(node->grp_firstTuple); 
 		node->grp_firstTuple = NULL;
 	}
 	if (node->num_attrs > 0)
@@ -487,7 +471,7 @@ ExecReScanGroup(GroupState *node, ExprContext *exprCtxt)
 	node->is_passthru = false;
 	if (node->grp_firstTuple != NULL)
 	{
-		heap_freetuple(node->grp_firstTuple);
+		pfree(node->grp_firstTuple);
 		node->grp_firstTuple = NULL;
 	}
 

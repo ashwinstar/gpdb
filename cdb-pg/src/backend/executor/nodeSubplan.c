@@ -307,12 +307,14 @@ ExecScanSubPlan(SubPlanState *node,
 			 * freeing.
 			 */
 			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+
 			if (node->curTuple)
-				heap_freetuple(node->curTuple);
-			node->curTuple = ExecCopySlotTuple(slot);
+				pfree(node->curTuple);
+
+			node->curTuple = ExecCopySlotMemTuple(slot);
 			MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
 
-			result = heap_getattr(node->curTuple, 1, tdesc, isNull);
+			result = slot_getattr(slot, 1, isNull);
 			/* keep scanning subplan to make sure there's only one tuple */
 			continue;
 		}
@@ -582,7 +584,7 @@ findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot)
 	InitTupleHashIterator(hashtable, &hashiter);
 	while ((entry = ScanTupleHashTable(&hashiter)) != NULL)
 	{
-		ExecStoreMinimalTuple(entry->firstTuple, hashtable->tableslot, false);
+		ExecStoreMemTuple(entry->firstTuple, hashtable->tableslot, false);
 		if (!execTuplesUnequal(hashtable->tableslot, slot,
 							   numCols, keyColIdx,
 							   hashtable->eqfunctions,
@@ -1126,8 +1128,9 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 */
 			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 			if (node->curTuple)
-				heap_freetuple(node->curTuple);
-			node->curTuple = ExecCopySlotTuple(slot);
+				pfree(node->curTuple);
+
+			node->curTuple = ExecCopySlotMemTuple(slot);
 			MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
 
 			/*
@@ -1139,8 +1142,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 				ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
 
 				prm->execPlan = NULL;
-				prm->value = heap_getattr(node->curTuple, i, tdesc,
-									  	&(prm->isnull));
+				prm->value = memtuple_getattr(node->curTuple, slot->tts_mt_bind, i, &(prm->isnull));
 				i++;
 			}
 		}

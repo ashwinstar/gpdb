@@ -2540,7 +2540,6 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, 1, NULL, NULL
 	},
 
-
 	{
 		{"gin_fuzzy_search_limit", PGC_USERSET, CLIENT_CONN_OTHER,
 			gettext_noop("Sets the maximum allowed result for exact search by GIN."),

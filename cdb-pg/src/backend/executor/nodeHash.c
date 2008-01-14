@@ -110,7 +110,7 @@ MultiExecHash(HashState *node)
 		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, false,
 								 &hashvalue))
 		{
-		ExecHashTableInsert(hashtable, slot, hashvalue);
+			ExecHashTableInsert(hashtable, slot, hashvalue);
 			hashtable->totalTuples += 1;
 		}
 	}
@@ -380,7 +380,7 @@ inline int
 ExecHashRowSize(int tupwidth)
 {
     return HJTUPLE_OVERHEAD +
-		MAXALIGN(sizeof(MinimalTupleData)) +
+		MAXALIGN(sizeof(MemTupleData)) +
 		MAXALIGN(tupwidth);
 }                               /* ExecHashRowSize */
 
@@ -634,8 +634,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 					hashtable->buckets[i] = nexttuple;
 				/* prevtuple doesn't change */
 
-                spaceTuple =
-					HJTUPLE_OVERHEAD + HJTUPLE_MINTUPLE(tuple)->t_len;
+                spaceTuple = HJTUPLE_OVERHEAD + memtuple_get_size(HJTUPLE_MINTUPLE(tuple), NULL); 
                 spaceFreed += spaceTuple;
                 if (stats)
                     stats->batchstats[batchno].spillspace_in += spaceTuple;
@@ -706,20 +705,20 @@ ExecHashTableInsert(HashJoinTable hashtable,
 					TupleTableSlot *slot,
 					uint32 hashvalue)
 {
-	MinimalTuple tuple = ExecFetchSlotMinimalTuple(slot);
-    HashJoinBatchData  *batch;
+	MemTuple tuple = ExecFetchSlotMemTuple(slot);
+	HashJoinBatchData  *batch;
 	int			bucketno;
 	int			batchno;
 	int			hashTupleSize;
 
 	ExecHashGetBucketAndBatch(hashtable, hashvalue,
-							  &bucketno, &batchno);
+			&bucketno, &batchno);
 
-    batch = hashtable->batches[batchno];
-	hashTupleSize = HJTUPLE_OVERHEAD + tuple->t_len;
+	batch = hashtable->batches[batchno];
+	hashTupleSize = HJTUPLE_OVERHEAD + memtuple_get_size(tuple, NULL); 
 
-    /* Update batch size. */
-    batch->innertuples++;
+	/* Update batch size. */
+	batch->innertuples++;
 	batch->innerspace += hashTupleSize;
 
 	/*
@@ -733,9 +732,9 @@ ExecHashTableInsert(HashJoinTable hashtable,
 		HashJoinTuple hashTuple;
 
 		hashTuple = (HashJoinTuple) MemoryContextAlloc(hashtable->batchCxt,
-													   hashTupleSize);
+				hashTupleSize);
 		hashTuple->hashvalue = hashvalue;
-		memcpy(HJTUPLE_MINTUPLE(hashTuple), tuple, tuple->t_len);
+		memcpy(HJTUPLE_MINTUPLE(hashTuple), tuple, memtuple_get_size(tuple, NULL)); 
 		hashTuple->next = hashtable->buckets[bucketno];
 		hashtable->buckets[bucketno] = hashTuple;
 
@@ -921,9 +920,9 @@ ExecScanHashBucket(HashJoinState *hjstate,
 			TupleTableSlot *inntuple;
 
 			/* insert hashtable's tuple into exec slot so ExecQual sees it */
-			inntuple = ExecStoreMinimalTuple(HJTUPLE_MINTUPLE(hashTuple),
-											 hjstate->hj_HashTupleSlot,
-											 false);	/* do not pfree */
+			inntuple = ExecStoreMemTuple(HJTUPLE_MINTUPLE(hashTuple),
+					hjstate->hj_HashTupleSlot,
+					false);	/* do not pfree */
 			econtext->ecxt_innertuple = inntuple;
 
 			/* reset temp memory each time to avoid leaks from qual expr */

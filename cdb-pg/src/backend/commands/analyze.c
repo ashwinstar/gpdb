@@ -545,7 +545,7 @@ compute_index_stats(Relation onerel, double totalrows,
 			HeapTuple	heapTuple = rows[rowno];
 
 			/* Set up for predicate or expression evaluation */
-			ExecStoreTuple(heapTuple, slot, InvalidBuffer, false);
+			ExecStoreGenericTuple(heapTuple, slot, false);
 
 			/* If index is partial, check predicate */
 			if (predicate != NIL)

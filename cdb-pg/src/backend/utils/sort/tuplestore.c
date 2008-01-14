@@ -50,6 +50,8 @@
 #include "utils/memutils.h"
 #include "utils/tuplestore.h"
 
+#include "utils/debugbreak.h"
+
 /*
  * Data structure describes the current postion of tuple store 
  */
@@ -134,7 +136,7 @@ struct Tuplestorestate
 	 * palloc'd copy, and decrease state->availMem by the amount of memory
 	 * space consumed.
 	 */
-	void	   *(*readtup) (Tuplestorestate *state, TuplestorePos *pos, unsigned int len);
+	void	   *(*readtup) (Tuplestorestate *state, TuplestorePos *pos, uint32 len);
 
 	/*
 	 * This array holds pointers to tuples in memory if we are in state INMEM.
@@ -246,10 +248,10 @@ static Tuplestorestate *tuplestore_begin_common(bool randomAccess,
 
 static void tuplestore_puttuple_common(Tuplestorestate *state, TuplestorePos *pos, void *tuple);
 static void dumptuples(Tuplestorestate *state, TuplestorePos *pos);
-static unsigned int getlen(Tuplestorestate *state, TuplestorePos *pos, bool eofOK);
+static uint32 getlen(Tuplestorestate *state, TuplestorePos *pos, bool eofOK);
 static void *copytup_heap(Tuplestorestate *state, TuplestorePos *pos, void *tup);
 static void writetup_heap(Tuplestorestate *state, TuplestorePos *pos, void *tup);
-static void *readtup_heap(Tuplestorestate *state, TuplestorePos *pos, unsigned int len);
+static void *readtup_heap(Tuplestorestate *state, TuplestorePos *pos, uint32 len);
 
 
 /*
@@ -412,7 +414,10 @@ tuplestore_end(Tuplestorestate *state)
 	if (state->memtuples)
 	{
 		for (i = 0; i < state->memtupcount; i++)
-			pfree(state->memtuples[i]);
+		{
+			if(state->memtuples[i])
+				pfree(state->memtuples[i]);
+		}
 		pfree(state->memtuples);
 	}
 	pfree(state);
@@ -451,12 +456,12 @@ void
 tuplestore_puttupleslot_pos(Tuplestorestate *state, TuplestorePos *pos,
 						TupleTableSlot *slot)
 {
-	MinimalTuple tuple;
+	MemTuple tuple;
 
 	/*
 	 * Form a MinimalTuple in working memory
 	 */
-	tuple = ExecCopySlotMinimalTuple(slot);
+	tuple = ExecCopySlotMemTuple(slot);
 	USEMEM(state, GetMemoryChunkSpace(tuple));
 
 	tuplestore_puttuple_common(state, pos, (void *) tuple);
@@ -583,7 +588,7 @@ static void *
 tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 					bool *should_free)
 {
-	unsigned int tuplen;
+	uint32 tuplen;
 	void	   *tup;
 
 	Assert(forward || state->randomAccess);
@@ -680,7 +685,7 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 			 * Back up to fetch previously-returned tuple's ending length
 			 * word. If seek fails, assume we are at start of file.
 			 */
-			if (BufFileSeek(state->myfile, 0, -(long) sizeof(unsigned int),
+			if (BufFileSeek(state->myfile, 0, -(long) sizeof(uint32),
 							SEEK_CUR) != 0)
 				return NULL;
 			tuplen = getlen(state, pos, false);
@@ -696,7 +701,7 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 				 * Back up to get ending length word of tuple before it.
 				 */
 				if (BufFileSeek(state->myfile, 0,
-								-(long) (tuplen + 2 * sizeof(unsigned int)),
+								-(long) (tuplen + 2 * sizeof(uint32)),
 								SEEK_CUR) != 0)
 				{
 					/*
@@ -706,7 +711,7 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 					 * what in-memory case does).
 					 */
 					if (BufFileSeek(state->myfile, 0,
-									-(long) (tuplen + sizeof(unsigned int)),
+									-(long) (tuplen + sizeof(uint32)),
 									SEEK_CUR) != 0)
 						elog(ERROR, "bogus tuple length in backward scan");
 					return NULL;
@@ -742,14 +747,14 @@ bool
 tuplestore_gettupleslot_pos(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 						TupleTableSlot *slot)
 {
-	MinimalTuple tuple;
+	MemTuple tuple;
 	bool		should_free = false;
 
-	tuple = (MinimalTuple) tuplestore_gettuple(state, pos, forward, &should_free);
+	tuple = (MemTuple) tuplestore_gettuple(state, pos, forward, &should_free);
 
 	if (tuple)
 	{
-		ExecStoreMinimalTuple(tuple, slot, should_free);
+		ExecStoreMemTuple(tuple, slot, should_free);
 		return true;
 	}
 	else
@@ -945,10 +950,10 @@ tuplestore_restorepos(Tuplestorestate *state)
  * Tape interface routines
  */
 
-static unsigned int
+static uint32
 getlen(Tuplestorestate *state, TuplestorePos *pos, bool eofOK)
 {
-	unsigned int len;
+	uint32 len;
 	size_t		nbytes;
 
 	nbytes = BufFileRead(state->myfile, (void *) &len, sizeof(len));
@@ -975,19 +980,18 @@ getlen(Tuplestorestate *state, TuplestorePos *pos, bool eofOK)
 static void *
 copytup_heap(Tuplestorestate *state, TuplestorePos *pos, void *tup)
 {
-	MinimalTuple tuple;
+	if(!is_heaptuple_memtuple((HeapTuple) tup))
+		return heaptuple_copy_to((HeapTuple) tup, NULL, NULL);
 
-	tuple = minimal_tuple_from_heap_tuple((HeapTuple) tup);
-	USEMEM(state, GetMemoryChunkSpace(tuple));
-	return (void *) tuple;
+	return memtuple_copy_to((MemTuple) tup, NULL, NULL, NULL);
 }
 
 static void
 writetup_heap(Tuplestorestate *state, TuplestorePos *pos, void *tup)
 {
-	MinimalTuple tuple = (MinimalTuple) tup;
-	unsigned int tuplen = tuple->t_len;
-    Size         memsize;
+	MemTuple tuple = (MemTuple) tup;
+	uint32 tuplen = memtuple_get_size(tuple, NULL); 
+	Size         memsize;
 
 	if (BufFileWrite(state->myfile, (void *) tuple, tuplen) != (size_t) tuplen)
 		elog(ERROR, "write failed");
@@ -997,23 +1001,26 @@ writetup_heap(Tuplestorestate *state, TuplestorePos *pos, void *tup)
 			elog(ERROR, "write failed");
 
 	memsize = GetMemoryChunkSpace(tuple);
-    state->spilledBytes += memsize;
+
+	state->spilledBytes += memsize;
 	FREEMEM(state, memsize);
 
-	heap_free_minimal_tuple(tuple);
+	pfree(tuple);
 }
 
 static void *
-readtup_heap(Tuplestorestate *state, TuplestorePos *pos, unsigned int len)
+readtup_heap(Tuplestorestate *state, TuplestorePos *pos, uint32 len)
 {
-	MinimalTuple tuple = (MinimalTuple) palloc(len);
-	unsigned int tuplen;
+	uint32 tuplen = memtuple_size_from_uint32(len);
+	MemTuple tuple = (MemTuple) palloc(tuplen); 
 
 	USEMEM(state, GetMemoryChunkSpace(tuple));
+
 	/* read in the tuple proper */
-	tuple->t_len = len;
+	memtuple_set_mtlen(tuple, NULL, len);
+
 	if (BufFileRead(state->myfile, (void *) ((char *) tuple + sizeof(int)),
-					len - sizeof(int)) != (size_t) (len - sizeof(int)))
+					len - sizeof(uint32)) != (size_t) (len - sizeof(uint32)))
 		elog(ERROR, "unexpected end of data");
 	if (state->randomAccess)	/* need trailing length word? */
 		if (BufFileRead(state->myfile, (void *) &tuplen,

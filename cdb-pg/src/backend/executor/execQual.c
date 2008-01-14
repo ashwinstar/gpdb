@@ -786,7 +786,7 @@ ExecEvalWholeRowVar(ExprState *exprstate, ExprContext *econtext,
 		*isDone = ExprSingleResult;
 	*isNull = false;
 
-	tuple = ExecFetchSlotTuple(slot);
+	tuple = ExecFetchSlotHeapTuple(slot);
 	tupleDesc = slot->tts_tupleDescriptor;
 
 	/*
@@ -848,7 +848,7 @@ ExecEvalWholeRowSlow(ExprState *exprstate, ExprContext *econtext,
 	Assert(variable->vartype != RECORDOID);
 	var_tupdesc = lookup_rowtype_tupdesc(variable->vartype, -1);
 
-	tuple = ExecFetchSlotTuple(slot);
+	tuple = ExecFetchSlotHeapTuple(slot);
 
 	/*
 	 * We have to make a copy of the tuple so we can safely insert the Datum
@@ -1573,6 +1573,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 {
 	Tuplestorestate *tupstore = NULL;
 	TupleDesc	tupdesc = NULL;
+	MemTupleBinding *mt_bind = NULL;
 	Oid			funcrettype;
 	bool		returnsTuple;
 	bool		returnsSet = false;
@@ -1689,7 +1690,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 	for (;;)
 	{
 		Datum		result;
-		HeapTuple	tuple;
+		MemTuple	tuple;
 
 		CHECK_FOR_INTERRUPTS();
 
@@ -1770,6 +1771,9 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 									   -1,
 									   0);
 				}
+
+				mt_bind = create_memtuple_binding(tupdesc);
+
 				tupstore = tuplestore_begin_heap(true, false, work_mem); 
 				MemoryContextSwitchTo(oldcontext);
 				rsinfo.setResult = tupstore;
@@ -1782,6 +1786,8 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 			if (returnsTuple)
 			{
 				HeapTupleHeader td;
+				Datum *pd = (Datum *) palloc(tupdesc->natts * sizeof(Datum));
+				bool *pn = (bool *) palloc(tupdesc->natts * sizeof(bool));
 
 				td = DatumGetHeapTupleHeader(result);
 
@@ -1791,15 +1797,17 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 				 */
 				tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
 				tmptup.t_data = td;
-				tuple = &tmptup;
+
+				heap_deform_tuple(&tmptup, tupdesc, pd, pn);
+				tuple = memtuple_form_to(mt_bind, pd, pn, NULL, NULL);
 			}
 			else
 			{
-				tuple = heap_form_tuple(tupdesc, &result, &fcinfo.isnull);
+				tuple = memtuple_form_to(mt_bind, &result, &fcinfo.isnull, NULL, NULL);
 			}
 
 			oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
-			tuplestore_puttuple(tupstore, tuple);
+			tuplestore_puttuple(tupstore, (HeapTuple) tuple);
 			MemoryContextSwitchTo(oldcontext);
 
 			/*
@@ -4514,6 +4522,7 @@ ExecVariableList(ProjectionInfo *projInfo,
 	int		   *varNumbers = projInfo->pi_varNumbers;
 	int			i;
 
+#if 0
 	/*
 	 * Force extraction of all input values that we need.
 	 */
@@ -4526,6 +4535,7 @@ ExecVariableList(ProjectionInfo *projInfo,
 	if (projInfo->pi_lastScanVar > 0)
 		slot_getsomeattrs(econtext->ecxt_scantuple,
 						  projInfo->pi_lastScanVar);
+#endif
 
 	/*
 	 * Assign to result by direct extraction of fields from source slots ... a
@@ -4537,8 +4547,7 @@ ExecVariableList(ProjectionInfo *projInfo,
 		TupleTableSlot *varSlot = *((TupleTableSlot **) slotptr);
 		int			varNumber = varNumbers[i] - 1;
 
-		values[i] = varSlot->tts_values[varNumber];
-		isnull[i] = varSlot->tts_isnull[varNumber];
+		values[i] = slot_getattr(varSlot, varNumber+1, &(isnull[i])); 
 	}
 }
 
@@ -4575,7 +4584,7 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 	 * us to use the slot's Datum/isnull arrays as workspace. (Also, we can
 	 * return the slot as-is if we decide no rows can be projected.)
 	 */
-	ExecClearTuple(slot);
+	ExecStoreAllNullTuple(slot);
 
 	/*
 	 * form a new result tuple (if possible); if successful, mark the result
@@ -4586,17 +4595,14 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 		/* simple Var list: this always succeeds with one result row */
 		if (isDone)
 			*isDone = ExprSingleResult;
-		ExecVariableList(projInfo,
-						 slot->tts_values,
-						 slot->tts_isnull);
-		ExecStoreVirtualTuple(slot);
+		ExecVariableList(projInfo, slot_get_values(slot), slot_get_isnull(slot));
 	}
 	else
 	{
 		if (ExecTargetList(projInfo->pi_targetlist,
 						   projInfo->pi_exprContext,
-						   slot->tts_values,
-						   slot->tts_isnull,
+						   slot_get_values(slot),
+						   slot_get_isnull(slot),
 						   projInfo->pi_itemIsDone,
 						   isDone))
 			ExecStoreVirtualTuple(slot);

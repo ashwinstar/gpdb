@@ -154,6 +154,7 @@ cdbhashinit(CdbHash *h)
 }
 
 
+extern void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree);
 /*
  * Add an attribute to the hash calculation.
  * **IMPORTANT: any new hard coded support for a data type in here
@@ -172,12 +173,6 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	size_t		len = 0;		/* length for the data buffer */
 	
 	int64		intbuf;			/* an 8 byte buffer for all integer sizes */
-	BpChar	   *bp;				/* a variable length struct (varlena) for
-								 * blank padded strings */
-	text	   *txt;			/* a variable length struct (varlena) for text */
-	VarChar    *vc;				/* a variable length struct (varlena) for
-								 * varchar */
-	bytea      *ba;	
 		
 	float4		buf_f4;
 	float8		buf_f8;
@@ -216,6 +211,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	 */
 	uint32		nanbuf;
 	uint32		invalidbuf;
+
+	void *tofree = NULL;
 
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the
@@ -303,45 +300,24 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 		 * ====== CHARACTER TYPES =======
 		 */
 		case CHAROID:			/* char(1), single character */
-		case BPCHAROID: /* char(n), blank-padded string, fixed storage
-								 * length */
-			bp = DatumGetBpCharP(datum);
-			len = VARSIZE(bp) - VARHDRSZ;		
-			buf = VARDATA(bp);
-
-			/* adjust length to not include trailing blanks */
-			if (len > 1)
-				len = ignoreblanks((char *) buf, len);
+			buf = DatumGetCString(datum);
+			len = 1;
 			break;
 
-		case TEXTOID:			/* variable-length string, no limit specified */
-			txt = DatumGetTextP(datum); /* a varlena struct (includes data and
-										 * len)  */
-			len = VARSIZE(txt) - VARHDRSZ;
-			buf = VARDATA(txt);
+		case BPCHAROID: /* char(n), blank-padded string, fixed storage */
+		case TEXTOID:   /* text */
+		case VARCHAROID: /* varchar */ 
+		case BYTEAOID:   /* bytea */
+			{
+				int tmplen;
+				varattrib_untoast_ptr_len(datum, (char **) &buf, &tmplen, &tofree);
+				/* adjust length to not include trailing blanks */
+				if (type != BYTEAOID && tmplen > 1)
+					tmplen = ignoreblanks((char *) buf, tmplen);
 
-			/* adjust length to not include trailing blanks */
-			if (len > 1)
-				len = ignoreblanks((char *) buf, len);
-			break;
-
-		case VARCHAROID:		/* varchar(length), non-blank-padded string,
-								 * variable storage length */
-			vc = DatumGetVarCharP(datum);		/* a varlena struct (includes
-												 * data and len)  */
-			len = VARSIZE(vc) - VARHDRSZ;
-			buf = VARDATA(vc);
-
-			/* adjust length to not include trailing blanks */
-			if (len > 1)
-				len = ignoreblanks((char *) buf, len);
-			break;
-
-		case BYTEAOID:
-			ba = DatumGetByteaP(datum);
-			len = VARSIZE(ba) - VARHDRSZ;
-			buf = VARDATA(ba);
-			break;
+				len = tmplen;
+				break;
+			}
 
 		case NAMEOID:
 			namebuf = DatumGetName(datum);
@@ -587,6 +563,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 
 	/* do the hash using the selected algorithm */
 	h->hash = (h->hashfn) (buf, len, h->hash);
+	if(tofree)
+		pfree(tofree);
 }
 
 /*

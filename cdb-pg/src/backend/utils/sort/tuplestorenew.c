@@ -199,26 +199,6 @@ void ntuplestore_setinstrument(NTupleStore *st, struct Instrumentation *instr)
 	st->instrument = instr;
 }
 
-#ifdef USE_DEBUG_NTUPLESTORE
-/* Sanity checks on a TupleTableSlot.  Will fail if someone called advance/seek etc.
- * on accessor 
- */
-void check_tableslot_tuplestore(TupleTableSlot *slot)
-{
-	if(slot->tts_nts_acc)
-	{
-		NTupleStoreAccessor *acc = (NTupleStoreAccessor *) slot->tts_nts_acc;
-		void *data;
-		int  len;
-
-		Assert(!slot->tts_shouldFree);
-		ntuplestore_acc_current_data(acc, &data, &len);
-
-		Assert((char *) data == (char *) slot->tts_mintuple);
-	}
-}
-#endif
-
 static inline void init_page(NTupleStorePage *page)
 {
 	nts_page_set_blockn(page, -1);
@@ -887,8 +867,8 @@ static long ntuplestore_get_lob(NTupleStore *nts, void *data, NTupleStoreLobRef 
 void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slot)
 {
 	char *dest_ptr;
-	unsigned int  dest_len;
-	bool put_ok;
+	uint32  dest_len;
+	MemTuple mtup;
 
 	Assert(tsa->isWriter);
 	Assert(tsa->store && tsa->store->first_page && tsa->store->last_page);
@@ -903,12 +883,12 @@ void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slo
 	}
 
 	dest_ptr = nts_page_next_slot_data_ptr(tsa->page); 
-	dest_len = (unsigned int) nts_page_avail_bytes(tsa->page); 
+	dest_len = (uint32) nts_page_avail_bytes(tsa->page); 
 
 	Assert(dest_len <= NTS_MAX_ENTRY_SIZE);
-	put_ok = ExecCopySlotMinimalTupleTo(slot, dest_ptr, &dest_len);
+	mtup = ExecCopySlotMemTupleTo(slot, NULL, dest_ptr, &dest_len);
 
-	if(put_ok)
+	if(mtup != NULL) 
 		update_page_slot_entry(tsa->page, (int) dest_len);
 	else if(dest_len <= NTS_MAX_ENTRY_SIZE)
 	{
@@ -920,8 +900,8 @@ void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slo
 
 		dest_ptr = nts_page_next_slot_data_ptr(page);
 		dest_len = (unsigned int) nts_page_avail_bytes(page);
-		put_ok = ExecCopySlotMinimalTupleTo(slot, dest_ptr, &dest_len);
-		Assert(put_ok);
+		mtup = ExecCopySlotMemTupleTo(slot, NULL, dest_ptr, &dest_len);
+		Assert(mtup!=NULL);
 
 		update_page_slot_entry(page, (int) dest_len);
 		nts_page_set_blockn(page, nts_page_blockn(tsa->page) + 1); 
@@ -1149,7 +1129,7 @@ bool ntuplestore_acc_advance(NTupleStoreAccessor *tsa, int n)
 
 bool ntuplestore_acc_current_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slot)
 {
-	MinimalTuple tuple = NULL;
+	MemTuple tuple = NULL;
 	int len = 0;
 	bool fOK = ntuplestore_acc_current_data(tsa, (void **) &tuple, &len);
 
@@ -1164,25 +1144,16 @@ bool ntuplestore_acc_current_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot 
 		NTupleStoreLobRef *plobref = (NTupleStoreLobRef *) tuple;
 		Assert(len == -(int)sizeof(NTupleStoreLobRef));
 		
-		tuple = (MinimalTuple) palloc(plobref->size);
+		tuple = (MemTuple) palloc(plobref->size);
 		len = ntuplestore_get_lob(tsa->store, tuple, plobref);
 
 		Assert(len == plobref->size);
 
-		ExecStoreMinimalTuple(tuple, slot, true);
+		ExecStoreMemTuple(tuple, slot, true);
 		return true;
 	}
 
-#ifdef USE_DEBUG_NTUPLESTORE
-	slot->tts_nts_acc = NULL;
-#endif
-
-	ExecStoreMinimalTuple(tuple, slot, false);
-
-#ifdef USE_DEBUG_NTUPLESTORE
-	slot->tts_nts_acc = (void *) tsa;
-#endif
-
+	ExecStoreMemTuple(tuple, slot, false);
 	return true;
 }
 

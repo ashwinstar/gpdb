@@ -82,7 +82,8 @@ typedef struct CdbMergeComparatorContext
 	SortFunctionKind   *sortFnKinds;
 	int			        numSortCols;
 	AttrNumber         *sortColIdx;
-	TupleDesc	        tupDesc;
+	TupleDesc	   tupDesc;
+	MemTupleBinding    *mt_bind;
 } CdbMergeComparatorContext;
 
 static CdbMergeComparatorContext *
@@ -367,9 +368,9 @@ execMotionUnsortedReceiver(MotionState * node)
     node->numTuplesFromAMS++;
     node->numTuplesToParent++;
 
-	/* store it in our result slot and return this. */
-	slot = node->ps.ps_ResultTupleSlot;
-    slot = ExecStoreTuple(tuple, slot, InvalidBuffer, true /* shouldFree */);
+    /* store it in our result slot and return this. */
+    slot = node->ps.ps_ResultTupleSlot;
+    slot = ExecStoreGenericTuple(tuple, slot, true /* shouldFree */);
 
 #ifdef CDB_MOTION_DEBUG
     if (node->numTuplesToParent <= 20)
@@ -538,8 +539,8 @@ execMotionSortedReceiver(MotionState * node)
     node->numTuplesToParent++;
 
     /* Store tuple in our result slot. */
-	slot = node->ps.ps_ResultTupleSlot;
-	slot = ExecStoreTuple(tuple, slot, InvalidBuffer, true /* shouldFree */);
+    slot = node->ps.ps_ResultTupleSlot;
+    slot = ExecStoreGenericTuple(tuple, slot, true /* shouldFree */);
 
 #ifdef CDB_MOTION_DEBUG
     if (node->numTuplesToParent <= 20)
@@ -817,7 +818,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	 */
 	ExecAssignResultTypeFromTL(&motionstate->ps);
 	motionstate->ps.ps_ProjInfo = NULL;
-    tupDesc = ExecGetResultType(&motionstate->ps);
+	tupDesc = ExecGetResultType(&motionstate->ps);
 
 	/* Set up motion send data structures */
 	if (motionstate->mstype == MOTIONSTATE_SEND && node->motionType == MOTIONTYPE_HASH) 
@@ -1049,8 +1050,15 @@ CdbMergeComparator(void *lhs, void *rhs, void *context)
                     isnull2;
         int32       compare;
 
-        datum1 = heap_getattr(ltup, attno, tupDesc, &isnull1);
-        datum2 = heap_getattr(rtup, attno, tupDesc, &isnull2);
+	if(is_heaptuple_memtuple(ltup))
+		datum1 = memtuple_getattr((MemTuple) ltup, ctx->mt_bind, attno, &isnull1);
+	else
+		datum1 = heap_getattr(ltup, attno, tupDesc, &isnull1);
+
+	if(is_heaptuple_memtuple(rtup))
+		datum2 = memtuple_getattr((MemTuple) rtup, ctx->mt_bind, attno, &isnull2);
+	else
+		datum2 = heap_getattr(rtup, attno, tupDesc, &isnull2);
 
         compare = ApplySortFunction(&sortFunctions[nkey],
                                     sortFnKinds[nkey],
@@ -1086,6 +1094,8 @@ CdbMergeComparator_CreateContext(TupleDesc      tupDesc,
     ctx->numSortCols = numSortCols;
     ctx->sortColIdx = sortColIdx;
     ctx->tupDesc = tupDesc;
+
+    ctx->mt_bind = create_memtuple_binding(tupDesc);
 
     /* Allocate the sort function arrays. */
     ctx->sortFunctions = (FmgrInfo *)palloc0(numSortCols * sizeof(FmgrInfo));
@@ -1222,8 +1232,8 @@ void
 doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 {
 	int16		    targetRoute;
-    HeapTuple       tuple;
-    SendReturnCode  sendRC;
+	HeapTuple       tuple;
+	SendReturnCode  sendRC;
 	ExprContext    *econtext = node->ps.ps_ExprContext;
 	
 	/* We got a tuple from the child-plan. */
@@ -1278,7 +1288,7 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 		Assert(targetRoute != BROADCAST_SEGIDX);
 	}
 
-	tuple = ExecFetchSlotTuple(outerTupleSlot);
+	tuple = ExecFetchSlotGenericTuple(outerTupleSlot);
 	
 	/* send the tuple out. */
 	sendRC = SendTuple(node->ps.state->motionlayer_context,

@@ -1,0 +1,106 @@
+/* 
+ * In Memory Tuple format
+ *
+ * Copyright (c) 2006, greenplum inc
+ */
+#ifndef _MEM_TUP_H_
+#define _MEM_TUP_H_
+
+#include "access/tupdesc.h"
+
+typedef enum MemTupleBindFlag
+{
+	MTB_ByVal_Native = 1,	/* Fixed len, native (returned as datum ) */
+	MTB_ByVal_Ptr    = 2,	/* Fixed len, convert to pointer for datum */
+	MTB_ByRef  	 = 3,	/* var len */
+	MTB_ByRef_CStr   = 4,   /* varlen, CString type */
+} MemTupleBindFlag;
+
+typedef struct MemTupleAttrBinding
+{
+	int offset; 		/* offset of attr in memtuple */
+	int len;		/* lenth */
+	MemTupleBindFlag flag;	/* binding flag */
+	int null_byte;		/* which byte holds the null flag for the attr */
+	unsigned char null_mask;		/* null bit mask */
+} MemTupleAttrBinding;
+
+typedef struct MemTupleBinding
+{
+	TupleDesc tupdesc;
+	int null_bitmap_extra_size;  /* extra bytes required by null bitmap */
+	uint32 var_start; 	/* varlen fields start */
+	MemTupleAttrBinding *bindings; /* bindings for attrs (cols) */
+	short *null_saves;
+} MemTupleBinding;
+
+typedef struct MemTupleData
+{
+	uint32 _mt_len;
+	unsigned char _mt_bits[1]; 	/* varlen */
+} MemTupleData;
+
+typedef MemTupleData *MemTuple;
+
+#define MEMTUP_LEAD_BIT 0x80000000
+#define MEMTUP_LEN_MASK 0x7FFFFFF8
+#define MEMTUP_HASNULL  1
+#define MEMTUP_UNUSED 6
+#define MEMTUP_ALIGN(LEN) TYPEALIGN(8, (LEN)) 
+
+static inline bool memtuple_lead_bit_set(MemTuple tup)
+{
+	return (tup->_mt_len & MEMTUP_LEAD_BIT) != 0;
+}
+static inline uint32 memtuple_size_from_uint32(uint32 len)
+{
+	Assert ((len & MEMTUP_LEAD_BIT) != 0);
+	return len & MEMTUP_LEN_MASK;
+}
+static inline uint32 memtuple_get_size(MemTuple mtup, MemTupleBinding *pbind)
+{
+	Assert(memtuple_lead_bit_set(mtup));
+	Assert((mtup->_mt_len & MEMTUP_UNUSED) == 0);
+	return (mtup->_mt_len & MEMTUP_LEN_MASK);
+}
+static inline void memtuple_set_size(MemTuple mtup, MemTupleBinding *pbind, uint32 len)
+{
+	Assert((len & (~MEMTUP_LEN_MASK)) == 0); 
+	mtup->_mt_len |= MEMTUP_LEAD_BIT;
+	mtup->_mt_len = (mtup->_mt_len & (~MEMTUP_LEN_MASK)) | len;
+}
+static inline void memtuple_set_mtlen(MemTuple mtup, MemTupleBinding *pbind, uint32 mtlen)
+{
+	Assert((mtlen & MEMTUP_LEAD_BIT) != 0);
+	Assert((mtlen & MEMTUP_UNUSED) == 0);
+	mtup->_mt_len = mtlen;
+}
+static inline bool memtuple_get_hasnull(MemTuple mtup, MemTupleBinding *pbind)
+{
+	Assert(memtuple_lead_bit_set(mtup));
+	Assert((mtup->_mt_len & MEMTUP_UNUSED) == 0);
+	return (mtup->_mt_len & MEMTUP_HASNULL) != 0;
+}
+static inline void memtuple_set_hasnull(MemTuple mtup, MemTupleBinding *pbind)
+{
+	Assert(memtuple_lead_bit_set(mtup));
+	Assert((mtup->_mt_len & MEMTUP_UNUSED) == 0);
+	mtup->_mt_len |= MEMTUP_HASNULL;
+}
+static inline void memtuple_clear_hasnull(MemTuple mtup, MemTupleBinding *pbind)
+{
+	Assert(memtuple_lead_bit_set(mtup));
+	Assert((mtup->_mt_len & MEMTUP_UNUSED) == 0);
+	mtup->_mt_len &= (~MEMTUP_HASNULL);
+}
+
+extern void destroy_memtuple_binding(MemTupleBinding *pbind);
+extern MemTupleBinding* create_memtuple_binding(TupleDesc tupdesc);
+
+extern Datum memtuple_getattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull);
+extern bool memtuple_attisnull(MemTuple mtup, MemTupleBinding *pbind, int attnum);
+
+extern MemTuple memtuple_copy_to(MemTuple mtup, MemTupleBinding *pbind, MemTuple dest, uint32 *destlen);
+extern MemTuple memtuple_form_to(MemTupleBinding *pbind, Datum *values, bool *isnull, MemTuple dest, uint32 *destlen);
+
+#endif /* _MEM_TUP_H_ */

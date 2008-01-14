@@ -253,8 +253,7 @@ TidNext(TidScanState *node)
 		 * runtime-key case this is not certain, is it?
 		 */
 
-		ExecStoreTuple(estate->es_evTuple[scanrelid - 1],
-					   slot, InvalidBuffer, false);
+		ExecStoreGenericTuple(estate->es_evTuple[scanrelid - 1], slot, false);
 
 		/* Flag for the next call that no more tuples */
 		estate->es_evTupleNull[scanrelid - 1] = true;
@@ -309,7 +308,7 @@ TidNext(TidScanState *node)
 			 * pointers onto disk pages and were not created with palloc() and
 			 * so should not be pfree()'d.
 			 */
-			ExecStoreTuple(tuple,		/* tuple to store */
+			ExecStoreHeapTuple(tuple,		/* tuple to store */
 						   slot,	/* slot to store in */
 						   buffer,		/* buffer associated with tuple  */
 						   false);		/* don't pfree */

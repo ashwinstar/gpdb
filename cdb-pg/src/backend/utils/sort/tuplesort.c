@@ -149,10 +149,10 @@ bool		trace_sort = false;
  */
 typedef struct
 {
-	void	   *tuple;			/* the tuple proper */
-	Datum		datum1;			/* value of first key column */
-	bool		isnull1;		/* is first key column NULL? */
-	int			tupindex;		/* see notes above */
+	MemTuple tuple;
+	int	tupindex;		/* see notes above */
+	Datum	datum1;
+	bool    isnull1;	
 } SortTuple;
 
 
@@ -217,8 +217,8 @@ struct Tuplesortstate
 	int			nKeys;			/* number of columns in sort key */
 	bool		randomAccess;	/* did caller request random access? */
 	long		availMem;		/* remaining memory available, in bytes */
-    long        availMemMin;    /* CDB: availMem low water mark (bytes) */
-    long        availMemMin01;  /* MPP-1559: initial low water mark */
+	long        availMemMin;    /* CDB: availMem low water mark (bytes) */
+	long        availMemMin01;  /* MPP-1559: initial low water mark */
 	long		allowedMem;		/* total memory allowed, in bytes */
 	int			maxTapes;		/* number of tapes (Knuth's T) */
 	int			tapeRange;		/* maxTapes-1 (Knuth's P) */
@@ -262,7 +262,7 @@ struct Tuplesortstate
 	 * decrease state->availMem by the amount of memory space consumed.
 	 */
 	void		(*readtup) (Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
-										LogicalTape *lt, unsigned int len);
+			LogicalTape *lt, uint32 len);
 
 	/*
 	 * This array holds the tuples now in sort memory.	If we are in state
@@ -345,6 +345,7 @@ struct Tuplesortstate
 	ScanKey		scanKeys;		/* array of length nKeys */
 	SortFunctionKind *sortFnKinds;		/* array of length nKeys */
 
+	MemTupleBinding *mt_bind;
 	/*
 	 * These variables are specific to the IndexTuple case; they are set by
 	 * tuplesort_begin_index and used only by the IndexTuple routines.
@@ -448,7 +449,7 @@ FREEMEM(Tuplesortstate *state, int amt)
  */
 
 
-static Tuplesortstate *tuplesort_begin_common(int workMem, bool randomAccess);
+static Tuplesortstate *tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple);
 static void puttuple_common(Tuplesortstate *state, SortTuple *tuple);
 static void inittapes(Tuplesortstate *state, const char* rwfile_prefix);
 static void selectnewtape(Tuplesortstate *state);
@@ -471,8 +472,6 @@ static int comparetup_heap(const SortTuple *a, const SortTuple *b,
 static void copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup);
 static void writetup_heap(Tuplesortstate *state, LogicalTape *lt, SortTuple *stup);
 static void readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
-			 LogicalTape *lt, unsigned int len);
-static void readtup_heap_reader(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 			 LogicalTape *lt, unsigned int len);
 static int comparetup_index(const SortTuple *a, const SortTuple *b,
 				 Tuplesortstate *state);
@@ -511,7 +510,7 @@ static void readtup_datum(Tuplesortstate *state, TuplesortPos *pos, SortTuple *s
  */
 
 static Tuplesortstate *
-tuplesort_begin_common(int workMem, bool randomAccess)
+tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
 {
 	Tuplesortstate *state;
 	MemoryContext sortcontext;
@@ -558,13 +557,24 @@ tuplesort_begin_common(int workMem, bool randomAccess)
 	state->mppsortflags = 0;   /* special sort flags*//* CDB */
 	state->standardsort = true; /* normal sort *//* CDB */
 	state->gpmaxdistinct = 20000; /* maximum distinct values *//* CDB */
-	state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
 
-	USEMEM(state, GetMemoryChunkSpace(state->memtuples));
+	if(allocmemtuple)
+	{
+		state->memtuples = (SortTuple *) palloc(state->memtupsize * sizeof(SortTuple));
+		USEMEM(state, GetMemoryChunkSpace(state->memtuples));
 
-	/* workMem must be large enough for the minimal memtuples array */
-	if (LACKMEM(state))
-		elog(ERROR, "insufficient memory allowed for sort");
+		/* workMem must be large enough for the minimal memtuples array */
+		if (LACKMEM(state))
+		{
+			Assert(!"Catch me");
+			elog(ERROR, "insufficient memory allowed for sort");
+		}
+	} 
+	else
+	{
+		state->memtuples = NULL;
+	}
+	
 
 	state->currentRun = 0;
 
@@ -636,7 +646,7 @@ tuplesort_begin_heap(TupleDesc tupDesc,
 					 Oid *sortOperators, AttrNumber *attNums,
 					 int workMem, bool randomAccess)
 {
-	Tuplesortstate *state = tuplesort_begin_common(workMem, randomAccess);
+	Tuplesortstate *state = tuplesort_begin_common(workMem, randomAccess, true);
 	MemoryContext oldcontext;
 	int			i;
 
@@ -659,6 +669,8 @@ tuplesort_begin_heap(TupleDesc tupDesc,
 	state->readtup = readtup_heap;
 
 	state->tupDesc = tupDesc;	/* assume we need not copy tupDesc */
+	state->mt_bind = create_memtuple_binding(tupDesc);
+
 	state->scanKeys = (ScanKey) palloc0(nkeys * sizeof(ScanKeyData));
 	state->sortFnKinds = (SortFunctionKind *)
 		palloc0(nkeys * sizeof(SortFunctionKind));
@@ -726,11 +738,11 @@ tuplesort_begin_heap_file_readerwriter(
 		 * of the logical tape set has been dumped, so we load it back and that is
 		 * it.
 		 */
-		state = tuplesort_begin_common(workMem, randomAccess);
+		state = tuplesort_begin_common(workMem, randomAccess, false);
 		state->status = TSS_SORTEDONTAPE;
 		state->randomAccess = true;
 
-		state->readtup = readtup_heap_reader;
+		state->readtup = readtup_heap;
 
 		snprintf(state->pfile_rwfile_prefix, MAX_RWFILE_PREFIX_SIZE, "%s", rwfile_prefix);
 		state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, false);
@@ -756,7 +768,7 @@ tuplesort_begin_index(Relation indexRel,
 					  bool enforceUnique,
 					  int workMem, bool randomAccess)
 {
-	Tuplesortstate *state = tuplesort_begin_common(workMem, randomAccess);
+	Tuplesortstate *state = tuplesort_begin_common(workMem, randomAccess, true);
 	MemoryContext oldcontext;
 
 	oldcontext = MemoryContextSwitchTo(state->sortcontext);
@@ -791,7 +803,7 @@ tuplesort_begin_datum(Oid datumType,
 					  Oid sortOperator,
 					  int workMem, bool randomAccess)
 {
-	Tuplesortstate *state = tuplesort_begin_common(workMem, randomAccess);
+	Tuplesortstate *state = tuplesort_begin_common(workMem, randomAccess, true);
 	MemoryContext oldcontext;
 	RegProcedure sortFunction;
 	int16		typlen;
@@ -1029,16 +1041,16 @@ tuplesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
 	 */
 	if (isNull || state->datumTypeByVal)
 	{
-		stup.datum1 = val;
+		stup.datum1 = val;		/* no separate storage */
 		stup.isnull1 = isNull;
-		stup.tuple = NULL;		/* no separate storage */
+		stup.tuple = NULL;
 	}
 	else
 	{
 		stup.datum1 = datumCopy(val, false, state->datumTypeLen);
 		stup.isnull1 = false;
-		stup.tuple = DatumGetPointer(stup.datum1);
-		USEMEM(state, GetMemoryChunkSpace(stup.tuple));
+		stup.tuple = NULL;
+		USEMEM(state, GetMemoryChunkSpace(DatumGetPointer(stup.datum1))); 
 	}
 
 	puttuple_common(state, &stup);
@@ -1414,7 +1426,7 @@ tuplesort_gettuple_common_pos(Tuplesortstate *state, TuplesortPos *pos,
 				/* returned tuple is no longer counted in our memory space */
 				if (stup->tuple)
 				{
-					tuplen = GetMemoryChunkSpace(stup->tuple);
+					tuplen = GetMemoryChunkSpace(stup->tuple); 
 					FREEMEM(state, tuplen);
 					state->mergeavailmem[srcTape] += tuplen;
 				}
@@ -1476,20 +1488,19 @@ tuplesort_gettupleslot_pos(Tuplesortstate *state, TuplesortPos *pos,
 	bool		should_free = false;
 
 	if (!tuplesort_gettuple_common_pos(state, pos, forward, &stup, &should_free))
-		stup.tuple = NULL;
+		stup.tuple = NULL; 
 
 	MemoryContextSwitchTo(oldcontext);
 
-	if (stup.tuple)
+	if (stup.tuple) 
 	{
-		ExecStoreMinimalTuple((MinimalTuple) stup.tuple, slot, should_free);
+		ExecStoreMemTuple(stup.tuple, slot, should_free);
 		return true;
 	}
-	else
-	{
-		ExecClearTuple(slot);
-		return false;
-	}
+
+	ExecClearTuple(slot);
+	return false;
+
 }
 
 /*
@@ -1505,11 +1516,11 @@ tuplesort_getindextuple(Tuplesortstate *state, bool forward,
 	SortTuple	stup;
 
 	if (!tuplesort_gettuple_common_pos(state, &state->pos, forward, &stup, should_free))
-		stup.tuple = NULL;
+		stup.tuple = NULL; 
 
 	MemoryContextSwitchTo(oldcontext);
 
-	return (IndexTuple) stup.tuple;
+	return (IndexTuple) (stup.tuple); 
 }
 
 /*
@@ -2595,23 +2606,13 @@ tuplesort_sorted_insert(Tuplesortstate *state, SortTuple *tuple,
 
 	/* free up tuples if necessary */
  L_freetup:
-	if (freetup->tuple)
+	if (freetup->tuple != NULL)
 	{
-		if (state->writetup == writetup_heap)
-		{ /* free a heap tuple */
-			MinimalTuple htup = (MinimalTuple) freetup->tuple;
-			FREEMEM(state, GetMemoryChunkSpace(htup));
-			heap_free_minimal_tuple(htup);
-		}
-		else /* free a datum (or index) */
-		{
-			FREEMEM(state, GetMemoryChunkSpace(freetup->tuple));
-			pfree(freetup->tuple);
-		}
+		FREEMEM(state, GetMemoryChunkSpace(freetup->tuple));
+		pfree(freetup->tuple);
 	}
+
 	state->discardcount++;
-
-
 }
 
 /*
@@ -2899,45 +2900,25 @@ static int
 comparetup_heap(const SortTuple *a, const SortTuple *b, Tuplesortstate *state)
 {
 	ScanKey		scanKey = state->scanKeys;
-	HeapTupleData ltup;
-	HeapTupleData rtup;
-	TupleDesc	tupDesc;
 	int			nkey;
 	int32		compare;
 
 	/* Allow interrupting long sorts */
 	CHECK_FOR_INTERRUPTS();
 
-	/* Compare the leading sort key */
-	compare = inlineApplySortFunction(&scanKey->sk_func,
-									  state->sortFnKinds[0],
-									  a->datum1, a->isnull1,
-									  b->datum1, b->isnull1);
-	if (compare != 0)
-		return compare;
-
-	/* Compare additional sort keys */
-	ltup.t_len = ((MinimalTuple) a->tuple)->t_len + MINIMAL_TUPLE_OFFSET;
-	ltup.t_data = (HeapTupleHeader) ((char *) a->tuple - MINIMAL_TUPLE_OFFSET);
-	rtup.t_len = ((MinimalTuple) b->tuple)->t_len + MINIMAL_TUPLE_OFFSET;
-	rtup.t_data = (HeapTupleHeader) ((char *) b->tuple - MINIMAL_TUPLE_OFFSET);
-	tupDesc = state->tupDesc;
-	scanKey++;
-	for (nkey = 1; nkey < state->nKeys; nkey++, scanKey++)
+	for (nkey = 0; nkey < state->nKeys; nkey++, scanKey++)
 	{
 		AttrNumber	attno = scanKey->sk_attno;
-		Datum		datum1,
-					datum2;
-		bool		isnull1,
-					isnull2;
+		Datum		datum1, datum2; 
+		bool		isnull1, isnull2;
 
-		datum1 = heap_getattr(&ltup, attno, tupDesc, &isnull1);
-		datum2 = heap_getattr(&rtup, attno, tupDesc, &isnull2);
+		datum1 = memtuple_getattr(a->tuple, state->mt_bind, attno, &isnull1); 
+		datum2 = memtuple_getattr(b->tuple, state->mt_bind, attno, &isnull2);
 
-		compare = inlineApplySortFunction(&scanKey->sk_func,
-										  state->sortFnKinds[nkey],
-										  datum1, isnull1,
-										  datum2, isnull2);
+		compare = inlineApplySortFunction(&scanKey->sk_func, state->sortFnKinds[nkey],
+				datum1, isnull1,
+				datum2, isnull2);
+
 		if (compare != 0)
 			return compare;
 	}
@@ -2955,20 +2936,10 @@ copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup)
 	 * MinimalTuple using the exported interface for that.
 	 */
 	TupleTableSlot *slot = (TupleTableSlot *) tup;
-	MinimalTuple tuple;
-	HeapTupleData htup;
 
 	/* copy the tuple into sort storage */
-	tuple = ExecCopySlotMinimalTuple(slot);
-	stup->tuple = (void *) tuple;
-	USEMEM(state, GetMemoryChunkSpace(tuple));
-	/* set up first-column key value */
-	htup.t_len = tuple->t_len + MINIMAL_TUPLE_OFFSET;
-	htup.t_data = (HeapTupleHeader) ((char *) tuple - MINIMAL_TUPLE_OFFSET);
-	stup->datum1 = heap_getattr(&htup,
-								state->scanKeys[0].sk_attno,
-								state->tupDesc,
-								&stup->isnull1);
+	stup->tuple = ExecCopySlotMemTuple(slot);
+	USEMEM(state, GetMemoryChunkSpace(stup->tuple));
 }
 
 /*
@@ -2978,37 +2949,33 @@ copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup)
 static void
 writetup_heap(Tuplesortstate *state, LogicalTape *lt, SortTuple *stup)
 {
-	MinimalTuple tuple = (MinimalTuple) stup->tuple;
-	unsigned int tuplen = tuple->t_len;
+	uint32 tuplen = memtuple_get_size(stup->tuple, NULL); 
 
-	LogicalTapeWrite(state->tapeset, lt, (void *) tuple, tuplen);
+	LogicalTapeWrite(state->tapeset, lt, (void *) stup->tuple, tuplen);
 
 	if (state->randomAccess)	/* need trailing length word? */
 		LogicalTapeWrite(state->tapeset, lt, (void *) &tuplen, sizeof(tuplen));
 
-	FREEMEM(state, GetMemoryChunkSpace(tuple));
-	heap_free_minimal_tuple(tuple);
+	FREEMEM(state, GetMemoryChunkSpace(stup->tuple));
+	pfree(stup->tuple);
 }
 
 static void
-readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
-			 LogicalTape *lt, unsigned int len)
+readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup, LogicalTape *lt, uint32 len)
 {
-	MinimalTuple tuple = (MinimalTuple) palloc(len);
-	unsigned int tuplen;
-	HeapTupleData htup;
+	uint32 tuplen;
 	size_t readSize;
 
-	USEMEM(state, GetMemoryChunkSpace(tuple));
-	/* read in the tuple proper */
-	tuple->t_len = len;
+	stup->tuple = (MemTuple) palloc(memtuple_size_from_uint32(len));
+	USEMEM(state, GetMemoryChunkSpace(stup->tuple));
+	memtuple_set_mtlen(stup->tuple, NULL, len);
 
 	Assert(lt);
 	readSize = LogicalTapeRead(state->tapeset, lt,
-				(void *) ((char *)tuple + sizeof(int)),
-				len - sizeof(int));
+				(void *) ((char *)stup->tuple + sizeof(uint32)),
+				memtuple_size_from_uint32(len) - sizeof(uint32));
 
-	if (readSize != (size_t) (len - sizeof(int))) 
+	if (readSize != (size_t) (memtuple_size_from_uint32(len) - sizeof(uint32))) 
 		elog(ERROR, "unexpected end of data");
 
 	if (state->randomAccess)	/* need trailing length word? */
@@ -3018,46 +2985,6 @@ readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 		if(readSize != sizeof(tuplen))
 			elog(ERROR, "unexpected end of data");
 	}
-
-	stup->tuple = (void *) tuple;
-	/* set up first-column key value */
-	htup.t_len = tuple->t_len + MINIMAL_TUPLE_OFFSET;
-	htup.t_data = (HeapTupleHeader) ((char *) tuple - MINIMAL_TUPLE_OFFSET);
-	stup->datum1 = heap_getattr(&htup,
-								state->scanKeys[0].sk_attno,
-								state->tupDesc,
-								&stup->isnull1);
-}
-
-static void
-readtup_heap_reader(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
-			 LogicalTape *lt, unsigned int len)
-{
-	MinimalTuple tuple = (MinimalTuple) palloc(len);
-	unsigned int tuplen;
-	size_t readSize;
-
-	USEMEM(state, GetMemoryChunkSpace(tuple));
-	/* read in the tuple proper */
-	tuple->t_len = len;
-
-	Assert(lt); 
-	readSize = LogicalTapeRead(state->tapeset,lt,
-				(void *) ((char *)tuple + sizeof(int)),
-				len - sizeof(int));
-
-	if (readSize != (size_t) (len - sizeof(int))) 
-		elog(ERROR, "unexpected end of data");
-
-	if (state->randomAccess)	/* need trailing length word? */
-	{
-		readSize = LogicalTapeRead(state->tapeset, lt, (void *)&tuplen, sizeof(tuplen));
-
-		if(readSize != sizeof(tuplen))
-			elog(ERROR, "unexpected end of data");
-	}
-
-	stup->tuple = (void *) tuple;
 }
 
 /*

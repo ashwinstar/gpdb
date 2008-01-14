@@ -25,6 +25,8 @@
 #include "miscadmin.h"                      /* MyProcPid */
 #include "utils/memutils.h"
 
+#include "utils/debugbreak.h"
+
 #include "cdb/cdbvars.h"                    /* gp_process_memory_cutoff_bytes */
 
 #ifdef HAVE_STDINT_H
@@ -387,6 +389,9 @@ MemoryContextNoteAlloc(MemoryContext context, Size nbytes)
             break;
         context = context->parent;
     }
+
+    if (context->maxBytesHeld > 1024 * 1024 * 1024)
+	    debug_break();
 
     /* Limit total memory held by top memory context plus all descendants. */
     if (context->maxBytesHeld > gp_process_memory_warning_bytes &&

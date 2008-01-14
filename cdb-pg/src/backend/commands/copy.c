@@ -1519,7 +1519,7 @@ CopyTo(CopyState cstate)
  * Emit one row during CopyTo().
  */
 static void
-CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *nulls)
+CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *isnulls)
 {
 	bool		need_delim = false;
 	FmgrInfo   *out_functions = cstate->out_functions;
@@ -1558,8 +1558,9 @@ CopyOneRowTo(CopyState cstate, Oid tupleOid, Datum *values, bool *nulls)
 	foreach(cur, cstate->attnumlist)
 	{
 		int			attnum = lfirst_int(cur);
-		Datum		value = values[attnum - 1];
-		bool		isnull = nulls[attnum - 1];
+
+		bool		isnull = isnulls[attnum-1];
+		Datum		value = values[attnum-1]; 
 		
 		if (!cstate->binary)
 		{
@@ -4138,7 +4139,7 @@ CopyFrom(CopyState cstate)
 				if (!skip_tuple)
 				{
 					/* Place tuple in tuple slot */
-					ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+					ExecStoreGenericTuple(tuple, slot, false);
 
 					/*
 					 * Check the constraints of the tuple
@@ -6116,7 +6117,7 @@ copy_dest_receive(TupleTableSlot *slot, DestReceiver *self)
 	slot_getallattrs(slot);
 	
 	/* And send the data */
-	CopyOneRowTo(cstate, InvalidOid, slot->tts_values, slot->tts_isnull);
+	CopyOneRowTo(cstate, InvalidOid, slot_get_values(slot), slot_get_isnull(slot)); 
 }
 
 /*

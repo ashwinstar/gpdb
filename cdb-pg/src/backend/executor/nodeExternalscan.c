@@ -71,7 +71,7 @@ ExternalNext(ExternalScanState *node)
 	 * refcount will not be dropped until the tuple table slot is cleared.
 	 */
 	if (tuple)
-		ExecStoreTuple(tuple, slot, InvalidBuffer, true);	
+		ExecStoreGenericTuple(tuple, slot, true);	
 	else
 		ExecClearTuple(slot);
 	

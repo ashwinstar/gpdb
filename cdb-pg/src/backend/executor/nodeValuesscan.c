@@ -131,8 +131,9 @@ ValuesNext(ValuesScanState *node)
 		 * Compute the expressions and build a virtual result tuple. We
 		 * already did ExecClearTuple(slot).
 		 */
-		values = slot->tts_values;
-		isnull = slot->tts_isnull;
+		ExecStoreAllNullTuple(slot); 
+		values = slot_get_values(slot); 
+		isnull = slot_get_isnull(slot);
 
 		resind = 0;
 		foreach(lc, exprstatelist)
@@ -156,7 +157,7 @@ ValuesNext(ValuesScanState *node)
         /* CDB: Label each row with a synthetic ctid for subquery dedup. */
         if (node->cdb_want_ctid)
         {
-            HeapTuple   tuple = ExecMaterializeSlot(slot);
+            HeapTuple   tuple = ExecFetchSlotHeapTuple(slot); 
 
             ItemPointerSet(&tuple->t_self, node->curr_idx >> 16,
                            (OffsetNumber)node->curr_idx);

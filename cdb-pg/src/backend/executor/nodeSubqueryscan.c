@@ -76,7 +76,7 @@ SubqueryNext(SubqueryScanState *node)
     if (node->cdb_want_ctid &&
         !TupIsNull(slot))
     {
-        HeapTuple   tuple = ExecMaterializeSlot(slot);
+        HeapTuple   tuple = ExecFetchSlotHeapTuple(slot); 
 
         /* Increment 48-bit row count */
         node->cdb_fake_ctid.ip_posid++;

@@ -14,8 +14,9 @@
 #ifndef TUPTABLE_H
 #define TUPTABLE_H
 
-#include "access/htup.h"
 #include "access/tupdesc.h"
+#include "access/htup.h"
+#include "access/memtup.h"
 #include "storage/buf.h"
 
 /*----------
@@ -102,31 +103,186 @@
  * be touched by any other code.
  *----------
  */
+typedef enum TupleTableSlotFlag
+{
+	TTS_ISEMPTY 	= 1,
+	TTS_SHOULDFREE 	= 1 << 1,
+	TTS_VIRTUAL 	= 1 << 2
+} TupleTableSlotFlag;
+
 typedef struct TupleTableSlot
 {
-	NodeTag		type;			/* vestigial ... allows IsA tests */
-	bool		tts_isempty;	/* true = slot is empty */
-	bool		tts_shouldFree; /* should pfree tuple? */
-	bool		tts_slow;		/* saved state for slot_deform_tuple */
-	HeapTuple	tts_tuple;		/* physical tuple, or NULL if none */
-	TupleDesc	tts_tupleDescriptor;	/* slot's tuple descriptor */
-	MemoryContext tts_mcxt;		/* slot itself is in this context */
-	Buffer		tts_buffer;		/* tuple's buffer, or InvalidBuffer */
-	int			tts_nvalid;		/* # of valid values in tts_values */
-	Datum	   *tts_values;		/* current per-attribute values */
-	bool	   *tts_isnull;		/* current per-attribute isnull flags */
-	MinimalTuple tts_mintuple;	/* set if it's a minimal tuple, else NULL */
-	HeapTupleData tts_minhdr;	/* workspace if it's a minimal tuple */
-	long		tts_off;		/* saved state for slot_deform_tuple */
+	NodeTag		type;		/* vestigial ... allows IsA tests */
+	TupleTableSlotFlag _tts_flags;	/* flags */
 
-#ifdef USE_DEBUG_NTUPLESTORE
-	void       *tts_nts_acc;    /* ntuplestore accessor */
-#endif
+	/* Heap tuple stuff */
+	HeapTuple _tts_heaptuple;
+	void    *_tts_htup_buf;
+	uint32   _tts_htup_buf_len;
+
+	/* Mem tuple stuff */
+	MemTuple _tts_memtuple;
+	void 	*_tts_mtup_buf;
+	uint32  _tts_mtup_buf_len;
+
+	/* Virtual tuple stuff */
+	int 	_tts_nvalid;		/* number of valid virtual tup entries */
+	long    _tts_off; 		/* hack to remember state of last decoding. */
+	bool    _tts_slow; 		/* hack to remember state of last decoding. */
+	Datum 	*_tts_values;		/* virtual tuple values */
+	bool 	*_tts_isnull;		/* virtual tuple nulls */
+
+	TupleDesc	tts_tupleDescriptor;	/* slot's tuple descriptor */
+	MemTupleBinding *tts_mt_bind;		/* mem tuple's binding */ 
+	MemoryContext 	tts_mcxt;		/* slot itself is in this context */
+	Buffer		tts_buffer;		/* tuple's buffer, or InvalidBuffer */
+
 } TupleTableSlot;
 
-#ifdef USE_DEBUG_NTUPLESTORE
-extern void check_tableslot_tuplestore(TupleTableSlot *slot);
-#endif
+static inline bool TupIsNull(TupleTableSlot *slot)
+{
+	return (slot == NULL || (slot->_tts_flags & TTS_ISEMPTY) != 0);
+}
+static inline void TupClearIsEmpty(TupleTableSlot *slot)
+{
+	slot->_tts_flags &= (~TTS_ISEMPTY);
+}
+static inline bool TupShouldFree(TupleTableSlot *slot)
+{
+	Assert(slot);
+	return ((slot->_tts_flags & TTS_SHOULDFREE) != 0); 
+}
+static inline void TupSetShouldFree(TupleTableSlot *slot)
+{
+	slot->_tts_flags |= TTS_SHOULDFREE; 
+}
+static inline void TupClearShouldFree(TupleTableSlot *slot)
+{
+	slot->_tts_flags &= (~TTS_SHOULDFREE);
+}
+static inline bool TupHasHeapTuple(TupleTableSlot *slot)
+{
+	Assert(slot);
+	return slot->_tts_heaptuple != NULL;
+}
+static inline bool TupHasMemTuple(TupleTableSlot *slot)
+{
+	Assert(slot);
+	return slot->_tts_memtuple != NULL;
+}
+static inline bool TupHasVirtualTuple(TupleTableSlot *slot)
+{
+	Assert(slot);
+	return (slot->_tts_flags & TTS_VIRTUAL);
+}
+static inline HeapTuple TupGetHeapTuple(TupleTableSlot *slot)
+{
+	Assert(TupHasHeapTuple(slot));
+	Assert(!is_heaptuple_memtuple(slot->_tts_heaptuple));
+	return slot->_tts_heaptuple; 
+}
+
+static inline void TupSetVirtualTuple(TupleTableSlot *slot)
+{
+	Assert(slot);
+	slot->_tts_flags |= TTS_VIRTUAL;
+}
+
+static inline Datum *slot_get_values(TupleTableSlot *slot)
+{
+	Assert(slot && TupHasVirtualTuple(slot));
+	Assert(slot->_tts_nvalid == slot->tts_tupleDescriptor->natts);
+	return slot->_tts_values;
+}
+
+static inline bool *slot_get_isnull(TupleTableSlot *slot)
+{
+	Assert(slot && TupHasVirtualTuple(slot));
+	Assert(slot->_tts_nvalid == slot->tts_tupleDescriptor->natts);
+	return slot->_tts_isnull;
+}
+
+extern void _slot_getsomeattrs(TupleTableSlot *slot, int attnum);
+static inline void slot_getsomeattrs(TupleTableSlot *slot, int attnum)
+{
+
+	if(TupHasVirtualTuple(slot))
+	{
+		if(slot->_tts_nvalid >= attnum)
+			return;
+	}
+
+	if(TupHasMemTuple(slot))
+	{
+		int i; 
+		for(i=0; i<attnum; ++i)
+			slot->_tts_values[i] = memtuple_getattr(
+					slot->_tts_memtuple, slot->tts_mt_bind, 
+					i+1, &(slot->_tts_isnull[i]));
+
+		TupSetVirtualTuple(slot);
+		slot->_tts_nvalid = attnum;
+		return;
+	}
+
+	_slot_getsomeattrs(slot, attnum); 
+	TupSetVirtualTuple(slot);
+}
+
+
+static inline void slot_getallattrs(TupleTableSlot *slot)
+{
+	slot_getsomeattrs(slot, slot->tts_tupleDescriptor->natts);
+}
+
+extern Datum heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull);
+
+static inline Datum slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
+{
+	Assert(!TupIsNull(slot));
+	Assert(attnum <= slot->tts_tupleDescriptor->natts);
+
+	/* System attribute */
+	if(attnum <= 0)
+	{
+		Assert(slot->_tts_heaptuple);
+		return heap_getsysattr(slot->_tts_heaptuple, attnum, slot->tts_tupleDescriptor, isnull);
+	}
+
+	/* fast path for virtual tuple */
+	if(TupHasVirtualTuple(slot) && slot->_tts_nvalid >= attnum)
+	{
+		*isnull = slot->_tts_isnull[attnum-1];
+		return slot->_tts_values[attnum-1];
+	}
+
+	/* Mem tuple: We do not even populate virtual tuple */
+	if(TupHasMemTuple(slot))
+	{
+		Assert(slot->tts_mt_bind);
+		return memtuple_getattr(slot->_tts_memtuple, slot->tts_mt_bind, attnum, isnull);
+	}
+
+	/* Slow: heap tuple */
+	Assert(TupHasHeapTuple(slot));
+
+	_slot_getsomeattrs(slot, attnum);
+	Assert(TupHasVirtualTuple(slot) && slot->_tts_nvalid >= attnum);
+	*isnull = slot->_tts_isnull[attnum-1];
+	return slot->_tts_values[attnum-1];
+}
+
+static inline bool slot_attisnull(TupleTableSlot *slot, int attnum)
+{
+	Datum dummy;
+	bool ret;
+
+	Assert(!TupIsNull(slot));
+	Assert(attnum <= slot->tts_tupleDescriptor->natts);
+
+	dummy = slot_getattr(slot, attnum, &ret);
+	return ret;
+}
 
 /*
  * Tuple table data structure: an array of TupleTableSlots.
@@ -140,55 +296,62 @@ typedef struct TupleTableData
 
 typedef TupleTableData *TupleTable;
 
-
-/*
- * TupIsNull -- is a TupleTableSlot empty?
- */
-#define TupIsNull(slot) \
-	((slot) == NULL || (slot)->tts_isempty)
-
 /* in executor/execTuples.c */
+extern void init_slot(TupleTableSlot *slot, TupleDesc tupdesc);
+
 extern TupleTable ExecCreateTupleTable(int tableSize);
 extern void ExecDropTupleTable(TupleTable table, bool shouldFree);
 extern TupleTableSlot *MakeSingleTupleTableSlot(TupleDesc tupdesc);
 extern void ExecDropSingleTupleTableSlot(TupleTableSlot *slot);
 extern TupleTableSlot *ExecAllocTableSlot(TupleTable table);
-extern void ExecSetSlotDescriptor(TupleTableSlot *slot, TupleDesc tupdesc);
-extern TupleTableSlot *ExecStoreTuple(HeapTuple tuple,
+extern void ExecSetSlotDescriptor(TupleTableSlot *slot, TupleDesc tupdesc); 
+
+extern TupleTableSlot *ExecStoreHeapTuple(HeapTuple tuple,
 			   TupleTableSlot *slot,
 			   Buffer buffer,
 			   bool shouldFree);
-extern TupleTableSlot *ExecStoreMinimalTuple(MinimalTuple mtup,
+extern TupleTableSlot *ExecStoreMemTuple(MemTuple mtup,
 					  TupleTableSlot *slot,
 					  bool shouldFree);
+
 extern TupleTableSlot *ExecClearTuple(TupleTableSlot *slot);
 extern TupleTableSlot *ExecStoreVirtualTuple(TupleTableSlot *slot);
 extern TupleTableSlot *ExecStoreAllNullTuple(TupleTableSlot *slot);
 
-extern HeapTuple ExecCopySlotTuple(TupleTableSlot *slot);
+extern HeapTuple ExecCopySlotHeapTuple(TupleTableSlot *slot);
 extern HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char *dest, unsigned int *len);
-extern MinimalTuple ExecCopySlotMinimalTuple(TupleTableSlot *slot);
-extern bool ExecCopySlotMinimalTupleTo(TupleTableSlot *slot, char *dest, unsigned int *len);
+extern MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot);
+extern MemTuple ExecCopySlotMemTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char *dest, unsigned int *len);
 
-extern HeapTuple ExecFetchSlotTuple(TupleTableSlot *slot);
-extern MinimalTuple ExecFetchSlotMinimalTuple(TupleTableSlot *slot);
-extern HeapTuple ExecMaterializeSlot(TupleTableSlot *slot);
-extern TupleTableSlot *ExecCopySlot(TupleTableSlot *dstslot,
-			 TupleTableSlot *srcslot);
+extern HeapTuple ExecFetchSlotHeapTuple(TupleTableSlot *slot);
+extern MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot);
 
-/* in access/common/heaptuple.c */
-
-extern Datum _slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull);
-extern void slot_getallattrs(TupleTableSlot *slot);
-extern void slot_getsomeattrs(TupleTableSlot *slot, int attnum);
-extern bool slot_attisnull(TupleTableSlot *slot, int attnum);
-
-static inline Datum slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
+static inline void *ExecFetchSlotGenericTuple(TupleTableSlot *slot)
 {
-    if (0 < attnum && attnum <= slot->tts_nvalid)
-		return (*isnull = slot->tts_isnull[attnum-1]), slot->tts_values[attnum-1];
-	else
-		return _slot_getattr(slot, attnum, isnull);
+	Assert(!TupIsNull(slot));
+	if (slot->_tts_memtuple == NULL && slot->_tts_heaptuple != NULL)
+		return (void *) slot->_tts_heaptuple;
+
+	return ExecFetchSlotMemTuple(slot);
 }
 
+static inline TupleTableSlot *ExecStoreGenericTuple(void *tup, TupleTableSlot *slot, bool shouldFree)
+{
+	if(is_heaptuple_memtuple((HeapTuple) tup))
+		return ExecStoreMemTuple((MemTuple) tup, slot, shouldFree);
+
+	return ExecStoreHeapTuple((HeapTuple) tup, slot, InvalidBuffer, shouldFree);
+}
+
+static inline HeapTuple ExecCopyGenericTuple(TupleTableSlot *slot)
+{
+	Assert(!TupIsNull(slot));
+	if(slot->_tts_heaptuple != NULL && slot->_tts_memtuple == NULL)
+		return ExecCopySlotHeapTuple(slot);
+	return (HeapTuple) ExecCopySlotMemTuple(slot);
+}
+
+extern TupleTableSlot *ExecCopySlot(TupleTableSlot *dstslot, TupleTableSlot *srcslot);
+
+extern void ExecModifyMemTuple(TupleTableSlot *slot, Datum *values, bool *isnull, bool *doRepl);
 #endif   /* TUPTABLE_H */

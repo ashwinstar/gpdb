@@ -73,8 +73,7 @@ SeqNext(SeqScanState *node)
 		if (estate->es_evTupleNull[scanrelid - 1])
 			return ExecClearTuple(slot);
 
-		ExecStoreTuple(estate->es_evTuple[scanrelid - 1],
-					   slot, InvalidBuffer, false);
+		ExecStoreGenericTuple(estate->es_evTuple[scanrelid - 1], slot, false);
 
 		/*
 		 * Note that unlike IndexScan, SeqScan never use keys in
@@ -116,7 +115,7 @@ SeqNext(SeqScanState *node)
 	 * refcount will not be dropped until the tuple table slot is cleared.
 	 */
 	if (tuple)
-		ExecStoreTuple(tuple,	/* tuple to store */
+		ExecStoreHeapTuple(tuple,	/* tuple to store */
 					   slot,	/* slot to store in */
 					   scandesc->rs_cbuf,		/* buffer associated with this
 												 * tuple */

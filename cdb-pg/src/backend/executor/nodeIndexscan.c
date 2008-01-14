@@ -86,8 +86,7 @@ IndexNext(IndexScanState *node)
 		if (estate->es_evTupleNull[scanrelid - 1])
 			return ExecClearTuple(slot);
 
-		ExecStoreTuple(estate->es_evTuple[scanrelid - 1],
-					   slot, InvalidBuffer, false);
+		ExecStoreGenericTuple(estate->es_evTuple[scanrelid - 1], slot, false);
 
 		/* Does the tuple meet the indexqual condition? */
 		econtext->ecxt_scantuple = slot;
@@ -113,8 +112,8 @@ IndexNext(IndexScanState *node)
 		 * Note: we pass 'false' because tuples returned by amgetnext are
 		 * pointers onto disk pages and must not be pfree()'d.
 		 */
-		ExecStoreTuple(tuple,	/* tuple to store */
-					   slot,	/* slot to store in */
+		ExecStoreHeapTuple(tuple,	/* tuple to store */
+				slot,	/* slot to store in */
 					   scandesc->xs_cbuf,		/* buffer containing tuple */
 					   false);	/* don't pfree */
 
