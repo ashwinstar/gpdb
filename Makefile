@@ -10,7 +10,7 @@ GPDOCDIR=$(CURDIR)/docs/release
 DEFPORT=5432
 INLINE_FLAGS=-finline-limit=1800
 
-OPTFLAGS="-O3 -fno-omit-frame-pointer -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS)"
+OPTFLAGS="-O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS)"
 
 ifeq (on, ${GPDBGINLINE})
 CFLAGS_INLINE=$(INLINE_FLAGS)
