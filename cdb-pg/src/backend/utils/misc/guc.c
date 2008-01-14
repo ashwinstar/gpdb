@@ -1619,7 +1619,7 @@ static struct config_bool ConfigureNamesBool[] =
 		 NULL
 		},
 		&gp_disable_tuple_hints,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 		
 	{

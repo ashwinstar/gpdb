@@ -210,7 +210,7 @@ bool		gp_enable_tablespace_auto_mkdir = FALSE;
 int 		gp_use_mpool = 0;
 
 /* Disable setting of tuple hints while reading */
-bool		gp_disable_tuple_hints = true;
+bool		gp_disable_tuple_hints = false;
 bool		gp_hashagg_compress_spill_files = false;
 
 /* --------------------------------------------------------------------------------------------------

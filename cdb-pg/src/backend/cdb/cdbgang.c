@@ -1583,6 +1583,7 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 
 	appendPQExpBuffer(buffer, " -c work_mem=%d", work_mem);
 	appendPQExpBuffer(buffer, " -c gp_hashagg_compress_spill_files=%d", gp_hashagg_compress_spill_files ? 1 : 0);
+	appendPQExpBuffer(buffer, " -c gp_disable_tuple_hints=%d", gp_disable_tuple_hints ? 1 : 0);
 	appendPQExpBuffer(buffer, " -c maintenance_work_mem=%d", maintenance_work_mem);
 	appendPQExpBuffer(buffer, " -c temp_buffers=%d", num_temp_buffers);
     appendPQExpBuffer(buffer, " -c gp_log_interconnect=%s -c gp_interconnect_type=%s",
