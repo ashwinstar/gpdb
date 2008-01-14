@@ -495,7 +495,7 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 					      );
 				else
 				{
-					if(VARATT_IS_SHORT(values[i]))
+					if(VARATT_IS_SHORT(DatumGetPointer(values[i])))
 					{
 						attr_len = VARSIZE_SHORT(DatumGetPointer(values[i]));
 						Assert(attr_len <= bind->len);
