@@ -84,13 +84,6 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     }
 	
 
-    node_base_port = apr_palloc(cmdslot->pool, sizeof(int) * cmdslot->u.fts.nnode);
-    node_mirror_base_port = apr_palloc(cmdslot->pool, sizeof(int) * cmdslot->u.fts.nnode);
-    for (i = 0 ; i < cmdslot->u.fts.nnode ; i++) {
-	node_base_port[i] = base_port;
-	node_mirror_base_port[i] = mirror_base_port;
-    }
-
     n = i;
 
     for (i = 0 ; ; i++) {
@@ -111,6 +104,13 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
     cmdslot->u.fts.nseginfo = n;
     cmdslot->u.fts.seginfo = apr_palloc(cmdslot->pool, sizeof(*cmdslot->u.fts.seginfo) * n);
+
+    node_base_port = apr_palloc(cmdslot->pool, sizeof(int) * cmdslot->u.fts.nnode);
+    node_mirror_base_port = apr_palloc(cmdslot->pool, sizeof(int) * cmdslot->u.fts.nnode);
+    for (i = 0 ; i < cmdslot->u.fts.nnode ; i++) {
+	node_base_port[i] = base_port;
+	node_mirror_base_port[i] = mirror_base_port;
+    }
 
     /* master QD */
     strcpy(key, "gpdb.seg.m.0");
