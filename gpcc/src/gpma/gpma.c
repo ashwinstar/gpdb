@@ -431,8 +431,7 @@ void ma_init(void)
 	cp = gpma.ma_cmdtab[i] = cmdslot_alloc(ma_name, MA_OFF_CMDSTATE);
 	cp->u.ma.node_unit = apr_pstrdup(gpma.pool, ma);
 	p = strchr(cp->u.ma.node_unit, ':');
-	*p++ = 0;
-	cp->u.ma.port = strtol(p, 0, 0);
+	cp->u.ma.port = strtol(++p, 0, 0);
 	if (! (0 < cp->u.ma.port && cp->u.ma.port < (1 << 16)))
 	    gpcc_fatal(FLINE, "Illegal ma port specification: %s", ma);
     }
