@@ -549,6 +549,14 @@ tsvector_out(PG_FUNCTION_ARGS)
 				curout = outbuf + pos;
 				*curout++ = '\'';
 			}
+			else if (t_iseq(curin, '\\'))
+			{
+				int4		pos = curout - outbuf;
+
+				outbuf = (char *) repalloc((void *) outbuf, ++lenbuf);
+				curout = outbuf + pos;
+				*curout++ = '\\';
+			}
 			while (len--)
 				*curout++ = *curin++;
 		}
@@ -603,7 +611,12 @@ compareWORD(const void *a, const void *b)
 								  ((TSWORD *) b)->len);
 
 		if (res == 0)
+		{
+			if ( ((TSWORD *) a)->pos.pos == ((TSWORD *) b)->pos.pos )
+				return 0;
+
 			return (((TSWORD *) a)->pos.pos > ((TSWORD *) b)->pos.pos) ? 1 : -1;
+		}
 		return res;
 	}
 	return (((TSWORD *) a)->len > ((TSWORD *) b)->len) ? 1 : -1;
@@ -653,7 +666,8 @@ uniqueWORD(TSWORD * a, int4 l)
 		else
 		{
 			pfree(ptr->word);
-			if (res->pos.apos[0] < MAXNUMPOS - 1 && res->pos.apos[res->pos.apos[0]] != MAXENTRYPOS - 1)
+			if (res->pos.apos[0] < MAXNUMPOS - 1 && res->pos.apos[res->pos.apos[0]] != MAXENTRYPOS - 1 &&
+				res->pos.apos[res->pos.apos[0]] != LIMITPOS(ptr->pos.pos) )
 			{
 				if (res->pos.apos[0] + 1 >= res->alen)
 				{

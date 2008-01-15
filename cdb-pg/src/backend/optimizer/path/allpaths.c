@@ -815,13 +815,18 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
 		/*
 		 * Consider the different orders in which we could join the rels,
 		 * using either GEQO or regular optimizer.
-		 */
-/* MPP does not support geqo
+		 *
+		 * We put the initial_rels list into a PlannerInfo field because
+		 * has_legal_joinclause() needs to look at it (ugly :-().
+  		 */
+		RelOptInfo *rel;
+		root->initial_rels = initial_rels;
+
+#if 0 /* MPP does not support geqo */
 		if (enable_geqo && levels_needed >= geqo_threshold)
 			return geqo(root, levels_needed, initial_rels);
 		else
-*/		
-		RelOptInfo *rel;
+#endif
 
 		rel = make_one_rel_by_joins(root, levels_needed, initial_rels, false);
 

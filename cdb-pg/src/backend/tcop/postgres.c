@@ -3745,7 +3745,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			
 
 			if (cuid > 0)
-				SetUserId(cuid); /* Set current userid */
+				SetUserIdAndContext(cuid, false); /* Set current userid */
 
 			//PG_TRY();
 			{
@@ -3854,7 +3854,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			/*
 			 * Not really necessary to reset this, but let's play it safe
 			 */
-			SetUserId(GetOuterUserId());
+			SetUserIdAndContext(GetOuterUserId(), false);
 			
 			/*
 			 * make sure we have some kind of completion tag.
@@ -5147,7 +5147,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					//PG_TRY();
 					{				
 						if (cuid > 0)
-							SetUserId(cuid);								/* Set current userid */
+							SetUserIdAndContext(cuid, false); /* Set current userid */
 							
 						if (serializedQuerytreelen==0 && serializedPlantreelen==0)
 							{
@@ -5192,7 +5192,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					//}
 					//PG_END_TRY();
 						
-					SetUserId(GetOuterUserId());
+					SetUserIdAndContext(GetOuterUserId(), false);
 
 					send_ready_for_query = true;
 				}

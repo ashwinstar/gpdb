@@ -927,7 +927,7 @@ scalargtsel(PG_FUNCTION_ARGS)
  * patternsel			- Generic code for pattern-match selectivity.
  */
 static double
-patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
+patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype, bool negate)
 {
 	PlannerInfo *root = (PlannerInfo *) PG_GETARG_POINTER(0);
 	Oid			operator = PG_GETARG_OID(1);
@@ -948,22 +948,39 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 	double		result;
 
 	/*
+	 * If this is for a NOT LIKE or similar operator, get the corresponding
+	 * positive-match operator and work with that.  Set result to the
+	 * correct default estimate, too.
+	 */
+	if (negate)
+	{
+		operator = get_negator(operator);
+		if (!OidIsValid(operator))
+			elog(ERROR, "patternsel called for operator without a negator");
+		result = 1.0 - DEFAULT_MATCH_SEL;
+	}
+	else
+	{
+		result = DEFAULT_MATCH_SEL;
+	}
+
+	/*
 	 * If expression is not variable op constant, then punt and return a
 	 * default estimate.
 	 */
 	if (!get_restriction_variable(root, args, varRelid,
 								  &vardata, &other, &varonleft))
-		return DEFAULT_MATCH_SEL;
+		return result;
 	if (!varonleft || !IsA(other, Const))
 	{
 		ReleaseVariableStats(vardata);
-		return DEFAULT_MATCH_SEL;
+		return result;
 	}
 	variable = (Node *) linitial(args);
 
 	/*
 	 * If the constant is NULL, assume operator is strict and return zero, ie,
-	 * operator will never return TRUE.
+	 * operator will never return TRUE.  (It's zero even for a negator op.)
 	 */
 	if (((Const *) other)->constisnull)
 	{
@@ -982,7 +999,7 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 	if (consttype != TEXTOID && consttype != BYTEAOID)
 	{
 		ReleaseVariableStats(vardata);
-		return DEFAULT_MATCH_SEL;
+		return result;
 	}
 
 	/*
@@ -1017,7 +1034,7 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 			break;
 		default:
 			ReleaseVariableStats(vardata);
-			return DEFAULT_MATCH_SEL;
+			return result;
 	}
 
 	/* divide pattern into fixed prefix and remainder */
@@ -1046,7 +1063,7 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 				elog(ERROR, "unrecognized consttype: %u",
 					 prefix->consttype);
 				ReleaseVariableStats(vardata);
-				return DEFAULT_MATCH_SEL;
+				return result;
 		}
 		prefix = string_to_const(prefixstr, vartype);
 		pfree(prefixstr);
@@ -1165,7 +1182,7 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 
 	ReleaseVariableStats(vardata);
 
-	return result;
+	return negate ? (1.0 - result) : result;
 }
 
 /*
@@ -1174,7 +1191,7 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 Datum
 regexeqsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Regex));
+	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Regex, false));
 }
 
 /*
@@ -1183,7 +1200,7 @@ regexeqsel(PG_FUNCTION_ARGS)
 Datum
 icregexeqsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Regex_IC));
+	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Regex_IC, false));
 }
 
 /*
@@ -1192,7 +1209,7 @@ icregexeqsel(PG_FUNCTION_ARGS)
 Datum
 likesel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Like));
+	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Like, false));
 }
 
 /*
@@ -1201,7 +1218,7 @@ likesel(PG_FUNCTION_ARGS)
 Datum
 iclikesel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Like_IC));
+	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Like_IC, false));
 }
 
 /*
@@ -1210,11 +1227,7 @@ iclikesel(PG_FUNCTION_ARGS)
 Datum
 regexnesel(PG_FUNCTION_ARGS)
 {
-	double		result;
-
-	result = patternsel(fcinfo, Pattern_Type_Regex);
-	result = 1.0 - result;
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Regex, true));
 }
 
 /*
@@ -1223,11 +1236,7 @@ regexnesel(PG_FUNCTION_ARGS)
 Datum
 icregexnesel(PG_FUNCTION_ARGS)
 {
-	double		result;
-
-	result = patternsel(fcinfo, Pattern_Type_Regex_IC);
-	result = 1.0 - result;
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Regex_IC, true));
 }
 
 /*
@@ -1236,11 +1245,7 @@ icregexnesel(PG_FUNCTION_ARGS)
 Datum
 nlikesel(PG_FUNCTION_ARGS)
 {
-	double		result;
-
-	result = patternsel(fcinfo, Pattern_Type_Like);
-	result = 1.0 - result;
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Like, true));
 }
 
 /*
@@ -1249,11 +1254,7 @@ nlikesel(PG_FUNCTION_ARGS)
 Datum
 icnlikesel(PG_FUNCTION_ARGS)
 {
-	double		result;
-
-	result = patternsel(fcinfo, Pattern_Type_Like_IC);
-	result = 1.0 - result;
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_FLOAT8(patternsel(fcinfo, Pattern_Type_Like_IC, true));
 }
 
 /*
@@ -2148,12 +2149,22 @@ scalargtjoinsel(PG_FUNCTION_ARGS)
 }
 
 /*
+ * patternjoinsel		- Generic code for pattern-match join selectivity.
+ */
+static double
+patternjoinsel(PG_FUNCTION_ARGS, Pattern_Type ptype, bool negate)
+{
+	/* For the moment we just punt. */
+	return negate ? (1.0 - DEFAULT_MATCH_SEL) : DEFAULT_MATCH_SEL;
+}
+
+/*
  *		regexeqjoinsel	- Join selectivity of regular-expression pattern match.
  */
 Datum
 regexeqjoinsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(DEFAULT_MATCH_SEL);
+	PG_RETURN_FLOAT8(patternjoinsel(fcinfo, Pattern_Type_Regex, false));
 }
 
 /*
@@ -2162,7 +2173,7 @@ regexeqjoinsel(PG_FUNCTION_ARGS)
 Datum
 icregexeqjoinsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(DEFAULT_MATCH_SEL);
+	PG_RETURN_FLOAT8(patternjoinsel(fcinfo, Pattern_Type_Regex_IC, false));
 }
 
 /*
@@ -2171,7 +2182,7 @@ icregexeqjoinsel(PG_FUNCTION_ARGS)
 Datum
 likejoinsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(DEFAULT_MATCH_SEL);
+	PG_RETURN_FLOAT8(patternjoinsel(fcinfo, Pattern_Type_Like, false));
 }
 
 /*
@@ -2180,7 +2191,7 @@ likejoinsel(PG_FUNCTION_ARGS)
 Datum
 iclikejoinsel(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_FLOAT8(DEFAULT_MATCH_SEL);
+	PG_RETURN_FLOAT8(patternjoinsel(fcinfo, Pattern_Type_Like_IC, false));
 }
 
 /*
@@ -2189,11 +2200,7 @@ iclikejoinsel(PG_FUNCTION_ARGS)
 Datum
 regexnejoinsel(PG_FUNCTION_ARGS)
 {
-	float8		result;
-
-	result = DatumGetFloat8(regexeqjoinsel(fcinfo));
-	result = 1.0 - result;
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_FLOAT8(patternjoinsel(fcinfo, Pattern_Type_Regex, true));
 }
 
 /*
@@ -2202,11 +2209,7 @@ regexnejoinsel(PG_FUNCTION_ARGS)
 Datum
 icregexnejoinsel(PG_FUNCTION_ARGS)
 {
-	float8		result;
-
-	result = DatumGetFloat8(icregexeqjoinsel(fcinfo));
-	result = 1.0 - result;
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_FLOAT8(patternjoinsel(fcinfo, Pattern_Type_Regex_IC, true));
 }
 
 /*
@@ -2215,11 +2218,7 @@ icregexnejoinsel(PG_FUNCTION_ARGS)
 Datum
 nlikejoinsel(PG_FUNCTION_ARGS)
 {
-	float8		result;
-
-	result = DatumGetFloat8(likejoinsel(fcinfo));
-	result = 1.0 - result;
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_FLOAT8(patternjoinsel(fcinfo, Pattern_Type_Like, true));
 }
 
 /*
@@ -2228,11 +2227,7 @@ nlikejoinsel(PG_FUNCTION_ARGS)
 Datum
 icnlikejoinsel(PG_FUNCTION_ARGS)
 {
-	float8		result;
-
-	result = DatumGetFloat8(iclikejoinsel(fcinfo));
-	result = 1.0 - result;
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_FLOAT8(patternjoinsel(fcinfo, Pattern_Type_Like_IC, true));
 }
 
 /*
@@ -4332,16 +4327,16 @@ prefix_selectivity(VariableStatData *vardata, Oid opclass, Const *prefixcon)
 	 *	"x < greaterstr".
 	 *-------
 	 */
-	greaterstrcon = make_greater_string(prefixcon);
+	cmpopr = get_opclass_member(opclass, InvalidOid,
+								BTLessStrategyNumber);
+	if (cmpopr == InvalidOid)
+		elog(ERROR, "no < operator for opclass %u", opclass);
+	fmgr_info(get_opcode(cmpopr), &opproc);
+
+	greaterstrcon = make_greater_string(prefixcon, &opproc);
 	if (greaterstrcon)
 	{
 		Selectivity topsel;
-
-		cmpopr = get_opclass_member(opclass, InvalidOid,
-									BTLessStrategyNumber);
-		if (cmpopr == InvalidOid)
-			elog(ERROR, "no < operator for opclass %u", opclass);
-		fmgr_info(get_opcode(cmpopr), &opproc);
 
 		topsel = ineq_histogram_selectivity(vardata, &opproc, false,
 											greaterstrcon->constvalue,
@@ -4625,11 +4620,25 @@ pattern_selectivity(Const *patt, Pattern_Type ptype)
 /*
  * Try to generate a string greater than the given string or any
  * string it is a prefix of.  If successful, return a palloc'd string
- * in the form of a Const pointer; else return NULL.
+ * in the form of a Const node; else return NULL.
+ *
+ * The caller must provide the appropriate "less than" comparison function
+ * for testing the strings.
  *
  * The key requirement here is that given a prefix string, say "foo",
- * we must be able to generate another string "fop" that is greater
- * than all strings "foobar" starting with "foo".
+ * we must be able to generate another string "fop" that is greater than
+ * all strings "foobar" starting with "foo".  We can test that we have
+ * generated a string greater than the prefix string, but in non-C locales
+ * that is not a bulletproof guarantee that an extension of the string might
+ * not sort after it; an example is that "foo " is less than "foo!", but it
+ * is not clear that a "dictionary" sort ordering will consider "foo!" less
+ * than "foo bar".  CAUTION: Therefore, this function should be used only for
+ * estimation purposes when working in a non-C locale.
+ *
+ * To try to catch most cases where an extended string might otherwise sort
+ * before the result value, we determine which of the strings "Z", "z", "y",
+ * and "9" is seen as largest by the locale, and append that to the given
+ * prefix before trying to find a string that compares as larger.
  *
  * If we max out the righthand byte, truncate off the last character
  * and start incrementing the next.  For example, if "z" were the last
@@ -4638,25 +4647,29 @@ pattern_selectivity(Const *patt, Pattern_Type ptype)
  *
  * This could be rather slow in the worst case, but in most cases we
  * won't have to try more than one or two strings before succeeding.
- *
- * NOTE: at present this assumes we are in the C locale, so that simple
- * bytewise comparison applies.  However, we might be in a multibyte
- * encoding such as UTF8, so we do have to watch out for generating
- * invalid encoding sequences.
  */
 Const *
-make_greater_string(const Const *str_const)
+make_greater_string(const Const *str_const, FmgrInfo *ltproc)
 {
 	Oid			datatype = str_const->consttype;
 	char	   *workstr;
 	int			len;
+	Datum		cmpstr;
+	text	   *cmptxt = NULL;
 
-	/* Get the string and a modifiable copy */
+	/*
+	 * Get a modifiable copy of the prefix string in C-string format,
+	 * and set up the string we will compare to as a Datum.  In C locale
+	 * this can just be the given prefix string, otherwise we need to add
+	 * a suffix.  Types NAME and BYTEA sort bytewise so they don't need
+	 * a suffix either.
+	 */
 	if (datatype == NAMEOID)
 	{
 		workstr = DatumGetCString(DirectFunctionCall1(nameout,
 													  str_const->constvalue));
 		len = strlen(workstr);
+		cmpstr = str_const->constvalue;
 	}
 	else if (datatype == BYTEAOID)
 	{
@@ -4667,12 +4680,41 @@ make_greater_string(const Const *str_const)
 		memcpy(workstr, VARDATA(bstr), len);
 		if ((Pointer) bstr != DatumGetPointer(str_const->constvalue))
 			pfree(bstr);
+		cmpstr = str_const->constvalue;
 	}
 	else
 	{
 		workstr = DatumGetCString(DirectFunctionCall1(textout,
 													  str_const->constvalue));
 		len = strlen(workstr);
+		if (lc_collate_is_c() || len == 0)
+			cmpstr = str_const->constvalue;
+		else
+		{
+			/* If first time through, determine the suffix to use */
+			static char suffixchar = 0;
+
+			if (!suffixchar)
+			{
+				char *best;
+
+				best = "Z";
+				if (varstr_cmp(best, 1, "z", 1) < 0)
+					best = "z";
+				if (varstr_cmp(best, 1, "y", 1) < 0)
+					best = "y";
+				if (varstr_cmp(best, 1, "9", 1) < 0)
+					best = "9";
+				suffixchar = *best;
+			}
+
+			/* And build the string to compare to */
+			cmptxt = (text *) palloc(VARHDRSZ + len + 1);
+			SET_VARSIZE(cmptxt, VARHDRSZ + len + 1);
+			memcpy(VARDATA(cmptxt), workstr, len);
+			*(VARDATA(cmptxt) + len) = suffixchar;
+			cmpstr = PointerGetDatum(cmptxt);
+		}
 	}
 
 	while (len > 0)
@@ -4699,8 +4741,20 @@ make_greater_string(const Const *str_const)
 			else
 				workstr_const = string_to_bytea_const(workstr, len);
 
-			pfree(workstr);
-			return workstr_const;
+			if (DatumGetBool(FunctionCall2(ltproc,
+										   cmpstr,
+										   workstr_const->constvalue)))
+			{
+				/* Successfully made a string larger than cmpstr */
+				if (cmptxt)
+					pfree(cmptxt);
+				pfree(workstr);
+				return workstr_const;
+			}
+
+			/* No good, release unusable value and try again */
+			pfree(DatumGetPointer(workstr_const->constvalue));
+			pfree(workstr_const);
 		}
 
 		/* restore last byte so we don't confuse pg_mbcliplen */
@@ -4720,6 +4774,8 @@ make_greater_string(const Const *str_const)
 	}
 
 	/* Failed... */
+	if (cmptxt)
+		pfree(cmptxt);
 	pfree(workstr);
 
 	return NULL;

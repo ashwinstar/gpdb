@@ -132,6 +132,9 @@ typedef struct PlannerInfo
 	bool		hasHavingQual;	/* true if havingQual was non-null */
 	bool		hasPseudoConstantQuals; /* true if any RestrictInfo has
 										 * pseudoconstant = true */
+
+	/* At the end to avoid breaking existing 8.2 add-ons */
+	List	   *initial_rels;	/* RelOptInfos we are now trying to join */
 } PlannerInfo;
 
 
@@ -1075,6 +1078,7 @@ typedef struct OuterJoinInfo
 typedef struct InClauseInfo
 {
 	NodeTag		type;
+	Relids		lefthand; 		/* base relids in lefthand expressions */
 	Relids		righthand;		/* base relids coming from the subselect */
 	List	   *sub_targetlist; /* targetlist of original RHS subquery */
 

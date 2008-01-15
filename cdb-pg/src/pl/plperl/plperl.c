@@ -23,6 +23,7 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_type.h"
+#include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -148,6 +149,8 @@ static HV  *plperl_spi_execute_fetch_result(SPITupleTable *, int, int);
 static SV  *newSVstring(const char *str);
 static SV **hv_store_string(HV *hv, const char *key, SV *val);
 static SV **hv_fetch_string(HV *hv, const char *key);
+static SV  *plperl_create_sub(char *s, bool trusted);
+static SV  *plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo);
 
 /*
  * This routine is a crock, and so is everyplace that calls it.  The problem
@@ -505,6 +508,40 @@ plperl_safe_init(void)
 	else
 	{
 		eval_pv(SAFE_OK, FALSE);
+		if (GetDatabaseEncoding() == PG_UTF8)
+		{
+			/* 
+			 * Fill in just enough information to set up this perl
+			 * function in the safe container and call it.
+			 * For some reason not entirely clear, it prevents errors that
+			 * can arise from the regex code later trying to load
+			 * utf8 modules.
+			 */
+			plperl_proc_desc desc;			
+			FunctionCallInfoData fcinfo;
+			SV *ret;
+			SV *func;
+
+			/* make sure we don't call ourselves recursively */
+			plperl_safe_init_done = true;
+
+			/* compile the function */
+			func = plperl_create_sub(
+				"return shift =~ /\\xa9/i ? 'true' : 'false' ;",
+				true);
+
+			/* set up to call the function with a single text argument 'a' */
+			desc.reference = func;
+			desc.nargs = 1;
+			desc.arg_is_rowtype[0] = false;
+			fmgr_info(F_TEXTOUT, &(desc.arg_out_func[0]));
+
+			fcinfo.arg[0] = DirectFunctionCall1(textin, CStringGetDatum("a"));
+			fcinfo.argnull[0] = false;
+			
+			/* and make the call */
+			ret = plperl_call_perl_func(&desc, &fcinfo);
+		}
 	}
 
 	plperl_safe_init_done = true;

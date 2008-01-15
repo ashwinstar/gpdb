@@ -18,6 +18,16 @@
 #else
 #include <Python.h>
 #endif
+
+/*
+ * Py_ssize_t compat for Python <= 2.4
+ */
+#if PY_VERSION_HEX < 0x02050000 && !defined(PY_SSIZE_T_MIN)
+typedef int Py_ssize_t;
+#define PY_SSIZE_T_MAX INT_MAX
+#define PY_SSIZE_T_MIN INT_MIN
+#endif
+
 #include "postgres.h"
 
 /* system stuff */
@@ -56,7 +66,8 @@ typedef PyObject *(*PLyDatumToObFunc) (const char *);
 typedef struct PLyDatumToOb
 {
 	PLyDatumToObFunc func;
-	FmgrInfo	typfunc;
+	FmgrInfo	typfunc;		/* The type's output function */
+	Oid			typoid;			/* The OID of the type */
 	Oid			typioparam;
 	bool		typbyval;
 }	PLyDatumToOb;
@@ -187,11 +198,9 @@ static char *PLy_procedure_name(PLyProcedure *);
 /* some utility functions */
 static void PLy_elog(int, const char *,...);
 static char *PLy_traceback(int *);
-static char *PLy_vprintf(const char *fmt, va_list ap);
-static char *PLy_printf(const char *fmt,...);
 
 static void *PLy_malloc(size_t);
-static void *PLy_realloc(void *, size_t);
+static void *PLy_malloc0(size_t);
 static char *PLy_strdup(const char *);
 static void PLy_free(void *);
 
@@ -211,9 +220,8 @@ static PyObject *PLy_procedure_call(PLyProcedure *, char *, PyObject *);
 static PLyProcedure *PLy_procedure_get(FunctionCallInfo fcinfo,
 				  Oid tgreloid);
 
-static PLyProcedure *PLy_procedure_create(FunctionCallInfo fcinfo,
-					 Oid tgreloid,
-					 HeapTuple procTup, char *key);
+static PLyProcedure *PLy_procedure_create(HeapTuple procTup, Oid tgreloid,
+										  char *key);
 
 static void PLy_procedure_compile(PLyProcedure *, const char *);
 static char *PLy_procedure_munge_source(const char *, const char *);
@@ -1103,7 +1111,24 @@ PLy_procedure_get(FunctionCallInfo fcinfo, Oid tgreloid)
 	}
 
 	if (proc == NULL)
-		proc = PLy_procedure_create(fcinfo, tgreloid, procTup, key);
+		proc = PLy_procedure_create(procTup, tgreloid, key);
+
+	if (OidIsValid(tgreloid))
+	{
+		/*
+		 * Input/output conversion for trigger tuples.	Use the result
+		 * TypeInfo variable to store the tuple conversion info.  We
+		 * do this over again on each call to cover the possibility that
+		 * the relation's tupdesc changed since the trigger was last called.
+		 * PLy_input_tuple_funcs and PLy_output_tuple_funcs are responsible
+		 * for not doing repetitive work.
+		 */
+		TriggerData *tdata = (TriggerData *) fcinfo->context;
+
+		Assert(CALLED_AS_TRIGGER(fcinfo));
+		PLy_input_tuple_funcs(&(proc->result), tdata->tg_relation->rd_att);
+		PLy_output_tuple_funcs(&(proc->result), tdata->tg_relation->rd_att);
+	}
 
 	ReleaseSysCache(procTup);
 
@@ -1111,8 +1136,7 @@ PLy_procedure_get(FunctionCallInfo fcinfo, Oid tgreloid)
 }
 
 static PLyProcedure *
-PLy_procedure_create(FunctionCallInfo fcinfo, Oid tgreloid,
-					 HeapTuple procTup, char *key)
+PLy_procedure_create(HeapTuple procTup, Oid tgreloid, char *key)
 {
 	char		procName[NAMEDATALEN + 256];
 	Form_pg_proc procStruct;
@@ -1132,13 +1156,13 @@ PLy_procedure_create(FunctionCallInfo fcinfo, Oid tgreloid,
 		rv = snprintf(procName, sizeof(procName),
 					  "__plpython_procedure_%s_%u_trigger_%u",
 					  NameStr(procStruct->proname),
-					  fcinfo->flinfo->fn_oid,
+					  HeapTupleGetOid(procTup),
 					  tgreloid);
 	else
 		rv = snprintf(procName, sizeof(procName),
 					  "__plpython_procedure_%s_%u",
 					  NameStr(procStruct->proname),
-					  fcinfo->flinfo->fn_oid);
+					  HeapTupleGetOid(procTup));
 	if (rv >= sizeof(procName) || rv < 0)
 		elog(ERROR, "procedure name would overrun buffer");
 
@@ -1166,7 +1190,7 @@ PLy_procedure_create(FunctionCallInfo fcinfo, Oid tgreloid,
 		 * get information required for output conversion of the return value,
 		 * but only if this isn't a trigger.
 		 */
-		if (!CALLED_AS_TRIGGER(fcinfo))
+		if (!OidIsValid(tgreloid))
 		{
 			HeapTuple	rvTypeTup;
 			Form_pg_type rvTypeStruct;
@@ -1208,28 +1232,18 @@ PLy_procedure_create(FunctionCallInfo fcinfo, Oid tgreloid,
 
 			ReleaseSysCache(rvTypeTup);
 		}
-		else
-		{
-			/*
-			 * input/output conversion for trigger tuples.	use the result
-			 * TypeInfo variable to store the tuple conversion info.
-			 */
-			TriggerData *tdata = (TriggerData *) fcinfo->context;
-
-			PLy_input_tuple_funcs(&(proc->result), tdata->tg_relation->rd_att);
-			PLy_output_tuple_funcs(&(proc->result), tdata->tg_relation->rd_att);
-		}
 
 		/*
 		 * now get information required for input conversion of the
 		 * procedure's arguments.
 		 */
-		proc->nargs = fcinfo->nargs;
+		proc->nargs = procStruct->pronargs;
 		if (proc->nargs)
 		{
 			argnames = SysCacheGetAttr(PROCOID, procTup, Anum_pg_proc_proargnames, &isnull);
 			if (!isnull)
 			{
+				/* XXX this code is WRONG if there are any output arguments */
 				deconstruct_array(DatumGetArrayTypeP(argnames), TEXTOID, -1, false, 'i',
 								  &elems, NULL, &nelems);
 				if (nelems != proc->nargs)
@@ -1240,7 +1254,7 @@ PLy_procedure_create(FunctionCallInfo fcinfo, Oid tgreloid,
 				memset(proc->argnames, 0, sizeof(char *) * proc->nargs);
 			}
 		}
-		for (i = 0; i < fcinfo->nargs; i++)
+		for (i = 0; i < proc->nargs; i++)
 		{
 			HeapTuple	argTypeTup;
 			Form_pg_type argTypeStruct;
@@ -1433,10 +1447,15 @@ PLy_input_tuple_funcs(PLyTypeInfo * arg, TupleDesc desc)
 
 	if (arg->is_rowtype == 0)
 		elog(ERROR, "PLyTypeInfo struct is initialized for a Datum");
-
 	arg->is_rowtype = 1;
-	arg->in.r.natts = desc->natts;
-	arg->in.r.atts = PLy_malloc(desc->natts * sizeof(PLyDatumToOb));
+
+	if (arg->in.r.natts != desc->natts)
+	{
+		if (arg->in.r.atts)
+			PLy_free(arg->in.r.atts);
+		arg->in.r.natts = desc->natts;
+		arg->in.r.atts = PLy_malloc0(desc->natts * sizeof(PLyDatumToOb));
+	}
 
 	for (i = 0; i < desc->natts; i++)
 	{
@@ -1444,6 +1463,9 @@ PLy_input_tuple_funcs(PLyTypeInfo * arg, TupleDesc desc)
 
 		if (desc->attrs[i]->attisdropped)
 			continue;
+
+		if (arg->in.r.atts[i].typoid == desc->attrs[i]->atttypid)
+			continue;			/* already set up this entry */
 
 		typeTup = SearchSysCache(TYPEOID,
 								 ObjectIdGetDatum(desc->attrs[i]->atttypid),
@@ -1467,10 +1489,15 @@ PLy_output_tuple_funcs(PLyTypeInfo * arg, TupleDesc desc)
 
 	if (arg->is_rowtype == 0)
 		elog(ERROR, "PLyTypeInfo struct is initialized for a Datum");
-
 	arg->is_rowtype = 1;
-	arg->out.r.natts = desc->natts;
-	arg->out.r.atts = PLy_malloc(desc->natts * sizeof(PLyDatumToOb));
+
+	if (arg->out.r.natts != desc->natts)
+	{
+		if (arg->out.r.atts)
+			PLy_free(arg->out.r.atts);
+		arg->out.r.natts = desc->natts;
+		arg->out.r.atts = PLy_malloc0(desc->natts * sizeof(PLyDatumToOb));
+	}
 
 	for (i = 0; i < desc->natts; i++)
 	{
@@ -1478,6 +1505,9 @@ PLy_output_tuple_funcs(PLyTypeInfo * arg, TupleDesc desc)
 
 		if (desc->attrs[i]->attisdropped)
 			continue;
+
+		if (arg->out.r.atts[i].typoid == desc->attrs[i]->atttypid)
+			continue;			/* already set up this entry */
 
 		typeTup = SearchSysCache(TYPEOID,
 								 ObjectIdGetDatum(desc->attrs[i]->atttypid),
@@ -1528,6 +1558,7 @@ PLy_input_datum_func2(PLyDatumToOb * arg, Oid typeOid, HeapTuple typeTup)
 
 	/* Get the type's conversion information */
 	perm_fmgr_info(typeStruct->typoutput, &arg->typfunc);
+	arg->typoid = HeapTupleGetOid(typeTup);
 	arg->typioparam = getTypeIOParam(typeTup);
 	arg->typbyval = typeStruct->typbyval;
 
@@ -1687,7 +1718,7 @@ PLyMapping_ToTuple(PLyTypeInfo * info, PyObject * mapping)
 	HeapTuple	tuple;
 	Datum	   *values;
 	char	   *nulls;
-	int			i;
+	volatile int i;
 
 	Assert(PyMapping_Check(mapping));
 
@@ -1702,8 +1733,8 @@ PLyMapping_ToTuple(PLyTypeInfo * info, PyObject * mapping)
 	for (i = 0; i < desc->natts; ++i)
 	{
 		char	   *key;
-		PyObject   *value,
-				   *so;
+		PyObject   * volatile value,
+				   * volatile so;
 
 		key = NameStr(desc->attrs[i]->attname);
 		value = so = NULL;
@@ -1767,7 +1798,7 @@ PLySequence_ToTuple(PLyTypeInfo * info, PyObject * sequence)
 	HeapTuple	tuple;
 	Datum	   *values;
 	char	   *nulls;
-	int			i;
+	volatile int i;
 
 	Assert(PySequence_Check(sequence));
 
@@ -1791,8 +1822,8 @@ PLySequence_ToTuple(PLyTypeInfo * info, PyObject * sequence)
 	nulls = palloc(sizeof(char) * desc->natts);
 	for (i = 0; i < desc->natts; ++i)
 	{
-		PyObject   *value,
-				   *so;
+		PyObject   * volatile value,
+				   * volatile so;
 
 		value = so = NULL;
 		PG_TRY();
@@ -1849,7 +1880,7 @@ PLyObject_ToTuple(PLyTypeInfo * info, PyObject * object)
 	HeapTuple	tuple;
 	Datum	   *values;
 	char	   *nulls;
-	int			i;
+	volatile int i;
 
 	desc = lookup_rowtype_tupdesc(info->out.d.typoid, -1);
 	if (info->is_rowtype == 2)
@@ -1862,8 +1893,8 @@ PLyObject_ToTuple(PLyTypeInfo * info, PyObject * object)
 	for (i = 0; i < desc->natts; ++i)
 	{
 		char	   *key;
-		PyObject   *value,
-				   *so;
+		PyObject   * volatile value,
+				   * volatile so;
 
 		key = NameStr(desc->attrs[i]->attname);
 		value = so = NULL;
@@ -1943,11 +1974,11 @@ static void PLy_result_dealloc(PyObject *);
 static PyObject *PLy_result_getattr(PyObject *, char *);
 static PyObject *PLy_result_nrows(PyObject *, PyObject *);
 static PyObject *PLy_result_status(PyObject *, PyObject *);
-static int	PLy_result_length(PyObject *);
-static PyObject *PLy_result_item(PyObject *, int);
-static PyObject *PLy_result_slice(PyObject *, int, int);
-static int	PLy_result_ass_item(PyObject *, int, PyObject *);
-static int	PLy_result_ass_slice(PyObject *, int, int, PyObject *);
+static Py_ssize_t PLy_result_length(PyObject *);
+static PyObject *PLy_result_item(PyObject *, Py_ssize_t);
+static PyObject *PLy_result_slice(PyObject *, Py_ssize_t, Py_ssize_t);
+static int	PLy_result_ass_item(PyObject *, Py_ssize_t, PyObject *);
+static int	PLy_result_ass_slice(PyObject *, Py_ssize_t, Py_ssize_t, PyObject *);
 
 
 static PyObject *PLy_spi_prepare(PyObject *, PyObject *);
@@ -1967,9 +1998,9 @@ static PyTypeObject PLy_PlanType = {
 	/*
 	 * methods
 	 */
-	(destructor) PLy_plan_dealloc,		/* tp_dealloc */
+	PLy_plan_dealloc,			/* tp_dealloc */
 	0,							/* tp_print */
-	(getattrfunc) PLy_plan_getattr,		/* tp_getattr */
+	PLy_plan_getattr,			/* tp_getattr */
 	0,							/* tp_setattr */
 	0,							/* tp_compare */
 	0,							/* tp_repr */
@@ -1991,15 +2022,14 @@ static PyMethodDef PLy_plan_methods[] = {
 	{NULL, NULL, 0, NULL}
 };
 
-
 static PySequenceMethods PLy_result_as_sequence = {
-	(inquiry) PLy_result_length,	/* sq_length */
-	(binaryfunc) 0,				/* sq_concat */
-	(intargfunc) 0,				/* sq_repeat */
-	(intargfunc) PLy_result_item,		/* sq_item */
-	(intintargfunc) PLy_result_slice,	/* sq_slice */
-	(intobjargproc) PLy_result_ass_item,		/* sq_ass_item */
-	(intintobjargproc) PLy_result_ass_slice,	/* sq_ass_slice */
+	PLy_result_length,		/* sq_length */
+	NULL,					/* sq_concat */
+	NULL,					/* sq_repeat */
+	PLy_result_item,		/* sq_item */
+	PLy_result_slice,		/* sq_slice */
+	PLy_result_ass_item,	/* sq_ass_item */
+	PLy_result_ass_slice,	/* sq_ass_slice */
 };
 
 static PyTypeObject PLy_ResultType = {
@@ -2012,9 +2042,9 @@ static PyTypeObject PLy_ResultType = {
 	/*
 	 * methods
 	 */
-	(destructor) PLy_result_dealloc,	/* tp_dealloc */
+	PLy_result_dealloc,			/* tp_dealloc */
 	0,							/* tp_print */
-	(getattrfunc) PLy_result_getattr,	/* tp_getattr */
+	PLy_result_getattr,			/* tp_getattr */
 	0,							/* tp_setattr */
 	0,							/* tp_compare */
 	0,							/* tp_repr */
@@ -2180,7 +2210,7 @@ PLy_result_status(PyObject * self, PyObject * args)
 	return ob->status;
 }
 
-static int
+static Py_ssize_t
 PLy_result_length(PyObject * arg)
 {
 	PLyResultObject *ob = (PLyResultObject *) arg;
@@ -2189,7 +2219,7 @@ PLy_result_length(PyObject * arg)
 }
 
 static PyObject *
-PLy_result_item(PyObject * arg, int idx)
+PLy_result_item(PyObject * arg, Py_ssize_t idx)
 {
 	PyObject   *rv;
 	PLyResultObject *ob = (PLyResultObject *) arg;
@@ -2201,7 +2231,7 @@ PLy_result_item(PyObject * arg, int idx)
 }
 
 static int
-PLy_result_ass_item(PyObject * arg, int idx, PyObject * item)
+PLy_result_ass_item(PyObject * arg, Py_ssize_t idx, PyObject * item)
 {
 	int			rv;
 	PLyResultObject *ob = (PLyResultObject *) arg;
@@ -2212,7 +2242,7 @@ PLy_result_ass_item(PyObject * arg, int idx, PyObject * item)
 }
 
 static PyObject *
-PLy_result_slice(PyObject * arg, int lidx, int hidx)
+PLy_result_slice(PyObject * arg, Py_ssize_t lidx, Py_ssize_t hidx)
 {
 	PyObject   *rv;
 	PLyResultObject *ob = (PLyResultObject *) arg;
@@ -2225,7 +2255,7 @@ PLy_result_slice(PyObject * arg, int lidx, int hidx)
 }
 
 static int
-PLy_result_ass_slice(PyObject * arg, int lidx, int hidx, PyObject * slice)
+PLy_result_ass_slice(PyObject * arg, Py_ssize_t lidx, Py_ssize_t hidx, PyObject * slice)
 {
 	int			rv;
 	PLyResultObject *ob = (PLyResultObject *) arg;
@@ -2440,13 +2470,14 @@ PLy_spi_execute_plan(PyObject * ob, PyObject * list, long limit)
 	PG_TRY();
 	{
 		char	   *nulls = palloc(nargs * sizeof(char));
+		volatile int j;
 
-		for (i = 0; i < nargs; i++)
+		for (j = 0; j < nargs; j++)
 		{
 			PyObject   *elem,
 					   *so;
 
-			elem = PySequence_GetItem(list, i);
+			elem = PySequence_GetItem(list, j);
 			if (elem != Py_None)
 			{
 				so = PyObject_Str(elem);
@@ -2459,10 +2490,10 @@ PLy_spi_execute_plan(PyObject * ob, PyObject * list, long limit)
 				{
 					char	   *sv = PyString_AsString(so);
 
-					plan->values[i] =
-						InputFunctionCall(&(plan->args[i].out.d.typfunc),
+					plan->values[j] =
+						InputFunctionCall(&(plan->args[j].out.d.typfunc),
 										  sv,
-										  plan->args[i].out.d.typioparam,
+										  plan->args[j].out.d.typioparam,
 										  -1);
 				}
 				PG_CATCH();
@@ -2473,17 +2504,17 @@ PLy_spi_execute_plan(PyObject * ob, PyObject * list, long limit)
 				PG_END_TRY();
 
 				Py_DECREF(so);
-				nulls[i] = ' ';
+				nulls[j] = ' ';
 			}
 			else
 			{
 				Py_DECREF(elem);
-				plan->values[i] =
-					InputFunctionCall(&(plan->args[i].out.d.typfunc),
+				plan->values[j] =
+					InputFunctionCall(&(plan->args[j].out.d.typfunc),
 									  NULL,
-									  plan->args[i].out.d.typioparam,
+									  plan->args[j].out.d.typioparam,
 									  -1);
-				nulls[i] = 'n';
+				nulls[j] = 'n';
 			}
 		}
 
@@ -2494,6 +2525,8 @@ PLy_spi_execute_plan(PyObject * ob, PyObject * list, long limit)
 	}
 	PG_CATCH();
 	{
+		int		k;
+
 		MemoryContextSwitchTo(oldcontext);
 		PLy_error_in_progress = CopyErrorData();
 		FlushErrorState();
@@ -2501,13 +2534,13 @@ PLy_spi_execute_plan(PyObject * ob, PyObject * list, long limit)
 		/*
 		 * cleanup plan->values array
 		 */
-		for (i = 0; i < nargs; i++)
+		for (k = 0; k < nargs; k++)
 		{
-			if (!plan->args[i].out.d.typbyval &&
-				(plan->values[i] != PointerGetDatum(NULL)))
+			if (!plan->args[k].out.d.typbyval &&
+				(plan->values[k] != PointerGetDatum(NULL)))
 			{
-				pfree(DatumGetPointer(plan->values[i]));
-				plan->values[i] = PointerGetDatum(NULL);
+				pfree(DatumGetPointer(plan->values[k]));
+				plan->values[k] = PointerGetDatum(NULL);
 			}
 		}
 
@@ -2862,35 +2895,44 @@ PLy_exception_set(PyObject * exc, const char *fmt,...)
 static void
 PLy_elog(int elevel, const char *fmt,...)
 {
-	va_list		ap;
-	char	   *xmsg,
-			   *emsg;
+	char	   *xmsg;
 	int			xlevel;
+	StringInfoData emsg;
 
 	xmsg = PLy_traceback(&xlevel);
 
-	va_start(ap, fmt);
-	emsg = PLy_vprintf(fmt, ap);
-	va_end(ap);
+	initStringInfo(&emsg);
+	for (;;)
+	{
+		va_list		ap;
+		bool		success;
+
+		va_start(ap, fmt);
+		success = appendStringInfoVA(&emsg, fmt, ap);
+		va_end(ap);
+		if (success)
+			break;
+		enlargeStringInfo(&emsg, emsg.maxlen);
+	}
 
 	PG_TRY();
 	{
 		ereport(elevel,
-				(errmsg("plpython: %s", emsg),
+				(errmsg("plpython: %s", emsg.data),
 				 (xmsg) ? errdetail("%s", xmsg) : 0));
 	}
 	PG_CATCH();
 	{
-		PLy_free(emsg);
+		pfree(emsg.data);
 		if (xmsg)
-			PLy_free(xmsg);
+			pfree(xmsg);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-	PLy_free(emsg);
+	pfree(emsg.data);
 	if (xmsg)
-		PLy_free(xmsg);
+		pfree(xmsg);
 }
 
 static char *
@@ -2902,8 +2944,8 @@ PLy_traceback(int *xlevel)
 	PyObject   *eob,
 			   *vob = NULL;
 	char	   *vstr,
-			   *estr,
-			   *xstr = NULL;
+			   *estr;
+	StringInfoData xstr;
 
 	/*
 	 * get the current exception
@@ -2935,7 +2977,8 @@ PLy_traceback(int *xlevel)
 	 * Assert() be more appropriate?
 	 */
 	estr = eob ? PyString_AsString(eob) : "Unknown Exception";
-	xstr = PLy_printf("%s: %s", estr, vstr);
+	initStringInfo(&xstr);
+	appendStringInfo(&xstr, "%s: %s", estr, vstr);
 
 	Py_DECREF(eob);
 	Py_XDECREF(vob);
@@ -2952,49 +2995,7 @@ PLy_traceback(int *xlevel)
 		*xlevel = ERROR;
 
 	Py_DECREF(e);
-	return xstr;
-}
-
-static char *
-PLy_printf(const char *fmt,...)
-{
-	va_list		ap;
-	char	   *emsg;
-
-	va_start(ap, fmt);
-	emsg = PLy_vprintf(fmt, ap);
-	va_end(ap);
-	return emsg;
-}
-
-static char *
-PLy_vprintf(const char *fmt, va_list ap)
-{
-	size_t		blen;
-	int			bchar,
-				tries = 2;
-	char	   *buf;
-
-	blen = strlen(fmt) * 2;
-	if (blen < 256)
-		blen = 256;
-	buf = PLy_malloc(blen * sizeof(char));
-
-	while (1)
-	{
-		bchar = vsnprintf(buf, blen, fmt, ap);
-		if (bchar > 0 && bchar < blen)
-			return buf;
-		if (tries-- <= 0)
-			break;
-		if (blen > 0)
-			blen = bchar + 1;
-		else
-			blen *= 2;
-		buf = PLy_realloc(buf, blen);
-	}
-	PLy_free(buf);
-	return NULL;
+	return xstr.data;
 }
 
 /* python module code */
@@ -3013,15 +3014,12 @@ PLy_malloc(size_t bytes)
 }
 
 static void *
-PLy_realloc(void *optr, size_t bytes)
+PLy_malloc0(size_t bytes)
 {
-	void	   *nptr = realloc(optr, bytes);
+	void	   *ptr = PLy_malloc(bytes);
 
-	if (nptr == NULL)
-		ereport(FATAL,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	return nptr;
+	MemSet(ptr, 0, bytes);
+	return ptr;
 }
 
 static char *
