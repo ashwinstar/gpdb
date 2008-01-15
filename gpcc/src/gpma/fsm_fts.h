@@ -220,24 +220,16 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_fts_http_redirect_leadma(gpcc_net_conn_t conn, const char *url)
 {
-    char location[128], node[10], port[10], json[128];
-    const char *ma, *s;
-    int i;
+    char location[128], json[128];
+    int ma_id = 0;
 
     if (*gpma.lma_cmdslot->u.lma.leadma) {
-	ma = config_get(gpma.cfg, gpma.lma_cmdslot->u.lma.leadma);
-	s = strchr(ma, ':');
-	strncpy(node, ma, s - ma);
-	node[s-ma] = 0;
-	strcpy(port, s+1);
-	for (i = 0 ; i < gpma.node_max ; i++) {
-	    if (strcmp(gpma.node_cmdtab[i]->cmdname, node) == 0) {
-		sprintf(location, "http://%s:%s%s", gpma.node_cmdtab[i]->u.node.hosttab[0], port, url);
-		sprintf(json, "{ \"location\" : \"%s:%s\"}", gpma.node_cmdtab[i]->u.node.hosttab[0], port);
-		gpcc_net_http_redirect_close(conn, location, json);
-		return 0;
-	    }
-	}
+	if (sscanf(gpma.lma_cmdslot->u.lma.leadma, "ma.%d", &ma_id) != 1 || ma_id >= gpma.ma_max)
+	    gpcc_fatal(FLINE, "Invalid ma name %s", gpma.lma_cmdslot->u.lma.leadma);
+	sprintf(location, "http://%s%s", gpma.ma_addr[ma_id], url);
+	sprintf(json, "{ \"location\" : \"%s\"}", gpma.ma_addr[ma_id]);
+	gpcc_net_http_redirect_close(conn, location, json);
+	return 0;
     } 
     return 0;
 }
@@ -455,7 +447,7 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
     url = ev->pdata + sizeof(gpcc_net_conn_t);
 
     if (IS_NO_LEADMA) {
-	obj = gpcc_json_http_status_reply(config_get(gpma.cfg, "gpdb.name"), "failure", "undetermined");
+	obj = gpcc_json_http_status_reply(config_get(gpma.cfg, "gpdb.name"), "ok", "undetermined");
 	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
     } else if (!IS_LEADMA) {
