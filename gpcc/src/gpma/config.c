@@ -126,7 +126,7 @@ int config_set_int(config_t* c, const char* key, int i)
 apr_int64_t config_set_int64(config_t* c, const char* key, apr_int64_t i)
 {
     char buf[50];
-    sprintf(buf, "%lld", (long long) i);
+    sprintf(buf, "%"APR_INT64_T_FMT, i);
     config_set(c, key, buf);
     return i;
 }
@@ -212,6 +212,7 @@ static char** glob(char* path, int* retcnt, apr_pool_t* pool)
 
     if (apr_match_glob(path, &arr, pool)) 
 	return 0;
+
     n = arr->nelts;
     fpath = apr_pcalloc(pool, sizeof(char*) * (n + 1));
     elts = (char**) arr->elts;
@@ -264,12 +265,12 @@ config_t* config_read(const char* dirpath, apr_pool_t* pool)
 
     if (maxfile) {
 	/* reconstruct the fname */
-	maxfile = apr_psprintf(subpool, "%s.%lld", maxfile, (long long) csn);
+	maxfile = apr_psprintf(subpool, "%s.%"APR_INT64_T_FMT, maxfile, csn);
 	fp = fopen(maxfile, "r");
 	if (fp) 
 	    cfg = config_read_stream(fp, pool);
 	fclose(fp);
-    }
+    } 
     
     apr_pool_destroy(subpool);
     return cfg;
@@ -341,8 +342,8 @@ apr_status_t config_write(const char* dirpath, const char* guid,
 	    gpcc_fatal(FLINE, "out of memory");
     }
 
-    sprintf(tmppath, "%s/~gpcfg_%s.%lld", dirpath, guid, (long long) csn);
-    sprintf(newpath, "%s/gpcfg_%s.%lld", dirpath, guid, (long long) csn);
+    sprintf(tmppath, "%s/~gpcfg_%s.%"APR_INT64_T_FMT, dirpath, guid, csn);
+    sprintf(newpath, "%s/gpcfg_%s.%"APR_INT64_T_FMT, dirpath, guid, csn);
 
     f = fopen(tmppath, "w");
     if (! f) {

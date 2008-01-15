@@ -374,7 +374,7 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 
 	if (opt.P) {
 	    if (fs->fsoff >= fs->flog) {
-		gprint("%s [reading %lld/%lld=%lld%%]\n", fs->fpath[fs->fidx], fs->fsoff, fs->fsize, (fs->fsoff*100/fs->fsize));
+		gprint("%s [reading %"APR_INT64_T_FMT"/%"APR_INT64_T_FMT"=%"APR_INT64_T_FMT"%%]\n", fs->fpath[fs->fidx], fs->fsoff, fs->fsize, (fs->fsoff*100/fs->fsize));
 		fs->flog = fs->fsoff + fs->finterval;
 		fs->flog = (fs->flog > fs->fsize) ? fs->fsize : fs->flog;
 	    }
