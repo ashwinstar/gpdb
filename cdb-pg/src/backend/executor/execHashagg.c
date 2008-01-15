@@ -197,7 +197,7 @@ create_agg_hash_table(AggState *aggstate)
 								 ALLOCSET_DEFAULT_MINSIZE,
 								 ALLOCSET_DEFAULT_INITSIZE,
 								 ALLOCSET_DEFAULT_MAXSIZE);
-    ht->nbucket = hats.nbuckets;
+	ht->nbucket = hats.nbuckets;
 	ht->buckets = (HashAggEntry**)palloc0(ht->nbucket * sizeof(HashAggEntry*));
 	ht->bloom = (uint64*)palloc0(ht->nbucket * sizeof(uint64));
 	
@@ -679,7 +679,7 @@ agg_hash_reload(AggState *aggstate)
 	
 	for (;;)
 	{
-		uint32 hkey;
+		uint32 hkey = 0;
 		bool isNew = false;
 		
 		outerslot = batch_get_tuple(ht, source, tmpcontext->ecxt_scantuple, &hkey);
