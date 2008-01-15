@@ -219,6 +219,7 @@ struct conncb_t {
 typedef struct net_t net_t;
 struct net_t {
     apr_pool_t* pool;
+    struct event_base *ev_base;
     SOCKET listen_sock;
     apr_uint16_t unique;	/* use to generate (almost) unique connection ID */
     /* callback functions */
@@ -389,6 +390,7 @@ static void conn_setup_event(gpcc_net_conn_t conn)
 
     event_del(&pconn->ev);
     event_set(&pconn->ev, pconn->sock, flag, do_ready, CONN_TO_PTR(conn));
+    event_base_set(net.ev_base, &pconn->ev);
     if (event_add(&pconn->ev, ptm)) {
 	gpcc_warning(FLINE, "event_add failed");
 	goto failure;
@@ -701,6 +703,7 @@ static void do_tick(int fd, short event, void* arg)
 	tm.tv_sec = 0;
 	tm.tv_usec = (int) next;
 	evtimer_set(&net.ev_tick, do_tick, 0);
+	event_base_set(net.ev_base, &net.ev_tick);
 	if (evtimer_add(&net.ev_tick, &tm))
 	    gpcc_fatal(FLINE, "event_add: cannot set up timer event");
     }
@@ -1051,18 +1054,20 @@ apr_status_t gpcc_net_init(int port,
     }
 
     /* initialize libevent */
-    if (! event_init()) 
+    if (! (net.ev_base = event_init())) 
 	gpcc_fatal(FLINE, "event_init failed");
     
     /* set up to accept connections listen_sock */
     if (port > 0) {
 	event_set(&net.ev_listen, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
+	event_base_set(net.ev_base, &net.ev_listen);
 	if (event_add(&net.ev_listen, 0))
 	    gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
     }
 
     /* set up to get break */
     event_set(&net.ev_break, net.recv_break_fd, EV_READ | EV_TIMEOUT | EV_PERSIST, do_break, 0);
+    event_base_set(net.ev_base, &net.ev_break);
     if (event_add(&net.ev_break, 0))
 	gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
 
@@ -1070,6 +1075,7 @@ apr_status_t gpcc_net_init(int port,
     tm.tv_sec = 1;
     tm.tv_usec = 0;
     evtimer_set(&net.ev_tick, do_tick, 0);
+    event_base_set(net.ev_base, &net.ev_tick);
     if (evtimer_add(&net.ev_tick, &tm))
 	gpcc_fatal(FLINE, "event_add: cannot set up timer event");
 
@@ -1080,7 +1086,7 @@ apr_status_t gpcc_net_init(int port,
 apr_status_t gpcc_net_once(int blocking)
 {
     int e = 0;
-    if (event_loop(EVLOOP_ONCE | (blocking ? 0 : EVLOOP_NONBLOCK))) {
+    if (event_base_loop(net.ev_base, EVLOOP_ONCE | (blocking ? 0 : EVLOOP_NONBLOCK))) {
 	perror("event_loop");
 	e = errno;
 	e = APR_FROM_OS_ERROR(e);
