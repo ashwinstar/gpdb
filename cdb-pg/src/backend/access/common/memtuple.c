@@ -431,7 +431,7 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 	Assert(len == MEMTUP_ALIGN(len));
 	memtuple_set_mtlen(mtup, pbind, (len | MEMTUP_LEAD_BIT)); 
 
-	nullp = (hasnull ? mtup->_mt_bits : NULL);
+	nullp = (hasnull ? mtup->PRIVATE_mt_bits : NULL);
 	start = (char *) mtup;
 	varlen_start = ((char *) mtup) + pbind->var_start - null_save_len;
 
@@ -577,13 +577,13 @@ bool memtuple_attisnull(MemTuple mtup, MemTupleBinding *pbind, int attnum)
 	if(!memtuple_get_hasnull(mtup, pbind))
 		return false;
 
-	return (mtup->_mt_bits[pbind->bindings[attnum-1].null_byte] & pbind->bindings[attnum-1].null_mask);
+	return (mtup->PRIVATE_mt_bits[pbind->bindings[attnum-1].null_byte] & pbind->bindings[attnum-1].null_mask);
 }
 				
 Datum memtuple_getattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull)
 {
 	bool hasnull = memtuple_get_hasnull(mtup, pbind);
-	unsigned char *nullp = (hasnull ? mtup->_mt_bits : NULL);
+	unsigned char *nullp = (hasnull ? mtup->PRIVATE_mt_bits : NULL);
 	char *start = (char *) mtup + (hasnull ? pbind->null_bitmap_extra_size : 0);
 	Datum ret;
 	MemTupleAttrBinding *attrbind;
@@ -599,7 +599,7 @@ Datum memtuple_getattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *
 	attrbind = &(pbind->bindings[attnum]);
 	
 	/* null check */
-	if(hasnull && (mtup->_mt_bits[attrbind->null_byte] & attrbind->null_mask))
+	if(hasnull && (mtup->PRIVATE_mt_bits[attrbind->null_byte] & attrbind->null_mask))
 	{
 		if(isnull)
 			*isnull = true;

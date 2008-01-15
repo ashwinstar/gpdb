@@ -1038,8 +1038,8 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 {
 	HeapTuple	tuple = TupGetHeapTuple(slot); 
 	TupleDesc	tupleDesc = slot->tts_tupleDescriptor;
-	Datum	   *values = slot->_tts_values;
-	bool	   *isnull = slot->_tts_isnull;
+	Datum	   *values = slot->PRIVATE_tts_values;
+	bool	   *isnull = slot->PRIVATE_tts_isnull;
 	HeapTupleHeader tup = tuple->t_data;
 	bool		hasnulls = HeapTupleHasNulls(tuple);
 	Form_pg_attribute *att = tupleDesc->attrs;
@@ -1053,7 +1053,7 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 	 * Check whether the first call for this tuple, and initialize or restore
 	 * loop state.
 	 */
-	attnum = slot->_tts_nvalid;
+	attnum = slot->PRIVATE_tts_nvalid;
 	if (attnum == 0)
 	{
 		/* Start from the first attribute */
@@ -1063,8 +1063,8 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 	else
 	{
 		/* Restore state from previous execution */
-		off = slot->_tts_off;
-		slow = slot->_tts_slow;
+		off = slot->PRIVATE_tts_off;
+		slow = slot->PRIVATE_tts_slow;
 	}
 
 	tp = (char *) tup + tup->t_hoff;
@@ -1109,9 +1109,9 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 	/*
 	 * Save state for next execution
 	 */
-	slot->_tts_nvalid = attnum;
-	slot->_tts_off = off;
-	slot->_tts_slow = slow;
+	slot->PRIVATE_tts_nvalid = attnum;
+	slot->PRIVATE_tts_off = off;
+	slot->PRIVATE_tts_slow = slow;
 }
 
 #if 0
@@ -1158,7 +1158,7 @@ _slot_getsomeattrs(TupleTableSlot *slot, int attnum)
 	int			attno;
 
 	/* Quick out if we have 'em all already */
-	if (slot->_tts_nvalid >= attnum)
+	if (slot->PRIVATE_tts_nvalid >= attnum)
 		return;
 
 	/* Check for caller error */
@@ -1188,16 +1188,16 @@ _slot_getsomeattrs(TupleTableSlot *slot, int attnum)
 	 */
 	for (; attno < attnum; attno++)
 	{
-		slot->_tts_values[attno] = (Datum) 0;
-		slot->_tts_isnull[attno] = true;
+		slot->PRIVATE_tts_values[attno] = (Datum) 0;
+		slot->PRIVATE_tts_isnull[attno] = true;
 	}
 
 #if 0
 	for(attno = 0; attno < attnum; ++attno)
-		check_type_sanity(slot->tts_tupleDescriptor->attrs[attno], slot->_tts_values[attno], slot->_tts_isnull[attno]);
+		check_type_sanity(slot->tts_tupleDescriptor->attrs[attno], slot->PRIVATE_tts_values[attno], slot->PRIVATE_tts_isnull[attno]);
 #endif
 
-	slot->_tts_nvalid = attnum;
+	slot->PRIVATE_tts_nvalid = attnum;
 	TupSetVirtualTuple(slot);
 }
 

@@ -121,19 +121,19 @@ static TupleDesc ExecTypeFromTLInternal(List *targetList,
 void init_slot(TupleTableSlot *slot, TupleDesc tupdesc)
 {
 	slot->type = T_TupleTableSlot;
-	slot->_tts_flags = TTS_ISEMPTY;
+	slot->PRIVATE_tts_flags = TTS_ISEMPTY;
 
-	slot->_tts_heaptuple = NULL;
-	slot->_tts_htup_buf = NULL;
-	slot->_tts_htup_buf_len = 0;
+	slot->PRIVATE_tts_heaptuple = NULL;
+	slot->PRIVATE_tts_htup_buf = NULL;
+	slot->PRIVATE_tts_htup_buf_len = 0;
 
-	slot->_tts_memtuple = NULL;
-	slot->_tts_mtup_buf = NULL;
-	slot->_tts_mtup_buf_len = 0;
+	slot->PRIVATE_tts_memtuple = NULL;
+	slot->PRIVATE_tts_mtup_buf = NULL;
+	slot->PRIVATE_tts_mtup_buf_len = 0;
 
-	slot->_tts_nvalid = 0;
-	slot->_tts_values = NULL;
-	slot->_tts_isnull = NULL;
+	slot->PRIVATE_tts_nvalid = 0;
+	slot->PRIVATE_tts_values = NULL;
+	slot->PRIVATE_tts_isnull = NULL;
 
 	slot->tts_tupleDescriptor = tupdesc; 
 	slot->tts_mcxt = CurrentMemoryContext;
@@ -154,29 +154,29 @@ static void cleanup_slot(TupleTableSlot *slot)
 	if (slot->tts_tupleDescriptor)
 		ReleaseTupleDesc(slot->tts_tupleDescriptor);
 
-	if (slot->_tts_htup_buf)
+	if (slot->PRIVATE_tts_htup_buf)
 	{
-		pfree(slot->_tts_htup_buf);
-		slot->_tts_htup_buf = NULL;
-		slot->_tts_htup_buf_len = 0;
+		pfree(slot->PRIVATE_tts_htup_buf);
+		slot->PRIVATE_tts_htup_buf = NULL;
+		slot->PRIVATE_tts_htup_buf_len = 0;
 	}
 
-	if (slot->_tts_mtup_buf)
+	if (slot->PRIVATE_tts_mtup_buf)
 	{
-		pfree(slot->_tts_mtup_buf);
-		slot->_tts_mtup_buf = NULL;
-		slot->_tts_mtup_buf_len = 0;
+		pfree(slot->PRIVATE_tts_mtup_buf);
+		slot->PRIVATE_tts_mtup_buf = NULL;
+		slot->PRIVATE_tts_mtup_buf_len = 0;
 	}
 
-	if (slot->_tts_values)
+	if (slot->PRIVATE_tts_values)
 	{
-		pfree(slot->_tts_values);
-		slot->_tts_values = NULL;
+		pfree(slot->PRIVATE_tts_values);
+		slot->PRIVATE_tts_values = NULL;
 	}
-	if (slot->_tts_isnull)
+	if (slot->PRIVATE_tts_isnull)
 	{
-		pfree(slot->_tts_isnull);
-		slot->_tts_isnull = NULL;
+		pfree(slot->PRIVATE_tts_isnull);
+		slot->PRIVATE_tts_isnull = NULL;
 	}
 }
 
@@ -365,8 +365,8 @@ ExecSetSlotDescriptor(
 		MemoryContext oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
 
 		slot->tts_mt_bind = create_memtuple_binding(tupdesc);
-		slot->_tts_values = (Datum *) palloc(tupdesc->natts * sizeof(Datum));
-		slot->_tts_isnull = (bool *) palloc(tupdesc->natts * sizeof(bool));
+		slot->PRIVATE_tts_values = (Datum *) palloc(tupdesc->natts * sizeof(Datum));
+		slot->PRIVATE_tts_isnull = (bool *) palloc(tupdesc->natts * sizeof(bool));
 
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -376,15 +376,15 @@ static void free_heaptuple_memtuple(TupleTableSlot *slot)
 {
 	if(TupShouldFree(slot))
 	{
-		if(slot->_tts_heaptuple && slot->_tts_heaptuple != slot->_tts_htup_buf)
-			pfree(slot->_tts_heaptuple);
+		if(slot->PRIVATE_tts_heaptuple && slot->PRIVATE_tts_heaptuple != slot->PRIVATE_tts_htup_buf)
+			pfree(slot->PRIVATE_tts_heaptuple);
 		
-		if(slot->_tts_memtuple && slot->_tts_memtuple != slot->_tts_mtup_buf)
-			pfree(slot->_tts_memtuple);
+		if(slot->PRIVATE_tts_memtuple && slot->PRIVATE_tts_memtuple != slot->PRIVATE_tts_mtup_buf)
+			pfree(slot->PRIVATE_tts_memtuple);
 	}
 
-	slot->_tts_heaptuple = NULL;
-	slot->_tts_memtuple = NULL;
+	slot->PRIVATE_tts_heaptuple = NULL;
+	slot->PRIVATE_tts_memtuple = NULL;
 }
 
 /* --------------------------------
@@ -464,12 +464,12 @@ ExecStoreHeapTuple(HeapTuple tuple,
 	else
 		TupClearShouldFree(slot);
 		
-	slot->_tts_heaptuple = (void *) tuple;
+	slot->PRIVATE_tts_heaptuple = (void *) tuple;
 
 	TupClearIsEmpty(slot);
 
 	/* Mark extracted state invalid */
-	slot->_tts_nvalid = 0;
+	slot->PRIVATE_tts_nvalid = 0;
 
 	/*
 	 * If tuple is on a disk page, keep the page pinned as long as we hold a
@@ -530,10 +530,10 @@ ExecStoreMemTuple(MemTuple mtup, TupleTableSlot *slot, bool shouldFree)
 	else
 		TupClearShouldFree(slot);
 		
-	slot->_tts_memtuple = mtup;
+	slot->PRIVATE_tts_memtuple = mtup;
 
 	TupClearIsEmpty(slot);
-	slot->_tts_nvalid = 0;
+	slot->PRIVATE_tts_nvalid = 0;
 
 	/*
 	 * Drop the pin on the referenced buffer, if there is one.
@@ -566,8 +566,8 @@ ExecClearTuple(TupleTableSlot *slot)	/* slot in which to store tuple */
 	 */
 	free_heaptuple_memtuple(slot);
 
-	slot->_tts_flags = TTS_ISEMPTY;
-	slot->_tts_nvalid = 0;
+	slot->PRIVATE_tts_flags = TTS_ISEMPTY;
+	slot->PRIVATE_tts_nvalid = 0;
 
 	/*
 	 * Drop the pin on the referenced buffer, if there is one.
@@ -602,7 +602,7 @@ ExecStoreVirtualTuple(TupleTableSlot *slot)
 	TupClearIsEmpty(slot);
 	TupSetVirtualTuple(slot);
 
-	slot->_tts_nvalid = slot->tts_tupleDescriptor->natts;
+	slot->PRIVATE_tts_nvalid = slot->tts_tupleDescriptor->natts;
 	return slot;
 }
 
@@ -637,14 +637,14 @@ ExecStoreAllNullTuple(TupleTableSlot *slot)
 	 * Fill all the columns of the virtual tuple with nulls
 	 */
 #if 0
-	MemSet(slot->_tts_values, 0,
+	MemSet(slot->PRIVATE_tts_values, 0,
 		   slot->tts_tupleDescriptor->natts * sizeof(Datum));
 #endif
-	MemSet(slot->_tts_isnull, true,
+	MemSet(slot->PRIVATE_tts_isnull, true,
 		   slot->tts_tupleDescriptor->natts * sizeof(bool));
 
-	slot->_tts_flags = TTS_VIRTUAL; 
-	slot->_tts_nvalid = slot->tts_tupleDescriptor->natts;
+	slot->PRIVATE_tts_flags = TTS_VIRTUAL; 
+	slot->PRIVATE_tts_nvalid = slot->tts_tupleDescriptor->natts;
 
 	return slot;
 }
@@ -666,8 +666,8 @@ ExecCopySlotHeapTuple(TupleTableSlot *slot)
 	 */
 	Assert(!TupIsNull(slot)); 
 
-	if(slot->_tts_heaptuple) 
-		return heap_copytuple(slot->_tts_heaptuple); 
+	if(slot->PRIVATE_tts_heaptuple) 
+		return heap_copytuple(slot->PRIVATE_tts_heaptuple); 
 
 
 	slot_getallattrs(slot);
@@ -695,8 +695,8 @@ MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot)
 	/*
 	 * If we have a physical tuple then just copy it.
 	 */
-	if (slot->_tts_memtuple)
-		return memtuple_copy_to(slot->_tts_memtuple, slot->tts_mt_bind, NULL, NULL);
+	if (slot->PRIVATE_tts_memtuple)
+		return memtuple_copy_to(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind, NULL, NULL);
 	
 	slot_getallattrs(slot);
 
@@ -720,12 +720,12 @@ MemTuple ExecCopySlotMemTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char 
 	
 	if (TupHasMemTuple(slot))
 	{
-		mtup = memtuple_copy_to(slot->_tts_memtuple, slot->tts_mt_bind, (MemTuple) dest, len);
+		mtup = memtuple_copy_to(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind, (MemTuple) dest, len);
 		if(mtup || !pctxt)
 			return mtup;
 
 		mtup = (MemTuple) ctxt_alloc(pctxt, *len);
-		mtup = memtuple_copy_to(slot->_tts_memtuple, slot->tts_mt_bind, mtup, len);
+		mtup = memtuple_copy_to(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind, mtup, len);
 		Assert(mtup);
 
 		return mtup; 
@@ -766,15 +766,15 @@ HeapTuple ExecCopySlotHeapTupleTo(TupleTableSlot *slot, MemoryContext pctxt, cha
 	if(!len)
 		len = &dumlen;
 	
-	if (slot->_tts_heaptuple)
+	if (slot->PRIVATE_tts_heaptuple)
 	{
-		tup = heaptuple_copy_to(slot->_tts_heaptuple, (HeapTuple) dest, len);
+		tup = heaptuple_copy_to(slot->PRIVATE_tts_heaptuple, (HeapTuple) dest, len);
 
 		if(tup || !pctxt)
 			return tup;
 
 		tup = (HeapTuple) ctxt_alloc(pctxt, *len);
-		tup = heaptuple_copy_to(slot->_tts_heaptuple, tup, len);
+		tup = heaptuple_copy_to(slot->PRIVATE_tts_heaptuple, tup, len);
 		Assert(tup);
 
 		return tup; 
@@ -818,31 +818,31 @@ ExecFetchSlotHeapTuple(TupleTableSlot *slot)
 	/*
 	 * If we have a regular physical tuple then just return it.
 	 */
-	if(slot->_tts_heaptuple)
-		return slot->_tts_heaptuple;
+	if(slot->PRIVATE_tts_heaptuple)
+		return slot->PRIVATE_tts_heaptuple;
 
 	slot_getallattrs(slot);
 
 	Assert(TupHasVirtualTuple(slot));
-	Assert(slot->_tts_nvalid == slot->tts_tupleDescriptor->natts);
+	Assert(slot->PRIVATE_tts_nvalid == slot->tts_tupleDescriptor->natts);
 
-	tuplen = slot->_tts_htup_buf_len;
+	tuplen = slot->PRIVATE_tts_htup_buf_len;
 	htup = heaptuple_form_to(slot->tts_tupleDescriptor, slot_get_values(slot), slot_get_isnull(slot), 
-			slot->_tts_htup_buf, &tuplen);
+			slot->PRIVATE_tts_htup_buf, &tuplen);
 	
 	if(!htup)
 	{
-		if(slot->_tts_htup_buf)
-			pfree(slot->_tts_htup_buf);
-		slot->_tts_htup_buf = (HeapTuple) MemoryContextAlloc(slot->tts_mcxt, tuplen);
-		slot->_tts_htup_buf_len = tuplen;
+		if(slot->PRIVATE_tts_htup_buf)
+			pfree(slot->PRIVATE_tts_htup_buf);
+		slot->PRIVATE_tts_htup_buf = (HeapTuple) MemoryContextAlloc(slot->tts_mcxt, tuplen);
+		slot->PRIVATE_tts_htup_buf_len = tuplen;
 
 		htup = heaptuple_form_to(slot->tts_tupleDescriptor, slot_get_values(slot), slot_get_isnull(slot), 
-			slot->_tts_htup_buf, &tuplen);
+			slot->PRIVATE_tts_htup_buf, &tuplen);
 		Assert(htup);
 	}
 
-	slot->_tts_heaptuple = htup;
+	slot->PRIVATE_tts_heaptuple = htup;
 	return htup;
 }
 
@@ -865,29 +865,29 @@ MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot)
 	Assert(!TupIsNull(slot));
 	Assert(slot->tts_mt_bind);
 
-	if(slot->_tts_memtuple)
-		return slot->_tts_memtuple; 
+	if(slot->PRIVATE_tts_memtuple)
+		return slot->PRIVATE_tts_memtuple; 
 
 	slot_getallattrs(slot);
 
-	tuplen = slot->_tts_mtup_buf_len;
+	tuplen = slot->PRIVATE_tts_mtup_buf_len;
 	newTuple = memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), 
-			(MemTuple) slot->_tts_mtup_buf, &tuplen); 
+			(MemTuple) slot->PRIVATE_tts_mtup_buf, &tuplen); 
 
 	if(!newTuple)
 	{
-		if(slot->_tts_mtup_buf)
-			pfree(slot->_tts_mtup_buf);
+		if(slot->PRIVATE_tts_mtup_buf)
+			pfree(slot->PRIVATE_tts_mtup_buf);
 
-		slot->_tts_mtup_buf = MemoryContextAlloc(slot->tts_mcxt, tuplen); 
-		slot->_tts_mtup_buf_len = tuplen;
+		slot->PRIVATE_tts_mtup_buf = MemoryContextAlloc(slot->tts_mcxt, tuplen); 
+		slot->PRIVATE_tts_mtup_buf_len = tuplen;
 
 		newTuple = memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), 
-			(MemTuple) slot->_tts_mtup_buf, &tuplen); 
+			(MemTuple) slot->PRIVATE_tts_mtup_buf, &tuplen); 
 	}
 
 	Assert(newTuple);
-	slot->_tts_memtuple = newTuple;
+	slot->PRIVATE_tts_memtuple = newTuple;
 	return newTuple;
 }
 
@@ -910,42 +910,42 @@ ExecCopySlot(TupleTableSlot *dstslot, TupleTableSlot *srcslot)
 	TupClearIsEmpty(dstslot);
 
 	/* heap tuple stuff */
-	if(srcslot->_tts_heaptuple && !srcslot->_tts_memtuple) {
+	if(srcslot->PRIVATE_tts_heaptuple && !srcslot->PRIVATE_tts_memtuple) {
 
-		uint32 tuplen = dstslot->_tts_htup_buf_len;
-		HeapTuple htup = heaptuple_copy_to(srcslot->_tts_heaptuple, dstslot->_tts_htup_buf, &tuplen);
+		uint32 tuplen = dstslot->PRIVATE_tts_htup_buf_len;
+		HeapTuple htup = heaptuple_copy_to(srcslot->PRIVATE_tts_heaptuple, dstslot->PRIVATE_tts_htup_buf, &tuplen);
 
 		if(!htup)
 		{
-			dstslot->_tts_htup_buf = MemoryContextAlloc(dstslot->tts_mcxt, tuplen);
-			dstslot->_tts_htup_buf_len = tuplen;
+			dstslot->PRIVATE_tts_htup_buf = MemoryContextAlloc(dstslot->tts_mcxt, tuplen);
+			dstslot->PRIVATE_tts_htup_buf_len = tuplen;
 
-			htup = heaptuple_copy_to(srcslot->_tts_heaptuple, dstslot->_tts_htup_buf, &tuplen);
+			htup = heaptuple_copy_to(srcslot->PRIVATE_tts_heaptuple, dstslot->PRIVATE_tts_htup_buf, &tuplen);
 		}
 
 		Assert(htup);
-		dstslot->_tts_heaptuple = htup;
-		dstslot->_tts_nvalid = 0;
+		dstslot->PRIVATE_tts_heaptuple = htup;
+		dstslot->PRIVATE_tts_nvalid = 0;
 	}
 	else
 	{
-		uint32 tuplen = dstslot->_tts_mtup_buf_len;
+		uint32 tuplen = dstslot->PRIVATE_tts_mtup_buf_len;
 		MemTuple mtup;
 
 		Assert(srcslot->tts_mt_bind != NULL && dstslot->tts_mt_bind != NULL);
 
-		mtup = ExecCopySlotMemTupleTo(srcslot, NULL, dstslot->_tts_mtup_buf, &tuplen);
+		mtup = ExecCopySlotMemTupleTo(srcslot, NULL, dstslot->PRIVATE_tts_mtup_buf, &tuplen);
 		if(!mtup)
 		{
-			dstslot->_tts_mtup_buf = MemoryContextAlloc(dstslot->tts_mcxt, tuplen);
-			dstslot->_tts_mtup_buf_len = tuplen;
+			dstslot->PRIVATE_tts_mtup_buf = MemoryContextAlloc(dstslot->tts_mcxt, tuplen);
+			dstslot->PRIVATE_tts_mtup_buf_len = tuplen;
 
-			mtup = ExecCopySlotMemTupleTo(srcslot, NULL, dstslot->_tts_mtup_buf, &tuplen);
+			mtup = ExecCopySlotMemTupleTo(srcslot, NULL, dstslot->PRIVATE_tts_mtup_buf, &tuplen);
 		}
 
 		Assert(mtup);
-		dstslot->_tts_memtuple = mtup;
-		dstslot->_tts_nvalid = 0;
+		dstslot->PRIVATE_tts_memtuple = mtup;
+		dstslot->PRIVATE_tts_nvalid = 0;
 	}
 
 	return dstslot;
@@ -960,52 +960,52 @@ void ExecModifyMemTuple(TupleTableSlot *slot, Datum *values, bool *isnull, bool 
 	int i;
 	MemTuple mtup;
 	uint32 tuplen;
-	Assert(slot->_tts_memtuple);
+	Assert(slot->PRIVATE_tts_memtuple);
 
-	/* First, get all the attrs.  Note we set _tts_nvalid to 0
+	/* First, get all the attrs.  Note we set PRIVATE_tts_nvalid to 0
 	 * so we force the attrs are from memtuple 
 	 */
-	slot->_tts_nvalid = 0;
+	slot->PRIVATE_tts_nvalid = 0;
 	slot_getallattrs(slot);
 	
 	/* Next, we construct a new memtuple, on the htup buf to avoid palloc */
-	slot->_tts_heaptuple = NULL;
+	slot->PRIVATE_tts_heaptuple = NULL;
 	for(i = 0; i<slot->tts_tupleDescriptor->natts; ++i)
 	{
 		if(doRepl[i])
 		{
-			slot->_tts_values[i] = values[i];
-			slot->_tts_isnull[i] = isnull[i];
+			slot->PRIVATE_tts_values[i] = values[i];
+			slot->PRIVATE_tts_isnull[i] = isnull[i];
 		}
 	}
 
-	tuplen = slot->_tts_htup_buf_len;
-	mtup = memtuple_form_to(slot->tts_mt_bind, slot->_tts_values, slot->_tts_isnull, 
-			slot->_tts_htup_buf, &tuplen);
+	tuplen = slot->PRIVATE_tts_htup_buf_len;
+	mtup = memtuple_form_to(slot->tts_mt_bind, slot->PRIVATE_tts_values, slot->PRIVATE_tts_isnull, 
+			slot->PRIVATE_tts_htup_buf, &tuplen);
 	if(!mtup)
 	{
-		slot->_tts_htup_buf = MemoryContextAlloc(slot->tts_mcxt, tuplen);
-		slot->_tts_htup_buf_len = tuplen;
+		slot->PRIVATE_tts_htup_buf = MemoryContextAlloc(slot->tts_mcxt, tuplen);
+		slot->PRIVATE_tts_htup_buf_len = tuplen;
 
-		mtup = memtuple_form_to(slot->tts_mt_bind, slot->_tts_values, slot->_tts_isnull, 
-			slot->_tts_htup_buf, &tuplen);
+		mtup = memtuple_form_to(slot->tts_mt_bind, slot->PRIVATE_tts_values, slot->PRIVATE_tts_isnull, 
+			slot->PRIVATE_tts_htup_buf, &tuplen);
 
 		Assert(mtup);
 	}
 
-	slot->_tts_memtuple = mtup;
+	slot->PRIVATE_tts_memtuple = mtup;
 	/* swap mtup_buf and htup_buf stuff */
 
-	mtup = (MemTuple) slot->_tts_mtup_buf;
-	tuplen = slot->_tts_mtup_buf_len;
+	mtup = (MemTuple) slot->PRIVATE_tts_mtup_buf;
+	tuplen = slot->PRIVATE_tts_mtup_buf_len;
 
-	slot->_tts_mtup_buf = slot->_tts_htup_buf;
-	slot->_tts_mtup_buf_len = slot->_tts_htup_buf_len;
-	slot->_tts_htup_buf = (void *) mtup;
-	slot->_tts_htup_buf_len = tuplen;
+	slot->PRIVATE_tts_mtup_buf = slot->PRIVATE_tts_htup_buf;
+	slot->PRIVATE_tts_mtup_buf_len = slot->PRIVATE_tts_htup_buf_len;
+	slot->PRIVATE_tts_htup_buf = (void *) mtup;
+	slot->PRIVATE_tts_htup_buf_len = tuplen;
 
-	/* don't forget to reset _tts_nvalid, because we modified the memtuple */
-	slot->_tts_nvalid = 0;
+	/* don't forget to reset PRIVATE_tts_nvalid, because we modified the memtuple */
+	slot->PRIVATE_tts_nvalid = 0;
 }
 
 	
