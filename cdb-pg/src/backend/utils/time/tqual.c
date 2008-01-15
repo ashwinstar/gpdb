@@ -1436,7 +1436,7 @@ HTSV_Result
 HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
 						 Buffer buffer, bool vacuumFull)
 {
-	const bool disableTupleHints = vacuumFull || gp_disable_tuple_hints;
+	const bool disableTupleHints = gp_disable_tuple_hints;
 
 	/*
 	 * Has inserting transaction committed?
