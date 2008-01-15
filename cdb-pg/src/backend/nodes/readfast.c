@@ -2853,8 +2853,8 @@ _readCreateTrigStmt(const char ** str)
 
 }
 
-static
-Node * _readValue(const char ** str, NodeTag nt)
+static Node * 
+_readValue(const char ** str, NodeTag nt)
 {
 	Node * result = NULL;
 	if (nt == T_Integer)
@@ -2862,6 +2862,12 @@ Node * _readValue(const char ** str, NodeTag nt)
 		int ival;
 		memcpy(&ival, *str, sizeof(long)); (*str)+=sizeof(long);
 		result = (Node *) makeInteger(ival);
+	}
+	else if (nt == T_Null)
+	{
+		Value *val = makeNode(Value);
+		val->type = T_Null;
+		result = (Node *)T_Null;
 	}
 	else
 	{

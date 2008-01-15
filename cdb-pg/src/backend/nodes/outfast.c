@@ -2603,6 +2603,9 @@ _outValue(StringInfo str, Value *value)
 					appendBinaryStringInfo(str, value->val.str, slen);
 			}
 			break;
+		case T_Null:
+			/* nothing to do */
+			break;
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) value->type);
 			break;
