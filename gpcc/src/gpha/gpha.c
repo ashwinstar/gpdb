@@ -200,6 +200,7 @@ static void d_main(void)
 
     /* network up */
     GPCC_DO(0 == gpcc_net_init(gpha.port,
+			       NULL,
 			       net_opened_cb,
 			       net_accepted_cb,
 			       net_recv_cb,

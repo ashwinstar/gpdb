@@ -14,6 +14,44 @@
 #include <apr_thread_mutex.h>
 
 
+static apr_status_t to_sockaddr_in(const char* addr_, struct sockaddr_in* sa)
+{
+    char addr[100];
+    char* colon;
+    int port;
+    struct hostent* h;
+
+    addr[sizeof(addr) - 1] = 0;
+    strncpy(addr, addr_, sizeof(addr));
+    if (addr[sizeof(addr) - 1])
+	return APR_EINVAL;
+
+    colon = strchr(addr, ':');
+    if (!colon)
+	return APR_EINVAL;
+
+    *colon = 0;
+    port = atoi(colon + 1);
+    if (! (0 < port && port < (1 << 16)))
+	return APR_EINVAL;
+
+    memset(sa, 0, sizeof(*sa));
+    sa->sin_family = AF_INET;
+    sa->sin_port = htons(port);
+
+    if (inet_aton(addr, &sa->sin_addr))
+	return 0;
+
+    h = gethostbyname(addr);
+    if (!h)
+	return APR_EINVAL;
+
+    sa->sin_addr = * (struct in_addr*) h->h_addr_list[0];
+    return 0;
+}
+
+
+
 /*
  *  Get a new packet from buf[0..*len]
  *  If there is a packet, fill up pkt, return APR_SUCCESS and #bytes consumed in buf in len.
@@ -221,8 +259,10 @@ struct net_t {
     apr_pool_t* pool;
     struct event_base *ev_base;
     SOCKET listen_sock;
+    SOCKET udp_sock;
     apr_uint16_t unique;	/* use to generate (almost) unique connection ID */
     /* callback functions */
+    gpcc_net_datagram_t* dgram;
     gpcc_net_opened_t* opened;
     gpcc_net_accepted_t* accepted;
     gpcc_net_received_t* received;
@@ -235,6 +275,7 @@ struct net_t {
     int recv_break_fd;
     /* libevent structures */
     struct event ev_listen;	/* for events on the listen_sock */
+    struct event ev_udpwait;	/* for events on the udp_sock */
     struct event ev_break;	/* for events on recv_break_fd */
     struct event ev_tick;	/* for events on timer tick */
 
@@ -746,6 +787,31 @@ static apr_status_t set_sockopt_nonblock(int sock)
 }
 
 
+static void do_recvfrom(int fd, short event, void* arg)
+{
+    char buf[1024*32+1];
+    struct sockaddr_in sa;
+    socklen_t salen = sizeof(sa);
+    char peeraddr[32];
+    int buflen = sizeof(buf) - 1;
+
+    buflen = recvfrom(fd, buf, buflen, 0, (void*) &sa, &salen);
+    if (-1 == buflen) {
+	gpcc_warning(FLINE, "recvfrom failed");
+	return;
+    }
+    buf[buflen] = 0;
+
+    if (! inet_ntop(sa.sin_family, &sa.sin_addr, peeraddr, sizeof(peeraddr) - 7)) {
+	gpcc_warning(FLINE, "inet_ntop failed");
+	return;
+    }
+    sprintf(peeraddr + strlen(peeraddr), ":%d", ntohs(sa.sin_port));
+    net.dgram(peeraddr, buf, buflen);
+}
+
+
+
 static void do_accept(int fd, short event, void* arg)
 {
     struct sockaddr_in sockaddr;
@@ -948,6 +1014,7 @@ apr_status_t gpcc_net_sendv(gpcc_net_conn_t conn,
 
 
 apr_status_t gpcc_net_init(int port,
+			   gpcc_net_datagram_t* dgram,
 			   gpcc_net_opened_t* opened,
 			   gpcc_net_accepted_t* accepted,
 			   gpcc_net_received_t* received,
@@ -958,7 +1025,8 @@ apr_status_t gpcc_net_init(int port,
     apr_pool_t* pool;
     int e;
     struct sockaddr_in a;
-    SOCKET sock = 0;
+    SOCKET tcpsock = 0;
+    SOCKET udpsock = 0;
     struct timeval tm;
 
     gpcc_net_tick = apr_time_now();
@@ -1005,37 +1073,50 @@ apr_status_t gpcc_net_init(int port,
 	return e;
 
     /* set up the server socket */
+    if (dgram) {
+	udpsock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (udpsock < 0)
+	    gpcc_fatal(FLINE, "cannot create udp socket");
+    }
     if (port > 0) {
 	a.sin_addr.s_addr = htonl(INADDR_ANY);
 	a.sin_port = htons(port);
 	a.sin_family = AF_INET;
 
-	sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (sock < 0)
+	tcpsock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (tcpsock < 0)
 	    gpcc_fatal(FLINE, "cannot create socket on port %d", port);
 
-	if (0 != (e = set_sockopt_nonblock(sock)))
+	if (0 != (e = set_sockopt_nonblock(tcpsock)))
 	    gpcc_fatal(FLINE, "unable to set socket to nonblocking on port %d", port);
 
 	/* bind */
-	if (bind(sock, (void*) &a, sizeof(a)))
+	if (bind(tcpsock, (void*) &a, sizeof(a)))
 	    gpcc_fatal(FLINE, "cannot create socket on port %d - bind failed", port);
 
 	/* listen */
-	if (listen(sock, 64))
+	if (listen(tcpsock, 64))
 	    gpcc_fatal(FLINE, "cannot listen on port %d", port);
+
+	if (dgram) {
+	    if (bind(udpsock, (void*) &a, sizeof(a)))
+		gpcc_fatal(FLINE, "cannot bind udp socket on port %d - bind failed", port);
+	}
     }
+
 
     /* save our callback functions */
     memset(&net, 0, sizeof(net));
     net.pool = pool;
+    net.dgram = dgram;
     net.opened = opened;
     net.accepted = accepted;
     net.received = received;
     net.received_packet = received_packet;
     net.closed = closed;
     net.tick = tick;
-    net.listen_sock = sock;
+    net.listen_sock = tcpsock;
+    net.udp_sock = udpsock;
 
     /* create the mutex & cond */
     if (0 != (e = apr_thread_mutex_create(&net.wait.mutex, 0, pool))) 
@@ -1058,11 +1139,18 @@ apr_status_t gpcc_net_init(int port,
 	gpcc_fatal(FLINE, "event_init failed");
     
     /* set up to accept connections listen_sock */
-    if (port > 0) {
+    if (net.listen_sock) {
 	event_set(&net.ev_listen, net.listen_sock, EV_READ | EV_PERSIST, do_accept, 0);
 	event_base_set(net.ev_base, &net.ev_listen);
 	if (event_add(&net.ev_listen, 0))
 	    gpcc_fatal(FLINE, "event_add: cannot set up event on listen socket");
+    }
+
+    if (net.udp_sock) {
+	event_set(&net.ev_udpwait, net.udp_sock, EV_READ | EV_PERSIST, do_recvfrom, 0);
+	event_base_set(net.ev_base, &net.ev_udpwait);
+	if (event_add(&net.ev_udpwait, 0))
+	    gpcc_fatal(FLINE, "event_add: cannot set up event on udp socket");
     }
 
     /* set up to get break */
@@ -1183,9 +1271,6 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
     SOCKET sock = -1;
     struct sockaddr_in peer_addr;
     int port = 0;
-    char* p;
-    char host[100];
-    struct hostent* hp;
     int i, e = 0;
     apr_pool_t* pool = 0;
     apr_uint32_t* spin = 0;
@@ -1205,36 +1290,13 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
 	goto failure;
     }
 
-    /* parse the peer_addr_str into (hostname, ip) pair*/
-    strncpy(host, peer_addr_str, sizeof(host) - 1);
-    host[sizeof(host) - 1] = 0;
-
-    if (0 == (p = strchr(host, ':'))) {
+    
+    e = to_sockaddr_in(peer_addr_str, &peer_addr);
+    if (e) {
 	gpcc_warning(FLINE, "parse peer addr '%s' failed", peer_addr_str);
-	e = APR_EINVAL;
 	goto failure;
     }
-
-    *p++ = 0;
-    port = strtol(p, 0, 0);
-    if (! (0 <= port && port < (1 << 16)))  {
-	gpcc_warning(FLINE, "invalid port number '%d'", port);
-	e = APR_EINVAL;
-	goto failure;
-    }
-    
-    /* get the host ip */
-    if (0 == (hp = gethostbyname(host))) {
-	gpcc_warning(FLINE, "gethostbyname '%s' failed", host);
-	e = APR_EINVAL;
-	goto failure;
-    }
-    
-    /* make peer address */
-    peer_addr.sin_family = AF_INET;
-    peer_addr.sin_port = htons(port);
-    peer_addr.sin_addr = * (struct in_addr*) hp->h_addr_list[0];
-    memset(&peer_addr.sin_zero, 0, sizeof(peer_addr.sin_zero));
+    port = ntohs(peer_addr.sin_port);
 
     /* create socket */
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
@@ -1821,4 +1883,22 @@ void gpcc_net_http_redirect_close(gpcc_net_conn_t conn, const char *location, co
     (void) gpcc_net_send_header(conn, &hdr);
     (void) gpcc_net_send(conn, content, len);
     gpcc_net_close(conn, 1);
+}
+
+
+APR_DECLARE(apr_status_t)
+    gpcc_net_sendto(const char* peeraddr, const char* buf, int buflen)
+{
+    struct sockaddr_in sa;
+    int e;
+
+    e = to_sockaddr_in(peeraddr, &sa);
+    if (e)
+	return e;
+
+    if (buflen != sendto(net.udp_sock, buf, buflen, 0, (void*) &sa, sizeof(sa)))  
+	return APR_EINVAL;
+
+
+    return 0;
 }

@@ -84,6 +84,11 @@ struct gpcc_net_uri_t {
  */
 typedef apr_uint32_t gpcc_net_conn_t;
 
+/**
+ *  Callback on receiving UDP packet
+ */
+typedef void gpcc_net_datagram_t(const char* peeraddr, const char* buf, int buflen);
+
 
 /**
  *  Callback on successful TCP + header connect to remote peer.
@@ -155,6 +160,7 @@ typedef void gpcc_net_tick_t(apr_time_t now);
  */
 APR_DECLARE(apr_status_t) 
     gpcc_net_init(int listen_port,
+		  gpcc_net_datagram_t* dgram,
 		  gpcc_net_opened_t* opened,
 		  gpcc_net_accepted_t* accepted,
 		  gpcc_net_received_t* received,
@@ -221,6 +227,16 @@ APR_DECLARE(gpcc_net_conn_t)
 APR_DECLARE(apr_status_t)
     gpcc_net_set_arg(gpcc_net_conn_t conn, apr_uint64_t arg);
 
+
+
+/**
+ *  Send a UDP message
+ *  @param peeraddr Peer address in IP:port format
+ *  @param buf message to send
+ *  @param buflen length of message
+ */
+APR_DECLARE(apr_status_t)
+    gpcc_net_sendto(const char* peeraddr, const char* buf, int buflen);
 
 /**
  *  A datum is a pointer, length pair.

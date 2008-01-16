@@ -494,6 +494,7 @@ void d_main(void)
 
     /* network up */
     GPCC_DO(0 == gpcc_net_init(gpma.ma_port,
+			       NULL,
 			       net_opened, net_accepted, 
 			       net_received, net_received_packet,
 			       net_closed, net_tick));
