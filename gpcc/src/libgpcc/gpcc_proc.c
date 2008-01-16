@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <apr_strings.h>
 #include <gpcc.h>
+#include <gpcc_strings.h>
 #include <gpcc_proc.h>
 
 static char *GPHOME = 0;
@@ -13,6 +14,7 @@ static int initialize = 0;
 static apr_status_t gpcc_proc_initialize() 
 {
     char *path = 0;
+    int len;
 
     if (initialize) 
 	return 0;
@@ -23,6 +25,11 @@ static apr_status_t gpcc_proc_initialize()
 	return 1;
     }
     
+    GPHOME = gpcc_string_trim(GPHOME);
+    len = strlen(GPHOME);
+    if (GPHOME[len-1] == '/')
+       GPHOME[len-1] = 0;
+
     *LD_LIBRARY_PATH = 0;
     path = getenv("LD_LIBRARY_PATH");
     if (path) {
