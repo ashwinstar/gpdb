@@ -160,7 +160,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_pid_active(int port, int *pid, apr_pool_t *p)
     int lockf_exist = 0;
 
     sprintf(lockf, "/tmp/.s.PGSQL.%d.lock", port);
-    sprintf(cmd, "export PATH=\"/usr/sbin:/usr/bin\" && netstat -an 2> /dev/null | grep \".s.PGSQL.%d\" | awk '{print $NF}' | head -1", port);
+    sprintf(cmd, "PATH=/usr/sbin:/usr/bin && export PATH && netstat -an 2> /dev/null | grep \".s.PGSQL.%d\" | awk '{print $NF}' | head -1", port);
     argv[0] = cmd;
     argv[1] = 0;
 
