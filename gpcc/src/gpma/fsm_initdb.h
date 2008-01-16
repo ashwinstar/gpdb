@@ -280,7 +280,7 @@ static apr_status_t a_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 	success = 1;
     } else {
 	cmdslot->u.initdb.nfailed++;
-	gpcc_warning(FLINE, "[Error] segment %s initdb reply failed: segment=%s, status=%s, reason=%s", seg, status, reason);
+	gpcc_warning(FLINE, "[Error] segment %s initdb reply failed: status=%s, reason=%s", seg, status, reason);
     }
 
     if (cmdslot->u.initdb.nsuccess + cmdslot->u.initdb.nfailed == cmdslot->u.initdb.ntotal) {
