@@ -83,6 +83,36 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
+CHECKTOOLS_SCRIPTS = \
+	bin/gpscp		\
+	bin/gpssh		\
+	bin/gpcheckos		\
+	bin/gpcheckperf		\
+	$(NULL)
+
+CHECKTOOLS_FILESET = \
+	$(CHECKTOOLS_SCRIPTS)	\
+	bin/lib/gplib.py	\
+	bin/lib/pxssh.py	\
+	bin/lib/pexpect.py	\
+	bin/lib/gpsys.py	\
+	bin/lib/multidd		\
+	bin/lib/netperf		\
+	bin/lib/netserver	\
+	bin/lib/stream		\
+	$(NULL)
+
+checkTools : INSTCFLAGS=$(OPTFLAGS)
+checkTools : INSTLOC=$(DISTPATH)
+checkTools : gccVersionCheck version GPROOTDEP
+	cd $(GPMGMT)/bin && $(MAKE) netperf stream
+	mkdir -p $(INSTLOC)/bin/lib
+	@for file in $(CHECKTOOLS_FILESET); do \
+	    echo "cp -p $(GPMGMT)/$${file} $(INSTLOC)/$${file}"; \
+	    cp -p $(GPMGMT)/$${file} $(INSTLOC)/$${file}; \
+	done
+	perl putversion $(foreach script,$(CHECKTOOLS_SCRIPTS),$(INSTLOC)/$(script))
+
 groupSession:
 	@cd $(GPMGMT)/bin && $(MAKE)
 
