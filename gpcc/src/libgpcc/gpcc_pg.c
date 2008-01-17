@@ -94,7 +94,11 @@ APR_DECLARE(apr_status_t) gpcc_master_pg_hba_append(const char *user, const char
 	if (*tok == '#') {
 	    fprintf(fp, "%s\n", tok);
 	} else if (tok == strstr(tok, "local")) {
+#ifdef SOLARIS2
+	    fprintf(fp, "local     all     %s     trust\n", user);
+#else
 	    fprintf(fp, "local     all     %s     ident sameuser\n", user);
+#endif
 	} else if (tok == strstr(tok, "host")) {
 	    for (i = 0, p = apr_strtok(tok, " \t", &pp) ; p && i < 5 ; i++, p = apr_strtok(0, " \t", &pp)) {
 		if (i==2) {
