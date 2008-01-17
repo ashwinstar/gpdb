@@ -34,7 +34,7 @@ mkgp:
 mkgpma:
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpma *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson)
+		-o gpma *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
 	@mkdir -p build/bin
 	@cp src/gpma/gpma build/bin/
 
@@ -42,14 +42,14 @@ mkgpma:
 mkgpha:
 	@echo --- gpha -----------------------------------------------------
 	@(cd src/gpha; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson)
+		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
 	@mkdir -p build/bin
 	@cp src/gpha/gpha build/bin/
 
 mkfts:
 	@echo --- fts -----------------------------------------------------
 	@(cd src/fts; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o fts *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson)
+		-o fts *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
 #	@(cd src/fts; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 #		-c *.c)
 
@@ -71,7 +71,7 @@ mklibgpcc: mkdir
 mktest:
 	@echo --- test ------------------------------------------------------	
 	(cd test; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) \
-			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent)
+			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent -lresolv)
 
 mkext: mkdir
 	@echo --- ext ------------------------------------------------------
