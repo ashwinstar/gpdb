@@ -21,12 +21,12 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 
     gpcc_log_info("a_node_ssh");
 #ifdef DARWIN
-    sprintf(cmd, "export GPHOME=%s && $GPHOME/bin/gpha -D %s %s", 
+    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha -D %s %s", 
 	    getenv("GPHOME"), 
 	    config_get(gpma.cfg, "sys.guid"),
 	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
 #else
-    sprintf(cmd, "export GPHOME=%s && $GPHOME/bin/gpha %s %s", 
+    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha %s %s", 
 	    getenv("GPHOME"), 
 	    config_get(gpma.cfg, "sys.guid"),
 	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
