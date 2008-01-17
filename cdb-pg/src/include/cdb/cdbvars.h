@@ -684,6 +684,9 @@ extern int gp_hashagg_spillbatch_max;
 /* Hashjoin use bloom filter */
 extern int gp_hashjoin_bloomfilter;
 
+/* Analyze tools */
+extern int gp_motion_slice_noop;
+
 /* Memory context mpool */
 extern int gp_use_mpool;
 

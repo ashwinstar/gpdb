@@ -1612,6 +1612,8 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 		appendPQExpBuffer(buffer, " -c gp_use_mpool=%d", gp_use_mpool);
 	if (gp_hashjoin_bloomfilter != 0)
 		appendPQExpBuffer(buffer, " -c gp_hashjoin_bloomfilter=%d", gp_hashjoin_bloomfilter);
+	if (gp_motion_slice_noop != 0)
+		appendPQExpBuffer(buffer, " -c gp_motion_slice_noop=%d", gp_motion_slice_noop); 
 
 	appendPQExpBuffer(buffer, " -c DateStyle=");
 	switch (DateStyle)

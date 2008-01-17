@@ -485,6 +485,12 @@ SendTuple(MotionLayerState *mlStates,
 
 	AssertArg(tuple != NULL);
 		
+	/* 
+	 * Analyze tools.  Do not send any thing if this slice is in the bit mask
+	 */
+	if(gp_motion_slice_noop != 0 && (gp_motion_slice_noop & (1 << currentSliceId)) != 0)
+		return SEND_COMPLETE;
+
 	/*
 	 * Pull up the motion node entry with the node's details.  This includes
 	 * details that affect sending, such as whether the motion node needs to

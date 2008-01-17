@@ -2522,6 +2522,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 	
 	{
+		{"gp_motion_slice_noop", PGC_USERSET, GP_ARRAY_TUNING,
+		 gettext_noop("Make motion nodes in certain slices noop"), 
+		 gettext_noop("Make motion nodes noop, to help analyze performace"), 
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_motion_slice_noop,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
+	{
 		{"gp_reject_percent_threshold", PGC_USERSET, GP_ERROR_HANDLING,
 			gettext_noop("Reject limit in percent starts calculating after this number of rows processed"),
 			NULL

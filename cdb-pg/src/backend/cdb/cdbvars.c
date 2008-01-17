@@ -191,6 +191,9 @@ int 		gp_hashagg_spillbatch_max = 0;
 /* hash join to use bloom filter: default to 0, means not used */
 int 	 	gp_hashjoin_bloomfilter = 0;
 
+/* Analyzing aid */
+int 		gp_motion_slice_noop = 0;
+
 /* Greenplum Database Experimental Feature GUCs */
 bool		gp_enable_agg_distinct = false;
 bool		gp_enable_dqa_pruning = FALSE;
