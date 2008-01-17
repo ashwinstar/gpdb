@@ -150,8 +150,8 @@ bool		trace_sort = false;
 typedef struct
 {
 	MemTuple tuple;
-	int	tupindex;		/* see notes above */
 	Datum	datum1;
+	int	tupindex;		/* see notes above */
 	bool    isnull1;	
 } SortTuple;
 
