@@ -73,20 +73,20 @@ APR_DECLARE(apr_status_t) gpcc_pg_hba_append(const char *data_dir, const char *c
 
 APR_DECLARE(apr_status_t) gpcc_master_pg_hba_append(const char *user, const char *data_dir, const char *const *hosts, apr_pool_t *pool) 
 {
-#define TMP_PG_HBA_FILE "/tmp/pg_hba.conf"
-    int i;
+    int i, e;
     FILE *fp;
-    char fname[512];
+    char fname[512], tmpfname[512];
     char *buf, *tok, *last, *p, *pp;
     int len;
 
+    sprintf(tmpfname, "%s/pg_hba.conf.tmp", data_dir);
     sprintf(fname, "%s/pg_hba.conf", data_dir);
     len = gpcc_file_read_fully(fname, &buf, pool);
     if (!len)
 	return APR_EINVAL;
     
-    if ((fp = fopen(TMP_PG_HBA_FILE, "wb")) == 0) {
-	gpcc_log_error("open file %s failed", TMP_PG_HBA_FILE);
+    if ((fp = fopen(tmpfname, "wb")) == 0) {
+	gpcc_log_error("open file %s failed", tmpfname);
 	return APR_EINVAL;
     }
 
@@ -116,9 +116,15 @@ APR_DECLARE(apr_status_t) gpcc_master_pg_hba_append(const char *user, const char
     }
 
 
-    fclose(fp);
+    if (fp) fclose(fp);
 
-    apr_file_rename(TMP_PG_HBA_FILE, fname, pool);
+
+    if (0 != (e = apr_file_rename(tmpfname, fname, pool))) {
+	gpcc_warning(FLINE, "rename %s to %s error", tmpfname, fname);
+	remove(tmpfname);
+	return e;
+    }
+
     return 0;
 }
 
