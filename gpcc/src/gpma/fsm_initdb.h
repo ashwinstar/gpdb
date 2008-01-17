@@ -1,3 +1,20 @@
+static apr_status_t config_addsegment(struct json_object *msg, char *key, char *node, char *dir, int port)
+{
+    struct json_object *obj;
+
+    obj = json_object_new_object();
+    if (!obj)
+	return APR_EINVAL;
+
+    json_object_object_add(obj, "node", json_object_new_string(node));
+    json_object_object_add(obj, "dir", json_object_new_string(dir));
+    json_object_object_add(obj, "port", json_object_new_int(port));
+    json_object_object_add(msg, key, obj);
+
+    return 0;
+}
+
+/*
 static apr_status_t config_addsegment(struct json_object *msg, char *key, const char *value)
 {
     char *node, *last;
@@ -34,6 +51,7 @@ static apr_status_t config_addsegment(struct json_object *msg, char *key, const 
     return APR_EINVAL;
 
 }
+*/
 
 static apr_status_t config_addnode(struct json_object *msg, char *key, const char *value)
 {
@@ -66,8 +84,9 @@ static apr_status_t config_addnode(struct json_object *msg, char *key, const cha
     return APR_EINVAL;
 }
 
-static struct json_object *config_to_json_object() 
+static struct json_object *config_to_json_object(gpcc_event_t *ev, void *_cmdslot) 
 {
+    cmdslot_t *cmdslot = _cmdslot;
     struct json_object *obj;
     char key[128];
     int i;
@@ -118,6 +137,15 @@ static struct json_object *config_to_json_object()
 	config_addnode(obj, key, value);
     }
 
+    for (i = 0 ; i < cmdslot->u.initdb.ntotal ; i++) {
+	config_addsegment(obj, 
+			  cmdslot->u.initdb.req[i].unit, 
+			  cmdslot->u.initdb.req[i].node,
+			  cmdslot->u.initdb.req[i].datadir,
+			  cmdslot->u.initdb.req[i].port);
+    }
+
+    /*
     for (i = 0 ; ; i++) {
 	sprintf(key, "gpdb.seg.m.%d", i);
 	value = config_get(gpma.cfg, key);
@@ -140,7 +168,7 @@ static struct json_object *config_to_json_object()
 	    continue;
 	config_addsegment(obj, key, value);
     }
-
+    */
     gpcc_log_info(json_object_to_json_string(obj));
 
     return obj;
@@ -150,7 +178,7 @@ static struct json_object *config_to_json_object()
 static apr_status_t a_initdb_init(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
-    struct json_object *obj = config_to_json_object();
+    struct json_object *obj = config_to_json_object(ev, _cmdslot);
     char *msg = json_object_to_json_string(obj);
 
     cmdslot->u.initdb.config = apr_pstrdup(cmdslot->pool, msg);

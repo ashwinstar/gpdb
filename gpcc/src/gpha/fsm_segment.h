@@ -766,6 +766,7 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
 
     node = gpcc_json_object_get_string(seg, "node", 0);
     data_dir = gpcc_json_object_get_string(seg, "dir", 0);
+    port = gpcc_json_object_get_int(seg, "port", 0);
     hostarray = gpcc_json_object_get_object(msg, node, 0);
     host = json_object_get_string(json_object_array_get_idx(hostarray, 0));
     
