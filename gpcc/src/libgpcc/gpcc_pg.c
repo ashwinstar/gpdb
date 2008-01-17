@@ -466,15 +466,14 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_gp_id(const char *hostname,
  * endif
  */
 APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, gpcc_pg_conf_subst_t *subst, apr_pool_t *p) {
-    char *fpath;
+    char *fpath, *tmpfpath;
     char *buf;
     int len = 0;
     char *tok, *last;
     FILE *fp;
     int i, e;
 
-#define TMP_POSTGRESQL_CONF "/tmp/postgresql.conf"
-
+    apr_filepath_merge(&tmpfpath, data_dir, "postgresql.conf.tmp", 0, p);
     apr_filepath_merge(&fpath, data_dir, "postgresql.conf", 0, p);
     len = gpcc_file_read_fully(fpath, &buf, p);
     if (len <= 0) {
@@ -482,8 +481,8 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, g
 	return 1;
     }
 
-    if ((fp = fopen(TMP_POSTGRESQL_CONF, "wb")) == 0){
-	gpcc_warning(FLINE, "open %s error", TMP_POSTGRESQL_CONF);
+    if ((fp = fopen(tmpfpath, "wb")) == 0){
+	gpcc_warning(FLINE, "open %s error", tmpfpath);
 	return 1;
     }
 
@@ -514,9 +513,9 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, g
 
     if (fp) fclose(fp);
 
-    if (0 != (e = apr_file_rename(TMP_POSTGRESQL_CONF, fpath, p))) {
-	gpcc_warning(FLINE, "rename %s to %s error", TMP_POSTGRESQL_CONF, fpath);
-	remove(TMP_POSTGRESQL_CONF);
+    if (0 != (e = apr_file_rename(tmpfpath, fpath, p))) {
+	gpcc_warning(FLINE, "rename %s to %s error", tmpfpath, fpath);
+	remove(tmpfpath);
 	return e;
     }
 
