@@ -37,6 +37,9 @@
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbllize.h"
+#include "nodes/print.h"
+
 /*
  * GUC variables.
  */
@@ -492,6 +495,35 @@ ResDestroyQueue(Oid queueid)
 	
 }
 
+static bool
+inventory_plan_memory_ceiling(Node *plan, double *usage)
+{
+	if (plan == NULL)
+		return false;
+
+    if (!is_plan_node(plan))
+		return false;
+
+//	elog(LOG, "inventory_plan_memory: %s", plannode_type((Plan *)plan));
+
+	switch (nodeTag(plan))
+	{
+		case T_Agg: /* do AGG_PLAIN have any storage ? */
+		case T_Sort:
+		case T_Hash:
+		case T_Material:
+		case T_ShareInputScan: /* I'm not sure exactly how to count
+								* these (only want to count once) */
+		case T_Window: 
+			*usage += work_mem;
+			break;
+
+		default:
+			break;
+	}
+			
+	return (plan_tree_walker((Node *)plan, inventory_plan_memory_ceiling, usage));
+}
 
 /*
  * ResLockPortal -- get a resource lock for Portal execution.
@@ -510,6 +542,13 @@ ResLockPortal(Portal portal, Plan *plan)
 	int32		lockResult = 0;
 	ResPortalIncrement	incData;
 
+	{
+		double mem_ceiling = work_mem;
+
+		plan_tree_walker((Node *)plan, inventory_plan_memory_ceiling, &mem_ceiling);
+
+		elog(DEBUG2, "Memory ceiling for plan: %f", 1024.0 * mem_ceiling);
+	}
 
 	queueid = portal->queueId;
 
