@@ -1,4 +1,4 @@
-static apr_status_t config_addsegment(struct json_object *msg, char *key, char *node, char *dir, int port)
+static apr_status_t config_addsegment(struct json_object *msg, char *key, char *node, char *dir, int port, int dbid, int content)
 {
     struct json_object *obj;
 
@@ -9,6 +9,8 @@ static apr_status_t config_addsegment(struct json_object *msg, char *key, char *
     json_object_object_add(obj, "node", json_object_new_string(node));
     json_object_object_add(obj, "dir", json_object_new_string(dir));
     json_object_object_add(obj, "port", json_object_new_int(port));
+    json_object_object_add(obj, "dbid", json_object_new_int(dbid));
+    json_object_object_add(obj, "content", json_object_new_int(content));
     json_object_object_add(msg, key, obj);
 
     return 0;
@@ -142,7 +144,9 @@ static struct json_object *config_to_json_object(gpcc_event_t *ev, void *_cmdslo
 			  cmdslot->u.initdb.req[i].unit, 
 			  cmdslot->u.initdb.req[i].node,
 			  cmdslot->u.initdb.req[i].datadir,
-			  cmdslot->u.initdb.req[i].port);
+			  cmdslot->u.initdb.req[i].port,
+			  cmdslot->u.initdb.req[i].dbid,
+			  cmdslot->u.initdb.req[i].content);
     }
 
     /*

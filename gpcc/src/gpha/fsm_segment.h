@@ -748,8 +748,7 @@ static apr_status_t seg_initdb_update_gp_id(gpcc_event_t *ev, void *_cmdslot)
 
 
 
-static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void *_cmdslot, char *segname, int dbid, 
-							  int content, char *primary)
+static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void *_cmdslot, char *segname, char *primary)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *msg = cmdslot->u.seg.request.msg;
@@ -758,7 +757,7 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
     char *node;
     char *data_dir;
     char *host;
-    int port;
+    int port, dbid, content;
 
     if ((seg = gpcc_json_object_get_object(msg, segname, 0)) == 0){
 	gpcc_log_error("seg %s not found in config", segname);
@@ -768,6 +767,9 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
     node = gpcc_json_object_get_string(seg, "node", 0);
     data_dir = gpcc_json_object_get_string(seg, "dir", 0);
     port = gpcc_json_object_get_int(seg, "port", 0);
+    dbid = gpcc_json_object_get_int(seg, "dbid", 0);
+    content = gpcc_json_object_get_int(seg, "content", 0);
+    
     hostarray = gpcc_json_object_get_object(msg, node, 0);
     host = json_object_get_string(json_object_array_get_idx(hostarray, 0));
     
@@ -792,7 +794,6 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *msg = cmdslot->u.seg.request.msg;
-    int dbid = 1;
     int i, j, e;
     char segname[64];
     struct json_object *seg;
@@ -805,7 +806,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
     /* update gp_configuration table */
 
     /* master QD segment */
-    if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, "gpdb.seg.m.0", dbid++, -1, "t"))) {
+    if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, "gpdb.seg.m.0", "t"))) {
 	gpcc_log_error("[%s] update gp_configuration for entry gpdb.seg.m.0 failed", cmdslot->cmdname);
 	return 1;
     }
@@ -822,7 +823,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
 
 	    primary = (j == 0) ? "t" : "f";
 
-	    if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, segname, dbid++, i, primary))) {
+	    if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, segname, primary))) {
 		gpcc_log_error("[%s] update gp_configuration for entry %s failed", cmdslot->cmdname, segname);
 		return 1;
 	    }
@@ -837,7 +838,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
 	    break;
 	}
 
-	if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, segname, dbid++, -1, "f"))) {
+	if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, segname, "f"))) {
 	    gpcc_log_error("[%s] update gp_configuration for entry %s failed", cmdslot->cmdname, segname);
 	    return 1;
 	}	
