@@ -145,11 +145,8 @@ APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *user, cons
 {
     char *argv[10];
     int e;
-    char host[256];
-    char portstr[10];
     char cmdstr[1024];
 
-#ifdef SOLARIS2
     sprintf(cmdstr, "ssh -p %d -o \"BatchMode yes\" -o \"StrictHostKeyChecking no\" %s@%s '%s'",
 	    port, user, hostname, cmd);
 
@@ -159,23 +156,6 @@ APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *user, cons
     gpcc_log_info("Execute: %s", cmdstr);
     e = gpcc_proc_run_shell(proc, argv[0], (const char *const *) argv, 0, wait, p);
     
-#else
-    sprintf(portstr, "%d", port);
-    sprintf(host, "%s@%s", user, hostname);
-    sprintf(cmdstr, "\"\"%s\"\"", cmd);
-    argv[0] = "ssh";
-    argv[1] = "-p";
-    argv[2] = portstr;
-    argv[3] = "-o";
-    argv[4] = "\"\"BatchMode yes\"\"";
-    argv[5] = "-o";
-    argv[6] = "\"\"StrictHostKeyChecking no\"\"";
-    argv[7] = host;
-    argv[8] = cmdstr;
-    argv[9] = 0;
-
-    e = gpcc_proc_run_prog(proc, "ssh", (const char *const *)argv, 0, wait, p);
-#endif
     return e;
 }
 
