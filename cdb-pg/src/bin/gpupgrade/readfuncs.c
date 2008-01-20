@@ -550,26 +550,26 @@ _readConst(void)
 			switch (local_node->consttype)
 			{
 				case FLOAT4OID:
-					local_node->constvalue = Float4GetDatum(*(float4 *)(unsigned long int)local_node->constvalue);
+					local_node->constvalue = Float4GetDatum(*(float4 *)DatumGetPointer(local_node->constvalue));
 					break;
 				case FLOAT8OID:
-					local_node->constvalue = Float8GetDatum(*(float8 *)(unsigned long int)local_node->constvalue);
+					local_node->constvalue = Float8GetDatum(*(float8 *)DatumGetPointer(local_node->constvalue));
 					local_node->constlen = 8;
 					break;
 				case INT8OID:
-					local_node->constvalue = Int64GetDatum(*(int64 *)(unsigned long int)local_node->constvalue);
+					local_node->constvalue = Int64GetDatum(*(int64 *)DatumGetPointer(local_node->constvalue));
 					local_node->constlen = 8;
 					break;
 				case TIMEOID:
-					local_node->constvalue = TimeADTGetDatum(*(TimeADT *)(unsigned long int)local_node->constvalue);
+					local_node->constvalue = TimeADTGetDatum(*(TimeADT *)DatumGetPointer(local_node->constvalue));
 					local_node->constlen = 8;
 					break;
 				case TIMESTAMPOID:
-					local_node->constvalue = TimestampGetDatum(*(Timestamp *)(unsigned long int)local_node->constvalue);
+					local_node->constvalue = TimestampGetDatum(*(Timestamp *)DatumGetPointer(local_node->constvalue));
 					local_node->constlen = 8;
 					break;
 				case TIMESTAMPTZOID:
-					local_node->constvalue = TimestampTzGetDatum(*(TimestampTz *)(unsigned long int)local_node->constvalue);
+					local_node->constvalue = TimestampTzGetDatum(*(TimestampTz *)DatumGetPointer(local_node->constvalue));
 					local_node->constlen = 8;
 					break;
 				default:

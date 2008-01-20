@@ -43,12 +43,6 @@ typedef enum TupleChunkType
 
 #define TUPLE_CHUNK_HEADER_SIZE 4
 
-#ifdef sparc
-#define TUPLE_CHUNK_ALIGN	4
-#else
-#define TUPLE_CHUNK_ALIGN	1
-#endif
-
 /* see MPP-2099, let's not run into this one again! NOTE: the
  * definition of BROADCAST_SEGIDX is *key*.
  *

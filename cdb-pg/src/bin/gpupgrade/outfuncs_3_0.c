@@ -754,42 +754,42 @@ _outConst(StringInfo str, Const *node)
 				{
 					float4 *f = tofree = palloc(sizeof(float4));
 					*f = DatumGetFloat4(d);
-					d = (Datum)(unsigned long int)f;
+					d = PointerGetDatum(f);
 				}
 				break;
 			case FLOAT8OID:
 				{
 					float8 *f = tofree = palloc(sizeof(float8));
 					*f = DatumGetFloat8(d);
-					d = (Datum)(unsigned long int)f;
+					d = PointerGetDatum(f);
 				}
 				break;
 			case INT8OID:
 				{
 					int64 *f = tofree = palloc(sizeof(int64));
 					*f = DatumGetInt64(d);
-					d = (Datum)(unsigned long int)f;
+					d = PointerGetDatum(f);
 				}
 				break;
 			case TIMEOID:
 				{
 					TimeADT *f = tofree = palloc(sizeof(TimeADT));
 					*f = DatumGetTimeADT(d);
-					d = (Datum)(unsigned long int)f;
+					d = PointerGetDatum(f);
 				}
 				break;
 			case TIMESTAMPOID:
 				{
 					Timestamp *f = tofree = palloc(sizeof(Timestamp));
 					*f = DatumGetTimestamp(d);
-					d = (Datum)(unsigned long int)f;
+					d = PointerGetDatum(f);
 				}
 				break;
 			case TIMESTAMPTZOID:
 				{
 					TimestampTz *f = tofree = palloc(sizeof(TimestampTz));
 					*f = DatumGetTimestampTz(d);
-					d = (Datum)(unsigned long int)f;
+					d = PointerGetDatum(f);
 				}
 				break;
 			default:

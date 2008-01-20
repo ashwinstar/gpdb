@@ -781,10 +781,10 @@ serializeValue(Datum value, bool isnull,
 	char *written_pos = (*p_serial_entry) + start_pos;
 	
 	written_pos = ensureSpace(p_serial_entry, p_max_size,
-							  written_pos, sizeof(bool));
+							  written_pos, TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool)));
 
 	memcpy(written_pos, &isnull, sizeof(bool));
-	written_pos += sizeof(bool); /* isnull col */
+	written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool)); /* isnull col */
 
 	if (!isnull)
 	{
@@ -801,13 +801,13 @@ serializeValue(Datum value, bool isnull,
 			Size real_size = datumGetSize(value, byvalue, typelen);
 					
 			written_pos = ensureSpace(p_serial_entry, p_max_size,
-									  written_pos, real_size);
+									  written_pos, TYPEALIGN(TUPLE_CHUNK_ALIGN,real_size));
 			Assert(DatumGetPointer(value) != NULL);
 			memcpy(written_pos,
 				   DatumGetPointer(value),
 				   real_size);
 			
-			written_pos += real_size;
+			written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,real_size);
 		}
 	}
 
@@ -956,7 +956,7 @@ deserializeValue(char *read_pos, WindowValue *value,
 				 bool byvalue, int16 typelen)
 {
 	memcpy(&(value->valueIsNull), read_pos, sizeof(bool));
-	read_pos += sizeof(bool);
+	read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
 
 	if (!value->valueIsNull)
 	{
@@ -968,9 +968,9 @@ deserializeValue(char *read_pos, WindowValue *value,
 		else
 		{
 			value->value = PointerGetDatum(read_pos);
-			read_pos += datumGetSize(value->value,
+			read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,datumGetSize(value->value,
 									 byvalue,
-									 typelen);
+									 typelen));
 		}
 	}
 	else
@@ -1119,7 +1119,7 @@ serializeEntry(WindowStatePerLevel level_state,
 			written_pos = ensureSpace(p_serial_entry, p_max_size, written_pos,
 									  sizeof(bool));
 			memcpy(written_pos, &(isnull), sizeof(bool));
-			written_pos += sizeof(bool);
+			written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
 
 			if (!isnull)
 			{
@@ -1130,13 +1130,13 @@ serializeEntry(WindowStatePerLevel level_state,
 										   level_state->col_typlens[key_no]);
 	
 				written_pos = ensureSpace(p_serial_entry, p_max_size, written_pos,
-										  keylen);
+										  TYPEALIGN(TUPLE_CHUNK_ALIGN,keylen));
 
 				if (level_state->col_typbyvals[key_no])
 					memcpy(written_pos, &(key), sizeof(Datum));
 				else
 					memcpy(written_pos, DatumGetPointer(key), keylen);
-				written_pos += keylen;
+				written_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,keylen);
 			}
 		}
 	}
@@ -1170,7 +1170,7 @@ deserializeEntry(WindowStatePerLevel level_state,
 			Size curr_keylen = 0;
 
 			memcpy(&(entry->nulls[key_no]), read_pos, sizeof(bool));
-			read_pos += sizeof(bool);
+			read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
 
 			if (!entry->nulls[key_no])
 			{
@@ -1187,11 +1187,11 @@ deserializeEntry(WindowStatePerLevel level_state,
 											   level_state->col_typlens[key_no]);
 					entry->keys[key_no] = PointerGetDatum(read_pos);
 				}
-				read_pos += curr_keylen;
-				keylen += curr_keylen;
+				read_pos += TYPEALIGN(TUPLE_CHUNK_ALIGN,curr_keylen);
+				keylen += TYPEALIGN(TUPLE_CHUNK_ALIGN,curr_keylen);
 			}
 		
-			keylen += sizeof(bool);
+			keylen += TYPEALIGN(TUPLE_CHUNK_ALIGN,sizeof(bool));
 		}
 	}
 

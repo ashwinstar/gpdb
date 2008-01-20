@@ -565,7 +565,7 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
         tcItem->chunk_length = tcSize;
 		tcItem->inplace = (char *) (conn->msgPos + bytesProcessed);
 
-		bytesProcessed -= -tcSize&-TUPLE_CHUNK_ALIGN;
+		bytesProcessed += TYPEALIGN(TUPLE_CHUNK_ALIGN,tcSize);
 
 		if (firstTcItem == NULL)
 		{
@@ -4474,7 +4474,7 @@ acceptIncomingConnection(void)
 static bool
 sendChunk(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
 {
-	int length=-(-tcItem->chunk_length&-TUPLE_CHUNK_ALIGN);
+	int length=TYPEALIGN(TUPLE_CHUNK_ALIGN,tcItem->chunk_length);
 	Assert(conn->msgSize > 0);
 
 #ifdef AMS_VERBOSE_LOGGING
