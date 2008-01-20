@@ -2153,7 +2153,7 @@ pmdie(SIGNAL_ARGS)
 					if (subProc->pid != 0)
 					{
 						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For smart shutdown, send SIGUSR2 to pid %d",
-							 subProc->pid);
+							 (int)subProc->pid);
 						signal_child(subProc->pid, SIGUSR2);
 					}
 				}
@@ -2224,7 +2224,7 @@ pmdie(SIGNAL_ARGS)
 					if (subProc->pid != 0)
 					{
 						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For fast shutdown, send SIGQUIT to pid %d",
-							 subProc->pid);
+							 (int)subProc->pid);
 						signal_child(subProc->pid, SIGQUIT);
 					}
 				}
@@ -2262,7 +2262,7 @@ pmdie(SIGNAL_ARGS)
 					if (subProc->pid != 0)
 					{
 						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For immediate shutdown request, send SIGQUIT to pid %d",
-							 subProc->pid);
+							 (int)subProc->pid);
 						signal_child(subProc->pid, SIGQUIT);
 					}
 				}

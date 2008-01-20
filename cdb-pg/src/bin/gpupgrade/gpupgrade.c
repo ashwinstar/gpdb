@@ -1,3 +1,4 @@
+#include "postgres.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <limits.h>
@@ -8,7 +9,6 @@
 #include <time.h>
 #include <sys/time.h>
 
-#include "postgres.h"
 #include "postgres_fe.h"
 #include "libpq-fe.h"
 #include "libpq/pqsignal.h"

@@ -5579,7 +5579,9 @@ ResetUsage(void)
 }
 
 #ifdef  pg_on_solaris
+#if defined(_LP64) || _FILE_OFFSET_BITS != 64
 #include <procfs.h>
+#endif 
 #endif 
 
 void
@@ -5613,6 +5615,7 @@ ShowUsage(const char *title)
 	}
 	
 #ifdef  pg_on_solaris
+#if defined(_LP64) || _FILE_OFFSET_BITS != 64
 	{
 		char pathname[100];
 		int fd;
@@ -5626,8 +5629,8 @@ ShowUsage(const char *title)
 			{
 				uint_t value; /* need 32 bits to compute with */
 
-				elog(LOG,"Process size:..............%ld KB", psi->pr_size);
-				elog(LOG,"Resident Set Size:.........%ld KB", psi->pr_rssize);
+				elog(LOG,"Process size:..............%ld KB",(long)psi->pr_size);
+				elog(LOG,"Resident Set Size:.........%ld KB",(long)psi->pr_rssize);
 
 				value = psi->pr_pctmem;
 				value = ((value * 1000) + 0x7000) >> 15; /* [0 .. 1000] */
@@ -5641,7 +5644,7 @@ ShowUsage(const char *title)
 	}
 
 
-	
+#endif 
 #endif 
 
 	/*

@@ -565,7 +565,7 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
         tcItem->chunk_length = tcSize;
 		tcItem->inplace = (char *) (conn->msgPos + bytesProcessed);
 
-		bytesProcessed += tcSize;
+		bytesProcessed -= -tcSize&-TUPLE_CHUNK_ALIGN;
 
 		if (firstTcItem == NULL)
 		{
@@ -4474,20 +4474,21 @@ acceptIncomingConnection(void)
 static bool
 sendChunk(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
 {
+	int length=-(-tcItem->chunk_length&-TUPLE_CHUNK_ALIGN);
 	Assert(conn->msgSize > 0);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
 #endif
 
-	if (conn->msgSize + tcItem->chunk_length > Gp_max_packet_size)
+	if (conn->msgSize + length > Gp_max_packet_size)
 	{
 		if (!flushBuffer(mlStates, transportStates, pEntry, conn, motionId))
 			return false;
 	}
 
 	memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
-	conn->msgSize += tcItem->chunk_length;
+	conn->msgSize += length;
 
 	conn->tupleCount++;
 	return true;
