@@ -66,6 +66,8 @@ enum event_t {
     SEG_STATUS_EVENT,
     SEG_STATUS_REPLY_EVENT,
 
+    SEG_DELETE_EVENT,
+    SEG_DELETE_REPLY_EVENT,
 
     /* segment msg */
     SEGMENT_REQUEST_MSG_EVENT = 200,
@@ -79,9 +81,6 @@ enum event_t {
     ERROR_MSG_EVENT,
 
 
-    
-    
-    
     EVENT_MAX,
 };
 
@@ -104,7 +103,7 @@ enum cmdstate_t {
     SEG_RUNNING_CMDSTATE,
     SEG_STOPPING_CMDSTATE,
     SEG_STOPPED_CMDSTATE,
-    
+    SEG_DELETING_CMDSTATE,
 
     CMDSTATE_MAX,
 };

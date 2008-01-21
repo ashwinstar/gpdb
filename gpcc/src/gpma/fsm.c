@@ -20,9 +20,11 @@
 #include "fsm_start.h"
 #include "fsm_status.h"
 #include "fsm_stop.h"
+#include "fsm_delete.h"
 #include "fsm_array_start.h"
 #include "fsm_array_init.h"
 #include "fsm_array_stop.h"
+#include "fsm_array_delete.h"
 #include "fsm_unit.h"
 #include "fsm_segment_start.h"
 #include "fsm_segment_stop.h"
@@ -403,6 +405,20 @@ APR_DECLARE(void) fsm_init(void)
 		 a_stop_timeout, NULL);
 
  
+    /* delete */
+    
+    gpcc_fsm_put(FTS_DELETE_CMDSTATE, INIT_EVENT, FTS_DELETE_CMDSTATE,
+		 a_delete_do, NULL);
+    gpcc_fsm_put(FTS_DELETE_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, FTS_DELETE_CMDSTATE,
+		 a_delete_reply, NULL);
+    gpcc_fsm_put(FTS_DELETE_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 a_delete_success, NULL);
+    gpcc_fsm_put(FTS_DELETE_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 a_delete_failure, NULL);
+    gpcc_fsm_put(FTS_DELETE_CMDSTATE, TIMEUP_EVENT, NULL_CMDSTATE,
+		 a_delete_timeout, NULL);
+
+
    /* status */
     
     gpcc_fsm_put(FTS_STATUS_CMDSTATE, INIT_EVENT, FTS_STATUS_CMDSTATE,
@@ -445,6 +461,16 @@ APR_DECLARE(void) fsm_init(void)
 		 a_array_stop_success, NULL);
     gpcc_fsm_put(FTS_ARRAY_STOP_WAIT_CMDSTATE, FAILURE_EVENT, NULL_EVENT,
 		 a_array_stop_failure, NULL);
+
+    /* array delete */
+    gpcc_fsm_put(FTS_ARRAY_DELETE_CMDSTATE, INIT_EVENT, FTS_ARRAY_DELETE_WAIT_CMDSTATE,
+		 a_array_delete_do, NULL);
+    gpcc_fsm_put(FTS_ARRAY_DELETE_WAIT_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_ARRAY_DELETE_WAIT_CMDSTATE,
+		 a_array_delete_units_delete_reply, NULL);
+    gpcc_fsm_put(FTS_ARRAY_DELETE_WAIT_CMDSTATE, SUCCESS_EVENT, NULL_EVENT,
+		 a_array_delete_success, NULL);
+    gpcc_fsm_put(FTS_ARRAY_DELETE_WAIT_CMDSTATE, FAILURE_EVENT, NULL_EVENT,
+		 a_array_delete_failure, NULL);
 
     /* array initdb */
     gpcc_fsm_put(FTS_ARRAY_INIT_CMDSTATE, INIT_EVENT, FTS_ARRAY_INIT_WAIT_CMDSTATE,

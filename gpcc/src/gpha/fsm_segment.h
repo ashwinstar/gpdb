@@ -20,7 +20,9 @@ static event_t segment_msg_get_event(struct json_object *obj)
 	return SEG_START_EVENT;
     } else if (strcmp(action, "stop") == 0) {
 	return SEG_STOP_EVENT;
-    } 
+    } else if (strcmp(action, "delete") == 0) {
+	return SEG_DELETE_EVENT;
+    }
 
     return NULL_EVENT;
 
@@ -107,6 +109,25 @@ static apr_status_t ma_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     status = gpcc_json_object_get_string(obj, "status", 0);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
     gpcc_log_info("[%s] segment initdb reply [status = %s]", seg, status);
+
+    json_object_put(obj);
+    return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
+				cmdslot->cmdidx, pkt->mh.rcvidx, pkt->payload, pkt->mh.len);
+
+}
+
+static apr_status_t ma_delete_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    struct json_object *obj;
+    char *status;
+    char *seg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+
+    obj = json_tokener_parse((char *) pkt->payload);
+    status = gpcc_json_object_get_string(obj, "status", 0);
+    seg = gpcc_json_object_get_string(obj, "seg", 0);
+    gpcc_log_info("[%s] segment delete reply [status = %s]", seg, status);
 
     json_object_put(obj);
     return gpcc_net_send_packet(cmdslot->conn, SEGMENT_REPLY_MSG, 
@@ -1399,4 +1420,140 @@ apr_status_t seg_status(gpcc_event_t *ev, void *_cmdslot)
     json_object_put(obj);
 
     return 0;
+}
+
+
+apr_status_t seg_delete(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj;
+    int e;
+    char status[1024];
+    int len = sizeof(status);
+
+    gpcc_log_info("[%s] segment delete command received", cmdslot->cmdname);
+
+    memset(&cmdslot->u.seg.request, 0, sizeof(cmdslot->u.seg.request));
+    cmdslot->u.seg.request.maidx = packet->mh.sndidx;
+    cmdslot->u.seg.request.parentidx = packet->mh.rcvidx;
+
+    if (0 != (e = apr_pool_create(&cmdslot->u.seg.request.subpool, cmdslot->pool))) {
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "apr_pool_create error");
+	return 0;
+    }
+
+    obj = json_tokener_parse(packet->payload);
+    if (!obj) {
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, 1, "json_tokenr_parse error");
+	json_object_put(obj);
+	return 0;
+    }
+
+    cmdslot->u.seg.request.port = gpcc_json_object_get_int(obj, "port", 0);
+    cmdslot->u.seg.request.mode = gpcc_json_object_get_string(obj, "mode", 0);
+    cmdslot->u.seg.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
+
+    if (cmdslot->u.seg.request.port == 0 ||
+	cmdslot->u.seg.request.mode == 0 ||
+	cmdslot->u.seg.request.data_dir == 0) {
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, 1, "request error: parameter is missing");
+	json_object_put(obj);
+	return 0;
+    }
+    
+    /* check pg_ctl status for sure */
+    gpcc_log_info("[%s] check pg_ctl status", cmdslot->cmdname);
+    if (0 != (e = gpcc_pg_ctl_status(cmdslot->u.seg.request.port,
+				     cmdslot->u.seg.request.data_dir,
+				     status, 
+				     &len,
+				     cmdslot->u.seg.request.subpool))) {
+	seg_request_error(FLINE, ev, _cmdslot, SUCCESS_EVENT, 0, "server is not running");
+	json_object_put(obj);
+	return 0;
+    }
+    
+    if (strstr(status, "server is running") == 0) {
+	seg_request_error(FLINE, ev, _cmdslot, SUCCESS_EVENT, 0, "server is not running");
+	json_object_put(obj);
+	return 0;
+    }
+
+    if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.seg.request.proc,
+					cmdslot->u.seg.request.port,
+					cmdslot->u.seg.request.data_dir,
+					cmdslot->u.seg.request.mode,
+					1, 0, 
+					cmdslot->u.seg.request.subpool))) {
+
+	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "pg_ctl stop failure");
+	json_object_put(obj);
+	return 0;
+    }
+
+    cmdslot->u.seg.request.msg = obj;
+    cmdslot->countdown = 1;
+    return 0;    
+
+
+}
+
+static apr_status_t seg_delete_wait(gpcc_event_t* ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    int ret = 0;
+    apr_exit_why_e exitwhy;
+    int e;
+    gpcc_event_t *evt;
+
+    e = apr_proc_wait(&cmdslot->u.seg.request.proc, &ret, &exitwhy, APR_NOWAIT);
+    if (e == APR_CHILD_DONE) {
+	if (ret == 0) {
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+	} else {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	}
+
+	cmdslot->u.seg.request.exitcode = ret;
+	cmdslot->u.seg.request.reason = proc_exit_reason(exitwhy);	
+	gpcc_evqueue_put(gpha.evq, evt);
+
+    } else {
+	/* continue to wait */
+	cmdslot->countdown = 1;
+    }
+
+    return 0;
+}
+
+static apr_status_t seg_delete_rmdir(gpcc_event_t *ev, void *_cmdslot) 
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    apr_proc_t proc;
+    char cmd[1024];
+    const char *argv[2];
+    int e;
+
+    gpcc_log_info("[%s] removing data directory %s", cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
+    sprintf(cmd, "rm -rf %s", cmdslot->u.seg.data_dir);
+    argv[0] = cmd;
+    argv[1] = 0;
+    if ((e = gpcc_proc_run_shell(&proc, argv[0], argv, 0, 1, cmdslot->pool)) != 0) {
+	gpcc_warning(FLINE, "[%s] remove directory %s failure", cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
+	cmdslot->u.seg.request.exitcode = e;
+	cmdslot->u.seg.request.reason = "remove data directory failure";
+    }
+
+    gpcc_log_info("[%s] segment delete exited [retval = %d, reason =%s]", 
+		  cmdslot->cmdname, 
+		  cmdslot->u.seg.request.exitcode,
+		  cmdslot->u.seg.request.reason);
+
+    return 0;
+}
+
+static apr_status_t seg_delete_reply(gpcc_event_t* ev, void *_cmdslot)
+{
+    return seg_request_reply(ev, _cmdslot, SEG_DELETE_REPLY_EVENT);
 }

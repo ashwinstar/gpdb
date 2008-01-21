@@ -38,6 +38,8 @@ APR_DECLARE(void) fsm_setup(void)
 		 ma_start_reply, NULL);
     gpcc_fsm_put(MA_CMDSTATE, SEG_STOP_REPLY_EVENT, MA_CMDSTATE,
 		 ma_stop_reply, NULL);
+    gpcc_fsm_put(MA_CMDSTATE, SEG_DELETE_REPLY_EVENT, MA_CMDSTATE,
+		 ma_delete_reply, NULL);
     gpcc_fsm_put(MA_CMDSTATE, NET_CLOSED_EVENT, NULL_CMDSTATE,
 		 ma_cleanup, NULL);
 
@@ -123,5 +125,18 @@ APR_DECLARE(void) fsm_setup(void)
     gpcc_fsm_put(SEG_STOPPED_CMDSTATE, SEG_STATUS_EVENT, SEG_STOPPED_CMDSTATE,
 		 seg_status, NULL);
 		 
+    /* segment delete */
+    gpcc_fsm_put(SEG_STARTING_CMDSTATE, SEG_DELETE_EVENT, SEG_STARTING_CMDSTATE,
+		 seg_busy_fail_reply, NULL);
+    gpcc_fsm_put(SEG_STOPPING_CMDSTATE, SEG_DELETE_EVENT, SEG_DELETING_CMDSTATE,
+		 seg_delete, NULL);
+    gpcc_fsm_put(SEG_RUNNING_CMDSTATE, SEG_DELETE_EVENT, SEG_DELETING_CMDSTATE,
+		 seg_delete, NULL);
+    gpcc_fsm_put(SEG_DELETING_CMDSTATE, TIMEUP_EVENT, SEG_DELETING_CMDSTATE,
+		 seg_delete_wait, NULL);
+    gpcc_fsm_put(SEG_DELETING_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 seg_delete_rmdir, seg_delete_reply, seg_request_cleanup, seg_cleanup, NULL);
+    gpcc_fsm_put(SEG_DELETING_CMDSTATE, FAILURE_EVENT, SEG_STOPPING_CMDSTATE,
+		 seg_request_cleanup, NULL);
 
 }
