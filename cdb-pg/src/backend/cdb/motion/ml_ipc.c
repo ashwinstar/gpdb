@@ -5432,7 +5432,7 @@ ic_rx_thread_func(void *arg)
 	{
 		struct pollfd nfd;
 		int		timeout;
-		int		n;
+		int		n=0;
 
 		if (rx_thread_shutdown)
 		{
