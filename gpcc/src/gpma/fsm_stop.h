@@ -14,11 +14,11 @@ static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
 	int j = 0;
 
 	for (j = 0 ; j < gpma.unit_max ; j++) {
-	    if (strcmp(cmdslot->u.start.req[i].unit, gpma.unit_cmdtab[j]->cmdname) == 0)
+	    if (strcmp(cmdslot->u.stop.req[i].unit, gpma.unit_cmdtab[j]->cmdname) == 0)
 		break;
 	}
 	if (j >= gpma.unit_max) {
-	    gpcc_warning(FLINE, "[Error] invalid segment name %s", cmdslot->u.start.req[i].unit);
+	    gpcc_warning(FLINE, "[Error] invalid segment name %s", cmdslot->u.stop.req[i].unit);
 	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	    gpcc_evqueue_put(gpma.evq, evt);
 	    return 0;
@@ -41,7 +41,7 @@ static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
 	evt = gpcc_event_alloc(UNIT_STOP_EVENT, gpma.unit_cmdtab[j]->cmdidx, sizeof(*pkt) + len);
 	pkt = (gpcc_net_packet_t *) evt->pdata;
 	pkt->mh.sndidx = cmdslot->cmdidx;
-	pkt->mh.rcvidx = cmdslot->u.start.parent_cmdidx;
+	pkt->mh.rcvidx = cmdslot->u.stop.parent_cmdidx;
 	pkt->mh.len = len;
 	strcpy(pkt->payload, msg);
 	gpcc_evqueue_put(gpma.evq, evt);
