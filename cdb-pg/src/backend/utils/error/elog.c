@@ -2809,7 +2809,7 @@ backtrace_symbols(void *const *buffer, int size)
 		{
 			bufsize += snprintf(NULL, 0, "%p: %s %s+0x%x", buffer[i], 
 						dli.dli_fname, dli.dli_sname,
-						(char *)(buffer[i]) - (char *)(dli.dli_saddr)) + 1;
+						(int)((char *)(buffer[i]) - (char *)(dli.dli_saddr))) + 1;
 		}
 	}
 
@@ -2835,7 +2835,7 @@ backtrace_symbols(void *const *buffer, int size)
 			{
 				n = sprintf(cur, "%p: %s %s+0x%x", buffer[i], 
 							dli.dli_fname, dli.dli_sname,
-							(char *)(buffer[i]) - (char *)(dli.dli_saddr));
+							(int)((char *)(buffer[i]) - (char *)(dli.dli_saddr)));
 			}
 
 			result[i] = cur;
