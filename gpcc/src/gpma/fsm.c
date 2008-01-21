@@ -365,6 +365,17 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_STOPPING_CMDSTATE, SEGMENT_STOP_EVENT, FTS_STOPPING_CMDSTATE,
 		 a_fts_busy_reply, NULL);
 
+    /* fts deleting */
+    gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_DELETE_EVENT, FTS_DELETING_CMDSTATE,
+		 a_fts_array_delete, NULL);
+    gpcc_fsm_put(FTS_DELETING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_DELETING_CMDSTATE,
+		 a_fts_array_delete_reply, NULL);
+    gpcc_fsm_put(FTS_DELETING_CMDSTATE, SUCCESS_EVENT, FTS_EMPTY_CMDSTATE,
+		 a_fts_deleted, a_fts_array_delete_shutdown_nodes, NULL);
+    gpcc_fsm_put(FTS_DELETING_CMDSTATE, FAILURE_EVENT, FTS_EMPTY_CMDSTATE,
+		 a_fts_failure, NULL);
+
+
     /* init */
     gpcc_fsm_put(FTS_INITDB_CMDSTATE, INIT_EVENT, FTS_INITDB_CMDSTATE,
 		 a_initdb_init, a_initdb_do, NULL);
