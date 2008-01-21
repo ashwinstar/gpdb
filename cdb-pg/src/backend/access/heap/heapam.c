@@ -126,6 +126,8 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 	int			ntup;
 	OffsetNumber lineoff;
 	ItemId		lpp;
+	TransactionId t_xmin, t_xmax;
+	CommandId     t_cid;
 
 	/* don't run prefetching code if the table is small. This has the 
 	   side effect of using the full buffer pool to cache the table */
@@ -215,6 +217,9 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 	lines = PageGetMaxOffsetNumber(dp);
 	ntup = 0;
 
+	t_xmin = t_xmax = 0;
+	t_cid = 0;
+
 	for (lineoff = FirstOffsetNumber, lpp = PageGetItemId(dp, lineoff);
 		 lineoff <= lines;
 		 lineoff++, lpp++)
@@ -228,7 +233,18 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 			loctup.t_len = ItemIdGetLength(lpp);
 			ItemPointerSet(&(loctup.t_self), page, lineoff);
 
-			valid = HeapTupleSatisfiesVisibility(&loctup, snapshot, buffer);
+			valid = (t_xmax == HeapTupleHeaderGetXmax(loctup.t_data)  &&
+					 t_xmin == HeapTupleHeaderGetXmin(loctup.t_data) &&
+					 t_cid == HeapTupleHeaderGetRawCommandId(loctup.t_data));
+			if (! valid) {
+				valid = HeapTupleSatisfiesVisibility(&loctup, snapshot, buffer);
+				if (valid) 
+				{
+					t_xmax = HeapTupleHeaderGetXmax(loctup.t_data);
+					t_xmin = HeapTupleHeaderGetXmin(loctup.t_data);
+					t_cid = HeapTupleHeaderGetRawCommandId(loctup.t_data);
+				}
+			}
 			if (valid)
 				scan->rs_vistuples[ntup++] = lineoff;
 		}
