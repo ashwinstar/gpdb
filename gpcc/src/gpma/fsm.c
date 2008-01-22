@@ -368,6 +368,8 @@ APR_DECLARE(void) fsm_init(void)
     /* fts deleting */
     gpcc_fsm_put(FTS_RUNNING_CMDSTATE, ARRAY_DELETE_EVENT, FTS_DELETING_CMDSTATE,
 		 a_fts_array_delete, NULL);
+    gpcc_fsm_put(FTS_DELETING_CMDSTATE, ARRAY_STATUS_EVENT, FTS_DELETING_CMDSTATE,
+		 a_fts_array_status_reply, NULL);
     gpcc_fsm_put(FTS_DELETING_CMDSTATE, ARRAY_REPLY_MSG_EVENT, FTS_DELETING_CMDSTATE,
 		 a_fts_array_delete_reply, NULL);
     gpcc_fsm_put(FTS_DELETING_CMDSTATE, SUCCESS_EVENT, FTS_EMPTY_CMDSTATE,
@@ -587,6 +589,15 @@ APR_DECLARE(void) fsm_init(void)
 		 a_unit_stop, NULL);
     gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, UNIT_START_EVENT, UNIT_RUNNING_CMDSTATE,
 		 a_unit_busy_ok_reply, NULL);
+    gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, UNIT_DELETE_EVENT, UNIT_DELETING_CMDSTATE,
+		 a_unit_delete, NULL);
+    gpcc_fsm_put(UNIT_DELETING_CMDSTATE, SEGMENT_REPLY_MSG_EVENT, UNIT_DELETING_CMDSTATE,
+		 a_unit_delete_reply, NULL);
+    gpcc_fsm_put(UNIT_DELETING_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 NULL);
+    gpcc_fsm_put(UNIT_DELETING_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 NULL);
+
 
     /* unit break event */
     gpcc_fsm_put(UNIT_CMDSTATE, BREAK_EVENT, UNIT_CMDSTATE, NULL);
@@ -605,6 +616,8 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, UNIT_STATUS_EVENT, UNIT_STARTING_CMDSTATE,
 		 a_unit_status, NULL);
     gpcc_fsm_put(UNIT_RUNNING_CMDSTATE, UNIT_STATUS_EVENT, UNIT_RUNNING_CMDSTATE,
+		 a_unit_status, NULL);
+    gpcc_fsm_put(UNIT_DELETING_CMDSTATE, UNIT_STATUS_EVENT, UNIT_DELETING_CMDSTATE,
 		 a_unit_status, NULL);
 
 }

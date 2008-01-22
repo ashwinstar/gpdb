@@ -3,6 +3,7 @@
 #define UNIT_STOPPED_STATUS                         "stopped"
 #define UNIT_STARTING_STATUS                        "starting"
 #define UNIT_RUNNING_STATUS                         "running"
+#define UNIT_DELETING_STATUS                        "deleting"
 #define UNIT_INITIALIZING_STATUS                    "initializing"
 #define UNIT_INVALID_STATUS                         "invalid"
 #define UNIT_CONNECTING_STATUS                      "connecting"
@@ -267,6 +268,9 @@ static apr_status_t a_unit_busy_error_reply(gpcc_event_t *ev, void *arg)
     case UNIT_RUNNING_CMDSTATE:
 	reason = "segment is running";
 	break;
+    case UNIT_DELETING_CMDSTATE:
+	reason = "segment is deleting";
+	break;
     default:
 	reason = "invalid segment state";
 	break;
@@ -314,6 +318,9 @@ static apr_status_t a_unit_status(gpcc_event_t *ev, void *arg)
     case UNIT_RUNNING_CMDSTATE:
 	state = UNIT_RUNNING_STATUS;
 	break;
+    case UNIT_DELETING_CMDSTATE:
+	state = UNIT_DELETING_STATUS;
+	break;
     default:
 	state = UNIT_INVALID_STATUS;
 	break;
@@ -322,5 +329,78 @@ static apr_status_t a_unit_status(gpcc_event_t *ev, void *arg)
     obj = gpcc_json_http_segment_status_reply(slot->cmdname, "ok", state);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
+    return 0;
+}
+
+
+static apr_status_t a_unit_delete(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    gpcc_event_t *evt;
+    int e;
+    struct json_object *obj;
+    char *msg;
+    int len;
+
+    slot->u.unit.parentidx = pkt->mh.sndidx;
+
+    if (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
+					SEGMENT_REQUEST_MSG,
+					slot->cmdidx,
+					0,
+					pkt->payload,
+					pkt->mh.len))) {
+	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+	slot->u.unit.parentidx = 0;
+
+	obj = gpcc_json_segment_reply(slot->cmdname, "failed", "network failure");
+	msg = json_object_to_json_string(obj);
+	len = strlen(msg) + 1;
+	
+	evt = gpcc_event_alloc(SEGMENT_REPLY_MSG_EVENT, pkt->mh.sndidx, sizeof(*pkt) + len);
+	pkt = (gpcc_net_packet_t *) evt->pdata;
+	pkt->mh.sndidx = slot->cmdidx;
+	pkt->mh.rcvidx = 0;
+	pkt->mh.len = len;
+	strcpy(pkt->payload, msg);
+	
+	gpcc_evqueue_put(gpma.evq, evt);
+	return 0;
+    }
+    
+    slot->countdown = 60 * 5;
+
+    return 0;
+}
+
+static apr_status_t a_unit_delete_reply(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt;
+    struct json_object *obj = 0;
+    gpcc_event_t *evt;
+    char *seg, *status;
+
+    pkt = (gpcc_net_packet_t *) ev->pdata;
+    obj = json_tokener_parse(pkt->payload);
+    seg = gpcc_json_object_get_string(obj, "seg", 0);
+    status = gpcc_json_object_get_string(obj, "status", "failed");
+
+    evt = gpcc_event_alloc(ev->etype, slot->u.unit.parentidx, ev->edatasz);
+    memcpy(evt->pdata, ev->pdata, ev->edatasz);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    if (strcmp(status, "ok") == 0) {
+	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+    } else {
+	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);	
+    }
+    gpcc_evqueue_put(gpma.evq, evt);
+    json_object_put(obj);
+    slot->u.unit.parentidx = 0;
+
+    slot->countdown = 0;
     return 0;
 }

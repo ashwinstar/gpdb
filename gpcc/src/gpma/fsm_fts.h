@@ -3,6 +3,7 @@
 #define ARRAY_STOPPED_STATUS                         "stopped"
 #define ARRAY_STARTING_STATUS                        "starting"
 #define ARRAY_RUNNING_STATUS                         "running"
+#define ARRAY_DELETING_STATUS                        "deleting"
 #define ARRAY_INITIALIZING_STATUS                    "initializing"
 #define ARRAY_INVALID_STATUS                         "invalid"
 #define ARRAY_NO_ARRAY_STATUS                        "no_array"
@@ -342,6 +343,9 @@ static apr_status_t a_fts_waiting(gpcc_event_t *ev, void *_cmdslot)
     case ARRAY_START_EVENT:
 	cmd = "start";
 	break;
+    case ARRAY_DELETE_EVENT:
+	cmd = "delete";
+	break;
     default:
 	break;
     }
@@ -470,6 +474,8 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 	state = ARRAY_RUNNING_STATUS;
     } else if (cmdslot->cmdstate ==  FTS_STOPPING_CMDSTATE) {
 	state = ARRAY_STOPPING_STATUS;
+    } else if (cmdslot->cmdstate == FTS_DELETING_CMDSTATE) {
+	state = ARRAY_DELETING_STATUS;
     } else {
 	state = ARRAY_INVALID_STATUS;
     }
@@ -504,6 +510,8 @@ static apr_status_t a_fts_busy_ok_reply(gpcc_event_t *ev, void *_cmdslot)
 	msg = "server is running";
     } else if (cmdslot->cmdstate == FTS_STOPPING_CMDSTATE) {
 	msg = "server is stopping";
+    } else if (cmdslot->cmdstate == FTS_DELETING_CMDSTATE) {
+	msg = "server is deleting";
     } else {
 	msg = "invalid server state";
     }
@@ -537,6 +545,8 @@ static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
 	msg = "server is running";
     } else if (cmdslot->cmdstate == FTS_STOPPING_CMDSTATE) {
 	msg = "server is stopping";
+    } else if (cmdslot->cmdstate == FTS_DELETING_CMDSTATE) {
+	msg = "server is deleting";
     } else {
 	msg = "invalid server state";
     }
