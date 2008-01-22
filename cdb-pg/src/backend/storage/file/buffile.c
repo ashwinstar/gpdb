@@ -335,6 +335,7 @@ BufFileLoadBufferRaw(BufFile *file, char* ptr, size_t size)
 	{
 		if (FileSeek(thisfile, file->curOffset, SEEK_SET) != file->curOffset)
 			return 0;				/* seek failed, read nothing */
+		
 		file->offsets[file->curFile] = file->curOffset;
 	}
 
@@ -408,12 +409,23 @@ BufFileDumpBuffer(BufFile *file)
 		if (file->curOffset != file->offsets[file->curFile])
 		{
 			if (FileSeek(thisfile, file->curOffset, SEEK_SET) != file->curOffset)
+			{
+				elog(ERROR, "buffile: seek to offset %d in file %d failed.",
+					 file->curOffset, thisfile);
+
 				return;			/* seek failed, give up */
+			}
+			
 			file->offsets[file->curFile] = file->curOffset;
 		}
 		bytestowrite = FileWrite(thisfile, file->buffer + wpos, bytestowrite);
 		if (bytestowrite <= 0)
+		{
+			elog(ERROR, "buffile: write to file %d failed.", thisfile);
+			
 			return;				/* failed to write */
+		}
+		
 		file->offsets[file->curFile] += bytestowrite;
 		file->curOffset += bytestowrite;
 		wpos += bytestowrite;
