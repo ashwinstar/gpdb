@@ -1470,13 +1470,13 @@ apr_status_t seg_delete(gpcc_event_t *ev, void *_cmdslot)
 				     &len,
 				     cmdslot->u.seg.request.subpool))) {
 	seg_request_error(FLINE, ev, _cmdslot, SUCCESS_EVENT, 0, "server is not running");
-	json_object_put(obj);
+	cmdslot->u.seg.request.msg = obj;
 	return 0;
     }
     
     if (strstr(status, "server is running") == 0) {
 	seg_request_error(FLINE, ev, _cmdslot, SUCCESS_EVENT, 0, "server is not running");
-	json_object_put(obj);
+	cmdslot->u.seg.request.msg = obj;
 	return 0;
     }
 
@@ -1535,12 +1535,13 @@ static apr_status_t seg_delete_rmdir(gpcc_event_t *ev, void *_cmdslot)
     const char *argv[2];
     int e;
 
-    gpcc_log_info("[%s] removing data directory %s", cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
-    sprintf(cmd, "rm -rf %s", cmdslot->u.seg.data_dir);
+    gpcc_log_info("[%s] removing data directory '%s'", cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
+    sprintf(cmd, "rm -rf %s", cmdslot->u.seg.request.data_dir);
     argv[0] = cmd;
     argv[1] = 0;
     if ((e = gpcc_proc_run_shell(&proc, argv[0], argv, 0, 1, cmdslot->pool)) != 0) {
-	gpcc_warning(FLINE, "[%s] remove directory %s failure", cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
+	gpcc_warning(FLINE, "[%s] remove directory '%s' failure", 
+		     cmdslot->cmdname, cmdslot->u.seg.request.data_dir);
 	cmdslot->u.seg.request.exitcode = e;
 	cmdslot->u.seg.request.reason = "remove data directory failure";
     }

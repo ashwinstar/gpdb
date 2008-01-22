@@ -70,7 +70,7 @@ APR_DECLARE(void) fsm_setup(void)
 		 seg_initdb_checkdb, NULL);
     gpcc_fsm_put(SEG_INITDB_CHECK_CMDSTATE, SEG_INITDB_FAIL2_EVENT, SEG_INIT_CMDSTATE,
 		 seg_initdb_backout2, seg_initdb_backout1, seg_initdb_reply, seg_request_cleanup, NULL);
-    gpcc_fsm_put(SEG_INITDB_CHECK_CMDSTATE, SEG_INITDB_DONE_EVENT, SEG_INIT_CMDSTATE,
+    gpcc_fsm_put(SEG_INITDB_CHECK_CMDSTATE, SEG_INITDB_DONE_EVENT, SEG_STOPPED_CMDSTATE,
 		 seg_initdb_reply, seg_request_cleanup, NULL);
 
 
@@ -126,9 +126,13 @@ APR_DECLARE(void) fsm_setup(void)
 		 seg_status, NULL);
 		 
     /* segment delete */
+    gpcc_fsm_put(SEG_INIT_CMDSTATE, SEG_DELETE_EVENT, SEG_DELETING_CMDSTATE,
+		 seg_delete, NULL);
     gpcc_fsm_put(SEG_STARTING_CMDSTATE, SEG_DELETE_EVENT, SEG_STARTING_CMDSTATE,
 		 seg_busy_fail_reply, NULL);
     gpcc_fsm_put(SEG_STOPPING_CMDSTATE, SEG_DELETE_EVENT, SEG_DELETING_CMDSTATE,
+		 seg_busy_fail_reply, NULL);
+    gpcc_fsm_put(SEG_STOPPED_CMDSTATE, SEG_DELETE_EVENT, SEG_DELETING_CMDSTATE,
 		 seg_delete, NULL);
     gpcc_fsm_put(SEG_RUNNING_CMDSTATE, SEG_DELETE_EVENT, SEG_DELETING_CMDSTATE,
 		 seg_delete, NULL);
