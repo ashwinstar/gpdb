@@ -857,12 +857,13 @@ static apr_status_t a_fts_array_init_start_nodes_failure(gpcc_event_t *ev, void 
     gpcc_event_t *evt;
     int i;
 
-    /* shutdown nodes and haset */
+    /* shutdown nodes */
     for (i = 0 ; i < gpma.node_max ; i++) {
 	evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
 
+    /* shutdown haset */
     evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.haset_cmdslot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
 
@@ -965,8 +966,10 @@ static apr_status_t a_fts_create_segment_slot(gpcc_event_t *ev, void *_cmdslot)
     int i;
     cmdstate_t state = UNIT_CMDSTATE;
 
-    if (gpma.unit_cmdtab)
+    if (gpma.unit_cmdtab) {
+	gpcc_warning(FLINE, "unit cmdtab already exists");
 	return 0;
+    }
 
     gpma.unit_max = slot->u.fts.nseginfo;
     gpma.unit_cmdtab = apr_palloc(gpma.pool, (gpma.unit_max+1) * sizeof(gpma.unit_cmdtab[0]));
@@ -1250,18 +1253,27 @@ static apr_status_t a_fts_array_delete_shutdown_nodes(gpcc_event_t *ev, void *_c
     gpcc_event_t *evt;
     int i;
 
-    /* shutdown nodes and haset */
+    /* shutdown nodes */
     for (i = 0 ; i < gpma.node_max ; i++) {
 	evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }
 
+    /* shutdown unit */
+    for (i = 0 ; i < gpma.unit_max ; i++) {
+	evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.unit_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
+    /* shutdown haset */
     evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.haset_cmdslot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
 
     gpma.node_max = 0;
     gpma.haset_cmdslot = 0;
     gpma.node_cmdtab = 0;
+    gpma.unit_max = 0;
+    gpma.unit_cmdtab = 0;
     cmdslot->u.fts.nnode = 0;
     cmdslot->u.fts.nopened = 0;
 
