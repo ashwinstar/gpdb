@@ -384,7 +384,15 @@ BufFileDumpBuffer(BufFile *file)
 		if (file->curOffset >= MAX_PHYSICAL_FILESIZE && file->isTemp)
 		{
 			while (file->curFile + 1 >= file->numFiles)
-				extendBufFile(file);
+			{
+				File newTmpFile = extendBufFile(file);
+				if (newTmpFile < 0)
+				{
+					elog(ERROR, "buffile: can not create (or extend) a new temporary file.");
+					return;
+				}
+			}
+			
 			file->curFile++;
 			file->curOffset = 0L;
 		}
@@ -691,6 +699,17 @@ BufFileSeek(BufFile *file, int fileno, long offset, int whence)
 	/* Otherwise, must reposition buffer, so flush any dirty data */
 	if (BufFileFlush(file) != 0)
 		return EOF;
+
+	/*
+	 * If the value of newFile still indicates that new segment(s) are needed,
+	 * we extend them here.
+	 */
+	while (newFile >= file->numFiles && file->isTemp)
+	{
+		File newTmpFile = extendBufFile(file);
+		if (newTmpFile < 0)
+			return EOF;
+	}
 
 	/*
 	 * At this point and no sooner, check for seek past last segment. The
