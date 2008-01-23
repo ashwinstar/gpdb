@@ -1161,11 +1161,6 @@ static apr_status_t a_fts_segment_command_reply(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
 
     slot->u.fts.active_cmdidx = 0;
-#if 0
-    /* check all segments status  */
-    for (i = 0 ; i < gpma.unit_max ; i++) {
-	gpma.unit_cmdtab[i]->cmdstate
-#endif    
 
     return 0;
 }
