@@ -248,6 +248,12 @@ typedef struct Cdbanalyze_columns_Ctx
 	VacAttrStats  * stats;
 } Cdbanalyze_columns_Ctx;
 
+extern bool get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
+				 Oid atttype, int32 atttypmod,
+				 int reqkind, Oid reqop,
+				 Datum **values, int *nvalues,
+				 float4 **numbers, int *nnumbers);
+
 static void
 cdbanalyze_columns_callback(StringInfo sqlstmt,
 					int spiresult,
@@ -390,7 +396,7 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 			
 			old_context = MemoryContextSwitchTo(ctx->stats->anl_context);
 			
-			found = get_attstatsslot(tup,
+			found = get_attstatsslot_desc(tupdesc, tup,
 				 ctx->stats->attr->atttypid, ctx->stats->attr->atttypmod,
 				 STATISTIC_KIND_MCV, InvalidOid,
 				 &values, &nvalues,
@@ -419,7 +425,7 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 
 			}
 			
-			found = get_attstatsslot(tup,
+			found = get_attstatsslot_desc(tupdesc, tup,
 				 ctx->stats->attr->atttypid, ctx->stats->attr->atttypmod,
 				 STATISTIC_KIND_HISTOGRAM, InvalidOid,
 				 &values, &nvalues,
@@ -434,7 +440,7 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 
 			}
 			
-			found = get_attstatsslot(tup,
+			found = get_attstatsslot_desc(tupdesc, tup,
 				 ctx->stats->attr->atttypid, ctx->stats->attr->atttypmod,
 				 STATISTIC_KIND_CORRELATION, InvalidOid,
 				 NULL, NULL,

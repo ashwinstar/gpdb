@@ -387,9 +387,12 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 #endif
 
 		if(isnull[i])
+		{
 			hasnull = true;
+			continue;
+		}
 
-		else if (attr->attlen == -1 &&
+		if (attr->attlen == -1 &&
 				attr->attalign == 'd' &&
 				attr->attndims == 0 &&
 				!VARATT_IS_EXTENDED_D(values[i]))
@@ -404,6 +407,9 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 #endif
 			values[i] = toast_flatten_tuple_attribute(values[i], attr->atttypid, attr->atttypmod);
 		}
+
+		if (attr->attlen == -1 && VARATT_IS_EXTERNAL_D(values[i]))
+			values[i] = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(values[i])));
 	}
 
 	/* compute needed length */

@@ -2071,8 +2071,27 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
  * the values array are themselves palloc'd.  The palloc'd stuff can be
  * freed by calling free_attstatsslot.
  */
-bool
+extern bool get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
+				 Oid atttype, int32 atttypmod,
+				 int reqkind, Oid reqop,
+				 Datum **values, int *nvalues,
+				 float4 **numbers, int *nnumbers);
+
+bool 
 get_attstatsslot(HeapTuple statstuple,
+		 Oid atttype, int32 atttypmod,
+				 int reqkind, Oid reqop,
+				 Datum **values, int *nvalues,
+				 float4 **numbers, int *nnumbers)
+{
+	return get_attstatsslot_desc(NULL, statstuple,
+			atttype, atttypmod, reqkind, reqop,
+			values, nvalues, numbers, nnumbers
+			);
+}
+
+bool
+get_attstatsslot_desc(TupleDesc tupdesc, HeapTuple statstuple,
 				 Oid atttype, int32 atttypmod,
 				 int reqkind, Oid reqop,
 				 Datum **values, int *nvalues,
@@ -2099,7 +2118,11 @@ get_attstatsslot(HeapTuple statstuple,
 
 	if (values)
 	{
-		val = SysCacheGetAttr(STATRELATT, statstuple,
+		if(tupdesc)
+			val = heap_getattr(statstuple, Anum_pg_statistic_stavalues1 + i, 
+					tupdesc, &isnull);
+		else
+			val = SysCacheGetAttr(STATRELATT, statstuple,
 							  Anum_pg_statistic_stavalues1 + i,
 							  &isnull);
 		if (isnull)
@@ -2148,9 +2171,14 @@ get_attstatsslot(HeapTuple statstuple,
 
 	if (numbers)
 	{
-		val = SysCacheGetAttr(STATRELATT, statstuple,
+		if(tupdesc)
+			val = heap_getattr(statstuple, Anum_pg_statistic_stanumbers1 + i, 
+					tupdesc, &isnull);
+		else
+			val = SysCacheGetAttr(STATRELATT, statstuple,
 							  Anum_pg_statistic_stanumbers1 + i,
 							  &isnull);
+
 		if (isnull)
 			elog(ERROR, "stanumbers is null");
 		statarray = DatumGetArrayTypeP(val);
