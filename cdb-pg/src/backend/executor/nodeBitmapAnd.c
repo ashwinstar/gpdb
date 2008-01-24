@@ -211,7 +211,11 @@ MultiExecBitmapAnd(BitmapAndState *node)
 		if (node->bitmap)
 		{
 			tbm_bitmap_free(node->bitmap);
-			node->bitmap = NULL;
+
+			/* Since we release the space for subresult, we want to
+			 * reset the bitmaps in subnode tree to NULL.
+			 */
+			tbm_reset_bitmaps(&(node->ps));
 		}
 		
 		return (Node*) NULL;
