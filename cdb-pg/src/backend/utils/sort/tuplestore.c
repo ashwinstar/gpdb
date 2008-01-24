@@ -989,42 +989,71 @@ copytup_heap(Tuplestorestate *state, TuplestorePos *pos, void *tup)
 static void
 writetup_heap(Tuplestorestate *state, TuplestorePos *pos, void *tup)
 {
-	MemTuple tuple = (MemTuple) tup;
-	uint32 tuplen = memtuple_get_size(tuple, NULL); 
-	Size         memsize;
+	uint32 tuplen = 0; 
+	Size         memsize = 0;
 
-	if (BufFileWrite(state->myfile, (void *) tuple, tuplen) != (size_t) tuplen)
+	if(is_heaptuple_memtuple((HeapTuple) tup))
+		tuplen = memtuple_get_size((MemTuple) tup, NULL);
+	else
+	{
+		Assert(!is_heaptuple_splitter((HeapTuple) tup));
+		tuplen = heaptuple_get_size((HeapTuple) tup);
+	}
+
+	if (BufFileWrite(state->myfile, (void *) tup, tuplen) != (size_t) tuplen)
 		elog(ERROR, "write failed");
 	if (state->randomAccess)	/* need trailing length word? */
 		if (BufFileWrite(state->myfile, (void *) &tuplen,
 						 sizeof(tuplen)) != sizeof(tuplen))
 			elog(ERROR, "write failed");
 
-	memsize = GetMemoryChunkSpace(tuple);
+	memsize = GetMemoryChunkSpace(tup);
 
 	state->spilledBytes += memsize;
 	FREEMEM(state, memsize);
 
-	pfree(tuple);
+	pfree(tup);
 }
 
 static void *
 readtup_heap(Tuplestorestate *state, TuplestorePos *pos, uint32 len)
 {
-	uint32 tuplen = memtuple_size_from_uint32(len);
-	MemTuple tuple = (MemTuple) palloc(tuplen); 
+	void *tup = NULL;
+	uint32 tuplen = 0;  
+	
+	if(is_len_memtuplen(len)) 
+		tuplen = memtuple_size_from_uint32(len);
+	else 
+		tuplen = len;
 
-	USEMEM(state, GetMemoryChunkSpace(tuple));
+	tup = (void *) palloc(tuplen);
+	USEMEM(state, GetMemoryChunkSpace(tup));
 
-	/* read in the tuple proper */
-	memtuple_set_mtlen(tuple, NULL, len);
+	if(is_len_memtuplen(len))
+	{
+		/* read in the tuple proper */
+		memtuple_set_mtlen((MemTuple) tup, NULL, len);
 
-	if (BufFileRead(state->myfile, (void *) ((char *) tuple + sizeof(int)),
-					len - sizeof(uint32)) != (size_t) (len - sizeof(uint32)))
-		elog(ERROR, "unexpected end of data");
+		if (BufFileRead(state->myfile, (void *) ((char *) tup + sizeof(uint32)), 
+					tuplen - sizeof(uint32)) 
+				!= (size_t) (tuplen - sizeof(uint32)))
+			elog(ERROR, "unexpected end of data");
+	}
+	else
+	{
+		HeapTuple htup = (HeapTuple) tup;
+		htup->t_len = tuplen - HEAPTUPLESIZE;
+
+		if (BufFileRead(state->myfile, (void *) ((char *) tup + sizeof(uint32)),
+					tuplen - sizeof(uint32))
+				!= (size_t) (tuplen - sizeof(uint32)))
+			elog(ERROR, "unexepcted end of data");
+		htup->t_data = (HeapTupleHeader ) ((char *) tup + HEAPTUPLESIZE);
+	}
+
 	if (state->randomAccess)	/* need trailing length word? */
 		if (BufFileRead(state->myfile, (void *) &tuplen,
 						sizeof(tuplen)) != sizeof(tuplen))
 			elog(ERROR, "unexpected end of data");
-	return (void *) tuple;
+	return (void *) tup;
 }

@@ -48,6 +48,10 @@ typedef MemTupleData *MemTuple;
 #define MEMTUP_UNUSED 6
 #define MEMTUP_ALIGN(LEN) TYPEALIGN(8, (LEN)) 
 
+static inline bool is_len_memtuplen(uint32 len)
+{
+	return (len & MEMTUP_LEAD_BIT) != 0;
+}
 static inline bool memtuple_lead_bit_set(MemTuple tup)
 {
 	return (tup->PRIVATE_mt_len & MEMTUP_LEAD_BIT) != 0;

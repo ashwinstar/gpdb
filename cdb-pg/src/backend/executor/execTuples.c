@@ -993,6 +993,13 @@ void ExecModifyMemTuple(TupleTableSlot *slot, Datum *values, bool *isnull, bool 
 		Assert(mtup);
 	}
 
+	/* Check if we need to free this mem tuple */
+	if(TupShouldFree(slot)
+			&& slot->PRIVATE_tts_memtuple 
+			&& slot->PRIVATE_tts_memtuple != slot->PRIVATE_tts_mtup_buf
+	  )
+		pfree(slot->PRIVATE_tts_memtuple);
+
 	slot->PRIVATE_tts_memtuple = mtup;
 	/* swap mtup_buf and htup_buf stuff */
 

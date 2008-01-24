@@ -404,17 +404,24 @@ typedef struct HeapTupleData
 
 typedef HeapTupleData *HeapTuple;
 
+#define HEAPTUPLESIZE	MAXALIGN(sizeof(HeapTupleData))
+
 /* XXX Hack Hack Hack 
  * heaptuple, or memtuple, cannot be more than 2G, so, if
  * the first bit is ever set, it is really a memtuple
  */
-
 static inline bool is_heaptuple_memtuple(HeapTuple htup)
 {
 	return ((htup->t_len & 0x80000000) != 0);
 }
-
-#define HEAPTUPLESIZE	MAXALIGN(sizeof(HeapTupleData))
+static inline bool is_heaptuple_splitter(HeapTuple htup)
+{
+	return ((char *) htup->t_data) != ((char *) htup + HEAPTUPLESIZE);
+}
+static inline uint32 heaptuple_get_size(HeapTuple htup)
+{
+	return htup->t_len + HEAPTUPLESIZE;
+}
 
 /*
  * GETSTRUCT - given a HeapTuple pointer, return address of the user data
