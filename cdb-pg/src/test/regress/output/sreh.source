@@ -217,34 +217,15 @@ SELECT * FROM sreh_copy ORDER BY a,b,c;
  300 | 300 | 300
 (20 rows)
 
-SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
-  relname  | linenum |                                 errmsg                                  |              rawdata              
------------+---------+-------------------------------------------------------------------------+-----------------------------------
- sreh_copy |       2 | missing data for column "b"                                             | 2
- sreh_copy |       2 | missing data for column "b"                                             | 2
- sreh_copy |       2 | missing data for column "b"                                             | 2
- sreh_copy |       2 | missing data for column "b"                                             | 200 bad data from stdin
- sreh_copy |       3 | missing data for column "c"                                             | 3|
- sreh_copy |       3 | missing data for column "c"                                             | 3|
- sreh_copy |       4 | invalid input syntax for integer: " more bad data from stdin", column c | 400|400| more bad data from stdin
- sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
- sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
- sreh_copy |       4 | extra data after last expected column                                   | 4|4|4|4
- sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
- sreh_copy |       7 | invalid input syntax for integer: "bad", column c                       | 7|7|bad
- sreh_copy |       8 | invalid input syntax for integer: "bad", column a                       | bad|8|8
- sreh_copy |       8 | invalid input syntax for integer: "bad", column a                       | bad|8|8
- sreh_copy |      11 | missing data for column "b"                                             | eleven
- sreh_copy |      11 | missing data for column "b"                                             | eleven
- sreh_copy |      12 | extra data after last expected column                                   | 12||||
- sreh_copy |      12 | extra data after last expected column                                   | 12||||
- sreh_copy |      13 | missing data for column "c"                                             | 13|,13,
- sreh_copy |      13 | missing data for column "c"                                             | 13|,13,
- sreh_copy |      15 | missing data for column "b"                                             | 15
- sreh_copy |      15 | missing data for column "b"                                             | 15
- sreh_copy |      16 | missing data for column "b"                                             | sixteen
- sreh_copy |      16 | missing data for column "b"                                             | sixteen
-(24 rows)
+-- the error table will have different count of rows in different array configurations, as there's
+-- a chance that arrays with more segdbs recorded more bad rows before one of the segments reached
+-- the reject limit. Our only way to make sure data was indeed appended at ABORT is to count the 
+-- number of distinct inserts into the error table. this is the 4th one, so must be 4.
+SELECT count(distinct(cmdtime)) FROM sreh_copy_errtbl;
+ count 
+-------
+     4
+(1 row)
 
 --
 -- autodrop - error table auto-dropped when auto created and no bad data

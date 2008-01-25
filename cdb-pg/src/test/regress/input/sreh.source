@@ -49,7 +49,11 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 2;
 SELECT * FROM sreh_copy ORDER BY a,b,c;
-SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,rawdata;
+-- the error table will have different count of rows in different array configurations, as there's
+-- a chance that arrays with more segdbs recorded more bad rows before one of the segments reached
+-- the reject limit. Our only way to make sure data was indeed appended at ABORT is to count the 
+-- number of distinct inserts into the error table. this is the 4th one, so must be 4.
+SELECT count(distinct(cmdtime)) FROM sreh_copy_errtbl;
 
 --
 -- autodrop - error table auto-dropped when auto created and no bad data
