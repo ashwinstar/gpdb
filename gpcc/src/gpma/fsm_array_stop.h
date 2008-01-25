@@ -51,6 +51,20 @@ static apr_status_t a_array_stop_do(gpcc_event_t *ev, void *_cmdslot)
 	    p->u.stop.req[j].datadir = apr_pstrdup(p->pool, info->dir);
 	    p->u.stop.req[j].reply = 0;
 	    j++;
+	} else {
+	    int k;
+	    
+	    for (k = 0 ; k < gpma.unit_max ; k++) {
+		if (strcmp(info->name, gpma.unit_cmdtab[k]->cmdname) == 0)
+		    break;
+	    }
+	    if (k >= gpma.unit_max) {
+		gpcc_warning(FLINE, "[Error] invalid segment name %s", info->name);
+		continue;
+	    }
+	    evt = gpcc_event_alloc(BREAK_EVENT, gpma.unit_cmdtab[k]->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);	    
+
 	}
     }
 

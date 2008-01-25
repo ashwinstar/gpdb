@@ -124,24 +124,6 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
 
-    gpcc_log_info("number of segment = %d", nseginfo);
-    gpcc_log_info("name | host | dbid | content | port | dir | haidx | ha | definedprimary | isprimary | valid");
-    for (i = 0 ; i < nseginfo ; i++) {
-	gpcc_log_info("%s | %s | %d | %d | %d | %s | %d | %s | %c | %c | %c",
-		      seginfo[i].name,
-		      seginfo[i].host,
-		      seginfo[i].dbid,
-		      seginfo[i].content,
-		      seginfo[i].port,
-		      seginfo[i].dir,
-		      seginfo[i].haidx,
-		      seginfo[i].ha,
-		      seginfo[i].definedprimary,
-		      seginfo[i].isprimary,
-		      seginfo[i].valid);
-    }
-
-
     for (i = 0; apr_file_gets(line, sizeof(line), proc.out) == 0 ; i++) {
 	char *content, *definedprimary, *dbid, *isprimary, *valid, *hostname, *port, *datadir;
 	
@@ -165,6 +147,23 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 	seginfo[idx].isprimary = *isprimary;
 	seginfo[idx].valid = *valid;
 
+    }
+
+    gpcc_log_info("number of segment = %d", nseginfo);
+    gpcc_log_info("name | host | dbid | content | port | dir | haidx | ha | definedprimary | isprimary | valid");
+    for (i = 0 ; i < nseginfo ; i++) {
+	gpcc_log_info("%s | %s | %d | %d | %d | %s | %d | %s | %c | %c | %c",
+		      seginfo[i].name,
+		      seginfo[i].host,
+		      seginfo[i].dbid,
+		      seginfo[i].content,
+		      seginfo[i].port,
+		      seginfo[i].dir,
+		      seginfo[i].haidx,
+		      seginfo[i].ha,
+		      seginfo[i].definedprimary,
+		      seginfo[i].isprimary,
+		      seginfo[i].valid);
     }
 
 

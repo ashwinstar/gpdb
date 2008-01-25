@@ -35,7 +35,7 @@ static apr_status_t a_start_do(gpcc_event_t *ev, void *_cmdslot)
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;	
 
-	gpcc_log_info("sending stop command to %s at %s", 
+	gpcc_log_info("sending start command to %s at %s", 
 		      cmdslot->u.start.req[i].unit,
 		      cmdslot->u.start.req[i].host);
 	
