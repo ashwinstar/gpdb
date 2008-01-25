@@ -32,26 +32,31 @@ static apr_status_t a_array_stop_do(gpcc_event_t *ev, void *_cmdslot)
     seginfo_t *seginfo = gpma.fts_cmdslot->u.fts.seginfo;
     int nseginfo = gpma.fts_cmdslot->u.fts.nseginfo;
     gpcc_event_t *evt;
-    int i;
+    int i, j;
     
     p = cmdslot_alloc("STOP", FTS_STOP_CMDSTATE);
     p->u.stop.parent_cmdidx = cmdslot->cmdidx;
     p->u.stop.ntotal = nseginfo;
     
-    gpcc_log_info("a_array_stop_do total = %d", p->u.stop.ntotal);
-
     p->u.stop.req = apr_palloc(p->pool, sizeof(*p->u.stop.req) * p->u.stop.ntotal);
-    for (i = 0 ; i < p->u.stop.ntotal ; i++) {
+    for (i = 0, j = 0 ; i < p->u.stop.ntotal ; i++) {
 	const seginfo_t *info = &seginfo[i];
 
-	p->u.stop.req[i].node = apr_pstrdup(p->pool, info->ha);
-	p->u.stop.req[i].unit = apr_pstrdup(p->pool, info->name);
-	p->u.stop.req[i].mode = apr_pstrdup(p->pool, cmdslot->u.array_stop.mode);
-	p->u.stop.req[i].host = apr_pstrdup(p->pool, info->host);
-	p->u.stop.req[i].port = info->port;
-	p->u.stop.req[i].datadir = apr_pstrdup(p->pool, info->dir);
-	p->u.stop.req[i].reply = 0;
+	if (info->valid == 't') {
+	    p->u.stop.req[j].node = apr_pstrdup(p->pool, info->ha);
+	    p->u.stop.req[j].unit = apr_pstrdup(p->pool, info->name);
+	    p->u.stop.req[j].mode = apr_pstrdup(p->pool, cmdslot->u.array_stop.mode);
+	    p->u.stop.req[j].host = apr_pstrdup(p->pool, info->host);
+	    p->u.stop.req[j].port = info->port;
+	    p->u.stop.req[j].datadir = apr_pstrdup(p->pool, info->dir);
+	    p->u.stop.req[j].reply = 0;
+	    j++;
+	}
     }
+
+    p->u.stop.ntotal = j;
+    gpcc_log_info("a_array_stop_do total = %d", p->u.stop.ntotal);
+
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);

@@ -86,7 +86,6 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
 {
     int i, e;
     gpcc_net_header_t hdr;
-    cmdslot_t *cmdslot;
     const char *role = 0;
     const char *guid = 0;
 
@@ -111,9 +110,9 @@ static void net_accepted_cb(gpcc_net_conn_t conn,
     if (role && strcmp(role, "GPMA") == 0 && guid && strcmp(guid, gpha.guid) == 0) {
 	/* create cmdslot */
 	
-	cmdslot = cmdslot_alloc("MA->HA", MA_CMDSTATE, conn);
-	gpcc_net_set_arg(conn, cmdslot->cmdidx);
-	gpcc_log_info("role = %s, guid = %s, create MA socket...%d", role, guid, cmdslot->cmdidx);
+	gpha.ma_cmdslot = cmdslot_alloc("MA->HA", MA_CMDSTATE, conn);
+	gpcc_net_set_arg(conn, gpha.ma_cmdslot->cmdidx);
+	gpcc_log_info("role = %s, guid = %s, create MA socket...%d", role, guid, gpha.ma_cmdslot->cmdidx);
 	
 	hdr.argc = 1;
 	hdr.argv[0] = GPCC_NET_PACKET_PROTO;

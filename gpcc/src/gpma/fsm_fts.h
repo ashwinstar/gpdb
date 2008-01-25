@@ -10,7 +10,8 @@
 #define ARRAY_CONNECTING_STATUS                      "connecting"
 #define ARRAY_BUSY_STATUS                            "busy"
 
-static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port, int node, char *dir, apr_pool_t *pool)
+static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port, int node, 
+				     char *dir, char definedprimary, char isprimary, char valid, apr_pool_t *pool)
 {
     char key[128];
     const char *value, *s;
@@ -23,6 +24,9 @@ static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, in
     cmdslot->u.fts.seginfo[idx].haidx = node;
     cmdslot->u.fts.seginfo[idx].ha = apr_psprintf(pool, "node.%d", node);
     cmdslot->u.fts.seginfo[idx].dir = apr_pstrdup(pool, dir);
+    cmdslot->u.fts.seginfo[idx].definedprimary = definedprimary;
+    cmdslot->u.fts.seginfo[idx].isprimary = isprimary;
+    cmdslot->u.fts.seginfo[idx].valid = valid;
 
     sprintf(key, "node.%d", node);
     value = config_get(gpma.cfg, key);
@@ -136,7 +140,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	return APR_EINVAL;
     }
 	
-    setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, cmdslot->pool);
+    setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, 't', 't', 't', cmdslot->pool);
     
     for (i = 0 ;  ; i++) {
 	/* master QE */
@@ -162,7 +166,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	
 	dbid++;
 	content++;
-	setup_set_segment(cmdslot, dbid-1, key, dbid, content, node_base_port[node]++, node, dir, cmdslot->pool);
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, node_base_port[node]++, node, dir, 't', 't', 't', cmdslot->pool);
 
 	/* mirror QE */
 	sprintf(key, "gpdb.seg.%d.1", i);
@@ -186,7 +190,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	}
 
 	dbid++;	
-	setup_set_segment(cmdslot, dbid-1, key, dbid, content, node_mirror_base_port[node]++, node, dir, cmdslot->pool);
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, node_mirror_base_port[node]++, node, dir, 'f', 'f', 't', cmdslot->pool);
     }
 
     /* standby QD */
@@ -212,7 +216,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	}
 
 	dbid++;
-	setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, cmdslot->pool);
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, 'f', 'f', 't', cmdslot->pool);
     }	
 
     return 0;

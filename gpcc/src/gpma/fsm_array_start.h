@@ -69,6 +69,8 @@ static apr_status_t a_array_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.start.req[0].port = seginfo->port;
     p->u.start.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
+    p->u.start.req[0].isprimary = seginfo->isprimary;
+    p->u.start.req[0].valid = seginfo->valid;
     p->u.start.req[0].reply = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
@@ -76,16 +78,33 @@ static apr_status_t a_array_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+static int a_array_start_findIdxFromSegInfo(seginfo_t *seginfo, int nseginfo, int port, char *datadir, char definedprimary, char *host)
+{
+    int i;
+    
+    gpcc_log_info("search port=%d, dir=%s, definedprimary=%c, host=%s", port, datadir, definedprimary, host);
+    for (i = 0 ; i < nseginfo ; i++) {
+	if (seginfo[i].port == port && 
+	    strcmp(seginfo[i].dir, datadir) == 0 && 
+	    seginfo[i].definedprimary == definedprimary && 
+	    strcmp(seginfo[i].host, host) == 0)
+	    return i;
+    }
+
+    return -1;
+}
+
 static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     seginfo_t *seginfo;
-    int i, e, cnt;
+    int i, e, nseginfo, idx;
     gpcc_event_t *evt;
     char line[1024], *last;
     apr_proc_t proc;
 
     seginfo = gpma.fts_cmdslot->u.fts.seginfo;
+    nseginfo = gpma.fts_cmdslot->u.fts.nseginfo;
 
     if (apr_strnatcasecmp(cmdslot->u.array_start.mode, "force") == 0) {
 	if (0 != (e = gpcc_pg_reset_invalid_segment(seginfo->host, seginfo->port, cmdslot->pool))) {
@@ -98,31 +117,32 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 
     /* check for valid segment */
     if ((e = gpcc_proc_psql(&proc, seginfo->host, seginfo->port, "template1", 
-			    "select count(*) from gp_configuration where valid='t' and content <> -1", 
-			    1, 1, cmdslot->pool)) != 0) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;
-    }
-    
-    if ((e = apr_file_gets(line, sizeof(line), proc.out) != 0)) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	return 0;
-    }
-    
-    cmdslot->u.array_start.nvalid = cnt = strtol(line, 0, 0);
-    cmdslot->u.array_start.gpconf = apr_palloc(cmdslot->pool, sizeof(*cmdslot->u.array_start.gpconf) * cnt);
-
-    if ((e = gpcc_proc_psql(&proc, seginfo->host, seginfo->port, "template1", 
-			    "select * from gp_configuration where valid='t' and content <> -1", 
+			    "select * from gp_configuration order by dbid", 
 			    1, 1, cmdslot->pool)) != 0) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	return 0;
     }
 
-    for (i = 0; i < cnt && apr_file_gets(line, sizeof(line), proc.out) == 0 ; i++) {
+    gpcc_log_info("number of segment = %d", nseginfo);
+    gpcc_log_info("name | host | dbid | content | port | dir | haidx | ha | definedprimary | isprimary | valid");
+    for (i = 0 ; i < nseginfo ; i++) {
+	gpcc_log_info("%s | %s | %d | %d | %d | %s | %d | %s | %c | %c | %c",
+		      seginfo[i].name,
+		      seginfo[i].host,
+		      seginfo[i].dbid,
+		      seginfo[i].content,
+		      seginfo[i].port,
+		      seginfo[i].dir,
+		      seginfo[i].haidx,
+		      seginfo[i].ha,
+		      seginfo[i].definedprimary,
+		      seginfo[i].isprimary,
+		      seginfo[i].valid);
+    }
+
+
+    for (i = 0; apr_file_gets(line, sizeof(line), proc.out) == 0 ; i++) {
 	char *content, *definedprimary, *dbid, *isprimary, *valid, *hostname, *port, *datadir;
 	
 	content = apr_strtok(line, "|", &last);
@@ -134,25 +154,19 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 	port = apr_strtok(0, "|", &last);
 	datadir = apr_strtok(0, "|\r\n", &last);
 
-	cmdslot->u.array_start.gpconf[i].content = strtol(content, 0, 0);
-	cmdslot->u.array_start.gpconf[i].definedprimary = apr_pstrdup(cmdslot->pool, definedprimary);
-	cmdslot->u.array_start.gpconf[i].dbid = strtol(dbid, 0, 0);
-	cmdslot->u.array_start.gpconf[i].isprimary = apr_pstrdup(cmdslot->pool, isprimary);
-	cmdslot->u.array_start.gpconf[i].valid = apr_pstrdup(cmdslot->pool, valid);
-	cmdslot->u.array_start.gpconf[i].hostname = apr_pstrdup(cmdslot->pool, hostname);
-	cmdslot->u.array_start.gpconf[i].port = strtol(port, 0, 0);
-	cmdslot->u.array_start.gpconf[i].datadir = apr_pstrdup(cmdslot->pool, datadir);
-	
-	gpcc_log_info("%d|%s|%d|%s|%s|%s|%d|%s",
-		      cmdslot->u.array_start.gpconf[i].content,
-		      cmdslot->u.array_start.gpconf[i].definedprimary,
-		      cmdslot->u.array_start.gpconf[i].dbid,
-		      cmdslot->u.array_start.gpconf[i].isprimary,
-		      cmdslot->u.array_start.gpconf[i].valid,
-		      cmdslot->u.array_start.gpconf[i].hostname,
-		      cmdslot->u.array_start.gpconf[i].port,
-		      cmdslot->u.array_start.gpconf[i].datadir);
+	idx = a_array_start_findIdxFromSegInfo(seginfo, nseginfo, strtol(port, 0, 0), datadir, *definedprimary, hostname);
+	if (idx < 0) {
+	    gpcc_fatal(FLINE, "gp_configuration not match with gpcc config error");
+	    return 0;
+	}
+
+	seginfo[idx].content = strtol(content, 0, 0);
+	seginfo[idx].dbid = strtol(dbid, 0, 0);
+	seginfo[idx].isprimary = *isprimary;
+	seginfo[idx].valid = *valid;
+
     }
+
 
     evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);    
@@ -176,6 +190,8 @@ static apr_status_t a_array_start_utility_qd_stop(gpcc_event_t *ev, void *_cmdsl
     p->u.stop.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.stop.req[0].port = seginfo->port;
     p->u.stop.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
+    p->u.stop.req[0].isprimary = seginfo->isprimary;
+    p->u.stop.req[0].valid = seginfo->valid;
     p->u.stop.req[0].reply = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
@@ -190,26 +206,45 @@ static apr_status_t a_array_start_qes(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *p;
     seginfo_t *seginfo = gpma.fts_cmdslot->u.fts.seginfo;
     gpcc_event_t *evt;
-    int i;
+    int i, j;
 
 
     p = cmdslot_alloc("START_QES", FTS_START_CMDSTATE);
     p->u.start.parent_cmdidx = cmdslot->cmdidx;
 
-    p->u.start.ntotal = cmdslot->u.array_start.nvalid;
-    p->u.start.req = apr_palloc(p->pool, sizeof(*p->u.start.req) * p->u.start.ntotal);
+    p->u.start.req = apr_palloc(p->pool, sizeof(*p->u.start.req) * gpma.fts_cmdslot->u.fts.nseginfo);
+    for (i = 0, j = 0 ; i < gpma.fts_cmdslot->u.fts.nseginfo ; i++) {
+	const seginfo_t *info = &seginfo[i];
 
-    for (i = 0 ; i < p->u.start.ntotal ; i++) {
-	int dbid = cmdslot->u.array_start.gpconf[i].dbid;
-	const seginfo_t *info = &seginfo[dbid-1];
-	p->u.start.req[i].node = apr_pstrdup(p->pool, info->ha);
-	p->u.start.req[i].unit = apr_pstrdup(p->pool, info->name);
-	p->u.start.req[i].mode = "normal";
-	p->u.start.req[i].host = apr_pstrdup(p->pool, info->host);
-	p->u.start.req[i].port = info->port;
-	p->u.start.req[i].datadir = apr_pstrdup(p->pool, info->dir);
-	p->u.start.req[i].reply = 0;
+	if (info->content != -1) {
+	    if (info->valid == 't') {
+		p->u.start.req[j].node = apr_pstrdup(p->pool, info->ha);
+		p->u.start.req[j].unit = apr_pstrdup(p->pool, info->name);
+		p->u.start.req[j].mode = "normal";
+		p->u.start.req[j].host = apr_pstrdup(p->pool, info->host);
+		p->u.start.req[j].port = info->port;
+		p->u.start.req[j].datadir = apr_pstrdup(p->pool, info->dir);
+		p->u.start.req[j].isprimary = info->isprimary;
+		p->u.start.req[j].valid = info->valid;
+		p->u.start.req[j].reply = 0;
+		j++;
+	    } else {
+		int k;
+
+		for (k = 0 ; k < gpma.unit_max ; k++) {
+		    if (strcmp(info->name, gpma.unit_cmdtab[k]->cmdname) == 0)
+			break;
+		}
+		if (k >= gpma.unit_max) {
+		    gpcc_warning(FLINE, "[Error] invalid segment name %s", info->name);
+		    continue;
+		}
+		evt = gpcc_event_alloc(INVALID_EVENT, gpma.unit_cmdtab[k]->cmdidx, 0);
+		gpcc_evqueue_put(gpma.evq, evt);
+	    }
+	}
     }
+    p->u.start.ntotal = j;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -234,6 +269,8 @@ static apr_status_t a_array_start_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.start.req[0].port = seginfo->port;
     p->u.start.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
+    p->u.start.req[0].isprimary = seginfo->isprimary;
+    p->u.start.req[0].valid = seginfo->valid;
     p->u.start.req[0].reply = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
@@ -270,6 +307,8 @@ static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.start.req[0].port = seginfo->port;
     p->u.start.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
+    p->u.start.req[0].isprimary = seginfo->isprimary;
+    p->u.start.req[0].valid = seginfo->valid;
     p->u.start.req[0].reply = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);

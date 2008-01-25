@@ -1383,31 +1383,79 @@ apr_status_t seg_busy_fail_reply(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+/* ONLY CALLED WHEN SEGMENT IS UP */
 apr_status_t seg_status(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     gpcc_net_packet_t *packet = (gpcc_net_packet_t *) ev->pdata;
-    struct json_object *obj;
+    struct json_object *obj = 0;
     char *objstr;
     gpcc_event_t *evt;
-    char *state;
+    char *state, *health, *alert;
     gpcc_net_packet_t *pkt;
+    apr_pool_t *p = 0;
+    int e;
+    char status[1024];
+    int len = sizeof(status);
 
-    /* send the current state */
-    if (cmdslot->cmdstate == SEG_STOPPED_CMDSTATE) {
-	state = "stopped";
-    } else if (cmdslot->cmdstate == SEG_STARTING_CMDSTATE) {
-	state = "starting";
-    } else if (cmdslot->cmdstate == SEG_RUNNING_CMDSTATE) {
-	state = "running";
-    } else if (cmdslot->cmdstate == SEG_STOPPING_CMDSTATE) {
-	state = "stopping";
-    } else {
-	state = "initializing";
+    health = "failed";
+    state = "stopped";
+    alert = "";
+
+    obj = json_tokener_parse(packet->payload);
+    if (!obj) {
+	health = "failed";
+	state = "unknown";
+	alert = "invalid json format";
+	goto finish;
     }
 
+    cmdslot->u.seg.request.port = gpcc_json_object_get_int(obj, "port", 0);
+    cmdslot->u.seg.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
 
-    obj = gpcc_json_status_reply(cmdslot->cmdname, "ok", "", state);
+    if (cmdslot->u.seg.request.port == 0 ||
+	cmdslot->u.seg.request.data_dir == 0) {
+	health = "failed";
+	state = "unknown";
+	alert = "invalid parameter";
+	goto finish;
+    }
+
+    if (0 != (e = apr_pool_create(&p, cmdslot->pool))) {
+	gpcc_fatal(FLINE, "apr_pool_create failure");
+	return 0;
+    }
+
+    /* check pg_ctl status for sure */
+    if (0 != (e = gpcc_pg_ctl_status(cmdslot->u.seg.request.port,
+				     cmdslot->u.seg.request.data_dir,
+				     status, 
+				     &len,
+				     p))) {
+	health = "failed";
+	state = "stopped";
+	alert = "pg_ctl status failed";
+	goto finish;
+    }
+
+    health = "ok";
+    if (strstr(status, "server is running")) {
+	state = "running";
+    } else {
+	state = "stopped";
+    }
+    
+
+    finish:
+
+    if (obj) json_object_put(obj);
+
+    if (strcmp(state, "running")) {
+	evt = gpcc_event_alloc(SEG_INVALID_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpha.evq, evt);
+    }
+
+    obj = gpcc_json_status_reply(cmdslot->cmdname, health, alert, state);
     objstr = json_object_to_json_string(obj);
     evt = gpcc_event_alloc(SEG_STATUS_REPLY_EVENT, packet->mh.rcvidx, sizeof(*packet) + strlen(objstr)+1);
     pkt = (gpcc_net_packet_t *) evt->pdata;
@@ -1418,6 +1466,8 @@ apr_status_t seg_status(gpcc_event_t *ev, void *_cmdslot)
     memcpy(pkt->payload, objstr, strlen(objstr)+1);
     gpcc_evqueue_put(gpha.evq, evt);
     json_object_put(obj);
+
+    if (p) apr_pool_destroy(p);
 
     return 0;
 }
@@ -1558,3 +1608,5 @@ static apr_status_t seg_delete_reply(gpcc_event_t* ev, void *_cmdslot)
 {
     return seg_request_reply(ev, _cmdslot, SEG_DELETE_REPLY_EVENT);
 }
+
+

@@ -20,6 +20,9 @@ struct seginfo_t {
     char *dir;
     int haidx;
     char *ha;
+    char valid;
+    char isprimary;
+    char definedprimary;
 };
 
 typedef struct cmdslot_t cmdslot_t;
@@ -81,6 +84,8 @@ struct cmdslot_t {
 		char* host;
 		int port;	/* which port for this segment */
 		char* datadir;	/* which dir for this segment */
+		char  isprimary;
+		char  valid;
 		/* other stuff here */
 		char* reply;	/* reply from the start command */
 	    } *req;		/* one for each unit, total of ntotal units */
@@ -99,6 +104,8 @@ struct cmdslot_t {
 		char* host;
 		int port;	/* which port for this segment */
 		char* datadir;	/* which dir for this segment */
+		char  isprimary;
+		char  valid;
 		/* other stuff here */
 		char* reply;	/* reply from the start command */
 	    } *req;		/* one for each unit, total of ntotal units */

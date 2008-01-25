@@ -404,3 +404,148 @@ static apr_status_t a_unit_delete_reply(gpcc_event_t *ev, void *arg)
     slot->countdown = 0;
     return 0;
 }
+
+
+static apr_status_t a_unit_postgres_status(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_event_t *evt;
+    int e;
+    struct json_object *obj;
+    char *msg;
+    int len;
+
+    obj = gpcc_json_segment_request(0,
+				    slot->cmdname,
+				    "status",
+				    "",
+				    slot->u.unit.host,
+				    slot->u.unit.port,
+				    slot->u.unit.datadir);
+    msg = json_object_to_json_string(obj);
+    len = strlen(msg) + 1;
+    if (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
+					STATUS_REQUEST_MSG,
+					slot->cmdidx,
+					0,
+					msg, len))) {
+	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+	json_object_put(obj);
+	return 0;
+    }
+    
+    json_object_put(obj);
+    slot->countdown = 30;
+
+    return 0;
+}
+
+static apr_status_t a_unit_postgres_status_reply(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt;
+    struct json_object *obj = 0;
+    gpcc_event_t *evt;
+    char *seg, *status, *health;
+
+    pkt = (gpcc_net_packet_t *) ev->pdata;
+    obj = json_tokener_parse(pkt->payload);
+    seg = gpcc_json_object_get_string(obj, "seg", 0);
+    status = gpcc_json_object_get_string(obj, "status", "stopped");
+    health = gpcc_json_object_get_string(obj, "health", "failed");
+
+    gpcc_log_info("seg = %s health = %s, status = %s, (%s)", slot->cmdname, health, status, pkt->payload);
+
+    if (strcmp(health, "ok") == 0 && strcmp(status, "running") == 0) {
+	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+    } else {
+	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);	
+    }
+    gpcc_evqueue_put(gpma.evq, evt);
+    json_object_put(obj);
+
+    slot->countdown = 0;
+    return 0;
+
+}
+
+
+static apr_status_t a_unit_schedule_check(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = (cmdslot_t *) arg;
+
+    slot->countdown = 30;
+    return 0;
+}
+
+static apr_status_t a_unit_failover(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = (cmdslot_t *) arg;
+    seginfo_t *seginfo = gpma.fts_cmdslot->u.fts.seginfo;
+    int nseginfo = gpma.fts_cmdslot->u.fts.nseginfo;
+    int i, idx;
+    int content;
+    char definedprimary;
+
+    for (i = 0 ; i < nseginfo ; i++) {
+	if (strcmp(seginfo[i].name, slot->cmdname) == 0)
+	    break;
+    }
+
+    idx = i;
+    seginfo[i].valid = 'f';
+
+    /* failover */
+    if (seginfo[i].isprimary != 't') {
+	/* set gp_configuration valid = 'f' */
+	gpcc_warning(FLINE, "[%s] mirror segment is down.", slot->cmdname);
+	return 0;
+    }
+
+    /* if there is mirror, switch to mirror otherwise system down */
+    content = seginfo[i].content;
+    definedprimary = (seginfo[i].definedprimary == 't') ? 'f' : 't';
+
+    
+    for (i = 0 ; i < nseginfo ; i++) {
+	if (seginfo[i].content == content && seginfo[i].definedprimary == definedprimary)
+	    break;
+    }
+
+    if (i >= nseginfo) {
+	/* no mirror, system down */
+	gpcc_warning(FLINE, "[%s] segment is down and no mirror in the system.  SYSTEM DOWN.", slot->cmdname);
+	return 0;
+    }
+
+    if (seginfo[i].valid != 't') {
+	/* both mirror and primary is down, system down */
+	gpcc_warning(FLINE, "[%s] both mirror and primary segment is down. SYSTEM DOWN.", slot->cmdname);
+	return 0;
+    }
+
+    /* set mirror to primary */
+    gpcc_warning(FLINE, "[%s] segment is down and switch to segment %s", slot->cmdname, seginfo[i].name);
+    seginfo[idx].isprimary = 'f';
+    seginfo[i].isprimary = 't';
+
+    gpcc_log_info("number of segment = %d", nseginfo);
+    gpcc_log_info("name | host | dbid | content | port | dir | haidx | ha | definedprimary | isprimary | valid");
+    for (i = 0 ; i < nseginfo ; i++) {
+	gpcc_log_info("%s | %s | %d | %d | %d | %s | %d | %s | %c | %c | %c",
+		      seginfo[i].name,
+		      seginfo[i].host,
+		      seginfo[i].dbid,
+		      seginfo[i].content,
+		      seginfo[i].port,
+		      seginfo[i].dir,
+		      seginfo[i].haidx,
+		      seginfo[i].ha,
+		      seginfo[i].definedprimary,
+		      seginfo[i].isprimary,
+		      seginfo[i].valid);
+    }
+
+    return 0;
+}
