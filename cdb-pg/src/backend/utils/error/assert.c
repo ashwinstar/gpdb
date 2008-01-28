@@ -3,7 +3,7 @@
  * assert.c
  *	  Assert code.
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
+ * Portions Copyright (c) 2005-2008, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -20,6 +20,8 @@
 
 #include "utils/elog.h" /* backtrace() prototype for solaris */
 #include "utils/debugbreak.h"
+
+#include "cdb/cdbvars.h"                /* currentSliceId */
 
 #include <unistd.h>
 
@@ -45,7 +47,6 @@ ExceptionalCondition(const char *conditionName,
 		write_stderr("TRAP: ExceptionalCondition: bad arguments\n");
 	else
 	{
-		extern int currentSliceId;
 		write_stderr("TRAP: %s(\"%s\", File: \"%s\", Line: %d, sliceNum %d)\n",
 					 errorType, conditionName,
 					 fileName, lineNumber, currentSliceId);
@@ -82,7 +83,9 @@ ExceptionalCondition(const char *conditionName,
 	sleep(1000000);
 #endif
 
-#if 1
+	debug_break_n(DEBUG_BREAK_POINT_ASSERT);
+
+#if 0
     /* Assert should always be painful.  Force a segment fault.
      * For reasons, cdb2 does not dump a core without the following
      * hack.

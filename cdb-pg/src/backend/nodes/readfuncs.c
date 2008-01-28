@@ -2747,9 +2747,10 @@ _readLimit(void)
 static Hash *
 _readHash(void)
 {
-	READ_LOCALS_NO_FIELDS(Hash);
+	READ_LOCALS(Hash);
 
 	readPlanInfo((Plan *)local_node);
+    READ_BOOL_FIELD(rescannable);           /*CDB*/
 
 	READ_DONE();
 }

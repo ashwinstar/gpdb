@@ -32,7 +32,7 @@
  * the Tuplestore's state.
  *
  *
- * Portions Copyright (c) 2007, greenplum inc
+ * Portions Copyright (c) 2007-2008, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -51,6 +51,9 @@
 #include "utils/tuplestore.h"
 
 #include "utils/debugbreak.h"
+
+#include "cdb/cdbvars.h"                /* currentSliceId */
+
 
 /*
  * Data structure describes the current postion of tuple store 
@@ -547,9 +550,8 @@ tuplestore_puttuple_common(Tuplestorestate *state, TuplestorePos *pos, void *tup
 			 * Nope; time to switch to tape-based operation.
 			 */
 			{
-				extern int currentSliceId;
 				char tmpprefix[50];
-				snprintf(tmpprefix, 50, "TupleStore_Slice%d", currentSliceId);
+				snprintf(tmpprefix, 50, "slice%d_tuplestore", currentSliceId);
 				state->myfile = BufFileCreateTemp(tmpprefix, state->interXact);
 			}
 			state->status = TSS_WRITEFILE;

@@ -723,6 +723,7 @@ _outHash(StringInfo str, Hash *node)
 	WRITE_NODE_TYPE("HASH");
 
 	_outPlanInfo(str, (Plan *) node);
+    WRITE_BOOL_FIELD(rescannable);          /*CDB*/
 }
 
 static void

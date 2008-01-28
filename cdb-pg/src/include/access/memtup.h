@@ -1,7 +1,7 @@
 /* 
  * In Memory Tuple format
  *
- * Copyright (c) 2006, greenplum inc
+ * Copyright (c) 2008, greenplum inc
  */
 #ifndef MEM_TUP_H
 #define MEM_TUP_H
@@ -63,36 +63,42 @@ static inline uint32 memtuple_size_from_uint32(uint32 len)
 }
 static inline uint32 memtuple_get_size(MemTuple mtup, MemTupleBinding *pbind)
 {
-	Assert(memtuple_lead_bit_set(mtup));
+    UnusedArg(pbind);
+    Assert(memtuple_lead_bit_set(mtup));
 	Assert((mtup->PRIVATE_mt_len & MEMTUP_UNUSED) == 0);
 	return (mtup->PRIVATE_mt_len & MEMTUP_LEN_MASK);
 }
 static inline void memtuple_set_size(MemTuple mtup, MemTupleBinding *pbind, uint32 len)
 {
+    UnusedArg(pbind);
 	Assert((len & (~MEMTUP_LEN_MASK)) == 0); 
 	mtup->PRIVATE_mt_len |= MEMTUP_LEAD_BIT;
 	mtup->PRIVATE_mt_len = (mtup->PRIVATE_mt_len & (~MEMTUP_LEN_MASK)) | len;
 }
 static inline void memtuple_set_mtlen(MemTuple mtup, MemTupleBinding *pbind, uint32 mtlen)
 {
+    UnusedArg(pbind);
 	Assert((mtlen & MEMTUP_LEAD_BIT) != 0);
 	Assert((mtlen & MEMTUP_UNUSED) == 0);
 	mtup->PRIVATE_mt_len = mtlen;
 }
 static inline bool memtuple_get_hasnull(MemTuple mtup, MemTupleBinding *pbind)
 {
+    UnusedArg(pbind);
 	Assert(memtuple_lead_bit_set(mtup));
 	Assert((mtup->PRIVATE_mt_len & MEMTUP_UNUSED) == 0);
 	return (mtup->PRIVATE_mt_len & MEMTUP_HASNULL) != 0;
 }
 static inline void memtuple_set_hasnull(MemTuple mtup, MemTupleBinding *pbind)
 {
+    UnusedArg(pbind);
 	Assert(memtuple_lead_bit_set(mtup));
 	Assert((mtup->PRIVATE_mt_len & MEMTUP_UNUSED) == 0);
 	mtup->PRIVATE_mt_len |= MEMTUP_HASNULL;
 }
 static inline void memtuple_clear_hasnull(MemTuple mtup, MemTupleBinding *pbind)
 {
+    UnusedArg(pbind);
 	Assert(memtuple_lead_bit_set(mtup));
 	Assert((mtup->PRIVATE_mt_len & MEMTUP_UNUSED) == 0);
 	mtup->PRIVATE_mt_len &= (~MEMTUP_HASNULL);

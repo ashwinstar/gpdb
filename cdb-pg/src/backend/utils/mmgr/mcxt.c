@@ -32,7 +32,7 @@
 #ifdef HAVE_STDINT_H
 #include <stdint.h>                         /* SIZE_MAX (C99) */
 #endif
-#ifndef SIZE_MAX                            
+#ifndef SIZE_MAX
 #define SIZE_MAX ((Size)0-(Size)1)          /* for Solaris */
 #endif
 
@@ -1069,6 +1069,23 @@ MemoryContextStrdup(MemoryContext context, const char *string)
 	memcpy(nstr, string, len);
 
 	return nstr;
+}
+
+
+/*
+ * floor_log2_Size
+ */
+int floor_log2_Size(Size sz)
+{
+    return floor_log2_Size_inline(sz);
+}
+
+/*
+ * ceil_log2_Size
+ */
+int ceil_log2_Size(Size sz)
+{
+    return ceil_log2_Size_inline(sz);
 }
 
 

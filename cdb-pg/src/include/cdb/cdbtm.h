@@ -89,8 +89,14 @@ typedef struct TMGXACT_CHECKPOINT
 {
 	int						committedCount;
 	int						segmentCount;
-	TMGXACT_LOG				committedGxactArray[0];
+
+    /* Array [0..committedCount-1] of TMGXACT_LOG structs begins here */
+	TMGXACT_LOG				committedGxactArray[1];
 }	TMGXACT_CHECKPOINT;
+
+#define TMGXACT_CHECKPOINT_BYTES(committedCount) \
+    (SIZEOF_VARSTRUCT(committedCount, TMGXACT_CHECKPOINT, committedGxactArray))
+
 
 typedef struct TMGXACT_UTILITY_MODE_REDO
 {
@@ -166,8 +172,14 @@ typedef struct TmControlBlock
 									 * transactions are between 'PREPARING'
 									 * and confirmed 'COMMIT' or 'ABORT'.
 									 */
-	TMGXACT  			*gxact_array[0];
+
+    /* Array [0..max_tm_gxacts-1] of TMGXACT ptrs is appended starting here */
+	TMGXACT  			       *gxact_array[1];
 }	TmControlBlock;
+
+#define TMCONTROLBLOCK_BYTES(num_gxacts) \
+            (SIZEOF_VARSTRUCT(num_gxacts, TmControlBlock, gxact_array))
+
 
 /*
  * Maximum number of distributed transactions in progress under MPP until

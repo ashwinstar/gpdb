@@ -2589,6 +2589,7 @@ _readHash(const char ** str)
 	READ_LOCALS(Hash);
 
 	readPlanInfo(str, (Plan *)local_node);
+    READ_BOOL_FIELD(rescannable);           /*CDB*/
 
 	READ_DONE();
 }

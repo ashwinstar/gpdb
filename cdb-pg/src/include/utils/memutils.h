@@ -48,6 +48,8 @@
  * used by pfree() and repalloc() to find the context to call.	The allocated
  * size is not absolutely essential, but it's expected to be needed by any
  * reasonable implementation.
+ *
+ * NB: Chunks allocated from an AsetDirectContext have no StandardChunkHeader.
  */
 typedef struct StandardChunkHeader
 {
@@ -180,5 +182,102 @@ extern MemoryContext mpool_create(MemoryContext parent,
 #define ALLOCSET_SMALL_MINSIZE	 0
 #define ALLOCSET_SMALL_INITSIZE  (1 * 1024)
 #define ALLOCSET_SMALL_MAXSIZE	 (8 * 1024)
+
+
+/* asetdirect.c */
+
+/*
+ * AsetDirectContextCreate
+ *
+ * Create a context which allocates directly from malloc().
+ *
+ * Limited functionality.  Space can be freed only by resetting
+ * or deleting the MemoryContext.
+ *
+ * Allocations from this context are not preceded by a StandardChunkHeader.
+ * Therefore the caller must make certain never to pass an allocation obtained
+ * from an AsetDirectContext to any of the following functions:
+ *      pfree()
+ *      repalloc()
+ *      GetMemoryChunkSpace()
+ *      GetMemoryChunkContext()
+ *      MemoryContextContains()
+ */
+extern MemoryContext AsetDirectContextCreate(MemoryContext parent, const char *name);
+
+
+/*
+ * floor_log2_Size
+ *
+ * Returns the largest integer i such that 2**i <= sz
+ */
+int floor_log2_Size(Size sz);   /* in utils/mmgr/mcxt.c */
+
+static inline int
+floor_log2_Size_inline(Size sz)
+{
+    unsigned    u;
+    int         shift;
+
+    Assert(sz > 0);
+
+    if (sizeof(sz) > 4 &&
+        sz > (Size)0xffffffff)
+    {
+        u = (unsigned)((sz >> 16) >> 16);
+        shift = 32;
+    }
+    else
+    {
+        u = (unsigned)sz;
+        shift = 0;
+    }
+
+    if (u > 0xffff)
+    {
+        u >>= 16;
+        shift += 16;
+    }
+    if (u > 0xff)
+    {
+        u >>= 8;
+        shift += 8;
+    }
+    if (u > 0xf)
+    {
+        u >>= 4;
+        shift += 4;
+    }
+    if (u > 3)
+    {
+        u >>= 2;
+        shift += 2;
+    }
+    if (u > 1)
+        shift += 1;
+
+    Assert(sz >> shift == (Size)1);
+    return shift;
+}                               /* floor_log2_Size_inline */
+
+/*
+ * ceil_log2_Size
+ *
+ * Returns the smallest integer i such that sz <= 2**i
+ */
+int ceil_log2_Size(Size sz);    /* in utils/mmgr/mcxt.c */
+
+static inline int
+ceil_log2_Size_inline(Size sz)
+{
+    int     shift = floor_log2_Size_inline(sz);
+
+    if (sz > (Size)1 << shift)
+        shift++;
+
+    Assert(sz <= (Size)1 << shift);
+    return shift;
+}                               /* ceil_log2_Size_inline */
+
 
 #endif   /* MEMUTILS_H */

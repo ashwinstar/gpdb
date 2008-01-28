@@ -87,7 +87,7 @@
  * above.  Nonetheless, with large workMem we can have many tapes.
  *
  *
- * Portions Copyright (c) 2007, greenplum inc
+ * Portions Copyright (c) 2007-2008, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -383,7 +383,7 @@ struct Tuplesortstate
 	/* 
 	 * File fo dump/load logical tape set state.  Used by sharing sort across slice 
 	 */
-	char    pfile_rwfile_prefix[MAX_RWFILE_PREFIX_SIZE];
+	char       *pfile_rwfile_prefix;
 	BufFile *pfile_rwfile_state;
 };
 
@@ -711,11 +711,11 @@ tuplesort_begin_heap_file_readerwriter(
 		int workMem, bool randomAccess)
 {
 	Tuplesortstate *state;
-	char statedump[MAX_RWFILE_PREFIX_SIZE];
+	char statedump[MAXPGPATH];
 
 	Assert(randomAccess);
 
-	snprintf(statedump, MAX_RWFILE_PREFIX_SIZE, "%s_sortstate", rwfile_prefix);
+	snprintf(statedump, sizeof(statedump), "%s_sortstate", rwfile_prefix);
 
 	if(isWriter)
 	{
@@ -725,7 +725,7 @@ tuplesort_begin_heap_file_readerwriter(
 		 */
 		state = tuplesort_begin_heap(tupDesc, nkeys, sortOperators, attNums, workMem, randomAccess);
 
-		snprintf(state->pfile_rwfile_prefix, MAX_RWFILE_PREFIX_SIZE, "%s", rwfile_prefix);
+		state->pfile_rwfile_prefix = MemoryContextStrdup(state->sortcontext, rwfile_prefix);
 		state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, true);
 		return state;
 	}
@@ -744,7 +744,7 @@ tuplesort_begin_heap_file_readerwriter(
 
 		state->readtup = readtup_heap;
 
-		snprintf(state->pfile_rwfile_prefix, MAX_RWFILE_PREFIX_SIZE, "%s", rwfile_prefix);
+		state->pfile_rwfile_prefix = MemoryContextStrdup(state->sortcontext, rwfile_prefix);
 		state->pfile_rwfile_state = BufFileCreateTemp_ReaderWriter(statedump, false);
 
 		state->tapeset = LoadLogicalTapeSetState(state->pfile_rwfile_state, rwfile_prefix);
@@ -760,7 +760,6 @@ tuplesort_begin_heap_file_readerwriter(
 
 		return state;
 	}
-	return NULL;
 }
 
 Tuplesortstate *

@@ -9,7 +9,8 @@
 #include "storage/buffile.h"
 #include "utils/tuplestorenew.h"
 
-extern int currentSliceId;
+#include "cdb/cdbvars.h"                /* currentSliceId */
+
 
 typedef struct NTupleStorePageHeader
 {
@@ -388,7 +389,7 @@ static NTupleStorePage *nts_get_free_page(NTupleStore *nts)
 		if(!nts->pfile)
 		{
 			char tmpprefix[50];
-			snprintf(tmpprefix, 50, "NTupleStore_Slice%d", currentSliceId);
+			snprintf(tmpprefix, 50, "slice%d_ntuplestore", currentSliceId);
 			nts->pfile = BufFileCreateTemp(tmpprefix, false);
 		}
 
@@ -559,8 +560,6 @@ static NTupleStorePage *nts_load_prev_page(NTupleStore *store, NTupleStorePage *
 
 		return p;
 	}
-
-	return NULL;
 }
 
 static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
@@ -614,7 +613,8 @@ static void XCallBack_NTS(XactEvent event, void *nts)
 	ntuplestore_cleanup((NTupleStore *)nts, false);
 }
 
-extern NTupleStore *ntuplestore_create(int maxBytes)
+NTupleStore *
+ntuplestore_create(int maxBytes)
 {
 	NTupleStore *store = (NTupleStore *) check_malloc(sizeof(NTupleStore));
 
@@ -653,16 +653,14 @@ extern NTupleStore *ntuplestore_create(int maxBytes)
 	return store;
 }
 
-extern NTupleStore *ntuplestore_create_readerwriter(const char *filename, int maxBytes, bool isWriter)
+NTupleStore *
+ntuplestore_create_readerwriter(const char *filename, int maxBytes, bool isWriter)
 {
 	NTupleStore* store = NULL;
 	bool fOK; 
-	
-	char filenamelob[MAX_RWFILE_PREFIX_SIZE];
-	int  fnlobbytes = snprintf(filenamelob, MAX_RWFILE_PREFIX_SIZE, "%s_LOB", filename);
+	char filenamelob[MAXPGPATH];
 
-	if(fnlobbytes >= MAX_RWFILE_PREFIX_SIZE)
-		elog(ERROR, "Invalid temporary file name by readerwriter %s", filename);
+	snprintf(filenamelob, sizeof(filenamelob), "%s_LOB", filename);
 
 	if(isWriter)
 	{
@@ -716,7 +714,8 @@ extern NTupleStore *ntuplestore_create_readerwriter(const char *filename, int ma
 	return store;
 }
 
-extern void ntuplestore_reset(NTupleStore *ts)
+void 
+ntuplestore_reset(NTupleStore *ts)
 {
 	NTupleStorePage *p = ts->first_page;
 
@@ -757,7 +756,8 @@ extern void ntuplestore_reset(NTupleStore *ts)
 	ts->lobbytes = 0;
 }
 
-extern void ntuplestore_flush(NTupleStore *ts)
+void 
+ntuplestore_flush(NTupleStore *ts)
 {
 	NTupleStorePage *p = ts->first_page;
 
@@ -776,13 +776,15 @@ extern void ntuplestore_flush(NTupleStore *ts)
 		BufFileFlush(ts->plobfile);
 }
 
-extern void ntuplestore_destroy(NTupleStore *ts)
+void 
+ntuplestore_destroy(NTupleStore *ts)
 {
 	ntuplestore_cleanup(ts, true);
 	UnregisterXactCallbackOnce(XCallBack_NTS, (void *) ts);
 }
 
-extern NTupleStoreAccessor* ntuplestore_create_accessor(NTupleStore *ts, bool isWriter)
+NTupleStoreAccessor* 
+ntuplestore_create_accessor(NTupleStore *ts, bool isWriter)
 {
 	NTupleStoreAccessor *acc = (NTupleStoreAccessor *) palloc(sizeof(NTupleStoreAccessor));
 
@@ -837,7 +839,7 @@ static long ntuplestore_put_lob(NTupleStore *nts, char* data, NTupleStoreLobRef 
 		Assert(nts->rwflag == NTS_NOT_READERWRITER);
 		Assert(nts->lobbytes == 0);
 
-		snprintf(tmpprefix, 50, "NTupleStoreLob_Slice%d", currentSliceId);
+		snprintf(tmpprefix, 50, "slice%d_ntuplestorelob", currentSliceId);
 		nts->plobfile = BufFileCreateTemp(tmpprefix, false);
 	}
 

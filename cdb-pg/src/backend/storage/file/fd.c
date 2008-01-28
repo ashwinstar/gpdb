@@ -3,6 +3,7 @@
  * fd.c
  *	  Virtual file descriptor code.
  *
+ * Portions Copyright (c) 2007-2008, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -118,7 +119,7 @@ static int	max_safe_fds = 32;	/* default if not changed */
 
 /* these are the assigned bits in fdstate below: */
 #define FD_TEMPORARY		(1 << 0)	/* T = delete when closed */
-#define FD_XACT_TEMPORARY	(1 << 1)	/* T = delete at eoXact */
+#define FD_CLOSE_AT_EOXACT	(1 << 1)	/* T = close at eoXact */
 
 typedef struct vfd
 {
@@ -862,102 +863,128 @@ FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 	return fd;
 }
 
-File 
-OpenTemporaryFileName(const char* fileName, bool addpostfix, int fileFlags, bool interXact, bool delOnClose)
+/*
+ * Open a temporary file that will (optionally) disappear when we close it.
+ *
+ * If 'makenameunique' is true, this function generates a file name which
+ * should be unique to this particular OpenTemporaryFile() request and
+ * distinct from any others in concurrent use on the same host.  As a
+ * convenience for monitoring and debugging, the given 'fileName' string
+ * and 'extentseqnum' are embedded in the file name.
+ *
+ * If 'makenameunique' is false, then 'fileName' and 'extentseqnum' identify a
+ * new or existing temporary file which other processes also could open and
+ * share.
+ *
+ * If 'create' is true, a new file is created.  If successful, a valid vfd
+ * index (>0) is returned; otherwise an error is thrown.
+ *
+ * If 'create' is false, an existing file is opened.  If successful, a valid
+ * vfd index (>0) is returned.  If the file does not exist or cannot be
+ * opened, an invalid vfd index (<= 0) is returned.
+ *
+ * If 'delOnClose' is true, then the file is removed when you call
+ * FileClose(); or when the process exits; or (provided 'closeAtEOXact' is
+ * true) when the transaction ends.
+ *
+ * If 'closeAtEOXact' is true, the vfd is closed automatically at end of
+ * transaction unless you have called FileClose() to close it before then.
+ * If 'closeAtEOXact' is false, the vfd state is not changed at end of
+ * transaction.
+ *
+ * In most cases, you don't want temporary files to outlive the transaction
+ * that created them, so you should specify 'true' for both 'delOnClose' and
+ * 'closeAtEOXact'.
+ */
+File
+OpenTemporaryFile(const char   *fileName,
+                  int           extentseqnum,
+                  bool          makenameunique,
+                  bool          create,
+                  bool          delOnClose,
+                  bool          closeAtEOXact)
 {
-	File file;
-	char		tempfilepath[MAXPGPATH];
+	File    file;
+    int     fileFlags;
+	char	tempfilepath[MAXPGPATH];
 
-	if(!addpostfix) 
-	{
-		Assert(fileName);
-		snprintf(tempfilepath, sizeof(tempfilepath),
-				"%s/%s", PG_TEMP_FILES_DIR, fileName
-				);
-	}
-	else
+	Assert(fileName);
+    AssertImply(makenameunique, create && delOnClose);
+
+	/*
+	 * File flags when open the file.  Note: we don't use O_EXCL, in case there is an orphaned
+	 * temp file that can be reused.
+	 */
+	fileFlags = O_RDWR | PG_BINARY;
+    if (create)
+        fileFlags |= O_TRUNC | O_CREAT;
+
+    if (makenameunique)
 	{
 		/*
 		 * Generate a tempfile name that should be unique within the current
 		 * database instance.
 		 */
 		snprintf(tempfilepath, sizeof(tempfilepath),
-				"%s/%s_%s_%d.%ld", PG_TEMP_FILES_DIR, 
-				PG_TEMP_FILE_PREFIX,
-				fileName ? fileName : "NoPrefix",
-				MyProcPid, tempFileCounter++);
+				 "%s/%s_%s_%d_%04d.%ld",
+                 PG_TEMP_FILES_DIR,
+				 PG_TEMP_FILE_PREFIX,
+				 fileName,
+				 MyProcPid,
+                 extentseqnum,
+                 tempFileCounter++);
+	}
+	else
+	{
+        snprintf(tempfilepath, sizeof(tempfilepath),
+				 "%s/%s_%s.%04d",
+                 PG_TEMP_FILES_DIR,
+				 PG_TEMP_FILE_PREFIX,
+                 fileName,
+                 extentseqnum);
 	}
 
 	file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
 
-	if (file < 0) 
+	if (file <= 0)
 	{
-		if((fileFlags & O_CREAT) == 0)
+		char	   *dirpath;
+
+		if (!create)
 			return file;
-		else
-		{
-			char	   *dirpath;
 
-			/*
-			 * We might need to create the pg_tempfiles subdirectory, if no one
-			 * has yet done so.
-			 *
-			 * Don't check for error from mkdir; it could fail if someone else
-			 * just did the same thing.  If it doesn't work then we'll bomb out on
-			 * the second create attempt, instead.
-			 */
-			dirpath = make_database_relative(PG_TEMP_FILES_DIR);
-			mkdir(dirpath, S_IRWXU);
-			pfree(dirpath);
+		/*
+		 * We might need to create the pg_tempfiles subdirectory, if no one
+		 * has yet done so.
+		 *
+		 * Don't check for error from mkdir; it could fail if someone else
+		 * just did the same thing.  If it doesn't work then we'll bomb out on
+		 * the second create attempt, instead.
+		 */
+		dirpath = make_database_relative(PG_TEMP_FILES_DIR);
+		mkdir(dirpath, S_IRWXU);
+		pfree(dirpath);
 
-			file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
-			if (file < 0)
-			{
-				debug_break();
-				elog(ERROR, "could not create temporary file \"%s\": %m",
-						tempfilepath);
-			}
-		}
+		file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
+		if (file <= 0)
+			elog(ERROR, "could not create temporary file \"%s\": %m",
+			     tempfilepath);
 	}
 
 	/* Mark it for deletion at close */
 	if(delOnClose)
 		VfdCache[file].fdstate |= FD_TEMPORARY;
 
-	/* Mark it for deletion at EOXact */
-	if (!interXact)
+	/* Mark it to be closed at end of transaction. */
+	if (closeAtEOXact)
 	{
-		VfdCache[file].fdstate |= FD_XACT_TEMPORARY;
+		VfdCache[file].fdstate |= FD_CLOSE_AT_EOXACT;
 		VfdCache[file].create_subid = GetCurrentSubTransactionId();
 	}
 
 	return file;
-}
+}                               /* OpenTemporaryFile */
 
-
-/*
- * Open a temporary file that will disappear when we close it.
- *
- * This routine takes care of generating an appropriate tempfile name.
- * There's no need to pass in fileFlags or fileMode either, since only
- * one setting makes any sense for a temp file.
- *
- * interXact: if true, don't close the file at end-of-transaction. In
- * most cases, you don't want temporary files to outlive the transaction
- * that created them, so this should be false -- but if you need
- * "somewhat" temporary storage, this might be useful. In either case,
- * the file is removed when the File is explicitly closed.
- */
-File
-OpenTemporaryFile(const char *filePrefix, bool interXact)
-{
-	/*
-	 * File flags when open the file.  Note: we don't use O_EXCL, in case there is an orphaned
-	 * temp file that can be reused.
-	 */
-	int fileFlags = O_RDWR | PG_BINARY | O_TRUNC | O_CREAT;
-	return OpenTemporaryFileName(filePrefix, true, fileFlags, interXact, true);
-}
 
 /*
  * close a file when done with it
@@ -1556,7 +1583,7 @@ AtEOSubXact_Files(bool isCommit, SubTransactionId mySubid,
 		{
 			unsigned short fdstate = VfdCache[i].fdstate;
 
-			if ((fdstate & FD_XACT_TEMPORARY) &&
+			if ((fdstate & FD_CLOSE_AT_EOXACT) &&
 				VfdCache[i].create_subid == mySubid)
 			{
 				if (isCommit)
@@ -1634,7 +1661,7 @@ CleanupTempFiles(bool isProcExit)
 			 * all temporary files. Otherwise, only close temporary files
 			 * local to the current transaction.
 			 */
-			if((fdstate & FD_XACT_TEMPORARY)
+			if((fdstate & FD_CLOSE_AT_EOXACT)
 			  	||
 			   (isProcExit && (fdstate & FD_TEMPORARY))
 			  )

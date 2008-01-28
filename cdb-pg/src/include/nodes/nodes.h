@@ -231,6 +231,8 @@ typedef enum NodeTag
 	T_AllocSetContext,
 	T_MPoolContext,
 
+    T_AsetDirectContext = 610,                                      /*CDB*/
+
 	/*
 	 * TAGS FOR VALUE NODES (value.h)
 	 */

@@ -38,6 +38,9 @@
 #include "storage/buffile.h"
 #include "utils/logtape.h"
 
+#include "cdb/cdbvars.h"                /* currentSliceId */
+
+
 /* A logical tape block, log tape blocks are organized into doulbe linked lists */
 #define LOGTAPE_BLK_PAYLOAD_SIZE ((BLCKSZ - sizeof(long)*2 - sizeof(int) ))
 typedef struct LogicalTapeBlock
@@ -334,11 +337,10 @@ LogicalTapeSetCreate_Internal(int ntapes)
 
 LogicalTapeSet *LogicalTapeSetCreate(int ntapes)
 {
-	extern int currentSliceId;
 	LogicalTapeSet *lts = LogicalTapeSetCreate_Internal(ntapes);
 	char tmpprefix[50];
 
-	snprintf(tmpprefix, 50, "SortTape_Slice%d", currentSliceId);
+	snprintf(tmpprefix, 50, "slice%d_sort", currentSliceId);
 	lts->pfile = BufFileCreateTemp(tmpprefix, false);
 	return lts;
 }

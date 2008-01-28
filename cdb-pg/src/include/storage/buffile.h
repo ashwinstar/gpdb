@@ -15,7 +15,7 @@
  * but currently we have no need for oversize temp files without buffered
  * access.
  *
- * Portions Copyright (c) 2007, greenplum inc
+ * Portions Copyright (c) 2007-2008, greenplum inc
  * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -31,7 +31,6 @@
 
 typedef struct BufFile BufFile;
 
-#define MAX_RWFILE_PREFIX_SIZE 128
 /*
  * prototypes for functions in buffile.c
  */
@@ -39,16 +38,18 @@ typedef struct BufFile BufFile;
 extern BufFile *BufFileCreateTemp(const char * filePrefix, bool interXact);
 extern BufFile *BufFileCreateTemp_ReaderWriter(const char* fileName, bool isWriter);
 extern void BufFileClose(BufFile *file);
-extern size_t BufFileRead(BufFile *file, void *ptr, size_t size);
-extern size_t BufFileWrite(BufFile *file, void *ptr, size_t size);
+extern void *BufFileSetBuf(BufFile *file, void *buf, Size bufsize);
+
+extern Size BufFileRead(BufFile *file, void *ptr, Size size);
+extern Size BufFileWrite(BufFile *file, const void *ptr, Size size);
+
 extern int	BufFileSeek(BufFile *file, int fileno, long offset, int whence);
 extern void BufFileTell(BufFile *file, int *fileno, long *offset);
+extern int  BufFileSeek64(BufFile *file, uint64 offset);
 extern uint64 BufFileTell64(BufFile *file);
 extern int	BufFileSeekBlock(BufFile *file, long blknum);
-extern int BufFileFlush(BufFile *file);
+extern void BufFileFlush(BufFile *file);
 
-
-extern size_t BufFileReadRaw(BufFile* file, void* ptr, size_t size);
 extern char* BufFilePeek(BufFile *file, int size);
 
 

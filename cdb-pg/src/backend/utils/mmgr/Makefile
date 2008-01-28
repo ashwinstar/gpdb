@@ -12,7 +12,7 @@ subdir = src/backend/utils/mmgr
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = aset.o mcxt.o portalmem.o mpool.o
+OBJS = aset.o asetDirect.o mcxt.o mpool.o portalmem.o
 
 all: SUBSYS.o
 
@@ -22,7 +22,7 @@ SUBSYS.o: $(OBJS)
 depend dep:
 	$(CC) -MM $(CFLAGS) *.c >depend
 
-clean: 
+clean:
 	rm -f SUBSYS.o $(OBJS)
 
 ifeq (depend,$(wildcard depend))

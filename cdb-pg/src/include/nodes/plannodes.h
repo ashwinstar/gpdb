@@ -730,6 +730,7 @@ typedef struct Unique
 typedef struct Hash
 {
 	Plan		plan;
+    bool        rescannable;            /* CDB: true => save rows for rescan */
 	/* all other info is in the parent HashJoin node */
 } Hash;
 

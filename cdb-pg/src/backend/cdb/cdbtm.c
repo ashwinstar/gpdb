@@ -3,7 +3,7 @@
  * cdtm.c
  *	  Provides routines for performing distributed transaction
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2008, greenplum inc
  *
  * $Id$
  *
@@ -1154,8 +1154,8 @@ tmShmemSize(void)
 {
 	if ((Gp_role != GP_ROLE_DISPATCH) && (Gp_role != GP_ROLE_UTILITY))
 		return 0;
-	return MAXALIGN(sizeof(TmControlBlock) +
-					max_tm_gxacts * (sizeof(TMGXACT *) + sizeof(TMGXACT)));
+	return MAXALIGN(TMCONTROLBLOCK_BYTES(max_tm_gxacts) +
+                    max_tm_gxacts * sizeof(TMGXACT));
 }
 
 
@@ -1368,8 +1368,7 @@ validateRedoDtxCheckPointSize(char *dtxCheckpointBuffer, int dtxCheckpointBuffer
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "redoDtxCheckPoint has committedCount = %d",
 		 committedCount);
 
-	return (dtxCheckpointBufferSize == 
-		    offsetof(TMGXACT_CHECKPOINT,committedGxactArray) + committedCount * sizeof(TMGXACT_LOG));
+	return ((size_t)dtxCheckpointBufferSize == TMGXACT_CHECKPOINT_BYTES(committedCount));
 }
 
 
@@ -2208,7 +2207,7 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 
 	if (shmDtmStarted == NULL || !*shmDtmStarted)
 	{
-		*result_size = offsetof(TMGXACT_CHECKPOINT, committedGxactArray);
+		*result_size = TMGXACT_CHECKPOINT_BYTES(0);
 		gxact_checkpoint = palloc(*result_size);
 		gxact_checkpoint->committedCount = 0;
 		gxact_checkpoint->segmentCount = 0;
@@ -2222,7 +2221,7 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 	getTmLock();	// We will return with lock held below.
 	n = *shmNumGxacts;
 	
-	gxact_checkpoint = palloc(offsetof(TMGXACT_CHECKPOINT, committedGxactArray) + n * sizeof(TMGXACT_LOG));
+	gxact_checkpoint = palloc(TMGXACT_CHECKPOINT_BYTES(n));
 	gxact_log_array = &gxact_checkpoint->committedGxactArray[0];
 
 	actual = 0;
@@ -2292,7 +2291,7 @@ getDtxCheckPointInfoAndLock(char **result, int *result_size)
 	gxact_checkpoint->segmentCount = 0;		// UNDONE: Not used yet.
 
 	*result = (char*)gxact_checkpoint;
-	*result_size = offsetof(TMGXACT_CHECKPOINT, committedGxactArray) + actual * sizeof(TMGXACT_LOG);
+	*result_size = TMGXACT_CHECKPOINT_BYTES(actual);
 
 	// Return with lock held.
 	
@@ -3594,9 +3593,6 @@ finishDistributedTransactionContext (char* debugCaller, bool aborted)
 	case DTX_CONTEXT_QE_FINISH_PREPARED:
 	case DTX_CONTEXT_QD_RETRY_PHASE_2:
 		break;
-
-		elog(FATAL, "Unexpected distribute transaction context: '%s'",
-			 DtxContextToString(DistributedTransactionContext));
 
 	default:
 		elog(FATAL, "Unrecognized DTX transaction context: %d",

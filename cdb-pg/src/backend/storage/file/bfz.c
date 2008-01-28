@@ -241,7 +241,14 @@ static size_t
 
 bfz_t* bfz_create(bfz_t* bfz, const char* filePrefix, bool compress)
 {
-	File f = OpenTemporaryFile(filePrefix, false);
+	File    f;
+
+	f = OpenTemporaryFile(filePrefix,
+                          1,                /* extentseqnum */
+                          true,             /* makenameunique */
+                          true,             /* create */
+                          true,             /* delOnClose */
+                          true);            /* closeAtEOXact */
 	Assert(f >= 0);
 	
 	bfz->fp = f;

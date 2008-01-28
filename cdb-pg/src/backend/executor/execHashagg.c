@@ -7,7 +7,7 @@
  *		PG code.  Note, however, that nodeAgg.c is also modified to
  *		make use of this code.
  *
- * Portions Copyright (c) 2006-2007, Greenplum
+ * Portions Copyright (c) 2006-2008, Greenplum
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -17,8 +17,6 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-
-#include <math.h>                           /* log2 */
 
 #include "fmgr.h"
 #include "miscadmin.h" /* work_mem */
@@ -210,11 +208,7 @@ create_agg_hash_table(AggState *aggstate)
 	 * the bits used in calculating the bucket to the front.  These
 	 * are the shift arguments.
 	 */
-#if defined(_WIN32) || defined(__FreeBSD__)
-	ht->lshift = ceil(log(ht->nbucket)/log(2));	/* No log2 function. */
-#else
-	ht->lshift = ceil(log2(ht->nbucket));
-#endif
+	ht->lshift = ceil_log2_Size(ht->nbucket);
 	ht->rshift = 32 - ht->lshift;
 	
 	ht->ngroup = ht->ntuple = 0;
@@ -757,7 +751,7 @@ void init_agg_hash_iter(HashAggTable* ht)
 {
 	Assert( ht != NULL && ht->buckets != NULL && ht->nbucket > 0 );
 	
-	ht->curr_bucket_idx = -1;
+	ht->curr_bucket_idx = (unsigned)-1;
 	ht->next_entry = NULL;
 }
 
@@ -1277,8 +1271,8 @@ batch_put_tuple(HashAggTable *hashtable,
 		/* First write to this batch file, so open it. */
 		char tmpprefix[50];
 		bool compress = gp_hashagg_compress_spill_files;
-		snprintf(tmpprefix, 50, "HashAgg_Slice%d", currentSliceId);
 
+		snprintf(tmpprefix, 50, "slice%d_hashagg", currentSliceId);
 		file = bfz_create(&info->bfz, tmpprefix, compress);
 		info->file = file;
 		info->ntuples = 0L;
