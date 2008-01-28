@@ -59,9 +59,6 @@ static char *config_to_json(apr_pool_t *pool)
 /* config is updated in memory and we should save it on disk */
 apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
 {
-    cmdslot_t *slot = arg;
-    gpcc_event_t *evt;
-
     gpcc_log_info("a_config_updated...");
     config_gc(gpma.cfg);
     config_write(gpma.datadir, gpma.guid, gpma.cfg);
