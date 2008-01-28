@@ -1,10 +1,11 @@
-/* Processed by ecpg (4.2.1) */
+/* Processed by ecpg (regression mode) */
 /* These include files are added by the preprocessor */
 #include <ecpgtype.h>
 #include <ecpglib.h>
 #include <ecpgerrno.h>
 #include <sqlca.h>
 /* End of automatic include section */
+#define ECPGdebug(X,Y) ECPGdebug((X)+100,(Y))
 
 #line 1 "fetch.pgc"
 #include <stdio.h>
@@ -25,19 +26,19 @@
 int main(int argc, char* argv[]) {
   /* exec sql begin declare section */
      
-        
+       
   
 #line 9 "fetch.pgc"
  char  str [ 25 ]    ;
  
 #line 10 "fetch.pgc"
- int  i    ,  how_many   = 1 ;
+ int  i    ,  count   = 1 ;
 /* exec sql end declare section */
 #line 11 "fetch.pgc"
 
 
   ECPGdebug(1, stderr);
-  { ECPGconnect(__LINE__, 0, "regress1" , NULL,NULL , NULL, 0); }
+  { ECPGconnect(__LINE__, 0, "regress1" , NULL, NULL , NULL, 0); }
 #line 14 "fetch.pgc"
 
 
@@ -48,7 +49,7 @@ int main(int argc, char* argv[]) {
 #line 17 "fetch.pgc"
 
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "create  table My_Table ( Item1 int   , Item2 text   )    ", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "create  table My_Table ( Item1 int   , Item2 text    )    ", ECPGt_EOIT, ECPGt_EORT);
 #line 19 "fetch.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -58,7 +59,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
 #line 19 "fetch.pgc"
 
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "insert into My_Table values ( 1 , 'text1' ) ", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into My_Table values ( 1 , 'text1' ) ", ECPGt_EOIT, ECPGt_EORT);
 #line 21 "fetch.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -67,7 +68,7 @@ if (sqlca.sqlwarn[0] == 'W') sqlprint();
 if (sqlca.sqlcode < 0) sqlprint();}
 #line 21 "fetch.pgc"
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "insert into My_Table values ( 2 , 'text2' ) ", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into My_Table values ( 2 , 'text2' ) ", ECPGt_EOIT, ECPGt_EORT);
 #line 22 "fetch.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -76,7 +77,7 @@ if (sqlca.sqlwarn[0] == 'W') sqlprint();
 if (sqlca.sqlcode < 0) sqlprint();}
 #line 22 "fetch.pgc"
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "insert into My_Table values ( 3 , 'text3' ) ", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into My_Table values ( 3 , 'text3' ) ", ECPGt_EOIT, ECPGt_EORT);
 #line 23 "fetch.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -85,7 +86,7 @@ if (sqlca.sqlwarn[0] == 'W') sqlprint();
 if (sqlca.sqlcode < 0) sqlprint();}
 #line 23 "fetch.pgc"
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "insert into My_Table values ( 4 , 'text4' ) ", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into My_Table values ( 4 , 'text4' ) ", ECPGt_EOIT, ECPGt_EORT);
 #line 24 "fetch.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -99,7 +100,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
 #line 26 "fetch.pgc"
 
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "declare C  cursor  for select  *  from My_Table   ", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "declare C  cursor  for select  *  from My_Table   ", ECPGt_EOIT, ECPGt_EORT);
 #line 28 "fetch.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -113,7 +114,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
 #line 30 "fetch.pgc"
 
   while (1) {
-  	{ ECPGdo(__LINE__, 0, 1, NULL, "fetch 1 in C", ECPGt_EOIT, 
+  	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "fetch 1 in C", ECPGt_EOIT, 
 	ECPGt_int,&(i),(long)1,(long)1,sizeof(int), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, 
 	ECPGt_char,(str),(long)25,(long)1,(25)*sizeof(char), 
@@ -135,7 +136,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
   /* exec sql whenever not found  continue ; */
 #line 36 "fetch.pgc"
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "move backward 2 in C", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "move backward 2 in C", ECPGt_EOIT, ECPGt_EORT);
 #line 37 "fetch.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -145,8 +146,8 @@ if (sqlca.sqlcode < 0) sqlprint();}
 #line 37 "fetch.pgc"
 
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "fetch  ? in C", 
-	ECPGt_int,&(how_many),(long)1,(long)1,sizeof(int), 
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "fetch $0 in C", 
+	ECPGt_int,&(count),(long)1,(long)1,sizeof(int), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EOIT, 
 	ECPGt_int,&(i),(long)1,(long)1,sizeof(int), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, 
@@ -162,7 +163,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
 
   printf("%d: %s\n", i, str);
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "close C", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "close C", ECPGt_EOIT, ECPGt_EORT);
 #line 42 "fetch.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -172,7 +173,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
 #line 42 "fetch.pgc"
 
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "drop table My_Table ", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "drop table My_Table ", ECPGt_EOIT, ECPGt_EORT);
 #line 44 "fetch.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();

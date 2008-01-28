@@ -1,10 +1,11 @@
-/* Processed by ecpg (4.2.1) */
+/* Processed by ecpg (regression mode) */
 /* These include files are added by the preprocessor */
 #include <ecpgtype.h>
 #include <ecpglib.h>
 #include <ecpgerrno.h>
 #include <sqlca.h>
 /* End of automatic include section */
+#define ECPGdebug(X,Y) ECPGdebug((X)+100,(Y))
 
 #line 1 "show.pgc"
 #include <stdio.h>
@@ -33,7 +34,7 @@ int main(int argc, char* argv[]) {
 
 
   ECPGdebug(1, stderr);
-  { ECPGconnect(__LINE__, 0, "regress1" , NULL,NULL , NULL, 0); }
+  { ECPGconnect(__LINE__, 0, "regress1" , NULL, NULL , NULL, 0); }
 #line 13 "show.pgc"
 
 
@@ -44,7 +45,7 @@ int main(int argc, char* argv[]) {
 #line 16 "show.pgc"
 
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "set search_path to 'public'", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "set search_path to 'public'", ECPGt_EOIT, ECPGt_EORT);
 #line 18 "show.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -53,7 +54,7 @@ if (sqlca.sqlwarn[0] == 'W') sqlprint();
 if (sqlca.sqlcode < 0) sqlprint();}
 #line 18 "show.pgc"
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "show search_path", ECPGt_EOIT, 
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "show search_path", ECPGt_EOIT, 
 	ECPGt_char,(var),(long)25,(long)1,(25)*sizeof(char), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
 #line 19 "show.pgc"
@@ -66,7 +67,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
 
   printf("Var: Search path: %s\n", var);
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "set standard_conforming_strings to off", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "set standard_conforming_strings to off", ECPGt_EOIT, ECPGt_EORT);
 #line 22 "show.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -75,7 +76,7 @@ if (sqlca.sqlwarn[0] == 'W') sqlprint();
 if (sqlca.sqlcode < 0) sqlprint();}
 #line 22 "show.pgc"
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "show standard_conforming_strings", ECPGt_EOIT, 
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "show standard_conforming_strings", ECPGt_EOIT, 
 	ECPGt_char,(var),(long)25,(long)1,(25)*sizeof(char), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
 #line 23 "show.pgc"
@@ -88,7 +89,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
 
   printf("Var: Standard conforming strings: %s\n", var);
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "set time zone PST8PDT", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "set time zone PST8PDT", ECPGt_EOIT, ECPGt_EORT);
 #line 26 "show.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -97,7 +98,7 @@ if (sqlca.sqlwarn[0] == 'W') sqlprint();
 if (sqlca.sqlcode < 0) sqlprint();}
 #line 26 "show.pgc"
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "show time zone", ECPGt_EOIT, 
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "show time zone", ECPGt_EOIT, 
 	ECPGt_char,(var),(long)25,(long)1,(25)*sizeof(char), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
 #line 27 "show.pgc"
@@ -110,7 +111,7 @@ if (sqlca.sqlcode < 0) sqlprint();}
 
   printf("Time Zone: %s\n", var);
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "set transaction isolation level read committed", ECPGt_EOIT, ECPGt_EORT);
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "set transaction isolation level read committed", ECPGt_EOIT, ECPGt_EORT);
 #line 30 "show.pgc"
 
 if (sqlca.sqlwarn[0] == 'W') sqlprint();
@@ -119,7 +120,7 @@ if (sqlca.sqlwarn[0] == 'W') sqlprint();
 if (sqlca.sqlcode < 0) sqlprint();}
 #line 30 "show.pgc"
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "show transaction isolation level", ECPGt_EOIT, 
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "show transaction isolation level", ECPGt_EOIT, 
 	ECPGt_char,(var),(long)25,(long)1,(25)*sizeof(char), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EORT);
 #line 31 "show.pgc"

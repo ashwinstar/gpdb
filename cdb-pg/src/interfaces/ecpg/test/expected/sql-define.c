@@ -1,10 +1,11 @@
-/* Processed by ecpg (4.2.1) */
+/* Processed by ecpg (regression mode) */
 /* These include files are added by the preprocessor */
 #include <ecpgtype.h>
 #include <ecpglib.h>
 #include <ecpgerrno.h>
 #include <sqlca.h>
 /* End of automatic include section */
+#define ECPGdebug(X,Y) ECPGdebug((X)+100,(Y))
 
 #line 1 "define.pgc"
 
@@ -12,13 +13,13 @@
 #ifndef POSTGRES_SQLCA_H
 #define POSTGRES_SQLCA_H
 
-#ifndef DLLIMPORT
+#ifndef PGDLLIMPORT
 #if  defined(WIN32) || defined(__CYGWIN__)
-#define DLLIMPORT __declspec (dllimport)
+#define PGDLLIMPORT __declspec (dllimport)
 #else
-#define DLLIMPORT
+#define PGDLLIMPORT
 #endif   /* __CYGWIN__ */
-#endif   /* DLLIMPORT */
+#endif   /* PGDLLIMPORT */
 
 #define SQLERRMC_LEN	150
 
@@ -112,20 +113,20 @@ int main(void)
    /* exec sql whenever sqlerror  do sqlprint (  ) ; */
 #line 16 "define.pgc"
 
-   { ECPGconnect(__LINE__, 0, "regress1" , NULL,NULL , NULL, 0); 
+   { ECPGconnect(__LINE__, 0, "regress1" , NULL, NULL , NULL, 0); 
 #line 17 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint (  );}
 #line 17 "define.pgc"
 
 
-   { ECPGdo(__LINE__, 0, 1, NULL, "create  table test ( a int   , b text   )    ", ECPGt_EOIT, ECPGt_EORT);
+   { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "create  table test ( a int   , b text    )    ", ECPGt_EOIT, ECPGt_EORT);
 #line 19 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint (  );}
 #line 19 "define.pgc"
 
-   { ECPGdo(__LINE__, 0, 1, NULL, "insert into test values ( 29 , 'abcdef' ) ", ECPGt_EOIT, ECPGt_EORT);
+   { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into test values ( 29 , 'abcdef' ) ", ECPGt_EOIT, ECPGt_EORT);
 #line 20 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint (  );}
@@ -133,7 +134,7 @@ if (sqlca.sqlcode < 0) sqlprint (  );}
 
 
    
-   { ECPGdo(__LINE__, 0, 1, NULL, "insert into test values ( null , 'defined' ) ", ECPGt_EOIT, ECPGt_EORT);
+   { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into test values ( null , 'defined' ) ", ECPGt_EOIT, ECPGt_EORT);
 #line 23 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint (  );}
@@ -146,7 +147,7 @@ if (sqlca.sqlcode < 0) sqlprint (  );}
    
            
    
-   { ECPGdo(__LINE__, 0, 1, NULL, "insert into test values ( null , 'someothervar not defined' ) ", ECPGt_EOIT, ECPGt_EORT);
+   { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into test values ( null , 'someothervar not defined' ) ", ECPGt_EOIT, ECPGt_EORT);
 #line 31 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint (  );}
@@ -156,7 +157,7 @@ if (sqlca.sqlcode < 0) sqlprint (  );}
 
    
 
-   { ECPGdo(__LINE__, 0, 1, NULL, "select  1 , 29 :: text  || '-' || 'abcdef'     ", ECPGt_EOIT, 
+   { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select  1 , 29 :: text   || '-' || 'abcdef'     ", ECPGt_EOIT, 
 	ECPGt_int,&(i),(long)1,(long)1,sizeof(int), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, 
 	ECPGt_char,(s),(long)200,(long)1,(200)*sizeof(char), 
@@ -171,7 +172,7 @@ if (sqlca.sqlcode < 0) sqlprint (  );}
 
    
    
-   { ECPGdo(__LINE__, 0, 1, NULL, "insert into test values ( 29 , 'no string' ) ", ECPGt_EOIT, ECPGt_EORT);
+   { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into test values ( 29 , 'no string' ) ", ECPGt_EOIT, ECPGt_EORT);
 #line 42 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint (  );}
@@ -187,7 +188,7 @@ if (sqlca.sqlcode < 0) sqlprint (  );}
    
         
    
-   { ECPGdo(__LINE__, 0, 1, NULL, "set TIMEZONE to 'UTC'", ECPGt_EOIT, ECPGt_EORT);
+   { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "set TIMEZONE to 'UTC'", ECPGt_EOIT, ECPGt_EORT);
 #line 53 "define.pgc"
 
 if (sqlca.sqlcode < 0) sqlprint (  );}

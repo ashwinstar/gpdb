@@ -1,10 +1,11 @@
-/* Processed by ecpg (4.2.1) */
+/* Processed by ecpg (regression mode) */
 /* These include files are added by the preprocessor */
 #include <ecpgtype.h>
 #include <ecpglib.h>
 #include <ecpgerrno.h>
 #include <sqlca.h>
 /* End of automatic include section */
+#define ECPGdebug(X,Y) ECPGdebug((X)+100,(Y))
 
 #line 1 "init.pgc"
 
@@ -12,13 +13,13 @@
 #ifndef POSTGRES_SQLCA_H
 #define POSTGRES_SQLCA_H
 
-#ifndef DLLIMPORT
+#ifndef PGDLLIMPORT
 #if  defined(WIN32) || defined(__CYGWIN__)
-#define DLLIMPORT __declspec (dllimport)
+#define PGDLLIMPORT __declspec (dllimport)
 #else
-#define DLLIMPORT
+#define PGDLLIMPORT
 #endif   /* __CYGWIN__ */
-#endif   /* DLLIMPORT */
+#endif   /* PGDLLIMPORT */
 
 #define SQLERRMC_LEN	150
 
@@ -206,7 +207,7 @@ int main(void)
 	/* exec sql whenever sqlerror  do fa (  ) ; */
 #line 87 "init.pgc"
 
-	{ ECPGdo(__LINE__, 0, 1, NULL, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
 #line 88 "init.pgc"
 
 if (sqlca.sqlcode < 0) fa (  );}
@@ -215,7 +216,7 @@ if (sqlca.sqlcode < 0) fa (  );}
 	/* exec sql whenever sqlerror  do fb ( 20 ) ; */
 #line 89 "init.pgc"
 
-	{ ECPGdo(__LINE__, 0, 1, NULL, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
 #line 90 "init.pgc"
 
 if (sqlca.sqlcode < 0) fb ( 20 );}
@@ -224,7 +225,7 @@ if (sqlca.sqlcode < 0) fb ( 20 );}
 	/* exec sql whenever sqlerror  do fc ( \"50\" ) ; */
 #line 91 "init.pgc"
 
-	{ ECPGdo(__LINE__, 0, 1, NULL, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
 #line 92 "init.pgc"
 
 if (sqlca.sqlcode < 0) fc ( "50" );}
@@ -233,7 +234,7 @@ if (sqlca.sqlcode < 0) fc ( "50" );}
 	/* exec sql whenever sqlerror  do fd ( \"50\" , 1 ) ; */
 #line 93 "init.pgc"
 
-	{ ECPGdo(__LINE__, 0, 1, NULL, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
 #line 94 "init.pgc"
 
 if (sqlca.sqlcode < 0) fd ( "50" , 1 );}
@@ -242,7 +243,7 @@ if (sqlca.sqlcode < 0) fd ( "50" , 1 );}
 	/* exec sql whenever sqlerror  do fe ( ENUM0 ) ; */
 #line 95 "init.pgc"
 
-	{ ECPGdo(__LINE__, 0, 1, NULL, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
 #line 96 "init.pgc"
 
 if (sqlca.sqlcode < 0) fe ( ENUM0 );}
@@ -251,7 +252,7 @@ if (sqlca.sqlcode < 0) fe ( ENUM0 );}
 	/* exec sql whenever sqlerror  do sqlnotice ( NULL , 0 ) ; */
 #line 97 "init.pgc"
  
-	{ ECPGdo(__LINE__, 0, 1, NULL, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
+	{ ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select  now ()     ", ECPGt_EOIT, ECPGt_EORT);
 #line 98 "init.pgc"
 
 if (sqlca.sqlcode < 0) sqlnotice ( NULL , 0 );}

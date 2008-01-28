@@ -1,10 +1,11 @@
-/* Processed by ecpg (4.2.1) */
+/* Processed by ecpg (regression mode) */
 /* These include files are added by the preprocessor */
 #include <ecpgtype.h>
 #include <ecpglib.h>
 #include <ecpgerrno.h>
 #include <sqlca.h>
 /* End of automatic include section */
+#define ECPGdebug(X,Y) ECPGdebug((X)+100,(Y))
 
 #line 1 "type.pgc"
 #include <stdio.h>
@@ -110,7 +111,7 @@ main (void)
   ECPGdebug (1, stderr);
 
   empl.idnum = 1;
-  { ECPGconnect(__LINE__, 0, "regress1" , NULL,NULL , NULL, 0); }
+  { ECPGconnect(__LINE__, 0, "regress1" , NULL, NULL , NULL, 0); }
 #line 43 "type.pgc"
 
   if (sqlca.sqlcode)
@@ -119,7 +120,7 @@ main (void)
       exit (sqlca.sqlcode);
     }
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "create  table empl ( idnum integer   , name char  ( 20 )    , accs smallint   , string1 char  ( 10 )    , string2 char  ( 10 )    , string3 char  ( 10 )    )    ", ECPGt_EOIT, ECPGt_EORT);}
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "create  table empl ( idnum integer   , name char  ( 20 )    , accs smallint   , string1 char  ( 10 )    , string2 char  ( 10 )    , string3 char  ( 10 )    )    ", ECPGt_EOIT, ECPGt_EORT);}
 #line 51 "type.pgc"
 
   if (sqlca.sqlcode)
@@ -128,7 +129,7 @@ main (void)
       exit (sqlca.sqlcode);
     }
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "insert into empl values ( 1 , 'user name' , 320 , 'first str' , 'second str' , 'third str' ) ", ECPGt_EOIT, ECPGt_EORT);}
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "insert into empl values ( 1 , 'user name' , 320 , 'first str' , 'second str' , 'third str' ) ", ECPGt_EOIT, ECPGt_EORT);}
 #line 58 "type.pgc"
 
   if (sqlca.sqlcode)
@@ -137,7 +138,7 @@ main (void)
       exit (sqlca.sqlcode);
     }
 
-  { ECPGdo(__LINE__, 0, 1, NULL, "select  idnum , name , accs , string1 , string2 , string3  from empl where idnum =  ?  ", 
+  { ECPGdo(__LINE__, 0, 1, NULL, 0, ECPGst_normal, "select  idnum , name , accs , string1 , string2 , string3  from empl where idnum =  $1   ", 
 	ECPGt_long,&(empl.idnum),(long)1,(long)1,sizeof(long), 
 	ECPGt_NO_INDICATOR, NULL , 0L, 0L, 0L, ECPGt_EOIT, 
 	ECPGt_long,&(empl.idnum),(long)1,(long)1,sizeof(long), 
