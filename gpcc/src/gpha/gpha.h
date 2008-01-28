@@ -39,7 +39,7 @@
 typedef struct cmdslot_t cmdslot_t;
 struct cmdslot_t {
     int 	cmdidx;
-    const char* cmdname;
+    char        cmdname[32];
     cmdstate_t  cmdstate;
     int         countdown;	/* if > 0, will count down to 0 
 				   and generate a TIMEUP_EVENT */
