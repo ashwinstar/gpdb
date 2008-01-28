@@ -922,9 +922,11 @@ static apr_status_t a_fts_array_init_reply(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t a_fts_array_init_success(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
+    gpcc_event_t *evt;
 
     cmdslot->u.fts.active_cmdidx = 0;
-    config_write(gpma.datadir, gpma.guid, gpma.cfg);
+    evt = gpcc_event_alloc(CFG_UPDATED_EVENT, gpma.cfg_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
     return 0;
 }
 
@@ -1229,6 +1231,7 @@ static apr_status_t a_fts_deleted(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = _cmdslot;
     const char **keys;
     int i;
+    gpcc_event_t *evt;
 
     cmdslot->u.fts.active_cmdidx = 0;
 
@@ -1239,8 +1242,9 @@ static apr_status_t a_fts_deleted(gpcc_event_t *ev, void *_cmdslot)
 	}
     }
 
-    config_gc(gpma.cfg);
-    config_write(gpma.datadir, gpma.guid, gpma.cfg);
+    evt = gpcc_event_alloc(CFG_UPDATED_EVENT, gpma.cfg_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
     setup_cleanup_seginfo(ev, _cmdslot);
     apr_pool_clear(cmdslot->pool);
     return 0;

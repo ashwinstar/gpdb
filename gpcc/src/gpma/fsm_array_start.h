@@ -82,7 +82,6 @@ static int a_array_start_findIdxFromSegInfo(seginfo_t *seginfo, int nseginfo, in
 {
     int i;
     
-    gpcc_log_info("search port=%d, dir=%s, definedprimary=%c, host=%s", port, datadir, definedprimary, host);
     for (i = 0 ; i < nseginfo ; i++) {
 	if (seginfo[i].port == port && 
 	    strcmp(seginfo[i].dir, datadir) == 0 && 

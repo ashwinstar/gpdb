@@ -35,7 +35,10 @@ cmdslot_t* cmdslot_alloc(const char* name, cmdstate_t state)
 	    memset(&p->u, 0, sizeof(p->u));
 	    if (0 != apr_pool_create(&p->pool, 0)) 
 		gpcc_fatal(FLINE, "out of memory");
-	    p->cmdname = apr_pstrdup(p->pool, name);
+	    if (name)
+		strcpy(p->cmdname, name);
+	    else
+		*p->cmdname = 0;
 	    return p;
 	}
     }

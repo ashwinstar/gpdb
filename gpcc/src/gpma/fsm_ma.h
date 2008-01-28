@@ -406,6 +406,7 @@ apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     char msg[64];
     int i, e;
+    gpcc_event_t *evt;
 
     sprintf(msg, "{\"ma\" : \"%s\"}", gpma.ma_unit);
     for (i = 0 ; i < gpma.ma_max ; i++) {
@@ -419,6 +420,10 @@ apr_status_t a_lma_lead(gpcc_event_t *ev, void *arg)
 
     
     strcpy(slot->u.lma.leadma, gpma.ma_unit);
+
+    /* kick-off fts cmdslot */
+    evt = gpcc_event_alloc(INIT_EVENT, gpma.fts_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
     
     return 0;
 }
@@ -484,5 +489,46 @@ apr_status_t a_lma_leadma_broadcast(gpcc_event_t *ev, void *arg)
     }
 
     json_object_put(obj);
+    return 0;
+}
+
+apr_status_t a_lma_cfg_received(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj = json_tokener_parse(pkt->payload);
+    gpcc_event_t *evt;
+    struct json_object *arr;
+    int i, len;
+    const char **keys;
+
+    keys = config_keys(gpma.cfg, slot->pool);
+    for (i = 0 ; keys[i] ; i++) {
+	if (strstr(keys[i], "gpdb.") == keys[i] || strstr(keys[i], "node.") == keys[i]) {
+	    config_set(gpma.cfg, keys[i], 0);
+	}
+    }
+
+    apr_pool_clear(slot->pool);
+    gpcc_log_info("config = %s", pkt->payload);
+
+    arr = json_object_object_get(obj, "rset");
+    arr = json_object_object_get(arr, "result");
+    len = json_object_array_length(arr);
+
+    gpcc_log_info("config received from lead MA");
+    for (i = 0 ; i < len ; i++) {
+	char *key, *value;
+	struct json_object *c = json_object_array_get_idx(arr, i);
+	key = json_object_get_string(json_object_array_get_idx(c, 0));
+	value = json_object_get_string(json_object_array_get_idx(c, 1));
+	if (strstr(key, "node.") == key || strstr(key, "gpdb.") == key) {
+	    config_set(gpma.cfg, key, value);
+	    gpcc_log_info("%s='%s'", key, value);
+	}
+    }
+
+    evt = gpcc_event_alloc(CFG_UPDATED_EVENT, gpma.cfg_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
     return 0;
 }

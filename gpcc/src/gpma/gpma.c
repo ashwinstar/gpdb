@@ -152,9 +152,9 @@ static void net_opened(gpcc_net_conn_t conn,
 }
 
 
-static gpcc_event_t *mkfts_event(event_t event, gpcc_net_conn_t conn, 
-				 apr_uint32_t cmdidx, apr_uint32_t sndidx, apr_uint32_t rcvidx,
-				 const char *msg, int len)
+static gpcc_event_t *mkhttp_event(event_t event, gpcc_net_conn_t conn, 
+				  apr_uint32_t cmdidx, apr_uint32_t sndidx, apr_uint32_t rcvidx,
+				  const char *msg, int len)
 {
     gpcc_event_t *ev;
 
@@ -164,7 +164,7 @@ static gpcc_event_t *mkfts_event(event_t event, gpcc_net_conn_t conn,
     return ev;
 }
 
-
+#if 0
 static int keycmp(const void* a, const void* b)
 {
     const char** aa = (const char**) a;
@@ -233,7 +233,7 @@ static void process_lscfg(gpcc_net_conn_t conn)
     }
     apr_pool_destroy(pool);
 }
-
+#endif
 
 static void net_accepted(gpcc_net_conn_t conn,
 			 const char* peer_addr,
@@ -255,14 +255,15 @@ static void net_accepted(gpcc_net_conn_t conn,
 	int is_bad_array_name = 0;
 
 	if (0 == strcmp("/gpcc/lscfg", uri->path)) {
-	    process_lscfg(conn);
+	    ev = mkhttp_event(ARRAY_CONFIG_EVENT, conn, gpma.cfg_cmdslot->cmdidx, 0,
+			     gpma.cfg_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	}
 	else if (0 == strcmp("/gpcc/status", uri->path)) {
-	    ev = mkfts_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+	    ev = mkhttp_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	}
 	else if (0 == strcmp("/gpcc/init", uri->path)) {
-	    ev = mkfts_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+	    ev = mkhttp_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 			     gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
 	}
 	else if (0 == strcmp("/gpcc/segment/status", uri->path)) {
@@ -271,7 +272,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 	    if (gpma.unit_cmdtab) {
 		for (i = 0 ; i < gpma.unit_max && strcmp(seg, gpma.unit_cmdtab[i]->cmdname) != 0 ; i++) {;}
 		if (i < gpma.unit_max) {
-		    ev = mkfts_event(UNIT_STATUS_EVENT, conn, gpma.unit_cmdtab[i]->cmdidx, 0,
+		    ev = mkhttp_event(UNIT_STATUS_EVENT, conn, gpma.unit_cmdtab[i]->cmdidx, 0,
 				     gpma.unit_cmdtab[i]->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		} else {
 		    gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"failure\", \"rset\": {\"result\": [], \"total\" : 0, \"offset\": 0}}");
@@ -285,23 +286,23 @@ static void net_accepted(gpcc_net_conn_t conn,
 	    if (! is_bad_array_name) {
 		if (0 == strcmp("/gpcc/start", uri->path)) {
 		    /* send startcmd_event to FTS cmdslot ? */
-		    ev = mkfts_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+		    ev = mkhttp_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		}
 		else if (0 == strcmp("/gpcc/stop", uri->path)) {
-		    ev = mkfts_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+		    ev = mkhttp_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		}
 		else if (0 == strcmp("/gpcc/delete", uri->path)) {
-		    ev = mkfts_event(ARRAY_DELETE_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+		    ev = mkhttp_event(ARRAY_DELETE_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		}
 		else if (0 == strcmp("/gpcc/segment/start", uri->path)) {
-		    ev = mkfts_event(SEGMENT_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
+		    ev = mkhttp_event(SEGMENT_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
 				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		}
 		else if (0 == strcmp("/gpcc/segment/stop", uri->path)) {
-		    ev = mkfts_event(SEGMENT_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
+		    ev = mkhttp_event(SEGMENT_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
 				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		}
 		else 
@@ -385,6 +386,7 @@ static void net_received_packet(gpcc_net_conn_t conn,
     if (cmdidx == 0) {
 	/* GPMA */
 	cmdidx = gpma.lma_cmdslot->cmdidx;
+	gpcc_log_info("LMA PACKET RECEIVED");
     } 
 
     ev = gpcc_event_alloc(pkt->mh.type, cmdidx, sizeof(*pkt) + pkt->mh.len);
@@ -473,11 +475,14 @@ void d_main(void)
     }
 
     /* dump the config */
-    process_lscfg(0);
+    /*    process_lscfg(0); */
 
     event_init();
 
     cmdslot_init(gpma.pool);
+
+    /* configuration slot */
+    gpma.cfg_cmdslot = cmdslot_alloc("CFG", CFG_CMDSTATE);
 
     /* GPMA slot */
     gpma.gpma_cmdslot = cmdslot_alloc("GPMA", GPMA_CMDSTATE);
@@ -506,8 +511,10 @@ void d_main(void)
     gpcc_log_info("gpma listening to port %d", gpma.ma_port);
 
     /* kick of FTS slot */
+    /*
     ev = gpcc_event_alloc(INIT_EVENT, gpma.fts_cmdslot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, ev);
+    */
 
     /* MA */
     /* kick of MASET slot */

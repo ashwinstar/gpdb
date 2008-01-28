@@ -10,9 +10,9 @@
 #include <stdlib.h>
 #include "gpma.h"
 
-
 #include "fsm_node.h"
 #include "fsm_ma.h"
+#include "fsm_config.h"
 #include "fsm_fts.h"
 #include "fsm_maset.h"
 #include "fsm_haset.h"
@@ -41,6 +41,12 @@ APR_DECLARE(void) fsm_init(void)
 {
     gpcc_fsm_put(GPMA_CMDSTATE, TICK_EVENT, GPMA_CMDSTATE, 
 		 a_system_tick, NULL);
+
+    /* configuration */
+    gpcc_fsm_put(CFG_CMDSTATE, CFG_UPDATED_EVENT, CFG_CMDSTATE,
+		 a_config_updated, a_config_publish, NULL);
+    gpcc_fsm_put(CFG_CMDSTATE, ARRAY_CONFIG_EVENT, CFG_CMDSTATE,
+		 a_config_list, NULL);
 
     /* node */
     gpcc_fsm_put(NODE_CMDSTATE, INIT_EVENT, NODE_OFF_CMDSTATE,
@@ -166,6 +172,8 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(LMA_STANDBY_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_STANDBY_CMDSTATE,
 		 a_lma_reject, NULL);
     gpcc_fsm_put(LMA_STANDBY_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_STANDBY_CMDSTATE, NULL);
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, LMA_CONFIG_MSG_EVENT, LMA_STANDBY_CMDSTATE, 
+		 a_lma_cfg_received, NULL);
 
     gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_YES_MSG_EVENT, LMA_VOTEME_CMDSTATE, 
 		 a_lma_ponder_vote, NULL);
@@ -214,6 +222,17 @@ APR_DECLARE(void) fsm_init(void)
     /* fts */
     gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_init, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_STATUS_EVENT, FTS_CMDSTATE,
+		 a_fts_array_status_reply, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_STOP_EVENT, FTS_CMDSTATE,
+		 a_fts_waiting, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_INIT_EVENT, FTS_CMDSTATE,
+		 a_fts_waiting, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_START_EVENT, FTS_CMDSTATE,
+		 a_fts_waiting, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_DELETE_EVENT, FTS_CMDSTATE,
+		 a_fts_waiting, NULL);
+
 
     /* fts break event */
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE,
