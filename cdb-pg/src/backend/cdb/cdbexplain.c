@@ -3,7 +3,7 @@
  * cdbexplain.c
  *    Functions supporting the Greenplum EXPLAIN ANALYZE command
  *
- * Copyright (c) 2006-2007, greenplum inc
+ * Copyright (c) 2006-2008, Greenplum inc
  *
  * IDENTIFICATION
  *    $Id$

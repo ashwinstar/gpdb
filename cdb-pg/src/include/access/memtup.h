@@ -1,7 +1,7 @@
 /* 
  * In Memory Tuple format
  *
- * Copyright (c) 2008, greenplum inc
+ * Copyright (c) 2008, Greenplum inc
  */
 #ifndef MEM_TUP_H
 #define MEM_TUP_H

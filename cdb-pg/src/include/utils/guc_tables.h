@@ -5,8 +5,8 @@
  *
  * See src/backend/utils/misc/README for design notes.
  *
- * Portions Copyright (c) 2006-2007, greenplum inc
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  *
  *	  $PostgreSQL: pgsql/src/include/utils/guc_tables.h,v 1.29 2006/10/03 21:11:55 momjian Exp $
  *

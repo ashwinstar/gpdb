@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2006, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/bin/psql/common.c,v 1.130.2.2 2007/06/22 03:19:57 neilc Exp $
  */

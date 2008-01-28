@@ -9,8 +9,8 @@
  *	  more likely to break across PostgreSQL releases than code that uses
  *	  only the official API.
  *
- * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/interfaces/libpq/libpq-int.h,v 1.116.2.1 2007/07/23 18:13:10 mha Exp $

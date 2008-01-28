@@ -2,7 +2,7 @@
  * tupchunk.h
  *	   The data-structures and functions for dealing with tuple chunks.
  *
- * Copyright (c) 2005-2006, Greenplum
+ * Copyright (c) 2005-2008, Greenplum inc
  *-------------------------------------------------------------------------
  */
 #ifndef TUPCHUNK_H

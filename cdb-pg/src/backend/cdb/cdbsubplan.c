@@ -4,7 +4,7 @@
  *	  Provides routines for preprocessing initPlan subplans
  *		and executing queries with initPlans
  *
- * Copyright (c) 2003-2006, Greenplum
+ * Copyright (c) 2003-2008, Greenplum inc
  *
  *-------------------------------------------------------------------------
  */

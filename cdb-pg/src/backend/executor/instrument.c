@@ -4,8 +4,8 @@
  *	 functions for instrumentation of plan execution
  *
  *
- * Portions Copyright (c) 2006-2007, greenplum inc
- * Copyright (c) 2001-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Copyright (c) 2001-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/executor/instrument.c,v 1.18 2006/06/09 19:30:56 tgl Exp $

@@ -1,7 +1,7 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2006, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/bin/psql/large_obj.h,v 1.16 2006/03/05 15:58:51 momjian Exp $
  */

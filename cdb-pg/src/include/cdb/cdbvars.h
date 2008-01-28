@@ -3,7 +3,7 @@
  * cdbvars.h
  *	  definitions for Greenplum-specific global variables
  *
- * Copyright (c) 2003-2007, Greenplum
+ * Copyright (c) 2003-2008, Greenplum inc
  *
  *
  * IDENTIFICATION

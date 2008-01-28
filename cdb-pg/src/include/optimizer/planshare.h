@@ -1,7 +1,7 @@
 /* 
  * planshare.h
  * 		Prototypes and data structures for plan sharing
- * Copyright (c) 2007, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  */
 
 #ifndef _PLANSHARE_H_

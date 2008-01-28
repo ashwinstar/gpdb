@@ -3,7 +3,7 @@
 * hashapi_access.c
 *     Test functions for accessing the Cdb Hash API.
 *
-* Copyright (c) 2005, Greenplum
+* Copyright (c) 2005-2008, Greenplum inc
 *
 * IDENTIFICATION
 *     $Id$

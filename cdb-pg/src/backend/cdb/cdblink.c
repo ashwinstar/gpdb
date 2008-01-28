@@ -4,7 +4,7 @@
  *
  *	  Setting up libpq connections to qRxecs from Dispatcher
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2008, Greenplum inc
  *
  * $Id$
  *

@@ -2,7 +2,7 @@
  * tupchunklist.h
  *	   The data-structures and functions for dealing with tuple chunk lists.
  *
- * Copyright (c) 2005, Greenplum
+ * Copyright (c) 2005-2008, Greenplum inc
  *-------------------------------------------------------------------------
  */
 #ifndef TUPCHUNKLIST_H

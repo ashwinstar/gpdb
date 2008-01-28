@@ -5,7 +5,7 @@
 *	 routines are called from the backend COPY command whenever MPP is in the
 *	 default dispatch mode.
 *
-* Copyright (c) 2005, Greenplum
+* Copyright (c) 2005-2008, Greenplum inc
 *
 * IDENTIFICATION
 *	 $Id$

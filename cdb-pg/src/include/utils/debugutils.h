@@ -3,7 +3,7 @@
  * 
  * Debugging tools and routines
  * 
- * Copyright (c) 2007, Greenplum
+ * Copyright (c) 2007-2008, Greenplum inc
  */
 
 #ifndef _DEBUGUTILS_H_

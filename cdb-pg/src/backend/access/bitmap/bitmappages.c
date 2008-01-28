@@ -3,7 +3,7 @@
  * bitmappage.c
  *	  Bitmap index page management code for the bitmap index.
  *
- * Copyright (c) 2006, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2008, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION

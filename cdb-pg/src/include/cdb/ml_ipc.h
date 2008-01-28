@@ -2,7 +2,7 @@
 * ml_ipc.h
 *	Motion Layer IPC Layer.
 *
-* Copyright (c) 2005-2006, Greenplum
+* Copyright (c) 2005-2008, Greenplum inc
 *-------------------------------------------------------------------------
 */
 #ifndef ML_IPC_H

@@ -3,7 +3,7 @@
  * 
  * Routines for debugging Greenplum DB
  * 
- * Copyright (c) 2007, Greenplum
+ * Copyright (c) 2007-2008, Greenplum inc
  */
 
 #include "postgres.h"

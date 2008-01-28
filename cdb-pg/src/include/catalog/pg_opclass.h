@@ -24,7 +24,7 @@
  * AMs support this.
  *
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/catalog/pg_opclass.h,v 1.71 2006/07/21 20:51:33 tgl Exp $

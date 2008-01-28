@@ -8,8 +8,8 @@
  * but also length coercion functions.
  *
  *
- * Portions Copyright (c) 2006, greenplum inc
- * Copyright (c) 2002-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Copyright (c) 2002-2008, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/catalog/pg_cast.h,v 1.26 2006/03/05 15:58:54 momjian Exp $
  *

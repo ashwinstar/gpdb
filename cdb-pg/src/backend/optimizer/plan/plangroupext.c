@@ -3,7 +3,7 @@
  * plangroupexp.c
  *    Planning routines for grouping extensions.
  *
- * Copyright (c) 2007, Greenplum Inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  * IDENTIFICATION
  *    $PostgreSQL$

@@ -3,7 +3,7 @@
  * cdtm.c
  *	  Provides routines for performing distributed transaction
  *
- * Copyright (c) 2005-2008, greenplum inc
+ * Copyright (c) 2005-2008, Greenplum inc
  *
  * $Id$
  *

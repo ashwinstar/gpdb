@@ -6,7 +6,7 @@
  *  1024 file descriptors (as far as I can tell all of our platforms
  *  support 65536).
  *
- * Copyright (c) 2006, greenplum inc
+ * Copyright (c) 2006-2008, Greenplum inc
  *
  * $Id$
  *

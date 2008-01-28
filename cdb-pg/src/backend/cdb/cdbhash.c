@@ -3,7 +3,7 @@
  * cdbhash.c
  *	  Rrovides hashing routines to support consistant data distribution/location within Greenplum Database.
  *
- * Copyright (c) 2005-2006, Greenplum
+ * Copyright (c) 2005-2008, Greenplum inc
  *
  * IDENTIFICATION
  *	  $Id$

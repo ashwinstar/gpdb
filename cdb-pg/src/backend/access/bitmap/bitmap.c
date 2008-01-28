@@ -3,7 +3,7 @@
  * bitmap.c
  *	Implementation of the Hybrid Run-Length (HRL) on-disk bitmap index.
  *
- * Copyright (c) 2006, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	$PostgreSQL$

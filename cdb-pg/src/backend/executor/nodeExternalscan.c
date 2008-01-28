@@ -3,7 +3,7 @@
  * nodeExternalscan.c
  *	  Support routines for scans of external relations (on flat files for example)
  *
- * Copyright (c) 2007, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  *-------------------------------------------------------------------------
  */

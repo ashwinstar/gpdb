@@ -3,7 +3,7 @@
  * bitmap.h
  *	header file for on-disk bitmap index access method implementation.
  *
- * Copyright (c) 2006, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	$PostgreSQL$

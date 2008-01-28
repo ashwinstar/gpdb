@@ -3,7 +3,7 @@
  * cdbplan.c
  *	  Provides routines supporting plan tree manipulation.
  *
- * Copyright (c) 2004-2006, Greenplum
+ * Copyright (c) 2004-2008, Greenplum inc
  *
  * IDENTIFICATION
  *	  $Id$

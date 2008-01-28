@@ -1,7 +1,7 @@
 /* 
  * MemTuple
  * 
- * Copyright (c) 2006, greenplum inc
+ * Copyright (c) 2006-2008, Greenplum inc
  */
 
 #include "postgres.h"

@@ -7,8 +7,8 @@
  *
  * $PostgreSQL: pgsql/src/backend/utils/misc/ps_status.c,v 1.33 2006/10/04 00:30:04 momjian Exp $
  *
- * Portions Copyright (c) 2005-2006, greenplum inc
- * Copyright (c) 2000-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  * various details abducted from various places
  *--------------------------------------------------------------------
  */

@@ -43,7 +43,7 @@
  * This example requires libcurl 7.9.7 or later.
  */
 /*
- * Portions Copyright (c) 2007, greenplum inc
+ * Portions Copyright (c) 2007-2008, Greenplum inc
  */
 
 #include <stdio.h>

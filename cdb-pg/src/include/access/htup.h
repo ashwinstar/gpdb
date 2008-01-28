@@ -4,8 +4,8 @@
  *	  POSTGRES heap tuple definitions.
  *
  *
- * Portions Copyright (c) 2006, greenplum inc
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2008, Greenplum inc
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/access/htup.h,v 1.87 2006/11/05 22:42:10 tgl Exp $

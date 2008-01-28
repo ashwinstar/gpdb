@@ -4,7 +4,7 @@
  *	  Process under QD postmaster that manages redo of the WAL by the standby.
  *
  *
- * Copyright (c) 2007, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  *-------------------------------------------------------------------------
  */

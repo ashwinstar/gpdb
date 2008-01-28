@@ -3,7 +3,7 @@
  * cdbmutate.c
  *	  Parallelize a PostgreSQL sequential plan tree.
  *
- * Copyright (c) 2004-2007, Greenplum
+ * Copyright (c) 2004-2008, Greenplum inc
  *
  * IDENTIFICATION
  *	  $Id$

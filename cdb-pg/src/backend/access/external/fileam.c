@@ -21,7 +21,7 @@
 * single row error handling the first error will raise an error and the
 * query will terminate.
 *
-* Copyright (c) 2007, greenplum inc
+* Copyright (c) 2007-2008, Greenplum inc
 *
 *-------------------------------------------------------------------------
 */

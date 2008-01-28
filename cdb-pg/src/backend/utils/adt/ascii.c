@@ -2,7 +2,7 @@
  * ascii.c
  *	 The PostgreSQL routine for string to ascii conversion.
  *
- *	 Portions Copyright (c) 1999-2006, PostgreSQL Global Development Group
+ *	 Portions Copyright (c) 1999-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  $PostgreSQL: pgsql/src/backend/utils/adt/ascii.c,v 1.29 2006/07/14 14:52:23 momjian Exp $

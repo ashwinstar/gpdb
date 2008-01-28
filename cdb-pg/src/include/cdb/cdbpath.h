@@ -3,7 +3,7 @@
  * cdbpath.h
  *
  *
- * Copyright (c) 2005-2007, greenplum inc
+ * Copyright (c) 2005-2008, Greenplum inc
  *
  * $Id$
  *

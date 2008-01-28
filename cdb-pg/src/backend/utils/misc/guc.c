@@ -6,8 +6,8 @@
  * See src/backend/utils/misc/README for more information.
  *
  *
- * Portions Copyright (c) 2005-2007, greenplum inc
- * Copyright (c) 2000-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2008, Greenplum inc
+ * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION

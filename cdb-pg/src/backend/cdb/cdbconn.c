@@ -4,7 +4,7 @@
  *
  * SegmentDatabaseDescriptor methods
  *
- * Copyright (c) 2005-2006, greenplum inc
+ * Copyright (c) 2005-2008, Greenplum inc
  *
  * $Id$
  *

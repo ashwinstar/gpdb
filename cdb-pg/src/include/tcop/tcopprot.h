@@ -4,7 +4,7 @@
  *	  prototypes for postgres.c.
  *
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/tcop/tcopprot.h,v 1.85 2006/10/07 19:25:29 tgl Exp $

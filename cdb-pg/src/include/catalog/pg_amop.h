@@ -20,7 +20,7 @@
  * for multiple subtypes or strategy numbers of a single opclass.
  *
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/catalog/pg_amop.h,v 1.75 2006/10/04 00:30:07 momjian Exp $

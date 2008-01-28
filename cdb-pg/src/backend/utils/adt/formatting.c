@@ -4,7 +4,7 @@
  * $PostgreSQL: pgsql/src/backend/utils/adt/formatting.c,v 1.116.2.3 2007/06/29 01:51:49 tgl Exp $
  *
  *
- *	 Portions Copyright (c) 1999-2006, PostgreSQL Global Development Group
+ *	 Portions Copyright (c) 1999-2008, PostgreSQL Global Development Group
  *
  *
  *	 TO_CHAR(); TO_TIMESTAMP(); TO_DATE(); TO_NUMBER();

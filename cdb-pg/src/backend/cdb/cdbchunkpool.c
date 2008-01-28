@@ -5,7 +5,7 @@
  * Allocates chunks of a fixed size from an underlying AsetDirectContext, 
  * and keeps a freelist for recycling them.
  *
- * Copyright (c) 2007-2008, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  * $Id$
  *

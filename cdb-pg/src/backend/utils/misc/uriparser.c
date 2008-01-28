@@ -3,7 +3,7 @@
 * uriparser.c
 *	  Functions for parsing URI strings
 *
-* Copyright (c) 2007, greenplum inc
+* Copyright (c) 2007-2008, Greenplum inc
 *
 *-------------------------------------------------------------------------
 */

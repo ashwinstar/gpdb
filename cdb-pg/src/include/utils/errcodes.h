@@ -9,8 +9,8 @@
  * string is determined by the MAKE_SQLSTATE() macro, which is not defined
  * in this file; it can be defined by the caller for special purposes.
  *
- * Portions Copyright (c) 2005-2007, Greenplum Inc.
- * Copyright (c) 2003-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2008, Greenplum inc.
+ * Copyright (c) 2003-2008, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/utils/errcodes.h,v 1.20 2006/06/16 23:29:26 tgl Exp $
  *

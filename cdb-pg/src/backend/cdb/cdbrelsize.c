@@ -4,7 +4,7 @@
  *
  * Get the max size of the relation across the segDBs
  *
- * Copyright (c) 2006, greenplum inc
+ * Copyright (c) 2006-2008, Greenplum inc
  *
  *
  *-------------------------------------------------------------------------

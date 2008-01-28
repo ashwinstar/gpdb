@@ -6,7 +6,7 @@
  *    communicates with the master ddaserver at the QD when it finds
  *    a lock waiter.
  *
- * Copyright (c) 2007, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  * $Id$
  *

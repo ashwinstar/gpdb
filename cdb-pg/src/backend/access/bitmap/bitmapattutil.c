@@ -4,7 +4,7 @@
  *	Defines the routines to maintain all distinct attribute values
  *	which are indexed in the on-disk bitmap index.
  *
- * Copyright (c) 2006, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  $PostgreSQL$

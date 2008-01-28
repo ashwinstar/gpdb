@@ -3,7 +3,7 @@
  * cdbsrlz.c
  *	  Serialize a PostgreSQL sequential plan tree.
  *
- * Copyright (c) 2004, Greenplum
+ * Copyright (c) 2004-2008, Greenplum inc
  *
  * NOTES
  *

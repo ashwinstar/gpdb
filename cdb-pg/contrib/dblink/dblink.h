@@ -9,7 +9,7 @@
  * Shridhar Daithankar <shridhar_daithankar@persistent.co.in>
  *
  * $PostgreSQL: pgsql/contrib/dblink/dblink.h,v 1.17 2006/09/02 21:11:15 joe Exp $
- * Copyright (c) 2001-2006, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2008, PostgreSQL Global Development Group
  * ALL RIGHTS RESERVED;
  *
  * Permission to use, copy, modify, and distribute this software and its

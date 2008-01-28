@@ -3,7 +3,7 @@
  * cdbsubselect.c
  *	  Flattens subqueries, transforms them to joins.
  *
- * Copyright (c) 2007, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  * $Id$
  *

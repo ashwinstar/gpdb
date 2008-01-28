@@ -3,7 +3,7 @@
  * cdbptrbuf.h
  *    a container for pointers, layered on CdbPtrBuf
  *
- * Copyright (c) 2007-2008, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  * $Id$
  *

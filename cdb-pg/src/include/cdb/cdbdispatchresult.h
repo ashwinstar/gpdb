@@ -4,7 +4,7 @@
  * routines for dispatching commands from the dispatcher process
  * to the qExec processes.
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2008, Greenplum inc
  *
  * $Id$
  *

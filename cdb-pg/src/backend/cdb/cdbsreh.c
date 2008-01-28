@@ -4,7 +4,7 @@
 *	  Provides routines for single row error handling for COPY and external
 *	  tables.
 *
-* Copyright (c) 2007, Greenplum
+* Copyright (c) 2007-2008, Greenplum inc
 *
 * IDENTIFICATION
 *	  $Id$

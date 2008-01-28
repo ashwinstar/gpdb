@@ -5,7 +5,7 @@
 *	 These are functions that are used by the backend
 *	 COPY command in Greenplum Database.
 *
-* Copyright (c) 2005, Greenplum
+* Copyright (c) 2005-2008, Greenplum inc
 *
 * IDENTIFICATION
 *	 $Id$

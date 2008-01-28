@@ -3,7 +3,7 @@
 * cdbsreh.h
 *	  routines for single row error handling
 *
-* Copyright (c) 2007, greenplum inc
+* Copyright (c) 2007-2008, Greenplum inc
 *
 * $Id$
 *

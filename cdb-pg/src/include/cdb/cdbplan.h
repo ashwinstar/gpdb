@@ -3,7 +3,7 @@
  * cdbplan.h
  *	  definitions for cdbplan.c utilities
  *
- * Copyright (c) 2004-2006, Greenplum
+ * Copyright (c) 2004-2008, Greenplum inc
  *
  *
  * IDENTIFICATION

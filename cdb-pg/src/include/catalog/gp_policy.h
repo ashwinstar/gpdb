@@ -3,7 +3,7 @@
  * gp_policy.h
  *	  definitions for the gp_distribution_policy catalog table
  *
- * Copyright (c) 2005-2006, greenplum inc
+ * Copyright (c) 2005-2008, Greenplum inc
  *
  * IDENTIFICATION
  *	  $Id$

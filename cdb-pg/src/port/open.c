@@ -4,7 +4,7 @@
  *	   Win32 open() replacement
  *
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/port/open.c,v 1.17 2006/10/04 00:30:14 momjian Exp $
  *

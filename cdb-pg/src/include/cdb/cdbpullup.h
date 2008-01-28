@@ -3,7 +3,7 @@
  * cdbpullup.h
  *    definitions for cdbpullup.c utilities
  *
- * Copyright (c)2006-2007, greenplum inc
+ * Copyright (c)2006-2008, Greenplum inc
  *
  * IDENTIFICATION
  *    $Id$

@@ -4,7 +4,7 @@
  *	  exported definitions for utils/hash/dynahash.c; see notes therein
  *
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/utils/hsearch.h,v 1.45.2.1 2007/04/26 23:24:57 tgl Exp $

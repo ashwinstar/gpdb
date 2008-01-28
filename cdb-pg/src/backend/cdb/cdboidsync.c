@@ -4,7 +4,7 @@
  *
  * Make sure we don't re-use oids already used on the segment databases
  *
- * Copyright (c) 2007, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  * $Id$
  *

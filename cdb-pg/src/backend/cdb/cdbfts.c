@@ -3,7 +3,7 @@
  * cdbfts.c
  *	  Provides fault tolerance service routines for mpp.
  *
- * Copyright (c) 2003-2006, Greenplum
+ * Copyright (c) 2003-2008, Greenplum inc
  *
  *-------------------------------------------------------------------------
  */

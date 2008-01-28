@@ -3,7 +3,7 @@
  * cdbcellbuf.h
  *    a container for small items of constant size
  *
- * Copyright (c) 2007-2008, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  * $Id$
  *

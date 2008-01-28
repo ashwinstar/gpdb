@@ -3,7 +3,7 @@
  * bitmaputil.c
  *	  Utility routines for on-disk bitmap index access method.
  *
- * Copyright (c) 2006, PostgreSQL Global Development Group
+ * Copyright (c) 2006-2008, PostgreSQL Global Development Group
  * 
  * IDENTIFICATION
  *	  $PostgreSQL$

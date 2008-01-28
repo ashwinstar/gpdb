@@ -15,7 +15,7 @@
  * currently-active pages of DistributedXidMap and create an initial first page
  * of zeroes.
  *
- * Copyright (c) 2007, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  *-------------------------------------------------------------------------
  */

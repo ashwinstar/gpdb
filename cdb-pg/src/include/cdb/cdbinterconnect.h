@@ -2,7 +2,7 @@
 * cdbinterconnect.h
 *	defines state that is used by both the Motion Layer and IPC Layer.
 *
-* Copyright (c) 2006, Greenplum
+* Copyright (c) 2006-2008, Greenplum inc
 *-------------------------------------------------------------------------
 */
 

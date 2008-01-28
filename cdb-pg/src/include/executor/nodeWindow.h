@@ -4,7 +4,7 @@
  *	  prototypes for nodeWindow.c
  *
  *
- * Copyright (c) 2007, greenplum inc *
+ * Copyright (c) 2007-2008, Greenplum inc *
  *
  * IDENTIFICATION
  *	  $Id$

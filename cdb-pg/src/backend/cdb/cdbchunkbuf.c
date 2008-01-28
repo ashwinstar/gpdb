@@ -6,7 +6,7 @@
  * memory, using equal-sized chunks allocated from a CdbChunkPool; or
  * can transfer data to and from a workfile.
  *
- * Copyright (c) 2007-2008, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  * $Id$
  *

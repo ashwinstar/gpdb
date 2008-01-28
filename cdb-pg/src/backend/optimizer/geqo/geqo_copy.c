@@ -2,7 +2,7 @@
  *
  * geqo_copy.c
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/backend/optimizer/geqo/geqo_copy.c,v 1.16 2006/03/05 15:58:28 momjian Exp $

@@ -4,7 +4,7 @@
  *		Access into the motion-layer in order to send and receive tuples
  *		within a motion node ID within a particular process group id.
  *
- * Copyright (c) 2005-2006, greenplum inc
+ * Copyright (c) 2005-2008, Greenplum inc
  *
  * IDENTIFICATION
  *		  $Id$

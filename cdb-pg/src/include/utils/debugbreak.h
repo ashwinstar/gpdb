@@ -1,7 +1,7 @@
 /*
  * debugbreak.h
  * 		Debugging facilities
- * Copyright (c) 2007, Greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  */
 
 #ifndef _DEBUG_BREAK_H_

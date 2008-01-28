@@ -3,7 +3,7 @@
  *
  * Reads and modifies pg_control data.
  *
- * Copyright (c) 2007 Greenplum
+ * Copyright (c) 2007-2008, Greenplum inc
  * Copyright (c) 2007 PostgreSQL Global Development Group
  *
  * $PostgreSQL$

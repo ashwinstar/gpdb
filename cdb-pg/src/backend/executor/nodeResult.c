@@ -34,8 +34,8 @@
  *		plan normally and pass back the results.
  *
  *
- * Portions Copyright (c) 2005-2006, Greenplum Inc.
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2005-2008, Greenplum inc.
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION

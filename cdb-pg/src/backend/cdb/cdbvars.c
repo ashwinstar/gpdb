@@ -4,7 +4,7 @@
  *	  Provides storage areas and processing routines for Greenplum Database variables
  *	  managed by GUC.
  *
- * Copyright (c) 2003-2007, Greenplum
+ * Copyright (c) 2003-2008, Greenplum inc
  *
  *
  * IDENTIFICATION

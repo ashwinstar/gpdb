@@ -3,7 +3,7 @@
  * queue.h
  *	  Commands for manipulating resource queues.
  *
- * Copyright (c) 2006, Greenplum, Inc.
+ * Copyright (c) 2006-2008, Greenplum inc.
  *
  * $PostgreSQL$
  *

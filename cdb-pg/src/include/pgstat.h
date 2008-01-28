@@ -3,7 +3,7 @@
  *
  *	Definitions for the PostgreSQL statistics collector daemon.
  *
- *	Copyright (c) 2001-2006, PostgreSQL Global Development Group
+ *	Copyright (c) 2001-2008, PostgreSQL Global Development Group
  *
  *	$PostgreSQL: pgsql/src/include/pgstat.h,v 1.50.2.1 2007/07/08 22:23:25 tgl Exp $
  * ----------

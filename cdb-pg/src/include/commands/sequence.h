@@ -3,8 +3,8 @@
  * sequence.h
  *	  prototypes for sequence.c.
  *
- * Portions Copyright (c) 2006, Greenplum Inc.
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2006-2008, Greenplum inc.
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/commands/sequence.h,v 1.37 2006/07/11 13:54:24 momjian Exp $

@@ -5,7 +5,7 @@
  * Wraps a BufFile object for workfile I/O.  Multiple streams ("subfiles")
  * can be stored in the same workfile.
  *
- * Copyright (c) 2007-2008, greenplum inc
+ * Copyright (c) 2007-2008, Greenplum inc
  *
  * $Id$
  *

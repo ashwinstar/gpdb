@@ -4,7 +4,7 @@
  *
  * Functions returning results from a remote database
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2008, Greenplum inc
  *
  * $Id$
  *
