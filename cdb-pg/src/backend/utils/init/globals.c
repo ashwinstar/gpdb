@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/init/globals.c,v 1.99 2006/10/04 00:30:02 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/init/globals.c,v 1.104 2008/01/01 19:45:53 momjian Exp $
  *
  * NOTES
  *	  Globals used all over the place should be declared here and not
@@ -33,6 +33,7 @@ volatile uint32 InterruptHoldoffCount = 0;
 volatile uint32 CritSectionCount = 0;
 
 int			MyProcPid;
+time_t		MyStartTime;
 struct Port *MyProcPort;
 long		MyCancelKey;
 
@@ -95,9 +96,14 @@ bool		allowSystemTableMods = false;
 int			work_mem = 32768;
 int			maintenance_work_mem = 65536;
 
-/* Primary determinants of sizes of shared-memory structures: */
+/*
+ * Primary determinants of sizes of shared-memory structures.  MaxBackends is
+ * MaxConnections + autovacuum_max_workers (it is computed by the GUC assign
+ * hook):
+ */
 int			NBuffers = 4096;
 int			MaxBackends = 200;
+int			MaxConnections = 90;
 
 int			VacuumCostPageHit = 1;		/* GUC parameters for vacuum */
 int			VacuumCostPageMiss = 10;

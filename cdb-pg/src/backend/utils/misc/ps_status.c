@@ -5,7 +5,7 @@
  * to contain some useful information. Mechanism differs wildly across
  * platforms.
  *
- * $PostgreSQL: pgsql/src/backend/utils/misc/ps_status.c,v 1.33 2006/10/04 00:30:04 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/misc/ps_status.c,v 1.37 2008/01/01 19:45:54 momjian Exp $
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
@@ -390,12 +390,13 @@ set_ps_display(const char *activity, bool force)
     {
         int         buflen;
 
-        /* pad unused memory */
-        buflen = strlen(ps_buffer);
+		/* pad unused memory */
+		buflen = strlen(ps_buffer);
+		/* clobber remainder of old status string */
 		if (last_status_len > buflen)
 			MemSet(ps_buffer + buflen, PS_PADDING, last_status_len - buflen);
 		last_status_len = buflen;
-    }
+	}
 #endif   /* PS_USE_CLOBBER_ARGV */
 
 #ifdef PS_USE_WIN32

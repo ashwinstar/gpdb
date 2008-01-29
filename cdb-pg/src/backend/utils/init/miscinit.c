@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/init/miscinit.c,v 1.159 2006/10/04 00:30:02 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/init/miscinit.c,v 1.166 2008/01/03 21:23:15 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -402,6 +402,16 @@ InSecurityDefinerContext(void)
 
 
 /*
+ * InSecurityDefinerContext - are we inside a SECURITY DEFINER context?
+ */
+bool
+InSecurityDefinerContext(void)
+{
+	return SecurityDefinerContext;
+}
+
+
+/*
  * Initialize user identity during normal backend startup
  */
 void
@@ -450,7 +460,7 @@ InitializeSessionUserId(const char *rolename)
 	 *
 	 * We do not enforce them for the autovacuum process either.
 	 */
-	if (IsUnderPostmaster && !IsAutoVacuumProcess())
+	if (IsUnderPostmaster && !IsAutoVacuumWorkerProcess())
 	{
 		/*
 		 * Is role allowed to login at all?
@@ -505,7 +515,12 @@ InitializeSessionUserId(const char *rolename)
 	{
 		ArrayType  *a = DatumGetArrayTypeP(datum);
 
-		ProcessGUCArray(a, PGC_S_USER);
+		/*
+		 * We process all the options at SUSET level.  We assume that the
+		 * right to insert an option into pg_authid was checked when it was
+		 * inserted.
+		 */
+		ProcessGUCArray(a, PGC_SUSET, PGC_S_USER, GUC_ACTION_SET);
 	}
 
 	ReleaseSysCache(roleTup);
@@ -519,7 +534,7 @@ void
 InitializeSessionUserIdStandalone(void)
 {
 	/* This function should only be called in a single-user backend. */
-	AssertState(!IsUnderPostmaster || IsAutoVacuumProcess());
+	AssertState(!IsUnderPostmaster || IsAutoVacuumWorkerProcess());
 
 	/* call only once */
 	AssertState(!OidIsValid(AuthenticatedUserId));
@@ -1129,7 +1144,7 @@ ValidatePgVersion(const char *path)
 						path),
 				 errdetail("File \"%s\" does not contain valid data.",
 						   full_path),
-				 errhint("You may need to run gprecoversegment.sh")));
+				 errhint("You might need to run gprecoversegment.sh")));
 
 	FreeFile(file);
 

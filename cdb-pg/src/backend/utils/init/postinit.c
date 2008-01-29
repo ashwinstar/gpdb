@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.172 2006/11/05 22:42:09 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.180 2008/01/01 19:45:53 momjian Exp $
  *
  *
  *-------------------------------------------------------------------------
@@ -30,6 +30,7 @@
 #include "cdb/cdbutil.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "pgstat.h"
 #include "postmaster/autovacuum.h"
 #include "postmaster/postmaster.h"
 #include "storage/backendid.h"
@@ -46,11 +47,13 @@
 #include "utils/resscheduler.h"
 #include "utils/syscache.h"
 #include "utils/tqual.h"  		/* SharedSnapshot */
+#include "utils/plancache.h"
 #include "utils/portal.h"
 #include "pgstat.h"
 
 
 static bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
+static bool FindMyDatabaseByOid(Oid dbid, char *dbname, Oid *db_tablespace);
 static void CheckMyDatabase(const char *name, bool am_superuser);
 static void InitCommunication(void);
 static void ShutdownPostgres(int code, Datum arg);
@@ -107,6 +110,48 @@ FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace)
 }
 
 /*
+ * FindMyDatabaseByOid
+ *
+ * As above, but the actual database Id is known.  Return its name and the
+ * tablespace OID.	Return TRUE if found, FALSE if not.  The same restrictions
+ * as FindMyDatabase apply.
+ */
+static bool
+FindMyDatabaseByOid(Oid dbid, char *dbname, Oid *db_tablespace)
+{
+	bool		result = false;
+	char	   *filename;
+	FILE	   *db_file;
+	Oid			db_id;
+	char		thisname[NAMEDATALEN];
+	TransactionId db_frozenxid;
+
+	filename = database_getflatfilename();
+	db_file = AllocateFile(filename, "r");
+	if (db_file == NULL)
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\": %m", filename)));
+
+	while (read_pg_database_line(db_file, thisname, &db_id,
+								 db_tablespace, &db_frozenxid))
+	{
+		if (dbid == db_id)
+		{
+			result = true;
+			strlcpy(dbname, thisname, NAMEDATALEN);
+			break;
+		}
+	}
+
+	FreeFile(db_file);
+	pfree(filename);
+
+	return result;
+}
+
+
+/*
  * CheckMyDatabase -- fetch information from the pg_database entry for our DB
  */
 static void
@@ -139,9 +184,9 @@ CheckMyDatabase(const char *name, bool am_superuser)
 	 * a way to recover from disabling all access to all databases, for
 	 * example "UPDATE pg_database SET datallowconn = false;".
 	 *
-	 * We do not enforce them for the autovacuum process either.
+	 * We do not enforce them for the autovacuum worker processes either.
 	 */
-	if (IsUnderPostmaster && !IsAutoVacuumProcess())
+	if (IsUnderPostmaster && !IsAutoVacuumWorkerProcess())
 	{
 		/*
 		 * Check that the database is currently allowing connections.
@@ -210,7 +255,12 @@ CheckMyDatabase(const char *name, bool am_superuser)
 		{
 			ArrayType  *a = DatumGetArrayTypeP(datum);
 
-			ProcessGUCArray(a, PGC_S_DATABASE);
+			/*
+			 * We process all the options at SUSET level.  We assume that the
+			 * right to insert an option into pg_database was checked when it
+			 * was inserted.
+			 */
+			ProcessGUCArray(a, PGC_SUSET, PGC_S_DATABASE, GUC_ACTION_SET);
 		}
 	}
 
@@ -274,8 +324,11 @@ BaseInit(void)
  * InitPostgres
  *		Initialize POSTGRES.
  *
- * In bootstrap mode neither of the parameters are used.  In autovacuum
- * mode, the username parameter is not used.
+ * The database can be specified by name, using the in_dbname parameter, or by
+ * OID, using the dboid parameter.	In the latter case, the computed database
+ * name is passed out to the caller as a palloc'ed string in out_dbname.
+ *
+ * In bootstrap mode no parameters are used.
  *
  * The return value indicates whether the userID is a superuser.  (That
  * can only be tested inside a transaction, so we want to do it during
@@ -289,12 +342,14 @@ BaseInit(void)
  * --------------------------------
  */
 bool
-InitPostgres(const char *dbname, const char *username)
+InitPostgres(const char *in_dbname, Oid dboid, const char *username,
+			 char **out_dbname)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
-	bool		autovacuum = IsAutoVacuumProcess();
+	bool		autovacuum = IsAutoVacuumWorkerProcess();
 	bool		am_superuser;
 	char	   *fullpath;
+	char		dbname[NAMEDATALEN];
 
 
 	/*
@@ -312,15 +367,33 @@ InitPostgres(const char *dbname, const char *username)
 	else
 	{
 		/*
-		 * Find oid and tablespace of the database we're about to open. Since
-		 * we're not yet up and running we have to use the hackish
-		 * FindMyDatabase, which looks in the flat-file copy of pg_database.
+		 * Find tablespace of the database we're about to open. Since we're
+		 * not yet up and running we have to use one of the hackish
+		 * FindMyDatabase variants, which look in the flat-file copy of
+		 * pg_database.
+		 *
+		 * If the in_dbname param is NULL, lookup database by OID.
 		 */
-		if (!FindMyDatabase(dbname, &MyDatabaseId, &MyDatabaseTableSpace))
-			ereport(FATAL,
-					(errcode(ERRCODE_UNDEFINED_DATABASE),
-					 errmsg("database \"%s\" does not exist",
-							dbname)));
+		if (in_dbname == NULL)
+		{
+			if (!FindMyDatabaseByOid(dboid, dbname, &MyDatabaseTableSpace))
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database %u does not exist", dboid)));
+			MyDatabaseId = dboid;
+			/* pass the database name to the caller */
+			*out_dbname = pstrdup(dbname);
+		}
+		else
+		{
+			if (!FindMyDatabase(in_dbname, &MyDatabaseId, &MyDatabaseTableSpace))
+				ereport(FATAL,
+						(errcode(ERRCODE_UNDEFINED_DATABASE),
+						 errmsg("database \"%s\" does not exist",
+								in_dbname)));
+			/* our database name is gotten from the caller */
+			strlcpy(dbname, in_dbname, NAMEDATALEN);
+		}
 	}
 
 	fullpath = GetDatabasePath(MyDatabaseId, MyDatabaseTableSpace);
@@ -369,9 +442,14 @@ InitPostgres(const char *dbname, const char *username)
 	 */
 	RelationCacheInitialize();
 	InitCatalogCache();
+	InitPlanCache();
 
 	/* Initialize portal manager */
 	EnablePortalManager();
+
+	/* Initialize stats collection --- must happen before first xact */
+	if (!bootstrap)
+		pgstat_initialize();
 
 	/*
 	 * Set up process-exit callback to do pre-shutdown cleanup.  This has to
@@ -525,7 +603,7 @@ InitPostgres(const char *dbname, const char *username)
 	/* initialize client encoding */
 	InitializeClientEncoding();
 
-	/* initialize statistics collection for this backend */
+	/* report this backend in the PgBackendStatus array */
 	if (!bootstrap)
 		pgstat_bestart();
 		

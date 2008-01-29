@@ -13,7 +13,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/misc/tzparser.c,v 1.3 2006/10/06 17:14:00 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/misc/tzparser.c,v 1.6 2008/01/01 19:45:54 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -381,7 +381,7 @@ ParseTzFile(const char *filename, int depth,
 			{
 				ereport(tz_elevel,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("@INCLUDE without filename in time zone file \"%s\", line %d",
+						 errmsg("@INCLUDE without file name in time zone file \"%s\", line %d",
 								filename, lineno)));
 				return -1;
 			}

@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/xact.h,v 1.83 2006/07/11 18:26:11 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/access/xact.h,v 1.93 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -40,6 +40,9 @@ extern int	XactIsoLevel;
 /* Xact read-only state */
 extern bool DefaultXactReadOnly;
 extern bool XactReadOnly;
+
+/* Asynchronous commits */
+extern bool XactSyncCommit;
 
 /*
  *	start- and end-of-transaction callbacks for dynamically loaded modules
@@ -83,7 +86,7 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
 
 typedef struct xl_xact_commit
 {
-	time_t		xtime;
+	TimestampTz xact_time;		/* time of commit */
 	int			nrels;			/* number of RelFileNodes */
 	int			nsubxacts;		/* number of subtransaction XIDs */
 	/* Array of RelFileNode(s) to drop at commit */
@@ -95,7 +98,7 @@ typedef struct xl_xact_commit
 
 typedef struct xl_xact_abort
 {
-	time_t		xtime;
+	TimestampTz xact_time;		/* time of abort */
 	int			nrels;			/* number of RelFileNodes */
 	int			nsubxacts;		/* number of subtransaction XIDs */
 	/* Array of RelFileNode(s) to drop at abort */
@@ -156,17 +159,20 @@ extern bool IsTransactionState(void);
 extern bool IsAbortInProgress(void);
 extern bool IsAbortedTransactionBlockState(void);
 extern TransactionId GetTopTransactionId(void);
+extern TransactionId GetTopTransactionIdIfAny(void);
 extern TransactionId GetCurrentTransactionId(void);
 extern TransactionId GetCurrentTransactionIdIfAny(void);
 extern SubTransactionId GetCurrentSubTransactionId(void);
-extern CommandId GetCurrentCommandId(void);
+extern CommandId GetCurrentCommandId(bool used);
 extern TimestampTz GetCurrentTransactionStartTimestamp(void);
 extern TimestampTz GetCurrentStatementStartTimestamp(void);
+extern TimestampTz GetCurrentTransactionStopTimestamp(void);
 extern void SetCurrentStatementStartTimestamp(void);
 extern void SetCurrentStatementStartTimestampToMaster(TimestampTz masterTime);
 extern int	GetCurrentTransactionNestLevel(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
+extern void ForceSyncCommit(void);
 extern void StartTransactionCommand(void);
 extern void CommitTransactionCommand(void);
 extern void AbortCurrentTransaction(void);
@@ -190,9 +196,9 @@ extern void ExecutorMarkTransactionDoesWrites(void);
 extern bool ExecutorSaysTransactionDoesWrites(void);
 extern char TransactionBlockStatusCode(void);
 extern void AbortOutOfAnyTransaction(void);
-extern void PreventTransactionChain(void *stmtNode, const char *stmtType);
-extern void RequireTransactionChain(void *stmtNode, const char *stmtType);
-extern bool IsInTransactionChain(void *stmtNode);
+extern void PreventTransactionChain(bool isTopLevel, const char *stmtType);
+extern void RequireTransactionChain(bool isTopLevel, const char *stmtType);
+extern bool IsInTransactionChain(bool isTopLevel);
 extern void RegisterXactCallback(XactCallback callback, void *arg);
 extern void UnregisterXactCallback(XactCallback callback, void *arg);
 extern void RegisterXactCallbackOnce(XactCallback callback, void *arg);
@@ -200,7 +206,7 @@ extern void UnregisterXactCallbackOnce(XactCallback callback, void *arg);
 extern void RegisterSubXactCallback(SubXactCallback callback, void *arg);
 extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
-extern void RecordTransactionCommit(void);
+extern TransactionId RecordTransactionCommit(void);
 extern void RecordDistributedForgetCommitted(TMGXACT_LOG *gxact_log);
 
 extern int	xactGetCommittedChildren(TransactionId **ptr);
