@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_oper.c,v 1.90 2006/10/04 00:29:56 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_oper.c,v 1.101 2008/01/11 18:39:41 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,9 +24,45 @@
 #include "parser/parse_oper.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
+#include "utils/hsearch.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+
+
+/*
+ * The lookup key for the operator lookaside hash table.  Unused bits must be
+ * zeroes to ensure hashing works consistently --- in particular, oprname
+ * must be zero-padded and any unused entries in search_path must be zero.
+ *
+ * search_path contains the actual search_path with which the entry was
+ * derived (minus temp namespace if any), or else the single specified
+ * schema OID if we are looking up an explicitly-qualified operator name.
+ *
+ * search_path has to be fixed-length since the hashtable code insists on
+ * fixed-size keys.  If your search path is longer than that, we just punt
+ * and don't cache anything.
+ */
+
+/* If your search_path is longer than this, sucks to be you ... */
+#define MAX_CACHED_PATH_LEN		16
+
+typedef struct OprCacheKey
+{
+	char		oprname[NAMEDATALEN];
+	Oid			left_arg;		/* Left input OID, or 0 if prefix op */
+	Oid			right_arg;		/* Right input OID, or 0 if postfix op */
+	Oid			search_path[MAX_CACHED_PATH_LEN];
+} OprCacheKey;
+
+typedef struct OprCacheEntry
+{
+	/* the hash lookup key MUST BE FIRST */
+	OprCacheKey	key;
+
+	Oid			opr_oid;		/* OID of the resolved operator */
+} OprCacheEntry;
 
 
 static Oid	binary_oper_exact(List *opname, Oid arg1, Oid arg2);
@@ -42,6 +78,11 @@ static void op_error(ParseState *pstate, List *op, char oprkind,
 static Expr *make_op_expr(ParseState *pstate, Operator op,
 			 Node *ltree, Node *rtree,
 			 Oid ltypeId, Oid rtypeId);
+static bool make_oper_cache_key(OprCacheKey *key, List *opname,
+								Oid ltypeId, Oid rtypeId);
+static Oid	find_oper_cache_entry(OprCacheKey *key);
+static void make_oper_cache_entry(OprCacheKey *key, Oid opr_oid);
+static void InvalidateOprCacheCallBack(Datum arg, Oid relid);
 
 
 /*
@@ -110,12 +151,12 @@ LookupOperNameTypeNames(ParseState *pstate, List *opername,
 	if (oprleft == NULL)
 		leftoid = InvalidOid;
 	else
-		leftoid = typenameTypeId(pstate, oprleft);
+		leftoid = typenameTypeId(pstate, oprleft, NULL);
 
 	if (oprright == NULL)
 		rightoid = InvalidOid;
 	else
-		rightoid = typenameTypeId(pstate, oprright);
+		rightoid = typenameTypeId(pstate, oprright, NULL);
 
 	return LookupOperName(pstate, opername, leftoid, rightoid,
 						  noError, location);
@@ -496,8 +537,27 @@ oper(ParseState *pstate, List *opname, Oid ltypeId, Oid rtypeId,
 	 bool noError, int location)
 {
 	Oid			operOid;
+	OprCacheKey	key;
+	bool		key_ok;
 	FuncDetailCode fdresult = FUNCDETAIL_NOTFOUND;
 	HeapTuple	tup = NULL;
+
+	/*
+	 * Try to find the mapping in the lookaside cache.
+	 */
+	key_ok = make_oper_cache_key(&key, opname, ltypeId, rtypeId);
+	if (key_ok)
+	{
+		operOid = find_oper_cache_entry(&key);
+		if (OidIsValid(operOid))
+		{
+			tup = SearchSysCache(OPEROID,
+								 ObjectIdGetDatum(operOid),
+								 0, 0, 0);
+			if (HeapTupleIsValid(tup))
+				return (Operator) tup;
+		}
+	}
 
 	/*
 	 * First try for an "exact" match.
@@ -537,7 +597,12 @@ oper(ParseState *pstate, List *opname, Oid ltypeId, Oid rtypeId,
 							 ObjectIdGetDatum(operOid),
 							 0, 0, 0);
 
-	if (!HeapTupleIsValid(tup) && !noError)
+	if (HeapTupleIsValid(tup))
+	{
+		if (key_ok)
+			make_oper_cache_entry(&key, operOid);
+	}
+	else if (!noError)
 		op_error(pstate, opname, 'b', ltypeId, rtypeId, fdresult, location);
 
 	return (Operator) tup;
@@ -622,8 +687,27 @@ Operator
 right_oper(ParseState *pstate, List *op, Oid arg, bool noError, int location)
 {
 	Oid			operOid;
+	OprCacheKey	key;
+	bool		key_ok;
 	FuncDetailCode fdresult = FUNCDETAIL_NOTFOUND;
 	HeapTuple	tup = NULL;
+
+	/*
+	 * Try to find the mapping in the lookaside cache.
+	 */
+	key_ok = make_oper_cache_key(&key, op, arg, InvalidOid);
+	if (key_ok)
+	{
+		operOid = find_oper_cache_entry(&key);
+		if (OidIsValid(operOid))
+		{
+			tup = SearchSysCache(OPEROID,
+								 ObjectIdGetDatum(operOid),
+								 0, 0, 0);
+			if (HeapTupleIsValid(tup))
+				return (Operator) tup;
+		}
+	}
 
 	/*
 	 * First try for an "exact" match.
@@ -655,7 +739,12 @@ right_oper(ParseState *pstate, List *op, Oid arg, bool noError, int location)
 							 ObjectIdGetDatum(operOid),
 							 0, 0, 0);
 
-	if (!HeapTupleIsValid(tup) && !noError)
+	if (HeapTupleIsValid(tup))
+	{
+		if (key_ok)
+			make_oper_cache_entry(&key, operOid);
+	}
+	else if (!noError)
 		op_error(pstate, op, 'r', arg, InvalidOid, fdresult, location);
 
 	return (Operator) tup;
@@ -680,8 +769,27 @@ Operator
 left_oper(ParseState *pstate, List *op, Oid arg, bool noError, int location)
 {
 	Oid			operOid;
+	OprCacheKey	key;
+	bool		key_ok;
 	FuncDetailCode fdresult = FUNCDETAIL_NOTFOUND;
 	HeapTuple	tup = NULL;
+
+	/*
+	 * Try to find the mapping in the lookaside cache.
+	 */
+	key_ok = make_oper_cache_key(&key, op, InvalidOid, arg);
+	if (key_ok)
+	{
+		operOid = find_oper_cache_entry(&key);
+		if (OidIsValid(operOid))
+		{
+			tup = SearchSysCache(OPEROID,
+								 ObjectIdGetDatum(operOid),
+								 0, 0, 0);
+			if (HeapTupleIsValid(tup))
+				return (Operator) tup;
+		}
+	}
 
 	/*
 	 * First try for an "exact" match.
@@ -725,7 +833,12 @@ left_oper(ParseState *pstate, List *op, Oid arg, bool noError, int location)
 							 ObjectIdGetDatum(operOid),
 							 0, 0, 0);
 
-	if (!HeapTupleIsValid(tup) && !noError)
+	if (HeapTupleIsValid(tup))
+	{
+		if (key_ok)
+			make_oper_cache_entry(&key, operOid);
+	}
+	else if (!noError)
 		op_error(pstate, op, 'l', InvalidOid, arg, fdresult, location);
 
 	return (Operator) tup;
@@ -771,7 +884,7 @@ op_error(ParseState *pstate, List *op, char oprkind,
 				 errmsg("operator is not unique: %s",
 						op_signature_string(op, oprkind, arg1, arg2)),
 				 errhint("Could not choose a best candidate operator. "
-						 "You may need to add explicit type casts."),
+						 "You might need to add explicit type casts."),
 				 parser_errposition(pstate, location)));
 	else
 		ereport(ERROR,
@@ -779,7 +892,7 @@ op_error(ParseState *pstate, List *op, char oprkind,
 				 errmsg("operator does not exist: %s",
 						op_signature_string(op, oprkind, arg1, arg2)),
 		  errhint("No operator matches the given name and argument type(s). "
-				  "You may need to add explicit type casts."),
+				  "You might need to add explicit type casts."),
 				 parser_errposition(pstate, location)));
 }
 
@@ -886,14 +999,15 @@ make_scalar_array_op(ParseState *pstate, List *opname,
 	declared_arg_types[1] = opform->oprright;
 
 	/*
-	 * enforce consistency with ANYARRAY and ANYELEMENT argument and return
-	 * types, possibly adjusting return type or declared_arg_types (which will
-	 * be used as the cast destination by make_fn_arguments)
+	 * enforce consistency with polymorphic argument and return types,
+	 * possibly adjusting return type or declared_arg_types (which will be
+	 * used as the cast destination by make_fn_arguments)
 	 */
 	rettype = enforce_generic_type_consistency(actual_arg_types,
 											   declared_arg_types,
 											   2,
-											   opform->oprresult);
+											   opform->oprresult,
+											   false);
 
 	/*
 	 * Check that operator result is boolean
@@ -911,15 +1025,25 @@ make_scalar_array_op(ParseState *pstate, List *opname,
 
 	/*
 	 * Now switch back to the array type on the right, arranging for any
-	 * needed cast to be applied.
+	 * needed cast to be applied.  Beware of polymorphic operators here;
+	 * enforce_generic_type_consistency may or may not have replaced a
+	 * polymorphic type with a real one.
 	 */
-	res_atypeId = get_array_type(declared_arg_types[1]);
-	if (!OidIsValid(res_atypeId))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("could not find array type for data type %s",
-						format_type_be(declared_arg_types[1])),
-				 parser_errposition(pstate, location)));
+	if (IsPolymorphicType(declared_arg_types[1]))
+	{
+		/* assume the actual array type is OK */
+		res_atypeId = atypeId;
+	}
+	else
+	{
+		res_atypeId = get_array_type(declared_arg_types[1]);
+		if (!OidIsValid(res_atypeId))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("could not find array type for data type %s",
+							format_type_be(declared_arg_types[1])),
+					 parser_errposition(pstate, location)));
+	}
 	actual_arg_types[1] = atypeId;
 	declared_arg_types[1] = res_atypeId;
 
@@ -929,7 +1053,7 @@ make_scalar_array_op(ParseState *pstate, List *opname,
 	/* and build the expression node */
 	result = makeNode(ScalarArrayOpExpr);
 	result->opno = oprid(tup);
-	result->opfuncid = InvalidOid;
+	result->opfuncid = opform->oprcode;
 	result->useOr = useOr;
 	result->args = args;
 
@@ -986,14 +1110,15 @@ make_op_expr(ParseState *pstate, Operator op,
 	}
 
 	/*
-	 * enforce consistency with ANYARRAY and ANYELEMENT argument and return
-	 * types, possibly adjusting return type or declared_arg_types (which will
-	 * be used as the cast destination by make_fn_arguments)
+	 * enforce consistency with polymorphic argument and return types,
+	 * possibly adjusting return type or declared_arg_types (which will be
+	 * used as the cast destination by make_fn_arguments)
 	 */
 	rettype = enforce_generic_type_consistency(actual_arg_types,
 											   declared_arg_types,
 											   nargs,
-											   opform->oprresult);
+											   opform->oprresult,
+											   false);
 
 	/* perform the necessary typecasting of arguments */
 	make_fn_arguments(pstate, args, actual_arg_types, declared_arg_types);
@@ -1001,10 +1126,167 @@ make_op_expr(ParseState *pstate, Operator op,
 	/* and build the expression node */
 	result = makeNode(OpExpr);
 	result->opno = oprid(op);
-	result->opfuncid = InvalidOid;
+	result->opfuncid = opform->oprcode;
 	result->opresulttype = rettype;
 	result->opretset = get_func_retset(opform->oprcode);
 	result->args = args;
 
 	return (Expr *) result;
+}
+
+
+/*
+ * Lookaside cache to speed operator lookup.  Possibly this should be in
+ * a separate module under utils/cache/ ?
+ *
+ * The idea here is that the mapping from operator name and given argument
+ * types is constant for a given search path (or single specified schema OID)
+ * so long as the contents of pg_operator and pg_cast don't change.  And that
+ * mapping is pretty expensive to compute, especially for ambiguous operators;
+ * this is mainly because there are a *lot* of instances of popular operator
+ * names such as "=", and we have to check each one to see which is the
+ * best match.  So once we have identified the correct mapping, we save it
+ * in a cache that need only be flushed on pg_operator or pg_cast change.
+ * (pg_cast must be considered because changes in the set of implicit casts
+ * affect the set of applicable operators for any given input datatype.)
+ *
+ * XXX in principle, ALTER TABLE ... INHERIT could affect the mapping as
+ * well, but we disregard that since there's no convenient way to find out
+ * about it, and it seems a pretty far-fetched corner-case anyway.
+ *
+ * Note: at some point it might be worth doing a similar cache for function
+ * lookups.  However, the potential gain is a lot less since (a) function
+ * names are generally not overloaded as heavily as operator names, and
+ * (b) we'd have to flush on pg_proc updates, which are probably a good
+ * deal more common than pg_operator updates.
+ */
+
+/* The operator cache hashtable */
+static HTAB *OprCacheHash = NULL;
+
+
+/*
+ * make_oper_cache_key
+ *		Fill the lookup key struct given operator name and arg types.
+ *
+ * Returns TRUE if successful, FALSE if the search_path overflowed
+ * (hence no caching is possible).
+ */
+static bool
+make_oper_cache_key(OprCacheKey *key, List *opname, Oid ltypeId, Oid rtypeId)
+{
+	char	   *schemaname;
+	char	   *opername;
+
+	/* deconstruct the name list */
+	DeconstructQualifiedName(opname, &schemaname, &opername);
+
+	/* ensure zero-fill for stable hashing */
+	MemSet(key, 0, sizeof(OprCacheKey));
+
+	/* save operator name and input types into key */
+	strlcpy(key->oprname, opername, NAMEDATALEN);
+	key->left_arg = ltypeId;
+	key->right_arg = rtypeId;
+
+	if (schemaname)
+	{
+		/* search only in exact schema given */
+		key->search_path[0] = LookupExplicitNamespace(schemaname);
+	}
+	else
+	{
+		/* get the active search path */
+		if (fetch_search_path_array(key->search_path,
+									MAX_CACHED_PATH_LEN) > MAX_CACHED_PATH_LEN)
+			return false;		/* oops, didn't fit */
+	}
+
+	return true;
+}
+
+/*
+ * find_oper_cache_entry
+ *
+ * Look for a cache entry matching the given key.  If found, return the
+ * contained operator OID, else return InvalidOid.
+ */
+static Oid
+find_oper_cache_entry(OprCacheKey *key)
+{
+	OprCacheEntry *oprentry;
+
+	if (OprCacheHash == NULL)
+	{
+		/* First time through: initialize the hash table */
+		HASHCTL		ctl;
+
+		if (!CacheMemoryContext)
+			CreateCacheMemoryContext();
+
+		MemSet(&ctl, 0, sizeof(ctl));
+		ctl.keysize = sizeof(OprCacheKey);
+		ctl.entrysize = sizeof(OprCacheEntry);
+		ctl.hash = tag_hash;
+		OprCacheHash = hash_create("Operator lookup cache", 256,
+									&ctl, HASH_ELEM | HASH_FUNCTION);
+
+		/* Arrange to flush cache on pg_operator and pg_cast changes */
+		CacheRegisterSyscacheCallback(OPERNAMENSP,
+									  InvalidateOprCacheCallBack,
+									  (Datum) 0);
+		CacheRegisterSyscacheCallback(CASTSOURCETARGET,
+									  InvalidateOprCacheCallBack,
+									  (Datum) 0);
+	}
+
+	/* Look for an existing entry */
+	oprentry = (OprCacheEntry *) hash_search(OprCacheHash,
+											 (void *) key,
+											 HASH_FIND, NULL);
+	if (oprentry == NULL)
+		return InvalidOid;
+
+	return oprentry->opr_oid;
+}
+
+/*
+ * make_oper_cache_entry
+ *
+ * Insert a cache entry for the given key.
+ */
+static void
+make_oper_cache_entry(OprCacheKey *key, Oid opr_oid)
+{
+	OprCacheEntry *oprentry;
+
+	Assert(OprCacheHash != NULL);
+
+	oprentry = (OprCacheEntry *) hash_search(OprCacheHash,
+											 (void *) key,
+											 HASH_ENTER, NULL);
+	oprentry->opr_oid = opr_oid;
+}
+
+/*
+ * Callback for pg_operator and pg_cast inval events
+ */
+static void
+InvalidateOprCacheCallBack(Datum arg, Oid relid)
+{
+	HASH_SEQ_STATUS status;
+	OprCacheEntry *hentry;
+
+	Assert(OprCacheHash != NULL);
+
+	/* Currently we just flush all entries; hard to be smarter ... */
+	hash_seq_init(&status, OprCacheHash);
+
+	while ((hentry = (OprCacheEntry *) hash_seq_search(&status)) != NULL)
+	{
+		if (hash_search(OprCacheHash,
+						(void *) &hentry->key,
+						HASH_REMOVE, NULL) == NULL)
+			elog(ERROR, "hash table corrupted");
+	}
 }

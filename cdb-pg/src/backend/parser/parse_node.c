@@ -8,12 +8,13 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_node.c,v 1.95 2006/10/04 00:29:56 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_node.c,v 1.99 2008/01/01 19:45:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
+#include "access/heapam.h"
 #include "catalog/pg_type.h"
 #include "mb/pg_wchar.h"
 #include "nodes/makefuncs.h"
@@ -27,9 +28,11 @@
 #include "utils/varbit.h"
 
 
-/* make_parsestate()
- * Allocate and initialize a new ParseState.
- * The CALLER is responsible for freeing the ParseState* returned.
+/*
+ * make_parsestate
+ *		Allocate and initialize a new ParseState.
+ *
+ * Caller should eventually release the ParseState via free_parsestate().
  */
 ParseState *
 make_parsestate(ParseState *parentParseState)
@@ -50,6 +53,30 @@ make_parsestate(ParseState *parentParseState)
 	}
 
 	return pstate;
+}
+
+/*
+ * free_parsestate
+ *		Release a ParseState and any subsidiary resources.
+ */
+void
+free_parsestate(ParseState *pstate)
+{
+	/*
+	 * Check that we did not produce too many resnos; at the very least we
+	 * cannot allow more than 2^16, since that would exceed the range of a
+	 * AttrNumber. It seems safest to use MaxTupleAttributeNumber.
+	 */
+	if (pstate->p_next_resno - 1 > MaxTupleAttributeNumber)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("target lists can have at most %d entries",
+						MaxTupleAttributeNumber)));
+
+	if (pstate->p_target_relation != NULL)
+		heap_close(pstate->p_target_relation, NoLock);
+
+	pfree(pstate);
 }
 
 
@@ -153,7 +180,8 @@ transformArrayType(Oid arrayType)
  * arrayType	OID of array's datatype (should match type of arrayBase)
  * elementType	OID of array's element type (fetch with transformArrayType,
  *				or pass InvalidOid to do it here)
- * elementTypMod typmod to be applied to array elements (if storing)
+ * elementTypMod typmod to be applied to array elements (if storing) or of
+ *				the source array (if fetching)
  * indirection	Untransformed list of subscripts (must not be NIL)
  * assignFrom	NULL for array fetch, else transformed expression for source.
  */
@@ -166,7 +194,6 @@ transformArraySubscripts(ParseState *pstate,
 						 List *indirection,
 						 Node *assignFrom)
 {
-	Oid			resultType;
 	bool		isSlice = false;
 	List	   *upperIndexpr = NIL;
 	List	   *lowerIndexpr = NIL;
@@ -197,16 +224,6 @@ transformArraySubscripts(ParseState *pstate,
 	}
 
 	/*
-	 * The type represented by the subscript expression is the element type if
-	 * we are fetching a single element, but it is the same as the array type
-	 * if we are fetching a slice or storing.
-	 */
-	if (isSlice || assignFrom != NULL)
-		resultType = arrayType;
-	else
-		resultType = elementType;
-
-	/*
 	 * Transform the subscript expressions.
 	 */
 	foreach(idx, indirection)
@@ -235,6 +252,7 @@ transformArraySubscripts(ParseState *pstate,
 			{
 				/* Make a constant 1 */
 				subexpr = (Node *) makeConst(INT4OID,
+											 -1,
 											 sizeof(int32),
 											 Int32GetDatum(1),
 											 false,
@@ -284,9 +302,9 @@ transformArraySubscripts(ParseState *pstate,
 	 * Ready to build the ArrayRef node.
 	 */
 	aref = makeNode(ArrayRef);
-	aref->refrestype = resultType;
 	aref->refarraytype = arrayType;
 	aref->refelemtype = elementType;
+	aref->reftypmod = elementTypMod;
 	aref->refupperindexpr = upperIndexpr;
 	aref->reflowerindexpr = lowerIndexpr;
 	aref->refexpr = (Expr *) arrayBase;
@@ -399,6 +417,7 @@ make_const(Value *value)
 		case T_Null:
 			/* return a null const */
 			con = makeConst(UNKNOWNOID,
+							-1,
 							-2,
 							(Datum) 0,
 							true,
@@ -411,6 +430,7 @@ make_const(Value *value)
 	}
 
 	con = makeConst(typeid,
+					-1,			/* typmod -1 is OK for all cases */
 					typelen,
 					val,
 					false,

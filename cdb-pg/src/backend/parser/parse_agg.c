@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_agg.c,v 1.73 2006/07/27 19:52:05 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_agg.c,v 1.79 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -85,7 +85,7 @@ check_call(ParseState *pstate, Node *call)
 		if (checkExprHasAggs((Node *)((Aggref *)call)->args))
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
-					 errmsg("aggregate function calls may not be nested")));
+					 errmsg("aggregate function calls cannot be nested")));
 		
 		if (checkExprHasWindFuncs((Node *)((Aggref *)call)->args))
 		{
@@ -237,6 +237,7 @@ parseCheckAggregates(ParseState *pstate, Query *qry)
 	{
 		root = makeNode(PlannerInfo);
 		root->parse = qry;
+		root->planner_cxt = CurrentMemoryContext;
 		root->hasJoinRTEs = true;
 
 		groupClauses = (List *) flatten_join_alias_vars(root,
@@ -428,7 +429,7 @@ check_ungrouped_columns_walker(Node *node,
  *
  * agg_input_types, agg_state_type, agg_result_type identify the input,
  * transition, and result types of the aggregate.  These should all be
- * resolved to actual types (ie, none should ever be ANYARRAY or ANYELEMENT).
+ * resolved to actual types (ie, none should ever be ANYELEMENT etc).
  *
  * transfn_oid and finalfn_oid identify the funcs to be called; the latter
  * may be InvalidOid.
@@ -466,6 +467,7 @@ build_aggregate_fnexprs(Oid *agg_input_types,
 	argp->paramkind = PARAM_EXEC;
 	argp->paramid = -1;
 	argp->paramtype = agg_state_type;
+	argp->paramtypmod = -1;
 
 	args = list_make1(argp);
 
@@ -475,6 +477,7 @@ build_aggregate_fnexprs(Oid *agg_input_types,
 		argp->paramkind = PARAM_EXEC;
 		argp->paramid = -1;
 		argp->paramtype = agg_input_types[i];
+		argp->paramtypmod = -1;
 		args = lappend(args, argp);
 	}
 
@@ -495,6 +498,7 @@ build_aggregate_fnexprs(Oid *agg_input_types,
 		argp->paramkind = PARAM_EXEC;
 		argp->paramid = -1;
 		argp->paramtype = agg_state_type;
+		argp->paramtypmod = -1;
 		args = list_make1(argp);
 
 		*finalfnexpr = (Expr *) makeFuncExpr(finalfn_oid,
