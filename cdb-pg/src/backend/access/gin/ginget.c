@@ -8,16 +8,14 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *			$PostgreSQL: pgsql/src/backend/access/gin/ginget.c,v 1.4.2.1 2007/06/04 15:59:19 teodor Exp $
+ *			$PostgreSQL: pgsql/src/backend/access/gin/ginget.c,v 1.10 2008/01/01 19:45:46 momjian Exp $
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 #include "access/gin.h"
-#include "miscadmin.h"
 #include "catalog/index.h"
 #include "utils/memutils.h"
-#include "nodes/tidbitmap.h"
 
 static bool
 findItemInPage(Page page, ItemPointer item, OffsetNumber *off)
@@ -25,29 +23,29 @@ findItemInPage(Page page, ItemPointer item, OffsetNumber *off)
 	OffsetNumber maxoff = GinPageGetOpaque(page)->maxoff;
 	int			res;
 
-	if ( GinPageGetOpaque(page)->flags & GIN_DELETED )
+	if (GinPageGetOpaque(page)->flags & GIN_DELETED)
 		/* page was deleted by concurrent  vacuum */
 		return false;
 
-	if ( *off > maxoff || *off == InvalidOffsetNumber )
+	if (*off > maxoff || *off == InvalidOffsetNumber)
 		res = -1;
 	else
 		res = compareItemPointers(item, (ItemPointer) GinDataPageGetItem(page, *off));
 
-	if ( res == 0 ) 
+	if (res == 0)
 	{
 		/* page isn't changed */
-		return true; 
-	} 
-	else if ( res > 0 ) 
+		return true;
+	}
+	else if (res > 0)
 	{
-		/* 
-		 * some items was added before our position, look further to find 
-		 * it or first greater 
+		/*
+		 * some items was added before our position, look further to find it
+		 * or first greater
 		 */
-	
+
 		(*off)++;
-		for (; *off <= maxoff; (*off)++) 
+		for (; *off <= maxoff; (*off)++)
 		{
 			res = compareItemPointers(item, (ItemPointer) GinDataPageGetItem(page, *off));
 
@@ -55,7 +53,7 @@ findItemInPage(Page page, ItemPointer item, OffsetNumber *off)
 				return true;
 
 			if (res < 0)
-			{	
+			{
 				(*off)--;
 				return true;
 			}
@@ -63,20 +61,20 @@ findItemInPage(Page page, ItemPointer item, OffsetNumber *off)
 	}
 	else
 	{
-		/* 
-		 * some items was deleted before our position, look from begining
-		 * to find it or first greater
+		/*
+		 * some items was deleted before our position, look from begining to
+		 * find it or first greater
 		 */
 
-		for(*off = FirstOffsetNumber; *off<= maxoff; (*off)++) 
+		for (*off = FirstOffsetNumber; *off <= maxoff; (*off)++)
 		{
 			res = compareItemPointers(item, (ItemPointer) GinDataPageGetItem(page, *off));
 
-			if ( res == 0 )
+			if (res == 0)
 				return true;
 
 			if (res < 0)
-			{	
+			{
 				(*off)--;
 				return true;
 			}
@@ -176,7 +174,7 @@ startScanEntry(Relation index, GinState *ginstate, GinScanEntry entry, bool firs
 		page = BufferGetPage(entry->buffer);
 
 		/* try to find curItem in current buffer */
-		if ( findItemInPage(page, &entry->curItem, &entry->offset) )
+		if (findItemInPage(page, &entry->curItem, &entry->offset))
 			return;
 
 		/* walk to right */
@@ -188,13 +186,13 @@ startScanEntry(Relation index, GinState *ginstate, GinScanEntry entry, bool firs
 			page = BufferGetPage(entry->buffer);
 
 			entry->offset = InvalidOffsetNumber;
-			if ( findItemInPage(page, &entry->curItem, &entry->offset) )
+			if (findItemInPage(page, &entry->curItem, &entry->offset))
 				return;
 		}
 
 		/*
-		 * curItem and any greated items was deleted by concurrent vacuum,
-		 * so we finished scan with currrent entry
+		 * curItem and any greated items was deleted by concurrent vacuum, so
+		 * we finished scan with currrent entry
 		 */
 	}
 }
@@ -223,10 +221,10 @@ startScanKey(Relation index, GinState *ginstate, GinScanKey key)
 		if (GinFuzzySearchLimit > 0)
 		{
 			/*
-			 * If all of keys more than treshold we will try to reduce result,
-			 * we hope (and only hope, for intersection operation of array our
-			 * supposition isn't true), that total result will not more than
-			 * minimal predictNumberResult.
+			 * If all of keys more than threshold we will try to reduce
+			 * result, we hope (and only hope, for intersection operation of
+			 * array our supposition isn't true), that total result will not
+			 * more than minimal predictNumberResult.
 			 */
 
 			for (i = 0; i < key->nentries; i++)
@@ -475,44 +473,37 @@ scanGetItem(IndexScanDesc scan, ItemPointerData *item)
 }
 
 #define GinIsNewKey(s)		( ((GinScanOpaque) scan->opaque)->keys == NULL )
+#define GinIsVoidRes(s)		( ((GinScanOpaque) scan->opaque)->isVoidRes == true )
 
 Datum
 gingetmulti(PG_FUNCTION_ARGS)
 {
 	IndexScanDesc scan = (IndexScanDesc) PG_GETARG_POINTER(0);
-	Node 		   *n = (Node *) PG_GETARG_POINTER(1);
-	HashBitmap	   *hashBitmap;
- 
-	if (n == NULL || IsA(n, StreamBitmap))
-		/* XXX should we use less than work_mem for this? */
-		hashBitmap = tbm_create(work_mem * 1024L);
-	else
-		hashBitmap = (HashBitmap *)n;
- 
+	ItemPointer tids = (ItemPointer) PG_GETARG_POINTER(1);
+	int32		max_tids = PG_GETARG_INT32(2);
+	int32	   *returned_tids = (int32 *) PG_GETARG_POINTER(3);
+
 	if (GinIsNewKey(scan))
 		newScanKey(scan);
- 
-	startScan(scan);
- 
-	while (true)
-	{
-		ItemPointerData	tid;
-		if (scanGetItem(scan,&tid))
-			tbm_add_tuples(hashBitmap, &tid, 1);
- 		else
- 			break;
-	}	
- 
-	stopScan(scan);
- 
-	if(n && IsA(n, StreamBitmap))
-	{
-		stream_add_node((StreamBitmap *)n,
-			tbm_create_stream_node(hashBitmap), BMS_OR);
-		PG_RETURN_POINTER(n);
-	}
 
-	PG_RETURN_POINTER(hashBitmap);
+	*returned_tids = 0;
+
+	if (GinIsVoidRes(scan))
+		PG_RETURN_BOOL(false);
+
+	startScan(scan);
+
+	do
+	{
+		if (scanGetItem(scan, tids + *returned_tids))
+			(*returned_tids)++;
+		else
+			break;
+	} while (*returned_tids < max_tids);
+
+	stopScan(scan);
+
+	PG_RETURN_BOOL(*returned_tids == max_tids);
 }
 
 Datum
@@ -527,6 +518,9 @@ gingettuple(PG_FUNCTION_ARGS)
 
 	if (GinIsNewKey(scan))
 		newScanKey(scan);
+
+	if (GinIsVoidRes(scan))
+		PG_RETURN_BOOL(false);
 
 	startScan(scan);
 	res = scanGetItem(scan, &scan->xs_ctup.t_self);

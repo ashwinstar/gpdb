@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/index/genam.c,v 1.59 2006/10/04 00:29:48 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/index/genam.c,v 1.64 2008/01/01 19:45:46 momjian Exp $
  *
  * NOTES
  *	  many of the old access method routines have been turned into
@@ -21,6 +21,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/transam.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 
@@ -92,14 +93,12 @@ RelationGetIndexScan(Relation indexRelation,
 
 	scan->opaque = NULL;
 
-	ItemPointerSetInvalid(&scan->currentItemData);
-	ItemPointerSetInvalid(&scan->currentMarkData);
-
 	ItemPointerSetInvalid(&scan->xs_ctup.t_self);
 	scan->xs_ctup.t_data = NULL;
 	scan->xs_cbuf = InvalidBuffer;
-
-	pgstat_initstats(&scan->xs_pgstat_info, indexRelation);
+	scan->xs_prev_xmax = InvalidTransactionId;
+	scan->xs_next_hot = InvalidOffsetNumber;
+	scan->xs_hot_dead = false;
 
 	/*
 	 * Let the AM fill in the key and any opaque data it wants.

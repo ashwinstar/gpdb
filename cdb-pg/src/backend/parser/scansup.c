@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/scansup.c,v 1.34 2006/09/22 21:39:57 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/scansup.c,v 1.36 2008/01/01 19:45:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

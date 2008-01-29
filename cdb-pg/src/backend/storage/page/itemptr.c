@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/page/itemptr.c,v 1.19 2006/10/04 00:29:58 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/page/itemptr.c,v 1.21 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

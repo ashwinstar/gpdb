@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *			$PostgreSQL: pgsql/src/backend/access/gin/ginvacuum.c,v 1.9.2.2 2007/06/05 12:48:21 teodor Exp $
+ *			$PostgreSQL: pgsql/src/backend/access/gin/ginvacuum.c,v 1.19 2008/01/01 19:45:46 momjian Exp $
  *-------------------------------------------------------------------------
  */
 
@@ -28,14 +28,15 @@ typedef struct
 	IndexBulkDeleteCallback callback;
 	void	   *callback_state;
 	GinState	ginstate;
+	BufferAccessStrategy strategy;
 } GinVacuumState;
 
 
 /*
  * Cleans array of ItemPointer (removes dead pointers)
  * Results are always stored in *cleaned, which will be allocated
- * if its needed. In case of *cleaned!=NULL caller is responsible to
- * enough space. *cleaned and items may point to the same
+ * if it's needed. In case of *cleaned!=NULL caller is responsible to
+ * have allocated enough space. *cleaned and items may point to the same
  * memory address.
  */
 
@@ -152,21 +153,21 @@ xlogVacuumPage(Relation index, Buffer buffer)
 static bool
 ginVacuumPostingTreeLeaves(GinVacuumState *gvs, BlockNumber blkno, bool isRoot, Buffer *rootBuffer)
 {
-	Buffer		buffer = ReadBuffer(gvs->index, blkno);
+	Buffer		buffer = ReadBufferWithStrategy(gvs->index, blkno, gvs->strategy);
 	Page		page = BufferGetPage(buffer);
 	bool		hasVoidPage = FALSE;
 
 	/*
 	 * We should be sure that we don't concurrent with inserts, insert process
 	 * never release root page until end (but it can unlock it and lock
-	 * again). New scan can't start but previously started 
-	 * ones work concurrently.
+	 * again). New scan can't start but previously started ones work
+	 * concurrently.
 	 */
 
-	if ( isRoot ) 
+	if (isRoot)
 		LockBufferForCleanup(buffer);
 	else
-		LockBuffer(buffer, GIN_EXCLUSIVE); 
+		LockBuffer(buffer, GIN_EXCLUSIVE);
 
 	Assert(GinPageIsData(page));
 
@@ -238,9 +239,10 @@ static void
 ginDeletePage(GinVacuumState *gvs, BlockNumber deleteBlkno, BlockNumber leftBlkno,
 			  BlockNumber parentBlkno, OffsetNumber myoff, bool isParentRoot)
 {
-	Buffer		dBuffer = ReadBuffer(gvs->index, deleteBlkno);
-	Buffer		lBuffer = (leftBlkno == InvalidBlockNumber) ? InvalidBuffer : ReadBuffer(gvs->index, leftBlkno);
-	Buffer		pBuffer = ReadBuffer(gvs->index, parentBlkno);
+	Buffer		dBuffer = ReadBufferWithStrategy(gvs->index, deleteBlkno, gvs->strategy);
+	Buffer		lBuffer = (leftBlkno == InvalidBlockNumber) ?
+	InvalidBuffer : ReadBufferWithStrategy(gvs->index, leftBlkno, gvs->strategy);
+	Buffer		pBuffer = ReadBufferWithStrategy(gvs->index, parentBlkno, gvs->strategy);
 	Page		page,
 				parentPage;
 
@@ -266,17 +268,20 @@ ginDeletePage(GinVacuumState *gvs, BlockNumber deleteBlkno, BlockNumber leftBlkn
 
 	parentPage = BufferGetPage(pBuffer);
 #ifdef USE_ASSERT_CHECKING
-	do {
-		PostingItem *tod=(PostingItem *) GinDataPageGetItem(parentPage, myoff);
-		Assert( PostingItemGetBlockNumber(tod) == deleteBlkno );
-	} while(0);
+	do
+	{
+		PostingItem *tod = (PostingItem *) GinDataPageGetItem(parentPage, myoff);
+
+		Assert(PostingItemGetBlockNumber(tod) == deleteBlkno);
+	} while (0);
 #endif
 	PageDeletePostingItem(parentPage, myoff);
 
 	page = BufferGetPage(dBuffer);
+
 	/*
-	 * we shouldn't change rightlink field to save 
-	 * workability of running search scan
+	 * we shouldn't change rightlink field to save workability of running
+	 * search scan
 	 */
 	GinPageGetOpaque(page)->flags = GIN_DELETED;
 
@@ -361,8 +366,8 @@ typedef struct DataPageDeleteStack
 	struct DataPageDeleteStack *child;
 	struct DataPageDeleteStack *parent;
 
-	BlockNumber blkno; /* current block number */
-	BlockNumber leftBlkno; /* rightest non-deleted page on left */
+	BlockNumber blkno;			/* current block number */
+	BlockNumber leftBlkno;		/* rightest non-deleted page on left */
 	bool		isRoot;
 } DataPageDeleteStack;
 
@@ -394,7 +399,7 @@ ginScanToDelete(GinVacuumState *gvs, BlockNumber blkno, bool isRoot, DataPageDel
 			me = parent->child;
 	}
 
-	buffer = ReadBuffer(gvs->index, blkno);
+	buffer = ReadBufferWithStrategy(gvs->index, blkno, gvs->strategy);
 	page = BufferGetPage(buffer);
 
 	Assert(GinPageIsData(page));
@@ -470,7 +475,7 @@ ginVacuumPostingTree(GinVacuumState *gvs, BlockNumber rootBlkno)
 
 /*
  * returns modified page or NULL if page isn't modified.
- * Function works with original page until first change is occured,
+ * Function works with original page until first change is occurred,
  * then page is copied into temporary one.
  */
 static Page
@@ -542,7 +547,7 @@ ginVacuumEntryPage(GinVacuumState *gvs, Buffer buffer, BlockNumber *roots, uint3
 				itup = GinFormTuple(&gvs->ginstate, value, GinGetPosting(itup), newN);
 				PageIndexTupleDelete(tmppage, i);
 
-				if (PageAddItem(tmppage, (Item) itup, IndexTupleSize(itup), i, LP_USED) != i)
+				if (PageAddItem(tmppage, (Item) itup, IndexTupleSize(itup), i, false, false) != i)
 					elog(ERROR, "failed to add item to index page in \"%s\"",
 						 RelationGetRelationName(gvs->index));
 
@@ -578,9 +583,10 @@ ginbulkdelete(PG_FUNCTION_ARGS)
 	gvs.result = stats;
 	gvs.callback = callback;
 	gvs.callback_state = callback_state;
+	gvs.strategy = info->strategy;
 	initGinState(&gvs.ginstate, index);
 
-	buffer = ReadBuffer(index, blkno);
+	buffer = ReadBufferWithStrategy(index, blkno, info->strategy);
 
 	/* find leaf page */
 	for (;;)
@@ -611,8 +617,8 @@ ginbulkdelete(PG_FUNCTION_ARGS)
 		blkno = GinItemPointerGetBlockNumber(&(itup)->t_tid);
 		Assert(blkno != InvalidBlockNumber);
 
-		LockBuffer(buffer, GIN_UNLOCK);
-		buffer = ReleaseAndReadBuffer(buffer, index, blkno);
+		UnlockReleaseBuffer(buffer);
+		buffer = ReadBufferWithStrategy(index, blkno, info->strategy);
 	}
 
 	/* right now we found leftmost page in entry's BTree */
@@ -654,7 +660,7 @@ ginbulkdelete(PG_FUNCTION_ARGS)
 		if (blkno == InvalidBlockNumber)		/* rightmost page */
 			break;
 
-		buffer = ReadBuffer(index, blkno);
+		buffer = ReadBufferWithStrategy(index, blkno, info->strategy);
 		LockBuffer(buffer, GIN_EXCLUSIVE);
 	}
 
@@ -717,7 +723,7 @@ ginvacuumcleanup(PG_FUNCTION_ARGS)
 
 		vacuum_delay_point();
 
-		buffer = ReadBuffer(index, blkno);
+		buffer = ReadBufferWithStrategy(index, blkno, info->strategy);
 		LockBuffer(buffer, GIN_SHARE);
 		page = (Page) BufferGetPage(buffer);
 

@@ -8,16 +8,18 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *			$PostgreSQL: pgsql/src/backend/access/gin/gininsert.c,v 1.5.2.1 2007/06/05 12:48:21 teodor Exp $
+ *			$PostgreSQL: pgsql/src/backend/access/gin/gininsert.c,v 1.11 2008/01/01 19:45:46 momjian Exp $
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
+
 #include "access/genam.h"
 #include "access/gin.h"
 #include "catalog/index.h"
 #include "miscadmin.h"
 #include "utils/memutils.h"
+
 
 typedef struct
 {
@@ -132,8 +134,7 @@ addItemPointersToTuple(Relation index, GinState *ginstate, GinBtreeStack *stack,
 }
 
 /*
- * Inserts only one entry to the index, but it can adds more that 1
- * ItemPointer.
+ * Inserts only one entry to the index, but it can add more than 1 ItemPointer.
  */
 static void
 ginEntryInsert(Relation index, GinState *ginstate, Datum value, ItemPointerData *items, uint32 nitem, bool isBuild)
@@ -198,13 +199,13 @@ ginEntryInsert(Relation index, GinState *ginstate, Datum value, ItemPointerData 
 
 /*
  * Saves indexed value in memory accumulator during index creation
- * Function isnt use during normal insert
+ * Function isn't used during normal insert
  */
 static uint32
 ginHeapTupleBulkInsert(GinBuildState *buildstate, Datum value, ItemPointer heapptr)
 {
 	Datum	   *entries;
-	uint32		nentries;
+	int32		nentries;
 	MemoryContext oldCtx;
 
 	oldCtx = MemoryContextSwitchTo(buildstate->funcCtx);
@@ -226,7 +227,6 @@ static void
 ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
 				 bool *isnull, bool tupleIsAlive, void *state)
 {
-
 	GinBuildState *buildstate = (GinBuildState *) state;
 	MemoryContext oldCtx;
 
@@ -237,11 +237,8 @@ ginBuildCallback(Relation index, HeapTuple htup, Datum *values,
 
 	buildstate->indtuples += ginHeapTupleBulkInsert(buildstate, *values, &htup->t_self);
 
-	/*
-	 * we use only half maintenance_work_mem, because there is some leaks
-	 * during insertion and extract values
-	 */
-	if (buildstate->accum.allocatedMemory >= maintenance_work_mem * 1024L / 2L)
+	/* If we've maxed out our available memory, dump everything to the index */
+	if (buildstate->accum.allocatedMemory >= maintenance_work_mem * 1024L)
 	{
 		ItemPointerData *list;
 		Datum		entry;
@@ -358,7 +355,7 @@ static uint32
 ginHeapTupleInsert(Relation index, GinState *ginstate, Datum value, ItemPointer item)
 {
 	Datum	   *entries;
-	uint32		i,
+	int32		i,
 				nentries;
 
 	entries = extractEntriesSU(ginstate, value, &nentries);

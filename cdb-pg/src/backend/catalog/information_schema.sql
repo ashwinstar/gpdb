@@ -2,9 +2,9 @@
  * SQL Information Schema
  * as defined in ISO/IEC 9075-11:2003
  *
- * Copyright (c) 2003-2006, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/backend/catalog/information_schema.sql,v 1.38.2.1 2007/01/16 18:32:32 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/catalog/information_schema.sql,v 1.43 2008/01/01 19:45:48 momjian Exp $
  */
 
 /*
@@ -412,7 +412,7 @@ CREATE VIEW check_constraints AS
 
     SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog,
            CAST(n.nspname AS sql_identifier) AS constraint_schema,
-           CAST(n.oid || '_' || r.oid || '_' || a.attnum || '_not_null' AS sql_identifier) AS constraint_name, -- XXX
+           CAST(CAST(n.oid AS text) || '_' || CAST(r.oid AS text) || '_' || CAST(a.attnum AS text) || '_not_null' AS sql_identifier) AS constraint_name, -- XXX
            CAST(a.attname || ' IS NOT NULL' AS character_data)
              AS check_clause
     FROM pg_namespace n, pg_class r, pg_attribute a
@@ -1615,12 +1615,12 @@ CREATE TABLE sql_parts (
 INSERT INTO sql_parts VALUES ('1', 'Framework (SQL/Framework)', 'NO', NULL, '');
 INSERT INTO sql_parts VALUES ('2', 'Foundation (SQL/Foundation)', 'NO', NULL, '');
 INSERT INTO sql_parts VALUES ('3', 'Call-Level Interface (SQL/CLI)', 'NO', NULL, '');
-INSERT INTO sql_parts VALUES ('4', 'Persistent Stored Modules (SQL/PSM)', NULL, '');
-INSERT INTO sql_parts VALUES ('9', 'Management of External Data (SQL/MED)', NULL, '');
-INSERT INTO sql_parts VALUES ('10', 'Object Language Bindings (SQL/OLB)', NULL, '');
-INSERT INTO sql_parts VALUES ('11', 'Information and Definition Schema (SQL/Schemata)', NULL, '');
-INSERT INTO sql_parts VALUES ('13', 'Routines and Types Using the Java Programming Language (SQL/JRT)', NULL, '');
-INSERT INTO sql_parts VALUES ('14', 'XML-Related Specifications (SQL/XML)', NULL, '');
+INSERT INTO sql_parts VALUES ('4', 'Persistent Stored Modules (SQL/PSM)', 'NO', NULL, '');
+INSERT INTO sql_parts VALUES ('9', 'Management of External Data (SQL/MED)', 'NO', NULL, '');
+INSERT INTO sql_parts VALUES ('10', 'Object Language Bindings (SQL/OLB)', 'NO', NULL, '');
+INSERT INTO sql_parts VALUES ('11', 'Information and Definition Schema (SQL/Schemata)', 'NO', NULL, '');
+INSERT INTO sql_parts VALUES ('13', 'Routines and Types Using the Java Programming Language (SQL/JRT)', 'NO', NULL, '');
+INSERT INTO sql_parts VALUES ('14', 'XML-Related Specifications (SQL/XML)', 'YES', NULL, '');
 
 
 /*
@@ -1735,7 +1735,7 @@ CREATE VIEW table_constraints AS
 
     SELECT CAST(current_database() AS sql_identifier) AS constraint_catalog,
            CAST(nr.nspname AS sql_identifier) AS constraint_schema,
-           CAST(nr.oid || '_' || r.oid || '_' || a.attnum || '_not_null' AS sql_identifier) AS constraint_name, -- XXX
+           CAST(CAST(nr.oid AS text) || '_' || CAST(r.oid AS text) || '_' || CAST(a.attnum AS text) || '_not_null' AS sql_identifier) AS constraint_name, -- XXX
            CAST(current_database() AS sql_identifier) AS table_catalog,
            CAST(nr.nspname AS sql_identifier) AS table_schema,
            CAST(r.relname AS sql_identifier) AS table_name,
@@ -2158,13 +2158,13 @@ CREATE VIEW views AS
            CAST('NONE' AS character_data) AS check_option,
 
            CAST(
-             CASE WHEN EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = 2 AND is_instead)
-                   AND EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = 4 AND is_instead)
+             CASE WHEN EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = '2' AND is_instead)
+                   AND EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = '4' AND is_instead)
                   THEN 'YES' ELSE 'NO' END
              AS character_data) AS is_updatable,
 
            CAST(
-             CASE WHEN EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = 3 AND is_instead)
+             CASE WHEN EXISTS (SELECT 1 FROM pg_rewrite WHERE ev_class = c.oid AND ev_type = '3' AND is_instead)
                   THEN 'YES' ELSE 'NO' END
              AS character_data) AS is_insertable_into
 
@@ -2255,7 +2255,7 @@ CREATE VIEW element_types AS
            CAST(null AS sql_identifier) AS scope_name,
 
            CAST(null AS cardinal_number) AS maximum_cardinality,
-           CAST('a' || x.objdtdid AS sql_identifier) AS dtd_identifier
+           CAST('a' || CAST(x.objdtdid AS text) AS sql_identifier) AS dtd_identifier
 
     FROM pg_namespace n, pg_type at, pg_namespace nbt, pg_type bt,
          (
@@ -2299,7 +2299,7 @@ CREATE VIEW element_types AS
           AND at.typelem = bt.oid
           AND nbt.oid = bt.typnamespace
 
-          AND (n.nspname, x.objname, x.objtype, x.objdtdid) IN
+          AND (n.nspname, x.objname, x.objtype, CAST(x.objdtdid AS sql_identifier)) IN
               ( SELECT object_schema, object_name, object_type, dtd_identifier
                     FROM data_type_privileges );
 

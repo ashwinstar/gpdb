@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/smgr/smgrtype.c,v 1.27 2006/03/05 15:58:40 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/smgr/smgrtype.c,v 1.29 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

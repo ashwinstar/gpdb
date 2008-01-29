@@ -26,7 +26,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/hash/dynahash.c,v 1.73.2.1 2007/04/26 23:24:57 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/hash/dynahash.c,v 1.78 2008/01/01 19:45:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -416,7 +416,7 @@ hash_create(const char *tabname, long nelem, HASHCTL *info, int flags)
 
 	/* Build the hash directory structure */
 	if (!init_htab(hashp, nelem))
-		elog(ERROR, "failed to initialize hash table");
+		elog(ERROR, "failed to initialize hash table \"%s\"", hashp->tabname);
 
 	/*
 	 * For a shared hash table, preallocate the requested number of elements.
@@ -909,7 +909,8 @@ hash_search_with_hash_value(HTAB *hashp,
 
 			/* disallow inserts if frozen */
 			if (hashp->frozen)
-				elog(ERROR, "cannot insert into a frozen hashtable");
+				elog(ERROR, "cannot insert into frozen hashtable \"%s\"",
+					 hashp->tabname);
 
 			currBucket = get_hash_entry(hashp);
 			if (currBucket == NULL)
@@ -945,7 +946,7 @@ hash_search_with_hash_value(HTAB *hashp,
 			 * to check cheaper conditions first.
 			 */
 			if (!IS_PARTITIONED(hctl) &&
-				hctl->nentries / (long) (hctl->max_bucket + 1) >= hctl->ffactor &&
+			hctl->nentries / (long) (hctl->max_bucket + 1) >= hctl->ffactor &&
 				!has_seq_scans(hashp))
 			{
 				/*
@@ -1050,8 +1051,7 @@ hash_seq_init(HASH_SEQ_STATUS *status, HTAB *hashp)
 	status->hashp = hashp;
 	status->curBucket = 0;
 	status->curEntry = NULL;
-
-	if (hashp && !hashp->frozen)
+	if (!hashp->frozen)
 		register_seq_scan(hashp);
 }
 
@@ -1082,9 +1082,6 @@ hash_seq_search(HASH_SEQ_STATUS *status)
 	 */
 	curBucket = status->curBucket;
 	hashp = status->hashp;
-	if(!hashp)
-		return NULL;
-
 	hctl = hashp->hctl;
 	ssize = hashp->ssize;
 	max_bucket = hctl->max_bucket;
@@ -1158,9 +1155,10 @@ void
 hash_freeze(HTAB *hashp)
 {
 	if (hashp->isshared)
-		elog(ERROR, "cannot freeze shared hashtable");
+		elog(ERROR, "cannot freeze shared hashtable \"%s\"", hashp->tabname);
 	if (!hashp->frozen && has_seq_scans(hashp))
-		elog(ERROR, "cannot freeze hashtable with active scans");
+		elog(ERROR, "cannot freeze hashtable \"%s\" because it has active scans",
+			 hashp->tabname);
 	hashp->frozen = true;
 }
 
@@ -1399,7 +1397,7 @@ my_log2(long num)
 /************************* SEQ SCAN TRACKING ************************/
 
 /*
- * We track active hash_seq_search scans here.  The need for this mechanism
+ * We track active hash_seq_search scans here.	The need for this mechanism
  * comes from the fact that a scan will get confused if a bucket split occurs
  * while it's in progress: it might visit entries twice, or even miss some
  * entirely (if it's partway through the same bucket that splits).  Hence
@@ -1419,7 +1417,7 @@ my_log2(long num)
  *
  * This arrangement is reasonably robust if a transient hashtable is deleted
  * without notifying us.  The absolute worst case is we might inhibit splits
- * in another table created later at exactly the same address.  We will give
+ * in another table created later at exactly the same address.	We will give
  * a warning at transaction end for reference leaks, so any bugs leading to
  * lack of notification should be easy to catch.
  */
@@ -1436,7 +1434,8 @@ static void
 register_seq_scan(HTAB *hashp)
 {
 	if (num_seq_scans >= MAX_SEQ_SCANS)
-		elog(ERROR, "too many active hash_seq_search scans");
+		elog(ERROR, "too many active hash_seq_search scans, cannot start one on \"%s\"",
+			 hashp->tabname);
 	seq_scan_tables[num_seq_scans] = hashp;
 	seq_scan_level[num_seq_scans] = GetCurrentTransactionNestLevel();
 	num_seq_scans++;
@@ -1446,7 +1445,7 @@ register_seq_scan(HTAB *hashp)
 static void
 deregister_seq_scan(HTAB *hashp)
 {
-	int		i;
+	int			i;
 
 	/* Search backward since it's most likely at the stack top */
 	for (i = num_seq_scans - 1; i >= 0; i--)
@@ -1467,7 +1466,7 @@ deregister_seq_scan(HTAB *hashp)
 static bool
 has_seq_scans(HTAB *hashp)
 {
-	int		i;
+	int			i;
 
 	for (i = 0; i < num_seq_scans; i++)
 	{
@@ -1492,7 +1491,7 @@ AtEOXact_HashTables(bool isCommit)
 	 */
 	if (isCommit)
 	{
-		int		i;
+		int			i;
 
 		for (i = 0; i < num_seq_scans; i++)
 		{
@@ -1507,7 +1506,7 @@ AtEOXact_HashTables(bool isCommit)
 void
 AtEOSubXact_HashTables(bool isCommit, int nestDepth)
 {
-	int		i;
+	int			i;
 
 	/*
 	 * Search backward to make cleanup easy.  Note we must check all entries,

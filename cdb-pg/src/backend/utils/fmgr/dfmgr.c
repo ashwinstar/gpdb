@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/fmgr/dfmgr.c,v 1.92 2006/10/06 17:13:59 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/fmgr/dfmgr.c,v 1.96 2008/01/01 19:45:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -114,7 +114,7 @@ load_external_function(char *filename, char *funcname,
 		*filehandle = lib_handle;
 
 	/* Look up the function within the library */
-	retval = pg_dlsym(lib_handle, funcname);
+	retval = (PGFunction) pg_dlsym(lib_handle, funcname);
 
 	if (retval == NULL && signalNotFound)
 		ereport(ERROR,
@@ -162,7 +162,7 @@ load_file(const char *filename, bool restricted)
 PGFunction
 lookup_external_function(void *filehandle, char *funcname)
 {
-	return pg_dlsym(filehandle, funcname);
+	return (PGFunction) pg_dlsym(filehandle, funcname);
 }
 
 
@@ -539,8 +539,7 @@ find_in_dynamic_libpath(const char *basename)
 			len = piece - p;
 
 		piece = palloc(len + 1);
-		strncpy(piece, p, len);
-		piece[len] = '\0';
+		strlcpy(piece, p, len + 1);
 
 		mangled = substitute_libpath_macro(piece);
 		pfree(piece);

@@ -1,15 +1,15 @@
 #
 # Makefile for optimizer
 #
-# $PostgreSQL: pgsql/src/backend/optimizer/Makefile,v 1.11 2003/11/29 19:51:50 pgsql Exp $
+# $PostgreSQL: pgsql/src/backend/optimizer/Makefile,v 1.13 2007/02/09 15:55:58 petere Exp $
 #
 
 subdir = src/backend/optimizer
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS     := geqo path plan prep util
-SUBDIROBJS  := $(SUBDIRS:%=%/SUBSYS.o)
+SUBDIRS     = geqo path plan prep util
+SUBDIROBJS  = $(SUBDIRS:%=%/SUBSYS.o)
 
 all: SUBSYS.o
 
@@ -25,6 +25,3 @@ $(SUBDIRS:%=%-recursive):
 clean:
 	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
 	rm -f SUBSYS.o
-
-dep depend: 
-	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
