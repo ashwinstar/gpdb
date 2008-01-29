@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/error/assert.c,v 1.31 2005/10/15 02:49:32 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/error/assert.c,v 1.35 2008/01/01 19:45:53 momjian Exp $
  *
  * NOTE
  *	  This should eventually work with elog()
@@ -34,12 +34,15 @@
 
 /*
  * ExceptionalCondition - Handles the failure of an Assert()
+ *
+ * Note: this can't actually return, but we declare it as returning int
+ * because the TrapMacro() macro might get wonky otherwise.
  */
 int
 ExceptionalCondition(const char *conditionName,
 					 const char *errorType,
 					 const char *fileName,
-					 int         lineNumber)
+					 int lineNumber)
 {
 	if (!PointerIsValid(conditionName)
 		|| !PointerIsValid(fileName)
@@ -74,6 +77,10 @@ ExceptionalCondition(const char *conditionName,
 	}
 #endif
 #endif
+
+	/* Usually this shouldn't be needed, but make sure the msg went out */
+	fflush(stderr);
+
 
 #ifdef SLEEP_ON_ASSERT 
 	/*

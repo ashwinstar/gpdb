@@ -4,7 +4,7 @@
  * (currently mule internal code (mic) is used)
  * Tatsuo Ishii
  *
- * $PostgreSQL: pgsql/src/backend/utils/mb/mbutils.c,v 1.59 2006/10/04 00:30:02 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/mb/mbutils.c,v 1.69 2008/01/09 23:43:54 tgl Exp $
  */
 #include "postgres.h"
 
@@ -14,6 +14,17 @@
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
+
+/*
+ * When converting strings between different encodings, we assume that space
+ * for converted result is 4-to-1 growth in the worst case. The rate for
+ * currently supported encoding pairs are within 3 (SJIS JIS X0201 half width
+ * kanna -> UTF8 is the worst case).  So "4" should be enough for the moment.
+ *
+ * Note that this is not the same as the maximum character width in any
+ * particular encoding.
+ */
+#define MAX_CONVERSION_GROWTH  4
 
 /*
  * We handle for actual FE and BE encoding setting encoding-identificator
@@ -209,15 +220,14 @@ pg_get_client_encoding_name(void)
  * conversion function is chosen from the pg_conversion system catalog
  * marked as "default". If it is not found in the schema search path,
  * it's taken from pg_catalog schema. If it even is not in the schema,
- * warn and returns src. We cannot raise an error, since it will cause
- * an infinit loop in error message sending.
+ * warn and return src.
  *
  * In the case of no conversion, src is returned.
  *
- * XXX We assume that storage for converted result is 4-to-1 growth in
- * the worst case. The rate for currently supported encoding pares are within 3
- * (SJIS JIS X0201 half width kanna -> UTF8 is the worst case).
- * So "4" should be enough for the moment.
+ * Note: we try to avoid raising error, since that could get us into
+ * infinite recursion when this function is invoked during error message
+ * sending.  It should be OK to raise error for overlength strings though,
+ * since the recursion will come with a shorter message.
  */
 unsigned char *
 pg_do_encoding_conversion(unsigned char *src, int len,
@@ -262,7 +272,17 @@ pg_do_encoding_conversion(unsigned char *src, int len,
 		return src;
 	}
 
-	result = palloc(len * 4 + 1);
+	/*
+	 * Allocate space for conversion result, being wary of integer overflow
+	 */
+	if ((Size) len >= (MaxAllocSize / (Size) MAX_CONVERSION_GROWTH))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("out of memory"),
+		 errdetail("String of %d bytes is too long for encoding conversion.",
+				   len)));
+
+	result = palloc(len * MAX_CONVERSION_GROWTH + 1);
 
 	OidFunctionCall5(proc,
 					 Int32GetDatum(src_encoding),
@@ -274,42 +294,72 @@ pg_do_encoding_conversion(unsigned char *src, int len,
 }
 
 /*
- * Convert string using encoding_nanme. We assume that string's
- * encoding is same as DB encoding.
+ * Convert string using encoding_name. The source
+ * encoding is the DB encoding.
  *
- * TEXT convert(TEXT string, NAME encoding_name) */
+ * BYTEA convert_to(TEXT string, NAME encoding_name) */
 Datum
-pg_convert(PG_FUNCTION_ARGS)
+pg_convert_to(PG_FUNCTION_ARGS)
 {
 	Datum		string = PG_GETARG_DATUM(0);
 	Datum		dest_encoding_name = PG_GETARG_DATUM(1);
-	Datum		src_encoding_name = DirectFunctionCall1(
-							namein, CStringGetDatum(DatabaseEncoding->name));
+	Datum		src_encoding_name = DirectFunctionCall1(namein,
+									CStringGetDatum(DatabaseEncoding->name));
 	Datum		result;
 
-	result = DirectFunctionCall3(
-				 pg_convert2, string, src_encoding_name, dest_encoding_name);
+	/*
+	 * pg_convert expects a bytea as its first argument. We're passing it a
+	 * text argument here, relying on the fact that they are both in fact
+	 * varlena types, and thus structurally identical.
+	 */
+	result = DirectFunctionCall3(pg_convert, string,
+								 src_encoding_name, dest_encoding_name);
 
-	/* free memory allocated by namein */
-	pfree((void *) DatumGetPointer(src_encoding_name));
-	return result;
+	PG_RETURN_BYTEA_P(result);
 }
 
 /*
- * Convert string using encoding_name.
+ * Convert string using encoding_name. The destination
+ * encoding is the DB encoding.
  *
- * TEXT convert2(TEXT string, NAME src_encoding_name, NAME dest_encoding_name)
+ * TEXT convert_from(BYTEA string, NAME encoding_name) */
+Datum
+pg_convert_from(PG_FUNCTION_ARGS)
+{
+	Datum		string = PG_GETARG_DATUM(0);
+	Datum		src_encoding_name = PG_GETARG_DATUM(1);
+	Datum		dest_encoding_name = DirectFunctionCall1(namein,
+									CStringGetDatum(DatabaseEncoding->name));
+	Datum		result;
+
+	result = DirectFunctionCall3(pg_convert, string,
+								 src_encoding_name, dest_encoding_name);
+
+	/*
+	 * pg_convert returns a bytea, which we in turn return as text, relying on
+	 * the fact that they are both in fact varlena types, and thus
+	 * structurally identical. Although not all bytea values are valid text,
+	 * in this case it will be because we've told pg_convert to return one
+	 * that is valid as text in the current database encoding.
+	 */
+	PG_RETURN_TEXT_P(result);
+}
+
+/*
+ * Convert string using encoding_names.
+ *
+ * BYTEA convert(BYTEA string, NAME src_encoding_name, NAME dest_encoding_name)
  */
 Datum
-pg_convert2(PG_FUNCTION_ARGS)
+pg_convert(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
+	bytea	   *string = PG_GETARG_BYTEA_P(0);
 	char	   *src_encoding_name = NameStr(*PG_GETARG_NAME(1));
 	int			src_encoding = pg_char_to_encoding(src_encoding_name);
 	char	   *dest_encoding_name = NameStr(*PG_GETARG_NAME(2));
 	int			dest_encoding = pg_char_to_encoding(dest_encoding_name);
 	unsigned char *result;
-	text	   *retval;
+	bytea	   *retval;
 	unsigned char *str;
 	int			len;
 
@@ -324,8 +374,9 @@ pg_convert2(PG_FUNCTION_ARGS)
 				 errmsg("invalid destination encoding name \"%s\"",
 						dest_encoding_name)));
 
-	/* make sure that source string is null terminated */
+	/* make sure that source string is valid and null terminated */
 	len = VARSIZE(string) - VARHDRSZ;
+	pg_verify_mbstr(src_encoding, VARDATA(string), len, false);
 	str = palloc(len + 1);
 	memcpy(str, VARDATA(string), len);
 	*(str + len) = '\0';
@@ -335,8 +386,7 @@ pg_convert2(PG_FUNCTION_ARGS)
 		elog(ERROR, "encoding conversion failed");
 
 	/*
-	 * build text data type structure. we cannot use textin() here, since
-	 * textin assumes that input string encoding is same as database encoding.
+	 * build bytea data type structure.
 	 */
 	len = strlen((char *) result) + VARHDRSZ;
 	retval = palloc(len);
@@ -350,7 +400,34 @@ pg_convert2(PG_FUNCTION_ARGS)
 	/* free memory if allocated by the toaster */
 	PG_FREE_IF_COPY(string, 0);
 
-	PG_RETURN_TEXT_P(retval);
+	PG_RETURN_BYTEA_P(retval);
+}
+
+/*
+ * get the length of the string considered as text in the specified
+ * encoding. Raises an error if the data is not valid in that
+ * encoding.
+ *
+ * INT4 length (BYTEA string, NAME src_encoding_name)
+ */
+Datum
+length_in_encoding(PG_FUNCTION_ARGS)
+{
+	bytea	   *string = PG_GETARG_BYTEA_P(0);
+	char	   *src_encoding_name = NameStr(*PG_GETARG_NAME(1));
+	int			src_encoding = pg_char_to_encoding(src_encoding_name);
+	int			len = VARSIZE(string) - VARHDRSZ;
+	int			retval;
+
+	if (src_encoding < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid encoding name \"%s\"",
+						src_encoding_name)));
+
+	retval = pg_verify_mbstr_len(src_encoding, VARDATA(string), len, false);
+	PG_RETURN_INT32(retval);
+
 }
 
 /*
@@ -477,7 +554,17 @@ perform_default_encoding_conversion(const char *src, int len, bool is_client_to_
 	if (flinfo == NULL)
 		return (char *) src;
 
-	result = palloc(len * 4 + 1);
+	/*
+	 * Allocate space for conversion result, being wary of integer overflow
+	 */
+	if ((Size) len >= (MaxAllocSize / (Size) MAX_CONVERSION_GROWTH))
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("out of memory"),
+		 errdetail("String of %d bytes is too long for encoding conversion.",
+				   len)));
+
+	result = palloc(len * MAX_CONVERSION_GROWTH + 1);
 
 	FunctionCall5(flinfo,
 				  Int32GetDatum(src_encoding),
@@ -574,6 +661,14 @@ int
 pg_mb2wchar_with_len(const char *from, pg_wchar *to, int len)
 {
 	return (*pg_wchar_table[DatabaseEncoding->encoding].mb2wchar_with_len) ((const unsigned char *) from, to, len);
+}
+
+/* same, with any encoding */
+int
+pg_encoding_mb2wchar_with_len(int encoding,
+							  const char *from, pg_wchar *to, int len)
+{
+	return (*pg_wchar_table[encoding].mb2wchar_with_len) ((const unsigned char *) from, to, len);
 }
 
 /* returns the byte length of a multibyte word */
@@ -692,7 +787,7 @@ void
 SetDatabaseEncoding(int encoding)
 {
 	if (!PG_VALID_BE_ENCODING(encoding))
-		elog(ERROR, "invalid database encoding");
+		elog(ERROR, "invalid database encoding: %d", encoding);
 
 	DatabaseEncoding = &pg_enc2name_tbl[encoding];
 	Assert(DatabaseEncoding->encoding == encoding);

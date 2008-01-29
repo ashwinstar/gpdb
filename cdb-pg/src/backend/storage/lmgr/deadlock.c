@@ -12,7 +12,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/deadlock.c,v 1.43 2006/09/22 23:20:13 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/deadlock.c,v 1.51 2008/01/01 19:45:52 momjian Exp $
  *
  *	Interface:
  *
@@ -25,8 +25,8 @@
  */
 #include "postgres.h"
 
-#include "lib/stringinfo.h"
 #include "miscadmin.h"
+#include "storage/lmgr.h"
 #include "storage/proc.h"
 #include "utils/memutils.h"
 #include "utils/resscheduler.h"
@@ -110,6 +110,9 @@ static int	maxPossibleConstraints;
 static DEADLOCK_INFO *deadlockDetails;
 static int	nDeadlockDetails;
 
+/* PGPROC pointer of any blocking autovacuum worker found */
+static PGPROC *blocking_autovacuum_proc = NULL;
+
 
 /*
  * InitDeadLockChecking -- initialize deadlock checker during backend startup
@@ -118,8 +121,9 @@ static int	nDeadlockDetails;
  * allocation of working memory for DeadLockCheck.	We do this per-backend
  * since there's no percentage in making the kernel do copy-on-write
  * inheritance of workspace from the postmaster.  We want to allocate the
- * space at startup because the deadlock checker might be invoked when there's
- * no free memory left.
+ * space at startup because (a) the deadlock checker might be invoked when
+ * there's no free memory left, and (b) the checker is normally run inside a
+ * signal handler, which is a very dangerous place to invoke palloc from.
  */
 void
 InitDeadLockChecking(void)
@@ -185,16 +189,17 @@ InitDeadLockChecking(void)
  *
  * This code looks for deadlocks involving the given process.  If any
  * are found, it tries to rearrange lock wait queues to resolve the
- * deadlock.  If resolution is impossible, return TRUE --- the caller
- * is then expected to abort the given proc's transaction.
+ * deadlock.  If resolution is impossible, return DS_HARD_DEADLOCK ---
+ * the caller is then expected to abort the given proc's transaction.
  *
  * Caller must already have locked all partitions of the lock tables.
  *
  * On failure, deadlock details are recorded in deadlockDetails[] for
  * subsequent printing by DeadLockReport().  That activity is separate
- * because we don't want to do it while holding all those LWLocks.
+ * because (a) we don't want to do it while holding all those LWLocks,
+ * and (b) we are typically invoked inside a signal handler.
  */
-bool
+DeadLockState
 DeadLockCheck(PGPROC *proc)
 {
 	int			i,
@@ -204,6 +209,9 @@ DeadLockCheck(PGPROC *proc)
 	nCurConstraints = 0;
 	nPossibleConstraints = 0;
 	nWaitOrders = 0;
+
+	/* Initialize to not blocked by an autovacuum worker */
+	blocking_autovacuum_proc = NULL;
 
 	/* Search for deadlocks and possible fixes */
 	if (DeadLockCheckRecurse(proc))
@@ -218,7 +226,7 @@ DeadLockCheck(PGPROC *proc)
 		if (!FindLockCycle(proc, possibleConstraints, &nSoftEdges))
 			elog(FATAL, "deadlock seems to have disappeared");
 
-		return true;			/* cannot find a non-deadlocked state */
+		return DS_HARD_DEADLOCK;	/* cannot find a non-deadlocked state */
 	}
 
 	/* Apply any needed rearrangements of wait queues */
@@ -257,7 +265,30 @@ DeadLockCheck(PGPROC *proc)
 			ProcLockWakeup(GetLocksMethodTable(lock), lock);
 		}
 	}
-	return false;
+
+	/* Return code tells caller if we had to escape a deadlock or not */
+	if (nWaitOrders > 0)
+		return DS_SOFT_DEADLOCK;
+	else if (blocking_autovacuum_proc != NULL)
+		return DS_BLOCKED_BY_AUTOVACUUM;
+	else
+		return DS_NO_DEADLOCK;
+}
+
+/*
+ * Return the PGPROC of the autovacuum that's blocking a process.
+ *
+ * We reset the saved pointer as soon as we pass it back.
+ */
+PGPROC *
+GetBlockingAutoVacuumPgproc(void)
+{
+	PGPROC	   *ptr;
+
+	ptr = blocking_autovacuum_proc;
+	blocking_autovacuum_proc = NULL;
+
+	return ptr;
 }
 
 /*
@@ -498,6 +529,25 @@ FindLockCycleRecurse(PGPROC *checkProc,
 				if ((proclock->holdMask & LOCKBIT_ON(lm)) &&
 					(conflictMask & LOCKBIT_ON(lm)))
 				{
+					/*
+					 * Look for a blocking autovacuum. There can be more than
+					 * one in the deadlock cycle, in which case we just pick a
+					 * random one.	We stash the autovacuum worker's PGPROC so
+					 * that the caller can send a cancel signal to it, if
+					 * appropriate.
+					 *
+					 * Note we read vacuumFlags without any locking.  This is
+					 * OK only for checking the PROC_IS_AUTOVACUUM flag,
+					 * because that flag is set at process start and never
+					 * reset; there is logic elsewhere to avoid cancelling an
+					 * autovacuum that is working for preventing Xid
+					 * wraparound problems (which needs to read a different
+					 * vacuumFlag bit), but we don't do that here to avoid
+					 * grabbing ProcArrayLock.
+					 */
+					if (proc->vacuumFlags & PROC_IS_AUTOVACUUM)
+						blocking_autovacuum_proc = proc;
+
 					/* This proc hard-blocks checkProc */
 					if (FindLockCycleRecurse(proc, depth + 1,
 											 softEdges, nSoftEdges))
@@ -831,84 +881,6 @@ PrintLockQueue(LOCK *lock, const char *info)
 #endif
 
 /*
- * Append a description of a lockable object to buf.
- *
- * XXX probably this should be exported from lmgr.c or some such place.
- */
-static void
-DescribeLockTag(StringInfo buf, const LOCKTAG *lock)
-{
-	switch (lock->locktag_type)
-	{
-		case LOCKTAG_RELATION:
-			appendStringInfo(buf,
-							 _("relation %u of database %u"),
-							 lock->locktag_field2,
-							 lock->locktag_field1);
-			break;
-		case LOCKTAG_RELATION_EXTEND:
-			appendStringInfo(buf,
-							 _("extension of relation %u of database %u"),
-							 lock->locktag_field2,
-							 lock->locktag_field1);
-			break;
-		case LOCKTAG_PAGE:
-			appendStringInfo(buf,
-							 _("page %u of relation %u of database %u"),
-							 lock->locktag_field3,
-							 lock->locktag_field2,
-							 lock->locktag_field1);
-			break;
-		case LOCKTAG_TUPLE:
-			appendStringInfo(buf,
-							 _("tuple (%u,%u) of relation %u of database %u"),
-							 lock->locktag_field3,
-							 lock->locktag_field4,
-							 lock->locktag_field2,
-							 lock->locktag_field1);
-			break;
-		case LOCKTAG_TRANSACTION:
-			appendStringInfo(buf,
-							 _("transaction %u"),
-							 lock->locktag_field1);
-			break;
-		case LOCKTAG_OBJECT:
-			appendStringInfo(buf,
-							 _("object %u of class %u of database %u"),
-							 lock->locktag_field3,
-							 lock->locktag_field2,
-							 lock->locktag_field1);
-			break;
-		case LOCKTAG_RESOURCE_QUEUE:
-			appendStringInfo(buf,
-							 _("resource queue %u"),
-							 lock->locktag_field1);
-			break;
-		case LOCKTAG_USERLOCK:
-			/* reserved for old contrib code, now on pgfoundry */
-			appendStringInfo(buf,
-							 _("user lock [%u,%u,%u]"),
-							 lock->locktag_field1,
-							 lock->locktag_field2,
-							 lock->locktag_field3);
-			break;
-		case LOCKTAG_ADVISORY:
-			appendStringInfo(buf,
-							 _("advisory lock [%u,%u,%u,%u]"),
-							 lock->locktag_field1,
-							 lock->locktag_field2,
-							 lock->locktag_field3,
-							 lock->locktag_field4);
-			break;
-		default:
-			appendStringInfo(buf,
-							 _("unrecognized locktag type %d"),
-							 lock->locktag_type);
-			break;
-	}
-}
-
-/*
  * Report a detected deadlock, with available details.
  */
 void
@@ -936,8 +908,7 @@ DeadLockReport(void)
 			appendStringInfoChar(&buf, '\n');
 
 		/* reset buf2 to hold next object description */
-		buf2.len = 0;
-		buf2.data[0] = '\0';
+		resetStringInfo(&buf2);
 
 		DescribeLockTag(&buf2, &info->locktag);
 

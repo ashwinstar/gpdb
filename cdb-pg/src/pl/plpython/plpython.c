@@ -1,7 +1,7 @@
 /**********************************************************************
  * plpython.c - python as a procedural language for PostgreSQL
  *
- *	$PostgreSQL: pgsql/src/pl/plpython/plpython.c,v 1.90.2.1 2007/08/10 03:16:11 tgl Exp $
+ *	$PostgreSQL: pgsql/src/pl/plpython/plpython.c,v 1.106 2008/01/02 03:10:27 tgl Exp $
  *
  *********************************************************************
  */
@@ -15,6 +15,10 @@
 #include <Python.h>
 #undef errcode
 #define _DEBUG
+#elif defined (_MSC_VER)
+#define errcode __msvc_errcode
+#include <Python.h>
+#undef errcode
 #else
 #include <Python.h>
 #endif
@@ -24,9 +28,18 @@
  */
 #if PY_VERSION_HEX < 0x02050000 && !defined(PY_SSIZE_T_MIN)
 typedef int Py_ssize_t;
+
 #define PY_SSIZE_T_MAX INT_MAX
 #define PY_SSIZE_T_MIN INT_MIN
 #endif
+
+/*
+ * PyBool_FromLong is supported from 2.3.
+ */
+#if PY_VERSION_HEX < 0x02030000
+#define PyBool_FromLong(x) PyInt_FromLong(x)
+#endif
+
 
 #include "postgres.h"
 
@@ -470,7 +483,7 @@ PLy_modify_tuple(PLyProcedure * proc, PyObject * pltd, TriggerData *tdata,
 	PG_TRY();
 	{
 		if ((plntup = PyDict_GetItemString(pltd, "new")) == NULL)
-			elog(ERROR, "TD[\"new\"] deleted, unable to modify tuple");
+			elog(ERROR, "TD[\"new\"] deleted, cannot modify tuple");
 		if (!PyDict_Check(plntup))
 			elog(ERROR, "TD[\"new\"] is not a dictionary object");
 		Py_INCREF(plntup);
@@ -814,7 +827,7 @@ PLy_function_handler(FunctionCallInfo fcinfo, PLyProcedure * proc)
 				if (proc->setof == NULL)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
-							 errmsg("returned object can not be iterated"),
+							 errmsg("returned object cannot be iterated"),
 					errdetail("SETOF must be returned as iterable object")));
 			}
 
@@ -1204,13 +1217,13 @@ PLy_procedure_create(HeapTuple procTup, Oid tgreloid, char *key)
 			rvTypeStruct = (Form_pg_type) GETSTRUCT(rvTypeTup);
 
 			/* Disallow pseudotype result, except for void */
-			if (rvTypeStruct->typtype == 'p' &&
+			if (rvTypeStruct->typtype == TYPTYPE_PSEUDO &&
 				procStruct->prorettype != VOIDOID)
 			{
 				if (procStruct->prorettype == TRIGGEROID)
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("trigger functions may only be called as triggers")));
+							 errmsg("trigger functions can only be called as triggers")));
 				else
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1218,7 +1231,7 @@ PLy_procedure_create(HeapTuple procTup, Oid tgreloid, char *key)
 								  format_type_be(procStruct->prorettype))));
 			}
 
-			if (rvTypeStruct->typtype == 'c')
+			if (rvTypeStruct->typtype == TYPTYPE_COMPOSITE)
 			{
 				/*
 				 * Tuple: set up later, during first call to
@@ -1268,13 +1281,13 @@ PLy_procedure_create(HeapTuple procTup, Oid tgreloid, char *key)
 			argTypeStruct = (Form_pg_type) GETSTRUCT(argTypeTup);
 
 			/* Disallow pseudotype argument */
-			if (argTypeStruct->typtype == 'p')
+			if (argTypeStruct->typtype == TYPTYPE_PSEUDO)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("plpython functions cannot take type %s",
 						format_type_be(procStruct->proargtypes.values[i]))));
 
-			if (argTypeStruct->typtype != 'c')
+			if (argTypeStruct->typtype != TYPTYPE_COMPOSITE)
 				PLy_input_datum_func(&(proc->args[i]),
 									 procStruct->proargtypes.values[i],
 									 argTypeTup);
@@ -1611,9 +1624,15 @@ PLy_typeinfo_dealloc(PLyTypeInfo * arg)
 static PyObject *
 PLyBool_FromString(const char *src)
 {
+	/*
+	 * We would like to use Py_RETURN_TRUE and Py_RETURN_FALSE here for
+	 * generating SQL from trigger functions, but those are only supported in
+	 * Python >= 2.3, and we support older versions.
+	 * http://docs.python.org/api/boolObjects.html
+	 */
 	if (src[0] == 't')
-		return PyInt_FromLong(1);
-	return PyInt_FromLong(0);
+		return PyBool_FromLong(1);
+	return PyBool_FromLong(0);
 }
 
 static PyObject *
@@ -1733,8 +1752,8 @@ PLyMapping_ToTuple(PLyTypeInfo * info, PyObject * mapping)
 	for (i = 0; i < desc->natts; ++i)
 	{
 		char	   *key;
-		PyObject   * volatile value,
-				   * volatile so;
+		PyObject   *volatile value,
+				   *volatile so;
 
 		key = NameStr(desc->attrs[i]->attname);
 		value = so = NULL;
@@ -1752,7 +1771,7 @@ PLyMapping_ToTuple(PLyTypeInfo * info, PyObject * mapping)
 
 				so = PyObject_Str(value);
 				if (so == NULL)
-					PLy_elog(ERROR, "can't convert mapping type");
+					PLy_elog(ERROR, "cannot convert mapping type");
 				valuestr = PyString_AsString(so);
 
 				values[i] = InputFunctionCall(&info->out.r.atts[i].typfunc
@@ -1822,8 +1841,8 @@ PLySequence_ToTuple(PLyTypeInfo * info, PyObject * sequence)
 	nulls = palloc(sizeof(char) * desc->natts);
 	for (i = 0; i < desc->natts; ++i)
 	{
-		PyObject   * volatile value,
-				   * volatile so;
+		PyObject   *volatile value,
+				   *volatile so;
 
 		value = so = NULL;
 		PG_TRY();
@@ -1841,7 +1860,7 @@ PLySequence_ToTuple(PLyTypeInfo * info, PyObject * sequence)
 
 				so = PyObject_Str(value);
 				if (so == NULL)
-					PLy_elog(ERROR, "can't convert sequence type");
+					PLy_elog(ERROR, "cannot convert sequence type");
 				valuestr = PyString_AsString(so);
 				values[i] = InputFunctionCall(&info->out.r.atts[i].typfunc
 											  ,valuestr
@@ -1893,8 +1912,8 @@ PLyObject_ToTuple(PLyTypeInfo * info, PyObject * object)
 	for (i = 0; i < desc->natts; ++i)
 	{
 		char	   *key;
-		PyObject   * volatile value,
-				   * volatile so;
+		PyObject   *volatile value,
+				   *volatile so;
 
 		key = NameStr(desc->attrs[i]->attname);
 		value = so = NULL;
@@ -1912,7 +1931,7 @@ PLyObject_ToTuple(PLyTypeInfo * info, PyObject * object)
 
 				so = PyObject_Str(value);
 				if (so == NULL)
-					PLy_elog(ERROR, "can't convert object type");
+					PLy_elog(ERROR, "cannot convert object type");
 				valuestr = PyString_AsString(so);
 				values[i] = InputFunctionCall(&info->out.r.atts[i].typfunc
 											  ,valuestr
@@ -2023,13 +2042,13 @@ static PyMethodDef PLy_plan_methods[] = {
 };
 
 static PySequenceMethods PLy_result_as_sequence = {
-	PLy_result_length,		/* sq_length */
-	NULL,					/* sq_concat */
-	NULL,					/* sq_repeat */
-	PLy_result_item,		/* sq_item */
-	PLy_result_slice,		/* sq_slice */
-	PLy_result_ass_item,	/* sq_ass_item */
-	PLy_result_ass_slice,	/* sq_ass_slice */
+	PLy_result_length,			/* sq_length */
+	NULL,						/* sq_concat */
+	NULL,						/* sq_repeat */
+	PLy_result_item,			/* sq_item */
+	PLy_result_slice,			/* sq_slice */
+	PLy_result_ass_item,		/* sq_ass_item */
+	PLy_result_ass_slice,		/* sq_ass_slice */
 };
 
 static PyTypeObject PLy_ResultType = {
@@ -2329,8 +2348,9 @@ PLy_spi_prepare(PyObject * self, PyObject * args)
 				for (i = 0; i < nargs; i++)
 				{
 					char	   *sptr;
-					List	   *names;
 					HeapTuple	typeTup;
+					Oid			typeId;
+					int32		typmod;
 					Form_pg_type typeStruct;
 
 					optr = PySequence_GetItem(list, i);
@@ -2338,20 +2358,26 @@ PLy_spi_prepare(PyObject * self, PyObject * args)
 						elog(ERROR, "Type names must be strings.");
 					sptr = PyString_AsString(optr);
 
-					/*
-					 * Parse possibly-qualified type name and look it up in
-					 * pg_type
-					 */
-					names = stringToQualifiedNameList(sptr,
-													  "PLy_spi_prepare");
-					typeTup = typenameType(NULL,
-										   makeTypeNameFromNameList(names));
+					/********************************************************
+					 * Resolve argument type names and then look them up by
+					 * oid in the system cache, and remember the required
+					 *information for input conversion.
+					 ********************************************************/
+
+					parseTypeString(sptr, &typeId, &typmod);
+
+					typeTup = SearchSysCache(TYPEOID,
+											 ObjectIdGetDatum(typeId),
+											 0, 0, 0);
+					if (!HeapTupleIsValid(typeTup))
+						elog(ERROR, "cache lookup failed for type %u", typeId);
+
 					Py_DECREF(optr);
 					optr = NULL;	/* this is important */
 
-					plan->types[i] = HeapTupleGetOid(typeTup);
+					plan->types[i] = typeId;
 					typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
-					if (typeStruct->typtype != 'c')
+					if (typeStruct->typtype != TYPTYPE_COMPOSITE)
 						PLy_output_datum_func(&plan->args[i], typeTup);
 					else
 						elog(ERROR, "tuples not handled in plpy.prepare, yet.");
@@ -2525,7 +2551,7 @@ PLy_spi_execute_plan(PyObject * ob, PyObject * list, long limit)
 	}
 	PG_CATCH();
 	{
-		int		k;
+		int			k;
 
 		MemoryContextSwitchTo(oldcontext);
 		PLy_error_in_progress = CopyErrorData();
@@ -2822,7 +2848,7 @@ PLy_output(volatile int level, PyObject * self, PyObject * args)
 	if (so == NULL || ((sv = PyString_AsString(so)) == NULL))
 	{
 		level = ERROR;
-		sv = "Unable to parse error message in `plpy.elog'";
+		sv = "could not parse error message in `plpy.elog'";
 	}
 
 	oldcontext = CurrentMemoryContext;
