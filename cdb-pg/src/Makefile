@@ -4,7 +4,7 @@
 #
 # Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/Makefile,v 1.40 2006/06/22 23:50:35 tgl Exp $
+# $PostgreSQL: pgsql/src/Makefile,v 1.42 2007/08/21 01:11:12 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -13,11 +13,12 @@ top_builddir = ..
 include Makefile.global
 
 
-all install installdirs uninstall dep depend distprep:
+all install installdirs uninstall distprep:
 	$(MAKE) -C port $@
 	$(MAKE) -C timezone $@
 	$(MAKE) -C backend $@
 	$(MAKE) -C backend/utils/mb/conversion_procs $@
+	$(MAKE) -C backend/snowball $@
 	$(MAKE) -C include $@
 	$(MAKE) -C interfaces $@
 	$(MAKE) -C bin $@
@@ -47,6 +48,7 @@ clean:
 	$(MAKE) -C port $@
 	$(MAKE) -C timezone $@
 	$(MAKE) -C backend $@
+	$(MAKE) -C backend/snowball $@
 	$(MAKE) -C include $@
 	$(MAKE) -C interfaces $@
 	$(MAKE) -C bin $@
@@ -60,6 +62,7 @@ distclean maintainer-clean:
 	-$(MAKE) -C port $@
 	-$(MAKE) -C timezone $@
 	-$(MAKE) -C backend $@
+	-$(MAKE) -C backend/snowball $@
 	-$(MAKE) -C include $@
 	-$(MAKE) -C interfaces $@
 	-$(MAKE) -C bin $@
