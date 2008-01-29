@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/dependency.h,v 1.27 2006/08/21 00:57:26 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/dependency.h,v 1.33 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -131,9 +131,16 @@ typedef enum ObjectClass
 	OCLASS_LANGUAGE,			/* pg_language */
 	OCLASS_OPERATOR,			/* pg_operator */
 	OCLASS_OPCLASS,				/* pg_opclass */
+	OCLASS_OPFAMILY,			/* pg_opfamily */
+	OCLASS_AMOP,				/* pg_amop */
+	OCLASS_AMPROC,				/* pg_amproc */
 	OCLASS_REWRITE,				/* pg_rewrite */
 	OCLASS_TRIGGER,				/* pg_trigger */
 	OCLASS_SCHEMA,				/* pg_namespace */
+	OCLASS_TSPARSER,			/* pg_ts_parser */
+	OCLASS_TSDICT,				/* pg_ts_dict */
+	OCLASS_TSTEMPLATE,			/* pg_ts_template */
+	OCLASS_TSCONFIG,			/* pg_ts_config */
 	OCLASS_ROLE,				/* pg_authid */
 	OCLASS_DATABASE,			/* pg_database */
 	OCLASS_TBLSPACE,			/* pg_tablespace */
@@ -173,6 +180,10 @@ extern void add_exact_object_address(const ObjectAddress *object,
 extern bool object_address_present(const ObjectAddress *object,
 					   ObjectAddresses *addrs);
 
+extern void record_object_address_dependencies(const ObjectAddress *depender,
+								   ObjectAddresses *referenced,
+								   DependencyType behavior);
+
 extern void free_object_addresses(ObjectAddresses *addrs);
 
 /* in pg_depend.c */
@@ -195,6 +206,10 @@ extern long changeDependencyFor(Oid classId, Oid objectId,
 extern bool sequenceIsOwned(Oid seqId, Oid *tableId, int32 *colId);
 
 extern void markSequenceUnowned(Oid seqId);
+
+extern Oid	get_constraint_index(Oid constraintId);
+
+extern Oid	get_index_constraint(Oid indexId);
 
 /* in pg_shdepend.c */
 

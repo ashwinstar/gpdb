@@ -1,6 +1,6 @@
 # PGXS: PostgreSQL extensions makefile
 
-# $PostgreSQL: pgsql/src/makefiles/pgxs.mk,v 1.9 2006/07/21 00:24:04 tgl Exp $ 
+# $PostgreSQL: pgsql/src/makefiles/pgxs.mk,v 1.11 2007/10/16 15:59:59 tgl Exp $ 
 
 # This file contains generic rules to build many kinds of simple
 # extension modules.  You only need to set a few variables and include
@@ -11,7 +11,8 @@
 #   [variable assignments, see below]
 #   [custom rules, rarely necessary]
 #
-#   PGXS := $(shell pg_config --pgxs)
+#   PG_CONFIG = pg_config
+#   PGXS := $(shell $(PG_CONFIG) --pgxs)
 #   include $(PGXS)
 #
 # The following variables can be set:
@@ -21,6 +22,7 @@
 #   DATA -- random files to install into $PREFIX/share/contrib
 #   DATA_built -- random files to install into $PREFIX/share/contrib,
 #     which need to be built first
+#   DATA_TSEARCH -- random files to install into $PREFIX/share/tsearch_data
 #   DOCS -- random files to install under $PREFIX/doc/contrib
 #   SCRIPTS -- script files (not binaries) to install into $PREFIX/bin
 #   SCRIPTS_built -- script files (not binaries) to install into $PREFIX/bin,
@@ -38,6 +40,9 @@
 #   PG_CPPFLAGS -- will be added to CPPFLAGS
 #   PG_LIBS -- will be added to PROGRAM link line
 #   SHLIB_LINK -- will be added to MODULE_big link line
+#   PG_CONFIG -- path to pg_config program for the PostgreSQL installation
+#     to build against (typically just "pg_config" to use the first one in
+#     your PATH)
 #
 # Better look at some of the existing uses for examples...
 
@@ -93,6 +98,12 @@ ifneq (,$(DATA)$(DATA_built))
 	  $(INSTALL_DATA) $$file '$(DESTDIR)$(datadir)/contrib'; \
 	done
 endif # DATA
+ifneq (,$(DATA_TSEARCH))
+	@for file in $(addprefix $(srcdir)/, $(DATA_TSEARCH)); do \
+	  echo "$(INSTALL_DATA) $$file '$(DESTDIR)$(datadir)/tsearch_data'"; \
+	  $(INSTALL_DATA) $$file '$(DESTDIR)$(datadir)/tsearch_data'; \
+	done
+endif # DATA_TSEARCH
 ifdef MODULES
 	@for file in $(addsuffix $(DLSUFFIX), $(MODULES)); do \
 	  echo "$(INSTALL_SHLIB) $$file '$(DESTDIR)$(pkglibdir)'"; \
@@ -131,6 +142,9 @@ installdirs:
 ifneq (,$(DATA)$(DATA_built))
 	$(mkinstalldirs) '$(DESTDIR)$(datadir)/contrib'
 endif
+ifneq (,$(DATA_TSEARCH))
+	$(mkinstalldirs) '$(DESTDIR)$(datadir)/tsearch_data'
+endif
 ifneq (,$(MODULES)$(MODULE_big))
 	$(mkinstalldirs) '$(DESTDIR)$(pkglibdir)'
 endif
@@ -147,6 +161,9 @@ endif
 uninstall:
 ifneq (,$(DATA)$(DATA_built))
 	rm -f $(addprefix '$(DESTDIR)$(datadir)'/contrib/, $(notdir $(DATA) $(DATA_built)))
+endif
+ifneq (,$(DATA_TSEARCH))
+	rm -f $(addprefix '$(DESTDIR)$(datadir)'/tsearch_data/, $(notdir $(DATA_TSEARCH)))
 endif
 ifdef MODULES
 	rm -f $(addprefix '$(DESTDIR)$(pkglibdir)'/, $(addsuffix $(DLSUFFIX), $(MODULES)))

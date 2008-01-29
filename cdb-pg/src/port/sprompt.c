@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/sprompt.c,v 1.18 2006/10/04 00:30:14 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/sprompt.c,v 1.20 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

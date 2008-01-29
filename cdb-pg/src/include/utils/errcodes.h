@@ -12,7 +12,7 @@
  * Portions Copyright (c) 2005-2008, Greenplum inc.
  * Copyright (c) 2003-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/utils/errcodes.h,v 1.20 2006/06/16 23:29:26 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/errcodes.h,v 1.24 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -162,6 +162,11 @@
 #define ERRCODE_BAD_COPY_FILE_FORMAT		MAKE_SQLSTATE('2','2', 'P','0','4')
 #define ERRCODE_UNTRANSLATABLE_CHARACTER	MAKE_SQLSTATE('2','2', 'P','0','5')
 #define ERROR_INVALID_WINDOW_FRAME_PARAMETER		MAKE_SQLSTATE('2','2','0','1','3')
+#define ERRCODE_NOT_AN_XML_DOCUMENT			MAKE_SQLSTATE('2', '2', '0', '0', 'L')
+#define ERRCODE_INVALID_XML_DOCUMENT			MAKE_SQLSTATE('2', '2', '0', '0', 'M')
+#define ERRCODE_INVALID_XML_CONTENT			MAKE_SQLSTATE('2', '2', '0', '0', 'N')
+#define ERRCODE_INVALID_XML_COMMENT			MAKE_SQLSTATE('2', '2', '0', '0', 'S')
+#define ERRCODE_INVALID_XML_PROCESSING_INSTRUCTION	MAKE_SQLSTATE('2', '2', '0', '0', 'T')
 
 /* Class 23 - Integrity Constraint Violation */
 #define ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION		MAKE_SQLSTATE('2','3', '0','0','0')

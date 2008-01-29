@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/gist_private.h,v 1.24 2006/10/04 00:30:07 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/access/gist_private.h,v 1.28 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -72,7 +72,9 @@ typedef struct GISTScanOpaqueData
 	GISTSTATE  *giststate;
 	MemoryContext tempCxt;
 	Buffer		curbuf;
+	ItemPointerData curpos;
 	Buffer		markbuf;
+	ItemPointerData markpos;
 } GISTScanOpaqueData;
 
 typedef GISTScanOpaqueData *GISTScanOpaque;
@@ -197,8 +199,6 @@ typedef struct GistSplitVector
 	bool	   *spl_equiv;		/* equivalent tuples which can be freely
 								 * distributed between left and right pages */
 } GistSplitVector;
-
-#define XLogRecPtrIsInvalid( r )	( (r).xlogid == 0 && (r).xrecoff == 0 )
 
 typedef struct
 {

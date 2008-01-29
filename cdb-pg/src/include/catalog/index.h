@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/index.h,v 1.71 2006/08/25 04:06:55 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/index.h,v 1.75 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -82,6 +82,7 @@ extern Oid index_create(Oid heapRelationId,
 			 Oid accessMethodObjectId,
 			 Oid tableSpaceId,
 			 Oid *classObjectId,
+			 int16 *coloptions,
 			 Datum reloptions,
 			 bool isprimary,
 			 bool isconstraint,
@@ -99,9 +100,9 @@ extern void FormIndexDatum(struct IndexInfo *indexInfo,
 			   Datum *values,
 			   bool *isnull);
 
-extern Oid setNewRelfilenode(Relation relation);
+extern void setNewRelfilenode(Relation relation, TransactionId freezeXid);
 
-extern Oid setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode);
+extern Oid setNewRelfilenodeToOid(Relation relation, TransactionId freezeXid, Oid newrelfilenode);
 
 extern void index_build(Relation heapRelation,
 			Relation indexRelation,

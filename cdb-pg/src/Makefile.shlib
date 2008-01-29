@@ -6,7 +6,7 @@
 # Copyright (c) 1998, Regents of the University of California
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/Makefile.shlib,v 1.105 2006/09/19 15:36:07 tgl Exp $
+#    $PostgreSQL: pgsql/src/Makefile.shlib,v 1.109 2007/02/20 22:45:57 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -77,7 +77,7 @@ ifeq ($(enable_shared), yes)
 SHLIB_LINK := $(filter -L%, $(SHLIB_LINK)) $(filter -L%, $(LDFLAGS)) $(filter-out -L%, $(SHLIB_LINK))
 
 # Need a -L-free version of LDFLAGS to use in combination with SHLIB_LINK
-LDFLAGS_NO_L := $(filter-out -L%, $(LDFLAGS))
+LDFLAGS_NO_L = $(filter-out -L%, $(LDFLAGS))
 
 # Default shlib naming convention used by the majority of platforms
 shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)
@@ -102,15 +102,15 @@ endif
 
 ifeq ($(PORTNAME), darwin)
   ifneq ($(SO_MAJOR_VERSION), 0)
-    version_link	:= -compatibility_version $(SO_MAJOR_VERSION) -current_version $(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)
+    version_link	= -compatibility_version $(SO_MAJOR_VERSION) -current_version $(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)
   endif
   ifeq ($(DLTYPE), library)
     # linkable library
-    DLSUFFIX		:= .dylib
+    DLSUFFIX		= .dylib
     LINK.shared		= $(COMPILER) -dynamiclib -install_name $(libdir)/lib$(NAME).$(SO_MAJOR_VERSION)$(DLSUFFIX) $(version_link) $(exported_symbols_list) -multiply_defined suppress
   else
     # loadable module (default case)
-    DLSUFFIX		:= .so
+    DLSUFFIX		= .so
     LINK.shared		= $(COMPILER) -bundle -multiply_defined suppress
   endif
   shlib			= lib$(NAME).$(SO_MAJOR_VERSION).$(SO_MINOR_VERSION)$(DLSUFFIX)
@@ -191,9 +191,10 @@ endif
 
 ifeq ($(PORTNAME), solaris)
   ifeq ($(GCC), yes)
-    LINK.shared		= $(CC) -shared
+    LINK.shared		= $(COMPILER) -shared # $(COMPILER) needed for -m64
   else
-    LINK.shared		= $(CC) -G $(CFLAGS)	# CFLAGS added for X86_64
+# CFLAGS added for X86_64
+    LINK.shared		= $(CC) -G $(CFLAGS)
   endif
   ifeq ($(with_gnu_ld), yes)
     LINK.shared		+= -Wl,-soname,$(soname)
@@ -354,7 +355,8 @@ endif
 
 ifeq ($(enable_shared), yes)
 install-lib-shared: $(shlib)
-ifneq ($(PORTNAME), aix)		# we don't install $(shlib) on AIX
+# we don't install $(shlib) on AIX
+ifneq ($(PORTNAME), aix)
 	$(INSTALL_SHLIB) $< '$(DESTDIR)$(libdir)/$(shlib)'
 ifneq ($(PORTNAME), cygwin)
 ifneq ($(PORTNAME), win32)

@@ -15,7 +15,7 @@
  *
  * Copyright (c) 2003-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/getaddrinfo.h,v 1.22 2006/10/04 00:30:06 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/getaddrinfo.h,v 1.25 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -44,7 +44,9 @@
 #ifndef WSA_NOT_ENOUGH_MEMORY
 #define WSA_NOT_ENOUGH_MEMORY	(WSAENOBUFS)
 #endif
+#ifndef __BORLANDC__
 #define WSATYPE_NOT_FOUND		(WSABASEERR+109)
+#endif
 #endif
 #define EAI_AGAIN		WSATRY_AGAIN
 #define EAI_BADFLAGS	WSAEINVAL

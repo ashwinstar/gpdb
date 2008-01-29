@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/dynloader/linux.c,v 1.32 2006/03/05 15:58:35 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/dynloader/linux.c,v 1.34 2008/01/01 19:45:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

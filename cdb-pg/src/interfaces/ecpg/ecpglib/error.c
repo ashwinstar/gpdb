@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/error.c,v 1.15 2006/10/04 00:30:11 momjian Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/error.c,v 1.19 2007/11/15 21:14:45 momjian Exp $ */
 
 #define POSTGRES_ECPG_INTERNAL
 #include "postgres_fe.h"
@@ -9,9 +9,8 @@
 #include "extern.h"
 #include "sqlca.h"
 
-
 void
-ECPGraise(int line, int code, const char *sqlstate, const char *str)
+ecpg_raise(int line, int code, const char *sqlstate, const char *str)
 {
 	struct sqlca_t *sqlca = ECPGget_sqlca();
 
@@ -62,7 +61,7 @@ ECPGraise(int line, int code, const char *sqlstate, const char *str)
 
 		case ECPG_CONVERT_BOOL:
 			snprintf(sqlca->sqlerrm.sqlerrmc, sizeof(sqlca->sqlerrm.sqlerrmc),
-					 "Unable to convert %s to bool on line %d.", str, line);
+					 "Could not convert %s to bool on line %d.", str, line);
 			break;
 
 		case ECPG_EMPTY:
@@ -147,14 +146,14 @@ ECPGraise(int line, int code, const char *sqlstate, const char *str)
 	}
 
 	sqlca->sqlerrm.sqlerrml = strlen(sqlca->sqlerrm.sqlerrmc);
-	ECPGlog("raising sqlcode %d in line %d, '%s'.\n", code, line, sqlca->sqlerrm.sqlerrmc);
+	ecpg_log("raising sqlcode %d in line %d, '%s'.\n", code, line, sqlca->sqlerrm.sqlerrmc);
 
 	/* free all memory we have allocated for the user */
 	ECPGfree_auto_mem();
 }
 
 void
-ECPGraise_backend(int line, PGresult *result, PGconn *conn, int compat)
+ecpg_raise_backend(int line, PGresult *result, PGconn *conn, int compat)
 {
 	struct sqlca_t *sqlca = ECPGget_sqlca();
 	char	   *sqlstate;
@@ -189,11 +188,64 @@ ECPGraise_backend(int line, PGresult *result, PGconn *conn, int compat)
 	else
 		sqlca->sqlcode = ECPG_PGSQL;
 
-	ECPGlog("raising sqlstate %.*s (sqlcode: %d) in line %d, '%s'.\n",
-			sizeof(sqlca->sqlstate), sqlca->sqlstate, sqlca->sqlcode, line, sqlca->sqlerrm.sqlerrmc);
+	ecpg_log("raising sqlstate %.*s (sqlcode: %d) in line %d, '%s'.\n",
+			 sizeof(sqlca->sqlstate), sqlca->sqlstate, sqlca->sqlcode, line, sqlca->sqlerrm.sqlerrmc);
 
 	/* free all memory we have allocated for the user */
 	ECPGfree_auto_mem();
+}
+
+/* filter out all error codes */
+bool
+ecpg_check_PQresult(PGresult *results, int lineno, PGconn *connection, enum COMPAT_MODE compat)
+{
+	if (results == NULL)
+	{
+		ecpg_log("ecpg_check_PQresult line %d: error: %s", lineno, PQerrorMessage(connection));
+		ecpg_raise_backend(lineno, NULL, connection, compat);
+		return (false);
+	}
+
+	switch (PQresultStatus(results))
+	{
+
+		case PGRES_TUPLES_OK:
+			return (true);
+			break;
+		case PGRES_EMPTY_QUERY:
+			/* do nothing */
+			ecpg_raise(lineno, ECPG_EMPTY, ECPG_SQLSTATE_ECPG_INTERNAL_ERROR, NULL);
+			PQclear(results);
+			return (false);
+			break;
+		case PGRES_COMMAND_OK:
+			return (true);
+			break;
+		case PGRES_NONFATAL_ERROR:
+		case PGRES_FATAL_ERROR:
+		case PGRES_BAD_RESPONSE:
+			ecpg_log("ecpg_check_PQresult line %d: Error: %s", lineno, PQresultErrorMessage(results));
+			ecpg_raise_backend(lineno, results, connection, compat);
+			PQclear(results);
+			return (false);
+			break;
+		case PGRES_COPY_OUT:
+			return (true);
+			break;
+		case PGRES_COPY_IN:
+			ecpg_log("ecpg_check_PQresult line %d: Got PGRES_COPY_IN ... tossing.\n", lineno);
+			PQendcopy(connection);
+			PQclear(results);
+			return (false);
+			break;
+		default:
+			ecpg_log("ecpg_check_PQresult line %d: Got something else, postgres error.\n",
+					 lineno);
+			ecpg_raise_backend(lineno, results, connection, compat);
+			PQclear(results);
+			return (false);
+			break;
+	}
 }
 
 /* print out an error message */

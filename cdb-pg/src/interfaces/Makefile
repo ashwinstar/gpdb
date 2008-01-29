@@ -4,7 +4,7 @@
 #
 # Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/interfaces/Makefile,v 1.53 2004/04/20 00:33:51 pgsql Exp $
+# $PostgreSQL: pgsql/src/interfaces/Makefile,v 1.55 2007/02/09 15:55:59 petere Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -12,11 +12,11 @@ subdir = src/interfaces
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-DIRS := libpq ecpg 
+DIRS = libpq ecpg 
 
-ALLDIRS := $(DIRS) 
+ALLDIRS = $(DIRS) 
 
-all install installdirs uninstall dep depend distprep:
+all install installdirs uninstall distprep:
 	@for dir in $(DIRS); do $(MAKE) -C $$dir $@ || exit; done
 
 clean:

@@ -13,7 +13,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/miscadmin.h,v 1.190 2006/10/19 18:32:47 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/miscadmin.h,v 1.199 2008/01/03 21:23:15 tgl Exp $
  *
  * NOTES
  *	  some of the information in this file should be moved to other files.
@@ -23,6 +23,7 @@
 #ifndef MISCADMIN_H
 #define MISCADMIN_H
 
+#include <time.h>				/* for time_t */
 
 #define PG_VERSIONSTR "postgres (Greenplum Database) " PG_VERSION "\n"
 
@@ -64,14 +65,14 @@
 
 /* in globals.c */
 /* these are marked volatile because they are set by signal handlers: */
-extern DLLIMPORT volatile bool InterruptPending;
+extern PGDLLIMPORT volatile bool InterruptPending;
 extern volatile bool QueryCancelPending;
 extern volatile bool ProcDiePending;
 
 /* these are marked volatile because they are examined by signal handlers: */
 extern volatile bool ImmediateInterruptOK;
-extern DLLIMPORT volatile uint32 InterruptHoldoffCount;
-extern DLLIMPORT volatile uint32 CritSectionCount;
+extern PGDLLIMPORT volatile uint32 InterruptHoldoffCount;
+extern PGDLLIMPORT volatile uint32 CritSectionCount;
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
@@ -125,17 +126,19 @@ extern bool IsUnderPostmaster;
 
 extern bool ExitOnAnyError;
 
-extern DLLIMPORT char *DataDir;
+extern PGDLLIMPORT char *DataDir;
 
-extern DLLIMPORT int NBuffers;
+extern PGDLLIMPORT int NBuffers;
 extern int	MaxBackends;
+extern int	MaxConnections;
 
-extern DLLIMPORT int MyProcPid;
-extern DLLIMPORT struct Port *MyProcPort;
+extern PGDLLIMPORT int MyProcPid;
+extern PGDLLIMPORT time_t MyStartTime;
+extern PGDLLIMPORT struct Port *MyProcPort;
 extern long MyCancelKey;
 
 extern char OutputFileName[];
-extern DLLIMPORT char my_exec_path[];
+extern PGDLLIMPORT char my_exec_path[];
 extern char pkglib_path[];
 
 #ifdef EXEC_BACKEND
@@ -147,9 +150,9 @@ extern char postgres_exec_path[];
  *
  * extern BackendId    MyBackendId;
  */
-extern DLLIMPORT Oid MyDatabaseId;
+extern PGDLLIMPORT Oid MyDatabaseId;
 
-extern DLLIMPORT Oid MyDatabaseTableSpace;
+extern PGDLLIMPORT Oid MyDatabaseTableSpace;
 
 /*
  * Date/Time Configuration
@@ -178,6 +181,7 @@ extern DLLIMPORT Oid MyDatabaseTableSpace;
 #define USE_ISO_DATES			1
 #define USE_SQL_DATES			2
 #define USE_GERMAN_DATES		3
+#define USE_XSD_DATES			4
 
 /* valid DateOrder values */
 #define DATEORDER_YMD			0
@@ -200,8 +204,8 @@ extern int	CTimeZone;
 
 extern bool enableFsync;
 extern bool allowSystemTableMods;
-extern DLLIMPORT int work_mem;
-extern DLLIMPORT int maintenance_work_mem;
+extern PGDLLIMPORT int work_mem;
+extern PGDLLIMPORT int maintenance_work_mem;
 
 extern int	VacuumCostPageHit;
 extern int	VacuumCostPageMiss;
@@ -305,7 +309,8 @@ extern ProcessingMode Mode;
  *****************************************************************************/
 
 /* in utils/init/postinit.c */
-extern bool InitPostgres(const char *dbname, const char *username);
+extern bool InitPostgres(const char *in_dbname, Oid dboid, const char *username,
+			 char **out_dbname);
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */

@@ -97,36 +97,6 @@ SetEpochTimestamp(void)
 	return dt;
 }	/* SetEpochTimestamp() */
 
-static void
-dt2time(timestamp jd, int *hour, int *min, int *sec, fsec_t *fsec)
-{
-#ifdef HAVE_INT64_TIMESTAMP
-	int64		time;
-#else
-	double		time;
-#endif
-
-	time = jd;
-
-#ifdef HAVE_INT64_TIMESTAMP
-	*hour = time / USECS_PER_HOUR;
-	time -= (*hour) * USECS_PER_HOUR;
-	*min = time / USECS_PER_MINUTE;
-	time -= (*min) * USECS_PER_MINUTE;
-	*sec = time / USECS_PER_SEC;
-	*fsec = time - *sec * USECS_PER_SEC;
-	*sec = time / USECS_PER_SEC;
-	*fsec = time - *sec * USECS_PER_SEC;
-#else
-	*hour = time / SECS_PER_HOUR;
-	time -= (*hour) * SECS_PER_HOUR;
-	*min = time / SECS_PER_MINUTE;
-	time -= (*min) * SECS_PER_MINUTE;
-	*sec = time;
-	*fsec = time - *sec;
-#endif
-}	/* dt2time() */
-
 /* timestamp2tm()
  * Convert timestamp data type to POSIX time structure.
  * Note that year is _not_ 1900-based, but is an explicit full value.
@@ -308,7 +278,6 @@ PGTYPEStimestamp_from_asc(char *str, char **endptr)
 	fsec_t		fsec;
 	struct tm	tt,
 			   *tm = &tt;
-	int			tz;
 	int			dtype;
 	int			nf;
 	char	   *field[MAXDATEFIELDS];
@@ -324,7 +293,7 @@ PGTYPEStimestamp_from_asc(char *str, char **endptr)
 	}
 
 	if (ParseDateTime(str, lowstr, field, ftype, MAXDATEFIELDS, &nf, ptr) != 0 ||
-		DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz, 0) != 0)
+		DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, 0) != 0)
 	{
 		errno = PGTYPES_TS_BAD_TIMESTAMP;
 		return (noresult);
@@ -542,7 +511,7 @@ dttofmtasc_replace(timestamp * ts, date dDate, int dow, struct tm * tm,
 					 */
 				case 'g':
 					{
-						char	   *fmt = "%g"; /* Keep compiler quiet about
+						const char *fmt = "%g"; /* Keep compiler quiet about
 												 * 2-digit year */
 
 						tm->tm_mon -= 1;
@@ -744,7 +713,7 @@ dttofmtasc_replace(timestamp * ts, date dDate, int dow, struct tm * tm,
 					 */
 				case 'x':
 					{
-						char	   *fmt = "%x"; /* Keep compiler quiet about
+						const char *fmt = "%x"; /* Keep compiler quiet about
 												 * 2-digit year */
 
 						tm->tm_mon -= 1;

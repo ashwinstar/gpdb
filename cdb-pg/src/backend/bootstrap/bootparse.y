@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootparse.y,v 1.84 2006/08/25 04:06:46 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootparse.y,v 1.91 2008/01/01 19:45:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -238,10 +238,7 @@ Boot_InsertStmt:
 						elog(ERROR, "incorrect number of columns in row (expected %d, got %d)",
 							 numattr, num_columns_read);
 					if (boot_reldesc == NULL)
-					{
-						elog(ERROR, "relation not open");
-						err_out();
-					}
+						elog(FATAL, "relation not open");
 					InsertOneTuple($2);
 					do_end();
 				}
@@ -258,7 +255,7 @@ Boot_DeclareIndexStmt:
 								LexIDStr($8),
 								NULL,
 								$10,
-								NULL, NIL, NIL,
+								NULL, NIL,
 								false, false, false,
 								false, false, true, false, false, 0);
 					do_end();
@@ -276,7 +273,7 @@ Boot_DeclareUniqueIndexStmt:
 								LexIDStr($9),
 								NULL,
 								$11,
-								NULL, NIL, NIL,
+								NULL, NIL,
 								true, false, false,
 								false, false, true, false, false, 0);
 					do_end();
@@ -315,6 +312,8 @@ boot_index_param:
 					n->name = LexIDStr($1);
 					n->expr = NULL;
 					n->opclass = list_make1(makeString(LexIDStr($2)));
+					n->ordering = SORTBY_DEFAULT;
+					n->nulls_ordering = SORTBY_NULLS_DEFAULT;
 					$$ = n;
 				}
 		;

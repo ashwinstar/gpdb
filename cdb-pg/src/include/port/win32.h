@@ -1,7 +1,16 @@
-/* $PostgreSQL: pgsql/src/include/port/win32.h,v 1.63.2.2 2007/01/26 20:07:01 tgl Exp $ */
+/* $PostgreSQL: pgsql/src/include/port/win32.h,v 1.83 2008/01/09 09:16:43 mha Exp $ */
 
 #if defined(_MSC_VER) || defined(__BORLANDC__)
 #define WIN32_ONLY_COMPILER
+#endif
+
+#define _WIN32_WINNT 0x0500
+/*
+ * Always build with SSPI support. Keep it as a #define in case
+ * we want a switch to disable it sometime in the future.
+ */
+#ifndef __BORLANDC__
+#define ENABLE_SSPI 1
 #endif
 
 /* undefine and redefine after #include */
@@ -22,10 +31,6 @@
 #endif
 #undef near
 
-#pragma warning(disable:4142) // Benign redefinition of type
-
-#pragma warning(disable:4273) // Inconsistent dll linkage
-
 /* Must be here to avoid conflicting with prototype in windows.h */
 #define mkdir(a,b)	mkdir(a)
 
@@ -40,6 +45,17 @@
 
 #define USES_WINSOCK
 
+/*
+ * Ensure that anyone building an extension is using a 32 bit time_t.
+ * On Mingw/Msys, that should always be the case, but MSVC++ defaults
+ * to 64 bits. We set that for our own build in the project files
+ */
+#if defined(WIN32_ONLY_COMPILER) && !defined(FRONTEND)
+#ifndef _USE_32BIT_TIME_T
+#error "Postgres uses 32 bit time_t - add #define _USE_32BIT_TIME_T on Windows"
+#endif
+#endif
+
 /* defines for dynamic linking on Win32 platform */
 #if defined(WIN32) || defined(__CYGWIN__)
 
@@ -48,15 +64,12 @@
 #endif
 
 #ifdef BUILDING_DLL
-#define DLLIMPORT __declspec (dllexport)
 #define PGDLLIMPORT __declspec (dllexport)
 #else							/* not BUILDING_DLL */
-#define DLLIMPORT __declspec (dllimport)
 #define PGDLLIMPORT __declspec (dllimport)
 #endif
 #else							/* not CYGWIN, not MSVC, not MingW */
 
-#define DLLIMPORT
 #define PGDLLIMPORT
 #endif
 
@@ -83,55 +96,58 @@
 #define SETVAL 131072
 #define GETPID 262144
 
-/*
- *	Shared memory
- */
-struct shmid_ds
-{
-	int			dummy;
-	int			shm_nattch;
-};
-
-int			shmdt(const void *shmaddr);
-void	   *shmat(int memId, void *shmaddr, int flag);
-int			shmctl(int shmid, int flag, struct shmid_ds * dummy);
-int			shmget(int memKey, int size, int flag);
-
-
-/*
- *	Semaphores
- */
-union semun
-{
-	int			val;
-	struct semid_ds *buf;
-	unsigned short *array;
-};
-
-struct sembuf
-{
-	int			sem_flg;
-	int			sem_op;
-	int			sem_num;
-};
-
-int			semctl(int semId, int semNum, int flag, union semun);
-int			semget(int semKey, int semNum, int flags);
-int			semop(int semId, struct sembuf * sops, int flag);
-
 
 /*
  *	Signal stuff
- *	WIN32 doesn't have wait(), so the return value for children
- *	is simply the return value specified by the child, without
- *	any additional information on whether the child terminated
- *	on its own or via a signal.  These macros are also used
- *	to interpret the return value of system().
+ *
+ *	For WIN32, there is no wait() call so there are no wait() macros
+ *	to interpret the return value of system().	Instead, system()
+ *	return values < 0x100 are used for exit() termination, and higher
+ *	values are used to indicated non-exit() termination, which is
+ *	similar to a unix-style signal exit (think SIGSEGV ==
+ *	STATUS_ACCESS_VIOLATION).  Return values are broken up into groups:
+ *
+ *	http://msdn2.microsoft.com/en-gb/library/aa489609.aspx
+ *
+ *		NT_SUCCESS			0 - 0x3FFFFFFF
+ *		NT_INFORMATION		0x40000000 - 0x7FFFFFFF
+ *		NT_WARNING			0x80000000 - 0xBFFFFFFF
+ *		NT_ERROR			0xC0000000 - 0xFFFFFFFF
+ *
+ *	Effectively, we don't care on the severity of the return value from
+ *	system(), we just need to know if it was because of exit() or generated
+ *	by the system, and it seems values >= 0x100 are system-generated.
+ *	See this URL for a list of WIN32 STATUS_* values:
+ *
+ *		Wine (URL used in our error messages) -
+ *			http://source.winehq.org/source/include/ntstatus.h
+ *		Descriptions - http://www.comp.nus.edu.sg/~wuyongzh/my_doc/ntstatus.txt
+ *		MS SDK - http://www.nologs.com/ntstatus.html
+ *
+ *	It seems the exception lists are in both ntstatus.h and winnt.h, but
+ *	ntstatus.h has a more comprehensive list, and it only contains
+ *	exception values, rather than winnt, which contains lots of other
+ *	things:
+ *
+ *		http://www.microsoft.com/msj/0197/exception/exception.aspx
+ *
+ *		The ExceptionCode parameter is the number that the operating system
+ *		assigned to the exception. You can see a list of various exception codes
+ *		in WINNT.H by searching for #defines that start with "STATUS_". For
+ *		example, the code for the all-too-familiar STATUS_ACCESS_VIOLATION is
+ *		0xC0000005. A more complete set of exception codes can be found in
+ *		NTSTATUS.H from the Windows NT DDK.
+ *
+ *	Some day we might want to print descriptions for the most common
+ *	exceptions, rather than printing an include file name.	We could use
+ *	RtlNtStatusToDosError() and pass to FormatMessage(), which can print
+ *	the text of error values, but MinGW does not support
+ *	RtlNtStatusToDosError().
  */
+#define WIFEXITED(w)	(((w) & 0XFFFFFF00) == 0)
+#define WIFSIGNALED(w)	(!WIFEXITED(w))
 #define WEXITSTATUS(w)	(w)
-#define WIFEXITED(w)	(true)
-#define WIFSIGNALED(w)	(false)
-#define WTERMSIG(w)		(0)
+#define WTERMSIG(w)		(w)
 
 #define sigmask(sig) ( 1 << ((sig)-1) )
 
@@ -233,8 +249,8 @@ typedef int pid_t;
 
 
 /* In backend/port/win32/signal.c */
-extern DLLIMPORT volatile int pg_signal_queue;
-extern DLLIMPORT int pg_signal_mask;
+extern PGDLLIMPORT volatile int pg_signal_queue;
+extern PGDLLIMPORT int pg_signal_mask;
 extern HANDLE pgwin32_signal_event;
 extern HANDLE pgwin32_initial_signal_pipe;
 
@@ -276,8 +292,8 @@ extern void _dosmaperr(unsigned long);
 
 /* Things that exist in MingW headers, but need to be added to MSVC */
 #ifdef WIN32_ONLY_COMPILER
-#ifndef __BORLANDC__
 typedef long ssize_t;
+#ifndef __BORLANDC__
 typedef unsigned short mode_t;
 #endif
 
@@ -308,21 +324,6 @@ typedef unsigned short mode_t;
 
 #define isinf(x) ((_fpclass(x) == _FPCLASS_PINF) || (_fpclass(x) == _FPCLASS_NINF))
 #define isnan(x) _isnan(x)
-#define finite(x) _finite(x)
-
-#ifndef			BIG_ENDIAN
-#define			BIG_ENDIAN		4321
-#endif
-#ifndef			LITTLE_ENDIAN
-#define			LITTLE_ENDIAN	1234
-#endif
-#ifndef			PDP_ENDIAN
-#define			PDP_ENDIAN		3412
-#endif
-
-#ifndef BYTE_ORDER
-#define BYTE_ORDER LITTLE_ENDIAN
-#endif
 
 /* Pulled from Makefile.port in mingw */
 #define DLSUFFIX ".dll"

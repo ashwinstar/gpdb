@@ -10,7 +10,7 @@
  *	must be replaced with recv/send.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/pipe.c,v 1.11 2006/03/05 15:59:10 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/pipe.c,v 1.13 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

@@ -4,12 +4,12 @@
 # Gen_fmgrtab.sh
 #    shell script to generate fmgroids.h and fmgrtab.c from pg_proc.h
 #
-# Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/utils/Gen_fmgrtab.sh,v 1.33 2006/09/05 19:18:13 tgl Exp $
+#    $PostgreSQL: pgsql/src/backend/utils/Gen_fmgrtab.sh,v 1.38 2008/01/01 19:45:52 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -72,6 +72,8 @@ trap 'echo "Caught signal." ; cleanup ; exit 1' 1 2 15
 #
 # Generate the file containing raw pg_proc tuple data
 # (but only for "internal" language procedures...).
+# Basically we strip off the DATA macro call, leaving procedure OID as $1
+# and all the pg_proc field values as $2, $3, etc on each line.
 #
 # Note assumption here that prolang == $5 and INTERNALlanguageId == 12.
 #
@@ -103,7 +105,7 @@ cat > "$$-$OIDSFILE" <<FuNkYfMgRsTuFf
  * These macros can be used to avoid a catalog lookup when a specific
  * fmgr-callable function needs to be referenced.
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -125,19 +127,19 @@ cat > "$$-$OIDSFILE" <<FuNkYfMgRsTuFf
  *	NOTE: macros are named after the prosrc value, ie the actual C name
  *	of the implementing function, not the proname which may be overloaded.
  *	For example, we want to be able to assign different macro names to both
- *	char_text() and int4_text() even though these both appear with proname
+ *	char_text() and name_text() even though these both appear with proname
  *	'text'.  If the same C function appears in more than one pg_proc entry,
  *	its equivalent macro will be defined with the lowest OID among those
  *	entries.
  */
 FuNkYfMgRsTuFf
 
-# Note assumption here that prosrc == $(NF-2).
+# Note assumption here that prosrc == $(NF-3).
 
 tr 'abcdefghijklmnopqrstuvwxyz' 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' < $SORTEDFILE | \
 $AWK '
 BEGIN	{ OFS = ""; }
-	{ if (seenit[$(NF-2)]++ == 0) print "#define F_", $(NF-2), " ", $1; }' >> "$$-$OIDSFILE"
+	{ if (seenit[$(NF-3)]++ == 0) print "#define F_", $(NF-3), " ", $1; }' >> "$$-$OIDSFILE"
 
 if [ $? -ne 0 ]; then
     cleanup
@@ -161,7 +163,7 @@ cat > "$$-$TABLEFILE" <<FuNkYfMgRtAbStUfF
  * $TABLEFILE
  *    The function manager's table of internal functions.
  *
- * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -182,9 +184,9 @@ cat > "$$-$TABLEFILE" <<FuNkYfMgRtAbStUfF
 
 FuNkYfMgRtAbStUfF
 
-# Note assumption here that prosrc == $(NF-2).
+# Note assumption here that prosrc == $(NF-3).
 
-$AWK '{ print "extern Datum", $(NF-2), "(PG_FUNCTION_ARGS);"; }' $SORTEDFILE >> "$$-$TABLEFILE"
+$AWK '{ print "extern Datum", $(NF-3), "(PG_FUNCTION_ARGS);"; }' $SORTEDFILE >> "$$-$TABLEFILE"
 
 if [ $? -ne 0 ]; then
     cleanup
@@ -202,15 +204,15 @@ FuNkYfMgRtAbStUfF
 # may seem tedious, but avoid the temptation to write a quick x?y:z
 # conditional expression instead.  Not all awks have conditional expressions.
 #
-# Note assumptions here that prosrc == $(NF-2), pronargs == $11,
-# proisstrict == $8, proretset == $9
+# Note assumptions here that prosrc == $(NF-3), pronargs == $13,
+# proisstrict == $10, proretset == $11
 
 $AWK 'BEGIN {
     Bool["t"] = "true"
     Bool["f"] = "false"
 }
 { printf ("  { %d, \"%s\", %d, %s, %s, %s },\n"), \
-	$1, $(NF-2), $11, Bool[$8], Bool[$9], $(NF-2)
+	$1, $(NF-3), $13, Bool[$10], Bool[$11], $(NF-3)
 }' $SORTEDFILE >> "$$-$TABLEFILE"
 
 if [ $? -ne 0 ]; then

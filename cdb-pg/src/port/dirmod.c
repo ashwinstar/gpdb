@@ -10,7 +10,7 @@
  *	Win32 (NT, Win2k, XP).	replace() doesn't work on Win95/98/Me.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/dirmod.c,v 1.47 2007/01/19 16:42:24 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/port/dirmod.c,v 1.51 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -45,7 +45,7 @@
 
 /*
  *	On Windows, call non-macro versions of palloc; we can't reference
- *	CurrentMemoryContext in this file because of DLLIMPORT conflict.
+ *	CurrentMemoryContext in this file because of PGDLLIMPORT conflict.
  */
 #if defined(WIN32) || defined(__CYGWIN__)
 #undef palloc
@@ -117,10 +117,10 @@ pgrename(const char *from, const char *to)
 	int			loops = 0;
 
 	/*
-	 * We need to loop because even though PostgreSQL uses flags that
-	 * allow rename while the file is open, other applications might have
-	 * the file open without those flags.  However, we won't wait
-	 * indefinitely for someone else to close the file.
+	 * We need to loop because even though PostgreSQL uses flags that allow
+	 * rename while the file is open, other applications might have the file
+	 * open without those flags.  However, we won't wait indefinitely for
+	 * someone else to close the file.
 	 */
 #if defined(WIN32) && !defined(__CYGWIN__)
 	while (!MoveFileEx(from, to, MOVEFILE_REPLACE_EXISTING))
@@ -152,10 +152,10 @@ pgunlink(const char *path)
 	int			loops = 0;
 
 	/*
-	 * We need to loop because even though PostgreSQL uses flags that
-	 * allow unlink while the file is open, other applications might have
-	 * the file open without those flags.  However, we won't wait
-	 * indefinitely for someone else to close the file.
+	 * We need to loop because even though PostgreSQL uses flags that allow
+	 * unlink while the file is open, other applications might have the file
+	 * open without those flags.  However, we won't wait indefinitely for
+	 * someone else to close the file.
 	 */
 	while (unlink(path))
 	{
@@ -169,8 +169,13 @@ pgunlink(const char *path)
 	return 0;
 }
 
+/* We undefined these above; now redefine for possible use below */
+#define rename(from, to)		pgrename(from, to)
+#define unlink(path)			pgunlink(path)
+#endif   /* defined(WIN32) || defined(__CYGWIN__) */
 
-#ifdef WIN32					/* Cygwin has its own symlinks */
+
+#if defined(WIN32) && !defined(__CYGWIN__)		/* Cygwin has its own symlinks */
 
 /*
  *	pgsymlink support:
@@ -276,14 +281,7 @@ pgsymlink(const char *oldpath, const char *newpath)
 
 	return 0;
 }
-#endif   /* WIN32 */
-#endif   /* defined(WIN32) || defined(__CYGWIN__) */
-
-
-/* We undefined this above, so we redefine it */
-#if defined(WIN32) || defined(__CYGWIN__)
-#define unlink(path)	pgunlink(path)
-#endif
+#endif   /* defined(WIN32) && !defined(__CYGWIN__) */
 
 
 /*
@@ -293,7 +291,7 @@ pgsymlink(const char *oldpath, const char *newpath)
  * must call pgfnames_cleanup later to free the memory allocated by this
  * function.
  */
-char **
+char	  **
 pgfnames(char *path)
 {
 	DIR		   *dir;

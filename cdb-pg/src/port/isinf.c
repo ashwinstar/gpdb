@@ -7,7 +7,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/isinf.c,v 1.10 2006/10/04 00:30:14 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/isinf.c,v 1.12 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

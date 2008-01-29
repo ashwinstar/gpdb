@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/port.h,v 1.110 2007/02/07 00:28:55 petere Exp $
+  * $PostgreSQL: pgsql/src/include/port.h,v 1.116 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -168,7 +168,7 @@ extern int
 pg_sprintf(char *str, const char *fmt,...)
 /* This extension allows gcc to check the format string */
 __attribute__((format(printf, 2, 3)));
-extern int	pg_vfprintf(FILE * stream, const char *fmt, va_list args);
+extern int	pg_vfprintf(FILE *stream, const char *fmt, va_list args);
 extern int
 pg_fprintf(FILE *stream, const char *fmt,...)
 /* This extension allows gcc to check the format string */
@@ -241,8 +241,7 @@ extern int	pclose_check(FILE *stream);
 
 #if defined(WIN32) || defined(__CYGWIN__)
 /*
- *	Win32 doesn't have reliable rename/unlink during concurrent access,
- *	and we need special code to do symlinks.
+ *	Win32 doesn't have reliable rename/unlink during concurrent access.
  */
 extern int	pgrename(const char *from, const char *to);
 extern int	pgunlink(const char *path);
@@ -254,10 +253,14 @@ extern int	pgunlink(const char *path);
 
 #define rename(from, to)		pgrename(from, to)
 #define unlink(path)			pgunlink(path)
+#endif   /* defined(WIN32) || defined(__CYGWIN__) */
 
 /*
+ *	Win32 also doesn't have symlinks, but we can emulate them with
+ *	junction points on newer Win32 versions.
+ *
  *	Cygwin has its own symlinks which work on Win95/98/ME where
- *	junction points don't, so use it instead.  We have no way of
+ *	junction points don't, so use those instead.  We have no way of
  *	knowing what type of system Cygwin binaries will be run on.
  *		Note: Some CYGWIN includes might #define WIN32.
  */
@@ -266,7 +269,6 @@ extern int	pgsymlink(const char *oldpath, const char *newpath);
 
 #define symlink(oldpath, newpath)	pgsymlink(oldpath, newpath)
 #endif
-#endif   /* defined(WIN32) || defined(__CYGWIN__) */
 
 extern void copydir(char *fromdir, char *todir, bool recurse);
 
@@ -277,6 +279,7 @@ extern bool rmtree(char *path, bool rmtopdir);
 /* open() and fopen() replacements to allow deletion of open files and
  * passing of other special options.
  */
+#define		O_DIRECT	0x80000000
 extern int	pgwin32_open(const char *, int,...);
 extern FILE *pgwin32_fopen(const char *, const char *);
 
@@ -380,7 +383,7 @@ extern int pqGethostbyname(const char *name,
 				int *herrno);
 
 extern void pg_qsort(void *base, size_t nel, size_t elsize,
-					 int (*cmp) (const void *, const void *));
+		 int (*cmp) (const void *, const void *));
 
 #define qsort(a,b,c,d) pg_qsort(a,b,c,d)
 
@@ -388,5 +391,8 @@ typedef int (*qsort_arg_comparator) (const void *a, const void *b, void *arg);
 
 extern void qsort_arg(void *base, size_t nel, size_t elsize,
 		  qsort_arg_comparator cmp, void *arg);
+
+/* port/chklocale.c */
+extern int	pg_get_encoding_from_locale(const char *ctype);
 
 #endif   /* PG_PORT_H */

@@ -11,7 +11,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/posix_sema.c,v 1.17 2006/07/14 05:28:27 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/posix_sema.c,v 1.19 2008/01/01 19:45:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

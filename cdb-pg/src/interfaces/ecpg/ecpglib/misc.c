@@ -1,13 +1,11 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/misc.c,v 1.32 2006/10/04 00:30:11 momjian Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/misc.c,v 1.41 2007/11/15 21:14:45 momjian Exp $ */
 
 #define POSTGRES_ECPG_INTERNAL
 #include "postgres_fe.h"
 
 #include <limits.h>
 #include <unistd.h>
-#ifdef ENABLE_THREAD_SAFETY
-#include <pthread.h>
-#endif
+#include "ecpg-pthread-win32.h"
 #include "ecpgtype.h"
 #include "ecpglib.h"
 #include "ecpgerrno.h"
@@ -27,6 +25,8 @@
 #endif
 #endif
 #endif
+
+bool		ecpg_internal_regression_mode = false;
 
 static struct sqlca_t sqlca_init =
 {
@@ -95,21 +95,21 @@ static int	simple_debug = 0;
 static FILE *debugstream = NULL;
 
 void
-ECPGinit_sqlca(struct sqlca_t * sqlca)
+ecpg_init_sqlca(struct sqlca_t * sqlca)
 {
 	memcpy((char *) sqlca, (char *) &sqlca_init, sizeof(struct sqlca_t));
 }
 
 bool
-ECPGinit(const struct connection * con, const char *connection_name, const int lineno)
+ecpg_init(const struct connection * con, const char *connection_name, const int lineno)
 {
 	struct sqlca_t *sqlca = ECPGget_sqlca();
 
-	ECPGinit_sqlca(sqlca);
+	ecpg_init_sqlca(sqlca);
 	if (con == NULL)
 	{
-		ECPGraise(lineno, ECPG_NO_CONN, ECPG_SQLSTATE_CONNECTION_DOES_NOT_EXIST,
-				  connection_name ? connection_name : "NULL");
+		ecpg_raise(lineno, ECPG_NO_CONN, ECPG_SQLSTATE_CONNECTION_DOES_NOT_EXIST,
+				   connection_name ? connection_name : "NULL");
 		return (false);
 	}
 
@@ -120,8 +120,7 @@ ECPGinit(const struct connection * con, const char *connection_name, const int l
 static void
 ecpg_sqlca_key_destructor(void *arg)
 {
-	if (arg != NULL)
-		free(arg);				/* sqlca structure allocated in ECPGget_sqlca */
+	free(arg);					/* sqlca structure allocated in ECPGget_sqlca */
 }
 
 static void
@@ -143,7 +142,7 @@ ECPGget_sqlca(void)
 	if (sqlca == NULL)
 	{
 		sqlca = malloc(sizeof(struct sqlca_t));
-		ECPGinit_sqlca(sqlca);
+		ecpg_init_sqlca(sqlca);
 		pthread_setspecific(sqlca_key, sqlca);
 	}
 	return (sqlca);
@@ -155,15 +154,15 @@ ECPGget_sqlca(void)
 bool
 ECPGstatus(int lineno, const char *connection_name)
 {
-	struct connection *con = ECPGget_connection(connection_name);
+	struct connection *con = ecpg_get_connection(connection_name);
 
-	if (!ECPGinit(con, connection_name, lineno))
+	if (!ecpg_init(con, connection_name, lineno))
 		return (false);
 
 	/* are we connected? */
 	if (con->connection == NULL)
 	{
-		ECPGraise(lineno, ECPG_NOT_CONN, ECPG_SQLSTATE_ECPG_INTERNAL_ERROR, con->name);
+		ecpg_raise(lineno, ECPG_NOT_CONN, ECPG_SQLSTATE_ECPG_INTERNAL_ERROR, con->name);
 		return false;
 	}
 
@@ -174,12 +173,12 @@ bool
 ECPGtrans(int lineno, const char *connection_name, const char *transaction)
 {
 	PGresult   *res;
-	struct connection *con = ECPGget_connection(connection_name);
+	struct connection *con = ecpg_get_connection(connection_name);
 
-	if (!ECPGinit(con, connection_name, lineno))
+	if (!ecpg_init(con, connection_name, lineno))
 		return (false);
 
-	ECPGlog("ECPGtrans line %d action = %s connection = %s\n", lineno, transaction, con ? con->name : "(nil)");
+	ecpg_log("ECPGtrans line %d action = %s connection = %s\n", lineno, transaction, con ? con->name : "(nil)");
 
 	/* if we have no connection we just simulate the command */
 	if (con && con->connection)
@@ -193,20 +192,14 @@ ECPGtrans(int lineno, const char *connection_name, const char *transaction)
 		if (con->committed && !con->autocommit && strncmp(transaction, "begin", 5) != 0 && strncmp(transaction, "start", 5) != 0)
 		{
 			res = PQexec(con->connection, "begin transaction");
-			if (res == NULL || PQresultStatus(res) != PGRES_COMMAND_OK)
-			{
-				ECPGraise(lineno, ECPG_TRANS, ECPG_SQLSTATE_TRANSACTION_RESOLUTION_UNKNOWN, NULL);
+			if (!ecpg_check_PQresult(res, lineno, con->connection, ECPG_COMPAT_PGSQL))
 				return FALSE;
-			}
 			PQclear(res);
 		}
 
 		res = PQexec(con->connection, transaction);
-		if (res == NULL || PQresultStatus(res) != PGRES_COMMAND_OK)
-		{
-			ECPGraise(lineno, ECPG_TRANS, ECPG_SQLSTATE_TRANSACTION_RESOLUTION_UNKNOWN, NULL);
+		if (!ecpg_check_PQresult(res, lineno, con->connection, ECPG_COMPAT_PGSQL))
 			return FALSE;
-		}
 		PQclear(res);
 	}
 
@@ -226,9 +219,17 @@ ECPGdebug(int n, FILE *dbgs)
 	pthread_mutex_lock(&debug_init_mutex);
 #endif
 
-	simple_debug = n;
+	if (n > 100)
+	{
+		ecpg_internal_regression_mode = true;
+		simple_debug = n - 100;
+	}
+	else
+		simple_debug = n;
+
 	debugstream = dbgs;
-	ECPGlog("ECPGdebug: set to %d\n", simple_debug);
+
+	ecpg_log("ECPGdebug: set to %d\n", simple_debug);
 
 #ifdef ENABLE_THREAD_SAFETY
 	pthread_mutex_unlock(&debug_init_mutex);
@@ -236,14 +237,10 @@ ECPGdebug(int n, FILE *dbgs)
 }
 
 void
-ECPGlog(const char *format,...)
+ecpg_log(const char *format,...)
 {
 	va_list		ap;
 	struct sqlca_t *sqlca = ECPGget_sqlca();
-
-#ifdef ENABLE_THREAD_SAFETY
-	pthread_mutex_lock(&debug_mutex);
-#endif
 
 	if (simple_debug)
 	{
@@ -251,39 +248,38 @@ ECPGlog(const char *format,...)
 		char	   *f = (char *) malloc(bufsize);
 
 		if (f == NULL)
-		{
-#ifdef ENABLE_THREAD_SAFETY
-			pthread_mutex_unlock(&debug_mutex);
-#endif
 			return;
-		}
 
 		/*
 		 * regression tests set this environment variable to get the same
 		 * output for every run.
 		 */
-		if (getenv("ECPG_REGRESSION"))
+		if (ecpg_internal_regression_mode)
 			snprintf(f, bufsize, "[NO_PID]: %s", format);
 		else
 			snprintf(f, bufsize, "[%d]: %s", (int) getpid(), format);
+
+#ifdef ENABLE_THREAD_SAFETY
+		pthread_mutex_lock(&debug_mutex);
+#endif
 
 		va_start(ap, format);
 		vfprintf(debugstream, f, ap);
 		va_end(ap);
 
 		/* dump out internal sqlca variables */
-		if (getenv("ECPG_REGRESSION"))
+		if (ecpg_internal_regression_mode)
 			fprintf(debugstream, "[NO_PID]: sqlca: code: %ld, state: %s\n",
 					sqlca->sqlcode, sqlca->sqlstate);
 
 		fflush(debugstream);
 
-		ECPGfree(f);
-	}
-
 #ifdef ENABLE_THREAD_SAFETY
-	pthread_mutex_unlock(&debug_mutex);
+		pthread_mutex_unlock(&debug_mutex);
 #endif
+
+		free(f);
+	}
 }
 
 void
@@ -415,3 +411,39 @@ ECPGis_noind_null(enum ECPGttype type, void *ptr)
 
 	return false;
 }
+
+#ifdef WIN32
+#ifdef ENABLE_THREAD_SAFETY
+
+void
+win32_pthread_mutex(volatile pthread_mutex_t *mutex)
+{
+	if (mutex->handle == NULL)
+	{
+		while (InterlockedExchange((LONG *) & mutex->initlock, 1) == 1)
+			Sleep(0);
+		if (mutex->handle == NULL)
+			mutex->handle = CreateMutex(NULL, FALSE, NULL);
+		InterlockedExchange((LONG *) & mutex->initlock, 0);
+	}
+}
+
+static pthread_mutex_t win32_pthread_once_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void
+win32_pthread_once(volatile pthread_once_t *once, void (*fn) (void))
+{
+	if (!*once)
+	{
+		pthread_mutex_lock(&win32_pthread_once_lock);
+		if (!*once)
+		{
+			*once = true;
+			fn();
+		}
+		pthread_mutex_unlock(&win32_pthread_once_lock);
+	}
+}
+#endif   /* ENABLE_THREAD_SAFETY */
+
+#endif   /* WIN32 */

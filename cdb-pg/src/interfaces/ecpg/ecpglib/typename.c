@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/typename.c,v 1.10 2003/11/29 19:52:08 pgsql Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/typename.c,v 1.14 2007/11/15 21:14:45 momjian Exp $ */
 
 #define POSTGRES_ECPG_INTERNAL
 #include "postgres_fe.h"
@@ -14,7 +14,7 @@
  * This function is used to generate the correct type names.
  */
 const char *
-ECPGtype_name(enum ECPGttype typ)
+ecpg_type_name(enum ECPGttype typ)
 {
 	switch (typ)
 	{
@@ -66,8 +66,8 @@ ECPGtype_name(enum ECPGttype typ)
 	return NULL;
 }
 
-unsigned int
-ECPGDynamicType(Oid type)
+int
+ecpg_dynamic_type(Oid type)
 {
 	switch (type)
 	{

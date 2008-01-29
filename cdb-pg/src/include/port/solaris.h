@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/include/port/solaris.h,v 1.14 2006/10/04 22:49:44 momjian Exp $ */
+/* $PostgreSQL: pgsql/src/include/port/solaris.h,v 1.17 2007/11/15 21:14:44 momjian Exp $ */
 
 /*
  * Sort this out for all operating systems some time.  The __xxx
@@ -7,6 +7,14 @@
  */
 #if defined(__i386) && !defined(__i386__)
 #define __i386__
+#endif
+
+#if defined(__amd64) && !defined(__amd64__)
+#define __amd64__
+#endif
+
+#if defined(__x86_64) && !defined(__x86_64__)
+#define __x86_64__
 #endif
 
 #if defined(__sparc) && !defined(__sparc__)
@@ -43,7 +51,7 @@
  *
  * http://sunsolve.sun.com/search/document.do?assetkey=1-21-108993-62-1&searchclause=108993-62
  * http://sunsolve.sun.com/search/document.do?assetkey=1-21-112874-34-1&searchclause=112874-34
- * 
+ *
  * However, many people might not have patched versions, so
  * still use our own fix for the buggy version.
  */

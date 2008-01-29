@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/executor/execdesc.h,v 1.32 2006/07/11 16:35:33 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/executor/execdesc.h,v 1.37 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -29,15 +29,19 @@ struct PlanState;               /* #include "nodes/execnodes.h" */
  *		query descriptor:
  *
  *	a QueryDesc encapsulates everything that the executor
- *	needs to execute the query
+ *	needs to execute the query.
+ *
+ *	For the convenience of SQL-language functions, we also support QueryDescs
+ *	containing utility statements; these must not be passed to the executor
+ *	however.
  * ---------------------
  */
 typedef struct QueryDesc
 {
 	/* These fields are provided by CreateQueryDesc */
 	CmdType		operation;		/* CMD_SELECT, CMD_UPDATE, etc. */
-	Query	   *parsetree;		/* rewritten parsetree */
-	Plan	   *plantree;		/* planner's output */
+	PlannedStmt *plannedstmt;	/* planner's output, or null if utility */
+	Node	   *utilitystmt;	/* utility statement, or null */
 	Snapshot	snapshot;		/* snapshot to use for query */
 	Snapshot	crosscheck_snapshot;	/* crosscheck for RI update/delete */
 	DestReceiver *dest;			/* the destination for tuple output */
@@ -61,12 +65,17 @@ typedef struct QueryDesc
 } QueryDesc;
 
 /* in pquery.c */
-extern QueryDesc *CreateQueryDesc(Query *parsetree, Plan *plantree,
+extern QueryDesc *CreateQueryDesc(PlannedStmt *plannedstmt,
 				Snapshot snapshot,
 				Snapshot crosscheck_snapshot,
 				DestReceiver *dest,
 				ParamListInfo params,
 				bool doInstrument);
+
+extern QueryDesc *CreateUtilityQueryDesc(Node *utilitystmt,
+					   Snapshot snapshot,
+					   DestReceiver *dest,
+					   ParamListInfo params);
 
 extern void FreeQueryDesc(QueryDesc *qdesc);
 
