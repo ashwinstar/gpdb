@@ -66,7 +66,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	  $PostgreSQL: pgsql/src/include/storage/s_lock.h,v 1.157 2006/06/07 22:24:45 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/include/storage/s_lock.h,v 1.164 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -78,7 +78,7 @@
 #ifdef HAVE_SPINLOCKS	/* skip spinlocks if requested */
 
 
-#if defined(__GNUC__) || defined(__ICC)
+#if defined(__GNUC__) || defined(__INTEL_COMPILER)
 /*************************************************************************
  * All the gcc inlines
  * Gcc consistently defines the CPU as __cpu__.
@@ -556,6 +556,18 @@ do \
 #endif /* __mips__ && !__sgi */
 
 
+#if defined(__m32r__) && defined(HAVE_SYS_TAS_H)	/* Renesas' M32R */
+#define HAS_TEST_AND_SET
+
+#include <sys/tas.h>
+
+typedef int slock_t;
+
+#define TAS(lock) tas(lock)
+
+#endif /* __m32r__ */
+
+
 /* These live in s_lock.c, but only for gcc */
 
 
@@ -738,10 +750,12 @@ typedef abilock_t slock_t;
  */
 #define HAS_TEST_AND_SET
 
-typedef unsigned int slock_t;
+#include <sys/atomic_op.h>
 
-#define TAS(lock)			_check_lock(lock, 0, 1)
-#define S_UNLOCK(lock)		_clear_lock(lock, 0)
+typedef int slock_t;
+
+#define TAS(lock)			_check_lock((slock_t *) (lock), 0, 1)
+#define S_UNLOCK(lock)		_clear_lock((slock_t *) (lock), 0)
 #endif	 /* _AIX */
 
 

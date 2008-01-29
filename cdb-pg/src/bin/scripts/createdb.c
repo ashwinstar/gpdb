@@ -5,16 +5,14 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/scripts/createdb.c,v 1.21 2006/06/01 00:15:36 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/createdb.c,v 1.26 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
-
 #include "postgres_fe.h"
+
 #include "common.h"
 #include "dumputils.h"
-
-#include "mb/pg_wchar.h"
 
 
 static void help(const char *progname);
@@ -48,7 +46,6 @@ main(int argc, char *argv[])
 	char	   *username = NULL;
 	bool		password = false;
 	bool		echo = false;
-	bool		quiet = false;
 	char	   *owner = NULL;
 	char	   *tablespace = NULL;
 	char	   *template = NULL;
@@ -84,7 +81,7 @@ main(int argc, char *argv[])
 				echo = true;
 				break;
 			case 'q':
-				quiet = true;
+				/* obsolete; remove in 8.4 */
 				break;
 			case 'O':
 				owner = optarg;
@@ -175,12 +172,6 @@ main(int argc, char *argv[])
 	PQclear(result);
 	PQfinish(conn);
 
-	if (!quiet)
-	{
-		puts("CREATE DATABASE");
-		fflush(stdout);
-	}
-
 	if (comment)
 	{
 		conn = connectDatabase(dbname, host, port, username, password, progname);
@@ -203,11 +194,6 @@ main(int argc, char *argv[])
 
 		PQclear(result);
 		PQfinish(conn);
-		if (!quiet)
-		{
-			puts("COMMENT");
-			fflush(stdout);
-		}
 	}
 
 	exit(0);
@@ -226,14 +212,13 @@ help(const char *progname)
 	printf(_("  -O, --owner=OWNER            database user to own the new database\n"));
 	printf(_("  -T, --template=TEMPLATE      template database to copy\n"));
 	printf(_("  -e, --echo                   show the commands being sent to the server\n"));
-	printf(_("  -q, --quiet                  don't write any messages\n"));
 	printf(_("  --help                       show this help, then exit\n"));
 	printf(_("  --version                    output version information, then exit\n"));
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME          database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT              database server port\n"));
 	printf(_("  -U, --username=USERNAME      user name to connect as\n"));
-	printf(_("  -W, --password               prompt for password\n"));
+	printf(_("  -W, --password               force password prompt\n"));
 	printf(_("\nBy default, a database with the same name as the current user is created.\n"));
 	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
 }

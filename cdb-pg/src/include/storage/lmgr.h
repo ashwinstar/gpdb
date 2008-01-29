@@ -8,13 +8,14 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/lmgr.h,v 1.56 2006/08/18 16:09:13 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/storage/lmgr.h,v 1.60 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef LMGR_H
 #define LMGR_H
 
+#include "lib/stringinfo.h"
 #include "storage/lock.h"
 #include "utils/rel.h"
 
@@ -55,6 +56,11 @@ extern void XactLockTableDelete(TransactionId xid);
 extern void XactLockTableWait(TransactionId xid);
 extern bool ConditionalXactLockTableWait(TransactionId xid);
 
+/* Lock a VXID (used to wait for a transaction to finish) */
+extern void VirtualXactLockTableInsert(VirtualTransactionId vxid);
+extern void VirtualXactLockTableWait(VirtualTransactionId vxid);
+extern bool ConditionalVirtualXactLockTableWait(VirtualTransactionId vxid);
+
 /* Lock a general object (other than a relation) of the current database */
 extern void LockDatabaseObject(Oid classid, Oid objid, uint16 objsubid,
 				   LOCKMODE lockmode);
@@ -68,6 +74,9 @@ extern void UnlockSharedObject(Oid classid, Oid objid, uint16 objsubid,
 				   LOCKMODE lockmode);
 /* Knowledge about which locktags describe temp objects */
 extern bool LockTagIsTemp(const LOCKTAG *tag);
+
+/* Describe a locktag for error messages */
+extern void DescribeLockTag(StringInfo buf, const LOCKTAG *tag);
 
 /*
  * CdbLockRelation -- Lock a relation for reading or updating.

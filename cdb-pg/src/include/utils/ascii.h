@@ -3,7 +3,7 @@
  *
  *	 Portions Copyright (c) 1999-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/utils/ascii.h,v 1.14 2006/03/05 15:59:06 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/ascii.h,v 1.16 2008/01/01 19:45:59 momjian Exp $
  *
  *-----------------------------------------------------------------------
  */

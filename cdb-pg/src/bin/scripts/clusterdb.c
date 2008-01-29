@@ -4,7 +4,7 @@
  *
  * Portions Copyright (c) 2002-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/scripts/clusterdb.c,v 1.14 2006/03/05 15:58:52 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/clusterdb.c,v 1.20 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,7 +17,7 @@
 static void cluster_one_database(const char *dbname, const char *table,
 					 const char *host, const char *port,
 					 const char *username, bool password,
-					 const char *progname, bool echo, bool quiet);
+					 const char *progname, bool echo);
 static void cluster_all_databases(const char *host, const char *port,
 					  const char *username, bool password,
 					  const char *progname, bool echo, bool quiet);
@@ -111,6 +111,8 @@ main(int argc, char *argv[])
 			exit(1);
 	}
 
+	setup_cancel_handler();
+
 	if (alldb)
 	{
 		if (dbname)
@@ -143,7 +145,7 @@ main(int argc, char *argv[])
 
 		cluster_one_database(dbname, table,
 							 host, port, username, password,
-							 progname, echo, quiet);
+							 progname, echo);
 	}
 
 	exit(0);
@@ -154,12 +156,11 @@ static void
 cluster_one_database(const char *dbname, const char *table,
 					 const char *host, const char *port,
 					 const char *username, bool password,
-					 const char *progname, bool echo, bool quiet)
+					 const char *progname, bool echo)
 {
 	PQExpBufferData sql;
 
 	PGconn	   *conn;
-	PGresult   *result;
 
 	initPQExpBuffer(&sql);
 
@@ -169,12 +170,7 @@ cluster_one_database(const char *dbname, const char *table,
 	appendPQExpBuffer(&sql, ";\n");
 
 	conn = connectDatabase(dbname, host, port, username, password, progname);
-
-	if (echo)
-		printf("%s", sql.data);
-	result = PQexec(conn, sql.data);
-
-	if (PQresultStatus(result) != PGRES_COMMAND_OK)
+	if (!executeMaintenanceCommand(conn, sql.data, echo))
 	{
 		if (table)
 			fprintf(stderr, _("%s: clustering of table \"%s\" in database \"%s\" failed: %s"),
@@ -185,16 +181,8 @@ cluster_one_database(const char *dbname, const char *table,
 		PQfinish(conn);
 		exit(1);
 	}
-
-	PQclear(result);
 	PQfinish(conn);
 	termPQExpBuffer(&sql);
-
-	if (!quiet)
-	{
-		puts("CLUSTER");
-		fflush(stdout);
-	}
 }
 
 
@@ -208,7 +196,7 @@ cluster_all_databases(const char *host, const char *port,
 	int			i;
 
 	conn = connectDatabase("postgres", host, port, username, password, progname);
-	result = executeQuery(conn, "SELECT datname FROM pg_database WHERE datallowconn;", progname, echo);
+	result = executeQuery(conn, "SELECT datname FROM pg_database WHERE datallowconn ORDER BY 1;", progname, echo);
 	PQfinish(conn);
 
 	for (i = 0; i < PQntuples(result); i++)
@@ -216,11 +204,14 @@ cluster_all_databases(const char *host, const char *port,
 		char	   *dbname = PQgetvalue(result, i, 0);
 
 		if (!quiet)
-			fprintf(stderr, _("%s: clustering database \"%s\"\n"), progname, dbname);
+		{
+			printf(_("%s: clustering database \"%s\"\n"), progname, dbname);
+			fflush(stdout);
+		}
 
 		cluster_one_database(dbname, NULL,
 							 host, port, username, password,
-							 progname, echo, quiet);
+							 progname, echo);
 	}
 
 	PQclear(result);
@@ -245,7 +236,7 @@ help(const char *progname)
 	printf(_("  -h, --host=HOSTNAME       database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT           database server port\n"));
 	printf(_("  -U, --username=USERNAME   user name to connect as\n"));
-	printf(_("  -W, --password            prompt for password\n"));
+	printf(_("  -W, --password            force password prompt\n"));
 	printf(_("\nRead the description of the SQL command CLUSTER for details.\n"));
 	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
 }

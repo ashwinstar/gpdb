@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/vacuum.h,v 1.68 2006/11/05 22:42:10 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/commands/vacuum.h,v 1.75 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,8 +18,10 @@
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
 #include "nodes/parsenodes.h"
+#include "storage/buf.h"
 #include "storage/lock.h"
 #include "utils/rel.h"
+
 
 /*----------
  * ANALYZE builds one of these structs for each attribute (column) that is
@@ -105,13 +107,15 @@ typedef struct VacAttrStats
 
 
 /* GUC parameters */
-extern DLLIMPORT int default_statistics_target; /* DLLIMPORT for PostGIS */
-extern DLLIMPORT double analyze_relative_error;
+extern PGDLLIMPORT int default_statistics_target;		/* PGDLLIMPORT for
+														 * PostGIS */
+extern PGDLLIMPORT double analyze_relative_error;
 extern int	vacuum_freeze_min_age;
 
 
 /* in commands/vacuum.c */
-extern void vacuum(VacuumStmt *vacstmt, List *relids);
+extern void vacuum(VacuumStmt *vacstmt, List *relids,
+	   BufferAccessStrategy bstrategy, bool isTopLevel);
 extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
 				 int *nindexes, Relation **Irel);
 extern void vac_close_indexes(int nindexes, Relation *Irel, LOCKMODE lockmode);
@@ -120,7 +124,7 @@ extern void vac_update_relstats(Relation rel,
 					double num_tuples,
 					bool hasindex,
 					TransactionId frozenxid);
-extern void vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
+extern void vacuum_set_xid_limits(int freeze_min_age, bool sharedRel,
 					  TransactionId *oldestXmin,
 					  TransactionId *freezeLimit);
 extern void vac_update_datfrozenxid(void);
@@ -128,9 +132,11 @@ extern bool vac_is_partial_index(Relation indrel);
 extern void vacuum_delay_point(void);
 
 /* in commands/vacuumlazy.c */
-extern void lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt);
+extern void lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt,
+				BufferAccessStrategy bstrategy);
 
 /* in commands/analyze.c */
-extern void analyze_rel(Oid relid, VacuumStmt *vacstmt);
+extern void analyze_rel(Oid relid, VacuumStmt *vacstmt,
+			BufferAccessStrategy bstrategy);
 
 #endif   /* VACUUM_H */

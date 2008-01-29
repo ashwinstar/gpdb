@@ -8,12 +8,13 @@
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
- * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.76 2006/10/19 18:32:47 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.90 2008/01/01 19:45:59 momjian Exp $
  *--------------------------------------------------------------------
  */
 #ifndef GUC_H
 #define GUC_H
 
+#include "nodes/parsenodes.h"
 #include "tcop/dest.h"
 #include "utils/array.h"
 
@@ -102,6 +103,14 @@ typedef bool (*GucRealAssignHook) (double newval, bool doit, GucSource source);
 
 typedef const char *(*GucShowHook) (void);
 
+typedef enum
+{
+	/* Types of set_config_option actions */
+	GUC_ACTION_SET,				/* regular SET command */
+	GUC_ACTION_LOCAL,			/* SET LOCAL command */
+	GUC_ACTION_SAVE				/* function SET option */
+} GucAction;
+
 #define GUC_QUALIFIER_SEPARATOR '.'
 
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
@@ -132,7 +141,7 @@ extern bool log_statement_stats;
 extern bool log_dispatch_stats;
 extern bool log_btree_build_stats;
 
-extern DLLIMPORT bool check_function_bodies;
+extern PGDLLIMPORT bool check_function_bodies;
 extern bool default_with_oids;
 extern bool SQL_inheritance;
 
@@ -140,6 +149,7 @@ extern int	log_min_error_statement;
 extern int	log_min_messages;
 extern int	client_min_messages;
 extern int	log_min_duration_statement;
+extern int	log_temp_files;
 
 extern int	num_temp_buffers;
 
@@ -239,12 +249,14 @@ extern void ProcessConfigFile(GucContext context);
 extern void InitializeGUCOptions(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
 extern void ResetAllOptions(void);
-extern void AtEOXact_GUC(bool isCommit, bool isSubXact);
+extern void AtStart_GUC(void);
+extern int	NewGUCNestLevel(void);
+extern void AtEOXact_GUC(bool isCommit, int nestLevel);
 extern void BeginReportingGUCOptions(void);
 extern void ParseLongOption(const char *string, char **name, char **value);
 extern bool set_config_option(const char *name, const char *value,
 				  GucContext context, GucSource source,
-				  bool isLocal, bool changeVal);
+				  GucAction action, bool changeVal);
 extern char *GetConfigOptionByName(const char *name, const char **varname);
 extern void GetConfigOptionByNum(int varnum, const char **values, bool *noshow);
 extern int	GetNumConfigOptions(void);
@@ -252,13 +264,16 @@ extern int	GetNumConfigOptions(void);
 extern void SetPGVariable(const char *name, List *args, bool is_local, bool gp_dispatch);
 extern void GetPGVariable(const char *name, DestReceiver *dest);
 extern TupleDesc GetPGVariableResultDesc(const char *name);
-extern void ResetPGVariable(const char *name);
 
-extern char *flatten_set_variable_args(const char *name, List *args);
+extern void ExecSetVariableStmt(VariableSetStmt *stmt);
+extern char *ExtractSetVariableArgs(VariableSetStmt *stmt);
 
-extern void ProcessGUCArray(ArrayType *array, GucSource source);
+extern void ProcessGUCArray(ArrayType *array,
+				GucContext context, GucSource source, GucAction action);
 extern ArrayType *GUCArrayAdd(ArrayType *array, const char *name, const char *value);
 extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
+
+extern int	GUC_complaint_elevel(GucSource source);
 
 extern void pg_timezone_abbrev_initialize(void);
 
@@ -284,6 +299,8 @@ extern void read_nondefault_variables(void);
 /* in commands/tablespace.c */
 extern const char *assign_default_tablespace(const char *newval,
 						  bool doit, GucSource source);
+extern const char *assign_temp_tablespaces(const char *newval,
+						bool doit, GucSource source);
 
 /* in utils/adt/regexp.c */
 extern const char *assign_regex_flavor(const char *value,

@@ -4,7 +4,7 @@
  *
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/scripts/reindexdb.c,v 1.7 2006/09/02 17:10:17 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/reindexdb.c,v 1.13 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,7 +18,7 @@ static void reindex_one_database(const char *name, const char *dbname,
 					 const char *type, const char *host,
 					 const char *port, const char *username,
 					 bool password, const char *progname,
-					 bool echo, bool quiet);
+					 bool echo);
 static void reindex_all_databases(const char *host, const char *port,
 					  const char *username, bool password,
 					  const char *progname, bool echo,
@@ -26,8 +26,7 @@ static void reindex_all_databases(const char *host, const char *port,
 static void reindex_system_catalogs(const char *dbname,
 						const char *host, const char *port,
 						const char *username, bool password,
-						const char *progname, bool echo,
-						bool quiet);
+						const char *progname, bool echo);
 static void help(const char *progname);
 
 int
@@ -126,6 +125,8 @@ main(int argc, char *argv[])
 			exit(1);
 	}
 
+	setup_cancel_handler();
+
 	if (alldb)
 	{
 		if (dbname)
@@ -176,7 +177,7 @@ main(int argc, char *argv[])
 		}
 
 		reindex_system_catalogs(dbname, host, port, username, password,
-								progname, echo, quiet);
+								progname, echo);
 	}
 	else
 	{
@@ -192,14 +193,14 @@ main(int argc, char *argv[])
 
 		if (index)
 			reindex_one_database(index, dbname, "INDEX", host, port,
-								 username, password, progname, echo, quiet);
+								 username, password, progname, echo);
 		if (table)
 			reindex_one_database(table, dbname, "TABLE", host, port,
-								 username, password, progname, echo, quiet);
+								 username, password, progname, echo);
 		/* reindex database only if index or table is not specified */
 		if (index == NULL && table == NULL)
 			reindex_one_database(dbname, dbname, "DATABASE", host, port,
-								 username, password, progname, echo, quiet);
+								 username, password, progname, echo);
 	}
 
 	exit(0);
@@ -208,13 +209,11 @@ main(int argc, char *argv[])
 static void
 reindex_one_database(const char *name, const char *dbname, const char *type,
 					 const char *host, const char *port, const char *username,
-					 bool password, const char *progname, bool echo,
-					 bool quiet)
+					 bool password, const char *progname, bool echo)
 {
 	PQExpBufferData sql;
 
 	PGconn	   *conn;
-	PGresult   *result;
 
 	initPQExpBuffer(&sql);
 
@@ -229,11 +228,7 @@ reindex_one_database(const char *name, const char *dbname, const char *type,
 
 	conn = connectDatabase(dbname, host, port, username, password, progname);
 
-	if (echo)
-		printf("%s", sql.data);
-	result = PQexec(conn, sql.data);
-
-	if (PQresultStatus(result) != PGRES_COMMAND_OK)
+	if (!executeMaintenanceCommand(conn, sql.data, echo))
 	{
 		if (strcmp(type, "TABLE") == 0)
 			fprintf(stderr, _("%s: reindexing of table \"%s\" in database \"%s\" failed: %s"),
@@ -248,15 +243,8 @@ reindex_one_database(const char *name, const char *dbname, const char *type,
 		exit(1);
 	}
 
-	PQclear(result);
 	PQfinish(conn);
 	termPQExpBuffer(&sql);
-
-	if (!quiet)
-	{
-		puts("REINDEX");
-		fflush(stdout);
-	}
 }
 
 static void
@@ -269,7 +257,7 @@ reindex_all_databases(const char *host, const char *port,
 	int			i;
 
 	conn = connectDatabase("postgres", host, port, username, password, progname);
-	result = executeQuery(conn, "SELECT datname FROM pg_database WHERE datallowconn;", progname, echo);
+	result = executeQuery(conn, "SELECT datname FROM pg_database WHERE datallowconn ORDER BY 1;", progname, echo);
 	PQfinish(conn);
 
 	for (i = 0; i < PQntuples(result); i++)
@@ -277,10 +265,13 @@ reindex_all_databases(const char *host, const char *port,
 		char	   *dbname = PQgetvalue(result, i, 0);
 
 		if (!quiet)
-			fprintf(stderr, _("%s: reindexing database \"%s\"\n"), progname, dbname);
+		{
+			printf(_("%s: reindexing database \"%s\"\n"), progname, dbname);
+			fflush(stdout);
+		}
 
 		reindex_one_database(dbname, dbname, "DATABASE", host, port, username,
-							 password, progname, echo, quiet);
+							 password, progname, echo);
 	}
 
 	PQclear(result);
@@ -289,40 +280,26 @@ reindex_all_databases(const char *host, const char *port,
 static void
 reindex_system_catalogs(const char *dbname, const char *host, const char *port,
 						const char *username, bool password,
-						const char *progname, bool echo, bool quiet)
+						const char *progname, bool echo)
 {
 	PQExpBufferData sql;
 
 	PGconn	   *conn;
-	PGresult   *result;
 
 	initPQExpBuffer(&sql);
 
 	appendPQExpBuffer(&sql, "REINDEX SYSTEM %s;\n", dbname);
 
 	conn = connectDatabase(dbname, host, port, username, password, progname);
-
-	if (echo)
-		printf("%s", sql.data);
-	result = PQexec(conn, sql.data);
-
-	if (PQresultStatus(result) != PGRES_COMMAND_OK)
+	if (!executeMaintenanceCommand(conn, sql.data, echo))
 	{
 		fprintf(stderr, _("%s: reindexing of system catalogs failed: %s"),
 				progname, PQerrorMessage(conn));
 		PQfinish(conn);
 		exit(1);
 	}
-
-	PQclear(result);
 	PQfinish(conn);
 	termPQExpBuffer(&sql);
-
-	if (!quiet)
-	{
-		puts("REINDEX");
-		fflush(stdout);
-	}
 }
 
 static void
@@ -345,7 +322,7 @@ help(const char *progname)
 	printf(_("  -h, --host=HOSTNAME       database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT           database server port\n"));
 	printf(_("  -U, --username=USERNAME   user name to connect as\n"));
-	printf(_("  -W, --password            prompt for password\n"));
+	printf(_("  -W, --password            force password prompt\n"));
 	printf(_("\nRead the description of the SQL command REINDEX for details.\n"));
 	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
 }

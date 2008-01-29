@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/copy.h,v 1.28 2006/08/30 23:34:22 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/commands/copy.h,v 1.31 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -237,7 +237,7 @@ typedef CopyStateData *CopyState;
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
 
-extern uint64 DoCopy(const CopyStmt *stmt);
+extern uint64 DoCopy(const CopyStmt *stmt, const char *queryString);
 
 extern DestReceiver *CreateCopyDestReceiver(void);
 

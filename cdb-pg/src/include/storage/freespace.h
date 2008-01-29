@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/freespace.h,v 1.24 2006/10/19 18:32:47 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/storage/freespace.h,v 1.27 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -124,8 +124,8 @@ struct FSMRelation
 
 
 /* GUC variables */
-extern DLLIMPORT int MaxFSMRelations;
-extern DLLIMPORT int MaxFSMPages;
+extern PGDLLIMPORT int MaxFSMRelations;
+extern PGDLLIMPORT int MaxFSMPages;
 
 
 /*

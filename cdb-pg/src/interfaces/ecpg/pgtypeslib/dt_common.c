@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/dt_common.c,v 1.36.2.2 2007/05/21 14:57:07 meskes Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/pgtypeslib/dt_common.c,v 1.44 2007/11/15 21:14:45 momjian Exp $ */
 
 #include "postgres_fe.h"
 
@@ -214,6 +214,7 @@ static datetkn datetktbl[] = {
 	{"irkst", DTZ, POS(36)},	/* Irkutsk Summer Time */
 	{"irkt", TZ, POS(32)},		/* Irkutsk Time */
 	{"irt", TZ, POS(14)},		/* Iran Time */
+	{"isodow", RESERV, DTK_ISODOW},		/* ISO day of week, Sunday == 7 */
 #if 0
 	isst
 #endif
@@ -495,8 +496,8 @@ static datetkn deltatktbl[] = {
 	{"yrs", UNITS, DTK_YEAR},	/* "years" relative */
 };
 
-static unsigned int szdatetktbl = sizeof datetktbl / sizeof datetktbl[0];
-static unsigned int szdeltatktbl = sizeof deltatktbl / sizeof deltatktbl[0];
+static const unsigned int szdatetktbl = lengthof(datetktbl);
+static const unsigned int szdeltatktbl = lengthof(deltatktbl);
 
 static datetkn *datecache[MAXDATEFIELDS] = {NULL};
 
@@ -742,7 +743,7 @@ EncodeDateOnly(struct tm * tm, int style, char *str, bool EuroDates)
 	return TRUE;
 }	/* EncodeDateOnly() */
 
-static void
+void
 TrimTrailingZeros(char *str)
 {
 	int			len = strlen(str);
@@ -1089,7 +1090,7 @@ GetCurrentDateTime(struct tm * tm)
 	abstime2tm(time(NULL), &tz, tm, NULL);
 }
 
-static void
+void
 dt2time(double jd, int *hour, int *min, int *sec, fsec_t *fsec)
 {
 #ifdef HAVE_INT64_TIMESTAMP
@@ -1468,7 +1469,7 @@ DecodeDate(char *str, int fmask, int *tmask, struct tm * tm, bool EuroDates)
  * Only check the lower limit on hours, since this same code
  *	can be used to represent time spans.
  */
-static int
+int
 DecodeTime(char *str, int fmask, int *tmask, struct tm * tm, fsec_t *fsec)
 {
 	char	   *cp;
@@ -1815,7 +1816,7 @@ ParseDateTime(char *timestr, char *lowstr,
  */
 int
 DecodeDateTime(char **field, int *ftype, int nf,
-		  int *dtype, struct tm * tm, fsec_t *fsec, int *tzp, bool EuroDates)
+			   int *dtype, struct tm * tm, fsec_t *fsec, bool EuroDates)
 {
 	int			fmask = 0,
 				tmask = 0,
@@ -1827,6 +1828,8 @@ DecodeDateTime(char **field, int *ftype, int nf,
 	int			haveTextMonth = FALSE;
 	int			is2digits = FALSE;
 	int			bc = FALSE;
+	int			t = 0;
+	int		   *tzp = &t;
 
 	/***
 	 * We'll insist on at least all of the date fields, but initialize the
@@ -2374,12 +2377,13 @@ DecodeDateTime(char **field, int *ftype, int nf,
 		if (tm->tm_mday < 1 || tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1])
 			return -1;
 
-		/* backend tried to find local timezone here 
-		 * but we don't use the result afterwards anyway
-		 * so we only check for this error:
-		 * daylight savings time modifier but no standard timezone? */
+		/*
+		 * backend tried to find local timezone here but we don't use the
+		 * result afterwards anyway so we only check for this error: daylight
+		 * savings time modifier but no standard timezone?
+		 */
 		if ((fmask & DTK_DATE_M) == DTK_DATE_M && tzp != NULL && !(fmask & DTK_M(TZ)) && (fmask & DTK_M(DTZMOD)))
-				return -1;
+			return -1;
 	}
 
 	return 0;

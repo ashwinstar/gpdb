@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/itemptr.h,v 1.29 2006/08/25 04:06:57 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/storage/itemptr.h,v 1.31 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

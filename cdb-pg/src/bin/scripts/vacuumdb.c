@@ -5,7 +5,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/scripts/vacuumdb.c,v 1.14 2006/03/05 15:58:52 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/vacuumdb.c,v 1.20 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,7 +18,7 @@ static void vacuum_one_database(const char *dbname, bool full, bool verbose, boo
 					const char *table,
 					const char *host, const char *port,
 					const char *username, bool password,
-					const char *progname, bool echo, bool quiet);
+					const char *progname, bool echo);
 static void vacuum_all_databases(bool full, bool verbose, bool analyze,
 					 const char *host, const char *port,
 					 const char *username, bool password,
@@ -128,6 +128,8 @@ main(int argc, char *argv[])
 			exit(1);
 	}
 
+	setup_cancel_handler();
+
 	if (alldb)
 	{
 		if (dbname)
@@ -161,7 +163,7 @@ main(int argc, char *argv[])
 
 		vacuum_one_database(dbname, full, verbose, analyze, table,
 							host, port, username, password,
-							progname, echo, quiet);
+							progname, echo);
 	}
 
 	exit(0);
@@ -173,12 +175,11 @@ vacuum_one_database(const char *dbname, bool full, bool verbose, bool analyze,
 					const char *table,
 					const char *host, const char *port,
 					const char *username, bool password,
-					const char *progname, bool echo, bool quiet)
+					const char *progname, bool echo)
 {
 	PQExpBufferData sql;
 
 	PGconn	   *conn;
-	PGresult   *result;
 
 	initPQExpBuffer(&sql);
 
@@ -194,12 +195,7 @@ vacuum_one_database(const char *dbname, bool full, bool verbose, bool analyze,
 	appendPQExpBuffer(&sql, ";\n");
 
 	conn = connectDatabase(dbname, host, port, username, password, progname);
-
-	if (echo)
-		printf("%s", sql.data);
-	result = PQexec(conn, sql.data);
-
-	if (PQresultStatus(result) != PGRES_COMMAND_OK)
+	if (!executeMaintenanceCommand(conn, sql.data, echo))
 	{
 		if (table)
 			fprintf(stderr, _("%s: vacuuming of table \"%s\" in database \"%s\" failed: %s"),
@@ -210,16 +206,8 @@ vacuum_one_database(const char *dbname, bool full, bool verbose, bool analyze,
 		PQfinish(conn);
 		exit(1);
 	}
-
-	PQclear(result);
 	PQfinish(conn);
 	termPQExpBuffer(&sql);
-
-	if (!quiet)
-	{
-		puts("VACUUM");
-		fflush(stdout);
-	}
 }
 
 
@@ -234,7 +222,7 @@ vacuum_all_databases(bool full, bool verbose, bool analyze,
 	int			i;
 
 	conn = connectDatabase("postgres", host, port, username, password, progname);
-	result = executeQuery(conn, "SELECT datname FROM pg_database WHERE datallowconn;", progname, echo);
+	result = executeQuery(conn, "SELECT datname FROM pg_database WHERE datallowconn ORDER BY 1;", progname, echo);
 	PQfinish(conn);
 
 	for (i = 0; i < PQntuples(result); i++)
@@ -242,11 +230,14 @@ vacuum_all_databases(bool full, bool verbose, bool analyze,
 		char	   *dbname = PQgetvalue(result, i, 0);
 
 		if (!quiet)
-			fprintf(stderr, _("%s: vacuuming database \"%s\"\n"), progname, dbname);
+		{
+			printf(_("%s: vacuuming database \"%s\"\n"), progname, dbname);
+			fflush(stdout);
+		}
 
 		vacuum_one_database(dbname, full, verbose, analyze, NULL,
 							host, port, username, password,
-							progname, echo, quiet);
+							progname, echo);
 	}
 
 	PQclear(result);
@@ -274,7 +265,7 @@ help(const char *progname)
 	printf(_("  -h, --host=HOSTNAME       database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT           database server port\n"));
 	printf(_("  -U, --username=USERNAME   user name to connect as\n"));
-	printf(_("  -W, --password            prompt for password\n"));
+	printf(_("  -W, --password            force password prompt\n"));
 	printf(_("\nRead the description of the SQL command VACUUM for details.\n"));
 	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
 }

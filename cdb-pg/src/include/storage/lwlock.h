@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/lwlock.h,v 1.32 2006/10/15 22:04:07 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/storage/lwlock.h,v 1.38 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -49,7 +49,6 @@ typedef enum LWLockId
 	WALWriteLock,
 	ControlFileLock,
 	CheckpointLock,
-	CheckpointStartLock,
 	CLogControlLock,
 	SubtransControlLock,
 	MultiXactGenLock,
@@ -61,10 +60,14 @@ typedef enum LWLockId
 	TablespaceCreateLock,
 	BtreeVacuumLock,
 	AddinShmemInitLock,
+	AutovacuumLock,
+	AutovacuumScheduleLock,
+	SyncScanLock,
 	SharedSnapshotLock,
 	DistributedXidMapControlLock,
 	TemporarySerializePreparesLock,
 	SeqServerControlLock,
+	/* Individual lock IDs end here */
 	FirstBufMappingLock,
 	FirstLockMgrLock = FirstBufMappingLock + NUM_BUFFER_PARTITIONS,
 	ResQueueLock = FirstLockMgrLock + NUM_LOCK_PARTITIONS,

@@ -5,7 +5,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/scripts/createlang.c,v 1.24.2.1 2007/08/10 00:39:44 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/createlang.c,v 1.29 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -125,6 +125,7 @@ main(int argc, char *argv[])
 	if (listlangs)
 	{
 		printQueryOpt popt;
+		static const bool trans_columns[] = {false, true};
 
 		conn = connectDatabase(dbname, host, port, username, password,
 							   progname);
@@ -132,7 +133,9 @@ main(int argc, char *argv[])
 		printfPQExpBuffer(&sql, "SELECT lanname as \"%s\", "
 				"(CASE WHEN lanpltrusted THEN '%s' ELSE '%s' END) as \"%s\" "
 						  "FROM pg_catalog.pg_language WHERE lanispl;",
-						  _("Name"), _("yes"), _("no"), _("Trusted?"));
+						  gettext_noop("Name"),
+						  gettext_noop("yes"), gettext_noop("no"),
+						  gettext_noop("Trusted?"));
 		result = executeQuery(conn, sql.data, progname, echo);
 
 		memset(&popt, 0, sizeof(popt));
@@ -142,6 +145,8 @@ main(int argc, char *argv[])
 		popt.topt.stop_table = true;
 		popt.topt.encoding = PQclientEncoding(conn);
 		popt.title = _("Procedural Languages");
+		popt.trans_headers = true;
+		popt.trans_columns = trans_columns;
 		printQuery(result, &popt, stdout, NULL);
 
 		PQfinish(conn);
@@ -212,7 +217,7 @@ help(const char *progname)
 	printf(_("  -h, --host=HOSTNAME       database server host or socket directory\n"));
 	printf(_("  -p, --port=PORT           database server port\n"));
 	printf(_("  -U, --username=USERNAME   user name to connect as\n"));
-	printf(_("  -W, --password            prompt for password\n"));
+	printf(_("  -W, --password            force password prompt\n"));
 	printf(_("  --help                    show this help, then exit\n"));
 	printf(_("  --version                 output version information, then exit\n"));
 	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));

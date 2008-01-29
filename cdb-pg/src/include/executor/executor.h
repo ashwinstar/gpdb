@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/executor/executor.h,v 1.130.2.2 2007/02/02 00:07:28 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/executor/executor.h,v 1.146 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,6 +18,7 @@
 #include "executor/execdesc.h"
 #include "nodes/execnodes.h"
 #include "utils/tuplestore.h"
+#include "nodes/parsenodes.h"
 
 #include "cdb/cdbdef.h"                 /* CdbVisitOpt */
 
@@ -76,6 +77,14 @@ extern bool ExecSupportsBackwardScan(Plan *node);
 extern bool ExecMayReturnRawTuples(PlanState *node);
 
 /*
+ * prototypes from functions in execCurrent.c
+ */
+extern bool execCurrentOf(CurrentOfExpr *cexpr,
+			  ExprContext *econtext,
+			  Oid table_oid,
+			  ItemPointer current_tid);
+
+/*
  * prototypes from functions in execGrouping.c
  */
 extern bool execTuplesMatch(TupleTableSlot *slot1,
@@ -90,14 +99,12 @@ extern bool execTuplesUnequal(TupleTableSlot *slot1,
 				  AttrNumber *matchColIdx,
 				  FmgrInfo *eqfunctions,
 				  MemoryContext evalContext);
-extern FmgrInfo *execTuplesMatchPrepare(TupleDesc tupdesc,
-					   int numCols,
-					   AttrNumber *matchColIdx);
-extern void execTuplesHashPrepare(TupleDesc tupdesc,
-					  int numCols,
-					  AttrNumber *matchColIdx,
-					  FmgrInfo **eqfunctions,
-					  FmgrInfo **hashfunctions);
+extern FmgrInfo *execTuplesMatchPrepare(int numCols,
+					   Oid *eqOperators);
+extern void execTuplesHashPrepare(int numCols,
+					  Oid *eqOperators,
+					  FmgrInfo **eqFunctions,
+					  FmgrInfo **hashFunctions);
 extern TupleHashTable BuildTupleHashTable(int numCols, AttrNumber *keyColIdx,
 					FmgrInfo *eqfunctions,
 					FmgrInfo *hashfunctions,
@@ -107,6 +114,10 @@ extern TupleHashTable BuildTupleHashTable(int numCols, AttrNumber *keyColIdx,
 extern TupleHashEntry LookupTupleHashEntry(TupleHashTable hashtable,
 					 TupleTableSlot *slot,
 					 bool *isnew);
+extern TupleHashEntry FindTupleHashEntry(TupleHashTable hashtable,
+				   TupleTableSlot *slot,
+				   FmgrInfo *eqfunctions,
+				   FmgrInfo *hashfunctions);
 
 /*
  * prototypes from functions in execJunk.c
@@ -116,8 +127,10 @@ extern JunkFilter *ExecInitJunkFilter(List *targetList, bool hasoid,
 extern JunkFilter *ExecInitJunkFilterConversion(List *targetList,
 							 TupleDesc cleanTupType,
 							 TupleTableSlot *slot);
-extern bool ExecGetJunkAttribute(JunkFilter *junkfilter, TupleTableSlot *slot,
-					 char *attrName, Datum *value, bool *isNull);
+extern AttrNumber ExecFindJunkAttribute(JunkFilter *junkfilter,
+					  const char *attrName);
+extern Datum ExecGetJunkAttribute(TupleTableSlot *slot, AttrNumber attno,
+					 bool *isNull);
 extern TupleTableSlot *ExecFilterJunk(JunkFilter *junkfilter,
 			   TupleTableSlot *slot);
 extern HeapTuple ExecRemoveJunk(JunkFilter *junkfilter, TupleTableSlot *slot);
@@ -131,13 +144,13 @@ extern TupleTableSlot *ExecutorRun(QueryDesc *queryDesc,
 			ScanDirection direction, long count);
 extern void ExecutorEnd(QueryDesc *queryDesc);
 extern void ExecutorRewind(QueryDesc *queryDesc);
-extern void ExecCheckRTPerms(List *rangeTable);
-extern void ExecEndPlan(PlanState *planstate, EState *estate);
+extern ResultRelInfo *ExecGetTriggerResultRel(EState *estate, Oid relid);
 extern bool ExecContextForcesOids(PlanState *planstate, bool *hasoids);
 extern void ExecConstraints(ResultRelInfo *resultRelInfo,
 				TupleTableSlot *slot, EState *estate);
 extern TupleTableSlot *EvalPlanQual(EState *estate, Index rti,
-			 ItemPointer tid, TransactionId priorXmax, CommandId curCid);
+			 ItemPointer tid, TransactionId priorXmax);
+extern PlanState *ExecGetActivePlanTree(QueryDesc *queryDesc);
 extern DestReceiver *CreateIntoRelDestReceiver(void);
 
 /*
@@ -199,7 +212,6 @@ extern Tuplestorestate *ExecMakeTableFunctionResult(ExprState *funcexpr,
 extern Datum ExecEvalExprSwitchContext(ExprState *expression, ExprContext *econtext,
 						  bool *isNull, ExprDoneCond *isDone);
 extern ExprState *ExecInitExpr(Expr *node, PlanState *parent);
-extern SubPlanState *ExecInitExprInitPlan(SubPlan *node, PlanState *parent);
 extern ExprState *ExecPrepareExpr(Expr *node, EState *estate);
 extern bool ExecQual(List *qual, ExprContext *econtext, bool resultForNull);
 extern int	ExecTargetListLength(List *targetlist);
@@ -259,7 +271,6 @@ extern void end_tup_output(TupOutputState *tstate);
  * prototypes from functions in execUtils.c
  */
 extern EState *CreateExecutorState(void);
-extern EState *CreateSubExecutorState(EState *parent_estate);
 extern void FreeExecutorState(EState *estate);
 extern ExprContext *CreateExprContext(EState *estate);
 extern ExprContext *CreateStandaloneExprContext(void);
@@ -296,7 +307,7 @@ extern ProjectionInfo *ExecBuildProjectionInfo(List *targetList,
 						TupleTableSlot *slot,
 						TupleDesc inputDesc);
 extern void ExecAssignProjectionInfo(PlanState *planstate,
-									 TupleDesc inputDesc);
+						 TupleDesc inputDesc);
 extern void ExecFreeExprContext(PlanState *planstate);
 extern TupleDesc ExecGetScanType(ScanState *scanstate);
 extern void ExecAssignScanType(ScanState *scanstate, TupleDesc tupDesc);

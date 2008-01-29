@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/async.h,v 1.33 2006/04/25 14:11:59 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/commands/async.h,v 1.36 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,6 +19,7 @@ extern bool Trace_notify;
 extern void Async_Notify(const char *relname);
 extern void Async_Listen(const char *relname);
 extern void Async_Unlisten(const char *relname);
+extern void Async_UnlistenAll(void);
 
 /* perform (or cancel) outbound notify processing at transaction commit */
 extern void AtCommit_Notify(void);

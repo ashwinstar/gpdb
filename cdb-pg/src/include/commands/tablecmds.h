@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/tablecmds.h,v 1.31.2.1 2007/05/11 20:18:17 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/commands/tablecmds.h,v 1.36 2008/01/01 19:45:57 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -50,6 +50,7 @@ extern void renameatt(Oid myrelid,
 
 extern void renamerel(Oid myrelid,
 		  const char *newrelname,
+		  ObjectType reltype,
 		  RenameStmt *stmt /* MPP */);
 
 extern void find_composite_type_dependencies(Oid typeOid,
