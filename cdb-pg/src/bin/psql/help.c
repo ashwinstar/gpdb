@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/help.c,v 1.115 2006/10/06 17:14:00 petere Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/help.c,v 1.121 2008/01/01 19:45:56 momjian Exp $
  */
 #include "postgres_fe.h"
 
@@ -132,7 +132,7 @@ usage(void)
 	if (!env)
 		env = user;
 	printf(_("  -U NAME         database user name (default: \"%s\")\n"), env);
-	puts(_("  -W              prompt for password (should happen automatically)"));
+	puts(_("  -W              force password prompt (should happen automatically)"));
 
 	puts(_(
 		   "\nFor more information, type \"\\?\" (for internal commands) or \"\\help\"\n"
@@ -161,7 +161,7 @@ slashUsage(unsigned short int pager)
 {
 	FILE	   *output;
 
-	output = PageOutput(67, pager);
+	output = PageOutput(69, pager);
 
 	/* if you add/remove a line here, change the row count above */
 
@@ -184,6 +184,8 @@ slashUsage(unsigned short int pager)
 	fprintf(output, _("  \\timing        toggle timing of commands (currently %s)\n"),
 			ON(pset.timing));
 	fprintf(output, _("  \\unset NAME    unset (delete) internal variable\n"));
+	fprintf(output, _("  \\prompt [TEXT] NAME\n"
+				 "                 prompt user to set internal variable\n"));
 	fprintf(output, _("  \\! [COMMAND]   execute command in shell or start interactive shell\n"));
 	fprintf(output, "\n");
 
@@ -217,6 +219,10 @@ slashUsage(unsigned short int pager)
 	fprintf(output, _("  \\dd [PATTERN]  show comment for object\n"));
 	fprintf(output, _("  \\dD [PATTERN]  list domains\n"));
 	fprintf(output, _("  \\df [PATTERN]  list functions (add \"+\" for more detail)\n"));
+	fprintf(output, _("  \\dF [PATTERN]  list text search configurations (add \"+\" for more detail)\n"));
+	fprintf(output, _("  \\dFd [PATTERN] list text search dictionaries (add \"+\" for more detail)\n"));
+	fprintf(output, _("  \\dFt [PATTERN] list text search templates\n"));
+	fprintf(output, _("  \\dFp [PATTERN] list text search parsers (add \"+\" for more detail)\n"));
 	fprintf(output, _("  \\dg [PATTERN]  list groups\n"));
 	fprintf(output, _("  \\dn [PATTERN]  list schemas (add \"+\" for more detail)\n"));
 	fprintf(output, _("  \\do [NAME]     list operators\n"));

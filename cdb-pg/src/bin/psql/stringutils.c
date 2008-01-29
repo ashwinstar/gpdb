@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/stringutils.c,v 1.45 2006/10/04 00:30:06 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/stringutils.c,v 1.47 2008/01/01 19:45:56 momjian Exp $
  */
 #include "postgres_fe.h"
 

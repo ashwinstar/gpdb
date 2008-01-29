@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/command.c,v 1.174 2006/10/06 17:14:00 petere Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/command.c,v 1.186 2008/01/01 19:45:55 momjian Exp $
  */
 #include "postgres_fe.h"
 #include "command.h"
@@ -45,7 +45,6 @@
 #include "psqlscan.h"
 #include "settings.h"
 #include "variables.h"
-#include "mb/pg_wchar.h"
 
 
 /* functions for use in this file */
@@ -60,8 +59,8 @@ static bool do_shell(const char *command);
 /*----------
  * HandleSlashCmds:
  *
- * Handles all the different commands that start with '\',
- * ordinarily called by MainLoop().
+ * Handles all the different commands that start with '\'.
+ * Ordinarily called by MainLoop().
  *
  * scan_state is a lexer working state that is set to continue scanning
  * just after the '\'.  The lexer is advanced past the command and all
@@ -147,6 +146,9 @@ HandleSlashCmds(PsqlScanState scan_state,
 	psql_scan_slash_command_end(scan_state);
 
 	free(cmd);
+
+	/* some commands write to queryFout, so make sure output is sent */
+	fflush(pset.queryFout);
 
 	return status;
 }
@@ -292,7 +294,7 @@ exec_command(const char *cmd,
 		}
 
 		if (pset.dirname)
-			pfree(pset.dirname);
+			free(pset.dirname);
 		pset.dirname = pg_strdup(dir);
 		canonicalize_path(pset.dirname);
 
@@ -303,10 +305,27 @@ exec_command(const char *cmd,
 	/* \copy */
 	else if (pg_strcasecmp(cmd, "copy") == 0)
 	{
+		/* Default fetch-it-all-and-print mode */
+		TimevalStruct before,
+					after;
+		double		elapsed_msec = 0;
+
 		char	   *opt = psql_scan_slash_option(scan_state,
 												 OT_WHOLE_LINE, NULL, false);
 
+		if (pset.timing)
+			GETTIMEOFDAY(&before);
+
 		success = do_copy(opt);
+
+		if (pset.timing && success)
+		{
+			GETTIMEOFDAY(&after);
+			elapsed_msec = DIFF_MSEC(&after, &before);
+			printf(_("Time: %.3f ms\n"), elapsed_msec);
+
+		}
+
 		free(opt);
 	}
 
@@ -387,6 +406,27 @@ exec_command(const char *cmd,
 				break;
 			case 'u':
 				success = describeRoles(pattern, show_verbose);
+				break;
+			case 'F':			/* text search subsystem */
+				switch (cmd[2])
+				{
+					case '\0':
+					case '+':
+						success = listTSConfigs(pattern, show_verbose);
+						break;
+					case 'p':
+						success = listTSParsers(pattern, show_verbose);
+						break;
+					case 'd':
+						success = listTSDictionaries(pattern, show_verbose);
+						break;
+					case 't':
+						success = listTSTemplates(pattern, show_verbose);
+						break;
+					default:
+						status = PSQL_CMD_UNKNOWN;
+						break;
+				}
 				break;
 
 			default:
@@ -695,6 +735,59 @@ exec_command(const char *cmd,
 		free(pw2);
 	}
 
+	/* \prompt -- prompt and set variable */
+	else if (strcmp(cmd, "prompt") == 0)
+	{
+		char	   *opt,
+				   *prompt_text = NULL;
+		char	   *arg1,
+				   *arg2;
+
+		arg1 = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, false);
+		arg2 = psql_scan_slash_option(scan_state, OT_NORMAL, NULL, false);
+
+		if (!arg1)
+		{
+			psql_error("\\%s: missing required argument\n", cmd);
+			success = false;
+		}
+		else
+		{
+			char	   *result;
+
+			if (arg2)
+			{
+				prompt_text = arg1;
+				opt = arg2;
+			}
+			else
+				opt = arg1;
+
+			if (!pset.inputfile)
+				result = simple_prompt(prompt_text, 4096, true);
+			else
+			{
+				if (prompt_text)
+				{
+					fputs(prompt_text, stdout);
+					fflush(stdout);
+				}
+				result = gets_fromFile(stdin);
+			}
+
+			if (!SetVariable(pset.vars, opt, result))
+			{
+				psql_error("\\%s: error\n", cmd);
+				success = false;
+			}
+
+			free(result);
+			if (prompt_text)
+				free(prompt_text);
+			free(opt);
+		}
+	}
+
 	/* \pset -- set printing parameters */
 	else if (strcmp(cmd, "pset") == 0)
 	{
@@ -795,7 +888,13 @@ exec_command(const char *cmd,
 
 	/* \t -- turn off headers and row count */
 	else if (strcmp(cmd, "t") == 0)
-		success = do_pset("tuples_only", NULL, &pset.popt, pset.quiet);
+	{
+		char	   *opt = psql_scan_slash_option(scan_state,
+												 OT_NORMAL, NULL, true);
+
+		success = do_pset("tuples_only", opt, &pset.popt, pset.quiet);
+		free(opt);
+	}
 
 
 	/* \T -- define html <table ...> attributes */
@@ -907,7 +1006,13 @@ exec_command(const char *cmd,
 
 	/* \x -- toggle expanded table representation */
 	else if (strcmp(cmd, "x") == 0)
-		success = do_pset("expanded", NULL, &pset.popt, pset.quiet);
+	{
+		char	   *opt = psql_scan_slash_option(scan_state,
+												 OT_NORMAL, NULL, true);
+
+		success = do_pset("expanded", opt, &pset.popt, pset.quiet);
+		free(opt);
+	}
 
 	/* \z -- list table rights (equivalent to \dp) */
 	else if (strcmp(cmd, "z") == 0)
@@ -978,8 +1083,9 @@ prompt_for_password(const char *username)
 	{
 		char	   *prompt_text;
 
-		prompt_text = malloc(strlen(username) + 32);
-		sprintf(prompt_text, "Password for user \"%s\": ", username);
+		prompt_text = malloc(strlen(username) + 100);
+		snprintf(prompt_text, strlen(username) + 100,
+				 _("Password for user %s: "), username);
 		result = simple_prompt(prompt_text, 100, false);
 		free(prompt_text);
 	}
@@ -1030,11 +1136,11 @@ do_connect(char *dbname, char *user, char *host, char *port)
 	 * If the user asked to be prompted for a password, ask for one now. If
 	 * not, use the password from the old connection, provided the username
 	 * has not changed. Otherwise, try to connect without a password first,
-	 * and then ask for a password if we got the appropriate error message.
+	 * and then ask for a password if needed.
 	 *
-	 * XXX: this behavior is broken. It leads to spurious connection attempts
-	 * in the postmaster's log, and doing a string comparison against the
-	 * returned error message is pretty fragile.
+	 * XXX: this behavior leads to spurious connection attempts recorded in
+	 * the postmaster's log.  But libpq offers no API that would let us obtain
+	 * a password and then continue with the first connection attempt.
 	 */
 	if (pset.getPassword)
 	{
@@ -1061,7 +1167,7 @@ do_connect(char *dbname, char *user, char *host, char *port)
 		 * Connection attempt failed; either retry the connection attempt with
 		 * a new password, or give up.
 		 */
-		if (strcmp(PQerrorMessage(n_conn), PQnoPasswordSupplied) == 0)
+		if (!password && PQconnectionNeedsPassword(n_conn))
 		{
 			PQfinish(n_conn);
 			password = prompt_for_password(user);
@@ -1484,7 +1590,10 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 	/* set expanded/vertical mode */
 	else if (strcmp(param, "x") == 0 || strcmp(param, "expanded") == 0 || strcmp(param, "vertical") == 0)
 	{
-		popt->topt.expanded = !popt->topt.expanded;
+		if (value)
+			popt->topt.expanded = ParseVariableBool(value);
+		else
+			popt->topt.expanded = !popt->topt.expanded;
 		if (!quiet)
 			printf(popt->topt.expanded
 				   ? _("Expanded display is on.\n")
@@ -1494,7 +1603,10 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 	/* locale-aware numeric output */
 	else if (strcmp(param, "numericlocale") == 0)
 	{
-		popt->topt.numericLocale = !popt->topt.numericLocale;
+		if (value)
+			popt->topt.numericLocale = ParseVariableBool(value);
+		else
+			popt->topt.numericLocale = !popt->topt.numericLocale;
 		if (!quiet)
 		{
 			if (popt->topt.numericLocale)
@@ -1548,7 +1660,10 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 	/* toggle between full and tuples-only format */
 	else if (strcmp(param, "t") == 0 || strcmp(param, "tuples_only") == 0)
 	{
-		popt->topt.tuples_only = !popt->topt.tuples_only;
+		if (value)
+			popt->topt.tuples_only = ParseVariableBool(value);
+		else
+			popt->topt.tuples_only = !popt->topt.tuples_only;
 		if (!quiet)
 		{
 			if (popt->topt.tuples_only)
@@ -1599,6 +1714,11 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 	{
 		if (value && pg_strcasecmp(value, "always") == 0)
 			popt->topt.pager = 2;
+		else if (value)
+			if (ParseVariableBool(value))
+				popt->topt.pager = 1;
+			else
+				popt->topt.pager = 0;
 		else if (popt->topt.pager == 1)
 			popt->topt.pager = 0;
 		else
@@ -1617,7 +1737,10 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 	/* disable "(x rows)" footer */
 	else if (strcmp(param, "footer") == 0)
 	{
-		popt->default_footer = !popt->default_footer;
+		if (value)
+			popt->default_footer = ParseVariableBool(value);
+		else
+			popt->default_footer = !popt->default_footer;
 		if (!quiet)
 		{
 			if (popt->default_footer)

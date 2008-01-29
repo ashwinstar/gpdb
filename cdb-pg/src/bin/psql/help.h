@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/help.h,v 1.17 2006/03/05 15:58:51 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/help.h,v 1.19 2008/01/01 19:45:56 momjian Exp $
  */
 #ifndef HELP_H
 #define HELP_H

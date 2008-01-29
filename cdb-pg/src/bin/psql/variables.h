@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/variables.h,v 1.20 2006/10/04 00:30:06 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/variables.h,v 1.22 2008/01/01 19:45:56 momjian Exp $
  */
 #ifndef VARIABLES_H
 #define VARIABLES_H
