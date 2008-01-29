@@ -9,14 +9,14 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump_sort.c,v 1.15 2006/07/14 14:52:26 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump_sort.c,v 1.20 2008/01/01 19:45:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "pg_backup_archiver.h"
 
 
-static char *modulename = gettext_noop("sorter");
+static const char *modulename = gettext_noop("sorter");
 
 /*
  * Sort priority for object types when dumping a pre-7.3 database.
@@ -33,6 +33,7 @@ static const int oldObjectTypePriority[] =
 	3,							/* DO_AGG */
 	3,							/* DO_OPERATOR */
 	4,							/* DO_OPCLASS */
+	4,							/* DO_OPFAMILY */
 	5,							/* DO_CONVERSION */
 	6,							/* DO_TABLE */
 	8,							/* DO_ATTRDEF */
@@ -45,6 +46,10 @@ static const int oldObjectTypePriority[] =
 	2,							/* DO_CAST */
 	9,							/* DO_TABLE_DATA */
 	7,							/* DO_TABLE_TYPE */
+	3,							/* DO_TSPARSER */
+	4,							/* DO_TSDICT */
+	3,							/* DO_TSTEMPLATE */
+	5,							/* DO_TSCONFIG */
 	10,							/* DO_BLOBS */
 	11							/* DO_BLOB_COMMENTS */
 };
@@ -62,6 +67,7 @@ static const int newObjectTypePriority[] =
 	5,							/* DO_AGG */
 	6,							/* DO_OPERATOR */
 	7,							/* DO_OPCLASS */
+	7,							/* DO_OPFAMILY */
 	9,							/* DO_CONVERSION */
 	10,							/* DO_TABLE */
 	12,							/* DO_ATTRDEF */
@@ -74,6 +80,10 @@ static const int newObjectTypePriority[] =
 	8,							/* DO_CAST */
 	13,							/* DO_TABLE_DATA */
 	11,							/* DO_TABLE_TYPE */
+	5,							/* DO_TSPARSER */
+	6,							/* DO_TSDICT */
+	5,							/* DO_TSTEMPLATE */
+	7,							/* DO_TSCONFIG */
 	14,							/* DO_BLOBS */
 	15							/* DO_BLOB_COMMENTS */
 };
@@ -996,6 +1006,11 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 					 "OPERATOR CLASS %s  (ID %d OID %u)",
 					 obj->name, obj->dumpId, obj->catId.oid);
 			return;
+		case DO_OPFAMILY:
+			snprintf(buf, bufsize,
+					 "OPERATOR FAMILY %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
 		case DO_CONVERSION:
 			snprintf(buf, bufsize,
 					 "CONVERSION %s  (ID %d OID %u)",
@@ -1058,6 +1073,26 @@ describeDumpableObject(DumpableObject *obj, char *buf, int bufsize)
 		case DO_TABLE_TYPE:
 			snprintf(buf, bufsize,
 					 "TABLE TYPE %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		case DO_TSPARSER:
+			snprintf(buf, bufsize,
+					 "TEXT SEARCH PARSER %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		case DO_TSDICT:
+			snprintf(buf, bufsize,
+					 "TEXT SEARCH DICTIONARY %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		case DO_TSTEMPLATE:
+			snprintf(buf, bufsize,
+					 "TEXT SEARCH TEMPLATE %s  (ID %d OID %u)",
+					 obj->name, obj->dumpId, obj->catId.oid);
+			return;
+		case DO_TSCONFIG:
+			snprintf(buf, bufsize,
+					 "TEXT SEARCH CONFIGURATION %s  (ID %d OID %u)",
 					 obj->name, obj->dumpId, obj->catId.oid);
 			return;
 		case DO_BLOBS:

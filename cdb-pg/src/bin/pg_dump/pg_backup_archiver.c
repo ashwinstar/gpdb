@@ -32,12 +32,11 @@
 #endif
 
 #include "libpq/libpq-fs.h"
-#include "mb/pg_wchar.h"
 
 
 const char *progname;
 
-static char *modulename = gettext_noop("archiver");
+static const char *modulename = gettext_noop("archiver");
 
 
 static ArchiveHandle *_allocAH(const char *FileSpec, const ArchiveFormat fmt,
@@ -86,10 +85,10 @@ static void ResetOutput(ArchiveHandle *AH, OutputContext savedContext);
 /* Public */
 Archive *
 CreateArchive(const char *FileSpec, const ArchiveFormat fmt,
-			  const int compression)
+			  const int compression, ArchiveMode mode)
 
 {
-	ArchiveHandle *AH = _allocAH(FileSpec, fmt, compression, archModeWrite);
+	ArchiveHandle *AH = _allocAH(FileSpec, fmt, compression, mode);
 
 	return (Archive *) AH;
 }
@@ -253,6 +252,22 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 				ahprintf(AH, "%s", te->dropStmt);
 			}
 		}
+
+		/*
+		 * _selectOutputSchema may have set currSchema to reflect the effect
+		 * of a "SET search_path" command it emitted.  However, by now we may
+		 * have dropped that schema; or it might not have existed in the first
+		 * place.  In either case the effective value of search_path will not
+		 * be what we think.  Forcibly reset currSchema so that we will
+		 * re-establish the search_path setting when needed (after creating
+		 * the schema).
+		 *
+		 * If we treated users as pg_dump'able objects then we'd need to reset
+		 * currUser here too.
+		 */
+		if (AH->currSchema)
+			free(AH->currSchema);
+		AH->currSchema = strdup("");
 	}
 
 	/*
@@ -810,8 +825,8 @@ SortTocFromFile(Archive *AHX, RestoreOptions *ropt)
 	/* Setup the file */
 	fh = fopen(ropt->tocFile, PG_BINARY_R);
 	if (!fh)
-		die_horribly(AH, modulename, "could not open TOC file: %s\n",
-					 strerror(errno));
+		die_horribly(AH, modulename, "could not open TOC file \"%s\": %s\n",
+					 ropt->tocFile, strerror(errno));
 
 	while (fgets(buf, sizeof(buf), fh) != NULL)
 	{
@@ -950,15 +965,32 @@ SetOutput(ArchiveHandle *AH, char *filename, int compression)
 	else
 #endif
 	{							/* Use fopen */
-		if (fn >= 0)
-			AH->OF = fdopen(dup(fn), PG_BINARY_W);
+		if (AH->mode == archModeAppend)
+		{
+			if (fn >= 0)
+				AH->OF = fdopen(dup(fn), PG_BINARY_A);
+			else
+				AH->OF = fopen(filename, PG_BINARY_A);
+		}
 		else
-			AH->OF = fopen(filename, PG_BINARY_W);
+		{
+			if (fn >= 0)
+				AH->OF = fdopen(dup(fn), PG_BINARY_W);
+			else
+				AH->OF = fopen(filename, PG_BINARY_W);
+		}
 		AH->gzOut = 0;
 	}
 
 	if (!AH->OF)
-		die_horribly(AH, modulename, "could not open output file: %s\n", strerror(errno));
+	{
+		if (filename)
+			die_horribly(AH, modulename, "could not open output file \"%s\": %s\n",
+						 filename, strerror(errno));
+		else
+			die_horribly(AH, modulename, "could not open output file: %s\n",
+						 strerror(errno));
+	}
 
 	return sav;
 }
@@ -1328,7 +1360,7 @@ WriteOffset(ArchiveHandle *AH, pgoff_t o, int wasSet)
 }
 
 int
-ReadOffset(ArchiveHandle *AH, pgoff_t *o)
+ReadOffset(ArchiveHandle *AH, pgoff_t * o)
 {
 	int			i;
 	int			off;
@@ -1513,12 +1545,17 @@ _discoverArchiveFormat(ArchiveHandle *AH)
 	{
 		wantClose = 1;
 		fh = fopen(AH->fSpec, PG_BINARY_R);
+		if (!fh)
+			die_horribly(AH, modulename, "could not open input file \"%s\": %s\n",
+						 AH->fSpec, strerror(errno));
 	}
 	else
+	{
 		fh = stdin;
-
-	if (!fh)
-		die_horribly(AH, modulename, "could not open input file: %s\n", strerror(errno));
+		if (!fh)
+			die_horribly(AH, modulename, "could not open input file: %s\n",
+						 strerror(errno));
+	}
 
 	cnt = fread(sig, 1, 5, fh);
 
@@ -1639,7 +1676,7 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 	AH->vrev = K_VERS_REV;
 
 	/* initialize for backwards compatible string processing */
-	AH->public.encoding = PG_SQL_ASCII;
+	AH->public.encoding = 0;	/* PG_SQL_ASCII */
 	AH->public.std_strings = false;
 
 	/* sql error handling */
@@ -2419,7 +2456,9 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 	if (strcmp(type, "CONVERSION") == 0 ||
 		strcmp(type, "DOMAIN") == 0 ||
 		strcmp(type, "TABLE") == 0 ||
-		strcmp(type, "TYPE") == 0)
+		strcmp(type, "TYPE") == 0 ||
+		strcmp(type, "TEXT SEARCH DICTIONARY") == 0 ||
+		strcmp(type, "TEXT SEARCH CONFIGURATION") == 0)
 	{
 		appendPQExpBuffer(buf, "%s ", type);
 		if (te->namespace && te->namespace[0])	/* is null pre-7.3 */
@@ -2442,6 +2481,7 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 
 	/* objects named by just a name */
 	if (strcmp(type, "DATABASE") == 0 ||
+		strcmp(type, "PROCEDURAL LANGUAGE") == 0 ||
 		strcmp(type, "SCHEMA") == 0)
 	{
 		appendPQExpBuffer(buf, "%s %s", type, fmtId(te->tag));
@@ -2455,7 +2495,8 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 	if (strcmp(type, "AGGREGATE") == 0 ||
 		strcmp(type, "FUNCTION") == 0 ||
 		strcmp(type, "OPERATOR") == 0 ||
-		strcmp(type, "OPERATOR CLASS") == 0)
+		strcmp(type, "OPERATOR CLASS") == 0 ||
+		strcmp(type, "OPERATOR FAMILY") == 0)
 	{
 		/* Chop "DROP " off the front and make a modifiable copy */
 		char	   *first = strdup(te->dropStmt + 5);
@@ -2497,11 +2538,17 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 	/*
 	 * Avoid dumping the public schema, as it will already be created ...
 	 * unless we are using --clean mode, in which case it's been deleted and
-	 * we'd better recreate it.
+	 * we'd better recreate it.  Likewise for its comment, if any.
 	 */
-	if (!ropt->dropSchema &&
-		strcmp(te->desc, "SCHEMA") == 0 && strcmp(te->tag, "public") == 0)
-		return;
+	if (!ropt->dropSchema)
+	{
+		if (strcmp(te->desc, "SCHEMA") == 0 &&
+			strcmp(te->tag, "public") == 0)
+			return;
+		if (strcmp(te->desc, "COMMENT") == 0 &&
+			strcmp(te->tag, "SCHEMA public") == 0)
+			return;
+	}
 
 	/* Select owner, schema, and tablespace as necessary */
 	_becomeOwner(AH, te);
@@ -2583,11 +2630,15 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 			strcmp(te->desc, "FUNCTION") == 0 ||
 			strcmp(te->desc, "OPERATOR") == 0 ||
 			strcmp(te->desc, "OPERATOR CLASS") == 0 ||
+			strcmp(te->desc, "OPERATOR FAMILY") == 0 ||
+			strcmp(te->desc, "PROCEDURAL LANGUAGE") == 0 ||
 			strcmp(te->desc, "SCHEMA") == 0 ||
 			strcmp(te->desc, "TABLE") == 0 ||
 			strcmp(te->desc, "TYPE") == 0 ||
 			strcmp(te->desc, "VIEW") == 0 ||
-			strcmp(te->desc, "SEQUENCE") == 0)
+			strcmp(te->desc, "SEQUENCE") == 0 ||
+			strcmp(te->desc, "TEXT SEARCH DICTIONARY") == 0 ||
+			strcmp(te->desc, "TEXT SEARCH CONFIGURATION") == 0)
 		{
 			PQExpBuffer temp = createPQExpBuffer();
 
@@ -2603,7 +2654,6 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 				 strcmp(te->desc, "DEFAULT") == 0 ||
 				 strcmp(te->desc, "FK CONSTRAINT") == 0 ||
 				 strcmp(te->desc, "INDEX") == 0 ||
-				 strcmp(te->desc, "PROCEDURAL LANGUAGE") == 0 ||
 				 strcmp(te->desc, "RULE") == 0 ||
 				 strcmp(te->desc, "TRIGGER") == 0)
 		{
@@ -2701,7 +2751,7 @@ ReadHead(ArchiveHandle *AH)
 						 (unsigned long) AH->intSize);
 
 		if (AH->intSize > sizeof(int))
-			write_msg(modulename, "WARNING: archive was made on a machine with larger integers, some operations may fail\n");
+			write_msg(modulename, "WARNING: archive was made on a machine with larger integers, some operations might fail\n");
 
 		if (AH->version >= K_VERS_1_7)
 			AH->offSize = (*AH->ReadBytePtr) (AH);
@@ -2795,8 +2845,8 @@ dumpTimestamp(ArchiveHandle *AH, const char *msg, time_t tim)
 	/*
 	 * We don't print the timezone on Win32, because the names are long and
 	 * localized, which means they may contain characters in various random
-	 * encodings; this has been seen to cause encoding errors when reading
-	 * the dump script.
+	 * encodings; this has been seen to cause encoding errors when reading the
+	 * dump script.
 	 */
 	if (strftime(buf, sizeof(buf),
 #ifndef WIN32

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/pg_dump/dumputils.c,v 1.33.2.1 2007/01/04 17:49:42 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_dump/dumputils.c,v 1.40 2008/01/01 19:45:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -53,11 +53,8 @@ fmtId(const char *rawid)
 	 * These checks need to match the identifier production in scan.l. Don't
 	 * use islower() etc.
 	 */
-
-	if (ScanKeywordLookup(rawid))
-		need_quotes = true;
 	/* slightly different rules for first character */
-	else if (!((rawid[0] >= 'a' && rawid[0] <= 'z') || rawid[0] == '_'))
+	if (!((rawid[0] >= 'a' && rawid[0] <= 'z') || rawid[0] == '_'))
 		need_quotes = true;
 	else
 	{
@@ -72,6 +69,22 @@ fmtId(const char *rawid)
 				break;
 			}
 		}
+	}
+
+	if (!need_quotes)
+	{
+		/*
+		 * Check for keyword.  We quote keywords except for unreserved ones.
+		 * (In some cases we could avoid quoting a col_name or type_func_name
+		 * keyword, but it seems much harder than it's worth to tell that.)
+		 *
+		 * Note: ScanKeywordLookup() does case-insensitive comparison, but
+		 * that's fine, since we already know we have all-lower-case.
+		 */
+		const ScanKeyword *keyword = ScanKeywordLookup(rawid);
+
+		if (keyword != NULL && keyword->category != UNRESERVED_KEYWORD)
+			need_quotes = true;
 	}
 
 	if (!need_quotes)
@@ -438,6 +451,20 @@ buildACLCommands(const char *name, const char *type,
 	appendPQExpBuffer(firstsql, "REVOKE ALL ON %s %s FROM PUBLIC;\n",
 					  type, name);
 
+	/*
+	 * We still need some hacking though to cover the case where new default
+	 * public privileges are added in new versions: the REVOKE ALL will revoke
+	 * them, leading to behavior different from what the old version had,
+	 * which is generally not what's wanted.  So add back default privs if the
+	 * source database is too old to have had that particular priv.
+	 */
+	if (remoteVersion < 80200 && strcmp(type, "DATABASE") == 0)
+	{
+		/* database CONNECT priv didn't exist before 8.2 */
+		appendPQExpBuffer(firstsql, "GRANT CONNECT ON %s %s TO PUBLIC;\n",
+						  type, name);
+	}
+
 	/* Scan individual ACL items */
 	for (i = 0; i < naclitems; i++)
 	{
@@ -742,7 +769,7 @@ AddAcl(PQExpBuffer aclbuf, const char *keyword)
  * schemavar: name of query variable to match against a schema-name pattern.
  * Can be NULL if no schema.
  * namevar: name of query variable to match against an object-name pattern.
- * altnamevar: NULL, or name of an alternate variable to match against name.
+ * altnamevar: NULL, or name of an alternative variable to match against name.
  * visibilityrule: clause to use if we want to restrict to visible objects
  * (for example, "pg_catalog.pg_table_is_visible(p.oid)").	Can be NULL.
  *
@@ -788,9 +815,9 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
 	 * contains "|", else the "^" and "$" will be bound into the first and
 	 * last alternatives which is not what we want.
 	 *
-	 * Note: the result of this pass is the actual regexp pattern(s) we want to
-	 * execute.  Quoting/escaping into SQL literal format will be done below
-	 * using appendStringLiteralConn().
+	 * Note: the result of this pass is the actual regexp pattern(s) we want
+	 * to execute.	Quoting/escaping into SQL literal format will be done
+	 * below using appendStringLiteralConn().
 	 */
 	appendPQExpBufferStr(&namebuf, "^(");
 
@@ -799,7 +826,7 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
 
 	while (*cp)
 	{
-		char	ch = *cp;
+		char		ch = *cp;
 
 		if (ch == '"')
 		{
@@ -838,6 +865,18 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
 			appendPQExpBufferStr(&namebuf, "^(");
 			cp++;
 		}
+		else if (ch == '$')
+		{
+			/*
+			 * Dollar is always quoted, whether inside quotes or not. The
+			 * reason is that it's allowed in SQL identifiers, so there's a
+			 * significant use-case for treating it literally, while because
+			 * we anchor the pattern automatically there is no use-case for
+			 * having it possess its regexp meaning.
+			 */
+			appendPQExpBufferStr(&namebuf, "\\$");
+			cp++;
+		}
 		else
 		{
 			/*
@@ -862,8 +901,8 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
 	}
 
 	/*
-	 * Now decide what we need to emit.  Note there will be a leading "^("
-	 * in the patterns in any case.
+	 * Now decide what we need to emit.  Note there will be a leading "^(" in
+	 * the patterns in any case.
 	 */
 	if (namebuf.len > 2)
 	{

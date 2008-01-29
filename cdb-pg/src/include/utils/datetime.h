@@ -29,7 +29,7 @@
  * String definitions for standard time quantities.
  *
  * These strings are the defaults used to form output time strings.
- * Other alternate forms are hardcoded into token tables in datetime.c.
+ * Other alternative forms are hardcoded into token tables in datetime.c.
  * ----------------------------------------------------------------
  */
 
@@ -84,7 +84,8 @@
  *
  * Furthermore, the values for YEAR, MONTH, DAY, HOUR, MINUTE, SECOND
  * must be in the range 0..14 so that the associated bitmasks can fit
- * into the left half of an INTERVAL's typmod value.
+ * into the left half of an INTERVAL's typmod value.  Since those bits
+ * are stored in typmods, you can't change them without initdb!
  */
 
 #define RESERV	0
@@ -167,6 +168,8 @@
 #define DTK_DOY			33
 #define DTK_TZ_HOUR		34
 #define DTK_TZ_MINUTE	35
+#define DTK_ISOYEAR		36
+#define DTK_ISODOW		37
 
 
 /*
@@ -175,7 +178,7 @@
 
 #define DTK_M(t)		(0x01 << (t))
 
-/* Convenvience: a second, plus any fractional component */
+/* Convenience: a second, plus any fractional component */
 #define DTK_ALL_SECS_M	(DTK_M(SECOND) | DTK_M(MILLISECOND) | DTK_M(MICROSECOND))
 #define DTK_DATE_M		(DTK_M(YEAR) | DTK_M(MONTH) | DTK_M(DAY))
 #define DTK_TIME_M		(DTK_M(HOUR) | DTK_M(MINUTE) | DTK_ALL_SECS_M)

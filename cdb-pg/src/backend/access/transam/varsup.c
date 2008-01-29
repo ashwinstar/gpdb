@@ -6,7 +6,7 @@
  * Copyright (c) 2000-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/transam/varsup.c,v 1.76 2006/11/05 22:42:07 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/transam/varsup.c,v 1.81 2008/01/01 19:45:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -32,7 +32,9 @@ VariableCache ShmemVariableCache = NULL;
 
 
 /*
- * Allocate the next XID for my new transaction.
+ * Allocate the next XID for my new transaction or subtransaction.
+ *
+ * The new XID is also stored into MyProc before returning.
  */
 TransactionId
 GetNewTransactionId(bool isSubXact, bool setProcXid)
@@ -44,7 +46,11 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 	 * transaction id.
 	 */
 	if (IsBootstrapProcessingMode())
+	{
+		Assert(!isSubXact);
+		MyProc->xid = BootstrapTransactionId;
 		return BootstrapTransactionId;
+	}
 
 	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
 
@@ -68,12 +74,12 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 		TransactionIdIsValid(ShmemVariableCache->xidVacLimit))
 	{
 		/*
-		 * To avoid swamping the postmaster with signals, we issue the
-		 * autovac request only once per 64K transaction starts.  This
-		 * still gives plenty of chances before we get into real trouble.
+		 * To avoid swamping the postmaster with signals, we issue the autovac
+		 * request only once per 64K transaction starts.  This still gives
+		 * plenty of chances before we get into real trouble.
 		 */
 		if (IsUnderPostmaster && (xid % 65536) == 0)
-			SendPostmasterSignal(PMSIGNAL_START_AUTOVAC);
+			SendPostmasterSignal(PMSIGNAL_START_AUTOVAC_LAUNCHER);
 
 		if (IsUnderPostmaster &&
 		 TransactionIdFollowsOrEquals(xid, ShmemVariableCache->xidStopLimit))
@@ -113,19 +119,19 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 	TransactionIdAdvance(ShmemVariableCache->nextXid);
 
 	/*
-	 * We must store the new XID into the shared PGPROC array before releasing
-	 * XidGenLock.	This ensures that when GetSnapshotData calls
-	 * ReadNewTransactionId, all active XIDs before the returned value of
-	 * nextXid are already present in PGPROC.  Else we have a race condition.
+	 * We must store the new XID into the shared ProcArray before releasing
+	 * XidGenLock.	This ensures that every active XID older than
+	 * latestCompletedXid is present in the ProcArray, which is essential for
+	 * correct OldestXmin tracking; see src/backend/access/transam/README.
 	 *
 	 * XXX by storing xid into MyProc without acquiring ProcArrayLock, we are
 	 * relying on fetch/store of an xid to be atomic, else other backends
 	 * might see a partially-set xid here.	But holding both locks at once
-	 * would be a nasty concurrency hit (and in fact could cause a deadlock
-	 * against GetSnapshotData).  So for now, assume atomicity. Note that
-	 * readers of PGPROC xid field should be careful to fetch the value only
-	 * once, rather than assume they can read it multiple times and get the
-	 * same answer each time.
+	 * would be a nasty concurrency hit.  So for now, assume atomicity.
+	 *
+	 * Note that readers of PGPROC xid fields should be careful to fetch the
+	 * value only once, rather than assume they can read a value multiple
+	 * times and get the same answer each time.
 	 *
 	 * The same comments apply to the subxact xid count and overflow fields.
 	 *
@@ -139,7 +145,7 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 	 * race-condition window, in that the new XID will not appear as running
 	 * until its parent link has been placed into pg_subtrans. However, that
 	 * will happen before anyone could possibly have a reason to inquire about
-	 * the status of the XID, so it seems OK. (Snapshots taken during this
+	 * the status of the XID, so it seems OK.  (Snapshots taken during this
 	 * window *will* include the parent XID, so they will deliver the correct
 	 * answer later on when someone does have a reason to inquire.)
 	 */
@@ -267,18 +273,18 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
 		xidWarnLimit -= FirstNormalTransactionId;
 
 	/*
-	 * We'll start trying to force autovacuums when oldest_datfrozenxid
-	 * gets to be more than autovacuum_freeze_max_age transactions old.
+	 * We'll start trying to force autovacuums when oldest_datfrozenxid gets
+	 * to be more than autovacuum_freeze_max_age transactions old.
 	 *
-	 * Note: guc.c ensures that autovacuum_freeze_max_age is in a sane
-	 * range, so that xidVacLimit will be well before xidWarnLimit.
+	 * Note: guc.c ensures that autovacuum_freeze_max_age is in a sane range,
+	 * so that xidVacLimit will be well before xidWarnLimit.
 	 *
 	 * Note: autovacuum_freeze_max_age is a PGC_POSTMASTER parameter so that
 	 * we don't have to worry about dealing with on-the-fly changes in its
 	 * value.  It doesn't look practical to update shared state from a GUC
 	 * assign hook (too many processes would try to execute the hook,
-	 * resulting in race conditions as well as crashes of those not
-	 * connected to shared memory).  Perhaps this can be improved someday.
+	 * resulting in race conditions as well as crashes of those not connected
+	 * to shared memory).  Perhaps this can be improved someday.
 	 */
 	xidVacLimit = oldest_datfrozenxid + autovacuum_freeze_max_age;
 	if (xidVacLimit < FirstNormalTransactionId)
@@ -309,7 +315,7 @@ SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
 	 */
 	if (TransactionIdFollowsOrEquals(curXid, xidVacLimit) &&
 		IsUnderPostmaster)
-		SendPostmasterSignal(PMSIGNAL_START_AUTOVAC);
+		SendPostmasterSignal(PMSIGNAL_START_AUTOVAC_LAUNCHER);
 
 	/* Give an immediate warning if past the wrap warn point */
 	if (TransactionIdFollowsOrEquals(curXid, xidWarnLimit))

@@ -2,7 +2,7 @@
  * pltcl.c		- PostgreSQL support for Tcl as
  *				  procedural language (PL)
  *
- *	  $PostgreSQL: pgsql/src/pl/tcl/pltcl.c,v 1.109 2007/02/01 19:10:30 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/pl/tcl/pltcl.c,v 1.117 2007/11/15 21:14:46 momjian Exp $
  *
  **********************************************************************/
 
@@ -33,9 +33,11 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+#define HAVE_TCL_VERSION(maj,min) \
+	((TCL_MAJOR_VERSION > maj) || \
+	 (TCL_MAJOR_VERSION == maj && TCL_MINOR_VERSION >= min))
 
-#if defined(UNICODE_CONVERSION) && TCL_MAJOR_VERSION == 8 \
-	&& TCL_MINOR_VERSION > 0
+#if defined(UNICODE_CONVERSION) && HAVE_TCL_VERSION(8,1)
 
 #include "mb/pg_wchar.h"
 
@@ -74,7 +76,8 @@ PG_MODULE_MAGIC;
  **********************************************************************/
 typedef struct pltcl_proc_desc
 {
-	char	   *proname;
+	char	   *user_proname;
+	char	   *internal_proname;
 	TransactionId fn_xmin;
 	ItemPointerData fn_tid;
 	bool		fn_readonly;
@@ -165,6 +168,67 @@ static void pltcl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc,
 
 
 /*
+ * Hack to override Tcl's builtin Notifier subsystem.  This prevents the
+ * backend from becoming multithreaded, which breaks all sorts of things.
+ * That happens in the default version of Tcl_InitNotifier if the TCL library
+ * has been compiled with multithreading support (i.e. when TCL_THREADS is
+ * defined under Unix, and in all cases under Windows).
+ * It's okay to disable the notifier because we never enter the Tcl event loop
+ * from Postgres, so the notifier capabilities are initialized, but never
+ * used.  Only InitNotifier and DeleteFileHandler ever seem to get called
+ * within Postgres, but we implement all the functions for completeness.
+ * We can only fix this with Tcl >= 8.4, when Tcl_SetNotifier() appeared.
+ */
+#if HAVE_TCL_VERSION(8,4)
+
+static ClientData
+pltcl_InitNotifier(void)
+{
+	static int	fakeThreadKey;	/* To give valid address for ClientData */
+
+	return (ClientData) &(fakeThreadKey);
+}
+
+static void
+pltcl_FinalizeNotifier(ClientData clientData)
+{
+}
+
+static void
+pltcl_SetTimer(Tcl_Time *timePtr)
+{
+}
+
+static void
+pltcl_AlertNotifier(ClientData clientData)
+{
+}
+
+static void
+pltcl_CreateFileHandler(int fd, int mask,
+						Tcl_FileProc *proc, ClientData clientData)
+{
+}
+
+static void
+pltcl_DeleteFileHandler(int fd)
+{
+}
+
+static void
+pltcl_ServiceModeHook(int mode)
+{
+}
+
+static int
+pltcl_WaitForEvent(Tcl_Time *timePtr)
+{
+	return 0;
+}
+#endif   /* HAVE_TCL_VERSION(8,2) */
+
+
+/*
  * This routine is a crock, and so is everyplace that calls it.  The problem
  * is that the cached form of pltcl functions/queries is allocated permanently
  * (mostly via malloc()) and never released until backend exit.  Subsidiary
@@ -196,6 +260,26 @@ _PG_init(void)
 #ifdef WIN32
 	/* Required on win32 to prevent error loading init.tcl */
 	Tcl_FindExecutable("");
+#endif
+
+#if HAVE_TCL_VERSION(8,4)
+
+	/*
+	 * Override the functions in the Notifier subsystem.  See comments above.
+	 */
+	{
+		Tcl_NotifierProcs notifier;
+
+		notifier.setTimerProc = pltcl_SetTimer;
+		notifier.waitForEventProc = pltcl_WaitForEvent;
+		notifier.createFileHandlerProc = pltcl_CreateFileHandler;
+		notifier.deleteFileHandlerProc = pltcl_DeleteFileHandler;
+		notifier.initNotifierProc = pltcl_InitNotifier;
+		notifier.finalizeNotifierProc = pltcl_FinalizeNotifier;
+		notifier.alertNotifierProc = pltcl_AlertNotifier;
+		notifier.serviceModeHookProc = pltcl_ServiceModeHook;
+		Tcl_SetNotifier(&notifier);
+	}
 #endif
 
 	/************************************************************
@@ -421,7 +505,7 @@ pltcl_call_handler(PG_FUNCTION_ARGS)
 
 
 /*
- * Alternate handler for unsafe functions
+ * Alternative handler for unsafe functions
  */
 PG_FUNCTION_INFO_V1(pltclu_call_handler);
 
@@ -466,7 +550,7 @@ pltcl_func_handler(PG_FUNCTION_ARGS)
 	 ************************************************************/
 	Tcl_DStringInit(&tcl_cmd);
 	Tcl_DStringInit(&list_tmp);
-	Tcl_DStringAppendElement(&tcl_cmd, prodesc->proname);
+	Tcl_DStringAppendElement(&tcl_cmd, prodesc->internal_proname);
 
 	/************************************************************
 	 * Add all call arguments to the command
@@ -553,9 +637,10 @@ pltcl_func_handler(PG_FUNCTION_ARGS)
 		UTF_BEGIN;
 		ereport(ERROR,
 				(errmsg("%s", interp->result),
-				 errcontext("%s",
+				 errcontext("%s\nin PL/Tcl function \"%s\"",
 							UTF_U2E(Tcl_GetVar(interp, "errorInfo",
-											   TCL_GLOBAL_ONLY)))));
+											   TCL_GLOBAL_ONLY)),
+							prodesc->user_proname)));
 		UTF_END;
 	}
 
@@ -640,7 +725,7 @@ pltcl_trigger_handler(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		/* The procedure name */
-		Tcl_DStringAppendElement(&tcl_cmd, prodesc->proname);
+		Tcl_DStringAppendElement(&tcl_cmd, prodesc->internal_proname);
 
 		/* The trigger name for argument TG_name */
 		Tcl_DStringAppendElement(&tcl_cmd, trigdata->tg_trigger->tgname);
@@ -782,9 +867,10 @@ pltcl_trigger_handler(PG_FUNCTION_ARGS)
 		UTF_BEGIN;
 		ereport(ERROR,
 				(errmsg("%s", interp->result),
-				 errcontext("%s",
+				 errcontext("%s\nin PL/Tcl function \"%s\"",
 							UTF_U2E(Tcl_GetVar(interp, "errorInfo",
-											   TCL_GLOBAL_ONLY)))));
+											   TCL_GLOBAL_ONLY)),
+							prodesc->user_proname)));
 		UTF_END;
 	}
 
@@ -962,7 +1048,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		prodesc = (pltcl_proc_desc *) Tcl_GetHashValue(hashent);
 
 		uptodate = (prodesc->fn_xmin == HeapTupleHeaderGetXmin(procTup->t_data) &&
-				ItemPointerEquals(&prodesc->fn_tid, &procTup->t_self));
+					ItemPointerEquals(&prodesc->fn_tid, &procTup->t_self));
 
 		if (!uptodate)
 		{
@@ -1002,7 +1088,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 		MemSet(prodesc, 0, sizeof(pltcl_proc_desc));
-		prodesc->proname = strdup(internal_proname);
+		prodesc->user_proname = strdup(NameStr(procStruct->proname));
+		prodesc->internal_proname = strdup(internal_proname);
 		prodesc->fn_xmin = HeapTupleHeaderGetXmin(procTup->t_data);
 		prodesc->fn_tid = procTup->t_self;
 
@@ -1018,7 +1105,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 								 0, 0, 0);
 		if (!HeapTupleIsValid(langTup))
 		{
-			free(prodesc->proname);
+			free(prodesc->user_proname);
+			free(prodesc->internal_proname);
 			free(prodesc);
 			elog(ERROR, "cache lookup failed for language %u",
 				 procStruct->prolang);
@@ -1043,7 +1131,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 									 0, 0, 0);
 			if (!HeapTupleIsValid(typeTup))
 			{
-				free(prodesc->proname);
+				free(prodesc->user_proname);
+				free(prodesc->internal_proname);
 				free(prodesc);
 				elog(ERROR, "cache lookup failed for type %u",
 					 procStruct->prorettype);
@@ -1051,21 +1140,23 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 			typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
 
 			/* Disallow pseudotype result, except VOID */
-			if (typeStruct->typtype == 'p')
+			if (typeStruct->typtype == TYPTYPE_PSEUDO)
 			{
 				if (procStruct->prorettype == VOIDOID)
 					 /* okay */ ;
 				else if (procStruct->prorettype == TRIGGEROID)
 				{
-					free(prodesc->proname);
+					free(prodesc->user_proname);
+					free(prodesc->internal_proname);
 					free(prodesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("trigger functions may only be called as triggers")));
+							 errmsg("trigger functions can only be called as triggers")));
 				}
 				else
 				{
-					free(prodesc->proname);
+					free(prodesc->user_proname);
+					free(prodesc->internal_proname);
 					free(prodesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1074,9 +1165,10 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 				}
 			}
 
-			if (typeStruct->typtype == 'c')
+			if (typeStruct->typtype == TYPTYPE_COMPOSITE)
 			{
-				free(prodesc->proname);
+				free(prodesc->user_proname);
+				free(prodesc->internal_proname);
 				free(prodesc);
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1104,7 +1196,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 										 0, 0, 0);
 				if (!HeapTupleIsValid(typeTup))
 				{
-					free(prodesc->proname);
+					free(prodesc->user_proname);
+					free(prodesc->internal_proname);
 					free(prodesc);
 					elog(ERROR, "cache lookup failed for type %u",
 						 procStruct->proargtypes.values[i]);
@@ -1112,9 +1205,10 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 				typeStruct = (Form_pg_type) GETSTRUCT(typeTup);
 
 				/* Disallow pseudotype argument */
-				if (typeStruct->typtype == 'p')
+				if (typeStruct->typtype == TYPTYPE_PSEUDO)
 				{
-					free(prodesc->proname);
+					free(prodesc->user_proname);
+					free(prodesc->internal_proname);
 					free(prodesc);
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1122,7 +1216,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 						format_type_be(procStruct->proargtypes.values[i]))));
 				}
 
-				if (typeStruct->typtype == 'c')
+				if (typeStruct->typtype == TYPTYPE_COMPOSITE)
 				{
 					prodesc->arg_is_rowtype[i] = true;
 					snprintf(buf, sizeof(buf), "__PLTcl_Tup_%d", i + 1);
@@ -1222,7 +1316,8 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		Tcl_DStringFree(&proc_internal_def);
 		if (tcl_rc != TCL_OK)
 		{
-			free(prodesc->proname);
+			free(prodesc->user_proname);
+			free(prodesc->internal_proname);
 			free(prodesc);
 			elog(ERROR, "could not create internal procedure \"%s\": %s",
 				 internal_proname, interp->result);
@@ -1232,7 +1327,7 @@ compile_pltcl_function(Oid fn_oid, Oid tgreloid)
 		 * Add the proc description block to the hashtable
 		 ************************************************************/
 		hashent = Tcl_CreateHashEntry(pltcl_proc_hash,
-									  prodesc->proname, &hashnew);
+									  prodesc->internal_proname, &hashnew);
 		Tcl_SetHashValue(hashent, (ClientData) prodesc);
 	}
 
@@ -1808,23 +1903,24 @@ pltcl_SPI_prepare(ClientData cdata, Tcl_Interp *interp,
 	PG_TRY();
 	{
 		/************************************************************
-		 * Lookup the argument types by name in the system cache
-		 * and remember the required information for input conversion
+		 * Resolve argument type names and then look them up by oid
+		 * in the system cache, and remember the required information
+		 * for input conversion.
 		 ************************************************************/
 		for (i = 0; i < nargs; i++)
 		{
-			List	   *names;
-			HeapTuple	typeTup;
+			Oid			typId,
+						typInput,
+						typIOParam;
+			int32		typmod;
 
-			/* Parse possibly-qualified type name and look it up in pg_type */
-			names = stringToQualifiedNameList(args[i],
-											  "pltcl_SPI_prepare");
-			typeTup = typenameType(NULL, makeTypeNameFromNameList(names));
-			qdesc->argtypes[i] = HeapTupleGetOid(typeTup);
-			perm_fmgr_info(((Form_pg_type) GETSTRUCT(typeTup))->typinput,
-						   &(qdesc->arginfuncs[i]));
-			qdesc->argtypioparams[i] = getTypeIOParam(typeTup);
-			ReleaseSysCache(typeTup);
+			parseTypeString(args[i], &typId, &typmod);
+
+			getTypeInputInfo(typId, &typInput, &typIOParam);
+
+			qdesc->argtypes[i] = typId;
+			perm_fmgr_info(typInput, &(qdesc->arginfuncs[i]));
+			qdesc->argtypioparams[i] = typIOParam;
 		}
 
 		/************************************************************

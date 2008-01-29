@@ -91,7 +91,7 @@ static void _EndDataCompressor(ArchiveHandle *AH, TocEntry *te);
 static pgoff_t _getFilePos(ArchiveHandle *AH, lclContext *ctx);
 static int	_DoDeflate(ArchiveHandle *AH, lclContext *ctx, int flush);
 
-static char *modulename = gettext_noop("custom archiver");
+static const char *modulename = gettext_noop("custom archiver");
 
 
 
@@ -169,23 +169,38 @@ InitArchiveFmt_Custom(ArchiveHandle *AH)
 	if (AH->mode == archModeWrite)
 	{
 		if (AH->fSpec && strcmp(AH->fSpec, "") != 0)
+		{
 			AH->FH = fopen(AH->fSpec, PG_BINARY_W);
+			if (!AH->FH)
+				die_horribly(AH, modulename, "could not open output file \"%s\": %s\n",
+							 AH->fSpec, strerror(errno));
+		}
 		else
+		{
 			AH->FH = stdout;
-
-		if (!AH->FH)
-			die_horribly(AH, modulename, "could not open output file \"%s\": %s\n", AH->fSpec, strerror(errno));
+			if (!AH->FH)
+				die_horribly(AH, modulename, "could not open output file: %s\n",
+							 strerror(errno));
+		}
 
 		ctx->hasSeek = checkSeek(AH->FH);
 	}
 	else
 	{
 		if (AH->fSpec && strcmp(AH->fSpec, "") != 0)
+		{
 			AH->FH = fopen(AH->fSpec, PG_BINARY_R);
+			if (!AH->FH)
+				die_horribly(AH, modulename, "could not open input file \"%s\": %s\n",
+							 AH->fSpec, strerror(errno));
+		}
 		else
+		{
 			AH->FH = stdin;
-		if (!AH->FH)
-			die_horribly(AH, modulename, "could not open input file \"%s\": %s\n", AH->fSpec, strerror(errno));
+			if (!AH->FH)
+				die_horribly(AH, modulename, "could not open input file: %s\n",
+							 strerror(errno));
+		}
 
 		ctx->hasSeek = checkSeek(AH->FH);
 

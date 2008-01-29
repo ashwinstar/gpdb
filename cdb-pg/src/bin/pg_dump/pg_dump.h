@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump.h,v 1.130.2.1 2007/02/19 15:05:21 mha Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump.h,v 1.139 2008/01/01 19:45:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -115,6 +115,7 @@ typedef enum
 	DO_AGG,
 	DO_OPERATOR,
 	DO_OPCLASS,
+	DO_OPFAMILY,
 	DO_CONVERSION,
 	DO_TABLE,
 	DO_ATTRDEF,
@@ -127,6 +128,10 @@ typedef enum
 	DO_CAST,
 	DO_TABLE_DATA,
 	DO_TABLE_TYPE,
+	DO_TSPARSER,
+	DO_TSDICT,
+	DO_TSTEMPLATE,
+	DO_TSCONFIG,
 	DO_BLOBS,
 	DO_BLOB_COMMENTS
 } DumpableObjectType;
@@ -164,7 +169,7 @@ typedef struct _typeInfo
 	Oid			typrelid;
 	char		typrelkind;		/* 'r', 'v', 'c', etc */
 	char		typtype;		/* 'b', 'c', etc */
-	bool		isArray;		/* true if user-defined array type */
+	bool		isArray;		/* true if auto-generated array type */
 	bool		isDefined;		/* true if typisdefined */
 	/* If it's a dumpable base type, we create a "shell type" entry for it */
 	struct _shellTypeInfo *shellType;	/* shell-type entry, or NULL */
@@ -210,6 +215,12 @@ typedef struct _opclassInfo
 	DumpableObject dobj;
 	char	   *rolname;
 } OpclassInfo;
+
+typedef struct _opfamilyInfo
+{
+	DumpableObject dobj;
+	char	   *rolname;
+} OpfamilyInfo;
 
 typedef struct _convInfo
 {
@@ -308,6 +319,7 @@ typedef struct _ruleInfo
 	TableInfo  *ruletable;		/* link to table the rule is for */
 	char		ev_type;
 	bool		is_instead;
+	char		ev_enabled;
 	bool		separate;		/* TRUE if must dump as separate item */
 	/* separate is always true for non-ON SELECT rules */
 } RuleInfo;
@@ -324,7 +336,7 @@ typedef struct _triggerInfo
 	char	   *tgconstrname;
 	Oid			tgconstrrelid;
 	char	   *tgconstrrelname;
-	bool		tgenabled;
+	char		tgenabled;
 	bool		tgdeferrable;
 	bool		tginitdeferred;
 } TriggerInfo;
@@ -372,6 +384,37 @@ typedef struct _inhInfo
 	Oid			inhparent;		/* OID of its parent */
 } InhInfo;
 
+typedef struct _prsInfo
+{
+	DumpableObject dobj;
+	Oid			prsstart;
+	Oid			prstoken;
+	Oid			prsend;
+	Oid			prsheadline;
+	Oid			prslextype;
+} TSParserInfo;
+
+typedef struct _dictInfo
+{
+	DumpableObject dobj;
+	char	   *rolname;
+	Oid			dicttemplate;
+	char	   *dictinitoption;
+} TSDictInfo;
+
+typedef struct _tmplInfo
+{
+	DumpableObject dobj;
+	Oid			tmplinit;
+	Oid			tmpllexize;
+} TSTemplateInfo;
+
+typedef struct _cfgInfo
+{
+	DumpableObject dobj;
+	char	   *rolname;
+	Oid			cfgparser;
+} TSConfigInfo;
 
 /* global decls */
 extern bool force_quotes;		/* double-quotes for identifiers flag */
@@ -441,6 +484,7 @@ extern FuncInfo *getFuncs(int *numFuncs);
 extern AggInfo *getAggregates(int *numAggregates);
 extern OprInfo *getOperators(int *numOperators);
 extern OpclassInfo *getOpclasses(int *numOpclasses);
+extern OpfamilyInfo *getOpfamilies(int *numOpfamilies);
 extern ConvInfo *getConversions(int *numConversions);
 extern TableInfo *getTables(int *numTables);
 extern InhInfo *getInherits(int *numInherits);
@@ -451,5 +495,9 @@ extern void getTriggers(TableInfo tblinfo[], int numTables);
 extern ProcLangInfo *getProcLangs(int *numProcLangs);
 extern CastInfo *getCasts(int *numCasts);
 extern void getTableAttrs(TableInfo *tbinfo, int numTables);
+extern TSParserInfo *getTSParsers(int *numTSParsers);
+extern TSDictInfo *getTSDictionaries(int *numTSDicts);
+extern TSTemplateInfo *getTSTemplates(int *numTSTemplates);
+extern TSConfigInfo *getTSConfigurations(int *numTSConfigs);
 
 #endif   /* PG_DUMP_H */

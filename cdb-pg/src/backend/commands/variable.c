@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/variable.c,v 1.119 2006/10/04 00:29:52 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/variable.c,v 1.125 2008/01/03 21:23:15 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -59,9 +59,8 @@ assign_datestyle(const char *value, bool doit, GucSource source)
 		/* syntax error in list */
 		pfree(rawstring);
 		list_free(elemlist);
-		if (source >= PGC_S_INTERACTIVE)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+		ereport(GUC_complaint_elevel(source),
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("invalid list syntax for parameter \"datestyle\"")));
 		return NULL;
 	}
@@ -159,11 +158,10 @@ assign_datestyle(const char *value, bool doit, GucSource source)
 		}
 		else
 		{
-			if (source >= PGC_S_INTERACTIVE)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("unrecognized \"datestyle\" key word: \"%s\"",
-								tok)));
+			ereport(GUC_complaint_elevel(source),
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("unrecognized \"datestyle\" key word: \"%s\"",
+							tok)));
 			ok = false;
 			break;
 		}
@@ -174,10 +172,9 @@ assign_datestyle(const char *value, bool doit, GucSource source)
 
 	if (!ok)
 	{
-		if (source >= PGC_S_INTERACTIVE)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("conflicting \"datestyle\" specifications")));
+		ereport(GUC_complaint_elevel(source),
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("conflicting \"datestyle\" specifications")));
 		return NULL;
 	}
 
@@ -273,9 +270,9 @@ assign_timezone(const char *value, bool doit, GucSource source)
 
 		/*
 		 * Try to parse it.  XXX an invalid interval format will result in
-		 * ereport, which is not desirable for GUC.  We did what we could to
-		 * guard against this in flatten_set_variable_args, but a string
-		 * coming in from postgresql.conf might contain anything.
+		 * ereport(ERROR), which is not desirable for GUC.  We did what we
+		 * could to guard against this in flatten_set_variable_args, but a
+		 * string coming in from postgresql.conf might contain anything.
 		 */
 		interval = DatumGetIntervalP(DirectFunctionCall3(interval_in,
 														 CStringGetDatum(val),
@@ -285,19 +282,17 @@ assign_timezone(const char *value, bool doit, GucSource source)
 		pfree(val);
 		if (interval->month != 0)
 		{
-			if (source >= PGC_S_INTERACTIVE)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid interval value for time zone: month not allowed")));
+			ereport(GUC_complaint_elevel(source),
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid interval value for time zone: month not allowed")));
 			pfree(interval);
 			return NULL;
 		}
 		if (interval->day != 0)
 		{
-			if (source >= PGC_S_INTERACTIVE)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("invalid interval value for time zone: day not allowed")));
+			ereport(GUC_complaint_elevel(source),
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid interval value for time zone: day not allowed")));
 			pfree(interval);
 			return NULL;
 		}
@@ -346,7 +341,7 @@ assign_timezone(const char *value, bool doit, GucSource source)
 			 */
 			if (doit)
 			{
-				const char *curzone = pg_get_timezone_name(global_timezone);
+				const char *curzone = pg_get_timezone_name(session_timezone);
 
 				if (curzone)
 					value = curzone;
@@ -363,7 +358,7 @@ assign_timezone(const char *value, bool doit, GucSource source)
 
 			if (!new_tz)
 			{
-				ereport((source >= PGC_S_INTERACTIVE) ? ERROR : LOG,
+				ereport(GUC_complaint_elevel(source),
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("unrecognized time zone name: \"%s\"",
 								value)));
@@ -372,7 +367,7 @@ assign_timezone(const char *value, bool doit, GucSource source)
 
 			if (!tz_acceptable(new_tz))
 			{
-				ereport((source >= PGC_S_INTERACTIVE) ? ERROR : LOG,
+				ereport(GUC_complaint_elevel(source),
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					   errmsg("time zone \"%s\" appears to use leap seconds",
 							  value),
@@ -383,7 +378,7 @@ assign_timezone(const char *value, bool doit, GucSource source)
 			if (doit)
 			{
 				/* Save the changed TZ */
-				global_timezone = new_tz;
+				session_timezone = new_tz;
 				HasCTZSet = false;
 			}
 		}
@@ -436,7 +431,112 @@ show_timezone(void)
 											  IntervalPGetDatum(&interval)));
 	}
 	else
-		tzn = pg_get_timezone_name(global_timezone);
+		tzn = pg_get_timezone_name(session_timezone);
+
+	if (tzn != NULL)
+		return tzn;
+
+	return "unknown";
+}
+
+
+/*
+ * LOG_TIMEZONE
+ *
+ * For log_timezone, we don't support the interval-based methods of setting a
+ * zone, which are only there for SQL spec compliance not because they're
+ * actually useful.
+ */
+
+/*
+ * assign_log_timezone: GUC assign_hook for log_timezone
+ */
+const char *
+assign_log_timezone(const char *value, bool doit, GucSource source)
+{
+	char	   *result;
+
+	if (pg_strcasecmp(value, "UNKNOWN") == 0)
+	{
+		/*
+		 * UNKNOWN is the value shown as the "default" for log_timezone in
+		 * guc.c.  We interpret it as being a complete no-op; we don't change
+		 * the timezone setting.  Note that if there is a known timezone
+		 * setting, we will return that name rather than UNKNOWN as the
+		 * canonical spelling.
+		 *
+		 * During GUC initialization, since the timezone library isn't set up
+		 * yet, pg_get_timezone_name will return NULL and we will leave the
+		 * setting as UNKNOWN.	If this isn't overridden from the config file
+		 * then pg_timezone_initialize() will eventually select a default
+		 * value from the environment.
+		 */
+		if (doit)
+		{
+			const char *curzone = pg_get_timezone_name(log_timezone);
+
+			if (curzone)
+				value = curzone;
+		}
+	}
+	else
+	{
+		/*
+		 * Otherwise assume it is a timezone name, and try to load it.
+		 */
+		pg_tz	   *new_tz;
+
+		new_tz = pg_tzset(value);
+
+		if (!new_tz)
+		{
+			ereport(GUC_complaint_elevel(source),
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("unrecognized time zone name: \"%s\"",
+							value)));
+			return NULL;
+		}
+
+		if (!tz_acceptable(new_tz))
+		{
+			ereport(GUC_complaint_elevel(source),
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("time zone \"%s\" appears to use leap seconds",
+							value),
+					 errdetail("PostgreSQL does not support leap seconds.")));
+			return NULL;
+		}
+
+		if (doit)
+		{
+			/* Save the changed TZ */
+			log_timezone = new_tz;
+		}
+	}
+
+	/*
+	 * If we aren't going to do the assignment, just return OK indicator.
+	 */
+	if (!doit)
+		return value;
+
+	/*
+	 * Prepare the canonical string to return.	GUC wants it malloc'd.
+	 */
+	result = strdup(value);
+
+	return result;
+}
+
+/*
+ * show_log_timezone: GUC show_hook for log_timezone
+ */
+const char *
+show_log_timezone(void)
+{
+	const char *tzn;
+
+	tzn = pg_get_timezone_name(log_timezone);
 
 	if (tzn != NULL)
 		return tzn;
@@ -454,22 +554,20 @@ assign_XactIsoLevel(const char *value, bool doit, GucSource source)
 {
 	if (SerializableSnapshot != NULL)
 	{
-		if (source >= PGC_S_INTERACTIVE)
-			ereport(ERROR,
-					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
-					 errmsg("SET TRANSACTION ISOLATION LEVEL must be called before any query")));
+		ereport(GUC_complaint_elevel(source),
+				(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+				 errmsg("SET TRANSACTION ISOLATION LEVEL must be called before any query")));
 		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
-		else if (source != PGC_S_OVERRIDE)
+		if (source != PGC_S_OVERRIDE)
 			return NULL;
 	}
-	if (IsSubTransaction())
+	else if (IsSubTransaction())
 	{
-		if (source >= PGC_S_INTERACTIVE)
-			ereport(ERROR,
-					(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
-					 errmsg("SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction")));
+		ereport(GUC_complaint_elevel(source),
+				(errcode(ERRCODE_ACTIVE_SQL_TRANSACTION),
+				 errmsg("SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction")));
 		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
-		else if (source != PGC_S_OVERRIDE)
+		if (source != PGC_S_OVERRIDE)
 			return NULL;
 	}
 
@@ -570,11 +668,10 @@ assign_client_encoding(const char *value, bool doit, GucSource source)
 	 */
 	if (SetClientEncoding(encoding, doit) < 0)
 	{
-		if (source >= PGC_S_INTERACTIVE)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("conversion between %s and %s is not supported",
-							value, GetDatabaseEncodingName())));
+		ereport(GUC_complaint_elevel(source),
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("conversion between %s and %s is not supported",
+						value, GetDatabaseEncodingName())));
 		return NULL;
 	}
 	return value;
@@ -637,10 +734,9 @@ assign_session_authorization(const char *value, bool doit, GucSource source)
 			 * this test is positioned so that restoring a previously saved
 			 * setting isn't prevented.
 			 */
-			if (source >= PGC_S_INTERACTIVE)
-				ereport(ERROR,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot set session authorization within security-definer function")));
+			ereport(GUC_complaint_elevel(source),
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot set session authorization within security-definer function")));
 			return NULL;
 		}
 
@@ -659,10 +755,9 @@ assign_session_authorization(const char *value, bool doit, GucSource source)
 								 0, 0, 0);
 		if (!HeapTupleIsValid(roleTup))
 		{
-			if (source >= PGC_S_INTERACTIVE)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("role \"%s\" does not exist", value)));
+			ereport(GUC_complaint_elevel(source),
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("role \"%s\" does not exist", value)));
 			return NULL;
 		}
 
@@ -770,6 +865,24 @@ assign_role(const char *value, bool doit, GucSource source)
 		return NULL;
 	}
 
+	if (roleid == InvalidOid && InSecurityDefinerContext())
+	{
+		/*
+		 * Disallow SET ROLE inside a security definer context.  We need to do
+		 * this because when we exit the context, GUC won't be notified,
+		 * leaving things out of sync.  Note that this test is arranged so
+		 * that restoring a previously saved setting isn't prevented.
+		 *
+		 * XXX it would be nice to allow this case in future, with the
+		 * behavior being that the SET ROLE's effects end when the security
+		 * definer context is exited.
+		 */
+		ereport(GUC_complaint_elevel(source),
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot set role within security-definer function")));
+		return NULL;
+	}
+
 	if (roleid == InvalidOid &&
 		strcmp(actual_rolename, "none") != 0)
 	{
@@ -791,10 +904,9 @@ assign_role(const char *value, bool doit, GucSource source)
 								 0, 0, 0);
 		if (!HeapTupleIsValid(roleTup))
 		{
-			if (source >= PGC_S_INTERACTIVE)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("role \"%s\" does not exist", value)));
+			ereport(GUC_complaint_elevel(source),
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("role \"%s\" does not exist", value)));
 			return NULL;
 		}
 
@@ -808,11 +920,10 @@ assign_role(const char *value, bool doit, GucSource source)
 		 */
 		if (!is_member_of_role(GetSessionUserId(), roleid))
 		{
-			if (source >= PGC_S_INTERACTIVE)
-				ereport(ERROR,
-						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("permission denied to set role \"%s\"",
-								value)));
+			ereport(GUC_complaint_elevel(source),
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("permission denied to set role \"%s\"",
+							value)));
 			return NULL;
 		}
 	}

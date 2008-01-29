@@ -20,6 +20,8 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/rewriteheap.h"
+#include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
@@ -30,12 +32,16 @@
 #include "catalog/pg_type.h"
 #include "catalog/toasting.h"
 #include "commands/cluster.h"
+#include "commands/trigger.h"
+#include "commands/vacuum.h"
 #include "miscadmin.h"
+#include "storage/procarray.h"
 #include "utils/acl.h"
 #include "utils/fmgroids.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "utils/relcache.h"
 #include "cdb/cdbvars.h"
@@ -57,7 +63,7 @@ typedef struct
 
 static void cluster_rel(RelToCluster *rv, bool recheck, ClusterStmt *stmt);
 static void rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt);
-static void copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex);
+static TransactionId copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex);
 static List *get_tables_to_cluster(MemoryContext cluster_context);
 
 
@@ -81,13 +87,13 @@ static List *get_tables_to_cluster(MemoryContext cluster_context);
  *
  * The single-relation case does not have any such overhead.
  *
- * We also allow a relation being specified without index.	In that case,
+ * We also allow a relation to be specified without index.	In that case,
  * the indisclustered bit will be looked up, and an ERROR will be thrown
  * if there is no index with the bit set.
  *---------------------------------------------------------------------------
  */
 void
-cluster(ClusterStmt *stmt)
+cluster(ClusterStmt *stmt, bool isTopLevel)
 {
 	if (stmt->relation != NULL)
 	{
@@ -115,6 +121,15 @@ cluster(ClusterStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot cluster temporary tables of other sessions")));
+
+		/*
+		 * Reject clustering a remote temp table ... their local buffer
+		 * manager is not going to cope.
+		 */
+		if (isOtherTempNamespace(RelationGetNamespace(rel)))
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			   errmsg("cannot cluster temporary tables of other sessions")));
 
 		if (stmt->indexname == NULL)
 		{
@@ -192,7 +207,7 @@ cluster(ClusterStmt *stmt)
 		 * We cannot run this form of CLUSTER inside a user transaction block;
 		 * we'd be holding locks way too long.
 		 */
-		PreventTransactionChain((void *) stmt, "CLUSTER");
+		PreventTransactionChain(isTopLevel, "CLUSTER");
 
 		/*
 		 * Create special memory context for cross-transaction storage.
@@ -319,6 +334,21 @@ cluster_rel(RelToCluster *rvtc, bool recheck, ClusterStmt *stmt)
 		}
 
 		/*
+		 * Silently skip a temp table for a remote session.  Only doing this
+		 * check in the "recheck" case is appropriate (which currently means
+		 * somebody is executing a database-wide CLUSTER), because there is
+		 * another check in cluster() which will stop any attempt to cluster
+		 * remote temp tables by name.	There is another check in
+		 * check_index_is_clusterable which is redundant, but we leave it for
+		 * extra safety.
+		 */
+		if (isOtherTempNamespace(RelationGetNamespace(OldHeap)))
+		{
+			relation_close(OldHeap, AccessExclusiveLock);
+			return;
+		}
+
+		/*
 		 * Check that the index still exists
 		 */
 		if (!SearchSysCacheExists(RELOID,
@@ -423,10 +453,10 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid, bool recheck)
 						 errmsg("cannot cluster on index \"%s\" because access method does not handle null values",
 								RelationGetRelationName(OldIndex)),
 						 recheck
-						 ? errhint("You may be able to work around this by marking column \"%s\" NOT NULL, or use ALTER TABLE ... SET WITHOUT CLUSTER to remove the cluster specification from the table.",
-								   NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))
-						 : errhint("You may be able to work around this by marking column \"%s\" NOT NULL.",
-								   NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))));						
+						 ? errhint("You might be able to work around this by marking column \"%s\" NOT NULL, or use ALTER TABLE ... SET WITHOUT CLUSTER to remove the cluster specification from the table.",
+						 NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))
+						 : errhint("You might be able to work around this by marking column \"%s\" NOT NULL.",
+					  NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))));
 		}
 		else if (colno < 0)
 		{
@@ -439,6 +469,20 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid, bool recheck)
 					 errmsg("cannot cluster on expressional index \"%s\" because its index access method does not handle null values",
 							RelationGetRelationName(OldIndex))));
 	}
+
+	/*
+	 * Disallow if index is left over from a failed CREATE INDEX CONCURRENTLY;
+	 * it might well not contain entries for every heap row, or might not even
+	 * be internally consistent.  (But note that we don't check indcheckxmin;
+	 * the worst consequence of following broken HOT chains would be that we
+	 * might put recently-dead tuples out-of-order in the new table, and there
+	 * is little harm in that.)
+	 */
+	if (!OldIndex->rd_index->indisvalid)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot cluster on invalid index \"%s\"",
+						RelationGetRelationName(OldIndex))));
 
 	/*
 	 * Disallow if index is left over from a failed CREATE INDEX CONCURRENTLY;
@@ -471,6 +515,17 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid, bool recheck)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			   errmsg("cannot cluster temporary tables of other sessions")));
+
+	/*
+	 * Also check for pending AFTER trigger events on the relation.  We can't
+	 * just leave those be, since they will try to fetch tuples that the
+	 * CLUSTER has moved to new TIDs.
+	 */
+	if (AfterTriggerPendingOnRel(RelationGetRelid(OldHeap)))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("cannot cluster table \"%s\" because it has pending trigger events",
+						RelationGetRelationName(OldHeap))));
 
 	/* Drop relcache refcnt on OldIndex, but keep lock */
 	index_close(OldIndex, NoLock);
@@ -567,6 +622,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	Oid			tableSpace = OldHeap->rd_rel->reltablespace;
 	Oid			OIDNewHeap;
 	char		NewHeapName[NAMEDATALEN];
+	TransactionId frozenXid;
 	ObjectAddress object;
 
 	/* Mark the correct index as clustered */
@@ -594,13 +650,13 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	/*
 	 * Copy the heap data into the new table in the desired order.
 	 */
-	copy_heap_data(OIDNewHeap, tableOid, indexOid);
+	frozenXid = copy_heap_data(OIDNewHeap, tableOid, indexOid);
 
 	/* To make the new heap's data visible (probably not needed?). */
 	CommandCounterIncrement();
 
 	/* Swap the physical files of the old and new heaps. */
-	swap_relation_files(tableOid, OIDNewHeap);
+	swap_relation_files(tableOid, OIDNewHeap, frozenXid);
 
 	CommandCounterIncrement();
 
@@ -753,9 +809,10 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 }
 
 /*
- * Do the physical copying of heap data.
+ * Do the physical copying of heap data.  Returns the TransactionId used as
+ * freeze cutoff point for the tuples.
  */
-static void
+static TransactionId
 copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 {
 	Relation	NewHeap,
@@ -765,9 +822,13 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 	TupleDesc	newTupDesc;
 	int			natts;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *isnull;
 	IndexScanDesc scan;
 	HeapTuple	tuple;
+	bool		use_wal;
+	TransactionId OldestXmin;
+	TransactionId FreezeXid;
+	RewriteState rwstate;
 
 	/*
 	 * Open the relations we need.
@@ -784,74 +845,157 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
 	newTupDesc = RelationGetDescr(NewHeap);
 	Assert(newTupDesc->natts == oldTupDesc->natts);
 
-	/* Preallocate values/nulls arrays */
+	/* Preallocate values/isnull arrays */
 	natts = newTupDesc->natts;
-	values = (Datum *) palloc0(natts * sizeof(Datum));
-	nulls = (char *) palloc(natts * sizeof(char));
-	memset(nulls, 'n', natts * sizeof(char));
+	values = (Datum *) palloc(natts * sizeof(Datum));
+	isnull = (bool *) palloc(natts * sizeof(bool));
 
 	/*
-	 * Scan through the OldHeap on the OldIndex and copy each tuple into the
-	 * NewHeap.
+	 * We need to log the copied data in WAL iff WAL archiving is enabled AND
+	 * it's not a temp rel.
+	 */
+	use_wal = XLogArchivingActive() && !NewHeap->rd_istemp;
+
+	/* use_wal off requires rd_targblock be initially invalid */
+	Assert(NewHeap->rd_targblock == InvalidBlockNumber);
+
+	/*
+	 * compute xids used to freeze and weed out dead tuples.  We use -1
+	 * freeze_min_age to avoid having CLUSTER freeze tuples earlier than a
+	 * plain VACUUM would.
+	 */
+	vacuum_set_xid_limits(-1, OldHeap->rd_rel->relisshared,
+						  &OldestXmin, &FreezeXid);
+
+	/*
+	 * FreezeXid will become the table's new relfrozenxid, and that mustn't
+	 * go backwards, so take the max.
+	 */
+	if (TransactionIdPrecedes(FreezeXid, OldHeap->rd_rel->relfrozenxid))
+		FreezeXid = OldHeap->rd_rel->relfrozenxid;
+
+	/* Initialize the rewrite operation */
+	rwstate = begin_heap_rewrite(NewHeap, OldestXmin, FreezeXid, use_wal);
+
+	/*
+	 * Scan through the OldHeap in OldIndex order and copy each tuple into the
+	 * NewHeap.  To ensure we see recently-dead tuples that still need to be
+	 * copied, we scan with SnapshotAny and use HeapTupleSatisfiesVacuum for
+	 * the visibility test.
 	 */
 	scan = index_beginscan(OldHeap, OldIndex,
-						   SnapshotNow, 0, (ScanKey) NULL);
+						   SnapshotAny, 0, (ScanKey) NULL);
 
 	while ((tuple = index_getnext(scan, ForwardScanDirection)) != NULL)
 	{
+		HeapTuple	copiedTuple;
+		bool		isdead;
+		int			i;
+
+		CHECK_FOR_INTERRUPTS();
+
+		LockBuffer(scan->xs_cbuf, BUFFER_LOCK_SHARE);
+
+		switch (HeapTupleSatisfiesVacuum(tuple->t_data, OldestXmin,
+										 scan->xs_cbuf))
+		{
+			case HEAPTUPLE_DEAD:
+				/* Definitely dead */
+				isdead = true;
+				break;
+			case HEAPTUPLE_LIVE:
+			case HEAPTUPLE_RECENTLY_DEAD:
+				/* Live or recently dead, must copy it */
+				isdead = false;
+				break;
+			case HEAPTUPLE_INSERT_IN_PROGRESS:
+
+				/*
+				 * We should not see this unless it's been inserted earlier in
+				 * our own transaction.
+				 */
+				if (!TransactionIdIsCurrentTransactionId(
+									  HeapTupleHeaderGetXmin(tuple->t_data)))
+					elog(ERROR, "concurrent insert in progress");
+				/* treat as live */
+				isdead = false;
+				break;
+			case HEAPTUPLE_DELETE_IN_PROGRESS:
+
+				/*
+				 * We should not see this unless it's been deleted earlier in
+				 * our own transaction.
+				 */
+				Assert(!(tuple->t_data->t_infomask & HEAP_XMAX_IS_MULTI));
+				if (!TransactionIdIsCurrentTransactionId(
+									  HeapTupleHeaderGetXmax(tuple->t_data)))
+					elog(ERROR, "concurrent delete in progress");
+				/* treat as recently dead */
+				isdead = false;
+				break;
+			default:
+				elog(ERROR, "unexpected HeapTupleSatisfiesVacuum result");
+				isdead = false; /* keep compiler quiet */
+				break;
+		}
+
+		LockBuffer(scan->xs_cbuf, BUFFER_LOCK_UNLOCK);
+
+		if (isdead)
+		{
+			/* heap rewrite module still needs to see it... */
+			rewrite_heap_dead_tuple(rwstate, tuple);
+			continue;
+		}
+
 		/*
-		 * We cannot simply pass the tuple to heap_insert(), for several
-		 * reasons:
+		 * We cannot simply copy the tuple as-is, for several reasons:
 		 *
-		 * 1. heap_insert() will overwrite the commit-status fields of the
-		 * tuple it's handed.  This would trash the source relation, which is
-		 * bad news if we abort later on.  (This was a bug in releases thru
-		 * 7.0)
-		 *
-		 * 2. We'd like to squeeze out the values of any dropped columns, both
+		 * 1. We'd like to squeeze out the values of any dropped columns, both
 		 * to save space and to ensure we have no corner-case failures. (It's
 		 * possible for example that the new table hasn't got a TOAST table
 		 * and so is unable to store any large values of dropped cols.)
 		 *
-		 * 3. The tuple might not even be legal for the new table; this is
+		 * 2. The tuple might not even be legal for the new table; this is
 		 * currently only known to happen as an after-effect of ALTER TABLE
 		 * SET WITHOUT OIDS.
 		 *
 		 * So, we must reconstruct the tuple from component Datums.
 		 */
-		HeapTuple	copiedTuple;
-		int			i;
-
-		heap_deformtuple(tuple, oldTupDesc, values, nulls);
+		heap_deform_tuple(tuple, oldTupDesc, values, isnull);
 
 		/* Be sure to null out any dropped columns */
 		for (i = 0; i < natts; i++)
 		{
 			if (newTupDesc->attrs[i]->attisdropped)
-				nulls[i] = 'n';
+				isnull[i] = true;
 		}
 
-		copiedTuple = heap_formtuple(newTupDesc, values, nulls);
+		copiedTuple = heap_form_tuple(newTupDesc, values, isnull);
 
 		/* Preserve OID, if any */
 		if (NewHeap->rd_rel->relhasoids)
 			HeapTupleSetOid(copiedTuple, HeapTupleGetOid(tuple));
 
-		simple_heap_insert(NewHeap, copiedTuple);
+		/* The heap rewrite module does the rest */
+		rewrite_heap_tuple(rwstate, tuple, copiedTuple);
 
 		heap_freetuple(copiedTuple);
-
-		CHECK_FOR_INTERRUPTS();
 	}
 
 	index_endscan(scan);
 
+	/* Write out any remaining tuples, and fsync if needed */
+	end_heap_rewrite(rwstate);
+
 	pfree(values);
-	pfree(nulls);
+	pfree(isnull);
 
 	index_close(OldIndex, NoLock);
 	heap_close(OldHeap, NoLock);
 	heap_close(NewHeap, NoLock);
+
+	return FreezeXid;
 }
 
 /*
@@ -862,9 +1006,16 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
  *
  * Also swap any TOAST links, so that the toast data moves along with
  * the main-table data.
+ *
+ * Additionally, the first relation is marked with relfrozenxid set to
+ * frozenXid.  It seems a bit ugly to have this here, but all callers would
+ * have to do it anyway, so having it here saves a heap_update.  Note: the
+ * TOAST table needs no special handling, because since we swapped the links,
+ * the entry for the TOAST table will now contain RecentXmin in relfrozenxid,
+ * which is the correct value.
  */
 void
-swap_relation_files(Oid r1, Oid r2)
+swap_relation_files(Oid r1, Oid r2, TransactionId frozenXid)
 {
 	Relation	relRelation;
 	HeapTuple	reltup1,
@@ -907,6 +1058,10 @@ swap_relation_files(Oid r1, Oid r2)
 	relform2->reltoastrelid = swaptemp;
 
 	/* we should not swap reltoastidxid */
+
+	/* set rel1's frozen Xid */
+	Assert(TransactionIdIsNormal(frozenXid));
+	relform1->relfrozenxid = frozenXid;
 
 	/* swap size statistics too, since new rel has freshly-updated stats */
 	{

@@ -17,7 +17,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.h,v 1.73.2.1 2007/02/19 15:05:21 mha Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.h,v 1.76 2007/11/07 12:24:24 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -122,12 +122,6 @@ typedef void (*PrintTocDataPtr) (struct _archiveHandle * AH, struct _tocEntry * 
 
 typedef size_t (*CustomOutPtr) (struct _archiveHandle * AH, const void *buf, size_t len);
 
-typedef enum _archiveMode
-{
-	archModeWrite,
-	archModeRead
-} ArchiveMode;
-
 typedef struct _outputContext
 {
 	void	   *OF;
@@ -231,7 +225,7 @@ typedef struct _archiveHandle
 	StartBlobPtr StartBlobPtr;
 	EndBlobPtr EndBlobPtr;
 
-	CustomOutPtr CustomOutPtr;	/* Alternate script output routine */
+	CustomOutPtr CustomOutPtr;	/* Alternative script output routine */
 
 	/* Stuff for direct DB connection */
 	char	   *archdbname;		/* DB name *read* from archive */

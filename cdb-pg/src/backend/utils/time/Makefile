@@ -4,7 +4,7 @@
 #    Makefile for utils/time
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/utils/time/Makefile,v 1.10 2003/11/29 19:52:04 pgsql Exp $
+#    $PostgreSQL: pgsql/src/backend/utils/time/Makefile,v 1.12 2007/02/09 03:35:34 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -12,19 +12,12 @@ subdir = src/backend/utils/time
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = tqual.o combocid.o
+OBJS = combocid.o tqual.o
 
 all: SUBSYS.o
 
 SUBSYS.o: $(OBJS)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
 
-depend dep:
-	$(CC) -MM $(CFLAGS) *.c >depend
-
-clean: 
+clean:
 	rm -f SUBSYS.o $(OBJS)
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif

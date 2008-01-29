@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/analyze.c,v 1.101 2006/11/05 22:42:08 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/analyze.c,v 1.114 2008/01/03 21:23:15 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,6 +22,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "commands/dbcommands.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -29,10 +30,13 @@
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "pgstat.h"
+#include "postmaster/autovacuum.h"
+#include "storage/proc.h"
 #include "utils/acl.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/pg_rusage.h"
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
@@ -66,9 +70,12 @@ int			default_statistics_target = 25;
 /* Default target efraction */
 double	analyze_relative_error = 0.25;
 
+/* A few variables that don't seem worth passing around as parameters */
 static int	elevel = -1;
 
 static MemoryContext anl_context = NULL;
+
+static BufferAccessStrategy vac_strategy;
 
 
 static void BlockSampler_Init(BlockSampler bs, BlockNumber nblocks,
@@ -97,7 +104,8 @@ static bool std_typanalyze(VacAttrStats *stats);
  *	analyze_rel() -- analyze one relation
  */
 void
-analyze_rel(Oid relid, VacuumStmt *vacstmt)
+analyze_rel(Oid relid, VacuumStmt *vacstmt,
+			BufferAccessStrategy bstrategy)
 {
 	Relation	onerel;
 	int			attr_cnt,
@@ -115,6 +123,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	double		totalrows,
 				totaldeadrows;
 	HeapTuple  *rows;
+	PGRUsage	ru0;
+	TimestampTz starttime = 0;
 	Oid			save_userid;
 	bool		save_secdefcxt;
 
@@ -131,6 +141,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 		
 	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_primary)
 		elevel = DEBUG2; /* the mirrors usually just repeat what the primaries say */
+
+	vac_strategy = bstrategy;
 
 	/*
 	 * Use the current context for storing analysis info.  vacuum.c ensures
@@ -221,6 +233,19 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 */
 	GetUserIdAndContext(&save_userid, &save_secdefcxt);
 	SetUserIdAndContext(onerel->rd_rel->relowner, true);
+
+	/* let others know what I'm doing */
+	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+	MyProc->vacuumFlags |= PROC_IN_ANALYZE;
+	LWLockRelease(ProcArrayLock);
+
+	/* measure elapsed time iff autovacuum logging requires it */
+	if (IsAutoVacuumWorkerProcess() && Log_autovacuum_min_duration >= 0)
+	{
+		pg_rusage_init(&ru0);
+		if (Log_autovacuum_min_duration > 0)
+			starttime = GetCurrentTimestamp();
+	}
 
 	/*
 	 * Determine which columns to analyze
@@ -472,6 +497,9 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	/* We skip to here if there were no analyzable columns */
 cleanup:
 
+	/* We skip to here if there were no analyzable columns */
+cleanup:
+
 	/* Done with indexes */
 	vac_close_indexes(nindexes, Irel, NoLock);
 
@@ -482,6 +510,28 @@ cleanup:
 	 * expose us to concurrent-update failures in update_attstats.)
 	 */
 	relation_close(onerel, NoLock);
+
+	/* Log the action if appropriate */
+	if (IsAutoVacuumWorkerProcess() && Log_autovacuum_min_duration >= 0)
+	{
+		if (Log_autovacuum_min_duration == 0 ||
+			TimestampDifferenceExceeds(starttime, GetCurrentTimestamp(),
+									   Log_autovacuum_min_duration))
+			ereport(LOG,
+					(errmsg("automatic analyze of table \"%s.%s.%s\" system usage: %s",
+							get_database_name(MyDatabaseId),
+							get_namespace_name(RelationGetNamespace(onerel)),
+							RelationGetRelationName(onerel),
+							pg_rusage_show(&ru0))));
+	}
+
+	/*
+	 * Reset my PGPROC flag.  Note: we need this here, and not in vacuum_rel,
+	 * because the vacuum flag is cleared by the end-of-xact code.
+	 */
+	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+	MyProc->vacuumFlags &= ~PROC_IN_ANALYZE;
+	LWLockRelease(ProcArrayLock);
 
 	/* Restore userid */
 	SetUserIdAndContext(save_userid, save_secdefcxt);
@@ -852,7 +902,7 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 		 * looking at it.  We don't maintain a lock on the page, so tuples
 		 * could get added to it, but we ignore such tuples.
 		 */
-		targbuffer = ReadBuffer(onerel, targblock);
+		targbuffer = ReadBufferWithStrategy(onerel, targblock, vac_strategy);
 		LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
 		targpage = BufferGetPage(targbuffer);
 		maxoffset = PageGetMaxOffsetNumber(targpage);
@@ -1338,7 +1388,7 @@ typedef struct
 typedef struct
 {
 	FmgrInfo   *cmpFn;
-	SortFunctionKind cmpFnKind;
+	int			cmpFlags;
 	int		   *tupnoLink;
 } CompareScalarsContext;
 
@@ -1792,8 +1842,8 @@ compute_scalar_stats(VacAttrStatsP stats,
 	bool		is_varwidth = (!stats->attr->attbyval &&
 							   stats->attr->attlen < 0);
 	double		corr_xysum;
-	RegProcedure cmpFn;
-	SortFunctionKind cmpFnKind;
+	Oid			cmpFn;
+	int			cmpFlags;
 	FmgrInfo	f_cmpfn;
 	ScalarItem *values;
 	int			values_cnt = 0;
@@ -1808,7 +1858,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 	tupnoLink = (int *) palloc(samplerows * sizeof(int));
 	track = (ScalarMCVItem *) palloc(num_mcv * sizeof(ScalarMCVItem));
 
-	SelectSortFunction(mystats->ltopr, &cmpFn, &cmpFnKind);
+	SelectSortFunction(mystats->ltopr, false, &cmpFn, &cmpFlags);
 	fmgr_info(cmpFn, &f_cmpfn);
 
 	/* Initial scan to find sortable values */
@@ -1878,7 +1928,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 
 		/* Sort the collected values */
 		cxt.cmpFn = &f_cmpfn;
-		cxt.cmpFnKind = cmpFnKind;
+		cxt.cmpFlags = cmpFlags;
 		cxt.tupnoLink = tupnoLink;
 		qsort_arg((void *) values, values_cnt, sizeof(ScalarItem),
 				  compare_scalars, (void *) &cxt);
@@ -2248,7 +2298,7 @@ compare_scalars(const void *a, const void *b, void *arg)
 	CompareScalarsContext *cxt = (CompareScalarsContext *) arg;
 	int32		compare;
 
-	compare = ApplySortFunction(cxt->cmpFn, cxt->cmpFnKind,
+	compare = ApplySortFunction(cxt->cmpFn, cxt->cmpFlags,
 								da, false, db, false);
 	if (compare != 0)
 		return compare;

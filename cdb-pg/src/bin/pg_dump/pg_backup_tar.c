@@ -102,7 +102,7 @@ typedef struct
 	char	   *filename;
 } lclTocEntry;
 
-static char *modulename = gettext_noop("tar archiver");
+static const char *modulename = gettext_noop("tar archiver");
 
 static void _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt);
 
@@ -172,15 +172,22 @@ InitArchiveFmt_Tar(ArchiveHandle *AH)
 	 */
 	if (AH->mode == archModeWrite)
 	{
-
 		if (AH->fSpec && strcmp(AH->fSpec, "") != 0)
+		{
 			ctx->tarFH = fopen(AH->fSpec, PG_BINARY_W);
+			if (ctx->tarFH == NULL)
+				die_horribly(NULL, modulename,
+						   "could not open TOC file \"%s\" for output: %s\n",
+							 AH->fSpec, strerror(errno));
+		}
 		else
+		{
 			ctx->tarFH = stdout;
-
-		if (ctx->tarFH == NULL)
-			die_horribly(NULL, modulename,
-				"could not open TOC file for output: %s\n", strerror(errno));
+			if (ctx->tarFH == NULL)
+				die_horribly(NULL, modulename,
+							 "could not open TOC file for output: %s\n",
+							 strerror(errno));
+		}
 
 		ctx->tarFHpos = 0;
 
@@ -210,14 +217,20 @@ InitArchiveFmt_Tar(ArchiveHandle *AH)
 	}
 	else
 	{							/* Read Mode */
-
 		if (AH->fSpec && strcmp(AH->fSpec, "") != 0)
+		{
 			ctx->tarFH = fopen(AH->fSpec, PG_BINARY_R);
+			if (ctx->tarFH == NULL)
+				die_horribly(NULL, modulename, "could not open TOC file \"%s\" for input: %s\n",
+							 AH->fSpec, strerror(errno));
+		}
 		else
+		{
 			ctx->tarFH = stdin;
-
-		if (ctx->tarFH == NULL)
-			die_horribly(NULL, modulename, "could not open TOC file for input: %s\n", strerror(errno));
+			if (ctx->tarFH == NULL)
+				die_horribly(NULL, modulename, "could not open TOC file for input: %s\n",
+							 strerror(errno));
+		}
 
 		/*
 		 * Make unbuffered since we will dup() it, and the buffers screw each
@@ -733,11 +746,12 @@ _LoadBlobs(ArchiveHandle *AH, RestoreOptions *ropt)
 		else
 		{
 			tarClose(AH, th);
+
 			/*
-			 * Once we have found the first blob, stop at the first
-			 * non-blob entry (which will be 'blobs.toc').  This coding would
-			 * eat all the rest of the archive if there are no blobs ... but
-			 * this function shouldn't be called at all in that case.
+			 * Once we have found the first blob, stop at the first non-blob
+			 * entry (which will be 'blobs.toc').  This coding would eat all
+			 * the rest of the archive if there are no blobs ... but this
+			 * function shouldn't be called at all in that case.
 			 */
 			if (foundBlob)
 				break;
@@ -1062,8 +1076,8 @@ _tarAddFile(ArchiveHandle *AH, TAR_MEMBER *th)
 	fseeko(tmp, 0, SEEK_SET);
 
 	/*
-	 * Some compilers with throw a warning knowing this test can never be true
-	 * because pgoff_t can't exceed the compared maximum.
+	 * Some compilers will throw a warning knowing this test can never be true
+	 * because pgoff_t can't exceed the compared maximum on their platform.
 	 */
 	if (th->fileLen > MAX_TAR_MEMBER_FILELEN)
 		die_horribly(AH, modulename, "archive member too large for tar format\n");

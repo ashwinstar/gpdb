@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/nodes.h,v 1.188 2006/09/28 20:51:42 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/nodes.h,v 1.205 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -137,6 +137,8 @@ typedef enum NodeTag
 	T_FieldSelect,
 	T_FieldStore,
 	T_RelabelType,
+	T_CoerceViaIO,
+	T_ArrayCoerceExpr,
 	T_ConvertRowtypeExpr,
 	T_CaseExpr,
 	T_CaseWhen,
@@ -146,16 +148,19 @@ typedef enum NodeTag
 	T_RowCompareExpr,
 	T_CoalesceExpr,
 	T_MinMaxExpr,
+	T_XmlExpr,
 	T_NullIfExpr,
 	T_NullTest,
 	T_BooleanTest,
 	T_CoerceToDomain,
 	T_CoerceToDomainValue,
 	T_SetToDefault,
+	T_CurrentOfExpr,
 	T_TargetEntry,
 	T_RangeTblRef,
 	T_JoinExpr,
 	T_FromExpr,
+	T_IntoClause,
 	T_Flow,
 	T_WindowFrame,
 	T_WindowFrameEdge,
@@ -179,6 +184,8 @@ typedef enum NodeTag
 	T_SubPlanState,
 	T_FieldSelectState,
 	T_FieldStoreState,
+	T_CoerceViaIOState,
+	T_ArrayCoerceExprState,
 	T_ConvertRowtypeExprState,
 	T_CaseExprState,
 	T_CaseWhenState,
@@ -187,6 +194,7 @@ typedef enum NodeTag
 	T_RowCompareExprState,
 	T_CoalesceExprState,
 	T_MinMaxExprState,
+	T_XmlExprState,
 	T_NullTestState,
 	T_CoerceToDomainState,
 	T_DomainConstraintState,
@@ -197,6 +205,7 @@ typedef enum NodeTag
 	 * TAGS FOR PLANNER NODES (relation.h)
 	 */
 	T_PlannerInfo = 500,
+	T_PlannerGlobal,
 	T_RelOptInfo,
 	T_IndexOptInfo,
 	T_Path,
@@ -213,12 +222,15 @@ typedef enum NodeTag
 	T_ResultPath,
 	T_MaterialPath,
 	T_UniquePath,
-	T_PathKeyItem,
+	T_EquivalenceClass,
+	T_EquivalenceMember,
+	T_PathKey,
 	T_RestrictInfo,
 	T_InnerIndexscanInfo,
 	T_OuterJoinInfo,
 	T_InClauseInfo,
 	T_AppendRelInfo,
+	T_PlannerParamItem,
 
     /* Tags for MPP planner nodes (relation.h) */
     T_CdbMotionPath = 580,
@@ -251,9 +263,10 @@ typedef enum NodeTag
 	T_OidList,
 
 	/*
-	 * TAGS FOR PARSE TREE NODES (parsenodes.h)
+	 * TAGS FOR STATEMENT NODES (mostly in parsenodes.h)
 	 */
 	T_Query = 700,
+	T_PlannedStmt,
 	T_InsertStmt,
 	T_DeleteStmt,
 	T_UpdateStmt,
@@ -297,7 +310,7 @@ typedef enum NodeTag
 	T_AlterSeqStmt,
 	T_VariableSetStmt,
 	T_VariableShowStmt,
-	T_VariableResetStmt,
+	T_DiscardStmt,
 	T_CreateTrigStmt,
 	T_DropPropertyStmt,
 	T_CreatePLangStmt,
@@ -320,7 +333,10 @@ typedef enum NodeTag
 	T_CreateCastStmt,
 	T_DropCastStmt,
 	T_CreateOpClassStmt,
+	T_CreateOpFamilyStmt,
+	T_AlterOpFamilyStmt,
 	T_RemoveOpClassStmt,
+	T_RemoveOpFamilyStmt,
 	T_PrepareStmt,
 	T_ExecuteStmt,
 	T_DeallocateStmt,
@@ -331,6 +347,10 @@ typedef enum NodeTag
 	T_AlterOwnerStmt,
 	T_DropOwnedStmt,
 	T_ReassignOwnedStmt,
+	T_CompositeTypeStmt,
+	T_CreateEnumStmt,
+	T_AlterTSDictionaryStmt,
+	T_AlterTSConfigurationStmt,
 	T_WindowSpec,
 	T_WindowSpecParse,
 	T_PartitionBy,
@@ -339,7 +359,10 @@ typedef enum NodeTag
 	T_PartitionBoundSpec,
 	T_PartitionSpec,
 
-	T_A_Expr = 800,
+	/*
+	 * TAGS FOR PARSE TREE NODES (parsenodes.h)
+	 */
+	T_A_Expr = 900,
 	T_ColumnRef,
 	T_ParamRef,
 	T_A_Const,
@@ -366,11 +389,11 @@ typedef enum NodeTag
 	T_FuncWithArgs,
 	T_PrivTarget,
 	T_CreateOpClassItem,
-	T_CompositeTypeStmt,
 	T_InhRelation,
 	T_FunctionParameter,
 	T_LockingClause,
 	T_RowMarkClause,
+	T_XmlSerialize,
 
 	/*
 	 * TAGS FOR RANDOM OTHER STUFF
@@ -380,7 +403,7 @@ typedef enum NodeTag
 	 * purposes (usually because they are involved in APIs where we want to
 	 * pass multiple object types through the same pointer).
 	 */
-	T_TriggerData = 900,		/* in commands/trigger.h */
+	T_TriggerData = 950,		/* in commands/trigger.h */
 	T_ReturnSetInfo,			/* in nodes/execnodes.h */
     T_HashBitmap,                           /* in nodes/tidbitmap.h */
     T_StreamBitmap,                         /* in nodes/tidbitmap.h */
@@ -415,7 +438,7 @@ typedef struct Node
  *	Fortunately, this macro isn't recursive so we just define
  *	a global variable for this purpose.
  */
-extern DLLIMPORT Node *newNodeMacroHolder;
+extern PGDLLIMPORT Node *newNodeMacroHolder;
 
 #define newNode(size, tag) \
 ( \
@@ -477,10 +500,9 @@ typedef double Cost;			/* execution cost (in page-access units) */
 
 /*
  * CmdType -
- *	  enums for type of operation represented by a Query
+ *	  enums for type of operation represented by a Query or PlannedStmt
  *
- * ??? could have put this in parsenodes.h but many files not in the
- *	  optimizer also need this...
+ * This is needed in both parsenodes.h and plannodes.h, so put it here...
  */
 typedef enum CmdType
 {

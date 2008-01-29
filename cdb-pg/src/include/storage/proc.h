@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/proc.h,v 1.91 2006/10/04 00:30:10 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/storage/proc.h,v 1.103 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -42,6 +42,15 @@ struct XidCache
 };
 
 
+/* Flags for PGPROC->vacuumFlags */
+#define		PROC_IS_AUTOVACUUM	0x01	/* is it an autovac worker? */
+#define		PROC_IN_VACUUM		0x02	/* currently running lazy vacuum */
+#define		PROC_IN_ANALYZE		0x04	/* currently running analyze */
+#define		PROC_VACUUM_FOR_WRAPAROUND 0x08		/* set by autovac only */
+
+/* flags reset at EOXact */
+#define		PROC_VACUUM_STATE_MASK (0x0E)
+
 /*
  * Each backend has a PGPROC struct in shared memory.  There is also a list of
  * currently-unused PGPROC structs that will be reallocated to new backends.
@@ -66,8 +75,13 @@ struct PGPROC
 	PGSemaphoreData sem;		/* ONE semaphore to sleep on */
 	int			waitStatus;		/* STATUS_WAITING, STATUS_OK or STATUS_ERROR */
 
-	TransactionId xid;			/* transaction currently being executed by
-								 * this proc */
+	LocalTransactionId lxid;	/* local id of top-level transaction currently
+								 * being executed by this proc, if running;
+								 * else InvalidLocalTransactionId */
+
+	TransactionId xid;			/* id of top-level transaction currently being
+								 * executed by this proc, if running and XID
+								 * is assigned; else InvalidTransactionId */
 
 	DistributedTransactionId mppDistributedTransactionId;
 								/* the current distributed MPP
@@ -78,6 +92,7 @@ struct PGPROC
 								 * xid >= xmin ! */
 
 	int			pid;			/* This backend's process id, or 0 */
+	BackendId	backendId;		/* This backend's backend ID (if assigned) */
 	Oid			databaseId;		/* OID of database this backend is using */
 	Oid			roleId;			/* OID of role using this backend */
     int         mppSessionId;   /* serial num of the qDisp process */
@@ -85,7 +100,9 @@ struct PGPROC
     bool		mppIsWriter;	/* The writer gang member, holder of locks */
     bool     mppIsDispatchAgent;  /* This is a PROC entry for a dispatch agent */
 
-	bool		inVacuum;		/* true if current xact is a LAZY VACUUM */
+	bool		inCommit;		/* true if within commit critical section */
+
+	uint8		vacuumFlags;	/* vacuum-related flags, see above */
 
 	/* Info about LWLock the process is currently waiting for, if any. */
 	bool		lwWaiting;		/* true if waiting for an LW lock */
@@ -120,7 +137,7 @@ struct PGPROC
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
 
 
-extern DLLIMPORT PGPROC *MyProc;
+extern PGDLLIMPORT PGPROC *MyProc;
 
 /* Special for MPP reader gangs */
 extern DLLIMPORT PGPROC *lockHolderProcPtr;
@@ -132,6 +149,8 @@ typedef struct PROC_HDR
 {
 	/* Head of list of free PGPROC structures */
 	SHMEM_OFFSET freeProcs;
+	/* Head of list of autovacuum's free PGPROC structures */
+	SHMEM_OFFSET autovacFreeProcs;
 	/* Current shared estimate of appropriate spins_per_delay value */
 	int			spins_per_delay;
 
@@ -141,15 +160,16 @@ typedef struct PROC_HDR
 } PROC_HDR;
 
 /*
- * We set aside some extra PGPROC structures for "dummy" processes,
+ * We set aside some extra PGPROC structures for auxiliary processes,
  * ie things that aren't full-fledged backends but need shmem access.
  */
-#define NUM_DUMMY_PROCS		4
+#define NUM_AUXILIARY_PROCS		4
 
 
 /* configurable options */
 extern int	DeadlockTimeout;
 extern int	StatementTimeout;
+extern bool log_lock_waits;
 
 extern volatile bool cancel_from_timeout;
 
@@ -162,7 +182,7 @@ extern Size ProcGlobalShmemSize(void);
 extern void InitProcGlobal(void);
 extern void InitProcess(void);
 extern void InitProcessPhase2(void);
-extern void InitDummyProcess(void);
+extern void InitAuxiliaryProcess(void);
 extern bool HaveNFreeProcs(int n);
 extern void ProcReleaseLocks(bool isCommit);
 
