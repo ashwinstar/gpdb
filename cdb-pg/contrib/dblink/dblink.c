@@ -8,7 +8,7 @@
  * Darko Prenosil <Darko.Prenosil@finteh.hr>
  * Shridhar Daithankar <shridhar_daithankar@persistent.co.in>
  *
- * $PostgreSQL: pgsql/contrib/dblink/dblink.c,v 1.60.2.1 2007/07/09 01:32:30 joe Exp $
+ * $PostgreSQL: pgsql/contrib/dblink/dblink.c,v 1.69 2008/01/14 02:49:47 tgl Exp $
  * Copyright (c) 2001-2008, PostgreSQL Global Development Group
  * ALL RIGHTS RESERVED;
  *
@@ -38,8 +38,10 @@
 #include "fmgr.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "access/genam.h"
 #include "access/heapam.h"
 #include "access/tupdesc.h"
+#include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_index.h"
 #include "catalog/pg_type.h"
@@ -51,6 +53,7 @@
 #include "nodes/pg_list.h"
 #include "parser/parse_type.h"
 #include "tcop/tcopprot.h"
+#include "utils/acl.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/dynahash.h"
@@ -90,8 +93,7 @@ static int16 get_attnum_pk_pos(int2vector *pkattnums, int16 pknumatts, int16 key
 static HeapTuple get_tuple_of_interest(Oid relid, int2vector *pkattnums, int16 pknumatts, char **src_pkattvals);
 static Oid	get_relid_from_relname(text *relname_text);
 static char *generate_relation_name(Oid relid);
-static char *connstr_strip_password(const char *connstr);
-static void dblink_security_check(PGconn *conn, remoteConn *rconn, const char *connstr);
+static void dblink_security_check(PGconn *conn, remoteConn *rconn);
 
 /* Global */
 static remoteConn *pconn = NULL;
@@ -178,7 +180,6 @@ typedef struct remoteConnHashEnt
 			else \
 			{ \
 				connstr = conname_or_str; \
-				dblink_security_check(conn, rconn, connstr); \
 				conn = PQconnectdb(connstr); \
 				if (PQstatus(conn) == CONNECTION_BAD) \
 				{ \
@@ -189,6 +190,7 @@ typedef struct remoteConnHashEnt
 							 errmsg("could not establish connection"), \
 							 errdetail("%s", msg))); \
 				} \
+				dblink_security_check(conn, rconn); \
 				freeconn = true; \
 			} \
 	} while (0)
@@ -242,9 +244,6 @@ dblink_connect(PG_FUNCTION_ARGS)
 
 	if (connname)
 		rconn = (remoteConn *) palloc(sizeof(remoteConn));
-
-	/* check password used if not superuser */
-	dblink_security_check(conn, rconn, connstr);
 	conn = PQconnectdb(connstr);
 
 	MemoryContextSwitchTo(oldcontext);
@@ -261,6 +260,9 @@ dblink_connect(PG_FUNCTION_ARGS)
 				 errmsg("could not establish connection"),
 				 errdetail("%s", msg)));
 	}
+
+	/* check password used if not superuser */
+	dblink_security_check(conn, rconn);
 
 	if (connname)
 	{
@@ -1028,7 +1030,8 @@ dblink_get_connections(PG_FUNCTION_ARGS)
 	}
 
 	if (astate)
-		return makeArrayResult(astate, CurrentMemoryContext);
+		PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate,
+											  CurrentMemoryContext));
 	else
 		PG_RETURN_NULL();
 }
@@ -1640,7 +1643,7 @@ Datum
 dblink_current_query(PG_FUNCTION_ARGS)
 {
 	if (debug_query_string)
-		PG_RETURN_TEXT_P(GET_TEXT((char *) debug_query_string));
+		PG_RETURN_TEXT_P(GET_TEXT(debug_query_string));
 	else
 		PG_RETURN_NULL();
 }
@@ -1661,35 +1664,45 @@ static char **
 get_pkey_attnames(Oid relid, int16 *numatts)
 {
 	Relation	indexRelation;
-	ScanKeyData entry;
-	HeapScanDesc scan;
+	ScanKeyData skey;
+	SysScanDesc scan;
 	HeapTuple	indexTuple;
 	int			i;
 	char	  **result = NULL;
 	Relation	rel;
 	TupleDesc	tupdesc;
-
-	/* open relation using relid, get tupdesc */
-	rel = relation_open(relid, AccessShareLock);
-	tupdesc = rel->rd_att;
+	AclResult	aclresult;
 
 	/* initialize numatts to 0 in case no primary key exists */
 	*numatts = 0;
 
-	/* use relid to get all related indexes */
+	/* open relation using relid, check permissions, get tupdesc */
+	rel = relation_open(relid, AccessShareLock);
+
+	aclresult = pg_class_aclcheck(RelationGetRelid(rel), GetUserId(),
+								  ACL_SELECT);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, ACL_KIND_CLASS,
+					   RelationGetRelationName(rel));
+
+	tupdesc = rel->rd_att;
+
+	/* Prepare to scan pg_index for entries having indrelid = this rel. */
 	indexRelation = heap_open(IndexRelationId, AccessShareLock);
-	ScanKeyInit(&entry,
+	ScanKeyInit(&skey,
 				Anum_pg_index_indrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(relid));
-	scan = heap_beginscan(indexRelation, SnapshotNow, 1, &entry);
 
-	while ((indexTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	scan = systable_beginscan(indexRelation, IndexIndrelidIndexId, true,
+							  SnapshotNow, 1, &skey);
+
+	while (HeapTupleIsValid(indexTuple = systable_getnext(scan)))
 	{
 		Form_pg_index index = (Form_pg_index) GETSTRUCT(indexTuple);
 
 		/* we're only interested if it is the primary key */
-		if (index->indisprimary == TRUE)
+		if (index->indisprimary)
 		{
 			*numatts = index->indnatts;
 			if (*numatts > 0)
@@ -1702,7 +1715,8 @@ get_pkey_attnames(Oid relid, int16 *numatts)
 			break;
 		}
 	}
-	heap_endscan(scan);
+
+	systable_endscan(scan);
 	heap_close(indexRelation, AccessShareLock);
 	relation_close(rel, AccessShareLock);
 
@@ -1751,8 +1765,8 @@ get_text_array_contents(ArrayType *array, int *numitems)
 		{
 			values[i] = DatumGetCString(DirectFunctionCall1(textout,
 													  PointerGetDatum(ptr)));
-			ptr = att_addlength(ptr, typlen, PointerGetDatum(ptr));
-			ptr = (char *) att_align(ptr, typalign);
+			ptr = att_addlength_pointer(ptr, typlen, ptr);
+			ptr = (char *) att_align_nominal(ptr, typalign);
 		}
 
 		/* advance bitmap pointer if any */
@@ -2247,7 +2261,7 @@ createNewConnection(const char *name, remoteConn * rconn)
 				 errmsg("duplicate connection name")));
 
 	hentry->rconn = rconn;
-	strncpy(hentry->name, name, NAMEDATALEN - 1);
+	strlcpy(hentry->name, name, sizeof(hentry->name));
 }
 
 static void
@@ -2273,158 +2287,22 @@ deleteConnection(const char *name)
 
 }
 
-
-/*
- * Modified version of conninfo_parse() from fe-connect.c
- * Used to remove any password from the connection string
- * in order to test whether the server auth method will
- * require it.
- */
-static char *
-connstr_strip_password(const char *connstr)
-{
-	char		   *pname;
-	char		   *pval;
-	char		   *buf;
-	char		   *cp;
-	char		   *cp2;
-	StringInfoData	result;
-
-	/* initialize return value */
-	initStringInfo(&result);
-
-	/* Need a modifiable copy of the input string */
-	buf = pstrdup(connstr);
-	cp = buf;
-
-	while (*cp)
-	{
-		/* Skip blanks before the parameter name */
-		if (isspace((unsigned char) *cp))
-		{
-			cp++;
-			continue;
-		}
-
-		/* Get the parameter name */
-		pname = cp;
-		while (*cp)
-		{
-			if (*cp == '=')
-				break;
-			if (isspace((unsigned char) *cp))
-			{
-				*cp++ = '\0';
-				while (*cp)
-				{
-					if (!isspace((unsigned char) *cp))
-						break;
-					cp++;
-				}
-				break;
-			}
-			cp++;
-		}
-
-		/* Check that there is a following '=' */
-		if (*cp != '=')
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("missing \"=\" after \"%s\" in connection string", pname)));
-		*cp++ = '\0';
-
-		/* Skip blanks after the '=' */
-		while (*cp)
-		{
-			if (!isspace((unsigned char) *cp))
-				break;
-			cp++;
-		}
-
-		/* Get the parameter value */
-		pval = cp;
-
-		if (*cp != '\'')
-		{
-			cp2 = pval;
-			while (*cp)
-			{
-				if (isspace((unsigned char) *cp))
-				{
-					*cp++ = '\0';
-					break;
-				}
-				if (*cp == '\\')
-				{
-					cp++;
-					if (*cp != '\0')
-						*cp2++ = *cp++;
-				}
-				else
-					*cp2++ = *cp++;
-			}
-			*cp2 = '\0';
-		}
-		else
-		{
-			cp2 = pval;
-			cp++;
-			for (;;)
-			{
-				if (*cp == '\0')
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							errmsg("unterminated quoted string in connection string")));
-				if (*cp == '\\')
-				{
-					cp++;
-					if (*cp != '\0')
-						*cp2++ = *cp++;
-					continue;
-				}
-				if (*cp == '\'')
-				{
-					*cp2 = '\0';
-					cp++;
-					break;
-				}
-				*cp2++ = *cp++;
-			}
-		}
-
-		/*
-		 * Now we have the name and the value. If it is not a password,
-		 * append to the return connstr.
-		 */
-		if (strcmp("password", pname) != 0)
-			/* append the value */
-			appendStringInfo(&result, " %s='%s'", pname, pval);
-	}
-
-	return result.data;
-}
-
 static void
-dblink_security_check(PGconn *conn, remoteConn *rconn, const char *connstr)
+dblink_security_check(PGconn *conn, remoteConn *rconn)
 {
 	if (!superuser())
 	{
-		/* this attempt must fail */
-		conn = PQconnectdb(connstr_strip_password(connstr));
-
-		if (PQstatus(conn) == CONNECTION_OK)
+		if (!PQconnectionUsedPassword(conn))
 		{
 			PQfinish(conn);
 			if (rconn)
 				pfree(rconn);
 
 			ereport(ERROR,
-					(errcode(ERRCODE_S_R_E_PROHIBITED_SQL_STATEMENT_ATTEMPTED),
-					 errmsg("password is required"),
-					 errdetail("Non-superuser cannot connect if the server does not request a password."),
-					 errhint("Target server's authentication method must be changed.")));
+				  (errcode(ERRCODE_S_R_E_PROHIBITED_SQL_STATEMENT_ATTEMPTED),
+				   errmsg("password is required"),
+				   errdetail("Non-superuser cannot connect if the server does not request a password."),
+				   errhint("Target server's authentication method must be changed.")));
 		}
-		else
-			PQfinish(conn);
 	}
 }

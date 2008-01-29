@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_func.c,v 1.190 2006/10/04 00:29:55 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_func.c,v 1.201 2008/01/11 18:39:41 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -34,6 +34,7 @@
 #include "utils/syscache.h"
 
 
+static Oid	FuncNameAsType(List *funcname);
 static Node *ParseComplexProjection(ParseState *pstate, char *funcname,
 					   Node *first_arg, int location);
 static void unknown_attribute(ParseState *pstate, Node *relref, char *attname,
@@ -161,7 +162,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 	if (fdresult == FUNCDETAIL_COERCION)
 	{
 		/*
-		 * We can do it as a trivial coercion. coerce_type can handle these
+		 * We interpreted it as a type coercion. coerce_type can handle these
 		 * cases, so why duplicate code...
 		 */
 		return coerce_type(pstate, linitial(fargs),
@@ -214,7 +215,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							func_signature_string(funcname, nargs,
 												  actual_arg_types)),
 					 errhint("Could not choose a best candidate function. "
-							 "You may need to add explicit type casts."),
+							 "You might need to add explicit type casts."),
 					 parser_errposition(pstate, location)));
 		else
 			ereport(ERROR,
@@ -223,19 +224,20 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 							func_signature_string(funcname, nargs,
 												  actual_arg_types)),
 			errhint("No function matches the given name and argument types. "
-					"You may need to add explicit type casts."),
+					"You might need to add explicit type casts."),
 					 parser_errposition(pstate, location)));
 	}
 
 	/*
-	 * enforce consistency with ANYARRAY and ANYELEMENT argument and return
-	 * types, possibly adjusting return type or declared_arg_types (which will
-	 * be used as the cast destination by make_fn_arguments)
+	 * enforce consistency with polymorphic argument and return types,
+	 * possibly adjusting return type or declared_arg_types (which will be
+	 * used as the cast destination by make_fn_arguments)
 	 */
 	rettype = enforce_generic_type_consistency(actual_arg_types,
 											   declared_arg_types,
 											   nargs,
-											   rettype);
+											   rettype,
+											   false);
 
 	/* perform the necessary typecasting of arguments */
 	make_fn_arguments(pstate, fargs, actual_arg_types, declared_arg_types);
@@ -355,7 +357,7 @@ ParseFuncOrColumn(ParseState *pstate, List *funcname, List *fargs,
 		if (retset)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-					 errmsg("aggregates may not return sets"),
+					 errmsg("aggregates cannot return sets"),
 					 parser_errposition(pstate, location)));
 	}
 
@@ -742,7 +744,7 @@ func_select_candidate(int nargs,
  *	(exact match) is as quick as possible.
  *
  * If an exact match isn't found:
- *	1) check for possible interpretation as a trivial type coercion
+ *	1) check for possible interpretation as a type coercion request
  *	2) get a vector of all possible input arg type arrays constructed
  *	   from the superclasses of the original input arg types
  *	3) get a list of all possible argument type arrays to the function
@@ -793,49 +795,66 @@ func_get_detail(List *funcname,
 		 * If we didn't find an exact match, next consider the possibility
 		 * that this is really a type-coercion request: a single-argument
 		 * function call where the function name is a type name.  If so, and
-		 * if we can do the coercion trivially (no run-time function call
-		 * needed), then go ahead and treat the "function call" as a coercion.
+		 * if the coercion path is RELABELTYPE or COERCEVIAIO, then go ahead
+		 * and treat the "function call" as a coercion.
+		 *
 		 * This interpretation needs to be given higher priority than
 		 * interpretations involving a type coercion followed by a function
 		 * call, otherwise we can produce surprising results. For example, we
-		 * want "text(varchar)" to be interpreted as a trivial coercion, not
-		 * as "text(name(varchar))" which the code below this point is
-		 * entirely capable of selecting.
+		 * want "text(varchar)" to be interpreted as a simple coercion, not as
+		 * "text(name(varchar))" which the code below this point is entirely
+		 * capable of selecting.
 		 *
-		 * "Trivial" coercions are ones that involve binary-compatible types
-		 * and ones that are coercing a previously-unknown-type literal
-		 * constant to a specific type.
+		 * We also treat a coercion of a previously-unknown-type literal
+		 * constant to a specific type this way.
 		 *
-		 * The reason we can restrict our check to binary-compatible coercions
-		 * here is that we expect non-binary-compatible coercions to have an
-		 * implementation function named after the target type. That function
-		 * will be found by normal lookup if appropriate.
+		 * The reason we reject COERCION_PATH_FUNC here is that we expect the
+		 * cast implementation function to be named after the target type.
+		 * Thus the function will be found by normal lookup if appropriate.
 		 *
-		 * NB: it's important that this code stays in sync with what
-		 * coerce_type can do, because the caller will try to apply
-		 * coerce_type if we return FUNCDETAIL_COERCION.  If we return that
-		 * result for something coerce_type can't handle, we'll cause infinite
-		 * recursion between this module and coerce_type!
+		 * The reason we reject COERCION_PATH_ARRAYCOERCE is mainly that you
+		 * can't write "foo[] (something)" as a function call.  In theory
+		 * someone might want to invoke it as "_foo (something)" but we have
+		 * never supported that historically, so we can insist that people
+		 * write it as a normal cast instead.  Lack of historical support is
+		 * also the reason for not considering composite-type casts here.
+		 *
+		 * NB: it's important that this code does not exceed what coerce_type
+		 * can do, because the caller will try to apply coerce_type if we
+		 * return FUNCDETAIL_COERCION.	If we return that result for something
+		 * coerce_type can't handle, we'll cause infinite recursion between
+		 * this module and coerce_type!
 		 */
 		if (nargs == 1 && fargs != NIL)
 		{
-			Oid			targetType;
+			Oid			targetType = FuncNameAsType(funcname);
 
-			targetType = LookupTypeName(NULL,
-										makeTypeNameFromNameList(funcname));
-			if (OidIsValid(targetType) &&
-				!ISCOMPLEX(targetType))
+			if (OidIsValid(targetType))
 			{
 				Oid			sourceType = argtypes[0];
 				Node	   *arg1 = linitial(fargs);
-				Oid			cfuncid;
+				bool		iscoercion;
 
-				if ((sourceType == UNKNOWNOID && IsA(arg1, Const)) ||
-					(find_coercion_pathway(targetType, sourceType,
-										   COERCION_EXPLICIT, &cfuncid) &&
-					 cfuncid == InvalidOid))
+				if (sourceType == UNKNOWNOID && IsA(arg1, Const))
 				{
-					/* Yup, it's a type coercion */
+					/* always treat typename('literal') as coercion */
+					iscoercion = true;
+				}
+				else
+				{
+					CoercionPathType cpathtype;
+					Oid			cfuncid;
+
+					cpathtype = find_coercion_pathway(targetType, sourceType,
+													  COERCION_EXPLICIT,
+													  &cfuncid);
+					iscoercion = (cpathtype == COERCION_PATH_RELABELTYPE ||
+								  cpathtype == COERCION_PATH_COERCEVIAIO);
+				}
+
+				if (iscoercion)
+				{
+					/* Treat it as a type coercion */
 					*funcid = InvalidOid;
 					*rettype = targetType;
 					*retset = false;
@@ -1039,6 +1058,33 @@ make_fn_arguments(ParseState *pstate,
 }
 
 /*
+ * FuncNameAsType -
+ *	  convenience routine to see if a function name matches a type name
+ *
+ * Returns the OID of the matching type, or InvalidOid if none.  We ignore
+ * shell types and complex types.
+ */
+static Oid
+FuncNameAsType(List *funcname)
+{
+	Oid			result;
+	Type		typtup;
+
+	typtup = LookupTypeName(NULL, makeTypeNameFromNameList(funcname), NULL);
+	if (typtup == NULL)
+		return InvalidOid;
+
+	if (((Form_pg_type) GETSTRUCT(typtup))->typisdefined &&
+		!OidIsValid(typeTypeRelid(typtup)))
+		result = typeTypeId(typtup);
+	else
+		result = InvalidOid;
+
+	ReleaseSysCache(typtup);
+	return result;
+}
+
+/*
  * ParseComplexProjection -
  *	  handles function calls with a single argument that is of complex type.
  *	  If the function call is actually a column projection, return a suitably
@@ -1234,6 +1280,27 @@ LookupFuncName(List *funcname, int nargs, const Oid *argtypes, bool noError)
 }
 
 /*
+ * LookupTypeNameOid
+ *		Convenience routine to look up a type, silently accepting shell types
+ */
+static Oid
+LookupTypeNameOid(const TypeName *typename)
+{
+	Oid			result;
+	Type		typtup;
+
+	typtup = LookupTypeName(NULL, typename, NULL);
+	if (typtup == NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("type \"%s\" does not exist",
+						TypeNameToString(typename))));
+	result = typeTypeId(typtup);
+	ReleaseSysCache(typtup);
+	return result;
+}
+
+/*
  * LookupFuncNameTypeNames
  *		Like LookupFuncName, but the argument types are specified by a
  *		list of TypeName nodes.
@@ -1258,14 +1325,7 @@ LookupFuncNameTypeNames(List *funcname, List *argtypes, bool noError)
 	{
 		TypeName   *t = (TypeName *) lfirst(args_item);
 
-		argoids[i] = LookupTypeName(NULL, t);
-
-		if (!OidIsValid(argoids[i]))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("type \"%s\" does not exist",
-							TypeNameToString(t))));
-
+		argoids[i] = LookupTypeNameOid(t);
 		args_item = lnext(args_item);
 	}
 
@@ -1303,12 +1363,7 @@ LookupAggNameTypeNames(List *aggname, List *argtypes, bool noError)
 	{
 		TypeName   *t = (TypeName *) lfirst(lc);
 
-		argoids[i] = LookupTypeName(NULL, t);
-		if (!OidIsValid(argoids[i]))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("type \"%s\" does not exist",
-							TypeNameToString(t))));
+		argoids[i] = LookupTypeNameOid(t);
 		i++;
 	}
 

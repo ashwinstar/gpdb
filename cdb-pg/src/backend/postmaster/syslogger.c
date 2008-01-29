@@ -18,7 +18,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/syslogger.c,v 1.29.2.3 2007/08/02 23:17:20 adunstan Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/syslogger.c,v 1.43 2008/01/01 19:45:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -55,7 +55,7 @@
 #define LBF_MODE	_IOLBF
 #endif
 
-/* 
+/*
  * We read() into a temp buffer twice as big as a chunk, so that any fragment
  * left after processing can be moved down to the front and we'll still have
  * room to read a full chunk.
@@ -64,10 +64,10 @@
 
 
 /*
- * GUC parameters.	Redirect_stderr cannot be changed after postmaster
+ * GUC parameters.	Logging_collector cannot be changed after postmaster
  * start, but the rest can change at SIGHUP.
  */
-bool		Redirect_stderr = false;
+bool		Logging_collector = false;
 int			Log_RotationAge = HOURS_PER_DAY * MINS_PER_HOUR;
 int			Log_RotationSize = 10 * 1024;
 char	   *Log_directory = NULL;
@@ -87,9 +87,11 @@ extern bool redirection_done;
 static pg_time_t next_rotation_time;
 static bool pipe_eof_seen = false;
 static FILE *syslogFile = NULL;
+static FILE *csvlogFile = NULL;
 static char *last_file_name = NULL;
+static char *last_csvfile_name = NULL;
 
-/* 
+/*
  * Buffers for saving partial messages from different backends. We don't expect
  * that there will be very many outstanding at one time, so 20 seems plenty of
  * leeway. If this array gets full we won't lose messages, but we will lose
@@ -99,7 +101,7 @@ static char *last_file_name = NULL;
  */
 typedef struct
 {
-	int32	pid;				/* PID of source process */
+	int32		pid;			/* PID of source process */
 	StringInfoData data;		/* accumulated data, as a StringInfo */
 } save_buffer;
 
@@ -117,8 +119,6 @@ HANDLE		syslogPipe[2] = {0, 0};
 static HANDLE threadHandle = 0;
 static CRITICAL_SECTION sysfileSection;
 #endif
-static void process_pipe_input(char *logbuffer, int *bytes_in_logbuffer);
-static void flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer);
 
 /*
  * Flags set by interrupt handlers for later service in the main loop.
@@ -132,13 +132,15 @@ static volatile sig_atomic_t rotation_requested = false;
 static pid_t syslogger_forkexec(void);
 static void syslogger_parseArgs(int argc, char *argv[]);
 #endif
-static void write_syslogger_file_binary(const char *buffer, int count);
+static void process_pipe_input(char *logbuffer, int *bytes_in_logbuffer);
+static void flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer);
+static void open_csvlogfile(void);
 
 #ifdef WIN32
 static unsigned int __stdcall pipeThread(void *arg);
 #endif
-static void logfile_rotate(bool time_based_rotation);
-static char *logfile_getname(pg_time_t timestamp);
+static void logfile_rotate(bool time_based_rotation, int size_rotation_for);
+static char *logfile_getname(pg_time_t timestamp, char *suffix);
 static void set_next_rotation_time(void);
 static void sigHupHandler(SIGNAL_ARGS);
 static void sigUsr1Handler(SIGNAL_ARGS);
@@ -162,6 +164,8 @@ SysLoggerMain(int argc, char *argv[])
 	IsUnderPostmaster = true;	/* we are a postmaster subprocess now */
 
 	MyProcPid = getpid();		/* reset MyProcPid */
+
+	MyStartTime = time(NULL);	/* set our start time in case we call elog */
 
 #ifdef EXEC_BACKEND
 	syslogger_parseArgs(argc, argv);
@@ -195,13 +199,14 @@ SysLoggerMain(int argc, char *argv[])
 		close(fd);
 	}
 
-	/* Syslogger's own stderr can't be the syslogPipe, so set it back to
-	 * text mode if we didn't just close it. 
-	 * (It was set to binary in SubPostmasterMain).
+	/*
+	 * Syslogger's own stderr can't be the syslogPipe, so set it back to text
+	 * mode if we didn't just close it. (It was set to binary in
+	 * SubPostmasterMain).
 	 */
 #ifdef WIN32
 	else
-		_setmode(_fileno(stderr),_O_TEXT);
+		_setmode(_fileno(stderr), _O_TEXT);
 #endif
 
 	/*
@@ -221,9 +226,9 @@ SysLoggerMain(int argc, char *argv[])
 
 	/*
 	 * If possible, make this process a group leader, so that the postmaster
-	 * can signal any child processes too.  (syslogger probably never has
-	 * any child processes, but for consistency we make all postmaster
-	 * child processes do this.)
+	 * can signal any child processes too.	(syslogger probably never has any
+	 * child processes, but for consistency we make all postmaster child
+	 * processes do this.)
 	 */
 #ifdef HAVE_SETSID
 	if (setsid() < 0)
@@ -280,6 +285,7 @@ SysLoggerMain(int argc, char *argv[])
 	for (;;)
 	{
 		bool		time_based_rotation = false;
+		int			size_rotation_for = 0;
 
 #ifndef WIN32
 		int			bytesRead;
@@ -335,11 +341,28 @@ SysLoggerMain(int argc, char *argv[])
 		{
 			/* Do a rotation if file is too big */
 			if (ftell(syslogFile) >= Log_RotationSize * 1024L)
+			{
 				rotation_requested = true;
+				size_rotation_for |= LOG_DESTINATION_STDERR;
+			}
+			if (csvlogFile != NULL && ftell(csvlogFile) >= Log_RotationSize * 1024L)
+			{
+				rotation_requested = true;
+				size_rotation_for |= LOG_DESTINATION_CSVLOG;
+			}
+
 		}
 
 		if (rotation_requested)
-			logfile_rotate(time_based_rotation);
+		{
+			/*
+			 * Force rotation when both values are zero. It means the request
+			 * was sent by pg_rotate_logfile.
+			 */
+			if (!time_based_rotation && size_rotation_for == 0)
+				size_rotation_for = LOG_DESTINATION_STDERR | LOG_DESTINATION_CSVLOG;
+			logfile_rotate(time_based_rotation, size_rotation_for);
+		}
 
 #ifndef WIN32
 
@@ -404,7 +427,11 @@ SysLoggerMain(int argc, char *argv[])
 
 		if (pipe_eof_seen)
 		{
-			ereport(LOG,
+			/*
+			 * seeing this message on the real stderr is annoying - so we make
+			 * it DEBUG1 to suppress in normal use.
+			 */
+			ereport(DEBUG1,
 					(errmsg("logger shutting down")));
 
 			/*
@@ -428,7 +455,7 @@ SysLogger_Start(void)
 	pid_t		sysloggerPid;
 	char	   *filename;
 
-	if (!Redirect_stderr)
+	if (!Logging_collector)
 		return 0;
 
 	/*
@@ -476,7 +503,7 @@ SysLogger_Start(void)
 	 * The initial logfile is created right in the postmaster, to verify that
 	 * the Log_directory is writable.
 	 */
-	filename = logfile_getname(time(NULL));
+	filename = logfile_getname(time(NULL), NULL);
 
 	syslogFile = fopen(filename, "a");
 
@@ -542,9 +569,9 @@ SysLogger_Start(void)
 				int			fd;
 
 				/*
-				 * open the pipe in binary mode and make sure
-				 * stderr is binary after it's been dup'ed into, to avoid
-				 * disturbing the pipe chunking protocol.
+				 * open the pipe in binary mode and make sure stderr is binary
+				 * after it's been dup'ed into, to avoid disturbing the pipe
+				 * chunking protocol.
 				 */
 				fflush(stderr);
 				fd = _open_osfhandle((long) syslogPipe[1],
@@ -554,7 +581,7 @@ SysLogger_Start(void)
 							(errcode_for_file_access(),
 							 errmsg("could not redirect stderr: %m")));
 				close(fd);
-				_setmode(_fileno(stderr),_O_BINARY);
+				_setmode(_fileno(stderr), _O_BINARY);
 				/* Now we are done with the write end of the pipe. */
 				CloseHandle(syslogPipe[1]);
 				syslogPipe[1] = 0;
@@ -658,10 +685,10 @@ syslogger_parseArgs(int argc, char *argv[])
  * Process data received through the syslogger pipe.
  *
  * This routine interprets the log pipe protocol which sends log messages as
- * (hopefully atomic) chunks - such chunks are detected and reassembled here. 
+ * (hopefully atomic) chunks - such chunks are detected and reassembled here.
  *
  * The protocol has a header that starts with two nul bytes, then has a 16 bit
- * length, the pid of the sending process, and a flag to indicate if it is 
+ * length, the pid of the sending process, and a flag to indicate if it is
  * the last chunk in a message. Incomplete chunks are saved until we read some
  * more, and non-final chunks are accumulated until we get the final chunk.
  *
@@ -680,21 +707,23 @@ syslogger_parseArgs(int argc, char *argv[])
 static void
 process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 {
-	char   *cursor = logbuffer;
-	int		count = *bytes_in_logbuffer;
+	char	   *cursor = logbuffer;
+	int			count = *bytes_in_logbuffer;
+	int			dest = LOG_DESTINATION_STDERR;
 
 	/* While we have enough for a header, process data... */
 	while (count >= (int) sizeof(PipeProtoHeader))
 	{
 		PipeProtoHeader p;
-		int		chunklen;
+		int			chunklen;
 
 		/* Do we have a valid header? */
 		memcpy(&p, cursor, sizeof(PipeProtoHeader));
 		if (p.nuls[0] == '\0' && p.nuls[1] == '\0' &&
 			p.len > 0 && p.len <= PIPE_MAX_PAYLOAD &&
 			p.pid != 0 &&
-			(p.is_last == 't' || p.is_last == 'f'))
+			(p.is_last == 't' || p.is_last == 'f' ||
+			 p.is_last == 'T' || p.is_last == 'F'))
 		{
 			chunklen = PIPE_HEADER_SIZE + p.len;
 
@@ -702,15 +731,19 @@ process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 			if (count < chunklen)
 				break;
 
-			if (p.is_last == 'f')
+			dest = (p.is_last == 'T' || p.is_last == 'F') ?
+				LOG_DESTINATION_CSVLOG : LOG_DESTINATION_STDERR;
+
+			if (p.is_last == 'f' || p.is_last == 'F')
 			{
-				/* 
-				 * Save a complete non-final chunk in the per-pid buffer 
-				 * if possible - if not just write it out.
+				/*
+				 * Save a complete non-final chunk in the per-pid buffer if
+				 * possible - if not just write it out.
 				 */
-				int free_slot = -1, existing_slot = -1;
-				int i;
-				StringInfo str;
+				int			free_slot = -1,
+							existing_slot = -1;
+				int			i;
+				StringInfo	str;
 
 				for (i = 0; i < CHUNK_SLOTS; i++)
 				{
@@ -726,7 +759,7 @@ process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 				{
 					str = &(saved_chunks[existing_slot].data);
 					appendBinaryStringInfo(str,
-										   cursor + PIPE_HEADER_SIZE, 
+										   cursor + PIPE_HEADER_SIZE,
 										   p.len);
 				}
 				else if (free_slot >= 0)
@@ -735,28 +768,29 @@ process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 					str = &(saved_chunks[free_slot].data);
 					initStringInfo(str);
 					appendBinaryStringInfo(str,
-										   cursor + PIPE_HEADER_SIZE, 
+										   cursor + PIPE_HEADER_SIZE,
 										   p.len);
 				}
 				else
 				{
-					/* 
+					/*
 					 * If there is no free slot we'll just have to take our
 					 * chances and write out a partial message and hope that
 					 * it's not followed by something from another pid.
 					 */
-					write_syslogger_file(cursor + PIPE_HEADER_SIZE, p.len);
+					write_syslogger_file(cursor + PIPE_HEADER_SIZE, p.len,
+										 dest);
 				}
 			}
 			else
 			{
-				/* 
+				/*
 				 * Final chunk --- add it to anything saved for that pid, and
 				 * either way write the whole thing out.
 				 */
-				int existing_slot = -1;
-				int i;
-				StringInfo str;
+				int			existing_slot = -1;
+				int			i;
+				StringInfo	str;
 
 				for (i = 0; i < CHUNK_SLOTS; i++)
 				{
@@ -772,14 +806,15 @@ process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 					appendBinaryStringInfo(str,
 										   cursor + PIPE_HEADER_SIZE,
 										   p.len);
-					write_syslogger_file(str->data, str->len);
+					write_syslogger_file(str->data, str->len, dest);
 					saved_chunks[existing_slot].pid = 0;
 					pfree(str->data);
 				}
 				else
 				{
 					/* The whole message was one chunk, evidently. */
-					write_syslogger_file(cursor + PIPE_HEADER_SIZE, p.len);
+					write_syslogger_file(cursor + PIPE_HEADER_SIZE, p.len,
+										 dest);
 				}
 			}
 
@@ -787,25 +822,26 @@ process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 			cursor += chunklen;
 			count -= chunklen;
 		}
-		else 
+		else
 		{
 			/* Process non-protocol data */
 
 			/*
 			 * Look for the start of a protocol header.  If found, dump data
 			 * up to there and repeat the loop.  Otherwise, dump it all and
-			 * fall out of the loop.  (Note: we want to dump it all if
-			 * at all possible, so as to avoid dividing non-protocol messages
-			 * across logfiles.  We expect that in many scenarios, a
-			 * non-protocol message will arrive all in one read(), and we
-			 * want to respect the read() boundary if possible.)
+			 * fall out of the loop.  (Note: we want to dump it all if at all
+			 * possible, so as to avoid dividing non-protocol messages across
+			 * logfiles.  We expect that in many scenarios, a non-protocol
+			 * message will arrive all in one read(), and we want to respect
+			 * the read() boundary if possible.)
 			 */
 			for (chunklen = 1; chunklen < count; chunklen++)
 			{
 				if (cursor[chunklen] == '\0')
 					break;
 			}
-			write_syslogger_file(cursor, chunklen);
+			/* fall back on the stderr log as the destination */
+			write_syslogger_file(cursor, chunklen, LOG_DESTINATION_STDERR);
 			cursor += chunklen;
 			count -= chunklen;
 		}
@@ -826,8 +862,8 @@ process_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 static void
 flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 {
-	int i;
-	StringInfo str;
+	int			i;
+	StringInfo	str;
 
 	/* Dump any incomplete protocol messages */
 	for (i = 0; i < CHUNK_SLOTS; i++)
@@ -835,17 +871,19 @@ flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
 		if (saved_chunks[i].pid != 0)
 		{
 			str = &(saved_chunks[i].data);
-			write_syslogger_file(str->data, str->len);
+			write_syslogger_file(str->data, str->len, LOG_DESTINATION_STDERR);
 			saved_chunks[i].pid = 0;
 			pfree(str->data);
 		}
 	}
+
 	/*
 	 * Force out any remaining pipe data as-is; we don't bother trying to
 	 * remove any protocol headers that may exist in it.
 	 */
 	if (*bytes_in_logbuffer > 0)
-		write_syslogger_file(logbuffer, *bytes_in_logbuffer);
+		write_syslogger_file(logbuffer, *bytes_in_logbuffer,
+							 LOG_DESTINATION_STDERR);
 	*bytes_in_logbuffer = 0;
 }
 
@@ -863,58 +901,21 @@ flush_pipe_input(char *logbuffer, int *bytes_in_logbuffer)
  * even though its stderr does not point at the syslog pipe.
  */
 void
-write_syslogger_file(const char *buffer, int count)
-{
-#ifdef WIN32
-
-	/*
-	 * On Windows we need to do our own newline-to-CRLF translation.
-	 */
-	char		convbuf[256];
-	char	   *p;
-	int			n;
-
-	p = convbuf;
-	n = 0;
-	while (count-- > 0)
-	{
-		if (*buffer == '\n')
-		{
-			*p++ = '\r';
-			n++;
-		}
-		*p++ = *buffer++;
-		n++;
-		if (n >= sizeof(convbuf) - 1)
-		{
-			write_syslogger_file_binary(convbuf, n);
-			p = convbuf;
-			n = 0;
-		}
-	}
-	if (n > 0)
-		write_syslogger_file_binary(convbuf, n);
-#else							/* !WIN32 */
-	write_syslogger_file_binary(buffer, count);
-#endif
-}
-
-/*
- * Write binary data to the currently open logfile
- *
- * On Windows the data arriving in the pipe already has CR/LF newlines,
- * so we must send it to the file without further translation.
- */
-static void
-write_syslogger_file_binary(const char *buffer, int count)
+write_syslogger_file(const char *buffer, int count, int destination)
 {
 	int			rc;
+	FILE	   *logfile;
+
+	if (destination == LOG_DESTINATION_CSVLOG && csvlogFile == NULL)
+		open_csvlogfile();
+
+	logfile = destination == LOG_DESTINATION_CSVLOG ? csvlogFile : syslogFile;
 
 #ifndef WIN32
-	rc = fwrite(buffer, 1, count, syslogFile);
+	rc = fwrite(buffer, 1, count, logfile);
 #else
 	EnterCriticalSection(&sysfileSection);
-	rc = fwrite(buffer, 1, count, syslogFile);
+	rc = fwrite(buffer, 1, count, logfile);
 	LeaveCriticalSection(&sysfileSection);
 #endif
 
@@ -969,19 +970,52 @@ pipeThread(void *arg)
 
 	/* if there's any data left then force it out now */
 	flush_pipe_input(logbuffer, &bytes_in_logbuffer);
-	
+
 	_endthread();
 	return 0;
 }
 #endif   /* WIN32 */
 
 /*
+ * open the csv log file - we do this opportunistically, because
+ * we don't know if CSV logging will be wanted.
+ */
+static void
+open_csvlogfile(void)
+{
+	char	   *filename;
+	FILE	   *fh;
+
+	filename = logfile_getname(time(NULL), ".csv");
+
+	fh = fopen(filename, "a");
+
+	if (!fh)
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 (errmsg("could not create log file \"%s\": %m",
+						 filename))));
+
+	setvbuf(fh, NULL, LBF_MODE, 0);
+
+#ifdef WIN32
+	_setmode(_fileno(fh), _O_TEXT);		/* use CRLF line endings on Windows */
+#endif
+
+	csvlogFile = fh;
+
+	pfree(filename);
+
+}
+
+/*
  * perform logfile rotation
  */
 static void
-logfile_rotate(bool time_based_rotation)
+logfile_rotate(bool time_based_rotation, int size_rotation_for)
 {
 	char	   *filename;
+	char	   *csvfilename = NULL;
 	FILE	   *fh;
 
 	rotation_requested = false;
@@ -992,9 +1026,17 @@ logfile_rotate(bool time_based_rotation)
 	 * file name when we don't do the rotation immediately.
 	 */
 	if (time_based_rotation)
-		filename = logfile_getname(next_rotation_time);
+	{
+		filename = logfile_getname(next_rotation_time, NULL);
+		if (csvlogFile != NULL)
+			csvfilename = logfile_getname(next_rotation_time, ".csv");
+	}
 	else
-		filename = logfile_getname(time(NULL));
+	{
+		filename = logfile_getname(time(NULL), NULL);
+		if (csvlogFile != NULL)
+			csvfilename = logfile_getname(time(NULL), ".csv");
+	}
 
 	/*
 	 * Decide whether to overwrite or append.  We can overwrite if (a)
@@ -1007,61 +1049,132 @@ logfile_rotate(bool time_based_rotation)
 	 * postmaster because it ain't gonna work in the EXEC_BACKEND case.) So we
 	 * will always append in that situation, even though truncating would
 	 * usually be safe.
+	 *
+	 * For consistency, we treat CSV logs the same even though they aren't
+	 * opened in the postmaster.
 	 */
-	if (Log_truncate_on_rotation && time_based_rotation &&
-		last_file_name != NULL && strcmp(filename, last_file_name) != 0)
-		fh = fopen(filename, "w");
-	else
-		fh = fopen(filename, "a");
-
-	if (!fh)
+	if (time_based_rotation || (size_rotation_for & LOG_DESTINATION_STDERR))
 	{
-		int			saveerrno = errno;
+		if (Log_truncate_on_rotation && time_based_rotation &&
+			last_file_name != NULL && strcmp(filename, last_file_name) != 0)
+			fh = fopen(filename, "w");
+		else
+			fh = fopen(filename, "a");
 
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("could not open new log file \"%s\": %m",
-						filename)));
-
-		/*
-		 * ENFILE/EMFILE are not too surprising on a busy system; just keep
-		 * using the old file till we manage to get a new one. Otherwise,
-		 * assume something's wrong with Log_directory and stop trying to
-		 * create files.
-		 */
-		if (saveerrno != ENFILE && saveerrno != EMFILE)
+		if (!fh)
 		{
+			int			saveerrno = errno;
+
 			ereport(LOG,
-					(errmsg("disabling automatic rotation (use SIGHUP to reenable)")));
-			Log_RotationAge = 0;
-			Log_RotationSize = 0;
+					(errcode_for_file_access(),
+					 errmsg("could not open new log file \"%s\": %m",
+							filename)));
+
+			/*
+			 * ENFILE/EMFILE are not too surprising on a busy system; just
+			 * keep using the old file till we manage to get a new one.
+			 * Otherwise, assume something's wrong with Log_directory and stop
+			 * trying to create files.
+			 */
+			if (saveerrno != ENFILE && saveerrno != EMFILE)
+			{
+				ereport(LOG,
+						(errmsg("disabling automatic rotation (use SIGHUP to reenable)")));
+				Log_RotationAge = 0;
+				Log_RotationSize = 0;
+			}
+			pfree(filename);
+			return;
 		}
-		pfree(filename);
-		return;
+
+		setvbuf(fh, NULL, LBF_MODE, 0);
+
+#ifdef WIN32
+		_setmode(_fileno(fh), _O_TEXT); /* use CRLF line endings on Windows */
+#endif
+
+		/* On Windows, need to interlock against data-transfer thread */
+#ifdef WIN32
+		EnterCriticalSection(&sysfileSection);
+#endif
+		fclose(syslogFile);
+		syslogFile = fh;
+#ifdef WIN32
+		LeaveCriticalSection(&sysfileSection);
+#endif
+
+		/* instead of pfree'ing filename, remember it for next time */
+		if (last_file_name != NULL)
+			pfree(last_file_name);
+		last_file_name = filename;
+
+
 	}
 
-	setvbuf(fh, NULL, LBF_MODE, 0);
+	/* same as above, but for csv file. */
+
+	if (csvlogFile != NULL && (
+							   time_based_rotation ||
+							   (size_rotation_for & LOG_DESTINATION_STDERR)))
+	{
+		if (Log_truncate_on_rotation && time_based_rotation &&
+			last_csvfile_name != NULL &&
+			strcmp(csvfilename, last_csvfile_name) != 0)
+
+			fh = fopen(csvfilename, "w");
+		else
+			fh = fopen(csvfilename, "a");
+
+		if (!fh)
+		{
+			int			saveerrno = errno;
+
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not open new log file \"%s\": %m",
+							csvfilename)));
+
+			/*
+			 * ENFILE/EMFILE are not too surprising on a busy system; just
+			 * keep using the old file till we manage to get a new one.
+			 * Otherwise, assume something's wrong with Log_directory and stop
+			 * trying to create files.
+			 */
+			if (saveerrno != ENFILE && saveerrno != EMFILE)
+			{
+				ereport(LOG,
+						(errmsg("disabling automatic rotation (use SIGHUP to reenable)")));
+				Log_RotationAge = 0;
+				Log_RotationSize = 0;
+			}
+			pfree(csvfilename);
+			return;
+		}
+
+		setvbuf(fh, NULL, LBF_MODE, 0);
 
 #ifdef WIN32
-	_setmode(_fileno(fh), _O_TEXT); /* use CRLF line endings on Windows */
+		_setmode(_fileno(fh), _O_TEXT); /* use CRLF line endings on Windows */
 #endif
 
-	/* On Windows, need to interlock against data-transfer thread */
+		/* On Windows, need to interlock against data-transfer thread */
 #ifdef WIN32
-	EnterCriticalSection(&sysfileSection);
+		EnterCriticalSection(&sysfileSection);
 #endif
-	fclose(syslogFile);
-	syslogFile = fh;
+		fclose(csvlogFile);
+		csvlogFile = fh;
 #ifdef WIN32
-	LeaveCriticalSection(&sysfileSection);
+		LeaveCriticalSection(&sysfileSection);
 #endif
+
+		/* instead of pfree'ing filename, remember it for next time */
+		if (last_csvfile_name != NULL)
+			pfree(last_csvfile_name);
+		last_csvfile_name = filename;
+	}
 
 	set_next_rotation_time();
 
-	/* instead of pfree'ing filename, remember it for next time */
-	if (last_file_name != NULL)
-		pfree(last_file_name);
-	last_file_name = filename;
 }
 
 
@@ -1071,11 +1184,10 @@ logfile_rotate(bool time_based_rotation)
  * Result is palloc'd.
  */
 static char *
-logfile_getname(pg_time_t timestamp)
+logfile_getname(pg_time_t timestamp, char *suffix)
 {
 	char	   *filename;
 	int			len;
-	struct pg_tm *tm;
 
 	filename = palloc(MAXPGPATH);
 
@@ -1086,14 +1198,22 @@ logfile_getname(pg_time_t timestamp)
 	if (strchr(Log_filename, '%'))
 	{
 		/* treat it as a strftime pattern */
-		tm = pg_localtime(&timestamp, global_timezone);
-		pg_strftime(filename + len, MAXPGPATH - len, Log_filename, tm);
+		pg_strftime(filename + len, MAXPGPATH - len, Log_filename,
+					pg_localtime(&timestamp, log_timezone));
 	}
 	else
 	{
 		/* no strftime escapes, so append timestamp to new filename */
 		snprintf(filename + len, MAXPGPATH - len, "%s.%lu",
 				 Log_filename, (unsigned long) timestamp);
+	}
+
+	if (suffix != NULL)
+	{
+		len = strlen(filename);
+		if (len > 4 && (strcmp(filename + (len - 4), ".log") == 0))
+			len -= 4;
+		strncpy(filename + len, suffix, MAXPGPATH - len);
 	}
 
 	return filename;
@@ -1116,12 +1236,12 @@ set_next_rotation_time(void)
 	/*
 	 * The requirements here are to choose the next time > now that is a
 	 * "multiple" of the log rotation interval.  "Multiple" can be interpreted
-	 * fairly loosely.	In this version we align to local time rather than
+	 * fairly loosely.	In this version we align to log_timezone rather than
 	 * GMT.
 	 */
 	rotinterval = Log_RotationAge * SECS_PER_MINUTE;	/* convert to seconds */
-	now = time(NULL);
-	tm = pg_localtime(&now, global_timezone);
+	now = (pg_time_t) time(NULL);
+	tm = pg_localtime(&now, log_timezone);
 	now += tm->tm_gmtoff;
 	now -= now % rotinterval;
 	now += rotinterval;

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/alter.c,v 1.20 2006/07/14 14:52:18 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/alter.c,v 1.26 2008/01/01 19:45:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -69,6 +69,10 @@ ExecRenameStmt(RenameStmt *stmt)
 			RenameOpClass(stmt->object, stmt->subname, stmt->newname);
 			break;
 
+		case OBJECT_OPFAMILY:
+			RenameOpFamily(stmt->object, stmt->subname, stmt->newname);
+			break;
+
 		case OBJECT_ROLE:
 			RenameRole(stmt->subname, stmt->newname);
 			break;
@@ -82,6 +86,8 @@ ExecRenameStmt(RenameStmt *stmt)
 			break;
 
 		case OBJECT_TABLE:
+		case OBJECT_SEQUENCE:
+		case OBJECT_VIEW:
 		case OBJECT_INDEX:
 		case OBJECT_COLUMN:
 		case OBJECT_TRIGGER:
@@ -95,6 +101,8 @@ ExecRenameStmt(RenameStmt *stmt)
 				switch (stmt->renameType)
 				{
 					case OBJECT_TABLE:
+					case OBJECT_SEQUENCE:
+					case OBJECT_VIEW:
 					case OBJECT_INDEX:
 						{
 							/*
@@ -112,7 +120,7 @@ ExecRenameStmt(RenameStmt *stmt)
 								aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
 											get_namespace_name(namespaceId));
 
-							renamerel(relid, stmt->newname, stmt);
+							renamerel(relid, stmt->newname, stmt->renameType, stmt);
 							break;
 						}
 					case OBJECT_COLUMN:
@@ -132,6 +140,22 @@ ExecRenameStmt(RenameStmt *stmt)
 				}
 				break;
 			}
+
+		case OBJECT_TSPARSER:
+			RenameTSParser(stmt->object, stmt->newname);
+			break;
+
+		case OBJECT_TSDICTIONARY:
+			RenameTSDictionary(stmt->object, stmt->newname);
+			break;
+
+		case OBJECT_TSTEMPLATE:
+			RenameTSTemplate(stmt->object, stmt->newname);
+			break;
+
+		case OBJECT_TSCONFIGURATION:
+			RenameTSConfiguration(stmt->object, stmt->newname);
+			break;
 
 		default:
 			elog(ERROR, "unrecognized rename stmt type: %d",
@@ -211,6 +235,10 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 			AlterFunctionOwner(stmt->object, stmt->objarg, newowner);
 			break;
 
+		case OBJECT_LANGUAGE:
+			AlterLanguageOwner((char *) linitial(stmt->object), newowner);
+			break;
+
 		case OBJECT_OPERATOR:
 			Assert(list_length(stmt->objarg) == 2);
 			AlterOperatorOwner(stmt->object,
@@ -221,6 +249,10 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 
 		case OBJECT_OPCLASS:
 			AlterOpClassOwner(stmt->object, stmt->addname, newowner);
+			break;
+
+		case OBJECT_OPFAMILY:
+			AlterOpFamilyOwner(stmt->object, stmt->addname, newowner);
 			break;
 
 		case OBJECT_SCHEMA:
@@ -234,6 +266,14 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 		case OBJECT_TYPE:
 		case OBJECT_DOMAIN:		/* same as TYPE */
 			AlterTypeOwner(stmt->object, newowner);
+			break;
+
+		case OBJECT_TSDICTIONARY:
+			AlterTSDictionaryOwner(stmt->object, newowner);
+			break;
+
+		case OBJECT_TSCONFIGURATION:
+			AlterTSConfigurationOwner(stmt->object, newowner);
 			break;
 
 		default:

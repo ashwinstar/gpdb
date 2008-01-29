@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapIndexscan.c,v 1.21 2006/10/04 00:29:52 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeBitmapIndexscan.c,v 1.25 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -208,28 +208,12 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
         tbm_bitmap_upd_instrument(node->bitmap);
 
 	/*
-	 * close the index relation
+	 * close the index relation (no-op if we didn't open it)
 	 */
-	index_endscan(indexScanDesc);
-
-	index_close(indexRelationDesc, NoLock);
-
-#ifdef NOT_USED
-	if (node->bitmap != NULL)
-	{
-		if(IsA(node->bitmap, HashBitmap))
-			tbm_free((HashBitmap *)node->bitmap);
-		else if(IsA(node->bitmap, StreamBitmap))
-		{
-			StreamBitmap *s = (StreamBitmap *)node->bitmap;
-			if(s->opaque)
-			{
-				bitmap_stream_free(s->opaque);
-				s->opaque = NULL;
-			}
-		}
-	}
-#endif
+	if (indexScanDesc)
+		index_endscan(indexScanDesc);
+	if (indexRelationDesc)
+		index_close(indexRelationDesc, NoLock);
 }
 
 /* ----------------------------------------------------------------
@@ -280,6 +264,14 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 
 	indexstate->ss.ss_currentRelation = NULL;
 	indexstate->ss.ss_currentScanDesc = NULL;
+
+	/*
+	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop
+	 * here.  This allows an index-advisor plugin to EXPLAIN a plan containing
+	 * references to nonexistent indexes.
+	 */
+	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+		return indexstate;
 
 	/*
 	 * Open the index relation.

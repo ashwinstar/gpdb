@@ -1,5 +1,5 @@
 # Makefile for PL/Perl
-# $PostgreSQL: pgsql/src/pl/plperl/GNUmakefile,v 1.28 2006/07/21 00:24:04 tgl Exp $
+# $PostgreSQL: pgsql/src/pl/plperl/GNUmakefile,v 1.33 2007/12/01 15:30:09 adunstan Exp $
 
 subdir = src/pl/plperl
 top_builddir = ../../..
@@ -19,8 +19,11 @@ ifneq (,$(findstring yes, $(shared_libperl)$(allow_nonpic_in_shlib)))
 ifeq ($(PORTNAME), win32)
 perl_archlibexp := $(subst \,/,$(perl_archlibexp))
 perl_privlibexp := $(subst \,/,$(perl_privlibexp))
-perl_embed_ldflags := -L$(perl_archlibexp)/CORE -lperl58
+perl_embed_ldflags = -L$(perl_archlibexp)/CORE -lperl58
 override CPPFLAGS += -DPLPERL_HAVE_UID_GID
+# Perl on win32 contains /* within comment all over the header file,
+# so disable this warning.
+override CFLAGS += -Wno-comment
 endif
 
 override CPPFLAGS := -I$(srcdir) $(CPPFLAGS) -I$(perl_archlibexp)/CORE

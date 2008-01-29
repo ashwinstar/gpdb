@@ -8,8 +8,8 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/datetime.c,v 1.174.2.2 2007/06/12 15:58:39 tgl Exp $
- *
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/datetime.c,v 1.184 2008/01/01 19:45:52 momjian Exp $
+*
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -32,10 +32,10 @@
 
 static int DecodeNumber(int flen, char *field, bool haveTextMonth,
 			 int fmask, int *tmask,
-			 struct pg_tm * tm, fsec_t *fsec, int *is2digits);
+			 struct pg_tm * tm, fsec_t *fsec, bool *is2digits);
 static int DecodeNumberField(int len, char *str,
 				  int fmask, int *tmask,
-				  struct pg_tm * tm, fsec_t *fsec, int *is2digits);
+				  struct pg_tm * tm, fsec_t *fsec, bool *is2digits);
 static int DecodeTime(char *str, int fmask, int *tmask,
 		   struct pg_tm * tm, fsec_t *fsec);
 static int	DecodeTimezone(char *str, int *tzp);
@@ -125,6 +125,8 @@ static const datetkn datetktbl[] = {
 	{"h", UNITS, DTK_HOUR},		/* "hour" */
 	{LATE, RESERV, DTK_LATE},	/* "infinity" reserved for "late time" */
 	{INVALID, RESERV, DTK_INVALID},		/* "invalid" reserved for bad time */
+	{"isodow", RESERV, DTK_ISODOW},		/* ISO day of week, Sunday == 7 */
+	{"isoyear", UNITS, DTK_ISOYEAR},	/* year in terms of the ISO week date */
 	{"j", UNITS, DTK_JULIAN},
 	{"jan", MONTH, 1},
 	{"january", MONTH, 1},
@@ -546,7 +548,7 @@ ParseDateTime(const char *timestr, char *workbuf, size_t buflen,
 		 */
 		else if (isalpha((unsigned char) *cp))
 		{
-			bool	is_date;
+			bool		is_date;
 
 			ftype[nf] = DTK_STRING;
 			APPEND_CHAR(bufp, bufend, pg_tolower((unsigned char) *cp++));
@@ -555,12 +557,11 @@ ParseDateTime(const char *timestr, char *workbuf, size_t buflen,
 
 			/*
 			 * Dates can have embedded '-', '/', or '.' separators.  It could
-			 * also be a timezone name containing embedded '/', '+', '-',
-			 * '_', or ':' (but '_' or ':' can't be the first punctuation).
-			 * If the next character is a digit or '+', we need to check
-			 * whether what we have so far is a recognized non-timezone
-			 * keyword --- if so, don't believe that this is the start of
-			 * a timezone.
+			 * also be a timezone name containing embedded '/', '+', '-', '_',
+			 * or ':' (but '_' or ':' can't be the first punctuation). If the
+			 * next character is a digit or '+', we need to check whether what
+			 * we have so far is a recognized non-timezone keyword --- if so,
+			 * don't believe that this is the start of a timezone.
 			 */
 			is_date = false;
 			if (*cp == '-' || *cp == '/' || *cp == '.')
@@ -668,8 +669,8 @@ DecodeDateTime(char **field, int *ftype, int nf,
 	int			dterr;
 	int			mer = HR24;
 	bool		haveTextMonth = FALSE;
-	int			is2digits = FALSE;
-	int			bc = FALSE;
+	bool		is2digits = FALSE;
+	bool		bc = FALSE;
 	pg_tz	   *namedTz = NULL;
 
 	/*
@@ -790,8 +791,8 @@ DecodeDateTime(char **field, int *ftype, int nf,
 						{
 							/*
 							 * We should return an error code instead of
-							 * ereport'ing directly, but then there is no
-							 * way to report the bad time zone name.
+							 * ereport'ing directly, but then there is no way
+							 * to report the bad time zone name.
 							 */
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1209,6 +1210,7 @@ DecodeDateTime(char **field, int *ftype, int nf,
 						break;
 
 					case UNKNOWN_FIELD:
+
 						/*
 						 * Before giving up and declaring error, check to see
 						 * if it is an all-alpha timezone name.
@@ -1303,8 +1305,8 @@ DecodeDateTime(char **field, int *ftype, int nf,
 			return DTERR_FIELD_OVERFLOW;
 
 		/*
-		 * If we had a full timezone spec, compute the offset (we could not
-		 * do it before, because we need the date to resolve DST status).
+		 * If we had a full timezone spec, compute the offset (we could not do
+		 * it before, because we need the date to resolve DST status).
 		 */
 		if (namedTz != NULL)
 		{
@@ -1325,7 +1327,7 @@ DecodeDateTime(char **field, int *ftype, int nf,
 			if (fmask & DTK_M(DTZMOD))
 				return DTERR_BAD_FORMAT;
 
-			*tzp = DetermineTimeZoneOffset(tm, global_timezone);
+			*tzp = DetermineTimeZoneOffset(tm, session_timezone);
 		}
 	}
 
@@ -1361,7 +1363,7 @@ DetermineTimeZoneOffset(struct pg_tm * tm, pg_tz *tzp)
 				after_isdst;
 	int			res;
 
-	if (tzp == global_timezone && HasCTZSet)
+	if (tzp == session_timezone && HasCTZSet)
 	{
 		tm->tm_isdst = 0;		/* for lack of a better idea */
 		return CTimeZone;
@@ -1483,7 +1485,7 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 	int			i;
 	int			val;
 	int			dterr;
-	int			is2digits = FALSE;
+	bool		is2digits = FALSE;
 	int			mer = HR24;
 	pg_tz	   *namedTz = NULL;
 
@@ -1566,8 +1568,8 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 						{
 							/*
 							 * We should return an error code instead of
-							 * ereport'ing directly, but then there is no
-							 * way to report the bad time zone name.
+							 * ereport'ing directly, but then there is no way
+							 * to report the bad time zone name.
 							 */
 							ereport(ERROR,
 									(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1934,6 +1936,7 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 						break;
 
 					case UNKNOWN_FIELD:
+
 						/*
 						 * Before giving up and declaring error, check to see
 						 * if it is an all-alpha timezone name.
@@ -1968,7 +1971,7 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 
 	if (tm->tm_hour < 0 || tm->tm_min < 0 || tm->tm_min > 59 ||
 		tm->tm_sec < 0 || tm->tm_sec > 60 || tm->tm_hour > 24 ||
-		/* test for > 24:00:00 */
+	/* test for > 24:00:00 */
 #ifdef HAVE_INT64_TIMESTAMP
 		(tm->tm_hour == 24 && (tm->tm_min > 0 || tm->tm_sec > 0 ||
 							   *fsec > INT64CONST(0))) ||
@@ -1985,8 +1988,8 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 		return DTERR_BAD_FORMAT;
 
 	/*
-	 * If we had a full timezone spec, compute the offset (we could not
-	 * do it before, because we may need the date to resolve DST status).
+	 * If we had a full timezone spec, compute the offset (we could not do it
+	 * before, because we may need the date to resolve DST status).
 	 */
 	if (namedTz != NULL)
 	{
@@ -2033,7 +2036,7 @@ DecodeTimeOnly(char **field, int *ftype, int nf,
 		tmp->tm_hour = tm->tm_hour;
 		tmp->tm_min = tm->tm_min;
 		tmp->tm_sec = tm->tm_sec;
-		*tzp = DetermineTimeZoneOffset(tmp, global_timezone);
+		*tzp = DetermineTimeZoneOffset(tmp, session_timezone);
 		tm->tm_isdst = tmp->tm_isdst;
 	}
 
@@ -2055,8 +2058,8 @@ DecodeDate(char *str, int fmask, int *tmask, struct pg_tm * tm)
 				len;
 	int			dterr;
 	bool		haveTextMonth = FALSE;
-	int			bc = FALSE;
-	int			is2digits = FALSE;
+	bool		bc = FALSE;
+	bool		is2digits = FALSE;
 	int			type,
 				val,
 				dmask = 0;
@@ -2207,8 +2210,8 @@ DecodeDate(char *str, int fmask, int *tmask, struct pg_tm * tm)
  * Decode time string which includes delimiters.
  * Return 0 if okay, a DTERR code if not.
  *
- * Only check the lower limit on hours, since this same code
- *	can be used to represent time spans.
+ * Only check the lower limit on hours, since this same code can be
+ * used to represent time spans.
  */
 static int
 DecodeTime(char *str, int fmask, int *tmask, struct pg_tm * tm, fsec_t *fsec)
@@ -2284,7 +2287,7 @@ DecodeTime(char *str, int fmask, int *tmask, struct pg_tm * tm, fsec_t *fsec)
  */
 static int
 DecodeNumber(int flen, char *str, bool haveTextMonth, int fmask,
-			 int *tmask, struct pg_tm * tm, fsec_t *fsec, int *is2digits)
+			 int *tmask, struct pg_tm * tm, fsec_t *fsec, bool *is2digits)
 {
 	int			val;
 	char	   *cp;
@@ -2476,7 +2479,7 @@ DecodeNumber(int flen, char *str, bool haveTextMonth, int fmask,
  */
 static int
 DecodeNumberField(int len, char *str, int fmask,
-				  int *tmask, struct pg_tm * tm, fsec_t *fsec, int *is2digits)
+				int *tmask, struct pg_tm * tm, fsec_t *fsec, bool *is2digits)
 {
 	char	   *cp;
 
@@ -2694,7 +2697,7 @@ DecodeSpecial(int field, char *lowtoken, int *val)
 int
 DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct pg_tm * tm, fsec_t *fsec)
 {
-	int			is_before = FALSE;
+	bool		is_before = FALSE;
 	char	   *cp;
 	int			fmask = 0,
 				tmask,
@@ -3177,7 +3180,7 @@ datebsearch(const char *key, const datetkn *base, int nel)
  *		Append representation of a numeric timezone offset to str.
  */
 static void
-EncodeTimezone(char *str, int tz)
+EncodeTimezone(char *str, int tz, int style)
 {
 	int			hour,
 				min,
@@ -3195,7 +3198,7 @@ EncodeTimezone(char *str, int tz)
 
 	if (sec != 0)
 		sprintf(str, "%02d:%02d:%02d", hour, min, sec);
-	else if (min != 0)
+	else if (min != 0 || style == USE_XSD_DATES)
 		sprintf(str, "%02d:%02d", hour, min);
 	else
 		sprintf(str, "%02d", hour);
@@ -3251,6 +3254,7 @@ EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 	switch (style)
 	{
 		case USE_ISO_DATES:
+		case USE_XSD_DATES:
 			/* compatible with ISO date formats */
 			if (tm->tm_year > 0)
 			{
@@ -3362,7 +3366,7 @@ EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, int *tzp, int style, char *str)
 #endif 
 
 	if (tzp != NULL)
-		EncodeTimezone(str, *tzp);
+		EncodeTimezone(str, *tzp, style);
 
 	return TRUE;
 }	/* EncodeTimeOnly() */
@@ -3375,6 +3379,7 @@ EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, int *tzp, int style, char *str)
  *	SQL - mm/dd/yyyy hh:mm:ss.ss tz
  *	ISO - yyyy-mm-dd hh:mm:ss+/-tz
  *	German - dd.mm.yyyy hh:mm:ss tz
+ *	XSD - yyyy-mm-ddThh:mm:ss.ss+/-tz
  * Variants (affects order of month and day for Postgres and SQL styles):
  *	US - mm/dd/yyyy
  *	European - dd/mm/yyyy
@@ -3394,6 +3399,7 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 	switch (style)
 	{
 		case USE_ISO_DATES:
+		case USE_XSD_DATES:
 			/* Compatible with ISO-8601 date formats */
 			{
 				/*
@@ -3466,7 +3472,7 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 			 * a valid time zone translation.
 			 */
 			if (tzp != NULL && tm->tm_isdst >= 0)
-				EncodeTimezone(str, *tzp);
+				EncodeTimezone(str, *tzp, style);
 
 			if (tm->tm_year <= 0)
 				sprintf(str + strlen(str), " BC");
@@ -3512,7 +3518,7 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 				if (*tzn != NULL)
 					sprintf(str + strlen(str), " %.*s", MAXTZLEN, *tzn);
 				else
-					EncodeTimezone(str, *tzp);
+					EncodeTimezone(str, *tzp, style);
 			}
 
 			if (tm->tm_year <= 0)
@@ -3556,7 +3562,7 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 				if (*tzn != NULL)
 					sprintf(str + strlen(str), " %.*s", MAXTZLEN, *tzn);
 				else
-					EncodeTimezone(str, *tzp);
+					EncodeTimezone(str, *tzp, style);
 			}
 
 			if (tm->tm_year <= 0)
@@ -3619,7 +3625,7 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 					 * the date/time parser later. - thomas 2001-10-19
 					 */
 					sprintf(str + strlen(str), " ");
-					EncodeTimezone(str, *tzp);
+					EncodeTimezone(str, *tzp, style);
 				}
 			}
 
@@ -3643,8 +3649,8 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, int *tzp, char **tzn, int style, 
 int
 EncodeInterval(struct pg_tm * tm, fsec_t fsec, int style, char *str)
 {
-	int			is_before = FALSE;
-	int			is_nonzero = FALSE;
+	bool		is_before = FALSE;
+	bool		is_nonzero = FALSE;
 	char	   *cp = str;
 
 	/*

@@ -36,9 +36,9 @@
  * that is of no value (since other backends have no interest in them yet)
  * and it created locking problems for CHECKPOINT, because the upper-level
  * pages were held exclusive-locked for long periods.  Now we just build
- * the pages in local memory and smgrwrite() them as we finish them.  They
- * will need to be re-read into shared buffers on first use after the build
- * finishes.
+ * the pages in local memory and smgrwrite or smgrextend them as we finish
+ * them.  They will need to be re-read into shared buffers on first use after
+ * the build finishes.
  *
  * Since the index will never be used unless it is completely built,
  * from a crash-recovery point of view there is no need to WAL-log the
@@ -57,13 +57,14 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtsort.c,v 1.107 2006/10/04 00:29:49 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtsort.c,v 1.114 2008/01/01 19:45:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 
+#include "access/heapam.h"
 #include "access/nbtree.h"
 #include "miscadmin.h"
 #include "storage/smgr.h"
@@ -265,32 +266,7 @@ _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 	if (wstate->btws_use_wal)
 	{
 		/* We use the heap NEWPAGE record type for this */
-		xl_heap_newpage xlrec;
-		XLogRecPtr	recptr;
-		XLogRecData rdata[2];
-
-		/* NO ELOG(ERROR) from here till newpage op is logged */
-		START_CRIT_SECTION();
-
-		xlrec.node = wstate->index->rd_node;
-		xlrec.blkno = blkno;
-
-		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = SizeOfHeapNewpage;
-		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = &(rdata[1]);
-
-		rdata[1].data = (char *) page;
-		rdata[1].len = BLCKSZ;
-		rdata[1].buffer = InvalidBuffer;
-		rdata[1].next = NULL;
-
-		recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
-
-		PageSetLSN(page, recptr);
-		PageSetTLI(page, ThisTimeLineID);
-
-		END_CRIT_SECTION();
+		log_newpage(&wstate->index->rd_node, blkno, page);
 	}
 	else
 	{
@@ -309,9 +285,9 @@ _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 	{
 		if (!wstate->btws_zeropage)
 			wstate->btws_zeropage = (Page) palloc0(BLCKSZ);
-		smgrwrite(wstate->index->rd_smgr, wstate->btws_pages_written++,
-				  (char *) wstate->btws_zeropage,
-				  true);
+		smgrextend(wstate->index->rd_smgr, wstate->btws_pages_written++,
+				   (char *) wstate->btws_zeropage,
+				   true);
 	}
 
 	/*
@@ -319,10 +295,17 @@ _bt_blwritepage(BTWriteState *wstate, Page page, BlockNumber blkno)
 	 * index, because there's no need for smgr to schedule an fsync for this
 	 * write; we'll do it ourselves before ending the build.
 	 */
-	smgrwrite(wstate->index->rd_smgr, blkno, (char *) page, true);
-
 	if (blkno == wstate->btws_pages_written)
+	{
+		/* extending the file... */
+		smgrextend(wstate->index->rd_smgr, blkno, (char *) page, true);
 		wstate->btws_pages_written++;
+	}
+	else
+	{
+		/* overwriting a block we zero-filled before */
+		smgrwrite(wstate->index->rd_smgr, blkno, (char *) page, true);
+	}
 
 	pfree(page);
 }
@@ -417,7 +400,7 @@ _bt_sortaddtup(Page page,
 	}
 
 	if (PageAddItem(page, (Item) itup, itemsize, itup_off,
-					LP_USED) == InvalidOffsetNumber)
+					false, false) == InvalidOffsetNumber)
 		elog(ERROR, "failed to add item to the index page");
 }
 
@@ -538,7 +521,7 @@ _bt_buildadd(BTWriteState *wstate, BTPageState *state, IndexTuple itup)
 		 */
 		hii = PageGetItemId(opage, P_HIKEY);
 		*hii = *ii;
-		ii->lp_flags &= ~LP_USED;
+		ItemIdSetUnused(ii);	/* redundant */
 		((PageHeader) opage)->pd_lower -= sizeof(ItemIdData);
 
 		/*
@@ -721,39 +704,45 @@ _bt_load(BTWriteState *wstate, BTSpool *btspool, BTSpool *btspool2)
 					ScanKey		entry;
 					Datum		attrDatum1,
 								attrDatum2;
-					bool		isFirstNull,
-								isSecondNull;
+					bool		isNull1,
+								isNull2;
+					int32		compare;
 
 					entry = indexScanKey + i - 1;
-					attrDatum1 = index_getattr(itup, i, tupdes,
-											   &isFirstNull);
-					attrDatum2 = index_getattr(itup2, i, tupdes,
-											   &isSecondNull);
-					if (isFirstNull)
+					attrDatum1 = index_getattr(itup, i, tupdes, &isNull1);
+					attrDatum2 = index_getattr(itup2, i, tupdes, &isNull2);
+					if (isNull1)
 					{
-						if (!isSecondNull)
-						{
-							load1 = false;
-							break;
-						}
+						if (isNull2)
+							compare = 0;		/* NULL "=" NULL */
+						else if (entry->sk_flags & SK_BT_NULLS_FIRST)
+							compare = -1;		/* NULL "<" NOT_NULL */
+						else
+							compare = 1;		/* NULL ">" NOT_NULL */
 					}
-					else if (isSecondNull)
-						break;
+					else if (isNull2)
+					{
+						if (entry->sk_flags & SK_BT_NULLS_FIRST)
+							compare = 1;		/* NOT_NULL ">" NULL */
+						else
+							compare = -1;		/* NOT_NULL "<" NULL */
+					}
 					else
 					{
-						int32		compare;
-
 						compare = DatumGetInt32(FunctionCall2(&entry->sk_func,
 															  attrDatum1,
 															  attrDatum2));
-						if (compare > 0)
-						{
-							load1 = false;
-							break;
-						}
-						else if (compare < 0)
-							break;
+
+						if (entry->sk_flags & SK_BT_DESC)
+							compare = -compare;
 					}
+					if (compare > 0)
+					{
+						load1 = false;
+						break;
+					}
+					else if (compare < 0)
+						break;
 				}
 			}
 			else

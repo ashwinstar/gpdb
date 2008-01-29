@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_target.c,v 1.149 2006/10/04 00:29:56 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_target.c,v 1.158 2008/01/01 19:45:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -394,7 +394,8 @@ transformAssignedExpr(ParseState *pstate,
 			 * is not really a source value to work with. Insert a NULL
 			 * constant as the source value.
 			 */
-			colVar = (Node *) makeNullConst(attrtype);
+			colVar = (Node *) makeNullConst(attrtype, attrtypmod);
+ttrtypmod);
 		}
 		else
 		{
@@ -828,8 +829,8 @@ ExpandColumnRefStar(ParseState *pstate, ColumnRef *cref,
 		 *
 		 * Since the grammar only accepts bare '*' at top level of SELECT, we
 		 * need not handle the targetlist==false case here.  However, we must
-		 * test for it because the grammar currently fails to distinguish
-		 * a quoted name "*" from a real asterisk.
+		 * test for it because the grammar currently fails to distinguish a
+		 * quoted name "*" from a real asterisk.
 		 */
 		if (!targetlist)
 			elog(ERROR, "invalid use of *");
@@ -1317,15 +1318,81 @@ FigureColnameInternal(Node *node, char **name)
 				case IS_GREATEST:
 					*name = "greatest";
 					return 2;
-				case IS_LEAST:
+				case IS_LEAST					return 2;
+				case IS_XMLROOT:
+					*name = "xmlroot";
+					return 2;
+				case IS_XMLSERIALIZE		case T_XmlSerialize:
+			*name = "xmlserialize";
+			return 2;
+:
+					*name = "xmlserialize";
+					return 2;
+				case IS_DOCUMENT:
+					/* nothing */
+					break;
+			}
+			break;
+		case T_XmlExpr:
+			/* make SQL/XML functions act like a regular function */
+			switch (((XmlExpr *) node)->op)
+			{
+				case IS_XMLCONCAT:
+					*name = "xmlconcat";
+					return 2;
+				case IS_XMLELEMENT:
+					*name = "xmlelement";
+					return 2;
+				case IS_XMLFOREST:
+					*name = "xmlforest";
+					return 2;
+				case IS_XMLPARSE:
+					*name = "xmlparse";
+					return 2;
+				case IS_XMLPI:
+					*name = "xmlpi";
+:
 					*name = "least";
 					return 2;
+			}
+			break;
+		case T_XmlExpr:
+			/* make SQL/XML functions act like a regular function */
+			switch (((XmlExpr *) node)->op)
+			{
+				case IS_XMLCONCAT:
+					*name = "xmlconcat";
+					return 2;
+				case IS_XMLELEMENT:
+					*name = "xmlelement";
+					return 2;
+				case IS_XMLFOREST:
+					*name = "xmlforest";
+					return 2;
+				case IS_XMLPARSE:
+					*name = "xmlparse";
+					return 2;
+				case IS_XMLPI:
+					*name = "xmlpi";
+					return 2;
+				case IS_XMLROOT:
+					*name = "xmlroot";
+					return 2;
+				case IS_XMLSERIALIZE:
+					*name = "xmlserialize";
+					return 2;
+				case IS_DOCUMENT:
+					/* nothing */
+					break;
 			}
 			break;
 		case T_GroupingFunc:
 			*name = "grouping";
 			return 2;
 			break;
+		case T_XmlSerialize:
+			*name = "xmlserialize";
+			return 2;
 		default:
 			break;
 	}

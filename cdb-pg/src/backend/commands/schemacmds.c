@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/schemacmds.c,v 1.41 2006/07/13 16:49:14 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/schemacmds.c,v 1.49 2008/01/03 21:23:15 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,7 +25,7 @@
 #include "commands/dbcommands.h"
 #include "commands/schemacmds.h"
 #include "miscadmin.h"
-#include "parser/analyze.h"
+#include "parser/parse_utilcmd.h"
 #include "tcop/utility.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -43,15 +43,17 @@ static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerI
  * CREATE SCHEMA
  */
 void
-CreateSchemaCommand(CreateSchemaStmt *stmt)
+CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 {
 	const char *schemaName = stmt->schemaname;
 	const char *authId = stmt->authid;
 	Oid			namespaceId = 0;
+	OverrideSearchPath *overridePath;
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
 	Oid			owner_uid;
 	Oid			saved_uid;
+	bool		saved_secdefcxt;
 	AclResult	aclresult;
 	bool        saved_secdefcxt;
 	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH && 
@@ -133,43 +135,43 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	 * well as the default creation target namespace.  This will be undone at
 	 * the end of this routine, or upon error.
 	 */
-	PushSpecialNamespace(namespaceId);
+	overridePath = GetOverrideSearchPath(CurrentMemoryContext);
+	overridePath->schemas = lcons_oid(namespaceId, overridePath->schemas);
+	/* XXX should we clear overridePath->useTemp? */
+	PushOverrideSearchPath(overridePath);
 
 	/*
 	 * Examine the list of commands embedded in the CREATE SCHEMA command, and
 	 * reorganize them into a sequentially executable order with no forward
-	 * references.	Note that the result is still a list of raw parsetrees in
-	 * need of parse analysis --- we cannot, in general, run analyze.c on one
-	 * statement until we have actually executed the prior ones.
+	 * references.	Note that the result is still a list of raw parsetrees ---
+	 * we cannot, in general, run parse analysis on one statement until we
+	 * have actually executed the prior ones.
 	 */
-	parsetree_list = analyzeCreateSchemaStmt(stmt);
+	parsetree_list = transformCreateSchemaStmt(stmt);
 
 	/*
-	 * Analyze and execute each command contained in the CREATE SCHEMA
+	 * Execute each command contained in the CREATE SCHEMA.  Since the grammar
+	 * allows only utility commands in CREATE SCHEMA, there is no need to pass
+	 * them through parse_analyze() or the rewriter; we can just hand them
+	 * straight to ProcessUtility.
 	 */
 	foreach(parsetree_item, parsetree_list)
 	{
-		Node	   *parsetree = (Node *) lfirst(parsetree_item);
-		List	   *querytree_list;
-		ListCell   *querytree_item;
+		Node	   *stmt = (Node *) lfirst(parsetree_item);
 
-		querytree_list = parse_analyze(parsetree, NULL, NULL, 0);
-
-		foreach(querytree_item, querytree_list)
-		{
-			Query	   *querytree = (Query *) lfirst(querytree_item);
-
-			/* schemas should contain only utility stmts */
-			Assert(querytree->commandType == CMD_UTILITY);
-			/* do this step */
-			ProcessUtility(querytree->utilityStmt, NULL, None_Receiver, NULL);
-			/* make sure later steps can see the object created here */
-			CommandCounterIncrement();
-		}
+		/* do this step */
+		ProcessUtility(stmt,
+					   queryString,
+					   NULL,
+					   false,	/* not top level */
+					   None_Receiver,
+					   NULL);
+		/* make sure later steps can see the object created here */
+		CommandCounterIncrement();
 	}
 
 	/* Reset search path to normal state */
-	PopSpecialNamespace(namespaceId);
+	PopOverrideSearchPath();
 
 	/* Reset current user */
 	SetUserIdAndContext(saved_uid, saved_secdefcxt);
@@ -190,7 +192,7 @@ RemoveSchema(List *names, DropBehavior behavior, bool missing_ok)
 	if (list_length(names) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("schema name may not be qualified")));
+				 errmsg("schema name cannot be qualified")));
 	namespaceName = strVal(linitial(names));
 
 	namespaceId = GetSysCacheOid(NAMESPACENAME,

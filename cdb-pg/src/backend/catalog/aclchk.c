@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/aclchk.c,v 1.133.2.1 2007/04/20 02:37:48 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/aclchk.c,v 1.143 2008/01/01 19:45:48 momjian Exp $
  *
  * NOTES
  *	  See acl.h.
@@ -30,9 +30,12 @@
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/pg_ts_config.h"
+#include "catalog/pg_ts_dict.h"
 #include "commands/dbcommands.h"
 #include "miscadmin.h"
 #include "parser/parse_func.h"
@@ -1006,16 +1009,13 @@ ExecGrant_Language(InternalGrant *istmt)
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("language \"%s\" is not trusted",
 							NameStr(pg_language_tuple->lanname)),
-				   errhint("Only superusers may use untrusted languages.")));
+				   errhint("Only superusers can use untrusted languages.")));
 
 		/*
 		 * Get owner ID and working copy of existing ACL. If there's no ACL,
 		 * substitute the proper default.
-		 *
-		 * Note: for now, languages are treated as owned by the bootstrap
-		 * user. We should add an owner column to pg_language instead.
 		 */
-		ownerId = BOOTSTRAP_SUPERUSERID;
+		ownerId = pg_language_tuple->lanowner;
 		aclDatum = SysCacheGetAttr(LANGNAME, tuple, Anum_pg_language_lanacl,
 								   &isNull);
 		if (isNull)
@@ -1422,10 +1422,16 @@ static const char *const no_priv_msg[MAX_ACL_KIND] =
 	gettext_noop("permission denied for schema %s"),
 	/* ACL_KIND_OPCLASS */
 	gettext_noop("permission denied for operator class %s"),
+	/* ACL_KIND_OPFAMILY */
+	gettext_noop("permission denied for operator family %s"),
 	/* ACL_KIND_CONVERSION */
 	gettext_noop("permission denied for conversion %s"),
 	/* ACL_KIND_TABLESPACE */
-	gettext_noop("permission denied for tablespace %s")
+	gettext_noop("permission denied for tablespace %s"),
+	/* ACL_KIND_TSDICTIONARY */
+	gettext_noop("permission denied for text search dictionary %s"),
+	/* ACL_KIND_TSCONFIGURATION */
+	gettext_noop("permission denied for text search configuration %s")
 };
 
 static const char *const not_owner_msg[MAX_ACL_KIND] =
@@ -1448,10 +1454,16 @@ static const char *const not_owner_msg[MAX_ACL_KIND] =
 	gettext_noop("must be owner of schema %s"),
 	/* ACL_KIND_OPCLASS */
 	gettext_noop("must be owner of operator class %s"),
+	/* ACL_KIND_OPFAMILY */
+	gettext_noop("must be owner of operator family %s"),
 	/* ACL_KIND_CONVERSION */
 	gettext_noop("must be owner of conversion %s"),
 	/* ACL_KIND_TABLESPACE */
-	gettext_noop("must be owner of tablespace %s")
+	gettext_noop("must be owner of tablespace %s"),
+	/* ACL_KIND_TSDICTIONARY */
+	gettext_noop("must be owner of text search dictionary %s"),
+	/* ACL_KIND_TSCONFIGURATION */
+	gettext_noop("must be owner of text search configuration %s")
 };
 
 
@@ -1774,8 +1786,7 @@ pg_language_aclmask(Oid lang_oid, Oid roleid,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("language with OID %u does not exist", lang_oid)));
 
-	/* XXX pg_language should have an owner column, but doesn't */
-	ownerId = BOOTSTRAP_SUPERUSERID;
+	ownerId = ((Form_pg_language) GETSTRUCT(tuple))->lanowner;
 
 	aclDatum = SysCacheGetAttr(LANGOID, tuple, Anum_pg_language_lanacl,
 							   &isNull);
@@ -1903,14 +1914,7 @@ pg_tablespace_aclmask(Oid spc_oid, Oid roleid,
 	Acl		   *acl;
 	Oid			ownerId;
 
-	/*
-	 * Only shared relations can be stored in global space; don't let even
-	 * superusers override this
-	 */
-	if (spc_oid == GLOBALTABLESPACE_OID && !IsBootstrapProcessingMode())
-		return 0;
-
-	/* Otherwise, superusers bypass all permission checking. */
+	/* Superusers bypass all permission checking. */
 	if (superuser_arg(roleid))
 		return mask;
 
@@ -2152,6 +2156,34 @@ pg_proc_ownercheck(Oid proc_oid, Oid roleid)
 }
 
 /*
+ * Ownership check for a procedural language (specified by OID)
+ */
+bool
+pg_language_ownercheck(Oid lan_oid, Oid roleid)
+{
+	HeapTuple	tuple;
+	Oid			ownerId;
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
+	tuple = SearchSysCache(LANGOID,
+						   ObjectIdGetDatum(lan_oid),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_FUNCTION),
+				 errmsg("language with OID %u does not exist", lan_oid)));
+
+	ownerId = ((Form_pg_language) GETSTRUCT(tuple))->lanowner;
+
+	ReleaseSysCache(tuple);
+
+	return has_privs_of_role(roleid, ownerId);
+}
+
+/*
  * Ownership check for a namespace (specified by OID).
  */
 bool
@@ -2249,6 +2281,94 @@ pg_opclass_ownercheck(Oid opc_oid, Oid roleid)
 }
 
 /*
+ * Ownership check for an operator family (specified by OID).
+ */
+bool
+pg_opfamily_ownercheck(Oid opf_oid, Oid roleid)
+{
+	HeapTuple	tuple;
+	Oid			ownerId;
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
+	tuple = SearchSysCache(OPFAMILYOID,
+						   ObjectIdGetDatum(opf_oid),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("operator family with OID %u does not exist",
+						opf_oid)));
+
+	ownerId = ((Form_pg_opfamily) GETSTRUCT(tuple))->opfowner;
+
+	ReleaseSysCache(tuple);
+
+	return has_privs_of_role(roleid, ownerId);
+}
+
+/*
+ * Ownership check for a text search dictionary (specified by OID).
+ */
+bool
+pg_ts_dict_ownercheck(Oid dict_oid, Oid roleid)
+{
+	HeapTuple	tuple;
+	Oid			ownerId;
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
+	tuple = SearchSysCache(TSDICTOID,
+						   ObjectIdGetDatum(dict_oid),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("text search dictionary with OID %u does not exist",
+						dict_oid)));
+
+	ownerId = ((Form_pg_ts_dict) GETSTRUCT(tuple))->dictowner;
+
+	ReleaseSysCache(tuple);
+
+	return has_privs_of_role(roleid, ownerId);
+}
+
+/*
+ * Ownership check for a text search configuration (specified by OID).
+ */
+bool
+pg_ts_config_ownercheck(Oid cfg_oid, Oid roleid)
+{
+	HeapTuple	tuple;
+	Oid			ownerId;
+
+	/* Superusers bypass all permission checking. */
+	if (superuser_arg(roleid))
+		return true;
+
+	tuple = SearchSysCache(TSCONFIGOID,
+						   ObjectIdGetDatum(cfg_oid),
+						   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+			   errmsg("text search configuration with OID %u does not exist",
+					  cfg_oid)));
+
+	ownerId = ((Form_pg_ts_config) GETSTRUCT(tuple))->cfgowner;
+
+	ReleaseSysCache(tuple);
+
+	return has_privs_of_role(roleid, ownerId);
+}
+
+
+/*
  * Ownership check for a database (specified by OID).
  */
 bool
@@ -2289,7 +2409,7 @@ pg_conversion_ownercheck(Oid conv_oid, Oid roleid)
 	if (superuser_arg(roleid))
 		return true;
 
-	tuple = SearchSysCache(CONOID,
+	tuple = SearchSysCache(CONVOID,
 						   ObjectIdGetDatum(conv_oid),
 						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))

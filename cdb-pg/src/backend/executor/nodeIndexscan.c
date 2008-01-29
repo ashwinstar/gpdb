@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeIndexscan.c,v 1.117.2.1 2006/12/26 19:26:56 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeIndexscan.c,v 1.125 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -414,10 +414,12 @@ ExecEndIndexScan(IndexScanState *node)
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
 	/*
-	 * close the index relation
+	 * close the index relation (no-op if we didn't open it)
 	 */
-	index_endscan(indexScanDesc);
-	index_close(indexRelationDesc, NoLock);
+	if (indexScanDesc)
+		index_endscan(indexScanDesc);
+	if (indexRelationDesc)
+		index_close(indexRelationDesc, NoLock);
 
 	/*
 	 * close the heap relation.
@@ -520,6 +522,20 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 	ExecAssignScanType(&indexstate->ss, RelationGetDescr(currentRelation));
 
 	/*
+	 * Initialize result tuple type and projection info.
+	 */
+	ExecAssignResultTypeFromTL(&indexstate->ss.ps);
+	ExecAssignScanProjectionInfo(&indexstate->ss);
+
+	/*
+	 * If we are just doing EXPLAIN (ie, aren't going to run the plan), stop
+	 * here.  This allows an index-advisor plugin to EXPLAIN a plan containing
+	 * references to nonexistent indexes.
+	 */
+	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
+		return indexstate;
+
+	/*
 	 * Open the index relation.
 	 *
 	 * If the parent table is one of the target relations of the query, then
@@ -579,12 +595,6 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
 											   indexstate->iss_ScanKeys);
 
 	/*
-	 * Initialize result tuple type and projection info.
-	 */
-	ExecAssignResultTypeFromTL(&indexstate->ss.ps);
-	ExecAssignScanProjectionInfo(&indexstate->ss);
-
-	/*
 	 * all done.
 	 */
 	return indexstate;
@@ -598,7 +608,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
  * The index quals are passed to the index AM in the form of a ScanKey array.
  * This routine sets up the ScanKeys, fills in all constant fields of the
  * ScanKeys, and prepares information about the keys that have non-constant
- * comparison values.  We divide index qual expressions into four types:
+ * comparison values.  We divide index qual expressions into five types:
  *
  * 1. Simple operator with constant comparison value ("indexkey op constant").
  * For these, we just fill in a ScanKey containing the constant value.
@@ -618,6 +628,8 @@ ExecInitIndexScan(IndexScan *node, EState *estate, int eflags)
  * and set up an IndexArrayKeyInfo struct to drive processing of the qual.
  * (Note that we treat all array-expressions as requiring runtime evaluation,
  * even if they happen to be constants.)
+ *
+ * 5. NullTest ("indexkey IS NULL").  We just fill in the ScanKey properly.
  *
  * Input params are:
  *
@@ -800,9 +812,10 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				int			flags = SK_ROW_MEMBER;
 				Datum		scanvalue;
 				Oid			opno;
-				Oid			opclass;
+				Oid			opfamily;
 				int			op_strategy;
-				Oid			op_subtype;
+				Oid			op_lefttype;
+				Oid			op_righttype;
 				bool		op_recheck;
 
 				/*
@@ -860,15 +873,21 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 				if (index->rd_rel->relam != BTREE_AM_OID ||
 					varattno < 1 || varattno > index->rd_index->indnatts)
 					elog(ERROR, "bogus RowCompare index qualification");
-				opclass = index->rd_indclass->values[varattno - 1];
+				opfamily = index->rd_opfamily[varattno - 1];
 
-				get_op_opclass_properties(opno, opclass,
-									 &op_strategy, &op_subtype, &op_recheck);
+				get_op_opfamily_properties(opno, opfamily,
+										   &op_strategy,
+										   &op_lefttype,
+										   &op_righttype,
+										   &op_recheck);
 
 				if (op_strategy != rc->rctype)
 					elog(ERROR, "RowCompare index qualification contains wrong operator");
 
-				opfuncid = get_opclass_proc(opclass, op_subtype, BTORDER_PROC);
+				opfuncid = get_opfamily_proc(opfamily,
+											 op_lefttype,
+											 op_righttype,
+											 BTORDER_PROC);
 
 				/*
 				 * initialize the subsidiary scan key's fields appropriately
@@ -877,7 +896,7 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 									   flags,
 									   varattno,		/* attribute number */
 									   op_strategy,		/* op's strategy */
-									   op_subtype,		/* strategy subtype */
+									   op_righttype,	/* strategy subtype */
 									   opfuncid,		/* reg proc to use */
 									   scanvalue);		/* constant */
 				extra_scan_keys++;
@@ -946,6 +965,38 @@ ExecIndexBuildScanKeys(PlanState *planstate, Relation index,
 								   strategy,	/* op's strategy */
 								   subtype,		/* strategy subtype */
 								   opfuncid,	/* reg proc to use */
+								   (Datum) 0);	/* constant */
+		}
+		else if (IsA(clause, NullTest))
+		{
+			/* indexkey IS NULL */
+			Assert(((NullTest *) clause)->nulltesttype == IS_NULL);
+
+			/*
+			 * argument should be the index key Var, possibly relabeled
+			 */
+			leftop = ((NullTest *) clause)->arg;
+
+			if (leftop && IsA(leftop, RelabelType))
+				leftop = ((RelabelType *) leftop)->arg;
+
+			Assert(leftop != NULL);
+
+			if (!(IsA(leftop, Var) &&
+				  var_is_rel((Var *) leftop)))
+				elog(ERROR, "NullTest indexqual has wrong key");
+
+			varattno = ((Var *) leftop)->varattno;
+
+			/*
+			 * initialize the scan key's fields appropriately
+			 */
+			ScanKeyEntryInitialize(this_scan_key,
+								   SK_ISNULL | SK_SEARCHNULL,
+								   varattno,	/* attribute number to scan */
+								   strategy,	/* op's strategy */
+								   subtype,		/* strategy subtype */
+								   InvalidOid,	/* no reg proc for this */
 								   (Datum) 0);	/* constant */
 		}
 		else

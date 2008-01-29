@@ -1,4 +1,4 @@
-# This makefile will build the new XML and XSLT routines.
+# $PostgreSQL: pgsql/contrib/xml2/Makefile,v 1.11 2007/11/10 23:59:52 momjian Exp $
 
 MODULE_big = pgxml
 
@@ -10,12 +10,12 @@ SHLIB_LINK = -lxslt -lxml2
 
 DATA_built = pgxml.sql
 DATA = uninstall_pgxml.sql
-DOCS = README.xml2
 
 override CFLAGS += $(shell xml2-config --cflags)
 
 ifdef USE_PGXS
-PGXS := $(shell pg_config --pgxs)
+PG_CONFIG = pg_config
+PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 else
 subdir = contrib/xml2
@@ -23,4 +23,3 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
-

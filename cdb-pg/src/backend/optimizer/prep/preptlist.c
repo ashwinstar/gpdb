@@ -17,7 +17,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/preptlist.c,v 1.84 2006/10/04 00:29:55 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/preptlist.c,v 1.88 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -126,7 +126,7 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
 		/*
 		 * Currently the executor only supports FOR UPDATE/SHARE at top level
 		 */
-		if (PlannerQueryLevel > 1)
+		if (root->query_level > 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			errmsg("SELECT FOR UPDATE/SHARE is not allowed in subqueries")));
@@ -296,6 +296,7 @@ expand_targetlist(List *tlist, int command_type,
 					if (!att_tup->attisdropped)
 					{
 						new_expr = (Node *) makeConst(atttype,
+													  -1,
 													  att_tup->attlen,
 													  (Datum) 0,
 													  true,		/* isnull */
@@ -311,6 +312,7 @@ expand_targetlist(List *tlist, int command_type,
 					{
 						/* Insert NULL for dropped column */
 						new_expr = (Node *) makeConst(INT4OID,
+													  -1,
 													  sizeof(int32),
 													  (Datum) 0,
 													  true,		/* isnull */
@@ -330,6 +332,7 @@ expand_targetlist(List *tlist, int command_type,
 					{
 						/* Insert NULL for dropped column */
 						new_expr = (Node *) makeConst(INT4OID,
+													  -1,
 													  sizeof(int32),
 													  (Datum) 0,
 													  true,		/* isnull */

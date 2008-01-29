@@ -146,8 +146,9 @@ CREATE VIEW pg_locks AS
     SELECT * 
     FROM pg_lock_status() AS L
     (locktype text, database oid, relation oid, page int4, tuple int2,
-     transactionid xid, classid oid, objid oid, objsubid int2,
-     transaction xid, pid int4, mode text, granted boolean, mppSessionId int4, mppIsWriter boolean);
+     virtualxid text, transactionid xid, classid oid, objid oid, objsubid int2,
+     virtualtransaction text, pid int4, mode text, granted boolean
+	, mppSessionId int4, mppIsWriter boolean);
 
 CREATE VIEW pg_cursors AS
     SELECT C.name, C.statement, C.is_holdable, C.is_binary,
@@ -398,3 +399,75 @@ CREATE VIEW pg_max_external_files AS
     AND      isprimary
     GROUP BY hostname;
 
+
+CREATE VIEW pg_stat_bgwriter AS
+    SELECT
+        pg_stat_get_bgwriter_timed_checkpoints() AS checkpoints_timed,
+        pg_stat_get_bgwriter_requested_checkpoints() AS checkpoints_req,
+        pg_stat_get_bgwriter_buf_written_checkpoints() AS buffers_checkpoint,
+        pg_stat_get_bgwriter_buf_written_clean() AS buffers_clean,
+        pg_stat_get_bgwriter_maxwritten_clean() AS maxwritten_clean,
+        pg_stat_get_buf_written_backend() AS buffers_backend,
+        pg_stat_get_buf_alloc() AS buffers_alloc;
+
+-- Tsearch debug function.  Defined here because it'd be pretty unwieldy
+-- to put it into pg_proc.h
+
+CREATE FUNCTION ts_debug(IN config regconfig, IN document text,
+    OUT alias text,
+    OUT description text,
+    OUT token text,
+    OUT dictionaries regdictionary[],
+    OUT dictionary regdictionary,
+    OUT lexemes text[])
+RETURNS SETOF record AS
+$$
+SELECT 
+    tt.alias AS alias,
+    tt.description AS description,
+    parse.token AS token,
+    ARRAY ( SELECT m.mapdict::pg_catalog.regdictionary
+            FROM pg_catalog.pg_ts_config_map AS m
+            WHERE m.mapcfg = $1 AND m.maptokentype = parse.tokid
+            ORDER BY m.mapseqno )
+    AS dictionaries,
+    ( SELECT mapdict::pg_catalog.regdictionary
+      FROM pg_catalog.pg_ts_config_map AS m
+      WHERE m.mapcfg = $1 AND m.maptokentype = parse.tokid
+      ORDER BY pg_catalog.ts_lexize(mapdict, parse.token) IS NULL, m.mapseqno
+      LIMIT 1
+    ) AS dictionary,
+    ( SELECT pg_catalog.ts_lexize(mapdict, parse.token)
+      FROM pg_catalog.pg_ts_config_map AS m
+      WHERE m.mapcfg = $1 AND m.maptokentype = parse.tokid
+      ORDER BY pg_catalog.ts_lexize(mapdict, parse.token) IS NULL, m.mapseqno
+      LIMIT 1
+    ) AS lexemes
+FROM pg_catalog.ts_parse(
+        (SELECT cfgparser FROM pg_catalog.pg_ts_config WHERE oid = $1 ), $2 
+    ) AS parse,
+     pg_catalog.ts_token_type(
+        (SELECT cfgparser FROM pg_catalog.pg_ts_config WHERE oid = $1 )
+    ) AS tt
+WHERE tt.tokid = parse.tokid
+$$
+LANGUAGE SQL STRICT STABLE;
+
+COMMENT ON FUNCTION ts_debug(regconfig,text) IS
+    'debug function for text search configuration';
+
+CREATE FUNCTION ts_debug(IN document text,
+    OUT alias text,
+    OUT description text,
+    OUT token text,
+    OUT dictionaries regdictionary[],
+    OUT dictionary regdictionary,
+    OUT lexemes text[])
+RETURNS SETOF record AS
+$$
+    SELECT * FROM pg_catalog.ts_debug( pg_catalog.get_current_ts_config(), $1);
+$$
+LANGUAGE SQL STRICT STABLE;
+
+COMMENT ON FUNCTION ts_debug(text) IS
+    'debug function for current text search configuration';

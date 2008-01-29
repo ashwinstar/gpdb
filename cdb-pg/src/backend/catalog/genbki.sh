@@ -6,12 +6,12 @@
 #    files.  These .bki files are used to initialize the postgres template
 #    database.
 #
-# Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
+# Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/catalog/genbki.sh,v 1.40 2006/07/31 01:16:36 tgl Exp $
+#    $PostgreSQL: pgsql/src/backend/catalog/genbki.sh,v 1.43 2008/01/01 19:45:48 momjian Exp $
 #
 # NOTES
 #    non-essential whitespace is removed from the generated file.
@@ -59,7 +59,7 @@ do
             echo "  $CMDNAME [ -I dir ] --set-version=VERSION -o prefix files..."
             echo
             echo "Options:"
-            echo "  -I  path to postgres_ext.h and pg_config_manual.h files"
+            echo "  -I  path to pg_config_manual.h file"
             echo "  -o  prefix of output files"
             echo "  --set-version  PostgreSQL version number for initdb cross-check"
             echo
@@ -106,10 +106,10 @@ TMPFILE="genbkitmp$$.c"
 trap "rm -f $TMPFILE ${OUTPUT_PREFIX}.bki.$$ ${OUTPUT_PREFIX}.description.$$ ${OUTPUT_PREFIX}.shdescription.$$" 0 1 2 3 15
 
 
-# Get NAMEDATALEN from postgres_ext.h
+# Get NAMEDATALEN from pg_config_manual.h
 for dir in $INCLUDE_DIRS; do
-    if [ -f "$dir/postgres_ext.h" ]; then
-        NAMEDATALEN=`grep '^#define[ 	]*NAMEDATALEN' $dir/postgres_ext.h | $AWK '{ print $3 }'`
+    if [ -f "$dir/pg_config_manual.h" ]; then
+        NAMEDATALEN=`grep '^#define[ 	]*NAMEDATALEN' $dir/pg_config_manual.h | $AWK '{ print $3 }'`
         break
     fi
 done

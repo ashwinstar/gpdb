@@ -1,10 +1,26 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/preproc.y,v 1.339.2.1 2007/03/27 03:25:35 tgl Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/preproc.y,v 1.359 2008/01/15 10:31:47 meskes Exp $ */
 
 /* Copyright comment */
 %{
 #include "postgres_fe.h"
 
 #include "extern.h"
+#include <unistd.h>
+
+/* Location tracking support --- simpler than bison's default */
+#define YYLLOC_DEFAULT(Current, Rhs, N) \
+	do { \
+                if (N) \
+			(Current) = (Rhs)[1]; \
+		else \
+		        (Current) = (Rhs)[0]; \
+	} while (0)
+
+/*
+ * The %name-prefix option below will make bison call base_yylex, but we
+ * really want it to call filtered_base_yylex (see parser.c).
+ */
+#define base_yylex filtered_base_yylex
 
 /*
  * Variables containing simple states.
@@ -17,6 +33,8 @@ char	*input_filename = NULL;
 
 static int	QueryIsRule = 0, FoundInto = 0;
 static int	initializer = 0;
+static int	pacounter = 1;
+static char     pacounter_buffer[sizeof(int) * CHAR_BIT * 10 / 3]; /* a rough guess at the size we need */
 static struct this_type actual_type[STRUCT_DEPTH];
 static char *actual_startline[STRUCT_DEPTH];
 
@@ -29,25 +47,10 @@ static char *ECPGstruct_sizeof = NULL;
 /* for forward declarations we have to store some data as well */
 static char *forward_name = NULL;
 
-struct ECPGtype ecpg_no_indicator = {ECPGt_NO_INDICATOR, 0L, NULL, {NULL}};
+struct ECPGtype ecpg_no_indicator = {ECPGt_NO_INDICATOR, NULL, NULL, {NULL}, 0};
 struct variable no_indicator = {"no_indicator", &ecpg_no_indicator, 0, NULL};
 
-struct ECPGtype ecpg_query = {ECPGt_char_variable, 0L, NULL, {NULL}};
-
-/* INFORMIX workaround, no longer needed
-static struct inf_compat_col
-{
-	char *name;
-	char *indirection;
-	struct inf_compat_col *next;
-} *informix_col;
-
-static struct inf_compat_val
-{
-	char *val;
-	struct inf_compat_val *next;
-} *informix_val;
-*/
+struct ECPGtype ecpg_query = {ECPGt_char_variable, NULL, NULL, {NULL}, 0};
 
 /*
  * Handle parsing errors and warnings
@@ -84,6 +87,10 @@ mmerror(int error_code, enum errortype type, char * error, ...)
 			ret_value = error_code;
 			break;
 		case ET_FATAL:
+			fclose(yyin);
+			fclose(yyout);
+			if (unlink(output_filename) != 0 && *output_filename != '-')
+			        fprintf(stderr, "Could not remove output file %s!\n", output_filename);
 			exit(error_code);
 	}
 }
@@ -198,7 +205,10 @@ create_questionmarks(char *name, bool array)
 		count = 1;
 
 	for (; count > 0; count --)
-		result = cat2_str(result, make_str("? , "));
+	{
+		sprintf(pacounter_buffer, "$%d", pacounter++);
+		result = cat_str(3, result, strdup(pacounter_buffer), make_str(" , "));
+	}
 
 	/* removed the trailing " ," */
 
@@ -235,17 +245,17 @@ adjust_informix(struct arguments *list)
 
 		if ((ptr->variable->type->type != ECPGt_varchar && ptr->variable->type->type != ECPGt_char && ptr->variable->type->type != ECPGt_unsigned_char) && atoi(ptr->variable->type->size) > 1)
 		{
-			ptr->variable = new_variable(cat_str(4, make_str("("), mm_strdup(ECPGtype_name(ptr->variable->type->u.element->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_array_type(ECPGmake_simple_type(ptr->variable->type->u.element->type, make_str("1")), ptr->variable->type->size), 0);
+			ptr->variable = new_variable(cat_str(4, make_str("("), mm_strdup(ecpg_type_name(ptr->variable->type->u.element->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_array_type(ECPGmake_simple_type(ptr->variable->type->u.element->type, make_str("1"), ptr->variable->type->u.element->lineno), ptr->variable->type->size), 0);
 			sprintf(temp, "%d, (", ecpg_informix_var++);
 		}
 		else if ((ptr->variable->type->type == ECPGt_varchar || ptr->variable->type->type == ECPGt_char || ptr->variable->type->type == ECPGt_unsigned_char) && atoi(ptr->variable->type->size) > 1)
 		{
-			ptr->variable = new_variable(cat_str(4, make_str("("), mm_strdup(ECPGtype_name(ptr->variable->type->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_simple_type(ptr->variable->type->type, ptr->variable->type->size), 0);
+			ptr->variable = new_variable(cat_str(4, make_str("("), mm_strdup(ecpg_type_name(ptr->variable->type->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_simple_type(ptr->variable->type->type, ptr->variable->type->size, ptr->variable->type->lineno), 0);
 			sprintf(temp, "%d, (", ecpg_informix_var++);
 		}
 		else
 		{
-			ptr->variable = new_variable(cat_str(4, make_str("*("), mm_strdup(ECPGtype_name(ptr->variable->type->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_simple_type(ptr->variable->type->type, ptr->variable->type->size), 0);
+			ptr->variable = new_variable(cat_str(4, make_str("*("), mm_strdup(ecpg_type_name(ptr->variable->type->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_simple_type(ptr->variable->type->type, ptr->variable->type->size, ptr->variable->type->lineno), 0);
 			sprintf(temp, "%d, &(", ecpg_informix_var++);
 		}
 
@@ -262,12 +272,12 @@ adjust_informix(struct arguments *list)
 			/* create call to "ECPG_informix_set_var(<counter>, <pointer>. <linen number>)" */
 			if (atoi(ptr->indicator->type->size) > 1)
 			{
-				ptr->indicator = new_variable(cat_str(4, make_str("("), mm_strdup(ECPGtype_name(ptr->indicator->type->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_simple_type(ptr->indicator->type->type, ptr->indicator->type->size), 0);
+				ptr->indicator = new_variable(cat_str(4, make_str("("), mm_strdup(ecpg_type_name(ptr->indicator->type->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_simple_type(ptr->indicator->type->type, ptr->indicator->type->size, ptr->variable->type->lineno), 0);
 				sprintf(temp, "%d, (", ecpg_informix_var++);
 			}
 			else
 			{
-				ptr->indicator = new_variable(cat_str(4, make_str("*("), mm_strdup(ECPGtype_name(ptr->indicator->type->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_simple_type(ptr->indicator->type->type, ptr->indicator->type->size), 0);
+				ptr->indicator = new_variable(cat_str(4, make_str("*("), mm_strdup(ecpg_type_name(ptr->indicator->type->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_simple_type(ptr->indicator->type->type, ptr->indicator->type->size, ptr->variable->type->lineno), 0);
 				sprintf(temp, "%d, &(", ecpg_informix_var++);
 			}
 			result = cat_str(5, result, make_str("ECPG_informix_set_var("), mm_strdup(temp), mm_strdup(original_var), make_str("), __LINE__);\n"));
@@ -309,7 +319,55 @@ add_additional_variables(char *name, bool insert)
 
 	return ptr;
 }
+
+static void
+add_typedef(char *name, char * dimension, char * length, enum ECPGttype type_enum, char *type_dimension, char *type_index, int initializer, int array)
+{
+	/* add entry to list */
+	struct typedefs *ptr, *this;
+
+	if ((type_enum == ECPGt_struct ||
+	     type_enum == ECPGt_union) &&
+	    initializer == 1)
+		mmerror(PARSE_ERROR, ET_ERROR, "Initializer not allowed in typedef command");
+	else
+	{
+		for (ptr = types; ptr != NULL; ptr = ptr->next)
+		{
+			if (strcmp(name, ptr->name) == 0)
+				/* re-definition is a bug */
+				mmerror(PARSE_ERROR, ET_ERROR, "Type %s already defined", name);
+		}
+		adjust_array(type_enum, &dimension, &length, type_dimension, type_index, array, true);
+
+		this = (struct typedefs *) mm_alloc(sizeof(struct typedefs));
+
+		/* initial definition */
+		this->next = types;
+		this->name = name;
+		this->brace_level = braces_open;
+		this->type = (struct this_type *) mm_alloc(sizeof(struct this_type));
+		this->type->type_enum = type_enum;
+		this->type->type_str = mm_strdup(name);
+		this->type->type_dimension = dimension; /* dimension of array */
+		this->type->type_index = length;	/* length of string */
+		this->type->type_sizeof = ECPGstruct_sizeof;
+		this->struct_member_list = (type_enum == ECPGt_struct || type_enum == ECPGt_union) ?
+		ECPGstruct_member_dup(struct_member_list[struct_level]) : NULL;
+
+		if (type_enum != ECPGt_varchar &&
+			type_enum != ECPGt_char &&
+			type_enum != ECPGt_unsigned_char &&
+			atoi(this->type->type_index) >= 0)
+			mmerror(PARSE_ERROR, ET_ERROR, "No multidimensional array support for simple data types");
+
+		types = this;
+	}
+}
 %}
+
+%name-prefix="base_yy"
+%locations
 
 %union {
 	double	dval;
@@ -323,23 +381,24 @@ add_additional_variables(char *name, bool insert)
 	enum	ECPGdtype	dtype_enum;
 	struct	fetch_desc	descriptor;
 	struct  su_symbol	struct_union;
+	struct	prep		prep;
 }
 
 /* special embedded SQL token */
 %token	SQL_ALLOCATE SQL_AUTOCOMMIT SQL_BOOL SQL_BREAK
 		SQL_CALL SQL_CARDINALITY SQL_CONNECT
-		SQL_CONTINUE SQL_COUNT SQL_CURRENT SQL_DATA
+		SQL_CONTINUE SQL_COUNT SQL_DATA
 		SQL_DATETIME_INTERVAL_CODE
 		SQL_DATETIME_INTERVAL_PRECISION SQL_DESCRIBE
-		SQL_DESCRIPTOR SQL_DISCONNECT SQL_ENUM SQL_FOUND
+		SQL_DESCRIPTOR SQL_DISCONNECT SQL_FOUND
 		SQL_FREE SQL_GO SQL_GOTO SQL_IDENTIFIED
 		SQL_INDICATOR SQL_KEY_MEMBER SQL_LENGTH
-		SQL_LONG SQL_NAME SQL_NULLABLE SQL_OCTET_LENGTH
+		SQL_LONG SQL_NULLABLE SQL_OCTET_LENGTH
 		SQL_OPEN SQL_OUTPUT SQL_REFERENCE
 		SQL_RETURNED_LENGTH SQL_RETURNED_OCTET_LENGTH SQL_SCALE
 		SQL_SECTION SQL_SHORT SQL_SIGNED SQL_SQL SQL_SQLERROR
 		SQL_SQLPRINT SQL_SQLWARNING SQL_START SQL_STOP
-		SQL_STRUCT SQL_UNSIGNED SQL_VALUE SQL_VAR SQL_WHENEVER
+		SQL_STRUCT SQL_UNSIGNED SQL_VAR SQL_WHENEVER
 
 /* C token */
 %token	S_ADD S_AND S_ANYTHING S_AUTO S_CONST S_DEC S_DIV
@@ -353,7 +412,7 @@ add_additional_variables(char *name, bool insert)
 
 /* ordinary key words in alphabetical order */
 %token <keyword> ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER
-	AGGREGATE ALL ALSO ALTER ANALYSE ANALYZE AND ANY ARRAY AS ASC
+	AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
 	ASSERTION ASSIGNMENT ASYMMETRIC AT AUTHORIZATION
 
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
@@ -362,18 +421,19 @@ add_additional_variables(char *name, bool insert)
 	CACHE CALLED CASCADE CASCADED CASE CAST CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
-	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY CREATE CREATEDB
-	CREATEROLE CREATEUSER CROSS CSV CURRENT_DATE CURRENT_ROLE CURRENT_TIME
-	CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
+	COMMITTED CONCURRENTLY CONFIGURATION CONNECTION CONSTRAINT CONSTRAINTS 
+	CONTENT_P CONVERSION_P COPY COST CREATE CREATEDB
+	CREATEROLE CREATEUSER CROSS CSV CURRENT_P CURRENT_DATE CURRENT_ROLE
+	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
 	DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
-	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
-	DESC DISABLE_P DISTINCT DO DOMAIN_P DOUBLE_P DROP
+	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DESC
+	DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P DOUBLE_P DROP
 
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ESCAPE EXCEPT EXCLUSIVE EXCLUDING
+	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EXCEPT EXCLUSIVE EXCLUDING
 	EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
-	FALSE_P FETCH FIRST_P FLOAT_P FOR FORCE FOREIGN FORWARD FREEZE FROM
+	FALSE_P FAMILY FETCH FIRST_P FLOAT_P FOR FORCE FOREIGN FORWARD FREEZE FROM
 	FULL FUNCTION
 
 	GET GLOBAL GRANT GRANTED GREATEST GROUP_P
@@ -393,50 +453,57 @@ add_additional_variables(char *name, bool insert)
 	LIKE LIMIT LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
 	LOCK_P LOGIN_P
 
-	MATCH MAXVALUE MINUTE_P MINVALUE MODE MONTH_P MOVE
+	MAPPING MATCH MAXVALUE MINUTE_P MINVALUE MODE MONTH_P MOVE
 
-	NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOSUPERUSER
-	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF NUMERIC
+	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF NULLS_P NUMERIC
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OR ORDER
 	OUT_P OUTER_P OVERLAPS OVERLAY OWNED OWNER
 
-	PARTIAL PASSWORD PLACING POSITION
+	PARSER PARTIAL PASSWORD PLACING PLANS POSITION
 	PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE
 
 	QUOTE
 
 	READ REAL REASSIGN RECHECK REFERENCES REINDEX RELATIVE_P RELEASE RENAME
-	REPEATABLE REPLACE RESET RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT
-	ROLE ROLLBACK ROW ROWS RULE
+	REPEATABLE REPLACE REPLICA RESET RESTART RESTRICT RETURNING RETURNS REVOKE
+	RIGHT ROLE ROLLBACK ROW ROWS RULE
 
-	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SELECT SEQUENCE
+	SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE
 	SERIALIZABLE SESSION SESSION_USER SET SETOF SHARE
-	SHOW SIMILAR SIMPLE SMALLINT SOME STABLE START STATEMENT
-	STATISTICS STDIN STDOUT STORAGE STRICT_P SUBSTRING SUPERUSER_P SYMMETRIC
-	SYSID SYSTEM_P
+	SHOW SIMILAR SIMPLE SMALLINT SOME STABLE STANDALONE_P START STATEMENT
+	STATISTICS STDIN STDOUT STORAGE STRICT_P STRIP_P SUBSTRING SUPERUSER_P
+	SYMMETRIC SYSID SYSTEM_P
 
-	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY THEN TIME TIMESTAMP TO 
+	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P THEN TIME TIMESTAMP TO 
 	TRAILING TRANSACTION TREAT TRIGGER TRIM TRUE_P TRUNCATE TRUSTED TYPE_P
 
 	UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNTIL
 	UPDATE USER USING
 
-	VACUUM VALID VALIDATOR VALUES VARCHAR VARYING VERBOSE VIEW VOLATILE
-	WHEN WHERE WITH WITHOUT WORK WRITE
-	YEAR_P
+	VACUUM VALID VALIDATOR VALUE_P VALUES VARCHAR VARYING
+	VERBOSE VERSION_P VIEW VOLATILE
+	WHEN WHERE WHITESPACE_P WITH WITHOUT WORK WRITE
+
+	XML_P XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLFOREST XMLPARSE
+	XMLPI XMLROOT XMLSERIALIZE
+
+	YEAR_P YES_P
+
 	ZONE
 
 /* The grammar thinks these are keywords, but they are not in the keywords.c
  * list and so can never be entered directly.  The filter in parser.c
  * creates these tokens when required.
  */
-%token           WITH_CASCADED WITH_LOCAL WITH_CHECK
+%token           NULLS_FIRST NULLS_LAST WITH_CASCADED WITH_LOCAL WITH_CHECK
 
 /* Special token types, not actually keywords - see the "lex" file */
-%token <str>	IDENT SCONST Op CSTRING CVARIABLE CPP_LINE IP BCONST XCONST DOLCONST
+%token <str>	IDENT SCONST Op CSTRING CVARIABLE CPP_LINE IP BCONST
+%token <str>	XCONST DOLCONST ECONST NCONST
 %token <ival>	ICONST PARAM
 %token <dval>	FCONST
 
@@ -470,6 +537,8 @@ add_additional_variables(char *name, bool insert)
 %left		TYPECAST
 %left		'.'
 %left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL
+/* kluge to keep xml_whitespace_option from causing shift/reduce conflicts */
+%right         PRESERVE STRIP_P
 
 %type  <str>	Iconst Fconst Sconst TransactionStmt CreateStmt RoleId
 %type  <str>	CreateAsElement OptCreateAs CreateAsList CreateAsStmt
@@ -477,17 +546,17 @@ add_additional_variables(char *name, bool insert)
 %type  <str>	key_match ColLabel SpecialRuleRelation ColId columnDef
 %type  <str>	ColConstraint ColConstraintElem drop_type Bconst Iresult
 %type  <str>	TableConstraint OptTableElementList Xconst opt_transaction
-%type  <str>	ConstraintElem key_actions ColQualList type_name
-%type  <str>	target_list target_el alias_clause
-%type  <str>	qualified_name database_name alter_using
+%type  <str>	ConstraintElem key_actions ColQualList cluster_index_specification
+%type  <str>	target_list target_el alias_clause type_func_name_keyword
+%type  <str>	qualified_name database_name alter_using type_function_name
 %type  <str>	access_method attr_name index_name name func_name
 %type  <str>	file_name AexprConst c_expr ConstTypename var_list
 %type  <str>	a_expr b_expr TruncateStmt CommentStmt OnCommitOption opt_by
 %type  <str>	opt_indirection expr_list extract_list extract_arg
 %type  <str>	position_list substr_list substr_from alter_column_default
 %type  <str>	trim_list in_expr substr_for attrs TableFuncElement
-%type  <str>	Typename SimpleTypename Numeric opt_float opt_numeric
-%type  <str>	opt_decimal Character character opt_varying opt_charset
+%type  <str>	Typename SimpleTypename Numeric opt_float DiscardStmt
+%type  <str>	Character character opt_varying opt_charset enum_val_list
 %type  <str>	opt_timezone opt_interval table_ref fetch_direction
 %type  <str>	ConstDatetime AlterDomainStmt AlterSeqStmt alter_rel_cmds
 %type  <str>	SelectStmt into_clause OptTemp ConstraintAttributeSpec
@@ -497,7 +566,7 @@ add_additional_variables(char *name, bool insert)
 %type  <str>	join_outer where_clause relation_expr sub_type arg_class
 %type  <str>	opt_column_list insert_rest InsertStmt param_name
 %type  <str>	columnList DeleteStmt UpdateStmt DeclareCursorStmt
-%type  <str>	NotifyStmt columnElem UnlistenStmt TableElement
+%type  <str>	NotifyStmt columnElem UnlistenStmt TableElement fetch_count
 %type  <str>	copy_delimiter ListenStmt CopyStmt copy_file_name opt_binary
 %type  <str>	FetchStmt from_in CreateOpClassStmt returning_clause
 %type  <str>	ClosePortalStmt DropStmt VacuumStmt AnalyzeStmt opt_verbose
@@ -515,7 +584,7 @@ add_additional_variables(char *name, bool insert)
 %type  <str>	RemoveOperStmt RenameStmt all_Op opt_trusted opt_lancompiler
 %type  <str>	VariableSetStmt var_value zone_value VariableShowStmt
 %type  <str>	VariableResetStmt AlterTableStmt from_list overlay_list
-%type  <str>	relation_name OptTableSpace LockStmt opt_lock
+%type  <str>	relation_name OptTableSpace LockStmt opt_lock 
 %type  <str>	CreateUserStmt AlterUserStmt CreateSeqStmt OptSeqList
 %type  <str>	OptSeqElem TriggerForSpec TriggerForOpt TriggerForType
 %type  <str>	DropTrigStmt TriggerOneEvent TriggerEvents RuleActionStmt
@@ -544,9 +613,9 @@ add_additional_variables(char *name, bool insert)
 %type  <str>	select_limit CheckPointStmt ECPGColId old_aggr_list
 %type  <str>	OptSchemaName OptSchemaEltList schema_stmt opt_drop_behavior
 %type  <str>	handler_name any_name_list any_name opt_as insert_column_list
-%type  <str>	columnref function_name values_clause AllConstVar
-%type  <str>	insert_column_item DropRuleStmt ctext_expr
-%type  <str>	createfunc_opt_item set_rest var_list_or_default alter_rel_cmd
+%type  <str>	columnref values_clause AllConstVar prep_type_clause ExecuteStmt
+%type  <str>	insert_column_item DropRuleStmt ctext_expr execute_param_clause 
+%type  <str>	createfunc_opt_item set_rest alter_rel_cmd
 %type  <str>	CreateFunctionStmt createfunc_opt_list func_table
 %type  <str>	DropUserStmt copy_from copy_opt_list copy_opt_item
 %type  <str>	opt_oids TableLikeClause key_action opt_definition
@@ -557,7 +626,7 @@ add_additional_variables(char *name, bool insert)
 %type  <str>	ConstBit GenericType TableFuncElementList opt_analyze
 %type  <str>	opt_sort_clause subquery_Op transaction_mode_item
 %type  <str>	ECPGWhenever ECPGConnect connection_target ECPGOpen
-%type  <str>	indicator ECPGExecute ECPGPrepare ecpg_using ecpg_into
+%type  <str>	indicator ecpg_using ecpg_into DeallocateStmt
 %type  <str>	storage_declaration storage_clause opt_initializer c_anything
 %type  <str>	variable_list variable c_thing c_term ECPGKeywords_vanames
 %type  <str>	opt_pointer ECPGDisconnect dis_name storage_modifier
@@ -567,17 +636,17 @@ add_additional_variables(char *name, bool insert)
 %type  <str>	var_type_declarations quoted_ident_stringvar ECPGKeywords_rest
 %type  <str>	db_prefix server opt_options opt_connection_name c_list
 %type  <str>	ECPGSetConnection ECPGTypedef c_args ECPGKeywords ECPGCKeywords
-%type  <str>	enum_type civar civarind ECPGCursorStmt ECPGDeallocate
-%type  <str>	ECPGFree ECPGDeclare ECPGVar opt_at enum_definition
+%type  <str>	enum_type civar civarind ECPGCursorStmt PreparableStmt
+%type  <str>	ECPGFree ECPGDeclare ECPGVar at enum_definition
 %type  <str>	struct_union_type s_struct_union vt_declarations execute_rest
 %type  <str>	var_declaration type_declaration single_vt_declaration
 %type  <str>	ECPGSetAutocommit on_off variable_declarations ECPGDescribe
 %type  <str>	ECPGAllocateDescr ECPGDeallocateDescr symbol opt_output
-%type  <str>	ECPGGetDescriptorHeader ECPGColLabel single_var_declaration
+%type  <str>	ECPGGetDescriptorHeader ECPGColLabel SetResetClause AlterUserSetStmt
 %type  <str>	reserved_keyword unreserved_keyword ecpg_interval opt_ecpg_using
-%type  <str>	col_name_keyword func_name_keyword precision opt_scale
-%type  <str>	ECPGTypeName using_list ECPGColLabelCommon UsingConst
-%type  <str>	using_descriptor into_descriptor 
+%type  <str>	col_name_keyword precision opt_scale ECPGExecuteImmediateStmt
+%type  <str>	ECPGTypeName using_list ECPGColLabelCommon UsingConst 
+%type  <str>	using_descriptor into_descriptor opt_nulls_order opt_asc_desc
 %type  <str>	prepared_name struct_union_type_with_symbol OptConsTableSpace
 %type  <str>	ECPGunreserved ECPGunreserved_interval cvariable opt_bit_field
 %type  <str>	AlterOwnerStmt OptTableSpaceOwner CreateTableSpaceStmt
@@ -587,10 +656,15 @@ add_additional_variables(char *name, bool insert)
 %type  <str>	opt_grant_admin_option AlterFunctionStmt alterfunc_opt_list opt_restrict
 %type  <str>	AlterObjectSchemaStmt alterdb_opt_list for_locking_clause opt_for_locking_clause
 %type  <str>	locked_rels_list opt_granted_by RevokeRoleStmt alterdb_opt_item using_clause
-%type  <str>	GrantRoleStmt opt_asymmetric aggr_args aggr_args_list old_aggr_definition
+%type  <str>	GrantRoleStmt opt_asymmetric aggr_args old_aggr_definition
 %type  <str>	old_aggr_elem for_locking_items TableLikeOptionList TableLikeOption
 %type  <str>	set_target_list	set_clause_list set_clause multiple_set_clause
-%type  <str>	ctext_expr_list ctext_row single_set_clause set_target
+%type  <str>	ctext_expr_list ctext_row single_set_clause set_target opt_type_modifiers
+%type  <str>	opclass_drop_list opclass_drop DropOpFamilyStmt opt_opfamily
+%type  <str>	CreateOpFamilyStmt AlterOpFamilyStmt create_as_target
+%type  <str>	xml_attributes xml_attribute_list document_or_content xml_whitespace_option
+%type  <str>	opt_xml_root_standalone xml_root_version xml_attribute_el 
+%type  <str>	where_or_current_clause AlterTSConfigurationStmt AlterTSDictionaryStmt
 
 %type  <struct_union> s_struct_union_symbol
 
@@ -601,6 +675,8 @@ add_additional_variables(char *name, bool insert)
 %type  <dtype_enum> descriptor_item desc_header_item
 
 %type  <type>	var_type
+
+%type  <prep>	PrepareStmt
 
 %type  <action> action
 
@@ -613,7 +689,7 @@ statements: /*EMPTY*/
 		| statements statement
 		;
 
-statement: ecpgstart opt_at stmt ';'	{ connection = NULL; }
+statement: ecpgstart at stmt ';'	{ connection = NULL; }
 		| ecpgstart stmt ';'
 		| ecpgstart ECPGVarDeclaration
 		{
@@ -628,7 +704,7 @@ statement: ecpgstart opt_at stmt ';'	{ connection = NULL; }
 		| '}'			{ remove_typedefs(braces_open); remove_variables(braces_open--); fputs("}", yyout); }
 		;
 
-opt_at: AT connection_object
+at: AT connection_object
 		{
 			connection = $2;
 			/*
@@ -638,22 +714,26 @@ opt_at: AT connection_object
 			 */
 			if (argsinsert != NULL)
 				argsinsert = NULL;
-		};
+		}
+	;
 
-stmt:  AlterDatabaseStmt		{ output_statement($1, 0, connection); }
-		| AlterDatabaseSetStmt	{ output_statement($1, 0, connection); }
-		| AlterDomainStmt	{ output_statement($1, 0, connection); }
-		| AlterFunctionStmt	{ output_statement($1, 0, connection); }
-		| AlterGroupStmt	{ output_statement($1, 0, connection); }
-		| AlterObjectSchemaStmt	{ output_statement($1, 0, connection); }
-		| AlterOwnerStmt	{ output_statement($1, 0, connection); }
-		| AlterSeqStmt		{ output_statement($1, 0, connection); }
-		| AlterTableStmt	{ output_statement($1, 0, connection); }
-		| AlterRoleSetStmt	{ output_statement($1, 0, connection); }
-		| AlterRoleStmt		{ output_statement($1, 0, connection); }
-		| AlterUserStmt		{ output_statement($1, 0, connection); }
-		| AnalyzeStmt		{ output_statement($1, 0, connection); }
-		| CheckPointStmt	{ output_statement($1, 0, connection); }
+stmt:  AlterDatabaseStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| AlterDatabaseSetStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterDomainStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterFunctionStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterGroupStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterObjectSchemaStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterOwnerStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterSeqStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| AlterTableStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterRoleSetStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterRoleStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| AlterTSConfigurationStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterTSDictionaryStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterUserStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| AlterUserSetStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AnalyzeStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| CheckPointStmt	{ output_statement($1, 0, ECPGst_normal); }
 		| ClosePortalStmt
 		{
 			if (INFORMIX_MODE)
@@ -673,85 +753,103 @@ stmt:  AlterDatabaseStmt		{ output_statement($1, 0, connection); }
 					free($1);
 				}
 				else
-					output_statement($1, 0, connection);
+					output_statement($1, 0, ECPGst_normal);
 			}
 			else
-				output_statement($1, 0, connection);
+				output_statement($1, 0, ECPGst_normal);
 		}
-		| ClusterStmt		{ output_statement($1, 0, connection); }
-		| CommentStmt		{ output_statement($1, 0, connection); }
-		| ConstraintsSetStmt	{ output_statement($1, 0, connection); }
-		| CopyStmt		{ output_statement($1, 0, connection); }
-		| CreateAsStmt		{ output_statement($1, 0, connection); }
-		| CreateAssertStmt	{ output_statement($1, 0, connection); }
-		| CreateCastStmt	{ output_statement($1, 0, connection); }
-		| CreateConversionStmt	{ output_statement($1, 0, connection); }
-		| CreateDomainStmt	{ output_statement($1, 0, connection); }
-		| CreateFunctionStmt	{ output_statement($1, 0, connection); }
-		| CreateGroupStmt	{ output_statement($1, 0, connection); }
-		| CreatePLangStmt	{ output_statement($1, 0, connection); }
-		| CreateOpClassStmt	{ output_statement($1, 0, connection); }
-		| CreateRoleStmt	{ output_statement($1, 0, connection); }
-		| CreateSchemaStmt	{ output_statement($1, 0, connection); }
-		| CreateSeqStmt		{ output_statement($1, 0, connection); }
-		| CreateStmt		{ output_statement($1, 0, connection); }
-		| CreateTableSpaceStmt	{ output_statement($1, 0, connection); }
-		| CreateTrigStmt	{ output_statement($1, 0, connection); }
-		| CreateUserStmt	{ output_statement($1, 0, connection); }
-		| CreatedbStmt		{ output_statement($1, 0, connection); }
-		/*| DeallocateStmt	{ output_statement($1, 0, connection); }*/
+		| ClusterStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| CommentStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| ConstraintsSetStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CopyStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| CreateAsStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| CreateAssertStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateCastStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateConversionStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateDomainStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateFunctionStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateGroupStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreatePLangStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateOpClassStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateOpFamilyStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| AlterOpFamilyStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateRoleStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateSchemaStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateSeqStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| CreateStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| CreateTableSpaceStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateTrigStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreateUserStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| CreatedbStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DeallocateStmt
+		{
+			if (connection)
+				mmerror(PARSE_ERROR, ET_ERROR, "no at option for deallocate statement.\n");
+				
+			output_deallocate_prepare_statement($1);
+		}
 		| DeclareCursorStmt	{ output_simple_statement($1); }
-		| DefineStmt		{ output_statement($1, 0, connection); }
-		| DeleteStmt		{ output_statement($1, 1, connection); }
-		| DropAssertStmt	{ output_statement($1, 0, connection); }
-		| DropCastStmt		{ output_statement($1, 0, connection); }
-		| DropGroupStmt		{ output_statement($1, 0, connection); }
-		| DropOpClassStmt	{ output_statement($1, 0, connection); }
-		| DropOwnedStmt		{ output_statement($1, 0, connection); }
-		| DropPLangStmt		{ output_statement($1, 0, connection); }
-		| DropRoleStmt		{ output_statement($1, 0, connection); }
-		| DropRuleStmt		{ output_statement($1, 0, connection); }
-		| DropStmt			{ output_statement($1, 0, connection); }
-		| DropTableSpaceStmt	{ output_statement($1, 0, connection); }
-		| DropTrigStmt		{ output_statement($1, 0, connection); }
-		| DropUserStmt		{ output_statement($1, 0, connection); }
-		| DropdbStmt		{ output_statement($1, 0, connection); }
-		| ExplainStmt		{ output_statement($1, 0, connection); }
-/*		| ExecuteStmt		{ output_statement($1, 0, connection); }*/
-		| FetchStmt			{ output_statement($1, 1, connection); }
-		| GrantStmt			{ output_statement($1, 0, connection); }
-		| GrantRoleStmt		{ output_statement($1, 0, connection); }
-		| IndexStmt			{ output_statement($1, 0, connection); }
-		| InsertStmt		{ output_statement($1, 1, connection); }
-		| ListenStmt		{ output_statement($1, 0, connection); }
-		| LoadStmt			{ output_statement($1, 0, connection); }
-		| LockStmt			{ output_statement($1, 0, connection); }
-		| NotifyStmt		{ output_statement($1, 0, connection); }
-/*		| PrepareStmt		{ output_statement($1, 0, connection); }*/
-		| ReassignOwnedStmt	{ output_statement($1, 0, connection); }
-		| ReindexStmt		{ output_statement($1, 0, connection); }
-		| RemoveAggrStmt	{ output_statement($1, 0, connection); }
-		| RemoveOperStmt	{ output_statement($1, 0, connection); }
-		| RemoveFuncStmt	{ output_statement($1, 0, connection); }
-		| RenameStmt		{ output_statement($1, 0, connection); }
-		| RevokeStmt		{ output_statement($1, 0, connection); }
-		| RevokeRoleStmt	{ output_statement($1, 0, connection); }
-		| RuleStmt			{ output_statement($1, 0, connection); }
-		| SelectStmt		{ output_statement($1, 1, connection); }
+		| DefineStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DeleteStmt		{ output_statement($1, 1, ECPGst_normal); }
+		| DiscardStmt		{ output_statement($1, 1, ECPGst_normal); }
+		| DropAssertStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| DropCastStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DropGroupStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DropOpClassStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| DropOpFamilyStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| DropOwnedStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DropPLangStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DropRoleStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DropRuleStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DropStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DropTableSpaceStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| DropTrigStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DropUserStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| DropdbStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| ExplainStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| ExecuteStmt		{ output_statement($1, 0, ECPGst_execute); }
+		| FetchStmt		{ output_statement($1, 1, ECPGst_normal); }
+		| GrantStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| GrantRoleStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| IndexStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| InsertStmt		{ output_statement($1, 1, ECPGst_normal); }
+		| ListenStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| LoadStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| LockStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| NotifyStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| PrepareStmt		{ 
+						if ($1.type == NULL || strlen($1.type) == 0) /* use PQprepare without type parameters */
+							output_prepare_statement($1.name, $1.stmt);  
+						else	/* use PQexec and let backend do its stuff */
+						{
+							char *txt = cat_str(5, make_str("prepare"), $1.name, $1.type, make_str("as"), $1.stmt);
+							output_statement(txt, 0, ECPGst_normal);
+						}
+					}		
+		| ReassignOwnedStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| ReindexStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| RemoveAggrStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| RemoveOperStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| RemoveFuncStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| RenameStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| RevokeStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| RevokeRoleStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| RuleStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| SelectStmt		{ output_statement($1, 1, ECPGst_normal); }
 		| TransactionStmt
 		{
 			fprintf(yyout, "{ ECPGtrans(__LINE__, %s, \"%s\");", connection ? connection : "NULL", $1);
 			whenever_action(2);
 			free($1);
 		}
-		| TruncateStmt		{ output_statement($1, 0, connection); }
-		| UnlistenStmt		{ output_statement($1, 0, connection); }
-		| UpdateStmt		{ output_statement($1, 1, connection); }
-		| VacuumStmt		{ output_statement($1, 0, connection); }
-		| VariableSetStmt	{ output_statement($1, 0, connection); }
-		| VariableShowStmt	{ output_statement($1, 0, connection); }
-		| VariableResetStmt	{ output_statement($1, 0, connection); }
-		| ViewStmt			{ output_statement($1, 0, connection); }
+		| TruncateStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| UnlistenStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| UpdateStmt		{ output_statement($1, 1, ECPGst_normal); }
+		| VacuumStmt		{ output_statement($1, 0, ECPGst_normal); }
+		| VariableSetStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| VariableShowStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| VariableResetStmt	{ output_statement($1, 0, ECPGst_normal); }
+		| ViewStmt		{ output_statement($1, 0, ECPGst_normal); }
 		| ECPGAllocateDescr
 		{
 			fprintf(yyout,"ECPGallocate_desc(__LINE__, %s);",$1);
@@ -771,14 +869,6 @@ stmt:  AlterDatabaseStmt		{ output_statement($1, 0, connection); }
 		| ECPGCursorStmt
 		{
 			output_simple_statement($1);
-		}
-		| ECPGDeallocate
-		{
-			if (connection)
-				mmerror(PARSE_ERROR, ET_ERROR, "no at option for deallocate statement.\n");
-			fprintf(yyout, "{ ECPGdeallocate(__LINE__, %d, %s);", compat, $1);
-			whenever_action(2);
-			free($1);
 		}
 		| ECPGDeallocateDescr
 		{
@@ -813,13 +903,14 @@ stmt:  AlterDatabaseStmt		{ output_statement($1, 0, connection); }
 			whenever_action(2);
 			free($1);
 		}
-		| ECPGExecute
-		{
-			output_statement($1, 0, connection);
-		}
+		| ECPGExecuteImmediateStmt	{ output_statement($1, 0, ECPGst_exec_immediate); }
 		| ECPGFree
 		{
-			fprintf(yyout, "{ ECPGdeallocate(__LINE__, %d, \"%s\");", compat, $1);
+			const char *con = connection ? connection : "NULL";
+			if (strcmp($1, "all"))
+				fprintf(yyout, "{ ECPGdeallocate(__LINE__, %d, %s, \"%s\");", compat, con, $1);
+			else
+				fprintf(yyout, "{ ECPGdeallocate_all(__LINE__, %d, %s);", compat, con);
 
 			whenever_action(2);
 			free($1);
@@ -843,21 +934,11 @@ stmt:  AlterDatabaseStmt		{ output_statement($1, 0, connection); }
 
 			if ((ptr = add_additional_variables($1, true)) != NULL)
 			{
-				output_statement(mm_strdup(ptr->command), 0,
-								 ptr->connection ? mm_strdup(ptr->connection) : NULL);
+				connection = ptr->connection ? mm_strdup(ptr->connection) : NULL;
+				output_statement(mm_strdup(ptr->command), 0, 0);
 				ptr->opened = true;
 			}
 		}
-		| ECPGPrepare
-		{
-			if (connection)
-				mmerror(PARSE_ERROR, ET_ERROR, "no at option for prepare statement.\n");
-
-			fprintf(yyout, "{ ECPGprepare(__LINE__, %s);", $1);
-			whenever_action(2);
-			free($1);
-		}
-		/* | ECPGRelease		{ / * output already done * / } */
 		| ECPGSetAutocommit
 		{
 			fprintf(yyout, "{ ECPGsetcommit(__LINE__, \"%s\", %s);", $1, connection ? connection : "NULL");
@@ -983,9 +1064,7 @@ CreateUserStmt:
 			{ $$ = cat_str(4, make_str("alter role"), $3, $4, $5); }
 		;
 
-	AlterRoleSetStmt: ALTER ROLE RoleId SET set_rest
-			{ $$ = cat_str(4, make_str("alter role"), $3, make_str("set"), $5); }
-		| ALTER ROLE RoleId VariableResetStmt
+	AlterRoleSetStmt: ALTER ROLE RoleId SetResetClause
 			{ $$ = cat_str(3, make_str("alter role"), $3, $4); }
 		;
 
@@ -998,9 +1077,7 @@ CreateUserStmt:
 	AlterUserStmt: ALTER USER RoleId opt_with OptRoleList
 		{ $$ = cat_str(4, make_str("alter user"), $3, $4, $5); };
 
-	AlterRoleSetStmt: ALTER USER RoleId SET set_rest
-			{ $$ = cat_str(4, make_str("alter user"), $3, make_str("set"), $5); }
-		| ALTER USER RoleId VariableResetStmt
+	AlterUserSetStmt: ALTER USER RoleId SetResetClause
 			{ $$ = cat_str(3, make_str("alter user"), $3, $4); }
 		;
 
@@ -1116,10 +1193,18 @@ VariableSetStmt:  SET set_rest
 			{ $$ = cat2_str(make_str("set session"), $3 ); }
 		;
 
-set_rest:	var_name TO var_list_or_default
+set_rest:	/* Generic SET syntaxes: */
+		var_name TO var_list
 			{ $$ = cat_str(3, $1, make_str("to"), $3); }
-		| var_name "=" var_list_or_default
+		| var_name "=" var_list
 			{ $$ = cat_str(3, $1, make_str("="), $3); }
+		| var_name TO DEFAULT
+			{ $$ = cat2_str($1, make_str("to default")); }
+		| var_name "=" DEFAULT
+			{ $$ = cat2_str($1, make_str("= default")); }
+		| var_name FROM CURRENT_P
+			{ $$ = cat2_str($1, make_str("from current")); }
+		/* Special syntaxes mandated by SQL standard: */
 		| TIME ZONE zone_value
 			{ $$ = cat2_str(make_str("time zone"), $3); }
 		| TRANSACTION transaction_mode_list
@@ -1134,18 +1219,14 @@ set_rest:	var_name TO var_list_or_default
 			{ $$ = cat2_str(make_str("session authorization"), $3); }
 		| SESSION AUTHORIZATION DEFAULT
 			{ $$ = make_str("session authorization default"); }
+		| XML_P OPTION document_or_content
+			{ $$ = cat2_str(make_str("xml option"), $3); }
 		;
 
 var_name:	ECPGColId		{ $$ = $1; }
 		| var_name '.' ColId	{ $$ = cat_str(3, $1, make_str("."), $3); }
 		;
 
-
-var_list_or_default:  var_list
-			{ $$ = $1; }
-		| DEFAULT
-			{ $$ = make_str("default"); }
-		;
 
 var_list:  var_value
 			{ $$ = $1; }
@@ -1207,7 +1288,10 @@ VariableShowStmt:  SHOW var_name ecpg_into
 		| SHOW SESSION AUTHORIZATION ecpg_into
 			{ $$ = make_str("show session authorization"); }
 		| SHOW ALL
-		   	{ mmerror(PARSE_ERROR, ET_ERROR, "SHOW ALL not implemented"); }
+		   	{
+				mmerror(PARSE_ERROR, ET_ERROR, "SHOW ALL not implemented");
+				$$ = EMPTY;
+			}
 		;
 
 VariableResetStmt:	RESET var_name
@@ -1220,6 +1304,12 @@ VariableResetStmt:	RESET var_name
 			{ $$ = make_str("reset session authorization"); }
 		| RESET ALL
 			{ $$ = make_str("reset all"); }
+		;
+
+/* SetResetClause allows SET or RESET without LOCAL */
+SetResetClause:
+		SET set_rest		{ $$ = cat2_str(make_str("set"), $2); }
+		| VariableResetStmt 	{ $$ = $1; }
 		;
 
 ConstraintsSetStmt:    SET CONSTRAINTS constraints_set_list constraints_set_mode
@@ -1242,6 +1332,12 @@ constraints_set_mode:  DEFERRED		{ $$ = make_str("deferred"); }
 CheckPointStmt: CHECKPOINT	   { $$= make_str("checkpoint"); }
 		;
 
+DiscardStmt:
+		DISCARD ALL		{ $$ = make_str("discard all"); }
+		| DISCARD TEMP		{ $$ = make_str("discard temp"); }
+		| DISCARD TEMPORARY	{ $$ = make_str("discard temporary"); }
+		| DISCARD PLANS		{ $$ = make_str("discard plans"); }
+		;
 
 /*****************************************************************************
  *
@@ -1305,6 +1401,12 @@ alter_table_cmd:
 /* ALTER TABLE <name> ENABLE TRIGGER <trig> */
 		| ENABLE_P TRIGGER name
 			{ $$ = cat2_str(make_str("enable trigger"), $3); }
+/* ALTER TABLE <name> ENABLE ALWAYS TRIGGER <trig> */
+		| ENABLE_P ALWAYS TRIGGER name
+			{ $$ = cat2_str(make_str("enable always trigger"), $4); }
+/* ALTER TABLE <name> ENABLE REPLICA TRIGGER <trig> */
+		| ENABLE_P REPLICA TRIGGER name
+			{ $$ = cat2_str(make_str("enable replica trigger"), $4); }
 /* ALTER TABLE <name> ENABLE TRIGGER ALL */
 		| ENABLE_P TRIGGER ALL
 			{ $$ = make_str("enable trigger all"); }
@@ -1320,6 +1422,18 @@ alter_table_cmd:
 /* ALTER TABLE <name> DISABLE TRIGGER USER */
 		| DISABLE_P TRIGGER USER
 			{ $$ = make_str("disable trigger user"); }
+/* ALTER TABLE <name> ENABLE RULE <rule> */
+		| ENABLE_P RULE name
+			{ $$ = cat2_str(make_str("enable rule"), $3); }
+/* ALTER TABLE <name> ENABLE ALWAYS RULE <rule> */
+		| ENABLE_P ALWAYS RULE name
+			{ $$ = cat2_str(make_str("enable always rule"), $4); }
+/* ALTER TABLE <name> ENABLE REPLICA RULE <rule> */
+		| ENABLE_P REPLICA RULE name
+			{ $$ = cat2_str(make_str("enable replica rule"), $4); }
+/* ALTER TABLE <name> DISABLE RULE <rule> */
+		| DISABLE_P RULE name
+			{ $$ = cat2_str(make_str("disable rule"), $3); }
 /* ALTER TABLE <name> ALTER INHERITS ADD <parent> */
 		| INHERIT qualified_name
 			{ $$ = cat2_str(make_str("inherit"), $2); }
@@ -1371,6 +1485,8 @@ alter_using:	USING a_expr	{ $$ = cat2_str(make_str("using"), $2); }
 
 ClosePortalStmt:  CLOSE name
 			{ $$ = cat2_str(make_str("close"), $2);	}
+		| CLOSE ALL
+			{ $$ = make_str("close all"); }
 		;
 
 CopyStmt:  COPY opt_binary qualified_name opt_oids copy_from
@@ -1668,14 +1784,20 @@ OptConsTableSpace: USING INDEX TABLESPACE name	{ $$ = cat2_str(make_str("using i
  * SELECT ... INTO.
  */
 
-CreateAsStmt:  CREATE OptTemp TABLE qualified_name OptCreateAs OptWith OnCommitOption OptTableSpace AS
+CreateAsStmt:  CREATE OptTemp TABLE create_as_target AS
 		{ FoundInto = 0; }
 		SelectStmt
 		{
 			if (FoundInto == 1)
-				mmerror(PARSE_ERROR, ET_ERROR, "CREATE TABLE / AS SELECT may not specify INTO");
+				mmerror(PARSE_ERROR, ET_ERROR, "CREATE TABLE / AS SELECT cannot specify INTO");
 
-			$$ = cat_str(10, make_str("create"), $2, make_str("table"), $4, $5, $6, $7, $8, make_str("as"), $11);
+			$$ = cat_str(6, make_str("create"), $2, make_str("table"), $4, make_str("as"), $7);
+		}
+		;
+
+create_as_target:  qualified_name OptCreateAs OptWith OnCommitOption OptTableSpace
+		{
+			$$ = cat_str(5, $1, $2, $3, $4, $5);
 		}
 		;
 
@@ -1909,6 +2031,10 @@ ConstraintAttributeSpec: ConstraintDeferrabilitySpec	{ $$ = $1; }
 		{
 			$$ = EMPTY;
 		}
+		| /* EMPTY */
+		{
+			$$ = EMPTY;
+		}
 		;
 
 ConstraintDeferrabilitySpec: NOT DEFERRABLE
@@ -1971,6 +2097,16 @@ DefineStmt:  CREATE AGGREGATE func_name aggr_args definition
 			{ $$ = cat2_str(make_str("create type"), $3); }
 		| CREATE TYPE_P any_name AS '(' TableFuncElementList ')'
 			{ $$ = cat_str(5, make_str("create type"), $3, make_str("as ("), $6, make_str(")")); }
+		| CREATE TYPE_P any_name AS ENUM_P '(' enum_val_list ')'
+			{ $$ = cat_str(5, make_str("create type"), $3, make_str("as enum ("), $7, make_str(")")); }
+		| CREATE TEXT_P SEARCH PARSER any_name definition
+			{ $$ = cat_str(3, make_str("create text search parser"), $5, $6); }
+		| CREATE TEXT_P SEARCH DICTIONARY any_name definition
+			{ $$ = cat_str(3, make_str("create text search dictionary"), $5, $6); }
+		| CREATE TEXT_P SEARCH TEMPLATE any_name definition
+			{ $$ = cat_str(3, make_str("create text search template"), $5, $6); }
+		| CREATE TEXT_P SEARCH CONFIGURATION any_name definition
+			{ $$ = cat_str(3, make_str("create text search configuration"), $5, $6); }
 		;
 
 definition:  '(' def_list ')'
@@ -1987,19 +2123,13 @@ def_elem:  ColLabel '=' def_arg		{ $$ = cat_str(3, $1, make_str("="), $3); }
 
 /* Note: any simple identifier will be returned as a type name! */
 def_arg:  func_type				{ $$ = $1; }
-		| func_name_keyword		{ $$ = $1; }
 		| reserved_keyword		{ $$ = $1; }
 		| qual_all_Op			{ $$ = $1; }
 		| AllConst			{ $$ = $1; }
 		;
 
-aggr_args:      '(' aggr_args_list ')'		{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
+aggr_args:      '(' type_list ')'		{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
 		| '(' '*' ')'                   { $$ = make_str("(*)"); }
-		;
-
-aggr_args_list:
-		Typename			{ $$ = $1; }
-		| aggr_args_list ',' Typename   { $$ = cat_str(3, $1, make_str(","), $3); }
 		;
 
 old_aggr_definition: '(' old_aggr_list ')'	{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
@@ -2012,11 +2142,14 @@ old_aggr_list: old_aggr_elem				{ $$ = $1; }
 old_aggr_elem:  ident '=' def_arg	{ $$ = cat_str(3, $1, make_str("="), $3); }
 		;
 
+enum_val_list:  StringConst			{ $$ = $1; }
+		| enum_val_list ',' StringConst	{ $$ = cat_str(3, $1, make_str(","), $3);}
+		;
 
 CreateOpClassStmt:      CREATE OPERATOR CLASS any_name opt_default FOR TYPE_P Typename
-						USING access_method AS opclass_item_list
+						USING access_method opt_opfamily AS opclass_item_list
 		{
-			$$ = cat_str(9, make_str("create operator class"), $4, $5, make_str("for type"), $8, make_str("using"), $10, make_str("as"), $12);
+			$$ = cat_str(10, make_str("create operator class"), $4, $5, make_str("for type"), $8, make_str("using"), $10, $11, make_str("as"), $13);
 		}
 		;
 
@@ -2030,6 +2163,8 @@ opclass_item:	OPERATOR PosIntConst any_operator opt_recheck
 			{ $$ =  cat_str(7, make_str("operator"), $2, $3, make_str("("), $5, make_str(")"), $7); }
 		| FUNCTION PosIntConst func_name func_args
 			{ $$ = cat_str(4, make_str("function"), $2, $3, $4); }
+		| FUNCTION PosIntConst '(' type_list ')' func_name func_args
+			{ $$ = cat_str(7, make_str("function"), $2, make_str("("), $4, make_str(")"), $6, $7); }
 		| STORAGE Typename
 			{ $$ = cat2_str(make_str("storage"), $2); }
 		;
@@ -2038,14 +2173,45 @@ opt_default:   DEFAULT	{ $$ = make_str("default"); }
 		|  /*EMPTY*/    { $$ = EMPTY; }
 		;
 
+opt_opfamily:  FAMILY any_name		{ $$ = cat2_str(make_str("family"), $2); }
+                       | /*EMPTY*/	{ $$ = EMPTY; }
+               ;
+
 opt_recheck:   RECHECK	{ $$ = make_str("recheck"); }
 		|  /*EMPTY*/    { $$ = EMPTY; }
+		;
+
+CreateOpFamilyStmt: CREATE OPERATOR FAMILY any_name USING access_method
+		{ $$ = cat_str(4, make_str("create operator family"), $4, make_str("using"), $6); }
+		;
+
+AlterOpFamilyStmt: ALTER OPERATOR FAMILY any_name USING access_method ADD_P opclass_item_list
+			{ $$ = cat_str(6, make_str("alter operator family"), $4, make_str("using"), $6, make_str("add"), $8); }
+		 | ALTER OPERATOR FAMILY any_name USING access_method DROP opclass_drop_list
+		        { $$ = cat_str(6, make_str("alter operator family"), $4, make_str("using"), $6, make_str("drop"), $8); }
+		 ;
+
+opclass_drop_list: opclass_drop				{ $$ = $1; }
+		| opclass_drop_list ',' opclass_drop	{ $$ = cat_str(3, $1, make_str(","), $3); }
+		;
+
+opclass_drop:
+		OPERATOR PosIntConst '(' type_list ')'
+			{ $$ = cat_str(5, make_str("operator"), $2, make_str("("), $4, make_str(")")); }
+		| FUNCTION PosIntConst '(' type_list ')'
+			{ $$ = cat_str(5, make_str("function"), $2, make_str("("), $4, make_str(")")); }
 		;
 
 DropOpClassStmt: DROP OPERATOR CLASS any_name USING access_method opt_drop_behavior
 			{ $$ = cat_str(5,make_str("drop operator class"), $4, make_str("using"), $6, $7); }
 		| DROP OPERATOR CLASS IF_P EXISTS any_name USING access_method opt_drop_behavior
 			{ $$ = cat_str(5,make_str("drop operator class if exists"), $6, make_str("using"), $8, $9); }
+		;
+
+DropOpFamilyStmt: DROP OPERATOR FAMILY any_name USING access_method opt_drop_behavior
+			{ $$ = cat_str(5,make_str("drop operator family"), $4, make_str("using"), $6, $7); }
+		| DROP OPERATOR FAMILY IF_P EXISTS any_name USING access_method opt_drop_behavior
+			{ $$ = cat_str(5,make_str("drop operator family if exists"), $6, make_str("using"), $8, $9); }
 		;
 
 /*****************************************************************************
@@ -2080,14 +2246,18 @@ DropStmt:  DROP drop_type IF_P EXISTS any_name_list opt_drop_behavior
 			{ $$ = cat_str(4, make_str("drop"), $2, $3, $4); }
 		;
 
-drop_type:	TABLE		{ $$ = make_str("table"); }
-		| SEQUENCE		{ $$ = make_str("sequence"); }
-		| VIEW			{ $$ = make_str("view"); }
-		| INDEX			{ $$ = make_str("index"); }
-		| TYPE_P		{ $$ = make_str("type"); }
-		| DOMAIN_P		{ $$ = make_str("domain"); }
-		| CONVERSION_P	{ $$ = make_str("conversion"); }
-		| SCHEMA		{ $$ = make_str("schema"); }
+drop_type:	TABLE				{ $$ = make_str("table"); }
+		| SEQUENCE			{ $$ = make_str("sequence"); }
+		| VIEW				{ $$ = make_str("view"); }
+		| INDEX				{ $$ = make_str("index"); }
+		| TYPE_P			{ $$ = make_str("type"); }
+		| DOMAIN_P			{ $$ = make_str("domain"); }
+		| CONVERSION_P			{ $$ = make_str("conversion"); }
+		| SCHEMA			{ $$ = make_str("schema"); }
+		| TEXT_P SEARCH PARSER		{ $$ = make_str("text search parser"); }
+		| TEXT_P SEARCH DICTIONARY	{ $$ = make_str("text search dictionary"); }
+		| TEXT_P SEARCH TEMPLATE	{ $$ = make_str("text search template"); }
+		| TEXT_P SEARCH CONFIGURATION 	{ $$ = make_str("text search configuration"); }
 		;
 
 any_name_list:  any_name
@@ -2137,22 +2307,22 @@ FetchStmt: FETCH fetch_direction from_in name ecpg_into
 			}
 		| FETCH from_in name ecpg_into
 			{
-		        add_additional_variables($3, false);
+				add_additional_variables($3, false);
 				$$ = cat_str(3, make_str("fetch"), $2, $3);
 			}
 		| FETCH name ecpg_into
 			{
-		        add_additional_variables($2, false);
+				add_additional_variables($2, false);
 				$$ = cat2_str(make_str("fetch"), $2);
 			}
 		| FETCH fetch_direction from_in name
 			{
-		        add_additional_variables($4, false);
+				add_additional_variables($4, false);
 				$$ = cat_str(4, make_str("fetch"), $2, $3, $4);
 			}
 		| FETCH fetch_direction name
 			{
-		        add_additional_variables($3, false);
+				add_additional_variables($3, false);
 				$$ = cat_str(4, make_str("fetch"), $2, make_str("from"), $3);
 			}
 		| FETCH from_in name
@@ -2162,7 +2332,7 @@ FetchStmt: FETCH fetch_direction from_in name ecpg_into
 			}
 		| FETCH name
 			{
-		        add_additional_variables($2, false);
+				add_additional_variables($2, false);
 				$$ = cat2_str(make_str("fetch"), $2);
 			}
 		| MOVE fetch_direction from_in name
@@ -2171,23 +2341,34 @@ FetchStmt: FETCH fetch_direction from_in name ecpg_into
 			{ $$ = cat2_str(make_str("move"), $2); }
 		;
 
-fetch_direction:  NEXT			{ $$ = make_str("next"); }
-		| PRIOR					{ $$ = make_str("prior"); }
-		| FIRST_P				{ $$ = make_str("first"); }
-		| LAST_P				{ $$ = make_str("last"); }
-		| ABSOLUTE_P IntConst	{ $$ = cat2_str(make_str("absolute"), $2); }
-		| RELATIVE_P IntConst	{ $$ = cat2_str(make_str("relative"), $2); }
-		| IntConst				{ $$ = $1; }
-		| ALL					{ $$ = make_str("all"); }
-		| FORWARD				{ $$ = make_str("forward"); }
-		| FORWARD IntConst		{ $$ = cat2_str(make_str("forward"), $2); }
+fetch_direction:  NEXT				{ $$ = make_str("next"); }
+		| PRIOR				{ $$ = make_str("prior"); }
+		| FIRST_P			{ $$ = make_str("first"); }
+		| LAST_P			{ $$ = make_str("last"); }
+		| ABSOLUTE_P fetch_count	{ $$ = cat2_str(make_str("absolute"), $2); }
+		| RELATIVE_P fetch_count	{ $$ = cat2_str(make_str("relative"), $2); }
+		| fetch_count			{ $$ = $1; }
+		| ALL				{ $$ = make_str("all"); }
+		| FORWARD			{ $$ = make_str("forward"); }
+		| FORWARD fetch_count		{ $$ = cat2_str(make_str("forward"), $2); }
 		| FORWARD ALL			{ $$ = make_str("forward all"); }
-		| BACKWARD				{ $$ = make_str("backward"); }
-		| BACKWARD IntConst		{ $$ = cat2_str(make_str("backward"), $2); }
+		| BACKWARD			{ $$ = make_str("backward"); }
+		| BACKWARD fetch_count		{ $$ = cat2_str(make_str("backward"), $2); }
 		| BACKWARD ALL			{ $$ = make_str("backward all"); }
 		;
 
-from_in: IN_P			{ $$ = make_str("in"); }
+fetch_count:	IntConst	{
+		                	if ($1[1] == '$')
+					{
+						/* a variable here has to be replaced on the client side, thus we have to use '?' here */
+						$$ = make_str("$0");
+						free($1);
+					}
+					else
+						$$ = $1;
+				}
+
+from_in: IN_P				{ $$ = make_str("in"); }
 		| FROM			{ $$ = make_str("from"); }
 		;
 
@@ -2207,12 +2388,22 @@ CommentStmt:   COMMENT ON comment_type name IS comment_text
 			{ $$ = cat_str(4, make_str("comment on rule"), $4, make_str("is"), $6); }
 		| COMMENT ON OPERATOR CLASS any_name USING access_method IS comment_text
 			{ $$ = cat_str(6, make_str("comment on operator class"), $5, make_str("using"), $7, make_str("is"), $9); }
+		| COMMENT ON OPERATOR FAMILY any_name USING access_method IS comment_text
+			{ $$ = cat_str(6, make_str("comment on operator family"), $5, make_str("using"), $7, make_str("is"), $9); }
 		| COMMENT ON LARGE_P OBJECT_P NumConst IS comment_text
 			{ $$ = cat_str(4, make_str("comment on large object"), $5, make_str("is"), $7); }
 		| COMMENT ON CAST '(' Typename AS Typename ')' IS comment_text
 			{ $$ = cat_str(6, make_str("comment on cast ("), $5, make_str("as"), $7, make_str(") is"), $10); }
 		| COMMENT ON opt_procedural LANGUAGE any_name IS comment_text
 			{ $$ = cat_str(6, make_str("comment on"), $3, make_str("language"), $5, make_str("is"), $7); }
+		| COMMENT ON TEXT_P SEARCH PARSER any_name IS comment_text
+			{ $$ = cat_str(4, make_str("comment on test search parser"), $6, make_str("is"), $8); }
+		| COMMENT ON TEXT_P SEARCH DICTIONARY any_name IS comment_text
+			{ $$ = cat_str(4, make_str("comment on test search dictionary"), $6, make_str("is"), $8); }
+		| COMMENT ON TEXT_P SEARCH TEMPLATE any_name IS comment_text
+			{ $$ = cat_str(4, make_str("comment on test search template"), $6, make_str("is"), $8); }
+		| COMMENT ON TEXT_P SEARCH CONFIGURATION any_name IS comment_text
+			{ $$ = cat_str(4, make_str("comment on test search configuration"), $6, make_str("is"), $8); }
 		;
 
 comment_type:  COLUMN		{ $$ = make_str("column"); }
@@ -2370,18 +2561,28 @@ index_params:  index_elem			{ $$ = $1; }
 		| index_params ',' index_elem	{ $$ = cat_str(3, $1, make_str(","), $3); }
 		;
 
-index_elem:  ColId opt_class
-			{ $$ = cat2_str($1, $2); }
-		| func_expr opt_class
-			{ $$ = cat2_str($1, $2); }
-		| '(' a_expr ')' opt_class
-			{ $$ = cat_str(4, make_str("("), $2, make_str(")"), $4); }
+index_elem:  ColId opt_class opt_asc_desc opt_nulls_order
+			{ $$ = cat_str(4, $1, $2, $3, $4); }
+		| func_expr opt_class opt_asc_desc opt_nulls_order
+			{ $$ = cat_str(4, $1, $2, $3, $4); }
+		| '(' a_expr ')' opt_class opt_asc_desc opt_nulls_order
+			{ $$ = cat_str(6, make_str("("), $2, make_str(")"), $4, $5, $6); }
 		;
 
 opt_class:	any_name 	{ $$ = $1; }
 		| USING any_name	{ $$ = cat2_str(make_str("using"), $2); }
 		| /*EMPTY*/		{ $$ = EMPTY; }
 		;
+
+opt_asc_desc: 	ASC 		{ $$ = make_str("asc"); }
+		| DESC		{ $$ = make_str("desc"); } 
+		| /*EMPTY*/	{ $$ = EMPTY; }
+		;
+
+opt_nulls_order: 	NULLS_FIRST 		{ $$ = make_str("nulls first"); }
+			| NULLS_LAST		{ $$ = make_str("nulls last"); } 
+			| /*EMPTY*/	{ $$ = EMPTY; }
+			;
 
 CreateFunctionStmt:	CREATE opt_or_replace FUNCTION func_name func_args
 					RETURNS func_return createfunc_opt_list opt_definition
@@ -2426,7 +2627,7 @@ func_as: StringConst
 			{ $$ = cat_str(3, $1, make_str(","), $3); }
 		;
 
-param_name:    function_name	{ $$ = $1; };
+param_name:    type_function_name	{ $$ = $1; };
 
 func_return:  func_type
 		{
@@ -2436,14 +2637,14 @@ func_return:  func_type
 			 */
 			$$ = $1;
 		}
-		| SETOF type_name attrs '%' TYPE_P
-		{ $$ = cat_str(4, make_str("setof"), $2, $3, make_str("% type")); }
 		;
 
 func_type:	Typename
 			{ $$ = $1; }
-		| type_name attrs '%' TYPE_P
+		| type_function_name attrs '%' TYPE_P
 			{ $$ = cat_str(3, $1, $2, make_str("% type")); }
+		| SETOF type_function_name attrs '%' TYPE_P
+			{ $$ = cat_str(4, make_str("setof"), $2, $3, make_str("% type")); }
 		;
 
 
@@ -2474,7 +2675,14 @@ common_func_opt_item:
 				{ $$ = make_str("security definer"); }
 		| SECURITY INVOKER
 				{ $$ = make_str("security invoker"); }
+		| COST NumConst
+				{ $$ = cat2_str(make_str("cost"), $2); }
+		| ROWS NumConst
+				{ $$ = cat2_str(make_str("rows"), $2); }
+		| SetResetClause
+				{ $$ = $1; }
 		;
+
 createfunc_opt_item: AS func_as
 				{ $$ = cat2_str(make_str("as"), $2); }
 		| LANGUAGE ColId_or_Sconst
@@ -2529,7 +2737,10 @@ RemoveOperStmt:  DROP OPERATOR all_Op '(' oper_argtypes ')' opt_drop_behavior
 		;
 
 oper_argtypes:	Typename
-			{ mmerror(PARSE_ERROR, ET_ERROR, "parser: argument type missing (use NONE for unary operators)"); }
+			{
+				mmerror(PARSE_ERROR, ET_ERROR, "parser: argument type missing (use NONE for unary operators)");
+				$$ = make_str("none");
+			}
 		| Typename ',' Typename
 			{ $$ = cat_str(3, $1, make_str(","), $3); }
 		| NONE ',' Typename			/* left unary */
@@ -2603,18 +2814,24 @@ RenameStmt:  ALTER AGGREGATE func_name aggr_args RENAME TO name
 			{ $$ = cat_str(4, make_str("alter conversion"), $3, make_str("rename to"), $6); }
 		| ALTER DATABASE database_name RENAME TO database_name
 			{ $$ = cat_str(4, make_str("alter database"), $3, make_str("rename to"), $6); }
-		| ALTER FUNCTION func_name func_args RENAME TO name
-			{ $$ = cat_str(5, make_str("alter function"), $3, $4, make_str("rename to"), $7); }
+		| ALTER FUNCTION function_with_argtypes RENAME TO name
+			{ $$ = cat_str(4, make_str("alter function"), $3, make_str("rename to"), $6); }
 		| ALTER GROUP_P RoleId RENAME TO RoleId
 			{ $$ = cat_str(4, make_str("alter group"), $3, make_str("rename to"), $6); }
-		| ALTER LANGUAGE name RENAME TO name
-			{ $$ = cat_str(4, make_str("alter language"), $3, make_str("rename to"), $6); }
+		| ALTER opt_procedural LANGUAGE name RENAME TO name
+			{ $$ = cat_str(6, make_str("alter"), $2, make_str("language"), $4, make_str("rename to"), $7); }
 		| ALTER OPERATOR CLASS any_name USING access_method RENAME TO name
 			{ $$ = cat_str(6, make_str("alter operator class"), $4, make_str("using"), $6, make_str("rename to"), $9); }
+		| ALTER OPERATOR FAMILY any_name USING access_method RENAME TO name
+			{ $$ = cat_str(6, make_str("alter operator family"), $4, make_str("using"), $6, make_str("rename to"), $9); }
 		| ALTER SCHEMA name RENAME TO name
 			{ $$ = cat_str(4, make_str("alter schema"), $3, make_str("rename to"), $6); }
 		| ALTER TABLE relation_expr RENAME TO name
 			{ $$ = cat_str(4, make_str("alter table"), $3, make_str("rename to"), $6); }
+		| ALTER SEQUENCE relation_expr RENAME TO name
+			{ $$ = cat_str(4, make_str("alter sequence"), $3, make_str("rename to"), $6); }
+		| ALTER VIEW relation_expr RENAME TO name
+			{ $$ = cat_str(4, make_str("alter view"), $3, make_str("rename to"), $6); }
 		| ALTER INDEX relation_expr RENAME TO name
 			{ $$ = cat_str(4, make_str("alter index"), $3, make_str("rename to"), $6); }
 		| ALTER TABLE relation_expr RENAME opt_column name TO name
@@ -2625,6 +2842,14 @@ RenameStmt:  ALTER AGGREGATE func_name aggr_args RENAME TO name
 			{ $$ = cat_str(4, make_str("alter user"), $3, make_str("rename to"), $6); }
 		| ALTER TABLESPACE name RENAME TO name
 			{ $$ = cat_str(4, make_str("alter tablespace"), $3, make_str("rename to"), $6); }
+		| ALTER TEXT_P SEARCH PARSER any_name RENAME TO name
+			{ $$ = cat_str(4, make_str("alter text search parser"), $5, make_str("rename to"), $8); }
+		| ALTER TEXT_P SEARCH DICTIONARY any_name RENAME TO name
+			{ $$ = cat_str(4, make_str("alter text search dictionary"), $5, make_str("rename to"), $8); }
+		| ALTER TEXT_P SEARCH TEMPLATE any_name RENAME TO name
+			{ $$ = cat_str(4, make_str("alter text search template"), $5, make_str("rename to"), $8); }
+		| ALTER TEXT_P SEARCH CONFIGURATION any_name RENAME TO name
+			{ $$ = cat_str(4, make_str("alter text search configuration"), $5, make_str("rename to"), $8); }
 		;
 
 opt_column:  COLUMN			{ $$ = make_str("column"); }
@@ -2642,8 +2867,8 @@ AlterObjectSchemaStmt:
 			{ $$ = cat_str(5, make_str("alter aggregate"), $3, $4, make_str("set schema"), $7); }
 		| ALTER DOMAIN_P any_name SET SCHEMA name
 			{ $$ = cat_str(4, make_str("alter domain"), $3, make_str("set schema"), $6); }
-		| ALTER FUNCTION func_name func_args SET SCHEMA name
-			{ $$ = cat_str(5, make_str("alter function"), $3, $4, make_str("set schema"), $7); }
+		| ALTER FUNCTION function_with_argtypes SET SCHEMA name
+			{ $$ = cat_str(4, make_str("alter function"), $3, make_str("set schema"), $6); }
 		| ALTER SEQUENCE relation_expr SET SCHEMA name
 			{ $$ = cat_str(4, make_str("alter sequence"), $3, make_str("set schema"), $6); }
 		| ALTER TABLE relation_expr SET SCHEMA name
@@ -2666,18 +2891,26 @@ AlterOwnerStmt: ALTER AGGREGATE func_name aggr_args OWNER TO RoleId
 			{ $$ = cat_str(4, make_str("alter database"), $3, make_str("owner to"), $6); }
 		| ALTER DOMAIN_P database_name OWNER TO RoleId
 			{ $$ = cat_str(4, make_str("alter domain"), $3, make_str("owner to"), $6); }
-		| ALTER FUNCTION func_name func_args OWNER TO RoleId
-			{ $$ = cat_str(5, make_str("alter function"), $3, $4, make_str("owner to"), $7); }
+		| ALTER FUNCTION function_with_argtypes OWNER TO RoleId
+			{ $$ = cat_str(4, make_str("alter function"), $3, make_str("owner to"), $6); }
+		| ALTER opt_procedural LANGUAGE name OWNER TO RoleId
+			{ $$ = cat_str(6, make_str("alter"), $2, make_str("language"), $4, make_str("owner to"), $7); }
 		| ALTER OPERATOR any_operator '(' oper_argtypes ')' OWNER TO RoleId
 			{ $$ = cat_str(6, make_str("alter operator"), $3, make_str("("), $5, make_str(") owner to"), $9); }
 		| ALTER OPERATOR CLASS any_name USING access_method OWNER TO RoleId
 			{ $$ = cat_str(6, make_str("alter operator class"), $4, make_str("using"), $6, make_str("owner to"), $9); }
+		| ALTER OPERATOR FAMILY any_name USING access_method OWNER TO RoleId
+			{ $$ = cat_str(6, make_str("alter operator family"), $4, make_str("using"), $6, make_str("owner to"), $9); }
 		| ALTER SCHEMA name OWNER TO RoleId
 			{ $$ = cat_str(4, make_str("alter schema"), $3, make_str("owner to"), $6); }
 		| ALTER TYPE_P any_name OWNER TO RoleId
 			{ $$ = cat_str(4, make_str("alter type"), $3, make_str("owner to"), $6); }
 		| ALTER TABLESPACE name OWNER TO RoleId
 			{ $$ = cat_str(4, make_str("alter tablespace"), $3, make_str("owner to"), $6); }
+		| ALTER TEXT_P SEARCH DICTIONARY any_name OWNER TO RoleId
+			{ $$ = cat_str(4, make_str("alter text search dictionary"), $5, make_str("owner to"), $8); }
+		| ALTER TEXT_P SEARCH CONFIGURATION any_name OWNER TO RoleId
+			{ $$ = cat_str(4, make_str("alter text search configuration"), $5, make_str("owner to"), $8); }
 		;
 
 
@@ -2746,15 +2979,15 @@ DropRuleStmt:  DROP RULE name ON qualified_name opt_drop_behavior
  *
  *****************************************************************************/
 
-NotifyStmt:  NOTIFY qualified_name
+NotifyStmt:  NOTIFY ColId
 			{ $$ = cat2_str(make_str("notify"), $2); }
 		;
 
-ListenStmt:  LISTEN qualified_name
+ListenStmt:  LISTEN ColId
 			{ $$ = cat2_str(make_str("listen"), $2); }
 		;
 
-UnlistenStmt:  UNLISTEN qualified_name
+UnlistenStmt:  UNLISTEN ColId
 			{ $$ = cat2_str(make_str("unlisten"), $2); }
 		| UNLISTEN '*'
 			{ $$ = make_str("unlisten *"); }
@@ -2828,11 +3061,20 @@ ViewStmt:  CREATE OptTemp VIEW qualified_name opt_column_list AS SelectStmt opt_
  */
 opt_check_option:
                    WITH_CHECK OPTION
-		   { mmerror(PARSE_ERROR, ET_ERROR, "WITH CHECK OPTION not implemented"); }
+		   { 
+		   	mmerror(PARSE_ERROR, ET_ERROR, "WITH CHECK OPTION not implemented");
+			$$ = EMPTY;
+		   }
                    | WITH_CASCADED CHECK OPTION
-		   { mmerror(PARSE_ERROR, ET_ERROR, "WITH CHECK OPTION not implemented"); }
+		   { 
+		   	mmerror(PARSE_ERROR, ET_ERROR, "WITH CHECK OPTION not implemented");
+			$$ = EMPTY;
+		   }
 		   | WITH_LOCAL CHECK OPTION
-		   { mmerror(PARSE_ERROR, ET_ERROR, "WITH CHECK OPTION not implemented"); }
+		   {
+		   	mmerror(PARSE_ERROR, ET_ERROR, "WITH CHECK OPTION not implemented");
+			$$ = EMPTY;
+		   }
 		   | /* EMPTY */
 		   { $$ = EMPTY; } 
 		   ;
@@ -2908,9 +3150,7 @@ AlterDatabaseStmt: ALTER DATABASE database_name opt_with alterdb_opt_list
 			{ $$ = cat_str(4, make_str("alter database"), $3, $4, $5); }
 		;
 
-AlterDatabaseSetStmt: ALTER DATABASE database_name SET set_rest
-			{ $$ = cat_str(4, make_str("alter database"), $3, make_str("set"), $5); }
-		| ALTER DATABASE database_name VariableResetStmt
+AlterDatabaseSetStmt: ALTER DATABASE database_name SetResetClause
 			{ $$ = cat_str(3, make_str("alter database"), $3, $4); }
 		;
 
@@ -2966,6 +3206,26 @@ opt_as:	AS	{$$ = make_str("as"); }
 		| /* EMPTY */	{$$ = EMPTY; }
 		;
 
+AlterTSDictionaryStmt:
+		ALTER TEXT_P SEARCH DICTIONARY any_name definition
+			{ $$ = cat_str(3, make_str("alter text search dictionary"), $5, $6); }
+		;
+
+AlterTSConfigurationStmt:
+		ALTER TEXT_P SEARCH CONFIGURATION any_name ADD_P MAPPING FOR name_list WITH any_name_list
+			{ $$ = cat_str(6, make_str("alter text search configuration"), $5, make_str("add mapping for"), $9, make_str("with"), $11); }
+		| ALTER TEXT_P SEARCH CONFIGURATION any_name ALTER MAPPING FOR name_list WITH any_name_list
+			{ $$ = cat_str(6, make_str("alter text search configuration"), $5, make_str("alter mapping for"), $9, make_str("with"), $11); }
+		| ALTER TEXT_P SEARCH CONFIGURATION any_name ALTER MAPPING REPLACE any_name WITH any_name
+			{ $$ = cat_str(6, make_str("alter text search configuration"), $5, make_str("alter mapping replace"), $9, make_str("with"), $11); }
+		| ALTER TEXT_P SEARCH CONFIGURATION any_name ALTER MAPPING FOR name_list REPLACE any_name WITH any_name
+			{ $$ = cat_str(8, make_str("alter text search configuration"), $5, make_str("alter mapping for"), $9, make_str("replace"), $11, make_str("with"), $13); }
+		| ALTER TEXT_P SEARCH CONFIGURATION any_name DROP MAPPING FOR name_list
+			{ $$ = cat_str(4, make_str("alter text search configuration"), $5, make_str("drop mapping for"), $9); }
+		| ALTER TEXT_P SEARCH CONFIGURATION any_name DROP MAPPING IF_P EXISTS FOR name_list
+			{ $$ = cat_str(4, make_str("alter text search configuration"), $5, make_str("drop mapping if exists for"), $11); }
+		;
+
 CreateConversionStmt:
 	   CREATE opt_default CONVERSION_P any_name FOR StringConst
 	   TO StringConst FROM any_name
@@ -2981,14 +3241,18 @@ CreateConversionStmt:
  *
  *****************************************************************************/
 
-ClusterStmt:  CLUSTER index_name ON qualified_name
-				{ $$ = cat_str(4, make_str("cluster"), $2, make_str("on"), $4); }
-		| CLUSTER qualified_name
-				{ $$ = cat2_str(make_str("cluster"), $2); }
+ClusterStmt:  CLUSTER qualified_name cluster_index_specification
+				{ $$ = cat_str(3,make_str("cluster"), $2, $3); }
 		| CLUSTER
 				{ $$ = make_str("cluster"); }
+		| CLUSTER qualified_name ON qualified_name
+				{ $$ = cat_str(4, make_str("cluster"), $2, make_str("on"), $4); }
 		;
 
+cluster_index_specification:
+		USING index_name	{ $$ = cat2_str(make_str("using"), $2); }
+		| /*EMPTY*/		{ $$ = EMPTY; }
+		;
 
 /*****************************************************************************
  *
@@ -3052,19 +3316,25 @@ ExplainableStmt:
 		| UpdateStmt
 		| DeleteStmt
 		| DeclareCursorStmt
-		/* | ExecuteStmt */
+		| ExecuteStmt
 		;
 opt_analyze:
 		analyze_keyword                 { $$ = $1; }
 		| /* EMPTY */			{ $$ = EMPTY; }
 		;
 
-/*
-
-conflicts with ecpg
-
-PrepareStmt: PREPARE name prep_type_clause AS PreparableStmt
-		{ $$ = cat_str(5, make_str("prepare"), $2, $3, make_str("as"), $5); }
+PrepareStmt: PREPARE prepared_name prep_type_clause AS PreparableStmt
+		{
+			$$.name = $2;
+			$$.type = $3;
+			$$.stmt = cat_str(3, make_str("\""), $5, make_str("\""));
+		}
+		| PREPARE prepared_name FROM execstring /* ECPG addon */
+		{
+			$$.name = $2;
+			$$.type = NULL;
+			$$.stmt = $4;
+		}
 		;
 
 PreparableStmt:
@@ -3074,30 +3344,29 @@ PreparableStmt:
 		| DeleteStmt
 		;
 
-prep_type_clause: '(' prep_type_list ')'	{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
-		| /* EMPTY * /		{ $$ = EMPTY; }
+prep_type_clause: '(' type_list ')'	{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
+		| /* EMPTY */		{ $$ = EMPTY; }
 			;
 
-prep_type_list: Typename		{ $$ = $1; }
-		| prep_type_list ',' Typename	{ $$ = cat_str(3, $1, make_str(","), $3); }
-		;
-
-ExecuteStmt: EXECUTE name execute_param_clause
-			{ $$ = cat_str(3, make_str("execute"), $2, $3); }
-		| CREATE OptTemp TABLE qualified_name OptCreateAs 
-			OptWith OnCommitOption OptTableSpace AS
-			EXECUTE name execute_param_clause
-			{ $$ = cat_str(11, make_str("create"), $2, make_str("table"), $4, $5, $6, $7, $8, make_str("as execute"), $11, $12); }
+ExecuteStmt: EXECUTE prepared_name execute_param_clause execute_rest /* execute_rest is an ecpg addon */
+			{
+				/* $$ = cat_str(3, make_str("ECPGprepared_statement("), connection, $2, make_str("__LINE__)"));*/
+				$$ = $2;
+			}
+		| CREATE OptTemp TABLE create_as_target AS
+			EXECUTE prepared_name execute_param_clause
+			{ $$ = cat_str(7, make_str("create"), $2, make_str("table"), $4,  make_str("as execute"), $7, $8); }
 		;
 
 execute_param_clause: '(' expr_list ')'	{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
-		| /* EMPTY * /		{ $$ = EMPTY; }
+		| /* EMPTY */		{ $$ = EMPTY; }
 		;
 
-DeallocateStmt: DEALLOCATE name		{ $$ = cat2_str(make_str("deallocate"), $2); }
-		| DEALLOCATE PREPARE name	{ $$ = cat2_str(make_str("deallocate prepare"), $3); }
+DeallocateStmt: DEALLOCATE prepared_name		{ $$ = $2; }
+		| DEALLOCATE PREPARE prepared_name	{ $$ = $3; }
+		| DEALLOCATE ALL			{ $$ = make_str("all"); }
+		| DEALLOCATE PREPARE ALL		{ $$ = make_str("all"); }
 		;
-*/
 
 /*****************************************************************************
  *
@@ -3140,7 +3409,7 @@ returning_clause:  RETURNING target_list	{ $$ = cat2_str(make_str("returning"), 
  *
  *****************************************************************************/
 
-DeleteStmt:  DELETE_P FROM relation_expr_opt_alias using_clause where_clause returning_clause
+DeleteStmt:  DELETE_P FROM relation_expr_opt_alias using_clause where_or_current_clause returning_clause
 			{ $$ = cat_str(5, make_str("delete from"), $3, $4, $5, $6); }
 		;
 
@@ -3182,7 +3451,7 @@ opt_nowait:    NOWAIT                   { $$ = make_str("nowait"); }
 UpdateStmt:  UPDATE relation_expr_opt_alias
 				SET set_clause_list
 				from_clause
-				where_clause
+				where_or_current_clause
 				returning_clause
 			{$$ = cat_str(7, make_str("update"), $2, make_str("set"), $4, $5, $6, $7); }
 		;
@@ -3377,14 +3646,10 @@ sortby_list:  sortby					{ $$ = $1; }
 		| sortby_list ',' sortby		{ $$ = cat_str(3, $1, make_str(","), $3); }
 		;
 
-sortby: a_expr USING qual_all_Op
-			{ $$ = cat_str(3, $1, make_str("using"), $3); }
-		| a_expr ASC
-			{ $$ = cat2_str($1, make_str("asc")); }
-		| a_expr DESC
-			{ $$ = cat2_str($1, make_str("desc")); }
-		| a_expr
-			{ $$ = $1; }
+sortby: a_expr USING qual_all_Op opt_nulls_order
+			{ $$ = cat_str(4, $1, make_str("using"), $3, $4); }
+		| a_expr opt_asc_desc opt_nulls_order
+			{ $$ = cat_str(3, $1, $2, $3); }
 		;
 
 select_limit:	LIMIT select_limit_value OFFSET select_offset_value
@@ -3396,7 +3661,10 @@ select_limit:	LIMIT select_limit_value OFFSET select_offset_value
 		| OFFSET select_offset_value
 		   { $$ = cat2_str(make_str("offset"), $2); }
 		| LIMIT select_limit_value ',' select_offset_value
-		   { mmerror(PARSE_ERROR, ET_WARNING, "No longer supported LIMIT #,# syntax passed to backend."); }
+		   {
+		   	mmerror(PARSE_ERROR, ET_WARNING, "No longer supported LIMIT #,# syntax passed to backend.");
+			$$ = cat_str(4, make_str("limit"), $2, make_str(","), $4);
+		   }
 		;
 
 opt_select_limit:	select_limit	{ $$ = $1; }
@@ -3488,25 +3756,28 @@ from_list:	from_list ',' table_ref { $$ = cat_str(3, $1, make_str(","), $3); }
 table_ref:	relation_expr
 			{ $$ = $1; }
 		| relation_expr alias_clause
-			{ $$= cat2_str($1, $2); }
+			{ $$ = cat2_str($1, $2); }
 		| func_table
 			{ $$ = $1; }
 		| func_table alias_clause
-	        { $$= cat2_str($1, $2); }
+		        { $$ = cat2_str($1, $2); }
 		| func_table AS '(' TableFuncElementList ')'
-			{ $$=cat_str(4, $1, make_str("as ("), $4, make_str(")")); }
+			{ $$ = cat_str(4, $1, make_str("as ("), $4, make_str(")")); }
 		| func_table AS ColId '(' TableFuncElementList ')'
-			{ $$=cat_str(6, $1, make_str("as"), $3, make_str("("), $5, make_str(")"));}
+			{ $$ = cat_str(6, $1, make_str("as"), $3, make_str("("), $5, make_str(")"));}
 		| func_table ColId '(' TableFuncElementList ')'
-			{ $$=cat_str(5, $1, $2, make_str("("), $4, make_str(")")); }
+			{ $$ = cat_str(5, $1, $2, make_str("("), $4, make_str(")")); }
 		| select_with_parens
-			{mmerror(PARSE_ERROR, ET_ERROR, "sub-SELECT in FROM must have an alias");}
+			{
+				mmerror(PARSE_ERROR, ET_ERROR, "sub-SELECT in FROM must have an alias");
+				$$ = $1;
+			}
 		| select_with_parens alias_clause
-			{ $$=cat2_str($1, $2); }
+			{ $$ = cat2_str($1, $2); }
 		| joined_table
 			{ $$ = $1; }
 		| '(' joined_table ')' alias_clause
-			{ $$=cat_str(4, make_str("("), $2, make_str(")"), $4); }
+			{ $$ = cat_str(4, make_str("("), $2, make_str(")"), $4); }
 		;
 
 /*
@@ -3599,6 +3870,12 @@ where_clause:  WHERE a_expr		{ $$ = cat2_str(make_str("where"), $2); }
 		| /*EMPTY*/				{ $$ = EMPTY;  /* no qualifiers */ }
 		;
 
+where_or_current_clause:  WHERE a_expr			{ $$ = cat2_str(make_str("where"), $2); }
+		| WHERE CURRENT_P OF name		{ $$ = cat2_str(make_str("where current of"), $4); }
+		| WHERE CURRENT_P OF PARAM		{ $$ = make_str("where current of param"); }
+		| /*EMPTY*/				{ $$ = EMPTY;  /* no qualifiers */ }
+		;
+
 TableFuncElementList: TableFuncElement
 			{ $$ = $1; }
 		| TableFuncElementList ',' TableFuncElement
@@ -3669,20 +3946,22 @@ SimpleTypename:  GenericType		{ $$ = $1; }
 			{ $$ = cat2_str($1, $2); }
 		| ConstInterval '(' PosIntConst ')' opt_interval
 			{ $$ = cat_str(5, $1, make_str("("), $3, make_str(")"), $5); }
-		| type_name attrs
-			{ $$ = cat2_str($1, $2);}
 		;
 
-ConstTypename:	GenericType		{ $$ = $1; }
-		| ConstDatetime		{ $$ = $1; }
-		| Numeric		{ $$ = $1; }
+ConstTypename:	Numeric			{ $$ = $1; }
 		| ConstBit		{ $$ = $1; }
 		| ConstCharacter	{ $$ = $1; }
+		| ConstDatetime		{ $$ = $1; }
 		;
 
-GenericType:  type_name			{ $$ = $1; }
+GenericType:  	type_function_name opt_type_modifiers		{ $$ = cat2_str($1, $2); }
+		| type_function_name attrs opt_type_modifiers	{ $$ = cat_str(3, $1, $2, $3); }
 		;
 
+opt_type_modifiers: '(' expr_list ')'	{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
+		| /* EMPTY */		{ $$ = EMPTY; }
+		;
+		
 /* SQL92 numeric data types
  * Check FLOAT() precision limits assuming IEEE floating types.
  * Provide real DECIMAL() and NUMERIC() implementations now - Jan 1998-12-30
@@ -3702,33 +3981,17 @@ Numeric:  INT_P
 			{ $$ = cat2_str(make_str("float"), $2); }
 		| DOUBLE_P PRECISION
 			{ $$ = make_str("double precision"); }
-		| DECIMAL_P opt_decimal
+		| DECIMAL_P opt_type_modifiers
 			{ $$ = cat2_str(make_str("decimal"), $2); }
-		| DEC opt_decimal
+		| DEC opt_type_modifiers
 			{ $$ = cat2_str(make_str("dec"), $2); }
-		| NUMERIC opt_numeric
+		| NUMERIC opt_type_modifiers
 			{ $$ = cat2_str(make_str("numeric"), $2); }
 		| BOOLEAN_P
 			{ $$ = make_str("boolean"); }
 		;
 
 opt_float:	'(' PosIntConst ')'
-			{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
-		| /*EMPTY*/
-			{ $$ = EMPTY; }
-		;
-
-opt_numeric:  '(' PosIntConst ',' PosIntConst ')'
-			{ $$ = cat_str(5, make_str("("), $2, make_str(","), $4, make_str(")")); }
-		| '(' PosIntConst ')'
-			{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
-		| /*EMPTY*/
-			{ $$ = EMPTY; }
-		;
-
-opt_decimal:  '(' PosIntConst ',' PosIntConst ')'
-			{ $$ = cat_str(5, make_str("("), $2, make_str(","), $4, make_str(")")); }
-		| '(' PosIntConst ')'
 			{ $$ = cat_str(3, make_str("("), $2, make_str(")")); }
 		| /*EMPTY*/
 			{ $$ = EMPTY; }
@@ -3747,7 +4010,7 @@ ConstBit:	BitWithLength	{ $$ = $1; }
 		| BitWithoutLength	{ $$ = $1; }
 		;
 
-BitWithLength:  BIT opt_varying '(' PosIntConst ')'
+BitWithLength:  BIT opt_varying '(' expr_list ')'
 			{ $$ = cat_str(5, make_str("bit"), $2, make_str("("), $4, make_str(")")); }
 		;
 
@@ -3993,6 +4256,10 @@ a_expr:  c_expr
 			{ $$ = cat_str(6, $1, $2, $3, make_str("("), $5, make_str(")")); }
 		| UNIQUE select_with_parens 
 			{ $$ = cat2_str(make_str("unique"), $2); }
+		| a_expr IS DOCUMENT_P
+			{ $$ = cat2_str($1, make_str("is document")); }
+		| a_expr IS NOT DOCUMENT_P
+			{ $$ = cat2_str($1, make_str("is not document")); }
 		;
 
 /* Restricted expressions
@@ -4041,6 +4308,10 @@ b_expr:  c_expr
 			{ $$ = cat_str(4, $1, make_str("is of ("), $5, make_str(")")); }
 		| b_expr IS NOT OF '(' b_expr ')' %prec IS
 			{ $$ = cat_str(4, $1, make_str("is not of ("), $6, make_str(")")); }
+		| b_expr IS DOCUMENT_P
+			{ $$ = cat2_str($1, make_str("is document")); }
+		| b_expr IS NOT DOCUMENT_P
+			{ $$ = cat2_str($1, make_str("is not document")); }
 		;
 
 /*
@@ -4140,10 +4411,6 @@ func_expr:      func_name '(' ')'
 			{ $$ = cat_str(3, make_str("trim(trailing"), $4, make_str(")")); }
 		| TRIM '(' trim_list ')'
 			{ $$ = cat_str(3, make_str("trim("), $3, make_str(")")); }
-		| CONVERT '(' a_expr USING any_name ')'
-		 	{ $$ = cat_str(5, make_str("convert("), $3, make_str("using"), $5, make_str(")"));}
-		| CONVERT '(' expr_list ')'
-			{ $$ = cat_str(3, make_str("convert("), $3, make_str(")")); }
 		| NULLIF '(' a_expr ',' a_expr ')'
 			{ $$ = cat_str(5, make_str("nullif("), $3, make_str(","), $5, make_str(")")); }
 		| COALESCE '(' expr_list ')'
@@ -4152,8 +4419,72 @@ func_expr:      func_name '(' ')'
 			{ $$ = cat_str(3, make_str("greatest("), $3, make_str(")")); }
 		| LEAST '(' expr_list ')'
 			{ $$ = cat_str(3, make_str("least("), $3, make_str(")")); }
+		| XMLCONCAT '(' expr_list ')'
+			{ $$ = cat_str(3, make_str("xmlconcat("), $3, make_str(")")); }
+		| XMLELEMENT '(' NAME_P ColLabel ')'
+			{ $$ = cat_str(3, make_str("xmlelement( name"), $4, make_str(")")); }
+		| XMLELEMENT '(' NAME_P ColLabel ',' xml_attributes ')'
+			{ $$ = cat_str(5, make_str("xmlelement( name"), $4, make_str(","), $6, make_str(")")); }
+		| XMLELEMENT '(' NAME_P ColLabel ',' expr_list ')'
+			{ $$ = cat_str(5, make_str("xmlelement( name"), $4, make_str(","), $6, make_str(")")); }
+		| XMLELEMENT '(' NAME_P ColLabel ',' xml_attributes ',' expr_list ')'
+			{ $$ = cat_str(7, make_str("xmlelement( name"), $4, make_str(","), $6, make_str(","), $8, make_str(")")); }
+		| XMLFOREST '(' xml_attribute_list ')'
+			{ $$ = cat_str(3, make_str("xmlforest("), $3, make_str(")")); }
+		| XMLPARSE '(' document_or_content a_expr xml_whitespace_option ')'
+			{ $$ = cat_str(5, make_str("xmlparse("), $3, $4, $5, make_str(")")); }
+		| XMLPI '(' NAME_P ColLabel ')'
+			{ $$ = cat_str(3, make_str("xmlpi( name"), $4, make_str(")")); }
+		| XMLPI '(' NAME_P ColLabel ',' a_expr ')'
+			{ $$ = cat_str(5, make_str("xmlpi( name"), $4, make_str(","), $6, make_str(")")); }
+		| XMLROOT '(' a_expr ',' xml_root_version opt_xml_root_standalone  ')'
+			{ $$ = cat_str(6, make_str("xmlroot("), $3, make_str(","), $5, $6, make_str(")")); }
 		;
 
+/*
+ * SQL/XML support
+ */
+
+xml_root_version: VERSION_P a_expr
+			{ $$ = cat2_str(make_str("version"), $2); }
+		| VERSION_P NO VALUE_P
+			{ $$ = make_str("version no value"); }
+		;
+
+opt_xml_root_standalone: ',' STANDALONE_P YES_P
+				{ $$ = make_str(", standalone yes"); }
+			| ',' STANDALONE_P NO
+				{ $$ = make_str(", standalone no"); }
+			| ',' STANDALONE_P NO VALUE_P
+				{ $$ = make_str(", standalone no value"); }
+			| /*EMPTY*/
+				{ $$ = EMPTY; }
+ 			;
+
+xml_attributes: 	XMLATTRIBUTES '(' xml_attribute_list ')'
+				{ $$ = cat_str(3, make_str("xmlattributes("), $3, make_str(")")); }
+			;
+
+xml_attribute_list:	xml_attribute_el
+				{ $$ = $1; }
+			| xml_attribute_list ',' xml_attribute_el
+				{ $$ = cat_str(3, $1, make_str(","), $3); }
+			;
+
+xml_attribute_el: a_expr AS ColLabel
+			{ $$ = cat_str(3, $1, make_str("as"), $3); }
+		| a_expr
+			{ $$ = $1; }
+		;
+
+document_or_content: DOCUMENT_P		{ $$ = make_str("document"); }
+			| CONTENT_P	{ $$ = make_str("content"); }
+			;
+
+xml_whitespace_option: PRESERVE WHITESPACE_P 	{ $$ = make_str("preserve whitespace"); }
+			| STRIP_P WHITESPACE_P	{ $$ = make_str("strip whitespace"); }
+			| /*EMPTY*/		{ $$ = EMPTY; }
+			;
 
 row: ROW '(' expr_list ')'
 			{ $$ = cat_str(3, make_str("row ("), $3, make_str(")")); }
@@ -4211,10 +4542,10 @@ extract_list:  extract_arg FROM a_expr
 			{ $$ = EMPTY; }
 		;
 
-type_list:	type_list ',' Typename
-			{ $$ = cat_str(3, $1, ',', $3); }
-		| Typename
+type_list:	 Typename
 			{ $$ = $1; }
+		| type_list ',' Typename
+			{ $$ = cat_str(3, $1, ',', $3); }
 		;
 
 array_expr_list: array_expr				{ $$ = $1; }
@@ -4480,7 +4811,7 @@ index_name:			ColId			{ $$ = $1; };
 
 file_name:			StringConst		{ $$ = $1; };
 
-func_name: function_name
+func_name: type_function_name
 			{ $$ = $1; }
 		| relation_name indirection
 			{ $$ = cat2_str($1, $2); }
@@ -4522,6 +4853,28 @@ Sconst:  SCONST
 			$$[strlen($1)+2]='\0';
 			free($1);
 		}
+	| ECONST
+		{
+			/* escaped quote starting with E */
+			$$ = (char *)mm_alloc(strlen($1) + 4);
+			$$[0]='E';
+			$$[1]='\'';
+			strcpy($$+2, $1);
+			$$[strlen($1)+2]='\'';
+			$$[strlen($1)+3]='\0';
+			free($1);
+		}
+	| NCONST
+		{
+			/* escaped quote starting with rNE */
+			$$ = (char *)mm_alloc(strlen($1) + 4);
+			$$[0]='N';
+			$$[1]='\'';
+			strcpy($$+2, $1);
+			$$[strlen($1)+2]='\'';
+			$$[strlen($1)+3]='\0';
+			free($1);
+		}
 	| DOLCONST
 		{
 			$$ = $1; 
@@ -4538,10 +4891,10 @@ IntConst:	PosIntConst		{ $$ = $1; }
 
 IntConstVar:	Iconst
 		{
-	        char *length = mm_alloc(32);
+	        	char *length = mm_alloc(sizeof(int) * CHAR_BIT * 10 / 3);
 
 			sprintf(length, "%d", (int) strlen($1));
-			new_variable($1, ECPGmake_simple_type(ECPGt_const, length), 0);
+			new_variable($1, ECPGmake_simple_type(ECPGt_const, length, 0), 0);
 			$$ = $1;
 		}
 		| cvariable	{ $$ = $1; }
@@ -4549,39 +4902,39 @@ IntConstVar:	Iconst
 
 AllConstVar:	Fconst
 		{
-	        char *length = mm_alloc(32);
+		        char *length = mm_alloc(sizeof(int) * CHAR_BIT * 10 / 3);
 
 			sprintf(length, "%d", (int) strlen($1));
-			new_variable($1, ECPGmake_simple_type(ECPGt_const, length), 0);
+			new_variable($1, ECPGmake_simple_type(ECPGt_const, length, 0), 0);
 			$$ = $1;
 		}
 		| IntConstVar		{ $$ = $1; }
 		| '-' Fconst
 		{
-	        char *length = mm_alloc(32);
+		        char *length = mm_alloc(sizeof(int) * CHAR_BIT * 10 / 3);
 			char *var = cat2_str(make_str("-"), $2);
 
 			sprintf(length, "%d", (int) strlen(var));
-			new_variable(var, ECPGmake_simple_type(ECPGt_const, length), 0);
+			new_variable(var, ECPGmake_simple_type(ECPGt_const, length, 0), 0);
 			$$ = var;
 		}
 		| '-' Iconst
 		{
-	        char *length = mm_alloc(32);
+		        char *length = mm_alloc(sizeof(int) * CHAR_BIT * 10 / 3);
 			char *var = cat2_str(make_str("-"), $2);
 
 			sprintf(length, "%d", (int) strlen(var));
-			new_variable(var, ECPGmake_simple_type(ECPGt_const, length), 0);
+			new_variable(var, ECPGmake_simple_type(ECPGt_const, length, 0), 0);
 			$$ = var;
 		}
 		| Sconst
 		{
-	        char *length = mm_alloc(32);
+		        char *length = mm_alloc(sizeof(int) * CHAR_BIT * 10 / 3);
 			char *var = $1 + 1;
 
 			var[strlen(var) - 1] = '\0';
 			sprintf(length, "%d", (int) strlen(var));
-			new_variable(var, ECPGmake_simple_type(ECPGt_const, length), 0);
+			new_variable(var, ECPGmake_simple_type(ECPGt_const, length, 0), 0);
 			$$ = var;
 		}
 		;
@@ -4606,12 +4959,15 @@ AllConst:	Sconst			{ $$ = $1; }
 		| NumConst		{ $$ = $1; }
 		;
 
-PosAllConst:	Sconst		{ $$ = $1; }
-		| Fconst	{ $$ = $1; }
-		| Iconst	{ $$ = $1; }
-		| Bconst	{ $$ = $1; }
-		| Xconst	{ $$ = $1; }
-		| civar		{ $$ = $1; }
+PosAllConst:	Sconst			{ $$ = $1; }
+		| Fconst		{ $$ = $1; }
+		| Iconst		{ $$ = $1; }
+		| Bconst		{ $$ = $1; }
+		| Xconst		{ $$ = $1; }
+		| func_name Sconst	{ $$ = cat2_str($1, $2); }
+		| func_name '(' expr_list ')' Sconst
+					{ $$ = cat_str(5, $1, make_str("("), $3, make_str(")"), $5); }
+		| civar			{ $$ = $1; }
 		;
 
 RoleId:  ColId		{ $$ = $1;};
@@ -4642,12 +4998,12 @@ SpecialRuleRelation:  OLD
 ECPGConnect: SQL_CONNECT TO connection_target opt_connection_name opt_user
 			{ $$ = cat_str(5, $3, make_str(","), $5, make_str(","), $4); }
 		| SQL_CONNECT TO DEFAULT
-			{ $$ = make_str("NULL,NULL,NULL,\"DEFAULT\""); }
+			{ $$ = make_str("NULL, NULL, NULL, \"DEFAULT\""); }
 		  /* also allow ORACLE syntax */
 		| SQL_CONNECT ora_user
-			{ $$ = cat_str(3, make_str("NULL,"), $2, make_str(",NULL")); }
+			{ $$ = cat_str(3, make_str("NULL,"), $2, make_str(", NULL")); }
 		| DATABASE connection_target
-			{ $$ = cat2_str($2, make_str(",NULL,NULL,NULL")); }
+			{ $$ = cat2_str($2, make_str(", NULL, NULL, NULL")); }
 		;
 
 connection_target: opt_database_name opt_server opt_port
@@ -4736,7 +5092,7 @@ opt_connection_name: AS connection_object	{ $$ = $2; }
 		;
 
 opt_user: USER ora_user		{ $$ = $2; }
-		| /*EMPTY*/			{ $$ = make_str("NULL,NULL"); }
+		| /*EMPTY*/			{ $$ = make_str("NULL, NULL"); }
 		;
 
 ora_user: user_name
@@ -4760,7 +5116,7 @@ user_name: RoleId
 		{
 			if ($1[0] == '\"')
 				$$ = $1;
-			else if (strcmp($1, " ?") == 0) /* variable */
+			else if ($1[1] == '$') /* variable */
 			{
 				enum ECPGttype type = argsinsert->variable->type->type;
 
@@ -4805,6 +5161,7 @@ char_variable: cvariable
 						break;
 					default:
 						mmerror(PARSE_ERROR, ET_ERROR, "invalid datatype");
+						$$ = $1;
 						break;
 				}
 			}
@@ -4832,6 +5189,7 @@ ECPGCursorStmt:  DECLARE name cursor_options CURSOR opt_hold FOR prepared_name
 		{
 			struct cursor *ptr, *this;
 			struct variable *thisquery = (struct variable *)mm_alloc(sizeof(struct variable));
+			const char *con = connection ? connection : "NULL";
 
 			for (ptr = cur; ptr != NULL; ptr = ptr->next)
 			{
@@ -4846,14 +5204,14 @@ ECPGCursorStmt:  DECLARE name cursor_options CURSOR opt_hold FOR prepared_name
 			this->next = cur;
 			this->name = $2;
 			this->connection = connection;
-			this->command =  cat_str(6, make_str("declare"), mm_strdup($2), $3, make_str("cursor"), $5, make_str("for ?"));
+			this->command =  cat_str(6, make_str("declare"), mm_strdup($2), $3, make_str("cursor"), $5, make_str("for $1"));
 			this->argsresult = NULL;
 
 			thisquery->type = &ecpg_query;
 			thisquery->brace_level = 0;
 			thisquery->next = NULL;
-			thisquery->name = (char *) mm_alloc(sizeof("ECPGprepared_statement()") + strlen($7));
-			sprintf(thisquery->name, "ECPGprepared_statement(%s)", $7);
+			thisquery->name = (char *) mm_alloc(sizeof("ECPGprepared_statement(, , __LINE__)") + strlen(con) + strlen($7));
+			sprintf(thisquery->name, "ECPGprepared_statement(%s, %s, __LINE__)", con, $7);
 
 			this->argsinsert = NULL;
 			add_variable_to_head(&(this->argsinsert), thisquery, &no_indicator);
@@ -4864,56 +5222,19 @@ ECPGCursorStmt:  DECLARE name cursor_options CURSOR opt_hold FOR prepared_name
 		}
 		;
 
-/*
- * the exec sql deallocate prepare command to deallocate a previously
- * prepared statement
- */
-ECPGDeallocate: DEALLOCATE PREPARE prepared_name
-			{ $$ = $3; }
-		| DEALLOCATE prepared_name
-			{ $$ = $2; }
-		;
-
+ECPGExecuteImmediateStmt: EXECUTE IMMEDIATE execstring
+			{ 
+			  /* execute immediate means prepare the statement and
+			   * immediately execute it */
+			  $$ = $3;
+			};
 /*
  * variable decalartion outside exec sql declare block
  */
 ECPGVarDeclaration: single_vt_declaration;
 
 single_vt_declaration: type_declaration		{ $$ = $1; }
-		| single_var_declaration	{ $$ = $1; }
-		;
-
-single_var_declaration: storage_declaration
-		var_type
-		{
-			actual_type[struct_level].type_enum = $2.type_enum;
-			actual_type[struct_level].type_dimension = $2.type_dimension;
-			actual_type[struct_level].type_index = $2.type_index;
-			actual_type[struct_level].type_sizeof = $2.type_sizeof;
-
-			actual_startline[struct_level] = hashline_number();
-		}
-		variable_list ';'
-		{
-			$$ = cat_str(5, actual_startline[struct_level], $1, $2.type_str, $4, make_str(";\n"));
-		}
-		| var_type
-		{
-			actual_type[struct_level].type_enum = $1.type_enum;
-			actual_type[struct_level].type_dimension = $1.type_dimension;
-			actual_type[struct_level].type_index = $1.type_index;
-			actual_type[struct_level].type_sizeof = $1.type_sizeof;
-
-			actual_startline[struct_level] = hashline_number();
-		}
-		variable_list ';'
-		{
-			$$ = cat_str(4, actual_startline[struct_level], $1.type_str, $3, make_str(";\n"));
-		}
-		| struct_union_type_with_symbol ';'
-		{
-			$$ = cat2_str($1, make_str(";"));
-		}
+		| var_declaration		{ $$ = $1; }
 		;
 
 precision:	NumConst	{ $$ = $1; };
@@ -4970,50 +5291,9 @@ type_declaration: S_TYPEDEF
 	}
 	var_type opt_pointer ECPGColLabelCommon opt_array_bounds ';'
 	{
-		/* add entry to list */
-		struct typedefs *ptr, *this;
-		char * dimension = $6.index1;
-		char * length = $6.index2;
+		add_typedef($5, $6.index1, $6.index2, $3.type_enum, $3.type_dimension, $3.type_index, initializer, *$4 ? 1 : 0);
 
-		if (($3.type_enum == ECPGt_struct ||
-		     $3.type_enum == ECPGt_union) &&
-		    initializer == 1)
-			mmerror(PARSE_ERROR, ET_ERROR, "Initializer not allowed in typedef command");
-		else
-		{
-			for (ptr = types; ptr != NULL; ptr = ptr->next)
-			{
-				if (strcmp($5, ptr->name) == 0)
-			        	/* re-definition is a bug */
-					mmerror(PARSE_ERROR, ET_ERROR, "Type %s already defined", $5);
-			}
-			adjust_array($3.type_enum, &dimension, &length, $3.type_dimension, $3.type_index, *$4?1:0, true);
-
-			this = (struct typedefs *) mm_alloc(sizeof(struct typedefs));
-
-			/* initial definition */
-			this->next = types;
-			this->name = $5;
-			this->brace_level = braces_open;
-			this->type = (struct this_type *) mm_alloc(sizeof(struct this_type));
-			this->type->type_enum = $3.type_enum;
-			this->type->type_str = mm_strdup($5);
-			this->type->type_dimension = dimension; /* dimension of array */
-			this->type->type_index = length;	/* length of string */
-			this->type->type_sizeof = ECPGstruct_sizeof;
-			this->struct_member_list = ($3.type_enum == ECPGt_struct || $3.type_enum == ECPGt_union) ?
-			ECPGstruct_member_dup(struct_member_list[struct_level]) : NULL;
-
-			if ($3.type_enum != ECPGt_varchar &&
-				$3.type_enum != ECPGt_char &&
-				$3.type_enum != ECPGt_unsigned_char &&
-				atoi(this->type->type_index) >= 0)
-				mmerror(PARSE_ERROR, ET_ERROR, "No multidimensional array support for simple data types");
-
-			types = this;
-		}
-
-		fprintf(yyout, "typedef %s %s %s %s;\n", $3.type_str, *$4?"*":"", $5, $6.str);
+		fprintf(yyout, "typedef %s %s %s %s;\n", $3.type_str, *$4 ? "*" : "", $5, $6.str);
 		output_line_number();
 		$$ = make_str("");
 	};
@@ -5074,7 +5354,7 @@ storage_modifier : S_CONST	{ $$ = make_str("const"); }
 var_type:	simple_type
 		{
 			$$.type_enum = $1;
-			$$.type_str = mm_strdup(ECPGtype_name($1));
+			$$.type_str = mm_strdup(ecpg_type_name($1));
 			$$.type_dimension = make_str("-1");
 			$$.type_index = make_str("-1");
 			$$.type_sizeof = NULL;
@@ -5217,7 +5497,11 @@ var_type:	simple_type
 				$$.type_enum = this->type->type_enum;
 				$$.type_dimension = this->type->type_dimension;
 				$$.type_index = this->type->type_index;
-				$$.type_sizeof = this->type->type_sizeof;
+				if (this->type->type_sizeof && strlen(this->type->type_sizeof) != 0)
+					$$.type_sizeof = this->type->type_sizeof;
+				else 
+					$$.type_sizeof = cat_str(3, make_str("sizeof("), mm_strdup(this->name), make_str(")"));
+
 				struct_member_list[struct_level] = ECPGstruct_member_dup(this->struct_member_list);
 			}
 		}
@@ -5255,11 +5539,11 @@ var_type:	simple_type
 		}
 		;
 
-enum_type: SQL_ENUM symbol enum_definition
+enum_type: ENUM_P symbol enum_definition
 			{ $$ = cat_str(3, make_str("enum"), $2, $3); }
-		| SQL_ENUM enum_definition
+		| ENUM_P enum_definition
 			{ $$ = cat2_str(make_str("enum"), $2); }
-		| SQL_ENUM symbol
+		| ENUM_P symbol
 			{ $$ = cat2_str(make_str("enum"), $2); }
 		;
 
@@ -5425,6 +5709,7 @@ variable: opt_pointer ECPGColLabel opt_array_bounds opt_bit_field opt_initialize
 			char *dimension = $3.index1; /* dimension of array */
 			char *length = $3.index2;    /* length of string */
 			char dim[14L];
+			char *vcn;
 
 			adjust_array(actual_type[struct_level].type_enum, &dimension, &length, actual_type[struct_level].type_dimension, actual_type[struct_level].type_index, strlen($1), false);
 
@@ -5442,10 +5727,10 @@ variable: opt_pointer ECPGColLabel opt_array_bounds opt_bit_field opt_initialize
 
 				case ECPGt_varchar:
 					if (atoi(dimension) < 0)
-						type = ECPGmake_simple_type(actual_type[struct_level].type_enum, length);
+						type = ECPGmake_simple_type(actual_type[struct_level].type_enum, length, yylineno);
 					else
-						type = ECPGmake_array_type(ECPGmake_simple_type(actual_type[struct_level].type_enum, length), dimension);
-
+						type = ECPGmake_array_type(ECPGmake_simple_type(actual_type[struct_level].type_enum, length, yylineno), dimension);
+					
 					if (strcmp(dimension, "0") == 0 || abs(atoi(dimension)) == 1)
 							*dim = '\0';
 					else
@@ -5454,10 +5739,13 @@ variable: opt_pointer ECPGColLabel opt_array_bounds opt_bit_field opt_initialize
 					if (atoi(length) < 0 || strcmp(length, "0") == 0)
 						mmerror(PARSE_ERROR, ET_ERROR, "pointer to varchar are not implemented");
 
+					/* make sure varchar struct name is unique by adding linenumer of its definition */
+					vcn = (char *) mm_alloc(strlen($2) + sizeof(int) * CHAR_BIT * 10 / 3);
+					sprintf(vcn, "%s_%d", $2, yylineno);
 					if (strcmp(dimension, "0") == 0)
-						$$ = cat_str(7, make2_str(make_str(" struct varchar_"), mm_strdup($2)), make_str(" { int len; char arr["), mm_strdup(length), make_str("]; } *"), mm_strdup($2), $4, $5);
+						$$ = cat_str(7, make2_str(make_str(" struct varchar_"), vcn), make_str(" { int len; char arr["), mm_strdup(length), make_str("]; } *"), mm_strdup($2), $4, $5);
 					else
-						$$ = cat_str(8, make2_str(make_str(" struct varchar_"), mm_strdup($2)), make_str(" { int len; char arr["), mm_strdup(length), make_str("]; } "), mm_strdup($2), mm_strdup(dim), $4, $5);
+						$$ = cat_str(8, make2_str(make_str(" struct varchar_"), vcn), make_str(" { int len; char arr["), mm_strdup(length), make_str("]; } "), mm_strdup($2), mm_strdup(dim), $4, $5);
 					break;
 
 				case ECPGt_char:
@@ -5473,19 +5761,19 @@ variable: opt_pointer ECPGColLabel opt_array_bounds opt_bit_field opt_initialize
 							length = mm_alloc(i+sizeof("sizeof()"));
 							sprintf(length, "sizeof(%s)", $5+2);
 						}
-						type = ECPGmake_simple_type(actual_type[struct_level].type_enum, length);
+						type = ECPGmake_simple_type(actual_type[struct_level].type_enum, length, 0);
 					}
 					else
-						type = ECPGmake_array_type(ECPGmake_simple_type(actual_type[struct_level].type_enum, length), dimension);
+						type = ECPGmake_array_type(ECPGmake_simple_type(actual_type[struct_level].type_enum, length, 0), dimension);
 
 					$$ = cat_str(5, $1, mm_strdup($2), $3.str, $4, $5);
 					break;
 
 				default:
 					if (atoi(dimension) < 0)
-						type = ECPGmake_simple_type(actual_type[struct_level].type_enum, make_str("1"));
+						type = ECPGmake_simple_type(actual_type[struct_level].type_enum, make_str("1"), 0);
 					else
-						type = ECPGmake_array_type(ECPGmake_simple_type(actual_type[struct_level].type_enum, make_str("1")), dimension);
+						type = ECPGmake_array_type(ECPGmake_simple_type(actual_type[struct_level].type_enum, make_str("1"), 0), dimension);
 
 					$$ = cat_str(5, $1, mm_strdup($2), $3.str, $4, $5);
 					break;
@@ -5530,7 +5818,7 @@ ECPGDisconnect: SQL_DISCONNECT dis_name { $$ = $2; }
 		;
 
 dis_name: connection_object			{ $$ = $1; }
-		| SQL_CURRENT			{ $$ = make_str("\"CURRENT\""); }
+		| CURRENT_P			{ $$ = make_str("\"CURRENT\""); }
 		| ALL				{ $$ = make_str("\"ALL\""); }
 		| /* EMPTY */			{ $$ = make_str("\"CURRENT\""); }
 		;
@@ -5538,40 +5826,6 @@ dis_name: connection_object			{ $$ = $1; }
 connection_object: database_name		{ $$ = make3_str(make_str("\""), $1, make_str("\"")); }
 		| DEFAULT			{ $$ = make_str("\"DEFAULT\""); }
 		| char_variable			{ $$ = $1; }
-		;
-
-/*
- * execute a given string as sql command
- */
-ECPGExecute : EXECUTE IMMEDIATE execstring
-		{
-			struct variable *thisquery = (struct variable *)mm_alloc(sizeof(struct variable));
-
-			thisquery->type = &ecpg_query;
-			thisquery->brace_level = 0;
-			thisquery->next = NULL;
-			thisquery->name = $3;
-
-			add_variable_to_head(&argsinsert, thisquery, &no_indicator);
-
-			$$ = make_str("?");
-		}
-		| EXECUTE prepared_name
-		{
-			struct variable *thisquery = (struct variable *)mm_alloc(sizeof(struct variable));
-
-			thisquery->type = &ecpg_query;
-			thisquery->brace_level = 0;
-			thisquery->next = NULL;
-			thisquery->name = (char *) mm_alloc(sizeof("ECPGprepared_statement()") + strlen($2));
-			sprintf(thisquery->name, "ECPGprepared_statement(%s)", $2);
-
-			add_variable_to_head(&argsinsert, thisquery, &no_indicator);
-		}
-		execute_rest
-		{
-			$$ = make_str("?");
-		}
 		;
 
 execute_rest:	ecpg_using ecpg_into	{ $$ = EMPTY; }
@@ -5587,7 +5841,19 @@ execstring: char_variable
 			{ $$ = make3_str(make_str("\""), $1, make_str("\"")); }
 		;
 
-prepared_name: name	 	{ $$ = make3_str(make_str("\""), $1, make_str("\"")); }
+prepared_name: name	 	{ 
+					if ($1[0] == '\"' && $1[strlen($1)-1] == '\"') /* already quoted? */
+						$$ = $1;
+					else /* not quoted => convert to lowercase */
+					{
+						int i;
+
+						for (i = 0; i< strlen($1); i++)
+							$1[i] = tolower($1[i]);
+
+						$$ = make3_str(make_str("\""), $1, make_str("\""));
+					}
+				}
 		| char_variable	{ $$ = $1; }
 		;
 
@@ -5595,7 +5861,9 @@ prepared_name: name	 	{ $$ = make3_str(make_str("\""), $1, make_str("\"")); }
  * the exec sql free command to deallocate a previously
  * prepared statement
  */
-ECPGFree:	SQL_FREE name	{ $$ = $2; };
+ECPGFree:	SQL_FREE name	{ $$ = $2; }
+		| SQL_FREE ALL	{ $$ = make_str("all"); }
+		;
 
 /*
  * open is an open cursor, at the moment this has to be removed
@@ -5634,47 +5902,41 @@ using_list: UsingConst | UsingConst ',' using_list;
 
 UsingConst: AllConst
 		{
-			if ($1[1] != '?') /* found a constant */
+			if ($1[1] != '$') /* found a constant */
 			{
 				char *length = mm_alloc(32);
 
 				sprintf(length, "%d", (int) strlen($1));
-				add_variable_to_head(&argsinsert, new_variable($1, ECPGmake_simple_type(ECPGt_const, length), 0), &no_indicator);
+				add_variable_to_head(&argsinsert, new_variable($1, ECPGmake_simple_type(ECPGt_const, length, 0), 0), &no_indicator);
 			}
 		}
 		| civarind { $$ = EMPTY; }
 		;
 
-/*
- * As long as the prepare statement is not supported by the backend, we will
- * try to simulate it here so we get dynamic SQL
- *
- * It is supported now but not usable yet by ecpg.
- */
-ECPGPrepare: PREPARE prepared_name FROM execstring
-			{ $$ = cat_str(3, $2, make_str(","), $4); }
-		;
 
 /*
  * We accept descibe but do nothing with it so far.
  */
 ECPGDescribe: SQL_DESCRIBE INPUT_P name using_descriptor
 	{
+		const char *con = connection ? connection : "NULL";
 		mmerror(PARSE_ERROR, ET_WARNING, "using unsupported describe statement.\n");
-		$$ = (char *) mm_alloc(sizeof("1, ECPGprepared_statement(\"\")") + strlen($3));
-		sprintf($$, "1, ECPGprepared_statement(\"%s\")", $3);
+		$$ = (char *) mm_alloc(sizeof("1, ECPGprepared_statement(, \"\", __LINE__)") + strlen(con) + strlen($3));
+		sprintf($$, "1, ECPGprepared_statement(%s, \"%s\", __LINE__)", con, $3);
 	}
 	| SQL_DESCRIBE opt_output name using_descriptor
 	{
+		const char *con = connection ? connection : "NULL";
 		mmerror(PARSE_ERROR, ET_WARNING, "using unsupported describe statement.\n");
-		$$ = (char *) mm_alloc(sizeof("0, ECPGprepared_statement(\"\")") + strlen($3));
-		sprintf($$, "0, ECPGprepared_statement(\"%s\")", $3);
+		$$ = (char *) mm_alloc(sizeof("0, ECPGprepared_statement(, \"\", __LINE__)") + strlen(con) + strlen($3));
+		sprintf($$, "0, ECPGprepared_statement(%s, \"%s\", __LINE__)", con, $3);
 	}
 	| SQL_DESCRIBE opt_output name into_descriptor
 	{
+		const char *con = connection ? connection : "NULL";
 		mmerror(PARSE_ERROR, ET_WARNING, "using unsupported describe statement.\n");
-		$$ = (char *) mm_alloc(sizeof("0, ECPGprepared_statement(\"\")") + strlen($3));
-		sprintf($$, "0, ECPGprepared_statement(\"%s\")", $3);
+		$$ = (char *) mm_alloc(sizeof("0, ECPGprepared_statement(, \"\", __LINE__)") + strlen(con) + strlen($3));
+		sprintf($$, "0, ECPGprepared_statement(%s, \"%s\", __LINE__)", con, $3);
 	}
 	;
 
@@ -5748,7 +6010,7 @@ desc_header_item:	SQL_COUNT			{ $$ = ECPGd_count; }
  * manipulate a descriptor
  */
 
-ECPGGetDescriptor:	GET SQL_DESCRIPTOR quoted_ident_stringvar SQL_VALUE IntConstVar ECPGGetDescItems
+ECPGGetDescriptor:	GET SQL_DESCRIPTOR quoted_ident_stringvar VALUE_P IntConstVar ECPGGetDescItems
 			{  $$.str = $5; $$.name = $3; }
 		;
 
@@ -5759,7 +6021,7 @@ ECPGGetDescItems: ECPGGetDescItem
 ECPGGetDescItem: cvariable '=' descriptor_item	{ push_assignment($1, $3); };
 
 
-ECPGSetDescriptor:	SET SQL_DESCRIPTOR quoted_ident_stringvar SQL_VALUE IntConstVar ECPGSetDescItems
+ECPGSetDescriptor:	SET SQL_DESCRIPTOR quoted_ident_stringvar VALUE_P IntConstVar ECPGSetDescItems
 			{  $$.str = $5; $$.name = $3; }
 		;
 
@@ -5775,44 +6037,21 @@ ECPGSetDescItem: descriptor_item '=' AllConstVar
 
 
 descriptor_item:	SQL_CARDINALITY			{ $$ = ECPGd_cardinality; }
-		| SQL_DATA							{ $$ = ECPGd_data; }
+		| SQL_DATA				{ $$ = ECPGd_data; }
 		| SQL_DATETIME_INTERVAL_CODE		{ $$ = ECPGd_di_code; }
 		| SQL_DATETIME_INTERVAL_PRECISION 	{ $$ = ECPGd_di_precision; }
-		| SQL_INDICATOR						{ $$ = ECPGd_indicator; }
-		| SQL_KEY_MEMBER					{ $$ = ECPGd_key_member; }
-		| SQL_LENGTH						{ $$ = ECPGd_length; }
-		| SQL_NAME							{ $$ = ECPGd_name; }
-		| SQL_NULLABLE						{ $$ = ECPGd_nullable; }
-		| SQL_OCTET_LENGTH					{ $$ = ECPGd_octet; }
-		| PRECISION							{ $$ = ECPGd_precision; }
-		| SQL_RETURNED_LENGTH				{ $$ = ECPGd_length; }
-		| SQL_RETURNED_OCTET_LENGTH			{ $$ = ECPGd_ret_octet; }
-		| SQL_SCALE							{ $$ = ECPGd_scale; }
-		| TYPE_P							{ $$ = ECPGd_type; }
+		| SQL_INDICATOR				{ $$ = ECPGd_indicator; }
+		| SQL_KEY_MEMBER			{ $$ = ECPGd_key_member; }
+		| SQL_LENGTH				{ $$ = ECPGd_length; }
+		| NAME_P				{ $$ = ECPGd_name; }
+		| SQL_NULLABLE				{ $$ = ECPGd_nullable; }
+		| SQL_OCTET_LENGTH			{ $$ = ECPGd_octet; }
+		| PRECISION				{ $$ = ECPGd_precision; }
+		| SQL_RETURNED_LENGTH			{ $$ = ECPGd_length; }
+		| SQL_RETURNED_OCTET_LENGTH		{ $$ = ECPGd_ret_octet; }
+		| SQL_SCALE				{ $$ = ECPGd_scale; }
+		| TYPE_P				{ $$ = ECPGd_type; }
 		;
-
-
-/*
- * for compatibility with ORACLE we will also allow the keyword RELEASE
- * after a transaction statement to disconnect from the database.
- */
-
-/* We cannot do that anymore since it causes shift/reduce conflicts. 2004-09-27 Michael Meskes
-ECPGRelease: TransactionStmt RELEASE
-		{
-			if (strcmp($1, "begin") == 0)
-							mmerror(PARSE_ERROR, ET_ERROR, "RELEASE does not make sense when beginning a transaction");
-
-			fprintf(yyout, "ECPGtrans(__LINE__, %s, \"%s\");",
-					connection ? connection : "NULL", $1);
-			whenever_action(0);
-			fprintf(yyout, "ECPGdisconnect(__LINE__, %s);",
-					connection ? connection : "\"CURRENT\"");
-			whenever_action(0);
-			free($1);
-		}
-		;
-*/
 
 /*
  * set/reset the automatic transaction mode, this needs a differnet handling
@@ -5846,49 +6085,7 @@ ECPGTypedef: TYPE_P
 		}
 		ECPGColLabelCommon IS var_type opt_array_bounds opt_reference
 		{
-			/* add entry to list */
-			struct typedefs *ptr, *this;
-			char *dimension = $6.index1;
-			char *length = $6.index2;
-
-			if (($5.type_enum == ECPGt_struct ||
-				 $5.type_enum == ECPGt_union) &&
-				initializer == 1)
-				mmerror(PARSE_ERROR, ET_ERROR, "Initializer not allowed in EXEC SQL TYPE command");
-			else
-			{
-				for (ptr = types; ptr != NULL; ptr = ptr->next)
-				{
-					if (strcmp($3, ptr->name) == 0)
-						/* re-definition is a bug */
-						mmerror(PARSE_ERROR, ET_ERROR, "Type %s already defined", $3);
-				}
-
-				adjust_array($5.type_enum, &dimension, &length, $5.type_dimension, $5.type_index, *$7?1:0, false);
-
-				this = (struct typedefs *) mm_alloc(sizeof(struct typedefs));
-
-				/* initial definition */
-				this->next = types;
-				this->name = $3;
-				this->brace_level = braces_open;
-				this->type = (struct this_type *) mm_alloc(sizeof(struct this_type));
-				this->type->type_enum = $5.type_enum;
-				this->type->type_str = mm_strdup($3);
-				this->type->type_dimension = dimension; /* dimension of array */
-				this->type->type_index = length;	/* length of string */
-				this->type->type_sizeof = ECPGstruct_sizeof;
-				this->struct_member_list = ($5.type_enum == ECPGt_struct || $5.type_enum == ECPGt_union) ?
-					ECPGstruct_member_dup(struct_member_list[struct_level]) : NULL;
-
-				if ($5.type_enum != ECPGt_varchar &&
-					$5.type_enum != ECPGt_char &&
-					$5.type_enum != ECPGt_unsigned_char &&
-					atoi(this->type->type_index) >= 0)
-					mmerror(PARSE_ERROR, ET_ERROR, "No multidimensional array support for simple data types");
-
-				types = this;
-			}
+			add_typedef($3, $6.index1, $6.index2, $5.type_enum, $5.type_dimension, $5.type_index, initializer, *$7 ? 1 : 0);
 
 			if (auto_create_c == false)
 				$$ = cat_str(7, make_str("/* exec sql type"), mm_strdup($3), make_str("is"), mm_strdup($5.type_str), mm_strdup($6.str), $7, make_str("*/"));
@@ -5937,17 +6134,17 @@ ECPGVar: SQL_VAR
 
 					case ECPGt_varchar:
 						if (atoi(dimension) == -1)
-							type = ECPGmake_simple_type($5.type_enum, length);
+							type = ECPGmake_simple_type($5.type_enum, length, 0);
 						else
-							type = ECPGmake_array_type(ECPGmake_simple_type($5.type_enum, length), dimension);
+							type = ECPGmake_array_type(ECPGmake_simple_type($5.type_enum, length, 0), dimension);
 						break;
 
 					case ECPGt_char:
 					case ECPGt_unsigned_char:
 						if (atoi(dimension) == -1)
-							type = ECPGmake_simple_type($5.type_enum, length);
+							type = ECPGmake_simple_type($5.type_enum, length, 0);
 						else
-							type = ECPGmake_array_type(ECPGmake_simple_type($5.type_enum, length), dimension);
+							type = ECPGmake_array_type(ECPGmake_simple_type($5.type_enum, length, 0), dimension);
 						break;
 
 					default:
@@ -5955,9 +6152,9 @@ ECPGVar: SQL_VAR
 							mmerror(PARSE_ERROR, ET_ERROR, "No multidimensional array support for simple data types");
 
 						if (atoi(dimension) < 0)
-							type = ECPGmake_simple_type($5.type_enum, make_str("1"));
+							type = ECPGmake_simple_type($5.type_enum, make_str("1"), 0);
 						else
-							type = ECPGmake_array_type(ECPGmake_simple_type($5.type_enum, make_str("1")), dimension);
+							type = ECPGmake_array_type(ECPGmake_simple_type($5.type_enum, make_str("1"), 0), dimension);
 						break;
 				}
 
@@ -6071,7 +6268,6 @@ ECPGKeywords_vanames:  SQL_BREAK		{ $$ = make_str("break"); }
 		| SQL_INDICATOR				{ $$ = make_str("indicator"); }
 		| SQL_KEY_MEMBER			{ $$ = make_str("key_member"); }
 		| SQL_LENGTH				{ $$ = make_str("length"); }
-		| SQL_NAME					{ $$ = make_str("name"); }
 		| SQL_NULLABLE				{ $$ = make_str("nullable"); }
 		| SQL_OCTET_LENGTH			{ $$ = make_str("octet_length"); }
 		| SQL_RETURNED_LENGTH		{ $$ = make_str("returned_length"); }
@@ -6082,7 +6278,6 @@ ECPGKeywords_vanames:  SQL_BREAK		{ $$ = make_str("break"); }
 		| SQL_SQLPRINT				{ $$ = make_str("sqlprint"); }
 		| SQL_SQLWARNING			{ $$ = make_str("sqlwarning"); }
 		| SQL_STOP					{ $$ = make_str("stop"); }
-		| SQL_VALUE					{ $$ = make_str("value"); }
 		;
 
 ECPGKeywords_rest:  SQL_CONNECT		{ $$ = make_str("connect"); }
@@ -6136,21 +6331,13 @@ ColId:	ident					{ $$ = $1; }
 		| CHAR_P			{ $$ = make_str("char"); }
 		| VALUES			{ $$ = make_str("values"); }
 		;
-/* Type identifier --- names that can be type names.
+/* Type/function identifier --- names that can be type names.
  */
-type_name:	ident					{ $$ = $1; }
+type_function_name:	ident					{ $$ = $1; }
 		| unreserved_keyword		{ $$ = $1; }
+		| type_func_name_keyword		{ $$ = $1; }
 		| ECPGKeywords				{ $$ = $1; }
 		| ECPGTypeName				{ $$ = $1; }
-		| ECPGCKeywords				{ $$ = $1; }
-		;
-
-/* Function identifier --- names that can be function names.
- */
-function_name:	ident				{ $$ = $1; }
-		| unreserved_keyword		{ $$ = $1; }
-		| func_name_keyword			{ $$ = $1; }
-		| ECPGKeywords				{ $$ = $1; }
 		| ECPGCKeywords				{ $$ = $1; }
 		;
 
@@ -6158,19 +6345,19 @@ function_name:	ident				{ $$ = $1; }
  * This presently includes *all* Postgres keywords.
  */
 ColLabel:  ECPGColLabel				{ $$ = $1; }
-		| ECPGTypeName				{ $$ = $1; }
-		| CHAR_P					{ $$ = make_str("char"); }
-		| INPUT_P					{ $$ = make_str("input"); }
-		| INT_P						{ $$ = make_str("int"); }
-		| UNION						{ $$ = make_str("union"); }
-		| TO						{ $$ = make_str("to"); }
-		| ECPGCKeywords				{ $$ = $1; }
+		| ECPGTypeName			{ $$ = $1; }
+		| CHAR_P			{ $$ = make_str("char"); }
+		| INPUT_P			{ $$ = make_str("input"); }
+		| INT_P				{ $$ = make_str("int"); }
+		| UNION				{ $$ = make_str("union"); }
+		| TO				{ $$ = make_str("to"); }
+		| ECPGCKeywords			{ $$ = $1; }
 		| ECPGunreserved_interval	{ $$ = $1; }
 		;
 
 ECPGColLabelCommon:  ident			{ $$ = $1; }
 		| col_name_keyword		{ $$ = $1; }
-		| func_name_keyword 		{ $$ = $1; }
+		| type_func_name_keyword	{ $$ = $1; }
 		| ECPGKeywords_vanames		{ $$ = $1; }
 		;
 
@@ -6231,6 +6418,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| AGGREGATE			{ $$ = make_str("aggregate"); }
 		| ALSO				{ $$ = make_str("also"); }
 		| ALTER				{ $$ = make_str("alter"); }
+		| ALWAYS			{ $$ = make_str("always"); }
 		| ASSERTION			{ $$ = make_str("assertion"); }
 		| ASSIGNMENT		{ $$ = make_str("assignment"); }
 		| AT				{ $$ = make_str("at"); }
@@ -6251,10 +6439,13 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| COMMIT			{ $$ = make_str("commit"); }
 		| COMMITTED			{ $$ = make_str("committed"); }
 		| CONCURRENTLY		{ $$ = make_str("concurrently"); }
+		| CONFIGURATION		{ $$ = make_str("configuration"); }
 /*		| CONNECTION		{ $$ = make_str("connection"); }*/
 		| CONSTRAINTS		{ $$ = make_str("constraints"); }
+		| CONTENT_P		{ $$ = make_str("content"); }
 		| CONVERSION_P		{ $$ = make_str("conversion"); }
 		| COPY				{ $$ = make_str("copy"); }
+		| COST				{ $$ = make_str("cost"); }
 		| CREATEDB			{ $$ = make_str("createdb"); }
 		| CREATEROLE		{ $$ = make_str("createrole"); }
 		| CREATEUSER		{ $$ = make_str("createuser"); }
@@ -6270,7 +6461,10 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| DELETE_P			{ $$ = make_str("delete"); }
 		| DELIMITER			{ $$ = make_str("delimiter"); }
 		| DELIMITERS		{ $$ = make_str("delimiters"); }
+		| DICTIONARY		{ $$ = make_str("dictionary"); }
 		| DISABLE_P			{ $$ = make_str("disable"); }
+		| DISCARD			{ $$ = make_str("discard"); }
+		| DOCUMENT_P			{ $$ = make_str("document"); }
 		| DOMAIN_P			{ $$ = make_str("domain"); }
 		| DOUBLE_P			{ $$ = make_str("double"); }
 		| DROP				{ $$ = make_str("drop"); }
@@ -6278,11 +6472,14 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| ENABLE_P			{ $$ = make_str("enable"); }
 		| ENCODING			{ $$ = make_str("encoding"); }
 		| ENCRYPTED			{ $$ = make_str("encrypted"); }
+/*		| ENUM_P			{ $$ = make_str("enum"); }*/
 		| ESCAPE			{ $$ = make_str("escape"); }
 		| EXCLUDING			{ $$ = make_str("excluding"); }
 		| EXCLUSIVE			{ $$ = make_str("exclusive"); }
 		| EXECUTE			{ $$ = make_str("execute"); }
 		| EXPLAIN			{ $$ = make_str("explain"); }
+		| EXTERNAL			{ $$ = make_str("external"); }
+		| FAMILY			{ $$ = make_str("family"); }
 		| FETCH				{ $$ = make_str("fetch"); }
 		| FIRST_P			{ $$ = make_str("first"); }
 		| FORCE				{ $$ = make_str("force"); }
@@ -6320,6 +6517,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| LOCATION			{ $$ = make_str("location"); }
 		| LOCK_P			{ $$ = make_str("lock"); }
 		| LOGIN_P			{ $$ = make_str("login"); }
+		| MAPPING			{ $$ = make_str("mapping"); }
 		| MATCH				{ $$ = make_str("match"); }
 		| MAXVALUE			{ $$ = make_str("maxvalue"); }
 /*		| MINUTE_P			{ $$ = make_str("minute"); }*/
@@ -6327,6 +6525,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| MODE				{ $$ = make_str("mode"); }
 /*		| MONTH_P			{ $$ = make_str("month"); }*/
 		| MOVE				{ $$ = make_str("move"); }
+		| NAME_P			{ $$ = make_str("name"); }
 		| NAMES				{ $$ = make_str("names"); }
 		| NEXT				{ $$ = make_str("next"); }
 		| NO				{ $$ = make_str("no"); }
@@ -6339,6 +6538,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| NOTHING			{ $$ = make_str("nothing"); }
 		| NOTIFY			{ $$ = make_str("notify"); }
 		| NOWAIT			{ $$ = make_str("nowait"); }
+		| NULLS_P			{ $$ = make_str("nulls"); }
 		| OBJECT_P			{ $$ = make_str("object"); }
 		| OF				{ $$ = make_str("of"); }
 		| OIDS				{ $$ = make_str("oids"); }
@@ -6346,8 +6546,10 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| OPTION			{ $$ = make_str("option"); }
 		| OWNED				{ $$ = make_str("owned"); }
 		| OWNER				{ $$ = make_str("owner"); }
+		| PARSER			{ $$ = make_str("parser"); }
 		| PARTIAL			{ $$ = make_str("partial"); }
 		| PASSWORD			{ $$ = make_str("password"); }
+		| PLANS				{ $$ = make_str("plans"); }
 		| PREPARE			{ $$ = make_str("prepare"); }
 		| PREPARED			{ $$ = make_str("prepared"); }
 		| PRESERVE			{ $$ = make_str("preserver"); }
@@ -6365,6 +6567,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| RENAME			{ $$ = make_str("rename"); }
 		| REPEATABLE		{ $$ = make_str("repeatable"); }
 		| REPLACE			{ $$ = make_str("replace"); }
+		| REPLICA			{ $$ = make_str("replica"); }
 		| RESET				{ $$ = make_str("reset"); }
 		| RESTART			{ $$ = make_str("restart"); }
 		| RESTRICT			{ $$ = make_str("restrict"); }
@@ -6377,6 +6580,7 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| SAVEPOINT			{ $$ = make_str("savepoint"); }
 		| SCHEMA			{ $$ = make_str("schema"); }
 		| SCROLL			{ $$ = make_str("scroll"); }
+		| SEARCH			{ $$ = make_str("search"); }
 /*		| SECOND_P			{ $$ = make_str("second"); }*/
 		| SEQUENCE			{ $$ = make_str("sequence"); }
 		| SERIALIZABLE		{ $$ = make_str("serializable"); }
@@ -6386,20 +6590,23 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| SHOW				{ $$ = make_str("show"); }
 		| SIMPLE			{ $$ = make_str("simple"); }
 		| STABLE			{ $$ = make_str("stable"); }
+		| STANDALONE_P			{ $$ = make_str("standalone"); }
 		| START				{ $$ = make_str("start"); }
 		| STATEMENT			{ $$ = make_str("statement"); }
 		| STATISTICS		{ $$ = make_str("statistics"); }
 		| STDIN				{ $$ = make_str("stdin"); }
 		| STDOUT			{ $$ = make_str("stdout"); }
 		| STORAGE			{ $$ = make_str("storage"); }
-		| SUPERUSER_P		{ $$ = make_str("superuser"); }
 		| STRICT_P			{ $$ = make_str("strict"); }
+		| STRIP_P			{ $$ = make_str("strip"); }
+		| SUPERUSER_P		{ $$ = make_str("superuser"); }
 		| SYSTEM_P			{ $$ = make_str("system"); }
 		| SYSID				{ $$ = make_str("sysid"); }
 		| TABLESPACE		{ $$ = make_str("tablespace"); }
 		| TEMP				{ $$ = make_str("temp"); }
 		| TEMPLATE			{ $$ = make_str("template"); }
 		| TEMPORARY			{ $$ = make_str("temporary"); }
+		| TEXT_P			{ $$ = make_str("text"); }
 		| TRANSACTION		{ $$ = make_str("transaction"); }
 		| TRIGGER			{ $$ = make_str("trigger"); }
 		| TRUNCATE			{ $$ = make_str("truncate"); }
@@ -6413,12 +6620,19 @@ ECPGunreserved_con:	  ABORT_P			{ $$ = make_str("abort"); }
 		| UPDATE			{ $$ = make_str("update"); }
 		| VACUUM			{ $$ = make_str("vacuum"); }
 		| VALID				{ $$ = make_str("valid"); }
+		| VALIDATOR			{ $$ = make_str("validator"); }
+		| VALUE_P			{ $$ = make_str("value"); }
 		| VARYING			{ $$ = make_str("varying"); }
+		| VERSION_P			{ $$ = make_str("version"); }
 		| VIEW				{ $$ = make_str("view"); }
+		| VOLATILE			{ $$ = make_str("volatile"); }
+		| WHITESPACE_P			{ $$ = make_str("whitespace"); }
 		| WITH				{ $$ = make_str("with"); }
 		| WITHOUT			{ $$ = make_str("without"); }
 		| WORK				{ $$ = make_str("work"); }
 		| WRITE  			{ $$ = make_str("write"); }
+		| XML_P  			{ $$ = make_str("xml"); }
+		| YES_P  			{ $$ = make_str("yes"); }
 /*		| YEAR_P			{ $$ = make_str("year"); }*/
 		| ZONE				{ $$ = make_str("zone"); }
 		;
@@ -6441,7 +6655,6 @@ col_name_keyword:
  */
 		| CHARACTER		{ $$ = make_str("character"); }
 		| COALESCE		{ $$ = make_str("coalesce"); }
-		| CONVERT		{ $$ = make_str("convert"); }
 		| DEC			{ $$ = make_str("dec"); }
 		| DECIMAL_P		{ $$ = make_str("decimal"); }
 		| EXISTS		{ $$ = make_str("exists"); }
@@ -6476,6 +6689,14 @@ col_name_keyword:
 		/* VALUES creates a shift/reduce problem if listed here
 		| VALUES		{ $$ = make_str("values"); } */
 		| VARCHAR		{ $$ = make_str("varchar"); }
+		| XMLATTRIBUTES		{ $$ = make_str("xmlattributes"); }
+		| XMLCONCAT		{ $$ = make_str("xmlconcat"); }
+		| XMLELEMENT		{ $$ = make_str("xmlelement"); }
+		| XMLFOREST		{ $$ = make_str("xmlforest"); }
+		| XMLPARSE		{ $$ = make_str("xmlparse"); }
+		| XMLPI			{ $$ = make_str("xmlpi"); }
+		| XMLROOT		{ $$ = make_str("xmlroot"); }
+		| XMLSERIALIZE		{ $$ = make_str("xmlserialize"); }
 		;
 
 /* Function identifier --- keywords that can be function names.
@@ -6488,7 +6709,7 @@ col_name_keyword:
  * productions in a_expr to support the goofy SQL9x argument syntax.
  *	- thomas 2000-11-28
  */
-func_name_keyword:
+type_func_name_keyword:
 		  AUTHORIZATION		{ $$ = make_str("authorization"); }
 		| BETWEEN		{ $$ = make_str("between"); }
 		| BINARY		{ $$ = make_str("binary"); }
@@ -6535,6 +6756,7 @@ reserved_keyword:
 		| COLUMN			{ $$ = make_str("column"); }
 		| CONSTRAINT		{ $$ = make_str("constraint"); }
 		| CREATE			{ $$ = make_str("create"); }
+		| CURRENT_P                     { $$ = make_str("current"); }
 		| CURRENT_DATE		{ $$ = make_str("current_date"); }
 		| CURRENT_TIME		{ $$ = make_str("current_time"); }
 		| CURRENT_TIMESTAMP	{ $$ = make_str("current_timestamp"); }
@@ -6599,7 +6821,10 @@ reserved_keyword:
 into_list : coutputvariable | into_list ',' coutputvariable
 		;
 
-ecpgstart: SQL_START	{ reset_variables(); }
+ecpgstart: SQL_START	{
+				reset_variables();
+				pacounter = 1;
+			}
 		;
 
 c_args: /*EMPTY*/		{ $$ = EMPTY; }
@@ -6743,7 +6968,7 @@ c_anything:  IDENT				{ $$ = $1; }
 		| S_TYPEDEF			{ $$ = make_str("typedef"); }
 		| S_VOLATILE			{ $$ = make_str("volatile"); }
 		| SQL_BOOL			{ $$ = make_str("bool"); }
-		| SQL_ENUM			{ $$ = make_str("enum"); }
+		| ENUM_P			{ $$ = make_str("enum"); }
 		| HOUR_P			{ $$ = make_str("hour"); }
 		| INT_P				{ $$ = make_str("int"); }
 		| SQL_LONG			{ $$ = make_str("long"); }
@@ -6768,7 +6993,7 @@ c_anything:  IDENT				{ $$ = $1; }
 
 %%
 
-void yyerror( char * error)
+void base_yyerror(const char * error)
 {
 	char buf[1024];
 
@@ -6776,5 +7001,16 @@ void yyerror( char * error)
 	buf[sizeof(buf)-1]=0;
 	mmerror(PARSE_ERROR, ET_ERROR, buf);
 }
+
+void parser_init(void)
+{
+ /* This function is empty. It only exists for compatibility with the backend parser right now. */
+}
+
+/*
+ * Must undefine base_yylex before including pgc.c, since we want it
+ * to create the function base_yylex not filtered_base_yylex.
+ */
+#undef base_yylex
 
 #include "pgc.c"

@@ -39,7 +39,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeResult.c,v 1.34.2.4 2007/02/16 03:49:10 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeResult.c,v 1.42 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -138,13 +138,11 @@ ExecResult(ResultState *node)
 			if (TupIsNull(outerTupleSlot))
 				return NULL;
 
-			node->ps.ps_OuterTupleSlot = outerTupleSlot;
-
 			/*
-			 * XXX gross hack. use outer tuple as scan tuple for projection
+			 * prepare to compute projection expressions, which will expect to
+			 * access the input tuples as varno OUTER.
 			 */
 			econtext->ecxt_outertuple = outerTupleSlot;
-			econtext->ecxt_scantuple = outerTupleSlot;
 		}
 		else
 		{
@@ -316,9 +314,9 @@ ExecReScanResult(ResultState *node, ExprContext *exprCtxt)
 
 	/*
 	 * If chgParam of subnode is not null then plan will be re-scanned by
-	 * first ExecProcNode.  However, if caller is passing us an exprCtxt
-	 * then forcibly rescan the subnode now, so that we can pass the
-	 * exprCtxt down to the subnode (needed for gated indexscan).
+	 * first ExecProcNode.	However, if caller is passing us an exprCtxt then
+	 * forcibly rescan the subnode now, so that we can pass the exprCtxt down
+	 * to the subnode (needed for gated indexscan).
 	 */
 	if (node->ps.lefttree &&
 		(node->ps.lefttree->chgParam == NULL || exprCtxt != NULL))

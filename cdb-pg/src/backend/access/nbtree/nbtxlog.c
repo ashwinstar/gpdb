@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtxlog.c,v 1.39 2006/11/01 19:43:17 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtxlog.c,v 1.50 2008/01/01 19:45:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -125,7 +125,8 @@ forget_matching_deletion(RelFileNode node, BlockNumber delblk)
  * in correct itemno sequence, but physically the opposite order from the
  * original, because we insert them in the opposite of itemno order.  This
  * does not matter in any current btree code, but it's something to keep an
- * eye on.	Is it worth changing just on general principles?
+ * eye on.	Is it worth changing just on general principles?  See also the
+ * notes in btree_xlog_split().
  */
 static void
 _bt_restore_page(Page page, char *from, int len)
@@ -140,9 +141,9 @@ _bt_restore_page(Page page, char *from, int len)
 		memcpy(&itupdata, from, sizeof(IndexTupleData));
 		itemsz = IndexTupleDSize(itupdata);
 		itemsz = MAXALIGN(itemsz);
-		if (PageAddItem(page, (Item) from, itemsz,
-						FirstOffsetNumber, LP_USED) == InvalidOffsetNumber)
-			elog(PANIC, "_bt_restore_page: can't add item to page");
+		if (PageAddItem(page, (Item) from, itemsz, FirstOffsetNumber,
+						false, false) == InvalidOffsetNumber)
+			elog(PANIC, "_bt_restore_page: cannot add item to page");
 		from += itemsz;
 	}
 }
@@ -237,7 +238,7 @@ btree_xlog_insert(bool isleaf, bool ismeta,
 			{
 				if (PageAddItem(page, (Item) datapos, datalen,
 							ItemPointerGetOffsetNumber(&(xlrec->target.tid)),
-								LP_USED) == InvalidOffsetNumber)
+								false, false) == InvalidOffsetNumber)
 					elog(PANIC, "btree_insert_redo: failed to add item");
 
 				PageSetLSN(page, lsn);
@@ -264,122 +265,202 @@ btree_xlog_split(bool onleft, bool isroot,
 {
 	xl_btree_split *xlrec = (xl_btree_split *) XLogRecGetData(record);
 	Relation	reln;
-	BlockNumber targetblk;
-	OffsetNumber targetoff;
-	BlockNumber leftsib;
-	BlockNumber rightsib;
-	BlockNumber downlink = 0;
-	Buffer		buffer;
-	Page		page;
-	BTPageOpaque pageop;
+	Buffer		rbuf;
+	Page		rpage;
+	BTPageOpaque ropaque;
+	char	   *datapos;
+	int			datalen;
+	OffsetNumber newitemoff = 0;
+	Item		newitem = NULL;
+	Size		newitemsz = 0;
+	Item		left_hikey = NULL;
+	Size		left_hikeysz = 0;
 
-	reln = XLogOpenRelation(xlrec->target.node);
-	targetblk = ItemPointerGetBlockNumber(&(xlrec->target.tid));
-	targetoff = ItemPointerGetOffsetNumber(&(xlrec->target.tid));
-	leftsib = (onleft) ? targetblk : xlrec->otherblk;
-	rightsib = (onleft) ? xlrec->otherblk : targetblk;
+	reln = XLogOpenRelation(xlrec->node);
 
-	/* Left (original) sibling */
-	buffer = XLogReadBuffer(reln, leftsib, true);
-	Assert(BufferIsValid(buffer));
-	page = (Page) BufferGetPage(buffer);
-
-	_bt_pageinit(page, BufferGetPageSize(buffer));
-	pageop = (BTPageOpaque) PageGetSpecialPointer(page);
-
-	pageop->btpo_prev = xlrec->leftblk;
-	pageop->btpo_next = rightsib;
-	pageop->btpo.level = xlrec->level;
-	pageop->btpo_flags = (xlrec->level == 0) ? BTP_LEAF : 0;
-	pageop->btpo_cycleid = 0;
-
-	_bt_restore_page(page,
-					 (char *) xlrec + SizeOfBtreeSplit,
-					 xlrec->leftlen);
-
-	if (onleft && xlrec->level > 0)
-	{
-		IndexTuple	itup;
-
-		/* extract downlink in the target tuple */
-		itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, targetoff));
-		downlink = ItemPointerGetBlockNumber(&(itup->t_tid));
-		Assert(ItemPointerGetOffsetNumber(&(itup->t_tid)) == P_HIKEY);
-	}
-
-	PageSetLSN(page, lsn);
-	PageSetTLI(page, ThisTimeLineID);
-	MarkBufferDirty(buffer);
-	UnlockReleaseBuffer(buffer);
-
-	/* Right (new) sibling */
-	buffer = XLogReadBuffer(reln, rightsib, true);
-	Assert(BufferIsValid(buffer));
-	page = (Page) BufferGetPage(buffer);
-
-	_bt_pageinit(page, BufferGetPageSize(buffer));
-	pageop = (BTPageOpaque) PageGetSpecialPointer(page);
-
-	pageop->btpo_prev = leftsib;
-	pageop->btpo_next = xlrec->rightblk;
-	pageop->btpo.level = xlrec->level;
-	pageop->btpo_flags = (xlrec->level == 0) ? BTP_LEAF : 0;
-	pageop->btpo_cycleid = 0;
-
-	_bt_restore_page(page,
-					 (char *) xlrec + SizeOfBtreeSplit + xlrec->leftlen,
-					 record->xl_len - SizeOfBtreeSplit - xlrec->leftlen);
-
-	if (!onleft && xlrec->level > 0)
-	{
-		IndexTuple	itup;
-
-		/* extract downlink in the target tuple */
-		itup = (IndexTuple) PageGetItem(page, PageGetItemId(page, targetoff));
-		downlink = ItemPointerGetBlockNumber(&(itup->t_tid));
-		Assert(ItemPointerGetOffsetNumber(&(itup->t_tid)) == P_HIKEY);
-	}
-
-	PageSetLSN(page, lsn);
-	PageSetTLI(page, ThisTimeLineID);
-	MarkBufferDirty(buffer);
-	UnlockReleaseBuffer(buffer);
-
-	/* Fix left-link of right (next) page */
-	if (!(record->xl_info & XLR_BKP_BLOCK_1))
-	{
-		if (xlrec->rightblk != P_NONE)
-		{
-			buffer = XLogReadBuffer(reln, xlrec->rightblk, false);
-			if (BufferIsValid(buffer))
-			{
-				page = (Page) BufferGetPage(buffer);
-
-				if (XLByteLE(lsn, PageGetLSN(page)))
-				{
-					UnlockReleaseBuffer(buffer);
-				}
-				else
-				{
-					pageop = (BTPageOpaque) PageGetSpecialPointer(page);
-					pageop->btpo_prev = rightsib;
-
-					PageSetLSN(page, lsn);
-					PageSetTLI(page, ThisTimeLineID);
-					MarkBufferDirty(buffer);
-					UnlockReleaseBuffer(buffer);
-				}
-			}
-		}
-	}
+	datapos = (char *) xlrec + SizeOfBtreeSplit;
+	datalen = record->xl_len - SizeOfBtreeSplit;
 
 	/* Forget any split this insertion completes */
 	if (xlrec->level > 0)
-		forget_matching_split(xlrec->target.node, downlink, false);
+	{
+		/* we assume SizeOfBtreeSplit is at least 16-bit aligned */
+		BlockNumber downlink = BlockIdGetBlockNumber((BlockId) datapos);
+
+		datapos += sizeof(BlockIdData);
+		datalen -= sizeof(BlockIdData);
+
+		forget_matching_split(xlrec->node, downlink, false);
+
+		/* Extract left hikey and its size (still assuming 16-bit alignment) */
+		if (!(record->xl_info & XLR_BKP_BLOCK_1))
+		{
+			/* We assume 16-bit alignment is enough for IndexTupleSize */
+			left_hikey = (Item) datapos;
+			left_hikeysz = MAXALIGN(IndexTupleSize(left_hikey));
+
+			datapos += left_hikeysz;
+			datalen -= left_hikeysz;
+		}
+	}
+
+	/* Extract newitem and newitemoff, if present */
+	if (onleft)
+	{
+		/* Extract the offset (still assuming 16-bit alignment) */
+		memcpy(&newitemoff, datapos, sizeof(OffsetNumber));
+		datapos += sizeof(OffsetNumber);
+		datalen -= sizeof(OffsetNumber);
+	}
+
+	if (onleft && !(record->xl_info & XLR_BKP_BLOCK_1))
+	{
+		/*
+		 * We assume that 16-bit alignment is enough to apply IndexTupleSize
+		 * (since it's fetching from a uint16 field) and also enough for
+		 * PageAddItem to insert the tuple.
+		 */
+		newitem = (Item) datapos;
+		newitemsz = MAXALIGN(IndexTupleSize(newitem));
+		datapos += newitemsz;
+		datalen -= newitemsz;
+	}
+
+	/* Reconstruct right (new) sibling from scratch */
+	rbuf = XLogReadBuffer(reln, xlrec->rightsib, true);
+	Assert(BufferIsValid(rbuf));
+	rpage = (Page) BufferGetPage(rbuf);
+
+	_bt_pageinit(rpage, BufferGetPageSize(rbuf));
+	ropaque = (BTPageOpaque) PageGetSpecialPointer(rpage);
+
+	ropaque->btpo_prev = xlrec->leftsib;
+	ropaque->btpo_next = xlrec->rnext;
+	ropaque->btpo.level = xlrec->level;
+	ropaque->btpo_flags = (xlrec->level == 0) ? BTP_LEAF : 0;
+	ropaque->btpo_cycleid = 0;
+
+	_bt_restore_page(rpage, datapos, datalen);
+
+	/*
+	 * On leaf level, the high key of the left page is equal to the
+	 * first key on the right page.
+	 */
+	if (xlrec->level == 0)
+	{
+		ItemId		hiItemId = PageGetItemId(rpage, P_FIRSTDATAKEY(ropaque));
+
+		left_hikey = PageGetItem(rpage, hiItemId);
+		left_hikeysz = ItemIdGetLength(hiItemId);
+	}
+
+	PageSetLSN(rpage, lsn);
+	PageSetTLI(rpage, ThisTimeLineID);
+	MarkBufferDirty(rbuf);
+
+	/* don't release the buffer yet; we touch right page's first item below */
+
+	/*
+	 * Reconstruct left (original) sibling if needed.  Note that this code
+	 * ensures that the items remaining on the left page are in the correct
+	 * item number order, but it does not reproduce the physical order they
+	 * would have had.	Is this worth changing?  See also _bt_restore_page().
+	 */
+	if (!(record->xl_info & XLR_BKP_BLOCK_1))
+	{
+		Buffer		lbuf = XLogReadBuffer(reln, xlrec->leftsib, false);
+
+		if (BufferIsValid(lbuf))
+		{
+			Page		lpage = (Page) BufferGetPage(lbuf);
+			BTPageOpaque lopaque = (BTPageOpaque) PageGetSpecialPointer(lpage);
+
+			if (!XLByteLE(lsn, PageGetLSN(lpage)))
+			{
+				OffsetNumber off;
+				OffsetNumber maxoff = PageGetMaxOffsetNumber(lpage);
+				OffsetNumber deletable[MaxOffsetNumber];
+				int			ndeletable = 0;
+
+				/*
+				 * Remove the items from the left page that were copied to the
+				 * right page.	Also remove the old high key, if any. (We must
+				 * remove everything before trying to insert any items, else
+				 * we risk not having enough space.)
+				 */
+				if (!P_RIGHTMOST(lopaque))
+				{
+					deletable[ndeletable++] = P_HIKEY;
+
+					/*
+					 * newitemoff is given to us relative to the original
+					 * page's item numbering, so adjust it for this deletion.
+					 */
+					newitemoff--;
+				}
+				for (off = xlrec->firstright; off <= maxoff; off++)
+					deletable[ndeletable++] = off;
+				if (ndeletable > 0)
+					PageIndexMultiDelete(lpage, deletable, ndeletable);
+
+				/*
+				 * Add the new item if it was inserted on left page.
+				 */
+				if (onleft)
+				{
+					if (PageAddItem(lpage, newitem, newitemsz, newitemoff,
+									false, false) == InvalidOffsetNumber)
+						elog(PANIC, "failed to add new item to left page after split");
+				}
+
+				/* Set high key */
+				if (PageAddItem(lpage, left_hikey, left_hikeysz,
+								P_HIKEY, false, false) == InvalidOffsetNumber)
+					elog(PANIC, "failed to add high key to left page after split");
+
+				/* Fix opaque fields */
+				lopaque->btpo_flags = (xlrec->level == 0) ? BTP_LEAF : 0;
+				lopaque->btpo_next = xlrec->rightsib;
+				lopaque->btpo_cycleid = 0;
+
+				PageSetLSN(lpage, lsn);
+				PageSetTLI(lpage, ThisTimeLineID);
+				MarkBufferDirty(lbuf);
+			}
+
+			UnlockReleaseBuffer(lbuf);
+		}
+	}
+
+	/* We no longer need the right buffer */
+	UnlockReleaseBuffer(rbuf);
+
+	/* Fix left-link of the page to the right of the new right sibling */
+	if (xlrec->rnext != P_NONE && !(record->xl_info & XLR_BKP_BLOCK_2))
+	{
+		Buffer		buffer = XLogReadBuffer(reln, xlrec->rnext, false);
+
+		if (BufferIsValid(buffer))
+		{
+			Page		page = (Page) BufferGetPage(buffer);
+
+			if (!XLByteLE(lsn, PageGetLSN(page)))
+			{
+				BTPageOpaque pageop = (BTPageOpaque) PageGetSpecialPointer(page);
+
+				pageop->btpo_prev = xlrec->rightsib;
+
+				PageSetLSN(page, lsn);
+				PageSetTLI(page, ThisTimeLineID);
+				MarkBufferDirty(buffer);
+			}
+			UnlockReleaseBuffer(buffer);
+		}
+	}
 
 	/* The job ain't done till the parent link is inserted... */
-	log_incomplete_split(xlrec->target.node,
-						 leftsib, rightsib, isroot);
+	log_incomplete_split(xlrec->node,
+						 xlrec->leftsib, xlrec->rightsib, isroot);
 }
 
 static void
@@ -419,7 +500,7 @@ btree_xlog_delete(XLogRecPtr lsn, XLogRecord *record)
 	}
 
 	/*
-	 * Mark the page as not containing any LP_DELETE items --- see comments in
+	 * Mark the page as not containing any LP_DEAD items --- see comments in
 	 * _bt_delitems().
 	 */
 	opaque = (BTPageOpaque) PageGetSpecialPointer(page);
@@ -727,40 +808,48 @@ btree_desc(StringInfo buf, uint8 xl_info, char *rec)
 			{
 				xl_btree_split *xlrec = (xl_btree_split *) rec;
 
-				appendStringInfo(buf, "split_l: ");
-				out_target(buf, &(xlrec->target));
-				appendStringInfo(buf, "; oth %u; rgh %u",
-								 xlrec->otherblk, xlrec->rightblk);
+				appendStringInfo(buf, "split_l: rel %u/%u/%u ",
+								 xlrec->node.spcNode, xlrec->node.dbNode,
+								 xlrec->node.relNode);
+				appendStringInfo(buf, "left %u, right %u, next %u, level %u, firstright %d",
+							   xlrec->leftsib, xlrec->rightsib, xlrec->rnext,
+								 xlrec->level, xlrec->firstright);
 				break;
 			}
 		case XLOG_BTREE_SPLIT_R:
 			{
 				xl_btree_split *xlrec = (xl_btree_split *) rec;
 
-				appendStringInfo(buf, "split_r: ");
-				out_target(buf, &(xlrec->target));
-				appendStringInfo(buf, "; oth %u; rgh %u",
-								 xlrec->otherblk, xlrec->rightblk);
+				appendStringInfo(buf, "split_r: rel %u/%u/%u ",
+								 xlrec->node.spcNode, xlrec->node.dbNode,
+								 xlrec->node.relNode);
+				appendStringInfo(buf, "left %u, right %u, next %u, level %u, firstright %d",
+							   xlrec->leftsib, xlrec->rightsib, xlrec->rnext,
+								 xlrec->level, xlrec->firstright);
 				break;
 			}
 		case XLOG_BTREE_SPLIT_L_ROOT:
 			{
 				xl_btree_split *xlrec = (xl_btree_split *) rec;
 
-				appendStringInfo(buf, "split_l_root: ");
-				out_target(buf, &(xlrec->target));
-				appendStringInfo(buf, "; oth %u; rgh %u",
-								 xlrec->otherblk, xlrec->rightblk);
+				appendStringInfo(buf, "split_l_root: rel %u/%u/%u ",
+								 xlrec->node.spcNode, xlrec->node.dbNode,
+								 xlrec->node.relNode);
+				appendStringInfo(buf, "left %u, right %u, next %u, level %u, firstright %d",
+							   xlrec->leftsib, xlrec->rightsib, xlrec->rnext,
+								 xlrec->level, xlrec->firstright);
 				break;
 			}
 		case XLOG_BTREE_SPLIT_R_ROOT:
 			{
 				xl_btree_split *xlrec = (xl_btree_split *) rec;
 
-				appendStringInfo(buf, "split_r_root: ");
-				out_target(buf, &(xlrec->target));
-				appendStringInfo(buf, "; oth %u; rgh %u",
-								 xlrec->otherblk, xlrec->rightblk);
+				appendStringInfo(buf, "split_r_root: rel %u/%u/%u ",
+								 xlrec->node.spcNode, xlrec->node.dbNode,
+								 xlrec->node.relNode);
+				appendStringInfo(buf, "left %u, right %u, next %u, level %u, firstright %d",
+							   xlrec->leftsib, xlrec->rightsib, xlrec->rnext,
+								 xlrec->level, xlrec->firstright);
 				break;
 			}
 		case XLOG_BTREE_DELETE:

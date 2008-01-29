@@ -14,13 +14,14 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/dbcommands.c,v 1.187.2.2 2007/04/12 15:04:41 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/dbcommands.c,v 1.204 2008/01/01 19:45:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include <fcntl.h>
+#include <locale.h>
 #include <unistd.h>
 #include <sys/stat.h>
 
@@ -39,6 +40,7 @@
 #include "commands/tablespace.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "pgstat.h"
 #include "postmaster/bgwriter.h"
 #include "storage/freespace.h"
 #include "storage/procarray.h"
@@ -193,8 +195,10 @@ createdb_int(CreatedbStmt *stmt,
 	const char *dbtemplate = NULL;
 	int			encoding = -1;
 	int			dbconnlimit = -1;
+	int			ctype_encoding;
 
 	bool		shouldDispatch = (Gp_role == GP_ROLE_DISPATCH);
+
 
 	if (shouldDispatch)
 		if (IsBootstrapProcessingMode())
@@ -283,12 +287,12 @@ createdb_int(CreatedbStmt *stmt,
 		else if (IsA(dencoding->arg, String))
 		{
 			encoding_name = strVal(dencoding->arg);
-			if (pg_valid_server_encoding(encoding_name) < 0)
+			encoding = pg_valid_server_encoding(encoding_name);
+			if (encoding < 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("%s is not a valid encoding name",
 								encoding_name)));
-			encoding = pg_char_to_encoding(encoding_name);
 		}
 		else
 			elog(ERROR, "unrecognized node type: %d",
@@ -351,17 +355,6 @@ createdb_int(CreatedbStmt *stmt,
 							dbtemplate)));
 	}
 
-	/*
-	 * The source DB can't have any active backends, except this one
-	 * (exception is to allow CREATE DB while connected to template1).
-	 * Otherwise we might copy inconsistent data.
-	 */
-	if (DatabaseHasActiveBackends(src_dboid, true))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-			errmsg("source database \"%s\" is being accessed by other users",
-				   dbtemplate)));
-
 	/* If encoding is defaulted, use source's encoding */
 	if (encoding < 0)
 		encoding = src_encoding;
@@ -371,6 +364,39 @@ createdb_int(CreatedbStmt *stmt,
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("invalid server encoding %d", encoding)));
+
+	/*
+	 * Check whether encoding matches server locale settings.  We allow
+	 * mismatch in three cases:
+	 *
+	 * 1. ctype_encoding = SQL_ASCII, which means either that the locale is
+	 * C/POSIX which works with any encoding, or that we couldn't determine
+	 * the locale's encoding and have to trust the user to get it right.
+	 *
+	 * 2. selected encoding is SQL_ASCII, but only if you're a superuser. This
+	 * is risky but we have historically allowed it --- notably, the
+	 * regression tests require it.
+	 *
+	 * 3. selected encoding is UTF8 and platform is win32. This is because
+	 * UTF8 is a pseudo codepage that is supported in all locales since it's
+	 * converted to UTF16 before being used.
+	 *
+	 * Note: if you change this policy, fix initdb to match.
+	 */
+	ctype_encoding = pg_get_encoding_from_locale(NULL);
+
+	if (!(ctype_encoding == encoding ||
+		  ctype_encoding == PG_SQL_ASCII ||
+#ifdef WIN32
+		  encoding == PG_UTF8 ||
+#endif
+		  (encoding == PG_SQL_ASCII && superuser())))
+		ereport(ERROR,
+				(errmsg("encoding %s does not match server's locale %s",
+						pg_encoding_to_char(encoding),
+						setlocale(LC_CTYPE, NULL)),
+			 errdetail("The server's LC_CTYPE setting requires encoding %s.",
+					   pg_encoding_to_char(ctype_encoding))));
 
 	/* Resolve default tablespace for new database */
 	if (dtablespacename && dtablespacename->arg)
@@ -391,6 +417,12 @@ createdb_int(CreatedbStmt *stmt,
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, ACL_KIND_TABLESPACE,
 						   tablespacename);
+
+		/* pg_global must never be the default tablespace */
+		if (dst_deftablespace == GLOBALTABLESPACE_OID)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				  errmsg("pg_global cannot be used as default tablespace")));
 
 		/*
 		 * If we are trying to change the default tablespace of the template,
@@ -441,8 +473,23 @@ createdb_int(CreatedbStmt *stmt,
 				 errmsg("database \"%s\" already exists", dbname)));
 
 	/*
-	 * Select an OID for the new database, checking that it doesn't have
-	 * a filename conflict with anything already existing in the tablespace
+	 * The source DB can't have any active backends, except this one
+	 * (exception is to allow CREATE DB while connected to template1).
+	 * Otherwise we might copy inconsistent data.
+	 *
+	 * This should be last among the basic error checks, because it involves
+	 * potential waiting; we may as well throw an error first if we're gonna
+	 * throw one.
+	 */
+	if (CheckOtherDBBackends(src_dboid))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+			errmsg("source database \"%s\" is being accessed by other users",
+				   dbtemplate)));
+
+	/*
+	 * Select an OID for the new database, checking that it doesn't have a
+	 * filename conflict with anything already existing in the tablespace
 	 * directories.
 	 */
 	pg_database_rel = heap_open(DatabaseRelationId, RowExclusiveLock);
@@ -531,10 +578,9 @@ createdb_int(CreatedbStmt *stmt,
 
 	/*
 	 * Force dirty buffers out to disk, to ensure source database is
-	 * up-to-date for the copy.  (We really only need to flush buffers for the
-	 * source database, but bufmgr.c provides no API for that.)
+	 * up-to-date for the copy.
 	 */
-	BufferSync();
+	FlushDatabaseBuffers(src_dboid);
 
 	/*
 	 * Once we start copying subdirectories, we need to be able to clean 'em
@@ -637,7 +683,7 @@ createdb_int(CreatedbStmt *stmt,
 		 * Perhaps if we ever implement CREATE DATABASE in a less cheesy way,
 		 * we can avoid this.
 		 */
-		RequestCheckpoint(true, false);
+		RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 
 		/*
 		 * Close pg_database, but keep lock till commit (this is important to
@@ -646,7 +692,11 @@ createdb_int(CreatedbStmt *stmt,
 		heap_close(pg_database_rel, NoLock);
 
 		/*
-		 * Set flag to update flat database file at commit.
+		 * Set flag to update flat database file at commit.  Note: this also
+		 * forces synchronous commit, which minimizes the window between
+		 * creation of the database files and commital of the transaction. If
+		 * we crash before committing, we'll have a DB that's taking up disk
+		 * space but is not in pg_database, which is not good.
 		 */
 		database_file_update_needed();
 	}
@@ -675,15 +725,6 @@ dropdb(const char *dbname, bool missing_ok)
 	bool		db_istemplate = true;
 	Relation	pgdbrel;
 	HeapTuple	tup;
-
-	PreventTransactionChain((void *) dbname, "DROP DATABASE");
-
-	AssertArg(dbname);
-
-	if (strcmp(dbname, get_database_name(MyDatabaseId)) == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("cannot drop the currently open database")));
 
 	/*
 	 * Look up the target database's OID, and get exclusive lock on it. We
@@ -746,11 +787,19 @@ dropdb(const char *dbname, bool missing_ok)
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("cannot drop a template database")));
 
+	/* Obviously can't drop my own database */
+	if (db_id == MyDatabaseId)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("cannot drop the currently open database")));
+
 	/*
-	 * Check for active backends in the target database.  (Because we hold the
+	 * Check for other backends in the target database.  (Because we hold the
 	 * database lock, no new ones can start after this.)
+	 *
+	 * As in CREATE DATABASE, check this after other error conditions.
 	 */
-	if (DatabaseHasActiveBackends(db_id, false))
+	if (CheckOtherDBBackends(db_id))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
 				 errmsg("database \"%s\" is being accessed by other users",
@@ -814,6 +863,11 @@ dropdb(const char *dbname, bool missing_ok)
 	FreeSpaceMapForgetDatabase(db_id);
 
 	/*
+	 * Tell the stats collector to forget it immediately, too.
+	 */
+	pgstat_drop_database(db_id);
+
+	/*
 	 * Tell bgwriter to forget any pending fsync requests for files in the
 	 * database; else it'll fail at next checkpoint.
 	 */
@@ -824,7 +878,7 @@ dropdb(const char *dbname, bool missing_ok)
 	 * open files, which would cause rmdir() to fail.
 	 */
 #ifdef WIN32
-	RequestCheckpoint(true, false);
+	RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
 #endif
 
 	/*
@@ -839,7 +893,11 @@ dropdb(const char *dbname, bool missing_ok)
 	heap_close(pgdbrel, NoLock);
 
 	/*
-	 * Set flag to update flat database file at commit.
+	 * Set flag to update flat database file at commit.  Note: this also
+	 * forces synchronous commit, which minimizes the window between removal
+	 * of the database files and commital of the transaction. If we crash
+	 * before committing, we'll have a DB that's gone on disk but still there
+	 * according to pg_database, which is not good.
 	 */
 	database_file_update_needed();
 }
@@ -867,33 +925,6 @@ RenameDatabase(const char *oldname, const char *newname)
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
 				 errmsg("database \"%s\" does not exist", oldname)));
 
-	/*
-	 * XXX Client applications probably store the current database somewhere,
-	 * so renaming it could cause confusion.  On the other hand, there may not
-	 * be an actual problem besides a little confusion, so think about this
-	 * and decide.
-	 */
-	if (db_id == MyDatabaseId)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("current database may not be renamed")));
-
-	/*
-	 * Make sure the database does not have active sessions.  This is the same
-	 * concern as above, but applied to other sessions.
-	 */
-	if (DatabaseHasActiveBackends(db_id, false))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("database \"%s\" is being accessed by other users",
-						oldname)));
-
-	/* make sure the new name doesn't exist */
-	if (OidIsValid(get_database_oid(newname)))
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_DATABASE),
-				 errmsg("database \"%s\" already exists", newname)));
-
 	/* must be owner */
 	if (!pg_database_ownercheck(db_id, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
@@ -904,6 +935,38 @@ RenameDatabase(const char *oldname, const char *newname)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to rename database")));
+
+	/*
+	 * Make sure the new name doesn't exist.  See notes for same error in
+	 * CREATE DATABASE.
+	 */
+	if (OidIsValid(get_database_oid(newname)))
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_DATABASE),
+				 errmsg("database \"%s\" already exists", newname)));
+
+	/*
+	 * XXX Client applications probably store the current database somewhere,
+	 * so renaming it could cause confusion.  On the other hand, there may not
+	 * be an actual problem besides a little confusion, so think about this
+	 * and decide.
+	 */
+	if (db_id == MyDatabaseId)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("current database cannot be renamed")));
+
+	/*
+	 * Make sure the database does not have active sessions.  This is the same
+	 * concern as above, but applied to other sessions.
+	 *
+	 * As in CREATE DATABASE, check this after other error conditions.
+	 */
+	if (CheckOtherDBBackends(db_id))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 errmsg("database \"%s\" is being accessed by other users",
+						oldname)));
 
 	/* rename */
 	newtup = SearchSysCacheCopy(DATABASEOID,
@@ -1051,7 +1114,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 	char		repl_null[Natts_pg_database];
 	char		repl_repl[Natts_pg_database];
 
-	valuestr = flatten_set_variable_args(stmt->variable, stmt->value);
+	valuestr = ExtractSetVariableArgs(stmt->setstmt);
 
 	/*
 	 * Get the old tuple.  We don't need a lock on the database per se,
@@ -1075,12 +1138,12 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
 					   stmt->dbname);
 
-	MemSet(repl_repl, ' ', sizeof(repl_repl));
+	memset(repl_repl, ' ', sizeof(repl_repl));
 	repl_repl[Anum_pg_database_datconfig - 1] = 'r';
 
-	if (strcmp(stmt->variable, "all") == 0 && valuestr == NULL)
+	if (stmt->setstmt->kind == VAR_RESET_ALL)
 	{
-		/* RESET ALL */
+		/* RESET ALL, so just set datconfig to null */
 		repl_null[Anum_pg_database_datconfig - 1] = 'n';
 		repl_val[Anum_pg_database_datconfig - 1] = (Datum) 0;
 	}
@@ -1092,15 +1155,16 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 
 		repl_null[Anum_pg_database_datconfig - 1] = ' ';
 
+		/* Extract old value of datconfig */
 		datum = heap_getattr(tuple, Anum_pg_database_datconfig,
 							 RelationGetDescr(rel), &isnull);
-
 		a = isnull ? NULL : DatumGetArrayTypeP(datum);
 
+		/* Update (valuestr is NULL in RESET cases) */
 		if (valuestr)
-			a = GUCArrayAdd(a, stmt->variable, valuestr);
+			a = GUCArrayAdd(a, stmt->setstmt->name, valuestr);
 		else
-			a = GUCArrayDelete(a, stmt->variable);
+			a = GUCArrayDelete(a, stmt->setstmt->name);
 
 		if (a)
 			repl_val[Anum_pg_database_datconfig - 1] = PointerGetDatum(a);
@@ -1108,7 +1172,8 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 			repl_null[Anum_pg_database_datconfig - 1] = 'n';
 	}
 
-	newtuple = heap_modifytuple(tuple, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
+	newtuple = heap_modifytuple(tuple, RelationGetDescr(rel),
+								repl_val, repl_null, repl_repl);
 	simple_heap_update(rel, &tuple->t_self, newtuple);
 
 	/* Update indexes */
@@ -1656,10 +1721,9 @@ dbase_redo(XLogRecPtr lsn  __attribute__((unused)), XLogRecord *record)
 
 		/*
 		 * Force dirty buffers out to disk, to ensure source database is
-		 * up-to-date for the copy.  (We really only need to flush buffers for
-		 * the source database, but bufmgr.c provides no API for that.)
+		 * up-to-date for the copy.
 		 */
-		BufferSync();
+		FlushDatabaseBuffers(xlrec->src_db_id);
 
 		/*
 		 * Copy this subdirectory to the new location

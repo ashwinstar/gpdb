@@ -42,7 +42,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/multixact.c,v 1.22 2006/11/17 18:00:15 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/multixact.c,v 1.27 2008/01/01 19:45:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -380,9 +380,9 @@ MultiXactIdIsRunning(MultiXactId multi)
 	}
 
 	/*
-	 * Checking for myself is cheap compared to looking in shared memory,
-	 * so first do the equivalent of MultiXactIdIsCurrent().  This is not
-	 * needed for correctness, it's just a fast path.
+	 * Checking for myself is cheap compared to looking in shared memory, so
+	 * first do the equivalent of MultiXactIdIsCurrent().  This is not needed
+	 * for correctness, it's just a fast path.
 	 */
 	for (i = 0; i < nmembers; i++)
 	{
@@ -749,7 +749,7 @@ RecordNewMultiXact(MultiXactId multi, MultiXactOffset offset,
 	 * enough that a MultiXactId is really involved.  Perhaps someday we'll
 	 * take the trouble to generalize the slru.c error reporting code.
 	 */
-	slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, multi);
+	slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, multi);
 	offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 	offptr += entryno;
 
@@ -773,7 +773,7 @@ RecordNewMultiXact(MultiXactId multi, MultiXactOffset offset,
 
 		if (pageno != prev_pageno)
 		{
-			slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, multi);
+			slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, true, multi);
 			prev_pageno = pageno;
 		}
 
@@ -993,7 +993,7 @@ retry:
 	pageno = MultiXactIdToOffsetPage(multi);
 	entryno = MultiXactIdToOffsetEntry(multi);
 
-	slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, multi);
+	slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, multi);
 	offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 	offptr += entryno;
 	offset = *offptr;
@@ -1025,7 +1025,7 @@ retry:
 		entryno = MultiXactIdToOffsetEntry(tmpMXact);
 
 		if (pageno != prev_pageno)
-			slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, tmpMXact);
+			slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, tmpMXact);
 
 		offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 		offptr += entryno;
@@ -1061,7 +1061,7 @@ retry:
 
 		if (pageno != prev_pageno)
 		{
-			slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, multi);
+			slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, true, multi);
 			prev_pageno = pageno;
 		}
 
@@ -1289,8 +1289,8 @@ MultiXactShmemSize(void)
 			 mul_size(sizeof(MultiXactId) * 2, MaxBackends))
 
 	size = SHARED_MULTIXACT_STATE_SIZE;
-	size = add_size(size, SimpleLruShmemSize(NUM_MXACTOFFSET_BUFFERS));
-	size = add_size(size, SimpleLruShmemSize(NUM_MXACTMEMBER_BUFFERS));
+	size = add_size(size, SimpleLruShmemSize(NUM_MXACTOFFSET_BUFFERS, 0));
+	size = add_size(size, SimpleLruShmemSize(NUM_MXACTMEMBER_BUFFERS, 0));
 
 	return size;
 }
@@ -1306,10 +1306,10 @@ MultiXactShmemInit(void)
 	MultiXactMemberCtl->PagePrecedes = MultiXactMemberPagePrecedes;
 
 	SimpleLruInit(MultiXactOffsetCtl,
-				  "MultiXactOffset Ctl", NUM_MXACTOFFSET_BUFFERS,
+				  "MultiXactOffset Ctl", NUM_MXACTOFFSET_BUFFERS, 0,
 				  MultiXactOffsetControlLock, "pg_multixact/offsets");
 	SimpleLruInit(MultiXactMemberCtl,
-				  "MultiXactMember Ctl", NUM_MXACTMEMBER_BUFFERS,
+				  "MultiXactMember Ctl", NUM_MXACTMEMBER_BUFFERS, 0,
 				  MultiXactMemberControlLock, "pg_multixact/members");
 
 	/* Initialize our shared state struct */
@@ -1442,7 +1442,7 @@ StartupMultiXact(void)
 		int			slotno;
 		MultiXactOffset *offptr;
 
-		slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, multi);
+		slotno = SimpleLruReadPage(MultiXactOffsetCtl, pageno, true, multi);
 		offptr = (MultiXactOffset *) MultiXactOffsetCtl->shared->page_buffer[slotno];
 		offptr += entryno;
 
@@ -1472,7 +1472,7 @@ StartupMultiXact(void)
 		int			slotno;
 		TransactionId *xidptr;
 
-		slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, offset);
+		slotno = SimpleLruReadPage(MultiXactMemberCtl, pageno, true, offset);
 		xidptr = (TransactionId *) MultiXactMemberCtl->shared->page_buffer[slotno];
 		xidptr += entryno;
 
@@ -1842,9 +1842,6 @@ MultiXactOffsetPrecedes(MultiXactOffset offset1, MultiXactOffset offset2)
 /*
  * Write an xlog record reflecting the zeroing of either a MEMBERs or
  * OFFSETs page (info shows which)
- *
- * Note: xlog record is marked as outside transaction control, since we
- * want it to be redone whether the invoking transaction commits or not.
  */
 static void
 WriteMZeroPageXlogRec(int pageno, uint8 info)
@@ -1855,7 +1852,7 @@ WriteMZeroPageXlogRec(int pageno, uint8 info)
 	rdata.len = sizeof(int);
 	rdata.buffer = InvalidBuffer;
 	rdata.next = NULL;
-	(void) XLogInsert(RM_MULTIXACT_ID, info | XLOG_NO_TRAN, &rdata);
+	(void) XLogInsert(RM_MULTIXACT_ID, info, &rdata);
 }
 
 /*

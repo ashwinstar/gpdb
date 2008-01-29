@@ -8,13 +8,14 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipci.c,v 1.89 2006/10/15 22:04:07 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipci.c,v 1.94 2008/01/01 19:45:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/clog.h"
+#include "access/heapam.h"
 #include "access/multixact.h"
 #include "access/nbtree.h"
 #include "access/subtrans.h"
@@ -23,6 +24,7 @@
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "postmaster/autovacuum.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
@@ -50,7 +52,7 @@ static bool addin_request_allowed = true;
  *		a loadable module.
  *
  * This is only useful if called from the _PG_init hook of a library that
- * is loaded into the postmaster via shared_preload_libraries.  Once
+ * is loaded into the postmaster via shared_preload_libraries.	Once
  * shared memory has been allocated, calls will be ignored.  (We could
  * raise an error, but it seems better to make it a no-op, so that
  * libraries containing such calls can be reloaded if needed.)
@@ -140,6 +142,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, SeqServerShmemSize());
 		size = add_size(size, WalSendServerShmemSize());
 		size = add_size(size, WalRedoServerShmemSize());
+		size = add_size(size, AutoVacuumShmemSize());
+		size = add_size(size, BTreeShmemSize());
+		size = add_size(size, SyncScanShmemSize());
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
 #endif
@@ -266,11 +271,13 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	SeqServerShmemInit();
 	WalSendServerShmemInit();
 	WalRedoServerShmemInit();
+	AutoVacuumShmemInit();
 
 	/*
 	 * Set up other modules that need some shared memory space
 	 */
 	BTreeShmemInit();
+	SyncScanShmemInit();
 
 #ifdef EXEC_BACKEND
 

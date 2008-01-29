@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_constraint.c,v 1.33 2006/07/14 14:52:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_constraint.c,v 1.38 2008/01/17 18:56:54 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,13 +19,13 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_constraint.h"
-#include "catalog/pg_depend.h"
-#include "catalog/pg_trigger.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 
@@ -49,6 +49,9 @@ CreateConstraintEntry(const char *constraintName,
 					  Oid domainId,
 					  Oid foreignRelId,
 					  const int16 *foreignKey,
+					  const Oid *pfEqOp,
+					  const Oid *ppEqOp,
+					  const Oid *ffEqOp,
 					  int foreignNKeys,
 					  char foreignUpdateType,
 					  char foreignDeleteType,
@@ -65,6 +68,9 @@ CreateConstraintEntry(const char *constraintName,
 	Datum		values[Natts_pg_constraint];
 	ArrayType  *conkeyArray;
 	ArrayType  *confkeyArray;
+	ArrayType  *conpfeqopArray;
+	ArrayType  *conppeqopArray;
+	ArrayType  *conffeqopArray;
 	NameData	cname;
 	int			i;
 	ObjectAddress conobject;
@@ -92,16 +98,33 @@ CreateConstraintEntry(const char *constraintName,
 
 	if (foreignNKeys > 0)
 	{
-		Datum	   *confkey;
+		Datum	   *fkdatums;
 
-		confkey = (Datum *) palloc(foreignNKeys * sizeof(Datum));
+		fkdatums = (Datum *) palloc(foreignNKeys * sizeof(Datum));
 		for (i = 0; i < foreignNKeys; i++)
-			confkey[i] = Int16GetDatum(foreignKey[i]);
-		confkeyArray = construct_array(confkey, foreignNKeys,
+			fkdatums[i] = Int16GetDatum(foreignKey[i]);
+		confkeyArray = construct_array(fkdatums, foreignNKeys,
 									   INT2OID, 2, true, 's');
+		for (i = 0; i < foreignNKeys; i++)
+			fkdatums[i] = ObjectIdGetDatum(pfEqOp[i]);
+		conpfeqopArray = construct_array(fkdatums, foreignNKeys,
+										 OIDOID, sizeof(Oid), true, 'i');
+		for (i = 0; i < foreignNKeys; i++)
+			fkdatums[i] = ObjectIdGetDatum(ppEqOp[i]);
+		conppeqopArray = construct_array(fkdatums, foreignNKeys,
+										 OIDOID, sizeof(Oid), true, 'i');
+		for (i = 0; i < foreignNKeys; i++)
+			fkdatums[i] = ObjectIdGetDatum(ffEqOp[i]);
+		conffeqopArray = construct_array(fkdatums, foreignNKeys,
+										 OIDOID, sizeof(Oid), true, 'i');
 	}
 	else
+	{
 		confkeyArray = NULL;
+		conpfeqopArray = NULL;
+		conppeqopArray = NULL;
+		conffeqopArray = NULL;
+	}
 
 	/* initialize nulls and values */
 	for (i = 0; i < Natts_pg_constraint; i++)
@@ -131,6 +154,21 @@ CreateConstraintEntry(const char *constraintName,
 		values[Anum_pg_constraint_confkey - 1] = PointerGetDatum(confkeyArray);
 	else
 		nulls[Anum_pg_constraint_confkey - 1] = 'n';
+
+	if (conpfeqopArray)
+		values[Anum_pg_constraint_conpfeqop - 1] = PointerGetDatum(conpfeqopArray);
+	else
+		nulls[Anum_pg_constraint_conpfeqop - 1] = 'n';
+
+	if (conppeqopArray)
+		values[Anum_pg_constraint_conppeqop - 1] = PointerGetDatum(conppeqopArray);
+	else
+		nulls[Anum_pg_constraint_conppeqop - 1] = 'n';
+
+	if (conffeqopArray)
+		values[Anum_pg_constraint_conffeqop - 1] = PointerGetDatum(conffeqopArray);
+	else
+		nulls[Anum_pg_constraint_conffeqop - 1] = 'n';
 
 	/*
 	 * initialize the binary form of the check constraint.
@@ -244,6 +282,36 @@ CreateConstraintEntry(const char *constraintName,
 		relobject.objectSubId = 0;
 
 		recordDependencyOn(&conobject, &relobject, DEPENDENCY_NORMAL);
+	}
+
+	if (foreignNKeys > 0)
+	{
+		/*
+		 * Register normal dependencies on the equality operators that support
+		 * a foreign-key constraint.  If the PK and FK types are the same then
+		 * all three operators for a column are the same; otherwise they are
+		 * different.
+		 */
+		ObjectAddress oprobject;
+
+		oprobject.classId = OperatorRelationId;
+		oprobject.objectSubId = 0;
+
+		for (i = 0; i < foreignNKeys; i++)
+		{
+			oprobject.objectId = pfEqOp[i];
+			recordDependencyOn(&conobject, &oprobject, DEPENDENCY_NORMAL);
+			if (ppEqOp[i] != pfEqOp[i])
+			{
+				oprobject.objectId = ppEqOp[i];
+				recordDependencyOn(&conobject, &oprobject, DEPENDENCY_NORMAL);
+			}
+			if (ffEqOp[i] != pfEqOp[i])
+			{
+				oprobject.objectId = ffEqOp[i];
+				recordDependencyOn(&conobject, &oprobject, DEPENDENCY_NORMAL);
+			}
+		}
 	}
 
 	if (conExpr != NULL)
@@ -419,24 +487,16 @@ void
 RemoveConstraintById(Oid conId)
 {
 	Relation	conDesc;
-	ScanKeyData skey[1];
-	SysScanDesc conscan;
 	HeapTuple	tup;
 	Form_pg_constraint con;
 
 	conDesc = heap_open(ConstraintRelationId, RowExclusiveLock);
 
-	ScanKeyInit(&skey[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(conId));
-
-	conscan = systable_beginscan(conDesc, ConstraintOidIndexId, true,
-								 SnapshotNow, 1, skey);
-
-	tup = systable_getnext(conscan);
-	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "could not find tuple for constraint %u", conId);
+	tup = SearchSysCache(CONSTROID,
+						 ObjectIdGetDatum(conId),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup)) /* should not happen */
+		elog(ERROR, "cache lookup failed for constraint %u", conId);
 	con = (Form_pg_constraint) GETSTRUCT(tup);
 
 	/*
@@ -505,95 +565,69 @@ RemoveConstraintById(Oid conId)
 	simple_heap_delete(conDesc, &tup->t_self);
 
 	/* Clean up */
-	systable_endscan(conscan);
+	ReleaseSysCache(tup);
 	heap_close(conDesc, RowExclusiveLock);
 }
 
 /*
- * GetConstraintNameForTrigger
- *		Get the name of the constraint owning a trigger, if any
+ * RenameConstraintById
+ *		Rename a constraint.
  *
- * Returns a palloc'd string, or NULL if no constraint can be found
+ * Note: this isn't intended to be a user-exposed function; it doesn't check
+ * permissions etc.  Currently this is only invoked when renaming an index
+ * that is associated with a constraint, but it's made a little more general
+ * than that with the expectation of someday having ALTER TABLE RENAME
+ * CONSTRAINT.
  */
-char *
-GetConstraintNameForTrigger(Oid triggerId)
+void
+RenameConstraintById(Oid conId, const char *newname)
 {
-	char	   *result;
-	Oid			constraintId = InvalidOid;
-	Relation	depRel;
-	Relation	conRel;
-	ScanKeyData key[2];
-	SysScanDesc scan;
-	HeapTuple	tup;
+	Relation	conDesc;
+	HeapTuple	tuple;
+	Form_pg_constraint con;
+
+	conDesc = heap_open(ConstraintRelationId, RowExclusiveLock);
+
+	tuple = SearchSysCacheCopy(CONSTROID,
+							   ObjectIdGetDatum(conId),
+							   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for constraint %u", conId);
+	con = (Form_pg_constraint) GETSTRUCT(tuple);
 
 	/*
-	 * We must grovel through pg_depend to find the owning constraint. Perhaps
-	 * pg_trigger should have a column for the owning constraint ... but right
-	 * now this is not performance-critical code.
+	 * We need to check whether the name is already in use --- note that
+	 * there currently is not a unique index that would catch this.
 	 */
-	depRel = heap_open(DependRelationId, AccessShareLock);
+	if (OidIsValid(con->conrelid) &&
+		ConstraintNameIsUsed(CONSTRAINT_RELATION,
+							 con->conrelid,
+							 con->connamespace,
+							 newname))
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("constraint \"%s\" for relation \"%s\" already exists",
+						newname, get_rel_name(con->conrelid))));
+	if (OidIsValid(con->contypid) &&
+		ConstraintNameIsUsed(CONSTRAINT_DOMAIN,
+							 con->contypid,
+							 con->connamespace,
+							 newname))
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_OBJECT),
+				 errmsg("constraint \"%s\" for domain \"%s\" already exists",
+						newname, format_type_be(con->contypid))));
 
-	ScanKeyInit(&key[0],
-				Anum_pg_depend_classid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(TriggerRelationId));
-	ScanKeyInit(&key[1],
-				Anum_pg_depend_objid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(triggerId));
-	/* assume we can ignore objsubid for a trigger */
+	/* OK, do the rename --- tuple is a copy, so OK to scribble on it */
+	namestrcpy(&(con->conname), newname);
 
-	scan = systable_beginscan(depRel, DependDependerIndexId, true,
-							  SnapshotNow, 2, key);
+	simple_heap_update(conDesc, &tuple->t_self, tuple);
 
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
-	{
-		Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
+	/* update the system catalog indexes */
+	CatalogUpdateIndexes(conDesc, tuple);
 
-		if (foundDep->refclassid == ConstraintRelationId &&
-			foundDep->deptype == DEPENDENCY_INTERNAL)
-		{
-			constraintId = foundDep->refobjid;
-			break;
-		}
-	}
-
-	systable_endscan(scan);
-
-	heap_close(depRel, AccessShareLock);
-
-	if (!OidIsValid(constraintId))
-		return NULL;			/* no owning constraint found */
-
-	conRel = heap_open(ConstraintRelationId, AccessShareLock);
-
-	ScanKeyInit(&key[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(constraintId));
-
-	scan = systable_beginscan(conRel, ConstraintOidIndexId, true,
-							  SnapshotNow, 1, key);
-
-	tup = systable_getnext(scan);
-
-	if (HeapTupleIsValid(tup))
-	{
-		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tup);
-
-		result = pstrdup(NameStr(con->conname));
-	}
-	else
-	{
-		/* This arguably should be an error, but we'll just return NULL */
-		result = NULL;
-	}
-
-	systable_endscan(scan);
-
-	heap_close(conRel, AccessShareLock);
-
-	return result;
+	heap_freetuple(tuple);
+	heap_close(conDesc, RowExclusiveLock);
 }
 
 /*

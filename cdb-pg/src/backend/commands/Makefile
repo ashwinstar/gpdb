@@ -4,7 +4,7 @@
 #    Makefile for backend/commands
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/commands/Makefile,v 1.34 2004/06/18 06:13:22 tgl Exp $
+#    $PostgreSQL: pgsql/src/backend/commands/Makefile,v 1.37 2007/08/21 01:11:14 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -14,23 +14,17 @@ include $(top_builddir)/src/Makefile.global
 
 OBJS = aggregatecmds.o alter.o analyze.o async.o cluster.o comment.o  \
 	conversioncmds.o copy.o \
-	dbcommands.o define.o explain.o functioncmds.o \
+	dbcommands.o define.o discard.o explain.o functioncmds.o \
 	indexcmds.o lockcmds.o operatorcmds.o opclasscmds.o \
 	portalcmds.o prepare.o proclang.o queue.o \
 	schemacmds.o sequence.o tablecmds.o tablespace.o trigger.o \
-	typecmds.o user.o vacuum.o vacuumlazy.o variable.o view.o
+	tsearchcmds.o typecmds.o user.o vacuum.o vacuumlazy.o \
+	variable.o view.o
 
 all: SUBSYS.o
 
 SUBSYS.o: $(OBJS)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
 
-depend dep:
-	$(CC) -MM $(CFLAGS) *.c >depend
-
 clean:
 	rm -f SUBSYS.o $(OBJS)
-
-ifeq (depend,$(wildcard depend))
-include depend
-endif

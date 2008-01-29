@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/numutils.c,v 1.74 2006/03/11 01:19:22 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/numutils.c,v 1.76 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

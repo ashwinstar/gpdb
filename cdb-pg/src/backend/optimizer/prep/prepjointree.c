@@ -16,7 +16,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepjointree.c,v 1.44 2006/10/04 00:29:54 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepjointree.c,v 1.49 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -308,6 +308,10 @@ pull_up_simple_subquery(PlannerInfo *root, Node *jtnode, RangeTblEntry *rte,
 	 */
 	subroot = makeNode(PlannerInfo);
 	subroot->parse = subquery;
+	subroot->glob = root->glob;
+	subroot->query_level = root->query_level;
+	subroot->planner_cxt = CurrentMemoryContext;
+	subroot->init_plans = NIL;
 	subroot->in_info_list = NIL;
 	subroot->append_rel_list = NIL;
 
@@ -697,7 +701,8 @@ is_simple_subquery(Query *subquery)
 	 */
 	if (!IsA(subquery, Query) ||
 		subquery->commandType != CMD_SELECT ||
-		subquery->into != NULL)
+		subquery->utilityStmt != NULL ||
+		subquery->intoClause != NULL)
 		elog(ERROR, "subquery is bogus");
 
 	/*
@@ -770,7 +775,8 @@ is_simple_union_all(Query *subquery)
 	/* Let's just make sure it's a valid subselect ... */
 	if (!IsA(subquery, Query) ||
 		subquery->commandType != CMD_SELECT ||
-		subquery->into != NULL)
+		subquery->utilityStmt != NULL ||
+		subquery->intoClause != NULL)
 		elog(ERROR, "subquery is bogus");
 
 	/* Is it a set-operation query at all? */

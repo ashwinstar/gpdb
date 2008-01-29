@@ -4,7 +4,7 @@
  *
  * Portions Copyright (c) 2002-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/backend/utils/adt/pg_locale.c,v 1.38 2006/11/24 15:26:18 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/adt/pg_locale.c,v 1.40 2008/01/01 19:45:52 momjian Exp $
  *
  *-----------------------------------------------------------------------
  */

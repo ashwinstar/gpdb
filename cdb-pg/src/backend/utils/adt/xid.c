@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/xid.c,v 1.9 2006/07/13 16:49:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/xid.c,v 1.11 2008/01/01 19:45:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

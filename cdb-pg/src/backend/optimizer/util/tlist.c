@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/tlist.c,v 1.73 2006/08/10 02:36:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/tlist.c,v 1.78 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -42,6 +42,34 @@ tlist_member(Node *node, List *targetlist)
         Assert(IsA(tlentry, TargetEntry));
 
 		if (equal(node, tlentry->expr))
+			return tlentry;
+	}
+	return NULL;
+}
+
+/*
+ * tlist_member_ignore_relabel
+ *	  Same as above, except that we ignore top-level RelabelType nodes
+ *	  while checking for a match.  This is needed for some scenarios
+ *	  involving binary-compatible sort operations.
+ */
+TargetEntry *
+tlist_member_ignore_relabel(Node *node, List *targetlist)
+{
+	ListCell   *temp;
+
+	while (node && IsA(node, RelabelType))
+		node = (Node *) ((RelabelType *) node)->arg;
+
+	foreach(temp, targetlist)
+	{
+		TargetEntry *tlentry = (TargetEntry *) lfirst(temp);
+		Expr	   *tlexpr = tlentry->expr;
+
+		while (tlexpr && IsA(tlexpr, RelabelType))
+			tlexpr = ((RelabelType *) tlexpr)->arg;
+
+		if (equal(node, tlexpr))
 			return tlentry;
 	}
 	return NULL;
@@ -140,6 +168,29 @@ add_to_flat_tlist(List *tlist, List *vars)
 	return tlist;
 }
 
+
+/*
+ * get_sortgroupref_tle
+ *		Find the targetlist entry matching the given SortGroupRef index,
+ *		and return it.
+ */
+TargetEntry *
+get_sortgroupref_tle(Index sortref, List *targetList)
+{
+	ListCell   *l;
+
+	foreach(l, targetList)
+	{
+		TargetEntry *tle = (TargetEntry *) lfirst(l);
+
+		if (tle->ressortgroupref == sortref)
+			return tle;
+	}
+
+	elog(ERROR, "ORDER/GROUP BY expression not found in targetlist");
+	return NULL;				/* keep compiler quiet */
+}
+
 /*
  * get_sortgroupclause_tle
  *		Find the targetlist entry matching the given SortClause
@@ -152,19 +203,7 @@ TargetEntry *
 get_sortgroupclause_tle(SortClause *sortClause,
 						List *targetList)
 {
-	Index		refnumber = sortClause->tleSortGroupRef;
-	ListCell   *l;
-
-	foreach(l, targetList)
-	{
-		TargetEntry *tle = (TargetEntry *) lfirst(l);
-
-		if (tle->ressortgroupref == refnumber)
-			return tle;
-	}
-
-	elog(ERROR, "ORDER/GROUP BY expression not found in targetlist");
-	return NULL;				/* keep compiler quiet */
+	return get_sortgroupref_tle(sortClause->tleSortGroupRef, targetList);
 }
 
 /*

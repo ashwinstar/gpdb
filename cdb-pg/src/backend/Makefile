@@ -2,9 +2,10 @@
 #
 # Makefile for the postgres backend
 #
-# Copyright (c) 1994, Regents of the University of California
+# Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+# Portions Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/backend/Makefile,v 1.120 2006/10/08 17:15:33 tgl Exp $
+# $PostgreSQL: pgsql/src/backend/Makefile,v 1.125 2008/01/01 19:45:45 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -13,11 +14,11 @@ subdir = src/backend
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-DIRS := access bootstrap catalog parser commands executor lib libpq \
+DIRS = access bootstrap catalog parser commands executor lib libpq \
 	main nodes optimizer port postmaster regex rewrite \
-	storage tcop utils $(top_builddir)/src/timezone cdb
+	storage tsearch tcop utils $(top_builddir)/src/timezone cdb
 
-SUBSYSOBJS := $(DIRS:%=%/SUBSYS.o)
+SUBSYSOBJS = $(DIRS:%=%/SUBSYS.o)
 
 ifeq ($(enable_dtrace), yes)
 LOCALOBJS += utils/probes.o
@@ -64,6 +65,7 @@ libpostgres.a: postgres.def
 endif # cygwin
 
 ifeq ($(PORTNAME), win32)
+LIBS += -lsecur32
 
 postgres: $(OBJS) postgres.def libpostgres.a $(WIN32RES)
 	$(DLLTOOL) --dllname $@$(X) --output-exp $@.exp --def postgres.def
@@ -165,6 +167,7 @@ ifeq ($(MAKE_DLL), true)
 endif
 endif
 	$(MAKE) -C catalog install-data
+	$(MAKE) -C tsearch install-data
 	$(INSTALL_DATA) $(srcdir)/libpq/pg_hba.conf.sample '$(DESTDIR)$(datadir)/pg_hba.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/libpq/pg_ident.conf.sample '$(DESTDIR)$(datadir)/pg_ident.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/utils/misc/postgresql.conf.sample '$(DESTDIR)$(datadir)/postgresql.conf.sample'
@@ -220,6 +223,7 @@ ifeq ($(MAKE_DLL), true)
 endif
 endif
 	$(MAKE) -C catalog uninstall-data
+	$(MAKE) -C tsearch uninstall-data
 	rm -f '$(DESTDIR)$(datadir)/pg_hba.conf.sample' \
 	      '$(DESTDIR)$(datadir)/pg_ident.conf.sample' \
               '$(DESTDIR)$(datadir)/postgresql.conf.sample' \
@@ -262,6 +266,3 @@ maintainer-clean: distclean
 .PHONY: quick
 quick: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $^ $(LIBS) -o postgres
-
-depend dep: $(top_srcdir)/src/include/parser/parse.h $(top_builddir)/src/include/utils/fmgroids.h
-	for i in $(DIRS); do $(MAKE) -C $$i $@; done

@@ -12,7 +12,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/pgc.l,v 1.150.2.1 2007/08/29 13:58:34 meskes Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/pgc.l,v 1.159 2008/01/15 10:31:47 meskes Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,9 +28,8 @@ extern YYSTYPE yylval;
 
 static int		xcdepth = 0;	/* depth of nesting in slash-star comments */
 static char	   *dolqstart;      /* current $foo$ quote start string */
-static bool		escape_string_warning;
-static bool		standard_conforming_strings;
-static bool 	warn_on_first_escape;
+static YY_BUFFER_STATE scanbufhandle;
+static char *scanbuf;
 
 /*
  * literalbuf is used to accumulate literal values when multiple rules
@@ -46,7 +45,6 @@ static int		literalalloc;			/* current allocated buffer size */
 static void addlit(char *ytext, int yleng);
 static void addlitchar (unsigned char);
 static void parse_include (void);
-static void check_escape_warning(void);
 static bool ecpg_isspace(char ch);
 static bool isdefine(void);
 static bool isinformixdefine(void);
@@ -100,7 +98,9 @@ static struct _if_value
  *	<xd> delimited identifiers (double-quoted identifiers) - thomas 1997-10-27
  *	<xh> hexadecimal numeric string - thomas 1997-11-16
  *	<xq> standard quoted strings - thomas 1997-07-30
+ *	<xqc> standard quoted strings in C - michael
  *	<xe> extended quoted strings (support backslash escape sequences)
+ *	<xn> national character quoted strings
  *  <xdolq> $foo$ quoted strings
  */
 
@@ -110,7 +110,9 @@ static struct _if_value
 %x xdc
 %x xh
 %x xe
+%x xn
 %x xq
+%x xqc
 %x xdolq
 %x xcond
 %x xskip
@@ -142,6 +144,7 @@ xch				0[xX][0-9A-Fa-f]*
  */
 xqstart			{quote}
 xqdouble		{quote}{quote}
+xqcquote		[\\]{quote}
 xqinside		[^']+
 
 /* $foo$ style quotes ("dollar quoting")
@@ -406,67 +409,66 @@ cppline			{space}*#(.*\\{space})*.*{newline}
 				/* National character.
 				 * Transfer it as-is to the backend.
 				 */
-				warn_on_first_escape = true;
-		        token_start = yytext;
+				token_start = yytext;
 				state_before = YYSTATE;
-				if (standard_conforming_strings)
-					BEGIN(xq);
-				else
-					BEGIN(xe);
+				BEGIN(xn);
 				startlit();
 			}
 <C>{xqstart}	{
-				warn_on_first_escape = false;
 				token_start = yytext;
 				state_before = YYSTATE;
-				BEGIN(xe);
+				BEGIN(xqc);
 				startlit();
 			}
 <SQL>{xqstart}	{
-				warn_on_first_escape = true;
 				token_start = yytext;
 				state_before = YYSTATE;
-				if (standard_conforming_strings)
-					BEGIN(xq);
-				else
-					BEGIN(xe);
+				BEGIN(xq);
 				startlit();
 			}
 <SQL>{xestart}	{
-				warn_on_first_escape = false;
 				token_start = yytext;
 				state_before = YYSTATE;
 				BEGIN(xe);
 				startlit();
 			}
-<xq,xe>{quotestop} |
-<xq,xe>{quotefail} {
+<xq,xqc>{quotestop} |
+<xq,xqc>{quotefail} {
 				yyless(1);
 				BEGIN(state_before);
 				yylval.str = mm_strdup(literalbuf);
 				return SCONST;
 			}
-<xq,xe>{xqdouble}		{ addlitchar('\''); }
-<xq>{xqinside}		{ addlit(yytext, yyleng); }
+<xe>{quotestop} |
+<xe>{quotefail} {
+				yyless(1);
+				BEGIN(state_before);
+				yylval.str = mm_strdup(literalbuf);
+				return ECONST;
+			}
+<xn>{quotestop} |
+<xn>{quotefail} {
+				yyless(1);
+				BEGIN(state_before);
+				yylval.str = mm_strdup(literalbuf);
+				return NCONST;
+			}
+<xq,xe,xn>{xqdouble}	{ addlitchar('\''); }
+<xqc>{xqcquote}		{
+				addlitchar('\\');
+				addlitchar('\'');
+			}
+<xq,xqc,xn>{xqinside}	{ addlit(yytext, yyleng); }
 <xe>{xeinside}		{ addlit(yytext, yyleng); }
-<xe>{xeescape}  	{ 
-				check_escape_warning();
-				addlit(yytext, yyleng);
-			}
-<xe>{xeoctesc}		{ 
-				check_escape_warning();
-				addlit(yytext, yyleng);
-			}
-<xe>{xehexesc}		{ 
-				check_escape_warning();
-				addlit(yytext, yyleng);
-			}
-<xq,xe>{quotecontinue}	{ /* ignore */ }
+<xe>{xeescape}  	{ addlit(yytext, yyleng); }
+<xe>{xeoctesc}		{ addlit(yytext, yyleng); }
+<xe>{xehexesc}		{ addlit(yytext, yyleng); }
+<xq,xqc,xe,xn>{quotecontinue}	{ /* ignore */ }
 <xe>.                   {
 			   /* This is only needed for \ just before EOF */
 			   addlitchar(yytext[0]);
 			}
-<xq,xe><<EOF>>		{ mmerror(PARSE_ERROR, ET_FATAL, "Unterminated quoted string"); }
+<xq,xqc,xe,xn><<EOF>>	{ mmerror(PARSE_ERROR, ET_FATAL, "Unterminated quoted string"); }
 <SQL>{dolqfailed}	{
 				/* throw back all but the initial "$" */
 				yyless(1);
@@ -506,7 +508,7 @@ cppline			{space}*#(.*\\{space})*.*{newline}
 				/* single quote or dollar sign */
 				addlitchar(yytext[0]);
 			}
-<xdolq><<EOF>> 		{ yyerror("unterminated dollar-quoted string"); }
+<xdolq><<EOF>> 		{ base_yyerror("unterminated dollar-quoted string"); }
 <SQL>{xdstart}		{
 						state_before = YYSTATE;
 						BEGIN(xd);
@@ -672,17 +674,12 @@ cppline			{space}*#(.*\\{space})*.*{newline}
 						return(CVARIABLE);
 					}
 <SQL>{identifier}	{
-						ScanKeyword    *keyword;
-
+						const ScanKeyword    *keyword;
+						
 						if (!isdefine())
 						{
-							/* Is it an SQL keyword? */
+							/* Is it an SQL/ECPG keyword? */
 							keyword = ScanKeywordLookup(yytext);
-							if (keyword != NULL)
-								return keyword->value;
-
-							/* Is it an ECPG keyword? */
-							keyword = ScanECPGKeywordLookup( yytext);
 							if (keyword != NULL)
 								return keyword->value;
 
@@ -745,8 +742,8 @@ cppline			{space}*#(.*\\{space})*.*{newline}
 						return(CPP_LINE);
 					}
 <C>{identifier} 	{
-						ScanKeyword		*keyword;
-
+						const ScanKeyword		*keyword;
+							
 						/* Informix uses SQL defines only in SQL space */
 						/* however, some defines have to be taken care of for compatibility */
 						if ((!INFORMIX_MODE || !isinformixdefine()) && !isdefine())
@@ -1146,7 +1143,7 @@ lex_init(void)
 	/* initialize literal buffer to a reasonable but expansible size */
 	if (literalbuf == NULL)
 	{
-		literalalloc = 128;
+		literalalloc = 1024;
 		literalbuf = (char *) malloc(literalalloc);
 	}
 	startlit();
@@ -1278,14 +1275,6 @@ parse_include(void)
   	BEGIN(C);
 }
 
-static void
-check_escape_warning(void)
-{
-	if (warn_on_first_escape && escape_string_warning)
-	       	mmerror (PARSE_ERROR, ET_WARNING, "nonstandard use of escape in a string literal");
-	warn_on_first_escape = false;   /* warn only once per string */
-}
-
 /*
  * ecpg_isspace() --- return TRUE if flex scanner considers char whitespace
  */
@@ -1357,4 +1346,45 @@ static bool isinformixdefine(void)
 	}
 
 	return false;
+}
+
+/*
+ * Called before any actual parsing is done
+ */
+void
+scanner_init(const char *str)
+{
+	Size	slen = strlen(str);
+
+	/*
+	 * Might be left over after ereport()
+	 */
+	if (YY_CURRENT_BUFFER)
+		yy_delete_buffer(YY_CURRENT_BUFFER);
+
+	/*
+	 * Make a scan buffer with special termination needed by flex.
+	 */
+	scanbuf = mm_alloc(slen + 2);
+	memcpy(scanbuf, str, slen);
+	scanbuf[slen] = scanbuf[slen + 1] = YY_END_OF_BUFFER_CHAR;
+	scanbufhandle = yy_scan_buffer(scanbuf, slen + 2);
+
+	/* initialize literal buffer to a reasonable but expansible size */
+	literalalloc = 128;
+	literalbuf = (char *) mm_alloc(literalalloc);
+	startlit();
+
+	BEGIN(INITIAL);
+}
+
+
+/*
+ * Called after parsing is done to clean up after scanner_init()
+ */
+void
+scanner_finish(void)
+{
+	yy_delete_buffer(scanbufhandle);
+	free(scanbuf);
 }

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/arrayfuncs.c,v 1.136 2007/01/05 22:19:39 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/arrayfuncs.c,v 1.140 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -95,19 +95,7 @@ static void array_insert_slice(ArrayType *destArray, ArrayType *origArray,
 				   int *st, int *endp,
 				   int typlen, bool typbyval, char typalign);
 static int	array_cmp(FunctionCallInfo fcinfo);
-static Datum array_type_length_coerce_internal(ArrayType *src,
-								  int32 desttypmod,
-								  bool isExplicit,
-								  FmgrInfo *fmgr_info);
-
-
-/*
- * array_in :
- *		  converts an array from the external format in "string" to
- *		  its internal format.
- *
- * return value :
- *		  the internal representation of the input array
+representation of the input array
  */
 Datum
 array_in(PG_FUNCTION_ARGS)
@@ -809,18 +797,15 @@ ReadArrayStr(char *arrayStr,
 			/* let's just make sure data is not toasted */
 			if (typlen == -1)
 				values[i] = PointerGetDatum(PG_DETOAST_DATUM(values[i]));
-			totbytes = att_addlength(totbytes, typlen, values[i]);
-			totbytes = att_align(totbytes, typalign);
+			totbytes = att_addlength_datum(totbytes, typlen, values[i]);
+			totbytes = att_align_nominal(totbytes, typalign);
 			/* check for overflow of total request */
 			if (!AllocSizeIsValid(totbytes))
 				ereport(ERROR,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-						 errmsg("array size exceeds the maximum allowed (%d)",
-								(int) MaxAllocSize)));
-		}
-	}
-	*hasnulls = hasnull;
-	*nbytes = totbytes;
+						 errmsg("array size exceeds t			totbytes = att_addlength_datum(totbytes, typlen, values[i]);
+			totbytes = att_align_nominal(totbytes, typalign);
+es;
 }
 
 
@@ -1015,15 +1000,14 @@ array_out(PG_FUNCTION_ARGS)
 
 			itemvalue = fetch_att(p, typbyval, typlen);
 			values[i] = OutputFunctionCall(&my_extra->proc, itemvalue);
-			p = att_addlength(p, typlen, PointerGetDatum(p));
-			p = (char *) att_align(p, typalign);
+			p = att_addlength_pointer(p, typlen, p);
+			p = (char *) att_align_nominal(p, typalign);
 
 			/* count data plus backslashes; detect chars needing quotes */
 			if (values[i][0] == '\0')
 				needquote = true;		/* force quotes for empty string */
-			else if (pg_strcasecmp(values[i], "NULL") == 0)
-				needquote = true;		/* force quotes for literal NULL */
-			else
+			else if (pg_strcasecmp			p = att_addlength_pointer(p, typlen, p);
+			p = (char *) att_align_nominal(p, typalign);
 				needquote = false;
 
 			for (tmp = values[i]; *tmp != '\0'; tmp++)
@@ -1403,17 +1387,15 @@ ReadArrayBinary(StringInfo buf,
 			/* let's just make sure data is not toasted */
 			if (typlen == -1)
 				values[i] = PointerGetDatum(PG_DETOAST_DATUM(values[i]));
-			totbytes = att_addlength(totbytes, typlen, values[i]);
-			totbytes = att_align(totbytes, typalign);
+			totbytes = att_addlength_datum(totbytes, typlen, values[i]);
+			totbytes = att_align_nominal(totbytes, typalign);
 			/* check for overflow of total request */
 			if (!AllocSizeIsValid(totbytes))
 				ereport(ERROR,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-						 errmsg("array size exceeds the maximum allowed (%d)",
-								(int) MaxAllocSize)));
-		}
-	}
-	*hasnulls = hasnull;
+						 er			totbytes = att_addlength_datum(totbytes, typlen, values[i]);
+			totbytes = att_align_nominal(totbytes, typalign);
+hasnull;
 	*nbytes = totbytes;
 }
 
@@ -1516,8 +1498,8 @@ array_send(PG_FUNCTION_ARGS)
 						 VARSIZE(outputbytes) - VARHDRSZ);
 			pfree(outputbytes);
 
-			p = att_addlength(p, typlen, PointerGetDatum(p));
-			p = (char *) att_align(p, typalign);
+			p = att_addlength_pointer(p, typlen, p);
+			p = (char *) att_align_nominal(p, typalign);
 		}
 
 		/* advance bitmap pointer if any */
@@ -1532,12 +1514,9 @@ array_send(PG_FUNCTION_ARGS)
 		}
 	}
 
-	PG_RETURN_BYTEA_P(pq_endtypsend(&buf));
-}
-
-/*
- * array_dims :
- *		  returns the dimensions of the array pointed to by "v", as a "text"
+				p = att_addlength_pointer(p, typlen, p);
+			p = (char *) att_align_nominal(p, typalign);
+ the array pointed to by "v", as a "text"
  */
 Datum
 array_dims(PG_FUNCTION_ARGS)
@@ -2112,8 +2091,8 @@ array_set(ArrayType *array,
 			olditemlen = 0;
 		else
 		{
-			olditemlen = att_addlength(0, elmlen, PointerGetDatum(elt_ptr));
-			olditemlen = att_align(olditemlen, elmalign);
+			olditemlen = att_addlength_pointer(0, elmlen, elt_ptr);
+			olditemlen = att_align_nominal(olditemlen, elmalign);
 		}
 		lenafter = (int) (olddatasize - lenbefore - olditemlen);
 	}
@@ -2122,19 +2101,16 @@ array_set(ArrayType *array,
 		newitemlen = 0;
 	else
 	{
-		newitemlen = att_addlength(0, elmlen, dataValue);
-		newitemlen = att_align(newitemlen, elmalign);
-	}
-
-	newsize = overheadlen + lenbefore + newitemlen + lenafter;
+		newitemlen = att_addlen			olditemlen = att_addlength_pointer(0, elmlen, elt_ptr);
+			olditemlen = att_align_nominal(olditemlen, elmalign);
+ lenbefore + newitemlen + lenafter;
 
 	/*
 	 * OK, create the new array and fill in header/dimensions
 	 */
-	newarray = (ArrayType *) palloc(newsize);
-	SET_VARSIZE(newarray, newsize);
-	newarray->ndim = ndim;
-	newarray->dataoffset = newhasnulls ? overheadlen : 0;
+	ne		newitemlen = att_addlength_datum(0, elmlen, dataValue);
+		newitemlen = att_align_nominal(newitemlen, elmalign);
+warray->dataoffset = newhasnulls ? overheadlen : 0;
 	newarray->elemtype = ARR_ELEMTYPE(array);
 	memcpy(ARR_DIMS(newarray), dim, ndim * sizeof(int));
 	memcpy(ARR_LBOUND(newarray), lb, ndim * sizeof(int));
@@ -2643,20 +2619,16 @@ array_map(FunctionCallInfo fcinfo, Oid inpType, Oid retType,
 		else
 		{
 			elt = fetch_att(s, inp_typbyval, inp_typlen);
-			s = att_addlength(s, inp_typlen, elt);
-			s = (char *) att_align(s, inp_typalign);
+			s = att_addlength_datum(s, inp_typlen, elt);
+			s = (char *) att_align_nominal(s, inp_typalign);
 			fcinfo->arg[0] = elt;
 			fcinfo->argnull[0] = false;
 		}
 
 		/*
-		 * Apply the given function to source elt and extra args.
-		 */
-		if (fcinfo->flinfo->fn_strict)
-		{
-			int			j;
-
-			for (j = 0; j < fcinfo->nargs; j++)
+		 * Apply the given function to source elt and extra ar			s = att_addlength_datum(s, inp_typlen, elt);
+			s = (char *) att_align_nominal(s, inp_typalign);
+>nargs; j++)
 			{
 				if (fcinfo->argnull[j])
 				{
@@ -2683,13 +2655,13 @@ array_map(FunctionCallInfo fcinfo, Oid inpType, Oid retType,
 			if (typlen == -1)
 				values[i] = PointerGetDatum(PG_DETOAST_DATUM(values[i]));
 			/* Update total result size */
-			nbytes = att_addlength(nbytes, typlen, values[i]);
-			nbytes = att_align(nbytes, typalign);
+			nbytes = att_addlength_datum(nbytes, typlen, values[i]);
+			nbytes = att_align_nominal(nbytes, typalign);
 			/* check for overflow of total request */
 			if (!AllocSizeIsValid(nbytes))
-				ereport(ERROR,
-						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-						 errmsg("array size exceeds the maximum allowed (%d)",
+				er			nbytes = att_addlength_datum(nbytes, typlen, values[i]);
+			nbytes = att_align_nominal(nbytes, typalign);
+the maximum allowed (%d)",
 								(int) MaxAllocSize)));
 		}
 
@@ -2831,13 +2803,12 @@ construct_md_array(Datum *elems,
 		/* make sure data is not toasted */
 		if (elmlen == -1)
 			elems[i] = PointerGetDatum(PG_DETOAST_DATUM(elems[i]));
-		nbytes = att_addlength(nbytes, elmlen, elems[i]);
-		nbytes = att_align(nbytes, elmalign);
+		nbytes = att_addlength_datum(nbytes, elmlen, elems[i]);
+		nbytes = att_align_nominal(nbytes, elmalign);
 		/* check for overflow of total request */
-		if (!AllocSizeIsValid(nbytes))
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("array size exceeds the maximum allowed (%d)",
+		if (!AllocSize		nbytes = att_addlength_datum(nbytes, elmlen, elems[i]);
+		nbytes = att_align_nominal(nbytes, elmalign);
+sg("array size exceeds the maximum allowed (%d)",
 							(int) MaxAllocSize)));
 	}
 
@@ -2951,18 +2922,14 @@ deconstruct_array(ArrayType *array,
 			elems[i] = fetch_att(p, elmbyval, elmlen);
 			if (nulls)
 				nulls[i] = false;
-			p = att_addlength(p, elmlen, PointerGetDatum(p));
-			p = (char *) att_align(p, elmalign);
+			p = att_addlength_pointer(p, elmlen, p);
+			p = (char *) att_align_nominal(p, elmalign);
 		}
 
 		/* advance bitmap pointer if any */
-		if (bitmap)
-		{
-			bitmask <<= 1;
-			if (bitmask == 0x100)
-			{
-				bitmap++;
-				bitmask = 1;
+		i			p = att_addlength_pointer(p, elmlen, p);
+			p = (char *) att_align_nominal(p, elmalign);
+
 			}
 		}
 	}
@@ -3068,30 +3035,20 @@ array_eq(PG_FUNCTION_ARGS)
 			{
 				isnull1 = false;
 				elt1 = fetch_att(ptr1, typbyval, typlen);
-				ptr1 = att_addlength(ptr1, typlen, PointerGetDatum(ptr1));
-				ptr1 = (char *) att_align(ptr1, typalign);
+				ptr1 = att_addlength_pointer(ptr1, typlen, ptr1);
+				ptr1 = (char *) att_align_nominal(ptr1, typalign);
 			}
 
-			if (bitmap2 && (*bitmap2 & bitmask) == 0)
-			{
-				isnull2 = true;
-				elt2 = (Datum) 0;
-			}
-			else
-			{
-				isnull2 = false;
-				elt2 = fetch_att(ptr2, typbyval, typlen);
-				ptr2 = att_addlength(ptr2, typlen, PointerGetDatum(ptr2));
-				ptr2 = (char *) att_align(ptr2, typalign);
+			if (bitmap2 && (*bitma				ptr1 = att_addlength_pointer(ptr1, typlen, ptr1);
+				ptr1 = (char *) att_align_nominal(ptr1, typalign);
+elt2 = fetch_att(ptr2, typbyval, typlen);
+				ptr2 = att_addlength_pointer(ptr2, typlen, ptr2);
+				ptr2 = (char *) att_align_nominal(ptr2, typalign);
 			}
 
-			/* advance bitmap pointers if any */
-			bitmask <<= 1;
-			if (bitmask == 0x100)
-			{
-				if (bitmap1)
-					bitmap1++;
-				if (bitmap2)
+			/* advance bitmap pointe				ptr2 = att_addlength_pointer(ptr2, typlen, ptr2);
+				ptr2 = (char *) att_align_nominal(ptr2, typalign);
+
 					bitmap2++;
 				bitmask = 1;
 			}
@@ -3269,31 +3226,20 @@ array_cmp(FunctionCallInfo fcinfo)
 		{
 			isnull1 = false;
 			elt1 = fetch_att(ptr1, typbyval, typlen);
-			ptr1 = att_addlength(ptr1, typlen, PointerGetDatum(ptr1));
-			ptr1 = (char *) att_align(ptr1, typalign);
+			ptr1 = att_addlength_pointer(ptr1, typlen, ptr1);
+			ptr1 = (char *) att_align_nominal(ptr1, typalign);
 		}
 
-		if (bitmap2 && (*bitmap2 & bitmask) == 0)
-		{
-			isnull2 = true;
-			elt2 = (Datum) 0;
-		}
-		else
-		{
-			isnull2 = false;
-			elt2 = fetch_att(ptr2, typbyval, typlen);
-			ptr2 = att_addlength(ptr2, typlen, PointerGetDatum(ptr2));
-			ptr2 = (char *) att_align(ptr2, typalign);
+		if (bitmap2 && (*bitmap2 & bit			ptr1 = att_addlength_pointer(ptr1, typlen, ptr1);
+			ptr1 = (char *) att_align_nominal(ptr1, typalign);
+tt(ptr2, typbyval, typlen);
+			ptr2 = att_addlength_pointer(ptr2, typlen, ptr2);
+			ptr2 = (char *) att_align_nominal(ptr2, typalign);
 		}
 
-		/* advance bitmap pointers if any */
-		bitmask <<= 1;
-		if (bitmask == 0x100)
-		{
-			if (bitmap1)
-				bitmap1++;
-			if (bitmap2)
-				bitmap2++;
+		/* advance bitmap pointers if an			ptr2 = att_addlength_pointer(ptr2, typlen, ptr2);
+			ptr2 = (char *) att_align_nominal(ptr2, typalign);
+++;
 			bitmask = 1;
 		}
 
@@ -3472,21 +3418,13 @@ array_contain_compare(ArrayType *array1, ArrayType *array2, bool matchall,
 		{
 			isnull1 = false;
 			elt1 = fetch_att(ptr1, typbyval, typlen);
-			ptr1 = att_addlength(ptr1, typlen, PointerGetDatum(ptr1));
-			ptr1 = (char *) att_align(ptr1, typalign);
+			ptr1 = att_addlength_pointer(ptr1, typlen, ptr1);
+			ptr1 = (char *) att_align_nominal(ptr1, typalign);
 		}
 
-		/* advance bitmap pointer if any */
-		bitmask <<= 1;
-		if (bitmask == 0x100)
-		{
-			if (bitmap1)
-				bitmap1++;
-			bitmask = 1;
-		}
-
-		/*
-		 * We assume that the comparison operator is strict, so a NULL can't
+		/* advance bitmap pointer if any *			ptr1 = att_addlength_pointer(ptr1, typlen, ptr1);
+			ptr1 = (char *) att_align_nominal(ptr1, typalign);
+ We assume that the comparison operator is strict, so a NULL can't
 		 * match anything.	XXX this diverges from the "NULL=NULL" behavior of
 		 * array_eq, should we act like that?
 		 */
@@ -3671,24 +3609,20 @@ ArrayCastAndSet(Datum src,
 			store_att_byval(dest, src, typlen);
 		else
 			memmove(dest, DatumGetPointer(src), typlen);
-		inc = att_align(typlen, typalign);
+		inc = att_align_nominal(typlen, typalign);
 	}
 	else
 	{
 		Assert(!typbyval);
-		inc = att_addlength(0, typlen, src);
-		memmove(dest, DatumGetPointer(src), inc);
-		inc = att_align(inc, typalign);
+		inc = att_addlength_datum(0, typlen, src);
+		memmove(dest, DatumGetPoi		inc = att_align_nominal(typlen, typalign);
+minal(inc, typalign);
 	}
-
-	return inc;
-}
-
-/*
- * Advance ptr over nitems array elements
+		inc = att_addlength_datum(0, typlen, src);
+ nitems array elements
  *
- * ptr: starting location in array
- * offset: 0-based linear element number of first element (the one at *ptr)
+ * ptr: star		inc = att_align_nominal(inc, typalign);
+0-based linear element number of first element (the one at *ptr)
  * nullbitmap: start of array's null bitmap, or NULL if none
  * nitems: number of array elements to advance over (>= 0)
  * typlen, typbyval, typalign: storage parameters of array element datatype
@@ -3704,42 +3638,30 @@ array_seek(char *ptr, int offset, bits8 *nullbitmap, int nitems,
 
 	/* easy if fixed-size elements and no NULLs */
 	if (typlen > 0 && !nullbitmap)
-		return ptr + nitems * ((Size) att_align(typlen, typalign));
+		return ptr + nitems * ((Size) att_align_nominal(typlen, typalign));
 
-	/* seems worth having separate loops for NULL and no-NULLs cases */
-	if (nullbitmap)
-	{
-		nullbitmap += offset / 8;
+	/* seems worth having separate loo		return ptr + nitems * ((Size) att_align_nominal(typlen, typalign));
+tmap += offset / 8;
 		bitmask = 1 << (offset % 8);
 
 		for (i = 0; i < nitems; i++)
 		{
 			if (*nullbitmap & bitmask)
 			{
-				ptr = att_addlength(ptr, typlen, PointerGetDatum(ptr));
-				ptr = (char *) att_align(ptr, typalign);
-			}
-			bitmask <<= 1;
-			if (bitmask == 0x100)
-			{
-				nullbitmap++;
-				bitmask = 1;
-			}
+				ptr = att_addlength_pointer(ptr, typlen, ptr);
+				ptr = (char *) att_align_nominal(pt				ptr = att_addlength_pointer(ptr, typlen, ptr);
+				ptr = (char *) att_align_nominal(ptr, typalign);
+}
 		}
 	}
 	else
 	{
 		for (i = 0; i < nitems; i++)
 		{
-			ptr = att_addlength(ptr, typlen, PointerGetDatum(ptr));
-			ptr = (char *) att_align(ptr, typalign);
-		}
-	}
-	return ptr;
-}
+			ptr = att_addlength_pointer(ptr, typlen, ptr);
+			ptr = (char *) att_align_nominal(ptr, t			ptr = att_addlength_pointer(ptr, typlen, ptr);
+			ptr = (char *) att_align_nominal(ptr, typalign);
 
-/*
- * Compute total size of the nitems array elements starting at *ptr
  *
  * Parameters same as for array_seek
  */
@@ -3887,10 +3809,10 @@ array_slice_size(char *arraydataptr, bits8 *arraynullsptr,
 
 	/* Pretty easy for fixed element length without nulls ... */
 	if (typlen > 0 && !arraynullsptr)
-		return ArrayGetNItems(ndim, span) * att_align(typlen, typalign);
+		return ArrayGetNItems(ndim, span) * att_align_nominal(typlen, typalign);
 
-	/* Else gotta do it the hard way */
-	src_offset = ArrayGetOffset(ndim, dim, lb, st);
+	/* Else gotta do 		return ArrayGetNItems(ndim, span) * att_align_nominal(typlen, typalign);
+
 	ptr = array_seek(arraydataptr, 0, arraynullsptr, src_offset,
 					 typlen, typbyval, typalign);
 	mda_get_prod(ndim, dim, prod);
@@ -3908,13 +3830,10 @@ array_slice_size(char *arraydataptr, bits8 *arraynullsptr,
 		}
 		if (!array_get_isnull(arraynullsptr, src_offset))
 		{
-			inc = att_addlength(0, typlen, PointerGetDatum(ptr));
-			inc = att_align(inc, typalign);
-			ptr += inc;
-			count += inc;
-		}
-		src_offset++;
-	} while ((j = mda_next_tuple(ndim, indx, span)) != -1);
+			inc = att_addlength_pointer(0, typlen, ptr);
+			inc = att_align_nominal(inc			inc = att_addlength_pointer(0, typlen, ptr);
+			inc = att_align_nominal(inc, typalign);
+le(ndim, indx, span)) != -1);
 	return count;
 }
 
@@ -4091,222 +4010,6 @@ array_insert_slice(ArrayType *destArray,
 		array_bitmap_copy(destBitmap, dest_offset,
 						  origBitmap, orig_offset,
 						  orignitems - orig_offset);
-}
-
-/*
- * array_type_coerce -- allow explicit or assignment coercion from
- * one array type to another.
- *
- * array_type_length_coerce -- the same, for cases where both type and length
- * coercion are done by a single function on the element type.
- *
- * Caller should have already verified that the source element type can be
- * coerced into the target element type.
- */
-Datum
-array_type_coerce(PG_FUNCTION_ARGS)
-{
-	ArrayType  *src = PG_GETARG_ARRAYTYPE_P(0);
-	FmgrInfo   *fmgr_info = fcinfo->flinfo;
-
-	return array_type_length_coerce_internal(src, -1, false, fmgr_info);
-}
-
-Datum
-array_type_length_coerce(PG_FUNCTION_ARGS)
-{
-	ArrayType  *src = PG_GETARG_ARRAYTYPE_P(0);
-	int32		desttypmod = PG_GETARG_INT32(1);
-	bool		isExplicit = PG_GETARG_BOOL(2);
-	FmgrInfo   *fmgr_info = fcinfo->flinfo;
-
-	return array_type_length_coerce_internal(src, desttypmod,
-											 isExplicit, fmgr_info);
-}
-
-static Datum
-array_type_length_coerce_internal(ArrayType *src,
-								  int32 desttypmod,
-								  bool isExplicit,
-								  FmgrInfo *fmgr_info)
-{
-	Oid			src_elem_type = ARR_ELEMTYPE(src);
-	typedef struct
-	{
-		Oid			srctype;
-		Oid			desttype;
-		FmgrInfo	coerce_finfo;
-		ArrayMapState amstate;
-	} atc_extra;
-	atc_extra  *my_extra;
-	FunctionCallInfoData locfcinfo;
-
-	/*
-	 * We arrange to look up the coercion function only once per series of
-	 * calls, assuming the input data type doesn't change underneath us.
-	 * (Output type can't change.)
-	 */
-	my_extra = (atc_extra *) fmgr_info->fn_extra;
-	if (my_extra == NULL)
-	{
-		fmgr_info->fn_extra = MemoryContextAllocZero(fmgr_info->fn_mcxt,
-													 sizeof(atc_extra));
-		my_extra = (atc_extra *) fmgr_info->fn_extra;
-	}
-
-	if (my_extra->srctype != src_elem_type)
-	{
-		Oid			tgt_type = get_fn_expr_rettype(fmgr_info);
-		Oid			tgt_elem_type;
-		Oid			funcId;
-
-		if (tgt_type == InvalidOid)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("could not determine target array type")));
-
-		tgt_elem_type = get_element_type(tgt_type);
-		if (tgt_elem_type == InvalidOid)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("target type is not an array")));
-
-		/*
-		 * We don't deal with domain constraints yet, so bail out. This isn't
-		 * currently a problem, because we also don't support arrays of domain
-		 * type elements either. But in the future we might. At that point
-		 * consideration should be given to removing the check below and
-		 * adding a domain constraints check to the coercion.
-		 */
-		if (getBaseType(tgt_elem_type) != tgt_elem_type)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("array coercion to domain type elements not "
-							"currently supported")));
-
-		if (!find_coercion_pathway(tgt_elem_type, src_elem_type,
-								   COERCION_EXPLICIT, &funcId))
-		{
-			/* should never happen, but check anyway */
-			elog(ERROR, "no conversion function from %s to %s",
-				 format_type_be(src_elem_type),
-				 format_type_be(tgt_elem_type));
-		}
-		if (OidIsValid(funcId))
-			fmgr_info_cxt(funcId, &my_extra->coerce_finfo, fmgr_info->fn_mcxt);
-		else
-			my_extra->coerce_finfo.fn_oid = InvalidOid;
-		my_extra->srctype = src_elem_type;
-		my_extra->desttype = tgt_elem_type;
-	}
-
-	/*
-	 * If it's binary-compatible, modify the element type in the array header,
-	 * but otherwise leave the array as we received it.
-	 */
-	if (my_extra->coerce_finfo.fn_oid == InvalidOid)
-	{
-		ArrayType  *result;
-
-		result = (ArrayType *) DatumGetPointer(datumCopy(PointerGetDatum(src),
-														 false, -1));
-		ARR_ELEMTYPE(result) = my_extra->desttype;
-		PG_RETURN_ARRAYTYPE_P(result);
-	}
-
-	/*
-	 * Use array_map to apply the function to each array element.
-	 *
-	 * We pass on the desttypmod and isExplicit flags whether or not the
-	 * function wants them.
-	 */
-	InitFunctionCallInfoData(locfcinfo, &my_extra->coerce_finfo, 3,
-							 NULL, NULL);
-	locfcinfo.arg[0] = PointerGetDatum(src);
-	locfcinfo.arg[1] = Int32GetDatum(desttypmod);
-	locfcinfo.arg[2] = BoolGetDatum(isExplicit);
-	locfcinfo.argnull[0] = false;
-	locfcinfo.argnull[1] = false;
-	locfcinfo.argnull[2] = false;
-
-	return array_map(&locfcinfo, my_extra->srctype, my_extra->desttype,
-					 &my_extra->amstate);
-}
-
-/*
- * array_length_coerce -- apply the element type's length-coercion routine
- *		to each element of the given array.
- */
-Datum
-array_length_coerce(PG_FUNCTION_ARGS)
-{
-	ArrayType  *v = PG_GETARG_ARRAYTYPE_P(0);
-	int32		desttypmod = PG_GETARG_INT32(1);
-	bool		isExplicit = PG_GETARG_BOOL(2);
-	FmgrInfo   *fmgr_info = fcinfo->flinfo;
-	typedef struct
-	{
-		Oid			elemtype;
-		FmgrInfo	coerce_finfo;
-		ArrayMapState amstate;
-	} alc_extra;
-	alc_extra  *my_extra;
-	FunctionCallInfoData locfcinfo;
-
-	/* If no typmod is provided, shortcircuit the whole thing */
-	if (desttypmod < 0)
-		PG_RETURN_ARRAYTYPE_P(v);
-
-	/*
-	 * We arrange to look up the element type's coercion function only once
-	 * per series of calls, assuming the element type doesn't change
-	 * underneath us.
-	 */
-	my_extra = (alc_extra *) fmgr_info->fn_extra;
-	if (my_extra == NULL)
-	{
-		fmgr_info->fn_extra = MemoryContextAllocZero(fmgr_info->fn_mcxt,
-													 sizeof(alc_extra));
-		my_extra = (alc_extra *) fmgr_info->fn_extra;
-	}
-
-	if (my_extra->elemtype != ARR_ELEMTYPE(v))
-	{
-		Oid			funcId;
-
-		funcId = find_typmod_coercion_function(ARR_ELEMTYPE(v));
-
-		if (OidIsValid(funcId))
-			fmgr_info_cxt(funcId, &my_extra->coerce_finfo, fmgr_info->fn_mcxt);
-		else
-			my_extra->coerce_finfo.fn_oid = InvalidOid;
-		my_extra->elemtype = ARR_ELEMTYPE(v);
-	}
-
-	/*
-	 * If we didn't find a coercion function, return the array unmodified
-	 * (this should not happen in the normal course of things, but might
-	 * happen if this function is called manually).
-	 */
-	if (my_extra->coerce_finfo.fn_oid == InvalidOid)
-		PG_RETURN_ARRAYTYPE_P(v);
-
-	/*
-	 * Use array_map to apply the function to each array element.
-	 *
-	 * Note: we pass isExplicit whether or not the function wants it ...
-	 */
-	InitFunctionCallInfoData(locfcinfo, &my_extra->coerce_finfo, 3,
-							 NULL, NULL);
-	locfcinfo.arg[0] = PointerGetDatum(v);
-	locfcinfo.arg[1] = Int32GetDatum(desttypmod);
-	locfcinfo.arg[2] = BoolGetDatum(isExplicit);
-	locfcinfo.argnull[0] = false;
-	locfcinfo.argnull[1] = false;
-	locfcinfo.argnull[2] = false;
-
-	return array_map(&locfcinfo, ARR_ELEMTYPE(v), ARR_ELEMTYPE(v),
-					 &my_extra->amstate);
 }
 
 /*

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_proc.c,v 1.141 2006/10/19 18:32:46 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_proc.c,v 1.148 2008/01/01 19:45:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -50,9 +50,9 @@ static bool match_prosrc_to_literal(const char *prosrc, const char *literal,
 /* ----------------------------------------------------------------
  *		ProcedureCreate
  *
- * Note: allParameterTypes, parameterModes, parameterNames are either arrays
- * of the proper types or NULL.  We declare them Datum, not "ArrayType *",
- * to avoid importing array.h into pg_proc.h.
+ * Note: allParameterTypes, parameterModes, parameterNames, and proconfig
+ * are either arrays of the proper types or NULL.  We declare them Datum,
+ * not "ArrayType *", to avoid importing array.h into pg_proc.h.
  * ----------------------------------------------------------------
  */
 Oid
@@ -74,6 +74,9 @@ ProcedureCreate(const char *procedureName,
 				Datum allParameterTypes,
 				Datum parameterModes,
 				Datum parameterNames,
+				Datum proconfig,
+				float4 procost,
+				float4 prorows,
 				const Oid funcOid)
 {
 	Oid			retval;
@@ -138,9 +141,9 @@ ProcedureCreate(const char *procedureName,
 	}
 
 	/*
-	 * Do not allow return type ANYARRAY or ANYELEMENT unless at least one
-	 * input argument is ANYARRAY or ANYELEMENT.  Also, do not allow return
-	 * type INTERNAL unless at least one input argument is INTERNAL.
+	 * Do not allow polymorphic return type unless at least one input argument
+	 * is polymorphic.	Also, do not allow return type INTERNAL unless at
+	 * least one input argument is INTERNAL.
 	 */
 	for (i = 0; i < parameterCount; i++)
 	{
@@ -148,6 +151,8 @@ ProcedureCreate(const char *procedureName,
 		{
 			case ANYARRAYOID:
 			case ANYELEMENTOID:
+			case ANYNONARRAYOID:
+			case ANYENUMOID:
 				genericInParam = true;
 				break;
 			case INTERNALOID:
@@ -170,6 +175,8 @@ ProcedureCreate(const char *procedureName,
 			{
 				case ANYARRAYOID:
 				case ANYELEMENTOID:
+				case ANYNONARRAYOID:
+				case ANYENUMOID:
 					genericOutParam = true;
 					break;
 				case INTERNALOID:
@@ -179,12 +186,12 @@ ProcedureCreate(const char *procedureName,
 		}
 	}
 
-	if ((returnType == ANYARRAYOID || returnType == ANYELEMENTOID ||
-		 genericOutParam) && !genericInParam)
+	if ((IsPolymorphicType(returnType) || genericOutParam)
+		&& !genericInParam)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("cannot determine result data type"),
-				 errdetail("A function returning \"anyarray\" or \"anyelement\" must have at least one argument of either type.")));
+				 errdetail("A function returning a polymorphic type must have at least one polymorphic argument.")));
 
 	if ((returnType == INTERNALOID || internalOutParam) && !internalInParam)
 		ereport(ERROR,
@@ -222,6 +229,8 @@ ProcedureCreate(const char *procedureName,
 	values[Anum_pg_proc_pronamespace - 1] = ObjectIdGetDatum(procNamespace);
 	values[Anum_pg_proc_proowner - 1] = ObjectIdGetDatum(GetUserId());
 	values[Anum_pg_proc_prolang - 1] = ObjectIdGetDatum(languageObjectId);
+	values[Anum_pg_proc_procost - 1] = Float4GetDatum(procost);
+	values[Anum_pg_proc_prorows - 1] = Float4GetDatum(prorows);
 	values[Anum_pg_proc_proisagg - 1] = BoolGetDatum(isAgg);
 	values[Anum_pg_proc_proiswin - 1] = BoolGetDatum(isWin);
 	values[Anum_pg_proc_prosecdef - 1] = BoolGetDatum(security_definer);
@@ -247,6 +256,10 @@ ProcedureCreate(const char *procedureName,
 													CStringGetDatum((char *) prosrc));
 	values[Anum_pg_proc_probin - 1] = DirectFunctionCall1(textin,
 													CStringGetDatum((char *) probin));
+	if (proconfig != PointerGetDatum(NULL))
+		values[Anum_pg_proc_proconfig - 1] = proconfig;
+	else
+		nulls[Anum_pg_proc_proconfig - 1] = 'n';
 	/* start out with empty permissions */
 	nulls[Anum_pg_proc_proacl - 1] = 'n';
 
@@ -550,26 +563,24 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 	proc = (Form_pg_proc) GETSTRUCT(tuple);
 
 	/* Disallow pseudotype result */
-	/* except for RECORD, VOID, ANYARRAY, or ANYELEMENT */
-	if (get_typtype(proc->prorettype) == 'p' &&
+	/* except for RECORD, VOID, or polymorphic */
+	if (get_typtype(proc->prorettype) == TYPTYPE_PSEUDO &&
 		proc->prorettype != RECORDOID &&
 		proc->prorettype != VOIDOID &&
-		proc->prorettype != ANYARRAYOID &&
-		proc->prorettype != ANYELEMENTOID)
+		!IsPolymorphicType(proc->prorettype))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("SQL functions cannot return type %s",
 						format_type_be(proc->prorettype))));
 
 	/* Disallow pseudotypes in arguments */
-	/* except for ANYARRAY or ANYELEMENT */
+	/* except for polymorphic */
 	haspolyarg = false;
 	for (i = 0; i < proc->pronargs; i++)
 	{
-		if (get_typtype(proc->proargtypes.values[i]) == 'p')
+		if (get_typtype(proc->proargtypes.values[i]) == TYPTYPE_PSEUDO)
 		{
-			if (proc->proargtypes.values[i] == ANYARRAYOID ||
-				proc->proargtypes.values[i] == ANYELEMENTOID)
+			if (IsPolymorphicType(proc->proargtypes.values[i]))
 				haspolyarg = true;
 			else
 				ereport(ERROR,

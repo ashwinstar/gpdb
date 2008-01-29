@@ -13,7 +13,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execProcnode.c,v 1.59 2006/10/04 00:29:52 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execProcnode.c,v 1.62 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -323,25 +323,10 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		SubPlanState *sstate;
 
 		Assert(IsA(subplan, SubPlan));
-		sstate = ExecInitExprInitPlan(subplan, result);
-		ExecInitSubPlan(sstate, estate, eflags);
+		sstate = ExecInitSubPlan(subplan, result);
 		subps = lappend(subps, sstate);
 	}
 	result->initPlan = subps;
-
-	/*
-	 * Initialize any subPlans present in this node.  These were found by
-	 * ExecInitExpr during initialization of the PlanState.  Note we must do
-	 * this after initializing initPlans, in case their arguments contain
-	 * subPlans (is that actually possible? perhaps not).
-	 */
-	foreach(l, result->subPlan)
-	{
-		SubPlanState *sstate = (SubPlanState *) lfirst(l);
-
-		Assert(IsA(sstate, SubPlanState));
-		ExecInitSubPlan(sstate, estate, eflags);
-	}
 
 	/* Set up instrumentation for this node if requested */
 	if (estate->es_instrument)
@@ -785,19 +770,11 @@ ExecUpdateTransportState(PlanState *node, struct ChunkTransportState *state)
 void
 ExecEndNode(PlanState *node)
 {
-	ListCell   *subp;
-
 	/*
 	 * do nothing when we get to the end of a leaf on tree.
 	 */
 	if (node == NULL)
 		return;
-
-	/* Clean up initPlans and subPlans */
-	foreach(subp, node->initPlan)
-		ExecEndSubPlan((SubPlanState *) lfirst(subp));
-	foreach(subp, node->subPlan)
-		ExecEndSubPlan((SubPlanState *) lfirst(subp));
 
 	if (node->chgParam != NULL)
 	{

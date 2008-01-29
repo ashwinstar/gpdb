@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/makefuncs.c,v 1.52 2006/10/04 00:29:53 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/makefuncs.c,v 1.58 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -137,11 +137,26 @@ flatCopyTargetEntry(TargetEntry *src_tle)
 }
 
 /*
+ * makeFromExpr -
+ *	  creates a FromExpr node
+ */
+FromExpr *
+makeFromExpr(List *fromlist, Node *quals)
+{
+	FromExpr   *f = makeNode(FromExpr);
+
+	f->fromlist = fromlist;
+	f->quals = quals;
+	return f;
+}
+
+/*
  * makeConst -
  *	  creates a Const node
  */
 Const *
 makeConst(Oid consttype,
+		  int32 consttypmod,
 		  int constlen,
 		  Datum constvalue,
 		  bool constisnull,
@@ -150,6 +165,7 @@ makeConst(Oid consttype,
 	Const	   *cnst = makeNode(Const);
 
 	cnst->consttype = consttype;
+	cnst->consttypmod = consttypmod;
 	cnst->constlen = constlen;
 	cnst->constvalue = constvalue;
 	cnst->constisnull = constisnull;
@@ -160,16 +176,20 @@ makeConst(Oid consttype,
 
 /*
  * makeNullConst -
- *	  creates a Const node representing a NULL of the specified type
+ *	  creates a Const node representing a NULL of the specified type/typmod
+ *
+ * This is a convenience routine that just saves a lookup of the type's
+ * storage properties.
  */
 Const *
-makeNullConst(Oid consttype)
+makeNullConst(Oid consttype, int32 consttypmod)
 {
 	int16		typLen;
 	bool		typByVal;
 
 	get_typlenbyval(consttype, &typLen, &typByVal);
 	return makeConst(consttype,
+					 consttypmod,
 					 (int) typLen,
 					 (Datum) 0,
 					 true,
@@ -184,7 +204,8 @@ Node *
 makeBoolConst(bool value, bool isnull)
 {
 	/* note that pg_type.h hardwires size of bool as 1 ... duplicate it */
-	return (Node *) makeConst(BOOLOID, 1, BoolGetDatum(value), isnull, true);
+	return (Node *) makeConst(BOOLOID, -1, 1,
+							  BoolGetDatum(value), isnull, true);
 }
 
 /*
@@ -264,12 +285,7 @@ makeRangeVar(char *schemaname, char *relname)
 TypeName *
 makeTypeName(char *typnam)
 {
-	TypeName   *n = makeNode(TypeName);
-
-	n->names = list_make1(makeString(typnam));
-	n->typmod = -1;
-	n->location = -1;
-	return n;
+	return makeTypeNameFromNameList(list_make1(makeString(typnam)));
 }
 
 /*
@@ -284,14 +300,15 @@ makeTypeNameFromNameList(List *names)
 	TypeName   *n = makeNode(TypeName);
 
 	n->names = names;
-	n->typmod = -1;
+	n->typmods = NIL;
+	n->typemod = -1;
 	n->location = -1;
 	return n;
 }
 
 /*
  * makeTypeNameFromOid -
- *	build a TypeName node to represent a type already known by OID.
+ *	build a TypeName node to represent a type already known by OID/typmod.
  */
 TypeName *
 makeTypeNameFromOid(Oid typid, int32 typmod)

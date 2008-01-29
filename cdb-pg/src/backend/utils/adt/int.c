@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/int.c,v 1.75 2006/10/04 00:29:59 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/int.c,v 1.81 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,8 +18,6 @@
  *		 int2in, int2out, int2recv, int2send
  *		 int4in, int4out, int4recv, int4send
  *		 int2vectorin, int2vectorout, int2vectorrecv, int2vectorsend
- *		Conversion routines:
- *		 itoi, int2_text, int4_text
  *		Boolean operators:
  *		 inteq, intne, intlt, intle, intgt, intge
  *		Arithmetic operators:
@@ -353,20 +351,6 @@ int2_text(PG_FUNCTION_ARGS)
 	SET_VARSIZE(result, strlen(VARDATA(result)) + VARHDRSZ);
 	PG_RETURN_TEXT_P(result);
 }
-
-Datum
-text_int2(PG_FUNCTION_ARGS)
-{
-	text	   *string = PG_GETARG_TEXT_P(0);
-	Datum		result;
-	int			len;
-	char	   *str;
-
-	len = VARSIZE(string) - VARHDRSZ;
-
-	str = palloc(len + 1);
-	memcpy(str, VARDATA(string), len);
-	*(str + len) = '\0';
 
 	result = DirectFunctionCall1(int2in, CStringGetDatum(str));
 	pfree(str);
@@ -1124,6 +1108,11 @@ int4mod(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_DIVISION_BY_ZERO),
 				 errmsg("division by zero")));
+
+	/* SELECT ((-2147483648)::int4) % (-1); causes a floating point exception */
+	if (arg1 == INT_MIN && arg2 == -1)
+		PG_RETURN_INT32(0);
+
 	/* No overflow is possible */
 
 	PG_RETURN_INT32(arg1 % arg2);
@@ -1392,7 +1381,7 @@ generate_series_step_int4(PG_FUNCTION_ARGS)
 		if (step == 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("step size may not equal zero")));
+					 errmsg("step size cannot equal zero")));
 
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
