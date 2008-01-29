@@ -99,6 +99,7 @@ typedef union
 		uint32		va_header;
 		uint32		va_rawsize; /* Original data size (excludes header) */
 		char		va_data[1]; /* Compressed data */
+		char	va_data[1];		/* Compressed data */
 	}			va_compressed;
 } varattrib_4b;
 
@@ -315,342 +316,109 @@ typedef unsigned long Datum;	/* XXX sizeof(long) >= sizeof(void *) */
 
 #define SIZEOF_DATUM SIZEOF_UNSIGNED_LONG
 
+/* ----------------------------------------------------------------
+ *				Section 2:	datum type + support macros
+ * ----------------------------------------------------------------
+ */
+
+/*
+ * Port Notes:
+ *
+ *  Greenplum CDB:
+ * 	Datum is alway 8 bytes, regardless if it is 32bit or 64bit machine.  
+ *
+ *	Postgres also assumes that
+ *
+ *	sizeof(char) == 1
+ *
+ *	and that
+ *
+ *	sizeof(short) == 2
+ *
+ *	If your machine meets these requirements, Datums should also be checked
+ *	to see if the positioning is correct.
+ */
+
+typedef int64 Datum;
+typedef union Datum_U
+{
+	Datum d;
+
+	float4 f4[2];
+	float8 f8;
+
+	void *ptr;
+} Datum_U;
+
+#define SIZEOF_DATUM (sizeof(Datum))
 typedef Datum *DatumPtr;
 
-#define GET_1_BYTE(datum)	(((Datum) (datum)) & 0x000000ff)
-#define GET_2_BYTES(datum)	(((Datum) (datum)) & 0x0000ffff)
-#define GET_4_BYTES(datum)	(((Datum) (datum)) & 0xffffffff)
-#define SET_1_BYTE(value)	(((Datum) (value)) & 0x000000ff)
-#define SET_2_BYTES(value)	(((Datum) (value)) & 0x0000ffff)
-#define SET_4_BYTES(value)	(((Datum) (value)) & 0xffffffff)
-
-/*
- * DatumGetBool
- *		Returns boolean value of a datum.
- *
- * Note: any nonzero value will be considered TRUE, but we ignore bits to
- * the left of the width of bool, per comment above.
+/* 
+ * Conversion between Datum and type X.  Changed from Macro to static inline
+ * functions to get proper type checking.
  */
 
-#define DatumGetBool(X) ((bool) (((bool) (X)) != 0))
+static inline bool DatumGetBool(Datum d) { return d != 0; }
+static inline Datum BoolGetDatum(bool b) { return (b ? 1 : 0); } 
 
-/*
- * BoolGetDatum
- *		Returns datum representation for a boolean.
- *
- * Note: any nonzero value will be considered TRUE.
- */
+static inline char DatumGetChar(Datum d) { return (char) d; } 
+static inline Datum CharGetDatum(char c) { return (Datum) c; } 
 
-#define BoolGetDatum(X) ((Datum) ((X) ? 1 : 0))
+static inline int8 DatumGetInt8(Datum d) { return (int8) d; } 
+static inline Datum Int8GetDatum(int8 i8) { return (Datum) i8; }
 
-/*
- * DatumGetChar
- *		Returns character value of a datum.
- */
+static inline uint8 DatumGetUInt8(Datum d) { return (uint8) d; } 
+static inline Datum UInt8GetDatum(uint8 ui8) { return (Datum) ui8; } 
 
-#define DatumGetChar(X) ((char) GET_1_BYTE(X))
+static inline int16 DatumGetInt16(Datum d) { return (int16) d; } 
+static inline Datum Int16GetDatum(int16 i16) { return (Datum) i16; } 
 
-/*
- * CharGetDatum
- *		Returns datum representation for a character.
- */
+static inline uint16 DatumGetUInt16(Datum d) { return (uint16) d; } 
+static inline Datum UInt16GetDatum(uint16 ui16) { return (Datum) ui16; } 
 
-#define CharGetDatum(X) ((Datum) SET_1_BYTE(X))
+static inline int32 DatumGetInt32(Datum d) { return (int32) d; } 
+static inline Datum Int32GetDatum(int32 i32) { return (Datum) i32; } 
 
-/*
- * Int8GetDatum
- *		Returns datum representation for an 8-bit integer.
- */
+static inline uint32 DatumGetUInt32(Datum d) { return (uint32) d; } 
+static inline Datum UInt32GetDatum(uint32 ui32) { return (Datum) ui32; } 
 
-#define Int8GetDatum(X) ((Datum) SET_1_BYTE(X))
+static inline int64 DatumGetInt64(Datum d) { return (int64) d; } 
+static inline Datum Int64GetDatum(int64 i64) { return (Datum) i64; } 
+static inline Datum Int64GetDatumFast(int64 x) { return Int64GetDatum(x); } 
 
-/*
- * DatumGetUInt8
- *		Returns 8-bit unsigned integer value of a datum.
- */
+static inline uint64 DatumGetUInt64(Datum d) { return (uint64) d; } 
+static inline Datum UInt64GetDatum(uint64 ui64) { return (Datum) ui64; } 
 
-#define DatumGetUInt8(X) ((uint8) GET_1_BYTE(X))
+static inline Oid DatumGetObjectId(Datum d) { return (Oid) d; } 
+static inline Datum ObjectIdGetDatum(Oid oid) { return (Datum) oid; } 
 
-/*
- * UInt8GetDatum
- *		Returns datum representation for an 8-bit unsigned integer.
- */
+static inline TransactionId DatumGetTransactionId(Datum d) { return (TransactionId) d; } 
+static inline Datum TransactionIdGetDatum(TransactionId tid) { return (Datum) tid; } 
 
-#define UInt8GetDatum(X) ((Datum) SET_1_BYTE(X))
+static inline CommandId DatumGetCommandId(Datum d) { return (CommandId) d; } 
+static inline Datum CommandIdGetDatum(CommandId cid) { return (Datum) cid; } 
 
-/*
- * DatumGetInt16
- *		Returns 16-bit integer value of a datum.
- */
+static inline void *DatumGetPointer(Datum d) { Datum_U du; du.d = d; return du.ptr; }
+static inline Datum PointerGetDatum(void *p) { Datum_U du; du.d = 0; du.ptr = p; return du.d; } 
 
-#define DatumGetInt16(X) ((int16) GET_2_BYTES(X))
+static inline char *DatumGetCString(Datum d) { return (char* ) DatumGetPointer(d); } 
+static inline Datum CStringGetDatum(char *p) { return PointerGetDatum(p); }
 
-/*
- * Int16GetDatum
- *		Returns datum representation for a 16-bit integer.
- */
+static inline Name DatumGetName(Datum d) { return (Name) DatumGetPointer(d); }
+static inline Datum NameGetDatum(Name n) { return PointerGetDatum(n); } 
 
-#define Int16GetDatum(X) ((Datum) SET_2_BYTES(X))
+#if BYTE_ORDER == LITTLE_ENDIAN 
+static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4[0]; } 
+static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4[0] = f; return du.d; } 
+#endif
+#if BYTE_ORDER == BIG_ENDIAN
+static inline float4 DatumGetFloat4(Datum d) { Datum_U du; du.d = d; return du.f4[1]; } 
+static inline Datum Float4GetDatum(float4 f) { Datum_U du; du.d = 0; du.f4[1] = f; return du.d; } 
+#endif
 
-/*
- * DatumGetUInt16
- *		Returns 16-bit unsigned integer value of a datum.
- */
-
-#define DatumGetUInt16(X) ((uint16) GET_2_BYTES(X))
-
-/*
- * UInt16GetDatum
- *		Returns datum representation for a 16-bit unsigned integer.
- */
-
-#define UInt16GetDatum(X) ((Datum) SET_2_BYTES(X))
-
-/*
- * DatumGetInt32
- *		Returns 32-bit integer value of a datum.
- */
-
-#define DatumGetInt32(X) ((int32) GET_4_BYTES(X))
-
-/*
- * Int32GetDatum
- *		Returns datum representation for a 32-bit integer.
- */
-
-#define Int32GetDatum(X) ((Datum) SET_4_BYTES(X))
-
-/*
- * DatumGetUInt32
- *		Returns 32-bit unsigned integer value of a datum.
- */
-
-#define DatumGetUInt32(X) ((uint32) GET_4_BYTES(X))
-
-/*
- * UInt32GetDatum
- *		Returns datum representation for a 32-bit unsigned integer.
- */
-
-#define UInt32GetDatum(X) ((Datum) SET_4_BYTES(X))
-
-/*
- * DatumGetObjectId
- *		Returns object identifier value of a datum.
- */
-
-#define DatumGetObjectId(X) ((Oid) GET_4_BYTES(X))
-
-/*
- * ObjectIdGetDatum
- *		Returns datum representation for an object identifier.
- */
-
-#define ObjectIdGetDatum(X) ((Datum) SET_4_BYTES(X))
-
-/*
- * DatumGetTransactionId
- *		Returns transaction identifier value of a datum.
- */
-
-#define DatumGetTransactionId(X) ((TransactionId) GET_4_BYTES(X))
-
-/*
- * TransactionIdGetDatum
- *		Returns datum representation for a transaction identifier.
- */
-
-#define TransactionIdGetDatum(X) ((Datum) SET_4_BYTES((X)))
-
-/*
- * DatumGetCommandId
- *		Returns command identifier value of a datum.
- */
-
-#define DatumGetCommandId(X) ((CommandId) GET_4_BYTES(X))
-
-/*
- * CommandIdGetDatum
- *		Returns datum representation for a command identifier.
- */
-
-#define CommandIdGetDatum(X) ((Datum) SET_4_BYTES(X))
-
-/*
- * DatumGetPointer
- *		Returns pointer value of a datum.
- */
-
-#define DatumGetPointer(X) ((Pointer) (X))
-
-/*
- * PointerGetDatum
- *		Returns datum representation for a pointer.
- */
-
-#define PointerGetDatum(X) ((Datum) (X))
-
-/*
- * DatumGetCString
- *		Returns C string (null-terminated string) value of a datum.
- *
- * Note: C string is not a full-fledged Postgres type at present,
- * but type input functions use this conversion for their inputs.
- */
-
-#define DatumGetCString(X) ((char *) DatumGetPointer(X))
-
-/*
- * CStringGetDatum
- *		Returns datum representation for a C string (null-terminated string).
- *
- * Note: C string is not a full-fledged Postgres type at present,
- * but type output functions use this conversion for their outputs.
- * Note: CString is pass-by-reference; caller must ensure the pointed-to
- * value has adequate lifetime.
- */
-
-#define CStringGetDatum(X) PointerGetDatum(X)
-
-/*
- * DatumGetName
- *		Returns name value of a datum.
- */
-
-#define DatumGetName(X) ((Name) DatumGetPointer(X))
-
-/*
- * NameGetDatum
- *		Returns datum representation for a name.
- *
- * Note: Name is pass-by-reference; caller must ensure the pointed-to
- * value has adequate lifetime.
- */
-
-#define NameGetDatum(X) PointerGetDatum(X)
-
-/*
- * DatumGetInt64
- *		Returns 64-bit integer value of a datum.
- *
- * Note: this macro hides the fact that int64 is currently a
- * pass-by-reference type.	Someday it may be pass-by-value,
- * at least on some platforms.
- */
-
-#define DatumGetInt64(X) (* ((int64 *) DatumGetPointer(X)))
-
-/*
- * Int64GetDatum
- *		Returns datum representation for a 64-bit integer.
- *
- * Note: this routine returns a reference to palloc'd space.
- */
-
-extern Datum Int64GetDatum(int64 X);
-
-/*
- * DatumGetFloat4
- *		Returns 4-byte floating point value of a datum.
- *
- * Note: this macro hides the fact that float4 is currently a
- * pass-by-reference type.	Someday it may be pass-by-value.
- */
-
-#define DatumGetFloat4(X) (* ((float4 *) DatumGetPointer(X)))
-
-/*
- * Float4GetDatum
- *		Returns datum representation for a 4-byte floating point number.
- *
- * Note: this routine returns a reference to palloc'd space.
- */
-
-extern Datum Float4GetDatum(float4 X);
-
-/*
- * DatumGetFloat8
- *		Returns 8-byte floating point value of a datum.
- *
- * Note: this macro hides the fact that float8 is currently a
- * pass-by-reference type.	Someday it may be pass-by-value,
- * at least on some platforms.
- */
-
-#define DatumGetFloat8(X) (* ((float8 *) DatumGetPointer(X)))
-
-/*
- * Float8GetDatum
- *		Returns datum representation for an 8-byte floating point number.
- *
- * Note: this routine returns a reference to palloc'd space.
- */
-
-extern Datum Float8GetDatum(float8 X);
-
-
-/*
- * DatumGetFloat32
- *		Returns 32-bit floating point value of a datum.
- *		This is really a pointer, of course.
- *
- * XXX: this macro is now deprecated in favor of DatumGetFloat4.
- * It will eventually go away.
- */
-
-#define DatumGetFloat32(X) ((float32) DatumGetPointer(X))
-
-/*
- * Float32GetDatum
- *		Returns datum representation for a 32-bit floating point number.
- *		This is really a pointer, of course.
- *
- * XXX: this macro is now deprecated in favor of Float4GetDatum.
- * It will eventually go away.
- */
-
-#define Float32GetDatum(X) PointerGetDatum(X)
-
-/*
- * DatumGetFloat64
- *		Returns 64-bit floating point value of a datum.
- *		This is really a pointer, of course.
- *
- * XXX: this macro is now deprecated in favor of DatumGetFloat8.
- * It will eventually go away.
- */
-
-#define DatumGetFloat64(X) ((float64) DatumGetPointer(X))
-
-/*
- * Float64GetDatum
- *		Returns datum representation for a 64-bit floating point number.
- *		This is really a pointer, of course.
- *
- * XXX: this macro is now deprecated in favor of Float8GetDatum.
- * It will eventually go away.
- */
-
-#define Float64GetDatum(X) PointerGetDatum(X)
-
-/*
- * Int64GetDatumFast
- * Float4GetDatumFast
- * Float8GetDatumFast
- *
- * These macros are intended to allow writing code that does not depend on
- * whether int64, float4, float8 are pass-by-reference types, while not
- * sacrificing performance when they are.  The argument must be a variable
- * that will exist and have the same value for as long as the Datum is needed.
- * In the pass-by-ref case, the address of the variable is taken to use as
- * the Datum.  In the pass-by-val case, these will be the same as the non-Fast
- * macros.
- */
-
-#define Int64GetDatumFast(X)  PointerGetDatum(&(X))
-#define Float4GetDatumFast(X) PointerGetDatum(&(X))
-#define Float8GetDatumFast(X) PointerGetDatum(&(X))
-
+static inline float8 DatumGetFloat8(Datum d) { Datum_U du; du.d = d; return du.f8; } 
+static inline Datum Float8GetDatum(float8 f) { Datum_U du; du.f8 = f; return du.d; }
+static inline Datum Float8GetDatumFast(float8 f) { return Float8GetDatum(f); }
 
 /* ----------------------------------------------------------------
  *				Section 3:	exception handling definitions
@@ -719,9 +487,9 @@ extern PGDLLIMPORT bool assert_enabled;
 #endif   /* USE_ASSERT_CHECKING */
 
 extern int ExceptionalCondition(const char *conditionName,
-					 const char *errorType,
-					 const char *fileName, int lineNumber);
-					 
+                                const char *errorType,
+                                const char *fileName,
+                                int lineNumber);
 extern int SyncAgentMain(int, char **, const char *);
 
 /* ----------------------------------------------------------------
