@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/syscache.h,v 1.65 2006/07/13 18:01:02 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/syscache.h,v 1.71 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,42 +28,55 @@
  *		Keep them in alphabetical order.
  */
 
-#define AGGFNOID		0
-#define AMNAME			1
-#define AMOID			2
-#define AMOPOPID		3
-#define AMOPSTRATEGY	4
-#define AMPROCNUM		5
-#define ATTNAME			6
-#define ATTNUM			7
-#define AUTHMEMMEMROLE	8
-#define AUTHMEMROLEMEM	9
-#define AUTHNAME		10
-#define AUTHOID			11
-#define CASTSOURCETARGET 12
-#define CLAAMNAMENSP	13
-#define CLAOID			14
-#define CONDEFAULT		15
-#define CONNAMENSP		16
-#define CONOID			17
-#define DATABASEOID		18
-#define INDEXRELID		19
-#define INHRELID		20
-#define LANGNAME		21
-#define LANGOID			22
-#define NAMESPACENAME	23
-#define NAMESPACEOID	24
-#define OPERNAMENSP		25
-#define OPEROID			26
-#define PROCNAMEARGSNSP 27
-#define PROCOID			28
-#define RELNAMENSP		29
-#define RELOID			30
-#define RULERELNAME		31
-#define STATRELATT		32
-#define TYPENAMENSP		33
-#define TYPEOID			34
-#define WINFNOID		35
+#define AGGFNOID			0
+#define AMNAME				1
+#define AMOID				2
+#define AMOPOPID			3
+#define AMOPSTRATEGY		4
+#define AMPROCNUM			5
+#define ATTNAME				6
+#define ATTNUM				7
+#define AUTHMEMMEMROLE		8
+#define AUTHMEMROLEMEM		9
+#define AUTHNAME			10
+#define AUTHOID				11
+#define CASTSOURCETARGET	12
+#define CLAAMNAMENSP		13
+#define CLAOID				14
+#define CONDEFAULT			15
+#define CONNAMENSP			16
+#define CONSTROID			17
+#define CONVOID				18
+#define DATABASEOID			19
+#define ENUMOID				20
+#define ENUMTYPOIDNAME		21
+#define INDEXRELID			22
+#define LANGNAME			23
+#define LANGOID				24
+#define NAMESPACENAME		25
+#define NAMESPACEOID		26
+#define OPERNAMENSP			27
+#define OPEROID				28
+#define OPFAMILYAMNAMENSP	29
+#define OPFAMILYOID			30
+#define PROCNAMEARGSNSP		31
+#define PROCOID				32
+#define RELNAMENSP			33
+#define RELOID				34
+#define RULERELNAME			35
+#define STATRELATT			36
+#define TSCONFIGMAP			37
+#define TSCONFIGNAMENSP		38
+#define TSCONFIGOID			39
+#define TSDICTNAMENSP		40
+#define TSDICTOID			41
+#define TSPARSERNAMENSP		42
+#define TSPARSEROID			43
+#define TSTEMPLATENAMENSP	44
+#define TSTEMPLATEOID		45
+#define TYPENAMENSP			46
+#define TYPEOID				47
+#define WINFNOID		48
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);
