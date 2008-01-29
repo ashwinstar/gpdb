@@ -11,7 +11,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/memutils.h,v 1.60 2006/03/05 15:59:07 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/memutils.h,v 1.64 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -76,17 +76,16 @@ typedef struct StandardChunkHeader
  * Only TopMemoryContext and ErrorContext are initialized by
  * MemoryContextInit() itself.
  */
-extern DLLIMPORT MemoryContext TopMemoryContext;
-extern DLLIMPORT MemoryContext ErrorContext;
-extern DLLIMPORT MemoryContext PostmasterContext;
-extern DLLIMPORT MemoryContext CacheMemoryContext;
-extern DLLIMPORT MemoryContext MessageContext;
-extern DLLIMPORT MemoryContext TopTransactionContext;
-extern DLLIMPORT MemoryContext CurTransactionContext;
+extern PGDLLIMPORT MemoryContext TopMemoryContext;
+extern PGDLLIMPORT MemoryContext ErrorContext;
+extern PGDLLIMPORT MemoryContext PostmasterContext;
+extern PGDLLIMPORT MemoryContext CacheMemoryContext;
+extern PGDLLIMPORT MemoryContext MessageContext;
+extern PGDLLIMPORT MemoryContext TopTransactionContext;
+extern PGDLLIMPORT MemoryContext CurTransactionContext;
 
-/* These two are transient links to contexts owned by other objects: */
-extern DLLIMPORT MemoryContext QueryContext;
-extern DLLIMPORT MemoryContext PortalContext;
+/* This is a transient link to the active portal's memory context: */
+extern PGDLLIMPORT MemoryContext PortalContext;
 
 
 /*

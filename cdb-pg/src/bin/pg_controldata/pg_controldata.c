@@ -6,7 +6,7 @@
  * copyright (c) Oliver Elphick <olly@lfix.co.uk>, 2001;
  * licence: BSD
  *
- * $PostgreSQL: pgsql/src/bin/pg_controldata/pg_controldata.c,v 1.31 2006/08/21 16:16:31 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_controldata/pg_controldata.c,v 1.35 2007/04/03 04:14:26 tgl Exp $
  */
 #include "postgres.h"
 
@@ -72,7 +72,7 @@ main(int argc, char *argv[])
 	char		pgctime_str[128];
 	char		ckpttime_str[128];
 	char		sysident_str[32];
-	char	   *strftime_fmt = "%c";
+	const char *strftime_fmt = "%c";
 	const char *progname;
 
 	set_pglocale_pgservice(argv[0], "pg_controldata");
@@ -159,10 +159,6 @@ main(int argc, char *argv[])
 		   dbState(ControlFile.state));
 	printf(_("pg_control last modified:             %s\n"),
 		   pgctime_str);
-	printf(_("Current log file ID:                  %u\n"),
-		   ControlFile.logId);
-	printf(_("Next log file segment:                %u\n"),
-		   ControlFile.logSeg);
 	printf(_("Latest checkpoint location:           %X/%X\n"),
 		   ControlFile.checkPoint.xlogid,
 		   ControlFile.checkPoint.xrecoff);
@@ -172,9 +168,6 @@ main(int argc, char *argv[])
 	printf(_("Latest checkpoint's REDO location:    %X/%X\n"),
 		   ControlFile.checkPointCopy.redo.xlogid,
 		   ControlFile.checkPointCopy.redo.xrecoff);
-	printf(_("Latest checkpoint's UNDO location:    %X/%X\n"),
-		   ControlFile.checkPointCopy.undo.xlogid,
-		   ControlFile.checkPointCopy.undo.xrecoff);
 	printf(_("Latest checkpoint's TimeLineID:       %u\n"),
 		   ControlFile.checkPointCopy.ThisTimeLineID);
 	printf(_("Latest checkpoint's NextXID:          %u/%u\n"),
@@ -206,6 +199,8 @@ main(int argc, char *argv[])
 		   ControlFile.nameDataLen);
 	printf(_("Maximum columns in an index:          %u\n"),
 		   ControlFile.indexMaxKeys);
+	printf(_("Maximum size of a TOAST chunk:        %u\n"),
+		   ControlFile.toast_max_chunk_size);
 	printf(_("Date/time type storage:               %s\n"),
 		   (ControlFile.enableIntTimes ? _("64-bit integers") : _("floating-point numbers")));
 	printf(_("Maximum length of locale name:        %u\n"),

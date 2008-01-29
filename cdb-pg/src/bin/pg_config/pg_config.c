@@ -17,7 +17,7 @@
  *
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/pg_config/pg_config.c,v 1.22 2006/10/04 00:30:04 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_config/pg_config.c,v 1.26 2008/01/01 19:45:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -213,7 +213,7 @@ show_pgxs(bool all)
 	if (all)
 		printf("PGXS = ");
 	get_pkglib_path(mypath, path);
-	strncat(path, "/pgxs/src/makefiles/pgxs.mk", MAXPGPATH - 1 - strlen(path));
+	strlcat(path, "/pgxs/src/makefiles/pgxs.mk", sizeof(path));
 	cleanup_path(path);
 	printf("%s\n", path);
 }
@@ -469,7 +469,7 @@ main(int argc, char **argv)
 
 	if (ret)
 	{
-		fprintf(stderr, _("%s: could not find own executable\n"), progname);
+		fprintf(stderr, _("%s: could not find own program executable\n"), progname);
 		exit(1);
 	}
 

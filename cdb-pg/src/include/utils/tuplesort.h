@@ -14,7 +14,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/tuplesort.h,v 1.23 2006/10/04 00:30:11 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/tuplesort.h,v 1.28 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -50,8 +50,8 @@ typedef struct Tuplesortstate Tuplesortstate;
 extern void tuplesort_begin_pos(Tuplesortstate *state, TuplesortPos **pos);
 
 extern Tuplesortstate *tuplesort_begin_heap(TupleDesc tupDesc,
-					 int nkeys,
-					 Oid *sortOperators, AttrNumber *attNums,
+					 int nkeys, AttrNumber *attNums,
+					 Oid *sortOperators, bool *nullsFirstFlags,
 					 int workMem, bool randomAccess);
 extern Tuplesortstate *tuplesort_begin_heap_file_readerwriter(
 		const char* rwfile_prefix, bool isWriter,
@@ -63,13 +63,15 @@ extern Tuplesortstate *tuplesort_begin_index(Relation indexRel,
 					  bool enforceUnique,
 					  int workMem, bool randomAccess);
 extern Tuplesortstate *tuplesort_begin_datum(Oid datumType,
-					  Oid sortOperator,
+					  Oid sortOperator, bool nullsFirstFlag,
 					  int workMem, bool randomAccess);
 
 extern void cdb_tuplesort_init(Tuplesortstate *state, 
 							   int64 offset, int64 limit, int unique,
 							   int sort_flags,
 							   int64 maxdistinct);
+
+extern void tuplesort_set_bound(Tuplesortstate *state, int64 bound);
 
 extern void tuplesort_puttupleslot(Tuplesortstate *state,
 					   TupleTableSlot *slot);
@@ -92,6 +94,8 @@ extern bool tuplesort_getdatum(Tuplesortstate *state, bool forward,
 
 extern void tuplesort_end(Tuplesortstate *state);
 extern void tuplesort_flush(Tuplesortstate *state);
+
+extern char *tuplesort_explain(Tuplesortstate *state);
 
 extern int	tuplesort_merge_order(long allowedMem);
 
@@ -159,28 +163,17 @@ tuplesort_set_instrument(Tuplesortstate            *state,
                          struct Instrumentation    *instrument,
                          struct StringInfoData     *explainbuf);
 
-/*
- * This routine selects an appropriate sorting function to implement
- * a sort operator as efficiently as possible.
- */
-typedef enum
-{
-	SORTFUNC_LT,				/* raw "<" operator */
-	SORTFUNC_REVLT,				/* raw "<" operator, but reverse NULLs */
-	SORTFUNC_CMP,				/* -1 / 0 / 1 three-way comparator */
-	SORTFUNC_REVCMP				/* 1 / 0 / -1 (reversed) 3-way comparator */
-} SortFunctionKind;
-
-extern void SelectSortFunction(Oid sortOperator,
-				   RegProcedure *sortFunction,
-				   SortFunctionKind *kind);
+/* Setup for ApplySortFunction */
+extern void SelectSortFunction(Oid sortOperator, bool nulls_first,
+				   Oid *sortFunction,
+				   int *sortFlags);
 
 /*
  * Apply a sort function (by now converted to fmgr lookup form)
  * and return a 3-way comparison result.  This takes care of handling
- * NULLs and sort ordering direction properly.
+ * reverse-sort and NULLs-ordering properly.
  */
-extern int32 ApplySortFunction(FmgrInfo *sortFunction, SortFunctionKind kind,
+extern int32 ApplySortFunction(FmgrInfo *sortFunction, int sortFlags,
 				  Datum datum1, bool isNull1,
 				  Datum datum2, bool isNull2);
 

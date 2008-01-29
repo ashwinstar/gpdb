@@ -12,7 +12,7 @@
  * to let the client suspend an update-type query partway through!	Because
  * the query rewriter does not allow arbitrary ON SELECT rewrite rules,
  * only queries that were originally update-type could produce multiple
- * parse/plan trees; so the restriction to a single query is not a problem
+ * plan trees; so the restriction to a single query is not a problem
  * in practice.
  *
  * For SQL cursors, we support three kinds of scroll behavior:
@@ -39,7 +39,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/portal.h,v 1.71 2006/10/04 00:30:10 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/portal.h,v 1.78 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -96,7 +96,8 @@ typedef enum PortalStrategy
  */
 typedef enum PortalStatus
 {
-	PORTAL_NEW,					/* in process of creation */
+	PORTAL_NEW,					/* freshly created */
+	PORTAL_DEFINED,				/* PortalDefineQuery done */
 	PORTAL_READY,				/* PortalStart complete, can run it */
 	PORTAL_ACTIVE,				/* portal is running (can't delete it) */
 	PORTAL_DONE,				/* portal is finished (don't re-run it) */
@@ -135,17 +136,8 @@ typedef struct PortalData
 	/* The query or queries the portal will execute */
 	const char *sourceText;		/* text of query, if known (may be NULL) */
 	const char *commandTag;		/* command tag for original query */
-	List	   *parseTrees;		/* parse tree(s) */
-	List	   *planTrees;		/* plan tree(s) */
-	MemoryContext queryContext; /* where the parse trees live */
-
-	/*
-	 * Note: queryContext effectively identifies which prepared statement the
-	 * portal depends on, if any.  The queryContext is *not* owned by the
-	 * portal and is not to be deleted by portal destruction.  (But for a
-	 * cursor it is the same as "heap", and that context is deleted by portal
-	 * destruction.)  The plan trees may be in either queryContext or heap.
-	 */
+	List	   *stmts;			/* PlannedStmts and/or utility statements */
+	CachedPlan *cplan;			/* CachedPlan, if stmts are from one */
 
 	ParamListInfo portalParams; /* params to pass to query */
 
@@ -209,7 +201,7 @@ typedef struct PortalData
  */
 #define PortalGetQueryDesc(portal)	((portal)->queryDesc)
 #define PortalGetHeapMemory(portal) ((portal)->heap)
-#define PortalGetPrimaryQuery(portal) PortalListGetPrimaryQuery((portal)->parseTrees)
+#define PortalGetPrimaryStmt(portal) PortalListGetPrimaryStmt((portal)->stmts)
 
 
 /* Prototypes for functions in utils/mmgr/portalmem.c */
@@ -229,20 +221,19 @@ extern void AtSubCleanup_Portals(SubTransactionId mySubid);
 extern Portal CreatePortal(const char *name, bool allowDup, bool dupSilent);
 extern Portal CreateNewPortal(void);
 extern void PortalDrop(Portal portal, bool isTopCommit);
-extern void DropDependentPortals(MemoryContext queryContext);
 extern Portal GetPortalByName(const char *name);
 extern void PortalDefineQuery(Portal portal,
 				  const char *prepStmtName,
 				  const char *sourceText,
 				  NodeTag	  sourceTag,
 				  const char *commandTag,
-				  List *parseTrees,
-				  List *planTrees,
-				  MemoryContext queryContext);
-extern Query *PortalListGetPrimaryQuery(List *parseTrees);
+				  List *stmts,
+				  CachedPlan *cplan);
+extern Node *PortalListGetPrimaryStmt(List *stmts);
 extern void PortalCreateHoldStore(Portal portal);
 extern void AtExitCleanup_ResPortals(void);
 extern void TotalResPortalIncrements(int pid, Oid queueid,
 									 Cost *totalIncrements, int *num);
+extern void PortalHashTableDeleteAll(void);
 
 #endif   /* PORTAL_H */

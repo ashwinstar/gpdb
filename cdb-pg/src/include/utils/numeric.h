@@ -7,7 +7,7 @@
  *
  * Copyright (c) 1998-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/utils/numeric.h,v 1.23 2007/01/05 22:19:59 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/numeric.h,v 1.26 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -63,6 +63,7 @@
 typedef struct NumericData
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
+	/* Greenplum has weight and scale in the opposite order from PostgreSQL 8.3 */
 	int16		n_weight;		/* Weight of 1st digit	*/
 	uint16		n_sign_dscale;	/* Sign + display scale */
 	char		n_data[1];		/* Digits (really array of NumericDigit) */
@@ -70,7 +71,7 @@ typedef struct NumericData
 
 typedef NumericData *Numeric;
 
-#define NUMERIC_HDRSZ	(VARHDRSZ + sizeof(int16) + sizeof(uint16))
+#define NUMERIC_HDRSZ	(VARHDRSZ + sizeof(uint16) + sizeof(int16))
 
 
 /*

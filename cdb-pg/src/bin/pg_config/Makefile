@@ -2,9 +2,9 @@
 #
 # Makefile for src/bin/pg_config
 #
-# Copyright (c) 1998-2006, PostgreSQL Global Development Group
+# Copyright (c) 1998-2008, PostgreSQL Global Development Group
 #
-# $PostgreSQL: pgsql/src/bin/pg_config/Makefile,v 1.17 2006/03/05 15:58:50 momjian Exp $
+# $PostgreSQL: pgsql/src/bin/pg_config/Makefile,v 1.20 2008/01/01 19:45:55 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -19,7 +19,6 @@ OBJS=   pg_config.o $(WIN32RES)
 STD_CPPFLAGS := $(filter-out -I$(top_srcdir)/src/include -I$(top_builddir)/src/include,$(CPPFLAGS))
 STD_LDFLAGS := $(filter-out -L$(top_builddir)/src/port,$(LDFLAGS))
 
-override CPPFLAGS += -DFRONTEND
 override CPPFLAGS += -DVAL_CONFIGURE="\"$(configure_args)\""
 override CPPFLAGS += -DVAL_CC="\"$(CC)\""
 override CPPFLAGS += -DVAL_CPPFLAGS="\"$(STD_CPPFLAGS)\""

@@ -2,7 +2,7 @@
 #
 # Makefile for the plpgsql shared object
 #
-# $PostgreSQL: pgsql/src/pl/plpgsql/src/Makefile,v 1.29 2006/03/07 01:03:12 tgl Exp $
+# $PostgreSQL: pgsql/src/pl/plpgsql/src/Makefile,v 1.31 2007/07/15 22:18:24 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -17,7 +17,7 @@ SO_MINOR_VERSION= 0
 
 override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
 SHLIB_LINK = $(filter -lintl, $(LIBS)) $(BE_DLLLIBS)
-rpath :=
+rpath =
 
 OBJS = pl_gram.o pl_handler.o pl_comp.o pl_exec.o pl_funcs.o
 
@@ -67,9 +67,13 @@ else
 	@$(missing) bison $< $@
 endif
 
+# Because we use %option case-insensitive, flex's results could vary
+# depending on what the compile-time locale setting is.  Hence, force
+# it to see LC_CTYPE=C to ensure consistent build results.
+
 $(srcdir)/pl_scan.c: scan.l
 ifdef FLEX
-	$(FLEX) $(FLEXFLAGS) -o'$@' $<
+	LC_CTYPE=C $(FLEX) $(FLEXFLAGS) -o'$@' $<
 else
 	@$(missing) flex $< $@
 endif

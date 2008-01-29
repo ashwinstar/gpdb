@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.64 2006/10/04 00:30:11 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/timestamp.h,v 1.73 2008/01/01 19:45:59 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -200,6 +200,8 @@ extern Datum timestamp_in(PG_FUNCTION_ARGS);
 extern Datum timestamp_out(PG_FUNCTION_ARGS);
 extern Datum timestamp_recv(PG_FUNCTION_ARGS);
 extern Datum timestamp_send(PG_FUNCTION_ARGS);
+extern Datum timestamptypmodin(PG_FUNCTION_ARGS);
+extern Datum timestamptypmodout(PG_FUNCTION_ARGS);
 extern Datum timestamp_scale(PG_FUNCTION_ARGS);
 extern Datum timestamp_eq(PG_FUNCTION_ARGS);
 extern Datum timestamp_ne(PG_FUNCTION_ARGS);
@@ -209,6 +211,7 @@ extern Datum timestamp_ge(PG_FUNCTION_ARGS);
 extern Datum timestamp_gt(PG_FUNCTION_ARGS);
 extern Datum timestamp_finite(PG_FUNCTION_ARGS);
 extern Datum timestamp_cmp(PG_FUNCTION_ARGS);
+extern Datum timestamp_hash(PG_FUNCTION_ARGS);
 extern Datum timestamp_smaller(PG_FUNCTION_ARGS);
 extern Datum timestamp_larger(PG_FUNCTION_ARGS);
 
@@ -232,6 +235,8 @@ extern Datum interval_in(PG_FUNCTION_ARGS);
 extern Datum interval_out(PG_FUNCTION_ARGS);
 extern Datum interval_recv(PG_FUNCTION_ARGS);
 extern Datum interval_send(PG_FUNCTION_ARGS);
+extern Datum intervaltypmodin(PG_FUNCTION_ARGS);
+extern Datum intervaltypmodout(PG_FUNCTION_ARGS);
 extern Datum interval_scale(PG_FUNCTION_ARGS);
 extern Datum interval_eq(PG_FUNCTION_ARGS);
 extern Datum interval_ne(PG_FUNCTION_ARGS);
@@ -248,10 +253,6 @@ extern Datum interval_justify_interval(PG_FUNCTION_ARGS);
 extern Datum interval_justify_hours(PG_FUNCTION_ARGS);
 extern Datum interval_justify_days(PG_FUNCTION_ARGS);
 
-extern Datum timestamp_text(PG_FUNCTION_ARGS);
-extern Datum text_timestamp(PG_FUNCTION_ARGS);
-extern Datum interval_text(PG_FUNCTION_ARGS);
-extern Datum text_interval(PG_FUNCTION_ARGS);
 extern Datum timestamp_trunc(PG_FUNCTION_ARGS);
 extern Datum interval_trunc(PG_FUNCTION_ARGS);
 extern Datum timestamp_part(PG_FUNCTION_ARGS);
@@ -264,6 +265,8 @@ extern Datum timestamptz_in(PG_FUNCTION_ARGS);
 extern Datum timestamptz_out(PG_FUNCTION_ARGS);
 extern Datum timestamptz_recv(PG_FUNCTION_ARGS);
 extern Datum timestamptz_send(PG_FUNCTION_ARGS);
+extern Datum timestamptztypmodin(PG_FUNCTION_ARGS);
+extern Datum timestamptztypmodout(PG_FUNCTION_ARGS);
 extern Datum timestamptz_scale(PG_FUNCTION_ARGS);
 extern Datum timestamptz_timestamp(PG_FUNCTION_ARGS);
 extern Datum timestamptz_zone(PG_FUNCTION_ARGS);
@@ -288,8 +291,6 @@ extern Datum timestamp_mi_interval(PG_FUNCTION_ARGS);
 extern Datum timestamp_age(PG_FUNCTION_ARGS);
 extern Datum overlaps_timestamp(PG_FUNCTION_ARGS);
 
-extern Datum timestamptz_text(PG_FUNCTION_ARGS);
-extern Datum text_timestamptz(PG_FUNCTION_ARGS);
 extern Datum timestamptz_pl_interval(PG_FUNCTION_ARGS);
 extern Datum timestamptz_mi_interval(PG_FUNCTION_ARGS);
 extern Datum timestamptz_age(PG_FUNCTION_ARGS);
@@ -308,9 +309,14 @@ extern TimestampTz GetCurrentTimestamp(void);
 
 extern void TimestampDifference(TimestampTz start_time, TimestampTz stop_time,
 					long *secs, int *microsecs);
+extern bool TimestampDifferenceExceeds(TimestampTz start_time,
+						   TimestampTz stop_time,
+						   int msec);
 
 extern TimestampTz time_t_to_timestamptz(time_t tm);
 extern time_t timestamptz_to_time_t(TimestampTz t);
+
+extern const char *timestamptz_to_str(TimestampTz t);
 
 extern int	tm2timestamp(struct pg_tm * tm, fsec_t fsec, int *tzp, Timestamp *dt);
 extern int timestamp2tm(Timestamp dt, int *tzp, struct pg_tm * tm,
@@ -328,8 +334,11 @@ extern int	timestamp_cmp_internal(Timestamp dt1, Timestamp dt2);
 /* timestamp comparison works for timestamptz also */
 #define timestamptz_cmp_internal(dt1,dt2)	timestamp_cmp_internal(dt1, dt2)
 
+extern int	isoweek2j(int year, int week);
 extern void isoweek2date(int woy, int *year, int *mon, int *mday);
+extern void isoweekdate2date(int isoweek, int isowday, int *year, int *mon, int *mday);
 extern int	date2isoweek(int year, int mon, int mday);
 extern int	date2isoyear(int year, int mon, int mday);
+extern int	date2isoyearday(int year, int mon, int mday);
 
 #endif   /* TIMESTAMP_H */
