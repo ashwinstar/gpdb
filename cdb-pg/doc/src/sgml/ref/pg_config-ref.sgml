@@ -1,4 +1,4 @@
-<!-- $PostgreSQL: pgsql/doc/src/sgml/ref/pg_config-ref.sgml,v 1.25 2006/10/23 18:10:32 petere Exp $ -->
+<!-- $PostgreSQL: pgsql/doc/src/sgml/ref/pg_config-ref.sgml,v 1.27 2007/02/20 15:01:17 momjian Exp $ -->
 
 <refentry id="app-pgconfig">
  <refmeta>
@@ -106,7 +106,7 @@
       <para>
        Print the location of dynamically loadable modules, or where
        the server would search for them.  (Other
-       architecture-dependent data files may also be installed in this
+       architecture-dependent data files might also be installed in this
        directory.)
       </para>
      </listitem>
@@ -310,12 +310,4 @@ eval ./configure `pg_config --configure`
   </para>
  </refsect1>
 
- <refsect1>
-  <title>History</title>
-
-  <para>
-   The <command>pg_config</command> utility first appeared in
-   <productname>PostgreSQL</> 7.1.
-  </para>
- </refsect1>
 </refentry>

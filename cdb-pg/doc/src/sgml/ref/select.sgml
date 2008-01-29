@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/select.sgml,v 1.94 2006/12/01 20:49:53 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/select.sgml,v 1.102 2007/11/28 15:42:31 petere Exp $
 PostgreSQL documentation
 -->
 
@@ -28,7 +28,7 @@ SELECT [ ALL | DISTINCT [ ON ( <replaceable class="parameter">expression</replac
     [ HAVING <replaceable class="parameter">condition</replaceable> [, ...] ]
 	[ WINDOW <replaceable class="parameter">window_name</replaceable> AS (<replaceable class="parameter">window_specification</replaceable>) ]
     [ { UNION | INTERSECT | EXCEPT } [ ALL ] <replaceable class="parameter">select</replaceable> ]
-    [ ORDER BY <replaceable class="parameter">expression</replaceable> [ ASC | DESC | USING <replaceable class="parameter">operator</replaceable> ] [, ...] ]
+    [ ORDER BY <replaceable class="parameter">expression</replaceable> [ ASC | DESC | USING <replaceable class="parameter">operator</replaceable> ] [ NULLS { FIRST | LAST } ] [, ...] ]
     [ LIMIT { <replaceable class="parameter">count</replaceable> | ALL } ]
     [ OFFSET <replaceable class="parameter">start</replaceable> ]
     [ FOR { UPDATE | SHARE } [ OF <replaceable class="parameter">table_name</replaceable> [, ...] ] [ NOWAIT ] [...] ]
@@ -274,7 +274,7 @@ and <replaceable class="parameter">group_elem</replaceable> can be one of:
         result sets, but any function can be used.)  This acts as
         though its output were created as a temporary table for the
         duration of this single <command>SELECT</command> command. An
-        alias may also be used. If an alias is written, a column alias
+        alias can also be used. If an alias is written, a column alias
         list can also be written to provide substitute names for one
         or more attributes of the function's composite return type. If
         the function has been defined as returning the <type>record</>
@@ -319,7 +319,7 @@ and <replaceable class="parameter">group_elem</replaceable> can be one of:
         <literal>USING (<replaceable
         class="parameter">join_column</replaceable> [, ...])</literal>.
         See below for the meaning.  For <literal>CROSS JOIN</literal>,
-        none of these clauses may appear.
+        none of these clauses can appear.
        </para>
 
        <para>
@@ -386,7 +386,7 @@ and <replaceable class="parameter">group_elem</replaceable> can be one of:
      </varlistentry>
      
      <varlistentry>
-      <term><literal>USING (<replaceable class="parameter">join_column</replaceable> [, ...])</literal></term>
+      <term><literal>USING ( <replaceable class="parameter">join_column</replaceable> [, ...] )</literal></term>
       <listitem>
        <para>
         A clause of the form <literal>USING ( a, b, ... )</literal> is
@@ -574,7 +574,7 @@ HAVING <replaceable class="parameter">condition</replaceable>
    </para>
     
    <para>
-    Currently, <literal>FOR UPDATE</> and <literal>FOR SHARE</> may not be
+    Currently, <literal>FOR UPDATE</> and <literal>FOR SHARE</> cannot be
     specified either for a <literal>UNION</> result or for any input of a
     <literal>UNION</>.
    </para>
@@ -620,7 +620,7 @@ HAVING <replaceable class="parameter">condition</replaceable>
    </para>
     
    <para>
-    Currently, <literal>FOR UPDATE</> and <literal>FOR SHARE</> may not be
+    Currently, <literal>FOR UPDATE</> and <literal>FOR SHARE</> cannot be
     specified either for an <literal>INTERSECT</> result or for any input of
     an <literal>INTERSECT</>.
    </para>
@@ -662,7 +662,7 @@ HAVING <replaceable class="parameter">condition</replaceable>
    </para>
     
    <para>
-    Currently, <literal>FOR UPDATE</> and <literal>FOR SHARE</> may not be
+    Currently, <literal>FOR UPDATE</> and <literal>FOR SHARE</> cannot be
     specified either for an <literal>EXCEPT</> result or for any input of
     an <literal>EXCEPT</>.
    </para>
@@ -674,21 +674,21 @@ HAVING <replaceable class="parameter">condition</replaceable>
    <para>
     The optional <literal>ORDER BY</literal> clause has this general form:
 <synopsis>
-ORDER BY <replaceable class="parameter">expression</replaceable> [ ASC | DESC | USING <replaceable class="parameter">operator</replaceable> ] [, ...]
+ORDER BY <replaceable class="parameter">expression</replaceable> [ ASC | DESC | USING <replaceable class="parameter">operator</replaceable> ] [ NULLS { FIRST | LAST } ] [, ...]
 </synopsis>
-    <replaceable class="parameter">expression</replaceable> can be the
-    name or ordinal number of an output column
-    (<command>SELECT</command> list item), or it can be an arbitrary
-    expression formed from input-column values.
-   </para>
-
-   <para>
     The <literal>ORDER BY</literal> clause causes the result rows to
-    be sorted according to the specified expressions.  If two rows are
-    equal according to the leftmost expression, the are compared
+    be sorted according to the specified expression(s).  If two rows are
+    equal according to the leftmost expression, they are compared
     according to the next expression and so on.  If they are equal
     according to all specified expressions, they are returned in
     an implementation-dependent order.
+   </para>
+
+   <para>
+    Each <replaceable class="parameter">expression</replaceable> can be the
+    name or ordinal number of an output column
+    (<command>SELECT</command> list item), or it can be an arbitrary
+    expression formed from input-column values.
    </para>
 
    <para>
@@ -710,7 +710,7 @@ SELECT name FROM distributors ORDER BY code;
 </programlisting>
     A limitation of this feature is that an <literal>ORDER BY</>
     clause applying to the result of a <literal>UNION</>,
-    <literal>INTERSECT</>, or <literal>EXCEPT</> clause may only
+    <literal>INTERSECT</>, or <literal>EXCEPT</> clause can only
     specify an output column name or number, not an expression.
    </para>
 
@@ -724,11 +724,13 @@ SELECT name FROM distributors ORDER BY code;
    </para>
     
    <para>
-    Optionally one may add the key word <literal>ASC</> (ascending) or
+    Optionally one can add the key word <literal>ASC</> (ascending) or
     <literal>DESC</> (descending) after any expression in the
     <literal>ORDER BY</> clause.  If not specified, <literal>ASC</> is
     assumed by default.  Alternatively, a specific ordering operator
-    name may be specified in the <literal>USING</> clause.
+    name can be specified in the <literal>USING</> clause.
+    An ordering operator must be a less-than or greater-than
+    member of some B-tree operator family.
     <literal>ASC</> is usually equivalent to <literal>USING &lt;</> and
     <literal>DESC</> is usually equivalent to <literal>USING &gt;</>.
     (But the creator of a user-defined data type can define exactly what the
@@ -737,9 +739,20 @@ SELECT name FROM distributors ORDER BY code;
    </para>
 
    <para>
-    The null value sorts higher than any other value. In other words,
-    with ascending sort order, null values sort at the end, and with
-    descending sort order, null values sort at the beginning.
+    If <literal>NULLS LAST</> is specified, null values sort after all
+    non-null values; if <literal>NULLS FIRST</> is specified, null values
+    sort before all non-null values.  If neither is specified, the default
+    behavior is <literal>NULLS LAST</> when <literal>ASC</> is specified
+    or implied, and <literal>NULLS FIRST</> when <literal>DESC</> is specified
+    (thus, the default is to act as though nulls are larger than non-nulls).
+    When <literal>USING</> is specified, the default nulls ordering depends
+    on whether the operator is a less-than or greater-than operator.
+   </para>
+
+   <para>
+    Note that ordering options apply only to the expression they follow;
+    for example <literal>ORDER BY x, y DESC</> does not mean
+    the same thing as <literal>ORDER BY x DESC, y DESC</>.
    </para>
 
    <para>
@@ -768,7 +781,7 @@ SELECT name FROM distributors ORDER BY code;
     <literal>ORDER BY</> (see above).  Note that the <quote>first
     row</quote> of each set is unpredictable unless <literal>ORDER
     BY</> is used to ensure that the desired row appears first.  For
-    example,
+    example:
 <programlisting>
 SELECT DISTINCT ON (location) location, time, report
     FROM weather_reports
@@ -811,7 +824,7 @@ OFFSET <replaceable class="parameter">start</replaceable>
     When using <literal>LIMIT</>, it is a good idea to use an
     <literal>ORDER BY</> clause that constrains the result rows into a
     unique order.  Otherwise you will get an unpredictable subset of
-    the query's rows &mdash; you may be asking for the tenth through
+    the query's rows &mdash; you might be asking for the tenth through
     twentieth rows, but tenth through twentieth in what ordering?  You
     don't know what ordering unless you specify <literal>ORDER BY</>.
    </para>
@@ -828,6 +841,14 @@ OFFSET <replaceable class="parameter">start</replaceable>
     is an inherent consequence of the fact that SQL does not promise
     to deliver the results of a query in any particular order unless
     <literal>ORDER BY</> is used to constrain the order.
+   </para>
+
+   <para>
+    It is even possible for repeated executions of the same <literal>LIMIT</>
+    query to return different subsets of the rows of a table, if there
+    is not an <literal>ORDER BY</> to enforce selection of a deterministic
+    subset.  Again, this is not a bug; determinism of the results is
+    simply not guaranteed in such a case.
    </para>
   </refsect2>
 
@@ -911,15 +932,15 @@ FOR SHARE [ OF <replaceable class="parameter">table_name</replaceable> [, ...] ]
 
    <para>
     <literal>FOR UPDATE</literal> and <literal>FOR SHARE</literal> cannot be
-    used in contexts where returned rows can't be clearly identified with
-    individual table rows; for example they can't be used with aggregation.
+    used in contexts where returned rows cannot be clearly identified with
+    individual table rows; for example they cannot be used with aggregation.
    </para>
 
   <caution>
    <para>
     Avoid locking a row and then modifying it within a later savepoint or
     <application>PL/pgSQL</application> exception block.  A subsequent
-    rollback would cause the lock to be lost.  For example,
+    rollback would cause the lock to be lost.  For example:
 <programlisting>
 BEGIN;
 SELECT * FROM mytable WHERE key = 1 FOR UPDATE;
@@ -1163,9 +1184,9 @@ SELECT distributors.* WHERE distributors.name = 'Westward';
    <title>Namespace Available to <literal>GROUP BY</literal> and <literal>ORDER BY</literal></title>
 
    <para>
-    In the SQL-92 standard, an <literal>ORDER BY</literal> clause may
+    In the SQL-92 standard, an <literal>ORDER BY</literal> clause can
     only use result column names or numbers, while a <literal>GROUP
-    BY</literal> clause may only use expressions based on input column
+    BY</literal> clause can only use expressions based on input column
     names.  <productname>PostgreSQL</productname> extends each of
     these clauses to allow the other choice as well (but it uses the
     standard's interpretation if there is ambiguity).

@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/psql-ref.sgml,v 1.175.2.5 2007/03/26 17:23:45 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/psql-ref.sgml,v 1.198 2007/12/11 19:57:32 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -108,10 +108,14 @@ PostgreSQL documentation
       <term><option>--dbname <replaceable class="parameter">dbname</replaceable></></term>
       <listitem>
       <para>
-      Specifies the name of the database to connect to. This is
-      equivalent to specifying <replaceable
-      class="parameter">dbname</replaceable> as the first non-option
-      argument on the command line.
+       Specifies the name of the database to connect to. This is
+       equivalent to specifying <replaceable
+       class="parameter">dbname</replaceable> as the first non-option
+       argument on the command line.
+      </para>
+      <para>
+       If this parameter contains an <symbol>=</symbol> sign, it is treated as a
+       <parameter>conninfo</parameter> string. See <xref linkend="libpq-connect"> for more information.
       </para>
       </listitem>
     </varlistentry>
@@ -359,24 +363,6 @@ PostgreSQL documentation
     </varlistentry>
 
     <varlistentry>
-      <term><option>-u</></term>
-      <listitem>
-      <para>
-      Forces <application>psql</application> to prompt for the user name and
-      password before connecting to the database.
-      </para>
-
-      <para>
-      This option is deprecated, as it is conceptually flawed.
-      (Prompting for a non-default user name and prompting for a
-      password because the server requires it are really two different
-      things.) You are encouraged to look at the <option>-U</option> and
-      <option>-W</option> options instead.
-      </para>
-      </listitem>
-    </varlistentry>
-
-    <varlistentry>
       <term><option>-U <replaceable class="parameter">username</replaceable></></term>
       <term><option>--username <replaceable class="parameter">username</replaceable></></term>
       <listitem>
@@ -420,25 +406,24 @@ PostgreSQL documentation
       <term><option>--password</></term>
       <listitem>
       <para>
-      Forces <application>psql</application> to prompt for a
-      password before connecting to a database.  
+       Force <application>psql</application> to prompt for a
+       password before connecting to a database.  
       </para>
 
       <para>
-      <application>psql</application> should automatically prompt for a
-      password whenever the server requests password authentication.
-      However, currently password request detection is not totally
-      reliable, hence this option to force a prompt. If no password
-      prompt is issued and the server requires password authentication,
-      the connection attempt will fail.
+       This option is never essential, since <application>psql</application>
+       will automatically prompt for a password if the server demands
+       password authentication.  However, <application>psql</application>
+       will waste a connection attempt finding out that the server wants a
+       password.  In some cases it is worth typing <option>-W</> to avoid
+       the extra connection attempt.
       </para>
 
       <para>
-      This option will remain set for the entire session, even if you
-      change the database connection with the meta-command
-      <command>\connect</command>.
+       Note that this option will remain set for the entire session,
+       and so it affects uses of the meta-command
+       <command>\connect</command> as well as the initial connection attempt.
       </para>
-
       </listitem>
     </varlistentry>
 
@@ -539,7 +524,7 @@ PostgreSQL documentation
     determined at compile time.
     Since the database server uses the same default, you will not have
     to specify the port in most cases. The default user name is your
-    Unix user name, as is the default database name. Note that you can't
+    Unix user name, as is the default database name. Note that you cannot
     just connect to any database under any user name. Your database
     administrator should have informed you about your access rights.
     </para>
@@ -556,6 +541,20 @@ PostgreSQL documentation
     </para>
 
     <para>
+     An alternative way to specify connection parameters is in a
+     <parameter>conninfo</parameter> string, which is used instead of a 
+     database name. This mechanism give you very wide control over the 
+     connection. For example:
+<programlisting>
+$ <userinput>psql "service=myservice sslmode=require"</userinput>
+</programlisting>
+     This way you can also use LDAP for connection parameter lookup as
+     described in <xref linkend="libpq-ldap">.
+     See <xref linkend="libpq-connect"> for more information on all the
+     available connection options.
+    </para>
+
+    <para>
     If the connection could not be made for any reason (e.g., insufficient
     privileges, server is not running on the targeted host, etc.),
     <application>psql</application> will return an error and terminate.
@@ -569,7 +568,7 @@ PostgreSQL documentation
     In normal operation, <application>psql</application> provides a
     prompt with the name of the database to which
     <application>psql</application> is currently connected, followed by
-    the string <literal>=&gt;</literal>. For example,
+    the string <literal>=&gt;</literal>. For example:
 <programlisting>
 $ <userinput>psql testdb</userinput>
 Welcome to psql &version;, the PostgreSQL interactive terminal.
@@ -585,7 +584,7 @@ testdb=&gt;
     </para>
 
     <para>
-    At the prompt, the user may type in <acronym>SQL</acronym> commands.
+    At the prompt, the user can type in <acronym>SQL</acronym> commands.
     Ordinarily, input lines are sent to the server when a
     command-terminating semicolon is reached. An end of line does not
     terminate a command.  Thus commands can be spread over several lines for
@@ -622,7 +621,7 @@ testdb=&gt;
     </para>
 
     <para>
-    To include whitespace into an argument you may quote it with a
+    To include whitespace into an argument you can quote it with a
     single quote. To include a single quote into such an argument,
     use two single quotes. Anything contained in single quotes is
     furthermore subject to C-like substitutions for
@@ -803,7 +802,7 @@ testdb=&gt;
         This operation is not as efficient as the <acronym>SQL</acronym>
         <command>COPY</command> command because all data must pass
         through the client/server connection. For large
-        amounts of data the <acronym>SQL</acronym> command may be preferable.
+        amounts of data the <acronym>SQL</acronym> command might be preferable.
         </para>
         </tip>
 
@@ -859,8 +858,8 @@ testdb=&gt;
 
         <listitem>
         <para>
-        Lists all available aggregate functions, together with the data
-        types they operate on. If <replaceable
+        Lists all available aggregate functions, together with their
+        return type and the data types they operate on. If <replaceable
         class="parameter">pattern</replaceable>
         is specified, only aggregates whose names match the pattern are shown.
         </para>
@@ -960,7 +959,7 @@ testdb=&gt;
         class="parameter">pattern</replaceable>
         is specified, only functions whose names match the pattern are shown.
         If the form <literal>\df+</literal> is used, additional information about
-        each function, including language and description, is shown.
+        each function, including volatility, language, source code and description, is shown.
         </para>
 
         <note>
@@ -977,6 +976,66 @@ testdb=&gt;
         </para>
         </note>
 
+        </listitem>
+      </varlistentry>
+
+
+      <varlistentry>
+        <term><literal>\dF [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
+        <term><literal>\dF+ [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
+        <listitem>
+        <para>
+         Lists available text search configurations.
+         If <replaceable class="parameter">pattern</replaceable> is specified,
+         only configurations whose names match the pattern are shown.
+         If the form <literal>\dF+</literal> is used, a full description of
+         each configuration is shown, including the underlying text search
+         parser and the dictionary list for each parser token type.
+        </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term><literal>\dFd [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
+        <term><literal>\dFd+ [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
+        <listitem>
+        <para>
+         Lists available text search dictionaries.
+         If <replaceable class="parameter">pattern</replaceable> is specified,
+         only dictionaries whose names match the pattern are shown.
+         If the form <literal>\dFd+</literal> is used, additional information
+         is shown about each selected dictionary, including the underlying
+         text search template and the option values.
+        </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term><literal>\dFp [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
+        <term><literal>\dFp+ [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
+        <listitem>
+        <para>
+         Lists available text search parsers.
+         If <replaceable class="parameter">pattern</replaceable> is specified,
+         only parsers whose names match the pattern are shown.
+         If the form <literal>\dFp+</literal> is used, a full description of
+         each parser is shown, including the underlying functions and the
+         list of recognized token types.
+        </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term><literal>\dFt [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
+        <term><literal>\dFt+ [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
+        <listitem>
+        <para>
+         Lists available text search templates.
+         If <replaceable class="parameter">pattern</replaceable> is specified,
+         only templates whose names match the pattern are shown.
+         If the form <literal>\dFt+</literal> is used, additional information
+         is shown about each template, including the underlying function names.
+        </para>
         </listitem>
       </varlistentry>
 
@@ -1156,7 +1215,7 @@ Tue Oct 26 21:40:57 CEST 1999
         <tip>
         <para>
         If you use the <command>\o</command> command to redirect your
-        query output you may wish to use <command>\qecho</command>
+        query output you might wish to use <command>\qecho</command>
         instead of this command.
         </para>
         </tip>
@@ -1313,11 +1372,12 @@ Tue Oct 26 21:40:57 CEST 1999
 foo=&gt; <userinput>\lo_import '/home/peter/pictures/photo.xcf' 'a picture of me'</userinput>
 lo_import 152801
 </programlisting>
-        The response indicates that the large object received object ID
-        152801 which one ought to remember if one wants to access the
-        object ever again. For that reason it is recommended to always
-        associate a human-readable comment with every object. Those can
-        then be seen with the <command>\lo_list</command> command.
+        The response indicates that the large object received object
+        ID 152801, which can be used to access the newly-created large
+        object in the future. For the sake of readability, it is
+        recommended to always associate a human-readable comment with
+        every object. Both OIDs and comments can be viewed with the
+        <command>\lo_list</command> command.
         </para>
 
         <para>
@@ -1413,6 +1473,24 @@ lo_import 152801
       </varlistentry>
 
       <varlistentry>
+        <term><literal>\prompt [ <replaceable class="parameter">text</replaceable> ] <replaceable class="parameter">name</replaceable></literal></term>
+        <listitem>
+        <para>
+         Prompts the user to set variable <replaceable
+         class="parameter">name</>.  An optional prompt, <replaceable
+         class="parameter">text</>, can be specified.  (For multi-word
+         prompts, use single-quotes.)
+        </para>
+
+        <para>
+         By default, <literal>\prompt</> uses the terminal for input and
+         output.  However, if the <option>-f</> command line switch is
+         used, <literal>\prompt</> uses standard input and standard output.
+        </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
         <term><literal>\pset <replaceable class="parameter">parameter</replaceable> [ <replaceable class="parameter">value</replaceable> ]</literal></term>
 
         <listitem>
@@ -1474,11 +1552,14 @@ lo_import 152801
           <term><literal>expanded</literal> (or <literal>x</literal>)</term>
           <listitem>
           <para>
-          Toggles between regular and expanded format. When expanded
-          format is enabled, query results are displayed in two
-          columns, with the column name on the left and the data on
-          the right. This mode is useful if the data wouldn't fit on the
-          screen in the normal <quote>horizontal</quote> mode.
+          You can specify an optional second argument, if it is provided it
+          may be either <literal>on</literal> or <literal>off</literal>
+          which will enable or disable expanded mode.  If the second
+          argument is not provided then we will toggle between regular and
+          expanded format. When expanded format is enabled, query results
+          are displayed in two columns, with the column name on the left and
+          the data on the right. This mode is useful if the data wouldn't fit
+          on the screen in the normal <quote>horizontal</quote> mode.
           </para>
 
           <para>
@@ -1518,8 +1599,11 @@ lo_import 152801
           <term><literal>footer</literal></term>
           <listitem>
           <para>
-          Toggles the display of the default footer <literal>(x
-          rows)</literal>.
+          You can specify an optional second argument, if it is provided it
+          may be either <literal>on</literal> or <literal>off</literal>
+          which will enable or disable display of the default footer
+          <literal>(x rows)</literal>.  If the second argument is not
+          provided then we will toggle between on and off.
           </para>
           </listitem>
           </varlistentry>
@@ -1528,9 +1612,12 @@ lo_import 152801
           <term><literal>numericlocale</literal></term>
           <listitem>
           <para>
-          Toggles the display of a locale-aware character to separate groups
-          of digits to the left of the decimal marker.  It also enables
-          a locale-aware decimal marker.
+          You can specify an optional second argument, if it is provided it
+          may be either <literal>on</literal> or <literal>off</literal>
+          which will enable or disable display of a locale-aware character
+          to seperate groups of digits to the left of the decimal marker.  If
+          the second argument is not provided then we will toggle between
+          on and off.
           </para>
           </listitem>
           </varlistentry>
@@ -1549,10 +1636,13 @@ lo_import 152801
           <term><literal>tuples_only</literal> (or <literal>t</literal>)</term>
           <listitem>
           <para>
-          Toggles between tuples only and full display. Full display may
-          show extra information such as column headers, titles, and
-          various footers. In tuples only mode, only actual table data
-          is shown.
+          You can specify an optional second argument, if it is provided it
+          may be either <literal>on</literal> or <literal>off</literal>
+          which will enable or disable the tuples only mode.  If the
+          second argument is not provided then we will toggle between tuples
+          only and full display. Full display shows extra information such
+          as column headers, titles, and various footers. In tuples only
+          mode, only actual table data is shown.
           </para>
           </listitem>
           </varlistentry>
@@ -1601,7 +1691,10 @@ lo_import 152801
           (<application>psql</> does not do a perfect job of estimating
           when to use the pager.) <literal>\pset pager</> turns the
           pager on and off. Pager can also be set to <literal>always</>,
-          which causes the pager to be always used.
+          which causes the pager to be always used, or you can set the pager
+          to <literal>on</> which will enable the usage of the pager when
+          appropriate, or you can set the pager to <literal>off</> which
+          will disable the pager.
           </para>
           </listitem>
           </varlistentry>
@@ -1866,8 +1959,8 @@ lo_import 152801
   <para>
    A pattern that contains a dot (<literal>.</>) is interpreted as a schema
    name pattern followed by an object name pattern.  For example,
-   <literal>\dt foo*.bar*</> displays all tables whose table name
-   starts with <literal>bar</> that are in schemas whose schema name
+   <literal>\dt foo*.*bar*</> displays all tables whose table name
+   includes <literal>bar</> that are in schemas whose schema name
    starts with <literal>foo</>.  When no dot appears, then the pattern
    matches only objects that are visible in the current schema search path.
    Again, a dot within double quotes loses its special meaning and is matched
@@ -1880,17 +1973,20 @@ lo_import 152801
    expression special characters work as specified in
    <xref linkend="functions-posix-regexp">, except for <literal>.</> which
    is taken as a separator as mentioned above, <literal>*</> which is
-   translated to the regular-expression notation <literal>.*</>, and
-   <literal>?</> which is translated to <literal>.</>.  You can emulate
+   translated to the regular-expression notation <literal>.*</>,
+   <literal>?</> which is translated to <literal>.</>, and
+   <literal>$</> which is matched literally.  You can emulate
    these pattern characters at need by writing
    <literal>?</> for <literal>.</>,
    <literal>(<replaceable class="parameter">R</replaceable>+|)</literal> for
    <literal><replaceable class="parameter">R</replaceable>*</literal>, or
    <literal>(<replaceable class="parameter">R</replaceable>|)</literal> for
    <literal><replaceable class="parameter">R</replaceable>?</literal>.
-   Remember that the pattern must match the whole name, unlike the usual
-   interpretation of regular expressions; write <literal>*</> at the beginning
-   and/or end if you don't wish the pattern to be anchored.
+   <literal>$</> is not needed as a regular-expression character since
+   the pattern must match the whole name, unlike the usual
+   interpretation of regular expressions (in other words, <literal>$</>
+   is automatically appended to your pattern).  Write <literal>*</> at the
+   beginning and/or end if you don't wish the pattern to be anchored.
    Note that within double quotes, all regular expression special characters
    lose their special meanings and are matched literally.  Also, the regular
    expression special characters are matched literally in operator name
@@ -2005,7 +2101,7 @@ bar
         <para>
          The autocommit-on mode is <productname>PostgreSQL</>'s traditional
          behavior, but autocommit-off is closer to the SQL spec.  If you
-         prefer autocommit-off, you may wish to set it in the system-wide
+         prefer autocommit-off, you might wish to set it in the system-wide
          <filename>psqlrc</filename> file or your
          <filename>~/.psqlrc</filename> file.
         </para>
@@ -2076,7 +2172,7 @@ bar
         limited amount of memory is used, regardless of the size of
         the result set.  Settings of 100 to 1000 are commonly used
         when enabling this feature.
-        Keep in mind that when using this feature, a query may
+        Keep in mind that when using this feature, a query might
         fail after having already displayed some rows.
         </para>
         <tip>
@@ -2117,7 +2213,7 @@ bar
         <listitem>
         <para>
         The file name that will be used to store the history list. The default
-        value is <filename>~/.psql_history</filename>.  For example, putting
+        value is <filename>~/.psql_history</filename>.  For example, putting:
 <programlisting>
 \set HISTFILE ~/.psql_history- :DBNAME
 </programlisting>
@@ -2327,7 +2423,7 @@ bar
     variables is that you can substitute (<quote>interpolate</quote>)
     them into regular <acronym>SQL</acronym> statements. The syntax for
     this is again to prepend the variable name with a colon
-    (<literal>:</literal>).
+    (<literal>:</literal>):
 <programlisting>
 testdb=&gt; <userinput>\set foo 'my_table'</userinput>
 testdb=&gt; <userinput>SELECT * FROM :foo;</userinput>
@@ -2344,7 +2440,7 @@ testdb=&gt; <userinput>SELECT * FROM :foo;</userinput>
     inserted <acronym>OID</acronym> in subsequent statements to build a
     foreign key scenario. Another possible use of this mechanism is to
     copy the contents of a file into a table column. First load the file into a
-    variable and then proceed as above.
+    variable and then proceed as above:
 <programlisting>
 testdb=&gt; <userinput>\set content '''' `cat my_file.txt` ''''</userinput>
 testdb=&gt; <userinput>INSERT INTO my_table VALUES (:content);</userinput>
@@ -2370,7 +2466,7 @@ testdb=&gt; <userinput>\set content '''' `sed -e "s/'/''/g" -e 's/\\/\\\\/g' &lt
     </para>
 
     <para>
-    Since colons may legally appear in SQL commands, the following rule
+    Since colons can legally appear in SQL commands, the following rule
     applies: the character sequence
     <quote>:name</quote> is not changed unless <quote>name</> is the name
     of a variable that is currently set. In any case you can escape
@@ -2542,14 +2638,14 @@ testdb=&gt; <userinput>\set content '''' `sed -e "s/'/''/g" -e 's/\\/\\\\/g' &lt
         <term><literal>%[</literal> ... <literal>%]</literal></term>
         <listitem>
          <para>
-         Prompts may contain terminal control characters which, for
+         Prompts can contain terminal control characters which, for
          example, change the color, background, or style of the prompt
          text, or change the title of the terminal window. In order for
          the line editing features of <application>Readline</application> to work properly, these
          non-printing control characters must be designated as invisible
          by surrounding them with <literal>%[</literal> and
-         <literal>%]</literal>. Multiple pairs of these may occur within
-         the prompt.  For example,
+         <literal>%]</literal>. Multiple pairs of these can occur within
+         the prompt.  For example:
 <programlisting>
 testdb=&gt; \set PROMPT1 '%[%033[1;33;40m%]%n@%/%R%[%033[0m%]%# '
 </programlisting>
@@ -2741,7 +2837,7 @@ $endif
       compatibility this is still supported to some extent,
       but we are not going to explain the details here as this use is
       discouraged.  If you get strange messages, keep this in mind.
-      For example
+      For example:
 <programlisting>
 testdb=&gt; <userinput>\foo</userinput>
 Field separator is "oo".
