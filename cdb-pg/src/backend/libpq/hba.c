@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.157 2006/11/05 22:42:08 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.164 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -602,6 +602,10 @@ parse_hba_auth(ListCell **line_item, UserAuth *userauth_p,
 		*userauth_p = uaPassword;
 	else if (strcmp(token, "krb5") == 0)
 		*userauth_p = uaKrb5;
+	else if (strcmp(token, "gss") == 0)
+		*userauth_p = uaGSS;
+	else if (strcmp(token, "sspi") == 0)
+		*userauth_p = uaSSPI;
 	else if (strcmp(token, "reject") == 0)
 		*userauth_p = uaReject;
 	else if (strcmp(token, "md5") == 0)
@@ -1463,7 +1467,7 @@ ident_unix(int sock, char *ident_user)
 		return false;
 	}
 
-	StrNCpy(ident_user, pass->pw_name, IDENT_USERNAME_MAX + 1);
+	strlcpy(ident_user, pass->pw_name, IDENT_USERNAME_MAX + 1);
 
 	return true;
 #elif defined(SO_PEERCRED)
@@ -1493,7 +1497,7 @@ ident_unix(int sock, char *ident_user)
 		return false;
 	}
 
-	StrNCpy(ident_user, pass->pw_name, IDENT_USERNAME_MAX + 1);
+	strlcpy(ident_user, pass->pw_name, IDENT_USERNAME_MAX + 1);
 
 	return true;
 #elif defined(HAVE_STRUCT_CMSGCRED) || defined(HAVE_STRUCT_FCRED) || (defined(HAVE_STRUCT_SOCKCRED) && defined(LOCAL_CREDS))
@@ -1562,7 +1566,7 @@ ident_unix(int sock, char *ident_user)
 		return false;
 	}
 
-	StrNCpy(ident_user, pw->pw_name, IDENT_USERNAME_MAX + 1);
+	strlcpy(ident_user, pw->pw_name, IDENT_USERNAME_MAX + 1);
 
 	return true;
 #else
@@ -1588,6 +1592,9 @@ int
 authident(hbaPort *port)
 {
 	char		ident_user[IDENT_USERNAME_MAX + 1];
+
+	if (get_role_line(port->user_name) == NULL)
+		return STATUS_ERROR;
 
 	switch (port->raddr.addr.ss_family)
 	{

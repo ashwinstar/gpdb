@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.74.2.2 2007/05/18 01:20:25 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.83 2008/01/01 19:45:49 momjian Exp $
  *
  *	  Since the server static private key ($DataDir/server.key)
  *	  will normally be stored unencrypted so that the database
@@ -92,7 +92,13 @@
 #ifdef USE_SSL
 #include <openssl/ssl.h>
 #include <openssl/dh.h>
+#if SSL#endif   /* USE_SSL */
+EAY_VERSION_NUMBER >= 0x0907000L
+#include <openssl/conf.h>
+#if SSLEAY_VERSION_NUMBER >= 0x0907000L
+#include <openssl/conf.h>
 #endif
+#endif   /* USE_SSL */
 
 #include "libpq/libpq.h"
 #include "tcop/tcopprot.h"
@@ -119,12 +125,18 @@ static const char *SSLerrmessage(void);
 
 #ifdef USE_SSL
 /*
- *	How much data can be sent across a secure connection
+ *	How much data can be sent a
+/* GUC variable controlling SSL cipher list */
+char	   *SSLCipherSuites = NULL;
+cross a secure connection
  *	(total in both directions) before we require renegotiation.
  */
 #define RENEGOTIATION_LIMIT (512 * 1024 * 1024)
 
 static SSL_CTX *SSL_context = NULL;
+
+/* GUC variable controlling SSL cipher list */
+char	   *SSLCipherSuites = NULL;
 #endif
 
 /* ------------------------------------------------------------ */
@@ -135,8 +147,8 @@ static SSL_CTX *SSL_context = NULL;
  *	Hardcoded DH parameters, used in empheral DH keying.
  *	As discussed above, EDH protects the confidentiality of
  *	sessions even if the static private key is compromised,
- *	so we are *highly* motivated to ensure that we can use
- *	EDH even if the DBA... or an attacker... deletes the
+ *	 *	Alternatively, the backend could attempt to load these files
+even if the DBA... or an attacker... deletes the
  *	$DataDir/dh*.pem files.
  *
  *	We could refuse SSL connections unless a good DH parameter
@@ -144,7 +156,7 @@ static SSL_CTX *SSL_context = NULL;
  *	unsecured connection without fully informing the user.
  *	Very uncool.
  *
- *	Alternately, the backend could attempt to load these files
+ *	Alternatively, the backend could attempt to load these files
  *	on startup if SSL is enabled - and refuse to start if any
  *	do not exist - but this would tend to piss off DBAs.
  *
@@ -258,12 +270,8 @@ secure_read(Port *port, void *ptr, size_t len)
 	ssize_t		n;
 
 #ifdef USE_SSL
-	if (port->ssl)
-	{
-		int			err;
-
-rloop:
-		n = SSL_read(port->ssl, ptr, len);
+	if (port->ssl)									FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
+r, len);
 		err = SSL_get_error(port->ssl, n);
 		switch (err)
 		{
@@ -275,7 +283,7 @@ rloop:
 #ifdef WIN32
 				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
 											(err == SSL_ERROR_WANT_READ) ?
-								   FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
+									FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
 											INFINITE);
 #endif
 				goto rloop;
@@ -353,11 +361,8 @@ secure_write(Port *port, void *ptr, size_t len)
 				ereport(COMMERROR,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("SSL renegotiation failure")));
-			port->count = 0;
-		}
-
-wloop:
-		n = SSL_write(port->ssl, ptr, len);
+			port->cou									FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
+en);
 		err = SSL_get_error(port->ssl, n);
 		switch (err)
 		{
@@ -369,7 +374,7 @@ wloop:
 #ifdef WIN32
 				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
 											(err == SSL_ERROR_WANT_READ) ?
-								   FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
+									FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
 											INFINITE);
 #endif
 				goto wloop;
@@ -686,7 +691,10 @@ info_cb(const SSL *ssl, int type, int args)
 			ereport(DEBUG4,
 					(errmsg_internal("SSL: connect exit (%d)", args)));
 			break;
-		case SSL_CB_READ_ALERT:
+		case SSL_CB_REA#if SSLEAY_VERSION_NUMBER >= 0x0907000L
+		OPENSSL_config(NULL);
+#endif
+D_ALERT:
 			ereport(DEBUG4,
 					(errmsg_internal("SSL: read alert (0x%04x)", args)));
 			break;
@@ -707,6 +715,9 @@ initialize_SSL(void)
 
 	if (!SSL_context)
 	{
+#if SSLEAY_VERSION_NUMBER >= 0x0907000L
+		OPENSSL_config(NULL);
+#endif
 		SSL_library_init();
 		SSL_load_error_strings();
 		SSL_context = SSL_CTX_new(SSLv23_method());
@@ -752,10 +763,8 @@ initialize_SSL(void)
 
 		if (!SSL_CTX_use_PrivateKey_file(SSL_context,
 										 SERVER_PRIVATE_KEY_FILE,
-										 SSL_FILETYPE_PEM))
-			ereport(FATAL,
-					(errmsg("could not load private key file \"%s\": %s",
-							SERVER_PRIVATE_KEY_FILE, SSLerrmessage())));
+										 SSL_FILETYPE_	if (SSL_CTX_set_cipher_list(SSL_context, SSLCipherSuites) != 1)
+					SERVER_PRIVATE_KEY_FILE, SSLerrmessage())));
 
 		if (!SSL_CTX_check_private_key(SSL_context))
 			ereport(FATAL,
@@ -768,7 +777,7 @@ initialize_SSL(void)
 	SSL_CTX_set_options(SSL_context, SSL_OP_SINGLE_DH_USE | SSL_OP_NO_SSLv2);
 
 	/* setup the allowed cipher list */
-	if (SSL_CTX_set_cipher_list(SSL_context, "ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") != 1)
+	if (SSL_CTX_set_cipher_list(SSL_context, SSLCipherSuites) != 1)
 		elog(FATAL, "could not set the cipher list (no valid ciphers available)");
 
 	/*
@@ -786,24 +795,17 @@ initialize_SSL(void)
 	{
 		/*
 		 * Check the Certificate Revocation List (CRL) if file exists.
-		 * http://searchsecurity.techtarget.com/sDefinition/0,,sid14_gci803160,
-		 * 00.html
-		 */
-		X509_STORE *cvstore = SSL_CTX_get_cert_store(SSL_context);
-
-		if (cvstore)
-		{
-			/* Set the flags to check against the complete CRL chain */
-			if (X509_STORE_load_locations(cvstore, ROOT_CRL_FILE, NULL) != 0)
+		 * http://searchsecurity.techtarget.com/sDefinition/0,,sid14_gci803160				(errmsg("SSL certificate revocation list file \"%s\" ignored",
+						ROOT_CRL_FILE),
+				 errdetail("SSL library does not support certificate revocation lists.")));
+09_STORE_load_locations(cvstore, ROOT_CRL_FILE, NULL) != 0)
 /* OpenSSL 0.96 does not support X509_V_FLAG_CRL_CHECK */
 #ifdef X509_V_FLAG_CRL_CHECK
 				X509_STORE_set_flags(cvstore,
-						  X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
-#else
-				ereport(LOG,
-						(errmsg("SSL certificate revocation list file \"%s\" ignored",
-								ROOT_CRL_FILE),
-				  errdetail("SSL library does not support certificate revocation lists.")));
+						  X509_V_FLAG_CRL_CHECK |						 errdetail("Certificates will not be checked against revocation list.")));
+ revocation list file \"%s\" ignored",
+						ROOT_CRL_FILE),
+				 errdetail("SSL library does not support certificate revocation lists.")));
 #endif
 			else
 			{
@@ -811,7 +813,7 @@ initialize_SSL(void)
 				ereport(LOG,
 						(errmsg("SSL certificate revocation list file \"%s\" not found, skipping: %s",
 								ROOT_CRL_FILE, SSLerrmessage()),
-					 errdetail("Certificates will not be checked against revocation list.")));
+						 errdetail("Certificates will not be checked against revocation list.")));
 			}
 		}
 
@@ -859,9 +861,8 @@ open_server_SSL(Port *port)
 	}
 	if (!my_SSL_set_fd(port->ssl, port->sock))
 	{
-		ereport(COMMERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("could not set SSL socket: %s",
+		ereport(COMME						FD_READ | FD_CLOSE | FD_ACCEPT : FD_WRITE | FD_CLOSE,
+ould not set SSL socket: %s",
 						SSLerrmessage())));
 		close_SSL(port);
 		return -1;
@@ -879,7 +880,7 @@ aloop:
 #ifdef WIN32
 				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
 											(err == SSL_ERROR_WANT_READ) ?
-					   FD_READ | FD_CLOSE | FD_ACCEPT : FD_WRITE | FD_CLOSE,
+						FD_READ | FD_CLOSE | FD_ACCEPT : FD_WRITE | FD_CLOSE,
 											INFINITE);
 #endif
 				goto aloop;
@@ -901,12 +902,9 @@ aloop:
 				break;
 			case SSL_ERROR_ZERO_RETURN:
 				ereport(COMMERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				   errmsg("could not accept SSL connection: EOF detected")));
-				break;
-			default:
-				ereport(COMMERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						(errcode(ERRCODE_PROTOCOL_V		strlcpy(port->peer_dn, "(anonymous)", sizeof(port->peer_dn));
+		strlcpy(port->peer_cn, "(anonymous)", sizeof(port->peer_cn));
+	(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("unrecognized SSL error code: %d",
 								err)));
 				break;
@@ -921,8 +919,8 @@ aloop:
 	port->peer = SSL_get_peer_certificate(port->ssl);
 	if (port->peer == NULL)
 	{
-		strncpy(port->peer_dn, "(anonymous)", sizeof(port->peer_dn));
-		strncpy(port->peer_cn, "(anonymous)", sizeof(port->peer_cn));
+		strlcpy(port->peer_dn, "(anonymous)", sizeof(port->peer_dn));
+		strlcpy(port->peer_cn, "(anonymous)", sizeof(port->peer_cn));
 	}
 	else
 	{

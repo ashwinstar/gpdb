@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/gist/gistget.c,v 1.62 2006/11/12 06:55:53 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/gist/gistget.c,v 1.69 2008/01/01 19:45:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -48,7 +48,7 @@ killtuple(Relation r, GISTScanOpaque so, ItemPointer iptr)
 		{
 			/* page unchanged, so all is simple */
 			offset = ItemPointerGetOffsetNumber(iptr);
-			PageGetItemId(p, offset)->lp_flags |= LP_DELETE;
+			ItemIdMarkDead(PageGetItemId(p, offset));
 			SetBufferCommitInfoNeedsSave(buffer);
 			LockBuffer(buffer, GIST_UNLOCK);
 			break;
@@ -63,7 +63,7 @@ killtuple(Relation r, GISTScanOpaque so, ItemPointer iptr)
 			if (ItemPointerEquals(&(ituple->t_tid), iptr))
 			{
 				/* found */
-				PageGetItemId(p, offset)->lp_flags |= LP_DELETE;
+				ItemIdMarkDead(PageGetItemId(p, offset));
 				SetBufferCommitInfoNeedsSave(buffer);
 				LockBuffer(buffer, GIST_UNLOCK);
 				if (buffer != so->curbuf)
@@ -108,8 +108,8 @@ gistgettuple(PG_FUNCTION_ARGS)
 	 * If we have produced an index tuple in the past and the executor has
 	 * informed us we need to mark it as "killed", do so now.
 	 */
-	if (scan->kill_prior_tuple && ItemPointerIsValid(&(scan->currentItemData)))
-		killtuple(scan->indexRelation, so, &(scan->currentItemData));
+	if (scan->kill_prior_tuple && ItemPointerIsValid(&(so->curpos)))
+		killtuple(scan->indexRelation, so, &(so->curpos));
 
 	/*
 	 * Get the next tuple that matches the search key. If asked to skip killed
@@ -158,7 +158,8 @@ gistgetmulti(PG_FUNCTION_ARGS)
  * tuples. Returns true iff a matching tuple was found.
  */
 static int
-gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, bool ignore_killed_tuples)
+gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids,
+		 int maxtids, bool ignore_killed_tuples)
 {
 	Page		p;
 	OffsetNumber n;
@@ -171,7 +172,7 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 
 	so = (GISTScanOpaque) scan->opaque;
 
-	if (ItemPointerIsValid(&scan->currentItemData) == false)
+	if (ItemPointerIsValid(&so->curpos) == false)
 	{
 		/* Being asked to fetch the first entry, so start at the root */
 		Assert(so->curbuf == InvalidBuffer);
@@ -184,7 +185,7 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 		stk->next = NULL;
 		stk->block = GIST_ROOT_BLKNO;
 
-		pgstat_count_index_scan(&scan->xs_pgstat_info);
+		pgstat_count_index_scan(scan->indexRelation);
 	}
 	else if (so->curbuf == InvalidBuffer)
 	{
@@ -246,7 +247,7 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 		}
 
 		if (!GistPageIsLeaf(p) || resetoffset ||
-			!ItemPointerIsValid(&scan->currentItemData))
+			!ItemPointerIsValid(&so->curpos))
 		{
 			if (ScanDirectionIsBackward(dir))
 				n = PageGetMaxOffsetNumber(p);
@@ -255,7 +256,7 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 		}
 		else
 		{
-			n = ItemPointerGetOffsetNumber(&(scan->currentItemData));
+			n = ItemPointerGetOffsetNumber(&(so->curpos));
 
 			if (ScanDirectionIsBackward(dir))
 				n = OffsetNumberPrev(n);
@@ -305,10 +306,10 @@ gistnext(IndexScanDesc scan, ScanDirection dir, ItemPointer tids, int maxtids, b
 				 * we can efficiently resume the index scan later.
 				 */
 
-				ItemPointerSet(&(scan->currentItemData),
+				ItemPointerSet(&(so->curpos),
 							   BufferGetBlockNumber(so->curbuf), n);
 
-				if (!(ignore_killed_tuples && ItemIdDeleted(PageGetItemId(p, n))))
+				if (!(ignore_killed_tuples && ItemIdIsDead(PageGetItemId(p, n))))
 				{
 					it = (IndexTuple) PageGetItem(p, PageGetItemId(p, n));
 					tids[ntids] = scan->xs_ctup.t_self = it->t_tid;
@@ -400,37 +401,46 @@ gistindex_keytest(IndexTuple tuple,
 		if (key->sk_flags & SK_ISNULL)
 		{
 			/*
-			 * is the compared-to datum NULL? on non-leaf page it's possible
-			 * to have nulls in childs :(
+			 * On non-leaf page we can't conclude that child hasn't NULL
+			 * values because of assumption in GiST: uinon (VAL, NULL) is VAL
+			 * But if on non-leaf page key IS  NULL then all childs has NULL.
 			 */
 
-			if (isNull || !GistPageIsLeaf(p))
-				return true;
-			return false;
+			Assert(key->sk_flags & SK_SEARCHNULL);
+
+			if (GistPageIsLeaf(p) && !isNull)
+				return false;
 		}
 		else if (isNull)
+		{
 			return false;
+		}
+		else
+		{
 
-		gistdentryinit(giststate, key->sk_attno - 1, &de,
-					   datum, r, p, offset,
-					   FALSE, isNull);
+			gistdentryinit(giststate, key->sk_attno - 1, &de,
+						   datum, r, p, offset,
+						   FALSE, isNull);
 
-		/*
-		 * Call the Consistent function to evaluate the test.  The arguments
-		 * are the index datum (as a GISTENTRY*), the comparison datum, and
-		 * the comparison operator's strategy number and subtype from pg_amop.
-		 *
-		 * (Presently there's no need to pass the subtype since it'll always
-		 * be zero, but might as well pass it for possible future use.)
-		 */
-		test = FunctionCall4(&key->sk_func,
-							 PointerGetDatum(&de),
-							 key->sk_argument,
-							 Int32GetDatum(key->sk_strategy),
-							 ObjectIdGetDatum(key->sk_subtype));
+			/*
+			 * Call the Consistent function to evaluate the test.  The
+			 * arguments are the index datum (as a GISTENTRY*), the comparison
+			 * datum, and the comparison operator's strategy number and
+			 * subtype from pg_amop.
+			 *
+			 * (Presently there's no need to pass the subtype since it'll
+			 * always be zero, but might as well pass it for possible future
+			 * use.)
+			 */
+			test = FunctionCall4(&key->sk_func,
+								 PointerGetDatum(&de),
+								 key->sk_argument,
+								 Int32GetDatum(key->sk_strategy),
+								 ObjectIdGetDatum(key->sk_subtype));
 
-		if (!DatumGetBool(test))
-			return false;
+			if (!DatumGetBool(test))
+				return false;
+		}
 
 		keySize--;
 		key++;

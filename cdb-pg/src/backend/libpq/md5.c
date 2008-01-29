@@ -14,7 +14,7 @@
  *	Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/md5.c,v 1.33 2006/06/20 19:56:52 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/md5.c,v 1.35 2008/01/01 19:45:49 momjian Exp $
  */
 
 /* This is intended to be used in both frontend and backend, so use c.h */

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/gist/gist.c,v 1.144 2006/11/12 06:55:53 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/gist/gist.c,v 1.149 2008/01/01 19:45:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -360,13 +360,13 @@ gistplacetopage(GISTInsertState *state, GISTSTATE *giststate)
 			ptr->block.blkno = BufferGetBlockNumber(ptr->buffer);
 
 			/*
-			 * fill page, we can do it because all these pages are new
-			 * (ie not linked in tree or masked by temp page
+			 * fill page, we can do it because all these pages are new (ie not
+			 * linked in tree or masked by temp page
 			 */
 			data = (char *) (ptr->list);
 			for (i = 0; i < ptr->block.num; i++)
 			{
-				if (PageAddItem(ptr->page, (Item) data, IndexTupleSize((IndexTuple) data), i + FirstOffsetNumber, LP_USED) == InvalidOffsetNumber)
+				if (PageAddItem(ptr->page, (Item) data, IndexTupleSize((IndexTuple) data), i + FirstOffsetNumber, false, false) == InvalidOffsetNumber)
 					elog(ERROR, "failed to add item to index page in \"%s\"", RelationGetRelationName(state->r));
 				data += IndexTupleSize((IndexTuple) data);
 			}

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *			$PostgreSQL: pgsql/src/backend/access/gist/gistutil.c,v 1.20 2006/10/04 00:29:48 momjian Exp $
+ *			$PostgreSQL: pgsql/src/backend/access/gist/gistutil.c,v 1.25 2008/01/01 19:45:46 momjian Exp $
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -42,7 +42,7 @@ gistfillbuffer(Relation r, Page page, IndexTuple *itup,
 	for (i = 0; i < len; i++)
 	{
 		l = PageAddItem(page, (Item) itup[i], IndexTupleSize(itup[i]),
-						off, LP_USED);
+						off, false, false);
 		if (l == InvalidOffsetNumber)
 			elog(ERROR, "failed to add item to index page in \"%s\"",
 				 RelationGetRelationName(r));
@@ -559,10 +559,11 @@ GISTInitBuffer(Buffer b, uint32 f)
 	PageInit(page, pageSize, sizeof(GISTPageOpaqueData));
 
 	opaque = GistPageGetOpaque(page);
-	opaque->flags = f;
-	opaque->rightlink = InvalidBlockNumber;
 	/* page was already zeroed by PageInit, so this is not needed: */
 	/* memset(&(opaque->nsn), 0, sizeof(GistNSN)); */
+	opaque->rightlink = InvalidBlockNumber;
+	opaque->flags = f;
+	opaque->gist_page_id = GIST_PAGE_ID;
 }
 
 /*

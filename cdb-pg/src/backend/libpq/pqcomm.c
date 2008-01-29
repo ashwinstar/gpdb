@@ -30,7 +30,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	$PostgreSQL: pgsql/src/backend/libpq/pqcomm.c,v 1.188.2.1 2007/06/04 11:59:40 mha Exp $
+ *	$PostgreSQL: pgsql/src/backend/libpq/pqcomm.c,v 1.198 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -176,6 +176,38 @@ pq_close(int code, Datum arg)
 {
 	if (MyProcPort != NULL)
 	{
+#if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+#ifdef ENABLE_GSS
+		OM_uint32	min_s;
+
+		/* Shutdown GSSAPI layer */
+		if (MyProcPort->gss->ctx != GSS_C_NO_CONTEXT)
+			gss_delete_sec_context(&min_s, &MyProcPort->gss->ctx, NULL);
+
+		if (MyProcPort->gss->cred != GSS_C_NO_CREDENTIAL)
+			gss_release_cred(&min_s, &MyProcPort->gss->cred);
+#endif   /* ENABLE_GSS */
+		/* GSS and SSPI share the port->gss struct */
+
+		free(MyProcPort->gss);
+#endif   /* ENABLE_GSS || ENABLE_SSPI */
+
+#if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+#ifdef ENABLE_GSS
+		OM_uint32	min_s;
+
+		/* Shutdown GSSAPI layer */
+		if (MyProcPort->gss->ctx != GSS_C_NO_CONTEXT)
+			gss_delete_sec_context(&min_s, &MyProcPort->gss->ctx, NULL);
+
+		if (MyProcPort->gss->cred != GSS_C_NO_CREDENTIAL)
+			gss_release_cred(&min_s, &MyProcPort->gss->cred);
+#endif   /* ENABLE_GSS */
+		/* GSS and SSPI share the port->gss struct */
+
+		free(MyProcPort->gss);
+#endif   /* ENABLE_GSS || ENABLE_SSPI */
+
 		/* Cleanly shut down SSL layer */
 		secure_close(MyProcPort);
 
@@ -205,7 +237,7 @@ pq_comm_close_fatal(void)
 		secure_close(MyProcPort);
 
 		if (MyProcPort->sock >= 0)
-            closesocket(MyProcPort->sock);
+            closesocket(My
         
 		MyProcPort->sock = -1;
 	}
@@ -220,7 +252,11 @@ pq_comm_close_fatal(void)
  */
 
 
-/* StreamDoUnlink()
+/*#if !defined(WIN32) || defined(IPV6_V6ONLY)
+	int			one = 1;
+#endif
+
+ StreamDoUnlink()
  * Shutdown routine for backend connection
  * If a Unix socket is used for communication, explicitly close it.
  */
@@ -250,7 +286,6 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 	int			fd,
 				err;
 	int			maxconn;
-	int			one = 1;
 	int			ret;
 	char		portNumberStr[32];
 	const char *familyDesc;
@@ -261,6 +296,10 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 	struct addrinfo hint;
 	int			listen_index = 0;
 	int			added = 0;
+
+#if !defined(WIN32) || defined(IPV6_V6ONLY)
+	int			one = 1;
+#endif
 
 	/* Initialize hint structure */
 	MemSet(&hint, 0, sizeof(hint));
@@ -310,7 +349,9 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 			continue;
 		}
 
-		/* See if there is still room to add 1 more socket. */
+		/* See if there is 
+#ifndef WIN32
+still room to add 1 more socket. */
 		for (; listen_index < MaxListen; listen_index++)
 		{
 			if (ListenSocket[listen_index] == -1)
@@ -358,15 +399,19 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 			continue;
 		}
 
+
 #ifndef WIN32
+
 		/*
-		 * Without the SO_REUSEADDR flag, a new postmaster can't be started right away after
-		 * a stop or crash, giving "address already in use" error on TCP ports.
+		 * Without the SO_REUSEADDR flag, a new postmaster can't be started
+		 * right away after a stop or crash, giving "address already in use"
+		 * error on TCP ports.
 		 *
-		 * On win32, however, this behavior only happens if the SO_EXLUSIVEADDRUSE is set.
-		 * With SO_REUSEADDR, win32 allows multiple servers to listen on the same address,
-		 * resulting in unpredictable behavior. With no flags at all, win32 behaves as
-		 * Unix with SO_REUSEADDR.
+		 * On win32, however, this behavior only happens if the
+		 * SO_EXLUSIVEADDRUSE is set. With SO_REUSEADDR, win32 allows multiple
+		 * servers to listen on the same address, resulting in unpredictable
+		 * behavior. With no flags at all, win32 behaves as Unix with
+		 * SO_REUSEADDR.
 		 */
 		if (!IS_AF_UNIX(addr->ai_family))
 		{
@@ -508,8 +553,8 @@ Setup_AF_UNIX(void)
 	Assert(Unix_socket_group);
 	if (Unix_socket_group[0] != '\0')
 	{
-#ifdef WIN32
-		elog(WARNING, "configuration item unix_socket_group is not supported on this platform");
+#ifdef WIN32 *		server port.  Set port->sock to the FD of the new connection.
+"configuration item unix_socket_group is not supported on this platform");
 #else
 		char	   *endptr;
 		unsigned long val;
@@ -534,7 +579,16 @@ Setup_AF_UNIX(void)
 			}
 			gid = gr->gr_gid;
 		}
-		if (chown(sock_path, -1, gid) == -1)
+		if (chown(sock_
+		/*
+		 * If accept() fails then postmaster.c will still see the server
+		 * socket as read-ready, and will immediately try again.  To avoid
+		 * uselessly sucking lots of CPU, delay a bit before trying again.
+		 * (The most likely reason for failure is being out of kernel file
+		 * table slots; we can do little except hope some will get freed up.)
+		 */
+		pg_usleep(100000L);		/* wait 0.1 sec */
+path, -1, gid) == -1)
 		{
 			ereport(LOG,
 					(errcode_for_file_access(),
@@ -560,7 +614,7 @@ Setup_AF_UNIX(void)
 
 /*
  * StreamConnection -- create a new connection with client using
- *		server port.
+ *		server port.  Set port->sock to the FD of the new connection.
  *
  * ASSUME: that this doesn't need to be non-blocking because
  *		the Postmaster uses select() to tell when the server master
@@ -580,6 +634,15 @@ StreamConnection(int server_fd, Port *port)
 		ereport(LOG,
 				(errcode_for_socket_access(),
 				 errmsg("could not accept new connection: %m")));
+
+		/*
+		 * If accept() fails then postmaster.c will still see the server
+		 * socket as read-ready, and will immediately try again.  To avoid
+		 * uselessly sucking lots of CPU, delay a bit before trying again.
+		 * (The most likely reason for failure is being out of kernel file
+		 * table slots; we can do little except hope some will get freed up.)
+		 */
+		pg_usleep(100000L);		/* wait 0.1 sec */
 		return STATUS_ERROR;
 	}
 
@@ -802,11 +865,8 @@ pq_peekbyte(void)
 		if (pq_recvbuf())		/* If nothing in buffer, then recv some */
 			return EOF;			/* Failed to recv data */
 	}
-	return (unsigned char) PqRecvBuffer[PqRecvPointer];
-}
-
-/* --------------------------------
- *		pq_getbytes		- get a known number of bytes from connection
+	return (unsigned char) PqRecvBuffer[PqRecvPoint	resetStringInfo(s);
+ber of bytes from connection
  *
  *		returns 0 if OK, EOF if trouble
  * --------------------------------
@@ -871,8 +931,8 @@ pq_discardbytes(size_t len)
  *		already been initialized by the caller.
  *
  *		This is used only for dealing with old-protocol clients.  The idea
- *		is to produce a StringInfo that looks the same as we would get from
- *		pq_getmessage() with a newer client; we will then process it with
+ 	resetStringInfo(s);
+ge() with a newer client; we will then process it with
  *		pq_getmsgstring.  Therefore, no character set conversion is done here,
  *		even though this is presumably useful only for text.
  *
@@ -884,10 +944,7 @@ pq_getstring(StringInfo s)
 {
 	int			i;
 
-	/* Reset string to empty */
-	s->len = 0;
-	s->data[0] = '\0';
-	s->cursor = 0;
+	resetStringInfo(s);
 
 	/* Read until we get the terminating '\0' */
 	for (;;)
@@ -939,10 +996,7 @@ pq_getmessage(StringInfo s, int maxlen)
 {
 	int32		len;
 
-	/* Reset message buffer to empty */
-	s->len = 0;
-	s->data[0] = '\0';
-	s->cursor = 0;
+	resetStringInfo(s);
 
 	/* Read message length word */
 	if (pq_getbytes((char *) &len, 4) == EOF)

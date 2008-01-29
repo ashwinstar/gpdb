@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/ip.c,v 1.38 2006/10/19 23:17:39 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/ip.c,v 1.42 2008/01/01 19:45:49 momjian Exp $
  *
  * This file and the IPV6 implementation were initially provided by
  * Nigel Kukard <nkukard@lbsd.net>, Linux Based Systems Design
@@ -79,6 +79,7 @@ pg_getaddrinfo_all(const char *hostname, const char *servname,
 					 servname, hintp, result);
 
 #ifdef _AIX
+
 	/*
 	 * It seems some versions of AIX's getaddrinfo don't reliably zero
 	 * sin_port when servname is NULL, so clean up after it.
@@ -175,9 +176,9 @@ pg_getnameinfo_all(const struct sockaddr_storage * addr, int salen,
 	if (rc != 0)
 	{
 		if (node)
-			StrNCpy(node, "???", nodelen);
+			strlcpy(node, "???", nodelen);
 		if (service)
-			StrNCpy(service, "???", servicelen);
+			strlcpy(service, "???", servicelen);
 	}
 
 	return rc;
