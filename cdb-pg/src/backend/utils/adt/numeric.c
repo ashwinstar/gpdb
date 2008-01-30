@@ -14,7 +14,7 @@
  * Copyright (c) 1998-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/numeric.c,v 1.96 2006/10/04 00:29:59 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/numeric.c,v 1.108 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -598,6 +598,67 @@ numeric		(PG_FUNCTION_ARGS)
 	PG_RETURN_NUMERIC(new);
 }
 
+Datum
+numerictypmodin(PG_FUNCTION_ARGS)
+{
+	ArrayType  *ta = PG_GETARG_ARRAYTYPE_P(0);
+	int32	   *tl;
+	int			n;
+	int32		typmod;
+
+	tl = ArrayGetIntegerTypmods(ta, &n);
+
+	if (n == 2)
+	{
+		if (tl[0] < 1 || tl[0] > NUMERIC_MAX_PRECISION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("NUMERIC precision %d must be between 1 and %d",
+							tl[0], NUMERIC_MAX_PRECISION)));
+		if (tl[1] < 0 || tl[1] > tl[0])
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("NUMERIC scale %d must be between 0 and precision %d",
+					   tl[1], tl[0])));
+		typmod = ((tl[0] << 16) | tl[1]) + VARHDRSZ;
+	}
+	else if (n == 1)
+	{
+		if (tl[0] < 1 || tl[0] > NUMERIC_MAX_PRECISION)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("NUMERIC precision %d must be between 1 and %d",
+							tl[0], NUMERIC_MAX_PRECISION)));
+		/* scale defaults to zero */
+		typmod = (tl[0] << 16) + VARHDRSZ;
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid NUMERIC type modifier")));
+		typmod = 0;				/* keep compiler quiet */
+	}
+
+	PG_RETURN_INT32(typmod);
+}
+
+Datum
+numerictypmodout(PG_FUNCTION_ARGS)
+{
+	int32		typmod = PG_GETARG_INT32(0);
+	char	   *res = (char *) palloc(64);
+
+	if (typmod >= 0)
+		snprintf(res, 64, "(%d,%d)",
+				 ((typmod - VARHDRSZ) >> 16) & 0xffff,
+				 (typmod - VARHDRSZ) & 0xffff);
+	else
+		*res = '\0';
+
+	PG_RETURN_CSTRING(res);
+}
+
 
 /* ----------------------------------------------------------------------
  *
@@ -861,16 +922,17 @@ numeric_floor(PG_FUNCTION_ARGS)
 }
 
 /*
- * width_bucket_numeric() -
+ * Implements the numeric version of the width_bucket() function
+ * defined by SQL2003. See also width_bucket_float8().
  *
  * 'bound1' and 'bound2' are the lower and upper bounds of the
  * histogram's range, respectively. 'count' is the number of buckets
  * in the histogram. width_bucket() returns an integer indicating the
- * bucket number that 'operand' belongs in for an equiwidth histogram
+ * bucket number that 'operand' belongs to in an equiwidth histogram
  * with the specified characteristics. An operand smaller than the
  * lower bound is assigned to bucket 0. An operand greater than the
  * upper bound is assigned to an additional bucket (with number
- * count+1).
+ * count+1). We don't allow "NaN" for any of the numeric arguments.
  */
 Datum
 width_bucket_numeric(PG_FUNCTION_ARGS)
@@ -924,6 +986,7 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 			break;
 	}
 
+	/* if result exceeds the range of a legal int4, we ereport here */
 	free_var(&count_var);
 
 	result = numericvar_to_int4(&result_var);
@@ -932,8 +995,6 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 }
 
 /*
- * compute_bucket() -
- *
  * If 'operand' is not outside the bucket range, determine the correct
  * bucket for it to go. The calculations performed by this function
  * are derived directly from the SQL2003 spec.
@@ -1157,6 +1218,7 @@ hash_numeric(PG_FUNCTION_ARGS)
 			break;
 
 		start_offset++;
+
 		/*
 		 * The weight is effectively the # of digits before the
 		 * decimal point, so decrement it for each leading zero we
@@ -2202,7 +2264,6 @@ do_numeric_accum_decum(ArrayType *transarray, Numeric newval, bool accum)
 														NumericGetDatum(newval),
 														NumericGetDatum(newval)));
 
-
 	}
 	transdatums[0] = N;
 	transdatums[1] = sumX;
@@ -2223,6 +2284,9 @@ numeric_accum(PG_FUNCTION_ARGS)
 	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, true));
 }
 
+/*
+ * Optimized case for average of numeric.
+ */
 Datum
 numeric_decum(PG_FUNCTION_ARGS)
 {

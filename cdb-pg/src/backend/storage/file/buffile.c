@@ -42,6 +42,8 @@
  * The maximum safe file size is presumed to be RELSEG_SIZE * BLCKSZ.
  * Note we adhere to this limit whether or not LET_OS_MANAGE_FILESIZE
  * is defined, although md.c ignores it when that symbol is defined.
+ * The reason for doing this is that we'd like large temporary BufFiles
+ * to be spread across multiple tablespaces when available.
  */
 #define MAX_PHYSICAL_FILESIZE  (RELSEG_SIZE * BLCKSZ)
 
@@ -105,7 +107,7 @@ static File extendBufFile(BufFile *file);
 
 /*
  * Create a BufFile given the first underlying physical file.
- * NOTE: caller must set isTemp true if appropriate.
+ * NOTE: caller must set isTemp and isInterXact if appropriate.
  */
 static BufFile *
 makeBufFile(File firstfile)
@@ -193,6 +195,9 @@ extendBufFile(BufFile *file)
  * Create a BufFile for a new temporary file (which will expand to become
  * multiple temporary files if more than MAX_PHYSICAL_FILESIZE bytes are
  * written to it).
+ *
+ * If interXact is true, the temp file will not be automatically deleted
+ * at end of transaction.
  *
  * Note: if interXact is true, the caller had better be calling us in a
  * memory context that will survive across transaction boundaries.

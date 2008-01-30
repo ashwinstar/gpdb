@@ -20,10 +20,12 @@
  * maxKBytes, we dump all the tuples into a temp file and then read from that
  * when needed.
  *
- * When the caller requests random access to the data, we write the temp file
+ * When the caller requests backward-scan capability, we write the temp file
  * in a format that allows either forward or backward scan.  Otherwise, only
- * forward scan is allowed.  But rewind and markpos/restorepos are allowed
- * in any case.
+ * forward scan is allowed.  Rewind and markpos/restorepos are normally allowed
+ * but can be turned off via tuplestore_set_eflags; turning off both backward
+ * scan and rewind enables truncation of the tuplestore at the mark point
+ * (if any) for minimal memory usage.
  *
  * Because we allow reading before writing is complete, there are two
  * interesting positions in the temp file: the current read position and
@@ -46,6 +48,7 @@
 
 #include "access/heapam.h"
 #include "executor/instrument.h"        /* struct Instrumentation */
+#include "executor/executor.h"
 #include "storage/buffile.h"
 #include "utils/memutils.h"
 #include "utils/tuplestore.h"
@@ -103,7 +106,7 @@ typedef enum
 struct Tuplestorestate
 {
 	TupStoreStatus status;		/* enumerated value as shown above */
-	bool		randomAccess;	/* did caller request random access? */
+	int			eflags;			/* capability flags */
 	bool		interXact;		/* keep open through transactions? */
 	long		availMem;		/* remaining memory available, in bytes */
 	BufFile    *myfile;			/* underlying file, or NULL if none */
@@ -211,11 +214,11 @@ FREEMEM(Tuplestorestate *state, int amt)
  * may or may not match the in-memory representation of the tuple ---
  * any conversion needed is the job of the writetup and readtup routines.
  *
- * If state->randomAccess is true, then the stored representation of the
- * tuple must be followed by another "unsigned int" that is a copy of the
+ * If state->eflags & EXEC_FLAG_BACKWARD, then the stored representation of
+ * the tuple must be followed by another "unsigned int" that is a copy of the
  * length --- so the total tape space used is actually sizeof(unsigned int)
  * more than the stored length value.  This allows read-backwards.	When
- * randomAccess is not true, the write/read routines may omit the extra
+ * EXEC_FLAG_BACKWARD is not set, the write/read routines may omit the extra
  * length word.
  *
  * writetup is expected to write both length words as well as the tuple
@@ -245,11 +248,12 @@ FREEMEM(Tuplestorestate *state, int amt)
  *--------------------
  */
 
-static Tuplestorestate *tuplestore_begin_common(bool randomAccess,
+static Tuplestorestate *tuplestore_begin_common(int eflags,
 						bool interXact,
 						int maxKBytes);
 
 static void tuplestore_puttuple_common(Tuplestorestate *state, TuplestorePos *pos, void *tuple);
+static void tuplestore_trim(Tuplestorestate *state, int ntuples);
 static void dumptuples(Tuplestorestate *state, TuplestorePos *pos);
 static uint32 getlen(Tuplestorestate *state, TuplestorePos *pos, bool eofOK);
 static void *copytup_heap(Tuplestorestate *state, TuplestorePos *pos, void *tup);
@@ -280,14 +284,14 @@ tuplestore_begin_pos(Tuplestorestate* state, TuplestorePos **pos)
  * Initialize for a tuple store operation.
  */
 static Tuplestorestate *
-tuplestore_begin_common(bool randomAccess, bool interXact, int maxKBytes) 
+tuplestore_begin_common(int eflags, bool interXact, int maxKBytes)
 {
 	Tuplestorestate *state;
 
 	state = (Tuplestorestate *) palloc0(sizeof(Tuplestorestate));
 
 	state->status = TSS_INMEM;
-	state->randomAccess = randomAccess;
+	state->eflags = eflags;
 	state->interXact = interXact;
 	state->availMem = maxKBytes * 1024L;
     state->availMemMin = state->availMem;
@@ -331,9 +335,17 @@ Tuplestorestate *
 tuplestore_begin_heap(bool randomAccess, bool interXact, int maxKBytes)
 {
 	Tuplestorestate *state;
+	int			eflags;
 
-	state = tuplestore_begin_common(randomAccess, interXact, maxKBytes); 
+	/*
+	 * This interpretation of the meaning of randomAccess is compatible with
+	 * the pre-8.3 behavior of tuplestores.
+	 */
+	eflags = randomAccess ?
+		(EXEC_FLAG_BACKWARD | EXEC_FLAG_REWIND | EXEC_FLAG_MARK) :
+		(EXEC_FLAG_REWIND | EXEC_FLAG_MARK);
 
+	state = tuplestore_begin_common(eflags, interXact, maxKBytes);
 	state->copytup = copytup_heap;
 	state->writetup = writetup_heap;
 	state->readtup = readtup_heap;
@@ -367,19 +379,33 @@ int tuplestore_readerwriter_filebuf_getnumfile(Tuplestorestate* state)
 /*
  * tuplestore_set_instrument
  *
+ * Set capability flags at a finer grain than is allowed by
+ * tuplestore_begin_xxx.  This must be called before inserting any data
  * May be called after tuplestore_begin_xxx() to enable reporting of
  * statistics and events for EXPLAIN ANALYZE.
+ * into the tuplestore.
  *
  * The 'instr' ptr is retained in the 'state' object.  The caller must 
  * ensure that it remains valid for the life of the Tuplestorestate object.
+ *		EXEC_FLAG_REWIND		need rewind to start
+ *		EXEC_FLAG_BACKWARD		need backward fetch
+ *		EXEC_FLAG_MARK			need mark/restore
+ * If tuplestore_set_eflags is not called, REWIND and MARK are allowed,
+ * and BACKWARD is set per "randomAccess" in the tuplestore_begin_xxx call.
  */
+void
+tuplestore_set_eflags(Tuplestorestate *state, int eflags)
 void 
 tuplestore_set_instrument(Tuplestorestate          *state,
                           struct Instrumentation   *instrument)
 {
+	Assert(state->status == TSS_INMEM);
+	Assert(state->memtupcount == 0);
     state->instrument = instrument;
 }                               /* tuplestore_set_instrument */
 
+	state->eflags = eflags;
+}
 
 /*
  * tuplestore_end
@@ -547,7 +573,8 @@ tuplestore_puttuple_common(Tuplestorestate *state, TuplestorePos *pos, void *tup
 				return;
 
 			/*
-			 * Nope; time to switch to tape-based operation.
+			 * Nope; time to switch to tape-based operation.  Make sure that
+			 * the temp file(s) are created in suitable temp tablespaces.
 			 */
 			{
 				char tmpprefix[50];
@@ -585,6 +612,9 @@ tuplestore_puttuple_common(Tuplestorestate *state, TuplestorePos *pos, void *tup
  * Fetch the next tuple in either forward or back direction.
  * Returns NULL if no more tuples.	If should_free is set, the
  * caller must pfree the returned tuple when done with it.
+ *
+ * Backward scan is only allowed if randomAccess was set true or
+ * EXEC_FLAG_BACKWARD was specified to tuplestore_set_eflags().
  */
 static void *
 tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
@@ -593,7 +623,7 @@ tuplestore_gettuple(Tuplestorestate *state, TuplestorePos *pos, bool forward,
 	uint32 tuplen;
 	void	   *tup;
 
-	Assert(forward || state->randomAccess);
+	Assert(forward || (state->eflags & EXEC_FLAG_BACKWARD));
 
 #ifdef DEBUG
 	if(&state->pos != pos)
@@ -843,6 +873,8 @@ void tuplestore_flush(Tuplestorestate *state)
 void
 tuplestore_rescan_pos(Tuplestorestate *state, TuplestorePos *pos)
 {
+	Assert(state->eflags & EXEC_FLAG_REWIND);
+
 	switch (state->status)
 	{
 		case TSS_INMEM:
@@ -876,10 +908,27 @@ tuplestore_rescan(Tuplestorestate *state)
 void
 tuplestore_markpos_pos(Tuplestorestate *state, TuplestorePos *pos)
 {
+	Assert(state->eflags & EXEC_FLAG_MARK);
+
 	switch (state->status)
 	{
 		case TSS_INMEM:
 			pos->markpos_current = pos->current;
+
+			/*
+			 * We can truncate the tuplestore if neither backward scan nor
+			 * rewind capability are required by the caller.  There will never
+			 * be a need to back up past the mark point.
+			 *
+			 * Note: you might think we could remove all the tuples before
+			 * "current", since that one is the next to be returned.  However,
+			 * since tuplestore_gettuple returns a direct pointer to our
+			 * internal copy of the tuple, it's likely that the caller has
+			 * still got the tuple just before "current" referenced in a slot.
+			 * Don't free it yet.
+			 */
+			if (!(state->eflags & (EXEC_FLAG_BACKWARD | EXEC_FLAG_REWIND)))
+				tuplestore_trim(state, 1);
 			break;
 		case TSS_WRITEFILE:
 			if (pos->eof_reached)
@@ -918,6 +967,8 @@ tuplestore_markpos(Tuplestorestate *state)
 void
 tuplestore_restorepos_pos(Tuplestorestate *state, TuplestorePos *pos)
 {
+	Assert(state->eflags & EXEC_FLAG_MARK);
+
 	switch (state->status)
 	{
 		case TSS_INMEM:
@@ -943,10 +994,56 @@ tuplestore_restorepos_pos(Tuplestorestate *state, TuplestorePos *pos)
 	}
 }
 void
+/*
 tuplestore_restorepos(Tuplestorestate *state)
+ * tuplestore_trim	- remove all but ntuples tuples before current
+ */
+static void
+tuplestore_trim(Tuplestorestate *state, int ntuples)
 {
-	tuplestore_restorepos_pos(state, &state->pos);
+	int			nremove;
+	int			i;
+
+	/*
+	 * We don't bother trimming temp files since it usually would mean more
+	 * work than just letting them sit in kernel buffers until they age out.
+	 */
+	if (state->status != TSS_INMEM)
+		return;
+
+	nremove = state->current - ntuples;
+	if (nremove <= 0)
+		return;					/* nothing to do */
+	Assert(nremove <= state->memtupcount);
+
+	/* Release no-longer-needed tuples */
+	for (i = 0; i < nremove; i++)
+	{
+		FREEMEM(state, GetMemoryChunkSpace(state->memtuples[i]));
+		pfree(state->memtuples[i]);
+	}
+
+	/*
+	 * Slide the array down and readjust pointers.	This may look pretty
+	 * stupid, but we expect that there will usually not be very many
+	 * tuple-pointers to move, so this isn't that expensive; and it keeps a
+	 * lot of other logic simple.
+	 *
+	 * In fact, in the current usage for merge joins, it's demonstrable that
+	 * there will always be exactly one non-removed tuple; so optimize that
+	 * case.
+	 */
+	if (nremove + 1 == state->memtupcount)
+		state->memtuples[0] = state->memtuples[nremove];
+	else
+		memmove(state->memtuples, state->memtuples + nremove,
+				(state->memtupcount - nremove) * sizeof(void *));
+
+	state->memtupcount -= nremove;
+	state->current -= nremove;
+	state->markpos_current -= nremove;
 }
+
 
 /*
  * Tape interface routines
@@ -1004,7 +1101,7 @@ writetup_heap(Tuplestorestate *state, TuplestorePos *pos, void *tup)
 
 	if (BufFileWrite(state->myfile, (void *) tup, tuplen) != (size_t) tuplen)
 		elog(ERROR, "write failed");
-	if (state->randomAccess)	/* need trailing length word? */
+	if (state->eflags & EXEC_FLAG_BACKWARD)		/* need trailing length word? */
 		if (BufFileWrite(state->myfile, (void *) &tuplen,
 						 sizeof(tuplen)) != sizeof(tuplen))
 			elog(ERROR, "write failed");
@@ -1053,7 +1150,6 @@ readtup_heap(Tuplestorestate *state, TuplestorePos *pos, uint32 len)
 		htup->t_data = (HeapTupleHeader ) ((char *) tup + HEAPTUPLESIZE);
 	}
 
-	if (state->randomAccess)	/* need trailing length word? */
 		if (BufFileRead(state->myfile, (void *) &tuplen,
 						sizeof(tuplen)) != sizeof(tuplen))
 			elog(ERROR, "unexpected end of data");

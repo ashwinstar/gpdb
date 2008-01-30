@@ -172,7 +172,7 @@ byteain(PG_FUNCTION_ARGS)
 Datum
 byteaout(PG_FUNCTION_ARGS)
 {
-	bytea	   *vlena = PG_GETARG_BYTEA_P(0);
+	bytea	   *vlena = PG_GETARG_BYTEA_PP(0);
 	char	   *result;
 	char	   *vp;
 	char	   *rp;
@@ -181,8 +181,8 @@ byteaout(PG_FUNCTION_ARGS)
 	int			len;
 
 	len = 1;					/* empty string has 1 char */
-	vp = VARDATA(vlena);
-	for (i = VARSIZE(vlena) - VARHDRSZ; i != 0; i--, vp++)
+	vp = VARDATA_ANY(vlena);
+	for (i = VARSIZE_ANY_EXHDR(vlena); i != 0; i--, vp++)
 	{
 		if (*vp == '\\')
 			len += 2;
@@ -192,8 +192,8 @@ byteaout(PG_FUNCTION_ARGS)
 			len++;
 	}
 	rp = result = (char *) palloc(len);
-	vp = VARDATA(vlena);
-	for (i = VARSIZE(vlena) - VARHDRSZ; i != 0; i--, vp++)
+	vp = VARDATA_ANY(vlena);
+	for (i = VARSIZE_ANY_EXHDR(vlena); i != 0; i--, vp++)
 	{
 		if (*vp == '\\')
 		{
@@ -702,8 +702,8 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 		}
 
 		/*
-		 * If we're working with an untoasted source, no need to do an
-		 * extra copying step.
+		 * If we're working with an untoasted source, no need to do an extra
+		 * copying step.
 		 */
 		if (VARATT_IS_EXTENDED_D(str))
 			slice = DatumGetTextPSlice(str, slice_start, slice_size);
@@ -711,7 +711,7 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 			slice = (text *) DatumGetPointer(str);
 
 		/* see if we got back an empty string */
-		if ((VARSIZE(slice) - VARHDRSZ) == 0)
+		if (VARSIZE_ANY_EXHDR(slice) == 0)
 		{
 			if (slice != (text *) DatumGetPointer(str))
 				pfree(slice);
@@ -719,7 +719,8 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 		}
 
 		/* Now we can get the actual length of the slice in MB characters */
-		slice_strlen = pg_mbstrlen_with_len(VARDATA(slice), VARSIZE(slice) - VARHDRSZ);
+		slice_strlen = pg_mbstrlen_with_len(VARDATA_ANY(slice),
+											VARSIZE_ANY_EXHDR(slice));
 
 		/*
 		 * Check that the start position wasn't > slice_strlen. If so, SQL99
@@ -744,7 +745,7 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 		/*
 		 * Find the start position in the slice; remember S1 is not zero based
 		 */
-		p = VARDATA(slice);
+		p = VARDATA_ANY(slice);
 		for (i = 0; i < S1 - 1; i++)
 			p += pg_mblen(p);
 
@@ -1697,11 +1698,6 @@ name_text(PG_FUNCTION_ARGS)
 
 	len = strlen(NameStr(*s));
 
-#ifdef STRINGDEBUG
-	printf("text- convert string length %d (%d) ->%d\n",
-		   VARSIZE(s) - VARHDRSZ, VARSIZE(s), len);
-#endif
-
 	result = palloc(VARHDRSZ + len);
 	SET_VARSIZE(result, VARHDRSZ + len);
 	memcpy(VARDATA(result), NameStr(*s), len);
@@ -1944,7 +1940,7 @@ byteacmp(PG_FUNCTION_ARGS)
 static void
 appendStringInfoText(StringInfo str, const text *t)
 {
-	appendBinaryStringInfo(str, VARDATA((void *) t), VARSIZE((void *) t) - VARHDRSZ);
+	appendBinaryStringInfo(str, VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
 }
 
 /*
@@ -1989,13 +1985,17 @@ replace_text(PG_FUNCTION_ARGS)
 	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
 	varattrib_untoast_ptr_len(d1, &p1, &len1, &tofree1);
 	varattrib_untoast_ptr_len(d2, &p2, &len2, &tofree2);
-
 	if(pg_database_encoding_max_length() == 1)
 		from_sub_text_len = len1;
 	else
 		from_sub_text_len = pg_mbstrlen_with_len(p1, len1);
+	 * they could be different if the input contained invalid encoding.
+	 */
+	src_text_len = state.len1;
+	from_sub_text_len = state.len2;
 
 	if (len0 == 0 || from_sub_text_len == 0)
+	if (src_text_len < 1 || from_sub_text_len < 1)
 	{
 		if(tofree0)
 			pfree(tofree0);
@@ -2007,7 +2007,6 @@ replace_text(PG_FUNCTION_ARGS)
 	}
 
 	text_position_setup_ptr_len(p0, len0, p1, len1, &state); 
-
 	start_posn = 1;
 	curr_posn = text_position_next(1, &state);
 
@@ -2032,6 +2031,8 @@ replace_text(PG_FUNCTION_ARGS)
 
 	do
 	{
+		CHECK_FOR_INTERRUPTS();
+
 		/* copy the data skipped over by last text_position_next() */
 		chunk_len = charlen_to_bytelen(start_ptr, curr_posn - start_posn);
 		appendBinaryStringInfo(&str, start_ptr, chunk_len);
@@ -2099,7 +2100,7 @@ check_replace_text_has_escape_char(const text *replace_text)
  * appendStringInfoRegexpSubstr
  *
  * Append replace_text to str, substituting regexp back references for
- * \n escapes.  start_ptr is the start of the match in the source string,
+ * \n escapes.	start_ptr is the start of the match in the source string,
  * at logical character position data_pos.
  */
 static void
@@ -2107,8 +2108,8 @@ appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
 							 regmatch_t *pmatch,
 							 char *start_ptr, int data_pos)
 {
-	const char *p = VARDATA(replace_text);
-	const char *p_end = p + (VARSIZE(replace_text) - VARHDRSZ);
+	const char *p = VARDATA_ANY(replace_text);
+	const char *p_end = p + VARSIZE_ANY_EXHDR(replace_text);
 	int			eml = pg_database_encoding_max_length();
 
 	for (;;)
@@ -2182,8 +2183,8 @@ appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
 		if (so != -1 && eo != -1)
 		{
 			/*
-			 * Copy the text that is back reference of regexp.	Note so and
-			 * eo are counted in characters not bytes.
+			 * Copy the text that is back reference of regexp.	Note so and eo
+			 * are counted in characters not bytes.
 			 */
 			char	   *chunk_start;
 			int			chunk_len;
@@ -2213,7 +2214,7 @@ replace_text_regexp(text *src_text, void *regexp,
 {
 	text	   *ret_text;
 	regex_t    *re = (regex_t *) regexp;
-	int			src_text_len = VARSIZE(src_text) - VARHDRSZ;
+	int			src_text_len = VARSIZE_ANY_EXHDR(src_text);
 	StringInfoData buf;
 	regmatch_t	pmatch[REGEXP_REPLACE_BACKREF_CNT];
 	pg_wchar   *data;
@@ -2227,13 +2228,13 @@ replace_text_regexp(text *src_text, void *regexp,
 
 	/* Convert data string to wide characters. */
 	data = (pg_wchar *) palloc((src_text_len + 1) * sizeof(pg_wchar));
-	data_len = pg_mb2wchar_with_len(VARDATA(src_text), data, src_text_len);
+	data_len = pg_mb2wchar_with_len(VARDATA_ANY(src_text), data, src_text_len);
 
 	/* Check whether replace_text has escape char. */
 	have_escape = check_replace_text_has_escape_char(replace_text);
 
 	/* start_ptr points to the data_pos'th character of src_text */
-	start_ptr = (char *) VARDATA(src_text);
+	start_ptr = (char *) VARDATA_ANY(src_text);
 	data_pos = 0;
 
 	search_start = 0;
@@ -2266,8 +2267,8 @@ replace_text_regexp(text *src_text, void *regexp,
 		}
 
 		/*
-		 * Copy the text to the left of the match position.  Note we are
-		 * given character not byte indexes.
+		 * Copy the text to the left of the match position.  Note we are given
+		 * character not byte indexes.
 		 */
 		if (pmatch[0].rm_so - data_pos > 0)
 		{
@@ -2276,9 +2277,10 @@ replace_text_regexp(text *src_text, void *regexp,
 			chunk_len = charlen_to_bytelen(start_ptr,
 										   pmatch[0].rm_so - data_pos);
 			appendBinaryStringInfo(&buf, start_ptr, chunk_len);
+
 			/*
-			 * Advance start_ptr over that text, to avoid multiple rescans
-			 * of it if the replace_text contains multiple back-references.
+			 * Advance start_ptr over that text, to avoid multiple rescans of
+			 * it if the replace_text contains multiple back-references.
 			 */
 			start_ptr += chunk_len;
 			data_pos = pmatch[0].rm_so;
@@ -2320,7 +2322,7 @@ replace_text_regexp(text *src_text, void *regexp,
 	{
 		int			chunk_len;
 
-		chunk_len = ((char *) src_text + VARSIZE(src_text)) - start_ptr;
+		chunk_len = ((char *) src_text + VARSIZE_ANY(src_text)) - start_ptr;
 		appendBinaryStringInfo(&buf, start_ptr, chunk_len);
 	}
 
@@ -2385,6 +2387,15 @@ split_text(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("field position must be greater than zero")));
 
+	text_position_setup(inputstring, fldsep, &state);
+
+	/*
+	 * Note: we check the converted string length, not the original, because
+	 * they could be different if the input contained invalid encoding.
+	 */
+	inputstring_len = state.len1;
+	fldsep_len = state.len2;
+
 	/* return empty string for empty input string */
 	if (inputstring_len < 1)
 	{
@@ -2412,7 +2423,6 @@ split_text(PG_FUNCTION_ARGS)
 	}
 
 	text_position_setup_ptr_len(p0, len0, p1, len1, &state);
-
 	/* identify bounds of first field */
 	start_posn = 1;
 	end_posn = text_position_next(1, &state);
@@ -2547,13 +2557,14 @@ text_to_array(PG_FUNCTION_ARGS)
 	}
 
 	text_position_setup_ptr_len(p0, len0, p1, len1, &state);
-
 	start_posn = 1;
 	/* start_ptr points to the start_posn'th character of inputstring */
 	start_ptr = p0; 
 
 	for (fldnum = 1;; fldnum++) /* field number is 1 based */
 	{
+		CHECK_FOR_INTERRUPTS();
+
 		end_posn = text_position_next(start_posn, &state);
 
 		if (end_posn == 0)
@@ -2693,7 +2704,7 @@ array_to_text(PG_FUNCTION_ARGS)
 			printed = true;
 
 			p = DatumGetPointer(att_addlength(PointerGetDatum(p), typlen, PointerGetDatum(p))); 
-			p = (char *) att_align(p, typalign);
+			p = (char *) att_align_nominal(p, typalign);
 		}
 
 		/* advance bitmap pointer if any */
@@ -2774,16 +2785,16 @@ to_hex64(PG_FUNCTION_ARGS)
 Datum
 md5_text(PG_FUNCTION_ARGS)
 {
-	text	   *in_text = PG_GETARG_TEXT_P(0);
+	text	   *in_text = PG_GETARG_TEXT_PP(0);
 	size_t		len;
 	char		hexsum[MD5_HASH_LEN + 1];
 	text	   *result_text;
 
 	/* Calculate the length of the buffer using varlena metadata */
-	len = VARSIZE(in_text) - VARHDRSZ;
+	len = VARSIZE_ANY_EXHDR(in_text);
 
 	/* get the hash result */
-	if (pg_md5_hash(VARDATA(in_text), len, hexsum) == false)
+	if (pg_md5_hash(VARDATA_ANY(in_text), len, hexsum) == false)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
@@ -2800,13 +2811,13 @@ md5_text(PG_FUNCTION_ARGS)
 Datum
 md5_bytea(PG_FUNCTION_ARGS)
 {
-	bytea	   *in = PG_GETARG_BYTEA_P(0);
+	bytea	   *in = PG_GETARG_BYTEA_PP(0);
 	size_t		len;
 	char		hexsum[MD5_HASH_LEN + 1];
 	text	   *result_text;
 
-	len = VARSIZE(in) - VARHDRSZ;
-	if (pg_md5_hash(VARDATA(in), len, hexsum) == false)
+	len = VARSIZE_ANY_EXHDR(in);
+	if (pg_md5_hash(VARDATA_ANY(in), len, hexsum) == false)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
