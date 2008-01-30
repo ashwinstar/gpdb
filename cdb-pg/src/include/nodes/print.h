@@ -35,8 +35,5 @@ extern void print_expr(Node *expr, List *rtable);
 extern void print_pathkeys(List *pathkeys, List *rtable);
 extern void print_tl(List *tlist, List *rtable);
 extern void print_slot(struct TupleTableSlot *slot);
-extern void print_plan_recursive(struct Plan *p, struct Query *parsetree,
-					 int indentLevel, char *label);
-extern void print_plan(struct Plan *p, struct Query *parsetree);
 
 #endif   /* PRINT_H */

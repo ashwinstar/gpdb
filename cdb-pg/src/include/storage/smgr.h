@@ -3,8 +3,8 @@
  * smgr.h
  *	  storage manager switch public interface declarations.
  *
- *
- * Portions Copyright (c) 2006-2008, Greenplum inc
+ * 
+ * Portions Copyright (c) 2006-2008, Greenplum inc 
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -77,14 +77,17 @@ extern BlockNumber smgrtruncate(SMgrRelation reln, BlockNumber nblocks,
 			 bool isTemp, bool isLocalBuf);
 extern void smgrimmedsync(SMgrRelation reln);
 extern void smgrDoPendingDeletes(bool isCommit);
-extern int	smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr);
+extern void	smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr,
+					  bool *haveNonTemp);
 extern bool	smgrIsPendingDeletes(bool forCommit);
 extern void AtSubCommit_smgr(void);
 extern void AtSubAbort_smgr(void);
 extern void PostPrepare_smgr(void);
 extern void smgrcommit(void);
 extern void smgrabort(void);
+extern void smgrpreckpt(void);
 extern void smgrsync(void);
+extern void smgrpostckpt(void);
 
 extern void smgr_redo(XLogRecPtr lsn, XLogRecord *record);
 extern void smgr_desc(StringInfo buf, uint8 xl_info, char *rec);
@@ -93,20 +96,21 @@ extern void smgr_desc(StringInfo buf, uint8 xl_info, char *rec);
 /* internals: move me elsewhere -- ay 7/94 */
 
 /* in md.c */
-extern bool mdinit(void);
-extern bool mdclose(SMgrRelation reln);
-extern bool mdcreate(SMgrRelation reln, bool isRedo);
-extern bool mdunlink(RelFileNode rnode, bool isRedo);
-extern bool mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
+extern void mdinit(void);
+extern void mdclose(SMgrRelation reln);
+extern void mdcreate(SMgrRelation reln, bool isRedo);
+extern void mdunlink(RelFileNode rnode, bool isRedo);
+extern void mdextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		 bool isTemp);
-extern bool mdread(SMgrRelation reln, BlockNumber blocknum, char *buffer);
-extern bool mdwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer,
+extern void mdread(SMgrRelation reln, BlockNumber blocknum, char *buffer);
+extern void mdwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		bool isTemp);
 extern BlockNumber mdnblocks(SMgrRelation reln);
-extern BlockNumber mdtruncate(SMgrRelation reln, BlockNumber nblocks,
-		   bool isTemp);
-extern bool mdimmedsync(SMgrRelation reln);
-extern bool mdsync(void);
+extern void mdtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp);
+extern void mdimmedsync(SMgrRelation reln);
+extern void mdpreckpt(void);
+extern void mdsync(void);
+extern void mdpostckpt(void);
 
 extern void RememberFsyncRequest(RelFileNode rnode, BlockNumber segno);
 extern void ForgetRelationFsyncRequests(RelFileNode rnode);

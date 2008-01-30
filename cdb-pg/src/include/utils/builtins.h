@@ -573,7 +573,6 @@ extern char *deparse_expr_sweet(Node *expr, List *dpcontext,
 extern List *deparse_context_for(const char *aliasname, Oid relid);
 extern List *deparse_context_for_plan(Node *outer_plan, Node *inner_plan,
 						 List *rtable);
-extern Node *deparse_context_for_subplan(const char *name, Node *subplan);
 extern const char *quote_literal_internal(const char *literal);
 extern const char *quote_identifier(const char *ident);
 extern char *quote_qualified_identifier(const char *namespace,
@@ -872,10 +871,12 @@ extern Datum numeric_float8_no_overflow(PG_FUNCTION_ARGS);
 extern Datum float4_numeric(PG_FUNCTION_ARGS);
 extern Datum numeric_float4(PG_FUNCTION_ARGS);
 extern Datum numeric_accum(PG_FUNCTION_ARGS);
+extern Datum numeric_avg_accum(PG_FUNCTION_ARGS);
 extern Datum numeric_decum(PG_FUNCTION_ARGS);
 extern Datum int2_accum(PG_FUNCTION_ARGS);
 extern Datum int4_accum(PG_FUNCTION_ARGS);
 extern Datum int8_accum(PG_FUNCTION_ARGS);
+extern Datum int8_avg_accum(PG_FUNCTION_ARGS);
 extern Datum int2_decum(PG_FUNCTION_ARGS);
 extern Datum int4_decum(PG_FUNCTION_ARGS);
 extern Datum int8_decum(PG_FUNCTION_ARGS);

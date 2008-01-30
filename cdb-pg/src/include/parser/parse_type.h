@@ -20,18 +20,21 @@
 
 typedef HeapTuple Type;
 
-extern Oid	LookupTypeName(ParseState *pstate, const TypeName *typname);
-extern char *TypeNameToString(const TypeName *typname);
+extern Type LookupTypeName(ParseState *pstate, const TypeName *typename,
+			   int32 *typmod_p);
+extern Type typenameType(ParseState *pstate, const TypeName *typename,
+			 int32 *typmod_p);
+extern Oid typenameTypeId(ParseState *pstate, const TypeName *typename,
+			   int32 *typmod_p);
+
+extern char *TypeNameToString(const TypeName *typename);
 extern char *TypeNameListToString(List *typenames);
-extern Oid	typenameTypeId(ParseState *pstate, const TypeName *typname);
-extern Type typenameType(ParseState *pstate, const TypeName *typname);
 
 extern Type typeidType(Oid id);
 
 extern Oid	typeTypeId(Type tp);
 extern int16 typeLen(Type t);
 extern bool typeByVal(Type t);
-extern char typeTypType(Type t);
 extern char *typeTypeName(Type t);
 extern Oid	typeTypeRelid(Type typ);
 extern Datum stringTypeDatum(Type tp, char *string, int32 atttypmod);

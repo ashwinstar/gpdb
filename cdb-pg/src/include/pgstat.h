@@ -518,12 +518,10 @@ typedef struct PgBackendStatus
  */
 extern bool pgstat_track_activities;
 extern bool pgstat_track_counts;
-/****???*/
-extern bool pgstat_collect_startcollector;
-extern bool pgstat_collect_resetonpmstart;
-extern bool pgstat_collect_tuplelevel;
-extern bool pgstat_collect_blocklevel;
-extern bool pgstat_collect_querystring;
+
+/** GPDB 8.3 MERGE TODO: probably need to delete the bottom. other similar
+ * GUCs were delete
+ */
 extern bool pgstat_collect_queuelevel;
 /**/
 
@@ -578,7 +576,7 @@ extern void pgstat_report_xact_timestamp(TimestampTz tstamp);
 extern void pgstat_report_waiting(bool waiting);
 
 extern void pgstat_initstats(Relation rel);
-extern void pgstat_initstats(PgStat_Info *stats, Relation rel);
+
 extern void pgstat_init_localportalhash(void);
 extern PgStat_StatPortalEntry *pgstat_getportalentry(uint32 portalid,
 													 Oid queueid);
@@ -632,7 +630,6 @@ extern void AtEOSubXact_PgStat(bool isCommit, int nestDepth);
 extern void AtPrepare_PgStat(void);
 extern void PostPrepare_PgStat(void);
 
-extern void pgstat_send_bgwriter(void);
 extern void pgstat_twophase_postcommit(TransactionId xid, uint16 info,
 						   void *recdata, uint32 len);
 extern void pgstat_twophase_postabort(TransactionId xid, uint16 info,

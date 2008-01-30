@@ -39,9 +39,11 @@ extern List *addAllTargetsToSortList(ParseState *pstate,
 						bool resolveUnknown);
 extern List *addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 					List *sortlist, List *targetlist,
-					int sortby_kind, List *sortby_opname,
-					bool resolveUnknown);
+					SortByDir sortby_dir, SortByNulls sortby_nulls,
+					List *sortby_opname, bool resolveUnknown);
 extern Index assignSortGroupRef(TargetEntry *tle, List *tlist);
+/* GPDB PG 8.3 MERGE TODO: func below has been renamed but PG added a Oid sortop arg
+ */
 extern bool targetIsInSortGroupList(TargetEntry *tle, List *sortList);
 
 #endif   /* PARSE_CLAUSE_H */
