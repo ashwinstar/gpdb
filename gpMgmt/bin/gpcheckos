@@ -196,7 +196,9 @@ def do_python(res):
     res['python.version'] = '%s.%s.%s' % version[0:3]
 
 def do_system(res):
-    SYSTEM_KEYS = ('rlim_fd_max', 'rlim_fd_cur', 'shmsys:shminfo_shmmax', 'semsys:seminfo_semmni')
+    SYSTEM_KEYS = ('rlim_fd_max', 'rlim_fd_cur', 
+		'shmsys:shminfo_shmmax', 'semsys:seminfo_semmni',
+		'sata:sata_func_enable')
     f = open('/etc/system', 'r')
     content = f.read()
     f.close()
@@ -249,6 +251,16 @@ def do_solaris(res):
 	i = i.strip()
         if i.startswith('Solaris 10'):
             res['solaris.release'] = i
+    f = os.popen("/bin/showrev -p", "r")
+    lines = f.readlines();
+    f.close()
+    patch = []
+    for i in lines:
+	i = i.strip() 
+	i = i.split()
+	if len(i) > 2:
+	    patch.append(i[1]);
+    res['solaris.patch'] = ' '.join(patch)
 
 
 parseCommandLine()
@@ -326,8 +338,16 @@ system.rlim_fd_max			int	= 262144
 system.rlim_fd_cur			int	= 65536
 system.shmsys:shminfo_shmmax		int	>= 0x2000000
 system.semsys:seminfo_semmni		int	= 1024
+system.sata:sata_func_enable		str	= 0x5
 solaris.release				str	= Solaris 10 8/07 s10x_u4wos_12b X86
 platform.version			str	contains 118855-36
+solaris.patch				str	contains 125370-06
+solaris.patch				str	contains 127112-05
+solaris.patch				str	contains 127729-02
+solaris.patch				str	contains 121431-20
+solaris.patch				str	contains 125205-07
+solaris.patch				str	contains 125417-04
+
 '''
 
 def to_int(s):
