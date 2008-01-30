@@ -161,8 +161,8 @@ typedef HeapTupleHeaderData *HeapTupleHeader;
 #define HEAP_HASNULL			0x0001	/* has null attribute(s) */
 #define HEAP_HASVARWIDTH		0x0002	/* has variable-width attribute(s) */
 #define HEAP_HASEXTERNAL		0x0004	/* has external stored attribute(s) */
-#define HEAP_HASOID				0x0008	/* has an object-id field */
-/* bit 0x0010 is available */
+/* Bit 0x8 is available */
+#define HEAP_HASOID			0x0010	/* has an object-id field */
 #define HEAP_COMBOCID			0x0020	/* t_cid is a combo cid */
 #define HEAP_XMAX_EXCL_LOCK		0x0040	/* xmax is exclusive locker */
 #define HEAP_XMAX_SHARED_LOCK	0x0080	/* xmax is shared locker */
