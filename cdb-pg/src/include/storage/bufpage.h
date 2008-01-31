@@ -100,7 +100,7 @@ typedef uint16 LocationIndex;
  * The LSN is used by the buffer manager to enforce the basic rule of WAL:
  * "thou shalt write xlog before data".  A dirty buffer cannot be dumped
  * to disk until xlog has been flushed at least as far as the page's LSN.
-* We also store the 16 least significant bits of the TLI for identification
+ * We also store the 16 least significant bits of the TLI for identification
  * purposes (it is not clear that this is actually necessary, but it seems
  * like a good idea).
  *
@@ -156,7 +156,7 @@ typedef PageHeaderData *PageHeader;
 
 #define PD_VALID_FLAG_BITS	0x0003		/* OR of all valid pd_flags bits */
 
-
+/*
  * Page layout version number 0 is for pre-7.3 Postgres releases.
  * Releases 7.3 and 7.4 use 1, denoting a new HeapTupleHeader layout.
  * Release 8.0 uses 2; it changed the HeapTupleHeader layout again.
@@ -164,7 +164,7 @@ typedef PageHeaderData *PageHeader;
  * Release 8.3 uses 4; it changed the HeapTupleHeader layout again, and
  *		added the pd_flags field (by stealing some bits from pd_tli),
  *		as well as adding the pd_prune_xid field (which enlarges the header).
-*/
+ */
 #define PG_PAGE_LAYOUT_VERSION		4
 
 
@@ -371,7 +371,6 @@ do { \
 } while (0)
 #define PageClearPrunable(page) \
 	(((PageHeader) (page))->pd_prune_xid = InvalidTransactionId)
-
 
 
 /* ----------------------------------------------------------------
