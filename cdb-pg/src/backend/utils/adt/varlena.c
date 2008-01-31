@@ -2387,15 +2387,6 @@ split_text(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("field position must be greater than zero")));
 
-	text_position_setup(inputstring, fldsep, &state);
-
-	/*
-	 * Note: we check the converted string length, not the original, because
-	 * they could be different if the input contained invalid encoding.
-	 */
-	inputstring_len = state.len1;
-	fldsep_len = state.len2;
-
 	/* return empty string for empty input string */
 	if (inputstring_len < 1)
 	{
@@ -2703,7 +2694,7 @@ array_to_text(PG_FUNCTION_ARGS)
 				appendStringInfoString(&buf, value);
 			printed = true;
 
-			p = DatumGetPointer(att_addlength(PointerGetDatum(p), typlen, PointerGetDatum(p))); 
+			p = add_addlength_pointer(p, typlen, p); 
 			p = (char *) att_align_nominal(p, typalign);
 		}
 

@@ -395,16 +395,17 @@ int tuplestore_readerwriter_filebuf_getnumfile(Tuplestorestate* state)
  */
 void
 tuplestore_set_eflags(Tuplestorestate *state, int eflags)
+
+	Assert(state->status == TSS_INMEM);
+	Assert(state->memtupcount == 0);
+	state->eflags = eflags;
+}
+
 void 
 tuplestore_set_instrument(Tuplestorestate          *state,
                           struct Instrumentation   *instrument)
 {
-	Assert(state->status == TSS_INMEM);
-	Assert(state->memtupcount == 0);
     state->instrument = instrument;
-}                               /* tuplestore_set_instrument */
-
-	state->eflags = eflags;
 }
 
 /*
