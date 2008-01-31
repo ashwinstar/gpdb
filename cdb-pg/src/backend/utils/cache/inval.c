@@ -403,6 +403,14 @@ RegisterRelcacheInvalidation(Oid dbId, Oid relId)
 								   dbId, relId);
 
 	/*
+	 * Most of the time, relcache invalidation is associated with system
+	 * catalog updates, but there are a few cases where it isn't.  Quick
+	 * hack to ensure that the next CommandCounterIncrement() will think
+	 * that we need to do CommandEndInvalidationMessages().
+	 */
+	(void) GetCurrentCommandId(true);
+
+	/*
 	 * If the relation being invalidated is one of those cached in the
 	 * relcache init file, mark that we need to zap that file at commit.
 	 */
@@ -420,6 +428,11 @@ RegisterSmgrInvalidation(RelFileNode rnode)
 {
 	AddSmgrInvalidationMessage(&transInvalInfo->CurrentCmdInvalidMsgs,
 							   rnode);
+
+	/*
+	 * As above, just in case there is not an associated catalog change.
+	 */
+	(void) GetCurrentCommandId(true);
 }
 
 /*
@@ -592,8 +605,23 @@ PrepareForTupleInvalidation(Relation relation, HeapTuple tuple)
 		 * This essentially means that only backends in this same database
 		 * will react to the relcache flush request. This is in fact
 		 * appropriate, since only those backends could see our pg_attribute
-		 * change anyway.  It looks a bit ugly though.
+		 * change anyway.  It looks a bit ugly though.	(In practice, shared
+		 * relations can't have schema changes after bootstrap, so we should
+		 * never come here for a shared rel anyway.)
 		 */
+		databaseId = MyDatabaseId;
+	}
+	else if (tupleRelId == IndexRelationId)
+	{
+		Form_pg_index indextup = (Form_pg_index) GETSTRUCT(tuple);
+
+		/*
+		 * When a pg_index row is updated, we should send out a relcache inval
+		 * for the index relation.	As above, we don't know the shared status
+		 * of the index, but in practice it doesn't matter since indexes of
+		 * shared catalogs can't have such updates.
+		 */
+		relationId = indextup->indexrelid;
 		databaseId = MyDatabaseId;
 	}
 	else
