@@ -103,6 +103,18 @@ _equalRangeVar(RangeVar *a, RangeVar *b)
 	return true;
 }
 
+static bool
+_equalIntoClause(IntoClause *a, IntoClause *b)
+{
+	COMPARE_NODE_FIELD(rel);
+	COMPARE_NODE_FIELD(colNames);
+	COMPARE_NODE_FIELD(options);
+	COMPARE_SCALAR_FIELD(onCommit);
+	COMPARE_STRING_FIELD(tableSpaceName);
+
+	return true;
+}
+
 /*
  * We don't need an _equalExpr because Expr is an abstract supertype which
  * should never actually get instantiated.	Also, since it has no common
@@ -128,6 +140,7 @@ static bool
 _equalConst(Const *a, Const *b)
 {
 	COMPARE_SCALAR_FIELD(consttype);
+	COMPARE_SCALAR_FIELD(consttypmod);
 	COMPARE_SCALAR_FIELD(constlen);
 	COMPARE_SCALAR_FIELD(constisnull);
 	COMPARE_SCALAR_FIELD(constbyval);
@@ -148,6 +161,7 @@ _equalParam(Param *a, Param *b)
 	COMPARE_SCALAR_FIELD(paramkind);
 	COMPARE_SCALAR_FIELD(paramid);
 	COMPARE_SCALAR_FIELD(paramtype);
+	COMPARE_SCALAR_FIELD(paramtypmod);
 
 	return true;
 }
@@ -185,9 +199,9 @@ _equalWindowRef(WindowRef *a, WindowRef *b)
 static bool
 _equalArrayRef(ArrayRef *a, ArrayRef *b)
 {
-	COMPARE_SCALAR_FIELD(refrestype);
 	COMPARE_SCALAR_FIELD(refarraytype);
 	COMPARE_SCALAR_FIELD(refelemtype);
+	COMPARE_SCALAR_FIELD(reftypmod);
 	COMPARE_NODE_FIELD(refupperindexpr);
 	COMPARE_NODE_FIELD(reflowerindexpr);
 	COMPARE_NODE_FIELD(refexpr);
@@ -312,9 +326,8 @@ _equalSubPlan(SubPlan *a, SubPlan *b)
 	/* CDB: Ignore value of qDispSliceId. */
 	COMPARE_NODE_FIELD(testexpr);
 	COMPARE_NODE_FIELD(paramIds);
-	/* should compare plans, but have to settle for comparing plan IDs */
 	COMPARE_SCALAR_FIELD(plan_id);
-	COMPARE_NODE_FIELD(rtable);
+	COMPARE_SCALAR_FIELD(firstColType);
 	COMPARE_SCALAR_FIELD(useHashTable);
 	COMPARE_SCALAR_FIELD(unknownEqFalse);
 	/* CDB: Ignore value of is_initplan */
@@ -362,6 +375,45 @@ _equalRelabelType(RelabelType *a, RelabelType *b)
 	if (a->relabelformat != b->relabelformat &&
 		a->relabelformat != COERCE_DONTCARE &&
 		b->relabelformat != COERCE_DONTCARE)
+		return false;
+
+	return true;
+}
+
+static bool
+_equalCoerceViaIO(CoerceViaIO *a, CoerceViaIO *b)
+{
+	COMPARE_NODE_FIELD(arg);
+	COMPARE_SCALAR_FIELD(resulttype);
+
+	/*
+	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
+	 * that are equal() to both explicit and implicit coercions.
+	 */
+	if (a->coerceformat != b->coerceformat &&
+		a->coerceformat != COERCE_DONTCARE &&
+		b->coerceformat != COERCE_DONTCARE)
+		return false;
+
+	return true;
+}
+
+static bool
+_equalArrayCoerceExpr(ArrayCoerceExpr *a, ArrayCoerceExpr *b)
+{
+	COMPARE_NODE_FIELD(arg);
+	COMPARE_SCALAR_FIELD(elemfuncid);
+	COMPARE_SCALAR_FIELD(resulttype);
+	COMPARE_SCALAR_FIELD(resulttypmod);
+	COMPARE_SCALAR_FIELD(isExplicit);
+
+	/*
+	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
+	 * that are equal() to both explicit and implicit coercions.
+	 */
+	if (a->coerceformat != b->coerceformat &&
+		a->coerceformat != COERCE_DONTCARE &&
+		b->coerceformat != COERCE_DONTCARE)
 		return false;
 
 	return true;
@@ -448,7 +500,7 @@ _equalRowCompareExpr(RowCompareExpr *a, RowCompareExpr *b)
 {
 	COMPARE_SCALAR_FIELD(rctype);
 	COMPARE_NODE_FIELD(opnos);
-	COMPARE_NODE_FIELD(opclasses);
+	COMPARE_NODE_FIELD(opfamilies);
 	COMPARE_NODE_FIELD(largs);
 	COMPARE_NODE_FIELD(rargs);
 
@@ -470,6 +522,21 @@ _equalMinMaxExpr(MinMaxExpr *a, MinMaxExpr *b)
 	COMPARE_SCALAR_FIELD(minmaxtype);
 	COMPARE_SCALAR_FIELD(op);
 	COMPARE_NODE_FIELD(args);
+
+	return true;
+}
+
+static bool
+_equalXmlExpr(XmlExpr *a, XmlExpr *b)
+{
+	COMPARE_SCALAR_FIELD(op);
+	COMPARE_STRING_FIELD(name);
+	COMPARE_NODE_FIELD(named_args);
+	COMPARE_NODE_FIELD(arg_names);
+	COMPARE_NODE_FIELD(args);
+	COMPARE_SCALAR_FIELD(xmloption);
+	COMPARE_SCALAR_FIELD(type);
+	COMPARE_SCALAR_FIELD(typmod);
 
 	return true;
 }
@@ -553,6 +620,16 @@ _equalSetToDefault(SetToDefault *a, SetToDefault *b)
 }
 
 static bool
+_equalCurrentOfExpr(CurrentOfExpr *a, CurrentOfExpr *b)
+{
+	COMPARE_SCALAR_FIELD(cvarno);
+	COMPARE_STRING_FIELD(cursor_name);
+	COMPARE_SCALAR_FIELD(cursor_param);
+
+	return true;
+}
+
+static bool
 _equalTargetEntry(TargetEntry *a, TargetEntry *b)
 {
 	COMPARE_NODE_FIELD(expr);
@@ -619,10 +696,27 @@ _equalFlow(Flow *a, Flow *b)
  */
 
 static bool
-_equalPathKeyItem(PathKeyItem *a, PathKeyItem *b)
+_equalPathKey(PathKey *a, PathKey *b)
 {
-	COMPARE_NODE_FIELD(key);
-	COMPARE_SCALAR_FIELD(sortop);
+	/*
+	 * This is normally used on non-canonicalized PathKeys, so must chase up
+	 * to the topmost merged EquivalenceClass and see if those are the same
+	 * (by pointer equality).
+	 */
+	EquivalenceClass *a_eclass;
+	EquivalenceClass *b_eclass;
+
+	a_eclass = a->pk_eclass;
+	while (a_eclass->ec_merged)
+		a_eclass = a_eclass->ec_merged;
+	b_eclass = b->pk_eclass;
+	while (b_eclass->ec_merged)
+		b_eclass = b_eclass->ec_merged;
+	if (a_eclass != b_eclass)
+		return false;
+	COMPARE_SCALAR_FIELD(pk_opfamily);
+	COMPARE_SCALAR_FIELD(pk_strategy);
+	COMPARE_SCALAR_FIELD(pk_nulls_first);
 
 	return true;
 }
@@ -662,6 +756,7 @@ _equalInClauseInfo(InClauseInfo *a, InClauseInfo *b)
 {
 	COMPARE_BITMAPSET_FIELD(righthand);
 	COMPARE_NODE_FIELD(sub_targetlist);
+	COMPARE_NODE_FIELD(in_operators);
 
     return true;
 }
@@ -694,10 +789,7 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_SCALAR_FIELD(canSetTag);
 	COMPARE_NODE_FIELD(utilityStmt);
 	COMPARE_SCALAR_FIELD(resultRelation);
-	COMPARE_NODE_FIELD(into);
-	COMPARE_NODE_FIELD(intoOptions);
-	COMPARE_SCALAR_FIELD(intoOnCommit);
-	COMPARE_STRING_FIELD(intoTableSpaceName);
+	COMPARE_NODE_FIELD(intoClause);
 	COMPARE_SCALAR_FIELD(hasAggs);
 	COMPARE_SCALAR_FIELD(hasWindFuncs);
 	COMPARE_SCALAR_FIELD(hasSubLinks);
@@ -761,11 +853,7 @@ static bool
 _equalSelectStmt(SelectStmt *a, SelectStmt *b)
 {
 	COMPARE_NODE_FIELD(distinctClause);
-	COMPARE_NODE_FIELD(into);
-	COMPARE_NODE_FIELD(intoColNames);
-	COMPARE_NODE_FIELD(intoOptions);
-	COMPARE_SCALAR_FIELD(intoOnCommit);
-	COMPARE_STRING_FIELD(intoTableSpaceName);
+	COMPARE_NODE_FIELD(intoClause);
 	COMPARE_NODE_FIELD(targetList);
 	COMPARE_NODE_FIELD(fromClause);
 	COMPARE_NODE_FIELD(whereClause);
@@ -1050,7 +1138,6 @@ _equalIndexStmt(IndexStmt *a, IndexStmt *b)
 	COMPARE_NODE_FIELD(indexParams);
 	COMPARE_NODE_FIELD(options);
 	COMPARE_NODE_FIELD(whereClause);
-	COMPARE_NODE_FIELD(rangetable);
 	COMPARE_SCALAR_FIELD(unique);
 	COMPARE_SCALAR_FIELD(primary);
 	COMPARE_SCALAR_FIELD(isconstraint);
@@ -1109,6 +1196,17 @@ static bool
 _equalRemoveOpClassStmt(RemoveOpClassStmt *a, RemoveOpClassStmt *b)
 {
 	COMPARE_NODE_FIELD(opclassname);
+	COMPARE_STRING_FIELD(amname);
+	COMPARE_SCALAR_FIELD(behavior);
+	COMPARE_SCALAR_FIELD(missing_ok);
+
+	return true;
+}
+
+static bool
+_equalRemoveOpFamilyStmt(RemoveOpFamilyStmt *a, RemoveOpFamilyStmt *b)
+{
+	COMPARE_NODE_FIELD(opfamilyname);
 	COMPARE_STRING_FIELD(amname);
 	COMPARE_SCALAR_FIELD(behavior);
 	COMPARE_SCALAR_FIELD(missing_ok);
@@ -1213,6 +1311,15 @@ _equalCompositeTypeStmt(CompositeTypeStmt *a, CompositeTypeStmt *b)
 }
 
 static bool
+_equalCreateEnumStmt(CreateEnumStmt *a, CreateEnumStmt *b)
+{
+	COMPARE_NODE_FIELD(typename);
+	COMPARE_NODE_FIELD(vals);
+
+	return true;
+}
+
+static bool
 _equalViewStmt(ViewStmt *a, ViewStmt *b)
 {
 	COMPARE_NODE_FIELD(view);
@@ -1245,6 +1352,7 @@ static bool
 _equalCreateOpClassStmt(CreateOpClassStmt *a, CreateOpClassStmt *b)
 {
 	COMPARE_NODE_FIELD(opclassname);
+	COMPARE_NODE_FIELD(opfamilyname);
 	COMPARE_STRING_FIELD(amname);
 	COMPARE_NODE_FIELD(datatype);
 	COMPARE_NODE_FIELD(items);
@@ -1261,7 +1369,28 @@ _equalCreateOpClassItem(CreateOpClassItem *a, CreateOpClassItem *b)
 	COMPARE_NODE_FIELD(args);
 	COMPARE_SCALAR_FIELD(number);
 	COMPARE_SCALAR_FIELD(recheck);
+	COMPARE_NODE_FIELD(class_args);
 	COMPARE_NODE_FIELD(storedtype);
+
+	return true;
+}
+
+static bool
+_equalCreateOpFamilyStmt(CreateOpFamilyStmt *a, CreateOpFamilyStmt *b)
+{
+	COMPARE_NODE_FIELD(opfamilyname);
+	COMPARE_STRING_FIELD(amname);
+
+	return true;
+}
+
+static bool
+_equalAlterOpFamilyStmt(AlterOpFamilyStmt *a, AlterOpFamilyStmt *b)
+{
+	COMPARE_NODE_FIELD(opfamilyname);
+	COMPARE_STRING_FIELD(amname);
+	COMPARE_SCALAR_FIELD(isDrop);
+	COMPARE_NODE_FIELD(items);
 
 	return true;
 }
@@ -1289,8 +1418,7 @@ static bool
 _equalAlterDatabaseSetStmt(AlterDatabaseSetStmt *a, AlterDatabaseSetStmt *b)
 {
 	COMPARE_STRING_FIELD(dbname);
-	COMPARE_STRING_FIELD(variable);
-	COMPARE_NODE_FIELD(value);
+	COMPARE_NODE_FIELD(setstmt);
 
 	return true;
 }
@@ -1350,6 +1478,7 @@ _equalAlterSeqStmt(AlterSeqStmt *a, AlterSeqStmt *b)
 static bool
 _equalVariableSetStmt(VariableSetStmt *a, VariableSetStmt *b)
 {
+	COMPARE_SCALAR_FIELD(kind);
 	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(args);
 	COMPARE_SCALAR_FIELD(is_local);
@@ -1366,9 +1495,9 @@ _equalVariableShowStmt(VariableShowStmt *a, VariableShowStmt *b)
 }
 
 static bool
-_equalVariableResetStmt(VariableResetStmt *a, VariableResetStmt *b)
+_equalDiscardStmt(DiscardStmt *a, DiscardStmt *b)
 {
-	COMPARE_STRING_FIELD(name);
+	COMPARE_SCALAR_FIELD(target);
 
 	return true;
 }
@@ -1470,8 +1599,7 @@ static bool
 _equalAlterRoleSetStmt(AlterRoleSetStmt *a, AlterRoleSetStmt *b)
 {
 	COMPARE_STRING_FIELD(role);
-	COMPARE_STRING_FIELD(variable);
-	COMPARE_NODE_FIELD(value);
+	COMPARE_NODE_FIELD(setstmt);
 
 	return true;
 }
@@ -1566,7 +1694,6 @@ _equalPrepareStmt(PrepareStmt *a, PrepareStmt *b)
 {
 	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(argtypes);
-	COMPARE_NODE_FIELD(argtype_oids);
 	COMPARE_NODE_FIELD(query);
 
 	return true;
@@ -1577,9 +1704,6 @@ _equalExecuteStmt(ExecuteStmt *a, ExecuteStmt *b)
 {
 	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(into);
-	COMPARE_NODE_FIELD(intoOptions);
-	COMPARE_SCALAR_FIELD(into_on_commit);
-	COMPARE_STRING_FIELD(into_tbl_space);
 	COMPARE_NODE_FIELD(params);
 
 	return true;
@@ -1728,7 +1852,8 @@ _equalTypeName(TypeName *a, TypeName *b)
 	COMPARE_SCALAR_FIELD(timezone);
 	COMPARE_SCALAR_FIELD(setof);
 	COMPARE_SCALAR_FIELD(pct_type);
-	COMPARE_SCALAR_FIELD(typmod);
+	COMPARE_NODE_FIELD(typmods);
+	COMPARE_SCALAR_FIELD(typemod);
 	COMPARE_NODE_FIELD(arrayBounds);
 	COMPARE_SCALAR_FIELD(location);
 
@@ -1747,7 +1872,8 @@ _equalTypeCast(TypeCast *a, TypeCast *b)
 static bool
 _equalSortBy(SortBy *a, SortBy *b)
 {
-	COMPARE_SCALAR_FIELD(sortby_kind);
+	COMPARE_SCALAR_FIELD(sortby_dir);
+	COMPARE_SCALAR_FIELD(sortby_nulls);
 	COMPARE_NODE_FIELD(useOp);
 	COMPARE_NODE_FIELD(node);
 
@@ -1779,6 +1905,8 @@ _equalIndexElem(IndexElem *a, IndexElem *b)
 	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(expr);
 	COMPARE_NODE_FIELD(opclass);
+	COMPARE_SCALAR_FIELD(ordering);
+	COMPARE_SCALAR_FIELD(nulls_ordering);
 
 	return true;
 }
@@ -1961,6 +2089,15 @@ _equalFkConstraint(FkConstraint *a, FkConstraint *b)
 	return true;
 }
 
+static bool
+_equalXmlSerialize(XmlSerialize *a, XmlSerialize *b)
+{
+	COMPARE_SCALAR_FIELD(xmloption);
+	COMPARE_NODE_FIELD(expr);
+	COMPARE_NODE_FIELD(typename);
+
+	return true;
+}
 
 /*
  * Stuff from pg_list.h
@@ -2086,6 +2223,9 @@ equal(void *a, void *b)
 		case T_RangeVar:
 			retval = _equalRangeVar(a, b);
 			break;
+		case T_IntoClause:
+			retval = _equalIntoClause(a, b);
+			break;
 		case T_Var:
 			retval = _equalVar(a, b);
 			break;
@@ -2134,6 +2274,12 @@ equal(void *a, void *b)
 		case T_RelabelType:
 			retval = _equalRelabelType(a, b);
 			break;
+		case T_CoerceViaIO:
+			retval = _equalCoerceViaIO(a, b);
+			break;
+		case T_ArrayCoerceExpr:
+			retval = _equalArrayCoerceExpr(a, b);
+			break;
 		case T_ConvertRowtypeExpr:
 			retval = _equalConvertRowtypeExpr(a, b);
 			break;
@@ -2161,6 +2307,9 @@ equal(void *a, void *b)
 		case T_MinMaxExpr:
 			retval = _equalMinMaxExpr(a, b);
 			break;
+		case T_XmlExpr:
+			retval = _equalXmlExpr(a, b);
+			break;
 		case T_NullIfExpr:
 			retval = _equalNullIfExpr(a, b);
 			break;
@@ -2178,6 +2327,9 @@ equal(void *a, void *b)
 			break;
 		case T_SetToDefault:
 			retval = _equalSetToDefault(a, b);
+			break;
+		case T_CurrentOfExpr:
+			retval = _equalCurrentOfExpr(a, b);
 			break;
 		case T_TargetEntry:
 			retval = _equalTargetEntry(a, b);
@@ -2198,8 +2350,8 @@ equal(void *a, void *b)
 			/*
 			 * RELATION NODES
 			 */
-		case T_PathKeyItem:
-			retval = _equalPathKeyItem(a, b);
+		case T_PathKey:
+			retval = _equalPathKey(a, b);
 			break;
 		case T_RestrictInfo:
 			retval = _equalRestrictInfo(a, b);
@@ -2323,6 +2475,9 @@ equal(void *a, void *b)
 		case T_RemoveOpClassStmt:
 			retval = _equalRemoveOpClassStmt(a, b);
 			break;
+		case T_RemoveOpFamilyStmt:
+			retval = _equalRemoveOpFamilyStmt(a, b);
+			break;
 		case T_RenameStmt:
 			retval = _equalRenameStmt(a, b);
 			break;
@@ -2350,6 +2505,9 @@ equal(void *a, void *b)
 		case T_CompositeTypeStmt:
 			retval = _equalCompositeTypeStmt(a, b);
 			break;
+		case T_CreateEnumStmt:
+			retval = _equalCreateEnumStmt(a, b);
+			break;
 		case T_ViewStmt:
 			retval = _equalViewStmt(a, b);
 			break;
@@ -2364,6 +2522,12 @@ equal(void *a, void *b)
 			break;
 		case T_CreateOpClassItem:
 			retval = _equalCreateOpClassItem(a, b);
+			break;
+		case T_CreateOpFamilyStmt:
+			retval = _equalCreateOpFamilyStmt(a, b);
+			break;
+		case T_AlterOpFamilyStmt:
+			retval = _equalAlterOpFamilyStmt(a, b);
 			break;
 		case T_CreatedbStmt:
 			retval = _equalCreatedbStmt(a, b);
@@ -2395,8 +2559,8 @@ equal(void *a, void *b)
 		case T_VariableShowStmt:
 			retval = _equalVariableShowStmt(a, b);
 			break;
-		case T_VariableResetStmt:
-			retval = _equalVariableResetStmt(a, b);
+		case T_DiscardStmt:
+			retval = _equalDiscardStmt(a, b);
 			break;
 		case T_CreateTableSpaceStmt:
 			retval = _equalCreateTableSpaceStmt(a, b);
@@ -2577,6 +2741,9 @@ equal(void *a, void *b)
 			break;
 		case T_FuncWithArgs:
 			retval = _equalFuncWithArgs(a, b);
+			break;
+		case T_XmlSerialize:
+			retval = _equalXmlSerialize(a, b);
 			break;
 
 		default:
