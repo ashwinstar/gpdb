@@ -87,8 +87,6 @@ static struct varlena *toast_fetch_datum_slice(struct varlena * attr,
  * This will return a datum that contains all the data internally, ie, not
  * relying on external storage, but it can still be compressed or have a short
  * header.
- * have a 1-byte header or it may be a compressed or uncompresssed datum with a
- * 4-byte header.
  ----------
  */
 struct varlena *
@@ -1353,7 +1351,6 @@ toast_fetch_datum(struct varlena * attr)
 	bool		isnull;
 	char	   *chunkdata;
 	int32		chunksize;
-	void 	   *chunkdata;
 
 	/* Must copy to access aligned fields */
 	VARATT_EXTERNAL_GET_POINTER(toast_pointer, attr);
@@ -1413,11 +1410,6 @@ toast_fetch_datum(struct varlena * attr)
 			/* could happen due to heap_form_tuple doing its thing */
 			chunksize = VARSIZE_SHORT(chunk) - VARHDRSZ_SHORT;
 			chunkdata = VARDATA_SHORT(chunk);
-		}
-		else if (!VARATT_IS_EXTENDED(chunk)) 
-		{
-			chunksize = VARSIZE(chunk) - VARHDRSZ;
-			chunkdata = VARDATA(chunk);
 		}
 		else
 		{

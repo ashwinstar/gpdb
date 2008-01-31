@@ -237,6 +237,7 @@ static void FreeVfd(File file);
 
 static int	FileAccess(File file);
 static File OpenTemporaryFileInTablespace(Oid tblspcOid, bool rejectError);
+static char *make_database_relative(const char *filename);
 static void AtProcExit_Files(int code, Datum arg);
 static void CleanupTempFiles(bool isProcExit);
 static void RemovePgTempFilesInDir(const char *tmpdirname);
@@ -731,6 +732,23 @@ FreeVfd(File file)
 	VfdCache[0].nextFree = file;
 }
 
+/*
+ * make_database_relative()
+ *		Prepend DatabasePath to the given file name.
+ *
+ * Result is a palloc'd string.
+ */
+	static char *
+make_database_relative(const char *filename)
+{
+	char   *buf;
+
+	Assert(!is_absolute_path(filename));
+	buf = (char *) palloc(strlen(DatabasePath) + strlen(filename) + 2);
+	sprintf(buf, "%s/%s", DatabasePath, filename);
+	return buf;
+}
+
 /* returns 0 on success, -1 on re-open failure (with errno set) */
 static int
 FileAccess(File file)
@@ -838,24 +856,24 @@ PathNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 }
 
 /*
- * Open a temporary file that will disappear when we close it.
+ * open a file in the database directory ($PGDATA/base/DIROID/)
  *
- * This routine takes care of generating an appropriate tempfile name.
- * There's no need to pass in fileFlags or fileMode either, since only
- * one setting makes any sense for a temp file.
- *
- * interXact: if true, don't close the file at end-of-transaction. In
- * most cases, you don't want temporary files to outlive the transaction
- * that created them, so this should be false -- but if you need
- * "somewhat" temporary storage, this might be useful. In either case,
- * the file is removed when the File is explicitly closed.
+ * The passed name MUST be a relative path.  Effectively, this
+ * prepends DatabasePath to it and then acts like PathNameOpenFile.
  */
-File
-OpenTemporaryFile(bool interXact)
+	File
+FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 {
-	File		file = 0;
+	FileClosefd;
+	char   *fname;
 
-	/*
+	fname = make_database_relative(fileName);
+	fd = PathNameOpenFile(fname, fileFlags, fileMode);
+	pfree(fname);
+	return fd;
+}
+
+/*
  * Open a temporary file that will (optionally) disappear when we close it.
 	 * one.  If a given tablespace can't be found, we silently fall back to
  * If 'makenameunique' is true, this function generates a file name which
@@ -863,7 +881,6 @@ OpenTemporaryFile(bool interXact)
  * distinct from any others in concurrent use on the same host.  As a
  * convenience for monitoring and debugging, the given 'fileName' string
  * and 'extentseqnum' are embedded in the file name.
-	 */
  * If 'makenameunique' is false, then 'fileName' and 'extentseqnum' identify a
  * new or existing temporary file which other processes also could open and
  * share.
@@ -890,50 +907,50 @@ OpenTemporaryFile(bool interXact)
  */
 File
 OpenTemporaryFile(const char   *fileName,
-                  int           extentseqnum,
-                  bool          makenameunique,
-                  bool          create,
-                  bool          delOnClose,
-                  bool          closeAtEOXact)
+		int           extentseqnum,
+		bool          makenameunique,
+		bool          create,
+		bool          delOnClose,
+		bool          closeAtEOXact)
 {
 	File    file;
-    int     fileFlags;
+	int     fileFlags;
 	char	tempfilepath[MAXPGPATH];
 
 	Assert(fileName);
-    AssertImply(makenameunique, create && delOnClose);
+	AssertImply(makenameunique, create && delOnClose);
 
 	/*
 	 * File flags when open the file.  Note: we don't use O_EXCL, in case there is an orphaned
 	 * temp file that can be reused.
 	 */
 	fileFlags = O_RDWR | PG_BINARY;
-    if (create)
-        fileFlags |= O_TRUNC | O_CREAT;
+	if (create)
+		fileFlags |= O_TRUNC | O_CREAT;
 
-    if (makenameunique)
+	if (makenameunique)
 	{
 		/*
 		 * Generate a tempfile name that should be unique within the current
 		 * database instance.
 		 */
 		snprintf(tempfilepath, sizeof(tempfilepath),
-				 "%s/%s_%s_%d_%04d.%ld",
-                 PG_TEMP_FILES_DIR,
-				 PG_TEMP_FILE_PREFIX,
-				 fileName,
-				 MyProcPid,
-                 extentseqnum,
-                 tempFileCounter++);
+				"%s/%s_%s_%d_%04d.%ld",
+				PG_TEMP_FILES_DIR,
+				PG_TEMP_FILE_PREFIX,
+				fileName,
+				MyProcPid,
+				extentseqnum,
+				tempFileCounter++);
 	}
 	else
 	{
-        snprintf(tempfilepath, sizeof(tempfilepath),
-				 "%s/%s_%s.%04d",
-                 PG_TEMP_FILES_DIR,
-				 PG_TEMP_FILE_PREFIX,
-                 fileName,
-                 extentseqnum);
+		snprintf(tempfilepath, sizeof(tempfilepath),
+				"%s/%s_%s.%04d",
+				PG_TEMP_FILES_DIR,
+				PG_TEMP_FILE_PREFIX,
+				fileName,
+				extentseqnum);
 	}
 
 	file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
@@ -960,7 +977,7 @@ OpenTemporaryFile(const char   *fileName,
 		file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
 		if (file <= 0 && rejectError)
 			elog(ERROR, "could not create temporary file \"%s\": %m",
-			     tempfilepath);
+					tempfilepath);
 	}
 
 	/* Mark it for deletion at close */
@@ -1037,6 +1054,22 @@ FileClose(File file)
 	FreeVfd(file);
 }
 
+/*
+ * close a file and forcibly delete the underlying Unix file
+ */
+	void
+FileUnlink(File file)
+{
+	Assert(FileIsValid(file));
+
+	DO_DB(elog(LOG, "FileUnlink: %d (%s)",
+				file, VfdCache[file].fileName));
+
+	/* force FileClose to delete it */
+	VfdCache[file].fdstate |= FD_TEMPORARY;
+
+	FileClose(file);
+}
 
 int
 FileRead(File file, char *buffer, int amount)

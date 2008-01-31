@@ -196,9 +196,6 @@ extendBufFile(BufFile *file)
  * multiple temporary files if more than MAX_PHYSICAL_FILESIZE bytes are
  * written to it).
  *
- * If interXact is true, the temp file will not be automatically deleted
- * at end of transaction.
- *
  * Note: if interXact is true, the caller had better be calling us in a
  * memory context that will survive across transaction boundaries.
  */
@@ -207,21 +204,21 @@ BufFileCreateTemp(const char * fileName, bool interXact)
 {
 	BufFile    *file;
 	File		pfile;
-    bool        closeAtEOXact = !interXact;
+	bool        closeAtEOXact = !interXact;
 
 	pfile = OpenTemporaryFile(fileName,
-                              1,                /* extentseqnum */
-                              true,             /* makenameunique */
-                              true,             /* create */
-                              true,             /* delOnClose */
-                              closeAtEOXact);   /* closeAtEOXact */
+			1,                /* extentseqnum */
+			true,             /* makenameunique */
+			true,             /* create */
+			true,             /* delOnClose */
+			closeAtEOXact);   /* closeAtEOXact */
 	Assert(pfile >= 0);
 
 	file = makeBufFile(pfile);
 	file->isTemp = true;
 	file->closeAtEOXact = closeAtEOXact;
 	file->is_rwfile = false;
-    file->file_prefix = pstrdup(fileName);
+	file->file_prefix = pstrdup(fileName);
 
 	return file;
 }
