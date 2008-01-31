@@ -182,8 +182,8 @@ static const PQconninfoOption PQconninfoOptions[] = {
 	{"sslmode", "PGSSLMODE", DefaultSSLMode, NULL,
 	"SSL-Mode", "", 8},			/* sizeof("disable") == 8 */
 
-#ifdef KRB5
-	/* Kerberos authentication supports specifying the service name */
+#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+	/* Kerberos and GSSAPI authentication support specifying the service name */
 	{"krbsrvname", "PGKRBSRVNAME", PG_KRB_SRVNAM, NULL,
 	"Kerberos-service-name", "", 20},
 #endif
@@ -198,6 +198,16 @@ static const PQconninfoOption PQconninfoOptions[] = {
 	{"gpdaid", NULL, "", NULL,
 	"gp-debug-daid", "D", 40},
 	
+	
+#if defined(ENABLE_GSS) && defined(ENABLE_SSPI)
+
+	/*
+	 * GSSAPI and SSPI both enabled, give a way to override which is used by
+	 * default
+	 */
+	{"gsslib", "PGGSSLIB", NULL, NULL,
+	"GSS-library", "", 7},		/* sizeof("gssapi") = 7 */
+#endif
 
 	/* Terminating entry --- MUST BE LAST */
 	{NULL, NULL, NULL, NULL,
@@ -234,7 +244,7 @@ static PGconn *makeEmptyPGconn(void);
 static void freePGconn(PGconn *conn);
 static void closePGconn(PGconn *conn);
 static PQconninfoOption *conninfo_parse(const char *conninfo,
-			   PQExpBuffer errorMessage);
+			   PQExpBuffer errorMessage, bool *password_from_string);
 static char *conninfo_getval(PQconninfoOption *connOptions,
 				const char *keyword);
 static void defaultNoticeReceiver(void *arg, const PGresult *res);
@@ -378,7 +388,8 @@ connectOptions1(PGconn *conn, const char *conninfo)
 	/*
 	 * Parse the conninfo string
 	 */
-	connOptions = conninfo_parse(conninfo, &conn->errorMessage);
+	connOptions = conninfo_parse(conninfo, &conn->errorMessage,
+								 &conn->pgpass_from_client);
 	if (connOptions == NULL)
 	{
 		conn->status = CONNECTION_BAD;
@@ -424,9 +435,13 @@ connectOptions1(PGconn *conn, const char *conninfo)
 		conn->sslmode = strdup("require");
 	}
 #endif
-#ifdef KRB5
+#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
 	tmp = conninfo_getval(connOptions, "krbsrvname");
 	conn->krbsrvname = tmp ? strdup(tmp) : NULL;
+#endif
+#if defined(ENABLE_GSS) && defined(ENABLE_SSPI)
+	tmp = conninfo_getval(connOptions, "gsslib");
+	conn->gsslib = tmp ? strdup(tmp) : NULL;
 #endif
 	tmp = conninfo_getval(connOptions, "gpqeid");
 	conn->gpqeid = tmp ? strdup(tmp) : NULL;
@@ -478,6 +493,7 @@ connectOptions2(PGconn *conn)
 										conn->dbName, conn->pguser);
 		if (conn->pgpass == NULL)
 			conn->pgpass = strdup(DefaultPassword);
+		conn->pgpass_from_client = false;
 	}
 
 	/*
@@ -561,10 +577,11 @@ PQconninfoOption *
 PQconndefaults(void)
 {
 	PQExpBufferData errorBuf;
+	bool		password_from_string;
 	PQconninfoOption *connOptions;
 
 	initPQExpBuffer(&errorBuf);
-	connOptions = conninfo_parse("", &errorBuf);
+	connOptions = conninfo_parse("", &errorBuf, &password_from_string);
 	termPQExpBuffer(&errorBuf);
 	return connOptions;
 }
@@ -596,14 +613,34 @@ PQsetdbLogin(const char *pghost, const char *pgport, const char *pgoptions,
 		return NULL;
 
 	/*
-	 * Parse an empty conninfo string in order to set up the same defaults
-	 * that PQconnectdb() would use.
+	 * If the dbName parameter contains '=', assume it's a conninfo string.
+	 */
+	if (dbName && strchr(dbName, '='))
+	{
+		if (!connectOptions1(conn, dbName))
+			return conn;
+	}
+	else
+	{
+		/*
+		 * Old-style path: first, parse an empty conninfo string in order to
+		 * set up the same defaults that PQconnectdb() would use.
 	 */
 	if (!connectOptions1(conn, ""))
 		return conn;
 
+		/* Insert dbName parameter value into struct */
+		if (dbName && dbName[0] != '\0')
+		{
+			if (conn->dbName)
+				free(conn->dbName);
+			conn->dbName = strdup(dbName);
+		}
+	}
+
 	/*
-	 * Absorb specified options into conn structure, overriding defaults
+	 * Insert remaining parameters into struct, overriding defaults (as well
+	 * as any conflicting data from dbName taken as a conninfo).
 	 */
 	if (pghost && pghost[0] != '\0')
 	{
@@ -633,13 +670,6 @@ PQsetdbLogin(const char *pghost, const char *pgport, const char *pgoptions,
 		conn->pgtty = strdup(pgtty);
 	}
 
-	if (dbName && dbName[0] != '\0')
-	{
-		if (conn->dbName)
-			free(conn->dbName);
-		conn->dbName = strdup(dbName);
-	}
-
 	if (login && login[0] != '\0')
 	{
 		if (conn->pguser)
@@ -652,6 +682,7 @@ PQsetdbLogin(const char *pghost, const char *pgport, const char *pgoptions,
 		if (conn->pgpass)
 			free(conn->pgpass);
 		conn->pgpass = strdup(pwd);
+		conn->pgpass_from_client = true;
 	}
 
 	/*
@@ -1503,12 +1534,13 @@ keep_going:						/* We will come back to here until there is
 
 				/*
 				 * Try to validate message length before using it.
-				 * Authentication requests can't be very large.  Errors can be
-				 * a little larger, but not huge.  If we see a large apparent
+				 * Authentication requests can't be very large, although GSS
+				 * auth requests may not be that small.  Errors can be a
+				 * little larger, but not huge.  If we see a large apparent
 				 * length in an error, it means we're really talking to a
 				 * pre-3.0-protocol server; cope.
 				 */
-				if (beresp == 'R' && (msgLength < 8 || msgLength > 100))
+				if (beresp == 'R' && (msgLength < 8 || msgLength > 2000))
 				{
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
@@ -1667,6 +1699,43 @@ keep_going:						/* We will come back to here until there is
 						return PGRES_POLLING_READING;
 					}
 				}
+#if defined(ENABLE_GSS) || defined(ENABLE_SSPI)
+
+				/*
+				 * Continue GSSAPI/SSPI authentication
+				 */
+				if (areq == AUTH_REQ_GSS_CONT)
+				{
+					int			llen = msgLength - 4;
+
+					/*
+					 * We can be called repeatedly for the same buffer. Avoid
+					 * re-allocating the buffer in this case - just re-use the
+					 * old buffer.
+					 */
+					if (llen != conn->ginbuf.length)
+					{
+						if (conn->ginbuf.value)
+							free(conn->ginbuf.value);
+
+						conn->ginbuf.length = llen;
+						conn->ginbuf.value = malloc(llen);
+						if (!conn->ginbuf.value)
+						{
+							printfPQExpBuffer(&conn->errorMessage,
+											  libpq_gettext("out of memory allocating GSSAPI buffer (%i)"),
+											  llen);
+							goto error_return;
+						}
+					}
+
+					if (pqGetnchar(conn->ginbuf.value, llen, conn))
+					{
+						/* We'll come back when there is more data. */
+						return PGRES_POLLING_READING;
+					}
+				}
+#endif
 
 				/*
 				 * OK, we successfully read the message; mark data consumed
@@ -1680,12 +1749,7 @@ keep_going:						/* We will come back to here until there is
 				 * avoid the Kerberos code doing a hostname look-up.
 				 */
 
-				/*
-				 * XXX fe-auth.c has not been fixed to support PQExpBuffers,
-				 * so:
-				 */
-				if (pg_fe_sendauth(areq, conn, conn->pghost, conn->pgpass,
-								   conn->errorMessage.data) != STATUS_OK)
+				if (pg_fe_sendauth(areq, conn) != STATUS_OK)
 				{
 					conn->errorMessage.len = strlen(conn->errorMessage.data);
 					goto error_return;
@@ -1884,6 +1948,7 @@ makeEmptyPGconn(void)
 	conn->std_strings = false;	/* unless server says differently */
 	conn->verbosity = PQERRORS_DEFAULT;
 	conn->sock = -1;
+	conn->password_needed = false;
 #ifdef USE_SSL
 	conn->allow_ssl_try = true;
 	conn->wait_ssl_try = false;
@@ -1964,7 +2029,7 @@ freePGconn(PGconn *conn)
 		free(conn->pgpass);
 	if (conn->sslmode)
 		free(conn->sslmode);
-#ifdef KRB5
+#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
 	if (conn->krbsrvname)
 		free(conn->krbsrvname);
 #endif
@@ -1987,6 +2052,40 @@ freePGconn(PGconn *conn)
 		notify = notify->next;
 		free(prev);
 	}
+#ifdef ENABLE_GSS
+	{
+		OM_uint32	min_s;
+
+		if (conn->gctx)
+			gss_delete_sec_context(&min_s, &conn->gctx, GSS_C_NO_BUFFER);
+		if (conn->gtarg_nam)
+			gss_release_name(&min_s, &conn->gtarg_nam);
+		if (conn->ginbuf.length)
+			gss_release_buffer(&min_s, &conn->ginbuf);
+		if (conn->goutbuf.length)
+			gss_release_buffer(&min_s, &conn->goutbuf);
+	}
+#endif
+#ifdef ENABLE_SSPI
+	{
+		if (conn->ginbuf.length)
+			free(conn->ginbuf.value);
+
+		if (conn->sspitarget)
+			free(conn->sspitarget);
+
+		if (conn->sspicred)
+		{
+			FreeCredentialsHandle(conn->sspicred);
+			free(conn->sspicred);
+		}
+		if (conn->sspictx)
+		{
+			DeleteSecurityContext(conn->sspictx);
+			free(conn->sspictx);
+		}
+	}
+#endif
 	pstatus = conn->pstatus;
 	while (pstatus != NULL)
 	{
@@ -2230,7 +2329,7 @@ internal_cancel(SockAddr *raddr, int be_pid, int be_key,
 	 */
 	if ((tmpsock = socket(raddr->addr.ss_family, SOCK_STREAM, 0)) < 0)
 	{
-		StrNCpy(errbuf, "PQcancel() -- socket() failed: ", errbufsize);
+		strlcpy(errbuf, "PQcancel() -- socket() failed: ", errbufsize);
 		goto cancel_errReturn;
 	}
 retry3:
@@ -2240,7 +2339,7 @@ retry3:
 		if (SOCK_ERRNO == EINTR)
 			/* Interrupted system call - we'll just try again */
 			goto retry3;
-		StrNCpy(errbuf, "PQcancel() -- connect() failed: ", errbufsize);
+		strlcpy(errbuf, "PQcancel() -- connect() failed: ", errbufsize);
 		goto cancel_errReturn;
 	}
 
@@ -2261,7 +2360,7 @@ retry4:
 		if (SOCK_ERRNO == EINTR)
 			/* Interrupted system call - we'll just try again */
 			goto retry4;
-		StrNCpy(errbuf, "PQcancel() -- send() failed: ", errbufsize);
+		strlcpy(errbuf, "PQcancel() -- send() failed: ", errbufsize);
 		goto cancel_errReturn;
 	}
 
@@ -2319,7 +2418,7 @@ PQcancel(PGcancel *cancel, char *errbuf, int errbufsize)
 {
 	if (!cancel)
 	{
-		StrNCpy(errbuf, "PQcancel() -- no cancel object supplied", errbufsize);
+		strlcpy(errbuf, "PQcancel() -- no cancel object supplied", errbufsize);
 		return FALSE;
 	}
 
@@ -2350,7 +2449,7 @@ PQrequestCancel(PGconn *conn)
 
 	if (conn->sock < 0)
 	{
-		StrNCpy(conn->errorMessage.data,
+		strlcpy(conn->errorMessage.data,
 				"PQrequestCancel() -- connection is not open\n",
 				conn->errorMessage.maxlen);
 		conn->errorMessage.len = strlen(conn->errorMessage.data);
@@ -2867,11 +2966,11 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
 			return 1;
 		}
 
-		while ((line = fgets(buf, MAXBUFSIZE - 1, f)) != NULL)
+		while ((line = fgets(buf, sizeof(buf), f)) != NULL)
 		{
 			linenr++;
 
-			if (strlen(line) >= MAXBUFSIZE - 2)
+			if (strlen(line) >= sizeof(buf) - 1)
 			{
 				fclose(f);
 				printfPQExpBuffer(errorMessage,
@@ -2997,9 +3096,12 @@ parseServiceInfo(PQconninfoOption *options, PQExpBuffer errorMessage)
  * If successful, a malloc'd PQconninfoOption array is returned.
  * If not successful, NULL is returned and an error message is
  * left in errorMessage.
+ * *password_from_string is set TRUE if we got a password from the
+ * conninfo string, otherwise FALSE.
  */
 static PQconninfoOption *
-conninfo_parse(const char *conninfo, PQExpBuffer errorMessage)
+conninfo_parse(const char *conninfo, PQExpBuffer errorMessage,
+			   bool *password_from_string)
 {
 	char	   *pname;
 	char	   *pval;
@@ -3009,7 +3111,8 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage)
 	char	   *cp2;
 	PQconninfoOption *options;
 	PQconninfoOption *option;
-	char		errortmp[INITIAL_EXPBUFFER_SIZE];
+
+	*password_from_string = false;			/* default result */
 
 	/* Make a working copy of PQconninfoOptions */
 	options = malloc(sizeof(PQconninfoOptions));
@@ -3167,6 +3270,12 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage)
 			free(buf);
 			return NULL;
 		}
+
+		/*
+		 * Special handling for password
+		 */
+		if (strcmp(option->keyword, "password") == 0)
+			*password_from_string = (option->val[0] != '\0');
 	}
 
 	/* Done with the modifiable input string */
@@ -3232,8 +3341,7 @@ conninfo_parse(const char *conninfo, PQExpBuffer errorMessage)
 		 */
 		if (strcmp(option->keyword, "user") == 0)
 		{
-			option->val = pg_fe_getauthname(errortmp);
-			/* note any error message is thrown away */
+			option->val = pg_fe_getauthname(errorMessage);
 			continue;
 		}
 	}
@@ -3444,6 +3552,29 @@ PQbackendPID(const PGconn *conn)
 	if (!conn || conn->status != CONNECTION_OK)
 		return 0;
 	return conn->be_pid;
+}
+
+int
+PQconnectionNeedsPassword(const PGconn *conn)
+{
+	if (!conn)
+		return false;
+	if (conn->password_needed &&
+		(conn->pgpass == NULL || conn->pgpass[0] == '\0'))
+		return true;
+	else
+		return false;
+}
+
+int
+PQconnectionUsedPassword(const PGconn *conn)
+{
+	if (!conn)
+		return false;
+	if (conn->password_needed && conn->pgpass_from_client)
+		return true;
+	else
+		return false;
 }
 
 int
@@ -3699,6 +3830,12 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 				pgpassfile);
 		return NULL;
 	}
+#else
+
+	/*
+	 * On Win32, the directory is protected, so we don't have to check the
+	 * file.
+	 */
 #endif
 
 	fp = fopen(pgpassfile, "r");
@@ -3755,8 +3892,7 @@ pqGetHomeDirectory(char *buf, int bufsize)
 
 	if(!pwd)
 		return false;
-
-	StrNCpy(buf, pwd->pw_dir, bufsize);
+	strlcpy(buf, pwd->pw_dir, bufsize);
 	return true;
 #else
 	char		tmppath[MAX_PATH];

@@ -124,11 +124,12 @@ static const char *SSLerrmessage(void);
 #endif
 
 #ifdef USE_SSL
-/*
- *	How much data can be sent a
+
 /* GUC variable controlling SSL cipher list */
 char	   *SSLCipherSuites = NULL;
-cross a secure connection
+
+/*
+ *	How much data can be sent across a secure connection
  *	(total in both directions) before we require renegotiation.
  */
 #define RENEGOTIATION_LIMIT (512 * 1024 * 1024)
@@ -795,15 +796,22 @@ initialize_SSL(void)
 	{
 		/*
 		 * Check the Certificate Revocation List (CRL) if file exists.
-		 * http://searchsecurity.techtarget.com/sDefinition/0,,sid14_gci803160				(errmsg("SSL certificate revocation list file \"%s\" ignored",
-						ROOT_CRL_FILE),
-				 errdetail("SSL library does not support certificate revocation lists.")));
-09_STORE_load_locations(cvstore, ROOT_CRL_FILE, NULL) != 0)
+		 * http://searchsecurity.techtarget.com/sDefinition/0,,sid14_gci803160,
+		 * 00.html
+		 */
+		X509_STORE *cvstore = SSL_CTX_get_cert_store(SSL_context);
+
+		if (cvstore)
+		{
+			/* Set the flags to check against the complete CRL chain */
+			if (X509_STORE_load_locations(cvstore, ROOT_CRL_FILE, NULL) !=0)
 /* OpenSSL 0.96 does not support X509_V_FLAG_CRL_CHECK */
 #ifdef X509_V_FLAG_CRL_CHECK
 				X509_STORE_set_flags(cvstore,
-						  X509_V_FLAG_CRL_CHECK |						 errdetail("Certificates will not be checked against revocation list.")));
- revocation list file \"%s\" ignored",
+						  X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+#else
+				ereport(LOG,
+				(errmsg("SSL certificate revocation list file \"%s\" ignored",
 						ROOT_CRL_FILE),
 				 errdetail("SSL library does not support certificate revocation lists.")));
 #endif
