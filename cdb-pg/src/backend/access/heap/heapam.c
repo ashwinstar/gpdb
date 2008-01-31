@@ -2471,6 +2471,11 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	/* XLOG stuff */
 	if (use_wal && !relation->rd_istemp)
 	{
+		/* No XLOG record, but still need to flag that the XID exists on dist */
+		MyXactMadeTempRelUpdate = true;
+	}
+	else if (use_wal)
+	{
 		heap_log_tuple_insert(relation, buffer, heaptup);
 	}
 
