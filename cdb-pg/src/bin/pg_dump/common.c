@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/bin/pg_dump/common.c,v 1.94 2006/10/09 23:36:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/bin/pg_dump/common.c,v 1.102 2008/01/01 19:45:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -42,7 +42,11 @@ static int	numCatalogIds = 0;
 
 /*
  * These variables are static to avoid the notational cruft of having to pass
- * them into findTableByOid() and friends.
+ * them into findTableByOid() and friends.	For each of these arrays, we
+ * build a sorted-by-OID index array immediately after it's built, and then
+ * we use binary search in findTableByOid() and friends.  (qsort'ing the base
+ * arrays themselves would be simpler, but it doesn't work because pg_dump.c
+ * may have already established pointers between items.)
  */
 static TableInfo *tblinfo;
 static TypeInfo *typinfo;
@@ -52,12 +56,18 @@ static int	numTables;
 static int	numTypes;
 static int	numFuncs;
 static int	numOperators;
+static DumpableObject **tblinfoindex;
+static DumpableObject **typinfoindex;
+static DumpableObject **funinfoindex;
+static DumpableObject **oprinfoindex;
 
 
 static void flagInhTables(TableInfo *tbinfo, int numTables,
 			  InhInfo *inhinfo, int numInherits);
 static void flagInhAttrs(TableInfo *tbinfo, int numTables,
 			 InhInfo *inhinfo, int numInherits);
+static DumpableObject **buildIndexArray(void *objArray, int numObjs,
+				Size objSize);
 static int	DOCatalogIdCompare(const void *p1, const void *p2);
 static void findParentsByOid(TableInfo *self,
 				 InhInfo *inhinfo, int numInherits);
@@ -79,7 +89,12 @@ getSchemaData(int *numTablesPtr)
 	ProcLangInfo *proclanginfo;
 	CastInfo   *castinfo;
 	OpclassInfo *opcinfo;
+	OpfamilyInfo *opfinfo;
 	ConvInfo   *convinfo;
+	TSParserInfo *prsinfo;
+	TSTemplateInfo *tmplinfo;
+	TSDictInfo *dictinfo;
+	TSConfigInfo *cfginfo;
 	int			numNamespaces;
 	int			numAggregates;
 	int			numInherits;
@@ -87,7 +102,12 @@ getSchemaData(int *numTablesPtr)
 	int			numProcLangs;
 	int			numCasts;
 	int			numOpclasses;
+	int			numOpfamilies;
 	int			numConversions;
+	int			numTSParsers;
+	int			numTSTemplates;
+	int			numTSDicts;
+	int			numTSConfigs;
 
 	if (g_verbose)
 		write_msg(NULL, "reading schemas\n");
@@ -96,11 +116,13 @@ getSchemaData(int *numTablesPtr)
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined functions\n");
 	funinfo = getFuncs(&numFuncs);
+	funinfoindex = buildIndexArray(funinfo, numFuncs, sizeof(FuncInfo));
 
 	/* this must be after getFuncs */
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined types\n");
 	typinfo = getTypes(&numTypes);
+	typinfoindex = buildIndexArray(typinfo, numTypes, sizeof(TypeInfo));
 
 	/* this must be after getFuncs, too */
 	if (g_verbose)
@@ -114,10 +136,31 @@ getSchemaData(int *numTablesPtr)
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined operators\n");
 	oprinfo = getOperators(&numOperators);
+	oprinfoindex = buildIndexArray(oprinfo, numOperators, sizeof(OprInfo));
 
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined operator classes\n");
 	opcinfo = getOpclasses(&numOpclasses);
+
+	if (g_verbose)
+		write_msg(NULL, "reading user-defined text search parsers\n");
+	prsinfo = getTSParsers(&numTSParsers);
+
+	if (g_verbose)
+		write_msg(NULL, "reading user-defined text search templates\n");
+	tmplinfo = getTSTemplates(&numTSTemplates);
+
+	if (g_verbose)
+		write_msg(NULL, "reading user-defined text search dictionaries\n");
+	dictinfo = getTSDictionaries(&numTSDicts);
+
+	if (g_verbose)
+		write_msg(NULL, "reading user-defined text search configurations\n");
+	cfginfo = getTSConfigurations(&numTSConfigs);
+
+	if (g_verbose)
+		write_msg(NULL, "reading user-defined operator families\n");
+	opfinfo = getOpfamilies(&numOpfamilies);
 
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined conversions\n");
@@ -126,6 +169,7 @@ getSchemaData(int *numTablesPtr)
 	if (g_verbose)
 		write_msg(NULL, "reading user-defined tables\n");
 	tblinfo = getTables(&numTables);
+	tblinfoindex = buildIndexArray(tblinfo, numTables, sizeof(TableInfo));
 
 	if (g_verbose)
 		write_msg(NULL, "reading table inheritance information\n");
@@ -293,10 +337,11 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 					if (inhDef != NULL)
 					{
 						defaultsFound = true;
+
 						/*
 						 * If any parent has a default and the child doesn't,
-						 * we have to emit an explicit DEFAULT NULL clause
-						 * for the child, else the parent's default will win.
+						 * we have to emit an explicit DEFAULT NULL clause for
+						 * the child, else the parent's default will win.
 						 */
 						if (attrDef == NULL)
 						{
@@ -323,6 +368,7 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 						if (strcmp(attrDef->adef_expr, inhDef->adef_expr) != 0)
 						{
 							defaultsMatch = false;
+
 							/*
 							 * Whenever there is a non-matching parent
 							 * default, add a dependency to force the parent
@@ -375,9 +421,9 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 		}
 
 		/*
-		 * Check for inherited CHECK constraints.  We assume a constraint
-		 * is inherited if its name matches the name of any constraint in
-		 * the parent.  Originally this code tried to compare the expression
+		 * Check for inherited CHECK constraints.  We assume a constraint is
+		 * inherited if its name matches the name of any constraint in the
+		 * parent.	Originally this code tried to compare the expression
 		 * texts, but that can fail if the parent and child tables are in
 		 * different schemas, because reverse-listing of function calls may
 		 * produce different text (schema-qualified or not) depending on
@@ -614,6 +660,70 @@ findObjectByCatalogId(CatalogId catalogId)
 	return NULL;
 }
 
+/*
+ * Find a DumpableObject by OID, in a pre-sorted array of one type of object
+ *
+ * Returns NULL for unknown OID
+ */
+static DumpableObject *
+findObjectByOid(Oid oid, DumpableObject **indexArray, int numObjs)
+{
+	DumpableObject **low;
+	DumpableObject **high;
+
+	/*
+	 * This is the same as findObjectByCatalogId except we assume we need not
+	 * look at table OID because the objects are all the same type.
+	 *
+	 * We could use bsearch() here, but the notational cruft of calling
+	 * bsearch is nearly as bad as doing it ourselves; and the generalized
+	 * bsearch function is noticeably slower as well.
+	 */
+	if (numObjs <= 0)
+		return NULL;
+	low = indexArray;
+	high = indexArray + (numObjs - 1);
+	while (low <= high)
+	{
+		DumpableObject **middle;
+		int			difference;
+
+		middle = low + (high - low) / 2;
+		difference = oidcmp((*middle)->catId.oid, oid);
+		if (difference == 0)
+			return *middle;
+		else if (difference < 0)
+			low = middle + 1;
+		else
+			high = middle - 1;
+	}
+	return NULL;
+}
+
+/*
+ * Build an index array of DumpableObject pointers, sorted by OID
+ */
+static DumpableObject **
+buildIndexArray(void *objArray, int numObjs, Size objSize)
+{
+	DumpableObject **ptrs;
+	int			i;
+
+	ptrs = (DumpableObject **) malloc(numObjs * sizeof(DumpableObject *));
+	for (i = 0; i < numObjs; i++)
+		ptrs[i] = (DumpableObject *) ((char *) objArray + i * objSize);
+
+	/* We can use DOCatalogIdCompare to sort since its first key is OID */
+	if (numObjs > 1)
+		qsort((void *) ptrs, numObjs, sizeof(DumpableObject *),
+			  DOCatalogIdCompare);
+
+	return ptrs;
+}
+
+/*
+ * qsort comparator for pointers to DumpableObjects
+ */
 static int
 DOCatalogIdCompare(const void *p1, const void *p2)
 {
@@ -704,80 +814,44 @@ removeObjectDependency(DumpableObject *dobj, DumpId refId)
  * findTableByOid
  *	  finds the entry (in tblinfo) of the table with the given oid
  *	  returns NULL if not found
- *
- * NOTE:  should hash this, but just do linear search for now
  */
 TableInfo *
 findTableByOid(Oid oid)
 {
-	int			i;
-
-	for (i = 0; i < numTables; i++)
-	{
-		if (tblinfo[i].dobj.catId.oid == oid)
-			return &tblinfo[i];
-	}
-	return NULL;
+	return (TableInfo *) findObjectByOid(oid, tblinfoindex, numTables);
 }
 
 /*
  * findTypeByOid
  *	  finds the entry (in typinfo) of the type with the given oid
  *	  returns NULL if not found
- *
- * NOTE:  should hash this, but just do linear search for now
  */
 TypeInfo *
 findTypeByOid(Oid oid)
 {
-	int			i;
-
-	for (i = 0; i < numTypes; i++)
-	{
-		if (typinfo[i].dobj.catId.oid == oid)
-			return &typinfo[i];
-	}
-	return NULL;
+	return (TypeInfo *) findObjectByOid(oid, typinfoindex, numTypes);
 }
 
 /*
  * findFuncByOid
  *	  finds the entry (in funinfo) of the function with the given oid
  *	  returns NULL if not found
- *
- * NOTE:  should hash this, but just do linear search for now
  */
 FuncInfo *
 findFuncByOid(Oid oid)
 {
-	int			i;
-
-	for (i = 0; i < numFuncs; i++)
-	{
-		if (funinfo[i].dobj.catId.oid == oid)
-			return &funinfo[i];
-	}
-	return NULL;
+	return (FuncInfo *) findObjectByOid(oid, funinfoindex, numFuncs);
 }
 
 /*
  * findOprByOid
  *	  finds the entry (in oprinfo) of the operator with the given oid
  *	  returns NULL if not found
- *
- * NOTE:  should hash this, but just do linear search for now
  */
 OprInfo *
 findOprByOid(Oid oid)
 {
-	int			i;
-
-	for (i = 0; i < numOperators; i++)
-	{
-		if (oprinfo[i].dobj.catId.oid == oid)
-			return &oprinfo[i];
-	}
-	return NULL;
+	return (OprInfo *) findObjectByOid(oid, oprinfoindex, numOperators);
 }
 
 

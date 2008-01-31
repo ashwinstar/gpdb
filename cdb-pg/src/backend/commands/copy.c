@@ -306,9 +306,7 @@ CopySendEndOfRow(CopyState cstate)
 			break;
 	}
 	
-	/* Reset fe_msgbuf to empty */
-	fe_msgbuf->len = 0;
-	fe_msgbuf->data[0] = '\0';
+	resetStringInfo(fe_msgbuf);
 }
 
 /*
@@ -573,7 +571,7 @@ CopyGetInt16(CopyState cstate, int16 *val)
  * the table.
  */
 uint64
-DoCopy(const CopyStmt *stmt)
+DoCopy(const CopyStmt *stmt, const char *queryString)
 {		
 	CopyState	cstate;
 	bool		is_from = stmt->is_from;
@@ -786,7 +784,7 @@ DoCopy(const CopyStmt *stmt)
 	if (strlen(cstate->delim) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY delimiter must be a single character")));
+				 errmsg("COPY delimiter must be a single ASCII character")));
 	
 	/* Disallow end-of-line characters */
 	if (strchr(cstate->delim, '\r') != NULL ||
@@ -801,11 +799,22 @@ DoCopy(const CopyStmt *stmt)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("COPY null representation cannot use newline or carriage return")));
 	
-	/* Disallow backslash in non-CSV mode */
-	if (!cstate->csv_mode && strchr(cstate->delim, '\\') != NULL)
+	/*
+	 * Disallow unsafe delimiter characters in non-CSV mode.  We can't allow
+	 * backslash because it would be ambiguous.  We can't allow the other
+	 * cases because data characters matching the delimiter must be
+	 * backslashed, and certain backslash combinations are interpreted
+	 * non-literally by COPY IN.  Disallowing all lower case ASCII letters
+	 * is more than strictly necessary, but seems best for consistency and
+	 * future-proofing.  Likewise we disallow all digits though only octal
+	 * digits are actually dangerous.
+	 */
+	if (!cstate->csv_mode &&
+		strchr("\\.abcdefghijklmnopqrstuvwxyz0123456789",
+			   cstate->delim[0]) != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("COPY delimiter cannot be backslash")));
+				 errmsg("COPY delimiter cannot be \"%s\"", cstate->delim)));
 	
 	/* Check header */
 	if (!cstate->csv_mode && cstate->header_line)
@@ -824,8 +833,13 @@ DoCopy(const CopyStmt *stmt)
 	if (cstate->csv_mode && strlen(cstate->quote) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY quote must be a single character")));
+				 errmsg("COPY quote must be a single ASCII character")));
 
+	if (cstate->csv_mode && cstate->delim[0] == cstate->quote[0])
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("COPY delimiter and quote must be different")));
+	
 	/*
 	 * Check escape
 	 */
@@ -837,7 +851,7 @@ DoCopy(const CopyStmt *stmt)
 	if (cstate->csv_mode && strlen(cstate->escape) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("COPY escape in CSV format must be a single character")));
+			errmsg("COPY escape in CSV format must be a single ASCII character")));
 
 	if (!cstate->csv_mode && !cstate->binary &&
 		(strchr(cstate->escape, '\r') != NULL ||
@@ -945,12 +959,9 @@ DoCopy(const CopyStmt *stmt)
 			
 			fstat(fileno(cstate->copy_file), &st);
 			if (S_ISDIR(st.st_mode))
-			{
-				FreeFile(cstate->copy_file);
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("\"%s\" is a directory", cstate->filename)));
-			}
 		}
 		
 	}
@@ -991,12 +1002,11 @@ DoCopy(const CopyStmt *stmt)
 	}
 	else
 	{
-		Query	   *query = stmt->query;
 		List	   *rewritten;
-		Plan	   *plan;
+		Query	   *query;
+		PlannedStmt *plan;
 		DestReceiver *dest;
 		
-		Assert(query);
 		Assert(!is_from);
 		cstate->rel = NULL;
 		
@@ -1006,34 +1016,18 @@ DoCopy(const CopyStmt *stmt)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY (SELECT) WITH OIDS is not supported")));
 		
-		if (query->into)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY (SELECT INTO) is not supported")));
-		
-		
 		/*
-		 * The query has already been through parse analysis, but not
-		 * rewriting or planning.  Do that now.
+		 * Run parse analysis and rewrite.	Note this also acquires sufficient
+		 * locks on the source table(s).
 		 *
-		 * Because the planner is not cool about not scribbling on its input,
-		 * we make a preliminary copy of the source querytree.  This prevents
+		 * Because the parser and planner tend to scribble on their input, we
+		 * make a preliminary copy of the source querytree.  This prevents
 		 * problems in the case that the COPY is in a portal or plpgsql
 		 * function and is executed repeatedly.  (See also the same hack in
-												  * EXPLAIN, DECLARE CURSOR and PREPARE.)  XXX the planner really
-		 * shouldn't modify its input ... FIXME someday.
+												  * DECLARE CURSOR and PREPARE.)  XXX FIXME someday.
 		 */
-		query = copyObject(query);
-		Assert(query->commandType == CMD_SELECT);
-		
-		/*
-		 * Must acquire locks in case we didn't come fresh from the parser.
-		 * XXX this also scribbles on query, another reason for copyObject
-		 */
-		AcquireRewriteLocks(query);
-		
-		/* Rewrite through rule system */
-		rewritten = QueryRewrite(query);
+		rewritten = pg_analyze_and_rewrite((Node *) copyObject(stmt->query),
+										   queryString, NULL, 0);
 		
 		/* We don't expect more or less than one result query */
 		if (list_length(rewritten) != 1)
@@ -1041,9 +1035,16 @@ DoCopy(const CopyStmt *stmt)
 		
 		query = (Query *) linitial(rewritten);
 		Assert(query->commandType == CMD_SELECT);
+		Assert(query->utilityStmt == NULL);
+		
+		/* Query mustn't use INTO, either */
+		if (query->intoClause)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY (SELECT INTO) is not supported")));
 		
 		/* plan the query */
-		plan = planner(query, false, 0, NULL);
+		plan = planner(query, 0, NULL);
 		
 		/*
 		 * Update snapshot command ID to ensure this query sees results of any
@@ -1052,14 +1053,14 @@ DoCopy(const CopyStmt *stmt)
 		 * which COPY can be invoked, I think it's OK, because the active
 		 * snapshot shouldn't be shared with anything else anyway.)
 		 */
-		ActiveSnapshot->curcid = GetCurrentCommandId();
+		ActiveSnapshot->curcid = GetCurrentCommandId(false);
 		
 		/* Create dest receiver for COPY OUT */
 		dest = CreateDestReceiver(DestCopyOut, NULL);
 		((DR_copy *) dest)->cstate = cstate;
 		
 		/* Create a QueryDesc requesting no output */
-		cstate->queryDesc = CreateQueryDesc(query, plan,
+		cstate->queryDesc = CreateQueryDesc(plan,
 											ActiveSnapshot, InvalidSnapshot,
 											dest, NULL, false);
 		
@@ -1210,12 +1211,9 @@ DoCopy(const CopyStmt *stmt)
 			
 			fstat(fileno(cstate->copy_file), &st);
 			if (S_ISDIR(st.st_mode))
-			{
-				FreeFile(cstate->copy_file);
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("\"%s\" is a directory", cstate->filename)));
-			}
 		}
 		
 		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) 
@@ -5568,7 +5566,6 @@ CopyAttributeOutText(CopyState cstate, char *string)
 	char	   *start;
 	char		c;
 	char		delimc = cstate->delim[0];
-	char		escapec = cstate->escape[0];
 	
 	if (cstate->need_transcoding)
 		ptr = pg_server_to_client(string, strlen(string));
@@ -5578,140 +5575,139 @@ CopyAttributeOutText(CopyState cstate, char *string)
 	/*
 	 * We have to grovel through the string searching for control characters
 	 * and instances of the delimiter character.  In most cases, though, these
-	 * are infrequent.  To avoid overhead from calling CopySendData once per
-	 * character, we dump out all characters between replaceable characters
-	 * in a single call.  The loop invariant is that the data from "start"
-	 * to "ptr" can be sent literally, but hasn't yet been.
+	 * are infrequent.	To avoid overhead from calling CopySendData once per
+	 * character, we dump out all characters between escaped characters in a
+	 * single call.  The loop invariant is that the data from "start" to "ptr"
+	 * can be sent literally, but hasn't yet been.
+	 *
+	 * We can skip pg_encoding_mblen() overhead when encoding is safe, because
+	 * in valid backend encodings, extra bytes of a multibyte character never
+	 * look like ASCII.  This loop is sufficiently performance-critical that
+	 * it's worth making two copies of it to get the IS_HIGHBIT_SET() test out
+	 * of the normal safe-encoding path.
 	 */
-	start = ptr;
-	while ((c = *ptr) != '\0')
+	if (cstate->encoding_embeds_ascii)
 	{
-		switch (c)
+		start = ptr;
+		while ((c = *ptr) != '\0')
 		{
-			case '\b':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\b');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'b');
-				}
-				start = ++ptr;
-				break;
-			case '\f':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\f');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'f');
-				}
-				start = ++ptr;
-				break;
-			case '\n':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\n');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'n');
-				}
-				start = ++ptr;
-				break;
-			case '\r':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\r');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'r');
-				}
-				start = ++ptr;
-				break;
-			case '\t':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\t');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 't');
-				}
-				start = ++ptr;
-				break;
-			case '\v':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\v');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, 'v');
-				}
-				start = ++ptr;
-				break;
-			case '\\':
-				DUMPSOFAR();
-				if(cstate->escape_off)
-				{
-					/* 1 byte of unescaped char */
-					CopySendChar(cstate, '\\');
-				}
-				else
-				{
-					/* 2 byte escape sequence */
-					CopySendChar(cstate, escapec);
-					CopySendChar(cstate, '\\');
-				}
-				start = ++ptr;
-				break;
-			default:
-				if (c == delimc)
-				{
-					DUMPSOFAR();
-					if(!cstate->escape_off)
-						CopySendChar(cstate, escapec);
-					start = ptr; /* we include char in next run */
-				}
-				
+			if ((unsigned char) c < (unsigned char) 0x20)
+			{
 				/*
-				 * We can skip pg_encoding_mblen() overhead when encoding is
-				 * safe, because in valid backend encodings, extra bytes of a
-				 * multibyte character never look like ASCII.
+				 * \r and \n must be escaped, the others are traditional.
+				 * We prefer to dump these using the C-like notation, rather
+				 * than a backslash and the literal character, because it
+				 * makes the dump file a bit more proof against Microsoftish
+				 * data mangling.
 				 */
-				if (IS_HIGHBIT_SET(c) && cstate->encoding_embeds_ascii)
-					ptr += pg_encoding_mblen(cstate->client_encoding, ptr);
-				else
-					ptr++;
-				break;
+				switch (c)
+				{
+					case '\b':
+						c = 'b';
+						break;
+					case '\f':
+						c = 'f';
+						break;
+					case '\n':
+						c = 'n';
+						break;
+					case '\r':
+						c = 'r';
+						break;
+					case '\t':
+						c = 't';
+						break;
+					case '\v':
+						c = 'v';
+						break;
+					default:
+						/* If it's the delimiter, must backslash it */
+						if (c == delimc)
+							break;
+						/* All ASCII control chars are length 1 */
+						ptr++;
+						continue;		/* fall to end of loop */
+				}
+				/* if we get here, we need to convert the control char */
+				DUMPSOFAR();
+				if(!cstate->escape_off)
+					CopySendChar(cstate, escapec);
+				CopySendChar(cstate, c);
+				start = ++ptr;			/* do not include char in next run */
+			}
+			else if (c == '\\' || c == delimc)
+			{
+				DUMPSOFAR();
+				if(!cstate->escape_off)
+					CopySendChar(cstate, escapec);
+				start = ptr++;	/* we include char in next run */
+			}
+			else if (IS_HIGHBIT_SET(c))
+				ptr += pg_encoding_mblen(cstate->client_encoding, ptr);
+			else
+				ptr++;
+		}
+	}
+	else
+	{
+		start = ptr;
+		while ((c = *ptr) != '\0')
+		{
+			if ((unsigned char) c < (unsigned char) 0x20)
+			{
+				/*
+				 * \r and \n must be escaped, the others are traditional.
+				 * We prefer to dump these using the C-like notation, rather
+				 * than a backslash and the literal character, because it
+				 * makes the dump file a bit more proof against Microsoftish
+				 * data mangling.
+				 */
+				switch (c)
+				{
+					case '\b':
+						c = 'b';
+						break;
+					case '\f':
+						c = 'f';
+						break;
+					case '\n':
+						c = 'n';
+						break;
+					case '\r':
+						c = 'r';
+						break;
+					case '\t':
+						c = 't';
+						break;
+					case '\v':
+						c = 'v';
+					
+						break;
+					default:
+						/* If it's the delimiter, must backslash it */
+						if (c == delimc)
+							break;
+						/* All ASCII control chars are length 1 */
+						ptr++;
+						continue;		/* fall to end of loop */
+				}
+				/* if we get here, we need to convert the control char */
+				DUMPSOFAR();
+				
+				if(!cstate->escape_off)
+					CopySendChar(cstate, escapec);
+				CopySendChar(cstate, c);
+				start = ++ptr;			/* do not include char in next run */
+			}
+			else if (c == '\\' || c == delimc)
+			{
+				DUMPSOFAR();
+				if(!cstate->escape_off)
+					CopySendChar(cstate, escapec);
+				start = ptr++;	/* we include char in next run */
+			}
+			else
+				ptr++;
 		}
 	}
 	
