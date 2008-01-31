@@ -693,442 +693,406 @@ DATA(insert (	3702   3615 3615 8	t  3694 783 ));
 /*
  * on-disk bitmap index abstime
  */
-DATA(insert (	3014	0 1 f  562 ));
-DATA(insert (	3014	0 2 f  564 ));
-DATA(insert (	3014	0 3 f  560 ));
-DATA(insert (	3014	0 4 f  565 ));
-DATA(insert (	3014	0 5 f  563 ));
+DATA(insert (	3014	702 702 1 f  562 3013 ));
+DATA(insert (	3014	702 702 2 f  564 3013 ));
+DATA(insert (	3014	702 702 3 f  560 3013 ));
+DATA(insert (	3014	702 702 4 f  565 3013 ));
+DATA(insert (	3014	702 702 5 f  563 3013 ));
 
 /*
  * on-disk bitmap index array
  */
-DATA(insert (	3015	0 1 f 1072 ));
-DATA(insert (	3015	0 2 f 1074 ));
-DATA(insert (	3015	0 3 f 1070 ));
-DATA(insert (	3015	0 4 f 1075 ));
-DATA(insert (	3015	0 5 f 1073 ));
+DATA(insert (	3015	2277 2277 1 f 1072 3013 ));
+DATA(insert (	3015	2277 2277 2 f 1074 3013 ));
+DATA(insert (	3015	2277 2277 3 f 1070 3013 ));
+DATA(insert (	3015	2277 2277 4 f 1075 3013 ));
+DATA(insert (	3015	2277 2277 5 f 1073 3013 ));
 
 /*
  * on-disk bitmap index bit
  */
-DATA(insert (	3016	0 1 f 1786 ));
-DATA(insert (	3016	0 2 f 1788 ));
-DATA(insert (	3016	0 3 f 1784 ));
-DATA(insert (	3016	0 4 f 1789 ));
-DATA(insert (	3016	0 5 f 1787 ));
+DATA(insert (	3016	1560 1560 1 f 1786 3013 ));
+DATA(insert (	3016	1560 1560 2 f 1788 3013 ));
+DATA(insert (	3016	1560 1560 3 f 1784 3013 ));
+DATA(insert (	3016	1560 1560 4 f 1789 3013 ));
+DATA(insert (	3016	1560 1560 5 f 1787 3013 ));
 
 /*
  * on-disk bitmap index bool
  */
-DATA(insert (	3017	0 1 f	58 ));
-DATA(insert (	3017	0 2 f 1694 ));
-DATA(insert (	3017	0 3 f	91 ));
-DATA(insert (	3017	0 4 f 1695 ));
-DATA(insert (	3017	0 5 f	59 ));
+DATA(insert (	3017	16 16 1 f	58 3013 ));
+DATA(insert (	3017	16 16 2 f 1694 3013 ));
+DATA(insert (	3017	16 16 3 f	91 3013 ));
+DATA(insert (	3017	16 16 4 f 1695 3013 ));
+DATA(insert (	3017	16 16 5 f	59 3013 ));
 
 /*
  * on-disk bitmap index bpchar
  */
-DATA(insert (	3018	0 1 f 1058 ));
-DATA(insert (	3018	0 2 f 1059 ));
-DATA(insert (	3018	0 3 f 1054 ));
-DATA(insert (	3018	0 4 f 1061 ));
-DATA(insert (	3018	0 5 f 1060 ));
+DATA(insert (	3018	1042 1042 1 f 1058 3013 ));
+DATA(insert (	3018	1042 1042 2 f 1059 3013 ));
+DATA(insert (	3018	1042 1042 3 f 1054 3013 ));
+DATA(insert (	3018	1042 1042 4 f 1061 3013 ));
+DATA(insert (	3018	1042 1042 5 f 1060 3013 ));
 
 /*
  * on-disk bitmap index bytea
  */
-DATA(insert (	3019	0 1 f 1957 ));
-DATA(insert (	3019	0 2 f 1958 ));
-DATA(insert (	3019	0 3 f 1955 ));
-DATA(insert (	3019	0 4 f 1960 ));
-DATA(insert (	3019	0 5 f 1959 ));
+DATA(insert (	3019	17 17 1 f 1957 3013 ));
+DATA(insert (	3019	17 17 2 f 1958 3013 ));
+DATA(insert (	3019	17 17 3 f 1955 3013 ));
+DATA(insert (	3019	17 17 4 f 1960 3013 ));
+DATA(insert (	3019	17 17 5 f 1959 3013 ));
 
 /*
  *	on-disk bitmap index char
  */
-DATA(insert (	3020	0 1 f  631 ));
-DATA(insert (	3020	0 2 f  632 ));
-DATA(insert (	3020	0 3 f	92 ));
-DATA(insert (	3020	0 4 f  634 ));
-DATA(insert (	3020	0 5 f  633 ));
-
-/*
- *	on-disk bitmap index cidr
- */
-DATA(insert (	3021	0 1 f 1203 ));
-DATA(insert (	3021	0 2 f 1204 ));
-DATA(insert (	3021	0 3 f 1201 ));
-DATA(insert (	3021	0 4 f 1206 ));
-DATA(insert (	3021	0 5 f 1205 ));
+DATA(insert (	3020	18 18 1 f  631 3013 ));
+DATA(insert (	3020	18 18 2 f  632 3013 ));
+DATA(insert (	3020	18 18 3 f	92 3013 ));
+DATA(insert (	3020	18 18 4 f  634 3013 ));
+DATA(insert (	3020	18 18 5 f  633 3013 ));
 
 /*
  *	on-disk bitmap index date
  */
-DATA(insert (	3022	0 1 f 1095 ));
-DATA(insert (	3022	0 2 f 1096 ));
-DATA(insert (	3022	0 3 f 1093 ));
-DATA(insert (	3022	0 4 f 1098 ));
-DATA(insert (	3022	0 5 f 1097 ));
+DATA(insert (	3022	1082 1082 1 f 1095 3013 ));
+DATA(insert (	3022	1082 1082 2 f 1096 3013 ));
+DATA(insert (	3022	1082 1082 3 f 1093 3013 ));
+DATA(insert (	3022	1082 1082 4 f 1098 3013 ));
+DATA(insert (	3022	1082 1082 5 f 1097 3013 ));
 
 /*
  * date-timestamp
  */
-DATA(insert (	3022 1114 1 f 2345 ));
-DATA(insert (	3022 1114 2 f 2346 ));
-DATA(insert (	3022 1114 3 f 2347 ));
-DATA(insert (	3022 1114 4 f 2348 ));
-DATA(insert (	3022 1114 5 f 2349 ));
+DATA(insert (	3022 1082 1114 1 f 2345 3013 ));
+DATA(insert (	3022 1082 1114 2 f 2346 3013 ));
+DATA(insert (	3022 1082 1114 3 f 2347 3013 ));
+DATA(insert (	3022 1082 1114 4 f 2348 3013 ));
+DATA(insert (	3022 1082 1114 5 f 2349 3013 ));
 
 /*
  * date-timestamptz
  */
-DATA(insert (	3022 1184 1 f 2358 ));
-DATA(insert (	3022 1184 2 f 2359 ));
-DATA(insert (	3022 1184 3 f 2360 ));
-DATA(insert (	3022 1184 4 f 2361 ));
-DATA(insert (	3022 1184 5 f 2362 ));
+DATA(insert (	3022 1082 1184 1 f 2358 3013 ));
+DATA(insert (	3022 1082 1184 2 f 2359 3013 ));
+DATA(insert (	3022 1082 1184 3 f 2360 3013 ));
+DATA(insert (	3022 1082 1184 4 f 2361 3013 ));
+DATA(insert (	3022 1082 1184 5 f 2362 3013 ));
 
 /*
  * float4
  */
-DATA(insert (	3023	0 1 f  622 ));
-DATA(insert (	3023	0 2 f  624 ));
-DATA(insert (	3023	0 3 f  620 ));
-DATA(insert (	3023	0 4 f  625 ));
-DATA(insert (	3023	0 5 f  623 ));
+DATA(insert (	3023	700 700 1 f  622 3013 ));
+DATA(insert (	3023	700 700 2 f  624 3013 ));
+DATA(insert (	3023	700 700 3 f  620 3013 ));
+DATA(insert (	3023	700 700 4 f  625 3013 ));
+DATA(insert (	3023	700 700 5 f  623 3013 ));
 
 /*
  * float48
  */
-DATA(insert (	3023  701 1 f  1122 ));
-DATA(insert (	3023  701 2 f  1124 ));
-DATA(insert (	3023  701 3 f  1120 ));
-DATA(insert (	3023  701 4 f  1125 ));
-DATA(insert (	3023  701 5 f  1123 ));
+DATA(insert (	3023  700 701 1 f  1122 3013 ));
+DATA(insert (	3023  700 701 2 f  1124 3013 ));
+DATA(insert (	3023  700 701 3 f  1120 3013 ));
+DATA(insert (	3023  700 701 4 f  1125 3013 ));
+DATA(insert (	3023  700 701 5 f  1123 3013 ));
 
 /*
  * float8
  */
-DATA(insert (	3024	0 1 f  672 ));
-DATA(insert (	3024	0 2 f  673 ));
-DATA(insert (	3024	0 3 f  670 ));
-DATA(insert (	3024	0 4 f  675 ));
-DATA(insert (	3024	0 5 f  674 ));
+DATA(insert (	3024	701 701 1 f  672 3013 ));
+DATA(insert (	3024	701 701 2 f  673 3013 ));
+DATA(insert (	3024	701 701 3 f  670 3013 ));
+DATA(insert (	3024	701 701 4 f  675 3013 ));
+DATA(insert (	3024	701 701 5 f  674 3013 ));
 
 /*
  * float84
  */
-DATA(insert (	3024  700 1 f  1132 ));
-DATA(insert (	3024  700 2 f  1134 ));
-DATA(insert (	3024  700 3 f  1130 ));
-DATA(insert (	3024  700 4 f  1135 ));
-DATA(insert (	3024  700 5 f  1133 ));
-
-/*
- * inet
- */
-DATA(insert (	3025	0 1 f 1203 ));
-DATA(insert (	3025	0 2 f 1204 ));
-DATA(insert (	3025	0 3 f 1201 ));
-DATA(insert (	3025	0 4 f 1206 ));
-DATA(insert (	3025	0 5 f 1205 ));
+DATA(insert (	3024  701 700 1 f  1132 3013 ));
+DATA(insert (	3024  701 700 2 f  1134 3013 ));
+DATA(insert (	3024  701 700 3 f  1130 3013 ));
+DATA(insert (	3024  701 700 4 f  1135 3013 ));
+DATA(insert (	3024  701 700 5 f  1133 3013 ));
 
 /*
  * int2
  */
-DATA(insert (	3026	0 1 f	95 ));
-DATA(insert (	3026	0 2 f  522 ));
-DATA(insert (	3026	0 3 f	94 ));
-DATA(insert (	3026	0 4 f  524 ));
-DATA(insert (	3026	0 5 f  520 ));
+DATA(insert (	3026	21 21 1 f	95 3013 ));
+DATA(insert (	3026	21 21 2 f  522 3013 ));
+DATA(insert (	3026	21 21 3 f	94 3013 ));
+DATA(insert (	3026	21 21 4 f  524 3013 ));
+DATA(insert (	3026	21 21 5 f  520 3013 ));
 
 /*
  * int24
  */
-DATA(insert (	3026   23 1 f  534 ));
-DATA(insert (	3026   23 2 f  540 ));
-DATA(insert (	3026   23 3 f  532 ));
-DATA(insert (	3026   23 4 f  542 ));
-DATA(insert (	3026   23 5 f  536 ));
+DATA(insert (	3026   21 23 1 f  534 3013 ));
+DATA(insert (	3026   21 23 2 f  540 3013 ));
+DATA(insert (	3026   21 23 3 f  532 3013 ));
+DATA(insert (	3026   21 23 4 f  542 3013 ));
+DATA(insert (	3026   21 23 5 f  536 3013 ));
 
 /*
  * int28
  */
-DATA(insert (	3026   20 1 f  1864 ));
-DATA(insert (	3026   20 2 f  1866 ));
-DATA(insert (	3026   20 3 f  1862 ));
-DATA(insert (	3026   20 4 f  1867 ));
-DATA(insert (	3026   20 5 f  1865 ));
+DATA(insert (	3026   21 20 1 f  1864 3013 ));
+DATA(insert (	3026   21 20 2 f  1866 3013 ));
+DATA(insert (	3026   21 20 3 f  1862 3013 ));
+DATA(insert (	3026   21 20 4 f  1867 3013 ));
+DATA(insert (	3026   21 20 5 f  1865 3013 ));
 
 /*
  * int4
  */
-DATA(insert (	3027	0 1 f	97 ));
-DATA(insert (	3027	0 2 f  523 ));
-DATA(insert (	3027	0 3 f	96 ));
-DATA(insert (	3027	0 4 f  525 ));
-DATA(insert (	3027	0 5 f  521 ));
+DATA(insert (	3027	23 23 1 f	97 3013 ));
+DATA(insert (	3027	23 23 2 f  523 3013 ));
+DATA(insert (	3027	23 23 3 f	96 3013 ));
+DATA(insert (	3027	23 23 4 f  525 3013 ));
+DATA(insert (	3027	23 23 5 f  521 3013 ));
 
 /*
  * int42
  */
-DATA(insert (	3027   21 1 f  535 ));
-DATA(insert (	3027   21 2 f  541 ));
-DATA(insert (	3027   21 3 f  533 ));
-DATA(insert (	3027   21 4 f  543 ));
-DATA(insert (	3027   21 5 f  537 ));
+DATA(insert (	3027   23 21 1 f  535 3013 ));
+DATA(insert (	3027   23 21 2 f  541 3013 ));
+DATA(insert (	3027   23 21 3 f  533 3013 ));
+DATA(insert (	3027   23 21 4 f  543 3013 ));
+DATA(insert (	3027   23 21 5 f  537 3013 ));
 
 /*
  * int48
  */
-DATA(insert (	3027   20 1 f	37 ));
-DATA(insert (	3027   20 2 f	80 ));
-DATA(insert (	3027   20 3 f	15 ));
-DATA(insert (	3027   20 4 f	82 ));
-DATA(insert (	3027   20 5 f	76 ));
+DATA(insert (	3027   23 20 1 f	37 3013 ));
+DATA(insert (	3027   23 20 2 f	80 3013 ));
+DATA(insert (	3027   23 20 3 f	15 3013 ));
+DATA(insert (	3027   23 20 4 f	82 3013 ));
+DATA(insert (	3027   23 20 5 f	76 3013 ));
 
 /*
  * int8
  */
-DATA(insert (	3028	0 1 f  412 ));
-DATA(insert (	3028	0 2 f  414 ));
-DATA(insert (	3028	0 3 f  410 ));
-DATA(insert (	3028	0 4 f  415 ));
-DATA(insert (	3028	0 5 f  413 ));
+DATA(insert (	3028	20 20 1 f  412 3013 ));
+DATA(insert (	3028	20 20 2 f  414 3013 ));
+DATA(insert (	3028	20 20 3 f  410 3013 ));
+DATA(insert (	3028	20 20 4 f  415 3013 ));
+DATA(insert (	3028	20 20 5 f  413 3013 ));
 
 /*
  * int82
  */
-DATA(insert (	3028   21 1 f  1870 ));
-DATA(insert (	3028   21 2 f  1872 ));
-DATA(insert (	3028   21 3 f  1868 ));
-DATA(insert (	3028   21 4 f  1873 ));
-DATA(insert (	3028   21 5 f  1871 ));
+DATA(insert (	3028   20 21 1 f  1870 3013 ));
+DATA(insert (	3028   20 21 2 f  1872 3013 ));
+DATA(insert (	3028   20 21 3 f  1868 3013 ));
+DATA(insert (	3028   20 21 4 f  1873 3013 ));
+DATA(insert (	3028   20 21 5 f  1871 3013 ));
 
 /*
  * int84
  */
-DATA(insert (	3028   23 1 f  418 ));
-DATA(insert (	3028   23 2 f  420 ));
-DATA(insert (	3028   23 3 f  416 ));
-DATA(insert (	3028   23 4 f  430 ));
-DATA(insert (	3028   23 5 f  419 ));
+DATA(insert (	3028   20 23 1 f  418 3013 ));
+DATA(insert (	3028   20 23 2 f  420 3013 ));
+DATA(insert (	3028   20 23 3 f  416 3013 ));
+DATA(insert (	3028   20 23 4 f  430 3013 ));
+DATA(insert (	3028   20 23 5 f  419 3013 ));
 
 /*
  * interval
  */
-DATA(insert (	3029	0 1 f 1332 ));
-DATA(insert (	3029	0 2 f 1333 ));
-DATA(insert (	3029	0 3 f 1330 ));
-DATA(insert (	3029	0 4 f 1335 ));
-DATA(insert (	3029	0 5 f 1334 ));
+DATA(insert (	3029	1186 1186 1 f 1332 3013 ));
+DATA(insert (	3029	1186 1186 2 f 1333 3013 ));
+DATA(insert (	3029	1186 1186 3 f 1330 3013 ));
+DATA(insert (	3029	1186 1186 4 f 1335 3013 ));
+DATA(insert (	3029	1186 1186 5 f 1334 3013 ));
 
 /*
  * macaddr
  */
-DATA(insert (	3030	0 1 f 1222 ));
-DATA(insert (	3030	0 2 f 1223 ));
-DATA(insert (	3030	0 3 f 1220 ));
-DATA(insert (	3030	0 4 f 1225 ));
-DATA(insert (	3030	0 5 f 1224 ));
+DATA(insert (	3030	829 829 1 f 1222 3013 ));
+DATA(insert (	3030	829 829 2 f 1223 3013 ));
+DATA(insert (	3030	829 829 3 f 1220 3013 ));
+DATA(insert (	3030	829 829 4 f 1225 3013 ));
+DATA(insert (	3030	829 829 5 f 1224 3013 ));
 
 /*
  * name
  */
-DATA(insert (	3031	0 1 f  660 ));
-DATA(insert (	3031	0 2 f  661 ));
-DATA(insert (	3031	0 3 f	93 ));
-DATA(insert (	3031	0 4 f  663 ));
-DATA(insert (	3031	0 5 f  662 ));
+DATA(insert (	3031	19 19 1 f  660 3013 ));
+DATA(insert (	3031	19 19 2 f  661 3013 ));
+DATA(insert (	3031	19 19 3 f	93 3013 ));
+DATA(insert (	3031	19 19 4 f  663 3013 ));
+DATA(insert (	3031	19 19 5 f  662 3013 ));
 
 /*
  * numeric
  */
-DATA(insert (	3032	0 1 f 1754 ));
-DATA(insert (	3032	0 2 f 1755 ));
-DATA(insert (	3032	0 3 f 1752 ));
-DATA(insert (	3032	0 4 f 1757 ));
-DATA(insert (	3032	0 5 f 1756 ));
+DATA(insert (	3032	1700 1700 1 f 1754 3013 ));
+DATA(insert (	3032	1700 1700 2 f 1755 3013 ));
+DATA(insert (	3032	1700 1700 3 f 1752 3013 ));
+DATA(insert (	3032	1700 1700 4 f 1757 3013 ));
+DATA(insert (	3032	1700 1700 5 f 1756 3013 ));
 
 /*
  * oid
  */
-DATA(insert (	3033	0 1 f  609 ));
-DATA(insert (	3033	0 2 f  611 ));
-DATA(insert (	3033	0 3 f  607 ));
-DATA(insert (	3033	0 4 f  612 ));
-DATA(insert (	3033	0 5 f  610 ));
+DATA(insert (	3033	26 26 1 f  609 3013 ));
+DATA(insert (	3033	26 26 2 f  611 3013 ));
+DATA(insert (	3033	26 26 3 f  607 3013 ));
+DATA(insert (	3033	26 26 4 f  612 3013 ));
+DATA(insert (	3033	26 26 5 f  610 3013 ));
 
 /*
  * oidvector
  */
-DATA(insert (	3034	0 1 f  645 ));
-DATA(insert (	3034	0 2 f  647 ));
-DATA(insert (	3034	0 3 f  649 ));
-DATA(insert (	3034	0 4 f  648 ));
-DATA(insert (	3034	0 5 f  646 ));
+DATA(insert (	3034	30 30 1 f  645 3013 ));
+DATA(insert (	3034	30 30 2 f  647 3013 ));
+DATA(insert (	3034	30 30 3 f  649 3013 ));
+DATA(insert (	3034	30 30 4 f  648 3013 ));
+DATA(insert (	3034	30 30 5 f  646 3013 ));
 
 /*
  * text
  */
-DATA(insert (	3035	0 1 f  664 ));
-DATA(insert (	3035	0 2 f  665 ));
-DATA(insert (	3035	0 3 f	98 ));
-DATA(insert (	3035	0 4 f  667 ));
-DATA(insert (	3035	0 5 f  666 ));
+DATA(insert (	3035	25 25 1 f  664 3013 ));
+DATA(insert (	3035	25 25 2 f  665 3013 ));
+DATA(insert (	3035	25 25 3 f	98 3013 ));
+DATA(insert (	3035	25 25 4 f  667 3013 ));
+DATA(insert (	3035	25 25 5 f  666 3013 ));
 
 /*
  * time
  */
-DATA(insert (	3036	0 1 f 1110 ));
-DATA(insert (	3036	0 2 f 1111 ));
-DATA(insert (	3036	0 3 f 1108 ));
-DATA(insert (	3036	0 4 f 1113 ));
-DATA(insert (	3036	0 5 f 1112 ));
+DATA(insert (	3036	1083 1083 1 f 1110 3013 ));
+DATA(insert (	3036	1083 1083 2 f 1111 3013 ));
+DATA(insert (	3036	1083 1083 3 f 1108 3013 ));
+DATA(insert (	3036	1083 1083 4 f 1113 3013 ));
+DATA(insert (	3036	1083 1083 5 f 1112 3013 ));
 
 /*
  * timestamptz
  */
-DATA(insert (	3037	0 1 f 1322 ));
-DATA(insert (	3037	0 2 f 1323 ));
-DATA(insert (	3037	0 3 f 1320 ));
-DATA(insert (	3037	0 4 f 1325 ));
-DATA(insert (	3037	0 5 f 1324 ));
+DATA(insert (	3037	1184 1184 1 f 1322 3013 ));
+DATA(insert (	3037	1184 1184 2 f 1323 3013 ));
+DATA(insert (	3037	1184 1184 3 f 1320 3013 ));
+DATA(insert (	3037	1184 1184 4 f 1325 3013 ));
+DATA(insert (	3037	1184 1184 5 f 1324 3013 ));
 
 /*
  * timestamptz-date
  */
-DATA(insert (	3037 1082 1 f 2384 ));
-DATA(insert (	3037 1082 2 f 2385 ));
-DATA(insert (	3037 1082 3 f 2386 ));
-DATA(insert (	3037 1082 4 f 2387 ));
-DATA(insert (	3037 1082 5 f 2388 ));
+DATA(insert (	3037 1184 1082 1 f 2384 3013 ));
+DATA(insert (	3037 1184 1082 2 f 2385 3013 ));
+DATA(insert (	3037 1184 1082 3 f 2386 3013 ));
+DATA(insert (	3037 1184 1082 4 f 2387 3013 ));
+DATA(insert (	3037 1184 1082 5 f 2388 3013 ));
 
 /*
  * timestamptz-timestamp
  */
-DATA(insert (	3037 1114 1 f 2540 ));
-DATA(insert (	3037 1114 2 f 2541 ));
-DATA(insert (	3037 1114 3 f 2542 ));
-DATA(insert (	3037 1114 4 f 2543 ));
-DATA(insert (	3037 1114 5 f 2544 ));
+DATA(insert (	3037 1184 1114 1 f 2540 3013 ));
+DATA(insert (	3037 1184 1114 2 f 2541 3013 ));
+DATA(insert (	3037 1184 1114 3 f 2542 3013 ));
+DATA(insert (	3037 1184 1114 4 f 2543 3013 ));
+DATA(insert (	3037 1184 1114 5 f 2544 3013 ));
 
 /*
  * timetz
  */
-DATA(insert (	3038	0 1 f 1552 ));
-DATA(insert (	3038	0 2 f 1553 ));
-DATA(insert (	3038	0 3 f 1550 ));
-DATA(insert (	3038	0 4 f 1555 ));
-DATA(insert (	3038	0 5 f 1554 ));
+DATA(insert (	3038	1266 1266 1 f 1552 3013 ));
+DATA(insert (	3038	1266 1266 2 f 1553 3013 ));
+DATA(insert (	3038	1266 1266 3 f 1550 3013 ));
+DATA(insert (	3038	1266 1266 4 f 1555 3013 ));
+DATA(insert (	3038	1266 1266 5 f 1554 3013 ));
 
 /*
  * varbit
  */
-DATA(insert (	3039	0 1 f 1806 ));
-DATA(insert (	3039	0 2 f 1808 ));
-DATA(insert (	3039	0 3 f 1804 ));
-DATA(insert (	3039	0 4 f 1809 ));
-DATA(insert (	3039	0 5 f 1807 ));
-
-/*
- * varchar
- */
-DATA(insert (	3040	0 1 f 664 ));
-DATA(insert (	3040	0 2 f 665 ));
-DATA(insert (	3040	0 3 f  98 ));
-DATA(insert (	3040	0 4 f 667 ));
-DATA(insert (	3040	0 5 f 666 ));
+DATA(insert (	3039	1562 1562 1 f 1806 3013 ));
+DATA(insert (	3039	1562 1562 2 f 1808 3013 ));
+DATA(insert (	3039	1562 1562 3 f 1804 3013 ));
+DATA(insert (	3039	1562 1562 4 f 1809 3013 ));
+DATA(insert (	3039	1562 1562 5 f 1807 3013 ));
 
 /*
  * timestamp
  */
-DATA(insert (	3041	0 1 f 2062 ));
-DATA(insert (	3041	0 2 f 2063 ));
-DATA(insert (	3041	0 3 f 2060 ));
-DATA(insert (	3041	0 4 f 2065 ));
-DATA(insert (	3041	0 5 f 2064 ));
+DATA(insert (	3041	1114 1114 1 f 2062 3013 ));
+DATA(insert (	3041	1114 1114 2 f 2063 3013 ));
+DATA(insert (	3041	1114 1114 3 f 2060 3013 ));
+DATA(insert (	3041	1114 1114 4 f 2065 3013 ));
+DATA(insert (	3041	1114 1114 5 f 2064 3013 ));
 
 /*
  * timestamp-date
  */
-DATA(insert (	3041 1082 1 f 2371 ));
-DATA(insert (	3041 1082 2 f 2372 ));
-DATA(insert (	3041 1082 3 f 2373 ));
-DATA(insert (	3041 1082 4 f 2374 ));
-DATA(insert (	3041 1082 5 f 2375 ));
+DATA(insert (	3041 1114 1082 1 f 2371 3013 ));
+DATA(insert (	3041 1114 1082 2 f 2372 3013 ));
+DATA(insert (	3041 1114 1082 3 f 2373 3013 ));
+DATA(insert (	3041 1114 1082 4 f 2374 3013 ));
+DATA(insert (	3041 1114 1082 5 f 2375 3013 ));
 
 /*
  * timestamp-timestamptz
  */
-DATA(insert (	3041 1184 1 f 2534 ));
-DATA(insert (	3041 1184 2 f 2535 ));
-DATA(insert (	3041 1184 3 f 2536 ));
-DATA(insert (	3041 1184 4 f 2537 ));
-DATA(insert (	3041 1184 5 f 2538 ));
+DATA(insert (	3041 1114 1184 1 f 2534 3013 ));
+DATA(insert (	3041 1114 1184 2 f 2535 3013 ));
+DATA(insert (	3041 1114 1184 3 f 2536 3013 ));
+DATA(insert (	3041 1114 1184 4 f 2537 3013 ));
+DATA(insert (	3041 1114 1184 5 f 2538 3013 ));
 
 /*
  * text pattern
  */
-DATA(insert (	3042	0 1 f 2314 ));
-DATA(insert (	3042	0 2 f 2315 ));
-DATA(insert (	3042	0 3 f 2316 ));
-DATA(insert (	3042	0 4 f 2317 ));
-DATA(insert (	3042	0 5 f 2318 ));
-
-/*
- * varchar pattern
- */
-DATA(insert (	3043	0 1 f 2314 ));
-DATA(insert (	3043	0 2 f 2315 ));
-DATA(insert (	3043	0 3 f 2316 ));
-DATA(insert (	3043	0 4 f 2317 ));
-DATA(insert (	3043	0 5 f 2318 ));
+DATA(insert (	3042	25 25 1 f 2314 3013 ));
+DATA(insert (	3042	25 25 2 f 2315 3013 ));
+DATA(insert (	3042	25 25 3 f 2316 3013 ));
+DATA(insert (	3042	25 25 4 f 2317 3013 ));
+DATA(insert (	3042	25 25 5 f 2318 3013 ));
 
 /*
  * bpchar pattern
  */
-DATA(insert (	3044	0 1 f 2326 ));
-DATA(insert (	3044	0 2 f 2327 ));
-DATA(insert (	3044	0 3 f 2328 ));
-DATA(insert (	3044	0 4 f 2329 ));
-DATA(insert (	3044	0 5 f 2330 ));
+DATA(insert (	3044	1042 1042 1 f 2326 3013 ));
+DATA(insert (	3044	1042 1042 2 f 2327 3013 ));
+DATA(insert (	3044	1042 1042 3 f 2328 3013 ));
+DATA(insert (	3044	1042 1042 4 f 2329 3013 ));
+DATA(insert (	3044	1042 1042 5 f 2330 3013 ));
 
 /*
  * name pattern
  */
-DATA(insert (	3045	0 1 f 2332 ));
-DATA(insert (	3045	0 2 f 2333 ));
-DATA(insert (	3045	0 3 f 2334 ));
-DATA(insert (	3045	0 4 f 2335 ));
-DATA(insert (	3045	0 5 f 2336 ));
+DATA(insert (	3045	19 19 1 f 2332 3013 ));
+DATA(insert (	3045	19 19 2 f 2333 3013 ));
+DATA(insert (	3045	19 19 3 f 2334 3013 ));
+DATA(insert (	3045	19 19 4 f 2335 3013 ));
+DATA(insert (	3045	19 19 5 f 2336 3013 ));
 
 /*
  * money
  */
-DATA(insert (	3046	0 1 f  902 ));
-DATA(insert (	3046	0 2 f  904 ));
-DATA(insert (	3046	0 3 f  900 ));
-DATA(insert (	3046	0 4 f  905 ));
-DATA(insert (	3046	0 5 f  903 ));
+DATA(insert (	3046	790 790 1 f  902 3013 ));
+DATA(insert (	3046	790 790 2 f  904 3013 ));
+DATA(insert (	3046	790 790 3 f  900 3013 ));
+DATA(insert (	3046	790 790 4 f  905 3013 ));
+DATA(insert (	3046	790 790 5 f  903 3013 ));
 
 /*
  * reltime
  */
-DATA(insert (	3047	0 1 f  568 ));
-DATA(insert (	3047	0 2 f  570 ));
-DATA(insert (	3047	0 3 f  566 ));
-DATA(insert (	3047	0 4 f  571 ));
-DATA(insert (	3047	0 5 f  569 ));
+DATA(insert (	3047	703 703 1 f  568 3013 ));
+DATA(insert (	3047	703 703 2 f  570 3013 ));
+DATA(insert (	3047	703 703 3 f  566 3013 ));
+DATA(insert (	3047	703 703 4 f  571 3013 ));
+DATA(insert (	3047	703 703 5 f  569 3013 ));
 
 /*
  * tinterval
  */
-DATA(insert (	3048	0 1 f  813 ));
-DATA(insert (	3048	0 2 f  815 ));
-DATA(insert (	3048	0 3 f  811 ));
-DATA(insert (	3048	0 4 f  816 ));
-DATA(insert (	3048	0 5 f  814 ));
+DATA(insert (	3048	704 704 1 f  813 3013 ));
+DATA(insert (	3048	704 704 2 f  815 3013 ));
+DATA(insert (	3048	704 704 3 f  811 3013 ));
+DATA(insert (	3048	704 704 4 f  816 3013 ));
+DATA(insert (	3048	704 704 5 f  814 3013 ));
 
 #endif   /* PG_AMOP_H */
