@@ -25,6 +25,7 @@
 #include <math.h>
 #include <limits.h>
 
+#include "commands/tablespace.h"
 #include "access/hash.h"
 #include "executor/execdebug.h"
 #include "executor/hashjoin.h"
@@ -33,6 +34,7 @@
 #include "executor/nodeHashjoin.h"
 #include "miscadmin.h"
 #include "parser/parse_expr.h"
+#include "utils/dynahash.h"
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
 #include "utils/debugbreak.h"
@@ -239,6 +241,7 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 	Plan	   *outerNode;
 	int			nbuckets;
 	int			nbatch;
+	int			log2_nbuckets;
 	int			nkeys;
 	int			i;
 	ListCell   *ho;
@@ -258,6 +261,10 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
     elog(DEBUG4, "HJ: nbatch = %d, nbuckets = %d\n", nbatch, nbuckets);
 #endif
 
+	/* nbuckets must be a power of 2 */
+	log2_nbuckets = my_log2(nbuckets);
+	Assert(nbuckets == (1 << log2_nbuckets));
+
 	/*
 	 * Initialize the hash table control block.
 	 *
@@ -266,6 +273,7 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
 	 */
 	hashtable = (HashJoinTable)palloc0(sizeof(HashJoinTableData));
 	hashtable->nbuckets = nbuckets;
+	hashtable->log2_nbuckets = log2_nbuckets;
 	hashtable->buckets = NULL;
 	hashtable->bloom = NULL;
 	hashtable->nbatch = nbatch;
@@ -279,23 +287,27 @@ ExecHashTableCreate(Hash *node, List *hashOperators)
     hashtable->stats = NULL;
 
 	/*
-	 * Get info about the hash functions to be used for each hash key.
+	 * Get info about the hash functions to be used for each hash key. Also
 	 * Also remember whether the join operators are strict.
 	 */
 	nkeys = list_length(hashOperators);
-	hashtable->hashfunctions = (FmgrInfo *) palloc(nkeys * sizeof(FmgrInfo));
+	hashtable->outer_hashfunctions =
+		(FmgrInfo *) palloc(nkeys * sizeof(FmgrInfo));
+	hashtable->inner_hashfunctions =
+		(FmgrInfo *) palloc(nkeys * sizeof(FmgrInfo));
 	hashtable->hashStrict = (bool *) palloc(nkeys * sizeof(bool));
 	i = 0;
 	foreach(ho, hashOperators)
 	{
 		Oid			hashop = lfirst_oid(ho);
-		Oid			hashfn;
+		Oid			left_hashfn;
+		Oid			right_hashfn;
 
-		hashfn = get_op_hash_function(hashop);
-		if (!OidIsValid(hashfn))
+		if (!get_op_hash_functions(hashop, &left_hashfn, &right_hashfn))
 			elog(ERROR, "could not find hash function for hash operator %u",
 				 hashop);
-		fmgr_info(hashfn, &hashtable->hashfunctions[i]);
+		fmgr_info(left_hashfn, &hashtable->outer_hashfunctions[i]);
+		fmgr_info(right_hashfn, &hashtable->inner_hashfunctions[i]);
 		hashtable->hashStrict[i] = op_strict(hashop);
 		i++;
 	}
@@ -427,7 +439,7 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 		int			minbatch;
 
 		lbuckets = (hash_table_bytes / tupsize) / gp_hashjoin_tuples_per_bucket;
-		lbuckets = Min(lbuckets, INT_MAX);
+		lbuckets = Min(lbuckets, INT_MAX / 2);
 		nbuckets = (int) lbuckets;
 
 		dbatch = ceil(inner_rel_bytes / hash_table_bytes);
@@ -463,7 +475,6 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 			dbuckets = dbuckets_lower;
 
 		dbuckets = ceil(dbuckets);
-		dbuckets = Min(dbuckets, INT_MAX);
 
 		nbuckets = (int)dbuckets;
 
@@ -471,20 +482,15 @@ ExecChooseHashTableSize(double ntuples, int tupwidth,
 	}
 
 	/*
-	 * We want nbuckets to be prime so as to avoid having bucket and batch
-	 * numbers depend on only some bits of the hash code.  Choose the next
-	 * larger prime from the list in hprimes[].  (This also enforces that
-	 * nbuckets is not very small, by the simple expedient of not putting any
-	 * very small entries in hprimes[].)
+	 * Both nbuckets and nbatch must be powers of 2 to make
+	 * ExecHashGetBucketAndBatch fast.	We already fixed nbatch; now inflate
+	 * nbuckets to the next larger power of 2.	We also force nbuckets to not
+	 * be real small, by starting the search at 2^10.
 	 */
-	for (i = 0; i < (int) lengthof(hprimes); i++)
-	{
-		if (hprimes[i] >= nbuckets)
-		{
-			nbuckets = hprimes[i];
-			break;
-		}
-	}
+	i = 10;
+	while ((1 << i) < nbuckets)
+		i++;
+	nbuckets = (1 << i);
 
 	*numbuckets = nbuckets;
 	*numbatches = nbatch;
@@ -773,10 +779,12 @@ bool
 ExecHashGetHashValue(HashJoinTable hashtable,
 					 ExprContext *econtext,
 					 List *hashkeys,
+					 bool outer_tuple,
 					 bool keep_nulls,
 					 uint32 *hashvalue)
 {
 	uint32		hashkey = 0;
+	FmgrInfo   *hashfunctions;
 	ListCell   *hk;
 	int			i = 0;
 	MemoryContext oldContext;
@@ -788,6 +796,11 @@ ExecHashGetHashValue(HashJoinTable hashtable,
 	ResetExprContext(econtext);
 
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+
+	if (outer_tuple)
+		hashfunctions = hashtable->outer_hashfunctions;
+	else
+		hashfunctions = hashtable->inner_hashfunctions;
 
 	foreach(hk, hashkeys)
 	{
@@ -830,8 +843,7 @@ ExecHashGetHashValue(HashJoinTable hashtable,
 			/* Compute the hash function */
 			uint32		hkey;
 
-			hkey = DatumGetUInt32(FunctionCall1(&hashtable->hashfunctions[i],
-												keyval));
+			hkey = DatumGetUInt32(FunctionCall1(&hashfunctions[i], keyval));
 			hashkey ^= hkey;
 		}
 
@@ -857,6 +869,7 @@ ExecHashGetHashValue(HashJoinTable hashtable,
  * which gives reasonably independent bucket and batch numbers in the face
  * of some rather poorly-implemented hash functions in hashfunc.c.  (This
  * will change in PG 8.3.)
+ * likely to have very skewed bucket or batch occupancy.)
  *
  * nbuckets doesn't change over the course of the join.
  *
@@ -874,13 +887,13 @@ ExecHashGetBucketAndBatch(HashJoinTable hashtable,
 
 	if (nbatch > 1)
 	{
-		*bucketno = hashvalue % nbuckets;
-		/* since nbatch is a power of 2, can do MOD by masking */
-		*batchno = hash_uint32(hashvalue) & (nbatch - 1);
+		/* we can do MOD by masking, DIV by shifting */
+		*bucketno = hashvalue & (nbuckets - 1);
+		*batchno = (hashvalue >> hashtable->log2_nbuckets) & (nbatch - 1);
 	}
 	else
 	{
-		*bucketno = hashvalue % nbuckets;
+		*bucketno = hashvalue & (nbuckets - 1);
 		*batchno = 0;
 	}
 }

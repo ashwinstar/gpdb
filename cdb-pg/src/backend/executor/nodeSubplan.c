@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubplan.c,v 1.80.2.2 2007/02/02 00:07:28 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubplan.c,v 1.92 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,7 +16,6 @@
  *	 INTERFACE ROUTINES
  *		ExecSubPlan  - process a subselect
  *		ExecInitSubPlan - initialize a subselect
- *		ExecEndSubPlan	- shut down a subselect
  */
 #include "postgres.h"
 
@@ -47,7 +46,7 @@ static Datum ExecHashSubPlan(SubPlanState *node,
 static Datum ExecScanSubPlan(SubPlanState *node,
 				ExprContext *econtext,
 				bool *isNull);
-static void buildSubPlanHash(SubPlanState *node);
+static void buildSubPlanHash(SubPlanState *node, ExprContext *econtext);
 static bool findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot);
 static bool slotAllNulls(TupleTableSlot *slot);
 static bool slotNoNulls(TupleTableSlot *slot);
@@ -101,7 +100,7 @@ ExecHashSubPlan(SubPlanState *node,
 	 * table.
 	 */
 	if (node->hashtable == NULL || planstate->chgParam != NULL)
-		buildSubPlanHash(node);
+		buildSubPlanHash(node, econtext);
 
 	/*
 	 * The result for an empty subplan is always FALSE; no need to evaluate
@@ -149,7 +148,10 @@ ExecHashSubPlan(SubPlanState *node,
 	if (slotNoNulls(slot))
 	{
 		if (node->havehashrows &&
-			LookupTupleHashEntry(node->hashtable, slot, NULL) != NULL)
+			FindTupleHashEntry(node->hashtable,
+							   slot,
+							   node->cur_eq_funcs,
+							   node->lhs_hash_funcs) != NULL)
 		{
 			ExecClearTuple(slot);
 			return BoolGetDatum(true);
@@ -226,10 +228,10 @@ ExecScanSubPlan(SubPlanState *node,
 
 	/*
 	 * We are probably in a short-lived expression-evaluation context. Switch
-	 * to the child plan's per-query context for manipulating its chgParam,
+	 * to the per-query context for manipulating the child plan's chgParam,
 	 * calling ExecProcNode on it, etc.
 	 */
-	oldcontext = MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
+	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 	/*
 	 * Set Params of this plan from parent plan correlation values. (Any
@@ -250,6 +252,9 @@ ExecScanSubPlan(SubPlanState *node,
 		planstate->chgParam = bms_add_member(planstate->chgParam, paramid);
 	}
 
+	/*
+	 * Now that we've set up its parameters, we can reset the subplan.
+	 */
 	ExecReScan(planstate, NULL);
 
 	/*
@@ -264,10 +269,14 @@ ExecScanSubPlan(SubPlanState *node,
 	 * ROWCOMPARE_SUBLINK.
 	 *
 	 * For EXPR_SUBLINK we require the subplan to produce no more than one
-	 * tuple, else an error is raised. For ARRAY_SUBLINK we allow the subplan
-	 * to produce more than one tuple. In either case, if zero tuples are
-	 * produced, we return NULL. Assuming we get a tuple, we just use its
-	 * first column (there can be only one non-junk column in this case).
+	 * tuple, else an error is raised.	If zero tuples are produced, we return
+	 * NULL.  Assuming we get a tuple, we just use its first column (there can
+	 * be only one non-junk column in this case).
+	 *
+	 * For ARRAY_SUBLINK we allow the subplan to produce any number of tuples,
+	 * and form an array of the first column's values.  Note in particular
+	 * that we produce a zero-element array if no tuples are produced (this is
+	 * a change from pre-8.3 behavior of returning NULL).
 	 */
 	result = BoolGetDatum(subLinkType == ALL_SUBLINK);
 	*isNull = false;
@@ -306,13 +315,11 @@ ExecScanSubPlan(SubPlanState *node,
 			 * node->curTuple keeps track of the copied tuple for eventual
 			 * freeing.
 			 */
-			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 			if (node->curTuple)
 				pfree(node->curTuple);
 
 			node->curTuple = ExecCopySlotMemTuple(slot);
-			MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
 
 			result = slot_getattr(slot, 1, isNull);
 			/* keep scanning subplan to make sure there's only one tuple */
@@ -326,10 +333,10 @@ ExecScanSubPlan(SubPlanState *node,
 
 			found = true;
 			/* stash away current value */
+			Assert(subplan->firstColType == tdesc->attrs[0]->atttypid);
 			dvalue = slot_getattr(slot, 1, &disnull);
 			astate = accumArrayResult(astate, dvalue, disnull,
-									  tdesc->attrs[0]->atttypid,
-									  oldcontext);
+									  subplan->firstColType, oldcontext);
 			/* keep scanning subplan to collect all values */
 			continue;
 		}
@@ -394,29 +401,30 @@ ExecScanSubPlan(SubPlanState *node,
 		}
 	}
 
-	if (!found)
+	MemoryContextSwitchTo(oldcontext);
+
+	if (subLinkType == ARRAY_SUBLINK)
+	{
+		/* We return the result in the caller's context */
+		if (astate != NULL)
+			result = makeArrayResult(astate, oldcontext);
+		else
+			result = PointerGetDatum(construct_empty_array(subplan->firstColType));
+	}
+	else if (!found)
 	{
 		/*
 		 * deal with empty subplan result.	result/isNull were previously
-		 * initialized correctly for all sublink types except EXPR, ARRAY, and
+		 * initialized correctly for all sublink types except EXPR and
 		 * ROWCOMPARE; for those, return NULL.
 		 */
 		if (subLinkType == EXPR_SUBLINK ||
-			subLinkType == ARRAY_SUBLINK ||
 			subLinkType == ROWCOMPARE_SUBLINK)
 		{
 			result = (Datum) 0;
 			*isNull = true;
 		}
 	}
-	else if (subLinkType == ARRAY_SUBLINK)
-	{
-		Assert(astate != NULL);
-		/* We return the result in the caller's context */
-		result = makeArrayResult(astate, oldcontext);
-	}
-
-	MemoryContextSwitchTo(oldcontext);
 
 	return result;
 }
@@ -425,7 +433,7 @@ ExecScanSubPlan(SubPlanState *node,
  * buildSubPlanHash: load hash table by scanning subplan output.
  */
 static void
-buildSubPlanHash(SubPlanState *node)
+buildSubPlanHash(SubPlanState *node, ExprContext *econtext)
 {
 	SubPlan    *subplan = (SubPlan *) node->xprstate.expr;
 	PlanState  *planstate = node->planstate;
@@ -465,8 +473,8 @@ buildSubPlanHash(SubPlanState *node)
 
 	node->hashtable = BuildTupleHashTable(ncols,
 										  node->keyColIdx,
-										  node->eqfunctions,
-										  node->hashfunctions,
+										  node->tab_eq_funcs,
+										  node->tab_hash_funcs,
 										  nbuckets,
 										  sizeof(TupleHashEntryData),
 										  node->tablecxt,
@@ -484,8 +492,8 @@ buildSubPlanHash(SubPlanState *node)
 		}
 		node->hashnulls = BuildTupleHashTable(ncols,
 											  node->keyColIdx,
-											  node->eqfunctions,
-											  node->hashfunctions,
+											  node->tab_eq_funcs,
+											  node->tab_hash_funcs,
 											  nbuckets,
 											  sizeof(TupleHashEntryData),
 											  node->tablecxt,
@@ -494,9 +502,9 @@ buildSubPlanHash(SubPlanState *node)
 
 	/*
 	 * We are probably in a short-lived expression-evaluation context. Switch
-	 * to the child plan's per-query context for calling ExecProcNode.
+	 * to the per-query context for manipulating the child plan.
 	 */
-	oldcontext = MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
+	oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 
 	/*
 	 * Reset subplan to start.
@@ -585,9 +593,9 @@ findPartialMatch(TupleHashTable hashtable, TupleTableSlot *slot)
 	while ((entry = ScanTupleHashTable(&hashiter)) != NULL)
 	{
 		ExecStoreMemTuple(entry->firstTuple, hashtable->tableslot, false);
-		if (!execTuplesUnequal(hashtable->tableslot, slot,
+		if (!execTuplesUnequal(slot, hashtable->tableslot,
 							   numCols, keyColIdx,
-							   hashtable->eqfunctions,
+							   hashtable->cur_eq_funcs,
 							   hashtable->tempcxt))
 		{
 			TermTupleHashIterator(&hashiter);
@@ -641,57 +649,30 @@ slotNoNulls(TupleTableSlot *slot)
 /* ----------------------------------------------------------------
  *		ExecInitSubPlan
  *
- * Note: the eflags are those passed to the parent plan node of this
- * subplan; they don't directly describe the execution conditions the
- * subplan will face.
+ * Create a SubPlanState for a SubPlan; this is the SubPlan-specific part
+ * of ExecInitExpr().  We split it out so that it can be used for InitPlans
+ * as well as regular SubPlans.  Note that we don't link the SubPlan into
+ * the parent's subPlan list, because that shouldn't happen for InitPlans.
+ * Instead, ExecInitExpr() does that one part.
  * ----------------------------------------------------------------
  */
-void
-ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
+SubPlanState *
+ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 {
-	SubPlan    *subplan = (SubPlan *) node->xprstate.expr;
-	EState	   *sp_estate;
+	SubPlanState *sstate = makeNode(SubPlanState);
+	EState	   *estate = parent->state;
 
-	/*
-	 * Do access checking on the rangetable entries in the subquery.
-	 */
-	ExecCheckRTPerms(subplan->rtable);
-
-	/*
-	 * initialize my state
-	 */
-	node->needShutdown = false;
-	node->curTuple = NULL;
-	node->projLeft = NULL;
-	node->projRight = NULL;
-	node->hashtable = NULL;
-	node->hashnulls = NULL;
-	node->tablecxt = NULL;
-	node->innerecontext = NULL;
-	node->keyColIdx = NULL;
-	node->eqfunctions = NULL;
-	node->hashfunctions = NULL;
+	sstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecSubPlan;
+	sstate->xprstate.expr = (Expr *) subplan;
     node->cdbextratextbuf = NULL;
 
-	/*
-	 * create an EState for the subplan
-	 *
-	 * The subquery needs its own EState because it has its own rangetable. It
-	 * shares our Param ID space and es_query_cxt, however.  XXX if rangetable
-	 * access were done differently, the subquery could share our EState,
-	 * which would eliminate some thrashing about in this module...
-	 */
-	sp_estate = CreateSubExecutorState(estate);
-	node->sub_estate = sp_estate;
+	/* Link the SubPlanState to already-initialized subplan */
+	sstate->planstate = (PlanState *) list_nth(estate->es_subplanstates,
+											   subplan->plan_id - 1);
 
-	sp_estate->es_range_table = subplan->rtable;
-	sp_estate->es_param_list_info = estate->es_param_list_info;
-	sp_estate->es_param_exec_vals = estate->es_param_exec_vals;
-	sp_estate->es_tupleTable =
-		ExecCreateTupleTable(ExecCountSlotsNode(subplan->plan) + 10);
-	sp_estate->es_snapshot = estate->es_snapshot;
-	sp_estate->es_crosscheck_snapshot = estate->es_crosscheck_snapshot;
-	sp_estate->es_instrument = estate->es_instrument;
+	/* Initialize subexpressions */
+	sstate->testexpr = ExecInitExpr((Expr *) subplan->testexpr, parent);
+	sstate->args = (List *) ExecInitExpr((Expr *) subplan->args, parent);
 
 	/*
      * "Loan" the global slice table and map to the subplan EState.  The
@@ -719,19 +700,19 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 	sp_estate->motionlayer_context = estate->motionlayer_context;
 	
 	/*
-	 * Start up the subplan (this is a very cut-down form of InitPlan())
-	 *
-	 * The subplan will never need to do BACKWARD scan or MARK/RESTORE. If it
-	 * is a parameterless subplan (not initplan), we suggest that it be
-	 * prepared to handle REWIND efficiently; otherwise there is no need.
 	 */
-	eflags &= EXEC_FLAG_EXPLAIN_ONLY;
-	if (subplan->parParam == NIL && subplan->setParam == NIL)
-		eflags |= EXEC_FLAG_REWIND;
-
-	node->planstate = ExecInitNode(subplan->plan, sp_estate, eflags);
-
-	node->needShutdown = true;	/* now we need to shutdown the subplan */
+	sstate->curTuple = NULL;
+	sstate->projLeft = NULL;
+	sstate->projRight = NULL;
+	sstate->hashtable = NULL;
+	sstate->hashnulls = NULL;
+	sstate->tablecxt = NULL;
+	sstate->innerecontext = NULL;
+	sstate->keyColIdx = NULL;
+	sstate->tab_hash_funcs = NULL;
+	sstate->tab_eq_funcs = NULL;
+	sstate->lhs_hash_funcs = NULL;
+	sstate->cur_eq_funcs = NULL;
 
 	/*
 	 * If this plan is un-correlated or undirect correlated one and want to
@@ -750,7 +731,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 			int			paramid = lfirst_int(lst);
 			ParamExecData *prm = &(estate->es_param_exec_vals[paramid]);
 
-			prm->execPlan = node;
+			prm->execPlan = sstate;
 		}
 	}
 
@@ -773,19 +754,19 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 		ListCell   *l;
 
 		/* We need a memory context to hold the hash table(s) */
-		node->tablecxt =
+		sstate->tablecxt =
 			AllocSetContextCreate(CurrentMemoryContext,
 								  "Subplan HashTable Context",
 								  ALLOCSET_DEFAULT_MINSIZE,
 								  ALLOCSET_DEFAULT_INITSIZE,
 								  ALLOCSET_DEFAULT_MAXSIZE);
 		/* and a short-lived exprcontext for function evaluation */
-		node->innerecontext = CreateExprContext(estate);
+		sstate->innerecontext = CreateExprContext(estate);
 		/* Silly little array of column numbers 1..n */
 		ncols = list_length(subplan->paramIds);
-		node->keyColIdx = (AttrNumber *) palloc(ncols * sizeof(AttrNumber));
+		sstate->keyColIdx = (AttrNumber *) palloc(ncols * sizeof(AttrNumber));
 		for (i = 0; i < ncols; i++)
-			node->keyColIdx[i] = i + 1;
+			sstate->keyColIdx[i] = i + 1;
 
 		/*
 		 * We use ExecProject to evaluate the lefthand and righthand
@@ -801,30 +782,32 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 		 * We also extract the combining operators themselves to initialize
 		 * the equality and hashing functions for the hash tables.
 		 */
-		if (IsA(node->testexpr->expr, OpExpr))
+		if (IsA(sstate->testexpr->expr, OpExpr))
 		{
 			/* single combining operator */
-			oplist = list_make1(node->testexpr);
+			oplist = list_make1(sstate->testexpr);
 		}
-		else if (and_clause((Node *) node->testexpr->expr))
+		else if (and_clause((Node *) sstate->testexpr->expr))
 		{
 			/* multiple combining operators */
-			Assert(IsA(node->testexpr, BoolExprState));
-			oplist = ((BoolExprState *) node->testexpr)->args;
+			Assert(IsA(sstate->testexpr, BoolExprState));
+			oplist = ((BoolExprState *) sstate->testexpr)->args;
 		}
 		else
 		{
 			/* shouldn't see anything else in a hashable subplan */
 			elog(ERROR, "unrecognized testexpr type: %d",
-				 (int) nodeTag(node->testexpr->expr));
+				 (int) nodeTag(sstate->testexpr->expr));
 			oplist = NIL;		/* keep compiler quiet */
 		}
 		Assert(list_length(oplist) == ncols);
 
 		lefttlist = righttlist = NIL;
 		leftptlist = rightptlist = NIL;
-		node->eqfunctions = (FmgrInfo *) palloc(ncols * sizeof(FmgrInfo));
-		node->hashfunctions = (FmgrInfo *) palloc(ncols * sizeof(FmgrInfo));
+		sstate->tab_hash_funcs = (FmgrInfo *) palloc(ncols * sizeof(FmgrInfo));
+		sstate->tab_eq_funcs = (FmgrInfo *) palloc(ncols * sizeof(FmgrInfo));
+		sstate->lhs_hash_funcs = (FmgrInfo *) palloc(ncols * sizeof(FmgrInfo));
+		sstate->cur_eq_funcs = (FmgrInfo *) palloc(ncols * sizeof(FmgrInfo));
 		i = 1;
 		foreach(l, oplist)
 		{
@@ -834,7 +817,9 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 			Expr	   *expr;
 			TargetEntry *tle;
 			GenericExprState *tlestate;
-			Oid			hashfn;
+			Oid			rhs_eq_oper;
+			Oid			left_hashfn;
+			Oid			right_hashfn;
 
 			Assert(IsA(fstate, FuncExprState));
 			Assert(IsA(opexpr, OpExpr));
@@ -868,16 +853,24 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 			righttlist = lappend(righttlist, tlestate);
 			rightptlist = lappend(rightptlist, tle);
 
-			/* Lookup the combining function */
-			fmgr_info(opexpr->opfuncid, &node->eqfunctions[i - 1]);
-			node->eqfunctions[i - 1].fn_expr = (Node *) opexpr;
+			/* Lookup the equality function (potentially cross-type) */
+			fmgr_info(opexpr->opfuncid, &sstate->cur_eq_funcs[i - 1]);
+			sstate->cur_eq_funcs[i - 1].fn_expr = (Node *) opexpr;
 
-			/* Lookup the associated hash function */
-			hashfn = get_op_hash_function(opexpr->opno);
-			if (!OidIsValid(hashfn))
+			/* Look up the equality function for the RHS type */
+			if (!get_compatible_hash_operators(opexpr->opno,
+											   NULL, &rhs_eq_oper))
+				elog(ERROR, "could not find compatible hash operator for operator %u",
+					 opexpr->opno);
+			fmgr_info(get_opcode(rhs_eq_oper), &sstate->tab_eq_funcs[i - 1]);
+
+			/* Lookup the associated hash functions */
+			if (!get_op_hash_functions(opexpr->opno,
+									   &left_hashfn, &right_hashfn))
 				elog(ERROR, "could not find hash function for hash operator %u",
 					 opexpr->opno);
-			fmgr_info(hashfn, &node->hashfunctions[i - 1]);
+			fmgr_info(left_hashfn, &sstate->lhs_hash_funcs[i - 1]);
+			fmgr_info(right_hashfn, &sstate->tab_hash_funcs[i - 1]);
 
 			i++;
 		}
@@ -902,19 +895,21 @@ ExecInitSubPlan(SubPlanState *node, EState *estate, int eflags)
 		tupDesc = ExecTypeFromTL(leftptlist, false);
 		slot = ExecAllocTableSlot(tupTable);
 		ExecSetSlotDescriptor(slot, tupDesc);
-		node->projLeft = ExecBuildProjectionInfo(lefttlist,
-												 NULL,
-												 slot,
-												 NULL);
+		sstate->projLeft = ExecBuildProjectionInfo(lefttlist,
+												   NULL,
+												   slot,
+												   NULL);
 
 		tupDesc = ExecTypeFromTL(rightptlist, false);
 		slot = ExecAllocTableSlot(tupTable);
 		ExecSetSlotDescriptor(slot, tupDesc);
-		node->projRight = ExecBuildProjectionInfo(righttlist,
-												  node->innerecontext,
-												  slot,
-												  NULL);
+		sstate->projRight = ExecBuildProjectionInfo(righttlist,
+													sstate->innerecontext,
+													slot,
+													NULL);
 	}
+
+	return sstate;
 }
 
 /* ----------------------------------------------------------------
@@ -1066,6 +1061,10 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			subLinkType == ALL_SUBLINK)
 			elog(ERROR, "ANY/ALL subselect unsupported as initplan");
 
+	/*
+	 * By definition, an initplan has no parameters from our query level, but
+	 * it could have some from an outer level.	Rescan it if needed.
+	 */
 		if (planstate->chgParam != NULL)
 			ExecReScan(planstate, NULL);
 
@@ -1103,6 +1102,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 				found = true;
 				/* stash away current value */
+			Assert(subplan->firstColType == tdesc->attrs[0]->atttypid);
 				dvalue = slot_getattr(slot, 1, &disnull);
 				astate = accumArrayResult(astate, dvalue, disnull,
 										  tdesc->attrs[0]->atttypid,
@@ -1147,7 +1147,25 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			}
 		}
 
-		if (!found)
+	if (subLinkType == ARRAY_SUBLINK)
+	{
+		/* There can be only one param... */
+		int			paramid = linitial_int(subplan->setParam);
+		ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
+
+		prm->execPlan = NULL;
+		/* We build the result in query context so it won't disappear */
+		if (astate != NULL)
+			prm->value = makeArrayResult(astate,
+										 econtext->ecxt_per_query_memory);
+		else
+		{
+			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+			prm->value = PointerGetDatum(construct_empty_array(subplan->firstColType));
+		}
+		prm->isnull = false;
+	}
+	else if (!found)
 		{
 			if (subLinkType == EXISTS_SUBLINK)
 			{
@@ -1177,7 +1195,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			/* There can be only one param... */
 			int			paramid = linitial_int(subplan->setParam);
 			ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
-
 			Assert(astate != NULL);
 			prm->execPlan = NULL;
 			/* We build the result in query context so it won't disappear */
@@ -1284,23 +1301,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
         cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
    
     MemoryContextSwitchTo(oldcontext);
-}
-
-/* ----------------------------------------------------------------
- *		ExecEndSubPlan
- * ----------------------------------------------------------------
- */
-void
-ExecEndSubPlan(SubPlanState *node)
-{
-	if (node->needShutdown)
-	{
-		ExecEndPlan(node->planstate, node->sub_estate);
-		FreeExecutorState(node->sub_estate);
-		node->sub_estate = NULL;
-		node->planstate = NULL;
-		node->needShutdown = false;
-	}
 }
 
 /*

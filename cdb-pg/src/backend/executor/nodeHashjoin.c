@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeHashjoin.c,v 1.85.2.1 2007/02/02 00:07:28 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeHashjoin.c,v 1.93 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -592,6 +592,7 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
             if (TupIsNull(slot))
                 break;
 
+		while (!TupIsNull(slot))
 			/*
 			 * We have to compute the tuple's hash value.
 			 */
@@ -602,15 +603,17 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 									 (hjstate->js.jointype == JOIN_LEFT),
 									 hashvalue))
 			{
-			/* remember outer relation is not empty for possible rescan */
-			hjstate->hj_OuterNotEmpty = true;
+				/* remember outer relation is not empty for possible rescan */
+				hjstate->hj_OuterNotEmpty = true;
 
-			return slot;
-		}
+				return slot;
+			}
+
 			/*
-			 * That tuple couldn't match because of a NULL, so discard it
-			 * and continue with the next one.
+			 * That tuple couldn't match because of a NULL, so discard it and
+			 * continue with the next one.
 			 */
+			slot = ExecProcNode(outerNode);
 		}
 
 		/*

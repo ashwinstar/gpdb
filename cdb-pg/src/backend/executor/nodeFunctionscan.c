@@ -26,7 +26,6 @@
 #include "executor/nodeFunctionscan.h"
 #include "funcapi.h"
 #include "optimizer/var.h"              /* CDB: contain_var_reference() */
-#include "parser/parsetree.h"
 #include "utils/builtins.h"
 
 
@@ -211,12 +210,6 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
     ItemPointerSet(&scanstate->cdb_fake_ctid, 0, 0);
     ItemPointerSet(&scanstate->cdb_mark_ctid, 0, 0);
     scanstate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
-
-	/*
-	 * get info about function
-	 */
-	rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-	Assert(rte->rtekind == RTE_FUNCTION);
 
 	/*
 	 * Now determine if the function returns a simple or composite type, and

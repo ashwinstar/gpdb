@@ -13,7 +13,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubqueryscan.c,v 1.32.2.2 2006/12/26 21:37:28 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubqueryscan.c,v 1.39 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -31,7 +31,6 @@
 #include "executor/execdebug.h"
 #include "executor/nodeSubqueryscan.h"
 #include "optimizer/var.h"              /* CDB: contain_var_reference() */
-#include "parser/parsetree.h"
 
 static TupleTableSlot *SubqueryNext(SubqueryScanState *node);
 
@@ -48,15 +47,7 @@ static TupleTableSlot *SubqueryNext(SubqueryScanState *node);
 static TupleTableSlot *
 SubqueryNext(SubqueryScanState *node)
 {
-	EState	   *estate;
-	ScanDirection direction;
 	TupleTableSlot *slot;
-
-	/*
-	 * get information from the estate and scan state
-	 */
-	estate = node->ss.ps.state;
-	direction = estate->es_direction;
 
 	/*
 	 * We need not support EvalPlanQual here, since we are not scanning a real
@@ -66,8 +57,6 @@ SubqueryNext(SubqueryScanState *node)
 	/*
 	 * Get the next tuple from the sub-query.
 	 */
-	node->sss_SubEState->es_direction = direction;
-
 	slot = ExecProcNode(node->subplan);
 
     /*
@@ -124,18 +113,18 @@ SubqueryScanState *
 ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 {
 	SubqueryScanState *subquerystate;
-	RangeTblEntry *rte;
-	EState	   *sp_estate;
     List       *tlist;
 
 	/* check for unsupported flags */
 	Assert(!(eflags & EXEC_FLAG_MARK));
 
 	/*
-	 * SubqueryScan should not have any "normal" children.
+	 * SubqueryScan should not have any "normal" children.	Also, if planner
+	 * left anything in subrtable, it's fishy.
 	 */
 	Assert(outerPlan(node) == NULL);
 	Assert(innerPlan(node) == NULL);
+	Assert(node->subrtable == NIL);
 
 	/*
 	 * create state structure
@@ -180,36 +169,8 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 
 	/*
 	 * initialize subquery
-	 *
-	 * This should agree with ExecInitSubPlan
 	 */
-	rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
-	Assert(rte->rtekind == RTE_SUBQUERY);
-
-	/*
-	 * Do access checking on the rangetable entries in the subquery.
-	 */
-	ExecCheckRTPerms(rte->subquery->rtable);
-
-	/*
-	 * The subquery needs its own EState because it has its own rangetable. It
-	 * shares our Param ID space and es_query_cxt, however.  XXX if rangetable
-	 * access were done differently, the subquery could share our EState,
-	 * which would eliminate some thrashing about in this module...
-	 */
-	sp_estate = CreateSubExecutorState(estate);
-	subquerystate->sss_SubEState = sp_estate;
-
-	sp_estate->es_range_table = rte->subquery->rtable;
-	sp_estate->es_param_list_info = estate->es_param_list_info;
-	sp_estate->es_param_exec_vals = estate->es_param_exec_vals;
-	sp_estate->es_tupleTable =
-		ExecCreateTupleTable(ExecCountSlotsNode(node->subplan) + 10);
-	sp_estate->es_snapshot = estate->es_snapshot;
-	sp_estate->es_crosscheck_snapshot = estate->es_crosscheck_snapshot;
-	sp_estate->es_instrument = estate->es_instrument;
-
-	/*
+	subquerystate->subplan = ExecInitNode(node->subplan, estate, eflags);
 	 * "Loan" the global slice table and map to the subplan EState.  The
 	 * global state is already set up by the code that called us.
 	 */
@@ -231,21 +192,15 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 
 
 	/*
-	 * Start up the subplan (this is a very cut-down form of InitPlan())
-	 */
-	subquerystate->subplan = ExecInitNode(node->subplan, sp_estate, eflags);
 
 	/* return borrowed share node list */
 	estate->es_sharenode = sp_estate->es_sharenode;
 
 	/*
-	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo).
-	 * Because the subplan is in its own memory context, we need to copy its
-	 * result tuple type not just link to it; else the tupdesc will disappear
-	 * too soon during shutdown.
+	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo)
 	 */
 	ExecAssignScanType(&subquerystate->ss,
-			 CreateTupleDescCopy(ExecGetResultType(subquerystate->subplan)));
+					   ExecGetResultType(subquerystate->subplan));
 
 	/*
 	 * Initialize result tuple type and projection info.
@@ -259,11 +214,9 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 int
 ExecCountSlotsSubqueryScan(SubqueryScan *node)
 {
-	/*
-	 * The subplan has its own tuple table and must not be counted here!
-	 */
-	return ExecCountSlotsNode(outerPlan(node)) +
-		ExecCountSlotsNode(innerPlan(node)) +
+	Assert(outerPlan(node) == NULL);
+	Assert(innerPlan(node) == NULL);
+	return ExecCountSlotsNode(node->subplan) +
 		SUBQUERYSCAN_NSLOTS;
 }
 
@@ -290,9 +243,7 @@ ExecEndSubqueryScan(SubqueryScanState *node)
 	/*
 	 * close down subquery
 	 */
-	ExecEndPlan(node->subplan, node->sss_SubEState);
-
-	FreeExecutorState(node->sss_SubEState);
+	ExecEndNode(node->subplan);
 }
 
 /* ----------------------------------------------------------------

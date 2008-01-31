@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeMergejoin.c,v 1.82.2.1 2007/02/02 00:07:28 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeMergejoin.c,v 1.90 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -40,12 +40,13 @@
  *		therefore it should scan the outer relation first to find a
  *		matching tuple and so on.
  *
- *		Therefore, when initializing the merge-join node, we look up the
- *		associated sort operators.	We assume the planner has seen to it
- *		that the inputs are correctly sorted by these operators.  Rather
- *		than directly executing the merge join clauses, we evaluate the
- *		left and right key expressions separately and then compare the
- *		columns one at a time (see MJCompare).
+ *		Therefore, rather than directly executing the merge join clauses,
+ *		we evaluate the left and right key expressions separately and then
+ *		compare the columns one at a time (see MJCompare).	The planner
+ *		passes us enough information about the sort ordering of the inputs
+ *		to allow us to determine how to make the comparison.  We may use the
+ *		appropriate btree comparison function, since Postgres' only notion
+ *		of ordering is specified by btree opfamilies.
  *
  *
  *		Consider the above relations and suppose that the executor has
@@ -105,19 +106,8 @@
 
 
 /*
- * Comparison strategies supported by MJCompare
- *
- * XXX eventually should extend these to support descending-order sorts.
- * There are some tricky issues however about being sure we are on the same
- * page as the underlying sort or index as to which end NULLs sort to.
+ * Runtime data for each mergejoin clause
  */
-typedef enum
-{
-	MERGEFUNC_LT,				/* raw "<" operator */
-	MERGEFUNC_CMP				/* -1 / 0 / 1 three-way comparator */
-} MergeFunctionKind;
-
-/* Runtime data for each mergejoin clause */
 typedef struct MergeJoinClauseData
 {
 	/* Executable expression trees */
@@ -134,13 +124,6 @@ typedef struct MergeJoinClauseData
 	bool		risnull;
 
 	/*
-	 * Remember whether mergejoin operator is strict (usually it will be).
-	 * NOTE: if it's not strict, we still assume it cannot return true for one
-	 * null and one non-null input.
-	 */
-	bool		mergestrict;
-	
-	/*
 	 * CDB: Remember whether the mergejoin operation was actually an "is
 	 *      not distinct from" predicate.
 	 */
@@ -148,11 +131,10 @@ typedef struct MergeJoinClauseData
 
 	/*
 	 * The comparison strategy in use, and the lookup info to let us call the
-	 * needed comparison routines.	eqfinfo is the "=" operator itself.
-	 * cmpfinfo is either the btree comparator or the "<" operator.
+	 * btree comparison support function.
 	 */
-	MergeFunctionKind cmpstrategy;
-	FmgrInfo	eqfinfo;
+	bool		reverse;		/* if true, negate the cmpfn's output */
+	bool		nulls_first;	/* if true, nulls sort low */
 	FmgrInfo	cmpfinfo;
 } MergeJoinClauseData;
 
@@ -171,38 +153,47 @@ typedef struct MergeJoinClauseData
  * we will need at runtime.  Each struct essentially tells us how to compare
  * the two expressions from the original clause.
  *
- * The best, most efficient way to compare two expressions is to use a btree
- * comparison support routine, since that requires only one function call
- * per comparison.	Hence we try to find a btree opclass that matches the
- * mergejoinable operator.	If we cannot find one, we'll have to call both
- * the "=" and (often) the "<" operator for each comparison.
+ * In addition to the expressions themselves, the planner passes the btree
+ * opfamily OID, btree strategy number (BTLessStrategyNumber or
+ * BTGreaterStrategyNumber), and nulls-first flag that identify the intended
+ * sort ordering for each merge key.  The mergejoinable operator is an
+ * equality operator in this opfamily, and the two inputs are guaranteed to be
+ * ordered in either increasing or decreasing (respectively) order according
+ * to this opfamily, with nulls at the indicated end of the range.	This
+ * allows us to obtain the needed comparison function from the opfamily.
  *
  * CDB: We also recognize the "is not distinct from" predicate which is
  *      interesting for sequential window plans.  The pseudo-Lisp for this
  *      predicate is (BoolExpr_NOT (DistinctExpr_= leftexpr rightexpr)).
  */
 static MergeJoinClause
-MJExamineQuals(List *qualList, PlanState *parent)
+MJExamineQuals(List *mergeclauses,
+			   Oid *mergefamilies,
+			   int *mergestrategies,
+			   bool *mergenullsfirst,
+			   PlanState *parent)
 {
 	MergeJoinClause clauses;
-	int			nClauses = list_length(qualList);
+	int			nClauses = list_length(mergeclauses);
 	int			iClause;
-	ListCell   *l;
+	ListCell   *cl;
 
 	clauses = (MergeJoinClause) palloc0(nClauses * sizeof(MergeJoinClauseData));
 
 	iClause = 0;
-	foreach(l, qualList)
+	foreach(cl, mergeclauses)
 	{
-		OpExpr	   *qual = (OpExpr *) lfirst(l);
+		OpExpr	   *qual = (OpExpr *) lfirst(cl);
 		MergeJoinClause clause = &clauses[iClause];
-		Oid			ltop;
-		Oid			gtop;
-		RegProcedure ltproc;
-		RegProcedure gtproc;
+		Oid			opfamily = mergefamilies[iClause];
+		StrategyNumber opstrategy = mergestrategies[iClause];
+		bool		nulls_first = mergenullsfirst[iClause];
+		int			op_strategy;
+		Oid			op_lefttype;
+		Oid			op_righttype;
+		bool		op_recheck;
+		RegProcedure cmpproc;
 		AclResult	aclresult;
-		CatCList   *catlist;
-		int			i;
 
 		if (!IsA(qual, OpExpr))
 		{
@@ -231,77 +222,44 @@ MJExamineQuals(List *qualList, PlanState *parent)
 		clause->lexpr = ExecInitExpr((Expr *) linitial(qual->args), parent);
 		clause->rexpr = ExecInitExpr((Expr *) lsecond(qual->args), parent);
 
-		/*
-		 * Check permission to call the mergejoinable operator. For
-		 * predictability, we check this even if we end up not using it.
-		 */
-		aclresult = pg_proc_aclcheck(qual->opfuncid, GetUserId(), ACL_EXECUTE);
+		/* Extract the operator's declared left/right datatypes */
+		get_op_opfamily_properties(qual->opno, opfamily,
+								   &op_strategy,
+								   &op_lefttype,
+								   &op_righttype,
+								   &op_recheck);
+		if (op_strategy != BTEqualStrategyNumber)		/* should not happen */
+			elog(ERROR, "cannot merge using non-equality operator %u",
+				 qual->opno);
+		Assert(!op_recheck);	/* never true for btree */
+
+		/* And get the matching support procedure (comparison function) */
+		cmpproc = get_opfamily_proc(opfamily,
+									op_lefttype,
+									op_righttype,
+									BTORDER_PROC);
+		if (!RegProcedureIsValid(cmpproc))		/* should not happen */
+			elog(ERROR, "missing support function %d(%u,%u) in opfamily %u",
+				 BTORDER_PROC, op_lefttype, op_righttype, opfamily);
+
+		/* Check permission to call cmp function */
+		aclresult = pg_proc_aclcheck(cmpproc, GetUserId(), ACL_EXECUTE);
 		if (aclresult != ACLCHECK_OK)
 			aclcheck_error(aclresult, ACL_KIND_PROC,
-						   get_func_name(qual->opfuncid));
+						   get_func_name(cmpproc));
 
 		/* Set up the fmgr lookup information */
-		fmgr_info(qual->opfuncid, &(clause->eqfinfo));
+		fmgr_info(cmpproc, &(clause->cmpfinfo));
 
-		/* And remember strictness */
-		clause->mergestrict = clause->eqfinfo.fn_strict;
+		/* Fill the additional comparison-strategy flags */
+		if (opstrategy == BTLessStrategyNumber)
+			clause->reverse = false;
+		else if (opstrategy == BTGreaterStrategyNumber)
+			clause->reverse = true;
+		else	/* planner screwed up */
+			elog(ERROR, "unsupported mergejoin strategy %d", opstrategy);
 
-		/*
-		 * Lookup the comparison operators that go with the mergejoinable
-		 * top-level operator.	(This will elog if the operator isn't
-		 * mergejoinable, which would be the planner's mistake.)
-		 */
-		op_mergejoin_crossops(qual->opno,
-							  &ltop,
-							  &gtop,
-							  &ltproc,
-							  &gtproc);
-
-		clause->cmpstrategy = MERGEFUNC_LT;
-
-		/*
-		 * Look for a btree opclass including all three operators. This is
-		 * much like SelectSortFunction except we insist on matching all the
-		 * operators provided, and it can be a cross-type opclass.
-		 *
-		 * XXX for now, insist on forward sort so that NULLs can be counted on
-		 * to be high.
-		 */
-		catlist = SearchSysCacheList(AMOPOPID, 1,
-									 ObjectIdGetDatum(qual->opno),
-									 0, 0, 0);
-
-		for (i = 0; i < catlist->n_members; i++)
-		{
-			HeapTuple	tuple = &catlist->members[i]->tuple;
-			Form_pg_amop aform = (Form_pg_amop) GETSTRUCT(tuple);
-			Oid			opcid = aform->amopclaid;
-
-			if (aform->amopstrategy != BTEqualStrategyNumber)
-				continue;
-			if (!opclass_is_btree(opcid))
-				continue;
-			if (get_op_opclass_strategy(ltop, opcid) == BTLessStrategyNumber &&
-			 get_op_opclass_strategy(gtop, opcid) == BTGreaterStrategyNumber)
-			{
-				clause->cmpstrategy = MERGEFUNC_CMP;
-				ltproc = get_opclass_proc(opcid, aform->amopsubtype,
-										  BTORDER_PROC);
-				Assert(RegProcedureIsValid(ltproc));
-				break;			/* done looking */
-			}
-		}
-
-		ReleaseSysCacheList(catlist);
-
-		/* Check permission to call "<" operator or cmp function */
-		aclresult = pg_proc_aclcheck(ltproc, GetUserId(), ACL_EXECUTE);
-		if (aclresult != ACLCHECK_OK)
-			aclcheck_error(aclresult, ACL_KIND_PROC,
-						   get_func_name(ltproc));
-
-		/* Set up the fmgr lookup information */
-		fmgr_info(ltproc, &(clause->cmpfinfo));
+		clause->nulls_first = nulls_first;
 
 		iClause++;
 	}
@@ -315,7 +273,7 @@ MJExamineQuals(List *qualList, PlanState *parent)
  * Compute the values of the mergejoined expressions for the current
  * outer tuple.  We also detect whether it's impossible for the current
  * outer tuple to match anything --- this is true if it yields a NULL
- * input for any strict mergejoin operator.
+ * input, since we assume mergejoin operators are strict.
  *
  * We evaluate the values in OuterEContext, which can be reset each
  * time we move to a new tuple.
@@ -340,7 +298,7 @@ MJEvalOuterValues(MergeJoinState *mergestate)
 
 		clause->ldatum = ExecEvalExpr(clause->lexpr, econtext,
 									  &clause->lisnull, NULL);
-		if (clause->lisnull && clause->mergestrict)
+		if (clause->lisnull)
 			canmatch = clause->notdistinct;
 	}
 
@@ -376,7 +334,7 @@ MJEvalInnerValues(MergeJoinState *mergestate, TupleTableSlot *innerslot)
 
 		clause->rdatum = ExecEvalExpr(clause->rexpr, econtext,
 									  &clause->risnull, NULL);
-		if (clause->risnull && clause->mergestrict)
+		if (clause->risnull)
 			canmatch = clause->notdistinct;
 	}
 
@@ -395,10 +353,10 @@ MJEvalInnerValues(MergeJoinState *mergestate, TupleTableSlot *innerslot)
  * MJEvalOuterValues and MJEvalInnerValues must already have been called
  * for the current outer and inner tuples, respectively.
  */
-static int
+static int32
 MJCompare(MergeJoinState *mergestate)
 {
-	int			result = 0;
+	int32		result = 0;
 	bool		nulleqnull = false;
 	ExprContext *econtext = mergestate->js.ps.ps_ExprContext;
 	int			i;
@@ -419,124 +377,52 @@ MJCompare(MergeJoinState *mergestate)
 		Datum		fresult;
 
 		/*
-		 * Deal with null inputs.  We treat NULL as sorting after non-NULL.
-		 *
-		 * If both inputs are NULL, and the comparison function isn't strict,
-		 * then we call it and check for a true result (this allows operators
-		 * that behave like IS NOT DISTINCT to be mergejoinable). If the
-		 * function is strict or returns false, we temporarily pretend NULL ==
-		 * NULL and contine checking remaining columns.
+		 * Deal with null inputs.
 		 */
 		if (clause->lisnull)
 		{
 			if (clause->risnull)
 			{
-				if (!clause->eqfinfo.fn_strict)
-				{
-					InitFunctionCallInfoData(fcinfo, &(clause->eqfinfo), 2,
-											 NULL, NULL);
-					fcinfo.arg[0] = clause->ldatum;
-					fcinfo.arg[1] = clause->rdatum;
-					fcinfo.argnull[0] = true;
-					fcinfo.argnull[1] = true;
-					fresult = FunctionCallInvoke(&fcinfo);
-					if (!fcinfo.isnull && DatumGetBool(fresult))
-					{
-						/* treat nulls as really equal */
-						continue;
-					}
-				}
-				nulleqnull = !clause->notdistinct;
+				nulleqnull = true;		/* NULL "=" NULL */
 				continue;
 			}
-			/* NULL > non-NULL */
-			result = 1;
+			if (clause->nulls_first)
+				result = -1;	/* NULL "<" NOT_NULL */
+			else
+				result = 1;		/* NULL ">" NOT_NULL */
 			break;
 		}
 		if (clause->risnull)
 		{
-			/* non-NULL < NULL */
-			result = -1;
+			if (clause->nulls_first)
+				result = 1;		/* NOT_NULL ">" NULL */
+			else
+				result = -1;	/* NOT_NULL "<" NULL */
 			break;
 		}
 
-		if (clause->cmpstrategy == MERGEFUNC_LT)
+		/*
+		 * OK to call the comparison function.
+		 */
+		InitFunctionCallInfoData(fcinfo, &(clause->cmpfinfo), 2,
+								 NULL, NULL);
+		fcinfo.arg[0] = clause->ldatum;
+		fcinfo.arg[1] = clause->rdatum;
+		fcinfo.argnull[0] = false;
+		fcinfo.argnull[1] = false;
+		fresult = FunctionCallInvoke(&fcinfo);
+		if (fcinfo.isnull)
 		{
-			InitFunctionCallInfoData(fcinfo, &(clause->eqfinfo), 2,
-									 NULL, NULL);
-			fcinfo.arg[0] = clause->ldatum;
-			fcinfo.arg[1] = clause->rdatum;
-			fcinfo.argnull[0] = false;
-			fcinfo.argnull[1] = false;
-			fresult = FunctionCallInvoke(&fcinfo);
-			if (fcinfo.isnull)
-			{
-				nulleqnull = !clause->notdistinct;
-				continue;
-			}
-			else if (DatumGetBool(fresult))
-			{
-				/* equal */
-				continue;
-			}
-			InitFunctionCallInfoData(fcinfo, &(clause->cmpfinfo), 2,
-									 NULL, NULL);
-			fcinfo.arg[0] = clause->ldatum;
-			fcinfo.arg[1] = clause->rdatum;
-			fcinfo.argnull[0] = false;
-			fcinfo.argnull[1] = false;
-			fresult = FunctionCallInvoke(&fcinfo);
-			if (fcinfo.isnull)
-			{
-				nulleqnull = !clause->notdistinct;
-				continue;
-			}
-			else if (DatumGetBool(fresult))
-			{
-				/* less than */
-				result = -1;
-				break;
-			}
-			else
-			{
-				/* greater than */
-				result = 1;
-				break;
-			}
+			nulleqnull = true;	/* treat like NULL = NULL */
+			continue;
 		}
-		else
-			/* must be MERGEFUNC_CMP */
-		{
-			InitFunctionCallInfoData(fcinfo, &(clause->cmpfinfo), 2,
-									 NULL, NULL);
-			fcinfo.arg[0] = clause->ldatum;
-			fcinfo.arg[1] = clause->rdatum;
-			fcinfo.argnull[0] = false;
-			fcinfo.argnull[1] = false;
-			fresult = FunctionCallInvoke(&fcinfo);
-			if (fcinfo.isnull)
-			{
-				nulleqnull = !clause->notdistinct;
-				continue;
-			}
-			else if (DatumGetInt32(fresult) == 0)
-			{
-				/* equal */
-				continue;
-			}
-			else if (DatumGetInt32(fresult) < 0)
-			{
-				/* less than */
-				result = -1;
-				break;
-			}
-			else
-			{
-				/* greater than */
-				result = 1;
-				break;
-			}
-		}
+		result = DatumGetInt32(fresult);
+
+		if (clause->reverse)
+			result = -result;
+
+		if (result != 0)
+			break;
 	}
 
 	/*
@@ -689,7 +575,7 @@ ExecMergeJoin(MergeJoinState *node)
 	List	   *joinqual;
 	List	   *otherqual;
 	bool		qualResult;
-	int			compareResult;
+	int32		compareResult;
 	PlanState  *innerPlan;
 	TupleTableSlot *innerTupleSlot;
 	PlanState  *outerPlan;
@@ -837,6 +723,9 @@ ExecMergeJoin(MergeJoinState *node)
 				}
 				else
 				{
+					/* Mark before advancing, if wanted */
+					if (node->mj_ExtraMarks)
+						ExecMarkPos(innerPlan);
 					/* Stay in same state to fetch next inner tuple */
 					if (doFillInner)
 					{
@@ -950,6 +839,9 @@ ExecMergeJoin(MergeJoinState *node)
 				 * now we get the next inner tuple, if any.  If there's none,
 				 * advance to next outer tuple (which may be able to join to
 				 * previously marked tuples).
+				 *
+				 * NB: must NOT do "extraMarks" here, since we may need to
+				 * return to previously marked tuples.
 				 */
 				innerTupleSlot = ExecProcNode(innerPlan);
 				node->mj_InnerTupleSlot = innerTupleSlot;
@@ -1294,6 +1186,9 @@ ExecMergeJoin(MergeJoinState *node)
 				break;
 
 				/*
+				 * SKIPOUTER_ADVANCE: advance over an outer tuple that is
+				 * known not to join to any inner tuple.
+				 *
 				 * Before advancing, we check to see if we must emit an
 				 * outer-join fill tuple for this outer tuple.
 				 */
@@ -1368,6 +1263,9 @@ ExecMergeJoin(MergeJoinState *node)
 				break;
 
 				/*
+				 * SKIPINNER_ADVANCE: advance over an inner tuple that is
+				 * known not to join to any outer tuple.
+				 *
 				 * Before advancing, we check to see if we must emit an
 				 * outer-join fill tuple for this inner tuple.
 				 */
@@ -1388,6 +1286,10 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 						return result;
 				}
+
+				/* Mark before advancing, if wanted */
+				if (node->mj_ExtraMarks)
+					ExecMarkPos(innerPlan);
 
 				/*
 				 * now we get the next inner tuple, if any
@@ -1468,6 +1370,10 @@ ExecMergeJoin(MergeJoinState *node)
 					if (result)
 						return result;
 				}
+
+				/* Mark before advancing, if wanted */
+				if (node->mj_ExtraMarks)
+					ExecMarkPos(innerPlan);
 
 				/*
 				 * now we get the next inner tuple, if any
@@ -1602,6 +1508,22 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	innerPlanState(mergestate) = ExecInitNode(innerPlan(node), estate,
 											  eflags | markflag);
 
+	/*
+	 * For certain types of inner child nodes, it is advantageous to issue
+	 * MARK every time we advance past an inner tuple we will never return to.
+	 * For other types, MARK on a tuple we cannot return to is a waste of
+	 * cycles.	Detect which case applies and set mj_ExtraMarks if we want to
+	 * issue "unnecessary" MARK calls.
+	 *
+	 * Currently, only Material wants the extra MARKs, and it will be helpful
+	 * only if eflags doesn't specify REWIND.
+	 */
+	if (IsA(innerPlan(node), Material) &&
+		(eflags & EXEC_FLAG_REWIND) == 0)
+		mergestate->mj_ExtraMarks = true;
+	else
+		mergestate->mj_ExtraMarks = false;
+
 #define MERGEJOIN_NSLOTS 4
 
 	/*
@@ -1677,6 +1599,9 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	 */
 	mergestate->mj_NumClauses = list_length(node->mergeclauses);
 	mergestate->mj_Clauses = MJExamineQuals(node->mergeclauses,
+											node->mergeFamilies,
+											node->mergeStrategies,
+											node->mergeNullsFirst,
 											(PlanState *) mergestate);
 
 	/*

@@ -9,14 +9,13 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execUtils.c,v 1.140.2.3 2007/02/06 17:35:27 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execUtils.c,v 1.154 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 /*
  * INTERFACE ROUTINES
  *		CreateExecutorState		Create/delete executor working state
- *		CreateSubExecutorState
  *		FreeExecutorState
  *		CreateExprContext
  *		CreateStandaloneExprContext
@@ -81,8 +80,6 @@ int			NIndexTupleInserted;
 int			NIndexTupleProcessed;
 
 
-static EState *InternalCreateExecutorState(MemoryContext qcontext,
-										   bool is_subquery);
 static void ShutdownExprContext(ExprContext *econtext);
 
 
@@ -167,7 +164,9 @@ DisplayTupleCount(FILE *statfp)
 EState *
 CreateExecutorState(void)
 {
+	EState	   *estate;
 	MemoryContext qcontext;
+	MemoryContext oldcontext;
 
 	/*
 	 * Create the per-query context for this Executor run.
@@ -178,40 +177,9 @@ CreateExecutorState(void)
 									 ALLOCSET_DEFAULT_INITSIZE,
 									 ALLOCSET_DEFAULT_MAXSIZE);
 
-	return InternalCreateExecutorState(qcontext, false);
-}
-
-/* ----------------
- *		CreateSubExecutorState
- *
- *		Create and initialize an EState node for a sub-query.
- *
- * Ideally, sub-queries probably shouldn't have their own EState at all,
- * but right now this is necessary because they have their own rangetables
- * and we access the rangetable via the EState.  It is critical that a
- * sub-query share the parent's es_query_cxt, else structures allocated by
- * the sub-query (especially its result tuple descriptor) may disappear
- * too soon during executor shutdown.
- * ----------------
- */
-EState *
-CreateSubExecutorState(EState *parent_estate)
-{
-    EState *es = InternalCreateExecutorState(parent_estate->es_query_cxt, true);
 
     es->showstatctx = parent_estate->showstatctx;                   /*CDB*/
     return es;
-}
-
-/*
- * Guts of CreateExecutorState/CreateSubExecutorState
- */
-static EState *
-InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
-{
-	EState	   *estate;
-	MemoryContext oldcontext;
-
 	/*
 	 * Make the EState node within the per-query context.  This way, we don't
 	 * need a separate pfree() operation for it at shutdown.
@@ -228,12 +196,15 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->es_crosscheck_snapshot = InvalidSnapshot;	/* no crosscheck */
 	estate->es_range_table = NIL;
 
+	estate->es_output_cid = (CommandId) 0;
+
 	estate->es_result_relations = NULL;
 	estate->es_num_result_relations = 0;
 	estate->es_result_relation_info = NULL;
 
 	estate->es_junkFilter = NULL;
 
+	estate->es_trig_target_relations = NIL;
 	estate->es_trig_tuple_slot = NULL;
 
 	estate->es_into_relation_descriptor = NULL;
@@ -250,17 +221,17 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->es_lastoid = InvalidOid;
 	estate->es_rowMarks = NIL;
 
-	estate->es_is_subquery = is_subquery;
-
 	estate->es_instrument = false;
 	estate->es_select_into = false;
 	estate->es_into_oids = false;
 
 	estate->es_exprcontexts = NIL;
 
+	estate->es_subplanstates = NIL;
+
 	estate->es_per_tuple_exprcontext = NULL;
 
-	estate->es_topPlan = NULL;
+	estate->es_plannedstmt = NULL;
 	estate->es_evalPlanQual = NULL;
 	estate->es_evTupleNull = NULL;
 	estate->es_evTuple = NULL;
@@ -325,12 +296,9 @@ FreeExecutorState(EState *estate)
 
 	/*
 	 * Free the per-query memory context, thereby releasing all working
-	 * memory, including the EState node itself.  In a subquery, we don't
-	 * do this, leaving the memory cleanup to happen when the topmost query
-	 * is closed down.
+	 * memory, including the EState node itself.
 	 */
-	if (!estate->es_is_subquery)
-		MemoryContextDelete(estate->es_query_cxt);
+	MemoryContextDelete(estate->es_query_cxt);
 }
 
 /* ----------------
@@ -632,7 +600,7 @@ ExecGetResultType(PlanState *planstate)
  * the given tlist should be a list of ExprState nodes, not Expr nodes.
  *
  * inputDesc can be NULL, but if it is not, we check to see whether simple
- * Vars in the tlist match the descriptor.  It is important to provide
+ * Vars in the tlist match the descriptor.	It is important to provide
  * inputDesc for relation-scan plan nodes, as a cross check that the relation
  * hasn't been changed since the plan was made.  At higher levels of a plan,
  * there is no need to recheck.
@@ -659,7 +627,7 @@ ExecBuildProjectionInfo(List *targetList,
 	 * Determine whether the target list consists entirely of simple Var
 	 * references (ie, references to non-system attributes) that match the
 	 * input.  If so, we can use the simpler ExecVariableList instead of
-	 * ExecTargetList.  (Note: if there is a type mismatch then ExecEvalVar
+	 * ExecTargetList.	(Note: if there is a type mismatch then ExecEvalVar
 	 * will probably throw an error at runtime, but we leave that to it.)
 	 */
 	isVarList = true;
@@ -899,28 +867,18 @@ ExecRelationIsTargetRelation(EState *estate, Index scanrelid)
 Relation
 ExecOpenScanRelation(EState *estate, Index scanrelid)
 {
-	RangeTblEntry *rtentry;
 	Oid			reloid;
 	LOCKMODE	lockmode;
-	ResultRelInfo *resultRelInfos;
-	int			i;
 
 	/*
-	 * First determine the lock type we need.  Scan to see if target relation
-	 * is either a result relation or a FOR UPDATE/FOR SHARE relation.
+	 * Determine the lock type we need.  First, scan to see if target relation
+	 * is a result relation.  If not, check if it's a FOR UPDATE/FOR SHARE
+	 * relation.  In either of those cases, we got the lock already.
 	 */
 	lockmode = AccessShareLock;
-	resultRelInfos = estate->es_result_relations;
-	for (i = 0; i < estate->es_num_result_relations; i++)
-	{
-		if (resultRelInfos[i].ri_RangeTableIndex == scanrelid)
-		{
-			lockmode = NoLock;
-			break;
-		}
-	}
-
-	if (lockmode == AccessShareLock)
+	if (ExecRelationIsTargetRelation(estate, scanrelid))
+		lockmode = NoLock;
+	else
 	{
 		ListCell   *l;
 
@@ -937,9 +895,7 @@ ExecOpenScanRelation(EState *estate, Index scanrelid)
 	}
 
 	/* OK, open the relation and acquire lock as needed */
-	rtentry = rt_fetch(scanrelid, estate->es_range_table);
-	reloid = rtentry->relid;
-
+	reloid = getrelid(scanrelid, estate->es_range_table);
 	return heap_open(reloid, lockmode);
 }
 
@@ -1105,6 +1061,10 @@ ExecCloseIndices(ResultRelInfo *resultRelInfo)
  *		stuff as it only exists here because the genam stuff
  *		doesn't provide the functionality needed by the
  *		executor.. -cim 9/27/89
+ *
+ *		CAUTION: this must not be called for a HOT update.
+ *		We can't defend against that here for lack of info.
+ *		Should we change the API to make it safer?
  * ----------------------------------------------------------------
  */
 void
@@ -1152,6 +1112,10 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 			continue;
 
 		indexInfo = indexInfoArray[i];
+
+		/* If the index is marked as read-only, ignore it */
+		if (!indexInfo->ii_ReadyForInserts)
+			continue;
 
 		/* Check for partial index */
 		if (indexInfo->ii_Predicate != NIL)

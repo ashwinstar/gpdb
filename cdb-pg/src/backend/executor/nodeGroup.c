@@ -15,7 +15,7 @@
  *	  locate group boundaries.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeGroup.c,v 1.65.2.1 2007/02/02 00:07:28 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeGroup.c,v 1.70 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -408,9 +408,8 @@ ExecInitGroup(Group *node, EState *estate, int eflags)
 	 * Precompute fmgr lookup data for inner loop
 	 */
 	grpstate->eqfunctions =
-		execTuplesMatchPrepare(ExecGetScanType(&grpstate->ss),
-							   node->numCols,
-							   node->grpColIdx);
+		execTuplesMatchPrepare(node->numCols,
+							   node->grpOperators);
 
 	/* for rollup */
 	grpstate->num_attrs = 0;

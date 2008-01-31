@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeMaterial.c,v 1.57 2006/10/04 00:29:52 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeMaterial.c,v 1.61 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -330,14 +330,14 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 	matstate->ss.ps.state = estate;
 
 	/*
-	 * We must have random access to the subplan output to do backward scan or
-	 * mark/restore.  We also prefer to materialize the subplan output if we
-	 * might be called on to rewind and replay it many times. However, if none
-	 * of these cases apply, we can skip storing the data.
+	 * We must have a tuplestore buffering the subplan output to do backward
+	 * scan or mark/restore.  We also prefer to materialize the subplan output
+	 * if we might be called on to rewind and replay it many times. However,
+	 * if none of these cases apply, we can skip storing the data.
 	 */
-	matstate->randomAccess = (eflags & (EXEC_FLAG_REWIND |
-										EXEC_FLAG_BACKWARD |
-										EXEC_FLAG_MARK)) != 0;
+	matstate->eflags = (eflags & (EXEC_FLAG_REWIND |
+								  EXEC_FLAG_BACKWARD |
+								  EXEC_FLAG_MARK));
 
 	matstate->eof_underlying = false;
 	matstate->ts_state = NULL;
@@ -474,7 +474,7 @@ ExecEndMaterial(MaterialState *node)
 void
 ExecMaterialMarkPos(MaterialState *node)
 {
-	Assert(node->randomAccess);
+	Assert(node->eflags & EXEC_FLAG_MARK);
 
 #ifdef DEBUG
 	{
@@ -513,7 +513,7 @@ ExecMaterialMarkPos(MaterialState *node)
 void
 ExecMaterialRestrPos(MaterialState *node)
 {
-	Assert(node->randomAccess);
+	Assert(node->eflags & EXEC_FLAG_MARK);
 
 #ifdef DEBUG
 	{
@@ -559,7 +559,7 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 
-	if (node->randomAccess)
+	if (node->eflags != 0)
 	{
 		/*
 		 * If we haven't materialized yet, just return. If outerplan' chgParam
@@ -571,16 +571,21 @@ ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt)
 
 		/*
 		 * If subnode is to be rescanned then we forget previous stored
-		 * results; we have to re-read the subplan and re-store.
+		 * results; we have to re-read the subplan and re-store.  Also, if we
+		 * told tuplestore it needn't support rescan, we lose and must
+		 * re-read.  (This last should not happen in common cases; else our
+		 * caller lied by not passing EXEC_FLAG_REWIND to us.)
 		 *
 		 * Otherwise we can just rewind and rescan the stored output. The
 		 * state of the subnode does not change.
 		 */
-		if (((PlanState *) node)->lefttree->chgParam != NULL)
+		if (((PlanState *) node)->lefttree->chgParam != NULL ||
+			(node->eflags & EXEC_FLAG_REWIND) == 0)
 		{
 #ifdef USE_OLD_TUPLESTORE
 			tuplestore_end((Tuplestorestate *) node->ts_state); 
 			node->ts_state = NULL;
+				ExecReScan(((PlanState *) node)->lefttree, exprCtxt);
 			node->eof_underlying = false;
 #else
 			ntuplestore_destroy_accessor((NTupleStoreAccessor *) node->ts_pos);

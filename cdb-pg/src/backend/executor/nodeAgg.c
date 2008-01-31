@@ -250,7 +250,7 @@ initialize_aggregates(AggState *aggstate,
 
 			peraggstate->sortstate =
 				tuplesort_begin_datum(peraggstate->inputType,
-									  peraggstate->sortOperator,
+									  peraggstate->sortOperator, false,
 									  work_mem, false);
 
             /* 
@@ -440,7 +440,7 @@ invoke_agg_trans_func(FmgrInfo transfn, int numargs, Datum transValue,
 
 /*
  * Advance all the aggregates for one input tuple.	The input tuple
- * has been stored in tmpcontext->ecxt_scantuple, so that it is accessible
+ * has been stored in tmpcontext->ecxt_outertuple, so that it is accessible
  * to ExecEvalExpr.  pergroup is the array of per-group structs to use
  * (this might be in a hashtable entry).
  *
@@ -663,8 +663,8 @@ find_unaggregated_cols_walker(Node *node, Bitmapset **colnos)
 	{
 		Var		   *var = (Var *) node;
 
-		/* setrefs.c should have set the varno to 0 */
-		Assert(var->varno == 0);
+		/* setrefs.c should have set the varno to OUTER */
+		Assert(var->varno == OUTER);
 		Assert(var->varlevelsup == 0);
 		*colnos = bms_add_member(*colnos, var->varattno);
 		return false;
@@ -1323,6 +1323,7 @@ agg_retrieve_direct(AggState *aggstate)
 		 * with an empty firstSlot ... but if not grouping, there can't be any
 		 * references to non-aggregated input columns, so no problem.)
 		 */
+		econtext->ecxt_outertuple = firstSlot;
 		if (passthru_ready)
 			econtext->ecxt_scantuple = outerslot;
 		else
@@ -1526,7 +1527,7 @@ agg_retrieve_hash_table(AggState *aggstate)
 		 * Use the representative input tuple for any references to
 		 * non-aggregated input columns in the qual and tlist.
 		 */
-		econtext->ecxt_scantuple = firstSlot;
+		econtext->ecxt_outertuple = firstSlot;
 
 		if (is_final_rollup_agg)
 		{
@@ -1735,16 +1736,14 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	if (node->numCols > 0)
 	{
 		if (node->aggstrategy == AGG_HASHED)
-			execTuplesHashPrepare(ExecGetScanType(&aggstate->ss),
-								  node->numCols,
-								  node->grpColIdx,
+			execTuplesHashPrepare(node->numCols,
+								  node->grpOperators,
 								  &aggstate->eqfunctions,
 								  &aggstate->hashfunctions);
 		else
 			aggstate->eqfunctions =
-				execTuplesMatchPrepare(ExecGetScanType(&aggstate->ss),
-									   node->numCols,
-									   node->grpColIdx);
+				execTuplesMatchPrepare(node->numCols,
+									   node->grpOperators);
 	}
 
 	/*
@@ -1830,8 +1829,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 		/*
 		 * Get actual datatypes of the inputs.	These could be different from
-		 * the agg's declared input types, when the agg accepts ANY, ANYARRAY
-		 * or ANYELEMENT.
+		 * the agg's declared input types, when the agg accepts ANY or a
+		 * polymorphic type.
 		 */
 		i = 0;
 		foreach(lc, aggref->args)
@@ -1911,6 +1910,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		aggtranstype = resolve_polymorphic_transtype(aggform->aggtranstype, 
 													 aggref->aggfnoid,
 											   		 inputTypes);
+															false);
 											   
 		/* build expression trees using actual argument & result types */
 		build_aggregate_fnexprs(inputTypes,
@@ -1998,6 +1998,13 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 							&peraggstate->inputtypeLen,
 							&peraggstate->inputtypeByVal);
 
+			/*
+			 * Look up the sorting and comparison operators to use.  XXX it's
+			 * pretty bletcherous to be making this sort of semantic decision
+			 * in the executor.  Probably the parser should decide this and
+			 * record it in the Aggref node ... or at latest, do it in the
+			 * planner.
+			 */
 			eq_function = equality_oper_funcid(inputTypes[0]);
 			fmgr_info(eq_function, &(peraggstate->equalfn));
 			peraggstate->sortOperator = ordering_oper_opid(inputTypes[0]);
