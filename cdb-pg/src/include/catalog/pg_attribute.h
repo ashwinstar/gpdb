@@ -308,7 +308,7 @@ DATA(insert ( 1247 gp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
 { 1255, {"proargnames"},	  1009, -1, -1, 16, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
 { 1255, {"prosrc"},				25, -1, -1, 17, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
 { 1255, {"probin"},				17, -1, -1, 18, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
-{ 1255, {"proacl"},			  1034, -1, -1, 19, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }
+{ 1255, {"proacl"},			  1034, -1, -1, 19, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 } \
 { 1255, {"proconfig"},		  1009, -1, -1, 20, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
 { 1255, {"proacl"},			  1034, -1, -1, 21, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }
 
