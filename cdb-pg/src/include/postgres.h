@@ -99,7 +99,6 @@ typedef union
 		uint32		va_header;
 		uint32		va_rawsize; /* Original data size (excludes header) */
 		char		va_data[1]; /* Compressed data */
-		char	va_data[1];		/* Compressed data */
 	}			va_compressed;
 } varattrib_4b;
 
@@ -311,10 +310,6 @@ typedef struct
  * on architecture and compiler, the return value of a function returning char
  * or short may contain garbage when called as if it returned Datum.
  */
-
-typedef unsigned long Datum;	/* XXX sizeof(long) >= sizeof(void *) */
-
-#define SIZEOF_DATUM SIZEOF_UNSIGNED_LONG
 
 /* ----------------------------------------------------------------
  *				Section 2:	datum type + support macros
