@@ -190,7 +190,8 @@ typedef struct ProjectionInfo
  *	  the tuple to be updated.	This is needed to do the update, but we
  *	  don't want the ctid to be part of the stored new tuple!  So, we
  *	  apply a "junk filter" to remove the junk attributes and form the
- *	  real output tuple.
+ *	  real output tuple.  The junkfilter code also provides routines to
+ *	  extract the values of the junk attribute(s) from the input tuple.
  *
  *	  targetList:		the original target list (including junk attributes).
  *	  cleanTupType:		the tuple descriptor for the "clean" tuple (with
@@ -199,6 +200,9 @@ typedef struct ProjectionInfo
  *						attribute numbers of the "original" tuple and the
  *						attribute numbers of the "clean" tuple.
  *	  resultSlot:		tuple slot used to hold cleaned tuple.
+ *	  junkAttNo:		not used by junkfilter code.  Can be used by caller
+ *						to remember the attno of a specific junk attribute
+ *						(execMain.c stores the "ctid" attno here).
  * ----------------
  */
 typedef struct JunkFilter
@@ -208,6 +212,7 @@ typedef struct JunkFilter
 	TupleDesc	jf_cleanTupType;
 	AttrNumber *jf_cleanMap;
 	TupleTableSlot *jf_resultSlot;
+	AttrNumber	jf_junkAttNo;
 } JunkFilter;
 
 
@@ -420,7 +425,10 @@ typedef struct EState
 	ScanDirection es_direction; /* current scan direction */
 	Snapshot	es_snapshot;	/* time qual to use */
 	Snapshot	es_crosscheck_snapshot; /* crosscheck time qual for RI */
-	List	   *es_range_table; /* List of RangeTableEntrys */
+	List	   *es_range_table; /* List of RangeTblEntry */
+
+	/* If query can insert/delete tuples, the command ID to mark them with */
+	CommandId	es_output_cid;
 
 	/* Info about target table for insert/update/delete queries: */
 	ResultRelInfo *es_result_relations; /* array of ResultRelInfos */
@@ -428,9 +436,12 @@ typedef struct EState
 	ResultRelInfo *es_result_relation_info;		/* currently active array elt */
 	JunkFilter *es_junkFilter;	/* currently active junk filter */
 
+	/* Stuff used for firing triggers: */
+	List	   *es_trig_target_relations;		/* trigger-only ResultRelInfos */
 	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 
-	Relation	es_into_relation_descriptor;	/* for SELECT INTO */
+	/* Stuff used for SELECT INTO: */
+	Relation	es_into_relation_descriptor;
 	bool		es_into_relation_use_wal;
 
 	/* Parameter info: */
@@ -446,13 +457,13 @@ typedef struct EState
 	Oid			es_lastoid;		/* last oid processed (by INSERT) */
 	List	   *es_rowMarks;	/* not good place, but there is no other */
 
-	bool		es_is_subquery;	/* true if subquery (es_query_cxt not mine) */
-
 	bool		es_instrument;	/* true requests runtime instrumentation */
 	bool		es_select_into; /* true if doing SELECT INTO */
 	bool		es_into_oids;	/* true to generate OIDs in SELECT INTO */
 
 	List	   *es_exprcontexts;	/* List of ExprContexts within EState */
+
+	List	   *es_subplanstates;		/* List of PlanState for SubPlans */
 
 	/*
 	 * this ExprContext is for per-output-tuple operations, such as constraint
@@ -462,7 +473,7 @@ typedef struct EState
 	ExprContext *es_per_tuple_exprcontext;
 
 	/* Below is to re-evaluate plan qual in READ COMMITTED mode */
-	Plan	   *es_topPlan;		/* link to top of plan tree */
+	PlannedStmt *es_plannedstmt;	/* link to top of plan tree */
 	struct evalPlanQual *es_evalPlanQual;		/* chain of PlanQual states */
 	bool	   *es_evTupleNull; /* local array of EPQ status */
 	HeapTuple  *es_evTuple;		/* shared array of EPQ substitute tuples */
@@ -509,7 +520,7 @@ typedef struct ExecRowMark
 	Index		rti;			/* its range table index */
 	bool		forUpdate;		/* true = FOR UPDATE, false = FOR SHARE */
 	bool		noWait;			/* NOWAIT option */
-	char		resname[32];	/* name for its ctid junk attribute */
+	AttrNumber	ctidAttNo;		/* resno of its ctid junk attribute */
 } ExecRowMark;
 
 
@@ -517,6 +528,16 @@ typedef struct ExecRowMark
  *				 Tuple Hash Tables
  *
  * All-in-memory tuple hash tables are used for a number of purposes.
+ *
+ * Note: tab_hash_funcs are for the key datatype(s) stored in the table,
+ * and tab_eq_funcs are non-cross-type equality operators for those types.
+ * Normally these are the only functions used, but FindTupleHashEntry()
+ * supports searching a hashtable using cross-data-type hashing.  For that,
+ * the caller must supply hash functions for the LHS datatype as well as
+ * the cross-type equality operators to use.  in_hash_funcs and cur_eq_funcs
+ * are set to point to the caller's function arrays while doing such a search.
+ * During LookupTupleHashEntry(), they point to tab_hash_funcs and
+ * tab_eq_funcs respectively.
  * ----------------------------------------------------------------
  */
 typedef struct TupleHashEntryData *TupleHashEntry;
@@ -534,13 +555,16 @@ typedef struct TupleHashTableData
 	HTAB	   *hashtab;		/* underlying dynahash table */
 	int			numCols;		/* number of columns in lookup key */
 	AttrNumber *keyColIdx;		/* attr numbers of key columns */
-	FmgrInfo   *eqfunctions;	/* lookup data for comparison functions */
-	FmgrInfo   *hashfunctions;	/* lookup data for hash functions */
+	FmgrInfo   *tab_hash_funcs; /* hash functions for table datatype(s) */
+	FmgrInfo   *tab_eq_funcs;	/* equality functions for table datatype(s) */
 	MemoryContext tablecxt;		/* memory context containing table */
 	MemoryContext tempcxt;		/* context for function evaluations */
 	Size		entrysize;		/* actual size to make each hash entry */
 	TupleTableSlot *tableslot;	/* slot for referencing table entries */
+	/* The following fields are set transiently for each table search: */
 	TupleTableSlot *inputslot;	/* current input tuple's slot */
+	FmgrInfo   *in_hash_funcs;	/* hash functions for input datatype(s) */
+	FmgrInfo   *cur_eq_funcs;	/* equality functions for input vs. table */
 } TupleHashTableData;
 
 typedef HASH_SEQ_STATUS TupleHashIterator;
@@ -760,7 +784,6 @@ typedef struct BoolExprState
 typedef struct SubPlanState
 {
 	ExprState	xprstate;
-	EState	   *sub_estate;		/* subselect plan has its own EState */
 	struct PlanState *planstate;	/* subselect plan's state tree */
 	ExprState  *testexpr;		/* state of combining expression */
 	List	   *args;			/* states of argument expression(s) */
@@ -777,8 +800,12 @@ typedef struct SubPlanState
 	MemoryContext tablecxt;		/* memory context containing tables */
 	ExprContext *innerecontext; /* working context for comparisons */
 	AttrNumber *keyColIdx;		/* control data for hash tables */
-	FmgrInfo   *eqfunctions;	/* comparison functions for hash tables */
-	FmgrInfo   *hashfunctions;	/* lookup data for hash functions */
+	FmgrInfo   *tab_hash_funcs; /* hash functions for table datatype(s) */
+	FmgrInfo   *tab_eq_funcs;	/* equality functions for table datatype(s) */
+	FmgrInfo   *lhs_hash_funcs; /* hash functions for lefthand datatype(s) */
+	FmgrInfo   *cur_eq_funcs;	/* equality functions for LHS vs. table */
+
+
     struct StringInfoData  *cdbextratextbuf;    /* to pass text to cdbexplain */
 } SubPlanState;
 
@@ -804,6 +831,33 @@ typedef struct FieldStoreState
 	List	   *newvals;		/* new value(s) for field(s) */
 	TupleDesc	argdesc;		/* tupdesc for most recent input */
 } FieldStoreState;
+
+/* ----------------
+ *		CoerceViaIOState node
+ * ----------------
+ */
+typedef struct CoerceViaIOState
+{
+	ExprState	xprstate;
+	ExprState  *arg;			/* input expression */
+	FmgrInfo	outfunc;		/* lookup info for source output function */
+	FmgrInfo	infunc;			/* lookup info for result input function */
+	Oid			intypioparam;	/* argument needed for input function */
+} CoerceViaIOState;
+
+/* ----------------
+ *		ArrayCoerceExprState node
+ * ----------------
+ */
+typedef struct ArrayCoerceExprState
+{
+	ExprState	xprstate;
+	ExprState  *arg;			/* input array value */
+	Oid			resultelemtype; /* element type of result array */
+	FmgrInfo	elemfunc;		/* lookup info for element coercion function */
+	/* use struct pointer to avoid including array.h here */
+	struct ArrayMapState *amstate;		/* workspace for array_map */
+} ArrayCoerceExprState;
 
 /* ----------------
  *		ConvertRowtypeExprState node
@@ -904,6 +958,18 @@ typedef struct MinMaxExprState
 	List	   *args;			/* the arguments */
 	FmgrInfo	cfunc;			/* lookup info for comparison func */
 } MinMaxExprState;
+
+/* ----------------
+ *		XmlExprState node
+ * ----------------
+ */
+typedef struct XmlExprState
+{
+	ExprState	xprstate;
+	List	   *named_args;		/* ExprStates for named arguments */
+	FmgrInfo   *named_outfuncs; /* array of output fns for named arguments */
+	List	   *args;			/* ExprStates for other arguments */
+} XmlExprState;
 
 /* ----------------
  *		NullTestState node
@@ -1223,6 +1289,7 @@ typedef struct BitmapHeapScanState
 /* ----------------
  *	 TidScanState information
  *
+ *		isCurrentOf    scan has a CurrentOfExpr qual
  *		NumTids		   number of tids in this scan
  *		TidPtr		   index of currently fetched tid
  *		TidList		   evaluated item pointers (array of size NumTids)
@@ -1232,6 +1299,7 @@ typedef struct TidScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
 	List	   *tss_tidquals;	/* list of ExprState nodes */
+	bool		tss_isCurrentOf;
 	int			tss_NumTids;
 	int			tss_TidPtr;
 	int			tss_MarkTidPtr;
@@ -1243,10 +1311,7 @@ typedef struct TidScanState
  *	 SubqueryScanState information
  *
  *		SubqueryScanState is used for scanning a sub-query in the range table.
- *		The sub-query will have its own EState, which we save here.
  *		ScanTupleSlot references the current output tuple of the sub-query.
- *
- *		SubEState		   exec state for sub-query
  * ----------------
  */
 typedef struct SubqueryScanState
@@ -1387,6 +1452,7 @@ typedef struct NestLoopState
  *		NumClauses		   number of mergejoinable join clauses
  *		Clauses			   info for each mergejoinable clause
  *		JoinState		   current "state" of join.  see execdefs.h
+ *		ExtraMarks		   true to issue extra Mark operations on inner scan
  *		FillOuter		   true if should emit unjoined outer tuples anyway
  *		FillInner		   true if should emit unjoined inner tuples anyway
  *		MatchedOuter	   true if found a join match for current outer tuple
@@ -1409,6 +1475,7 @@ typedef struct MergeJoinState
 	int			mj_NumClauses;
 	MergeJoinClause mj_Clauses; /* array of length mj_NumClauses */
 	int			mj_JoinState;
+	bool		mj_ExtraMarks;
 	bool		mj_FillOuter;
 	bool		mj_FillInner;
 	bool		mj_MatchedOuter;
@@ -1505,7 +1572,7 @@ typedef struct AdaptiveNestLoopState
 typedef struct MaterialState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	bool		randomAccess;	/* need random access to subplan output? */
+	int			eflags;			/* capability flags to pass to tuplestore */
 	bool		eof_underlying; /* reached end of underlying plan? */
 
 	void	   *ts_state;	    /* private state of tuplestore.c */
@@ -1787,6 +1854,7 @@ typedef struct SetOpState
 typedef enum
 {
 	LIMIT_INITIAL,				/* initial state for LIMIT node */
+	LIMIT_RESCAN,				/* rescan after recomputing parameters */
 	LIMIT_EMPTY,				/* there are no returnable rows */
 	LIMIT_INWINDOW,				/* have returned a row in the window */
 	LIMIT_SUBPLANEOF,			/* at EOF of subplan (within window) */

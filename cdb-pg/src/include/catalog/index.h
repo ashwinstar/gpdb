@@ -52,6 +52,9 @@ typedef struct IndexInfo
 	List	   *ii_PredicateState;		/* list of ExprState */
 	bool		ii_Unique;
 	bool		ii_Concurrent;
+	bool		ii_ReadyForInserts;
+	bool		ii_Concurrent;
+	bool		ii_BrokenHotChain;
 
 	void       *opaque; /* Additional info needed by index creation.
 						   Only used for bitmap index to store oids that
