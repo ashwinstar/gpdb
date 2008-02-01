@@ -203,13 +203,14 @@ _bitmap_init_buildstate(Relation index, BMBuildState *bmstate)
 		Oid			eq_opr;
 		Oid			eq_function;
  		Oid			hash_function;
+		bool        canhash = false;
 
 		optup = equality_oper(typid, false);
 		eq_opr = oprid(optup);
 		eq_function = oprfuncid(optup);
 		ReleaseSysCache(optup);
- 		hash_function = get_op_hash_function(eq_opr);
- 		if (!OidIsValid(hash_function))
+ 		canhash = get_op_hash_functions(eq_opr, &hash_function, NULL);
+ 		if (!canhash)
 		{
 			pfree(cur_bmbuild);
 			cur_bmbuild = NULL;
@@ -388,7 +389,7 @@ _bitmap_init(Relation rel, Oid comptypeOid,
 	 * after all, we have fixed size data
 	 */
 	o = PageAddItem(currLovPage, (Item)lovItem, sizeof(BMLOVItemData),
-                    newOffset, LP_USED);
+                    newOffset, false, false);
 
 	if (o == InvalidOffsetNumber)
 		ereport(ERROR,

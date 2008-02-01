@@ -173,6 +173,9 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	indexInfo->ii_Predicate = make_ands_implicit(NULL);
 	indexInfo->ii_PredicateState = NIL;
 	indexInfo->ii_Unique = true;
+	indexInfo->ii_ReadyForInserts = true;
+	indexInfo->ii_Concurrent = false;
+	indexInfo->ii_BrokenHotChain = false;
 	indexInfo->opaque = NULL;
 
 	classObjectId = (Oid *) palloc(indattrs * sizeof(Oid));
@@ -187,7 +190,7 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	idxid = index_create(*lovHeapOid, lovIndexName, *lovIndexOid,
 						 indexInfo, BTREE_AM_OID, 
 						 rel->rd_rel->reltablespace, 
-						 classObjectId, 0, false, false, true, 
+						 classObjectId, 0, 0, false, false, true, 
 						 false, false);
 	Assert(idxid == *lovIndexOid);
 
@@ -264,7 +267,7 @@ _bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
 
 	/* insert this tuple into the heap */
 	tuple = heap_form_tuple(tupDesc, datum, nulls);
-	heap_insert(lovHeap, tuple, GetCurrentCommandId(), use_wal, true, false);
+	heap_insert(lovHeap, tuple, GetCurrentCommandId(true), use_wal, true, false);
 
 	/*
 	 * We must bump the command counter to make the newly-inserted heap

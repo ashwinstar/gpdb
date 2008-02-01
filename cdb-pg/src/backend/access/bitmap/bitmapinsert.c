@@ -1472,7 +1472,7 @@ create_lovitem(Relation rel, Buffer metabuf, uint64 tidnum,
 	_bitmap_insert_lov(lovHeap, lovIndex, lovDatum, lovNulls, use_wal);
 
 	if (PageAddItem(currLovPage, (Item)lovitem, itemSize, *lovOffsetP,
-					LP_USED) == InvalidOffsetNumber)
+					false, false) == InvalidOffsetNumber)
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				errmsg("failed to add LOV item to \"%s\"",
@@ -2240,9 +2240,13 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 
 		if (!res)
 		{
+			SnapshotData SnapshotDirty;
+			
 			index_rescan(scanDesc, NULL);
 
-			scanDesc->xs_snapshot = SnapshotDirty;
+			InitDirtySnapshot(SnapshotDirty);
+
+			scanDesc->xs_snapshot = &SnapshotDirty;
 
 			dirty_find = _bitmap_findvalue(lovHeap, lovIndex, scanKey,
 										   scanDesc, &lovBlock,
@@ -2253,8 +2257,8 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 			if (dirty_find)
 			{
 				TransactionId xwait =
-					(TransactionIdIsValid(SnapshotDirty->xmin)) ?
-					SnapshotDirty->xmin : SnapshotDirty->xmax;
+					(TransactionIdIsValid(SnapshotDirty.xmin)) ?
+					SnapshotDirty.xmin : SnapshotDirty.xmax;
 
 				LockBuffer(metabuf, BUFFER_LOCK_UNLOCK);
 
