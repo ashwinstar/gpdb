@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/heap/heapam.c,v 1.223 2007/01/05 22:19:22 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/heap/heapam.c,v 1.248 2008/01/14 01:39:09 tgl Exp $
  *
  *
  * INTERFACE ROUTINES
@@ -57,7 +57,6 @@
 #include "utils/lsyscache.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
-#include "storage/freespace.h"
 
 
 static HeapScanDesc heap_beginscan_internal(Relation relation,
@@ -84,7 +83,6 @@ static void
 initscan(HeapScanDesc scan, ScanKey key)
 {
 	bool		allow_strat;
-	int i;
 	bool		allow_sync;
 
 	/*
@@ -147,11 +145,6 @@ initscan(HeapScanDesc scan, ScanKey key)
 	ItemPointerSetInvalid(&scan->rs_ctup.t_self);
 	scan->rs_cbuf = InvalidBuffer;
 	scan->rs_cblock = InvalidBlockNumber;
-	for (i = 0; i < lengthof(scan->rs_rahead); i++) 
-	{
-		scan->rs_rahead[i].buffer = InvalidBuffer;
-		scan->rs_rahead[i].block = InvalidBlockNumber;
-	}
 
 	/* we don't have a marked position... */
 	ItemPointerSetInvalid(&(scan->rs_mctid));
@@ -180,7 +173,7 @@ initscan(HeapScanDesc scan, ScanKey key)
  * which tuples on the page are visible.
  */
 static void
-heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
+heapgetpage(HeapScanDesc scan, BlockNumber page)
 {
 	Buffer		buffer;
 	Snapshot	snapshot;
@@ -189,82 +182,24 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 	int			ntup;
 	OffsetNumber lineoff;
 	ItemId		lpp;
-	TransactionId t_xmin, t_xmax;
-	CommandId     t_cid;
-
-	/* don't run prefetching code if the table is small. This has the 
-	   side effect of using the full buffer pool to cache the table */
-	bool        is_small = (scan->rs_nblocks <= (NBuffers * 60 / 100));
 
 	Assert(page < scan->rs_nblocks);
 
-	if (! scan->rs_pageatatime) 
+	/* release previous scan buffer, if any */
+	if (BufferIsValid(scan->rs_cbuf))
 	{
-		scan->rs_cbuf = ReleaseAndReadBuffer(scan->rs_cbuf,
-											 scan->rs_rd,
-											 page);
-		scan->rs_cblock = page;
+		ReleaseBuffer(scan->rs_cbuf);
+		scan->rs_cbuf = InvalidBuffer;
+	}
+
+	/* read page using selected strategy */
+	scan->rs_cbuf = ReadBufferWithStrategy(scan->rs_rd,
+										   page,
+										   scan->rs_strategy);
+	scan->rs_cblock = page;
+
+	if (!scan->rs_pageatatime)
 		return;
-	}
-
-	if (is_small) 
-	{
-		scan->rs_cbuf = ReleaseAndReadBuffer(scan->rs_cbuf, scan->rs_rd, page);
-		scan->rs_cblock = page;
-	}
-	else
-	{
-		int         ri, i;
-		const int   incr = backward ? -1 : 1;
-		const int   rimax = lengthof(scan->rs_rahead);
-
-		/*
-		 *  This will fill up to the first 2 quarters of read ahead 
-		 */
-		for (i = 0; i < rimax / 2; i++) 
-		{
-			const int pg = page + incr * i;
-			if (! (0 <= pg && pg < scan->rs_nblocks))
-				break;
-			ri = pg % rimax;
-			if (scan->rs_rahead[ri].block == pg)
-				continue;
-			scan->rs_rahead[ri].block = pg;
-			scan->rs_rahead[ri].buffer 
-				= KillAndReadBuffer(scan->rs_rahead[ri].buffer, scan->rs_rd, pg);
-			/*elog(LOG, "heapgetpage: 1 [%d] read %d at %x", ri, pg, scan->rs_rahead[ri].buffer);*/
-		}
-		/* THIS MAY ONLY BE HELPFUL WITH AIO */
-		/*
-		 *  This will fill the 3rd quarter of read ahead provided that it is not filled
-		 */
-		for (i = rimax / 2; i < rimax * 3 / 4; i++)
-		{
-			const int pg = page + incr * i;
-			if (! (0 <= pg && pg < scan->rs_nblocks))
-				break;
-			ri = pg % rimax;
-			if (scan->rs_rahead[ri].block == pg)
-				break;
-			scan->rs_rahead[ri].block = pg;
-			scan->rs_rahead[ri].buffer 
-				= KillAndReadBuffer(scan->rs_rahead[ri].buffer, scan->rs_rd, pg);
-			/*elog(LOG, "heapgetpage: 2 [%d] read %d at %x", ri, pg, scan->rs_rahead[ri].buffer);*/
-		}
-
-		ri = page % rimax;
-		if (scan->rs_rahead[ri].block != page)
-			ereport(ERROR,
-					(errcode(ERRCODE_INTERNAL_ERROR),
-					 errmsg("page number mismatch, expect %d, but got %d", 
-							page, scan->rs_rahead[ri].block)));
-
-		if (BufferIsValid(scan->rs_cbuf))
-			ReleaseBuffer(scan->rs_cbuf);
-		scan->rs_cbuf = scan->rs_rahead[ri].buffer;
-		scan->rs_cblock = page;
-		IncrBufferRefCount(scan->rs_cbuf);
-	}
 
 	buffer = scan->rs_cbuf;
 	snapshot = scan->rs_snapshot;
@@ -285,9 +220,6 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 	lines = PageGetMaxOffsetNumber(dp);
 	ntup = 0;
 
-	t_xmin = t_xmax = 0;
-	t_cid = 0;
-
 	for (lineoff = FirstOffsetNumber, lpp = PageGetItemId(dp, lineoff);
 		 lineoff <= lines;
 		 lineoff++, lpp++)
@@ -301,18 +233,7 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 			loctup.t_len = ItemIdGetLength(lpp);
 			ItemPointerSet(&(loctup.t_self), page, lineoff);
 
-			valid = (t_xmax == HeapTupleHeaderGetXmax(loctup.t_data)  &&
-					 t_xmin == HeapTupleHeaderGetXmin(loctup.t_data) &&
-					 t_cid == HeapTupleHeaderGetRawCommandId(loctup.t_data));
-			if (! valid) {
-				valid = HeapTupleSatisfiesVisibility(&loctup, snapshot, buffer);
-				if (valid) 
-				{
-					t_xmax = HeapTupleHeaderGetXmax(loctup.t_data);
-					t_xmin = HeapTupleHeaderGetXmin(loctup.t_data);
-					t_cid = HeapTupleHeaderGetRawCommandId(loctup.t_data);
-				}
-			}
+			valid = HeapTupleSatisfiesVisibility(&loctup, snapshot, buffer);
 			if (valid)
 				scan->rs_vistuples[ntup++] = lineoff;
 		}
@@ -381,7 +302,7 @@ heapgettup(HeapScanDesc scan,
 				return;
 			}
 			page = scan->rs_startblock; /* first page */
-			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
+			heapgetpage(scan, page);
 			lineoff = FirstOffsetNumber;		/* first offnum */
 			scan->rs_inited = true;
 		}
@@ -468,7 +389,7 @@ heapgettup(HeapScanDesc scan,
 
 		page = ItemPointerGetBlockNumber(&(tuple->t_self));
 		if (page != scan->rs_cblock)
-			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
+			heapgetpage(scan, page);
 
 		/* Since the tuple was previously fetched, needn't lock page here */
 		dp = (Page) BufferGetPage(scan->rs_cbuf);
@@ -586,7 +507,7 @@ heapgettup(HeapScanDesc scan,
 			return;
 		}
 
-		heapgetpage(scan, page, ScanDirectionIsBackward(dir));
+		heapgetpage(scan, page);
 
 		LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
@@ -653,7 +574,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 				return;
 			}
 			page = scan->rs_startblock; /* first page */
-			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
+			heapgetpage(scan, page);
 			lineindex = 0;
 			scan->rs_inited = true;
 		}
@@ -734,7 +655,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 
 		page = ItemPointerGetBlockNumber(&(tuple->t_self));
 		if (page != scan->rs_cblock)
-			heapgetpage(scan, page, ScanDirectionIsBackward(dir));
+			heapgetpage(scan, page);
 
 		/* Since the tuple was previously fetched, needn't lock page here */
 		dp = (Page) BufferGetPage(scan->rs_cbuf);
@@ -847,7 +768,7 @@ heapgettup_pagemode(HeapScanDesc scan,
 			return;
 		}
 
-		heapgetpage(scan, page, ScanDirectionIsBackward(dir));
+		heapgetpage(scan, page);
 
 		dp = (Page) BufferGetPage(scan->rs_cbuf);
 		lines = scan->rs_ntuples;
@@ -1251,15 +1172,11 @@ void
 heap_rescan(HeapScanDesc scan,
 			ScanKey key)
 {
-	int i;
 	/*
 	 * unpin scan buffers
 	 */
 	if (BufferIsValid(scan->rs_cbuf))
 		ReleaseBuffer(scan->rs_cbuf);
-	for (i = 0; i < lengthof(scan->rs_rahead); i++) 
-		if (BufferIsValid(scan->rs_rahead[i].buffer)) 
-			ReleaseBuffer(scan->rs_rahead[i].buffer);
 
 	/*
 	 * reinitialize scan descriptor
@@ -1277,7 +1194,6 @@ heap_rescan(HeapScanDesc scan,
 void
 heap_endscan(HeapScanDesc scan)
 {
-	int i;
 	/* Note: no locking manipulations needed */
 
 	/*
@@ -1285,9 +1201,7 @@ heap_endscan(HeapScanDesc scan)
 	 */
 	if (BufferIsValid(scan->rs_cbuf))
 		ReleaseBuffer(scan->rs_cbuf);
-	for (i = 0; i < lengthof(scan->rs_rahead); i++) 
-		if (BufferIsValid(scan->rs_rahead[i].buffer)) 
-			ReleaseBuffer(scan->rs_rahead[i].buffer);
+
 	/*
 	 * decrement relation reference count and free scan descriptor storage
 	 */
@@ -1355,100 +1269,6 @@ heap_getnext(HeapScanDesc scan, ScanDirection direction)
 
 	return &(scan->rs_ctup);
 }
-
-
-/*
- *  heap_getnextx  - fill up tdata[] up to tdatacnt
- *
- *  Take all tuples from a page, and cram as much as possible into tdata[].
- *  tdatacnt - IN: size of tdata[]. OUT: number of elements filled in tdata[].
- *  EOS      - OUT: non-zero if end of stream reached. 
- */
-void
-heap_getnextx(HeapScanDesc scan, ScanDirection dir,
-			  HeapTupleData tdata[], int *tdatacnt,
-			  int *seen_EOS)
-{
-	int maxcnt = *tdatacnt;
-	int retcnt = 0;
-	HeapTuple t = NULL;
-	bool backward = ScanDirectionIsBackward(dir);
-	bool forward = ScanDirectionIsForward(dir);
-
-	/*
-	 *  go slow if 1. scan current again, or 2. not doing page at a time, 
-	 *    or 3. we have to qualify keys.
-	 */
-	bool onebyone = (!backward && !forward) || !scan->rs_pageatatime || scan->rs_nkeys;
-
-	if (maxcnt <= 0) 
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("illegal value in tdatacnt")));
-	}
-
-	if (scan->rs_pageatatime)
-		heapgettup_pagemode(scan, dir,
-							scan->rs_nkeys, scan->rs_key);
-	else
-		heapgettup(scan, dir, scan->rs_nkeys, scan->rs_key);
-
-	if (NULL == (t = scan->rs_ctup.t_data ? &scan->rs_ctup : 0))
-	{
-		*tdatacnt = 0, *seen_EOS = 1;
-		return;
-	}
-
-	tdata[retcnt++] = *t;
-	if (!onebyone && retcnt < maxcnt)
-	{
-		HeapTuple tuple = &(scan->rs_ctup);
-		int lineindex, linesleft;
-		BlockNumber page = scan->rs_cblock;
-		Page dp = (Page) BufferGetPage(scan->rs_cbuf);
-		int lines = scan->rs_ntuples;
-
-		/* go through all tuples in this page */
-		if (forward) 
-		{
-			lineindex = scan->rs_cindex + 1;
-			linesleft = lines - lineindex;
-		}
-		else 
-		{
-			lineindex = scan->rs_cindex - 1;
-			linesleft = lineindex + 1;
-		}
-
-		while (linesleft > 0 && retcnt < maxcnt)
-		{
-			OffsetNumber lineoff = scan->rs_vistuples[lineindex];
-			ItemId lpp = PageGetItemId(dp, lineoff);
-			Assert(ItemIdIsUsed(lpp));
-			
-			tuple->t_data = (HeapTupleHeader) PageGetItem((Page) dp, lpp);
-			tuple->t_len = ItemIdGetLength(lpp);
-			ItemPointerSet(&(tuple->t_self), page, lineoff);
-			scan->rs_cindex = lineindex;
-
-			tdata[retcnt++] = *tuple;
-
-			--linesleft;
-			if (backward)
-				--lineindex;
-			else
-				++lineindex;
-		}
-
-		/* if we get here, we processed all tuples on the page or we filled up 
-		 * tdata[]. 
-		 */
-	}
-
-	*tdatacnt = retcnt, *seen_EOS = 0;
-}
-
 
 /*
  *	heap_fetch		- retrieve tuple with given tid
@@ -1716,7 +1536,7 @@ heap_hot_search_buffer(ItemPointer tid, Buffer buffer, Snapshot snapshot,
 		 */
 		if (all_dead && *all_dead &&
 			HeapTupleSatisfiesVacuum(heapTuple.t_data, RecentGlobalXmin,
-									 buffer) != HEAPTUPLE_DEAD)
+									 buffer, true) != HEAPTUPLE_DEAD)
 			*all_dead = false;
 
 		/*
@@ -1880,25 +1700,6 @@ heap_get_latest_tid(Relation relation,
 	}							/* end of loop */
 }
 
-/* turn heap inserts on ... will be removed after testing */
-bool heap_enableHeapInsertDesc = false;
-
-HeapInsertDesc *
-heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
-{
-	HeapInsertDesc *ins = (HeapInsertDesc *) palloc(sizeof(HeapInsertDesc));
-	ins->hi_xid = GetCurrentTransactionId();
-	ins->hi_rel = relation;
-	ins->hi_cid = cid;
-	ins->hi_use_wal = use_wal;
-	ins->hi_use_fsm = use_fsm;
-	ins->hi_cbuf = InvalidBuffer;
-
-	ins->hi_targblock = relation->rd_targblock;
-	relation->rd_targblock = InvalidBlockNumber;
-
-	return ins;
-}
 
 /*
  * UpdateXmaxHintBits - update tuple hint bits after xmax transaction ends
@@ -1910,455 +1711,20 @@ heap_begininsert(Relation relation, CommandId cid, bool use_wal, bool use_fsm)
  * if the transaction committed asynchronously.  Hence callers should look
  * only at XMAX_INVALID.
  */
-
-static void 
-heap_logpage(Relation rel, Buffer buf)
-{
-	Page page = BufferGetPage(buf);
-	BlockNumber bno = BufferGetBlockNumber(buf);
-	xl_heap_newpage xlrec;
-	XLogRecPtr recptr;
-	XLogRecData rdata[2];
-
-	START_CRIT_SECTION();
-
-	xlrec.node = rel->rd_node;
-	xlrec.blkno = bno;
-	
-	rdata[0].data = (char*) &xlrec;
-	rdata[0].len = SizeOfHeapNewpage;
-	rdata[0].buffer = InvalidBuffer;
-	rdata[0].next = &rdata[1];
-	
-	rdata[1].data = (char*) page;
-	rdata[1].len = BLCKSZ;
-	rdata[1].buffer = InvalidBuffer;
-	rdata[1].next = NULL;
-
-	recptr = XLogInsert(RM_HEAP_ID, XLOG_HEAP_NEWPAGE, rdata);
-	PageSetLSN(page, recptr);
-	PageSetTLI(page, ThisTimeLineID);
-
-	END_CRIT_SECTION();
-}
-
 static void
-heap_log_tuple_insert(Relation rel, Buffer buffer, HeapTuple tup)
+UpdateXmaxHintBits(HeapTupleHeader tuple, Buffer buffer, TransactionId xid)
 {
-	xl_heap_insert xlrec;
-	xl_heap_header xlhdr;
-	XLogRecPtr	recptr;
-	XLogRecData rdata[3];
-	Page		page = BufferGetPage(buffer);
-	uint8		info = XLOG_HEAP_INSERT;
+	Assert(TransactionIdEquals(HeapTupleHeaderGetXmax(tuple), xid));
 
-	START_CRIT_SECTION();
-
-	xlrec.target.node = rel->rd_node;
-	xlrec.target.tid = tup->t_self;
-	rdata[0].data = (char *) &xlrec;
-	rdata[0].len = SizeOfHeapInsert;
-	rdata[0].buffer = InvalidBuffer;
-	rdata[0].next = &(rdata[1]);
-	
-	xlhdr.t_infomask2 = tup->t_data->t_infomask2;
-	xlhdr.t_infomask = tup->t_data->t_infomask;
-	xlhdr.t_hoff = tup->t_data->t_hoff;
-
-	/*
-	 * note we mark rdata[1] as belonging to buffer; if XLogInsert decides
-	 * to write the whole page to the xlog, we don't need to store
-	 * xl_heap_header in the xlog.
-	 */
-	rdata[1].data = (char *) &xlhdr;
-	rdata[1].len = SizeOfHeapHeader;
-	rdata[1].buffer = buffer;
-	rdata[1].buffer_std = true;
-	rdata[1].next = &(rdata[2]);
-
-	/* PG73FORMAT: write bitmap [+ padding] [+ oid] + data */
-	rdata[2].data = (char *) tup->t_data + offsetof(HeapTupleHeaderData, t_bits);
-	rdata[2].len = tup->t_len - offsetof(HeapTupleHeaderData, t_bits);
-	rdata[2].buffer = buffer;
-	rdata[2].buffer_std = true;
-	rdata[2].next = NULL;
-
-	/*
-	 * If this is the single and first tuple on page, we can reinit the
-	 * page instead of restoring the whole thing.  Set flag, and hide
-	 * buffer references from XLogInsert.
-	 */
-	if (ItemPointerGetOffsetNumber(&(tup->t_self)) == FirstOffsetNumber &&
-		PageGetMaxOffsetNumber(page) == FirstOffsetNumber)
+	if (!(tuple->t_infomask & (HEAP_XMAX_COMMITTED | HEAP_XMAX_INVALID)))
 	{
-		info |= XLOG_HEAP_INIT_PAGE;
-		rdata[1].buffer = rdata[2].buffer = InvalidBuffer;
+		if (TransactionIdDidCommit(xid))
+			HeapTupleSetHintBits(tuple, buffer, HEAP_XMAX_COMMITTED,
+								 xid);
+		else
+			HeapTupleSetHintBits(tuple, buffer, HEAP_XMAX_INVALID,
+								 InvalidTransactionId);
 	}
-
-	recptr = XLogInsert(RM_HEAP_ID, info, rdata);
-
-	PageSetLSN(page, recptr);
-	PageSetTLI(page, ThisTimeLineID);
-	END_CRIT_SECTION();
-}
-
-void
-heap_endinsert(HeapInsertDesc *ins)
-{
-	if (ins->hi_cbuf != InvalidBuffer)
-	{
-		if (!ins->hi_rel->rd_istemp && ins->hi_use_wal)
-		{
-			LockBuffer(ins->hi_cbuf, BUFFER_LOCK_SHARE);
-			heap_logpage(ins->hi_rel, ins->hi_cbuf);
-			LockBuffer(ins->hi_cbuf, BUFFER_LOCK_UNLOCK);
-		}
-
-		ReleaseBuffer(ins->hi_cbuf);
-		ins->hi_cbuf = InvalidBuffer;
-	}
-	if (ins->hi_targblock != InvalidBlockNumber 
-		&& ins->hi_rel->rd_targblock == InvalidBlockNumber)
-	{
-		ins->hi_rel->rd_targblock = ins->hi_targblock;
-	}
-}
-
-
-static Buffer
-heap_insertgetpage(HeapInsertDesc *ins, Size len)
-{
-	Buffer		buffer = InvalidBuffer;
-	Page		pageHeader;
-	Size		pageFreeSpace,
-				saveFreeSpace;
-	BlockNumber targetBlock;
-
-	len = MAXALIGN(len);		/* be conservative */
-
-	/*
-	 * If we're gonna fail for oversize tuple, do it right away
-	 */
-	if (len > MaxTupleSize)
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("row is too big: size %lu, maximum size %lu",
-						(unsigned long) len,
-						(unsigned long) MaxTupleSize)));
-
-	/* Compute desired extra freespace due to fillfactor option */
-	saveFreeSpace = RelationGetTargetPageFreeSpace(ins->hi_rel,
-												   HEAP_DEFAULT_FILLFACTOR);
-
-	/*
-	 * We first try to put the tuple on the same page we last inserted a tuple
-	 * on, as cached in the relcache entry.  If that doesn't work, we ask the
-	 * shared Free Space Map to locate a suitable page.  Since the FSM's info
-	 * might be out of date, we have to be prepared to loop around and retry
-	 * multiple times.	(To insure this isn't an infinite loop, we must update
-	 * the FSM with the correct amount of free space on each page that proves
-	 * not to be suitable.)  If the FSM has no record of a page with enough
-	 * free space, we give up and extend the relation.
-	 *
-	 * When use_fsm is false, we either put the tuple onto the existing target
-	 * page or extend the relation.
-	 */
-	if (len + saveFreeSpace <= MaxTupleSize)
-		targetBlock = ins->hi_targblock;
-	else
-	{
-		/* can't fit, don't screw up FSM request tracking by trying */
-		targetBlock = InvalidBlockNumber;
-		ins->hi_use_fsm = false;
-	}
-
-	if (targetBlock == InvalidBlockNumber && ins->hi_use_fsm)
-	{
-		/*
-		 * We have no cached target page, so ask the FSM for an initial
-		 * target.
-		 */
-		targetBlock = GetPageWithFreeSpace(&ins->hi_rel->rd_node,
-										   len + saveFreeSpace);
-
-		/*
-		 * If the FSM knows nothing of the rel, try the last page before we
-		 * give up and extend.	This avoids one-tuple-per-page syndrome during
-		 * bootstrapping or in a recently-started system.
-		 */
-		if (targetBlock == InvalidBlockNumber)
-		{
-			BlockNumber nblocks = RelationGetNumberOfBlocks(ins->hi_rel);
-
-			if (nblocks > 0)
-				targetBlock = nblocks - 1;
-		}
-	}
-
-	while (targetBlock != InvalidBlockNumber)
-	{
-		/*
-		 * Read and exclusive-lock the target block.
-		 */
-		buffer = ReadBuffer(ins->hi_rel, targetBlock);
-		LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
-
-		/*
-		 * Now we can check to see if there's enough free space here. If so,
-		 * we're done.
-		 */
-		pageHeader = (Page) BufferGetPage(buffer);
-		pageFreeSpace = PageGetFreeSpace(pageHeader);
-		if (len + saveFreeSpace <= pageFreeSpace)
-		{
-			/* use this page as future insert target, too */
-			ins->hi_targblock = targetBlock;
-			return buffer;
-		}
-
-		/*
-		 * Not enough space, so we must give up our page locks and pin (if
-		 * any) and prepare to look elsewhere.	We don't care which order we
-		 * unlock the two buffers in, so this can be slightly simpler than the
-		 * code above.
-		 */
-		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-		ReleaseBuffer(buffer);
-
-		/* Without FSM, always fall out of the loop and extend */
-		if (!ins->hi_use_fsm)
-			break;
-
-		/*
-		 * Update FSM as to condition of this page, and ask for another page
-		 * to try.
-		 */
-		targetBlock = RecordAndGetPageWithFreeSpace(&ins->hi_rel->rd_node,
-													targetBlock,
-													pageFreeSpace,
-													len + saveFreeSpace);
-	}
-
-	ins->hi_targblock = InvalidBlockNumber;
-	return InvalidBuffer;
-}
-
-
-static Buffer
-heap_insertextend(HeapInsertDesc *ins, Size len)
-{
-	bool needLock;
-	Size saveFreeSpace;
-	Buffer buffer;
-	Page pageHeader;
-	
-	len = MAXALIGN(len);		/* be conservative */
-
-	/*
-	 * If we're gonna fail for oversize tuple, do it right away
-	 */
-	if (len > MaxTupleSize)
-		ereport(ERROR,
-				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-				 errmsg("row is too big: size %lu, maximum size %lu",
-						(unsigned long) len,
-						(unsigned long) MaxTupleSize)));
-
-	/* Compute desired extra freespace due to fillfactor option */
-	saveFreeSpace = RelationGetTargetPageFreeSpace(ins->hi_rel,
-												   HEAP_DEFAULT_FILLFACTOR);
-
-	if ((buffer = ins->hi_cbuf) != InvalidBuffer)
-	{
-		/*
-		 * Now we can check to see if there's enough free space here. If so,
-		 * we're done.
-		 */
-		LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
-		pageHeader = (Page) BufferGetPage(buffer);
-		if (len + saveFreeSpace <= PageGetFreeSpace(pageHeader))
-		{
-			/*elog(LOG, "   return %u", BufferGetBlockNumber(buffer));*/
-			return buffer;
-		}
-
-		/*
-		 * Not enough space, so we must give up our page locks and pin (if
-		 * any) and prepare to look elsewhere.	We don't care which order we
-		 * unlock the two buffers in, so this can be slightly simpler than the
-		 * code above.
-		 */
-		if (!ins->hi_rel->rd_istemp && ins->hi_use_wal)
-			heap_logpage(ins->hi_rel, ins->hi_cbuf);
-		UnlockReleaseBuffer(buffer);
-		ins->hi_cbuf = InvalidBuffer;
-	}
-
-	/*
-	 * Have to extend the relation.
-	 *
-	 * We have to use a lock to ensure no one else is extending the rel at the
-	 * same time, else we will both try to initialize the same new page.  We
-	 * can skip locking for new or temp relations, however, since no one else
-	 * could be accessing them.
-	 */
-	needLock = !RELATION_IS_LOCAL(ins->hi_rel);
-	if (needLock)
-		LockRelationForExtension(ins->hi_rel, ExclusiveLock);
-		
-	buffer = ins->hi_cbuf = ReadBuffer(ins->hi_rel, P_NEW);
-	/*
-	 * Now acquire lock on the new page.
-	 */
-	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
-
-	/*
-	 * Release the file-extension lock; it's now OK for someone else to extend
-	 * the relation some more.	Note that we cannot release this lock before
-	 * we have buffer lock on the new page, or we risk a race condition
-	 * against vacuumlazy.c --- see comments therein.
-	 */
-	if (needLock)
-		UnlockRelationForExtension(ins->hi_rel, ExclusiveLock);
-
-	/*
-	 * We need to initialize the empty new page.  Double-check that it really
-	 * is empty (this should never happen, but if it does we don't want to
-	 * risk wiping out valid data).
-	 */
-	pageHeader = (Page) BufferGetPage(buffer);
-		
-	if (!PageIsNew((PageHeader) pageHeader))
-		elog(ERROR, "page %u of relation \"%s\" should be empty but is not",
-			 BufferGetBlockNumber(buffer),
-			 RelationGetRelationName(ins->hi_rel));
-
-	PageInit(pageHeader, BufferGetPageSize(buffer), 0);
-
-	if (len > PageGetFreeSpace(pageHeader))
-	{
-		/* We should not get here given the test at the top */
-		elog(PANIC, "tuple is too big: size %lu", (unsigned long) len);
-	}
-
-	/*elog(LOG, "allocated %u", BufferGetBlockNumber(buffer));*/
-
-	/* buffer is locked and pinned */
-	MarkBufferDirty(buffer);
-	return buffer;
-}
-
-/*
- * Main interface to insert with buffer mechanism. Eventually, this should
- * be more tightly integrated with heap_insert(). As it currently stands
- * there's a lot of duplicate code here.
- */
-
-Oid
-heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
-{
-	HeapTuple	heaptup;
-	Buffer		buffer;
-
-	if (ins->hi_rel->rd_rel->relhasoids)
-	{
-#ifdef NOT_USED
-		/* this is redundant with an Assert in HeapTupleSetOid */
-		Assert(tup->t_data->t_infomask & HEAP_HASOID);
-#endif
-
-		/*
-		 * If the object id of this tuple has already been assigned, trust the
-		 * caller.	There are a couple of ways this can happen.  At initial db
-		 * creation, the backend program sets oids for tuples. When we define
-		 * an index, we set the oid.  Finally, in the future, we may allow
-		 * users to set their own object ids in order to support a persistent
-		 * object store (objects need to contain pointers to one another).
-		 */
-		if (!OidIsValid(HeapTupleGetOid(tup)))
-			HeapTupleSetOid(tup, GetNewOid(ins->hi_rel));
-	}
-	else
-	{
-		/* check there is not space for an OID */
-		Assert(!(tup->t_data->t_infomask & HEAP_HASOID));
-	}
-
-	tup->t_data->t_infomask &= ~(HEAP_XACT_MASK);
-	tup->t_data->t_infomask |= HEAP_XMAX_INVALID;
-	HeapTupleHeaderSetXmin(tup->t_data, ins->hi_xid);
-	HeapTupleHeaderSetCmin(tup->t_data, ins->hi_cid);
-	HeapTupleHeaderSetXmax(tup->t_data, 0);		/* for cleanliness */
-	tup->t_tableOid = RelationGetRelid(ins->hi_rel);
-
-	/*
-	 * If the new tuple is too big for storage or contains already toasted
-	 * out-of-line attributes from some other relation, invoke the toaster.
-	 *
-	 * Note: below this point, heaptup is the data we actually intend to store
-	 * into the relation; tup is the caller's original untoasted data.
-	 */
-	if (HeapTupleHasExternal(tup) ||
-		(MAXALIGN(tup->t_len) > TOAST_TUPLE_THRESHOLD))
-		heaptup = toast_insert_or_update(ins->hi_rel, tup, NULL);
-	else
-		heaptup = tup;
-
-	/* Find buffer to insert this tuple into */
-	buffer = InvalidBuffer;
-	if (ins->hi_cbuf == InvalidBlockNumber 
-		&& ins->hi_targblock != InvalidBlockNumber)
-	{
-		buffer = heap_insertgetpage(ins, heaptup->t_len);
-	}
-
-	if (buffer != InvalidBuffer)
-	{
-		/* the buffer is Locked and Pinned by heap_insertgetpage */
-		RelationPutHeapTuple(ins->hi_rel, buffer, heaptup);
-		MarkBufferDirty(buffer);
-		if (ins->hi_use_wal)
-			heap_log_tuple_insert(ins->hi_rel, buffer, heaptup);
-		UnlockReleaseBuffer(buffer);
-	}
-	else 
-	{
-		buffer = heap_insertextend(ins, heaptup->t_len);
-		/* buffer is locked, pinned, and marked dirty by heap_insertextend. */
-		RelationPutHeapTuple(ins->hi_rel, buffer, heaptup);
-
-		/* unlock the buffer, but it is kept pinned by ins->cbuf */
-		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-	}
-
-	/* XLOG stuff */
-	if (ins->hi_rel->rd_istemp)
-	{
-		/* No XLOG record, but still need to flag that XID exists on disk */
-		MyXactMadeTempRelUpdate = true;
-	}
-
-	/*
-	 * If tuple is cachable, mark it for invalidation from the caches in case
-	 * we abort.  Note it is OK to do this after releasing the buffer, because
-	 * the heaptup data structure is all in local memory, not in the shared
-	 * buffer.
-	 */
-	CacheInvalidateHeapTuple(ins->hi_rel, heaptup);
-
-	pgstat_count_heap_insert(&ins->hi_rel->pgstat_info);
-
-	/*
-	 * If heaptup is a private copy, release it.  Don't forget to copy t_self
-	 * back to the caller's image, too.
-	 */
-	if (heaptup != tup)
-	{
-		tup->t_self = heaptup->t_self;
-		heap_freetuple(heaptup);
-	}
-
-	return HeapTupleGetOid(tup);
 }
 
 
@@ -2377,7 +1743,10 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
  * use_fsm is passed directly to RelationGetBufferForTuple, which see for
  * more info.
  *
- * freeze is used when we want to force the inserted tuple to be always
+ * Note that use_wal and use_fsm will be applied when inserting into the
+ * heap's TOAST table, too, if the tuple requires any out-of-line data.
+ *
+ * GP: freeze is used when we want to force the inserted tuple to be always
  * visible. This is currently only used for error tables during COPY or
  * external tables since we want to keep bad rows in the error table even
  * if the transaction rolls back.
@@ -2397,6 +1766,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	Buffer		buffer;
 
 	xid = (freeze ? FrozenTransactionId : GetCurrentTransactionId());
+
 
 	if (relation->rd_rel->relhasoids)
 	{
@@ -2453,6 +1823,9 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	buffer = RelationGetBufferForTuple(relation, heaptup->t_len,
 									   InvalidBuffer, use_fsm);
 
+	/* NO EREPORT(ERROR) from here till changes are logged */
+	START_CRIT_SECTION();
+
 	RelationPutHeapTuple(relation, buffer, heaptup);
 
 	/*
@@ -2471,14 +1844,61 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	/* XLOG stuff */
 	if (use_wal && !relation->rd_istemp)
 	{
-		/* No XLOG record, but still need to flag that the XID exists on dist */
-		MyXactMadeTempRelUpdate = true;
-	}
-	else if (use_wal)
-	{
-		heap_log_tuple_insert(relation, buffer, heaptup);
+		xl_heap_insert xlrec;
+		xl_heap_header xlhdr;
+		XLogRecPtr	recptr;
+		XLogRecData rdata[3];
+		Page		page = BufferGetPage(buffer);
+		uint8		info = XLOG_HEAP_INSERT;
+
+		xlrec.target.node = relation->rd_node;
+		xlrec.target.tid = heaptup->t_self;
+		rdata[0].data = (char *) &xlrec;
+		rdata[0].len = SizeOfHeapInsert;
+		rdata[0].buffer = InvalidBuffer;
+		rdata[0].next = &(rdata[1]);
+
+		xlhdr.t_infomask2 = heaptup->t_data->t_infomask2;
+		xlhdr.t_infomask = heaptup->t_data->t_infomask;
+		xlhdr.t_hoff = heaptup->t_data->t_hoff;
+
+		/*
+		 * note we mark rdata[1] as belonging to buffer; if XLogInsert decides
+		 * to write the whole page to the xlog, we don't need to store
+		 * xl_heap_header in the xlog.
+		 */
+		rdata[1].data = (char *) &xlhdr;
+		rdata[1].len = SizeOfHeapHeader;
+		rdata[1].buffer = buffer;
+		rdata[1].buffer_std = true;
+		rdata[1].next = &(rdata[2]);
+
+		/* PG73FORMAT: write bitmap [+ padding] [+ oid] + data */
+		rdata[2].data = (char *) heaptup->t_data + offsetof(HeapTupleHeaderData, t_bits);
+		rdata[2].len = heaptup->t_len - offsetof(HeapTupleHeaderData, t_bits);
+		rdata[2].buffer = buffer;
+		rdata[2].buffer_std = true;
+		rdata[2].next = NULL;
+
+		/*
+		 * If this is the single and first tuple on page, we can reinit the
+		 * page instead of restoring the whole thing.  Set flag, and hide
+		 * buffer references from XLogInsert.
+		 */
+		if (ItemPointerGetOffsetNumber(&(heaptup->t_self)) == FirstOffsetNumber &&
+			PageGetMaxOffsetNumber(page) == FirstOffsetNumber)
+		{
+			info |= XLOG_HEAP_INIT_PAGE;
+			rdata[1].buffer = rdata[2].buffer = InvalidBuffer;
+		}
+
+		recptr = XLogInsert(RM_HEAP_ID, info, rdata);
+
+		PageSetLSN(page, recptr);
+		PageSetTLI(page, ThisTimeLineID);
 	}
 
+	END_CRIT_SECTION();
 
 	UnlockReleaseBuffer(buffer);
 
@@ -2517,20 +1937,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 Oid
 simple_heap_insert(Relation relation, HeapTuple tup)
 {
-	return heap_insert(relation, tup, GetCurrentCommandId(), true, true, false);
-}
-
-/*
- *	freeze_heap_insert - insert a tuple and freeze it (always visible).
- *
- * Same as simple_heap_insert, but without a default command id and also
- * passing in a 'freeze' request so that heap_insert will set the MVCC
- * information accordingly.
- */
-Oid
-freeze_heap_insert(Relation relation, HeapTuple tup)
-{
-	return heap_insert(relation, tup, GetCurrentCommandId(), true, true, true);
+	return heap_insert(relation, tup, GetCurrentCommandId(true), true, true, false);
 }
 
 /*
@@ -2600,8 +2007,6 @@ l1:
 
 		/* must copy state data before unlocking buffer */
 		xwait = HeapTupleHeaderGetXmax(tp.t_data);
-		Assert(TransactionIdIsValid(xid));
-		
 		infomask = tp.t_data->t_infomask;
 
 		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
@@ -2941,8 +2346,6 @@ l2:
 
 		/* must copy state data before unlocking buffer */
 		xwait = HeapTupleHeaderGetXmax(oldtup.t_data);
-		Assert(TransactionIdIsValid(xid));
-		
 		infomask = oldtup.t_data->t_infomask;
 
 		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
@@ -3588,8 +2991,7 @@ l3:
 		uint16		infomask;
 
 		/* must copy state data before unlocking buffer */
-		xwait = HeapTupleHeaderGetXmax(tuple->t_data);;
-		
+		xwait = HeapTupleHeaderGetXmax(tuple->t_data);
 		infomask = tuple->t_data->t_infomask;
 
 		LockBuffer(*buffer, BUFFER_LOCK_UNLOCK);
@@ -3863,8 +3265,8 @@ l3:
 	/*
 	 * Store transaction information of xact locking the tuple.
 	 *
-	 * Note: Cmax is meaningless in this context, so don't set it; this
-	 * avoids possibly generating a useless combo CID.
+	 * Note: Cmax is meaningless in this context, so don't set it; this avoids
+	 * possibly generating a useless combo CID.
 	 */
 	tuple->t_data->t_infomask = new_infomask;
 	HeapTupleHeaderClearHotUpdated(tuple->t_data);
@@ -4202,24 +3604,6 @@ heap_markpos(HeapScanDesc scan)
 	else
 		ItemPointerSetInvalid(&scan->rs_mctid);
 }
-
-
-void
-heap_markposx(HeapScanDesc scan, HeapTuple tuple)
-{
-	if (tuple && tuple->t_data) 
-	{
-		Assert(ItemPointerIsValid(&tuple->t_self));
-		scan->rs_mctid = tuple->t_self;
-		if (scan->rs_pageatatime) 
-			scan->rs_mindex = ItemPointerGetOffsetNumber(&tuple->t_self);
-	}
-	else 
-	{
-		ItemPointerSetInvalid(&scan->rs_mctid);
-	}
-}
-
 
 /* ----------------
  *		heap_restrpos	- restore position to marked location
