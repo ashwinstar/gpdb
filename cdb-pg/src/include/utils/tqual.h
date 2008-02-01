@@ -22,25 +22,33 @@
 #include "utils/combocid.h" /*MaxComboCids*/
 #include "cdb/cdbtm.h"
 
-
 /*
- * "Regular" snapshots are pointers to a SnapshotData structure.
- *
- * We also have some "special" snapshot values that have fixed meanings
- * and don't need any backing SnapshotData.  These are encoded by small
- * integer values, which of course is a gross violation of ANSI C, but
- * it works fine on all known platforms.
- *
- * SnapshotDirty is an even more special case: its semantics are fixed,
- * but there is a backing SnapshotData struct for it.  That struct is
- * actually used as *output* data from tqual.c, not input into it.
- * (But hey, SnapshotDirty ought to have a dirty implementation, no? ;-))
+ * We use SnapshotData structures to represent both "regular" (MVCC)
+ * snapshots and "special" snapshots that have non-MVCC semantics.
+ * The specific semantics of a snapshot are encoded by the "satisfies"
+ * function.
  */
+typedef struct SnapshotData *Snapshot;
+
+typedef bool (*SnapshotSatisfiesFunc) (HeapTupleHeader tuple,
+										   Snapshot snapshot, Buffer buffer);
 
 typedef struct SnapshotData
 {
-	TransactionId xmin;			/* XID < xmin are visible to me */
-	TransactionId xmax;			/* XID >= xmax are invisible to me */
+	SnapshotSatisfiesFunc satisfies;	/* tuple test function */
+
+	/*
+	 * The remaining fields are used only for MVCC snapshots, and are normally
+	 * just zeroes in special snapshots.  (But xmin and xmax are used
+	 * specially by HeapTupleSatisfiesDirty.)
+	 *
+	 * An MVCC snapshot can never see the effects of XIDs >= xmax. It can see
+	 * the effects of all older XIDs except those listed in the snapshot. xmin
+	 * is stored as an optimization to avoid needing to search the XID arrays
+	 * for most tuples.
+	 */
+	TransactionId xmin;			/* all XID < xmin are visible to me */
+	TransactionId xmax;			/* all XID >= xmax are invisible to me */
 	uint32		xcnt;			/* # of xact ids in xip[] */
 	TransactionId *xip;			/* array of xact IDs in progress */
 	/* note: all ids in xip[] satisfy xmin <= xip[i] < xmax */
@@ -54,29 +62,35 @@ typedef struct SnapshotData
 	CommandId	curcid;			/* in my xact, CID < curcid are visible */
 } SnapshotData;
 
-typedef SnapshotData *Snapshot;
+#define InvalidSnapshot		((Snapshot) NULL)
 
-/* Special snapshot values: */
-#define InvalidSnapshot				((Snapshot) 0x0)	/* same as NULL */
-#define SnapshotNow					((Snapshot) 0x1)
-#define SnapshotSelf				((Snapshot) 0x2)
-#define SnapshotAny					((Snapshot) 0x3)
-#define SnapshotToast				((Snapshot) 0x4)
+/* Static variables representing various special snapshot semantics */
+extern PGDLLIMPORT SnapshotData SnapshotNowData;
+extern PGDLLIMPORT SnapshotData SnapshotSelfData;
+extern PGDLLIMPORT SnapshotData SnapshotAnyData;
+extern PGDLLIMPORT SnapshotData SnapshotToastData;
 
-extern DLLIMPORT Snapshot SnapshotDirty;
+#define SnapshotNow			(&SnapshotNowData)
+#define SnapshotSelf		(&SnapshotSelfData)
+#define SnapshotAny			(&SnapshotAnyData)
+#define SnapshotToast		(&SnapshotToastData)
+
+/*
+ * We don't provide a static SnapshotDirty variable because it would be
+ * non-reentrant.  Instead, users of that snapshot type should declare a
+ * local variable of type SnapshotData, and initialize it with this macro.
+ */
+#define InitDirtySnapshot(snapshotdata)  \
+	((snapshotdata).satisfies = HeapTupleSatisfiesDirty)
 
 /* This macro encodes the knowledge of which snapshots are MVCC-safe */
 #define IsMVCCSnapshot(snapshot)  \
-	((snapshot) != SnapshotNow && \
-	 (snapshot) != SnapshotSelf && \
-	 (snapshot) != SnapshotAny && \
-	 (snapshot) != SnapshotToast && \
-	 (snapshot) != SnapshotDirty)
+	((snapshot)->satisfies == HeapTupleSatisfiesMVCC)
 
 
-extern DLLIMPORT Snapshot SerializableSnapshot;
-extern DLLIMPORT Snapshot LatestSnapshot;
-extern DLLIMPORT Snapshot ActiveSnapshot;
+extern PGDLLIMPORT Snapshot SerializableSnapshot;
+extern PGDLLIMPORT Snapshot LatestSnapshot;
+extern PGDLLIMPORT Snapshot ActiveSnapshot;
 
 extern DLLIMPORT DistributedSnapshot SerializableDistributedSnapshot;
 extern DLLIMPORT DistributedSnapshot LatestDistributedSnapshot;
@@ -120,30 +134,11 @@ extern volatile SharedSnapshotSlot *SharedLocalSnapshotSlot;
  * Notes:
  *	Assumes heap tuple is valid.
  *	Beware of multiple evaluations of snapshot argument.
- *	Hint bits in the HeapTuple's t_infomask may be updated as a side effect.
+ *	Hint bits in the HeapTuple's t_infomask may be updated as a side effect;
+ *	if so, the indicated buffer is marked dirty.
  */
 #define HeapTupleSatisfiesVisibility(tuple, snapshot, buffer) \
-((snapshot) == SnapshotNow ? \
-	HeapTupleSatisfiesNow((tuple)->t_data, buffer) \
-: \
-	((snapshot) == SnapshotSelf ? \
-		HeapTupleSatisfiesItself((tuple)->t_data, buffer) \
-	: \
-		((snapshot) == SnapshotAny ? \
-			true \
-		: \
-			((snapshot) == SnapshotToast ? \
-				HeapTupleSatisfiesToast((tuple)->t_data, buffer) \
-			: \
-				((snapshot) == SnapshotDirty ? \
-					HeapTupleSatisfiesDirty((tuple)->t_data, buffer) \
-				: \
-					HeapTupleSatisfiesSnapshot((tuple)->t_data, snapshot, buffer) \
-				) \
-			) \
-		) \
-	) \
-)
+	((*(snapshot)->satisfies) ((tuple)->t_data, snapshot, buffer))
 
 /* Result codes for HeapTupleSatisfiesUpdate */
 typedef enum
@@ -176,17 +171,28 @@ extern void SharedSnapshotRemove(volatile SharedSnapshotSlot *slot, char *creato
 extern void addSharedSnaphot(char *creatorDescription, int id);
 extern void lookupSharedSnaphot(char *lookerDescription, char *creatorDescription, int id);
 
-extern bool HeapTupleSatisfiesItself(HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesNow(HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesDirty(HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesToast(HeapTupleHeader tuple, Buffer buffer);
-extern bool HeapTupleSatisfiesSnapshot(HeapTupleHeader tuple,
-						   Snapshot snapshot, Buffer buffer);
+/* These are the "satisfies" test routines for the various snapshot types */
+extern bool HeapTupleSatisfiesMVCC(HeapTupleHeader tuple,
+					   Snapshot snapshot, Buffer buffer);
+extern bool HeapTupleSatisfiesNow(HeapTupleHeader tuple,
+					  Snapshot snapshot, Buffer buffer);
+extern bool HeapTupleSatisfiesSelf(HeapTupleHeader tuple,
+					   Snapshot snapshot, Buffer buffer);
+extern bool HeapTupleSatisfiesAny(HeapTupleHeader tuple,
+					  Snapshot snapshot, Buffer buffer);
+extern bool HeapTupleSatisfiesToast(HeapTupleHeader tuple,
+						Snapshot snapshot, Buffer buffer);
+extern bool HeapTupleSatisfiesDirty(HeapTupleHeader tuple,
+						Snapshot snapshot, Buffer buffer);
+
+/* Special "satisfies" routines with different APIs */
 extern HTSU_Result HeapTupleSatisfiesUpdate(HeapTupleHeader tuple,
 						 CommandId curcid, Buffer buffer);
 extern HTSV_Result HeapTupleSatisfiesVacuum(HeapTupleHeader tuple,
-					    TransactionId OldestXmin, Buffer buffer, 
-					    bool vacuumFull);
+						 TransactionId OldestXmin, Buffer buffer);
+
+extern void HeapTupleSetHintBits(HeapTupleHeader tuple, Buffer buffer,
+					 uint16 infomask, TransactionId xid);
 
 extern Snapshot GetTransactionSnapshot(void);
 extern Snapshot GetLatestSnapshot(void);
@@ -198,6 +204,8 @@ extern void FreeXactSnapshot(void);
 extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable,
  			                    DistributedSnapshot *distributedSnapshot,
  			                    DistributedSnapshotData *distributedSnapshotData);
+ 			                    
+ 			                    
 extern void updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller);
 extern char* DebugGetDistributedSnapshotString(DistributedSnapshot snapshot);
 extern char* DebugGetSnapshotString(const Snapshot snapshot);
