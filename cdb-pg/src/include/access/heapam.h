@@ -112,12 +112,6 @@ extern Datum fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 )
 
 
-typedef enum
-{
-	LockTupleShared,
-	LockTupleExclusive
-} LockTupleMode;
-
 
 /* ----------------
  *		function prototypes for heap access method
