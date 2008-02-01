@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/print.c,v 1.81 2006/08/02 01:59:45 joe Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/print.c,v 1.87 2008/01/01 19:45:50 momjian Exp $
  *
  * HISTORY
  *	  AUTHOR			DATE			MAJOR EVENT
@@ -409,7 +409,7 @@ print_expr(Node *expr, List *rtable)
 
 /*
  * print_pathkeys -
- *	  pathkeys list of list of PathKeyItems
+ *	  pathkeys list of PathKeys
  */
 void
 print_pathkeys(List *pathkeys, List *rtable)
@@ -419,17 +419,26 @@ print_pathkeys(List *pathkeys, List *rtable)
 	printf("(");
 	foreach(i, pathkeys)
 	{
-		List	   *pathkey = (List *) lfirst(i);
+		PathKey    *pathkey = (PathKey *) lfirst(i);
+		EquivalenceClass *eclass;
 		ListCell   *k;
+		bool		first = true;
+
+		eclass = pathkey->pk_eclass;
+		/* chase up, in case pathkey is non-canonical */
+		while (eclass->ec_merged)
+			eclass = eclass->ec_merged;
 
 		printf("(");
-		foreach(k, pathkey)
+		foreach(k, eclass->ec_members)
 		{
-			PathKeyItem *item = (PathKeyItem *) lfirst(k);
+			EquivalenceMember *mem = (EquivalenceMember *) lfirst(k);
 
-			print_expr(item->key, rtable);
-			if (lnext(k))
+			if (first)
+				first = false;
+			else
 				printf(", ");
+			print_expr((Node *) mem->em_expr, rtable);
 		}
 		printf(")");
 		if (lnext(i))
@@ -479,179 +488,4 @@ print_slot(struct TupleTableSlot *slot)
 		debugtup(slot, NULL);
 	
 	fflush(stdout);
-}
-
-char * plannode_type(Plan *p)
-{
-	switch (nodeTag(p))
-	{
-		case T_Plan:
-			return "PLAN";
-		case T_Result:
-			return "RESULT";
-		case T_Append:
-			return "APPEND";
-		case T_BitmapAnd:
-			return "BITMAPAND";
-		case T_BitmapOr:
-			return "BITMAPOR";
-		case T_Scan:
-			return "SCAN";
-		case T_SeqScan:
-			return "SEQSCAN";
-		case T_ExternalScan:
-			return "EXTERNALSCAN";
-		case T_IndexScan:
-			return "INDEXSCAN";
-		case T_BitmapIndexScan:
-			return "BITMAPINDEXSCAN";
-		case T_BitmapHeapScan:
-			return "BITMAPHEAPSCAN";
-		case T_TidScan:
-			return "TIDSCAN";
-		case T_SubqueryScan:
-			return "SUBQUERYSCAN";
-		case T_FunctionScan:
-			return "FUNCTIONSCAN";
-		case T_ValuesScan:
-			return "VALUESSCAN";
-		case T_Join:
-			return "JOIN";
-		case T_NestLoop:
-			return "NESTLOOP";
-		case T_MergeJoin:
-			return "MERGEJOIN";
-		case T_HashJoin:
-			return "HASHJOIN";
-		case T_ShareInputScan:
-			return "SHAREINPUTSCAN";
-		case T_Material:
-			return "MATERIAL";
-		case T_Sort:
-			return "SORT";
-		case T_Agg:
-			return "AGG";
-		case T_Window:
-			return "WINDOW";
-		case T_Unique:
-			return "UNIQUE";
-		case T_SetOp:
-			return "SETOP";
-		case T_Limit:
-			return "LIMIT";
-		case T_Hash:
-			return "HASH";
-		case T_Group:
-			return "GROUP";
-		case T_Motion:
-			return "MOTION";
-		default:
-			return "UNKNOWN";
-	}
-}
-
-/*
- * Recursively prints a simple text description of the plan tree
- */
-void
-print_plan_recursive(struct Plan *p, struct Query *parsetree, int indentLevel, char *label)
-{
-	int			i;
-	char		extraInfo[NAMEDATALEN + 100];
-
-	if (!p)
-		return;
-	for (i = 0; i < indentLevel; i++)
-		printf(" ");
-	printf("%s%s :c=%.2f..%.2f :r=%.0f :w=%d ", label, plannode_type(p),
-		   p->startup_cost, p->total_cost,
-		   p->plan_rows, p->plan_width);
-	if (IsA(p, Scan) ||
-		IsA(p, SeqScan) ||
-		IsA(p, BitmapHeapScan))
-	{
-		RangeTblEntry *rte;
-
-		rte = rt_fetch(((Scan *) p)->scanrelid, parsetree->rtable);
-		StrNCpy(extraInfo, rte->eref->aliasname, NAMEDATALEN);
-	}
-	else if (IsA(p, IndexScan))
-	{
-		RangeTblEntry *rte;
-
-		rte = rt_fetch(((IndexScan *) p)->scan.scanrelid, parsetree->rtable);
-		StrNCpy(extraInfo, rte->eref->aliasname, NAMEDATALEN);
-	}
-	else if (IsA(p, FunctionScan))
-	{
-		RangeTblEntry *rte;
-
-		rte = rt_fetch(((FunctionScan *) p)->scan.scanrelid, parsetree->rtable);
-		StrNCpy(extraInfo, rte->eref->aliasname, NAMEDATALEN);
-	}
-	else if (IsA(p, ValuesScan))
-	{
-		RangeTblEntry *rte;
-
-		rte = rt_fetch(((ValuesScan *) p)->scan.scanrelid, parsetree->rtable);
-		StrNCpy(extraInfo, rte->eref->aliasname, NAMEDATALEN);
-	}
-	else
-		extraInfo[0] = '\0';
-	if (extraInfo[0] != '\0')
-		printf(" ( %s )\n", extraInfo);
-	else
-		printf("\n");
-	print_plan_recursive(p->lefttree, parsetree, indentLevel + 3, "l: ");
-	print_plan_recursive(p->righttree, parsetree, indentLevel + 3, "r: ");
-
-	if (IsA(p, Append))
-	{
-		ListCell   *l;
-		Append	   *appendplan = (Append *) p;
-
-		foreach(l, appendplan->appendplans)
-		{
-			Plan	   *subnode = (Plan *) lfirst(l);
-
-			print_plan_recursive(subnode, parsetree, indentLevel + 3, "a: ");
-		}
-	}
-
-	if (IsA(p, BitmapAnd))
-	{
-		ListCell   *l;
-		BitmapAnd  *bitmapandplan = (BitmapAnd *) p;
-
-		foreach(l, bitmapandplan->bitmapplans)
-		{
-			Plan	   *subnode = (Plan *) lfirst(l);
-
-			print_plan_recursive(subnode, parsetree, indentLevel + 3, "a: ");
-		}
-	}
-
-	if (IsA(p, BitmapOr))
-	{
-		ListCell   *l;
-		BitmapOr   *bitmaporplan = (BitmapOr *) p;
-
-		foreach(l, bitmaporplan->bitmapplans)
-		{
-			Plan	   *subnode = (Plan *) lfirst(l);
-
-			print_plan_recursive(subnode, parsetree, indentLevel + 3, "a: ");
-		}
-	}
-}
-
-/*
- * print_plan
- *
- * prints just the plan node types
- */
-void
-print_plan(struct Plan *p, struct Query *parsetree)
-{
-	print_plan_recursive(p, parsetree, 0, "");
 }

@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/readfuncs.c,v 1.195 2006/08/12 02:52:04 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/readfuncs.c,v 1.210 2008/01/01 19:45:50 momjian Exp $
  *
  * NOTES
  *	  Path and Plan nodes do not need to have any readfuncs support, because we
@@ -272,10 +272,7 @@ _readQuery(void)
 	READ_BOOL_FIELD(canSetTag);
 	READ_NODE_FIELD(utilityStmt);
 	READ_INT_FIELD(resultRelation);
-	READ_NODE_FIELD(into);
-	READ_NODE_FIELD(intoOptions);
-	READ_ENUM_FIELD(intoOnCommit, OnCommitAction);
-	READ_STRING_FIELD(intoTableSpaceName);
+	READ_NODE_FIELD(intoClause);
 	READ_BOOL_FIELD(hasAggs);
 	READ_BOOL_FIELD(hasWindFuncs);
 	READ_BOOL_FIELD(hasSubLinks);
@@ -388,6 +385,7 @@ _readSortClause(void)
 
 	READ_UINT_FIELD(tleSortGroupRef);
 	READ_OID_FIELD(sortop);
+	READ_BOOL_FIELD(nulls_first);
 
 	READ_DONE();
 }
@@ -402,6 +400,11 @@ _readGroupClause(void)
 
 	READ_UINT_FIELD(tleSortGroupRef);
 	READ_OID_FIELD(sortop);
+	READ_BOOL_FIELD(nulls_first);
+
+	READ_DONE();
+}
+
 
 	READ_DONE();
 }
@@ -560,6 +563,20 @@ _readRangeVar(void)
 	READ_DONE();
 }
 
+static IntoClause *
+_readIntoClause(void)
+{
+	READ_LOCALS(IntoClause);
+
+	READ_NODE_FIELD(rel);
+	READ_NODE_FIELD(colNames);
+	READ_NODE_FIELD(options);
+	READ_ENUM_FIELD(onCommit, OnCommitAction);
+	READ_STRING_FIELD(tableSpaceName);
+
+	READ_DONE();
+}
+
 /*
  * _readVar
  */
@@ -588,6 +605,7 @@ _readConst(void)
 	READ_LOCALS(Const);
 
 	READ_OID_FIELD(consttype);
+	READ_INT_FIELD(consttypmod);
 	READ_INT_FIELD(constlen);
 	READ_BOOL_FIELD(constbyval);
 	READ_BOOL_FIELD(constisnull);
@@ -602,473 +620,6 @@ _readConst(void)
 }
 
 /*
- * _readConstraint
- */
-static Constraint *
-_readConstraint(void)
-{
-
-	READ_LOCALS(Constraint);
-
-	READ_STRING_FIELD(name);			/* name, or NULL if unnamed */
-	token = pg_strtok(&length);			/* skip:  :contype */
-	
-
-	token = pg_strtok(&length);
-
-	
-
-	if (strncmp(token, "PRIMARY_KEY", length)==0)
-	{
-		local_node->contype = CONSTR_PRIMARY;
-		READ_NODE_FIELD(keys);
-		READ_NODE_FIELD(options);
-		READ_STRING_FIELD(indexspace);
-	}
-	else if (strncmp(token, "UNIQUE", length)==0)
-	{
-		local_node->contype = CONSTR_UNIQUE;
-		READ_NODE_FIELD(keys);
-		READ_NODE_FIELD(options);
-		READ_STRING_FIELD(indexspace);
-	}
-	else if (strncmp(token, "CHECK", length)==0)
-	{
-		local_node->contype = CONSTR_CHECK;
-		READ_NODE_FIELD(raw_expr);
-		READ_STRING_FIELD(cooked_expr);
-	}
-	else if (strncmp(token, "DEFAULT", length)==0)
-	{
-		local_node->contype = CONSTR_DEFAULT;
-		READ_NODE_FIELD(raw_expr);
-		READ_STRING_FIELD(cooked_expr);
-	}
-	else if (strncmp(token, "NOT_NULL", length)==0)
-	{
-		local_node->contype = CONSTR_NOTNULL;
-	}
-
-	
-	READ_DONE();
-}
-
-static IndexStmt *
-_readIndexStmt(void)
-{
-	READ_LOCALS(IndexStmt);
-
-	READ_STRING_FIELD(idxname);
-	READ_NODE_FIELD(relation);
-	READ_STRING_FIELD(accessMethod);
-	READ_STRING_FIELD(tableSpace);
-	READ_NODE_FIELD(indexParams);
-		READ_NODE_FIELD(options);
-	READ_NODE_FIELD(whereClause);
-	READ_NODE_FIELD(rangetable);
-	READ_BOOL_FIELD(unique);
-	READ_BOOL_FIELD(primary);
-	READ_BOOL_FIELD(isconstraint);
-	READ_BOOL_FIELD(concurrent);
-	READ_NODE_FIELD(idxOids);
-
-	READ_DONE();
-}
-
-static IndexElem *
-_readIndexElem(void)
-{
-	READ_LOCALS(IndexElem);
-
-	READ_STRING_FIELD(name);
-	READ_NODE_FIELD(expr);
-	READ_NODE_FIELD(opclass);
-
-
-	READ_DONE();
-}
-
-static ReindexStmt *
-_readReindexStmt(void)
-{
-	READ_LOCALS(ReindexStmt);
-	
-	READ_ENUM_FIELD(kind,ObjectType);
-	READ_NODE_FIELD(relation);
-	READ_STRING_FIELD(name);
-	READ_BOOL_FIELD(do_system);
-	READ_BOOL_FIELD(do_user);
-	
-	READ_DONE();
-	
-}
-
-static ViewStmt *
-_readViewStmt(void)
-{
-	READ_LOCALS(ViewStmt);
-
-	READ_NODE_FIELD(view);
-	READ_NODE_FIELD(aliases);
-	READ_NODE_FIELD(query);
-	READ_BOOL_FIELD(replace);
-	READ_OID_FIELD(relOid);
-	READ_OID_FIELD(comptypeOid);
-
-	READ_DONE();
-}
-
-static RuleStmt *
-_readRuleStmt(void)
-{
-	READ_LOCALS(RuleStmt);
-
-	READ_NODE_FIELD(relation);
-	READ_STRING_FIELD(rulename);	
-	READ_NODE_FIELD(whereClause);
-	READ_ENUM_FIELD(event,CmdType);
-	READ_BOOL_FIELD(instead);
-	READ_NODE_FIELD(actions);	
-	READ_BOOL_FIELD(replace);	
-	
-	READ_DONE();
-}
-
-static DropStmt *
-_readDropStmt(void)
-{
-	READ_LOCALS(DropStmt);
-
-	READ_NODE_FIELD(objects);
-	READ_ENUM_FIELD(removeType,ObjectType);
-	READ_ENUM_FIELD(behavior,DropBehavior);
-	READ_BOOL_FIELD(missing_ok);
-	local_node->missing_ok=true;
-
-	READ_DONE();
-}
-
-static DropPropertyStmt *
-_readDropPropertyStmt(void)
-{
-	READ_LOCALS(DropPropertyStmt);
-
-	READ_NODE_FIELD(relation);
-	READ_STRING_FIELD(property);
-	READ_ENUM_FIELD(removeType,ObjectType);
-	READ_ENUM_FIELD(behavior,DropBehavior);
-	READ_BOOL_FIELD(missing_ok);
-
-	READ_DONE();
-}
-
-static TruncateStmt *
-_readTruncateStmt(void)
-{
-	READ_LOCALS(TruncateStmt);
-
-	READ_NODE_FIELD(relations);
-	READ_ENUM_FIELD(behavior,DropBehavior);
-
-	READ_DONE();
-}
-
-static AlterTableStmt *
-_readAlterTableStmt(void)
-{
-	int m;
-	READ_LOCALS(AlterTableStmt);
-
-	READ_NODE_FIELD(relation);
-	READ_NODE_FIELD(cmds);
-	READ_ENUM_FIELD(relkind, ObjectType);
-	READ_INT_FIELD(oidInfoCount);
-	local_node->oidInfo = NULL;
-	if (local_node->oidInfoCount > 0)
-	{
-		local_node->oidInfo = palloc0(sizeof(TableOidInfo) * local_node->oidInfoCount);
-		for (m = 0; m < local_node->oidInfoCount; m++)
-		{
-			READ_OID_FIELD(oidInfo[m].relOid);
-			READ_OID_FIELD(oidInfo[m].comptypeOid);
-			READ_OID_FIELD(oidInfo[m].toastOid);
-			READ_OID_FIELD(oidInfo[m].toastIndexOid);
-			READ_OID_FIELD(oidInfo[m].toastComptypeOid);
-		}
-	}
-	
-	READ_DONE();
-}
-
-static AlterTableCmd *
-_readAlterTableCmd(void)
-{
-	READ_LOCALS(AlterTableCmd);
-
-	READ_ENUM_FIELD(subtype, AlterTableType);
-	READ_STRING_FIELD(name);
-	READ_NODE_FIELD(def);
-	READ_NODE_FIELD(transform);
-	READ_ENUM_FIELD(behavior, DropBehavior);
-	
-	READ_DONE();
-}
-
-
-static CreateRoleStmt *
-_readCreateRoleStmt(void)
-{
-	READ_LOCALS(CreateRoleStmt);
-	
-	READ_ENUM_FIELD(stmt_type, RoleStmtType);
-	READ_STRING_FIELD(role);
-	READ_NODE_FIELD(options);
-	READ_OID_FIELD(roleOid);
-
-	READ_DONE();
-}
-
-static DropRoleStmt *
-_readDropRoleStmt(void)
-{
-	READ_LOCALS(DropRoleStmt);
-
-	READ_NODE_FIELD(roles);
-	READ_BOOL_FIELD(missing_ok);
-
-	READ_DONE();
-	
-}
-
-static  AlterRoleStmt *
-_readAlterRoleStmt(void)
-{
-	READ_LOCALS(AlterRoleStmt);
-
-	READ_STRING_FIELD(role);
-	READ_NODE_FIELD(options);
-	READ_INT_FIELD(action);
-	READ_DONE();
-	
-}
-
-static  AlterRoleSetStmt *
-_readAlterRoleSetStmt(void)
-{
-	READ_LOCALS(AlterRoleSetStmt);
-
-	READ_STRING_FIELD(role);
-	READ_STRING_FIELD(variable);
-	READ_NODE_FIELD(value);
-	
-	READ_DONE();
-	
-}
-
-static AlterObjectSchemaStmt *
-_readAlterObjectSchemaStmt(void)
-{
-	READ_LOCALS(AlterObjectSchemaStmt);
-	
-	READ_NODE_FIELD(relation);
-	READ_NODE_FIELD(object);
-	READ_NODE_FIELD(objarg);
-	READ_STRING_FIELD(addname);
-	READ_STRING_FIELD(newschema);
-	READ_ENUM_FIELD(objectType,ObjectType);
-	
-	READ_DONE();
-}
-
-
-
-static AlterOwnerStmt *
-_readAlterOwnerStmt(void)
-{
-	READ_LOCALS(AlterOwnerStmt);
-
-	READ_ENUM_FIELD(objectType,ObjectType);
-	READ_NODE_FIELD(relation);
-	READ_NODE_FIELD(object);
-	READ_NODE_FIELD(objarg);
-	READ_STRING_FIELD(addname);
-	READ_STRING_FIELD(newowner);
-
-	READ_DONE();
-}
-
-
-static RenameStmt *
-_readRenameStmt(void)
-{
-	READ_LOCALS(RenameStmt);
-
-	READ_NODE_FIELD(relation);
-	READ_NODE_FIELD(object);
-	READ_NODE_FIELD(objarg);
-	READ_STRING_FIELD(subname);
-	READ_STRING_FIELD(newname);
-	READ_ENUM_FIELD(renameType,ObjectType);
-
-	READ_DONE();
-}
-
-
-static FuncCall *
-_readFuncCall(void)
-{
-	READ_LOCALS(FuncCall);
-
-	READ_NODE_FIELD(funcname);
-	READ_NODE_FIELD(args);
-	READ_BOOL_FIELD(agg_star);
-	READ_BOOL_FIELD(agg_distinct);
-	READ_NODE_FIELD(over);
-	READ_INT_FIELD(location);
-	READ_DONE();
-}
-
-static DefElem *
-_readDefElem(void)
-{
-	READ_LOCALS(DefElem);
-
-	READ_STRING_FIELD(defname);
-	READ_NODE_FIELD(arg);
-	READ_DONE();
-}
-
-static A_Const *
-_readAConst(void)
-{
-	READ_LOCALS(A_Const);
-
-	token = pg_strtok(&length);	
-	token = debackslash(token,length);
-	local_node->val.type = T_String;
-	
-	if (token[0] == '"')
-	{
-		local_node->val.val.str = palloc(length - 1);
-		strncpy(local_node->val.val.str , token+1, strlen(token)-2);
-		local_node->val.val.str[strlen(token)-2] = '\0';
-	}
-	else if (length > 2 && (token[0] == 'b'|| token[0] == 'B') && (token[1] == '\'' || token[1] == '"'))
-	{
-		local_node->val.type = T_BitString;
-		local_node->val.val.str = palloc(length+1);
-		strncpy(local_node->val.val.str , token, length);
-		local_node->val.val.str[length] = '\0';
-	}
-	else
-	{
-		bool isInt = true;
-		bool isFloat = true;
-		int i = 0;
-		if (token[i] == ' ')
-			i++;
-		if (token[i] == '-' || token[i] == '+')
-			i++;
-		for (; i < length; i++)
-	 	   if (token[i] < '0' || token[i] > '9')
-	 	   {
-	 	   	 isInt = false;
-	 	   	 if (token[i] != '.' && token[i] != 'e' && token[i] != 'E' && token[i] != '+' && token[i] != '-')
-	 	   	 	isFloat = false;
-	 	   }
-	 	if (isInt)
-		{
-			local_node->val.type = T_Integer;
-			local_node->val.val.ival = atol(token);
-		}
-		else if (isFloat)
-		{
-			local_node->val.type = T_Float;
-			local_node->val.val.str = palloc(length + 1);
-			strcpy(local_node->val.val.str , token);
-		}
-		else
-		{
-			elog(ERROR,"Deserialization problem:  A_Const not string, bitstring, float, or int");
-			local_node->val.val.str = palloc(length + 1);
-			strcpy(local_node->val.val.str , token);
-		}
-	}
-	
-	local_node->typname = NULL;
-	READ_NODE_FIELD(typname);
-	READ_DONE();
-}
-
-
-static A_Expr *
-_readAExpr(void)
-{
-	READ_LOCALS(A_Expr);
-	
-	token = pg_strtok(&length);	
-	
-	if (strncmp(token,"OPER",length)==0)
-	{
-		local_node->kind = AEXPR_OP;
-		READ_NODE_FIELD(name);
-	}
-	else if (strncmp(token,"AND",length)==0)
-	{
-		local_node->kind = AEXPR_AND;
-	}
-	else if (strncmp(token,"OR",length)==0)
-	{
-		local_node->kind = AEXPR_OR;
-	}
-	else if (strncmp(token,"NOT",length)==0)
-	{
-		local_node->kind = AEXPR_NOT;
-	}
-	else if (strncmp(token,"ANY",length)==0)
-	{
-		local_node->kind = AEXPR_OP_ANY;
-		READ_NODE_FIELD(name);
-	}
-	else if (strncmp(token,"ALL",length)==0)
-	{
-		local_node->kind = AEXPR_OP_ALL;
-		READ_NODE_FIELD(name);
-	}
-	else if (strncmp(token,"DISTINCT",length)==0)
-	{
-		local_node->kind = AEXPR_DISTINCT;
-		READ_NODE_FIELD(name);
-	}
-	else if (strncmp(token,"NULLIF",length)==0)
-	{
-		local_node->kind = AEXPR_NULLIF;
-		READ_NODE_FIELD(name);
-	}
-	else if (strncmp(token,"OF",length)==0)
-	{
-		local_node->kind = AEXPR_OF;
-		READ_NODE_FIELD(name);
-	}
-	else if (strncmp(token,"IN",length)==0)
-	{
-		local_node->kind = AEXPR_IN;
-		READ_NODE_FIELD(name);
-	}
-	else
-	{
-		elog(ERROR,"Unable to understand A_Expr node %.30s",token);
-	}
-	
-
-	READ_NODE_FIELD(lexpr);
-	READ_NODE_FIELD(rexpr);
-	READ_INT_FIELD(location);
-	
-	READ_DONE();
-}
-
-/*
  * _readParam
  */
 static Param *
@@ -1079,6 +630,7 @@ _readParam(void)
 	READ_ENUM_FIELD(paramkind, ParamKind);
 	READ_INT_FIELD(paramid);
 	READ_OID_FIELD(paramtype);
+	READ_INT_FIELD(paramtypmod);
 
 	READ_DONE();
 }
@@ -1140,9 +692,9 @@ _readArrayRef(void)
 {
 	READ_LOCALS(ArrayRef);
 
-	READ_OID_FIELD(refrestype);
 	READ_OID_FIELD(refarraytype);
 	READ_OID_FIELD(refelemtype);
+	READ_INT_FIELD(reftypmod);
 	READ_NODE_FIELD(refupperindexpr);
 	READ_NODE_FIELD(reflowerindexpr);
 	READ_NODE_FIELD(refexpr);
@@ -1367,6 +919,39 @@ _readRelabelType(void)
 }
 
 /*
+ * _readCoerceViaIO
+ */
+static CoerceViaIO *
+_readCoerceViaIO(void)
+{
+	READ_LOCALS(CoerceViaIO);
+
+	READ_NODE_FIELD(arg);
+	READ_OID_FIELD(resulttype);
+	READ_ENUM_FIELD(coerceformat, CoercionForm);
+
+	READ_DONE();
+}
+
+/*
+ * _readArrayCoerceExpr
+ */
+static ArrayCoerceExpr *
+_readArrayCoerceExpr(void)
+{
+	READ_LOCALS(ArrayCoerceExpr);
+
+	READ_NODE_FIELD(arg);
+	READ_OID_FIELD(elemfuncid);
+	READ_OID_FIELD(resulttype);
+	READ_INT_FIELD(resulttypmod);
+	READ_BOOL_FIELD(isExplicit);
+	READ_ENUM_FIELD(coerceformat, CoercionForm);
+
+	READ_DONE();
+}
+
+/*
  * _readConvertRowtypeExpr
  */
 static ConvertRowtypeExpr *
@@ -1466,7 +1051,7 @@ _readRowCompareExpr(void)
 
 	READ_ENUM_FIELD(rctype, RowCompareType);
 	READ_NODE_FIELD(opnos);
-	READ_NODE_FIELD(opclasses);
+	READ_NODE_FIELD(opfamilies);
 	READ_NODE_FIELD(largs);
 	READ_NODE_FIELD(rargs);
 
@@ -1498,6 +1083,26 @@ _readMinMaxExpr(void)
 	READ_OID_FIELD(minmaxtype);
 	READ_ENUM_FIELD(op, MinMaxOp);
 	READ_NODE_FIELD(args);
+
+	READ_DONE();
+}
+
+/*
+ * _readXmlExpr
+ */
+static XmlExpr *
+_readXmlExpr(void)
+{
+	READ_LOCALS(XmlExpr);
+
+	READ_ENUM_FIELD(op, XmlExprOp);
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(named_args);
+	READ_NODE_FIELD(arg_names);
+	READ_NODE_FIELD(args);
+	READ_ENUM_FIELD(xmloption, XmlOptionType);
+	READ_OID_FIELD(type);
+	READ_INT_FIELD(typmod);
 
 	READ_DONE();
 }
@@ -1603,6 +1208,21 @@ _readSetToDefault(void)
 }
 
 /*
+ * _readCurrentOfExpr
+ */
+static CurrentOfExpr *
+_readCurrentOfExpr(void)
+{
+	READ_LOCALS(CurrentOfExpr);
+
+	READ_UINT_FIELD(cvarno);
+	READ_STRING_FIELD(cursor_name);
+	READ_INT_FIELD(cursor_param);
+
+	READ_DONE();
+}
+
+/*
  * _readTargetEntry
  */
 static TargetEntry *
@@ -1669,10 +1289,59 @@ _readFromExpr(void)
 	READ_DONE();
 }
 
-
 /*
  *	Stuff from parsenodes.h.
  */
+
+/*
+ * _readRangeTblEntry
+ */
+static RangeTblEntry *
+_readRangeTblEntry(void)
+{
+	READ_LOCALS(RangeTblEntry);
+
+	/* put alias + eref first to make dump more legible */
+	READ_NODE_FIELD(alias);
+	READ_NODE_FIELD(eref);
+	READ_ENUM_FIELD(rtekind, RTEKind);
+
+	switch (local_node->rtekind)
+	{
+		case RTE_RELATION:
+		case RTE_SPECIAL:
+			READ_OID_FIELD(relid);
+			break;
+		case RTE_SUBQUERY:
+			READ_NODE_FIELD(subquery);
+			break;
+		case RTE_FUNCTION:
+			READ_NODE_FIELD(funcexpr);
+			READ_NODE_FIELD(funccoltypes);
+			READ_NODE_FIELD(funccoltypmods);
+			break;
+		case RTE_VALUES:
+			READ_NODE_FIELD(values_lists);
+			break;
+		case RTE_JOIN:
+			READ_ENUM_FIELD(jointype, JoinType);
+			READ_NODE_FIELD(joinaliasvars);
+			break;
+        case RTE_VOID:                                                  /*CDB*/
+            break;
+		default:
+			elog(ERROR, "unrecognized RTE kind: %d",
+				 (int) local_node->rtekind);
+			break;
+	}
+
+	READ_BOOL_FIELD(inh);
+	READ_BOOL_FIELD(inFromCl);
+	READ_UINT_FIELD(requiredPerms);
+	READ_OID_FIELD(checkAsUser);
+
+	READ_DONE();
+}
 
 static ColumnDef *
 _readColumnDef(void)
@@ -1730,56 +1399,6 @@ _readTypeCast(void)
 	READ_DONE();
 }
 
-
-/*
- * _readRangeTblEntry
- */
-static RangeTblEntry *
-_readRangeTblEntry(void)
-{
-	READ_LOCALS(RangeTblEntry);
-
-	/* put alias + eref first to make dump more legible */
-	READ_NODE_FIELD(alias);
-	READ_NODE_FIELD(eref);
-	READ_ENUM_FIELD(rtekind, RTEKind);
-
-	switch (local_node->rtekind)
-	{
-		case RTE_RELATION:
-		case RTE_SPECIAL:
-			READ_OID_FIELD(relid);
-			break;
-		case RTE_SUBQUERY:
-			READ_NODE_FIELD(subquery);
-			break;
-		case RTE_FUNCTION:
-			READ_NODE_FIELD(funcexpr);
-			READ_NODE_FIELD(funccoltypes);
-			READ_NODE_FIELD(funccoltypmods);
-			break;
-		case RTE_VALUES:
-			READ_NODE_FIELD(values_lists);
-			break;
-		case RTE_JOIN:
-			READ_ENUM_FIELD(jointype, JoinType);
-			READ_NODE_FIELD(joinaliasvars);
-			break;
-        case RTE_VOID:                                                  /*CDB*/
-            break;
-		default:
-			elog(ERROR, "unrecognized RTE kind: %d",
-				 (int) local_node->rtekind);
-			break;
-	}
-
-	READ_BOOL_FIELD(inh);
-	READ_BOOL_FIELD(inFromCl);
-	READ_UINT_FIELD(requiredPerms);
-	READ_OID_FIELD(checkAsUser);
-
-	READ_DONE();
-}
 
 /*
  * Greenplum Database additions for serialization support
@@ -2997,6 +2616,474 @@ _readCreateTrigStmt(void)
 	READ_DONE();
 
 }
+
+/*
+ * _readConstraint
+ */
+static Constraint *
+_readConstraint(void)
+{
+
+	READ_LOCALS(Constraint);
+
+	READ_STRING_FIELD(name);			/* name, or NULL if unnamed */
+	token = pg_strtok(&length);			/* skip:  :contype */
+	
+
+	token = pg_strtok(&length);
+
+	
+
+	if (strncmp(token, "PRIMARY_KEY", length)==0)
+	{
+		local_node->contype = CONSTR_PRIMARY;
+		READ_NODE_FIELD(keys);
+		READ_NODE_FIELD(options);
+		READ_STRING_FIELD(indexspace);
+	}
+	else if (strncmp(token, "UNIQUE", length)==0)
+	{
+		local_node->contype = CONSTR_UNIQUE;
+		READ_NODE_FIELD(keys);
+		READ_NODE_FIELD(options);
+		READ_STRING_FIELD(indexspace);
+	}
+	else if (strncmp(token, "CHECK", length)==0)
+	{
+		local_node->contype = CONSTR_CHECK;
+		READ_NODE_FIELD(raw_expr);
+		READ_STRING_FIELD(cooked_expr);
+	}
+	else if (strncmp(token, "DEFAULT", length)==0)
+	{
+		local_node->contype = CONSTR_DEFAULT;
+		READ_NODE_FIELD(raw_expr);
+		READ_STRING_FIELD(cooked_expr);
+	}
+	else if (strncmp(token, "NOT_NULL", length)==0)
+	{
+		local_node->contype = CONSTR_NOTNULL;
+	}
+
+	
+	READ_DONE();
+}
+
+static IndexStmt *
+_readIndexStmt(void)
+{
+	READ_LOCALS(IndexStmt);
+
+	READ_STRING_FIELD(idxname);
+	READ_NODE_FIELD(relation);
+	READ_STRING_FIELD(accessMethod);
+	READ_STRING_FIELD(tableSpace);
+	READ_NODE_FIELD(indexParams);
+		READ_NODE_FIELD(options);
+	READ_NODE_FIELD(whereClause);
+	READ_NODE_FIELD(rangetable);
+	READ_BOOL_FIELD(unique);
+	READ_BOOL_FIELD(primary);
+	READ_BOOL_FIELD(isconstraint);
+	READ_BOOL_FIELD(concurrent);
+	READ_NODE_FIELD(idxOids);
+
+	READ_DONE();
+}
+
+static IndexElem *
+_readIndexElem(void)
+{
+	READ_LOCALS(IndexElem);
+
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(expr);
+	READ_NODE_FIELD(opclass);
+
+
+	READ_DONE();
+}
+
+static ReindexStmt *
+_readReindexStmt(void)
+{
+	READ_LOCALS(ReindexStmt);
+	
+	READ_ENUM_FIELD(kind,ObjectType);
+	READ_NODE_FIELD(relation);
+	READ_STRING_FIELD(name);
+	READ_BOOL_FIELD(do_system);
+	READ_BOOL_FIELD(do_user);
+	
+	READ_DONE();
+	
+}
+
+static ViewStmt *
+_readViewStmt(void)
+{
+	READ_LOCALS(ViewStmt);
+
+	READ_NODE_FIELD(view);
+	READ_NODE_FIELD(aliases);
+	READ_NODE_FIELD(query);
+	READ_BOOL_FIELD(replace);
+	READ_OID_FIELD(relOid);
+	READ_OID_FIELD(comptypeOid);
+
+	READ_DONE();
+}
+
+static RuleStmt *
+_readRuleStmt(void)
+{
+	READ_LOCALS(RuleStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_STRING_FIELD(rulename);	
+	READ_NODE_FIELD(whereClause);
+	READ_ENUM_FIELD(event,CmdType);
+	READ_BOOL_FIELD(instead);
+	READ_NODE_FIELD(actions);	
+	READ_BOOL_FIELD(replace);	
+	
+	READ_DONE();
+}
+
+static DropStmt *
+_readDropStmt(void)
+{
+	READ_LOCALS(DropStmt);
+
+	READ_NODE_FIELD(objects);
+	READ_ENUM_FIELD(removeType,ObjectType);
+	READ_ENUM_FIELD(behavior,DropBehavior);
+	READ_BOOL_FIELD(missing_ok);
+	local_node->missing_ok=true;
+
+	READ_DONE();
+}
+
+static DropPropertyStmt *
+_readDropPropertyStmt(void)
+{
+	READ_LOCALS(DropPropertyStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_STRING_FIELD(property);
+	READ_ENUM_FIELD(removeType,ObjectType);
+	READ_ENUM_FIELD(behavior,DropBehavior);
+	READ_BOOL_FIELD(missing_ok);
+
+	READ_DONE();
+}
+
+static TruncateStmt *
+_readTruncateStmt(void)
+{
+	READ_LOCALS(TruncateStmt);
+
+	READ_NODE_FIELD(relations);
+	READ_ENUM_FIELD(behavior,DropBehavior);
+
+	READ_DONE();
+}
+
+static AlterTableStmt *
+_readAlterTableStmt(void)
+{
+	int m;
+	READ_LOCALS(AlterTableStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(cmds);
+	READ_ENUM_FIELD(relkind, ObjectType);
+	READ_INT_FIELD(oidInfoCount);
+	local_node->oidInfo = NULL;
+	if (local_node->oidInfoCount > 0)
+	{
+		local_node->oidInfo = palloc0(sizeof(TableOidInfo) * local_node->oidInfoCount);
+		for (m = 0; m < local_node->oidInfoCount; m++)
+		{
+			READ_OID_FIELD(oidInfo[m].relOid);
+			READ_OID_FIELD(oidInfo[m].comptypeOid);
+			READ_OID_FIELD(oidInfo[m].toastOid);
+			READ_OID_FIELD(oidInfo[m].toastIndexOid);
+			READ_OID_FIELD(oidInfo[m].toastComptypeOid);
+		}
+	}
+	
+	READ_DONE();
+}
+
+static AlterTableCmd *
+_readAlterTableCmd(void)
+{
+	READ_LOCALS(AlterTableCmd);
+
+	READ_ENUM_FIELD(subtype, AlterTableType);
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(def);
+	READ_NODE_FIELD(transform);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+	
+	READ_DONE();
+}
+
+
+static CreateRoleStmt *
+_readCreateRoleStmt(void)
+{
+	READ_LOCALS(CreateRoleStmt);
+	
+	READ_ENUM_FIELD(stmt_type, RoleStmtType);
+	READ_STRING_FIELD(role);
+	READ_NODE_FIELD(options);
+	READ_OID_FIELD(roleOid);
+
+	READ_DONE();
+}
+
+static DropRoleStmt *
+_readDropRoleStmt(void)
+{
+	READ_LOCALS(DropRoleStmt);
+
+	READ_NODE_FIELD(roles);
+	READ_BOOL_FIELD(missing_ok);
+
+	READ_DONE();
+	
+}
+
+static  AlterRoleStmt *
+_readAlterRoleStmt(void)
+{
+	READ_LOCALS(AlterRoleStmt);
+
+	READ_STRING_FIELD(role);
+	READ_NODE_FIELD(options);
+	READ_INT_FIELD(action);
+	READ_DONE();
+	
+}
+
+static  AlterRoleSetStmt *
+_readAlterRoleSetStmt(void)
+{
+	READ_LOCALS(AlterRoleSetStmt);
+
+	READ_STRING_FIELD(role);
+	READ_STRING_FIELD(variable);
+	READ_NODE_FIELD(value);
+	
+	READ_DONE();
+	
+}
+
+static AlterObjectSchemaStmt *
+_readAlterObjectSchemaStmt(void)
+{
+	READ_LOCALS(AlterObjectSchemaStmt);
+	
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(object);
+	READ_NODE_FIELD(objarg);
+	READ_STRING_FIELD(addname);
+	READ_STRING_FIELD(newschema);
+	READ_ENUM_FIELD(objectType,ObjectType);
+	
+	READ_DONE();
+}
+
+
+
+static AlterOwnerStmt *
+_readAlterOwnerStmt(void)
+{
+	READ_LOCALS(AlterOwnerStmt);
+
+	READ_ENUM_FIELD(objectType,ObjectType);
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(object);
+	READ_NODE_FIELD(objarg);
+	READ_STRING_FIELD(addname);
+	READ_STRING_FIELD(newowner);
+
+	READ_DONE();
+}
+
+
+static RenameStmt *
+_readRenameStmt(void)
+{
+	READ_LOCALS(RenameStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(object);
+	READ_NODE_FIELD(objarg);
+	READ_STRING_FIELD(subname);
+	READ_STRING_FIELD(newname);
+	READ_ENUM_FIELD(renameType,ObjectType);
+
+	READ_DONE();
+}
+
+
+static FuncCall *
+_readFuncCall(void)
+{
+	READ_LOCALS(FuncCall);
+
+	READ_NODE_FIELD(funcname);
+	READ_NODE_FIELD(args);
+	READ_BOOL_FIELD(agg_star);
+	READ_BOOL_FIELD(agg_distinct);
+	READ_NODE_FIELD(over);
+	READ_INT_FIELD(location);
+	READ_DONE();
+}
+
+static DefElem *
+_readDefElem(void)
+{
+	READ_LOCALS(DefElem);
+
+	READ_STRING_FIELD(defname);
+	READ_NODE_FIELD(arg);
+	READ_DONE();
+}
+
+static A_Const *
+_readAConst(void)
+{
+	READ_LOCALS(A_Const);
+
+	token = pg_strtok(&length);	
+	token = debackslash(token,length);
+	local_node->val.type = T_String;
+	
+	if (token[0] == '"')
+	{
+		local_node->val.val.str = palloc(length - 1);
+		strncpy(local_node->val.val.str , token+1, strlen(token)-2);
+		local_node->val.val.str[strlen(token)-2] = '\0';
+	}
+	else if (length > 2 && (token[0] == 'b'|| token[0] == 'B') && (token[1] == '\'' || token[1] == '"'))
+	{
+		local_node->val.type = T_BitString;
+		local_node->val.val.str = palloc(length+1);
+		strncpy(local_node->val.val.str , token, length);
+		local_node->val.val.str[length] = '\0';
+	}
+	else
+	{
+		bool isInt = true;
+		bool isFloat = true;
+		int i = 0;
+		if (token[i] == ' ')
+			i++;
+		if (token[i] == '-' || token[i] == '+')
+			i++;
+		for (; i < length; i++)
+	 	   if (token[i] < '0' || token[i] > '9')
+	 	   {
+	 	   	 isInt = false;
+	 	   	 if (token[i] != '.' && token[i] != 'e' && token[i] != 'E' && token[i] != '+' && token[i] != '-')
+	 	   	 	isFloat = false;
+	 	   }
+	 	if (isInt)
+		{
+			local_node->val.type = T_Integer;
+			local_node->val.val.ival = atol(token);
+		}
+		else if (isFloat)
+		{
+			local_node->val.type = T_Float;
+			local_node->val.val.str = palloc(length + 1);
+			strcpy(local_node->val.val.str , token);
+		}
+		else
+		{
+			elog(ERROR,"Deserialization problem:  A_Const not string, bitstring, float, or int");
+			local_node->val.val.str = palloc(length + 1);
+			strcpy(local_node->val.val.str , token);
+		}
+	}
+	
+	local_node->typname = NULL;
+	READ_NODE_FIELD(typname);
+	READ_DONE();
+}
+
+
+static A_Expr *
+_readAExpr(void)
+{
+	READ_LOCALS(A_Expr);
+	
+	token = pg_strtok(&length);	
+	
+	if (strncmp(token,"OPER",length)==0)
+	{
+		local_node->kind = AEXPR_OP;
+		READ_NODE_FIELD(name);
+	}
+	else if (strncmp(token,"AND",length)==0)
+	{
+		local_node->kind = AEXPR_AND;
+	}
+	else if (strncmp(token,"OR",length)==0)
+	{
+		local_node->kind = AEXPR_OR;
+	}
+	else if (strncmp(token,"NOT",length)==0)
+	{
+		local_node->kind = AEXPR_NOT;
+	}
+	else if (strncmp(token,"ANY",length)==0)
+	{
+		local_node->kind = AEXPR_OP_ANY;
+		READ_NODE_FIELD(name);
+	}
+	else if (strncmp(token,"ALL",length)==0)
+	{
+		local_node->kind = AEXPR_OP_ALL;
+		READ_NODE_FIELD(name);
+	}
+	else if (strncmp(token,"DISTINCT",length)==0)
+	{
+		local_node->kind = AEXPR_DISTINCT;
+		READ_NODE_FIELD(name);
+	}
+	else if (strncmp(token,"NULLIF",length)==0)
+	{
+		local_node->kind = AEXPR_NULLIF;
+		READ_NODE_FIELD(name);
+	}
+	else if (strncmp(token,"OF",length)==0)
+	{
+		local_node->kind = AEXPR_OF;
+		READ_NODE_FIELD(name);
+	}
+	else if (strncmp(token,"IN",length)==0)
+	{
+		local_node->kind = AEXPR_IN;
+		READ_NODE_FIELD(name);
+	}
+	else
+	{
+		elog(ERROR,"Unable to understand A_Expr node %.30s",token);
+	}
+	
+
+	READ_NODE_FIELD(lexpr);
+	READ_NODE_FIELD(rexpr);
+	READ_INT_FIELD(location);
+	
+	READ_DONE();
+}
+
 /*
  * Greenplum Database developers added code to improve performance over the
  * linear searching that existed in the postgres version of

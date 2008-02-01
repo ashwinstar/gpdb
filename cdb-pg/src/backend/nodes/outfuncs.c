@@ -3519,6 +3519,7 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_PathKey:
 				_outPathKey(str, obj);
+				break;
 			case T_CdbRelDedupInfo:
 				_outCdbRelDedupInfo(str, obj);
 				break;
