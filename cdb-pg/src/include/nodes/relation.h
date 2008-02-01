@@ -149,10 +149,6 @@ typedef struct PlannerInfo
 
 	List	   *canon_pathkeys; /* list of "canonical" PathKeys */
 
-	List	   *left_join_clauses;		/* list of RestrictInfos for
-										 * mergejoinable outer join clauses
-										 * w/nonnullable var on left */
-
     /* Jointree result is a subset of the cross product of these relids... */
     Relids      currlevel_relids;   /* CDB: all relids of current query level,
                                      * omitting any pulled-up subquery relids */
@@ -197,8 +193,6 @@ typedef struct PlannerInfo
 	bool		hasPseudoConstantQuals; /* true if any RestrictInfo has
 										 * pseudoconstant = true */
 
-	/* At the end to avoid breaking existing 8.2 add-ons */
-	List	   *initial_rels;	/* RelOptInfos we are now trying to join */
 } PlannerInfo;
 
 
@@ -636,17 +630,6 @@ typedef struct PathKey
 } PathKey;
 
 
-
-
-
-
-
-	/*
-	 * key typically points to a Var node, ie a relation attribute, but it can
-	 * also point to an arbitrary expression representing the value indexed by
-	 * an index expression.
-	 */
-} PathKeyItem;
 
 /*
  * CdbPathKeyItemIsConstant
