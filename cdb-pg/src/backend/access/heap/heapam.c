@@ -1536,7 +1536,7 @@ heap_hot_search_buffer(ItemPointer tid, Buffer buffer, Snapshot snapshot,
 		 */
 		if (all_dead && *all_dead &&
 			HeapTupleSatisfiesVacuum(heapTuple.t_data, RecentGlobalXmin,
-									 buffer, true) != HEAPTUPLE_DEAD)
+									 buffer) != HEAPTUPLE_DEAD)
 			*all_dead = false;
 
 		/*
