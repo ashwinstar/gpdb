@@ -51,7 +51,6 @@ typedef struct IndexInfo
 	List	   *ii_Predicate;	/* list of Expr */
 	List	   *ii_PredicateState;		/* list of ExprState */
 	bool		ii_Unique;
-	bool		ii_Concurrent;
 	bool		ii_ReadyForInserts;
 	bool		ii_Concurrent;
 	bool		ii_BrokenHotChain;
