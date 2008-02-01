@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/parsenodes.h,v 1.334 2006/11/05 22:42:10 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/parsenodes.h,v 1.358 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,13 +24,28 @@
 typedef enum QuerySource
 {
 	QSRC_ORIGINAL,				/* original parsetree (explicit query) */
-	QSRC_PARSER,				/* added by parse analysis */
+	QSRC_PARSER,				/* added by parse analysis (now unused) */
 	QSRC_INSTEAD_RULE,			/* added by unconditional INSTEAD rule */
 	QSRC_QUAL_INSTEAD_RULE,		/* added by conditional INSTEAD rule */
 	QSRC_NON_INSTEAD_RULE,		/* added by non-INSTEAD rule */
 	QSRC_PLANNER				/* added in planner by splicing parse tree */
 } QuerySource;
 
+/* Sort ordering options for ORDER BY and CREATE INDEX */
+typedef enum SortByDir
+{
+	SORTBY_DEFAULT,
+	SORTBY_ASC,
+	SORTBY_DESC,
+	SORTBY_USING				/* not allowed in CREATE INDEX ... */
+} SortByDir;
+
+typedef enum SortByNulls
+{
+	SORTBY_NULLS_DEFAULT,
+	SORTBY_NULLS_FIRST,
+	SORTBY_NULLS_LAST
+} SortByNulls;
 
 typedef struct TableOidInfo
 {
@@ -41,14 +56,14 @@ typedef struct TableOidInfo
 	Oid			toastComptypeOid;
 } TableOidInfo;
 
-/* What to do at commit time for temporary relations */
-typedef enum OnCommitAction
-{
-	ONCOMMIT_NOOP,				/* No ON COMMIT clause (do nothing) */
-	ONCOMMIT_PRESERVE_ROWS,		/* ON COMMIT PRESERVE ROWS (do nothing) */
-	ONCOMMIT_DELETE_ROWS,		/* ON COMMIT DELETE ROWS */
-	ONCOMMIT_DROP				/* ON COMMIT DROP */
-} OnCommitAction;
+
+
+
+
+
+
+
+
 
 
 /*
@@ -84,11 +99,16 @@ typedef uint32 AclMode;			/* a bitmask of privilege bits */
 
 /*
  * Query -
- *	  all statements are turned into a Query tree (via transformStmt)
- *	  for further processing by the optimizer
+ *	  Parse analysis turns all statements into a Query tree (via transformStmt)
+ *	  for further processing by the rewriter and planner.
  *
- *	  utility statements (i.e. non-optimizable statements) have the
+ *	  Utility statements (i.e. non-optimizable statements) have the
  *	  utilityStmt field set, and the Query itself is mostly dummy.
+ *	  DECLARE CURSOR is a special case: it is represented like a SELECT,
+ *	  but the original DeclareCursorStmt is stored in utilityStmt.
+ *
+ *	  Planning converts a Query tree into a Plan tree headed by a PlannedStmt
+ *	  node --- the Query structure is not used by the executor.
  */
 typedef struct Query
 {
@@ -100,16 +120,13 @@ typedef struct Query
 
 	bool		canSetTag;		/* do I set the command result tag? */
 
-	Node	   *utilityStmt;	/* non-null if this is a non-optimizable
-								 * statement */
+	Node	   *utilityStmt;	/* non-null if this is DECLARE CURSOR or a
+								 * non-optimizable statement */
 
 	int			resultRelation; /* rtable index of target relation for
 								 * INSERT/UPDATE/DELETE; 0 for SELECT */
 
-	RangeVar   *into;			/* target relation for SELECT INTO */
-	List	   *intoOptions;	/* options from WITH clause */
-	OnCommitAction intoOnCommit;	/* what do we do at COMMIT? */
-	char	   *intoTableSpaceName;		/* table space to use, or NULL */
+	IntoClause *intoClause;		/* target for SELECT INTO / CREATE TABLE AS */
 
 	bool		hasAggs;		/* has aggregates in tlist or havingQual */
 	bool		hasWindFuncs;	/* has window function(s) in target list */
@@ -214,7 +231,8 @@ typedef struct TypeName
 	bool		timezone;		/* timezone specified? */
 	bool		setof;			/* is a set? */
 	bool		pct_type;		/* %TYPE specified? */
-	int32		typmod;			/* type modifier */
+	List	   *typmods;		/* type modifier expression(s) */
+	int32		typemod;		/* prespecified type modifier */
 	List	   *arrayBounds;	/* array bounds */
 	int			location;		/* token location, or -1 if unknown */
 } TypeName;
@@ -380,14 +398,11 @@ typedef struct ResTarget
 /*
  * SortBy - for ORDER BY clause
  */
-#define SORTBY_ASC		1
-#define SORTBY_DESC		2
-#define SORTBY_USING	3
-
 typedef struct SortBy
 {
 	NodeTag		type;
-	int			sortby_kind;	/* see codes above */
+	SortByDir	sortby_dir;		/* ASC/DESC/USING */
+	SortByNulls sortby_nulls;	/* NULLS FIRST/LAST */
 	List	   *useOp;			/* name of op to use, if SORTBY_USING */
 	Node	   *node;			/* expression to sort on */
 } SortBy;
@@ -475,6 +490,8 @@ typedef struct IndexElem
 	char	   *name;			/* name of attribute to index, or NULL */
 	Node	   *expr;			/* expression to index, or NULL */
 	List	   *opclass;		/* name of desired opclass; NIL = default */
+	SortByDir	ordering;		/* ASC/DESC/default */
+	SortByNulls nulls_ordering; /* FIRST/LAST/default */
 } IndexElem;
 
 /*
@@ -501,6 +518,17 @@ typedef struct LockingClause
 	bool		forUpdate;		/* true = FOR UPDATE, false = FOR SHARE */
 	bool		noWait;			/* NOWAIT option */
 } LockingClause;
+
+/*
+ * XMLSERIALIZE
+ */
+typedef struct XmlSerialize
+{
+	NodeTag		type;
+	XmlOptionType xmloption;
+	Node	   *expr;
+	TypeName   *typename;
+} XmlSerialize;
 
 
 /****************************************************************************
@@ -653,7 +681,8 @@ typedef struct RangeTblEntry
  *
  * tleSortGroupRef must match ressortgroupref of exactly one entry of the
  * associated targetlist; that is the expression to be sorted (or grouped) by.
- * sortop is the OID of the ordering operator.
+ * sortop is the OID of the ordering operator (a "<" or ">" operator).
+ * nulls_first does about what you'd expect.
  *
  * SortClauses are also used to identify targets that we will do a "Unique"
  * filter step on (for SELECT DISTINCT and SELECT DISTINCT ON).  The
@@ -666,16 +695,21 @@ typedef struct SortClause
 {
 	NodeTag		type;
 	Index		tleSortGroupRef;	/* reference into targetlist */
-	Oid			sortop;			/* the sort operator to use */
+	Oid			sortop;			/* the ordering operator ('<' op) */
+	bool		nulls_first;	/* do NULLs come before normal values? */
 } SortClause;
 
 /*
  * GroupClause -
  *	   representation of GROUP BY clauses
  *
- * GroupClause is exactly like SortClause except for the nodetag value
- * (it's probably not even really necessary to have two different
- * nodetags...).  We have routines that operate interchangeably on both.
+ * GroupClause is exactly like SortClause except for the nodetag value.
+ * We have routines that operate interchangeably on both.
+ *
+ * XXX SortClause overspecifies the semantics so far as GROUP BY is concerned
+ * (ditto for DISTINCT).  It'd be better to specify an equality operator not
+ * an ordering operator.  However, the two implementations are tightly entwined
+ * at the moment ... breaking them apart is work for another day.
  */
 typedef SortClause GroupClause;
 
@@ -812,17 +846,10 @@ typedef struct SelectStmt
 
 	/*
 	 * These fields are used only in "leaf" SelectStmts.
-	 *
-	 * into, intoColNames, intoOptions, intoOnCommit, and intoTableSpaceName
-	 * are a kluge; they belong somewhere else...
 	 */
 	List	   *distinctClause; /* NULL, list of DISTINCT ON exprs, or
 								 * lcons(NIL,NIL) for all (SELECT DISTINCT) */
-	RangeVar   *into;			/* target table (for select into table) */
-	List	   *intoColNames;	/* column names for into table */
-	List	   *intoOptions;	/* options from WITH clause */
-	OnCommitAction intoOnCommit;	/* what do we do at COMMIT? */
-	char	   *intoTableSpaceName;		/* table space to use, or NULL */
+	IntoClause *intoClause;		/* target for SELECT INTO / CREATE TABLE AS */
 	List	   *targetList;		/* the target list (of ResTarget) */
 	List	   *fromClause;		/* the FROM clause */
 	Node	   *whereClause;	/* WHERE qualification */
@@ -911,10 +938,12 @@ typedef struct SetOperationStmt
 /*****************************************************************************
  *		Other Statements (no optimizations required)
  *
- *		Some of them require a little bit of transformation (which is also
- *		done by transformStmt). The whole structure is then passed on to
- *		ProcessUtility (by-passing the optimization step) as the utilityStmt
- *		field in Query.
+ *		These are not touched by parser/analyze.c except to put them into
+ *		the utilityStmt field of a Query.  This is eventually passed to
+ *		ProcessUtility (by-passing rewriting and planning).  Some of the
+ *		statements do need attention from parse analysis, and this is
+ *		done by routines in parser/parse_utilcmd.c after ProcessUtility
+ *		receives the command for execution.
  *****************************************************************************/
 
 /*
@@ -938,6 +967,7 @@ typedef enum ObjectType
 	OBJECT_LARGEOBJECT,
 	OBJECT_OPCLASS,
 	OBJECT_OPERATOR,
+	OBJECT_OPFAMILY,
 	OBJECT_ROLE,
 	OBJECT_RULE,
 	OBJECT_SCHEMA,
@@ -946,6 +976,10 @@ typedef enum ObjectType
 	OBJECT_EXTTABLE,
 	OBJECT_TABLESPACE,
 	OBJECT_TRIGGER,
+	OBJECT_TSCONFIGURATION,
+	OBJECT_TSDICTIONARY,
+	OBJECT_TSPARSER,
+	OBJECT_TSTEMPLATE,
 	OBJECT_TYPE,
 	OBJECT_VIEW
 } ObjectType;
@@ -1001,7 +1035,7 @@ typedef enum AlterTableType
 	AT_ReAddIndex,				/* internal to commands/tablecmds.c */
 	AT_AddConstraint,			/* add constraint */
 	AT_ProcessedConstraint,		/* pre-processed add constraint (local in
-								 * parser/analyze.c) */
+								 * parser/parse_utilcmd.c) */
 	AT_DropConstraint,			/* drop constraint */
 	AT_DropConstraintQuietly,	/* drop constraint, no error/warning (local in
 								 * commands/tablecmds.c) */
@@ -1014,11 +1048,17 @@ typedef enum AlterTableType
 	AT_SetRelOptions,			/* SET (...) -- AM specific parameters */
 	AT_ResetRelOptions,			/* RESET (...) -- AM specific parameters */
 	AT_EnableTrig,				/* ENABLE TRIGGER name */
+	AT_EnableAlwaysTrig,		/* ENABLE ALWAYS TRIGGER name */
+	AT_EnableReplicaTrig,		/* ENABLE REPLICA TRIGGER name */
 	AT_DisableTrig,				/* DISABLE TRIGGER name */
 	AT_EnableTrigAll,			/* ENABLE TRIGGER ALL */
 	AT_DisableTrigAll,			/* DISABLE TRIGGER ALL */
 	AT_EnableTrigUser,			/* ENABLE TRIGGER USER */
 	AT_DisableTrigUser,			/* DISABLE TRIGGER USER */
+	AT_EnableRule,				/* ENABLE RULE name */
+	AT_EnableAlwaysRule,		/* ENABLE ALWAYS RULE name */
+	AT_EnableReplicaRule,		/* ENABLE REPLICA RULE name */
+	AT_DisableRule,				/* DISABLE RULE name */
 	AT_AddInherit,				/* INHERIT parent */
 	AT_DropInherit,				/* NO INHERIT parent */
 	/* CDB: Partitioned Tables */
@@ -1161,15 +1201,14 @@ typedef struct SingleRowErrorDesc
  *
  * We support "COPY relation FROM file", "COPY relation TO file", and
  * "COPY (query) TO file".	In any given CopyStmt, exactly one of "relation"
- * and "query" must be non-NULL.  Note: "query" is a SelectStmt before
- * parse analysis, and a Query afterwards.
+ * and "query" must be non-NULL.
  * ----------------------
  */
 typedef struct CopyStmt
 {
 	NodeTag		type;
 	RangeVar   *relation;		/* the relation to copy */
-	Query	   *query;			/* the query to copy */
+	Node	   *query;			/* the SELECT query to copy */
 	List	   *attlist;		/* List of column names (as Strings), or NIL
 								 * for all columns */
 	bool		is_from;		/* TO or FROM */
@@ -1178,6 +1217,42 @@ typedef struct CopyStmt
 	Node	   *sreh;			/* Single row error handling info */
 	
 } CopyStmt;
+
+/* ----------------------
+ * SET Statement (includes RESET)
+ *
+ * "SET var TO DEFAULT" and "RESET var" are semantically equivalent, but we
+ * preserve the distinction in VariableSetKind for CreateCommandTag().
+ * ----------------------
+ */
+typedef enum
+{
+	VAR_SET_VALUE,				/* SET var = value */
+	VAR_SET_DEFAULT,			/* SET var TO DEFAULT */
+	VAR_SET_CURRENT,			/* SET var FROM CURRENT */
+	VAR_SET_MULTI,				/* special case for SET TRANSACTION ... */
+	VAR_RESET,					/* RESET var */
+	VAR_RESET_ALL				/* RESET ALL */
+} VariableSetKind;
+
+typedef struct VariableSetStmt
+{
+	NodeTag		type;
+	VariableSetKind kind;
+	char	   *name;			/* variable to be set */
+	List	   *args;			/* List of A_Const nodes */
+	bool		is_local;		/* SET LOCAL? */
+} VariableSetStmt;
+
+/* ----------------------
+ * Show Statement
+ * ----------------------
+ */
+typedef struct VariableShowStmt
+{
+	NodeTag		type;
+	char	   *name;
+} VariableShowStmt;
 
 /* ----------------------
  *		Create Table Statement
@@ -1257,7 +1332,7 @@ typedef struct CreateExternalStmt
  * relation).  We should never have both in the same node!
  *
  * Constraint attributes (DEFERRABLE etc) are initially represented as
- * separate Constraint nodes for simplicity of parsing.  analyze.c makes
+ * separate Constraint nodes for simplicity of parsing.  parse_utilcmd.c makes
  * a pass through the constraints list to attach the info to the appropriate
  * FkConstraint node (and, perhaps, someday to other kinds of constraints).
  * ----------
@@ -1425,7 +1500,7 @@ typedef struct DropTableSpaceStmt
 {
 	NodeTag		type;
 	char	   *tablespacename;
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } DropTableSpaceStmt;
 
 /* ----------------------
@@ -1535,8 +1610,7 @@ typedef struct AlterRoleSetStmt
 {
 	NodeTag		type;
 	char	   *role;			/* role name */
-	char	   *variable;		/* GUC variable name */
-	List	   *value;			/* value for variable, or NIL for Reset */
+	VariableSetStmt *setstmt;	/* SET or RESET subcommand */
 } AlterRoleSetStmt;
 
 typedef struct DropRoleStmt
@@ -1604,6 +1678,7 @@ typedef struct CreateOpClassStmt
 {
 	NodeTag		type;
 	List	   *opclassname;	/* qualified name (list of Value strings) */
+	List	   *opfamilyname;	/* qualified name (ditto); NIL if omitted */
 	char	   *amname;			/* name of index AM opclass is for */
 	TypeName   *datatype;		/* datatype of indexed column */
 	List	   *items;			/* List of CreateOpClassItem nodes */
@@ -1624,9 +1699,34 @@ typedef struct CreateOpClassItem
 	List	   *args;			/* argument types */
 	int			number;			/* strategy num or support proc num */
 	bool		recheck;		/* only used for operators */
+	List	   *class_args;		/* only used for functions */
 	/* fields used for a storagetype item: */
 	TypeName   *storedtype;		/* datatype stored in index */
 } CreateOpClassItem;
+
+/* ----------------------
+ *		Create Operator Family Statement
+ * ----------------------
+ */
+typedef struct CreateOpFamilyStmt
+{
+	NodeTag		type;
+	List	   *opfamilyname;	/* qualified name (list of Value strings) */
+	char	   *amname;			/* name of index AM opfamily is for */
+} CreateOpFamilyStmt;
+
+/* ----------------------
+ *		Alter Operator Family Statement
+ * ----------------------
+ */
+typedef struct AlterOpFamilyStmt
+{
+	NodeTag		type;
+	List	   *opfamilyname;	/* qualified name (list of Value strings) */
+	char	   *amname;			/* name of index AM opfamily is for */
+	bool		isDrop;			/* ADD or DROP the items? */
+	List	   *items;			/* List of CreateOpClassItem nodes */
+} AlterOpFamilyStmt;
 
 /* ----------------------
  *		Drop Table|Sequence|View|Index|Type|Domain|Conversion|Schema Statement
@@ -1657,7 +1757,7 @@ typedef struct DropPropertyStmt
 	char	   *property;		/* name of rule, trigger, etc */
 	ObjectType	removeType;		/* OBJECT_RULE or OBJECT_TRIGGER */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } DropPropertyStmt;
 
 /* ----------------------
@@ -1690,20 +1790,25 @@ typedef struct CommentStmt
 
 /* ----------------------
  *		Declare Cursor Statement
+ *
+ * Note: the "query" field of DeclareCursorStmt is only used in the raw grammar
+ * output.	After parse analysis it's set to null, and the Query points to the
+ * DeclareCursorStmt, not vice versa.
  * ----------------------
  */
-#define CURSOR_OPT_BINARY		0x0001
-#define CURSOR_OPT_SCROLL		0x0002
-#define CURSOR_OPT_NO_SCROLL	0x0004
-#define CURSOR_OPT_INSENSITIVE	0x0008
-#define CURSOR_OPT_HOLD			0x0010
+#define CURSOR_OPT_BINARY		0x0001	/* BINARY */
+#define CURSOR_OPT_SCROLL		0x0002	/* SCROLL explicitly given */
+#define CURSOR_OPT_NO_SCROLL	0x0004	/* NO SCROLL explicitly given */
+#define CURSOR_OPT_INSENSITIVE	0x0008	/* INSENSITIVE */
+#define CURSOR_OPT_HOLD			0x0010	/* WITH HOLD */
+#define CURSOR_OPT_FAST_PLAN	0x0020	/* prefer fast-start plan */
 
 typedef struct DeclareCursorStmt
 {
 	NodeTag		type;
 	char	   *portalname;		/* name of the portal (cursor) */
 	int			options;		/* bitmask of options (see above) */
-	Node	   *query;			/* the SELECT query */
+	Node	   *query;			/* the raw SELECT query */
 } DeclareCursorStmt;
 
 /* ----------------------
@@ -1714,6 +1819,7 @@ typedef struct ClosePortalStmt
 {
 	NodeTag		type;
 	char	   *portalname;		/* name of the portal (cursor) */
+	/* NULL means CLOSE ALL */
 } ClosePortalStmt;
 
 /* ----------------------
@@ -1755,8 +1861,6 @@ typedef struct IndexStmt
 	List	   *indexParams;	/* a list of IndexElem */
 	List	   *options;		/* options from WITH clause */
 	Node	   *whereClause;	/* qualification (partial-index predicate) */
-	List	   *rangetable;		/* range table for qual and/or expressions,
-								 * filled in by transformStmt() */
 	bool		unique;			/* is index unique? */
 	bool		primary;		/* is index on primary key? */
 	bool		isconstraint;	/* is it from a CONSTRAINT clause? */
@@ -1816,7 +1920,7 @@ typedef struct RemoveFuncStmt
 	List	   *name;			/* qualified name of object to drop */
 	List	   *args;			/* types of the arguments */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } RemoveFuncStmt;
 
 /* ----------------------
@@ -1829,8 +1933,21 @@ typedef struct RemoveOpClassStmt
 	List	   *opclassname;	/* qualified name (list of Value strings) */
 	char	   *amname;			/* name of index AM opclass is for */
 	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } RemoveOpClassStmt;
+
+/* ----------------------
+ *		Drop Operator Family Statement
+ * ----------------------
+ */
+typedef struct RemoveOpFamilyStmt
+{
+	NodeTag		type;
+	List	   *opfamilyname;	/* qualified name (list of Value strings) */
+	char	   *amname;			/* name of index AM opfamily is for */
+	DropBehavior behavior;		/* RESTRICT or CASCADE behavior */
+	bool		missing_ok;		/* skip error if missing? */
+} RemoveOpFamilyStmt;
 
 /* ----------------------
  *		Alter Object Rename Statement
@@ -1964,6 +2081,17 @@ typedef struct CompositeTypeStmt
 	Oid			comptypeOid;
 } CompositeTypeStmt;
 
+/* ----------------------
+ *		Create Type Statement, enum types
+ * ----------------------
+ */
+typedef struct CreateEnumStmt
+{
+	NodeTag		type;
+	List	   *typename;		/* qualified name (list of Value strings) */
+	List	   *vals;			/* enum values (list of Value strings) */
+} CreateEnumStmt;
+
 
 /* ----------------------
  *		Create View Statement
@@ -1974,7 +2102,7 @@ typedef struct ViewStmt
 	NodeTag		type;
 	RangeVar   *view;			/* the view to be created */
 	List	   *aliases;		/* target column names */
-	Query	   *query;			/* the SQL statement */
+	Node	   *query;			/* the SELECT query */
 	bool		replace;		/* replace an existing view? */
 	Oid         relOid;			/* create view with this relOid */
 	Oid			comptypeOid;
@@ -2016,9 +2144,8 @@ typedef struct AlterDatabaseStmt
 typedef struct AlterDatabaseSetStmt
 {
 	NodeTag		type;
-	char	   *dbname;
-	char	   *variable;
-	List	   *value;
+	char	   *dbname;			/* database name */
+	VariableSetStmt *setstmt;	/* SET or RESET subcommand */
 } AlterDatabaseSetStmt;
 
 /* ----------------------
@@ -2058,7 +2185,7 @@ typedef struct VacuumStmt
 	bool		full;			/* do FULL (non-concurrent) vacuum */
 	bool		analyze;		/* do ANALYZE step */
 	bool		verbose;		/* print progress info */
-	int			freeze_min_age;	/* min freeze age, or -1 to use default */
+	int			freeze_min_age; /* min freeze age, or -1 to use default */
 	RangeVar   *relation;		/* single table to process, or NULL */
 	List	   *va_cols;		/* list of column names, or NIL for all */
 } VacuumStmt;
@@ -2070,7 +2197,7 @@ typedef struct VacuumStmt
 typedef struct ExplainStmt
 {
 	NodeTag		type;
-	Query	   *query;			/* the query */
+	Node	   *query;			/* the query (as a raw parse tree) */
 	bool		verbose;		/* print plan info */
 	bool		analyze;		/* get statistics by executing plan */
 #ifdef USE_FORCE_PLAN
@@ -2088,39 +2215,22 @@ typedef struct CheckPointStmt
 } CheckPointStmt;
 
 /* ----------------------
- * Set Statement
+ * Discard Statement
  * ----------------------
  */
 
-typedef struct VariableSetStmt
+typedef enum DiscardMode
+{
+	DISCARD_ALL,
+	DISCARD_PLANS,
+	DISCARD_TEMP
+} DiscardMode;
+
+typedef struct DiscardStmt
 {
 	NodeTag		type;
-	char	   *name;
-	List	   *args;
-	bool		is_local;		/* SET LOCAL */
-} VariableSetStmt;
-
-/* ----------------------
- * Show Statement
- * ----------------------
- */
-
-typedef struct VariableShowStmt
-{
-	NodeTag		type;
-	char	   *name;
-} VariableShowStmt;
-
-/* ----------------------
- * Reset Statement
- * ----------------------
- */
-
-typedef struct VariableResetStmt
-{
-	NodeTag		type;
-	char	   *name;
-} VariableResetStmt;
+	DiscardMode target;
+} DiscardStmt;
 
 /* ----------------------
  *		LOCK Statement
@@ -2198,7 +2308,7 @@ typedef struct DropCastStmt
 	TypeName   *sourcetype;
 	TypeName   *targettype;
 	DropBehavior behavior;
-	bool		missing_ok;		/* skip error if a missing? */
+	bool		missing_ok;		/* skip error if missing? */
 } DropCastStmt;
 
 
@@ -2210,9 +2320,8 @@ typedef struct PrepareStmt
 {
 	NodeTag		type;
 	char	   *name;			/* Name of plan, arbitrary */
-	List	   *argtypes;		/* Types of parameters (TypeNames) */
-	List	   *argtype_oids;	/* Types of parameters (OIDs) */
-	Query	   *query;			/* The query itself */
+	List	   *argtypes;		/* Types of parameters (List of TypeName) */
+	Node	   *query;			/* The query itself (as a raw parsetree) */
 } PrepareStmt;
 
 
@@ -2225,10 +2334,7 @@ typedef struct ExecuteStmt
 {
 	NodeTag		type;
 	char	   *name;			/* The name of the plan to execute */
-	RangeVar   *into;			/* Optional table to store results in */
-	List	   *intoOptions;	/* Options from WITH clause */
-	OnCommitAction into_on_commit;		/* What do we do at COMMIT? */
-	char	   *into_tbl_space; /* Tablespace to use, or NULL */
+	IntoClause *into;			/* Optional table to store results in */
 	List	   *params;			/* Values to assign to parameters */
 } ExecuteStmt;
 
@@ -2241,6 +2347,7 @@ typedef struct DeallocateStmt
 {
 	NodeTag		type;
 	char	   *name;			/* The name of the plan to remove */
+	/* NULL means DEALLOCATE ALL */
 } DeallocateStmt;
 
 
@@ -2264,5 +2371,34 @@ typedef struct ReassignOwnedStmt
 	List	   *roles;
 	char	   *newrole;
 } ReassignOwnedStmt;
+
+/*
+ * TS Dictionary stmts: DefineStmt, RenameStmt and DropStmt are default
+ */
+typedef struct AlterTSDictionaryStmt
+{
+	NodeTag		type;
+	List	   *dictname;		/* qualified name (list of Value strings) */
+	List	   *options;		/* List of DefElem nodes */
+} AlterTSDictionaryStmt;
+
+/*
+ * TS Configuration stmts: DefineStmt, RenameStmt and DropStmt are default
+ */
+typedef struct AlterTSConfigurationStmt
+{
+	NodeTag		type;
+	List	   *cfgname;		/* qualified name (list of Value strings) */
+
+	/*
+	 * dicts will be non-NIL if ADD/ALTER MAPPING was specified. If dicts is
+	 * NIL, but tokentype isn't, DROP MAPPING was specified.
+	 */
+	List	   *tokentype;		/* list of Value strings */
+	List	   *dicts;			/* list of list of Value strings */
+	bool		override;		/* if true - remove old variant */
+	bool		replace;		/* if true - replace dictionary by another */
+	bool		missing_ok;		/* for DROP - skip error if missing? */
+} AlterTSConfigurationStmt;
 
 #endif   /* PARSENODES_H */
