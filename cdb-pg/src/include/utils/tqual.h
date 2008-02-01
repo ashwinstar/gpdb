@@ -92,8 +92,8 @@ extern PGDLLIMPORT Snapshot SerializableSnapshot;
 extern PGDLLIMPORT Snapshot LatestSnapshot;
 extern PGDLLIMPORT Snapshot ActiveSnapshot;
 
-extern DLLIMPORT DistributedSnapshot SerializableDistributedSnapshot;
-extern DLLIMPORT DistributedSnapshot LatestDistributedSnapshot;
+extern PGDLLIMPORT DistributedSnapshot SerializableDistributedSnapshot;
+extern PGDLLIMPORT DistributedSnapshot LatestDistributedSnapshot;
 
 extern TransactionId TransactionXmin;
 extern TransactionId RecentXmin;
@@ -204,8 +204,8 @@ extern void FreeXactSnapshot(void);
 extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable,
  			                    DistributedSnapshot *distributedSnapshot,
  			                    DistributedSnapshotData *distributedSnapshotData);
- 			                    
- 			                    
+ 			
+ 			
 extern void updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller);
 extern char* DebugGetDistributedSnapshotString(DistributedSnapshot snapshot);
 extern char* DebugGetSnapshotString(const Snapshot snapshot);

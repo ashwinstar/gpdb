@@ -140,7 +140,7 @@ struct PGPROC
 extern PGDLLIMPORT PGPROC *MyProc;
 
 /* Special for MPP reader gangs */
-extern DLLIMPORT PGPROC *lockHolderProcPtr;
+extern PGDLLIMPORT PGPROC *lockHolderProcPtr;
 
 /*
  * There is one ProcGlobal struct for the whole database cluster.
