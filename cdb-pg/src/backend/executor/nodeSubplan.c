@@ -1061,10 +1061,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			subLinkType == ALL_SUBLINK)
 			elog(ERROR, "ANY/ALL subselect unsupported as initplan");
 
-	/*
-	 * By definition, an initplan has no parameters from our query level, but
-	 * it could have some from an outer level.	Rescan it if needed.
-	 */
 		if (planstate->chgParam != NULL)
 			ExecReScan(planstate, NULL);
 

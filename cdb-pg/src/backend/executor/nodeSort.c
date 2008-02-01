@@ -120,8 +120,6 @@ ExecSort(SortState *node)
 		}
 
 		Assert(tuplesortstate);
-		if (node->bounded)
-			tuplesort_set_bound(tuplesortstate, node->bound);
 		node->tuplesortstate = (void *) tuplesortstate;
 
 		/* CDB */
@@ -206,8 +204,6 @@ ExecSort(SortState *node)
 		 * finally set the sorted flag to true
 		 */
 		node->sort_Done = true;
-		node->bounded_Done = node->bounded;
-		node->bound_Done = node->bound;
 		SO1_printf("ExecSort: %s\n", "sorting done");
 
 		/* for share input, do not need to return any tuple */
@@ -280,7 +276,6 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	if(node->share_type != SHARE_NOTSHARED) 
 		sortstate->randomAccess = true;
 
-	sortstate->bounded = false;
 	sortstate->sort_Done = false;
 	sortstate->tuplesortstate = NULL;
 	sortstate->share_lk_ctxt = NULL;
@@ -476,14 +471,11 @@ ExecReScanSort(SortState *node, ExprContext *exprCtxt)
 
 	/*
 	 * If subnode is to be rescanned then we forget previous sort results; we
-	 * have to re-read the subplan and re-sort.  Also must re-sort if the
-	 * bounded-sort parameters changed or we didn't select randomAccess.
+	 * have to re-read the subplan and re-sort.  
 	 *
 	 * Otherwise we can just rewind and rescan the sorted output.
 	 */
 	if (((PlanState *) node)->lefttree->chgParam != NULL ||
-		node->bounded != node->bounded_Done ||
-		node->bound != node->bound_Done ||
 		!node->randomAccess)
 	{
 		node->sort_Done = false;
