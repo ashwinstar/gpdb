@@ -544,15 +544,15 @@ _outMergeJoin(StringInfo str, MergeJoin *node)
 
 	numCols = list_length(node->mergeclauses);
 
-	appendStringInfo(str, " :mergeFamilies");
+	appendStringInfoLiteral(str, " :mergeFamilies");
 	for (i = 0; i < numCols; i++)
 		appendStringInfo(str, " %u", node->mergeFamilies[i]);
 
-	appendStringInfo(str, " :mergeStrategies");
+	appendStringInfoLiteral(str, " :mergeStrategies");
 	for (i = 0; i < numCols; i++)
 		appendStringInfo(str, " %d", node->mergeStrategies[i]);
 
-	appendStringInfo(str, " :mergeNullsFirst");
+	appendStringInfoLiteral(str, " :mergeNullsFirst");
 	for (i = 0; i < numCols; i++)
 		appendStringInfo(str, " %d", (int) node->mergeNullsFirst[i]);
 	WRITE_BOOL_FIELD(unique_outer);
@@ -3542,8 +3542,7 @@ _outNode(StringInfo str, void *obj)
 			case T_PlannerParamItem:
 				_outPlannerParamItem(str, obj);
 				break;
-			
-				
+
 			case T_GrantStmt:
 				_outGrantStmt(str, obj);
 				break;
