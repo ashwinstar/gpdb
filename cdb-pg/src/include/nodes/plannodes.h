@@ -1,4 +1,3 @@
-
 /*-------------------------------------------------------------------------
  *
  * plannodes.h
@@ -9,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/plannodes.h,v 1.85 2006/08/02 01:59:47 joe Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/plannodes.h,v 1.99 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,10 +18,68 @@
 #include "access/sdir.h"
 #include "nodes/bitmapset.h"
 #include "nodes/primnodes.h"
+
+
 /* ----------------------------------------------------------------
  *						node definitions
  * ----------------------------------------------------------------
  */
+
+/* ----------------
+ *		PlannedStmt node
+ *
+ * The output of the planner is a Plan tree headed by a PlannedStmt node.
+ * PlannedStmt holds the "one time" information needed by the executor.
+ * ----------------
+ */
+typedef struct PlannedStmt
+{
+	NodeTag		type;
+
+	CmdType		commandType;	/* select|insert|update|delete */
+
+	bool		canSetTag;		/* do I set the command result tag? */
+
+	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
+
+	struct Plan *planTree;		/* tree of Plan nodes */
+
+	List	   *rtable;			/* list of RangeTblEntry nodes */
+
+	/* rtable indexes of target relations for INSERT/UPDATE/DELETE */
+	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
+
+	Node	   *utilityStmt;	/* non-null if this is DECLARE CURSOR */
+
+	IntoClause *intoClause;		/* target for SELECT INTO / CREATE TABLE AS */
+
+	List	   *subplans;		/* Plan trees for SubPlan expressions */
+
+	Bitmapset  *rewindPlanIDs;	/* indices of subplans that require REWIND */
+
+	/*
+	 * If the query has a returningList then the planner will store a list of
+	 * processed targetlists (one per result relation) here.  We must have a
+	 * separate RETURNING targetlist for each result rel because column
+	 * numbers may vary within an inheritance tree.  In the targetlists, Vars
+	 * referencing the result relation will have their original varno and
+	 * varattno, while Vars referencing other rels will be converted to have
+	 * varno OUTER and varattno referencing a resjunk entry in the top plan
+	 * node's targetlist.
+	 */
+	List	   *returningLists; /* list of lists of TargetEntry, or NIL */
+
+	List	   *rowMarks;		/* a list of RowMarkClause's */
+
+	List	   *relationOids;	/* OIDs of relations the plan depends on */
+
+	int			nParamExec;		/* number of PARAM_EXEC Params used */
+} PlannedStmt;
+
+/* macro for fetching the Plan associated with a SubPlan node */
+#define exec_subplan_get_plan(plannedstmt, subplan) \
+	((Plan *) list_nth((plannedstmt)->subplans, (subplan)->plan_id - 1))
+
 
 /* ----------------
  *		Plan node
@@ -309,20 +366,27 @@ typedef struct TidScan
  *		subquery scan node
  *
  * SubqueryScan is for scanning the output of a sub-query in the range table.
- * We need a special plan node above the sub-query's plan as a place to switch
- * execution contexts.	Although we are not scanning a physical relation,
- * we make this a descendant of Scan anyway for code-sharing purposes.
+ * We often need an extra plan node above the sub-query's plan to perform
+ * expression evaluations (which we can't push into the sub-query without
+ * risking changing its semantics).  Although we are not scanning a physical
+ * relation, we make this a descendant of Scan anyway for code-sharing
+ * purposes.
  *
  * Note: we store the sub-plan in the type-specific subplan field, not in
  * the generic lefttree field as you might expect.	This is because we do
  * not want plan-tree-traversal routines to recurse into the subplan without
  * knowing that they are changing Query contexts.
+ *
+ * Note: subrtable is used just to carry the subquery rangetable from
+ * createplan.c to setrefs.c; it should always be NIL by the time the
+ * executor sees the plan.
  * ----------------
  */
 typedef struct SubqueryScan
 {
 	Scan		scan;
 	Plan	   *subplan;
+	List	   *subrtable;		/* temporary workspace for planner */
 } SubqueryScan;
 
 /* ----------------
@@ -332,7 +396,10 @@ typedef struct SubqueryScan
 typedef struct FunctionScan
 {
 	Scan		scan;
-	/* no other fields needed at present */
+	Node	   *funcexpr;		/* expression tree for func call */
+	List	   *funccolnames;	/* output column names (string Value nodes) */
+	List	   *funccoltypes;	/* OID list of column type OIDs */
+	List	   *funccoltypmods; /* integer list of column typmods */
 } FunctionScan;
 
 /* ----------------
@@ -342,7 +409,7 @@ typedef struct FunctionScan
 typedef struct ValuesScan
 {
 	Scan		scan;
-	/* no other fields needed at present */
+	List	   *values_lists;	/* list of expression lists */
 } ValuesScan;
 
 /* ----------------
@@ -417,12 +484,24 @@ typedef struct NestLoop
 
 /* ----------------
  *		merge join node
+ *
+ * The expected ordering of each mergeable column is described by a btree
+ * opfamily OID, a direction (BTLessStrategyNumber or BTGreaterStrategyNumber)
+ * and a nulls-first flag.	Note that the two sides of each mergeclause may
+ * be of different datatypes, but they are ordered the same way according to
+ * the common opfamily.  The operator in each mergeclause must be an equality
+ * operator of the indicated opfamily.
  * ----------------
  */
 typedef struct MergeJoin
 {
 	Join		join;
-	List	   *mergeclauses;
+	List	   *mergeclauses;	/* mergeclauses as expression trees */
+	/* these are arrays, but have the same length as the mergeclauses list: */
+	Oid		   *mergeFamilies;	/* per-clause OIDs of btree opfamilies */
+	int		   *mergeStrategies;	/* per-clause ordering (ASC or DESC) */
+	bool	   *mergeNullsFirst;	/* per-clause nulls ordering */
+
 	bool		unique_outer; /*CDB-OLAP true => outer is unique in merge key */
 } MergeJoin;
 
@@ -514,6 +593,7 @@ typedef struct Sort
 	int			numCols;		/* number of sort-key columns */
 	AttrNumber *sortColIdx;		/* their indexes in the target list */
 	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
     /* CDB */ /* add limit node, distinct */
 	Node	   *limitOffset;	/* OFFSET parameter, or NULL if none */
 	Node	   *limitCount;		/* COUNT parameter, or NULL if none */
@@ -538,6 +618,7 @@ typedef struct Group
 	Plan		plan;
 	int			numCols;		/* number of grouping columns */
 	AttrNumber *grpColIdx;		/* their indexes in the target list */
+	Oid		   *grpOperators;	/* equality operators to compare with */
 
 	/*
 	 * The following are used by ROLLUP.
@@ -603,6 +684,7 @@ typedef struct Agg
 	AggStrategy aggstrategy;
 	int			numCols;		/* number of grouping columns */
 	AttrNumber *grpColIdx;		/* their indexes in the target list */
+	Oid		   *grpOperators;	/* equality operators to compare with */
 	long		numGroups;		/* estimated number of groups in input */
 	int			transSpace;		/* est storage per group for byRef transition values */
 
@@ -720,7 +802,8 @@ typedef struct Unique
 {
 	Plan		plan;
 	int			numCols;		/* number of columns to check for uniqueness */
-	AttrNumber *uniqColIdx;		/* indexes into the target list */
+	AttrNumber *uniqColIdx;		/* their indexes in the target list */
+	Oid		   *uniqOperators;	/* equality operators to compare with */
 } Unique;
 
 /* ----------------
@@ -752,8 +835,9 @@ typedef struct SetOp
 	SetOpCmd	cmd;			/* what to do */
 	int			numCols;		/* number of columns to check for
 								 * duplicate-ness */
-	AttrNumber *dupColIdx;		/* indexes into the target list */
-	AttrNumber	flagColIdx;
+	AttrNumber *dupColIdx;		/* their indexes in the target list */
+	Oid		   *dupOperators;	/* equality operators to compare with */
+	AttrNumber	flagColIdx;		/* where is the flag column, if any */
 } SetOp;
 
 /* ----------------

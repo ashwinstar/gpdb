@@ -17,6 +17,7 @@
 
 #include "access/sdir.h"
 #include "nodes/bitmapset.h"
+#include "nodes/params.h"
 #include "nodes/parsenodes.h"
 #include "storage/block.h"
 
@@ -54,6 +55,41 @@ typedef struct QualCost
 
 
 /*----------
+ * PlannerGlobal
+ *		Global information for planning/optimization
+ *
+ * PlannerGlobal holds state for an entire planner invocation; this state
+ * is shared across all levels of sub-Queries that exist in the command being
+ * planned.
+ *----------
+ */
+typedef struct PlannerGlobal
+{
+	NodeTag		type;
+
+	ParamListInfo boundParams;	/* Param values provided to planner() */
+
+	List	   *paramlist;		/* to keep track of cross-level Params */
+
+	List	   *subplans;		/* Plans for SubPlan nodes */
+
+	List	   *subrtables;		/* Rangetables for SubPlan nodes */
+
+	Bitmapset  *rewindPlanIDs;	/* indices of subplans that require REWIND */
+
+	List	   *finalrtable;	/* "flat" rangetable for executor */
+
+	List	   *relationOids;	/* OIDs of relations the plan depends on */
+
+	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
+} PlannerGlobal;
+
+/* macro for fetching the Plan associated with a SubPlan node */
+#define planner_subplan_get_plan(root, subplan) \
+	((Plan *) list_nth((root)->glob->subplans, (subplan)->plan_id - 1))
+
+
+/*----------
  * PlannerInfo
  *		Per-query information for planning/optimization
  *
@@ -69,6 +105,10 @@ typedef struct PlannerInfo
 
 	Query	   *parse;			/* the Query being planned */
 
+	PlannerGlobal *glob;		/* global info for current planner run */
+
+	Index		query_level;	/* 1 at the outermost Query */
+
 	/*
 	 * simple_rel_array holds pointers to "base rels" and "other rels" (see
 	 * comments for RelOptInfo for more info).	It is indexed by rangetable
@@ -76,8 +116,16 @@ typedef struct PlannerInfo
 	 * does not correspond to a base relation, such as a join RTE or an
 	 * unreferenced view RTE; or if the RelOptInfo hasn't been made yet.
 	 */
-	struct RelOptInfo **simple_rel_array;		/* All 1-relation RelOptInfos */
+	struct RelOptInfo **simple_rel_array;		/* All 1-rel RelOptInfos */
 	int			simple_rel_array_size;	/* allocated size of array */
+
+	/*
+	 * simple_rte_array is the same length as simple_rel_array and holds
+	 * pointers to the associated rangetable entries.  This lets us avoid
+	 * rt_fetch(), which can be a bit slow once large inheritance sets have
+	 * been expanded.
+	 */
+	RangeTblEntry **simple_rte_array;	/* rangetable as an array */
 
 	/*
 	 * join_rel_list is a list of all join-relation RelOptInfos we have
@@ -91,7 +139,19 @@ typedef struct PlannerInfo
 	List	   *join_rel_list;	/* list of join-relation RelOptInfos */
 	struct HTAB *join_rel_hash; /* optional hashtable for join relations */
 
-	List	   *equi_key_list;	/* list of lists of equijoined PathKeyItems */
+	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
+
+	List	   *returningLists; /* list of lists of TargetEntry, or NIL */
+
+	List	   *init_plans;		/* init subplans for query */
+
+	List	   *eq_classes;		/* list of active EquivalenceClasses */
+
+	List	   *canon_pathkeys; /* list of "canonical" PathKeys */
+
+	List	   *left_join_clauses;		/* list of RestrictInfos for
+										 * mergejoinable outer join clauses
+										 * w/nonnullable var on left */
 
     /* Jointree result is a subset of the cross product of these relids... */
     Relids      currlevel_relids;   /* CDB: all relids of current query level,
@@ -108,8 +168,8 @@ typedef struct PlannerInfo
 										 * join clauses w/nonnullable var on
 										 * right */
 
-	List	   *full_join_clauses;		/* list of RestrictInfos for full
-										 * outer join clauses */
+	List	   *full_join_clauses;		/* list of RestrictInfos for
+										 * mergejoinable full join clauses */
 
 	List	   *oj_info_list;	/* list of OuterJoinInfos */
 
@@ -122,6 +182,10 @@ typedef struct PlannerInfo
 
 	List	   *group_pathkeys; /* groupClause pathkeys, if any */
 	List	   *sort_pathkeys;	/* sortClause pathkeys, if any */
+
+	List	   *initial_rels;	/* RelOptInfos we are now trying to join */
+
+	MemoryContext planner_cxt;	/* context holding PlannerInfo */
 
 	double		total_table_pages;		/* # of pages in all tables of query */
 
@@ -136,6 +200,17 @@ typedef struct PlannerInfo
 	/* At the end to avoid breaking existing 8.2 add-ons */
 	List	   *initial_rels;	/* RelOptInfos we are now trying to join */
 } PlannerInfo;
+
+
+
+/*
+ * In places where it's known that simple_rte_array[] must have been prepared
+ * already, we just index into it to fetch RTEs.  In code that might be
+ * executed before or after entering query_planner(), use this macro.
+ */
+#define planner_rt_fetch(rti, root) \
+	((root)->simple_rte_array ? (root)->simple_rte_array[rti] : \
+	 rt_fetch(rti, (root)->parse->rtable))
 
 
 /*----------
@@ -209,6 +284,7 @@ typedef struct PlannerInfo
  *		pages - number of disk pages in relation (zero if not a table)
  *		tuples - number of tuples in relation (not considering restrictions)
  *		subplan - plan for subquery (NULL if it's not a subquery)
+ *		subrtable - rangetable for subquery (NIL if it's not a subquery)
  *
  *		Note: for a subquery, tuples and subplan are not set immediately
  *		upon creation of the RelOptInfo object; they are filled in when
@@ -226,7 +302,10 @@ typedef struct PlannerInfo
  *		baserestrictcost - Estimated cost of evaluating the baserestrictinfo
  *					clauses at a single tuple (only used for base rels)
  *		joininfo  - List of RestrictInfo nodes, containing info about each
- *					join clause in which this relation participates
+ *					join clause in which this relation participates (but
+ *					note this excludes clauses that might be derivable from
+ *					EquivalenceClasses)
+ *		has_eclass_joins - flag that EquivalenceClass joins are possible
  *		index_outer_relids - only used for base rels; set of outer relids
  *					that participate in indexable joinclauses for this rel
  *		index_inner_paths - only used for base rels; list of InnerIndexscanInfo
@@ -291,6 +370,7 @@ typedef struct RelOptInfo
     struct GpPolicy   *cdbpolicy;      /* distribution of stored tuples */
     bool        cdb_default_stats_used; /* true if ANALYZE needed */
 	struct Plan *subplan;		/* if subquery */
+	List	   *subrtable;		/* if subquery */
 
 	/* used by external scan */
 	List		*locationlist;
@@ -314,6 +394,8 @@ typedef struct RelOptInfo
 	double		jselec;
 	double		pselec;
 
+	bool		has_eclass_joins;		/* T means joininfo is incomplete */
+
 	/* cached info about inner indexscan paths for relation: */
 	Relids		index_outer_relids;		/* other relids in indexable join
 										 * clauses */
@@ -335,19 +417,24 @@ typedef struct RelOptInfo
  *		and indexes, but that created confusion without actually doing anything
  *		useful.  So now we have a separate IndexOptInfo struct for indexes.
  *
- *		classlist[], indexkeys[], and ordering[] have ncolumns entries.
+ *		opfamily[], indexkeys[], opcintype[], fwdsortop[], revsortop[],
+ *		and nulls_first[] each have ncolumns entries.
+ *		Note: for historical reasons, the opfamily array has an extra entry
+ *		that is always zero.  Some code scans until it sees a zero entry,
+ *		rather than looking at ncolumns.
+ *
  *		Zeroes in the indexkeys[] array indicate index columns that are
  *		expressions; there is one element in indexprs for each such column.
  *
- *		Note: for historical reasons, the classlist and ordering arrays have
- *		an extra entry that is always zero.  Some code scans until it sees a
- *		zero entry, rather than looking at ncolumns.
+ *		For an unordered index, the sortop arrays contains zeroes.	Note that
+ *		fwdsortop[] and nulls_first[] describe the sort ordering of a forward
+ *		indexscan; we can also consider a backward indexscan, which will
+ *		generate sort order described by revsortop/!nulls_first.
  *
  *		The indexprs and indpred expressions have been run through
  *		prepqual.c and eval_const_expressions() for ease of matching to
- *		WHERE clauses.	indpred is in implicit-AND form.
+ *		WHERE clauses. indpred is in implicit-AND form.
  */
-
 typedef struct IndexOptInfo
 {
 	NodeTag		type;
@@ -361,9 +448,12 @@ typedef struct IndexOptInfo
 
 	/* index descriptor information */
 	int			ncolumns;		/* number of columns in index */
-	Oid		   *classlist;		/* OIDs of operator classes for columns */
+	Oid		   *opfamily;		/* OIDs of operator families for columns */
 	int		   *indexkeys;		/* column numbers of index's keys, or 0 */
-	Oid		   *ordering;		/* OIDs of sort operators for each column */
+	Oid		   *opcintype;		/* OIDs of opclass declared input data types */
+	Oid		   *fwdsortop;		/* OIDs of sort operators for each column */
+	Oid		   *revsortop;		/* OIDs of sort operators for backward scan */
+	bool	   *nulls_first;	/* do NULLs come first in the sort order? */
 	Oid			relam;			/* OID of the access method (in pg_am) */
 
 	RegProcedure amcostestimate;	/* OID of the access method's cost fcn */
@@ -374,6 +464,7 @@ typedef struct IndexOptInfo
 	bool		predOK;			/* true if predicate matches query */
 	bool		unique;			/* true if a unique index */
 	bool		amoptionalkey;	/* can query omit key for the first column? */
+	bool		amsearchnulls;	/* can AM search for NULL index entries? */
     bool        cdb_default_stats_used; /* true if ANALYZE needed */
     int         num_leading_eq; /* CDB: always 0, except amcostestimate proc may
                                  * set it briefly; it is transferred forthwith
@@ -381,6 +472,93 @@ typedef struct IndexOptInfo
                                  */
 } IndexOptInfo;
 
+
+/*
+ * EquivalenceClasses
+ *
+ * Whenever we can determine that a mergejoinable equality clause A = B is
+ * not delayed by any outer join, we create an EquivalenceClass containing
+ * the expressions A and B to record this knowledge.  If we later find another
+ * equivalence B = C, we add C to the existing EquivalenceClass; this may
+ * require merging two existing EquivalenceClasses.  At the end of the qual
+ * distribution process, we have sets of values that are known all transitively
+ * equal to each other, where "equal" is according to the rules of the btree
+ * operator family(s) shown in ec_opfamilies.  (We restrict an EC to contain
+ * only equalities whose operators belong to the same set of opfamilies.  This
+ * could probably be relaxed, but for now it's not worth the trouble, since
+ * nearly all equality operators belong to only one btree opclass anyway.)
+ *
+ * We also use EquivalenceClasses as the base structure for PathKeys, letting
+ * us represent knowledge about different sort orderings being equivalent.
+ * Since every PathKey must reference an EquivalenceClass, we will end up
+ * with single-member EquivalenceClasses whenever a sort key expression has
+ * not been equivalenced to anything else.	It is also possible that such an
+ * EquivalenceClass will contain a volatile expression ("ORDER BY random()"),
+ * which is a case that can't arise otherwise since clauses containing
+ * volatile functions are never considered mergejoinable.  We mark such
+ * EquivalenceClasses specially to prevent them from being merged with
+ * ordinary EquivalenceClasses.  Also, for volatile expressions we have
+ * to be careful to match the EquivalenceClass to the correct targetlist
+ * entry: consider SELECT random() AS a, random() AS b ... ORDER BY b,a.
+ * So we record the SortGroupRef of the originating sort clause.
+ *
+ * We allow equality clauses appearing below the nullable side of an outer join
+ * to form EquivalenceClasses, but these have a slightly different meaning:
+ * the included values might be all NULL rather than all the same non-null
+ * values.	See src/backend/optimizer/README for more on that point.
+ *
+ * NB: if ec_merged isn't NULL, this class has been merged into another, and
+ * should be ignored in favor of using the pointed-to class.
+ */
+typedef struct EquivalenceClass
+{
+	NodeTag		type;
+
+	List	   *ec_opfamilies;	/* btree operator family OIDs */
+	List	   *ec_members;		/* list of EquivalenceMembers */
+	List	   *ec_sources;		/* list of generating RestrictInfos */
+	List	   *ec_derives;		/* list of derived RestrictInfos */
+	Relids		ec_relids;		/* all relids appearing in ec_members */
+	bool		ec_has_const;	/* any pseudoconstants in ec_members? */
+	bool		ec_has_volatile;	/* the (sole) member is a volatile expr */
+	bool		ec_below_outer_join;	/* equivalence applies below an OJ */
+	bool		ec_broken;		/* failed to generate needed clauses? */
+	Index		ec_sortref;		/* originating sortclause label, or 0 */
+	struct EquivalenceClass *ec_merged; /* set if merged into another EC */
+} EquivalenceClass;
+
+/*
+ * If an EC contains a const and isn't below-outer-join, any PathKey depending
+ * on it must be redundant, since there's only one possible value of the key.
+ */
+#define EC_MUST_BE_REDUNDANT(eclass)  \
+	((eclass)->ec_has_const && !(eclass)->ec_below_outer_join)
+
+/*
+ * EquivalenceMember - one member expression of an EquivalenceClass
+ *
+ * em_is_child signifies that this element was built by transposing a member
+ * for an inheritance parent relation to represent the corresponding expression
+ * on an inheritance child.  The element should be ignored for all purposes
+ * except constructing inner-indexscan paths for the child relation.  (Other
+ * types of join are driven from transposed joininfo-list entries.)  Note
+ * that the EC's ec_relids field does NOT include the child relation.
+ *
+ * em_datatype is usually the same as exprType(em_expr), but can be
+ * different when dealing with a binary-compatible opfamily; in particular
+ * anyarray_ops would never work without this.	Use em_datatype when
+ * looking up a specific btree operator to work with this expression.
+ */
+typedef struct EquivalenceMember
+{
+	NodeTag		type;
+
+	Expr	   *em_expr;		/* the expression represented */
+	Relids		em_relids;		/* all relids appearing in em_expr */
+	bool		em_is_const;	/* expression is pseudoconstant? */
+	bool		em_is_child;	/* derived version for a child relation? */
+	Oid			em_datatype;	/* the "nominal type" used by the opfamily */
+} EquivalenceMember;
 
 /*
  * CdbRelDedupInfo
@@ -433,23 +611,35 @@ typedef struct CdbRelDedupInfo
 /*
  * PathKeys
  *
- *	The sort ordering of a path is represented by a list of sublists of
- *	PathKeyItem nodes.	An empty list implies no known ordering.  Otherwise
- *	the first sublist represents the primary sort key, the second the
- *	first secondary sort key, etc.	Each sublist contains one or more
- *	PathKeyItem nodes, each of which can be taken as the attribute that
- *	appears at that sort position.	(See optimizer/README for more
- *	information.)
+ * The sort ordering of a path is represented by a list of PathKey nodes.
+ * An empty list implies no known ordering.  Otherwise the first item
+ * represents the primary sort key, the second the first secondary sort key,
+ * etc.  The value being sorted is represented by linking to an
+ * EquivalenceClass containing that value and including pk_opfamily among its
+ * ec_opfamilies.  This is a convenient method because it makes it trivial
+ * to detect equivalent and closely-related orderings.	(See optimizer/README
+ * for more information.)
+ *
+ * Note: pk_strategy is either BTLessStrategyNumber (for ASC) or
+ * BTGreaterStrategyNumber (for DESC).	We assume that all ordering-capable
+ * index types will use btree-compatible strategy numbers.
  */
 
-typedef struct PathKeyItem
+typedef struct PathKey
 {
 	NodeTag		type;
 
-	Node	   *key;			/* the item that is ordered */
-	Oid			sortop;			/* the ordering operator ('<' op) */
-    Relids      cdb_key_relids; /* set of relids referenced by key expr */
-    int         cdb_num_relids; /* num of relids referenced by key expr */
+	EquivalenceClass *pk_eclass;	/* the value that is ordered */
+	Oid			pk_opfamily;	/* btree opfamily defining the ordering */
+	int			pk_strategy;	/* sort direction (ASC or DESC) */
+	bool		pk_nulls_first; /* do NULLs come before normal values? */
+} PathKey;
+
+
+
+
+
+
 
 	/*
 	 * key typically points to a Var node, ie a relation attribute, but it can
@@ -515,7 +705,7 @@ typedef struct Path
                                  *  Set by add_path().
                                  */
 	List	   *pathkeys;		/* sort ordering of path's output */
-	/* pathkeys is a List of Lists of PathKeyItem nodes; see above */
+	/* pathkeys is a List of PathKey nodes; see above */
 } Path;
 
 /* 
@@ -866,41 +1056,52 @@ typedef struct HashPath
  * sequence we use.  So, these clauses cannot be associated directly with
  * the join RelOptInfo, but must be kept track of on a per-join-path basis.
  *
+ * RestrictInfos that represent equivalence conditions (i.e., mergejoinable
+ * equalities that are not outerjoin-delayed) are handled a bit differently.
+ * Initially we attach them to the EquivalenceClasses that are derived from
+ * them.  When we construct a scan or join path, we look through all the
+ * EquivalenceClasses and generate derived RestrictInfos representing the
+ * minimal set of conditions that need to be checked for this particular scan
+ * or join to enforce that all members of each EquivalenceClass are in fact
+ * equal in all rows emitted by the scan or join.
+ *
  * When dealing with outer joins we have to be very careful about pushing qual
  * clauses up and down the tree.  An outer join's own JOIN/ON conditions must
- * be evaluated exactly at that join node, and any quals appearing in WHERE or
- * in a JOIN above the outer join cannot be pushed down below the outer join.
- * Otherwise the outer join will produce wrong results because it will see the
- * wrong sets of input rows.  All quals are stored as RestrictInfo nodes
- * during planning, but there's a flag to indicate whether a qual has been
+ * be evaluated exactly at that join node, unless they are "degenerate"
+ * conditions that reference only Vars from the nullable side of the join.
+ * Quals appearing in WHERE or in a JOIN above the outer join cannot be pushed
+ * down below the outer join, if they reference any nullable Vars.
+ * RestrictInfo nodes contain a flag to indicate whether a qual has been
  * pushed down to a lower level than its original syntactic placement in the
  * join tree would suggest.  If an outer join prevents us from pushing a qual
  * down to its "natural" semantic level (the level associated with just the
  * base rels used in the qual) then we mark the qual with a "required_relids"
  * value including more than just the base rels it actually uses.  By
- * pretending that the qual references all the rels appearing in the outer
+ * pretending that the qual references all the rels required to form the outer
  * join, we prevent it from being evaluated below the outer join's joinrel.
  * When we do form the outer join's joinrel, we still need to distinguish
  * those quals that are actually in that join's JOIN/ON condition from those
  * that appeared elsewhere in the tree and were pushed down to the join rel
  * because they used no other rels.  That's what the is_pushed_down flag is
  * for; it tells us that a qual is not an OUTER JOIN qual for the set of base
- * rels listed in required_relids.  A clause that originally came from WHERE
+ * rels listed in required_relids.	A clause that originally came from WHERE
  * or an INNER JOIN condition will *always* have its is_pushed_down flag set.
  * It's possible for an OUTER JOIN clause to be marked is_pushed_down too,
  * if we decide that it can be pushed down into the nullable side of the join.
  * In that case it acts as a plain filter qual for wherever it gets evaluated.
+ * (In short, is_pushed_down is only false for non-degenerate outer join
+ * conditions.  Possibly we should rename it to reflect that meaning?)
  *
- * When application of a qual must be delayed by outer join, we also mark it
- * with outerjoin_delayed = true.  This isn't redundant with required_relids
- * because that might equal clause_relids whether or not it's an outer-join
- * clause.
+ * RestrictInfo nodes also contain an outerjoin_delayed flag, which is true
+ * if the clause's applicability must be delayed due to any outer joins
+ * appearing below its own syntactic level (ie, it references any Vars from
+ * the nullable side of any lower outer join).
  *
  * In general, the referenced clause might be arbitrarily complex.	The
  * kinds of clauses we can handle as indexscan quals, mergejoin clauses,
- * or hashjoin clauses are fairly limited --- the code for each kind of
- * path is responsible for identifying the restrict clauses it can use
- * and ignoring the rest.  Clauses not implemented by an indexscan,
+ * or hashjoin clauses are limited (e.g., no volatile functions).  The code
+ * for each kind of path is responsible for identifying the restrict clauses
+ * it can use and ignoring the rest.  Clauses not implemented by an indexscan,
  * mergejoin, or hashjoin will be placed in the plan qual or joinqual field
  * of the finished Plan node, where they will be enforced by general-purpose
  * qual-expression-evaluation code.  (But we are still entitled to count
@@ -928,6 +1129,12 @@ typedef struct HashPath
  * estimates.  Note that a pseudoconstant clause can never be an indexqual
  * or merge or hash join clause, so it's of no interest to large parts of
  * the planner.
+ *
+ * When join clauses are generated from EquivalenceClasses, there may be
+ * several equally valid ways to enforce join equivalence, of which we need
+ * apply only one.	We mark clauses of this kind by setting parent_ec to
+ * point to the generating EquivalenceClass.  Multiple clauses with the same
+ * parent_ec in the same join are redundant.
  */
 
 typedef struct RestrictInfo
@@ -938,7 +1145,7 @@ typedef struct RestrictInfo
 
 	bool		is_pushed_down; /* TRUE if clause was pushed down in level */
 
-	bool		outerjoin_delayed;		/* TRUE if delayed by outer join */
+	bool		outerjoin_delayed;	/* TRUE if delayed by lower outer join */
 
 	bool		can_join;		/* see comment above */
 
@@ -957,22 +1164,25 @@ typedef struct RestrictInfo
 	/* This field is NULL unless clause is an OR clause: */
 	Expr	   *orclause;		/* modified clause with RestrictInfos */
 
+	/* This field is NULL unless clause is potentially redundant: */
+	EquivalenceClass *parent_ec;	/* generating EquivalenceClass */
+
 	/* cache space for cost and selectivity */
 	QualCost	eval_cost;		/* eval cost of clause; -1 if not yet set */
 	Selectivity this_selec;		/* selectivity; -1 if not yet set */
 
-	/* valid if clause is mergejoinable, else InvalidOid: */
-	Oid			mergejoinoperator;		/* copy of clause operator */
-	Oid			left_sortop;	/* leftside sortop needed for mergejoin */
-	Oid			right_sortop;	/* rightside sortop needed for mergejoin */
+	/* valid if clause is mergejoinable, else NIL */
+	List	   *mergeopfamilies;	/* opfamilies containing clause operator */
 
-	/* cache space for mergeclause processing; NIL if not yet set */
-	List	   *left_pathkey;	/* canonical pathkey for left side */
-	List	   *right_pathkey;	/* canonical pathkey for right side */
+	/* cache space for mergeclause processing; NULL if not yet set */
+	EquivalenceClass *left_ec;	/* EquivalenceClass containing lefthand */
+	EquivalenceClass *right_ec; /* EquivalenceClass containing righthand */
+	EquivalenceMember *left_em; /* EquivalenceMember for lefthand */
+	EquivalenceMember *right_em;	/* EquivalenceMember for righthand */
+	List	   *scansel_cache;	/* list of MergeScanSelCache structs */
 
-	/* cache space for mergeclause processing; -1 if not yet set */
-	Selectivity left_mergescansel;		/* fraction of left side to scan */
-	Selectivity right_mergescansel;		/* fraction of right side to scan */
+	/* transient workspace for use while considering a specific join path */
+	bool		outer_is_left;	/* T = outer var on left, F = on right */
 
 	/* valid if clause is hashjoinable, else InvalidOid: */
 	Oid			hashjoinoperator;		/* copy of clause operator */
@@ -981,6 +1191,26 @@ typedef struct RestrictInfo
 	Selectivity left_bucketsize;	/* avg bucketsize of left side */
 	Selectivity right_bucketsize;		/* avg bucketsize of right side */
 } RestrictInfo;
+
+/*
+ * Since mergejoinscansel() is a relatively expensive function, and would
+ * otherwise be invoked many times while planning a large join tree,
+ * we go out of our way to cache its results.  Each mergejoinable
+ * RestrictInfo carries a list of the specific sort orderings that have
+ * been considered for use with it, and the resulting selectivities.
+ */
+typedef struct MergeScanSelCache
+{
+	/* Ordering details (cache lookup key) */
+	Oid			opfamily;		/* btree opfamily defining the ordering */
+	int			strategy;		/* sort direction (ASC or DESC) */
+	bool		nulls_first;	/* do NULLs come before normal values? */
+	/* Results */
+	Selectivity leftstartsel;	/* first-join fraction for clause left side */
+	Selectivity leftendsel;		/* last-join fraction for clause left side */
+	Selectivity rightstartsel;	/* first-join fraction for clause right side */
+	Selectivity rightendsel;	/* last-join fraction for clause right side */
+} MergeScanSelCache;
 
 /*
  * Inner indexscan info.
@@ -1073,6 +1303,9 @@ typedef struct OuterJoinInfo
  * the order of joining and use special join methods at some join points.
  * We record information about each such IN clause in an InClauseInfo struct.
  * These structs are kept in the PlannerInfo node's in_info_list.
+ *
+ * Note: sub_targetlist is just a list of Vars or expressions; it does not
+ * contain TargetEntry nodes.
  */
 
 typedef struct InClauseInfo
@@ -1081,6 +1314,7 @@ typedef struct InClauseInfo
 	Relids		lefthand; 		/* base relids in lefthand expressions */
 	Relids		righthand;		/* base relids coming from the subselect */
 	List	   *sub_targetlist; /* targetlist of original RHS subquery */
+	List	   *in_operators;	/* OIDs of the IN's equality operator(s) */
 
 	/*
 	 * Note: sub_targetlist is just a list of Vars or expressions; it does not
@@ -1189,5 +1423,40 @@ typedef struct AppendRelInfo
 	 */
 	Oid			parent_reloid;	/* OID of parent relation */
 } AppendRelInfo;
+
+/*
+ * glob->paramlist keeps track of the PARAM_EXEC slots that we have decided
+ * we need for the query.  At runtime these slots are used to pass values
+ * either down into subqueries (for outer references in subqueries) or up out
+ * of subqueries (for the results of a subplan).  The n'th entry in the list
+ * (n counts from 0) corresponds to Param->paramid = n.
+ *
+ * Each paramlist item shows the absolute query level it is associated with,
+ * where the outermost query is level 1 and nested subqueries have higher
+ * numbers.  The item the parameter slot represents can be one of three kinds:
+ *
+ * A Var: the slot represents a variable of that level that must be passed
+ * down because subqueries have outer references to it.  The varlevelsup
+ * value in the Var will always be zero.
+ *
+ * An Aggref (with an expression tree representing its argument): the slot
+ * represents an aggregate expression that is an outer reference for some
+ * subquery.  The Aggref itself has agglevelsup = 0, and its argument tree
+ * is adjusted to match in level.
+ *
+ * A Param: the slot holds the result of a subplan (it is a setParam item
+ * for that subplan).  The absolute level shown for such items corresponds
+ * to the parent query of the subplan.
+ *
+ * Note: we detect duplicate Var parameters and coalesce them into one slot,
+ * but we do not do this for Aggref or Param slots.
+ */
+typedef struct PlannerParamItem
+{
+	NodeTag		type;
+
+	Node	   *item;			/* the Var, Aggref, or Param */
+	Index		abslevel;		/* its absolute query level */
+} PlannerParamItem;
 
 #endif   /* RELATION_H */

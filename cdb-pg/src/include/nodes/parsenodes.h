@@ -56,16 +56,6 @@ typedef struct TableOidInfo
 	Oid			toastComptypeOid;
 } TableOidInfo;
 
-
-
-
-
-
-
-
-
-
-
 /*
  * Grantable rights are encoded so that we can OR them together in a bitmask.
  * The present representation of AclItem limits us to 16 distinct rights,
