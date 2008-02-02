@@ -1006,8 +1006,6 @@ pg_fe_getauthname(PQExpBuffer errorMessage)
 	char		username[128];
 	DWORD		namesize = sizeof(username) - 1;
 #else
-	char		pwdbuf[BUFSIZ];
-	struct passwd pwdstr;
 	struct passwd *pw = NULL;
 #endif
 

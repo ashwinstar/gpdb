@@ -39,7 +39,10 @@
 #include <signal.h>
 #endif
 
-ly */
+/* include stuff common to fe and be */
+#include "getaddrinfo.h"
+#include "libpq/pqcomm.h"
+/* include stuff found in fe only */
 #include "pqexpbuffer.h"
 
 #ifdef ENABLE_GSS
@@ -57,32 +60,7 @@ ly */
 
 #ifndef ENABLE_GSS
 /*
- * Define a fake struc#ifdef ENABLE_GSS
-#if defined(HAVE_GSSAPI_H)
-#include <gssapi.h>
-#else
-#include <gssapi/gssapi.h>
-#endif
-#endif
-
-#ifdef ENABLE_SSPI
-#define SECURITY_WIN32
-#include <security.h>
-#undef SECURITY_WIN32
-
-#ifndef ENABLE_GSS
-/*
  * Define a fake structure compatible with GSSAPI on Unix.
- */
-typedef struct
-{
-	void	   *value;
-	int			length;
-}	gss_buffer_desc;
-#endif
-#endif   /* ENABLE_SSPI */
-
-ture compatible with GSSAPI on Unix.
  */
 typedef struct
 {
@@ -304,8 +282,7 @@ typedef struct pgParameterStatus
 	char	   *name;			/* parameter name */
 	char	   *value;			/* parameter value */
 	/* Note: name and value are stored in same malloc block as struct is */
-} pgParameterStatus	Oid			fn_lo_truncate; /* OID of backend function lo_truncate	*/
-;
+} pgParameterStatus;
 
 /* large-object-access data ... allocated only if large-object code is used. */
 typedef struct pgLobjfuncs
@@ -331,8 +308,7 @@ struct pg_conn
 	/* Saved values of connection options */
 	char	   *pghost;			/* the machine on which the server is running */
 	char	   *pghostaddr;		/* the IPv4 address of the machine on which
-								 * the server is running,	bool		pgpass_from_client;	/* did password come from connect args?#if defined(KRB5) || defined(ENABLE_GSS) || defined(ENABLE_SSPI)
-
+								 * the server is running, in IPv4
 								 * numbers-and-dots notation. Takes precedence
 								 * over above. */
 	char	   *pgport;			/* the server's communication port */
@@ -374,8 +350,7 @@ struct pg_conn
 	
 	/* XLOG passed from Standby Master to Primary */
 	bool						Standby_HaveInfo;
-	uint32						Standby_xlogi	bool		password_needed;	/* true if server demanded a password */
-d;		/* log file #, 0 based */
+	uint32						Standby_xlogid;  /* log file #, 0 based */
 	uint32						Standby_xrecoff;	/* byte offset of location in log file */
 		
 	PGQueryClass queryclass;
@@ -423,29 +398,7 @@ d;		/* log file #, 0 based */
 	int			inBufSize;		/* allocated size of buffer */
 	int			inStart;		/* offset to first unconsumed data in buffer */
 	int			inCursor;		/* next byte to tentatively consume */
-	int			inEnd;			/* off#endif
-
-
-#ifdef ENABLE_GSS
-	gss_ctx_id_t gctx;			/* GSS context */
-	gss_name_t	gtarg_nam;		/* GSS target name */
-	gss_buffer_desc ginbuf;		/* GSS input token */
-	gss_buffer_desc goutbuf;	/* GSS output token */
-#endif
-
-#ifdef ENABLE_SSPI
-#ifndef ENABLE_GSS
-	gss_buffer_desc ginbuf;		/* GSS input token */
-#else
-	char	   *gsslib;			/* What GSS librart to use ("gssapi" or
-								 * "sspi") */
-#endif
-	CredHandle *sspicred;		/* SSPI credentials handle */
-	CtxtHandle *sspictx;		/* SSPI context */
-	char	   *sspitarget;		/* SSPI target name */
-	int			usesspi;		/* Indicate if SSPI is in use on the
-								 * connection */
-set to first position after avail data */
+	int			inEnd;			/* offset to first position after avail data */
 
 	/* Buffer for data not yet sent to backend */
 	char	   *outBuffer;		/* currently allocated buffer */
@@ -467,7 +420,7 @@ set to first position after avail data */
 	bool		allow_ssl_try;	/* Allowed to try SSL negotiation */
 	bool		wait_ssl_try;	/* Delay SSL negotiation until after
 								 * attempting normal connection */
-	SSL		   *ssl;			/* SSL staus, if have SSL connection */
+	SSL		   *ssl;			/* SSL status, if have SSL connection */
 	X509	   *peer;			/* X509 cert of server */
 	char		peer_dn[256 + 1];		/* peer distinguished name */
 	char		peer_cn[SM_USER + 1];	/* peer common name */
