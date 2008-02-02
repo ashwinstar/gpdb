@@ -156,13 +156,13 @@ typedef struct PlannerInfo
     /*
      * Outer join info
      */
-    List	   *left_join_clauses;		/* list of RestrictInfos for outer
-										 * join clauses w/nonnullable var on
-										 * left */
+	List	   *left_join_clauses;		/* list of RestrictInfos for
+										 * mergejoinable outer join clauses
+										 * w/nonnullable var on left */
 
-	List	   *right_join_clauses;		/* list of RestrictInfos for outer
-										 * join clauses w/nonnullable var on
-										 * right */
+	List	   *right_join_clauses;		/* list of RestrictInfos for
+										 * mergejoinable outer join clauses
+										 * w/nonnullable var on right */
 
 	List	   *full_join_clauses;		/* list of RestrictInfos for
 										 * mergejoinable full join clauses */
@@ -192,9 +192,7 @@ typedef struct PlannerInfo
 	bool		hasHavingQual;	/* true if havingQual was non-null */
 	bool		hasPseudoConstantQuals; /* true if any RestrictInfo has
 										 * pseudoconstant = true */
-
 } PlannerInfo;
-
 
 
 /*
@@ -349,6 +347,7 @@ typedef struct RelOptInfo
 	List	   *pathlist;		/* Path structures */
 	struct Path *cheapest_startup_path;
 	struct Path *cheapest_total_path;
+	struct Path *cheapest_unique_path;
     struct CdbRelDedupInfo *dedup_info; /* subquery dup removal info, or NULL */
 
 	/* information about a base rel (not set for join rels!) */
@@ -468,6 +467,54 @@ typedef struct IndexOptInfo
 
 
 /*
+ * CdbRelDedupInfo
+ *
+ * One of these hangs off each RelOptInfo entry whose paths might need
+ * special treatment for duplicate suppression for flattened subqueries.
+ */
+typedef struct CdbRelDedupInfo
+{
+	NodeTag		type;                   /* T_CdbRelDedupInfo */
+
+    Relids      prejoin_dedup_subqrelids;
+                                        /* relids of subqueries' own (righthand)
+                                         * tables for those subqueries that have
+                                         * all of their own tables present in
+                                         * this rel.
+                                         */
+    Relids      spent_subqrelids;       /* set of subquery relids that are
+                                         * inputs to this rel but won't be
+                                         * referenced again downstream (i.e.,
+                                         * are not mentioned in reltargetlist).
+                                         * Can use JOIN_IN when inner relids
+                                         * are a subset of spent_subq_relids.
+                                         */
+    bool        try_postjoin_dedup;     /* true => this rel includes all inputs
+                                         * required (including lefthand and
+                                         * correlating inputs as well as the
+                                         * subqueries' own tables) to fully
+                                         * evaluate the subqueries indicated by
+                                         * prejoin_dedup_subqrelids.
+                                         */
+    bool        no_more_subqueries;     /* true => this rel includes all inputs
+                                         * required for all flattened subqueries
+                                         * of the current query level.
+                                         */
+    struct InClauseInfo   *join_unique_ininfo;
+                                        /* uncorrelated "= ANY" subquery with
+                                         * exactly the same relids as this rel.
+                                         */
+    List       *later_dedup_pathlist;   /* List of Path.  Contains paths which
+                                         * yield this rel but lack duplicate
+                                         * suppression which is to occur later.
+                                         * Their subq_complete flags are false.
+                                         */
+	struct Path *cheapest_startup_path; /* cheapest of later_dedup_pathlist */
+	struct Path *cheapest_total_path;   /* cheapest of later_dedup_pathlist */
+} CdbRelDedupInfo;
+
+
+/*
  * EquivalenceClasses
  *
  * Whenever we can determine that a mergejoinable equality clause A = B is
@@ -555,54 +602,6 @@ typedef struct EquivalenceMember
 } EquivalenceMember;
 
 /*
- * CdbRelDedupInfo
- *
- * One of these hangs off each RelOptInfo entry whose paths might need
- * special treatment for duplicate suppression for flattened subqueries.
- */
-typedef struct CdbRelDedupInfo
-{
-	NodeTag		type;                   /* T_CdbRelDedupInfo */
-
-    Relids      prejoin_dedup_subqrelids;
-                                        /* relids of subqueries' own (righthand)
-                                         * tables for those subqueries that have
-                                         * all of their own tables present in
-                                         * this rel.
-                                         */
-    Relids      spent_subqrelids;       /* set of subquery relids that are
-                                         * inputs to this rel but won't be
-                                         * referenced again downstream (i.e.,
-                                         * are not mentioned in reltargetlist).
-                                         * Can use JOIN_IN when inner relids
-                                         * are a subset of spent_subq_relids.
-                                         */
-    bool        try_postjoin_dedup;     /* true => this rel includes all inputs
-                                         * required (including lefthand and
-                                         * correlating inputs as well as the
-                                         * subqueries' own tables) to fully
-                                         * evaluate the subqueries indicated by
-                                         * prejoin_dedup_subqrelids.
-                                         */
-    bool        no_more_subqueries;     /* true => this rel includes all inputs
-                                         * required for all flattened subqueries
-                                         * of the current query level.
-                                         */
-    struct InClauseInfo   *join_unique_ininfo;
-                                        /* uncorrelated "= ANY" subquery with
-                                         * exactly the same relids as this rel.
-                                         */
-    List       *later_dedup_pathlist;   /* List of Path.  Contains paths which
-                                         * yield this rel but lack duplicate
-                                         * suppression which is to occur later.
-                                         * Their subq_complete flags are false.
-                                         */
-	struct Path *cheapest_startup_path; /* cheapest of later_dedup_pathlist */
-	struct Path *cheapest_total_path;   /* cheapest of later_dedup_pathlist */
-} CdbRelDedupInfo;
-
-
-/*
  * PathKeys
  *
  * The sort ordering of a path is represented by a list of PathKey nodes.
@@ -632,26 +631,6 @@ typedef struct PathKey
 
 
 /*
- * CdbPathKeyItemIsConstant
- *      is true if there is no Var of the current level in the expr
- *      referenced by a given PathKeyItem.
- */
-#define CdbPathKeyItemIsConstant(_pathkeyitem)  \
-    ((_pathkeyitem)->cdb_num_relids == 0)
-
-/*
- * CdbPathkeyEqualsConstant
- *      is true if there is a constant expr in a given set of
- *      equijoin-equivalent exprs represented by a pathkey
- *      (i.e. a List of PathKeyItem).  If there is a constant
- *      expr, it will be at the head of the list.
- */
-#define CdbPathkeyEqualsConstant(_pathkey)  \
-    ( (_pathkey) != NIL &&                  \
-      CdbPathKeyItemIsConstant((PathKeyItem *)linitial(_pathkey)) )
-
-
-/*
  * Type "Path" is used as-is for sequential-scan paths.  For other
  * path types it is the first component of a larger struct.
  *
@@ -677,6 +656,9 @@ typedef struct Path
 
     CdbPathLocus    locus;      /* distribution of the result tuples */
 
+    List	   *pathkeys;		/* sort ordering of path's output */
+	/* pathkeys is a List of PathKey nodes; see above */
+
     bool        motionHazard;   /* true => path contains a CdbMotion operator
                                  *    without a slackening operator above it */
 	
@@ -687,9 +669,8 @@ typedef struct Path
                                  *  but still needing duplicate suppression.
                                  *  Set by add_path().
                                  */
-	List	   *pathkeys;		/* sort ordering of path's output */
-	/* pathkeys is a List of PathKey nodes; see above */
 } Path;
+
 
 /* 
  * ExternalPath is used for external table scans. 
@@ -1227,8 +1208,8 @@ typedef struct InnerIndexscanInfo
 	Relids		other_relids;	/* a set of relevant other relids */
 	bool		isouterjoin;	/* true if join is outer */
 	/* Best paths for this lookup key (NULL if no available indexscans): */
-	Path	   *cheapest_startup_innerpath;	/* cheapest startup cost */
-	Path	   *cheapest_total_innerpath;	/* cheapest total cost */
+	Path	   *cheapest_startup_innerpath;		/* cheapest startup cost */
+	Path	   *cheapest_total_innerpath;		/* cheapest total cost */
 } InnerIndexscanInfo;
 
 /*
@@ -1259,7 +1240,7 @@ typedef struct InnerIndexscanInfo
  * to be evaluated after this join is formed (because it references the RHS).
  * Any outer joins that have such a clause and this join in their RHS cannot
  * commute with this join, because that would leave noplace to check the
- * pushed-down clause.  (We don't track this for FULL JOINs, either.)
+ * pushed-down clause.	(We don't track this for FULL JOINs, either.)
  *
  * Note: OuterJoinInfo directly represents only LEFT JOIN and FULL JOIN;
  * RIGHT JOIN is handled by switching the inputs to make it a LEFT JOIN.
@@ -1276,7 +1257,7 @@ typedef struct OuterJoinInfo
 	Relids		syn_righthand;	/* base relids syntactically within RHS */
 	bool		is_full_join;	/* it's a FULL OUTER JOIN */
 	bool		lhs_strict;		/* joinclause is strict for some LHS rel */
-	bool		delay_upper_joins;	/* can't commute with upper RHS */
+	bool		delay_upper_joins;		/* can't commute with upper RHS */
 } OuterJoinInfo;
 
 /*
@@ -1294,16 +1275,10 @@ typedef struct OuterJoinInfo
 typedef struct InClauseInfo
 {
 	NodeTag		type;
-	Relids		lefthand; 		/* base relids in lefthand expressions */
+	Relids		lefthand;		/* base relids in lefthand expressions */
 	Relids		righthand;		/* base relids coming from the subselect */
 	List	   *sub_targetlist; /* targetlist of original RHS subquery */
 	List	   *in_operators;	/* OIDs of the IN's equality operator(s) */
-
-	/*
-	 * Note: sub_targetlist is just a list of Vars or expressions; it does not
-	 * contain TargetEntry nodes.
-	 */
-
     bool        try_join_unique;
                                 /* CDB: true => comparison is equality op and
                                  *  subquery is not correlated.  Ok to consider
