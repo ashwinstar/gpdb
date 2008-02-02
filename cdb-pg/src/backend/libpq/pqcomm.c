@@ -237,7 +237,7 @@ pq_comm_close_fatal(void)
 		secure_close(MyProcPort);
 
 		if (MyProcPort->sock >= 0)
-            closesocket(My
+            closesocket(MyProcPort->sock);
         
 		MyProcPort->sock = -1;
 	}
@@ -579,16 +579,7 @@ Setup_AF_UNIX(void)
 			}
 			gid = gr->gr_gid;
 		}
-		if (chown(sock_
-		/*
-		 * If accept() fails then postmaster.c will still see the server
-		 * socket as read-ready, and will immediately try again.  To avoid
-		 * uselessly sucking lots of CPU, delay a bit before trying again.
-		 * (The most likely reason for failure is being out of kernel file
-		 * table slots; we can do little except hope some will get freed up.)
-		 */
-		pg_usleep(100000L);		/* wait 0.1 sec */
-path, -1, gid) == -1)
+		if (chown(sock_path, -1, gid) == -1)
 		{
 			ereport(LOG,
 					(errcode_for_file_access(),
@@ -865,8 +856,11 @@ pq_peekbyte(void)
 		if (pq_recvbuf())		/* If nothing in buffer, then recv some */
 			return EOF;			/* Failed to recv data */
 	}
-	return (unsigned char) PqRecvBuffer[PqRecvPoint	resetStringInfo(s);
-ber of bytes from connection
+	return (unsigned char) PqRecvBuffer[PqRecvPointer];
+}
+
+/* --------------------------------
+ *		pq_getbytes		- get a known number of bytes from connection
  *
  *		returns 0 if OK, EOF if trouble
  * --------------------------------
