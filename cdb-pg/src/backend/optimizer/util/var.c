@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/var.c,v 1.68 2006/07/14 14:52:21 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/var.c,v 1.73 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -50,6 +50,7 @@ typedef struct
 	int			sublevels_up;
 } flatten_join_alias_vars_context;
 
+static bool pull_varattnos_walker(Node *node, Bitmapset **varattnos);
 static bool contain_var_clause_walker(Node *node, void *context);
 static bool pull_var_clause_walker(Node *node,
 					   pull_var_clause_context *context);
@@ -60,18 +61,21 @@ static Relids alias_relid_set(PlannerInfo *root, Relids relids);
 
 /*
  * cdb_walk_vars
- *	  Invoke callback function on each Var and/or Aggref node in an expression.
- *    If a callback returns true, no further nodes are visited, and true is
- *    returned.  Otherwise after visiting all nodes, false is returned.
+ *
+ * Invoke callback function on each Var, CurrentOfExpr and/or Aggref
+ * node in an expression.  If a callback returns true, no further nodes
+ * are visited, and true is returned.  Otherwise after visiting all nodes,
+ * false is returned.
  *
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
 typedef struct Cdb_walk_vars_context
 {
-    Cdb_walk_vars_callback_Var      callback_var;
-    Cdb_walk_vars_callback_Aggref   callback_aggref;
-    void                           *context;
-    int                             sublevelsup;
+    Cdb_walk_vars_callback_Var              callback_var;
+    Cdb_walk_vars_callback_Aggref           callback_aggref;
+    Cdb_walk_vars_callback_CurrentOfExpr    callback_cexpr;
+    void                                   *context;
+    int                                     sublevelsup;
 } Cdb_walk_vars_context;
 
 static bool
@@ -90,6 +94,10 @@ cdb_walk_vars_walker(Node *node, void *wvwcontext)
         ctx->callback_aggref != NULL)
         return ctx->callback_aggref((Aggref *)node, ctx->context, ctx->sublevelsup);
 
+    if (IsA(node, CurrentOfExpr) &&
+        ctx->callback_cexpr != NULL)
+		return ctx->callback_cexpr((CurrentOfExpr *)node, ctx->context, ctx->sublevelsup);
+
     if (IsA(node, Query))
 	{
 		bool    b;
@@ -103,17 +111,20 @@ cdb_walk_vars_walker(Node *node, void *wvwcontext)
 	return expression_tree_walker(node, cdb_walk_vars_walker, ctx);
 }                               /* cdb_walk_vars_walker */
 
+
 bool
-cdb_walk_vars(Node                         *node,
-              Cdb_walk_vars_callback_Var    callback_var,
-              Cdb_walk_vars_callback_Aggref callback_aggref,
-              void                         *context,
-              int                           levelsup)
+cdb_walk_vars(Node                                 *node,
+              Cdb_walk_vars_callback_Var            callback_var,
+              Cdb_walk_vars_callback_Aggref         callback_aggref,
+              Cdb_walk_vars_callback_CurrentOfExpr  callback_cexpr,
+              void                                 *context,
+              int                                   levelsup)
 {
 	Cdb_walk_vars_context   ctx;
 
     ctx.callback_var = callback_var;
     ctx.callback_aggref = callback_aggref;
+    ctx.callback_cexpr = callback_cexpr;
     ctx.context = context;
     ctx.sublevelsup = levelsup;
 
@@ -145,13 +156,28 @@ pull_varnos_cbVar(Var *var, void *context, int sublevelsup)
 	return false;
 }
 
+static bool
+pull_varnos_cbCurrentOfExpr(CurrentOfExpr *cexpr, void *context, int sublevelsup)
+{
+    pull_varnos_context *ctx = (pull_varnos_context *)context;
+
+    if (sublevelsup == 0)
+        ctx->varnos = bms_add_member(ctx->varnos, cexpr->cvarno);
+	return false;
+}
+
 inline Relids
 pull_varnos_of_level(Node *node, int levelsup)      /*CDB*/
 {
 	pull_varnos_context context;
 
 	context.varnos = NULL;
-    cdb_walk_vars(node, pull_varnos_cbVar, NULL, &context, levelsup);
+    cdb_walk_vars(node,
+                  pull_varnos_cbVar,
+                  NULL,
+                  pull_varnos_cbCurrentOfExpr,
+                  &context,
+                  levelsup);
 	return context.varnos;
 }                               /* pull_varnos_of_level */
 
@@ -159,6 +185,48 @@ Relids
 pull_varnos(Node *node)
 {
 	return pull_varnos_of_level(node, 0);
+}
+
+
+/*
+ * pull_varattnos
+ *		Find all the distinct attribute numbers present in an expression tree,
+ *		and add them to the initial contents of *varattnos.
+ *		Only Vars that reference RTE 1 of rtable level zero are considered.
+ *
+ * Attribute numbers are offset by FirstLowInvalidHeapAttributeNumber so that
+ * we can include system attributes (e.g., OID) in the bitmap representation.
+ *
+ * Currently, this does not support subqueries nor expressions containing
+ * references to multiple tables; not needed since it's only applied to
+ * index expressions and predicates.
+ */
+void
+pull_varattnos(Node *node, Bitmapset **varattnos)
+{
+	(void) pull_varattnos_walker(node, varattnos);
+}
+
+static bool
+pull_varattnos_walker(Node *node, Bitmapset **varattnos)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Var))
+	{
+		Var		   *var = (Var *) node;
+
+		Assert(var->varno == 1);
+		*varattnos = bms_add_member(*varattnos,
+						 var->varattno - FirstLowInvalidHeapAttributeNumber);
+		return false;
+	}
+	/* Should not find a subquery or subplan */
+	Assert(!IsA(node, Query));
+	Assert(!is_subplan(node));
+
+	return expression_tree_walker(node, pull_varattnos_walker,
+								  (void *) varattnos);
 }
 
 
@@ -195,7 +263,12 @@ contain_var_reference(Node *node, int varno, int varattno, int levelsup)
 	context.varno = varno;
 	context.varattno = varattno;
 
-	return cdb_walk_vars(node, contain_var_reference_cbVar, NULL, &context, levelsup);
+	return cdb_walk_vars(node,
+                         contain_var_reference_cbVar,
+                         NULL,
+                         NULL,
+                         &context,
+                         levelsup);
 }
 
 
@@ -226,6 +299,8 @@ contain_var_clause_walker(Node *node, void *context)
 			return true;		/* abort the tree traversal and return true */
 		return false;
 	}
+	if (IsA(node, CurrentOfExpr))
+		return true;
 	return expression_tree_walker(node, contain_var_clause_walker, context);
 }
 
@@ -239,16 +314,19 @@ contain_var_clause_walker(Node *node, void *context)
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
 static bool
-contain_vars_of_level_cbVar(Var *var, void *unused, int sublevelsup)
+contain_vars_of_level_cbVar(Var *var, void *context, int sublevelsup)
 {
+    UnusedArg(context);
 	if ((int)var->varlevelsup == sublevelsup)
-		return true;		    /* abort tree traversal and return true */
+		return true;		    /* quit tree traversal and return true */
     return false;
 }
 
 static bool
-contain_vars_of_level_cbAggref(Aggref *aggref, void *unused, int sublevelsup)
+contain_vars_of_level_cbAggref(Aggref *aggref, void *context, int sublevelsup)
 {
+    UnusedArg(context);
+
 	if ((int)aggref->agglevelsup == sublevelsup)
         return true;
 
@@ -257,7 +335,16 @@ contain_vars_of_level_cbAggref(Aggref *aggref, void *unused, int sublevelsup)
                          contain_vars_of_level_cbVar,
                          contain_vars_of_level_cbAggref,
                          NULL,
+                         NULL,
                          sublevelsup);
+}
+
+static bool
+contain_vars_of_level_cbCurrentOfExpr(CurrentOfExpr *cexpr, void *context, int sublevelsup)
+{
+    UnusedArg(cexpr);
+    UnusedArg(context);
+    return sublevelsup == 0;
 }
 
 bool
@@ -266,6 +353,7 @@ contain_vars_of_level(Node *node, int levelsup)
 	return cdb_walk_vars(node,
                          contain_vars_of_level_cbVar,
                          contain_vars_of_level_cbAggref,
+                         contain_vars_of_level_cbCurrentOfExpr,
                          NULL,
                          levelsup);
 }
@@ -281,16 +369,20 @@ contain_vars_of_level(Node *node, int levelsup)
  * Will recurse into sublinks.	Also, may be invoked directly on a Query.
  */
 static bool
-contain_vars_of_level_or_above_cbVar(Var *var, void *unused, int sublevelsup)
+contain_vars_of_level_or_above_cbVar(Var *var, void *context, int sublevelsup)
 {
+    UnusedArg(context);
+
 	if ((int)var->varlevelsup >= sublevelsup)
-		return true;		    /* abort tree traversal and return true */
+		return true;		    /* quit tree traversal and return true */
     return false;
 }
 
 static bool
-contain_vars_of_level_or_above_cbAggref(Aggref *aggref, void *unused, int sublevelsup)
+contain_vars_of_level_or_above_cbAggref(Aggref *aggref, void *context, int sublevelsup)
 {
+    UnusedArg(context);
+
 	if ((int)aggref->agglevelsup >= sublevelsup)
         return true;
 
@@ -298,6 +390,7 @@ contain_vars_of_level_or_above_cbAggref(Aggref *aggref, void *unused, int sublev
 	return cdb_walk_vars((Node *)aggref->args,
                          contain_vars_of_level_or_above_cbVar,
                          contain_vars_of_level_or_above_cbAggref,
+                         NULL,
                          NULL,
                          sublevelsup);
 }
@@ -308,6 +401,7 @@ contain_vars_of_level_or_above(Node *node, int levelsup)
 	return cdb_walk_vars(node,
                          contain_vars_of_level_or_above_cbVar,
                          contain_vars_of_level_or_above_cbAggref,
+                         NULL,
                          NULL,
                          levelsup);
 }
@@ -335,6 +429,37 @@ find_minimum_var_level_cbVar(Var   *var,
     int			varlevelsup = var->varlevelsup;
 
 	/* convert levelsup to frame of reference of original query */
+	varlevelsup -= sublevelsup;
+	/* ignore local vars of subqueries */
+	if (varlevelsup >= 0)
+	{
+		if (ctx->min_varlevel < 0 ||
+			ctx->min_varlevel > varlevelsup)
+		{
+			ctx->min_varlevel = varlevelsup;
+
+			/*
+			 * As soon as we find a local variable, we can abort the tree
+			 * traversal, since min_varlevel is then certainly 0.
+			 */
+			if (varlevelsup == 0)
+				return true;
+		}
+	}
+    return false;
+}
+
+static bool
+find_minimum_var_level_cbCurrentOfExpr(CurrentOfExpr   *cexpr,
+							           void            *context,
+                                       int              sublevelsup)
+{
+    find_minimum_var_level_context *ctx = (find_minimum_var_level_context *)context;
+	int			varlevelsup = 0;
+
+    UnusedArg(cexpr);
+
+    /* convert levelsup to frame of reference of original query */
 	varlevelsup -= sublevelsup;
 	/* ignore local vars of subqueries */
 	if (varlevelsup >= 0)
@@ -391,6 +516,7 @@ find_minimum_var_level_cbAggref(Aggref *aggref,
 	return cdb_walk_vars((Node *)aggref->args,
                          find_minimum_var_level_cbVar,
                          find_minimum_var_level_cbAggref,
+                         NULL,
                          ctx,
                          sublevelsup);
 }
@@ -405,6 +531,7 @@ find_minimum_var_level(Node *node)
 	cdb_walk_vars(node,
                   find_minimum_var_level_cbVar,
                   find_minimum_var_level_cbAggref,
+                  find_minimum_var_level_cbCurrentOfExpr,
                   &context,
                   0);
 
