@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/parser/parse_clause.h,v 1.46 2006/07/03 22:45:40 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/parser/parse_clause.h,v 1.49 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -42,8 +42,6 @@ extern List *addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 					SortByDir sortby_dir, SortByNulls sortby_nulls,
 					List *sortby_opname, bool resolveUnknown);
 extern Index assignSortGroupRef(TargetEntry *tle, List *tlist);
-/* GPDB PG 8.3 MERGE TODO: func below has been renamed but PG added a Oid sortop arg
- */
-extern bool targetIsInSortGroupList(TargetEntry *tle, List *sortList);
+extern bool targetIsInSortList(TargetEntry *tle, Oid sortop, List *sortList);
 
 #endif   /* PARSE_CLAUSE_H */

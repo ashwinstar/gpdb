@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_clause.c,v 1.159 2006/11/28 12:54:41 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_clause.c,v 1.168 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -39,6 +39,7 @@
 #include "parser/parse_type.h"
 #include "rewrite/rewriteManip.h"
 #include "utils/guc.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 
@@ -113,7 +114,7 @@ typedef struct winref_check_ctx
 void
 transformFromClause(ParseState *pstate, List *frmList)
 {
-	ListCell   *fl = NULL;
+	ListCell   *fl;
 
 	/*
 	 * The grammar will have produced a list of RangeVars, RangeSubselects,
@@ -383,7 +384,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 	ListCell *w;
 	List *winout = NIL;
 	List *winin = pstate->p_win_clauses;
-	Index clauseno = -1;
+	Index clauseno = 0;
 	
 	/*
 	 * We have two lists of window specs: one in the ParseState -- put there
@@ -402,8 +403,6 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		WindowSpec *newspec = makeNode(WindowSpec);
 		ListCell   *tmp;
 		bool		found = false;
-
-		clauseno++;
 
 		if (checkExprHasWindFuncs((Node *)ws))
 		{
@@ -654,6 +653,7 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		}
 		
 		winout = lappend(winout, newspec);
+		clauseno++;
 	}
 
 	/* If there are no window functions in the targetlist,
@@ -707,8 +707,8 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 	 * Open target rel and grab suitable lock (which we will hold till end of
 	 * transaction).
 	 *
-	 * analyze.c will eventually do the corresponding heap_close(), but *not*
-	 * release the lock.
+	 * free_parsestate() will eventually do the corresponding heap_close(),
+	 * but *not* release the lock.
      *
      * CDB: Acquire ExclusiveLock if it is a distributed relation and we are
      * doing UPDATE or DELETE activity
@@ -763,7 +763,7 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
  * Simplify InhOption (yes/no/default) into boolean yes/no.
  *
  * The reason we do things this way is that we don't want to examine the
- * SQL_inheritance option flag until parse_analyze is run.	Otherwise,
+ * SQL_inheritance option flag until parse_analyze() is run.	Otherwise,
  * we'd do the wrong thing with query strings that intermix SET commands
  * with queries.
  */
@@ -987,7 +987,6 @@ transformTableEntry(ParseState *pstate, RangeVar *r)
 static RangeTblEntry *
 transformRangeSubselect(ParseState *pstate, RangeSubselect *r)
 {
-	List	   *parsetrees;
 	Query	   *query;
 	RangeTblEntry *rte;
 
@@ -1004,25 +1003,19 @@ transformRangeSubselect(ParseState *pstate, RangeSubselect *r)
 	/*
 	 * Analyze and transform the subquery.
 	 */
-	parsetrees = parse_sub_analyze(r->subquery, pstate);
+	query = parse_sub_analyze(r->subquery, pstate);
 
 	/*
-	 * Check that we got something reasonable.	Most of these conditions are
-	 * probably impossible given restrictions of the grammar, but check 'em
-	 * anyway.
+	 * Check that we got something reasonable.	Many of these conditions are
+	 * impossible given restrictions of the grammar, but check 'em anyway.
 	 */
-	if (list_length(parsetrees) != 1)
-		elog(ERROR, "unexpected parse analysis result for subquery in FROM");
-	query = (Query *) linitial(parsetrees);
-	if (query == NULL || !IsA(query, Query))
-		elog(ERROR, "unexpected parse analysis result for subquery in FROM");
-
-	if (query->commandType != CMD_SELECT)
+	if (query->commandType != CMD_SELECT ||
+		query->utilityStmt != NULL)
 		elog(ERROR, "expected SELECT query from subquery in FROM");
-	if (query->into != NULL)
+	if (query->intoClause != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("subquery in FROM may not have SELECT INTO")));
+				 errmsg("subquery in FROM cannot have SELECT INTO")));
 
 	/*
 	 * The subquery cannot make use of any variables from FROM items created
@@ -1042,7 +1035,7 @@ transformRangeSubselect(ParseState *pstate, RangeSubselect *r)
 		if (contain_vars_of_level((Node *) query, 1))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-					 errmsg("subquery in FROM may not refer to other relations of same query level")));
+					 errmsg("subquery in FROM cannot refer to other relations of same query level")));
 	}
 
 	/*
@@ -1091,7 +1084,7 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 		if (contain_vars_of_level(funcexpr, 0))
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-					 errmsg("function expression in FROM may not refer to other relations of same query level")));
+					 errmsg("function expression in FROM cannot refer to other relations of same query level")));
 	}
 
 	/*
@@ -1665,7 +1658,7 @@ transformLimitClause(ParseState *pstate, Node *clause,
 
 	qual = transformExpr(pstate, clause);
 
-	qual = coerce_to_bigint(pstate, qual, constructName);
+	qual = coerce_to_specific_type(pstate, qual, INT8OID, constructName);
 
 	/*
 	 * LIMIT can't refer to any vars or aggregates of the current query; we
@@ -1975,13 +1968,15 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 }
 
 static GroupClause *
-make_group_clause(TargetEntry *tle, List *targetlist, Oid sortop)
+make_group_clause(TargetEntry *tle, List *targetlist,
+				  Oid sortop, bool nulls_first)
 {
 	GroupClause *result;
 
 	result = makeNode(GroupClause);
 	result->tleSortGroupRef = assignSortGroupRef(tle, targetlist);
 	result->sortop = sortop;
+	result->nulls_first = nulls_first;
 	return result;
 }
 
@@ -2053,7 +2048,7 @@ make_grouping_clause(ParseState *pstate, GroupingClause *grpcl, List* targetList
 			sort_op = ordering_oper_opid(exprType((Node *) tle->expr));
 			result->groupsets =
 				lappend(result->groupsets,
-						make_group_clause(tle, targetList, sort_op));
+						make_group_clause(tle, targetList, sort_op, false));
 		}
 	}
 
@@ -2254,8 +2249,9 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 
 					tle_list = list_delete_cell(tle_list, tl, prev);
 
-					/* Use the sort clause's sorting operator */
-					gc = make_group_clause(tle, *targetlist, sc->sortop);
+					/* Use the sort clause's sorting information */
+					gc = make_group_clause(tle, *targetlist,
+										   sc->sortop, sc->nulls_first);
 					result = lappend(result, gc);
 					found = true;
 					break;
@@ -2324,12 +2320,18 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 			tle = findTargetlistEntry(pstate, node,
 									  targetlist, GROUP_CLAUSE);
 
-			/* avoid making duplicate expression entries */
-			if (targetIsInSortGroupList(tle, result))
+			/*
+			 * Avoid making duplicate grouplist entries.  Note that we don't
+			 * enforce a particular sortop here.  Along with the copying of sort
+			 * information above, this means that if you write something like
+			 * "GROUP BY foo ORDER BY foo USING <<<", the GROUP BY operation
+			 * silently takes on the equality semantics implied by the ORDER BY.
+			 */
+			if (targetIsInSortList(tle, InvalidOid, result))
 				continue;
 
 			sort_op = ordering_oper_opid(exprType((Node *) tle->expr));
-			gc = make_group_clause(tle, *targetlist, sort_op);
+			gc = make_group_clause(tle, *targetlist, sort_op, false);
 			result = lappend(result, gc);
 		}
 	}
@@ -2410,7 +2412,8 @@ transformSortClause(ParseState *pstate,
 
 		sortlist = addTargetToSortList(pstate, tle,
 									   sortlist, *targetlist,
-									   sortby->sortby_kind,
+									   sortby->sortby_dir,
+									   sortby->sortby_nulls,
 									   sortby->useOp,
 									   resolveUnknown);
 	}
@@ -2516,7 +2519,9 @@ transformDistinctClause(ParseState *pstate, List *distinctlist,
 			{
 				*sortClause = addTargetToSortList(pstate, tle,
 												  *sortClause, *targetlist,
-												  SORTBY_ASC, NIL, true);
+												  SORTBY_DEFAULT,
+												  SORTBY_NULLS_DEFAULT,
+												  NIL, true);
 
 				/*
 				 * Probably, the tle should always have been added at the end
@@ -2565,8 +2570,9 @@ addAllTargetsToSortList(ParseState *pstate, List *sortlist,
 		if (!tle->resjunk)
 			sortlist = addTargetToSortList(pstate, tle,
 										   sortlist, targetlist,
-										   SORTBY_ASC, NIL,
-										   resolveUnknown);
+										   SORTBY_DEFAULT,
+										   SORTBY_NULLS_DEFAULT,
+										   NIL, resolveUnknown);
 	}
 	return sortlist;
 }
@@ -2574,8 +2580,7 @@ addAllTargetsToSortList(ParseState *pstate, List *sortlist,
 /*
  * addTargetToSortList
  *		If the given targetlist entry isn't already in the ORDER BY list,
- *		add it to the end of the list, using the sortop with given name
- *		or the default sort operator if opname == NIL.
+ *		add it to the end of the list, using the given sort ordering info.
  *
  * If resolveUnknown is TRUE, convert TLEs of type UNKNOWN to TEXT.  If not,
  * do nothing (which implies the search for a sort operator will fail).
@@ -2588,49 +2593,91 @@ addAllTargetsToSortList(ParseState *pstate, List *sortlist,
 List *
 addTargetToSortList(ParseState *pstate, TargetEntry *tle,
 					List *sortlist, List *targetlist,
-					int sortby_kind, List *sortby_opname,
-					bool resolveUnknown)
+					SortByDir sortby_dir, SortByNulls sortby_nulls,
+					List *sortby_opname, bool resolveUnknown)
 {
+	Oid			restype = exprType((Node *) tle->expr);
+	Oid			sortop;
+	Oid			cmpfunc;
+	bool		reverse;
+
+	/* if tlist item is an UNKNOWN literal, change it to TEXT */
+	if (restype == UNKNOWNOID && resolveUnknown)
+	{
+		tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
+										 restype, TEXTOID, -1,
+										 COERCION_IMPLICIT,
+										 COERCE_IMPLICIT_CAST);
+		restype = TEXTOID;
+	}
+
+	/* determine the sortop */
+	switch (sortby_dir)
+	{
+		case SORTBY_DEFAULT:
+		case SORTBY_ASC:
+			sortop = ordering_oper_opid(restype);
+			reverse = false;
+			break;
+		case SORTBY_DESC:
+			sortop = reverse_ordering_oper_opid(restype);
+			reverse = true;
+			break;
+		case SORTBY_USING:
+			Assert(sortby_opname != NIL);
+			sortop = compatible_oper_opid(sortby_opname,
+										  restype,
+										  restype,
+										  false);
+
+			/*
+			 * Verify it's a valid ordering operator, and determine whether to
+			 * consider it like ASC or DESC.
+			 */
+			if (!get_compare_function_for_ordering_op(sortop,
+													  &cmpfunc, &reverse))
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					   errmsg("operator %s is not a valid ordering operator",
+							  strVal(llast(sortby_opname))),
+						 errhint("Ordering operators must be \"<\" or \">\" members of btree operator families.")));
+			break;
+		default:
+			elog(ERROR, "unrecognized sortby_dir: %d", sortby_dir);
+			sortop = InvalidOid;	/* keep compiler quiet */
+			reverse = false;
+			break;
+	}
+
 	/* avoid making duplicate sortlist entries */
-	if (!targetIsInSortGroupList(tle, sortlist))
+	if (!targetIsInSortList(tle, sortop, sortlist))
 	{
 		SortClause *sortcl = makeNode(SortClause);
-		Oid			restype = exprType((Node *) tle->expr);
-
-		/* if tlist item is an UNKNOWN literal, change it to TEXT */
-		if (restype == UNKNOWNOID && resolveUnknown)
-		{
-			tle->expr = (Expr *) coerce_type(pstate, (Node *) tle->expr,
-											 restype, TEXTOID, -1,
-											 COERCION_IMPLICIT,
-											 COERCE_IMPLICIT_CAST);
-			restype = TEXTOID;
-		}
 
 		sortcl->tleSortGroupRef = assignSortGroupRef(tle, targetlist);
 
-		switch (sortby_kind)
+		sortcl->sortop = sortop;
+
+		switch (sortby_nulls)
 		{
-			case SORTBY_ASC:
-				sortcl->sortop = ordering_oper_opid(restype);
+			case SORTBY_NULLS_DEFAULT:
+				/* NULLS FIRST is default for DESC; other way for ASC */
+				sortcl->nulls_first = reverse;
 				break;
-			case SORTBY_DESC:
-				sortcl->sortop = reverse_ordering_oper_opid(restype);
+			case SORTBY_NULLS_FIRST:
+				sortcl->nulls_first = true;
 				break;
-			case SORTBY_USING:
-				Assert(sortby_opname != NIL);
-				sortcl->sortop = compatible_oper_opid(sortby_opname,
-													  restype,
-													  restype,
-													  false);
+			case SORTBY_NULLS_LAST:
+				sortcl->nulls_first = false;
 				break;
 			default:
-				elog(ERROR, "unrecognized sortby_kind: %d", sortby_kind);
+				elog(ERROR, "unrecognized sortby_nulls: %d", sortby_nulls);
 				break;
 		}
 
 		sortlist = lappend(sortlist, sortcl);
 	}
+
 	return sortlist;
 }
 
@@ -2664,8 +2711,18 @@ assignSortGroupRef(TargetEntry *tle, List *tlist)
 }
 
 /*
- * targetIsInSortGroupList
+ * targetIsInSortList
  *		Is the given target item already in the sortlist or grouplist?
+ *		If sortop is not InvalidOid, also test for a match to the sortop.
+ *
+ * It is not an oversight that this function ignores the nulls_first flag.
+ * We check sortop when determining if an ORDER BY item is redundant with
+ * earlier ORDER BY items, because it's conceivable that "ORDER BY
+ * foo USING <, foo USING <<<" is not redundant, if <<< distinguishes
+ * values that < considers equal.  We need not check nulls_first
+ * however, because a lower-order column with the same sortop but
+ * opposite nulls direction is redundant.  Also, we can consider
+ * ORDER BY foo ASC, foo DESC redundant, so check for a commutator match.
  *
  * Works for SortClause, GroupClause and GroupingClause lists.  Note
  * that the main reason we need this routine (and not just a quick
@@ -2675,7 +2732,7 @@ assignSortGroupRef(TargetEntry *tle, List *tlist)
  * Any GroupingClauses in the list will be skipped during comparison.
  */
 bool
-targetIsInSortGroupList(TargetEntry *tle, List *sortgroupList)
+targetIsInSortList(TargetEntry *tle, Oid sortop, List *sortList)
 {
 	Index		ref = tle->ressortgroupref;
 	ListCell   *l;
@@ -2684,20 +2741,23 @@ targetIsInSortGroupList(TargetEntry *tle, List *sortgroupList)
 	if (ref == 0)
 		return false;
 
-	foreach(l, sortgroupList)
+	foreach(l, sortList)
 	{
-		Node *node = (Node *) lfirst(l);
+		SortClause *scl = (SortClause *) lfirst(l);
 
 		/* Skip the empty grouping set */
-		if (node == NULL)
+		if (scl == NULL)
 			continue;
 
-		if (IsA(node, GroupClause) || IsA(node, SortClause))
-		{
-			GroupClause *gc = (GroupClause*) node;
-			if (gc->tleSortGroupRef == ref)
-				return true;
-		}
+		if (!IsA(scl, GroupClause) &&
+			!IsA(scl, SortClause))
+			continue;
+
+		if (scl->tleSortGroupRef == ref &&
+			(sortop == InvalidOid ||
+			 sortop == scl->sortop ||
+			 sortop == get_commutator(scl->sortop)))
+			return true;
 	}
 	return false;
 }
@@ -2852,7 +2912,7 @@ transformRowExprToList(ParseState *pstate, RowExpr *rowexpr,
 				findTargetlistEntry(pstate, node, &targetList, GROUP_CLAUSE);
 			sort_op = ordering_oper_opid(exprType((Node *)arg_tle->expr));
 			grping_set = lappend(grping_set,
-								 make_group_clause(arg_tle, targetList, sort_op));
+								 make_group_clause(arg_tle, targetList, sort_op, false));
 		}
 	}
 	groupsets = lappend (groupsets, grping_set);
@@ -2900,12 +2960,12 @@ transformRowExprToGroupClauses(ParseState *pstate, RowExpr *rowexpr,
 				findTargetlistEntry(pstate, node, &targetList, GROUP_CLAUSE);
 
 			/* avoid making duplicate expression entries */
-			if (targetIsInSortGroupList(arg_tle, groupsets))
+			if (targetIsInSortList(arg_tle, InvalidOid, groupsets))
 				continue;
 
 			sort_op = ordering_oper_opid(exprType((Node *)arg_tle->expr));
 			groupsets = lappend(groupsets,
-								make_group_clause(arg_tle, targetList, sort_op));
+								make_group_clause(arg_tle, targetList, sort_op, false));
 		}
 	}
 
