@@ -12,7 +12,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.97.2.1 2007/04/26 23:24:57 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.106 2008/01/01 19:45:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -148,29 +148,45 @@ GetPortalByName(const char *name)
 }
 
 /*
- * PortalListGetPrimaryQuery
- *		Get the "primary" Query within a portal, ie, the one marked canSetTag.
+ * PortalListGetPrimaryStmt
+ *		Get the "primary" stmt within a portal, ie, the one marked canSetTag.
  *
- * Returns NULL if no such Query.  If multiple Query structs within the
+ * Returns NULL if no such stmt.  If multiple PlannedStmt structs within the
  * portal are marked canSetTag, returns the first one.	Neither of these
  * cases should occur in present usages of this function.
  *
- * Note: the reason this is just handed a List is so that prepared statements
- * can share the code.	For use with a portal, use PortalGetPrimaryQuery
+ * Copes if given a list of Querys --- can't happen in a portal, but this
+ * code also supports plancache.c, which needs both cases.
+ *
+ * Note: the reason this is just handed a List is so that plancache.c
+ * can share the code.	For use with a portal, use PortalGetPrimaryStmt
  * rather than calling this directly.
  */
-Query *
-PortalListGetPrimaryQuery(List *parseTrees)
+Node *
+PortalListGetPrimaryStmt(List *stmts)
 {
 	ListCell   *lc;
 
-	foreach(lc, parseTrees)
+	foreach(lc, stmts)
 	{
-		Query	   *query = (Query *) lfirst(lc);
+		Node	   *stmt = (Node *) lfirst(lc);
 
-		Assert(IsA(query, Query));
-		if (query->canSetTag)
-			return query;
+		if (IsA(stmt, PlannedStmt))
+		{
+			if (((PlannedStmt *) stmt)->canSetTag)
+				return stmt;
+		}
+		else if (IsA(stmt, Query))
+		{
+			if (((Query *) stmt)->canSetTag)
+				return stmt;
+		}
+		else
+		{
+			/* Utility stmts are assumed canSetTag if they're the only stmt */
+			if (list_length(stmts) == 1)
+				return stmt;
+		}
 	}
 	return NULL;
 }
@@ -283,10 +299,18 @@ CreateNewPortal(void)
  *
  * Notes: commandTag shall be NULL if and only if the original query string
  * (before rewriting) was an empty string.	Also, the passed commandTag must
- * be a pointer to a constant string, since it is not copied.  The caller is
- * responsible for ensuring that the passed sourceText (if any), parse and
- * plan trees have adequate lifetime.  Also, queryContext must accurately
- * describe the location of the parse and plan trees.
+ * be a pointer to a constant string, since it is not copied.  However,
+ * prepStmtName and sourceText, if provided, are copied into the portal's
+ * heap context for safekeeping.
+ *
+ * If cplan is provided, then it is a cached plan containing the stmts,
+ * and the caller must have done RevalidateCachedPlan(), causing a refcount
+ * increment.  The refcount will be released when the portal is destroyed.
+ *
+ * If cplan is NULL, then it is the caller's responsibility to ensure that
+ * the passed plan trees have adequate lifetime.  Typically this is done by
+ * copying them into the portal's heap context.
+ *
  * The souce (i.e original parsetree is passed in - only used if rource
  * scheduling is enabled.
  */
@@ -296,24 +320,37 @@ PortalDefineQuery(Portal portal,
 				  const char *sourceText,
 				  NodeTag	  sourceTag,
 				  const char *commandTag,
-				  List *parseTrees,
-				  List *planTrees,
-				  MemoryContext queryContext)
+				  List *stmts,
+				  CachedPlan *cplan)
 {
 	AssertArg(PortalIsValid(portal));
-	AssertState(portal->queryContext == NULL);	/* else defined already */
+	AssertState(portal->status == PORTAL_NEW);
 
-	Assert(list_length(parseTrees) == list_length(planTrees));
+	Assert(commandTag != NULL || stmts == NIL);
 
-	Assert(commandTag != NULL || parseTrees == NIL);
-
-	portal->prepStmtName = prepStmtName;
-	portal->sourceText = sourceText;
+	portal->prepStmtName = prepStmtName ?
+		MemoryContextStrdup(PortalGetHeapMemory(portal), prepStmtName) : NULL;
+	portal->sourceText = sourceText ?
+		MemoryContextStrdup(PortalGetHeapMemory(portal), sourceText) : NULL;
 	portal->sourceTag = sourceTag;
 	portal->commandTag = commandTag;
-	portal->parseTrees = parseTrees;
-	portal->planTrees = planTrees;
-	portal->queryContext = queryContext;
+	portal->stmts = stmts;
+	portal->cplan = cplan;
+	portal->status = PORTAL_DEFINED;
+}
+
+/*
+ * PortalReleaseCachedPlan
+ *		Release a portal's reference to its cached plan, if any.
+ */
+static void
+PortalReleaseCachedPlan(Portal portal)
+{
+	if (portal->cplan)
+	{
+		ReleaseCachedPlan(portal->cplan, false);
+		portal->cplan = NULL;
+	}
 }
 
 /*
@@ -343,7 +380,7 @@ PortalCreateHoldStore(Portal portal)
 	oldcxt = MemoryContextSwitchTo(portal->holdContext);
 
 	/* XXX: Should maintenance_work_mem be used for the portal size? */
-	portal->holdStore = tuplestore_begin_heap(true, true, work_mem); 
+	portal->holdStore = tuplestore_begin_heap(true, true, work_mem);
 
 	MemoryContextSwitchTo(oldcxt);
 }
@@ -379,8 +416,12 @@ PortalDrop(Portal portal, bool isTopCommit)
 	PortalHashTableDelete(portal);
 
 	/* let portalcmds.c clean up the state it knows about */
-	if (PointerIsValid(portal->cleanup))
+	if (portal->cleanup)
 		(*portal->cleanup) (portal);
+
+	/* drop cached plan reference, if any */
+	if (portal->cplan)
+		PortalReleaseCachedPlan(portal);
 
 	/*
 	 * Release any resources still attached to the portal.	There are several
@@ -433,7 +474,7 @@ PortalDrop(Portal portal, bool isTopCommit)
 		MemoryContext oldcontext;
 
 		oldcontext = MemoryContextSwitchTo(portal->holdContext);
-		tuplestore_end(portal->holdStore); 
+		tuplestore_end(portal->holdStore);
 		MemoryContextSwitchTo(oldcontext);
 		portal->holdStore = NULL;
 	}
@@ -453,24 +494,25 @@ PortalDrop(Portal portal, bool isTopCommit)
 }
 
 /*
- * DropDependentPortals
- *		Drop any portals using the specified context as queryContext.
+ * Delete all declared cursors.
  *
- * This is normally used to make sure we can safely drop a prepared statement.
+ * Used by commands: CLOSE ALL, DISCARD ALL
  */
 void
-DropDependentPortals(MemoryContext queryContext)
+PortalHashTableDeleteAll(void)
 {
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
 
-	hash_seq_init(&status, PortalHashTable);
+	if (PortalHashTable == NULL)
+		return;
 
-	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
+	hash_seq_init(&status, PortalHashTable);
+	while ((hentry = hash_seq_search(&status)) != NULL)
 	{
 		Portal		portal = hentry->portal;
 
-		if (portal->queryContext == queryContext)
+		if (portal->status != PORTAL_ACTIVE)
 			PortalDrop(portal, false);
 	}
 }
@@ -513,6 +555,10 @@ CommitHoldablePortals(void)
 			 */
 			PortalCreateHoldStore(portal);
 			PersistHoldablePortal(portal);
+
+			/* drop cached plan reference, if any */
+			if (portal->cplan)
+				PortalReleaseCachedPlan(portal);
 
 			/*
 			 * Any resources belonging to the portal will be released in the
@@ -655,7 +701,7 @@ AtAbort_Portals(void)
 			continue;
 
 		/* let portalcmds.c clean up the state it knows about */
-		if (PointerIsValid(portal->cleanup))
+		if (portal->cleanup)
 		{
 			QueryDesc  *queryDesc;
 			/* we need to make sure that the executor knows to
@@ -667,6 +713,10 @@ AtAbort_Portals(void)
 			(*portal->cleanup) (portal);
 			portal->cleanup = NULL;
 		}
+
+		/* drop cached plan reference, if any */
+		if (portal->cplan)
+			PortalReleaseCachedPlan(portal);
 
 		/*
 		 * Any resources belonging to the portal will be released in the
@@ -760,7 +810,10 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 	HASH_SEQ_STATUS status;
 	PortalHashEnt *hentry;
 
-	hash_seq_init(&status, PortalHashTable);
+    UnusedArg(parentSubid);
+    UnusedArg(parentXactOwner);
+    
+    hash_seq_init(&status, PortalHashTable);
 
 	while ((hentry = (PortalHashEnt *) hash_seq_search(&status)) != NULL)
 	{
@@ -801,11 +854,15 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 #endif
 		{
 			/* let portalcmds.c clean up the state it knows about */
-			if (PointerIsValid(portal->cleanup))
+			if (portal->cleanup)
 			{
 				(*portal->cleanup) (portal);
 				portal->cleanup = NULL;
 			}
+
+			/* drop cached plan reference, if any */
+			if (portal->cplan)
+				PortalReleaseCachedPlan(portal);
 
 			/*
 			 * Any resources belonging to the portal will be released in the
@@ -958,8 +1015,8 @@ pg_cursor(PG_FUNCTION_ARGS)
 	oldcontext = MemoryContextSwitchTo(per_query_ctx);
 
 	/*
-	 * build tupdesc for result tuples. This must match the definition of
-	 * the pg_cursors view in system_views.sql
+	 * build tupdesc for result tuples. This must match the definition of the
+	 * pg_cursors view in system_views.sql
 	 */
 	tupdesc = CreateTemplateTupleDesc(6, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "name",

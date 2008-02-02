@@ -56,7 +56,7 @@ static void AsetDirectInit(MemoryContext context);
 static void AsetDirectReset(MemoryContext context);
 static void AsetDirectDelete(MemoryContext context);
 static bool AsetDirectIsEmpty(MemoryContext context);
-static void AsetDirectStats(MemoryContext context, const char* contextName);
+static void AsetDirectStats(MemoryContext context, int level, const char* contextName);
 
 #ifdef MEMORY_CONTEXT_CHECKING
 static void AsetDirectCheck(MemoryContext context);
@@ -163,7 +163,9 @@ AsetDirectContextCreate(MemoryContext parent, const char *name)
 static void
 AsetDirectInit(MemoryContext context)
 {
-	/*
+    UnusedArg(context);
+
+    /*
 	 * Since MemoryContextCreate already zeroed the context node, we don't
 	 * have to do anything here: it's already OK.
 	 */
@@ -290,7 +292,7 @@ aset_rjfmt_int64(int64 v, int width, char **inout_bufpos, char *bufend)
     int         pad;
 
     snprintf(fmtbuf, sizeof(fmtbuf), INT64_FORMAT, v);
-    len = strlen(fmtbuf);
+    len = (int)strlen(fmtbuf);
     pad = Max(width - len, 0);
     if (pad + len >= bufend - bp)
         return "***";
@@ -303,7 +305,7 @@ aset_rjfmt_int64(int64 v, int width, char **inout_bufpos, char *bufend)
 
 
 static void
-AsetDirectStats(MemoryContext context, const char* contextName)
+AsetDirectStats(MemoryContext context, int level, const char* contextName)
 {
     AsetDirectContext  *set = (AsetDirectContext *)context;
     int64       held;
@@ -311,6 +313,7 @@ AsetDirectStats(MemoryContext context, const char* contextName)
     char       *efp;
     char        fmtbuf[200];
 
+    UnusedArg(level);
     Assert(set && IsA(set, AsetDirectContext));
 
     /* Display the totals. */

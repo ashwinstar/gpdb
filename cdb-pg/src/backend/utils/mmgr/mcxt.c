@@ -630,7 +630,7 @@ MemoryContextName(MemoryContext context, MemoryContext relativeTo,
     for (ctx = context; ctx && ctx != relativeTo; ctx = ctx->parent)
     {
         const char *name = ctx->name ? ctx->name : "";
-        int         len = strlen(name);
+        int         len = (int)strlen(name);
 
         if (cbp - buf < len + 1)
         {
@@ -667,7 +667,7 @@ MemoryContextName(MemoryContext context, MemoryContext relativeTo,
  */
 static void
 MemoryContextStats_recur(MemoryContext context, MemoryContext topcontext,
-                         char *namebuf, int namebufsize)
+                         int level, char *namebuf, int namebufsize)
 {
 	MemoryContext   child;
     char*           name;
@@ -677,10 +677,10 @@ MemoryContextStats_recur(MemoryContext context, MemoryContext topcontext,
     /* Get name and ancestry of this MemoryContext */
     name = MemoryContextName(context, topcontext, namebuf, namebufsize);
 
-	(*context->methods.stats)(context, name);
+	(*context->methods.stats)(context, level, name);
 
 	for (child = context->firstchild; child != NULL; child = child->nextchild)
-		MemoryContextStats_recur(child, topcontext, namebuf, namebufsize);
+		MemoryContextStats_recur(child, topcontext, level+1, namebuf, namebufsize);
 }
 
 void
@@ -700,7 +700,7 @@ MemoryContextStatsInternal(MemoryContext context, int level)
     name = MemoryContextName(context, NULL, namebuf, sizeof(namebuf));
     write_stderr("pid %d: Memory statistics for %s/\n", MyProcPid, name);
 
-    MemoryContextStats_recur(context, context, namebuf, sizeof(namebuf));
+    MemoryContextStats_recur(context, context, level, namebuf, sizeof(namebuf));
 }
 
 /*

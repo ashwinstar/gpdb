@@ -12,7 +12,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/aset.c,v 1.69 2006/11/08 19:27:24 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/aset.c,v 1.76 2008/01/01 19:45:55 momjian Exp $
  *
  * NOTE:
  *	This is a new (Feb. 05, 1999) implementation of the allocation set
@@ -159,6 +159,7 @@ typedef struct AllocSetContext
 {
 	MemoryContextData header;	/* Standard memory-context fields */
 	/* Info about storage allocated in this context: */
+	Size		allocChunkLimit;	/* effective chunk size limit */
 	AllocBlock	blocks;			/* head of list of blocks in this set */
 	AllocChunk	freelist[ALLOCSET_NUM_FREELISTS];		/* free chunk lists */
 	bool		isReset;		/* T = no space alloced since last reset */
@@ -247,7 +248,7 @@ static void AllocSetReset(MemoryContext context);
 static void AllocSetDelete(MemoryContext context);
 static Size AllocSetGetChunkSpace(MemoryContext context, void *pointer);
 static bool AllocSetIsEmpty(MemoryContext context);
-static void AllocSetStats(MemoryContext context, const char* contextName);
+static void AllocSetStats(MemoryContext context, int level, const char* contextName);
 
 #ifdef MEMORY_CONTEXT_CHECKING
 static void AllocSetCheck(MemoryContext context);
@@ -294,9 +295,9 @@ void dump_memory_allocation_ctxt(FILE *ofile, void *ctxt)
 	while(chunk)
 	{
 #ifdef MEMORY_CONTEXT_CHECKING
-        fprintf(ofile, "%ld|%s|%d|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
+        fprintf(ofile, "%p|%s|%d|%d|%d\n", ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size, (int) chunk->requested_size);
 #else
-		fprintf(ofile, "%ld|%s|%d|%d\n", (long) ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size);
+		fprintf(ofile, "%p|%s|%d|%d\n", ctxt, chunk->alloc_tag, chunk->alloc_n, (int) chunk->size);
 #endif
 		chunk = chunk->alloc_next;
 	}
@@ -438,6 +439,20 @@ AllocSetContextCreate(MemoryContext parent,
 #endif
 
 	/*
+	 * Compute the allocation chunk size limit for this context.  It can't be
+	 * more than ALLOC_CHUNK_LIMIT because of the fixed number of freelists.
+	 * If maxBlockSize is small then requests exceeding the maxBlockSize
+	 * should be treated as large chunks, too.	We have to have
+	 * allocChunkLimit a power of two, because the requested and
+	 * actually-allocated sizes of any chunk must be on the same side of the
+	 * limit, else we get confused about whether the chunk is "big".
+	 */
+	context->allocChunkLimit = ALLOC_CHUNK_LIMIT;
+	while (context->allocChunkLimit >
+		   (Size) (maxBlockSize - ALLOC_BLOCKHDRSZ - ALLOC_CHUNKHDRSZ))
+		context->allocChunkLimit >>= 1;
+
+	/*
 	 * Grab always-allocated space, if requested
 	 */
 	if (minContextSize > ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ)
@@ -481,7 +496,9 @@ AllocSetContextCreate(MemoryContext parent,
 static void
 AllocSetInit(MemoryContext context)
 {
-	/*
+    UnusedArg(context);
+
+    /*
 	 * Since MemoryContextCreate already zeroed the context node, we don't
 	 * have to do anything here: it's already OK.
 	 */
@@ -628,7 +645,7 @@ AllocSetAlloc(MemoryContext context, Size size)
 	 * If requested size exceeds maximum for chunks, allocate an entire block
 	 * for this request.
 	 */
-	if (size > ALLOC_CHUNK_LIMIT)
+	if (size > set->allocChunkLimit)
 	{
 		chunk_size = MAXALIGN(size);
 		blksize = chunk_size + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
@@ -888,7 +905,7 @@ AllocSetFree(MemoryContext context, void *pointer)
 				 set->header.name, chunk, CDB_MCXT_WHERE(&set->header));
 #endif
 
-	if (chunk->size > ALLOC_CHUNK_LIMIT)
+	if (chunk->size > set->allocChunkLimit)
 	{
 		/*
 		 * Big chunks are certain to have been allocated as single-chunk
@@ -992,7 +1009,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		return pointer;
 	}
 
-	if (oldsize > ALLOC_CHUNK_LIMIT)
+	if (oldsize > set->allocChunkLimit)
 	{
 		/*
 		 * The chunk must have been allocated as a single-chunk block.	Find
@@ -1059,9 +1076,9 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
 		 * Small-chunk case.  We just do this by brute force, ie, allocate a
 		 * new chunk and copy the data.  Since we know the existing data isn't
 		 * huge, this won't involve any great memcpy expense, so it's not
-		 * worth being smarter.  (At one time we tried to avoid memcpy when
-		 * it was possible to enlarge the chunk in-place, but that turns out
-		 * to misbehave unpleasantly for repeated cycles of
+		 * worth being smarter.  (At one time we tried to avoid memcpy when it
+		 * was possible to enlarge the chunk in-place, but that turns out to
+		 * misbehave unpleasantly for repeated cycles of
 		 * palloc/repalloc/pfree: the eventually freed chunks go into the
 		 * wrong freelist for the next initial palloc request, and so we leak
 		 * memory indefinitely.  See pgsql-hackers archives for 2007-08-11.)
@@ -1090,6 +1107,8 @@ static Size
 AllocSetGetChunkSpace(MemoryContext context, void *pointer)
 {
 	AllocChunk	chunk = AllocPointerGetChunk(pointer);
+
+    UnusedArg(context);
 
 	return chunk->size + ALLOC_CHUNKHDRSZ;
 }
@@ -1129,7 +1148,7 @@ aset_rjfmt_uint64(uint64 v, int width, char **inout_bufpos, char *bufend)
     int         pad;
 
     snprintf(fmtbuf, sizeof(fmtbuf), UINT64_FORMAT, v);
-    len = strlen(fmtbuf);
+    len = (int)strlen(fmtbuf);
     pad = Max(width - len, 0);
     if (pad + len >= bufend - bp)
         return "***";
@@ -1159,7 +1178,7 @@ aset_rjfmt_mem64(uint64 v, int width, char **inout_bufpos, char *bufend)
 
 
 static void
-AllocSetStats(MemoryContext context, const char* contextName)
+AllocSetStats(MemoryContext context, int level, const char* contextName)
 {
 	AllocSet	set = (AllocSet) context;
 	long		nblocks = 0;
@@ -1173,6 +1192,8 @@ AllocSetStats(MemoryContext context, const char* contextName)
     char       *cfp;
     char       *efp;
     char        fmtbuf[400];
+
+    UnusedArg(level);
 
     /* Total space obtained from host's memory manager */
     for (block = set->blocks; block != NULL; block = block->next)
@@ -1277,7 +1298,7 @@ AllocSetCheck(MemoryContext context)
 					 name, (unsigned long) chsize, chunk, block, CDB_MCXT_WHERE(&set->header));
 
 			/* single-chunk block? */
-			if (chsize > ALLOC_CHUNK_LIMIT &&
+			if (chsize > set->allocChunkLimit &&
 				chsize + ALLOC_CHUNKHDRSZ != blk_used)
                 elog(WARNING, "problem in alloc set %s: bad single-chunk %p in block %p (%s:%d)",
 					 name, chunk, block, CDB_MCXT_WHERE(&set->header));

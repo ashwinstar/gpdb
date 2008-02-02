@@ -162,7 +162,7 @@ static void mpool_reset(MemoryContext context);
 static void mpool_delete(MemoryContext context);
 static Size mpool_get_chunk_space(MemoryContext context, void *pointer);
 static bool mpool_is_empty(MemoryContext context);
-static void mpool_stats(MemoryContext context, const char* contextName);
+static void mpool_stats(MemoryContext context, int level, const char* contextName);
 
 #ifdef MEMORY_CONTEXT_CHECKING
 static void mpool_check(MemoryContext context);
@@ -468,7 +468,7 @@ mpool_is_empty(MemoryContext context)
  *		Displays stats about memory consumption of an allocset.
  */
 static void
-mpool_stats(MemoryContext context, const char* contextName)
+mpool_stats(MemoryContext context, int level, const char* contextName)
 {
 }
 
