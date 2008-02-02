@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/optimizer/planmain.h,v 1.94 2006/07/26 00:34:48 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/optimizer/planmain.h,v 1.106 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,7 +23,7 @@
  * prototypes for plan/planmain.c
  */
 extern void query_planner(PlannerInfo *root, List *tlist,
-			  double tuple_fraction,
+			  double tuple_fraction, double limit_tuples,
 			  Path **cheapest_path, Path **sorted_path,
 			  double *num_groups);
 
@@ -73,8 +73,12 @@ extern Plan *plan_grouping_extension(PlannerInfo *root,
  */
 extern Plan *create_plan(PlannerInfo *root, Path *path);
 extern SubqueryScan *make_subqueryscan(List *qptlist, List *qpqual,
-				  Index scanrelid, Plan *subplan);
+				  Index scanrelid, Plan *subplan, List *subrtable);
 extern Append *make_append(List *appendplans, bool isTarget, List *tlist);
+extern Sort *make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree,
+						             List *pathkeys, double limit_tuples,
+                                     Relids relids,
+                                     bool add_keys_to_targetlist);
 extern Sort *make_sort_from_sortclauses(PlannerInfo *root, List *sortcls,
 						   Plan *lefttree);
 extern Sort *make_sort_from_groupcols(PlannerInfo *root, List *groupcls,
@@ -90,14 +94,14 @@ extern Sort *make_sort_from_reordered_groupcols(PlannerInfo *root,
 												Plan *lefttree);
 extern Agg *make_agg(PlannerInfo *root, List *tlist, List *qual,
 					 AggStrategy aggstrategy, bool streaming,
-					 int numGroupCols, AttrNumber *grpColIdx,
+					 int numGroupCols, AttrNumber *grpColIdx, Oid *grpOperators,
 					 long numGroups, int numNullCols,
 					 uint64 inputGrouping, uint64 grouping,
 					 int rollupGSTimes,
 					 int numAggs, int transSpace,
 					 Plan *lefttree);
 extern Group *make_group(PlannerInfo *root, List *tlist, List *qual,
-						 int numGroupCols, AttrNumber *grpColIdx,
+						 int numGroupCols, AttrNumber *grpColIdx, Oid *grpOperators,
 						 double numGroups, int numNullCols,
 						 uint64 inputGrouping,  uint64 grouping,
 						 int rollupGSTimes,
@@ -121,11 +125,9 @@ extern Limit *make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 		   int64 offset_est, int64 count_est);
 extern SetOp *make_setop(SetOpCmd cmd, Plan *lefttree,
 		   List *distinctList, AttrNumber flagColIdx);
-extern Result *make_result(List *tlist, Node *resconstantqual, Plan *subplan);
+extern Result *make_result(PlannerInfo *root, List *tlist,
+			Node *resconstantqual, Plan *subplan);
 extern bool is_projection_capable_plan(Plan *plan);
-extern Sort *make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree,
-                                     List *pathkeys, Relids relids,
-                                     bool add_keys_to_targetlist);
 extern Plan *plan_pushdown_tlist(Plan *plan, List *tlist);      /*CDB*/
 
 /*
@@ -138,13 +140,21 @@ extern void add_base_rels_to_query(PlannerInfo *root, Node *jtnode);
 extern void build_base_rel_tlists(PlannerInfo *root, List *final_tlist);
 extern void add_IN_vars_to_tlists(PlannerInfo *root);
 extern void add_vars_to_targetlist(PlannerInfo *root, List *vars,
-                                   Relids where_needed);
+					   Relids where_needed);
 extern List *deconstruct_jointree(PlannerInfo *root);
+extern void distribute_restrictinfo_to_rels(PlannerInfo *root,
+								RestrictInfo *restrictinfo);
 extern void process_implied_equality(PlannerInfo *root,
-						 Node *item1, Node *item2,
-						 Oid sortop1, Oid sortop2,
-						 Relids item1_relids, Relids item2_relids,
-						 bool delete_it);
+						 Oid opno,
+						 Expr *item1,
+						 Expr *item2,
+						 Relids qualscope,
+						 bool below_outer_join,
+						 bool both_const);
+extern RestrictInfo *build_implied_join_equality(Oid opno,
+							Expr *item1,
+							Expr *item2,
+							Relids qualscope);
 
 /*
  * prototypes for plan/setrefs.c
@@ -156,14 +166,17 @@ typedef struct set_plan_ref_context
 	List *sharedNodes;
 } set_plan_ref_context;
 
-extern Plan *set_plan_references_qry(Plan *plan, set_plan_ref_context *ctxt); 
-extern List *set_returning_clause_references(List *rlist,
+extern Plan *set_plan_references_qry(PlannerGlobal *glob,
+					Plan *plan, set_plan_ref_context *ctxt); 
+extern List *set_returning_clause_references(PlannerGlobal *glob,
+								List *rlist,
 								Plan *topplan,
 								Index resultRelation); 
 extern void fix_opfuncids(Node *node);
 extern void set_opfuncid(OpExpr *opexpr);
+extern void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);
+
 extern bool cdb_expr_requires_full_eval(Node *node);
 
 extern int num_distcols_in_grouplist(List *gc);
-
 #endif   /* PLANMAIN_H */

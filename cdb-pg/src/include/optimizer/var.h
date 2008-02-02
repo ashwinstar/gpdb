@@ -6,9 +6,9 @@
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
+>* Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/optimizer/var.h,v 1.34 2006/03/05 15:58:57 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/optimizer/var.h,v 1.37 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,6 +28,7 @@ bool        cdb_walk_vars(Node                         *node,
 
 extern Relids pull_varnos(Node *node);
 extern Relids pull_varnos_of_level(Node *node, int levelsup);   /*CDB*/
+extern void pull_varattnos(Node *node, Bitmapset **varattnos);
 extern bool contain_var_reference(Node *node, int varno, int varattno,
 					  int levelsup);
 extern bool contain_var_clause(Node *node);
