@@ -647,9 +647,9 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		{
 			if (toast_action[i] != ' ')
 				continue;
-			if (VARATT_IS_EXTERNAL(toast_values[i]))
+			if (VARATT_IS_EXTERNAL(DatumGetPointer(toast_values[i])))
 				continue;		/* can't happen, toast_action would be 'p' */
-			if (VARATT_IS_COMPRESSED(toast_values[i]))
+			if (VARATT_IS_COMPRESSED(DatumGetPointer(toast_values[i])))
 				continue;
 			if (att[i]->attstorage != 'x')
 				continue;
@@ -1084,10 +1084,10 @@ Datum
 toast_compress_datum(Datum value)
 {
 	struct varlena *tmp;
-	int32		valsize = VARSIZE_ANY_EXHDR(value);
+	int32		valsize = VARSIZE_ANY_EXHDR(DatumGetPointer(value));
 
-	Assert(!VARATT_IS_EXTERNAL(value));
-	Assert(!VARATT_IS_COMPRESSED(value));
+	Assert(!VARATT_IS_EXTERNAL(DatumGetPointer(value)));
+	Assert(!VARATT_IS_COMPRESSED(DatumGetPointer(value)));
 
 	/*
 	 * No point in wasting a palloc cycle if value is too short for
@@ -1142,6 +1142,7 @@ toast_save_datum(Relation rel, Datum value,
 	int32		chunk_seq = 0;
 	char	   *data_p;
 	int32		data_todo;
+	struct varlena *vap;
 
 	/*
 	 * Open the toast relation and its index.  We can use the index to check
@@ -1152,6 +1153,8 @@ toast_save_datum(Relation rel, Datum value,
 	toasttupDesc = toastrel->rd_att;
 	toastidx = index_open(toastrel->rd_rel->reltoastidxid, RowExclusiveLock);
 
+	vap = (struct varlena *) DatumGetPointer(value);
+
 	/*
 	 * Get the data pointer and length, and compute va_rawsize and va_extsize.
 	 *
@@ -1160,28 +1163,28 @@ toast_save_datum(Relation rel, Datum value,
 	 *
 	 * va_extsize is the actual size of the data payload in the toast records.
 	 */
-	if (VARATT_IS_SHORT(value))
+	if (VARATT_IS_SHORT(vap))
 	{
-		data_p = VARDATA_SHORT(value);
-		data_todo = VARSIZE_SHORT(value) - VARHDRSZ_SHORT;
+		data_p = VARDATA_SHORT(vap);
+		data_todo = VARSIZE_SHORT(vap) - VARHDRSZ_SHORT;
 		toast_pointer.va_rawsize = data_todo + VARHDRSZ;		/* as if not short */
 		toast_pointer.va_extsize = data_todo;
 	}
-	else if (VARATT_IS_COMPRESSED(value))
+	else if (VARATT_IS_COMPRESSED(vap))
 	{
-		data_p = VARDATA(value);
-		data_todo = VARSIZE(value) - VARHDRSZ;
+		data_p = VARDATA(vap);
+		data_todo = VARSIZE(vap) - VARHDRSZ;
 		/* rawsize in a compressed datum is just the size of the payload */
-		toast_pointer.va_rawsize = VARRAWSIZE_4B_C(value) + VARHDRSZ;
+		toast_pointer.va_rawsize = VARRAWSIZE_4B_C(vap) + VARHDRSZ;
 		toast_pointer.va_extsize = data_todo;
 		/* Assert that the numbers look like it's compressed */
 		Assert(VARATT_EXTERNAL_IS_COMPRESSED(toast_pointer));
 	}
 	else
 	{
-		data_p = VARDATA(value);
-		data_todo = VARSIZE(value) - VARHDRSZ;
-		toast_pointer.va_rawsize = VARSIZE(value);
+		data_p = VARDATA(vap);
+		data_todo = VARSIZE(vap) - VARHDRSZ;
+		toast_pointer.va_rawsize = VARSIZE(vap);
 		toast_pointer.va_extsize = data_todo;
 	}
 	
