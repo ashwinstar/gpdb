@@ -64,6 +64,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	List	   *query_list,
 			   *plan_list;
 	int			i;		   
+	NodeTag		srctag;
 
 	/*
 	 * Disallow empty-string statement name (conflicts with protocol-level
@@ -133,15 +134,22 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
+			srctag = T_SelectStmt;
+			break;
 		case CMD_INSERT:
+			srctag = T_InsertStmt;
+			break;
 		case CMD_UPDATE:
+			srctag = T_UpdateStmt;
+			break;
 		case CMD_DELETE:
-			/* OK */
+			srctag = T_DeleteStmt;
 			break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION),
 					 errmsg("utility statements cannot be prepared")));
+			srctag = T_Query; /* keep compiler quiet */
 			break;
 	}
 
@@ -156,6 +164,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	 */
 	StorePreparedStatement(stmt->name,
 						   stmt->query,						   
+						   srctag,
 						   queryString,
 						   CreateCommandTag((Node *) query),
 						   argtypes,
