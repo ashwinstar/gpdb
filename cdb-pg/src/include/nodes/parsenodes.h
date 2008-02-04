@@ -185,7 +185,7 @@ typedef struct Query
 	List	   *returningLists; /* list of lists of TargetEntry, or NIL */
 	
 	TableOidInfo	intoOidInfo;  /* MPP */
-	 
+	
 	GpPolicy  *intoPolicy;			/* MPP. Used only on the QD... Doesn't need to be serialized */
 } Query;
 
@@ -517,7 +517,7 @@ typedef struct XmlSerialize
 	NodeTag		type;
 	XmlOptionType xmloption;
 	Node	   *expr;
-	TypeName   *typename;
+	TypeName   *typname;
 } XmlSerialize;
 
 
@@ -1303,7 +1303,7 @@ typedef struct CreateExternalStmt
 	List	   *formatOpts;		/* List of DefElem nodes for data format */
 	bool		isweb;
 	Node	   *sreh;			/* Single row error handling info */
-	List	   *encoding;		/* List (size 1 max) of DefElem nodes for 
+	List	   *encoding;		/* List (size 1 max) of DefElem nodes for
 								   data encoding */
 } CreateExternalStmt;
 
@@ -1420,8 +1420,8 @@ typedef struct PartitionBy			/* the Partition By clause */
 	int				    keyCount;	/* number of key columns */
 	Node			   *partNum;	/* partitionS (constant number)*/
 	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
-	Node			   *partSpec;	/* specification or template */  
-	int				    partDepth;	/* depth (starting at zero) */  
+	Node			   *partSpec;	/* specification or template */
+	int				    partDepth;	/* depth (starting at zero) */
 	int					location;	/* token location, or -1 if unknown */
 } PartitionBy;
 
@@ -1430,7 +1430,7 @@ typedef struct PartitionElem		/* a Partition "Element" is the
 {
 	NodeTag				type;
 	Node			   *partName;	/* partition name (optional) */
-	Node			   *boundSpec;	/* boundary specification */  
+	Node			   *boundSpec;	/* boundary specification */
 	Node			   *subSpec;	/* subpartition spec */
 	int					location;	/* token location, or -1 if unknown */
 } PartitionElem;
@@ -1441,8 +1441,8 @@ typedef struct PartitionRangeItem
 {
 	Node			   *partEveryNum;	/*  (constant number) (EVERY only) */
 	List			   *partRangeVal;	/*  value */
-	int					partInclusive;	/* 0 if unspecified, 
-										   1 if inclusive, 
+	int					partInclusive;	/* 0 if unspecified,
+										   1 if inclusive,
 										   2 if exclusive
 										   (START/END only) */
 	int					location;	/* token location, or -1 if unknown */
@@ -1452,8 +1452,8 @@ typedef struct PartitionRangeItem
 typedef struct PartitionBoundSpec
 {
 	NodeTag				type;			
-	PartitionByType		partType;		/* RANGE or LIST 
-										 * (LIST partition type, not the 
+	PartitionByType		partType;		/* RANGE or LIST
+										 * (LIST partition type, not the
 										 * "List" struct type )*/
 
 	Node			   *partStart;		/* start (or VALUES for LIST)  */
@@ -2078,7 +2078,7 @@ typedef struct CompositeTypeStmt
 typedef struct CreateEnumStmt
 {
 	NodeTag		type;
-	List	   *typename;		/* qualified name (list of Value strings) */
+	List	   *typname;		/* qualified name (list of Value strings) */
 	List	   *vals;			/* enum values (list of Value strings) */
 } CreateEnumStmt;
 
