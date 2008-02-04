@@ -115,46 +115,45 @@ heap_tuple_fetch_attr(struct varlena * attr)
 void varattrib_untoast_ptr_len(Datum d, char **datastart, int *len, void **tofree)
 {
 	struct varlena *va = (struct varlena *) DatumGetPointer(d);
-	varattrib *attr = (varattrib *) va;
 
 	*len = -1;
 	*tofree = NULL;
 
-	if(VARATT_IS_EXTENDED(attr))
+	if(VARATT_IS_EXTENDED(va))
 	{
-		if(VARATT_IS_EXTERNAL(attr))
+		if(VARATT_IS_EXTERNAL(va))
 		{
-			attr = toast_fetch_datum(attr);
+			va = toast_fetch_datum(va);
 			/* toast_fetch_datum will palloc, so set it up for free */
-			*tofree = attr;
+			*tofree = va;
 		}
 
-		if(VARATT_IS_COMPRESSED(attr))
+		if(VARATT_IS_COMPRESSED(va))
 		{
-			PGLZ_Header *tmp = (PGLZ_Header *) attr;
-			attr = (varattrib *) palloc(PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
-			SET_VARSIZE(attr, PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
-			pglz_decompress(tmp, VARDATA(attr));
+			PGLZ_Header *tmp = (PGLZ_Header *) va;
+			va = (struct varlena *) palloc(PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
+			SET_VARSIZE(va, PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
+			pglz_decompress(tmp, VARDATA(va));
 
 			/* If tofree is set, that is, we get it from toast_fetch_datum.  
 			 * We need to free it here 
 			 */
 			if(*tofree)
 				pfree(*tofree);
-			*tofree = attr;
+			*tofree = va;
 		}
-		else if(VARATT_IS_SHORT(attr))
+		else if(VARATT_IS_SHORT(va))
 		{
-			*len = VARSIZE_SHORT(attr) - VARHDRSZ_SHORT;
-			*datastart = VARDATA_SHORT(attr);
-			attr = NULL;
+			*len = VARSIZE_SHORT(va) - VARHDRSZ_SHORT;
+			*datastart = VARDATA_SHORT(va);
+			va = NULL;
 		}
 	}
 
 	if(*len == -1)
 	{
-		*datastart = VARDATA(attr);
-		*len = VARSIZE(attr) - VARHDRSZ;
+		*datastart = VARDATA(va);
+		*len = VARSIZE(va) - VARHDRSZ;
 	}
 
 	Assert(*len >= 0);
@@ -186,23 +185,21 @@ heap_tuple_untoast_attr(struct varlena * attr)
 		 */
 		PGLZ_Header *tmp = (PGLZ_Header *) attr;
 
-		attr = (varattrib *) palloc(PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
+		attr = (struct varlena *) palloc(PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
 		SET_VARSIZE(attr, PGLZ_RAW_SIZE(tmp) + VARHDRSZ);
 		pglz_decompress(tmp, VARDATA(attr));
 	}
 	else if (VARATT_IS_SHORT(attr))
 	{
-		unsigned size = VARSIZE_SHORT(attr);
-		unsigned new_size = size - VARHDRSZ_SHORT + VARHDRSZ;
-		varattrib *tmp = attr;
+		unsigned data_size = VARSIZE_SHORT(attr) - VARHDRSZ_SHORT;
+		unsigned new_size = data_size + VARHDRSZ;
 		
 		/* This is a "short" varlena header but is otherwise a normal varlena */
-		Size		new_size = data_size + VARHDRSZ;
 		struct varlena *new_attr;
 
-		attr = (varattrib*) palloc(new_size);
-		SET_VARSIZE(attr, new_size);
-		memcpy(VARDATA(attr), VARDATA_SHORT(tmp), size - VARHDRSZ_SHORT);
+		new_attr = (struct varlena*) palloc(new_size);
+		SET_VARSIZE(new_attr, new_size);
+		memcpy(VARDATA(new_attr), VARDATA_SHORT(attr), data_size); 
 		attr = new_attr;
 	}
 
@@ -246,7 +243,7 @@ heap_tuple_untoast_attr_slice(struct varlena * attr,
 	{
 		PGLZ_Header *tmp = (PGLZ_Header *) preslice;
 		Size		size = PGLZ_RAW_SIZE(tmp) + VARHDRSZ;
-		preslice = (varattrib *) palloc(size);
+		preslice = (struct varlena *) palloc(size);
 		SET_VARSIZE(preslice, size);
 		pglz_decompress(tmp, VARDATA(preslice));
 
@@ -420,7 +417,7 @@ toast_delete(Relation rel, HeapTuple oldtup)
 		{
 			Datum		value = toast_values[i];
 
-			if (!toast_isnull[i] && VARATT_IS_EXTERNAL_D(value))
+			if (!toast_isnull[i] && VARATT_IS_EXTERNAL(DatumGetPointer(value)))
 				toast_delete_datum(rel, value);
 		}
 	}
@@ -681,7 +678,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 				pfree(DatumGetPointer(old_value));
 			toast_values[i] = new_value;
 			toast_free[i] = true;
-			toast_sizes[i] = VARSIZE_D(toast_values[i]);
+			toast_sizes[i] = VARSIZE(DatumGetPointer(toast_values[i]));
 			need_change = true;
 			need_free = true;
 		}
@@ -715,7 +712,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		{
 			if (toast_action[i] == 'p')
 				continue;
-			if (VARATT_IS_EXTERNAL_D(toast_values[i]))
+			if (VARATT_IS_EXTERNAL(DatumGetPointer(toast_values[i])))
 				continue;		/* can't happen, toast_action would be 'p' */
 			if (att[i]->attstorage != 'x' && att[i]->attstorage != 'e')
 				continue;
@@ -764,9 +761,9 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		{
 			if (toast_action[i] != ' ')
 				continue;
-			if (VARATT_IS_EXTERNAL_D(toast_values[i]))
+			if (VARATT_IS_EXTERNAL(DatumGetPointer(toast_values[i])))
 				continue;
-			if (VARATT_IS_COMPRESSED_D(toast_values[i]))
+			if (VARATT_IS_COMPRESSED(DatumGetPointer(toast_values[i])))
 				continue;
 			if (att[i]->attstorage != 'm')
 				continue;
@@ -794,7 +791,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 				pfree(DatumGetPointer(old_value));
 			toast_values[i] = new_value;
 			toast_free[i] = true;
-			toast_sizes[i] = VARSIZE_D(toast_values[i]);
+			toast_sizes[i] = VARSIZE(DatumGetPointer(toast_values[i]));
 			need_change = true;
 			need_free = true;
 		}
@@ -827,7 +824,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		{
 			if (toast_action[i] == 'p')
 				continue;
-			if (VARATT_IS_EXTERNAL_D(toast_values[i]))
+			if (VARATT_IS_EXTERNAL(DatumGetPointer(toast_values[i])))
 				continue;		/* can't happen, toast_action would be 'p' */
 			if (att[i]->attstorage != 'm')
 				continue;
@@ -1102,10 +1099,9 @@ toast_compress_datum(Datum value)
 	tmp = (struct varlena *) palloc(PGLZ_MAX_OUTPUT(valsize));
 	if (pglz_compress(VARDATA_ANY(value), valsize,
 					  (PGLZ_Header *) tmp, PGLZ_strategy_default) &&
-		VARSIZE(tmp) < VARSIZE_ANY_D(value))
+		VARSIZE(tmp) < VARSIZE_ANY(DatumGetPointer(value)))
 	{
-		/* successful compression */
-		VARATT_SET_COMPRESSED(tmp);
+		/* Successful compression */
 		return PointerGetDatum(tmp);
 	}
 	else
@@ -1146,7 +1142,6 @@ toast_save_datum(Relation rel, Datum value,
 	int32		chunk_seq = 0;
 	char	   *data_p;
 	int32		data_todo;
-	int32		rawsize, extsize;
 
 	/*
 	 * Open the toast relation and its index.  We can use the index to check
@@ -1222,7 +1217,7 @@ toast_save_datum(Relation rel, Datum value,
 		if (!HeapTupleIsValid(toasttup))
 			elog(ERROR, "failed to build TOAST tuple");
 
-		heap_insert(toastrel, toasttup, mycid, use_wal, use_fsm);
+		heap_insert(toastrel, toasttup, mycid, use_wal, use_fsm, false);
 
 		/*
 		 * Create the index entry.	We cheat a little here by not using
