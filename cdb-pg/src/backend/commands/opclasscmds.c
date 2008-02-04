@@ -1060,12 +1060,13 @@ processTypesSpec(List *args, Oid *lefttype, Oid *righttype)
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("one or two argument types must be specified")));
 
-	heap_close(rel, RowExclusiveLock);
-	
+    /* GPDB PG 8.3 MERGE: not sure here 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt, "DefineOpClass");
 	}
+	*/
+	elog(ERROR, "GPDB does not support DefineOpClass");
 }
 
 
@@ -1861,7 +1862,7 @@ RenameOpFamily(List *name, const char *access_method, const char *newname)
 	AclResult	aclresult;
 
 	amOid = GetSysCacheOid(AMNAME,
-						   CStringGetDatum(access_method),
+						   CStringGetDatum((char *)access_method),
 						   0, 0, 0);
 	if (!OidIsValid(amOid))
 		ereport(ERROR,
@@ -1914,7 +1915,7 @@ RenameOpFamily(List *name, const char *access_method, const char *newname)
 	/* make sure the new name doesn't exist */
 	if (SearchSysCacheExists(OPFAMILYAMNAMENSP,
 							 ObjectIdGetDatum(amOid),
-							 CStringGetDatum(newname),
+							 CStringGetDatum((char *)newname),
 							 ObjectIdGetDatum(namespaceOid),
 							 0))
 	{
@@ -2085,7 +2086,7 @@ AlterOpFamilyOwner(List *name, const char *access_method, Oid newOwnerId)
 	char	   *schemaname;
 
 	amOid = GetSysCacheOid(AMNAME,
-						   CStringGetDatum(access_method),
+						   CStringGetDatum((char *)access_method),
 						   0, 0, 0);
 	if (!OidIsValid(amOid))
 		ereport(ERROR,

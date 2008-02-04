@@ -170,10 +170,6 @@ DefineOperator(List *names, List *parameters, Oid newOid)
 				   joinName,	/* optional join sel. procedure name */
 				   canMerge,	/* operator merges */
 				   canHash,		/* operator hashes */
-				   leftSortName,	/* optional left sort operator */
-				   rightSortName,		/* optional right sort operator */
-				   ltCompareName,		/* optional < comparison op */
-				   gtCompareName,		/* optional < comparison op */
 				   newOid);
 				   
 	if (Gp_role == GP_ROLE_DISPATCH)

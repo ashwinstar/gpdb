@@ -966,11 +966,8 @@ extern Oid OperatorCreateWithOid(const char *operatorName,
 			   List *negatorName,
 			   List *restrictionName,
 			   List *joinName,
+			   bool canMerge,
 			   bool canHash,
-			   List *leftSortName,
-			   List *rightSortName,
-			   List *ltCompareName,
-			   List *gtCompareName,
 			   Oid newOid);
 
 #endif   /* PG_OPERATOR_H */

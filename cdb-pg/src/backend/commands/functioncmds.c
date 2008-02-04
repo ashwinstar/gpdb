@@ -817,7 +817,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 					PointerGetDatum(parameterNames),
 					PointerGetDatum(proconfig),
 					procost,
-					prorow,
+					prorows,
 					stmt->funcOid);
 					
 	if (Gp_role == GP_ROLE_DISPATCH)

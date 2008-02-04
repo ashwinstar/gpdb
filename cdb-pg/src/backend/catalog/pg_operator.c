@@ -375,11 +375,8 @@ OperatorCreate(const char *operatorName,
 			   negatorName,
 			   restrictionName,
 			   joinName,
+			   canMerge,
 			   canHash,
-			   leftSortName,
-			   rightSortName,
-			   ltCompareName,
-			   gtCompareName,
 			   0);
 }
 			   
@@ -396,10 +393,7 @@ OperatorCreateWithOid(const char *operatorName,
 			   List *restrictionName,
 			   List *joinName,
 			   bool canHash,
-			   List *leftSortName,
-			   List *rightSortName,
-			   List *ltCompareName,
-			   List *gtCompareName,
+			   bool canMerge,
 			   Oid newOid)
 {
 	Relation	pg_operator_desc;

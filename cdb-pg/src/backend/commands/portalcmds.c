@@ -26,10 +26,7 @@
 #include "access/xact.h"
 #include "commands/portalcmds.h"
 #include "executor/executor.h"
-#include "optimizer/planner.h"
-#include "rewrite/rewriteHandler.h"
 #include "tcop/pquery.h"
-#include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 #include "utils/resscheduler.h"
 #include "cdb/cdbgang.h"
@@ -40,21 +37,27 @@
 /*
  * PerformCursorOpen
  *		Execute SQL DECLARE CURSOR command.
+ *
+ * The query has already been through parse analysis, rewriting, and planning.
+ * When it gets here, it looks like a SELECT PlannedStmt, except that the
+ * utilityStmt field is set.
  */
 void
-PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
+PerformCursorOpen(PlannedStmt *stmt, ParamListInfo params,
+				  const char *queryString, bool isTopLevel)
 {
-	List	   *rewritten;
-	Query	   *query;
-	Plan	   *plan;
+	DeclareCursorStmt *cstmt = (DeclareCursorStmt *) stmt->utilityStmt;
 	Portal		portal;
 	MemoryContext oldContext;
+
+	if (cstmt == NULL || !IsA(cstmt, DeclareCursorStmt))
+		elog(ERROR, "PerformCursorOpen called for non-cursor query");
 
 	/*
 	 * Disallow empty-string cursor name (conflicts with protocol-level
 	 * unnamed portal).
 	 */
-	if (!stmt->portalname || stmt->portalname[0] == '\0')
+	if (!cstmt->portalname || cstmt->portalname[0] == '\0')
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_CURSOR_NAME),
 				 errmsg("invalid cursor name: must not be empty")));
@@ -64,79 +67,42 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	 * been executed inside a transaction block (or else, it would have no
 	 * user-visible effect).
 	 */
-	if (!(stmt->options & CURSOR_OPT_HOLD))
-		RequireTransactionChain((void *) stmt, "DECLARE CURSOR");
+	if (!(cstmt->options & CURSOR_OPT_HOLD))
+		RequireTransactionChain(isTopLevel, "DECLARE CURSOR");
 
-	if (Gp_role != GP_ROLE_UTILITY && (stmt->options & CURSOR_OPT_SCROLL))
+	if (Gp_role != GP_ROLE_UTILITY && (cstmt->options & CURSOR_OPT_SCROLL))
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
 				 errmsg("scrollable cursors are not yet supported in Greenplum Database")));
-	
-	/*
-	 * Because the planner is not cool about not scribbling on its input, we
-	 * make a preliminary copy of the source querytree.  This prevents
-	 * problems in the case that the DECLARE CURSOR is in a portal and is
-	 * executed repeatedly.  XXX the planner really shouldn't modify its input
-	 * ... FIXME someday.
-	 */
-	query = copyObject(stmt->query);
-
-	/*
-	 * The query has been through parse analysis, but not rewriting or
-	 * planning as yet.  Note that the grammar ensured we have a SELECT query,
-	 * so we are not expecting rule rewriting to do anything strange.
-	 */
-	AcquireRewriteLocks(query);
-	rewritten = QueryRewrite(query);
-	if (list_length(rewritten) != 1 || !IsA(linitial(rewritten), Query))
-		elog(ERROR, "unexpected rewrite result");
-	query = (Query *) linitial(rewritten);
-	if (query->commandType != CMD_SELECT)
-		elog(ERROR, "unexpected rewrite result");
-
-	if (query->into)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_CURSOR_DEFINITION),
-				 errmsg("DECLARE CURSOR may not specify INTO")));
-	if (query->rowMarks != NIL)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("DECLARE CURSOR ... FOR UPDATE/SHARE is not supported"),
-				 errdetail("Cursors must be READ ONLY.")));
-
-	plan = planner(query, true, stmt->options, params);
+		
 
 	/*
 	 * Create a portal and copy the query and plan into its memory context.
 	 */
-	portal = CreatePortal(stmt->portalname, false, false);
+	portal = CreatePortal(cstmt->portalname, false, false);
 
 	oldContext = MemoryContextSwitchTo(PortalGetHeapMemory(portal));
 
-	query = copyObject(query);
-	plan = copyObject(plan);
+	stmt = copyObject(stmt);
+	stmt->utilityStmt = NULL;	/* make it look like plain SELECT */
 
-	/*
-	 * XXX: debug_query_string is wrong here: the user might have submitted
-	 * multiple semicolon delimited queries.
-	 */
 	PortalDefineQuery(portal,
-					  NULL,		/* unfortunately don't have sourceText */
-					  debug_query_string ? pstrdup(debug_query_string) : NULL,
+					  NULL,
+					  queryString,
 					  T_DeclareCursorStmt,
 					  "SELECT", /* cursor's query is always a SELECT */
-					  list_make1(query),
-					  list_make1(plan),
-					  PortalGetHeapMemory(portal));
-	
-	portal->is_cursor = true; /* mark this portal as a cursor */
+					  list_make1(stmt),
+					  NULL);
 
-	/*
+	/*----------
 	 * Also copy the outer portal's parameter list into the inner portal's
 	 * memory context.	We want to pass down the parameter values in case we
-	 * had a command like DECLARE c CURSOR FOR SELECT ... WHERE foo = $1 This
-	 * will have been parsed using the outer parameter set and the parameter
-	 * value needs to be preserved for use when the cursor is executed.
+	 * had a command like
+	 *		DECLARE c CURSOR FOR SELECT ... WHERE foo = $1
+	 * This will have been parsed using the outer parameter set and the
+	 * parameter value needs to be preserved for use when the cursor is
+	 * executed.
+	 *----------
 	 */
 	params = copyParamList(params);
 
@@ -147,16 +113,17 @@ PerformCursorOpen(DeclareCursorStmt *stmt, ParamListInfo params)
 	 *
 	 * If the user didn't specify a SCROLL type, allow or disallow scrolling
 	 * based on whether it would require any additional runtime overhead to do
-	 * so.
+	 * so.	Also, we disallow scrolling for FOR UPDATE cursors.
 	 */
-	portal->cursorOptions = stmt->options;
+	portal->cursorOptions = cstmt->options;
 	if (!(portal->cursorOptions & (CURSOR_OPT_SCROLL | CURSOR_OPT_NO_SCROLL)))
 	{
 		/*
 		 * MPP: we do not allow backward scans at the moment regardless
 		 * of any additional runtime overhead. Comment out this option:
 		 */
-		/*if (ExecSupportsBackwardScan(plan))
+		/*if (stmt->rowMarks == NIL &&
+			ExecSupportsBackwardScan(stmt->planTree))
 			portal->cursorOptions |= CURSOR_OPT_SCROLL;
 		else*/
 			portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
@@ -248,11 +215,18 @@ PerformPortalClose(const char *name)
 {
 	Portal		portal;
 
+	/* NULL means CLOSE ALL */
+	if (name == NULL)
+	{
+		PortalHashTableDeleteAll();
+		return;
+	}
+
 	/*
 	 * Disallow empty-string cursor name (conflicts with protocol-level
 	 * unnamed portal).
 	 */
-	if (!name || name[0] == '\0')
+	if (name[0] == '\0')
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_CURSOR_NAME),
 				 errmsg("invalid cursor name: must not be empty")));
@@ -347,7 +321,6 @@ PersistHoldablePortal(Portal portal)
 	Snapshot	saveActiveSnapshot;
 	ResourceOwner saveResourceOwner;
 	MemoryContext savePortalContext;
-	MemoryContext saveQueryContext;
 	MemoryContext oldcxt;
 
 	/*
@@ -389,14 +362,12 @@ PersistHoldablePortal(Portal portal)
 	saveActiveSnapshot = ActiveSnapshot;
 	saveResourceOwner = CurrentResourceOwner;
 	savePortalContext = PortalContext;
-	saveQueryContext = QueryContext;
 	PG_TRY();
 	{
 		ActivePortal = portal;
 		ActiveSnapshot = queryDesc->snapshot;
 		CurrentResourceOwner = portal->resowner;
 		PortalContext = PortalGetHeapMemory(portal);
-		QueryContext = portal->queryContext;
 
 		MemoryContextSwitchTo(PortalContext);
 
@@ -433,8 +404,8 @@ PersistHoldablePortal(Portal portal)
 		 * to be at, but the tuplestore API doesn't support that. So we start
 		 * at the beginning of the tuplestore and iterate through it until we
 		 * reach where we need to be.  FIXME someday?  (Fortunately, the
-		 * typical case is that we're supposed to be at or near the start
-		 * of the result set, so this isn't as bad as it sounds.)
+		 * typical case is that we're supposed to be at or near the start of
+		 * the result set, so this isn't as bad as it sounds.)
 		 */
 		MemoryContextSwitchTo(portal->holdContext);
 
@@ -481,7 +452,6 @@ PersistHoldablePortal(Portal portal)
 		ActiveSnapshot = saveActiveSnapshot;
 		CurrentResourceOwner = saveResourceOwner;
 		PortalContext = savePortalContext;
-		QueryContext = saveQueryContext;
 
 		PG_RE_THROW();
 	}
@@ -496,7 +466,6 @@ PersistHoldablePortal(Portal portal)
 	ActiveSnapshot = saveActiveSnapshot;
 	CurrentResourceOwner = saveResourceOwner;
 	PortalContext = savePortalContext;
-	QueryContext = saveQueryContext;
 
 	/*
 	 * We can now release any subsidiary memory of the portal's heap context;
