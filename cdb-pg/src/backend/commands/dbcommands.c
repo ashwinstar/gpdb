@@ -1190,28 +1190,28 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" ", stmt->dbname);
 		
-		if (strcmp(stmt->variable, "all") == 0 && valuestr == NULL)
+		if (stmt->setstmt->kind == VAR_RESET_ALL && valuestr == NULL)
 		{
 			appendStringInfo(&buffer, "RESET ALL");
 		}
 		else if (valuestr == NULL)
 		{
-			appendStringInfo(&buffer, "RESET \"%s\"", stmt->variable);
+			appendStringInfo(&buffer, "RESET \"%s\"", stmt->setstmt->name);
 		}
 		{
 			ListCell   *l;
 	
 			
-			appendStringInfo(&buffer, "SET \"%s\" TO ",stmt->variable);
+			appendStringInfo(&buffer, "SET \"%s\" TO ",stmt->setstmt->name);
 		
 
 		
 			/* Parse string into list of identifiers */
 
-			foreach(l, stmt->value)
+			foreach(l, stmt->setstmt->args)
 			{
 				A_Const    *arg = (A_Const *) lfirst(l);
-				if (l != list_head(stmt->value))
+				if (l != list_head(stmt->setstmt->args))
 					appendStringInfo(&buffer, ",");
 				
 				switch (nodeTag(&arg->val))
