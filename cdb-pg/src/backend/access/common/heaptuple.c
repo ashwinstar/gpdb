@@ -71,11 +71,6 @@
 
 #include "catalog/pg_type.h"
 #include "cdb/cdbvars.h"                /* Gp_segment */
-#define ATT_IS_PACKABLE(att) \
-	((att)->attlen == -1 && (att)->attstorage != 'p')
-/* Use this if it's already known varlena */
-#define VARLENA_ATT_IS_PACKABLE(att) \
-	((att)->attstorage != 'p')
 
 
 /* ----------------------------------------------------------------
@@ -457,7 +452,6 @@ nocachegetattr(HeapTuple tuple,
 	{
 		int			natts = tupleDesc->natts;
 		int			j = 1;
-		int			natts = HeapTupleHeaderGetNatts(tup);
 
 		/*
 		 * If we get here, we have a tuple with no nulls or var-widths up to
@@ -738,7 +732,7 @@ heaptuple_form_to(TupleDesc tupleDescriptor, Datum *values, bool *isnull, HeapTu
 		else if (att[i]->attlen == -1 &&
 				 att[i]->attalign == 'd' &&
 				 att[i]->attndims == 0 &&
-				 !VARATT_IS_EXTENDED_D(values[i]))
+				 !VARATT_IS_EXTENDED(DatumGetPointer(values[i])))
 		{
 			values[i] = toast_flatten_tuple_attribute(values[i],
 					att[i]->atttypid,

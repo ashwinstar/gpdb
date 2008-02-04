@@ -73,11 +73,10 @@ index_form_tuple(TupleDesc tupleDescriptor,
 		 * If value is stored EXTERNAL, must fetch it so we are not depending
 		 * on outside storage.	This should be improved someday.
 		 */
-		if (VARATT_IS_EXTERNAL_D(values[i]))
+		if (VARATT_IS_EXTERNAL(DatumGetPointer(values[i])))
 		{
 			untoasted_values[i] = 
-				PointerGetDatum(heap_tuple_fetch_attr((varattrib *) 
-													  DatumGetPointer(values[i])));
+				PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(values[i])));
 			untoasted_free[i] = true;
 		}
 

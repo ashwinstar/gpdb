@@ -239,7 +239,7 @@ extern XLogRecPtr log_newpage(RelFileNode *rnode, BlockNumber blk, Page page);
 /* in common/heaptuple.c */
 extern Size heap_compute_data_size(TupleDesc tupleDesc,
 					   Datum *values, bool *isnull);
-extern Size heap_fill_tuple(TupleDesc tupleDesc,
+extern void heap_fill_tuple(TupleDesc tupleDesc,
 				Datum *values, bool *isnull,
 				char *data, Size data_size,
 				uint16 *infomask, bits8 *bit);

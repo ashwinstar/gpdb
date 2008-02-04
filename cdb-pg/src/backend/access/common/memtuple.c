@@ -118,29 +118,7 @@ static inline short compute_null_save(short *null_saves, unsigned char *nullbitm
 	ret += compute_null_save_b(null_saves, (nullbitmaps[nbyte] & (nbit-1)));
 	return ret;
 }
-		
-/* Whether a type could short.
- * Oringianlly postgres if very aggressive, it saves all system types
- * except int2vector and oidvector.  This is potentially a problem because
- * if the varlena needs an alignment, we need to palloc and memcpy.  It is 
- * very hard to determine if the space saved on disk is worth the CPU cost.
- * Leave it as is for now.
- */
-static inline bool typid_could_short(int typid)
-{
-#if 1
-	return ( typid != INT2VECTOROID && 
-			typid != OIDVECTOROID &&
-			typid < FirstNormalObjectId
-	       );
-#else
-	return (typid == BYTEAOID || typid == TEXTOID 
-			|| typid == BPCHAROID || typid == VARCHAROID 
-			|| typid == NUMERICOID || typid == CSTRINGOID
-	       );
-#endif
-}
-
+	
 /* Create a memtuple binding from the tupdesc.  Note we store
  * a ref to the tupdesc in the binding, so we assumed the life
  * span of the tupdesc is no shorter than the binding.
@@ -181,7 +159,7 @@ MemTupleBinding *create_memtuple_binding(TupleDesc tupdesc)
 
 			if(pass == 0 && attr->attlen > 0 && attr->attalign == 'd')
 			{
-				bind->offset = att_align(cur_offset, attr->attalign);
+				bind->offset = att_align_nominal(cur_offset, attr->attalign);
 				bind->len = attr->attlen;
 				add_null_save(pbind->null_saves, physical_col, attr->attlen);
 
@@ -194,7 +172,7 @@ MemTupleBinding *create_memtuple_binding(TupleDesc tupdesc)
 			}
 			else if (pass == 1 && attr->attlen > 0 && attr->attalign == 'i')
 			{
-				bind->offset = att_align(cur_offset, attr->attalign);
+				bind->offset = att_align_nominal(cur_offset, attr->attalign);
 				bind->len = attr->attlen;
 				add_null_save(pbind->null_saves, physical_col, attr->attlen);
 
@@ -216,7 +194,7 @@ MemTupleBinding *create_memtuple_binding(TupleDesc tupdesc)
 					      )
 				)
 			{
-				bind->offset = att_align(cur_offset, 's');
+				bind->offset = att_align_nominal(cur_offset, 's');
 				bind->len = attr->attlen > 0 ? attr->attlen : sizeof(short);
 				add_null_save(pbind->null_saves, physical_col, bind->len);
 				
@@ -246,7 +224,7 @@ MemTupleBinding *create_memtuple_binding(TupleDesc tupdesc)
 					      )
 				)
 			{
-				bind->offset = att_align(cur_offset, 'c');
+				bind->offset = att_align_nominal(cur_offset, 'c');
 				bind->len = attr->attlen > 0 ? attr->attlen : (attr->atttypmod - 3);
 
 				add_null_save(pbind->null_saves, physical_col, 1);
@@ -303,27 +281,30 @@ static uint32 compute_memtuple_size(MemTupleBinding *pbind, Datum *values, bool 
 	{
 		MemTupleAttrBinding *bind = &pbind->bindings[i];
 		Form_pg_attribute attr = pbind->tupdesc->attrs[i];
+		void *vaptr;
 
 		if(isnull[i] || bind->flag == MTB_ByVal_Native || bind->flag == MTB_ByVal_Ptr)
 			continue;
 
+		vaptr = DatumGetPointer(values[i]); 
+
 		/* Varlen stuff */
 		/* We plan to convert to short varlena even if it is not currently */
 		if(bind->flag == MTB_ByRef 
-				&& !VARATT_IS_EXTERNAL_D(values[i])
-				&& (VARATT_IS_SHORT_D(values[i]) 
-					|| (VARATT_COULD_SHORT_D(values[i])
-						&& typid_could_short(attr->atttypid)
+				&& !VARATT_IS_EXTERNAL(vaptr)
+				&& (VARATT_IS_SHORT(vaptr) 
+					|| (VARATT_CAN_MAKE_SHORT(vaptr) 
+						&& ATT_IS_PACKABLE(attr)
 					   )
 				   )
 		  ) 
 		{
-			data_length += VARSIZE_ANY_EXHDR_D(values[i]) + VARHDRSZ_SHORT;
+			data_length += VARSIZE_ANY_EXHDR(vaptr) + VARHDRSZ_SHORT;
 		}
 		else
 		{
-			data_length = att_align(data_length, attr->attalign); 
-			data_length = att_addlength(data_length, attr->attlen, values[i]);
+			data_length = att_align_nominal(data_length, attr->attalign); 
+			data_length = att_addlength_datum(data_length, attr->attlen, values[i]);
 		}
 	}
 
@@ -381,6 +362,7 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 	for(i=0; i<pbind->tupdesc->natts; ++i)
 	{
 		Form_pg_attribute attr = pbind->tupdesc->attrs[i];
+		void *vaptr = DatumGetPointer(values[i]);
 		
 #ifdef CHK_TYPE_SANE
 		check_type_sanity(attr, values[i], isnull[i]);
@@ -395,7 +377,7 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 		if (attr->attlen == -1 &&
 				attr->attalign == 'd' &&
 				attr->attndims == 0 &&
-				!VARATT_IS_EXTENDED_D(values[i]))
+				!VARATT_IS_EXTENDED(vaptr)) 
 		{
 			/*
 			 * FIXME:
@@ -408,8 +390,8 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 			values[i] = toast_flatten_tuple_attribute(values[i], attr->atttypid, attr->atttypmod);
 		}
 
-		if (attr->attlen == -1 && VARATT_IS_EXTERNAL_D(values[i]))
-			values[i] = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(values[i])));
+		if (attr->attlen == -1 && VARATT_IS_EXTERNAL(vaptr)) 
+			values[i] = PointerGetDatum(heap_tuple_fetch_attr(vaptr)); 
 	}
 
 	/* compute needed length */
@@ -513,40 +495,43 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 					else
 					{
 						char *p = memtuple_get_attr_ptr(start, bind, pbind->null_saves, nullp);
-						Assert(VARATT_COULD_SHORT_D(values[i]));
-						attr_len = VARSIZE_D(values[i]) - VARHDRSZ + VARHDRSZ_SHORT;
+						void *vaptr = DatumGetPointer(values[i]);
+
+						Assert(VARATT_CAN_MAKE_SHORT(vaptr)); 
+						attr_len = VARSIZE(vaptr) - VARHDRSZ + VARHDRSZ_SHORT;
 						Assert(attr_len <= bind->len);
-						*p = VARSIZE_TO_SHORT_D(values[i]);
-						memcpy(p+1, VARDATA_D(values[i]), attr_len-1);
+						SET_VARSIZE_SHORT(p, VARATT_CONVERTED_SHORT_SIZE(vaptr));
+						memcpy(p+1, VARDATA(vaptr), attr_len-1);
 					}
 				}
 				break;
 			case MTB_ByRef:
-				if(VARATT_IS_EXTERNAL_D(values[i]))
+				if(VARATT_IS_EXTERNAL(DatumGetPointer(values[i])))
 				{
-					varlen_start = (char *) att_align((long) varlen_start, attr->attalign);
+					varlen_start = (char *) att_align_nominal((long) varlen_start, attr->attalign);
 					attr_len = VARSIZE_EXTERNAL(DatumGetPointer(values[i]));
 					Assert((varlen_start - (char *) mtup) + attr_len <= len);
 					memcpy(varlen_start, DatumGetPointer(values[i]), attr_len);
 				}
-				else if(VARATT_IS_SHORT_D(values[i]))
+				else if(VARATT_IS_SHORT(DatumGetPointer(values[i])))
 				{
-					Assert(typid_could_short(attr->atttypid));
+					Assert(ATT_IS_PACKABLE(attr)); 
 					attr_len = VARSIZE_SHORT(DatumGetPointer(values[i]));
 					Assert((varlen_start - (char *) mtup) + attr_len <= len);
 					memcpy(varlen_start, DatumGetPointer(values[i]), attr_len);
 				}
-				else if(VARATT_COULD_SHORT_D(values[i]) && typid_could_short(attr->atttypid))
+				else if(VARATT_CAN_MAKE_SHORT(DatumGetPointer(values[i])) && ATT_IS_PACKABLE(attr)) 
 				{
-					attr_len = VARSIZE_D(values[i]) - VARHDRSZ + VARHDRSZ_SHORT;
-					*varlen_start = VARSIZE_TO_SHORT_D(values[i]);
+					void *vaptr = DatumGetPointer(values[i]);
+					attr_len = VARATT_CONVERTED_SHORT_SIZE(vaptr); 
+					SET_VARSIZE_SHORT(varlen_start, attr_len);
 					Assert((varlen_start - (char *) mtup) + attr_len <= len);
-					memcpy(varlen_start+1, VARDATA_D(values[i]), attr_len-1);
+					memcpy(varlen_start+1, VARDATA(vaptr), attr_len-1);
 				}
 				else
 				{
 					/* Must be 4 byte header aligned varlena */
-					varlen_start = (char *) att_align((long) varlen_start, attr->attalign);
+					varlen_start = (char *) att_align_nominal((long) varlen_start, attr->attalign);
 					attr_len = VARSIZE(DatumGetPointer(values[i]));
 					Assert((varlen_start - (char *) mtup) + attr_len <= len);
 					memcpy(varlen_start, DatumGetPointer(values[i]), attr_len);
@@ -557,7 +542,7 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 				break;
 
 			case MTB_ByRef_CStr:
-				varlen_start = (char *) att_align((long) varlen_start, attr->attalign);
+				varlen_start = (char *) att_align_nominal((long) varlen_start, attr->attalign);
 				attr_len = strlen(DatumGetCString(values[i])) + 1;
 				Assert((varlen_start - (char *) mtup) + attr_len <= len);
 				memcpy(varlen_start, DatumGetPointer(values[i]), attr_len);
