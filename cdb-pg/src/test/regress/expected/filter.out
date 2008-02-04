@@ -207,8 +207,11 @@ SELECT sum(i) FROM foo;
 (1 row)
 
 SELECT sum(i) FILTER (WHERE i < 5) FROM foo;
-ERROR:  function sum(integer) is not defined as STRICT
-HINT:  The FILTER clause is only supported over functions defined as STRICT.
+ sum 
+-----
+  10
+(1 row)
+
 SELECT sum(i) FROM foo WHERE i < 5;
  sum 
 -----
@@ -514,8 +517,7 @@ HINT:  No function matches the given name and argument types. You may need to ad
 --- TEST filter from outside scope => error
 select * from (select i from foo where j = 1) x1, 
               (select sum(i) filter (where i < x1.i) from foo where j = 2) x2;
-ERROR:  function sum(integer) is not defined as STRICT
-HINT:  The FILTER clause is only supported over functions defined as STRICT.
+ERROR:  subquery in FROM may not refer to other relations of same query level
 --- TEST against user defined aggregation function
 create or replace function _maxodd(oldmax int, newval int) returns int as $$
   SELECT CASE WHEN abs($2) % 2 = 1 AND abs($1) % 2 = 1 
@@ -574,7 +576,7 @@ SELECT maxodd(i) FROM foo;
 
 SELECT maxodd(i) FILTER (WHERE TRUE) from foo;
 ERROR:  function maxodd(integer) is not defined as STRICT
-HINT:  The FILTER clause is only supported over functions defined as STRICT.
+HINT:  The filter clause is only supported over functions defined as STRICT.
 SELECT j, maxodd(i) FROM foo group by j;
  j | maxodd 
 ---+--------
@@ -586,7 +588,7 @@ SELECT j, maxodd(i) FROM foo group by j;
 
 SELECT j, maxodd(i) FILTER (WHERE TRUE) from foo group by j;
 ERROR:  function maxodd(integer) is not defined as STRICT
-HINT:  The FILTER clause is only supported over functions defined as STRICT.
+HINT:  The filter clause is only supported over functions defined as STRICT.
 drop aggregate maxodd(int);
 drop function _maxodd(int,int);
 drop table foo;
