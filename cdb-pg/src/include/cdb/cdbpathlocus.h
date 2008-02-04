@@ -97,17 +97,17 @@ typedef enum CdbLocusType
  *
  * If locustype == CdbLocusType_Hashed:
  *      Rows are distributed on a hash function of the partitioning key.
- *      The 'partkey' field points to a pathkey list (see pathkeys.c).
- *      Each of the sets 'Ei' is represented as a pathkey: a List of
- *      PathKeyItems pointing to expressions that are constrained by
- *      equality predicates to be equal to one another.
+ *      The 'partkey' field holds a List of EquivalenceClass objects (see
+ *      relation.h, equivclass.c).  Each of the sets 'Ei' is represented as
+ *      a single EquivalenceClass: a set of expressions that are constrained
+ *      by equality predicates to be equal to one another.
  *
  * If locustype == CdbLocusType_HashedOJ:
  *      Rows are distributed on a hash function of the partitioning key,
- *      the same as CdbLocusType_Hashed.  Each of the sets 'Ei' in the
- *      'partkey' list is represented as a List of pathkeys, where again,
- *      a pathkey is a List of PathKeyItems.  This case arises in the
- *      result of outer join.
+ *      the same as CdbLocusType_Hashed.  Each of the sets 'Ei' consists
+ *      of a union of equivalence classes of expressions; thus, the
+ *      'partkey' field holds a List of Lists of EquivalenceClass objects.
+ *      This case arises in the result of outer join.
  *
  * If locustype == CdbLocusType_Strewn:
  *      Rows are distributed according to a criterion that is unknown or

@@ -100,7 +100,7 @@ cdbpullup_colIdx(struct Plan   *plan,
             Assert(subtle);
 
             /* Look for matching expr in the given plan's targetlist. */
-            tle = tlist_member_ignoring_RelabelType(subtle->expr, plan->targetlist);
+            tle = tlist_member_ignore_relabel((Node *)subtle->expr, plan->targetlist);
         }
 
         /* Quit if the plan's projection doesn't include this column. */
@@ -351,13 +351,13 @@ cdbpullup_exprHasSubplanRef(Expr *expr)
 
 
 /*
- * cdbpullup_findPathKeyItemInTargetList
+ * cdbpullup_findEquivMemberInTargetList
  *
- * Searches the equivalence class 'pathkey' for a PathKeyItem that
- * uses no rels outside the 'relids' set, and either is a member of
- * 'targetlist', or uses no Vars that are not in 'targetlist'.
+ * Searches an EquivalenceClass 'ec' for an expression that uses no rels
+ * outside the 'relids' set, and either is a member of 'targetlist', or
+ * uses no Vars that are not in 'targetlist'.
  *
- * If found, returns the chosen PathKeyItem and sets the output variables.
+ * If found, returns the chosen EquivalenceMember and sets the output variables.
  * - If the item's Vars (if any) are in targetlist, but the item itself is not:
  *      *ptargetindex = 0
  * - Else if the targetlist is a List of TargetEntry nodes:
@@ -369,61 +369,65 @@ cdbpullup_exprHasSubplanRef(Expr *expr)
  *
  * Otherwise returns NULL and sets *ptargetindex = 0.
  *
- * 'pathkey' is a List of PathKeyItem.
+ * 'ec' is an EquivalenceClass.
  * 'relids' is the set of relids that may occur in the targetlist exprs.
  * 'targetlist' is a List of TargetEntry or merely a List of Expr.
  *
  * NB: We ignore the presence or absence of a RelabelType node atop either
- * expr in determining whether a PathKeyItem expr matches a targetlist expr.
+ * expr in determining whether an EquivalenceMember matches a targetlist expr.
  *
- * (A RelabelType node might have been placed atop a PathKeyItem's expr to
- * match its type to the sortop's input operand type, when the types are
+ * (A RelabelType node might have been placed atop an EquivalenceMember's expr
+ * to match its type to the sortop's input operand type, when the types are
  * binary compatible but not identical... such as VARCHAR and TEXT.  The
  * RelabelType node merely documents the representational equivalence but
  * does not affect the semantics.  A RelabelType node might also be found
  * atop an argument of a function or operator, but generally not atop a
  * targetlist expr.)
  */
-PathKeyItem *
-cdbpullup_findPathKeyItemInTargetList(List         *pathkey,
-                                      Relids        relids,
-                                      List         *targetlist,
-                                      AttrNumber   *ptargetindex)   // OUT (optional)
+EquivalenceMember *
+cdbpullup_findEquivMemberInTargetList(EquivalenceClass *ec,
+                                      Relids            relids,
+                                      List             *targetlist,
+                                      AttrNumber       *ptargetindex)   // OUT (optional)
 {
-    ListCell   *pathkeycell;
+    ListCell   *memberlistcell;
 
     if (ptargetindex)
        *ptargetindex = 0;
 
-    foreach(pathkeycell, pathkey)
+    foreach(memberlistcell, ec->ec_members)
     {
-        PathKeyItem    *item = (PathKeyItem *)lfirst(pathkeycell);
-        TargetEntry    *tle;
+        EquivalenceMember  *item = (EquivalenceMember *)lfirst(memberlistcell);
+        TargetEntry        *tle;
 
-        Assert(IsA(item, PathKeyItem));
+        Assert(IsA(item, EquivalenceMember));
 
         /* Constant expr?  Return it. */
-        if (item->cdb_num_relids == 0)
-            return item;
+        if (item->em_is_const)
+        {
+            if (!ec->ec_below_outer_join ||
+                list_length(ec->ec_members) == 1)
+                return item;
+        }
 
         /* Bail if targetlist is empty. */
         if (!targetlist)
             break;
 
         /* Consider this item if all of its rels are in 'relids'. */
-        if (bms_is_subset(item->cdb_key_relids, relids))
+        if (bms_is_subset(item->em_relids, relids))
         {
-            Expr       *key = (Expr *)item->key;
+            Expr       *key = item->em_expr;
 
             /* Ignore possible RelabelType node atop the PathKeyItem expr. */
-            if (IsA(key, RelabelType))
+            while (IsA(key, RelabelType))
                 key = ((RelabelType *)key)->arg;
 
             /* Return this item if the whole expr is in targetlist. */
             if (IsA(linitial(targetlist), TargetEntry))
             {
                 /* This targetlist is a List of TargetEntry. */
-                tle = tlist_member_ignoring_RelabelType(key, targetlist);
+                tle = tlist_member_ignore_relabel((Node *)key, targetlist);
                 if (tle)
                 {
                     if (ptargetindex)
@@ -442,7 +446,7 @@ cdbpullup_findPathKeyItemInTargetList(List         *pathkey,
                 {
                     Expr   *expr = (Expr *)lfirst(cell);
 
-                    if (IsA(expr, RelabelType))
+                    while (IsA(expr, RelabelType))
                         expr = ((RelabelType *)expr)->arg;
 
 		            if (equal(expr, key))
@@ -462,7 +466,7 @@ cdbpullup_findPathKeyItemInTargetList(List         *pathkey,
         }
     }
     return NULL;
-}                               /* cdbpullup_findPathKeyItemInTargetList */
+}                               /* cdbpullup_findEquivMemberInTargetList */
 
 
 /*
@@ -526,17 +530,17 @@ cdbpullup_isExprCoveredByTargetlist(Expr *expr, List *targetlist)
     {
         foreach(cell, (List *)expr)
         {
-            Expr   *item = (Expr *)lfirst(cell);
+            Node   *item = (Node *)lfirst(cell);
 
             /* The whole expr or all of its Vars must be in targetlist. */
-            if (!tlist_member_ignoring_RelabelType(item, targetlist) &&
-                cdbpullup_missingVarWalker((Node *)item, targetlist))
+            if (!tlist_member_ignore_relabel(item, targetlist) &&
+                cdbpullup_missingVarWalker(item, targetlist))
                 return false;
         }
     }
 
     /* The whole expr or all of its Vars must be in targetlist. */
-    else if (!tlist_member_ignoring_RelabelType(expr, targetlist) &&
+    else if (!tlist_member_ignore_relabel((Node *)expr, targetlist) &&
              cdbpullup_missingVarWalker((Node *)expr, targetlist))
         return false;
 
@@ -617,7 +621,7 @@ cdbpullup_missingVarWalker(Node *node, void *targetlist)
         /* is targetlist a List of TargetEntry? */
         if (IsA(linitial(targetlist), TargetEntry))
         {
-            if (tlist_member_ignoring_RelabelType((Expr *)node, (List *)targetlist))
+            if (tlist_member_ignore_relabel(node, (List *)targetlist))
                 return false;   /* this Var ok - go on to check rest of expr */
         }
 

@@ -23,7 +23,7 @@
  */
 
 Path *
-pathnode_copy_node(const Path *s);
+pathnode_copy_node(const Path *s, MemoryContext ctx);
 
 CdbVisitOpt
 pathnode_walk_node(Path            *path,
@@ -71,7 +71,8 @@ extern ResultPath *create_result_path(RelOptInfo *rel, Path *subpath,
 extern MaterialPath *create_material_path(RelOptInfo *rel, Path *subpath);
 UniquePath *create_unique_exprlist_path(PlannerInfo    *root,
                                         Path           *subpath,
-                                        List           *distinct_on_exprs);
+                                        List           *distinct_on_exprs,
+                                        List           *distinct_on_expr_operators);
 UniquePath *create_unique_rowid_path(PlannerInfo *root,
                                      Path        *subpath,
                                      Relids       dedup_relids);

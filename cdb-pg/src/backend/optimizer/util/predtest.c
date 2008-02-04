@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/predtest.c,v 1.10.2.2 2007/07/24 17:22:13 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/predtest.c,v 1.19 2008/01/12 00:11:39 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -846,6 +846,7 @@ arrayconst_startup_fn(Node *clause, PredIterInfo info)
 	/* Set up a dummy Const node to hold the per-element values */
 	state->constexpr.xpr.type = T_Const;
 	state->constexpr.consttype = ARR_ELEMTYPE(arrayval);
+	state->constexpr.consttypmod = -1;
 	state->constexpr.constlen = elmlen;
 	state->constexpr.constbyval = elmbyval;
 	lsecond(state->opexpr.args) = &state->constexpr;
@@ -957,7 +958,7 @@ arrayexpr_cleanup_fn(PredIterInfo info)
  * already known immutable, so the clause will certainly always fail.)
  *
  * Finally, we may be able to deduce something using knowledge about btree
- * operator classes; this is encapsulated in btree_predicate_proof().
+ * operator families; this is encapsulated in btree_predicate_proof().
  *----------
  */
 static bool
@@ -1012,7 +1013,7 @@ predicate_implied_by_simple_clause(Expr *predicate, Node *clause)
  * constraints.)
  *
  * Finally, we may be able to deduce something using knowledge about btree
- * operator classes; this is encapsulated in btree_predicate_proof().
+ * operator families; this is encapsulated in btree_predicate_proof().
  *----------
  */
 static bool
@@ -1122,7 +1123,7 @@ list_member_strip(List *list, Expr *datum)
 
 	foreach(cell, list)
 	{
-		Expr *elem = (Expr *) lfirst(cell);
+		Expr	   *elem = (Expr *) lfirst(cell);
 
 		if (elem && IsA(elem, RelabelType))
 			elem = ((RelabelType *) elem)->arg;
@@ -1142,8 +1143,8 @@ list_member_strip(List *list, Expr *datum)
  * The strategy numbers defined by btree indexes (see access/skey.h) are:
  *		(1) <	(2) <=	 (3) =	 (4) >=   (5) >
  * and in addition we use (6) to represent <>.	<> is not a btree-indexable
- * operator, but we assume here that if the equality operator of a btree
- * opclass has a negator operator, the negator behaves as <> for the opclass.
+ * operator, but we assume here that if an equality operator of a btree
+ * opfamily has a negator operator, the negator behaves as <> for the opfamily.
  *
  * The interpretation of:
  *
@@ -1211,7 +1212,7 @@ static const StrategyNumber BT_refute_table[6][6] = {
 };
 
 
-/*----------
+/*
  * btree_predicate_proof
  *	  Does the predicate implication or refutation test for a "simple clause"
  *	  predicate and a "simple clause" restriction, when both are simple
@@ -1226,13 +1227,12 @@ static const StrategyNumber BT_refute_table[6][6] = {
  * What we look for here is binary boolean opclauses of the form
  * "foo op constant", where "foo" is the same in both clauses.	The operators
  * and constants can be different but the operators must be in the same btree
- * operator class.	We use the above operator implication tables to
+ * operator family.  We use the above operator implication tables to
  * derive implications between nonidentical clauses.  (Note: "foo" is known
  * immutable, and constants are surely immutable, but we have to check that
- * the operators are too.  As of 8.0 it's possible for opclasses to contain
+ * the operators are too.  As of 8.0 it's possible for opfamilies to contain
  * operators that are merely stable, and we dare not make deductions with
  * these.)
- *----------
  */
 static bool
 btree_predicate_proof(Expr *predicate, Node *clause, bool refute_it)
@@ -1251,12 +1251,12 @@ btree_predicate_proof(Expr *predicate, Node *clause, bool refute_it)
 				pred_op_negator,
 				clause_op_negator,
 				test_op = InvalidOid;
-	Oid			opclass_id;
+	Oid			opfamily_id;
 	bool		found = false;
 	StrategyNumber pred_strategy,
 				clause_strategy,
 				test_strategy;
-	Oid			clause_subtype;
+	Oid			clause_righttype;
 	Expr	   *test_expr;
 	ExprState  *test_exprstate;
 	Datum		test_result;
@@ -1352,28 +1352,25 @@ btree_predicate_proof(Expr *predicate, Node *clause, bool refute_it)
 	}
 
 	/*
-	 * Try to find a btree opclass containing the needed operators.
+	 * Try to find a btree opfamily containing the needed operators.
 	 *
-	 * We must find a btree opclass that contains both operators, else the
-	 * implication can't be determined.  Also, the pred_op has to be of
-	 * default subtype (implying left and right input datatypes are the same);
-	 * otherwise it's unsafe to put the pred_const on the left side of the
-	 * test.  Also, the opclass must contain a suitable test operator matching
-	 * the clause_const's type (which we take to mean that it has the same
-	 * subtype as the original clause_operator).
+	 * We must find a btree opfamily that contains both operators, else the
+	 * implication can't be determined.  Also, the opfamily must contain a
+	 * suitable test operator taking the pred_const and clause_const
+	 * datatypes.
 	 *
-	 * If there are multiple matching opclasses, assume we can use any one to
+	 * If there are multiple matching opfamilies, assume we can use any one to
 	 * determine the logical relationship of the two operators and the correct
 	 * corresponding test operator.  This should work for any logically
-	 * consistent opclasses.
+	 * consistent opfamilies.
 	 */
 	catlist = SearchSysCacheList(AMOPOPID, 1,
 								 ObjectIdGetDatum(pred_op),
 								 0, 0, 0);
 
 	/*
-	 * If we couldn't find any opclass containing the pred_op, perhaps it is a
-	 * <> operator.  See if it has a negator that is in an opclass.
+	 * If we couldn't find any opfamily containing the pred_op, perhaps it is
+	 * a <> operator.  See if it has a negator that is in an opfamily.
 	 */
 	pred_op_negated = false;
 	if (catlist->n_members == 0)
@@ -1392,23 +1389,19 @@ btree_predicate_proof(Expr *predicate, Node *clause, bool refute_it)
 	/* Also may need the clause_op's negator */
 	clause_op_negator = get_negator(clause_op);
 
-	/* Now search the opclasses */
+	/* Now search the opfamilies */
 	for (i = 0; i < catlist->n_members; i++)
 	{
 		HeapTuple	pred_tuple = &catlist->members[i]->tuple;
 		Form_pg_amop pred_form = (Form_pg_amop) GETSTRUCT(pred_tuple);
 		HeapTuple	clause_tuple;
 
-		opclass_id = pred_form->amopclaid;
-
-		/* must be btree */
-		if (!opclass_is_btree(opclass_id))
-			continue;
-		/* predicate operator must be default within this opclass */
-		if (pred_form->amopsubtype != InvalidOid)
+		/* Must be btree */
+		if (pred_form->amopmethod != BTREE_AM_OID)
 			continue;
 
 		/* Get the predicate operator's btree strategy number */
+		opfamily_id = pred_form->amopfamily;
 		pred_strategy = (StrategyNumber) pred_form->amopstrategy;
 		Assert(pred_strategy >= 1 && pred_strategy <= 5);
 
@@ -1421,37 +1414,39 @@ btree_predicate_proof(Expr *predicate, Node *clause, bool refute_it)
 		}
 
 		/*
-		 * From the same opclass, find a strategy number for the clause_op, if
-		 * possible
+		 * From the same opfamily, find a strategy number for the clause_op,
+		 * if possible
 		 */
 		clause_tuple = SearchSysCache(AMOPOPID,
 									  ObjectIdGetDatum(clause_op),
-									  ObjectIdGetDatum(opclass_id),
+									  ObjectIdGetDatum(opfamily_id),
 									  0, 0);
 		if (HeapTupleIsValid(clause_tuple))
 		{
 			Form_pg_amop clause_form = (Form_pg_amop) GETSTRUCT(clause_tuple);
 
-			/* Get the restriction clause operator's strategy/subtype */
+			/* Get the restriction clause operator's strategy/datatype */
 			clause_strategy = (StrategyNumber) clause_form->amopstrategy;
 			Assert(clause_strategy >= 1 && clause_strategy <= 5);
-			clause_subtype = clause_form->amopsubtype;
+			Assert(clause_form->amoplefttype == pred_form->amoplefttype);
+			clause_righttype = clause_form->amoprighttype;
 			ReleaseSysCache(clause_tuple);
 		}
 		else if (OidIsValid(clause_op_negator))
 		{
 			clause_tuple = SearchSysCache(AMOPOPID,
 										  ObjectIdGetDatum(clause_op_negator),
-										  ObjectIdGetDatum(opclass_id),
+										  ObjectIdGetDatum(opfamily_id),
 										  0, 0);
 			if (HeapTupleIsValid(clause_tuple))
 			{
 				Form_pg_amop clause_form = (Form_pg_amop) GETSTRUCT(clause_tuple);
 
-				/* Get the restriction clause operator's strategy/subtype */
+				/* Get the restriction clause operator's strategy/datatype */
 				clause_strategy = (StrategyNumber) clause_form->amopstrategy;
 				Assert(clause_strategy >= 1 && clause_strategy <= 5);
-				clause_subtype = clause_form->amopsubtype;
+				Assert(clause_form->amoplefttype == pred_form->amoplefttype);
+				clause_righttype = clause_form->amoprighttype;
 				ReleaseSysCache(clause_tuple);
 
 				/* Only consider negators that are = */
@@ -1480,20 +1475,24 @@ btree_predicate_proof(Expr *predicate, Node *clause, bool refute_it)
 		}
 
 		/*
-		 * See if opclass has an operator for the test strategy and the clause
-		 * datatype.
+		 * See if opfamily has an operator for the test strategy and the
+		 * datatypes.
 		 */
 		if (test_strategy == BTNE)
 		{
-			test_op = get_opclass_member(opclass_id, clause_subtype,
-										 BTEqualStrategyNumber);
+			test_op = get_opfamily_member(opfamily_id,
+										  pred_form->amoprighttype,
+										  clause_righttype,
+										  BTEqualStrategyNumber);
 			if (OidIsValid(test_op))
 				test_op = get_negator(test_op);
 		}
 		else
 		{
-			test_op = get_opclass_member(opclass_id, clause_subtype,
-										 test_strategy);
+			test_op = get_opfamily_member(opfamily_id,
+										  pred_form->amoprighttype,
+										  clause_righttype,
+										  test_strategy);
 		}
 		if (OidIsValid(test_op))
 		{
@@ -1503,7 +1502,7 @@ btree_predicate_proof(Expr *predicate, Node *clause, bool refute_it)
 			 * Note that we require only the test_op to be immutable, not the
 			 * original clause_op.	(pred_op is assumed to have been checked
 			 * immutable by the caller.)  Essentially we are assuming that the
-			 * opclass is consistent even if it contains operators that are
+			 * opfamily is consistent even if it contains operators that are
 			 * merely stable.
 			 */
 			if (op_volatile(test_op) == PROVOLATILE_IMMUTABLE)
@@ -1518,7 +1517,7 @@ btree_predicate_proof(Expr *predicate, Node *clause, bool refute_it)
 
 	if (!found)
 	{
-		/* couldn't find a btree opclass to interpret the operators */
+		/* couldn't find a btree opfamily to interpret the operators */
 		return false;
 	}
 

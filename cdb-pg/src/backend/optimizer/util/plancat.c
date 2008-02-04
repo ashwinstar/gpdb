@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/plancat.c,v 1.127 2006/10/04 00:29:55 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/plancat.c,v 1.140 2008/01/12 00:11:39 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,6 +20,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/transam.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_exttable.h"
 #include "catalog/indexing.h"
@@ -51,6 +52,9 @@
 
 /* GUC parameter */
 bool		constraint_exclusion = false;
+
+/* Hook for plugins to get control in get_relation_info() */
+get_relation_info_hook_type get_relation_info_hook = NULL;
 
 
 static void estimate_rel_size(Relation rel, int32 *attr_widths,
@@ -187,7 +191,6 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			IndexOptInfo *info;
 			int			ncolumns;
 			int			i;
-			int16		amorderstrategy;
 
 			/*
 			 * Extract info from the relation descriptor for the index.
@@ -207,6 +210,20 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 				continue;
 			}
 
+			/*
+			 * If the index is valid, but cannot yet be used, ignore it; but
+			 * mark the plan we are generating as transient. See
+			 * src/backend/access/heap/README.HOT for discussion.
+			 */
+			if (index->indcheckxmin &&
+				!TransactionIdPrecedes(HeapTupleHeaderGetXmin(indexRelation->rd_indextuple->t_data),
+									   TransactionXmin))
+			{
+				root->glob->transientPlan = true;
+				index_close(indexRelation, NoLock);
+				continue;
+			}
+
 			info = makeNode(IndexOptInfo);
 
 			info->indexoid = index->indexrelid;
@@ -214,35 +231,72 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 			info->ncolumns = ncolumns = index->indnatts;
 
 			/*
-			 * Need to make classlist and ordering arrays large enough to put
-			 * a terminating 0 at the end of each one.
+			 * Allocate per-column info arrays.  To save a few palloc cycles
+			 * we allocate all the Oid-type arrays in one request.	Note that
+			 * the opfamily array needs an extra, terminating zero at the end.
+			 * We pre-zero the ordering info in case the index is unordered.
 			 */
 			info->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
-			info->classlist = (Oid *) palloc0(sizeof(Oid) * (ncolumns + 1));
-			info->ordering = (Oid *) palloc0(sizeof(Oid) * (ncolumns + 1));
+			info->opfamily = (Oid *) palloc0(sizeof(Oid) * (4 * ncolumns + 1));
+			info->opcintype = info->opfamily + (ncolumns + 1);
+			info->fwdsortop = info->opcintype + ncolumns;
+			info->revsortop = info->fwdsortop + ncolumns;
+			info->nulls_first = (bool *) palloc0(sizeof(bool) * ncolumns);
 
 			for (i = 0; i < ncolumns; i++)
 			{
-				info->classlist[i] = indexRelation->rd_indclass->values[i];
 				info->indexkeys[i] = index->indkey.values[i];
+				info->opfamily[i] = indexRelation->rd_opfamily[i];
+				info->opcintype[i] = indexRelation->rd_opcintype[i];
 			}
 
 			info->relam = indexRelation->rd_rel->relam;
 			info->amcostestimate = indexRelation->rd_am->amcostestimate;
 			info->amoptionalkey = indexRelation->rd_am->amoptionalkey;
+			info->amsearchnulls = indexRelation->rd_am->amsearchnulls;
 
 			/*
 			 * Fetch the ordering operators associated with the index, if any.
+			 * We expect that all ordering-capable indexes use btree's
+			 * strategy numbers for the ordering operators.
 			 */
-			amorderstrategy = indexRelation->rd_am->amorderstrategy;
-			if (amorderstrategy != 0)
+			if (indexRelation->rd_am->amcanorder)
 			{
-				int			oprindex = amorderstrategy - 1;
+				int			nstrat = indexRelation->rd_am->amstrategies;
 
 				for (i = 0; i < ncolumns; i++)
 				{
-					info->ordering[i] = indexRelation->rd_operator[oprindex];
-					oprindex += indexRelation->rd_am->amstrategies;
+					int16		opt = indexRelation->rd_indoption[i];
+					int			fwdstrat;
+					int			revstrat;
+
+					if (opt & INDOPTION_DESC)
+					{
+						fwdstrat = BTGreaterStrategyNumber;
+						revstrat = BTLessStrategyNumber;
+					}
+					else
+					{
+						fwdstrat = BTLessStrategyNumber;
+						revstrat = BTGreaterStrategyNumber;
+					}
+
+					/*
+					 * Index AM must have a fixed set of strategies for it to
+					 * make sense to specify amcanorder, so we need not allow
+					 * the case amstrategies == 0.
+					 */
+					if (fwdstrat > 0)
+					{
+						Assert(fwdstrat <= nstrat);
+						info->fwdsortop[i] = indexRelation->rd_operator[i * nstrat + fwdstrat - 1];
+					}
+					if (revstrat > 0)
+					{
+						Assert(revstrat <= nstrat);
+						info->revsortop[i] = indexRelation->rd_operator[i * nstrat + revstrat - 1];
+					}
+					info->nulls_first[i] = (opt & INDOPTION_NULLS_FIRST) != 0;
 				}
 			}
 
@@ -295,6 +349,14 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
 	rel->indexlist = indexinfos;
 
 	heap_close(relation, NoLock);
+
+	/*
+	 * Allow a plugin to editorialize on the info we obtained from the
+	 * catalogs.  Actions might include altering the assumed relation size,
+	 * removing an index, or adding a hypothetical index to the indexlist.
+	 */
+	if (get_relation_info_hook)
+		(*get_relation_info_hook) (root, relationObjectId, inhparent, rel);
 }
 
 /*
@@ -326,7 +388,10 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	int			nelems;
 	int			i;
 	
-	pg_class_rel = heap_open(relationObjectId, NoLock);
+    UnusedArg(root);
+    UnusedArg(inhparent);
+
+    pg_class_rel = heap_open(relationObjectId, NoLock);
 
 	/*
      * CDB: Get partitioning key info for distributed relation.
@@ -337,8 +402,8 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	heap_close(pg_class_rel, NoLock);
 
 	/*
-	 * Check the pg_exttable relation to be certain the ext table 
-	 * is there. 
+	 * Check the pg_exttable relation to be certain the ext table
+	 * is there.
 	 */
 	pg_exttable_rel = heap_open(ExtTableRelationId, RowExclusiveLock);
 	pg_exttable_dsc = RelationGetDescr(pg_exttable_rel);
@@ -349,11 +414,11 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 				F_OIDEQ,
 				ObjectIdGetDatum(relationObjectId));
 	
-    extscan = systable_beginscan(pg_exttable_rel, 
-								 ExtTableRelOidIndexId, 
+    extscan = systable_beginscan(pg_exttable_rel,
+								 ExtTableRelOidIndexId,
 								 true,
-								 SnapshotNow, 
-								 1, 
+								 SnapshotNow,
+								 1,
 								 &key);
 	
     tuple = systable_getnext(extscan);
@@ -366,9 +431,9 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	/*
 	 * get the location text array from the catalog (pg_exttable).
 	 */
-	locations = heap_getattr(tuple, 
-							 Anum_pg_exttable_location, 
-							 pg_exttable_rel->rd_att, 
+	locations = heap_getattr(tuple,
+							 Anum_pg_exttable_location,
+							 pg_exttable_rel->rd_att,
 							 &isNull);
 	
 	if (isNull)
@@ -390,14 +455,14 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 		}
 	}
 	
-	/* 
+	/*
 	 * get the exec command string (or NULL if doesn't exist)
 	 */
 	execcommand = heap_getattr(tuple,
 							   Anum_pg_exttable_command,
-							   pg_exttable_rel->rd_att, 
+							   pg_exttable_rel->rd_att,
 							   &isNull);
-							   
+							
 	if(isNull)
 		rel->execcommand = NULL; /* tell planner no EXECUTE for this ext table */
 	else
@@ -406,7 +471,7 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	/*
 	 * external web tables are non rescannable, regular ext tables are
 	 */
-	if(loc_str && (IS_FILE_URI(loc_str) || IS_GPFDIST_URI(loc_str)) ) 
+	if(loc_str && (IS_FILE_URI(loc_str) || IS_GPFDIST_URI(loc_str)) )
 		rel->isrescannable = true;
 	else
 		rel->isrescannable = false; /* ext web table */
@@ -414,9 +479,9 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	/*
 	 * Now get the format type
 	 */
-	fmttype = heap_getattr(tuple, 
-						   Anum_pg_exttable_fmtcode, 
-						   pg_exttable_rel->rd_att, 
+	fmttype = heap_getattr(tuple,
+						   Anum_pg_exttable_fmtcode,
+						   pg_exttable_rel->rd_att,
 						   &isNull);
 	
 	rel->fmttype = DatumGetChar(fmttype);
@@ -425,20 +490,20 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	/*
 	 * And the format string
 	 */
-	fmtopts = heap_getattr(tuple, 
-						   Anum_pg_exttable_fmtopts, 
-						   pg_exttable_rel->rd_att, 
+	fmtopts = heap_getattr(tuple,
+						   Anum_pg_exttable_fmtopts,
+						   pg_exttable_rel->rd_att,
 						   &isNull);
 	
 	rel->fmtopts = DatumGetCString(DirectFunctionCall1(textout, fmtopts));
 	Assert(rel->fmtopts != NULL);
 	
-	/* 
+	/*
 	 * reject limit
 	 */
-	rejectlimit = heap_getattr(tuple, 
-							   Anum_pg_exttable_rejectlimit, 
-							   pg_exttable_rel->rd_att, 
+	rejectlimit = heap_getattr(tuple,
+							   Anum_pg_exttable_rejectlimit,
+							   pg_exttable_rel->rd_att,
 							   &isNull);
 	if(!isNull)
 		rel->rejectlimit = DatumGetInt32(rejectlimit);
@@ -448,9 +513,9 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	/*
 	 * Now get the reject limit type
 	 */
-	rejectlimittype = heap_getattr(tuple, 
-								   Anum_pg_exttable_rejectlimittype, 
-								   pg_exttable_rel->rd_att, 
+	rejectlimittype = heap_getattr(tuple,
+								   Anum_pg_exttable_rejectlimittype,
+								   pg_exttable_rel->rd_att,
 								   &isNull);
 	
 	rel->rejectlimittype = DatumGetChar(rejectlimittype);
@@ -460,9 +525,9 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	/*
 	 * format error table
 	 */
-	fmterrtbl = heap_getattr(tuple, 
-							 Anum_pg_exttable_fmterrtbl, 
-							 pg_exttable_rel->rd_att, 
+	fmterrtbl = heap_getattr(tuple,
+							 Anum_pg_exttable_fmterrtbl,
+							 pg_exttable_rel->rd_att,
 							 &isNull);
 	if(isNull)
 		rel->fmterrtbl = InvalidOid;
@@ -472,9 +537,9 @@ get_external_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhpare
 	/*
 	 * data encoding
 	 */
-	encoding = heap_getattr(tuple, 
-							Anum_pg_exttable_encoding, 
-							pg_exttable_rel->rd_att, 
+	encoding = heap_getattr(tuple,
+							Anum_pg_exttable_encoding,
+							pg_exttable_rel->rd_att,
 							&isNull);
 	
 	rel->ext_encoding = DatumGetInt32(encoding);
@@ -510,6 +575,8 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
     BlockNumber curpages = 0;
 	int64	size = 0;
 
+    UnusedArg(baserel);
+
     *default_stats_used = false;
 
     /* Rel not distributed?  RelationGetNumberOfBlocks can get actual #pages. */
@@ -529,17 +596,17 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 	 * Asking the QE for the size of the relation is a bit expensive.
 	 * Do we want to do it all the time?  Or only for tables that have never had analyze run?
 	 */
-	 
+	
 	if (relpages > 0 && reltuples >= 1.0)
 	{
 		
 		/*
 		 * Let's trust the values we had from analyze, even though they might be out of date.
-		 * 
+		 *
 		 * NOTE: external tables are created with estimated larger than zero values. therefore
 		 * we will get here too even though we can never analyze them.
 		 */
-		 
+		
 		curpages = relpages;
 	}
 	else
@@ -552,7 +619,7 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		 * NOTE: External tables should always have >0 values in pg_class
 		 * (created this way). Therefore we should never get here. However, as
 		 * a security measure (if values in pg_class were somehow changed) we
-		 * plug in our 1K pages 1M tuples estimate here as well, and skip 
+		 * plug in our 1K pages 1M tuples estimate here as well, and skip
 		 * cdbRelSize as we can't calculate ext table size.
 		 */
 		if(rel->rd_rel->relkind != RELKIND_EXTERNAL)
@@ -561,8 +628,8 @@ cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
 		}
 		else
 		{
-			/* 
-			 * Estimate a default of 1000 pages - see comment above. 
+			/*
+			 * Estimate a default of 1000 pages - see comment above.
 			 * NOTE: if you change this look at AddNewRelationTuple in heap.c).
 			 */
 			size = 1000 * BLCKSZ;
@@ -893,6 +960,9 @@ get_relation_constraints(Oid relationObjectId, RelOptInfo *rel,
  * Detect whether the relation need not be scanned because it has either
  * self-inconsistent restrictions, or restrictions inconsistent with the
  * relation's CHECK constraints.
+ *
+ * Note: this examines only rel->relid and rel->baserestrictinfo; therefore
+ * it can be called before filling in other fields of the RelOptInfo.
  */
 bool
 relation_excluded_by_constraints(RelOptInfo *rel, RangeTblEntry *rte)
@@ -994,7 +1064,7 @@ build_physical_tlist(PlannerInfo *root, RelOptInfo *rel)
 {
 	List	   *tlist = NIL;
 	Index		varno = rel->relid;
-	RangeTblEntry *rte = rt_fetch(varno, root->parse->rtable);
+	RangeTblEntry *rte = planner_rt_fetch(varno, root);
 	Relation	relation;
 	Query	   *subquery;
 	Var		   *var;

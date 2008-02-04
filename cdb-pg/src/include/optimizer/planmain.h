@@ -75,10 +75,13 @@ extern Plan *create_plan(PlannerInfo *root, Path *path);
 extern SubqueryScan *make_subqueryscan(List *qptlist, List *qpqual,
 				  Index scanrelid, Plan *subplan, List *subrtable);
 extern Append *make_append(List *appendplans, bool isTarget, List *tlist);
-extern Sort *make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree,
-						             List *pathkeys, double limit_tuples,
-                                     Relids relids,
-                                     bool add_keys_to_targetlist);
+Sort *
+make_sort_from_pathkeys(PlannerInfo    *root,
+                        Plan           *lefttree,
+                        List           *pathkeys,
+                        Relids          relids,                 /*CDB*/
+                        bool            add_keys_to_targetlist, /*CDB*/
+						double          limit_tuples);
 extern Sort *make_sort_from_sortclauses(PlannerInfo *root, List *sortcls,
 						   Plan *lefttree);
 extern Sort *make_sort_from_groupcols(PlannerInfo *root, List *groupcls,
@@ -113,6 +116,9 @@ extern NestLoop *make_nestloop(List *tlist,
 extern MergeJoin *make_mergejoin(List *tlist,
 			   List *joinclauses, List *otherclauses,
 			   List *mergeclauses,
+			   Oid *mergefamilies,
+			   int *mergestrategies,
+			   bool *mergenullsfirst,
 			   Plan *lefttree, Plan *righttree,
 			   JoinType jointype);
 extern Window *make_window(PlannerInfo *root, List *tlist,
@@ -128,7 +134,7 @@ extern SetOp *make_setop(SetOpCmd cmd, Plan *lefttree,
 extern Result *make_result(PlannerInfo *root, List *tlist,
 			Node *resconstantqual, Plan *subplan);
 extern bool is_projection_capable_plan(Plan *plan);
-extern Plan *plan_pushdown_tlist(Plan *plan, List *tlist);      /*CDB*/
+extern Plan *plan_pushdown_tlist(PlannerInfo *root, Plan *plan, List *tlist); /*CDB*/
 
 /*
  * prototypes for plan/initsplan.c
@@ -167,11 +173,11 @@ typedef struct set_plan_ref_context
 } set_plan_ref_context;
 
 extern Plan *set_plan_references_qry(PlannerGlobal *glob,
-					Plan *plan, set_plan_ref_context *ctxt); 
+					Plan *plan, set_plan_ref_context *ctxt);
 extern List *set_returning_clause_references(PlannerGlobal *glob,
 								List *rlist,
 								Plan *topplan,
-								Index resultRelation); 
+								Index resultRelation);
 extern void fix_opfuncids(Node *node);
 extern void set_opfuncid(OpExpr *opexpr);
 extern void set_sa_opfuncid(ScalarArrayOpExpr *opexpr);

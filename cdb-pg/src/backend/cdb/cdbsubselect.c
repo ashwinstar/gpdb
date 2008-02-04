@@ -67,7 +67,7 @@ cdbsubselect_flatten_sublinks(struct PlannerInfo *root, struct Node *jtnode)
                 fromexpr->fromlist = list_concat(fromexpr->fromlist, rtrlist);
             break;
         }
- 
+
         case T_JoinExpr:
         {
             JoinExpr   *joinexpr = (JoinExpr *)jtnode;
@@ -136,8 +136,8 @@ cdbsubselect_drop_orderby(Query *subselect)
  * cdbsubselect_add_rte_and_ininfo
  */
 static InClauseInfo *
-cdbsubselect_add_rte_and_ininfo(PlannerInfo    *root, 
-                                List          **rtrlist_inout, 
+cdbsubselect_add_rte_and_ininfo(PlannerInfo    *root,
+                                List          **rtrlist_inout,
                                 Query          *subselect,
                                 const char     *aliasname)
 {
@@ -384,6 +384,7 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
     if (!correlated &&
         sublink->testexpr)
     {
+        ininfo->in_operators = something;       // CDB TODO: pg 8.3 merge
         if (IsA(sublink->testexpr, OpExpr))
 	    {
 		    List	   *opclasses;

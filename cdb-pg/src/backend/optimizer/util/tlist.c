@@ -66,6 +66,8 @@ tlist_member_ignore_relabel(Node *node, List *targetlist)
 		TargetEntry *tlentry = (TargetEntry *) lfirst(temp);
 		Expr	   *tlexpr = tlentry->expr;
 
+        Assert(IsA(tlentry, TargetEntry));
+
 		while (tlexpr && IsA(tlexpr, RelabelType))
 			tlexpr = ((RelabelType *) tlexpr)->arg;
 
@@ -74,40 +76,6 @@ tlist_member_ignore_relabel(Node *node, List *targetlist)
 	}
 	return NULL;
 }
-
-
-/*
- * tlist_member_ignoring_RelabelType
- *	  Finds the (first) member of the given tlist whose expression is
- *	  equal() to the given expression.	Result is NULL if no such member.
- *
- * Disregards the presence or absence of a RelabelType node atop the
- * given expression and/or the tlist expressions.
- */
-TargetEntry *
-tlist_member_ignoring_RelabelType(Expr *expr, List *targetlist)
-{
-    ListCell   *temp;
-
-    if (IsA(expr, RelabelType))
-        expr = ((RelabelType *)expr)->arg;
-
-    foreach(temp, targetlist)
-    {
-        TargetEntry *tlentry = (TargetEntry *)lfirst(temp);
-        Expr        *tlexpr = tlentry->expr;
-
-        Assert(IsA(tlentry, TargetEntry));
-
-        if (IsA(tlexpr, RelabelType))
-            tlexpr = ((RelabelType *)tlexpr)->arg;
-
-        if (equal(expr, tlexpr))
-            return tlentry;
-	}
-	return NULL;
-}                               /* tlist_member_ignoring_RelabelType */
-
 
 /*
  * flatten_tlist

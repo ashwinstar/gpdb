@@ -105,13 +105,13 @@ cdbpullup_exprHasSubplanRef(Expr *expr);
 
 
 /*
- * cdbpullup_findPathKeyItemInTargetList
+ * cdbpullup_findEquivMemberInTargetList
  *
- * Searches the equivalence class 'pathkey' for a PathKeyItem that
- * uses no rels outside the 'relids' set, and either is a member of
- * 'targetlist', or uses no Vars that are not in 'targetlist'.
+ * Searches an EquivalenceClass 'ec' for an expression that uses no rels
+ * outside the 'relids' set, and either is a member of 'targetlist', or
+ * uses no Vars that are not in 'targetlist'.
  *
- * If found, returns the chosen PathKeyItem and sets the output variables.
+ * If found, returns the chosen EquivalenceMember and sets the output variables.
  * - If the item's Vars (if any) are in targetlist, but the item itself is not:
  *      *ptargetindex = 0
  * - Else if the targetlist is a List of TargetEntry nodes:
@@ -123,26 +123,26 @@ cdbpullup_exprHasSubplanRef(Expr *expr);
  *
  * Otherwise returns NULL and sets *ptargetindex = 0.
  *
- * 'pathkey' is a List of PathKeyItem.
+ * 'ec' is an EquivalenceClass.
  * 'relids' is the set of relids that may occur in the targetlist exprs.
  * 'targetlist' is a List of TargetEntry or merely a List of Expr.
  *
- * NB: We ignore the presence or absence of a RelabelType node atop either 
- * expr in determining whether a PathKeyItem expr matches a targetlist expr.  
+ * NB: We ignore the presence or absence of a RelabelType node atop either
+ * expr in determining whether an EquivalenceMember matches a targetlist expr.
  *
- * (A RelabelType node might have been placed atop a PathKeyItem's expr to 
- * match its type to the sortop's input operand type, when the types are 
- * binary compatible but not identical... such as VARCHAR and TEXT.  The 
- * RelabelType node merely documents the representational equivalence but 
- * does not affect the semantics.  A RelabelType node might also be found 
- * atop an argument of a function or operator, but generally not atop a 
+ * (A RelabelType node might have been placed atop an EquivalenceMember's expr
+ * to match its type to the sortop's input operand type, when the types are
+ * binary compatible but not identical... such as VARCHAR and TEXT.  The
+ * RelabelType node merely documents the representational equivalence but
+ * does not affect the semantics.  A RelabelType node might also be found
+ * atop an argument of a function or operator, but generally not atop a
  * targetlist expr.)
  */
-PathKeyItem *
-cdbpullup_findPathKeyItemInTargetList(List         *pathkey,
-                                      Relids        relids,
-                                      List         *targetlist,
-                                      AttrNumber   *ptargetindex);  // OUT (optional)
+EquivalenceMember *
+cdbpullup_findEquivMemberInTargetList(EquivalenceClass *ec,
+                                      Relids            relids,
+                                      List             *targetlist,
+                                      AttrNumber       *ptargetindex);  // OUT (optional)
 
 
 /*
@@ -169,7 +169,7 @@ cdbpullup_findSubplanRefInTargetList(AttrNumber varattno, List *targetlist);
  * 'targetlist' is a List of TargetEntry.
  *
  * NB:  A Var in the expr is considered as matching a Var in the targetlist
- * without regard for whether or not there is a RelabelType node atop the 
+ * without regard for whether or not there is a RelabelType node atop the
  * targetlist Var.
  *
  * See also: cdbpullup_missing_var_walker
@@ -203,7 +203,7 @@ cdbpullup_makeVar(Index varno, AttrNumber varattno, Expr *oldexpr);
  * 'targetlist' is either a List of TargetEntry, or a plain List of Expr.
  *
  * NB:  A Var in the expr is considered as matching a Var in the targetlist
- * without regard for whether or not there is a RelabelType node atop the 
+ * without regard for whether or not there is a RelabelType node atop the
  * targetlist Var.
  *
  * See also: cdbpullup_isExprCoveredByTargetlist

@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/pathnode.c,v 1.133 2006/10/04 00:29:55 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/pathnode.c,v 1.142 2008/01/01 19:45:50 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -28,8 +28,8 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
 #include "parser/parsetree.h"
-#include "utils/memutils.h"
 #include "utils/selfuncs.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 #include "cdb/cdbpath.h"        /* cdb_join_motion() etc */
@@ -38,83 +38,80 @@ static void     cdb_set_cheapest_dedup(PlannerInfo *root, RelOptInfo *rel);
 static bool     cdb_is_path_deduped(Path *path);
 static bool     cdb_subpath_tried_postjoin_dedup(Path *path, Relids subqrelids);
 static UniquePath  *create_limit1_path(PlannerInfo *root, Path *subpath);
-static UniquePath  *make_limit1_path(Path *subpath);
-static UniquePath  *make_unique_path(Path *subpath);
+static UniquePath  *make_limit1_path(PlannerInfo *root, Path *subpath);
+static UniquePath  *make_unique_path(PlannerInfo *root, Path *subpath);
 static List *translate_sub_tlist(List *tlist, int relid);
-static bool query_is_distinct_for(Query *query, List *colnos);
-static bool hash_safe_tlist(List *tlist);
+static bool query_is_distinct_for(Query *query, List *colnos, List *opids);
+static Oid	distinct_col_search(int colno, List *colnos, List *opids);
+static bool hash_safe_operators(List *opids);
 static Path    *create_adaptive_join_path(PlannerInfo *root, Path *oldjoin);
 
-#define FLATCOPY(newnode, node, nodetype)  \
-	( (newnode) = makeNode(nodetype), \
+#define FLATCOPY(newnode, node, ctx, nodetype)  \
+	( (newnode) = MemoryContextAlloc(ctx, sizeof(nodetype)), \
 	  memcpy((newnode), (node), sizeof(nodetype)) )
 
 
 /*
  * pathnode_copy_node
- *    Returns a flat copy of the given Path node.
+ *    Returns a flat copy of the given Path node, allocated from memory context
+ *    'ctx' (which should be the main planning context: root->planner_cxt).
  */
 Path *
-pathnode_copy_node(const Path *s)
+pathnode_copy_node(const Path *s, MemoryContext ctx)
 {
-    MemoryContext   oldcontext;
-    void           *t;
+    void   *t;
 
     if (!s)
         return NULL;
 
-	/* Allocate in same context as parent rel for GEQO safety. */
-	oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(s->parent));
-
     switch (s->type)
 	{
 	    case T_Path:
-            FLATCOPY(t, s, Path);
+            FLATCOPY(t, s, ctx, Path);
             break;
 	    case T_IndexPath:
-            FLATCOPY(t, s, IndexPath);
+            FLATCOPY(t, s, ctx, IndexPath);
             break;
 	    case T_BitmapHeapPath:
-            FLATCOPY(t, s, BitmapHeapPath);
+            FLATCOPY(t, s, ctx, BitmapHeapPath);
             break;
 	    case T_BitmapAndPath:
-            FLATCOPY(t, s, BitmapAndPath);
+            FLATCOPY(t, s, ctx, BitmapAndPath);
             break;
 	    case T_BitmapOrPath:
-            FLATCOPY(t, s, BitmapOrPath);
+            FLATCOPY(t, s, ctx, BitmapOrPath);
             break;
 	    case T_TidPath:
-            FLATCOPY(t, s, TidPath);
+            FLATCOPY(t, s, ctx, TidPath);
             break;
 	    case T_AppendPath:
-            FLATCOPY(t, s, AppendPath);
+            FLATCOPY(t, s, ctx, AppendPath);
             break;
 	    case T_ResultPath:
-            FLATCOPY(t, s, ResultPath);
+            FLATCOPY(t, s, ctx, ResultPath);
             break;
 	    case T_MaterialPath:
-            FLATCOPY(t, s, MaterialPath);
+            FLATCOPY(t, s, ctx, MaterialPath);
             break;
 	    case T_UniquePath:
-            FLATCOPY(t, s, UniquePath);
+            FLATCOPY(t, s, ctx, UniquePath);
             break;
 	    case T_NestPath:
-            FLATCOPY(t, s, NestPath);
+            FLATCOPY(t, s, ctx, NestPath);
             break;
 	    case T_MergePath:
-            FLATCOPY(t, s, MergePath);
+            FLATCOPY(t, s, ctx, MergePath);
             break;
 	    case T_HashPath:
-            FLATCOPY(t, s, HashPath);
+            FLATCOPY(t, s, ctx, HashPath);
             break;
 	    case T_CdbMotionPath:
-            FLATCOPY(t, s, CdbMotionPath);
+            FLATCOPY(t, s, ctx, CdbMotionPath);
             break;
         default:
             t = NULL;           /* keep compiler quiet */
 		    elog(ERROR, "unrecognized pathnode: %d", (int)s->type);
 	}
-    MemoryContextSwitchTo(oldcontext);
     return (Path *)t;
 }                               /* pathnode_copy_node */
 
@@ -602,7 +599,8 @@ cdb_set_cheapest_dedup(PlannerInfo *root, RelOptInfo *rel)
         if (rel->reltargetlist)
             upath = create_unique_exprlist_path(root,
                                                 dedup->cheapest_total_path,
-                                                rel->reltargetlist);
+                                                rel->reltargetlist,
+                                                dedup->join_unique_ininfo->in_operators);
         else
             upath = create_limit1_path(root, dedup->cheapest_total_path);
 
@@ -1221,7 +1219,7 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel)
 	return pathnode;
 }
 
-/* 
+/*
 * Create a path for scanning an external table
  */
 ExternalPath *
@@ -1233,7 +1231,7 @@ create_external_path(PlannerInfo *root, RelOptInfo *rel)
 	pathnode->path.parent = rel;
 	pathnode->path.pathkeys = NIL;	/* external scan has unordered result */
 	
-    pathnode->path.locus = cdbpathlocus_from_baserel(root, rel); 
+    pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->path.motionHazard = false;
 	pathnode->path.rescannable = rel->isrescannable;
 
@@ -1541,7 +1539,7 @@ create_append_path(PlannerInfo *root, RelOptInfo *rel, List *subpaths)
 			 * In case any of the children is not partitioned convert all children
 			 * to have singleQE locus
 			 */
-			if (fIsNotPartitioned && 
+			if (fIsNotPartitioned &&
 				!CdbPathLocus_IsSingleQE(subpath->locus))
 			{
 				CdbPathLocus    singleQE;
@@ -1622,7 +1620,9 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *quals)
 {
 	ResultPath *pathnode = makeNode(ResultPath);
 
-	pathnode->path.pathtype = T_Result;
+    UnusedArg(rel);
+
+    pathnode->path.pathtype = T_Result;
 	pathnode->path.parent = NULL;
 	pathnode->path.pathkeys = NIL;
 	pathnode->quals = quals;
@@ -1704,6 +1704,7 @@ static UniquePath *
 create_unique_path(PlannerInfo *root,
                    Path        *subpath,
                    List        *distinct_on_exprs,
+                   List        *distinct_on_expr_operators,
                    Relids       distinct_on_rowid_relids)
 {
 	UniquePath *pathnode;
@@ -1714,13 +1715,16 @@ create_unique_path(PlannerInfo *root,
     double      subpath_rows;
     bool        hashable = false;
 
+    Assert(list_length(distinct_on_exprs) == list_length(distinct_on_expr_operators));
+
     subpath_rows = cdbpath_rows(subpath);
 
     /* Allocate and partially initialize a UniquePath node. */
-    pathnode = make_unique_path(subpath);
+    pathnode = make_unique_path(root, subpath);
 
     /* Share caller's expr list and relids. */
     pathnode->distinct_on_exprs = distinct_on_exprs;
+    pathnode->distinct_on_expr_operators = distinct_on_expr_operators;
     pathnode->distinct_on_rowid_relids = distinct_on_rowid_relids;
 
 	/*
@@ -1750,7 +1754,8 @@ create_unique_path(PlannerInfo *root,
 	cost_sort(&sort_path, root, NIL,
 			  subpath->total_cost,
 			  subpath_rows,
-			  rel->width);
+			  rel->width,
+			  -1.0);
 
 	/*
 	 * Charge one cpu_operator_cost per comparison per input tuple. We assume
@@ -1761,8 +1766,8 @@ create_unique_path(PlannerInfo *root,
 
 	/*
 	 * Is it safe to use a hashed implementation?  If so, estimate and compare
-	 * costs.  We only try this if we know the targetlist for sure (else we
-	 * can't be sure about the datatypes involved).
+	 * costs.  We only try this if we know the IN operators, else we can't
+	 * check their hashability.
      *
      * CDB: For dedup, the distinct_on_exprs list isn't built until later,
      * but we know the data types will be hashable.
@@ -1771,7 +1776,7 @@ create_unique_path(PlannerInfo *root,
 	pathnode->path.startup_cost = sort_path.startup_cost;
 	pathnode->path.total_cost = sort_path.total_cost;
 
-    if (distinct_on_exprs && hash_safe_tlist(distinct_on_exprs))
+    if (distinct_on_exprs && hash_safe_operators(distinct_on_expr_operators))
         hashable = true;
     if (distinct_on_rowid_relids)
         hashable = true;
@@ -1794,7 +1799,7 @@ create_unique_path(PlannerInfo *root,
 					 subpath->startup_cost,
 					 subpath->total_cost,
 					 rel->rows, 0.0, 0.0);
-			if (agg_path.total_cost < sort_path.total_cost || 
+			if (agg_path.total_cost < sort_path.total_cost ||
                 (!enable_sort && !mpp_trying_fallback_plan))
             {
                 pathnode->umethod = UNIQUE_PATH_HASH;
@@ -1852,12 +1857,14 @@ create_unique_path(PlannerInfo *root,
 UniquePath *
 create_unique_exprlist_path(PlannerInfo    *root,
                             Path           *subpath,
-                            List           *distinct_on_exprs)
+                            List           *distinct_on_exprs,
+                            List           *distinct_on_expr_operators)
 {
 	UniquePath *uniquepath;
     RelOptInfo *rel = subpath->parent;
 
     Assert(distinct_on_exprs);
+    Assert(list_length(distinct_on_exprs) == list_length(distinct_on_expr_operators));
 
 	/*
 	 * If the input is a subquery whose output must be unique already, then we
@@ -1871,15 +1878,17 @@ create_unique_exprlist_path(PlannerInfo    *root,
 	 */
 	if (rel->rtekind == RTE_SUBQUERY)
 	{
-		RangeTblEntry *rte = rt_fetch(rel->relid, root->parse->rtable);
+		RangeTblEntry *rte = planner_rt_fetch(rel->relid, root);
 		List	   *sub_tlist_colnos;
 
 		sub_tlist_colnos = translate_sub_tlist(distinct_on_exprs, rel->relid);
 
 		if (sub_tlist_colnos &&
-			query_is_distinct_for(rte->subquery, sub_tlist_colnos))
+			query_is_distinct_for(rte->subquery,
+								  sub_tlist_colnos,
+                                  distinct_on_expr_operators))
 		{
-            uniquepath = make_unique_path(subpath);
+            uniquepath = make_unique_path(root, subpath);
 			uniquepath->umethod = UNIQUE_PATH_NOOP;
 			uniquepath->rows = cdbpath_rows(subpath);
             uniquepath->distinct_on_exprs = distinct_on_exprs;  /* share list */
@@ -1899,8 +1908,11 @@ create_unique_exprlist_path(PlannerInfo    *root,
     }
 
     /* Create the UniquePath node.  (Might return NULL if enable_sort = off.) */
-    uniquepath = create_unique_path(root, subpath, distinct_on_exprs, NULL);
-
+    uniquepath = create_unique_path(root,
+                                    subpath,
+                                    distinct_on_exprs,
+                                    distinct_on_expr_operators,
+                                    NULL);
 	return uniquepath;
 }                               /* create_unique_exprlist_path */
 
@@ -1937,7 +1949,7 @@ create_unique_rowid_path(PlannerInfo *root,
     Assert(!bms_is_empty(distinct_relids));
 
     /* Create the UniquePath node.  (Might return NULL if enable_sort = off.) */
-    uniquepath = create_unique_path(root, subpath, NIL, distinct_relids);
+    uniquepath = create_unique_path(root, subpath, NIL, NIL, distinct_relids);
     if (!uniquepath)
         return NULL;
 
@@ -1987,7 +1999,7 @@ create_limit1_path(PlannerInfo *root, Path *subpath)
     CdbPathLocus    singleQE;
 
     /* Add LIMIT 1 operator. */
-    uniquepath = make_limit1_path(subpath);
+    uniquepath = make_limit1_path(root, subpath);
 
     /* Add Motion operator to gather to a single qExec, then LIMIT 1 again. */
     if (CdbPathLocus_IsPartitioned(subpath->locus))
@@ -2000,7 +2012,7 @@ create_limit1_path(PlannerInfo *root, Path *subpath)
         subpath->motionHazard = false;
 
         /* Add another LIMIT 1 on top. */
-        uniquepath = make_limit1_path(subpath);
+        uniquepath = make_limit1_path(root, subpath);
     }
 	return uniquepath;
 }                               /* create_limit1_path */
@@ -2013,9 +2025,9 @@ create_limit1_path(PlannerInfo *root, Path *subpath)
  * one row of the given subpath's result.
  */
 UniquePath *
-make_limit1_path(Path *subpath)
+make_limit1_path(PlannerInfo *root, Path *subpath)
 {
-    UniquePath *uniquepath = make_unique_path(subpath);
+    UniquePath *uniquepath = make_unique_path(root, subpath);
 
     uniquepath->umethod = UNIQUE_PATH_LIMIT1;
     uniquepath->rows = 1;
@@ -2036,13 +2048,17 @@ make_limit1_path(Path *subpath)
  *    by the caller.
  */
 UniquePath *
-make_unique_path(Path *subpath)
+make_unique_path(PlannerInfo *root, Path *subpath)
 {
 	UniquePath     *pathnode;
     MemoryContext   oldcontext;
 
-	/* Allocate in same context as parent rel in case GEQO is ever used. */
-	oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(subpath->parent));
+	/*
+	 * We must ensure path struct is allocated in main planning context;
+	 * otherwise GEQO memory management causes trouble.  (Compare
+	 * best_inner_indexscan().)
+	 */
+	oldcontext = MemoryContextSwitchTo(root->planner_cxt);
 
     /* Allocate the UniquePath node. */
 	pathnode = makeNode(UniquePath);
@@ -2103,16 +2119,25 @@ translate_sub_tlist(List *tlist, int relid)
  *
  * colnos is an integer list of output column numbers (resno's).  We are
  * interested in whether rows consisting of just these columns are certain
- * to be distinct.
+ * to be distinct.	"Distinctness" is defined according to whether the
+ * corresponding upper-level equality operators listed in opids would think
+ * the values are distinct.  (Note: the opids entries could be cross-type
+ * operators, and thus not exactly the equality operators that the subquery
+ * would use itself.  We assume that the subquery is compatible if these
+ * operators appear in the same btree opfamily as the ones the subquery uses.)
  */
 static bool
-query_is_distinct_for(Query *query, List *colnos)
+query_is_distinct_for(Query *query, List *colnos, List *opids)
 {
 	ListCell   *l;
+	Oid			opid;
+
+	Assert(list_length(colnos) == list_length(opids));
 
 	/*
 	 * DISTINCT (including DISTINCT ON) guarantees uniqueness if all the
-	 * columns in the DISTINCT clause appear in colnos.
+	 * columns in the DISTINCT clause appear in colnos and operator semantics
+	 * match.
 	 */
 	if (query->distinctClause)
 	{
@@ -2122,7 +2147,9 @@ query_is_distinct_for(Query *query, List *colnos)
 			TargetEntry *tle = get_sortgroupclause_tle(scl,
 													   query->targetList);
 
-			if (!list_member_int(colnos, tle->resno))
+			opid = distinct_col_search(tle->resno, colnos, opids);
+			if (!OidIsValid(opid) ||
+				!ops_in_same_btree_opfamily(opid, scl->sortop))
 				break;			/* exit early if no match */
 		}
 		if (l == NULL)			/* had matches for all? */
@@ -2131,28 +2158,44 @@ query_is_distinct_for(Query *query, List *colnos)
 
 	/*
 	 * Similarly, GROUP BY guarantees uniqueness if all the grouped columns
-	 * appear in colnos.
+	 * appear in colnos and operator semantics match.
 	 */
 	if (query->groupClause)
 	{
-		List *grouptles =
+#if 0 // CDB TODO: pg 8.3 merge conflict
+        List *grouptles =
 			get_sortgroupclauses_tles(query->groupClause, query->targetList);
 		
 		foreach(l, grouptles)
 		{
 			TargetEntry *tle = (TargetEntry *)lfirst(l);
 
-			if (!list_member_int(colnos, tle->resno))
+			opid = distinct_col_search(tle->resno, colnos, opids);
+			if (!OidIsValid(opid) ||
+				!ops_in_same_btree_opfamily(opid, grpcl->sortop))
 				break;			/* exit early if no match */
 		}
-		if (l == NULL)			/* had matches for all? */
+#else  // CDB TODO: pg 8.3 merge conflict
+		foreach(l, query->groupClause)
+		{
+			GroupClause *grpcl = (GroupClause *) lfirst(l);
+			TargetEntry *tle = get_sortgroupclause_tle(grpcl,
+													   query->targetList);
+
+			opid = distinct_col_search(tle->resno, colnos, opids);
+			if (!OidIsValid(opid) ||
+				!ops_in_same_btree_opfamily(opid, grpcl->sortop))
+				break;			/* exit early if no match */
+		}
+#endif // CDB TODO: pg 8.3 merge conflict
+        if (l == NULL)			/* had matches for all? */
 			return true;
 	}
 	else
 	{
 		/*
 		 * If we have no GROUP BY, but do have aggregates or HAVING, then the
-		 * result is at most one row so it's surely unique.
+		 * result is at most one row so it's surely unique, for any operators.
 		 */
 		if (query->hasAggs || query->havingQual)
 			return true;
@@ -2160,7 +2203,12 @@ query_is_distinct_for(Query *query, List *colnos)
 
 	/*
 	 * UNION, INTERSECT, EXCEPT guarantee uniqueness of the whole output row,
-	 * except with ALL
+	 * except with ALL.
+	 *
+	 * XXX this code knows that prepunion.c will adopt the default ordering
+	 * operator for each column datatype as the sortop.  It'd probably be
+	 * better if these operators were chosen at parse time and stored into the
+	 * parsetree, instead of leaving bits of the planner to decide semantics.
 	 */
 	if (query->setOperations)
 	{
@@ -2176,8 +2224,13 @@ query_is_distinct_for(Query *query, List *colnos)
 			{
 				TargetEntry *tle = (TargetEntry *) lfirst(l);
 
-				if (!tle->resjunk &&
-					!list_member_int(colnos, tle->resno))
+				if (tle->resjunk)
+					continue;	/* ignore resjunk columns */
+
+				opid = distinct_col_search(tle->resno, colnos, opids);
+				if (!OidIsValid(opid) ||
+					!ops_in_same_btree_opfamily(opid,
+						   ordering_oper_opid(exprType((Node *) tle->expr))))
 					break;		/* exit early if no match */
 			}
 			if (l == NULL)		/* had matches for all? */
@@ -2194,31 +2247,46 @@ query_is_distinct_for(Query *query, List *colnos)
 }
 
 /*
- * hash_safe_tlist - can datatypes of given tlist be hashed?
+ * distinct_col_search - subroutine for query_is_distinct_for
  *
- * We assume hashed aggregation will work if the datatype's equality operator
- * is marked hashjoinable.
+ * If colno is in colnos, return the corresponding element of opids,
+ * else return InvalidOid.	(We expect colnos does not contain duplicates,
+ * so the result is well-defined.)
+ */
+static Oid
+distinct_col_search(int colno, List *colnos, List *opids)
+{
+	ListCell   *lc1,
+			   *lc2;
+
+	forboth(lc1, colnos, lc2, opids)
+	{
+		if (colno == lfirst_int(lc1))
+			return lfirst_oid(lc2);
+	}
+	return InvalidOid;
+}
+
+/*
+ * hash_safe_operators - can all the specified IN operators be hashed?
  *
- * XXX this probably should be somewhere else.	See also hash_safe_grouping
- * in plan/planner.c.
+ * We assume hashed aggregation will work if each IN operator is marked
+ * hashjoinable.  If the IN operators are cross-type, this could conceivably
+ * fail: the aggregation will need a hashable equality operator for the RHS
+ * datatype --- but it's pretty hard to conceive of a hash opfamily that has
+ * cross-type hashing without support for hashing the individual types, so
+ * we don't expend cycles here to support the case.  We could check
+ * get_compatible_hash_operator() instead of just op_hashjoinable(), but the
+ * former is a significantly more expensive test.
  */
 static bool
-hash_safe_tlist(List *tlist)
+hash_safe_operators(List *opids)
 {
-	ListCell   *tl;
+	ListCell   *lc;
 
-	foreach(tl, tlist)
+	foreach(lc, opids)
 	{
-		Node	   *expr = (Node *) lfirst(tl);
-		Operator	optup;
-		bool		oprcanhash;
-
-		optup = equality_oper(exprType(expr), true);
-		if (!optup)
-			return false;
-		oprcanhash = ((Form_pg_operator) GETSTRUCT(optup))->oprcanhash;
-		ReleaseSysCache(optup);
-		if (!oprcanhash)
+		if (!op_hashjoinable(lfirst_oid(lc)))
 			return false;
 	}
 	return true;
@@ -2755,7 +2823,7 @@ create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
     save_outer_rows = outerrel->rows;                   /* save */
     outerrel->rows = 2 * outerrel->rows + 100;
 
-    bigpath = pathnode_copy_node((Path *)oldjoin);
+    bigpath = pathnode_copy_node((Path *)oldjoin, root->planner_cxt);
     Assert(IsA(bigpath, NestPath));
     cost_nestloop((NestPath *)bigpath, root);
     oldslope = (bigpath->total_cost - oldjoin->path.total_cost) /
@@ -2809,7 +2877,8 @@ create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
     /*
      * Ok, create adaptive join path by copying and modifying the NJ.
      */
-    adaptive_nestpath = (NestPath *)pathnode_copy_node((Path *)oldjoin);
+    adaptive_nestpath = (NestPath *)pathnode_copy_node((Path *)oldjoin,
+                                                       root->planner_cxt);
     Assert(IsA(adaptive_nestpath, NestPath));
 
     /* Fill in the Adaptive Join fields. */

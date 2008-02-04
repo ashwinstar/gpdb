@@ -365,29 +365,17 @@ typedef struct RelOptInfo
 	struct Plan *subplan;		/* if subquery */
 	List	   *subrtable;		/* if subquery */
 
-	/* used by external scan */
-	List		*locationlist;
-	char		*execcommand;
-	char		fmttype;
-	char		*fmtopts;
-	int32		rejectlimit;
-	char		rejectlimittype;
-	Oid			fmterrtbl;
-	int32		ext_encoding;
-	bool		isrescannable; /* true for ext tables false for ext web tables */
-	
 	/* used by various scans and joins: */
 	List	   *baserestrictinfo;		/* RestrictInfo structures (if base
 										 * rel) */
 	QualCost	baserestrictcost;		/* cost of evaluating the above */
 	List	   *joininfo;		/* RestrictInfo structures for join clauses
 								 * involving this rel */
+	bool		has_eclass_joins;		/* T means joininfo is incomplete */
 
 	/* join selectivities */
 	double		jselec;
 	double		pselec;
-
-	bool		has_eclass_joins;		/* T means joininfo is incomplete */
 
 	/* cached info about inner indexscan paths for relation: */
 	Relids		index_outer_relids;		/* other relids in indexable join
@@ -400,6 +388,17 @@ typedef struct RelOptInfo
 	 * list just to avoid recomputing the best inner indexscan repeatedly for
 	 * similar outer relations.  See comments for InnerIndexscanInfo.
 	 */
+	
+	/* used by external scan */
+	List		*locationlist;
+	char		*execcommand;
+	char		fmttype;
+	char		*fmtopts;
+	int32		rejectlimit;
+	char		rejectlimittype;
+	Oid			fmterrtbl;
+	int32		ext_encoding;
+	bool		isrescannable; /* true for ext tables false for ext web tables */
 } RelOptInfo;
 
 /*
@@ -672,8 +671,8 @@ typedef struct Path
 } Path;
 
 
-/* 
- * ExternalPath is used for external table scans. 
+/*
+ * ExternalPath is used for external table scans.
  */
 typedef struct ExternalPath
 {
@@ -892,6 +891,10 @@ typedef struct UniquePath
 	double		rows;			/* estimated number of result tuples */
     List       *distinct_on_exprs;
                                 /* CDB: list of exprs to be uniqueified */
+    List       *distinct_on_expr_operators;
+                                /* CDB: list of opids, corresponding 1-to-1
+                                 *   with the distinct_on_exprs list
+                                 */
     Relids      distinct_on_rowid_relids;
                                 /* CDB: set of relids whose row ids are to be
                                  * uniqueified.
@@ -1275,7 +1278,6 @@ typedef struct OuterJoinInfo
 typedef struct InClauseInfo
 {
 	NodeTag		type;
-	Relids		lefthand;		/* base relids in lefthand expressions */
 	Relids		righthand;		/* base relids coming from the subselect */
 	List	   *sub_targetlist; /* targetlist of original RHS subquery */
 	List	   *in_operators;	/* OIDs of the IN's equality operator(s) */
