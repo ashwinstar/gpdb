@@ -44,7 +44,7 @@ extern void ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 extern void DeallocateQuery(DeallocateStmt *stmt);
 extern void ExplainExecuteQuery(ExecuteStmt *execstmt, ExplainStmt *stmt,
 					const char *queryString,
-					ParamListInfo params, TupOutputState *tstate);
+					ParamListInfo params, struct TupOutputState *tstate);
 
 /* Low-level access to stored prepared statements */
 extern void StorePreparedStatement(const char *stmt_name,
