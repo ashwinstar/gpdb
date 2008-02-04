@@ -61,7 +61,7 @@ DiscardAll(bool isTopLevel)
 	 */
 	PreventTransactionChain(isTopLevel, "DISCARD ALL");
 
-	SetPGVariable("session_authorization", NIL, false);
+	SetPGVariable("session_authorization", NIL, false, /* gp_dispatch */ false);
 	ResetAllOptions();
 	DropAllPreparedStatements();
 	PortalHashTableDeleteAll();
