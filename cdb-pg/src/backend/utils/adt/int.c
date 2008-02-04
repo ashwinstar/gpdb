@@ -341,53 +341,6 @@ i4toi2(PG_FUNCTION_ARGS)
 	PG_RETURN_INT16((int16) arg1);
 }
 
-Datum
-int2_text(PG_FUNCTION_ARGS)
-{
-	int16		arg1 = PG_GETARG_INT16(0);
-	text	   *result = (text *) palloc(7 + VARHDRSZ); /* sign,5 digits, '\0' */
-
-	pg_itoa(arg1, VARDATA(result));
-	SET_VARSIZE(result, strlen(VARDATA(result)) + VARHDRSZ);
-	PG_RETURN_TEXT_P(result);
-}
-
-	result = DirectFunctionCall1(int2in, CStringGetDatum(str));
-	pfree(str);
-
-	return result;
-}
-
-Datum
-int4_text(PG_FUNCTION_ARGS)
-{
-	int32		arg1 = PG_GETARG_INT32(0);
-	text	   *result = (text *) palloc(12 + VARHDRSZ);		/* sign,10 digits,'\0' */
-
-	pg_ltoa(arg1, VARDATA(result));
-	SET_VARSIZE(result, strlen(VARDATA(result)) + VARHDRSZ);
-	PG_RETURN_TEXT_P(result);
-}
-
-Datum
-text_int4(PG_FUNCTION_ARGS)
-{
-	text	   *string = PG_GETARG_TEXT_P(0);
-	Datum		result;
-	int			len;
-	char	   *str;
-
-	len = VARSIZE(string) - VARHDRSZ;
-
-	str = palloc(len + 1);
-	memcpy(str, VARDATA(string), len);
-	*(str + len) = '\0';
-
-	result = DirectFunctionCall1(int4in, CStringGetDatum(str));
-	pfree(str);
-
-	return result;
-}
 
 /* Cast int4 -> bool */
 Datum
