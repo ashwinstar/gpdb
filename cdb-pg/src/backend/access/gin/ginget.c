@@ -14,8 +14,10 @@
 
 #include "postgres.h"
 #include "access/gin.h"
+#include "access/sdir.h"
 #include "catalog/index.h"
 #include "utils/memutils.h"
+
 
 static bool
 findItemInPage(Page page, ItemPointer item, OffsetNumber *off)

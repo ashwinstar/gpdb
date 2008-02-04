@@ -1955,7 +1955,7 @@ DATA(insert OID = 1476 (  dist_pc			PGNSP PGUID 12 1 0 f f t f i 2 701 f "600 71
 DESCR("distance between point and circle");
 DATA(insert OID = 1477 (  circle_contain_pt PGNSP PGUID 12 1 0 f f t f i 2	16 f "718 600" _null_ _null_ _null_  circle_contain_pt - _null_ ));
 DESCR("circle contains point?");
-DATA(insert OID = 1478 (  pt_contained_circle	PGNSP PGUID 12 f f t f i 2	16 f "600 718" _null_ _null_ _null_  pt_contained_circle - _null_ ));
+DATA(insert OID = 1478 (  pt_contained_circle	PGNSP PGUID 12 f f t f i 2	16 f "600 718" _null_ _null_ _null_  pt_contained_circle - _null_ _null_));
 DESCR("point contained in circle?");
 DATA(insert OID = 1479 (  circle			PGNSP PGUID 12 1 0 f f t f i 1 718 f "603" _null_ _null_ _null_ box_circle - _null_ ));
 DESCR("convert box to circle");
@@ -3182,7 +3182,7 @@ DATA(insert OID = 2849 ( pg_current_xlog_location	PGNSP PGUID 12 1 0 f f t f v 0
 DESCR("current xlog write location");
 DATA(insert OID = 2852 ( pg_current_xlog_insert_location	PGNSP PGUID 12 1 0 f f t f v 0 25 f "" _null_ _null_ _null_ pg_current_xlog_insert_location - _null_ ));
 DESCR("current xlog insert location");
-DATA(insert OID = 2850 ( pg_xlogfile_name_offset	PGNSP PGUID 12 1 0 f f t f i 1 2249 f "25" "{25,25,23}" "{i,o,o}" "{wal_location,file_name,file_offset}" pg_xlogfile_name_offset - _null_ ));
+DATA(insert OID = 2850 ( pg_xlogfile_name_offset	PGNSP PGUID 12 1 0 f f t f i 1 2249 f "25" "{25,25,23}" "{i,o,o}" "{wal_location,file_name,file_offset}" pg_xlogfile_name_offset - _null_ _null_));
 DESCR("xlog filename and byte offset, given an xlog location");
 DATA(insert OID = 2851 ( pg_xlogfile_name			PGNSP PGUID 12 1 0 f f t f i 1 25 f "25" _null_ _null_ _null_ pg_xlogfile_name - _null_ ));
 DESCR("xlog filename, given an xlog location");
@@ -4166,9 +4166,9 @@ DATA(insert OID = 2510 (  pg_prepared_statement PGNSP PGUID 12 1 0 f f t t s 0 2
 DESCR("get the prepared statements for this session");
 DATA(insert OID = 2511 (  pg_cursor PGNSP PGUID 12 1 0 f f t t s 0 2249 f "" _null_ _null_ _null_ pg_cursor - _null_ ));
 DESCR("get the open cursors for this session");
-DATA(insert OID = 2599 (  pg_timezone_abbrevs	PGNSP PGUID 12 1 0 f f t t s 0 2249 f "" "{25,1186,16}" "{o,o,o}" "{abbrev,utc_offset,is_dst}" pg_timezone_abbrevs - _null_ ));
+DATA(insert OID = 2599 (  pg_timezone_abbrevs	PGNSP PGUID 12 1 0 f f t t s 0 2249 f "" "{25,1186,16}" "{o,o,o}" "{abbrev,utc_offset,is_dst}" pg_timezone_abbrevs - _null_ _null_));
 DESCR("get the available time zone abbreviations");
-DATA(insert OID = 2856 (  pg_timezone_names		PGNSP PGUID 12 1 0 f f t t s 0 2249 f "" "{25,25,1186,16}" "{o,o,o,o}" "{name,abbrev,utc_offset,is_dst}" pg_timezone_names - _null_ ));
+DATA(insert OID = 2856 (  pg_timezone_names		PGNSP PGUID 12 1 0 f f t t s 0 2249 f "" "{25,25,1186,16}" "{o,o,o,o}" "{name,abbrev,utc_offset,is_dst}" pg_timezone_names - _null_ _null_));
 DESCR("get the available time zone names");
 
 /* non-persistent series generator */
