@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/index/indexam.c,v 1.95 2006/10/04 00:29:48 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/index/indexam.c,v 1.101 2008/01/01 19:45:46 momjian Exp $
  *
  * INTERFACE ROUTINES
  *		index_open		- open an index relation by relation OID
@@ -21,7 +21,7 @@
  *		index_markpos	- mark a scan position
  *		index_restrpos	- restore a scan position
  *		index_getnext	- get the next tuple from a scan
- *		index_getmulti	- get multiple tuples from a scan
+ *		index_getmulti	- get the next bitmap from a scan
  *		index_bulk_delete	- bulk deletion of index tuples
  *		index_vacuum_cleanup	- post-deletion cleanup of an index
  *		index_getprocid - get a support procedure OID
@@ -448,10 +448,10 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 		}
 		else
 		{
-		bool		found;
+			bool		found;
 			Buffer		prev_buf;
-
-		/*
+			
+			/*
 			 * If we scanned a whole HOT chain and found only dead tuples,
 			 * tell index AM to kill its entry for that TID.
 			 */
@@ -460,16 +460,16 @@ index_getnext(IndexScanDesc scan, ScanDirection direction)
 			/*
 			 * The AM's gettuple proc finds the next index entry matching the
 			 * scan keys, and puts the TID in xs_ctup.t_self (ie, *tid).
-		 */
-		found = DatumGetBool(FunctionCall2(procedure,
-										   PointerGetDatum(scan),
-										   Int32GetDatum(direction)));
+			 */
+			found = DatumGetBool(FunctionCall2(procedure,
+											   PointerGetDatum(scan),
+											   Int32GetDatum(direction)));
 
-		/* Reset kill flag immediately for safety */
-		scan->kill_prior_tuple = false;
+			/* Reset kill flag immediately for safety */
+			scan->kill_prior_tuple = false;
 
 			/* If we're out of index entries, break out of outer loop */
-		if (!found)
+			if (!found)
 				break;
 
 			pgstat_count_index_tuples(scan->indexRelation, 1);
