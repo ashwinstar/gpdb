@@ -1313,7 +1313,7 @@ _equalCompositeTypeStmt(CompositeTypeStmt *a, CompositeTypeStmt *b)
 static bool
 _equalCreateEnumStmt(CreateEnumStmt *a, CreateEnumStmt *b)
 {
-	COMPARE_NODE_FIELD(typename);
+	COMPARE_NODE_FIELD(typname);
 	COMPARE_NODE_FIELD(vals);
 
 	return true;
@@ -2094,7 +2094,7 @@ _equalXmlSerialize(XmlSerialize *a, XmlSerialize *b)
 {
 	COMPARE_SCALAR_FIELD(xmloption);
 	COMPARE_NODE_FIELD(expr);
-	COMPARE_NODE_FIELD(typename);
+	COMPARE_NODE_FIELD(typname);
 
 	return true;
 }

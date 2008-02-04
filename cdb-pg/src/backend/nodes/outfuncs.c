@@ -2540,7 +2540,7 @@ _outXmlSerialize(StringInfo str, XmlSerialize *node)
 
 	WRITE_ENUM_FIELD(xmloption, XmlOptionType);
 	WRITE_NODE_FIELD(expr);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD_AS(typname, typename);
 }
 
 static void

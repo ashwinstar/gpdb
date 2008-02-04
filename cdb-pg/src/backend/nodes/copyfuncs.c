@@ -616,7 +616,7 @@ _copyMaterial(Material *from)
 	COPY_SCALAR_FIELD(share_id);
 	COPY_SCALAR_FIELD(driver_slice);
 	COPY_SCALAR_FIELD(nsharer);
-	COPY_SCALAR_FIELD(nsharer_xslice); 
+	COPY_SCALAR_FIELD(nsharer_xslice);
 
     return newnode;
 }
@@ -841,7 +841,7 @@ _copyLimit(Limit *from)
  * _copyMotion
  */
 static Motion *
-_copyMotion(Motion *from) 
+_copyMotion(Motion *from)
 {
 	Motion	   *newnode = makeNode(Motion);
 
@@ -1711,7 +1711,6 @@ _copyInClauseInfo(InClauseInfo *from)
 {
 	InClauseInfo *newnode = makeNode(InClauseInfo);
 
-	COPY_BITMAPSET_FIELD(lefthand);
 	COPY_BITMAPSET_FIELD(righthand);
 	COPY_NODE_FIELD(sub_targetlist);
 	COPY_NODE_FIELD(in_operators);
@@ -2174,7 +2173,7 @@ _copyXmlSerialize(XmlSerialize *from)
 
 	COPY_SCALAR_FIELD(xmloption);
 	COPY_NODE_FIELD(expr);
-	COPY_NODE_FIELD(typename);
+	COPY_NODE_FIELD(typname);
 
 	return newnode;
 }
@@ -2818,7 +2817,7 @@ _copyCreateEnumStmt(CreateEnumStmt *from)
 {
 	CreateEnumStmt *newnode = makeNode(CreateEnumStmt);
 
-	COPY_NODE_FIELD(typename);
+	COPY_NODE_FIELD(typname);
 	COPY_NODE_FIELD(vals);
 
 	return newnode;
@@ -3493,7 +3492,7 @@ _copyValue(Value *from)
  * substructure is copied too, recursively.
  */
 void *
-copyObject(void *from) 
+copyObject(void *from)
 {
 	void	   *retval;
 

@@ -1561,7 +1561,7 @@ transformXmlSerialize(ParseState *pstate, XmlSerialize *xs)
 													 XMLOID,
 													 "XMLSERIALIZE"));
 
-	targetType = typenameTypeId(pstate, xs->typename, &targetTypmod);
+	targetType = typenameTypeId(pstate, xs->typname, &targetTypmod);
 
 	xexpr->xmloption = xs->xmloption;
 	/* We actually only need these to be able to parse back the expression. */

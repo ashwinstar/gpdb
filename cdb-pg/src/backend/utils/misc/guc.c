@@ -1328,7 +1328,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_hashagg_streambottom", PGC_USERSET, QUERY_TUNING_METHOD,
-            gettext_noop("Stream the bottom stage of two stage hashagg"), 
+            gettext_noop("Stream the bottom stage of two stage hashagg"),
             gettext_noop("Avoid spilling at the bootom stage of two stage hashagg"),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
@@ -1500,7 +1500,7 @@ static struct config_bool ConfigureNamesBool[] =
     	&gp_is_callback,
     	false, NULL, NULL
     },
-    
+
     {
     	{"gp_use_dispatch_agent", PGC_USERSET, DEVELOPER_OPTIONS,
     		gettext_noop("True says to use Query Dispatch Agents to improve dispatching."),
@@ -2580,7 +2580,7 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"gp_hashagg_spillbatch_min", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Minimum number of spill batches of HashAgg"), 
+		 gettext_noop("Minimum number of spill batches of HashAgg"),
 		 gettext_noop("Controlling number of spill batches, if too small, hashagg may respill"),
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
@@ -2590,8 +2590,8 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"gp_hashagg_spillbatch_max", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Maximum number of spill batches of HashAgg"), 
-		 gettext_noop("Controlling number of spill batches, if too big, hashagg spill I/O will be slow"), 
+		 gettext_noop("Maximum number of spill batches of HashAgg"),
+		 gettext_noop("Controlling number of spill batches, if too big, hashagg spill I/O will be slow"),
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashagg_spillbatch_max,
@@ -2600,8 +2600,8 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"gp_hashjoin_bloomfilter", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Use bloomfilter in hash join"), 
-		 gettext_noop("Use bloomfilter may speed up hashtable probing"), 
+		 gettext_noop("Use bloomfilter in hash join"),
+		 gettext_noop("Use bloomfilter may speed up hashtable probing"),
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_hashjoin_bloomfilter,
@@ -2610,8 +2610,8 @@ static struct config_int ConfigureNamesInt[] =
 	
 	{
 		{"gp_motion_slice_noop", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Make motion nodes in certain slices noop"), 
-		 gettext_noop("Make motion nodes noop, to help analyze performace"), 
+		 gettext_noop("Make motion nodes in certain slices noop"),
+		 gettext_noop("Make motion nodes noop, to help analyze performace"),
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_motion_slice_noop,
@@ -2629,8 +2629,8 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"gp_use_mpool", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Use mpool memory context"), 
-		 gettext_noop("Mpool is a faster memory allocator"), 
+		 gettext_noop("Use mpool memory context"),
+		 gettext_noop("Mpool is a faster memory allocator"),
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&gp_use_mpool,
@@ -6062,7 +6062,7 @@ flatten_set_variable_args(const char *name, List *args)
 					Datum		interval;
 					char	   *intervalout;
 
-					typoid = typenameTypeId(NULL, arg->typename, &typmod);
+					typoid = typenameTypeId(NULL, arg->typname, &typmod);
 					Assert(typoid == INTERVALOID);
 
 					interval =

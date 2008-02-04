@@ -266,23 +266,23 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 
 	/* Check for SERIAL pseudo-types */
 	is_serial = false;
-	if (list_length(column->typename->names) == 1)
+	if (list_length(column->typname->names) == 1)
 	{
-		char	   *typname = strVal(linitial(column->typename->names));
+		char	   *typname = strVal(linitial(column->typname->names));
 
 		if (strcmp(typname, "serial") == 0 ||
 			strcmp(typname, "serial4") == 0)
 		{
 			is_serial = true;
-			column->typename->names = NIL;
-			column->typename->typeid = INT4OID;
+			column->typname->names = NIL;
+			column->typname->typeid = INT4OID;
 		}
 		else if (strcmp(typname, "bigserial") == 0 ||
 				 strcmp(typname, "serial8") == 0)
 		{
 			is_serial = true;
-			column->typename->names = NIL;
-			column->typename->typeid = INT8OID;
+			column->typname->names = NIL;
+			column->typname->typeid = INT8OID;
 		}
 	}
 
@@ -605,7 +605,7 @@ transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 		 */
 		def = makeNode(ColumnDef);
 		def->colname = pstrdup(attributeName);
-		def->typename = makeTypeNameFromOid(attribute->atttypid,
+		def->typname = makeTypeNameFromOid(attribute->atttypid,
 											attribute->atttypmod);
 		def->inhcount = 0;
 		def->is_local = true;
@@ -1961,7 +1961,7 @@ transformColumnType(ParseState *pstate, ColumnDef *column)
 	/*
 	 * All we really need to do here is verify that the type is valid.
 	 */
-	Type		ctype = typenameType(pstate, column->typename, NULL);
+	Type		ctype = typenameType(pstate, column->typname, NULL);
 
 	ReleaseSysCache(ctype);
 }

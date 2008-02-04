@@ -10,7 +10,7 @@
  *
  * NOTES
  *	  Every node type that can appear in an Greenplum Database serialized query or plan
- *    tree must have an output function defined here.  
+ *    tree must have an output function defined here.
  *
  * 	  There *MUST* be a one-to-one correspondence between this routine
  *    and readfast.c.  If not, you will likely crash the system.
@@ -19,7 +19,7 @@
  *     serializeNode in cdbsrlz.c.  Other callers beware.
  *
  *    This file is based on outfuncs.c, however, it is optimized for speed
- *    at the expense legibility.  
+ *    at the expense legibility.
  *
  * 	  Rather than serialize to a (somewhat human-readable) string, these
  *    routines create a binary serialization via a simple depth-first walk
@@ -47,9 +47,9 @@
  * routine.
  */
 
-/* 
- * Write the label for the node type.  nodelabel is accepted for 
- * compatibility with outfuncs.c, but is ignored 
+/*
+ * Write the label for the node type.  nodelabel is accepted for
+ * compatibility with outfuncs.c, but is ignored
  */
 #define WRITE_NODE_TYPE(nodelabel) \
 	{ int16 nt =nodeTag(node); appendBinaryStringInfo(str, (const char *)&nt, sizeof(int16)); }
@@ -755,7 +755,7 @@ _outMotion(StringInfo str, Motion *node)
         {
  			array_is_null = 1;
             appendBinaryStringInfo(str, &array_is_null, 1);
-        } 
+        }
         else
         {
         	appendBinaryStringInfo(str, &array_is_null, 1);
@@ -959,8 +959,8 @@ _outScalarArrayOpExpr(StringInfo str, ScalarArrayOpExpr *node)
 static void
 _outBoolExpr(StringInfo str, BoolExpr *node)
 {
- 
- 
+
+
 	WRITE_NODE_TYPE("BOOLEXPR");
 	WRITE_ENUM_FIELD(boolop, BoolExprType);
 
@@ -1922,7 +1922,7 @@ _outDropOwnedStmt(StringInfo str, DropOwnedStmt *node)
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
 }
 
-static void 
+static void
 _outReassignOwnedStmt(StringInfo str, ReassignOwnedStmt *node)
 {
 	WRITE_NODE_TYPE("REASSIGNOWNEDSTMT");
@@ -2447,7 +2447,7 @@ _outXmlSerialize(StringInfo str, XmlSerialize *node)
 
 	WRITE_ENUM_FIELD(xmloption, XmlOptionType);
 	WRITE_NODE_FIELD(expr);
-	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD(typname);
 }
 
 static void
@@ -2537,7 +2537,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(resultRelations);
-	WRITE_NODE_FIELD(returningLists); 
+	WRITE_NODE_FIELD(returningLists);
 		
 	WRITE_OID_FIELD(intoOidInfo.relOid);
 	WRITE_OID_FIELD(intoOidInfo.comptypeOid);
@@ -2777,10 +2777,10 @@ _outValue(StringInfo str, Value *value)
 		case T_Float:
 		case T_String:
 		case T_BitString:
-			{ 
-				int slen = (value->val.str != NULL ? strlen(value->val.str) : 0); 
-				appendBinaryStringInfo(str, (const char *)&slen, sizeof(int)); 
-				if (slen > 0) 
+			{
+				int slen = (value->val.str != NULL ? strlen(value->val.str) : 0);
+				appendBinaryStringInfo(str, (const char *)&slen, sizeof(int));
+				if (slen > 0)
 					appendBinaryStringInfo(str, value->val.str, slen);
 			}
 			break;
@@ -2857,7 +2857,7 @@ _outConstraint(StringInfo str, Constraint *node)
 	WRITE_STRING_FIELD(name);
 
 	WRITE_ENUM_FIELD(contype,ConstrType);
- 
+
 	switch (node->contype)
 	{
 		case CONSTR_PRIMARY:
@@ -3387,7 +3387,7 @@ _outNode(StringInfo str, void *obj)
             case T_CreateExternalStmt:
 				_outCreateExternalStmt(str, obj);
 				break;
-                
+
 			case T_IndexStmt:
 				_outIndexStmt(str, obj);
 				break;
