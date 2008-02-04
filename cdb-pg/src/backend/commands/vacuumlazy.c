@@ -49,9 +49,11 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/transam.h"
+#include "commands/dbcommands.h"
 #include "commands/vacuum.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#include "postmaster/autovacuum.h"
 #include "storage/freespace.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -74,7 +76,7 @@
  * provide an upper limit to memory allocated when vacuuming small
  * tables.
  */
-#define LAZY_ALLOC_TUPLES		200
+#define LAZY_ALLOC_TUPLES		MaxHeapTuplesPerPage
 
 typedef struct LVRelStats
 {
@@ -99,13 +101,17 @@ typedef struct LVRelStats
 	int			max_free_pages; /* # slots allocated in array */
 	PageFreeSpaceInfo *free_pages;		/* array or heap of blkno/avail */
 	BlockNumber tot_free_pages; /* total pages with >= threshold space */
+	int			num_index_scans;
 } LVRelStats;
 
 
+/* A few variables that don't seem worth passing around as parameters */
 static int	elevel = -1;
 
 static TransactionId OldestXmin;
 static TransactionId FreezeLimit;
+
+static BufferAccessStrategy vac_strategy;
 
 
 /* non-export function prototypes */
@@ -144,12 +150,21 @@ static int	vac_cmp_page_spaces(const void *left, const void *right);
  *		and locked the relation.
  */
 void
-lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
+lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt,
+				BufferAccessStrategy bstrategy)
 {
 	LVRelStats *vacrelstats;
 	Relation   *Irel;
 	int			nindexes;
 	BlockNumber possibly_freeable;
+	PGRUsage	ru0;
+	TimestampTz starttime = 0;
+
+	pg_rusage_init(&ru0);
+
+	/* measure elapsed time iff autovacuum logging requires it */
+	if (IsAutoVacuumWorkerProcess() && Log_autovacuum_min_duration > 0)
+		starttime = GetCurrentTimestamp();
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -159,7 +174,9 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 
-	vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
+    vac_strategy = bstrategy;
+    
+	vacuum_set_xid_limits(vacstmt->freeze_min_age, onerel->rd_rel->relisshared,
 						  &OldestXmin, &FreezeLimit);
 
 	vacrelstats = (LVRelStats *) palloc0(sizeof(LVRelStats));
@@ -167,6 +184,8 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	/* Set threshold for interesting free space = average request size */
 	/* XXX should we scale it up or down?  Adjust vacuum.c too, if so */
 	vacrelstats->threshold = GetAvgFSMRequestSize(&onerel->rd_node);
+
+	vacrelstats->num_index_scans = 0;
 
 	/* Open all indexes of the relation */
 	vac_open_indexes(onerel, RowExclusiveLock, &nindexes, &Irel);
@@ -192,6 +211,16 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	/* Update shared free space map with final free space info */
 	lazy_update_fsm(onerel, vacrelstats);
 
+	if (vacrelstats->tot_free_pages > MaxFSMPages)
+		ereport(WARNING,
+				(errmsg("relation \"%s.%s\" contains more than \"max_fsm_pages\" pages with useful free space",
+						get_namespace_name(RelationGetNamespace(onerel)),
+						RelationGetRelationName(onerel)),
+		errhint((vacrelstats->tot_free_pages > vacrelstats->rel_pages * 0.20 ?
+		/* Only suggest VACUUM FULL if 20% free */
+				 "Consider using VACUUM FULL on this relation or increasing the configuration parameter \"max_fsm_pages\"." :
+				 "Consider increasing the configuration parameter \"max_fsm_pages\"."))));
+
 	/* Update statistics in pg_class */
 	vac_update_relstats(onerel,
 						vacrelstats->rel_pages,
@@ -202,6 +231,26 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	/* report results to the stats collector, too */
 	pgstat_report_vacuum(RelationGetRelid(onerel), onerel->rd_rel->relisshared,
 						 vacstmt->analyze, vacrelstats->rel_tuples);
+
+	/* and log the action if appropriate */
+	if (IsAutoVacuumWorkerProcess() && Log_autovacuum_min_duration >= 0)
+	{
+		if (Log_autovacuum_min_duration == 0 ||
+			TimestampDifferenceExceeds(starttime, GetCurrentTimestamp(),
+									   Log_autovacuum_min_duration))
+			ereport(LOG,
+					(errmsg("automatic vacuum of table \"%s.%s.%s\": index scans: %d\n"
+							"pages: %d removed, %d remain\n"
+							"tuples: %.0f removed, %.0f remain\n"
+							"system usage: %s",
+							get_database_name(MyDatabaseId),
+							get_namespace_name(RelationGetNamespace(onerel)),
+							RelationGetRelationName(onerel),
+							vacrelstats->num_index_scans,
+						  vacrelstats->pages_removed, vacrelstats->rel_pages,
+						vacrelstats->tuples_deleted, vacrelstats->rel_tuples,
+							pg_rusage_show(&ru0))));
+	}
 }
 
 
@@ -284,12 +333,13 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			lazy_vacuum_heap(onerel, vacrelstats);
 			/* Forget the now-vacuumed tuples, and press on */
 			vacrelstats->num_dead_tuples = 0;
+			vacrelstats->num_index_scans++;
 		}
 
-		buf = ReadBuffer(onerel, blkno);
+		buf = ReadBufferWithStrategy(onerel, blkno, vac_strategy);
 
-		/* Initially, we only need shared access to the buffer */
-		LockBuffer(buf, BUFFER_LOCK_SHARE);
+		/* We need buffer cleanup lock so that we can prune HOT chains. */
+		LockBufferForCleanup(buf);
 
 		page = BufferGetPage(buf);
 
@@ -303,11 +353,10 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			 * We have to be careful here because we could be looking at a
 			 * page that someone has just added to the relation and not yet
 			 * been able to initialize (see RelationGetBufferForTuple). To
-			 * interlock against that, release the buffer read lock (which we
-			 * must do anyway) and grab the relation extension lock before
-			 * re-locking in exclusive mode.  If the page is still
-			 * uninitialized by then, it must be left over from a crashed
-			 * backend, and we can initialize it.
+			 * protect against that, release the buffer lock, grab the
+			 * relation extension lock momentarily, and re-lock the buffer. If
+			 * the page is still uninitialized by then, it must be left over
+			 * from a crashed backend, and we can initialize it.
 			 *
 			 * We don't really need the relation lock when this is a new or
 			 * temp relation, but it's probably not worth the code space to
@@ -319,7 +368,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
 			LockRelationForExtension(onerel, ExclusiveLock);
 			UnlockRelationForExtension(onerel, ExclusiveLock);
-			LockBuffer(buf, BUFFER_LOCK_EXCLUSIVE);
+			LockBufferForCleanup(buf);
 			if (PageIsNew(page))
 			{
 				ereport(WARNING,
@@ -328,7 +377,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 				PageInit(page, BufferGetPageSize(buf), 0);
 				empty_pages++;
 				lazy_record_free_space(vacrelstats, blkno,
-									   PageGetFreeSpace(page));
+									   PageGetHeapFreeSpace(page));
 			}
 			MarkBufferDirty(buf);
 			UnlockReleaseBuffer(buf);
@@ -339,11 +388,23 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		{
 			empty_pages++;
 			lazy_record_free_space(vacrelstats, blkno,
-								   PageGetFreeSpace(page));
+								   PageGetHeapFreeSpace(page));
 			UnlockReleaseBuffer(buf);
 			continue;
 		}
 
+		/*
+		 * Prune all HOT-update chains in this page.
+		 *
+		 * We count tuples removed by the pruning step as removed by VACUUM.
+		 */
+		tups_vacuumed += heap_page_prune(onerel, buf, OldestXmin,
+										 false, false);
+
+		/*
+		 * Now scan the page to collect vacuumable items and check for tuples
+		 * requiring freezing.
+		 */
 		nfrozen = 0;
 		hastup = false;
 		prev_dead_count = vacrelstats->num_dead_tuples;
@@ -356,21 +417,64 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 
 			itemid = PageGetItemId(page, offnum);
 
+			/* Unused items require no processing, but we count 'em */
 			if (!ItemIdIsUsed(itemid))
 			{
 				nunused += 1;
 				continue;
 			}
 
+			/* Redirect items mustn't be touched */
+			if (ItemIdIsRedirected(itemid))
+			{
+				hastup = true;	/* this page won't be truncatable */
+				continue;
+			}
+
+			ItemPointerSet(&(tuple.t_self), blkno, offnum);
+
+			/*
+			 * DEAD item pointers are to be vacuumed normally; but we don't
+			 * count them in tups_vacuumed, else we'd be double-counting (at
+			 * least in the common case where heap_page_prune() just freed up
+			 * a non-HOT tuple).
+			 */
+			if (ItemIdIsDead(itemid))
+			{
+				lazy_record_dead_tuple(vacrelstats, &(tuple.t_self));
+				continue;
+			}
+
+			Assert(ItemIdIsNormal(itemid));
+
 			tuple.t_data = (HeapTupleHeader) PageGetItem(page, itemid);
 			tuple.t_len = ItemIdGetLength(itemid);
-			ItemPointerSet(&(tuple.t_self), blkno, offnum);
 
 			tupgone = false;
 
 			switch (HeapTupleSatisfiesVacuum(tuple.t_data, OldestXmin, buf, false))
 			{
 				case HEAPTUPLE_DEAD:
+
+					/*
+					 * Ordinarily, DEAD tuples would have been removed by
+					 * heap_page_prune(), but it's possible that the tuple
+					 * state changed since heap_page_prune() looked.  In
+					 * particular an INSERT_IN_PROGRESS tuple could have
+					 * changed to DEAD if the inserter aborted.  So this
+					 * cannot be considered an error condition.
+					 *
+					 * If the tuple is HOT-updated then it must only be
+					 * removed by a prune operation; so we keep it just as if
+					 * it were RECENTLY_DEAD.  Also, if it's a heap-only
+					 * tuple, we choose to keep it, because it'll be a lot
+					 * cheaper to get rid of it in the next pruning pass than
+					 * to treat it like an indexed tuple.
+					 */
+					if (HeapTupleIsHotUpdated(&tuple) ||
+						HeapTupleIsHeapOnly(&tuple))
+						nkeep += 1;
+					else
 					tupgone = true;		/* we can delete the tuple */
 					break;
 				case HEAPTUPLE_LIVE:
@@ -410,12 +514,11 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 				hastup = true;
 
 				/*
-				 * Each non-removable tuple must be checked to see if it
-				 * needs freezing.  If we already froze anything, then
-				 * we've already switched the buffer lock to exclusive.
+				 * Each non-removable tuple must be checked to see if it needs
+				 * freezing.  Note we already have exclusive buffer lock.
 				 */
 				if (heap_freeze_tuple(tuple.t_data, FreezeLimit,
-									  (nfrozen > 0) ? InvalidBuffer : buf))
+									  InvalidBuffer))
 					frozen[nfrozen++] = offnum;
 			}
 		}						/* scan along page */
@@ -447,9 +550,6 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		if (nindexes == 0 &&
 			vacrelstats->num_dead_tuples > 0)
 		{
-			/* Trade in buffer share lock for super-exclusive lock */
-			LockBuffer(buf, BUFFER_LOCK_UNLOCK);
-			LockBufferForCleanup(buf);
 			/* Remove tuples from heap */
 			lazy_vacuum_page(onerel, blkno, buf, 0, vacrelstats);
 			/* Forget the now-vacuumed tuples, and press on */
@@ -467,7 +567,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 		if (vacrelstats->num_dead_tuples == prev_dead_count)
 		{
 			lazy_record_free_space(vacrelstats, blkno,
-								   PageGetFreeSpace(page));
+								   PageGetHeapFreeSpace(page));
 		}
 
 		/* Remember the location of the last page with nonremovable tuples */
@@ -492,6 +592,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 							  vacrelstats);
 		/* Remove tuples from heap */
 		lazy_vacuum_heap(onerel, vacrelstats);
+		vacrelstats->num_index_scans++;
 	}
 
 	/* Do post-vacuum cleanup and statistics update for each index */
@@ -519,13 +620,6 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 					   vacrelstats->tot_free_pages,
 					   empty_pages,
 					   pg_rusage_show(&ru0))));
-
-	if (vacrelstats->tot_free_pages > MaxFSMPages)
-		ereport(WARNING,
-				(errmsg("relation \"%s.%s\" contains more than \"max_fsm_pages\" pages with useful free space",
-						get_namespace_name(RelationGetNamespace(onerel)),
-						relname),
-				 errhint("Consider compacting this relation or increasing the configuration parameter \"max_fsm_pages\".")));
 }
 
 
@@ -560,13 +654,13 @@ lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
 		vacuum_delay_point();
 
 		tblk = ItemPointerGetBlockNumber(&vacrelstats->dead_tuples[tupindex]);
-		buf = ReadBuffer(onerel, tblk);
+		buf = ReadBufferWithStrategy(onerel, tblk, vac_strategy);
 		LockBufferForCleanup(buf);
 		tupindex = lazy_vacuum_page(onerel, tblk, buf, tupindex, vacrelstats);
 		/* Now that we've compacted the page, record its available space */
 		page = BufferGetPage(buf);
 		lazy_record_free_space(vacrelstats, tblk,
-							   PageGetFreeSpace(page));
+							   PageGetHeapFreeSpace(page));
 		UnlockReleaseBuffer(buf);
 		npages++;
 	}
@@ -583,7 +677,7 @@ lazy_vacuum_heap(Relation onerel, LVRelStats *vacrelstats)
  *	lazy_vacuum_page() -- free dead tuples on a page
  *					 and repair its fragmentation.
  *
- * Caller must hold pin and lock on the buffer.
+ * Caller must hold pin and buffer cleanup lock on the buffer.
  *
  * tupindex is the index in vacrelstats->dead_tuples of the first dead
  * tuple for this page.  We assume the rest follow sequentially.
@@ -593,10 +687,9 @@ static int
 lazy_vacuum_page(Relation onerel, BlockNumber blkno, Buffer buffer,
 				 int tupindex, LVRelStats *vacrelstats)
 {
-	OffsetNumber unused[MaxOffsetNumber];
-	int			uncnt;
 	Page		page = BufferGetPage(buffer);
-	ItemId		itemid;
+	OffsetNumber unused[MaxOffsetNumber];
+	int			uncnt = 0;
 
 	START_CRIT_SECTION();
 
@@ -604,16 +697,18 @@ lazy_vacuum_page(Relation onerel, BlockNumber blkno, Buffer buffer,
 	{
 		BlockNumber tblk;
 		OffsetNumber toff;
+		ItemId		itemid;
 
 		tblk = ItemPointerGetBlockNumber(&vacrelstats->dead_tuples[tupindex]);
 		if (tblk != blkno)
 			break;				/* past end of tuples for this block */
 		toff = ItemPointerGetOffsetNumber(&vacrelstats->dead_tuples[tupindex]);
 		itemid = PageGetItemId(page, toff);
-		itemid->lp_flags &= ~LP_USED;
+		ItemIdSetUnused(itemid);
+		unused[uncnt++] = toff;
 	}
 
-	uncnt = PageRepairFragmentation(page, unused);
+	PageRepairFragmentation(page);
 
 	MarkBufferDirty(buffer);
 
@@ -622,14 +717,12 @@ lazy_vacuum_page(Relation onerel, BlockNumber blkno, Buffer buffer,
 	{
 		XLogRecPtr	recptr;
 
-		recptr = log_heap_clean(onerel, buffer, unused, uncnt);
+		recptr = log_heap_clean(onerel, buffer,
+								NULL, 0, NULL, 0,
+								unused, uncnt,
+								false);
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
-	}
-	else
-	{
-		/* No XLOG record, but still need to flag that XID exists on disk */
-		MyXactMadeTempRelUpdate = true;
 	}
 
 	END_CRIT_SECTION();
@@ -658,6 +751,7 @@ lazy_vacuum_index(Relation indrel,
 	ivinfo.message_level = elevel;
 	/* We don't yet know rel_tuples, so pass -1 */
 	ivinfo.num_heap_tuples = -1;
+	ivinfo.strategy = vac_strategy;
 
 	/* Do bulk deletion */
 	*stats = index_bulk_delete(&ivinfo, *stats,
@@ -687,6 +781,7 @@ lazy_cleanup_index(Relation indrel,
 	ivinfo.vacuum_full = false;
 	ivinfo.message_level = elevel;
 	ivinfo.num_heap_tuples = vacrelstats->rel_tuples;
+	ivinfo.strategy = vac_strategy;
 
 	stats = index_vacuum_cleanup(&ivinfo, stats);
 
@@ -775,6 +870,14 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 	RelationTruncate(onerel, new_rel_pages);
 
 	/*
+	 * Note: once we have truncated, we *must* keep the exclusive lock until
+	 * commit.	The sinval message that will be sent at commit (as a result of
+	 * vac_update_relstats()) must be received by other backends, to cause
+	 * them to reset their rd_targblock values, before they can safely access
+	 * the table again.
+	 */
+
+	/*
 	 * Drop free-space info for removed blocks; these must not get entered
 	 * into the FSM!
 	 */
@@ -806,10 +909,6 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 	vacrelstats->rel_pages = new_rel_pages;
 	vacrelstats->pages_removed = old_rel_pages - new_rel_pages;
 
-	/*
-	 * We keep the exclusive lock until commit (perhaps not necessary)?
-	 */
-
 	ereport(elevel,
 			(errmsg("\"%s\": truncated %u to %u pages",
 					RelationGetRelationName(onerel),
@@ -840,15 +939,14 @@ count_nondeletable_pages(Relation onerel, LVRelStats *vacrelstats)
 
 		/*
 		 * We don't insert a vacuum delay point here, because we have an
-		 * exclusive lock on the table which we want to hold for as short
-		 * a time as possible.  We still need to check for interrupts
-		 * however.
+		 * exclusive lock on the table which we want to hold for as short a
+		 * time as possible.  We still need to check for interrupts however.
 		 */
 		CHECK_FOR_INTERRUPTS();
 
 		blkno--;
 
-		buf = ReadBuffer(onerel, blkno);
+		buf = ReadBufferWithStrategy(onerel, blkno, vac_strategy);
 
 		/* In this phase we only need shared access to the buffer */
 		LockBuffer(buf, BUFFER_LOCK_SHARE);
@@ -958,7 +1056,7 @@ lazy_record_dead_tuple(LVRelStats *vacrelstats,
 	/*
 	 * The array shouldn't overflow under normal behavior, but perhaps it
 	 * could if we are given a really small maintenance_work_mem. In that
-	 * case, just forget the last few tuples.
+	 * case, just forget the last few tuples (we'll get 'em next time).
 	 */
 	if (vacrelstats->num_dead_tuples < vacrelstats->max_dead_tuples)
 	{
