@@ -1097,7 +1097,7 @@ toast_compress_datum(Datum value)
 		return PointerGetDatum(NULL);
 
 	tmp = (struct varlena *) palloc(PGLZ_MAX_OUTPUT(valsize));
-	if (pglz_compress(VARDATA_ANY(value), valsize,
+	if (pglz_compress(VARDATA_ANY(DatumGetPointer(value)), valsize,
 					  (PGLZ_Header *) tmp, PGLZ_strategy_default) &&
 		VARSIZE(tmp) < VARSIZE_ANY(DatumGetPointer(value)))
 	{
