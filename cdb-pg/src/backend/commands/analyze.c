@@ -497,9 +497,6 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt,
 	/* We skip to here if there were no analyzable columns */
 cleanup:
 
-	/* We skip to here if there were no analyzable columns */
-cleanup:
-
 	/* Done with indexes */
 	vac_close_indexes(nindexes, Irel, NoLock);
 

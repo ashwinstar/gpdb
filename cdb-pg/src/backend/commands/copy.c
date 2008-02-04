@@ -4153,7 +4153,7 @@ CopyFrom(CopyState cstate)
 						if (cstate->heapInsertDesc == NULL)
 						{
 							cstate->heapInsertDesc = heap_begininsert(cstate->rel, 
-																	  GetCurrentCommandId(), true, true);
+																	  GetCurrentCommandId(true), true, true);
 						}
 						heap_insertnext(cstate->heapInsertDesc, tuple);
 					}
@@ -5566,6 +5566,7 @@ CopyAttributeOutText(CopyState cstate, char *string)
 	char	   *start;
 	char		c;
 	char		delimc = cstate->delim[0];
+	char      escapec = cstate->escape[0];
 	
 	if (cstate->need_transcoding)
 		ptr = pg_server_to_client(string, strlen(string));

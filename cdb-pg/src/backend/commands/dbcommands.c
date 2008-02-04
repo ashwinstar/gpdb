@@ -204,10 +204,7 @@ createdb_int(CreatedbStmt *stmt,
 		if (IsBootstrapProcessingMode())
 			elog(NOTICE, " Create database dispatch in bootstrap mode!");
 
-
-	/* don't call this in a transaction block */
-	PreventTransactionChain((void *) stmt, "CREATE DATABASE");
-
+	
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
 	{
