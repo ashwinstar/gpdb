@@ -27,6 +27,7 @@
 #include "miscadmin.h"
 #include "storage/smgr.h"               /* RelationCloseSmgr -> smgrclose */
 #include "nodes/makefuncs.h"
+#include "storage/proc.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -73,11 +74,13 @@ typedef struct SeqTableData
 {
 	struct SeqTableData *next;	/* link to next SeqTable object */
 	Oid			relid;			/* pg_class OID of this sequence */
-	TransactionId xid;			/* xact in which we last did a seq op */
+	LocalTransactionId lxid;	/* xact in which we last did a seq op */
+	bool		last_valid;		/* do we have a valid "last" value? */
 	int64		last;			/* value last returned by nextval */
 	int64		cached;			/* last value already cached for nextval */
 	/* if last != cached, we have not used up all the cached values */
 	int64		increment;		/* copy of sequence's increment field */
+	/* note that increment is zero until we first do read_info() */
 } SeqTableData;
 
 typedef SeqTableData *SeqTable;
@@ -342,7 +345,7 @@ DefineSequence(CreateSeqStmt *seq)
 		rdata[1].buffer = InvalidBuffer;
 		rdata[1].next = NULL;
 
-		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG | XLOG_NO_TRAN, rdata);
+		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG, rdata);
 
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
@@ -400,6 +403,10 @@ AlterSequence(AlterSeqStmt *stmt)
 	/* Check and set new values */
 	init_params(stmt->options, false, &new, &owned_by);
 
+	/* Clear local cache so that we don't think we have cached numbers */
+	/* Note that we do not change the currval() state */
+	elm->cached = elm->last;
+
 	/* Now okay to update the on-disk tuple */
 	memcpy(seq, &new, sizeof(FormData_pg_sequence));
 
@@ -439,7 +446,7 @@ AlterSequence(AlterSeqStmt *stmt)
 		rdata[1].buffer = InvalidBuffer;
 		rdata[1].next = NULL;
 
-		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG | XLOG_NO_TRAN, rdata);
+		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG, rdata);
 
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
@@ -698,7 +705,7 @@ cdb_sequence_nextval(Relation   seqrel,
 		rdata[1].buffer = InvalidBuffer;
 		rdata[1].next = NULL;
 
-		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG | XLOG_NO_TRAN, rdata);
+		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG, rdata);
 
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
@@ -759,7 +766,7 @@ currval_oid(PG_FUNCTION_ARGS)
 				 errmsg("permission denied for sequence %s",
 						RelationGetRelationName(seqrel))));
 
-	if (elm->increment == 0)	/* nextval/read_info were not called */
+	if (!elm->last_valid)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("currval of sequence \"%s\" is not yet defined in this session",
@@ -802,7 +809,7 @@ lastval(PG_FUNCTION_ARGS)
 	seqrel = open_share_lock(last_used_seq);
 
 	/* nextval() must have already been called for this sequence */
-	Assert(last_used_seq->increment != 0);
+	Assert(last_used_seq->last_valid);
 
 	if (pg_class_aclcheck(last_used_seq->relid, GetUserId(), ACL_SELECT) != ACLCHECK_OK &&
 		pg_class_aclcheck(last_used_seq->relid, GetUserId(), ACL_USAGE) != ACLCHECK_OK)
@@ -874,9 +881,15 @@ do_setval(Oid relid, int64 next, bool iscalled)
 						bufm, bufx)));
 	}
 
-	/* save info in local cache */
+	/* Set the currval() state only if iscalled = true */
+	if (iscalled)
+	{
 	elm->last = next;			/* last returned number */
-	elm->cached = next;			/* last cached number (forget cached values) */
+		elm->last_valid = true;
+	}
+
+	/* In any case, forget any future cached numbers */
+	elm->cached = elm->last;
 
 	START_CRIT_SECTION();
 
@@ -907,7 +920,7 @@ do_setval(Oid relid, int64 next, bool iscalled)
 		rdata[1].buffer = InvalidBuffer;
 		rdata[1].next = NULL;
 
-		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG | XLOG_NO_TRAN, rdata);
+		recptr = XLogInsert(RM_SEQ_ID, XLOG_SEQ_LOG, rdata);
 
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
@@ -968,10 +981,10 @@ setval3_oid(PG_FUNCTION_ARGS)
 static Relation
 open_share_lock(SeqTable seq)
 {
-	TransactionId thisxid = GetTopTransactionId();
+	LocalTransactionId thislxid = MyProc->lxid;
 
 	/* Get the lock if not already held in this xact */
-	if (seq->xid != thisxid)
+	if (seq->lxid != thislxid)
 	{
 		ResourceOwner currentOwner;
 
@@ -991,7 +1004,7 @@ open_share_lock(SeqTable seq)
 		CurrentResourceOwner = currentOwner;
 
 		/* Flag that we have a lock in the current xact */
-		seq->xid = thisxid;
+		seq->lxid = thislxid;
 	}
 
 	/* We now know we have AccessShareLock, and can safely open the rel */
@@ -1034,8 +1047,8 @@ init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel)
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 		elm->relid = relid;
-		elm->xid = InvalidTransactionId;
-		/* increment is set to 0 until we do read_info (see currval) */
+		elm->lxid = InvalidLocalTransactionId;
+		elm->last_valid = false;
 		elm->last = elm->cached = elm->increment = 0;
 		elm->next = seqtab;
 		seqtab = elm;
@@ -1078,7 +1091,7 @@ read_info(Relation rel, Buffer *buf)
 			 RelationGetRelationName(rel), sm->magic);
 
 	lp = PageGetItemId(page, FirstOffsetNumber);
-	Assert(ItemIdIsUsed(lp));
+	Assert(ItemIdIsNormal(lp));
 	tuple.t_data = (HeapTupleHeader) PageGetItem((Page) page, lp);
 
 	seq = (Form_pg_sequence) GETSTRUCT(&tuple);
@@ -1262,7 +1275,7 @@ init_params(List *options, bool isInit,
 		snprintf(bufm, sizeof(bufm), INT64_FORMAT, new->min_value);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("START value (%s) can't be less than MINVALUE (%s)",
+				 errmsg("START value (%s) cannot be less than MINVALUE (%s)",
 						bufs, bufm)));
 	}
 	if (new->last_value > new->max_value)
@@ -1274,7 +1287,7 @@ init_params(List *options, bool isInit,
 		snprintf(bufm, sizeof(bufm), INT64_FORMAT, new->max_value);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			   errmsg("START value (%s) can't be greater than MAXVALUE (%s)",
+			  errmsg("START value (%s) cannot be greater than MAXVALUE (%s)",
 					  bufs, bufm)));
 	}
 
@@ -1421,7 +1434,7 @@ seq_redo(XLogRecPtr lsn, XLogRecord *record)
 	itemsz = record->xl_len - sizeof(xl_seq_rec);
 	itemsz = MAXALIGN(itemsz);
 	if (PageAddItem(page, (Item) item, itemsz,
-					FirstOffsetNumber, LP_USED) == InvalidOffsetNumber)
+					FirstOffsetNumber, false, false) == InvalidOffsetNumber)
 		elog(PANIC, "seq_redo: failed to add item to page");
 
 	PageSetLSN(page, lsn);

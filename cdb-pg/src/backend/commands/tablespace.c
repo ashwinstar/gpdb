@@ -58,22 +58,23 @@
 #include "commands/comment.h"
 #include "commands/tablespace.h"
 #include "miscadmin.h"
+#include "postmaster/bgwriter.h"
 #include "storage/fd.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
 
-
-
-/* GUC variable */
+/* GUC variables */
 char	   *default_tablespace = NULL;
+char	   *temp_tablespaces = NULL;
 
 
 static bool remove_tablespace_directories(Oid tablespaceoid, bool redo, char *location);
@@ -210,11 +211,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	bool hasMirrors = false;
 	struct stat     st;
 	int i;
-
-	/* validate */
-
-	/* don't call this in a transaction block */
-	PreventTransactionChain((void *) stmt, "CREATE TABLESPACE");
 
 	/* Must be super user */
 	if (!superuser())
@@ -355,7 +351,7 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	if (strchr(location, '\''))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_NAME),
-			   errmsg("tablespace location may not contain single quotes")));
+			   errmsg("tablespace location cannot contain single quotes")));
 
 	/*
 	 * Allowing relative paths seems risky
@@ -389,7 +385,6 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 						stmt->tablespacename),
 		errdetail("The prefix \"pg_\" is reserved for system tablespaces.")));
 		
-
 	/*
 	 * Check that there is no other tablespace by this name.  (The unique
 	 * index would catch this anyway, but might as well give a friendlier
@@ -591,6 +586,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_CREATE, rdata);
 	}
 
+	/*
+	 * Force synchronous commit, to minimize the window between creating the
+	 * symlink on-disk and marking the transaction committed.  It's not great
+	 * that there is any window at all, but definitely we don't want to make
+	 * it larger than necessary.
+	 */
+	ForceSyncCommit();
+
 	pfree(linkloc);
 	pfree(sublocation);
 
@@ -667,9 +670,6 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	Datum		loc_dat;
 	char		*location;
 	bool		isnull;
-
-	/* don't call this in a transaction block */
-	PreventTransactionChain((void *) stmt, "DROP TABLESPACE");
 
 	/*
 	 * Find the target tuple
@@ -754,31 +754,28 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	LWLockAcquire(TablespaceCreateLock, LW_EXCLUSIVE);
 
 	/*
-	 * Try to remove the physical infrastructure
+	 * Try to remove the physical infrastructure.
 	 */
 	if (!remove_tablespace_directories(tablespaceoid, false, location))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("tablespace \"%s\" is not empty",
-						tablespacename)));
-
-	/* Record the filesystem change in XLOG */
 	{
-		xl_tblspc_drop_rec xlrec;
-		XLogRecData rdata[2];
-
-		xlrec.ts_id = tablespaceoid;
-		rdata[0].data = (char *) &xlrec;
-		rdata[0].len = offsetof(xl_tblspc_drop_rec, ts_path);
-		rdata[0].buffer = InvalidBuffer;
-		rdata[0].next = &(rdata[1]);
-
-		rdata[1].data = (char *) location;
-		rdata[1].len = strlen(location) + 1;
-		rdata[1].buffer = InvalidBuffer;
-		rdata[1].next = NULL;
-
-		(void) XLogInsert(RM_TBLSPC_ID, XLOG_TBLSPC_DROP, rdata);
+		/*
+		 * Not all files deleted?  However, there can be lingering empty files
+		 * in the directories, left behind by for example DROP TABLE, that
+		 * have been scheduled for deletion at next checkpoint (see comments
+		 * in mdunlink() for details).	We could just delete them immediately,
+		 * but we can't tell them apart from important data files that we
+		 * mustn't delete.  So instead, we force a checkpoint which will clean
+		 * out any lingering files, and try again.
+		 */
+		RequestCheckpoint(CHECKPOINT_IMMEDIATE | CHECKPOINT_FORCE | CHECKPOINT_WAIT);
+		if (!remove_tablespace_directories(tablespaceoid, false, location))
+		{
+			/* Still not empty, the files must be important then */
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					 errmsg("tablespace \"%s\" is not empty",
+							tablespacename)));
+		}
 	}
 
 	/*
@@ -786,6 +783,14 @@ DropTableSpace(DropTableSpaceStmt *stmt)
 	 * no need to worry about flushing shared buffers or free space map
 	 * entries for relations in the tablespace.
 	 */
+
+	/*
+	 * Force synchronous commit, to minimize the window between removing the
+	 * files on-disk and marking the transaction committed.  It's not great
+	 * that there is any window at all, but definitely we don't want to make
+	 * it larger than necessary.
+	 */
+	ForceSyncCommit();
 
 	/*
 	 * Allow TablespaceCreateDbspace again.
@@ -861,12 +866,25 @@ remove_tablespace_directories(Oid tablespaceoid, bool redo, char *phys)
 	 * fresh subdirectories in parallel. It is possible that new files are
 	 * being created within subdirectories, though, so the rmdir call could
 	 * fail.  Worst consequence is a less friendly error message.
+	 *
+	 * If redo is true then ENOENT is a likely outcome here, and we allow it
+	 * to pass without comment.  In normal operation we still allow it, but
+	 * with a warning.	This is because even though ProcessUtility disallows
+	 * DROP TABLESPACE in a transaction block, it's possible that a previous
+	 * DROP failed and rolled back after removing the tablespace directories
+	 * and symlink.  We want to allow a new DROP attempt to succeed at
+	 * removing the catalog entries, so we should not give a hard error here.
 	 */
 	dirdesc = AllocateDir(location);
 	if (dirdesc == NULL)
 	{
-		if (redo && errno == ENOENT)
+		if (errno == ENOENT)
 		{
+			if (!redo)
+				ereport(WARNING,
+						(errcode_for_file_access(),
+						 errmsg("could not open directory \"%s\": %m",
+								location)));
 			pfree(location);
 			return true;
 		}
@@ -895,7 +913,7 @@ remove_tablespace_directories(Oid tablespaceoid, bool redo, char *phys)
 		if (rmdir(subfile) < 0)
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					 errmsg("could not delete directory \"%s\": %m",
+					 errmsg("could not remove directory \"%s\": %m",
 							subfile)));
 
 		pfree(subfile);
@@ -1230,8 +1248,7 @@ assign_default_tablespace(const char *newval, bool doit, GucSource source)
 		if (newval[0] != '\0' &&
 			!OidIsValid(get_tablespace_oid(newval)))
 		{
-			if (source >= PGC_S_INTERACTIVE)
-				ereport(ERROR,
+			ereport(GUC_complaint_elevel(source),
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("tablespace \"%s\" does not exist",
 								newval)));
@@ -1245,15 +1262,28 @@ assign_default_tablespace(const char *newval, bool doit, GucSource source)
 /*
  * GetDefaultTablespace -- get the OID of the current default tablespace
  *
- * May return InvalidOid to indicate "use the database's default tablespace"
+ * Regular objects and temporary objects have different default tablespaces,
+ * hence the forTemp parameter must be specified.
+ *
+ * May return InvalidOid to indicate "use the database's default tablespace".
+ *
+ * Note that caller is expected to check appropriate permissions for any
+ * result other than InvalidOid.
  *
  * This exists to hide (and possibly optimize the use of) the
  * default_tablespace GUC variable.
  */
 Oid
-GetDefaultTablespace(void)
+GetDefaultTablespace(bool forTemp)
 {
 	Oid			result;
+
+	/* The temp-table case is handled elsewhere */
+	if (forTemp)
+	{
+		PrepareTempTablespaces();
+		return GetNextTempTableSpace();
+	}
 
 	/* Fast path for default_tablespace == "" */
 	if (default_tablespace == NULL || default_tablespace[0] == '\0')
@@ -1279,6 +1309,207 @@ GetDefaultTablespace(void)
 
 
 /*
+ * Routines for handling the GUC variable 'temp_tablespaces'.
+ */
+
+/* assign_hook: validate new temp_tablespaces, do extra actions as needed */
+const char *
+assign_temp_tablespaces(const char *newval, bool doit, GucSource source)
+{
+	char	   *rawname;
+	List	   *namelist;
+
+	/* Need a modifiable copy of string */
+	rawname = pstrdup(newval);
+
+	/* Parse string into list of identifiers */
+	if (!SplitIdentifierString(rawname, ',', &namelist))
+	{
+		/* syntax error in name list */
+		pfree(rawname);
+		list_free(namelist);
+		return NULL;
+	}
+
+	/*
+	 * If we aren't inside a transaction, we cannot do database access so
+	 * cannot verify the individual names.	Must accept the list on faith.
+	 * Fortunately, there's then also no need to pass the data to fd.c.
+	 */
+	if (IsTransactionState())
+	{
+		/*
+		 * If we error out below, or if we are called multiple times in one
+		 * transaction, we'll leak a bit of TopTransactionContext memory.
+		 * Doesn't seem worth worrying about.
+		 */
+		Oid		   *tblSpcs;
+		int			numSpcs;
+		ListCell   *l;
+
+		tblSpcs = (Oid *) MemoryContextAlloc(TopTransactionContext,
+										list_length(namelist) * sizeof(Oid));
+		numSpcs = 0;
+		foreach(l, namelist)
+		{
+			char	   *curname = (char *) lfirst(l);
+			Oid			curoid;
+			AclResult	aclresult;
+
+			/* Allow an empty string (signifying database default) */
+			if (curname[0] == '\0')
+			{
+				tblSpcs[numSpcs++] = InvalidOid;
+				continue;
+			}
+
+			/* Else verify that name is a valid tablespace name */
+			curoid = get_tablespace_oid(curname);
+			if (curoid == InvalidOid)
+			{
+				/*
+				 * In an interactive SET command, we ereport for bad info.
+				 * Otherwise, silently ignore any bad list elements.
+				 */
+				if (source >= PGC_S_INTERACTIVE)
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+							 errmsg("tablespace \"%s\" does not exist",
+									curname)));
+				continue;
+			}
+
+			/*
+			 * Allow explicit specification of database's default tablespace
+			 * in temp_tablespaces without triggering permissions checks.
+			 */
+			if (curoid == MyDatabaseTableSpace)
+			{
+				tblSpcs[numSpcs++] = InvalidOid;
+				continue;
+			}
+
+			/* Check permissions similarly */
+			aclresult = pg_tablespace_aclcheck(curoid, GetUserId(),
+											   ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+			{
+				if (source >= PGC_S_INTERACTIVE)
+					aclcheck_error(aclresult, ACL_KIND_TABLESPACE, curname);
+				continue;
+			}
+
+			tblSpcs[numSpcs++] = curoid;
+		}
+
+		/* If actively "doing it", give the new list to fd.c */
+		if (doit)
+			SetTempTablespaces(tblSpcs, numSpcs);
+		else
+			pfree(tblSpcs);
+	}
+
+	pfree(rawname);
+	list_free(namelist);
+
+	return newval;
+}
+
+/*
+ * PrepareTempTablespaces -- prepare to use temp tablespaces
+ *
+ * If we have not already done so in the current transaction, parse the
+ * temp_tablespaces GUC variable and tell fd.c which tablespace(s) to use
+ * for temp files.
+ */
+void
+PrepareTempTablespaces(void)
+{
+	char	   *rawname;
+	List	   *namelist;
+	Oid		   *tblSpcs;
+	int			numSpcs;
+	ListCell   *l;
+
+	/* No work if already done in current transaction */
+	if (TempTablespacesAreSet())
+		return;
+
+	/*
+	 * Can't do catalog access unless within a transaction.  This is just a
+	 * safety check in case this function is called by low-level code that
+	 * could conceivably execute outside a transaction.  Note that in such a
+	 * scenario, fd.c will fall back to using the current database's default
+	 * tablespace, which should always be OK.
+	 */
+	if (!IsTransactionState())
+		return;
+
+	/* Need a modifiable copy of string */
+	rawname = pstrdup(temp_tablespaces);
+
+	/* Parse string into list of identifiers */
+	if (!SplitIdentifierString(rawname, ',', &namelist))
+	{
+		/* syntax error in name list */
+		SetTempTablespaces(NULL, 0);
+		pfree(rawname);
+		list_free(namelist);
+		return;
+	}
+
+	/* Store tablespace OIDs in an array in TopTransactionContext */
+	tblSpcs = (Oid *) MemoryContextAlloc(TopTransactionContext,
+										 list_length(namelist) * sizeof(Oid));
+	numSpcs = 0;
+	foreach(l, namelist)
+	{
+		char	   *curname = (char *) lfirst(l);
+		Oid			curoid;
+		AclResult	aclresult;
+
+		/* Allow an empty string (signifying database default) */
+		if (curname[0] == '\0')
+		{
+			tblSpcs[numSpcs++] = InvalidOid;
+			continue;
+		}
+
+		/* Else verify that name is a valid tablespace name */
+		curoid = get_tablespace_oid(curname);
+		if (curoid == InvalidOid)
+		{
+			/* Silently ignore any bad list elements */
+			continue;
+		}
+
+		/*
+		 * Allow explicit specification of database's default tablespace in
+		 * temp_tablespaces without triggering permissions checks.
+		 */
+		if (curoid == MyDatabaseTableSpace)
+		{
+			tblSpcs[numSpcs++] = InvalidOid;
+			continue;
+		}
+
+		/* Check permissions similarly */
+		aclresult = pg_tablespace_aclcheck(curoid, GetUserId(),
+										   ACL_CREATE);
+		if (aclresult != ACLCHECK_OK)
+			continue;
+
+		tblSpcs[numSpcs++] = curoid;
+	}
+
+	SetTempTablespaces(tblSpcs, numSpcs);
+
+	pfree(rawname);
+	list_free(namelist);
+}
+
+
+/*
  * get_tablespace_oid - given a tablespace name, look up the OID
  *
  * Returns InvalidOid if tablespace name not found.
@@ -1292,7 +1523,11 @@ get_tablespace_oid(const char *tablespacename)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 
-	/* Search pg_tablespace */
+	/*
+	 * Search pg_tablespace.  We use a heapscan here even though there is an
+	 * index on name, on the theory that pg_tablespace will usually have just
+	 * a few entries and so an indexed lookup is a waste of effort.
+	 */
 	rel = heap_open(TableSpaceRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
@@ -1302,6 +1537,7 @@ get_tablespace_oid(const char *tablespacename)
 	scandesc = heap_beginscan(rel, SnapshotNow, 1, entry);
 	tuple = heap_getnext(scandesc, ForwardScanDirection);
 
+	/* We assume that there can be at most one matching tuple */
 	if (HeapTupleIsValid(tuple))
 		result = HeapTupleGetOid(tuple);
 	else
@@ -1327,7 +1563,11 @@ get_tablespace_name(Oid spc_oid)
 	HeapTuple	tuple;
 	ScanKeyData entry[1];
 
-	/* Search pg_tablespace */
+	/*
+	 * Search pg_tablespace.  We use a heapscan here even though there is an
+	 * index on oid, on the theory that pg_tablespace will usually have just a
+	 * few entries and so an indexed lookup is a waste of effort.
+	 */
 	rel = heap_open(TableSpaceRelationId, AccessShareLock);
 
 	ScanKeyInit(&entry[0],
