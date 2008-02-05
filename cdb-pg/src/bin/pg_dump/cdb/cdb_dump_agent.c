@@ -218,7 +218,6 @@ static const char *convertOperatorReference(const char *opr);
 static const char *convertTSFunction(Oid funcOid);
 static void selectSourceSchema(const char *schemaName);
 static char *getFormattedTypeName(Oid oid, OidOptions opts);
-static char *myFormatType(const char *typname, int32 typmod);
 static const char *fmtQualifiedId(const char *schema, const char *id);
 static bool hasBlobs(Archive *AH);
 static int	dumpBlobs(Archive *AH, void *arg  __attribute__((unused)));
@@ -260,11 +259,6 @@ main(int argc, char **argv)
 	const char *dumpencoding = NULL;
 	//const char *std_strings;
 	bool		oids = false;
-	TableInfo  *tblinfo;
-	int			numTables;
-	DumpableObject **dobjs;
-	int			numObjs;
-	int			i;
 	bool		force_password = false;
 	int			compressLevel = -1;
 	bool		ignore_version = false;
@@ -570,34 +564,35 @@ main(int argc, char **argv)
 	/* MPP addition end */
 	
 	/* open the output file */
-	switch (format[0])
+	if (pg_strcasecmp(format, "a") == 0 || pg_strcasecmp(format, "append") == 0)
 	{
-		case 'c':
-		case 'C':
-			g_fout = CreateArchive(filename, archCustom, compressLevel);
-			break;
-			
-		case 'f':
-		case 'F':
-			g_fout = CreateArchive(filename, archFiles, compressLevel);
-			break;
-			
-		case 'p':
-		case 'P':
-			plainText = 1;
-			g_fout = CreateArchive(filename, archNull, 0);
-			break;
-			
-		case 't':
-		case 'T':
-			g_fout = CreateArchive(filename, archTar, compressLevel);
-			break;
-			
-		default:
-			mpp_err_msg(logError, progname, "invalid output format \"%s\" specified\n", format);
-			exit(1);
+		/* This is used by pg_dumpall, and is not documented */
+		plainText = 1;
+		g_fout = CreateArchive(filename, archNull, 0, archModeAppend);
 	}
-	
+	else if (pg_strcasecmp(format, "c") == 0 || pg_strcasecmp(format, "custom") == 0)
+		g_fout = CreateArchive(filename, archCustom, compressLevel, archModeWrite);
+	else if (pg_strcasecmp(format, "f") == 0 || pg_strcasecmp(format, "file") == 0)
+	{
+		/*
+		 * Dump files into the current directory; for demonstration only, not
+		 * documented.
+		 */
+		g_fout = CreateArchive(filename, archFiles, compressLevel, archModeWrite);
+	}
+	else if (pg_strcasecmp(format, "p") == 0 || pg_strcasecmp(format, "plain") == 0)
+	{
+		plainText = 1;
+		g_fout = CreateArchive(filename, archNull, 0, archModeWrite);
+	}
+	else if (pg_strcasecmp(format, "t") == 0 || pg_strcasecmp(format, "tar") == 0)
+		g_fout = CreateArchive(filename, archTar, compressLevel, archModeWrite);
+	else
+	{
+		mpp_err_msg(logError, progname, "invalid output format \"%s\" specified\n", format);
+		exit(1);
+	}
+		
 	if (g_fout == NULL)
 	{
 		mpp_err_msg(logError, progname, "could not open output file \"%s\" for writing\n", filename);
@@ -869,32 +864,33 @@ main(int argc, char **argv)
 		fout_temp = g_fout;
 		
 		/* open the output file */
-		switch (format[0])
+		if (pg_strcasecmp(format, "a") == 0 || pg_strcasecmp(format, "append") == 0)
 		{
-			case 'c':
-			case 'C':
-				g_fout = CreateArchive(filename, archCustom, compressLevel);
-				break;
-				
-			case 'f':
-			case 'F':
-				g_fout = CreateArchive(filename, archFiles, compressLevel);
-				break;
-				
-			case 'p':
-			case 'P':
-				plainText = 1;
-				g_fout = CreateArchive(filename, archNull, 0);
-				break;
-				
-			case 't':
-			case 'T':
-				g_fout = CreateArchive(filename, archTar, compressLevel);
-				break;
-				
-			default:
-				mpp_err_msg(logInfo, progname, "invalid output format \"%s\" specified\n", format);
-				exit(1);
+			/* This is used by pg_dumpall, and is not documented */
+			plainText = 1;
+			g_fout = CreateArchive(filename, archNull, 0, archModeAppend);
+		}
+		else if (pg_strcasecmp(format, "c") == 0 || pg_strcasecmp(format, "custom") == 0)
+			g_fout = CreateArchive(filename, archCustom, compressLevel, archModeWrite);
+		else if (pg_strcasecmp(format, "f") == 0 || pg_strcasecmp(format, "file") == 0)
+		{
+			/*
+			 * Dump files into the current directory; for demonstration only, not
+			 * documented.
+			 */
+			g_fout = CreateArchive(filename, archFiles, compressLevel, archModeWrite);
+		}
+		else if (pg_strcasecmp(format, "p") == 0 || pg_strcasecmp(format, "plain") == 0)
+		{
+			plainText = 1;
+			g_fout = CreateArchive(filename, archNull, 0, archModeWrite);
+		}
+		else if (pg_strcasecmp(format, "t") == 0 || pg_strcasecmp(format, "tar") == 0)
+			g_fout = CreateArchive(filename, archTar, compressLevel, archModeWrite);
+		else
+		{
+			mpp_err_msg(logError, progname, "invalid output format \"%s\" specified\n", format);
+			exit(1);
 		}
 		
 		/*g_fout = openOutputFile(format, filename, compressLevel);*/
@@ -9572,75 +9568,6 @@ getFormattedTypeName(Oid oid, OidOptions opts)
 	return result;
 }
 
-/*
- * myFormatType --- local implementation of format_type for use with 7.0.
- */
-static char *
-myFormatType(const char *typname, int32 typmod)
-{
-	char	   *result;
-	bool		isarray = false;
-	PQExpBuffer buf = createPQExpBuffer();
-
-	/* Handle array types */
-	if (typname[0] == '_')
-	{
-		isarray = true;
-		typname++;
-	}
-
-	/* Show lengths on bpchar and varchar */
-	if (!strcmp(typname, "bpchar"))
-	{
-		int			len = (typmod - VARHDRSZ);
-
-		appendPQExpBuffer(buf, "character");
-		if (len > 1)
-			appendPQExpBuffer(buf, "(%d)",
-							  typmod - VARHDRSZ);
-	}
-	else if (!strcmp(typname, "varchar"))
-	{
-		appendPQExpBuffer(buf, "character varying");
-		if (typmod != -1)
-			appendPQExpBuffer(buf, "(%d)",
-							  typmod - VARHDRSZ);
-	}
-	else if (!strcmp(typname, "numeric"))
-	{
-		appendPQExpBuffer(buf, "numeric");
-		if (typmod != -1)
-		{
-			int32		tmp_typmod;
-			int			precision;
-			int			scale;
-
-			tmp_typmod = typmod - VARHDRSZ;
-			precision = (tmp_typmod >> 16) & 0xffff;
-			scale = tmp_typmod & 0xffff;
-			appendPQExpBuffer(buf, "(%d,%d)",
-							  precision, scale);
-		}
-	}
-
-	/*
-	 * char is an internal single-byte data type; Let's make sure we force it
-	 * through with quotes. - thomas 1998-12-13
-	 */
-	else if (strcmp(typname, "char") == 0)
-		appendPQExpBuffer(buf, "\"char\"");
-	else
-		appendPQExpBuffer(buf, "%s", fmtId(typname));
-
-	/* Append array qualifier for array types */
-	if (isarray)
-		appendPQExpBuffer(buf, "[]");
-
-	result = strdup(buf->data);
-	destroyPQExpBuffer(buf);
-
-	return result;
-}
 
 /*
  * fmtQualifiedId - convert a qualified name to the proper format for

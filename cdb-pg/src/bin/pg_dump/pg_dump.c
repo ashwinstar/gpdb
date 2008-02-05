@@ -179,11 +179,8 @@ static char *format_function_signature(FuncInfo *finfo, bool honor_quotes);
 static const char *convertRegProcReference(const char *proc);
 static const char *convertOperatorReference(const char *opr);
 static const char *convertTSFunction(Oid funcOid);
-static Oid	findLastBuiltinOid_V71(const char *);
-static Oid	findLastBuiltinOid_V70(void);
 static void selectSourceSchema(const char *schemaName);
 static char *getFormattedTypeName(Oid oid, OidOptions opts);
-static char *myFormatType(const char *typname, int32 typmod);
 static const char *fmtQualifiedId(const char *schema, const char *id);
 static bool hasBlobs(Archive *AH);
 static int	dumpBlobs(Archive *AH, void *arg);
@@ -9138,75 +9135,6 @@ getFormattedTypeName(Oid oid, OidOptions opts)
 	return result;
 }
 
-/*
- * myFormatType --- local implementation of format_type for use with 7.0.
- */
-static char *
-myFormatType(const char *typname, int32 typmod)
-{
-	char	   *result;
-	bool		isarray = false;
-	PQExpBuffer buf = createPQExpBuffer();
-
-	/* Handle array types */
-	if (typname[0] == '_')
-	{
-		isarray = true;
-		typname++;
-	}
-
-	/* Show lengths on bpchar and varchar */
-	if (!strcmp(typname, "bpchar"))
-	{
-		int			len = (typmod - VARHDRSZ);
-
-		appendPQExpBuffer(buf, "character");
-		if (len > 1)
-			appendPQExpBuffer(buf, "(%d)",
-							  typmod - VARHDRSZ);
-	}
-	else if (!strcmp(typname, "varchar"))
-	{
-		appendPQExpBuffer(buf, "character varying");
-		if (typmod != -1)
-			appendPQExpBuffer(buf, "(%d)",
-							  typmod - VARHDRSZ);
-	}
-	else if (!strcmp(typname, "numeric"))
-	{
-		appendPQExpBuffer(buf, "numeric");
-		if (typmod != -1)
-		{
-			int32		tmp_typmod;
-			int			precision;
-			int			scale;
-
-			tmp_typmod = typmod - VARHDRSZ;
-			precision = (tmp_typmod >> 16) & 0xffff;
-			scale = tmp_typmod & 0xffff;
-			appendPQExpBuffer(buf, "(%d,%d)",
-							  precision, scale);
-		}
-	}
-
-	/*
-	 * char is an internal single-byte data type; Let's make sure we force it
-	 * through with quotes. - thomas 1998-12-13
-	 */
-	else if (strcmp(typname, "char") == 0)
-		appendPQExpBuffer(buf, "\"char\"");
-	else
-		appendPQExpBuffer(buf, "%s", fmtId(typname));
-
-	/* Append array qualifier for array types */
-	if (isarray)
-		appendPQExpBuffer(buf, "[]");
-
-	result = strdup(buf->data);
-	destroyPQExpBuffer(buf);
-
-	return result;
-}
 
 /*
  * fmtQualifiedId - convert a qualified name to the proper format for

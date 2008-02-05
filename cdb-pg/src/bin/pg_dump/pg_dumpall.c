@@ -444,7 +444,7 @@ main(int argc, char *argv[])
 			   pg_encoding_to_char(encoding));
 		fprintf(OPF, "SET standard_conforming_strings = %s;\n", std_strings);
 		if (strcmp(std_strings, "off") == 0)
-			printf(OPF, "SET escape_string_warning = 'off';\n");
+			fprintf(OPF, "SET escape_string_warning = 'off';\n");
 		printf("\n");
 
 		/* Dump Resource Queues */
@@ -668,7 +668,7 @@ dumpRoles(PGconn *conn)
 		i_rolqueuename = PQfnumber(res, "rolqueuename");
 
 	if (PQntuples(res) > 0)
-		printf(OPF, "--\n-- Roles\n--\n\n");
+		fprintf(OPF, "--\n-- Roles\n--\n\n");
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
@@ -745,7 +745,7 @@ dumpRoles(PGconn *conn)
 			appendPQExpBuffer(buf, ";\n");
 		}
 
-		printf(OPF, "%s", buf->data);
+		fprintf(OPF, "%s", buf->data);
 
 		dumpUserConfig(conn, rolename);
 	}
@@ -903,7 +903,7 @@ dumpTablespaces(PGconn *conn)
 					   "ORDER BY 1");
 
 	if (PQntuples(res) > 0)
-		printf(OPF, "--\n-- Tablespaces\n--\n\n");
+		fprintf(OPF, "--\n-- Tablespaces\n--\n\n");
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
@@ -1009,7 +1009,7 @@ dumpTablespaces(PGconn *conn)
 	}
 	
 	PQclear(res);
-	printf(OPF, "\n\n");
+	fprintf(OPF, "\n\n");
 }
 
 /*
@@ -1030,7 +1030,7 @@ dumpCreateDB(PGconn *conn)
 	PGresult   *res;
 	int			i;
 
-	printf(OPF, "--\n-- Database creation\n--\n\n");
+	fprintf(OPF, "--\n-- Database creation\n--\n\n");
 
 	res = executeQuery(conn,
 					   "SELECT datname, "
@@ -1113,7 +1113,7 @@ dumpCreateDB(PGconn *conn)
 			exit(1);
 		}
 
-		printf(OPF, "%s", buf->data);
+		fprintf(OPF, "%s", buf->data);
 
 		dumpDatabaseConfig(conn, dbname);
 
@@ -1391,7 +1391,7 @@ connectDatabase(const char *dbname, const char *pghost, const char *pgport,
 	 */
 	do
 	{
-		need_pass = false;
+		new_pass = false;
 		conn = PQsetdbLogin(pghost, pgport,
 							"-c gp_session_role=utility",
 							NULL, dbname, pguser, password);
