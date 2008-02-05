@@ -459,7 +459,7 @@ XLogOpenRelation(RelFileNode rnode)
 		 * during a crash.	Better to write the data until we are actually
 		 * told to delete the file.)
 		 */
-		smgrcreate(res->reldata.rd_smgr, res->reldata.rd_isLocalBuf, true);
+		smgrcreate(res->reldata.rd_smgr, res->reldata.rd_istemp, res->reldata.rd_isLocalBuf, true);
 	}
 
 	res->moreRecently = &(_xlrelarr[0]);

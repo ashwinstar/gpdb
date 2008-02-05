@@ -417,11 +417,11 @@ LockGXact(const char *gid, Oid user, bool raiseErrorIfNotFound)
 		}
 		
 		/*
-		 * Note: it probably would be possible to allow committing from another
-		 * database; but at the moment NOTIFY is known not to work and there
-		 * may be some other issues as well.  Hence disallow until someone
-		 * gets motivated to make it work.
-		 */		 
+		 * Note: it probably would be possible to allow committing from
+		 * another database; but at the moment NOTIFY is known not to work and
+		 * there may be some other issues as well.	Hence disallow until
+		 * someone gets motivated to make it work.
+		 */	 
 		if (MyDatabaseId != gxact->proc.databaseId &&  (Gp_role != GP_ROLE_EXECUTE))
 		{
 			LWLockRelease(TwoPhaseStateLock);
@@ -1239,12 +1239,12 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	if (isCommit)
 	{
 		for (i = 0; i < hdr->ncommitrels; i++)
-			smgrdounlink(smgropen(commitrels[i]), false, false);
+			smgrdounlink(smgropen(commitrels[i]), /* isTemp */ false, /* isLocalBuf */ false, /* isRedo */ false);
 	}
 	else
 	{
 		for (i = 0; i < hdr->nabortrels; i++)
-			smgrdounlink(smgropen(abortrels[i]), false, false);
+			smgrdounlink(smgropen(abortrels[i]), /* isTemp */ false, /* isLocalBuf */ false, /* isRedo */ false);
 	}
 
 	/* And now do the callbacks */

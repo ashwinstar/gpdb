@@ -437,9 +437,11 @@ static int	XLogFileRead(uint32 log, uint32 seg, int emode);
 static void XLogFileClose(void);
 static bool RestoreArchivedFile(char *path, const char *xlogfname,
 					const char *recovername, off_t expectedSize);
-static int	PreallocXlogFiles(XLogRecPtr endptr);
+static void	PreallocXlogFiles(XLogRecPtr endptr);
+#ifdef research_8_3
 static void MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
 				int *nsegsremoved, int *nsegsrecycled);
+#endif
 static void RemoveOldXlogFiles(uint32 log, uint32 seg, XLogRecPtr endptr);
 static void CleanupBackupHistory(void);
 static XLogRecord *ReadRecord(XLogRecPtr *RecPtr, int emode);
@@ -3346,7 +3348,7 @@ ReadRecord(XLogRecPtr *RecPtr, int emode)
 	uint32		targetRecOff;
 	uint32		pageHeaderSize;
 	uint32		actual_len;
-	
+
 	if (readBuf == NULL)
 	{
 		/*
@@ -5882,8 +5884,7 @@ XLogGetStandbyRecoveryStart(char *reasonStr, XLogRecPtr *redoCheckPointLoc, Chec
 	 */
 	ReadControlFile();
 
-	if (ControlFile->logSeg == 0 ||
-		ControlFile->state < DB_SHUTDOWNED ||
+	if (ControlFile->state < DB_SHUTDOWNED ||
 		ControlFile->state > DB_IN_PRODUCTION ||
 		!XRecOffIsValid(ControlFile->checkPoint.xrecoff))
 		ereport(FATAL,
@@ -6589,7 +6590,9 @@ CreateCheckPoint(int flags)
 	CheckPoint	checkPoint;
 	XLogRecPtr	recptr;
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
-	XLogRecData rdata;
+	XLogRecData rdata[2];
+	char* 		dtxCheckPointInfo;
+	int			dtxCheckPointInfoSize;
 	uint32		freespace;
 	uint32		_logId;
 	uint32		_logSeg;
@@ -6919,7 +6922,7 @@ CreateCheckPoint(int flags)
  * recovery restartpoints.
  */
 static void
-CheckPointGuts(XLogRecPtr checkPointRedo)
+CheckPointGuts(XLogRecPtr checkPointRedo, int flags)
 {
 	CheckPointCLOG();
 	CheckPointSUBTRANS();
@@ -8016,6 +8019,7 @@ XLogPrintLogNames(void)
 	elog(LOG,"%d files found", count);
 }
 
+#ifdef research_8_3
 /*
  * Remove or move offline all log files older or equal to passed log/seg#
  *
@@ -8110,6 +8114,7 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
 
 	FreeDir(xldir);
 }
+#endif
 
 /*
  * Remove log files older or equal to passed log/seg# on the standby
