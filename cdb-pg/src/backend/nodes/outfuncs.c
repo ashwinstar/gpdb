@@ -1716,17 +1716,29 @@ _outIndexOptInfo(StringInfo str, IndexOptInfo *node)
 	WRITE_FLOAT_FIELD(tuples, "%.0f");
 	WRITE_INT_FIELD(ncolumns);
 
-	appendStringInfoLiteral(str, " :classlist");
+	appendStringInfoLiteral(str, " :opfamily");
 	for (i = 0; i < node->ncolumns; i++)
-		appendStringInfo(str, " %u", node->classlist[i]);
+		appendStringInfo(str, " %u", node->opfamily[i]);
 
 	appendStringInfoLiteral(str, " :indexkeys");
 	for (i = 0; i < node->ncolumns; i++)
 		appendStringInfo(str, " %d", node->indexkeys[i]);
 
-	appendStringInfoLiteral(str, " :ordering");
+	appendStringInfoLiteral(str, " :opcintype");
 	for (i = 0; i < node->ncolumns; i++)
-		appendStringInfo(str, " %u", node->ordering[i]);
+		appendStringInfo(str, " %u", node->opcintype[i]);
+
+	appendStringInfoLiteral(str, " :fwdsortop");
+	for (i = 0; i < node->ncolumns; i++)
+		appendStringInfo(str, " %u", node->fwdsortop[i]);
+
+	appendStringInfoLiteral(str, " :revsortop");
+	for (i = 0; i < node->ncolumns; i++)
+		appendStringInfo(str, " %u", node->revsortop[i]);
+
+	appendStringInfoLiteral(str, " :nulls_first");
+	for (i = 0; i < node->ncolumns; i++)
+		appendStringInfo(str, " %d", node->nulls_first[i]);
 
     WRITE_OID_FIELD(relam);
 	WRITE_OID_FIELD(amcostestimate);
@@ -2102,14 +2114,24 @@ _outAlterRoleStmt(StringInfo str, AlterRoleStmt *node)
 	WRITE_INT_FIELD(action);
 }
 
+static void
+_outVariableSetStmt(StringInfo str, VariableSetStmt *node)
+{
+	WRITE_NODE_TYPE("VARIABLESETSTMT");
+	
+	WRITE_ENUM_FIELD(kind, VariableSetKind);
+	WRITE_STRING_FIELD(name);
+	WRITE_NODE_FIELD(args);
+	WRITE_BOOL_FIELD(is_local);
+}
+
 static  void
 _outAlterRoleSetStmt(StringInfo str, AlterRoleSetStmt *node)
 {
 	WRITE_NODE_TYPE("ALTERROLESETSTMT");
 
 	WRITE_STRING_FIELD(role);
-	WRITE_STRING_FIELD(variable);
-	WRITE_NODE_FIELD(value);
+	WRITE_NODE_FIELD(setstmt);
 }
 
 
@@ -2568,6 +2590,7 @@ _outTypeName(StringInfo str, TypeName *node)
 	WRITE_BOOL_FIELD(timezone);
 	WRITE_BOOL_FIELD(setof);
 	WRITE_BOOL_FIELD(pct_type);
+	WRITE_NODE_FIELD(typmods);
 	WRITE_INT_FIELD(typmod);
 	WRITE_NODE_FIELD(arrayBounds);
 	WRITE_INT_FIELD(location);
@@ -2592,13 +2615,6 @@ _outIndexElem(StringInfo str, IndexElem *node)
 	WRITE_NODE_FIELD(opclass);
 	WRITE_ENUM_FIELD(ordering, SortByDir);
 	WRITE_ENUM_FIELD(nulls_ordering, SortByNulls);
-}
-
-static void
-_outVariableResetStmt(StringInfo str, VariableResetStmt *node)
-{
-	WRITE_NODE_TYPE("VARIABLERESETSTMT");
-	WRITE_STRING_FIELD(name);
 }
 
 static void
@@ -2633,6 +2649,7 @@ _outQuery(StringInfo str, Query *node)
 			
 			case T_CreateRoleStmt:
 			case T_AlterRoleStmt:
+			case T_VariableSetStmt:
 			case T_AlterRoleSetStmt:
 			case T_DropRoleStmt:
 			
@@ -2667,7 +2684,6 @@ _outQuery(StringInfo str, Query *node)
 			case T_CopyStmt:
 			case T_ReindexStmt:
 			case T_ConstraintsSetStmt:
-			case T_VariableResetStmt:
 			case T_CreateTrigStmt:
 			case T_DefineStmt:
 			case T_CompositeTypeStmt:
@@ -3652,6 +3668,9 @@ _outNode(StringInfo str, void *obj)
 			case T_AlterRoleStmt:
 				_outAlterRoleStmt(str, obj);
 				break;
+			case T_VariableSetStmt:
+				_outVariableSetStmt(str, obj);
+				break;
 			case T_AlterRoleSetStmt:
 				_outAlterRoleSetStmt(str, obj);
 				break;
@@ -3817,10 +3836,7 @@ _outNode(StringInfo str, void *obj)
 			case T_SliceTable:
 				_outSliceTable(str, obj);
 				break;
-			case T_VariableResetStmt:
-				_outVariableResetStmt(str, obj);
-				break;
-				
+
 			case T_LockingClause:
 				_outLockingClause(str, obj);
 				break;

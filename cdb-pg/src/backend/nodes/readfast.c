@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * readfuncs.c
+ * readfast.c
  *	  Binary Reader functions for Postgres tree nodes.
  *
  * Portions Copyright (c) 2005-2008, Greenplum inc
@@ -160,10 +160,7 @@ _readQuery(const char ** str)
 	READ_BOOL_FIELD(canSetTag);
 	READ_NODE_FIELD(utilityStmt);
 	READ_INT_FIELD(resultRelation);
-	READ_NODE_FIELD(into);
-	READ_NODE_FIELD(intoOptions);
-	READ_ENUM_FIELD(intoOnCommit, OnCommitAction);
-	READ_STRING_FIELD(intoTableSpaceName);
+	READ_NODE_FIELD(intoClause);
 	READ_BOOL_FIELD(hasAggs);
 	READ_BOOL_FIELD(hasWindFuncs);
 	READ_BOOL_FIELD(hasSubLinks);
@@ -250,6 +247,7 @@ _readSortClause(const char ** str)
 
 	READ_UINT_FIELD(tleSortGroupRef);
 	READ_OID_FIELD(sortop);
+	READ_BOOL_FIELD(nulls_first);
 
 	READ_DONE();
 }
@@ -264,6 +262,7 @@ _readGroupClause(const char ** str)
 
 	READ_UINT_FIELD(tleSortGroupRef);
 	READ_OID_FIELD(sortop);
+	READ_BOOL_FIELD(nulls_first);
 
 	READ_DONE();
 }
@@ -425,6 +424,20 @@ _readRangeVar(const char ** str)
 	READ_DONE();
 }
 
+static IntoClause *
+_readIntoClause(const char ** str)
+{
+	READ_LOCALS(IntoClause);
+
+	READ_NODE_FIELD(rel);
+	READ_NODE_FIELD(colNames);
+	READ_NODE_FIELD(options);
+	READ_ENUM_FIELD(onCommit, OnCommitAction);
+	READ_STRING_FIELD(tableSpaceName);
+
+	READ_DONE();
+}
+
 /*
  * _readVar
  */
@@ -453,6 +466,7 @@ _readConst(const char ** str)
 	READ_LOCALS(Const);
 
 	READ_OID_FIELD(consttype);
+	READ_INT_FIELD(consttypmod);
 	READ_INT_FIELD(constlen);
 	READ_BOOL_FIELD(constbyval);
 	READ_BOOL_FIELD(constisnull);
@@ -524,7 +538,6 @@ _readIndexStmt(const char ** str)
 	READ_NODE_FIELD(indexParams);
 	READ_NODE_FIELD(options);
 	READ_NODE_FIELD(whereClause);
-	READ_NODE_FIELD(rangetable);
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(primary);
 	READ_BOOL_FIELD(isconstraint);
@@ -744,8 +757,7 @@ _readAlterRoleSetStmt(const char ** str)
 	READ_LOCALS(AlterRoleSetStmt);
 
 	READ_STRING_FIELD(role);
-	READ_STRING_FIELD(variable);
-	READ_NODE_FIELD(value);
+	READ_NODE_FIELD(setstmt);
 	
 	READ_DONE();
 	
@@ -939,6 +951,7 @@ _readParam(const char ** str)
 	READ_ENUM_FIELD(paramkind, ParamKind);
 	READ_INT_FIELD(paramid);
 	READ_OID_FIELD(paramtype);
+	READ_INT_FIELD(paramtypmod);
 
 	READ_DONE();
 }
@@ -993,7 +1006,6 @@ _readArrayRef(const char ** str)
 {
 	READ_LOCALS(ArrayRef);
 
-	READ_OID_FIELD(refrestype);
 	READ_OID_FIELD(refarraytype);
 	READ_OID_FIELD(refelemtype);
 	READ_NODE_FIELD(refupperindexpr);
@@ -1127,9 +1139,7 @@ _readSubPlan(const char ** str)
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
 	READ_NODE_FIELD(testexpr);
 	READ_NODE_FIELD(paramIds);
-	READ_NODE_FIELD(plan);
 	READ_INT_FIELD(plan_id);
-	READ_NODE_FIELD(rtable);
 	READ_BOOL_FIELD(useHashTable);
 	READ_BOOL_FIELD(unknownEqFalse);
 	READ_BOOL_FIELD(is_initplan); /*CDB*/
@@ -1185,6 +1195,39 @@ _readRelabelType(const char ** str)
 	READ_OID_FIELD(resulttype);
 	READ_INT_FIELD(resulttypmod);
 	READ_ENUM_FIELD(relabelformat, CoercionForm);
+
+	READ_DONE();
+}
+
+/*
+ * _readCoerceViaIO
+ */
+static CoerceViaIO *
+_readCoerceViaIO(const char ** str)
+{
+	READ_LOCALS(CoerceViaIO);
+
+	READ_NODE_FIELD(arg);
+	READ_OID_FIELD(resulttype);
+	READ_ENUM_FIELD(coerceformat, CoercionForm);
+
+	READ_DONE();
+}
+
+/*
+ * _readArrayCoerceExpr
+ */
+static ArrayCoerceExpr *
+_readArrayCoerceExpr(const char ** str)
+{
+	READ_LOCALS(ArrayCoerceExpr);
+
+	READ_NODE_FIELD(arg);
+	READ_OID_FIELD(elemfuncid);
+	READ_OID_FIELD(resulttype);
+	READ_INT_FIELD(resulttypmod);
+	READ_BOOL_FIELD(isExplicit);
+	READ_ENUM_FIELD(coerceformat, CoercionForm);
 
 	READ_DONE();
 }
@@ -1289,7 +1332,7 @@ _readRowCompareExpr(const char ** str)
 
 	READ_ENUM_FIELD(rctype, RowCompareType);
 	READ_NODE_FIELD(opnos);
-	READ_NODE_FIELD(opclasses);
+	READ_NODE_FIELD(opfamilies);
 	READ_NODE_FIELD(largs);
 	READ_NODE_FIELD(rargs);
 
@@ -1321,6 +1364,26 @@ _readMinMaxExpr(const char ** str)
 	READ_OID_FIELD(minmaxtype);
 	READ_ENUM_FIELD(op, MinMaxOp);
 	READ_NODE_FIELD(args);
+
+	READ_DONE();
+}
+
+/*
+ * _readXmlExpr
+ */
+static XmlExpr *
+_readXmlExpr(const char ** str)
+{
+	READ_LOCALS(XmlExpr);
+
+	READ_ENUM_FIELD(op, XmlExprOp);
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(named_args);
+	READ_NODE_FIELD(arg_names);
+	READ_NODE_FIELD(args);
+	READ_ENUM_FIELD(xmloption, XmlOptionType);
+	READ_OID_FIELD(type);
+	READ_INT_FIELD(typmod);
 
 	READ_DONE();
 }
@@ -1411,6 +1474,21 @@ _readSetToDefault(const char ** str)
 
 	READ_OID_FIELD(typeId);
 	READ_INT_FIELD(typeMod);
+
+	READ_DONE();
+}
+
+/*
+ * _readCurrentOfExpr
+ */
+static CurrentOfExpr *
+_readCurrentOfExpr(const char ** str)
+{
+	READ_LOCALS(CurrentOfExpr);
+
+	READ_UINT_FIELD(cvarno);
+	READ_STRING_FIELD(cursor_name);
+	READ_INT_FIELD(cursor_param);
 
 	READ_DONE();
 }
@@ -2742,11 +2820,15 @@ _readSliceTable(const char ** str)
 
 
 
-static VariableResetStmt *
-_readVariableResetStmt(const char ** str)
+static VariableSetStmt *
+_readVariableSetStmt(const char ** str)
 {
-	READ_LOCALS(VariableResetStmt);
+	READ_LOCALS(VariableSetStmt);
+
+	READ_ENUM_FIELD(kind, VariableSetKind);
 	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(args);
+	READ_BOOL_FIELD(is_local);
 	
 	READ_DONE();
 }
@@ -3537,8 +3619,8 @@ readNodeBinary(const char ** str)
 			case T_SliceTable:
 				return_value = _readSliceTable(str);
 				break;
-			case T_VariableResetStmt:
-				return_value = _readVariableResetStmt(str);
+			case T_VariableSetStmt:
+				return_value = _readVariableSetStmt(str);
 				break;
 #if 0
 			case T_LockingClause:
@@ -3548,6 +3630,22 @@ readNodeBinary(const char ** str)
 				
 			case T_CreateTrigStmt:
 				return_value = _readCreateTrigStmt(str);
+				break;
+
+			case T_IntoClause:
+				return_value = _readIntoClause(str);
+				break;
+			case T_CoerceViaIO:
+				return_value = _readCoerceViaIO(str);
+				break;
+			case T_ArrayCoerceExpr:
+				return_value = _readArrayCoerceExpr(str);
+				break;
+			case T_XmlExpr:
+				return_value = _readXmlExpr(str);
+				break;
+			case T_CurrentOfExpr:
+				return_value = _readCurrentOfExpr(str);
 				break;
 
 			default:

@@ -301,7 +301,7 @@ makeTypeNameFromNameList(List *names)
 
 	n->names = names;
 	n->typmods = NIL;
-	n->typemod = -1;
+	n->typmod = -1;
 	n->location = -1;
 	return n;
 }

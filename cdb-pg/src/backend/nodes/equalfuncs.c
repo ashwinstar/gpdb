@@ -1853,7 +1853,7 @@ _equalTypeName(TypeName *a, TypeName *b)
 	COMPARE_SCALAR_FIELD(setof);
 	COMPARE_SCALAR_FIELD(pct_type);
 	COMPARE_NODE_FIELD(typmods);
-	COMPARE_SCALAR_FIELD(typemod);
+	COMPARE_SCALAR_FIELD(typmod);
 	COMPARE_NODE_FIELD(arrayBounds);
 	COMPARE_SCALAR_FIELD(location);
 

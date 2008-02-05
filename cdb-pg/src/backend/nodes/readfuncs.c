@@ -405,10 +405,6 @@ _readGroupClause(void)
 	READ_DONE();
 }
 
-
-	READ_DONE();
-}
-
 static GroupingClause *
 _readGroupingClause(void)
 {
@@ -856,9 +852,7 @@ _readSubPlan(void)
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
 	READ_NODE_FIELD(testexpr);
 	READ_NODE_FIELD(paramIds);
-	READ_NODE_FIELD(plan);
 	READ_INT_FIELD(plan_id);
-	READ_NODE_FIELD(rtable);
 	READ_BOOL_FIELD(useHashTable);
 	READ_BOOL_FIELD(unknownEqFalse);
 	READ_BOOL_FIELD(is_initplan); /*CDB*/
@@ -2500,11 +2494,15 @@ _readSliceTable(void)
 	READ_DONE();
 }
 
-static VariableResetStmt *
-_readVariableResetStmt(void)
+static VariableSetStmt *
+_readVariableSetStmt(void)
 {
-	READ_LOCALS(VariableResetStmt);
+	READ_LOCALS(VariableSetStmt);
+
+	READ_ENUM_FIELD(kind, VariableSetKind);
 	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(args);
+	READ_BOOL_FIELD(is_local);
 	
 	READ_DONE();
 }
@@ -2679,9 +2677,8 @@ _readIndexStmt(void)
 	READ_STRING_FIELD(accessMethod);
 	READ_STRING_FIELD(tableSpace);
 	READ_NODE_FIELD(indexParams);
-		READ_NODE_FIELD(options);
+	READ_NODE_FIELD(options);
 	READ_NODE_FIELD(whereClause);
-	READ_NODE_FIELD(rangetable);
 	READ_BOOL_FIELD(unique);
 	READ_BOOL_FIELD(primary);
 	READ_BOOL_FIELD(isconstraint);
@@ -2874,8 +2871,7 @@ _readAlterRoleSetStmt(void)
 	READ_LOCALS(AlterRoleSetStmt);
 
 	READ_STRING_FIELD(role);
-	READ_STRING_FIELD(variable);
-	READ_NODE_FIELD(value);
+	READ_NODE_FIELD(setstmt);
 	
 	READ_DONE();
 	
@@ -3135,6 +3131,7 @@ static ParseNodeInfo infoAr[] =
 	{"ALTERTABLESTMT", (ReadFn)_readAlterTableStmt},
 	{"APPEND", (ReadFn)_readAppend},
 	{"ARRAY", (ReadFn)_readArrayExpr},
+	{"ARRAYCOERCEEXPR", (ReadFn)_readArrayCoerceExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},
 	{"A_CONST", (ReadFn)_readAConst},	
 	{"BITMAPAND", (ReadFn)_readBitmapAnd},
@@ -3150,6 +3147,7 @@ static ParseNodeInfo infoAr[] =
 	{"COALESCE", (ReadFn)_readCoalesceExpr},
 	{"COERCETODOMAIN", (ReadFn)_readCoerceToDomain},
 	{"COERCETODOMAINVALUE", (ReadFn)_readCoerceToDomainValue},
+	{"COERCEVIAIO", (ReadFn)_readCoerceViaIO},
 	{"COLUMNDEF", (ReadFn)_readColumnDef},
 	{"COLUMNREF", (ReadFn)_readColumnRef},
 	{"COMPTYPESTMT", (ReadFn)_readCompositeTypeStmt},
@@ -3171,6 +3169,7 @@ static ParseNodeInfo infoAr[] =
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
 	{"CREATETRIGSTMT", (ReadFn)_readCreateTrigStmt},
+	{"CURRENTOFEXPR", (ReadFn)_readCurrentOfExpr},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DEFINESTMT", (ReadFn)_readDefineStmt},
@@ -3206,6 +3205,7 @@ static ParseNodeInfo infoAr[] =
 	{"INDEXELEM", (ReadFn)_readIndexElem},
 	{"INDEXSCAN", (ReadFn)_readIndexScan},
 	{"INDEXSTMT", (ReadFn)_readIndexStmt},
+	{"INTOCLAUSE", (ReadFn)_readIntoClause},
 	{"JOIN", (ReadFn)_readJoin},
 	{"JOINEXPR", (ReadFn)_readJoinExpr},
 	{"LIMIT", (ReadFn)_readLimit},
@@ -3260,7 +3260,7 @@ static ParseNodeInfo infoAr[] =
 	{"VACUUMSTMT", (ReadFn)_readVacuumStmt},
 	{"VALUESSCAN", (ReadFn)_readValuesScan},    /*CDB*/
 	{"VAR", (ReadFn)_readVar},
-	{"VARIABLERESETSTMT", (ReadFn)_readVariableResetStmt},
+	{"VARIABLESETSTMT", (ReadFn)_readVariableSetStmt},
 	{"VIEWSTMT", (ReadFn)_readViewStmt},
 	{"WHEN", (ReadFn)_readCaseWhen},
 	{"WINDOW", (ReadFn)_readWindow},
@@ -3270,6 +3270,7 @@ static ParseNodeInfo infoAr[] =
 	{"WINDOWREF", (ReadFn)_readWindowRef},
 	{"WINDOWSPEC", (ReadFn)_readWindowSpec},
 	{"WINDOWSPECPARSE", (ReadFn)_readWindowSpecParse},
+	{"XMLEXPR", (ReadFn)_readXmlExpr},
 };
 
 /*
