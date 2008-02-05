@@ -20,7 +20,7 @@ all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp
 mkgpfdist: 
 	@echo --- gpfdist --------------------------------------------------
 	(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -lz)
+		-o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -lz -lbz2)
 	@mkdir -p build/bin
 	@cp src/gpfdist/gpfdist build/bin/
 
