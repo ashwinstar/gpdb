@@ -436,8 +436,7 @@ AssignTransactionId(TransactionState s)
 	 * PG_PROC, the subtrans entry is needed to ensure that other backends see
 	 * the Xid as "running".  See GetNewTransactionId.
 	 */
-	s->transactionId = GetNewTransactionId(isSubXact);
-
+	s->transactionId = GetNewTransactionId(isSubXact, true);	// UNDONE: Implications for Distributed Transactions???
 	if (isSubXact)
 		SubTransSetParent(s->transactionId, s->parent->transactionId);
 
@@ -1021,13 +1020,13 @@ RecordTransactionCommit(void)
 		{
 			insertingDistributedCommitted();
 				
-			recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_COMMIT, rdata);
+			XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_COMMIT, rdata);
 
 			insertedDistributedCommitted();
 		}
 		else
 		{
-			recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_COMMIT, rdata);
+			XLogInsert(RM_XACT_ID, XLOG_XACT_COMMIT, rdata);
 		}
 	}
 
@@ -1040,10 +1039,11 @@ RecordTransactionCommit(void)
 	{
 		LWLockAcquire(SeqServerControlLock, LW_EXCLUSIVE);
 			
-		if (XLByteLT(recptr, seqServerCtl->lastXlogEntry))
+		// UNDONE: Is it wise to update XactLastRecEnd here???
+		if (XLByteLT(XactLastRecEnd, seqServerCtl->lastXlogEntry))
 		{	
-			recptr.xlogid = seqServerCtl->lastXlogEntry.xlogid;
-			recptr.xrecoff = seqServerCtl->lastXlogEntry.xrecoff;
+			XactLastRecEnd.xlogid = seqServerCtl->lastXlogEntry.xlogid;
+			XactLastRecEnd.xrecoff = seqServerCtl->lastXlogEntry.xrecoff;
 		}
 			
 		LWLockRelease(SeqServerControlLock);
@@ -1154,7 +1154,8 @@ RecordDistributedForgetCommitted(TMGXACT_LOG *gxact_log)
 	rdata[0].buffer = InvalidBuffer;
 	rdata[0].next = NULL;
 
-	XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_FORGET | XLOG_NO_TRAN, rdata);
+	// UNDONE: Removed obsolete XLOG_NO_TRAN flag.
+	XLogInsert(RM_XACT_ID, XLOG_XACT_DISTRIBUTED_FORGET, rdata);
 }
 
 /*
@@ -4428,8 +4429,10 @@ IsTransactionOrTransactionBlock(void)
 bool
 IsTransactionDirty(void)
 {
-	bool result = (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || smgrIsPendingDeletes(true));
-
+	// UNDONE: Broken by 8.3 merge -- needs to be fixed.
+//	bool result = (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || smgrIsPendingDeletes(true));
+	bool result = true;
+	
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "IsTransactionDirty: TopTransactionId %u, dirty = %s",
 		 GetTopTransactionId(), (result ? "true" : "false"));
 	
@@ -4440,7 +4443,8 @@ void
 ExecutorMarkTransactionUsesSequences(void)
 {
 	seqXlogWrite = true;
-	MyXactMadeXLogEntry = true;
+	// UNDONE: Broken by 8.3 merge -- needs to be fixed.
+//	MyXactMadeXLogEntry = true;
 }
 
 void 
@@ -5122,7 +5126,7 @@ xact_redo_commit(xl_xact_commit *xlrec, TransactionId xid)
 	for (i = 0; i < xlrec->nrels; i++)
 	{
 		XLogDropRelation(xlrec->xnodes[i]);
-		smgrdounlink(smgropen(xlrec->xnodes[i]), false, true);
+		smgrdounlink(smgropen(xlrec->xnodes[i]), /* isTemp */ false, /* isLocalBuf */ false, /* isRedo */ true);
 	}
 
 	/*
@@ -5176,7 +5180,7 @@ xact_redo_abort(xl_xact_abort *xlrec, TransactionId xid)
 	for (i = 0; i < xlrec->nrels; i++)
 	{
 		XLogDropRelation(xlrec->xnodes[i]);
-		smgrdounlink(smgropen(xlrec->xnodes[i]), false, true);
+		smgrdounlink(smgropen(xlrec->xnodes[i]), /* isTemp */ false, /* isLocalBuf */ false, /* isRedo */ true);
 	}
 }
 

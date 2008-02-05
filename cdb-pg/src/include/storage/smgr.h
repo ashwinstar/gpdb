@@ -64,20 +64,20 @@ extern void smgrsetowner(SMgrRelation *owner, SMgrRelation reln);
 extern void smgrclose(SMgrRelation reln);
 extern void smgrcloseall(void);
 extern void smgrclosenode(RelFileNode rnode);
-extern void smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo);
-extern void smgrscheduleunlink(SMgrRelation reln, bool isLocalBuf);
-extern void smgrdounlink(SMgrRelation reln, bool isLocalBuf, bool isRedo);
+extern void smgrcreate(SMgrRelation reln, bool isTemp, bool isLocalBuf, bool isRedo);
+extern void smgrscheduleunlink(SMgrRelation reln, bool isTemp, bool isLocalBuf);
+extern void smgrdounlink(SMgrRelation reln, bool isTemp, bool isLocalBuf, bool isRedo);
 extern void smgrextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		   bool isTemp);
 extern void smgrread(SMgrRelation reln, BlockNumber blocknum, char *buffer);
 extern void smgrwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		  bool isTemp);
 extern BlockNumber smgrnblocks(SMgrRelation reln);
-extern BlockNumber smgrtruncate(SMgrRelation reln, BlockNumber nblocks,
+extern void smgrtruncate(SMgrRelation reln, BlockNumber nblocks,
 			 bool isTemp, bool isLocalBuf);
 extern void smgrimmedsync(SMgrRelation reln);
 extern void smgrDoPendingDeletes(bool isCommit);
-extern void	smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr,
+extern int	smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr,
 					  bool *haveNonTemp);
 extern bool	smgrIsPendingDeletes(bool forCommit);
 extern void AtSubCommit_smgr(void);
