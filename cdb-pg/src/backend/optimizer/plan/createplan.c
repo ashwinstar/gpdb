@@ -4020,8 +4020,8 @@ make_sort_from_groupcols(PlannerInfo *root,
 			tle->resname = "grouping";
 
 		sort_op = ordering_oper_opid(exprType((Node *)tle->expr));
-		numsortkeys = add_sort_column(tle->resno, sort_op,
-                                      // CDB TODO: specify nulls_first param here
+		numsortkeys = add_sort_column(tle->resno,
+                                      sort_op, false, /* CDB: ASC NULLS LAST */
 									  numsortkeys,
                                       sortColIdx, sortOperators, nullsFirst);
 	}
@@ -4126,14 +4126,14 @@ make_sort_from_reordered_groupcols(PlannerInfo *root,
 		Oid sort_op;
 
         sort_op = ordering_oper_opid(exprType((Node *)grouping->expr));
-		numsortkeys = add_sort_column(grouping->resno, sort_op,
-                                      // CDB TODO: specify nulls_first param here
+		numsortkeys = add_sort_column(grouping->resno,
+                                      sort_op, false, /* CDB: ASC NULLS LAST */
 									  numsortkeys,
                                       sortColIdx, sortOperators, nullsFirst);
 
 		sort_op = ordering_oper_opid(exprType((Node *)groupid->expr));
-		numsortkeys = add_sort_column(groupid->resno, sort_op,
-                                      // CDB TODO: specify nulls_first param here
+		numsortkeys = add_sort_column(groupid->resno,
+                                      sort_op, false, /* CDB: ASC NULLS LAST */
 									  numsortkeys,
                                       sortColIdx, sortOperators, nullsFirst);
 	}
