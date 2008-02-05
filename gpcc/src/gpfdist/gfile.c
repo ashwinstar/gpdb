@@ -4,6 +4,7 @@
 #include <string.h>
 #include <assert.h>
 #include <zlib.h>
+#include <bzlib.h>
 #include <apr_fnmatch.h>
 #include <apr_strings.h>
 #include <fcntl.h>
@@ -22,6 +23,7 @@ enum gfile_type_t {
     GFILE_GZ,
     GFILE_Z,
     GFILE_ZIP,
+    GFILE_BZ,
     GFILE_MAX,
 };
 
@@ -36,6 +38,9 @@ struct gfile_t {
 	struct {
 	    gzFile fp;
 	} gz;
+	struct {
+	    BZFILE*fp;
+	} bz;
     } u;
 };
 
@@ -73,6 +78,46 @@ static gfile_t* txt_file_open(const char *fpath, int oflag)
     fd->type = GFILE_TXT;
     fd->read = txt_file_read;
     fd->close = txt_file_close;
+    return fd;
+}
+
+/* BZ */
+
+size_t bz_file_read(gfile_t *fd, void *ptr, size_t len)
+{
+    return BZ2_bzread(fd->u.bz.fp, ptr, len);
+}
+
+int bz_file_close(gfile_t *fd)
+{
+    BZ2_bzclose(fd->u.bz.fp);
+    free(fd);
+    return 0;
+}
+
+static gfile_t* bz_file_open(const char *fpath, int oflag)
+{
+    gfile_t* fd = malloc(sizeof(gfile_t));
+    if (! fd) 
+	gfatal(FLINE, "out of memory");
+    
+    memset(fd, 0, sizeof(*fd));
+    if (-1 == (fd->ffd = open(fpath, oflag, 0600))) {
+	gwarning(FLINE, "unable to open file %s", fpath);
+	free(fd);
+	return 0;
+    }
+    
+    fd->u.bz.fp = BZ2_bzdopen(fd->ffd, "rb");
+    if (fd->u.bz.fp == 0) {
+	gwarning(FLINE, "unable to open bzfp\n", fpath);
+	free(fd);
+	return 0;
+    }
+
+    fd->type = GFILE_BZ;
+    fd->read = bz_file_read;
+    fd->close = bz_file_close;
     return fd;
 }
 
@@ -147,6 +192,9 @@ APR_DECLARE(gfile_t*) gfile_open(const char *fpath, int oflag, apr_pool_t* pool)
     if (0 != (s = strrchr(fpath, '.'))) {
 	if (apr_strnatcasecmp(s, ".gz") == 0) {
 	    return gz_file_open(fpath, oflag);
+	} 
+	if (apr_strnatcasecmp(s, ".bz2") == 0) {
+	    return bz_file_open(fpath, oflag);
 	} 
 	if (apr_strnatcasecmp(s, ".z") == 0) {
 	    gwarning(FLINE, "compression .z file is not supported");
