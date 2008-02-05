@@ -236,7 +236,6 @@ static File AllocateVfd(void);
 static void FreeVfd(File file);
 
 static int	FileAccess(File file);
-static File OpenTemporaryFileInTablespace(Oid tblspcOid, bool rejectError);
 static char *make_database_relative(const char *filename);
 static void AtProcExit_Files(int code, Datum arg);
 static void CleanupTempFiles(bool isProcExit);
@@ -861,10 +860,10 @@ PathNameOpenFile(FileName fileName, int fileFlags, int fileMode)
  * The passed name MUST be a relative path.  Effectively, this
  * prepends DatabasePath to it and then acts like PathNameOpenFile.
  */
-	File
+static File
 FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 {
-	FileClosefd;
+	File fd;
 	char   *fname;
 
 	fname = make_database_relative(fileName);
@@ -907,11 +906,11 @@ FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
  */
 File
 OpenTemporaryFile(const char   *fileName,
-		int           extentseqnum,
-		bool          makenameunique,
-		bool          create,
-		bool          delOnClose,
-		bool          closeAtEOXact)
+				  int           extentseqnum,
+				  bool          makenameunique,
+				  bool          create,
+				  bool          delOnClose,
+				  bool          closeAtEOXact)
 {
 	File    file;
 	int     fileFlags;
@@ -975,7 +974,7 @@ OpenTemporaryFile(const char   *fileName,
 		pfree(dirpath);
 
 		file = FileNameOpenFile(tempfilepath, fileFlags, 0600);
-		if (file <= 0 && rejectError)
+		if (file <= 0)
 			elog(ERROR, "could not create temporary file \"%s\": %m",
 					tempfilepath);
 	}
@@ -1052,23 +1051,6 @@ FileClose(File file)
 	 * Return the Vfd slot to the free list
 	 */
 	FreeVfd(file);
-}
-
-/*
- * close a file and forcibly delete the underlying Unix file
- */
-	void
-FileUnlink(File file)
-{
-	Assert(FileIsValid(file));
-
-	DO_DB(elog(LOG, "FileUnlink: %d (%s)",
-				file, VfdCache[file].fileName));
-
-	/* force FileClose to delete it */
-	VfdCache[file].fdstate |= FD_TEMPORARY;
-
-	FileClose(file);
 }
 
 int
@@ -1596,7 +1578,12 @@ closeAllVfds(void)
 void
 SetTempTablespaces(Oid *tableSpaces, int numSpaces)
 {
+
+	/* GPDB: we don't support temp-tablespaces, throw an error if we're called. */
+	elog(ERROR, "GPDB does not support Temp-tablespaces.");
+
 	Assert(numSpaces >= 0);
+
 	tempTableSpaces = tableSpaces;
 	numTempTableSpaces = numSpaces;
 
@@ -1635,7 +1622,10 @@ TempTablespacesAreSet(void)
  */
 Oid
 GetNextTempTableSpace(void)
-{
+{	
+	return InvalidOid;
+	/* GPDB: we don't support Temp tablespaces */
+#if 0
 	if (numTempTableSpaces > 0)
 	{
 		/* Advance nextTempTableSpace counter with wraparound */
@@ -1644,6 +1634,7 @@ GetNextTempTableSpace(void)
 		return tempTableSpaces[nextTempTableSpace];
 	}
 	return InvalidOid;
+#endif
 }
 
 
