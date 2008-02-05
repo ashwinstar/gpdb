@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/utility.c,v 1.269 2006/10/04 00:29:58 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/utility.c,v 1.289 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -277,27 +277,27 @@ bool
 CommandIsReadOnly(Node *parsetree)
 {
 	if (IsA(parsetree, PlannedStmt))
-{
+	{
 		PlannedStmt *stmt = (PlannedStmt *) parsetree;
 
 		switch (stmt->commandType)
-	{
-		case CMD_SELECT:
+		{
+			case CMD_SELECT:
 				if (stmt->intoClause != NULL)
-				return false;	/* SELECT INTO */
+					return false;	/* SELECT INTO */
 				else if (stmt->rowMarks != NIL)
-				return false;	/* SELECT FOR UPDATE/SHARE */
-			else
-				return true;
-		case CMD_UPDATE:
-		case CMD_INSERT:
-		case CMD_DELETE:
-			return false;
-		default:
-			elog(WARNING, "unrecognized commandType: %d",
+					return false;	/* SELECT FOR UPDATE/SHARE */
+				else
+					return true;
+			case CMD_UPDATE:
+			case CMD_INSERT:
+			case CMD_DELETE:
+				return false;
+			default:
+				elog(WARNING, "unrecognized commandType: %d",
 					 (int) stmt->commandType);
-			break;
-	}
+				break;
+		}
 	}
 	/* For now, treat all utility commands as read/write */
 	return false;
@@ -762,6 +762,26 @@ ProcessUtility(Node *parsetree,
 										 stmt->missing_ok);
 							break;
 
+						case OBJECT_TSPARSER:
+							RemoveTSParser(names, stmt->behavior,
+										   stmt->missing_ok);
+							break;
+
+						case OBJECT_TSDICTIONARY:
+							RemoveTSDictionary(names, stmt->behavior,
+											   stmt->missing_ok);
+							break;
+
+						case OBJECT_TSTEMPLATE:
+							RemoveTSTemplate(names, stmt->behavior,
+											 stmt->missing_ok);
+							break;
+
+						case OBJECT_TSCONFIGURATION:
+							RemoveTSConfiguration(names, stmt->behavior,
+												  stmt->missing_ok);
+							break;
+
 						default:
 							elog(ERROR, "unrecognized drop object type: %d",
 								 (int) stmt->removeType);
@@ -1005,11 +1025,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ViewStmt:		/* CREATE VIEW */
-			{
-				ViewStmt   *stmt = (ViewStmt *) parsetree;
-
-				DefineView((ViewStmt *) parsetree, queryString);
-			}
+			DefineView((ViewStmt *) parsetree, queryString);
 			break;
 
 		case T_CreateFunctionStmt:		/* CREATE FUNCTION */
@@ -1413,6 +1429,18 @@ ProcessUtility(Node *parsetree,
 			RemoveOpClass((RemoveOpClassStmt *) parsetree);
 			break;
 
+		case T_RemoveOpFamilyStmt:
+			RemoveOpFamily((RemoveOpFamilyStmt *) parsetree);
+			break;
+
+		case T_AlterTSDictionaryStmt:
+			AlterTSDictionary((AlterTSDictionaryStmt *) parsetree);
+			break;
+
+		case T_AlterTSConfigurationStmt:
+			AlterTSConfiguration((AlterTSConfigurationStmt *) parsetree);
+			break;
+
 		default:
 			Assert(false);
 			elog(ERROR, "unrecognized node type: %d",
@@ -1458,7 +1486,7 @@ UtilityReturnsTuples(Node *parsetree)
 				if (!entry)
 					return false;		/* not our business to raise error */
 				if (entry->plansource->resultDesc)
-						return true;
+					return true;
 				return false;
 			}
 
@@ -1660,7 +1688,7 @@ CreateCommandTag(Node *parsetree)
 				if (stmt->portalname == NULL)
 					tag = "CLOSE CURSOR ALL";
 				else
-			tag = "CLOSE CURSOR";
+					tag = "CLOSE CURSOR";
 			}
 			break;
 
@@ -2085,8 +2113,8 @@ CreateCommandTag(Node *parsetree)
 				case VAR_SET_CURRENT:
 				case VAR_SET_DEFAULT:
 				case VAR_SET_MULTI:
-			tag = "SET";
-			break;
+					tag = "SET";
+					break;
 				case VAR_RESET:
 				case VAR_RESET_ALL:
 					tag = "RESET";
@@ -2250,7 +2278,7 @@ CreateCommandTag(Node *parsetree)
 				if (stmt->name == NULL)
 					tag = "DEALLOCATE ALL";
 				else
-			tag = "DEALLOCATE";
+					tag = "DEALLOCATE";
 			}
 			break;
 
@@ -2381,7 +2409,7 @@ GetCommandLogLevel(Node *parsetree)
 
 	switch (nodeTag(parsetree))
 	{
-			/* raw plannable queries */
+		/* raw plannable queries */
 		case T_InsertStmt:
 		case T_DeleteStmt:
 		case T_UpdateStmt:
@@ -2568,16 +2596,16 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_ExplainStmt:
-			{
-				ExplainStmt *stmt = (ExplainStmt *) parsetree;
+		{
+			ExplainStmt *stmt = (ExplainStmt *) parsetree;
 
-				/* Look through an EXPLAIN ANALYZE to the contained stmt */
-				if (stmt->analyze)
-					return GetCommandLogLevel(stmt->query);
-				/* Plain EXPLAIN isn't so interesting */
-				lev = LOGSTMT_ALL;
-			}
-			break;
+			/* Look through an EXPLAIN ANALYZE to the contained stmt */
+			if (stmt->analyze)
+				return GetCommandLogLevel(stmt->query);
+			/* Plain EXPLAIN isn't so interesting */
+			lev = LOGSTMT_ALL;
+		}
+		break;
 
 		case T_VariableSetStmt:
 			lev = LOGSTMT_ALL;
@@ -2684,27 +2712,27 @@ GetCommandLogLevel(Node *parsetree)
 			break;
 
 		case T_PrepareStmt:
-			{
-				PrepareStmt *stmt = (PrepareStmt *) parsetree;
+		{
+			PrepareStmt *stmt = (PrepareStmt *) parsetree;
 
-				/* Look through a PREPARE to the contained stmt */
-				lev = GetCommandLogLevel(stmt->query);
-			}
-			break;
+			/* Look through a PREPARE to the contained stmt */
+			lev = GetCommandLogLevel(stmt->query);
+		}
+		break;
 
 		case T_ExecuteStmt:
-			{
-				ExecuteStmt *stmt = (ExecuteStmt *) parsetree;
-				PreparedStatement *ps;
+		{
+			ExecuteStmt *stmt = (ExecuteStmt *) parsetree;
+			PreparedStatement *ps;
 
-				/* Look through an EXECUTE to the referenced stmt */
-				ps = FetchPreparedStatement(stmt->name, false);
-				if (ps)
-					lev = GetCommandLogLevel(ps->plansource->raw_parse_tree);
-				else
+			/* Look through an EXECUTE to the referenced stmt */
+			ps = FetchPreparedStatement(stmt->name, false);
+			if (ps)
+				lev = GetCommandLogLevel(ps->plansource->raw_parse_tree);
+			else
 				lev = LOGSTMT_ALL;
-			}
-			break;
+		}
+		break;
 
 		case T_DeallocateStmt:
 			lev = LOGSTMT_ALL;
@@ -2712,66 +2740,65 @@ GetCommandLogLevel(Node *parsetree)
 
 			/* already-planned queries */
 		case T_PlannedStmt:
+		{
+			PlannedStmt *stmt = (PlannedStmt *) parsetree;
+
+			switch (stmt->commandType)
 			{
-				PlannedStmt *stmt = (PlannedStmt *) parsetree;
+				case CMD_SELECT:
+					if (stmt->intoClause != NULL)
+						lev = LOGSTMT_DDL;	/* CREATE AS, SELECT INTO */
+					else
+						lev = LOGSTMT_ALL;	/* SELECT or DECLARE CURSOR */
+					break;
 
-				switch (stmt->commandType)
-				{
-					case CMD_SELECT:
-						if (stmt->intoClause != NULL)
-							lev = LOGSTMT_DDL;	/* CREATE AS, SELECT INTO */
-						else
-							lev = LOGSTMT_ALL;	/* SELECT or DECLARE CURSOR */
-						break;
+				case CMD_UPDATE:
+				case CMD_INSERT:
+				case CMD_DELETE:
+					lev = LOGSTMT_MOD;
+					break;
 
-					case CMD_UPDATE:
-					case CMD_INSERT:
-					case CMD_DELETE:
-						lev = LOGSTMT_MOD;
-			break;
-
-		default:
-						elog(WARNING, "unrecognized commandType: %d",
-							 (int) stmt->commandType);
-			lev = LOGSTMT_ALL;
-			break;
-	}
-}
-			break;
-
-			/* parsed-and-rewritten-but-not-planned queries */
-		case T_Query:
-{
-				Query	   *stmt = (Query *) parsetree;
-
-				switch (stmt->commandType)
-	{
-		case CMD_SELECT:
-						if (stmt->intoClause != NULL)
-				lev = LOGSTMT_DDL;		/* CREATE AS, SELECT INTO */
-			else
-							lev = LOGSTMT_ALL;	/* SELECT or DECLARE CURSOR */
-			break;
-
-		case CMD_UPDATE:
-		case CMD_INSERT:
-		case CMD_DELETE:
-			lev = LOGSTMT_MOD;
-			break;
-
-		case CMD_UTILITY:
-						lev = GetCommandLogLevel(stmt->utilityStmt);
-			break;
-
-		default:
-			elog(WARNING, "unrecognized commandType: %d",
-							 (int) stmt->commandType);
-						lev = LOGSTMT_ALL;
-						break;
-				}
-
+				default:
+					elog(WARNING, "unrecognized commandType: %d",
+						 (int) stmt->commandType);
+					lev = LOGSTMT_ALL;
+					break;
 			}
-			break;
+		}
+		break;
+
+		/* parsed-and-rewritten-but-not-planned queries */
+		case T_Query:
+		{
+			Query	   *stmt = (Query *) parsetree;
+
+			switch (stmt->commandType)
+			{
+				case CMD_SELECT:
+					if (stmt->intoClause != NULL)
+						lev = LOGSTMT_DDL;		/* CREATE AS, SELECT INTO */
+					else
+						lev = LOGSTMT_ALL;	/* SELECT or DECLARE CURSOR */
+					break;
+
+				case CMD_UPDATE:
+				case CMD_INSERT:
+				case CMD_DELETE:
+					lev = LOGSTMT_MOD;
+					break;
+
+				case CMD_UTILITY:
+					lev = GetCommandLogLevel(stmt->utilityStmt);
+					break;
+
+				default:
+					elog(WARNING, "unrecognized commandType: %d",
+						 (int) stmt->commandType);
+					lev = LOGSTMT_ALL;
+					break;
+			}
+		}
+		break;
 
 		default:
 			elog(WARNING, "unrecognized node type: %d",
