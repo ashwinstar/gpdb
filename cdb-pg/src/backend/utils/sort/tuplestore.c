@@ -395,7 +395,7 @@ int tuplestore_readerwriter_filebuf_getnumfile(Tuplestorestate* state)
  */
 void
 tuplestore_set_eflags(Tuplestorestate *state, int eflags)
-
+{
 	Assert(state->status == TSS_INMEM);
 	Assert(state->memtupcount == 0);
 	state->eflags = eflags;
@@ -994,9 +994,8 @@ tuplestore_restorepos_pos(Tuplestorestate *state, TuplestorePos *pos)
 			break;
 	}
 }
-void
+
 /*
-tuplestore_restorepos(Tuplestorestate *state)
  * tuplestore_trim	- remove all but ntuples tuples before current
  */
 static void

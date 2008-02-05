@@ -53,11 +53,12 @@ extern Tuplesortstate *tuplesort_begin_heap(TupleDesc tupDesc,
 					 int nkeys, AttrNumber *attNums,
 					 Oid *sortOperators, bool *nullsFirstFlags,
 					 int workMem, bool randomAccess);
+
 extern Tuplesortstate *tuplesort_begin_heap_file_readerwriter(
 		const char* rwfile_prefix, bool isWriter,
 		TupleDesc tupDesc, 
-		int nkeys,
-		Oid *sortOperators, AttrNumber *attNums,
+		int nkeys, AttrNumber *attNums,
+		Oid *sortOperators, bool *nullsFirst, 
 		int workMem, bool randomAccess);
 extern Tuplesortstate *tuplesort_begin_index(Relation indexRel,
 					  bool enforceUnique,
