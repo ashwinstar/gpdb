@@ -86,7 +86,7 @@ static void ResetOutput(ArchiveHandle *AH, OutputContext savedContext);
 /* Public */
 Archive *
 CreateArchive(const char *FileSpec, const ArchiveFormat fmt,
-			  const int compression)
+			  const int compression, ArchiveMode mode)
 
 {
 	ArchiveHandle *AH = _allocAH(FileSpec, fmt, compression, archModeWrite);
