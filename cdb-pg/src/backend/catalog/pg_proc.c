@@ -366,7 +366,7 @@ ProcedureCreate(const char *procedureName,
 		/* Creating a new procedure */
 		tup = heap_formtuple(tupDesc, values, nulls);
 		
-		if (Gp_role == GP_ROLE_EXECUTE && funcOid != 0)
+		if (Gp_role == GP_ROLE_EXECUTE && OidIsValid(funcOid))
 			HeapTupleSetOid(tup, funcOid);
 			
 		simple_heap_insert(rel, tup);
