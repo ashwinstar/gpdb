@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/allpaths.c,v 1.154.2.1 2007/01/28 18:50:48 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/allpaths.c,v 1.168 2008/01/11 04:02:18 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -54,15 +54,21 @@ bool		gp_enable_fallback_plan = true;
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
 int			geqo_threshold;
 
+/* Hook for plugins to replace standard_join_search() */
+join_search_hook_type join_search_hook = NULL;
+
 /* Other globals */
 bool        mpp_trying_fallback_plan;
 
+
 static void set_base_rel_pathlists(PlannerInfo *root);
-static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti);
+static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+				 Index rti, RangeTblEntry *rte);
 static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					   RangeTblEntry *rte);
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 						Index rti);
+static void set_dummy_rel_pathlist(PlannerInfo *root, RelOptInfo *rel);
 static bool has_multiple_baserels(PlannerInfo *root);
 static void set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  Index rti, RangeTblEntry *rte);
@@ -194,7 +200,7 @@ set_base_rel_pathlists(PlannerInfo *root)
 		if (rel->reloptkind != RELOPT_BASEREL)
 			continue;
 
-		set_rel_pathlist(root, rel, rti);
+		set_rel_pathlist(root, rel, rti, root->simple_rte_array[rti]);
 	}
 }
 
@@ -203,10 +209,9 @@ set_base_rel_pathlists(PlannerInfo *root)
  *	  Build access paths for a base relation
  */
 static void
-set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, Index rti)
+set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+				 Index rti, RangeTblEntry *rte)
 {
-	RangeTblEntry *rte = rt_fetch(rti, root->parse->rtable);
-
 	if (rte->inh)
 	{
 		/* It's an "append relation", process accordingly */
@@ -253,6 +258,19 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
     Path       *seqpath;
     ListCell   *cell;
 
+	/*
+	 * If we can prove we don't need to scan the rel via constraint exclusion,
+	 * set up a single dummy path for it.  We only need to check for regular
+	 * baserels; if it's an otherrel, CE was already checked in
+	 * set_append_rel_pathlist().
+	 */
+	if (rel->reloptkind == RELOPT_BASEREL &&
+		relation_excluded_by_constraints(rel, rte))
+	{
+		set_dummy_rel_pathlist(root, rel);
+		return;
+	}
+
 	/* Mark rel with estimated output rows, width, etc */
 	set_baserel_size_estimates(root, rel);
 
@@ -266,27 +284,6 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 */
 	if (create_or_index_quals(root, rel))
 		set_baserel_size_estimates(root, rel);
-
-	/*
-	 * If we can prove we don't need to scan the rel via constraint exclusion,
-	 * set up a single dummy path for it.  (Rather than inventing a special
-	 * "dummy" path type, we represent this as an AppendPath with no members.)
-	 */
-	if (relation_excluded_by_constraints(rel, rte))
-	{
-		/* Reset output-rows estimate to 0 */
-		rel->rows = 0;
-
-        /* Obviously won't produce more than one row. */
-        rel->onerow = true;
-
-		add_path(root, rel, (Path *) create_append_path(root, rel, NIL));
-
-		/* Select cheapest path (pretty easy in this case...) */
-		set_cheapest(root, rel);
-
-		return;
-	}
 
     /* CDB: Attach subquery duplicate suppression info. */
     if (root->in_info_list)
@@ -312,12 +309,11 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
 	{
 		add_path(root, rel, (Path *) create_external_path(root, rel));
-		
 		set_cheapest(root, rel);
 		return;
 	}
 	
-	/* Consider sequential scan. */
+	/* Consider sequential scan */
     seqpath = create_seqscan_path(root, rel);
     if (enable_seqscan)
         pathlist = lappend(pathlist, seqpath);
@@ -402,6 +398,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	{
 		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
 		Index       childRTindex;
+		RangeTblEntry *childRTE;
 		RelOptInfo *childrel;
 		Path	   *childpath;
 		ListCell   *parentvars;
@@ -412,6 +409,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			continue;
 
 		childRTindex = appinfo->child_relid;
+		childRTE = root->simple_rte_array[childRTindex];
 
 		/*
 		 * The child rel's RelOptInfo was already created during
@@ -421,18 +419,44 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		Assert(childrel->reloptkind == RELOPT_OTHER_MEMBER_REL);
 
 		/*
-		 * Copy the parent's targetlist and quals to the child, with
-		 * appropriate substitution of variables.
+		 * We have to copy the parent's targetlist and quals to the child,
+		 * with appropriate substitution of variables.	However, only the
+		 * baserestrictinfo quals are needed before we can check for
+		 * constraint exclusion; so do that first and then check to see if we
+		 * can disregard this child.
 		 */
-		childrel->reltargetlist = (List *)
-			adjust_appendrel_attrs((Node *) rel->reltargetlist,
-								   appinfo);
 		childrel->baserestrictinfo = (List *)
 			adjust_appendrel_attrs((Node *) rel->baserestrictinfo,
 								   appinfo);
+
+		if (relation_excluded_by_constraints(childrel, childRTE))
+		{
+			/*
+			 * This child need not be scanned, so we can omit it from the
+			 * appendrel.  Mark it with a dummy cheapest-path though, in case
+			 * best_appendrel_indexscan() looks at it later.
+			 */
+			set_dummy_rel_pathlist(root, childrel);
+			continue;
+		}
+
+		/* CE failed, so finish copying targetlist and join quals */
 		childrel->joininfo = (List *)
 			adjust_appendrel_attrs((Node *) rel->joininfo,
 								   appinfo);
+		childrel->reltargetlist = (List *)
+			adjust_appendrel_attrs((Node *) rel->reltargetlist,
+								   appinfo);
+
+		/*
+		 * We have to make child entries in the EquivalenceClass data
+		 * structures as well.
+		 */
+		if (rel->has_eclass_joins)
+		{
+			add_child_rel_equivalences(root, appinfo, rel, childrel);
+			childrel->has_eclass_joins = true;
+		}
 
 		/*
 		 * Copy the parent's attr_needed data as well, with appropriate
@@ -451,12 +475,9 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		 * It's possible that the child is itself an appendrel, in which case
 		 * we can "cut out the middleman" and just add its child paths to our
 		 * own list.  (We don't try to do this earlier because we need to
-		 * apply both levels of transformation to the quals.) This test also
-		 * handles the case where the child rel need not be scanned because of
-		 * constraint exclusion: it'll have an Append path with no subpaths,
-		 * and will vanish from our list.
+		 * apply both levels of transformation to the quals.)
 		 */
-		set_rel_pathlist(root, childrel, childRTindex);
+		set_rel_pathlist(root, childrel, childRTindex, childRTE);
 
 		childpath = childrel->cheapest_total_path;
 		if (IsA(childpath, AppendPath))
@@ -468,7 +489,8 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		/*
 		 * Propagate size information from the child back to the parent. For
 		 * simplicity, we use the largest widths from any child as the parent
-		 * estimates.
+		 * estimates.  (If you want to change this, beware of child
+		 * attr_widths[] entries that haven't been set and are still 0.)
 		 */
         rel->tuples += childrel->tuples;
 		rel->rows += cdbpath_rows(childrel->cheapest_total_path);
@@ -519,6 +541,29 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	set_cheapest(root, rel);
 }
 
+/*
+ * set_dummy_rel_pathlist
+ *	  Build a dummy path for a relation that's been excluded by constraints
+ *
+ * Rather than inventing a special "dummy" path type, we represent this as an
+ * AppendPath with no members.
+ */
+static void
+set_dummy_rel_pathlist(PlannerInfo *root, RelOptInfo *rel)
+{
+	/* Set dummy size estimates --- we leave attr_widths[] as zeroes */
+	rel->rows = 0;
+	rel->width = 0;
+
+    /* Obviously won't produce more than one row. */
+    rel->onerow = true;
+
+	add_path(root, rel, (Path *) create_append_path(root, rel, NIL));
+
+	/* Select cheapest path (pretty easy in this case...) */
+	set_cheapest(root, rel);
+}
+
 /* quick-and-dirty test to see if any joining is needed */
 static bool
 has_multiple_baserels(PlannerInfo *root)
@@ -553,8 +598,8 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	Query	   *subquery = rte->subquery;
 	bool	   *differentTypes;
 	double		tuple_fraction;
+	PlannerInfo *subroot;
 	List	   *pathkeys;
-	List	   *subquery_pathkeys;
 
 	/* CDB: Could be a preplanned subquery from window_planner. */
 	if ( rte->subquery_plan == NULL )
@@ -659,18 +704,22 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 			tuple_fraction = root->tuple_fraction;
 
 		/* Generate the plan for the subquery */
-		rel->subplan = subquery_planner(subquery, tuple_fraction,
-										&subquery_pathkeys);
+		rel->subplan = subquery_planner(root->glob, subquery,
+										root->query_level + 1,
+										tuple_fraction,
+										&subroot);
 	}
 	else
 	{
 		/* This is a preplanned sub-query RTE. */
 		rel->subplan = rte->subquery_plan;
-		subquery_pathkeys = rte->subquery_pathkeys;
+        subroot = rte->subquery_planinfo;
 		/* XXX rel->onerow = ??? */
 	}
 	
-	/* Copy number of output rows from subplan */
+	rel->subrtable = subroot->parse->rtable;
+
+    /* Copy number of output rows from subplan */
     if (rel->onerow)
         rel->tuples = 1;
     else
@@ -684,7 +733,7 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	set_baserel_size_estimates(root, rel);
 
 	/* Convert subquery pathkeys to outer representation */
-	pathkeys = convert_subquery_pathkeys(root, rel, subquery_pathkeys);
+	pathkeys = convert_subquery_pathkeys(root, rel, subroot->query_pathkeys);
 
 	/* Generate appropriate path */
 	add_path(root, rel, create_subqueryscan_path(root, rel, pathkeys));
@@ -812,33 +861,52 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
 	}
 	else
 	{
+		RelOptInfo *rel;
+
 		/*
 		 * Consider the different orders in which we could join the rels,
-		 * using either GEQO or regular optimizer.
+		 * using a plugin, GEQO, or the regular join search code.
 		 *
 		 * We put the initial_rels list into a PlannerInfo field because
 		 * has_legal_joinclause() needs to look at it (ugly :-().
-  		 */
-		RelOptInfo *rel;
+		 */
 		root->initial_rels = initial_rels;
-
-#if 0 /* MPP does not support geqo */
-		if (enable_geqo && levels_needed >= geqo_threshold)
-			return geqo(root, levels_needed, initial_rels);
-		else
-#endif
 
 		rel = make_one_rel_by_joins(root, levels_needed, initial_rels, false);
 
-		if (rel == NULL && gp_enable_fallback_plan)
+        /* CDB: If no solution, retry, considering 'enable_xxx' gucs as true. */
+        if (rel == NULL && gp_enable_fallback_plan)
 			rel = make_one_rel_by_joins(root, levels_needed, initial_rels, true);
-		return rel;
+
+        return rel;
 	}
 }
 
+
 /*
  * make_one_rel_by_joins
- *	  Find all possible joinpaths for a query by successively finding ways
+ *	  Invoke the join search function to enumerate a set of alternative
+ *    paths by which all the 1-table rels can be joined into a single rel.
+ *
+ * Returns the RelOptInfo representing the final join result, or NULL.
+ */
+static RelOptInfo *
+make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, bool fallback)
+{
+	if (join_search_hook)
+		return (*join_search_hook) (root, levels_needed, initial_rels, fallback);
+#if 0 /* GPDB does not support geqo */
+	else if (enable_geqo && levels_needed >= geqo_threshold && !fallback)
+		return geqo(root, levels_needed, initial_rels);
+#endif
+	else
+		return standard_join_search(root, levels_needed, initial_rels, fallback);
+}                               /* make_one_rel_by_joins */
+
+
+/*
+ * standard_join_search
+ *	  Find possible joinpaths for a query by successively finding ways
  *	  to join component relations into join relations.
  *
  * 'levels_needed' is the number of iterations needed, ie, the number of
@@ -846,12 +914,37 @@ make_rel_from_joinlist(PlannerInfo *root, List *joinlist)
  *
  * 'initial_rels' is a list of RelOptInfo nodes for each independent
  *		jointree item.	These are the components to be joined together.
+ *		Note that levels_needed == list_length(initial_rels).
+ *
+ * 'fallback' is false to invoke a normal search which should honor any
+ *      relevant GUC settings which may specify that certain alternatives 
+ *      should not be considered.  For example, the normal search should 
+ *      not consider nested joins when enable_nestloop = false.  If the 
+ *      normal search does not find a complete path, NULL is returned.
+ *
+ * 'fallback' is true to invoke a modified search which should disregard
+ *      any restrictive GUC settings and should always produce a complete
+ *      path.  
  *
  * Returns the final level of join relations, i.e., the relation that is
  * the result of joining all the original relations together.
+ * At least one implementation path must be provided for this relation and
+ * all required sub-relations.
+ *
+ * To support loadable plugins that modify planner behavior by changing the
+ * join searching algorithm, we provide a hook variable that lets a plugin
+ * replace or supplement this function.  Any such hook must return the same
+ * final join relation as the standard code would, but it might have a
+ * different set of implementation paths attached, and only the sub-joinrels
+ * needed for these paths need have been instantiated.
+ *
+ * Note to plugin authors: the functions invoked during standard_join_search()
+ * modify root->join_rel_list and root->join_rel_hash.	If you want to do more
+ * than one join-order search, you'll probably need to save and restore the
+ * original states of those data structures.  See geqo_eval() for an example.
  */
-static RelOptInfo *
-make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, bool fallback)
+RelOptInfo *
+standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels, bool fallback)
 {
 	List	  **joinitems;
 	int			lev;
@@ -884,7 +977,7 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
 		 * level, and build paths for making each one from every available
 		 * pair of lower-level relations.
 		 */
-		joinitems[lev] = make_rels_by_joins(root, lev, joinitems);
+		joinitems[lev] = join_search_one_level(root, lev, joinitems);
 
 		/*
 		 * Do cleanup work on each just-processed rel.
@@ -909,7 +1002,13 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
 			debug_print_rel(root, rel);
 #endif
 		}
-		/* If no paths found because enable_xxx=false, enable all & retry. */
+
+        /* 
+         * CDB: If no paths found because enable_xxx=false, enable all & retry. 
+         * After 2nd try, successful or not, restore the trying_fallback_plan
+         * flag and proceed to the next level.  A failure on one level might
+         * be ok: a bushy plan might be found at a higher level.
+         */
 		if (!joinitems[lev] &&
 			gp_enable_fallback_plan &&
 			!mpp_trying_fallback_plan)
@@ -917,7 +1016,8 @@ make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels, 
 			mpp_trying_fallback_plan = true;
 			lev--;
 		}
-
+        else
+            mpp_trying_fallback_plan = fallback;
 	}
 
 	/*
@@ -1171,7 +1271,7 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 
 		/* If subquery uses DISTINCT or DISTINCT ON, check point 4 */
 		if (subquery->distinctClause != NIL &&
-			!targetIsInSortGroupList(tle, subquery->distinctClause))
+			!targetIsInSortList(tle, InvalidOid, subquery->distinctClause))
 		{
 			/* non-DISTINCT column, so fail */
 			safe = false;

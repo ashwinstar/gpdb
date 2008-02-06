@@ -20,6 +20,10 @@
 
 #include "cdb/cdbcat.h"
 
+struct Plan;                            /* #include "nodes/plannodes.h" */
+struct PlannerInfo;                     /* #include "nodes/relation.h" */
+
+
 /* Possible sources of a Query */
 typedef enum QuerySource
 {
@@ -621,8 +625,8 @@ typedef struct RangeTblEntry
 	/* These are for pre-planned sub-queries only.  They are internal to
 	 * window planning.
 	 */
-	struct Plan *subquery_plan;
-	List	   *subquery_pathkeys;
+	struct Plan        *subquery_plan;
+	struct PlannerInfo *subquery_planinfo;
 
 	/*
 	 * Fields valid for a function RTE (else NULL):
