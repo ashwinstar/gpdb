@@ -1097,10 +1097,13 @@ close_external_file(FILE *dataSource, char *dataSourceName)
 	
 	if(dataSource)
 		if (url_fclose((URL_FILE*) dataSource))
+		{
+			g_dataSource = dataSource = NULL;
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					errmsg("could not close file \"%s\": %m",
+					 errmsg("error closing file or executing program \"%s\": %m",
 							dataSourceName)));
+		}
 	
 	g_dataSource = dataSource = NULL;
 }

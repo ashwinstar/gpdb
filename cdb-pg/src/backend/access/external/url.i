@@ -661,7 +661,7 @@ url_fclose(URL_FILE *file)
         break;
 
     case CFTYPE_EXEC:
-    	pclose(file->u.exec.fp);
+			ret = pclose(file->u.exec.fp);
     	break;
 
     case CFTYPE_CURL:
@@ -684,12 +684,11 @@ url_fclose(URL_FILE *file)
         ret=EOF;
         errno=EBADF;
         break;
-
     }
 
     free(file);
 
-    return 0;
+    return ret;
 }
 
 int
