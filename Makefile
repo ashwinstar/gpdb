@@ -84,6 +84,7 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
 CHECKTOOLS_SCRIPTS = \
+	bin/diskqual.ksh	\
 	bin/gpscp		\
 	bin/gpssh		\
 	bin/gpcheckos		\
