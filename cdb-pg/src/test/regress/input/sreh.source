@@ -121,9 +121,14 @@ SELECT COUNT(*) FROM sreh_copy_errtbl; -- should exist and have 1 bad format row
 SELECT * FROM sreh_constr; -- should exist and be empty
 
 --
--- test PERCENT reject limit logic with default threshold (100)
+-- test PERCENT reject limit logic with threshold 100.
+-- (we don't test the default threshold (300) yet. we could if needed).
 -- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+-- this data file is made with errors that will occur only on the QD (with COPY)
+-- so the percent calculation should always be the same regardless of number of
+-- QE's in the system.
 --
+set gp_reject_percent_threshold = 100;
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --pass
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 2 PERCENT; --fail
 
@@ -133,7 +138,6 @@ COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJ
 set gp_reject_percent_threshold = 10;
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --fail
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 20 PERCENT; --pass
-set gp_reject_percent_threshold = 100; -- reset
 
 -- cleanup
 DROP TABLE sreh_copy;
@@ -244,9 +248,14 @@ SELECT COUNT(*) FROM sreh_ext_errtbl; -- should be empty
 SELECT COUNT(*) FROM sreh_constr; -- should be empty
 
 --
--- test PERCENT reject limit logic with default threshold (100)
+-- test PERCENT reject limit logic with threshold 100.
+-- (we don't test the default threshold (300) yet. we could if needed).
 -- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+-- in here we assume that gpfdist will distribute all the data to one QE (since
+-- it is much smaller than the data buffer it uses) so the percent calculation 
+-- should always be the same regardless of number of QE's in the system.
 --
+set gp_reject_percent_threshold = 100;
 CREATE EXTERNAL TABLE sreh_ext_10percent(a int, b int, c int)
 LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
 FORMAT 'text' (delimiter '|')
@@ -273,7 +282,7 @@ FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 20 PERCENT;
 
 SELECT count(*) FROM sreh_ext_20percent; -- pass
-set gp_reject_percent_threshold = 100; -- reset
+set gp_reject_percent_threshold = 300; -- reset
 
 -- cleanup
 select * from gpfdist_stop;

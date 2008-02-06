@@ -318,9 +318,14 @@ SELECT * FROM sreh_constr; -- should exist and be empty
 (0 rows)
 
 --
--- test PERCENT reject limit logic with default threshold (100)
+-- test PERCENT reject limit logic with threshold 100.
+-- (we don't test the default threshold (300) yet. we could if needed).
 -- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+-- this data file is made with errors that will occur only on the QD (with COPY)
+-- so the percent calculation should always be the same regardless of number of
+-- QE's in the system.
 --
+set gp_reject_percent_threshold = 100;
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --pass
 NOTICE:  Rejected 9 badly formatted rows.
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 2 PERCENT; --fail
@@ -335,7 +340,6 @@ ERROR:  Segment reject limit reached. Aborting operation. Last error was: invali
 CONTEXT:  COPY sreh_copy, line 15: "BAD|1|1"
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 20 PERCENT; --pass
 NOTICE:  Rejected 9 badly formatted rows.
-set gp_reject_percent_threshold = 100; -- reset
 -- cleanup
 DROP TABLE sreh_copy;
 DROP TABLE sreh_constr;
@@ -568,9 +572,14 @@ SELECT COUNT(*) FROM sreh_constr; -- should be empty
 (1 row)
 
 --
--- test PERCENT reject limit logic with default threshold (100)
+-- test PERCENT reject limit logic with threshold 100.
+-- (we don't test the default threshold (300) yet. we could if needed).
 -- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+-- in here we assume that gpfdist will distribute all the data to one QE (since
+-- it is much smaller than the data buffer it uses) so the percent calculation 
+-- should always be the same regardless of number of QE's in the system.
 --
+set gp_reject_percent_threshold = 100;
 CREATE EXTERNAL TABLE sreh_ext_10percent(a int, b int, c int)
 LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
 FORMAT 'text' (delimiter '|')
@@ -607,7 +616,7 @@ NOTICE:  Rejected 9 badly formatted rows.
    291
 (1 row)
 
-set gp_reject_percent_threshold = 100; -- reset
+set gp_reject_percent_threshold = 300; -- reset
 -- cleanup
 select * from gpfdist_stop;
       x      
