@@ -391,7 +391,6 @@ smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
 		MemoryContextAlloc(TopMemoryContext, sizeof(PendingRelDelete));
 	pending->relnode = reln->smgr_rnode;
 	pending->which = reln->smgr_which;
-	pending->isTemp = isTemp;
 	pending->isLocalBuf = isLocalBuf;   /*CDB*/
 	pending->atCommit = false;	/* delete if abort */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
@@ -408,7 +407,7 @@ smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
  * This also implies smgrclose() on the SMgrRelation object.
  */
 void
-smgrscheduleunlink(SMgrRelation reln, bool isTemp, bool isLocalBuf)
+smgrscheduleunlink(SMgrRelation reln, bool isLocalBuf)
 {
 	PendingRelDelete *pending;
 
@@ -417,7 +416,6 @@ smgrscheduleunlink(SMgrRelation reln, bool isTemp, bool isLocalBuf)
 		MemoryContextAlloc(TopMemoryContext, sizeof(PendingRelDelete));
 	pending->relnode = reln->smgr_rnode;
 	pending->which = reln->smgr_which;
-	pending->isTemp = isTemp;
 	pending->isLocalBuf = isLocalBuf;   /*CDB*/
 	pending->atCommit = true;	/* delete if commit */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
@@ -450,7 +448,7 @@ smgrscheduleunlink(SMgrRelation reln, bool isTemp, bool isLocalBuf)
  * This also implies smgrclose() on the SMgrRelation object.
  */
 void
-smgrdounlink(SMgrRelation reln, bool isTemp, bool isLocalBuf, bool isRedo)
+smgrdounlink(SMgrRelation reln, bool isLocalBuf, bool isRedo)
 {
 	RelFileNode rnode = reln->smgr_rnode;
 	int			which = reln->smgr_which;
