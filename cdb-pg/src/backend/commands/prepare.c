@@ -164,8 +164,8 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	 */
 	StorePreparedStatement(stmt->name,
 						   stmt->query,						   
-						   srctag,
 						   queryString,
+						   srctag,
 						   CreateCommandTag((Node *) query),
 						   argtypes,
 						   nargs,
@@ -433,8 +433,8 @@ InitQueryHashTable(void)
 void
 StorePreparedStatement(const char *stmt_name,
 					   Node *raw_parse_tree,
-					   NodeTag	   sourceTag,
 					   const char *query_string,
+					   NodeTag	   sourceTag,
 					   const char *commandTag,
 					   Oid *param_types,
 					   int num_params,

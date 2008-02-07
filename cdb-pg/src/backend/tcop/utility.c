@@ -606,6 +606,7 @@ ProcessUtility(Node *parsetree,
 				List	   *stmts;
 				ListCell   *l;
 				Oid			relOid;
+				char        relKind = RELKIND_RELATION;
 
 				/* Run parse analysis ... */
 				stmts = transformCreateStmt((CreateStmt *) parsetree,
@@ -761,27 +762,7 @@ ProcessUtility(Node *parsetree,
 							RemoveTSConfiguration(names, stmt->behavior,
 										 stmt->missing_ok);
 							break;
-
-						case OBJECT_TSPARSER:
-							RemoveTSParser(names, stmt->behavior,
-										   stmt->missing_ok);
-							break;
-
-						case OBJECT_TSDICTIONARY:
-							RemoveTSDictionary(names, stmt->behavior,
-											   stmt->missing_ok);
-							break;
-
-						case OBJECT_TSTEMPLATE:
-							RemoveTSTemplate(names, stmt->behavior,
-											 stmt->missing_ok);
-							break;
-
-						case OBJECT_TSCONFIGURATION:
-							RemoveTSConfiguration(names, stmt->behavior,
-												  stmt->missing_ok);
-							break;
-
+					
 						default:
 							elog(ERROR, "unrecognized drop object type: %d",
 								 (int) stmt->removeType);

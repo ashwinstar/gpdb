@@ -188,9 +188,9 @@ ProcessQuery(Portal portal,
 	if (Gp_role == GP_ROLE_DISPATCH && portal && 
 		ResourceScheduler && 
 		(!ResourceSelectOnly || portal->sourceTag == T_SelectStmt) && 
-		parsetree->canSetTag && !superuser() &&
-		queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
-		portal->releaseResLock = ResLockPortal(portal, queryDesc->plantree);
+		plan->canSetTag && !superuser() &&
+		plan->planTree->dispatch == DISPATCH_PARALLEL)
+		portal->releaseResLock = ResLockPortal(portal, plan->planTree);
 
 	/*
 	 * Set up to collect AFTER triggers
@@ -553,8 +553,8 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 	             */
 	            if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && 
 					!superuser() &&
-					queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
-		            portal->releaseResLock = ResLockPortal(portal, queryDesc->plantree);
+					queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
+		            portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt->planTree);
 
 				/*
 				 * We do *not* call AfterTriggerBeginQuery() here.	We assume
