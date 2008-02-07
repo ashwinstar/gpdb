@@ -62,7 +62,7 @@ static int	_SPI_curid = -1;
 static PGconn * _QD_conn = NULL; 		/* To call back to the QD for SQL execution */
 static 	char	   *_QD_currently_prepared_stmt = NULL;
 
-
+static void _SPI_prepare_plan(const char *src, SPIPlanPtr plan);
 static int _SPI_execute_plan(SPIPlanPtr plan,
 				  Datum *Values, const char *Nulls,
 				  Snapshot snapshot, Snapshot crosscheck_snapshot,
@@ -140,7 +140,7 @@ can_execute_this_locally(const char * src)
 		if (IsA(parsetree,SelectStmt))
 		{
 			SelectStmt * s = (SelectStmt *)parsetree;
-			if (s->into != NULL || s->op != SETOP_NONE)
+			if (s->intoClause->rel != NULL || s->op != SETOP_NONE)
 			{
 				can_run_local = false;
 				break;
@@ -1299,6 +1299,7 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 				Datum *Values, const char *Nulls,
 				bool read_only)
 {
+	_SPI_plan *spiplan = (_SPI_plan *) plan;
 	CachedPlanSource *plansource;
 	CachedPlan *cplan;
 	List	   *stmt_list;
@@ -1337,9 +1338,6 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 			cursorname="mycursor";
 		else
 			cursorname = name;
-		query = palloc(strlen(spiplan->query)+strlen(cursorname)+40);
-		sprintf(query, "declare %s cursor for %s",cursorname,spiplan->query);
-		elog(NOTICE,"SPI_cursor_open via QD: %s",query);
 		
 		res = PQexec(_QD_conn, "BEGIN");
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
@@ -1524,9 +1522,6 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
         return portal;
 	}
 	
-	elog(DEBUG1,"SPI_cursor_open local: %s",spiplan->query);
-	
-
 	/*
 	 * Check that the plan is something the Portal code will special-case as
 	 * returning one tupleset.
@@ -1626,6 +1621,7 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 	PortalDefineQuery(portal,
 					  NULL,		/* no statement name */
 					  plansource->query_string,
+					  T_SelectStmt,
 					  plansource->commandTag,
 					  stmt_list,
 					  cplan);
@@ -2086,9 +2082,6 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 	if (_QD_conn && plan->run_via_callback_to_qd)
 	{
 		PGresult * res;
-		plan->qtlist = NULL;
-		plan->ptlist = NULL;
-		plan->query = src;
 		
 		elog(DEBUG1,"_SPI_prepare_plan:  %s",src);
 		
@@ -2172,8 +2165,6 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 
 	plan->plancache_list = plancache_list;
 	
-	elog_node_display(DEBUG5,"_SPI_prepare_plan queryTree",plan->qtlist,true);
-
 	/*
 	 * Pop the error context stack
 	 */
@@ -2191,10 +2182,10 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
  *		FALSE means any AFTER triggers are postponed to end of outer query
  * tcount: execution tuple-count limit, or 0 for none
  */
-static int
+	static int
 _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
-				  Snapshot snapshot, Snapshot crosscheck_snapshot,
-				  bool read_only, bool fire_triggers, long tcount)
+		Snapshot snapshot, Snapshot crosscheck_snapshot,
+		bool read_only, bool fire_triggers, long tcount)
 {
 	volatile int my_res = 0;
 	volatile uint64 my_processed = 0;
@@ -2205,14 +2196,14 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 
 	/* Be sure to restore ActiveSnapshot on error exit */
 	saveActiveSnapshot = ActiveSnapshot;
-	
+
 	/* 
 	 * If we can't execute this SQL statement locally, let's connect back to the QD
 	 * and ask it to execute the command for us.
 	 */
 
-		
-	
+
+
 	if (plan->run_via_callback_to_qd)
 	{
 		PGresult *pgres = NULL;
@@ -2222,9 +2213,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 		int			nargs = plan->nargs;
 		int i;
 		int txnOptions = 0;
-			
-		
-		elog(DEBUG1,"_SPI_execute_plan via QD: %s",plan->query);
+
 		if (Gp_role == GP_ROLE_EXECUTE)
 		{
 			if (!Gp_is_primary)
@@ -2232,37 +2221,37 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 			if (!Gp_is_writer)
 				elog(DEBUG1,"Stored procedure running in reader gang.");
 		}
-		
+
 		connect_back_to_qd();
-		
+
 		if (_QD_conn == NULL)
 		{
 			elog(ERROR,"We can't execute this SQL statement because we can't connect back to the masterDB");
 		}
-		
+
 		/*
 		 * We don't yet know what to do with a caller specified snapshot
 		 */
 		if (snapshot != InvalidSnapshot)
-				elog(DEBUG1,"Snapshot valid... Help!");
-		
-		
+			elog(DEBUG1,"Snapshot valid... Help!");
+
+
 		/*
 		 * We need to make sure any work on the callback connection commits when
 		 * we do, and rolls back when we rollback.  That means we need to make
 		 * sure it's part of a transaction, so we need to send it a BEGIN.
 		 */
-		 
+
 		/*
 		 * txnOptions is used only if we send the query via PQsendGpQuery
 		 * Otherwise, we need to do an explicit BEGIN.
 		 */
 		txnOptions = mppTxnOptions(true /* needTwoPhase */);
-		
+
 		_SPI_current->processed = 0;
 		_SPI_current->lastoid = InvalidOid;
 		_SPI_current->tuptable = NULL;
-		
+
 		/* 
 		 * If the statement has arguments (parameters), they are being passed to us
 		 * in "internal" form, but libpq calls want them in "external" form.
@@ -2286,39 +2275,39 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				bool		typisvarlena;
 				FmgrInfo finfo;
 				Datum val;
-				
+
 				if (Nulls && Nulls[i] == 'n')
 				{
 					outputbytes = "";
 				}
 				else
 				{
-		
+
 					/* Get functionId of output function */
 					getTypeOutputInfo(plan->argtypes[i], &typsend, &typisvarlena);
 					fmgr_info(typsend, &finfo);
-					 
+
 					/* Call the attribute type's output converter. */
 					if (finfo.fn_nargs != 1)
 						elog(WARNING,"Function wants more than one arg");
-						
+
 					if (typisvarlena)
 						val = PointerGetDatum(PG_DETOAST_DATUM(Values[i]));
 					else
 						val = Values[i];
-						
+
 					outputbytes = DatumGetCString(FunctionCall1(&finfo, val));
 				}
-																		 
+
 				paramValues[i] = outputbytes;
 				paramLengths[i] = strlen(outputbytes);
 				paramFormats[i] = 0;   // 0 = text, 1 = binary
-				
-				
+
+
 			}
 		}
-		
-		
+
+
 		/* 
 		 * It seems that we should use the special PQsendGpQuery, so that we can include the
 		 * snapshot info that we want to use with the request.
@@ -2338,27 +2327,34 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 		{
 			char *serializedSnapshot;
 			int serializedSnapshotlen;
-			const char * query = plan->query;
+
+#if 0
 			StringInfoData newquery;
 			char * query_text;
 			int query_text_len;
-			
-			
+
+			/* XXX PG8.3 Merge.   
+			 * query is no longer stored in _SPI_plan.  This thing
+			 * should only be used with error reporting so remove
+			 * them should not affect how the query was run.
+			 *
+			 * However, I am not sure this is true for us. 
+			 */
 			/* Loop backwards, so we handle $10 before $1, and don't get confused */
 			for (i=nargs-1;i>=0;i--)
 			{	
 				char parmmarker[10];
 				char * parmloc;
-				
+
 				initStringInfo(&newquery);
-				
+
 				sprintf(parmmarker,"$%d",i+1);
-				
+
 				parmloc = strstr(query,parmmarker);
-				
+
 				if (parmloc == NULL)
 					elog(ERROR,"Could not find parameter marker in SQL query");
-					
+
 				appendBinaryStringInfo(&newquery, query, (parmloc-query));
 				if (Nulls && Nulls[i] == 'n')
 					appendStringInfo(&newquery, " NULL");
@@ -2366,13 +2362,14 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 					appendStringInfo(&newquery, "'%s'",paramValues[i]);
 				appendStringInfo(&newquery, "::%s ",format_type_be(plan->argtypes[i]));
 				appendStringInfo(&newquery, parmloc+strlen(parmmarker));
-					
-					
+
+
 				elog(DEBUG1,"%s",newquery.data);
-				 
+
 				query = pstrdup(newquery.data);
-				
+
 			}
+#endif 
 
 			if (snapshot == InvalidSnapshot)
 			{
@@ -2395,17 +2392,17 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				 */
 				ActiveSnapshot = CopySnapshot(snapshot);
 				if (!read_only)
-					ActiveSnapshot->curcid = GetCurrentCommandId();
+					ActiveSnapshot->curcid = GetCurrentCommandId(true);
 			}
 
 
 			/*
 			 * UNDONE: Despite all the work above... we ignore the ActiveSnapshot below!
 			 */
-			
+
 			if (Gp_role == GP_ROLE_EXECUTE)
 			{
-			
+
 				/*
 				 * Yuk... We are on the QE, which means our snapshot and transaction ID aren't 
 				 * the same as the QD.
@@ -2418,7 +2415,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 
 				serializedSnapshotlen = dtxContextInfoSerializeSize(&QEDtxContextInfo);
 				Assert (serializedSnapshotlen > 0);
-				
+
 				serializedSnapshot = palloc(serializedSnapshotlen);
 
 				serializeDtxContextInfo(serializedSnapshot, &QEDtxContextInfo); 
@@ -2428,31 +2425,34 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 			{
 				serializedSnapshot = 
 					qdSerializeDtxContextInfo(&serializedSnapshotlen, true /* wantSnapshot */, txnOptions, "_SPI_execute_plan");
-				
+
 			}
-	
+
+#if 0
+			/* XXX PG8.3 merge.  We no longer have the query string. */
 
 			/*
 			 * because we are sending to the QD, the primaryGang/mirrorGang info and slice info isn't meaningful
 			 */
 			query_text = PQbuildGpQueryString(
-				query, strlen(query)+1, 
-				NULL, 0, NULL, 0, NULL, 0, NULL, 0,
-				serializedSnapshot, serializedSnapshotlen, 
-				0 /* unused flag */, gp_command_count, -1 /* localSlice */, 0 /* rootIdx */, 1 /* primaryGang */, 0 /* mirrorGang */,
-				GetCurrentStatementStartTimestamp(),
-				GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
-				&query_text_len);
-			 
+					query, strlen(query)+1, 
+					NULL, 0, NULL, 0, NULL, 0, NULL, 0,
+					serializedSnapshot, serializedSnapshotlen, 
+					0 /* unused flag */, gp_command_count, -1 /* localSlice */, 0 /* rootIdx */, 1 /* primaryGang */, 0 /* mirrorGang */,
+					GetCurrentStatementStartTimestamp(),
+					GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
+					&query_text_len);
+
 			elog(DEBUG1,"Sending via special PQsendGpQuery");
 			if (PQsendGpQuery_shared(_QD_conn, (char *)query_text, query_text_len) == 0)
 			{
 				/* Note the error. */
 				elog(ERROR,"Command could not be sent to QD %s", PQerrorMessage(_QD_conn));
 			}
-	
+
 			free(query_text);  /* allocted with malloc, so use free  */
-			
+#endif
+
 		}
 		/* End special code to use PQsendGpQuery */
 		else
@@ -2466,7 +2466,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 			 * it would have had if it had been run on the QD from the original connection.
 			 */
 			elog(NOTICE,"gp_use_snapshop_during_callback is false, using standard calls");
-			
+
 			if (PQtransactionStatus(_QD_conn) != PQTRANS_INTRANS) /* Only BEGIN if not already in txn */
 			{				
 				char beginStmt[100];
@@ -2474,27 +2474,32 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				int ExplicitIsoLevel;
 				bool ExplicitReadOnly;
 				unpackMppTxnOptions(txnOptions, &ExplicitIsoLevel, &ExplicitReadOnly);
-				
+
 				sprintf(beginStmt, "BEGIN ISOLATION LEVEL %s, READ %s", 
-					IsoLevelAsUpperString(ExplicitIsoLevel),
-					(ExplicitReadOnly ? "ONLY" : "WRITE"));
+						IsoLevelAsUpperString(ExplicitIsoLevel),
+						(ExplicitReadOnly ? "ONLY" : "WRITE"));
 
 				elog(DEBUG1, "Sending %s.",beginStmt);
 
 				/* kick off an explict BEGIN */
 				pgres = PQexec(_QD_conn, beginStmt);
 				if (PQresultStatus(pgres) != PGRES_COMMAND_OK)
-			    {
-			        elog(ERROR, PQerrorMessage(_QD_conn)); 
-			    }
-			    PQclear(pgres);
-			    /* 
-			     * I think this wipes out any unnamed prepared statement, but I'm not sure
-			     * let's play it safe.
-			     */
-			    _QD_currently_prepared_stmt = NULL;
+				{
+					elog(ERROR, PQerrorMessage(_QD_conn)); 
+				}
+				PQclear(pgres);
+				/* 
+				 * I think this wipes out any unnamed prepared statement, but I'm not sure
+				 * let's play it safe.
+				 */
+				_QD_currently_prepared_stmt = NULL;
 			}
-			
+
+#if 0
+			/* XXX PG8.3 Merge. 
+			 * We don't have the plan->query any more, what to do?
+			 */
+
 			/*
 			 * We need to execute the statement that was previously prepared.  But,
 			 * if we called back from QE to QD to prepare it, the QD might have freed the 
@@ -2506,63 +2511,64 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 			 * original source of the SQL statement in it.
 			 */
 			if (_QD_currently_prepared_stmt == NULL ||	
-				strcmp(_QD_currently_prepared_stmt, plan->query) !=0)
+					strcmp(_QD_currently_prepared_stmt, plan->query) !=0)
 			{
 				elog(DEBUG1,"Re-preparing plan");
 				pgres = PQprepare(_QD_conn,
-	                "",
-	                plan->query,
-	                plan->nargs,
-	                plan->argtypes);
-	                    
-		        if (PQresultStatus(pgres) != PGRES_COMMAND_OK)
-			    {
-			        elog(ERROR, PQerrorMessage(_QD_conn));
-			        PQclear(pgres);
-			        
-			    }
-			    _QD_currently_prepared_stmt = pstrdup(plan->query);
+						"",
+						plan->query,
+						plan->nargs,
+						plan->argtypes);
+
+				if (PQresultStatus(pgres) != PGRES_COMMAND_OK)
+				{
+					elog(ERROR, PQerrorMessage(_QD_conn));
+					PQclear(pgres);
+
+				}
+				_QD_currently_prepared_stmt = pstrdup(plan->query);
 			}
-                    
-        	if (0 == PQsendQueryPrepared(_QD_conn,
-                         "",
-                         nargs,  
-                         paramValues,
-                         paramLengths,
-                         paramFormats,
-                         0 /*resultFormat*/) )
-            {
-            	/* Note the error. */
+#endif
+
+			if (0 == PQsendQueryPrepared(_QD_conn,
+						"",
+						nargs,  
+						paramValues,
+						paramLengths,
+						paramFormats,
+						0 /*resultFormat*/) )
+			{
+				/* Note the error. */
 				elog(ERROR,"Command could not be sent to QD %s", PQerrorMessage(_QD_conn));
-            }  
+			}  
 		}
-           
-        /* 
-         * Ok, query sent.  Let's wait for the results.
-         * We do this loop, because there is some chance the query was either multiple sql statements,
-         * or another call to a stored proc, so there might be multiple result sets.
-         * We only look at the last, but we want to make sure we keep all the errors if there
-         * are multiple ones.
-         * 
-         * This is the same as PQexecFinish, but that's a static routine in fe-exec.c
-         * 
-         */
+
+		/* 
+		 * Ok, query sent.  Let's wait for the results.
+		 * We do this loop, because there is some chance the query was either multiple sql statements,
+		 * or another call to a stored proc, so there might be multiple result sets.
+		 * We only look at the last, but we want to make sure we keep all the errors if there
+		 * are multiple ones.
+		 * 
+		 * This is the same as PQexecFinish, but that's a static routine in fe-exec.c
+		 * 
+		 */
 		{
 			PGresult   *result;
-			 
-		
+
+
 			pgres = NULL;
 			while ((result = PQgetResult(_QD_conn)) != NULL)
 			{
 				if (pgres)
 				{
 					if (pgres->resultStatus == PGRES_FATAL_ERROR &&
-						result->resultStatus == PGRES_FATAL_ERROR)
+							result->resultStatus == PGRES_FATAL_ERROR)
 					{
 						pqCatenateResultError(pgres, result->errMsg);
 						PQclear(result);
 						result = pgres;
-		
+
 						/*
 						 * Make sure PQerrorMessage agrees with concatenated result
 						 */
@@ -2574,188 +2580,183 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				}
 				pgres = result;
 				if (result->resultStatus == PGRES_COPY_IN ||
-					result->resultStatus == PGRES_COPY_OUT ||
-					_QD_conn->status == CONNECTION_BAD)
+						result->resultStatus == PGRES_COPY_OUT ||
+						_QD_conn->status == CONNECTION_BAD)
 					break;
 			}
-		
-			 
+
+
 		}       
-		
+
 		/*
 		 * Ok, got our results back.  Let's first make sure the query executed ok, otherwise
 		 * let's just bail out.
 		 */ 
-        if (PQresultStatus(pgres) != PGRES_COMMAND_OK && PQresultStatus(pgres) != PGRES_TUPLES_OK)
-	    {
-	    	PQclear(pgres);
-	        elog(ERROR, PQerrorMessage(_QD_conn));
-	        
-	        return SPI_ERROR_ARGUMENT;
-	    }
+		if (PQresultStatus(pgres) != PGRES_COMMAND_OK && PQresultStatus(pgres) != PGRES_TUPLES_OK)
+		{
+			PQclear(pgres);
+			elog(ERROR, PQerrorMessage(_QD_conn));
+
+			return SPI_ERROR_ARGUMENT;
+		}
 
 		/*
 		 * If the command was a SELECT that returned rows, we will get PGRES_TUPLES_OK
 		 * 
 		 * In that case, we need to convert the results into the form that SPI routine callers expect.
 		 */
-        if (PQresultStatus(pgres) == PGRES_TUPLES_OK)
-        {
-        	int i;
-        	int j;
-        	Datum *values;
-		bool *isnull;
-		TupleDesc tempTupleDesc;
-		TupleTableSlot slot;
-		Oid			typrecv;
-		Oid			typioparam;
-		FmgrInfo finfo;
+		if (PQresultStatus(pgres) == PGRES_TUPLES_OK)
+		{
+			int i;
+			int j;
+			Datum *values;
+			bool *isnull;
+			TupleDesc tempTupleDesc;
+			TupleTableSlot slot;
+			Oid			typrecv;
+			Oid			typioparam;
+			FmgrInfo finfo;
 
 
-        	_SPI_current->processed = PQntuples(pgres);
-        	
-        	/*
-        	 * Ok, libpq gives us back fields in "external" format (our choice of binary or text), rather than
-        	 * "internal" format.  But SPI routines return data in internal format, as well as returning 
-        	 * a Tuple Descriptor to match.   SPI_tuptable is was gets returned to the caller, and while we
-        	 * are working in this routine, its at _SPI_current->tuptable. 
-        	 * 
-        	 * First, we need to make a compatible Tuple Descriptor to match the results
-        	 */
-        	tempTupleDesc = CreateTemplateTupleDesc(PQnfields(pgres), false);
-        	
-        	for(i=0;i<PQnfields(pgres);i++)
-        		TupleDescInitEntry(tempTupleDesc, (AttrNumber) i+1, PQfname(pgres,i), PQftype(pgres,i), PQfmod(pgres,i), 0 /*attdim*/);
-        
-        	if (tempTupleDesc->tdtypeid == RECORDOID && tempTupleDesc->tdtypmod < 0)
+			_SPI_current->processed = PQntuples(pgres);
+
+			/*
+			 * Ok, libpq gives us back fields in "external" format (our choice of binary or text), rather than
+			 * "internal" format.  But SPI routines return data in internal format, as well as returning 
+			 * a Tuple Descriptor to match.   SPI_tuptable is was gets returned to the caller, and while we
+			 * are working in this routine, its at _SPI_current->tuptable. 
+			 * 
+			 * First, we need to make a compatible Tuple Descriptor to match the results
+			 */
+			tempTupleDesc = CreateTemplateTupleDesc(PQnfields(pgres), false);
+
+			for(i=0;i<PQnfields(pgres);i++)
+				TupleDescInitEntry(tempTupleDesc, (AttrNumber) i+1, PQfname(pgres,i), PQftype(pgres,i), PQfmod(pgres,i), 0 /*attdim*/);
+
+			if (tempTupleDesc->tdtypeid == RECORDOID && tempTupleDesc->tdtypmod < 0)
 				assign_record_type_typmod(tempTupleDesc);
-				
-        	/* This sets up and initializes tuptable */
-        	spi_dest_startup(NULL, 0, tempTupleDesc);
-        	
-		init_slot(&slot, tempTupleDesc);
-		ExecStoreAllNullTuple(&slot);
-        	
-		isnull = slot_get_isnull(&slot); 
-		values = slot_get_values(&slot); 
 
-		/*
-		 * Ok, now get each field that's being returned.  We need to use it's "input" function (based on
-		 * it's datatype) to convert from the "external" representation libpq gives us, back to the
-		 * "internal" representation needed in the tuptable.
-		 */
+			/* This sets up and initializes tuptable */
+			spi_dest_startup(NULL, 0, tempTupleDesc);
 
-        	for(i=0;i<PQntuples(pgres);i++)
-        	{
-        		for(j=0;j<PQnfields(pgres);j++)
-        		{
-        			char * v;
-        			isnull[j] = false;
-        			if (PQgetisnull(pgres,i,j))
-        			{
-        				values[j] = 0;
-					isnull[j] = true;
-        			}
-        			else
-        			{
-	        			v = PQgetvalue(pgres,i,j);
-	        			
+			init_slot(&slot, tempTupleDesc);
+			ExecStoreAllNullTuple(&slot);
+
+			isnull = slot_get_isnull(&slot); 
+			values = slot_get_values(&slot); 
+
+			/*
+			 * Ok, now get each field that's being returned.  We need to use it's "input" function (based on
+			 * it's datatype) to convert from the "external" representation libpq gives us, back to the
+			 * "internal" representation needed in the tuptable.
+			 */
+
+			for(i=0;i<PQntuples(pgres);i++)
+			{
+				for(j=0;j<PQnfields(pgres);j++)
+				{
+					char * v;
+					isnull[j] = false;
+					if (PQgetisnull(pgres,i,j))
+					{
+						values[j] = 0;
+						isnull[j] = true;
+					}
+					else
+					{
+						v = PQgetvalue(pgres,i,j);
+
 						/* Get functionId of input function */
 						getTypeInputInfo(tempTupleDesc->attrs[j]->atttypid, &typrecv, &typioparam);
 						fmgr_info(typrecv, &finfo);
-	        			
+
 						if (finfo.fn_nargs == 1)
 							values[j] = FunctionCall1(&finfo,
-										  CStringGetDatum(v));
-					    else if (finfo.fn_nargs == 2)
-					    	values[j] = FunctionCall2(&finfo,
-										  CStringGetDatum(v),
-									   ObjectIdGetDatum(typioparam));
+									CStringGetDatum(v));
+						else if (finfo.fn_nargs == 2)
+							values[j] = FunctionCall2(&finfo,
+									CStringGetDatum(v),
+									ObjectIdGetDatum(typioparam));
 						else
 							values[j] = FunctionCall3(&finfo,
-										  CStringGetDatum(v),
-									   ObjectIdGetDatum(typioparam),
+									CStringGetDatum(v),
+									ObjectIdGetDatum(typioparam),
 									Int32GetDatum(-1));
-        			}
-        			 
-        		}
+					}
 
-			ExecStoreVirtualTuple(&slot);
-			spi_printtup(&slot, NULL);
-				
-        	}
-        	/*
-        	 * Ok, _SPI_current->tuptable now has the results in it.
-        	 */
-        	_SPI_current->lastoid = PQoidValue(pgres);
-        	
-        	my_res = SPI_OK_SELECT;
-	 
-        } 
-        else
-        {
-        	/*
-        	 * We got back PGRES_COMMAND_OK, so this was not a SELECT statement.
-        	 * 
-        	 * It could be a utility statement, or an INSERT/UPDATE/DELETE.
-        	 * 
-        	 * We need to differentiate for the return info.
-        	 * 
-        	 */
-        	char * cmdstatus;
-        	 
-        	my_res = SPI_OK_UTILITY;
-        	
-        	cmdstatus = PQcmdStatus(pgres);
-        	if (strncmp(cmdstatus, "INSERT", 6) == 0)
-        		my_res = SPI_OK_INSERT;
+				}
+
+				ExecStoreVirtualTuple(&slot);
+				spi_printtup(&slot, NULL);
+
+			}
+			/*
+			 * Ok, _SPI_current->tuptable now has the results in it.
+			 */
+			_SPI_current->lastoid = PQoidValue(pgres);
+
+			my_res = SPI_OK_SELECT;
+
+		} 
+		else
+		{
+			/*
+			 * We got back PGRES_COMMAND_OK, so this was not a SELECT statement.
+			 * 
+			 * It could be a utility statement, or an INSERT/UPDATE/DELETE.
+			 * 
+			 * We need to differentiate for the return info.
+			 * 
+			 */
+			char * cmdstatus;
+
+			my_res = SPI_OK_UTILITY;
+
+			cmdstatus = PQcmdStatus(pgres);
+			if (strncmp(cmdstatus, "INSERT", 6) == 0)
+				my_res = SPI_OK_INSERT;
 			else if (strncmp(cmdstatus, "DELETE", 6) == 0)
 				my_res = SPI_OK_DELETE;
 			else if (strncmp(cmdstatus, "UPDATE", 6) == 0)
 				my_res = SPI_OK_UPDATE;
 			else if (strncmp(cmdstatus, "FETCH", 5) == 0)
 				my_res = SPI_OK_FETCH;
- 
-        	_SPI_current->processed = atol(PQcmdTuples(pgres));
-        	_SPI_current->lastoid = PQoidValue(pgres);
-        	
-        	
-  
-        }
-       
-        /*
-         * Any results have now been converted and stored away, so
-         * we can free the libpq results.
-         */
-        
-    	 
-    	PQclear(pgres);
-    	
-    	/*
-    	 * We are done. 
-    	 */ 
-    	
-        ActiveSnapshot = saveActiveSnapshot;
-        SPI_processed64 = _SPI_current->processed;
+
+			_SPI_current->processed = atol(PQcmdTuples(pgres));
+			_SPI_current->lastoid = PQoidValue(pgres);
+
+
+
+		}
+
+		/*
+		 * Any results have now been converted and stored away, so
+		 * we can free the libpq results.
+		 */
+
+
+		PQclear(pgres);
+
+		/*
+		 * We are done. 
+		 */ 
+
+		ActiveSnapshot = saveActiveSnapshot;
+		SPI_processed64 = _SPI_current->processed;
 		SET_SPI_PROCESSED;
 
 		SPI_lastoid = _SPI_current->lastoid;
 		SPI_tuptable = _SPI_current->tuptable;
-        elog(DEBUG1,"_SPI_execute_plan done %d", my_res);
-        return my_res;
-        
+		elog(DEBUG1,"_SPI_execute_plan done %d", my_res);
+		return my_res;
+
 	}
-	
+
 	/* 
 	 * In the normal case, where we are on the QD, we can do the normal
 	 * PostgreSQL thing and run the command ourselves 
 	 */
-	
-	elog(DEBUG1,"_SPI_execute_plan local: %s",plan->query);
-	/*elog_node_display(DEBUG5,"_SPI_execute_plan queryTree",plan->qtlist,true);*/
-	
-	debug_query_string = plan->query;
-	
+
 	PG_TRY();
 	{
 		ListCell   *lc1;
@@ -2771,7 +2772,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 
 			/* sizeof(ParamListInfoData) includes the first array element */
 			paramLI = (ParamListInfo) palloc(sizeof(ParamListInfoData) +
-									   (nargs - 1) *sizeof(ParamExternData));
+					(nargs - 1) *sizeof(ParamExternData));
 			paramLI->numParams = nargs;
 
 			for (k = 0; k < nargs; k++)
@@ -2856,9 +2857,9 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				if (read_only && !CommandIsReadOnly(stmt))
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					/* translator: %s is a SQL statement name */
-					   errmsg("%s is not allowed in a non-volatile function",
-							  CreateCommandTag(stmt))));
+							 /* translator: %s is a SQL statement name */
+							 errmsg("%s is not allowed in a non-volatile function",
+								 CreateCommandTag(stmt))));
 
 				/*
 				 * If not read-only mode, advance the command counter before
@@ -2868,7 +2869,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 					CommandCounterIncrement();
 
 				dest = CreateDestReceiver(canSetTag ? DestSPI : DestNone,
-										  NULL);
+						NULL);
 
 				if (snapshot == InvalidSnapshot)
 				{
@@ -2894,25 +2895,25 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				}
 
 				if (IsA(stmt, PlannedStmt) &&
-					((PlannedStmt *) stmt)->utilityStmt == NULL)
+						((PlannedStmt *) stmt)->utilityStmt == NULL)
 				{
 					qdesc = CreateQueryDesc((PlannedStmt *) stmt,
-											ActiveSnapshot,
-											crosscheck_snapshot,
-											dest,
-											paramLI, false);
+							ActiveSnapshot,
+							crosscheck_snapshot,
+							dest,
+							paramLI, false);
 					res = _SPI_pquery(qdesc, fire_triggers,
-									  canSetTag ? tcount : 0);
+							canSetTag ? tcount : 0);
 					FreeQueryDesc(qdesc);
 				}
 				else
 				{
 					ProcessUtility(stmt,
-								   plansource->query_string,
-								   paramLI,
-								   false,		/* not top level */
-								   dest,
-								   NULL);
+							plansource->query_string,
+							paramLI,
+							false,		/* not top level */
+							dest,
+							NULL);
 					/* Update "processed" if stmt returned tuples */
 					if (_SPI_current->tuptable)
 						_SPI_current->processed = _SPI_current->tuptable->alloced - _SPI_current->tuptable->free;
@@ -3316,30 +3317,28 @@ _SPI_copy_plan(SPIPlanPtr plan, MemoryContext parentcxt)
 }
 
 /*
- * This is apparently only used by libcdbtest, in cdbexecplan.c
- * 
- * Which in turn, is only used for testing.  At the moment, libcdbtest doesn't appear to work,
- * so I don't think this is ever called.
+ * Make a "saved" copy of the given plan, entrusting everything to plancache.c
  */
-int
-SPI_execute_cdb(const char *src, Plan *pPlan, Query *pQuery, bool read_only, int tcount)
+	static SPIPlanPtr
+_SPI_save_plan(SPIPlanPtr plan)
 {
-	_SPI_plan	plan;
-	int			res;
-	List	   *query_list = NIL;
+	SPIPlanPtr newplan;
+	MemoryContext plancxt;
+	MemoryContext oldcxt;
 	ListCell   *lc;
 
-	Assert(!plan->saved);		/* not currently supported */
+	Assert(!plan->saved);
+	/* not currently supported */
 
 	/*
-	 * Create a memory context for the plan.  We don't expect the plan to be
-	 * very large, so use smaller-than-default alloc parameters.
+	 * Create a memory context for the plan. We don't expect the plan to be very
+	 * large, so use smaller-than-default alloc parameters.
 	 */
 	plancxt = AllocSetContextCreate(CacheMemoryContext,
-									"SPI Plan",
-									ALLOCSET_SMALL_MINSIZE,
-									ALLOCSET_SMALL_INITSIZE,
-									ALLOCSET_SMALL_MAXSIZE);
+				"SPI Plan",
+				ALLOCSET_SMALL_MINSIZE,
+				ALLOCSET_SMALL_INITSIZE,
+				ALLOCSET_SMALL_MAXSIZE);
 	oldcxt = MemoryContextSwitchTo(plancxt);
 
 	/* Copy the SPI plan into its own context */
@@ -3347,8 +3346,16 @@ SPI_execute_cdb(const char *src, Plan *pPlan, Query *pQuery, bool read_only, int
 	newplan->magic = _SPI_PLAN_MAGIC;
 	newplan->saved = true;
 	newplan->plancache_list = NIL;
-	newplan->plancxt = plancxt;
+	newplan->plancxt = plancxt; 
 	newplan->cursor_options = plan->cursor_options;
+	newplan->nargs = plan->nargs;
+	if (plan->nargs > 0)
+	{
+		newplan->argtypes = (Oid *) palloc(plan->nargs * sizeof(Oid));
+		memcpy(newplan->argtypes, plan->argtypes, plan->nargs * sizeof(Oid));
+	}
+	else
+		newplan->argtypes = NULL; 
 
 	foreach(lc, plan->plancache_list)
 	{
@@ -3356,31 +3363,65 @@ SPI_execute_cdb(const char *src, Plan *pPlan, Query *pQuery, bool read_only, int
 		CachedPlanSource *newsource;
 		CachedPlan *cplan;
 
-	plan.plancxt = NULL;		/* doesn't have own context */
-	plan.query = src;
-	plan.nargs = 0;
-	plan.argtypes = NULL;
-	plan.ptlist = NIL;
-	plan.qtlist = NIL;
+		/* Note: we assume we don't need to revalidate the plan */
+		cplan = plansource->plan;
 
-	plan.ptlist = lappend(plan.ptlist, pPlan);
 		newsource = CreateCachedPlan(plansource->raw_parse_tree,
-									 plansource->query_string,
-									 plansource->commandTag,
-									 newplan->argtypes,
-									 newplan->nargs,
-									 newplan->cursor_options,
-									 cplan->stmt_list,
-									 true,
-									 false);
+					plansource->query_string,
+					plansource->commandTag,
+					newplan->argtypes,
+					newplan->nargs,
+					newplan->cursor_options,
+					cplan->stmt_list,
+					true,
+					false);
 
-	query_list = lappend(query_list, pQuery);
-	plan.qtlist = lappend(plan.qtlist, query_list);
+		newplan->plancache_list = lappend(newplan->plancache_list, newsource);
+	}
 
-	res = _SPI_execute_plan(&plan, NULL, NULL,
-							InvalidSnapshot, InvalidSnapshot,
-							read_only, true, tcount);
+	MemoryContextSwitchTo(oldcxt);
+
+	return newplan;
+}
+
+
+/*
+ * This is apparently only used by libcdbtest, in cdbexecplan.c
+ * 
+ * Which in turn, is only used for testing.  At the moment, libcdbtest
+ * doesn't appear to work,
+ * so I don't think this is ever called.
+ */
+int
+SPI_execute_cdb(const char *src, Plan *pPlan, Query *pQuery, bool
+		read_only, int tcount)
+{
+	_SPI_plan plan;
+	int res;
+
+	if (src == NULL || pPlan == NULL || pQuery == NULL || tcount < 0)
+		return SPI_ERROR_ARGUMENT;
+
+	res = _SPI_begin_call(true);
+	if (res < 0)
+		return res;
+
+	plan.plancxt = NULL;
+	/* doesn't have own context */
+	plan.nargs = 0; 
+	plan.argtypes = NULL;
+
+	res = _SPI_execute_plan(&plan,
+				NULL,
+				NULL,
+				InvalidSnapshot,
+				InvalidSnapshot,
+				read_only,
+				true,
+				tcount);
 
 	_SPI_end_call(true);
 	return res;
 }
+
+
