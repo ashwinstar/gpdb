@@ -163,8 +163,6 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	 * should only last for this one statement
 	 */
 	oldcontext = MemoryContextSwitchTo(MessageContext);
-
-	QueryContext = CurrentMemoryContext;
 	
 	/* dispatch copy command to both primary and mirror writer gangs */
 	
