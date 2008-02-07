@@ -8144,7 +8144,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			on_clause++;
 
 			/* add EXECUTE clause */
-			appendPQExpBuffer(q, " EXECUTE '%s' ", command);
+			appendPQExpBuffer(q, " EXECUTE E'%s' ", escape_backslashes(command, true));
 			
 			/* add ON clause */
 			if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
@@ -8180,7 +8180,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         /* add FORMAT clause */
         appendPQExpBuffer(q, "FORMAT '%s' (%s)\n", 
                           fmttype[0] == 't' ? "text" : "csv",
-                          escape_backslashes((const char*)fmtopts));
+                          escape_backslashes((const char*)fmtopts, false));
 
 		/* add ENCODING clause */
         appendPQExpBuffer(q, "ENCODING '%s'", extencoding);

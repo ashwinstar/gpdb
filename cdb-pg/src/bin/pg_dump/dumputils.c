@@ -964,7 +964,7 @@ processSQLNamePattern(PGconn *conn, PQExpBuffer buf, const char *pattern,
  * Escape any backslashes in given string (from initdb.c)
  */
 char *
-escape_backslashes(const char *src)
+escape_backslashes(const char *src, bool quotes_too)
 {
 	int			len = strlen(src),
 				i,
@@ -973,8 +973,8 @@ escape_backslashes(const char *src)
 	
 	for (i = 0, j = 0; i < len; i++)
 	{
-		if ((src[i]) == '\\')
-			result[j++] = src[i];
+		if ((src[i]) == '\\' || ( (src[i]) == '\'' && quotes_too)) 
+			result[j++] = '\\';
 		result[j++] = src[i];
 	}
 	result[j] = '\0';
