@@ -2330,7 +2330,7 @@ reindex_index(Oid indexId, Oid newrelfilenode)
 	 * Also check for active uses of the index in the current transaction;
 	 * we don't want to reindex underneath an open indexscan.
 	 */
-	//CheckTableNotInUse(iRel, "REINDEX INDEX");
+	CheckTableNotInUse(iRel, "REINDEX INDEX");
 
 	/*
 	 * If it's a shared index, we must do inplace processing (because we have

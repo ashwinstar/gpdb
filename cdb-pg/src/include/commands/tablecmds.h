@@ -40,6 +40,8 @@ extern void AlterRelationNamespaceInternal(Relation classRel, Oid relOid,
 							   Oid oldNspOid, Oid newNspOid,
 							   bool hasDependEntry);
 
+extern void CheckTableNotInUse(Relation rel, const char *stmt);
+
 extern void ExecuteTruncate(TruncateStmt *stmt);
 
 extern void renameatt(Oid myrelid,
@@ -50,8 +52,7 @@ extern void renameatt(Oid myrelid,
 
 extern void renamerel(Oid myrelid,
 		  const char *newrelname,
-		  ObjectType reltype,
-		  RenameStmt *stmt /* MPP */);
+		  ObjectType reltype);
 
 extern void find_composite_type_dependencies(Oid typeOid,
 											 const char *origTblName,

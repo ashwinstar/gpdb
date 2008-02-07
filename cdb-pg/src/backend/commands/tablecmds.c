@@ -191,7 +191,7 @@ static List *MergeAttributes(List *schema, List *supers, bool istemp,
 static void MergeConstraintsIntoExisting(Relation child_rel, Relation parent_rel);
 static void MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel);
 static void add_nonduplicate_constraint(Constraint *cdef,
-										ConstrCheck *check, int *ncheck);
+							ConstrCheck *check, int *ncheck);
 static bool change_varattnos_walker(Node *node, const AttrNumber *newattno);
 static void StoreCatalogInheritance(Oid relationId, List *supers);
 static void StoreCatalogInheritance1(Oid relationId, Oid parentOid,
@@ -216,7 +216,6 @@ static void validateForeignKeyConstraint(FkConstraint *fkconstraint,
 							 Relation rel, Relation pkrel, Oid constraintOid);
 static void createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 						 Oid constraintOid);
-static void CheckTableNotInUse(Relation rel);
 static void ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOidInfo ** oidInfo);
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		  bool recurse, bool recursing);
@@ -266,7 +265,7 @@ static void ATPrepAlterColumnType(List **wqueue,
 					  bool recurse, bool recursing,
 					  AlterTableCmd *cmd);
 static void ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
-					  const char *colName, TypeName *typname);
+					  const char *colName, TypeName *typename);
 static void ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab);
 static void ATPostAlterTypeParse(char *cmd, List **wqueue);
 static void change_owner_recurse_to_sequences(Oid relationOid,
@@ -860,18 +859,15 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 {
 	if (stmt->postCreate)
 	{
-		List *pQry;
 		Node *pUtl;
 		DestReceiver *dest = None_Receiver;
 		List *pL1 = (List *)stmt->postCreate;
+		Node *parseTree = linitial(pL1);
 	
-		pQry = parse_analyze(linitial(pL1), NULL, NULL, 0);
-
-		if (!pQry)
-			return;
-
-		/* just grab the first guy - "There Can Be Only One"(TM) */
-		pUtl = linitial(pQry);
+		pUtl = (Node *)parse_analyze(parseTree,
+							 NULL,
+							 NULL,
+							 0);
 
 		if (!pUtl)
 			return;
@@ -879,10 +875,8 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 		Assert(IsA(pUtl, Query));
         Assert(((Query *)pUtl)->commandType == CMD_UTILITY);
 
-		ProcessUtility(
-				(Node *)
-				(((Query *)pUtl)->utilityStmt),
-				NULL, dest, NULL);		
+		ProcessUtility((Node *)(((Query *)pUtl)->utilityStmt),
+					   NULL, NULL, true, dest, NULL);		
 
 		if (gp_enable_partitioned_table_catalog)
 		{
@@ -1354,15 +1348,10 @@ truncate_check_rel(Relation rel)
 			  errmsg("cannot truncate temporary tables of other sessions")));
 
 	/*
-	 * Also check for pending AFTER trigger events on the relation.  We can't
-	 * just leave those be, since they will try to fetch tuples that the
-	 * TRUNCATE removes.
+	 * Also check for active uses of the relation in the current transaction,
+	 * including open scans and pending AFTER trigger events.
 	 */
-	if (AfterTriggerPendingOnRel(RelationGetRelid(rel)))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("cannot truncate table \"%s\" because it has pending trigger events",
-						RelationGetRelationName(rel))));
+	CheckTableNotInUse(rel, "TRUNCATE");
 }
 
 /*----------
@@ -1521,7 +1510,7 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_TABLE),
 			 errmsg("relation \"%s\" would be inherited from more than once",
-							parent->relname)));
+					parent->relname)));
 
 		parentOids = lappend_oid(parentOids, RelationGetRelid(relation));
 
@@ -1585,7 +1574,7 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 						(errmsg("merging multiple inherited definitions of column \"%s\"",
 								attributeName)));
 				def = (ColumnDef *) list_nth(inhSchema, exist_attno - 1);
-				defTypeId = typenameTypeId(NULL, def->typname, &deftypmod);
+				defTypeId = typenameTypeId(NULL, def->typename, &deftypmod);
 				if (defTypeId != attribute->atttypid ||
 					deftypmod != attribute->atttypmod)
 					ereport(ERROR,
@@ -1593,7 +1582,7 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 						errmsg("inherited column \"%s\" has a type conflict",
 							   attributeName),
 							 errdetail("%s versus %s",
-									   TypeNameToString(def->typname),
+									   TypeNameToString(def->typename),
 									   format_type_be(attribute->atttypid))));
 				def->inhcount++;
 				/* Merge of NOT NULL constraints = OR 'em together */
@@ -1608,7 +1597,7 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				 */
 				def = makeNode(ColumnDef);
 				def->colname = pstrdup(attributeName);
-				def->typname = makeTypeNameFromOid(attribute->atttypid,
+				def->typename = makeTypeNameFromOid(attribute->atttypid,
 													attribute->atttypmod);
 				def->inhcount = 1;
 				def->is_local = false;
@@ -1738,16 +1727,16 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				   (errmsg("merging column \"%s\" with inherited definition",
 						   attributeName)));
 				def = (ColumnDef *) list_nth(inhSchema, exist_attno - 1);
-				defTypeId = typenameTypeId(NULL, def->typname, &deftypmod);
-				newTypeId = typenameTypeId(NULL, newdef->typname, &newtypmod);
+				defTypeId = typenameTypeId(NULL, def->typename, &deftypmod);
+				newTypeId = typenameTypeId(NULL, newdef->typename, &newtypmod);
 				if (defTypeId != newTypeId || deftypmod != newtypmod)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
 							 errmsg("column \"%s\" has a type conflict",
 									attributeName),
 							 errdetail("%s versus %s",
-									   TypeNameToString(def->typname),
-									   TypeNameToString(newdef->typname))));
+									   TypeNameToString(def->typename),
+									   TypeNameToString(newdef->typename))));
 				/* Mark the column as locally defined */
 				def->is_local = true;
 				/* Merge of NOT NULL constraints = OR 'em together */
@@ -2097,7 +2086,7 @@ setRelhassubclassInRelation(Oid relationId, bool relhassubclass)
 	}
 
 	heap_freetuple(tuple);
-	heap_close(relationRelation, NoLock);
+	heap_close(relationRelation, RowExclusiveLock);
 }
 
 
@@ -2315,7 +2304,7 @@ renameatt(Oid myrelid,
  *			  sequence, AFAIK there's no need for it to be there.
  */
 void
-renamerel(Oid myrelid, const char *newrelname, ObjectType reltype, RenameStmt *stmt)
+renamerel(Oid myrelid, const char *newrelname, ObjectType reltype)
 {
 	Relation	targetrelation;
 	Relation	relrelation;	/* for RELATION relation */
@@ -2390,7 +2379,7 @@ renamerel(Oid myrelid, const char *newrelname, ObjectType reltype, RenameStmt *s
 	CatalogUpdateIndexes(relrelation, reltup);
 
 	heap_freetuple(reltup);
-	heap_close(relrelation, NoLock);
+	heap_close(relrelation, RowExclusiveLock);
 
 	/*
 	 * Also rename the associated type, if any.
@@ -2453,47 +2442,8 @@ AlterTable(AlterTableStmt *stmt)
 {
 	Relation rel = relation_openrv(stmt->relation, AccessExclusiveLock);
 
-	CheckTableNotInUse(rel);
+	CheckTableNotInUse(rel, "ALTER TABLE");
 
-	ATController(rel, stmt->cmds, interpretInhOption(stmt->relation->inhOpt));
-}
-
-	/*
- * Disallow ALTER TABLE when the current backend has any open reference to
- * it besides the one we just got (such as an open cursor or active plan);
- * our AccessExclusiveLock doesn't protect us against stomping on our own
- * foot, only other people's feet!
-	 *
-	 * Note: the only case known to cause serious trouble is ALTER COLUMN TYPE,
- * and some changes are obviously pretty benign, so this could possibly be
- * relaxed to only error out for certain types of alterations.  But the
- * use-case for allowing any of these things is not obvious, so we won't
- * work hard at it for now.
- *
- * We also reject ALTER TABLE if there are any pending AFTER trigger events
- * for the rel.  This is certainly necessary for the rewriting variants of
- * ALTER TABLE, because they don't preserve tuple TIDs and so the pending
- * events would try to fetch the wrong tuples.  It might be overly cautious
- * in other cases, but again it seems better to err on the side of paranoia.
-	 */
-static void
-CheckTableNotInUse(Relation rel)
-{
-	int			expected_refcnt;
-
-	expected_refcnt = rel->rd_isnailed ? 2 : 1;
-	if (rel->rd_refcnt != expected_refcnt)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("relation \"%s\" is being used by active queries in this session",
-						RelationGetRelationName(rel))));
-
-	if (AfterTriggerPendingOnRel(RelationGetRelid(rel)))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_IN_USE),
-				 errmsg("cannot alter table \"%s\" because it has pending trigger events",
-						RelationGetRelationName(rel))));
-							
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		LockRelationOid(RelationRelationId, RowExclusiveLock);
@@ -2511,6 +2461,54 @@ CheckTableNotInUse(Relation rel)
 		CdbDispatchUtilityStatement((Node *) stmt, "AlterTable");
 }
 
+/*
+ * Disallow ALTER TABLE (and similar commands) when the current backend has
+ * any open reference to the target table besides the one just acquired by
+ * the calling command; this implies there's an open cursor or active plan.
+ * We need this check because our AccessExclusiveLock doesn't protect us
+ * against stomping on our own foot, only other people's feet!
+ *
+ * For ALTER TABLE, the only case known to cause serious trouble is ALTER
+ * COLUMN TYPE, and some changes are obviously pretty benign, so this could
+ * possibly be relaxed to only error out for certain types of alterations.
+ * But the use-case for allowing any of these things is not obvious, so we
+ * won't work hard at it for now.
+ *
+ * We also reject these commands if there are any pending AFTER trigger events
+ * for the rel.  This is certainly necessary for the rewriting variants of
+ * ALTER TABLE, because they don't preserve tuple TIDs and so the pending
+ * events would try to fetch the wrong tuples.  It might be overly cautious
+ * in other cases, but again it seems better to err on the side of paranoia.
+ *
+ * REINDEX calls this with "rel" referencing the index to be rebuilt; here
+ * we are worried about active indexscans on the index.  The trigger-event
+ * check can be skipped, since we are doing no damage to the parent table.
+ *
+ * The statement name (eg, "ALTER TABLE") is passed for use in error messages.
+ */
+void
+CheckTableNotInUse(Relation rel, const char *stmt)
+{
+	int			expected_refcnt;
+
+	expected_refcnt = rel->rd_isnailed ? 2 : 1;
+	if (rel->rd_refcnt != expected_refcnt)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 /* translator: first %s is a SQL command, eg ALTER TABLE */
+				 errmsg("cannot %s \"%s\" because "
+						"it is being used by active queries in this session",
+						stmt, RelationGetRelationName(rel))));
+
+	if (rel->rd_rel->relkind != RELKIND_INDEX &&
+		AfterTriggerPendingOnRel(RelationGetRelid(rel)))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_IN_USE),
+				 /* translator: first %s is a SQL command, eg ALTER TABLE */
+				 errmsg("cannot %s \"%s\" because "
+						"it has pending trigger events",
+						stmt, RelationGetRelationName(rel))));
+}
 /*
  * AlterTableInternal
  *
@@ -3659,7 +3657,7 @@ ATSimpleRecursion(List **wqueue, Relation rel,
 			if (childrelid == relid)
 				continue;
 			childrel = relation_open(childrelid, AccessExclusiveLock);
-			CheckTableNotInUse(childrel);
+			CheckTableNotInUse(childrel, "ALTER TABLE");
 			ATPrepCmd(wqueue, childrel, cmd, false, true);
 			relation_close(childrel, NoLock);
 		}
@@ -3691,7 +3689,7 @@ ATOneLevelRecursion(List **wqueue, Relation rel,
 		Relation	childrel;
 
 		childrel = relation_open(childrelid, AccessExclusiveLock);
-		CheckTableNotInUse(childrel);
+		CheckTableNotInUse(childrel, "ALTER TABLE");
 		ATPrepCmd(wqueue, childrel, cmd, true, true);
 		relation_close(childrel, NoLock);
 	}
@@ -3882,7 +3880,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 			int32		ctypmod;
 
 			/* Okay if child matches by type */
-			ctypeId = typenameTypeId(NULL, colDef->typname, &ctypmod);
+			ctypeId = typenameTypeId(NULL, colDef->typename, &ctypmod);
 			if (ctypeId != childatt->atttypid ||
 				ctypmod != childatt->atttypmod)
 				ereport(ERROR,
@@ -3945,7 +3943,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 						MaxHeapAttributeNumber)));
 	i = minattnum + 1;
 
-	typeTuple = typenameType(NULL, colDef->typname, &typmod);
+	typeTuple = typenameType(NULL, colDef->typename, &typmod);
 	tform = (Form_pg_type) GETSTRUCT(typeTuple);
 	typeOid = HeapTupleGetOid(typeTuple);
 
@@ -3968,7 +3966,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	attribute->atttypmod = typmod;
 	attribute->attnum = i;
 	attribute->attbyval = tform->typbyval;
-	attribute->attndims = list_length(colDef->typname->arrayBounds);
+	attribute->attndims = list_length(colDef->typename->arrayBounds);
 	attribute->attstorage = tform->typstorage;
 	attribute->attalign = tform->typalign;
 	attribute->attnotnull = colDef->is_not_null;
@@ -4549,7 +4547,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 			Form_pg_attribute childatt;
 
 			childrel = heap_open(childrelid, AccessExclusiveLock);
-			CheckTableNotInUse(childrel);
+			CheckTableNotInUse(childrel, "ALTER TABLE");
 
 			tuple = SearchSysCacheCopyAttName(childrelid, colName);
 			if (!HeapTupleIsValid(tuple))		/* shouldn't happen */
@@ -5006,7 +5004,7 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 			 * two actual column types can be concurrently cast to that type.
 			 * (Otherwise, we'd fail to reject combinations such as int[] and
 			 * point[].)
-		 */
+			 */
 			Oid			input_typeids[2];
 			Oid			target_typeids[2];
 
@@ -5460,10 +5458,6 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 {
 	RangeVar   *myRel;
 	CreateTrigStmt *fk_trigger;
-	ListCell   *fk_attr;
-	ListCell   *pk_attr;
-	ObjectAddress trigobj,
-				constrobj;
 				
 	/*
 	 * Special for Greenplum Database: Ignore foreign keys for now, with warning
@@ -5633,7 +5627,7 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 					 errmsg("constraint \"%s\" does not exist",
 							constrName)));
 		/* Otherwise if more than one constraint deleted, notify */
-		else if (deleted > 1 && Gp_role != GP_ROLE_EXECUTE)
+		else if (deleted > 1)
 			ereport(NOTICE,
 					(errmsg("multiple constraints named \"%s\" were dropped",
 							constrName)));
@@ -5685,7 +5679,7 @@ ATPrepAlterColumnType(List **wqueue,
 						colName)));
 
 	/* Look up the target type */
-	targettype = typenameTypeId(NULL, typname, &targettypmod);
+	targettype = typenameTypeId(NULL, typename, &targettypmod);
 
 	/* make sure datatype is legal for a column */
 	CheckAttributeType(colName, targettype);
@@ -5749,7 +5743,7 @@ ATPrepAlterColumnType(List **wqueue,
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("column \"%s\" cannot be cast to type \"%s\"",
-						colName, TypeNameToString(typname))));
+						colName, TypeNameToString(typename))));
 
 	/*
 	 * Add a work queue item to make ATRewriteTable update the column
@@ -5780,7 +5774,7 @@ ATPrepAlterColumnType(List **wqueue,
 
 static void
 ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
-					  const char *colName, TypeName *typname)
+					  const char *colName, TypeName *typename)
 {
 	HeapTuple	heapTup;
 	Form_pg_attribute attTup;
@@ -5823,7 +5817,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 						colName)));
 
 	/* Look up the target type (should not fail, since prep found it) */
-	typeTuple = typenameType(NULL, typname, &targettypmod);
+	typeTuple = typenameType(NULL, typename, &targettypmod);
 	tform = (Form_pg_type) GETSTRUCT(typeTuple);
 	targettype = HeapTupleGetOid(typeTuple);
 
@@ -5878,7 +5872,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
 			errmsg("default for column \"%s\" cannot be cast to type \"%s\"",
-				   colName, TypeNameToString(typname))));
+				   colName, TypeNameToString(typename))));
 	}
 	else
 		defaultexpr = NULL;
@@ -6035,11 +6029,11 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 					{
 						tab->changedConstraintOids =
 							lappend_oid(tab->changedConstraintOids,
-													   foundObject.objectId);
+										foundObject.objectId);
 						tab->changedConstraintDefs =
 							lappend(tab->changedConstraintDefs,
 									defstring);
-				}
+					}
 				}
 				break;
 
@@ -6159,7 +6153,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	 */
 	attTup->atttypid = targettype;
 	attTup->atttypmod = targettypmod;
-	attTup->attndims = list_length(typname->arrayBounds);
+	attTup->attndims = list_length(typename->arrayBounds);
 	attTup->attlen = tform->typlen;
 	attTup->attbyval = tform->typbyval;
 	attTup->attalign = tform->typalign;
@@ -6285,7 +6279,7 @@ ATPostAlterTypeParse(char *cmd, List **wqueue)
 									 transformIndexStmt((IndexStmt *) stmt,
 														cmd));
 		else if (IsA(stmt, AlterTableStmt))
-		querytree_list = list_concat(querytree_list,
+			querytree_list = list_concat(querytree_list,
 							 transformAlterTableStmt((AlterTableStmt *) stmt,
 													 cmd));
 		else
@@ -6878,14 +6872,14 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	newrnode.spcNode = newTableSpace;
 
 	dstrel = smgropen(newrnode);
-	smgrcreate(dstrel, rel->rd_isLocalBuf, false);
+	smgrcreate(dstrel, rel->rd_istemp, false);
 
 	/* copy relation data to the new physical file */
 	copy_relation_data(rel, dstrel);
 
 	/* schedule unlinking old physical file */
 	RelationOpenSmgr(rel);
-	smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);
+	smgrscheduleunlink(rel->rd_smgr, rel->rd_istemp);
 
 	/*
 	 * Now drop smgr references.  The source was already dropped by
@@ -7067,7 +7061,7 @@ ATExecAddInherit(Relation child_rel, RangeVar *parent)
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_TABLE),
 			 errmsg("relation \"%s\" would be inherited from more than once",
-							RelationGetRelationName(parent_rel))));
+					RelationGetRelationName(parent_rel))));
 		if (inh->inhseqno > inhseqno)
 			inhseqno = inh->inhseqno;
 	}
@@ -7110,7 +7104,7 @@ ATExecAddInherit(Relation child_rel, RangeVar *parent)
 	MergeConstraintsIntoExisting(child_rel, parent_rel);
 
 	/*
-	 * OK, it looks valid.  Make the catalog entries that show inheritance.
+	 * OK, it looks valid.	Make the catalog entries that show inheritance.
 	 */
 	StoreCatalogInheritance1(RelationGetRelid(child_rel),
 							 RelationGetRelid(parent_rel),
@@ -7145,13 +7139,6 @@ decompile_conbin(HeapTuple contup, TupleDesc tupdesc)
 							   ObjectIdGetDatum(con->conrelid));
 	return DatumGetCString(DirectFunctionCall1(textout, expr));
 }
-/*
-	toast_idxid = index_create(toast_relid, toast_idxname, newIndexOid,
-							   indexInfo,
-							   BTREE_AM_OID,
-							   rel->rd_rel->reltablespace,
-							   classObjectId,
-							   true, false, true, false);*/
 
 /*
  * Check columns in child table match up with columns in parent, and increment
@@ -7211,8 +7198,8 @@ MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel)
 			if (attribute->attnotnull && !childatt->attnotnull)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
-					  errmsg("column \"%s\" in child table must be marked NOT NULL",
-							 attributeName)));
+				errmsg("column \"%s\" in child table must be marked NOT NULL",
+					   attributeName)));
 
 			/*
 			 * OK, bump the child column's inheritance count.  (If we fail
@@ -7522,18 +7509,18 @@ AlterTableNamespace(RangeVar *relation, const char *newschema)
 			break;
 		case RELKIND_SEQUENCE:
 			{
-	/* if it's an owned sequence, disallow moving it by itself */
-		Oid			tableId;
-		int32		colId;
+				/* if it's an owned sequence, disallow moving it by itself */
+				Oid			tableId;
+				int32		colId;
 
-		if (sequenceIsOwned(relid, &tableId, &colId))
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot move an owned sequence into another schema"),
-					 errdetail("Sequence \"%s\" is linked to table \"%s\".",
-							   RelationGetRelationName(rel),
-							   get_rel_name(tableId))));
-	}
+				if (sequenceIsOwned(relid, &tableId, &colId))
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot move an owned sequence into another schema"),
+					  errdetail("Sequence \"%s\" is linked to table \"%s\".",
+								RelationGetRelationName(rel),
+								get_rel_name(tableId))));
+			}
 			break;
 		case RELKIND_COMPOSITE_TYPE:
 			ereport(ERROR,
