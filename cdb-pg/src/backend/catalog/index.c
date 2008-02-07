@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/index.c,v 1.274 2006/10/04 00:29:50 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/index.c,v 1.291 2008/01/14 01:39:09 tgl Exp $
  *
  *
  * INTERFACE ROUTINES
@@ -34,10 +34,13 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
+#include "commands/tablecmds.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
@@ -77,6 +80,7 @@ static void AppendAttributeTuples(Relation indexRelation, int numatts);
 static void UpdateIndexRelation(Oid indexoid, Oid heapoid,
 					IndexInfo *indexInfo,
 					Oid *classOids,
+					int16 *coloptions,
 					bool primary,
 					bool isvalid);
 static void index_update_stats(Relation rel, bool hasindex, bool isprimary,
@@ -340,11 +344,13 @@ UpdateIndexRelation(Oid indexoid,
 					Oid heapoid,
 					IndexInfo *indexInfo,
 					Oid *classOids,
+					int16 *coloptions,
 					bool primary,
 					bool isvalid)
 {
 	int2vector *indkey;
 	oidvector  *indclass;
+	int2vector *indoption;
 	Datum		exprsDatum;
 	Datum		predDatum;
 	Datum		values[Natts_pg_index];
@@ -354,13 +360,14 @@ UpdateIndexRelation(Oid indexoid,
 	int			i;
 
 	/*
-	 * Copy the index key and opclass info into arrays (should we make the
-	 * caller pass them like this to start with?)
+	 * Copy the index key, opclass, and indoption info into arrays (should we
+	 * make the caller pass them like this to start with?)
 	 */
 	indkey = buildint2vector(NULL, indexInfo->ii_NumIndexAttrs);
-	indclass = buildoidvector(classOids, indexInfo->ii_NumIndexAttrs);
 	for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
 		indkey->values[i] = indexInfo->ii_KeyAttrNumbers[i];
+	indclass = buildoidvector(classOids, indexInfo->ii_NumIndexAttrs);
+	indoption = buildint2vector(coloptions, indexInfo->ii_NumIndexAttrs);
 
 	/*
 	 * Convert the index expressions (if any) to a text datum
@@ -410,8 +417,12 @@ UpdateIndexRelation(Oid indexoid,
 	values[Anum_pg_index_indisprimary - 1] = BoolGetDatum(primary);
 	values[Anum_pg_index_indisclustered - 1] = BoolGetDatum(false);
 	values[Anum_pg_index_indisvalid - 1] = BoolGetDatum(isvalid);
+	values[Anum_pg_index_indcheckxmin - 1] = BoolGetDatum(false);
+	/* we set isvalid and isready the same way */
+	values[Anum_pg_index_indisready - 1] = BoolGetDatum(isvalid);
 	values[Anum_pg_index_indkey - 1] = PointerGetDatum(indkey);
 	values[Anum_pg_index_indclass - 1] = PointerGetDatum(indclass);
+	values[Anum_pg_index_indoption - 1] = PointerGetDatum(indoption);
 	values[Anum_pg_index_indexprs - 1] = exprsDatum;
 	if (exprsDatum == (Datum) 0)
 		nulls[Anum_pg_index_indexprs - 1] = 'n';
@@ -449,6 +460,7 @@ UpdateIndexRelation(Oid indexoid,
  * accessMethodObjectId: OID of index AM to use
  * tableSpaceId: OID of tablespace to use
  * classObjectId: array of index opclass OIDs, one per index column
+ * coloptions: array of per-index-column indoption settings
  * reloptions: AM-specific options
  * isprimary: index is a PRIMARY KEY
  * isconstraint: index is owned by a PRIMARY KEY or UNIQUE constraint
@@ -465,7 +477,7 @@ Oid
 index_create(Oid heapRelationId,
 			 const char *indexRelationName,
 			 Oid indexRelationId,
-			 struct IndexInfo *indexInfo,
+			 IndexInfo *indexInfo,
 			 Oid accessMethodObjectId,
 			 Oid tableSpaceId,
 			 Oid *classObjectId,
@@ -529,16 +541,29 @@ index_create(Oid heapRelationId,
 	 * We cannot allow indexing a shared relation after initdb (because
 	 * there's no way to make the entry in other databases' pg_class).
 	 */
-	if (shared_relation &&  !IsBootstrapProcessingMode())
-		/* 
-		 * Special test for allowing upgrade from Greenplum Database 2.2 to 2.3.
-		 */
-		if (indexRelationId != ResQueueOidIndexId && 
-			indexRelationId != ResQueueRsqnameIndexId && 
-			indexRelationId != AuthIdRolResQueueIndexId)
+	if (shared_relation && !IsBootstrapProcessingMode())
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("shared indexes cannot be created after initdb")));
+
+	/*
+	 * Validate shared/non-shared tablespace (must check this before doing
+	 * GetNewRelFileNode, to prevent Assert therein)
+	 */
+	if (shared_relation)
+	{
+		if (tableSpaceId != GLOBALTABLESPACE_OID)
+			/* elog since this is not a user-facing error */
+			elog(ERROR,
+				 "shared relations must be placed in pg_global tablespace");
+	}
+	else
+	{
+		if (tableSpaceId == GLOBALTABLESPACE_OID)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("only shared relations can be placed in pg_global tablespace")));
+	}
 
 	if (get_relname_relid(indexRelationName, namespaceId))
 		ereport(ERROR,
@@ -634,7 +659,7 @@ index_create(Oid heapRelationId,
 	 * ----------------
 	 */
 	UpdateIndexRelation(indexRelationId, heapRelationId, indexInfo,
-						classObjectId, isprimary, !concurrent);
+						classObjectId, coloptions, isprimary, !concurrent);
 
 	/*
 	 * Register constraint and dependencies for the index.
@@ -676,7 +701,7 @@ index_create(Oid heapRelationId,
 
 			/* Shouldn't have any expressions */
 			if (indexInfo->ii_Expressions)
-				elog(ERROR, "constraints can't have index expressions");
+				elog(ERROR, "constraints cannot have index expressions");
 
 			conOid = CreateConstraintEntry(indexRelationName,
 										   namespaceId,
@@ -709,7 +734,7 @@ index_create(Oid heapRelationId,
 		}
 		else
 		{
-			bool	have_simple_col = false;
+			bool		have_simple_col = false;
 
 			/* Create auto dependencies on simply-referenced columns */
 			for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
@@ -727,15 +752,15 @@ index_create(Oid heapRelationId,
 			}
 
 			/*
-			 * It's possible for an index to not depend on any columns of
-			 * the table at all, in which case we need to give it a dependency
-			 * on the table as a whole; else it won't get dropped when the
-			 * table is dropped.  This edge case is not totally useless;
-			 * for example, a unique index on a constant expression can serve
-			 * to prevent a table from containing more than one row.
+			 * It's possible for an index to not depend on any columns of the
+			 * table at all, in which case we need to give it a dependency on
+			 * the table as a whole; else it won't get dropped when the table
+			 * is dropped.	This edge case is not totally useless; for
+			 * example, a unique index on a constant expression can serve to
+			 * prevent a table from containing more than one row.
 			 */
 			if (!have_simple_col &&
-				!contain_vars_of_level((Node *) indexInfo->ii_Expressions, 0) &&
+			 !contain_vars_of_level((Node *) indexInfo->ii_Expressions, 0) &&
 				!contain_vars_of_level((Node *) indexInfo->ii_Predicate, 0))
 			{
 				referenced.classId = RelationRelationId;
@@ -794,21 +819,6 @@ index_create(Oid heapRelationId,
 	else
 		Assert(indexRelation->rd_indexcxt != NULL);
 
-	/*
-	 * If we are playing tricks to upgrade Greenplum Database 2.2 to 2.3, we might be doing a CREATE INDEX 
-	 * on a shared index that already exists.  If so, we don't need or want to recreate it.
-	 * 
-	 * Does the index data already exist?
-	
-	 if (indexRelationId == ResQueueOidIndexId || 
-			indexRelationId == ResQueueRsqnameIndexId || 
-			indexRelationId == AuthIdRolResQueueIndexId)
-	 {
-	 	if (RelationGetNumberOfBlocks(indexRelation) > 0)
-	 		skip_build = true;
-	 }
-	 */
-	 
 	/*
 	 * If this is bootstrap (initdb) time, then we don't actually fill in the
 	 * index yet.  We'll be creating more indexes and classes later, so we
@@ -888,7 +898,7 @@ index_drop(Oid indexId)
 	 */
 	RelationOpenSmgr(userIndexRelation);
 	smgrscheduleunlink(userIndexRelation->rd_smgr,
-					   userIndexRelation->rd_isLocalBuf);
+					   userIndexRelation->rd_istemp);
 
 	/*
 	 * Close and flush the index's relcache entry, to ensure relcache doesn't
@@ -964,7 +974,7 @@ index_drop(Oid indexId)
  * just once per command, and then use it for (potentially) many tuples.
  * ----------------
  */
-struct IndexInfo *
+IndexInfo *
 BuildIndexInfo(Relation index)
 {
 	IndexInfo  *ii = makeNode(IndexInfo);
@@ -991,9 +1001,11 @@ BuildIndexInfo(Relation index)
 
 	/* other info */
 	ii->ii_Unique = indexStruct->indisunique;
-	ii->ii_Concurrent = false;	/* assume normal case */
+	ii->ii_ReadyForInserts = indexStruct->indisready;
 
-	ii->opaque = NULL;
+	/* initialize index-build state to default */
+	ii->ii_Concurrent = false;
+	ii->ii_BrokenHotChain = false;
 
 	return ii;
 }
@@ -1018,9 +1030,9 @@ BuildIndexInfo(Relation index)
  * ----------------
  */
 void
-FormIndexDatum(struct IndexInfo *indexInfo,
+FormIndexDatum(IndexInfo *indexInfo,
 			   TupleTableSlot *slot,
-			   struct EState *estate,
+			   EState *estate,
 			   Datum *values,
 			   bool *isnull)
 {
@@ -1241,9 +1253,12 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
  * setNewRelfilenode		- assign a new relfilenode value to the relation
  *
  * Caller must already hold exclusive lock on the relation.
+ *
+ * The relation is marked with relfrozenxid=freezeXid (InvalidTransactionId
+ * must be passed for indexes)
  */
 Oid
-setNewRelfilenode(Relation relation)
+setNewRelfilenode(Relation relation, TransactionId freezeXid)
 {
 	Oid			newrelfilenode;
 	RelFileNode newrnode;
@@ -1257,17 +1272,15 @@ setNewRelfilenode(Relation relation)
 		   relation->rd_rel->relkind == RELKIND_INDEX);
 	/* Can't change for shared tables or indexes */
 	Assert(!relation->rd_rel->relisshared);
+	/* Indexes must have Invalid frozenxid; other relations must not */
+	Assert((relation->rd_rel->relkind == RELKIND_INDEX &&
+			freezeXid == InvalidTransactionId) ||
+		   TransactionIdIsNormal(freezeXid));
 
 	/* Allocate a new relfilenode */
 	newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,
 									   relation->rd_rel->relisshared,
 									   NULL);
-
-	if (Gp_role == GP_ROLE_EXECUTE)
-	{
-		elog(DEBUG1, "setNewRelfilenode called in EXECUTE mode, "
-			 "newrelfilenode=%d", newrelfilenode);
-	}
 
 	/*
 	 * Find the pg_class tuple for the given relation.	This is not used
@@ -1289,17 +1302,18 @@ setNewRelfilenode(Relation relation)
 	newrnode.relNode = newrelfilenode;
 
 	srel = smgropen(newrnode);
-	smgrcreate(srel, relation->rd_isLocalBuf, false);
+	smgrcreate(srel, relation->rd_istemp, false);
 	smgrclose(srel);
 
 	/* schedule unlinking old relfilenode */
 	RelationOpenSmgr(relation);
-	smgrscheduleunlink(relation->rd_smgr, relation->rd_isLocalBuf);
+	smgrscheduleunlink(relation->rd_smgr, relation->rd_istemp);
 
 	/* update the pg_class row */
 	rd_rel->relfilenode = newrelfilenode;
 	rd_rel->relpages = 0;		/* it's empty until further notice */
 	rd_rel->reltuples = 0;
+	rd_rel->relfrozenxid = freezeXid;
 	simple_heap_update(pg_class, &tuple->t_self, tuple);
 	CatalogUpdateIndexes(pg_class, tuple);
 
@@ -1310,6 +1324,9 @@ setNewRelfilenode(Relation relation)
 	/* Make sure the relfilenode change is visible */
 	CommandCounterIncrement();
 	
+	/* Mark the rel as having a new relfilenode in current transaction */
+	RelationCacheMarkNewRelfilenode(relation);	
+
 	return newrelfilenode;
 }
 
@@ -1321,7 +1338,8 @@ setNewRelfilenode(Relation relation)
  * Caller must already hold exclusive lock on the relation.
  */
 Oid
-setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
+setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode, 
+					   TransactionId freezeXid)
 {
 
 	RelFileNode newrnode;
@@ -1335,6 +1353,10 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 		   relation->rd_rel->relkind == RELKIND_INDEX);
 	/* Can't change for shared tables or indexes */
 	Assert(!relation->rd_rel->relisshared);
+	/* Indexes must have Invalid frozenxid; other relations must not */
+	Assert((relation->rd_rel->relkind == RELKIND_INDEX &&
+			freezeXid == InvalidTransactionId) ||
+		   TransactionIdIsNormal(freezeXid));
 	
 	elog(DEBUG3, "setNewRelfilenodeToOid called.  newrelfilenode = %d",
 		 newrelfilenode);
@@ -1361,17 +1383,18 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 	newrnode.relNode = newrelfilenode;
 
 	srel = smgropen(newrnode);
-	smgrcreate(srel, relation->rd_isLocalBuf, false);
+	smgrcreate(srel, relation->rd_istemp, false);
 	smgrclose(srel);
 
 	/* schedule unlinking old relfilenode */
 	RelationOpenSmgr(relation);
-	smgrscheduleunlink(relation->rd_smgr, relation->rd_isLocalBuf);
+	smgrscheduleunlink(relation->rd_smgr, relation->rd_istemp);
 
 	/* update the pg_class row */
 	rd_rel->relfilenode = newrelfilenode;
 	rd_rel->relpages = 0;		/* it's empty until further notice */
 	rd_rel->reltuples = 0;
+	rd_rel->relfrozenxid = freezeXid;
 	simple_heap_update(pg_class, &tuple->t_self, tuple);
 	CatalogUpdateIndexes(pg_class, tuple);
 
@@ -1443,6 +1466,35 @@ index_build(Relation heapRelation,
 	SetUserIdAndContext(save_userid, save_secdefcxt);
 
 	/*
+	 * If we found any potentially broken HOT chains, mark the index as not
+	 * being usable until the current transaction is below the event horizon.
+	 * See src/backend/access/heap/README.HOT for discussion.
+	 */
+	if (indexInfo->ii_BrokenHotChain)
+	{
+		Oid			indexId = RelationGetRelid(indexRelation);
+		Relation	pg_index;
+		HeapTuple	indexTuple;
+		Form_pg_index indexForm;
+
+		pg_index = heap_open(IndexRelationId, RowExclusiveLock);
+
+		indexTuple = SearchSysCacheCopy(INDEXRELID,
+										ObjectIdGetDatum(indexId),
+										0, 0, 0);
+		if (!HeapTupleIsValid(indexTuple))
+			elog(ERROR, "cache lookup failed for index %u", indexId);
+		indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
+
+		indexForm->indcheckxmin = true;
+		simple_heap_update(pg_index, &indexTuple->t_self, indexTuple);
+		CatalogUpdateIndexes(pg_index, indexTuple);
+
+		heap_freetuple(indexTuple);
+		heap_close(pg_index, RowExclusiveLock);
+	}
+
+	/*
 	 * Update heap and index pg_class rows
 	 */
 	index_update_stats(heapRelation,
@@ -1480,11 +1532,16 @@ index_build(Relation heapRelation,
  * must keep track of the number of index tuples; we don't do so here because
  * the AM might reject some of the tuples for its own reasons, such as being
  * unable to store NULLs.
+ *
+ * A side effect is to set indexInfo->ii_BrokenHotChain to true if we detect
+ * any potentially broken HOT chains.  Currently, we set this if there are
+ * any RECENTLY_DEAD entries in a HOT chain, without trying very hard to
+ * detect whether they're really incompatible with the chain tip.
  */
 double
 IndexBuildHeapScan(Relation heapRelation,
 				   Relation indexRelation,
-				   struct IndexInfo *indexInfo,
+				   IndexInfo *indexInfo,
 				   IndexBuildCallback callback,
 				   void *callback_state)
 {
@@ -1499,6 +1556,8 @@ IndexBuildHeapScan(Relation heapRelation,
 	ExprContext *econtext;
 	Snapshot	snapshot;
 	TransactionId OldestXmin;
+	BlockNumber root_blkno = InvalidBlockNumber;
+	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
 
 	/*
 	 * sanity checks
@@ -1561,20 +1620,53 @@ IndexBuildHeapScan(Relation heapRelation,
 
 		CHECK_FOR_INTERRUPTS();
 
+		/*
+		 * When dealing with a HOT-chain of updated tuples, we want to index
+		 * the values of the live tuple (if any), but index it under the TID
+		 * of the chain's root tuple.  This approach is necessary to preserve
+		 * the HOT-chain structure in the heap. So we need to be able to find
+		 * the root item offset for every tuple that's in a HOT-chain.  When
+		 * first reaching a new page of the relation, call
+		 * heap_get_root_tuples() to build a map of root item offsets on the
+		 * page.
+		 *
+		 * It might look unsafe to use this information across buffer
+		 * lock/unlock.  However, we hold ShareLock on the table so no
+		 * ordinary insert/update/delete should occur; and we hold pin on the
+		 * buffer continuously while visiting the page, so no pruning
+		 * operation can occur either.
+		 *
+		 * Note the implied assumption that there is no more than one live
+		 * tuple per HOT-chain ...
+		 */
+		if (scan->rs_cblock != root_blkno)
+		{
+			Page		page = BufferGetPage(scan->rs_cbuf);
+
+			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
+			heap_get_root_tuples(page, root_offsets);
+			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
+
+			root_blkno = scan->rs_cblock;
+		}
+
 		if (snapshot == SnapshotAny)
 		{
 			/* do our own time qual check */
 			bool		indexIt;
 
+	recheck:
+
 			/*
 			 * We could possibly get away with not locking the buffer here,
 			 * since caller should hold ShareLock on the relation, but let's
-			 * be conservative about it.
+			 * be conservative about it.  (This remark is still correct even
+			 * with HOT-pruning: our pin on the buffer prevents pruning.)
 			 */
 			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
 
 			switch (HeapTupleSatisfiesVacuum(heapTuple->t_data, OldestXmin,
-											 scan->rs_cbuf, true))
+											 scan->rs_cbuf))
 			{
 				case HEAPTUPLE_DEAD:
 					/* Definitely dead, we can ignore it */
@@ -1592,10 +1684,29 @@ IndexBuildHeapScan(Relation heapRelation,
 					 * If tuple is recently deleted then we must index it
 					 * anyway to preserve MVCC semantics.  (Pre-existing
 					 * transactions could try to use the index after we finish
-					 * building it, and may need to see such tuples.) Exclude
-					 * it from unique-checking, however.
+					 * building it, and may need to see such tuples.)
+					 *
+					 * However, if it was HOT-updated then we must only index
+					 * the live tuple at the end of the HOT-chain.	Since this
+					 * breaks semantics for pre-existing snapshots, mark the
+					 * index as unusable for them.
+					 *
+					 * If we've already decided that the index will be unsafe
+					 * for old snapshots, we may as well stop indexing
+					 * recently-dead tuples, since there's no longer any
+					 * point.
 					 */
-					indexIt = true;
+					if (HeapTupleIsHotUpdated(heapTuple))
+					{
+						indexIt = false;
+						/* mark the index as unsafe for old snapshots */
+						indexInfo->ii_BrokenHotChain = true;
+					}
+					else if (indexInfo->ii_BrokenHotChain)
+						indexIt = false;
+					else
+						indexIt = true;
+					/* In any case, exclude the tuple from unique-checking */
 					tupleIsAlive = false;
 					break;
 				case HEAPTUPLE_INSERT_IN_PROGRESS:
@@ -1607,12 +1718,33 @@ IndexBuildHeapScan(Relation heapRelation,
 					 * followed by CREATE INDEX within a transaction.)	An
 					 * exception occurs when reindexing a system catalog,
 					 * because we often release lock on system catalogs before
-					 * committing.
+					 * committing.	In that case we wait for the inserting
+					 * transaction to finish and check again.  (We could do
+					 * that on user tables too, but since the case is not
+					 * expected it seems better to throw an error.)
 					 */
 					if (!TransactionIdIsCurrentTransactionId(
-								   HeapTupleHeaderGetXmin(heapTuple->t_data))
-						&& !IsSystemRelation(heapRelation))
-						elog(ERROR, "concurrent insert in progress");
+								  HeapTupleHeaderGetXmin(heapTuple->t_data)))
+					{
+						if (!IsSystemRelation(heapRelation))
+							elog(ERROR, "concurrent insert in progress");
+						else
+						{
+							/*
+							 * Must drop the lock on the buffer before we wait
+							 */
+							TransactionId xwait = HeapTupleHeaderGetXmin(heapTuple->t_data);
+
+							LockBuffer(scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
+							XactLockTableWait(xwait);
+							goto recheck;
+						}
+					}
+
+					/*
+					 * We must index such tuples, since if the index build
+					 * commits then they're good.
+					 */
 					indexIt = true;
 					tupleIsAlive = true;
 					break;
@@ -1625,14 +1757,45 @@ IndexBuildHeapScan(Relation heapRelation,
 					 * followed by CREATE INDEX within a transaction.)	An
 					 * exception occurs when reindexing a system catalog,
 					 * because we often release lock on system catalogs before
-					 * committing.
+					 * committing.	In that case we wait for the deleting
+					 * transaction to finish and check again.  (We could do
+					 * that on user tables too, but since the case is not
+					 * expected it seems better to throw an error.)
 					 */
 					Assert(!(heapTuple->t_data->t_infomask & HEAP_XMAX_IS_MULTI));
 					if (!TransactionIdIsCurrentTransactionId(
-								   HeapTupleHeaderGetXmax(heapTuple->t_data))
-						&& !IsSystemRelation(heapRelation))
-						elog(ERROR, "concurrent delete in progress");
-					indexIt = true;
+								  HeapTupleHeaderGetXmax(heapTuple->t_data)))
+					{
+						if (!IsSystemRelation(heapRelation))
+							elog(ERROR, "concurrent delete in progress");
+						else
+						{
+							/*
+							 * Must drop the lock on the buffer before we wait
+							 */
+							TransactionId xwait = HeapTupleHeaderGetXmax(heapTuple->t_data);
+
+							LockBuffer(scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
+							XactLockTableWait(xwait);
+							goto recheck;
+						}
+					}
+
+					/*
+					 * Otherwise, we have to treat these tuples just like
+					 * RECENTLY_DELETED ones.
+					 */
+					if (HeapTupleIsHotUpdated(heapTuple))
+					{
+						indexIt = false;
+						/* mark the index as unsafe for old snapshots */
+						indexInfo->ii_BrokenHotChain = true;
+					}
+					else if (indexInfo->ii_BrokenHotChain)
+						indexIt = false;
+					else
+						indexIt = true;
+					/* In any case, exclude the tuple from unique-checking */
 					tupleIsAlive = false;
 					break;
 				default:
@@ -1686,9 +1849,33 @@ IndexBuildHeapScan(Relation heapRelation,
 		 * pass the values[] and isnull[] arrays, instead.
 		 */
 
-		/* Call the AM's callback routine to process the tuple */
-		callback(indexRelation, heapTuple, values, isnull, tupleIsAlive,
-				 callback_state);
+		if (HeapTupleIsHeapOnly(heapTuple))
+		{
+			/*
+			 * For a heap-only tuple, pretend its TID is that of the root. See
+			 * src/backend/access/heap/README.HOT for discussion.
+			 */
+			HeapTupleData rootTuple;
+			OffsetNumber offnum;
+
+			rootTuple = *heapTuple;
+			offnum = ItemPointerGetOffsetNumber(&heapTuple->t_self);
+
+			Assert(OffsetNumberIsValid(root_offsets[offnum - 1]));
+
+			ItemPointerSetOffsetNumber(&rootTuple.t_self,
+									   root_offsets[offnum - 1]);
+
+			/* Call the AM's callback routine to process the tuple */
+			callback(indexRelation, &rootTuple, values, isnull, tupleIsAlive,
+					 callback_state);
+		}
+		else
+		{
+			/* Call the AM's callback routine to process the tuple */
+			callback(indexRelation, heapTuple, values, isnull, tupleIsAlive,
+					 callback_state);
+		}
 	}
 
 	heap_endscan(scan);
@@ -1708,8 +1895,15 @@ IndexBuildHeapScan(Relation heapRelation,
 /*
  * validate_index - support code for concurrent index builds
  *
- * We do a concurrent index build by first building the index normally via
- * index_create(), while holding a weak lock that allows concurrent
+ * We do a concurrent index build by first inserting the catalog entry for the
+ * index via index_create(), marking it not indisready and not indisvalid.
+ * Then we commit our transaction and start a new one, then we wait for all
+ * transactions that could have been modifying the table to terminate.	Now
+ * we know that any subsequently-started transactions will see the index and
+ * honor its constraints on HOT updates; so while existing HOT-chains might
+ * be broken with respect to the index, no currently live tuple will have an
+ * incompatible HOT update done to it.	We now build the index normally via
+ * index_build(), while holding a weak lock that allows concurrent
  * insert/update/delete.  Also, we index only tuples that are valid
  * as of the start of the scan (see IndexBuildHeapScan), whereas a normal
  * build takes care to include recently-dead tuples.  This is OK because
@@ -1720,11 +1914,10 @@ IndexBuildHeapScan(Relation heapRelation,
  * if we used HeapTupleSatisfiesVacuum).  This leaves us with an index that
  * does not contain any tuples added to the table while we built the index.
  *
- * Next, we commit the transaction so that the index becomes visible to other
- * backends, but it is marked not "indisvalid" to prevent the planner from
- * relying on it for indexscans.  Then we wait for all transactions that
- * could have been modifying the table to terminate.  At this point we
- * know that any subsequently-started transactions will see the index and
+ * Next, we mark the index "indisready" (but still not "indisvalid") and
+ * commit the second transaction and start a third.  Again we wait for all
+ * transactions that could have been modifying the table to terminate.	Now
+ * we know that any subsequently-started transactions will see the index and
  * insert their new tuples into it.  We then take a new reference snapshot
  * which is passed to validate_index().  Any tuples that are valid according
  * to this snap, but are not in the index, must be added to the index.
@@ -1744,7 +1937,7 @@ IndexBuildHeapScan(Relation heapRelation,
  * Building a unique index this way is tricky: we might try to insert a
  * tuple that is already dead or is in process of being deleted, and we
  * mustn't have a uniqueness failure against an updated version of the same
- * row.  We can check the tuple to see if it's already dead and tell
+ * row.  We could try to check the tuple to see if it's already dead and tell
  * index_insert() not to do the uniqueness check, but that still leaves us
  * with a race condition against an in-progress update.  To handle that,
  * we expect the index AM to recheck liveness of the to-be-inserted tuple
@@ -1754,7 +1947,8 @@ IndexBuildHeapScan(Relation heapRelation,
  * were alive at the time of the reference snapshot are gone; this is
  * necessary to be sure there are none left with a serializable snapshot
  * older than the reference (and hence possibly able to see tuples we did
- * not index).	Then we mark the index valid and commit.
+ * not index).	Then we mark the index "indisvalid" and commit.  Subsequent
+ * transactions will be able to use it for queries.
  *
  * Doing two full table scans is a brute-force strategy.  We could try to be
  * cleverer, eg storing new tuples in a special area of the table (perhaps
@@ -1801,9 +1995,10 @@ validate_index(Oid heapId, Oid indexId, Snapshot snapshot)
 	ivinfo.vacuum_full = false;
 	ivinfo.message_level = DEBUG2;
 	ivinfo.num_heap_tuples = -1;
+	ivinfo.strategy = NULL;
 
 	state.tuplesort = tuplesort_begin_datum(TIDOID,
-											TIDLessOperator,
+											TIDLessOperator, false,
 											maintenance_work_mem,
 											false);
 	state.htups = state.itups = state.tups_inserted = 0;
@@ -1872,6 +2067,9 @@ validate_index_heapscan(Relation heapRelation,
 	TupleTableSlot *slot;
 	EState	   *estate;
 	ExprContext *econtext;
+	BlockNumber root_blkno = InvalidBlockNumber;
+	OffsetNumber root_offsets[MaxHeapTuplesPerPage];
+	bool		in_index[MaxHeapTuplesPerPage];
 
 	/* state variables for the merge */
 	ItemPointer indexcursor = NULL;
@@ -1900,12 +2098,16 @@ validate_index_heapscan(Relation heapRelation,
 
 	/*
 	 * Prepare for scan of the base relation.  We need just those tuples
-	 * satisfying the passed-in reference snapshot.
+	 * satisfying the passed-in reference snapshot.  We must disable syncscan
+	 * here, because it's critical that we read from block zero forward to
+	 * match the sorted TIDs.
 	 */
-	scan = heap_beginscan(heapRelation, /* relation */
-						  snapshot,		/* seeself */
-						  0,	/* number of keys */
-						  NULL);	/* scan key */
+	scan = heap_beginscan_strat(heapRelation,	/* relation */
+								snapshot,		/* snapshot */
+								0,				/* number of keys */
+								NULL,			/* scan key */
+								true,			/* buffer access strategy OK */
+								false);			/* syncscan not OK */
 
 	/*
 	 * Scan all tuples matching the snapshot.
@@ -1913,39 +2115,86 @@ validate_index_heapscan(Relation heapRelation,
 	while ((heapTuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		ItemPointer heapcursor = &heapTuple->t_self;
+		ItemPointerData rootTuple;
+		OffsetNumber root_offnum;
 
 		CHECK_FOR_INTERRUPTS();
 
 		state->htups += 1;
 
 		/*
+		 * As commented in IndexBuildHeapScan, we should index heap-only
+		 * tuples under the TIDs of their root tuples; so when we advance onto
+		 * a new heap page, build a map of root item offsets on the page.
+		 *
+		 * This complicates merging against the tuplesort output: we will
+		 * visit the live tuples in order by their offsets, but the root
+		 * offsets that we need to compare against the index contents might be
+		 * ordered differently.  So we might have to "look back" within the
+		 * tuplesort output, but only within the current page.	We handle that
+		 * by keeping a bool array in_index[] showing all the
+		 * already-passed-over tuplesort output TIDs of the current page. We
+		 * clear that array here, when advancing onto a new heap page.
+		 */
+		if (scan->rs_cblock != root_blkno)
+		{
+			Page		page = BufferGetPage(scan->rs_cbuf);
+
+			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
+			heap_get_root_tuples(page, root_offsets);
+			LockBuffer(scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
+
+			memset(in_index, 0, sizeof(in_index));
+
+			root_blkno = scan->rs_cblock;
+		}
+
+		/* Convert actual tuple TID to root TID */
+		rootTuple = *heapcursor;
+		root_offnum = ItemPointerGetOffsetNumber(heapcursor);
+
+		if (HeapTupleIsHeapOnly(heapTuple))
+		{
+			root_offnum = root_offsets[root_offnum - 1];
+			Assert(OffsetNumberIsValid(root_offnum));
+			ItemPointerSetOffsetNumber(&rootTuple, root_offnum);
+		}
+
+		/*
 		 * "merge" by skipping through the index tuples until we find or pass
-		 * the current heap tuple.
+		 * the current root tuple.
 		 */
 		while (!tuplesort_empty &&
 			   (!indexcursor ||
-				ItemPointerCompare(indexcursor, heapcursor) < 0))
+				ItemPointerCompare(indexcursor, &rootTuple) < 0))
 		{
 			Datum		ts_val;
 			bool		ts_isnull;
 
 			if (indexcursor)
+			{
+				/*
+				 * Remember index items seen earlier on the current heap page
+				 */
+				if (ItemPointerGetBlockNumber(indexcursor) == root_blkno)
+					in_index[ItemPointerGetOffsetNumber(indexcursor) - 1] = true;
 				pfree(indexcursor);
+			}
+
 			tuplesort_empty = !tuplesort_getdatum(state->tuplesort, true,
 												  &ts_val, &ts_isnull);
 			Assert(tuplesort_empty || !ts_isnull);
 			indexcursor = (ItemPointer) DatumGetPointer(ts_val);
 		}
 
-		if (tuplesort_empty ||
-			ItemPointerCompare(indexcursor, heapcursor) > 0)
+		/*
+		 * If the tuplesort has overshot *and* we didn't see a match earlier,
+		 * then this tuple is missing from the index, so insert it.
+		 */
+		if ((tuplesort_empty ||
+			 ItemPointerCompare(indexcursor, &rootTuple) > 0) &&
+			!in_index[root_offnum - 1])
 		{
-			/*
-			 * We've overshot which means this heap tuple is missing from the
-			 * index, so insert it.
-			 */
-			bool		check_unique;
-
 			MemoryContextReset(econtext->ecxt_per_tuple_memory);
 
 			/* Set up for predicate or expression evaluation */
@@ -1973,38 +2222,29 @@ validate_index_heapscan(Relation heapRelation,
 						   isnull);
 
 			/*
-			 * If the tuple is already committed dead, we still have to put it
-			 * in the index (because some xacts might be able to see it), but
-			 * we might as well suppress uniqueness checking. This is just an
-			 * optimization because the index AM is not supposed to raise a
-			 * uniqueness failure anyway.
-			 */
-			if (indexInfo->ii_Unique)
-			{
-				/* must hold a buffer lock to call HeapTupleSatisfiesNow */
-				LockBuffer(scan->rs_cbuf, BUFFER_LOCK_SHARE);
-
-				if (HeapTupleSatisfiesNow(heapTuple->t_data, scan->rs_cbuf))
-					check_unique = true;
-				else
-					check_unique = false;
-
-				LockBuffer(scan->rs_cbuf, BUFFER_LOCK_UNLOCK);
-			}
-			else
-				check_unique = false;
-
-			/*
 			 * You'd think we should go ahead and build the index tuple here,
 			 * but some index AMs want to do further processing on the data
 			 * first. So pass the values[] and isnull[] arrays, instead.
 			 */
+
+			/*
+			 * If the tuple is already committed dead, you might think we
+			 * could suppress uniqueness checking, but this is no longer true
+			 * in the presence of HOT, because the insert is actually a proxy
+			 * for a uniqueness check on the whole HOT-chain.  That is, the
+			 * tuple we have here could be dead because it was already
+			 * HOT-updated, and if so the updating transaction will not have
+			 * thought it should insert index entries.	The index AM will
+			 * check the whole HOT-chain and correctly detect a conflict if
+			 * there is one.
+			 */
+
 			index_insert(indexRelation,
 						 values,
 						 isnull,
-						 heapcursor,
+						 &rootTuple,
 						 heapRelation,
-						 check_unique);
+						 indexInfo->ii_Unique);
 
 			state->tups_inserted += 1;
 		}
@@ -2078,6 +2318,21 @@ reindex_index(Oid indexId, Oid newrelfilenode)
 	iRel = index_open(indexId, AccessExclusiveLock);
 
 	/*
+	 * Don't allow reindex on temp tables of other backends ... their local
+	 * buffer manager is not going to cope.
+	 */
+	if (isOtherTempNamespace(RelationGetNamespace(iRel)))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot reindex temporary tables of other sessions")));
+
+	/*
+	 * Also check for active uses of the index in the current transaction;
+	 * we don't want to reindex underneath an open indexscan.
+	 */
+	//CheckTableNotInUse(iRel, "REINDEX INDEX");
+
+	/*
 	 * If it's a shared index, we must do inplace processing (because we have
 	 * no way to update relfilenode in other databases).  Otherwise we can do
 	 * it the normal transaction-safe way.
@@ -2119,11 +2374,12 @@ reindex_index(Oid indexId, Oid newrelfilenode)
 			 */
 			if (OidIsValid(newrelfilenode))
 			{
-				setNewRelfilenodeToOid(iRel, newrelfilenode);
+				setNewRelfilenodeToOid(iRel, newrelfilenode,
+									   InvalidTransactionId);
 				retrelfilenode = newrelfilenode;	
 			}
 			else
-				retrelfilenode = setNewRelfilenode(iRel);
+				retrelfilenode = setNewRelfilenode(iRel, InvalidTransactionId);
 		}
 
 		/* Initialize the index and rebuild */
@@ -2140,9 +2396,9 @@ reindex_index(Oid indexId, Oid newrelfilenode)
 	ResetReindexProcessing();
 
 	/*
-	 * If the index is marked invalid (ie, it's from a failed CREATE INDEX
-	 * CONCURRENTLY), we can now mark it valid.  This allows REINDEX to be
-	 * used to clean up in such cases.
+	 * If the index is marked invalid or not ready (ie, it's from a failed
+	 * CREATE INDEX CONCURRENTLY), we can now mark it valid.  This allows
+	 * REINDEX to be used to clean up in such cases.
 	 */
 	pg_index = heap_open(IndexRelationId, RowExclusiveLock);
 
@@ -2153,9 +2409,10 @@ reindex_index(Oid indexId, Oid newrelfilenode)
 		elog(ERROR, "cache lookup failed for index %u", indexId);
 	indexForm = (Form_pg_index) GETSTRUCT(indexTuple);
 
-	if (!indexForm->indisvalid)
+	if (!indexForm->indisvalid || !indexForm->indisready)
 	{
 		indexForm->indisvalid = true;
+		indexForm->indisready = true;
 		simple_heap_update(pg_index, &indexTuple->t_self, indexTuple);
 		CatalogUpdateIndexes(pg_index, indexTuple);
 	}

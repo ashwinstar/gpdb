@@ -1202,7 +1202,7 @@ OpfamilynameGetOpfid(Oid amid, const char *opfname)
 
 		opfid = GetSysCacheOid(OPFAMILYAMNAMENSP,
 							   ObjectIdGetDatum(amid),
-							   PointerGetDatum(opfname),
+							   PointerGetDatum((char *)opfname),
 							   ObjectIdGetDatum(namespaceId),
 							   0);
 		if (OidIsValid(opfid))
@@ -2638,7 +2638,8 @@ InitTempTableNamespace(void)
 		 * temp tables.  This works because the places that access the temp
 		 * namespace for my own backend skip permissions checks on it.
 		 */
-		namespaceId = NamespaceCreate(namespaceName, BOOTSTRAP_SUPERUSERID, 0);
+		namespaceId = NamespaceCreate(namespaceName, BOOTSTRAP_SUPERUSERID,
+									  InvalidOid);
 		/* Advance command counter to make namespace visible */
 		CommandCounterIncrement();
 	}
@@ -2664,7 +2665,8 @@ InitTempTableNamespace(void)
 								  0, 0, 0);
 	if (!OidIsValid(toastspaceId))
 	{
-		toastspaceId = NamespaceCreate(namespaceName, BOOTSTRAP_SUPERUSERID);
+		toastspaceId = NamespaceCreate(namespaceName, BOOTSTRAP_SUPERUSERID,
+									   InvalidOid);
 		/* Advance command counter to make namespace visible */
 		CommandCounterIncrement();
 	}

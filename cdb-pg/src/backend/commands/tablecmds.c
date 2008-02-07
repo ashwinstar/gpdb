@@ -1211,7 +1211,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 			if (OidIsValid(toast_relid))
 			{
 				rel = relation_open(toast_relid, AccessExclusiveLock);
-				new_toast_oid = setNewRelfilenode(rel,RecentXmin);
+				new_toast_oid = setNewRelfilenode(rel, RecentXmin);
 				heap_close(rel, NoLock);
 			}
 			
@@ -1270,7 +1270,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 			 * as the relfilenode value. The old storage file is scheduled for
 			 * deletion at commit.
 			 */
-			setNewRelfilenodeToOid(rel, new_heap_oid);
+			setNewRelfilenodeToOid(rel, new_heap_oid, RecentXmin);
 	
 			heap_relid = RelationGetRelid(rel);			
 			toast_relid = rel->rd_rel->reltoastrelid;
@@ -1283,7 +1283,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 			if (OidIsValid(toast_relid))
 			{
 				rel = relation_open(toast_relid, AccessExclusiveLock);
-				setNewRelfilenodeToOid(rel, new_toast_oid);
+				setNewRelfilenodeToOid(rel, new_toast_oid, RecentXmin);
 				heap_close(rel, NoLock);
 			}
 			elog(DEBUG5, "Truncate in EXECUTE mode: new heap oid %u, new "

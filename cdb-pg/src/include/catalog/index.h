@@ -102,9 +102,10 @@ extern void FormIndexDatum(struct IndexInfo *indexInfo,
 			   Datum *values,
 			   bool *isnull);
 
-extern void setNewRelfilenode(Relation relation, TransactionId freezeXid);
+extern Oid setNewRelfilenode(Relation relation, TransactionId freezeXid);
 
-extern Oid setNewRelfilenodeToOid(Relation relation, TransactionId freezeXid, Oid newrelfilenode);
+extern Oid setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode,
+								  TransactionId freezeXid);
 
 extern void index_build(Relation heapRelation,
 			Relation indexRelation,

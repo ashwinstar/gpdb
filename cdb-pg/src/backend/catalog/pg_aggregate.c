@@ -278,7 +278,6 @@ AggregateCreateWithOid(const char *aggName,
 							  PointerGetDatum(NULL),	/* allParamTypes */
 							  PointerGetDatum(NULL),	/* parameterModes */
 							  PointerGetDatum(NULL),	/* parameterNames */
-							  PointerGetDatum(NULL),	/* parameterNames */
 							  PointerGetDatum(NULL),	/* proconfig */
 							  1,	/* procost */
 							  0,		/* prorows */
