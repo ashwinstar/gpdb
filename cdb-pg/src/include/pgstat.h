@@ -618,6 +618,71 @@ extern PgStat_StatPortalEntry *pgstat_getportalentry(uint32 portalid,
 		if (pgstat_track_counts && (rel)->pgstat_info != NULL)		\
 			(rel)->pgstat_info->t_counts.t_blocks_hit++;			\
 	} while (0)
+/* Resource queue statistics: */
+#define pgstat_count_queue_exec(p, q) 									\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			((pentry)->queueentry).n_queries_exec++;					\
+		}																\
+	} while (0)
+#define pgstat_record_start_queue_exec(p, q) 							\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			(pentry)->t_exec_start = time(NULL);						\
+		}																\
+	} while (0)
+#define pgstat_record_end_queue_exec(p, q) 								\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			(pentry)->t_exec_end = time(NULL);							\
+			((pentry)->queueentry).elapsed_exec += 						\
+				(PgStat_Counter)((pentry)->t_exec_end - (pentry)->t_exec_start);			\
+		}																\
+	} while (0)
+#define pgstat_count_queue_wait(p, q) 									\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			((pentry)->queueentry).n_queries_wait++;					\
+		}																\
+	} while (0)
+#define pgstat_record_start_queue_wait(p, q) 							\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			(pentry)->t_wait_start = time(NULL);						\
+		}																\
+	} while (0)
+#define pgstat_record_end_queue_wait(p, q) 								\
+	do {																\
+		if (pgstat_collect_queuelevel) 									\
+		{																\
+			PgStat_StatPortalEntry  *pentry;							\
+																		\
+			pentry = pgstat_getportalentry(p, q);						\
+			(pentry)->t_wait_end = time(NULL);							\
+			((pentry)->queueentry).elapsed_wait += 						\
+				(PgStat_Counter)((pentry)->t_wait_end - (pentry)->t_wait_start);			\
+		}																\
+	} while (0)
 
 extern void pgstat_count_heap_insert(Relation rel);
 extern void pgstat_count_heap_update(Relation rel, bool hot);
