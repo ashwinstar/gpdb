@@ -898,7 +898,7 @@ index_drop(Oid indexId)
 	 */
 	RelationOpenSmgr(userIndexRelation);
 	smgrscheduleunlink(userIndexRelation->rd_smgr,
-					   userIndexRelation->rd_istemp);
+					   userIndexRelation->rd_isLocalBuf);
 
 	/*
 	 * Close and flush the index's relcache entry, to ensure relcache doesn't
@@ -1302,12 +1302,12 @@ setNewRelfilenode(Relation relation, TransactionId freezeXid)
 	newrnode.relNode = newrelfilenode;
 
 	srel = smgropen(newrnode);
-	smgrcreate(srel, relation->rd_istemp, false);
+	smgrcreate(srel, relation->rd_isLocalBuf, false);
 	smgrclose(srel);
 
 	/* schedule unlinking old relfilenode */
 	RelationOpenSmgr(relation);
-	smgrscheduleunlink(relation->rd_smgr, relation->rd_istemp);
+	smgrscheduleunlink(relation->rd_smgr, relation->rd_isLocalBuf);
 
 	/* update the pg_class row */
 	rd_rel->relfilenode = newrelfilenode;
@@ -1383,12 +1383,12 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode,
 	newrnode.relNode = newrelfilenode;
 
 	srel = smgropen(newrnode);
-	smgrcreate(srel, relation->rd_istemp, false);
+	smgrcreate(srel, relation->rd_isLocalBuf, false);
 	smgrclose(srel);
 
 	/* schedule unlinking old relfilenode */
 	RelationOpenSmgr(relation);
-	smgrscheduleunlink(relation->rd_smgr, relation->rd_istemp);
+	smgrscheduleunlink(relation->rd_smgr, relation->rd_isLocalBuf);
 
 	/* update the pg_class row */
 	rd_rel->relfilenode = newrelfilenode;

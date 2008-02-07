@@ -301,7 +301,7 @@ heap_create(const char *relname,
 	{
 		Assert(rel->rd_smgr == NULL);
 		RelationOpenSmgr(rel);
-		smgrcreate(rel->rd_smgr, rel->rd_istemp, false);
+		smgrcreate(rel->rd_smgr, rel->rd_isLocalBuf, false);
 	}
 
 	return rel;
