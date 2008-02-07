@@ -1908,9 +1908,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 		/* check if the transition type is polymorphic and if so resolve it */
 		aggtranstype = resolve_polymorphic_transtype(aggform->aggtranstype, 
-													 aggref->aggfnoid,
-											   		 inputTypes);
-															false);
+				aggref->aggfnoid,
+				inputTypes);
 											   
 		/* build expression trees using actual argument & result types */
 		build_aggregate_fnexprs(inputTypes,
@@ -2271,9 +2270,10 @@ resolve_polymorphic_transtype(Oid aggtranstype, Oid aggfnoid,
 
 		(void) get_func_signature(aggfnoid, &declaredArgTypes, &agg_nargs);
 		aggtranstype = enforce_generic_type_consistency(inputTypes,
-														declaredArgTypes,
-														agg_nargs,
-														aggtranstype);
+				declaredArgTypes,
+				agg_nargs,
+				aggtranstype,
+				true);
 		pfree(declaredArgTypes);
 	}
 	return aggtranstype;

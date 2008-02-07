@@ -280,11 +280,20 @@ init_sql_fcache(FmgrInfo *finfo)
 					can_run_local = false;
 					break;
 				}
-				else if (q->into != NULL || q ->setOperations != NULL || q->resultRelation > 0)
+				else if (
+#if 0
+	/* XXX pg8.3 merge. 
+         * At this moment, we don't know the rel yet.  
+	 * The corresponding rel is moved to queryDesc->plannedstmt->intoCluase->rel.
+	 * What should we do?
+	 */
+					 q->into != NULL || 
+#endif
+					 q ->setOperations != NULL || q->resultRelation > 0)
 				{
 					can_run_local = false;
 					break;
-                }
+				}
 				if (q->rtable != NULL)
 				{
 					ListCell * f;

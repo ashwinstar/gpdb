@@ -177,9 +177,6 @@ CreateExecutorState(void)
 									 ALLOCSET_DEFAULT_INITSIZE,
 									 ALLOCSET_DEFAULT_MAXSIZE);
 
-
-    es->showstatctx = parent_estate->showstatctx;                   /*CDB*/
-    return es;
 	/*
 	 * Make the EState node within the per-query context.  This way, we don't
 	 * need a separate pfree() operation for it at shutdown.
@@ -1414,7 +1411,7 @@ InitRootSlices(QueryDesc *queryDesc)
 			{
 				case CMD_SELECT:
 					Assert(slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0);
-					if (queryDesc->parsetree->into != NULL)
+					if (queryDesc->plannedstmt->intoClause->rel != NULL)
 					{
 						slice->gangType = GANGTYPE_PRIMARY_WRITER;
 						slice->gangSize = getgpsegmentCount();

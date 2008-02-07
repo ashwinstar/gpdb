@@ -109,7 +109,7 @@ MultiExecHash(HashState *node)
 			break;
 		/* We have to compute the hash value */
 		econtext->ecxt_innertuple = slot;
-		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, false,
+		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, false, false,
 								 &hashvalue))
 		{
 			ExecHashTableInsert(hashtable, slot, hashvalue);

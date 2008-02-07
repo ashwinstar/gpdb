@@ -87,7 +87,7 @@ ExecMaterial(MaterialState *node)
 #else
 			ts == NULL
 #endif
-			&& (ma->share_type != SHARE_NOTSHARED || node->randomAccess)
+			&& (ma->share_type != SHARE_NOTSHARED || node->eflags != 0)
 		)
 	{
 		/* 

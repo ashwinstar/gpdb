@@ -2755,13 +2755,14 @@ initWindowStatePerLevel(WindowState *wstate, Window *node)
 			prev_key = key;
 
 		/* Find comparison functions */
-		lvl->eqfunctions = execTuplesMatchPrepare(desc,
-								   				  lvl->numSortCols,
-								   				  lvl->sortColIdx);
+		lvl->eqfunctions = execTuplesMatchPrepare(
+				lvl->numSortCols,
+				lvl->sortOperators
+				);
 
 		lvl->ltfunctions = get_ltfuncs(desc,
-									   lvl->numSortCols,
-									   lvl->sortColIdx);
+				lvl->numSortCols,
+				lvl->sortColIdx);
 
 		/* Set the frame for this level */
 		lvl->is_rows = false;
@@ -5626,9 +5627,14 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	if (node->numPartCols > 0)
 	{
 		wstate->eqfunctions =
-			execTuplesMatchPrepare(desc,
-								   node->numPartCols,
-								   node->partColIdx);
+			execTuplesMatchPrepare(
+					node->numPartCols,
+					/* XXX PG8.3 merge.  The following
+					 * should be sort function oids, where
+					 * can we get them? 
+					 */
+					NULL
+					);
 	}
 	else
 		wstate->eqfunctions = NULL;

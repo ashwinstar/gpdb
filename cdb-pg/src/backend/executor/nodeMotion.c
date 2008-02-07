@@ -79,8 +79,8 @@ typedef struct CdbTupleHeapInfo
 typedef struct CdbMergeComparatorContext
 {
 	FmgrInfo           *sortFunctions;
-	SortFunctionKind   *sortFnKinds;
-	int			        numSortCols;
+ 	int 		   *sortFlags;	
+	int	            numSortCols;
 	AttrNumber         *sortColIdx;
 	TupleDesc	   tupDesc;
 	MemTupleBinding    *mt_bind;
@@ -1027,7 +1027,7 @@ CdbMergeComparator(void *lhs, void *rhs, void *context)
     HeapTuple           ltup = linfo->tuple;
     HeapTuple           rtup = rinfo->tuple;
     FmgrInfo           *sortFunctions;
-    SortFunctionKind   *sortFnKinds;
+    int   *sortFlags;
     int                 numSortCols;
     AttrNumber         *sortColIdx;
     TupleDesc           tupDesc;
@@ -1036,7 +1036,7 @@ CdbMergeComparator(void *lhs, void *rhs, void *context)
     Assert(ltup && rtup);
 
     sortFunctions   = ctx->sortFunctions;
-    sortFnKinds     = ctx->sortFnKinds;
+    sortFlags     = ctx->sortFlags;
     numSortCols     = ctx->numSortCols;
     sortColIdx      = ctx->sortColIdx;
     tupDesc         = ctx->tupDesc;
@@ -1061,7 +1061,7 @@ CdbMergeComparator(void *lhs, void *rhs, void *context)
 		datum2 = heap_getattr(rtup, attno, tupDesc, &isnull2);
 
         compare = ApplySortFunction(&sortFunctions[nkey],
-                                    sortFnKinds[nkey],
+                                    sortFlags[nkey],
                                     datum1, isnull1,
                                     datum2, isnull2);
         if (compare != 0)
@@ -1099,7 +1099,7 @@ CdbMergeComparator_CreateContext(TupleDesc      tupDesc,
 
     /* Allocate the sort function arrays. */
     ctx->sortFunctions = (FmgrInfo *)palloc0(numSortCols * sizeof(FmgrInfo));
-    ctx->sortFnKinds = (SortFunctionKind *)palloc0(numSortCols * sizeof(SortFunctionKind));
+    ctx->sortFlags = (int *)palloc0(numSortCols * sizeof(int)); 
 
     /* Load the sort functions. */
     for (i = 0; i < numSortCols; i++)
@@ -1110,8 +1110,9 @@ CdbMergeComparator_CreateContext(TupleDesc      tupDesc,
 
         /* select a function that implements the sort operator */
         SelectSortFunction(sortOperators[i],
+			   false,
                            &sortFunction,
-                           &ctx->sortFnKinds[i]);
+                           &ctx->sortFlags[i]);
 
         fmgr_info(sortFunction, &ctx->sortFunctions[i]);
     }
@@ -1125,8 +1126,8 @@ CdbMergeComparator_DestroyContext(CdbMergeComparatorContext *ctx)
 {
     if (!ctx)
         return;
-    if (ctx->sortFnKinds)
-        pfree(ctx->sortFnKinds);
+    if (ctx->sortFlags)
+        pfree(ctx->sortFlags);
     if (ctx->sortFunctions)
         pfree(ctx->sortFunctions);
 }                               /* CdbMergeComparator_DestroyContext */

@@ -117,7 +117,7 @@ ShareInputNext(ShareInputScanState *node)
 			
 			node->ts_state = tuplesort_begin_heap_file_readerwriter(
 					rwfile_prefix, false,
-					NULL, 0, NULL, NULL, work_mem, true);
+					NULL, 0, NULL, NULL, NULL, work_mem, true);
 			tuplesort_begin_pos((Tuplesortstate *) node->ts_state, (TuplesortPos **)(&node->ts_pos));
 			tuplesort_rescan_pos((Tuplesortstate *) node->ts_state, (TuplesortPos *)node->ts_pos); 
 		}

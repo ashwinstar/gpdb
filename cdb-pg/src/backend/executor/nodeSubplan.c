@@ -664,7 +664,7 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 
 	sstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecSubPlan;
 	sstate->xprstate.expr = (Expr *) subplan;
-    node->cdbextratextbuf = NULL;
+	sstate->cdbextratextbuf = NULL;
 
 	/* Link the SubPlanState to already-initialized subplan */
 	sstate->planstate = (PlanState *) list_nth(estate->es_subplanstates,
@@ -674,31 +674,37 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 	sstate->testexpr = ExecInitExpr((Expr *) subplan->testexpr, parent);
 	sstate->args = (List *) ExecInitExpr((Expr *) subplan->args, parent);
 
+#if 0
+	/* XXX PG8.3 merge.  Now subplan does not have a sp_estate any more.  Do we 
+	 * still need to do the "load" stuff?
+	 */
+
 	/*
-     * "Loan" the global slice table and map to the subplan EState.  The
+	 * "Loan" the global slice table and map to the subplan EState.  The
 	 * global state is already set up by the code that called up, e.g., if
 	 * this is an initPlan subplan, then the current slice will be a root.
 	 */
-    if (subplan->qDispSliceId > 0)
-    {
-        sp_estate->es_cur_root_idx = subplan->qDispSliceId;
-	    sp_estate->es_cur_slice_idx = subplan->qDispSliceId;
+	if (subplan->qDispSliceId > 0)
+	{
+		sp_estate->es_cur_root_idx = subplan->qDispSliceId;
+		sp_estate->es_cur_slice_idx = subplan->qDispSliceId;
 
-        Assert(estate->es_sliceTable != NULL &&
-               subplan->qDispSliceId > estate->es_sliceTable->nMotions &&
-               subplan->qDispSliceId <= estate->es_sliceTable->nMotions +
-                                            estate->es_sliceTable->nSubplans);
-    }
-    else
-    {
-	    sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
-	    sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
-    }
+		Assert(estate->es_sliceTable != NULL &&
+				subplan->qDispSliceId > estate->es_sliceTable->nMotions &&
+				subplan->qDispSliceId <= estate->es_sliceTable->nMotions +
+				estate->es_sliceTable->nSubplans);
+	}
+	else
+	{
+		sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
+		sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
+	}
 	sp_estate->es_sliceTable = estate->es_sliceTable;
 	sp_estate->es_slice_map = estate->es_slice_map;
 
 	sp_estate->motionlayer_context = estate->motionlayer_context;
-	
+#endif
+
 	/*
 	 */
 	sstate->curTuple = NULL;
@@ -950,20 +956,20 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	Query	   *query;
 	QueryDesc  *queryDesc = NULL;
 
-    struct CdbDispatchResults  *primaryResults = NULL;
+	struct CdbDispatchResults  *primaryResults = NULL;
 	struct CdbDispatchCmdThreads  *dispatchThreads = NULL; 
 	bool		needDtxTwoPhase;
 	bool		shouldDispatch = false;
 	volatile bool   shouldTeardownInterconnect = false;
-    volatile bool   explainRecvStats = false;
+	volatile bool   explainRecvStats = false;
 
 	if (Gp_role == GP_ROLE_DISPATCH &&
-		planstate != NULL &&
-		planstate->plan != NULL &&
-		planstate->plan->dispatch == DISPATCH_PARALLEL)
+			planstate != NULL &&
+			planstate->plan != NULL &&
+			planstate->plan->dispatch == DISPATCH_PARALLEL)
 		shouldDispatch = true;
 
-    node->cdbextratextbuf = NULL;
+	node->cdbextratextbuf = NULL;
 
 	/*
 	 * Let's initialize 'queryDesc' before our PG_TRY, to ensure the correct
@@ -974,7 +980,11 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	{
 		/* Fake a Query node to hold the range table. */
 		query = makeNode(Query);
-		query->rtable = subplan->rtable;
+
+		/* XXX PG 8.3 Merge.
+		 * XXX where is the range table now ? 
+		 */
+		query->rtable = econtext->ecxt_estate->es_range_table;
 		query->commandType = CMD_SELECT;
 
 		/*
@@ -984,24 +994,23 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 * the initplan root of interest.
 		 */
 		queryDesc = CreateQueryDesc(
-									gbl_queryDesc->parsetree,
-									gbl_queryDesc->plantree,
-									gbl_queryDesc->snapshot,
-									gbl_queryDesc->crosscheck_snapshot,
-									NULL,		/* Null destination for the QE */
-									gbl_queryDesc->params,
-									gbl_queryDesc->doInstrument
-			);
+				gbl_queryDesc->plannedstmt,
+				gbl_queryDesc->snapshot,
+				gbl_queryDesc->crosscheck_snapshot,
+				NULL,		/* Null destination for the QE */
+				gbl_queryDesc->params,
+				gbl_queryDesc->doInstrument
+				);
 
-        /* 
-         * CDB TODO: Should this use CreateSubExecutorState()?  
-         * Should FreeExecutorState() eventually be called?
-         * Why do we need this at all?    ... kh 4/2007
-         */
+		/* 
+		 * CDB TODO: Should this use CreateSubExecutorState()?  
+		 * Should FreeExecutorState() eventually be called?
+		 * Why do we need this at all?    ... kh 4/2007
+		 */
 		queryDesc->estate = CreateExecutorState();
 
-        queryDesc->showstatctx = gbl_queryDesc->showstatctx;
-        queryDesc->estate->showstatctx = gbl_queryDesc->showstatctx;
+		queryDesc->showstatctx = gbl_queryDesc->showstatctx;
+		queryDesc->estate->showstatctx = gbl_queryDesc->showstatctx;
 		queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
 		queryDesc->estate->es_cur_root_idx = gbl_queryDesc->estate->es_cur_root_idx;
 		queryDesc->estate->es_cur_slice_idx = gbl_queryDesc->estate->es_cur_slice_idx;
@@ -1027,26 +1036,26 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 				 */
 				cdbdisp_reconfigureFtsIfNecessary();
 			}
-		
+
 			/*
 			 * This call returns after launching the threads that send the
-             * command to the appropriate segdbs.  It does not wait for them
-             * to finish unless an error is detected before all are dispatched.
+			 * command to the appropriate segdbs.  It does not wait for them
+			 * to finish unless an error is detected before all are dispatched.
 			 */
 			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &primaryResults, NULL, &dispatchThreads);
 
 
 			SetupSequenceServer(queryDesc->estate->es_sliceTable);
-			
+
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
 			 */
 			shouldTeardownInterconnect = true;
 			Assert(!(queryDesc->estate->interconnect_context));
 			SetupInterconnect((ChunkTransportState **)&queryDesc->estate->interconnect_context,
-							   queryDesc->estate->es_sliceTable,
-							   queryDesc->estate->es_sliceTable->localSlice,
-							   queryDesc->estate->motionlayer_context);
+					queryDesc->estate->es_sliceTable,
+					queryDesc->estate->es_sliceTable->localSlice,
+					queryDesc->estate->motionlayer_context);
 			Assert((queryDesc->estate->interconnect_context));
 
 			ExecUpdateTransportState(planstate, queryDesc->estate->interconnect_context);
@@ -1055,18 +1064,18 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		/*
 		 * Must switch to child query's per-query memory context.
 		 */
-		oldcontext = MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
+		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory); 
 
 		if (subLinkType == ANY_SUBLINK ||
-			subLinkType == ALL_SUBLINK)
+				subLinkType == ALL_SUBLINK)
 			elog(ERROR, "ANY/ALL subselect unsupported as initplan");
 
 		if (planstate->chgParam != NULL)
 			ExecReScan(planstate, NULL);
 
 		for (slot = ExecProcNode(planstate);
-			 !TupIsNull(slot);
-			 slot = ExecProcNode(planstate))
+				!TupIsNull(slot);
+				slot = ExecProcNode(planstate))
 		{
 			TupleDesc	tdesc = slot->tts_tupleDescriptor;
 			int			i = 1;
@@ -1098,18 +1107,18 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 				found = true;
 				/* stash away current value */
-			Assert(subplan->firstColType == tdesc->attrs[0]->atttypid);
+				Assert(subplan->firstColType == tdesc->attrs[0]->atttypid);
 				dvalue = slot_getattr(slot, 1, &disnull);
 				astate = accumArrayResult(astate, dvalue, disnull,
-										  tdesc->attrs[0]->atttypid,
-										  oldcontext);
+						tdesc->attrs[0]->atttypid,
+						oldcontext);
 				/* keep scanning subplan to collect all values */
 				continue;
 			}
 
 			if (found &&
-				(subLinkType == EXPR_SUBLINK ||
-				 subLinkType == ROWCOMPARE_SUBLINK))
+					(subLinkType == EXPR_SUBLINK ||
+					 subLinkType == ROWCOMPARE_SUBLINK))
 				ereport(ERROR,
 						(errcode(ERRCODE_CARDINALITY_VIOLATION),
 						 errmsg("more than one row returned by a subquery used as an expression")));
@@ -1117,21 +1126,20 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			found = true;
 
 			/*
-		 	 * We need to copy the subplan's tuple into our own context, in case
-		 	 * any of the params are pass-by-ref type --- the pointers stored in
-		 	 * the param structs will point at this copied tuple! node->curTuple
-		 	 * keeps track of the copied tuple for eventual freeing.
+			 * We need to copy the subplan's tuple into our own context, in case
+			 * any of the params are pass-by-ref type --- the pointers stored in
+			 * the param structs will point at this copied tuple! node->curTuple
+			 * keeps track of the copied tuple for eventual freeing.
 			 */
 			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
 			if (node->curTuple)
 				pfree(node->curTuple);
 
 			node->curTuple = ExecCopySlotMemTuple(slot);
-			MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
 
 			/*
-			* Now set all the setParam params from the columns of the tuple
-			*/
+			 * Now set all the setParam params from the columns of the tuple
+			 */
 			foreach(l, subplan->setParam)
 			{
 				int			paramid = lfirst_int(l);
@@ -1143,25 +1151,25 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			}
 		}
 
-	if (subLinkType == ARRAY_SUBLINK)
-	{
-		/* There can be only one param... */
-		int			paramid = linitial_int(subplan->setParam);
-		ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
-
-		prm->execPlan = NULL;
-		/* We build the result in query context so it won't disappear */
-		if (astate != NULL)
-			prm->value = makeArrayResult(astate,
-										 econtext->ecxt_per_query_memory);
-		else
+		if (subLinkType == ARRAY_SUBLINK)
 		{
-			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
-			prm->value = PointerGetDatum(construct_empty_array(subplan->firstColType));
+			/* There can be only one param... */
+			int			paramid = linitial_int(subplan->setParam);
+			ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
+
+			prm->execPlan = NULL;
+			/* We build the result in query context so it won't disappear */
+			if (astate != NULL)
+				prm->value = makeArrayResult(astate,
+						econtext->ecxt_per_query_memory);
+			else
+			{
+				MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+				prm->value = PointerGetDatum(construct_empty_array(subplan->firstColType));
+			}
+			prm->isnull = false;
 		}
-		prm->isnull = false;
-	}
-	else if (!found)
+		else if (!found)
 		{
 			if (subLinkType == EXISTS_SUBLINK)
 			{
@@ -1198,105 +1206,105 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			prm->isnull = false;
 		}
 
-        /*
-         * If dispatched to QEs, wait for completion and check for errors.
-         */
-        if (primaryResults)
-        {
-            struct CdbDispatchResults  *pr = primaryResults;
-			struct CdbDispatchCmdThreads  *dThreads = dispatchThreads; 
-
-            /* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
-            if (planstate->instrument)
-            {
-                MemoryContext   savecxt;
-
-                /* Wait for all gangs to finish. */
-                CdbCheckDispatchResult(dThreads, false);	
-
-                /* Allocate buffer to pass extra message text to cdbexplain. */
-                savecxt = MemoryContextSwitchTo(gbl_queryDesc->estate->es_query_cxt);
-                node->cdbextratextbuf = makeStringInfo();
-                MemoryContextSwitchTo(savecxt);
-
-                /* Jam stats into subplan's Instrumentation nodes. */
-                explainRecvStats = true;
-                cdbexplain_recvExecStats(planstate,
-                                         primaryResults,
-                                         queryDesc->estate->es_cur_slice_idx,
-                                         econtext->ecxt_estate->showstatctx);
-            }
-
-            /*
-             * Wait for all gangs to finish.  Check and free the results.
-             * If the dispatcher or any QE had an error, report it and
-             * exit to our error handler (below) via PG_THROW.
-             */
-            primaryResults = NULL;
-            cdbdisp_finishCommand(pr, NULL, dThreads);
-        }
-
-		/* teardown the sequence server */
-		TeardownSequenceServer();
-		
-        /* Clean up the interconnect. */
-        if (shouldTeardownInterconnect)
-        {
-        	shouldTeardownInterconnect = false;
-
-	        TeardownInterconnect(queryDesc->estate->interconnect_context, 
-								 queryDesc->estate->motionlayer_context,
-								 false); /* following success on QD */	
-		}
-
-    }
-	PG_CATCH();
-	{
-        /* If EXPLAIN ANALYZE, collect local and distributed execution stats. */
-        if (planstate->instrument)
-        {
-            cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
-            if (!explainRecvStats)
-            {
-                /* Wait for all gangs to finish.  Cancel slowpokes. */
-                CdbCheckDispatchResult(dispatchThreads, true);
-
-                cdbexplain_recvExecStats(planstate,
-                                         primaryResults,
-                                         queryDesc->estate->es_cur_slice_idx,
-                                         econtext->ecxt_estate->showstatctx);
-            }
-        }
-
-        /*
-		 * Request any commands still executing on qExecs to stop.
-		 * Wait for them to finish and clean up the dispatching structures.
-         * Replace current error info with QE error info if more interesting.
+		/*
+		 * If dispatched to QEs, wait for completion and check for errors.
 		 */
 		if (primaryResults)
-            cdbdisp_handleError(primaryResults, NULL, dispatchThreads);
-		
+		{
+			struct CdbDispatchResults  *pr = primaryResults;
+			struct CdbDispatchCmdThreads  *dThreads = dispatchThreads; 
+
+			/* If EXPLAIN ANALYZE, collect execution stats from qExecs. */
+			if (planstate->instrument)
+			{
+				MemoryContext   savecxt;
+
+				/* Wait for all gangs to finish. */
+				CdbCheckDispatchResult(dThreads, false);	
+
+				/* Allocate buffer to pass extra message text to cdbexplain. */
+				savecxt = MemoryContextSwitchTo(gbl_queryDesc->estate->es_query_cxt);
+				node->cdbextratextbuf = makeStringInfo();
+				MemoryContextSwitchTo(savecxt);
+
+				/* Jam stats into subplan's Instrumentation nodes. */
+				explainRecvStats = true;
+				cdbexplain_recvExecStats(planstate,
+						primaryResults,
+						queryDesc->estate->es_cur_slice_idx,
+						econtext->ecxt_estate->showstatctx);
+			}
+
+			/*
+			 * Wait for all gangs to finish.  Check and free the results.
+			 * If the dispatcher or any QE had an error, report it and
+			 * exit to our error handler (below) via PG_THROW.
+			 */
+			primaryResults = NULL;
+			cdbdisp_finishCommand(pr, NULL, dThreads);
+		}
+
 		/* teardown the sequence server */
 		TeardownSequenceServer();
-		
-		
-        /*
-         * Clean up the interconnect.
-         * CDB TODO: Is this needed following failure on QD?
-         */
-        if (shouldTeardownInterconnect)
+
+		/* Clean up the interconnect. */
+		if (shouldTeardownInterconnect)
+		{
+			shouldTeardownInterconnect = false;
+
+			TeardownInterconnect(queryDesc->estate->interconnect_context, 
+					queryDesc->estate->motionlayer_context,
+					false); /* following success on QD */	
+		}
+
+	}
+	PG_CATCH();
+	{
+		/* If EXPLAIN ANALYZE, collect local and distributed execution stats. */
+		if (planstate->instrument)
+		{
+			cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
+			if (!explainRecvStats)
+			{
+				/* Wait for all gangs to finish.  Cancel slowpokes. */
+				CdbCheckDispatchResult(dispatchThreads, true);
+
+				cdbexplain_recvExecStats(planstate,
+						primaryResults,
+						queryDesc->estate->es_cur_slice_idx,
+						econtext->ecxt_estate->showstatctx);
+			}
+		}
+
+		/*
+		 * Request any commands still executing on qExecs to stop.
+		 * Wait for them to finish and clean up the dispatching structures.
+		 * Replace current error info with QE error info if more interesting.
+		 */
+		if (primaryResults)
+			cdbdisp_handleError(primaryResults, NULL, dispatchThreads);
+
+		/* teardown the sequence server */
+		TeardownSequenceServer();
+
+
+		/*
+		 * Clean up the interconnect.
+		 * CDB TODO: Is this needed following failure on QD?
+		 */
+		if (shouldTeardownInterconnect)
 			TeardownInterconnect(queryDesc->estate->interconnect_context,
-								 queryDesc->estate->motionlayer_context,
-								 true);
+					queryDesc->estate->motionlayer_context,
+					true);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-    /* If EXPLAIN ANALYZE, collect local execution stats. */
-    if (planstate->instrument)
-        cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
-   
-    MemoryContextSwitchTo(oldcontext);
+	/* If EXPLAIN ANALYZE, collect local execution stats. */
+	if (planstate->instrument)
+		cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
+
+	MemoryContextSwitchTo(oldcontext);
 }
 
 /*

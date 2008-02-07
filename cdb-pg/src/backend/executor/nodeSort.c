@@ -102,8 +102,9 @@ ExecSort(SortState *node)
 					rwfile_prefix, true,
 					tupDesc,
 					plannode->numCols,
-					plannode->sortOperators,
 					plannode->sortColIdx,
+					plannode->sortOperators,
+					plannode->nullsFirst,
 					work_mem,
 					true
 					); 
@@ -111,12 +112,12 @@ ExecSort(SortState *node)
 		else
 		{
 			tuplesortstate = tuplesort_begin_heap(tupDesc,
-											  plannode->numCols,
-											  plannode->sortColIdx,
-											  plannode->sortOperators,
-											  plannode->nullsFirst,
-											  work_mem,
-											  node->randomAccess);
+					plannode->numCols,
+					plannode->sortColIdx,
+					plannode->sortOperators,
+					plannode->nullsFirst,
+					work_mem,
+					node->randomAccess);
 		}
 
 		Assert(tuplesortstate);

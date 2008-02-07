@@ -951,8 +951,8 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 				/* if we're in a subquery, we may not have a valid
 				 * topPlan ptr!  and in the case of a subquery, we'll
 				 * have the correct unadjusted parameter index */
-				if (econtext->ecxt_estate->es_topPlan != NULL)
-					ni = econtext->ecxt_estate->es_topPlan->nParamExec;
+				if (econtext->ecxt_estate->es_plannedstmt->planTree != NULL)
+					ni = econtext->ecxt_estate->es_plannedstmt->planTree->nParamExec;
 				else
 					ni = nx;
 

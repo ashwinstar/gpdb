@@ -113,7 +113,10 @@ SubqueryScanState *
 ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 {
 	SubqueryScanState *subquerystate;
-    List       *tlist;
+	List       *tlist;
+#if 0
+	EState     *sp_estate; /* PG8.3 merge. See below. */
+#endif
 
 	/* check for unsupported flags */
 	Assert(!(eflags & EXEC_FLAG_MARK));
@@ -145,19 +148,19 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	 */
 	subquerystate->ss.ps.targetlist = (List *)
 		ExecInitExpr((Expr *) node->scan.plan.targetlist,
-					 (PlanState *) subquerystate);
+				(PlanState *) subquerystate);
 	subquerystate->ss.ps.qual = (List *)
 		ExecInitExpr((Expr *) node->scan.plan.qual,
-					 (PlanState *) subquerystate);
+				(PlanState *) subquerystate);
 
-    /* CDB: Does targetlist contain a Var node referencing the ctid column? */
-    tlist = node->scan.plan.targetlist;
-    subquerystate->cdb_want_ctid = contain_var_reference((Node *)tlist,
-                                                         node->scan.scanrelid,
-                                                         SelfItemPointerAttributeNumber,
-                                                         0);
-    ItemPointerSet(&subquerystate->cdb_fake_ctid, 0, 0);
-    subquerystate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
+	/* CDB: Does targetlist contain a Var node referencing the ctid column? */
+	tlist = node->scan.plan.targetlist;
+	subquerystate->cdb_want_ctid = contain_var_reference((Node *)tlist,
+			node->scan.scanrelid,
+			SelfItemPointerAttributeNumber,
+			0);
+	ItemPointerSet(&subquerystate->cdb_fake_ctid, 0, 0);
+	subquerystate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
 
 #define SUBQUERYSCAN_NSLOTS 2
 
@@ -170,7 +173,12 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	/*
 	 * initialize subquery
 	 */
-	subquerystate->subplan = ExecInitNode(node->subplan, estate, eflags);
+#if 0
+	/* XXX PG8.3 Merge.
+	 * PG8.3 does not create a sp_estate and use estate directly, for whatever
+	 * reason, I don't know this will work for CDB.
+	 */
+	/*
 	 * "Loan" the global slice table and map to the subplan EState.  The
 	 * global state is already set up by the code that called us.
 	 */
@@ -190,11 +198,10 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	sp_estate->motionlayer_context = estate->motionlayer_context;
 	sp_estate->interconnect_context = estate->interconnect_context;
 
-
-	/*
-
 	/* return borrowed share node list */
 	estate->es_sharenode = sp_estate->es_sharenode;
+#endif
+	subquerystate->subplan = ExecInitNode(node->subplan, estate, eflags);
 
 	/*
 	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo)

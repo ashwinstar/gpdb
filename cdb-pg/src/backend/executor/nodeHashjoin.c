@@ -599,9 +599,10 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 			econtext = hjstate->js.ps.ps_ExprContext;
 			econtext->ecxt_outertuple = slot;
 			if (ExecHashGetHashValue(hashtable, econtext,
-									 hjstate->hj_OuterHashKeys,
-									 (hjstate->js.jointype == JOIN_LEFT),
-									 hashvalue))
+						hjstate->hj_OuterHashKeys,
+						true, /*outer tuple */
+						(hjstate->js.jointype == JOIN_LEFT),
+						hashvalue))
 			{
 				/* remember outer relation is not empty for possible rescan */
 				hjstate->hj_OuterNotEmpty = true;
