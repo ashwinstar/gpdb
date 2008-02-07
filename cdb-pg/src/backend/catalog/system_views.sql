@@ -1,9 +1,9 @@
 /*
  * PostgreSQL System Views
  *
- * Copyright (c) 1996-2006, PostgreSQL Global Development Group
+ * Copyright (c) 1996-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/backend/catalog/system_views.sql,v 1.32 2006/11/24 21:18:42 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/catalog/system_views.sql,v 1.47 2007/10/22 20:13:37 tgl Exp $
  */
 
 CREATE VIEW pg_roles AS 
@@ -205,10 +205,13 @@ CREATE VIEW pg_stat_all_tables AS
             pg_stat_get_tuples_returned(C.oid) AS seq_tup_read, 
             sum(pg_stat_get_numscans(I.indexrelid))::bigint AS idx_scan, 
             sum(pg_stat_get_tuples_fetched(I.indexrelid))::bigint +
-                    pg_stat_get_tuples_fetched(C.oid) AS idx_tup_fetch, 
+            pg_stat_get_tuples_fetched(C.oid) AS idx_tup_fetch, 
             pg_stat_get_tuples_inserted(C.oid) AS n_tup_ins, 
             pg_stat_get_tuples_updated(C.oid) AS n_tup_upd, 
             pg_stat_get_tuples_deleted(C.oid) AS n_tup_del,
+            pg_stat_get_tuples_hot_updated(C.oid) AS n_tup_hot_upd,
+            pg_stat_get_live_tuples(C.oid) AS n_live_tup, 
+            pg_stat_get_dead_tuples(C.oid) AS n_dead_tup,
             pg_stat_get_last_vacuum_time(C.oid) as last_vacuum,
             pg_stat_get_last_autovacuum_time(C.oid) as last_autovacuum,
             pg_stat_get_last_analyze_time(C.oid) as last_analyze,
@@ -221,11 +224,13 @@ CREATE VIEW pg_stat_all_tables AS
 
 CREATE VIEW pg_stat_sys_tables AS 
     SELECT * FROM pg_stat_all_tables 
-    WHERE schemaname IN ('pg_catalog', 'pg_toast', 'information_schema');
+    WHERE schemaname IN ('pg_catalog', 'information_schema') OR
+          schemaname ~ '^pg_toast';
 
 CREATE VIEW pg_stat_user_tables AS 
     SELECT * FROM pg_stat_all_tables 
-    WHERE schemaname NOT IN ('pg_catalog', 'pg_toast', 'information_schema');
+    WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND
+          schemaname !~ '^pg_toast';
 
 CREATE VIEW pg_statio_all_tables AS 
     SELECT 
@@ -254,11 +259,13 @@ CREATE VIEW pg_statio_all_tables AS
 
 CREATE VIEW pg_statio_sys_tables AS 
     SELECT * FROM pg_statio_all_tables 
-    WHERE schemaname IN ('pg_catalog', 'pg_toast', 'information_schema');
+    WHERE schemaname IN ('pg_catalog', 'information_schema') OR
+          schemaname ~ '^pg_toast';
 
 CREATE VIEW pg_statio_user_tables AS 
     SELECT * FROM pg_statio_all_tables 
-    WHERE schemaname NOT IN ('pg_catalog', 'pg_toast', 'information_schema');
+    WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND
+          schemaname !~ '^pg_toast';
 
 CREATE VIEW pg_stat_all_indexes AS 
     SELECT 
@@ -278,11 +285,13 @@ CREATE VIEW pg_stat_all_indexes AS
 
 CREATE VIEW pg_stat_sys_indexes AS 
     SELECT * FROM pg_stat_all_indexes 
-    WHERE schemaname IN ('pg_catalog', 'pg_toast', 'information_schema');
+    WHERE schemaname IN ('pg_catalog', 'information_schema') OR
+          schemaname ~ '^pg_toast';
 
 CREATE VIEW pg_stat_user_indexes AS 
     SELECT * FROM pg_stat_all_indexes 
-    WHERE schemaname NOT IN ('pg_catalog', 'pg_toast', 'information_schema');
+    WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND
+          schemaname !~ '^pg_toast';
 
 CREATE VIEW pg_statio_all_indexes AS 
     SELECT 
@@ -302,11 +311,13 @@ CREATE VIEW pg_statio_all_indexes AS
 
 CREATE VIEW pg_statio_sys_indexes AS 
     SELECT * FROM pg_statio_all_indexes 
-    WHERE schemaname IN ('pg_catalog', 'pg_toast', 'information_schema');
+    WHERE schemaname IN ('pg_catalog', 'information_schema') OR
+          schemaname ~ '^pg_toast';
 
 CREATE VIEW pg_statio_user_indexes AS 
     SELECT * FROM pg_statio_all_indexes 
-    WHERE schemaname NOT IN ('pg_catalog', 'pg_toast', 'information_schema');
+    WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND
+          schemaname !~ '^pg_toast';
 
 CREATE VIEW pg_statio_all_sequences AS 
     SELECT 
@@ -322,11 +333,13 @@ CREATE VIEW pg_statio_all_sequences AS
 
 CREATE VIEW pg_statio_sys_sequences AS 
     SELECT * FROM pg_statio_all_sequences 
-    WHERE schemaname IN ('pg_catalog', 'pg_toast', 'information_schema');
+	WHERE schemaname IN ('pg_catalog', 'information_schema') OR
+		schemaname ~ '^pg_toast';
 
 CREATE VIEW pg_statio_user_sequences AS 
     SELECT * FROM pg_statio_all_sequences 
-    WHERE schemaname NOT IN ('pg_catalog', 'pg_toast', 'information_schema');
+	WHERE schemaname IN ('pg_catalog', 'information_schema') OR
+		schemaname ~ '^pg_toast';
 
 CREATE VIEW pg_stat_activity AS 
     SELECT 
@@ -338,6 +351,7 @@ CREATE VIEW pg_stat_activity AS
             U.rolname AS usename, 
             pg_stat_get_backend_activity(S.backendid) AS current_query,
             pg_stat_get_backend_waiting(S.backendid) AS waiting,
+			pg_stat_get_backend_xact_start(S.backendid) AS xact_start,
             pg_stat_get_backend_activity_start(S.backendid) AS query_start,
             pg_stat_get_backend_start(S.backendid) AS backend_start,
             pg_stat_get_backend_client_addr(S.backendid) AS client_addr,
@@ -357,7 +371,12 @@ CREATE VIEW pg_stat_database AS
             pg_stat_get_db_xact_rollback(D.oid) AS xact_rollback, 
             pg_stat_get_db_blocks_fetched(D.oid) - 
                     pg_stat_get_db_blocks_hit(D.oid) AS blks_read, 
-            pg_stat_get_db_blocks_hit(D.oid) AS blks_hit 
+            pg_stat_get_db_blocks_hit(D.oid) AS blks_hit,
+			pg_stat_get_db_tuples_returned(D.oid) AS tup_returned,
+			pg_stat_get_db_tuples_fetched(D.oid) AS tup_fetched,
+			pg_stat_get_db_tuples_inserted(D.oid) AS tup_inserted,
+			pg_stat_get_db_tuples_updated(D.oid) AS tup_updated,
+			pg_stat_get_db_tuples_deleted(D.oid) AS tup_deleted
     FROM pg_database D;
 
 CREATE VIEW pg_stat_resqueues AS
