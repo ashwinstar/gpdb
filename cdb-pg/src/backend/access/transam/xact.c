@@ -249,6 +249,7 @@ static SubXactCallbackItem *SubXact_callbacks = NULL;
 
 /* local function prototypes */
 static void AssignTransactionId(TransactionState s);
+static void LockTransactionId(TransactionState s);
 static void AbortTransaction(void);
 static void AtAbort_Memory(void);
 static void AtCleanup_Memory(void);
@@ -436,7 +437,7 @@ AssignTransactionId(TransactionState s)
 	 * PG_PROC, the subtrans entry is needed to ensure that other backends see
 	 * the Xid as "running".  See GetNewTransactionId.
 	 */
-	s->transactionId = GetNewTransactionId(isSubXact, true);	// UNDONE: Implications for Distributed Transactions???
+	s->transactionId = GetNewTransactionId(isSubXact, /* setProcXid */ true);
 	if (isSubXact)
 		SubTransSetParent(s->transactionId, s->parent->transactionId);
 
@@ -461,6 +462,33 @@ AssignTransactionId(TransactionState s)
 	CurrentResourceOwner = currentOwner;
 }
 
+/*
+ * Code copied from the bottom of AssignTransactionId for locking the xid.
+ */
+static void
+LockTransactionId(TransactionState s)
+{
+	ResourceOwner currentOwner;
+	/*
+	 * Acquire lock on the transaction XID.  (We assume this cannot block.) We
+	 * have to ensure that the lock is assigned to the transaction's own
+	 * ResourceOwner.
+	 */
+	currentOwner = CurrentResourceOwner;
+	PG_TRY();
+	{
+		CurrentResourceOwner = s->curTransactionOwner;
+		XactLockTableInsert(s->transactionId);
+	}
+	PG_CATCH();
+	{
+		/* Ensure CurrentResourceOwner is restored on error */
+		CurrentResourceOwner = currentOwner;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	CurrentResourceOwner = currentOwner;
+}
 
 /*
  *	GetCurrentSubTransactionId
@@ -1776,9 +1804,42 @@ StartTransaction(void)
 	AtStart_ResourceOwner();
 
 	/*
+	 * Assign a new LocalTransactionId, and combine it with the backendId to
+	 * form a virtual transaction id.
+	 *
+	 * MPP Note: Create the (backend) virtual local xid this for all cases.
+	 */
+	vxid.backendId = MyBackendId;
+	vxid.localTransactionId = GetNextLocalTransactionId();
+
+	/*
+	 * Lock the virtual transaction id before we announce it in the proc array
+	 */
+	VirtualXactLockTableInsert(vxid);
+
+	/*
+	 * Advertise it in the proc array.	We assume assignment of
+	 * LocalTransactionID is atomic, and the backendId should be set already.
+	 */
+	Assert(MyProc->backendId == vxid.backendId);
+	MyProc->lxid = vxid.localTransactionId;
+
+	PG_TRACE1(transaction__start, vxid.localTransactionId);
+
+	/*
+	 * set transaction_timestamp() (a/k/a now()).  We want this to be the same
+	 * as the first command's statement_timestamp(), so don't do a fresh
+	 * GetCurrentTimestamp() call (which'd be expensive anyway).  Also, mark
+	 * xactStopTimestamp as unset.
+	 */
+	xactStartTimestamp = stmtStartTimestamp;
+	xactStopTimestamp = 0;
+	pgstat_report_xact_timestamp(xactStartTimestamp);
+			
+	/*
 	 * MPP Modification
 	 *
-	 * only the writer should get an xid the normal way.
+	 * Only the writer should get an xid the normal way.
 	 *
 	 * Don't take out this lock if we are in MPP EXECUTE mode AND we aren't the
 	 * "writer".  Actually this is only safe if we only have one writer since
@@ -1802,37 +1863,6 @@ StartTransaction(void)
 			 * transaction without any synchronization to segmates!
 			 * (e.g. CatchupInterruptHandler)
 			 */
-
-			/*
-			 * Assign a new LocalTransactionId, and combine it with the backendId to
-			 * form a virtual transaction id.
-			 */
-			vxid.backendId = MyBackendId;
-			vxid.localTransactionId = GetNextLocalTransactionId();
-
-			/*
-			 * Lock the virtual transaction id before we announce it in the proc array
-			 */
-			VirtualXactLockTableInsert(vxid);
-
-			/*
-			 * Advertise it in the proc array.	We assume assignment of
-			 * LocalTransactionID is atomic, and the backendId should be set already.
-			 */
-			Assert(MyProc->backendId == vxid.backendId);
-			MyProc->lxid = vxid.localTransactionId;
-
-			PG_TRACE1(transaction__start, vxid.localTransactionId);
-
-			/*
-			 * set transaction_timestamp() (a/k/a now()).  We want this to be the same
-			 * as the first command's statement_timestamp(), so don't do a fresh
-			 * GetCurrentTimestamp() call (which'd be expensive anyway).  Also, mark
-			 * xactStopTimestamp as unset.
-			 */
-			xactStartTimestamp = stmtStartTimestamp;
-			xactStopTimestamp = 0;
-			pgstat_report_xact_timestamp(xactStartTimestamp);
 		}
 		break;
 
@@ -1844,21 +1874,12 @@ StartTransaction(void)
 
 			/*
 			 * Create distributed transaction which will map the
-			 * distributed transaction to a local transaction id for the
+			 * distributed transaction to a instance transaction id for the
 			 * master database.
 			 */
 			createDtx(&s->transactionId);
 
-			XactLockTableInsert(s->transactionId);
-			
-			PG_TRACE1(transaction__start, s->transactionId);
-
-			/*
-		 	 * set transaction_timestamp() (a/k/a now()).  We want this to be the
-		 	 * same as the first command's statement_timestamp(), so don't do a
-		 	 * fresh GetCurrentTimestamp() call (which'd be expensive anyway).
-		  	 */
-		  	xactStartTimestamp = stmtStartTimestamp;
+			LockTransactionId(s);
 		}
 		break;
 
@@ -1876,9 +1897,11 @@ StartTransaction(void)
 					DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER)
 				{
 					/*
-					 * Use local xid that is mapped to distributed xid.
+					 * Use instance transaction xid that is mapped to distributed xid.
 					 */
-					AllocOrGetLocalXidForStartDistributedTransaction(QEDtxContextInfo.distributedXid,&s->transactionId);
+					AllocOrGetLocalXidForStartDistributedTransaction(
+											QEDtxContextInfo.distributedXid,
+											&s->transactionId);
 				}
 				else
 				{
@@ -1891,14 +1914,9 @@ StartTransaction(void)
 					 * Generate a new transaction id.
 					 */
 					Assert(DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT);
-					s->transactionId = GetNewTransactionId(false, true);
+					s->transactionId = GetNewTransactionId(/* isSubXact */ false, /* setProcXid */ true);
 				}
 				
-			  	/*
-			 	 * now() and statement_timestamp() should be the same time
-			  	 */
-			  	xactStartTimestamp = stmtStartTimestamp;
-
 				elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec writer setting distributedXid: %d ready: false", QEDtxContextInfo.distributedXid);
 
 				if (SharedLocalSnapshotSlot != NULL)
@@ -1920,16 +1938,13 @@ StartTransaction(void)
 				 *
 				 * Generate a new transaction id
 				 */
-				s->transactionId = GetNewTransactionId(false, true);
+				s->transactionId = GetNewTransactionId(/* isSubXact */ false, /* setProcXid */ true);
 			}
 
 			/*
 			 * Common.
 			 */
-			XactLockTableInsert(s->transactionId);
-			
-			PG_TRACE1(transaction__start, s->transactionId);
-
+			LockTransactionId(s);
 		}
 		break;
 
