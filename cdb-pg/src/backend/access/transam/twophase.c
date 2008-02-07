@@ -1239,12 +1239,12 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	if (isCommit)
 	{
 		for (i = 0; i < hdr->ncommitrels; i++)
-			smgrdounlink(smgropen(commitrels[i]), /* isTemp */ false, /* isLocalBuf */ false, /* isRedo */ false);
+			smgrdounlink(smgropen(commitrels[i]), /* isLocalBuf */ false, /* isRedo */ false);
 	}
 	else
 	{
 		for (i = 0; i < hdr->nabortrels; i++)
-			smgrdounlink(smgropen(abortrels[i]), /* isTemp */ false, /* isLocalBuf */ false, /* isRedo */ false);
+			smgrdounlink(smgropen(abortrels[i]), /* isLocalBuf */ false, /* isRedo */ false);
 	}
 
 	/* And now do the callbacks */

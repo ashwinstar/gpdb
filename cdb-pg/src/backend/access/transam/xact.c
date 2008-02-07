@@ -5126,7 +5126,7 @@ xact_redo_commit(xl_xact_commit *xlrec, TransactionId xid)
 	for (i = 0; i < xlrec->nrels; i++)
 	{
 		XLogDropRelation(xlrec->xnodes[i]);
-		smgrdounlink(smgropen(xlrec->xnodes[i]), /* isTemp */ false, /* isLocalBuf */ false, /* isRedo */ true);
+		smgrdounlink(smgropen(xlrec->xnodes[i]), /* isLocalBuf */ false, /* isRedo */ true);
 	}
 
 	/*
@@ -5180,7 +5180,7 @@ xact_redo_abort(xl_xact_abort *xlrec, TransactionId xid)
 	for (i = 0; i < xlrec->nrels; i++)
 	{
 		XLogDropRelation(xlrec->xnodes[i]);
-		smgrdounlink(smgropen(xlrec->xnodes[i]), /* isTemp */ false, /* isLocalBuf */ false, /* isRedo */ true);
+		smgrdounlink(smgropen(xlrec->xnodes[i]), /* isLocalBuf */ false, /* isRedo */ true);
 	}
 }
 

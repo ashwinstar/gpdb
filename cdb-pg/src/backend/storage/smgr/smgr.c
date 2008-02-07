@@ -143,7 +143,7 @@ typedef struct xl_smgr_truncate
 /* local function prototypes */
 static void smgrshutdown(int code, Datum arg);
 static void smgr_internal_unlink(RelFileNode rnode, int which,
-					 bool isTemp, bool isLocalBuf, bool isRedo);
+					 bool isLocalBuf, bool isRedo);
 
 
 /*
@@ -328,7 +328,7 @@ smgrclosenode(RelFileNode rnode)
  *		tell whether to drop the file.
  */
 void
-smgrcreate(SMgrRelation reln, bool isTemp, bool isLocalBuf, bool isRedo)
+smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
 {
 	XLogRecPtr	lsn;
 	XLogRecData rdata;
@@ -458,20 +458,20 @@ smgrdounlink(SMgrRelation reln, bool isTemp, bool isLocalBuf, bool isRedo)
 	/* Close the file and throw away the hashtable entry */
 	smgrclose(reln);
 
-	smgr_internal_unlink(rnode, which, isTemp, isLocalBuf, isRedo);
+	smgr_internal_unlink(rnode, which, isLocalBuf, isRedo);
 }
 
 /*
  * Shared subroutine that actually does the unlink ...
  */
 static void
-smgr_internal_unlink(RelFileNode rnode, int which,  bool isTemp, bool isLocalBuf, bool isRedo)
+smgr_internal_unlink(RelFileNode rnode, int which,  bool isLocalBuf, bool isRedo)
 {
 	/*
 	 * Get rid of any remaining buffers for the relation.  bufmgr will just
 	 * drop them without bothering to write the contents.
 	 */
-	DropRelFileNodeBuffers(rnode, isTemp, isLocalBuf, 0);   /*CDB*/
+	DropRelFileNodeBuffers(rnode, isLocalBuf, 0);   /*CDB*/
 
 	/*
 	 * Tell the free space map to forget this relation.  It won't be accessed
@@ -567,7 +567,7 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp, bool isLocalBu
 	 * Get rid of any buffers for the about-to-be-deleted blocks. bufmgr will
 	 * just drop them without bothering to write the contents.
 	 */
-	DropRelFileNodeBuffers(reln->smgr_rnode, iTemp, isLocalBuf, nblocks);
+	DropRelFileNodeBuffers(reln->smgr_rnode, isLocalBuf, nblocks);
 
 	/*
 	 * Tell the free space map to forget anything it may have stored for the
@@ -687,7 +687,6 @@ smgrDoPendingDeletes(bool isCommit)
 			if (pending->atCommit == isCommit)
 				smgr_internal_unlink(pending->relnode,
 									 pending->which,
-									 pending->isTemp,
 									 pending->isLocalBuf,
 									 false);
 			/* must explicitly free the list entry */

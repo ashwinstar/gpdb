@@ -301,7 +301,7 @@ heap_create(const char *relname,
 	{
 		Assert(rel->rd_smgr == NULL);
 		RelationOpenSmgr(rel);
-		smgrcreate(rel->rd_smgr, rel->rd_istemp, rel->rd_isLocalBuf, false);
+		smgrcreate(rel->rd_smgr, rel->rd_isLocalBuf, false);
 	}
 
 	return rel;
@@ -1437,7 +1437,7 @@ heap_drop_with_catalog(Oid relid)
 		rel->rd_rel->relkind != RELKIND_EXTERNAL)
 	{
 		RelationOpenSmgr(rel);
-		smgrscheduleunlink(rel->rd_smgr, rel->rd_istemp, rel->rd_isLocalBuf);
+		smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);
 	}
 
 	/*

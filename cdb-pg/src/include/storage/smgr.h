@@ -64,9 +64,9 @@ extern void smgrsetowner(SMgrRelation *owner, SMgrRelation reln);
 extern void smgrclose(SMgrRelation reln);
 extern void smgrcloseall(void);
 extern void smgrclosenode(RelFileNode rnode);
-extern void smgrcreate(SMgrRelation reln, bool isTemp, bool isLocalBuf, bool isRedo);
-extern void smgrscheduleunlink(SMgrRelation reln, bool isTemp, bool isLocalBuf);
-extern void smgrdounlink(SMgrRelation reln, bool isTemp, bool isLocalBuf, bool isRedo);
+extern void smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo);
+extern void smgrscheduleunlink(SMgrRelation reln, bool isLocalBuf);
+extern void smgrdounlink(SMgrRelation reln, bool isLocalBuf, bool isRedo);
 extern void smgrextend(SMgrRelation reln, BlockNumber blocknum, char *buffer,
 		   bool isTemp);
 extern void smgrread(SMgrRelation reln, BlockNumber blocknum, char *buffer);
