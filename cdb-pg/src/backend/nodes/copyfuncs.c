@@ -1640,8 +1640,6 @@ _copyPathKey(PathKey *from)
 	COPY_SCALAR_FIELD(pk_opfamily);
 	COPY_SCALAR_FIELD(pk_strategy);
 	COPY_SCALAR_FIELD(pk_nulls_first);
-	COPY_BITMAPSET_FIELD(cdb_key_relids);   /*CDB*/
-	COPY_SCALAR_FIELD(cdb_num_relids);      /*CDB*/
 
 	return newnode;
 }

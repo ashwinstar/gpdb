@@ -62,8 +62,6 @@ extern PGDLLIMPORT int effective_cache_size;
 extern bool constraint_exclusion;
 /* CDB: The enable_xxx globals have been moved to paths.h */
 
-extern Cost disable_cost;
-
 extern double index_pages_fetched(double tuples_fetched, BlockNumber pages,
 					double index_pages, PlannerInfo *root);
 extern void cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel);

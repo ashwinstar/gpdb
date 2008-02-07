@@ -161,7 +161,8 @@ IsTidEqualAnyClause(ScalarArrayOpExpr *node, int varno)
  *	In theory, in the AND case we could get CTID conditions from different
  *	sub-clauses, in which case we could try to pick the most efficient one.
  *	In practice, such usage seems very unlikely, so we don't bother; we
- *	just exit as soon as we find the first candidate.
+ *	return a CurrentOfExpr if possible, otherwise just exit as soon as we 
+ *  find the first candidate.  
  */
 static List *
 TidQualFromExpr(Node *expr, int varno)
@@ -189,11 +190,21 @@ TidQualFromExpr(Node *expr, int varno)
 	}
 	else if (and_clause(expr))
 	{
-		foreach(l, ((BoolExpr *) expr)->args)
+        foreach(l, ((BoolExpr *) expr)->args)
 		{
-			rlst = TidQualFromExpr((Node *) lfirst(l), varno);
-			if (rlst)
-				break;
+			List   *qlst = TidQualFromExpr((Node *) lfirst(l), varno);
+            
+            if (qlst)
+            {
+                /* If there's a CurrentOfExpr, make sure we choose it! */
+                if (list_length(qlst) == 1 &&
+                    IsA(linitial(qlst), CurrentOfExpr))
+                    return qlst;
+
+                /* Otherwise, arbitrarily choose the first CTID condition. */
+                else if (!rlst)
+                    rlst = qlst;
+            }
 		}
 	}
 	else if (or_clause(expr))
@@ -250,15 +261,32 @@ TidQualFromRestrictinfo(List *restrictinfo, int varno)
  * CDB: Instead of handing the paths to add_path(), we append them to a List
  * (*ppathlist) belonging to the caller.
  *
- * CDB TODO: Set rel->onerow if at most one tid is to be fetched.
+ * Returns true if the rel has a 'CURRENT OF expr' predicate, which cannot
+ * be evaluated on any kind of scan other than a TID scan.  In this case the
+ * only allowable path for the rel is the one which we append to *ppathlist.
  */
-void
+bool
 create_tidscan_paths(PlannerInfo *root, RelOptInfo *rel, List** ppathlist)
 {
 	List	   *tidquals;
+    bool        must_use_tidscan = false;
 
 	tidquals = TidQualFromRestrictinfo(rel->baserestrictinfo, rel->relid);
 
 	if (tidquals)
-		*ppathlist = lappend(*ppathlist, create_tidscan_path(root, rel, tidquals));
+    {
+        /* CDB: Set rel->onerow if at most one tid is to be fetched. */
+        if (list_length(tidquals) == 1 &&
+            !IsA(linitial(tidquals), ScalarArrayOpExpr))
+            rel->onerow = true;
+
+        /* CDB: TID scan must be forced if there is a 'CURRENT OF expr' qual. */
+        if (list_length(tidquals) == 1 &&
+            IsA(linitial(tidquals), CurrentOfExpr))
+            must_use_tidscan = true;
+
+        *ppathlist = lappend(*ppathlist, create_tidscan_path(root, rel, tidquals));
+    }
+
+    return must_use_tidscan;
 }

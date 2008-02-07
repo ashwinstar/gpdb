@@ -257,6 +257,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
     List       *tidpathlist = NIL;
     Path       *seqpath;
     ListCell   *cell;
+    bool        must_use_tid_scan;
 
 	/*
 	 * If we can prove we don't need to scan the rel via constraint exclusion,
@@ -301,7 +302,18 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
      * in a temporary list, then add them.
 	 */
 
-	/*
+    /* TID scan is mandatory if rel has CurrentOfExpr qual. */
+    must_use_tid_scan = create_tidscan_paths(root, rel, &tidpathlist);
+    if (must_use_tid_scan)
+    {
+        Insist(tidpathlist &&
+               get_rel_relkind(rte->relid) != RELKIND_EXTERNAL);
+		add_path(root, rel, (Path *)linitial(tidpathlist));
+		set_cheapest(root, rel);
+		return;
+    }
+    
+    /*
 	 * If the relation is external, create an external path for
 	 * it and select it (only external path is considered for
 	 * an external base rel.
@@ -325,8 +337,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
     if (bitmappathlist && enable_bitmapscan)
         pathlist = list_concat(pathlist, bitmappathlist);
 
-	/* Consider TID scans */
-    create_tidscan_paths(root, rel, &tidpathlist);
+	/* Consider TID scans.  We built tidpathlist above. */
     if (tidpathlist && enable_tidscan)
         pathlist = list_concat(pathlist, tidpathlist);
 

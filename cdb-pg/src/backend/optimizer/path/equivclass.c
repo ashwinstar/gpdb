@@ -971,7 +971,9 @@ generate_join_implied_equalities_broken(PlannerInfo *root,
 	List	   *result = NIL;
 	ListCell   *lc;
 
-	foreach(lc, ec->ec_sources)
+    UnusedArg(root);
+    
+    foreach(lc, ec->ec_sources)
 	{
 		RestrictInfo *restrictinfo = (RestrictInfo *) lfirst(lc);
 

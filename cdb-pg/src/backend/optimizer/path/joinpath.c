@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinpath.c,v 1.107.2.1 2007/05/22 01:40:42 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinpath.c,v 1.115 2008/01/09 20:42:27 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -83,7 +83,8 @@ add_paths_to_joinrel(PlannerInfo *root,
      *
      * CDB: Always build mergeclause_list.  We need it for motion planning.
 	 */
-	mergeclause_list = select_mergejoin_clauses(outerrel,
+	mergeclause_list = select_mergejoin_clauses(root,
+                                                outerrel,
 												innerrel,
 												restrictlist,
 												jointype);
@@ -228,9 +229,9 @@ sort_inner_and_outer(PlannerInfo *root,
 	 *
 	 * Actually, it's not quite true that every mergeclause ordering will
 	 * generate a different path order, because some of the clauses may be
-	 * redundant.  Therefore, what we do is convert the mergeclause list to a
-	 * list of canonical pathkeys, and then consider different orderings of
-	 * the pathkeys.
+	 * partially redundant (refer to the same EquivalenceClasses).	Therefore,
+	 * what we do is convert the mergeclause list to a list of canonical
+	 * pathkeys, and then consider different orderings of the pathkeys.
 	 *
 	 * Generating a path for *every* permutation of the pathkeys doesn't seem
 	 * like a winning strategy; the cost in planning time is too high. For
@@ -239,66 +240,58 @@ sort_inner_and_outer(PlannerInfo *root,
 	 * mergejoin without re-sorting against any other possible mergejoin
 	 * partner path.  But if we've not guessed the right ordering of secondary
 	 * keys, we may end up evaluating clauses as qpquals when they could have
-	 * been done as mergeclauses. We need to figure out a better way.  (Two
-	 * possible approaches: look at all the relevant index relations to
-	 * suggest plausible sort orders, or make just one output path and somehow
-	 * mark it as having a sort-order that can be rearranged freely.)
+	 * been done as mergeclauses.  (In practice, it's rare that there's more
+	 * than two or three mergeclauses, so expending a huge amount of thought
+	 * on that is probably not worth it.)
+	 *
+	 * The pathkey order returned by select_outer_pathkeys_for_merge() has
+	 * some heuristics behind it (see that function), so be sure to try it
+	 * exactly as-is as well as making variants.
 	 */
-	all_pathkeys = make_pathkeys_for_mergeclauses(root,
-												  mergeclause_list,
-												  outerrel);
+	all_pathkeys = select_outer_pathkeys_for_merge(root,
+												   mergeclause_list,
+												   joinrel);
 
 	foreach(l, all_pathkeys)
 	{
 		List	   *front_pathkey = (List *) lfirst(l);
-		List	   *cur_pathkeys;
 		List	   *cur_mergeclauses;
 		List	   *outerkeys;
 		List	   *innerkeys;
 		List	   *merge_pathkeys;
 
-		/* Make a pathkey list with this guy first. */
+		/* Make a pathkey list with this guy first */
 		if (l != list_head(all_pathkeys))
-			cur_pathkeys = lcons(front_pathkey,
-								 list_delete_ptr(list_copy(all_pathkeys),
-												 front_pathkey));
+			outerkeys = lcons(front_pathkey,
+							  list_delete_ptr(list_copy(all_pathkeys),
+											  front_pathkey));
 		else
-			cur_pathkeys = all_pathkeys;		/* no work at first one... */
+			outerkeys = all_pathkeys;	/* no work at first one... */
 
-		/*
-		 * Select mergeclause(s) that match this sort ordering.  If we had
-		 * redundant merge clauses then we will get a subset of the original
-		 * clause list.  There had better be some match, however...
-		 */
+		/* Sort the mergeclauses into the corresponding ordering */
 		cur_mergeclauses = find_mergeclauses_for_pathkeys(root,
-														  cur_pathkeys,
+														  outerkeys,
+														  true,
 														  mergeclause_list);
-		Assert(cur_mergeclauses != NIL);
 
-		/* Forget it if can't use all the clauses in right/full join */
-		if (useallclauses &&
-			list_length(cur_mergeclauses) != list_length(mergeclause_list))
-			continue;
+		/* Should have used them all... */
+		Assert(list_length(cur_mergeclauses) == list_length(mergeclause_list));
 
-		/*
-		 * Build sort pathkeys for both sides.
-		 *
-		 * Note: it's possible that the cheapest paths will already be sorted
-		 * properly.  create_mergejoin_path will detect that case and suppress
-		 * an explicit sort step, so we needn't do so here.
-		 */
-		outerkeys = make_pathkeys_for_mergeclauses(root,
-												   cur_mergeclauses,
-												   outerrel);
-		innerkeys = make_pathkeys_for_mergeclauses(root,
-												   cur_mergeclauses,
-												   innerrel);
-		/* Build pathkeys representing output sort order. */
+		/* Build sort pathkeys for the inner side */
+		innerkeys = make_inner_pathkeys_for_merge(root,
+												  cur_mergeclauses,
+												  outerkeys);
+
+		/* Build pathkeys representing output sort order */
 		merge_pathkeys = build_join_pathkeys(root, joinrel, jointype,
 											 outerkeys);
 
 		/*
 		 * And now we can make the path.
+		 *
+		 * Note: it's possible that the cheapest paths will already be sorted
+		 * properly.  create_mergejoin_path will detect that case and suppress
+		 * an explicit sort step, so we needn't do so here.
 		 */
 		add_path(root, joinrel, (Path *)
 				 create_mergejoin_path(root,
@@ -529,6 +522,7 @@ match_unsorted_outer(PlannerInfo *root,
 		/* Look for useful mergeclauses (if any) */
 		mergeclauses = find_mergeclauses_for_pathkeys(root,
 													  outerpath->pathkeys,
+													  true,
 													  mergeclause_list);
 
 		/*
@@ -552,9 +546,9 @@ match_unsorted_outer(PlannerInfo *root,
 			continue;
 
 		/* Compute the required ordering of the inner path */
-		innersortkeys = make_pathkeys_for_mergeclauses(root,
-													   mergeclauses,
-													   innerrel);
+		innersortkeys = make_inner_pathkeys_for_merge(root,
+													  mergeclauses,
+													  outerpath->pathkeys);
 
 		/*
 		 * Generate a mergejoin on the basis of sorting the cheapest inner.
@@ -625,6 +619,7 @@ match_unsorted_outer(PlannerInfo *root,
 					newclauses =
 						find_mergeclauses_for_pathkeys(root,
 													   trialsortkeys,
+													   false,
 													   mergeclauses);
 					Assert(newclauses != NIL);
 				}
@@ -669,6 +664,7 @@ match_unsorted_outer(PlannerInfo *root,
 							newclauses =
 								find_mergeclauses_for_pathkeys(root,
 															   trialsortkeys,
+															   false,
 															   mergeclauses);
 							Assert(newclauses != NIL);
 						}
@@ -913,15 +909,20 @@ best_appendrel_indexscan(PlannerInfo *root, RelOptInfo *rel,
  *	  Select mergejoin clauses that are usable for a particular join.
  *	  Returns a list of RestrictInfo nodes for those clauses.
  *
+ * We also mark each selected RestrictInfo to show which side is currently
+ * being considered as outer.  These are transient markings that are only
+ * good for the duration of the current add_paths_to_joinrel() call!
+ *
  * We examine each restrictinfo clause known for the join to see
  * if it is mergejoinable and involves vars from the two sub-relations
  * currently of interest.
  */
 List *
-select_mergejoin_clauses(RelOptInfo *outerrel,
-						 RelOptInfo *innerrel,
-						 List *restrictlist,
-						 JoinType jointype)
+select_mergejoin_clauses(PlannerInfo   *root,
+                         RelOptInfo    *outerrel,
+						 RelOptInfo    *innerrel,
+						 List          *restrictlist,
+						 JoinType       jointype)
 {
 	List	   *result_list = NIL;
 	bool		isouterjoin = IS_OUTER_JOIN(jointype);
@@ -942,7 +943,7 @@ select_mergejoin_clauses(RelOptInfo *outerrel,
 			continue;
 
 		if (!restrictinfo->can_join ||
-			restrictinfo->mergejoinoperator == InvalidOid)
+			restrictinfo->mergeopfamilies == NIL)
 		{
 			have_nonmergeable_joinclause = true;
 			continue;			/* not mergejoinable */
@@ -957,11 +958,13 @@ select_mergejoin_clauses(RelOptInfo *outerrel,
 			bms_is_subset(restrictinfo->right_relids, innerrel->relids))
 		{
 			/* righthand side is inner */
+			restrictinfo->outer_is_left = true;
 		}
 		else if (bms_is_subset(restrictinfo->left_relids, innerrel->relids) &&
 				 bms_is_subset(restrictinfo->right_relids, outerrel->relids))
 		{
 			/* lefthand side is inner */
+			restrictinfo->outer_is_left = false;
 		}
 		else
 		{
@@ -969,7 +972,36 @@ select_mergejoin_clauses(RelOptInfo *outerrel,
 			continue;			/* no good for these input relations */
 		}
 
-		result_list = lcons(restrictinfo, result_list);
+		/*
+		 * Insist that each side have a non-redundant eclass.  This
+		 * restriction is needed because various bits of the planner expect
+		 * that each clause in a merge be associatable with some pathkey in a
+		 * canonical pathkey list, but redundant eclasses can't appear in
+		 * canonical sort orderings.  (XXX it might be worth relaxing this,
+		 * but not enough time to address it for 8.3.)
+		 *
+		 * Note: it would be bad if this condition failed for an otherwise
+		 * mergejoinable FULL JOIN clause, since that would result in
+		 * undesirable planner failure.  I believe that is not possible
+		 * however; a variable involved in a full join could only appear
+		 * in below_outer_join eclasses, which aren't considered redundant.
+		 *
+		 * This case *can* happen for left/right join clauses: the
+		 * outer-side variable could be equated to a constant.  Because we
+		 * will propagate that constant across the join clause, the loss of
+		 * ability to do a mergejoin is not really all that big a deal, and
+		 * so it's not clear that improving this is important.
+		 */
+		cache_mergeclause_eclasses(root, restrictinfo);
+
+		if (EC_MUST_BE_REDUNDANT(restrictinfo->left_ec) ||
+			EC_MUST_BE_REDUNDANT(restrictinfo->right_ec))
+		{
+			have_nonmergeable_joinclause = true;
+			continue;			/* can't handle redundant eclasses */
+		}
+
+		result_list = lappend(result_list, restrictinfo);
 	}
 
 	/*

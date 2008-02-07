@@ -625,9 +625,6 @@ typedef struct PathKey
 	Oid			pk_opfamily;	/* btree opfamily defining the ordering */
 	int			pk_strategy;	/* sort direction (ASC or DESC) */
 	bool		pk_nulls_first; /* do NULLs come before normal values? */
-
-    Relids      cdb_key_relids; /* set of relids referenced by key expr */
-    int         cdb_num_relids; /* num of relids referenced by key expr */
 } PathKey;
 
 

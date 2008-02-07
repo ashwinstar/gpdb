@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinrels.c,v 1.81.2.3 2007/02/16 00:14:07 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinrels.c,v 1.91 2008/01/11 04:02:18 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -42,10 +42,10 @@ static bool has_legal_joinclause(PlannerInfo *root, RelOptInfo *rel);
 
 
 /*
- * make_rels_by_joins
+ * join_search_one_level
  *	  Consider ways to produce join relations containing exactly 'level'
  *	  jointree items.  (This is one step of the dynamic-programming method
- *	  embodied in make_one_rel_by_joins.)  Join rel nodes for each feasible
+ *	  embodied in standard_join_search.)  Join rel nodes for each feasible
  *	  combination of lower-level rels are created and returned in a list.
  *	  Implementation paths are created for each such joinrel, too.
  *
@@ -53,7 +53,7 @@ static bool has_legal_joinclause(PlannerInfo *root, RelOptInfo *rel);
  * joinrels[j], 1 <= j < level, is a list of rels containing j items.
  */
 List *
-make_rels_by_joins(PlannerInfo *root, int level, List **joinrels)
+join_search_one_level(PlannerInfo *root, int level, List **joinrels)
 {
 	List	   *result_rels = NIL;
 	List	   *new_rels;
@@ -85,7 +85,8 @@ make_rels_by_joins(PlannerInfo *root, int level, List **joinrels)
 			other_rels = list_head(joinrels[1]);		/* consider all initial
 														 * rels */
 
-		if (old_rel->joininfo != NIL || has_join_restriction(root, old_rel))
+		if (old_rel->joininfo != NIL || old_rel->has_eclass_joins ||
+			has_join_restriction(root, old_rel))
 		{
 			/*
 			 * Note that if all available join clauses for this rel require
@@ -153,7 +154,7 @@ make_rels_by_joins(PlannerInfo *root, int level, List **joinrels)
 			 * participate in join-order restrictions --- then we might have
 			 * to force a bushy join plan.
 			 */
-			if (old_rel->joininfo == NIL &&
+			if (old_rel->joininfo == NIL && !old_rel->has_eclass_joins &&
 				!has_join_restriction(root, old_rel))
 				continue;
 
@@ -357,8 +358,8 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	ListCell   *l;
 
 	/*
-	 * Ensure *jointype_p is set on failure return.  This is just to
-	 * suppress uninitialized-variable warnings from overly anal compilers.
+	 * Ensure *jointype_p is set on failure return.  This is just to suppress
+	 * uninitialized-variable warnings from overly anal compilers.
 	 */
 	*jointype_p = JOIN_INNER;
 
@@ -409,14 +410,14 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 			bms_is_subset(ojinfo->min_righthand, rel2->relids))
 		{
 			if (jointype != JOIN_INNER)
-				return false;			/* invalid join path */
+				return false;	/* invalid join path */
 			jointype = ojinfo->is_full_join ? JOIN_FULL : JOIN_LEFT;
 		}
 		else if (bms_is_subset(ojinfo->min_lefthand, rel2->relids) &&
 				 bms_is_subset(ojinfo->min_righthand, rel1->relids))
 		{
 			if (jointype != JOIN_INNER)
-				return false;			/* invalid join path */
+				return false;	/* invalid join path */
 			jointype = ojinfo->is_full_join ? JOIN_FULL : JOIN_RIGHT;
 		}
 		else
@@ -460,6 +461,11 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	/* Fail if violated some OJ's RHS and didn't match to another OJ */
 	if (jointype == JOIN_INNER && !is_valid_inner)
 		return false;			/* invalid join path */
+
+    /* 
+     * CDB: Our improved subquery implementation doesn't need to restrict the
+     * join sequence here as PostgreSQL does when the in_info_list is nonempty.   
+     */
 
 	/* Join is valid */
 	*jointype_p = jointype;
@@ -670,9 +676,9 @@ cdb_add_subquery_join_paths(PlannerInfo    *root,
  * Note: this is only a problem if one side of a degenerate outer join
  * contains multiple rels, or a clauseless join is required within an IN's
  * RHS; else we will find a join path via the "last ditch" case in
- * make_rels_by_joins().  We could dispense with this test if we were willing
- * to try bushy plans in the "last ditch" case, but that seems much less
- * efficient.
+ * join_search_one_level().  We could dispense with this test if we were
+ * willing to try bushy plans in the "last ditch" case, but that seems much
+ * less efficient.
  */
 bool
 have_join_order_restriction(PlannerInfo *root,
@@ -682,9 +688,9 @@ have_join_order_restriction(PlannerInfo *root,
 	ListCell   *l;
 
 	/*
-	 * It's possible that the rels correspond to the left and right sides
-	 * of a degenerate outer join, that is, one with no joinclause mentioning
-	 * the non-nullable side; in which case we should force the join to occur.
+	 * It's possible that the rels correspond to the left and right sides of a
+	 * degenerate outer join, that is, one with no joinclause mentioning the
+	 * non-nullable side; in which case we should force the join to occur.
 	 *
 	 * Also, the two rels could represent a clauseless join that has to be
 	 * completed to build up the LHS or RHS of an outer join.
@@ -712,9 +718,9 @@ have_join_order_restriction(PlannerInfo *root,
 		}
 
 		/*
-		 * Might we need to join these rels to complete the RHS?  We have
-		 * to use "overlap" tests since either rel might include a lower OJ
-		 * that has been proven to commute with this one.
+		 * Might we need to join these rels to complete the RHS?  We have to
+		 * use "overlap" tests since either rel might include a lower OJ that
+		 * has been proven to commute with this one.
 		 */
 		if (bms_overlap(ojinfo->min_righthand, rel1->relids) &&
 			bms_overlap(ojinfo->min_righthand, rel2->relids))
@@ -733,13 +739,13 @@ have_join_order_restriction(PlannerInfo *root,
 	}
 
 	/*
-	 * We do not force the join to occur if either input rel can legally
-	 * be joined to anything else using joinclauses.  This essentially
-	 * means that clauseless bushy joins are put off as long as possible.
-	 * The reason is that when there is a join order restriction high up
-	 * in the join tree (that is, with many rels inside the LHS or RHS),
-	 * we would otherwise expend lots of effort considering very stupid
-	 * join combinations within its LHS or RHS.
+	 * We do not force the join to occur if either input rel can legally be
+	 * joined to anything else using joinclauses.  This essentially means that
+	 * clauseless bushy joins are put off as long as possible. The reason is
+	 * that when there is a join order restriction high up in the join tree
+	 * (that is, with many rels inside the LHS or RHS), we would otherwise
+	 * expend lots of effort considering very stupid join combinations within
+	 * its LHS or RHS.
 	 */
 	if (result)
 	{
@@ -783,7 +789,7 @@ have_join_order_restriction(PlannerInfo *root,
  *
  * Essentially, this tests whether have_join_order_restriction() could
  * succeed with this rel and some other one.  It's OK if we sometimes
- * say "true" incorrectly.  (Therefore, we don't bother with the relatively
+ * say "true" incorrectly.	(Therefore, we don't bother with the relatively
  * expensive has_legal_joinclause test.)
  */
 static bool

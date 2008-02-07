@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/clausesel.c,v 1.82.2.1 2007/08/31 23:35:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/clausesel.c,v 1.90 2008/01/11 17:00:45 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,6 +19,7 @@
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
+#include "optimizer/pathnode.h"
 #include "optimizer/plancat.h"
 #include "parser/parsetree.h"
 #include "utils/fmgroids.h"
@@ -122,9 +123,16 @@ clauselist_selectivity(PlannerInfo *root,
 	Selectivity *rgsel = NULL;
 	RangeQueryClause *rqlist = NULL;
 	ListCell   *l;
-
 	int pos = 0;
 	int i = 0;
+
+	/*
+	 * If there's exactly one clause, then no use in trying to match up
+	 * pairs, so just go directly to clause_selectivity().
+	 */
+	if (list_length(clauses) == 1)
+		return clause_selectivity(root, (Node *) linitial(clauses),
+								  varRelid, jointype, use_damping);
 
 	/* allocate array to hold all selectivity factors */
 	rgsel = (Selectivity *) palloc(sizeof(Selectivity) * list_length(clauses));
@@ -474,7 +482,7 @@ clause_selectivity(PlannerInfo *root,
 				   JoinType jointype,
 				   bool use_damping)
 {
-	Selectivity s1 = 1.0;		/* default for any unhandled clause type */
+	Selectivity s1 = 0.5;		/* default for any unhandled clause type */
 	RestrictInfo *rinfo = NULL;
 	bool		cacheable = false;
 
@@ -496,7 +504,7 @@ clause_selectivity(PlannerInfo *root,
 		if (rinfo->pseudoconstant)
 		{
 			if (!IsA(rinfo->clause, Const))
-				return s1;
+				return (Selectivity) 1.0;
 		}
 
 		/*
@@ -554,15 +562,14 @@ clause_selectivity(PlannerInfo *root,
 		if (var->varlevelsup == 0 &&
 			(varRelid == 0 || varRelid == (int) var->varno))
 		{
-			RangeTblEntry *rte = rt_fetch(var->varno, root->parse->rtable);
+			RangeTblEntry *rte = planner_rt_fetch(var->varno, root);
 
 			if (rte->rtekind == RTE_SUBQUERY)
 			{
 				/*
 				 * XXX not smart about subquery references... any way to do
-				 * better?
+				 * better than default?
 				 */
-				s1 = 0.5;
 			}
 			else
 			{
@@ -591,7 +598,7 @@ clause_selectivity(PlannerInfo *root,
 	else if (IsA(clause, Param))
 	{
 		/* see if we can replace the Param */
-		Node	   *subst = estimate_expression_value(clause);
+		Node	   *subst = estimate_expression_value(root, clause);
 
 		if (IsA(subst, Const))
 		{
@@ -603,8 +610,7 @@ clause_selectivity(PlannerInfo *root,
 		}
 		else
 		{
-			/* XXX any way to do better? */
-			s1 = (Selectivity) 0.5;
+			/* XXX any way to do better than default? */
 		}
 	}
 	else if (not_clause(clause))
@@ -647,7 +653,7 @@ clause_selectivity(PlannerInfo *root,
 			s1 = s1 + s2 - s1 * s2;
 		}
 	}
-	else if (is_opclause(clause))
+	else if (is_opclause(clause) || IsA(clause, DistinctExpr))
 	{
 		Oid			opno = ((OpExpr *) clause)->opno;
 		bool		is_join_clause;
@@ -688,6 +694,15 @@ clause_selectivity(PlannerInfo *root,
 										 ((OpExpr *) clause)->args,
 										 varRelid);
 		}
+
+		/*
+		 * DistinctExpr has the same representation as OpExpr, but the
+		 * contained operator is "=" not "<>", so we must negate the result.
+		 * This estimation method doesn't give the right behavior for nulls,
+		 * but it's better than doing nothing.
+		 */
+		if (IsA(clause, DistinctExpr))
+			s1 = 1.0 - s1;
 	}
 	else if (is_funcclause(clause))
 	{
@@ -698,6 +713,7 @@ clause_selectivity(PlannerInfo *root,
 		 */
 		s1 = (Selectivity) 0.3333333;
 	}
+#ifdef NOT_USED
 	else if (is_subplan(clause))
 	{
 		/*
@@ -705,11 +721,7 @@ clause_selectivity(PlannerInfo *root,
 		 */
 		s1 = (Selectivity) 0.5;
 	}
-	else if (IsA(clause, DistinctExpr))
-	{
-		/* can we do better? */
-		s1 = (Selectivity) 0.5;
-	}
+#endif
 	else if (IsA(clause, ScalarArrayOpExpr))
 	{
 		/* First, decide if it's a join clause, same as for OpExpr */
@@ -769,6 +781,15 @@ clause_selectivity(PlannerInfo *root,
 						 (Node *) ((BooleanTest *) clause)->arg,
 						 varRelid,
 						 jointype);
+	}
+	else if (IsA(clause, CurrentOfExpr))
+	{
+		/* CURRENT OF selects at most one row of its table */
+		CurrentOfExpr *cexpr = (CurrentOfExpr *) clause;
+		RelOptInfo *crel = find_base_rel(root, cexpr->cvarno);
+
+		if (crel->tuples > 0)
+			s1 = 1.0 / crel->tuples;
 	}
 	else if (IsA(clause, RelabelType))
 	{
