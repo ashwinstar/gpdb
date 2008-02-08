@@ -138,6 +138,7 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	List	   *result;
 	List	   *save_alist;
 	ListCell   *elements;
+	List  	   *likeDistributedBy = NIL;
 
 	/*
 	 * We must not scribble on the passed-in CreateStmt, so copy it.  (This is
@@ -178,6 +179,8 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	cxt.pkey = NULL;
 	cxt.hasoids = interpretOidsOption(stmt->options);
 
+	stmt->policy = NULL;
+
 	/*
 	 * Run through each primary element in the table creation clause. Separate
 	 * column defs from constraints, and do preliminary analysis.
@@ -204,8 +207,50 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 				break;
 
 			case T_InhRelation:
-				transformInhRelation(pstate, &cxt,
-									 (InhRelation *) element);
+				{
+					bool		isBeginning = (cxt.columns == NIL);
+
+					transformInhRelation(pstate, &cxt,
+										 (InhRelation *) element);
+
+					/*
+					 * For Greenplum Database distributed tables, default to 
+					 * the same distribution as the first LIKE table, unless 
+					 * we also have INHERITS
+					 */
+					if (Gp_role == GP_ROLE_DISPATCH && 
+						stmt->distributedBy == NIL && 
+						stmt->inhRelations == NIL && isBeginning && 
+						stmt->policy == NULL)
+					{
+						InhRelation *e = (InhRelation *) element;
+						Oid	relId = RangeVarGetRelid(e->relation, false);
+						GpPolicy  *oldTablePolicy = 
+							GpPolicyFetch(CurrentMemoryContext, relId);
+
+						if (oldTablePolicy != NULL && 
+							oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+						{
+							int ia;
+						
+							if (oldTablePolicy->nattrs > 0)
+							{
+								for (ia=0;ia<oldTablePolicy->nattrs;ia++)
+								{
+									char *attname = get_attname(relId, oldTablePolicy->attrs[ia]);
+									if (likeDistributedBy)
+										likeDistributedBy = lappend(likeDistributedBy, (Node *) makeString(attname));
+									else
+										likeDistributedBy = list_make1((Node *) makeString(attname));
+								}
+							}
+							else
+							{	/* old table is distributed randomly. */
+								likeDistributedBy = list_make1((Node *) NULL);
+							}
+						}
+					}
+				}
 				break;
 
 			default:
@@ -233,6 +278,16 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 * Postprocess foreign-key constraints.
 	 */
 	transformFKConstraints(pstate, &cxt, true, false);
+
+	/*
+	 * Postprocess Greenplum Database distribution columns
+	 */
+	transformDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy, likeDistributedBy);
+
+	/*
+	 * Postprocess Greenplum Database partitioned tables
+	 */
+	transformPartitionBy(pstate, &cxt, stmt, stmt->partitionBy, stmt->policy);
 
 	/*
 	 * Output results.
@@ -275,14 +330,14 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 		{
 			is_serial = true;
 			column->typname->names = NIL;
-			column->typname->typeid = INT4OID;
+			column->typname->typid = INT4OID;
 		}
 		else if (strcmp(typname, "bigserial") == 0 ||
 				 strcmp(typname, "serial8") == 0)
 		{
 			is_serial = true;
 			column->typname->names = NIL;
-			column->typname->typeid = INT8OID;
+			column->typname->typid = INT8OID;
 		}
 	}
 
@@ -335,7 +390,9 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 		 */
 		seqstmt = makeNode(CreateSeqStmt);
 		seqstmt->sequence = makeRangeVar(snamespace, sname);
+		seqstmt->sequence->istemp = cxt->relation->istemp;
 		seqstmt->options = NIL;
+		
 
 		cxt->blist = lappend(cxt->blist, seqstmt);
 
@@ -368,7 +425,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 		snamenode = makeNode(A_Const);
 		snamenode->val.type = T_String;
 		snamenode->val.val.str = qstring;
-		snamenode->typename = SystemTypeName("regclass");
+		snamenode->typname = SystemTypeName("regclass");
 		funccallnode = makeNode(FuncCall);
 		funccallnode->funcname = SystemFuncName("nextval");
 		funccallnode->args = list_make1(snamenode);
@@ -442,6 +499,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("multiple default values specified for column \"%s\" of table \"%s\"",
 								  column->colname, cxt->relation->relname)));
+				/* Note: DEFAULT NULL maps to constraint->raw_expr == NULL */
 				column->raw_default = constraint->raw_expr;
 				Assert(constraint->cooked_expr == NULL);
 				saw_default = true;
@@ -765,6 +823,8 @@ generateClonedIndexStmt(CreateStmtContext *cxt, Relation source_idx,
 
 	/* Begin building the IndexStmt */
 	index = makeNode(IndexStmt);
+    index->idxOids = NULL;
+
 	index->relation = cxt->relation;
 	index->accessMethod = pstrdup(NameStr(amrec->amname));
 	index->tableSpace = get_tablespace_name(source_idx->rd_node.spcNode);
@@ -1052,6 +1112,7 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 	IndexElem  *iparam;
 
 	index = makeNode(IndexStmt);
+    index->idxOids = NULL;
 
 	index->unique = true;
 	index->primary = (constraint->contype == CONSTR_PRIMARY);
@@ -1452,6 +1513,11 @@ transformRuleStmt(RuleStmt *stmt, const char *queryString,
 				(errcode(ERRCODE_GROUPING_ERROR),
 		   errmsg("cannot use aggregate function in rule WHERE condition")));
 
+	if (pstate->p_hasWindFuncs)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("cannot use window function in rule WHERE condition")));
+
 	/*
 	 * 'instead nothing' rules with a qualification need a query rangetable so
 	 * the rewrite handler can add the negated rule qualification to the
@@ -1705,6 +1771,26 @@ transformAlterTableStmt(AlterTableStmt *stmt, const char *queryString)
 					ColumnDef  *def = (ColumnDef *) cmd->def;
 
 					Assert(IsA(cmd->def, ColumnDef));
+					
+					/*
+					 * Disallow adding a column with primary key constraint
+					 */
+					if (Gp_role == GP_ROLE_DISPATCH)
+					{
+						ListCell *c;
+						foreach(c, def->constraints)
+						{
+							Constraint	   *cons = (Constraint *) lfirst(c);
+							if(cons->contype == CONSTR_PRIMARY)
+								elog(ERROR, "Cannot add column with primary "
+									 "key constraint");
+							if(cons->contype == CONSTR_UNIQUE)
+								elog(ERROR, "Cannot add column with unique "
+									 "constraint");
+							
+						}
+					}
+					
 					transformColumnDefinition(pstate, &cxt,
 											  (ColumnDef *) cmd->def);
 

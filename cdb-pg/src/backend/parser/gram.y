@@ -12,7 +12,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/gram.y,v 2.568 2006/11/05 22:42:09 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/gram.y,v 2.605 2008/01/01 19:45:50 momjian Exp $
  *
  * HISTORY
  *	  AUTHOR			DATE			MAJOR EVENT
@@ -34,7 +34,7 @@
  *			SET SQL_inheritance TO off; SELECT * FROM foo;
  *	  because the entire string is parsed by gram.y before the SET gets
  *	  executed.  Anything that depends on the database or changeable state
- *	  should be handled inside parse_analyze() so that it happens at the
+ *	  should be handled during parse analysis so that it happens at the
  *	  right time not the wrong time.  The handling of SQL_inheritance is
  *	  a good example.
  *
@@ -62,6 +62,8 @@
 #include "utils/datetime.h"
 #include "utils/numeric.h"
 #include "cdb/cdbvars.h" /* CDB *//* gp_enable_partitioned_tables */
+#include "utils/xml.h"
+
 
 /* Location tracking support --- simpler than bison's default */
 #define YYLLOC_DEFAULT(Current, Rhs, N) \
@@ -107,6 +109,7 @@ static void insertSelectOptions(SelectStmt *stmt,
 static Node *makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg);
 static Node *doNegate(Node *n, int location);
 static void doNegateFloat(Value *v);
+static Node *makeXmlExpr(XmlExprOp op, char *name, List *named_args, List *args);
 
 %}
 
@@ -138,6 +141,7 @@ static void doNegateFloat(Value *v);
 	IndexElem			*ielem;
 	Alias				*alias;
 	RangeVar			*range;
+	IntoClause			*into;
 	A_Indices			*aind;
 	ResTarget			*target;
 	PrivTarget			*privtarget;
@@ -148,16 +152,16 @@ static void doNegateFloat(Value *v);
 
 %type <node>	stmt schema_stmt
 		AlterDatabaseStmt AlterDatabaseSetStmt AlterDomainStmt AlterGroupStmt
-		AlterObjectSchemaStmt AlterOwnerStmt AlterQueueStmt AlterSeqStmt 
-		AlterTableStmt AlterUserStmt AlterUserSetStmt AlterRoleStmt 
-		AlterRoleSetStmt AnalyzeStmt ClosePortalStmt ClusterStmt 
-		CommentStmt ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
-		CreateDomainStmt CreateExternalStmt CreateGroupStmt CreateOpClassStmt CreatePLangStmt
-		CreateQueueStmt CreateSchemaStmt CreateSeqStmt CreateStmt 
-		CreateTableSpaceStmt CreateAssertStmt CreateTrigStmt 
-		CreateUserStmt CreateRoleStmt
-		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt
-		DropGroupStmt DropOpClassStmt DropPLangStmt DropQueueStmt DropStmt
+		AlterObjectSchemaStmt AlterOwnerStmt AlterQueueStmt AlterSeqStmt AlterTableStmt
+		AlterUserStmt AlterUserSetStmt AlterRoleStmt AlterRoleSetStmt
+		AnalyzeStmt ClosePortalStmt ClusterStmt CommentStmt
+		ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
+		CreateDomainStmt CreateExternalStmt CreateGroupStmt CreateOpClassStmt
+		CreateOpFamilyStmt AlterOpFamilyStmt CreatePLangStmt
+		CreateQueueStmt CreateSchemaStmt CreateSeqStmt CreateStmt CreateTableSpaceStmt
+		CreateAssertStmt CreateTrigStmt CreateUserStmt CreateRoleStmt
+		CreatedbStmt DeclareCursorStmt DefineStmt DeleteStmt DiscardStmt
+		DropGroupStmt DropOpClassStmt DropOpFamilyStmt DropPLangStmt DropQueueStmt DropStmt
 		DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt DropRoleStmt
 		DropUserStmt DropdbStmt DropTableSpaceStmt ExplainStmt 
 		ExtTypedesc FetchStmt
@@ -172,12 +176,13 @@ static void doNegateFloat(Value *v);
 		ViewStmt CheckPointStmt CreateConversionStmt
 		DeallocateStmt PrepareStmt ExecuteStmt
 		DropOwnedStmt ReassignOwnedStmt
+		AlterTSConfigurationStmt AlterTSDictionaryStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
 				simple_select values_clause
 
-%type <node>	alter_column_default opclass_item alter_using
-%type <ival>	add_drop
+%type <node>	alter_column_default opclass_item opclass_drop alter_using
+%type <ival>	add_drop opt_asc_desc opt_nulls_order
 
 %type <node>	alter_table_cmd alter_rel_cmd alter_table_partition_id_spec
 				alter_table_partition_cmd
@@ -217,7 +222,7 @@ static void doNegateFloat(Value *v);
 
 %type <str>		relation_name copy_file_name
 				database_name access_method_clause access_method attr_name
-				index_name name function_name file_name
+				index_name name file_name cluster_index_specification
 
 %type <list>	func_name handler_name qual_Op qual_all_Op subquery_Op
 				opt_class opt_validator
@@ -241,7 +246,7 @@ static void doNegateFloat(Value *v);
 				OptInherit definition
 				OptWith opt_distinct opt_definition func_args func_args_list
 				func_as createfunc_opt_list alterfunc_opt_list
-				aggr_args aggr_args_list old_aggr_definition old_aggr_list
+				aggr_args old_aggr_definition old_aggr_list
 				oper_argtypes RuleActionList RuleActionMulti
 				cdb_string_list
 				opt_mirror_location
@@ -254,13 +259,15 @@ static void doNegateFloat(Value *v);
 				set_clause_list set_clause multiple_set_clause
 				ctext_expr_list ctext_row def_list indirection opt_indirection
 				group_clause group_elem_list group_elem TriggerFuncArgs select_limit
-				opt_select_limit opclass_item_list
-				transaction_mode_list_or_empty
-				TableFuncElementList
+				opt_select_limit opclass_item_list opclass_drop_list
+				opt_opfamily transaction_mode_list_or_empty
+				TableFuncElementList opt_type_modifiers
 				prep_type_clause prep_type_list
 				execute_param_clause using_clause returning_clause
+				enum_val_list
 
-%type <range>	into_clause OptTempTableName OptErrorTableName
+%type <range>	OptTempTableName OptErrorTableName
+%type <into>	into_clause create_as_target
 
 %type <defelt>	createfunc_opt_item common_func_opt_item
 %type <fun_param> func_arg
@@ -288,9 +295,9 @@ static void doNegateFloat(Value *v);
 %type <boolean> opt_freeze opt_default opt_recheck
 %type <defelt>	opt_binary opt_oids copy_delimiter
 
-%type <boolean> copy_from opt_hold
+%type <boolean> copy_from
 
-%type <ival>	opt_column event cursor_options
+%type <ival>	opt_column event cursor_options opt_hold
 %type <objtype>	reindex_type drop_type comment_type
 
 %type <node>	fetch_direction select_limit_value select_offset_value
@@ -300,12 +307,13 @@ static void doNegateFloat(Value *v);
 
 %type <istmt>	insert_rest
 
-%type <vsetstmt> set_rest
+%type <vsetstmt> set_rest SetResetClause
+
 %type <node>	TableElement ExtTableElement ConstraintElem TableFuncElement
 %type <node>	columnDef ExtcolumnDef
-%type <node>	cdb_string
+%type <node>    cdb_string
 %type <defelt>	def_elem old_aggr_elem
-%type <node>	def_arg columnElem where_clause
+%type <node>	def_arg columnElem where_clause where_or_current_clause
 				a_expr b_expr c_expr func_expr AexprConst indirection_el
 				columnref in_expr having_clause func_table array_expr
 %type <list>	window_definition_list window_clause
@@ -346,21 +354,19 @@ static void doNegateFloat(Value *v);
 %type <str>		character
 %type <str>		extract_arg
 %type <str>		opt_charset
-%type <ival>	opt_numeric opt_decimal
 %type <boolean> opt_varying opt_timezone
 
 %type <ival>	Iconst SignedIconst
 %type <str>		Sconst comment_text
-%type <str>		RoleId opt_granted_by opt_boolean ColId_or_Sconst
-%type <str>		QueueId
-%type <list>	var_list var_list_or_default
-%type <str>		ColId ColLabel var_name type_name param_name
+%type <str>		RoleId opt_granted_by opt_boolean ColId_or_Sconst QueueId
+%type <list>	var_list
+%type <str>		ColId ColLabel var_name type_function_name param_name
 %type <node>	var_value zone_value
 
-%type <keyword> unreserved_keyword func_name_keyword
+%type <keyword> unreserved_keyword type_func_name_keyword
 %type <keyword> col_name_keyword reserved_keyword
 
-%type <node>	TableConstraint TableLikeClause 
+%type <node>	TableConstraint TableLikeClause
 %type <list>	TableLikeOptionList
 %type <ival>	TableLikeOption
 %type <list>	ColQualList
@@ -377,6 +383,7 @@ static void doNegateFloat(Value *v);
 %type <node>	OptTabPartitionBy TabSubPartitionBy 
 				OptTabSubPartitionBy OptTabSubSubPartitionBy
 %type <list>	opt_check_option
+
 %type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber 
 %type <node>	OptTabPartitionSpec OptTabSubPartitionSpec OptTabSubPartitionTemplate      /* PartitionSpec */
 %type <list>	TabPartitionElemList TabSubPartitionElemList /* list of PartitionElem */
@@ -391,6 +398,13 @@ static void doNegateFloat(Value *v);
 %type <value>	OptNumericOnly 
 %type <node> 	TabPartitionNameDecl TabSubPartitionNameDecl      /* string */
 
+%type <target>	xml_attribute_el
+%type <list>	xml_attribute_list xml_attributes
+%type <node>	xml_root_version opt_xml_root_standalone
+%type <ival>	document_or_content
+%type <boolean> xml_whitespace_option
+
+
 /*
  * If you make any token changes, update the keyword table in
  * parser/keywords.c and add new keywords to the appropriate one of
@@ -400,7 +414,7 @@ static void doNegateFloat(Value *v);
 
 /* ordinary key words in alphabetical order */
 %token <keyword> ABORT_P ABSOLUTE_P ACCESS ACTION ACTIVE ADD_P ADMIN AFTER
-	AGGREGATE ALL ALSO ALTER ANALYSE ANALYZE AND ANY ARRAY AS ASC
+	AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
 	ASSERTION ASSIGNMENT ASYMMETRIC AT AUTHORIZATION
 
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
@@ -409,19 +423,19 @@ static void doNegateFloat(Value *v);
 	CACHE CALLED CASCADE CASCADED CASE CAST CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
-	COMMITTED CONCURRENTLY CONNECTION CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY COST
-	CREATE CREATEDB
-	CREATEROLE CREATEUSER CROSS CSV CUBE CURRENT CURRENT_DATE CURRENT_ROLE 
+	COMMITTED CONCURRENTLY CONFIGURATION CONNECTION CONSTRAINT CONSTRAINTS
+	CONTENT_P CONVERSION_P COPY COST CREATE CREATEDB
+	CREATEROLE CREATEUSER CROSS CSV CUBE CURRENT_P CURRENT_DATE CURRENT_ROLE
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
 	DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
-	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
-	DESC DISABLE_P DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
+	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DESC
+	DICTIONARY DISABLE_P DISCARD DISTINCT DISTRIBUTED DO DOCUMENT_P DOMAIN_P DOUBLE_P DROP
 
-	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ERRORS ESCAPE EVERY EXCEPT 
-	EXCHANGE EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
+	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ERRORS ESCAPE EVERY EXCEPT EXCLUDING
+	EXCHANGE EXCLUDE EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
-	FALSE_P FETCH FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
+	FALSE_P FAMILY FETCH FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FOLLOWING FORWARD
 	FREEZE FROM FULL FUNCTION
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P GROUP_ID GROUPING
@@ -439,51 +453,54 @@ static void doNegateFloat(Value *v);
 
 	KEEP KEY
 
-	LANCOMPILER LANGUAGE LARGE_P  LAST_P LEADING LEAST LEFT LEVEL
+	LANCOMPILER LANGUAGE LARGE_P LAST_P LEADING LEAST LEFT LEVEL
 	LIKE LIMIT LIST LISTEN LOAD LOCAL LOCALTIME LOCALTIMESTAMP LOCATION
 	LOCK_P LOG_P LOGIN_P
 
-	MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MODE MONTH_P MOVE
+	MAPPING MASTER MATCH MAXVALUE MERGE MINUTE_P MINVALUE MIRROR MODE MONTH_P MOVE
 
-	NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEW NEXT NO NOCREATEDB
 	NOCREATEROLE NOCREATEUSER NOINHERIT NOLOGIN_P NONE NOOVERCOMMIT NOSUPERUSER
-	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF NUMERIC
+	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF NULLS_P NUMERIC
 
 	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OR
 	ORDER OTHERS OUT_P OUTER_P OVER OVERCOMMIT OVERLAPS OVERLAY OWNED OWNER
 
-	PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PLACING POSITION
+	PARSER PARTIAL PARTITION PARTITIONS PASSWORD PERCENT PLACING PLANS POSITION
 	PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE
 
 	QUEUE QUOTE
 
-	RANDOMLY RANGE READ REAL REASSIGN RECHECK REFERENCES REINDEX REJECT_P RELATIVE_P 
-	RELEASE RENAME REPEATABLE REPLACE RESET RESOURCE RESTART RESTRICT 
-	RETURNING RETURNS REVOKE RIGHT
-	ROLE ROLLBACK ROLLUP ROW ROWS RULE
+	RANDOMLY RANGE READ REAL REASSIGN RECHECK REFERENCES REINDEX REJECT_P RELATIVE_P RELEASE RENAME
+	REPEATABLE REPLACE REPLICA RESET RESOURCE RESTART RESTRICT RETURNING RETURNS REVOKE
+	RIGHT ROLE ROLLBACK ROLLUP ROW ROWS RULE
 
-	SAVEPOINT SCHEMA SCROLL SECOND_P SECURITY SEGMENT SELECT SEQUENCE
+	SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SEGMENT SELECT SEQUENCE
 	SERIALIZABLE SESSION SESSION_USER SET SETOF SETS SHARE
-	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT STABLE START STATEMENT
-	STATISTICS STDIN STDOUT STORAGE STRICT_P 
+	SHOW SIMILAR SIMPLE SMALLINT SOME SPLIT STABLE STANDALONE_P START STATEMENT
+	STATISTICS STDIN STDOUT STORAGE STRICT_P STRIP_P 
 	SUBPARTITION SUBPARTITIONS
-	SUBSTRING SUPERUSER_P SYMMETRIC
-	SYSID SYSTEM_P
+	SUBSTRING SUPERUSER_P
+	SYMMETRIC SYSID SYSTEM_P
 
-	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY THEN THRESHOLD TIES TIME TIMESTAMP
+	TABLE TABLESPACE TEMP TEMPLATE TEMPORARY TEXT_P THEN THRESHOLD TIES TIME TIMESTAMP
 	TO TRAILING TRANSACTION TREAT TRIGGER TRIM TRUE_P
 	TRUNCATE TRUSTED TYPE_P
 
 	UNBOUNDED UNCOMMITTED UNENCRYPTED UNION UNIQUE UNKNOWN UNLISTEN UNTIL
 	UPDATE USER USING
 
-	VACUUM VALID VALIDATION VALIDATOR VALUES VARCHAR VARYING
-	VERBOSE VIEW VOLATILE
+	VACUUM VALID VALIDATION VALIDATOR VALUE_P VALUES VARCHAR VARYING
+	VERBOSE VERSION_P VIEW VOLATILE
 
-	WEB WHEN WHERE WINDOW WITH WITHOUT WORK WRITE
+	WHEN WHERE WHITESPACE_P WITH WITHOUT WORK WRITE
 
-	YEAR_P
+	WEB WINDOW
+	XML_P XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLFOREST XMLPARSE
+	XMLPI XMLROOT XMLSERIALIZE
+
+	YEAR_P YES_P
 
 	ZONE
 
@@ -491,7 +508,7 @@ static void doNegateFloat(Value *v);
  * list and so can never be entered directly.  The filter in parser.c
  * creates these tokens when required.
  */
-%token			WITH_CASCADED WITH_LOCAL WITH_CHECK
+%token			NULLS_FIRST NULLS_LAST WITH_CASCADED WITH_LOCAL WITH_CHECK
 
 /* Special token types, not actually keywords - see the "lex" file */
 %token <str>	IDENT FCONST SCONST BCONST XCONST Op
@@ -534,6 +551,8 @@ static void doNegateFloat(Value *v);
  * left-associativity among the JOIN rules themselves.
  */
 %left		JOIN CROSS LEFT FULL RIGHT INNER_P NATURAL
+/* kluge to keep xml_whitespace_option from causing shift/reduce conflicts */
+%right		PRESERVE STRIP_P
 %%
 
 /*
@@ -572,6 +591,8 @@ stmt :
 			| AlterTableStmt
 			| AlterRoleSetStmt
 			| AlterRoleStmt
+			| AlterTSConfigurationStmt
+			| AlterTSDictionaryStmt
 			| AlterUserSetStmt
 			| AlterUserStmt
 			| AnalyzeStmt
@@ -590,6 +611,8 @@ stmt :
 			| CreateFunctionStmt
 			| CreateGroupStmt
 			| CreateOpClassStmt
+			| CreateOpFamilyStmt
+			| AlterOpFamilyStmt
 			| CreatePLangStmt
 			| CreateQueueStmt
 			| CreateSchemaStmt
@@ -604,10 +627,12 @@ stmt :
 			| DeclareCursorStmt
 			| DefineStmt
 			| DeleteStmt
+			| DiscardStmt
 			| DropAssertStmt
 			| DropCastStmt
 			| DropGroupStmt
 			| DropOpClassStmt
+			| DropOpFamilyStmt
 			| DropOwnedStmt
 			| DropPLangStmt
 			| DropQueueStmt
@@ -911,20 +936,11 @@ AlterRoleStmt:
 		;
 
 AlterRoleSetStmt:
-			ALTER ROLE RoleId SET set_rest
+			ALTER ROLE RoleId SetResetClause
 				{
 					AlterRoleSetStmt *n = makeNode(AlterRoleSetStmt);
 					n->role = $3;
-					n->variable = $5->name;
-					n->value = $5->args;
-					$$ = (Node *)n;
-				}
-			| ALTER ROLE RoleId VariableResetStmt
-				{
-					AlterRoleSetStmt *n = makeNode(AlterRoleSetStmt);
-					n->role = $3;
-					n->variable = ((VariableResetStmt *)$4)->name;
-					n->value = NIL;
+					n->setstmt = $4;
 					$$ = (Node *)n;
 				}
 		;
@@ -949,20 +965,11 @@ AlterUserStmt:
 
 
 AlterUserSetStmt:
-			ALTER USER RoleId SET set_rest
+			ALTER USER RoleId SetResetClause
 				{
 					AlterRoleSetStmt *n = makeNode(AlterRoleSetStmt);
 					n->role = $3;
-					n->variable = $5->name;
-					n->value = $5->args;
-					$$ = (Node *)n;
-				}
-			| ALTER USER RoleId VariableResetStmt
-				{
-					AlterRoleSetStmt *n = makeNode(AlterRoleSetStmt);
-					n->role = $3;
-					n->variable = ((VariableResetStmt *)$4)->name;
-					n->value = NIL;
+					n->setstmt = $4;
 					$$ = (Node *)n;
 				}
 			;
@@ -1058,7 +1065,7 @@ AlterGroupStmt:
 				}
 		;
 
-add_drop:	ADD_P										{ $$ = +1; }
+add_drop:	ADD_P									{ $$ = +1; }
 			| DROP									{ $$ = -1; }
 		;
 
@@ -1174,31 +1181,60 @@ VariableSetStmt:
 				}
 		;
 
-set_rest:  var_name TO var_list_or_default
+set_rest:	/* Generic SET syntaxes: */
+			var_name TO var_list
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_VALUE;
 					n->name = $1;
 					n->args = $3;
 					$$ = n;
 				}
-			| var_name '=' var_list_or_default
+			| var_name '=' var_list
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_VALUE;
 					n->name = $1;
 					n->args = $3;
 					$$ = n;
 				}
+			| var_name TO DEFAULT
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_DEFAULT;
+					n->name = $1;
+					$$ = n;
+				}
+			| var_name '=' DEFAULT
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_DEFAULT;
+					n->name = $1;
+					$$ = n;
+				}
+			| var_name FROM CURRENT_P
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_CURRENT;
+					n->name = $1;
+					$$ = n;
+				}
+			/* Special syntaxes mandated by SQL standard: */
 			| TIME ZONE zone_value
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_VALUE;
 					n->name = "timezone";
 					if ($3 != NULL)
 						n->args = list_make1($3);
+					else
+						n->kind = VAR_SET_DEFAULT;
 					$$ = n;
 				}
 			| TRANSACTION transaction_mode_list
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_MULTI;
 					n->name = "TRANSACTION";
 					n->args = $2;
 					$$ = n;
@@ -1206,6 +1242,7 @@ set_rest:  var_name TO var_list_or_default
 			| SESSION CHARACTERISTICS AS TRANSACTION transaction_mode_list
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_MULTI;
 					n->name = "SESSION CHARACTERISTICS";
 					n->args = $5;
 					$$ = n;
@@ -1213,14 +1250,18 @@ set_rest:  var_name TO var_list_or_default
 			| NAMES opt_encoding
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_VALUE;
 					n->name = "client_encoding";
 					if ($2 != NULL)
 						n->args = list_make1(makeStringConst($2, NULL));
+					else
+						n->kind = VAR_SET_DEFAULT;
 					$$ = n;
 				}
 			| ROLE ColId_or_Sconst
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_VALUE;
 					n->name = "role";
 					n->args = list_make1(makeStringConst($2, NULL));
 					$$ = n;
@@ -1228,6 +1269,7 @@ set_rest:  var_name TO var_list_or_default
 			| SESSION AUTHORIZATION ColId_or_Sconst
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_VALUE;
 					n->name = "session_authorization";
 					n->args = list_make1(makeStringConst($3, NULL));
 					$$ = n;
@@ -1235,28 +1277,26 @@ set_rest:  var_name TO var_list_or_default
 			| SESSION AUTHORIZATION DEFAULT
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_DEFAULT;
 					n->name = "session_authorization";
-					n->args = NIL;
+					$$ = n;
+				}
+			| XML_P OPTION document_or_content
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_SET_VALUE;
+					n->name = "xmloption";
+					n->args = list_make1(makeStringConst($3 == XMLOPTION_DOCUMENT ? "DOCUMENT" : "CONTENT", NULL));
 					$$ = n;
 				}
 		;
 
-var_name:
-			ColId								{ $$ = $1; }
+var_name:	ColId								{ $$ = $1; }
 			| var_name '.' ColId
 				{
-					int qLen = strlen($1);
-					char* qualName = palloc(qLen + strlen($3) + 2);
-					strcpy(qualName, $1);
-					qualName[qLen] = '.';
-					strcpy(qualName + qLen + 1, $3);
-					$$ = qualName;
+					$$ = palloc(strlen($1) + strlen($3) + 2);
+					sprintf($$, "%s.%s", $1, $3);
 				}
-		;
-
-var_list_or_default:
-			var_list								{ $$ = $1; }
-			| DEFAULT								{ $$ = NIL; }
 		;
 
 var_list:	var_value								{ $$ = list_make1($1); }
@@ -1310,35 +1350,20 @@ zone_value:
 							ereport(ERROR,
 									(errcode(ERRCODE_SYNTAX_ERROR),
 									 errmsg("time zone interval must be HOUR or HOUR TO MINUTE")));
-						n->typname->typmod = INTERVAL_TYPMOD(INTERVAL_FULL_PRECISION, $3);
+						n->typname->typmods = list_make1(makeIntConst($3));
 					}
 					$$ = (Node *)n;
 				}
 			| ConstInterval '(' Iconst ')' Sconst opt_interval
 				{
 					A_Const *n = (A_Const *) makeStringConst($5, $1);
-					if ($3 < 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("INTERVAL(%d) precision must not be negative",
-										$3)));
-					if ($3 > MAX_INTERVAL_PRECISION)
-					{
-						ereport(WARNING,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d",
-										$3, MAX_INTERVAL_PRECISION)));
-						$3 = MAX_INTERVAL_PRECISION;
-					}
-
 					if (($6 != INTERVAL_FULL_RANGE)
 						&& (($6 & ~(INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE))) != 0))
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("time zone interval must be HOUR or HOUR TO MINUTE")));
-
-					n->typname->typmod = INTERVAL_TYPMOD($3, $6);
-
+					n->typname->typmods = list_make2(makeIntConst($6),
+													  makeIntConst($3));
 					$$ = (Node *)n;
 				}
 			| NumericOnly							{ $$ = makeAConst($1); }
@@ -1355,6 +1380,49 @@ opt_encoding:
 ColId_or_Sconst:
 			ColId									{ $$ = $1; }
 			| SCONST								{ $$ = $1; }
+		;
+
+VariableResetStmt:
+			RESET var_name
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_RESET;
+					n->name = $2;
+					$$ = (Node *) n;
+				}
+			| RESET TIME ZONE
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_RESET;
+					n->name = "timezone";
+					$$ = (Node *) n;
+				}
+			| RESET TRANSACTION ISOLATION LEVEL
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_RESET;
+					n->name = "transaction_isolation";
+					$$ = (Node *) n;
+				}
+			| RESET SESSION AUTHORIZATION
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_RESET;
+					n->name = "session_authorization";
+					$$ = (Node *) n;
+				}
+			| RESET ALL
+				{
+					VariableSetStmt *n = makeNode(VariableSetStmt);
+					n->kind = VAR_RESET_ALL;
+					$$ = (Node *) n;
+				}
+		;
+
+/* SetResetClause allows SET or RESET without LOCAL */
+SetResetClause:
+			SET set_rest					{ $$ = $2; }
+			| VariableResetStmt				{ $$ = (VariableSetStmt *) $1; }
 		;
 
 
@@ -1391,39 +1459,6 @@ VariableShowStmt:
 				}
 		;
 
-VariableResetStmt:
-			RESET var_name
-				{
-					VariableResetStmt *n = makeNode(VariableResetStmt);
-					n->name = $2;
-					$$ = (Node *) n;
-				}
-			| RESET TIME ZONE
-				{
-					VariableResetStmt *n = makeNode(VariableResetStmt);
-					n->name = "timezone";
-					$$ = (Node *) n;
-				}
-			| RESET TRANSACTION ISOLATION LEVEL
-				{
-					VariableResetStmt *n = makeNode(VariableResetStmt);
-					n->name = "transaction_isolation";
-					$$ = (Node *) n;
-				}
-			| RESET SESSION AUTHORIZATION
-				{
-					VariableResetStmt *n = makeNode(VariableResetStmt);
-					n->name = "session_authorization";
-					$$ = (Node *) n;
-				}
-			| RESET ALL
-				{
-					VariableResetStmt *n = makeNode(VariableResetStmt);
-					n->name = "all";
-					$$ = (Node *) n;
-				}
-		;
-
 
 ConstraintsSetStmt:
 			SET CONSTRAINTS constraints_set_list constraints_set_mode
@@ -1454,6 +1489,40 @@ CheckPointStmt:
 				{
 					CheckPointStmt *n = makeNode(CheckPointStmt);
 					$$ = (Node *)n;
+				}
+		;
+
+
+/*****************************************************************************
+ *
+ * DISCARD { ALL | TEMP | PLANS }
+ *
+ *****************************************************************************/
+
+DiscardStmt:
+			DISCARD ALL
+				{
+					DiscardStmt *n = makeNode(DiscardStmt);
+					n->target = DISCARD_ALL;
+					$$ = (Node *) n;
+				}
+			| DISCARD TEMP
+				{
+					DiscardStmt *n = makeNode(DiscardStmt);
+					n->target = DISCARD_TEMP;
+					$$ = (Node *) n;
+				}
+			| DISCARD TEMPORARY
+				{
+					DiscardStmt *n = makeNode(DiscardStmt);
+					n->target = DISCARD_TEMP;
+					$$ = (Node *) n;
+				}
+			| DISCARD PLANS
+				{
+					DiscardStmt *n = makeNode(DiscardStmt);
+					n->target = DISCARD_PLANS;
+					$$ = (Node *) n;
 				}
 		;
 
@@ -1611,6 +1680,22 @@ alter_table_cmd:
 					n->name = $3;
 					$$ = (Node *)n;
 				}
+			/* ALTER TABLE <name> ENABLE ALWAYS TRIGGER <trig> */
+			| ENABLE_P ALWAYS TRIGGER name
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_EnableAlwaysTrig;
+					n->name = $4;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> ENABLE REPLICA TRIGGER <trig> */
+			| ENABLE_P REPLICA TRIGGER name
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_EnableReplicaTrig;
+					n->name = $4;
+					$$ = (Node *)n;
+				}
 			/* ALTER TABLE <name> ENABLE TRIGGER ALL */
 			| ENABLE_P TRIGGER ALL
 				{
@@ -1645,6 +1730,38 @@ alter_table_cmd:
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					n->subtype = AT_DisableTrigUser;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> ENABLE RULE <rule> */
+			| ENABLE_P RULE name
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_EnableRule;
+					n->name = $3;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> ENABLE ALWAYS RULE <rule> */
+			| ENABLE_P ALWAYS RULE name
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_EnableAlwaysRule;
+					n->name = $4;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> ENABLE REPLICA RULE <rule> */
+			| ENABLE_P REPLICA RULE name
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_EnableReplicaRule;
+					n->name = $4;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> DISABLE RULE <rule> */
+			| DISABLE_P RULE name
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_DisableRule;
+					n->name = $3;
 					$$ = (Node *)n;
 				}
 			/* ALTER TABLE <name> INHERIT <parent> */
@@ -1820,14 +1937,7 @@ alter_rel_cmd:
 		;
 
 alter_column_default:
-			SET DEFAULT a_expr
-				{
-					/* Treat SET DEFAULT NULL the same as DROP DEFAULT */
-					if (exprIsNullConstant($3))
-						$$ = NULL;
-					else
-						$$ = $3;
-				}
+			SET DEFAULT a_expr			{ $$ = $3; }
 			| DROP DEFAULT				{ $$ = NULL; }
 		;
 
@@ -1856,6 +1966,12 @@ ClosePortalStmt:
 				{
 					ClosePortalStmt *n = makeNode(ClosePortalStmt);
 					n->portalname = $2;
+					$$ = (Node *)n;
+				}
+			| CLOSE ALL
+				{
+					ClosePortalStmt *n = makeNode(ClosePortalStmt);
+					n->portalname = NULL;
 					$$ = (Node *)n;
 				}
 		;
@@ -1904,7 +2020,7 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list opt_oids
 				{
 					CopyStmt *n = makeNode(CopyStmt);
 					n->relation = NULL;
-					n->query = (Query *) $2;
+					n->query = $2;
 					n->attlist = NIL;
 					n->is_from = false;
 					n->filename = $4;
@@ -2062,6 +2178,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $11;
 					n->tablespacename = $12;
 					n->distributedBy = $13;
+					n->partitionBy = $14;
 					n->oidInfo.relOid = 0;
 					n->oidInfo.comptypeOid = 0;
 					n->oidInfo.toastOid = 0;
@@ -2233,15 +2350,7 @@ ColConstraintElem:
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_DEFAULT;
 					n->name = NULL;
-					if (exprIsNullConstant($2))
-					{
-						/* DEFAULT NULL should be reported as empty expr */
-						n->raw_expr = NULL;
-					}
-					else
-					{
-						n->raw_expr = $2;
-					}
+					n->raw_expr = $2;
 					n->cooked_expr = NULL;
 					n->keys = NULL;
 					n->indexspace = NULL;
@@ -2267,9 +2376,10 @@ ColConstraintElem:
  * ConstraintAttr represents constraint attributes, which we parse as if
  * they were independent constraint clauses, in order to avoid shift/reduce
  * conflicts (since NOT might start either an independent NOT NULL clause
- * or an attribute).  analyze.c is responsible for attaching the attribute
- * information to the preceding "real" constraint node, and for complaining
- * if attribute clauses appear in the wrong place or wrong combinations.
+ * or an attribute).  parse_utilcmd.c is responsible for attaching the
+ * attribute information to the preceding "real" constraint node, and for
+ * complaining if attribute clauses appear in the wrong place or wrong
+ * combinations.
  *
  * See also ConstraintAttributeSpec, which can be used in places where
  * there is no parsing conflict.
@@ -2839,8 +2949,7 @@ TabSubPartitionBy:
  */
 
 CreateAsStmt:
-		CREATE OptTemp TABLE qualified_name OptCreateAs
-			OptWith OnCommitOption OptTableSpace AS SelectStmt OptDistributedBy OptTabPartitionBy
+		CREATE OptTemp TABLE create_as_target AS SelectStmt OptDistributedBy OptTabPartitionBy
 				{
 					/*
 					 * When the SelectStmt is a set-operation tree, we must
@@ -2849,19 +2958,38 @@ CreateAsStmt:
 					 * to find it.	Similarly, the output column names must
 					 * be attached to that Select's target list.
 					 */
-					SelectStmt *n = findLeftmostSelect((SelectStmt *) $10);
-					if (n->into != NULL)
+					SelectStmt *n = findLeftmostSelect((SelectStmt *) $6);
+					if (n->intoClause != NULL)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("CREATE TABLE AS may not specify INTO")));
-					$4->istemp = $2;
-					n->into = $4;
-					n->intoColNames = $5;
-					n->intoOptions = $6;
-					n->intoOnCommit = $7;
-					n->intoTableSpaceName = $8;
-					n->distributedBy = $11;
-					$$ = $10;
+								 errmsg("CREATE TABLE AS cannot specify INTO")));
+					$4->rel->istemp = $2;
+					n->intoClause = $4;
+					n->distributedBy = $7; 
+					n->partitionBy = $8;
+					n->oidInfo.relOid = 0;
+					n->oidInfo.comptypeOid = 0;
+					n->oidInfo.toastOid = 0;
+					n->oidInfo.toastIndexOid = 0;
+					n->oidInfo.toastComptypeOid = 0;
+					n->relKind = RELKIND_RELATION;
+					n->policy = 0;
+                    n->postCreate = NULL;
+					
+
+					$$ = $6;
+				}
+		;
+
+create_as_target:
+			qualified_name OptCreateAs OptWith OnCommitOption OptTableSpace
+				{
+					$$ = makeNode(IntoClause);
+					$$->rel = $1;
+					$$->colNames = $2;
+					$$->options = $3;
+					$$->onCommit = $4;
+					$$->tableSpaceName = $5;
 				}
 		;
 
@@ -3665,7 +3793,7 @@ DefineStmt:
 					n->newOid = 0;
 					$$ = (Node *)n;
 				}
-			| CREATE TYPE_P any_name 
+			| CREATE TYPE_P any_name
 				{
 					/* Shell type (identified by lack of definition) */
 					DefineStmt *n = makeNode(DefineStmt);
@@ -3712,6 +3840,49 @@ DefineStmt:
 					n->comptypeOid = 0;
 					$$ = (Node *)n;
 				}
+			| CREATE TYPE_P any_name AS ENUM_P '(' enum_val_list ')'
+				{
+					CreateEnumStmt *n = makeNode(CreateEnumStmt);
+					n->typename = $3;
+					n->vals = $7;
+					$$ = (Node *)n;
+				}
+			| CREATE TEXT_P SEARCH PARSER any_name definition
+				{
+					DefineStmt *n = makeNode(DefineStmt);
+					n->kind = OBJECT_TSPARSER;
+					n->args = NIL;
+					n->defnames = $5;
+					n->definition = $6;
+					$$ = (Node *)n;
+				}
+			| CREATE TEXT_P SEARCH DICTIONARY any_name definition
+				{
+					DefineStmt *n = makeNode(DefineStmt);
+					n->kind = OBJECT_TSDICTIONARY;
+					n->args = NIL;
+					n->defnames = $5;
+					n->definition = $6;
+					$$ = (Node *)n;
+				}
+			| CREATE TEXT_P SEARCH TEMPLATE any_name definition
+				{
+					DefineStmt *n = makeNode(DefineStmt);
+					n->kind = OBJECT_TSTEMPLATE;
+					n->args = NIL;
+					n->defnames = $5;
+					n->definition = $6;
+					$$ = (Node *)n;
+				}
+			| CREATE TEXT_P SEARCH CONFIGURATION any_name definition
+				{
+					DefineStmt *n = makeNode(DefineStmt);
+					n->kind = OBJECT_TSCONFIGURATION;
+					n->args = NIL;
+					n->defnames = $5;
+					n->definition = $6;
+					$$ = (Node *)n;
+				}
 		;
 
 definition: '(' def_list ')'						{ $$ = $2; }
@@ -3733,20 +3904,14 @@ def_elem:  ColLabel '=' def_arg
 
 /* Note: any simple identifier will be returned as a type name! */
 def_arg:	func_type						{ $$ = (Node *)$1; }
-			| func_name_keyword				{ $$ = (Node *)makeString(pstrdup($1)); }
 			| reserved_keyword				{ $$ = (Node *)makeString(pstrdup($1)); }
 			| qual_all_Op					{ $$ = (Node *)$1; }
 			| NumericOnly					{ $$ = (Node *)$1; }
 			| Sconst						{ $$ = (Node *)makeString($1); }
 		;
 
-aggr_args:	'(' aggr_args_list ')'					{ $$ = $2; }
+aggr_args:	'(' type_list ')'						{ $$ = $2; }
 			| '(' '*' ')'							{ $$ = NIL; }
-		;
-
-aggr_args_list:
-			Typename								{ $$ = list_make1($1); }
-			| aggr_args_list ',' Typename			{ $$ = lappend($1, $3); }
 		;
 
 old_aggr_definition: '(' old_aggr_list ')'			{ $$ = $2; }
@@ -3762,25 +3927,35 @@ old_aggr_elem:  IDENT '=' def_arg
 				}
 		;
 
+enum_val_list:	Sconst
+				{ $$ = list_make1(makeString($1)); }
+			| enum_val_list ',' Sconst
+				{ $$ = lappend($1, makeString($3)); }
+		;
+
 
 /*****************************************************************************
  *
  *		QUERIES :
  *				CREATE OPERATOR CLASS ...
+ *				CREATE OPERATOR FAMILY ...
+ *				ALTER OPERATOR FAMILY ...
  *				DROP OPERATOR CLASS ...
+ *				DROP OPERATOR FAMILY ...
  *
  *****************************************************************************/
 
 CreateOpClassStmt:
 			CREATE OPERATOR CLASS any_name opt_default FOR TYPE_P Typename
-			USING access_method AS opclass_item_list
+			USING access_method opt_opfamily AS opclass_item_list
 				{
 					CreateOpClassStmt *n = makeNode(CreateOpClassStmt);
 					n->opclassname = $4;
 					n->isDefault = $5;
 					n->datatype = $8;
 					n->amname = $10;
-					n->items = $12;
+					n->opfamilyname = $11;
+					n->items = $13;
 					$$ = (Node *) n;
 				}
 		;
@@ -3820,6 +3995,16 @@ opclass_item:
 					n->number = $2;
 					$$ = (Node *) n;
 				}
+			| FUNCTION Iconst '(' type_list ')' func_name func_args
+				{
+					CreateOpClassItem *n = makeNode(CreateOpClassItem);
+					n->itemtype = OPCLASS_ITEM_FUNCTION;
+					n->name = $6;
+					n->args = extractArgTypes($7);
+					n->number = $2;
+					n->class_args = $4;
+					$$ = (Node *) n;
+				}
 			| STORAGE Typename
 				{
 					CreateOpClassItem *n = makeNode(CreateOpClassItem);
@@ -3829,12 +4014,72 @@ opclass_item:
 				}
 		;
 
-opt_default:	DEFAULT	{ $$ = TRUE; }
-			| /*EMPTY*/	{ $$ = FALSE; }
+opt_default:	DEFAULT						{ $$ = TRUE; }
+			| /*EMPTY*/						{ $$ = FALSE; }
 		;
 
-opt_recheck:	RECHECK	{ $$ = TRUE; }
-			| /*EMPTY*/	{ $$ = FALSE; }
+opt_opfamily:	FAMILY any_name				{ $$ = $2; }
+			| /*EMPTY*/						{ $$ = NIL; }
+		;
+
+opt_recheck:	RECHECK						{ $$ = TRUE; }
+			| /*EMPTY*/						{ $$ = FALSE; }
+		;
+
+
+CreateOpFamilyStmt:
+			CREATE OPERATOR FAMILY any_name USING access_method
+				{
+					CreateOpFamilyStmt *n = makeNode(CreateOpFamilyStmt);
+					n->opfamilyname = $4;
+					n->amname = $6;
+					$$ = (Node *) n;
+				}
+		;
+
+AlterOpFamilyStmt:
+			ALTER OPERATOR FAMILY any_name USING access_method ADD_P opclass_item_list
+				{
+					AlterOpFamilyStmt *n = makeNode(AlterOpFamilyStmt);
+					n->opfamilyname = $4;
+					n->amname = $6;
+					n->isDrop = false;
+					n->items = $8;
+					$$ = (Node *) n;
+				}
+			| ALTER OPERATOR FAMILY any_name USING access_method DROP opclass_drop_list
+				{
+					AlterOpFamilyStmt *n = makeNode(AlterOpFamilyStmt);
+					n->opfamilyname = $4;
+					n->amname = $6;
+					n->isDrop = true;
+					n->items = $8;
+					$$ = (Node *) n;
+				}
+		;
+
+opclass_drop_list:
+			opclass_drop							{ $$ = list_make1($1); }
+			| opclass_drop_list ',' opclass_drop	{ $$ = lappend($1, $3); }
+		;
+
+opclass_drop:
+			OPERATOR Iconst '(' type_list ')'
+				{
+					CreateOpClassItem *n = makeNode(CreateOpClassItem);
+					n->itemtype = OPCLASS_ITEM_OPERATOR;
+					n->number = $2;
+					n->args = $4;
+					$$ = (Node *) n;
+				}
+			| FUNCTION Iconst '(' type_list ')'
+				{
+					CreateOpClassItem *n = makeNode(CreateOpClassItem);
+					n->itemtype = OPCLASS_ITEM_FUNCTION;
+					n->number = $2;
+					n->args = $4;
+					$$ = (Node *) n;
+				}
 		;
 
 
@@ -3858,6 +4103,28 @@ DropOpClassStmt:
 					$$ = (Node *) n;
 				}
 		;
+
+DropOpFamilyStmt:
+			DROP OPERATOR FAMILY any_name USING access_method opt_drop_behavior
+				{
+					RemoveOpFamilyStmt *n = makeNode(RemoveOpFamilyStmt);
+					n->opfamilyname = $4;
+					n->amname = $6;
+					n->behavior = $7;
+					n->missing_ok = false;
+					$$ = (Node *) n;
+				}
+			| DROP OPERATOR FAMILY IF_P EXISTS any_name USING access_method opt_drop_behavior
+				{
+					RemoveOpFamilyStmt *n = makeNode(RemoveOpFamilyStmt);
+					n->opfamilyname = $6;
+					n->amname = $8;
+					n->behavior = $9;
+					n->missing_ok = true;
+					$$ = (Node *) n;
+				}
+		;
+
 
 /*****************************************************************************
  *
@@ -3891,7 +4158,7 @@ ReassignOwnedStmt:
  *
  *		QUERY:
  *
- *		DROP itemtype [ IF EXISTS ] itemname [, itemname ...] 
+ *		DROP itemtype [ IF EXISTS ] itemname [, itemname ...]
  *           [ RESTRICT | CASCADE ]
  *
  *****************************************************************************/
@@ -3927,6 +4194,10 @@ drop_type:	TABLE									{ $$ = OBJECT_TABLE; }
 			| DOMAIN_P								{ $$ = OBJECT_DOMAIN; }
 			| CONVERSION_P							{ $$ = OBJECT_CONVERSION; }
 			| SCHEMA								{ $$ = OBJECT_SCHEMA; }
+			| TEXT_P SEARCH PARSER					{ $$ = OBJECT_TSPARSER; }
+			| TEXT_P SEARCH DICTIONARY				{ $$ = OBJECT_TSDICTIONARY; }
+			| TEXT_P SEARCH TEMPLATE				{ $$ = OBJECT_TSTEMPLATE; }
+			| TEXT_P SEARCH CONFIGURATION			{ $$ = OBJECT_TSCONFIGURATION; }
 		;
 
 any_name_list:
@@ -3969,7 +4240,10 @@ TruncateStmt:
  *
  *	COMMENT ON [ [ DATABASE | DOMAIN | INDEX | SEQUENCE | TABLE | TYPE | VIEW |
  *				   CONVERSION | LANGUAGE | OPERATOR CLASS | LARGE OBJECT |
- *				   CAST | COLUMN | SCHEMA | TABLESPACE | ROLE ] <objname> |
+ *				   CAST | COLUMN | SCHEMA | TABLESPACE | ROLE | 
+ *				   TEXT SEARCH PARSER | TEXT SEARCH DICTIONARY |
+ *				   TEXT SEARCH TEMPLATE |
+ *				   TEXT SEARCH CONFIGURATION ] <objname> |
  *				 AGGREGATE <aggname> (arg1, ...) |
  *				 FUNCTION <funcname> (arg1, arg2, ...) |
  *				 OPERATOR <op> (leftoperand_typ, rightoperand_typ) |
@@ -4064,6 +4338,15 @@ CommentStmt:
 					n->comment = $9;
 					$$ = (Node *) n;
 				}
+			| COMMENT ON OPERATOR FAMILY any_name USING access_method IS comment_text
+				{
+					CommentStmt *n = makeNode(CommentStmt);
+					n->objtype = OBJECT_OPFAMILY;
+					n->objname = $5;
+					n->objargs = list_make1(makeString($7));
+					n->comment = $9;
+					$$ = (Node *) n;
+				}
 			| COMMENT ON LARGE_P OBJECT_P NumericOnly IS comment_text
 				{
 					CommentStmt *n = makeNode(CommentStmt);
@@ -4089,6 +4372,38 @@ CommentStmt:
 					n->objname = $5;
 					n->objargs = NIL;
 					n->comment = $7;
+					$$ = (Node *) n;
+				}
+			| COMMENT ON TEXT_P SEARCH PARSER any_name IS comment_text
+				{
+					CommentStmt *n = makeNode(CommentStmt);
+					n->objtype = OBJECT_TSPARSER;
+					n->objname = $6;
+					n->comment = $8;
+					$$ = (Node *) n;
+				}
+			| COMMENT ON TEXT_P SEARCH DICTIONARY any_name IS comment_text
+				{
+					CommentStmt *n = makeNode(CommentStmt);
+					n->objtype = OBJECT_TSDICTIONARY;
+					n->objname = $6;
+					n->comment = $8;
+					$$ = (Node *) n;
+				}
+			| COMMENT ON TEXT_P SEARCH TEMPLATE any_name IS comment_text
+				{
+					CommentStmt *n = makeNode(CommentStmt);
+					n->objtype = OBJECT_TSTEMPLATE;
+					n->objname = $6;
+					n->comment = $8;
+					$$ = (Node *) n;
+				}
+			| COMMENT ON TEXT_P SEARCH CONFIGURATION any_name IS comment_text
+				{
+					CommentStmt *n = makeNode(CommentStmt);
+					n->objtype = OBJECT_TSCONFIGURATION;
+					n->objname = $6;
+					n->comment = $8;
 					$$ = (Node *) n;
 				}
 		;
@@ -4576,26 +4891,32 @@ index_params:	index_elem							{ $$ = list_make1($1); }
  * expressions in parens.  For backwards-compatibility reasons, we allow
  * an expression that's just a function call to be written without parens.
  */
-index_elem:	ColId opt_class
+index_elem:	ColId opt_class opt_asc_desc opt_nulls_order
 				{
 					$$ = makeNode(IndexElem);
 					$$->name = $1;
 					$$->expr = NULL;
 					$$->opclass = $2;
+					$$->ordering = $3;
+					$$->nulls_ordering = $4;
 				}
-			| func_expr opt_class
+			| func_expr opt_class opt_asc_desc opt_nulls_order
 				{
 					$$ = makeNode(IndexElem);
 					$$->name = NULL;
 					$$->expr = $1;
 					$$->opclass = $2;
+					$$->ordering = $3;
+					$$->nulls_ordering = $4;
 				}
-			| '(' a_expr ')' opt_class
+			| '(' a_expr ')' opt_class opt_asc_desc opt_nulls_order
 				{
 					$$ = makeNode(IndexElem);
 					$$->name = NULL;
 					$$->expr = $2;
 					$$->opclass = $4;
+					$$->ordering = $5;
+					$$->nulls_ordering = $6;
 				}
 		;
 
@@ -4603,6 +4924,17 @@ opt_class:	any_name								{ $$ = $1; }
 			| USING any_name						{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
+
+opt_asc_desc: ASC							{ $$ = SORTBY_ASC; }
+			| DESC						{ $$ = SORTBY_DESC; }
+			| /*EMPTY*/					{ $$ = SORTBY_DEFAULT; }
+		;
+
+opt_nulls_order: NULLS_FIRST				{ $$ = SORTBY_NULLS_FIRST; }
+			| NULLS_LAST					{ $$ = SORTBY_NULLS_LAST; }
+			| /*EMPTY*/						{ $$ = SORTBY_NULLS_DEFAULT; }
+		;
+
 
 /*****************************************************************************
  *
@@ -4723,7 +5055,7 @@ arg_class:	IN_P									{ $$ = FUNC_PARAM_IN; }
 /*
  * Ideally param_name should be ColId, but that causes too many conflicts.
  */
-param_name:	function_name
+param_name:	type_function_name
 		;
 
 func_return:
@@ -4739,23 +5071,20 @@ func_return:
 
 /*
  * We would like to make the %TYPE productions here be ColId attrs etc,
- * but that causes reduce/reduce conflicts.  type_name is next best choice.
+ * but that causes reduce/reduce conflicts.  type_function_name
+ * is next best choice.
  */
 func_type:	Typename								{ $$ = $1; }
-			| type_name attrs '%' TYPE_P
+			| type_function_name attrs '%' TYPE_P
 				{
-					$$ = makeNode(TypeName);
-					$$->names = lcons(makeString($1), $2);
+					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
 					$$->pct_type = true;
-					$$->typmod = -1;
 					$$->location = @1;
 				}
-			| SETOF type_name attrs '%' TYPE_P
+			| SETOF type_function_name attrs '%' TYPE_P
 				{
-					$$ = makeNode(TypeName);
-					$$->names = lcons(makeString($2), $3);
+					$$ = makeTypeNameFromNameList(lcons(makeString($2), $3));
 					$$->pct_type = true;
-					$$->typmod = -1;
 					$$->setof = TRUE;
 					$$->location = @2;
 				}
@@ -4811,6 +5140,19 @@ common_func_opt_item:
 			| SECURITY INVOKER
 				{
 					$$ = makeDefElem("security", (Node *)makeInteger(FALSE));
+				}
+			| COST NumericOnly
+				{
+					$$ = makeDefElem("cost", (Node *)$2);
+				}
+			| ROWS NumericOnly
+				{
+					$$ = makeDefElem("rows", (Node *)$2);
+				}
+			| SetResetClause
+				{
+					/* we abuse the normal content of a DefElem here */
+					$$ = makeDefElem("set", (Node *)$1);
 				}
 		;
 
@@ -4961,9 +5303,9 @@ oper_argtypes:
 				}
 			| Typename ',' Typename
 					{ $$ = list_make2($1, $3); }
-			| NONE ',' Typename /* left unary */
+			| NONE ',' Typename							/* left unary */
 					{ $$ = list_make2(NULL, $3); }
-			| Typename ',' NONE /* right unary */
+			| Typename ',' NONE							/* right unary */
 					{ $$ = list_make2($1, NULL); }
 		;
 
@@ -5020,8 +5362,8 @@ DropCastStmt: DROP CAST opt_if_exists '(' Typename AS Typename ')' opt_drop_beha
 				}
 		;
 
-opt_if_exists: IF_P EXISTS						{ $$ = true; }
-		| /*EMPTY*/								{ $$ = false; }
+opt_if_exists: IF_P EXISTS						{ $$ = TRUE; }
+		| /*EMPTY*/								{ $$ = FALSE; }
 		;
 
 
@@ -5106,13 +5448,13 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 					n->newname = $6;
 					$$ = (Node *)n;
 				}
-			| ALTER FUNCTION func_name func_args RENAME TO name
+			| ALTER FUNCTION function_with_argtypes RENAME TO name
 				{
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_FUNCTION;
-					n->object = $3;
-					n->objarg = extractArgTypes($4);
-					n->newname = $7;
+					n->object = $3->funcname;
+					n->objarg = $3->funcargs;
+					n->newname = $6;
 					$$ = (Node *)n;
 				}
 			| ALTER GROUP_P RoleId RENAME TO RoleId
@@ -5123,18 +5465,27 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 					n->newname = $6;
 					$$ = (Node *)n;
 				}
-			| ALTER LANGUAGE name RENAME TO name
+			| ALTER opt_procedural LANGUAGE name RENAME TO name
 				{
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_LANGUAGE;
-					n->subname = $3;
-					n->newname = $6;
+					n->subname = $4;
+					n->newname = $7;
 					$$ = (Node *)n;
 				}
 			| ALTER OPERATOR CLASS any_name USING access_method RENAME TO name
 				{
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_OPCLASS;
+					n->object = $4;
+					n->subname = $6;
+					n->newname = $9;
+					$$ = (Node *)n;
+				}
+			| ALTER OPERATOR FAMILY any_name USING access_method RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_OPFAMILY;
 					n->object = $4;
 					n->subname = $6;
 					n->newname = $9;
@@ -5152,6 +5503,24 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 				{
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TABLE;
+					n->relation = $3;
+					n->subname = NULL;
+					n->newname = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER SEQUENCE relation_expr RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_SEQUENCE;
+					n->relation = $3;
+					n->subname = NULL;
+					n->newname = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER VIEW relation_expr RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_VIEW;
 					n->relation = $3;
 					n->subname = NULL;
 					n->newname = $6;
@@ -5208,6 +5577,38 @@ RenameStmt: ALTER AGGREGATE func_name aggr_args RENAME TO name
 					n->newname = $6;
 					$$ = (Node *)n;
 				}
+			| ALTER TEXT_P SEARCH PARSER any_name RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_TSPARSER;
+					n->object = $5;
+					n->newname = $8;
+					$$ = (Node *)n;
+				}
+			| ALTER TEXT_P SEARCH DICTIONARY any_name RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_TSDICTIONARY;
+					n->object = $5;
+					n->newname = $8;
+					$$ = (Node *)n;
+				}
+			| ALTER TEXT_P SEARCH TEMPLATE any_name RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_TSTEMPLATE;
+					n->object = $5;
+					n->newname = $8;
+					$$ = (Node *)n;
+				}
+			| ALTER TEXT_P SEARCH CONFIGURATION any_name RENAME TO name
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_TSCONFIGURATION;
+					n->object = $5;
+					n->newname = $8;
+					$$ = (Node *)n;
+				}
 		;
 
 opt_column: COLUMN									{ $$ = COLUMN; }
@@ -5238,13 +5639,13 @@ AlterObjectSchemaStmt:
 					n->newschema = $6;
 					$$ = (Node *)n;
 				}
-			| ALTER FUNCTION func_name func_args SET SCHEMA name
+			| ALTER FUNCTION function_with_argtypes SET SCHEMA name
 				{
 					AlterObjectSchemaStmt *n = makeNode(AlterObjectSchemaStmt);
 					n->objectType = OBJECT_FUNCTION;
-					n->object = $3;
-					n->objarg = extractArgTypes($4);
-					n->newschema = $7;
+					n->object = $3->funcname;
+					n->objarg = $3->funcargs;
+					n->newschema = $6;
 					$$ = (Node *)n;
 				}
 			| ALTER SEQUENCE relation_expr SET SCHEMA name
@@ -5312,12 +5713,20 @@ AlterOwnerStmt: ALTER AGGREGATE func_name aggr_args OWNER TO RoleId
 					n->newowner = $6;
 					$$ = (Node *)n;
 				}
-			| ALTER FUNCTION func_name func_args OWNER TO RoleId
+			| ALTER FUNCTION function_with_argtypes OWNER TO RoleId
 				{
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_FUNCTION;
-					n->object = $3;
-					n->objarg = extractArgTypes($4);
+					n->object = $3->funcname;
+					n->objarg = $3->funcargs;
+					n->newowner = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER opt_procedural LANGUAGE name OWNER TO RoleId
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_LANGUAGE;
+					n->object = list_make1($4);
 					n->newowner = $7;
 					$$ = (Node *)n;
 				}
@@ -5334,6 +5743,15 @@ AlterOwnerStmt: ALTER AGGREGATE func_name aggr_args OWNER TO RoleId
 				{
 					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
 					n->objectType = OBJECT_OPCLASS;
+					n->object = $4;
+					n->addname = $6;
+					n->newowner = $9;
+					$$ = (Node *)n;
+				}
+			| ALTER OPERATOR FAMILY any_name USING access_method OWNER TO RoleId
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_OPFAMILY;
 					n->object = $4;
 					n->addname = $6;
 					n->newowner = $9;
@@ -5361,6 +5779,22 @@ AlterOwnerStmt: ALTER AGGREGATE func_name aggr_args OWNER TO RoleId
 					n->objectType = OBJECT_TABLESPACE;
 					n->object = list_make1($3);
 					n->newowner = $6;
+					$$ = (Node *)n;
+				}
+			| ALTER TEXT_P SEARCH DICTIONARY any_name OWNER TO RoleId
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_TSDICTIONARY;
+					n->object = $5;
+					n->newowner = $8;
+					$$ = (Node *)n;
+				}
+			| ALTER TEXT_P SEARCH CONFIGURATION any_name OWNER TO RoleId
+				{
+					AlterOwnerStmt *n = makeNode(AlterOwnerStmt);
+					n->objectType = OBJECT_TSCONFIGURATION;
+					n->object = $5;
+					n->newowner = $8;
 					$$ = (Node *)n;
 				}
 		;
@@ -5470,27 +5904,33 @@ DropRuleStmt:
  *
  *****************************************************************************/
 
-NotifyStmt: NOTIFY qualified_name
+NotifyStmt: NOTIFY ColId
 				{
 					NotifyStmt *n = makeNode(NotifyStmt);
-					n->relation = $2;
+					n->relation = makeNode(RangeVar);
+					n->relation->relname = $2;
+					n->relation->schemaname = NULL;
 					$$ = (Node *)n;
 				}
 		;
 
-ListenStmt: LISTEN qualified_name
+ListenStmt: LISTEN ColId
 				{
 					ListenStmt *n = makeNode(ListenStmt);
-					n->relation = $2;
+					n->relation = makeNode(RangeVar);
+					n->relation->relname = $2;
+					n->relation->schemaname = NULL;
 					$$ = (Node *)n;
 				}
 		;
 
 UnlistenStmt:
-			UNLISTEN qualified_name
+			UNLISTEN ColId
 				{
 					UnlistenStmt *n = makeNode(UnlistenStmt);
-					n->relation = $2;
+					n->relation = makeNode(RangeVar);
+					n->relation->relname = $2;
+					n->relation->schemaname = NULL;
 					$$ = (Node *)n;
 				}
 			| UNLISTEN '*'
@@ -5666,22 +6106,22 @@ ViewStmt: CREATE OptTemp VIEW qualified_name opt_column_list
 				{
 					ViewStmt *n = makeNode(ViewStmt);
 					n->relOid = 0;
-					n->replace = false;
 					n->view = $4;
 					n->view->istemp = $2;
 					n->aliases = $5;
-					n->query = (Query *) $7;
+					n->query = $7;
+					n->replace = false;
 					$$ = (Node *) n;
 				}
 		| CREATE OR REPLACE OptTemp VIEW qualified_name opt_column_list
 				AS SelectStmt opt_check_option
 				{
 					ViewStmt *n = makeNode(ViewStmt);
-					n->replace = true;
 					n->view = $6;
 					n->view->istemp = $4;
 					n->aliases = $7;
-					n->query = (Query *) $9;
+					n->query = $9;
+					n->replace = true;
 					$$ = (Node *) n;
 				}
 		;
@@ -5715,7 +6155,7 @@ opt_check_option:
 /*****************************************************************************
  *
  *		QUERY:
- *				load "filename"
+ *				LOAD "filename"
  *
  *****************************************************************************/
 
@@ -5827,20 +6267,11 @@ AlterDatabaseStmt:
 		;
 
 AlterDatabaseSetStmt:
-			ALTER DATABASE database_name SET set_rest
+			ALTER DATABASE database_name SetResetClause
 				{
 					AlterDatabaseSetStmt *n = makeNode(AlterDatabaseSetStmt);
 					n->dbname = $3;
-					n->variable = $5->name;
-					n->value = $5->args;
-					$$ = (Node *)n;
-				}
-			| ALTER DATABASE database_name VariableResetStmt
-				{
-					AlterDatabaseSetStmt *n = makeNode(AlterDatabaseSetStmt);
-					n->dbname = $3;
-					n->variable = ((VariableResetStmt *)$4)->name;
-					n->value = NIL;
+					n->setstmt = $4;
 					$$ = (Node *)n;
 				}
 		;
@@ -5955,6 +6386,82 @@ opt_as:		AS										{}
 
 /*****************************************************************************
  *
+ * Manipulate a text search dictionary or configuration
+ *
+ *****************************************************************************/
+
+AlterTSDictionaryStmt:
+			ALTER TEXT_P SEARCH DICTIONARY any_name definition
+				{
+					AlterTSDictionaryStmt *n = makeNode(AlterTSDictionaryStmt);
+					n->dictname = $5;
+					n->options = $6;
+					$$ = (Node *)n;
+				}
+		;
+
+AlterTSConfigurationStmt:
+			ALTER TEXT_P SEARCH CONFIGURATION any_name ADD_P MAPPING FOR name_list WITH any_name_list
+				{
+					AlterTSConfigurationStmt *n = makeNode(AlterTSConfigurationStmt);
+					n->cfgname = $5;
+					n->tokentype = $9;
+					n->dicts = $11;
+					n->override = false;
+					n->replace = false;
+					$$ = (Node*)n;
+				}
+			| ALTER TEXT_P SEARCH CONFIGURATION any_name ALTER MAPPING FOR name_list WITH any_name_list
+				{
+					AlterTSConfigurationStmt *n = makeNode(AlterTSConfigurationStmt);
+					n->cfgname = $5;
+					n->tokentype = $9;
+					n->dicts = $11;
+					n->override = true;
+					n->replace = false;
+					$$ = (Node*)n;
+				}
+			| ALTER TEXT_P SEARCH CONFIGURATION any_name ALTER MAPPING REPLACE any_name WITH any_name 
+				{
+					AlterTSConfigurationStmt *n = makeNode(AlterTSConfigurationStmt);
+					n->cfgname = $5;
+					n->tokentype = NIL;
+					n->dicts = list_make2($9,$11);
+					n->override = false;
+					n->replace = true;
+					$$ = (Node*)n;
+				}
+			| ALTER TEXT_P SEARCH CONFIGURATION any_name ALTER MAPPING FOR name_list REPLACE any_name WITH any_name 
+				{
+					AlterTSConfigurationStmt *n = makeNode(AlterTSConfigurationStmt);
+					n->cfgname = $5;
+					n->tokentype = $9;
+					n->dicts = list_make2($11,$13);
+					n->override = false;
+					n->replace = true;
+					$$ = (Node*)n;
+				}
+			| ALTER TEXT_P SEARCH CONFIGURATION any_name DROP MAPPING FOR name_list 
+				{
+					AlterTSConfigurationStmt *n = makeNode(AlterTSConfigurationStmt);
+					n->cfgname = $5;
+					n->tokentype = $9;
+					n->missing_ok = false;
+					$$ = (Node*)n;
+				}
+			| ALTER TEXT_P SEARCH CONFIGURATION any_name DROP MAPPING IF_P EXISTS FOR name_list 
+				{
+					AlterTSConfigurationStmt *n = makeNode(AlterTSConfigurationStmt);
+					n->cfgname = $5;
+					n->tokentype = $11;
+					n->missing_ok = true;
+					$$ = (Node*)n;
+				}
+		;
+
+
+/*****************************************************************************
+ *
  * Manipulate a conversion
  *
  *		CREATE [DEFAULT] CONVERSION <conversion_name>
@@ -5979,25 +6486,18 @@ CreateConversionStmt:
 /*****************************************************************************
  *
  *		QUERY:
- *				cluster <index_name> on <qualified_name>
- *				cluster <qualified_name>
- *				cluster
+ *				CLUSTER <qualified_name> [ USING <index_name> ]
+ *				CLUSTER
+ *				CLUSTER <index_name> ON <qualified_name> (for pre-8.3)
  *
  *****************************************************************************/
 
 ClusterStmt:
-			CLUSTER index_name ON qualified_name
-				{
-				   ClusterStmt *n = makeNode(ClusterStmt);
-				   n->relation = $4;
-				   n->indexname = $2;
-				   $$ = (Node*)n;
-				}
-			| CLUSTER qualified_name
+			CLUSTER qualified_name cluster_index_specification
 				{
 			       ClusterStmt *n = makeNode(ClusterStmt);
 				   n->relation = $2;
-				   n->indexname = NULL;
+				   n->indexname = $3;
 				   $$ = (Node*)n;
 				}
 			| CLUSTER
@@ -6007,13 +6507,27 @@ ClusterStmt:
 				   n->indexname = NULL;
 				   $$ = (Node*)n;
 				}
+			/* kept for pre-8.3 compatibility */
+			| CLUSTER index_name ON qualified_name
+				{
+				   ClusterStmt *n = makeNode(ClusterStmt);
+				   n->relation = $4;
+				   n->indexname = $2;
+				   $$ = (Node*)n;
+				}
 		;
+
+cluster_index_specification:
+			USING index_name		{ $$ = $2; }
+			| /*EMPTY*/				{ $$ = NULL; }
+		;
+
 
 /*****************************************************************************
  *
  *		QUERY:
- *				vacuum
- *				analyze
+ *				VACUUM
+ *				ANALYZE
  *
  *****************************************************************************/
 
@@ -6123,7 +6637,7 @@ ExplainStmt: EXPLAIN opt_analyze opt_verbose opt_force ExplainableStmt
 								errmsg("cannot use force with explain statement")
 							       ));
 #endif
-					n->query = (Query*)$5;
+					n->query = $5;
 					$$ = (Node *)n;
 				}
 		;
@@ -6155,18 +6669,13 @@ PrepareStmt: PREPARE name prep_type_clause AS PreparableStmt
 					PrepareStmt *n = makeNode(PrepareStmt);
 					n->name = $2;
 					n->argtypes = $3;
-					n->query = (Query *) $5;
+					n->query = $5;
 					$$ = (Node *) n;
 				}
 		;
 
-prep_type_clause: '(' prep_type_list ')'	{ $$ = $2; }
+prep_type_clause: '(' type_list ')'			{ $$ = $2; }
 				| /* EMPTY */				{ $$ = NIL; }
-		;
-
-prep_type_list: Typename			{ $$ = list_make1($1); }
-			  | prep_type_list ',' Typename
-									{ $$ = lappend($1, $3); }
 		;
 
 PreparableStmt:
@@ -6191,19 +6700,15 @@ ExecuteStmt: EXECUTE name execute_param_clause
 					n->into = NULL;
 					$$ = (Node *) n;
 				}
-			| CREATE OptTemp TABLE qualified_name OptCreateAs
-				OptWith OnCommitOption OptTableSpace AS
+			| CREATE OptTemp TABLE create_as_target AS
 				EXECUTE name execute_param_clause
 				{
 					ExecuteStmt *n = makeNode(ExecuteStmt);
-					n->name = $11;
-					n->params = $12;
-					$4->istemp = $2;
+					n->name = $7;
+					n->params = $8;
+					$4->rel->istemp = $2;
 					n->into = $4;
-					n->intoOptions = $6;
-					n->into_on_commit = $7;
-					n->into_tbl_space = $8;
-					if ($5)
+					if ($4->colNames)
 						ereport(ERROR,
 								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								 errmsg("column name list not allowed in CREATE TABLE / AS EXECUTE")));
@@ -6233,6 +6738,18 @@ DeallocateStmt: DEALLOCATE name
 					{
 						DeallocateStmt *n = makeNode(DeallocateStmt);
 						n->name = $3;
+						$$ = (Node *) n;
+					}
+				| DEALLOCATE ALL
+					{
+						DeallocateStmt *n = makeNode(DeallocateStmt);
+						n->name = NULL;
+						$$ = (Node *) n;
+					}
+				| DEALLOCATE PREPARE ALL
+					{
+						DeallocateStmt *n = makeNode(DeallocateStmt);
+						n->name = NULL;
 						$$ = (Node *) n;
 					}
 		;
@@ -6326,7 +6843,7 @@ returning_clause:
  *****************************************************************************/
 
 DeleteStmt: DELETE_P FROM relation_expr_opt_alias
-			using_clause where_clause returning_clause
+			using_clause where_or_current_clause returning_clause
 				{
 					DeleteStmt *n = makeNode(DeleteStmt);
 					n->relation = $3;
@@ -6382,7 +6899,7 @@ opt_nowait:	NOWAIT							{ $$ = TRUE; }
 UpdateStmt: UPDATE relation_expr_opt_alias
 			SET set_clause_list
 			from_clause
-			where_clause
+			where_or_current_clause
 			returning_clause
 				{
 					UpdateStmt *n = makeNode(UpdateStmt);
@@ -6435,7 +6952,7 @@ multiple_set_clause:
 
 						res_col->val = res_val;
 					}
-				    
+
 					$$ = $2;
 				}
 		;
@@ -6467,10 +6984,9 @@ DeclareCursorStmt: DECLARE name cursor_options CURSOR opt_hold FOR SelectStmt
 				{
 					DeclareCursorStmt *n = makeNode(DeclareCursorStmt);
 					n->portalname = $2;
-					n->options = $3;
+					/* currently we always set FAST_PLAN option */
+					n->options = $3 | $5 | CURSOR_OPT_FAST_PLAN;
 					n->query = $7;
-					if ($5)
-						n->options |= CURSOR_OPT_HOLD;
 					$$ = (Node *)n;
 				}
 		;
@@ -6482,9 +6998,9 @@ cursor_options: /*EMPTY*/					{ $$ = 0; }
 			| cursor_options INSENSITIVE	{ $$ = $1 | CURSOR_OPT_INSENSITIVE; }
 		;
 
-opt_hold: /* EMPTY */						{ $$ = FALSE; }
-			| WITH HOLD						{ $$ = TRUE; }
-			| WITHOUT HOLD					{ $$ = FALSE; }
+opt_hold: /* EMPTY */						{ $$ = 0; }
+			| WITH HOLD						{ $$ = CURSOR_OPT_HOLD; }
+			| WITHOUT HOLD					{ $$ = 0; }
 		;
 
 /*****************************************************************************
@@ -6605,8 +7121,7 @@ simple_select:
 					SelectStmt *n = makeNode(SelectStmt);
 					n->distinctClause = $2;
 					n->targetList = $3;
-					n->into = $4;
-					n->intoColNames = NIL;
+					n->intoClause = $4;
 					n->fromClause = $5;
 					n->whereClause = $6;
 					n->groupClause = $7;
@@ -6630,8 +7145,17 @@ simple_select:
 		;
 
 into_clause:
-			INTO OptTempTableName					{ $$ = $2; }
-			| /*EMPTY*/								{ $$ = NULL; }
+			INTO OptTempTableName
+				{
+					$$ = makeNode(IntoClause);
+					$$->rel = $2;
+					$$->colNames = NIL;
+					$$->options = NIL;
+					$$->onCommit = ONCOMMIT_NOOP;
+					$$->tableSpaceName = NULL;
+				}
+			| /*EMPTY*/
+				{ $$ = NULL; }
 		;
 
 /*
@@ -6714,32 +7238,20 @@ sortby_list:
 			| sortby_list ',' sortby				{ $$ = lappend($1, $3); }
 		;
 
-sortby:		a_expr USING qual_all_Op
+sortby:		a_expr USING qual_all_Op opt_nulls_order
 				{
 					$$ = makeNode(SortBy);
 					$$->node = $1;
-					$$->sortby_kind = SORTBY_USING;
+					$$->sortby_dir = SORTBY_USING;
+					$$->sortby_nulls = $4;
 					$$->useOp = $3;
 				}
-			| a_expr ASC
+			| a_expr opt_asc_desc opt_nulls_order
 				{
 					$$ = makeNode(SortBy);
 					$$->node = $1;
-					$$->sortby_kind = SORTBY_ASC;
-					$$->useOp = NIL;
-				}
-			| a_expr DESC
-				{
-					$$ = makeNode(SortBy);
-					$$->node = $1;
-					$$->sortby_kind = SORTBY_DESC;
-					$$->useOp = NIL;
-				}
-			| a_expr
-				{
-					$$ = makeNode(SortBy);
-					$$->node = $1;
-					$$->sortby_kind = SORTBY_ASC;	/* default */
+					$$->sortby_dir = $2;
+					$$->sortby_nulls = $3;
 					$$->useOp = NIL;
 				}
 		;
@@ -6927,7 +7439,7 @@ window_frame_start:
 					n->val = $1;
 					$$ = (Node *)n;
 				}
-			| CURRENT ROW
+			| CURRENT_P ROW
 				{
 					WindowFrameEdge *n = makeNode(WindowFrameEdge);
 					n->kind = WINDOW_CURRENT_ROW;
@@ -6978,7 +7490,7 @@ window_frame_following: a_expr FOLLOWING
 				}
 		;
 
-window_frame_exclusion: EXCLUDE CURRENT ROW { $$ = WINDOW_EXCLUSION_CUR_ROW; }
+window_frame_exclusion: EXCLUDE CURRENT_P ROW { $$ = WINDOW_EXCLUSION_CUR_ROW; }
 			| EXCLUDE GROUP_P { $$ = WINDOW_EXCLUSION_GROUP; }
 			| EXCLUDE TIES  { $$ = WINDOW_EXCLUSION_TIES; }
 			| EXCLUDE NO OTHERS { $$ = WINDOW_EXCLUSION_NO_OTHERS; }
@@ -7369,6 +7881,28 @@ where_clause:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+/* variant for UPDATE and DELETE */
+where_or_current_clause:
+			WHERE a_expr							{ $$ = $2; }
+			| WHERE CURRENT_P OF name
+				{
+					CurrentOfExpr *n = makeNode(CurrentOfExpr);
+					/* cvarno is filled in by parse analysis */
+					n->cursor_name = $4;
+					n->cursor_param = 0;
+					$$ = (Node *) n;
+				}
+			| WHERE CURRENT_P OF PARAM
+				{
+					CurrentOfExpr *n = makeNode(CurrentOfExpr);
+					/* cvarno is filled in by parse analysis */
+					n->cursor_name = NULL;
+					n->cursor_param = $4;
+					$$ = (Node *) n;
+				}
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
+
 
 TableFuncElementList:
 			TableFuncElement
@@ -7437,14 +7971,6 @@ opt_array_bounds:
 					{  $$ = NIL; }
 		;
 
-/*
- * XXX ideally, the production for a qualified typename should be ColId attrs
- * (there's no obvious reason why the first name should need to be restricted)
- * and should be an alternative of GenericType (so that it can be used to
- * specify a type for a literal in AExprConst).  However doing either causes
- * reduce/reduce conflicts that I haven't been able to find a workaround
- * for.  FIXME later.
- */
 SimpleTypename:
 			GenericType								{ $$ = $1; }
 			| Numeric								{ $$ = $1; }
@@ -7455,32 +7981,13 @@ SimpleTypename:
 				{
 					$$ = $1;
 					if ($2 != INTERVAL_FULL_RANGE)
-						$$->typmod = INTERVAL_TYPMOD(INTERVAL_FULL_PRECISION, $2);
+						$$->typmods = list_make1(makeIntConst($2));
 				}
 			| ConstInterval '(' Iconst ')' opt_interval
 				{
 					$$ = $1;
-					if ($3 < 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("INTERVAL(%d) precision must not be negative",
-										$3)));
-					if ($3 > MAX_INTERVAL_PRECISION)
-					{
-						ereport(WARNING,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d",
-										$3, MAX_INTERVAL_PRECISION)));
-						$3 = MAX_INTERVAL_PRECISION;
-					}
-					$$->typmod = INTERVAL_TYPMOD($3, $5);
-				}
-			| type_name attrs
-				{
-					$$ = makeNode(TypeName);
-					$$->names = lcons(makeString($1), $2);
-					$$->typmod = -1;
-					$$->location = @1;
+					$$->typmods = list_make2(makeIntConst($5),
+											 makeIntConst($3));
 				}
 		;
 
@@ -7491,80 +7998,112 @@ SimpleTypename:
  * where there is an obvious better choice to make.
  * Note that ConstInterval is not included here since it must
  * be pushed up higher in the rules to accomodate the postfix
- * options (e.g. INTERVAL '1' YEAR).
+ * options (e.g. INTERVAL '1' YEAR). Likewise, we have to handle
+ * the generic-type-name case in AExprConst to avoid premature
+ * reduce/reduce conflicts against function names.
  */
 ConstTypename:
-			GenericType								{ $$ = $1; }
-			| Numeric								{ $$ = $1; }
+			Numeric									{ $$ = $1; }
 			| ConstBit								{ $$ = $1; }
 			| ConstCharacter						{ $$ = $1; }
 			| ConstDatetime							{ $$ = $1; }
 		;
 
+/*
+ * GenericType covers all type names that don't have special syntax mandated
+ * by the standard, including qualified names.  We also allow type modifiers.
+ * To avoid parsing conflicts against function invocations, the modifiers
+ * have to be shown as expr_list here, but parse analysis will only accept
+ * constants for them.
+ */
 GenericType:
-			type_name
+			type_function_name opt_type_modifiers
 				{
 					$$ = makeTypeName($1);
+					$$->typmods = $2;
+					$$->location = @1;
+				}
+			| type_function_name attrs opt_type_modifiers
+				{
+					$$ = makeTypeNameFromNameList(lcons(makeString($1), $2));
+					$$->typmods = $3;
 					$$->location = @1;
 				}
 		;
 
-/* SQL92 numeric data types
- * Check FLOAT() precision limits assuming IEEE floating types.
- * - thomas 1997-09-18
- * Provide real DECIMAL() and NUMERIC() implementations now - Jan 1998-12-30
+opt_type_modifiers: '(' expr_list ')'				{ $$ = $2; }
+					| /* EMPTY */					{ $$ = NIL; }
+		;
+
+/*
+ * SQL92 numeric data types
  */
 Numeric:	INT_P
 				{
 					$$ = SystemTypeName("int4");
+					$$->location = @1;
 				}
 			| INTEGER
 				{
 					$$ = SystemTypeName("int4");
+					$$->location = @1;
 				}
 			| SMALLINT
 				{
 					$$ = SystemTypeName("int2");
+					$$->location = @1;
 				}
 			| BIGINT
 				{
 					$$ = SystemTypeName("int8");
+					$$->location = @1;
 				}
 			| REAL
 				{
 					$$ = SystemTypeName("float4");
+					$$->location = @1;
 				}
 			| FLOAT_P opt_float
 				{
 					$$ = $2;
+					$$->location = @1;
 				}
 			| DOUBLE_P PRECISION
 				{
 					$$ = SystemTypeName("float8");
+					$$->location = @1;
 				}
-			| DECIMAL_P opt_decimal
+			| DECIMAL_P opt_type_modifiers
 				{
 					$$ = SystemTypeName("numeric");
-					$$->typmod = $2;
+					$$->typmods = $2;
+					$$->location = @1;
 				}
-			| DEC opt_decimal
+			| DEC opt_type_modifiers
 				{
 					$$ = SystemTypeName("numeric");
-					$$->typmod = $2;
+					$$->typmods = $2;
+					$$->location = @1;
 				}
-			| NUMERIC opt_numeric
+			| NUMERIC opt_type_modifiers
 				{
 					$$ = SystemTypeName("numeric");
-					$$->typmod = $2;
+					$$->typmods = $2;
+					$$->location = @1;
 				}
 			| BOOLEAN_P
 				{
 					$$ = SystemTypeName("bool");
+					$$->location = @1;
 				}
 		;
 
 opt_float:	'(' Iconst ')'
 				{
+					/*
+					 * Check FLOAT() precision limits assuming IEEE floating
+					 * types - thomas 1997-09-18
+					 */
 					if ($2 < 1)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -7583,73 +8122,6 @@ opt_float:	'(' Iconst ')'
 					$$ = SystemTypeName("float8");
 				}
 		;
-
-opt_numeric:
-			'(' Iconst ',' Iconst ')'
-				{
-					if ($2 < 1 || $2 > NUMERIC_MAX_PRECISION)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("NUMERIC precision %d must be between 1 and %d",
-										$2, NUMERIC_MAX_PRECISION)));
-					if ($4 < 0 || $4 > $2)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("NUMERIC scale %d must be between 0 and precision %d",
-										$4, $2)));
-
-					$$ = (($2 << 16) | $4) + VARHDRSZ;
-				}
-			| '(' Iconst ')'
-				{
-					if ($2 < 1 || $2 > NUMERIC_MAX_PRECISION)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("NUMERIC precision %d must be between 1 and %d",
-										$2, NUMERIC_MAX_PRECISION)));
-
-					$$ = ($2 << 16) + VARHDRSZ;
-				}
-			| /*EMPTY*/
-				{
-					/* Insert "-1" meaning "no limit" */
-					$$ = -1;
-				}
-		;
-
-opt_decimal:
-			'(' Iconst ',' Iconst ')'
-				{
-					if ($2 < 1 || $2 > NUMERIC_MAX_PRECISION)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("DECIMAL precision %d must be between 1 and %d",
-										$2, NUMERIC_MAX_PRECISION)));
-					if ($4 < 0 || $4 > $2)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("DECIMAL scale %d must be between 0 and precision %d",
-										$4, $2)));
-
-					$$ = (($2 << 16) | $4) + VARHDRSZ;
-				}
-			| '(' Iconst ')'
-				{
-					if ($2 < 1 || $2 > NUMERIC_MAX_PRECISION)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("DECIMAL precision %d must be between 1 and %d",
-										$2, NUMERIC_MAX_PRECISION)));
-
-					$$ = ($2 << 16) + VARHDRSZ;
-				}
-			| /*EMPTY*/
-				{
-					/* Insert "-1" meaning "no limit" */
-					$$ = -1;
-				}
-		;
-
 
 /*
  * SQL92 bit-field data types
@@ -7674,28 +8146,19 @@ ConstBit:	BitWithLength
 			| BitWithoutLength
 				{
 					$$ = $1;
-					$$->typmod = -1;
+					$$->typmods = NIL;
 				}
 		;
 
 BitWithLength:
-			BIT opt_varying '(' Iconst ')'
+			BIT opt_varying '(' expr_list ')'
 				{
 					char *typname;
 
 					typname = $2 ? "varbit" : "bit";
 					$$ = SystemTypeName(typname);
-					if ($4 < 1)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("length for type %s must be at least 1",
-										typname)));
-					else if ($4 > (MaxAttrSize * BITS_PER_BYTE))
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("length for type %s cannot exceed %d",
-										typname, MaxAttrSize * BITS_PER_BYTE)));
-					$$->typmod = $4;
+					$$->typmods = $4;
+					$$->location = @1;
 				}
 		;
 
@@ -7706,13 +8169,13 @@ BitWithoutLength:
 					if ($2)
 					{
 						$$ = SystemTypeName("varbit");
-						$$->typmod = -1;
 					}
 					else
 					{
 						$$ = SystemTypeName("bit");
-						$$->typmod = 1;
+						$$->typmods = list_make1(makeIntConst(1));
 					}
+					$$->location = @1;
 				}
 		;
 
@@ -7744,7 +8207,7 @@ ConstCharacter:  CharacterWithLength
 					 * was not specified.
 					 */
 					$$ = $1;
-					$$->typmod = -1;
+					$$->typmods = NIL;
 				}
 		;
 
@@ -7762,24 +8225,8 @@ CharacterWithLength:  character '(' Iconst ')' opt_charset
 					}
 
 					$$ = SystemTypeName($1);
-
-					if ($3 < 1)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("length for type %s must be at least 1",
-										$1)));
-					else if ($3 > MaxAttrSize)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("length for type %s cannot exceed %d",
-										$1, MaxAttrSize)));
-
-					/* we actually implement these like a varlen, so
-					 * the first 4 bytes is the length. (the difference
-					 * between these and "text" is that we blank-pad and
-					 * truncate where necessary)
-					 */
-					$$->typmod = VARHDRSZ + $3;
+					$$->typmods = list_make1(makeIntConst($3));
+					$$->location = @1;
 				}
 		;
 
@@ -7800,9 +8247,9 @@ CharacterWithoutLength:	 character opt_charset
 
 					/* char defaults to char(1), varchar to no limit */
 					if (strcmp($1, "bpchar") == 0)
-						$$->typmod = VARHDRSZ + 1;
-					else
-						$$->typmod = -1;
+						$$->typmods = list_make1(makeIntConst(1));
+
+					$$->location = @1;
 				}
 		;
 
@@ -7830,6 +8277,9 @@ opt_charset:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+/*
+ * SQL92 date/time types
+ */
 ConstDatetime:
 			TIMESTAMP '(' Iconst ')' opt_timezone
 				{
@@ -7841,21 +8291,8 @@ ConstDatetime:
 					 * - thomas 2001-09-06
 					 */
 					$$->timezone = $5;
-					if ($3 < 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("TIMESTAMP(%d)%s precision must not be negative",
-										$3, ($5 ? " WITH TIME ZONE": ""))));
-					if ($3 > MAX_TIMESTAMP_PRECISION)
-					{
-						ereport(WARNING,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("TIMESTAMP(%d)%s precision reduced to maximum allowed, %d",
-										$3, ($5 ? " WITH TIME ZONE": ""),
-										MAX_TIMESTAMP_PRECISION)));
-						$3 = MAX_TIMESTAMP_PRECISION;
-					}
-					$$->typmod = $3;
+					$$->typmods = list_make1(makeIntConst($3));
+					$$->location = @1;
 				}
 			| TIMESTAMP opt_timezone
 				{
@@ -7867,6 +8304,7 @@ ConstDatetime:
 					 * - thomas 2001-09-06
 					 */
 					$$->timezone = $2;
+					$$->location = @1;
 				}
 			| TIME '(' Iconst ')' opt_timezone
 				{
@@ -7874,21 +8312,8 @@ ConstDatetime:
 						$$ = SystemTypeName("timetz");
 					else
 						$$ = SystemTypeName("time");
-					if ($3 < 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("TIME(%d)%s precision must not be negative",
-										$3, ($5 ? " WITH TIME ZONE": ""))));
-					if ($3 > MAX_TIME_PRECISION)
-					{
-						ereport(WARNING,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("TIME(%d)%s precision reduced to maximum allowed, %d",
-										$3, ($5 ? " WITH TIME ZONE": ""),
-										MAX_TIME_PRECISION)));
-						$3 = MAX_TIME_PRECISION;
-					}
-					$$->typmod = $3;
+					$$->typmods = list_make1(makeIntConst($3));
+					$$->location = @1;
 				}
 			| TIME opt_timezone
 				{
@@ -7896,11 +8321,16 @@ ConstDatetime:
 						$$ = SystemTypeName("timetz");
 					else
 						$$ = SystemTypeName("time");
+					$$->location = @1;
 				}
 		;
 
 ConstInterval:
-			INTERVAL								{ $$ = SystemTypeName("interval"); }
+			INTERVAL
+				{
+					$$ = SystemTypeName("interval");
+					$$->location = @1;
+				}
 		;
 
 opt_timezone:
@@ -8333,6 +8763,16 @@ a_expr:		c_expr									{ $$ = $1; }
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 							 errmsg("UNIQUE predicate is not yet implemented")));
 				}
+			| a_expr IS DOCUMENT_P					%prec IS
+				{
+					$$ = makeXmlExpr(IS_DOCUMENT, NULL, NIL, list_make1($1));
+				}
+			| a_expr IS NOT DOCUMENT_P				%prec IS
+				{
+					$$ = (Node *) makeA_Expr(AEXPR_NOT, NIL, NULL,
+											 makeXmlExpr(IS_DOCUMENT, NULL, NIL, list_make1($1)),
+											 @2);
+				}
 		;
 
 /*
@@ -8393,7 +8833,16 @@ b_expr:		c_expr
 				{
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_OF, "<>", $1, (Node *) $6, @2);
 				}
-
+			| b_expr IS DOCUMENT_P					%prec IS
+				{
+					$$ = makeXmlExpr(IS_DOCUMENT, NULL, NIL, list_make1($1));
+				}
+			| b_expr IS NOT DOCUMENT_P				%prec IS
+				{
+					$$ = (Node *) makeA_Expr(AEXPR_NOT, NIL, NULL,
+											 makeXmlExpr(IS_DOCUMENT, NULL, NIL, list_make1($1)),
+											 @2);
+				}
 		;
 
 /*
@@ -8500,7 +8949,7 @@ window_name: ColId { $$ = $1; }
 		;
 /*
  * func_expr is split out from c_expr just so that we have a classification
-a * for "everything that is a function call or looks like one".  This isn't
+ * for "everything that is a function call or looks like one".  This isn't
  * very important, but it saves us having to document which variants are
  * legal in the backwards-compatible functional-index syntax for CREATE INDEX.
  * (Note that many of the special SQL functions wouldn't actually make any
@@ -8633,20 +9082,7 @@ func_expr:	func_name '(' ')'
 					s->val.val.str = "now";
 					s->typname = SystemTypeName("text");
 					d = SystemTypeName("timetz");
-					if ($3 < 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("CURRENT_TIME(%d) precision must not be negative",
-										$3)));
-					if ($3 > MAX_TIME_PRECISION)
-					{
-						ereport(WARNING,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("CURRENT_TIME(%d) precision reduced to maximum allowed, %d",
-										$3, MAX_TIME_PRECISION)));
-						$3 = MAX_TIME_PRECISION;
-					}
-					d->typmod = $3;
+					d->typmods = list_make1(makeIntConst($3));
 
 					$$ = (Node *)makeTypeCast((Node *)s, d);
 				}
@@ -8679,20 +9115,7 @@ func_expr:	func_name '(' ')'
 					s->typname = SystemTypeName("text");
 
 					d = SystemTypeName("timestamptz");
-					if ($3 < 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("CURRENT_TIMESTAMP(%d) precision must not be negative",
-										$3)));
-					if ($3 > MAX_TIMESTAMP_PRECISION)
-					{
-						ereport(WARNING,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("CURRENT_TIMESTAMP(%d) precision reduced to maximum allowed, %d",
-										$3, MAX_TIMESTAMP_PRECISION)));
-						$3 = MAX_TIMESTAMP_PRECISION;
-					}
-					d->typmod = $3;
+					d->typmods = list_make1(makeIntConst($3));
 
 					$$ = (Node *)makeTypeCast((Node *)s, d);
 				}
@@ -8726,20 +9149,7 @@ func_expr:	func_name '(' ')'
 					s->val.val.str = "now";
 					s->typname = SystemTypeName("text");
 					d = SystemTypeName("time");
-					if ($3 < 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("LOCALTIME(%d) precision must not be negative",
-										$3)));
-					if ($3 > MAX_TIME_PRECISION)
-					{
-						ereport(WARNING,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("LOCALTIME(%d) precision reduced to maximum allowed, %d",
-										$3, MAX_TIME_PRECISION)));
-						$3 = MAX_TIME_PRECISION;
-					}
-					d->typmod = $3;
+					d->typmods = list_make1(makeIntConst($3));
 
 					$$ = (Node *)makeTypeCast((Node *)s, d);
 				}
@@ -8774,20 +9184,7 @@ func_expr:	func_name '(' ')'
 					s->typname = SystemTypeName("text");
 
 					d = SystemTypeName("timestamp");
-					if ($3 < 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("LOCALTIMESTAMP(%d) precision must not be negative",
-										$3)));
-					if ($3 > MAX_TIMESTAMP_PRECISION)
-					{
-						ereport(WARNING,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("LOCALTIMESTAMP(%d) precision reduced to maximum allowed, %d",
-										$3, MAX_TIMESTAMP_PRECISION)));
-						$3 = MAX_TIMESTAMP_PRECISION;
-					}
-					d->typmod = $3;
+					d->typmods = list_make1(makeIntConst($3));
 
 					$$ = (Node *)makeTypeCast((Node *)s, d);
 				}
@@ -8957,33 +9354,6 @@ func_expr:	func_name '(' ')'
 					n->location = @1;
 					$$ = (Node *)n;
 				}
-			| CONVERT '(' a_expr USING any_name ')'
-				{
-					FuncCall *n = makeNode(FuncCall);
-					A_Const *c = makeNode(A_Const);
-
-					c->val.type = T_String;
-					c->val.val.str = NameListToQuotedString($5);
-
-					n->funcname = SystemFuncName("convert_using");
-					n->args = list_make2($3, c);
-					n->agg_star = FALSE;
-					n->agg_distinct = FALSE;
-					n->over = NULL;
-					n->location = @1;
-					$$ = (Node *)n;
-				}
-			| CONVERT '(' expr_list ')'
-				{
-					FuncCall *n = makeNode(FuncCall);
-					n->funcname = SystemFuncName("convert");
-					n->args = $3;
-					n->agg_star = FALSE;
-					n->agg_distinct = FALSE;
-					n->over = NULL;
-					n->location = @1;
-					$$ = (Node *)n;
-				}
 			| NULLIF '(' a_expr ',' a_expr ')'
 				{
 					$$ = (Node *) makeSimpleA_Expr(AEXPR_NULLIF, "=", $3, $5, @1);
@@ -9020,6 +9390,116 @@ func_expr:	func_name '(' ')'
 					GroupId *gid = makeNode(GroupId);
 					$$ = (Node *)gid;
 				}
+			| XMLCONCAT '(' expr_list ')'
+				{
+					$$ = makeXmlExpr(IS_XMLCONCAT, NULL, NIL, $3);
+				}
+			| XMLELEMENT '(' NAME_P ColLabel ')'
+				{
+					$$ = makeXmlExpr(IS_XMLELEMENT, $4, NIL, NIL);
+				}
+			| XMLELEMENT '(' NAME_P ColLabel ',' xml_attributes ')'
+				{
+					$$ = makeXmlExpr(IS_XMLELEMENT, $4, $6, NIL);
+				}
+			| XMLELEMENT '(' NAME_P ColLabel ',' expr_list ')'
+				{
+					$$ = makeXmlExpr(IS_XMLELEMENT, $4, NIL, $6);
+				}
+			| XMLELEMENT '(' NAME_P ColLabel ',' xml_attributes ',' expr_list ')'
+				{
+					$$ = makeXmlExpr(IS_XMLELEMENT, $4, $6, $8);
+				}
+			| XMLFOREST '(' xml_attribute_list ')'
+				{
+					$$ = makeXmlExpr(IS_XMLFOREST, NULL, $3, NIL);
+				}
+			| XMLPARSE '(' document_or_content a_expr xml_whitespace_option ')'
+				{
+					XmlExpr *x = (XmlExpr *) makeXmlExpr(IS_XMLPARSE, NULL, NIL,
+														 list_make2($4,
+																	makeBoolAConst($5)));
+					x->xmloption = $3;
+					$$ = (Node *)x;
+				}
+			| XMLPI '(' NAME_P ColLabel ')'
+				{
+					$$ = makeXmlExpr(IS_XMLPI, $4, NULL, NIL);
+				}
+			| XMLPI '(' NAME_P ColLabel ',' a_expr ')'
+				{
+					$$ = makeXmlExpr(IS_XMLPI, $4, NULL, list_make1($6));
+				}
+			| XMLROOT '(' a_expr ',' xml_root_version opt_xml_root_standalone ')'
+				{
+					$$ = makeXmlExpr(IS_XMLROOT, NULL, NIL,
+									 list_make3($3, $5, $6));
+				}
+			| XMLSERIALIZE '(' document_or_content a_expr AS SimpleTypename ')'
+				{
+					XmlSerialize *n = makeNode(XmlSerialize);
+					n->xmloption = $3;
+					n->expr = $4;
+					n->typename = $6;
+					$$ = (Node *)n;
+				}
+		;
+
+/*
+ * SQL/XML support
+ */
+xml_root_version: VERSION_P a_expr
+				{ $$ = $2; }
+			| VERSION_P NO VALUE_P
+				{
+					A_Const *val = makeNode(A_Const);
+					val->val.type = T_Null;
+					$$ = (Node *) val;
+				}
+		;
+
+opt_xml_root_standalone: ',' STANDALONE_P YES_P
+				{ $$ = (Node *) makeIntConst(XML_STANDALONE_YES); }
+			| ',' STANDALONE_P NO
+				{ $$ = (Node *) makeIntConst(XML_STANDALONE_NO); }
+			| ',' STANDALONE_P NO VALUE_P
+				{ $$ = (Node *) makeIntConst(XML_STANDALONE_NO_VALUE); }
+			| /*EMPTY*/
+				{ $$ = (Node *) makeIntConst(XML_STANDALONE_OMITTED); }
+		;
+
+xml_attributes: XMLATTRIBUTES '(' xml_attribute_list ')'	{ $$ = $3; }
+		;
+
+xml_attribute_list:	xml_attribute_el					{ $$ = list_make1($1); }
+			| xml_attribute_list ',' xml_attribute_el	{ $$ = lappend($1, $3); }
+		;
+
+xml_attribute_el: a_expr AS ColLabel
+				{
+					$$ = makeNode(ResTarget);
+					$$->name = $3;
+					$$->indirection = NULL;
+					$$->val = (Node *) $1;
+					$$->location = @1;
+				}
+			| a_expr
+				{
+					$$ = makeNode(ResTarget);
+					$$->name = NULL;
+					$$->indirection = NULL;
+					$$->val = (Node *) $1;
+					$$->location = @1;
+				}
+		;
+
+document_or_content: DOCUMENT_P						{ $$ = XMLOPTION_DOCUMENT; }
+			| CONTENT_P								{ $$ = XMLOPTION_CONTENT; }
+		;
+
+xml_whitespace_option: PRESERVE WHITESPACE_P		{ $$ = TRUE; }
+			| STRIP_P WHITESPACE_P					{ $$ = FALSE; }
+			| /*EMPTY*/								{ $$ = FALSE; }
 		;
 
 /*
@@ -9114,14 +9594,8 @@ extract_list:
 			| /*EMPTY*/								{ $$ = NIL; }
 		;
 
-type_list:  type_list ',' Typename
-				{
-					$$ = lappend($1, $3);
-				}
-			| Typename
-				{
-					$$ = list_make1($1);
-				}
+type_list:	Typename								{ $$ = list_make1($1); }
+			| type_list ',' Typename				{ $$ = lappend($1, $3); }
 		;
 
 array_expr_list: array_expr
@@ -9218,9 +9692,11 @@ substr_list:
 					/*
 					 * Since there are no cases where this syntax allows
 					 * a textual FOR value, we forcibly cast the argument
-					 * to int4.  This is a kluge to avoid surprising results
-					 * when the argument is, say, int8.  It'd be better if
-					 * there were not an implicit cast from int8 to text ...
+					 * to int4.  The possible matches in pg_proc are
+					 * substring(text,int4) and substring(text,text),
+					 * and we don't want the parser to choose the latter,
+					 * which it is likely to do if the second argument
+					 * is unknown or doesn't have an implicit cast to int4.
 					 */
 					A_Const *n = makeNode(A_Const);
 					n->val.type = T_Integer;
@@ -9505,12 +9981,12 @@ file_name:	Sconst									{ $$ = $1; };
 /*
  * The production for a qualified func_name has to exactly match the
  * production for a qualified columnref, because we cannot tell which we
- * are parsing until we see what comes after it ('(' for a func_name,
+ * are parsing until we see what comes after it ('(' or Sconst for a func_name,
  * anything else for a columnref).  Therefore we allow 'indirection' which
  * may contain subscripts, and reject that case in the C code.  (If we
  * ever implement SQL99-like methods, such syntax may actually become legal!)
  */
-func_name:	function_name
+func_name:	type_function_name
 					{ $$ = list_make1(makeString($1)); }
 			| relation_name indirection
 					{ $$ = check_func_name(lcons(makeString($1), $2)); }
@@ -9560,6 +10036,27 @@ AexprConst: Iconst
 					n->val.val.str = $1;
 					$$ = (Node *)n;
 				}
+			| func_name Sconst
+				{
+					/* generic type 'literal' syntax */
+					A_Const *n = makeNode(A_Const);
+					n->typename = makeTypeNameFromNameList($1);
+					n->typename->location = @1;
+					n->val.type = T_String;
+					n->val.val.str = $2;
+					$$ = (Node *)n;
+				}
+			| func_name '(' expr_list ')' Sconst
+				{
+					/* generic syntax with a type modifier */
+					A_Const *n = makeNode(A_Const);
+					n->typename = makeTypeNameFromNameList($1);
+					n->typename->typmods = $3;
+					n->typename->location = @1;
+					n->val.type = T_String;
+					n->val.val.str = $5;
+					$$ = (Node *)n;
+				}
 			| ConstTypename Sconst
 				{
 					A_Const *n = makeNode(A_Const);
@@ -9576,7 +10073,7 @@ AexprConst: Iconst
 					n->val.val.str = $2;
 					/* precision is not specified, but fields may be... */
 					if ($3 != INTERVAL_FULL_RANGE)
-						n->typname->typmod = INTERVAL_TYPMOD(INTERVAL_FULL_PRECISION, $3);
+						n->typname->typmods = list_make1(makeIntConst($3));
 					$$ = (Node *)n;
 				}
 			| ConstInterval '(' Iconst ')' Sconst opt_interval
@@ -9585,21 +10082,8 @@ AexprConst: Iconst
 					n->typname = $1;
 					n->val.type = T_String;
 					n->val.val.str = $5;
-					/* precision specified, and fields may be... */
-					if ($3 < 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("INTERVAL(%d) precision must not be negative",
-										$3)));
-					if ($3 > MAX_INTERVAL_PRECISION)
-					{
-						ereport(WARNING,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								 errmsg("INTERVAL(%d) precision reduced to maximum allowed, %d",
-										$3, MAX_INTERVAL_PRECISION)));
-						$3 = MAX_INTERVAL_PRECISION;
-					}
-					n->typname->typmod = INTERVAL_TYPMOD($3, $6);
+					n->typname->typmods = list_make2(makeIntConst($6),
+													  makeIntConst($3));
 					$$ = (Node *)n;
 				}
 			| TRUE_P
@@ -9645,18 +10129,11 @@ ColId:		IDENT									{ $$ = $1; }
 			| col_name_keyword						{ $$ = pstrdup($1); }
 		;
 
-/* Type identifier --- names that can be type names.
+/* Type/function identifier --- names that can be type or function names.
  */
-type_name:	IDENT									{ $$ = $1; }
+type_function_name:	IDENT							{ $$ = $1; }
 			| unreserved_keyword					{ $$ = pstrdup($1); }
-		;
-
-/* Function identifier --- names that can be function names.
- */
-function_name:
-			IDENT									{ $$ = $1; }
-			| unreserved_keyword					{ $$ = pstrdup($1); }
-			| func_name_keyword						{ $$ = pstrdup($1); }
+			| type_func_name_keyword				{ $$ = pstrdup($1); }
 		;
 
 /* Column label --- allowed labels in "AS" clauses.
@@ -9665,18 +10142,22 @@ function_name:
 ColLabel:	IDENT									{ $$ = $1; }
 			| unreserved_keyword					{ $$ = pstrdup($1); }
 			| col_name_keyword						{ $$ = pstrdup($1); }
-			| func_name_keyword						{ $$ = pstrdup($1); }
+			| type_func_name_keyword				{ $$ = pstrdup($1); }
 			| reserved_keyword						{ $$ = pstrdup($1); }
 		;
 
 
 /*
- * Keyword classification lists.  Generally, every keyword present in
+ * Keyword category lists.  Generally, every keyword present in
  * the Postgres grammar should appear in exactly one of these lists.
  *
  * Put a new keyword into the first list that it can go into without causing
  * shift or reduce conflicts.  The earlier lists define "less reserved"
  * categories of keywords.
+ *
+ * Make sure that each keyword's category in keywords.c matches where
+ * it is listed here.  (Someday we may be able to generate these lists and
+ * keywords.c's table from a common master list.)
  */
 
 /* "Unreserved" keywords --- available for use as any kind of name.
@@ -9693,6 +10174,7 @@ unreserved_keyword:
 			| AGGREGATE
 			| ALSO
 			| ALTER
+			| ALWAYS
 			| ASSERTION
 			| ASSIGNMENT
 			| AT
@@ -9714,8 +10196,10 @@ unreserved_keyword:
 			| COMMIT
 			| COMMITTED
 			| CONCURRENTLY
+			| CONFIGURATION
 			| CONNECTION
 			| CONSTRAINTS
+			| CONTENT_P
 			| CONVERSION_P
 			| COPY
 			| COST
@@ -9723,7 +10207,7 @@ unreserved_keyword:
 			| CREATEROLE
 			| CREATEUSER
 			| CSV
-			| CURRENT
+			| CURRENT_P
 			| CURSOR
 			| CYCLE
 			| DATABASE
@@ -9736,7 +10220,10 @@ unreserved_keyword:
 			| DELETE_P
 			| DELIMITER
 			| DELIMITERS
+			| DICTIONARY
 			| DISABLE_P
+			| DISCARD
+			| DOCUMENT_P
 			| DOMAIN_P
 			| DOUBLE_P
 			| DROP
@@ -9744,6 +10231,7 @@ unreserved_keyword:
 			| ENABLE_P
 			| ENCODING
 			| ENCRYPTED
+			| ENUM_P
 			| ESCAPE
 			| EVERY
 			| EXCHANGE
@@ -9752,6 +10240,7 @@ unreserved_keyword:
 			| EXECUTE
 			| EXPLAIN
 			| EXTERNAL
+			| FAMILY
 			| FETCH
 			| FIRST_P
 			| FORCE
@@ -9796,6 +10285,7 @@ unreserved_keyword:
 			| LOCATION
 			| LOCK_P
 			| LOGIN_P
+			| MAPPING
 			| MASTER
 			| MATCH
 			| MAXVALUE
@@ -9806,6 +10296,7 @@ unreserved_keyword:
 			| MODE
 			| MONTH_P
 			| MOVE
+			| NAME_P
 			| NAMES
 			| NEXT
 			| NO
@@ -9819,6 +10310,7 @@ unreserved_keyword:
 			| NOTHING
 			| NOTIFY
 			| NOWAIT
+			| NULLS_P
 			| OBJECT_P
 			| OF
 			| OIDS
@@ -9829,10 +10321,12 @@ unreserved_keyword:
 			| OVERCOMMIT
 			| OWNED
 			| OWNER
+			| PARSER
 			| PARTIAL
 			| PARTITIONS
 			| PASSWORD
 			| PERCENT
+			| PLANS
 			| PREPARE
 			| PREPARED
 			| PRESERVE
@@ -9851,6 +10345,7 @@ unreserved_keyword:
 			| RENAME
 			| REPEATABLE
 			| REPLACE
+			| REPLICA
 			| RESET
 			| RESOURCE
 			| RESTART
@@ -9863,6 +10358,7 @@ unreserved_keyword:
 			| SAVEPOINT
 			| SCHEMA
 			| SCROLL
+			| SEARCH
 			| SECOND_P
 			| SECURITY
 			| SEGMENT
@@ -9875,22 +10371,25 @@ unreserved_keyword:
 			| SIMPLE
 			| SPLIT
 			| STABLE
+			| STANDALONE_P
 			| START
 			| STATEMENT
 			| STATISTICS
 			| STDIN
 			| STDOUT
 			| STORAGE
+			| STRICT_P
+			| STRIP_P
 			| SUBPARTITION
 			| SUBPARTITIONS
 			| SUPERUSER_P
 			| SYSID
 			| SYSTEM_P
-			| STRICT_P
 			| TABLESPACE
 			| TEMP
 			| TEMPLATE
 			| TEMPORARY
+			| TEXT_P
 			| THRESHOLD
 			| TIES
 			| TRANSACTION
@@ -9907,14 +10406,19 @@ unreserved_keyword:
 			| VACUUM
 			| VALID
 			| VALIDATOR
+			| VALUE_P
 			| VARYING
+			| VERSION_P
 			| VIEW
 			| VOLATILE
+			| WHITESPACE_P
 			| WITH
 			| WITHOUT
 			| WORK
 			| WRITE
+			| XML_P
 			| YEAR_P
+			| YES_P
 			| ZONE
 		;
 
@@ -9935,7 +10439,6 @@ col_name_keyword:
 			| CHAR_P
 			| CHARACTER
 			| COALESCE
-			| CONVERT
 			| CUBE
 			| DEC
 			| DECIMAL_P
@@ -9972,9 +10475,17 @@ col_name_keyword:
 			| TRIM
 			| VALUES
 			| VARCHAR
+			| XMLATTRIBUTES
+			| XMLCONCAT
+			| XMLELEMENT
+			| XMLFOREST
+			| XMLPARSE
+			| XMLPI
+			| XMLROOT
+			| XMLSERIALIZE
 		;
 
-/* Function identifier --- keywords that can be function names.
+/* Type/function identifier --- keywords that can be type or function names.
  *
  * Most of these are keywords that are used as operators in expressions;
  * in general such keywords can't be column names because they would be
@@ -9984,7 +10495,7 @@ col_name_keyword:
  * productions in a_expr to support the goofy SQL9x argument syntax.
  * - thomas 2000-11-28
  */
-func_name_keyword:
+type_func_name_keyword:
 			  AUTHORIZATION
 			| BINARY
 			| CROSS
@@ -10426,12 +10937,8 @@ SystemFuncName(char *name)
 TypeName *
 SystemTypeName(char *name)
 {
-	TypeName   *n = makeNode(TypeName);
-
-	n->names = list_make2(makeString("pg_catalog"), makeString(name));
-	n->typmod = -1;
-	n->location = -1;
-	return n;
+	return makeTypeNameFromNameList(list_make2(makeString("pg_catalog"),
+											   makeString(name)));
 }
 
 /* parser_init()
@@ -10441,23 +10948,6 @@ void
 parser_init(void)
 {
 	QueryIsRule = FALSE;
-}
-
-/* exprIsNullConstant()
- * Test whether an a_expr is a plain NULL constant or not.
- */
-bool
-exprIsNullConstant(Node *arg)
-{
-	if (arg && IsA(arg, A_Const))
-	{
-		A_Const *con = (A_Const *) arg;
-
-		if (con->val.type == T_Null &&
-			con->typname == NULL)
-			return TRUE;
-	}
-	return FALSE;
 }
 
 /* doNegate()
@@ -10513,6 +11003,23 @@ doNegateFloat(Value *v)
 		strcpy(newval+1, oldval);
 		v->val.str = newval;
 	}
+}
+
+static Node *
+makeXmlExpr(XmlExprOp op, char *name, List *named_args, List *args)
+{
+	XmlExpr    *x = makeNode(XmlExpr);
+
+	x->op = op;
+	x->name = name;
+	/*
+	 * named_args is a list of ResTarget; it'll be split apart into separate
+	 * expression and name lists in transformXmlExpr().
+	 */
+	x->named_args = named_args;
+	x->arg_names = NIL;
+	x->args = args;
+	return (Node *) x;
 }
 
 /*
