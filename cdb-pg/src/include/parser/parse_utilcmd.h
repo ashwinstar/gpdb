@@ -4,6 +4,7 @@
  *		parse analysis for utility commands
  *
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -18,6 +19,7 @@
 
 
 extern List *transformCreateStmt(CreateStmt *stmt, const char *queryString);
+extern List *transformCreateExternalStmt(CreateExternalStmt *stmt, const char *queryString);
 extern List *transformAlterTableStmt(AlterTableStmt *stmt,
 						const char *queryString);
 extern IndexStmt *transformIndexStmt(IndexStmt *stmt, const char *queryString);
