@@ -16,6 +16,7 @@
  * a quick copyObject() call before manipulating the query tree.
  *
  *
+ * Portions Copyright (c) 2005-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -55,6 +56,13 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbcat.h"
+#include "cdb/cdbhash.h"
+#include "cdb/cdbsreh.h"
+
+/* XXX XXX #include "executor/spi.h" */
+
 
 /* State shared by transformCreateStmt and its subroutines */
 typedef struct
@@ -91,6 +99,41 @@ typedef struct
 	List	   *grants;			/* GRANT items */
 } CreateSchemaStmtContext;
 
+typedef struct
+{
+	List	  *subtlist; /* target list for sub query */
+	List      *vars_for_aggrefs; /* list of Vars to replace Aggrefs. */
+	bool       update_winref; /* indicate if we want to update WindowRefs. */
+	bool       in_winref; /* indicate if a node appears inside a WindowRef. */
+	Query     *query;    /* used to obtain WindowSpec to update frame clauses */
+} grouped_window_ctx;
+
+typedef struct
+{
+	Index *sortref;
+	Index size;
+	int level;
+	int levelsup;
+} sortref_ctx;
+
+/* state structures for validing parsed partition specifications */
+typedef struct
+{
+	ParseState *pstate;
+	CreateStmtContext *cxt;
+	CreateStmt *stmt;
+	PartitionBy *pBy;
+	PartitionElem *pElem;
+	PartitionElem *prevElem;
+	PartitionBoundSpec *pBSpec;
+	int partNumber;
+	char *namBuf;
+	char *at_depth;
+	bool prevHadName;
+	int prevStartEnd;
+	List *allRangeVals;
+	List *allListVals;
+} partValidationState;
 
 static void transformColumnDefinition(ParseState *pstate,
 						  CreateStmtContext *cxt,
@@ -115,6 +158,66 @@ static void transformConstraintAttrs(List *constraintList);
 static void transformColumnType(ParseState *pstate, ColumnDef *column);
 static void setSchemaName(char *context_schema, char **stmt_schema_name);
 
+static void transformDistributedBy(ParseState *pstate,
+		   CreateStmtContext *cxt, List *distributedBy, GpPolicy ** policy, List *likeDistributedBy);
+
+static void transformPartitionBy(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, GpPolicy *policy);
+
+static void setQryDistributionPolicy(SelectStmt *stmt, Query *qry);
+static void transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
+											SingleRowErrorDesc *sreh);
+
+static List *make_partition_rules(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, PartitionElem *pElem,
+ 		 char *at_depth, char *child_name_str, 
+		 int partNumId, int maxPartNum, 
+		 int everyOffset, int maxEveryOffset,
+		 ListCell	**pp_lc_anp);
+
+static Node *make_prule_catalog(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, PartitionElem *pElem,
+ 		 char *at_depth, char *child_name_str, 
+		 char *exprBuf,
+		 Node *pWhere							 
+		);
+
+static Node *make_prule_rulestmt(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, PartitionElem *pElem,
+ 		 char *at_depth, char *child_name_str, 
+		 char *exprBuf,
+		 Node *pWhere							 
+		);
+
+static A_Const *make_a_const(A_Const *pValConst, char *val_str);
+
+static int deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize);
+
+static int partition_range_compare(ParseState *pstate,
+								   CreateStmtContext *cxt, CreateStmt *stmt, 
+								   PartitionBy *pBy,
+								   char	   *at_depth,
+								   int		partNumber,
+								   char	   *compare_op,
+								   PartitionRangeItem *pRI1,
+								   PartitionRangeItem *pRI2);
+
+static int validate_partition_spec(ParseState *pstate,
+								   CreateStmtContext *cxt, CreateStmt *stmt, 
+								   PartitionBy *partitionBy, 	
+								   char	   *at_depth,
+								   int		partNumber);
+
+static int partition_range_every(ParseState *pstate,
+								 CreateStmtContext *cxt, CreateStmt *stmt, 
+								 PartitionBy *partitionBy, 	
+								 char	   *at_depth);
+static Datum eval_basic_opexpr(ParseState *pstate, List *oprname, 
+							   Node *leftarg, Node *rightarg, Oid *restypid);
 
 /*
  * transformCreateStmt -
@@ -289,6 +392,107 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	 */
 	transformPartitionBy(pstate, &cxt, stmt, stmt->partitionBy, stmt->policy);
 
+	/*
+	 * Output results.
+	 */
+	stmt->tableElts = cxt.columns;
+	stmt->constraints = cxt.ckconstraints;
+
+	result = lappend(cxt.blist, stmt);
+	result = list_concat(result, cxt.alist);
+	result = list_concat(result, save_alist);
+
+	return result;
+}
+
+List *
+transformCreateExternalStmt(CreateExternalStmt *stmt, const char *queryString)
+{
+	ParseState *pstate;
+	CreateStmtContext cxt;
+	List	   *result;
+	List	   *save_alist;
+	ListCell   *elements;
+
+	/*
+	 * We must not scribble on the passed-in CreateExternalStmt, so copy it.  (This is
+	 * overkill, but easy.)
+	 */
+	stmt = (CreateExternalStmt *) copyObject(stmt);
+
+	/*
+	 * If the target relation name isn't schema-qualified, make it so.  This
+	 * prevents some corner cases in which added-on rewritten commands might
+	 * think they should apply to other relations that have the same name and
+	 * are earlier in the search path.	"istemp" is equivalent to a
+	 * specification of pg_temp, so no need for anything extra in that case.
+	 */
+	if (stmt->relation->schemaname == NULL && !stmt->relation->istemp)
+	{
+		Oid			namespaceid = RangeVarGetCreationNamespace(stmt->relation);
+
+		stmt->relation->schemaname = get_namespace_name(namespaceid);
+	}
+
+	/* Set up pstate */
+	pstate = make_parsestate(NULL);
+	pstate->p_sourcetext = queryString;
+
+	cxt.stmtType = "CREATE EXTERNAL TABLE";
+	cxt.relation = stmt->relation;
+	cxt.inhRelations = NIL;
+	cxt.hasoids = false;
+	cxt.isalter = false;
+	cxt.columns = NIL;
+	cxt.ckconstraints = NIL;
+	cxt.fkconstraints = NIL;
+	cxt.ixconstraints = NIL;
+	
+	cxt.blist = NIL;
+	cxt.alist = NIL;
+	
+	/*
+	 * Run through each primary element in the table creation clause. Separate
+	 * column defs from constraints, and do preliminary analysis.
+	 */
+	foreach(elements, stmt->tableElts)
+	{
+		Node	   *element = lfirst(elements);
+		
+		switch (nodeTag(element))
+		{
+			case T_ColumnDef:
+				transformColumnDefinition(pstate, &cxt,
+										  (ColumnDef *) element);
+				break;
+				
+			case T_Constraint:
+			case T_FkConstraint:
+			case T_InhRelation:
+				/* should never happen. If it does fix gram.y */
+				elog(ERROR, "node type %d not allowed for external table definition",
+					 (int) nodeTag(element));
+				break;
+				
+			default:
+				elog(ERROR, "unrecognized node type: %d",
+					 (int) nodeTag(element));
+				break;
+		}
+	}
+	
+	/*
+	 * Check if we need to create an error table. If so, add it to the 
+	 * before list.
+	 */
+	if(stmt->sreh && ((SingleRowErrorDesc *)stmt->sreh)->errtable)
+		transformSingleRowErrorHandling(pstate, &cxt,
+										(SingleRowErrorDesc *) stmt->sreh);
+	
+	Assert(cxt.ckconstraints == NIL);
+	Assert(cxt.fkconstraints == NIL);
+	Assert(cxt.ixconstraints == NIL);
+	
 	/*
 	 * Output results.
 	 */
@@ -2192,4 +2396,4607 @@ setSchemaName(char *context_schema, char **stmt_schema_name)
 				 errmsg("CREATE specifies a schema (%s) "
 						"different from the one being created (%s)",
 						*stmt_schema_name, context_schema)));
+}
+
+
+/****************stmt->policy*********************/
+static void
+transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distributedBy, GpPolicy ** policyp, List *likeDistributedBy)
+{
+
+
+	ListCell   *keys = NULL;
+
+	GpPolicy  *policy = NULL;
+	int			colindex = 0;
+	int			maxattrs = 200;
+	int			numUniqueIndexes = 0;
+	Constraint *uniqueindex = NULL;
+
+	/*
+	 * utility mode creates can't have a policy.  Only the QD can have policies
+	 *
+	 */
+	if (Gp_role != GP_ROLE_DISPATCH)
+	{
+		*policyp = NULL;
+		return;
+	}
+
+ 
+ 
+
+
+		policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
+		policy->ptype = POLICYTYPE_PARTITIONED;
+		policy->nattrs = 0;
+		policy->attrs[0] = 1;
+	
+		/*
+		 * If distributedBy is NIL, the user did not explicitly say what he wanted for
+		 * a distribution policy.  So, we need to assign one.
+		 */
+		 
+		
+	
+		if (distributedBy == NIL && cxt && cxt->pkey != NULL)
+		{
+			/*
+			 * We have a PRIMARY KEY, so let's assign the default distribution to be the key
+			 */
+	
+			IndexStmt  *index = cxt->pkey;
+			List	   *indexParams;
+			ListCell   *ip = NULL;
+	
+			Assert(index->indexParams != NULL);
+			indexParams = index->indexParams;
+	
+			foreach(ip, indexParams)
+			{
+				IndexElem  *iparam = lfirst(ip);
+	
+				if (iparam && iparam->name != 0)
+				{
+	
+					if (distributedBy)
+						distributedBy = lappend(distributedBy, (Node *) makeString(iparam->name));
+					else
+						distributedBy = list_make1((Node *) makeString(iparam->name));
+	
+				}
+			}
+	
+		}
+	
+	
+		if (cxt && cxt->ixconstraints != NULL)
+		{
+	
+			ListCell   *lc = NULL;
+	
+			foreach(lc, cxt->ixconstraints)
+			{
+				Constraint *cons = lfirst(lc);
+	
+				if (cons->contype == CONSTR_UNIQUE)
+				{
+
+					if (uniqueindex == NULL)
+						uniqueindex = cons;
+					numUniqueIndexes++;
+					if (cxt->pkey)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Greenplum Database does not allow having both PRIMARY KEY and UNIQUE contraints")));
+					}
+				}
+			}
+			if (numUniqueIndexes > 1)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("Greenplum Database does not allow having multiple UNIQUE contraints")));
+			}
+		}
+	
+		if (distributedBy == NIL && cxt && cxt->ixconstraints != NULL && numUniqueIndexes > 0)
+		{
+			/*
+			 * No explicit distributed by clause, and no primary key.
+			 * If there is a UNIQUE clause, let's use that
+			 */
+	
+			ListCell   *lc = NULL;
+	
+			foreach(lc, cxt->ixconstraints)
+			{
+	
+				Constraint *constraint = lfirst(lc);
+	
+				if (constraint->contype == CONSTR_UNIQUE)
+				{
+	
+					ListCell   *ip = NULL;
+	
+	
+					foreach(ip, constraint->keys)
+					{
+						Value	   *v = lfirst(ip);
+	
+						if (v && v->val.str != 0)
+						{
+	
+							if (distributedBy)
+								distributedBy = lappend(distributedBy, (Node *) makeString(v->val.str));
+							else
+								distributedBy = list_make1((Node *) makeString(v->val.str));
+	
+						}
+					}
+				}
+			}
+			
+		}
+		
+		/*
+		 * If new table INHERITS from one or more parent tables, check parents.
+		 */
+		if (cxt->inhRelations != NIL)
+		{
+			ListCell   *entry;
+			
+			foreach(entry, cxt->inhRelations)
+			{
+				RangeVar   *parent = (RangeVar *) lfirst(entry);
+				Oid			relId = RangeVarGetRelid(parent, false);
+				GpPolicy  *oldTablePolicy = GpPolicyFetch(CurrentMemoryContext, relId);
+
+                /* Partitioned child must have partitioned parents. */
+                if (oldTablePolicy == NULL ||
+                     oldTablePolicy->ptype != POLICYTYPE_PARTITIONED)
+                    ereport(ERROR, (errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+                                    errmsg("Cannot inherit from catalog table \"%s\" to create table \"%s\".",
+                                           parent->relname, cxt->relation->relname),
+                                    errdetail("An inheritance hierarchy cannot contain a "
+                                              "mixture of distributed and non-distributed tables.")
+                            ));
+		        /*
+		         * if we still don't know what distribution to use, and this is an inherited table,
+		         * set the distribution based on the parent (or one of the parents)
+		         */
+				if (distributedBy == NIL &&
+                    oldTablePolicy->nattrs >= 0)
+				{
+					int ia;
+					
+					if (oldTablePolicy->nattrs > 0)
+					{
+						for (ia=0; ia<oldTablePolicy->nattrs; ia++)
+						{
+							char * attname = get_attname(relId, oldTablePolicy->attrs[ia]);
+
+							distributedBy = lappend(distributedBy, (Node *) makeString(attname));
+						}
+					}
+					else
+					{
+						/* strewn parent */
+						distributedBy = lappend(distributedBy, (Node *)NULL);
+					}
+					elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
+				}
+
+                pfree(oldTablePolicy);
+			}
+		}
+		
+		if (distributedBy == NIL && likeDistributedBy != NIL)
+		{
+			distributedBy = likeDistributedBy;
+			elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table");
+		}
+	
+		if (distributedBy == NIL)
+		{
+			/*
+			 * if we get here, we haven't a clue what to use for the distribution columns.
+			 */
+	
+			bool	assignedDefault = false;
+
+			/*
+			 * table has one or more attributes and there is still no distribution
+			 * key. pick a default one. the winner is the first attribute that is
+			 * an Greenplum Database-hashable data type.
+			 */
+			
+			ListCell   *columns;
+			ColumnDef  *column = NULL;
+			
+			/* If we have no attributes, make sure that we don't create a bogus policy! */
+			if (cxt && list_length(cxt->columns) == 0 && !cxt->inhRelations)
+			{
+				elog(NOTICE, "Table has no attributes to distribute on.");
+				pfree(policy);
+				return;
+			}
+
+			/* we will distribute on at most one column */
+			policy->nattrs = 1;
+			
+			colindex = 0;
+			
+			if (cxt->inhRelations)
+			{
+				bool		found = false;
+				/* try inherited tables */
+				ListCell   *inher;
+
+				foreach(inher, cxt->inhRelations)
+				{
+					RangeVar   *inh = (RangeVar *) lfirst(inher);
+					Relation	rel;
+					int			count;
+
+					Assert(IsA(inh, RangeVar));
+					rel = heap_openrv(inh, AccessShareLock);
+					if (rel->rd_rel->relkind != RELKIND_RELATION)
+						ereport(ERROR,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						   errmsg("inherited relation \"%s\" is not a table",
+								  inh->relname)));
+					for (count = 0; count < rel->rd_att->natts; count++)
+					{
+						Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+						Oid typeOid = inhattr->atttypid;
+						bool isArray = inhattr->attndims > 0;
+												
+						if (inhattr->attisdropped)
+							continue;
+						colindex++;
+						if(isGreenplumDbHashable(typeOid) || isArray)
+						{
+							char	   *inhname = NameStr(inhattr->attname);
+							policy->attrs[0] = colindex;
+							assignedDefault = true;
+							ereport(NOTICE,
+									(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+									 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
+										    "named '%s' from parent table as the Greenplum Database data distribution key for this "
+										    "table. ", inhname),
+								     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
+								     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
+							found = true;
+							break;
+						}			
+					}
+					heap_close(rel, NoLock);
+
+					if (assignedDefault)
+						break;
+				}
+
+			}
+				 
+				
+				
+			 
+			if (!assignedDefault)
+				foreach(columns, cxt->columns)
+				{
+					Oid typeOid;
+					bool isArray;
+	
+					column = (ColumnDef *) lfirst(columns);
+					colindex++;
+	
+					typeOid = typenameTypeId(NULL, column->typname);
+					isArray = (column->typname->arrayBounds == NIL ? false : true);
+						
+					/*
+					 * if we can hash on this type, or if it's an array type (which
+					 * we can always hash) this column with be our default key.
+					 */
+					if(isGreenplumDbHashable(typeOid) || isArray)
+					{
+						policy->attrs[0] = colindex;
+						assignedDefault = true;
+						ereport(NOTICE,
+								(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
+								 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column " 
+									    "named '%s' as the Greenplum Database data distribution key for this "
+									    "table. ", column->colname),
+							     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
+							     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
+						break;
+					}			
+					
+				}
+				
+			if(!assignedDefault)
+			{
+				/*
+				 * There was no eligible distribution column to default to. This table
+				 * will be partitioned on an empty distribution key list. In other words
+				 * tuples coming into the system will be randomly assigned a bucket.
+				 */
+				policy->nattrs = 0;
+				elog(NOTICE, "Table doesn't have 'distributed by' clause, and no column type is suitable for a distribution key. Creating a NULL policy entry.");
+			}
+			
+		}
+		else 
+		{
+			/*
+			 * We have a DISTRIBUTED BY column list, either specified by the user
+			 * or defaulted to a primary key or unique column. Process it now and
+			 * set the distribution policy.
+			 */
+			policy->nattrs = 0;
+			if (distributedBy->length == 1 && (distributedBy->head == NULL || distributedBy->head->data.ptr_value == NULL))
+			{ 
+				if (cxt && cxt->pkey)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("PRIMARY KEY and DISTRIBUTED RANDOMLY are incompatible"
+									)));
+				else if (uniqueindex)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("UNIQUE and DISTRIBUTED RANDOMLY are incompatible"
+									)));
+			}
+			else
+			foreach(keys, distributedBy)
+			{
+				char	   *key = strVal(lfirst(keys));
+				bool		found = false;
+				ColumnDef  *column = NULL;
+				ListCell   *columns;
+	
+				colindex = 0;
+				
+				if (cxt->inhRelations)
+				{
+					/* try inherited tables */
+					ListCell   *inher;
+	
+					foreach(inher, cxt->inhRelations)
+					{
+						RangeVar   *inh = (RangeVar *) lfirst(inher);
+						Relation	rel;
+						int			count;
+	
+						Assert(IsA(inh, RangeVar));
+						rel = heap_openrv(inh, AccessShareLock);
+						if (rel->rd_rel->relkind != RELKIND_RELATION)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							   errmsg("inherited relation \"%s\" is not a table",
+									  inh->relname)));
+						for (count = 0; count < rel->rd_att->natts; count++)
+						{
+							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+							char	   *inhname = NameStr(inhattr->attname);
+	
+							if (inhattr->attisdropped)
+								continue;
+							colindex++;
+							if (strcmp(key, inhname) == 0)
+							{
+								found = true;
+	
+								break;
+							}
+						}
+						heap_close(rel, NoLock);
+						if (found)
+							elog(DEBUG1, "'distributed by' clause refers to columns of inherited table");
+	
+						if (found)
+							break;
+	
+	
+					}
+				}
+				
+				if (!found)
+				foreach(columns, cxt->columns)
+				{
+					column = (ColumnDef *) lfirst(columns);
+					Assert(IsA(column, ColumnDef));
+					colindex++;
+
+					if (strcmp(column->colname, key) == 0)
+					{
+						Oid typeOid = typenameTypeId(NULL, column->typname);
+						bool isArray = (column->typname->arrayBounds == NIL ? false : true);
+												
+						/*
+						 * To be a part of a distribution key, this type must be supported
+						 * for hashing internally in Greenplum Database. We check if the base type is
+						 * supported for hashing or if it is an array type (we support
+						 * hashing on all array types).
+						 */
+						if(!isGreenplumDbHashable(typeOid) && !isArray)
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+									 errmsg("type \"%s\" can't be a part of a distribution key",
+											strVal(linitial(column->typname->names)))));						
+						}
+						
+						found = true;
+						break;
+					}
+				}
+	
+				if (found)
+				{
+					/* good, the columns exists */
+				}
+	#if 0
+				else if (SystemAttributeByName(key, cxt->hasoids) != NULL)
+				{
+					/*
+					* column will be a system column in the new table, so
+					* accept it.
+					*/
+					found = true;
+				}
+	#endif
+				
+	
+				/*
+				* In the ALTER TABLE case, don't complain about index keys
+				* not created in the command; they may well exist already.
+				* DefineIndex will complain about them if not, and will also
+				* take care of marking them NOT NULL.
+				*/
+				if (!found && !cxt->isalter)
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_COLUMN),
+							 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
+									key)));
+	
+				policy->attrs[policy->nattrs++] = colindex;
+	
+	
+				/* we should check for duplicate column usage */
+			}
+	
+		}
+	
+	
+		*policyp = policy;	
+ 
+	
+	if (cxt && cxt->pkey)		/* Primary key	specified.	Make sure
+								 * distribution columns match */
+	{
+		int			i = 0;
+		IndexStmt  *index = cxt->pkey;
+		List	   *indexParams = index->indexParams;
+		ListCell   *ip;
+
+		foreach(ip, indexParams)
+		{
+			IndexElem  *iparam;
+
+			if (i >= policy->nattrs)
+				break;
+
+			iparam = lfirst(ip);
+			if (iparam->name != 0)
+			{
+				bool	found = false;
+				ColumnDef  *column = NULL;
+				ListCell   *columns;
+
+				colindex = 0;
+				
+				if (cxt->inhRelations)
+				{
+					/* try inherited tables */
+					ListCell   *inher;
+	
+					foreach(inher, cxt->inhRelations)
+					{
+						RangeVar   *inh = (RangeVar *) lfirst(inher);
+						Relation	rel;
+						int			count;
+	
+						Assert(IsA(inh, RangeVar));
+						rel = heap_openrv(inh, AccessShareLock);
+						if (rel->rd_rel->relkind != RELKIND_RELATION)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							   errmsg("inherited relation \"%s\" is not a table",
+									  inh->relname)));
+						for (count = 0; count < rel->rd_att->natts; count++)
+						{
+							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+							char	   *inhname = NameStr(inhattr->attname);
+	
+							if (inhattr->attisdropped)
+								continue;
+							colindex++;
+	
+							if (strcmp(iparam->name, inhname) == 0)
+							{
+								found = true;
+	
+								break;
+							}
+						}
+						heap_close(rel, NoLock);
+						if (found)
+							elog(DEBUG1, "'distributed by' clause refers to columns of inherited table");
+	
+						if (found)
+							break;
+	
+	
+					}
+				}
+				
+				if (!found)
+				foreach(columns, cxt->columns)
+				{
+					column = (ColumnDef *) lfirst(columns);
+					Assert(IsA(column, ColumnDef));
+					colindex++;
+					if (strcmp(column->colname, iparam->name) == 0)
+					{
+						found = true;
+						break;
+					}
+				}
+
+				if (colindex != policy->attrs[i])
+				{
+
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("When there is both a PRIMARY KEY, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the PRIMARY KEY"
+									)));
+
+				}
+
+				i++;
+
+			}
+		}
+	}
+
+
+
+	if (uniqueindex)			/* UNIQUE specified.  Make sure distribution
+								 * columns match */
+	{
+		int			i = 0;
+
+		List	   *keys = uniqueindex->keys;
+		ListCell   *ip;
+
+		foreach(ip, keys)
+		{
+			IndexElem  *iparam;
+
+			if (i >= policy->nattrs)
+				break;
+
+			iparam = lfirst(ip);
+			if (iparam->name != 0)
+			{
+				bool	found = false;
+				ColumnDef  *column = NULL;
+				ListCell   *columns;
+
+				colindex = 0;
+				
+				if (cxt->inhRelations)
+				{
+					/* try inherited tables */
+					ListCell   *inher;
+	
+					foreach(inher, cxt->inhRelations)
+					{
+						RangeVar   *inh = (RangeVar *) lfirst(inher);
+						Relation	rel;
+						int			count;
+	
+						Assert(IsA(inh, RangeVar));
+						rel = heap_openrv(inh, AccessShareLock);
+						if (rel->rd_rel->relkind != RELKIND_RELATION)
+							ereport(ERROR,
+									(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							   errmsg("inherited relation \"%s\" is not a table",
+									  inh->relname)));
+						for (count = 0; count < rel->rd_att->natts; count++)
+						{
+							Form_pg_attribute inhattr = rel->rd_att->attrs[count];
+							char	   *inhname = NameStr(inhattr->attname);
+	
+							if (inhattr->attisdropped)
+								continue;
+							colindex++;
+	
+							if (strcmp(iparam->name, inhname) == 0)
+							{
+								found = true;
+	
+								break;
+							}
+						}
+						heap_close(rel, NoLock);
+						if (found)
+							elog(NOTICE, "'distributed by' clause refers to columns of inherited table");
+	
+						if (found)
+							break;
+	
+	
+					}
+				}
+				
+				if (!found)
+				foreach(columns, cxt->columns)
+				{
+					column = (ColumnDef *) lfirst(columns);
+					Assert(IsA(column, ColumnDef));
+					colindex++;
+					if (strcmp(column->colname, iparam->name) == 0)
+					{
+						found = true;
+						break;
+					}
+				}
+
+				if (colindex != policy->attrs[i])
+				{
+
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("When there is both a UNIQUE contraint, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the UNIQUE columns"
+									)));
+				}
+
+				i++;
+
+			}
+		}
+	}
+	
+
+
+}
+
+static A_Const *make_a_const(A_Const *pValConst, char *val_str)
+{
+	A_Const *pNewValConst = makeNode(A_Const);
+	int estat = 0;
+
+	Assert(val_str);
+
+	pNewValConst->val.type = pValConst->val.type;
+	pNewValConst->typname = pValConst->typname;
+	
+	switch (pValConst->val.type)
+	{
+		case T_Integer:
+			estat = sscanf(val_str, "%ld", 
+						   &(pNewValConst->val.val.ival));
+			break;
+		case T_Float:
+/*			estat = scanf(val_str, "%f", 
+			(pNewValConst->val.val.str)); */
+
+		case T_String:
+			pNewValConst->val.val.str = val_str;
+
+			estat = 1;
+			break;
+
+		default:
+
+			break;
+	}
+
+	if (estat < 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("unknown type or operator: %s",
+						val_str)));
+	}
+	
+	return (pNewValConst);
+} /* end make_a_const */
+
+static int 
+deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
+{
+	if (!pNode)
+		return 0;
+
+	switch (nodeTag(pNode))
+	{
+		case T_Value:
+
+				/* XXX XXX XXX ??? */
+
+			break;
+		case T_ColumnRef:
+		{
+			ColumnRef		*pCRef = (ColumnRef *)pNode;
+			List			*coldefs = pCRef->fields;
+			ListCell		*lc      = NULL;
+			StringInfoData   sid;
+			int colcnt = 0;
+
+			initStringInfo(&sid);
+
+			lc = list_head(coldefs);
+
+			for (; lc; lc = lnext(lc)) /* for all cols */
+			{
+				Node *pCol = lfirst(lc);
+				char	 leftBuf[10000];			
+
+				if (!deparse_partition_rule(pCol, leftBuf, sizeof(leftBuf)))
+						return 0;
+
+				if (colcnt)
+				{
+					appendStringInfo(&sid, ".");
+				}
+
+				appendStringInfo(&sid, "%s", leftBuf);
+
+				colcnt++;
+			} /* end for all cols */
+
+			outbuf[0] = '\0';
+			snprintf(outbuf, outsize, "%s", sid.data);
+			pfree(sid.data);
+
+			break;
+		}
+		case T_String:
+				snprintf(outbuf, outsize, "%s", 
+						 strVal(pNode));
+			break;
+		case T_Integer:
+				snprintf(outbuf, outsize, "%ld", 
+						 intVal(pNode));
+			break;
+		case T_Float:
+				snprintf(outbuf, outsize, "%f", 
+						 floatVal(pNode));
+			break;
+		case T_A_Const:
+		{
+			A_Const *acs = (A_Const *)pNode;
+
+			if (acs->val.type == T_String)
+			{
+				if (acs->typname) /* deal with explicit types */
+				{
+					/* XXX XXX: simple types only -- need to 
+					 * handle Interval, etc */
+
+					snprintf(outbuf, outsize, "\'%s\'::%s", 
+							 acs->val.val.str, 
+							 TypeNameToString(acs->typname));
+				}
+				else
+				{
+					snprintf(outbuf, outsize, "\'%s\'", 
+							 acs->val.val.str);
+				}
+
+				return 1;
+			}
+			return (deparse_partition_rule((Node *)&(acs->val), 
+										   outbuf, outsize));
+		}
+			break;
+		case T_A_Expr:
+		{
+			A_Expr	*ax = (A_Expr *)pNode;
+			char	 leftBuf[10000];			
+			char	 rightBuf[10000];			
+			char    *infix_op;
+			
+			switch (ax->kind)
+			{
+				case AEXPR_OP:			/* normal operator */
+				case AEXPR_AND:			/* booleans - name field is unused */
+				case AEXPR_OR:
+					break;
+				default:
+					return 0;
+			}
+			if (!deparse_partition_rule(ax->lexpr, leftBuf, sizeof(leftBuf)))
+				return 0;
+			if (!deparse_partition_rule(ax->rexpr, rightBuf, sizeof(rightBuf)))
+				return 0;
+			switch (ax->kind)
+			{
+				case AEXPR_OP:			/* normal operator */
+					infix_op = strVal(lfirst(list_head(ax->name)));
+					break;
+				case AEXPR_AND:			/* booleans - name field is unused */
+					infix_op = "AND";
+					break;
+				case AEXPR_OR:
+					infix_op = "OR";
+					break;
+				default:
+					return 0;
+			}
+			snprintf(outbuf, outsize, "(%s %s %s)",
+					 leftBuf, infix_op, rightBuf);
+
+		}
+			break;
+		case T_Var:
+			{
+/*				Var		   *var = (Var *) node; */
+			}
+		default:
+				break;
+	}
+	return 1;
+}
+
+static Node *make_prule_catalog(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, PartitionElem *pElem,
+ 		 char *at_depth, char *child_name_str, 
+		 char *exprBuf,
+		 Node *pWhere							 
+		 )
+{
+	Node				*pResult = NULL;
+	InsertStmt			*pIns    = NULL;
+	RangeVar			*parent_tab_name;
+	RangeVar			*child_tab_name;
+	char				 ruleBuf[10000];
+	char				 newVals[10000];
+
+	{
+		List			*coldefs = stmt->tableElts;
+		ListCell		*lc      = NULL;
+		StringInfoData   sid;
+		int colcnt = 0;
+
+		initStringInfo(&sid);
+
+		lc = list_head(coldefs);
+
+		for (; lc; lc = lnext(lc)) /* for all cols */
+		{
+			Node *pCol = lfirst(lc);
+			ColumnDef *pColDef;
+
+			if (nodeTag(pCol) != T_ColumnDef) /* avoid constraints, etc */
+				continue;
+
+			pColDef = (ColumnDef *)pCol;
+
+			if (colcnt)
+			{
+				appendStringInfo(&sid, ", ");
+			}
+
+			appendStringInfo(&sid, "new.%s", pColDef->colname);
+
+			colcnt++;
+		} /* end for all cols */
+
+		newVals[0] = '\0';
+		snprintf(newVals, sizeof(newVals), "VALUES (%s)", sid.data);
+		pfree(sid.data);
+	}
+
+	parent_tab_name = makeNode(RangeVar);
+	parent_tab_name->catalogname = cxt->relation->catalogname;
+	parent_tab_name->schemaname  = cxt->relation->schemaname;
+	parent_tab_name->relname     = cxt->relation->relname; 
+
+	child_tab_name = makeNode(RangeVar);
+	child_tab_name->catalogname = cxt->relation->catalogname;
+	child_tab_name->schemaname  = cxt->relation->schemaname;
+	child_tab_name->relname     = child_name_str;  
+
+	snprintf(ruleBuf, sizeof(ruleBuf), 
+			 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s %s", child_name_str, parent_tab_name->relname, exprBuf, child_name_str, newVals);
+
+
+	pIns = makeNode(InsertStmt);
+
+	pResult = (Node *)pIns;
+	pIns->relation = makeNode(RangeVar);
+	pIns->relation->catalogname = NULL;
+	pIns->relation->schemaname = NULL;
+	pIns->relation->relname = "partition_rule";
+	pIns->returningList = NULL;
+
+	pIns->cols = NIL;
+
+	if (1)
+	{
+		List *vl1 = NULL;
+
+		A_Const *acs = makeNode(A_Const);
+		acs->val.type = T_String;
+		acs->val.val.str = pstrdup(parent_tab_name->relname);
+		acs->typname = SystemTypeName("text");
+
+		vl1 = list_make1(acs);
+
+		acs = makeNode(A_Const);
+		acs->val.type = T_String;
+		acs->val.val.str = pstrdup(child_name_str);
+		acs->typname = SystemTypeName("text");
+		
+		vl1 = lappend(vl1, acs);
+
+		acs = makeNode(A_Const);
+		acs->val.type = T_String;
+		acs->val.val.str = pstrdup(exprBuf);
+		acs->typname = SystemTypeName("text");
+
+		vl1 = lappend(vl1, acs);
+
+		acs = makeNode(A_Const);
+		acs->val.type = T_String;
+		acs->val.val.str = pstrdup(ruleBuf);
+		acs->typname = SystemTypeName("text");
+
+		vl1 = lappend(vl1, acs);
+				
+		pIns->selectStmt = (Node *)makeNode(SelectStmt);
+		((SelectStmt *)pIns->selectStmt)->valuesLists = 
+				list_make1(vl1);
+
+	}
+
+	return (pResult);
+} /* end make_prule_catalog */
+
+static Node *make_prule_rulestmt(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, PartitionElem *pElem,
+ 		 char *at_depth, char *child_name_str, 
+		 char *exprBuf,
+		 Node *pWhere							 
+		 )
+{
+	Node				*pResult = NULL;
+	RuleStmt			*pRule   = NULL;
+	InsertStmt			*pIns    = NULL;
+	RangeVar			*parent_tab_name;
+	RangeVar			*child_tab_name;
+
+	parent_tab_name = makeNode(RangeVar);
+	parent_tab_name->catalogname = cxt->relation->catalogname;
+	parent_tab_name->schemaname  = cxt->relation->schemaname;
+	parent_tab_name->relname     = cxt->relation->relname; 
+
+	child_tab_name = makeNode(RangeVar);
+	child_tab_name->catalogname = cxt->relation->catalogname;
+	child_tab_name->schemaname  = cxt->relation->schemaname;
+	child_tab_name->relname     = child_name_str;  
+
+	pIns = makeNode(InsertStmt);
+
+	pRule = makeNode(RuleStmt);
+	pRule->replace = false; /* do not replace */
+	pRule->relation = parent_tab_name;
+	pRule->rulename = pstrdup(child_name_str);
+	pRule->whereClause = pWhere;
+	pRule->event = CMD_INSERT;
+	pRule->instead = true; /* do instead */
+	pRule->actions = list_make1(pIns);
+
+	pResult = (Node *)pRule;
+
+	pIns->relation = makeNode(RangeVar);
+	pIns->relation->catalogname = cxt->relation->catalogname;
+	pIns->relation->schemaname  = cxt->relation->schemaname;
+	pIns->relation->relname     = child_name_str;
+
+	pIns->returningList = NULL;
+
+	pIns->cols = NIL;
+
+	if (1)
+	{
+		List			*coldefs = stmt->tableElts;
+		ListCell		*lc      = NULL;
+		List *vl1 = NULL;
+
+		lc = list_head(coldefs);
+
+		for (; lc; lc = lnext(lc)) /* for all cols */
+		{
+			Node *pCol = lfirst(lc);
+			ColumnDef *pColDef;
+			ColumnRef *pCRef;
+
+			if (nodeTag(pCol) != T_ColumnDef) /* avoid constraints, etc */
+				continue;
+
+			pCRef = makeNode(ColumnRef);
+
+			pColDef = (ColumnDef *)pCol;
+
+			pCRef->location = -1;
+			/* NOTE: gram.y uses "*NEW*" for "new" */
+			pCRef->fields = list_make2(makeString("*NEW*"),
+									   makeString(pColDef->colname));
+
+			vl1 = lappend(vl1, pCRef);
+		}
+				
+		pIns->selectStmt = (Node *)makeNode(SelectStmt);
+		((SelectStmt *)pIns->selectStmt)->valuesLists = 
+				list_make1(vl1);
+
+	}
+
+
+	return (pResult);
+} /* end make_prule_rulestmt */
+
+
+
+static List *make_partition_rules(ParseState *pstate,
+		 CreateStmtContext *cxt, CreateStmt *stmt, 
+		 Node *partitionBy, PartitionElem *pElem,
+		 char  *at_depth, char *child_name_str, 
+		 int partNumId, int maxPartNum, 
+		 int everyOffset, int maxEveryOffset,
+		 ListCell	**pp_lc_anp
+		)
+{
+	PartitionBy			*pBy    = (PartitionBy *)partitionBy;
+	PartitionBoundSpec	*pBSpec = NULL;
+	Node				*pRule  = NULL;
+	List				*allRules  = NULL;
+
+	if (pBy->partType != PARTTYP_HASH)	
+	{
+		Assert(pElem);
+	}
+
+	if (pElem)
+	{
+		pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+	}
+
+	if (pBy->partType == PARTTYP_HASH)	
+	{
+		List			*colElts = pBy->keys;
+		ListCell		*lc      = NULL;
+		char			 exprBuf[10000];
+		StringInfoData   sid;
+		int colcnt = 0;
+		Node			*pHashArgs = NULL;
+		Node			*pExpr = NULL;
+
+		exprBuf[0] = '\0';
+
+		initStringInfo(&sid);
+
+		lc = list_head(colElts);
+
+		for (; lc; lc = lnext(lc)) /* for all cols */
+		{
+			Node *pCol = lfirst(lc);
+			Value *pColConst;
+			ColumnRef *pCRef = NULL;
+
+			pColConst = (Value *)pCol;
+
+			Assert(IsA(pColConst, String));
+
+			if (!deparse_partition_rule((Node *)pCol,
+										exprBuf, sizeof(exprBuf)))
+			{
+				int loco = pBy->location;
+
+				if (pBSpec)
+					loco = pBSpec->location;
+
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("unknown type or operator%s",
+								at_depth),
+						 parser_errposition(pstate, loco)));
+			}
+
+			pCRef = makeNode(ColumnRef);
+			pCRef->location = -1;
+			pCRef->fields = list_make1(pCol);
+
+			if (colcnt)
+			{
+				Node *pAppOp = NULL;
+
+				pAppOp =
+						(Node *) makeSimpleA_Expr(AEXPR_OP, "||", 
+												  pHashArgs,
+												  (Node *)pCRef, 
+												  -1);
+				pHashArgs = pAppOp;
+
+				appendStringInfo(&sid, "||");
+			}
+			else
+			{
+				pHashArgs = (Node *)pCRef;
+			}
+
+			appendStringInfo(&sid, "%s", exprBuf);
+
+			colcnt++;
+		} /* end for all cols */
+
+		/* magic_hash: maximum number of partitions is maxPartNum
+		   current partition number is parNumId
+		*/
+
+		/* modulus arithmetic is 0 to N-1, so go to (partNumId-1).
+		 * Also, hashtext can return a negative, so fix it up */
+
+		snprintf(exprBuf, sizeof(exprBuf), 
+/*				 "magic_hash(%d, %s) = %d", */
+/* double % for % literal - ((hash(cols)%max + max) % max) */
+				 "(hashtext(%s)%%%d + %d)%%%d = %d",
+				 sid.data,
+				 maxPartNum,
+				 maxPartNum,
+				 maxPartNum,
+				 (partNumId-1)
+				);
+
+		pfree(sid.data);
+
+		{
+			Node *pPlusOp  = NULL;
+			Node *pModOp  = NULL;
+			A_Const *pModBy  = NULL;
+			A_Const *pPartID = NULL;
+			FuncCall *pFC = makeNode(FuncCall);
+
+			pFC->funcname = list_make1(makeString("hashtext"));
+			pFC->args = list_make1(pHashArgs);
+			pFC->agg_star = FALSE;
+			pFC->agg_distinct = FALSE;
+			pFC->location = -1;
+			pFC->over = NULL;
+
+			pModBy  = makeNode(A_Const);
+			pModBy->val.type = T_Integer;
+			pModBy->val.val.ival = maxPartNum;
+
+			pPartID  = makeNode(A_Const);
+			pPartID->val.type = T_Integer;
+			pPartID->val.val.ival = (partNumId - 1);
+
+			pModOp = (Node *)makeSimpleA_Expr(AEXPR_OP, "%", 
+									  (Node *)pFC, (Node *)pModBy, -1);
+
+			pPlusOp = (Node *)makeSimpleA_Expr(AEXPR_OP, "+", 
+									  (Node *)pModOp, (Node *)pModBy, -1);
+
+			pModOp = (Node *)makeSimpleA_Expr(AEXPR_OP, "%", 
+									  (Node *)pPlusOp, (Node *)pModBy, -1);
+
+			pExpr = (Node *)makeSimpleA_Expr(AEXPR_OP, "=", 
+									 pModOp, (Node *)pPartID, -1);
+
+		}
+
+		pRule = make_prule_catalog(pstate,
+								   cxt, stmt, 
+								   partitionBy, pElem,
+								   at_depth, child_name_str, 
+								   exprBuf,
+								   pExpr);
+
+		/* first the INSERT statement, then the CHECK constraint, then
+		 * the RULE statement 
+		 */
+		allRules = list_make1(pRule);
+		allRules = lappend(allRules, pExpr); 
+
+		pRule = make_prule_rulestmt(pstate,
+									cxt, stmt, 
+									partitionBy, pElem,
+									at_depth, child_name_str, 
+									exprBuf,
+									pExpr);
+		allRules = lappend(allRules, pRule);
+
+
+	} /* end if HASH */
+
+	if (pBy->partType == PARTTYP_LIST)	
+	{
+		Node			*pIndAND = NULL;
+		Node			*pIndOR  = NULL;
+		List			*colElts = pBy->keys;
+		ListCell		*lc      = NULL;
+		List			*valElts = NULL;
+		ListCell		*lc_val  = NULL;
+		PartitionRangeItem *pRI  = NULL;
+		char			 exprBuf[10000];
+		char			 ANDBuf[10000];
+		char			 ORBuf[10000];
+
+		exprBuf[0] = '\0';
+		ANDBuf[0]  = '\0';
+		ORBuf[0]   = '\0';
+
+		Assert(pBSpec->partStart);
+		pRI = (PartitionRangeItem *)(pBSpec->partStart);
+		Assert(pRI->partRangeVal);
+
+		valElts = pRI->partRangeVal;
+		lc_val = list_head(valElts);
+
+		/* number of values is a multiple of the number of columns */
+
+		for ( ; lc_val ; ) /* for all vals */
+		{
+			lc = list_head(colElts);
+			pIndAND = NULL;
+
+			for (; lc; lc = lnext(lc)) /* for all cols */
+			{
+				Node *pCol = lfirst(lc);
+				Node *pEq  = NULL;
+				Value *pColConst;
+				A_Const *pValConst;
+				ColumnRef *pCRef;
+
+				pCRef = makeNode(ColumnRef); /* need columnref for WHERE */
+
+				if (NULL == lc_val)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("mismatched columns for VALUES%s",
+									at_depth),
+							 parser_errposition(pstate, pBSpec->location)));
+				}
+
+				pColConst = (Value *)pCol;
+				pValConst = (A_Const *)lfirst(lc_val);
+
+				Assert(IsA(pColConst, String));
+
+				pCRef->location = -1;
+				pCRef->fields = list_make1(pColConst);
+
+				if (!(IsA(pValConst, A_Const)))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("invalid use of non-constant type "
+									"in boundary specification%s",
+									at_depth),
+							 parser_errposition(pstate, pBSpec->location)));
+						
+				}
+
+				/* equality expression: column = value */
+				pEq = (Node *) makeSimpleA_Expr(AEXPR_OP, "=", 
+												(Node *)pCRef,
+												(Node *)pValConst,
+												-1 /* position */);
+
+
+				if (!deparse_partition_rule((Node *)pEq, 
+											exprBuf, sizeof(exprBuf)))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("unknown type or operator%s",
+									at_depth),
+							 parser_errposition(pstate, pBSpec->location)));
+
+				}
+				
+				/* for multiple cols - AND the matches eg: 
+				   (col = value) AND (col = value) 
+				*/
+				if (pIndAND)
+				{
+					char *pfoo = pstrdup(ANDBuf);
+
+					pIndAND =
+						(Node *) makeA_Expr(AEXPR_AND, NIL, 
+											pIndAND,
+											pEq,
+											-1 /* position */);
+
+					snprintf(ANDBuf, sizeof(ANDBuf), "((%s) and %s)",
+							 exprBuf,
+							 pfoo
+						 );
+
+					pfree(pfoo);
+				}
+				else
+				{
+					pIndAND = pEq;
+					snprintf(ANDBuf, sizeof(ANDBuf), "(%s)", exprBuf);
+				}
+
+				lc_val = lnext(lc_val);
+			} /* end for all cols */
+
+			/* if more VALUES than columns, then multiple matching
+			   conditions, so OR them eg: 
+			  
+			   ((col = value) AND (col = value)) OR
+			   ((col = value) AND (col = value)) OR
+			   ((col = value) AND (col = value))
+			   
+			*/
+
+			if (pIndOR)
+			{
+				char *pfoo = pstrdup(ORBuf);
+
+				pIndOR =
+					(Node *) makeA_Expr(AEXPR_OR, NIL, 
+										pIndOR,
+										pIndAND,
+										-1 /* position */);
+
+				snprintf(ORBuf, sizeof(ORBuf), "((%s) OR %s)",
+						 ANDBuf,
+						 pfoo
+						 );
+
+					pfree(pfoo);
+
+			}
+			else
+			{
+				pIndOR = pIndAND;
+				snprintf(ORBuf, sizeof(ORBuf), "(%s)", ANDBuf);
+			}
+
+		} /* end for all vals */
+
+		pRule = make_prule_catalog(pstate,
+								   cxt, stmt, 
+								   partitionBy, pElem,
+								   at_depth, child_name_str, 
+								   ORBuf,
+								   pIndOR);
+
+		/* first the INSERT statement, then the CHECK constraint, then
+		 * the RULE statement 
+		 */
+		allRules = list_make1(pRule);
+		allRules = lappend(allRules, pIndOR);
+
+		pRule = make_prule_rulestmt(pstate,
+									cxt, stmt, 
+									partitionBy, pElem,
+									at_depth, child_name_str, 
+									ORBuf,
+									pIndOR);
+		allRules = lappend(allRules, pRule);
+
+	} /* end if LIST */
+
+	/*
+	     For RANGE partitions with an EVERY clause, the following 
+		 fields are defined:
+		 int everyOffset - 0 for no EVERY, else 1 to maxEveryOffset
+		 int maxEveryOffset - 1 for no EVERY, else >1
+		 ListCell	**pp_lc_anp - the pointer to the pointer 
+		                          to the ListCell of [A]ll[N]ew[P]artitions,
+								  a list of lists of stringified values
+								  (as opposed to A_Const's).
+	*/
+
+	if (pBy->partType == PARTTYP_RANGE)	
+	{
+		Node			*pIndAND = NULL;
+		Node			*pIndOR  = NULL;
+		List			*colElts = pBy->keys;
+		ListCell		*lc      = NULL;
+		List			*valElts = NULL;
+		ListCell		*lc_val  = NULL;
+		PartitionRangeItem *pRI  = NULL;
+		char			 exprBuf[10000];
+		char			 ANDBuf[10000];
+		char			 ORBuf[10000];
+		int				 range_idx;
+
+		ListCell		*lc_every_val = NULL;
+		List *allNewCols = NIL;
+
+		exprBuf[0] = '\0';
+		ANDBuf[0]  = '\0';
+		ORBuf[0]   = '\0';
+
+		pRI = (PartitionRangeItem *)(pBSpec->partStart);
+		
+		if (pRI)
+			valElts = pRI->partRangeVal;
+		else
+			valElts = NULL;						
+
+		if (maxEveryOffset > 1) /* if have an EVERY clause */
+		{
+			ListCell	*lc_anp = NULL;
+
+			/* check the list of "all new partitions" */
+			if (pp_lc_anp)
+			{
+				lc_anp = *pp_lc_anp;
+				if (lc_anp)
+				{
+					allNewCols = lfirst(lc_anp);
+
+					/* find the list of columns for a new partition */
+					if (allNewCols)
+					{
+						lc_every_val = list_head(allNewCols);
+					}
+				}
+			}
+		} /* end if every */
+
+		/* number of values must equal of the number of columns */
+
+		for (range_idx = 0; range_idx < 2; range_idx++)
+		{
+			char *expr_op = ">";
+
+			if (everyOffset > 0) /* for generated START for EVERY */
+				expr_op = ">=";  /* always be inclusive           */
+			else 
+				/* only inclusive set that way */
+				if (pRI && (1 == pRI->partInclusive))
+					expr_op = ">=";
+
+			if (range_idx)
+			{
+				pRI = (PartitionRangeItem *)(pBSpec->partEnd);
+
+				if (pRI)
+					valElts = pRI->partRangeVal;
+				else
+					valElts = NULL;						
+
+				expr_op = "<";
+
+				/* for generated END for EVERY always be exclusive */
+				if ((everyOffset + 1) <  maxEveryOffset) 
+					expr_op = "<";
+				else 
+					/* only be inclusive if set that way */
+					if (pRI && (1 == pRI->partInclusive))
+						expr_op = "<=";
+
+				/* If have EVERY, and not the very first START or last END */
+				if ((0 != everyOffset) && (everyOffset+1 < maxEveryOffset))
+				{
+					if (*pp_lc_anp)
+					{
+						*pp_lc_anp = lnext(*pp_lc_anp);
+
+						if (*pp_lc_anp)
+						{
+							allNewCols = lfirst(*pp_lc_anp);
+
+							if (allNewCols)
+								lc_every_val = list_head(allNewCols);
+						}
+					}
+				}
+			} /* end if range_idx != 0 */
+
+			lc_val = list_head(valElts);
+
+			for ( ; lc_val ; ) /* for all vals */
+			{
+				lc = list_head(colElts);
+				pIndAND = NULL;
+
+				for (; lc; lc = lnext(lc)) /* for all cols */
+				{
+					Node *pCol = lfirst(lc);
+					Node *pEq  = NULL;
+					Value *pColConst;
+					A_Const *pValConst;
+					ColumnRef *pCRef;
+
+					pCRef = makeNode(ColumnRef); /* need columnref for WHERE */
+
+					if (NULL == lc_val)
+					{
+						char *st_end = "START";
+
+						if (range_idx)
+						{
+							st_end = "END";
+						}
+
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("too few columns in %s specification%s",
+										st_end,
+										at_depth),
+								 parser_errposition(pstate, pBSpec->location)));
+					}
+
+					pColConst = (Value *)pCol;
+					pValConst = (A_Const *)lfirst(lc_val);
+
+					Assert(IsA(pColConst, String));
+
+					pCRef->location = -1;
+					pCRef->fields = list_make1(pColConst);
+
+					if (pValConst->type != T_A_Const)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("invalid use of non-constant type "
+										"in boundary specification%s",
+										at_depth),
+								 parser_errposition(pstate, pBSpec->location)));
+						
+					}
+
+					/* if have an EVERY, and not the first START or
+					 * last END, then use the generated, stringified
+					 * value from partition_range_every to build a new
+					 * a_const in the expression.
+					 */
+					if (((0 == range_idx)
+						 && (everyOffset > 0))
+						|| ((1 == range_idx)
+							&& (everyOffset+1 < maxEveryOffset))
+							)
+					{
+						char *val_str;
+						A_Const *pNewValConst;
+
+						val_str = lfirst(lc_every_val);
+
+						pNewValConst = make_a_const(pValConst, val_str);
+
+						pValConst = pNewValConst;
+					} /* end redo work for EVERY */
+
+					/* equality expression: column = value */
+					pEq = (Node *) makeSimpleA_Expr(AEXPR_OP, 
+													expr_op, 
+													(Node *)pCRef,
+													(Node *)pValConst,
+													-1 /* position */);
+
+					if (!deparse_partition_rule((Node *)pEq, 
+												exprBuf, sizeof(exprBuf)))
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("unknown type or operator%s",
+										at_depth),
+								 parser_errposition(pstate, pBSpec->location)));
+						
+					}
+
+
+					/* for multiple cols - AND the matches eg: 
+					   (col = value) AND (col = value) 
+					*/
+					if (pIndAND)
+					{
+						char *pfoo = pstrdup(ANDBuf);
+
+						pIndAND =
+							(Node *) makeA_Expr(AEXPR_AND, NIL, 
+												pIndAND,
+												pEq,
+												-1 /* position */);
+
+						snprintf(ANDBuf, sizeof(ANDBuf), "((%s) and %s)",
+								 exprBuf,
+								 pfoo
+							 );
+
+						pfree(pfoo);
+					}
+					else
+					{
+						pIndAND = pEq;
+						snprintf(ANDBuf, sizeof(ANDBuf), "(%s)", exprBuf);
+					}
+
+					lc_val = lnext(lc_val);
+
+					if (((0 == range_idx)
+						 && (everyOffset > 0))
+						|| ((1 == range_idx)
+							&& (everyOffset+1 < maxEveryOffset))
+							)
+					{
+
+						if (lc_every_val)
+						{
+							lc_every_val = lnext(lc_every_val);
+						}
+					}
+				} /* end for all cols */
+
+				/* if more VALUES than columns, then complain
+				*/
+				if (lc_val)
+				{
+					char *st_end = "START";
+
+					if (range_idx)
+					{
+						st_end = "END";
+					}
+
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("too many columns in %s specification%s",
+									st_end,
+									at_depth),
+							 parser_errposition(pstate, pBSpec->location)));
+				}
+
+				if (pIndOR)
+				{
+					char *pfoo = pstrdup(ORBuf);
+					/* XXX XXX build an AND for now.  But later we
+					 * split this to distinguish START and END
+					 * conditions */
+
+					pIndOR =
+						(Node *) makeA_Expr(AEXPR_AND, NIL, 
+											pIndOR,
+											pIndAND,
+											-1 /* position */);
+
+					snprintf(ORBuf, sizeof(ORBuf), "((%s) AND %s)",
+							 ANDBuf,
+							 pfoo
+							 );
+
+						pfree(pfoo);
+
+				}
+				else
+				{
+					pIndOR = pIndAND;
+					snprintf(ORBuf, sizeof(ORBuf), "(%s)", ANDBuf);
+				}
+
+			} /* end for all vals */
+
+		} /* end for range_idx */
+
+		pRule = make_prule_catalog(pstate,
+								   cxt, stmt, 
+								   partitionBy, pElem,
+								   at_depth, child_name_str, 
+								   ORBuf,
+								   pIndOR);
+
+		/* first the INSERT statement, then the CHECK constraint, then
+		 * the RULE statement 
+		 */
+
+		allRules = list_make1(pRule);
+		allRules = lappend(allRules, pIndOR);
+
+		pRule = make_prule_rulestmt(pstate,
+									cxt, stmt, 
+									partitionBy, pElem,
+									at_depth, child_name_str, 
+									ORBuf,
+									pIndOR);
+		allRules = lappend(allRules, pRule);
+
+	} /* end if RANGE */
+
+	return allRules;
+} /* end make_partition_rules */
+
+static int
+partition_range_compare(ParseState *pstate, CreateStmtContext *cxt,
+						CreateStmt *stmt, PartitionBy *pBy,
+						char *at_depth, int partNumber,
+						char *compare_op, /* =, <, > only */
+						PartitionRangeItem *pRI1,
+						PartitionRangeItem *pRI2)
+{
+	int rc = -1;
+	ListCell		*lc1 = NULL;
+	ListCell		*lc2 = NULL;
+	List			*cop = lappend(NIL, makeString(compare_op));
+
+	if (!pRI1 || !pRI2) /* error */
+		return rc;
+
+	lc1 = list_head(pRI1->partRangeVal);
+	lc2 = list_head(pRI2->partRangeVal);
+
+ L_redoLoop:
+	for (; lc1 && lc2; )
+	{
+		Node *n1 = lfirst(lc1);
+		Node *n2 = lfirst(lc2);
+
+		if (!equal(n1, n2))
+			break;
+
+		lc1 = lnext(lc1);
+		lc2 = lnext(lc2);
+	}
+
+	if (!lc1 && !lc2) /* both empty, so all values are equal */
+	{
+		if (strcmp("=", compare_op) == 0)
+			return 1;
+		else
+			return 0;
+	}
+	else if (lc1 && lc2) /* both not empty, so last value was different */
+	{
+		Datum res;
+		Node *n1 = transformExpr(pstate, lfirst(lc1));
+		Node *n2 = transformExpr(pstate, lfirst(lc2));
+
+		/* XXX XXX: can't trust equal() code on "typed" data like date
+		 * types (because it compares things like "location") so do a
+		 * real compare using eval .
+		 */
+		res = eval_basic_opexpr(pstate, cop, n1, n2, NULL);
+		
+		if (DatumGetBool(res) && strcmp("=", compare_op) == 0)
+		{
+			/* surprise! they were equal after all.  So keep going... */
+			lc1 = lnext(lc1);
+			lc2 = lnext(lc2);
+
+			goto L_redoLoop;
+		}
+
+		return DatumGetBool(res);
+	}
+	else if (lc1 || lc2)
+	{
+		/* lists of different lengths */
+		if (strcmp("=", compare_op) == 0)
+			return 0;
+
+		/* longer list is bigger? */
+
+		if (strcmp("<", compare_op) == 0)
+		{
+			if (lc1)
+				return 0;
+			else
+				return 1;
+		}
+		if (strcmp(">", compare_op) == 0)
+		{
+			if (lc1)
+				return 1;
+			else
+				return 0;
+		}
+	}
+
+	return rc;
+} /* end partition_range_compare */
+
+static void
+validate_range_partition(partValidationState *vstate)
+{
+	bool bAppendRange = false;
+	PartitionBoundSpec *prevBSpec = NULL;
+
+	if (vstate->pBSpec)
+	{
+		/* XXX: create a type2name function */
+		char *specTName = "LIST";
+
+		if (vstate->pBSpec->partType == PARTTYP_LIST)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("invalid use of %s boundary "
+							"specification in partition%s of "
+							"type RANGE%s",
+							specTName,
+							vstate->namBuf,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, vstate->pBSpec->location)));
+			
+		}
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("missing boundary specification in "
+						"partition%s of type RANGE%s",
+						vstate->namBuf,
+						vstate->at_depth),
+				 parser_errposition(vstate->pstate, vstate->pElem->location)));
+		
+	}
+
+	{
+		/* if the previous partition was named, and
+		 * current is not, and the prev and current
+		 * use single, complementary START/END specs,
+		 * then complain.
+		 */
+
+		/* must have a valid RANGE pBSpec now or else
+		 * would have error'd out... 
+		 */
+		int currStartEnd = 0;
+
+		if (vstate->pBSpec->partStart)
+			currStartEnd += 1;
+		if (vstate->pBSpec->partEnd)
+			currStartEnd += 2;
+
+		/* Note: for first loop, prevStartEnd = 0, so
+		 * this test is ok */
+
+		if ((vstate->prevHadName && !(vstate->pElem->partName))
+			&&
+			(((vstate->prevStartEnd == 1)
+			  && (currStartEnd == 2))
+			 ||
+			 ((vstate->prevStartEnd == 2)
+			  && (currStartEnd == 1)))
+				)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("invalid use of mixed named and "
+							"unnamed RANGE boundary "
+							"specifications%s",
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, 
+										vstate->pBSpec->location)));
+
+		}
+
+		vstate->prevStartEnd = currStartEnd;
+	}
+
+	vstate->prevHadName  = !!(vstate->pElem->partName); /* bool t/f */
+
+	/* fixup boundaries for previous partition ending
+	 * if necessary 
+	 */
+	if (!vstate->prevElem)
+	{
+		bAppendRange = true;
+		goto L_setprevElem;
+	}
+
+	prevBSpec = (PartitionBoundSpec *)vstate->prevElem->boundSpec;
+				
+	/* XXX XXX: can check for overlap here too */
+
+	if (!prevBSpec)
+	{
+		/* XXX XXX: if the previous partition declaration
+		 * does not have a boundary spec then its end
+		 * needs to be the start of the current */
+
+		bAppendRange = true;
+		goto L_setprevElem;
+	}
+
+	if (vstate->pBSpec->partStart)
+	{
+		if (!prevBSpec->partEnd)
+		{
+			PartitionRangeItem *pRI =
+					(PartitionRangeItem *)
+					(vstate->pBSpec->partStart);
+			PartitionRangeItem *prevRI = 
+					makeNode(PartitionRangeItem); 
+				
+			if (prevBSpec->partStart)
+			{
+				int				 compareRc = 0;
+				PartitionRangeItem *pRI1 = 
+						(PartitionRangeItem *)vstate->pBSpec->partStart;
+				PartitionRangeItem *pRI2 = 
+						(PartitionRangeItem *)prevBSpec->partStart;
+
+				compareRc = 
+						partition_range_compare(vstate->pstate,
+												vstate->cxt, vstate->stmt, 
+												vstate->pBy,
+												vstate->at_depth,
+												vstate->partNumber,
+												"<",
+												pRI2,
+												pRI1);
+
+				if (1 != compareRc)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("START of partition%s less "
+									"than START of previous%s",
+							vstate->namBuf,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, 
+										vstate->pBSpec->location)));
+
+				}
+
+			}
+
+			prevRI->partEveryNum  = NULL; 
+			prevRI->location  = 
+					pRI->location;
+
+			prevRI->partRangeVal  = 
+					list_copy(pRI->partRangeVal);
+
+			/* invert sense of inclusiveness */
+			prevRI->partInclusive = 
+					(1 == pRI->partInclusive) ? 
+					2 : 1;
+
+			prevBSpec->partEnd = (Node *)prevRI;
+
+			/* don't need to check if range overlaps */
+			bAppendRange = true;
+
+		}
+		else if (0) /* XXX XXX XXX XXX */
+		{
+			/* else if overlap complain */
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("start of partition%s overlaps previous%s",
+								vstate->namBuf,
+								vstate->at_depth),
+						 parser_errposition(vstate->pstate, 
+											vstate->pBSpec->location)));
+				
+		}
+		
+	} /* end if current partStart */
+	else /* no start, so use END of previous */
+	{
+		if (!prevBSpec->partEnd)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot derive starting value of "
+							"partition%s based upon ending of "
+							"previous%s",
+							vstate->namBuf,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, 
+										vstate->pBSpec->location)));
+			
+		}
+		else /* build ri for current */
+		{
+			PartitionRangeItem *pRI =
+					makeNode(PartitionRangeItem); 
+			PartitionRangeItem *prevRI = 
+					(PartitionRangeItem *)
+					(prevBSpec->partEnd);
+			
+			pRI->partEveryNum  = NULL; 
+			pRI->location  = 
+					prevRI->location;
+			
+			pRI->partRangeVal  = 
+					list_copy(prevRI->partRangeVal);
+
+			/* invert sense of inclusiveness */
+			pRI->partInclusive = 
+					(1 == prevRI->partInclusive) ? 
+					2 : 1;
+
+			vstate->pBSpec->partStart = (Node *)pRI;
+
+			/* don't need to check if range overlaps */
+			bAppendRange = true;
+		} /* end build ri for current */
+	} /* end use END of previous */
+
+L_setprevElem:
+
+	/* check for overlap, 
+	 * then add new partitions to sorted list
+	 */
+
+	if (vstate->pBSpec->partStart &&
+		vstate->pBSpec->partEnd)
+	{
+		int				 compareRc = 0;
+		PartitionRangeItem *pRI1 = 
+				(PartitionRangeItem *)vstate->pBSpec->partStart;
+		PartitionRangeItem *pRI2 = 
+				(PartitionRangeItem *)vstate->pBSpec->partEnd;
+
+		compareRc = 
+				partition_range_compare(vstate->pstate,
+										vstate->cxt, vstate->stmt, 
+										vstate->pBy,
+										vstate->at_depth,
+										vstate->partNumber,
+										">",
+										pRI1,
+										pRI2);
+
+		if (0 != compareRc)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("START greater than END for partition%s%s",
+							vstate->namBuf,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, 
+										vstate->pBSpec->location)));
+
+		}
+
+	}
+	
+	if (NIL == vstate->allRangeVals)
+		bAppendRange = true;
+
+	/* check previous first */
+	if (!bAppendRange &&
+		(vstate->pBSpec->partStart &&
+		 prevBSpec &&
+		 prevBSpec->partEnd))
+	{/* compare to last */
+		int				 compareRc = 0;
+		PartitionRangeItem *pRI1 = 
+				(PartitionRangeItem *)vstate->pBSpec->partStart;
+		PartitionRangeItem *pRI2 = 
+				(PartitionRangeItem *)prevBSpec->partEnd;
+
+		compareRc = 
+				partition_range_compare(vstate->pstate,
+										vstate->cxt, vstate->stmt, 
+										vstate->pBy,
+										vstate->at_depth,
+										vstate->partNumber,
+										"=",
+										pRI1,
+										pRI2);
+
+		if (
+			(pRI2->partInclusive == 1) &&
+			(pRI1->partInclusive == 1) &&
+			(1 == compareRc))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("starting value of partition%s "
+							"overlaps previous range%s",
+							vstate->namBuf,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, 
+										vstate->pBSpec->location)));
+
+		}
+
+		/* if values are equal, but not inclusive to both,
+		 * then append is possible */
+		if (1 != compareRc)
+			compareRc = 
+				partition_range_compare(vstate->pstate,
+										vstate->cxt, vstate->stmt, 
+										vstate->pBy,
+										vstate->at_depth,
+										vstate->partNumber,
+										">",
+										pRI1,
+										pRI2);
+
+		if (1 == compareRc)
+			bAppendRange = 1;
+
+
+		/* else could be start out of sequence, so must
+		 * search entire sorted list */
+
+		if (0)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("starting value of partition%s "
+							"overlaps previous range%s",
+							vstate->namBuf,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, 
+										vstate->pBSpec->location)));
+		}
+
+	} /* end compare to last */
+
+
+	if (bAppendRange)
+	{
+		vstate->allRangeVals = lappend(vstate->allRangeVals, vstate->pBSpec);
+	}
+	else
+	{ /* find position for current range */
+		ListCell		*lc_all  = list_head(vstate->allRangeVals);
+		ListCell		*lc_allPrev = NULL;
+		int				 compareRc = 0;
+		/* set up pieces of error messages */
+		char			*currPartRI   = "Ending";
+		char			*otherPartPos = "next";
+
+		/* linear search sorted list of range specs:
+
+		   While the current start key is >= loop val
+		   start key advance.  
+
+		   If current start key < loop val start key,
+		   then see if curr start key < *previous* loop
+		   val end key, ie falls in previous range. 
+
+		   If so, error out, else splice current range in
+		   after previous.
+
+		*/
+
+		for ( ; lc_all ; lc_all = lnext(lc_all)) /* for lc_all */
+		{
+			PartitionBoundSpec *lcBSpec = 
+					(PartitionBoundSpec *) lfirst(lc_all);
+			PartitionRangeItem *pRI1 = 
+					(PartitionRangeItem *)vstate->pBSpec->partStart;
+			PartitionRangeItem *pRI2 = 
+					(PartitionRangeItem *)lcBSpec->partStart;
+
+			Assert(vstate->pBSpec->partStart);
+
+			if (lcBSpec->partStart)
+			{
+				compareRc = 
+					partition_range_compare(vstate->pstate,
+											vstate->cxt, vstate->stmt, 
+											vstate->pBy,
+											vstate->at_depth,
+											vstate->partNumber,
+											"=",
+											pRI1,
+											pRI2);
+
+				if (-1 == compareRc)
+					break;
+
+				if ((pRI2->partInclusive == 1) &&
+					(pRI1->partInclusive == 1) &&
+					(1 == compareRc))
+				{
+					currPartRI   = "Starting";
+					otherPartPos = "previous";
+					compareRc = -2;
+					break;
+				}
+
+				compareRc = 
+					partition_range_compare(vstate->pstate,
+											vstate->cxt, vstate->stmt, 
+											vstate->pBy,
+											vstate->at_depth,
+											vstate->partNumber,
+											"<",
+											pRI1,
+											pRI2);
+
+			}
+			else
+				/* if first range spec has no start 
+				 * (ie start=MINVALUE) then current start
+				 * must be after it 
+				 */
+				compareRc = 0; /* current > MINVALUE */
+
+			if (-1 == compareRc)
+				break;
+
+			if (1 == compareRc) /* if curr less than loop val */
+			{
+				/* curr start is less than loop val, so
+				 * check that curr end is less than loop
+				 * val start (including equality case)
+				 */
+
+				pRI1 = (PartitionRangeItem *)vstate->pBSpec->partEnd;
+
+				if (!pRI1)
+				{
+					/* if current start is less than
+					 * loop val start but current end is
+					 * unterminated (ie ending=MAXVALUE)
+					 * then it must overlap
+					 */
+					currPartRI   = "Ending";
+					otherPartPos = "next";
+					compareRc = -2;
+					break;
+				}
+
+				compareRc =
+					partition_range_compare(vstate->pstate,
+											vstate->cxt, vstate->stmt, 
+											vstate->pBy,
+											vstate->at_depth,
+											vstate->partNumber,
+											"=",
+											pRI2,
+											pRI1);
+				
+				if (-1 == compareRc)
+					break;
+
+				if (
+					(pRI2->partInclusive == 1) &&
+					(pRI1->partInclusive == 1) &&
+					(1 == compareRc))
+				{
+					currPartRI   = "Ending";
+					otherPartPos = "next";
+					compareRc = -2;
+					break;
+				}
+
+				compareRc = partition_range_compare(vstate->pstate,
+													vstate->cxt, vstate->stmt, 
+													vstate->pBy,
+													vstate->at_depth,
+													vstate->partNumber,
+													"<",
+													pRI2,
+													pRI1);
+
+				if (-1 == compareRc)
+					break;
+
+				if (1 == compareRc)
+				{
+					currPartRI   = "Ending";
+					otherPartPos = "next";
+					compareRc = -2;
+					break;
+				}
+			
+				/* if current is less than loop val and no
+				 * previous, then append vstate->allRangeVals to
+				 * the current, instead of vice versa 
+				 */
+				if (!lc_allPrev)
+					break;
+
+				lcBSpec = 
+					(PartitionBoundSpec *) lfirst(lc_allPrev);
+
+				pRI2 = 
+					(PartitionRangeItem *)lcBSpec->partEnd;
+
+				compareRc = 
+						partition_range_compare(vstate->pstate,
+												vstate->cxt, vstate->stmt, 
+												vstate->pBy,
+												vstate->at_depth,
+												vstate->partNumber,
+												"=",
+												pRI1,
+												pRI2);
+
+				if (-1 == compareRc)
+					break;
+
+				if (
+					(pRI2->partInclusive == 1) &&
+					(pRI1->partInclusive == 1) &&
+					(1 == compareRc))
+				{
+					currPartRI   = "Starting";
+					otherPartPos = "previous";
+					compareRc = -2;
+					break;
+				}
+
+				compareRc = 
+						partition_range_compare(vstate->pstate,
+												vstate->cxt, vstate->stmt, 
+												vstate->pBy,
+												vstate->at_depth,
+												vstate->partNumber,
+												"<",
+												pRI1,
+												pRI2);
+
+				if (-1 == compareRc)
+					break;
+
+				if (1 == compareRc)
+				{
+					currPartRI   = "Starting";
+					otherPartPos = "previous";
+					compareRc = -2;
+					break;
+				}
+			} /* end if curr less than loop val */
+
+			lc_allPrev = lc_all;
+		} /* end for lc_all */
+
+		if (-1 == compareRc)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("invalid range comparison for partition%s%s",
+							vstate->namBuf,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, 
+										vstate->pBSpec->location)));
+
+		}
+
+		if (-2 == compareRc)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("%s value of partition%s overlaps %s range%s",
+							currPartRI,
+							vstate->namBuf,
+							otherPartPos,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, 
+										vstate->pBSpec->location)));
+		}
+
+		if (lc_allPrev)
+		{
+			/* append cell returns new cell, not list */
+			lappend_cell(vstate->allRangeVals, 
+						 lc_allPrev, 
+						 vstate->pBSpec);
+		}
+		else /* no previous, so current is start */
+			vstate->allRangeVals = list_concat(list_make1(vstate->pBSpec),
+									   vstate->allRangeVals);
+	} /* end find position for current range */
+	vstate->prevElem = vstate->pElem;
+}
+
+static void
+validate_list_partition(partValidationState *vstate)
+{
+	if (vstate->pBSpec)
+	{
+		char *specTName = "RANGE";
+		
+		if (vstate->pBSpec->partType == PARTTYP_RANGE)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("invalid use of %s boundary specification in "
+							"partition%s of type LIST%s",
+							specTName,
+							vstate->namBuf,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, vstate->pBSpec->location)));
+			
+		}
+	}
+	else
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("missing boundary specification in "
+						"partition%s of type LIST%s",
+						vstate->namBuf,
+						vstate->at_depth),
+				 parser_errposition(vstate->pstate, vstate->pElem->location)));
+
+	}
+
+	if (vstate->pBSpec->partStart)
+	{
+		PartitionRangeItem *pRI  = NULL;
+
+		pRI = (PartitionRangeItem *)vstate->pBSpec->partStart;
+
+		if (pRI->partRangeVal)
+		{
+			List			*currVals = NULL;
+			List			*currSub  = NULL;
+			List			*valElts = NULL;
+			ListCell		*lc_val  = NULL;
+			int valCount = list_length(pRI->partRangeVal);
+			int vcnt     = valCount;
+
+			/* check if insufficient values, or 
+			   (num values) modulo (num keys)
+			*/
+			if ((valCount < vstate->pBy->keyCount)
+				|| (0 != (valCount % (vstate->pBy->keyCount))))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("mismatched columns in "
+								"partition%s for VALUES%s",
+								vstate->namBuf,
+								vstate->at_depth),
+						 parser_errposition(vstate->pstate, vstate->pBSpec->location)));
+			}
+
+			valElts = pRI->partRangeVal;
+			lc_val = list_head(valElts);
+
+			/* build temporary list of lists */
+			for ( ; lc_val ; lc_val = lnext(lc_val)) /* for all vals */
+			{
+				currSub = lappend(currSub, lfirst(lc_val));
+				vcnt--;
+
+				if (!vcnt)
+				{
+					vcnt = valCount;
+					currVals = lappend(currVals, currSub);
+					currSub = NIL;
+				}
+
+			} /* end for all vals */
+
+			if (NIL != vstate->allListVals)
+			{
+				ListCell		*lc_all  = list_head(vstate->allListVals);
+				ListCell		*lc_curr;
+
+				for ( ; lc_all ; lc_all = lnext(lc_all)) 
+				{
+					List	*l1_all = (List *)lfirst(lc_all);
+					List	*l1_diff;
+					
+					lc_curr = list_head(currVals);
+
+					for ( ; lc_curr ; lc_curr = lnext(lc_curr))
+					{
+						List *l1_curr = (List *)lfirst(lc_curr);
+
+						l1_diff = list_difference(l1_curr, l1_all);
+
+						if (l1_diff &&
+							list_length(l1_diff))
+						{
+								/* ok */
+						}
+						else
+						{
+							/* XXX XXX: better message !! */
+
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("duplicate VALUES "
+											"in partition%s%s",
+											vstate->namBuf,
+											vstate->at_depth),
+									 parser_errposition(vstate->pstate, vstate->pBSpec->location)));
+
+
+						}
+
+						if (l1_diff)
+							list_free(l1_diff);
+					}
+
+				}
+			}
+			vstate->allListVals = list_concat(vstate->allListVals, currVals);
+		}
+	}
+}
+
+static int
+validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt, 
+						CreateStmt *stmt, PartitionBy *pBy,
+						char *at_depth, int	partNumber)
+{
+	PartitionSpec	*pSpec;
+	char			 namBuf[NAMEDATALEN];
+	int				 numElts = 0;
+	List			*partElts;
+	ListCell		*lc = NULL;
+	List			*allPartNames = NIL;
+	partValidationState *vstate;
+
+	vstate = palloc0(sizeof(partValidationState));
+
+	vstate->pstate = pstate;
+	vstate->cxt = cxt;
+	vstate->stmt = stmt;
+	vstate->pBy = pBy;
+	vstate->at_depth = at_depth;
+	vstate->partNumber = partNumber;
+	
+	Assert(pBy);
+	pSpec = (PartitionSpec *)pBy->partSpec;
+
+	/* find number of partitions in the specification, and match it up
+	 * with the PARTITIONS clause if partitioned by HASH, and
+	 * determine the subpartition specifications.  Perform basic error
+	 * checking on boundary specifications.
+	 */
+
+	/* NOTE: a top-level PartitionSpec never has a subSpec, but a
+	 * PartitionSpec derived from an inline SubPartition
+	 * specification might have one  
+	 */
+
+
+	/* track previous boundary spec to check for this subtle problem:
+
+	(
+	partition aa start (2007,1) end (2008,2),
+	partition bb start (2008,2) end (2009,3)
+	);
+	This declaration would create four partitions:
+	1. named aa, starting at 2007, 1
+	2. unnamed, ending at 2008, 2
+	3. named bb, starting at 2008, 2
+	4. unnamed, ending at 2009, 3
+
+	Warn user if they do this, since they probably wanted
+	1. named aa, starting at 2007, 1 and ending at 2008, 2
+	2. named bb, starting at 2008, 2 and ending at 2009, 3
+		   
+	The extra comma between the start and end is the problem.
+		   
+	*/
+
+	partElts = pSpec->partElem;
+
+	foreach(lc, partElts)
+	{
+		PartitionElem *pElem = (PartitionElem *)lfirst(lc);
+		PartitionBoundSpec *pBSpec = NULL;
+
+		vstate->pElem = pElem;
+		
+		numElts++;
+
+		if (pElem)
+		{
+			vstate->pBSpec = pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+
+			if (pElem->partName)
+			{
+				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+						 strVal(pElem->partName));
+
+				if (allPartNames && list_member(allPartNames, pElem->partName))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("duplicate partition name "
+									"for partition%s%s",
+									namBuf,
+									at_depth),
+							 parser_errposition(pstate, pElem->location)));
+				}
+				allPartNames = lappend(allPartNames, pElem->partName);
+			}
+			else
+			{
+				snprintf(namBuf, sizeof(namBuf), " number %d", 
+						 numElts);
+			}
+			
+		}
+		else
+		{
+			snprintf(namBuf, sizeof(namBuf), " number %d", 
+					 numElts);
+		}
+
+		vstate->namBuf = namBuf;
+
+		switch (pBy->partType)
+		{
+			case PARTTYP_HASH:
+				if (vstate->pBSpec)
+				{
+					char *specTName = "RANGE";
+					
+					if (vstate->pBSpec->partType == PARTTYP_LIST)
+					{
+						specTName = "LIST";
+					}
+
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("invalid use of %s boundary specification "
+									"in partition%s of type HASH%s",
+									specTName,
+									vstate->namBuf,
+									vstate->at_depth),
+							 parser_errposition(pstate, pBSpec->location)));
+				}
+				break;
+			case PARTTYP_RANGE:
+				validate_range_partition(vstate);
+				break;
+
+			case PARTTYP_LIST:
+				validate_list_partition(vstate);
+				break;
+
+			case PARTTYP_REFERENCE: /* for future use... */
+			default:
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("unknown partition type %d %s",
+								pBy->partType, at_depth),
+						 parser_errposition(pstate, pBy->location)));
+				break;
+				
+		}
+	} /* end foreach(lc, partElts) */
+
+	if ((partNumber > -1) && (numElts != partNumber))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("PARTITIONS \"%d\" must match \"%d\" elements "
+						"in specification%s",
+						 partNumber, numElts, vstate->at_depth),
+				 parser_errposition(pstate, pBy->location)));
+	}
+
+	/* cleanup temporary lists */
+	if (vstate->allListVals)
+	{
+		ListCell		*lc_all  = list_head(vstate->allListVals);
+
+		for ( ; lc_all ; lc_all = lnext(lc_all)) 
+		{
+			List	*l1_all = (List *)lfirst(lc_all);
+			list_free(l1_all);
+		}
+		list_free(vstate->allListVals);
+	}
+
+	if (vstate->allRangeVals)
+	{
+		list_free(vstate->allRangeVals);
+	}
+
+	if (allPartNames)
+	{
+		list_free(allPartNames);
+	}
+
+	return numElts;
+} /* end validate_partition_spec */
+
+/* 
+ * Get the actual value from the expression. There are only a limited range
+ * of cases we must cover because the parser guarantees constant input.
+ */
+static Datum
+arg_get_val(Node *node)
+{
+	switch (nodeTag(node))
+	{
+		case T_FuncExpr:
+			{
+				/* must have been cast to the operator. */
+				FuncExpr *fe = (FuncExpr *)node;
+				Datum d;
+				Const *c;
+				
+				Assert(list_length(fe->args) == 1);
+				Assert(IsA(linitial(fe->args), Const));
+				
+				c = (Const *)linitial(fe->args);
+				d = OidFunctionCall1(fe->funcid, c->constvalue);
+				return d;
+			}
+			break;
+		case T_Const:
+			return ((Const *)node)->constvalue;
+			break;
+		default:
+			elog(ERROR, "unknown partitioning argument type: %d",
+				 nodeTag(node));
+			break;
+
+	}
+	return 0; /* quieten GCC */
+}
+
+/*
+ * Evaluate a basic operator expression from a partitioning specification.
+ * The expression will only be an op expr but the sides might contain
+ * a coercion function. The underlying value will be a simple constant,
+ * however.
+ *
+ * If restypid is non-NULL and *restypid is set to InvalidOid, we tell the 
+ * caller what the return type of the operator is. If it is anything but 
+ * InvalidOid, coerce the operation's result to that type.
+ */
+static Datum
+eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg, 
+				  Node *rightarg, Oid *restypid)
+{
+	Datum res;
+	Datum lhs;
+	Datum rhs;
+	OpExpr *opexpr;
+	HeapTuple optup;
+	
+	opexpr = (OpExpr *)make_op(pstate, oprname, leftarg, rightarg, 0);
+	optup = SearchSysCache(OPEROID, ObjectIdGetDatum(opexpr->opno),
+						   0, 0, 0);
+
+	if (optup == NULL)	  /* should not fail */
+		elog(ERROR, "cache lookup failed for operator %u", opexpr->opno);
+	opexpr->opfuncid = ((Form_pg_operator)GETSTRUCT(optup))->oprcode;
+
+	ReleaseSysCache(optup);
+
+	/* args to the function must be Const */
+	lhs = arg_get_val((Node *)linitial(opexpr->args));
+	rhs = arg_get_val((Node *)lsecond(opexpr->args));
+	res = OidFunctionCall2(opexpr->opfuncid, lhs, rhs);
+
+	/* If the caller supplied a target result type, coerce if necesssary */
+	if (PointerIsValid(restypid))
+	{
+		if (OidIsValid(*restypid))
+		{
+			if (*restypid != opexpr->opresulttype)
+			{
+				Expr *e;
+				Type typ = typeidType(opexpr->opresulttype);
+				int32 typmod;
+				Const *c;
+	
+				c = makeConst(opexpr->opresulttype, typeLen(typ), res,
+							  false, typeByVal(typ));
+				ReleaseSysCache(typ);
+
+				typ = typeidType(*restypid);
+				typmod = ((Form_pg_type)typ)->typtypmod;
+				ReleaseSysCache(typ);
+
+				e = (Expr *)coerce_to_target_type(NULL, (Node *)c, 
+												  opexpr->opresulttype,
+												  *restypid, typmod,
+												  COERCION_EXPLICIT,
+												  COERCE_IMPLICIT_CAST);
+				Assert(PointerIsValid(e));
+				res = arg_get_val((Node *)e);
+			}
+		}
+		else
+			*restypid = opexpr->opresulttype;
+	}
+	
+	return res;
+}
+
+static int 
+partition_range_every(ParseState *pstate, CreateStmtContext *cxt, 
+					  CreateStmt *stmt, PartitionBy *pBy, char *at_depth)
+{
+	PartitionSpec	*pSpec;
+	char			 namBuf[NAMEDATALEN];
+	int				 numElts = 0;
+	List			*partElts;
+	ListCell		*lc = NULL;
+	ListCell		*lc_prev = NULL;
+		
+	Assert(pBy);
+	Assert(pBy->partType == PARTTYP_RANGE);
+
+	pSpec    = (PartitionSpec *)pBy->partSpec;
+
+	partElts = pSpec->partElem;
+
+	lc = list_head(partElts);
+
+	for ( ; lc; ) /* foreach */
+	{
+		PartitionElem		*pElem = (PartitionElem *)lfirst(lc);
+		PartitionBoundSpec	*pBSpec = NULL;
+		int					 numCols  = 0;
+		int					 colCnt   = 0;
+		Const				*everyCnt;
+		PartitionRangeItem	*pRI_Start = NULL;
+		PartitionRangeItem	*pRI_End   = NULL;
+		PartitionRangeItem	*pRI_Every = NULL;
+		ListCell			*lc_Start = NULL;
+		ListCell			*lc_End   = NULL;
+		ListCell			*lc_Every = NULL;
+		List *allNewCols;
+		List *allNewPartns = NIL;
+
+		pBSpec = NULL;
+		
+		numElts++;
+
+		if (!pElem)
+			goto l_EveryLoopEnd;
+		else
+		{
+			pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+
+			if (!pBSpec)
+				goto l_EveryLoopEnd;
+
+			Assert (pBSpec->partType == PARTTYP_RANGE);
+
+			if (pElem->partName)
+			{
+				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+						 strVal(pElem->partName));
+			}
+			else
+			{
+				snprintf(namBuf, sizeof(namBuf), " number %d", 
+						 numElts);
+			}
+		}
+
+		/* have a valid range bound spec */
+
+		if (!pBSpec->partEvery)
+			goto l_EveryLoopEnd;
+
+		/* valid EVERY needs a START and END */
+		if (!(pBSpec->partStart &&
+			  pBSpec->partEnd))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("EVERY clause in partition%s "
+							"requires START and END%s",
+							namBuf,
+							at_depth),
+					 parser_errposition(pstate, pBSpec->location)));
+		}
+
+		everyCnt = make_const(makeInteger(1));
+
+		pRI_Start = (PartitionRangeItem *)pBSpec->partStart;
+		pRI_End   = (PartitionRangeItem *)pBSpec->partEnd;
+		pRI_Every = (PartitionRangeItem *)pBSpec->partEvery;
+
+		numCols = list_length(pRI_Every->partRangeVal);
+
+		if ((numCols != list_length(pRI_Start->partRangeVal))
+			|| (numCols != list_length(pRI_End->partRangeVal)))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("mismatch between EVERY, START and END "
+							"in partition%s%s",
+							namBuf,
+							at_depth),
+					 parser_errposition(pstate, pBSpec->location)));
+
+		}
+
+		for ( ; ; ) /* loop until exceed end */
+		{
+			int sqlRc = 0;
+			lc_Start = list_head(pRI_Start->partRangeVal);
+			lc_End   = list_head(pRI_End->partRangeVal);
+			lc_Every = list_head(pRI_Every->partRangeVal);
+			colCnt = numCols;
+			allNewCols = NIL;
+
+			for ( ; lc_Start && lc_End && lc_Every ; ) /* for all cols */
+			{
+				Node *n1 = lfirst(lc_Start);
+				Node *n2 = lfirst(lc_End);
+				Node *n3 = lfirst(lc_Every);
+				char *compare_op = (1 == colCnt) ? "<" : "<=";
+				Node *n1t, *n2t, *n3t;
+				Datum res;
+				Const *c;
+				List *oprmul, *oprplus, *oprcompare;
+				Oid restypid;
+				Type typ;
+				char *outputstr;
+
+				oprmul = lappend(NIL, makeString("*"));
+				oprplus = lappend(NIL, makeString("+"));
+				oprcompare = lappend(NIL, makeString(compare_op));
+				
+				n1t = transformExpr(pstate, n1);
+				n2t = transformExpr(pstate, n2);
+				n3t = transformExpr(pstate, n3);
+
+				Assert(IsA(n3t, Const));
+				Assert(IsA(n2t, Const));
+				Assert(IsA(n1t, Const));
+
+				/* formula is n1t + (every_cnt * every_num * n3t) [<|<=] n2t */
+				
+				/* every_cnt * n3t */
+				restypid = InvalidOid;
+				res = eval_basic_opexpr(pstate, oprmul, (Node *)everyCnt, n3t,
+										&restypid);
+				typ = typeidType(restypid);
+				c = makeConst(restypid, typeLen(typ), res, false,
+							  typeByVal(typ));
+				ReleaseSysCache(typ);
+				
+				/* every_num * (every_cnt * n3t) */
+				if (pRI_Every->partEveryNum)
+				{
+					Node *et = transformExpr(pstate, pRI_Every->partEveryNum);
+					
+					restypid = InvalidOid;
+					res = eval_basic_opexpr(pstate, oprmul, (Node *)c,
+											et, &restypid);
+					pfree(c);
+					typ = typeidType(restypid);
+					c = makeConst(restypid, typeLen(typ), res, false,
+								  typeByVal(typ));
+					ReleaseSysCache(typ);
+				}
+				
+				/* 
+				 * n1t + (...) 
+				 * NOTE: order is important because several useful operators,
+				 * like date + interval, only have a built in function when
+				 * the order is this way (the reverse is implemented using
+				 * an SQL function which we cannot evaluate at the moment).
+				 */
+				restypid = exprType(n1t);
+				res = eval_basic_opexpr(pstate, oprplus, n1t, (Node *)c, 
+										&restypid);
+				typ = typeidType(restypid);
+				c = makeConst(restypid, typeLen(typ), res, false,
+							  typeByVal(typ));
+
+
+				/* get the string for the calculated type */
+				{
+					Oid ooutput;
+					bool isvarlena;
+					FmgrInfo finfo;
+ 
+					getTypeOutputInfo(restypid, &ooutput, &isvarlena);
+					fmgr_info(ooutput, &finfo);
+ 
+					if (isvarlena)
+						res = PointerGetDatum(PG_DETOAST_DATUM(res));
+ 
+					outputstr = OutputFunctionCall(&finfo, res);
+				}
+
+				ReleaseSysCache(typ);
+
+				/* the comparison */
+				restypid = InvalidOid;
+				res = eval_basic_opexpr(pstate, oprcompare, (Node *)c, n2t,
+										&restypid);
+				
+				if (!DatumGetBool(res))
+				{
+					if (outputstr)
+						pfree(outputstr);
+
+					sqlRc = 0;
+					break;
+				}
+				else
+				{
+					allNewCols = lappend(allNewCols, pstrdup(outputstr));
+
+					if (outputstr)
+						pfree(outputstr);
+
+					sqlRc = 1;
+				}
+				lc_Start = lnext(lc_Start);
+				lc_End   = lnext(lc_End);
+				lc_Every = lnext(lc_Every);
+				colCnt--;
+			} /* end for all cols */
+
+			if (lc_Start || lc_End || lc_Every)
+			{ /* allNewCols is incomplete - don't use */
+				if (allNewCols)
+					list_free_deep(allNewCols);
+			}
+			else
+			{
+				allNewPartns = lappend(allNewPartns, allNewCols);
+			}
+
+			if (!sqlRc)
+				break;
+
+			/* XXX: we're cheating here! */
+			everyCnt->constvalue++;
+		} /* end loop until exceed end */
+
+	l_EveryLoopEnd:		
+			
+		pBSpec->everyGenList = allNewPartns;
+
+		lc_prev = lc;
+		lc = lnext(lc);
+	} /* end foreach */
+
+
+	return 1;
+} /* end partition_range_every */
+
+
+
+/*
+
+transformPartitionBy
+
+a clause like:
+
+PARTITION BY col1 
+  SUBPTN  BY col2 SUBTEMPLATE (Spec2), 
+  SUBPTN  BY col3 SUBTEMPLATE (Spec3)
+(Spec1)
+
+becomes a chain of PartitionBy structs, each with a PartitionSpec:
+
+  pBy -> (col1, spec1, NULL subspec)
+   |
+   v
+  pBy -> (col2, spec2, NULL subspec)
+   |
+   v
+  pBy -> (col3, spec3, NULL subspec)
+
+This struct is easy to process recursively.  However, for the syntax:
+
+PARTITION BY col1 
+  SUBPTN  BY col2 
+  SUBPTN  BY col3 
+(
+PTN AA (SUB CCC (SUB EE, SUB FF), SUB DDD (SUB EE, SUB FF))
+PTN BB (SUB CCC (SUB EE, SUB FF), SUB DDD (SUB EE, SUB FF))
+)
+
+the struct is more like:
+
+  pBy -> (col1, spec1, spec2->spec3)
+   |
+   v
+  pBy -> (col2, NULL spec, NULL subspec)
+   |
+   v
+  pBy -> (col3, NULL spec, NULL subspec)
+
+
+We need to move the subpartition specifications to the correct spots.
+
+*/
+
+static void 
+transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt, 
+					 CreateStmt *stmt, Node *partitionBy, GpPolicy *policy)
+{
+	CreateStmt	*child_tab_stmt;		
+	RangeVar	*child_tab_name;
+	RangeVar	*parent_tab_name;
+	Oid			snamespaceid;
+	char	   *snamespace;
+	char	   *tab_name_str;
+	int		  	partDepth;	/* depth (starting at zero, but display at 1) */  
+	char	  	depthstr[4];
+	char	   *at_depth = "";
+	char	  	at_buf[NAMEDATALEN];
+	int		  	partNumber = -1;	
+	int		  	ii;
+	List	   *partElts;
+	ListCell   *lc = NULL;
+
+	PartitionBy		*pBy;				/* the current partitioning clause */
+	PartitionBy		*psubBy  = NULL;	/* child of current */
+
+	if (NULL == partitionBy)
+		return;
+
+	pBy = (PartitionBy *)partitionBy;
+	partDepth = pBy->partDepth;
+	partDepth++;					/* increment depth for subpartition */
+
+	if (partDepth > 99)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("too many subpartitions: partition depth > 99"
+						 ),
+				 parser_errposition(pstate, pBy->location)));
+	}
+	snprintf(depthstr, sizeof(depthstr), "%d", partDepth);
+
+	if (partDepth != 1)
+	{
+		/* Only mention the depth 2 and greater to aid in debugging
+		 * subpartitions
+		 */
+		snprintf(at_buf, sizeof(at_buf), 
+				 " (at depth %d)", partDepth);
+		at_depth = at_buf;
+	}
+
+	/* set the depth for the immediate subpartition */
+	if (pBy->subPart)
+	{
+		/* recursively walk the subpartition clauses under PARTITION
+		 * BY.  The SUBPARTITION TEMPLATE becomes the PartitionSpec of
+		 * the new child partition.
+		 */
+
+		psubBy = (PartitionBy	*)pBy->subPart;
+		psubBy->partDepth = partDepth;
+	}
+
+	/* derive the number of partitions from the PARTITIONS 
+	 * clause (if it exists ) 
+	 */
+	if (pBy->partNum)
+	{
+		A_Const *con = (A_Const *)pBy->partNum;
+
+		Assert(IsA(&con->val, Integer));
+
+		partNumber = intVal(&con->val);
+
+		if (pBy->partType != PARTTYP_HASH)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("PARTITIONS clause requires a HASH partition%s",
+							at_depth),
+					 parser_errposition(pstate, pBy->location)));
+		}
+
+		if (partNumber < 1)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("PARTITIONS number cannot be less than one%s",
+							at_depth),
+					 parser_errposition(pstate, pBy->location)));
+		}
+	} /* end partitions clause */
+
+	pBy->keyCount = 0;
+
+	if (pBy->keys)
+	{
+		List			*colElts = pBy->keys;
+
+		pBy->keyCount = list_length(colElts);
+	}
+
+	/* 
+	 * Find number of partitions in the specification, and match it up
+	 * with the PARTITIONS clause if partitioned by HASH, and
+	 * determine the subpartition specifications.  Perform basic error
+	 * checking on boundary specifications.
+	 */
+	if (pBy->partSpec)
+		partNumber = validate_partition_spec(pstate, cxt, stmt, pBy, at_depth, 
+											 partNumber);
+
+	if (partNumber < 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("no partitions specified at depth %d",
+						partDepth),
+				 parser_errposition(pstate, pBy->location)));
+	}
+
+	if (partNumber > 999999)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("too many partitions: partition number > 999999 at "
+						"depth %d",
+						partDepth),
+				 parser_errposition(pstate, pBy->location)));
+	}
+
+	if (pBy->partType == PARTTYP_RANGE)	
+	{
+		int everyrc  = partition_range_every(pstate,cxt,stmt, pBy, at_depth);
+		everyrc++;
+	}
+
+
+	/*
+	 * Determine namespace and name to use for the child table.
+	 *
+	 * Although we use ChooseRelationName, it's not guaranteed
+	 * that the selected name won't conflict.  EIT!
+	 */
+
+	snamespaceid = RangeVarGetCreationNamespace(cxt->relation);
+	snamespace = get_namespace_name(snamespaceid);
+
+	/* set up the partition specification element list if it exists */
+	if (pBy->partSpec)
+	{
+		PartitionSpec	*pSpec   = (PartitionSpec *)pBy->partSpec;
+		PartitionSpec	*subSpec = (PartitionSpec *)pSpec->subSpec; 
+
+		/* if the current specification has a subspec, then that is
+		 * the spec for the child.  So we'd better have a SUBPARTITION
+		 * BY clause for the child, and that clause cannot contain a
+		 * SUBPARTITION TEMPLATE (which is a spec).  The subSpec
+		 * becomes subBy's subpartition template spec, which is the
+		 * partition specification for the child.
+		 */
+
+		if (subSpec)
+		{
+			if (NULL == psubBy)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("missing SUBPARTITION BY clause for "
+								"subpartition specification%s",
+								at_depth),
+						 parser_errposition(pstate, pBy->location)));
+			}
+			if (psubBy && psubBy->partSpec)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("subpartition specification conflict%s",
+								at_depth),
+						 parser_errposition(pstate, psubBy->location)));
+			}
+
+			psubBy->partSpec = (Node *)subSpec;
+		}
+
+		partElts = pSpec->partElem;
+		lc = list_head(partElts);
+	}
+	else
+	{
+		lc = NULL;
+	}
+
+	for (ii = 0; ii<partNumber; ii++)
+	{
+		int	  		 maxEveryNum = 1;
+		int	  		 jj = 0;
+		ListCell	*lc_anp = NULL; /* columns for generated EVERY */
+			
+		for ( ; jj < maxEveryNum; jj++)
+		{
+			char	  	 prtstr[NAMEDATALEN];			
+			PartitionBy	*newSub = NULL;
+			Node		*pRuleCatalog  = NULL;
+			Node		*pPostCreate = NULL;
+			Node		*pConstraint  = NULL;
+			bool		 makeRule = false;
+			PartitionElem *pElem = NULL;
+
+			makeRule = false;
+
+			if (lc)
+			{
+				PartitionBoundSpec	*pBSpec = NULL;
+
+				pElem = (PartitionElem *)lfirst(lc);
+
+				if (pElem)
+					pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
+
+				/* check if have generated list of partitions from EVERY */
+				if ((1 == maxEveryNum) && pBSpec && pBSpec->everyGenList)
+				{
+					/* set the maxEveryNum to (1 + list of "all new
+					 * partitions").  Why?  Because for a range of a START
+					 * and END, we create one table and one rule.  If we
+					 * subdivide the range, we have 3 boundary values, but
+					 * only 2 tables and 2 rules.  So for N boundaries we
+					 * have N-1 tables and rules.  The total number of
+					 * boundaries is 2 [start and end] plus the number of
+					 * new partitions.  So just add one to the list
+					 * length.
+					*/
+
+					maxEveryNum = list_length(pBSpec->everyGenList) + 1;
+					lc_anp      = list_head(pBSpec->everyGenList);
+				}
+
+				if (pElem->partName)
+				{
+					/* use the partition name as part of the child
+					 * table name */
+					char *pName = strVal(pElem->partName);
+					if (maxEveryNum == 1)
+						snprintf(prtstr, sizeof(prtstr), "prt_%s", pName);
+					else
+						snprintf(prtstr, sizeof(prtstr), "prt_%s%d", pName, jj);
+				}
+				else
+				{
+					if (maxEveryNum == 1)
+						snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
+					else
+						snprintf(prtstr, sizeof(prtstr), "prt_%d_%d", ii+1, jj);
+				}
+
+				if (pElem->subSpec)
+				{
+					/* if the current partition element has a subspec,
+					 * then that is the spec for the child.  So we'd
+					 * better have a SUBPARTITION BY clause for the child,
+					 * and that clause cannot contain a SUBPARTITION
+					 * TEMPLATE (which is a spec).  Note that we might
+					 * have just updated the subBy partition spec with the
+					 * subspec of the current spec, which would be a
+					 * conflict.  If the psubBy has a null spec, we make a
+					 * copy of the node and update it -- the subSpec
+					 * becomes the specification for the child.  And if
+					 * the subspec has a subspec it gets handled at the
+					 * top of this loop as the subspec of the current spec
+					 * when transformPartitionBy is re-invoked for the
+					 * child table.
+					*/
+
+					if (NULL == psubBy)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("missing SUBPARTITION BY clause "
+										"for subpartition specification%s",
+										at_depth),
+								 parser_errposition(pstate, pElem->location)));
+					}
+
+					if (psubBy && psubBy->partSpec)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("subpartition specification conflict%s",
+										at_depth),
+								 parser_errposition(pstate, psubBy->location)));
+					}
+
+					newSub = makeNode(PartitionBy);
+
+					newSub->partType  = psubBy->partType;
+					newSub->keys 	  = psubBy->keys;
+					newSub->partNum	  = psubBy->partNum;
+					newSub->subPart	  = psubBy->subPart;
+					newSub->partSpec  = pElem->subSpec; /* use the subspec */
+					newSub->partDepth = psubBy->partDepth;
+
+					if (pElem->subSpec) /* get a good location for error msg */
+					{
+						/* use subspec location */
+						newSub->location  = 
+								((PartitionSpec *)pElem->subSpec)->location; 
+					}
+					else
+					{
+						newSub->location = 
+								pElem->location; 
+					}
+				}
+
+				makeRule = true; /* need child table name before make rule */
+
+			} /* end lc */
+			else
+			{
+				/* might not have partition spec for hash partitions -
+				 * just name it using the loop number
+				 */
+
+				snprintf(prtstr, sizeof(prtstr), "prt_%d", ii+1);
+
+				makeRule = true; /* need child table name before make rule */
+			} /* end not lc */
+
+			child_tab_name = makeNode(RangeVar);
+			child_tab_name->catalogname = cxt->relation->catalogname;
+			child_tab_name->schemaname  = cxt->relation->schemaname;
+
+			tab_name_str = 
+				ChooseRelationName(cxt->relation->relname,
+								   depthstr, /* depth */
+								   prtstr, 	/* object "type" = 
+											   partition + (number or name) */
+								   snamespaceid);
+
+			ereport(NOTICE,
+					(errmsg("%s will create child table \"%s\" for "
+							"table \"%s\"",
+							cxt->stmtType, tab_name_str,
+							cxt->relation->relname)));
+
+			child_tab_name->relname     = tab_name_str;
+
+			parent_tab_name = makeNode(RangeVar);
+			parent_tab_name->catalogname = cxt->relation->catalogname;
+			parent_tab_name->schemaname  = cxt->relation->schemaname;
+			parent_tab_name->relname     = cxt->relation->relname;
+
+			/* now that we have the child table name, make the rule */
+
+			if (makeRule)
+			{
+				ListCell *lc_rule = NULL;
+				List *allRules =
+						make_partition_rules(pstate,
+											 cxt, stmt, 
+											 partitionBy, pElem, at_depth, 
+											 tab_name_str, ii+1, partNumber,
+											 jj, maxEveryNum, &lc_anp);
+
+				lc_rule = list_head(allRules);
+
+				pRuleCatalog = lfirst(lc_rule);
+
+				lc_rule = lnext(lc_rule);
+
+				if (lc_rule)
+				{
+					pConstraint = lfirst(lc_rule);
+
+					if (pConstraint)
+					{
+						StringInfoData   sid;
+						Constraint *pCon = makeNode(Constraint);
+
+						initStringInfo(&sid);
+
+						appendStringInfo(&sid, "%s_%s", tab_name_str, "check");
+
+						pCon->contype = CONSTR_CHECK;
+						pCon->name = sid.data;
+						pCon->raw_expr = pConstraint;
+						pCon->cooked_expr = NULL;
+						pCon->indexspace = NULL;
+
+						pConstraint = (Node *)pCon;
+					}
+
+					/* look for a Rule statement to run after the
+					 * relation is created 
+					 * (see DefinePartitionedRelation in tablecmds.c)
+					 */
+					lc_rule = lnext(lc_rule);
+					if (lc_rule)
+					{
+						List *pL1 = NULL;
+						int  *pInt1;
+						int  *pInt2;
+
+						pInt1 = (int *)palloc(sizeof(int));
+						pInt2 = (int *)palloc(sizeof(int));
+
+						*pInt1 = ii+1;
+						*pInt2 = jj;
+
+						pL1 = list_make1(child_tab_name->relname); /* rule name */
+						pL1 = lappend(pL1, pInt1);     /* partition position */
+						pL1 = lappend(pL1, pInt2);     /* every position */
+
+						if (pElem && pElem->partName)
+						{
+							char *pName = strVal(pElem->partName);
+							
+							pL1 = lappend(pL1, pName);
+						}
+						else
+							pL1 = lappend(pL1, NULL);
+
+						pL1 = lappend(pL1, child_tab_name->relname);  /* child name */
+						pL1 = lappend(pL1, parent_tab_name->relname); /* parent name */
+
+						pPostCreate = (Node *)list_make2(lfirst(lc_rule), pL1);
+					}
+				}
+
+			}
+
+			child_tab_stmt = makeNode(CreateStmt);
+			child_tab_stmt->relation = child_tab_name;
+
+			/* set the "Post Create" rule if it exists */
+			child_tab_stmt->postCreate = pPostCreate; 
+
+			/* shallow copy the parent list because we need to add
+			 * constraints 
+			 */
+			child_tab_stmt->tableElts = list_copy(stmt->tableElts);
+
+			if (pConstraint)
+				child_tab_stmt->tableElts = 
+						lappend(child_tab_stmt->tableElts,
+								pConstraint);
+
+			/* XXX XXX: inheriting the parent causes a headache in
+			 * transformDistributedBy, since it assumes the parent exists
+			 * already.  Just add an "ALTER TABLE...INHERIT parent" after
+			 * the create child table
+			 */
+	/*		child_tab_stmt->inhRelations = list_make1(parent_tab_name); */
+			child_tab_stmt->inhRelations = list_copy(stmt->inhRelations); 
+
+			child_tab_stmt->constraints = list_copy(stmt->constraints);
+			child_tab_stmt->options = stmt->options;
+			child_tab_stmt->oncommit = stmt->oncommit;
+			child_tab_stmt->tablespacename = stmt->tablespacename;
+			child_tab_stmt->distributedBy = stmt->distributedBy;
+
+			/* use the newSub as the partitionBy if the current 
+			 * partition elem had an inline subpartition declaration 
+			 */
+			child_tab_stmt->partitionBy = (newSub)
+					? (Node *) newSub : (Node *) psubBy;
+
+			child_tab_stmt->oidInfo.relOid = 0;
+			child_tab_stmt->oidInfo.comptypeOid = 0;
+			child_tab_stmt->oidInfo.toastOid = 0;
+			child_tab_stmt->oidInfo.toastIndexOid = 0;
+			child_tab_stmt->oidInfo.toastComptypeOid = 0;
+			child_tab_stmt->relKind = RELKIND_RELATION;
+			child_tab_stmt->policy = 0;
+
+			/* XXX XXX: it would be nice to copy the parent table's
+			 * distribution policy if it has one.  Otherwise,
+			 * transformDistributedBy will get annoyed that the parent
+			 * table doesn't exist yet when it attempts to build the
+			 * policy for the child table. However, transformCreateStmt
+			 * will null out the policy, even if we supply it, so don't
+			 * bother.  Add an "ALTER TABLE...INHERIT parent" after the
+			 * create instead.
+			 */
+			if (0 && policy)
+			{
+				GpPolicy   *newpolicy = NULL;
+				int			maxattrs  = 200;
+				int			ii_attrs  = 0;
+
+				newpolicy = 
+					(GpPolicy *) palloc(
+						sizeof(GpPolicy) + maxattrs * sizeof(newpolicy->attrs[0]));
+				newpolicy->ptype  = policy->ptype;
+				newpolicy->nattrs = policy->nattrs;
+
+				for (ii_attrs = 0; ii_attrs < policy->nattrs; ii_attrs++)
+				{
+					newpolicy->attrs[ii_attrs] = policy->attrs[ii_attrs];
+				}
+
+				child_tab_stmt->policy = newpolicy;
+			}
+
+			cxt->alist = lappend(cxt->alist, child_tab_stmt);
+
+			/* ALTER TABLE for inheritance after CREATE TABLE ... 
+
+			   Could remove this code if inheritance work and pass copy of
+			   parent policy to the create statement (and avoid
+			   transformDistributedBy problems)
+
+			*/
+			if (1)
+			{
+				AlterTableCmd  *atc = makeNode(AlterTableCmd);
+				AlterTableStmt *ats = makeNode(AlterTableStmt);
+
+				/* alter table child inherits parent */
+				atc->subtype = AT_AddInherit;
+				atc->def = (Node *) parent_tab_name; 
+
+				ats->relation = child_tab_name;
+				ats->cmds 	  = list_make1((Node *)atc);
+				ats->relkind  = OBJECT_TABLE;
+
+				cxt->alist = lappend(cxt->alist, ats);
+			}
+
+			newSub = NULL; /* reset newSub */
+
+			/* add a partitioning rule */
+			/* XXX XXX: do not update partition_rule table for now */
+			if (0 && pRuleCatalog)
+			{
+				cxt->alist = lappend(cxt->alist, pRuleCatalog);
+			}
+			pRuleCatalog  = NULL;
+		} /* end jj < maxEverynum */
+		if (lc)
+		{
+			lc = lnext(lc);
+		}
+	} /* end for ii */
+
+
+} /* end transformPartitionBy */
+
+/*
+ * We use this mutator to transform queries of the form:
+ * 		SELECT i, win(agg(j)) over (...)
+ * to
+ * 		SELECT i, win(var) over(...) FROM (select i, agg(j) as var ...)
+ *
+ * We perform a complex mutation on the target list: if we have encounter
+ * Aggrefs in the target list, we must replace them with Var references to
+ * the Aggref in the subquery. To do this, we create and save a TargetEntry
+ * representing the Aggref in the context variable and replace the
+ * Aggref with a Var.
+ *
+ * If the input node is a TargetEntry we save this into the sub query
+ * target list and create a Var for the top level query to reference it.
+ */
+
+static Node *
+wingroupmutator(Node *node, void *context)
+{
+	grouped_window_ctx *ctx = (grouped_window_ctx *)context;
+	Node *result;
+
+	if (!node)
+		return NULL;
+
+	/*
+	 * If the node is a Var and it occurs inside the argument list of
+	 * a WindowRef, we modify its attno to point to the correct resno
+	 * in the subquery. Such a Var should appear in one of the target
+	 * entry in the subquery targetlist.
+	 */
+	if (ctx->update_winref && IsA(node, Var) && ctx->in_winref)
+	{
+		TargetEntry *te = NULL;
+		ListCell *lc = NULL;
+		bool done = false;
+
+		/*
+		 * If this Var is in ctx->vars_for_aggref, it has already
+		 * had the right value. Otherwise, find the corresponding
+		 * entry in the ctx->subtlist, and construct a new Var.
+		 */
+		foreach (lc, ctx->vars_for_aggrefs)
+		{
+			Var *var = (Var *)lfirst(lc);
+			Assert(IsA(var, Var));
+			if (equal(node, var))
+			{
+				done = true;
+				break;
+			}
+		}
+
+		if (done)
+			return node;
+		
+		/* Find this var in the subquery targetlist. */
+		foreach (lc, ctx->subtlist)
+		{
+			te = (TargetEntry *)lfirst(lc);
+			if (equal(te->expr, node))
+				break;
+		}
+		Assert(lc != NULL);
+
+		/* Set te->resjunk to false since the window query requires this Var. */
+		te->resjunk = false;
+		
+		return (Node *)makeVar(1, te->resno, exprType(node), exprTypmod(node), 0);
+	}
+	
+	/* We've encountered an Aggref/GroupingFunc/GroupId, push it into the sub query */
+	if (!ctx->update_winref &&
+		(IsA(node, Aggref) ||
+		 IsA(node, GroupingFunc) ||
+		 IsA(node, GroupId)))
+	{
+		ListCell *tmp;
+		TargetEntry *te;
+		Var *v;
+		int attno = 0;
+		const int name_len = 50;
+		char *colname = (char *)palloc(name_len);
+
+		/*
+		 * If there's already a TargetEntry for this node, just return
+		 * a Var pointing to the entry in the sub query.
+		 *
+		 * The code further up the call tree should have been smart enough
+		 * to produce unique Aggrefs for us but, just in case we should do this.
+		 */
+		foreach(tmp, ctx->subtlist)
+		{
+			TargetEntry *te = (TargetEntry *)lfirst(tmp);
+
+			if (equal((Node *)te->expr, (Node *)node))
+			{
+				/* Found a match, time to construct the Var */
+				v = makeVar(1, te->resno, exprType(node), exprTypmod(node), 0);
+				return (Node *)v;
+			}
+		}
+
+		attno = list_length(ctx->subtlist) + 1;
+		Assert (attno < name_len - 4);
+		snprintf(colname, name_len, "att_%d", attno);
+		
+		te = makeTargetEntry((Expr *)node, attno, colname, false);
+		/* seems like we should see if we need to update sort group settings */
+		ctx->subtlist = lappend(ctx->subtlist, te);
+		
+		v = makeVar(1, attno, exprType(node), exprTypmod(node), 0);
+		ctx->vars_for_aggrefs = lappend(ctx->vars_for_aggrefs, v);
+
+		return (Node *)v;
+	}
+
+	if (IsA(node, WindowRef))
+	{
+		WindowRef *wref = (WindowRef *)node;
+		
+		if (ctx->update_winref)
+		{
+			/*
+			 * Change the attno of all Var nodes in the arguments of this WindowRef.
+			 * These attnos should point to the new resno in the subquery.
+			 */
+			ListCell *arg_lc;
+			List *new_args = NIL;
+			
+			ctx->in_winref = true;
+		
+			foreach(arg_lc, wref->args)
+			{
+				Node *arg = lfirst(arg_lc);
+				Node *new_arg;
+					
+				new_arg = wingroupmutator(arg, context);
+				new_args = lappend(new_args, new_arg);
+			}
+			
+			list_free(wref->args);
+			wref->args = new_args;
+
+			return node;
+		}
+
+		else
+		{
+			Node *new_node = expression_tree_mutator(node, wingroupmutator, ctx);
+
+			/* Walk through the frame clause as well. */
+			WindowSpec *spec =
+				(WindowSpec *)list_nth(ctx->query->windowClause, wref->winspec);
+			
+			if (spec->frame)
+			{
+				if (spec->frame->trail)
+				{
+					if (spec->frame->trail->val)
+					{
+						Node *new_val =	wingroupmutator(spec->frame->trail->val, ctx);
+						spec->frame->trail->val = new_val;
+					}
+				}
+
+				if (spec->frame->lead)
+				{
+					if (spec->frame->lead->val)
+					{
+						Node *new_val = wingroupmutator(spec->frame->lead->val, ctx);
+						spec->frame->lead->val = new_val;
+					}
+				}
+			}
+
+			return new_node;
+		}
+	}
+
+	if (IsA(node, TargetEntry))
+	{
+		TargetEntry *te = (TargetEntry *)node;
+
+		ctx->in_winref = false;
+		result = wingroupmutator((Node *)te->expr, context);
+
+		/* When the original te->expr is a Var, let it be one
+		 * new target entry in the subtlist. We construct
+		 * a new Var with a new attno for the original
+		 * targetlist.
+		 */
+		if (IsA(te->expr, Var) &&
+			!ctx->update_winref)
+		{
+			TargetEntry *subte = te;
+			Var *new_var;
+			int attno;
+
+			attno = list_length(ctx->subtlist) + 1;
+			new_var = makeVar(1, attno,
+							  exprType((Node *)subte->expr),
+							  exprTypmod((Node *)subte->expr), 0);
+			if (subte->resname == NULL)
+			{
+				const int name_len = 50;
+				subte->resname = (char *)palloc(name_len);
+				Assert (attno < name_len - 4);
+				snprintf(subte->resname, name_len, "att_%d", attno);
+			}
+			
+			te = makeTargetEntry((Expr *)new_var,
+								 subte->resno,
+								 subte->resname,
+								 te->resjunk);
+			te->ressortgroupref = subte->ressortgroupref;
+
+			subte->resno = attno;
+			ctx->subtlist = lappend(ctx->subtlist, subte);
+		}
+
+		/*
+		 * When the original te->expr is a Aggref/GroupingFunc/Groupid,
+		 * we have put it into the subtlist. The result is a Var
+		 * now, so we generate a new target entry with this Var
+		 * to replace the original node.
+		 */
+		else if (!ctx->update_winref &&
+				 (IsA(te->expr, Aggref) ||
+				  IsA(te->expr, GroupingFunc) ||
+				  IsA(te->expr, GroupId)))
+		{
+			Index ressortgroupref = te->ressortgroupref;
+			Assert(IsA(result, Var));
+			
+			te = makeTargetEntry((Expr *)result,
+								 te->resno,
+								 te->resname,
+								 te->resjunk);
+			te->ressortgroupref = ressortgroupref;
+		}
+
+		else if (!ctx->update_winref)
+		{
+			te->expr = (Expr *)result;
+		}
+
+		return (Node *)te;
+	}
+
+	/* if we've reached this point, just pass the node to the walker */
+	return expression_tree_mutator(node, wingroupmutator, context);
+}
+
+static bool
+record_sortrefs_walker(Node *node, void *context)
+{
+	sortref_ctx *ctx = (sortref_ctx *)context;
+
+	if (node == NULL)
+		return true;
+	
+#define RECORD(ref) \
+do \
+{ \
+	if (ref >= ctx->size) \
+	{ \
+		Index newsz = ref + 1; \
+		Assert(ref > 0); /* check overflow */ \
+		ctx->sortref = (Index *)repalloc(ctx->sortref, sizeof(Index) * newsz); \
+		MemSet(&(ctx->sortref[ctx->size]), \
+			   0, (newsz - ctx->size) * sizeof(Index)); \
+		ctx->size = newsz; \
+	} \
+	ctx->sortref[ref] = ref; \
+} \
+
+static bool
+rewrite_sortrefs_walker(Node *node, void *context)
+{
+	sortref_ctx *ctx = (sortref_ctx *)context; 
+	
+	if (node == NULL)
+		return false;
+	else if(IsA(node, GroupingClause))
+	{
+		GroupingClause *g = (GroupingClause *)node;
+			
+		return expression_tree_walker((Node *)g->groupsets, 
+								      rewrite_sortrefs_walker,
+								      context);
+	}
+	ctx->level++;
+	if (ctx->level == ctx->levelsup)
+	{
+		if (IsA(node, TargetEntry))
+		{
+			TargetEntry *te = (TargetEntry *)node;
+			te->ressortgroupref = ctx->sortref[te->ressortgroupref];
+			ctx->level--;
+			return false;
+		}
+		else if(IsA(node, SortClause))
+		{
+			SortClause *cl = (SortClause *)node;
+			cl->tleSortGroupRef = ctx->sortref[cl->tleSortGroupRef];
+			ctx->level--;
+			return false;
+		}
+		else if(IsA(node, GroupClause))
+		{
+			SortClause *cl = (SortClause *)node;
+			cl->tleSortGroupRef = ctx->sortref[cl->tleSortGroupRef];
+			ctx->level--;
+			return false;
+		}
+	}
+	ctx->level--;
+	return expression_tree_walker(node, rewrite_sortrefs_walker, context);
+}
+
+static void
+rewrite_sortrefs(Query *qry)
+{
+	/*
+	 * We must build up a mapping of sort refs from the old values to
+	 * contiguous values. To do this, we build an array of the refs 
+	 * registered in the relevant sort clauses in the query and then we map
+	 * them to new references, from 1..N. Then we rewrite the target list
+	 * using this.
+	 */
+	sortref_ctx ctx;
+	Index max, i;
+	
+	ctx.size = 8; /* seems like this would cover most cases */
+	ctx.sortref = (Index *)palloc0(ctx.size * sizeof(Index));
+	ctx.levelsup = 1;
+	ctx.level = 0;
+	
+	expression_tree_walker((Node *)qry->sortClause, record_sortrefs_walker, 
+						   &ctx);
+	expression_tree_walker((Node *)qry->distinctClause, record_sortrefs_walker,
+						   &ctx);
+	expression_tree_walker((Node *)qry->groupClause, record_sortrefs_walker,
+						   &ctx);
+	expression_tree_walker((Node *)qry->windowClause, record_sortrefs_walker,
+						   &ctx);
+
+	for (i = 0, max = 1; i < ctx.size; i++)
+	{
+		if (ctx.sortref[i])
+			ctx.sortref[i] = max++;
+	}
+	query_tree_walker(qry, rewrite_sortrefs_walker, &ctx, 0);
+	pfree(ctx.sortref);
+}
+
+/*
+ * ANSI SQL allows users to specify a query of the form:
+ *    SELECT deptno, sum(max(salary)) OVER (order by deptno) FROM employees
+ *    GROUP BY deptno;
+ * 
+ * This is pretty hard for the planner to make sense of, so we rewrite it,
+ * putting the grouped portion of the query in a subquery in the range table:
+ *
+ *    SELECT deptno, sum(max) FROM
+ *      (SELECT deptno, max(salary) FROM employees GROUP BY deptno) AS foo;
+ *
+ * This means moving stuff from qry into a new Query node subq and
+ * making that new node a sub query in the range table of qry. We move
+ * 
+ */ 
+static void
+transformGroupedWindows(Query *qry)
+{
+	Query *subq = makeNode(Query);
+	List *newtl;
+	grouped_window_ctx ctx;
+	RangeTblEntry *rte;
+	RangeTblRef *ref;
+	Alias *a;
+	ListCell *tmp;
+	Index *sortrefmap;
+	Index mapsize;
+	
+	Assert(qry->commandType == CMD_SELECT);
+	subq->commandType = qry->commandType;
+	subq->canSetTag = qry->canSetTag;
+
+	Assert(!PointerIsValid(qry->utilityStmt));
+	subq->utilityStmt = qry->utilityStmt;
+	subq->resultRelation = 0;
+	subq->canSetTag = true;
+	subq->into = NULL;
+	subq->intoOptions = NIL;
+	subq->intoOnCommit = ONCOMMIT_NOOP;
+	subq->intoTableSpaceName = NULL;
+	subq->hasAggs = false;
+	/* hasWindFuncs is covered later */
+	subq->hasSubLinks = qry->hasSubLinks; /* If qry has them, we do now */
+	subq->rtable = qry->rtable;
+	subq->jointree = (FromExpr *)makeNode(FromExpr);
+	subq->jointree->fromlist = qry->jointree->fromlist;
+	subq->jointree->quals = qry->jointree->quals;
+
+	/* target list later */
+	subq->groupClause = qry->groupClause;
+	subq->havingQual = qry->havingQual;
+
+	/*
+	 * Check if there is a window function in the join tree. If so
+	 * we must mark hasWindFuncs in the sub query as well.
+	 */
+	if (checkExprHasWindFuncs((Node *)subq->jointree))
+		subq->hasWindFuncs = true;
+
+	/* 
+	 * Rewrite the top level target list to point to the correct var nos
+	 * in the sub query. Be very careful to update the arguments to
+	 * window functions as well.
+	 *
+	 * The sub query must contain all columns referenced in the original
+	 * target list. So:
+	 *
+	 *      SELECT DISTINCT a , avg(b), 
+	 *      	row_number() over (partition by sum(c)), 
+	 *      	ntile(d) over (order by e)
+	 *          FROM r WHERE f < 10
+	 *          GROUP BY a,d,e
+	 *          HAVING max(f) > 0
+	 *          ORDER BY a, avg(b)
+	 *          OFFSET 10 LIMIT 10;
+	 *
+	 *   gets "rewritten" as
+	 *
+	 *      SELECT DISTINCT v1, v4, row_number() over (partition by v5),  
+	 *          ntile(v2) over (order by v3)
+	 *          FROM (
+	 *            SELECT a, d, e, avg(b), sum(c)
+	 *            FROM r
+	 *            WHERE f < 10
+	 *            GROUP BY a,d,e
+	 *            HAVING max(f) > 0  ) v ( v1, v2, v3, v4, v5)
+	 *          ORDER BY v1, v4
+	 *          OFFSET 10 LIMIT 10;
+	 */
+	ctx.subtlist = NIL;
+	ctx.vars_for_aggrefs = NIL;
+	ctx.update_winref = false;
+	ctx.in_winref = false;
+	ctx.query = qry;
+	newtl = (List *)expression_tree_mutator((Node *)qry->targetList, 
+											wingroupmutator, &ctx);
+	ctx.update_winref = true;
+	ctx.in_winref = false;
+	newtl = (List *)expression_tree_mutator((Node *)newtl, 
+											wingroupmutator, &ctx);
+
+
+	Assert(PointerIsValid(newtl));
+	Assert(IsA(newtl, List));
+	qry->targetList = newtl;
+	subq->targetList = ctx.subtlist;
+
+	/* now add a range table entry */
+	rte = makeNode(RangeTblEntry);
+	rte->rtekind = RTE_SUBQUERY;
+	rte->subquery = subq;
+	rte->inFromCl = true;
+	rte->requiredPerms |= ACL_SELECT;
+	
+	/* do aliases */
+	a = makeNode(Alias);
+	a->aliasname = pstrdup("Window");
+	a->colnames = NIL;
+
+	mapsize = 8;
+	sortrefmap = (Index *)palloc0(mapsize * sizeof(Index));
+
+	foreach(tmp, subq->targetList)
+	{
+		TargetEntry *te = (TargetEntry *)lfirst(tmp);
+		char *resname;
+		
+		Assert(IsA(te, TargetEntry));
+
+		/*
+		 * Check if there is an Agg node in the targetlist. If so
+		 * we mark hasAggs to true.
+		 */
+		if (checkExprHasAggs((Node *)te->expr))
+			subq->hasAggs = true;
+
+		/* 
+	 	 * TEs generated for the purpose of sorting (PARTITION BY and 
+		 * ORDER BY) will have resjunk = false. This is fine in the top query
+		 * but not in the sub query. Change them while we're looping.
+		 *
+		 * This is very inefficient but hey, N is usually small.
+	 	 */
+		if (te->resjunk && te->ressortgroupref)
+		{
+			ListCell *tmp2;
+			foreach(tmp2, qry->windowClause)
+			{
+				ListCell *tmp3;
+				WindowSpec *s = lfirst(tmp2);
+				
+				foreach(tmp3, s->partition)
+				{
+					SortClause *sc = lfirst(tmp3);
+
+					if (sc->tleSortGroupRef == te->ressortgroupref)
+					{
+						te->resjunk = false;
+						break;
+					}
+				}
+				
+				if (!te->resjunk)
+					break;
+				
+				foreach(tmp3, s->order)
+				{
+					SortClause *sc = lfirst(tmp3);
+
+					if (sc->tleSortGroupRef == te->ressortgroupref)
+					{
+						te->resjunk = false;
+						break;
+					}
+				}
+
+				if (!te->resjunk)
+					break;
+			}
+		}
+
+		resname = te->resname ? te->resname : "?column?";
+		a->colnames = lappend(a->colnames, makeString(pstrdup(resname)));
+	}
+	rte->alias = a;
+	rte->eref = a;
+	
+	/* we forget the old rtable by overwriting it with this new RTE */
+	qry->rtable = list_make1(rte);
+
+	/* put a ref in the join tree to the new RTE */
+	ref = makeNode(RangeTblRef);
+	ref->rtindex = 1;
+	qry->jointree->fromlist = list_make1(ref);
+	qry->jointree->quals = NULL;
+	qry->hasSubLinks = false;
+
+	/* we can also forget about grouping in the top level query */
+	qry->groupClause = NIL; 
+	qry->havingQual = NULL;
+	qry->hasAggs = false;
+	
+	rewrite_sortrefs(subq);
+	rewrite_sortrefs(qry);
+}
+
+#ifdef XXX_NEVER_WHERE_IS_THIS_NOW
+
+/* Build a FromExpr node */
+static FromExpr *
+makeFromExpr(List *fromlist, Node *quals)
+{
+	FromExpr   *f = makeNode(FromExpr);
+
+	f->fromlist = fromlist;
+	f->quals = quals;
+	return f;
+}
+
+/*
+ * analyzeCreateSchemaStmt -
+ *	  analyzes the "create schema" statement
+ *
+ * Split the schema element list into individual commands and place
+ * them in the result list in an order such that there are no forward
+ * references (e.g. GRANT to a table created later in the list). Note
+ * that the logic we use for determining forward references is
+ * presently quite incomplete.
+ *
+ * SQL92 also allows constraints to make forward references, so thumb through
+ * the table columns and move forward references to a posterior alter-table
+ * command.
+ *
+ * The result is a list of parse nodes that still need to be analyzed ---
+ * but we can't analyze the later commands until we've executed the earlier
+ * ones, because of possible inter-object references.
+ *
+ * Note: Called from commands/schemacmds.c
+ */
+List *
+analyzeCreateSchemaStmt(CreateSchemaStmt *stmt)
+{
+	CreateSchemaStmtContext cxt;
+	List	   *result;
+	ListCell   *elements;
+
+	cxt.stmtType = "CREATE SCHEMA";
+	cxt.schemaname = stmt->schemaname;
+	cxt.authid = stmt->authid;
+	cxt.sequences = NIL;
+	cxt.tables = NIL;
+	cxt.views = NIL;
+	cxt.indexes = NIL;
+	cxt.grants = NIL;
+	cxt.triggers = NIL;
+	cxt.fwconstraints = NIL;
+	cxt.alters = NIL;
+	cxt.blist = NIL;
+	cxt.alist = NIL;
+
+	/*
+	 * Run through each schema element in the schema element list. Separate
+	 * statements by type, and do preliminary analysis.
+	 */
+	foreach(elements, stmt->schemaElts)
+	{
+		Node	   *element = lfirst(elements);
+
+		switch (nodeTag(element))
+		{
+			case T_CreateSeqStmt:
+				{
+					CreateSeqStmt *elp = (CreateSeqStmt *) element;
+
+					setSchemaName(cxt.schemaname, &elp->sequence->schemaname);
+					cxt.sequences = lappend(cxt.sequences, element);
+				}
+				break;
+
+			case T_CreateStmt:
+				{
+					CreateStmt *elp = (CreateStmt *) element;
+
+					setSchemaName(cxt.schemaname, &elp->relation->schemaname);
+
+					/*
+					 * XXX todo: deal with constraints
+					 */
+					cxt.tables = lappend(cxt.tables, element);
+				}
+				break;
+
+			case T_CreateExternalStmt:
+				{
+					CreateExternalStmt *elp = (CreateExternalStmt *) element;
+					
+					setSchemaName(cxt.schemaname, &elp->relation->schemaname);
+					
+					cxt.tables = lappend(cxt.tables, element);
+				}
+				break;
+				
+			case T_ViewStmt:
+				{
+					ViewStmt   *elp = (ViewStmt *) element;
+
+					setSchemaName(cxt.schemaname, &elp->view->schemaname);
+
+					/*
+					 * XXX todo: deal with references between views
+					 */
+					cxt.views = lappend(cxt.views, element);
+				}
+				break;
+
+			case T_IndexStmt:
+				{
+					IndexStmt  *elp = (IndexStmt *) element;
+
+					setSchemaName(cxt.schemaname, &elp->relation->schemaname);
+					cxt.indexes = lappend(cxt.indexes, element);
+				}
+				break;
+
+			case T_CreateTrigStmt:
+				{
+					CreateTrigStmt *elp = (CreateTrigStmt *) element;
+
+					setSchemaName(cxt.schemaname, &elp->relation->schemaname);
+					cxt.triggers = lappend(cxt.triggers, element);
+				}
+				break;
+
+			case T_GrantStmt:
+				cxt.grants = lappend(cxt.grants, element);
+				break;
+
+			default:
+				elog(ERROR, "unrecognized node type: %d",
+					 (int) nodeTag(element));
+		}
+	}
+
+	result = NIL;
+	result = list_concat(result, cxt.sequences);
+	result = list_concat(result, cxt.tables);
+	result = list_concat(result, cxt.views);
+	result = list_concat(result, cxt.indexes);
+	result = list_concat(result, cxt.triggers);
+	result = list_concat(result, cxt.grants);
+
+	return result;
+}
+
+#endif XXX_NEVER_WHERE_IS_THIS_NOW
+
+static void
+setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
+{
+	ListCell   *keys = NULL;
+
+	GpPolicy  *policy = NULL;
+	int			colindex = 0;
+	int			maxattrs = 200;
+
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	Assert(stmt->distributedBy);
+
+	if (stmt->distributedBy)
+	{
+		/*
+		 * We have a DISTRIBUTED BY column list specified by the user
+		 * Process it now and set the distribution policy.
+		 */
+		 
+		if (qry->into == NULL)
+		{
+			elog(ERROR,"DISTRIBUTED BY clause in SELECT statement only makes sense for SELECT INTO");
+		}
+		
+		policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
+		policy->ptype = POLICYTYPE_PARTITIONED;
+		policy->nattrs = 0;
+		policy->attrs[0] = 1;
+		 
+		if (stmt->distributedBy->length == 1 && (list_head(stmt->distributedBy) == NULL || linitial(stmt->distributedBy) == NULL))
+		{
+			/* distributed randomly */
+			qry->intoPolicy = policy;
+		}
+		else
+		foreach(keys, stmt->distributedBy)
+		{
+			char	   *key = strVal(lfirst(keys));
+			bool		found = false;
+		 
+			AttrNumber	n;
+
+			for(n=1;n<=list_length(qry->targetList);n++)
+			{
+								 
+				TargetEntry *target = get_tle_by_resno(qry->targetList, n);
+				colindex = n;
+
+				if (target->resname && strcmp(target->resname, key) == 0)
+				{
+#if 0
+					Oid typeOid = typenameTypeId(target->typname);
+					bool isArray = (target->typname->arrayBounds == NIL ? false : true);
+															
+					/*
+					 * To be a part of a distribution key, this type must be supported
+					 * for hashing internally in Greenplum Database. We check if the base type is
+					 * supported for hashing or if it is an array type (we support
+					 * hashing on all array types).
+					 */
+					if(!isGreenplumDbHashable(typeOid) && !isArray)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+								 errmsg("type \"%s\" can't be a part of a distribution key",
+										strVal(linitial(column->typname->names)))));						
+					}
+#endif 
+
+					found = true;
+					
+				} /*if*/
+				
+				if (found)
+					break;
+					
+			} /*for*/
+			
+			if (!found)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
+								key)));
+		
+			policy->attrs[policy->nattrs++] = colindex;
+
+		} /*foreach */
+		if (policy->nattrs > 0)
+			qry->intoPolicy = policy;
+	}
+}
+
+/*
+ * transformSingleRowErrorHandling
+ *
+ * If Single row error handling was specified with an error table, we first
+ * check if a table with the same name already exists. If yes, we verify that
+ * it has the correct pre-defined error table metadata format (and throw an
+ * error is it doesn't). If such a table doesn't exist, we add a CREATE TABLE
+ * statement to the before list of the CREATE EXTERNAL TABLE so that it will
+ * be created before the external table.
+ */
+static void
+transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
+								SingleRowErrorDesc *sreh)
+{
+	
+	/* check if error relation exists already */
+	Oid errreloid = RangeVarGetRelid(sreh->errtable, true);
+	bool errrelexists = OidIsValid(errreloid);
+	
+	/*
+	 * auto-generate a new error table or verify an existing one
+	 */
+	if(errrelexists)
+	{
+		/* 
+		 * this table already exists in the database. Verify that specified 
+		 * table is a valid error table 
+		 */
+		
+		Relation rel;
+				
+		rel = heap_openrv(sreh->errtable, AccessShareLock);
+		ValidateErrorTableMetaData(rel);
+		relation_close(rel, AccessShareLock);
+		
+		sreh->reusing_existing_errtable = true;
+	}
+	else
+	{
+		/* 
+		 * no such table. auto create it by adding a CREATE TABLE <errortable> 
+		 * to the before list 
+		 */
+
+		CreateStmt *createStmt;
+		List	   *attrList;
+		int			i = 0;
+
+		ereport(NOTICE, 
+				(errmsg("Error table \"%s\" does not exist. Auto generating an "
+						"error table with the same name", sreh->errtable->relname)));
+		createStmt = makeNode(CreateStmt);
+		
+		/*
+		 * create a list of ColumnDef nodes based on the names and types of the
+		 * per-defined error table columns
+		 */
+		attrList = NIL;
+		
+		
+		for (i = 1; i <= NUM_ERRORTABLE_ATTR; i++)
+		{
+			ColumnDef  *coldef = makeNode(ColumnDef);
+			
+			coldef->inhcount = 0;
+			coldef->is_local = true;
+			coldef->is_not_null = false;
+			coldef->raw_default = NULL;
+			coldef->cooked_default = NULL;
+			coldef->constraints = NIL;
+			
+			switch (i)
+			{
+				case errtable_cmdtime:
+					coldef->typname = makeTypeNameFromOid(TIMESTAMPTZOID, -1);
+					coldef->colname = "cmdtime";
+					break;
+				case errtable_relname:
+					coldef->typname = makeTypeNameFromOid(TEXTOID, -1);
+					coldef->colname = "relname";
+					break;
+				case errtable_filename:
+					coldef->typname = makeTypeNameFromOid(TEXTOID, -1);
+					coldef->colname = "filename";
+					break;
+				case errtable_linenum:
+					coldef->typname = makeTypeNameFromOid(INT4OID, -1);
+					coldef->colname = "linenum";
+					break;
+				case errtable_bytenum:
+					coldef->typname = makeTypeNameFromOid(INT4OID, -1);
+					coldef->colname = "bytenum";
+					break;
+				case errtable_errmsg:
+					coldef->typname = makeTypeNameFromOid(TEXTOID, -1);
+					coldef->colname = "errmsg";
+					break;
+				case errtable_rawdata:
+					coldef->typname = makeTypeNameFromOid(TEXTOID, -1);
+					coldef->colname = "rawdata";
+					break;
+				case errtable_rawbytes:
+					coldef->typname = makeTypeNameFromOid(BYTEAOID, -1);
+					coldef->colname = "rawbytes";
+					break;
+			}
+			attrList = lappend(attrList, coldef);
+		}
+		
+		createStmt->relation = sreh->errtable;
+		createStmt->tableElts = attrList;
+		createStmt->inhRelations = NIL;
+		createStmt->constraints = NIL;
+		createStmt->options = NIL;
+		createStmt->oncommit = ONCOMMIT_NOOP;
+		createStmt->tablespacename = NULL;
+		createStmt->relKind = RELKIND_RELATION;
+		createStmt->distributedBy = list_make1(NULL); /* DISTRIBUTED RANDOMLY */
+		
+		
+		cxt->blist = lappend(cxt->blist, createStmt);
+		
+		sreh->reusing_existing_errtable = false;
+		
+	}
+	
 }
