@@ -102,8 +102,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 			if (!pltemplate->tmpldbacreate)
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-						 errmsg("must be superuser to create procedural language
-\"%s\"",
+						 errmsg("must be superuser to create procedural language\"%s\"",
 								languageName)));
 			if (!pg_database_ownercheck(MyDatabaseId, GetUserId()))
 				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
