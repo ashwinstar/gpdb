@@ -90,6 +90,7 @@ typedef struct WindowInfo
 	bool	needauxcount;
 	
 	AttrNumber *partkey_attrs;
+	Oid        *partkey_operators;
 	List	   *key_list;
 	
 	/* coplan assembly */
@@ -1575,6 +1576,7 @@ static void set_window_keys(WindowContext *context, int wind_index)
 	/* results  */
 	int partkey_len = 0;
 	AttrNumber *partkey_attrs = NULL;
+	Oid *partkey_operators = NULL;
 	List *window_keys = NIL;
 	
 	Assert( 0 <= wind_index && wind_index < context->nwindowinfos );
@@ -1602,8 +1604,12 @@ static void set_window_keys(WindowContext *context, int wind_index)
 	{
 		partkey_len = winfo->partkey_len;
 		partkey_attrs = (AttrNumber *)palloc(partkey_len*sizeof(AttrNumber));
+		partkey_operators = (Oid *)palloc(partkey_len * sizeof(Oid));
 		for ( i = 0; i < partkey_len; i++ )
+		{
 			partkey_attrs[i] = sortattrs[i];
+			partkey_operators[i] = sortops[i];
+		}
 	}
 	
 	/* Careful.  Within sort key, parition key may overlap order keys. */
@@ -1669,6 +1675,7 @@ static void set_window_keys(WindowContext *context, int wind_index)
 	}
 	
 	winfo->partkey_attrs = partkey_attrs;
+	winfo->partkey_operators = partkey_operators;
 	winfo->key_list = window_keys;
 }
 
@@ -2038,7 +2045,7 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 	/* Add the single Window node. */
 	result_plan = (Plan*) make_window(root, context->upper_tlist, 
 									  winfo->partkey_len, winfo->partkey_attrs,
-									  winfo->key_list, /* XXX copy? */
+									  winfo->partkey_operators, winfo->key_list, /* XXX copy? */
 									  result_plan);
 	
 	/* 
@@ -2480,6 +2487,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		{
 			size_t sz = winfo->partkey_len * sizeof(AttrNumber);
 			AttrNumber *partkey = NULL;
+			Oid *partkey_operators = NULL;
 			
 			/* elog(NOTICE, "Fn plan_sequential_stage(): Adding Window node."); */
 
@@ -2487,6 +2495,9 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 			{
 				partkey = (AttrNumber*)palloc(sz);
 				memcpy(partkey, winfo->partkey_attrs, sz);
+				partkey_operators = (Oid *)palloc(winfo->partkey_len * sizeof(Oid));
+				memcpy(partkey_operators, window->partkey_operators,
+					   winfo->partkey_len * sizeof(Oid));
 			}
 			
 			window_plan = (Plan *)make_window(
@@ -2494,6 +2505,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 							copyObject(window_plan->targetlist),
 							winfo->partkey_len,
 							partkey,
+							partkey_operators,
 							(List*) translate_upper_vars_sequential((Node*)winfo->key_list, context), /* XXX mutate windowKeys to translate any Var nodes in frame vals. */
 							window_plan);
 							
@@ -2770,9 +2782,10 @@ static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *contex
 		context->keyed_lower_tlist = lower_tlist;
 		
 		subplan = (Plan*) make_window(root, lower_tlist, 
-										  0, NULL, /* No paritioning */
-										  NIL, /* No ordering */
-										  subplan);
+									  0, NULL, /* No paritioning */
+									  NULL,
+									  NIL, /* No ordering */
+									  subplan);
 		if (!subplan->flow)
 			subplan->flow = pull_up_Flow(subplan, 
 											 subplan->lefttree, 
@@ -3245,9 +3258,10 @@ static RangeTblEntry *rte_for_coplan(
 		case COPLAN_WINDOW:
 			new_plan = (Plan*) 
 				make_window(root, coplan->targetlist, 
-						winfo->partkey_len, winfo->partkey_attrs,
-						winfo->key_list, /* XXX copy? */
-						new_plan);
+							winfo->partkey_len, winfo->partkey_attrs,
+							winfo->partkey_operators,
+							winfo->key_list, /* XXX copy? */
+							new_plan);
 		break;
 	case COPLAN_AGG:
 		if ( coplan->partkey_len > 0 )

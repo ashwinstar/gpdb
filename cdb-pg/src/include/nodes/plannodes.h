@@ -790,6 +790,8 @@ typedef struct Window
 	int				numPartCols;	/* number of partitioning columns */
 	AttrNumber	   *partColIdx;		/* their indexes in the target list
 									   of the window's outer plan.  */
+	Oid            *partColOperators; /* the sort function oids for
+									   * partitioning columns */
 	List	       *windowKeys;		/* list of WindowKey nodes */
 } Window;
 

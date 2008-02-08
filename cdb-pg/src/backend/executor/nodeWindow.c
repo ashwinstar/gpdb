@@ -2703,6 +2703,27 @@ initWindowFuncState(WindowState *wstate, Window *node)
 }
 
 /*
+ * Obtain equal operator OIDs from an array of sort operator OIDs.
+ */
+static Oid *
+get_equal_operators(Oid *sortOperators, int numSortCols)
+{
+	int colno;
+	Oid *eqOperators = (Oid *)palloc(numSortCols * sizeof(Oid));
+
+	for (colno = 0; colno < numSortCols; colno++)
+	{
+		eqOperators[colno] = get_equality_op_for_ordering_op(sortOperators[colno]);
+
+		if (!OidIsValid(eqOperators[colno])) /* shouldn't happen */
+			elog(ERROR, "could not find equality operator for ordering operator %u",
+				 sortOperators[colno]);
+	}
+	
+	return eqOperators;
+}
+
+/*
  * Initialize WindowStatePerLevel in the Window node.
  */
 static void
@@ -2713,6 +2734,7 @@ initWindowStatePerLevel(WindowState *wstate, Window *node)
 	WindowKey *prev_key = NULL;
 	TupleDesc desc;
 	int col_no;
+	Oid *eqOperators;
 
 	desc = ExecGetResultType(wstate->ps.lefttree);
 
@@ -2754,11 +2776,11 @@ initWindowStatePerLevel(WindowState *wstate, Window *node)
 		if (key->numSortCols > 0)
 			prev_key = key;
 
+		eqOperators = get_equal_operators(lvl->sortOperators, lvl->numSortCols);
+
 		/* Find comparison functions */
-		lvl->eqfunctions = execTuplesMatchPrepare(
-				lvl->numSortCols,
-				lvl->sortOperators
-				);
+		lvl->eqfunctions = execTuplesMatchPrepare(lvl->numSortCols,
+								   				  eqOperators);
 
 		lvl->ltfunctions = get_ltfuncs(desc,
 				lvl->numSortCols,
@@ -5626,15 +5648,10 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 	/* Precompute fmgr lookup data for partition key equality function. */
 	if (node->numPartCols > 0)
 	{
+		Oid *eqOperators;
+		eqOperators = get_equal_operators(node->partColOperators, node->numPartCols);
 		wstate->eqfunctions =
-			execTuplesMatchPrepare(
-					node->numPartCols,
-					/* XXX PG8.3 merge.  The following
-					 * should be sort function oids, where
-					 * can we get them? 
-					 */
-					NULL
-					);
+			execTuplesMatchPrepare(node->numPartCols, eqOperators);
 	}
 	else
 		wstate->eqfunctions = NULL;

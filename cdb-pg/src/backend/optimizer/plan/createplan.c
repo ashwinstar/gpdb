@@ -4382,8 +4382,8 @@ make_group(PlannerInfo *root,
 }
 
 Window *make_window(PlannerInfo *root, List *tlist,
-		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
-		   Plan *lefttree)
+					int numPartCols, AttrNumber *partColIdx, Oid *partColOperators, 
+					List *windowKeys, Plan *lefttree)
 {
 	Window *node = makeNode(Window);
 	Plan	   *plan = &node->plan;
@@ -4394,6 +4394,7 @@ Window *make_window(PlannerInfo *root, List *tlist,
 
 	node->numPartCols = numPartCols;
 	node->partColIdx = partColIdx;
+	node->partColOperators = partColOperators;
 	node->windowKeys = windowKeys;
 	
 	numOrderCols = numPartCols;

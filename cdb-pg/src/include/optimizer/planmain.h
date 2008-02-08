@@ -122,7 +122,7 @@ extern MergeJoin *make_mergejoin(List *tlist,
 			   Plan *lefttree, Plan *righttree,
 			   JoinType jointype);
 extern Window *make_window(PlannerInfo *root, List *tlist,
-		   int numPartCols, AttrNumber *partColIdx, List *windowKeys,
+		   int numPartCols, AttrNumber *partColIdx, Oid partColOperators, List *windowKeys,
 		   Plan *lefttree);
 extern Material *make_material(Plan *lefttree);
 extern Plan *materialize_finished_plan(Plan *subplan);
