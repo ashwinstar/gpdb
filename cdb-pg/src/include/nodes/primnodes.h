@@ -23,6 +23,7 @@
 #include "nodes/params.h"  /* For ParamListInfoData */
 #include "cdb/cdbpathlocus.h" /* For CdbLocusType */
 
+#include "catalog/gp_policy.h"
 
 /* ----------------------------------------------------------------
  *						node definitions
@@ -93,6 +94,10 @@ typedef struct IntoClause
 	List	   *options;		/* options from WITH clause */
 	OnCommitAction onCommit;	/* what do we do at COMMIT? */
 	char	   *tableSpaceName; /* table space to use, or NULL */
+
+	/* MPP */
+	GpPolicy   *intoPolicy;
+	struct TableOidInfo *intoOidInfo;
 } IntoClause;
 
 

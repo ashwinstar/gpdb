@@ -64,6 +64,15 @@ typedef struct QueryDesc
 
 } QueryDesc;
 
+static inline struct TableOidInfo *querydesc_into_oidinfo(QueryDesc *qd)
+{
+	return qd->plannedstmt->intoClause->intoOidInfo;
+}
+static inline GpPolicy *querydesc_into_policy(QueryDesc *qd)
+{
+	return qd->plannedstmt->intoClause->intoPolicy;
+}
+
 /* in pquery.c */
 extern QueryDesc *CreateQueryDesc(PlannedStmt *plannedstmt,
 				Snapshot snapshot,

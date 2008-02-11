@@ -173,9 +173,6 @@ typedef struct HashJoinTableData
 	FmgrInfo   *outer_hashfunctions;	/* lookup data for hash functions */
 	FmgrInfo   *inner_hashfunctions;	/* lookup data for hash functions */
 	bool	   *hashStrict;		/* is each hash join operator strict? */
-
-	bool	   *hashStrict;		/* is each hash join operator strict? */
-
 	Size		spaceAllowed;	/* upper limit for space used */
 
 	MemoryContext hashCxt;		/* context for whole-hash-join storage */

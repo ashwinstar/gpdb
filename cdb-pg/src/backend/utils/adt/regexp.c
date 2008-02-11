@@ -1119,7 +1119,7 @@ regexp_split_to_array(PG_FUNCTION_ARGS)
 	 * memory context anyway.
 	 */
 
-	PG_RETURN_ARRAYTYPE_P(makeArrayResult(astate, CurrentMemoryContext));
+	return makeArrayResult(astate, CurrentMemoryContext);
 }
 
 /* This is separate to keep the opr_sanity regression test from complaining */
