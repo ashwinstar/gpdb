@@ -1051,17 +1051,6 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 		 */
 		return false;
 	}
-	else if (cache->id == OPEROID)
-	{
-		if (!criticalRelcachesBuilt)
-		{
-			/* Looking for an OID comparison function? */
-			Oid			lookup_oid = DatumGetObjectId(cur_skey[0].sk_argument);
-
-			if (lookup_oid >= MIN_OIDCMP && lookup_oid <= MAX_OIDCMP)
-				return false;
-		}
-	}
 
 	/* Normal case, allow index scan */
 	return true;

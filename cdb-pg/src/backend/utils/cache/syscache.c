@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/syscache.c,v 1.108 2006/10/06 18:23:35 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/syscache.c,v 1.114 2008/01/01 19:45:53 momjian Exp $
  *
  * NOTES
  *	  These routines allow the parser/planner/executor to perform
@@ -28,16 +28,23 @@
 #include "catalog/pg_auth_members.h"
 #include "catalog/pg_authid.h"
 #include "catalog/pg_cast.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_database.h"
-#include "catalog/pg_inherits.h"
+#include "catalog/pg_enum.h"
 #include "catalog/pg_language.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
+#include "catalog/pg_opfamily.h"
 #include "catalog/pg_proc.h"
 #include "catalog/pg_rewrite.h"
 #include "catalog/pg_statistic.h"
+#include "catalog/pg_ts_config.h"
+#include "catalog/pg_ts_config_map.h"
+#include "catalog/pg_ts_dict.h"
+#include "catalog/pg_ts_parser.h"
+#include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_window.h"
 #include "utils/syscache.h"
@@ -136,7 +143,7 @@ static const struct cachedesc cacheinfo[] = {
 		2,
 		{
 			Anum_pg_amop_amopopr,
-			Anum_pg_amop_amopclaid,
+			Anum_pg_amop_amopfamily,
 			0,
 			0
 		},
@@ -145,24 +152,24 @@ static const struct cachedesc cacheinfo[] = {
 	{AccessMethodOperatorRelationId,	/* AMOPSTRATEGY */
 		AccessMethodStrategyIndexId,
 		0,
-		3,
+		4,
 		{
-			Anum_pg_amop_amopclaid,
-			Anum_pg_amop_amopsubtype,
-			Anum_pg_amop_amopstrategy,
-			0
+			Anum_pg_amop_amopfamily,
+			Anum_pg_amop_amoplefttype,
+			Anum_pg_amop_amoprighttype,
+			Anum_pg_amop_amopstrategy
 		},
 		64
 	},
 	{AccessMethodProcedureRelationId,	/* AMPROCNUM */
 		AccessMethodProcedureIndexId,
 		0,
-		3,
+		4,
 		{
-			Anum_pg_amproc_amopclaid,
-			Anum_pg_amproc_amprocsubtype,
-			Anum_pg_amproc_amprocnum,
-			0
+			Anum_pg_amproc_amprocfamily,
+			Anum_pg_amproc_amproclefttype,
+			Anum_pg_amproc_amprocrighttype,
+			Anum_pg_amproc_amprocnum
 		},
 		64
 	},
@@ -256,7 +263,7 @@ static const struct cachedesc cacheinfo[] = {
 		0,
 		3,
 		{
-			Anum_pg_opclass_opcamid,
+			Anum_pg_opclass_opcmethod,
 			Anum_pg_opclass_opcname,
 			Anum_pg_opclass_opcnamespace,
 			0
@@ -299,7 +306,19 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		128
 	},
-	{ConversionRelationId,		/* CONOID */
+	{ConstraintRelationId,		/* CONSTROID */
+		ConstraintOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		1024
+	},
+	{ConversionRelationId,		/* CONVOID */
 		ConversionOidIndexId,
 		0,
 		1,
@@ -323,6 +342,30 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		4
 	},
+	{EnumRelationId,			/* ENUMOID */
+		EnumOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		256
+	},
+	{EnumRelationId,			/* ENUMTYPOIDNAME */
+		EnumTypIdLabelIndexId,
+		0,
+		2,
+		{
+			Anum_pg_enum_enumtypid,
+			Anum_pg_enum_enumlabel,
+			0,
+			0
+		},
+		256
+	},
 	{IndexRelationId,			/* INDEXRELID */
 		IndexRelidIndexId,
 		Anum_pg_index_indrelid,
@@ -334,18 +377,6 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		1024
-	},
-	{InheritsRelationId,		/* INHRELID */
-		InheritsRelidSeqnoIndexId,
-		Anum_pg_inherits_inhrelid,
-		2,
-		{
-			Anum_pg_inherits_inhrelid,
-			Anum_pg_inherits_inhseqno,
-			0,
-			0
-		},
-		256
 	},
 	{LanguageRelationId,		/* LANGNAME */
 		LanguageNameIndexId,
@@ -419,6 +450,30 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		1024
 	},
+	{OperatorFamilyRelationId,	/* OPFAMILYAMNAMENSP */
+		OpfamilyAmNameNspIndexId,
+		0,
+		3,
+		{
+			Anum_pg_opfamily_opfmethod,
+			Anum_pg_opfamily_opfname,
+			Anum_pg_opfamily_opfnamespace,
+			0
+		},
+		64
+	},
+	{OperatorFamilyRelationId,	/* OPFAMILYOID */
+		OpfamilyOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		64
+	},
 	{ProcedureRelationId,		/* PROCNAMEARGSNSP */
 		ProcedureNameArgsNspIndexId,
 		0,
@@ -490,6 +545,114 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		1024
+	},
+	{TSConfigMapRelationId,		/* TSCONFIGMAP */
+		TSConfigMapIndexId,
+		0,
+		3,
+		{
+			Anum_pg_ts_config_map_mapcfg,
+			Anum_pg_ts_config_map_maptokentype,
+			Anum_pg_ts_config_map_mapseqno,
+			0
+		},
+		4
+	},
+	{TSConfigRelationId,		/* TSCONFIGNAMENSP */
+		TSConfigNameNspIndexId,
+		0,
+		2,
+		{
+			Anum_pg_ts_config_cfgname,
+			Anum_pg_ts_config_cfgnamespace,
+			0,
+			0
+		},
+		16
+	},
+	{TSConfigRelationId,		/* TSCONFIGOID */
+		TSConfigOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		16
+	},
+	{TSDictionaryRelationId,	/* TSDICTNAMENSP */
+		TSDictionaryNameNspIndexId,
+		0,
+		2,
+		{
+			Anum_pg_ts_dict_dictname,
+			Anum_pg_ts_dict_dictnamespace,
+			0,
+			0
+		},
+		16
+	},
+	{TSDictionaryRelationId,	/* TSDICTOID */
+		TSDictionaryOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		16
+	},
+	{TSParserRelationId,		/* TSPARSERNAMENSP */
+		TSParserNameNspIndexId,
+		0,
+		2,
+		{
+			Anum_pg_ts_parser_prsname,
+			Anum_pg_ts_parser_prsnamespace,
+			0,
+			0
+		},
+		4
+	},
+	{TSParserRelationId,		/* TSPARSEROID */
+		TSParserOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		4
+	},
+	{TSTemplateRelationId,		/* TSTEMPLATENAMENSP */
+		TSTemplateNameNspIndexId,
+		0,
+		2,
+		{
+			Anum_pg_ts_template_tmplname,
+			Anum_pg_ts_template_tmplnamespace,
+			0,
+			0
+		},
+		16
+	},
+	{TSTemplateRelationId,		/* TSTEMPLATEOID */
+		TSTemplateOidIndexId,
+		0,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		16
 	},
 	{TypeRelationId,			/* TYPENAMENSP */
 		TypeNameNspIndexId,

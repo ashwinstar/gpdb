@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/relcache.c,v 1.250 2006/11/05 23:40:30 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/relcache.c,v 1.266 2008/01/01 19:45:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -35,6 +35,7 @@
 #include "access/reloptions.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
+#include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_amop.h"
@@ -52,6 +53,7 @@
 #include "optimizer/clauses.h"
 #include "optimizer/planmain.h"
 #include "optimizer/prep.h"
+#include "optimizer/var.h"
 #include "rewrite/rewriteDefine.h"
 #include "storage/fd.h"
 #include "storage/smgr.h"
@@ -73,7 +75,7 @@
  */
 #define RELCACHE_INIT_FILENAME	"pg_internal.init"
 
-#define RELCACHE_INIT_FILEMAGIC		0x573263	/* version ID value */
+#define RELCACHE_INIT_FILEMAGIC		0x573264	/* version ID value */
 
 /*
  *		hardcoded tuple descriptors.  see include/catalog/pg_attribute.h
@@ -163,7 +165,8 @@ do { \
 /*
  * Special cache for opclass-related information
  *
- * Note: only default-subtype operators and support procs get cached
+ * Note: only default operators and support procs get cached, ie, those with
+ * lefttype = righttype = opcintype.
  */
 typedef struct opclasscacheent
 {
@@ -171,6 +174,8 @@ typedef struct opclasscacheent
 	bool		valid;			/* set TRUE after successful fill-in */
 	StrategyNumber numStrats;	/* max # of strategies (from pg_am) */
 	StrategyNumber numSupport;	/* max # of support procs (from pg_am) */
+	Oid			opcfamily;		/* OID of opclass's family */
+	Oid			opcintype;		/* OID of opclass's declared input type */
 	Oid		   *operatorOids;	/* strategy operators' OIDs */
 	RegProcedure *supportProcs; /* support procs */
 } OpClassCacheEnt;
@@ -182,7 +187,7 @@ static HTAB *OpClassCache = NULL;
 
 static void RelationClearRelation(Relation relation, bool rebuild);
 
-static void RelationReloadClassinfo(Relation relation);
+static void RelationReloadIndexInfo(Relation relation);
 static void RelationFlushRelation(Relation relation);
 static bool load_relcache_init_file(void);
 static void write_relcache_init_file(void);
@@ -205,6 +210,8 @@ static List *insert_ordered_oid(List *list, Oid datum);
 static void IndexSupportInitialize(oidvector *indclass,
 					   Oid *indexOperator,
 					   RegProcedure *indexSupport,
+					   Oid *opFamily,
+					   Oid *opcInType,
 					   StrategyNumber maxStrategyNumber,
 					   StrategyNumber maxSupportNumber,
 					   AttrNumber maxAttributeNumber);
@@ -650,6 +657,7 @@ RelationBuildRuleLock(Relation relation)
 
 		rule->event = rewrite_form->ev_type - '0';
 		rule->attrno = rewrite_form->ev_attr;
+		rule->enabled = rewrite_form->ev_enabled;
 		rule->isInstead = rewrite_form->is_instead;
 
 		/*
@@ -835,6 +843,9 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
 	relation->rd_refcnt = 0;
 	relation->rd_isnailed = false;
 	relation->rd_createSubid = InvalidSubTransactionId;
+	relation->rd_newRelfilenodeSubid = InvalidSubTransactionId;
+
+
 	relation->rd_istemp = isTempNamespace(relation->rd_rel->relnamespace);
 
     /*
@@ -946,12 +957,12 @@ RelationInitIndexAccessInfo(Relation relation)
 	HeapTuple	tuple;
 	Form_pg_am	aform;
 	Datum		indclassDatum;
+	Datum		indoptionDatum;
 	bool		isnull;
+	oidvector  *indclass;
+	int2vector *indoption;
 	MemoryContext indexcxt;
 	MemoryContext oldcontext;
-	Oid		   *operator;
-	RegProcedure *support;
-	FmgrInfo   *supportinfo;
 	int			natts;
 	uint16		amstrategies;
 	uint16		amsupport;
@@ -972,18 +983,6 @@ RelationInitIndexAccessInfo(Relation relation)
 	relation->rd_index = (Form_pg_index) GETSTRUCT(relation->rd_indextuple);
 	MemoryContextSwitchTo(oldcontext);
 	ReleaseSysCache(tuple);
-
-	/*
-	 * indclass cannot be referenced directly through the C struct, because it
-	 * is after the variable-width indkey field.  Therefore we extract the
-	 * datum the hard way and provide a direct link in the relcache.
-	 */
-	indclassDatum = fastgetattr(relation->rd_indextuple,
-								Anum_pg_index_indclass,
-								GetPgIndexDescriptor(),
-								&isnull);
-	Assert(!isnull);
-	relation->rd_indclass = (oidvector *) DatumGetPointer(indclassDatum);
 
 	/*
 	 * Make a copy of the pg_am entry for the index's access method
@@ -1027,39 +1026,68 @@ RelationInitIndexAccessInfo(Relation relation)
 	relation->rd_aminfo = (RelationAmInfo *)
 		MemoryContextAllocZero(indexcxt, sizeof(RelationAmInfo));
 
+	relation->rd_opfamily = (Oid *)
+		MemoryContextAllocZero(indexcxt, natts * sizeof(Oid));
+	relation->rd_opcintype = (Oid *)
+		MemoryContextAllocZero(indexcxt, natts * sizeof(Oid));
+
 	if (amstrategies > 0)
-		operator = (Oid *)
+		relation->rd_operator = (Oid *)
 			MemoryContextAllocZero(indexcxt,
 								   natts * amstrategies * sizeof(Oid));
 	else
-		operator = NULL;
+		relation->rd_operator = NULL;
 
 	if (amsupport > 0)
 	{
 		int			nsupport = natts * amsupport;
 
-		support = (RegProcedure *)
+		relation->rd_support = (RegProcedure *)
 			MemoryContextAllocZero(indexcxt, nsupport * sizeof(RegProcedure));
-		supportinfo = (FmgrInfo *)
+		relation->rd_supportinfo = (FmgrInfo *)
 			MemoryContextAllocZero(indexcxt, nsupport * sizeof(FmgrInfo));
 	}
 	else
 	{
-		support = NULL;
-		supportinfo = NULL;
+		relation->rd_support = NULL;
+		relation->rd_supportinfo = NULL;
 	}
 
-	relation->rd_operator = operator;
-	relation->rd_support = support;
-	relation->rd_supportinfo = supportinfo;
+	relation->rd_indoption = (int16 *)
+		MemoryContextAllocZero(indexcxt, natts * sizeof(int16));
 
 	/*
-	 * Fill the operator and support procedure OID arrays.	(aminfo and
-	 * supportinfo are left as zeroes, and are filled on-the-fly when used)
+	 * indclass cannot be referenced directly through the C struct, because it
+	 * comes after the variable-width indkey field.  Must extract the datum
+	 * the hard way...
 	 */
-	IndexSupportInitialize(relation->rd_indclass,
-						   operator, support,
+	indclassDatum = fastgetattr(relation->rd_indextuple,
+								Anum_pg_index_indclass,
+								GetPgIndexDescriptor(),
+								&isnull);
+	Assert(!isnull);
+	indclass = (oidvector *) DatumGetPointer(indclassDatum);
+
+	/*
+	 * Fill the operator and support procedure OID arrays, as well as the info
+	 * about opfamilies and opclass input types.  (aminfo and supportinfo are
+	 * left as zeroes, and are filled on-the-fly when used)
+	 */
+	IndexSupportInitialize(indclass,
+						   relation->rd_operator, relation->rd_support,
+						   relation->rd_opfamily, relation->rd_opcintype,
 						   amstrategies, amsupport, natts);
+
+	/*
+	 * Similarly extract indoption and copy it to the cache entry
+	 */
+	indoptionDatum = fastgetattr(relation->rd_indextuple,
+								 Anum_pg_index_indoption,
+								 GetPgIndexDescriptor(),
+								 &isnull);
+	Assert(!isnull);
+	indoption = (int2vector *) DatumGetPointer(indoptionDatum);
+	memcpy(relation->rd_indoption, indoption->values, natts * sizeof(int16));
 
 	/*
 	 * expressions and predicate cache will be filled later
@@ -1074,8 +1102,8 @@ RelationInitIndexAccessInfo(Relation relation)
  *		Initializes an index's cached opclass information,
  *		given the index's pg_index.indclass entry.
  *
- * Data is returned into *indexOperator and *indexSupport, which are arrays
- * allocated by the caller.
+ * Data is returned into *indexOperator, *indexSupport, *opFamily, and
+ * *opcInType, which are arrays allocated by the caller.
  *
  * The caller also passes maxStrategyNumber, maxSupportNumber, and
  * maxAttributeNumber, since these indicate the size of the arrays
@@ -1087,6 +1115,8 @@ static void
 IndexSupportInitialize(oidvector *indclass,
 					   Oid *indexOperator,
 					   RegProcedure *indexSupport,
+					   Oid *opFamily,
+					   Oid *opcInType,
 					   StrategyNumber maxStrategyNumber,
 					   StrategyNumber maxSupportNumber,
 					   AttrNumber maxAttributeNumber)
@@ -1106,6 +1136,8 @@ IndexSupportInitialize(oidvector *indclass,
 									 maxSupportNumber);
 
 		/* copy cached data into relcache entry */
+		opFamily[attIndex] = opcentry->opcfamily;
+		opcInType[attIndex] = opcentry->opcintype;
 		if (maxStrategyNumber > 0)
 			memcpy(&indexOperator[attIndex * maxStrategyNumber],
 				   opcentry->operatorOids,
@@ -1129,9 +1161,13 @@ IndexSupportInitialize(oidvector *indclass,
  * numbers is passed in, rather than being looked up, mainly because the
  * caller will have it already.
  *
- * XXX There isn't any provision for flushing the cache.  However, there
- * isn't any provision for flushing relcache entries when opclass info
- * changes, either :-(
+ * Note there is no provision for flushing the cache.  This is OK at the
+ * moment because there is no way to ALTER any interesting properties of an
+ * existing opclass --- all you can do is drop it, which will result in
+ * a useless but harmless dead entry in the cache.  To support altering
+ * opclass membership (not the same as opfamily membership!), we'd need to
+ * be able to flush this cache as well as the contents of relcache entries
+ * for indexes.
  */
 static OpClassCacheEnt *
 LookupOpclassInfo(Oid operatorClassOid,
@@ -1142,7 +1178,7 @@ LookupOpclassInfo(Oid operatorClassOid,
 	bool		found;
 	Relation	rel;
 	SysScanDesc scan;
-	ScanKeyData skey[2];
+	ScanKeyData skey[3];
 	HeapTuple	htup;
 	bool		indexOK;
 
@@ -1166,34 +1202,50 @@ LookupOpclassInfo(Oid operatorClassOid,
 											   (void *) &operatorClassOid,
 											   HASH_ENTER, &found);
 
-	if (found && opcentry->valid)
+	if (!found)
 	{
-		/* Already made an entry for it */
+		/* Need to allocate memory for new entry */
+		opcentry->valid = false;	/* until known OK */
+		opcentry->numStrats = numStrats;
+		opcentry->numSupport = numSupport;
+
+		if (numStrats > 0)
+			opcentry->operatorOids = (Oid *)
+				MemoryContextAllocZero(CacheMemoryContext,
+									   numStrats * sizeof(Oid));
+		else
+			opcentry->operatorOids = NULL;
+
+		if (numSupport > 0)
+			opcentry->supportProcs = (RegProcedure *)
+				MemoryContextAllocZero(CacheMemoryContext,
+									   numSupport * sizeof(RegProcedure));
+		else
+			opcentry->supportProcs = NULL;
+	}
+	else
+	{
 		Assert(numStrats == opcentry->numStrats);
 		Assert(numSupport == opcentry->numSupport);
-		return opcentry;
 	}
 
-	/* Need to fill in new entry */
-	opcentry->valid = false;	/* until known OK */
-	opcentry->numStrats = numStrats;
-	opcentry->numSupport = numSupport;
+	/*
+	 * When testing for cache-flush hazards, we intentionally disable the
+	 * operator class cache and force reloading of the info on each call.
+	 * This is helpful because we want to test the case where a cache flush
+	 * occurs while we are loading the info, and it's very hard to provoke
+	 * that if this happens only once per opclass per backend.
+	 */
+#if defined(CLOBBER_CACHE_ALWAYS)
+	opcentry->valid = false;
+#endif
 
-	if (numStrats > 0)
-		opcentry->operatorOids = (Oid *)
-			MemoryContextAllocZero(CacheMemoryContext,
-								   numStrats * sizeof(Oid));
-	else
-		opcentry->operatorOids = NULL;
-
-	if (numSupport > 0)
-		opcentry->supportProcs = (RegProcedure *)
-			MemoryContextAllocZero(CacheMemoryContext,
-								   numSupport * sizeof(RegProcedure));
-	else
-		opcentry->supportProcs = NULL;
+	if (opcentry->valid)
+		return opcentry;
 
 	/*
+	 * Need to fill in new entry.
+	 *
 	 * To avoid infinite recursion during startup, force heap scans if we're
 	 * looking up info for the opclasses used by the indexes we would like to
 	 * reference here.
@@ -1203,22 +1255,54 @@ LookupOpclassInfo(Oid operatorClassOid,
 		 operatorClassOid != INT2_BTREE_OPS_OID);
 
 	/*
+	 * We have to fetch the pg_opclass row to determine its opfamily and
+	 * opcintype, which are needed to look up the operators and functions.
+	 * It'd be convenient to use the syscache here, but that probably doesn't
+	 * work while bootstrapping.
+	 */
+	ScanKeyInit(&skey[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(operatorClassOid));
+	rel = heap_open(OperatorClassRelationId, AccessShareLock);
+	scan = systable_beginscan(rel, OpclassOidIndexId, indexOK,
+							  SnapshotNow, 1, skey);
+
+	if (HeapTupleIsValid(htup = systable_getnext(scan)))
+	{
+		Form_pg_opclass opclassform = (Form_pg_opclass) GETSTRUCT(htup);
+
+		opcentry->opcfamily = opclassform->opcfamily;
+		opcentry->opcintype = opclassform->opcintype;
+	}
+	else
+		elog(ERROR, "could not find tuple for opclass %u", operatorClassOid);
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+
+
+	/*
 	 * Scan pg_amop to obtain operators for the opclass.  We only fetch the
-	 * default ones (those with subtype zero).
+	 * default ones (those with lefttype = righttype = opcintype).
 	 */
 	if (numStrats > 0)
 	{
 		ScanKeyInit(&skey[0],
-					Anum_pg_amop_amopclaid,
+					Anum_pg_amop_amopfamily,
 					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(operatorClassOid));
+					ObjectIdGetDatum(opcentry->opcfamily));
 		ScanKeyInit(&skey[1],
-					Anum_pg_amop_amopsubtype,
+					Anum_pg_amop_amoplefttype,
 					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(InvalidOid));
+					ObjectIdGetDatum(opcentry->opcintype));
+		ScanKeyInit(&skey[2],
+					Anum_pg_amop_amoprighttype,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(opcentry->opcintype));
 		rel = heap_open(AccessMethodOperatorRelationId, AccessShareLock);
 		scan = systable_beginscan(rel, AccessMethodStrategyIndexId, indexOK,
-								  SnapshotNow, 2, skey);
+								  SnapshotNow, 3, skey);
 
 		while (HeapTupleIsValid(htup = systable_getnext(scan)))
 		{
@@ -1238,21 +1322,25 @@ LookupOpclassInfo(Oid operatorClassOid,
 
 	/*
 	 * Scan pg_amproc to obtain support procs for the opclass.	We only fetch
-	 * the default ones (those with subtype zero).
+	 * the default ones (those with lefttype = righttype = opcintype).
 	 */
 	if (numSupport > 0)
 	{
 		ScanKeyInit(&skey[0],
-					Anum_pg_amproc_amopclaid,
+					Anum_pg_amproc_amprocfamily,
 					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(operatorClassOid));
+					ObjectIdGetDatum(opcentry->opcfamily));
 		ScanKeyInit(&skey[1],
-					Anum_pg_amproc_amprocsubtype,
+					Anum_pg_amproc_amproclefttype,
 					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(InvalidOid));
+					ObjectIdGetDatum(opcentry->opcintype));
+		ScanKeyInit(&skey[2],
+					Anum_pg_amproc_amprocrighttype,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(opcentry->opcintype));
 		rel = heap_open(AccessMethodProcedureRelationId, AccessShareLock);
 		scan = systable_beginscan(rel, AccessMethodProcedureIndexId, indexOK,
-								  SnapshotNow, 2, skey);
+								  SnapshotNow, 3, skey);
 
 		while (HeapTupleIsValid(htup = systable_getnext(scan)))
 		{
@@ -1322,6 +1410,7 @@ formrdesc(const char *relationName, Oid relationReltype,
 	 */
 	relation->rd_isnailed = true;
 	relation->rd_createSubid = InvalidSubTransactionId;
+	relation->rd_newRelfilenodeSubid = InvalidSubTransactionId;
 	relation->rd_istemp = false;
     relation->rd_isLocalBuf = false;    /*CDB*/
 
@@ -1466,7 +1555,7 @@ RelationIdGetRelation(Oid relationId)
 		RelationIncrementReferenceCount(rd);
 		/* revalidate nailed index if necessary */
 		if (!rd->rd_isvalid)
-			RelationReloadClassinfo(rd);
+			RelationReloadIndexInfo(rd);
 		return rd;
 	}
 
@@ -1534,30 +1623,31 @@ RelationClose(Relation relation)
 
 #ifdef RELCACHE_FORCE_RELEASE
 	if (RelationHasReferenceCountZero(relation) &&
-		relation->rd_createSubid == InvalidSubTransactionId)
+		relation->rd_createSubid == InvalidSubTransactionId &&
+		relation->rd_newRelfilenodeSubid == InvalidSubTransactionId)
 		RelationClearRelation(relation, false);
 #endif
 }
 
 /*
- * RelationReloadClassinfo - reload the pg_class row (only)
+ * RelationReloadIndexInfo - reload minimal information for an open index
  *
- *	This function is used only for indexes.  We currently allow only the
- *	pg_class row of an existing index to change (to support changes of
- *	owner, tablespace, or relfilenode), not its pg_index row or other
- *	subsidiary index schema information.  Therefore it's sufficient to do
- *	this when we get an SI invalidation.  Furthermore, there are cases
- *	where it's necessary not to throw away the index information, especially
- *	for "nailed" indexes which we are unable to rebuild on-the-fly.
+ *	This function is used only for indexes.  A relcache inval on an index
+ *	can mean that its pg_class or pg_index row changed.  There are only
+ *	very limited changes that are allowed to an existing index's schema,
+ *	so we can update the relcache entry without a complete rebuild; which
+ *	is fortunate because we can't rebuild an index entry that is "nailed"
+ *	and/or in active use.  We support full replacement of the pg_class row,
+ *	as well as updates of a few simple fields of the pg_index row.
  *
- *	We can't necessarily reread the pg_class row right away; we might be
+ *	We can't necessarily reread the catalog rows right away; we might be
  *	in a failed transaction when we receive the SI notification.  If so,
  *	RelationClearRelation just marks the entry as invalid by setting
  *	rd_isvalid to false.  This routine is called to fix the entry when it
  *	is next needed.
  */
 static void
-RelationReloadClassinfo(Relation relation)
+RelationReloadIndexInfo(Relation relation)
 {
 	bool		indexOK;
 	HeapTuple	pg_class_tuple;
@@ -1596,6 +1686,37 @@ RelationReloadClassinfo(Relation relation)
 	if (relation->rd_amcache)
 		pfree(relation->rd_amcache);
 	relation->rd_amcache = NULL;
+
+	/*
+	 * For a non-system index, there are fields of the pg_index row that are
+	 * allowed to change, so re-read that row and update the relcache entry.
+	 * Most of the info derived from pg_index (such as support function lookup
+	 * info) cannot change, and indeed the whole point of this routine is to
+	 * update the relcache entry without clobbering that data; so wholesale
+	 * replacement is not appropriate.
+	 */
+	if (!IsSystemRelation(relation))
+	{
+		HeapTuple	tuple;
+		Form_pg_index index;
+
+		tuple = SearchSysCache(INDEXRELID,
+							   ObjectIdGetDatum(RelationGetRelid(relation)),
+							   0, 0, 0);
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for index %u",
+				 RelationGetRelid(relation));
+		index = (Form_pg_index) GETSTRUCT(tuple);
+
+		relation->rd_index->indisvalid = index->indisvalid;
+		relation->rd_index->indcheckxmin = index->indcheckxmin;
+		relation->rd_index->indisready = index->indisready;
+		HeapTupleHeaderSetXmin(relation->rd_indextuple->t_data,
+							   HeapTupleHeaderGetXmin(tuple->t_data));
+
+		ReleaseSysCache(tuple);
+	}
+
 	/* Okay, now it's valid again */
 	relation->rd_isvalid = true;
 }
@@ -1644,7 +1765,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 		{
 			relation->rd_isvalid = false;		/* needs to be revalidated */
 			if (relation->rd_refcnt > 1)
-				RelationReloadClassinfo(relation);
+				RelationReloadIndexInfo(relation);
 		}
 		return;
 	}
@@ -1654,14 +1775,14 @@ RelationClearRelation(Relation relation, bool rebuild)
 	 * have valid index support information.  This avoids problems with active
 	 * use of the index support information.  As with nailed indexes, we
 	 * re-read the pg_class row to handle possible physical relocation of the
-	 * index.
+	 * index, and we check for pg_index updates too.
 	 */
 	if (relation->rd_rel->relkind == RELKIND_INDEX &&
 		relation->rd_refcnt > 0 &&
 		relation->rd_indexcxt != NULL)
 	{
 		relation->rd_isvalid = false;	/* needs to be revalidated */
-		RelationReloadClassinfo(relation);
+		RelationReloadIndexInfo(relation);
 		return;
 	}
 
@@ -1696,6 +1817,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 	if (relation->rd_options)
 		pfree(relation->rd_options);
 	list_free(relation->rd_indexlist);
+	bms_free(relation->rd_indexattr);
 	if (relation->rd_indexcxt)
 		MemoryContextDelete(relation->rd_indexcxt);
     if (relation->rd_cdbpolicy)
@@ -1723,11 +1845,12 @@ RelationClearRelation(Relation relation, bool rebuild)
 	{
 		/*
 		 * When rebuilding an open relcache entry, must preserve ref count and
-		 * rd_createSubid state.  Also attempt to preserve the tupledesc and
-		 * rewrite-rule substructures in place.  (Note: the refcount mechanism
-		 * for tupledescs may eventually ensure that we don't really need to
-		 * preserve the tupledesc in-place, but for now there are still a lot
-		 * of places that assume an open rel's tupledesc won't move.)
+		 * rd_createSubid/rd_newRelfilenodeSubid state.  Also attempt to
+		 * preserve the tupledesc and rewrite-rule substructures in place.
+		 * (Note: the refcount mechanism for tupledescs may eventually ensure
+		 * that we don't really need to preserve the tupledesc in-place, but
+		 * for now there are still a lot of places that assume an open rel's
+		 * tupledesc won't move.)
 		 *
 		 * Note that this process does not touch CurrentResourceOwner; which
 		 * is good because whatever ref counts the entry may have do not
@@ -1736,6 +1859,8 @@ RelationClearRelation(Relation relation, bool rebuild)
 		Oid			save_relid = RelationGetRelid(relation);
 		int			old_refcnt = relation->rd_refcnt;
 		SubTransactionId old_createSubid = relation->rd_createSubid;
+		SubTransactionId old_newRelfilenodeSubid = relation->rd_newRelfilenodeSubid;
+		struct PgStat_TableStatus *old_pgstat_info = relation->pgstat_info;
 		TupleDesc	old_att = relation->rd_att;
 		RuleLock   *old_rules = relation->rd_rules;
 		MemoryContext old_rulescxt = relation->rd_rulescxt;
@@ -1754,6 +1879,9 @@ RelationClearRelation(Relation relation, bool rebuild)
 		}
 		relation->rd_refcnt = old_refcnt;
 		relation->rd_createSubid = old_createSubid;
+		relation->rd_newRelfilenodeSubid = old_newRelfilenodeSubid;
+		relation->pgstat_info = old_pgstat_info;
+
 		if (equalTupleDescs(old_att, relation->rd_att))
 		{
 			/* needn't flush typcache here */
@@ -1794,12 +1922,13 @@ RelationFlushRelation(Relation relation)
 {
 	bool		rebuild;
 
-	if (relation->rd_createSubid != InvalidSubTransactionId)
+	if (relation->rd_createSubid != InvalidSubTransactionId ||
+		relation->rd_newRelfilenodeSubid != InvalidSubTransactionId)
 	{
 		/*
 		 * New relcache entries are always rebuilt, not flushed; else we'd
 		 * forget the "new" status of the relation, which is a useful
-		 * optimization to have.
+		 * optimization to have.  Ditto for the new-relfilenode status.
 		 */
 		rebuild = true;
 	}
@@ -1876,6 +2005,8 @@ RelationCacheInvalidateEntry(Oid relationId)
  *	 so we do not touch new-in-transaction relations; they cannot be targets
  *	 of cross-backend SI updates (and our own updates now go through a
  *	 separate linked list that isn't limited by the SI message buffer size).
+ *	 Likewise, we need not discard new-relfilenode-in-transaction hints,
+ *	 since any invalidation of those would be a local event.
  *
  *	 We do this in two phases: the first pass deletes deletable items, and
  *	 the second one rebuilds the rebuildable items.  This is essential for
@@ -1997,9 +2128,10 @@ AtEOXact_RelationCache(bool isCommit)
 	 * the debug-only Assert checks, most transactions don't create any work
 	 * for us to do here, so we keep a static flag that gets set if there is
 	 * anything to do.	(Currently, this means either a relation is created in
-	 * the current xact, or an index list is forced.)  For simplicity, the
-	 * flag remains set till end of top-level transaction, even though we
-	 * could clear it at subtransaction end in some cases.
+	 * the current xact, or one is given a new relfilenode, or an index list
+	 * is forced.)	For simplicity, the flag remains set till end of top-level
+	 * transaction, even though we could clear it at subtransaction end in
+	 * some cases.
 	 */
 	if (!need_eoxact_work
 #ifdef USE_ASSERT_CHECKING
@@ -2052,6 +2184,11 @@ AtEOXact_RelationCache(bool isCommit)
 				continue;
 			}
 		}
+
+		/*
+		 * Likewise, reset the hint about the relfilenode being new.
+		 */
+		relation->rd_newRelfilenodeSubid = InvalidSubTransactionId;
 
 		/*
 		 * Flush any temporary index list.
@@ -2115,6 +2252,18 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 		}
 
 		/*
+		 * Likewise, update or drop any new-relfilenode-in-subtransaction
+		 * hint.
+		 */
+		if (relation->rd_newRelfilenodeSubid == mySubid)
+		{
+			if (isCommit)
+				relation->rd_newRelfilenodeSubid = parentSubid;
+			else
+				relation->rd_newRelfilenodeSubid = InvalidSubTransactionId;
+		}
+
+		/*
 		 * Flush any temporary index list.
 		 */
 		if (relation->rd_indexvalid == 2)
@@ -2126,6 +2275,23 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 		}
 	}
 }
+
+/*
+ * RelationCacheMarkNewRelfilenode
+ *
+ *	Mark the rel as having been given a new relfilenode in the current
+ *	(sub) transaction.	This is a hint that can be used to optimize
+ *	later operations on the rel in the same transaction.
+ */
+void
+RelationCacheMarkNewRelfilenode(Relation rel)
+{
+	/* Mark it... */
+	rel->rd_newRelfilenodeSubid = GetCurrentSubTransactionId();
+	/* ... and now we have eoxact cleanup work to do */
+	need_eoxact_work = true;
+}
+
 
 /*
  *		RelationBuildLocalRelation
@@ -2203,12 +2369,13 @@ RelationBuildLocalRelation(const char *relname,
 
 	/* it's being created in this transaction */
 	rel->rd_createSubid = GetCurrentSubTransactionId();
+	rel->rd_newRelfilenodeSubid = InvalidSubTransactionId;
 
 	/* must flag that we have rels created in this transaction */
 	need_eoxact_work = true;
 
 	/* is it a temporary relation? */
-	rel->rd_istemp = isTempNamespace(relnamespace);
+	rel->rd_istemp = isTempOrToastNamespace(relnamespace);
 
     /*
      * CDB: On QEs, temp relations must use shared buffer cache so data
@@ -2398,8 +2565,8 @@ RelationCacheInitializePhase2(void)
 
 	/*
 	 * If we didn't get the critical system indexes loaded into relcache, do
-	 * so now.	These are critical because the catcache depends on them for
-	 * catcache fetches that are done during relcache load.  Thus, we have an
+	 * so now.	These are critical because the catcache and/or opclass cache
+	 * depend on them for fetches done during relcache load.  Thus, we have an
 	 * infinite-recursion problem.	We can break the recursion by doing
 	 * heapscans instead of indexscans at certain key spots. To avoid hobbling
 	 * performance, we only want to do that until we have the critical indexes
@@ -2435,13 +2602,14 @@ RelationCacheInitializePhase2(void)
 		LOAD_CRIT_INDEX(ClassOidIndexId);
 		LOAD_CRIT_INDEX(AttributeRelidNumIndexId);
 		LOAD_CRIT_INDEX(IndexRelidIndexId);
+		LOAD_CRIT_INDEX(OpclassOidIndexId);
 		LOAD_CRIT_INDEX(AccessMethodStrategyIndexId);
 		LOAD_CRIT_INDEX(AccessMethodProcedureIndexId);
 		LOAD_CRIT_INDEX(OperatorOidIndexId);
 		LOAD_CRIT_INDEX(RewriteRelRulenameIndexId);
 		LOAD_CRIT_INDEX(TriggerRelidNameIndexId);
 
-#define NUM_CRITICAL_INDEXES	8		/* fix if you change list above */
+#define NUM_CRITICAL_INDEXES	9		/* fix if you change list above */
 
 		criticalRelcachesBuilt = true;
 	}
@@ -2888,6 +3056,7 @@ RelationSetIndexList(Relation relation, List *indexIds, Oid oidIndex)
 	relation->rd_indexvalid = 2;	/* mark list as forced */
 	/* must flag that we have a forced index list */
 	need_eoxact_work = true;
+	/* we deliberately do not change rd_indexattr */
 }
 
 /*
@@ -3059,6 +3228,91 @@ RelationGetIndexPredicate(Relation relation)
 	return result;
 }
 
+/*
+ * RelationGetIndexAttrBitmap -- get a bitmap of index attribute numbers
+ *
+ * The result has a bit set for each attribute used anywhere in the index
+ * definitions of all the indexes on this relation.  (This includes not only
+ * simple index keys, but attributes used in expressions and partial-index
+ * predicates.)
+ *
+ * Attribute numbers are offset by FirstLowInvalidHeapAttributeNumber so that
+ * we can include system attributes (e.g., OID) in the bitmap representation.
+ *
+ * The returned result is palloc'd in the caller's memory context and should
+ * be bms_free'd when not needed anymore.
+ */
+Bitmapset *
+RelationGetIndexAttrBitmap(Relation relation)
+{
+	Bitmapset  *indexattrs;
+	List	   *indexoidlist;
+	ListCell   *l;
+	MemoryContext oldcxt;
+
+	/* Quick exit if we already computed the result. */
+	if (relation->rd_indexattr != NULL)
+		return bms_copy(relation->rd_indexattr);
+
+	/* Fast path if definitely no indexes */
+	if (!RelationGetForm(relation)->relhasindex)
+		return NULL;
+
+	/*
+	 * Get cached list of index OIDs
+	 */
+	indexoidlist = RelationGetIndexList(relation);
+
+	/* Fall out if no indexes (but relhasindex was set) */
+	if (indexoidlist == NIL)
+		return NULL;
+
+	/*
+	 * For each index, add referenced attributes to indexattrs.
+	 */
+	indexattrs = NULL;
+	foreach(l, indexoidlist)
+	{
+		Oid			indexOid = lfirst_oid(l);
+		Relation	indexDesc;
+		IndexInfo  *indexInfo;
+		int			i;
+
+		indexDesc = index_open(indexOid, AccessShareLock);
+
+		/* Extract index key information from the index's pg_index row */
+		indexInfo = BuildIndexInfo(indexDesc);
+
+		/* Collect simple attribute references */
+		for (i = 0; i < indexInfo->ii_NumIndexAttrs; i++)
+		{
+			int			attrnum = indexInfo->ii_KeyAttrNumbers[i];
+
+			if (attrnum != 0)
+				indexattrs = bms_add_member(indexattrs,
+							   attrnum - FirstLowInvalidHeapAttributeNumber);
+		}
+
+		/* Collect all attributes used in expressions, too */
+		pull_varattnos((Node *) indexInfo->ii_Expressions, &indexattrs);
+
+		/* Collect all attributes in the index predicate, too */
+		pull_varattnos((Node *) indexInfo->ii_Predicate, &indexattrs);
+
+		index_close(indexDesc, AccessShareLock);
+	}
+
+	list_free(indexoidlist);
+
+	/* Now save a copy of the bitmap in the relcache entry. */
+	oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+	relation->rd_indexattr = bms_copy(indexattrs);
+	MemoryContextSwitchTo(oldcxt);
+
+	/* We return our original working copy for caller to play with */
+	return indexattrs;
+}
+
 
 /*
  *	load_relcache_init_file, write_relcache_init_file
@@ -3154,8 +3408,6 @@ load_relcache_init_file(void)
 		Relation	rel;
 		Form_pg_class relform;
 		bool		has_not_null;
-		Datum		indclassDatum;
-		bool		isnull;
 
 		/* first read the relation descriptor length */
 		if ((nread = fread(&len, 1, sizeof(len), fp)) != sizeof(len))
@@ -3244,9 +3496,12 @@ load_relcache_init_file(void)
 		{
 			Form_pg_am	am;
 			MemoryContext indexcxt;
+			Oid		   *opfamily;
+			Oid		   *opcintype;
 			Oid		   *operator;
 			RegProcedure *support;
 			int			nsupport;
+			int16	   *indoption;
 
 			/* Count nailed indexes to ensure we have 'em all */
 			if (rel->rd_isnailed)
@@ -3263,14 +3518,6 @@ load_relcache_init_file(void)
 			/* Fix up internal pointers in the tuple -- see heap_copytuple */
 			rel->rd_indextuple->t_data = (HeapTupleHeader) ((char *) rel->rd_indextuple + HEAPTUPLESIZE);
 			rel->rd_index = (Form_pg_index) GETSTRUCT(rel->rd_indextuple);
-
-			/* fix up indclass pointer too */
-			indclassDatum = fastgetattr(rel->rd_indextuple,
-										Anum_pg_index_indclass,
-										GetPgIndexDescriptor(),
-										&isnull);
-			Assert(!isnull);
-			rel->rd_indclass = (oidvector *) DatumGetPointer(indclassDatum);
 
 			/* next, read the access method tuple form */
 			if ((nread = fread(&len, 1, sizeof(len), fp)) != sizeof(len))
@@ -3292,6 +3539,26 @@ load_relcache_init_file(void)
 											 ALLOCSET_SMALL_MAXSIZE);
 			rel->rd_indexcxt = indexcxt;
 
+			/* next, read the vector of opfamily OIDs */
+			if ((nread = fread(&len, 1, sizeof(len), fp)) != sizeof(len))
+				goto read_failed;
+
+			opfamily = (Oid *) MemoryContextAlloc(indexcxt, len);
+			if ((nread = fread(opfamily, 1, len, fp)) != len)
+				goto read_failed;
+
+			rel->rd_opfamily = opfamily;
+
+			/* next, read the vector of opcintype OIDs */
+			if ((nread = fread(&len, 1, sizeof(len), fp)) != sizeof(len))
+				goto read_failed;
+
+			opcintype = (Oid *) MemoryContextAlloc(indexcxt, len);
+			if ((nread = fread(opcintype, 1, len, fp)) != len)
+				goto read_failed;
+
+			rel->rd_opcintype = opcintype;
+
 			/* next, read the vector of operator OIDs */
 			if ((nread = fread(&len, 1, sizeof(len), fp)) != sizeof(len))
 				goto read_failed;
@@ -3302,7 +3569,7 @@ load_relcache_init_file(void)
 
 			rel->rd_operator = operator;
 
-			/* finally, read the vector of support procedures */
+			/* next, read the vector of support procedures */
 			if ((nread = fread(&len, 1, sizeof(len), fp)) != sizeof(len))
 				goto read_failed;
 			support = (RegProcedure *) MemoryContextAlloc(indexcxt, len);
@@ -3310,6 +3577,16 @@ load_relcache_init_file(void)
 				goto read_failed;
 
 			rel->rd_support = support;
+
+			/* finally, read the vector of indoption values */
+			if ((nread = fread(&len, 1, sizeof(len), fp)) != sizeof(len))
+				goto read_failed;
+
+			indoption = (int16 *) MemoryContextAlloc(indexcxt, len);
+			if ((nread = fread(indoption, 1, len, fp)) != len)
+				goto read_failed;
+
+			rel->rd_indoption = indoption;
 
 			/* set up zeroed fmgr-info vectors */
 			rel->rd_aminfo = (RelationAmInfo *)
@@ -3326,13 +3603,15 @@ load_relcache_init_file(void)
 
 			Assert(rel->rd_index == NULL);
 			Assert(rel->rd_indextuple == NULL);
-			Assert(rel->rd_indclass == NULL);
 			Assert(rel->rd_am == NULL);
 			Assert(rel->rd_indexcxt == NULL);
 			Assert(rel->rd_aminfo == NULL);
+			Assert(rel->rd_opfamily == NULL);
+			Assert(rel->rd_opcintype == NULL);
 			Assert(rel->rd_operator == NULL);
 			Assert(rel->rd_support == NULL);
 			Assert(rel->rd_supportinfo == NULL);
+			Assert(rel->rd_indoption == NULL);
 		}
 
 		/*
@@ -3359,8 +3638,10 @@ load_relcache_init_file(void)
 			rel->rd_refcnt = 0;
 		rel->rd_indexvalid = 0;
 		rel->rd_indexlist = NIL;
+		rel->rd_indexattr = NULL;
 		rel->rd_oidindex = InvalidOid;
 		rel->rd_createSubid = InvalidSubTransactionId;
+		rel->rd_newRelfilenodeSubid = InvalidSubTransactionId;
 		rel->rd_amcache = NULL;
 		MemSet(&rel->pgstat_info, 0, sizeof(rel->pgstat_info));
         rel->rd_cdbpolicy = NULL;
@@ -3509,14 +3790,29 @@ write_relcache_init_file(void)
 			/* next, write the access method tuple form */
 			write_item(am, sizeof(FormData_pg_am), fp);
 
+			/* next, write the vector of opfamily OIDs */
+			write_item(rel->rd_opfamily,
+					   relform->relnatts * sizeof(Oid),
+					   fp);
+
+			/* next, write the vector of opcintype OIDs */
+			write_item(rel->rd_opcintype,
+					   relform->relnatts * sizeof(Oid),
+					   fp);
+
 			/* next, write the vector of operator OIDs */
 			write_item(rel->rd_operator,
 					   relform->relnatts * (am->amstrategies * sizeof(Oid)),
 					   fp);
 
-			/* finally, write the vector of support procedures */
+			/* next, write the vector of support procedures */
 			write_item(rel->rd_support,
 				  relform->relnatts * (am->amsupport * sizeof(RegProcedure)),
+					   fp);
+
+			/* finally, write the vector of indoption values */
+			write_item(rel->rd_indoption,
+					   relform->relnatts * sizeof(int16),
 					   fp);
 		}
 
