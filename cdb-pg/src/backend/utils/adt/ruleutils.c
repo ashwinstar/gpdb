@@ -127,7 +127,6 @@ static char *pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 							int prettyFlags);
 static char *pg_get_expr_worker(text *expr, Oid relid, char *relname,
 				   int prettyFlags);
-static Oid	get_constraint_index(Oid constraintId);
 static void make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 			 int prettyFlags);
 static void make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
@@ -1392,7 +1391,7 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
  * Return InvalidOid if the index couldn't be found; this suggests the
  * given OID is bogus, but we leave it to caller to decide what to do.
  */
-static Oid
+Oid
 get_constraint_index(Oid constraintId)
 {
 	Oid			indexId = InvalidOid;

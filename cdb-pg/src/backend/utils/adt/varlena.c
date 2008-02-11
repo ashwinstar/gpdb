@@ -705,7 +705,7 @@ text_substring(Datum str, int32 start, int32 length, bool length_not_specified)
 		 * If we're working with an untoasted source, no need to do an extra
 		 * copying step.
 		 */
-		if (VARATT_IS_EXTENDED_D(str))
+		if (VARATT_IS_COMPRESSED(str) || VARATT_IS_EXTERNAL(str))
 			slice = DatumGetTextPSlice(str, slice_start, slice_size);
 		else
 			slice = (text *) DatumGetPointer(str);
@@ -1985,17 +1985,13 @@ replace_text(PG_FUNCTION_ARGS)
 	varattrib_untoast_ptr_len(d0, &p0, &len0, &tofree0);
 	varattrib_untoast_ptr_len(d1, &p1, &len1, &tofree1);
 	varattrib_untoast_ptr_len(d2, &p2, &len2, &tofree2);
+
 	if(pg_database_encoding_max_length() == 1)
 		from_sub_text_len = len1;
 	else
 		from_sub_text_len = pg_mbstrlen_with_len(p1, len1);
-	 * they could be different if the input contained invalid encoding.
-	 */
-	src_text_len = state.len1;
-	from_sub_text_len = state.len2;
 
 	if (len0 == 0 || from_sub_text_len == 0)
-	if (src_text_len < 1 || from_sub_text_len < 1)
 	{
 		if(tofree0)
 			pfree(tofree0);
@@ -2694,7 +2690,7 @@ array_to_text(PG_FUNCTION_ARGS)
 				appendStringInfoString(&buf, value);
 			printed = true;
 
-			p = add_addlength_pointer(p, typlen, p); 
+			p = att_addlength_pointer(p, typlen, p); 
 			p = (char *) att_align_nominal(p, typalign);
 		}
 

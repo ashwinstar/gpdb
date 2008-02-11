@@ -21,8 +21,6 @@
 #include "utils/builtins.h"
 #include "utils/inet.h"
 
-
-static inet *text_network(text *src, bool is_cidr);
 static int32 network_cmp_internal(inet *a1, inet *a2);
 static int	bitncmp(void *l, void *r, int n);
 static bool addressOK(unsigned char *a, int bits, int family);
@@ -299,35 +297,6 @@ cidr_send(PG_FUNCTION_ARGS)
 	inet	   *addr = PG_GETARG_INET_P(0);
 
 	PG_RETURN_BYTEA_P(network_send(addr, true));
-}
-
-
-static inet *
-text_network(text *src, bool is_cidr)
-{
-	int			len = VARSIZE(src) - VARHDRSZ;
-	char	   *str = palloc(len + 1);
-
-	memcpy(str, VARDATA(src), len);
-	str[len] = '\0';
-
-	return network_in(str, is_cidr);
-}
-
-Datum
-text_inet(PG_FUNCTION_ARGS)
-{
-	text	   *src = PG_GETARG_TEXT_P(0);
-
-	PG_RETURN_INET_P(text_network(src, false));
-}
-
-Datum
-text_cidr(PG_FUNCTION_ARGS)
-{
-	text	   *src = PG_GETARG_TEXT_P(0);
-
-	PG_RETURN_INET_P(text_network(src, true));
 }
 
 

@@ -571,8 +571,11 @@ extern char *deparse_expression(Node *expr, List *dpcontext,
 extern char *deparse_expr_sweet(Node *expr, List *dpcontext,
 				   bool forceprefix, bool showimplicit);                /*CDB*/
 extern List *deparse_context_for(const char *aliasname, Oid relid);
-extern List *deparse_context_for_plan(Node *outer_plan, Node *inner_plan,
+extern List *deparse_context_for_plan(int outer_varno, Node *outer_ctxt, 
+		 		      int inner_varno, Node *inner_ctxt, 
 						 List *rtable);
+extern Node *deparse_context_for_subplan(const char *name, Node *subplan);
+
 extern const char *quote_literal_internal(const char *literal);
 extern const char *quote_identifier(const char *ident);
 extern char *quote_qualified_identifier(const char *namespace,
