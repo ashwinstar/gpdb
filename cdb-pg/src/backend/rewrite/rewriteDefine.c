@@ -30,6 +30,7 @@
 #include "storage/smgr.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
+#include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
@@ -659,7 +660,7 @@ EnableDisableRule(Relation rel, const char *rulename,
 	pg_rewrite_desc = heap_open(RewriteRelationId, RowExclusiveLock);
 	ruletup = SearchSysCacheCopy(RULERELNAME,
 								 ObjectIdGetDatum(owningRel),
-								 PointerGetDatum(rulename),
+								 PointerGetDatum((char*)rulename),
 								 0, 0);
 	if (!HeapTupleIsValid(ruletup))
 		ereport(ERROR,
