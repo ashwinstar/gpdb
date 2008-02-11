@@ -262,7 +262,7 @@ static Node *makeXmlExpr(XmlExprOp op, char *name, List *named_args, List *args)
 				opt_select_limit opclass_item_list opclass_drop_list
 				opt_opfamily transaction_mode_list_or_empty
 				TableFuncElementList opt_type_modifiers
-				prep_type_clause prep_type_list
+				prep_type_clause 
 				execute_param_clause using_clause returning_clause
 				enum_val_list
 
@@ -435,7 +435,7 @@ static Node *makeXmlExpr(XmlExprOp op, char *name, List *named_args, List *args)
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ERRORS ESCAPE EVERY EXCEPT EXCLUDING
 	EXCHANGE EXCLUDE EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
 
-	FALSE_P FAMILY FETCH FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FOLLOWING FORWARD
+	FALSE_P FAMILY FETCH FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORMAT FORWARD
 	FREEZE FROM FULL FUNCTION
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P GROUP_ID GROUPING
@@ -3843,7 +3843,7 @@ DefineStmt:
 			| CREATE TYPE_P any_name AS ENUM_P '(' enum_val_list ')'
 				{
 					CreateEnumStmt *n = makeNode(CreateEnumStmt);
-					n->typename = $3;
+					n->typname = $3;
 					n->vals = $7;
 					$$ = (Node *)n;
 				}
@@ -9440,7 +9440,7 @@ func_expr:	func_name '(' ')'
 					XmlSerialize *n = makeNode(XmlSerialize);
 					n->xmloption = $3;
 					n->expr = $4;
-					n->typename = $6;
+					n->typname = $6;
 					$$ = (Node *)n;
 				}
 		;
@@ -10040,8 +10040,8 @@ AexprConst: Iconst
 				{
 					/* generic type 'literal' syntax */
 					A_Const *n = makeNode(A_Const);
-					n->typename = makeTypeNameFromNameList($1);
-					n->typename->location = @1;
+					n->typname = makeTypeNameFromNameList($1);
+					n->typname->location = @1;
 					n->val.type = T_String;
 					n->val.val.str = $2;
 					$$ = (Node *)n;
@@ -10050,9 +10050,9 @@ AexprConst: Iconst
 				{
 					/* generic syntax with a type modifier */
 					A_Const *n = makeNode(A_Const);
-					n->typename = makeTypeNameFromNameList($1);
-					n->typename->typmods = $3;
-					n->typename->location = @1;
+					n->typname = makeTypeNameFromNameList($1);
+					n->typname->typmods = $3;
+					n->typname->location = @1;
 					n->val.type = T_String;
 					n->val.val.str = $5;
 					$$ = (Node *)n;

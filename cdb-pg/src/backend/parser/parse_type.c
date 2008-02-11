@@ -64,7 +64,7 @@ LookupTypeName(ParseState *pstate, const TypeName *typname,
 	if (typname->names == NIL)
 	{
 		/* We have the OID already if it's an internally generated TypeName */
-		typoid = typname->typeid;
+		typoid = typname->typid;
 	}
 	else if (typname->pct_type)
 	{
@@ -250,7 +250,7 @@ typenameTypeMod(ParseState *pstate, const TypeName *typname, Type typ)
 
 	/* Return prespecified typmod if no typmod expressions */
 	if (typname->typmods == NIL)
-		return typname->typemod;
+		return typname->typmod;
 
 	/*
 	 * Else, type had better accept typmods.  We give a special error message

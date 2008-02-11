@@ -2692,7 +2692,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					column = (ColumnDef *) lfirst(columns);
 					colindex++;
 	
-					typeOid = typenameTypeId(NULL, column->typname);
+					typeOid = typenameTypeId(NULL, column->typname, NULL);
 					isArray = (column->typname->arrayBounds == NIL ? false : true);
 						
 					/*
@@ -2811,7 +2811,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 
 					if (strcmp(column->colname, key) == 0)
 					{
-						Oid typeOid = typenameTypeId(NULL, column->typname);
+						Oid typeOid = typenameTypeId(NULL, column->typname, NULL);
 						bool isArray = (column->typname->arrayBounds == NIL ? false : true);
 												
 						/*
@@ -6342,6 +6342,36 @@ do \
 	} \
 	ctx->sortref[ref] = ref; \
 } \
+while(0)
+	
+	if (IsA(node, SortClause))
+	{
+		Index ref = ((SortClause *)node)->tleSortGroupRef;
+		RECORD(ref);
+		return false;
+	}
+	else if (IsA(node, GroupClause))
+	{
+		/* 
+		 * Could be okay to just cast this to SortClause in the above block
+		 * as GroupClause is just an alias for SortClause. But, this might
+		 * not always be so!
+		 */
+		Index ref = ((GroupClause *)node)->tleSortGroupRef;
+		RECORD(ref);
+		return false;	
+	}
+	else if(IsA(node, GroupingClause))
+	{
+		GroupingClause *g = (GroupingClause *)node;
+			
+		return expression_tree_walker((Node *)g->groupsets,
+									  record_sortrefs_walker,
+								   	  context);
+	}
+	return expression_tree_walker(node, record_sortrefs_walker, context);
+}
+
 
 static bool
 rewrite_sortrefs_walker(Node *node, void *context)
@@ -6459,10 +6489,7 @@ transformGroupedWindows(Query *qry)
 	subq->utilityStmt = qry->utilityStmt;
 	subq->resultRelation = 0;
 	subq->canSetTag = true;
-	subq->into = NULL;
-	subq->intoOptions = NIL;
-	subq->intoOnCommit = ONCOMMIT_NOOP;
-	subq->intoTableSpaceName = NULL;
+	subq->intoClause = NULL;
 	subq->hasAggs = false;
 	/* hasWindFuncs is covered later */
 	subq->hasSubLinks = qry->hasSubLinks; /* If qry has them, we do now */
@@ -6631,17 +6658,6 @@ transformGroupedWindows(Query *qry)
 
 #ifdef XXX_NEVER_WHERE_IS_THIS_NOW
 
-/* Build a FromExpr node */
-static FromExpr *
-makeFromExpr(List *fromlist, Node *quals)
-{
-	FromExpr   *f = makeNode(FromExpr);
-
-	f->fromlist = fromlist;
-	f->quals = quals;
-	return f;
-}
-
 /*
  * analyzeCreateSchemaStmt -
  *	  analyzes the "create schema" statement
@@ -6714,7 +6730,7 @@ analyzeCreateSchemaStmt(CreateSchemaStmt *stmt)
 					cxt.tables = lappend(cxt.tables, element);
 				}
 				break;
-
+/* XXX XXX handle this */
 			case T_CreateExternalStmt:
 				{
 					CreateExternalStmt *elp = (CreateExternalStmt *) element;
@@ -6800,7 +6816,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 		 * Process it now and set the distribution policy.
 		 */
 		 
-		if (qry->into == NULL)
+		if (qry->intoClause == NULL)
 		{
 			elog(ERROR,"DISTRIBUTED BY clause in SELECT statement only makes sense for SELECT INTO");
 		}
@@ -6832,7 +6848,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 				if (target->resname && strcmp(target->resname, key) == 0)
 				{
 #if 0
-					Oid typeOid = typenameTypeId(target->typname);
+					Oid typeOid = typenameTypeId(target->typname, NULL);
 					bool isArray = (target->typname->arrayBounds == NIL ? false : true);
 															
 					/*

@@ -625,7 +625,7 @@ exprIsNullConstant(Node *arg)
 		A_Const    *con = (A_Const *) arg;
 
 		if (con->val.type == T_Null &&
-			con->typename == NULL)
+			con->typname == NULL)
 			return true;
 	}
 	return false;

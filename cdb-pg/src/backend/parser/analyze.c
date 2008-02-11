@@ -38,6 +38,10 @@
 #include "parser/parse_target.h"
 #include "parser/parsetree.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbcat.h"
+#include "cdb/cdbhash.h"
+#include "cdb/cdbsreh.h"
 
 typedef struct
 {
