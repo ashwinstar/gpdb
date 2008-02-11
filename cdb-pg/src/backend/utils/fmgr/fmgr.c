@@ -23,8 +23,8 @@
 #include "executor/functions.h"
 #include "miscadmin.h"
 #include "parser/parse_expr.h"
-##include "utils/guc.h"
-include "utils/builtins.h"
+#include "utils/guc.h"
+#include "utils/builtins.h"
 #include "utils/fmgrtab.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -235,16 +235,9 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 			strstr(NameStr(procedureStruct->proname),"_call_handler")!=0)
 		{
 			if (procedureStruct->provolatile == PROVOLATILE_VOLATILE)
-				elog(ERROR,"Volatile function %s cannot be used in this statement when mirroring is active	/*
-	 * If it has prosecdef set, or non-null proconfig, use
-	 * fmgr_security_definer call handler.
-	 */
-	if (!ignore_security &&
-		(procedureStruct->prosecdef ||
-		 !heap_attisnull(procedureTuple, Anum_pg_proc_proconfig)))
-reStruct->provolatile == PROVOLATILE_STABLE)
+				elog(ERROR,"Volatile function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
+			if (procedureStruct->provolatile == PROVOLATILE_STABLE)
 				elog(ERROR,"Stable function %s cannot be used in this statement when mirroring is active",NameStr(procedureStruct->proname));	
-				
 		}
 	}
 
@@ -582,284 +575,28 @@ clear_external_function_hash(void *filehandle)
  * instead, meaning that subsidiary info will have to be recomputed.
  */
 void
-fmgr_info_copy(FmgrInf *dstinfo, FmgrInfo *srcinfo,
-			   Me	FmgrInfo	flinfo;			/* lookup info for t * Function handler for security-definer/proconfig functions.  We extract the
- * OID of the actual function and do a fmgr lookup again.  Then we fetch the
- * pg_proc row and copy the owner ID and proconfig fields.	(All this info
- * is cached for the duration of the current query.)  To execute a call,
- * we temporarily replace the flinfo with the cached/looked-up one, while
- * keeping the outer fcinfo (which contains all the actual arguments, etc.)
- * intact.	This is n	struct fmgr_security_defie fcinfo itself can't be used
- * re-entrantly anyway.
-zed, return InvalidOid.
+fmgr_info_copy(FmgrInfo *dstinfo, FmgrInfo *srcinfo,
+			   MemoryContext destcxt)
+{
+	memcpy(dstinfo, srcinfo, sizeof(FmgrInfo));
+	dstinfo->fn_mcxt = destcxt;
+	dstinfo->fn_extra = NULL;
+}
+
+/*
+ * Specialized lookup routine for fmgr_internal_validator: given the alleged
+ * name of an internal function, return the OID of the function.
+ * If the name is not recognized, return InvalidOid.
  */
 Oid
 fmgr_internal_function(const char *proname)
 {
-	const FmgrBuiltin 		HeapTuple	tuple;
-		Form_pg_proc procedureStruct;
-		Datum		datum;
-		bool		isnull;
-		MemoryContext oldcxt;
-
-*fbp = fmgr_lookupByName(proname);
+	const FmgrBuiltin *fbp = fmgr_lookupByName(proname);
 
 	if (fbp == NULL)
 		return InvalidOid;
 	return fbp->foid;
 }
-
-/*
- * Handler for old-style "C" language functions
- */
-static Datum
-fmgr_oldstyle(PG_FUNCTION_ARGS)
-{
-	Oldstyle_fnextra *fnextra;
-	int			n_arguments = fcinfo->nargs;
-	int			i;
-	bool		isnull;
-	func_ptr	user_fn;
-	char	   *returnValue;
-
-	if (fcinfo->flinfo == NULL || f		procedureStruct = (Form_pg_proc) GETSTRUCT(tuple);
-
-		if (procedureStruct->prosecdef)
-			fcache->userid = procedureStruct->proowner;
-
-		datum = SysCacheGetAttr(PROCOID, tuple, Anum_pg_proc_proconfig,
-								&isnull);
-		if (!isnull)
-		{
-			oldcxt = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
-			fcache->proconfig = DatumGetArrayTypePCopy(datum);
-			MemoryContextSwitchTo(oldcxt);
-		}
-
-ceived NULL pointer");
-	fnextra = (Oldstyle_fnextra *) fcinfo->flinfo->fn_extra;
-
-	/*
-	 * Result is NULL if any argument is NULL, but we still call the function
-	 * (peculiar, but that's the way it worked before, and after all this is a
-	 * backwards-compatibility wrapper).  Note, however, that we'll never get
-	 * here with NULL arguments if the function is marked strict.
-	 *
-	 * We also need to detoast any TOAST-ed inputs, since it's unlikely that
-	 * an old-style function knows about TOASTing.
-	 */
-	isnull = false;
-	for (i = 0; i < n_arguments; i++)
-	{
-		if (PG_ARGISNULL(i))
-			isnull = true;
-		else if (fnextra->arg_toastable[i])
-			fcinfo->arg[i] = PointerGetDatum(PG_DETOAST_DATUM(fcinfo->arg[i]));
-	}
-	fcinfo->isnull = isnull;
-
-	user_fn = fnextra->func;
-
-	switch (n_arguments)
-	{
-		case 0:
-			returnValue = (char *) (*user_fn) ();
-			break;
-		case 1:
-
-			/*
-			 * nullvalue() used to use isNull to check if arg is NULL; perhaps
-			 * there are other functions still out there that also rely on
-			 * this undocumented hack?
-			 */
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   &fcinfo->isnull);
-			break;
-		case 2:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1]);
-			break;
-		case 3:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2]);
-			break;
-		case 4:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3]);
-			break;
-		case 5:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4]);
-			break;
-		case 6:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5]);
-			break;
-		case 7:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6]);
-			break;
-		case 8:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6],
-											   fcinfo->arg[7]);
-			break;
-		case 9:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6],
-											   fcinfo->arg[7],
-											   fcinfo->arg[8]);
-			break;
-		case 10:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6],
-											   fcinfo->arg[7],
-											   fcinfo->arg[8],
-											   fcinfo->arg[9]);
-			break;
-		case 11:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6],
-											   fcinfo->arg[7],
-											   fcinfo->arg[8],
-											   fcinfo->arg[9],
-											   fcinfo->arg[10]);
-			break;
-		case 12:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6],
-											   fcinfo->arg[7],
-											   fcinfo->arg[8],
-											   fcinfo->arg[9],
-											   fcinfo->arg[10],
-											   fcinfo->arg[11]);
-			break;
-		case 13:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6],
-											   fcinfo->arg[7],
-											   fcinfo->arg[8],
-											   fcinfo->arg[9],
-											   fcinfo->arg[10],
-											   fcinfo->arg[11],
-											   fcinfo->arg[12]);
-			break;
-		case 14:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6],
-											   fcinfo->arg[7],
-											   fcinfo->arg[8],
-											   fcinfo->arg[9],
-											   fcinfo->arg[10],
-											   fcinfo->arg[11],
-											   fcinfo->arg[12],
-											   fcinfo->arg[13]);
-			break;
-		case 15:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6],
-											   fcinfo->arg[7],
-											   fcinfo->arg[8],
-											   fcinfo->arg[9],
-											   fcinfo->arg[10],
-											   fcinfo->arg[11],
-											   fcinfo->arg[12],
-											   fcinfo->arg[13],
-											   fcinfo->arg[14]);
-			break;
-		case 16:
-			returnValue = (char *) (*user_fn) (fcinfo->arg[0],
-											   fcinfo->arg[1],
-											   fcinfo->arg[2],
-											   fcinfo->arg[3],
-											   fcinfo->arg[4],
-											   fcinfo->arg[5],
-											   fcinfo->arg[6],
-											   fcinfo->arg[7],
-											   fcinfo->arg[8],
-											   fcinfo->arg[9],
-											   fcinfo->arg[10],
-											   fcinfo->arg[11],
-											   fcinfo->arg[12],
-											   fcinfo->arg[13],
-											   fcinfo->arg[14],
-											   fcinfo->arg[15]);
-			break;
-		default:
-
-			/*
-			 * Increasing FUNC_MAX_ARGS doesn't automatically add cases to the
-			 * above code, so mention the actual value in this error not
-			 * FUNC_MAX_ARGS.  You could add cases to the above if you needed
-			 * to support old-style functions with many arguments, but making
-			 * 'em be new-style is probably a better idea.
-			 */
-			ereport(ERROR,
-					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
-			 errmsg("function %u has too many arguments (%d, maximum is %d)",
-					fcinfo->flinfo->fn_oid, n_arguments, 16)));
-			returnValue = NULL; /* keep compiler quiet */
-			break;
-	}
-
-	return (Datum) returnValue;
-}
-
 
 /*
  * Support for security-definer and proconfig-using functions.	We support
@@ -896,7 +633,6 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 
 	if (!fcinfo->flinfo->fn_extra)
 	{
-		HeapTuple	tuple;
 		Form_pg_proc procedureStruct;
 		Datum		datum;
 		bool		isnull;
@@ -1613,15 +1349,18 @@ OidFunctionCall4(Oid functionId, Datum arg1, Datum arg2,
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
-	fcinfo.arg[2] = ar		return heap_tuple_untoast_attr(datum);
-= false;
+	fcinfo.arg[2] = arg3;
+	fcinfo.arg[3] = arg4;
+	fcinfo.argnull[0] = false;
+	fcinfo.argnull[1] = false;
 	fcinfo.argnull[2] = false;
 	fcinfo.argnull[3] = false;
 
 	result = FunctionCallInvoke(&fcinfo);
 
-	/* Check for null result, since caller is clearl		return heap_tuple_untoast_attr(datum);
-rned NULL", flinfo.fn_oid);
+	/* Check for null result, since caller is clearly not expecting one */
+	if (fcinfo.isnull)
+		elog(ERROR, "function %u returned NULL", flinfo.fn_oid);
 
 	return result;
 }
@@ -1641,17 +1380,10 @@ OidFunctionCall5(Oid functionId, Datum arg1, Datum arg2,
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
 	fcinfo.arg[2] = arg3;
-	fcin	return heap_tuple_untoast_attr_slice(datum, first, count);
-}
-
-struct varlena *
-pg_detoast_datum_packed(struct varlena * datum)
-{
-	if (VARATT_IS_COMPRESSED(datum) || VARATT_IS_EXTERNAL(datum))
-		return heap_tuple_untoast_attr(datum);
-	else
-		return datum;
-se;
+	fcinfo.arg[3] = arg4;
+	fcinfo.arg[4] = arg5;
+	fcinfo.argnull[0] = false;
+	fcinfo.argnull[1] = false;
 	fcinfo.argnull[2] = false;
 	fcinfo.argnull[3] = false;
 	fcinfo.argnull[4] = false;
@@ -1724,27 +1456,22 @@ OidFunctionCall7(Oid functionId, Datum arg1, Datum arg2,
 	fcinfo.argnull[1] = false;
 	fcinfo.argnull[2] = false;
 	fcinfo.argnull[3] = false;
-	f	else if (IsA(expr, ArrayCoerceExpr))
-		args = list_make1(((ArrayCoerceExpr *) expr)->arg);
-cinfo.argnull[4] = false;
+	fcinfo.argnull[4] = false;
 	fcinfo.argnull[5] = false;
 	fcinfo.argnull[6] = false;
 
 	result = FunctionCallInvoke(&fcinfo);
 
-	/* Check for	 * special hack for ScalarArrayOpExpr and ArrayCoerceExpr: what the
-	 * underlying function will actually get passed is the element type of the
-	 * array.
-oid);
+	/* Check for null result, since caller is clearly not expecting one */
+	if (fcinfo.isnull)
+		elog(ERROR, "function %u returned NULL", flinfo.fn_oid);
+
 
 	return result;
 }
 
 Datum
-O		argtype = get_element_type(argtype);
-	else if (IsA(expr, ArrayCoerceExpr) &&
-			 argnum == 0)
-idFunctionCall8(Oid functionId, Datum arg1, Datum arg2,
+OidFunctionCall8(Oid functionId, Datum arg1, Datum arg2,
 				 Datum arg3, Datum arg4, Datum arg5,
 				 Datum arg6, Datum arg7, Datum arg8)
 {
