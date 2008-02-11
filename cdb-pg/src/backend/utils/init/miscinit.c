@@ -400,17 +400,6 @@ InSecurityDefinerContext(void)
 	return SecurityDefinerContext;
 }
 
-
-/*
- * InSecurityDefinerContext - are we inside a SECURITY DEFINER context?
- */
-bool
-InSecurityDefinerContext(void)
-{
-	return SecurityDefinerContext;
-}
-
-
 /*
  * Initialize user identity during normal backend startup
  */
