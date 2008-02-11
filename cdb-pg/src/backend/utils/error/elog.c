@@ -1823,7 +1823,7 @@ log_line_prefix(StringInfo buf)
 				if (MyProcPort)
 				{
 					appendStringInfo(buf, "%lx.%x",
-									 (long) (MyProcPort->session_start),
+									 (long) (timestamptz_to_time_t(MyProcPort->SessionStartTime)),
 									 MyProcPid);
 				}
 				break;
@@ -1890,6 +1890,7 @@ log_line_prefix(StringInfo buf)
 				if (MyProcPort)
 				{
 					char		strfbuf[128];
+					time_t      session_start = timestamptz_to_time_t(MyProcPort->SessionStartTime);
 
 					strftime(strfbuf, sizeof(strfbuf),
 					/* Win32 timezone names are too long so don't print them */
@@ -1898,7 +1899,7 @@ log_line_prefix(StringInfo buf)
 #else
 							 "%Y-%m-%d %H:%M:%S",
 #endif
-							 localtime(&MyProcPort->session_start));
+							 localtime(&session_start));
 					appendStringInfoString(buf, strfbuf);
 				}
 				break;
@@ -2272,7 +2273,7 @@ send_message_to_server_log(ErrorData *edata)
 
 	/* If in the syslogger process, try to write messages direct to file */
 	if (am_syslogger)
-		write_syslogger_file(buf.data, buf.len);
+		write_syslogger_file(buf.data, buf.len, LOG_DESTINATION_STDERR);
 
     pfree(prefix.data);
 	pfree(buf.data);
