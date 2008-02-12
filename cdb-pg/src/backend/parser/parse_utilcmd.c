@@ -34,6 +34,7 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -45,7 +46,9 @@
 #include "parser/analyze.h"
 #include "parser/gramparse.h"
 #include "parser/parse_clause.h"
+#include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
+#include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
@@ -148,7 +151,6 @@ static void transformPartitionBy(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt, 
 		 Node *partitionBy, GpPolicy *policy);
 
-static void setQryDistributionPolicy(SelectStmt *stmt, Query *qry);
 static void transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 											SingleRowErrorDesc *sreh);
 
@@ -480,7 +482,7 @@ transformCreateExternalStmt(CreateExternalStmt *stmt, const char *queryString)
 	 * Output results.
 	 */
 	stmt->tableElts = cxt.columns;
-	stmt->constraints = cxt.ckconstraints;
+/*	stmt->constraints = cxt.ckconstraints; no constraints */
 
 	result = lappend(cxt.blist, stmt);
 	result = list_concat(result, cxt.alist);
@@ -5178,7 +5180,9 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 				int32 typmod;
 				Const *c;
 	
-				c = makeConst(opexpr->opresulttype, typeLen(typ), res,
+				c = makeConst(opexpr->opresulttype, 
+							  -1,
+							  typeLen(typ), res,
 							  false, typeByVal(typ));
 				ReleaseSysCache(typ);
 
@@ -5346,7 +5350,9 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				res = eval_basic_opexpr(pstate, oprmul, (Node *)everyCnt, n3t,
 										&restypid);
 				typ = typeidType(restypid);
-				c = makeConst(restypid, typeLen(typ), res, false,
+				c = makeConst(restypid, 
+							  -1,
+							  typeLen(typ), res, false,
 							  typeByVal(typ));
 				ReleaseSysCache(typ);
 				
@@ -5360,7 +5366,9 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 											et, &restypid);
 					pfree(c);
 					typ = typeidType(restypid);
-					c = makeConst(restypid, typeLen(typ), res, false,
+					c = makeConst(restypid, 
+								  -1,
+								  typeLen(typ), res, false,
 								  typeByVal(typ));
 					ReleaseSysCache(typ);
 				}
@@ -5376,7 +5384,9 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				res = eval_basic_opexpr(pstate, oprplus, n1t, (Node *)c, 
 										&restypid);
 				typ = typeidType(restypid);
-				c = makeConst(restypid, typeLen(typ), res, false,
+				c = makeConst(restypid, 
+							  -1,
+							  typeLen(typ), res, false,
 							  typeByVal(typ));
 
 
