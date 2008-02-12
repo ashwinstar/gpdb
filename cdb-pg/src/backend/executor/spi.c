@@ -1325,6 +1325,8 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 		const char * cursorname;
 		char * query;
 
+		plansource = (CachedPlanSource *) linitial(plan->plancache_list);
+
 		portal = NULL;
 		
 		connect_back_to_qd();
@@ -1338,7 +1340,12 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 			cursorname="mycursor";
 		else
 			cursorname = name;
-		
+
+		query = palloc(strlen(plansource->query_string)+strlen(cursorname)+40);	
+		sprintf(query, "declare %s cursor for %s",cursorname,
+				plansource->query_string);
+		elog(NOTICE,"SPI_cursor_open via QD: %s",query);
+
 		res = PQexec(_QD_conn, "BEGIN");
 		if (PQresultStatus(res) != PGRES_COMMAND_OK)
 	    {
@@ -2771,7 +2778,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 
 			/* sizeof(ParamListInfoData) includes the first array element */
 			paramLI = (ParamListInfo) palloc(sizeof(ParamListInfoData) +
-					(nargs - 1) *sizeof(ParamExternData));
+									   (nargs - 1) *sizeof(ParamExternData));
 			paramLI->numParams = nargs;
 
 			for (k = 0; k < nargs; k++)
@@ -2856,9 +2863,9 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				if (read_only && !CommandIsReadOnly(stmt))
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 /* translator: %s is a SQL statement name */
-							 errmsg("%s is not allowed in a non-volatile function",
-								 CreateCommandTag(stmt))));
+					/* translator: %s is a SQL statement name */
+					   errmsg("%s is not allowed in a non-volatile function",
+							  CreateCommandTag(stmt))));
 
 				/*
 				 * If not read-only mode, advance the command counter before
@@ -2868,7 +2875,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 					CommandCounterIncrement();
 
 				dest = CreateDestReceiver(canSetTag ? DestSPI : DestNone,
-						NULL);
+										  NULL);
 
 				if (snapshot == InvalidSnapshot)
 				{
@@ -2894,25 +2901,25 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				}
 
 				if (IsA(stmt, PlannedStmt) &&
-						((PlannedStmt *) stmt)->utilityStmt == NULL)
+					((PlannedStmt *) stmt)->utilityStmt == NULL)
 				{
 					qdesc = CreateQueryDesc((PlannedStmt *) stmt,
-							ActiveSnapshot,
-							crosscheck_snapshot,
-							dest,
-							paramLI, false);
+											ActiveSnapshot,
+											crosscheck_snapshot,
+											dest,
+											paramLI, false);
 					res = _SPI_pquery(qdesc, fire_triggers,
-							canSetTag ? tcount : 0);
+									  canSetTag ? tcount : 0);
 					FreeQueryDesc(qdesc);
 				}
 				else
 				{
 					ProcessUtility(stmt,
-							plansource->query_string,
-							paramLI,
-							false,		/* not top level */
-							dest,
-							NULL);
+								   plansource->query_string,
+								   paramLI,
+								   false,		/* not top level */
+								   dest,
+								   NULL);
 					/* Update "processed" if stmt returned tuples */
 					if (_SPI_current->tuptable)
 						_SPI_current->processed = _SPI_current->tuptable->alloced - _SPI_current->tuptable->free;
@@ -3318,26 +3325,25 @@ _SPI_copy_plan(SPIPlanPtr plan, MemoryContext parentcxt)
 /*
  * Make a "saved" copy of the given plan, entrusting everything to plancache.c
  */
-	static SPIPlanPtr
+static SPIPlanPtr
 _SPI_save_plan(SPIPlanPtr plan)
 {
-	SPIPlanPtr newplan;
+	SPIPlanPtr	newplan;
 	MemoryContext plancxt;
 	MemoryContext oldcxt;
 	ListCell   *lc;
 
-	Assert(!plan->saved);
-	/* not currently supported */
+	Assert(!plan->saved);		/* not currently supported */
 
 	/*
-	 * Create a memory context for the plan. We don't expect the plan to be very
-	 * large, so use smaller-than-default alloc parameters.
+	 * Create a memory context for the plan.  We don't expect the plan to be
+	 * very large, so use smaller-than-default alloc parameters.
 	 */
 	plancxt = AllocSetContextCreate(CacheMemoryContext,
-				"SPI Plan",
-				ALLOCSET_SMALL_MINSIZE,
-				ALLOCSET_SMALL_INITSIZE,
-				ALLOCSET_SMALL_MAXSIZE);
+									"SPI Plan",
+									ALLOCSET_SMALL_MINSIZE,
+									ALLOCSET_SMALL_INITSIZE,
+									ALLOCSET_SMALL_MAXSIZE);
 	oldcxt = MemoryContextSwitchTo(plancxt);
 
 	/* Copy the SPI plan into its own context */
@@ -3345,7 +3351,7 @@ _SPI_save_plan(SPIPlanPtr plan)
 	newplan->magic = _SPI_PLAN_MAGIC;
 	newplan->saved = true;
 	newplan->plancache_list = NIL;
-	newplan->plancxt = plancxt; 
+	newplan->plancxt = plancxt;
 	newplan->cursor_options = plan->cursor_options;
 	newplan->nargs = plan->nargs;
 	if (plan->nargs > 0)
@@ -3354,7 +3360,7 @@ _SPI_save_plan(SPIPlanPtr plan)
 		memcpy(newplan->argtypes, plan->argtypes, plan->nargs * sizeof(Oid));
 	}
 	else
-		newplan->argtypes = NULL; 
+		newplan->argtypes = NULL;
 
 	foreach(lc, plan->plancache_list)
 	{
@@ -3366,14 +3372,14 @@ _SPI_save_plan(SPIPlanPtr plan)
 		cplan = plansource->plan;
 
 		newsource = CreateCachedPlan(plansource->raw_parse_tree,
-					plansource->query_string,
-					plansource->commandTag,
-					newplan->argtypes,
-					newplan->nargs,
-					newplan->cursor_options,
-					cplan->stmt_list,
-					true,
-					false);
+									 plansource->query_string,
+									 plansource->commandTag,
+									 newplan->argtypes,
+									 newplan->nargs,
+									 newplan->cursor_options,
+									 cplan->stmt_list,
+									 true,
+									 false);
 
 		newplan->plancache_list = lappend(newplan->plancache_list, newsource);
 	}
