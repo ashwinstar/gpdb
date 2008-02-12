@@ -468,6 +468,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 				{
 					short int2 = DatumGetInt16(attr);
 #if BYTE_ORDER == LITTLE_ENDIAN
+				    int2 = htons(int2);
 					n32 = (uint32)(2 << 24);   /* replaced htonl */
 #else
 					n32 = (uint32) 2;
@@ -480,6 +481,7 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 				{
 					int32 int4 = DatumGetInt32(attr);
 #if BYTE_ORDER == LITTLE_ENDIAN
+				    int4 = htonl(int4);
 					n32 = (uint32)(4 << 24);   /* replaced htonl */
 #else
 					n32 = (uint32) 4;
@@ -492,6 +494,9 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 				{
 					int64 int8 = DatumGetInt64(attr);
 #if BYTE_ORDER == LITTLE_ENDIAN
+#define local_htonll(n)  ((((uint64) htonl(n)) << 32LL) | htonl((n) >> 32LL))
+#define local_ntohll(n)  ((((uint64) ntohl(n)) << 32LL) | (uint32) ntohl(((uint64)n) >> 32LL))
+                    int8 = local_htonll(int8);
 					n32 = (uint32)(8 << 24);   /* replaced htonl */
 #else
 					n32 = (uint32) 8;
