@@ -64,7 +64,7 @@ preprocess_initplans(QueryDesc *queryDesc)
 	ParamListInfo originalPli,
 				augmentedPli;
 	int			i;
-	Plan	   *plan = queryDesc->plantree;
+	Plan	   *plan = queryDesc->plannedstmt->planTree;
 	EState	   *estate = queryDesc->estate;
 	int			originalRoot,
                 originalSlice,
@@ -103,13 +103,12 @@ preprocess_initplans(QueryDesc *queryDesc)
 		 * TODO Some of the work of addRemoteExecParamsToParmList could be
 		 *		factored out of the loop.
 		 */
-		augmentedPli = addRemoteExecParamsToParamList(
-													  queryDesc->plantree,
-													  queryDesc->parsetree->rtable,
-													  originalPli,
-												  estate->es_param_exec_vals,
-													  plan->nParamExec
-			);
+		augmentedPli =
+			addRemoteExecParamsToParamList(queryDesc->plannedstmt->planTree,
+										   queryDesc->plannedstmt->rtable,
+										   originalPli,
+										   estate->es_param_exec_vals,
+										   plan->nParamExec);
 
 		if (sps != NULL)
 		{
@@ -269,7 +268,7 @@ param_walker(Node *node, ParamWalkerContext * context)
 	if (node == NULL)
 		return false;
 
-	if (nodeTag(node) == T_Param)
+	if (IsA(node, Param))
 	{
 		Param	   *param = (Param *) node;
 
@@ -279,13 +278,13 @@ param_walker(Node *node, ParamWalkerContext * context)
 			return false;
 		}
 	}
-	else if (nodeTag(node) == T_SubPlan)
+	else if (IsA(node, SubPlan))
 	{
 		/* Sift through the range table, might be a Param in there. */
-		SubPlan *sub = (SubPlan*)node;
+		SubPlan *sub = (SubPlan *)node;
 		ListCell *lc;
 		
-		foreach( lc, sub->rtable )
+		foreach(lc, sub->rtable)
 		{
 			RangeTblEntry *rte = lfirst(lc);
 			if ( rte->rtekind == RTE_FUNCTION )

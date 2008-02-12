@@ -196,7 +196,7 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
     {
         rnode = copyObject(subselect->limitCount);
         IncrementVarSublevelsUp(rnode, -1, 1);
-        lnode = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(0),
+        lnode = (Node *)makeConst(INT8OID, -1, sizeof(int64), Int64GetDatum(0),
                                   false, true);
         limitqual = (Node *)make_op(NULL, list_make1(makeString("<")),
                                     lnode, rnode, -1);
@@ -228,7 +228,8 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
         {
             lnode = copyObject(subselect->limitOffset);
             IncrementVarSublevelsUp(lnode, -1, 1);
-            rnode = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(1),
+            rnode = (Node *)makeConst(INT8OID, -1, sizeof(int64),
+									  Int64GetDatum(1),
                                       false, true);
             node = (Node *)make_op(NULL, list_make1(makeString("<")),
                                    lnode, rnode, -1);
@@ -275,7 +276,8 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
      */
     if (!contain_vars_of_level_or_above(sublink->subselect, 1))
     {
-        subselect->limitCount = (Node *)makeConst(INT8OID, sizeof(int64), Int64GetDatum(1),
+        subselect->limitCount = (Node *)makeConst(INT8OID, -1, sizeof(int64),
+												  Int64GetDatum(1),
                                                   false, true);
         return make_and_qual(limitqual, (Node *)sublink);
     }
@@ -404,8 +406,7 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 	 * ininfo->sub_targetlist is filled with a list of Vars representing the
 	 * subselect outputs.
 	 */
-	return convert_testexpr(sublink->testexpr,
-							rtindex,
+	return convert_testexpr(root, sublink->testexpr,
 							&ininfo->sub_targetlist,
 							subselect->targetList);
 }                               /* convert_IN_to_join */

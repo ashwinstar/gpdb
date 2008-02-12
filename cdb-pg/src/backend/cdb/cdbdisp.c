@@ -3152,7 +3152,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			/*
 			 * Make the constant result node.
 			 */
-			simple = (Expr *) makeConst(expr->funcresulttype, resultTypLen,
+			simple = (Expr *) makeConst(expr->funcresulttype, -1, resultTypLen,
 										const_val, const_is_null,
 										resultTypByVal);
 
@@ -3690,8 +3690,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	if (queryDesc->operation == CMD_INSERT)
 	{
-		Assert(queryDesc->parsetree->commandType == CMD_INSERT);
-
 		if (queryDesc->parsetree->jointree != NULL)
 			if (queryDesc->parsetree->jointree->fromlist == NIL)
 				pcontext.single_row_insert = true;
