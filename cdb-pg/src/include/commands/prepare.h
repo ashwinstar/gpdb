@@ -31,7 +31,6 @@ typedef struct
 	/* dynahash.c requires key to be first field */
 	char		stmt_name[NAMEDATALEN];
 	CachedPlanSource *plansource;		/* the actual cached plan */
-	NodeTag		sourceTag;		/* original statement NodeTag */
 	bool		from_sql;		/* prepared via SQL, not FE/BE protocol? */
 	TimestampTz prepare_time;	/* the time when the stmt was prepared */
 } PreparedStatement;
@@ -51,7 +50,6 @@ extern void ExplainExecuteQuery(ExecuteStmt *execstmt, ExplainStmt *stmt,
 extern void StorePreparedStatement(const char *stmt_name,
 					   Node *raw_parse_tree,
 					   const char *query_string,
-					   NodeTag sourceTag,
 					   const char *commandTag,
 					   Oid *param_types,
 					   int num_params,
