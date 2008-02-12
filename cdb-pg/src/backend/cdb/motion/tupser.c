@@ -434,9 +434,12 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, TupleChunkList 
 		tsh.infomask = t_data->t_infomask;
 
 		addByteStringToChunkList(tcList, (char *)&tsh, sizeof(TupSerHeader), &pSerInfo->chunkCache);
-		/* If we don't have any attributes which have been toasted, we
-		 * can be very very simple: just send the raw data. */
-		if ((tsh.infomask & (HEAP_HASEXTERNAL | HEAP_HASEXTENDED)) == 0)
+		
+		/*
+		 * If we don't have any attributes which have been toasted, we
+		 * can be very very simple: just send the raw data.
+		 */
+		if ((tsh.infomask & (HEAP_HASEXTERNAL | HEAP_HASVARWIDTH)) == 0)
 		{
 			if (nullslen)
 			{
@@ -1039,7 +1042,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 			pos += sizeof(TupSerHeader);	
 			/* if the tuple had toasted elements we have to deserialize
 			 * the old slow way. */
-			if ((tshp->infomask & (HEAP_HASEXTERNAL | HEAP_HASEXTENDED)) != 0)
+			if ((tshp->infomask & (HEAP_HASEXTERNAL | HEAP_HASVARWIDTH)) != 0)
 			{
 				serData.cursor += sizeof(TupSerHeader);
 
