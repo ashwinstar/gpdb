@@ -121,6 +121,9 @@ extern int	CommitSiblings;
 extern char *default_tablespace;
 extern char *temp_tablespaces;
 extern bool fullPageWrites;
+bool synchronize_seqscans; /* XXX: not externed for now, should be declared
+							  int heapam.c, but we'll wait for the merge to
+							  finish yet */
 
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
 List       *gp_guc_list_for_explain;
@@ -319,7 +322,6 @@ static char *timezone_string;
 static char *log_timezone_string;
 static char *timezone_abbreviations_string;
 static char *XactIsoLevel_string;
-static char *data_directory;
 static char *custom_variable_classes;
 static char *xmlbinary_string;
 static char *xmloption_string;
@@ -894,7 +896,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"update_process_title", PGC_SUSET, CLIENT_CONN_OTHER,
+		{"update_process_title", PGC_SUSET, STATS_COLLECTOR,
 			gettext_noop("Updates the process title to show the active SQL command."),
 			gettext_noop("Enables updating of the process title every time a new SQL command is received by the server.")
 		},
@@ -1020,7 +1022,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		/* only here for backwards compatibility */
-		{"autocommit", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+		{"autocommit", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("This parameter doesn't do anything."),
 			gettext_noop("It's just here so that we won't choke on SET AUTOCOMMIT TO ON from 7.3-vintage clients."),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
@@ -1520,7 +1522,14 @@ static struct config_bool ConfigureNamesBool[] =
     	&gp_reraise_signal,
     	true, NULL, NULL
     },
-	
+	{
+		{"synchronize_seqscans", PGC_USERSET, COMPAT_OPTIONS_PREVIOUS,
+			gettext_noop("Enable synchronized sequential scans."),
+ 			NULL
+ 		},
+		&synchronize_seqscans,
+ 		true, NULL, NULL
+	},	
 	{
 		{"gp_external_enable_exec", PGC_POSTMASTER, EXTERNAL_TABLES,
 			gettext_noop("Enable selecting from an external table with an EXECUTE clause."),
@@ -1562,7 +1571,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&XLogArchiveMode,
 		false, NULL, NULL
 	},
-	
+
 	{
 		{"allow_system_table_mods", PGC_POSTMASTER, DEVELOPER_OPTIONS,
 			gettext_noop("Allows modifications of the structure of system tables."),
@@ -1722,7 +1731,7 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX, NULL, NULL
 	},
 	{
-		{"default_statistics_target", PGC_USERSET, STATS_ANALYZE,
+		{"default_statistics_target", PGC_USERSET, QUERY_TUNING_OTHER,
 			gettext_noop("Sets the default statistics target."),
 			gettext_noop("This applies to table columns that have not had a "
 				"column-specific target set via ALTER TABLE SET STATISTICS.")
@@ -1994,7 +2003,7 @@ static struct config_int ConfigureNamesInt[] =
 		-1, -1, 10000, NULL, NULL
 	},
 
-		{
+	{
 		{"max_files_per_process", PGC_POSTMASTER, RESOURCES_KERNEL,
 			gettext_noop("Sets the maximum number of simultaneously open files for each server process."),
 			NULL
@@ -2988,7 +2997,7 @@ static struct config_string ConfigureNamesString[] =
 
 	{
 		{"session_replication_role", PGC_SUSET, CLIENT_CONN_STATEMENT,
-			gettext_noop("Sets the sessions behavior for triggers and rewrite rules."),
+			gettext_noop("Sets the session's behavior for triggers and rewrite rules."),
 			gettext_noop("Each session can be either"
 						 " \"origin\", \"replica\", or \"local\".")
 		},
@@ -3376,7 +3385,6 @@ static struct config_string ConfigureNamesString[] =
 		NULL, assign_canonical_path, NULL
 	},
 
-
 	{
 		{"xmlbinary", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets how binary values are to be encoded in XML."),
@@ -3570,8 +3578,6 @@ static int	size_guc_variables;
 
 
 static bool guc_dirty;			/* TRUE if need to do commit/abort work */
-
-static bool guc_cannotprepare;                        /* TRUE if this transaction cannot be prepared for 2PC */
 
 static bool reporting_enabled;	/* TRUE to enable GUC_REPORT */
 
@@ -3945,7 +3951,7 @@ is_custom_class(const char *name, int dotPos, const char *custom_var_classes)
 }
 
 /*
- * Look up option NAME. If it exists, return a pointer to its record,
+ * Look up option NAME.  If it exists, return a pointer to its record,
  * else return NULL.  If create_placeholders is TRUE, we'll create a
  * placeholder record for a valid-looking custom variable name.
  */
@@ -3983,10 +3989,10 @@ find_option(const char *name, bool create_placeholders, int elevel)
 
 	if (create_placeholders)
 	{
-	/*
+		/*
 		 * Check if the name is qualified, and if so, check if the qualifier
 		 * matches any custom variable class.  If so, add a placeholder.
-	 */
+		 */
 		const char *dot = strchr(name, GUC_QUALIFIER_SEPARATOR);
 
 		if (dot != NULL &&
@@ -4167,7 +4173,6 @@ InitializeGUCOptions(void)
 	}
 
 	guc_dirty = false;
-	guc_cannotprepare = false;
 
 	reporting_enabled = false;
 
@@ -4206,11 +4211,11 @@ InitializeGUCOptions(void)
 	stack_rlimit = get_stack_depth_rlimit();
 	if (stack_rlimit > 0)
 	{
-		int		new_limit = (stack_rlimit - STACK_DEPTH_SLOP) / 1024L;
+		int			new_limit = (stack_rlimit - STACK_DEPTH_SLOP) / 1024L;
 
 		if (new_limit > 100)
 		{
-			char	limbuf[16];
+			char		limbuf[16];
 
 			new_limit = Min(new_limit, 2048);
 			sprintf(limbuf, "%d", new_limit);
@@ -4408,7 +4413,6 @@ ResetAllOptions(void)
 							elog(ERROR, "failed to reset %s", conf->gen.name);
 					*conf->variable = conf->reset_val;
 					conf->gen.source = conf->gen.reset_source;
-					guc_cannotprepare = true;
 					break;
 				}
 			case PGC_INT:
@@ -4421,7 +4425,6 @@ ResetAllOptions(void)
 							elog(ERROR, "failed to reset %s", conf->gen.name);
 					*conf->variable = conf->reset_val;
 					conf->gen.source = conf->gen.reset_source;
-					guc_cannotprepare = true;
 					break;
 				}
 			case PGC_REAL:
@@ -4434,7 +4437,6 @@ ResetAllOptions(void)
 							elog(ERROR, "failed to reset %s", conf->gen.name);
 					*conf->variable = conf->reset_val;
 					conf->gen.source = conf->gen.reset_source;
-					guc_cannotprepare = true;
 					break;
 				}
 			case PGC_STRING:
@@ -4464,7 +4466,6 @@ ResetAllOptions(void)
 
 					set_string_field(conf, conf->variable, str);
 					conf->gen.source = conf->gen.reset_source;
-					guc_cannotprepare = true;
 					break;
 				}
 		}
@@ -4507,7 +4508,7 @@ push_old_value(struct config_generic * gconf, GucAction action)
 				break;
 			case GUC_ACTION_LOCAL:
 				if (stack->state == GUC_SET)
-	{
+				{
 					/* SET followed by SET LOCAL, remember SET's value */
 					set_stack_value(gconf, &stack->masked);
 					stack->state = GUC_SET_LOCAL;
@@ -4520,39 +4521,39 @@ push_old_value(struct config_generic * gconf, GucAction action)
 				break;
 		}
 		Assert(guc_dirty);		/* must be set already */
-			return;
+		return;
 	}
 
-		/*
+	/*
 	 * Push a new stack entry
 	 *
 	 * We keep all the stack entries in TopTransactionContext for simplicity.
-		 */
+	 */
 	stack = (GucStack *) MemoryContextAllocZero(TopTransactionContext,
 												sizeof(GucStack));
 
-		stack->prev = gconf->stack;
+	stack->prev = gconf->stack;
 	stack->nest_level = GUCNestLevel;
 	switch (action)
-		{
+	{
 		case GUC_ACTION_SET:
 			stack->state = GUC_SET;
-				break;
+			break;
 		case GUC_ACTION_LOCAL:
 			stack->state = GUC_LOCAL;
-				break;
+			break;
 		case GUC_ACTION_SAVE:
 			stack->state = GUC_SAVE;
-				break;
-		}
+			break;
+	}
 	stack->source = gconf->source;
 	set_stack_value(gconf, &stack->prior);
 
-		gconf->stack = stack;
+	gconf->stack = stack;
 
-		/* Ensure we remember to pop at end of xact */
-		guc_dirty = true;
-	}
+	/* Ensure we remember to pop at end of xact */
+	guc_dirty = true;
+}
 
 
 /*
@@ -4624,20 +4625,20 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			GucStack   *prev = stack->prev;
 			bool		restorePrior = false;
 			bool		restoreMasked = false;
-		bool		changed;
+			bool		changed;
 
-		/*
+			/*
 			 * In this next bit, if we don't set either restorePrior or
 			 * restoreMasked, we must "discard" any unwanted fields of the
 			 * stack entries to avoid leaking memory.  If we do set one of
 			 * those flags, unused fields will be cleaned up after restoring.
-		 */
+			 */
 			if (!isCommit)		/* if abort, always restore prior value */
 				restorePrior = true;
 			else if (stack->state == GUC_SAVE)
 				restorePrior = true;
 			else if (stack->nest_level == 1)
-		{
+			{
 				/* transaction commit */
 				if (stack->state == GUC_SET_LOCAL)
 					restoreMasked = true;
@@ -4654,14 +4655,14 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 			{
 				/* decrement entry's level and do not pop it */
 				stack->nest_level--;
-			continue;
-		}
+				continue;
+			}
 			else
 			{
-		/*
+				/*
 				 * We have to merge this stack entry into prev. See README for
 				 * discussion of this bit.
-		 */
+				 */
 				switch (stack->state)
 				{
 					case GUC_SAVE:
@@ -4701,26 +4702,24 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 				}
 			}
 
-		changed = false;
+			changed = false;
 
 			if (restorePrior || restoreMasked)
-		{
+			{
 				/* Perform appropriate restoration of the stacked value */
 				union config_var_value newvalue;
-					GucSource	newsource;
+				GucSource	newsource;
 
 				if (restoreMasked)
-					{
+				{
 					newvalue = stack->masked;
 					newsource = PGC_S_SESSION;
-					}
-					else
-					{
+				}
+				else
+				{
 					newvalue = stack->prior;
-						newsource = stack->source;
-						conf->tentative_val = stack->tentative_val.boolval;
-						conf->gen.tentative_source = stack->tentative_source;
-					}
+					newsource = stack->source;
+				}
 
 				switch (gconf->vartype)
 				{
@@ -4729,84 +4728,84 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 							struct config_bool *conf = (struct config_bool *) gconf;
 							bool		newval = newvalue.boolval;
 
-					if (*conf->variable != newval)
-					{
-						if (conf->assign_hook)
-							if (!(*conf->assign_hook) (newval,
+							if (*conf->variable != newval)
+							{
+								if (conf->assign_hook)
+									if (!(*conf->assign_hook) (newval,
 													   true, PGC_S_OVERRIDE))
-								elog(LOG, "failed to commit %s",
-									 conf->gen.name);
-						*conf->variable = newval;
-						changed = true;
-					}
-					break;
-				}
-			case PGC_INT:
-				{
-					struct config_int *conf = (struct config_int *) gconf;
+										elog(LOG, "failed to commit %s",
+											 conf->gen.name);
+								*conf->variable = newval;
+								changed = true;
+							}
+							break;
+						}
+					case PGC_INT:
+						{
+							struct config_int *conf = (struct config_int *) gconf;
 							int			newval = newvalue.intval;
 
-					if (*conf->variable != newval)
-					{
-						if (conf->assign_hook)
-							if (!(*conf->assign_hook) (newval,
+							if (*conf->variable != newval)
+							{
+								if (conf->assign_hook)
+									if (!(*conf->assign_hook) (newval,
 													   true, PGC_S_OVERRIDE))
-								elog(LOG, "failed to commit %s",
-									 conf->gen.name);
-						*conf->variable = newval;
-						changed = true;
-					}
-					break;
-				}
-			case PGC_REAL:
-				{
-					struct config_real *conf = (struct config_real *) gconf;
+										elog(LOG, "failed to commit %s",
+											 conf->gen.name);
+								*conf->variable = newval;
+								changed = true;
+							}
+							break;
+						}
+					case PGC_REAL:
+						{
+							struct config_real *conf = (struct config_real *) gconf;
 							double		newval = newvalue.realval;
 
-					if (*conf->variable != newval)
-					{
-						if (conf->assign_hook)
-							if (!(*conf->assign_hook) (newval,
+							if (*conf->variable != newval)
+							{
+								if (conf->assign_hook)
+									if (!(*conf->assign_hook) (newval,
 													   true, PGC_S_OVERRIDE))
-								elog(LOG, "failed to commit %s",
-									 conf->gen.name);
-						*conf->variable = newval;
-						changed = true;
-					}
-					break;
-				}
-			case PGC_STRING:
-				{
-					struct config_string *conf = (struct config_string *) gconf;
+										elog(LOG, "failed to commit %s",
+											 conf->gen.name);
+								*conf->variable = newval;
+								changed = true;
+							}
+							break;
+						}
+					case PGC_STRING:
+						{
+							struct config_string *conf = (struct config_string *) gconf;
 							char	   *newval = newvalue.stringval;
 
-					if (*conf->variable != newval)
-					{
-								if (conf->assign_hook && newval)
-						{
-							const char *newstr;
-
-							newstr = (*conf->assign_hook) (newval, true,
-														   PGC_S_OVERRIDE);
-							if (newstr == NULL)
-								elog(LOG, "failed to commit %s",
-									 conf->gen.name);
-							else if (newstr != newval)
+							if (*conf->variable != newval)
 							{
-								/*
+								if (conf->assign_hook && newval)
+								{
+									const char *newstr;
+
+									newstr = (*conf->assign_hook) (newval, true,
+															 PGC_S_OVERRIDE);
+									if (newstr == NULL)
+										elog(LOG, "failed to commit %s",
+											 conf->gen.name);
+									else if (newstr != newval)
+									{
+										/*
 										 * If newval should now be freed,
 										 * it'll be taken care of below.
-								 *
+										 *
 										 * See notes in set_config_option
 										 * about casting
-								 */
-								newval = (char *) newstr;
-							}
-						}
+										 */
+										newval = (char *) newstr;
+									}
+								}
 
-						set_string_field(conf, conf->variable, newval);
-						changed = true;
-					}
+								set_string_field(conf, conf->variable, newval);
+								changed = true;
+							}
 
 							/*
 							 * Release stacked values if not used anymore. We
@@ -4816,20 +4815,20 @@ AtEOXact_GUC(bool isCommit, int nestLevel)
 							 */
 							set_string_field(conf, &stack->prior.stringval, NULL);
 							set_string_field(conf, &stack->masked.stringval, NULL);
-					break;
+							break;
+						}
 				}
-		}
 
 				gconf->source = newsource;
 			}
 
-		/* Finish popping the state stack */
+			/* Finish popping the state stack */
 			gconf->stack = prev;
-		pfree(stack);
+			pfree(stack);
 
-		/* Report new value if we changed it */
-		if (changed && (gconf->flags & GUC_REPORT))
-			ReportGUCOption(gconf);
+			/* Report new value if we changed it */
+			if (changed && (gconf->flags & GUC_REPORT))
+				ReportGUCOption(gconf);
 		}						/* end of stack-popping loop */
 
 		if (stack != NULL)
@@ -4852,6 +4851,9 @@ void
 BeginReportingGUCOptions(void)
 {
 	int			i;
+
+	/* Build global lists of GUCs for use by callers of gp_guc_list_show(). */
+	gp_guc_list_init();
 
 	/*
 	 * Don't do anything unless talking to an interactive frontend of protocol
@@ -4999,7 +5001,7 @@ parse_int(const char *value, int *result, int flags, const char **hintmsg)
 
 	/* allow whitespace between integer and unit */
 	while (isspace((unsigned char) *endptr))
-			endptr++;
+		endptr++;
 
 	/* Handle possible unit */
 	if (*endptr != '\0')
@@ -5026,8 +5028,8 @@ parse_int(const char *value, int *result, int flags, const char **hintmsg)
 #endif
 
 			if (strncmp(endptr, "kB", 2) == 0)
-		{
-			endptr += 2;
+			{
+				endptr += 2;
 				switch (flags & GUC_UNIT_MEMORY)
 				{
 					case GUC_UNIT_BLOCKS:
@@ -5037,14 +5039,14 @@ parse_int(const char *value, int *result, int flags, const char **hintmsg)
 						val /= (XLOG_BLCKSZ / 1024);
 						break;
 				}
-		}
+			}
 			else if (strncmp(endptr, "MB", 2) == 0)
-		{
+			{
 				endptr += 2;
 				switch (flags & GUC_UNIT_MEMORY)
 				{
 					case GUC_UNIT_KB:
-			val *= KB_PER_MB;
+						val *= KB_PER_MB;
 						break;
 					case GUC_UNIT_BLOCKS:
 						val *= KB_PER_MB / (BLCKSZ / 1024);
@@ -5053,33 +5055,33 @@ parse_int(const char *value, int *result, int flags, const char **hintmsg)
 						val *= KB_PER_MB / (XLOG_BLCKSZ / 1024);
 						break;
 				}
-		}
+			}
 			else if (strncmp(endptr, "GB", 2) == 0)
-		{
-			endptr += 2;
-			switch (flags & GUC_UNIT_MEMORY)
 			{
+				endptr += 2;
+				switch (flags & GUC_UNIT_MEMORY)
+				{
 					case GUC_UNIT_KB:
 						val *= KB_PER_GB;
 						break;
-				case GUC_UNIT_BLOCKS:
+					case GUC_UNIT_BLOCKS:
 						val *= KB_PER_GB / (BLCKSZ / 1024);
-					break;
-				case GUC_UNIT_XBLOCKS:
+						break;
+					case GUC_UNIT_XBLOCKS:
 						val *= KB_PER_GB / (XLOG_BLCKSZ / 1024);
-					break;
+						break;
+				}
 			}
 		}
-	}
 		else if (flags & GUC_UNIT_TIME)
-	{
+		{
 			/* Set hint for use if no match or trailing garbage */
 			if (hintmsg)
 				*hintmsg = gettext_noop("Valid units for this parameter are \"ms\", \"s\", \"min\", \"h\", and \"d\".");
 
 			if (strncmp(endptr, "ms", 2) == 0)
-		{
-			endptr += 2;
+			{
+				endptr += 2;
 				switch (flags & GUC_UNIT_TIME)
 				{
 					case GUC_UNIT_S:
@@ -5089,40 +5091,40 @@ parse_int(const char *value, int *result, int flags, const char **hintmsg)
 						val /= MS_PER_MIN;
 						break;
 				}
-		}
+			}
 			else if (strncmp(endptr, "s", 1) == 0)
-		{
+			{
 				endptr += 1;
 				switch (flags & GUC_UNIT_TIME)
 				{
 					case GUC_UNIT_MS:
-			val *= MS_PER_S;
+						val *= MS_PER_S;
 						break;
 					case GUC_UNIT_MIN:
 						val /= S_PER_MIN;
 						break;
 				}
-		}
+			}
 			else if (strncmp(endptr, "min", 3) == 0)
-		{
+			{
 				endptr += 3;
 				switch (flags & GUC_UNIT_TIME)
 				{
 					case GUC_UNIT_MS:
-			val *= MS_PER_MIN;
+						val *= MS_PER_MIN;
 						break;
 					case GUC_UNIT_S:
 						val *= S_PER_MIN;
 						break;
 				}
-		}
+			}
 			else if (strncmp(endptr, "h", 1) == 0)
-		{
+			{
 				endptr += 1;
 				switch (flags & GUC_UNIT_TIME)
 				{
 					case GUC_UNIT_MS:
-			val *= MS_PER_H;
+						val *= MS_PER_H;
 						break;
 					case GUC_UNIT_S:
 						val *= S_PER_H;
@@ -5131,24 +5133,24 @@ parse_int(const char *value, int *result, int flags, const char **hintmsg)
 						val *= MIN_PER_H;
 						break;
 				}
-		}
+			}
 			else if (strncmp(endptr, "d", 1) == 0)
-		{
-			endptr += 1;
-			switch (flags & GUC_UNIT_TIME)
 			{
+				endptr += 1;
+				switch (flags & GUC_UNIT_TIME)
+				{
 					case GUC_UNIT_MS:
 						val *= MS_PER_D;
 						break;
-				case GUC_UNIT_S:
+					case GUC_UNIT_S:
 						val *= S_PER_D;
-					break;
-				case GUC_UNIT_MIN:
+						break;
+					case GUC_UNIT_MIN:
 						val *= MIN_PER_D;
-					break;
+						break;
+				}
 			}
 		}
-	}
 
 		/* allow whitespace after unit */
 		while (isspace((unsigned char) *endptr))
@@ -5159,11 +5161,11 @@ parse_int(const char *value, int *result, int flags, const char **hintmsg)
 
 		/* Check for overflow due to units conversion */
 		if (val != (int64) ((int32) val))
-	{
+		{
 			if (hintmsg)
 				*hintmsg = gettext_noop("Value exceeds integer range.");
-		return false;
-	}
+			return false;
+		}
 	}
 
 	if (result)
@@ -5179,7 +5181,7 @@ parse_int(const char *value, int *result, int flags, const char **hintmsg)
  * If okay and result is not NULL, return the value in *result.
  */
 static bool
-parse_real(const char *value, double *result, int flags)
+parse_real(const char *value, double *result)
 {
 	double		val;
 	char	   *endptr;
@@ -5197,52 +5199,7 @@ parse_real(const char *value, double *result, int flags)
 		endptr++;
 	if (*endptr != '\0')
 		return false;
-		
-	if ((flags & GUC_UNIT_MEMORY) && endptr != value)
-	{
-		bool		used = false;
 
-		while (*endptr == ' ')
-			endptr++;
-
-		if (strcmp(endptr, "kB") == 0)
-		{
-			used = true;
-			endptr += 2;
-		}
-		else if (strcmp(endptr, "MB") == 0)
-		{
-			val *= KB_PER_MB;
-			used = true;
-			endptr += 2;
-		}
-		else if (strcmp(endptr, "GB") == 0)
-		{
-			val *= KB_PER_GB;
-			used = true;
-			endptr += 2;
-		}
-
-		if (used)
-		{
-			switch (flags & GUC_UNIT_MEMORY)
-			{
-				case GUC_UNIT_BLOCKS:
-					val /= (BLCKSZ / 1024);
-					break;
-				case GUC_UNIT_XBLOCKS:
-					val /= (XLOG_BLCKSZ / 1024);
-					break;
-			}
-		}
-	}
-
-    if (endptr == value || *endptr != '\0' || errno == ERANGE)
-	{
-		if (result)
-			*result = 0;		/* suppress compiler warning */
-		return false;
-	}
 	if (result)
 		*result = val;
 	return true;
@@ -5260,7 +5217,7 @@ static const char *
 call_string_assign_hook(GucStringAssignHook assign_hook,
 						char *newval, bool doit, GucSource source)
 {
-	const char *result = NULL;
+	const char *result;
 
 	PG_TRY();
 	{
@@ -5625,7 +5582,7 @@ set_config_option(const char *name, const char *value,
 
 				if (value)
 				{
-					if (!parse_real(value, &newval, conf->gen.flags))
+					if (!parse_real(value, &newval))
 					{
 						ereport(elevel,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -5732,9 +5689,9 @@ set_config_option(const char *name, const char *value,
 						newval = NULL;
 					else
 					{
-					newval = guc_strdup(elevel, conf->reset_val);
-					if (newval == NULL)
-						return false;
+						newval = guc_strdup(elevel, conf->reset_val);
+						if (newval == NULL)
+							return false;
 					}
 					source = conf->gen.reset_source;
 				}
@@ -5808,7 +5765,7 @@ set_config_option(const char *name, const char *value,
 						if (newval && !string_field_used(conf, newval))
 							free(newval);
 					}
-					}
+				}
 				else if (newval)
 					free(newval);
 				break;
@@ -6098,6 +6055,7 @@ flatten_set_variable_args(const char *name, List *args)
 	return buf.data;
 }
 
+
 /*
  * SET command
  */
@@ -6133,10 +6091,12 @@ ExecSetVariableStmt(VariableSetStmt *stmt)
 
 					if (strcmp(item->defname, "transaction_isolation") == 0)
 						SetPGVariable("transaction_isolation",
-									  list_make1(item->arg), stmt->is_local);
+									  list_make1(item->arg), stmt->is_local,
+									  false);
 					else if (strcmp(item->defname, "transaction_read_only") == 0)
 						SetPGVariable("transaction_read_only",
-									  list_make1(item->arg), stmt->is_local);
+									  list_make1(item->arg), stmt->is_local,
+									  false);
 					else
 						elog(ERROR, "unexpected SET TRANSACTION element: %s",
 							 item->defname);
@@ -6152,10 +6112,12 @@ ExecSetVariableStmt(VariableSetStmt *stmt)
 
 					if (strcmp(item->defname, "transaction_isolation") == 0)
 						SetPGVariable("default_transaction_isolation",
-									  list_make1(item->arg), stmt->is_local);
+									  list_make1(item->arg), stmt->is_local,
+									  false);
 					else if (strcmp(item->defname, "transaction_read_only") == 0)
 						SetPGVariable("default_transaction_read_only",
-									  list_make1(item->arg), stmt->is_local);
+									  list_make1(item->arg), stmt->is_local,
+									  false);
 					else
 						elog(ERROR, "unexpected SET SESSION element: %s",
 							 item->defname);
@@ -6386,10 +6348,10 @@ define_custom_variable(struct config_generic * variable)
 	struct config_generic **res;
 
 	res = (struct config_generic **) bsearch((void *) &nameAddr,
-													  (void *) guc_variables,
-														   num_guc_variables,
+											 (void *) guc_variables,
+											 num_guc_variables,
 											 sizeof(struct config_generic *),
-															guc_var_compare);
+											 guc_var_compare);
 	if (res == NULL)
 	{
 		/* No placeholder to replace, so just add it */
@@ -6424,8 +6386,8 @@ define_custom_variable(struct config_generic * variable)
 	value = *pHolder->variable;
 
 	if (value)
-	set_config_option(name, value,
-					  pHolder->gen.context, pHolder->gen.source,
+		set_config_option(name, value,
+						  pHolder->gen.context, pHolder->gen.source,
 						  GUC_ACTION_SET, true);
 
 	/*
@@ -7119,46 +7081,8 @@ _ShowOption(struct config_generic * record, bool use_units)
 					val = (*conf->show_hook) ();
 				else
 				{
-					char		unit[4];
-					double		result = *conf->variable;
-
-					if (use_units && result > 0 && (record->flags & GUC_UNIT_MEMORY))
-					{
-                        double result_gb;
-                        double result_mb;
-
-                        switch (record->flags & GUC_UNIT_MEMORY)
-						{
-							case GUC_UNIT_BLOCKS:
-								result *= BLCKSZ / 1024;
-								break;
-							case GUC_UNIT_XBLOCKS:
-								result *= XLOG_BLCKSZ / 1024;
-								break;
-						}
-
-                        result_gb = result / KB_PER_GB;
-                        result_mb = result / KB_PER_MB;
-
-						if (result_gb >= 1.0 &&
-                            result_gb * KB_PER_GB == result)
-						{
-							result = result_gb;
-							strcpy(unit, "GB");
-						}
-						else if (result_mb >= 1.0 &&
-                                 result_mb * KB_PER_MB == result)
-						{
-							result = result_mb;
-							strcpy(unit, "MB");
-						}
-						else
-							strcpy(unit, "kB");
-					}
-					else
-						strcpy(unit, "");
-
-					snprintf(buffer, sizeof(buffer), "%g%s", result, unit);
+					snprintf(buffer, sizeof(buffer), "%g",
+							 *conf->variable);
 					val = buffer;
 				}
 			}
@@ -7336,7 +7260,8 @@ is_newvalue_equal(struct config_generic * record, const char *newvalue)
 				struct config_real *conf = (struct config_real *) record;
 				double		newval;
 
-				return parse_real(newvalue, &newval, record->flags) && *conf->variable == newval;
+				return parse_real(newvalue, &newval)
+					&& *conf->variable == newval;
 			}
 		case PGC_STRING:
 			{
@@ -7812,7 +7737,7 @@ assign_log_destination(const char *value, bool doit, GucSource source)
 		pfree(rawstring);
 		list_free(elemlist);
 		ereport(GUC_complaint_elevel(source),
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 			errmsg("invalid list syntax for parameter \"log_destination\"")));
 		return NULL;
 	}
@@ -7836,7 +7761,7 @@ assign_log_destination(const char *value, bool doit, GucSource source)
 		else
 		{
 			ereport(GUC_complaint_elevel(source),
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				  errmsg("unrecognized \"log_destination\" key word: \"%s\"",
 						 tok)));
 			pfree(rawstring);
@@ -8123,8 +8048,8 @@ assign_phony_autocommit(bool newval, bool doit, GucSource source)
 	if (!newval)
 	{
 		ereport(GUC_complaint_elevel(source),
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("SET AUTOCOMMIT TO OFF is no longer supported")));
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("SET AUTOCOMMIT TO OFF is no longer supported")));
 		return false;
 	}
 	return true;
@@ -8224,8 +8149,8 @@ assign_stage_log_stats(bool newval, bool doit, GucSource source)
 	if (newval && log_statement_stats)
 	{
 		ereport(GUC_complaint_elevel(source),
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("cannot enable parameter when \"log_statement_stats\" is true")));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot enable parameter when \"log_statement_stats\" is true")));
 		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
 		if (source != PGC_S_OVERRIDE)
 			return false;
@@ -8236,8 +8161,8 @@ assign_stage_log_stats(bool newval, bool doit, GucSource source)
 static bool
 assign_log_stats(bool newval, bool doit, GucSource source)
 {
-	if (newval &&
-		(log_parser_stats || log_planner_stats || log_executor_stats || log_dispatch_stats))
+	if (newval && (log_parser_stats || log_planner_stats || 
+				   log_executor_stats || log_dispatch_stats))
 	{
 		ereport(GUC_complaint_elevel(source),
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -8245,10 +8170,10 @@ assign_log_stats(bool newval, bool doit, GucSource source)
 							"\"log_parser_stats\", \"log_planner_stats\", "
 							"\"log_dispatch_stats\", "
 							"or \"log_executor_stats\" is true")));
-		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
-		else if (source != PGC_S_OVERRIDE)
-			return false;
 	}
+	/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
+	else if (source != PGC_S_OVERRIDE)
+		return false;
 	return true;
 }
 
@@ -8279,8 +8204,8 @@ assign_transaction_read_only(bool newval, bool doit, GucSource source)
 	if (newval == false && XactReadOnly && IsSubTransaction())
 	{
 		ereport(GUC_complaint_elevel(source),
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("cannot set transaction read-write mode inside a read-only transaction")));
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot set transaction read-write mode inside a read-only transaction")));
 		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
 		if (source != PGC_S_OVERRIDE)
 			return false;
