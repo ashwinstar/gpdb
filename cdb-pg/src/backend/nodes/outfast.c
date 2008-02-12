@@ -1834,6 +1834,17 @@ _outCreateExternalStmt(StringInfo str, CreateExternalStmt *node)
 }
 
 static void
+_outCreateEnumStmt(StringInfo str, CreateEnumStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEENUMSTMT");
+
+	WRITE_NODE_FIELD(typname);
+	WRITE_NODE_FIELD(vals);
+	WRITE_OID_FIELD(enumTypeOid);
+	WRITE_OID_FIELD(enumArrayOid);
+}
+
+static void
 _outIndexStmt(StringInfo str, IndexStmt *node)
 {
 	WRITE_NODE_TYPE("INDEXSTMT");
@@ -3398,7 +3409,9 @@ _outNode(StringInfo str, void *obj)
             case T_CreateExternalStmt:
 				_outCreateExternalStmt(str, obj);
 				break;
-
+			case T_CreateEnumStmt:
+				_outCreateEnumStmt(str, obj);
+				break;
 			case T_IndexStmt:
 				_outIndexStmt(str, obj);
 				break;

@@ -1750,6 +1750,19 @@ _readCreateExternalStmt(const char ** str)
 	READ_DONE();
 }
 
+static CreateEnumStmt *
+_readCreateEnumStmt(const char ** str)
+{
+	READ_LOCALS(CreateEnumStmt);
+
+	READ_NODE_FIELD(typname);
+	READ_NODE_FIELD(vals);
+	READ_OID_FIELD(enumTypeOid);
+	READ_OID_FIELD(enumArrayOid);
+
+	READ_DONE();
+}
+
 static FkConstraint *
 _readFkConstraint(const char ** str)
 {
@@ -3354,6 +3367,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_CreateExternalStmt:
 				return_value = _readCreateExternalStmt(str);
+				break;
+			case T_CreateEnumStmt:
+				return_value = _readCreateEnumStmt(str);
 				break;
 			case T_IndexStmt:
 				return_value = _readIndexStmt(str);
