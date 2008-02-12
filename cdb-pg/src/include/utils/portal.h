@@ -130,7 +130,6 @@ typedef struct PortalData
 	 * remember which queue wanted a lock on this portal.
 	 */
 	uint32		portalId;		/* id of this portal 0 for unnamed */
-	NodeTag	    sourceTag;		/* nodetag for the original query */
 	Oid			queueId;		/* Oid of queue locking this portal */
 
 	/* The query or queries the portal will execute */
@@ -225,7 +224,6 @@ extern Portal GetPortalByName(const char *name);
 extern void PortalDefineQuery(Portal portal,
 				  const char *prepStmtName,
 				  const char *sourceText,
-				  NodeTag	  sourceTag,
 				  const char *commandTag,
 				  List *stmts,
 				  CachedPlan *cplan);

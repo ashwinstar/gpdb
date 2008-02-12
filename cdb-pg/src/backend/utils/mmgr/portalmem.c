@@ -310,15 +310,11 @@ CreateNewPortal(void)
  * If cplan is NULL, then it is the caller's responsibility to ensure that
  * the passed plan trees have adequate lifetime.  Typically this is done by
  * copying them into the portal's heap context.
- *
- * The souce (i.e original parsetree is passed in - only used if rource
- * scheduling is enabled.
  */
 void
 PortalDefineQuery(Portal portal,
 				  const char *prepStmtName,
 				  const char *sourceText,
-				  NodeTag	  sourceTag,
 				  const char *commandTag,
 				  List *stmts,
 				  CachedPlan *cplan)
@@ -332,7 +328,6 @@ PortalDefineQuery(Portal portal,
 		MemoryContextStrdup(PortalGetHeapMemory(portal), prepStmtName) : NULL;
 	portal->sourceText = sourceText ?
 		MemoryContextStrdup(PortalGetHeapMemory(portal), sourceText) : NULL;
-	portal->sourceTag = sourceTag;
 	portal->commandTag = commandTag;
 	portal->stmts = stmts;
 	portal->cplan = cplan;
@@ -416,7 +411,7 @@ PortalDrop(Portal portal, bool isTopCommit)
 	PortalHashTableDelete(portal);
 
 	/* let portalcmds.c clean up the state it knows about */
-	if (portal->cleanup)
+	if (PointerIsValid(portal->cleanup))
 		(*portal->cleanup) (portal);
 
 	/* drop cached plan reference, if any */
@@ -854,7 +849,7 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 #endif
 		{
 			/* let portalcmds.c clean up the state it knows about */
-			if (portal->cleanup)
+			if (PointerIsValid(portal->cleanup))
 			{
 				(*portal->cleanup) (portal);
 				portal->cleanup = NULL;

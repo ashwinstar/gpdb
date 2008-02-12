@@ -1153,7 +1153,6 @@ exec_mpp_query(const char *query_string,
 		PortalDefineQuery(portal,
 						  NULL,
 						  query_string,
-						  nodeTag((Node *)query),
 						  commandTag,
 						  plantree_list,
 						  NULL);
@@ -1545,7 +1544,6 @@ exec_simple_query(const char *query_string)
 		PortalDefineQuery(portal,
 						  NULL,
 						  query_string,
-						  nodeTag(parsetree),
 						  commandTag,						  
 						  plantree_list,
 						  NULL);
@@ -1884,7 +1882,6 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		StorePreparedStatement(stmt_name,
 							   raw_parse_tree,
 							   query_string,
-							   sourceTag,
 							   commandTag,
 							   paramTypes,
 							   numParams,
@@ -2299,7 +2296,6 @@ exec_bind_message(StringInfo input_message)
 	PortalDefineQuery(portal,
 					  stmt_name[0] ? stmt_name : NULL,
 					  psrc->query_string,
-					  nodeTag((Node *)psrc->raw_parse_tree),
 					  psrc->commandTag,
 					  plan_list,
 					  cplan);

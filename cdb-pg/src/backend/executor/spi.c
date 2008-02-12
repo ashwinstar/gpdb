@@ -1621,7 +1621,6 @@ SPI_cursor_open(const char *name, SPIPlanPtr plan,
 	PortalDefineQuery(portal,
 					  NULL,		/* no statement name */
 					  plansource->query_string,
-					  T_SelectStmt,
 					  plansource->commandTag,
 					  stmt_list,
 					  cplan);
