@@ -466,6 +466,9 @@ transformCreateExternalStmt(CreateExternalStmt *stmt, const char *queryString)
 		}
 	}
 	
+	save_alist = cxt.alist;
+	cxt.alist = NIL;
+	
 	/*
 	 * Check if we need to create an error table. If so, add it to the 
 	 * before list.
@@ -6220,7 +6223,7 @@ transformSingleRowErrorHandling(ParseState *pstate, CreateStmtContext *cxt,
 	/*
 	 * auto-generate a new error table or verify an existing one
 	 */
-	if(errrelexists)
+	if (errrelexists)
 	{
 		/* 
 		 * this table already exists in the database. Verify that specified 
