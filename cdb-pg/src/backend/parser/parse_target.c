@@ -395,7 +395,6 @@ transformAssignedExpr(ParseState *pstate,
 			 * constant as the source value.
 			 */
 			colVar = (Node *) makeNullConst(attrtype, attrtypmod);
-ttrtypmod);
 		}
 		else
 		{
@@ -1318,42 +1317,10 @@ FigureColnameInternal(Node *node, char **name)
 				case IS_GREATEST:
 					*name = "greatest";
 					return 2;
-				case IS_LEAST					return 2;
-				case IS_XMLROOT:
-					*name = "xmlroot";
-					return 2;
-				case IS_XMLSERIALIZE		case T_XmlSerialize:
-			*name = "xmlserialize";
-			return 2;
-:
-					*name = "xmlserialize";
-					return 2;
-				case IS_DOCUMENT:
-					/* nothing */
-					break;
-			}
-			break;
-		case T_XmlExpr:
-			/* make SQL/XML functions act like a regular function */
-			switch (((XmlExpr *) node)->op)
-			{
-				case IS_XMLCONCAT:
-					*name = "xmlconcat";
-					return 2;
-				case IS_XMLELEMENT:
-					*name = "xmlelement";
-					return 2;
-				case IS_XMLFOREST:
-					*name = "xmlforest";
-					return 2;
-				case IS_XMLPARSE:
-					*name = "xmlparse";
-					return 2;
-				case IS_XMLPI:
-					*name = "xmlpi";
-:
+				case IS_LEAST:
 					*name = "least";
 					return 2;
+/* XXX XXX weird merge here -- removed */
 			}
 			break;
 		case T_XmlExpr:
