@@ -715,7 +715,7 @@ cdb_setup(void)
 			 * to be written and force the QD mirror to get
 			 * synchronized.
 			 */
-			RequestCheckpoint(true, false);
+			RequestCheckpoint(CHECKPOINT_WAIT);
 		}
 		
 		/* initialize TM */
