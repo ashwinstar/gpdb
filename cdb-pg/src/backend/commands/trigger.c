@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/trigger.c,v 1.210.2.4 2007/08/15 19:15:55 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/trigger.c,v 1.226 2008/01/01 19:45:49 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1199,8 +1199,8 @@ RelationBuildTriggers(Relation relation)
 			int			i;
 
 			val = DatumGetByteaP(fastgetattr(htup,
-											Anum_pg_trigger_tgargs,
-											tgrel->rd_att, &isnull));
+											 Anum_pg_trigger_tgargs,
+											 tgrel->rd_att, &isnull));
 			if (isnull)
 				elog(ERROR, "tgargs is null in trigger for relation \"%s\"",
 					 RelationGetRelationName(relation));
@@ -1650,7 +1650,7 @@ ExecBSInsertTriggers(EState *estate, ResultRelInfo *relinfo)
 		{
 			if (trigger->tgenabled == TRIGGER_FIRES_ON_ORIGIN ||
 				trigger->tgenabled == TRIGGER_DISABLED)
-			continue;
+				continue;
 		}
 		else	/* ORIGIN or LOCAL role */
 		{
@@ -1709,7 +1709,7 @@ ExecBRInsertTriggers(EState *estate, ResultRelInfo *relinfo,
 		{
 			if (trigger->tgenabled == TRIGGER_FIRES_ON_ORIGIN ||
 				trigger->tgenabled == TRIGGER_DISABLED)
-			continue;
+				continue;
 		}
 		else	/* ORIGIN or LOCAL role */
 		{
@@ -1787,7 +1787,7 @@ ExecBSDeleteTriggers(EState *estate, ResultRelInfo *relinfo)
 		{
 			if (trigger->tgenabled == TRIGGER_FIRES_ON_REPLICA ||
 				trigger->tgenabled == TRIGGER_DISABLED)
-			continue;
+				continue;
 		}
 		LocTriggerData.tg_trigger = trigger;
 		newtuple = ExecCallTriggerFunc(&LocTriggerData,
@@ -1846,7 +1846,7 @@ ExecBRDeleteTriggers(EState *estate, ResultRelInfo *relinfo,
 		{
 			if (trigger->tgenabled == TRIGGER_FIRES_ON_ORIGIN ||
 				trigger->tgenabled == TRIGGER_DISABLED)
-			continue;
+				continue;
 		}
 		else	/* ORIGIN or LOCAL role */
 		{
@@ -1929,7 +1929,7 @@ ExecBSUpdateTriggers(EState *estate, ResultRelInfo *relinfo)
 		{
 			if (trigger->tgenabled == TRIGGER_FIRES_ON_ORIGIN ||
 				trigger->tgenabled == TRIGGER_DISABLED)
-			continue;
+				continue;
 		}
 		else	/* ORIGIN or LOCAL role */
 		{
@@ -2005,7 +2005,7 @@ ExecBRUpdateTriggers(EState *estate, ResultRelInfo *relinfo,
 		{
 			if (trigger->tgenabled == TRIGGER_FIRES_ON_REPLICA ||
 				trigger->tgenabled == TRIGGER_DISABLED)
-			continue;
+				continue;
 		}
 		LocTriggerData.tg_trigtuple = trigtuple;
 		LocTriggerData.tg_newtuple = oldtuple = newtuple;
@@ -2631,7 +2631,7 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 	AfterTriggerEvent event,
 				prev_event;
 	MemoryContext per_tuple_context;
-	bool		locally_opened = false;
+	bool		local_estate = false;
 	Relation	rel = NULL;
 	TriggerDesc *trigdesc = NULL;
 	FmgrInfo   *finfo = NULL;
@@ -2670,17 +2670,17 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 			 * this is not the same relation as before.
 			 */
 			if (rel == NULL || RelationGetRelid(rel) != event->ate_relid)
-				{
-					ResultRelInfo *rInfo;
+			{
+				ResultRelInfo *rInfo;
 
 				rInfo = ExecGetTriggerResultRel(estate, event->ate_relid);
-							rel = rInfo->ri_RelationDesc;
-							trigdesc = rInfo->ri_TrigDesc;
-							finfo = rInfo->ri_TrigFunctions;
-							instr = rInfo->ri_TrigInstrument;
-					if (trigdesc == NULL)		/* should not happen */
-						elog(ERROR, "relation %u has no triggers",
-							 event->ate_relid);
+				rel = rInfo->ri_RelationDesc;
+				trigdesc = rInfo->ri_TrigDesc;
+				finfo = rInfo->ri_TrigFunctions;
+				instr = rInfo->ri_TrigInstrument;
+				if (trigdesc == NULL)	/* should not happen */
+					elog(ERROR, "relation %u has no triggers",
+						 event->ate_relid);
 			}
 
 			/*
@@ -2737,7 +2737,7 @@ afterTriggerInvokeEvents(AfterTriggerEventList *events,
 		ListCell   *l;
 
 		foreach(l, estate->es_trig_target_relations)
-	{
+		{
 			ResultRelInfo *resultRelInfo = (ResultRelInfo *) lfirst(l);
 
 			/* Close indices and then the relation itself */
@@ -3083,7 +3083,7 @@ AfterTriggerEndSubXact(bool isCommit)
 		/*
 		 * It's entirely possible that the subxact created an event_cxt but
 		 * there is not anything left in it (because all the triggers were
-		 * fired at end-of-statement).  If so, we should release the context
+		 * fired at end-of-statement).	If so, we should release the context
 		 * to prevent memory leakage in a long sequence of subtransactions. We
 		 * can detect whether there's anything of use in the context by seeing
 		 * if anything was added to the global events list since subxact
@@ -3624,7 +3624,7 @@ AfterTriggerSaveEvent(ResultRelInfo *relinfo, int event, bool row_trigger,
 		{
 			if (trigger->tgenabled == TRIGGER_FIRES_ON_ORIGIN ||
 				trigger->tgenabled == TRIGGER_DISABLED)
-			continue;
+				continue;
 		}
 		else	/* ORIGIN or LOCAL role */
 		{
@@ -3679,10 +3679,10 @@ AfterTriggerSaveEvent(ResultRelInfo *relinfo, int event, bool row_trigger,
 
 		/*
 		 * If we don't yet have an event context for the current (sub)xact,
-		 * create one.  Make it a child of CurTransactionContext to ensure it
+		 * create one.	Make it a child of CurTransactionContext to ensure it
 		 * will go away if the subtransaction aborts.
 		 */
-		if (my_level > 1)			/* subtransaction? */
+		if (my_level > 1)		/* subtransaction? */
 		{
 			Assert(my_level < afterTriggers->maxtransdepth);
 			cxtptr = &afterTriggers->cxt_stack[my_level];
