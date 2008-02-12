@@ -1057,14 +1057,19 @@ DefineEnum(CreateEnumStmt *stmt)
 					 errmsg("type \"%s\" already exists", enumName)));
 	}
 
-	/* Preassign array type OID so we can insert it in pg_type.typarray */
-	pg_type = heap_open(TypeRelationId, AccessShareLock);
-	enumArrayOid = GetNewOid(pg_type);
-	heap_close(pg_type, AccessShareLock);
+	if (!OidIsValid(stmt->enumArrayOid))
+	{
+		/* Preassign array type OID so we can insert it in pg_type.typarray */
+		pg_type = heap_open(TypeRelationId, AccessShareLock);
+	
+		stmt->enumArrayOid = GetNewOid(pg_type);
+		
+		heap_close(pg_type, AccessShareLock);
+	}
 
 	/* Create the pg_type entry */
-	enumTypeOid =
-		TypeCreate(InvalidOid,	/* no predetermined type OID */
+	stmt->enumTypeOid =
+		TypeCreate(stmt->enumTypeOid,	/* no predetermined type OID */
 				   enumName,	/* type name */
 				   enumNamespace,		/* namespace */
 				   InvalidOid,	/* relation oid (n/a here) */
@@ -1081,7 +1086,7 @@ DefineEnum(CreateEnumStmt *stmt)
 				   InvalidOid,	/* analyze procedure - default */
 				   InvalidOid,	/* element type ID */
 				   false,		/* this is not an array type */
-				   enumArrayOid,	/* array type we are about to create */
+				   stmt->enumArrayOid,	/* array type we are about to create */
 				   InvalidOid,	/* base type ID (only for domains) */
 				   NULL,		/* never a default type value */
 				   NULL,		/* binary default isn't sent either */
@@ -1093,14 +1098,14 @@ DefineEnum(CreateEnumStmt *stmt)
 				   false);		/* Type NOT NULL */
 
 	/* Enter the enum's values into pg_enum */
-	EnumValuesCreate(enumTypeOid, stmt->vals);
+	EnumValuesCreate(stmt->enumTypeOid, stmt->vals);
 
 	/*
 	 * Create the array type that goes with it.
 	 */
 	enumArrayName = makeArrayTypeName(enumName, enumNamespace);
 
-	TypeCreate(enumArrayOid,	/* force assignment of this type OID */
+	TypeCreate(stmt->enumArrayOid,	/* force assignment of this type OID */
 			   enumArrayName,	/* type name */
 			   enumNamespace,	/* namespace */
 			   InvalidOid,		/* relation oid (n/a here) */
@@ -1129,6 +1134,9 @@ DefineEnum(CreateEnumStmt *stmt)
 			   false);			/* Type NOT NULL */
 
 	pfree(enumArrayName);
+	
+	if (Gp_role == GP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *) stmt, "DefineEnum");
 }
 
 

@@ -2084,6 +2084,8 @@ typedef struct CreateEnumStmt
 	NodeTag		type;
 	List	   *typname;		/* qualified name (list of Value strings) */
 	List	   *vals;			/* enum values (list of Value strings) */
+	Oid			enumTypeOid;	/* MPP OID for dispatch */
+	Oid			enumArrayOid;	/* MPP OID for enum type array */
 } CreateEnumStmt;
 
 
