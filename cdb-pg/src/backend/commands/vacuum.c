@@ -938,7 +938,7 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
  *		advance pg_database.datfrozenxid, also try to truncate pg_clog.
  *
  *		We violate transaction semantics here by overwriting the database's
- *		existing pg_database tuple with the new value.  This is reasonably
+ *		existing pg_database tuple with the new value.	This is reasonably
  *		safe since the new value is correct whether or not this transaction
  *		commits.  As with vac_update_relstats, this avoids leaving dead tuples
  *		behind after a VACUUM.
@@ -957,7 +957,7 @@ vac_update_datfrozenxid(void)
 	bool		dirty = false;
 
 	/*
-	 * Initialize the "min" calculation with RecentGlobalXmin.  Any
+	 * Initialize the "min" calculation with RecentGlobalXmin.	Any
 	 * not-yet-committed pg_class entries for new tables must have
 	 * relfrozenxid at least this high, because any other open xact must have
 	 * RecentXmin >= its PGPROC.xmin >= our RecentGlobalXmin; see
@@ -1429,7 +1429,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	vac_update_fsm(onerel, &fraged_pages, vacrelstats->rel_pages);
 
 	/* update statistics in pg_class */
-	vac_update_relstats(RelationGetRelid(onerel), vacrelstats->rel_pages,
+	vac_update_relstats(onerel, vacrelstats->rel_pages,
 						vacrelstats->rel_tuples, vacrelstats->hasindex,
 						FreezeLimit);
 
@@ -1743,7 +1743,7 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 
 					/*
 					 * This should not happen, since we hold exclusive lock on
-					 * the relation; shouldn't we raise an error? (Actually,
+					 * the relation; shouldn't we raise an error?  (Actually,
 					 * it can happen in system catalogs, since we tend to
 					 * release write lock before commit there.)  As above, we
 					 * can't apply repair_frag() if the tuple state is
@@ -1760,7 +1760,7 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 
 					/*
 					 * This should not happen, since we hold exclusive lock on
-					 * the relation; shouldn't we raise an error? (Actually,
+					 * the relation; shouldn't we raise an error?  (Actually,
 					 * it can happen in system catalogs, since we tend to
 					 * release write lock before commit there.)  As above, we
 					 * can't apply repair_frag() if the tuple state is
@@ -2321,7 +2321,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 					OffsetNumber nextOffnum;
 					ItemId		nextItemid;
 					HeapTupleHeader nextTdata;
-					HTSV_Result	nextTstatus;
+					HTSV_Result nextTstatus;
 
 					nextTid = tp.t_data->t_ctid;
 					priorXmax = HeapTupleHeaderGetXmax(tp.t_data);

@@ -189,7 +189,8 @@ extern bool HeapTupleSatisfiesDirty(HeapTupleHeader tuple,
 extern HTSU_Result HeapTupleSatisfiesUpdate(HeapTupleHeader tuple,
 						 CommandId curcid, Buffer buffer);
 extern HTSV_Result HeapTupleSatisfiesVacuum(HeapTupleHeader tuple,
-						 TransactionId OldestXmin, Buffer buffer);
+						 TransactionId OldestXmin, Buffer buffer,
+						 bool vacuumFull);
 
 extern void HeapTupleSetHintBits(HeapTupleHeader tuple, Buffer buffer,
 					 uint16 infomask, TransactionId xid);
