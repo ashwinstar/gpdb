@@ -914,13 +914,13 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 
 		appendStringInfo(&buffer, "ALTER ROLE \"%s\" ", stmt->role);
 		
-		if (strcmp(stmt->variable, "all") == 0 && valuestr == NULL)
+		if (stmt->setstmt->kind == VAR_RESET_ALL)
 		{
 			appendStringInfo(&buffer, "RESET ALL");
 		}
 		else if (valuestr == NULL)
 		{
-			appendStringInfo(&buffer, "RESET \"%s\"", stmt->variable);
+			appendStringInfo(&buffer, "RESET \"%s\"", stmt->setstmt->name);
 		}
 		else
 		{
@@ -928,7 +928,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 			ListCell   *l;
 			char * 	rawname;
 			
-			appendStringInfo(&buffer, "SET \"%s\" TO ",stmt->variable);
+			appendStringInfo(&buffer, "SET \"%s\" TO ", stmt->setstmt->name);
 		
 			/* Need a modifiable copy of string */
 			rawname = pstrdup(valuestr);
@@ -948,13 +948,14 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 						appendStringInfo(&buffer, ",");
 					first = false;
 					
-					if (curname[0] == '-' || curname[0] == '"' || curname[0] == '\'' || (curname[0] >= '0' && curname[0] <= '9'))
+					if (curname[0] == '-' || curname[0] == '"' || 
+						curname[0] == '\'' || (curname[0] >= '0' && 
+											   curname[0] <= '9'))
 						appendStringInfo(&buffer, "%s", curname);
 					else
 						appendStringInfo(&buffer, "\"%s\"", curname);
 					
 				}
-				
 			}
 			
 			pfree(rawname);
@@ -963,7 +964,6 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 	
 		CdbDoCommand(buffer.data, false, /*start txn*/ true, 
 					 /* mirrors */ true, /* primaries */ true);
-
 	}
 }
 
