@@ -1025,10 +1025,8 @@ DefineEnum(CreateEnumStmt *stmt)
 	char	   *enumName;
 	char	   *enumArrayName;
 	Oid			enumNamespace;
-	Oid			enumTypeOid;
 	AclResult	aclresult;
 	Oid			old_type_oid;
-	Oid			enumArrayOid;
 	Relation	pg_type;
 
 	/* Convert list of names to a name and namespace */
@@ -1120,7 +1118,7 @@ DefineEnum(CreateEnumStmt *stmt)
 			   InvalidOid,		/* typmodin procedure - none */
 			   InvalidOid,		/* typmodout procedure - none */
 			   InvalidOid,		/* analyze procedure - default */
-			   enumTypeOid,		/* element type ID */
+			   stmt->enumTypeOid,		/* element type ID */
 			   true,			/* yes this is an array type */
 			   InvalidOid,		/* no further array type */
 			   InvalidOid,		/* base type ID */
