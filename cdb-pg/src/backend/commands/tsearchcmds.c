@@ -361,7 +361,7 @@ RenameTSParser(List *oldname, const char *newname)
 	namespaceOid = ((Form_pg_ts_parser) GETSTRUCT(tup))->prsnamespace;
 
 	if (SearchSysCacheExists(TSPARSERNAMENSP,
-							 PointerGetDatum(newname),
+							 CStringGetDatum((char *)newname),
 							 ObjectIdGetDatum(namespaceOid),
 							 0, 0))
 		ereport(ERROR,
@@ -581,7 +581,7 @@ RenameTSDictionary(List *oldname, const char *newname)
 	namespaceOid = ((Form_pg_ts_dict) GETSTRUCT(tup))->dictnamespace;
 
 	if (SearchSysCacheExists(TSDICTNAMENSP,
-							 PointerGetDatum(newname),
+							 CStringGetDatum((char *)newname),
 							 ObjectIdGetDatum(namespaceOid),
 							 0, 0))
 		ereport(ERROR,
@@ -1065,7 +1065,7 @@ RenameTSTemplate(List *oldname, const char *newname)
 	namespaceOid = ((Form_pg_ts_template) GETSTRUCT(tup))->tmplnamespace;
 
 	if (SearchSysCacheExists(TSTEMPLATENAMENSP,
-							 PointerGetDatum(newname),
+							 CStringGetDatum((char *)newname),
 							 ObjectIdGetDatum(namespaceOid),
 							 0, 0))
 		ereport(ERROR,
@@ -1443,7 +1443,7 @@ RenameTSConfiguration(List *oldname, const char *newname)
 	namespaceOid = ((Form_pg_ts_config) GETSTRUCT(tup))->cfgnamespace;
 
 	if (SearchSysCacheExists(TSCONFIGNAMENSP,
-							 PointerGetDatum(newname),
+							 CStringGetDatum((char *)newname),
 							 ObjectIdGetDatum(namespaceOid),
 							 0, 0))
 		ereport(ERROR,
