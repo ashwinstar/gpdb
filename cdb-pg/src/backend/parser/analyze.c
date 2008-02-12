@@ -37,6 +37,11 @@
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
 #include "parser/parsetree.h"
+#include "rewrite/rewriteManip.h"
+#include "utils/acl.h"
+#include "utils/builtins.h"
+#include "utils/lsyscache.h"
+#include "utils/syscache.h"
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
@@ -49,6 +54,22 @@ typedef struct
 	int			numParams;
 } check_parameter_resolution_context;
 
+typedef struct
+{
+	List	  *subtlist; /* target list for sub query */
+	List      *vars_for_aggrefs; /* list of Vars to replace Aggrefs. */
+	bool       update_winref; /* indicate if we want to update WindowRefs. */
+	bool       in_winref; /* indicate if a node appears inside a WindowRef. */
+	Query     *query;    /* used to obtain WindowSpec to update frame clauses */
+} grouped_window_ctx;
+
+typedef struct
+{
+	Index *sortref;
+	Index size;
+	int level;
+	int levelsup;
+} sortref_ctx;
 
 static Query *transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt);
 static Query *transformInsertStmt(ParseState *pstate, InsertStmt *stmt);
@@ -70,7 +91,8 @@ static Query *transformExplainStmt(ParseState *pstate,
 static void transformLockingClause(Query *qry, LockingClause *lc);
 static bool check_parameter_resolution_walker(Node *node,
 								check_parameter_resolution_context *context);
-
+static void setQryDistributionPolicy(SelectStmt *stmt, Query *qry);
+static void transformGroupedWindows(Query *qry);
 
 /*
  * parse_analyze
@@ -1976,4 +1998,688 @@ check_parameter_resolution_walker(Node *node,
 	}
 	return expression_tree_walker(node, check_parameter_resolution_walker,
 								  (void *) context);
+}
+
+static void
+setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
+{
+	ListCell   *keys = NULL;
+
+	GpPolicy  *policy = NULL;
+	int			colindex = 0;
+	int			maxattrs = 200;
+
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	Assert(stmt->distributedBy);
+
+	if (stmt->distributedBy)
+	{
+		/*
+		 * We have a DISTRIBUTED BY column list specified by the user
+		 * Process it now and set the distribution policy.
+		 */
+		 
+		if (qry->intoClause == NULL)
+		{
+			elog(ERROR,"DISTRIBUTED BY clause in SELECT statement only makes sense for SELECT INTO");
+		}
+		
+		policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
+		policy->ptype = POLICYTYPE_PARTITIONED;
+		policy->nattrs = 0;
+		policy->attrs[0] = 1;
+		 
+		if (stmt->distributedBy->length == 1 && (list_head(stmt->distributedBy) == NULL || linitial(stmt->distributedBy) == NULL))
+		{
+			/* distributed randomly */
+			qry->intoPolicy = policy;
+		}
+		else
+		foreach(keys, stmt->distributedBy)
+		{
+			char	   *key = strVal(lfirst(keys));
+			bool		found = false;
+		 
+			AttrNumber	n;
+
+			for(n=1;n<=list_length(qry->targetList);n++)
+			{
+								 
+				TargetEntry *target = get_tle_by_resno(qry->targetList, n);
+				colindex = n;
+
+				if (target->resname && strcmp(target->resname, key) == 0)
+				{
+#if 0
+					Oid typeOid = typenameTypeId(target->typname, NULL);
+					bool isArray = (target->typname->arrayBounds == NIL ? false : true);
+															
+					/*
+					 * To be a part of a distribution key, this type must be supported
+					 * for hashing internally in Greenplum Database. We check if the base type is
+					 * supported for hashing or if it is an array type (we support
+					 * hashing on all array types).
+					 */
+					if(!isGreenplumDbHashable(typeOid) && !isArray)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+								 errmsg("type \"%s\" can't be a part of a distribution key",
+										strVal(linitial(column->typname->names)))));						
+					}
+#endif 
+
+					found = true;
+					
+				} /*if*/
+				
+				if (found)
+					break;
+					
+			} /*for*/
+			
+			if (!found)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
+								key)));
+		
+			policy->attrs[policy->nattrs++] = colindex;
+
+		} /*foreach */
+		if (policy->nattrs > 0)
+			qry->intoPolicy = policy;
+	}
+}
+
+/*
+ * We use this mutator to transform queries of the form:
+ * 		SELECT i, win(agg(j)) over (...)
+ * to
+ * 		SELECT i, win(var) over(...) FROM (select i, agg(j) as var ...)
+ *
+ * We perform a complex mutation on the target list: if we have encounter
+ * Aggrefs in the target list, we must replace them with Var references to
+ * the Aggref in the subquery. To do this, we create and save a TargetEntry
+ * representing the Aggref in the context variable and replace the
+ * Aggref with a Var.
+ *
+ * If the input node is a TargetEntry we save this into the sub query
+ * target list and create a Var for the top level query to reference it.
+ */
+
+static Node *
+wingroupmutator(Node *node, void *context)
+{
+	grouped_window_ctx *ctx = (grouped_window_ctx *)context;
+	Node *result;
+
+	if (!node)
+		return NULL;
+
+	/*
+	 * If the node is a Var and it occurs inside the argument list of
+	 * a WindowRef, we modify its attno to point to the correct resno
+	 * in the subquery. Such a Var should appear in one of the target
+	 * entry in the subquery targetlist.
+	 */
+	if (ctx->update_winref && IsA(node, Var) && ctx->in_winref)
+	{
+		TargetEntry *te = NULL;
+		ListCell *lc = NULL;
+		bool done = false;
+
+		/*
+		 * If this Var is in ctx->vars_for_aggref, it has already
+		 * had the right value. Otherwise, find the corresponding
+		 * entry in the ctx->subtlist, and construct a new Var.
+		 */
+		foreach (lc, ctx->vars_for_aggrefs)
+		{
+			Var *var = (Var *)lfirst(lc);
+			Assert(IsA(var, Var));
+			if (equal(node, var))
+			{
+				done = true;
+				break;
+			}
+		}
+
+		if (done)
+			return node;
+		
+		/* Find this var in the subquery targetlist. */
+		foreach (lc, ctx->subtlist)
+		{
+			te = (TargetEntry *)lfirst(lc);
+			if (equal(te->expr, node))
+				break;
+		}
+		Assert(lc != NULL);
+
+		/* Set te->resjunk to false since the window query requires this Var. */
+		te->resjunk = false;
+		
+		return (Node *)makeVar(1, te->resno, exprType(node), exprTypmod(node), 0);
+	}
+	
+	/* We've encountered an Aggref/GroupingFunc/GroupId, push it into the sub query */
+	if (!ctx->update_winref &&
+		(IsA(node, Aggref) ||
+		 IsA(node, GroupingFunc) ||
+		 IsA(node, GroupId)))
+	{
+		ListCell *tmp;
+		TargetEntry *te;
+		Var *v;
+		int attno = 0;
+		const int name_len = 50;
+		char *colname = (char *)palloc(name_len);
+
+		/*
+		 * If there's already a TargetEntry for this node, just return
+		 * a Var pointing to the entry in the sub query.
+		 *
+		 * The code further up the call tree should have been smart enough
+		 * to produce unique Aggrefs for us but, just in case we should do this.
+		 */
+		foreach(tmp, ctx->subtlist)
+		{
+			TargetEntry *te = (TargetEntry *)lfirst(tmp);
+
+			if (equal((Node *)te->expr, (Node *)node))
+			{
+				/* Found a match, time to construct the Var */
+				v = makeVar(1, te->resno, exprType(node), exprTypmod(node), 0);
+				return (Node *)v;
+			}
+		}
+
+		attno = list_length(ctx->subtlist) + 1;
+		Assert (attno < name_len - 4);
+		snprintf(colname, name_len, "att_%d", attno);
+		
+		te = makeTargetEntry((Expr *)node, attno, colname, false);
+		/* seems like we should see if we need to update sort group settings */
+		ctx->subtlist = lappend(ctx->subtlist, te);
+		
+		v = makeVar(1, attno, exprType(node), exprTypmod(node), 0);
+		ctx->vars_for_aggrefs = lappend(ctx->vars_for_aggrefs, v);
+
+		return (Node *)v;
+	}
+
+	if (IsA(node, WindowRef))
+	{
+		WindowRef *wref = (WindowRef *)node;
+		
+		if (ctx->update_winref)
+		{
+			/*
+			 * Change the attno of all Var nodes in the arguments of this WindowRef.
+			 * These attnos should point to the new resno in the subquery.
+			 */
+			ListCell *arg_lc;
+			List *new_args = NIL;
+			
+			ctx->in_winref = true;
+		
+			foreach(arg_lc, wref->args)
+			{
+				Node *arg = lfirst(arg_lc);
+				Node *new_arg;
+					
+				new_arg = wingroupmutator(arg, context);
+				new_args = lappend(new_args, new_arg);
+			}
+			
+			list_free(wref->args);
+			wref->args = new_args;
+
+			return node;
+		}
+
+		else
+		{
+			Node *new_node = expression_tree_mutator(node, wingroupmutator, ctx);
+
+			/* Walk through the frame clause as well. */
+			WindowSpec *spec =
+				(WindowSpec *)list_nth(ctx->query->windowClause, wref->winspec);
+			
+			if (spec->frame)
+			{
+				if (spec->frame->trail)
+				{
+					if (spec->frame->trail->val)
+					{
+						Node *new_val =	wingroupmutator(spec->frame->trail->val, ctx);
+						spec->frame->trail->val = new_val;
+					}
+				}
+
+				if (spec->frame->lead)
+				{
+					if (spec->frame->lead->val)
+					{
+						Node *new_val = wingroupmutator(spec->frame->lead->val, ctx);
+						spec->frame->lead->val = new_val;
+					}
+				}
+			}
+
+			return new_node;
+		}
+	}
+
+	if (IsA(node, TargetEntry))
+	{
+		TargetEntry *te = (TargetEntry *)node;
+
+		ctx->in_winref = false;
+		result = wingroupmutator((Node *)te->expr, context);
+
+		/* When the original te->expr is a Var, let it be one
+		 * new target entry in the subtlist. We construct
+		 * a new Var with a new attno for the original
+		 * targetlist.
+		 */
+		if (IsA(te->expr, Var) &&
+			!ctx->update_winref)
+		{
+			TargetEntry *subte = te;
+			Var *new_var;
+			int attno;
+
+			attno = list_length(ctx->subtlist) + 1;
+			new_var = makeVar(1, attno,
+							  exprType((Node *)subte->expr),
+							  exprTypmod((Node *)subte->expr), 0);
+			if (subte->resname == NULL)
+			{
+				const int name_len = 50;
+				subte->resname = (char *)palloc(name_len);
+				Assert (attno < name_len - 4);
+				snprintf(subte->resname, name_len, "att_%d", attno);
+			}
+			
+			te = makeTargetEntry((Expr *)new_var,
+								 subte->resno,
+								 subte->resname,
+								 te->resjunk);
+			te->ressortgroupref = subte->ressortgroupref;
+
+			subte->resno = attno;
+			ctx->subtlist = lappend(ctx->subtlist, subte);
+		}
+
+		/*
+		 * When the original te->expr is a Aggref/GroupingFunc/Groupid,
+		 * we have put it into the subtlist. The result is a Var
+		 * now, so we generate a new target entry with this Var
+		 * to replace the original node.
+		 */
+		else if (!ctx->update_winref &&
+				 (IsA(te->expr, Aggref) ||
+				  IsA(te->expr, GroupingFunc) ||
+				  IsA(te->expr, GroupId)))
+		{
+			Index ressortgroupref = te->ressortgroupref;
+			Assert(IsA(result, Var));
+			
+			te = makeTargetEntry((Expr *)result,
+								 te->resno,
+								 te->resname,
+								 te->resjunk);
+			te->ressortgroupref = ressortgroupref;
+		}
+
+		else if (!ctx->update_winref)
+		{
+			te->expr = (Expr *)result;
+		}
+
+		return (Node *)te;
+	}
+
+	/* if we've reached this point, just pass the node to the walker */
+	return expression_tree_mutator(node, wingroupmutator, context);
+}
+
+static bool
+record_sortrefs_walker(Node *node, void *context)
+{
+	sortref_ctx *ctx = (sortref_ctx *)context;
+
+	if (node == NULL)
+		return true;
+	
+#define RECORD(ref) \
+do \
+{ \
+	if (ref >= ctx->size) \
+	{ \
+		Index newsz = ref + 1; \
+		Assert(ref > 0); /* check overflow */ \
+		ctx->sortref = (Index *)repalloc(ctx->sortref, sizeof(Index) * newsz); \
+		MemSet(&(ctx->sortref[ctx->size]), \
+			   0, (newsz - ctx->size) * sizeof(Index)); \
+		ctx->size = newsz; \
+	} \
+	ctx->sortref[ref] = ref; \
+} \
+while(0)
+	
+	if (IsA(node, SortClause))
+	{
+		Index ref = ((SortClause *)node)->tleSortGroupRef;
+		RECORD(ref);
+		return false;
+	}
+	else if (IsA(node, GroupClause))
+	{
+		/* 
+		 * Could be okay to just cast this to SortClause in the above block
+		 * as GroupClause is just an alias for SortClause. But, this might
+		 * not always be so!
+		 */
+		Index ref = ((GroupClause *)node)->tleSortGroupRef;
+		RECORD(ref);
+		return false;	
+	}
+	else if(IsA(node, GroupingClause))
+	{
+		GroupingClause *g = (GroupingClause *)node;
+			
+		return expression_tree_walker((Node *)g->groupsets,
+									  record_sortrefs_walker,
+								   	  context);
+	}
+	return expression_tree_walker(node, record_sortrefs_walker, context);
+}
+
+
+static bool
+rewrite_sortrefs_walker(Node *node, void *context)
+{
+	sortref_ctx *ctx = (sortref_ctx *)context; 
+	
+	if (node == NULL)
+		return false;
+	else if(IsA(node, GroupingClause))
+	{
+		GroupingClause *g = (GroupingClause *)node;
+			
+		return expression_tree_walker((Node *)g->groupsets, 
+								      rewrite_sortrefs_walker,
+								      context);
+	}
+	ctx->level++;
+	if (ctx->level == ctx->levelsup)
+	{
+		if (IsA(node, TargetEntry))
+		{
+			TargetEntry *te = (TargetEntry *)node;
+			te->ressortgroupref = ctx->sortref[te->ressortgroupref];
+			ctx->level--;
+			return false;
+		}
+		else if(IsA(node, SortClause))
+		{
+			SortClause *cl = (SortClause *)node;
+			cl->tleSortGroupRef = ctx->sortref[cl->tleSortGroupRef];
+			ctx->level--;
+			return false;
+		}
+		else if(IsA(node, GroupClause))
+		{
+			SortClause *cl = (SortClause *)node;
+			cl->tleSortGroupRef = ctx->sortref[cl->tleSortGroupRef];
+			ctx->level--;
+			return false;
+		}
+	}
+	ctx->level--;
+	return expression_tree_walker(node, rewrite_sortrefs_walker, context);
+}
+
+static void
+rewrite_sortrefs(Query *qry)
+{
+	/*
+	 * We must build up a mapping of sort refs from the old values to
+	 * contiguous values. To do this, we build an array of the refs 
+	 * registered in the relevant sort clauses in the query and then we map
+	 * them to new references, from 1..N. Then we rewrite the target list
+	 * using this.
+	 */
+	sortref_ctx ctx;
+	Index max, i;
+	
+	ctx.size = 8; /* seems like this would cover most cases */
+	ctx.sortref = (Index *)palloc0(ctx.size * sizeof(Index));
+	ctx.levelsup = 1;
+	ctx.level = 0;
+	
+	expression_tree_walker((Node *)qry->sortClause, record_sortrefs_walker, 
+						   &ctx);
+	expression_tree_walker((Node *)qry->distinctClause, record_sortrefs_walker,
+						   &ctx);
+	expression_tree_walker((Node *)qry->groupClause, record_sortrefs_walker,
+						   &ctx);
+	expression_tree_walker((Node *)qry->windowClause, record_sortrefs_walker,
+						   &ctx);
+
+	for (i = 0, max = 1; i < ctx.size; i++)
+	{
+		if (ctx.sortref[i])
+			ctx.sortref[i] = max++;
+	}
+	query_tree_walker(qry, rewrite_sortrefs_walker, &ctx, 0);
+	pfree(ctx.sortref);
+}
+
+/*
+ * ANSI SQL allows users to specify a query of the form:
+ *    SELECT deptno, sum(max(salary)) OVER (order by deptno) FROM employees
+ *    GROUP BY deptno;
+ * 
+ * This is pretty hard for the planner to make sense of, so we rewrite it,
+ * putting the grouped portion of the query in a subquery in the range table:
+ *
+ *    SELECT deptno, sum(max) FROM
+ *      (SELECT deptno, max(salary) FROM employees GROUP BY deptno) AS foo;
+ *
+ * This means moving stuff from qry into a new Query node subq and
+ * making that new node a sub query in the range table of qry. We move
+ * 
+ */ 
+static void
+transformGroupedWindows(Query *qry)
+{
+	Query *subq = makeNode(Query);
+	List *newtl;
+	grouped_window_ctx ctx;
+	RangeTblEntry *rte;
+	RangeTblRef *ref;
+	Alias *a;
+	ListCell *tmp;
+	Index *sortrefmap;
+	Index mapsize;
+	
+	Assert(qry->commandType == CMD_SELECT);
+	subq->commandType = qry->commandType;
+	subq->canSetTag = qry->canSetTag;
+
+	Assert(!PointerIsValid(qry->utilityStmt));
+	subq->utilityStmt = qry->utilityStmt;
+	subq->resultRelation = 0;
+	subq->canSetTag = true;
+	subq->intoClause = NULL;
+	subq->hasAggs = false;
+	/* hasWindFuncs is covered later */
+	subq->hasSubLinks = qry->hasSubLinks; /* If qry has them, we do now */
+	subq->rtable = qry->rtable;
+	subq->jointree = (FromExpr *)makeNode(FromExpr);
+	subq->jointree->fromlist = qry->jointree->fromlist;
+	subq->jointree->quals = qry->jointree->quals;
+
+	/* target list later */
+	subq->groupClause = qry->groupClause;
+	subq->havingQual = qry->havingQual;
+
+	/*
+	 * Check if there is a window function in the join tree. If so
+	 * we must mark hasWindFuncs in the sub query as well.
+	 */
+	if (checkExprHasWindFuncs((Node *)subq->jointree))
+		subq->hasWindFuncs = true;
+
+	/* 
+	 * Rewrite the top level target list to point to the correct var nos
+	 * in the sub query. Be very careful to update the arguments to
+	 * window functions as well.
+	 *
+	 * The sub query must contain all columns referenced in the original
+	 * target list. So:
+	 *
+	 *      SELECT DISTINCT a , avg(b), 
+	 *      	row_number() over (partition by sum(c)), 
+	 *      	ntile(d) over (order by e)
+	 *          FROM r WHERE f < 10
+	 *          GROUP BY a,d,e
+	 *          HAVING max(f) > 0
+	 *          ORDER BY a, avg(b)
+	 *          OFFSET 10 LIMIT 10;
+	 *
+	 *   gets "rewritten" as
+	 *
+	 *      SELECT DISTINCT v1, v4, row_number() over (partition by v5),  
+	 *          ntile(v2) over (order by v3)
+	 *          FROM (
+	 *            SELECT a, d, e, avg(b), sum(c)
+	 *            FROM r
+	 *            WHERE f < 10
+	 *            GROUP BY a,d,e
+	 *            HAVING max(f) > 0  ) v ( v1, v2, v3, v4, v5)
+	 *          ORDER BY v1, v4
+	 *          OFFSET 10 LIMIT 10;
+	 */
+	ctx.subtlist = NIL;
+	ctx.vars_for_aggrefs = NIL;
+	ctx.update_winref = false;
+	ctx.in_winref = false;
+	ctx.query = qry;
+	newtl = (List *)expression_tree_mutator((Node *)qry->targetList, 
+											wingroupmutator, &ctx);
+	ctx.update_winref = true;
+	ctx.in_winref = false;
+	newtl = (List *)expression_tree_mutator((Node *)newtl, 
+											wingroupmutator, &ctx);
+
+
+	Assert(PointerIsValid(newtl));
+	Assert(IsA(newtl, List));
+	qry->targetList = newtl;
+	subq->targetList = ctx.subtlist;
+
+	/* now add a range table entry */
+	rte = makeNode(RangeTblEntry);
+	rte->rtekind = RTE_SUBQUERY;
+	rte->subquery = subq;
+	rte->inFromCl = true;
+	rte->requiredPerms |= ACL_SELECT;
+	
+	/* do aliases */
+	a = makeNode(Alias);
+	a->aliasname = pstrdup("Window");
+	a->colnames = NIL;
+
+	mapsize = 8;
+	sortrefmap = (Index *)palloc0(mapsize * sizeof(Index));
+
+	foreach(tmp, subq->targetList)
+	{
+		TargetEntry *te = (TargetEntry *)lfirst(tmp);
+		char *resname;
+		
+		Assert(IsA(te, TargetEntry));
+
+		/*
+		 * Check if there is an Agg node in the targetlist. If so
+		 * we mark hasAggs to true.
+		 */
+		if (checkExprHasAggs((Node *)te->expr))
+			subq->hasAggs = true;
+
+		/* 
+	 	 * TEs generated for the purpose of sorting (PARTITION BY and 
+		 * ORDER BY) will have resjunk = false. This is fine in the top query
+		 * but not in the sub query. Change them while we're looping.
+		 *
+		 * This is very inefficient but hey, N is usually small.
+	 	 */
+		if (te->resjunk && te->ressortgroupref)
+		{
+			ListCell *tmp2;
+			foreach(tmp2, qry->windowClause)
+			{
+				ListCell *tmp3;
+				WindowSpec *s = lfirst(tmp2);
+				
+				foreach(tmp3, s->partition)
+				{
+					SortClause *sc = lfirst(tmp3);
+
+					if (sc->tleSortGroupRef == te->ressortgroupref)
+					{
+						te->resjunk = false;
+						break;
+					}
+				}
+				
+				if (!te->resjunk)
+					break;
+				
+				foreach(tmp3, s->order)
+				{
+					SortClause *sc = lfirst(tmp3);
+
+					if (sc->tleSortGroupRef == te->ressortgroupref)
+					{
+						te->resjunk = false;
+						break;
+					}
+				}
+
+				if (!te->resjunk)
+					break;
+			}
+		}
+
+		resname = te->resname ? te->resname : "?column?";
+		a->colnames = lappend(a->colnames, makeString(pstrdup(resname)));
+	}
+	rte->alias = a;
+	rte->eref = a;
+	
+	/* we forget the old rtable by overwriting it with this new RTE */
+	qry->rtable = list_make1(rte);
+
+	/* put a ref in the join tree to the new RTE */
+	ref = makeNode(RangeTblRef);
+	ref->rtindex = 1;
+	qry->jointree->fromlist = list_make1(ref);
+	qry->jointree->quals = NULL;
+	qry->hasSubLinks = false;
+
+	/* we can also forget about grouping in the top level query */
+	qry->groupClause = NIL; 
+	qry->havingQual = NULL;
+	qry->hasAggs = false;
+	
+	rewrite_sortrefs(subq);
+	rewrite_sortrefs(qry);
 }

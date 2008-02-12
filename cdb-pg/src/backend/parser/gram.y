@@ -2949,7 +2949,7 @@ TabSubPartitionBy:
  */
 
 CreateAsStmt:
-		CREATE OptTemp TABLE create_as_target AS SelectStmt OptDistributedBy OptTabPartitionBy
+            CREATE OptTemp TABLE create_as_target AS SelectStmt OptDistributedBy /* OptTabPartitionBy */
 				{
 					/*
 					 * When the SelectStmt is a set-operation tree, we must
@@ -2966,6 +2966,7 @@ CreateAsStmt:
 					$4->rel->istemp = $2;
 					n->intoClause = $4;
 					n->distributedBy = $7; 
+                    /*
 					n->partitionBy = $8;
 					n->oidInfo.relOid = 0;
 					n->oidInfo.comptypeOid = 0;
@@ -2975,7 +2976,7 @@ CreateAsStmt:
 					n->relKind = RELKIND_RELATION;
 					n->policy = 0;
                     n->postCreate = NULL;
-					
+                    */					
 
 					$$ = $6;
 				}
