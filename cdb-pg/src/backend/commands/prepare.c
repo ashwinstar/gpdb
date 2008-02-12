@@ -10,7 +10,7 @@
  * Copyright (c) 2002-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/prepare.c,v 1.66 2006/10/04 00:29:51 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/prepare.c,v 1.79 2007/11/15 21:14:33 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,7 +22,6 @@
 #include "commands/explain.h"
 #include "commands/prepare.h"
 #include "miscadmin.h"
-#include "executor/executor.h"
 #include "parser/analyze.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
@@ -33,10 +32,6 @@
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
-
-#include "commands/tablespace.h"
-#include "catalog/catalog.h"
-#include "catalog/pg_type.h"
 
 
 /*
@@ -63,8 +58,7 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	Query	   *query;
 	List	   *query_list,
 			   *plan_list;
-	int			i;		   
-	NodeTag		srctag;
+	int			i;
 
 	/*
 	 * Disallow empty-string statement name (conflicts with protocol-level
@@ -134,22 +128,15 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
-			srctag = T_SelectStmt;
-			break;
 		case CMD_INSERT:
-			srctag = T_InsertStmt;
-			break;
 		case CMD_UPDATE:
-			srctag = T_UpdateStmt;
-			break;
 		case CMD_DELETE:
-			srctag = T_DeleteStmt;
+			/* OK */
 			break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PSTATEMENT_DEFINITION),
 					 errmsg("utility statements cannot be prepared")));
-			srctag = T_Query; /* keep compiler quiet */
 			break;
 	}
 
@@ -163,9 +150,8 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	 * Save the results.
 	 */
 	StorePreparedStatement(stmt->name,
-						   stmt->query,						   
+						   stmt->query,
 						   queryString,
-						   srctag,
 						   CreateCommandTag((Node *) query),
 						   argtypes,
 						   nargs,
@@ -261,13 +247,22 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 		query->intoPolicy->attrs[0] = 1;
         */
         elog( WARNING, "PG 8.3 MERGE TODO:  set the intoPolicy!");
-		MemoryContextSwitchTo(oldContext);
+
+		/* We no longer need the cached plan refcount ... */
+		ReleaseCachedPlan(cplan, true);
+		/* ... and we don't want the portal to depend on it, either */
+		cplan = NULL;
+	}
+	else
+	{
+		/* Replan if needed, and increment plan refcount for portal */
+		cplan = RevalidateCachedPlan(entry->plansource, false);
+		plan_list = cplan->stmt_list;
 	}
 
 	PortalDefineQuery(portal,
 					  NULL,
 					  entry->plansource->query_string,
-					  entry->sourceTag,
 					  entry->plansource->commandTag,
 					  plan_list,
 					  cplan);
@@ -434,7 +429,6 @@ void
 StorePreparedStatement(const char *stmt_name,
 					   Node *raw_parse_tree,
 					   const char *query_string,
-					   NodeTag	   sourceTag,
 					   const char *commandTag,
 					   Oid *param_types,
 					   int num_params,
@@ -485,7 +479,6 @@ StorePreparedStatement(const char *stmt_name,
 	entry->plansource = plansource;
 	entry->from_sql = from_sql;
 	entry->prepare_time = GetCurrentStatementStartTimestamp();
-	entry->sourceTag = sourceTag;
 }
 
 /*
@@ -530,10 +523,10 @@ FetchPreparedStatement(const char *stmt_name, bool throwError)
 TupleDesc
 FetchPreparedStatementResultDesc(PreparedStatement *stmt)
 {
-/*
+	/*
 	 * Since we don't allow prepared statements' result tupdescs to change,
 	 * there's no need for a revalidate call here.
- */
+	 */
 	Assert(stmt->plansource->fixed_result);
 	if (stmt->plansource->resultDesc)
 		return CreateTupleDescCopy(stmt->plansource->resultDesc);
@@ -582,7 +575,7 @@ void
 DeallocateQuery(DeallocateStmt *stmt)
 {
 	if (stmt->name)
-	    DropPreparedStatement(stmt->name, true);
+		DropPreparedStatement(stmt->name, true);
 	else
 		DropAllPreparedStatements();
 }
