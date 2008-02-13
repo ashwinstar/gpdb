@@ -558,41 +558,40 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 	HashJoinTable hashtable = hjstate->hj_HashTable;
 	int			curbatch = hashtable->curbatch;
 	TupleTableSlot *slot;
-    ExprContext    *econtext;
+	ExprContext    *econtext;
 
 	if (curbatch == 0)			/* if it is the first pass */
 	{
 		for (;;)
 		{
-		/*
-		 * Check to see if first outer tuple was already fetched by
-		 * ExecHashJoin() and not used yet.
-		 */
-		slot = hjstate->hj_FirstOuterTupleSlot;
-		if (!TupIsNull(slot))
-			hjstate->hj_FirstOuterTupleSlot = NULL;
-		else
-		{
-			if (hjstate->outer_q != NULL)
-			{
-				slot = dequeueTQ(hjstate->outer_q);
-				if (slot == NULL)
-				{
-					/* exhausted queued tuples */
-					pfree(hjstate->outer_q);
-					hjstate->outer_q = NULL;
-
-					slot = ExecProcNode(outerNode);
-				}
-			}
+			/*
+			 * Check to see if first outer tuple was already fetched by
+			 * ExecHashJoin() and not used yet.
+			 */
+			slot = hjstate->hj_FirstOuterTupleSlot;
+			if (!TupIsNull(slot))
+				hjstate->hj_FirstOuterTupleSlot = NULL;
 			else
-				slot = ExecProcNode(outerNode);
-		}
+			{
+				if (hjstate->outer_q != NULL)
+				{
+					slot = dequeueTQ(hjstate->outer_q);
+					if (slot == NULL)
+					{
+						/* exhausted queued tuples */
+						pfree(hjstate->outer_q);
+						hjstate->outer_q = NULL;
 
-            if (TupIsNull(slot))
-                break;
+						slot = ExecProcNode(outerNode);
+					}
+				}
+				else
+					slot = ExecProcNode(outerNode);
+			}
 
-		while (!TupIsNull(slot))
+			if (TupIsNull(slot))
+				break;
+
 			/*
 			 * We have to compute the tuple's hash value.
 			 */
@@ -614,7 +613,6 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 			 * That tuple couldn't match because of a NULL, so discard it and
 			 * continue with the next one.
 			 */
-			slot = ExecProcNode(outerNode);
 		}
 
 		/*
