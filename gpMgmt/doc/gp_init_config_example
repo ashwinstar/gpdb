@@ -16,12 +16,13 @@ ARRAY_NAME="Greenplum Database"
 
 
 # This specifies the file that contains the list of segment host names 
-# that comprise the Greenplum system  the master host is assumed to 
-# be the host from which you are running the script. If the host list 
-# file does not reside in the same directory where the gpinitsystem 
-# script is executed, specify the absolute path to the file.
+# that comprise the Greenplum system. The master host is assumed to 
+# be the host from which you are running the script and should not be
+# included in this file. If you have a multi-NIC configuration and have
+# multiple host names configured for each segment host, this file should
+# have ALL configured segment host names. Give the absolute path to the file.
 
-MACHINE_LIST_FILE=/home/gpadmin/host_file
+MACHINE_LIST_FILE=/home/gpadmin/multi_seg_host_file
 
 
 # This specifies a prefix that will be used to name the data directories 
@@ -125,10 +126,15 @@ ENCODING=UNICODE
 ################################################
 
 # Uncomment these parameters to set up mirroring at initialization. 
-# If you are using multiple network interfaces per segment host, 
-# do NOT set up mirrors at initialization time. Do so afterwards 
-# using gpaddmirrors
-
+# You can also setup mirrors afterwards using gpaddmirrors. By
+# default, gpinitsystem places a set of mirror segments together on 
+# an alternate host from their primary segment set. If you want to
+# spread the mirrors out, run gpinitsystem with the -S option. Mirror 
+# spreading will break up the mirror sets and place each mirror on 
+# a different host within the array. Spreading is only allowed if 
+# there is a sufficient number of hosts in the array (number of hosts 
+# is greater than or equal to the number of segment instances).
+ 
 
 # The base port number on which mirror segment instances will be 
 # started on a segment host. If a host has multiple mirror segment 
