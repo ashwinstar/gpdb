@@ -161,7 +161,7 @@ AllocOrGetLocalXidForStartDistributedTransaction(DistributedTransactionId gxid, 
 		*shmMaxDistributedXid = gxid;
 	}
 
-	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
+	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, true, InvalidTransactionId);
 	ptr = (DISTRIBUTEDXIDMAP_ENTRY *) DistributedXidMapCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 
@@ -247,7 +247,7 @@ PreallocLocalXidsForOpenDistributedTransactions(DistributedTransactionId *gxidAr
 			*shmMaxDistributedXid = gxid;
 		}
 		
-		slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
+		slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, true, InvalidTransactionId);
 		ptr = (DISTRIBUTEDXIDMAP_ENTRY *) DistributedXidMapCtl->shared->page_buffer[slotno];
 		ptr += entryno;
 
@@ -292,7 +292,7 @@ GetLocalXidForDistributedTransaction(DistributedTransactionId gxid)
 		return InvalidTransactionId;
 	}
 
-	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
+	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, true, InvalidTransactionId);
 	ptr = (DISTRIBUTEDXIDMAP_ENTRY *) DistributedXidMapCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 
@@ -333,7 +333,7 @@ UpdateDistributedXidMapState(DistributedTransactionId gxid, DistributedMapState 
 			 gxid, pageno, entryno, *shmDistributedXidMapHighestPageNo);
 	}
 
-	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, InvalidTransactionId);
+	slotno = SimpleLruReadPage(DistributedXidMapCtl, pageno, true, InvalidTransactionId);
 	ptr = (DISTRIBUTEDXIDMAP_ENTRY *) DistributedXidMapCtl->shared->page_buffer[slotno];
 	ptr += entryno;
 
@@ -373,7 +373,7 @@ RecordMaxDistributedXid(DistributedTransactionId gxid)
 Size
 DistributedXidMapShmemSize_SLru(void)
 {
-	return SimpleLruShmemSize(NUM_DISTRIBUTEDXIDMAP_BUFFERS);
+	return SimpleLruShmemSize(NUM_DISTRIBUTEDXIDMAP_BUFFERS, 0);
 }
 
 /*
@@ -389,7 +389,7 @@ void
 DistributedXidMapShmemInit_SLru(void)
 {
 	DistributedXidMapCtl->PagePrecedes = DistributedXidMapPagePrecedes;
-	SimpleLruInit(DistributedXidMapCtl, "DistributedXidMap Ctl", NUM_DISTRIBUTEDXIDMAP_BUFFERS,
+	SimpleLruInit(DistributedXidMapCtl, "DistributedXidMap Ctl", NUM_DISTRIBUTEDXIDMAP_BUFFERS, 0,
 				  DistributedXidMapControlLock, "pg_distributedxidmap");
 	/* Override default assumption that writes should be fsync'd */
 	DistributedXidMapCtl->do_fsync = false;
