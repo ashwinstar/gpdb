@@ -1580,6 +1580,7 @@ case $OS_TYPE in
 		MAIL=/bin/mailx
 		PING_TIME="1"
 		GTAR=`findCmdInPath gtar`
+		DF=`findCmdInPath df`
 		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT=""
 		PS_TXT="ax"
@@ -1590,6 +1591,7 @@ case $OS_TYPE in
 		DEFAULT_LOCALE_SETTING=en_US.utf8
 		PING_TIME="-c 1"
 		GTAR=`findCmdInPath gtar`
+		DF="`findCmdInPath df` -P"
 		ID=`whoami`
 		DU_TXT="-c" ;;
 	darwin ) IFCONFIG_TXT=""
@@ -1601,6 +1603,7 @@ case $OS_TYPE in
 		DEFAULT_LOCALE_SETTING=en_US.utf-8
 		PING_TIME="-c 1"
 		GTAR=`findCmdInPath gnutar`
+		DF="`findCmdInPath df` -P"
 		DU_TXT="-c" ;;	
 	freebsd ) IFCONFIG_TXT=""
 		PS_TXT="ax"
@@ -1611,6 +1614,7 @@ case $OS_TYPE in
 		DEFAULT_LOCALE_SETTING=en_US.utf8
 		PING_TIME="-c 1"
 		GTAR=`findCmdInPath gtar`
+		DF="`findCmdInPath df` -P"
 		DU_TXT="-c" ;;	
 	* ) echo unknown ;;
 esac
