@@ -335,6 +335,8 @@ static int make_command(const char* cmd, extvar_t* ev, char* buf)
 	sz += make_export("GP_SEG_PG_CONF", ev->GP_SEG_PG_CONF, buf ? buf + sz : 0);
 	sz += make_export("GP_SEG_DATADIR", ev->GP_SEG_DATADIR, buf ? buf + sz : 0);
 	sz += make_export("GP_DATABASE", ev->GP_DATABASE, buf ? buf + sz : 0);
+	sz += make_export("GP_USER", ev->GP_USER, buf ? buf + sz : 0);
+
 	sz += make_export("GP_DATE", ev->GP_DATE, buf ? buf + sz : 0);
 	sz += make_export("GP_TIME", ev->GP_TIME, buf ? buf + sz : 0);
 	sz += make_export("GP_XID", ev->GP_XID, buf ? buf + sz : 0);

@@ -59,6 +59,7 @@ struct extvar_t
 	char* GP_DATABASE;
 	char* GP_SEG_PG_CONF;   /*location of the segments pg_conf file*/
 	char* GP_SEG_DATADIR;   /*location of the segments datadirectory*/
+	char GP_USER[36];
 	char GP_DATE[9];		/* YYYYMMDD */
 	char GP_TIME[7];		/* HHMMSS */
 	char GP_XID[TMGIDSIZE];		/* global transaction id */
@@ -1049,6 +1050,9 @@ open_external_file(FileScanDesc scan)
 	extvar.GP_DATABASE = get_database_name(MyDatabaseId);
 	extvar.GP_SEG_PG_CONF = ConfigFileName;   /*location of the segments pg_conf file*/
 	extvar.GP_SEG_DATADIR = data_directory;   /*location of the segments datadirectory*/
+	snprintf(extvar.GP_USER, sizeof(extvar.GP_USER), "%s", 
+			 GetUserNameFromId(GetUserId()));
+	extvar.GP_USER[sizeof(extvar.GP_USER) - 1] = 0;
    	sprintf(extvar.GP_DATE, "%04d%02d%02d",
 			1900 + tm->tm_year, 1 + tm->tm_mon, tm->tm_mday);
 	sprintf(extvar.GP_TIME, "%02d%02d%02d", 
