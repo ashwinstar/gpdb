@@ -33,8 +33,14 @@ extern PlannedStmt *standard_planner(Query *parse, int cursorOptions,
 extern Plan *subquery_planner(PlannerGlobal *glob, Query *parse,
 				 Index level, double tuple_fraction,
 				 PlannerInfo **subroot);
-extern bool choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
-								   Path *cheapest_path, Path *sorted_path,
-								   double dNumGroups, AggClauseCounts *agg_counts);
+bool 
+choose_hashed_grouping(PlannerInfo     *root,
+					   double           tuple_fraction, 
+                       double           limit_tuples,
+					   Path            *cheapest_path, 
+                       Path            *sorted_path,
+					   Oid             *groupOperators, 
+                       double           dNumGroups,
+					   AggClauseCounts *agg_counts);
 
 #endif   /* PLANNER_H */

@@ -287,7 +287,7 @@ static Node *translate_upper_vars_sequential(Node *node, WindowContext *context)
 static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context);
 static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno, bool no_nulls);
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
-static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys);
+static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, PlannerInfo *subroot);
 
 static Plan *wrap_plan(Plan *plan, Query *query, List *pathkeys, 
        const char *alias_name, List *col_names, Query **query_p);
@@ -3339,7 +3339,7 @@ static RangeTblEntry *rte_for_coplan(
  * and the corresponding plan should reference its results through a 
  * SubqueryScan node.
  */
-static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys)
+static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, PlannerInfo *subroot)
 {
 	Query *subquery;
 	RangeTblEntry *rte;
@@ -3380,7 +3380,7 @@ static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref,
 	rte->subquery = subquery;
 	rte->eref = eref;
 	rte->subquery_plan = plan;
-	rte->subquery_pathkeys = pathkeys;
+	rte->subquery_planinfo = subroot;
 
 	return rte;
 }

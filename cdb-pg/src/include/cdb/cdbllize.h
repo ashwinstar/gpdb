@@ -23,9 +23,8 @@
 #include "nodes/params.h"
 #include "cdb/cdbplan.h"
 
-extern Plan *cdbparallelize(Plan *plan, Query *query,
-							bool isCursor, int cursorOptions, 
-							ParamListInfo boundParams, bool uses_correlation);
+Plan *
+cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlation);
 
 extern bool is_plan_node(Node *node);
 

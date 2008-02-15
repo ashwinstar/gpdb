@@ -165,15 +165,13 @@ extern RestrictInfo *build_implied_join_equality(Oid opno,
 /*
  * prototypes for plan/setrefs.c
  */
-typedef struct set_plan_ref_context
-{
-	Query *qry;
-	List *rtable;
-	List *sharedNodes;
-} set_plan_ref_context;
 
-extern Plan *set_plan_references_qry(PlannerGlobal *glob,
-					Plan *plan, set_plan_ref_context *ctxt);
+/* CDB: setrefs() is a wrapper around set_plan_references() */
+extern Plan *setrefs(PlannerGlobal *glob,
+					Plan *plan,
+					List *rtable,
+                    List **sharednodes_inout);
+
 extern List *set_returning_clause_references(PlannerGlobal *glob,
 								List *rlist,
 								Plan *topplan,

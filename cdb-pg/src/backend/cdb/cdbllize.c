@@ -151,13 +151,7 @@ static void motion_sanity_check(Plan *plan);
  * ------------------------------------------------------------------------- *
  */
 Plan *
-cdbparallelize(Plan *plan,
-			   Query *query,
-			   bool isCursor __attribute__((unused)) ,
-			   int cursorOptions __attribute__((unused)) ,
-			   ParamListInfo boundParams __attribute__((unused)) ,
-			   bool uses_correlation
-)
+cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlation)
 {
 	int			nParamExec;
 	PlanProfile profile;
