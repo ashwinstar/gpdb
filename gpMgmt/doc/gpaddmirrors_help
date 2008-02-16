@@ -8,8 +8,9 @@ initially configured without mirroring.
 SYNOPSIS
 *****************************************************
 
-gpaddmirrors [-d <master_data_directory>] [-p <port_offset>] [-s] 
-[-a] [-m <mirror_config_file>] [-l <logfile_directory>] [-D] [-? | -v]
+gpaddmirrors [-d <master_data_directory>] [-p port_offset] 
+[-s] [-a] [-m <mirror_config_file>] [-B <parallel_processes>] 
+[-l logfile_directory] [-D] [-? | -v]
 
 
 *****************************************************
@@ -52,12 +53,13 @@ The format of the mirror configuration file is:
 
 <mirror_hostname>:<mirror_data_directory_location>
 
-The <mirror_hostname> must match the host name configured for the machine 
-(as returned by the hostname command). Also, you must supply the exact 
-same number of segment hosts and segment instances as you have primary 
-hosts and primary instances. The host names can either be all the same 
-as your primary segment host names, or be all different from the 
-primary segment host names.
+The mirror_hostname must match the host name configured on the 
+segment hosts. If using a multi-NIC configuration, you would use the 
+per-interface host names configured on the segment host. Also, you 
+must supply the exact same number of segment hosts and segment 
+instances as you have primary hosts and primary instances. The 
+host names can either be all the same as your primary segment 
+host names, or be all different from the primary segment host names.
 
 You must make sure that the user who runs gpaddmirrors (for example, the 
 gpadmin user) has permissions to write to these directories. You may want 
@@ -104,12 +106,21 @@ Must supply a configuration file with -m if this option is used.
 
 -m <mirror_config_file>
 
-A configuration file containing one line for each mirror segment you 
-want to create. You must have the same number of mirror hosts and segments 
-as you do primary hosts and segments. Each line in the file specifies 
-the mirror host name and data directory location of a mirror segment 
-in the format of: 
-<mirror_hostname>:<mirror_data_directory_location>
+A configuration file containing one line for each mirror 
+segment you want to create. You must have the same number of 
+mirror hosts and segments as you do primary hosts and segments. 
+If you have a multi-NIC configuration on your segment and mirror 
+hosts, use the per-interface host names in this file. Each line 
+in the file specifies the mirror host name and data directory 
+location of a mirror segment in the format of: 
+<mirror_seg_hostname>:<mirror_data_directory_location>
+
+
+-B <parallel_processes>
+
+The number of mirror creation processes to start in parallel. If 
+not specified, the script will start up to 10 parallel processes 
+depending on how many mirror segment instances it needs to build.
 
 
 -l <logfile_directory>
@@ -137,17 +148,24 @@ EXAMPLES
 *****************************************************
 
 Add mirroring to an existing Greenplum Database system using the same 
-set of hosts as your primary data:
+set of hosts as your primary data with mirror sets grouped together
+based on primary segment host layout:
 
-gpaddmirrors -d /dbfast1/gp-1 -p 10000
+gpaddmirrors
+
+Add mirroring to an existing Greenplum Database system using the same 
+set of hosts as your primary data with mirror sets spread out
+on alternate hosts:
+
+gpaddmirrors -s
 
 
 Add mirroring to an existing Greenplum Database system using a different 
 set of hosts from your primary data:
 
-gpaddmirrors -d /dbfast1/gp-1 -p 10000 -m mirror_config_file
+gpaddmirrors -m mirror_config_file
 
-Where the mirror_config_file looks like this:
+Where the mirror_config_file looks something like this:
 
 host1:/dbfast2/mirror
 host1:/dbfast4/mirror
@@ -161,5 +179,5 @@ host3:/dbfast4/mirror
 SEE ALSO
 *****************************************************
 
-gpinitsystem, gpinitstandby, gpactivatestandby
+gpinitsystem, gpinitstandby, gpactivatestandby, gpexpandsystem
 

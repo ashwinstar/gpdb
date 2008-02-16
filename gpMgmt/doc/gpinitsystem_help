@@ -12,7 +12,7 @@ gpinitsystem -c <gp_init_config_file> [-r | -B <parallel_processes>]
 [-h <host_file>] [-p <postgresql_conf_param_file>] 
 {[-s <standby_master_host>] [-i]} [-o] [-m <max_connections>] 
 [-b <shared_buffer_size>] [-e <superuser_password>] [-n <locale>] 
-[-a] [-q] [-l <logfile_directory>] [-D] [-? | -v]
+[-S] [-a] [-q] [-l <logfile_directory>] [-D] [-? | -v]
 
 
 *****************************************************
@@ -151,6 +151,16 @@ that the locale you specify exists on your operating system
 'Character Set Support' in the PostgreSQL documentation for more 
 information on the supported character set encodings.
 
+-S (spread mirror configuration)
+
+If mirroring parameters specified, spreads the mirror segments amongst 
+the available hosts. The default is to group the a set of mirror segments 
+together on an alternate host from their primary segment set. Mirror 
+spreading will place each mirror on a different host within the 
+Greenplum Database array. Spreading is only allowed if there is a 
+sufficient number of hosts in the array (number of hosts is greater 
+than or equal to the number of segment instances).
+
 
 -a (do not prompt)
 
@@ -189,12 +199,18 @@ EXAMPLES
 
 Initialize a Greenplum Database array:
 
+gpinitsystem -c gp_init_config
+
+
+Initialize a Greenplum Database array and set the superuser 
+remote password:
+
 gpinitsystem -c gp_init_config -e mypassword
 
 
 Initialize a Greenplum Database array with an optional standby master host:
 
-gpinitsystem -c gp_init_config -s host09 -e mypassword
+gpinitsystem -c gp_init_config -s host09
 
 
 Display the online help for the gpinitsystem script:
@@ -206,5 +222,5 @@ gpinitsystem -?
 SEE ALSO
 *****************************************************
 
-gprebuildsystem, gprebuildseg, gpdeletesystem
+gprebuildsystem, gpdeletesystem, gpexpandsystem
 

@@ -7,8 +7,8 @@ Adds and/or initializes a standby master host for a Greenplum Database system.
 SYNOPSIS
 *****************************************************
 
-gpinitstandby -s <standby_hostname> [-i] [-n] [-a] [-q] 
-[-l <logfile_directory>] [-D] [-? | -v]
+gpinitstandby -s <standby_hostname> [-i] [-n] [-a] [-q] [-r] 
+[-B <parallel_processes>] [-l <logfile_directory>] [-D] [-? | -v]
 
 
 *****************************************************
@@ -79,6 +79,19 @@ Do not prompt the user for confirmation.
 
 Run in quiet mode. Command output is not displayed on the screen, but is 
 still written to the log file.
+
+
+-r (remove standby master)
+
+Removes the configured standby master host from your Greenplum Database 
+system. The system must shut down for this operation.
+
+
+-B <parallel_processes>
+
+The number of segment pg_hba.conf files to edit in parallel. If not 
+specified, the script will start up to 40 parallel processes depending 
+on how many segment instances it needs to alter.
 
 
 -l <logfile_directory>
