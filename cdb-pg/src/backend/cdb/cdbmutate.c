@@ -50,6 +50,12 @@ typedef struct ApplyMotionState
 }	ApplyMotionState;
 
 
+typedef struct shareinput_validator_context
+{
+	List           *sharedNodes;
+} shareinput_validator_context;
+
+
 /*
  * Forward Declarations
  */
@@ -81,6 +87,11 @@ static void
 warn_ctid_without_segid(Query *query, Plan *plan);
 
 static bool has_ctid_outside_tlist_walker(Node *node, void* unused  __attribute__((unused)) );
+
+static bool 
+shareinput_validator(PlannerGlobal *glob, Plan *plan, List *sharedNodes);
+static bool 
+shareinput_validator_walker(Node *node, void *context);
 
 #if 0
 static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
@@ -1625,10 +1636,14 @@ static bool shareinput_mutator_dag_to_tree(Node *node, ApplyShareInputContext* c
 /* 
  * Apply the share input mutator.
  */
-Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt)
+Plan *apply_shareinput_dag_to_tree(PlannerGlobal *glob, Plan *plan, ApplyShareInputContext *ctxt)
 {
-	shareinput_walker(shareinput_mutator_dag_to_tree, (Node *) plan, ctxt);
-	return plan;
+    UnusedInReleaseBuild(glob);
+
+    shareinput_walker(shareinput_mutator_dag_to_tree, (Node *) plan, ctxt);
+    
+    Assert(shareinput_validator(glob, plan, ctxt->sharedNodes));
+    return plan;
 }
 
 /* Some helper: implements a stack using List. */
@@ -1867,4 +1882,72 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 	
 	return plan;
 }
+
+
+/*
+ * shareinput_validator
+ *
+ * Checks whether the DAG-to-tree conversion appears to have been 
+ * performed correctly.  Returns true or does not return.
+ *
+ * This was formerly done by set_plan_refs().
+ */
+static bool 
+shareinput_validator(PlannerGlobal *glob, Plan *plan, List *sharedNodes)
+{
+    ListCell                       *cell;
+    shareinput_validator_context    context;
+
+    context.sharedNodes = sharedNodes;
+    
+    shareinput_validator_walker((Node *)plan, &context);
+    foreach(cell, glob->subplans)
+        shareinput_validator_walker((Node *)lfirst(cell), &context);
+
+    return true;
+}                               /* shareinput_validator */
+
+static bool 
+shareinput_validator_walker(Node *node, void *context)
+{
+    Plan                           *plan = (Plan *)node;
+    shareinput_validator_context   *ctx = (shareinput_validator_context *)context;
+
+    switch (nodeTag(plan))
+    {
+		case T_ShareInputScan:
+			{
+				ShareInputScan *sisc = (ShareInputScan *) plan;
+				Plan *childPlan = plan->lefttree;
+
+				if(childPlan == NULL)
+				{
+					Assert(sisc->share_type != SHARE_NOTSHARED 
+							&& sisc->share_id >= 0 
+							&& ctx->sharedNodes); 
+					childPlan = list_nth(ctx->sharedNodes, sisc->share_id);
+				}
+
+                Assert(childPlan && IsA(childPlan,Material) || IsA(childPlan, Sort));
+				if(IsA(childPlan, Material))
+				{
+					Material *shared = (Material *) childPlan;
+					Assert(shared->share_type != SHARE_NOTSHARED
+							&& shared->share_id == sisc->share_id);
+				}
+				else
+				{
+					Sort *shared = (Sort *) childPlan;
+					Assert(shared->share_type != SHARE_NOTSHARED
+							&& shared->share_id == sisc->share_id);
+				}
+			}
+			break;
+
+		default:
+	        break;
+	}   
+
+    return plan_tree_walker(node, shareinput_validator_walker, ctx);
+}                               /* shareinput_validator_walker */
 

@@ -656,7 +656,6 @@ create_result_plan(CreatePlanContext *ctx, ResultPath *best_path)
 		subplan = NULL;
 
 	/* best_path->quals is just bare clauses */
-
 	quals = order_qual_clauses(ctx->root, best_path->quals);
 
 	plan = make_result(ctx->root, tlist, (Node *)quals, subplan);
@@ -4661,6 +4660,12 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
  * were already factored into the subplan's startup cost, and just copy the
  * subplan cost.  If there's no subplan, we should include the qual eval
  * cost.  In either case, tlist eval cost is not to be included here.
+ *
+ * CDB: When adding a Result node atop a subplan, the 'root' parameter is
+ * unused and can be NULL for callers such as standard_planner() and
+ * set_plan_references() where there is no PlannerInfo.  Note that the 
+ * only use of 'root' in cost_qual_eval() is to access root->glob upon
+ * encountering a SubPlan node.
  */
 Result *
 make_result(PlannerInfo *root,
@@ -4671,7 +4676,9 @@ make_result(PlannerInfo *root,
 	Result	   *node = makeNode(Result);
 	Plan	   *plan = &node->plan;
 
-	if (subplan)
+    Assert(subplan || root);    /* root can be NULL if subplan is given */
+    
+    if (subplan)
 		copy_plan_costsize(plan, subplan);
 	else
 	{

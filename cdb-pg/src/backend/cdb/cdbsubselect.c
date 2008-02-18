@@ -320,6 +320,17 @@ convert_EXISTS_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink
 /*
  * convert_IN_to_join: can we convert an IN SubLink to join style?
  *
+ * The caller has found a SubLink at the top level of WHERE, but has not
+ * checked the properties of the SubLink at all.  Decide whether it is
+ * appropriate to process this SubLink in join style.  If so, build the
+ * qual clause(s) to replace the SubLink, and return them.  Else return
+ * the original sublink.  In either case the subquery is modified in
+ * place to remove unnecessary clauses.
+ *
+ * Side effects of a successful conversion include adding the SubLink's
+ * subselect to the query's rangetable and adding an InClauseInfo node to
+ * its in_info_list.
+ *
  * This function was formerly in subselect.c.
  */
 static Node *
@@ -328,6 +339,7 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 	Query	   *subselect = (Query *) sublink->subselect;
 	int			rtindex;
 	InClauseInfo *ininfo;
+	Node	   *result;
     bool        correlated;
 
     Assert(IsA(subselect, Query));
@@ -374,6 +386,14 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
 	rtindex = list_length(root->parse->rtable);
     Assert(rt_fetch(rtindex, root->parse->rtable)->subquery == subselect);
 
+	/*
+	 * ininfo->sub_targetlist is filled with a list of Vars representing the
+	 * subselect outputs.
+	 */
+	ininfo->sub_targetlist = generate_subquery_vars(root,
+													subselect->targetList,
+													rtindex);
+
     /*
      * Uncorrelated "=ANY" subqueries can use JOIN_UNIQUE dedup technique.  We
 	 * expect that the test expression will be either a single OpExpr, or an
@@ -386,29 +406,50 @@ convert_IN_to_join(PlannerInfo *root, List** rtrlist_inout, SubLink *sublink)
     if (!correlated &&
         sublink->testexpr)
     {
-        ininfo->in_operators = something;       // CDB TODO: pg 8.3 merge
         if (IsA(sublink->testexpr, OpExpr))
 	    {
-		    List	   *opclasses;
-		    List	   *opstrats;
+			Oid			opno = ((OpExpr *) sublink->testexpr)->opno;
+			List	   *opfamilies;
+			List	   *opstrats;
 
-		    get_op_btree_interpretation(((OpExpr *) sublink->testexpr)->opno,
-									    &opclasses, &opstrats);
-		    if (list_member_int(opstrats, ROWCOMPARE_EQ))
-			    ininfo->try_join_unique = true;
+			get_op_btree_interpretation(opno, &opfamilies, &opstrats);
+			if (list_member_int(opstrats, ROWCOMPARE_EQ))
+            {
+				ininfo->in_operators = list_make1_oid(opno);
+                ininfo->try_join_unique = true;
+            }
 	    }
 	    else if (and_clause(sublink->testexpr))
-		    ininfo->try_join_unique = true;
+		{
+			List	   *in_operators = NIL;
+			ListCell   *lc;
+
+			/* OK, but we need to extract the per-column operator OIDs */
+			foreach(lc, ((BoolExpr *) sublink->testexpr)->args)
+			{
+				OpExpr	   *op = (OpExpr *) lfirst(lc);
+
+				if (!IsA(op, OpExpr))	/* probably shouldn't happen */
+					break;
+				in_operators = lappend_oid(in_operators, op->opno);
+			}
+            if (!lc)
+            {
+                ininfo->in_operators = in_operators;
+                ininfo->try_join_unique = true;
+            }
+		}
+        AssertImply(ininfo->try_join_unique, 
+            list_length(ininfo->in_operators) == list_length(ininfo->sub_targetlist));
     }
 
 	/*
-	 * Build the result qual expression.  As a side effect,
-	 * ininfo->sub_targetlist is filled with a list of Vars representing the
-	 * subselect outputs.
+	 * Build the result qual expression.
 	 */
-	return convert_testexpr(root, sublink->testexpr,
-							&ininfo->sub_targetlist,
-							subselect->targetList);
+	result = convert_testexpr(root,
+							  sublink->testexpr,
+							  ininfo->sub_targetlist);
+	return result;
 }                               /* convert_IN_to_join */
 
 

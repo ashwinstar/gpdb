@@ -198,15 +198,11 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	shareinput_context.sliceMarks = NULL;
 	shareinput_context.motStack = NULL;
 
-	top_plan = apply_shareinput_dag_to_tree(top_plan, &shareinput_context);
+	top_plan = apply_shareinput_dag_to_tree(glob, top_plan, &shareinput_context);
 
 	/* final cleanup of the plan */
 	Assert(glob->finalrtable == NIL);
-	top_plan = setrefs(glob, 
-                       top_plan, 
-                       root->parse->rtable,
-                       &shareinput_context.sharedNodes);
-
+	top_plan = set_plan_references(glob, top_plan, root->parse->rtable);
 	/* ... and the subplans (both regular subplans and initplans) */
 	Assert(list_length(glob->subplans) == list_length(glob->subrtables));
 	forboth(lp, glob->subplans, lr, glob->subrtables)
@@ -214,22 +210,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		Plan	   *subplan = (Plan *) lfirst(lp);
 		List	   *subrtable = (List *) lfirst(lr);
 
-		lfirst(lp) = setrefs(glob, 
-                             subplan,
-                             subrtable,
-                             &shareinput_context.sharedNodes);
-	}
-
-	if ( Gp_role == GP_ROLE_DISPATCH )
-	{
-		bool uses_correlation = has_correlation_params(glob->paramlist);
-		
-        top_plan = cdbparallelize(root, top_plan, parse, uses_correlation);
-
-		/* cdbparallelize may create additional slices that may affect share input.
-		 * need to mark material nodes that are split acrossed multi slices.
-		 */
-		top_plan = apply_shareinput_xslice(top_plan, &shareinput_context);
+		lfirst(lp) = set_plan_references(glob, subplan, subrtable);
 	}
 
 	/* build the PlannedStmt result */

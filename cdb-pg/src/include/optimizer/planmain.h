@@ -121,9 +121,14 @@ extern MergeJoin *make_mergejoin(List *tlist,
 			   bool *mergenullsfirst,
 			   Plan *lefttree, Plan *righttree,
 			   JoinType jointype);
-extern Window *make_window(PlannerInfo *root, List *tlist,
-		   int numPartCols, AttrNumber *partColIdx, Oid partColOperators, List *windowKeys,
-		   Plan *lefttree);
+Window *
+make_window(PlannerInfo    *root, 
+            List           *tlist,
+		    int             numPartCols, 
+            AttrNumber     *partColIdx, 
+            Oid            *partColOperators, 
+            List           *windowKeys,
+		    Plan           *lefttree);
 extern Material *make_material(Plan *lefttree);
 extern Plan *materialize_finished_plan(Plan *subplan);
 extern Unique *make_unique(Plan *lefttree, List *distinctList);
@@ -165,13 +170,9 @@ extern RestrictInfo *build_implied_join_equality(Oid opno,
 /*
  * prototypes for plan/setrefs.c
  */
-
-/* CDB: setrefs() is a wrapper around set_plan_references() */
-extern Plan *setrefs(PlannerGlobal *glob,
+extern Plan *set_plan_references(PlannerGlobal *glob,
 					Plan *plan,
-					List *rtable,
-                    List **sharednodes_inout);
-
+					List *rtable);
 extern List *set_returning_clause_references(PlannerGlobal *glob,
 								List *rlist,
 								Plan *topplan,

@@ -16,8 +16,14 @@
 #include "nodes/plannodes.h"
 #include "nodes/relation.h"
 
-extern Node *convert_testexpr(PlannerInfo *root, Node *testexpr, int rtindex, List **righthandIds,
-				              List *sub_tlist);
+Node *
+convert_testexpr(PlannerInfo *root,
+				 Node *testexpr,
+				 List *subst_nodes);
+List *
+generate_subquery_vars(PlannerInfo *root, 
+                       List        *tlist, 
+                       Index        varno);
 extern Node *SS_replace_correlation_vars(PlannerInfo *root, Node *expr);
 extern Node *SS_process_sublinks(PlannerInfo *root, Node *expr, bool isQual);
 extern void SS_finalize_plan(PlannerInfo *root, Plan *plan);

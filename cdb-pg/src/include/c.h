@@ -759,6 +759,18 @@ typedef NameData *Name;
 #define UnusedArg(arg)    ((void)(arg))
 
 
+/*
+ * UnusedInReleaseBuild
+ *  Silence the compiler's warning about a parameter or variable which is
+ *  used in debug builds but unused in release builds.
+ */
+#ifdef USE_ASSERT_CHECKING
+#define UnusedInReleaseBuild(arg)   (UnusedArg(arg))
+#else
+#define UnusedInReleaseBuild(arg)
+#endif
+
+
 /* ----------------------------------------------------------------
  *				Section 7:	random stuff
  * ----------------------------------------------------------------

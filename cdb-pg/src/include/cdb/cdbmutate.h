@@ -50,6 +50,6 @@ typedef struct ApplyShareInputContext
 	List *qdSlices;
 } ApplyShareInputContext;
 
-extern Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt); 
+extern Plan *apply_shareinput_dag_to_tree(PlannerGlobal *glob, Plan *plan, ApplyShareInputContext *ctxt); 
 extern Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt);
 #endif   /* CDBMUTATE_H */
