@@ -213,6 +213,20 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		lfirst(lp) = set_plan_references(glob, subplan, subrtable);
 	}
 
+	if ( Gp_role == GP_ROLE_DISPATCH )
+	{
+		bool uses_correlation = has_correlation_params(PlannerParamList);
+		
+		result_plan = cdbparallelize(result_plan, parse,
+									isCursor, cursorOptions,
+									boundParams, uses_correlation);
+
+		/* cdbparallelize may create additional slices that may affect share input.
+		 * need to mark material nodes that are split acrossed multi slices.
+		 */
+		result_plan = apply_shareinput_xslice(result_plan, &shareinput_context);
+	}
+
 	/* build the PlannedStmt result */
 	result = makeNode(PlannedStmt);
 
