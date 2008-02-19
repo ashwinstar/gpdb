@@ -31,7 +31,7 @@ CREATE EXTERNAL TABLE <replaceable class="PARAMETER">table_name</replaceable> (<
                [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
                [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...] )]
 	  [ ENCODING '<replaceable class="parameter">encoding</replaceable>' ]
-	  [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS] ]
+	  [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS | PERCENT] ]
 
 CREATE EXTERNAL WEB TABLE <replaceable class="PARAMETER">table_name</replaceable> (<replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [, ...])
       LOCATION ('http://<replaceable class="PARAMETER">webhost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
@@ -48,7 +48,7 @@ CREATE EXTERNAL WEB TABLE <replaceable class="PARAMETER">table_name</replaceable
                [QUOTE [AS] '<replaceable class="PARAMETER">quote</replaceable>'] 
                [FORCE NOT NULL <replaceable class="PARAMETER">column</replaceable> [, ...] )]
 	 [ ENCODING '<replaceable class="parameter">encoding</replaceable>' ]
-	 [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS] ]
+	 [ [LOG ERRORS INTO <replaceable class="parameter">error_table</replaceable>] SEGMENT REJECT LIMIT <replaceable class="parameter">count</replaceable> [ROWS | PERCENT] ]
 </synopsis>
 
  </refsynopsisdiv>
