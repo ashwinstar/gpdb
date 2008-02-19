@@ -667,7 +667,7 @@ static struct config_bool ConfigureNamesBool[] =
 						 "an operating system or hardware crash.")
 		},
 		&enableFsync,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 		{
 		{"synchronous_commit", PGC_USERSET, WAL_SETTINGS,
