@@ -1,0 +1,90 @@
+COMMAND NAME: gppreupgrade
+
+Checks for dependencies on the pg_stat_activity, pg_exttable, 
+and pg_window system catalog relations prior to an upgrade.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gppreupgrade [-d <master_data_directory>] [-l <logfile_directory>] 
+[-D] [-?] [-v]
+
+
+*****************************************************
+DESCRIPTION
+***************************************************** 
+
+The gpdbupgrade utility needs to drop and recreate the 
+pg_stat_activity, pg_exttable, and pg_window system catalog 
+relations. If you have created objects that depend on these 
+relations (such as views), you must drop them before you begin 
+the upgrade process. 
+
+Run this utility to check for dependencies on these catalog 
+tables prior to upgrading. If dependent objects are found, you 
+should secure a backup of the dependent object definitions and 
+then drop the objects prior to upgrading. 
+
+For example, to find the relevant view definitions, you can 
+check the pg_views relation. For example:
+
+psql -c "SELECT viewname, definition FROM pg_views \
+
+              WHERE definition ILIKE '%pg_stat_activity%' \
+
+              OR definition ILIKE '%pg_exttable%' \
+
+              OR definition ILIKE '%pg_window%';" \
+
+              >> views.out
+
+After the upgrade is complete, you can use your saved object 
+definitions to recreate the dependent objects.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-d <master_data_directory>
+
+Optional. The master host data directory. If not specified, 
+the value set for $MASTER_DATA_DIRECTORY will be used.
+
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
+
+
+-D (debug)
+
+Sets logging level to debug.
+
+
+-? (help)
+
+Displays the online help.
+
+
+-v (show script version)
+
+Displays the version, status, last updated date, and check sum 
+of this script.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Check for catalog dependencies prior to upgrade:
+
+gppreupgrade
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpdbupgrade
