@@ -83,6 +83,10 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
+#
+# The checkTools target builds a subset of the GPDB package that includes
+# just the tools used to verify the configuration of a set of GPDB servers.
+#
 CHECKTOOLS_SCRIPTS = \
 	bin/diskqual.ksh	\
 	bin/gpscp		\
