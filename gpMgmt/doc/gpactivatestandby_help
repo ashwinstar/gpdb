@@ -1,32 +1,30 @@
 COMMAND NAME: gpactivatestandby
 
 Activates a standby master host and makes it the active master 
-for the Greenplum Database system, or configures a host to be 
-the standby master for a Greenplum Database system.
-
+for the Greenplum Database system.
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
+gpactivatestandby -d <standby_master_datadir> 
+[-c <new_standby_master>] [-f] [-a] [-q] [-l <logfile_directory>] 
 
-gpactivatestandby -d <standby_master_datadir> [-c <new_standby_master>] 
-[-f] [-a] [-q] [-l <logfile_directory>] [-? | -v]
+gpactivatestandby -? | -v
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
+The gpactivatestandby utility activates a backup master host 
+and brings it into operation as the active master instance for 
+a Greenplum Database system. You must run this utility from the 
+master host you are activating, not the failed master host you 
+are disabling. Running this utility assumes you have a backup 
+master host configured for the system (see gpinitstandby).
 
-The gpactivatestandby script activates a backup master host and 
-brings it into operation as the active master instance for a Greenplum 
-Database system. You must run this script from the master host you are 
-activating, not the failed master host you are disabling. Running this 
-script assumes you have a backup master host configured for the system 
-(see gpinitstandby).
-
-The script will perform the following steps:
+The utility will perform the following steps:
 
 * Stop the synchronization process (gpsyncmaster) on the backup master
 
@@ -39,31 +37,32 @@ The script will perform the following steps:
 
 * Restart the Greenplum Database system with the new master host
 
-A backup Greenplum master host serves as a warm standby in the event 
-of the primary Greenplum master host becoming unoperational. The backup 
-master is kept up to date by a transaction log replication process 
-(gpsyncmaster), which runs on the backup master host and keeps the 
-data between the primary and backup master hosts synchronized. 
+A backup Greenplum master host serves as a ‘warm standby’ in the 
+event of the primary Greenplum master host becoming unoperational. 
+The backup master is kept up to date by a transaction log replication 
+process (gpsyncmaster), which runs on the backup master host and 
+keeps the data between the primary and backup master hosts synchronized. 
 
 If the primary master fails, the log replication process is shutdown, 
 and the backup master can be activated in its place by using the 
-gpactivatestandby script. Upon activation of the backup master, the 
-replicated logs are used to reconstruct the state of the Greenplum master 
-host at the time of the last successfully committed transaction. To specify 
-a new standby master host after making your current standby 
-master active, use the -c option.
+gpactivatestandby utility. Upon activation of the backup master, 
+the replicated logs are used to reconstruct the state of the 
+Greenplum master host at the time of the last successfully committed 
+transaction. To specify a new standby master host after making your 
+current standby master active, use the -c option.
 
-In order to use gpactivatestandby to activate a new primary master host, 
-the master host that was previously serving as the primary master cannot 
-be running. The script checks for a postmaster.pid file in the data 
-directory of the disabled master host, and if it finds it there, it will 
-assume the old master host is still active. In some cases, you may need 
-to remove the postmaster.pid file from the disabled master host data 
-directory before running gpactivatestandby (for example, if the 
-disabled master host process was terminated unexpectedly).
+In order to use gpactivatestandby to activate a new primary master 
+host, the master host that was previously serving as the primary 
+master cannot be running. The utility checks for a postmaster.pid 
+file in the data directory of the disabled master host, and if it 
+finds it there, it will assume the old master host is still active. 
+In some cases, you may need to remove the postmaster.pid file from 
+the disabled master host data directory before running 
+gpactivatestandby (for example, if the disabled master host 
+process was terminated unexpectedly).
 
-After activating a standby master, run ANALYZE to update the database 
-query statistics. For example:
+After activating a standby master, run ANALYZE to update the 
+database query statistics. For example:
 
 psql dbname -c 'ANALYZE;'
 
@@ -72,31 +71,32 @@ psql dbname -c 'ANALYZE;'
 OPTIONS
 *****************************************************
 
-
 -d <standby_master_datadir>
 
-Required. The absolute path of the data directory for the master host 
-you are activating.
+Required. The absolute path of the data directory for the 
+master host you are activating.
 
 
 -c <new_standby_master_hostname>
 
-Optional. After you activate your standby master you may want to specify 
-another host to be the new standby, otherwise your Greenplum Database 
-system will no longer have a standby master configured. Use this option 
-to specify the hostname of the new standby master host. You can also use 
-gpinitstandby at a later time to configure a new standby master host.
+Optional. After you activate your standby master you may 
+want to specify another host to be the new standby, otherwise 
+your Greenplum Database system will no longer have a standby 
+master configured. Use this option to specify the hostname of 
+the new standby master host. You can also use gpinitstandby 
+at a later time to configure a new standby master host.
 
 
 -f (force activation)
 
-Use this option to force activation of the backup master host when the 
-synchronization process (gpsyncmaster) is not running. Only use this 
-option if you are sure that the backup and primary master hosts are 
-consistent, and you know the gpsyncmaster process is not running on 
-the backup master host. This option may be useful if you have just 
-initialized a new backup master using gpinitstandby, and want to 
-activate it immediately.
+Use this option to force activation of the backup master 
+host when the synchronization process (gpsyncmaster) is 
+not running. Only use this option if you are sure that 
+the backup and primary master hosts are consistent, and you 
+know the gpsyncmaster process is not running on the backup 
+master host. This option may be useful if you have just 
+initialized a new backup master using gpinitstandby, and 
+want to activate it immediately.
 
 
 -a (do not prompt)
@@ -106,8 +106,8 @@ Do not prompt the user for confirmation.
 
 -q (no screen output)
 
-Run in quiet mode. Command output is not displayed on the screen, 
-but is still written to the log file.
+Run in quiet mode. Command output is not displayed on 
+the screen, but is still written to the log file.
 
 
 -l <logfile_directory>
@@ -120,24 +120,24 @@ The directory to write the log file. Defaults to ~/gpAdminLogs.
 Displays the online help.
 
 
--v (show script version)
+-v (show utility version)
 
-Displays the version, status, last updated date, and check sum of this script.
+Displays the version, status, last updated date, and check sum of 
+this utility.
 
 
 *****************************************************
 EXAMPLES
 *****************************************************
 
-
-Activate the backup master host and make it the active master instance for a 
-Greenplum Database system (run from backup master host you are activating):
+Activate the backup master host and make it the active master 
+instance for a Greenplum Database system (run from backup master 
+host you are activating):
 
 gpactivatestandby -d /gpdata
 
-
-Activate the backup master host and at the same time configure another 
-host to be your new standby master:
+Activate the backup master host and at the same time configure 
+another host to be your new standby master:
 
 gpactivatestandby -d /gpdata -c new_standby_hostname
 

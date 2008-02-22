@@ -52,7 +52,7 @@ table was first partitioned. It performs the following tasks:
   statements are automatically redirected to the correct child table. 
   The rewrite rules are created using a predefined naming convention of:
 
-     rule_<top_level_parent>_c_d_<child_depth_#>_<partition_type>_<partition_number>_<oid_of_parent_table>_<partition_criteria>
+     rule_<child_table_name>
 
   For example:
      rule_sales_c_d_1_m_6_19555_month
@@ -61,7 +61,7 @@ table was first partitioned. It performs the following tasks:
   corresponding indexes on the new child tables. Indexes are created 
   with a predefined naming convention of:
  
-     idx_<column_number>_<top_level_parent>_c_d_<child_depth_#>_<partition_type>_<partition_number>_<oid_of_parent_table>_<partition_criteria>
+     idx_<column_number>_<child_table_name>
 
   For example:
     idx_1_sales_c_d_1_m_6_19555_month

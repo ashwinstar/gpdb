@@ -1,34 +1,34 @@
 COMMAND NAME: gpcreatepart
 
-Partitions a table by creating inherited child tables, defining
-check constraints, creating rewrite rules, and moving existing data 
-from the parent table into the correct child table.
-
+Partitions a table by creating inherited child tables, defining 
+check constraints, creating rewrite rules, setting table permissions, 
+and moving existing data from the parent table into the correct 
+child table.
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
 gpcreatepart -t <schema>.<parent_table> -f <partition_column> -p d 
--c {m|d|h} -s YYYY-MM-DD -n <number_children> [-m <conversion>] [-r] 
-[-b] [-u] [-i <ixcolumn1>[,<ixcolumn2>,...]]
+-c {y|m|d|h} -s <YYYY-MM-DD> -n <number_children> [-m <conversion>] 
+[-r] [-b] [-u] [-i <ixcolumn1>[,<ixcolumn2>,...]] 
 [-A {<distcolumn1>[,<distcolumn2>,...] | 'DISTRIBUTED RANDOMLY'}] 
-[-q] [-a] [-l <log_dir>] [-D] [-k] [-F] [-d <master_data_directory>] 
-[-x <database>]
+[-F] [-N] [-C] [-B <parallel_processes>] [-q] [-a] [-l <log_dir>] 
+[-D] [-k] [-d <master_data_directory>] [-x <database>]
 
 gpcreatepart -t <schema>.<parent_table> -f <partition_column> -p r 
 -s <range_start_value> -e <range_end_value> -g <range_increment> 
-[-m <conversion>] [-r] [-b] [-u] [-i <ixcolumn1>[,<ixcolumn2>,...]]
-[-A {<distcolumn1>[,<distcolumn2>,...] | 'DISTRIBUTED RANDOMLY'}]  
-[-q] [-a] [-l <log_dir>] [-D] [-k] [-F] [-d <master_data_directory>] 
-[-x <database>]
+[-m <conversion>] [-r] [-b] [-u] [-i <ixcolumn1>[,<ixcolumn2>,...]] 
+[-A {<distcolumn1>[,<distcolumn2>,...] | 'DISTRIBUTED RANDOMLY'}] 
+[-F] [-N] [-C] [-B <parallel_processes>] [-q] [-a] [-l <log_dir>] 
+[-D] [-k] [-d <master_data_directory>] [-x <database>]
 
 gpcreatepart -t <schema>.<parent_table> -f <partition_column> -p l 
--o <list_value1>,<list_value2>[,<list_value3>,...] [-m <conversion>] [-r] 
-[-b] [-u] [-i <ixcolumn1>[,<ixcolumn2>,...]] 
+-o <list_value1>,<list_value2>[,<list_value3>,...] [-m <conversion>] 
+[-r] [-b] [-u] [-i <ixcolumn1>[,<ixcolumn2>,...]] 
 [-A {<distcolumn1>[,<distcolumn2>,...] | 'DISTRIBUTED RANDOMLY'}] 
-[-q] [-a] [-l <log_dir>] [-D] [-k] [-F] [-d <master_data_directory>] 
-[-x <database>]
+[-F] [-N] [-C] [-B <parallel_processes>] [-q] [-a] [-l <log_dir>] 
+[-D] [-k] [-d <master_data_directory>] [-x <database>]
 
 gpcreatepart -? | -v
 
@@ -37,58 +37,76 @@ gpcreatepart -? | -v
 DESCRIPTION
 *****************************************************
 
-The gpcreatepart script automates the administrative tasks of 
+The gpcreatepart utility automates the administrative tasks of 
 partitioning a large parent table into several smaller child tables. 
 It performs the following tasks:
 
-* Creates child tables that inherit all attributes from the parent table 
-  (columns, constraints, permissions, distribution key, etc.).
+* Creates child tables which inherit attributes from the parent 
+  table (columns, constraints, distribution key, table permissions). 
+  Note that you can optionally define a different Greenplum 
+  distribution policy on the child tables using the -A option. 
+  The child table names are created using a naming convention of: 
+    <top_level_parent>_c_d_<child_depth_#>_<partition_type>_
+    <partition_number>_<oid_of_parent_table>_<partition_criteria>
+   
+    For example:
+    sales_c_d_1_m_6_19555_month
 
-* Defines CHECK constraints on the child tables based on the date range, 
-  numeric range, or list value specified. The child table names are 
-  created using a predefined naming convention of:
-  <top_level_parent>_child_depth_<#>_<partition_type>_<data_range>_<type>
+* Defines CHECK constraints on the child tables based on the 
+  date range, numeric range, or list value specified. 
 
-* Creates the appropriate rewrite rules on the parent table so that 
-  INSERT statements are automatically redirected to the correct child table. 
-  The rewrite rules are created using a predefined naming convention of:
-  rule_<child_table_name>
+* Creates the appropriate rewrite rules on the parent table 
+  so that INSERT statements are automatically redirected to 
+  the correct child table. The rewrite rules are created using 
+  a naming convention of: 
+    rule_<child_table_name>
 
-* Creates the specified indexes on the child tables. Indexes are created 
-  with a predefined naming convention of:
-  idx_<column_number>_<child_table_name>
+    For example:
+    rule_sales_c_d_1_m_6_19555_month
 
-* If the parent table contains data, removes partitioned records from the 
-  parent table and inserts them into the correct child table based on 
-  the CHECK constraints.
+* If -i is supplied, creates the specified indexes on the 
+  child tables. Indexes are created with a naming convention of:
+     idx_<column_number>_<child_table_name>
 
-Table partitioning addresses the problem of supporting very large tables, 
-such as fact tables, by allowing you to divide them into smaller and more 
-manageable pieces. Partitioning is especially useful in data warehouse 
-applications, which commonly store and analyze large amounts of 
-historical data.
+     For example:
+     idx_1_sales_c_d_1_m_6_19555_month
 
-In Greenplum Database, partitioning is a procedure that creates multiple 
-sub-tables (or child tables) from a single large table (or parent table). 
-The primary purpose is to improve performance by scanning only the relevant 
-data needed to satisfy a query. This is done using table inheritance and 
-CHECK constraints. Table inheritance creates a persistent relationship 
-between a child table and its parent table(s), so that all of the schema 
-information from the parent table propagates to its children. By default, 
-Greenplum Database scans all of the data in a parent table and all of its 
-child tables to satisfy a given query. CHECK constraints limit the data a 
-table can contain based on some defining criteria, and are also used by 
-the query planner to determine which child tables to scan in order to 
-satisfy a given query. 
+* If the parent table contains data, removes partitioned records 
+  from the parent table into a temporary table and re-inserts 
+  them into parent table. The rewrite rules then route the rows 
+  to the correct child table based on the CHECK constraints. You 
+  can optionally use the -C option to insert rows into the child 
+  tables directly.
 
-The way you choose to partition a table depends upon how you plan to 
-access the data, and your performance requirements. You should also try to 
-choose partitioning criteria that will divide your data as evenly as possible.
-A given querys performance improves based on the number of partitions 
-created. For example, by dividing a large table into 10 partitions, 
-a query will execute 10 times faster than it would against the 
-unpartitioned table (provided that the data is equally distributed 
-and that the partitions are designed to support the querys criteria).
+Table partitioning addresses the problem of supporting very large 
+tables, such as fact tables, by allowing you to divide them into 
+smaller and more manageable pieces. Partitioning is especially 
+useful in data warehouse applications, which commonly store and 
+analyze large amounts of historical data.
+
+In Greenplum Database, partitioning is a procedure that creates 
+multiple sub-tables (or child tables) from a single large table 
+(or parent table). The primary purpose is to improve performance 
+by scanning only the relevant data needed to satisfy a query. 
+This is done using table inheritance and CHECK constraints. Table 
+inheritance creates a persistent relationship between a child table 
+and its parent table(s), so that all of the schema information 
+from the parent table propagates to its children. By default, 
+Greenplum Database scans all of the data in a parent table and 
+all of its child tables to satisfy a given query. CHECK constraints 
+limit the data a table can contain based on some defining criteria, 
+and are also used by the query planner to determine which child 
+tables to scan in order to satisfy a given query. 
+
+The way you choose to partition a table depends upon how you plan 
+to access the data, and your performance requirements. You should 
+also try to choose partitioning criteria that will divide your data 
+as evenly as possible. A given query’s performance improves based 
+on the number of partitions created. For example, by dividing a 
+large table into 10 partitions, a query will execute 10 times 
+faster than it would against the unpartitioned table (provided 
+that the data is equally distributed and that the partitions 
+are designed to support the query’s criteria).
 
 
 *****************************************************
@@ -97,103 +115,147 @@ OPTIONS
 
 -t <schema>.<parent_table>
 
-Required. The name of the parent table to partition. Table names must 
-be qualified with the schema name in which the table resides.
+Required. The name of the parent table to partition. 
+Table names must be qualified with the schema name 
+in which the table resides.
 
 
 -f <partition_column>
 
-Required. The name of the column that will be evaluated in order to 
-partition the parent table.
+Required. The name of the column that will be evaluated 
+in order to partition the parent table.
 
 
 -p d | r | l (date, range, or list partitions)
 
-Required. Specifies the partitioning type. Greenplum Database supports 
-date range partitioning (based on date, timestamp, or timestamp with 
-timezone data), numeric range partitioning (based on numeric data), or 
-list partitioning (based on character data).
+Required. Specifies the partitioning type. Greenplum Database 
+supports date range partitioning (based on date, timestamp, 
+or timestamp with timezone data), numeric range partitioning 
+(based on numeric data), or list partitioning (based on 
+character data).
 
 
--c m | d | h (date range basis)
+-c y | m | d | h (date range basis)
 
-Required for date range partitioning. Specifies if partitions should be 
-created on a monthly, daily, or hourly basis.
+Required for date range partitioning. Specifies if 
+partitions should be created on a yearly, monthly, 
+daily, or hourly basis.
 
 
 -s <range_start_value>
 
-Required for date and numeric range partitioning. For date partitioning, 
-specifies the start date to use as the partitioning starting point in the 
-format YYYY-MM-DD. For numeric range partitioning, specifies the numeric 
-value to use as the partitioning starting point.
+Required for date and numeric range partitioning. For date 
+partitioning, specifies the start date to use as the partitioning 
+starting point in the format YYYY-MM-DD hh:mm:ss. For numeric 
+range partitioning, specifies the numeric value to use as 
+the partitioning starting point.
 
 
 -n <number_of_children> (date range limit)
 
-Required for date range partitioning. Specifies the number of month, day, 
-or hour child tables to create from the starting point.
+Required for date range partitioning. Specifies the number 
+of year, month, day, or hour child tables to create from 
+the starting point.
 
 
 -e <range_end_value> 
 
-Required for numeric range partitioning. Specifies the range ending 
-value for the data contained in the partition column.
+Required for numeric range partitioning. Specifies the 
+range ending value for the data contained in the partition 
+column.
 
 
 -g <range_increment>
 
-Required for numeric range partitioning. Specifies how to increment 
-the records between the starting range and ending range into child tables.
+Required for numeric range partitioning. Specifies how to 
+increment the records between the starting range and 
+ending range into child tables.
 
 
 -o <list_values>
 
-Required for list partitioning. A comma separated list of values for 
-which to create child tables. Make sure there are no spaces between 
-list values and comma separators. To add a null check constraint add 
-the text NULL to the list.
+Required for list partitioning. A comma separated list 
+of values for which to create child tables. Make sure there 
+are no spaces between list values and comma separators. To 
+add a null check constraint add the text NULL to the list.
 
 
 -m <conversion>
 
-Optional. The conversion function to used to convert the partition 
-column data type format to the format you want to use to evaluate 
-CHECK constraints and rewrite rules. For example, if a numeric column 
-contains timestamp data in the format 1138576193.697, supplying 
--m to_timestamp will convert the contents of the column to a timestamp format.
+Optional. The conversion function to used to convert the 
+partition column data type format to the format you want 
+to use to evaluate CHECK constraints and rewrite rules. 
+For example, if a numeric column contains timestamp data 
+in the format 1138576193.697, supplying -m to_timestamp 
+will convert the contents of the column to a timestamp format.
 
 
 -r (no rewrite rules)
 
-Does not create rewrite rules to redirect INSERT statements on the 
-parent table to the correct child table. The default is to create 
-INSERT rewrite rules on the parent table.
+Does not create rewrite rules to redirect INSERT statements on 
+the parent table to the correct child table. The default is to 
+create INSERT rewrite rules on the parent table.
 
 
 -b (show child row counts)
 
-Shows the number of records in each child table. This is only relevant if 
-the parent table contained data prior to being partitioned.
+Shows the number of records in each child table. This is 
+only relevant if the parent table contained data prior to 
+being partitioned.
 
 
 -u (index partition column)
 
-Creates an index on each of the child tables for the partition column 
-declared with the -f option.
+Creates an index on each of the child tables for the 
+partition column declared with the -f option.
 
 
--i <additional_index_columns>
+-i <index_columns>
 
-Creates an index on each of the child tables for the specified column(s).
+Creates an index on each of the child tables for the 
+specified column(s). The default is to not create indexes 
+on the child tables.
 
 
 -A <distribution_policy>
 
-Specifies a comma-separated list of columns to use as the Greenplum 
-distribution key on the child tables. You can also specify 'DISTRUBUTED RANDOMLY' 
-to use a random (round-robin) distribution policy. If not specified, the 
-child tables will use the same distribution policy as the parent table.
+Specifies a comma-separated list of columns to use as the 
+Greenplum distribution key on the child tables. You can also 
+specify 'DISTRUBUTED RANDOMLY' to use a random (round-robin) 
+distribution policy. If not specified, the child tables will 
+use the same distribution policy as the parent table.
+
+
+-F (force)
+
+Forces child table creation when the parent already has 
+child tables.
+
+
+-N (do not grant table permissions)
+
+Do not grant the table permissions of the parent table 
+to the child tables. The default is to grant table 
+permissions on the child tables.
+
+
+-C (move data to child table via direct insert)
+
+Moves data from the parent table into the newly created 
+child tables by moving data from the parent table into a 
+temporary table and then inserting directly into the child 
+tables based on the CHECK constraints defined. The default 
+behavior is to insert through the parent table using rewrite 
+rules to move the data. This option offers better performance 
+than the default behavior, but should only be used if every record 
+can be mapped to a child table CHECK constraint. The move will 
+roll back if there are any leftover records that do not map to 
+a child table, leaving all records in the parent table.
+
+
+-B <parallel_processes>
+
+The number of parallel insert processes to run. The default is 4.
 
 
 -q (no output)
@@ -222,22 +284,17 @@ Sets log output to debug level.
 Keeps temporary files to use for diagnostics.
 
 
--F (force)
-
-Forces child table creation when the parent already has child tables.
-
-
 -x <database_name>
 
-Optional. The name of the database where the parent table resides. 
-If not supplied, the script uses the default database 
-(which is the most recently created database).
+Optional. The name of the database where the parent 
+table resides. If not supplied, the script uses the default 
+database (which is the most recently created database).
 
 
 -d <master_data_directory>
 
-Optional. The master data directory. If not specified, the value set for 
-$MASTER_DATA_DIRECTORY will be used.
+Optional. The master data directory. If not specified, 
+the value set for $MASTER_DATA_DIRECTORY will be used.
 
 
 -? (help)
@@ -247,36 +304,36 @@ Displays the online help.
 
 -v (show script version)
 
-Displays the version, status, last updated date, and check sum of this script.
-
+Displays the version, status, last updated date, and check sum 
+of this script.
 
 
 *****************************************************
 EXAMPLES
 *****************************************************
 
-Partition the hr.employee table based on salary range. By looking at the 
-data, you have determined the lowest salary value to be 10000 and the 
-highest to be 400000. You want the child tables to be incremented in 
-the ranges of 20000.
+Partition the hr.employee table based on salary range. 
+By looking at the data, you have determined the lowest salary 
+value to be 10000 and the highest to be 400000. You 
+want the child tables to be incremented in the ranges of 20000.
 
 gpcreatepart -t hr.employee -f salary -p r -s 10000 -e 400000 -g 20000
 
 
-Partition the baby.names table based on gender. This will divide the 
-table into two child tables, one for males and one for females. You also 
-want the child tables to be indexed on the name_id column.
+Partition the baby.names table based on gender. This will divide 
+the table into two child tables, one for males and one for females. 
+You also want the child tables to be indexed on the name_id column.
 
 gpcreatepart -t baby.names -f gender -p l -o M,F -i name_id
 
 
-Partition the sales.sales table based on date range. Create one child 
-table per month for the past 12 months of data. The sale_date column you 
-are using for partitioning is currently in numeric format, so you need 
-to convert it to a timestamp format in order to partition it by date.
+Partition the sales.sales table based on date range. Create one 
+child table per month for the past 12 months of data. The sale_date 
+column you are using for partitioning is currently in numeric format, 
+so you need to convert it to a timestamp format in order 
+to partition it by date.
 
-gpcreatepart -t sales.sales -f sale_date -p d -c m -s 
-2005-11-01 -n 12 -m to_timestamp
+gpcreatepart -t sales.sales -f sale_date -p d -c m -s 2005-11-01 -n 12 -m to_timestamp
 
 
 *****************************************************
@@ -284,4 +341,3 @@ SEE ALSO
 *****************************************************
 
 gpaddpart, gpdeletepart
-

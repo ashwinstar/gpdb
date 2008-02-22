@@ -6,29 +6,33 @@ Shows data distribution information for a Greenplum Database table.
 SYNOPSIS
 *****************************************************
 
-gpskew -t <schema>.<table_name> [-w "<WHERE_constraint>"] [-h] 
-      [-a <database_name>] [-c] [-r] [-B <parallel_processes>] 
-      [-d <master_data_directory>] [-f ] [-m] [-l <logfile_directory>] 
-      [-D] [-? | -v]
+gpskew -t <schema>.<table_name> [-w "<WHERE_constraint>"] [-h] [-r] 
+[-f] [-m] [-a <database_name>] [-B <parallel_processes>] 
+[-d <master_data_directory>] [-l <logfile_directory>] [-D]
 
+gpskew -t <schema>.<table_name> -c [-d <master_data_directory>] 
+[-l <logfile_directory>] [-D]
+
+gpskew -? | -v
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
+
 The gpskew script can be used to determine if table data is equally 
 distributed across all of the active segments. gpskew reports the 
 following information:
 
-* The total number of records in the specified table. Note that for parent 
-  tables with inherited child tables, you must use the -h option to show 
-  child table skew as well.
+* The total number of records in the specified table. Note that 
+  for parent tables with inherited child tables, you must use 
+  the -h option to show child table skew as well.
 
 * The number of records on each segment.
 
-* The variance of records between segments. It takes the segment which has 
-  the maximum count, and the segment which has the minimum count, and reports 
-  the difference between these two segments.
+* The variance of records between segments. It takes the segment 
+  which has the maximum count, and the segment which has the minimum 
+  count, and reports the difference between these two segments.
 
 * The segment response times (if -r is supplied).
 
@@ -39,35 +43,26 @@ following information:
 OPTIONS
 *****************************************************
 
--t <schema>.<table_name>
+-t schema.table_name
 
-Required. The schema qualified table name for which you want to see the 
-data distribution.
+Required. The schema qualified table name for which you want 
+to see the data distribution.
 
--w "<WHERE_constraint>"
 
-Allows a WHERE constraint to be applied when the utility does a 
-SELECT count(*) to count the records on a segment. This is useful 
-for checking child tables that are partitioned by date. For example: 
+-w "WHERE_constraint"
+
+Allows a WHERE constraint to be applied when the utility does 
+a SELECT count(*) to count the records on a segment. This is 
+useful for checking child tables that are partitioned by date. 
+For example: 
 gpskew –t schema.table –w "date between '2007-01-01' and '2007-01-12'"
 
 
 -h (show child table hierarchy)
 
-Optional. If the table supplied with the -t option has child tables associated
-with it, this option will show information for the inherited child tables as 
-well.
-
-
--a database_name
-
-Optional. The database name.
-
-
--c (show distribution columns)
-
-Optional. Show the names of the distribution key columns only (does not 
-compute data skew).
+Optional. If the table supplied with the -t option has child 
+tables associated with it, this option will show information 
+for the inherited child tables as well.
 
 
 -r (show response times)
@@ -75,30 +70,44 @@ compute data skew).
 Optional. Show the response times for each segment.
 
 
--B <parallel_processes>
-
-The number of segments to check in parallel. If not specified, the script 
-will start up to 60 parallel processes depending on how many segment instances 
-for which it needs to check data skew information.
-
-
--d <master_data_directory>
-
-Optional. The master host data directory. If not specified, the value set for 
-$MASTER_DATA_DIRECTORY will be used.
-
-
 -f (show full output)
 
-Optional. Displays the full data skew results instead of the summary results.
+Optional. Displays the full data skew results instead of 
+the summary results.
 
 
 -m (mirror segments only)
 
-Show data skew for mirror segments. Default is to show primary segments only.
+Show data skew for mirror segments. Default is to show primary 
+segments only.
 
 
--l <logfile_directory>
+-c (show distribution columns)
+
+Optional. Show the names of the distribution key columns only 
+(does not compute data skew).
+
+
+-a database_name
+
+Optional. The database name.
+
+
+-B parallel_processes
+
+The number of segments to check in parallel. If not specified, 
+the script will start up to 60 parallel processes depending on 
+how many segment instances for which it needs to check data 
+skew information.
+
+
+-d master_data_directory
+
+Optional. The master host data directory. If not specified, 
+the value set for $MASTER_DATA_DIRECTORY will be used.
+
+
+-l logfile_directory
 
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
@@ -115,7 +124,8 @@ Displays the online help.
 
 -v (show script version)
 
-Displays the version, status, last updated date, and check sum of this script.
+Displays the version, status, last updated date, and check sum 
+of this script.
 
 
 *****************************************************
@@ -147,4 +157,3 @@ SEE ALSO
 *****************************************************
 
 gpstate, gpsizecalc
-

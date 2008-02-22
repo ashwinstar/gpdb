@@ -290,4 +290,4 @@ gp_dump -n myschema mydatabase
 SEE ALSO
 *****************************************************
 
-gp_restore, gprebuildsystem, gprebuildseg
+gp_restore, gprebuildsystem, gpcrondump

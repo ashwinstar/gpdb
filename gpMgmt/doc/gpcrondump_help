@@ -1,51 +1,60 @@
 COMMAND NAME: gpcrondump
 
-A wrapper script for gp_dump, which can be called from a crontab entry.
-
+A wrapper utility for gp_dump, which can be called from a crontab entry.
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-gpcrondump -x <database_name> [-B <parallel_processes>] 
-[-R <post_dump_script>] [-s <schema_name>] [-d <master_data_directory>] 
-[-p | -m] [-c | -o] [-z] [-r] [-f <free_space_percent>] [-b] [-i] 
-[-j] [-k] [-g] {[-t] [-C]} [-a] [-q] [-l <logfile_directory>] [-D] [-? | -v]
+gpcrondump -x <database_name> [-s <schema>] 
+{[-t <schema>.<table>] [-T <schema>.<table> [,<schema>.<table> ...]]} 
+[-R <post_dump_script>] [-p | -m] [-c | -o] [-z] [-r] 
+[-f <free_space_percent>] [-b] [-i] [-j | -k] [-g] [-G] {[-t] [-C]} 
+[-d <master_data_directory>] [-B <parallel_processes>] [-a] [-q] 
+[-l <logfile_directory>] [-D] 
 
+gpcrondump -? | -v
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-gpcrondump is a wrapper script for gp_dump. It allows you to 
-schedule routine backups of a Greenplum database using cron (a 
-scheduling utility for Unix operating systems). Cron jobs that 
-call gpcrondump should be scheduled on the master host.
+gpcrondump is a wrapper utility for gp_dump. Dump files are 
+created in their respective master and segment data directories 
+in a directory named dp_dumps/<date>. 
 
-Here is an example of the crontab file, which schedules a nightly dump 
-of the customers database at one minute past midnight. Note that the 
-SHELL is set to /bin/bash and the PATH includes the location of the 
-Greenplum Database management scripts  this is required to 
-run gpcrondump. 
+gpcrondump allows you to schedule routine backups of a Greenplum 
+database using cron (a scheduling utility for UNIX operating 
+systems). Cron jobs that call gpcrondump should be scheduled on 
+the master host.
 
-SHELL=/bin/bash
-PATH=/sbin:/bin:/usr/sbin:/usr/bin:$GPHOME/gpMgmt/bin
-HOME=/home/gpadmin
+Here is an example of the crontab file, which schedules a nightly 
+dump of the customers database at one minute past midnight. Note 
+that the SHELL is set to /bin/bash and the PATH includes the 
+location of the Greenplum Database management scripts — this is 
+required to run gpcrondump. 
 
-# Greenplum Database nightly database dump job
-01 0 * * * gpadmin gpcrondump -x customers -a -q >> 
-gp_custdump.log
+   SHELL=/bin/bash
+   PATH=/sbin:/bin:/usr/sbin:/usr/bin:$GPHOME/bin
+   HOME=/home/gpadmin
 
+   # Greenplum Database nightly database dump job
+
+   01 0 * * * gpadmin gpcrondump -x customers -c -g -G -a -q >> 
+   gp_custdump.log
+
+
+**********************
 EMAIL NOTIFICATIONS
-To have gpcrondump send out status email notifications, you must 
-place a file named mail_contacts in the home directory of the 
-Greenplum superuser (gpadmin) or in the same directory as the 
-gpcrondump utility ($GPHOME/bin). This file should contain one 
-email address per line. gpcrondump will issue a warning if it 
-cannot locate a mail_contacts file in either location. If both 
-locations have a mail_contacts file, then the one in $HOME is 
-takes precedence. 
 
+To have gpcrondump send out status email notifications, you 
+must place a file named mail_contacts in the home directory 
+of the Greenplum superuser (gpadmin) or in the same directory 
+as the gpcrondump utility ($GPHOME/bin). This file should contain 
+one email address per line. gpcrondump will issue a warning if 
+it cannot locate a mail_contacts file in either location. If both 
+locations have a mail_contacts file, then the one in $HOME is takes 
+precedence.
 
 *****************************************************
 OPTIONS
@@ -56,59 +65,60 @@ OPTIONS
 Required. The name of the Greenplum database to dump.
 
 
--B <parallel_processes>
-
-The number of segments to check in parallel for pre/post-dump validation. 
-If not specified, the script will start up to 60 parallel processes 
-depending on how many segment instances it needs to dump.
-
-
--R <post_dump_script>
-
-The absolute path of a script to run after a successful dump operation. 
-For example, you might want a script that moves completed dump files 
-to a backup host.
-
-
 -s <schema_name>
 
 Optional. Dump only the named schema in the named database.
 
 
--d <master_data_directory>
+-t <schema>.<table_name>
 
-Optional. The master host data directory. If not specified, the value 
-set for $MASTER_DATA_DIRECTORY will be used.
+Optional. Dump only the named table in this database.
+
+
+-T <schema>.<table_name>
+
+Optional. A comma-separated list of table names to exclude 
+from the database dump.
+
+
+-R <post_dump_script>
+
+The absolute path of a script to run after a successful dump 
+operation. For example, you might want a script that moves completed 
+dump files to a backup host. This script must reside in the same 
+location on the master and all segment hosts.
 
 
 -p (primary segments only)
 
-Optional. Dump the primary segment instances only. The default is to 
-dump both primary and mirror segment instances. If a primary is down, 
-the dump will reconfigure itself and dump the active mirror segment 
-for the downed primary.
+Optional. Dump the primary segment instances only. The default 
+is to dump both primary and mirror segment instances. If a primary 
+is down, the dump will reconfigure itself and dump the active 
+mirror segment for the downed primary.
 
 
 -m (mirror segments only)
 
-Optional. Dump the mirror segment instances only. The default is to dump 
-both primary and mirror segment instances. If a mirror is down, the dump will 
-reconfigure itself and dump the active primary segment for the downed mirror.
+Optional. Dump the mirror segment instances only. The default 
+is to dump both primary and mirror segment instances. If a mirror 
+is down, the dump will reconfigure itself and dump the active 
+primary segment for the downed mirror.
 
 
 -c (clear old dump files first)
 
-Clear out old dump files before doing the dump. The default is not to 
-clear out old dump files. This will remove the oldest dump directory except 
-not the current dates dump directory. All dump sets within that directory 
-will be removed.
+Clear out old dump files before doing the dump. The default 
+is not to clear out old dump files. This will remove the oldest 
+dump directory except not the current date’s dump directory. 
+All dump sets within that directory will be removed.
 
 
 -o (clear old dump files only)
 
-Clear out old dump files only, but do not run a dump. This will remove the 
-oldest dump directory except not the current dates dump directory. All 
-dump sets within that directory will be removed.
+Clear out old dump files only, but do not run a dump. This 
+will remove the oldest dump directory except not the 
+current date’s dump directory. All dump sets within that 
+directory will be removed.
 
 
 -z (no compression)
@@ -118,19 +128,22 @@ Do not use compression. Default is to compress the dump files.
 
 -r (no rollback on failure)
 
-Do not rollback the dump files (delete a partial dump) if a failure is 
-detected. The default is to rollback (delete partial dump files).
+Do not rollback the dump files (delete a partial dump) if a 
+failure is detected. The default is to rollback (delete 
+partial dump files).
 
 
 -f <free_space_percent>
 
-Percentage of free disk space to reserve when calculating the available 
-free disk space for the dump operation. The default is 10.
+Percentage of free disk space to reserve when calculating 
+the available free disk space for the dump operation. 
+The default is 10.
 
 
 -b (bypass disk space check)
 
-Bypass disk space check. The default is to check for available disk space.
+Bypass disk space check. The default is to check for 
+available disk space.
 
 
 -i (ignore parameter check)
@@ -145,24 +158,46 @@ Run VACUUM before the dump starts.
 
 -k (vacuum after dump)
 
-Run VACUUM after the dump has completed sucessfully.
+Run VACUUM after the dump has completed successfully.
 
 
 -g (copy config files)
 
-Secure a copy of the master host configuration files postgresql.conf, 
-pg_ident.conf, and pg_hba.conf.
+Secure a copy of the master host configuration files 
+postgresql.conf, pg_ident.conf, and pg_hba.conf.
+
+
+-G (dump global objects)
+
+Use pg_dumpall to dump global objects such as roles 
+and tablespaces. Global objects are dumped to 
+db_dumps/<date>/gp_global_1_1_<timestamp>
 
 
 -t (dump catalog)
 
-Use pg_dump to dump the pg_catalog schema of the master (system catalog 
-tables). Schema is dumped to db_dumps/<date>/<dbname>_pg_catalog_<date>.
+Use pg_dump to dump the pg_catalog schema of the master 
+(system catalog tables). Schema is dumped to 
+db_dumps/<date>/<dbname>_pg_catalog_<timestamp>.
 
 
 -C (clean old catalog dumps)
 
 Clean out old catalog schema dump files prior to create.
+
+
+-d <master_data_directory>
+
+Optional. The master host data directory. If not specified, 
+the value set for $MASTER_DATA_DIRECTORY will be used.
+
+
+-B <parallel_processes>
+
+The number of segments to check in parallel for pre/post-dump 
+validation. If not specified, the utility will start up to 
+60 parallel processes depending on how many segment instances 
+it needs to dump.
 
 
 -a (do not prompt)
@@ -172,11 +207,11 @@ Do not prompt the user for confirmation.
 
 -q (no screen output)
 
-Run in quiet mode. Command output is not displayed on the screen, but 
-is still written to the log file.
+Run in quiet mode. Command output is not displayed on the 
+screen, but is still written to the log file.
 
 
--l <logfile_directory>
+-l logfile_directory
 
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
@@ -191,27 +226,28 @@ Sets logging level to debug.
 Displays the online help.
 
 
--v (show script version)
+-v (show utility version)
 
-Displays the version, status, last updated date, and check sum of this script.
+Displays the version, status, last updated date, and check sum of this utility.
 
 
 *****************************************************
 EXAMPLES
 *****************************************************
 
-A crontab file that runs a backup of the sales database nightly at one past midnight:
+A crontab file that runs a backup of the sales database 
+(and global objects) nightly at one past midnight:
 
 SHELL=/bin/bash
 
-PATH=/sbin:/bin:/usr/sbin:/usr/bin:$GPHOME/gpMgmt/bin
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:$GPHOME/bin
 
-01 0 * * * gpadmin gpcrondump -x customers -a -q >> mpp_custdump.log
+01 0 * * * gpadmin gpcrondump -x sales -c -g -G -k -a -q >> 
+gp_salesdump.log
 
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-gp_dump
-
+gp_dump, gpdbrestore

@@ -1,31 +1,36 @@
 COMMAND NAME: gpstop
 
-Stops or restarts a Greenplum Database system. Can also be used to
-reload the postgresql.conf file without a restart.
+Stops or restarts a Greenplum Database system.
+
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-gpstop [-d master_data_directory] [-B parallel_processes] 
-[-z] [-f | -i | -s] [-r] [-m] [-y] [-u] [-a] [-q] [-l 
-logfile_directory] [-D] [-t | -? | -v]
+gpstop [-d master_data_directory] [-B parallel_processes] [-z] 
+[-C] [-f | -i | -s] [-r] [-m] [-y] [-u] [-a] [-q] 
+[-l logfile_directory] [-D] 
+
+gpstop -t | -? | -v
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The gpstop script is analogous to functionality offered by the 
-PostgreSQL pg_ctl and postmaster commands, which are used to stop the 
-database server. When you stop a Greenplum Database system, you are 
-actually stopping several postmaster database server processes at once 
-(the master and all of the segment instances). The gpstop script 
-handles the shutdown of the individual instances. Each instance is 
-shutdown in parallel.
+The gpstop utility is used to stop the database servers that 
+comprise a Greenplum Database system. When you stop a Greenplum 
+Database system, you are actually stopping several postgres 
+database server processes at once (the master and all of the 
+segment instances). The gpstop utility handles the shutdown of 
+the individual instances. Each instance is shutdown in parallel. 
 
-Before you can stop a Greenplum Database system, you must have started 
-it using gpstart first.
+By default, you are not allowed to shut down Greenplum Database 
+if there are any client connections to the database. Use 
+the -C option to terminate any connections before shutting down. 
+If there are any transactions in progess, the default behavior is 
+to wait for them to commit before shutting down. Use the -f or 
+-i options to either rollback or abort open transactions.
 
 
 *****************************************************
@@ -34,42 +39,51 @@ OPTIONS
 
 -d <master_data_directory>
 
-Optional. The master host data directory. If not specified, the value set 
-for $MASTER_DATA_DIRECTORY will be used.
+Optional. The master host data directory. If not specified, 
+the value set for $MASTER_DATA_DIRECTORY will be used.
 
 
 -B <parallel_processes>
 
-The number of segments to stop in parallel. If not specified, the script 
-will start up to 60 parallel processes depending on how many segment 
-instances it needs to stop.
+The number of segments to stop in parallel. If not specified, 
+the utility will start up to 60 parallel processes depending 
+on how many segment instances it needs to stop.
 
 
 -z (force shutdown)
 
-Optional. Forces the shutdown of a segment instance with an invalid status. 
-This may be desirable if the segment instance or host had a minor error 
-during startup, and you want to shut down the system to fix the error, 
-then retry startup again. The default behavior is to not shutdown segment 
-instances with an invalid status.
+Optional. Forces the shutdown of a segment instance with an 
+invalid status. This may be desirable if the segment instance 
+or host had a minor error during startup, and you want to 
+shut down the system to fix the error, then retry startup again. 
+The default behavior is to not shutdown segment instances with 
+an invalid status.
+
+
+-C (cancel active connections)
+
+If the database has any active client connections, terminate 
+those sessions before shutting down. The default is to not 
+allow shutdown if users are connected to the database.
 
 
 -f (fast shutdown - rollback)
 
-Fast shut down. Any transactions in progress are interrupted and rolled back.
+Fast shut down. Any transactions in progress are interrupted 
+and rolled back.
 
 
 -i (immediate shutdown - abort)
 
-Immediate shut down. Any transactions in progress are aborted. Use this 
-option with care if you are running in continue fault tolerance mode 
-(read-write), as this could cause data corruption.
+Immediate shut down. Any transactions in progress are aborted. 
+Use this option with care if you are running in continue fault 
+tolerance mode (read-write), as this could cause data corruption.
 
 
 -s (smart shutdown - wait for commits)
 
-Smart shut down. Waits for active transactions to complete before shutting 
-down. This is the default shutdown mode.
+Smart shut down. Waits for active transactions to complete 
+before shutting down. This is the default shutdown mode.
 
 
 -r (restart)
@@ -79,21 +93,22 @@ Restart after shutdown is complete.
 
 -m (master only)
 
-Optional. Shuts down a Greenplum master instance that was started in 
-maintenance mode.
+Optional. Shuts down a Greenplum master instance that was 
+started in maintenance mode.
 
 
 -y (do not stop standby master)
 
-Do not stop the standby master process. The default is to stop the standby 
-master.
+Do not stop the standby master process. The default is to 
+stop the standby master.
 
 
 -u (reload postgresql.conf only)
 
-This option tells the master instance to reload the postgresql.conf file but 
-does not shutdown the Greenplum Database array. Use this option to make new 
-configuration settings active after editing the postgresql.conf file.
+This option tells the master instance to reload the 
+postgresql.conf file but does not shutdown the Greenplum 
+Database array. Use this option to make new configuration 
+settings active after editing the postgresql.conf file.
 
 
 -a (do not prompt)
@@ -103,8 +118,8 @@ Do not prompt the user for confirmation.
 
 -q (no screen output)
 
-Run in quiet mode. Command output is not displayed on the screen, but is 
-still written to the log file.
+Run in quiet mode. Command output is not displayed on the 
+screen, but is still written to the log file.
 
 
 -l <logfile_directory>
@@ -117,11 +132,12 @@ The directory to write the log file. Defaults to ~/gpAdminLogs.
 Sets logging level to debug.
 
 
--t (show default script settings)
+-t (show default utility settings)
 
-Displays the settings that will be used to shut down the system, such as 
-the master data directory and port, and the name, data directory, port, 
-valid status, and primary or mirror status of all the segment instances.
+Displays the settings that will be used to shut down the system, 
+such as the master data directory and port, and the name, 
+data directory, port, valid status, and primary or mirror status 
+of all the segment instances.
 
 
 -? (help)
@@ -129,9 +145,10 @@ valid status, and primary or mirror status of all the segment instances.
 Displays the online help.
 
 
--v (show script version)
+-v (show utility version)
 
-Displays the version, status, last updated date, and check sum of this script.
+Displays the version, status, last updated date, and check sum 
+of this utility.
 
 
 *****************************************************
@@ -145,11 +162,11 @@ gpstop
 
 Stop a Greenplum Database system in fast mode:
 
-gpstop -f
+gpstop -f -C
 
 
-Force shutdown of the system if it has failed segment instances from a 
-previous startup attempt:
+Force shutdown of the system if it has failed segment instances 
+from a previous startup attempt:
 
 gpstop -z
 
@@ -164,13 +181,8 @@ Stop a master instance that was started in maintenance mode:
 gpstop -m
 
 
-Display the online help for the gpstop script:
-
-gpstop -?
-
-
-Reload the postgresql.conf file after making configuration changes but do 
-not shutdown the Greenplum Database array:
+Reload the master postgresql.conf file after making configuration 
+changes but do not shutdown the Greenplum Database array:
 
 gpstop -u
 
@@ -180,4 +192,3 @@ SEE ALSO
 *****************************************************
 
 gpstart
-

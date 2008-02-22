@@ -211,6 +211,6 @@ SEE ALSO
 *****************************************************
 
 
-gp_dump, gprebuildsystem, gprebuildseg
+gp_dump, gprebuildsystem, gpdbrestore
 
 
