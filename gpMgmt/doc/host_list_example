@@ -1,4 +1,4 @@
-# sample host list for exchanging ssh keys (multi-nic configuration)
+# sample host list for multi-nic configurations
 
 # segment host 1
 seg1_eth1
@@ -19,10 +19,10 @@ seg3_eth3
 seg3_eth4
 
 
-# sample host list for initializing an array (one name per segment host)
+# sample host list for non-multi-homed hosts
 
-seg1_eth1
-seg2_eth1
-seg3_eth1
+seg1hostname
+seg2hostname
+seg3hostname
 
 

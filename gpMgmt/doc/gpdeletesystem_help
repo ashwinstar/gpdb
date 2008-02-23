@@ -3,52 +3,55 @@ COMMAND NAME: gpdeletesystem
 Deletes a Greenplum Database system that was initialized 
 using gpinitsystem.
 
-
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-gpdeletesystem -d <master_data_directory> [-B <parallel_processes>] 
-[-f] [-l <logfile_directory>] [-D] [-? | -v]
+gpdeletesystem -d <data_directory> [-B <parallel_processes>] [-f] 
+[-l <logfile_directory>] [-D]
+
+gpdeletesystem -? | -v
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The gpdeletesystem script will perform the following actions:
+The gpdeletesystem utility will perform the following actions:
 
-* Stop all postmaster processes (the segment instances and master instance).
+* Stop all postgres processes (the segment instances and master 
+  instance).
 
-* Delete all data directories.
+* Deletes all data directories.
 
-Before runing this script, you should move any backup files 
-(created by gp_dump) out of the master and segment data directories.
+Before runing this utility, you should move any backup files 
+(created by gp_dump or gpcrondump ) out of the master and 
+segment data directories.
 
-This script will not uninstall the Greenplum Database software.
+This utility will not uninstall the Greenplum Database software.
 
 
 *****************************************************
 OPTIONS
 *****************************************************
 
--d <master_data_directory>
+-d <data_directory>
 
 Required. The master host data directory.
 
 
 -B <parallel_processes>
 
-The number of segments to delete in parallel. If not specified, the 
-script will start up to 60 parallel processes depending on how many 
-segment instances it needs to delete.
+The number of segments to delete in parallel. If not specified, 
+the utility will start up to 60 parallel processes depending on 
+how many segment instances it needs to delete.
 
 
 -f (force)
 
-Force a delete even if backup files are found in the data directories. 
-The default is to not delete Greenplum Database instances if backup 
-files (created by gp_dump) are present.
+Force a delete even if backup files are found in the data 
+directories. The default is to not delete Greenplum Database 
+instances if backup files are present.
 
 
 -l <logfile_directory>
@@ -66,9 +69,10 @@ Sets logging level to debug.
 Displays the online help.
 
 
--v (show script version)
+-v (show utility version)
 
-Displays the version, status, last updated date, and check sum of this script.
+Displays the version, status, last updated date, and checksum 
+of this utility.
 
 
 *****************************************************
@@ -80,7 +84,8 @@ Delete a Greenplum Database system:
 gpdeletesystem -d /gpdata/gp-1
 
 
-Delete a Greenplum Database system even if backup files are present:
+Delete a Greenplum Database system even if backup files are 
+present:
 
 gpdeletesystem -d /gpdata/gp-1 -f
 
@@ -90,4 +95,3 @@ SEE ALSO
 *****************************************************
 
 gpinitsystem, gp_dump
-

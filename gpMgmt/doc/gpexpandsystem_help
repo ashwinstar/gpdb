@@ -1,0 +1,207 @@
+COMMAND NAME: gpexpandsystem
+
+Expands an existing Greenplum Database array by adding new 
+segment host resources and then redistributing data across 
+the newly expanded array.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gpexpandsystem -h <new_seg_hostfile> [-m <new_mirror_hostfile>] 
+[-b] [-k] [-B <parallel_processes>] [-C <rebalance_processes>] 
+[-d <master_data_directory>] [-a] [-q] [-l <logfile_directory>] 
+[-D]
+
+gpexpandsystem -? | -v
+
+
+*****************************************************
+PREREQUISITES
+*****************************************************
+
+* Greenplum Database system is up and running.
+
+* Mirroring is enabled.
+
+* Fault operational mode is read-only (gp_fault_action=readonly).
+
+* All primary and mirror segments are valid (no segment failures 
+  reported by gpstate)
+
+* The system is idle with no active connections to the database.
+
+* A recent backup of your databases. The utility will check for 
+  backup files in your segment data directories. You can use 
+  the -b option to skip this check.
+
+* You are logged in as the Greenplum Database superuser (gpadmin).
+
+* The new segment hosts have been installed and configured as 
+  per the existing segment hosts. This involves configuring 
+  the hardware and OS, installing the Greenplum software, 
+  creating the data directory locations, creating the gpadmin 
+  user account, and exchanging SSH keys. See the 
+  'Greenplum Database Administrator Guide' for detailed 
+  instructions on installing a segment host.
+
+* Enough disk space on your segment hosts to temporarily 
+  hold a copy of your largest database table. The utility 
+  will verify that you have the required free disk space before 
+  it begins the expansion. If you use the -k option, you must 
+  have enough free disk space to hold a copy of your entire 
+  database.
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpexpandsystem utility adds new segment hosts to an existing 
+Greenplum Database array in order to increase data capacity 
+and processing performance. For the best performance, Greenplum 
+recommends that you do not let your segment host file systems to 
+get more than 70 percent full. When disk space on your existing 
+segment hosts is nearing this capacity, it is time to add additional 
+segment hosts to your system. This utility takes care of adding 
+the new segment host resources to the system and rebalancing 
+your existing table data across the newly expanded array.
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-h <new_seg_hostfile>
+
+Required. A file with the name of each new segment host 
+you want to add, one name per line, no extra lines or spaces. 
+If your segment hosts are multi-homed (multiple network-interface 
+host names configured), this file should have all of the configured 
+host names of the new segment host(s) you are adding. For example:
+
+     sdw1-1
+     sdw1-2
+     sdw1-3
+     sdw1-4
+
+
+-m new_mirror_hostfile
+
+Only required if your current mirror segments are configured 
+on a different array of hosts than your primary segments. 
+This file must have the same number of host names as the 
+host file supplied with -h. Each line in this file specifies 
+the mirror host name and data directory location of a 
+mirror segment in the format of: 
+
+      mirror_seg_hostname:mirror_data_directory_location
+
+
+-r (do not rebalance tables with random distribution)
+
+Do not rebalance the data across the newly expanded array 
+for tables that were created with a random distribution 
+policy (DISTRIBUTED RANDOMLY). The default is to rebalance 
+the data for randomly distributed tables.
+
+
+-b (continue without backup files)
+
+Greenplum strongly recommends that you have a recent 
+backup of all databases before doing an expansion. The 
+utility will check for backup files in your segment 
+data directories. If you choose not to do a backup, 
+or if you have secured your backup files in an alternate 
+location, use this option to skip this check.
+
+
+-k (keep temporary expansion schemas)
+
+In order to rebalance the data across the newly added 
+resources, the utility creates a temporary copy of each 
+database schema. Use this option to keep the temporary 
+schemas in the database. The default is to drop this 
+temporary schema after the expansion and data rebalancing 
+is complete.
+
+
+-B <parallel_processes>
+
+The number of segment host verification processes to start 
+in parallel. If not specified, the utility will start up to 
+4 parallel processes depending on how many segment host 
+verification tests it needs to perform.
+
+
+-C <rebalance_processes>
+
+The number of table data rebalancing processes to start in 
+parallel. If not specified, the utility will start up to 4 
+parallel processes depending on how many tables it needs 
+to redistribute.
+
+
+-d <master_data_directory>
+
+Optional. The master host data directory. If not specified, 
+the value set for $MASTER_DATA_DIRECTORY will be used.
+
+
+-a (do not prompt)
+
+Do not prompt the user for confirmation.
+
+
+-q (no screen output)
+
+Run in quiet mode. Command output is not displayed on the screen,
+ but is still written to the log file.
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
+
+
+-D (debug)
+
+Sets log output level to debug.
+
+
+-? (help)
+
+Displays the online help.
+
+
+-v (show utility version)
+
+Displays the version, status, last updated date, and checksum 
+of this utility.
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Add new segment hosts (as listed in new_seghost_file) to an 
+existing Greenplum Database system:
+
+gpexpandsystem -h new_seghost_file
+
+
+Add new segment hosts (as listed in new_seghost_file) and 
+mirror hosts (as listed in new_mirror_hostfile) to an existing 
+Greenplum Database system that has mirror segments configured 
+on a different array of hosts than the primaries:
+
+gpexpandsystem -h new_seghost_file -m new_mirror_hostfile
+
+
+Add new segment hosts to an existing Greenplum Database 
+system and skip the check for backup files:
+
+gpexpandsystem -h new_seghost_file -b
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gp_dump, gpcrondump, gpsizecalc, gpstate
