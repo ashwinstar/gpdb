@@ -222,5 +222,5 @@ gpinitsystem -?
 SEE ALSO
 *****************************************************
 
-gprebuildsystem, gpdeletesystem, gpexpandsystem
+gprebuildsystem, gpdeletesystem
 

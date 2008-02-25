@@ -152,4 +152,4 @@ gprebuildsystem -s gp_catalog_0_1_2005103112453 -d /home/gpadmin/tmp -c
 SEE ALSO
 *****************************************************
 
-gpinitsystem, gp_dump, gpcrondump, gp_restore, gpdbrestore, gpexpandsystem
+gpinitsystem, gp_dump, gpcrondump, gp_restore, gpdbrestore
