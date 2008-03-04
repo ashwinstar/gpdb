@@ -66,10 +66,12 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
                      CdbPathLocus               a,
                      CdbPathLocus               b)
 {
-    ListCell   *acell;
-    ListCell   *bcell;
-    ListCell   *aequivpathkeycell;
-    ListCell   *bequivpathkeycell;
+    ListCell           *acell;
+    ListCell           *bcell;
+    ListCell           *asubcell;
+    ListCell           *bsubcell;
+    EquivalenceClass   *aeqclass;
+    EquivalenceClass   *beqclass;
 
     Assert(op == CdbPathLocus_Comparison_Equal ||
            op == CdbPathLocus_Comparison_Contains);
@@ -92,10 +94,9 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
         {
             forboth(acell, a.partkey, bcell, b.partkey)
             {
-                List   *apathkey = (List *)lfirst(acell);
-                List   *bpathkey = (List *)lfirst(bcell);
-
-                if (apathkey != bpathkey)
+                aeqclass = (EquivalenceClass *)lfirst(acell);
+                beqclass = (EquivalenceClass *)lfirst(bcell);
+                if (aeqclass != beqclass)
                     return false;
             }
             return true;
@@ -105,23 +106,21 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
         {
             forboth(acell, a.partkey, bcell, b.partkey)
             {
-                List   *aequivpathkeylist = (List *)lfirst(acell);
-                List   *bequivpathkeylist = (List *)lfirst(bcell);
+                List   *alistofeqclass = (List *)lfirst(acell);
+                List   *blistofeqclass = (List *)lfirst(bcell);
 
-                foreach(bequivpathkeycell, bequivpathkeylist)
+                foreach(bsubcell, blistofeqclass)
                 {
-                    List   *bpathkey = (List *)lfirst(bequivpathkeycell);
-
-                    if (!list_member_ptr(aequivpathkeylist, bpathkey))
+                    beqclass = (EquivalenceClass *)lfirst(bsubcell);
+                    if (!list_member_ptr(alistofeqclass, beqclass))
                         return false;
                 }
                 if (op == CdbPathLocus_Comparison_Equal)
                 {
-                    foreach(aequivpathkeycell, aequivpathkeylist)
+                    foreach(asubcell, alistofeqclass)
                     {
-                        List   *apathkey = (List *)lfirst(aequivpathkeycell);
-
-                        if (!list_member_ptr(bequivpathkeylist, apathkey))
+                        aeqclass = (EquivalenceClass *)lfirst(asubcell);
+                        if (!list_member_ptr(blistofeqclass, aeqclass))
                             return false;
                     }
                 }
@@ -129,6 +128,8 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
             return true;
         }
     }
+
+    //$$$$$$$$$$$$
 
     if (CdbPathLocus_IsHashedOJ(a) &&
         CdbPathLocus_IsHashed(b))
@@ -157,9 +158,9 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
             List   *apathkey = (List *)lfirst(acell);
             List   *bequivpathkeylist = (List *)lfirst(bcell);
 
-            foreach(bequivpathkeycell, bequivpathkeylist)
+            foreach(bsubcell, bequivpathkeylist)
             {
-                List   *bpathkey = (List *)lfirst(bequivpathkeycell);
+                List   *bpathkey = (List *)lfirst(bsubcell);
 
                 if (apathkey != bpathkey)
                     return false;
@@ -295,7 +296,7 @@ cdbpathlocus_from_subquery(struct PlannerInfo  *root,
                 List           *pathkey;
 
                 /* Look for hash key expr among the subquery result columns. */
-                tle = tlist_member_ignoring_RelabelType(expr, subqplan->targetlist);
+                tle = tlist_member_ignore_relabel((Node *)expr, subqplan->targetlist);
                 if (!tle)
                     break;
 
@@ -349,7 +350,7 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
         if (CdbPathLocus_IsHashed(locus))
         {
             pathkey = (List *)lfirst(partkeycell);
-            item = cdbpullup_findPathKeyItemInTargetList(pathkey,
+            item = cdbpullup_findEquivMemberInTargetList(pathkey,
                                                          relids,
                                                          targetlist,
                                                          NULL);
@@ -361,7 +362,7 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
             foreach(pathkeylistcell, pathkeylist)
             {
                 pathkey = (List *)lfirst(pathkeylistcell);
-                item = cdbpullup_findPathKeyItemInTargetList(pathkey,
+                item = cdbpullup_findEquivMemberInTargetList(pathkey,
                                                              relids,
                                                              targetlist,
                                                              NULL);
