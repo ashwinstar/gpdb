@@ -473,7 +473,7 @@ typenameType(ParseState *pstate, const TypeName *typname)
 				 parser_errposition(pstate, typname->location)));
 	return (Type) tup;
 }
-#endif XXX_OBSOLETE
+#endif //XXX_OBSOLETE
 
 /* return a Type structure, given a type id */
 /* NB: caller must ReleaseSysCache the type tuple when done with it */
@@ -529,7 +529,7 @@ typeTypType(Type t)
 	typ = (Form_pg_type) GETSTRUCT(t);
 	return typ->typtype;
 }
-#endif  XXX_OBSOLETE
+#endif  //XXX_OBSOLETE
 /* given type (as type struct), return the name of type */
 char *
 typeTypeName(Type t)

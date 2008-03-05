@@ -18,6 +18,7 @@
 #define CDBMUTATE_H
 
 #include "nodes/plannodes.h"
+#include "nodes/relation.h"
 #include "nodes/params.h"
 
 extern Plan *apply_motion(Plan *plan, Query *query);

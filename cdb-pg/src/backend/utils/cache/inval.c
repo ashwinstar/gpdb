@@ -80,7 +80,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/inval.c,v 1.78 2006/10/04 00:30:00 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/inval.c,v 1.83 2008/01/01 19:45:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -401,6 +401,14 @@ RegisterRelcacheInvalidation(Oid dbId, Oid relId)
 {
 	AddRelcacheInvalidationMessage(&transInvalInfo->CurrentCmdInvalidMsgs,
 								   dbId, relId);
+
+	/*
+	 * Most of the time, relcache invalidation is associated with system
+	 * catalog updates, but there are a few cases where it isn't.  Quick
+	 * hack to ensure that the next CommandCounterIncrement() will think
+	 * that we need to do CommandEndInvalidationMessages().
+	 */
+	(void) GetCurrentCommandId(true);
 
 	/*
 	 * Most of the time, relcache invalidation is associated with system

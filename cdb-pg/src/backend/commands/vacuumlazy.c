@@ -452,7 +452,7 @@ lazy_scan_heap(Relation onerel, LVRelStats *vacrelstats,
 
 			tupgone = false;
 
-			switch (HeapTupleSatisfiesVacuum(tuple.t_data, OldestXmin, buf, false))
+			switch (HeapTupleSatisfiesVacuum(tuple.t_data, OldestXmin, buf))
 			{
 				case HEAPTUPLE_DEAD:
 

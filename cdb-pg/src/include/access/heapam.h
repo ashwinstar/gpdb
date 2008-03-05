@@ -154,12 +154,6 @@ extern Relation heap_openrv(const RangeVar *relation, LOCKMODE lockmode);
 
 #define heap_close(r,l)  relation_close(r,l)
 
-extern bool heap_enableHeapInsertDesc;
-extern HeapInsertDesc* heap_begininsert(Relation relation, CommandId cid, 
-					bool use_wal, bool use_fsm);
-extern Oid heap_insertnext(HeapInsertDesc *ins, HeapTuple tup);
-extern void heap_endinsert(HeapInsertDesc *ins);
-
 extern HeapScanDesc heap_beginscan(Relation relation, Snapshot snapshot,
 			   int nkeys, ScanKey key);
 extern HeapScanDesc heap_beginscan_strat(Relation relation, Snapshot snapshot,
@@ -207,7 +201,10 @@ extern bool heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 				  Buffer buf);
 
 extern Oid	simple_heap_insert(Relation relation, HeapTuple tup);
+// MERGEBUG
+#if 0
 extern Oid	freeze_heap_insert(Relation relation, HeapTuple tup);
+#endif
 extern void simple_heap_delete(Relation relation, ItemPointer tid);
 extern void simple_heap_update(Relation relation, ItemPointer otid,
 				   HeapTuple tup);

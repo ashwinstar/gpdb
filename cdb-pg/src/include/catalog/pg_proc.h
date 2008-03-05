@@ -907,10 +907,6 @@ DESCR("convert int8 to int2");
 DATA(insert OID = 754 (  int8			   PGNSP PGUID 12 1 0 f f t f i 1  20 f "21" _null_ _null_ _null_ int28 - _null_ _null_ ));
 DESCR("convert int2 to int8");
 
-DATA(insert OID = 1285 (  int4notin		   PGNSP PGUID 12 1 0 f f t f s 2 16 f "23 25" _null_ _null_ _null_ int4notin - _null_ _null_ ));
-DESCR("not in");
-DATA(insert OID = 1286 (  oidnotin		   PGNSP PGUID 12 1 0 f f t f s 2 16 f "26 25" _null_ _null_ _null_ oidnotin - _null_ _null_ ));
-DESCR("not in");
 DATA(insert OID = 655 (  namelt			   PGNSP PGUID 12 1 0 f f t f i 2 16 f "19 19" _null_ _null_ _null_ namelt - _null_ _null_ ));
 DESCR("less-than");
 DATA(insert OID = 656 (  namele			   PGNSP PGUID 12 1 0 f f t f i 2 16 f "19 19" _null_ _null_ _null_ namele - _null_ _null_ ));
@@ -4331,8 +4327,11 @@ DATA(insert OID = 6005 (  gp_read_backup_file PGNSP PGUID 12 1 0 f f f f v 3 25 
 DESCR("read mpp backup file on outboard Postgres instances");
 DATA(insert OID = 6006 (  gp_write_backup_file PGNSP PGUID 12 1 0 f f f f v 3 25 f "25 25 25" _null_ _null_ _null_ gp_write_backup_file__  - _null_  ));
 DESCR("write mpp backup file on outboard Postgres instances");
+
 DATA(insert OID = 6007 (  gp_pgdatabase   PGNSP PGUID 12 1 0 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_pgdatabase__ - _null_ _null_ ));
 DESCR("view mpp pgdatabase state");
+
+
 DATA(insert OID = 6008 (  numeric_amalg    PGNSP PGUID 12 1 0 f f t f i 2 1231 f "1231 1231" _null_ _null_ _null_ numeric_amalg - _null_ _null_ ));
 DESCR("aggregate preliminary function");
 DATA(insert OID = 3104 (  numeric_avg_amalg    PGNSP PGUID 12 1 0 f f t f i 2 17 f "17 17" _null_ _null_ _null_ numeric_avg_amalg - _null_ _null_ ));

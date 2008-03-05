@@ -1,10 +1,18 @@
-/**********************************************************************
- * ruleutils.c	- Functions to convert stored expressions/querytrees
- *				back to source text
+/*-------------------------------------------------------------------------
  *
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/ruleutils.c,v 1.235.2.2 2007/01/30 02:32:05 momjian Exp $
- **********************************************************************/
-
+ * ruleutils.c
+ *	  Functions to convert stored expressions/querytrees back to
+ *	  source text
+ *
+ * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ *
+ * IDENTIFICATION
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/ruleutils.c,v 1.269 2008/01/06 01:03:16 tgl Exp $
+ *
+ *-------------------------------------------------------------------------
+ */
 #include "postgres.h"
 
 #include <unistd.h>
@@ -19,6 +27,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_trigger.h"
+#include "commands/defrem.h"
 #include "commands/tablespace.h"
 #include "executor/spi.h"
 #include "funcapi.h"
@@ -37,6 +46,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
+#include "utils/xml.h"
 
 
 /* ----------
@@ -82,17 +92,14 @@ typedef struct
  *
  * The rangetable is the list of actual RTEs from the query tree.
  *
- * For deparsing plan trees, we allow two special RTE entries that are not
- * part of the rtable list (partly because they don't have consecutively
- * allocated varnos).
+ * For deparsing plan trees, we provide for outer and inner subplan nodes.
+ * The tlists of these nodes are used to resolve OUTER and INNER varnos.
  */
 typedef struct
 {
 	List	   *rtable;			/* List of RangeTblEntry nodes */
-	int			outer_varno;	/* varno for outer_rte */
-	RangeTblEntry *outer_rte;	/* special RangeTblEntry, or NULL */
-	int			inner_varno;	/* varno for inner_rte */
-	RangeTblEntry *inner_rte;	/* special RangeTblEntry, or NULL */
+	Plan	   *outer_plan;		/* OUTER subplan, or NULL if none */
+	Plan	   *inner_plan;		/* INNER subplan, or NULL if none */
 } deparse_namespace;
 
 
@@ -100,10 +107,10 @@ typedef struct
  * Global data
  * ----------
  */
-static void *plan_getrulebyoid = NULL;
-static char *query_getrulebyoid = "SELECT * FROM pg_catalog.pg_rewrite WHERE oid = $1";
-static void *plan_getviewrule = NULL;
-static char *query_getviewrule = "SELECT * FROM pg_catalog.pg_rewrite WHERE ev_class = $1 AND rulename = $2";
+static SPIPlanPtr plan_getrulebyoid = NULL;
+static const char *query_getrulebyoid = "SELECT * FROM pg_catalog.pg_rewrite WHERE oid = $1";
+static SPIPlanPtr plan_getviewrule = NULL;
+static const char *query_getviewrule = "SELECT * FROM pg_catalog.pg_rewrite WHERE ev_class = $1 AND rulename = $2";
 
 
 /* ----------
@@ -154,6 +161,9 @@ static void get_rule_groupingclause(GroupingClause *grp, List *tlist,
 static Node *get_rule_sortgroupclause(SortClause *srt, List *tlist,
 						 bool force_colno,
 						 deparse_context *context);
+static char *get_variable(Var *var, int levelsup, bool showstar,
+			 deparse_context *context);
+
 static void get_names_for_var(Var *var, int levelsup, deparse_context *context,
 				  const char **schemaname,
                   const char **refname,
@@ -173,6 +183,11 @@ static void get_func_expr(FuncExpr *expr, deparse_context *context,
 static void get_groupingfunc_expr(GroupingFunc *grpfunc,
 								  deparse_context *context);
 static void get_agg_expr(Aggref *aggref, deparse_context *context);
+static void get_coercion_expr(Node *arg, deparse_context *context,
+				  Oid resulttype, int32 resulttypmod,
+				  Node *parentNode);
+static void get_const_expr(Const *constval, deparse_context *context,
+			   int showtype);
 static void get_windowedge_expr(WindowFrameEdge *edge, 
 								deparse_context *context);
 static void get_sortlist_expr(List *l, deparse_context *context, 
@@ -260,7 +275,7 @@ pg_get_ruledef_worker(Oid ruleoid, int prettyFlags)
 	if (plan_getrulebyoid == NULL)
 	{
 		Oid			argtypes[1];
-		void	   *plan;
+		SPIPlanPtr	plan;
 
 		argtypes[0] = OIDOID;
 		plan = SPI_prepare(query_getrulebyoid, 1, argtypes);
@@ -390,7 +405,7 @@ pg_get_viewdef_worker(Oid viewoid, int prettyFlags)
 	if (plan_getviewrule == NULL)
 	{
 		Oid			argtypes[2];
-		void	   *plan;
+		SPIPlanPtr	plan;
 
 		argtypes[0] = OIDOID;
 		argtypes[1] = NAMEOID;
@@ -537,8 +552,8 @@ pg_get_triggerdef(PG_FUNCTION_ARGS)
 		int			i;
 
 		val = DatumGetByteaP(fastgetattr(ht_trig,
-										Anum_pg_trigger_tgargs,
-										tgrel->rd_att, &isnull));
+										 Anum_pg_trigger_tgargs,
+										 tgrel->rd_att, &isnull));
 		if (isnull)
 			elog(ERROR, "tgargs is null for trigger %u", trigid);
 		p = (char *) VARDATA(val);
@@ -609,7 +624,7 @@ pg_get_indexdef_ext(PG_FUNCTION_ARGS)
 
 	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
 	PG_RETURN_TEXT_P(string_to_text(pg_get_indexdef_worker(indexrelid, colno,
-														 false, prettyFlags)));
+													   false, prettyFlags)));
 }
 
 /* Internal version that returns a palloc'd C string */
@@ -636,8 +651,10 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 	int			keyno;
 	Oid			keycoltype;
 	Datum		indclassDatum;
+	Datum		indoptionDatum;
 	bool		isnull;
 	oidvector  *indclass;
+	int2vector *indoption;
 	StringInfoData buf;
 	char	   *str;
 	char	   *sep;
@@ -655,11 +672,15 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 	indrelid = idxrec->indrelid;
 	Assert(indexrelid == idxrec->indexrelid);
 
-	/* Must get indclass the hard way */
+	/* Must get indclass and indoption the hard way */
 	indclassDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
 									Anum_pg_index_indclass, &isnull);
 	Assert(!isnull);
 	indclass = (oidvector *) DatumGetPointer(indclassDatum);
+	indoptionDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
+									 Anum_pg_index_indoption, &isnull);
+	Assert(!isnull);
+	indoption = (int2vector *) DatumGetPointer(indoptionDatum);
 
 	/*
 	 * Fetch the pg_class tuple of the index relation
@@ -728,6 +749,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 	for (keyno = 0; keyno < idxrec->indnatts; keyno++)
 	{
 		AttrNumber	attnum = idxrec->indkey.values[keyno];
+		int16		opt = indoption->values[keyno];
 
 		if (!colno)
 			appendStringInfoString(&buf, sep);
@@ -767,12 +789,30 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 			keycoltype = exprType(indexkey);
 		}
 
-		/*
-		 * Add the operator class name
-		 */
+		/* Provide decoration only in the colno=0 case */
 		if (!colno)
-			get_opclass_name(indclass->values[keyno], keycoltype,
-							 &buf);
+		{
+			/* Add the operator class name, if not default */
+			get_opclass_name(indclass->values[keyno], keycoltype, &buf);
+
+			/* Add options if relevant */
+			if (amrec->amcanorder)
+			{
+				/* if it supports sort ordering, report DESC and NULLS opts */
+				if (opt & INDOPTION_DESC)
+				{
+					appendStringInfo(&buf, " DESC");
+					/* NULLS FIRST is the default in this case */
+					if (!(opt & INDOPTION_NULLS_FIRST))
+						appendStringInfo(&buf, " NULLS LAST");
+				}
+				else
+				{
+					if (opt & INDOPTION_NULLS_FIRST)
+						appendStringInfo(&buf, " NULLS FIRST");
+				}
+			}
+		}
 	}
 
 	if (!colno)
@@ -799,7 +839,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, bool showTblSpc,
 			tblspc = get_rel_tablespace(indexrelid);
 			if (OidIsValid(tblspc))
 				appendStringInfo(&buf, " TABLESPACE %s",
-								 quote_identifier(get_tablespace_name(tblspc)));
+							  quote_identifier(get_tablespace_name(tblspc)));
 		}
 
 		/*
@@ -875,30 +915,15 @@ static char *
 pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 							int prettyFlags)
 {
-	StringInfoData buf;
-	Relation	conDesc;
-	SysScanDesc conscan;
-	ScanKeyData skey[1];
 	HeapTuple	tup;
 	Form_pg_constraint conForm;
+	StringInfoData buf;
 
-	/*
-	 * Fetch the pg_constraint row.  There's no syscache for pg_constraint so
-	 * we must do it the hard way.
-	 */
-	conDesc = heap_open(ConstraintRelationId, AccessShareLock);
-
-	ScanKeyInit(&skey[0],
-				ObjectIdAttributeNumber,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(constraintId));
-
-	conscan = systable_beginscan(conDesc, ConstraintOidIndexId, true,
-								 SnapshotNow, 1, skey);
-
-	tup = systable_getnext(conscan);
-	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "could not find tuple for constraint %u", constraintId);
+	tup = SearchSysCache(CONSTROID,
+						 ObjectIdGetDatum(constraintId),
+						 0, 0, 0);
+	if (!HeapTupleIsValid(tup)) /* should not happen */
+		elog(ERROR, "cache lookup failed for constraint %u", constraintId);
 	conForm = (Form_pg_constraint) GETSTRUCT(tup);
 
 	initStringInfo(&buf);
@@ -922,8 +947,8 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				appendStringInfo(&buf, "FOREIGN KEY (");
 
 				/* Fetch and build referencing-column list */
-				val = heap_getattr(tup, Anum_pg_constraint_conkey,
-								   RelationGetDescr(conDesc), &isnull);
+				val = SysCacheGetAttr(CONSTROID, tup,
+									  Anum_pg_constraint_conkey, &isnull);
 				if (isnull)
 					elog(ERROR, "null conkey for constraint %u",
 						 constraintId);
@@ -935,8 +960,8 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 								 generate_relation_name(conForm->confrelid));
 
 				/* Fetch and build referenced-column list */
-				val = heap_getattr(tup, Anum_pg_constraint_confkey,
-								   RelationGetDescr(conDesc), &isnull);
+				val = SysCacheGetAttr(CONSTROID, tup,
+									  Anum_pg_constraint_confkey, &isnull);
 				if (isnull)
 					elog(ERROR, "null confkey for constraint %u",
 						 constraintId);
@@ -1039,8 +1064,8 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 					appendStringInfo(&buf, "UNIQUE (");
 
 				/* Fetch and build target column list */
-				val = heap_getattr(tup, Anum_pg_constraint_conkey,
-								   RelationGetDescr(conDesc), &isnull);
+				val = SysCacheGetAttr(CONSTROID, tup,
+									  Anum_pg_constraint_conkey, &isnull);
 				if (isnull)
 					elog(ERROR, "null conkey for constraint %u",
 						 constraintId);
@@ -1066,7 +1091,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 					tblspc = get_rel_tablespace(indexId);
 					if (OidIsValid(tblspc))
 						appendStringInfo(&buf, " USING INDEX TABLESPACE %s",
-										 quote_identifier(get_tablespace_name(tblspc)));
+							  quote_identifier(get_tablespace_name(tblspc)));
 				}
 
 				break;
@@ -1081,8 +1106,8 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				List	   *context;
 
 				/* Fetch constraint expression in parsetree form */
-				val = heap_getattr(tup, Anum_pg_constraint_conbin,
-								   RelationGetDescr(conDesc), &isnull);
+				val = SysCacheGetAttr(CONSTROID, tup,
+									  Anum_pg_constraint_conbin, &isnull);
 				if (isnull)
 					elog(ERROR, "null conbin for constraint %u",
 						 constraintId);
@@ -1125,8 +1150,7 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 	}
 
 	/* Cleanup */
-	systable_endscan(conscan);
-	heap_close(conDesc, AccessShareLock);
+	ReleaseSysCache(tup);
 
 	return buf.data;
 }
@@ -1384,68 +1408,6 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 
 
 /*
- * get_constraint_index
- *		Given the OID of a unique or primary-key constraint, return the
- *		OID of the underlying unique index.
- *
- * Return InvalidOid if the index couldn't be found; this suggests the
- * given OID is bogus, but we leave it to caller to decide what to do.
- */
-Oid
-get_constraint_index(Oid constraintId)
-{
-	Oid			indexId = InvalidOid;
-	Relation	depRel;
-	ScanKeyData key[3];
-	SysScanDesc scan;
-	HeapTuple	tup;
-
-	/* Search the dependency table for the dependent index */
-	depRel = heap_open(DependRelationId, AccessShareLock);
-
-	ScanKeyInit(&key[0],
-				Anum_pg_depend_refclassid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(ConstraintRelationId));
-	ScanKeyInit(&key[1],
-				Anum_pg_depend_refobjid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(constraintId));
-	ScanKeyInit(&key[2],
-				Anum_pg_depend_refobjsubid,
-				BTEqualStrategyNumber, F_INT4EQ,
-				Int32GetDatum(0));
-
-	scan = systable_beginscan(depRel, DependReferenceIndexId, true,
-							  SnapshotNow, 3, key);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
-	{
-		Form_pg_depend deprec = (Form_pg_depend) GETSTRUCT(tup);
-
-		/*
-		 * We assume any internal dependency of an index on the constraint
-		 * must be what we are looking for.  (The relkind test is just
-		 * paranoia; there shouldn't be any such dependencies otherwise.)
-		 */
-		if (deprec->classid == RelationRelationId &&
-			deprec->objsubid == 0 &&
-			deprec->deptype == DEPENDENCY_INTERNAL &&
-			get_rel_relkind(deprec->objid) == RELKIND_INDEX)
-		{
-			indexId = deprec->objid;
-			break;
-		}
-	}
-
-	systable_endscan(scan);
-	heap_close(depRel, AccessShareLock);
-
-	return indexId;
-}
-
-
-/*
  * deparse_expression			- General utility for deparsing expressions
  *
  * calls deparse_expression_pretty with all prettyPrinting disabled
@@ -1536,8 +1498,7 @@ deparse_context_for(const char *aliasname, Oid relid)
 
 	/* Build one-element rtable */
 	dpns->rtable = list_make1(rte);
-	dpns->outer_varno = dpns->inner_varno = 0;
-	dpns->outer_rte = dpns->inner_rte = NULL;
+	dpns->outer_plan = dpns->inner_plan = NULL;
 
 	/* Return a one-deep namespace stack */
 	return list_make1(dpns);
@@ -1546,17 +1507,21 @@ deparse_context_for(const char *aliasname, Oid relid)
 /*
  * deparse_context_for_plan		- Build deparse context for a plan node
  *
- * The plan node may contain references to one or two subplans or outer
- * join plan nodes.  For these, pass the varno used plus a context node
- * made with deparse_context_for_subplan.  (Pass 0/NULL for unused inputs.)
+ * When deparsing an expression in a Plan tree, we might have to resolve
+ * OUTER or INNER references.  Pass the plan nodes whose targetlists define
+ * such references, or NULL when none are expected.  (outer_plan and
+ * inner_plan really ought to be declared as "Plan *", but we use "Node *"
+ * to avoid having to include plannodes.h in builtins.h.)
+ *
+ * As a special case, when deparsing a SubqueryScan plan, pass the subplan
+ * as inner_plan (there won't be any regular innerPlan() in this case).
  *
  * The plan's rangetable list must also be passed.  We actually prefer to use
  * the rangetable to resolve simple Vars, but the subplan inputs are needed
  * for Vars that reference expressions computed in subplan target lists.
  */
 List *
-deparse_context_for_plan(int outer_varno, Node *outercontext,
-						 int inner_varno, Node *innercontext,
+deparse_context_for_plan(Node *outer_plan, Node *inner_plan,
 						 List *rtable)
 {
 	deparse_namespace *dpns;
@@ -1564,10 +1529,8 @@ deparse_context_for_plan(int outer_varno, Node *outercontext,
 	dpns = (deparse_namespace *) palloc(sizeof(deparse_namespace));
 
 	dpns->rtable = rtable;
-	dpns->outer_varno = outer_varno;
-	dpns->outer_rte = (RangeTblEntry *) outercontext;
-	dpns->inner_varno = inner_varno;
-	dpns->inner_rte = (RangeTblEntry *) innercontext;
+	dpns->outer_plan = (Plan *) outer_plan;
+	dpns->inner_plan = (Plan *) inner_plan;
 
 	/* Return a one-deep namespace stack */
 	return list_make1(dpns);
@@ -1747,8 +1710,7 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 		context.prettyFlags = prettyFlags;
 		context.indentLevel = PRETTYINDENT_STD;
 		dpns.rtable = query->rtable;
-		dpns.outer_varno = dpns.inner_varno = 0;
-		dpns.outer_rte = dpns.inner_rte = NULL;
+		dpns.outer_plan = dpns.inner_plan = NULL;
 
 		get_rule_expr(qual, &context, false);
 	}
@@ -1892,8 +1854,7 @@ get_query_def(Query *query, StringInfo buf, List *parentnamespace,
 	context.query = query;
 
 	dpns.rtable = query->rtable;
-	dpns.outer_varno = dpns.inner_varno = 0;
-	dpns.outer_rte = dpns.inner_rte = NULL;
+	dpns.outer_plan = dpns.inner_plan = NULL;
 
 	switch (query->commandType)
 	{
@@ -2024,14 +1985,30 @@ get_select_query_def(Query *query, deparse_context *context,
 			typentry = lookup_type_cache(sortcoltype,
 										 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
 			if (srt->sortop == typentry->lt_opr)
-				 /* ASC is default, so emit nothing */ ;
+			{
+				/* ASC is default, so emit nothing for it */
+				if (srt->nulls_first)
+					appendStringInfo(buf, " NULLS FIRST");
+			}
 			else if (srt->sortop == typentry->gt_opr)
+			{
 				appendStringInfo(buf, " DESC");
+				/* DESC defaults to NULLS FIRST */
+				if (!srt->nulls_first)
+					appendStringInfo(buf, " NULLS LAST");
+			}
 			else
+			{
 				appendStringInfo(buf, " USING %s",
 								 generate_operator_name(srt->sortop,
 														sortcoltype,
 														sortcoltype));
+				/* be specific to eliminate ambiguity */
+				if (srt->nulls_first)
+					appendStringInfo(buf, " NULLS FIRST");
+				else
+					appendStringInfo(buf, " NULLS LAST");
+			}
 			sep = ", ";
 		}
 	}
@@ -2155,7 +2132,16 @@ get_basic_select_query(Query *query, deparse_context *context,
 	{
 		appendContextKeyword(context, " GROUP BY ",
 							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
-		get_rule_grouplist(query->groupClause, query->targetList, false, context);
+		sep = "";
+		foreach(l, query->groupClause)
+		{
+			GroupClause *grp = (GroupClause *) lfirst(l);
+
+			appendStringInfoString(buf, sep);
+			get_rule_sortgroupclause(grp, query->targetList,
+									 false, context);
+			sep = ", ";
+		}
 	}
 
 	/* Add the HAVING clause if given */
@@ -2214,7 +2200,7 @@ get_target_list(List *targetList, deparse_context *context,
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(l);
 		char	   *colname;
-		const char *attname;
+		const char	   *attname;
 
 		if (tle->resjunk)
 			continue;			/* ignore junk entries */
@@ -2233,38 +2219,7 @@ get_target_list(List *targetList, deparse_context *context,
 		 */
 		if (tle->expr && IsA(tle->expr, Var))
 		{
-			Var		   *var = (Var *) (tle->expr);
-			const char *schemaname;
-			const char *refname;
-
-			get_names_for_var(var, 0, context,
-							  &schemaname, &refname, &attname);
-			if (refname && (context->varprefix || attname == NULL))
-			{
-				if (schemaname)
-					appendStringInfo(buf, "%s.",
-									 quote_identifier(schemaname));
-
-				if (strcmp(refname, "*NEW*") == 0)
-					appendStringInfoString(buf, "new");
-				else if (strcmp(refname, "*OLD*") == 0)
-					appendStringInfoString(buf, "old");
-				else
-					appendStringInfoString(buf, quote_identifier(refname));
-
-				if (attname)
-					appendStringInfoChar(buf, '.');
-			}
-			if (attname)
-				appendStringInfoString(buf, quote_identifier(attname));
-			else
-			{
-				/*
-				 * In the whole-row Var case, refname is what the default AS
-				 * name would be.
-				 */
-				attname = refname;
-			}
+			attname = get_variable((Var *) tle->expr, 0, false, context);
 		}
 		else
 		{
@@ -2378,6 +2333,8 @@ get_setop_query(Node *setOp, Query *query, deparse_context *context,
 			 (int) nodeTag(setOp));
 	}
 }
+
+
 
 /*
  * Display a list of grouping or (grouping extension) clauses.
@@ -2644,7 +2601,6 @@ get_insert_query_def(Query *query, deparse_context *context)
 	}
 }
 
-
 /* ----------
  * get_update_query_def			- Parse back an UPDATE parsetree
  * ----------
@@ -2768,6 +2724,38 @@ get_delete_query_def(Query *query, deparse_context *context)
 	}
 }
 
+/*
+ * push_plan: set up deparse_namespace to recurse into the tlist of a subplan
+ *
+ * When expanding an OUTER or INNER reference, we must push new outer/inner
+ * subplans in case the referenced expression itself uses OUTER/INNER.	We
+ * modify the top stack entry in-place to avoid affecting levelsup issues
+ * (although in a Plan tree there really shouldn't be any).
+ *
+ * Caller must save and restore outer_plan and inner_plan around this.
+ */
+static void
+push_plan(deparse_namespace *dpns, Plan *subplan)
+{
+	/*
+	 * We special-case Append to pretend that the first child plan is the
+	 * OUTER referent; otherwise normal.
+	 */
+	if (IsA(subplan, Append))
+		dpns->outer_plan = (Plan *) linitial(((Append *) subplan)->appendplans);
+	else
+		dpns->outer_plan = outerPlan(subplan);
+
+	/*
+	 * For a SubqueryScan, pretend the subplan is INNER referent.  (We don't
+	 * use OUTER because that could someday conflict with the normal meaning.)
+	 */
+	if (IsA(subplan, SubqueryScan))
+		dpns->inner_plan = ((SubqueryScan *) subplan)->subplan;
+	else
+		dpns->inner_plan = innerPlan(subplan);
+}
+
 
 /* ----------
  * get_utility_query_def			- Parse back a UTILITY parsetree
@@ -2795,7 +2783,8 @@ get_utility_query_def(Query *query, deparse_context *context)
 	}
 }
 
-
+// MERGEBUG
+#if 0
 /*
  * Get the RTE referenced by a (possibly nonlocal) Var.
  *
@@ -2810,6 +2799,7 @@ static RangeTblEntry *
 get_rte_for_var(Var *var, int levelsup, deparse_context *context,
 				AttrNumber *attno)
 {
+	StringInfo	buf = context->buf;
 	RangeTblEntry *rte;
 	int			netlevelsup;
 	deparse_namespace *dpns;
@@ -2932,14 +2922,12 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 				aliasvar = (Var *) list_nth(rte->joinaliasvars, attnum - 1);
 				if (IsA(aliasvar, Var))
 				{
-					get_names_for_var(aliasvar,
-									  var->varlevelsup + levelsup, context,
-									  schemaname, refname, attname);
-					return;
+					return get_variable(aliasvar, var->varlevelsup + levelsup,
+										showstar, context);
 				}
 			}
 			/* Unnamed join has neither schemaname nor refname */
-			*refname = NULL;
+			refname = NULL;
 		}
 		else if (rte->rtekind == RTE_SPECIAL)
 		{
@@ -2954,43 +2942,226 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 			if (rte->funcexpr)
 				tle = get_tle_by_resno(((Plan *)rte->funcexpr)->targetlist, attnum);
 
-			if (tle && tle->resname)
-			{
-				*attname = tle->resname;
-			}
-			else
-			{
-				char		buf[32];
+			// MERGEBUG
+#if 0
+		if (strcmp(refname, "*NEW*") == 0)
+			appendStringInfoString(buf, "new");
+		else if (strcmp(refname, "*OLD*") == 0)
+			appendStringInfoString(buf, "old");
+		else
+			appendStringInfoString(buf, quote_identifier(refname));
 
-				snprintf(buf, sizeof(buf), "?column%d?", attnum);
-				*attname = pstrdup(buf);
+		if (attname || showstar)
+			appendStringInfoChar(buf, '.');
+	}
+	if (attname)
+		appendStringInfoString(buf, quote_identifier(attname));
+	else if (showstar)
+		appendStringInfoChar(buf, '*');
+
+	return attname;
+#endif
+}
+#endif 
+
+/*
+ * Display a Var appropriately.
+ *
+ * In some cases (currently only when recursing into an unnamed join)
+ * the Var's varlevelsup has to be interpreted with respect to a context
+ * above the current one; levelsup indicates the offset.
+ *
+ * If showstar is TRUE, whole-row Vars are displayed as "foo.*";
+ * if FALSE, merely as "foo".
+ *
+ * Returns the attname of the Var, or NULL if not determinable.
+ */
+static char *
+get_variable(Var *var, int levelsup, bool showstar, deparse_context *context)
+{
+	StringInfo	buf = context->buf;
+	RangeTblEntry *rte;
+	AttrNumber	attnum;
+	int			netlevelsup;
+	deparse_namespace *dpns;
+	char	   *schemaname;
+	char	   *refname;
+	char	   *attname;
+
+	/* Find appropriate nesting depth */
+	netlevelsup = var->varlevelsup + levelsup;
+	if (netlevelsup >= list_length(context->namespaces))
+		elog(ERROR, "bogus varlevelsup: %d offset %d",
+			 var->varlevelsup, levelsup);
+	dpns = (deparse_namespace *) list_nth(context->namespaces,
+										  netlevelsup);
+
+	/*
+	 * Try to find the relevant RTE in this rtable.  In a plan tree, it's
+	 * likely that varno is OUTER or INNER, in which case we must dig down
+	 * into the subplans.
+	 */
+	if (var->varno >= 1 && var->varno <= list_length(dpns->rtable))
+	{
+		rte = rt_fetch(var->varno, dpns->rtable);
+		attnum = var->varattno;
+	}
+	else if (var->varno == OUTER && dpns->outer_plan)
+	{
+		TargetEntry *tle;
+		Plan	   *save_outer;
+		Plan	   *save_inner;
+
+		tle = get_tle_by_resno(dpns->outer_plan->targetlist, var->varattno);
+		if (!tle)
+			elog(ERROR, "bogus varattno for OUTER var: %d", var->varattno);
+
+		Assert(netlevelsup == 0);
+		save_outer = dpns->outer_plan;
+		save_inner = dpns->inner_plan;
+		push_plan(dpns, dpns->outer_plan);
+
+		/*
+		 * Force parentheses because our caller probably assumed a Var is a
+		 * simple expression.
+		 */
+		if (!IsA(tle->expr, Var))
+			appendStringInfoChar(buf, '(');
+		get_rule_expr((Node *) tle->expr, context, true);
+		if (!IsA(tle->expr, Var))
+			appendStringInfoChar(buf, ')');
+
+		dpns->outer_plan = save_outer;
+		dpns->inner_plan = save_inner;
+		return NULL;
+	}
+	else if (var->varno == INNER && dpns->inner_plan)
+	{
+		TargetEntry *tle;
+		Plan	   *save_outer;
+		Plan	   *save_inner;
+
+		tle = get_tle_by_resno(dpns->inner_plan->targetlist, var->varattno);
+		if (!tle)
+			elog(ERROR, "bogus varattno for INNER var: %d", var->varattno);
+
+		Assert(netlevelsup == 0);
+		save_outer = dpns->outer_plan;
+		save_inner = dpns->inner_plan;
+		push_plan(dpns, dpns->inner_plan);
+
+		/*
+		 * Force parentheses because our caller probably assumed a Var is a
+		 * simple expression.
+		 */
+		if (!IsA(tle->expr, Var))
+			appendStringInfoChar(buf, '(');
+		get_rule_expr((Node *) tle->expr, context, true);
+		if (!IsA(tle->expr, Var))
+			appendStringInfoChar(buf, ')');
+
+		dpns->outer_plan = save_outer;
+		dpns->inner_plan = save_inner;
+		return NULL;
+	}
+	else
+	{
+		elog(ERROR, "bogus varno: %d", var->varno);
+		return NULL;			/* keep compiler quiet */
+	}
+
+	/* Identify names to use */
+	schemaname = NULL;			/* default assumptions */
+	refname = rte->eref->aliasname;
+
+	/* Exceptions occur only if the RTE is alias-less */
+	if (rte->alias == NULL)
+	{
+		if (rte->rtekind == RTE_RELATION)
+		{
+			/*
+			 * It's possible that use of the bare refname would find another
+			 * more-closely-nested RTE, or be ambiguous, in which case we need
+			 * to specify the schemaname to avoid these errors.
+			 */
+			if (find_rte_by_refname(rte->eref->aliasname, context) != rte)
+				schemaname = get_namespace_name(get_rel_namespace(rte->relid));
+		}
+		else if (rte->rtekind == RTE_JOIN)
+		{
+			/*
+			 * If it's an unnamed join, look at the expansion of the alias
+			 * variable.  If it's a simple reference to one of the input vars
+			 * then recursively print the name of that var, instead. (This
+			 * allows correct decompiling of cases where there are identically
+			 * named columns on both sides of the join.) When it's not a
+			 * simple reference, we have to just print the unqualified
+			 * variable name (this can only happen with columns that were
+			 * merged by USING or NATURAL clauses).
+			 *
+			 * This wouldn't work in decompiling plan trees, because we don't
+			 * store joinaliasvars lists after planning; but a plan tree
+			 * should never contain a join alias variable.
+			 */
+			if (rte->joinaliasvars == NIL)
+				elog(ERROR, "cannot decompile join alias var in plan tree");
+			if (attnum > 0)
+			{
+				Var		   *aliasvar;
+
+				aliasvar = (Var *) list_nth(rte->joinaliasvars, attnum - 1);
+				if (IsA(aliasvar, Var))
+				{
+					return get_variable(aliasvar, var->varlevelsup + levelsup,
+										showstar, context);
+				}
 			}
-			return;
+			/* Unnamed join has neither schemaname nor refname */
+			refname = NULL;
 		}
 	}
 
 	if (attnum == InvalidAttrNumber)
-		*attname = NULL;
+		attname = NULL;
 	else
-		*attname = get_rte_attribute_name(rte, attnum);
+		attname = get_rte_attribute_name(rte, attnum);
+
+	if (refname && (context->varprefix || attname == NULL))
+	{
+		if (schemaname)
+			appendStringInfo(buf, "%s.",
+							 quote_identifier(schemaname));
+
+		if (strcmp(refname, "*NEW*") == 0)
+			appendStringInfoString(buf, "new");
+		else if (strcmp(refname, "*OLD*") == 0)
+			appendStringInfoString(buf, "old");
+		else
+			appendStringInfoString(buf, quote_identifier(refname));
+
+		if (attname || showstar)
+			appendStringInfoChar(buf, '.');
+	}
+	if (attname)
+		appendStringInfoString(buf, quote_identifier(attname));
+	else if (showstar)
+		appendStringInfoChar(buf, '*');
+
+	return attname;
 }
 
 
+
 /*
- * Get the name of a field of a Var of type RECORD.
+ * Get the name of a field of an expression of composite type.
  *
+ * This is fairly straightforward except for the case of a Var of type RECORD.
  * Since no actual table or view column is allowed to have type RECORD, such
  * a Var must refer to a JOIN or FUNCTION RTE or to a subquery output.	We
  * drill down to find the ultimate defining expression and attempt to infer
  * the field name from it.	We ereport if we can't determine the name.
  *
  * levelsup is an extra offset to interpret the Var's varlevelsup correctly.
- *
- * Note: this has essentially the same logic as the parser's
- * expandRecordVariable() function, but we are dealing with a different
- * representation of the input context, and we only need one field name not
- * a TupleDesc.  Also, we have a special case for RTE_SPECIAL so that we can
- * deal with displaying RECORD-returning functions in subplan targetlists.
  */
 static const char *
 get_name_for_var_field(Var *var, int fieldno,
@@ -2998,23 +3169,98 @@ get_name_for_var_field(Var *var, int fieldno,
 {
 	RangeTblEntry *rte;
 	AttrNumber	attnum;
+	int			netlevelsup;
+	deparse_namespace *dpns;
 	TupleDesc	tupleDesc;
 	Node	   *expr;
 
-	/* Check my caller didn't mess up */
-	Assert(IsA(var, Var));
-	Assert(var->vartype == RECORDOID);
+	/*
+	 * If it's a Var of type RECORD, we have to find what the Var refers to;
+	 * if not, we can use get_expr_result_type. If that fails, we try
+	 * lookup_rowtype_tupdesc, which will probably fail too, but will ereport
+	 * an acceptable message.
+	 */
+	if (!IsA(var, Var) ||
+		var->vartype != RECORDOID)
+	{
+		if (get_expr_result_type((Node *) var, NULL, &tupleDesc) != TYPEFUNC_COMPOSITE)
+			tupleDesc = lookup_rowtype_tupdesc_copy(exprType((Node *) var),
+													exprTypmod((Node *) var));
+		Assert(tupleDesc);
+		/* Got the tupdesc, so we can extract the field name */
+		Assert(fieldno >= 1 && fieldno <= tupleDesc->natts);
+		return NameStr(tupleDesc->attrs[fieldno - 1]->attname);
+	}
 
-	/* Find appropriate RTE */
-	rte = get_rte_for_var(var, levelsup, context, &attnum);
+	/* Find appropriate nesting depth */
+	netlevelsup = var->varlevelsup + levelsup;
+	if (netlevelsup >= list_length(context->namespaces))
+		elog(ERROR, "bogus varlevelsup: %d offset %d",
+			 var->varlevelsup, levelsup);
+	dpns = (deparse_namespace *) list_nth(context->namespaces,
+										  netlevelsup);
 
-    if (rte == NULL)
-    {
-        ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
-                          errmsg_internal("bogus var: varno=%d varattno=%d",
-                                          var->varno, var->varattno) ));
-        return "*BOGUS*";
-    }
+	/*
+	 * Try to find the relevant RTE in this rtable.  In a plan tree, it's
+	 * likely that varno is OUTER or INNER, in which case we must dig down
+	 * into the subplans.
+	 */
+	if (var->varno >= 1 && var->varno <= list_length(dpns->rtable))
+	{
+		rte = rt_fetch(var->varno, dpns->rtable);
+		attnum = var->varattno;
+	}
+	else if (var->varno == OUTER && dpns->outer_plan)
+	{
+		TargetEntry *tle;
+		Plan	   *save_outer;
+		Plan	   *save_inner;
+		const char *result;
+
+		tle = get_tle_by_resno(dpns->outer_plan->targetlist, var->varattno);
+		if (!tle)
+			elog(ERROR, "bogus varattno for OUTER var: %d", var->varattno);
+
+		Assert(netlevelsup == 0);
+		save_outer = dpns->outer_plan;
+		save_inner = dpns->inner_plan;
+		push_plan(dpns, dpns->outer_plan);
+
+		result = get_name_for_var_field((Var *) tle->expr, fieldno,
+										levelsup, context);
+
+		dpns->outer_plan = save_outer;
+		dpns->inner_plan = save_inner;
+		return result;
+	}
+	else if (var->varno == INNER && dpns->inner_plan)
+	{
+		TargetEntry *tle;
+		Plan	   *save_outer;
+		Plan	   *save_inner;
+		const char *result;
+
+		tle = get_tle_by_resno(dpns->inner_plan->targetlist, var->varattno);
+		if (!tle)
+			elog(ERROR, "bogus varattno for INNER var: %d", var->varattno);
+
+		Assert(netlevelsup == 0);
+		save_outer = dpns->outer_plan;
+		save_inner = dpns->inner_plan;
+		push_plan(dpns, dpns->inner_plan);
+
+		result = get_name_for_var_field((Var *) tle->expr, fieldno,
+										levelsup, context);
+
+		dpns->outer_plan = save_outer;
+		dpns->inner_plan = save_inner;
+		return result;
+	}
+	else
+	{
+		elog(ERROR, "bogus varno: %d", var->varno);
+		return NULL;			/* keep compiler quiet */
+	}
 
 	if (attnum == InvalidAttrNumber)
 	{
@@ -3022,11 +3268,19 @@ get_name_for_var_field(Var *var, int fieldno,
 		return get_rte_attribute_name(rte, fieldno);
 	}
 
+	/*
+	 * This part has essentially the same logic as the parser's
+	 * expandRecordVariable() function, but we are dealing with a different
+	 * representation of the input context, and we only need one field name
+	 * not a TupleDesc.  Also, we need a special case for deparsing Plan
+	 * trees, because the subquery field has been removed from SUBQUERY RTEs.
+	 */
 	expr = (Node *) var;		/* default if we can't drill down */
 
 	switch (rte->rtekind)
 	{
 		case RTE_RELATION:
+		case RTE_SPECIAL:
 		case RTE_VALUES:
 
 			/*
@@ -3037,46 +3291,83 @@ get_name_for_var_field(Var *var, int fieldno,
 			break;
 		case RTE_SUBQUERY:
 			{
-				/* Subselect-in-FROM: examine sub-select's output expr */
-				TargetEntry *ste = get_tle_by_resno(rte->subquery->targetList,
-													attnum);
+				if (rte->subquery)
+				{
+					/* Subselect-in-FROM: examine sub-select's output expr */
+					TargetEntry *ste = get_tle_by_resno(rte->subquery->targetList,
+														attnum);
 
-				if (ste == NULL || ste->resjunk)
-                {
-                    ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
-                                      errmsg_internal("bogus var: varno=%d varattno=%d",
-                                                      var->varno, var->varattno) ));
-                    return "*BOGUS*";
-                }
-				expr = (Node *) ste->expr;
-				if (IsA(expr, Var))
+					if (ste == NULL || ste->resjunk)
+						elog(ERROR, "subquery %s does not have attribute %d",
+							 rte->eref->aliasname, attnum);
+					expr = (Node *) ste->expr;
+					if (IsA(expr, Var))
+					{
+						/*
+						 * Recurse into the sub-select to see what its Var
+						 * refers to. We have to build an additional level of
+						 * namespace to keep in step with varlevelsup in the
+						 * subselect.
+						 */
+						deparse_namespace mydpns;
+						const char *result;
+
+						mydpns.rtable = rte->subquery->rtable;
+						mydpns.outer_plan = mydpns.inner_plan = NULL;
+
+						context->namespaces = lcons(&mydpns,
+													context->namespaces);
+
+						result = get_name_for_var_field((Var *) expr, fieldno,
+														0, context);
+
+						context->namespaces =
+							list_delete_first(context->namespaces);
+
+						return result;
+					}
+					/* else fall through to inspect the expression */
+				}
+				else
 				{
 					/*
-					 * Recurse into the sub-select to see what its Var refers
-					 * to.	We have to build an additional level of namespace
-					 * to keep in step with varlevelsup in the subselect.
+					 * We're deparsing a Plan tree so we don't have complete
+					 * RTE entries.  But the only place we'd see a Var
+					 * directly referencing a SUBQUERY RTE is in a
+					 * SubqueryScan plan node, and we can look into the child
+					 * plan's tlist instead.
 					 */
-					deparse_namespace mydpns;
+					TargetEntry *tle;
+					Plan	   *save_outer;
+					Plan	   *save_inner;
 					const char *result;
 
-					mydpns.rtable = rte->subquery->rtable;
-					mydpns.outer_varno = mydpns.inner_varno = 0;
-					mydpns.outer_rte = mydpns.inner_rte = NULL;
+					if (!dpns->inner_plan)
+						elog(ERROR, "failed to find plan for subquery %s",
+							 rte->eref->aliasname);
+					tle = get_tle_by_resno(dpns->inner_plan->targetlist,
+										   attnum);
+					if (!tle)
+						elog(ERROR, "bogus varattno for subquery var: %d",
+							 attnum);
+					Assert(netlevelsup == 0);
+					save_outer = dpns->outer_plan;
+					save_inner = dpns->inner_plan;
+					push_plan(dpns, dpns->inner_plan);
 
-					context->namespaces = lcons(&mydpns, context->namespaces);
+					result = get_name_for_var_field((Var *) tle->expr, fieldno,
+													levelsup, context);
 
-					result = get_name_for_var_field((Var *) expr, fieldno,
-													0, context);
-
-					context->namespaces = list_delete_first(context->namespaces);
-
+					dpns->outer_plan = save_outer;
+					dpns->inner_plan = save_inner;
 					return result;
 				}
-				/* else fall through to inspect the expression */
 			}
 			break;
 		case RTE_JOIN:
 			/* Join RTE --- recursively inspect the alias variable */
+			if (rte->joinaliasvars == NIL)
+				elog(ERROR, "cannot decompile join alias var in plan tree");
 			Assert(attnum > 0 && attnum <= list_length(rte->joinaliasvars));
 			expr = (Node *) list_nth(rte->joinaliasvars, attnum - 1);
 			if (IsA(expr, Var))
@@ -3092,62 +3383,6 @@ get_name_for_var_field(Var *var, int fieldno,
 			 * its result columns as RECORD, which is not allowed.
 			 */
 			break;
-		case RTE_SPECIAL:
-			{
-				/*
-				 * We are looking at a deparse context node set up by
-				 * deparse_context_for_subplan().  The Var must refer to an
-				 * expression computed by this subplan (or possibly one of its
-				 * inputs), rather than any simple attribute of an RTE entry.
-				 * Look into the subplan's target list to get the referenced
-				 * expression, digging down as far as needed to find something
-				 * that's not a Var, and then pass it to
-				 * get_expr_result_type().
-				 */
-				Plan	   *subplan = (Plan *) rte->funcexpr;
-
-				while (subplan)
-				{
-					TargetEntry *ste;
-
-					ste = get_tle_by_resno(subplan->targetlist,
-										   ((Var *) expr)->varattno);
-					if (!ste || !ste->expr)
-						break;
-					expr = (Node *) ste->expr;
-					if (!IsA(expr, Var))
-						break;
-					switch (((Var *)expr)->varno)
-                    {
-                        case 0:
-                        case OUTER:
-						    subplan = outerPlan(subplan);
-                            break;
-                        case INNER:
-						    subplan = innerPlan(subplan);
-                            break;
-                        default:
-                            ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
-                                errmsg_internal("bogus var: varno=%d varattno=%d "
-                                                "subvarno=%d subattno=%d",
-                                                var->varno, var->varattno,
-                                                ((Var *)expr)->varno,
-                                                ((Var *)expr)->varattno) ));
-                            return "*BOGUS*";
-                    }
-				}
-				if (!subplan)
-                {
-                    ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
-                        errmsg_internal("bogus var: varno=%d varattno=%d",
-                                        var->varno, var->varattno) ));
-                    return "*BOGUS*";
-                }
-			}
-			break;
-        case RTE_VOID:
-            /* No references should exist to a deleted RTE. */
-            break;
 	}
 
 	/*
@@ -3159,7 +3394,7 @@ get_name_for_var_field(Var *var, int fieldno,
 	if (get_expr_result_type(expr, NULL, &tupleDesc) != TYPEFUNC_COMPOSITE)
 		tupleDesc = lookup_rowtype_tupdesc_copy(exprType(expr),
 												exprTypmod(expr));
-
+	Assert(tupleDesc);
 	/* Got the tupdesc, so we can extract the field name */
 	Assert(fieldno >= 1 && fieldno <= tupleDesc->natts);
 	return NameStr(tupleDesc->attrs[fieldno - 1]->attname);
@@ -3193,29 +3428,12 @@ find_rte_by_refname(const char *refname, deparse_context *context)
 		{
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(rtlist);
 
-            if (rte->eref &&
-                strcmp(rte->eref->aliasname, refname) == 0)
+			if (strcmp(rte->eref->aliasname, refname) == 0)
 			{
 				if (result)
 					return NULL;	/* it's ambiguous */
 				result = rte;
 			}
-		}
-		if (dpns->outer_rte &&
-            dpns->outer_rte->eref &&
-			strcmp(dpns->outer_rte->eref->aliasname, refname) == 0)
-		{
-			if (result)
-				return NULL;	/* it's ambiguous */
-			result = dpns->outer_rte;
-		}
-		if (dpns->inner_rte &&
-			dpns->inner_rte->eref &&
-			strcmp(dpns->inner_rte->eref->aliasname, refname) == 0)
-		{
-			if (result)
-				return NULL;	/* it's ambiguous */
-			result = dpns->inner_rte;
 		}
 		if (result)
 			break;
@@ -3269,6 +3487,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_Param:
 		case T_CoerceToDomainValue:
 		case T_SetToDefault:
+		case T_CurrentOfExpr:
 			/* single words: always simple */
 			return true;
 
@@ -3277,6 +3496,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 		case T_RowExpr:
 		case T_CoalesceExpr:
 		case T_MinMaxExpr:
+		case T_XmlExpr:
 		case T_NullIfExpr:
 		case T_Aggref:
 		case T_FuncExpr:
@@ -3308,6 +3528,12 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 								node, prettyFlags);
 		case T_RelabelType:
 			return isSimpleNode((Node *) ((RelabelType *) node)->arg,
+								node, prettyFlags);
+		case T_CoerceViaIO:
+			return isSimpleNode((Node *) ((CoerceViaIO *) node)->arg,
+								node, prettyFlags);
+		case T_ArrayCoerceExpr:
+			return isSimpleNode((Node *) ((ArrayCoerceExpr *) node)->arg,
 								node, prettyFlags);
 		case T_ConvertRowtypeExpr:
 			return isSimpleNode((Node *) ((ConvertRowtypeExpr *) node)->arg,
@@ -3385,6 +3611,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				case T_RowExpr:	/* other separators */
 				case T_CoalesceExpr:	/* own parentheses */
 				case T_MinMaxExpr:		/* own parentheses */
+				case T_XmlExpr:	/* own parentheses */
 				case T_NullIfExpr:		/* other separators */
 				case T_Aggref:	/* own parentheses */
 				case T_CaseExpr:		/* other separators */
@@ -3408,7 +3635,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 						{
 							case NOT_EXPR:
 							case AND_EXPR:
-								if (parentType == AND_EXPR)
+								if (parentType == AND_EXPR || parentType == OR_EXPR)
 									return true;
 								break;
 							case OR_EXPR:
@@ -3433,6 +3660,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 				case T_RowExpr:	/* other separators */
 				case T_CoalesceExpr:	/* own parentheses */
 				case T_MinMaxExpr:		/* own parentheses */
+				case T_XmlExpr:	/* own parentheses */
 				case T_NullIfExpr:		/* other separators */
 				case T_Aggref:	/* own parentheses */
 				case T_CaseExpr:		/* other separators */
@@ -3544,26 +3772,19 @@ get_rule_expr(Node *node, deparse_context *context,
 	 * expression tree.  The only exception is that when the input is a List,
 	 * we emit the component items comma-separated with no surrounding
 	 * decoration; this is convenient for most callers.
-	 *
-	 * There might be some work left here to support additional node types.
 	 */
 	switch (nodeTag(node))
 	{
 		case T_Var:
-			{
-				Var		   *var = (Var *) node;
-				const char *schemaname;
-				const char *refname;
-				const char *attname;
+			(void) get_variable((Var *) node, 0, true, context);
+			break;
 
-				get_names_for_var(var, 0, context,
-								  &schemaname, &refname, &attname);
-				if (refname && (context->varprefix || attname == NULL))
-				{
-					if (schemaname)
-						appendStringInfo(buf, "%s.",
-										 quote_identifier(schemaname));
 
+		case T_Param:
+			appendStringInfo(buf, "$%d", ((Param *) node)->paramid);
+			break;
+			// MERGEBUG
+#if 0
 					if (strcmp(refname, "*NEW*") == 0)
 						appendStringInfoString(buf, "new.");
 					else if (strcmp(refname, "*OLD*") == 0)
@@ -3578,15 +3799,11 @@ get_rule_expr(Node *node, deparse_context *context,
 					appendStringInfoString(buf, "*");
 			}
 			break;
+#endif
 
 		case T_Const:
 			get_const_expr((Const *) node, context, 0);
 			break;
-
-		case T_Param:
-			appendStringInfo(buf, "$%d", ((Param *) node)->paramid);
-			break;
-
 
 		case T_Grouping:
 			appendStringInfo(buf, "Grouping");
@@ -3779,28 +3996,10 @@ get_rule_expr(Node *node, deparse_context *context,
 					appendStringInfoChar(buf, ')');
 
 				/*
-				 * If it's a Var of type RECORD, we have to find what the Var
-				 * refers to; otherwise we can use get_expr_result_type. If
-				 * that fails, we try lookup_rowtype_tupdesc, which will
-				 * probably fail too, but will ereport an acceptable message.
+				 * Get and print the field name.
 				 */
-				if (IsA(arg, Var) &&
-					((Var *) arg)->vartype == RECORDOID)
-					fieldname = get_name_for_var_field((Var *) arg, fno,
-													   0, context);
-				else
-				{
-					TupleDesc	tupdesc;
-
-					if (get_expr_result_type(arg, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-						tupdesc = lookup_rowtype_tupdesc_copy(exprType(arg),
-															exprTypmod(arg));
-					Assert(tupdesc);
-					/* Got the tupdesc, so we can extract the field name */
-					Assert(fno >= 1 && fno <= tupdesc->natts);
-					fieldname = NameStr(tupdesc->attrs[fno - 1]->attname);
-				}
-
+				fieldname = get_name_for_var_field((Var *) arg, fno,
+												   0, context);
 				appendStringInfo(buf, ".%s", quote_identifier(fieldname));
 			}
 			break;
@@ -3827,14 +4026,52 @@ get_rule_expr(Node *node, deparse_context *context,
 				}
 				else
 				{
-					if (!PRETTY_PAREN(context))
-						appendStringInfoChar(buf, '(');
+					get_coercion_expr(arg, context,
+									  relabel->resulttype,
+									  relabel->resulttypmod,
+									  node);
+				}
+			}
+			break;
+
+		case T_CoerceViaIO:
+			{
+				CoerceViaIO *iocoerce = (CoerceViaIO *) node;
+				Node	   *arg = (Node *) iocoerce->arg;
+
+				if (iocoerce->coerceformat == COERCE_IMPLICIT_CAST &&
+					!showimplicit)
+				{
+					/* don't show the implicit cast */
 					get_rule_expr_paren(arg, context, false, node);
-					if (!PRETTY_PAREN(context))
-						appendStringInfoChar(buf, ')');
-					appendStringInfo(buf, "::%s",
-								format_type_with_typemod(relabel->resulttype,
-													 relabel->resulttypmod));
+				}
+				else
+				{
+					get_coercion_expr(arg, context,
+									  iocoerce->resulttype,
+									  -1,
+									  node);
+				}
+			}
+			break;
+
+		case T_ArrayCoerceExpr:
+			{
+				ArrayCoerceExpr *acoerce = (ArrayCoerceExpr *) node;
+				Node	   *arg = (Node *) acoerce->arg;
+
+				if (acoerce->coerceformat == COERCE_IMPLICIT_CAST &&
+					!showimplicit)
+				{
+					/* don't show the implicit cast */
+					get_rule_expr_paren(arg, context, false, node);
+				}
+				else
+				{
+					get_coercion_expr(arg, context,
+									  acoerce->resulttype,
+									  acoerce->resulttypmod,
+									  node);
 				}
 			}
 			break;
@@ -3852,13 +4089,9 @@ get_rule_expr(Node *node, deparse_context *context,
 				}
 				else
 				{
-					if (!PRETTY_PAREN(context))
-						appendStringInfoChar(buf, '(');
-					get_rule_expr_paren(arg, context, false, node);
-					if (!PRETTY_PAREN(context))
-						appendStringInfoChar(buf, ')');
-					appendStringInfo(buf, "::%s",
-						  format_type_with_typemod(convert->resulttype, -1));
+					get_coercion_expr(arg, context,
+									  convert->resulttype, -1,
+									  node);
 				}
 			}
 			break;
@@ -3900,15 +4133,15 @@ get_rule_expr(Node *node, deparse_context *context,
 						 */
 						if (IsA(w, OpExpr))
 						{
-                            OpExpr     *opexpr = (OpExpr *)w;
-						    Node	   *rhs;
+							Node	   *rhs;
 
-                            Assert(IsA(linitial(opexpr->args), CaseTestExpr) ||
-								   IsA(linitial(opexpr->args), Const) ||
-                                   IsA(linitial(opexpr->args), RelabelType));
-							rhs = (Node *) lsecond(opexpr->args);
-						    get_rule_expr(rhs, context, false);
-					    }
+							Assert(IsA(linitial(((OpExpr *) w)->args),
+									   CaseTestExpr) ||
+								   IsA(linitial(((OpExpr *) w)->args),
+									   Const));
+							rhs = (Node *) lsecond(((OpExpr *) w)->args);
+							get_rule_expr(rhs, context, false);
+						}
 						else if (IsA(w, CaseTestExpr))
 							appendStringInfo(buf, "TRUE");
 						else if (not_clause(w))
@@ -3948,7 +4181,7 @@ get_rule_expr(Node *node, deparse_context *context,
 			}
 			break;
 
-		case T_RowExpr:
+				case T_RowExpr:
 			{
 				RowExpr    *rowexpr = (RowExpr *) node;
 				TupleDesc	tupdesc = NULL;
@@ -4082,6 +4315,162 @@ get_rule_expr(Node *node, deparse_context *context,
 			}
 			break;
 
+		case T_XmlExpr:
+			{
+				XmlExpr    *xexpr = (XmlExpr *) node;
+				bool		needcomma = false;
+				ListCell   *arg;
+				ListCell   *narg;
+				Const	   *con;
+
+				switch (xexpr->op)
+				{
+					case IS_XMLCONCAT:
+						appendStringInfoString(buf, "XMLCONCAT(");
+						break;
+					case IS_XMLELEMENT:
+						appendStringInfoString(buf, "XMLELEMENT(");
+						break;
+					case IS_XMLFOREST:
+						appendStringInfoString(buf, "XMLFOREST(");
+						break;
+					case IS_XMLPARSE:
+						appendStringInfoString(buf, "XMLPARSE(");
+						break;
+					case IS_XMLPI:
+						appendStringInfoString(buf, "XMLPI(");
+						break;
+					case IS_XMLROOT:
+						appendStringInfoString(buf, "XMLROOT(");
+						break;
+					case IS_XMLSERIALIZE:
+						appendStringInfoString(buf, "XMLSERIALIZE(");
+						break;
+					case IS_DOCUMENT:
+						break;
+				}
+				if (xexpr->op == IS_XMLPARSE || xexpr->op == IS_XMLSERIALIZE)
+				{
+					if (xexpr->xmloption == XMLOPTION_DOCUMENT)
+						appendStringInfoString(buf, "DOCUMENT ");
+					else
+						appendStringInfoString(buf, "CONTENT ");
+				}
+				if (xexpr->name)
+				{
+					appendStringInfo(buf, "NAME %s",
+									 quote_identifier(map_xml_name_to_sql_identifier(xexpr->name)));
+					needcomma = true;
+				}
+				if (xexpr->named_args)
+				{
+					if (xexpr->op != IS_XMLFOREST)
+					{
+						if (needcomma)
+							appendStringInfoString(buf, ", ");
+						appendStringInfoString(buf, "XMLATTRIBUTES(");
+						needcomma = false;
+					}
+					forboth(arg, xexpr->named_args, narg, xexpr->arg_names)
+					{
+						Node	   *e = (Node *) lfirst(arg);
+						char	   *argname = strVal(lfirst(narg));
+
+						if (needcomma)
+							appendStringInfoString(buf, ", ");
+						get_rule_expr((Node *) e, context, true);
+						appendStringInfo(buf, " AS %s",
+										 quote_identifier(map_xml_name_to_sql_identifier(argname)));
+						needcomma = true;
+					}
+					if (xexpr->op != IS_XMLFOREST)
+						appendStringInfoChar(buf, ')');
+				}
+				if (xexpr->args)
+				{
+					if (needcomma)
+						appendStringInfoString(buf, ", ");
+					switch (xexpr->op)
+					{
+						case IS_XMLCONCAT:
+						case IS_XMLELEMENT:
+						case IS_XMLFOREST:
+						case IS_XMLPI:
+						case IS_XMLSERIALIZE:
+							/* no extra decoration needed */
+							get_rule_expr((Node *) xexpr->args, context, true);
+							break;
+						case IS_XMLPARSE:
+							Assert(list_length(xexpr->args) == 2);
+
+							get_rule_expr((Node *) linitial(xexpr->args),
+										  context, true);
+
+							con = (Const *) lsecond(xexpr->args);
+							Assert(IsA(con, Const));
+							Assert(!con->constisnull);
+							if (DatumGetBool(con->constvalue))
+								appendStringInfoString(buf,
+													 " PRESERVE WHITESPACE");
+							else
+								appendStringInfoString(buf,
+													   " STRIP WHITESPACE");
+							break;
+						case IS_XMLROOT:
+							Assert(list_length(xexpr->args) == 3);
+
+							get_rule_expr((Node *) linitial(xexpr->args),
+										  context, true);
+
+							appendStringInfoString(buf, ", VERSION ");
+							con = (Const *) lsecond(xexpr->args);
+							if (IsA(con, Const) &&
+								con->constisnull)
+								appendStringInfoString(buf, "NO VALUE");
+							else
+								get_rule_expr((Node *) con, context, false);
+
+							con = (Const *) lthird(xexpr->args);
+							Assert(IsA(con, Const));
+							if (con->constisnull)
+								 /* suppress STANDALONE NO VALUE */ ;
+							else
+							{
+								switch (DatumGetInt32(con->constvalue))
+								{
+									case XML_STANDALONE_YES:
+										appendStringInfoString(buf,
+														 ", STANDALONE YES");
+										break;
+									case XML_STANDALONE_NO:
+										appendStringInfoString(buf,
+														  ", STANDALONE NO");
+										break;
+									case XML_STANDALONE_NO_VALUE:
+										appendStringInfoString(buf,
+													", STANDALONE NO VALUE");
+										break;
+									default:
+										break;
+								}
+							}
+							break;
+						case IS_DOCUMENT:
+							get_rule_expr_paren((Node *) xexpr->args, context, false, node);
+							break;
+					}
+
+				}
+				if (xexpr->op == IS_XMLSERIALIZE)
+					appendStringInfo(buf, " AS %s", format_type_with_typemod(xexpr->type,
+															 xexpr->typmod));
+				if (xexpr->op == IS_DOCUMENT)
+					appendStringInfoString(buf, " IS DOCUMENT");
+				else
+					appendStringInfoChar(buf, ')');
+			}
+			break;
+
 		case T_NullIfExpr:
 			{
 				NullIfExpr *nullifexpr = (NullIfExpr *) node;
@@ -4165,14 +4554,10 @@ get_rule_expr(Node *node, deparse_context *context,
 				}
 				else
 				{
-					if (!PRETTY_PAREN(context))
-						appendStringInfoChar(buf, '(');
-					get_rule_expr_paren(arg, context, false, node);
-					if (!PRETTY_PAREN(context))
-						appendStringInfoChar(buf, ')');
-					appendStringInfo(buf, "::%s",
-								  format_type_with_typemod(ctest->resulttype,
-													   ctest->resulttypmod));
+					get_coercion_expr(arg, context,
+									  ctest->resulttype,
+									  ctest->resulttypmod,
+									  node);
 				}
 			}
 			break;
@@ -4183,6 +4568,19 @@ get_rule_expr(Node *node, deparse_context *context,
 
 		case T_SetToDefault:
 			appendStringInfo(buf, "DEFAULT");
+			break;
+
+		case T_CurrentOfExpr:
+			{
+				CurrentOfExpr *cexpr = (CurrentOfExpr *) node;
+
+				if (cexpr->cursor_name)
+					appendStringInfo(buf, "CURRENT OF %s",
+									 quote_identifier(cexpr->cursor_name));
+				else
+					appendStringInfo(buf, "CURRENT OF $%d",
+									 cexpr->cursor_param);
+			}
 			break;
 
 		case T_List:
@@ -4308,13 +4706,9 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 		/* Get the typmod if this is a length-coercion function */
 		(void) exprIsLengthCoercion((Node *) expr, &coercedTypmod);
 
-		if (!PRETTY_PAREN(context))
-			appendStringInfoChar(buf, '(');
-		get_rule_expr_paren(arg, context, false, (Node *) expr);
-		if (!PRETTY_PAREN(context))
-			appendStringInfoChar(buf, ')');
-		appendStringInfo(buf, "::%s",
-						 format_type_with_typemod(rettype, coercedTypmod));
+		get_coercion_expr(arg, context,
+						  rettype, coercedTypmod,
+						  (Node *) expr);
 
 		return;
 	}
@@ -4667,6 +5061,21 @@ get_windowref_expr(WindowRef *wref, deparse_context *context)
 }
 
 /* ----------
+ * get_coercion_expr
+ *
+ *	Make a string representation of a value coerced to a specific type
+ * ----------
+ */
+static void
+get_coercion_expr(Node *arg, deparse_context *context,
+				  Oid resulttype, int32 resulttypmod,
+				  Node *parentNode)
+{
+	StringInfo	buf = context->buf;
+	// MERGEBUG
+}
+
+/* ----------
  * get_const_expr
  *
  *	Make a string representation of a Const
@@ -4697,7 +5106,7 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 		if (showtype >= 0)
 			appendStringInfo(buf, "::%s",
 							 format_type_with_typemod(constval->consttype,
-													  -1));
+													  constval->consttypmod));
 		return;
 	}
 
@@ -4789,8 +5198,12 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 			needlabel = false;
 			break;
 		case NUMERICOID:
-			/* Float-looking constants will be typed as numeric */
-			needlabel = !isfloat;
+
+			/*
+			 * Float-looking constants will be typed as numeric, but if
+			 * there's a specific typmod we need to show it.
+			 */
+			needlabel = !isfloat || (constval->consttypmod >= 0);
 			break;
 		default:
 			needlabel = true;
@@ -4798,7 +5211,8 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 	}
 	if (needlabel || showtype > 0)
 		appendStringInfo(buf, "::%s",
-						 format_type_with_typemod(constval->consttype, -1));
+						 format_type_with_typemod(constval->consttype,
+												  constval->consttypmod));
 }
 
 
@@ -5303,11 +5717,6 @@ get_opclass_name(Oid opclass, Oid actual_datatype,
 	Form_pg_opclass opcrec;
 	char	   *opcname;
 	char	   *nspname;
-	bool		isvisible;
-
-	/* Domains use their base type's default opclass */
-	if (OidIsValid(actual_datatype))
-		actual_datatype = getBaseType(actual_datatype);
 
 	ht_opc = SearchSysCache(CLAOID,
 							ObjectIdGetDatum(opclass),
@@ -5316,25 +5725,12 @@ get_opclass_name(Oid opclass, Oid actual_datatype,
 		elog(ERROR, "cache lookup failed for opclass %u", opclass);
 	opcrec = (Form_pg_opclass) GETSTRUCT(ht_opc);
 
-	/*
-	 * Special case for ARRAY_OPS: pretend it is default for any array type
-	 */
-	if (OidIsValid(actual_datatype))
-	{
-		if (opcrec->opcintype == ANYARRAYOID &&
-			OidIsValid(get_element_type(actual_datatype)))
-			actual_datatype = opcrec->opcintype;
-	}
-
-	/* Must force use of opclass name if not in search path */
-	isvisible = OpclassIsVisible(opclass);
-
-	if (actual_datatype != opcrec->opcintype || !opcrec->opcdefault ||
-		!isvisible)
+	if (!OidIsValid(actual_datatype) ||
+		GetDefaultOpClass(actual_datatype, opcrec->opcmethod) != opclass)
 	{
 		/* Okay, we need the opclass name.	Do we need to qualify it? */
 		opcname = NameStr(opcrec->opcname);
-		if (isvisible)
+		if (OpclassIsVisible(opclass))
 			appendStringInfo(buf, " %s", quote_identifier(opcname));
 		else
 		{
@@ -5536,15 +5932,16 @@ quote_identifier(const char *ident)
 	if (safe)
 	{
 		/*
-		 * Check for keyword.  This test is overly strong, since many of the
-		 * "keywords" known to the parser are usable as column names, but the
-		 * parser doesn't provide any easy way to test for whether an
-		 * identifier is safe or not... so be safe not sorry.
+		 * Check for keyword.  We quote keywords except for unreserved ones.
+		 * (In some cases we could avoid quoting a col_name or type_func_name
+		 * keyword, but it seems much harder than it's worth to tell that.)
 		 *
 		 * Note: ScanKeywordLookup() does case-insensitive comparison, but
 		 * that's fine, since we already know we have all-lower-case.
 		 */
-		if (ScanKeywordLookup(ident) != NULL)
+		const ScanKeyword *keyword = ScanKeywordLookup(ident);
+
+		if (keyword != NULL && keyword->category != UNRESERVED_KEYWORD)
 			safe = false;
 	}
 

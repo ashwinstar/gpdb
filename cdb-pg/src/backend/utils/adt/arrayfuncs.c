@@ -3076,10 +3076,10 @@ array_eq(PG_FUNCTION_ARGS)
 			else
 			{
 				isnull2 = false;
-elt2 = fetch_att(ptr2, typbyval, typlen);
+				elt2 = fetch_att(ptr2, typbyval, typlen);
 				ptr2 = att_addlength_pointer(ptr2, typlen, ptr2);
 				ptr2 = (char *) att_align_nominal(ptr2, typalign);
-			}
+				}
 
 			/* advance bitmap pointers if any */
 			bitmask <<= 1;

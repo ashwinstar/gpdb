@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	$PostgreSQL: pgsql/src/backend/utils/adt/oracle_compat.c,v 1.67.2.1 2007/02/08 20:33:54 momjian Exp $
+ *	$PostgreSQL: pgsql/src/backend/utils/adt/oracle_compat.c,v 1.77 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -46,8 +46,8 @@
  */
 #if defined(HAVE_WCSTOMBS) && defined(HAVE_TOWLOWER)
 #define USE_WIDE_UPPER_LOWER
-char *wstring_lower (char *str);
-char *wstring_upper(char *str);
+char	   *wstring_lower(char *str);
+char	   *wstring_upper(char *str);
 #endif
 
 static text *dotrim(const char *string, int stringlen,
@@ -63,7 +63,7 @@ static text *dotrim(const char *string, int stringlen,
 static wchar_t *
 texttowcs(const text *txt)
 {
-	int			nbytes = VARSIZE(txt) - VARHDRSZ;
+	int			nbytes = VARSIZE_ANY_EXHDR(txt);
 	char	   *workstr;
 	wchar_t    *result;
 	size_t		ncodes;
@@ -77,7 +77,7 @@ texttowcs(const text *txt)
 
 	/* Need a null-terminated version of the input */
 	workstr = (char *) palloc(nbytes + 1);
-	memcpy(workstr, VARDATA(txt), nbytes);
+	memcpy(workstr, VARDATA_ANY(txt), nbytes);
 	workstr[nbytes] = '\0';
 
 	/* Output workspace cannot have more codes than input bytes */
@@ -164,7 +164,7 @@ wcstotext(const wchar_t *str, int ncodes)
 static wchar_t *
 win32_utf8_texttowcs(const text *txt)
 {
-	int			nbytes = VARSIZE(txt) - VARHDRSZ;
+	int			nbytes = VARSIZE_ANY_EXHDR(txt);
 	wchar_t    *result;
 	int			r;
 
@@ -184,13 +184,13 @@ win32_utf8_texttowcs(const text *txt)
 	else
 	{
 		/* Do the conversion */
-		r = MultiByteToWideChar(CP_UTF8, 0, VARDATA(txt), nbytes,
+		r = MultiByteToWideChar(CP_UTF8, 0, VARDATA_ANY(txt), nbytes,
 								result, nbytes);
 
-		if (!r)					/* assume it's NO_UNICODE_TRANSLATION */
+		if (r <= 0)				/* assume it's NO_UNICODE_TRANSLATION */
 		{
 			/* see notes above about error reporting */
-			pg_verifymbstr(VARDATA(txt), nbytes, false);
+			pg_verifymbstr(VARDATA_ANY(txt), nbytes, false);
 			ereport(ERROR,
 					(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
 					 errmsg("invalid multibyte character for locale"),
@@ -198,6 +198,7 @@ win32_utf8_texttowcs(const text *txt)
 		}
 	}
 
+	/* Append trailing null wchar (MultiByteToWideChar won't have) */
 	Assert(r <= nbytes);
 	result[r] = 0;
 
@@ -212,8 +213,9 @@ win32_utf8_wcstotext(const wchar_t *str)
 	int			nbytes;
 	int			r;
 
+	/* Compute size of output string (this *will* include trailing null) */
 	nbytes = WideCharToMultiByte(CP_UTF8, 0, str, -1, NULL, 0, NULL, NULL);
-	if (nbytes == 0)			/* shouldn't happen */
+	if (nbytes <= 0)			/* shouldn't happen */
 		ereport(ERROR,
 				(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
 				 errmsg("UTF-16 to UTF-8 translation failed: %lu",
@@ -223,13 +225,13 @@ win32_utf8_wcstotext(const wchar_t *str)
 
 	r = WideCharToMultiByte(CP_UTF8, 0, str, -1, VARDATA(result), nbytes,
 							NULL, NULL);
-	if (r == 0)					/* shouldn't happen */
+	if (r != nbytes)			/* shouldn't happen */
 		ereport(ERROR,
 				(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
 				 errmsg("UTF-16 to UTF-8 translation failed: %lu",
 						GetLastError())));
 
-	SET_VARSIZE(result, nbytes + VARHDRSZ - 1);		/* -1 to ignore null */
+	SET_VARSIZE(result, nbytes + VARHDRSZ - 1); /* -1 to ignore null */
 
 	return result;
 }
@@ -261,21 +263,21 @@ win32_wcstotext(const wchar_t *str, int ncodes)
 #endif   /* WIN32 */
 
 #ifdef USE_WIDE_UPPER_LOWER
-/* 
- * string_upper and string_lower are used for correct multibyte upper/lower 
+/*
+ * string_upper and string_lower are used for correct multibyte upper/lower
  * transformations localized strings. Returns pointers to transformated
  * string.
  */
 char *
 wstring_upper(char *str)
 {
-	wchar_t		*workspace;
-	text		*in_text;
-	text		*out_text;
-	char		*result;    
-	int 	nbytes = strlen(str);
-	int	i;
-	
+	wchar_t    *workspace;
+	text	   *in_text;
+	text	   *out_text;
+	char	   *result;
+	int			nbytes = strlen(str);
+	int			i;
+
 	in_text = palloc(nbytes + VARHDRSZ);
 	memcpy(VARDATA(in_text), str, nbytes);
 	SET_VARSIZE(in_text, nbytes + VARHDRSZ);
@@ -286,8 +288,8 @@ wstring_upper(char *str)
 		workspace[i] = towupper(workspace[i]);
 
 	out_text = wcstotext(workspace, i);
-	
-    	nbytes = VARSIZE(out_text) - VARHDRSZ;
+
+	nbytes = VARSIZE(out_text) - VARHDRSZ;
 	result = palloc(nbytes + 1);
 	memcpy(result, VARDATA(out_text), nbytes);
 
@@ -296,20 +298,20 @@ wstring_upper(char *str)
 	pfree(workspace);
 	pfree(in_text);
 	pfree(out_text);
-	
+
 	return result;
 }
 
 char *
 wstring_lower(char *str)
 {
-	wchar_t		*workspace;
-	text		*in_text;
-	text		*out_text;
-	char		*result;    
-	int 	nbytes = strlen(str);
-	int	i;
-	
+	wchar_t    *workspace;
+	text	   *in_text;
+	text	   *out_text;
+	char	   *result;
+	int			nbytes = strlen(str);
+	int			i;
+
 	in_text = palloc(nbytes + VARHDRSZ);
 	memcpy(VARDATA(in_text), str, nbytes);
 	SET_VARSIZE(in_text, nbytes + VARHDRSZ);
@@ -320,8 +322,8 @@ wstring_lower(char *str)
 		workspace[i] = towlower(workspace[i]);
 
 	out_text = wcstotext(workspace, i);
-	
-    	nbytes = VARSIZE(out_text) - VARHDRSZ;
+
+	nbytes = VARSIZE(out_text) - VARHDRSZ;
 	result = palloc(nbytes + 1);
 	memcpy(result, VARDATA(out_text), nbytes);
 
@@ -330,10 +332,10 @@ wstring_lower(char *str)
 	pfree(workspace);
 	pfree(in_text);
 	pfree(out_text);
-	
+
 	return result;
 }
-#endif	/* USE_WIDE_UPPER_LOWER */
+#endif   /* USE_WIDE_UPPER_LOWER */
 
 /********************************************************************
  *
@@ -361,7 +363,7 @@ lower(PG_FUNCTION_ARGS)
 	 */
 	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
 	{
-		text	   *string = PG_GETARG_TEXT_P(0);
+		text	   *string = PG_GETARG_TEXT_PP(0);
 		text	   *result;
 		wchar_t    *workspace;
 		int			i;
@@ -427,7 +429,7 @@ upper(PG_FUNCTION_ARGS)
 	 */
 	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
 	{
-		text	   *string = PG_GETARG_TEXT_P(0);
+		text	   *string = PG_GETARG_TEXT_PP(0);
 		text	   *result;
 		wchar_t    *workspace;
 		int			i;
@@ -496,7 +498,7 @@ initcap(PG_FUNCTION_ARGS)
 	 */
 	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
 	{
-		text	   *string = PG_GETARG_TEXT_P(0);
+		text	   *string = PG_GETARG_TEXT_PP(0);
 		text	   *result;
 		wchar_t    *workspace;
 		int			wasalnum = 0;
@@ -567,12 +569,13 @@ initcap(PG_FUNCTION_ARGS)
 Datum
 lpad(PG_FUNCTION_ARGS)
 {
-	text	   *string1 = PG_GETARG_TEXT_P(0);
+	text	   *string1 = PG_GETARG_TEXT_PP(0);
 	int32		len = PG_GETARG_INT32(1);
-	text	   *string2 = PG_GETARG_TEXT_P(2);
+	text	   *string2 = PG_GETARG_TEXT_PP(2);
 	text	   *ret;
 	char	   *ptr1,
 			   *ptr2,
+			   *ptr2start,
 			   *ptr2end,
 			   *ptr_ret;
 	int			m,
@@ -585,15 +588,15 @@ lpad(PG_FUNCTION_ARGS)
 	if (len < 0)
 		len = 0;
 
-	s1len = VARSIZE(string1) - VARHDRSZ;
+	s1len = VARSIZE_ANY_EXHDR(string1);
 	if (s1len < 0)
 		s1len = 0;				/* shouldn't happen */
 
-	s2len = VARSIZE(string2) - VARHDRSZ;
+	s2len = VARSIZE_ANY_EXHDR(string2);
 	if (s2len < 0)
 		s2len = 0;				/* shouldn't happen */
 
-	s1len = pg_mbstrlen_with_len(VARDATA(string1), s1len);
+	s1len = pg_mbstrlen_with_len(VARDATA_ANY(string1), s1len);
 
 	if (s1len > len)
 		s1len = len;			/* truncate string1 to len chars */
@@ -613,7 +616,7 @@ lpad(PG_FUNCTION_ARGS)
 
 	m = len - s1len;
 
-	ptr2 = VARDATA(string2);
+	ptr2 = ptr2start = VARDATA_ANY(string2);
 	ptr2end = ptr2 + s2len;
 	ptr_ret = VARDATA(ret);
 
@@ -625,10 +628,10 @@ lpad(PG_FUNCTION_ARGS)
 		ptr_ret += mlen;
 		ptr2 += mlen;
 		if (ptr2 == ptr2end)	/* wrap around at end of s2 */
-			ptr2 = VARDATA(string2);
+			ptr2 = ptr2start;
 	}
 
-	ptr1 = VARDATA(string1);
+	ptr1 = VARDATA_ANY(string1);
 
 	while (s1len--)
 	{
@@ -664,12 +667,13 @@ lpad(PG_FUNCTION_ARGS)
 Datum
 rpad(PG_FUNCTION_ARGS)
 {
-	text	   *string1 = PG_GETARG_TEXT_P(0);
+	text	   *string1 = PG_GETARG_TEXT_PP(0);
 	int32		len = PG_GETARG_INT32(1);
-	text	   *string2 = PG_GETARG_TEXT_P(2);
+	text	   *string2 = PG_GETARG_TEXT_PP(2);
 	text	   *ret;
 	char	   *ptr1,
 			   *ptr2,
+			   *ptr2start,
 			   *ptr2end,
 			   *ptr_ret;
 	int			m,
@@ -682,15 +686,15 @@ rpad(PG_FUNCTION_ARGS)
 	if (len < 0)
 		len = 0;
 
-	s1len = VARSIZE(string1) - VARHDRSZ;
+	s1len = VARSIZE_ANY_EXHDR(string1);
 	if (s1len < 0)
 		s1len = 0;				/* shouldn't happen */
 
-	s2len = VARSIZE(string2) - VARHDRSZ;
+	s2len = VARSIZE_ANY_EXHDR(string2);
 	if (s2len < 0)
 		s2len = 0;				/* shouldn't happen */
 
-	s1len = pg_mbstrlen_with_len(VARDATA(string1), s1len);
+	s1len = pg_mbstrlen_with_len(VARDATA_ANY(string1), s1len);
 
 	if (s1len > len)
 		s1len = len;			/* truncate string1 to len chars */
@@ -709,7 +713,7 @@ rpad(PG_FUNCTION_ARGS)
 	ret = (text *) palloc(VARHDRSZ + bytelen);
 	m = len - s1len;
 
-	ptr1 = VARDATA(string1);
+	ptr1 = VARDATA_ANY(string1);
 	ptr_ret = VARDATA(ret);
 
 	while (s1len--)
@@ -721,7 +725,7 @@ rpad(PG_FUNCTION_ARGS)
 		ptr1 += mlen;
 	}
 
-	ptr2 = VARDATA(string2);
+	ptr2 = ptr2start = VARDATA_ANY(string2);
 	ptr2end = ptr2 + s2len;
 
 	while (m--)
@@ -732,7 +736,7 @@ rpad(PG_FUNCTION_ARGS)
 		ptr_ret += mlen;
 		ptr2 += mlen;
 		if (ptr2 == ptr2end)	/* wrap around at end of s2 */
-			ptr2 = VARDATA(string2);
+			ptr2 = ptr2start;
 	}
 
 	SET_VARSIZE(ret, ptr_ret - (char *) ret);
@@ -759,12 +763,12 @@ rpad(PG_FUNCTION_ARGS)
 Datum
 btrim(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
-	text	   *set = PG_GETARG_TEXT_P(1);
+	text	   *string = PG_GETARG_TEXT_PP(0);
+	text	   *set = PG_GETARG_TEXT_PP(1);
 	text	   *ret;
 
-	ret = dotrim(VARDATA(string), VARSIZE(string) - VARHDRSZ,
-				 VARDATA(set), VARSIZE(set) - VARHDRSZ,
+	ret = dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
+				 VARDATA_ANY(set), VARSIZE_ANY_EXHDR(set),
 				 true, true);
 
 	PG_RETURN_TEXT_P(ret);
@@ -779,10 +783,10 @@ btrim(PG_FUNCTION_ARGS)
 Datum
 btrim1(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
+	text	   *string = PG_GETARG_TEXT_PP(0);
 	text	   *ret;
 
-	ret = dotrim(VARDATA(string), VARSIZE(string) - VARHDRSZ,
+	ret = dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
 				 " ", 1,
 				 true, true);
 
@@ -969,26 +973,33 @@ dotrim(const char *string, int stringlen,
 Datum
 byteatrim(PG_FUNCTION_ARGS)
 {
-	bytea	   *string = PG_GETARG_BYTEA_P(0);
-	bytea	   *set = PG_GETARG_BYTEA_P(1);
+	bytea	   *string = PG_GETARG_BYTEA_PP(0);
+	bytea	   *set = PG_GETARG_BYTEA_PP(1);
 	bytea	   *ret;
 	char	   *ptr,
 			   *end,
 			   *ptr2,
+			   *ptr2start,
 			   *end2;
-	int			m;
+	int			m,
+				stringlen,
+				setlen;
 
-	if ((m = VARSIZE(string) - VARHDRSZ) <= 0 ||
-		(VARSIZE(set) - VARHDRSZ) <= 0)
+	stringlen = VARSIZE_ANY_EXHDR(string);
+	setlen = VARSIZE_ANY_EXHDR(set);
+
+	if (stringlen <= 0 || setlen <= 0)
 		PG_RETURN_BYTEA_P(string);
 
-	ptr = VARDATA(string);
-	end = VARDATA(string) + VARSIZE(string) - VARHDRSZ - 1;
-	end2 = VARDATA(set) + VARSIZE(set) - VARHDRSZ - 1;
+	m = stringlen;
+	ptr = VARDATA_ANY(string);
+	end = ptr + stringlen - 1;
+	ptr2start = VARDATA_ANY(set);
+	end2 = ptr2start + setlen - 1;
 
 	while (m > 0)
 	{
-		ptr2 = VARDATA(set);
+		ptr2 = ptr2start;
 		while (ptr2 <= end2)
 		{
 			if (*ptr == *ptr2)
@@ -1003,7 +1014,7 @@ byteatrim(PG_FUNCTION_ARGS)
 
 	while (m > 0)
 	{
-		ptr2 = VARDATA(set);
+		ptr2 = ptr2start;
 		while (ptr2 <= end2)
 		{
 			if (*end == *ptr2)
@@ -1041,12 +1052,12 @@ byteatrim(PG_FUNCTION_ARGS)
 Datum
 ltrim(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
-	text	   *set = PG_GETARG_TEXT_P(1);
+	text	   *string = PG_GETARG_TEXT_PP(0);
+	text	   *set = PG_GETARG_TEXT_PP(1);
 	text	   *ret;
 
-	ret = dotrim(VARDATA(string), VARSIZE(string) - VARHDRSZ,
-				 VARDATA(set), VARSIZE(set) - VARHDRSZ,
+	ret = dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
+				 VARDATA_ANY(set), VARSIZE_ANY_EXHDR(set),
 				 true, false);
 
 	PG_RETURN_TEXT_P(ret);
@@ -1061,10 +1072,10 @@ ltrim(PG_FUNCTION_ARGS)
 Datum
 ltrim1(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
+	text	   *string = PG_GETARG_TEXT_PP(0);
 	text	   *ret;
 
-	ret = dotrim(VARDATA(string), VARSIZE(string) - VARHDRSZ,
+	ret = dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
 				 " ", 1,
 				 true, false);
 
@@ -1089,12 +1100,12 @@ ltrim1(PG_FUNCTION_ARGS)
 Datum
 rtrim(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
-	text	   *set = PG_GETARG_TEXT_P(1);
+	text	   *string = PG_GETARG_TEXT_PP(0);
+	text	   *set = PG_GETARG_TEXT_PP(1);
 	text	   *ret;
 
-	ret = dotrim(VARDATA(string), VARSIZE(string) - VARHDRSZ,
-				 VARDATA(set), VARSIZE(set) - VARHDRSZ,
+	ret = dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
+				 VARDATA_ANY(set), VARSIZE_ANY_EXHDR(set),
 				 false, true);
 
 	PG_RETURN_TEXT_P(ret);
@@ -1109,10 +1120,10 @@ rtrim(PG_FUNCTION_ARGS)
 Datum
 rtrim1(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
+	text	   *string = PG_GETARG_TEXT_PP(0);
 	text	   *ret;
 
-	ret = dotrim(VARDATA(string), VARSIZE(string) - VARHDRSZ,
+	ret = dotrim(VARDATA_ANY(string), VARSIZE_ANY_EXHDR(string),
 				 " ", 1,
 				 false, true);
 
@@ -1140,9 +1151,9 @@ rtrim1(PG_FUNCTION_ARGS)
 Datum
 translate(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
-	text	   *from = PG_GETARG_TEXT_P(1);
-	text	   *to = PG_GETARG_TEXT_P(2);
+	text	   *string = PG_GETARG_TEXT_PP(0);
+	text	   *from = PG_GETARG_TEXT_PP(1);
+	text	   *to = PG_GETARG_TEXT_PP(2);
 	text	   *result;
 	char	   *from_ptr,
 			   *to_ptr;
@@ -1163,14 +1174,14 @@ translate(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(string);
 	source = VARDATA(string);
 
-	fromlen = VARSIZE(from) - VARHDRSZ;
-	from_ptr = VARDATA(from);
-	tolen = VARSIZE(to) - VARHDRSZ;
-	to_ptr = VARDATA(to);
+	fromlen = VARSIZE_ANY_EXHDR(from);
+	from_ptr = VARDATA_ANY(from);
+	tolen = VARSIZE_ANY_EXHDR(to);
+	to_ptr = VARDATA_ANY(to);
 
 	/*
-	 * The worst-case expansion is to substitute a max-length character for
-	 * a single-byte character at each position of the string.
+	 * The worst-case expansion is to substitute a max-length character for a
+	 * single-byte character at each position of the string.
 	 */
 	worst_len = pg_database_encoding_max_length() * m;
 
@@ -1253,18 +1264,73 @@ translate(PG_FUNCTION_ARGS)
  *
  *	 Returns the decimal representation of the first character from
  *	 string.
+ *	 If the string is empty we return 0.
+ *	 If the database encoding is UTF8, we return the Unicode codepoint.
+ *	 If the database encoding is any other multi-byte encoding, we
+ *	 return the value of the first byte if it is an ASCII character
+ *	 (range 1 .. 127), or raise an error.
+ *	 For all other encodings we return the value of the first byte,
+ *	 (range 1..255).
  *
  ********************************************************************/
 
 Datum
 ascii(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
+	text	   *string = PG_GETARG_TEXT_PP(0);
+	int			encoding = GetDatabaseEncoding();
+	unsigned char *data;
 
-	if (VARSIZE(string) <= VARHDRSZ)
+	if (VARSIZE_ANY_EXHDR(string) <= 0)
 		PG_RETURN_INT32(0);
 
-	PG_RETURN_INT32((int32) *((unsigned char *) VARDATA(string)));
+	data = (unsigned char *) VARDATA_ANY(string);
+
+	if (encoding == PG_UTF8 && *data > 127)
+	{
+		/* return the code point for Unicode */
+
+		int			result = 0,
+					tbytes = 0,
+					i;
+
+		if (*data >= 0xF0)
+		{
+			result = *data & 0x07;
+			tbytes = 3;
+		}
+		else if (*data >= 0xE0)
+		{
+			result = *data & 0x0F;
+			tbytes = 2;
+		}
+		else
+		{
+			Assert(*data > 0xC0);
+			result = *data & 0x1f;
+			tbytes = 1;
+		}
+
+		Assert(tbytes > 0);
+
+		for (i = 1; i <= tbytes; i++)
+		{
+			Assert((data[i] & 0xC0) == 0x80);
+			result = (result << 6) + (data[i] & 0x3f);
+		}
+
+		PG_RETURN_INT32(result);
+	}
+	else
+	{
+		if (pg_encoding_max_length(encoding) > 1 && *data > 127)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("requested character too large")));
+
+
+		PG_RETURN_INT32((int32) *data);
+	}
 }
 
 /********************************************************************
@@ -1277,19 +1343,97 @@ ascii(PG_FUNCTION_ARGS)
  *
  * Purpose:
  *
- *	Returns the character having the binary equivalent to val
+ *	Returns the character having the binary equivalent to val.
+ *
+ * For UTF8 we treat the argumwent as a Unicode code point.
+ * For other multi-byte encodings we raise an error for arguments
+ * outside the strict ASCII range (1..127).
+ *
+ * It's important that we don't ever return a value that is not valid
+ * in the database encoding, so that this doesn't become a way for
+ * invalid data to enter the database.
  *
  ********************************************************************/
 
 Datum
 chr(PG_FUNCTION_ARGS)
 {
-	int32		cvalue = PG_GETARG_INT32(0);
+	uint32		cvalue = PG_GETARG_UINT32(0);
 	text	   *result;
+	int			encoding = GetDatabaseEncoding();
 
-	result = (text *) palloc(VARHDRSZ + 1);
-	SET_VARSIZE(result, VARHDRSZ + 1);
-	*VARDATA(result) = (char) cvalue;
+	if (encoding == PG_UTF8 && cvalue > 127)
+	{
+		/* for Unicode we treat the argument as a code point */
+		int			bytes;
+		char	   *wch;
+
+		/* We only allow valid Unicode code points */
+		if (cvalue > 0x001fffff)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("requested character too large for encoding: %d",
+							cvalue)));
+
+		if (cvalue > 0xffff)
+			bytes = 4;
+		else if (cvalue > 0x07ff)
+			bytes = 3;
+		else
+			bytes = 2;
+
+		result = (text *) palloc(VARHDRSZ + bytes);
+		SET_VARSIZE(result, VARHDRSZ + bytes);
+		wch = VARDATA(result);
+
+		if (bytes == 2)
+		{
+			wch[0] = 0xC0 | ((cvalue >> 6) & 0x1F);
+			wch[1] = 0x80 | (cvalue & 0x3F);;
+		}
+		else if (bytes == 3)
+		{
+			wch[0] = 0xE0 | ((cvalue >> 12) & 0x0F);
+			wch[1] = 0x80 | ((cvalue >> 6) & 0x3F);
+			wch[2] = 0x80 | (cvalue & 0x3F);
+		}
+		else
+		{
+			wch[0] = 0xF0 | ((cvalue >> 18) & 0x07);
+			wch[1] = 0x80 | ((cvalue >> 12) & 0x3F);
+			wch[2] = 0x80 | ((cvalue >> 6) & 0x3F);
+			wch[3] = 0x80 | (cvalue & 0x3F);
+		}
+
+	}
+
+	else
+	{
+		bool		is_mb;
+
+		/*
+		 * Error out on arguments that make no sense or that we can't validly
+		 * represent in the encoding.
+		 */
+
+		if (cvalue == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("null character not permitted")));
+
+		is_mb = pg_encoding_max_length(encoding) > 1;
+
+		if ((is_mb && (cvalue > 127)) || (!is_mb && (cvalue > 255)))
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("requested character too large for encoding: %d",
+							cvalue)));
+
+
+		result = (text *) palloc(VARHDRSZ + 1);
+		SET_VARSIZE(result, VARHDRSZ + 1);
+		*VARDATA(result) = (char) cvalue;
+	}
 
 	PG_RETURN_TEXT_P(result);
 }
@@ -1311,19 +1455,20 @@ chr(PG_FUNCTION_ARGS)
 Datum
 repeat(PG_FUNCTION_ARGS)
 {
-	text	   *string = PG_GETARG_TEXT_P(0);
+	text	   *string = PG_GETARG_TEXT_PP(0);
 	int32		count = PG_GETARG_INT32(1);
 	text	   *result;
 	int			slen,
 				tlen;
 	int			i;
-	char	   *cp;
+	char	   *cp,
+			   *sp;
 
 	if (count < 0)
 		count = 0;
 
-	slen = (VARSIZE(string) - VARHDRSZ);
-	tlen = (VARHDRSZ + (count * slen));
+	slen = VARSIZE_ANY_EXHDR(string);
+	tlen = VARHDRSZ + (count * slen);
 
 	/* Check for integer overflow */
 	if (slen != 0 && count != 0)
@@ -1341,9 +1486,10 @@ repeat(PG_FUNCTION_ARGS)
 
 	SET_VARSIZE(result, tlen);
 	cp = VARDATA(result);
+	sp = VARDATA_ANY(string);
 	for (i = 0; i < count; i++)
 	{
-		memcpy(cp, VARDATA(string), slen);
+		memcpy(cp, sp, slen);
 		cp += slen;
 	}
 

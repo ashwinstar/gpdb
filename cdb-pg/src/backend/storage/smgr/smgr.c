@@ -328,7 +328,7 @@ smgrclosenode(RelFileNode rnode)
  *		tell whether to drop the file.
  */
 void
-smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
+smgrcreate(SMgrRelation reln, bool isTemp, bool isLocalBuf, bool isRedo)
 {
 	XLogRecPtr	lsn;
 	XLogRecData rdata;
@@ -391,6 +391,7 @@ smgrcreate(SMgrRelation reln, bool isLocalBuf, bool isRedo)
 		MemoryContextAlloc(TopMemoryContext, sizeof(PendingRelDelete));
 	pending->relnode = reln->smgr_rnode;
 	pending->which = reln->smgr_which;
+	pending->isTemp = isTemp;   
 	pending->isLocalBuf = isLocalBuf;   /*CDB*/
 	pending->atCommit = false;	/* delete if abort */
 	pending->nestLevel = GetCurrentTransactionNestLevel();
@@ -883,7 +884,7 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 		SMgrRelation reln;
 
 		reln = smgropen(xlrec->rnode);
-		smgrcreate(reln, false, true);
+		smgrcreate(reln, false, false, true);
 	}
 	else if (info == XLOG_SMGR_TRUNCATE)
 	{
@@ -898,7 +899,7 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 		 * XLogOpenRelation, we prefer to recreate the rel and replay the log
 		 * as best we can until the drop is seen.
 		 */
-		smgrcreate(reln, false, true);
+		smgrcreate(reln, false, false, true);
 
 		/* Can't use smgrtruncate because it would try to xlog */
 

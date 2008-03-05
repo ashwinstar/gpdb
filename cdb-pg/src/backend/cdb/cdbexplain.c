@@ -1081,8 +1081,11 @@ cdbexplain_showExecStatsBegin(struct QueryDesc *queryDesc,
     ctx->explaincxt = explaincxt;
     ctx->querystarttime = querystarttime;
 
+    // MERGEBUG
+#if 0
     /* Determine number of slices.  (SliceTable hasn't been built yet.) */
     nslice = 1 + queryDesc->plantree->nMotionNodes + queryDesc->plantree->nInitPlans;
+#endif
 
     /* Allocate and zero the SliceSummary array. */
     ctx->nslice = nslice;

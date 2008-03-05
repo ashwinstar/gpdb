@@ -2801,7 +2801,7 @@ create_adaptive_join_path(PlannerInfo *root, Path *oldpath)
         return NULL;
 
     /* Gather mergejoinable predicates for motion planning. */
-    mergeclauses = select_mergejoin_clauses(outerrel,
+    mergeclauses = select_mergejoin_clauses(root, outerrel,
                                             innerrel,
                                             oldjoin->joinrestrictinfo,
                                             oldjoin->jointype);

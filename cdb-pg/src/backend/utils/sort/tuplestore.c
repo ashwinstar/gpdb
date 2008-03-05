@@ -39,7 +39,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/sort/tuplestore.c,v 1.29.2.1 2007/08/02 17:48:54 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/sort/tuplestore.c,v 1.36 2008/01/01 19:45:55 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -47,6 +47,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "commands/tablespace.h"
 #include "executor/instrument.h"        /* struct Instrumentation */
 #include "executor/executor.h"
 #include "storage/buffile.h"

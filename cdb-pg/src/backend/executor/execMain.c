@@ -1800,8 +1800,6 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	for (i = estate->es_num_result_relations; i > 0; i--)
 	{
 		/* Close indices and then the relation itself */
-		if (resultRelInfo->ri_HeapInsertDesc)
-			heap_endinsert(resultRelInfo->ri_HeapInsertDesc);
 		ExecCloseIndices(resultRelInfo);
 		heap_close(resultRelInfo->ri_RelationDesc, NoLock);
 		resultRelInfo++;
@@ -2216,23 +2214,10 @@ ExecInsert(TupleTableSlot *slot,
 	 * Note: heap_insert returns the tid (location) of the new tuple in the
 	 * t_self field.
 	 */
-	if (heap_enableHeapInsertDesc)
-	{
-		if (resultRelInfo->ri_HeapInsertDesc == NULL)
-		{
-			resultRelInfo->ri_HeapInsertDesc = 
-				heap_begininsert(resultRelationDesc,
-								 estate->es_snapshot->curcid,
-								 true, true);
-		}
-		newId = heap_insertnext(resultRelInfo->ri_HeapInsertDesc, tuple);
-	}
-	else
-	{
-		newId = heap_insert(resultRelationDesc, tuple,
-							estate->es_snapshot->curcid,
-							true, true, false);
-	}
+	newId = heap_insert(resultRelationDesc, tuple,
+						estate->es_output_cid,
+						true, true, false);
+
 	IncrAppended();
 	(estate->es_processed)++;
 	estate->es_lastoid = newId;
@@ -3455,7 +3440,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 				estate->es_output_cid,
 				estate->es_into_relation_use_wal,
 				false,		/* never any point in using FSM */
-				false);			
+				false);
 
 	/* We know this is a newly created relation, so there are no indexes */
 

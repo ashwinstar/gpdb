@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/lsyscache.c,v 1.138.2.1 2007/03/19 16:30:40 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/lsyscache.c,v 1.155 2008/01/01 19:45:53 momjian Exp $
  *
  * NOTES
  *	  Eventually, the index information should go through here, too.
@@ -1652,7 +1652,6 @@ get_rel_tablespace(Oid relid)
 	else
 		return InvalidOid;
 }
-
 
 /*				---------- TYPE CACHE ----------						 */
 

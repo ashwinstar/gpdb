@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/copy.c,v 1.273 2006/10/06 17:13:58 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/copy.c,v 1.295 2008/01/01 19:45:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1043,6 +1043,12 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY (SELECT INTO) is not supported")));
 		
+		/* Query mustn't use INTO, either */
+		if (query->intoClause)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY (SELECT INTO) is not supported")));
+
 		/* plan the query */
 		plan = planner(query, 0, NULL);
 		
@@ -1242,8 +1248,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 	 * of transaction to ensure that updates will be committed before lock is
 	 * released.
 	 */
-	if (cstate->heapInsertDesc)
-		heap_endinsert(cstate->heapInsertDesc);
+
 	if (cstate->rel)
 		heap_close(cstate->rel, (is_from ? NoLock : AccessShareLock));
 	else
@@ -4145,22 +4150,10 @@ CopyFrom(CopyState cstate)
 					if (cstate->rel->rd_att->constr)
 						ExecConstraints(resultRelInfo, slot, estate);
 
-					/*
-					 * OK, store the tuple and create index entries for it
-					 */
-					if (heap_enableHeapInsertDesc)
-					{
-						if (cstate->heapInsertDesc == NULL)
-						{
-							cstate->heapInsertDesc = heap_begininsert(cstate->rel, 
-																	  GetCurrentCommandId(true), true, true);
-						}
-						heap_insertnext(cstate->heapInsertDesc, tuple);
-					}
-					else 
-					{
-						simple_heap_insert(cstate->rel, tuple);
-					}
+					// MERGEBUG
+					bool use_wal = true; bool use_fsm=true; CommandId mycid = 0;
+					/* OK, store the tuple and create index entries for it */
+					heap_insert(cstate->rel, tuple, mycid, use_wal, use_fsm, false);
 
 					if (resultRelInfo->ri_NumIndices > 0)
 						ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
@@ -5648,6 +5641,16 @@ CopyAttributeOutText(CopyState cstate, char *string)
 			else
 				ptr++;
 		}
+
+		// MERGEBUG
+#if 0
+	/*
+	 * If we skipped writing WAL, then we need to sync the heap (but not
+	 * indexes since those use WAL anyway)
+	 */
+	if (!use_wal)
+		heap_sync(cstate->rel);
+#endif
 	}
 	else
 	{

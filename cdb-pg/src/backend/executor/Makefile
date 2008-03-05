@@ -14,7 +14,7 @@ include $(top_builddir)/src/Makefile.global
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 OBJCOPY ?= objcopy
 
-OBJS = execAmi.o execGrouping.o execHashagg.o execJunk.o execMain.o \
+OBJS = execAmi.o execCurrent.o execGrouping.o execHashagg.o execJunk.o execMain.o \
        execProcnode.o execQual.o execScan.o execTuples.o \
        execUtils.o \
        functions.o \

@@ -43,7 +43,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.178.2.4 2007/07/21 22:12:11 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/error/elog.c,v 1.201 2008/01/01 19:45:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -67,6 +67,7 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "storage/ipc.h"
+#include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -123,6 +124,14 @@ static int	errordata_stack_depth = -1; /* index of topmost active frame */
 
 static int	recursion_depth = 0;	/* to detect actual recursion */
 
+/* buffers for formatted timestamps that might be used by both
+ * log_line_prefix and csv logs.
+ */
+
+#define FORMATTED_TS_LEN 128
+static char formatted_start_time[FORMATTED_TS_LEN];
+static char formatted_log_time[FORMATTED_TS_LEN];
+
 
 /* Macro for checking errordata_stack_depth is reasonable */
 #define CHECK_STACK_DEPTH() \
@@ -143,7 +152,9 @@ static char *expand_fmt_string(const char *fmt, ErrorData *edata);
 static const char *useful_strerror(int errnum);
 static const char *error_severity(int elevel);
 static void append_with_tabs(StringInfo buf, const char *str);
-static void write_pipe_chunks(int fd, char *data, int len);
+static bool is_log_level_output(int elevel, int log_min_level);
+static void write_pipe_chunks(char *data, int len, int dest);
+static void write_csvlog(ErrorData *edata);
 static void elog_debug_linger(ErrorData *edata);
 
 #if (!defined(__darwin__)) && (!defined(pg_on_solaris))
@@ -187,7 +198,7 @@ errstart(int elevel, const char *filename, int lineno,
 		 const char *funcname)
 {
 	ErrorData  *edata;
-	bool		output_to_server = false;
+	bool		output_to_server;
 	bool		output_to_client = false;
 	int			i;
 
@@ -244,33 +255,10 @@ errstart(int elevel, const char *filename, int lineno,
 
 	/* Determine whether message is enabled for server log output */
 	if (IsPostmasterEnvironment)
-	{
-		/* Complicated because LOG is sorted out-of-order for this purpose */
-		if (elevel == LOG || elevel == COMMERROR)
-		{
-			if (log_min_messages == LOG)
-				output_to_server = true;
-			else if (log_min_messages < FATAL)
-				output_to_server = true;
-		}
+		output_to_server = is_log_level_output(elevel, log_min_messages);
 		else
-		{
-			/* elevel != LOG */
-			if (log_min_messages == LOG)
-			{
-				if (elevel >= FATAL)
-					output_to_server = true;
-			}
-			/* Neither is LOG */
-			else if (elevel >= log_min_messages)
-				output_to_server = true;
-		}
-	}
-	else
-	{
 		/* In bootstrap/standalone case, do not sort LOG out-of-order */
 		output_to_server = (elevel >= log_min_messages);
-	}
 
 	/* Determine whether message is enabled for client output */
 	if (whereToSendOutput == DestRemote && elevel != COMMERROR)
@@ -307,9 +295,9 @@ errstart(int elevel, const char *filename, int lineno,
 
 		/*
 		 * If we recurse more than once, the problem might be something broken
-		 * in a context traceback routine.  Abandon them too.  We also
-		 * abandon attempting to print the error statement (which, if long,
-		 * could itself be the source of the recursive failure).
+		 * in a context traceback routine.	Abandon them too.  We also abandon
+		 * attempting to print the error statement (which, if long, could
+		 * itself be the source of the recursive failure).
 		 */
 		if (recursion_depth > 2)
 		{
@@ -843,6 +831,25 @@ errcontext(const char *fmt,...)
 
 
 /*
+ * errhidestmt --- optionally suppress STATEMENT: field of log entry
+ *
+ * This should be called if the message text already includes the statement.
+ */
+int
+errhidestmt(bool hide_stmt)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	/* we don't bother incrementing recursion_depth */
+	CHECK_STACK_DEPTH();
+
+	edata->hide_stmt = hide_stmt;
+
+	return 0;					/* return value does not matter */
+}
+
+
+/*
  * errfunction --- add reporting function name to the current error
  *
  * This is used when backwards compatibility demands that the function
@@ -1238,6 +1245,70 @@ ReThrowError(ErrorData *edata)
 
 	recursion_depth--;
 	PG_RE_THROW();
+}
+
+/*
+ * pg_re_throw --- out-of-line implementation of PG_RE_THROW() macro
+ */
+void
+pg_re_throw(void)
+{
+	/* If possible, throw the error to the next outer setjmp handler */
+	if (PG_exception_stack != NULL)
+		siglongjmp(*PG_exception_stack, 1);
+	else
+	{
+		/*
+		 * If we get here, elog(ERROR) was thrown inside a PG_TRY block, which
+		 * we have now exited only to discover that there is no outer setjmp
+		 * handler to pass the error to.  Had the error been thrown outside
+		 * the block to begin with, we'd have promoted the error to FATAL, so
+		 * the correct behavior is to make it FATAL now; that is, emit it and
+		 * then call proc_exit.
+		 */
+		ErrorData  *edata = &errordata[errordata_stack_depth];
+
+		Assert(errordata_stack_depth >= 0);
+		Assert(edata->elevel == ERROR);
+		edata->elevel = FATAL;
+
+		/*
+		 * At least in principle, the increase in severity could have changed
+		 * where-to-output decisions, so recalculate.  This should stay in
+		 * sync with errstart(), which see for comments.
+		 */
+		if (IsPostmasterEnvironment)
+			edata->output_to_server = is_log_level_output(FATAL,
+														  log_min_messages);
+		else
+			edata->output_to_server = (FATAL >= log_min_messages);
+		if (whereToSendOutput == DestRemote)
+		{
+			if (ClientAuthInProgress)
+				edata->output_to_client = true;
+			else
+				edata->output_to_client = (FATAL >= client_min_messages);
+		}
+
+		/*
+		 * We can use errfinish() for the rest, but we don't want it to call
+		 * any error context routines a second time.  Since we know we are
+		 * about to exit, it should be OK to just clear the context stack.
+		 */
+		error_context_stack = NULL;
+
+		errfinish(0);
+	}
+	
+	/* We mustn't return... */
+	ExceptionalCondition("pg_re_throw tried to return", "FailedAssertion",
+						 __FILE__, __LINE__);
+
+	/*
+	 * Since ExceptionalCondition isn't declared noreturn because of
+	 * TrapMacro(), we need this to keep gcc from complaining.
+	 */
+	abort();
 }
 
 
@@ -1769,12 +1840,14 @@ log_line_prefix(StringInfo buf)
 	/*
 	 * This is one of the few places where we'd rather not inherit a static
 	 * variable's value from the postmaster.  But since we will, reset it when
-	 * MyProcPid changes.
+	 * MyProcPid changes. MyStartTime also changes when MyProcPid does, so
+	 * reset the formatted start timestamp too.
 	 */
 	if (log_my_pid != MyProcPid)
 	{
 		log_line_number = 0;
 		log_my_pid = MyProcPid;
+		formatted_start_time[0] = '\0';
 	}
 	log_line_number++;
 
@@ -1820,12 +1893,7 @@ log_line_prefix(StringInfo buf)
 				}
 				break;
 			case 'c':
-				if (MyProcPort)
-				{
-					appendStringInfo(buf, "%lx.%x",
-									 (long) (timestamptz_to_time_t(MyProcPort->SessionStartTime)),
-									 MyProcPid);
-				}
+				appendStringInfo(buf, "%lx.%x", (long) (MyStartTime), MyProcPid);
 				break;
 			case 'p':
 				appendStringInfo(buf, "%d", MyProcPid);
@@ -1835,73 +1903,60 @@ log_line_prefix(StringInfo buf)
 				break;
 			case 'm':
 				{
-					/*
-					 * Note: for %m, %t, and %s we deliberately use the C
-					 * library's strftime/localtime, and not the equivalent
-					 * functions from src/timezone.  This ensures that all
-					 * backends will report log entries in the same timezone,
-					 * namely whatever C-library setting they inherit from the
-					 * postmaster.	If we used src/timezone then local
-					 * settings of the TimeZone GUC variable would confuse the
-					 * log.
-					 */
-					time_t		stamp_time;
-					char		strfbuf[128],
-								msbuf[8];
 					struct timeval tv;
+					pg_time_t	stamp_time;
+					pg_tz	   *tz;
+					char		msbuf[8];
 
 					gettimeofday(&tv, NULL);
-					stamp_time = tv.tv_sec;
+					stamp_time = (pg_time_t) tv.tv_sec;
 
-					strftime(strfbuf, sizeof(strfbuf),
-					/* leave room for microseconds... */
-					/* Win32 timezone names are too long so don't print them */
-#ifndef WIN32
+					/*
+					 * Normally we print log timestamps in log_timezone, but
+					 * during startup we could get here before that's set. If
+					 * so, fall back to gmt_timezone (which guc.c ensures is
+					 * set up before Log_line_prefix can become nonempty).
+					 */
+					tz = log_timezone ? log_timezone : gmt_timezone;
+
+					pg_strftime(formatted_log_time, FORMATTED_TS_LEN,
+					/* leave room for milliseconds... */
 							 "%Y-%m-%d %H:%M:%S        %Z",
-#else
-							 "%Y-%m-%d %H:%M:%S        ",
-#endif
-							 localtime(&stamp_time));
+								pg_localtime(&stamp_time, tz));
 
 					/* 'paste' milliseconds into place... */
-					sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
-					strncpy(strfbuf + 19, msbuf, 7);
-
-					appendStringInfoString(buf, strfbuf);
+					sprintf(msbuf, ".%03d", (int) (tv.tv_usec / 1000));
+					strncpy(formatted_log_time + 19, msbuf, 4);
+					appendStringInfoString(buf, formatted_log_time);
 				}
 				break;
 			case 't':
 				{
-					time_t		stamp_time = time(NULL);
+					pg_time_t	stamp_time = (pg_time_t) time(NULL);
+					pg_tz	   *tz;
 					char		strfbuf[128];
 
-					strftime(strfbuf, sizeof(strfbuf),
-					/* Win32 timezone names are too long so don't print them */
-#ifndef WIN32
+					tz = log_timezone ? log_timezone : gmt_timezone;
+
+					pg_strftime(strfbuf, sizeof(strfbuf),
 							 "%Y-%m-%d %H:%M:%S %Z",
-#else
-							 "%Y-%m-%d %H:%M:%S",
-#endif
-							 localtime(&stamp_time));
+								pg_localtime(&stamp_time, tz));
 					appendStringInfoString(buf, strfbuf);
 				}
 				break;
 			case 's':
-				if (MyProcPort)
+				if (formatted_start_time[0] == '\0')
 				{
-					char		strfbuf[128];
-					time_t      session_start = timestamptz_to_time_t(MyProcPort->SessionStartTime);
+					pg_time_t	stamp_time = (pg_time_t) MyStartTime;
+					pg_tz	   *tz;
 
-					strftime(strfbuf, sizeof(strfbuf),
-					/* Win32 timezone names are too long so don't print them */
-#ifndef WIN32
-							 "%Y-%m-%d %H:%M:%S %Z",
-#else
-							 "%Y-%m-%d %H:%M:%S",
-#endif
-							 localtime(&session_start));
-					appendStringInfoString(buf, strfbuf);
+					tz = log_timezone ? log_timezone : gmt_timezone;
+
+					pg_strftime(formatted_start_time, FORMATTED_TS_LEN,
+								"%Y-%m-%d %H:%M:%S %Z",
+								pg_localtime(&stamp_time, tz));
 				}
+				appendStringInfoString(buf, formatted_start_time);
 				break;
 			case 'i':
 				if (MyProcPort)
@@ -1933,14 +1988,14 @@ log_line_prefix(StringInfo buf)
 				if (MyProcPort == NULL)
 					i = format_len;
 				break;
+			case 'v':
+				/* keep VXID format in sync with lockfuncs.c */
+				if (MyProc != NULL)
+					appendStringInfo(buf, "%d/%u",
+									 MyProc->backendId, MyProc->lxid);
+				break;
 			case 'x':
-				if (MyProcPort)
-				{
-					if (IsTransactionState())
-						appendStringInfo(buf, "%u", GetTopTransactionId());
-					else
-						appendStringInfo(buf, "%u", InvalidTransactionId);
-				}
+				appendStringInfo(buf, "%u", GetTopTransactionIdIfAny());
 				break;
 				
 			/* MPP SPECIFIC OPTIONS. */	
@@ -2026,6 +2081,247 @@ log_line_prefix(StringInfo buf)
 }
 
 /*
+ * append a CSV'd version of a string to a StringInfo
+ * We use the PostgreSQL defaults for CSV, i.e. quote = escape = '"'
+ * If it's NULL, append nothing.
+ */
+static inline void
+appendCSVLiteral(StringInfo buf, const char *data)
+{
+	const char *p = data;
+	char		c;
+
+	/* avoid confusing an empty string with NULL */
+	if (p == NULL)
+		return;
+
+	appendStringInfoCharMacro(buf, '"');
+	while ((c = *p++) != '\0')
+	{
+		if (c == '"')
+			appendStringInfoCharMacro(buf, '"');
+		appendStringInfoCharMacro(buf, c);
+	}
+	appendStringInfoCharMacro(buf, '"');
+}
+
+/*
+ * Constructs the error message, depending on the Errordata it gets, in a CSV
+ * format which is described in doc/src/sgml/config.sgml.
+ */
+static void
+write_csvlog(ErrorData *edata)
+{
+	StringInfoData buf;
+	bool	print_stmt = false;
+
+	/* static counter for line numbers */
+	static long log_line_number = 0;
+
+	/* has counter been reset in current process? */
+	static int	log_my_pid = 0;
+
+	/*
+	 * This is one of the few places where we'd rather not inherit a static
+	 * variable's value from the postmaster.  But since we will, reset it when
+	 * MyProcPid changes.
+	 */
+	if (log_my_pid != MyProcPid)
+	{
+		log_line_number = 0;
+		log_my_pid = MyProcPid;
+		formatted_start_time[0] = '\0';
+	}
+	log_line_number++;
+
+	initStringInfo(&buf);
+
+	/*
+	 * timestamp with milliseconds
+	 *
+	 * Check if the timestamp is already calculated for the syslog message,
+	 * and use it if so.  Otherwise, get the current timestamp.  This is done
+	 * to put same timestamp in both syslog and csvlog messages.
+	 */
+	if (formatted_log_time[0] == '\0')
+	{
+		struct timeval tv;
+		pg_time_t	stamp_time;
+		pg_tz	   *tz;
+		char		msbuf[8];
+
+		gettimeofday(&tv, NULL);
+		stamp_time = (pg_time_t) tv.tv_sec;
+
+		/*
+		 * Normally we print log timestamps in log_timezone, but during
+		 * startup we could get here before that's set. If so, fall back to
+		 * gmt_timezone (which guc.c ensures is set up before Log_line_prefix
+		 * can become nonempty).
+		 */
+		tz = log_timezone ? log_timezone : gmt_timezone;
+
+		pg_strftime(formatted_log_time, FORMATTED_TS_LEN,
+		/* leave room for milliseconds... */
+					"%Y-%m-%d %H:%M:%S     %Z",
+					pg_localtime(&stamp_time, tz));
+
+		/* 'paste' milliseconds into place... */
+		sprintf(msbuf, ".%03d", (int) (tv.tv_usec / 1000));
+		strncpy(formatted_log_time + 19, msbuf, 4);
+		}
+	appendStringInfoString(&buf, formatted_log_time);
+	appendStringInfoChar(&buf, ',');
+
+	/* username */
+	if (MyProcPort)
+		appendCSVLiteral(&buf, MyProcPort->user_name);
+	appendStringInfoChar(&buf, ',');
+
+	/* database name */
+	if (MyProcPort)
+		appendCSVLiteral(&buf, MyProcPort->database_name);
+	appendStringInfoChar(&buf, ',');
+
+	/* Process id  */
+	if (MyProcPid != 0)
+		appendStringInfo(&buf, "%d", MyProcPid);
+	appendStringInfoChar(&buf, ',');
+
+	/* Remote host and port */
+	if (MyProcPort && MyProcPort->remote_host)
+	{
+		appendStringInfoChar(&buf, '"');
+		appendStringInfo(&buf, "%s", MyProcPort->remote_host);
+		if (MyProcPort->remote_port && MyProcPort->remote_port[0] != '\0')
+			appendStringInfo(&buf, ":%s", MyProcPort->remote_port);
+		appendStringInfoChar(&buf, '"');
+	}
+	appendStringInfoChar(&buf, ',');
+
+	/* session id */
+	appendStringInfo(&buf, "%lx.%x", (long) MyStartTime, MyProcPid);
+	appendStringInfoChar(&buf, ',');
+
+	/* Line number */
+	appendStringInfo(&buf, "%ld", log_line_number);
+	appendStringInfoChar(&buf, ',');
+
+	/* PS display */
+	if (MyProcPort)
+	{
+		StringInfoData msgbuf;
+		const char *psdisp;
+		int			displen;
+
+		initStringInfo(&msgbuf);
+
+		psdisp = get_ps_display(&displen);
+		appendStringInfo(&msgbuf, "%.*s", displen, psdisp);
+		appendCSVLiteral(&buf, msgbuf.data);
+	
+		pfree(msgbuf.data);
+	}
+	appendStringInfoChar(&buf, ',');
+
+	/* session start timestamp */
+	if (formatted_start_time[0] == '\0')
+	{
+		pg_time_t	stamp_time = (pg_time_t) MyStartTime;
+		pg_tz	   *tz = log_timezone ? log_timezone : gmt_timezone;
+
+		pg_strftime(formatted_start_time, FORMATTED_TS_LEN,
+					"%Y-%m-%d %H:%M:%S %Z",
+					pg_localtime(&stamp_time, tz));
+}
+	appendStringInfoString(&buf, formatted_start_time);
+	appendStringInfoChar(&buf, ',');
+
+	/* Virtual transaction id */
+	/* keep VXID format in sync with lockfuncs.c */
+	if (MyProc != NULL && MyProc->backendId != InvalidBackendId)
+		appendStringInfo(&buf, "%d/%u", MyProc->backendId, MyProc->lxid);
+	appendStringInfoChar(&buf, ',');
+
+	/* Transaction id */
+	appendStringInfo(&buf, "%u", GetTopTransactionIdIfAny());
+	appendStringInfoChar(&buf, ',');
+
+	/* Error severity */
+	appendStringInfo(&buf, "%s", error_severity(edata->elevel));
+	appendStringInfoChar(&buf, ',');
+
+	/* SQL state code */
+	appendStringInfo(&buf, "%s", unpack_sql_state(edata->sqlerrcode));
+	appendStringInfoChar(&buf, ',');
+
+	/* errmessage */
+	appendCSVLiteral(&buf, edata->message);
+	appendStringInfoCharMacro(&buf, ',');
+
+	/* errdetail */
+	appendCSVLiteral(&buf, edata->detail);
+	appendStringInfoCharMacro(&buf, ',');
+
+	/* errhint */
+	appendCSVLiteral(&buf, edata->hint);
+	appendStringInfoCharMacro(&buf, ',');
+
+	/* internal query */
+	appendCSVLiteral(&buf, edata->internalquery);
+	appendStringInfoCharMacro(&buf, ',');
+
+	/* if printed internal query, print internal pos too */
+	if (edata->internalpos > 0 && edata->internalquery != NULL)
+		appendStringInfo(&buf, "%d", edata->internalpos);
+	appendStringInfoCharMacro(&buf, ',');
+
+	/* errcontext */
+	appendCSVLiteral(&buf, edata->context);
+	appendStringInfoCharMacro(&buf, ',');
+
+	/* user query --- only reported if not disabled by the caller */
+	if (is_log_level_output(edata->elevel, log_min_error_statement) &&
+		debug_query_string != NULL &&
+		!edata->hide_stmt)
+		print_stmt = true;
+	if (print_stmt)
+		appendCSVLiteral(&buf, debug_query_string);
+	appendStringInfoCharMacro(&buf, ',');
+	if (print_stmt && edata->cursorpos > 0)
+		appendStringInfo(&buf, "%d", edata->cursorpos);
+	appendStringInfoCharMacro(&buf, ',');
+
+	/* file error location */
+	if (Log_error_verbosity >= PGERROR_VERBOSE)
+	{
+		StringInfoData	msgbuf;
+
+		initStringInfo(&msgbuf);
+
+		if (edata->funcname && edata->filename)
+			appendStringInfo(&msgbuf, "%s, %s:%d",
+							 edata->funcname, edata->filename,
+							 edata->lineno);
+		else if (edata->filename)
+			appendStringInfo(&msgbuf, "%s:%d",
+							 edata->filename, edata->lineno);
+		appendCSVLiteral(&buf, msgbuf.data);
+		pfree(msgbuf.data);
+	}
+
+	appendStringInfoChar(&buf, '\n');
+
+	/* If in the syslogger process, try to write messages direct to file */
+	if (am_syslogger)
+		write_syslogger_file(buf.data, buf.len, LOG_DESTINATION_CSVLOG);
+	else
+		write_pipe_chunks(buf.data, buf.len, LOG_DESTINATION_CSVLOG);
+
+	pfree(buf.data);
+}
+
+/*
  * Unpack MAKE_SQLSTATE code. Note that this returns a pointer to a
  * static buffer.
  */
@@ -2058,6 +2354,9 @@ send_message_to_server_log(ErrorData *edata)
 
     /* Format message prefix. */
     initStringInfo(&buf);
+
+	formatted_log_time[0] = '\0';
+
     log_line_prefix(&buf);
     nc = buf.len;
     appendStringInfo(&buf, "%s:  ", error_severity(edata->elevel));
@@ -2165,7 +2464,9 @@ send_message_to_server_log(ErrorData *edata)
 	/*
 	 * If the user wants the query that generated this error logged, do it.
 	 */
-	if (edata->elevel >= log_min_error_statement && debug_query_string != NULL)
+	if (is_log_level_output(edata->elevel, log_min_error_statement) &&
+		debug_query_string != NULL &&
+		!edata->hide_stmt)
 	{
         appendBinaryStringInfo(&buf, prefix.data, prefix.len);
 		appendStringInfoString(&buf, gettext("Statement:  "));
@@ -2247,45 +2548,74 @@ send_message_to_server_log(ErrorData *edata)
 	/* Write to stderr, if enabled */
 	if ((Log_destination & LOG_DESTINATION_STDERR) || whereToSendOutput == DestDebug)
 	{
+		/*
+		 * Use the chunking protocol if we know the syslogger should be
+		 * catching stderr output, and we are not ourselves the syslogger.
+		 * Otherwise, just do a vanilla write to stderr.
+		 */
+		if (redirection_done && !am_syslogger)
+			write_pipe_chunks(buf.data, buf.len, LOG_DESTINATION_STDERR);
 #ifdef WIN32
 
 		/*
 		 * In a win32 service environment, there is no usable stderr. Capture
 		 * anything going there and write it to the eventlog instead.
 		 *
-		 * If stderr redirection is active, it's ok to write to stderr because
-		 * that's really a pipe to the syslogger process. Unless we're in the
-		 * postmaster, and the syslogger process isn't started yet.
+		 * If stderr redirection is active, it was OK to write to stderr above
+		 * because that's really a pipe to the syslogger process.
 		 */
-		if (pgwin32_is_service() && (!redirection_done || am_syslogger) )
+		else if (pgwin32_is_service())
 			write_eventlog(edata->elevel, buf.data);
-		else
 #endif
-			/* only use the chunking protocol if we know the syslogger should
-			 * be catching stderr output, and we are not ourselves the
-			 * syslogger. Otherwise, go directly to stderr.
-			 */
-			if (redirection_done && !am_syslogger)
-				write_pipe_chunks(fileno(stderr), buf.data, buf.len);
-			else
-				write(fileno(stderr), buf.data, buf.len);
+		else
+			write(fileno(stderr), buf.data, buf.len);
 	}
 
 	/* If in the syslogger process, try to write messages direct to file */
 	if (am_syslogger)
 		write_syslogger_file(buf.data, buf.len, LOG_DESTINATION_STDERR);
 
-    pfree(prefix.data);
-	pfree(buf.data);
+	/* Write to CSV log if enabled */
+	if (Log_destination & LOG_DESTINATION_CSVLOG)
+	{
+		if (redirection_done || am_syslogger)
+		{
+			/*
+			 * send CSV data if it's safe to do so (syslogger doesn't need the
+			 * pipe). First get back the space in the message buffer.
+			 */
+			pfree(buf.data);
+			write_csvlog(edata);
+		}
+		else
+		{
+			char	   *msg = _("Not safe to send CSV data\n");
+
+			write(fileno(stderr), msg, strlen(msg));
+			if (!(Log_destination & LOG_DESTINATION_STDERR) &&
+				whereToSendOutput != DestDebug)
+			{
+				/* write message to stderr unless we just sent it above */
+				write(fileno(stderr), buf.data, buf.len);
+			}
+			pfree(buf.data);
+		}
+	}
+	else
+	{
+		pfree(buf.data);
+	}
 }
 
 /*
  * Send data to the syslogger using the chunked protocol
  */
 static void
-write_pipe_chunks(int fd, char *data, int len)
+write_pipe_chunks(char *data, int len, int dest)
 {
 	PipeProtoChunk p;
+
+	int			fd = fileno(stderr);
 
 	Assert(len > 0);
 
@@ -2295,7 +2625,7 @@ write_pipe_chunks(int fd, char *data, int len)
 	/* write all but the last chunk */
 	while (len > PIPE_MAX_PAYLOAD)
 	{
-		p.proto.is_last = 'f';
+		p.proto.is_last = (dest == LOG_DESTINATION_CSVLOG ? 'F' : 'f');
 		p.proto.len = PIPE_MAX_PAYLOAD;
 		memcpy(p.proto.data, data, PIPE_MAX_PAYLOAD);
 		write(fd, &p, PIPE_HEADER_SIZE + PIPE_MAX_PAYLOAD);
@@ -2304,11 +2634,12 @@ write_pipe_chunks(int fd, char *data, int len)
 	}
 
 	/* write the last chunk */
-	p.proto.is_last = 't';
+	p.proto.is_last = (dest == LOG_DESTINATION_CSVLOG ? 'T' : 't');
 	p.proto.len = len;
 	memcpy(p.proto.data, data, len);
 	write(fd, &p, PIPE_HEADER_SIZE + len);
 }
+
 
 
 /*
@@ -2672,7 +3003,7 @@ write_stderr(const char *fmt,...)
 
 		vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
 
-		write_eventlog(EVENTLOG_ERROR_TYPE, errbuf);
+		write_eventlog(ERROR, errbuf);
 	}
 	else
     {
@@ -2682,6 +3013,36 @@ write_stderr(const char *fmt,...)
     }
 #endif
 	va_end(ap);
+}
+
+
+/*
+ * is_log_level_output -- is elevel logically >= log_min_level?
+ *
+ * We use this for tests that should consider LOG to sort out-of-order,
+ * between ERROR and FATAL.  Generally this is the right thing for testing
+ * whether a message should go to the postmaster log, whereas a simple >=
+ * test is correct for testing whether the message should go to the client.
+ */
+static bool
+is_log_level_output(int elevel, int log_min_level)
+{
+	if (elevel == LOG || elevel == COMMERROR)
+	{
+		if (log_min_level == LOG || log_min_level <= ERROR)
+			return true;
+	}
+	else if (log_min_level == LOG)
+	{
+		/* elevel != LOG */
+		if (elevel >= FATAL)
+			return true;
+	}
+	/* Neither is LOG */
+	else if (elevel >= log_min_level)
+		return true;
+
+	return false;
 }
 
 

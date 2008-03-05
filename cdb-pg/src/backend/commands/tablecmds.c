@@ -6872,7 +6872,7 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	newrnode.spcNode = newTableSpace;
 
 	dstrel = smgropen(newrnode);
-	smgrcreate(dstrel, rel->rd_istemp, false);
+	smgrcreate(dstrel, rel->rd_istemp, false, false);
 
 	/* copy relation data to the new physical file */
 	copy_relation_data(rel, dstrel);

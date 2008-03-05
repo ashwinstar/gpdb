@@ -419,5 +419,3 @@ oidvectorgt(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(cmp > 0);
 }
-
-

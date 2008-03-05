@@ -530,7 +530,7 @@ make_agg_subplan(PlannerInfo *root, MinMaxAggInfo *info)
 	plan = create_plan(&subroot, (Path *) info->path);
 
     /* Replace the plan's tlist with a copy of the one we built above. */
-    plan = plan_pushdown_tlist(plan, copyObject(subparse->targetList));
+    plan = plan_pushdown_tlist(root, plan, copyObject(subparse->targetList));
 
 	if (IsA(plan, Result))
 		iplan = plan->lefttree;

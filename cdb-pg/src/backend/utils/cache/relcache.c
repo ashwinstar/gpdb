@@ -844,9 +844,7 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
 	relation->rd_isnailed = false;
 	relation->rd_createSubid = InvalidSubTransactionId;
 	relation->rd_newRelfilenodeSubid = InvalidSubTransactionId;
-
-
-	relation->rd_istemp = isTempNamespace(relation->rd_rel->relnamespace);
+	relation->rd_istemp = isTempOrToastNamespace(relation->rd_rel->relnamespace);
 
     /*
      * CDB: On QEs, temp relations must use shared buffer cache so data
@@ -1280,6 +1278,40 @@ LookupOpclassInfo(Oid operatorClassOid,
 
 	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
+
+
+	/*
+	 * Scan pg_amop to obtain operators for the opclass.  We only fetch the
+	 * default ones (those with lefttype = righttype = opcintype).
+	 */
+		ScanKeyInit(&skey[0],
+					Anum_pg_amop_amopfamily,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(opcentry->opcfamily));
+		ScanKeyInit(&skey[1],
+					Anum_pg_amop_amoplefttype,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(opcentry->opcintype));
+		ScanKeyInit(&skey[2],
+					Anum_pg_amop_amoprighttype,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(opcentry->opcintype));
+		rel = heap_open(AccessMethodOperatorRelationId, AccessShareLock);
+		scan = systable_beginscan(rel, AccessMethodStrategyIndexId, indexOK,
+								  SnapshotNow, 3, skey);
+
+	if (HeapTupleIsValid(htup = systable_getnext(scan)))
+		{
+		Form_pg_opclass opclassform = (Form_pg_opclass) GETSTRUCT(htup);
+
+		opcentry->opcfamily = opclassform->opcfamily;
+		opcentry->opcintype = opclassform->opcintype;
+		}
+	else
+		elog(ERROR, "could not find tuple for opclass %u", operatorClassOid);
+
+		systable_endscan(scan);
+		heap_close(rel, AccessShareLock);
 
 
 	/*
@@ -2291,7 +2323,6 @@ RelationCacheMarkNewRelfilenode(Relation rel)
 	/* ... and now we have eoxact cleanup work to do */
 	need_eoxact_work = true;
 }
-
 
 /*
  *		RelationBuildLocalRelation

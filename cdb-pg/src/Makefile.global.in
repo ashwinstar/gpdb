@@ -215,9 +215,9 @@ CC = @CC@
 GCC = @GCC@
 CFLAGS = @CFLAGS@
 
-ifeq ($(GCC), yes)
-CFLAGS += -Werror
-endif # GCC
+#ifeq ($(GCC), yes)
+#CFLAGS += -Werror
+#endif # GCC
 
 # Kind-of compilers
 

@@ -1456,7 +1456,7 @@ HeapTupleSatisfiesMVCC(HeapTupleHeader tuple, Snapshot snapshot,
  */
 HTSV_Result
 HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
-						 Buffer buffer, bool vacuumFull)
+						 Buffer buffer)
 {
 	/*
 	 * Has inserting transaction committed?

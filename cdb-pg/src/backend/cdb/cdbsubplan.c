@@ -283,6 +283,8 @@ param_walker(Node *node, ParamWalkerContext * context)
 		/* Sift through the range table, might be a Param in there. */
 		SubPlan *sub = (SubPlan *)node;
 		ListCell *lc;
+		// MERGEBUG
+#if 0
 		
 		foreach(lc, sub->rtable)
 		{
@@ -296,6 +298,7 @@ param_walker(Node *node, ParamWalkerContext * context)
 		    else if ( rte->rtekind == RTE_VALUES )
 			    param_walker((Node*)rte->values_lists, context);
 		}
+#endif
 		/* Don't return, though.  Let the general walker finish the node. */
 	}
 

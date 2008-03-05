@@ -120,7 +120,7 @@ ExecRenameStmt(RenameStmt *stmt)
 								aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
 											get_namespace_name(namespaceId));
 
-							renamerel(relid, stmt->newname, stmt->renameType, stmt);
+							renamerel(relid, stmt->newname, stmt->renameType);
 							break;
 						}
 					case OBJECT_COLUMN:
@@ -165,7 +165,6 @@ ExecRenameStmt(RenameStmt *stmt)
 	{
 		CdbDispatchUtilityStatement((Node *) stmt, "ExecRenameStmt");
 	}
-
 }
 
 /*

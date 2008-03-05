@@ -365,9 +365,13 @@ cdb_grouping_planner(PlannerInfo* root,
 					Insist( IsA(agg_counts->dqaArgs, List) &&
 							list_length((List*)agg_counts->dqaArgs) == 1 );
 					dqaArgList = list_make1(linitial(agg_counts->dqaArgs));
+					
+					// MERGEBUG
+#if 0
 					distinct_pathkeys = cdb_make_pathkey_for_expr(root,
 							linitial(dqaArgList),
 							list_make1(makeString("=")));
+#endif
 					distinct_pathkeys =list_make1(distinct_pathkeys);
 
 					if ( cdbpathlocus_collocates(input_locus, distinct_pathkeys))
@@ -562,12 +566,12 @@ make_one_stage_agg_plan(PlannerInfo *root,
 	 * base plan can't project. (This may be unnecessary, but, if so,
 	 * the Result node will be removed later.)
 	 */
-    result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
+    result_plan = plan_pushdown_tlist(root, result_plan, sub_tlist);
 
     Assert(result_plan->flow); 
     
 	/* Account for the cost of evaluation of the sub_tlist. */
-	cost_qual_eval(&tlist_cost, sub_tlist);
+	cost_qual_eval(&tlist_cost, sub_tlist, root);
 	result_plan->startup_cost += tlist_cost.startup;
 	result_plan->total_cost +=
 		tlist_cost.startup +
@@ -637,6 +641,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 										AGG_HASHED, false,
 										numGroupCols,
 										groupColIdx,
+										NULL,
 										numGroups,
 										0, /* num_nullcols */
 										0, /* input_grouping */
@@ -689,6 +694,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 											aggstrategy, false,
 											numGroupCols,
 											groupColIdx,
+											NULL,
 											numGroups,
 											0, /* num_nullcols */
 											0, /* input_grouping */
@@ -743,6 +749,7 @@ make_one_stage_agg_plan(PlannerInfo *root,
 											  (List *) parse->havingQual,
 											  numGroupCols,
 											  groupColIdx,
+											  NULL,
 											  *(ctx->p_dNumGroups),
 											  0, /* num_nullcols */
 											  0, /* input_grouping */
@@ -854,10 +861,10 @@ make_two_stage_agg_plan(PlannerInfo *root,
 	 * (Though the result node may not always be necessary, it is safe,
 	 * and superfluous Result nodes are removed later.)
 	 */
-	result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
+	result_plan = plan_pushdown_tlist(root, result_plan, sub_tlist);
 	
 	/* Account for the cost of evaluation of the sub_tlist. */
-	cost_qual_eval(&tlist_cost, sub_tlist);
+	cost_qual_eval(&tlist_cost, sub_tlist, root);
 	result_plan->startup_cost += tlist_cost.startup;
 	result_plan->total_cost +=
 		tlist_cost.startup +
@@ -982,6 +989,7 @@ make_two_stage_agg_plan(PlannerInfo *root,
 										aggstrategy, gp_hashagg_streambottom,
 										numGroupCols,
 										groupColIdx,
+										NULL,
 										numGroups,
 										0, /* num_nullcols */
 										0, /* input_grouping */
@@ -1186,10 +1194,10 @@ make_two_stage_agg_plan_with_dqas(PlannerInfo *root, MppGroupContext *ctx)
 									  &numDistinctCols, 
 									  &distinctColIdx);
 	
-	result_plan = plan_pushdown_tlist(result_plan, sub_tlist);
+	result_plan = plan_pushdown_tlist(root, result_plan, sub_tlist);
 	
 	/* Account for the cost of evaluation of the sub_tlist. */
-	cost_qual_eval(&tlist_cost, sub_tlist);
+	cost_qual_eval(&tlist_cost, sub_tlist, root);
 	result_plan->startup_cost += tlist_cost.startup;
 	result_plan->total_cost +=
 		tlist_cost.startup +
@@ -1273,6 +1281,7 @@ make_two_stage_agg_plan_with_dqas(PlannerInfo *root, MppGroupContext *ctx)
 								aggstrategy, gp_hashagg_streambottom,
 								numGroupCols + numDistinctCols,
 								inputGroupColIdx,
+								NULL,
 								numGroups, /* too low, but how do we correct? */
 								0, /* num_nullcols */
 								0, /* input_grouping */
@@ -1634,6 +1643,8 @@ bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 	if ( !CdbPathLocus_IsHashed(locus) )
 		return false;  /* Or would HashedOJ ok, too? */
 	
+	// MERGEBUG
+#if 0
 	/* Extract a list of expressions from the pathkeys.  Since the locus
 	 * presumably knows all about attribute equivalence classes, we use
 	 * only the first item in each input path key. 
@@ -1646,6 +1657,7 @@ bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 		item = (PathKeyItem*)linitial(lst);
 		exprs = lappend(exprs, item->key);
 	}
+#endif
 	
 	/* Check for containment of locus in exprs. */
 	return cdbpathlocus_is_hashed_on_exprs(locus, exprs);
@@ -2365,7 +2377,7 @@ add_second_stage_agg(PlannerInfo *root,
 	result_plan = (Plan*)make_subqueryscan(subquery_tlist,
 										   NIL,
 										   1, /* scanrelid (= varno) */
-										   result_plan);
+										   result_plan, NIL);
 	mark_passthru_locus(result_plan, true, true);
 	
 	if ( *p_current_pathkeys != NULL )
@@ -2386,6 +2398,8 @@ add_second_stage_agg(PlannerInfo *root,
 		 */
 		Assert( numGroupCols >= list_length(*p_current_pathkeys) );
 
+		// MERGEBUG
+#if 0
 		foreach ( c, *p_current_pathkeys )
 		{
 			List *k;
@@ -2408,6 +2422,7 @@ add_second_stage_agg(PlannerInfo *root,
 			new_keys = lappend(new_keys, list_make1(pki));
 			i++;
 		}
+#endif
 		
 		*p_current_pathkeys = new_keys;
 	}
@@ -2425,6 +2440,7 @@ add_second_stage_agg(PlannerInfo *root,
 									aggstrategy, false,
 									numGroupCols,
 									prelimGroupColIdx,
+									NULL,
 									lNumGroups,
 									num_nullcols,
 									input_grouping,
@@ -2442,6 +2458,7 @@ add_second_stage_agg(PlannerInfo *root,
 									  final_qual,
 									  numGroupCols,
 									  prelimGroupColIdx,
+									  NULL,
 									  numGroups,
 									  num_nullcols,
 									  input_grouping,

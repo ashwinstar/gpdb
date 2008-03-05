@@ -504,8 +504,6 @@ inventory_plan_memory_ceiling(Node *plan, double *usage)
     if (!is_plan_node(plan))
 		return false;
 
-//	elog(LOG, "inventory_plan_memory: %s", plannode_type((Plan *)plan));
-
 	switch (nodeTag(plan))
 	{
 		case T_Agg: /* do AGG_PLAIN have any storage ? */

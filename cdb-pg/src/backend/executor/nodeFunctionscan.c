@@ -366,7 +366,9 @@ ExecFunctionRestrPos(FunctionScanState *node)
 
     node->cdb_fake_ctid = node->cdb_mark_ctid;
 
-	tuplestore_restorepos(node->tuplestorestate);
+    // MERGEBUG
+    TuplestorePos * pos = NULL;
+	tuplestore_restorepos_pos(node->tuplestorestate, /*(TuplestorePos *) node->ts_pos*/ pos);
 }
 
 /* ----------------------------------------------------------------

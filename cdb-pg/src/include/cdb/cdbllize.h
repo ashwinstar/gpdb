@@ -21,6 +21,7 @@
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "nodes/params.h"
+#include "nodes/relation.h"
 #include "cdb/cdbplan.h"
 
 Plan *

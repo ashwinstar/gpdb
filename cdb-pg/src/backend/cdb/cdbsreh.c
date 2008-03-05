@@ -333,7 +333,11 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 	/*
 	 * OK, store and freeze the tuple, and create index entries for it
 	 */
+	
+	// MERGEBUG
+#if 0
 	freeze_heap_insert(cdbsreh->errtbl, tuple);
+#endif
 	
 	heap_freetuple(tuple);
 	

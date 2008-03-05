@@ -6199,7 +6199,7 @@ analyzeCreateSchemaStmt(CreateSchemaStmt *stmt)
 	return result;
 }
 
-#endif XXX_NEVER_WHERE_IS_THIS_NOW
+#endif //XXX_NEVER_WHERE_IS_THIS_NOW
 
 /*
  * transformSingleRowErrorHandling

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/float.c,v 1.130 2006/10/05 01:40:45 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/float.c,v 1.153 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -277,7 +277,7 @@ float4in(PG_FUNCTION_ARGS)
 			endptr = num + 4;
 		}
 	}
-#endif /* HAVE_BUGGY_IRIX_STRTOD */
+#endif   /* HAVE_BUGGY_IRIX_STRTOD */
 
 	/* skip trailing whitespace */
 	while (*endptr != '\0' && isspace((unsigned char) *endptr))
@@ -470,7 +470,7 @@ float8in(PG_FUNCTION_ARGS)
 			endptr = num + 4;
 		}
 	}
-#endif /* HAVE_BUGGY_IRIX_STRTOD */
+#endif   /* HAVE_BUGGY_IRIX_STRTOD */
 
 	/* skip trailing whitespace */
 	while (*endptr != '\0' && isspace((unsigned char) *endptr))

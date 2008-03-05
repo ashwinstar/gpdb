@@ -533,7 +533,9 @@ ExecMaterialRestrPos(MaterialState *node)
 	/*
 	 * restore the scan to the previously marked position
 	 */
-	tuplestore_restorepos((Tuplestorestate *) node->tuplestorestate); 
+	// MERGEBUG
+	TupleStorePos pos;
+	tuplestore_restorepos_pos((Tuplestorestate *) node->tuplestorestate,(TuplestorePos *) node->ts_pos); 
 #else
 	Assert(node->ts_pos && node->ts_markpos);
 	ntuplestore_acc_seek((NTupleStoreAccessor *) node->ts_pos, (NTupleStorePos *) node->ts_markpos);

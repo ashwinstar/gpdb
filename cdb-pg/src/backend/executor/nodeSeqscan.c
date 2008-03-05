@@ -89,6 +89,8 @@ SeqNext(SeqScanState *node)
 	/*
 	 * get the next tuple from the access methods
 	 */
+	// MERGEBUG 
+#if 0
 	/* CKTAN- */
 	if (node->ss_heapTupleData.bot == node->ss_heapTupleData.top 
 		&& !node->ss_heapTupleData.seen_EOS)
@@ -100,12 +102,15 @@ SeqNext(SeqScanState *node)
 					  &node->ss_heapTupleData.top, 
 					  &node->ss_heapTupleData.seen_EOS);
 	}
+ 
 	node->ss_heapTupleData.last = 
 		((node->ss_heapTupleData.bot < node->ss_heapTupleData.top) 
 		 ? &node->ss_heapTupleData.item[node->ss_heapTupleData.bot++]
 		 : 0);
 	tuple = node->ss_heapTupleData.last;
-
+#else
+	tuple = heap_getnext(scandesc, direction);
+#endif
 	/*
 	 * save the tuple and the buffer returned to us by the access methods in
 	 * our scan tuple slot and return the slot.  Note: we pass 'false' because
@@ -350,7 +355,11 @@ ExecSeqMarkPos(SeqScanState *node)
 	/* CKTAN
 	heap_markpos(scan);
 	*/
+	// MERGEBUG
+#if 0
 	heap_markposx(scan, node->ss_heapTupleData.last);
+#endif
+	heap_markpos(scan);
 }
 
 /* ----------------------------------------------------------------

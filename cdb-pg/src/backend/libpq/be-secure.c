@@ -92,9 +92,6 @@
 #ifdef USE_SSL
 #include <openssl/ssl.h>
 #include <openssl/dh.h>
-#if SSL#endif   /* USE_SSL */
-EAY_VERSION_NUMBER >= 0x0907000L
-#include <openssl/conf.h>
 #if SSLEAY_VERSION_NUMBER >= 0x0907000L
 #include <openssl/conf.h>
 #endif
@@ -271,8 +268,12 @@ secure_read(Port *port, void *ptr, size_t len)
 	ssize_t		n;
 
 #ifdef USE_SSL
-	if (port->ssl)									FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
-r, len);
+	if (port->ssl)
+	{
+		int			err;
+
+rloop:
+		n = SSL_read(port->ssl, ptr, len);
 		err = SSL_get_error(port->ssl, n);
 		switch (err)
 		{
@@ -362,8 +363,11 @@ secure_write(Port *port, void *ptr, size_t len)
 				ereport(COMMERROR,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("SSL renegotiation failure")));
-			port->cou									FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE,
-en);
+			port->count = 0;
+		}
+
+wloop:
+		n = SSL_write(port->ssl, ptr, len);
 		err = SSL_get_error(port->ssl, n);
 		switch (err)
 		{
@@ -692,10 +696,7 @@ info_cb(const SSL *ssl, int type, int args)
 			ereport(DEBUG4,
 					(errmsg_internal("SSL: connect exit (%d)", args)));
 			break;
-		case SSL_CB_REA#if SSLEAY_VERSION_NUMBER >= 0x0907000L
-		OPENSSL_config(NULL);
-#endif
-D_ALERT:
+		case SSL_CB_READ_ALERT:
 			ereport(DEBUG4,
 					(errmsg_internal("SSL: read alert (0x%04x)", args)));
 			break;
@@ -764,7 +765,9 @@ initialize_SSL(void)
 
 		if (!SSL_CTX_use_PrivateKey_file(SSL_context,
 										 SERVER_PRIVATE_KEY_FILE,
-										 SSL_FILETYPE_	if (SSL_CTX_set_cipher_list(SSL_context, SSLCipherSuites) != 1)
+										 SSL_FILETYPE_PEM))
+			ereport(FATAL,
+					(errmsg("could not load private key file \"%s\": %s",
 					SERVER_PRIVATE_KEY_FILE, SSLerrmessage())));
 
 		if (!SSL_CTX_check_private_key(SSL_context))
@@ -869,8 +872,9 @@ open_server_SSL(Port *port)
 	}
 	if (!my_SSL_set_fd(port->ssl, port->sock))
 	{
-		ereport(COMME						FD_READ | FD_CLOSE | FD_ACCEPT : FD_WRITE | FD_CLOSE,
-ould not set SSL socket: %s",
+		ereport(COMMERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("could not set SSL socket: %s",
 						SSLerrmessage())));
 		close_SSL(port);
 		return -1;
@@ -910,9 +914,12 @@ aloop:
 				break;
 			case SSL_ERROR_ZERO_RETURN:
 				ereport(COMMERROR,
-						(errcode(ERRCODE_PROTOCOL_V		strlcpy(port->peer_dn, "(anonymous)", sizeof(port->peer_dn));
-		strlcpy(port->peer_cn, "(anonymous)", sizeof(port->peer_cn));
 	(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				   errmsg("could not accept SSL connection: EOF detected")));
+				break;
+			default:
+				ereport(COMMERROR,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("unrecognized SSL error code: %d",
 								err)));
 				break;

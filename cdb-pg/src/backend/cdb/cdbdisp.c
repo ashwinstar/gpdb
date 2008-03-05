@@ -3690,9 +3690,12 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	if (queryDesc->operation == CMD_INSERT)
 	{
+		// MERGEBUG
+#if 0
 		if (queryDesc->parsetree->jointree != NULL)
 			if (queryDesc->parsetree->jointree->fromlist == NIL)
 				pcontext.single_row_insert = true;
+#endif
 		
 		if (queryDesc->operation == CMD_INSERT && !pcontext.single_row_insert)
 			clear_relsize_cache();
@@ -3732,10 +3735,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			 * Make sure the palloc calls from plan_tree_mutator don't happen in 
 			 * topMemory, as this will cause memory leaks
 			 */
-			if (QueryContext != NULL)
-				oldContext = MemoryContextSwitchTo(QueryContext);
-			else
-				oldContext = MemoryContextSwitchTo(MessageContext);
+			
+			oldContext = MemoryContextSwitchTo(MessageContext);
 		}
 
 		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
@@ -3758,7 +3759,10 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * slice tree (corresponding to an initPlan or the main plan), so the
 	 * parameters are fixed and we can include them in the prefix.
 	 */
+	// MERGEBUG
+#if 0
 	squery = serializeNode((Node *) queryDesc->parsetree, &squery_len);
+#endif
 	splan = serializeNode((Node *) queryDesc->plantree, &splan_len);
 
 	Assert(squery != NULL && splan != NULL);
@@ -3849,7 +3853,10 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 												   cancelOnError);
 
 	/* Allocate result array for mirror gang. */
+	// MERGEBUG
+#if 0
 	if (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)
+#endif
 	{
 		Slice	   *slice = (Slice *) list_nth(sliceTbl->slices, rootIdx);
 

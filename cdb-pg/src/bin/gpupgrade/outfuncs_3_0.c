@@ -2310,12 +2310,14 @@ _outIndexElem(StringInfo str, IndexElem *node)
 	WRITE_NODE_FIELD(opclass);
 }
 
+#if 0
 static void
 _outVariableResetStmt(StringInfo str, VariableResetStmt *node)
 {
 	WRITE_NODE_TYPE("VARIABLERESETSTMT");
 	WRITE_STRING_FIELD(name);
 }
+#endif 
 
 static void
 _outQuery(StringInfo str, Query *node)
@@ -2383,7 +2385,9 @@ _outQuery(StringInfo str, Query *node)
 			case T_CopyStmt:
 			case T_ReindexStmt:
 			case T_ConstraintsSetStmt:
+#if 0
 			case T_VariableResetStmt:
+#endif 
 			case T_CreateTrigStmt:
 			case T_DefineStmt:
 			case T_CompositeTypeStmt:
@@ -3391,9 +3395,11 @@ _outNode(StringInfo str, void *obj)
 			case T_SliceTable:
 				_outSliceTable(str, obj);
 				break;
+#if 0
 			case T_VariableResetStmt:
 				_outVariableResetStmt(str, obj);
 				break;
+#endif 
 				
 			case T_LockingClause:
 				_outLockingClause(str, obj);

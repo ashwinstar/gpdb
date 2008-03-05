@@ -354,9 +354,12 @@ plan_tree_walker(Node *node,
 										   walker, context))
 					return true;
 
+				// MERGEBUG
+#if 0
 				/* recur into the subplan, a kind of Plan node */
 				if (walker((Node *) subplan->plan, context))
 					return true;
+#endif 
 
 				/* also examine args list */
 				if (expression_tree_walker((Node *) subplan->args,
@@ -1004,9 +1007,12 @@ plan_tree_mutator(Node *node,
 				FLATCOPY(newnode, subplan, SubPlan);
 
 				MUTATE(newnode->testexpr, subplan->testexpr, Node *);
+				// MERGEBUG
+#if 0
 				MUTATE(newnode->plan, subplan->plan, Plan *);
 				MUTATE(newnode->rtable, subplan->rtable, List *);
 				MUTATE(newnode->args, subplan->args, List *);
+#endif
 
                 /* An IntList isn't interesting to mutate; just copy. */
 				newnode->paramIds = (List *)copyObject(subplan->paramIds);

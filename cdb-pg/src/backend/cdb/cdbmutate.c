@@ -157,7 +157,8 @@ apply_motion(Plan *plan, Query *query)
 	{
 		case CMD_SELECT:
 			
-
+// MERGEBUG
+#if 0
 			if (query->into)
 			{
 				List   *hashExpr;
@@ -317,8 +318,8 @@ apply_motion(Plan *plan, Query *query)
                 Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
 
 			}
-			
-			if (plan->flow->flotype == FLOW_PARTITIONED && !query->into)
+#endif 
+			if (plan->flow->flotype == FLOW_PARTITIONED ) // && !query->into) // MERGEBUG
 			{
 			    /*
                  * Query result needs to be brought back to the QD.
@@ -572,8 +573,11 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 		memcpy(newsub, node, sizeof(SubPlan));
 		
 		newsub->testexpr = (Node*) apply_motion_mutator((Node*)subplan->testexpr, context);
+		// MERGEBUG
+#if 0
 		newsub->plan = (Plan*) apply_motion_mutator((Node*)subplan->plan, context);
 		newsub->rtable = (List*) apply_motion_mutator((Node*)subplan->rtable, context);
+#endif
 		newsub->args = (List*) apply_motion_mutator((Node*)subplan->args, context);
 
         /* An IntList isn't interesting to mutate; just copy them. */
@@ -626,7 +630,10 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
         {
             subplan = (SubPlan *)lfirst(cell);
             Assert(IsA(subplan, SubPlan));
+            // MERGEBUG
+#if 0
             nMotion += subplan->plan->nMotionNodes;
+#endif
             context->initPlans = lappend(context->initPlans, subplan);
         }
 
@@ -1518,8 +1525,12 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 
 	if(IsA(node, SubPlan))
 	{
+		// MERGEBUG
+#if 0
 		SubPlan *subplan = (SubPlan *) node;
+
 		shareinput_walker(f, (Node *)subplan->plan, ctxt); 
+#endif
 		return;
 	}
 
@@ -1928,7 +1939,7 @@ shareinput_validator_walker(Node *node, void *context)
 					childPlan = list_nth(ctx->sharedNodes, sisc->share_id);
 				}
 
-                Assert(childPlan && IsA(childPlan,Material) || IsA(childPlan, Sort));
+                Assert(childPlan && ( IsA(childPlan,Material) || IsA(childPlan, Sort)));
 				if(IsA(childPlan, Material))
 				{
 					Material *shared = (Material *) childPlan;

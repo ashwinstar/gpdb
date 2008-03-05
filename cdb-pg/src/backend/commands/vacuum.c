@@ -1625,7 +1625,7 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 			tuple.t_len = ItemIdGetLength(itemid);
 			ItemPointerSet(&(tuple.t_self), blkno, offnum);
 
-			switch (HeapTupleSatisfiesVacuum(tuple.t_data, OldestXmin, buf, true))
+			switch (HeapTupleSatisfiesVacuum(tuple.t_data, OldestXmin, buf))
 			{
 				case HEAPTUPLE_LIVE:
 					/* Tuple is good --- but let's do some validity checks */
@@ -2362,7 +2362,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 					LockBuffer(nextBuf, BUFFER_LOCK_SHARE);
 					nextTstatus = HeapTupleSatisfiesVacuum(nextTdata,
 														   OldestXmin,
-														   nextBuf, true);
+														   nextBuf);
 					if (nextTstatus == HEAPTUPLE_DEAD ||
 						nextTstatus == HEAPTUPLE_INSERT_IN_PROGRESS)
 					{

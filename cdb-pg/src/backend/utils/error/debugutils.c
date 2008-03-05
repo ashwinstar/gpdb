@@ -88,7 +88,10 @@ tup2str(TupleTableSlot *slot)
 	return buf;
 }
 
+// MERGEBUG
+#if 0
 extern char *plannode_type(Plan *p);
+#endif 
 
 static void
 drawnode(FILE *ofile, Plan *plan, List *nodelist)
@@ -98,7 +101,10 @@ drawnode(FILE *ofile, Plan *plan, List *nodelist)
 
 	/* print out the node */
 	fprintf(ofile, "\"Node_0x%p\" [\n", plan);
+	// MERGEBUG
+#if 0
 	fprintf(ofile, "label=\"%s %p flow %p\"\n", plannode_type(plan), plan, plan->flow);
+#endif 
 	fprintf(ofile, "];\n");
 
 	if(IsA(plan, Append))

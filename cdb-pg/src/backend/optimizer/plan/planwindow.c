@@ -1790,13 +1790,12 @@ static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
 	/* If an order hint is specified, try for it.   */
 	if ( order_hint != NIL )
 	{
-		root->query_pathkeys = make_pathkeys_for_sortclauses(order_hint, lower_tlist);
+		root->query_pathkeys = make_pathkeys_for_sortclauses(root, order_hint, lower_tlist, false);
 		root->sort_pathkeys = root->query_pathkeys;
 	}
 
-
 	/* Generate the best unsorted and presorted paths for this Query. */
-	query_planner(root, lower_tlist, 0.0, 
+	query_planner(root, lower_tlist, 0.0, -1,
 				  &cheapest_path, &sorted_path, &num_groups);
 					  
 	if ( order_hint != NIL &&
@@ -1813,12 +1812,12 @@ static Plan *plan_common_subquery(PlannerInfo *root, List *lower_tlist,
 	
 	/* Make the plan. */
 	result_plan = create_plan(root, best_path);
-	result_plan = plan_pushdown_tlist(result_plan, lower_tlist);
+	result_plan = plan_pushdown_tlist(root, result_plan, lower_tlist);
 	
 	Assert(result_plan->flow);
 
 	/* Account for the cost of evaluation of the lower tlist. */
-	cost_qual_eval(&tlist_cost, lower_tlist);
+	cost_qual_eval(&tlist_cost, lower_tlist, root);
 	result_plan->startup_cost += tlist_cost.startup;
 	result_plan->total_cost +=
 		tlist_cost.startup +
@@ -1869,7 +1868,7 @@ Plan *assure_collocation_and_order(
 	
 	if ( sortclause != NIL )
 	{
-		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, input_plan->targetlist);
+		sort_pathkeys = make_pathkeys_for_sortclauses(root, sortclause, input_plan->targetlist, false);
 		if ( root != NULL )
 			sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 		Assert(sort_pathkeys != NULL);
@@ -1912,7 +1911,7 @@ Plan *assure_collocation_and_order(
 			if ( 0 >= n-- ) break;
 			dist_keys = lappend(dist_keys, lfirst(lc));
 		}
-		dist_pathkeys = make_pathkeys_for_sortclauses(dist_keys, input_plan->targetlist);
+		dist_pathkeys = make_pathkeys_for_sortclauses(root, dist_keys, input_plan->targetlist, false);
 		if ( root != NULL )
 			dist_pathkeys = canonicalize_pathkeys(root, dist_pathkeys);
 		
@@ -1971,7 +1970,7 @@ Plan *assure_order(
 	
 	if ( sortclause != NIL )
 	{
-		sort_pathkeys = make_pathkeys_for_sortclauses(sortclause, input_plan->targetlist);
+		sort_pathkeys = make_pathkeys_for_sortclauses(root, sortclause, input_plan->targetlist, false);
 		if ( root != NULL )
 			sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 		Assert(sort_pathkeys != NULL);
@@ -2030,7 +2029,7 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 								  &pathkeys);
 								  
 	
-	window_pathkeys = make_pathkeys_for_sortclauses(winfo->sortclause, lower_tlist);
+	window_pathkeys = make_pathkeys_for_sortclauses(root, winfo->sortclause, lower_tlist, false);
 	window_pathkeys = canonicalize_pathkeys(root, window_pathkeys);
 	
 	/* Assure needed colocation and order. */
@@ -2205,8 +2204,8 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 	 * XXX Could track this and avoid, but not yet.
 	 */
 	root->parse->targetList = targetlist;
-	result_plan = plan_pushdown_tlist(result_plan, targetlist);
-	cost_qual_eval(&tlist_cost, targetlist);
+	result_plan = plan_pushdown_tlist(root, result_plan, targetlist);
+	cost_qual_eval(&tlist_cost, targetlist, root);
 	result_plan->startup_cost += tlist_cost.startup;
 	result_plan->total_cost += tlist_cost.startup + tlist_cost.per_tuple * result_plan->plan_rows;
 
@@ -2434,6 +2433,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 					strategy, false,
 					winfo->partkey_len, 
 					grpcolidx,
+					NULL,
 				    num_groups,
 				    0, /* num_nullcols */
 				    0, /* input_grouping */
@@ -2496,8 +2496,11 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 				partkey = (AttrNumber*)palloc(sz);
 				memcpy(partkey, winfo->partkey_attrs, sz);
 				partkey_operators = (Oid *)palloc(winfo->partkey_len * sizeof(Oid));
+				// MERGEBUG
+#if 0
 				memcpy(partkey_operators, window->partkey_operators,
 					   winfo->partkey_len * sizeof(Oid));
+#endif
 			}
 			
 			window_plan = (Plan *)make_window(
@@ -2548,7 +2551,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 					AttrNumber agg_resno = agg_attrno++;
 					
 					/* Add target to window plan. */
-					tle = makeTargetEntry((Expr*)makeNullConst(ref->restype), 
+					tle = makeTargetEntry((Expr*)makeNullConst(ref->restype,-1), 
 										  win_resno, 
 										  pstrdup("dummy"), 
 										  false);
@@ -2695,10 +2698,10 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 				mc = make_mergeclause(agg_varno, i+1, copyObject(rgt));
 				mergeclauses = lappend(mergeclauses, mc);
 			}
-			
+
 			join_plan = (Plan *)make_mergejoin(join_tlist,
 											   NIL, NIL,
-											   mergeclauses,
+											   mergeclauses, NULL, NULL, NULL,
 											   agg_plan, window_plan,
 											   JOIN_INNER);
 			((MergeJoin*)join_plan)->unique_outer = true;
@@ -2848,10 +2851,10 @@ static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *contex
 						
 		root->group_pathkeys = NIL;
 		root->sort_pathkeys = 
-			make_pathkeys_for_sortclauses(root->parse->sortClause, targetlist);
+			make_pathkeys_for_sortclauses(root, root->parse->sortClause, targetlist, false);
 		root->query_pathkeys = root->sort_pathkeys;
 		
-		query_planner(root, targetlist, 0.0, &cheapest_path, &sorted_path, &ngroups);
+		query_planner(root, targetlist, 0.0, -1, &cheapest_path, &sorted_path, &ngroups);
 		
 		if ( sorted_path != NULL )
 			best_path = sorted_path;
@@ -2865,8 +2868,8 @@ static Plan *plan_parallel_window_query(PlannerInfo *root, WindowContext *contex
 		 * since our target list may have expressions.  (Could track this
 		 * and avoid, but not yet.)
 		 */
-		result_plan = plan_pushdown_tlist(result_plan, targetlist);
-		cost_qual_eval(&tlist_cost, targetlist);
+		result_plan = plan_pushdown_tlist(root, result_plan, targetlist);
+		cost_qual_eval(&tlist_cost, targetlist, root);
 		result_plan->startup_cost += tlist_cost.startup;
 		result_plan->total_cost += tlist_cost.startup + tlist_cost.per_tuple * result_plan->plan_rows;
 
@@ -3276,6 +3279,7 @@ static RangeTblEntry *rte_for_coplan(
 				make_agg(root, coplan->targetlist, NULL,
 						 AGG_SORTED, false,
 						 winfo->partkey_len, winfo->partkey_attrs,
+						 NULL,
 						 num_groups,
 						 0, /* num_nullcols */
 						 0, /* input_grouping */
@@ -3290,7 +3294,7 @@ static RangeTblEntry *rte_for_coplan(
 			new_plan = (Plan*)
 				make_agg(root, coplan->targetlist, NULL,
 						 AGG_PLAIN, false,
-						 0, NULL,
+						 0, NULL, NULL,
 						 1, /* number of groups */
 						 0, /* num_nullcols */
 						 0, /* input_grouping */
@@ -3357,10 +3361,13 @@ static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref,
 	subquery->querySource = QSRC_PLANNER;
 	subquery->canSetTag = false;
 	subquery->resultRelation = 0;
+	// MERGEBUG
+#if 0
 	subquery->into = NULL;
 	subquery->intoOptions = NIL;
 	subquery->intoOnCommit = ONCOMMIT_NOOP;
 	subquery->intoTableSpaceName = NULL;
+#endif
 	
 	subquery->rtable = copyObject(subquery->rtable);
 
@@ -4018,7 +4025,7 @@ Plan *wrap_plan(Plan *plan, Query *query,
 	
 	/* Make the plan. 
 	 */
-	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan);
+	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan, NIL);
 	plan->flow = pull_up_Flow(plan, ((SubqueryScan*)plan)->subplan, true);
 	
 	/* Make the corresponding Query.
@@ -4028,7 +4035,10 @@ Plan *wrap_plan(Plan *plan, Query *query,
 	subquery->commandType = CMD_SELECT;
 	subquery->querySource = QSRC_PLANNER;
 	subquery->canSetTag = false;
+	// MERGEBUG
+#if 0
 	subquery->intoOnCommit = ONCOMMIT_NOOP;
+#endif 
 	subquery->rtable = list_make1(rte);	
 	rtr = makeNode(RangeTblRef);
 	rtr->rtindex = varno;
@@ -4107,7 +4117,7 @@ Plan *add_join_to_wrapper(
 	
 	/* Make the plan. 
 	 */
-	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan);
+	plan = (Plan*)make_subqueryscan(subq_tlist, NIL, varno, plan, NIL);
 	plan->flow = pull_up_Flow(plan, ((SubqueryScan*)plan)->subplan, true);
 
 	
@@ -4158,15 +4168,21 @@ Query *copy_common_subquery(Query *original, List *targetList)
 	common->commandType = CMD_SELECT;
 	common->querySource = QSRC_PLANNER;
 	common->canSetTag = false;
+	// MERGEBUG
+#if 0
 	common->intoOnCommit = ONCOMMIT_NOOP;
+#endif
 	common->windowClause = copyObject(original->windowClause);
 	
 	/* The rest is "blank". */
 	common->resultRelation = 0;
 	common->utilityStmt = NULL;
+	// MERGEBUG
+#if 0
 	common->into = NULL;
 	common->intoOptions = NIL;
 	common->intoTableSpaceName = NULL;
+#endif 
 	common->hasWindFuncs = false;
 	common->hasSubLinks = false; /* XXX */
 	common->returningList = NIL;

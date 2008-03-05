@@ -80,7 +80,8 @@ static Bitmapset *distcols_in_groupclause(List *gc, Bitmapset *bms);
  *		expected to be retrieved (ie, a LIMIT specification)
  */
 void
-query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
+query_planner(PlannerInfo *root, List *tlist,
+			  double tuple_fraction, double limit_tuples,
 			  Path **cheapest_path, Path **sorted_path,
 			  double *num_groups)
 {
@@ -121,7 +122,10 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 		palloc0(root->simple_rel_array_size * sizeof(RelOptInfo *));
 	root->join_rel_list = NIL;
 	root->join_rel_hash = NULL;
+	// MERGEBUG
+#if 0
 	root->equi_key_list = NIL;
+#endif
 	root->left_join_clauses = NIL;
 	root->right_join_clauses = NIL;
 	root->full_join_clauses = NIL;
@@ -194,7 +198,10 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 	 * Use the completed lists of equijoined keys to deduce any implied but
 	 * unstated equalities (for example, A=B and B=C imply A=C).
 	 */
+	// MERGEBUG
+#if 0
 	generate_implied_equalities(root);
+#endif
 
 	/*
 	 * We should now have all the pathkey equivalence sets built, so it's now
@@ -359,7 +366,7 @@ query_planner(PlannerInfo *root, List *tlist, double tuple_fraction,
 			/* Figure cost for sorting */
 			cost_sort(&sort_path, root, root->query_pathkeys,
 					  cheapestpath->total_cost,
-					  cdbpath_rows(cheapestpath), final_rel->width);
+					  cdbpath_rows(cheapestpath), final_rel->width, -1);
 		}
 
 		if (compare_fractional_path_costs(sortedpath, &sort_path,

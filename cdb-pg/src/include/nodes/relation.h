@@ -1157,6 +1157,12 @@ typedef struct RestrictInfo
 	/* cache space for hashclause processing; -1 if not yet set */
 	Selectivity left_bucketsize;	/* avg bucketsize of left side */
 	Selectivity right_bucketsize;		/* avg bucketsize of right side */
+	
+	// MERGEBUG
+	// I put these back temporarily to help get things to compile.
+	/* cache space for mergeclause processing; NIL if not yet set */
+	List	   *left_pathkey;	/* canonical pathkey for left side */
+	List	   *right_pathkey;	/* canonical pathkey for right side */
 } RestrictInfo;
 
 /*

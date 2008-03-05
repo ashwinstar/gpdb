@@ -198,11 +198,14 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
         /* Are the rows distributed by hashing on specified columns? */
         if (policy->nattrs > 0)
         {
+        	// MERGEBUG
+#if 0
 	        List *partkey = cdb_build_distribution_pathkeys(root,
 	                                                        rel,
 	                                                        policy->nattrs,
 	                                                        policy->attrs);
 	        CdbPathLocus_MakeHashed(&result, partkey);
+#endif
         }
 
         /* Rows are distributed on an unknown criterion (uniformly, we hope!) */
@@ -241,7 +244,10 @@ cdbpathlocus_from_exprs(struct PlannerInfo *root,
         Node           *expr = (Node *)lfirst(cell);
         List           *pathkey;
 
+        // MERGEBUG
+#if 0
         pathkey = cdb_make_pathkey_for_expr(root, expr, eq);
+#endif 
         partkey = lappend(partkey, pathkey);
     }
 
@@ -306,7 +312,10 @@ cdbpathlocus_from_subquery(struct PlannerInfo  *root,
                               exprType((Node *) tle->expr),
                               exprTypmod((Node *) tle->expr),
                               0);
+                // MERGEBUG
+#if 0
                 pathkey = cdb_make_pathkey_for_expr(root, (Node *)var, eq);
+#endif
                 partkey = lappend(partkey, pathkey);
             }
             if (partkey &&
@@ -342,6 +351,8 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
     ListCell   *partkeycell;
 
     Assert(cdbpathlocus_is_valid(locus));
+    // MERGEBUG
+#if 0
     foreach(partkeycell, locus.partkey)
     {
         List           *pathkey;
@@ -379,6 +390,7 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
 
         result = lappend(result, copyObject(item->key));
     }
+#endif
     return result;
 }                               /* cdbpathlocus_get_partkey_exprs */
 
@@ -425,6 +437,8 @@ cdbpathlocus_pull_above_projection(struct PlannerInfo  *root,
         List   *oldpathkey;
         List   *newpathkey = NIL;
 
+        // MERGEBUG
+#if 0
         /* Get pathkey for key expr rewritten in terms of projection cols. */
         if (CdbPathLocus_IsHashed(locus))
         {
@@ -453,6 +467,7 @@ cdbpathlocus_pull_above_projection(struct PlannerInfo  *root,
                 if (newpathkey)
                     break;
             }
+
             /*
              * NB: Targetlist might include columns from both sides of
              * outer join "=" comparison, in which case cdb_pull_up_pathkey
@@ -463,6 +478,7 @@ cdbpathlocus_pull_above_projection(struct PlannerInfo  *root,
              */
         }
         else
+#endif 
             Assert(0);
 
         /* Fail if can't evaluate partkey in the context of this targetlist. */
@@ -577,9 +593,12 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
 bool
 cdbpathlocus_is_hashed_on_exprs(CdbPathLocus locus, List *exprlist)
 {
+	// MERGEBUG
+#if 0
     ListCell       *partkeycell;
     ListCell       *pathkeycell;
     List           *pathkey;
+
     PathKeyItem    *item;
 
     Assert(cdbpathlocus_is_valid(locus));
@@ -626,7 +645,7 @@ cdbpathlocus_is_hashed_on_exprs(CdbPathLocus locus, List *exprlist)
                 return false;
         }
     }
-
+#endif 
     /* Every column of the partkey contains an expr in exprlist. */
     return true;
 }                               /* cdbpathlocus_is_hashed_on_exprs */
@@ -654,6 +673,8 @@ cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids)
     ListCell       *partkeycell;
     ListCell       *pathkeycell;
     List           *pathkey;
+    // MERGEBUG
+#if 0
     PathKeyItem    *item;
 
     Assert(cdbpathlocus_is_valid(locus));
@@ -702,6 +723,7 @@ cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids)
                 return false;
         }
     }
+#endif 
 
     /* Every column of the partkey contains a Var whose varno is in relids. */
     return true;
@@ -721,6 +743,8 @@ cdbpathlocus_is_valid(CdbPathLocus locus)
     ListCell       *pathkeylistcell;
     List           *pathkey;
     List           *pathkeylist;
+// MERGEBUG
+#if 0
     PathKeyItem    *item;
 
     if (!CdbPathLocus_IsHashed(locus) &&
@@ -774,6 +798,7 @@ cdbpathlocus_is_valid(CdbPathLocus locus)
             }
         }
     }
+#endif
     return true;
 
 bad:

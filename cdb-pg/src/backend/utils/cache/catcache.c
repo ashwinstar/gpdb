@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/catcache.c,v 1.134 2006/10/06 18:23:35 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/catcache.c,v 1.140 2008/01/01 19:45:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -134,6 +134,8 @@ GetCCHashEqFuncs(Oid keytype, PGFunction *hashfunc, RegProcedure *eqfunc)
 		case REGOPERATOROID:
 		case REGCLASSOID:
 		case REGTYPEOID:
+		case REGCONFIGOID:
+		case REGDICTIONARYOID:
 			*hashfunc = hashoid;
 			*eqfunc = F_OIDEQ;
 			break;
@@ -158,6 +160,7 @@ static uint32
 CatalogCacheComputeHashValue(CatCache *cache, int nkeys, ScanKey cur_skey)
 {
 	uint32		hashValue = 0;
+	uint32		oneHash;
 
 	CACHE4_elog(DEBUG2, "CatalogCacheComputeHashValue %s %d %p",
 				cache->cc_relname,
@@ -167,24 +170,31 @@ CatalogCacheComputeHashValue(CatCache *cache, int nkeys, ScanKey cur_skey)
 	switch (nkeys)
 	{
 		case 4:
-			hashValue ^=
+			oneHash =
 				DatumGetUInt32(DirectFunctionCall1(cache->cc_hashfunc[3],
-											  cur_skey[3].sk_argument)) << 9;
+												   cur_skey[3].sk_argument));
+			hashValue ^= oneHash << 24;
+			hashValue ^= oneHash >> 8;
 			/* FALLTHROUGH */
 		case 3:
-			hashValue ^=
+			oneHash =
 				DatumGetUInt32(DirectFunctionCall1(cache->cc_hashfunc[2],
-											  cur_skey[2].sk_argument)) << 6;
+												   cur_skey[2].sk_argument));
+			hashValue ^= oneHash << 16;
+			hashValue ^= oneHash >> 16;
 			/* FALLTHROUGH */
 		case 2:
-			hashValue ^=
+			oneHash =
 				DatumGetUInt32(DirectFunctionCall1(cache->cc_hashfunc[1],
-											  cur_skey[1].sk_argument)) << 3;
+												   cur_skey[1].sk_argument));
+			hashValue ^= oneHash << 8;
+			hashValue ^= oneHash >> 24;
 			/* FALLTHROUGH */
 		case 1:
-			hashValue ^=
+			oneHash =
 				DatumGetUInt32(DirectFunctionCall1(cache->cc_hashfunc[0],
 												   cur_skey[0].sk_argument));
+			hashValue ^= oneHash;
 			break;
 		default:
 			elog(FATAL, "wrong number of hash keys: %d", nkeys);
@@ -1033,9 +1043,10 @@ IndexScanOK(CatCache *cache, ScanKey cur_skey)
 	if (cache->id == INDEXRELID)
 	{
 		/*
-		 * Since the OIDs of indexes aren't hardwired, it's painful to figure
-		 * out which is which.	Just force all pg_index searches to be heap
-		 * scans while building the relcaches.
+		 * Rather than tracking exactly which indexes have to be loaded before
+		 * we can use indexscans (which changes from time to time), just force
+		 * all pg_index searches to be heap scans until we've built the
+		 * critical relcaches.
 		 */
 		if (!criticalRelcachesBuilt)
 			return false;

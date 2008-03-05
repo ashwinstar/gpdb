@@ -61,6 +61,10 @@ typedef struct QueryDesc
 	
     /* CDB: EXPLAIN ANALYZE statistics */
     struct CdbExplain_ShowStatCtx  *showstatctx;
+    
+    // MERGEBUG
+    // Add back temporary to make compile
+    	Plan	   *plantree;		/* planner's output */
 
 } QueryDesc;
 

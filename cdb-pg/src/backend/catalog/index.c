@@ -1302,7 +1302,7 @@ setNewRelfilenode(Relation relation, TransactionId freezeXid)
 	newrnode.relNode = newrelfilenode;
 
 	srel = smgropen(newrnode);
-	smgrcreate(srel, relation->rd_isLocalBuf, false);
+	smgrcreate(srel, false, relation->rd_isLocalBuf, false);
 	smgrclose(srel);
 
 	/* schedule unlinking old relfilenode */
@@ -1383,7 +1383,7 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode,
 	newrnode.relNode = newrelfilenode;
 
 	srel = smgropen(newrnode);
-	smgrcreate(srel, relation->rd_isLocalBuf, false);
+	smgrcreate(srel, false, relation->rd_isLocalBuf, false);
 	smgrclose(srel);
 
 	/* schedule unlinking old relfilenode */

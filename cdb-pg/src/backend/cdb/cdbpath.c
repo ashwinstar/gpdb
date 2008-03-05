@@ -286,6 +286,8 @@ static inline List *
 cdbpath_partkeyitem_eq_constant(CdbLocusType   locustype,
                                  List          *partkeyitem)
 {
+	// MERGEBUG
+#if 0
     if (locustype == CdbLocusType_Hashed)
     {
         if (CdbPathkeyEqualsConstant(partkeyitem))
@@ -302,6 +304,7 @@ cdbpath_partkeyitem_eq_constant(CdbLocusType   locustype,
         }
     }
     else
+#endif
         Assert(false);
     return NIL;
 }                               /* cdbpath_partkeyitem_eq_constant */
@@ -358,8 +361,11 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
         {
             RestrictInfo   *rinfo = (RestrictInfo *)lfirst(rcell);
 
+            // MERGEBUG
+#if 0
             if (!rinfo->left_pathkey)
                 cache_mergeclause_pathkeys(ctx->root, rinfo);
+#endif 
 
             if (CdbPathLocus_IsHashed(ctx->locus))
             {
@@ -491,8 +497,11 @@ cdbpath_match_preds_to_both_partkeys(PlannerInfo   *root,
         {
             RestrictInfo   *rinfo = (RestrictInfo *)lfirst(rcell);
 
+            // MERGEBUG
+#if 0
             if (!rinfo->left_pathkey)
                 cache_mergeclause_pathkeys(root, rinfo);
+#endif
 
             /* Skip predicate if neither side matches outer partkey item. */
             if (CdbPathLocus_IsHashed(outer_locus))
@@ -564,11 +573,14 @@ cdbpath_partkeys_from_preds(PlannerInfo    *root,
     {
         RestrictInfo *rinfo = (RestrictInfo *)lfirst(rcell);
 
+        // MERGEBUG
+#if 0 
         if (!rinfo->left_pathkey)
         {
             cache_mergeclause_pathkeys(root, rinfo);
             Assert(rinfo->left_pathkey);
         }
+#endif
 
         /* Left & right pathkeys are usually the same... */
         if (!b_partkey &&
@@ -1045,7 +1057,10 @@ cdbpath_dedup_fixup_unique(UniquePath *uniquePath, CdbpathDedupFixupContext *ctx
             /* Add to repartitioning key.  Ok to use tid without coercion. */
             if (uniquePath->must_repartition)
             {
+            	// MERGEBUG
+#if 0
                 cpathkey = cdb_make_pathkey_for_expr(ctx->root, (Node *)var, eq);
+#endif 
                 partkey = lappend(partkey, cpathkey);
             }
         }

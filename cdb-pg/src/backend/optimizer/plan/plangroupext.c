@@ -646,8 +646,9 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		dummy_path.startup_cost = agg_node->startup_cost;
 		dummy_path.total_cost = agg_node->total_cost;
 		dummy_path.pathkeys = NIL;
-		if (choose_hashed_grouping(root, context->tuple_fraction, &dummy_path,
-								   NULL, *context->p_dNumGroups,
+
+		if (choose_hashed_grouping(root, context->tuple_fraction, -1, &dummy_path,
+								   NULL, NULL, *context->p_dNumGroups,
 								   context->agg_counts))
 			context->aggstrategy = AGG_HASHED;
 
@@ -1030,7 +1031,7 @@ add_first_agg(PlannerInfo *root,
 		 * The parameter numGroupCols should have excluded the GROUPING column.
 		 */
 		agg_node = (Plan *)make_agg(root, current_tlist, current_qual, context->aggstrategy, false,
-									numGroupCols, groupColIdx,
+									numGroupCols, groupColIdx, NULL,
 									lNumGroups, num_nullcols, input_grouping, grouping,
 									rollup_gs_times,
 									context->agg_counts->numAggs, context->agg_counts->transitionSpace,
@@ -1041,7 +1042,9 @@ add_first_agg(PlannerInfo *root,
 	{
 		agg_node = (Plan *)make_group(root, current_tlist, current_qual,
 									  numGroupCols,
-									  groupColIdx, current_numGroups,
+									  groupColIdx,
+									  NULL,
+									  current_numGroups,
 									  num_nullcols, input_grouping, grouping,
 									  rollup_gs_times,
 									  current_lefttree);
@@ -1459,7 +1462,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 			rollup_plan = (Plan *)make_subqueryscan(subquery_tlist,
 													NIL,
 													list_length(final_query->rtable),
-													rollup_plan);
+													rollup_plan, NIL);
 			mark_passthru_locus(rollup_plan, true, true);
 		}
 
@@ -1520,7 +1523,10 @@ make_pathkeys_for_rollup(List *groupclause,
 	int colno;
 	List *pathkeys = NIL;
 	List *current_pathkeys;
+	// MERGEBUG
+#if 0
 	current_pathkeys = make_pathkeys_for_groupclause(groupclause, tlist);
+#endif 
 	
 	for (colno=0; colno<rollup->numcols; colno++)
 	{

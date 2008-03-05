@@ -199,11 +199,14 @@ cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlatio
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
+			// MERGEBUG
+#if 0
 			if (query->into)
 			{
 				/* SELECT INTO always created partitioned tables. */
 				context->resultSegments = true;	
 			}
+#endif
 			break;
 
 		case CMD_INSERT:
@@ -398,6 +401,8 @@ prescan_walker(Node *node, PlanProfile * context)
 				if (expression_tree_walker((Node *) subplan->testexpr, prescan_walker, context))
 					return true;
 
+				// MERGEBUG
+#if 0
 				/*
 				 * Set local state for the subplan to the new rangetable.
 				 */
@@ -416,6 +421,7 @@ prescan_walker(Node *node, PlanProfile * context)
                  * will override that to bring it to the QD instead.
                  */
                 Insist(focusPlan(subplan->plan, true, false, false));
+#endif
 
 				/* Restore state for the parent plan. */
 				popLocals(context);

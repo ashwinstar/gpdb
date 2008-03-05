@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/varlena.c,v 1.154 2007/01/05 22:19:42 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/varlena.c,v 1.162 2008/01/01 19:45:53 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -54,10 +54,16 @@ typedef struct
 	DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp_)))
 #define PG_STR_GET_TEXT(str_) \
 	DatumGetTextP(DirectFunctionCall1(textin, CStringGetDatum(str_)))
+#define TEXTLEN(textp) \
+	text_length(PointerGetDatum(textp))
 
 static int	text_position_ptr_len(char* p1, int len1, char *p2, int len2); 
 static void text_position_setup_ptr_len(char* p1, int len1, char* p2, int len2, TextPositionState *state);
 
+static int	text_cmp(text *arg1, text *arg2);
+static int32 text_length(Datum str);
+static int	text_position(text *t1, text *t2);
+static void text_position_setup(text *t1, text *t2, TextPositionState *state);
 static int	text_position_next(int start_pos, TextPositionState *state);
 static void text_position_cleanup(TextPositionState *state);
 static text *text_substring(Datum str,

@@ -633,6 +633,22 @@ varchar(PG_FUNCTION_ARGS)
 }
 
 
+Datum
+varchartypmodin(PG_FUNCTION_ARGS)
+{
+	ArrayType  *ta = PG_GETARG_ARRAYTYPE_P(0);
+
+	PG_RETURN_INT32(anychar_typmodin(ta, "varchar"));
+}
+
+Datum
+varchartypmodout(PG_FUNCTION_ARGS)
+{
+	int32		typmod = PG_GETARG_INT32(0);
+
+	PG_RETURN_CSTRING(anychar_typmodout(typmod));
+}
+
 /*****************************************************************************
  * Exported functions
  *****************************************************************************/
