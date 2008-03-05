@@ -362,7 +362,8 @@ gp_selectivity_damping_for_joins = on
 					#   %c = session ID
 					#   %l = session line number
 					#   %s = session start timestamp
-					#   %x = virtual transaction ID
+					#   %v = virtual transaction ID
+					#   %x = transaction ID (0 if none)
 					#   %q = stop here in non-session
 					#		 processes
 					#   %% = '%'
@@ -437,7 +438,7 @@ gp_selectivity_damping_for_joins = on
 # AUTOVACUUM PARAMETERS
 #------------------------------------------------------------------------------
 
-#autovacuum = off			# Enable autovacuum subprocess?  'on' 
+#autovacuum = on			# Enable autovacuum subprocess?  'on' 
 					# requires track_counts to also be on.
 #log_autovacuum_min_duration = -1	# -1 disables, 0 logs all actions and
 					# their durations, > 0 logs only

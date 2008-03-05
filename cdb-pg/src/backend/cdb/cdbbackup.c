@@ -22,6 +22,10 @@
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
 
+// MERGEBUG   These two lines are a workaround for a bug in pg_proc.h
+extern char * _null_;
+char * _null_ = 0;
+
 /* general utility copied from cdblink.c */
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 

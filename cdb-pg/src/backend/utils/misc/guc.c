@@ -11,7 +11,7 @@
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.360.2.1 2007/04/23 15:13:30 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.430 2008/01/14 19:18:53 tgl Exp $
  *
  *--------------------------------------------------------------------
  */
@@ -286,7 +286,6 @@ char       *Debug_dtm_action_protocol_str;
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
 int			tcp_keepalives_count;
-char 	   *data_directory;
 
 /*
  * These variables are all dummies that don't do anything, except in some
@@ -322,6 +321,7 @@ static char *timezone_string;
 static char *log_timezone_string;
 static char *timezone_abbreviations_string;
 static char *XactIsoLevel_string;
+char *data_directory;
 static char *custom_variable_classes;
 static char *xmlbinary_string;
 static char *xmloption_string;
@@ -669,7 +669,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&enableFsync,
 		true, NULL, NULL
 	},
-		{
+	{
 		{"synchronous_commit", PGC_USERSET, WAL_SETTINGS,
 			gettext_noop("Sets immediate fsync at commit."),
 			NULL
@@ -910,7 +910,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&autovacuum_start_daemon,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
@@ -8170,10 +8170,10 @@ assign_log_stats(bool newval, bool doit, GucSource source)
 							"\"log_parser_stats\", \"log_planner_stats\", "
 							"\"log_dispatch_stats\", "
 							"or \"log_executor_stats\" is true")));
+		/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
+		if (source != PGC_S_OVERRIDE)
+			return false;
 	}
-	/* source == PGC_S_OVERRIDE means do it anyway, eg at xact abort */
-	else if (source != PGC_S_OVERRIDE)
-		return false;
 	return true;
 }
 
