@@ -11,7 +11,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/test/regress/pg_regress.c,v 1.36 2007/07/18 21:19:17 alvherre Exp $
+ * $PostgreSQL: pgsql/src/test/regress/pg_regress.c,v 1.40 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,6 +23,11 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <unistd.h>
+
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/time.h>
+#include <sys/resource.h>
+#endif
 
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/time.h>
@@ -48,10 +53,11 @@ typedef struct _resultmap
  * In non-temp_install mode, the only thing we need is the location of psql,
  * which we expect to find in psqldir, or in the PATH if psqldir isn't given.
  */
-char *bindir = PGBINDIR;
-char *libdir = LIBDIR;
-char *datadir = PGSHAREDIR;
-char *host_platform = HOST_TUPLE;
+char	   *bindir = PGBINDIR;
+char	   *libdir = LIBDIR;
+char	   *datadir = PGSHAREDIR;
+char	   *host_platform = HOST_TUPLE;
+
 #ifndef WIN32_ONLY_COMPILER
 static char *makeprog = MAKEPROG;
 #endif
@@ -77,6 +83,7 @@ static char *encoding = NULL;
 static _stringlist *schedulelist = NULL;
 static _stringlist *extra_tests = NULL;
 static char *temp_install = NULL;
+static char *temp_config = NULL;
 static char *top_builddir = NULL;
 static int	temp_port = 65432;
 static bool nolocale = false;
@@ -108,6 +115,11 @@ make_directory(const char *dir);
 
 static int
 run_diff(const char *cmd, const char *filename);
+
+static bool
+			directory_exists(const char *dir);
+static void
+			make_directory(const char *dir);
 
 static void
 header(const char *fmt,...)
@@ -414,13 +426,13 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 	}
 
 	/*
-	 * in a VPATH build, use the provided source directory; otherwise, use
-	 * the current directory.
+	 * in a VPATH build, use the provided source directory; otherwise, use the
+	 * current directory.
 	 */
 	if (srcdir)
-		strcpy(abs_srcdir, srcdir);
+		strlcpy(abs_srcdir, srcdir, MAXPGPATH);
 	else
-		strcpy(abs_srcdir, abs_builddir);
+		strlcpy(abs_srcdir, abs_builddir, MAXPGPATH);
 
 	snprintf(indir, MAXPGPATH, "%s/%s", abs_srcdir, source);
 	names = pgfnames(indir);
@@ -533,6 +545,8 @@ convert_sourcefiles(void)
 	if (ret == 0 && S_ISDIR(st.st_mode))
 		convert_sourcefiles_in("output", "expected", "out");
 }
+
+
 
 /*
  * Scan resultmap file to find which platform-specific expected files to use.
@@ -653,6 +667,7 @@ const char *get_expectfile(const char *testname, const char *file)
 
 	return NULL;
 }
+
 
 /*
  * Handy subroutine for setting an environment variable "var" to "val"
@@ -1397,6 +1412,15 @@ run_schedule(const char *schedule, test_function tfunc)
 			free_stringlist(&tags[i]);
 		}
 
+		for (i = 0; i < MAX_PARALLEL_TESTS; i++)
+		{
+			if (resultfiles[i] == NULL)
+				break;
+			free_stringlist(&resultfiles[i]);
+			free_stringlist(&expectfiles[i]);
+			free_stringlist(&tags[i]);
+		}
+
 		/* strip trailing whitespace, especially the newline */
 		i = strlen(scbuf);
 		while (i > 0 && isspace((unsigned char) scbuf[i - 1]))
@@ -1583,6 +1607,21 @@ run_single_test(const char *test, test_function tfunc)
 	/*
 	 * Advance over all three lists simultaneously.
 	 *
+	 * Compare resultfiles[j] with expectfiles[j] always. Tags are optional
+	 * but if there are tags, the tag list has the same length as the other
+	 * two lists.
+	 */
+	for (rl = resultfiles, el = expectfiles, tl = tags;
+		 rl != NULL;			/* rl and el have the same length */
+		 rl = rl->next, el = el->next)
+	{
+		bool		newdiff;
+		// MERGEBUG
+	}
+
+	/*
+	 * Advance over all three lists simultaneously.
+	 *
 	 * Compare resultfiles[j] with expectfiles[j] always.
 	 * Tags are optional but if there are tags, the tag list has the
 	 * same length as the other two lists.
@@ -1712,6 +1751,7 @@ create_role(const char *rolename, const _stringlist *granted_dbs)
 	}
 }
 
+
 static void
 help(void)
 {
@@ -1734,11 +1774,12 @@ help(void)
 	printf(_("                            (can be used multiple times to concatenate)\n"));
 	printf(_("  --srcdir=DIR              absolute path to source directory (for VPATH builds)\n"));
 	printf(_("  --temp-install=DIR        create a temporary installation in DIR\n"));
-	printf(_("  --no-locale               use C locale\n"));
 	printf(_("\n"));
 	printf(_("Options for \"temp-install\" mode:\n"));
+	printf(_("  --no-locale               use C locale\n"));
 	printf(_("  --top-builddir=DIR        (relative) path to top level build directory\n"));
 	printf(_("  --temp-port=PORT          port number to start temp postmaster on\n"));
+	printf(_("  --temp-config=PATH        append contents of PATH to temporary config\n"));
 	printf(_("\n"));
 	printf(_("Options for using an existing installation:\n"));
 	printf(_("  --host=HOST               use postmaster running on HOST\n"));
@@ -1782,6 +1823,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 		{"psqldir", required_argument, NULL, 16},
 		{"srcdir", required_argument, NULL, 17},
 		{"create-role", required_argument, NULL, 18},
+		{"temp-config", required_argument, NULL, 19},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -1810,8 +1852,10 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 				printf("pg_regress (PostgreSQL %s)\n", PG_VERSION);
 				exit_nicely(0);
 			case 1:
-				/* If a default database was specified, we need to remove it before we add
-				 * the specified one.
+
+				/*
+				 * If a default database was specified, we need to remove it
+				 * before we add the specified one.
 				 */
 				free_stringlist(&dblist);
 				split_to_stringlist(strdup(optarg), ", ", &dblist);
@@ -1890,6 +1934,9 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 			case 18:
 				split_to_stringlist(strdup(optarg), ", ", &extraroles);
 				break;
+			case 19:
+				temp_config = strdup(optarg);
+				break;
 			default:
 				/* getopt_long already emitted a complaint */
 				fprintf(stderr, _("\nTry \"%s -h\" for more information.\n"),
@@ -1916,6 +1963,10 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 	open_result_files();
 
 	initialize_environment();
+
+#if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
+	unlimit_core_size();
+#endif
 
 #if defined(HAVE_GETRLIMIT) && defined(RLIMIT_CORE)
 	unlimit_core_size();
@@ -1976,6 +2027,32 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 		{
 			fprintf(stderr, _("\n%s: initdb failed\nExamine %s/log/initdb.log for the reason.\nCommand was: %s\n"), progname, outputdir, buf);
 			exit_nicely(2);
+		}
+
+		/* add any extra config specified to the postgresql.conf */
+		if (temp_config != NULL)
+		{
+			FILE	   *extra_conf;
+			FILE	   *pg_conf;
+			char		line_buf[1024];
+
+			snprintf(buf, sizeof(buf), "%s/data/postgresql.conf", temp_install);
+			pg_conf = fopen(buf, "a");
+			if (pg_conf == NULL)
+			{
+				fprintf(stderr, _("\n%s: could not open %s for adding extra config:\nError was %s\n"), progname, buf, strerror(errno));
+				exit_nicely(2);
+			}
+			extra_conf = fopen(temp_config, "r");
+			if (extra_conf == NULL)
+			{
+				fprintf(stderr, _("\n%s: could not open %s to read extra config:\nError was %s\n"), progname, buf, strerror(errno));
+				exit_nicely(2);
+			}
+			while (fgets(line_buf, sizeof(line_buf), extra_conf) != NULL)
+				fputs(line_buf, pg_conf);
+			fclose(extra_conf);
+			fclose(pg_conf);
 		}
 
 		/*

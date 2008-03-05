@@ -179,10 +179,10 @@ s{PG_VERSION_STR "[^"]+"}{__STRINGIFY(x) #x\n#define __STRINGIFY2(z) __STRINGIFY
               {
                 oid     => $p[0],
                 proname => $p[1],
-                prosrc  => $p[$#p-2],
-                nargs   => $p[10],
-                strict  => $p[7],
-                retset  => $p[8],
+                prosrc  => $p[$#p-3],
+                nargs   => $p[12],
+                strict  => $p[9],
+                retset  => $p[10],
               };
         }
         close(I);
