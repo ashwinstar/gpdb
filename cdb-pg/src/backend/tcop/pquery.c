@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.111.2.1 2007/02/18 19:49:30 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/pquery.c,v 1.120 2008/01/01 19:45:52 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -36,7 +36,7 @@
 Portal		ActivePortal = NULL;
 
 
-static void ProcessQuery(Portal portal,
+static void ProcessQuery(Portal portal, // GPDB needs portal?  Or MERGEBUG
              PlannedStmt *plan,
              ParamListInfo params,
 			 DestReceiver *dest,
@@ -142,8 +142,7 @@ FreeQueryDesc(QueryDesc *qdesc)
  *		Execute a single plannable query within a PORTAL_MULTI_QUERY
  *		or PORTAL_ONE_RETURNING portal
  *
- *	portal: the portal
- *	parsetree: the query tree
+ *	portal: the portal  --- GPDB Only?
  *	plan: the plan tree for the query
  *	params: any parameters needed
  *	dest: where to send results
@@ -156,7 +155,7 @@ FreeQueryDesc(QueryDesc *qdesc)
  * error; otherwise the executor's memory usage will be leaked.
  */
 static void
-ProcessQuery(Portal portal,
+ProcessQuery(Portal portal,   // GPDB needs portal?  Or MEGEBUG ?
 			 PlannedStmt *plan,
              ParamListInfo params,
 			 DestReceiver *dest,
@@ -241,7 +240,7 @@ ProcessQuery(Portal portal,
 				break;
 		}
 	}
-	
+
 	/* Now take care of any queued AFTER triggers */
 	AfterTriggerEndQuery(queryDesc->estate);
 
@@ -249,7 +248,7 @@ ProcessQuery(Portal portal,
 	 * Now, we close down all the scans and free allocated resources.
 	 */
 	ExecutorEnd(queryDesc);
-	
+
 	FreeQueryDesc(queryDesc);
 
 	FreeSnapshot(ActiveSnapshot);
@@ -281,25 +280,25 @@ ChoosePortalStrategy(List *stmts)
 		Node	   *stmt = (Node *) linitial(stmts);
 
 		if (IsA(stmt, Query))
-	{
+		{
 			Query	   *query = (Query *) stmt;
 
-		if (query->canSetTag)
-		{
-			if (query->commandType == CMD_SELECT &&
+			if (query->canSetTag)
+			{
+				if (query->commandType == CMD_SELECT &&
 					query->utilityStmt == NULL &&
 					query->intoClause == NULL)
-				return PORTAL_ONE_SELECT;
-			if (query->commandType == CMD_UTILITY &&
-				query->utilityStmt != NULL)
-			{
-				if (UtilityReturnsTuples(query->utilityStmt))
-					return PORTAL_UTIL_SELECT;
-				/* it can't be ONE_RETURNING, so give up */
-				return PORTAL_MULTI_QUERY;
+					return PORTAL_ONE_SELECT;
+				if (query->commandType == CMD_UTILITY &&
+					query->utilityStmt != NULL)
+				{
+					if (UtilityReturnsTuples(query->utilityStmt))
+						return PORTAL_UTIL_SELECT;
+					/* it can't be ONE_RETURNING, so give up */
+					return PORTAL_MULTI_QUERY;
+				}
 			}
 		}
-	}
 		else if (IsA(stmt, PlannedStmt))
 		{
 			PlannedStmt *pstmt = (PlannedStmt *) stmt;
@@ -336,14 +335,14 @@ ChoosePortalStrategy(List *stmts)
 		{
 			Query	   *query = (Query *) stmt;
 
-		if (query->canSetTag)
-		{
-			if (++nSetTag > 1)
-				return PORTAL_MULTI_QUERY;		/* no need to look further */
-			if (query->returningList == NIL)
-				return PORTAL_MULTI_QUERY;		/* no need to look further */
+			if (query->canSetTag)
+			{
+				if (++nSetTag > 1)
+					return PORTAL_MULTI_QUERY;	/* no need to look further */
+				if (query->returningList == NIL)
+					return PORTAL_MULTI_QUERY;	/* no need to look further */
+			}
 		}
-	}
 		else if (IsA(stmt, PlannedStmt))
 		{
 			PlannedStmt *pstmt = (PlannedStmt *) stmt;
@@ -421,7 +420,7 @@ FetchStatementTargetList(Node *stmt)
 		}
 	}
 	if (IsA(stmt, PlannedStmt))
-				{
+	{
 		PlannedStmt *pstmt = (PlannedStmt *) stmt;
 
 		if (pstmt->commandType == CMD_SELECT &&

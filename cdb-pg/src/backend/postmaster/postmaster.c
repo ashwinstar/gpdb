@@ -38,7 +38,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.505.2.3 2007/02/11 15:12:21 mha Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.551 2008/01/11 00:54:09 tgl Exp $
  *
  * NOTES
  *
@@ -184,8 +184,7 @@ typedef enum pmsub_type
 
 #ifdef EXEC_BACKEND
 /*
- * Number of entries in the shared-memory backend table
- * plus CDB subprocs (eg seqserver).  This table is used
+ * Number of entries in the shared-memory backend table.  This table is used
  * only for sending cancels, and therefore only includes children we allow
  * cancels on: regular backends and autovac workers.  In particular we exclude
  * dead_end children, allowing the table to have a known maximum size, to wit
@@ -824,13 +823,13 @@ PostmasterMain(int argc, char *argv[])
      * for sorting, hashing, etc); so again the number of buffers need not be
      * in proportion to the number of connections.
 	 */
-	if (NBuffers < 16)
+	if (NBuffers < 2 * MaxBackends || NBuffers < 16)
 	{
 		/*
 		 * Do not accept -B so small that backends are likely to starve for
 		 * lack of buffers.  The specific choices here are somewhat arbitrary.
 		 */
-		write_stderr("%s: the number of buffers (-B) must be at least 16\n", progname);
+		write_stderr("%s: the number of buffers (-B) must be at least twice the number of allowed connections (-N) and at least 16\n", progname);
 		ExitPostmaster(1);
 	}
 
@@ -1160,7 +1159,8 @@ PostmasterMain(int argc, char *argv[])
 	 * Remember postmaster startup time
 	 */
 	PgStartTime = GetCurrentTimestamp();
-#endif                                                                                                                                                                       	/* PostmasterRandom wants its own copy */
+#endif
+	/* PostmasterRandom wants its own copy */                                                                                                                               	/* PostmasterRandom wants its own copy */
 	gettimeofday(&random_start_time, NULL);
 
 	/*
@@ -2136,7 +2136,7 @@ SIGHUP_handler(SIGNAL_ARGS)
 			signal_child(AutoVacPID, SIGHUP);
 		if (PgArchPID != 0)
 			signal_child(PgArchPID, SIGHUP);
-		{
+		{ // GPDB only?
 			int ii;
 
 			for (ii=0; ii < MaxPMSubType; ii++)
@@ -2275,7 +2275,7 @@ pmdie(SIGNAL_ARGS)
 				signal_child(AutoVacPID, SIGQUIT);
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
-			{
+			{	// GPDB only?
 				int ii;
 
 				for (ii=0; ii < MaxPMSubType; ii++)
@@ -3427,7 +3427,6 @@ BackendInitialize(Port *port)
 	    init_ps_display(port->user_name, port->database_name, remote_ps_data,
 					update_process_title ? "authentication" : "");
 
-
 	/*
 	 * Now perform authentication exchange.
 	 */
@@ -3941,7 +3940,8 @@ SubPostmasterMain(int argc, char *argv[])
 	if (strcmp(argv[1], "--forkbackend") == 0 ||
 		strcmp(argv[1], "--forkavlauncher") == 0 ||
 		strcmp(argv[1], "--forkavworker") == 0 ||
-        strcmp(argv[1], "--forkseqserver") == 0 ||                                                                                                                           		strcmp(argv[1], "--forkboot") == 0)
+        strcmp(argv[1], "--forkseqserver") == 0 ||   
+        strcmp(argv[1], "--forkboot") == 0)                                                                                                                        		strcmp(argv[1], "--forkboot") == 0)
 		PGSharedMemoryReAttach();
 
 	/* autovacuum needs this set before calling InitProcess */

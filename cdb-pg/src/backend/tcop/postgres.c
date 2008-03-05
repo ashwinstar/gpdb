@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/postgres.c,v 1.518.2.1 2007/01/04 00:58:01 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/postgres.c,v 1.541 2008/01/01 19:45:52 momjian Exp $
  *
  * NOTES
  *	  this is the "main" module of the postgres backend and
@@ -179,9 +179,7 @@ static int	UseNewLine = 1;		/* Use newlines query delimiters (the default) */
 static int	UseNewLine = 0;		/* Use EOF as query delimiters */
 #endif   /* TCOP_DONTUSENEWLINE */
 
-
 static DtxContextInfo TempDtxContextInfo;
-
 
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
