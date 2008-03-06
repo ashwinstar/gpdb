@@ -61,7 +61,7 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP
 	 * the length is not 1, 2, or 4 (or 8 on 8-byte-Datum machines).
 	 * Variable-length types are always passed by reference. Note that
 	 * typbyval can be false even if the length would allow pass-by-value;
-	 * this is currently true for type float4, for example.
+	 * this is currently true for type float4, for example. (NOT TRUE ON GPDB)
 	 */
 	bool		typbyval;
 
