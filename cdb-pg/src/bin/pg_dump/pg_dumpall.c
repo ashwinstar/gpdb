@@ -894,16 +894,32 @@ dumpTablespaces(PGconn *conn)
 	 * Get all tablespaces except built-in ones (which we assume are named
 	 * pg_xxx)
 	 */
-	res = executeQuery(conn, "SELECT spcname, "
-					 "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
-					   "spclocation, spcprilocations, spcmirlocations, spcacl, "
-					"pg_catalog.shobj_description(oid, 'pg_tablespace') "
-					   "FROM pg_catalog.pg_tablespace "
-					   "WHERE spcname !~ '^pg_' "
-					   "ORDER BY 1");
-
-	if (PQntuples(res) > 0)
-		fprintf(OPF, "--\n-- Tablespaces\n--\n\n");
+	if (server_version >= 80205)
+		res = executeQuery(conn, "SELECT spcname, "
+						 "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
+						   "spclocation, spcprilocations, spcmirlocations, spcacl, "
+						"pg_catalog.shobj_description(oid, 'pg_tablespace') "
+						   "FROM pg_catalog.pg_tablespace "
+						   "WHERE spcname !~ '^pg_' "
+						   "ORDER BY 1");
+	else if(server_version >= 80204)
+		res = executeQuery(conn, "SELECT spcname, "
+						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
+						   "spclocation, null as spcprilocations, "
+						   "null as spcmirlocations, spcacl, "
+						   "pg_catalog.shobj_description(oid, 'pg_tablespace') "
+						   "FROM pg_catalog.pg_tablespace "
+						   "WHERE spcname !~ '^pg_' "
+						   "ORDER BY 1");	
+	else
+		res = executeQuery(conn, "SELECT spcname, "
+						   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
+						   "spclocation, null as spcprilocations, "
+						   "null as spcmirlocations, spcacl, "
+						   "null "
+						   "FROM pg_catalog.pg_tablespace "
+						   "WHERE spcname !~ '^pg_' "
+						   "ORDER BY 1");
 
 	for (i = 0; i < PQntuples(res); i++)
 	{
@@ -932,32 +948,12 @@ dumpTablespaces(PGconn *conn)
 		appendPQExpBuffer(buf, " LOCATION ");
 		
 		/* parse and construct the primary location strings */
-		if (!parsePGArray(spcprilocation, &prilocitems, &nitems))
+		if (server_version >= 80205)
 		{
-			fprintf(stderr, _("%s: could not parse LOCATION array (%s) for tablespace \"%s\"\n"),
-					progname, spcprilocation, fspcname);
-			PQfinish(conn);
-			exit(1);
-		}
-		
-		for(i = 0; i < nitems ; i++)
-		{
-			if(i > 0)
-				appendPQExpBuffer(buf, ",");
-			
-			appendStringLiteralConn(buf, prilocitems[i], conn);
-		}
-
-		/* parse and construct the mirror location strings (if exists) */
-		if(spcmirlocation && strlen(spcmirlocation) > 0)
-		{
-			nitems = 0;
-			appendPQExpBuffer(buf, " MIRROR LOCATION ");
-			
-			if (!parsePGArray(spcmirlocation, &mirlocitems, &nitems))
+			if (!parsePGArray(spcprilocation, &prilocitems, &nitems))
 			{
-				fprintf(stderr, _("%s: could not parse MIRROR LOCATION array (%s) for tablespace \"%s\"\n"),
-						progname, spcmirlocation, fspcname);
+				fprintf(stderr, _("%s: could not parse LOCATION array (%s) for tablespace \"%s\"\n"),
+						progname, spcprilocation, fspcname);
 				PQfinish(conn);
 				exit(1);
 			}
@@ -967,19 +963,46 @@ dumpTablespaces(PGconn *conn)
 				if(i > 0)
 					appendPQExpBuffer(buf, ",");
 				
-				appendStringLiteralConn(buf, mirlocitems[i], conn);
+				appendStringLiteralConn(buf, prilocitems[i], conn);
+			}
+	
+			/* parse and construct the mirror location strings (if exists) */
+			if(spcmirlocation && strlen(spcmirlocation) > 0)
+			{
+				nitems = 0;
+				appendPQExpBuffer(buf, " MIRROR LOCATION ");
+				
+				if (!parsePGArray(spcmirlocation, &mirlocitems, &nitems))
+				{
+					fprintf(stderr, _("%s: could not parse MIRROR LOCATION array (%s) for tablespace \"%s\"\n"),
+							progname, spcmirlocation, fspcname);
+					PQfinish(conn);
+					exit(1);
+				}
+				
+				for(i = 0; i < nitems ; i++)
+				{
+					if(i > 0)
+						appendPQExpBuffer(buf, ",");
+					
+					appendStringLiteralConn(buf, mirlocitems[i], conn);
+				}
+				
+				free(mirlocitems);
 			}
 			
-			free(mirlocitems);
-		}
-		
-		/* Add MASTER LOCATION clause if differs from first primary entry */
-		/* (we could add it anyway, but it won't reflect the original command) */
-		if(strcmp(spclocation, prilocitems[0]) != 0)
+			/* Add MASTER LOCATION clause if differs from first primary entry */
+			/* (we could add it anyway, but it won't reflect the original command) */
+			if(strcmp(spclocation, prilocitems[0]) != 0)
+			{
+				/* add MASTER LOCATION clause */
+				appendPQExpBuffer(buf, " MASTER LOCATION ");
+				appendStringLiteralConn(buf, spclocation, conn);								
+			}
+		} 
+		else
 		{
-			/* add MASTER LOCATION clause */
-			appendPQExpBuffer(buf, " MASTER LOCATION ");
-			appendStringLiteralConn(buf, spclocation, conn);								
+			appendStringLiteralConn(buf, spclocation, conn);
 		}
 			
 		appendPQExpBuffer(buf, ";\n");
