@@ -278,7 +278,7 @@ DATA(insert OID = 19 (	name	   PGNSP PGUID NAMEDATALEN f b t \054 0 18 1003 name
 DESCR("63-character type for storing system identifiers");
 #define NAMEOID			19
 
-DATA(insert OID = 20 (	int8	   PGNSP PGUID	8 f b t \054 0	 0 1016 int8in int8out int8recv int8send - - - d p f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 20 (	int8	   PGNSP PGUID	8 t b t \054 0	 0 1016 int8in int8out int8recv int8send - - - d p f 0 -1 0 _null_ _null_ ));
 DESCR("~18 digit integer, 8-byte storage");
 #define INT8OID			20
 
@@ -375,10 +375,10 @@ DESCR("");
 
 /* OIDS 700 - 799 */
 
-DATA(insert OID = 700 (  float4    PGNSP PGUID	4 f b t \054 0	 0 1021 float4in float4out float4recv float4send - - - i p f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 700 (  float4    PGNSP PGUID	4 t b t \054 0	 0 1021 float4in float4out float4recv float4send - - - i p f 0 -1 0 _null_ _null_ ));
 DESCR("single-precision floating point number, 4-byte storage");
 #define FLOAT4OID 700
-DATA(insert OID = 701 (  float8    PGNSP PGUID	8 f b t \054 0	 0 1022 float8in float8out float8recv float8send - - - d p f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 701 (  float8    PGNSP PGUID	8 t b t \054 0	 0 1022 float8in float8out float8recv float8send - - - d p f 0 -1 0 _null_ _null_ ));
 DESCR("double-precision floating point number, 8-byte storage");
 #define FLOAT8OID 701
 DATA(insert OID = 702 (  abstime   PGNSP PGUID	4 t b t \054 0	 0 1023 abstimein abstimeout abstimerecv abstimesend - - - i p f 0 -1 0 _null_ _null_ ));
@@ -466,18 +466,18 @@ DESCR("varchar(length), non-blank-padded string, variable storage length");
 DATA(insert OID = 1082 ( date		 PGNSP PGUID	4 t b t \054 0	0 1182 date_in date_out date_recv date_send - - - i p f 0 -1 0 _null_ _null_ ));
 DESCR("ANSI SQL date");
 #define DATEOID			1082
-DATA(insert OID = 1083 ( time		 PGNSP PGUID	8 f b t \054 0	0 1183 time_in time_out time_recv time_send timetypmodin timetypmodout - d p f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 1083 ( time		 PGNSP PGUID	8 t b t \054 0	0 1183 time_in time_out time_recv time_send timetypmodin timetypmodout - d p f 0 -1 0 _null_ _null_ ));
 DESCR("hh:mm:ss, ANSI SQL time");
 #define TIMEOID			1083
 
 /* OIDS 1100 - 1199 */
-DATA(insert OID = 1114 ( timestamp	 PGNSP PGUID	8 f b t \054 0	0 1115 timestamp_in timestamp_out timestamp_recv timestamp_send timestamptypmodin timestamptypmodout - d p f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 1114 ( timestamp	 PGNSP PGUID	8 t b t \054 0	0 1115 timestamp_in timestamp_out timestamp_recv timestamp_send timestamptypmodin timestamptypmodout - d p f 0 -1 0 _null_ _null_ ));
 DESCR("date and time");
 #define TIMESTAMPOID	1114
 DATA(insert OID = 1115 ( _timestamp  PGNSP PGUID	-1 f b t \054 0 1114 0 array_in array_out array_recv array_send timestamptypmodin timestamptypmodout - d x f 0 -1 0 _null_ _null_ ));
 DATA(insert OID = 1182 ( _date		 PGNSP PGUID	-1 f b t \054 0 1082 0 array_in array_out array_recv array_send - - - i x f 0 -1 0 _null_ _null_ ));
 DATA(insert OID = 1183 ( _time		 PGNSP PGUID	-1 f b t \054 0 1083 0 array_in array_out array_recv array_send timetypmodin timetypmodout - d x f 0 -1 0 _null_ _null_ ));
-DATA(insert OID = 1184 ( timestamptz PGNSP PGUID	8 f b t \054 0	0 1185 timestamptz_in timestamptz_out timestamptz_recv timestamptz_send timestamptztypmodin timestamptztypmodout - d p f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 1184 ( timestamptz PGNSP PGUID	8 t b t \054 0	0 1185 timestamptz_in timestamptz_out timestamptz_recv timestamptz_send timestamptztypmodin timestamptztypmodout - d p f 0 -1 0 _null_ _null_ ));
 DESCR("date and time with time zone");
 #define TIMESTAMPTZOID	1184
 DATA(insert OID = 1185 ( _timestamptz PGNSP PGUID -1 f b t \054 0	1184 0 array_in array_out array_recv array_send timestamptztypmodin timestamptztypmodout - d x f 0 -1 0 _null_ _null_ ));
