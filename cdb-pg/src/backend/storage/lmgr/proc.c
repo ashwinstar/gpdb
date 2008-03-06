@@ -189,13 +189,13 @@ InitProcGlobal(void)
 	/*
 	 * Pre-create the PGPROC structures and create a semaphore for each.
 	 */
-	procs = (PGPROC *) ShmemAlloc(MaxBackends * sizeof(PGPROC));
+	procs = (PGPROC *) ShmemAlloc((MaxConnections) * sizeof(PGPROC));
 	if (!procs)
 		ereport(FATAL,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory")));
-	MemSet(procs, 0, MaxBackends * sizeof(PGPROC));
-	for (i = 0; i < MaxBackends; i++)
+	MemSet(procs, 0, MaxConnections * sizeof(PGPROC));
+	for (i = 0; i < MaxConnections; i++)
 	{
 		PGSemaphoreCreate(&(procs[i].sem));
 		procs[i].links.next = ProcGlobal->freeProcs;

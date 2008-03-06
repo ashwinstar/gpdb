@@ -12,6 +12,8 @@
  *
  *
  * Portions Copyright (c) 2006-2008, Greenplum inc
+ * 
+ *  Some notes about varlenas and this code:
  *
  * Before Postgres 8.3 varlenas always had a 4-byte length header, and
  * therefore always needed 4-byte alignment (at least).  This wasted space
@@ -336,6 +338,8 @@ nocachegetattr(HeapTuple tuple,
 	bool		slow = false;	/* do we have to walk attrs? */
 	int			off;			/* current offset within data */
 
+	(void) isnull;				/* not used */
+	
 	Assert(!is_heaptuple_memtuple(tuple));
 
 	/* ----------------
@@ -439,7 +443,7 @@ nocachegetattr(HeapTuple tuple,
 
 			for (j = 0; j <= attnum; j++)
 			{
-				if (att[j]->attlen < 0)
+				if (att[j]->attlen <= 0)
 				{
 					slow = true;
 					break;
@@ -596,10 +600,10 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 		case MinCommandIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
 			/*
-			 * cmin and cmax are now both aliases for the same field,
-			 * which can in fact also be a combo command id.  XXX perhaps we
-			 * should return the "real" cmin or cmax if possible, that is
-			 * if we are inside the originating transaction?
+			 * cmin and cmax are now both aliases for the same field, which
+			 * can in fact also be a combo command id.	XXX perhaps we should
+			 * return the "real" cmin or cmax if possible, that is if we are
+			 * inside the originating transaction?
 			 */
 			result = CommandIdGetDatum(HeapTupleHeaderGetRawCommandId(tup->t_data));
 			break;
