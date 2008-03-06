@@ -47,34 +47,21 @@
 		memcpy((to), (from), _size); \
 	} while (0)
 
-/*
- * Substructure for a PlanProfile to hold "stackable" information like
- * the range table.
- */
-typedef struct LocalProfile
-{
-	List	   *rtable;			/* The current range table. */
-
-	struct LocalProfile *outerFrame;	/* The next more global context or
-										 * NULL. */
-
-}	LocalProfile;
 
 /*
  * A PlanProfile holds state for recursive prescan_walker().
  */
 typedef struct PlanProfile
 {
-	/*
+    PlannerGlobal  *glob;
+
+    /*
 	 * The result flags refer to relation in the result of an insert, update,
 	 * or delete
 	 */
 	bool	resultSegments;
 	
 	bool	dispatchParallel;
-
-	/* Context */
-	LocalProfile *local;
 
 	int sliceDepth;
 	
@@ -87,12 +74,9 @@ typedef struct PlanProfile
 /*
  * Forward Declarations
  */
+static bool has_correlation_params(List *planner_param_items);
 static void prescan(Plan *plan, PlanProfile * context);
 static bool prescan_walker(Node *node, PlanProfile * context);
-
-static void pushLocals(PlanProfile * profile, List *rtable);
-static void popLocals(PlanProfile * profile);
-static List *localRangeTable(PlanProfile * profile);
 
 static bool
 adjustPlanFlow(Plan        *plan,
@@ -151,12 +135,13 @@ static void motion_sanity_check(Plan *plan);
  * ------------------------------------------------------------------------- *
  */
 Plan *
-cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlation)
+cdbparallelize(PlannerGlobal *glob, Plan *plan, Query *query)
 {
 	int			nParamExec;
 	PlanProfile profile;
 	PlanProfile *context = &profile;
-	
+	bool        uses_correlation = has_correlation_params(glob->paramlist);
+		
 	/* Make sure we're called correctly (and need to be called).  */
 	switch ( Gp_role )
 	{
@@ -176,11 +161,11 @@ cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlatio
 	if (Debug_print_prelim_plan)
 		elog_node_display(DEBUG1, "preliminary plan", plan, Debug_pretty_print);
 
-	/* Don't parallelize plans rendered impotent be constraint exclusion. 
+	/* Don't parallelize plans rendered impotent be constraint exclusion.
 	 * See MPP-2168.  We could fold this into prescan() but this quick
 	 * check is effective in the only case we know of.
 	 */
-	if ( IsA(plan, Result) && plan->lefttree == NULL 
+	if ( IsA(plan, Result) && plan->lefttree == NULL
 						   && plan->targetlist == NULL
 						   && plan->qual == NULL
 						   && plan->initPlan == NULL )
@@ -190,23 +175,18 @@ cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlatio
 	}
 
     /* Initialize the PlanProfile result ... */
+    context->glob = glob;
 	context->resultSegments = false;
 	context->hasNonRootSubplan = false;
-
-	context->local = NULL;
-	pushLocals(context, query->rtable);
 
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
-			// MERGEBUG
-#if 0
-			if (query->into)
+			if (query->intoClause)
 			{
 				/* SELECT INTO always created partitioned tables. */
 				context->resultSegments = true;	
 			}
-#endif
 			break;
 
 		case CMD_INSERT:
@@ -222,8 +202,8 @@ cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlatio
 
                 /* Get Oid of target relation. */
                 Insist(query->resultRelation > 0 &&
-				       query->resultRelation <= list_length(localRangeTable(context)));
-				reloid = getrelid(query->resultRelation, localRangeTable(context));
+				       query->resultRelation <= list_length(query->rtable));
+				reloid = getrelid(query->resultRelation, query->rtable);
 
                 /* Get a copy of the rel's GpPolicy from the relcache. */
                 relation = relation_open(reloid, NoLock);
@@ -242,15 +222,15 @@ cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlatio
                 if (query->returningList &&
                     context->resultSegments)
                 {
-                    const char *cmd = (query->commandType == CMD_INSERT) ? "INSERT" 
-                                    : (query->commandType == CMD_UPDATE) ? "UPDATE" 
+                    const char *cmd = (query->commandType == CMD_INSERT) ? "INSERT"
+                                    : (query->commandType == CMD_UPDATE) ? "UPDATE"
                                     :                                      "DELETE";
 
                     ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
                                     errmsg("The RETURNING clause of the %s "
                                            "statement is not yet supported in "
                                            "this version of " PACKAGE_NAME ".",
-                                           cmd) 
+                                           cmd)
                                     ));
                 }
 			}
@@ -316,6 +296,24 @@ cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlatio
 
 	return plan;
 }
+
+
+/*
+ * has_correlation_params
+ */
+static bool
+has_correlation_params(List *planner_param_items)
+{
+	ListCell *c;
+	
+	foreach (c, planner_param_items)
+	{
+		PlannerParamItem *pli = (PlannerParamItem*)lfirst(c);
+		if ( IsA(pli->item,Var) || IsA(pli->item,Aggref) )
+			return TRUE;
+	}
+	return FALSE;
+}                               /* has_correlation_params */
 
 
 /* ----------------------------------------------------------------------- *
@@ -387,6 +385,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				 * notably the range table.
 				 */
 				SubPlan    *subplan = (SubPlan *) node;
+                Plan       *childplan = exec_subplan_get_plan(context->glob, subplan);
 
 				/*
 				 * Note subqueries that have not been pulled off into
@@ -401,30 +400,19 @@ prescan_walker(Node *node, PlanProfile * context)
 				if (expression_tree_walker((Node *) subplan->testexpr, prescan_walker, context))
 					return true;
 
-				// MERGEBUG
-#if 0
-				/*
-				 * Set local state for the subplan to the new rangetable.
-				 */
-				pushLocals(context, subplan->rtable);
-
 				/* Parallelize the subplan.  */
-				if (prescan_walker((Node *) subplan->plan, context))
+				if (prescan_walker((Node *)childplan, context))
 					return true;
 
-                Assert(subplan->plan->flow &&
-						subplan->plan->flow->flotype != FLOW_UNDEFINED);
+                Assert(childplan->flow &&
+					   childplan->flow->flotype != FLOW_UNDEFINED);
 
 				/*
                  * Subquery result needs to be brought back to the QD.
                  * Ask for motion to a single QE.  Later, apply_motion
                  * will override that to bring it to the QD instead.
                  */
-                Insist(focusPlan(subplan->plan, true, false, false));
-#endif
-
-				/* Restore state for the parent plan. */
-				popLocals(context);
+                Insist(focusPlan(childplan, true, false, false));
 
 				/* Recur into the args list. */
 				return expression_tree_walker((Node *) subplan->args, prescan_walker, context);
@@ -461,7 +449,7 @@ prescan_walker(Node *node, PlanProfile * context)
              * inputs are produced upstream of the function invocation.
              */
             RangeTblEntry  *rte = rt_fetch(((Scan *)node)->scanrelid,
-                                           localRangeTable(context));
+                                           context->glob->finalrtable);
 
             Assert(rte->rtekind == RTE_FUNCTION);
 
@@ -498,10 +486,11 @@ prescan_walker(Node *node, PlanProfile * context)
 				Plan	   *subplan;
 
 				/* Make sure we have a valid index. */
-				Assert(0 < rtindex && rtindex <= list_length(localRangeTable(context)));
+				Assert(0 < rtindex &&
+                       rtindex <= list_length(context->glob->finalrtable));
 
 				/* All scan types have a range table entry. */
-				rte = rt_fetch(rtindex, localRangeTable(context));
+				rte = rt_fetch(rtindex, context->glob->finalrtable);
 
 				/* The entry type is related to the to the scan type. */
 				Assert(rte->rtekind == RTE_SUBQUERY);
@@ -514,7 +503,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				 */
 				subplan = subqueryscan->subplan;
 
-				/* MPP-1980 
+				/* MPP-1980
 				 * walk targetlist, quals, and init-plan too to make sure
 				 * we didn't miss a subquery hiding in there
 				 */
@@ -526,15 +515,8 @@ prescan_walker(Node *node, PlanProfile * context)
 				if (prescan_walker((Node*)(subqueryscan->scan.plan.initPlan), context))
 				  return true;
 
-				/*
-				 * The subplan uses the range table of the Query node
-				 * attached to the subquery RTE. Also, the local context
-				 * forces reexamination of the contained query.
-				 */
-				pushLocals(context, rte->subquery->rtable);
 				if (prescan_walker((Node *) subplan, context))
 					return true;
-				popLocals(context);
 				
 				return false;
 			}
@@ -694,37 +676,6 @@ is_plan_node(Node *node)
 }
 
 
-void
-pushLocals(PlanProfile * profile, List *rtable)
-{
-    LocalProfile *newlocal = palloc(sizeof(LocalProfile));
-
-	newlocal->rtable = rtable;
-	newlocal->outerFrame = profile->local;
-
-    profile->local = newlocal;
-}
-
-void
-popLocals(PlanProfile * profile)
-{
-	LocalProfile *oldlocal = profile->local;
-
-	if (oldlocal == NULL)
-		return;
-
-	profile->local = oldlocal->outerFrame;
-	pfree(oldlocal);
-}
-
-List *
-localRangeTable(PlanProfile * profile)
-{
-	if (profile->local == NULL)
-		return NIL;
-	return profile->local->rtable;
-}
-
 /* Functions focusPlan, broadcastPlan, and repartitionPlan annotate the top
  * of the given plan tree with a motion request for later implementation by
  * function apply_motion in cdbmutate.c.
@@ -793,7 +744,7 @@ repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hash
 {
     Movement    req_move = MOVEMENT_REPARTITION;
 
-    Assert(plan->flow); 
+    Assert(plan->flow);
     Assert(plan->flow->flotype == FLOW_PARTITIONED ||
            plan->flow->flotype == FLOW_SINGLETON);
 
@@ -824,7 +775,7 @@ adjustPlanFlow(Plan        *plan,
                Movement     req_move,
                List        *hashExpr)
 {
-    Flow       *flow = plan->flow; 
+    Flow       *flow = plan->flow;
     bool        disorder = false;
     bool		recur = false;
     bool        reorder = false;
