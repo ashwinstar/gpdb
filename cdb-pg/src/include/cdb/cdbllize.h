@@ -17,25 +17,34 @@
 #ifndef CDBLLIZE_H
 #define CDBLLIZE_H
 
-#include "nodes/nodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/plannodes.h"
-#include "nodes/params.h"
-#include "nodes/relation.h"
-#include "cdb/cdbplan.h"
+#include "nodes/nodes.h"                    /* Node, FlowType */
 
-Plan *
-cdbparallelize(PlannerInfo *root, Plan *plan, Query *query, bool uses_correlation);
+struct Flow;                                /* #include "nodes/primnodes.h" */
+struct List;                                /* #include "nodes/pg_list.h" */
+struct Plan;                                /* #include "nodes/plannodes.h" */
+struct PlannerGlobal;                       /* #include "nodes/relation.h" */
+struct Query;                               /* #include "nodes/parsenodes.h" */
+
+struct Plan *
+cdbparallelize(struct PlannerGlobal    *glob, 
+               struct Plan             *plan, 
+               struct Query            *query);
 
 extern bool is_plan_node(Node *node);
 
-extern Flow *makeFlow(FlowType flotype);
+extern struct Flow *makeFlow(FlowType flotype);
 
-extern Flow *pull_up_Flow(Plan *plan, Plan *subplan, bool withSort);
+struct Flow *
+pull_up_Flow(struct Plan *plan, struct Plan *subplan, bool withSort);
 
-bool focusPlan(Plan *plan, bool live, bool stable, bool rescannable);
-bool broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable);
-bool repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hashExpr);
+bool focusPlan(struct Plan *plan, bool live, bool stable, bool rescannable);
+bool broadcastPlan(struct Plan *plan, bool live, bool stable, bool rescannable);
 
+bool 
+repartitionPlan(struct Plan    *plan, 
+                bool            live, 
+                bool            stable, 
+                bool            rescannable, 
+                struct List    *hashExpr);
 
 #endif   /* CDBLLIZE_H */

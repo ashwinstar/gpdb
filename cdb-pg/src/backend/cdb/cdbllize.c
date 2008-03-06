@@ -14,8 +14,6 @@
  */
 
 #include "postgres.h"
-#include "miscadmin.h"
-#include "optimizer/clauses.h"
 #include "nodes/primnodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
@@ -31,14 +29,12 @@
 #include "nodes/value.h"		/* for makeString() */
 #include "utils/relcache.h"     /* RelationGetPartitioningKey() */
 
-#include "utils/debugbreak.h"
-
-#include "cdb/cdbvars.h"
+#include "cdb/cdbcat.h"
+#include "cdb/cdbllize.h"       /* me */
+#include "cdb/cdbmutate.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbpullup.h"
-#include "cdb/cdbllize.h"
-#include "cdb/cdbcat.h"
-#include "cdb/cdbmutate.h"
+#include "cdb/cdbvars.h"
 
 #define ARRAYCOPY(to, from, sz) \
 	do { \
@@ -134,8 +130,10 @@ static void motion_sanity_check(Plan *plan);
  *	 dispatch and return it.
  * ------------------------------------------------------------------------- *
  */
-Plan *
-cdbparallelize(PlannerGlobal *glob, Plan *plan, Query *query)
+struct Plan *
+cdbparallelize(struct PlannerGlobal    *glob, 
+               struct Plan             *plan, 
+               struct Query            *query)
 {
 	int			nParamExec;
 	PlanProfile profile;
@@ -330,7 +328,6 @@ prescan(Plan *plan, PlanProfile * context)
 {
 	if ( prescan_walker((Node *) plan, context) )
 	{
-		debug_break();
 		Insist(0);
 	}
 }
@@ -532,7 +529,7 @@ prescan_walker(Node *node, PlanProfile * context)
 /*
  * Construct a new Flow in the current memory context.
  */
-Flow *
+struct Flow *
 makeFlow(FlowType flotype)
 {
 	Flow	   *flow = makeNode(Flow);
@@ -555,7 +552,7 @@ makeFlow(FlowType flotype)
  * added upstream of set_plan_references(); only these remain at present.
  */
 Flow *
-pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
+pull_up_Flow(struct Plan *plan, struct Plan *subplan, bool withSort)
 {
 	Flow	   *model_flow;
 	Flow	   *new_flow;
@@ -704,7 +701,7 @@ is_plan_node(Node *node)
  * Function: focusPlan
  */
 bool
-focusPlan(Plan *plan, bool live, bool stable, bool rescannable)
+focusPlan(struct Plan *plan, bool live, bool stable, bool rescannable)
 {
     Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
 
@@ -724,7 +721,7 @@ focusPlan(Plan *plan, bool live, bool stable, bool rescannable)
  * Function: broadcastPlan
  */
 bool
-broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable)
+broadcastPlan(struct Plan *plan, bool live, bool stable, bool rescannable)
 {
     Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
 
@@ -739,8 +736,12 @@ broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable)
 /*
  * Function: repartitionPlan
  */
-bool
-repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hashExpr)
+bool 
+repartitionPlan(struct Plan    *plan, 
+                bool            live, 
+                bool            stable, 
+                bool            rescannable, 
+                struct List    *hashExpr)
 {
     Movement    req_move = MOVEMENT_REPARTITION;
 
