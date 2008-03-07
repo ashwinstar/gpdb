@@ -625,8 +625,8 @@ typedef struct RangeTblEntry
 	/* These are for pre-planned sub-queries only.  They are internal to
 	 * window planning.
 	 */
-	struct Plan        *subquery_plan;
-	struct PlannerInfo *subquery_planinfo;
+	struct Plan    *subquery_plan;
+	List           *subquery_pathkeys;
 
 	/*
 	 * Fields valid for a function RTE (else NULL):

@@ -719,17 +719,18 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 										root->query_level + 1,
 										tuple_fraction,
 										&subroot);
+	    rel->subrtable = subroot->parse->rtable;
+        pathkeys = subroot->query_pathkeys;
 	}
 	else
 	{
 		/* This is a preplanned sub-query RTE. */
 		rel->subplan = rte->subquery_plan;
-        subroot = rte->subquery_planinfo;
+	    rel->subrtable = subquery->rtable;
+        pathkeys = rte->subquery_pathkeys;
 		/* XXX rel->onerow = ??? */
 	}
 	
-	rel->subrtable = subroot->parse->rtable;
-
     /* Copy number of output rows from subplan */
     if (rel->onerow)
         rel->tuples = 1;
@@ -744,7 +745,7 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	set_baserel_size_estimates(root, rel);
 
 	/* Convert subquery pathkeys to outer representation */
-	pathkeys = convert_subquery_pathkeys(root, rel, subroot->query_pathkeys);
+	pathkeys = convert_subquery_pathkeys(root, rel, pathkeys);
 
 	/* Generate appropriate path */
 	add_path(root, rel, create_subqueryscan_path(root, rel, pathkeys));
