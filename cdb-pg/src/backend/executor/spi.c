@@ -2339,6 +2339,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 			char * query_text;
 			int query_text_len;
 
+			// MERGEBUG
 			/* XXX PG8.3 Merge.   
 			 * query is no longer stored in _SPI_plan.  This thing
 			 * should only be used with error reporting so remove
@@ -2435,6 +2436,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 			}
 
 #if 0
+			// MERGEBUG
 			/* XXX PG8.3 merge.  We no longer have the query string. */
 
 			/*
@@ -2502,6 +2504,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 			}
 
 #if 0
+			// MERGEBUG
 			/* XXX PG8.3 Merge. 
 			 * We don't have the plan->query any more, what to do?
 			 */

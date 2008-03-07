@@ -1282,6 +1282,7 @@ GetDefaultTablespace(bool forTemp)
 	if (forTemp)
 	{
 		return InvalidOid;
+		// MERGEBUG
 		/* GPDB: 8.3 merge, we don't support temp tablespaces */
 #if 0
 		PrepareTempTablespaces();

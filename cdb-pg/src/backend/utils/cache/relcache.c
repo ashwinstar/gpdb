@@ -1267,40 +1267,6 @@ LookupOpclassInfo(Oid operatorClassOid,
 							  SnapshotNow, 1, skey);
 
 	if (HeapTupleIsValid(htup = systable_getnext(scan)))
-	{
-		Form_pg_opclass opclassform = (Form_pg_opclass) GETSTRUCT(htup);
-
-		opcentry->opcfamily = opclassform->opcfamily;
-		opcentry->opcintype = opclassform->opcintype;
-	}
-	else
-		elog(ERROR, "could not find tuple for opclass %u", operatorClassOid);
-
-	systable_endscan(scan);
-	heap_close(rel, AccessShareLock);
-
-
-	/*
-	 * Scan pg_amop to obtain operators for the opclass.  We only fetch the
-	 * default ones (those with lefttype = righttype = opcintype).
-	 */
-		ScanKeyInit(&skey[0],
-					Anum_pg_amop_amopfamily,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(opcentry->opcfamily));
-		ScanKeyInit(&skey[1],
-					Anum_pg_amop_amoplefttype,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(opcentry->opcintype));
-		ScanKeyInit(&skey[2],
-					Anum_pg_amop_amoprighttype,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(opcentry->opcintype));
-		rel = heap_open(AccessMethodOperatorRelationId, AccessShareLock);
-		scan = systable_beginscan(rel, AccessMethodStrategyIndexId, indexOK,
-								  SnapshotNow, 3, skey);
-
-	if (HeapTupleIsValid(htup = systable_getnext(scan)))
 		{
 		Form_pg_opclass opclassform = (Form_pg_opclass) GETSTRUCT(htup);
 

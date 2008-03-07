@@ -432,6 +432,7 @@ notifyCommittedDtxTransaction(void)
 {
 	if(DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
 	{
+		if (!IsBootstrapProcessingMode())
 	    elog((Debug_print_full_dtm ? LOG : DEBUG5),"notifyCommittedDtxTransaction nothing to do (DistributedTransactionContext = '%s')", 
 			 DtxContextToString(DistributedTransactionContext));
 		return;
@@ -939,6 +940,7 @@ prepareDtxTransaction(void)
 {
 	if(DistributedTransactionContext != DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE)
 	{
+		if (!IsBootstrapProcessingMode())
 	    elog((Debug_print_full_dtm ? LOG : DEBUG5),"prepareDtxTransaction nothing to do (DistributedTransactionContext = '%s')", 
 			 DtxContextToString(DistributedTransactionContext));
 		return;
@@ -3560,6 +3562,7 @@ finishDistributedTransactionContext (char* debugCaller, bool aborted)
 	}
 	
 	gxid = getDistributedTransactionId();
+	if (!IsBootstrapProcessingMode())
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "finishDistributedTransactionContext called to change DistributedTransactionContext from %s to %s (caller = %s, gxid = %u)",
 		 DtxContextToString(DistributedTransactionContext), 
 		 DtxContextToString(DTX_CONTEXT_LOCAL_ONLY), 

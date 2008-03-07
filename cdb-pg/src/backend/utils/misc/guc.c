@@ -121,6 +121,7 @@ extern int	CommitSiblings;
 extern char *default_tablespace;
 extern char *temp_tablespaces;
 extern bool fullPageWrites;
+// MERGEBUG
 bool synchronize_seqscans; /* XXX: not externed for now, should be declared
 							  int heapam.c, but we'll wait for the merge to
 							  finish yet */

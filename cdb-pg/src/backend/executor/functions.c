@@ -281,12 +281,14 @@ init_sql_fcache(FmgrInfo *finfo)
 					break;
 				}
 				else if (
+						// MERGEBUG
 #if 0
 	/* XXX pg8.3 merge. 
          * At this moment, we don't know the rel yet.  
 	 * The corresponding rel is moved to queryDesc->plannedstmt->intoCluase->rel.
 	 * What should we do?
 	 */
+	 // MERGEBUG
 					 q->into != NULL || 
 #endif
 					 q ->setOperations != NULL || q->resultRelation > 0)

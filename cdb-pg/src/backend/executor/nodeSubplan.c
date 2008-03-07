@@ -675,6 +675,7 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 	sstate->args = (List *) ExecInitExpr((Expr *) subplan->args, parent);
 
 #if 0
+	// MERGEBUG
 	/* XXX PG8.3 merge.  Now subplan does not have a sp_estate any more.  Do we 
 	 * still need to do the "load" stuff?
 	 */

@@ -3759,6 +3759,7 @@ make_sort_from_pathkeys(PlannerInfo    *root,
 		}
 		else
 		{
+			// MERGEBUG
             // CDB TODO: pg 8.3 merge...
 
 			/*

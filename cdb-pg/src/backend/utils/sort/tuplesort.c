@@ -641,6 +641,7 @@ void tuplesort_begin_pos(Tuplesortstate *st, TuplesortPos **pos)
 	*pos = st_pos;
 }
 	
+// MERGEBUG
 /* XXX NYI
  * MERGE from PG8.3, nullFirstFlags is not yet implemented.  
  */

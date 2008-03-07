@@ -115,6 +115,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	SubqueryScanState *subquerystate;
 	List       *tlist;
 #if 0
+	// MERGEBUG
 	EState     *sp_estate; /* PG8.3 merge. See below. */
 #endif
 
@@ -174,6 +175,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	 * initialize subquery
 	 */
 #if 0
+	// MERGEBUG
 	/* XXX PG8.3 Merge.
 	 * PG8.3 does not create a sp_estate and use estate directly, for whatever
 	 * reason, I don't know this will work for CDB.

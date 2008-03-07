@@ -519,6 +519,7 @@ typedef struct PgBackendStatus
 extern bool pgstat_track_activities;
 extern bool pgstat_track_counts;
 
+// MERGEBUG
 /** GPDB 8.3 MERGE TODO: probably need to delete the bottom. other similar
  * GUCs were delete
  */

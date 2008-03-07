@@ -1850,6 +1850,7 @@ StartTransaction(void)
 	 * a purely-local transaction.
 	 *
 	 */
+	if (!IsBootstrapProcessingMode())
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartTransaction DTX Context = '%s'", DtxContextToString(DistributedTransactionContext));
 	
 	switch (DistributedTransactionContext)
@@ -2066,6 +2067,7 @@ StartTransaction(void)
 		break;
 	}
 
+	if (!IsBootstrapProcessingMode())
 	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *StartTransaction* (gxid = %u, xid = %u, '%s')", 
 	 	  (SerializableDistributedSnapshot == NULL ? 0 : SerializableDistributedSnapshot->snapshotId),
 	 	  getDistributedTransactionId(),
@@ -4444,6 +4446,7 @@ IsTransactionOrTransactionBlock(void)
 bool
 IsTransactionDirty(void)
 {
+	// MERGEBUG
 	// UNDONE: Broken by 8.3 merge -- needs to be fixed.
 //	bool result = (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || smgrIsPendingDeletes(true));
 	bool result = true;
@@ -4458,6 +4461,7 @@ void
 ExecutorMarkTransactionUsesSequences(void)
 {
 	seqXlogWrite = true;
+	// MERGEBUG
 	// UNDONE: Broken by 8.3 merge -- needs to be fixed.
 //	MyXactMadeXLogEntry = true;
 }

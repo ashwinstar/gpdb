@@ -1320,6 +1320,7 @@ FigureColnameInternal(Node *node, char **name)
 				case IS_LEAST:
 					*name = "least";
 					return 2;
+					// MERGEBUG ?
 /* XXX XXX weird merge here -- removed */
 			}
 			break;

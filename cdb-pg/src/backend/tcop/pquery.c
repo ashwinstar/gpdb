@@ -36,7 +36,7 @@
 Portal		ActivePortal = NULL;
 
 
-static void ProcessQuery(Portal portal, // GPDB needs portal?  Or MERGEBUG
+static void ProcessQuery(Portal portal, // GPDB needs portal?  Or  // MERGEBUG
              PlannedStmt *plan,
              ParamListInfo params,
 			 DestReceiver *dest,
