@@ -89,12 +89,12 @@ typedef FormData_pg_aggregate *Form_pg_aggregate;
  */
 
 /* avg */
-DATA(insert ( 2100	int8_avg_accum	int8_avg_decum int8_avg_amalg int8_avg_demalg int8_avg	0 17 "")); 
-DATA(insert ( 2101	int4_avg_accum	int4_avg_decum int8_avg_amalg int8_avg_demalg int8_avg	0 17 "")); 
-DATA(insert ( 2102	int2_avg_accum	int2_avg_decum int8_avg_amalg int8_avg_demalg int8_avg	0 17 "")); 
-DATA(insert ( 2103	numeric_avg_accum numeric_avg_decum	 numeric_avg_amalg numeric_avg_demalg numeric_avg 0	17 ""));
-DATA(insert ( 2104	float4_avg_accum float4_avg_decum float8_avg_amalg float8_avg_demalg float8_avg	0 17 "")); 
-DATA(insert ( 2105	float8_avg_accum float8_avg_decum float8_avg_amalg float8_avg_demalg float8_avg	0 17 ""));	
+DATA(insert ( 2100	int8_avg_accum	int8_avg_decum int8_avg_amalg int8_avg_demalg int8_avg	0 17 "{0,0}")); 
+DATA(insert ( 2101	int4_avg_accum	int4_avg_decum int8_avg_amalg int8_avg_demalg int8_avg	0 17 "{0,0}")); 
+DATA(insert ( 2102	int2_avg_accum	int2_avg_decum int8_avg_amalg int8_avg_demalg int8_avg	0 17 "{0,0}")); 
+DATA(insert ( 2103	numeric_avg_accum numeric_avg_decum	 numeric_avg_amalg numeric_avg_demalg numeric_avg 0	17 "{0,0}"));
+DATA(insert ( 2104	float4_avg_accum float4_avg_decum float8_avg_amalg float8_avg_demalg float8_avg	0 17 "{0,0,0}")); 
+DATA(insert ( 2105	float8_avg_accum float8_avg_decum float8_avg_amalg float8_avg_demalg float8_avg	0 17 "{0,0,0}"));	
 DATA(insert ( 2106	interval_accum	interval_decum interval_amalg	interval_demalg interval_avg	0	1187	"{0 second,0 second}" ));
 
 /* sum */
@@ -127,7 +127,7 @@ DATA(insert ( 2130	numeric_larger	- numeric_larger	- -				1756	1700	_null_ ));
 DATA(insert ( 2050	array_larger	- array_larger		- -				1073	2277	_null_ ));
 DATA(insert ( 2244	bpchar_larger	- bpchar_larger		- -				1060	1042	_null_ ));
 DATA(insert ( 2797	tidlarger		- tidlarger			- -				2800	27		_null_ ));
-DATA(insert ( 3526	enum_larger		-				3519	3500	_null_ ));
+DATA(insert ( 3526	enum_larger		-	enum_larger		- -			3519	3500	_null_ ));
 
 /* min */
 DATA(insert ( 2131	int8smaller		- int8smaller		- -				412		20		_null_ ));
@@ -149,7 +149,7 @@ DATA(insert ( 2146	numeric_smaller - numeric_smaller	- -				1754	1700	_null_ ));
 DATA(insert ( 2051	array_smaller	- array_smaller		- -				1072	2277	_null_ ));
 DATA(insert ( 2245	bpchar_smaller	- bpchar_smaller	- -				1058	1042	_null_ ));
 DATA(insert ( 2798	tidsmaller		- tidsmaller		- -				2799	27		_null_ ));
-DATA(insert ( 3527	enum_smaller	-				3518	3500	_null_ ));
+DATA(insert ( 3527	enum_smaller	-	enum_smaller	- -			3518	3500	_null_ ));
 
 /* count */
 DATA(insert ( 2147	int8inc_any		- int8pl	int8mi -				0		20		"0" ));
@@ -236,7 +236,7 @@ DATA(insert ( 2243 bitor		  - bitor		  - -					0	1560	_null_ ));
 DATA(insert ( 6013	array_add 	- array_add		  - -					0	1007	"{}" ));
 
 /* xml */
-DATA(insert ( 2901 xmlconcat2	  -					0	142		_null_ ));
+DATA(insert ( 2901 xmlconcat2	  -		xmlconcat2	  -	-			0	142		_null_ ));
 
 /*
  * prototypes for functions in pg_aggregate.c

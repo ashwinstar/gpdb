@@ -96,21 +96,19 @@ typedef int16 NumericDigit;
  * by NBASE ** weight.	Another way to say it is that there are weight+1
  * digits before the decimal point.  It is possible to have weight < 0.
  *
- * buf: points at the physical start of the digit buffer for the NumericVar.
- * This is either the local buffer (ndb) or a palloc'd buffer.
- *
- * digits: points at the first digit in actual use (the one with the
- * specified weight).	We normally leave an unused digit or two
+ * buf points at the physical start of the palloc'd digit buffer for the
+ * NumericVar.	digits points at the first digit in actual use (the one
+ * with the specified weight).	We normally leave an unused digit or two
  * (preset to zeroes) between buf and digits, so that there is room to store
  * a carry out of the top digit without special pushups.  We just need to
  * decrement digits (and increment weight) to make room for the carry digit.
  * (There is no such extra space in a numeric value stored in the database,
  * only in a NumericVar in memory.)
  *
- * If buf is set to ndb, then the digit buffer isn't actually palloc'd and
- * should not be freed --- see the constants below for an example.
+ * If buf is NULL then the digit buffer isn't actually palloc'd and should
+ * not be freed --- see the constants below for an example.
  *
- * dscale: display scale, is the nominal precision expressed as number
+ * dscale, or display scale, is the nominal precision expressed as number
  * of digits after the decimal point (it must always be >= 0 at present).
  * dscale may be more than the number of physically stored fractional digits,
  * implying that we have suppressed storage of significant trailing zeroes.
@@ -127,7 +125,7 @@ typedef int16 NumericDigit;
  *
  * NB: All the variable-level functions are written in a style that makes it
  * possible to give one and the same variable as argument and destination.
- *
+ * This is feasible because the digit buffer is separate from the variable.
  * ----------
  */
 #define	NUMERIC_LOCAL_NDIG	36		/* number of 'digits' in local digits[] */
@@ -141,7 +139,7 @@ typedef struct NumericVar
 	int			weight;			/* weight of first digit */
 	int			sign;			/* NUMERIC_POS, NUMERIC_NEG, or NUMERIC_NAN */
 	int			dscale;			/* display scale */
-	NumericDigit *buf			/* start of space for digits[] */;
+	NumericDigit *buf;			/* start of palloc'd space for digits[] */
 	NumericDigit *digits;		/* base-NBASE digits */
 	NumericDigit ndb[NUMERIC_LOCAL_NDIG];	/* local space for digits[] */
 } NumericVar;
@@ -230,6 +228,16 @@ static void dump_var(const char *str, NumericVar *var);
 #define dump_var(s,v)
 #endif
 
+#define digitbuf_alloc(ndigits)  \
+	((NumericDigit *) palloc((ndigits) * sizeof(NumericDigit)))
+#define digitbuf_free(buf)	\
+	do { \
+		 if ((buf) != NULL) \
+			 pfree(buf); \
+	} while (0)
+
+#define init_var(v)		MemSetAligned(v, 0, sizeof(NumericVar))
+
 /* ----------
  * a few Numeric access things not defined in numeric.h
  */
@@ -249,24 +257,11 @@ static void dump_var(const char *str, NumericVar *var);
 	} while (0)
 
 
-#define init_var(v) \
-	do { \
-		quick_init_var((v));	\
-		(v)->ndigits = (v)->weight = (v)->sign = (v)->dscale = 0; \
-	} while (0)
 
 
 #define digitbuf_alloc(ndigits)  \
 	((NumericDigit *) palloc((ndigits) * sizeof(NumericDigit)))
 
-#define digitbuf_free(v)	\
-	do { \
-		if ((v)->buf != (v)->ndb)	\
-		{							\
-		 	pfree((v)->buf); 		\
-			(v)->buf = (v)->ndb;	\
-		}	\
-	} while (0)
 
 #define free_var(v)	\
 				digitbuf_free((v));
@@ -950,6 +945,13 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
 				 errmsg("count must be greater than zero")));
 
+	if (NUMERIC_IS_NAN(operand) ||
+		NUMERIC_IS_NAN(bound1) ||
+		NUMERIC_IS_NAN(bound2))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_ARGUMENT_FOR_WIDTH_BUCKET_FUNCTION),
+			  errmsg("operand, lower bound and upper bound cannot be NaN")));
+
 	quick_init_var(&result_var);
 	quick_init_var(&count_var);
 
@@ -987,9 +989,10 @@ width_bucket_numeric(PG_FUNCTION_ARGS)
 	}
 
 	/* if result exceeds the range of a legal int4, we ereport here */
-	free_var(&count_var);
-
 	result = numericvar_to_int4(&result_var);
+
+	free_var(&count_var);
+	free_var(&result_var);
 
 	PG_RETURN_INT32(result);
 }
@@ -1026,14 +1029,14 @@ compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 				select_div_scale(&operand_var, &bound1_var), true);
 	}
 
-	free_var(&bound1_var);
-	free_var(&bound2_var);
-	free_var(&operand_var);
-
 	mul_var(result_var, count_var, result_var,
 			result_var->dscale + count_var->dscale);
 	add_var(result_var, &const_one, result_var);
 	floor_var(result_var, result_var);
+
+	free_var(&bound1_var);
+	free_var(&bound2_var);
+	free_var(&operand_var);
 }
 
 /* ----------------------------------------------------------------------
@@ -1206,11 +1209,10 @@ hash_numeric(PG_FUNCTION_ARGS)
 	end_offset 	 = 0;
 
 	/*
-	 * Omit any leading or trailing zeros from the input to the
-	 * hash. The numeric implementation *should* guarantee that
-	 * leading and trailing zeros are suppressed, but we're
-	 * paranoid. Note that we measure the starting and ending offsets
-	 * in units of NumericDigits, not bytes.
+	 * Omit any leading or trailing zeros from the input to the hash. The
+	 * numeric implementation *should* guarantee that leading and trailing
+	 * zeros are suppressed, but we're paranoid. Note that we measure the
+	 * starting and ending offsets in units of NumericDigits, not bytes.
 	 */
 	for (i = 0; i < NUMERIC_NDIGITS(key); i++)
 	{
@@ -1220,16 +1222,15 @@ hash_numeric(PG_FUNCTION_ARGS)
 		start_offset++;
 
 		/*
-		 * The weight is effectively the # of digits before the
-		 * decimal point, so decrement it for each leading zero we
-		 * skip.
+		 * The weight is effectively the # of digits before the decimal point,
+		 * so decrement it for each leading zero we skip.
 		 */
 		weight--;
 	}
 
 	/*
-	 * If there are no non-zero digits, then the value of the number
-	 * is zero, regardless of any other fields.
+	 * If there are no non-zero digits, then the value of the number is zero,
+	 * regardless of any other fields.
 	 */
 	if (NUMERIC_NDIGITS(key) == start_offset)
 		PG_RETURN_UINT32(-1);
@@ -1246,10 +1247,10 @@ hash_numeric(PG_FUNCTION_ARGS)
 	Assert(start_offset + end_offset < NUMERIC_NDIGITS(key));
 
 	/*
-	 * Note that we don't hash on the Numeric's scale, since two
-	 * numerics can compare equal but have different scales. We also
-	 * don't hash on the sign, although we could: since a sign
-	 * difference implies inequality, this shouldn't affect correctness.
+	 * Note that we don't hash on the Numeric's scale, since two numerics can
+	 * compare equal but have different scales. We also don't hash on the
+	 * sign, although we could: since a sign difference implies inequality,
+	 * this shouldn't affect correctness.
 	 */
 	hash_len = NUMERIC_NDIGITS(key) - start_offset - end_offset;
 	digit_hash = hash_any((unsigned char *) (NUMERIC_DIGITS(key) + start_offset),
@@ -2226,6 +2227,7 @@ do_numeric_accum_decum(ArrayType *transarray, Numeric newval, bool accum)
 	return result;
 }
 
+
 Datum
 numeric_accum(PG_FUNCTION_ARGS)
 {
@@ -2291,6 +2293,24 @@ int8_accum(PG_FUNCTION_ARGS)
 
 	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, true));
 }
+
+
+/*
+ * Optimized case for average of int8.
+ */
+Datum
+int8_avg_accum(PG_FUNCTION_ARGS)
+{
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(0);
+	Datum		newval8 = PG_GETARG_DATUM(1);
+	Numeric		newval;
+
+	newval = DatumGetNumeric(DirectFunctionCall1(int8_numeric, newval8));
+
+	PG_RETURN_ARRAYTYPE_P(do_numeric_accum_decum(transarray, newval, true));
+}
+
+
 
 /*
  * Integer decumulators for windowing.
@@ -2782,35 +2802,81 @@ intfloat_avg_amalg_demalg(IntFloatAvgTransdata* tr0,
 	return PointerGetDatum(tr0);
 }
 
+/*
+ * Routines for avg(int2) and avg(int4).  The transition datatype
+ * is a two-element int8 array, holding count and sum.
+ */
+
+typedef struct Int8TransTypeData
+{
+#ifndef INT64_IS_BUSTED
+	int64		count;
+	int64		sum;
+#else
+	/* "int64" isn't really 64 bits, so fake up properly-aligned fields */
+	int32		count;
+	int32		pad1;
+	int32		sum;
+	int32		pad2;
+#endif
+} Int8TransTypeData;
+
 Datum
 int2_avg_accum(PG_FUNCTION_ARGS)
 {
-	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	ArrayType  *transarray;
 	int16		newval = PG_GETARG_INT16(1);
+	Int8TransTypeData *transdata;
 
-	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
-	return intfloat_avg_accum_decum(tr, newval, true);
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
+	 * a copy of it before scribbling on it.
+	 */
+	if (fcinfo->context && IsA(fcinfo->context, AggState))
+		transarray = PG_GETARG_ARRAYTYPE_P(0);
+	else
+		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
+
+	if (ARR_HASNULL(transarray) ||
+		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
+		elog(ERROR, "expected 2-element int8 array");
+
+	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+	transdata->count++;
+	transdata->sum += newval;
+
+	PG_RETURN_ARRAYTYPE_P(transarray);
 }
-		
+
 Datum
 int4_avg_accum(PG_FUNCTION_ARGS)
 {
-	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
+	ArrayType  *transarray;
 	int32		newval = PG_GETARG_INT32(1);
+	Int8TransTypeData *transdata;
 
-	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
-	return intfloat_avg_accum_decum(tr, newval, true);
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
+	 * a copy of it before scribbling on it.
+	 */
+	if (fcinfo->context && IsA(fcinfo->context, AggState))
+		transarray = PG_GETARG_ARRAYTYPE_P(0);
+	else
+		transarray = PG_GETARG_ARRAYTYPE_P_COPY(0);
+
+	if (ARR_HASNULL(transarray) ||
+		ARR_SIZE(transarray) != ARR_OVERHEAD_NONULLS(1) + sizeof(Int8TransTypeData))
+		elog(ERROR, "expected 2-element int8 array");
+
+	transdata = (Int8TransTypeData *) ARR_DATA_PTR(transarray);
+	transdata->count++;
+	transdata->sum += newval;
+
+	PG_RETURN_ARRAYTYPE_P(transarray);
 }
 
-Datum
-int8_avg_accum(PG_FUNCTION_ARGS)
-{
-	IntFloatAvgTransdata *tr = (IntFloatAvgTransdata *) PG_GETARG_BYTEA_P(0);
-	int64		newval = PG_GETARG_INT64(1);
-
-	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
-	return intfloat_avg_accum_decum(tr, newval, true);
-}
 
 Datum
 float4_avg_accum(PG_FUNCTION_ARGS)

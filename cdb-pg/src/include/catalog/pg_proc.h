@@ -418,6 +418,12 @@ DATA(insert OID = 207 (  float4abs		   PGNSP PGUID 12 1 0 f f t f i 1 700 f "700
 DESCR("absolute value");
 DATA(insert OID = 208 (  float4_accum	   PGNSP PGUID 12 1 0 f f t f i 2 1022 f "1022 700" _null_ _null_ _null_	float4_accum - _null_ _null_ ));
 DESCR("aggregate transition function");
+DATA(insert OID = 6024 (  float4_decum	   PGNSP PGUID 12 1 0 f f t f i 2 1022 f "1022 700" _null_ _null_ _null_	float4_decum - _null_ _null_ ));
+DESCR("aggregate inverse transition function");
+DATA(insert OID = 3106 (  float4_avg_accum PGNSP PGUID 12 1 0 f f t f i 2 17 f "17 700" _null_ _null_ _null_	float4_avg_accum - _null_ _null_ ));
+DESCR("aggregate transition function");
+DATA(insert OID = 3107 (  float4_avg_decum PGNSP PGUID 12 1 0 f f t f i 2 17 f "17 700" _null_ _null_ _null_	float4_avg_decum - _null_ _null_ ));
+DESCR("aggregate inverse transition function");
 DATA(insert OID = 209 (  float4larger	   PGNSP PGUID 12 1 0 f f t f i 2 700 f "700 700" _null_ _null_ _null_	float4larger - _null_ _null_ ));
 DESCR("larger of two");
 DATA(insert OID = 211 (  float4smaller	   PGNSP PGUID 12 1 0 f f t f i 2 700 f "700 700" _null_ _null_ _null_	float4smaller - _null_ _null_ ));
@@ -446,6 +452,12 @@ DATA(insert OID = 221 (  float8abs		   PGNSP PGUID 12 1 0 f f t f i 1 701 f "701
 DESCR("absolute value");
 DATA(insert OID = 222 (  float8_accum	   PGNSP PGUID 12 1 0 f f t f i 2 1022 f "1022 701" _null_ _null_ _null_	float8_accum - _null_ _null_ ));
 DESCR("aggregate transition function");
+DATA(insert OID = 6025 (  float8_decum	   PGNSP PGUID 12 1 0 f f t f i 2 1022 f "1022 701" _null_ _null_ _null_	float8_decum - _null_  _null_ ));
+DESCR("aggregate inverse transition function");
+DATA(insert OID = 3108 (  float8_avg_accum PGNSP PGUID 12 1 0 f f t f i 2 17 f "17 701" _null_ _null_ _null_	float8_avg_accum - _null_  _null_ ));
+DESCR("aggregate transition function");
+DATA(insert OID = 3109 (  float8_avg_decum PGNSP PGUID 12 1 0 f f t f i 2 17 f "17 701" _null_ _null_ _null_	float8_avg_decum - _null_  _null_ ));
+DESCR("aggregate inverse transition function");
 DATA(insert OID = 223 (  float8larger	   PGNSP PGUID 12 1 0 f f t f i 2 701 f "701 701" _null_ _null_ _null_	float8larger - _null_ _null_ ));
 DESCR("larger of two");
 DATA(insert OID = 224 (  float8smaller	   PGNSP PGUID 12 1 0 f f t f i 2 701 f "701 701" _null_ _null_ _null_	float8smaller - _null_ _null_ ));

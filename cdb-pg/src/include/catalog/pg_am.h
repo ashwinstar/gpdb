@@ -53,12 +53,10 @@ CATALOG(pg_am,2601)
 	bool		amsearchnulls;	/* can AM search for NULL index entries? */
 	bool		amstorage;		/* can storage type differ from column type? */
 	bool		amclusterable;	/* does AM support cluster command? */
-	bool		amcanshrink;	/* does AM do anything other than REINDEX in
-								 * VACUUM? */
 	regproc		aminsert;		/* "insert this tuple" function */
 	regproc		ambeginscan;	/* "start new scan" function */
 	regproc		amgettuple;		/* "next valid tuple" function */
-	regproc		amgetmulti; 	/* "fetch next bitmap" function */ 
+	regproc		amgetmulti;		/* "fetch multiple tuples" function */
 	regproc		amrescan;		/* "restart this scan" function */
 	regproc		amendscan;		/* "end this scan" function */
 	regproc		ammarkpos;		/* "mark current scan position" function */
@@ -81,7 +79,7 @@ typedef FormData_pg_am *Form_pg_am;
  *		compiler constants for pg_am
  * ----------------
  */
-#define Natts_pg_am						25
+#define Natts_pg_am						24
 #define Anum_pg_am_amname				1
 #define Anum_pg_am_amstrategies			2
 #define Anum_pg_am_amsupport			3
@@ -93,38 +91,38 @@ typedef FormData_pg_am *Form_pg_am;
 #define Anum_pg_am_amsearchnulls		9
 #define Anum_pg_am_amstorage			10
 #define Anum_pg_am_amclusterable		11
-#define Anum_pg_am_amcanshrink			12
-#define Anum_pg_am_aminsert				13
-#define Anum_pg_am_ambeginscan			14
-#define Anum_pg_am_amgettuple			15
-#define Anum_pg_am_amgetmulti			16
-#define Anum_pg_am_amrescan				17
-#define Anum_pg_am_amendscan			18
-#define Anum_pg_am_ammarkpos			19
-#define Anum_pg_am_amrestrpos			20
-#define Anum_pg_am_ambuild				21
-#define Anum_pg_am_ambulkdelete			22
-#define Anum_pg_am_amvacuumcleanup		23
-#define Anum_pg_am_amcostestimate		24
-#define Anum_pg_am_amoptions			25
+#define Anum_pg_am_aminsert				12
+#define Anum_pg_am_ambeginscan			13
+#define Anum_pg_am_amgettuple			14
+#define Anum_pg_am_amgetmulti			15
+#define Anum_pg_am_amrescan				16
+#define Anum_pg_am_amendscan			17
+#define Anum_pg_am_ammarkpos			18
+#define Anum_pg_am_amrestrpos			19
+#define Anum_pg_am_ambuild				20
+#define Anum_pg_am_ambulkdelete			21
+#define Anum_pg_am_amvacuumcleanup		22
+#define Anum_pg_am_amcostestimate		23
+#define Anum_pg_am_amoptions			24
 
 /* ----------------
  *		initial contents of pg_am
  * ----------------
  */
-DATA(insert OID = 403 (  btree	5 1 t t t t t t f t t btinsert btbeginscan btgettuple btgetmulti btrescan btendscan btmarkpos btrestrpos btbuild btbulkdelete btvacuumcleanup btcostestimate btoptions ));
+
+DATA(insert OID = 403 (  btree	5 1 t t t t t t f t btinsert btbeginscan btgettuple btgetmulti btrescan btendscan btmarkpos btrestrpos btbuild btbulkdelete btvacuumcleanup btcostestimate btoptions ));
 DESCR("b-tree index access method");
 #define BTREE_AM_OID 403
-DATA(insert OID = 405 (  hash	1 1 f f f f f f f f t hashinsert hashbeginscan hashgettuple hashgetmulti hashrescan hashendscan hashmarkpos hashrestrpos hashbuild hashbulkdelete hashvacuumcleanup hashcostestimate hashoptions ));
+DATA(insert OID = 405 (  hash	1 1 f f f f f f f f hashinsert hashbeginscan hashgettuple hashgetmulti hashrescan hashendscan hashmarkpos hashrestrpos hashbuild hashbulkdelete hashvacuumcleanup hashcostestimate hashoptions ));
 DESCR("hash index access method");
 #define HASH_AM_OID 405
-DATA(insert OID = 783 (  gist	0 7 f f t t t t t t t gistinsert gistbeginscan gistgettuple gistgetmulti gistrescan gistendscan gistmarkpos gistrestrpos gistbuild gistbulkdelete gistvacuumcleanup gistcostestimate gistoptions ));
+DATA(insert OID = 783 (  gist	0 7 f f t t t t t t gistinsert gistbeginscan gistgettuple gistgetmulti gistrescan gistendscan gistmarkpos gistrestrpos gistbuild gistbulkdelete gistvacuumcleanup gistcostestimate gistoptions ));
 DESCR("GiST index access method");
 #define GIST_AM_OID 783
-DATA(insert OID = 2742 (  gin	0 4 f f f f f f t f t gininsert ginbeginscan gingettuple gingetmulti ginrescan ginendscan ginmarkpos ginrestrpos ginbuild ginbulkdelete ginvacuumcleanup gincostestimate ginoptions ));
+DATA(insert OID = 2742 (  gin	0 4 f f f f f f t f gininsert ginbeginscan gingettuple gingetmulti ginrescan ginendscan ginmarkpos ginrestrpos ginbuild ginbulkdelete ginvacuumcleanup gincostestimate ginoptions ));
 DESCR("GIN index access method");
 #define GIN_AM_OID 2742
-DATA(insert OID = 3013 (  bitmap	5 1 0 f t t t f f f f bminsert bmbeginscan bmgettuple bmgetmulti bmrescan bmendscan bmmarkpos bmrestrpos bmbuild bmbulkdelete bmvacuumcleanup bmcostestimate bmoptions ));
+DATA(insert OID = 3013 (  bitmap	5 1 0 f t t t f f f bminsert bmbeginscan bmgettuple bmgetmulti bmrescan bmendscan bmmarkpos bmrestrpos bmbuild bmbulkdelete bmvacuumcleanup bmcostestimate bmoptions ));
 DESCR("bitmap index access method");
 #define BITMAP_AM_OID 3013
 
