@@ -1537,7 +1537,7 @@ DESCR("truncate interval to specified units");
 
 DATA(insert OID = 1219 (  int8inc		   PGNSP PGUID 12 1 0 f f t f i 1 20 f "20" _null_ _null_ _null_	int8inc - _null_ _null_ ));
 DESCR("increment");
-DATA(insert OID = 2857 (  int8dec		   PGNSP PGUID 12 1 0 f f t f i 1 20 f "20" _null_ _null_ _null_	int8dec - _null_ _null_ ));
+DATA(insert OID = 3857 (  int8dec		   PGNSP PGUID 12 1 0 f f t f i 1 20 f "20" _null_ _null_ _null_	int8dec - _null_ _null_ ));
 DATA(insert OID = 2804 (  int8inc_any	   PGNSP PGUID 12 1 0 f f t f i 2 20 f "20 2276" _null_ _null_ _null_ int8inc_any - _null_ _null_ ));
 DESCR("increment, ignores second argument");
 DATA(insert OID = 1230 (  int8abs		   PGNSP PGUID 12 1 0 f f t f i 1 20 f "20" _null_ _null_ _null_	int8abs - _null_ _null_ ));
@@ -2607,7 +2607,7 @@ DESCR("minus");
 
 DATA(insert OID = 1764 ( numeric_inc			PGNSP PGUID 12 1 0 f f t f i 1 1700 f "1700" _null_ _null_ _null_ numeric_inc - _null_ _null_ ));
 DESCR("increment by one");
-DATA(insert OID = 1004 ( numeric_dec			PGNSP PGUID 12 1 0 f f t f i 1 1700 f "1700" _null_ _null_ _null_ numeric_dec - _null_ _null_ ));
+DATA(insert OID = 2977 ( numeric_dec			PGNSP PGUID 12 1 0 f f t f i 1 1700 f "1700" _null_ _null_ _null_ numeric_dec - _null_ _null_ ));
 DESCR("increment by one");
 DATA(insert OID = 1766 ( numeric_smaller		PGNSP PGUID 12 1 0 f f t f i 2 1700 f "1700 1700" _null_ _null_ _null_	numeric_smaller - _null_ _null_ ));
 DESCR("smaller of two numbers");
