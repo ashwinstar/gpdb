@@ -4965,6 +4965,7 @@ ShowTransactionStateRec(TransactionState s)
 	if (s->parent)
 		ShowTransactionStateRec(s->parent);
 
+	if (!IsBootstrapProcessingMode())
 	/* use ereport to suppress computation if msg will not be printed */
 	ereport(DEBUG3,
 			(errmsg_internal("name: %s; blockState: %13s; state: %7s, xid/subid/cid: %u/%u/%u%s, nestlvl: %d, children: %s",
