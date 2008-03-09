@@ -75,7 +75,9 @@ extern "C" {
 #include <string.h>
 #include <stddef.h>
 #include <stdarg.h>
+#ifdef HAVE_STDINT_H
 #include <stdint.h>
+#endif
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
 #endif
