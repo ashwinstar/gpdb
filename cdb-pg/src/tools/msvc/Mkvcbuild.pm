@@ -78,7 +78,7 @@ sub mkvcbuild
     $postgres->ReplaceFile('src\backend\port\pg_sema.c','src\backend\port\win32_sema.c');
     
     # in PG 8.2, we use sysv_shmem.c, but in PG 8.3, this should be win32_shmem.c
-    $postgres->ReplaceFile('src\backend\port\pg_shmem.c','src\backend\port\sysv_shmem.c');
+    $postgres->ReplaceFile('src\backend\port\pg_shmem.c','src\backend\port\win32_shmem.c');
     
     $postgres->AddFiles('src\port',@pgportfiles);
     $postgres->AddDir('src\timezone');
