@@ -569,7 +569,7 @@
 #define PACKAGE_STRING "Greenplum Database 8.3RC2"
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "8.3RC2
+#define PACKAGE_VERSION "8.3RC2"
 
 /* PostgreSQL version as a string */
 #define PG_VERSION "8.3RC2"
