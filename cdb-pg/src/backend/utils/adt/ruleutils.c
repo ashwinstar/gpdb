@@ -2783,6 +2783,7 @@ get_utility_query_def(Query *query, deparse_context *context)
 	}
 }
 
+#warning MERGEBUG this code is broken by the 8.3 merge
 // MERGEBUG
 #if 0
 /*

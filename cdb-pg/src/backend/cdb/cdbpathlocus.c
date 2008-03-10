@@ -199,6 +199,7 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
         if (policy->nattrs > 0)
         {
         	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	        List *partkey = cdb_build_distribution_pathkeys(root,
 	                                                        rel,
@@ -245,6 +246,7 @@ cdbpathlocus_from_exprs(struct PlannerInfo *root,
         List           *pathkey;
 
         // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
         pathkey = cdb_make_pathkey_for_expr(root, expr, eq);
 #endif 
@@ -313,6 +315,7 @@ cdbpathlocus_from_subquery(struct PlannerInfo  *root,
                               exprTypmod((Node *) tle->expr),
                               0);
                 // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
                 pathkey = cdb_make_pathkey_for_expr(root, (Node *)var, eq);
 #endif
@@ -352,6 +355,7 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
 
     Assert(cdbpathlocus_is_valid(locus));
     // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
     foreach(partkeycell, locus.partkey)
     {
@@ -438,6 +442,7 @@ cdbpathlocus_pull_above_projection(struct PlannerInfo  *root,
         List   *newpathkey = NIL;
 
         // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
         /* Get pathkey for key expr rewritten in terms of projection cols. */
         if (CdbPathLocus_IsHashed(locus))
@@ -594,6 +599,7 @@ bool
 cdbpathlocus_is_hashed_on_exprs(CdbPathLocus locus, List *exprlist)
 {
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
     ListCell       *partkeycell;
     ListCell       *pathkeycell;
@@ -674,6 +680,7 @@ cdbpathlocus_is_hashed_on_relids(CdbPathLocus locus, Bitmapset *relids)
     ListCell       *pathkeycell;
     List           *pathkey;
     // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
     PathKeyItem    *item;
 
@@ -744,6 +751,7 @@ cdbpathlocus_is_valid(CdbPathLocus locus)
     List           *pathkey;
     List           *pathkeylist;
 // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
     PathKeyItem    *item;
 

@@ -282,6 +282,7 @@ init_sql_fcache(FmgrInfo *finfo)
 				}
 				else if (
 						// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	/* XXX pg8.3 merge. 
          * At this moment, we don't know the rel yet.  

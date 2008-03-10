@@ -1082,6 +1082,7 @@ cdbexplain_showExecStatsBegin(struct QueryDesc *queryDesc,
     ctx->querystarttime = querystarttime;
 
     // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
     /* Determine number of slices.  (SliceTable hasn't been built yet.) */
     nslice = 1 + queryDesc->plantree->nMotionNodes + queryDesc->plantree->nInitPlans;

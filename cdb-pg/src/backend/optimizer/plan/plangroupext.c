@@ -1524,6 +1524,7 @@ make_pathkeys_for_rollup(List *groupclause,
 	List *pathkeys = NIL;
 	List *current_pathkeys;
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	current_pathkeys = make_pathkeys_for_groupclause(groupclause, tlist);
 #endif 

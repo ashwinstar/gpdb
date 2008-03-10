@@ -90,6 +90,7 @@ SeqNext(SeqScanState *node)
 	 * get the next tuple from the access methods
 	 */
 	// MERGEBUG 
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	/* CKTAN- */
 	if (node->ss_heapTupleData.bot == node->ss_heapTupleData.top 
@@ -356,6 +357,7 @@ ExecSeqMarkPos(SeqScanState *node)
 	heap_markpos(scan);
 	*/
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	heap_markposx(scan, node->ss_heapTupleData.last);
 #endif

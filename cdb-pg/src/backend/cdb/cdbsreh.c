@@ -335,6 +335,7 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 	 */
 	
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	freeze_heap_insert(cdbsreh->errtbl, tuple);
 #endif

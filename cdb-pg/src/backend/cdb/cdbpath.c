@@ -287,6 +287,7 @@ cdbpath_partkeyitem_eq_constant(CdbLocusType   locustype,
                                  List          *partkeyitem)
 {
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
     if (locustype == CdbLocusType_Hashed)
     {
@@ -362,6 +363,7 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
             RestrictInfo   *rinfo = (RestrictInfo *)lfirst(rcell);
 
             // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
             if (!rinfo->left_pathkey)
                 cache_mergeclause_pathkeys(ctx->root, rinfo);
@@ -498,6 +500,7 @@ cdbpath_match_preds_to_both_partkeys(PlannerInfo   *root,
             RestrictInfo   *rinfo = (RestrictInfo *)lfirst(rcell);
 
             // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
             if (!rinfo->left_pathkey)
                 cache_mergeclause_pathkeys(root, rinfo);
@@ -574,6 +577,7 @@ cdbpath_partkeys_from_preds(PlannerInfo    *root,
         RestrictInfo *rinfo = (RestrictInfo *)lfirst(rcell);
 
         // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0 
         if (!rinfo->left_pathkey)
         {
@@ -1058,6 +1062,7 @@ cdbpath_dedup_fixup_unique(UniquePath *uniquePath, CdbpathDedupFixupContext *ctx
             if (uniquePath->must_repartition)
             {
             	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
                 cpathkey = cdb_make_pathkey_for_expr(ctx->root, (Node *)var, eq);
 #endif 

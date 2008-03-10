@@ -4448,6 +4448,7 @@ IsTransactionDirty(void)
 {
 	// MERGEBUG
 	// UNDONE: Broken by 8.3 merge -- needs to be fixed.
+#warning MERGEBUG this code is broken by the 8.3 merge
 //	bool result = (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || smgrIsPendingDeletes(true));
 	bool result = true;
 	
@@ -4463,6 +4464,7 @@ ExecutorMarkTransactionUsesSequences(void)
 	seqXlogWrite = true;
 	// MERGEBUG
 	// UNDONE: Broken by 8.3 merge -- needs to be fixed.
+#warning MERGEBUG this code is broken by the 8.3 merge
 //	MyXactMadeXLogEntry = true;
 }
 

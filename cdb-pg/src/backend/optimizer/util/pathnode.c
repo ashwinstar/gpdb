@@ -2163,6 +2163,7 @@ query_is_distinct_for(Query *query, List *colnos, List *opids)
 	if (query->groupClause)
 	{
 		// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0 // CDB TODO: pg 8.3 merge conflict
         List *grouptles =
 			get_sortgroupclauses_tles(query->groupClause, query->targetList);

@@ -158,6 +158,7 @@ apply_motion(Plan *plan, Query *query)
 		case CMD_SELECT:
 			
 // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 			if (query->into)
 			{
@@ -319,6 +320,7 @@ apply_motion(Plan *plan, Query *query)
 
 			}
 #endif 
+#warning MERGEBUG this code is broken by the 8.3 merge
 			if (plan->flow->flotype == FLOW_PARTITIONED ) // && !query->into) // MERGEBUG
 			{
 			    /*
@@ -574,6 +576,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 		
 		newsub->testexpr = (Node*) apply_motion_mutator((Node*)subplan->testexpr, context);
 		// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 		newsub->plan = (Plan*) apply_motion_mutator((Node*)subplan->plan, context);
 		newsub->rtable = (List*) apply_motion_mutator((Node*)subplan->rtable, context);
@@ -631,6 +634,7 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             subplan = (SubPlan *)lfirst(cell);
             Assert(IsA(subplan, SubPlan));
             // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
             nMotion += subplan->plan->nMotionNodes;
 #endif
@@ -1526,6 +1530,7 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 	if(IsA(node, SubPlan))
 	{
 		// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 		SubPlan *subplan = (SubPlan *) node;
 
@@ -1924,6 +1929,8 @@ shareinput_validator_walker(Node *node, void *context)
     Plan                           *plan = (Plan *)node;
     shareinput_validator_context   *ctx = (shareinput_validator_context *)context;
 
+    if (node == NULL) // MERGEBUG
+    	return false;
     switch (nodeTag(plan))
     {
 		case T_ShareInputScan:

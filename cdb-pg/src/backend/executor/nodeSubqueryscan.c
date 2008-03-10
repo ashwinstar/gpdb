@@ -174,6 +174,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	/*
 	 * initialize subquery
 	 */
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	// MERGEBUG
 	/* XXX PG8.3 Merge.

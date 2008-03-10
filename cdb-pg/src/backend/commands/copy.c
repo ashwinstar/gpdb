@@ -4151,6 +4151,7 @@ CopyFrom(CopyState cstate)
 						ExecConstraints(resultRelInfo, slot, estate);
 
 					// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 					bool use_wal = true; bool use_fsm=true; CommandId mycid = 0;
 					/* OK, store the tuple and create index entries for it */
 					heap_insert(cstate->rel, tuple, mycid, use_wal, use_fsm, false);
@@ -5643,6 +5644,7 @@ CopyAttributeOutText(CopyState cstate, char *string)
 		}
 
 		// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	/*
 	 * If we skipped writing WAL, then we need to sync the heap (but not

@@ -340,6 +340,7 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, const char *queryString,
 #endif /* USE_FORCE_PLAN*/
 
 //MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 
 	ExplainOnePlan(plannedstmt, stmt, params, tstate);
@@ -547,6 +548,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
 	}
 
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	es->rtable = queryDesc->parsetree->rtable;
 #endif
@@ -670,6 +672,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
 					continue;
 
 				// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 				if (trig->tgisconstraint &&
 				(conname = GetConstraintNameForTrigger(trig->tgoid)) != NULL)
@@ -1486,6 +1489,7 @@ explain_outNode(StringInfo str,
 		    appendStringInfo(str, "  InitPlan  (slice%d)\n", sp->qDispSliceId);
 
 		    // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
             es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)
@@ -1658,6 +1662,7 @@ explain_outNode(StringInfo str,
             Assert(!sps->cdbextratextbuf);
 
             // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 			es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)
@@ -1724,6 +1729,7 @@ show_scan_qual(List *qual, const char *qlabel,
 		outercontext = NULL;
 
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	context = deparse_context_for_plan(OUTER, outercontext,
 									   0, NULL,
@@ -1773,6 +1779,7 @@ show_upper_qual(List *qual, const char *qlabel,
 		innercontext = NULL;
 	
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	context = deparse_context_for_plan(outer_varno, outercontext,
 									   inner_varno, innercontext,
@@ -1837,6 +1844,7 @@ show_grouping_keys(Plan        *plan,
                                                    (Node *)subplan->righttree);
             
             // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	        context = deparse_context_for_plan(OUTER, outerctx,
 									           INNER, innerctx,
@@ -1850,6 +1858,7 @@ show_grouping_keys(Plan        *plan,
                                                    (Node *)subplan->lefttree);
             
             // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	        context = deparse_context_for_plan(OUTER, outerctx,
 									           0, NULL,
@@ -1858,6 +1867,7 @@ show_grouping_keys(Plan        *plan,
         }
 	}
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	else
 		context = deparse_context_for_plan(0, NULL,
@@ -1954,6 +1964,7 @@ show_sort_keys(Plan *sortplan, int nkeys, AttrNumber *keycols,
      * (NB: CDB uses varno OUTER; in PostgreSQL it was varno 0.)
 	 */
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0 
 	if (cdbpullup_exprHasSubplanRef((Expr *)sortplan->targetlist))
 	{
@@ -2014,6 +2025,7 @@ show_motion_keys(Plan *plan, List *hashExpr, int nkeys, AttrNumber *keycols,
 #endif
 	
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0 
 
     /* Generate deparse context */

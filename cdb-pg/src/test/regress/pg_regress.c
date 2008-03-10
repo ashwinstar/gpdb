@@ -1617,6 +1617,7 @@ run_single_test(const char *test, test_function tfunc)
 	{
 		bool		newdiff;
 		// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 	}
 
 	/*

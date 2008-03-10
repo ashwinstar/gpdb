@@ -537,6 +537,7 @@ Setup_AF_UNIX(void)
 	Assert(Unix_socket_group);
 	if (Unix_socket_group[0] != '\0')
 	{
+#warning MERGEBUG this code is broken by the 8.3 merge
 #ifdef WIN32 
 		// MERGEBUG
 		//*		server port.  Set port->sock to the FD of the new connection.

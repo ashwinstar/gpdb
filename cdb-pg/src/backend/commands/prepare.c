@@ -238,6 +238,7 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 		MemoryContextSwitchTo(oldContext);
 		
 		// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 		/** GPDB PG 8.3 MERGE TODO:  probably need to find a place to
 		 *  store intoPolicy in the plan tree now that parse trees
 		 *  aren't available?

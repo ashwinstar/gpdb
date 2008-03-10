@@ -2999,6 +2999,19 @@ DESCR("statistics: discard current transaction's statistics snapshot");
 DATA(insert OID = 2274 (  pg_stat_reset					PGNSP PGUID 12 1 0 f f f f v 0 2278 f "" _null_ _null_ _null_	pg_stat_reset - _null_ _null_ ));
 DESCR("statistics: reset collected statistics for current database");
 
+DATA(insert OID = 6031 (  pg_stat_get_queue_num_exec	PGNSP PGUID 12 1 0 f f t f s 1 20 f "26" _null_ _null_ _null_ pg_stat_get_queue_num_exec - _null_ _null_ ));
+DESCR("Statistics: Number of queries that executed in queue");
+DATA(insert OID = 6032 (  pg_stat_get_queue_num_wait	PGNSP PGUID 12 1 0 f f t f s 1 20 f "26" _null_ _null_ _null_ pg_stat_get_queue_num_wait - _null_ _null_ ));
+DESCR("Statistics: Number of queries that waited in queue");
+DATA(insert OID = 6033 (  pg_stat_get_queue_elapsed_exec	PGNSP PGUID 12 1 0 f f t f s 1 20 f "26" _null_ _null_ _null_ pg_stat_get_queue_elapsed_exec - _null_ _null_ ));
+DESCR("Statistics:  Elapsed seconds for queries that executed in queue");
+DATA(insert OID = 6034 (  pg_stat_get_queue_elapsed_wait	PGNSP PGUID 12 1 0 f f t f s 1 20 f "26" _null_ _null_ _null_ pg_stat_get_queue_elapsed_wait - _null_ _null_ ));
+DESCR("Statistics:  Elapsed seconds for queries that waited in queue");
+DATA(insert OID = 6039 (  pg_stat_get_backend_session_id	PGNSP PGUID 12 1 0 f f t f s 1 23 f "23" _null_ _null_ _null_ pg_stat_get_backend_session_id - _null_ _null_ ));
+DESCR("Statistics: Greenplum session id of backend");
+DATA(insert OID = 6042 (  pg_renice_session	PGNSP PGUID 12 1 0 f f t f v 2 23 f "23 23" _null_ _null_ _null_ pg_renice_session - _null_ _null_ ));
+DESCR("change priority of all the backends for a given session id");
+
 DATA(insert OID = 1946 (  encode						PGNSP PGUID 12 1 0 f f t f i 2 25 f "17 25" _null_ _null_ _null_	binary_encode - _null_ _null_ ));
 DESCR("convert bytea value into some ascii-only text string");
 DATA(insert OID = 1947 (  decode						PGNSP PGUID 12 1 0 f f t f i 2 17 f "25 25" _null_ _null_ _null_	binary_decode - _null_ _null_ ));

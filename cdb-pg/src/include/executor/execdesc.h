@@ -64,6 +64,7 @@ typedef struct QueryDesc
     
     // MERGEBUG
     // Add back temporary to make compile
+#warning MERGEBUG this code is broken by the 8.3 merge
     	Plan	   *plantree;		/* planner's output */
 
 } QueryDesc;
@@ -74,6 +75,12 @@ static inline struct TableOidInfo *querydesc_into_oidinfo(QueryDesc *qd)
 }
 static inline GpPolicy *querydesc_into_policy(QueryDesc *qd)
 {
+	// MERGEBUG
+	// workaround problem?
+	if (qd == NULL) return NULL;
+	if (qd->plannedstmt == NULL) return NULL;
+	if (qd->plannedstmt->intoClause == NULL) return NULL;
+	// end workaround
 	return qd->plannedstmt->intoClause->intoPolicy;
 }
 

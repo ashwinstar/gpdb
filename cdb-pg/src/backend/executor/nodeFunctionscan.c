@@ -367,6 +367,7 @@ ExecFunctionRestrPos(FunctionScanState *node)
     node->cdb_fake_ctid = node->cdb_mark_ctid;
 
     // MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
     TuplestorePos * pos = NULL;
 	tuplestore_restorepos_pos(node->tuplestorestate, /*(TuplestorePos *) node->ts_pos*/ pos);
 }

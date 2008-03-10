@@ -1061,6 +1061,7 @@ processTypesSpec(List *args, Oid *lefttype, Oid *righttype)
 				 errmsg("one or two argument types must be specified")));
 
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
     /* GPDB PG 8.3 MERGE: not sure here 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{

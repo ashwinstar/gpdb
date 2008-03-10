@@ -3691,6 +3691,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	if (queryDesc->operation == CMD_INSERT)
 	{
 		// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 		if (queryDesc->parsetree->jointree != NULL)
 			if (queryDesc->parsetree->jointree->fromlist == NIL)
@@ -3760,6 +3761,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * parameters are fixed and we can include them in the prefix.
 	 */
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
+	// squery goes away in 8,3
 #if 0
 	squery = serializeNode((Node *) queryDesc->parsetree, &squery_len);
 #endif
@@ -3854,6 +3857,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	/* Allocate result array for mirror gang. */
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	if (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)
 #endif

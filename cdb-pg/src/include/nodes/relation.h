@@ -1159,6 +1159,7 @@ typedef struct RestrictInfo
 	Selectivity right_bucketsize;		/* avg bucketsize of right side */
 	
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 	// I put these back temporarily to help get things to compile.
 	/* cache space for mergeclause processing; NIL if not yet set */
 	List	   *left_pathkey;	/* canonical pathkey for left side */

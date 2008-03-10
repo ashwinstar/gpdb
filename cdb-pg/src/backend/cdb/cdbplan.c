@@ -50,6 +50,10 @@ walk_plan_node_fields(Plan *plan,
 					  bool (*walker) (),
 					  void *context)
 {
+	if (context == NULL)
+		return false;	// MERGEBUG
+	if (plan == NULL)
+		return false;	// MERGEBUG
 	/* target list to be computed at this node */
 	if (walker((Node *) (plan->targetlist), context))
 		return true;
@@ -355,6 +359,7 @@ plan_tree_walker(Node *node,
 					return true;
 
 				// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 				/* recur into the subplan, a kind of Plan node */
 				if (walker((Node *) subplan->plan, context))
@@ -1008,6 +1013,7 @@ plan_tree_mutator(Node *node,
 
 				MUTATE(newnode->testexpr, subplan->testexpr, Node *);
 				// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 				MUTATE(newnode->plan, subplan->plan, Plan *);
 				MUTATE(newnode->rtable, subplan->rtable, List *);

@@ -2334,6 +2334,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 			char *serializedSnapshot;
 			int serializedSnapshotlen;
 
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 			StringInfoData newquery;
 			char * query_text;
@@ -2435,6 +2436,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 
 			}
 
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 			// MERGEBUG
 			/* XXX PG8.3 merge.  We no longer have the query string. */
@@ -2503,6 +2505,7 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				_QD_currently_prepared_stmt = NULL;
 			}
 
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 			// MERGEBUG
 			/* XXX PG8.3 Merge. 

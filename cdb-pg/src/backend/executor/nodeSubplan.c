@@ -674,6 +674,7 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 	sstate->testexpr = ExecInitExpr((Expr *) subplan->testexpr, parent);
 	sstate->args = (List *) ExecInitExpr((Expr *) subplan->args, parent);
 
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	// MERGEBUG
 	/* XXX PG8.3 merge.  Now subplan does not have a sp_estate any more.  Do we 

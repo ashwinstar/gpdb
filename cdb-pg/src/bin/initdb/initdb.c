@@ -1713,6 +1713,10 @@ setup_depend(void)
 		NULL
 	};
 
+	// temp:  Don't try this, as the planner is broken
+#warning MERGEBUG Code commented out here for 8.3 merge because planner doesn't yet work.
+	return; // MERGEBUG
+	
 	fputs(_("initializing dependencies ... "), stdout);
 	fflush(stdout);
 

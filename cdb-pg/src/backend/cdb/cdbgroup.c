@@ -367,6 +367,7 @@ cdb_grouping_planner(PlannerInfo* root,
 					dqaArgList = list_make1(linitial(agg_counts->dqaArgs));
 					
 					// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 					distinct_pathkeys = cdb_make_pathkey_for_expr(root,
 							linitial(dqaArgList),
@@ -1644,6 +1645,7 @@ bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys)
 		return false;  /* Or would HashedOJ ok, too? */
 	
 	// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 	/* Extract a list of expressions from the pathkeys.  Since the locus
 	 * presumably knows all about attribute equivalence classes, we use
@@ -2399,6 +2401,7 @@ add_second_stage_agg(PlannerInfo *root,
 		Assert( numGroupCols >= list_length(*p_current_pathkeys) );
 
 		// MERGEBUG
+#warning MERGEBUG this code is broken by the 8.3 merge
 #if 0
 		foreach ( c, *p_current_pathkeys )
 		{
