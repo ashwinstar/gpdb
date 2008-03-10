@@ -113,6 +113,19 @@
 		} \
 	}
 
+/* Read a bool array  */
+#define READ_BOOL_ARRAY(fldname, count) \
+	if ( local_node->count > 0 ) \
+	{ \
+		int i; \
+		local_node->fldname = (bool *)palloc(local_node->count * sizeof(bool)); \
+		for(i=0; i<local_node->count; i++) \
+		{ \
+			local_node->fldname[i] = (*str)[i] !=0 ; Assert((*str)[i]==1 || (*str)[i]==0); \
+		} \
+		(*str)+=i; \
+	}
+
 
 
 /* Read an Trasnaction ID array  */
@@ -2501,6 +2514,7 @@ _readWindowKey(const char ** str)
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
+	READ_BOOL_ARRAY(nullsFirst, numSortCols);
 	READ_NODE_FIELD(frame);
 
 	READ_DONE();
@@ -2701,6 +2715,7 @@ _readFlow(const char ** str)
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
+	READ_BOOL_ARRAY(nullsFirst, numSortCols);
 
 	READ_NODE_FIELD(hashExpr);
 	READ_NODE_FIELD(flow_before_req_move);
@@ -2754,6 +2769,7 @@ _readMotion(const char ** str)
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
+	READ_BOOL_ARRAY(nullsFirst, numSortCols);
 
 	readPlanInfo(str, (Plan *)local_node);
 

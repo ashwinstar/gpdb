@@ -900,6 +900,7 @@ typedef struct Motion
 	int			numSortCols;		/* number of sort key columns */
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
 	Oid			*sortOperators;		/* OID of operators to sort them by */
+	bool		*nullsFirst;		/* how NULL sorts */
 } Motion;
 
 #endif   /* PLANNODES_H */

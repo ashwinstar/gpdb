@@ -1271,6 +1271,7 @@ typedef struct Flow
 	int			numSortCols;		/* number of sort key columns */
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
 	Oid			*sortOperators;		/* OID of operators to sort them by */
+	bool		*nullsFirst;		/* how NULL sorts */
 	
 	/* If req_move is MOVEMENT_REPARTITION, these express the desired 
      * partitioning for a hash motion.  Else if flotype is FLOW_PARTITIONED,
@@ -1367,6 +1368,7 @@ typedef struct WindowKey
 	int				numSortCols; /* may be zero, see note */
 	AttrNumber	   *sortColIdx;
 	Oid			   *sortOperators;
+	bool		   *nullsFirst;
 	WindowFrame	   *frame;		/* NULL or framing for WindowKey */
 } WindowKey;
 

@@ -90,7 +90,8 @@
 #define WRITE_BOOL_FIELD(fldname) \
 	{ \
 		char b = node->fldname ? 1 : 0; \
-		appendBinaryStringInfo(str, (const char *)&b, 1); }
+		appendBinaryStringInfo(str, (const char *)&b, 1); \
+	}
 
 /* Write a character-string (possibly NULL) field */
 #define WRITE_STRING_FIELD(fldname) \
@@ -131,6 +132,18 @@
 		} \
 	}
 	
+/* Write a bool array  */
+#define WRITE_BOOL_ARRAY(fldname, count) \
+	if ( node->count > 0 ) \
+	{ \
+		int i; \
+		for(i=0; i<node->count; i++) \
+		{ \
+			char b = node->fldname[i] ? 1 : 0; \
+			appendBinaryStringInfo(str, (const char *)&b, 1); \
+		} \
+	}
+
 /* Write an Trasnaction ID array  */
 #define WRITE_XID_ARRAY(fldname, count) \
 	if ( node->count > 0 ) \
@@ -595,6 +608,7 @@ _outWindowKey(StringInfo str, WindowKey *node)
 
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	WRITE_OID_ARRAY(sortOperators, numSortCols);
+	WRITE_BOOL_ARRAY(nullsFirst, numSortCols);
 	WRITE_NODE_FIELD(frame);
 }
 
@@ -781,6 +795,7 @@ _outMotion(StringInfo str, Motion *node)
 	WRITE_INT_FIELD(numSortCols);
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	WRITE_OID_ARRAY(sortOperators, numSortCols);
+	WRITE_BOOL_ARRAY(nullsFirst, numSortCols);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -1296,6 +1311,7 @@ _outFlow(StringInfo str, Flow *node)
 	
 	WRITE_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	WRITE_OID_ARRAY(sortOperators, numSortCols);
+	WRITE_BOOL_ARRAY(nullsFirst, numSortCols);
 	
 
 	WRITE_NODE_FIELD(hashExpr);

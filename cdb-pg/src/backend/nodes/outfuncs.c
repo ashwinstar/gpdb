@@ -614,6 +614,10 @@ _outWindowKey(StringInfo str, WindowKey *node)
 	appendStringInfoLiteral(str, " :sortOperators");
 	for (i = 0; i < node->numSortCols; i++)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
+
+	appendStringInfoLiteral(str, " :nullsFirst");
+	for (i = 0; i < node->numSortCols; i++)
+		appendStringInfo(str, " %s", booltostr(node->sortOperators[i]));
 		
 	WRITE_NODE_FIELD(frame);
 }
@@ -838,6 +842,10 @@ _outMotion(StringInfo str, Motion *node)
 	appendStringInfoLiteral(str, " :sortOperators");
 	for (i = 0; i < node->numSortCols; i++)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
+
+	appendStringInfoLiteral(str, " :nullsFirst");
+	for (i = 0; i < node->numSortCols; i++)
+		appendStringInfo(str, " %s", booltostr(node->nullsFirst[i]));
 
     _outPlanInfo(str, (Plan *) node);
 }
@@ -1393,6 +1401,14 @@ _outFlow(StringInfo str, Flow *node)
 		else {
 			for ( i = 0; i < node->numSortCols; i++ )
 				appendStringInfo(str, " %u", node->sortOperators[i]);
+		}
+
+		appendStringInfoLiteral(str, " :nullsFirst");
+		if(node->nullsFirst == NULL)
+			appendStringInfoString(str, " <>");
+		else {
+			for ( i = 0; i < node->numSortCols; i++ )
+				appendStringInfo(str, " %s", booltostr(node->sortOperators[i]));
 		}
 	}
 

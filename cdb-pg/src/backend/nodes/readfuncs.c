@@ -209,6 +209,37 @@
 		} \
 	}
 
+/* Read a bool array (anything written as ":fldname %s %s ...") */
+#define READ_BOOL_ARRAY(fldname, count) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	if ( local_node->count > 0 ) \
+	{ \
+		int i; \
+		local_node->fldname = (bool *)palloc(local_node->count * sizeof(bool)); \
+		for(i=0; i<local_node->count; i++) \
+		{ \
+			token = pg_strtok(&length);		/* get field value */ \
+			local_node->fldname[i] = (bool) strtobool(token); \
+		} \
+	}
+
+/* Read optional bool array (":fldname %s %s ..." or ":fldname <>") */
+#define READ_BOOL_ARRAY_OR_NULL(fldname, count) \
+	if ( local_node->count > 0 && \
+         NULL != (token = pg_strtok(&length)) &&    /* skip :fldname */ \
+         NULL != (token = pg_strtok(&length)) &&    /* first value or <> */ \
+         length > 0 )                               /* proceed if isn't <> */ \
+	{ \
+		int i; \
+		local_node->fldname = (bool *)palloc(local_node->count * sizeof(bool)); \
+        local_node->fldname[0] = (bool) strtobool(token); \
+		for(i=1; i<local_node->count; i++) \
+		{ \
+            token = pg_strtok(&length);		/* get field value */ \
+            local_node->fldname[i] = (bool) strtobool(token); \
+		} \
+	}
+
 
 /* Read an Trasnaction ID array (written as ":fldname %u %u ... ") */
 #define READ_XID_ARRAY(fldname, count) \
@@ -2185,6 +2216,7 @@ _readWindowKey(void)
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY_OR_NULL(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
+	READ_BOOL_ARRAY(nullsFirst, numSortCols);
 	READ_NODE_FIELD(frame);
 
 	READ_DONE();
@@ -2397,6 +2429,7 @@ _readMotion(void)
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
+	READ_BOOL_ARRAY(nullsFirst, numSortCols);
 
 	readPlanInfo((Plan *)local_node);
 
@@ -2416,6 +2449,7 @@ _readFlow(void)
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY_OR_NULL(sortColIdx, numSortCols, AttrNumber);
 	READ_UINT_ARRAY_OR_NULL(sortOperators, numSortCols, Oid);
+	READ_BOOL_ARRAY_OR_NULL(nullsFirst, numSortCols);
 
 	READ_NODE_FIELD(hashExpr);
 	READ_NODE_FIELD(flow_before_req_move);
