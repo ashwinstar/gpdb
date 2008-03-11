@@ -91,6 +91,7 @@ typedef struct WindowInfo
 	
 	AttrNumber *partkey_attrs;
 	Oid        *partkey_operators;
+	bool	   *partkey_nulls_first;
 	List	   *key_list;
 	
 	/* coplan assembly */
@@ -1574,11 +1575,13 @@ static void set_window_keys(WindowContext *context, int wind_index)
 	int nattrs;
 	AttrNumber* sortattrs = NULL;
 	Oid* sortops = NULL;
+	bool *nullsfirst = NULL;
 	
 	/* results  */
 	int partkey_len = 0;
 	AttrNumber *partkey_attrs = NULL;
 	Oid *partkey_operators = NULL;
+	bool *partkey_nulls_first = NULL;
 	List *window_keys = NIL;
 	
 	Assert( 0 <= wind_index && wind_index < context->nwindowinfos );
@@ -1591,12 +1594,14 @@ static void set_window_keys(WindowContext *context, int wind_index)
 	{
 		sortattrs = (AttrNumber *)palloc(nattrs*sizeof(AttrNumber));
 		sortops = (Oid *)palloc(nattrs*sizeof(Oid));
+		nullsfirst = (bool *)palloc(nattrs*sizeof(bool));
 		i = 0;
 		foreach ( lc, winfo->sortclause )
 		{
 			SortClause *sc = (SortClause *)lfirst(lc);
 			sortattrs[i] = context->sortref_resno[sc->tleSortGroupRef];
 			sortops[i] = sc->sortop;
+			nullsfirst[i] = sc->nulls_first;
 			i++;
 		}
 	}
@@ -1607,14 +1612,16 @@ static void set_window_keys(WindowContext *context, int wind_index)
 		partkey_len = winfo->partkey_len;
 		partkey_attrs = (AttrNumber *)palloc(partkey_len*sizeof(AttrNumber));
 		partkey_operators = (Oid *)palloc(partkey_len * sizeof(Oid));
+		partkey_nulls_first = (bool *)palloc(partkey_len * sizeof(bool));
 		for ( i = 0; i < partkey_len; i++ )
 		{
 			partkey_attrs[i] = sortattrs[i];
 			partkey_operators[i] = sortops[i];
+			partkey_nulls_first[i] = nullsfirst[i];
 		}
 	}
 	
-	/* Careful.  Within sort key, parition key may overlap order keys. */
+	/* Careful.  Within sort key, partition key may overlap order keys. */
 	nextsk = skoffset = winfo->orderkeys_offset;
 	
 	/* Make a WindowKey per SpecInfo. */
@@ -1649,11 +1656,13 @@ static void set_window_keys(WindowContext *context, int wind_index)
 		{
 			wkey->sortColIdx = (AttrNumber*)palloc(wkey->numSortCols * sizeof(AttrNumber));
 			wkey->sortOperators = (Oid*)palloc(wkey->numSortCols * sizeof(Oid));
+			wkey->nullsFirst = (bool*)palloc(wkey->numSortCols * sizeof(bool));
 			
 			for ( j = 0; j < wkey->numSortCols; j++ )
 			{
 				wkey->sortColIdx[j] = sortattrs[nextsk];
-				wkey->sortOperators[j] = sortops[nextsk]; /* TODO SET THIS CORRECTLY!!! */
+				wkey->sortOperators[j] = sortops[nextsk];
+				wkey->nullsFirst[j] = nullsfirst[nextsk];
 				nextsk++;
 			}
 		}
@@ -1666,9 +1675,11 @@ static void set_window_keys(WindowContext *context, int wind_index)
 			wkey->numSortCols = 1;
 			wkey->sortColIdx = (AttrNumber *)palloc(sizeof(AttrNumber));
 			wkey->sortOperators = (Oid*)palloc(sizeof(Oid));
+			wkey->nullsFirst = (bool*)palloc(sizeof(bool));
 			sc = (SortClause *)linitial(sinfo->order);
 			wkey->sortColIdx[0] = context->sortref_resno[sc->tleSortGroupRef];
 			wkey->sortOperators[0] = sc->sortop;
+			wkey->nullsFirst[0] = sc->nulls_first;
 		}
 		
 		wkey->frame = copyObject(sinfo->frame);
@@ -1678,6 +1689,7 @@ static void set_window_keys(WindowContext *context, int wind_index)
 	
 	winfo->partkey_attrs = partkey_attrs;
 	winfo->partkey_operators = partkey_operators;
+	winfo->partkey_nulls_first = partkey_nulls_first;
 	winfo->key_list = window_keys;
 }
 
@@ -2500,6 +2512,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 			size_t sz = winfo->partkey_len * sizeof(AttrNumber);
 			AttrNumber *partkey = NULL;
 			Oid *partkey_operators = NULL;
+			Oid *partkey_nulls_first = NULL;
 			
 			/* elog(NOTICE, "Fn plan_sequential_stage(): Adding Window node."); */
 
@@ -2510,6 +2523,9 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 				partkey_operators = (Oid *)palloc(winfo->partkey_len * sizeof(Oid));
 				memcpy(partkey_operators, winfo->partkey_operators,
 					   winfo->partkey_len * sizeof(Oid));
+				partkey_nulls_first = (bool *)palloc(winfo->partkey_len * sizeof(bool));
+				memcpy(partkey_nulls_first, winfo->partkey_nulls_first,
+					   winfo->partkey_len * sizeof(bool));
 			}
 			
 			window_plan = (Plan *)make_window(
@@ -3301,7 +3317,9 @@ static RangeTblEntry *rte_for_coplan(
 				make_agg(root, coplan->targetlist, NULL,
 						 AGG_SORTED, false,
 						 winfo->partkey_len, winfo->partkey_attrs,
-                         NULL,  /* grpOperators */
+                         grouping_ops_from_sortops(
+								winfo->partkey_len, 
+								winfo->partkey_operators),  /* grpOperators */
 						 num_groups,
 						 0, /* num_nullcols */
 						 0, /* input_grouping */

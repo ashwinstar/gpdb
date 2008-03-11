@@ -2059,6 +2059,29 @@ extract_grouping_ops(List *groupClause)
 }
 
 /*
+ * grouping_ops_from_sortops - make an array of the equality operator OIDs
+ *		corresponding to the given array of sort operator OIDs.
+ */
+Oid *
+grouping_ops_from_sortops(int numCols, Oid* sortOps)
+{
+	int			colno;
+	Oid		   *groupOperators;
+
+	groupOperators = (Oid *) palloc(sizeof(Oid) * numCols);
+
+	for ( colno = 0; colno < numCols; colno++ )
+	{
+		groupOperators[colno] = get_equality_op_for_ordering_op(sortOps[colno]);
+		if (!OidIsValid(groupOperators[colno])) /* shouldn't happen */
+			elog(ERROR, "could not find equality operator for ordering operator %u",
+				 sortOps[colno]);
+	}
+
+	return groupOperators;
+}
+
+/*
  * choose_hashed_grouping - should we use hashed grouping?
  */
 bool 

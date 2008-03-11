@@ -152,6 +152,7 @@ typedef struct WindowStatePerLevelData
 	int numSortCols;
 	AttrNumber *sortColIdx;
 	Oid *sortOperators;
+	bool *nullsFirst;
 
 	/* column type data */
 	Oid *col_types;
@@ -2757,6 +2758,7 @@ initWindowStatePerLevel(WindowState *wstate, Window *node)
 			lvl->numSortCols += prev_key->numSortCols;
 		lvl->sortColIdx = (AttrNumber *)palloc0(lvl->numSortCols * sizeof(AttrNumber));
 		lvl->sortOperators = (Oid *)palloc0(lvl->numSortCols *sizeof(Oid));
+		lvl->nullsFirst = (bool *)palloc0(lvl->numSortCols *sizeof(bool));
 
 		if (lvl->numSortCols > key->numSortCols)
 		{
@@ -2764,6 +2766,8 @@ initWindowStatePerLevel(WindowState *wstate, Window *node)
 				   prev_key->numSortCols * sizeof(AttrNumber));
 			memcpy(lvl->sortOperators, prev_key->sortOperators,
 				   prev_key->numSortCols * sizeof(Oid));
+			memcpy(lvl->nullsFirst, prev_key->nullsFirst,
+				   prev_key->numSortCols * sizeof(bool));
 		}
 			
 		memcpy(lvl->sortColIdx + (lvl->numSortCols - key->numSortCols),
@@ -2772,6 +2776,9 @@ initWindowStatePerLevel(WindowState *wstate, Window *node)
 		memcpy(lvl->sortOperators + (lvl->numSortCols - key->numSortCols),
 			   key->sortOperators,
 			   key->numSortCols * sizeof(Oid));
+		memcpy(lvl->nullsFirst + (lvl->numSortCols - key->numSortCols),
+			   key->nullsFirst,
+			   key->numSortCols * sizeof(bool));
 
 		if (key->numSortCols > 0)
 			prev_key = key;

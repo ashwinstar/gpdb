@@ -33,7 +33,10 @@ extern PlannedStmt *standard_planner(Query *parse, int cursorOptions,
 extern Plan *subquery_planner(PlannerGlobal *glob, Query *parse,
 				 Index level, double tuple_fraction,
 				 PlannerInfo **subroot);
-bool 
+extern Oid *
+grouping_ops_from_sortops(int numCols, Oid* sortOps);
+
+extern bool 
 choose_hashed_grouping(PlannerInfo     *root,
 					   double           tuple_fraction, 
                        double           limit_tuples,
