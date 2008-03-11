@@ -556,6 +556,20 @@ plan_tree_mutator(Node *node,
 		} \
 	} while (0)
 
+#define COPYARRAY_N(dest,src,len,datfld) \
+	do { \
+		if ( (len) > 0  && \
+             (src)->datfld != NULL) \
+		{ \
+			Size _size = ((len)*sizeof(*((src)->datfld))); \
+			(dest)->datfld = palloc(_size); \
+			memcpy((dest)->datfld, (src)->datfld, _size); \
+		} \
+		else \
+		{ \
+			(dest)->datfld = NULL; \
+		} \
+	} while (0)
 
 
 	if (node == NULL)
@@ -787,11 +801,15 @@ plan_tree_mutator(Node *node,
 		case T_MergeJoin:
 			{
 				MergeJoin  *merge = (MergeJoin *) node;
+				int n = list_length(merge->mergeclauses);
 				MergeJoin  *newmerge;
 
 				FLATCOPY(newmerge, merge, MergeJoin);
 				JOINMUTATE(newmerge, merge);
 				MUTATE(newmerge->mergeclauses, merge->mergeclauses, List *);
+				COPYARRAY_N(newmerge, merge, n, mergeFamilies);
+				COPYARRAY_N(newmerge, merge, n, mergeStrategies);
+				COPYARRAY_N(newmerge, merge, n, mergeNullsFirst);
 				return (Node *) newmerge;
 			}
 			break;
@@ -839,6 +857,7 @@ plan_tree_mutator(Node *node,
 				PLANMUTATE(newsort, sort);
 				COPYARRAY(newsort, sort, numCols, sortColIdx);
 				COPYARRAY(newsort, sort, numCols, sortOperators);
+				COPYARRAY(newsort, sort, numCols, nullsFirst);
 				return (Node *) newsort;
 			}
 			break;
@@ -890,6 +909,7 @@ plan_tree_mutator(Node *node,
 				FLATCOPY(newkey, key, WindowKey);
 				COPYARRAY(newkey, key, numSortCols, sortColIdx);
 				COPYARRAY(newkey, key, numSortCols, sortOperators);
+				COPYARRAY(newkey, key, numSortCols, nullsFirst);
 				MUTATE(newkey->frame, key->frame, WindowFrame *);
 				
 				return (Node *) newkey;
@@ -961,6 +981,7 @@ plan_tree_mutator(Node *node,
 				MUTATE(newmotion->sliceEntries, motion->sliceEntries, List *);
 				COPYARRAY(newmotion, motion, numSortCols, sortColIdx);
 				COPYARRAY(newmotion, motion, numSortCols, sortOperators);
+				COPYARRAY(newmotion, motion, numSortCols, nullsFirst);
 				return (Node *) newmotion;
 			}
 			break;
@@ -975,6 +996,7 @@ plan_tree_mutator(Node *node,
 				MUTATE(newflow->hashExpr, flow->hashExpr, List *);
 				COPYARRAY(newflow, flow, numSortCols, sortColIdx);
 				COPYARRAY(newflow, flow, numSortCols, sortOperators);
+				COPYARRAY(newflow, flow, numSortCols, nullsFirst);
 				return (Node *) newflow;
 			}
 			break;
