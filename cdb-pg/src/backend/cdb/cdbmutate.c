@@ -76,7 +76,8 @@ make_motion(Plan       *lefttree,
             int         numInputSegs,
             int         numSortCols,
             AttrNumber *sortColIdx,
-            Oid        *sortOperators);
+            Oid        *sortOperators,
+			bool	   *nullsFirst);
 	
 static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
 
@@ -706,7 +707,8 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
                                                            flow->segindex,
                                                            flow->numSortCols,
                                                            flow->sortColIdx,
-                                                           flow->sortOperators);
+                                                           flow->sortOperators,
+														   flow->nullsFirst);
             }
             else
             {
@@ -817,7 +819,8 @@ make_motion(Plan       *lefttree,
             int         numInputSegs,
 			int         numSortCols,
             AttrNumber *sortColIdx,
-            Oid        *sortOperators)
+            Oid        *sortOperators,
+			bool	   *nullsFirst)
 {
     Motion *node = makeNode(Motion);
     Plan   *plan = &node->plan;
@@ -847,6 +850,7 @@ make_motion(Plan       *lefttree,
 	node->numSortCols = numSortCols;
 	node->sortColIdx = sortColIdx;
 	node->sortOperators = sortOperators;
+	node->nullsFirst = nullsFirst;
 
 	plan->extParam = bms_copy(lefttree->extParam);
 	plan->allParam = bms_copy(lefttree->allParam);
@@ -963,10 +967,12 @@ void add_slice_to_motion(Motion *motion,
 		motion->plan.flow->numSortCols = n;
 		motion->plan.flow->sortColIdx = palloc(n * sizeof(AttrNumber));
 		motion->plan.flow->sortOperators = palloc (n * sizeof(Oid));
+		motion->plan.flow->nullsFirst = palloc (n * sizeof(bool));
 		for ( i = 0; i < n; i++ )
 		{
 			motion->plan.flow->sortColIdx[i] = motion->sortColIdx[i];
 			motion->plan.flow->sortOperators[i] = motion->sortOperators[i];
+			motion->plan.flow->nullsFirst[i] = motion->nullsFirst[i];
 		}
 	}
 }
@@ -980,7 +986,8 @@ make_union_motion(Plan *lefttree, bool sendToSecondary,
 	outSegIdx[0] = destSegIndex; 
 
 	motion = make_motion(lefttree, sendToSecondary, false, numInputSegs,
-			0, NULL, NULL /* numSortCols, sortColIdx, sortOperaotrs */
+			0, NULL, /* numSortCols, sortColIdx, */
+			NULL, NULL /* sortOperators, nullsFirst */
 			);
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED, 
 			NULL, 1, outSegIdx);
@@ -990,14 +997,15 @@ make_union_motion(Plan *lefttree, bool sendToSecondary,
 Motion *
 make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
                          int numInputSegs, int destSegIndex,
-				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
+						 int numSortCols, AttrNumber *sortColIdx, 
+						 Oid *sortOperators, bool *nullsFirst)
 {
 	Motion 	*motion;
 	int		*outSegIdx = (int *) palloc(sizeof(int)); 
 	outSegIdx[0] = destSegIndex; 
 
 	motion = make_motion(lefttree, sendToSecondary, true, numInputSegs,
-			numSortCols, sortColIdx, sortOperators);
+			numSortCols, sortColIdx, sortOperators, nullsFirst);
 
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED,
 			NULL, 1, outSegIdx); 
@@ -1011,7 +1019,7 @@ make_hashed_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs,
 	Motion *motion;
 
 	motion = make_motion(lefttree, sendToSecondary, false, numInputSegs,
-			0, NULL, NULL);
+			0, NULL, NULL, NULL);
 	add_slice_to_motion(motion, MOTIONTYPE_HASH, 
 			hashExpr,
 			0, NULL);
@@ -1024,7 +1032,7 @@ make_broadcast_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs)
 	Motion *motion;
 
 	motion = make_motion(lefttree, sendToSecondary, false, numInputSegs,
-			0, NULL, NULL);
+			0, NULL, NULL, NULL);
 
 	add_slice_to_motion(motion, MOTIONTYPE_FIXED,
 			NULL, 0, NULL);

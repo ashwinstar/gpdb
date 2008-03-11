@@ -27,7 +27,8 @@ extern Motion *make_union_motion(Plan *lefttree, bool sendToSecondary,
                                  int numInputSegs, int destSegIndex);
 extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
                                         int numInputSegs, int destSegIndex,
-				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
+										int numSortCols, AttrNumber *sortColIdx, 
+										Oid *sortOperators, bool *nullsFirst);
 extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
 				    int numInputSegs, List *hashExpr);
 

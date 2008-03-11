@@ -294,6 +294,10 @@ Flow *copyFlow(Flow *model_flow, bool withExprs, bool withSort)
 			new_flow->sortOperators,
 			model_flow->sortOperators,
 			model_flow->numSortCols * sizeof(Oid) );
+		ARRAYCOPY(
+			new_flow->nullsFirst,
+			model_flow->nullsFirst,
+			model_flow->numSortCols * sizeof(bool) );
 	}
 
 	return new_flow;
@@ -349,7 +353,8 @@ Motion* make_motion_gather(Plan *subplan, int segindex, bool keep_ordering)
 			segindex,
 			flow->numSortCols, /* Motion and Flow can share arrays. */
 			flow->sortColIdx,
-			flow->sortOperators);
+			flow->sortOperators,
+			flow->nullsFirst);
 	}
 	else
 	{

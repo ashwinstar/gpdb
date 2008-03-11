@@ -85,6 +85,7 @@ cdbpathtoplan_create_flow(PlannerInfo  *root,
             flow->numSortCols = sort->numCols;
             flow->sortColIdx = sort->sortColIdx;
             flow->sortOperators = sort->sortOperators;
+            flow->nullsFirst = sort->nullsFirst;
         }
     }
 
@@ -144,7 +145,8 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                                                   destSegIndex,
                                                   sort->numCols,
                                                   sort->sortColIdx,
-                                                  sort->sortOperators);
+                                                  sort->sortOperators,
+												  sort->nullsFirst);
             }
         
             /* Degenerate ordering... build unordered Union Receive */
