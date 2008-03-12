@@ -15,7 +15,7 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp
+all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp mkchubbytest
 
 mkgpfdist: 
 	@echo --- gpfdist --------------------------------------------------
@@ -23,6 +23,12 @@ mkgpfdist:
 		-o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -lz -lbz2)
 	@mkdir -p build/bin
 	@cp src/gpfdist/gpfdist build/bin/
+
+mkchubbytest: 
+#	@echo --- chubby --------------------------------------------------
+#	(cd src/paxos/chubby/c; $(CC) $(INCLUDES) -Wall -Werror $(CPPFLAGS) $(CFLAGS) -o chubbytest *.c )
+#	@mkdir -p build/bin
+#	@cp src/paxos/chubby/c/chubbytest build/bin/
 
 
 
