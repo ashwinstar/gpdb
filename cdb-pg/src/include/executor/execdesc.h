@@ -62,11 +62,6 @@ typedef struct QueryDesc
     /* CDB: EXPLAIN ANALYZE statistics */
     struct CdbExplain_ShowStatCtx  *showstatctx;
     
-    // MERGEBUG
-    // Add back temporary to make compile
-#warning MERGEBUG this code is broken by the 8.3 merge
-    	Plan	   *plantree;		/* planner's output */
-
 } QueryDesc;
 
 static inline struct TableOidInfo *querydesc_into_oidinfo(QueryDesc *qd)

@@ -577,19 +577,19 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
         /* Switch to EXPLAIN memory context. */
         MemoryContextSwitchTo(es->explaincxt);
 
-		if (queryDesc->plantree && estate->es_sliceTable)
+		if (queryDesc->plannedstmt->planTree && estate->es_sliceTable)
 		{
         	Node   *saved_es_sliceTable;
 
 			/* Little two-step to get EXPLAIN VERBOSE to show slice table. */
-			saved_es_sliceTable = queryDesc->plantree->sliceTable;		/* probably NULL */
-			queryDesc->plantree->sliceTable = (Node *) queryDesc->estate->es_sliceTable;
-			s = nodeToString(queryDesc->plantree);
-			queryDesc->plantree->sliceTable = saved_es_sliceTable;
+			saved_es_sliceTable = queryDesc->plannedstmt->planTree->sliceTable;		/* probably NULL */
+			queryDesc->plannedstmt->planTree->sliceTable = (Node *) queryDesc->estate->es_sliceTable;
+			s = nodeToString(queryDesc->plannedstmt->planTree);
+			queryDesc->plannedstmt->planTree->sliceTable = saved_es_sliceTable;
 		}
 		else
 		{
-			s = nodeToString(queryDesc->plantree);
+			s = nodeToString(queryDesc->plannedstmt->planTree);
 		}
 
 		if (s)
@@ -618,7 +618,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
      */
     PG_TRY();
     {
-	    explain_outNode(buf, queryDesc->plantree, queryDesc->planstate,
+	    explain_outNode(buf, queryDesc->plannedstmt->planTree, queryDesc->planstate,
 					    NULL, 0, es);
     }
     PG_CATCH();

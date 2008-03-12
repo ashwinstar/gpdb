@@ -3718,15 +3718,15 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		
 		savetargets = NIL;
 		
-		if (is_plan_node((Node *)queryDesc->plantree) &&
-			!is_projection_capable_plan((Plan *)queryDesc->plantree))
+		if (is_plan_node((Node *)queryDesc->plannedstmt->planTree) &&
+			!is_projection_capable_plan((Plan *)queryDesc->plannedstmt->planTree))
 		{
 			/*
 			 * don't do targetlists in nodes where the targetlist isn't used.  Hide them from the mutator
 			 */
-			savetargets = queryDesc->plantree->targetlist;
-			queryDesc->plantree->targetlist = NIL;
-			oldplan = queryDesc->plantree;
+			savetargets = queryDesc->plannedstmt->planTree->targetlist;
+			queryDesc->plannedstmt->planTree->targetlist = NIL;
+			oldplan = queryDesc->plannedstmt->planTree;
 		}
 
 		oldContext = CurrentMemoryContext;
@@ -3740,13 +3740,14 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			oldContext = MemoryContextSwitchTo(MessageContext);
 		}
 
-		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
-									pre_dispatch_function_evaluation_mutator,
-														 &pcontext);
+		queryDesc->plannedstmt->planTree =
+			(Plan *) plan_tree_mutator((Node *) queryDesc->plannedstmt->planTree,
+									   pre_dispatch_function_evaluation_mutator,
+									   &pcontext);
 														
 		if (savetargets != NIL)
 		{
-			queryDesc->plantree->targetlist = savetargets;
+			queryDesc->plannedstmt->planTree->targetlist = savetargets;
 			oldplan->targetlist = savetargets;
 		}
 		
@@ -3766,7 +3767,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 #if 0
 	squery = serializeNode((Node *) queryDesc->parsetree, &squery_len);
 #endif
-	splan = serializeNode((Node *) queryDesc->plantree, &splan_len);
+	splan = serializeNode((Node *) queryDesc->plannedstmt->planTree, &splan_len);
 
 	Assert(squery != NULL && splan != NULL);
 
