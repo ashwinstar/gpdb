@@ -89,29 +89,8 @@ SeqNext(SeqScanState *node)
 	/*
 	 * get the next tuple from the access methods
 	 */
-	// MERGEBUG 
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-	/* CKTAN- */
-	if (node->ss_heapTupleData.bot == node->ss_heapTupleData.top 
-		&& !node->ss_heapTupleData.seen_EOS)
-	{
-		node->ss_heapTupleData.last = NULL;
-		node->ss_heapTupleData.bot = 0;
-		node->ss_heapTupleData.top = lengthof(node->ss_heapTupleData.item);
-		heap_getnextx(scandesc, direction, node->ss_heapTupleData.item,
-					  &node->ss_heapTupleData.top, 
-					  &node->ss_heapTupleData.seen_EOS);
-	}
- 
-	node->ss_heapTupleData.last = 
-		((node->ss_heapTupleData.bot < node->ss_heapTupleData.top) 
-		 ? &node->ss_heapTupleData.item[node->ss_heapTupleData.bot++]
-		 : 0);
-	tuple = node->ss_heapTupleData.last;
-#else
 	tuple = heap_getnext(scandesc, direction);
-#endif
+
 	/*
 	 * save the tuple and the buffer returned to us by the access methods in
 	 * our scan tuple slot and return the slot.  Note: we pass 'false' because

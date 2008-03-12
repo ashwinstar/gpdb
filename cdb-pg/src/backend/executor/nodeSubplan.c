@@ -674,39 +674,6 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 	sstate->testexpr = ExecInitExpr((Expr *) subplan->testexpr, parent);
 	sstate->args = (List *) ExecInitExpr((Expr *) subplan->args, parent);
 
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-	// MERGEBUG
-	/* XXX PG8.3 merge.  Now subplan does not have a sp_estate any more.  Do we 
-	 * still need to do the "load" stuff?
-	 */
-
-	/*
-	 * "Loan" the global slice table and map to the subplan EState.  The
-	 * global state is already set up by the code that called up, e.g., if
-	 * this is an initPlan subplan, then the current slice will be a root.
-	 */
-	if (subplan->qDispSliceId > 0)
-	{
-		sp_estate->es_cur_root_idx = subplan->qDispSliceId;
-		sp_estate->es_cur_slice_idx = subplan->qDispSliceId;
-
-		Assert(estate->es_sliceTable != NULL &&
-				subplan->qDispSliceId > estate->es_sliceTable->nMotions &&
-				subplan->qDispSliceId <= estate->es_sliceTable->nMotions +
-				estate->es_sliceTable->nSubplans);
-	}
-	else
-	{
-		sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
-		sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
-	}
-	sp_estate->es_sliceTable = estate->es_sliceTable;
-	sp_estate->es_slice_map = estate->es_slice_map;
-
-	sp_estate->motionlayer_context = estate->motionlayer_context;
-#endif
-
 	/*
 	 */
 	sstate->curTuple = NULL;

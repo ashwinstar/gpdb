@@ -2334,51 +2334,6 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 			char *serializedSnapshot;
 			int serializedSnapshotlen;
 
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-			StringInfoData newquery;
-			char * query_text;
-			int query_text_len;
-
-			// MERGEBUG
-			/* XXX PG8.3 Merge.   
-			 * query is no longer stored in _SPI_plan.  This thing
-			 * should only be used with error reporting so remove
-			 * them should not affect how the query was run.
-			 *
-			 * However, I am not sure this is true for us. 
-			 */
-			/* Loop backwards, so we handle $10 before $1, and don't get confused */
-			for (i=nargs-1;i>=0;i--)
-			{	
-				char parmmarker[10];
-				char * parmloc;
-
-				initStringInfo(&newquery);
-
-				sprintf(parmmarker,"$%d",i+1);
-
-				parmloc = strstr(query,parmmarker);
-
-				if (parmloc == NULL)
-					elog(ERROR,"Could not find parameter marker in SQL query");
-
-				appendBinaryStringInfo(&newquery, query, (parmloc-query));
-				if (Nulls && Nulls[i] == 'n')
-					appendStringInfo(&newquery, " NULL");
-				else
-					appendStringInfo(&newquery, "'%s'",paramValues[i]);
-				appendStringInfo(&newquery, "::%s ",format_type_be(plan->argtypes[i]));
-				appendStringInfo(&newquery, parmloc+strlen(parmmarker));
-
-
-				elog(DEBUG1,"%s",newquery.data);
-
-				query = pstrdup(newquery.data);
-
-			}
-#endif 
-
 			if (snapshot == InvalidSnapshot)
 			{
 				/*
@@ -2435,34 +2390,6 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 					qdSerializeDtxContextInfo(&serializedSnapshotlen, true /* wantSnapshot */, txnOptions, "_SPI_execute_plan");
 
 			}
-
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-			// MERGEBUG
-			/* XXX PG8.3 merge.  We no longer have the query string. */
-
-			/*
-			 * because we are sending to the QD, the primaryGang/mirrorGang info and slice info isn't meaningful
-			 */
-			query_text = PQbuildGpQueryString(
-					query, strlen(query)+1, 
-					NULL, 0, NULL, 0, NULL, 0, NULL, 0,
-					serializedSnapshot, serializedSnapshotlen, 
-					0 /* unused flag */, gp_command_count, -1 /* localSlice */, 0 /* rootIdx */, 1 /* primaryGang */, 0 /* mirrorGang */,
-					GetCurrentStatementStartTimestamp(),
-					GetSessionUserId(), superuser_arg(GetSessionUserId()), GetOuterUserId(), superuser_arg(GetOuterUserId()), GetUserId(),
-					&query_text_len);
-
-			elog(DEBUG1,"Sending via special PQsendGpQuery");
-			if (PQsendGpQuery_shared(_QD_conn, (char *)query_text, query_text_len) == 0)
-			{
-				/* Note the error. */
-				elog(ERROR,"Command could not be sent to QD %s", PQerrorMessage(_QD_conn));
-			}
-
-			free(query_text);  /* allocted with malloc, so use free  */
-#endif
-
 		}
 		/* End special code to use PQsendGpQuery */
 		else
@@ -2504,43 +2431,6 @@ _SPI_execute_plan(SPIPlanPtr plan, Datum *Values, const char *Nulls,
 				 */
 				_QD_currently_prepared_stmt = NULL;
 			}
-
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-			// MERGEBUG
-			/* XXX PG8.3 Merge. 
-			 * We don't have the plan->query any more, what to do?
-			 */
-
-			/*
-			 * We need to execute the statement that was previously prepared.  But,
-			 * if we called back from QE to QD to prepare it, the QD might have freed the 
-			 * plan if anything else was run between then and now.  We keep track of 
-			 * this via "currently_prepared_stmt".  If that isn't the statement we 
-			 * want to execute, we re-do the prepare.
-			 * 
-			 * Note that this code relys on the "Plan" passed to us having the 
-			 * original source of the SQL statement in it.
-			 */
-			if (_QD_currently_prepared_stmt == NULL ||	
-					strcmp(_QD_currently_prepared_stmt, plan->query) !=0)
-			{
-				elog(DEBUG1,"Re-preparing plan");
-				pgres = PQprepare(_QD_conn,
-						"",
-						plan->query,
-						plan->nargs,
-						plan->argtypes);
-
-				if (PQresultStatus(pgres) != PGRES_COMMAND_OK)
-				{
-					elog(ERROR, PQerrorMessage(_QD_conn));
-					PQclear(pgres);
-
-				}
-				_QD_currently_prepared_stmt = pstrdup(plan->query);
-			}
-#endif
 
 			if (0 == PQsendQueryPrepared(_QD_conn,
 						"",

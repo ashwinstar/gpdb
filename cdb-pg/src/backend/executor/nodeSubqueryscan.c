@@ -114,10 +114,6 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 {
 	SubqueryScanState *subquerystate;
 	List       *tlist;
-#if 0
-	// MERGEBUG
-	EState     *sp_estate; /* PG8.3 merge. See below. */
-#endif
 
 	/* check for unsupported flags */
 	Assert(!(eflags & EXEC_FLAG_MARK));
@@ -174,36 +170,6 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	/*
 	 * initialize subquery
 	 */
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-	// MERGEBUG
-	/* XXX PG8.3 Merge.
-	 * PG8.3 does not create a sp_estate and use estate directly, for whatever
-	 * reason, I don't know this will work for CDB.
-	 */
-	/*
-	 * "Loan" the global slice table and map to the subplan EState.  The
-	 * global state is already set up by the code that called us.
-	 */
-	sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
-	sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
-	sp_estate->es_sliceTable = estate->es_sliceTable;
-	sp_estate->es_slice_map = estate->es_slice_map;
-	
-	/* 
-	 * also load shared nodes list 
-	 */
-	sp_estate->es_sharenode = estate->es_sharenode;
-
-	/*
-	 * also loan the motion later state and interconnect state
-	 */
-	sp_estate->motionlayer_context = estate->motionlayer_context;
-	sp_estate->interconnect_context = estate->interconnect_context;
-
-	/* return borrowed share node list */
-	estate->es_sharenode = sp_estate->es_sharenode;
-#endif
 	subquerystate->subplan = ExecInitNode(node->subplan, estate, eflags);
 
 	/*

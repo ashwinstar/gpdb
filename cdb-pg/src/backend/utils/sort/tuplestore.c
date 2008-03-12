@@ -995,6 +995,10 @@ tuplestore_restorepos_pos(Tuplestorestate *state, TuplestorePos *pos)
 			break;
 	}
 }
+void tuplestore_restorepos(Tuplestorestate *state)
+{
+	tuplestore_restorepos_pos(state, &state->pos);
+}
 
 /*
  * tuplestore_trim	- remove all but ntuples tuples before current
