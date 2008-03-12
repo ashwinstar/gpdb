@@ -1,0 +1,46 @@
+We use vocabulary from "The Part-Time Parliament" by Leslie Lamport.
+
+Address must contain no space or underscore.
+Id must contain no space.
+Decree and result must be message.mangled.
+
+Usage:
+	Ping priestId=<id> dn=<decree-number> result=<address,...>
+	Propose decree=<decree>
+	NextBallot dn=<decree-number> bn=<ballot-number>
+	LastVote priestId=<id> dn=<decree-number> bn=<ballot-number> decree=<decree>
+	Nak dn=<decree-number> bn=<ballot-number>
+	DecreeNumberTooOld dn=<decree-number>
+	BeginBallot dn=<decree-number> bn=<ballot-number> decree=<decree>
+	Voted priestId=<id> dn=<decree-number> bn=<ballot-number> decree=<decree>
+	Success dn=<decree-number> decree=<decree>
+	Result dn=<decree-number> decree=<decree> result=<result>
+	Redirect result=<address>
+	GetLeader
+	GetState
+	State dn=<decree-number> result=<url>
+	SubtractPriest priestId=<id> result=<id>
+
+NextBallot/Nak/LastVote with negative dn means all decree-numbers >= ~dn.
+
+Client to Priest:
+	Propose
+	GetLeader
+
+Priest to Client:
+	Result
+	Redirect
+
+Priest to Priest:
+	All of them
+
+Decree:
+	"Null" is the null decree.
+	predicate* Put filename offset value
+	predicate* Get filename offset size
+	predicate* Stat filename
+	predicate* Remove filename
+	The empty string is the olive day decree.
+	Predicate:
+		If filename decree-number
+		Tag tag

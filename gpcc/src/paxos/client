@@ -1,0 +1,3 @@
+#!/bin/sh
+
+exec python bin/main.pyc Client 127.0.0.1:2001,127.0.0.1:2002,127.0.0.1:2003 "$@"

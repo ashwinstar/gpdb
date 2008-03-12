@@ -1,0 +1,16 @@
+#!/bin/sh
+exec 2>&1
+set -e
+rm -rf bin
+mkdir bin
+cd bin
+
+
+cp `find .. -name '*.py' -print` .
+a="`python -c 'import compileall;compileall.compile_dir(\".\",quiet=True)'`"
+if test -n "$a"
+then
+    echo "$a"
+    exit 1
+fi
+rm -f *.py
