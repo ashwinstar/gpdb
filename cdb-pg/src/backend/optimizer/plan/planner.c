@@ -2122,6 +2122,9 @@ choose_hashed_grouping(PlannerInfo     *root,
 	 * (Doing so would imply storing *all* the input values in the hash table,
 	 * which seems like a certain loser.)
 	 *
+	 * TODO POST-8.3-MERGE The following comment refers to code from GPDB
+	 *                     3.1.1/3.2, not code in this file.
+	 *
 	 * CDB: The parallel grouping planner can use hashed aggregation
 	 * with DISTINCT-qualified aggregates in some cases, so in case we
 	 * don't choose hashed grouping here, we make note in agg_counts to
