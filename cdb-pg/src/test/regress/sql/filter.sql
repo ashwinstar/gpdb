@@ -60,6 +60,14 @@ SELECT sum(i) FROM foo;
 SELECT sum(i) FILTER (WHERE i < 5) FROM foo;
 SELECT sum(i) FROM foo WHERE i < 5;
 
+-- SUM is special since it is non-strict to handle datatype upconversion.
+-- Run tests to make sure it works against different datatypes
+SELECT sum(i::int2) FILTER (WHERE i < 5) FROM foo;
+SELECT sum(i::int4) FILTER (WHERE i < 5) FROM foo;
+SELECT sum(i::int8) FILTER (WHERE i < 5) FROM foo;
+SELECT sum(i::float) FILTER (WHERE i < 5) FROM foo;
+SELECT sum(i::float8) FILTER (WHERE i < 5) FROM foo;
+SELECT sum(i::numeric) FILTER (WHERE i < 5) FROM foo;
 
 --- TEST with cumulative aggs
 SELECT i, j, count(j) OVER (order by i) FROM foo ORDER BY i;
