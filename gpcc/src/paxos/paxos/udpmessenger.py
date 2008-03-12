@@ -47,10 +47,8 @@ class Port:
 	    try:
 		start=time.time()
 		p = self.__socket.recvfrom(65536)
-	    except socket.error,e:
-		if e.args[0]==11 or e.args[0]=="timed out":
-		    return None
-		raise
+	    except socket.error:
+		return None
 	    if random.random()>=DROP_CHANCE:
 		break
 	fro[0] = socketAddressToString(p[1])
