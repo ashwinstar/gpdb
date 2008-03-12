@@ -267,7 +267,8 @@ _bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
 
 	/* insert this tuple into the heap */
 	tuple = heap_form_tuple(tupDesc, datum, nulls);
-	heap_insert(lovHeap, tuple, GetCurrentCommandId(true), use_wal, true, false);
+	heap_insert(lovHeap, tuple, GetCurrentCommandId(true), 
+				use_wal, true, GetCurrentTransactionId());
 
 	/*
 	 * We must bump the command counter to make the newly-inserted heap

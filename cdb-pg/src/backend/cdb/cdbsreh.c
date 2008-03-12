@@ -21,7 +21,9 @@
 #include "commands/tablecmds.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "nodes/makefuncs.h"
+#include "access/transam.h"
 
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbvars.h"
@@ -70,7 +72,9 @@ makeCdbSreh(bool is_keep, bool reusing_existing_errtable,
 	h->reusing_errtbl = reusing_existing_errtable;
 	h->cdbcopy = NULL;
 	h->errtbl = NULL;
+	h->relFrozenXid = InvalidTransactionId; /* will change to real value later */
 	h->lastsegid = 0;
+	h->consec_csv_err = 0;
 	
 	if(filename)
 		h->filename = pstrdup(filename);
@@ -183,14 +187,20 @@ void HandleSingleRowError(CdbSreh *cdbsreh)
  */
 void OpenErrorTable(CdbSreh *cdbsreh, RangeVar *errortable)
 {
-	AclResult	aclresult;
-	AclMode		required_access = ACL_INSERT;
+	AclResult		aclresult;
+	AclMode			required_access = ACL_INSERT;
+	Oid				relOid;
+	HeapTuple		tuple;
+	Form_pg_class	classform;
+
 
 	/* Open and lock the error relation, using the appropriate lock type. */
 	cdbsreh->errtbl = heap_openrv(errortable, RowExclusiveLock);
 	
+	relOid = RelationGetRelid(cdbsreh->errtbl);
+	
 	/* Check relation permissions. */
-	aclresult = pg_class_aclcheck(RelationGetRelid(cdbsreh->errtbl),
+	aclresult = pg_class_aclcheck(relOid,
 								  GetUserId(),
 								  required_access);
 	if (aclresult != ACLCHECK_OK)
@@ -211,6 +221,21 @@ void OpenErrorTable(CdbSreh *cdbsreh, RangeVar *errortable)
 				 errmsg("\"%s\" exists in the database but is a non table relation",
 						RelationGetRelationName(cdbsreh->errtbl))));
 
+	/* 
+	 * now get the frozen txn id for this relation to use when inserting 
+	 */
+	tuple = SearchSysCache(RELOID,
+						   ObjectIdGetDatum(relOid),
+						   0, 0, 0);
+	
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "OpenErrorTable: cache lookup failed for relation %u", relOid);
+	
+	classform = (Form_pg_class) GETSTRUCT(tuple);
+	
+	cdbsreh->relFrozenXid = classform->relfrozenxid;
+	
+	ReleaseSysCache(tuple);
 }
 
 /*
@@ -330,15 +355,13 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	/*
-	 * OK, store and freeze the tuple, and create index entries for it
-	 */
-	
-	// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-	freeze_heap_insert(cdbsreh->errtbl, tuple);
-#endif
+	/* store and freeze the tuple */
+	heap_insert(cdbsreh->errtbl, 
+				tuple, 
+				GetCurrentCommandId(true), 
+				true, 
+				true,
+				cdbsreh->relFrozenXid);
 	
 	heap_freetuple(tuple);
 	
@@ -359,14 +382,15 @@ void ReportSrehResults(CdbSreh *cdbsreh, int total_rejected)
 	{
 		if(cdbsreh && cdbsreh->errtbl)
 			ereport(NOTICE, 
-					(errmsg("Rejected %d badly formatted rows. Errors logged into "
-							"error table \"%s\"", 
-							total_rejected, 
+					(errmsg("Found %d data formatting errors (%d or more "
+							"input rows). Errors logged into error table \"%s\"", 
+							total_rejected, total_rejected,
 							RelationGetRelationName(cdbsreh->errtbl))));
 		else
 			ereport(NOTICE, 
-					(errmsg("Rejected %d badly formatted rows.", 
-							total_rejected)));
+					(errmsg("Found %d data formatting errors (%d or more "
+							"input rows). Rejected related input data.", 
+							total_rejected, total_rejected)));
 	}
 }
 
@@ -530,10 +554,15 @@ bool IsRejectLimitReached(CdbSreh *cdbsreh)
 {
 	bool	limit_reached = false;
 	
-	/* check for the case that we are rejecting every single row */
+	/* special case: check for the case that we are rejecting every single row */
 	if(FIRST_1000_BAD(cdbsreh))
 		return true;
 	
+	/* special case: check for un-parsable csv format errors */
+	if(CSV_IS_UNPARSABLE(cdbsreh))
+		return true;
+	
+	/* now check if actual reject limit is reached */
 	if(cdbsreh->is_limit_in_rows)
 	{
 		/* limit is in ROWS */

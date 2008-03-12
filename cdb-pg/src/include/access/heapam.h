@@ -184,7 +184,7 @@ extern void heap_get_latest_tid(Relation relation, Snapshot snapshot,
 extern void setLastTid(const ItemPointer tid);
 
 extern Oid heap_insert(Relation relation, HeapTuple tup, CommandId cid,
-			bool use_wal, bool use_fsm, bool freeze);
+			bool use_wal, bool use_fsm, TransactionId xid);
 extern HTSU_Result heap_delete(Relation relation, ItemPointer tid,
 			ItemPointer ctid, TransactionId *update_xmax,
 			CommandId cid, Snapshot crosscheck, bool wait);
@@ -201,10 +201,6 @@ extern bool heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 				  Buffer buf);
 
 extern Oid	simple_heap_insert(Relation relation, HeapTuple tup);
-// MERGEBUG
-#if 0
-extern Oid	freeze_heap_insert(Relation relation, HeapTuple tup);
-#endif
 extern void simple_heap_delete(Relation relation, ItemPointer tid);
 extern void simple_heap_update(Relation relation, ItemPointer otid,
 				   HeapTuple tup);

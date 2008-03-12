@@ -409,6 +409,7 @@ else \
 	pstate->cdbsreh->is_server_enc = pstate->line_buf_converted; \
 	pstate->cdbsreh->linenumber = pstate->cur_lineno; \
 	pstate->cdbsreh->processed = ++pstate->processed; \
+	pstate->cdbsreh->consec_csv_err = pstate->num_consec_csv_err; \
 \
 	/* set the error message. Use original msg and add column name if availble */ \
 	if (pstate->cur_attname)\
@@ -447,23 +448,32 @@ if(IsRejectLimitReached(pstate->cdbsreh)) \
 { \
 	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
 	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
+	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
 	char *finalmsg;\
 \
-	if(!FIRST_1000_BAD(pstate->cdbsreh))\
+	if(FIRST_1000_BAD(pstate->cdbsreh))\
+	{\
+		/* the special "first 1000 are bad" case */\
+		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_allbad) + 12 + 1)\
+								   * sizeof(char)); \
+		sprintf(finalmsg, "%s %s", rejectmsg_allbad, pstate->cdbsreh->errmsg);\
+	}\
+	else if(CSV_IS_UNPARSABLE(pstate->cdbsreh))\
+	{\
+		/* the special "csv un-parsable" case */\
+		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_csv_unparsable) + 12 + 1)\
+								   * sizeof(char)); \
+		sprintf(finalmsg, "%s %s", rejectmsg_csv_unparsable, pstate->cdbsreh->errmsg);\
+	}\
+	else\
 	{\
 		/* the normal case */\
 		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
 									strlen(rejectmsg_normal) + 12 + 1)\
 								   * sizeof(char)); \
 	    sprintf(finalmsg, "%s %s", rejectmsg_normal, pstate->cdbsreh->errmsg);\
-	}\
-	else\
-	{\
-		/* the special "first 1000 are bad" case */\
-		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_allbad) + 12 + 1)\
-								   * sizeof(char)); \
- 	    sprintf(finalmsg, "%s %s", rejectmsg_allbad, pstate->cdbsreh->errmsg);\
 	}\
 \
 	ereport(ERROR, \
@@ -579,7 +589,8 @@ filegettup(FileScanDesc scan,
 				}
 				PG_CATCH();
 				{
-					/* got here? encoding conversion/check error occured */
+					/* got here? encoding conversion/check error or
+					   invalid csv format error occured */
 					FILEAM_HANDLE_ERROR;
 				}
 				PG_END_TRY();					
@@ -883,6 +894,8 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		/* if necessary warn the user of the risk of table getting dropped */
 		if(Gp_role == GP_ROLE_DISPATCH && curTxnCreatedErrtbl)
 			emitSameTxnWarning();
+
+		pstate->num_consec_csv_err = 0;
 	}
 			
 	initStringInfo(&pstate->attribute_buf);

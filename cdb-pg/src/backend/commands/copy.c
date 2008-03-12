@@ -2147,6 +2147,7 @@ else \
 	cstate->cdbsreh->is_server_enc = cstate->line_buf_converted; \
 	cstate->cdbsreh->linenumber = cstate->cur_lineno; \
 	cstate->cdbsreh->processed = ++cstate->processed; \
+	cstate->cdbsreh->consec_csv_err = cstate->num_consec_csv_err; \
 \
 	/* set the error message. Use original msg and add column name if availble */ \
 	if (cstate->cur_attname)\
@@ -2197,23 +2198,32 @@ if(IsRejectLimitReached(cstate->cdbsreh)) \
 {\
 	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
 	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
+	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
 	char *finalmsg;\
 \
-	if(!FIRST_1000_BAD(cstate->cdbsreh))\
+	if(FIRST_1000_BAD(cstate->cdbsreh))\
+	{\
+		/* the special "first 1000 are bad" case */\
+		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_allbad) + 12 + 1)\
+								   * sizeof(char)); \
+									   sprintf(finalmsg, "%s %s", rejectmsg_allbad, cstate->cdbsreh->errmsg);\
+	}\
+	else if(CSV_IS_UNPARSABLE(cstate->cdbsreh))\
+	{\
+		/* the special "csv un-parsable" case */\
+		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_csv_unparsable) + 12 + 1)\
+								   * sizeof(char)); \
+									   sprintf(finalmsg, "%s %s", rejectmsg_csv_unparsable, cstate->cdbsreh->errmsg);\
+	}\
+	else\
 	{\
 		/* the normal case */\
 		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
 									strlen(rejectmsg_normal) + 12 + 1)\
 								   * sizeof(char)); \
  	    sprintf(finalmsg, "%s %s", rejectmsg_normal, cstate->cdbsreh->errmsg);\
-	}\
-	else\
-	{\
-		/* the special "first 1000 are bad" case */\
-		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_allbad) + 12 + 1)\
-								   * sizeof(char)); \
-		sprintf(finalmsg, "%s %s", rejectmsg_allbad, cstate->cdbsreh->errmsg);\
 	}\
 \
 	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
@@ -2828,6 +2838,7 @@ CopyFromDispatch(CopyState cstate)
 	{
 		cstate->in_quote = false;
 		cstate->last_was_esc = false;
+		cstate->num_consec_csv_err = 0;
 	}
 
 	cstate->null_print_len = strlen(cstate->null_print);
@@ -2961,7 +2972,8 @@ CopyFromDispatch(CopyState cstate)
 					}
 					PG_CATCH();
 					{
-						/* got here? encoding conversion/check error occured */
+						/* got here? encoding conversion/check error or
+						   invalid csv format error occured */
 						COPY_HANDLE_ERROR;
 					}
 					PG_END_TRY();					
@@ -3568,6 +3580,9 @@ CopyFrom(CopyState cstate)
 	ExprContext *econtext;		/* used for ExecEvalExpr for default atts */
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ErrorContextCallback errcontext;
+	CommandId   mycid = GetCurrentCommandId(true);
+	bool        use_wal = true; /* by default, use WAL logging */
+	bool        use_fsm = true; /* by default, use FSM for free space */
 	int		   *attr_offsets;
 	bool		no_more_data;
 	ListCell   *cur;
@@ -3741,6 +3756,7 @@ CopyFrom(CopyState cstate)
 	{
 		cstate->in_quote = false;
 		cstate->last_was_esc = false;
+		cstate->num_consec_csv_err = 0;
 	}
 
 	cstate->null_print_len = strlen(cstate->null_print);
@@ -4150,11 +4166,9 @@ CopyFrom(CopyState cstate)
 					if (cstate->rel->rd_att->constr)
 						ExecConstraints(resultRelInfo, slot, estate);
 
-					// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-					bool use_wal = true; bool use_fsm=true; CommandId mycid = 0;
 					/* OK, store the tuple and create index entries for it */
-					heap_insert(cstate->rel, tuple, mycid, use_wal, use_fsm, false);
+					heap_insert(cstate->rel, tuple, mycid, use_wal, use_fsm, 
+								GetCurrentTransactionId());
 
 					if (resultRelInfo->ri_NumIndices > 0)
 						ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
@@ -4537,6 +4551,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 	char	   *cvt;
 	char		quotec = '\0',
 				escapec = '\0';
+	bool		csv_is_invalid = false;
 
 	/* mark that encoding conversion hasn't occurred yet */
 	cstate->line_buf_converted = false;
@@ -4652,6 +4667,10 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 			/* end of line only if not in quotes */
 			if (cstate->in_quote)
 			{
+				/* buf done, but still in quote */
+				if (cstate->raw_buf_index >= bytesread)
+					cstate->raw_buf_done = true;
+									
 				cstate->line_done = false;
 
 				/* update file line for error message */
@@ -4662,12 +4681,22 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 				 */
 				cstate->cur_lineno++;
 
-				/* buf done, but still in quote */
-				if (cstate->raw_buf_index >= bytesread)
-				{
-					cstate->raw_buf_done = true;
+				/* 
+				 * If we are still in quotes and linebuf len is extremely large 
+				 * then this file has bad csv and we have to stop the rolling 
+				 * snowball from getting bigger.
+				 */
+				if(cstate->line_buf.len >= MAX_CSV_LINE_LEN)
+				{	
+					csv_is_invalid = true;
+					cstate->in_quote = false;
+					cstate->line_done = true;
+					cstate->num_consec_csv_err++;
 					break;
 				}
+				
+				if (cstate->raw_buf_done)
+					break;
 			}
 			else
 			{
@@ -4744,6 +4773,17 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 	/* indicate that conversion had occured */
 	cstate->line_buf_converted = true;
 
+	/*
+	 * We have a corrupted csv format case. It is already converted to server
+	 * encoding, *which is necessary*. Ok, we can report an error now.
+	 */
+	if(csv_is_invalid)
+		ereport(ERROR,
+				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+				 errmsg("data line too long. likely due to invalid csv data")));
+	else
+		cstate->num_consec_csv_err = 0; /* reset consecutive count */
+		
 	/*
 	 * check if this line is an end marker -- "\."
 	 */
@@ -5560,7 +5600,7 @@ CopyAttributeOutText(CopyState cstate, char *string)
 	char	   *start;
 	char		c;
 	char		delimc = cstate->delim[0];
-	char      escapec = cstate->escape[0];
+	char		escapec = cstate->escape[0];
 	
 	if (cstate->need_transcoding)
 		ptr = pg_server_to_client(string, strlen(string));
@@ -5643,16 +5683,6 @@ CopyAttributeOutText(CopyState cstate, char *string)
 				ptr++;
 		}
 
-		// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-	/*
-	 * If we skipped writing WAL, then we need to sync the heap (but not
-	 * indexes since those use WAL anyway)
-	 */
-	if (!use_wal)
-		heap_sync(cstate->rel);
-#endif
 	}
 	else
 	{
@@ -6458,7 +6488,8 @@ DoCopyDispatchAgent(const CopyStmt *stmt)
 						}
 						PG_CATCH();
 						{
-							/* got here? encoding conversion/check error occured */
+							/* got here? encoding conversion/check error or
+							   invalid csv format error occured */
 							COPY_HANDLE_ERROR;
 						}
 						PG_END_TRY();					
