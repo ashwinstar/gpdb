@@ -1067,7 +1067,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * them after EquivalenceClasses have been formed.
 		 */
 		root->group_pathkeys =
-			make_pathkeys_for_sortclauses(root,
+			make_pathkeys_for_groupclause(root,
 										  parse->groupClause,
 										  tlist,
 										  false);

@@ -219,8 +219,10 @@ extern List *make_pathkeys_for_sortclauses(PlannerInfo *root,
 							  List *sortclauses,
 							  List *tlist,
 							  bool canonicalize);
-extern List *make_pathkeys_for_groupclause(List *groupclause,
-										   List *tlist);
+extern List *make_pathkeys_for_groupclause(PlannerInfo *root,
+										   List *groupclause,
+										   List *tlist,
+										   bool canonicalize);
 extern void cache_mergeclause_eclasses(PlannerInfo *root,
 						   RestrictInfo *restrictinfo);
 extern List *find_mergeclauses_for_pathkeys(PlannerInfo *root,

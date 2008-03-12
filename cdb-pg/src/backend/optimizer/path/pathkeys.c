@@ -874,6 +874,88 @@ make_pathkeys_for_sortclauses(PlannerInfo *root,
 }
 
 /****************************************************************************
+ *      PATHKEYS AND GROUPCLAUSES AND GROUPINGCLAUSE
+ ***************************************************************************/
+
+/*
+ * make_pathkeys_for_groupclause
+ *   Generate a pathkeys list that represents the sort order specified by
+ *   a list of GroupClauses or GroupingClauses.
+ *
+ * Note: similar to make_pathkeys_for_sortclauses, the result is NOT in
+ * canonical form.
+ */
+List *
+make_pathkeys_for_groupclause(PlannerInfo *root,
+							  List *groupclause,
+							  List *tlist,
+							  bool canonicalize)
+{
+	List *pathkeys = NIL;
+	ListCell *l;
+
+	List *sub_pathkeys = NIL;
+
+	foreach(l, groupclause)
+	{
+		Node	   *sortkey;
+		PathKey	   *pathkey;
+
+		Node *node = lfirst(l);
+
+		if (node == NULL)
+			continue;
+
+		if (IsA(node, GroupClause))
+		{
+			GroupClause *gc = (GroupClause*) node;
+			sortkey = get_sortgroupclause_expr(gc, tlist);
+			
+			pathkey = make_pathkey_from_sortinfo(root, 
+												 sortkey, 
+												 gc->sortop,
+												 gc->nulls_first,
+												 gc->tleSortGroupRef,
+												 canonicalize
+												 );
+
+			/* Canonical form eliminates redundant ordering keys */
+			if (canonicalize)
+			{
+				if (!pathkey_is_redundant(pathkey, pathkeys))
+					pathkeys = lappend(pathkeys, pathkey);
+			}
+			else
+				pathkeys = lappend(pathkeys, pathkey);
+		}
+
+		else if (IsA(node, List))
+		{
+			pathkeys = list_concat(pathkeys,
+								   make_pathkeys_for_groupclause(root, 
+																 (List *)node,
+																 tlist,
+																 canonicalize));
+		}
+
+		else if (IsA(node, GroupingClause))
+		{
+			sub_pathkeys =
+				list_concat(sub_pathkeys,
+							make_pathkeys_for_groupclause(root,
+														  ((GroupingClause*)node)->groupsets,
+														  tlist,
+														  canonicalize));
+		}
+	}
+
+	pathkeys = list_concat(pathkeys, sub_pathkeys);
+
+	return pathkeys;
+}
+
+
+/****************************************************************************
  *		PATHKEYS AND MERGECLAUSES
  ****************************************************************************/
 
