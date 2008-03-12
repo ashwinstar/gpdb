@@ -245,7 +245,9 @@ checkNameSpaceConflicts(ParseState *pstate, List *namespace1,
 {
 	ListCell   *l1;
 
-	foreach(l1, namespace1)
+    UnusedArg(pstate);
+    
+    foreach(l1, namespace1)
 	{
 		RangeTblEntry *rte1 = (RangeTblEntry *) lfirst(l1);
 		const char *aliasname1 = rte1->eref->aliasname;
@@ -1551,6 +1553,11 @@ expandRelAttrs(ParseState *pstate, RangeTblEntry *rte,
  *
  * "*" is returned if the given attnum is InvalidAttrNumber --- this case
  * occurs when a Var represents a whole tuple of a relation.
+ *
+ * CDB: If an invalid reference is found during EXPLAIN, don't throw an 
+ * error; instead give a warning and let the plan be displayed with the 
+ * name shown as "*BOGUS*".  These are much easier to debug when we can
+ * see the context in which the node occurs.
  */
 const char *
 get_rte_attribute_name(RangeTblEntry *rte, AttrNumber attnum)
@@ -1574,7 +1581,12 @@ get_rte_attribute_name(RangeTblEntry *rte, AttrNumber attnum)
 	 * built (which can easily happen for rules).
 	 */
 	if (rte->rtekind == RTE_RELATION)
-		return get_relid_attribute_name(rte->relid, attnum);
+    {
+        name = get_attname(rte->relid, attnum);
+        if (!name)
+            goto bogus;
+        return name;
+    }
 
 	/*
 	 * Otherwise use the column name from eref.  There should always be one.
@@ -1593,12 +1605,14 @@ get_rte_attribute_name(RangeTblEntry *rte, AttrNumber attnum)
 		return NameStr(att_tup->attname);
     }
 
-	/* else caller gave us a bogus attnum */
+bogus:
+    /* else caller gave us a bogus attnum */
     name = (rte->eref && rte->eref->aliasname) ? rte->eref->aliasname
                                                : "*BOGUS*";
     ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
-                      errmsg_internal("invalid attnum %d for rangetable entry %s",
-                                      attnum, name) ));
+                      errmsg("invalid attnum %d for rangetable entry %s",
+                             attnum, name) 
+                      ));
 	return name;
 }
 

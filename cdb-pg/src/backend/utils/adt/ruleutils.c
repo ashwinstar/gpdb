@@ -161,13 +161,8 @@ static void get_rule_groupingclause(GroupingClause *grp, List *tlist,
 static Node *get_rule_sortgroupclause(SortClause *srt, List *tlist,
 						 bool force_colno,
 						 deparse_context *context);
-static char *get_variable(Var *var, int levelsup, bool showstar,
-			 deparse_context *context);
-
-static void get_names_for_var(Var *var, int levelsup, deparse_context *context,
-				  const char **schemaname,
-                  const char **refname,
-                  const char **attname);
+static const char *get_variable(Var *var, int levelsup, bool showstar,
+			             deparse_context *context);
 static RangeTblEntry *find_rte_by_refname(const char *refname,
 					deparse_context *context);
 static const char *get_simple_binary_op_name(OpExpr *expr);
@@ -180,23 +175,21 @@ static void get_rule_expr(Node *node, deparse_context *context,
 static void get_oper_expr(OpExpr *expr, deparse_context *context);
 static void get_func_expr(FuncExpr *expr, deparse_context *context,
 			  bool showimplicit);
-static void get_groupingfunc_expr(GroupingFunc *grpfunc,
-								  deparse_context *context);
 static void get_agg_expr(Aggref *aggref, deparse_context *context);
 static void get_coercion_expr(Node *arg, deparse_context *context,
 				  Oid resulttype, int32 resulttypmod,
 				  Node *parentNode);
 static void get_const_expr(Const *constval, deparse_context *context,
 			   int showtype);
-static void get_windowedge_expr(WindowFrameEdge *edge, 
-								deparse_context *context);
+static void get_groupingfunc_expr(GroupingFunc *grpfunc,
+								  deparse_context *context);
 static void get_sortlist_expr(List *l, deparse_context *context, 
 							  char *keyword_clause);
+static void get_sublink_expr(SubLink *sublink, deparse_context *context);
+static void get_windowedge_expr(WindowFrameEdge *edge, 
+								deparse_context *context);
 static void get_windowspec_expr(WindowSpec *spec, deparse_context *context);
 static void get_windowref_expr(WindowRef *wref, deparse_context *context);
-static void get_const_expr(Const *constval, deparse_context *context,
-						   int showtype);
-static void get_sublink_expr(SubLink *sublink, deparse_context *context);
 static void get_from_clause(Query *query, const char *prefix,
 				deparse_context *context);
 static void get_from_clause_item(Node *jtnode, Query *query,
@@ -1536,38 +1529,6 @@ deparse_context_for_plan(Node *outer_plan, Node *inner_plan,
 	return list_make1(dpns);
 }
 
-/*
- * deparse_context_for_subplan	- Build deparse context for a plan node
- *
- * Helper routine to build one of the inputs for deparse_context_for_plan.
- * Pass the name to be used to reference the subplan, plus the Plan node.
- * (subplan really ought to be declared as "Plan *", but we use "Node *"
- * to avoid having to include plannodes.h in builtins.h.)
- *
- * The returned node is actually a RangeTblEntry, but we declare it as just
- * Node to discourage callers from assuming anything.
- */
-Node *
-deparse_context_for_subplan(const char *name, Node *subplan)
-{
-	RangeTblEntry *rte = makeNode(RangeTblEntry);
-
-	/*
-	 * We create an RTE_SPECIAL RangeTblEntry, and store the subplan in its
-	 * funcexpr field.	RTE_SPECIAL nodes shouldn't appear in deparse contexts
-	 * otherwise.
-	 */
-	rte->rtekind = RTE_SPECIAL;
-	rte->relid = InvalidOid;
-	rte->funcexpr = subplan;
-	rte->alias = NULL;
-    rte->eref = name ? makeAlias(name, NIL) : NULL;     /*CDB*/
-	rte->inh = false;
-	rte->inFromCl = true;
-
-	return (Node *) rte;
-}
-
 /* ----------
  * make_ruledef			- reconstruct the CREATE RULE command
  *				  for a given pg_rewrite tuple
@@ -2132,16 +2093,7 @@ get_basic_select_query(Query *query, deparse_context *context,
 	{
 		appendContextKeyword(context, " GROUP BY ",
 							 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
-		sep = "";
-		foreach(l, query->groupClause)
-		{
-			GroupClause *grp = (GroupClause *) lfirst(l);
-
-			appendStringInfoString(buf, sep);
-			get_rule_sortgroupclause(grp, query->targetList,
-									 false, context);
-			sep = ", ";
-		}
+		get_rule_grouplist(query->groupClause, query->targetList, false, context);
 	}
 
 	/* Add the HAVING clause if given */
@@ -2335,7 +2287,6 @@ get_setop_query(Node *setOp, Query *query, deparse_context *context,
 }
 
 
-
 /*
  * Display a list of grouping or (grouping extension) clauses.
  *
@@ -2397,6 +2348,7 @@ get_rule_grouplist(List *grplist, List *tlist,
 	}
 }
 
+
 /*
  * Display a grouping extension clause.
  */
@@ -2427,6 +2379,7 @@ get_rule_groupingclause(GroupingClause *grp, List *tlist,
 	get_rule_grouplist(grp->groupsets, tlist, in_grpsets, context);
 	appendStringInfoString(buf, ")");
 }
+
 
 /*
  * Display a sort/group clause.
@@ -2724,6 +2677,34 @@ get_delete_query_def(Query *query, deparse_context *context)
 	}
 }
 
+
+/* ----------
+ * get_utility_query_def			- Parse back a UTILITY parsetree
+ * ----------
+ */
+static void
+get_utility_query_def(Query *query, deparse_context *context)
+{
+	StringInfo	buf = context->buf;
+
+	if (query->utilityStmt && IsA(query->utilityStmt, NotifyStmt))
+	{
+		NotifyStmt *stmt = (NotifyStmt *) query->utilityStmt;
+
+		appendContextKeyword(context, "",
+							 0, PRETTYINDENT_STD, 1);
+		appendStringInfo(buf, "NOTIFY %s",
+					   quote_qualified_identifier(stmt->relation->schemaname,
+												  stmt->relation->relname));
+	}
+	else
+	{
+		/* Currently only NOTIFY utility commands can appear in rules */
+		elog(ERROR, "unexpected utility statement type");
+	}
+}
+
+
 /*
  * push_plan: set up deparse_namespace to recurse into the tlist of a subplan
  *
@@ -2757,214 +2738,6 @@ push_plan(deparse_namespace *dpns, Plan *subplan)
 }
 
 
-/* ----------
- * get_utility_query_def			- Parse back a UTILITY parsetree
- * ----------
- */
-static void
-get_utility_query_def(Query *query, deparse_context *context)
-{
-	StringInfo	buf = context->buf;
-
-	if (query->utilityStmt && IsA(query->utilityStmt, NotifyStmt))
-	{
-		NotifyStmt *stmt = (NotifyStmt *) query->utilityStmt;
-
-		appendContextKeyword(context, "",
-							 0, PRETTYINDENT_STD, 1);
-		appendStringInfo(buf, "NOTIFY %s",
-					   quote_qualified_identifier(stmt->relation->schemaname,
-												  stmt->relation->relname));
-	}
-	else
-	{
-		/* Currently only NOTIFY utility commands can appear in rules */
-		elog(ERROR, "unexpected utility statement type");
-	}
-}
-
-#warning MERGEBUG this code is broken by the 8.3 merge
-// MERGEBUG
-#if 0
-/*
- * Get the RTE referenced by a (possibly nonlocal) Var.
- *
- * The appropriate attribute number is stored into *attno
- * (do not assume that var->varattno is what to use).
- *
- * In some cases (currently only when recursing into an unnamed join)
- * the Var's varlevelsup has to be interpreted with respect to a context
- * above the current one; levelsup indicates the offset.
- */
-static RangeTblEntry *
-get_rte_for_var(Var *var, int levelsup, deparse_context *context,
-				AttrNumber *attno)
-{
-	StringInfo	buf = context->buf;
-	RangeTblEntry *rte;
-	int			netlevelsup;
-	deparse_namespace *dpns;
-
-	/* default assumption */
-	*attno = var->varattno;
-
-	/* Find appropriate nesting depth */
-	netlevelsup = var->varlevelsup + levelsup;
-	if (netlevelsup >= list_length(context->namespaces))
-		elog(ERROR, "bogus varlevelsup: %d offset %d",
-			 var->varlevelsup, levelsup);
-	dpns = (deparse_namespace *) list_nth(context->namespaces,
-										  netlevelsup);
-
-	/*
-	 * Try to find the relevant RTE in this rtable.  In a plan tree, it's
-	 * likely that varno is OUTER, INNER, or 0, in which case we try to use
-	 * varnoold instead.  If the Var references an expression computed by a
-	 * subplan, varnoold will be 0, and we fall back to looking at the special
-	 * subplan RTEs.
-	 */
-	if (var->varno >= 1 && var->varno <= list_length(dpns->rtable))
-		rte = rt_fetch(var->varno, dpns->rtable);
-	else if (var->varnoold >= 1 && var->varnoold <= list_length(dpns->rtable))
-	{
-		rte = rt_fetch(var->varnoold, dpns->rtable);
-		*attno = var->varoattno;
-	}
-	else if (var->varno == dpns->outer_varno)
-		rte = dpns->outer_rte;
-	else if (var->varno == dpns->inner_varno)
-		rte = dpns->inner_rte;
-	else
-		rte = NULL;
-	return rte;
-}
-
-
-/*
- * Get the schemaname, refname and attname for a (possibly nonlocal) Var.
- *
- * In some cases (currently only when recursing into an unnamed join)
- * the Var's varlevelsup has to be interpreted with respect to a context
- * above the current one; levelsup indicates the offset.
- *
- * schemaname is usually returned as NULL.	It will be non-null only if
- * use of the unqualified refname would find the wrong RTE.
- *
- * refname will be returned as NULL if the Var references an unnamed join.
- * In this case the Var *must* be displayed without any qualification.
- *
- * attname will be returned as NULL if the Var represents a whole tuple
- * of the relation.  (Typically we'd want to display the Var as "foo.*",
- * but it's convenient to return NULL to make it easier for callers to
- * distinguish this case.)
- */
-static void
-get_names_for_var(Var *var, int levelsup, deparse_context *context,
-				  const char  **schemaname,
-                  const char  **refname,
-                  const char  **attname)
-{
-	RangeTblEntry *rte;
-	AttrNumber	attnum;
-
-	/* Find appropriate RTE */
-	rte = get_rte_for_var(var, levelsup, context, &attnum);
-
-	/* Emit results */
-	*schemaname = NULL;			/* default assumptions */
-
-    if (rte == NULL ||
-        rte->rtekind == RTE_VOID)
-    {
-        *attname = NULL;
-        *refname = "*BOGUS*";
-        ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
-                          errmsg_internal("bogus var: varno=%d varattno=%d",
-                                          var->varno, var->varattno) ));
-        return;
-    }
-
-    if (rte->eref)
-        *refname = rte->eref->aliasname;
-    else
-        *refname = NULL;
-
-	/* Exceptions occur only if the RTE is alias-less */
-	if (rte->alias == NULL)
-	{
-		if (rte->rtekind == RTE_RELATION)
-		{
-			/*
-			 * It's possible that use of the bare refname would find another
-			 * more-closely-nested RTE, or be ambiguous, in which case we need
-			 * to specify the schemaname to avoid these errors.
-			 */
-			if (rte->eref &&
-                find_rte_by_refname(rte->eref->aliasname, context) != rte)
-				*schemaname =
-					get_namespace_name(get_rel_namespace(rte->relid));
-		}
-		else if (rte->rtekind == RTE_JOIN)
-		{
-			/*
-			 * If it's an unnamed join, look at the expansion of the alias
-			 * variable.  If it's a simple reference to one of the input vars
-			 * then recursively find the name of that var, instead. (This
-			 * allows correct decompiling of cases where there are identically
-			 * named columns on both sides of the join.) When it's not a
-			 * simple reference, we have to just return the unqualified
-			 * variable name (this can only happen with columns that were
-			 * merged by USING or NATURAL clauses).
-			 */
-			if (attnum > 0)
-			{
-				Var		   *aliasvar;
-
-				aliasvar = (Var *) list_nth(rte->joinaliasvars, attnum - 1);
-				if (IsA(aliasvar, Var))
-				{
-					return get_variable(aliasvar, var->varlevelsup + levelsup,
-										showstar, context);
-				}
-			}
-			/* Unnamed join has neither schemaname nor refname */
-			refname = NULL;
-		}
-		else if (rte->rtekind == RTE_SPECIAL)
-		{
-			/*
-			 * This case occurs during EXPLAIN when we are looking at a
-			 * deparse context node set up by deparse_context_for_subplan().
-			 * If the subplan tlist provides a name, use it, but usually we'll
-			 * end up with "?columnN?".
-			 */
-			TargetEntry    *tle = NULL;
-
-			if (rte->funcexpr)
-				tle = get_tle_by_resno(((Plan *)rte->funcexpr)->targetlist, attnum);
-
-			// MERGEBUG
-#if 0
-		if (strcmp(refname, "*NEW*") == 0)
-			appendStringInfoString(buf, "new");
-		else if (strcmp(refname, "*OLD*") == 0)
-			appendStringInfoString(buf, "old");
-		else
-			appendStringInfoString(buf, quote_identifier(refname));
-
-		if (attname || showstar)
-			appendStringInfoChar(buf, '.');
-	}
-	if (attname)
-		appendStringInfoString(buf, quote_identifier(attname));
-	else if (showstar)
-		appendStringInfoChar(buf, '*');
-
-	return attname;
-#endif
-}
-#endif 
-
 /*
  * Display a Var appropriately.
  *
@@ -2976,8 +2749,13 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
  * if FALSE, merely as "foo".
  *
  * Returns the attname of the Var, or NULL if not determinable.
+ *
+ * CDB: If an invalid Var node is found during EXPLAIN, don't throw an 
+ * error; instead give a warning and let the plan be displayed with the 
+ * bad node shown as "*BOGUS*".  These are much easier to debug when we 
+ * can see the context in which the node occurs.
  */
-static char *
+static const char *
 get_variable(Var *var, int levelsup, bool showstar, deparse_context *context)
 {
 	StringInfo	buf = context->buf;
@@ -2987,7 +2765,7 @@ get_variable(Var *var, int levelsup, bool showstar, deparse_context *context)
 	deparse_namespace *dpns;
 	char	   *schemaname;
 	char	   *refname;
-	char	   *attname;
+	const char *attname;
 
 	/* Find appropriate nesting depth */
 	netlevelsup = var->varlevelsup + levelsup;
@@ -3066,14 +2844,29 @@ get_variable(Var *var, int levelsup, bool showstar, deparse_context *context)
 		return NULL;
 	}
 	else
-	{
-		elog(ERROR, "bogus varno: %d", var->varno);
-		return NULL;			/* keep compiler quiet */
-	}
+    {
+        rte = NULL;
+        attnum = 0;
+    }
+
+    if (rte == NULL ||
+        rte->rtekind == RTE_VOID)
+    {
+        attname = "*BOGUS*";
+        appendStringInfoString(buf, attname);
+        ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+                          errmsg("bogus var: varno=%d varattno=%d",
+                                 var->varno, var->varattno) 
+                          ));
+        return attname;
+    }
 
 	/* Identify names to use */
 	schemaname = NULL;			/* default assumptions */
-	refname = rte->eref->aliasname;
+    if (rte->eref)
+        refname = rte->eref->aliasname;
+    else
+        refname = NULL;
 
 	/* Exceptions occur only if the RTE is alias-less */
 	if (rte->alias == NULL)
@@ -3085,7 +2878,8 @@ get_variable(Var *var, int levelsup, bool showstar, deparse_context *context)
 			 * more-closely-nested RTE, or be ambiguous, in which case we need
 			 * to specify the schemaname to avoid these errors.
 			 */
-			if (find_rte_by_refname(rte->eref->aliasname, context) != rte)
+			if (rte->eref &&
+                find_rte_by_refname(rte->eref->aliasname, context) != rte)
 				schemaname = get_namespace_name(get_rel_namespace(rte->relid));
 		}
 		else if (rte->rtekind == RTE_JOIN)
@@ -3152,7 +2946,6 @@ get_variable(Var *var, int levelsup, bool showstar, deparse_context *context)
 }
 
 
-
 /*
  * Get the name of a field of an expression of composite type.
  *
@@ -3168,7 +2961,7 @@ static const char *
 get_name_for_var_field(Var *var, int fieldno,
 					   int levelsup, deparse_context *context)
 {
-	RangeTblEntry *rte;
+	RangeTblEntry *rte = NULL;
 	AttrNumber	attnum;
 	int			netlevelsup;
 	deparse_namespace *dpns;
@@ -3258,10 +3051,7 @@ get_name_for_var_field(Var *var, int fieldno,
 		return result;
 	}
 	else
-	{
-		elog(ERROR, "bogus varno: %d", var->varno);
-		return NULL;			/* keep compiler quiet */
-	}
+        goto bogus;
 
 	if (attnum == InvalidAttrNumber)
 	{
@@ -3297,10 +3087,8 @@ get_name_for_var_field(Var *var, int fieldno,
 					/* Subselect-in-FROM: examine sub-select's output expr */
 					TargetEntry *ste = get_tle_by_resno(rte->subquery->targetList,
 														attnum);
-
 					if (ste == NULL || ste->resjunk)
-						elog(ERROR, "subquery %s does not have attribute %d",
-							 rte->eref->aliasname, attnum);
+                        goto bogus;
 					expr = (Node *) ste->expr;
 					if (IsA(expr, Var))
 					{
@@ -3349,8 +3137,7 @@ get_name_for_var_field(Var *var, int fieldno,
 					tle = get_tle_by_resno(dpns->inner_plan->targetlist,
 										   attnum);
 					if (!tle)
-						elog(ERROR, "bogus varattno for subquery var: %d",
-							 attnum);
+                        goto bogus;
 					Assert(netlevelsup == 0);
 					save_outer = dpns->outer_plan;
 					save_inner = dpns->inner_plan;
@@ -3384,6 +3171,9 @@ get_name_for_var_field(Var *var, int fieldno,
 			 * its result columns as RECORD, which is not allowed.
 			 */
 			break;
+        case RTE_VOID:
+            /* No references should exist to a deleted RTE. */
+            goto bogus;
 	}
 
 	/*
@@ -3399,6 +3189,20 @@ get_name_for_var_field(Var *var, int fieldno,
 	/* Got the tupdesc, so we can extract the field name */
 	Assert(fieldno >= 1 && fieldno <= tupleDesc->natts);
 	return NameStr(tupleDesc->attrs[fieldno - 1]->attname);
+
+bogus:
+    /*
+     * CDB: If an invalid Var node is found during EXPLAIN, don't throw an 
+     * error; instead give a warning and let the plan be displayed with the 
+     * bad node shown as "*BOGUS*".  These are much easier to debug when we 
+     * can see the context in which the node occurs.
+     */
+    ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+                      errmsg("bogus var: %s varno=%d varattno=%d",
+                             (rte && rte->eref) ? rte->eref->aliasname : "",
+                             var->varno, var->varattno)
+                      ));
+    return "*BOGUS*";
 }
 
 
@@ -3429,7 +3233,8 @@ find_rte_by_refname(const char *refname, deparse_context *context)
 		{
 			RangeTblEntry *rte = (RangeTblEntry *) lfirst(rtlist);
 
-			if (strcmp(rte->eref->aliasname, refname) == 0)
+            if (rte->eref &&
+                strcmp(rte->eref->aliasname, refname) == 0)
 			{
 				if (result)
 					return NULL;	/* it's ambiguous */
@@ -3636,7 +3441,7 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 						{
 							case NOT_EXPR:
 							case AND_EXPR:
-								if (parentType == AND_EXPR || parentType == OR_EXPR)
+								if (parentType == AND_EXPR)  /*CDB*/
 									return true;
 								break;
 							case OR_EXPR:
@@ -3780,30 +3585,12 @@ get_rule_expr(Node *node, deparse_context *context,
 			(void) get_variable((Var *) node, 0, true, context);
 			break;
 
+		case T_Const:
+			get_const_expr((Const *) node, context, 0);
+			break;
 
 		case T_Param:
 			appendStringInfo(buf, "$%d", ((Param *) node)->paramid);
-			break;
-			// MERGEBUG
-#if 0
-					if (strcmp(refname, "*NEW*") == 0)
-						appendStringInfoString(buf, "new.");
-					else if (strcmp(refname, "*OLD*") == 0)
-						appendStringInfoString(buf, "old.");
-					else
-						appendStringInfo(buf, "%s.",
-										 quote_identifier(refname));
-				}
-				if (attname)
-					appendStringInfoString(buf, quote_identifier(attname));
-				else
-					appendStringInfoString(buf, "*");
-			}
-			break;
-#endif
-
-		case T_Const:
-			get_const_expr((Const *) node, context, 0);
 			break;
 
 		case T_Grouping:
@@ -3818,12 +3605,12 @@ get_rule_expr(Node *node, deparse_context *context,
 			get_groupingfunc_expr((GroupingFunc *)node, context);
 			break;
 
-		case T_Aggref:
-			get_agg_expr((Aggref *) node, context);
-			break;
-
 		case T_WindowRef:
 			get_windowref_expr((WindowRef *)node, context);
+			break;
+
+		case T_Aggref:
+			get_agg_expr((Aggref *) node, context);
 			break;
 
 		case T_ArrayRef:
@@ -4134,13 +3921,13 @@ get_rule_expr(Node *node, deparse_context *context,
 						 */
 						if (IsA(w, OpExpr))
 						{
+                            OpExpr     *opexpr = (OpExpr *)w;  /*CDB*/
 							Node	   *rhs;
 
-							Assert(IsA(linitial(((OpExpr *) w)->args),
-									   CaseTestExpr) ||
-								   IsA(linitial(((OpExpr *) w)->args),
-									   Const));
-							rhs = (Node *) lsecond(((OpExpr *) w)->args);
+                            Assert(IsA(linitial(opexpr->args), CaseTestExpr) ||
+								   IsA(linitial(opexpr->args), Const) ||
+                                   IsA(linitial(opexpr->args), RelabelType));
+							rhs = (Node *) lsecond(opexpr->args);
 							get_rule_expr(rhs, context, false);
 						}
 						else if (IsA(w, CaseTestExpr))
@@ -4182,7 +3969,7 @@ get_rule_expr(Node *node, deparse_context *context,
 			}
 			break;
 
-				case T_RowExpr:
+		case T_RowExpr:
 			{
 				RowExpr    *rowexpr = (RowExpr *) node;
 				TupleDesc	tupdesc = NULL;
@@ -4736,41 +4523,6 @@ get_func_expr(FuncExpr *expr, deparse_context *context,
 }
 
 /*
- * get_groupingfunc_expr - Parse back a grouping function node.
- */
-static void
-get_groupingfunc_expr(GroupingFunc *grpfunc, deparse_context *context)
-{
-	StringInfo buf = context->buf;
-	ListCell *lc;
-	char *sep = "";
-	List *group_exprs;
-	if (context->query == NULL)
-	{
-		appendStringInfoString(buf, "grouping");
-		return;
-	}
-
-	group_exprs = get_grouplist_exprs(context->query->groupClause,
-									  context->query->targetList);
-
-	appendStringInfoString(buf, "grouping(");
-	foreach (lc, grpfunc->args)
-	{
-		int entry_no = (int)intVal(lfirst(lc));
-		Node *expr;
-		Assert (entry_no < list_length(context->query->targetList));
-
-		expr = (Node *)list_nth(group_exprs, entry_no);
-		appendStringInfoString(buf, sep);
-		get_rule_expr(expr, context, true);
-		sep = ", ";
-	}
-	
-	appendStringInfoString(buf, ")");
-}
-
-/*
  * get_agg_expr			- Parse back an Aggref node
  */
 static void
@@ -4830,237 +4582,6 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 	appendStringInfoChar(buf, ')');
 }
 
-static void
-get_windowedge_expr(WindowFrameEdge *edge, deparse_context *context)
-{
-	StringInfo buf = context->buf;
-
-	switch(edge->kind)
-	{
-		case WINDOW_UNBOUND_PRECEDING:
-			appendStringInfo(buf, " UNBOUNDED PRECEDING");
-			break;
-		case WINDOW_BOUND_PRECEDING:
-			get_rule_expr(edge->val, context, true);
-			appendStringInfo(buf, " PRECEDING");
-			break;
-		case WINDOW_CURRENT_ROW:
-			appendStringInfo(buf, " CURRENT ROW");
-			break;
-		case WINDOW_BOUND_FOLLOWING:
-			get_rule_expr(edge->val, context, true);
-			appendStringInfo(buf, " FOLLOWING");
-			break;
-		case WINDOW_UNBOUND_FOLLOWING:
-			appendStringInfo(buf, " UNBOUNDED FOLLOWING");
-			break;
-		default:
-			elog(ERROR, "unknown frame type");
-			break;
-	}
-}
-
-static void
-get_sortlist_expr(List *l, deparse_context *context, char *keyword_clause)
-{
-	ListCell *cell;
-	char *sep;
-	StringInfo buf = context->buf;
-
-	appendContextKeyword(context, keyword_clause,
-						 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
-	sep = "";
-	foreach(cell, l)
-	{
-		SortClause *srt = (SortClause *) lfirst(cell);
-		Node	   *sortexpr;
-		Oid			sortcoltype;
-		TypeCacheEntry *typentry;
-
-		appendStringInfoString(buf, sep);
-		sortexpr = get_rule_sortgroupclause(srt, context->query->targetList,
-											false, context);
-		sortcoltype = exprType(sortexpr);
-		/* See whether operator is default < or > for datatype */
-		typentry = lookup_type_cache(sortcoltype,
-									 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
-		if (srt->sortop == typentry->lt_opr)
-			 /* ASC is default, so emit nothing */ ;
-		else if (srt->sortop == typentry->gt_opr)
-			appendStringInfo(buf, " DESC");
-		else
-			appendStringInfo(buf, " USING %s",
-							 generate_operator_name(srt->sortop,
-													sortcoltype,
-													sortcoltype));
-		sep = ", ";
-	}
-}
-
-static void
-get_windowspec_expr(WindowSpec *spec, deparse_context *context)
-{
-	StringInfo buf = context->buf;
-
-	appendStringInfoChar(buf, '(');
-
-	if (spec->parent)
-	{
-		appendStringInfo(buf, "%s", quote_identifier(spec->parent));
-	}
-	else
-	{
-		/* parent and partition are mutually exclusive */
-		if (spec->partition)
-			get_sortlist_expr(spec->partition, context, "PARTITION BY ");
-	}	
-	
-	if (spec->order)
-	{
-		/* 
-		 * If spec has a parent and that parent defines ordering, don't
-		 * display the order here.
-		 */
-		bool display_order = true;
-		
-		if (spec->parent)
-		{
-			ListCell *l;
-			foreach(l, context->query->windowClause)
-			{
-				WindowSpec *tmp = (WindowSpec *)lfirst(l);
-
-				if (tmp->name && strcmp(spec->parent, tmp->name) == 0 &&
-					tmp->order)
-				{
-					display_order = false;
-					break;
-				}
-			}
-		}
-		if (display_order)
-		{
-			get_sortlist_expr(spec->order, context, " ORDER BY ");
-		}
-	}
-	
-	if (spec->frame)
-	{
-		WindowFrame *f = spec->frame;
-
-		/*
-		 * Like the ORDER-BY clause, if spec has a parent and that
-		 * parent defines framing, don't display the frame clause
-		 * here.
-		 */
-		bool display_frame = true;
-		
-		if (spec->parent)
-		{
-			ListCell *l;
-			foreach(l, context->query->windowClause)
-			{
-				WindowSpec *tmp = (WindowSpec *)lfirst(l);
-
-				if (tmp->name && strcmp(spec->parent, tmp->name) == 0 &&
-					tmp->frame)
-				{
-					display_frame = false;
-					break;
-				}
-			}
-		}
-
-		if (display_frame)
-		{
-			appendStringInfo(buf, " %s ", f->is_rows ? "ROWS" : "RANGE");
-			if (f->is_between)
-			{
-				appendStringInfo(buf, "BETWEEN ");
-				get_windowedge_expr(f->trail, context);
-				appendStringInfo(buf, " AND ");
-				get_windowedge_expr(f->lead, context);
-			}
-			else
-			{
-				get_windowedge_expr(f->trail, context);
-			}
-		}
-
-		/* exclusion statement */
-		switch(f->exclude)
-		{
-			case WINDOW_EXCLUSION_NULL:
-				break;
-			case WINDOW_EXCLUSION_CUR_ROW:
-				appendStringInfo(buf, " EXCLUDE CURRENT ROW");
-		   		break;
-			case WINDOW_EXCLUSION_GROUP:
-				appendStringInfo(buf, " EXCLUDE GROUP");
-				break;
-			case WINDOW_EXCLUSION_TIES:
-				appendStringInfo(buf, " EXCLUDE TIES");
-				break;
-			case WINDOW_EXCLUSION_NO_OTHERS:
-				appendStringInfo(buf, " EXCLUDE NO OTHERS");
-				break;
-			default:
-				elog(ERROR, "invalid exclusion type: %i", f->exclude);
-		}
-	}
-	appendStringInfoChar(buf, ')');
-}
-
-/*
- * get_windowref_expr			- Parse back a WindowRef node
- */
-static void
-get_windowref_expr(WindowRef *wref, deparse_context *context)
-{
-	StringInfo	buf = context->buf;
-	Oid			argtypes[FUNC_MAX_ARGS];
-	int			nargs;
-	ListCell   *l;
-	WindowSpec *spec;
-
-	nargs = 0;
-	foreach(l, wref->args)
-	{
-		if (nargs >= FUNC_MAX_ARGS)
-			ereport(ERROR,
-					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
-					 errmsg("too many arguments")));
-		argtypes[nargs] = exprType((Node *) lfirst(l));
-		nargs++;
-	}
-
-	appendStringInfo(buf, "%s(",
-					 generate_function_name(wref->winfnoid, nargs, argtypes));
-
-	get_rule_expr((Node *) wref->args, context, true);
-	appendStringInfoChar(buf, ')');
-
-	/* now for the OVER clause */
-	appendStringInfo(buf, " OVER");
-
-	spec = (WindowSpec *)list_nth(context->query->windowClause, wref->winspec);
-
-	/*
-	 * If the spec has a name, it must be in the WINDOW clause, which is
-	 * displayed later. We shouldn't actually encounter such a window
-	 * ref.
-	 */
-	if (spec->name)
-	{
-		/* XXX: change this to an assertion later */
-		elog(ERROR, "internal error");
-	}
-	else
-	{
-		get_windowspec_expr(spec, context);
-	}
-}
-
 /* ----------
  * get_coercion_expr
  *
@@ -5073,7 +4594,32 @@ get_coercion_expr(Node *arg, deparse_context *context,
 				  Node *parentNode)
 {
 	StringInfo	buf = context->buf;
-	// MERGEBUG
+
+	/*
+	 * Since parse_coerce.c doesn't immediately collapse application of
+	 * length-coercion functions to constants, what we'll typically see in
+	 * such cases is a Const with typmod -1 and a length-coercion function
+	 * right above it.	Avoid generating redundant output. However, beware of
+	 * suppressing casts when the user actually wrote something like
+	 * 'foo'::text::char(3).
+	 */
+	if (arg && IsA(arg, Const) &&
+		((Const *) arg)->consttype == resulttype &&
+		((Const *) arg)->consttypmod == -1)
+	{
+		/* Show the constant without normal ::typename decoration */
+		get_const_expr((Const *) arg, context, -1);
+	}
+	else
+	{
+		if (!PRETTY_PAREN(context))
+			appendStringInfoChar(buf, '(');
+		get_rule_expr_paren(arg, context, false, parentNode);
+		if (!PRETTY_PAREN(context))
+			appendStringInfoChar(buf, ')');
+	}
+	appendStringInfo(buf, "::%s",
+					 format_type_with_typemod(resulttype, resulttypmod));
 }
 
 /* ----------
@@ -5217,6 +4763,80 @@ get_const_expr(Const *constval, deparse_context *context, int showtype)
 }
 
 
+/*
+ * get_groupingfunc_expr - Parse back a grouping function node.
+ */
+static void
+get_groupingfunc_expr(GroupingFunc *grpfunc, deparse_context *context)
+{
+	StringInfo buf = context->buf;
+	ListCell *lc;
+	char *sep = "";
+	List *group_exprs;
+	if (context->query == NULL)
+	{
+		appendStringInfoString(buf, "grouping");
+		return;
+	}
+
+	group_exprs = get_grouplist_exprs(context->query->groupClause,
+									  context->query->targetList);
+
+	appendStringInfoString(buf, "grouping(");
+	foreach (lc, grpfunc->args)
+	{
+		int entry_no = (int)intVal(lfirst(lc));
+		Node *expr;
+		Assert (entry_no < list_length(context->query->targetList));
+
+		expr = (Node *)list_nth(group_exprs, entry_no);
+		appendStringInfoString(buf, sep);
+		get_rule_expr(expr, context, true);
+		sep = ", ";
+	}
+	
+	appendStringInfoString(buf, ")");
+}
+
+
+static void
+get_sortlist_expr(List *l, deparse_context *context, char *keyword_clause)
+{
+	ListCell *cell;
+	char *sep;
+	StringInfo buf = context->buf;
+
+	appendContextKeyword(context, keyword_clause,
+						 -PRETTYINDENT_STD, PRETTYINDENT_STD, 1);
+	sep = "";
+	foreach(cell, l)
+	{
+		SortClause *srt = (SortClause *) lfirst(cell);
+		Node	   *sortexpr;
+		Oid			sortcoltype;
+		TypeCacheEntry *typentry;
+
+		appendStringInfoString(buf, sep);
+		sortexpr = get_rule_sortgroupclause(srt, context->query->targetList,
+											false, context);
+		sortcoltype = exprType(sortexpr);
+		/* See whether operator is default < or > for datatype */
+		typentry = lookup_type_cache(sortcoltype,
+									 TYPECACHE_LT_OPR | TYPECACHE_GT_OPR);
+		if (srt->sortop == typentry->lt_opr)
+			 /* ASC is default, so emit nothing */ ;
+		else if (srt->sortop == typentry->gt_opr)
+			appendStringInfo(buf, " DESC");
+		else
+			appendStringInfo(buf, " USING %s",
+							 generate_operator_name(srt->sortop,
+													sortcoltype,
+													sortcoltype));
+		sep = ", ";
+	}
+}
+
+
 /* ----------
  * get_sublink_expr			- Parse back a sublink
  * ----------
@@ -5339,6 +4959,202 @@ get_sublink_expr(SubLink *sublink, deparse_context *context)
 		appendStringInfoChar(buf, ')');
 }
 
+
+static void
+get_windowedge_expr(WindowFrameEdge *edge, deparse_context *context)
+{
+	StringInfo buf = context->buf;
+
+	switch(edge->kind)
+	{
+		case WINDOW_UNBOUND_PRECEDING:
+			appendStringInfo(buf, " UNBOUNDED PRECEDING");
+			break;
+		case WINDOW_BOUND_PRECEDING:
+			get_rule_expr(edge->val, context, true);
+			appendStringInfo(buf, " PRECEDING");
+			break;
+		case WINDOW_CURRENT_ROW:
+			appendStringInfo(buf, " CURRENT ROW");
+			break;
+		case WINDOW_BOUND_FOLLOWING:
+			get_rule_expr(edge->val, context, true);
+			appendStringInfo(buf, " FOLLOWING");
+			break;
+		case WINDOW_UNBOUND_FOLLOWING:
+			appendStringInfo(buf, " UNBOUNDED FOLLOWING");
+			break;
+		default:
+			elog(ERROR, "unknown frame type");
+			break;
+	}
+}
+
+
+static void
+get_windowspec_expr(WindowSpec *spec, deparse_context *context)
+{
+	StringInfo buf = context->buf;
+
+	appendStringInfoChar(buf, '(');
+
+	if (spec->parent)
+	{
+		appendStringInfo(buf, "%s", quote_identifier(spec->parent));
+	}
+	else
+	{
+		/* parent and partition are mutually exclusive */
+		if (spec->partition)
+			get_sortlist_expr(spec->partition, context, "PARTITION BY ");
+	}	
+	
+	if (spec->order)
+	{
+		/* 
+		 * If spec has a parent and that parent defines ordering, don't
+		 * display the order here.
+		 */
+		bool display_order = true;
+		
+		if (spec->parent)
+		{
+			ListCell *l;
+			foreach(l, context->query->windowClause)
+			{
+				WindowSpec *tmp = (WindowSpec *)lfirst(l);
+
+				if (tmp->name && strcmp(spec->parent, tmp->name) == 0 &&
+					tmp->order)
+				{
+					display_order = false;
+					break;
+				}
+			}
+		}
+		if (display_order)
+		{
+			get_sortlist_expr(spec->order, context, " ORDER BY ");
+		}
+	}
+	
+	if (spec->frame)
+	{
+		WindowFrame *f = spec->frame;
+
+		/*
+		 * Like the ORDER-BY clause, if spec has a parent and that
+		 * parent defines framing, don't display the frame clause
+		 * here.
+		 */
+		bool display_frame = true;
+		
+		if (spec->parent)
+		{
+			ListCell *l;
+			foreach(l, context->query->windowClause)
+			{
+				WindowSpec *tmp = (WindowSpec *)lfirst(l);
+
+				if (tmp->name && strcmp(spec->parent, tmp->name) == 0 &&
+					tmp->frame)
+				{
+					display_frame = false;
+					break;
+				}
+			}
+		}
+
+		if (display_frame)
+		{
+			appendStringInfo(buf, " %s ", f->is_rows ? "ROWS" : "RANGE");
+			if (f->is_between)
+			{
+				appendStringInfo(buf, "BETWEEN ");
+				get_windowedge_expr(f->trail, context);
+				appendStringInfo(buf, " AND ");
+				get_windowedge_expr(f->lead, context);
+			}
+			else
+			{
+				get_windowedge_expr(f->trail, context);
+			}
+		}
+
+		/* exclusion statement */
+		switch(f->exclude)
+		{
+			case WINDOW_EXCLUSION_NULL:
+				break;
+			case WINDOW_EXCLUSION_CUR_ROW:
+				appendStringInfo(buf, " EXCLUDE CURRENT ROW");
+		   		break;
+			case WINDOW_EXCLUSION_GROUP:
+				appendStringInfo(buf, " EXCLUDE GROUP");
+				break;
+			case WINDOW_EXCLUSION_TIES:
+				appendStringInfo(buf, " EXCLUDE TIES");
+				break;
+			case WINDOW_EXCLUSION_NO_OTHERS:
+				appendStringInfo(buf, " EXCLUDE NO OTHERS");
+				break;
+			default:
+				elog(ERROR, "invalid exclusion type: %i", f->exclude);
+		}
+	}
+	appendStringInfoChar(buf, ')');
+}
+
+
+/*
+ * get_windowref_expr			- Parse back a WindowRef node
+ */
+static void
+get_windowref_expr(WindowRef *wref, deparse_context *context)
+{
+	StringInfo	buf = context->buf;
+	Oid			argtypes[FUNC_MAX_ARGS];
+	int			nargs;
+	ListCell   *l;
+	WindowSpec *spec;
+
+	nargs = 0;
+	foreach(l, wref->args)
+	{
+		if (nargs >= FUNC_MAX_ARGS)
+			ereport(ERROR,
+					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+					 errmsg("too many arguments")));
+		argtypes[nargs] = exprType((Node *) lfirst(l));
+		nargs++;
+	}
+
+	appendStringInfo(buf, "%s(",
+					 generate_function_name(wref->winfnoid, nargs, argtypes));
+
+	get_rule_expr((Node *) wref->args, context, true);
+	appendStringInfoChar(buf, ')');
+
+	/* now for the OVER clause */
+	appendStringInfo(buf, " OVER");
+
+	spec = (WindowSpec *)list_nth(context->query->windowClause, wref->winspec);
+
+	/*
+	 * If the spec has a name, it must be in the WINDOW clause, which is
+	 * displayed later. We shouldn't actually encounter such a window
+	 * ref.
+	 */
+	if (spec->name)
+	{
+		/* XXX: change this to an assertion later */
+		elog(ERROR, "internal error");
+	}
+	else
+	{
+		get_windowspec_expr(spec, context);
+	}
+}
 
 /* ----------
  * get_from_clause			- Parse back a FROM clause
@@ -5851,7 +5667,7 @@ quote_literal_internal(const char *literal)
 	char	   *result;
 	const char *cp1;
 	char	   *cp2;
-	int			len;
+	size_t		len;
 
 	len = strlen(literal);
 	/* We make a worst-case result area; wasting a little space is OK */
@@ -6159,8 +5975,8 @@ static text *
 string_to_text(char *str)
 {
 	text	   *result;
-	int			slen = strlen(str);
-	int			tlen;
+	size_t		slen = strlen(str);
+	size_t		tlen;
 
 	tlen = slen + VARHDRSZ;
 	result = (text *) palloc(tlen);

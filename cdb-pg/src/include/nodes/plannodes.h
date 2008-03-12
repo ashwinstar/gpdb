@@ -138,6 +138,8 @@ typedef struct Plan
 	 * We really need in some TopPlan node to store range table and
 	 * resultRelation from Query there and get rid of Query itself from
 	 * Executor. Some other stuff like below could be put there, too.
+     *
+     * pg 8.3 has added a PlannedStmt node where we should put fields like this.
 	 */
 	int			nParamExec;		/* Number of them in entire query. This is to
 								 * get Executor know about how many PARAM_EXEC

@@ -573,8 +573,6 @@ extern char *deparse_expr_sweet(Node *expr, List *dpcontext,
 extern List *deparse_context_for(const char *aliasname, Oid relid);
 extern List *deparse_context_for_plan(Node *outer_plan, Node *inner_plan,
 						 List *rtable);
-extern Node *deparse_context_for_subplan(const char *name, Node *subplan);
-
 extern const char *quote_literal_internal(const char *literal);
 extern const char *quote_identifier(const char *ident);
 extern char *quote_qualified_identifier(const char *namespace,

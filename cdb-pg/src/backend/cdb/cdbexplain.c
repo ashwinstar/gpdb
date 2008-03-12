@@ -1067,6 +1067,7 @@ cdbexplain_showExecStatsBegin(struct QueryDesc *queryDesc,
                               instr_time        querystarttime)
 {
     MemoryContext           oldcontext;
+    PlannedStmt            *plannedstmt = queryDesc->plannedstmt;
     CdbExplain_ShowStatCtx *ctx;
     int                     nslice;
 
@@ -1081,12 +1082,8 @@ cdbexplain_showExecStatsBegin(struct QueryDesc *queryDesc,
     ctx->explaincxt = explaincxt;
     ctx->querystarttime = querystarttime;
 
-    // MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
     /* Determine number of slices.  (SliceTable hasn't been built yet.) */
-    nslice = 1 + queryDesc->plantree->nMotionNodes + queryDesc->plantree->nInitPlans;
-#endif
+    nslice = 1 + plannedstmt->planTree->nMotionNodes + plannedstmt->planTree->nInitPlans;
 
     /* Allocate and zero the SliceSummary array. */
     ctx->nslice = nslice;
