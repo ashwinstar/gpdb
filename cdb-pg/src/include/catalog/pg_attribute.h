@@ -294,8 +294,8 @@ DATA(insert ( 1247 gp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
 { 1255, {"pronamespace"},		26, -1, 4,	2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1255, {"proowner"},			26, -1, 4,	3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1255, {"prolang"},			26, -1, 4,	4, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ 1255, {"procost"},		   700, -1, 4,	5, 0, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
-{ 1255, {"prorows"},		   700, -1, 4,	6, 0, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
+{ 1255, {"procost"},		   700, -1, 4,	5, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ 1255, {"prorows"},		   700, -1, 4,	6, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1255, {"proisagg"},			16, -1, 1,	7, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
 { 1255, {"prosecdef"},			16, -1, 1,	8, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
 { 1255, {"proisstrict"},		16, -1, 1,	9, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
@@ -317,8 +317,8 @@ DATA(insert ( 1255 proname			19 -1 NAMEDATALEN	1 0 -1 -1 f p i t f f t 0));
 DATA(insert ( 1255 pronamespace		26 -1 4   2 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 proowner			26 -1 4   3 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 prolang			26 -1 4   4 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1255 procost		   700 -1 4   5 0 -1 -1 f p i t f f t 0));
-DATA(insert ( 1255 prorows		   700 -1 4   6 0 -1 -1 f p i t f f t 0));
+DATA(insert ( 1255 procost		   700 -1 4   5 0 -1 -1 t p i t f f t 0));
+DATA(insert ( 1255 prorows		   700 -1 4   6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 proisagg			16 -1 1   7 0 -1 -1 t p c t f f t 0));
 DATA(insert ( 1255 prosecdef		16 -1 1   8 0 -1 -1 t p c t f f t 0));
 DATA(insert ( 1255 proisstrict		16 -1 1   9 0 -1 -1 t p c t f f t 0));
