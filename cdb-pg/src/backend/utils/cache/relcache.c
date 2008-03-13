@@ -2901,6 +2901,17 @@ RelationGetPartitioningKey(Relation relation)
 
 
 /*
+ * RelationIsDistributed -- return true if relation is distributed
+ */
+bool 
+RelationIsDistributed(Relation relation)
+{
+    return relation->rd_cdbpolicy &&
+           relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED;
+}                               /* RelationIsDistributed */
+
+
+/*
  * RelationGetIndexList -- get a list of OIDs of indexes on this relation
  *
  * The index list is created only if someone requests it.  We scan pg_index

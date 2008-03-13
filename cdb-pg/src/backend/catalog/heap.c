@@ -1410,7 +1410,6 @@ void
 heap_drop_with_catalog(Oid relid)
 {
 	Relation	rel;
-	const struct GpPolicy *policy;
 	bool		removePolicy = false;
 
 	/*
@@ -1421,9 +1420,7 @@ heap_drop_with_catalog(Oid relid)
 	/*
  	 * Get the distribution policy and figure out if it is to be removed.
  	 */
-	policy = rel->rd_cdbpolicy;
-	if (policy &&
-		policy->ptype == POLICYTYPE_PARTITIONED &&
+	if (RelationIsDistributed(rel) &&
 		Gp_role == GP_ROLE_DISPATCH &&
 		(rel->rd_rel->relkind == RELKIND_RELATION || 
 		 rel->rd_rel->relkind == RELKIND_EXTERNAL))

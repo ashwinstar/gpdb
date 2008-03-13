@@ -20,13 +20,13 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
-#include "catalog/gp_policy.h"     /* CDB: POLICYTYPE_PARTiITIONED */
 #include "catalog/namespace.h"
 #include "miscadmin.h"
 #include "storage/lmgr.h"
 #include "storage/procarray.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"        /* CDB: get_rel_name() */
+#include "utils/relcache.h"         /* CDB: RelationIsDistributed() */
 #include "cdb/cdbvars.h"
 
 
@@ -236,8 +236,7 @@ CdbLockRelation(Relation relation, LOCKMODE reqmode, bool nowait)
      * DELETE, write access is serialized at the qDisp to ensure that writes
      * happen in the same order on primary and mirror qExecs.
 	 */
-    if (relation->rd_cdbpolicy &&
-        relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
+    if (RelationIsDistributed(relation))
     {
         if (lockmode == RowExclusiveLock)
             lockmode = ExclusiveLock;

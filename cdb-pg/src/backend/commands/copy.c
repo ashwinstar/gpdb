@@ -41,7 +41,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-#include "utils/builtins.h"
+#include "utils/relcache.h"         /* CDB: RelationIsDistributed() */
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdblink.h"
@@ -1191,7 +1191,9 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 								RelationGetRelationName(cstate->rel))));
 		}
 		
-		if(stmt->sreh && Gp_role != GP_ROLE_EXECUTE && !cstate->rel->rd_cdbpolicy)
+		if (stmt->sreh && 
+            (Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) && 
+            !RelationIsDistributed(cstate->rel))
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY single row error handling only available for distributed user tables")));		
@@ -1223,7 +1225,7 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 		}
 		
 		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) 
-			&& cstate->rel->rd_cdbpolicy != NULL)
+			&& RelationIsDistributed(cstate->rel))
 			/* data needs to get dispatched to segment databases */
 			CopyFromDispatch(cstate);
 		else
@@ -1324,7 +1326,7 @@ DoCopyTo(CopyState cstate)
 		 * dispatching COPY commands to executors.
 		 */
 		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) 
-			&& cstate->rel && cstate->rel->rd_cdbpolicy)
+			&& RelationIsDistributed(cstate->rel))
 			CopyToDispatch(cstate);		
 		else
 			CopyTo(cstate);		

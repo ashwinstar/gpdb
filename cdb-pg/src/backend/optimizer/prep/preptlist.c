@@ -25,7 +25,6 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "catalog/gp_policy.h"     /* CDB: POLICYTYPE_PARTITIONED */
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/prep.h"
@@ -35,6 +34,7 @@
 #include "parser/analyze.h"
 #include "parser/parsetree.h"
 #include "parser/parse_coerce.h"
+#include "utils/relcache.h"         /* CDB: RelationIsDistributed() */
 
 
 static List *expand_targetlist(List *tlist, int command_type,
@@ -139,14 +139,12 @@ preprocess_targetlist(PlannerInfo *root, List *tlist)
 			TargetEntry *tle;
             RangeTblEntry  *rte;
             Relation    relation;
-            bool        isdistributed = false;
+            bool        isdistributed;
 
             /* CDB: Don't try to fetch CTIDs for distributed relation. */
             rte = rt_fetch(rc->rti, parse->rtable);
             relation = heap_open(rte->relid, NoLock);
-            if (relation->rd_cdbpolicy &&
-                relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED)
-                isdistributed = true;
+            isdistributed = RelationIsDistributed(relation);
             heap_close(relation, NoLock);
             if (isdistributed)
                 continue;
