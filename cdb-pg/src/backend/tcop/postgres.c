@@ -3626,13 +3626,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			
 			pq_flush();	/* send right away, don't wait while we do finish_xact_command */
 			
-			// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-			/* PG 8.3 MERGE TODO: MyXactMadeXLogEntry is gone
-			if (MyXactMadeXLogEntry)
-				elog(DEBUG1,"DispatchAgent made an XLog entry?");
-			*/
-
 			finish_xact_command();
 			
 			
@@ -3968,13 +3961,6 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				completionTag = "ERROR";
 			}
 			
-			// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-			/* PG 8.3 MERGE TODO: MyXactMadeXLogEntry is gone
-			if (MyXactMadeXLogEntry)
-				elog(NOTICE,"DispatchAgent made an XLog entry?");
-            */
-            
 			EndCommand(completionTag,whereToSendOutput);
 			
 			pq_flush();	/* send right away, don't wait while we do finish_xact_command */
