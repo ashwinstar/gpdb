@@ -4440,24 +4440,6 @@ IsTransactionOrTransactionBlock(void)
 	return true;
 }
 
-/*
- * Did the transaction do work that requires a commit record to be written?
- */
-bool
-IsTransactionDirty(void)
-{
-	// MERGEBUG
-	// UNDONE: Broken by 8.3 merge -- needs to be fixed.
-#warning MERGEBUG this code is broken by the 8.3 merge
-//	bool result = (MyXactMadeXLogEntry || MyXactMadeTempRelUpdate || smgrIsPendingDeletes(true));
-	bool result = true;
-	
-	elog((Debug_print_full_dtm ? LOG : DEBUG5), "IsTransactionDirty: TopTransactionId %u, dirty = %s",
-		 GetTopTransactionId(), (result ? "true" : "false"));
-	
-	return result;
-}
-
 void
 ExecutorMarkTransactionUsesSequences(void)
 {
@@ -4541,7 +4523,14 @@ TransactionInformationQEWriter(DistributedTransactionId *QEDistributedTransactio
 			*QEDirty = false;
 	}
 	else
-		*QEDirty = IsTransactionDirty();
+		/*
+		 * UNDONE: Passing back whether the transaction is dirty is a partially 
+		 * implemented feature that isn't used yet.  Since the 8.3 merge
+		 * made it more difficult to detect whether changes were made, let's
+		 * defer IsTransactionDirty until it is really needed.
+		 */
+//		*QEDirty = IsTransactionDirty();
+        *QEDirty = false;
 }
 
 /*
