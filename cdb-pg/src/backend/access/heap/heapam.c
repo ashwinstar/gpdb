@@ -793,7 +793,7 @@ fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 	return (
 			(attnum) > 0 ?
 			(
-			 ((isnull) ? (*(isnull) = false) : (dummyret) NULL),
+			 ((isnull) ? (*(isnull) = false) : (dummyret) 0),
 			 HeapTupleNoNulls(tup) ?
 			 (
 			  (tupleDesc)->attrs[(attnum) - 1]->attcacheoff >= 0 ?
@@ -809,7 +809,7 @@ fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 			 (
 			  att_isnull((attnum) - 1, (tup)->t_data->t_bits) ?
 			  (
-			   ((isnull) ? (*(isnull) = true) : (dummyret) NULL),
+			   ((isnull) ? (*(isnull) = true) : (dummyret) 0),
 			   (Datum) NULL
 			   )
 			  :
