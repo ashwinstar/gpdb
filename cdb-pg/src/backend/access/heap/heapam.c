@@ -58,6 +58,8 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
+/* GUC variable */
+bool    synchronize_seqscans = true;
 
 static HeapScanDesc heap_beginscan_internal(Relation relation,
 						Snapshot snapshot,

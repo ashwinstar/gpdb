@@ -236,11 +236,7 @@ pq_comm_close_fatal(void)
  */
 
 
-/*#if !defined(WIN32) || defined(IPV6_V6ONLY)
-	int			one = 1;
-#endif
-
- StreamDoUnlink()
+/* StreamDoUnlink()
  * Shutdown routine for backend connection
  * If a Unix socket is used for communication, explicitly close it.
  */
@@ -333,9 +329,7 @@ StreamServerPort(int family, char *hostName, unsigned short portNumber,
 			continue;
 		}
 
-		/* See if there is 
-#ifndef WIN32
-still room to add 1 more socket. */
+		/* See if there is still room to add 1 more socket. */
 		for (; listen_index < MaxListen; listen_index++)
 		{
 			if (ListenSocket[listen_index] == -1)
@@ -382,7 +376,6 @@ still room to add 1 more socket. */
 							familyDesc)));
 			continue;
 		}
-
 
 #ifndef WIN32
 
@@ -537,11 +530,8 @@ Setup_AF_UNIX(void)
 	Assert(Unix_socket_group);
 	if (Unix_socket_group[0] != '\0')
 	{
-#warning MERGEBUG this code is broken by the 8.3 merge
-#ifdef WIN32 
-		// MERGEBUG
-		//*		server port.  Set port->sock to the FD of the new connection.
-//
+#ifdef WIN32
+		elog(WARNING, "configuration item unix_socket_group is not supported on this platform");
 #else
 		char	   *endptr;
 		unsigned long val;
@@ -912,8 +902,8 @@ pq_discardbytes(size_t len)
  *		already been initialized by the caller.
  *
  *		This is used only for dealing with old-protocol clients.  The idea
- 	resetStringInfo(s);
-ge() with a newer client; we will then process it with
+ *		is to produce a StringInfo that looks the same as we would get from
+ *		pq_getmessage() with a newer client; we will then process it with
  *		pq_getmsgstring.  Therefore, no character set conversion is done here,
  *		even though this is presumably useful only for text.
  *

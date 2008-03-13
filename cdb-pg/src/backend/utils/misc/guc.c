@@ -120,11 +120,8 @@ extern int	CommitDelay;
 extern int	CommitSiblings;
 extern char *default_tablespace;
 extern char *temp_tablespaces;
+extern bool synchronize_seqscans;
 extern bool fullPageWrites;
-// MERGEBUG
-bool synchronize_seqscans; /* XXX: not externed for now, should be declared
-							  int heapam.c, but we'll wait for the merge to
-							  finish yet */
 
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
 List       *gp_guc_list_for_explain;

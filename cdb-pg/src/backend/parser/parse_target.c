@@ -1320,9 +1320,6 @@ FigureColnameInternal(Node *node, char **name)
 				case IS_LEAST:
 					*name = "least";
 					return 2;
-					// MERGEBUG ?
-#warning MERGEBUG this code is broken by the 8.3 merge
-/* XXX XXX weird merge here -- removed */
 			}
 			break;
 		case T_XmlExpr:

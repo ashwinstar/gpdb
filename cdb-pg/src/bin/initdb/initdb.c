@@ -169,7 +169,7 @@ static void exit_nicely(void);
 static char *get_id(void);
 static char *get_encoding_id(char *encoding_name);
 static char *get_short_version(void);
-static int  check_data_dir(char *dir);
+static int	check_data_dir(char *dir);
 static bool mkdatadir(const char *subdir);
 static void set_input(char **dest, char *filename);
 static void check_input(char *path);
@@ -704,7 +704,7 @@ exit_nicely(void)
 				fprintf(stderr, _("%s: failed to remove contents of data directory\n"),
 						progname);
 		}
-		
+
 		if (made_new_xlogdir)
 		{
 			fprintf(stderr, _("%s: removing transaction log directory \"%s\"\n"),
@@ -716,7 +716,7 @@ exit_nicely(void)
 		else if (found_existing_xlogdir)
 		{
 			fprintf(stderr,
-					_("%s: removing contents of transaction log directory \"%s\"\n"),
+			_("%s: removing contents of transaction log directory \"%s\"\n"),
 					progname, xlog_dir);
 			if (!rmtree(xlog_dir, false))
 				fprintf(stderr, _("%s: failed to remove contents of transaction log directory\n"),
@@ -733,7 +733,7 @@ exit_nicely(void)
 
 		if (made_new_xlogdir || found_existing_xlogdir)
 			fprintf(stderr,
-			  _("%s: transaction log directory \"%s\" not removed at user's request\n"),
+					_("%s: transaction log directory \"%s\" not removed at user's request\n"),
 					progname, xlog_dir);
 	}
 
@@ -1713,10 +1713,6 @@ setup_depend(void)
 		NULL
 	};
 
-	// temp:  Don't try this, as the planner is broken
-#warning MERGEBUG Code commented out here for 8.3 merge because planner doesn't yet work.
-	return; // MERGEBUG
-	
 	fputs(_("initializing dependencies ... "), stdout);
 	fflush(stdout);
 
@@ -3255,7 +3251,7 @@ main(int argc, char *argv[])
 	/* Create transaction log symlink, if required */
 	if (strcmp(xlog_dir, "") != 0)
 	{
-		char	*linkloc;
+		char	   *linkloc;
 
 		linkloc = (char *) pg_malloc(strlen(pg_data) + 8 + 2);
 		sprintf(linkloc, "%s/pg_xlog", pg_data);
@@ -3308,7 +3304,7 @@ main(int argc, char *argv[])
 						_("If you want to store the transaction log there, either\n"
 						  "remove or empty the directory \"%s\".\n"),
 						xlog_dir);
-				exit(1);			/* no further message needed */
+				exit(1);		/* no further message needed */
 
 			default:
 				/* Trouble accessing directory */
@@ -3321,7 +3317,7 @@ main(int argc, char *argv[])
 		if (symlink(xlog_dir, linkloc) != 0)
 		{
 			fprintf(stderr, _("%s: could not create symbolic link \"%s\": %s\n"),
-						progname, linkloc, strerror(errno));
+					progname, linkloc, strerror(errno));
 			exit_nicely();
 		}
 #else
