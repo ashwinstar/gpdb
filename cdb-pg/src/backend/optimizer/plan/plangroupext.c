@@ -156,7 +156,8 @@ static void append_colIdx(AttrNumber *colIdx, int numcols, int colno,
 static Plan *plan_list_rollup_plans(PlannerInfo *root,
 									GroupExtContext *context,
 									Plan *lefttree);
-static List *make_pathkeys_for_rollup(List *groupclause,
+static List *make_pathkeys_for_rollup(PlannerInfo *root,
+									  List *groupclause,
 									  List *tlist,
 									  AttrNumber *grpColIdx,
 									  CanonicalRollup *rollup);
@@ -648,6 +649,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		dummy_path.pathkeys = NIL;
 
 		if (choose_hashed_grouping(root, context->tuple_fraction, -1, &dummy_path,
+#warning MERGEBUG 8.3 Merge -- Second NULL s.b. group operators.
 								   NULL, NULL, *context->p_dNumGroups,
 								   context->agg_counts))
 			context->aggstrategy = AGG_HASHED;
@@ -1031,6 +1033,7 @@ add_first_agg(PlannerInfo *root,
 		 * The parameter numGroupCols should have excluded the GROUPING column.
 		 */
 		agg_node = (Plan *)make_agg(root, current_tlist, current_qual, context->aggstrategy, false,
+#warning MERGEBUG 8.3 Merge -- NULL s.b. group operators.
 									numGroupCols, groupColIdx, NULL,
 									lNumGroups, num_nullcols, input_grouping, grouping,
 									rollup_gs_times,
@@ -1043,6 +1046,7 @@ add_first_agg(PlannerInfo *root,
 		agg_node = (Plan *)make_group(root, current_tlist, current_qual,
 									  numGroupCols,
 									  groupColIdx,
+#warning MERGEBUG 8.3 Merge -- NULL s.b. group operators.
 									  NULL,
 									  current_numGroups,
 									  num_nullcols, input_grouping, grouping,
@@ -1386,7 +1390,8 @@ plan_list_rollup_plans(PlannerInfo *root,
 	{
 		List *pathkeys = NIL;
 		/* Make pathkeys for each rollup */
-		pathkeys = make_pathkeys_for_rollup(root->parse->groupClause,
+		pathkeys = make_pathkeys_for_rollup(root,
+											root->parse->groupClause,
 											context->tlist,
 											context->grpColIdx,
 											(CanonicalRollup *)list_nth(
@@ -1460,6 +1465,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 			subquery_tlist = generate_subquery_tlist(list_length(final_query->rtable),
 													 rollup_plan->targetlist);
 			rollup_plan = (Plan *)make_subqueryscan(subquery_tlist,
+#warning MERGEBUG 8.3 Merge -- NIL s.b. subrtable.
 													NIL,
 													list_length(final_query->rtable),
 													rollup_plan, NIL);
@@ -1514,7 +1520,8 @@ plan_list_rollup_plans(PlannerInfo *root,
  * Construct a new pathkeys for a given rollup.
  */
 static List *
-make_pathkeys_for_rollup(List *groupclause,
+make_pathkeys_for_rollup(PlannerInfo *root,
+						 List *groupclause,
 						 List *tlist,
 						 AttrNumber *grpColIdx,
 						 CanonicalRollup *rollup)
@@ -1523,11 +1530,11 @@ make_pathkeys_for_rollup(List *groupclause,
 	int colno;
 	List *pathkeys = NIL;
 	List *current_pathkeys;
-	// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-	current_pathkeys = make_pathkeys_for_groupclause(groupclause, tlist);
-#endif 
+
+	current_pathkeys = make_pathkeys_for_groupclause(root, 
+													 groupclause, 
+													 tlist,
+													 false);
 	
 	for (colno=0; colno<rollup->numcols; colno++)
 	{
