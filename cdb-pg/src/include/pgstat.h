@@ -519,14 +519,6 @@ typedef struct PgBackendStatus
 extern bool pgstat_track_activities;
 extern bool pgstat_track_counts;
 
-// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-/** GPDB 8.3 MERGE TODO: probably need to delete the bottom. other similar
- * GUCs were delete
- */
-extern bool pgstat_collect_queuelevel;
-/**/
-
 /*
  * BgWriter statistics counters are updated directly by bgwriter and bufmgr
  */
@@ -621,65 +613,65 @@ extern PgStat_StatPortalEntry *pgstat_getportalentry(uint32 portalid,
 			(rel)->pgstat_info->t_counts.t_blocks_hit++;			\
 	} while (0)
 /* Resource queue statistics: */
-#define pgstat_count_queue_exec(p, q) 									\
+#define pgstat_count_queue_exec(portalid, queueid)						\
 	do {																\
-		if (pgstat_collect_queuelevel) 									\
+		if (pgstat_track_counts) 								 		\
 		{																\
 			PgStat_StatPortalEntry  *pentry;							\
 																		\
-			pentry = pgstat_getportalentry(p, q);						\
+			pentry = pgstat_getportalentry(portalid, queueid);			\
 			((pentry)->queueentry).n_queries_exec++;					\
 		}																\
 	} while (0)
-#define pgstat_record_start_queue_exec(p, q) 							\
+#define pgstat_record_start_queue_exec(portalid, queueid) 				\
 	do {																\
-		if (pgstat_collect_queuelevel) 									\
+		if (pgstat_track_counts) 										\
 		{																\
 			PgStat_StatPortalEntry  *pentry;							\
 																		\
-			pentry = pgstat_getportalentry(p, q);						\
+			pentry = pgstat_getportalentry(portalid, queueid);			\
 			(pentry)->t_exec_start = time(NULL);						\
 		}																\
 	} while (0)
-#define pgstat_record_end_queue_exec(p, q) 								\
+#define pgstat_record_end_queue_exec(portalid, queueid) 				\
 	do {																\
-		if (pgstat_collect_queuelevel) 									\
+		if (pgstat_track_counts) 										\
 		{																\
 			PgStat_StatPortalEntry  *pentry;							\
 																		\
-			pentry = pgstat_getportalentry(p, q);						\
+			pentry = pgstat_getportalentry(portalid, queueid);			\
 			(pentry)->t_exec_end = time(NULL);							\
 			((pentry)->queueentry).elapsed_exec += 						\
 				(PgStat_Counter)((pentry)->t_exec_end - (pentry)->t_exec_start);			\
 		}																\
 	} while (0)
-#define pgstat_count_queue_wait(p, q) 									\
+#define pgstat_count_queue_wait(portalid, queueid) 						\
 	do {																\
-		if (pgstat_collect_queuelevel) 									\
+		if (pgstat_track_counts) 										\
 		{																\
 			PgStat_StatPortalEntry  *pentry;							\
 																		\
-			pentry = pgstat_getportalentry(p, q);						\
+			pentry = pgstat_getportalentry(portalid, queueid);			\
 			((pentry)->queueentry).n_queries_wait++;					\
 		}																\
 	} while (0)
-#define pgstat_record_start_queue_wait(p, q) 							\
+#define pgstat_record_start_queue_wait(portalid, queueid) 				\
 	do {																\
-		if (pgstat_collect_queuelevel) 									\
+		if (pgstat_track_counts) 										\
 		{																\
 			PgStat_StatPortalEntry  *pentry;							\
 																		\
-			pentry = pgstat_getportalentry(p, q);						\
+			pentry = pgstat_getportalentry(portalid, queueid);			\
 			(pentry)->t_wait_start = time(NULL);						\
 		}																\
 	} while (0)
-#define pgstat_record_end_queue_wait(p, q) 								\
+#define pgstat_record_end_queue_wait(portalid, queueid) 				\
 	do {																\
-		if (pgstat_collect_queuelevel) 									\
+		if (pgstat_track_counts) 										\
 		{																\
 			PgStat_StatPortalEntry  *pentry;							\
 																		\
-			pentry = pgstat_getportalentry(p, q);						\
+			pentry = pgstat_getportalentry(portalid, queueid);			\
 			(pentry)->t_wait_end = time(NULL);							\
 			((pentry)->queueentry).elapsed_wait += 						\
 				(PgStat_Counter)((pentry)->t_wait_end - (pentry)->t_wait_start);			\

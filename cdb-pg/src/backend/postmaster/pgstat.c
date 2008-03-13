@@ -110,8 +110,6 @@ PgStat_MsgBgWriter BgWriterStats;
 
 
 
-bool		pgstat_collect_queuelevel = false;
-
 /* ----------
  * Local data
  * ----------
@@ -493,7 +491,6 @@ startup_failed:
 	/* Adjust GUC variables to suppress useless activity */
 
 
-	pgstat_collect_queuelevel = false;
 }
 
 /*
@@ -3398,9 +3395,9 @@ pgstat_report_queuestat()
 	PgStat_StatPortalEntry	*pentry;
 	PgStat_MsgQueuestat		msg;
 
-	if (pgStatSock < 0 || !pgstat_collect_queuelevel)
+	if (pgStatSock < 0 || !pgstat_track_counts )
 	{
-		return;			/* Not collecting queue stats or collector disabled. */
+		return;			/* Not collecting queue data or collector disabled. */
 	}
 
 	
