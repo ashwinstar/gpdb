@@ -1863,6 +1863,9 @@ setup_dictionary(void)
 	PG_CMD_DECL;
 	char	  **line;
 	char	  **conv_lines;
+	
+#warning MERGEBUG we dont yet support tsearch
+#if 0
 
 	fputs(_("creating dictionaries ... "), stdout);
 	fflush(stdout);
@@ -1889,6 +1892,7 @@ setup_dictionary(void)
 	PG_CMD_CLOSE;
 
 	check_ok();
+#endif
 }
 
 /*
