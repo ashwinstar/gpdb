@@ -274,7 +274,10 @@ ChoosePortalStrategy(List *stmts)
 	 * PORTAL_ONE_SELECT and PORTAL_UTIL_SELECT need only consider the
 	 * single-statement case, since there are no rewrite rules that can add
 	 * auxiliary queries to a SELECT or a utility command.
-	 */
+	 */ 
+	if (stmts == NIL) // MERGEBUG, should not happen
+		return PORTAL_ONE_SELECT;
+	
 	if (list_length(stmts) == 1)
 	{
 		Node	   *stmt = (Node *) linitial(stmts);

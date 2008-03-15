@@ -602,7 +602,7 @@ GET_MAX_LEN () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Formatting output, please wait..." 1
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-	LEN_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -F" " -A -t -q -p  $MASTER_PORT "$DEFAULTDB" -c"select max(length(hostname))+1, 6, max(length(datadir))+1, max(length(content))+1, 3) from $CONFIG_TABLE where content<>-1;"`)
+	LEN_ARRAY=(`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -F" " -A -t -q -p  $MASTER_PORT "$DEFAULTDB" -c"select max(length(hostname))+1, 6, max(length(datadir))+1, max(length(content))+1, 3 from $CONFIG_TABLE where content<>-1;"`)
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
