@@ -1328,16 +1328,31 @@ ExecGetShareNodeEntry(EState* estate, int shareidx, bool fCreate)
  * each subplan (which acts as an initplan root node).
  */
 void
-InitSliceTable(EState *estate, int nMotions, int nSubplans)
+InitSliceTable(EState *estate)
 {
 	SliceTable *table;
 	Slice	   *slice;
 	int			i,
 				n;
+    int         nMotions = 0;
+    int         nSubplans = 0;
 	MemoryContext oldcontext;
 
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
 
+    /* Count the Motion operators in main plan and subquery plans. */
+    n = 1 + list_length(estate->es_plannedstmt->subplans);
+    for (i = 0; i <= n; i++)
+    {
+        CdbTopPlan *top = estate->es_plannedstmt->topPlans[i];
+
+        Assert(top && IsA(top, CdbTopPlan));
+        nMotions += top->nMotionNodes;
+        if (top->isInitPlan)
+            nSubplans++;
+    }
+    
+    /* Allocate and initialize the SliceTable structure. */
 	table = makeNode(SliceTable);
 	table->nMotions = nMotions;
 	table->nSubplans = nSubplans;
@@ -1370,6 +1385,9 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 	estate->es_sliceTable = table;
 	estate->es_cur_root_idx = 0;
 	estate->es_cur_slice_idx = 0;
+
+    /* Number of slices should match the total computed by apply_motion(). */
+    Assert(n == estate->es_plannedstmt->nSlice);
 
 	MemoryContextSwitchTo(oldcontext);
 }
@@ -1831,9 +1849,7 @@ sliceRunsOnQE(Slice * slice)
  *	 motion nodes (as in case 2).
  */
 GpExecIdentity
-getGpExecIdentity(QueryDesc *queryDesc,
-				   ScanDirection direction,
-				   EState	   *estate)
+getGpExecIdentity(EState *estate, ScanDirection direction)
 {
 	Slice              *currentSlice;
 	

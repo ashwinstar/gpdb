@@ -297,7 +297,6 @@ make_subplan(PlannerInfo *root, SubLink *slink, Node *testexpr, bool isTopQual)
 	 */
 	splan = makeNode(SubPlan);
 	splan->subLinkType = slink->subLinkType;
-    splan->qDispSliceId = 0;            /*CDB*/
 	splan->testexpr = NULL;
 	splan->paramIds = NIL;
 	splan->firstColType = get_first_col_type(plan);
@@ -305,7 +304,6 @@ make_subplan(PlannerInfo *root, SubLink *slink, Node *testexpr, bool isTopQual)
 	/* At top level of a qual, can treat UNKNOWN the same as FALSE */
 	splan->unknownEqFalse = isTopQual;
 	splan->is_initplan = false;
-	splan->is_multirow = false;
 	splan->setParam = NIL;
 	splan->parParam = NIL;
 	splan->args = NIL;
@@ -397,8 +395,6 @@ make_subplan(PlannerInfo *root, SubLink *slink, Node *testexpr, bool isTopQual)
 		List	   *args;
 		ListCell   *l;
 
-		splan->is_multirow = true;
-		
 		/* Adjust the Params */
 		params = generate_subquery_params(root,
 										  plan->targetlist,
@@ -1285,7 +1281,6 @@ SS_make_initplan_from_plan(PlannerInfo *root, Plan *plan,
 	 */
 	node = makeNode(SubPlan);
 	node->subLinkType = EXPR_SUBLINK;
-    node->qDispSliceId = 0;             /*CDB*/
 	node->firstColType = get_first_col_type(plan);
 	node->plan_id = list_length(root->glob->subplans);
 

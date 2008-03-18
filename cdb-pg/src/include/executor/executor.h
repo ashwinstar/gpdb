@@ -336,13 +336,11 @@ extern void UnregisterExprContextCallback(ExprContext *econtext,
 extern ShareNodeEntry * ExecGetShareNodeEntry(EState *estate, int shareid, bool fCreate);
 
 /* Additions for MPP Slice table utilities defined in execUtils.c */
-extern void InitSliceTable(EState *estate, int nMotions, int nSubplans);
+extern void InitSliceTable(EState *estate);
 extern void InitRootSlices(QueryDesc *queryDesc);
 extern void AssignGangs(QueryDesc *queryDesc, int utility_segment_index);
 extern void ReleaseGangs(QueryDesc *queryDesc);
-extern GpExecIdentity getGpExecIdentity(QueryDesc *queryDesc,
-										  ScanDirection direction,
-										  EState	   *estate);
+extern GpExecIdentity getGpExecIdentity(EState *estate, ScanDirection direction);
 extern void mppExecutorFinishup(QueryDesc *queryDesc);
 extern void mppExecutorCleanup(QueryDesc *queryDesc);
 

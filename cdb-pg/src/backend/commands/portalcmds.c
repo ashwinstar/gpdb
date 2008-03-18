@@ -89,7 +89,6 @@ PerformCursorOpen(PlannedStmt *stmt, ParamListInfo params,
 	PortalDefineQuery(portal,
 					  NULL,
 					  queryString,
-					 // T_DeclareCursorStmt,
 					  "SELECT", /* cursor's query is always a SELECT */
 					  list_make1(stmt),
 					  NULL);

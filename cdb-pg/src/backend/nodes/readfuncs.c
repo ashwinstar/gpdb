@@ -147,6 +147,19 @@
 #define READ_DONE() \
 	return local_node
 
+/* CDB: Read an array of Nodes */
+#define READ_NODEPTR_ARRAY(fldname, Type, count) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	token = pg_strtok(&length);		/* get number of elements */ \
+	count = atoi(token); \
+	if ( count > 0 ) \
+	{ \
+		int _i; \
+		local_node->fldname = (Type **)palloc(count * sizeof(Type*)); \
+		for(_i=0; _i < count; _i++) \
+	        local_node->fldname[_i] = nodeRead(NULL, 0); \
+	}
+
 /* Read an integer array (anything written as ":fldname %d %d ...") */
 #define READ_INT_ARRAY(fldname, count, Type) \
 	token = pg_strtok(&length);		/* skip :fldname */ \
@@ -240,7 +253,6 @@
 		} \
 	}
 
-
 /* Read an Trasnaction ID array (written as ":fldname %u %u ... ") */
 #define READ_XID_ARRAY(fldname, count) \
 	token = pg_strtok(&length);		/* skip :fldname */ \
@@ -254,8 +266,6 @@
 			local_node->fldname[i] = ((TransactionId) strtoul((token), NULL, 10)); \
 		} \
 	}
-
-
 
 /* Read an Oid array (written as ":fldname %u %u ...") */
 #define READ_OID_ARRAY(fldname, count) \
@@ -475,7 +485,7 @@ _readGroupId(void)
 }
 
 static WindowSpecParse *
-_readWindowSpecParse(const char ** str)
+_readWindowSpecParse(void)
 {
 	READ_LOCALS(WindowSpecParse);
 
@@ -486,7 +496,7 @@ _readWindowSpecParse(const char ** str)
 }
 
 static WindowSpec *
-_readWindowSpec(const char ** str)
+_readWindowSpec(void)
 {
 	READ_LOCALS(WindowSpec);
 
@@ -500,7 +510,7 @@ _readWindowSpec(const char ** str)
 }
 
 static WindowFrame *
-_readWindowFrame(const char ** str)
+_readWindowFrame(void)
 {
 	READ_LOCALS(WindowFrame);
 
@@ -514,7 +524,7 @@ _readWindowFrame(const char ** str)
 }
 
 static WindowFrameEdge *
-_readWindowFrameEdge(const char ** str)
+_readWindowFrameEdge(void)
 {
 	READ_LOCALS(WindowFrameEdge);
 
@@ -879,7 +889,6 @@ _readSubPlan(void)
 {
 	READ_LOCALS(SubPlan);
 
-    READ_INT_FIELD(qDispSliceId);   /*CDB*/
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
 	READ_NODE_FIELD(testexpr);
 	READ_NODE_FIELD(paramIds);
@@ -887,7 +896,6 @@ _readSubPlan(void)
 	READ_BOOL_FIELD(useHashTable);
 	READ_BOOL_FIELD(unknownEqFalse);
 	READ_BOOL_FIELD(is_initplan); /*CDB*/
-	READ_BOOL_FIELD(is_multirow); /*CDB*/
 	READ_NODE_FIELD(setParam);
 	READ_NODE_FIELD(parParam);
 	READ_NODE_FIELD(args);
@@ -1877,6 +1885,52 @@ _readConstraintsSetStmt(void)
 
 
 /*
+ * _readPlannedStmt
+ */
+static PlannedStmt *
+_readPlannedStmt(void)
+{
+	READ_LOCALS(PlannedStmt);
+    int     nTopPlans;
+
+	READ_ENUM_FIELD(commandType, CmdType);
+	READ_BOOL_FIELD(canSetTag);
+    READ_NODEPTR_ARRAY(topPlans, CdbTopPlan, nTopPlans);                /*CDB*/
+	READ_NODE_FIELD(planTree);
+	READ_NODE_FIELD(rtable);
+	READ_NODE_FIELD(resultRelations);
+	READ_NODE_FIELD(utilityStmt);
+	READ_NODE_FIELD(intoClause);
+	READ_NODE_FIELD(subplans);
+	READ_BITMAPSET_FIELD(rewindPlanIDs);
+	READ_NODE_FIELD(returningLists);
+	READ_NODE_FIELD(rowMarks);
+	READ_NODE_FIELD(relationOids);
+	READ_INT_FIELD(nParamExec);                                         /*CDB*/
+    READ_OID_ARRAY(paramExecTypes, nParamExec);                         /*CDB*/
+	READ_INT_FIELD(nSlice);                                             /*CDB*/
+	READ_BOOL_FIELD(dispatchParallel);                                  /*CDB*/
+
+    Insist(nTopPlans == 1 + list_length(local_node->subplans));
+
+	READ_DONE();
+}
+
+static CdbTopPlan *
+_readCdbTopPlan(void)
+{
+	READ_LOCALS(CdbTopPlan);
+
+	READ_INT_FIELD(nMotionNodes);
+	READ_INT_FIELD(qDispSliceId);
+	READ_BOOL_FIELD(isInitPlan);
+	READ_BOOL_FIELD(dispatchParallel);
+
+    READ_DONE();
+}
+
+
+/*
  * _readPlan
  */
 static Plan *
@@ -2563,24 +2617,12 @@ void readPlanInfo(Plan *local_node)
 	READ_NODE_FIELD(qual);
 	READ_BITMAPSET_FIELD(extParam);
 	READ_BITMAPSET_FIELD(allParam);
-	READ_INT_FIELD(nParamExec);
 
 	READ_NODE_FIELD(flow);
-	READ_ENUM_FIELD(dispatch, DispatchMethod);
-	READ_INT_FIELD(nMotionNodes);
-	READ_INT_FIELD(nInitPlans);
-	READ_NODE_FIELD(sliceTable);
 
     READ_NODE_FIELD(lefttree);
     READ_NODE_FIELD(righttree);
     READ_NODE_FIELD(initPlan);
-
-    /*
-     * Fields that are used only by the qDisp don't need to be serialized for
-     * dispatching to qExecs (in outfast.c), and are not read here:
-     *      flow
-     *      dispatch
-     */
 }
 
 void readJoinInfo(Join *local_node)
@@ -3177,6 +3219,7 @@ static ParseNodeInfo infoAr[] =
 	{"CASE", (ReadFn)_readCaseExpr},
 	{"CASETESTEXPR", (ReadFn)_readCaseTestExpr},
 	{"CDBPROCESS", (ReadFn)_readCdbProcess},
+	{"CDBTOPPLAN", (ReadFn)_readCdbTopPlan},
 	{"CLUSTERSTMT", (ReadFn)_readClusterStmt},
 	{"COALESCE", (ReadFn)_readCoalesceExpr},
 	{"COERCETODOMAIN", (ReadFn)_readCoerceToDomain},
@@ -3255,6 +3298,7 @@ static ParseNodeInfo infoAr[] =
 	{"OPEXPR", (ReadFn)_readOpExpr},
 	{"PARAM", (ReadFn)_readParam},
 	{"PLAN", (ReadFn)_readPlan},
+	{"PLANNEDSTMT", (ReadFn)_readPlannedStmt},                          /*CDB*/
 	{"PRIVGRANTEE", (ReadFn)_readPrivGrantee},
 	{"QUERY", (ReadFn)_readQuery},
 	{"RANGETBLREF", (ReadFn)_readRangeTblRef},

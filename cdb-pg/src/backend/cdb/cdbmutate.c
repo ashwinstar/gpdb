@@ -12,24 +12,21 @@
  *
  *-------------------------------------------------------------------------
  */
-
 #include "postgres.h"
 
-#include "optimizer/clauses.h"
-#include "parser/parsetree.h"	/* for rt_fetch() */
-#include "utils/lsyscache.h"	/* for getatttypetypmod() */
-#include "nodes/makefuncs.h"	/* for makeVar() */
-#include "parser/parse_expr.h"	/* for expr_type() */
-#include "parser/parse_oper.h"	/* for compatible_oper_opid() */
-#include "utils/relcache.h"     /* RelationGetPartitioningKey() */
-#include "optimizer/tlist.h"	/* get_sortgroupclause_tle() */
-
-#include "commands/tablespace.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_type.h"
+#include "commands/tablespace.h"
+#include "nodes/makefuncs.h"	/* for makeVar() */
+#include "optimizer/clauses.h"
+#include "optimizer/tlist.h"	/* get_sortgroupclause_tle() */
+#include "parser/parsetree.h"	/* for rt_fetch() */
+#include "parser/parse_expr.h"	/* for expr_type() */
+#include "parser/parse_oper.h"	/* for compatible_oper_opid() */
+#include "tcop/utility.h"       /* CreateCommandTag() */
+#include "utils/lsyscache.h"	/* for getatttypetypmod() */
+#include "utils/relcache.h"     /* RelationGetPartitioningKey() */
 
-#include "cdb/cdbfts.h"         /* isFTSEnabled() */
-#include "cdb/cdbhash.h"        /* isGreenplumDbHashable() */
 #include "cdb/cdbllize.h"
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbplan.h"
@@ -38,15 +35,12 @@
 
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
- * It is externalized here to make it shareable by helper code in other
- * modules, e.g., cdbaggmutate.c.
  */
 typedef struct ApplyMotionState
 {
-	int			nextMotionID;
-    int         sliceDepth;
-    int         numInitPlanMotionNodes;
-    List       *initPlans;
+    PlannedStmt    *plannedStmt;
+    int			    nextMotionID;
+    int             sliceDepth;
 }	ApplyMotionState;
 
 
@@ -60,12 +54,6 @@ typedef struct shareinput_validator_context
  * Forward Declarations
  */
 static void assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode);
-
-static List *
-getExprListFromTargetList(List         *tlist,
-                          int           numCols,
-                          AttrNumber   *colIdx,
-                          bool          useExecutorVarFormat);
 
 static int *makeDefaultSegIdxArray(int numSegs);
 
@@ -81,13 +69,9 @@ make_motion(Plan       *lefttree,
 	
 static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
 
-static bool
-doesUpdateAffectPartitionCols(Plan         *plan,
-                              Query        *query);
-static void
-warn_ctid_without_segid(Query *query, Plan *plan);
+static void warn_ctid_without_segid(Plan *plan, List *rangetable);
 
-static bool has_ctid_outside_tlist_walker(Node *node, void* unused  __attribute__((unused)) );
+static bool has_ctid_outside_tlist_walker(Node *node, void* context);
 
 static bool 
 shareinput_validator(PlannerGlobal *glob, Plan *plan, List *sharedNodes);
@@ -102,406 +86,107 @@ static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
  * Function apply_motion() and apply_motion_mutator() add motion nodes to
  * a top-level Plan tree as directed by the Flow nodes in the plan.
  *
- * In addition, if the argument Plan produces a partitioned flow, a Motion
- * appropriate to the command is added to the top. For example, to consolidate
- * the tuple streams from a SELECT command into a single tuple stream on the
- * dispatcher.
- *
  * The result is a deep copy of the argument Plan tree with added Motion
  * nodes.
  *
- * TODO Maybe add more context to argument list!
+ * Note: Formerly this function included some logic to move the final query
+ * result to the QD or target writer gang, and disallow updating of the
+ * distribution key columns.  Now that is done earlier by cdbparallelize().
  * ------------------------------------------------------------------------- *
  */
-Plan *
-apply_motion(Plan *plan, Query *query)
+Plan * 
+apply_motion(PlannedStmt *plannedStmt)
 {
+    Plan               *plan = plannedStmt->planTree;
 	Plan	           *result;
+    CdbTopPlan         *top;
     ListCell           *cell;
-    GpPolicy          *targetPolicy = NULL;
-    GpPolicyType       targetPolicyType = POLICYTYPE_ENTRY;
 	ApplyMotionState    state;
+    int                 itop;
+    int                 nSlice;
 
     /* Initialize mutator context. */
+    state.plannedStmt = plannedStmt;
     state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
     state.sliceDepth = 0;
-    state.numInitPlanMotionNodes = 0;
-    state.initPlans = NIL;
 
-	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
+	Assert(is_plan_node((Node *) plan));
     Assert(plan->flow && plan->flow->flotype != FLOW_REPLICATED);
 
-	/* Does query have a target relation?  (INSERT/DELETE/UPDATE) */
-	
-	/*
-	 *  NOTE: This code makes the assumption that if we are working on a heirarchy of tables,
-	 *  all the tables are distributed, or all are on the entry DB.  Any mixture will fail
-	 */
-    if (query->resultRelation > 0)
+    /* 
+     * Process the main plan first. 
+     */
+    result = (Plan *) apply_motion_mutator((Node *)plan, &state);
+    Assert(state.sliceDepth == 0);
+
+    /* Note the number of Motion operators in the main plan. */
+    top = plannedStmt->topPlans[0];
+    Assert(top &&
+           IsA(top, CdbTopPlan));
+    top->nMotionNodes = state.nextMotionID - 1;
+
+    /* Main plan consists of one root slice plus one slice per Motion node. */
+    nSlice = 1 + top->nMotionNodes;
+
+    /* 
+     * Process subquery plans. 
+     */
+    itop = 0;
+    foreach(cell, plannedStmt->subplans)
     {
-	    RangeTblEntry  *rte;
-        Relation        relation;
-		
-        rte = rt_fetch(query->resultRelation, query->rtable);
-	    Assert(rte->rtekind == RTE_RELATION);
+        Plan       *subqueryplan = (Plan *)lfirst(cell);
+        int         saveMotionID = state.nextMotionID;
 
-        /* Get a copy of the rel's GpPolicy from the relcache. */
-        relation = relation_open(rte->relid, NoLock);
-        targetPolicy = RelationGetPartitioningKey(relation);
-        relation_close(relation, NoLock);
+        subqueryplan = (Plan *)apply_motion_mutator((Node *)subqueryplan, &state);
+        lfirst(cell) = subqueryplan;
+        Assert(state.sliceDepth == 0);
 
-        if (targetPolicy)
-            targetPolicyType = targetPolicy->ptype;
-    }
+        /* Note the number of Motion operators in the subquery plan. */
+        top = plannedStmt->topPlans[++itop];
+        Assert(top && IsA(top, CdbTopPlan));
+        top->nMotionNodes = state.nextMotionID - saveMotionID;
 
-	switch (query->commandType)
-	{
-		case CMD_SELECT:
-			
-// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-			if (query->into)
-			{
-				List   *hashExpr;
-				ListCell *exp1;
-				int			maxattrs = 200;
-				
-				if (query->intoPolicy != NULL)
-				{
-					targetPolicy = query->intoPolicy;
-					Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
-					Assert(query->intoPolicy->nattrs >= 0);
-					Assert(query->intoPolicy->nattrs <= 1024);
-				}
-				else
-				{
-					/* User did not specify a DISTRIBUTED BY clause */
-				
-					targetPolicy = palloc0(sizeof(GpPolicy)- sizeof(targetPolicy->attrs) + maxattrs * sizeof(targetPolicy->attrs[0]));
-					targetPolicy->nattrs = 0;
-					
-					targetPolicy->ptype = POLICYTYPE_PARTITIONED;
-					
-					/* Find out what the flow is partitioned on */
-					hashExpr = plan->flow->hashExpr;
-					
-					if(hashExpr)
-					foreach(exp1, hashExpr)
-					{
-						AttrNumber	n;
-						bool found_expr = false;
-						/* See if this Expr is a column of the result table */
-						
-						for(n=1;n<=list_length(plan->targetlist);n++)
-						{
-							Var		   *new_var = NULL;
-							
-							TargetEntry *target = get_tle_by_resno(plan->targetlist, n);
-							
-							if (!target->resjunk)
-							{
-								/* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
-					            if (IsA(target->expr, Var))
-					            {
-					                new_var = copyObject(target->expr);
-					                new_var->varno = OUTER;
-					                new_var->varattno = n;
-					            }
-					
-					            /*
-						         * Make a Var that references the target list entry at this offset,
-						         * using OUTER as the varno
-						         */
-					            else
-							        new_var = makeVar(OUTER,
-					                                  n,
-					                                  exprType((Node *) target->expr),
-					                                  exprTypmod((Node *) target->expr),
-					                                  0);
-					
-								if (equal(lfirst(exp1),new_var))
-								{
-									/* If it is, use it to partition the result table, to avoid
-									 * unnecessary redistibution of data */
-									targetPolicy->attrs[targetPolicy->nattrs++] = n;
-									found_expr = true;
-									break;
-									
-								}
-								
-							}
-						}
-						
-						if (!found_expr)
-							break;
-					}
-
-					/* do we know how to partition? */
-					if (targetPolicy->nattrs == 0)
-					{
-						/*
-						 * hash on the first hashable column we can find.
-						 */
-						int i;
-						for (i = 0; i < list_length(plan->targetlist); i++)
-						{
-							TargetEntry *target = get_tle_by_resno(plan->targetlist, targetPolicy->attrs[i]);
-							if (target)
-							{
-								Oid typeOid = exprType((Node *) target->expr);
-								bool isArray = false;  /* How do I find this out? */
-								
-								if(isGreenplumDbHashable(typeOid) || isArray)
-								{
-									targetPolicy->attrs[targetPolicy->nattrs++] = i+1;
-									break;
-								}
-							}
-						}
-					}
-					
-					if (query->intoPolicy == NULL)
-					{
-						char * columns;
-						int i;
-						columns = palloc((NAMEDATALEN+3)*targetPolicy->nattrs+1);
-						columns[0] = '\0';
-						for (i=0;i<targetPolicy->nattrs;i++)
-						{
-							TargetEntry *target = get_tle_by_resno(plan->targetlist, targetPolicy->attrs[i]);
-							if (i>0)
-								strcat(columns, ", ");
-							if (target->resname)
-								strcat(columns, target->resname);
-							else
-								strcat(columns, "???");
-						
-						}
-					
-						ereport(NOTICE,
-								(errcode(ERRCODE_SUCCESSFUL_COMPLETION),
-								 errmsg("Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) "
-									    "named '%s' as the Greenplum Database data distribution key for this "
-									    "table. ", columns),
-							     errhint("The 'DISTRIBUTED BY' clause determines the distribution of data."
-							     		 " Make sure column(s) chosen are the optimal data distribution key to minimize skew.")));
-					}
-				}
-				
-				query->intoPolicy = targetPolicy;
-				
-                /*
-                 * If mirroring is enabled, force Redistribute Motion
-                 * even if the query result is already partitioned on the
-                 * same key as the target.  Need this to make sure that any
-                 * function calls in the SELECT targetlist are executed
-                 * on primaries only, and the result is then sent to
-                 * primaries and mirrors to be inserted.
-                 */
-                if (isFTSEnabled())
-                    plan->flow->hashExpr = NIL;
-
-                /*
-	             * Make sure the top level flow is partitioned on the
-                 * partitioning key of the target relation.	Since this
-                 * is a SELECT INTO (basically same as an INSERT) command, the target list will correspond
-                 * to the attributes of the target relation in order.
-	             */
-                hashExpr = getExprListFromTargetList(plan->targetlist,
-                                                     targetPolicy->nattrs,
-                                                     targetPolicy->attrs,
-                                                     true);
-                if (!repartitionPlan(plan, true, false, false, hashExpr))
-                    ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-                                    errmsg("Cannot parallelize that SELECT INTO yet")
+        /* All subqueries should have been reduced to joins or initplans. */
+        if (!top->isInitPlan)
+            ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+                            errmsg("%s statement contains a subquery " 
+                                   "of a kind not yet supported in this "
+                                   "version of " PACKAGE_NAME ".",
+                                   CreateCommandTag((Node *)plannedStmt))
                             ));
 
-                Assert(query->intoPolicy->ptype == POLICYTYPE_PARTITIONED);
-
-			}
-#endif 
-#warning MERGEBUG this code is broken by the 8.3 merge
-			if (plan->flow->flotype == FLOW_PARTITIONED ) // && !query->into) // MERGEBUG
-			{
-			    /*
-                 * Query result needs to be brought back to the QD.
-                 * Ask for motion to a single QE.  Later, apply_motion
-                 * will override that to bring it to the QD instead.
-                 *
-                 * If the query has an ORDER BY clause, use Merge Receive to
-                 * preserve the ordering.
-                 *
-                 * The plan has already been set up to ensure each qExec's 
-                 * result is properly ordered according to the ORDER BY 
-                 * specification.  The existing ordering could be stronger 
-                 * than required; if so, omit the extra trailing columns 
-                 * from the Merge Receive key.
-                 *
-                 * An unordered result is ok if the ORDER BY ordering is
-                 * degenerate (on constant exprs) or the result is known to
-                 * have at most one row. 
-                 */
-                if (query->sortClause &&
-                    plan->flow->numSortCols > 0)
-                {
-                    if (plan->flow->numSortCols > list_length(query->sortClause))
-                        plan->flow->numSortCols = list_length(query->sortClause);
-
-                    Insist(focusPlan(plan, true, true, false));
-                }
-
-                /* Use UNION RECEIVE.  Does not preserve ordering. */
-                else
-                    Insist(focusPlan(plan, true, false, false));
-			}
-			break;
-
-		case CMD_INSERT:
-			{
-				switch (targetPolicyType)
-				{
-					case POLICYTYPE_PARTITIONED:
-                    {
-                        List   *hashExpr;
-
-                        /*
-                         * If mirroring is enabled, force Redistribute Motion
-                         * even if the query result is already partitioned on the
-                         * same key as the target.  Need this to make sure any
-                         * function calls in the SELECT targetlist are executed
-                         * on primaries only, and the result is then sent to
-                         * primaries and mirrors to be inserted.
-                         */
-                        if (isFTSEnabled())
-                            plan->flow->hashExpr = NIL;
-
-			            /*
-			             * Make sure the top level flow is partitioned on the
-                         * partitioning key of the target relation.	Since this
-                         * is an INSERT command, the target list will correspond
-                         * to the attributes of the target relation in order.
-			             */
-                        hashExpr = getExprListFromTargetList(plan->targetlist,
-                                                             targetPolicy->nattrs,
-                                                             targetPolicy->attrs,
-                                                             true);
-                        if (!repartitionPlan(plan, true, false, false, hashExpr))
-                            ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-                                            errmsg("Cannot parallelize that INSERT yet")
-                                    ));
-                        break;
-                    }
-
-					case POLICYTYPE_ENTRY:
-                        /* All's well if query result is already on the QD. */
-                        if (plan->flow->flotype == FLOW_SINGLETON &&
-                            plan->flow->segindex < 0)
-                            break;
-
-			            /*
-                         * Query result needs to be brought back to the QD.
-                         * Ask for motion to a single QE.  Later, apply_motion
-                         * will override that to bring it to the QD instead.
-                         */
-                        if (!focusPlan(plan, true, false, false))
-							ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								            errmsg("Cannot parallelize that INSERT yet")
-									));
-						break;
-
-					default:
-						Insist(0);
-				}
-			}
-			break;
-
-		case CMD_UPDATE:
-		case CMD_DELETE:
-			/*
-			 * For updates and deletes on partitioned tables, we restrict the query
-			 * to only those with a partioned flow, and involving no other tables.
-			 * In this manner , we avoid any motion nodes.	If there are subqueries,
-			 * the query will get rejected by the parallelizer unless they are initPlan subqueries.
-			 * If the table is an entry database table, we reject the query unless the
-			 * flow is a singleton on the entry database.
-			 */
-			{
-				/* Distributed target table? */
-                if (targetPolicyType == POLICYTYPE_PARTITIONED)
-                {
-					/*
-					 * Make sure we are not updating any of the partitioning columns
-					 */
-					if (query->commandType == CMD_UPDATE &&
-						doesUpdateAffectPartitionCols(plan,query))
-					{
-
-						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-										errmsg("Cannot parallelize an UPDATE statement that updates the distribution columns")
-										));
-					}
-					if (plan->flow->flotype != FLOW_PARTITIONED)
-					{
-						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								 errmsg("Cannot parallelize that %s yet",
-										query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
-										));
-					}
-                }
-
-                /* Target table is not distributed.  Must be in entry db. */
-                else
-                {
-					if (plan->flow->flotype == FLOW_PARTITIONED
-						|| plan->flow->flotype == FLOW_REPLICATED
-						|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
-						)
-					{
-						ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								 errmsg("Cannot parallelize that %s yet",
-										query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
-										));
-					}
-					/*
-					* Source is, presumably, a dispatcher singleton.
-					*/
-					plan->flow->req_move = MOVEMENT_NONE;
-					break;
-                }
-            }
-			break;
-
-		default:
-			Insist(0);		/* Never see non-DML in here! */
-	}
-
-	result = (Plan *) apply_motion_mutator((Node *) plan, &state);
-
-	Assert(result->nMotionNodes == state.nextMotionID - 1);
-    Assert(result->nInitPlans == list_length(state.initPlans));
-
-    /* Assign slice numbers to the initplans. */
-    foreach(cell, state.initPlans)
-    {
-        SubPlan    *subplan = (SubPlan *)lfirst(cell);
-
-        Assert(IsA(subplan, SubPlan) && subplan->qDispSliceId == 0);
-        subplan->qDispSliceId = state.nextMotionID++;
+        /* ctid syscol should only be used in combination with gp_segment_id */
+        warn_ctid_without_segid(subqueryplan, plannedStmt->rtable);
     }
 
+    /* Assign root slice numbers to the initplans. */
+    for (itop = 1; itop < list_length(plannedStmt->subplans); itop++)
+    {
+        top = plannedStmt->topPlans[itop];
+
+        if (top->isInitPlan)
+        {
+            top->qDispSliceId = state.nextMotionID++;
+            nSlice += 1 + top->nMotionNodes;
+        }
+    }
+
+    /* Now we know the total number of slices. */
+    plannedStmt->nSlice = nSlice;
+
 	/* Last minute check for Greenplum Database badness. */
-	if (query->commandType == CMD_DELETE ||
-        query->commandType == CMD_UPDATE)
+	if (plannedStmt->commandType == CMD_DELETE ||
+        plannedStmt->commandType == CMD_UPDATE)
 	{
-        char   *cmd = (query->commandType == CMD_UPDATE) ? "UPDATE" : "DELETE";
+        const char *cmd;
 
 		/*
 		 * Currently, we only support update or delete involving 1 gang
          * (not counting Init Plans).
 		 */
-		if (result->nMotionNodes > state.numInitPlanMotionNodes)
+		if (plannedStmt->topPlans[0]->nMotionNodes > 0)
 		{
+            cmd = CreateCommandTag((Node *)plannedStmt);
 			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 					        errmsg("Cannot parallelize that %s yet", cmd),
                             errdetail("Passage of data from one segment to another "
@@ -515,33 +200,16 @@ apply_motion(Plan *plan, Query *query)
 
 		if (has_ctid_outside_tlist_walker((Node *)result, NULL))
 		{
-			ereport(ERROR, (
-							errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-							errmsg("Cannot parallelize that %s yet",
-					 query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE"),
-							errdetail("Result depends on values of CTID system column.  Support for CTID system column may change in the future.")
+            cmd = CreateCommandTag((Node *)plannedStmt);
+			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+							errmsg("Cannot parallelize that %s yet", cmd),
+							errdetail("Result depends on values of CTID system column.")
 							));
 		}
 	}
-	else
-        warn_ctid_without_segid(query, result);
-
-    /* 
-	 * Discard subtrees of Query node that aren't needed for execution. 
-	 * Note the targetlist (query->targetList) is used in execution of
-	 * prepared statements, so we leave that alone.
-	 */
-    query->jointree = NULL;
-    query->groupClause = NIL;
-    query->havingQual = NULL;
-    query->distinctClause = NIL;
-    query->sortClause = NIL;
-    query->limitCount = NULL;
-    query->limitOffset = NULL;
-    query->setOperations = NULL;
 
 	return result;
-}
+}                               /* apply_motion */
 
 
 /*
@@ -555,53 +223,20 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     Flow   *flow;
     int     numInputSegs;
     int     saveNextMotionID;
-    int     saveNumInitPlans;
     int     saveSliceDepth;
     bool    sendToSecondary = false;    /* always for now */
 
 	if (node == NULL)
 		return NULL;
 	
-    /* Mutate SubPlan manually cause plan_tree_mutator won't visit its plan. */
-    if ( IsA(node, SubPlan) )
-	{
-		SubPlan *subplan = (SubPlan*)node;
-		SubPlan *newsub;
-		
-        /* For now, the top slice of a SubPlan always executes on the qDisp. */
-        saveSliceDepth = context->sliceDepth;
-        context->sliceDepth = 0;
-
-		newsub = makeNode(SubPlan);
-		memcpy(newsub, node, sizeof(SubPlan));
-		
-		newsub->testexpr = (Node*) apply_motion_mutator((Node*)subplan->testexpr, context);
-		// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-		newsub->plan = (Plan*) apply_motion_mutator((Node*)subplan->plan, context);
-		newsub->rtable = (List*) apply_motion_mutator((Node*)subplan->rtable, context);
-#endif
-		newsub->args = (List*) apply_motion_mutator((Node*)subplan->args, context);
-
-        /* An IntList isn't interesting to mutate; just copy them. */
-		newsub->paramIds = (List *)copyObject(subplan->paramIds);
-		newsub->setParam = (List *)copyObject(subplan->setParam);
-		newsub->parParam = (List *)copyObject(subplan->parParam);
-
-        context->sliceDepth = saveSliceDepth;
-		return (Node*)newsub;
-	}
-
-    /* An expression node might have subtrees containing plans to be mutated. */
+    /* Return expression nodes unchanged; don't bother to copy them. */
     if (!is_plan_node(node))
-		return plan_tree_mutator(node, apply_motion_mutator, context);
+		return node;
 
     plan = (Plan *)node;
     flow = plan->flow;
 
     saveNextMotionID = context->nextMotionID;
-    saveNumInitPlans = list_length(context->initPlans);
 
     /* Descending into a subquery or a new slice? */
     saveSliceDepth = context->sliceDepth;
@@ -623,40 +258,14 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
     plan = (Plan *)newnode;
     flow = plan->flow;
 
-    /* Make one big list of all of the initplans. */
-    if (plan->initPlan)
-    {
-        ListCell   *cell;
-        SubPlan    *subplan;
-        int         nMotion = 0;
-
-        foreach(cell, plan->initPlan)
-        {
-            subplan = (SubPlan *)lfirst(cell);
-            Assert(IsA(subplan, SubPlan));
-            // MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-            nMotion += subplan->plan->nMotionNodes;
-#endif
-            context->initPlans = lappend(context->initPlans, subplan);
-        }
-
-        /* Keep track of the number of Motion nodes found in Init Plans. */
-        context->numInitPlanMotionNodes += nMotion;
-    }
-
     /* Pre-existing Motion nodes must be renumbered. */
     if (IsA(newnode, Motion))
     {
         Motion *motion = (Motion *)newnode;
 
-#ifdef USE_ASSERT_CHECKING
-		/* Sanity check */
 		/* Sub plan must have flow */
         Assert(flow && motion->plan.lefttree->flow);
 		Assert(flow->req_move == MOVEMENT_NONE && !flow->flow_before_req_move);
-#endif
 
         /* Assign unique node number to the new node. */
         assignMotionID(newnode, context, node);
@@ -766,15 +375,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
         Assert(flow->req_move == MOVEMENT_NONE);
 
 done:
-    /*
-     * Label the Plan node with the number of Motion nodes and Init Plans
-     * in this subtree, inclusive of the node itself.  This info is used
-     * only in the top node of a query or subquery.  Someday, find a better
-     * place to keep it.
-     */
-    plan = (Plan *)newnode;
-    plan->nMotionNodes = context->nextMotionID - saveNextMotionID;
-    plan->nInitPlans = list_length(context->initPlans) - saveNumInitPlans;
 	return newnode;
 }                               /* apply_motion_mutator */
 
@@ -839,7 +439,6 @@ make_motion(Plan       *lefttree,
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
-	plan->dispatch = DISPATCH_PARALLEL;
 
 	node->sendToSecondary = sendToSecondary;
 	node->sendSorted = sendSorted;
@@ -1061,168 +660,6 @@ makeDefaultSegIdxArray(int numSegs)
 	return segIdx;
 }
 
-/* --------------------------------------------------------------------
- *
- *	Static Helper routines
- * --------------------------------------------------------------------
- */
-
-/* ----------------------------------------------------------------
- * getExprListFromTargetList
- *
- * Creates a VAR that references the indicated entries from the target list,
- * sets the restype and restypmod fields from the target list info,
- * and puts them into a list.
- *
- * The AttrNumber indexes actually refer to the 1 based index into the
- * target list.
- *
- * The entries have the varno field replaced by references in OUTER.
- * ----------------------------------------------------------------
- */
-List *
-getExprListFromTargetList(List         *tlist,
-                          int           numCols,
-                          AttrNumber   *colIdx,
-                          bool          useExecutorVarFormat)
-{
-	int			i;
-	List	   *elist = NIL;
-
-	for (i = 0; i < numCols; i++)
-	{
-		/* Find expr in TargetList */
-		AttrNumber	n = colIdx[i];
-
-		TargetEntry *target = get_tle_by_resno(tlist, n);
-
-		if (target == NULL)
-			elog(ERROR, "no tlist entry for key %d", n);
-
-        /* After set_plan_references(), make a Var referencing subplan tlist. */
-        if (useExecutorVarFormat)
-            elist = lappend(elist, cdbpullup_makeVar(OUTER, n, target->expr));
-
-        /* Before set_plan_references(), copy the subplan's result expr. */
-        else
-            elist = lappend(elist, copyObject(target->expr));
-	}
-
-	return elist;
-}
-
-
-/*
- * isAnyColChangedByUpdate
- */
-static bool
-isAnyColChangedByUpdate(Index       targetvarno,
-                        List       *targetlist,
-                        int         nattrs,
-                        AttrNumber *attrs)
-{
-	/*
-	 * Want to test whether an update statement possibly changes the
-	 * value of any of the partitioning columns.
-	 */
-
-	/*
-	 * For each partitioning column, the TargetListEntry for that varattno
-	 * should be just a Var node with the same varattno.
-	 */
-	int     i;
-
-	for (i = 0; i < nattrs; i++)
-	{
-		TargetEntry    *tle = get_tle_by_resno(targetlist, attrs[i]);
-		Var		       *var;
-
-		Insist(tle);
-
-		if (!IsA(tle->expr, Var))
-			return true;
-
-		var = (Var *)tle->expr;
-		if (var->varnoold != targetvarno ||
-            var->varoattno != attrs[i])
-			return true;
-	}
-
-	return false;
-}                               /* isAnyColChangedByUpdate */
-
-
-/*
- * doesUpdateAffectPartitionCols
- */
-bool
-doesUpdateAffectPartitionCols(Plan         *plan,
-                              Query        *query)
-{
-    Append     *append;
-    ListCell   *rticell;
-    ListCell   *plancell;
-    GpPolicy  *policy;
-
-    if (query->resultRelations == NIL)
-    {
-	    RangeTblEntry  *rte;
-        Relation        relation;
-
-        rte = rt_fetch(query->resultRelation, query->rtable);
-	    Assert(rte->rtekind == RTE_RELATION);
-
-        /* Get a copy of the rel's GpPolicy from the relcache. */
-        relation = relation_open(rte->relid, NoLock);
-        policy = RelationGetPartitioningKey(relation);
-        relation_close(relation, NoLock);
-
-
-	    /*
-	     * Single target relation?
-	     */
-
-        return isAnyColChangedByUpdate(query->resultRelation,
-                                       plan->targetlist,
-                                       policy->nattrs,
-                                       policy->attrs);
-    }
-
-    /*
-     * Multiple target relations (inheritance)...
-     * Plan should have an Append node on top, with a subplan per target.
-     */
-    append = (Append *)plan;
-
-	Insist(IsA(append, Append) &&
-	       append->isTarget &&
-           list_length(append->appendplans) == list_length(query->resultRelations));
-
-    forboth(rticell, query->resultRelations,
-            plancell, append->appendplans)
-    {
-        int     rti = lfirst_int(rticell);
-        Plan   *subplan = (Plan *)lfirst(plancell);
-
-        RangeTblEntry  *rte;
-        Relation        relation;
-
-        rte = rt_fetch(rti, query->rtable);
-	    Assert(rte->rtekind == RTE_RELATION);
-
-        /* Get a copy of the rel's GpPolicy from the relcache. */
-        relation = relation_open(rte->relid, NoLock);
-        policy = RelationGetPartitioningKey(relation);
-        relation_close(relation, NoLock);
-
-        if (isAnyColChangedByUpdate(rti, subplan->targetlist, policy->nattrs, policy->attrs))
-            return true;
-    }
-
-    return false;
-}                               /* doesUpdateAffectPartitionCols */
-
-
 
 /* ----------------------------------------------------------------------- *
  * Functions hasCtid(), hasCtid_outside_tlist() and helper function
@@ -1247,8 +684,8 @@ typedef struct ctid_inv_data
 
 static bool ctid_inventory_walker(Node *node, ctid_inv_data * inv);
 
-void
-warn_ctid_without_segid(Query *query, Plan *plan)
+static void 
+warn_ctid_without_segid(Plan *plan, List *rangetable)
 {
 	ctid_inv_data   invdata;
     Relids          warn_relids;
@@ -1267,15 +704,14 @@ warn_ctid_without_segid(Query *query, Plan *plan)
 
     bms_foreach(relid, warn_relids)
     {
-	    rte = rt_fetch(relid, query->rtable);
+	    rte = rt_fetch(relid, rangetable);
         if (rte->rtekind == RTE_RELATION)
         {
             Relation    relation;
             bool        isPartitioned;
 
             relation = relation_open(rte->relid, NoLock);
-            isPartitioned = (relation->rd_cdbpolicy &&
-                             relation->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED);
+            isPartitioned = RelationIsDistributed(relation);
             relation_close(relation, NoLock);
 
             if (isPartitioned)
@@ -1336,8 +772,10 @@ ctid_inventory_walker(Node *node, ctid_inv_data * inv)
 }
 
 bool
-has_ctid_outside_tlist_walker(Node *node, void* unused __attribute__((unused)) )
+has_ctid_outside_tlist_walker(Node *node, void* context)
 {
+    UnusedArg(context);
+
 	if (node == NULL)
 		return false;
 
@@ -1535,15 +973,17 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 	if(node == NULL)
 		return;
 
+    // TODO: Would it be possible to eliminate this case and instead 
+    // require the top-level caller to loop over the glob->subplans list?
+    // That would remove the possibility of inadvertently walking the same
+    // subquery plan twice in case the SubPlan node happens to be duplicated
+    // by some tree transformation.  
 	if(IsA(node, SubPlan))
 	{
-		// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-		SubPlan *subplan = (SubPlan *) node;
+		SubPlan    *subplan = (SubPlan *) node;
+        Plan       *subqueryplan = exec_subplan_get_plan(ctxt->glob, subplan);
 
-		shareinput_walker(f, (Node *)subplan->plan, ctxt); 
-#endif
+		shareinput_walker(f, (Node *)subqueryplan, ctxt); 
 		return;
 	}
 
@@ -1555,8 +995,8 @@ static void shareinput_walker(SHAREINPUT_MUTATOR f, Node *node, ApplyShareInputC
 		{
 			Node* n = lfirst(lc);
 			shareinput_walker(f, n, ctxt);
-			return;
 		}
+		return;
 	}
 
 	if(!is_plan_node(node))
@@ -1660,13 +1100,11 @@ static bool shareinput_mutator_dag_to_tree(Node *node, ApplyShareInputContext* c
 /* 
  * Apply the share input mutator.
  */
-Plan *apply_shareinput_dag_to_tree(PlannerGlobal *glob, Plan *plan, ApplyShareInputContext *ctxt)
+Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt)
 {
-    UnusedInReleaseBuild(glob);
-
     shareinput_walker(shareinput_mutator_dag_to_tree, (Node *) plan, ctxt);
     
-    Assert(shareinput_validator(glob, plan, ctxt->sharedNodes));
+    Assert(shareinput_validator(ctxt->glob, plan, ctxt->sharedNodes));
     return plan;
 }
 
@@ -1937,8 +1375,9 @@ shareinput_validator_walker(Node *node, void *context)
     Plan                           *plan = (Plan *)node;
     shareinput_validator_context   *ctx = (shareinput_validator_context *)context;
 
-    if (node == NULL) // MERGEBUG
+    if (node == NULL)
     	return false;
+
     switch (nodeTag(plan))
     {
 		case T_ShareInputScan:

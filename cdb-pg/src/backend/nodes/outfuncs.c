@@ -115,6 +115,16 @@
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
 	 _outToken(str, NULL))
 
+/* CDB: Write an array of Node pointers */
+#define WRITE_NODEPTR_ARRAY(fldname, numOfPtrs) \
+	(appendStringInfoString(str, " :" CppAsString(fldname) " "), \
+	 _outNodePtrArray(str, node->fldname, numOfPtrs))
+
+/* CDB: Write an array of OIDs */
+#define WRITE_OID_ARRAY(fldname, numOfOids) \
+	(appendStringInfoString(str, " :" CppAsString(fldname) " "), \
+	 _outOidArray(str, node->fldname, numOfOids))
+
 #define booltostr(x)  ((x) ? "true" : "false")
 
 static void _outNode(StringInfo str, void *obj);
@@ -197,6 +207,44 @@ _outList(StringInfo str, List *node)
 }
 
 /*
+ * _outNodePtrArray
+ */
+static void
+_outNodePtrArray(StringInfo str, void **nodeptrs, int numOfPtrs)
+{
+    int i;
+
+	appendStringInfo(str, "(%d", numOfPtrs);
+
+	for (i = 0; i < numOfPtrs; i++)
+	{
+        appendStringInfoChar(str, ' ');
+        _outNode(str, nodeptrs[i]);
+	}
+
+	appendStringInfoChar(str, ')');
+}                               /* _outNodePtrArray */
+
+/*
+ * _outOidArray
+ */
+static void
+_outOidArray(StringInfo str, Oid *oids, int numOfOids)
+{
+    int i;
+
+	appendStringInfo(str, "(%d", numOfOids);
+
+	for (i = 0; i < numOfOids; i++)
+	{
+        appendStringInfoChar(str, ' ');
+		appendStringInfo(str, " %u", oids[i]);
+	}
+
+	appendStringInfoChar(str, ')');
+}                               /* _outNodePtrArray */
+
+/*
  * _outBitmapset -
  *	   converts a bitmap set of integers
  *
@@ -266,6 +314,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 
 	WRITE_ENUM_FIELD(commandType, CmdType);
 	WRITE_BOOL_FIELD(canSetTag);
+    WRITE_NODEPTR_ARRAY(topPlans, 1 + list_length(node->subplans));     /*CDB*/
 	WRITE_NODE_FIELD(planTree);
 	WRITE_NODE_FIELD(rtable);
 	WRITE_NODE_FIELD(resultRelations);
@@ -276,7 +325,21 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_NODE_FIELD(returningLists);
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(relationOids);
-	WRITE_INT_FIELD(nParamExec);
+	WRITE_INT_FIELD(nParamExec);                                        /*CDB*/
+    WRITE_OID_ARRAY(paramExecTypes, node->nParamExec);                  /*CDB*/
+	WRITE_INT_FIELD(nSlice);                                            /*CDB*/
+	WRITE_BOOL_FIELD(dispatchParallel);                                 /*CDB*/
+}
+
+static void
+_outCdbTopPlan(StringInfo str, CdbTopPlan *node)
+{
+	WRITE_NODE_TYPE("CDBTOPPLAN");
+
+	WRITE_INT_FIELD(nMotionNodes);
+	WRITE_INT_FIELD(qDispSliceId);
+	WRITE_BOOL_FIELD(isInitPlan);
+	WRITE_BOOL_FIELD(dispatchParallel);
 }
 
 /*
@@ -296,13 +359,7 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
 
-	WRITE_INT_FIELD(nParamExec);
-
 	WRITE_NODE_FIELD(flow);
-	WRITE_ENUM_FIELD(dispatch, DispatchMethod);
-	WRITE_INT_FIELD(nMotionNodes);
-	WRITE_INT_FIELD(nInitPlans);
-	WRITE_NODE_FIELD(sliceTable);
 
 	WRITE_NODE_FIELD(lefttree);
 	WRITE_NODE_FIELD(righttree);
@@ -1077,7 +1134,6 @@ _outSubPlan(StringInfo str, SubPlan *node)
 {
 	WRITE_NODE_TYPE("SUBPLAN");
 
-    WRITE_INT_FIELD(qDispSliceId);  /*CDB*/
 	WRITE_ENUM_FIELD(subLinkType, SubLinkType);
 	WRITE_NODE_FIELD(testexpr);
 	WRITE_NODE_FIELD(paramIds);
@@ -1086,7 +1142,6 @@ _outSubPlan(StringInfo str, SubPlan *node)
 	WRITE_BOOL_FIELD(useHashTable);
 	WRITE_BOOL_FIELD(unknownEqFalse);
 	WRITE_BOOL_FIELD(is_initplan); /*CDB*/
-	WRITE_BOOL_FIELD(is_multirow); /*CDB*/
 	WRITE_NODE_FIELD(setParam);
 	WRITE_NODE_FIELD(parParam);
 	WRITE_NODE_FIELD(args);
@@ -2789,12 +2844,16 @@ _outGroupingFunc(StringInfo str, GroupingFunc *node)
 static void
 _outGrouping(StringInfo str, Grouping *node)
 {
-	WRITE_NODE_TYPE("GROUPING");
+    UnusedArg(node);
+    
+    WRITE_NODE_TYPE("GROUPING");
 }
 
 static void
 _outGroupId(StringInfo str, GroupId *node)
 {
+    UnusedArg(node);
+    
 	WRITE_NODE_TYPE("GROUPID");
 }
 
@@ -3863,6 +3922,10 @@ _outNode(StringInfo str, void *obj)
 			case T_CreateTrigStmt:
 				_outCreateTrigStmt(str, obj);
 				break;
+
+            case T_CdbTopPlan:
+                _outCdbTopPlan(str, obj);
+                break;
 
 			default:
 

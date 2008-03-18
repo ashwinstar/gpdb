@@ -1043,12 +1043,6 @@ DoCopy(const CopyStmt *stmt, const char *queryString)
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY (SELECT INTO) is not supported")));
 		
-		/* Query mustn't use INTO, either */
-		if (query->intoClause)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY (SELECT INTO) is not supported")));
-
 		/* plan the query */
 		plan = planner(query, 0, NULL);
 		

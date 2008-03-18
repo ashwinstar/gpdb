@@ -23,6 +23,7 @@
 struct CdbExplain_ShowStatCtx;  /* private, in "cdb/cdbexplain.c" */
 struct EState;                  /* #include "nodes/execnodes.h" */
 struct PlanState;               /* #include "nodes/execnodes.h" */
+struct SliceTable;              /* #include "nodes/execnodes.h" */
 
 
 /* ----------------
@@ -52,7 +53,8 @@ typedef struct QueryDesc
 	TupleDesc	tupDesc;		/* descriptor for result tuples */
 	struct EState      *estate;			/* executor's query-wide state */
 	struct PlanState   *planstate;		/* tree of per-plan-node state */
-	
+    struct SliceTable  *sliceTable;     /* CDB: parallel exec params */   
+
 	/* This field is set by ExecutorEnd after collecting cdbdisp results */
 	uint64		es_processed;	/* # of tuples processed */
 	Oid			es_lastoid;		/* oid of row inserted */

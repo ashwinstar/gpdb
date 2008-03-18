@@ -165,7 +165,9 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 	bool xslice = false;
 	int i;
 
-	Assert(numpartners > 0);
+    UnusedArg(root);
+    
+    Assert(numpartners > 0);
 	
 	if(numpartners == 1)
 	{
@@ -204,7 +206,6 @@ List *share_plan(PlannerInfo *root, Plan *common, int numpartners)
 		shared->total_cost = matpath.total_cost;
 		shared->plan_rows = common->plan_rows;
 		shared->plan_width = common->plan_width;
-		shared->dispatch = common->dispatch;
 		shared->flow = copyObject(common->flow); 
 
 		stype = xslice ? SHARE_MATERIAL_XSLICE : SHARE_MATERIAL; 

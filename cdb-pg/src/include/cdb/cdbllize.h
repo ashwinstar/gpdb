@@ -22,12 +22,13 @@
 struct Flow;                                /* #include "nodes/primnodes.h" */
 struct List;                                /* #include "nodes/pg_list.h" */
 struct Plan;                                /* #include "nodes/plannodes.h" */
+struct PlannedStmt;                         /* #include "nodes/plannodes.h" */
 struct PlannerGlobal;                       /* #include "nodes/relation.h" */
 struct Query;                               /* #include "nodes/parsenodes.h" */
 
 struct Plan *
-cdbparallelize(struct PlannerGlobal    *glob, 
-               struct Plan             *plan, 
+cdbparallelize(struct PlannerGlobal    *glob,
+               struct PlannedStmt      *plannedStmt,
                struct Query            *query);
 
 extern bool is_plan_node(Node *node);

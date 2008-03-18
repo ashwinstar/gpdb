@@ -492,6 +492,8 @@ static Datum
 ExecEvalGrouping(ExprState *gstate, ExprContext *econtext,
 				 bool *isNull, ExprDoneCond *isDone)
 {
+    UnusedArg(gstate);
+
 	if (isDone)
 		*isDone = ExprSingleResult;
 
@@ -509,6 +511,8 @@ static Datum
 ExecEvalGroupId(ExprState *gstate, ExprContext *econtext,
 				bool *isNull, ExprDoneCond *isDone)
 {
+    UnusedArg(gstate);
+
 	if (isDone)
 		*isDone = ExprSingleResult;
 
@@ -897,6 +901,8 @@ ExecEvalConst(ExprState *exprstate, ExprContext *econtext,
 {
 	Const	   *con = (Const *) exprstate->expr;
 
+    UnusedArg(econtext);
+
 	if (isDone)
 		*isDone = ExprSingleResult;
 
@@ -919,7 +925,7 @@ ExecEvalConst(ExprState *exprstate, ExprContext *econtext,
  * In executor mode, a PARAM_EXEC parameter can not be evaluated by executing
  * the subplan.  The subplan was executed on the dispatcher prior to
  * launching the main query.  The value of the result is passed to the qExec
- * in the ParamInfo, with a kind of PARAM_EXEC_REMOTE.
+ * in the ParamInfo, with a kind of PARAM_EXEC.
  * So, this function was changed to just do a lookup in that case.
  */
 static Datum
@@ -946,31 +952,24 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 			if (Gp_role == GP_ROLE_EXECUTE)
 			{
 				ParamListInfo paramInfo = econtext->ecxt_param_list_info;
-				int ni, nx = paramInfo->numParams;
+				int ni = econtext->ecxt_estate->es_plannedstmt->nParamExec;
 
-				/* if we're in a subquery, we may not have a valid
-				 * topPlan ptr!  and in the case of a subquery, we'll
-				 * have the correct unadjusted parameter index */
-				if (econtext->ecxt_estate->es_plannedstmt->planTree != NULL)
-					ni = econtext->ecxt_estate->es_plannedstmt->planTree->nParamExec;
-				else
-					ni = nx;
-
-				if (paramInfo && thisParamId <= ni )
+                // CDB TODO: Is this right?
+                if (paramInfo && 
+                    thisParamId >= 0 &&
+                    thisParamId < ni &&
+                    ni <= paramInfo->numParams)
 				{
-					ParamExternData *prm = &paramInfo->params[thisParamId+nx-ni];
+                    int     nx = paramInfo->numParams - ni;
+					ParamExternData *prm = &paramInfo->params[thisParamId+nx];
 		
 					if (OidIsValid(prm->ptype))
 					{
 						*isNull = prm->isnull;
 						return prm->value;
-					}
-				 
+					}				 
 				}
-				
-				prm->isnull = true;
-				prm->execPlan = NULL;
-
+                elog(ERROR, "Invalid internal parameter reference %d", thisParamId);
 			}
 			else
 			{
@@ -2565,6 +2564,8 @@ ExecEvalCaseTestExpr(ExprState *exprstate,
 					 ExprContext *econtext,
 					 bool *isNull, ExprDoneCond *isDone)
 {
+    UnusedArg(exprstate);
+
 	if (isDone)
 		*isDone = ExprSingleResult;
 	*isNull = econtext->caseValue_isNull;
@@ -3017,7 +3018,10 @@ ExecEvalXml(XmlExprState *xmlExpr, ExprContext *econtext,
 	ListCell   *narg;
 	int			i;
 
-	if (isDone)
+    buf.data = NULL;
+    buf.len = 0;
+    
+    if (isDone)
 		*isDone = ExprSingleResult;
 	*isNull = true;				/* until we get a result */
 
@@ -3546,6 +3550,8 @@ ExecEvalCoerceToDomainValue(ExprState *exprstate,
 							ExprContext *econtext,
 							bool *isNull, ExprDoneCond *isDone)
 {
+    UnusedArg(exprstate);
+
 	if (isDone)
 		*isDone = ExprSingleResult;
 	*isNull = econtext->domainValue_isNull;
@@ -3864,7 +3870,12 @@ static Datum
 ExecEvalCurrentOfExpr(ExprState *exprstate, ExprContext *econtext,
 					  bool *isNull, ExprDoneCond *isDone)
 {
-	elog(ERROR, "CURRENT OF cannot be executed");
+    UnusedArg(exprstate);
+    UnusedArg(econtext);
+    UnusedArg(isNull);
+    UnusedArg(isDone);
+
+    elog(ERROR, "CURRENT OF cannot be executed");
 	return 0;					/* keep compiler quiet */
 }
 

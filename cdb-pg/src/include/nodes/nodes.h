@@ -409,7 +409,8 @@ typedef enum NodeTag
     T_StreamBitmap,                         /* in nodes/tidbitmap.h */
 
     /* CDB: tags for random other stuff */
-    T_CdbExplain_StatHdr = 950,             /* in cdb/cdbexplain.c */
+    T_CdbExplain_StatHdr = 1050,            /* in cdb/cdbexplain.c */
+    T_CdbTopPlan,                           /* in nodes/plannodes.h */
 } NodeTag;
 
 /*
@@ -577,20 +578,6 @@ typedef enum FlowType
 	FLOW_PARTITIONED,	/* flow is partitioned across IOPs */
 } FlowType;
 
-/*
- * DispatchMethod - MPP dispatch method.
- *
- * There are currently three possibilties, an initial value of undetermined,
- * and a value for each of the ways the dispatch code implements.
- */
-typedef enum DispatchMethod
-{
-	DISPATCH_UNDETERMINED = 0,	/* Used prior to determination. */
-	DISPATCH_SEQUENTIAL,		/* Dispatch on entry postgres process only. */
-	DISPATCH_PARALLEL			/* Dispatch on query executor and entry processes. */
-	
-} DispatchMethod;
-
 /* 
  * Inside the executor, if a caller to some data type manipulation functions
  * (e.g., int8inc()) is doing aggregate or window function work, we want to
@@ -600,4 +587,5 @@ typedef enum DispatchMethod
 #define IS_AGG_EXECUTION_NODE(node) \
 	((IsA((Node *)(node), AggState) || IsA((Node *)(node), WindowState)) ? \
 	 true : false)
+
 #endif   /* NODES_H */

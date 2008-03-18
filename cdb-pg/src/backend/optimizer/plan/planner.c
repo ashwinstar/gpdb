@@ -133,6 +133,11 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	Plan	   *top_plan;
 	ListCell   *lp,
 			   *lr;
+    Oid            *paramExecTypes;
+    int             nParamExec;
+    CdbTopPlan    **topPlans;
+    int             nTopPlan;
+    int             i;
 	ApplyShareInputContext shareinput_context;
 
 	/* Cursor options may come from caller or from DECLARE CURSOR stmt */
@@ -197,8 +202,9 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	shareinput_context.sharedNodes = NULL;
 	shareinput_context.sliceMarks = NULL;
 	shareinput_context.motStack = NULL;
+    shareinput_context.glob = glob;
 
-	top_plan = apply_shareinput_dag_to_tree(glob, top_plan, &shareinput_context);
+	top_plan = apply_shareinput_dag_to_tree(top_plan, &shareinput_context);
 
 	/* final cleanup of the plan */
 	Assert(glob->finalrtable == NIL);
@@ -213,15 +219,23 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		lfirst(lp) = set_plan_references(glob, subplan, subrtable);
 	}
 
-	if ( Gp_role == GP_ROLE_DISPATCH )
-	{
-		top_plan = cdbparallelize(glob, top_plan, parse);
+    /* CDB: Allocate CdbTopPlan array. */
+    nTopPlan = 1 + list_length(glob->subplans);
+    topPlans = (CdbTopPlan **)palloc(nTopPlan * sizeof(topPlans[0]));
+    for (i = 0; i < nTopPlan; i++)
+        topPlans[i] = makeNode(CdbTopPlan);    
 
-		/* cdbparallelize may create additional slices that may affect share input.
-		 * need to mark material nodes that are split acrossed multi slices.
-		 */
-		top_plan = apply_shareinput_xslice(top_plan, &shareinput_context);
-	}
+    /* CDB: Build array of PARAM_EXEC types. */
+    nParamExec = list_length(glob->paramlist);
+    paramExecTypes = (Oid *)palloc(nParamExec * sizeof(paramExecTypes[0]));
+    i = 0;
+    foreach(lp, glob->paramlist)
+    {
+        PlannerParamItem   *ppi = (PlannerParamItem *)lfirst(lp);
+
+        Assert(IsA(ppi, PlannerParamItem));
+        paramExecTypes[i++] = exprType(ppi->item);
+    }
 
 	/* build the PlannedStmt result */
 	result = makeNode(PlannedStmt);
@@ -229,6 +243,7 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->commandType = parse->commandType;
 	result->canSetTag = parse->canSetTag;
 	result->transientPlan = glob->transientPlan;
+    result->topPlans = topPlans;
 	result->planTree = top_plan;
 	result->rtable = glob->finalrtable;
 	result->resultRelations = root->resultRelations;
@@ -239,7 +254,18 @@ standard_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	result->returningLists = root->returningLists;
 	result->rowMarks = parse->rowMarks;
 	result->relationOids = glob->relationOids;
-	result->nParamExec = list_length(glob->paramlist);
+    result->nParamExec = nParamExec;
+    result->paramExecTypes = paramExecTypes;
+
+	if ( Gp_role == GP_ROLE_DISPATCH )
+	{
+		result->planTree = cdbparallelize(glob, result, parse);
+
+		/* cdbparallelize may create additional slices that may affect share input.
+		 * need to mark material nodes that are split across multi slices.
+		 */
+		result->planTree = apply_shareinput_xslice(result->planTree, &shareinput_context);
+	}
 
 	return result;
 }

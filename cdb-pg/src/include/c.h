@@ -75,9 +75,7 @@ extern "C" {
 #include <string.h>
 #include <stddef.h>
 #include <stdarg.h>
-#ifdef HAVE_STDINT_H
 #include <stdint.h>
-#endif
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
 #endif
@@ -676,7 +674,7 @@ typedef NameData *Name;
 		int		_val = (val); \
 		Size	_len = (len); \
 \
-		if ((((long) _vstart) & LONG_ALIGN_MASK) == 0 && \
+		if ((((size_t) _vstart) & LONG_ALIGN_MASK) == 0 && /*CDB*/ \
 			(_len & LONG_ALIGN_MASK) == 0 && \
 			_val == 0 && \
 			_len <= MEMSET_LOOP_LIMIT && \

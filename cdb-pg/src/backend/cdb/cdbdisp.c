@@ -154,7 +154,7 @@ static Node *pre_dispatch_function_evaluation_mutator(Node *node,
 						 pre_dispatch_function_evaluation_context * context);
 
 static void
-CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char* debugCaller);
+CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, const char *debugCaller);
 
 /* ====================================================
  * STATIC STATE VARIABLES should not be declared!
@@ -3613,7 +3613,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
  * Note that the slice tree dispatched is the one specified in the EState
  * of the argument QueryDesc as es_cur__slice.
  *
- * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters
+ * Note that the QueryDesc params must include PARAM_EXEC parameters
  * containing the values of any initplans required by the slice to be run.
  * (This is handled by calls to addRemoteExecParamsToParamList() from the
  * functions preprocess_initplans() and ExecutorRun().)
@@ -3629,25 +3629,22 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 					 struct CdbDispatchResults ** pMirrorResults,       /* OUT */
 					 struct CdbDispatchCmdThreads ** pDispatchThreads)		/* OUT */
 {
-	 
-	char	   *squery,
-			   *splan,
-			   *ssliceinfo,
-			   *sparams;
-	int			squery_len,
-				splan_len,
-				ssliceinfo_len,
-				sparams_len;
-	SliceTable *sliceTbl;
-	int			rootIdx;
-	int			oldLocalSlice;
-	sliceVec	*sliceVector = NULL;
-	int			nSlices,
-				sliceLim;
-
+	EState         *estate = queryDesc->estate;
+    PlannedStmt    *plannedStmt = queryDesc->plannedstmt;
+	char	       *splan,
+			       *ssliceinfo,
+			       *sparams;
+	int			    splan_len,
+				    ssliceinfo_len,
+				    sparams_len;
+	SliceTable     *sliceTbl;
+	int			    rootIdx;
+	int			    oldLocalSlice;
+	sliceVec	    *sliceVector = NULL;
+	int			    nSlices,
+				    sliceLim;
 	
 	DispatchCommandQueryParms queryParms;
- 
 	pre_dispatch_function_evaluation_context pcontext;
 
 	*pPrimaryResults = NULL;
@@ -3657,15 +3654,10 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	*pDispatchThreads = NULL;
 
 	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
-	Assert(queryDesc != NULL && queryDesc->estate != NULL);
+	Assert(estate && plannedStmt && plannedStmt->planTree);
 
-	/*
-	 * Later we'll need to operate with the slice table provided via the
-	 * EState structure in the argument QueryDesc.	Cache this information
-	 * locally and assert our expectations about it.
-	 */
-	sliceTbl = queryDesc->estate->es_sliceTable;
-	rootIdx = queryDesc->estate->es_cur_root_idx;
+	sliceTbl = estate->es_sliceTable;
+	rootIdx = estate->es_cur_root_idx;
 
 	Assert(sliceTbl != NULL);
 	Assert(rootIdx == 0
@@ -3685,18 +3677,17 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * consistent value for everyone
 	 *
 	 */
-
 	pcontext.single_row_insert = false;
 
 	if (queryDesc->operation == CMD_INSERT)
 	{
-		// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-		if (queryDesc->parsetree->jointree != NULL)
-			if (queryDesc->parsetree->jointree->fromlist == NIL)
+        if (IsA(plannedStmt->planTree, ValuesScan))
+        {
+            ValuesScan *vs = (ValuesScan *)plannedStmt->planTree;
+
+            if (list_length(vs->values_lists) == 1)
 				pcontext.single_row_insert = true;
-#endif
+        }
 		
 		if (queryDesc->operation == CMD_INSERT && !pcontext.single_row_insert)
 			clear_relsize_cache();
@@ -3707,26 +3698,25 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		queryDesc->operation == CMD_UPDATE ||
 		queryDesc->operation == CMD_DELETE)
 	{
-
 		MemoryContext oldContext;
 		List * savetargets = NIL;
 		Plan * oldplan = NULL;
-		/*
+
+        /*
 		 * The Query tree doesn't have to be mutated here, since it isn't used during
 		 * the execution.
-		 */
-		
+		 */	
 		savetargets = NIL;
 		
-		if (is_plan_node((Node *)queryDesc->plannedstmt->planTree) &&
-			!is_projection_capable_plan((Plan *)queryDesc->plannedstmt->planTree))
+		if (is_plan_node((Node *)plannedStmt->planTree) &&
+			!is_projection_capable_plan(plannedStmt->planTree))
 		{
 			/*
 			 * don't do targetlists in nodes where the targetlist isn't used.  Hide them from the mutator
 			 */
-			savetargets = queryDesc->plannedstmt->planTree->targetlist;
-			queryDesc->plannedstmt->planTree->targetlist = NIL;
-			oldplan = queryDesc->plannedstmt->planTree;
+			savetargets = plannedStmt->planTree->targetlist;
+			plannedStmt->planTree->targetlist = NIL;
+			oldplan = plannedStmt->planTree;
 		}
 
 		oldContext = CurrentMemoryContext;
@@ -3736,40 +3726,31 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			 * Make sure the palloc calls from plan_tree_mutator don't happen in 
 			 * topMemory, as this will cause memory leaks
 			 */
-			
 			oldContext = MemoryContextSwitchTo(MessageContext);
 		}
 
-		queryDesc->plannedstmt->planTree =
-			(Plan *) plan_tree_mutator((Node *) queryDesc->plannedstmt->planTree,
+		plannedStmt->planTree =
+			(Plan *) plan_tree_mutator((Node *) plannedStmt->planTree,
 									   pre_dispatch_function_evaluation_mutator,
 									   &pcontext);
 														
 		if (savetargets != NIL)
 		{
-			queryDesc->plannedstmt->planTree->targetlist = savetargets;
+			plannedStmt->planTree->targetlist = savetargets;
 			oldplan->targetlist = savetargets;
 		}
 		
 		MemoryContextSwitchTo(oldContext);
-
 	}
 
-
 	/*
-	 * serialized plan and query trees. Note that we're called for a single
+	 * Serialize the plan tree. Note that we're called for a single
 	 * slice tree (corresponding to an initPlan or the main plan), so the
 	 * parameters are fixed and we can include them in the prefix.
 	 */
-	// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-	// squery goes away in 8,3
-#if 0
-	squery = serializeNode((Node *) queryDesc->parsetree, &squery_len);
-#endif
-	splan = serializeNode((Node *) queryDesc->plannedstmt->planTree, &splan_len);
+	splan = serializeNode((Node *) plannedStmt, &splan_len);
 
-	Assert(squery != NULL && splan != NULL);
+	Assert(splan != NULL);
 
 	/*
 	*/
@@ -3840,8 +3821,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	}
 
 	ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len);
-	
- 
+	 
 	/*
 	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
 	 * vector of slice indexes specifying the order of [potential] dispatch.
@@ -3857,11 +3837,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 												   cancelOnError);
 
 	/* Allocate result array for mirror gang. */
-	// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-	if (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)
-#endif
+	if (queryDesc->operation != CMD_SELECT || 
+        plannedStmt->intoClause != NULL)
 	{
 		Slice	   *slice = (Slice *) list_nth(sliceTbl->slices, rootIdx);
 
@@ -3875,8 +3852,8 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = debug_query_string;
-	queryParms.serializedQuerytree = squery;
-	queryParms.serializedQuerytreelen = squery_len;
+	queryParms.serializedQuerytree = NULL;
+	queryParms.serializedQuerytreelen = 0;
 	queryParms.serializedPlantree = splan;
 	queryParms.serializedPlantreelen = splan_len;
 	queryParms.serializedParams = sparams;
@@ -3911,7 +3888,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 			 pPrimaryResults,		/* OUT */
 			 pMirrorResults,       /* OUT */
 			 pDispatchThreads)	;	/* OUT */
-	
 
 	sliceTbl->localSlice = oldLocalSlice;
 	
@@ -4068,7 +4044,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 								 struct CdbDispatchResults ** pPrimaryResults,
 								 struct CdbDispatchResults ** pMirrorResults,
 								 struct CdbDispatchCmdThreads ** pDispatchThreads,
-								 char* debugCaller)
+								 const char *debugCaller)
 {
 	char	   *serializedQuerytree;
 	int			serializedQuerytree_len;
@@ -4128,19 +4104,19 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
  * throws an error and does not return.
  */
 void
-CdbDispatchUtilityStatement(struct Node *stmt, char* debugCaller __attribute__((unused)) )
+CdbDispatchUtilityStatement(struct Node *stmt, const char *debugCaller)
 {
-	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ true, "CdbDispatchUtilityStatement");
+	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ true, debugCaller);
 }
 
 void
-CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, char* debugCaller __attribute__((unused)) )
+CdbDispatchUtilityStatement_NoTwoPhase(struct Node *stmt, const char* debugCaller)
 {
-	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ false, "CdbDispatchUtilityStatement_NoTwoPhase");
+	CdbDispatchUtilityStatement_Internal(stmt, /* needTwoPhase */ false, debugCaller);
 }
 
 static void
-CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char* debugCaller)
+CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, const char* debugCaller)
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;

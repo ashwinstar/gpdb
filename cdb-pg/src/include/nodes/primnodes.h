@@ -202,7 +202,6 @@ typedef enum ParamKind
 {
 	PARAM_EXTERN,
 	PARAM_EXEC,
-	PARAM_EXEC_REMOTE, /* MPP ???? */
 	PARAM_SUBLINK
 } ParamKind;
 
@@ -583,14 +582,11 @@ typedef struct SubPlan
 	Node	   *testexpr;		/* OpExpr or RowCompareExpr expression tree */ 
  	List	   *paramIds;		/* IDs of Params embedded in the above */
  	
-    int         qDispSliceId;   /* CDB: slice# of initplan's root slice, or 0 */
- 	
 	/* Identification of the Plan tree to use: */
 	int			plan_id;		/* Index (from 1) in PlannedStmt.subplans */
-	/* Extra data useful for determining subplan's output type: */
+
+    /* Extra data useful for determining subplan's output type: */
 	Oid			firstColType;	/* Type of first column of subplan result */
-
-
 
 	/* Information about execution strategy: */
 	bool		useHashTable;	/* TRUE to store subselect output in a hash
@@ -600,9 +596,8 @@ typedef struct SubPlan
 								 * simpler handling of null values */
 	bool		is_initplan;	/* CDB: Is the subplan implemented as an
 								 * initplan? */
-	bool		is_multirow;	/* CDB: May the subplan return more than
-								 * one row? */
-	/* Information for passing params into and out of the subselect: */
+
+    /* Information for passing params into and out of the subselect: */
 	/* setParam and parParam are lists of integers (param IDs) */
 	List	   *setParam;		/* initplan subqueries have to set these
 								 * Params for parent plan */

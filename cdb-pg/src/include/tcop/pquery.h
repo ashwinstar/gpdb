@@ -4,6 +4,7 @@
  *	  prototypes for pquery.c.
  *
  *
+ * Portions Copyright (c) 2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -17,6 +18,8 @@
 #include "nodes/parsenodes.h"
 #include "utils/portal.h"
 
+struct SliceTable;                          /* #include "nodes/execnodes.h" */
+
 
 extern PGDLLIMPORT Portal ActivePortal;
 
@@ -26,6 +29,8 @@ extern PortalStrategy ChoosePortalStrategy(List *stmts);
 extern List *FetchPortalTargetList(Portal portal);
 
 extern List *FetchStatementTargetList(Node *stmt);
+
+extern void PortalSetSliceTable(Portal portal, struct SliceTable *sliceTable);
 
 extern void PortalStart(Portal portal, ParamListInfo params,
 			Snapshot snapshot);

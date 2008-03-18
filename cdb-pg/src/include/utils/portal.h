@@ -36,6 +36,7 @@
  * to look like NO SCROLL cursors.
  *
  *
+ * Portions Copyright (c) 2007-2008, Greenplum inc
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -50,6 +51,7 @@
 #include "utils/resowner.h"
 #include "utils/timestamp.h"
 
+struct SliceTable;                      /* #include "nodes/execnodes.h" */
 struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
 
 /*
@@ -140,6 +142,8 @@ typedef struct PortalData
 	CachedPlan *cplan;			/* CachedPlan, if stmts are from one */
 
 	ParamListInfo portalParams; /* params to pass to query */
+
+    struct SliceTable  *sliceTable; /* CDB: parallel exec params (QE only) */
 
 	/* Features/options */
 	PortalStrategy strategy;	/* see above */

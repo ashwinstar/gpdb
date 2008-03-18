@@ -790,7 +790,9 @@ typedef struct SubPlanState
 	bool		needShutdown;	/* TRUE = need to shutdown subplan */
 
 	MemTuple	curTuple;		/* copy of most recent tuple from subplan */
-	/* these are used when hashing the subselect's output: */
+    CdbTopPlan *topPlan;        /* subplan summary info */
+    
+    /* these are used when hashing the subselect's output: */
 	ProjectionInfo *projLeft;	/* for projecting lefthand exprs */
 	ProjectionInfo *projRight;	/* for projecting subselect output */
 	TupleHashTable hashtable;	/* hash table for no-nulls subselect rows */

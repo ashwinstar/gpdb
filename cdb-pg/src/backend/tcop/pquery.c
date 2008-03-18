@@ -36,7 +36,7 @@
 Portal		ActivePortal = NULL;
 
 
-static void ProcessQuery(Portal portal, // GPDB needs portal?  Or  // MERGEBUG
+static void ProcessQuery(Portal portal,
              PlannedStmt *plan,
              ParamListInfo params,
 			 DestReceiver *dest,
@@ -74,7 +74,7 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 				ParamListInfo params,
 				bool doInstrument)
 {
-	QueryDesc  *qd = (QueryDesc *) palloc(sizeof(QueryDesc));
+	QueryDesc  *qd = (QueryDesc *) palloc0(sizeof(QueryDesc));
 
 	qd->operation = plannedstmt->commandType;	/* operation */
 	qd->plannedstmt = plannedstmt;		/* plan */
@@ -89,6 +89,7 @@ CreateQueryDesc(PlannedStmt *plannedstmt,
 	qd->tupDesc = NULL;
 	qd->estate = NULL;
 	qd->planstate = NULL;
+    qd->sliceTable = NULL;
 	
 	qd->cursor_query = false; /* default value */
 	qd->portal_name = NULL;
@@ -105,7 +106,7 @@ CreateUtilityQueryDesc(Node *utilitystmt,
 					   DestReceiver *dest,
 					   ParamListInfo params)
 {
-	QueryDesc  *qd = (QueryDesc *) palloc(sizeof(QueryDesc));
+	QueryDesc  *qd = (QueryDesc *) palloc0(sizeof(QueryDesc));
 
 	qd->operation = CMD_UTILITY;	/* operation */
 	qd->plannedstmt = NULL;
@@ -120,6 +121,7 @@ CreateUtilityQueryDesc(Node *utilitystmt,
 	qd->tupDesc = NULL;
 	qd->estate = NULL;
 	qd->planstate = NULL;
+    qd->sliceTable = NULL;
 
 	return qd;
 }
@@ -142,7 +144,7 @@ FreeQueryDesc(QueryDesc *qdesc)
  *		Execute a single plannable query within a PORTAL_MULTI_QUERY
  *		or PORTAL_ONE_RETURNING portal
  *
- *	portal: the portal  --- GPDB Only?
+ *	portal: the portal
  *	plan: the plan tree for the query
  *	params: any parameters needed
  *	dest: where to send results
@@ -155,15 +157,13 @@ FreeQueryDesc(QueryDesc *qdesc)
  * error; otherwise the executor's memory usage will be leaked.
  */
 static void
-ProcessQuery(Portal portal,   // GPDB needs portal?  Or MEGEBUG ?
+ProcessQuery(Portal portal,
 			 PlannedStmt *plan,
              ParamListInfo params,
 			 DestReceiver *dest,
 			 char *completionTag)
 {
 	QueryDesc  *queryDesc;
-
-	elog(DEBUG3, "ProcessQuery");
 
 	/*
 	 * Must always set snapshot for plannable queries.	Note we assume that
@@ -178,6 +178,9 @@ ProcessQuery(Portal portal,   // GPDB needs portal?  Or MEGEBUG ?
 								ActiveSnapshot, InvalidSnapshot,
 								dest, params, false);
 
+    /* CDB: If slice table was given, put it where ExecutorStart can see it. */
+    queryDesc->sliceTable = portal->sliceTable;
+	
 	/*
 	 * If resource scheduling is enabled and we are locking non SELECT queries,
 	 * or this is a SELECT INTO then lock the portal here. 
@@ -188,7 +191,7 @@ ProcessQuery(Portal portal,   // GPDB needs portal?  Or MEGEBUG ?
 		ResourceScheduler && 
 		(!ResourceSelectOnly || portal->sourceTag == T_SelectStmt) && 
 		plan->canSetTag && !superuser() &&
-		plan->planTree->dispatch == DISPATCH_PARALLEL)
+		plan->dispatchParallel)
 		portal->releaseResLock = ResLockPortal(portal, plan->planTree);
 
 	/*
@@ -456,6 +459,25 @@ FetchStatementTargetList(Node *stmt)
 	return NIL;
 }
 
+
+/*
+ * PortalSetSliceTable
+ *		Set parameters for a worker (QE) process in a parallel query.
+ *
+ * CDB: On the QE, exec_mpp_query() calls this before PortalStart().  This 
+ * is kind of a roundabout kludgy way of passing the slice table received 
+ * from the QD into the QE's ExecutorStart().
+ */
+void
+PortalSetSliceTable(Portal portal, struct SliceTable *sliceTable)
+{
+	Assert(portal->status == PORTAL_DEFINED);
+    Assert(Gp_role == GP_ROLE_EXECUTE);
+
+    portal->sliceTable = sliceTable;
+}                               /* PortalSetSliceTable */
+
+
 /*
  * PortalStart
  *		Prepare a portal for execution.
@@ -537,6 +559,9 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 											None_Receiver,
 											params,
 											false);
+
+                /* CDB: Put slice table ptr where ExecutorStart can see it. */
+                queryDesc->sliceTable = portal->sliceTable;
 				
 				/* 
 				 * let queryDesc know that it is servicing a cursor so that
@@ -555,7 +580,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 	             */
 	            if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler && 
 					!superuser() &&
-					queryDesc->plannedstmt->planTree->dispatch == DISPATCH_PARALLEL)
+					queryDesc->plannedstmt->dispatchParallel)
 		            portal->releaseResLock = ResLockPortal(portal, queryDesc->plannedstmt->planTree);
 
 				/*

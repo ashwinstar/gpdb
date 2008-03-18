@@ -250,10 +250,6 @@ create_subplan(CreatePlanContext *ctx, Path *best_path)
 			break;
 	}
 
-    if (CdbPathLocus_IsPartitioned(best_path->locus) ||
-        CdbPathLocus_IsReplicated(best_path->locus))
-        plan->dispatch = DISPATCH_PARALLEL;
-
     return plan;
 }                               /* create_subplan */
 
@@ -4195,7 +4191,6 @@ materialize_finished_plan(Plan *subplan)
 	matplan->plan_width = subplan->plan_width;
 	
 	/* MPP -- propagate dispatch method and flow */
-	matplan->dispatch = subplan->dispatch;
 	matplan->flow = copyObject(subplan->flow);
 
 	/* parameter kluge --- see comments above */

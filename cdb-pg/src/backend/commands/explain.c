@@ -53,11 +53,12 @@ typedef struct ExplainState
 	bool		printNodes;		/* do nodeToString() too */
 	bool		printAnalyze;	/* print actual times */
 	/* other states */
-	PlannedStmt *pstmt;			/* top of plan */
+	PlannedStmt *plannedStmt;			/* top of plan */
 	List	   *rtable;			/* range table */
 
     /* CDB */
     struct CdbExplain_ShowStatCtx  *showstatctx;    /* EXPLAIN ANALYZE info */
+    EState         *estate;         /* the executor's kitchen sink block */
     Slice          *currentSlice;   /* slice whose nodes we are visiting */
     ErrorData      *deferredError;  /* caught error to be re-thrown */
     MemoryContext   explaincxt;     /* mem pool for palloc()ing buffers etc. */
@@ -258,7 +259,6 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
 	instr_time	starttime;
 	double		totaltime = 0;
     StringInfo  buf = &es->outbuf;
-    EState     *estate = NULL;
 	int			eflags;
     int         nb;
 
@@ -306,10 +306,9 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, eflags);
 
-    estate = queryDesc->estate;
-
     /* CDB: Find slice table entry for the root slice. */
-    es->currentSlice = getCurrentSlice(estate, estate->es_cur_slice_idx);
+    es->estate = queryDesc->estate;
+    es->currentSlice = getCurrentSlice(es->estate, es->estate->es_cur_slice_idx);
 
     /*
      * Execute the plan for statistics if asked for.  Attempt to proceed
@@ -331,8 +330,8 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
         /* Wait for completion of all qExec processes. */
         PG_TRY();
         {
-            if (estate->primaryResults)
-                CdbCheckDispatchResult(estate->dispatchThreads, false);	
+            if (es->estate->primaryResults)
+                CdbCheckDispatchResult(es->estate->dispatchThreads, false);	
         }
         PG_CATCH();
         {
@@ -349,14 +348,14 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
             cdbexplain_localExecStats(queryDesc->planstate, es->showstatctx);
 
         /* Fill in the plan's Instrumentation with stats from qExecs. */
-        if (estate->primaryResults)
+        if (es->estate->primaryResults)
             cdbexplain_recvExecStats(queryDesc->planstate,
-                                     estate->primaryResults,
-                                     estate->es_cur_slice_idx,
+                                     es->estate->primaryResults,
+                                     es->estate->es_cur_slice_idx,
                                      es->showstatctx);
 	}
 
-	es->pstmt = queryDesc->plannedstmt;
+	es->plannedStmt = queryDesc->plannedstmt;
 	es->rtable = queryDesc->plannedstmt->rtable;
 
     if (stmt->verbose)
@@ -383,21 +382,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
         /* Switch to EXPLAIN memory context. */
         MemoryContextSwitchTo(es->explaincxt);
 
-		if (queryDesc->plannedstmt->planTree && estate->es_sliceTable)
-		{
-        	Node   *saved_es_sliceTable;
-
-			/* Little two-step to get EXPLAIN VERBOSE to show slice table. */
-			saved_es_sliceTable = queryDesc->plannedstmt->planTree->sliceTable; /* probably NULL */
-			queryDesc->plannedstmt->planTree->sliceTable = (Node *) queryDesc->estate->es_sliceTable;
-			s = nodeToString(queryDesc->plannedstmt->planTree);
-			queryDesc->plannedstmt->planTree->sliceTable = saved_es_sliceTable;
-		}
-		else
-		{
-			s = nodeToString(queryDesc->plannedstmt->planTree);
-		}
-
+		s = nodeToString(queryDesc->plannedstmt);
 		if (s)
 		{
 			if (Explain_pretty_print)
@@ -474,7 +459,7 @@ ExplainOnePlan_internal(PlannedStmt *plannedstmt, ParamListInfo params,
      * Display per-slice and whole-query statistics.
      */
     if (stmt->analyze)
-        cdbexplain_showExecStatsEnd(es->showstatctx, buf, estate);
+        cdbexplain_showExecStatsEnd(es->showstatctx, buf, es->estate);
 
     /*
      * Show non-default GUC settings that might have affected the plan.
@@ -1338,25 +1323,29 @@ explain_outNode(StringInfo str,
 
 		foreach(lst, planstate->initPlan)
 		{
-			SubPlanState *sps = (SubPlanState *) lfirst(lst);
-			SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
-            SliceTable *sliceTable = planstate->state->es_sliceTable;
+			SubPlanState   *sps = (SubPlanState *) lfirst(lst);
+            CdbTopPlan     *top = sps->topPlan;
+            SliceTable     *sliceTable = es->estate->es_sliceTable;
+
+            Assert(top &&
+                   IsA(top, CdbTopPlan) &&
+                   top->qDispSliceId >= 0 &&
+                   top->qDispSliceId < es->plannedStmt->nSlice);
 
             /* Subplan might have its own root slice */
-            if (sliceTable &&
-                sp->qDispSliceId > 0)
+            if (sliceTable)
                 es->currentSlice = (Slice *)list_nth(sliceTable->slices,
-                                                     sp->qDispSliceId);
+                                                     top->qDispSliceId);
 
 		    for (i = 0; i < indent; i++)
 			    appendStringInfo(str, "  ");
-		    appendStringInfo(str, "  InitPlan  (slice%d)\n", sp->qDispSliceId);
+		    appendStringInfo(str, "  InitPlan  (slice%d)\n", top->qDispSliceId);
 
 			for (i = 0; i < indent; i++)
 				appendStringInfo(str, "  ");
 			appendStringInfo(str, "    ->  ");
 			explain_outNode(str,
-							exec_subplan_get_plan(es->pstmt, sp),
+							sps->planstate->plan,
 							sps->planstate,
 							NULL,
 							indent + 4, es);
@@ -1507,7 +1496,6 @@ explain_outNode(StringInfo str,
 		foreach(lst, planstate->subPlan)
 		{
 			SubPlanState *sps = (SubPlanState *) lfirst(lst);
-			SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
 
             Assert(!sps->cdbextratextbuf);
 
@@ -1515,7 +1503,7 @@ explain_outNode(StringInfo str,
 				appendStringInfo(str, "  ");
 			appendStringInfo(str, "    ->  ");
 			explain_outNode(str,
-							exec_subplan_get_plan(es->pstmt, sp),
+							sps->planstate->plan,
 							sps->planstate,
 							NULL,
 							indent + 4, es);

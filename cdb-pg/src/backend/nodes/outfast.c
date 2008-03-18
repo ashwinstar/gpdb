@@ -95,9 +95,9 @@
 
 /* Write a character-string (possibly NULL) field */
 #define WRITE_STRING_FIELD(fldname) \
-	{ int slen = node->fldname != NULL ? strlen(node->fldname) : 0; \
-		appendBinaryStringInfo(str, (const char *)&slen, sizeof(int)); \
-		if (slen>0) appendBinaryStringInfo(str, node->fldname, strlen(node->fldname));}
+	{ int slen = node->fldname != NULL ? (int)strlen(node->fldname) : 0; \
+		appendBinaryStringInfo(str, &slen, sizeof(slen)); \
+		if (slen>0) appendBinaryStringInfo(str, node->fldname, slen);}
 
 /* Write a Node field */
 #define WRITE_NODE_FIELD(fldname) \
@@ -121,7 +121,12 @@
 #define WRITE_DUMMY_FIELD(fldname) \
 	{ /*int * dummy = 0; appendBinaryStringInfo(str,(const char *)&dummy, sizeof(int *)) ;*/ }
 	
-	/* Read an integer array */
+/* CDB: Write an array of Node pointers */
+#define WRITE_NODEPTR_ARRAY(fldname, numOfPtrs) \
+	(appendStringInfoString(str, " :" CppAsString(fldname) " "), \
+	 _outNodePtrArray(str, node->fldname, numOfPtrs))
+
+/* Write an integer array */
 #define WRITE_INT_ARRAY(fldname, count, Type) \
 	if ( node->count > 0 ) \
 	{ \
@@ -155,17 +160,12 @@
 		} \
 	}
 
-
-
 /* Write an Oid array  */
 #define WRITE_OID_ARRAY(fldname, count) \
 	if ( node->count > 0 ) \
 	{ \
-		int i; \
-		for(i=0; i<node->count; i++) \
-		{ \
-			appendBinaryStringInfo(str, (const char *)&node->fldname[i], sizeof(Oid)); \
-		} \
+		int _size = node->count * sizeof(Oid); \
+		appendBinaryStringInfo(str, node->fldname, _size); \
 	}
 
 static void _outNode(StringInfo str, void *obj);
@@ -206,6 +206,20 @@ _outList(StringInfo str, List *node)
 		}
 	}
 }
+
+/*
+ * _outNodePtrArray
+ */
+static void
+_outNodePtrArray(StringInfo str, void **nodeptrs, int numOfPtrs)
+{
+    int     i;
+
+    appendBinaryStringInfo(str, &numOfPtrs, sizeof(numOfPtrs));
+
+	for (i = 0; i < numOfPtrs; i++)
+        _outNode(str, nodeptrs[i]);
+}                               /* _outNodePtrArray */
 
 /*
  * _outBitmapset -
@@ -272,6 +286,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 
 	WRITE_ENUM_FIELD(commandType, CmdType);
 	WRITE_BOOL_FIELD(canSetTag);
+    WRITE_NODEPTR_ARRAY(topPlans, 1 + list_length(node->subplans));     /*CDB*/
 	WRITE_NODE_FIELD(planTree);
 	WRITE_NODE_FIELD(rtable);
 	WRITE_NODE_FIELD(resultRelations);
@@ -282,7 +297,21 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_NODE_FIELD(returningLists);
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(relationOids);
-	WRITE_INT_FIELD(nParamExec);
+	WRITE_INT_FIELD(nParamExec);                                        /*CDB*/
+    WRITE_OID_ARRAY(paramExecTypes, nParamExec);                        /*CDB*/
+	WRITE_INT_FIELD(nSlice);                                            /*CDB*/
+	WRITE_BOOL_FIELD(dispatchParallel);                                 /*CDB*/
+}
+
+static void
+_outCdbTopPlan(StringInfo str, CdbTopPlan *node)
+{
+	WRITE_NODE_TYPE("CDBTOPPLAN");
+
+	WRITE_INT_FIELD(nMotionNodes);
+	WRITE_INT_FIELD(qDispSliceId);
+	WRITE_BOOL_FIELD(isInitPlan);
+	WRITE_BOOL_FIELD(dispatchParallel);
 }
 
 /*
@@ -302,12 +331,6 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
 
-	WRITE_INT_FIELD(nParamExec);
-	WRITE_INT_FIELD(nMotionNodes);
-	WRITE_INT_FIELD(nInitPlans);
-
-	WRITE_NODE_FIELD(sliceTable);
-
     WRITE_NODE_FIELD(lefttree);
     WRITE_NODE_FIELD(righttree);
     WRITE_NODE_FIELD(initPlan);
@@ -316,7 +339,6 @@ _outPlanInfo(StringInfo str, Plan *node)
      * Fields that are used only by the qDisp don't need to be serialized for
      * dispatching to qExecs:
      *      flow
-     *      dispatch
      */
 }
 
@@ -1003,7 +1025,6 @@ _outSubPlan(StringInfo str, SubPlan *node)
 {
 	WRITE_NODE_TYPE("SUBPLAN");
 
-    WRITE_INT_FIELD(qDispSliceId);  /*CDB*/
 	WRITE_ENUM_FIELD(subLinkType, SubLinkType);
 	WRITE_NODE_FIELD(testexpr);
 	WRITE_NODE_FIELD(paramIds);
@@ -1012,7 +1033,6 @@ _outSubPlan(StringInfo str, SubPlan *node)
 	WRITE_BOOL_FIELD(useHashTable);
 	WRITE_BOOL_FIELD(unknownEqFalse);
 	WRITE_BOOL_FIELD(is_initplan); /*CDB*/
-	WRITE_BOOL_FIELD(is_multirow); /*CDB*/
 	WRITE_NODE_FIELD(setParam);
 	WRITE_NODE_FIELD(parParam);
 	WRITE_NODE_FIELD(args);
@@ -3696,6 +3716,10 @@ _outNode(StringInfo str, void *obj)
 			case T_CreateTrigStmt:
 				_outCreateTrigStmt(str, obj);
 				break;
+
+            case T_CdbTopPlan:
+                _outCdbTopPlan(str, obj);
+                break;
 
 			default:
 				elog(ERROR, "could not serialize unrecognized node type: %d",

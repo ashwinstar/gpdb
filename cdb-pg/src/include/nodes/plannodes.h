@@ -19,6 +19,9 @@
 #include "nodes/bitmapset.h"
 #include "nodes/primnodes.h"
 
+struct CdbTopPlan;              /* defined below */
+struct Plan;                    /* defined below */
+
 
 /* ----------------------------------------------------------------
  *						node definitions
@@ -42,6 +45,9 @@ typedef struct PlannedStmt
 
 	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
 
+    struct CdbTopPlan **topPlans;   /* -> array[0..1+list_length(subplans)] of 
+                                     * CdbTopPlan node ptrs */
+    
 	struct Plan *planTree;		/* tree of Plan nodes */
 
 	List	   *rtable;			/* list of RangeTblEntry nodes */
@@ -57,7 +63,7 @@ typedef struct PlannedStmt
 
 	Bitmapset  *rewindPlanIDs;	/* indices of subplans that require REWIND */
 
-	/*
+    /*
 	 * If the query has a returningList then the planner will store a list of
 	 * processed targetlists (one per result relation) here.  We must have a
 	 * separate RETURNING targetlist for each result rel because column
@@ -73,12 +79,46 @@ typedef struct PlannedStmt
 
 	List	   *relationOids;	/* OIDs of relations the plan depends on */
 
-	int			nParamExec;		/* number of PARAM_EXEC Params used */
+	int			nParamExec;		/* CDB: number of PARAM_EXEC Params used */
+    Oid        *paramExecTypes; /* CDB: array[0..nParamExec-1] of exprType from
+                                 *  PARAM_EXEC Param nodes; paramid is 0-based 
+                                 *  index into this array */
+
+    int         nSlice;             /* CDB: number of slices */
+    bool        dispatchParallel;   /* true => plan requires worker process */
+
 } PlannedStmt;
 
 /* macro for fetching the Plan associated with a SubPlan node */
 #define exec_subplan_get_plan(plannedstmt, subplan) \
 	((Plan *) list_nth((plannedstmt)->subplans, (subplan)->plan_id - 1))
+
+/* macro for fetching the CdbTopPlan node associated with a SubPlan node */
+#define exec_subplan_get_top(plannedstmt, subplan) \
+	((plannedstmt)->topPlans[(subplan)->plan_id])
+
+
+/* ----------------
+ *		CdbTopPlan node
+ *
+ * The PlannedStmt node points to an array [0..1+list_length(subplans)] of
+ * pointers to CdbTopPlan nodes.
+ *
+ * plannedStmt->topPlans[0] pertains to the main plan: plannedStmt->planTree.
+ * plannedStmt->topPlans[i] for i>0 pertains to the subquery plan whose 
+ * 0-based position in the plannedStmt->subplans list is i-1, and whose 
+ * 1-based plan_id is i.
+ * ----------------
+ */
+typedef struct CdbTopPlan
+{
+	NodeTag		type;           /* T_CdbTopPlan */
+
+    int         nMotionNodes;   /* number of Motion operators in the plan */
+    int         qDispSliceId;   /* slice# of initplan's root slice, or 0 */
+	bool		isInitPlan;	        /* true => subplan is an initplan */
+    bool        dispatchParallel;   /* true => plan requires worker process */
+} CdbTopPlan;
 
 
 /* ----------------
@@ -135,53 +175,12 @@ typedef struct Plan
 	Bitmapset  *allParam;
 
 	/*
-	 * We really need in some TopPlan node to store range table and
-	 * resultRelation from Query there and get rid of Query itself from
-	 * Executor. Some other stuff like below could be put there, too.
-     *
-     * pg 8.3 has added a PlannedStmt node where we should put fields like this.
-	 */
-	int			nParamExec;		/* Number of them in entire query. This is to
-								 * get Executor know about how many PARAM_EXEC
-								 * there are in query plan. */
-	
-	/*
 	 * MPP needs to keep track of the characteristics of flow of output
 	 * tuple of Plan nodes.
 	 */
 	Flow		*flow;			/* Flow description.  Initially NULL.
 								 * Set during parallelization.
 								 */
-	
-	/*
-	 * CDB:  How should this plan tree be dispatched?  Initially this is set
-	 * to DISPATCH_UNDETERMINED and, in non-root nodes, may remain so.
-	 * However, in Plan nodes at the root of any separately dispatchable plan
-	 * fragment, it must be set to a specific dispatch type.  This field
-	 * is another candidate for a hypothetical TopPlan node as mentioned
-	 * above.
-	 */
-	DispatchMethod dispatch;
-	
-	/*
-	 * CDB: Now many motion nodes are there in the Plan.  How many init plans?
-	 * Additional plan tree global significant only in the root node.
-	 */
-	 int nMotionNodes;
-	 int nInitPlans;
-	
-	 /*
-	  * CDB: This allows the slice table to accompany the plan as it
-	  * moves around the executor. This is anoter plan tree global that
-	  * should be non-NULL only in the top node of a dispatchable tree.
-	  * It could (and should) move to a TopPlan node if we ever do that.
-	  *
-	  * Currently, the slice table should not be installed on the QD.
-	  * Rather is it shipped to QEs as a separate parameter to MPPEXEC.
-	  * The implementation of MPPEXEC, which runs on the QEs, installs
-	  * the slice table in the plan as required there.
-	  */
-	Node *sliceTable;
 } Plan;
 
 /* ----------------

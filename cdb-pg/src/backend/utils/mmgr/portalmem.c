@@ -411,7 +411,7 @@ PortalDrop(Portal portal, bool isTopCommit)
 	PortalHashTableDelete(portal);
 
 	/* let portalcmds.c clean up the state it knows about */
-	if (PointerIsValid(portal->cleanup))
+	if (portal->cleanup)
 		(*portal->cleanup) (portal);
 
 	/* drop cached plan reference, if any */
@@ -849,7 +849,7 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 #endif
 		{
 			/* let portalcmds.c clean up the state it knows about */
-			if (PointerIsValid(portal->cleanup))
+			if (portal->cleanup)
 			{
 				(*portal->cleanup) (portal);
 				portal->cleanup = NULL;

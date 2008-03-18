@@ -101,6 +101,19 @@
 #define READ_DONE() \
 	return local_node
 
+/* CDB: Read an array of Nodes */
+#define READ_NODEPTR_ARRAY(fldname, Type, count) \
+    do { \
+        int _i, _n; \
+        memcpy(&_n, *str, sizeof(int));  \
+        (*str) += sizeof(int); \
+        count = _n; \
+	    if (_n > 0) \
+		    local_node->fldname = (Type **)palloc(_n * sizeof(Type*)); \
+	    for(_i=0; _i < _n; _i++) \
+            local_node->fldname[_i] = (Type *)readNodeBinary(str); \
+    } while (0)
+
 /* Read an integer array  */
 #define READ_INT_ARRAY(fldname, count, Type) \
 	if ( local_node->count > 0 ) \
@@ -126,8 +139,6 @@
 		(*str)+=i; \
 	}
 
-
-
 /* Read an Trasnaction ID array  */
 #define READ_XID_ARRAY(fldname, count) \
 	if ( local_node->count > 0 ) \
@@ -140,20 +151,14 @@
 		} \
 	}
 
-
-
 /* Read an Oid array  */
 #define READ_OID_ARRAY(fldname, count) \
 	if ( local_node->count > 0 ) \
 	{ \
-		int i; \
-		local_node->fldname = (Oid *)palloc(local_node->count * sizeof(Oid)); \
-		for(i=0; i<local_node->count; i++) \
-		{ \
-			memcpy(&local_node->fldname[i], *str, sizeof(Oid)); (*str)+=sizeof(Oid); \
-		} \
+		int _size = local_node->count * sizeof(Oid); \
+		local_node->fldname = (Oid *)palloc(_size); \
+		memcpy(local_node->fldname, *str, _size); (*str)+=_size; \
 	}
-
 
 static void * readNodeBinary(const char ** str);
 
@@ -310,6 +315,8 @@ _readGrouping(const char ** str)
 {
 	READ_LOCALS(Grouping);
 
+    UnusedArg(str);
+
 	READ_DONE();
 }
 
@@ -317,6 +324,8 @@ static GroupId *
 _readGroupId(const char ** str)
 {
 	READ_LOCALS(GroupId);
+
+    UnusedArg(str);
 
 	READ_DONE();
 }
@@ -1148,7 +1157,6 @@ _readSubPlan(const char ** str)
 {
 	READ_LOCALS(SubPlan);
 
-    READ_INT_FIELD(qDispSliceId);   /*CDB*/
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
 	READ_NODE_FIELD(testexpr);
 	READ_NODE_FIELD(paramIds);
@@ -1156,7 +1164,6 @@ _readSubPlan(const char ** str)
 	READ_BOOL_FIELD(useHashTable);
 	READ_BOOL_FIELD(unknownEqFalse);
 	READ_BOOL_FIELD(is_initplan); /*CDB*/
-	READ_BOOL_FIELD(is_multirow); /*CDB*/
 	READ_NODE_FIELD(setParam);
 	READ_NODE_FIELD(parParam);
 	READ_NODE_FIELD(args);
@@ -2175,6 +2182,52 @@ _readConstraintsSetStmt(const char ** str)
 
 
 /*
+ * _readPlannedStmt
+ */
+static PlannedStmt *
+_readPlannedStmt(const char ** str)
+{
+	READ_LOCALS(PlannedStmt);
+    int     nTopPlans;
+
+	READ_ENUM_FIELD(commandType, CmdType);
+	READ_BOOL_FIELD(canSetTag);
+    READ_NODEPTR_ARRAY(topPlans, CdbTopPlan, nTopPlans);                /*CDB*/
+	READ_NODE_FIELD(planTree);
+	READ_NODE_FIELD(rtable);
+	READ_NODE_FIELD(resultRelations);
+	READ_NODE_FIELD(utilityStmt);
+	READ_NODE_FIELD(intoClause);
+	READ_NODE_FIELD(subplans);
+	READ_BITMAPSET_FIELD(rewindPlanIDs);
+	READ_NODE_FIELD(returningLists);
+	READ_NODE_FIELD(rowMarks);
+	READ_NODE_FIELD(relationOids);
+	READ_INT_FIELD(nSlice);                                             /*CDB*/
+    READ_OID_ARRAY(paramExecTypes, nParamExec);                         /*CDB*/
+	READ_INT_FIELD(nParamExec);                                         /*CDB*/
+	READ_BOOL_FIELD(dispatchParallel);                                  /*CDB*/
+
+    Insist(nTopPlans == 1 + list_length(local_node->subplans));
+
+	READ_DONE();
+}
+
+static CdbTopPlan *
+_readCdbTopPlan(const char ** str)
+{
+	READ_LOCALS(CdbTopPlan);
+
+	READ_INT_FIELD(nMotionNodes);
+	READ_INT_FIELD(qDispSliceId);
+	READ_BOOL_FIELD(isInitPlan);
+	READ_BOOL_FIELD(dispatchParallel);
+
+    READ_DONE();
+}
+
+
+/*
  * _readPlan
  */
 static Plan *
@@ -2884,10 +2937,6 @@ void readPlanInfo(const char ** str, Plan *local_node)
 	READ_NODE_FIELD(qual);
 	READ_BITMAPSET_FIELD(extParam);
 	READ_BITMAPSET_FIELD(allParam);
-	READ_INT_FIELD(nParamExec);
-	READ_INT_FIELD(nMotionNodes);
-	READ_INT_FIELD(nInitPlans);
-	READ_NODE_FIELD(sliceTable);
 
     READ_NODE_FIELD(lefttree);
     READ_NODE_FIELD(righttree);
@@ -2897,7 +2946,6 @@ void readPlanInfo(const char ** str, Plan *local_node)
      * Fields that are used only by the qDisp don't need to be serialized for
      * dispatching to qExecs (in outfast.c), and are not read here:
      *      flow
-     *      dispatch
      */
 }
 
@@ -3074,6 +3122,9 @@ readNodeBinary(const char ** str)
 	
 	switch(nt)
 	{
+		case T_PlannedStmt:
+			return_value = _readPlannedStmt(str);
+			break;
 		case T_Plan:
 				return_value = _readPlan(str);
 				break;
@@ -3680,6 +3731,10 @@ readNodeBinary(const char ** str)
 				return_value = _readCurrentOfExpr(str);
 				break;
 
+            case T_CdbTopPlan:
+                return_value = _readCdbTopPlan(str);
+                break;
+
 			default:
 				return_value = NULL; /* keep the compiler silent */
 				elog(ERROR, "could not deserialize unrecognized node type: %d",
@@ -3697,7 +3752,9 @@ readNodeFromBinaryString(const char * str, int len)
 	Node * node;
 	int16 tg = 0;
 	
-	node = readNodeBinary(&str);
+    UnusedArg(len);
+    
+    node = readNodeBinary(&str);
 	
 	memcpy(&tg, str, sizeof(int16)); 
 	if (tg != (int16)0xDEAD)

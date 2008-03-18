@@ -66,6 +66,24 @@
 		memcpy(&newnode->fldname, &from->fldname, _size); \
 	} while (0)
 
+/* CDB: Copy a field that is a pointer to an array of simple scalars */
+#define COPY_SCALAR_ARRAY(fldname, numOfElements, ElementType) \
+	do { \
+		Size _size = (numOfElements) * sizeof(ElementType); \
+		newnode->fldname = (ElementType*)palloc(_size); \
+        memcpy(newnode->fldname, from->fldname, _size); \
+	} while (0)
+
+/* CDB: Copy a field that is a pointer to an array of Node pointers */
+#define COPY_NODEPTR_ARRAY(fldname, numOfPtrs, NodeType) \
+	do { \
+		int _n = (numOfPtrs); \
+        int _i; \
+		newnode->fldname = (NodeType**)palloc(_n * sizeof(NodeType*)); \
+        for (_i = 0; _i < _n; _i++) \
+            newnode->fldname[_i] = (NodeType*)copyObject(from->fldname[_i]); \
+	} while (0)
+
 
 /* ****************************************************************
  *					 plannodes.h copy functions
@@ -82,6 +100,7 @@ _copyPlannedStmt(PlannedStmt *from)
 
 	COPY_SCALAR_FIELD(commandType);
 	COPY_SCALAR_FIELD(canSetTag);
+    COPY_NODEPTR_ARRAY(topPlans, 1 + list_length(from->subplans), CdbTopPlan);
 	COPY_NODE_FIELD(planTree);
 	COPY_NODE_FIELD(rtable);
 	COPY_NODE_FIELD(resultRelations);
@@ -92,7 +111,26 @@ _copyPlannedStmt(PlannedStmt *from)
 	COPY_NODE_FIELD(returningLists);
 	COPY_NODE_FIELD(rowMarks);
 	COPY_NODE_FIELD(relationOids);
-	COPY_SCALAR_FIELD(nParamExec);
+	COPY_SCALAR_FIELD(nParamExec);                                      /*CDB*/
+    COPY_SCALAR_ARRAY(paramExecTypes, from->nParamExec, Oid);           /*CDB*/
+	COPY_SCALAR_FIELD(nSlice);                                          /*CDB*/
+	COPY_SCALAR_FIELD(dispatchParallel);                                /*CDB*/
+
+	return newnode;
+}
+
+/*
+ * _copyCdbTopPlan
+ */
+static CdbTopPlan *
+_copyCdbTopPlan(CdbTopPlan *from)
+{
+	CdbTopPlan *newnode = makeNode(CdbTopPlan);
+
+	COPY_SCALAR_FIELD(nMotionNodes);
+	COPY_SCALAR_FIELD(qDispSliceId);
+	COPY_SCALAR_FIELD(isInitPlan);
+	COPY_SCALAR_FIELD(dispatchParallel);
 
 	return newnode;
 }
@@ -117,12 +155,7 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_NODE_FIELD(initPlan);
 	COPY_BITMAPSET_FIELD(extParam);
 	COPY_BITMAPSET_FIELD(allParam);
-	COPY_SCALAR_FIELD(nParamExec);
 	COPY_NODE_FIELD(flow);
-	COPY_SCALAR_FIELD(dispatch);
-	COPY_SCALAR_FIELD(nMotionNodes);
-	COPY_SCALAR_FIELD(nInitPlans);
-	COPY_NODE_FIELD(sliceTable);
 }
 
 /*
@@ -1175,7 +1208,6 @@ _copySubPlan(SubPlan *from)
 	SubPlan    *newnode = makeNode(SubPlan);
 
 	COPY_SCALAR_FIELD(subLinkType);
-    COPY_SCALAR_FIELD(qDispSliceId);    /*CDB*/
 	COPY_NODE_FIELD(testexpr);
 	COPY_NODE_FIELD(paramIds);
 	COPY_SCALAR_FIELD(plan_id);
@@ -1183,7 +1215,6 @@ _copySubPlan(SubPlan *from)
 	COPY_SCALAR_FIELD(useHashTable);
 	COPY_SCALAR_FIELD(unknownEqFalse);
 	COPY_SCALAR_FIELD(is_initplan);	/*CDB*/
-	COPY_SCALAR_FIELD(is_multirow);	/*CDB*/
 	COPY_NODE_FIELD(setParam);
 	COPY_NODE_FIELD(parParam);
 	COPY_NODE_FIELD(args);
@@ -1843,7 +1874,9 @@ _copyGrouping(Grouping *from)
 {
 	Grouping *newnode = makeNode(Grouping);
 
-	return newnode;
+    UnusedArg(from);
+    
+    return newnode;
 }
 
 static GroupId *
@@ -1851,6 +1884,8 @@ _copyGroupId(GroupId *from)
 {
 	GroupId *newnode = makeNode(GroupId);
 
+    UnusedArg(from);
+    
 	return newnode;
 }
 
@@ -4157,6 +4192,13 @@ copyObject(void *from)
 		case T_SliceTable:
 			retval = _copySliceTable(from);
 			break;
+
+			/*
+			 * RANDOM OTHER STUFF
+			 */
+        case T_CdbTopPlan:
+            retval = _copyCdbTopPlan(from);
+            break;
 
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(from));

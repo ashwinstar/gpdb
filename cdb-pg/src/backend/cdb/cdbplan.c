@@ -50,32 +50,36 @@ walk_plan_node_fields(Plan *plan,
 					  bool (*walker) (),
 					  void *context)
 {
-	if (context == NULL)
-		return false;	// MERGEBUG
-	if (plan == NULL)
-		return false;	// MERGEBUG
+	if (!plan)
+		return false;
+
 	/* target list to be computed at this node */
-	if (walker((Node *) (plan->targetlist), context))
+	if (plan->targetlist &&
+        walker((Node *) (plan->targetlist), context))
 		return true;
 
 	/* implicitly ANDed qual conditions */
-	if (walker((Node *) (plan->qual), context))
+	if (plan->qual &&
+        walker((Node *) (plan->qual), context))
 		return true;
 
 	/* input plan tree(s) */
-	if (walker((Node *) (plan->lefttree), context))
+	if (plan->lefttree &&
+        walker((Node *) (plan->lefttree), context))
 		return true;
 
-	/* target list to be computed at this node */
-	if (walker((Node *) (plan->righttree), context))
+	if (plan->righttree &&
+        walker((Node *) (plan->righttree), context))
 		return true;
 
 	/* Init Plan nodes (uncorrelated expr subselects */
-	if (walker((Node *) (plan->initPlan), context))
+	if (plan->initPlan &&
+        walker((Node *) (plan->initPlan), context))
 		return true;
 
 	/* Greenplum Database Flow node */
-	if (walker((Node *) (plan->flow), context))
+	if (plan->flow &&
+        walker((Node *) (plan->flow), context))
 		return true;
 
 	return false;
@@ -319,13 +323,9 @@ plan_tree_walker(Node *node,
 		case T_Motion:
 			if (walk_plan_node_fields((Plan *) node, walker, context))
 				return true;
-			
 			if (walker((Node *) ((Motion *)node)->hashExpr, context))
 				return true;
-
-			if (walker((Node *) ((Motion *)node)->hashDataTypes, context))
-				return true;
-
+            /* Skip hashDataTypes: it's an OidList. */
 			break;
 
 		case T_AdaptiveNestLoop:
@@ -342,40 +342,8 @@ plan_tree_walker(Node *node,
 			/* Nothing to walk in Flow nodes at present. */
 			break;
 
-		case T_SubPlan:
-
-			/*
-			 * SubPlan is handled by expression_tree_walker() , but that
-			 * walker doesn't recur into the plan itself.  Here, we do the
-			 * whole item, though users of the function will probably need to
-			 * update their context to reflect the range table.
-			 */
-			{
-				SubPlan    *subplan = (SubPlan *) node;
-
-				/* recurse into the exprs list */
-				if (expression_tree_walker((Node *) subplan->testexpr,
-										   walker, context))
-					return true;
-
-				// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-				/* recur into the subplan, a kind of Plan node */
-				if (walker((Node *) subplan->plan, context))
-					return true;
-#endif 
-
-				/* also examine args list */
-				if (expression_tree_walker((Node *) subplan->args,
-										   walker, context))
-					return true;
-			}
-			break;
-
 		case T_IntList:
 		case T_OidList:
-
 			/*
 			 * Note that expression_tree_walker handles T_List but not these.
 			 * No contained stuff, so just succeed.
@@ -391,46 +359,20 @@ plan_tree_walker(Node *node,
 		case T_Query:
 			return query_tree_walker((Query *) node, walker, context, 0);
 
-			/*
-			 * The following cases are handled by expression_tree_walker.  In
-			 * addition, we let expression_tree_walker handle unrecognized
-			 * nodes.
-			 *
-			 * TODO: Identify node types that should never appear in plan trees
-			 * and disallow them here by issuing an error or asserting false.
-			 */
-		case T_Var:
-		case T_Const:
-		case T_Param:
-		case T_CoerceToDomainValue:
-		case T_CaseTestExpr:
-		case T_SetToDefault:
-		case T_RangeTblRef:
-		case T_Aggref:
-		case T_ArrayRef:
-		case T_FuncExpr:
-		case T_OpExpr:
-		case T_DistinctExpr:
-		case T_ScalarArrayOpExpr:
-		case T_BoolExpr:
-		case T_SubLink:
-		case T_FieldSelect:
-		case T_FieldStore:
-		case T_RelabelType:
-		case T_CaseExpr:
-		case T_ArrayExpr:
-		case T_RowExpr:
-		case T_CoalesceExpr:
-		case T_NullIfExpr:
-		case T_NullTest:
-		case T_BooleanTest:
-		case T_CoerceToDomain:
-		case T_TargetEntry:
-		case T_List:
-		case T_FromExpr:
-		case T_JoinExpr:
-		case T_SetOperationStmt:
-		case T_InClauseInfo:
+        case T_PlannedStmt:
+        {
+            PlannedStmt    *ps = (PlannedStmt *)node;
+
+            if (walker((Node *)ps->planTree, context))
+	            return true;
+            if (walker((Node *)ps->rtable, context))
+	            return true;
+            if (walker((Node *)ps->subplans, context))
+	            return true;
+            if (walker((Node *)ps->returningLists, context))
+	            return true;
+            break;
+        }
 
 		default:
 			return expression_tree_walker(node, walker, context);
@@ -986,7 +928,6 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 
-
 		case T_Flow:
 			{
 				Flow	   *flow = (Flow *) node;
@@ -994,6 +935,7 @@ plan_tree_mutator(Node *node,
 
 				FLATCOPY(newflow, flow, Flow);
 				MUTATE(newflow->hashExpr, flow->hashExpr, List *);
+				MUTATE(newflow->flow_before_req_move, flow->flow_before_req_move, Flow *);
 				COPYARRAY(newflow, flow, numSortCols, sortColIdx);
 				COPYARRAY(newflow, flow, numSortCols, sortOperators);
 				COPYARRAY(newflow, flow, numSortCols, nullsFirst);
@@ -1003,17 +945,10 @@ plan_tree_mutator(Node *node,
 
 		case T_IntList:
 		case T_OidList:
-
-			/*
-			 * Note that expression_tree_mutator handles T_List but not these.
-			 * A shallow copy will do.
-			 */
-			return (Node *) list_copy((List *) node);
-
-			break;
+            /* Wouldn't it be ok to share these instead of copying them? */
+            return (Node *)list_copy((List *)node);
 
 		case T_Query:
-
 			/*
 			 * Since expression_tree_mutator doesn't descend into Query nodes,
 			 * we use ...
@@ -1021,35 +956,31 @@ plan_tree_mutator(Node *node,
 			return (Node *) query_tree_mutator((Query *) node, mutator, context, 0);
 			break;
 
-		case T_SubPlan:
+		case T_PlannedStmt:
+            {
+                PlannedStmt    *ps = (PlannedStmt *)node;
+                PlannedStmt    *newps;
 
-			/*
-			 * Since expression_tree_mutator doesn't descend into the plan in
-			 * a SubPlan node, we handle the case directly.
-			 */
-			{
-				SubPlan    *subplan = (SubPlan *) node;
-				SubPlan    *newnode;
-
-				FLATCOPY(newnode, subplan, SubPlan);
-
-				MUTATE(newnode->testexpr, subplan->testexpr, Node *);
-				// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-#if 0
-				MUTATE(newnode->plan, subplan->plan, Plan *);
-				MUTATE(newnode->rtable, subplan->rtable, List *);
-				MUTATE(newnode->args, subplan->args, List *);
-#endif
-
-                /* An IntList isn't interesting to mutate; just copy. */
-				newnode->paramIds = (List *)copyObject(subplan->paramIds);
-				newnode->setParam = (List *)copyObject(subplan->setParam);
-				newnode->parParam = (List *)copyObject(subplan->parParam);
-
-				return (Node *) newnode;
-			}
-			break;
+                FLATCOPY(newps, ps, PlannedStmt);
+                MUTATE(newps->planTree, ps->planTree, Plan *);
+                MUTATE(newps->rtable, ps->rtable, List *);
+                MUTATE(newps->subplans, ps->subplans, List *);
+                MUTATE(newps->returningLists, ps->returningLists, List *);
+                /* 
+                 * IntList, OidList, and Bitmapset objects aren't interesting
+                 * to the mutator.  Assume we need not copy them.
+                 *  resultRelations (IntList)
+                 *  rewindPlanIDs   (Bitmapset)
+                 *  relationOids    (OidList)
+                 *
+                 * Also, assume we need not mutate or copy these...
+                 *  utilityStmt     (untransformed DeclareCursorStmt/ExplainStmt)
+                 *  intoClause      (IntoClause)
+                 *  rowMarks        (List of RowMarkClause)
+                 */
+                return (Node *)newps;
+            }
+            break;
 
 		case T_RangeTblEntry:
 
@@ -1094,62 +1025,14 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 
-			/*
-			 * The following cases are handled by expression_tree_mutator.	In
-			 * addition, we let expression_tree_mutator handle unrecognized
-			 * nodes.
-			 *
-			 * TODO: Identify node types that should never appear in plan trees
-			 * and disallow them here by issuing an error or asserting false.
-			 */
-		case T_Var:
-		case T_Const:
-		case T_Param:
-		case T_CoerceToDomainValue:
-		case T_CaseTestExpr:
-		case T_SetToDefault:
-		case T_RangeTblRef:
-		case T_Aggref:
-		case T_WindowRef:
-		case T_WindowFrame:
-		case T_WindowFrameEdge:
-		case T_ArrayRef:
-		case T_FuncExpr:
-		case T_OpExpr:
-		case T_DistinctExpr:
-		case T_ScalarArrayOpExpr:
-		case T_BoolExpr:
-		case T_SubLink:
-		case T_FieldSelect:
-		case T_FieldStore:
-		case T_RelabelType:
-		case T_CaseExpr:
-		case T_CaseWhen:
-		case T_ArrayExpr:
-		case T_RowExpr:
-		case T_CoalesceExpr:
-		case T_NullIfExpr:
-		case T_NullTest:
-		case T_BooleanTest:
-		case T_CoerceToDomain:
-		case T_TargetEntry:
-		case T_List:
-		case T_FromExpr:
-		case T_JoinExpr:
-		case T_SetOperationStmt:
-		case T_InClauseInfo:
-
 		default:
-
 			/*
 			 * Let expression_tree_mutator handle remaining cases or complain
 			 * of unrecognized node type.
 			 */
 			return expression_tree_mutator(node, mutator, context);
-			break;
 	}
-	/* can't get here, but keep compiler happy */
-	return NULL;
+	/* not reached */
 }
 
 

@@ -21,7 +21,7 @@
 #include "nodes/relation.h"
 #include "nodes/params.h"
 
-extern Plan *apply_motion(Plan *plan, Query *query);
+extern Plan *apply_motion(PlannedStmt *plannedStmt);
 
 extern Motion *make_union_motion(Plan *lefttree, bool sendToSecondary,
                                  int numInputSegs, int destSegIndex);
@@ -50,8 +50,10 @@ typedef struct ApplyShareInputContext
 	List *motStack;
 	List *qdShares;
 	List *qdSlices;
+
+    PlannerGlobal  *glob;
 } ApplyShareInputContext;
 
-extern Plan *apply_shareinput_dag_to_tree(PlannerGlobal *glob, Plan *plan, ApplyShareInputContext *ctxt); 
+extern Plan *apply_shareinput_dag_to_tree(Plan *plan, ApplyShareInputContext *ctxt); 
 extern Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt);
 #endif   /* CDBMUTATE_H */

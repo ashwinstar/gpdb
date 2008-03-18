@@ -659,12 +659,19 @@ slotNoNulls(TupleTableSlot *slot)
 SubPlanState *
 ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
 {
-	SubPlanState *sstate = makeNode(SubPlanState);
-	EState	   *estate = parent->state;
+	SubPlanState   *sstate = makeNode(SubPlanState);
+	EState         *estate = parent->state;
+    PlannedStmt    *plannedStmt = estate->es_plannedstmt;
+
+    Assert(plannedStmt);
 
 	sstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecSubPlan;
 	sstate->xprstate.expr = (Expr *) subplan;
 	sstate->cdbextratextbuf = NULL;
+
+    /* Find the CdbTopPlan node. */
+    sstate->topPlan = exec_subplan_get_top(plannedStmt, subplan);
+    Assert(sstate->topPlan && IsA(sstate->topPlan, CdbTopPlan));
 
 	/* Link the SubPlanState to already-initialized subplan */
 	sstate->planstate = (PlanState *) list_nth(estate->es_subplanstates,
@@ -906,9 +913,6 @@ ExecInitSubPlan(SubPlan *subplan, PlanState *parent)
  * In the case where this is running on the dispatcher, and it's a parallel dispatch
  * subplan, we need to dispatch the query to the qExecs as well, like in ExecutorRun.
  * except in this case we don't have to worry about insert statements.
- * In order to serialize the parameters (including PARAM_EXEC parameters that
- * are converted into PARAM_EXEC_REMOTE parameters, I had to add a parameter to this
- * function: ParamListInfo p.  This may be NULL in the non-dispatch case.
  */
 void
 ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_queryDesc)
@@ -921,8 +925,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	ListCell   *l;
 	bool		found = false;
 	ArrayBuildState *astate = NULL;
-
-	Query	   *query;
 	QueryDesc  *queryDesc = NULL;
 
 	struct CdbDispatchResults  *primaryResults = NULL;
@@ -932,10 +934,10 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	volatile bool   shouldTeardownInterconnect = false;
 	volatile bool   explainRecvStats = false;
 
-	if (Gp_role == GP_ROLE_DISPATCH &&
-			planstate != NULL &&
-			planstate->plan != NULL &&
-			planstate->plan->dispatch == DISPATCH_PARALLEL)
+    Assert(node->topPlan);
+    
+    if (Gp_role == GP_ROLE_DISPATCH &&
+        node->topPlan->dispatchParallel)
 		shouldDispatch = true;
 
 	node->cdbextratextbuf = NULL;
@@ -947,15 +949,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	 */
 	if (shouldDispatch)
 	{
-		/* Fake a Query node to hold the range table. */
-		query = makeNode(Query);
-
-		/* XXX PG 8.3 Merge.
-		 * XXX where is the range table now ? 
-		 */
-		query->rtable = econtext->ecxt_estate->es_range_table;
-		query->commandType = CMD_SELECT;
-
 		/*
 		 * Fake a QueryDesc stucture for CdbDispatchPlan call. It should
 		 * look like the one passed in as the argument which carries the
@@ -1012,7 +1005,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 * to finish unless an error is detected before all are dispatched.
 			 */
 			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &primaryResults, NULL, &dispatchThreads);
-
 
 			SetupSequenceServer(queryDesc->estate->es_sliceTable);
 

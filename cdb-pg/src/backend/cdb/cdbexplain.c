@@ -1069,7 +1069,6 @@ cdbexplain_showExecStatsBegin(struct QueryDesc *queryDesc,
     MemoryContext           oldcontext;
     PlannedStmt            *plannedstmt = queryDesc->plannedstmt;
     CdbExplain_ShowStatCtx *ctx;
-    int                     nslice;
 
     Assert(Gp_role != GP_ROLE_EXECUTE);
 
@@ -1082,12 +1081,9 @@ cdbexplain_showExecStatsBegin(struct QueryDesc *queryDesc,
     ctx->explaincxt = explaincxt;
     ctx->querystarttime = querystarttime;
 
-    /* Determine number of slices.  (SliceTable hasn't been built yet.) */
-    nslice = 1 + plannedstmt->planTree->nMotionNodes + plannedstmt->planTree->nInitPlans;
-
     /* Allocate and zero the SliceSummary array. */
-    ctx->nslice = nslice;
-    ctx->slices = (CdbExplain_SliceSummary *)palloc0(nslice * sizeof(ctx->slices[0]));
+    ctx->nslice = plannedstmt->nSlice;
+    ctx->slices = (CdbExplain_SliceSummary *)palloc0(ctx->nslice * sizeof(ctx->slices[0]));
 
     /* Allocate a buffer in which we can collect any extra message text. */
     initStringInfoOfSize(&ctx->extratextbuf, 4000);

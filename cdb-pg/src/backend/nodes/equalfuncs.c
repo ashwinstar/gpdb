@@ -331,7 +331,6 @@ _equalSubPlan(SubPlan *a, SubPlan *b)
 	COMPARE_SCALAR_FIELD(useHashTable);
 	COMPARE_SCALAR_FIELD(unknownEqFalse);
 	/* CDB: Ignore value of is_initplan */
-	COMPARE_SCALAR_FIELD(is_multirow); /*CDB*/
 	COMPARE_NODE_FIELD(setParam);
 	COMPARE_NODE_FIELD(parParam);
 	COMPARE_NODE_FIELD(args);
@@ -2012,12 +2011,18 @@ _equalGroupingFunc(GroupingFunc *a, GroupingFunc *b)
 static bool
 _equalGrouping(Grouping *a, Grouping *b)
 {
-	return true;
+    UnusedArg(a);
+    UnusedArg(b);
+    
+    return true;
 }
 
 static bool
 _equalGroupId(GroupId *a, GroupId *b)
 {
+    UnusedArg(a);
+    UnusedArg(b);
+    
 	return true;
 }
 
