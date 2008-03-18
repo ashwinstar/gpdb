@@ -45,7 +45,7 @@ typedef struct PlannedStmt
 
 	bool		transientPlan;	/* redo plan when TransactionXmin changes? */
 
-    struct CdbTopPlan **topPlans;   /* -> array[0..1+list_length(subplans)] of 
+    struct CdbTopPlan **topPlans;   /* -> array[0..list_length(subplans)] of 
                                      * CdbTopPlan node ptrs */
     
 	struct Plan *planTree;		/* tree of Plan nodes */
@@ -101,7 +101,7 @@ typedef struct PlannedStmt
 /* ----------------
  *		CdbTopPlan node
  *
- * The PlannedStmt node points to an array [0..1+list_length(subplans)] of
+ * The PlannedStmt node points to an array [0..list_length(subplans)] of
  * pointers to CdbTopPlan nodes.
  *
  * plannedStmt->topPlans[0] pertains to the main plan: plannedStmt->planTree.
