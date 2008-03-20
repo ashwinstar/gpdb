@@ -52,6 +52,7 @@
 #include "parser/parse_clause.h"
 #include "parser/parsetree.h"
 #include "storage/smgr.h"
+#include "tcop/dest.h"                  /* DestReceiver */
 #include "utils/acl.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -3407,7 +3408,7 @@ CloseIntoRel(QueryDesc *queryDesc)
  * we just leave the private fields empty here.  OpenIntoRel will
  * fill them in.
  */
-DestReceiver *
+struct DestReceiver *
 CreateIntoRelDestReceiver(void)
 {
 	DR_intorel *self = (DR_intorel *) palloc(sizeof(DR_intorel));

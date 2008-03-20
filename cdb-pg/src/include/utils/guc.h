@@ -14,11 +14,12 @@
 #ifndef GUC_H
 #define GUC_H
 
-#include "nodes/parsenodes.h"
-#include "tcop/dest.h"
-#include "utils/array.h"
-
+struct ArrayType;                       /* #include "utils/array.h" */
+struct DestReceiver;                    /* #include "tcop/dest.h" */
+struct List;                            /* #include "nodes/pg_list.h" */
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
+struct TupleDescData;                   /* #include "access/tupdesc.h" */
+struct VariableSetStmt;                 /* #include "nodes/parsenodes.h" */
 
 
 /*
@@ -114,8 +115,8 @@ typedef enum
 #define GUC_QUALIFIER_SEPARATOR '.'
 
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
-extern List    *gp_guc_list_for_explain;
-extern List    *gp_guc_list_for_no_plan;
+extern struct List *gp_guc_list_for_explain;
+extern struct List *gp_guc_list_for_no_plan;
 
 /* GUC vars that are actually declared in guc.c, rather than elsewhere */
 extern bool log_duration;
@@ -261,17 +262,17 @@ extern char *GetConfigOptionByName(const char *name, const char **varname);
 extern void GetConfigOptionByNum(int varnum, const char **values, bool *noshow);
 extern int	GetNumConfigOptions(void);
 
-extern void SetPGVariable(const char *name, List *args, bool is_local, bool gp_dispatch);
-extern void GetPGVariable(const char *name, DestReceiver *dest);
-extern TupleDesc GetPGVariableResultDesc(const char *name);
+extern void SetPGVariable(const char *name, struct List *args, bool is_local, bool gp_dispatch);
+extern void GetPGVariable(const char *name, struct DestReceiver *dest);
+extern struct TupleDescData *GetPGVariableResultDesc(const char *name);
 
-extern void ExecSetVariableStmt(VariableSetStmt *stmt);
-extern char *ExtractSetVariableArgs(VariableSetStmt *stmt);
+extern void ExecSetVariableStmt(struct VariableSetStmt *stmt);
+extern char *ExtractSetVariableArgs(struct VariableSetStmt *stmt);
 
-extern void ProcessGUCArray(ArrayType *array,
+extern void ProcessGUCArray(struct ArrayType *array,
 				GucContext context, GucSource source, GucAction action);
-extern ArrayType *GUCArrayAdd(ArrayType *array, const char *name, const char *value);
-extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
+extern struct ArrayType *GUCArrayAdd(struct ArrayType *array, const char *name, const char *value);
+extern struct ArrayType *GUCArrayDelete(struct ArrayType *array, const char *name);
 
 extern int	GUC_complaint_elevel(GucSource source);
 
@@ -281,7 +282,7 @@ extern int  gp_guc_list_show(struct StringInfoData    *buf,
                               const char               *pfx, 
                               const char               *fmt, 
                               GucSource                 excluding, 
-                              List                     *guclist)
+                              struct List              *guclist)
                 /* This extension allows gcc to check the format string */
                 __attribute__((format(printf, 3, 0)));
 

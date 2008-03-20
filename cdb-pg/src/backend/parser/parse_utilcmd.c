@@ -2411,22 +2411,14 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 		return;
 	}
 
- 
- 
-
-
-		policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
-		policy->ptype = POLICYTYPE_PARTITIONED;
-		policy->nattrs = 0;
-		policy->attrs[0] = 1;
+	policy = GpPolicyAlloc(CurrentMemoryContext, POLICYTYPE_PARTITIONED, maxattrs);
+	policy->nattrs = 0;
+	policy->attrs[0] = 1;
 	
 		/*
 		 * If distributedBy is NIL, the user did not explicitly say what he wanted for
 		 * a distribution policy.  So, we need to assign one.
 		 */
-		 
-		
-	
 		if (distributedBy == NIL && cxt && cxt->pkey != NULL)
 		{
 			/*
@@ -2576,7 +2568,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 					elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
 				}
 
-                pfree(oldTablePolicy);
+                GpPolicyFree(oldTablePolicy);
 			}
 		}
 		
@@ -2607,7 +2599,6 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			if (cxt && list_length(cxt->columns) == 0 && !cxt->inhRelations)
 			{
 				elog(NOTICE, "Table has no attributes to distribute on.");
-				pfree(policy);
 				return;
 			}
 
@@ -5999,24 +5990,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			 * create instead.
 			 */
 			if (0 && policy)
-			{
-				GpPolicy   *newpolicy = NULL;
-				int			maxattrs  = 200;
-				int			ii_attrs  = 0;
-
-				newpolicy = 
-					(GpPolicy *) palloc(
-						sizeof(GpPolicy) + maxattrs * sizeof(newpolicy->attrs[0]));
-				newpolicy->ptype  = policy->ptype;
-				newpolicy->nattrs = policy->nattrs;
-
-				for (ii_attrs = 0; ii_attrs < policy->nattrs; ii_attrs++)
-				{
-					newpolicy->attrs[ii_attrs] = policy->attrs[ii_attrs];
-				}
-
-				child_tab_stmt->policy = newpolicy;
-			}
+				child_tab_stmt->policy = GpPolicyCopy(CurrentMemoryContext, policy);
 
 			cxt->alist = lappend(cxt->alist, child_tab_stmt);
 

@@ -98,9 +98,9 @@ typedef enum
  * identical to the one given to the rStartup routine.
  * ----------------
  */
-typedef struct _DestReceiver DestReceiver;
+typedef struct DestReceiver DestReceiver;
 
-struct _DestReceiver
+struct DestReceiver
 {
 	/* Called for each tuple to be output: */
 	void		(*receiveSlot) (TupleTableSlot *slot,

@@ -120,10 +120,43 @@
 	(appendStringInfoString(str, " :" CppAsString(fldname) " "), \
 	 _outNodePtrArray(str, node->fldname, numOfPtrs))
 
-/* CDB: Write an array of OIDs */
+/* CDB: Write an array of simple scalars */
+#define WRITE_SCALAR_ARRAY(_fldname, _numOfItems, _format) \
+    do { \
+        int _i, _n; \
+        appendStringInfoString(str, " :" CppAsString(_fldname) " "); \
+        if (node->_fldname && \
+            (_n = (_numOfItems)) > 0) \
+        { \
+            for (_i = 0; _i < _n; _i++) \
+                appendStringInfo(str, " " _format, node->_fldname[_i]); \
+        } \
+        else \
+            appendStringInfoString(str, "<>"); \
+    } while (0)
+
+/* CDB: Write an array of simple scalars, casting to type that matches format */
+#define WRITE_SCALAR_ARRAY_CAST(_fldname, _numOfItems, _format, _CastToType) \
+    do { \
+        int _i, _n; \
+        appendStringInfoString(str, " :" CppAsString(_fld) " "); \
+        if (node->_fldname && \
+            (_n = (_numOfItems)) > 0) \
+        { \
+            for (_i = 0; _i < _n; _i++) \
+                appendStringInfo(str, " " _format, (_CastToType)node->_fldname[_i]); \
+        } \
+        else \
+            appendStringInfoString(str, "<>"); \
+    } while (0)
+
+/* CDB: Write an array of integers */
+#define WRITE_INT_ARRAY(fldname, numOfItems) \
+    WRITE_SCALAR_ARRAY(fldname, node->numOfItems, "%d")
+
+/* CDB: Write an array of Oid */
 #define WRITE_OID_ARRAY(fldname, numOfOids) \
-	(appendStringInfoString(str, " :" CppAsString(fldname) " "), \
-	 _outOidArray(str, node->fldname, numOfOids))
+    WRITE_SCALAR_ARRAY(fldname, node->numOfOids, "%u")
 
 #define booltostr(x)  ((x) ? "true" : "false")
 
@@ -208,40 +241,32 @@ _outList(StringInfo str, List *node)
 
 /*
  * _outNodePtrArray
+ *
+ * The output format is like a List, but with the item count (> 0)
+ * inserted at the beginning:  "(%d node node ...)".  If there are
+ * no items, "<>" is written.  Hopefully this won't break existing
+ * tools which parse PostgreSQL serialized trees.
  */
 static void
 _outNodePtrArray(StringInfo str, void **nodeptrs, int numOfPtrs)
 {
-    int i;
+    if (nodeptrs &&
+        numOfPtrs > 0)
+    {
+        int i;
 
-	appendStringInfo(str, "(%d", numOfPtrs);
+        appendStringInfo(str, "(%d", numOfPtrs);
 
-	for (i = 0; i < numOfPtrs; i++)
-	{
-        appendStringInfoChar(str, ' ');
-        _outNode(str, nodeptrs[i]);
-	}
+	    for (i = 0; i < numOfPtrs; i++)
+	    {
+            appendStringInfoChar(str, ' ');
+            _outNode(str, nodeptrs[i]);
+	    }
 
-	appendStringInfoChar(str, ')');
-}                               /* _outNodePtrArray */
-
-/*
- * _outOidArray
- */
-static void
-_outOidArray(StringInfo str, Oid *oids, int numOfOids)
-{
-    int i;
-
-	appendStringInfo(str, "(%d", numOfOids);
-
-	for (i = 0; i < numOfOids; i++)
-	{
-        appendStringInfoChar(str, ' ');
-		appendStringInfo(str, " %u", oids[i]);
-	}
-
-	appendStringInfoChar(str, ')');
+	    appendStringInfoChar(str, ')');
+    }
+    else
+        appendStringInfoString(str, "<>");
 }                               /* _outNodePtrArray */
 
 /*
@@ -326,7 +351,7 @@ _outPlannedStmt(StringInfo str, PlannedStmt *node)
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(relationOids);
 	WRITE_INT_FIELD(nParamExec);                                        /*CDB*/
-    WRITE_OID_ARRAY(paramExecTypes, node->nParamExec);                  /*CDB*/
+    WRITE_OID_ARRAY(paramExecTypes, nParamExec);                        /*CDB*/
 	WRITE_INT_FIELD(nSlice);                                            /*CDB*/
 	WRITE_BOOL_FIELD(dispatchParallel);                                 /*CDB*/
 }
@@ -948,6 +973,7 @@ _outIntoClause(StringInfo str, IntoClause *node)
 	WRITE_NODE_FIELD(options);
 	WRITE_ENUM_FIELD(onCommit, OnCommitAction);
 	WRITE_STRING_FIELD(tableSpaceName);
+    WRITE_NODE_FIELD(intoPolicy);                                       /*CDB*/
 }
 
 static void
@@ -2845,7 +2871,7 @@ static void
 _outGrouping(StringInfo str, Grouping *node)
 {
     UnusedArg(node);
-    
+
     WRITE_NODE_TYPE("GROUPING");
 }
 
@@ -2853,7 +2879,7 @@ static void
 _outGroupId(StringInfo str, GroupId *node)
 {
     UnusedArg(node);
-    
+
 	WRITE_NODE_TYPE("GROUPID");
 }
 
@@ -3294,6 +3320,18 @@ _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
 	WRITE_OID_FIELD(trigOid);
 
 }
+
+static void
+_outGpPolicy(StringInfo str, GpPolicy *node)
+{
+	WRITE_NODE_TYPE("GPPOLICY");
+
+    WRITE_ENUM_FIELD(ptype, GpPolicyType);
+    WRITE_INT_FIELD(nattrs);
+    WRITE_INT_ARRAY(attrs, nattrs);
+}
+
+
 
 /*
  * _outNode -
@@ -3925,6 +3963,9 @@ _outNode(StringInfo str, void *obj)
 
             case T_CdbTopPlan:
                 _outCdbTopPlan(str, obj);
+                break;
+            case T_GpPolicy:
+                _outGpPolicy(str, obj);
                 break;
 
 			default:

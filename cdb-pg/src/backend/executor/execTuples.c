@@ -97,6 +97,7 @@
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "parser/parse_expr.h"
+#include "tcop/dest.h"                  /* DestReceiver */
 #include "utils/lsyscache.h"
 #include "utils/typcache.h"
 
@@ -1321,7 +1322,7 @@ BuildTupleFromCStrings(AttInMetadata *attinmeta, char **values)
  * Table Function capability. Currently used by EXPLAIN and SHOW ALL
  */
 TupOutputState *
-begin_tup_output_tupdesc(DestReceiver *dest, TupleDesc tupdesc)
+begin_tup_output_tupdesc(struct DestReceiver *dest, TupleDesc tupdesc)
 {
 	TupOutputState *tstate;
 

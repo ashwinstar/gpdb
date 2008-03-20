@@ -47,51 +47,52 @@
  * routine.
  */
 
+/* Write a field of some simple scalar type */
+#define WRITE_SCALAR_FIELD(_fld) \
+	appendBinaryStringInfo(str, &_fld, sizeof(_fld))
+
 /*
  * Write the label for the node type.  nodelabel is accepted for
  * compatibility with outfuncs.c, but is ignored
  */
 #define WRITE_NODE_TYPE(nodelabel) \
-	{ int16 nt =nodeTag(node); appendBinaryStringInfo(str, (const char *)&nt, sizeof(int16)); }
+    WRITE_SCALAR_FIELD(((Node *)node)->type)
 
 /* Write an integer field  */
 #define WRITE_INT_FIELD(fldname) \
-	{ appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(int)); }
+    WRITE_SCALAR_FIELD(node->fldname)
 
 /* Write an unsigned integer field */
 #define WRITE_UINT_FIELD(fldname) \
-	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(int))
+    WRITE_SCALAR_FIELD(node->fldname)
 
 /* Write an uint64 field */
 #define WRITE_UINT64_FIELD(fldname) \
-	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(uint64))
+    WRITE_SCALAR_FIELD(node->fldname)
 
 /* Write an OID field (don't hard-wire assumption that OID is same as uint) */
 #define WRITE_OID_FIELD(fldname) \
-	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(Oid))
+    WRITE_SCALAR_FIELD(node->fldname)
 
 /* Write a long-integer field */
 #define WRITE_LONG_FIELD(fldname) \
-	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(long))
+    WRITE_SCALAR_FIELD(node->fldname)
 
 /* Write a char field (ie, one ascii character) */
 #define WRITE_CHAR_FIELD(fldname) \
-	appendBinaryStringInfo(str, &node->fldname, 1)
+    appendStringInfoChar(str, node->fldname)
 
-/* Write an enumerated-type field as an integer code */
+/* Write an enumerated-type field */
 #define WRITE_ENUM_FIELD(fldname, enumtype) \
-	{ int16 en=node->fldname; appendBinaryStringInfo(str, (const char *)&en, sizeof(int16)); }
+    WRITE_SCALAR_FIELD(node->fldname)
 
 /* Write a float field --- the format is accepted but ignored (for compat with outfuncs.c)  */
 #define WRITE_FLOAT_FIELD(fldname,format) \
-	appendBinaryStringInfo(str, (const char *)&node->fldname, sizeof(double))
+    WRITE_SCALAR_FIELD(node->fldname)
 
 /* Write a boolean field */
 #define WRITE_BOOL_FIELD(fldname) \
-	{ \
-		char b = node->fldname ? 1 : 0; \
-		appendBinaryStringInfo(str, (const char *)&b, 1); \
-	}
+    WRITE_SCALAR_FIELD(node->fldname)
 
 /* Write a character-string (possibly NULL) field */
 #define WRITE_STRING_FIELD(fldname) \
@@ -119,54 +120,44 @@
 
 /* Write a dummy field -- value not displayable or copyable */
 #define WRITE_DUMMY_FIELD(fldname) \
-	{ /*int * dummy = 0; appendBinaryStringInfo(str,(const char *)&dummy, sizeof(int *)) ;*/ }
+	((void)0)
 	
 /* CDB: Write an array of Node pointers */
 #define WRITE_NODEPTR_ARRAY(fldname, numOfPtrs) \
-	(appendStringInfoString(str, " :" CppAsString(fldname) " "), \
-	 _outNodePtrArray(str, node->fldname, numOfPtrs))
+    do { \
+        int _i, _n = (numOfPtrs); \
+        WRITE_SCALAR_FIELD(_n); \
+        for (_i = 0; _i < _n; _i++) \
+            _outNode(str, node->fldname[_i]); \
+    } while (0)
 
+/* Write an array of some scalar type */
+#define WRITE_SCALAR_ARRAY(_fld, _count) \
+    do { \
+        int _n = (_count); \
+	    if (_count > 0) \
+        { \
+            Insist(_fld != NULL); \
+		    appendBinaryStringInfo(str, _fld, _n * sizeof(_fld[0])); \
+        } \
+    } while (0)
+	
 /* Write an integer array */
 #define WRITE_INT_ARRAY(fldname, count, Type) \
-	if ( node->count > 0 ) \
-	{ \
-		int i; \
-		for(i=0; i<node->count; i++) \
-		{ \
-			appendBinaryStringInfo(str, (const char *)&node->fldname[i], sizeof(Type)); \
-		} \
-	}
+    WRITE_SCALAR_ARRAY(node->fldname, node->count)
 	
 /* Write a bool array  */
 #define WRITE_BOOL_ARRAY(fldname, count) \
-	if ( node->count > 0 ) \
-	{ \
-		int i; \
-		for(i=0; i<node->count; i++) \
-		{ \
-			char b = node->fldname[i] ? 1 : 0; \
-			appendBinaryStringInfo(str, (const char *)&b, 1); \
-		} \
-	}
+    WRITE_SCALAR_ARRAY(node->fldname, node->count)
 
-/* Write an Trasnaction ID array  */
+/* Write an Transaction ID array  */
 #define WRITE_XID_ARRAY(fldname, count) \
-	if ( node->count > 0 ) \
-	{ \
-		int i; \
-		for(i=0; i<node->count; i++) \
-		{ \
-			appendBinaryStringInfo(str, (const char *)&node->fldname[i], sizeof(TransactionId)); \
-		} \
-	}
+    WRITE_SCALAR_ARRAY(node->fldname, node->count)
 
 /* Write an Oid array  */
 #define WRITE_OID_ARRAY(fldname, count) \
-	if ( node->count > 0 ) \
-	{ \
-		int _size = node->count * sizeof(Oid); \
-		appendBinaryStringInfo(str, node->fldname, _size); \
-	}
+    WRITE_SCALAR_ARRAY(node->fldname, node->count)
+
 
 static void _outNode(StringInfo str, void *obj);
 
@@ -177,10 +168,11 @@ _outList(StringInfo str, List *node)
 {
 	ListCell   *lc;
 	
-	if (node == NULL)
+	if (node == NIL)
 	{
-		int16 tg = 0;
-		appendBinaryStringInfo(str, (const char *)&tg, sizeof(int16));
+		NodeTag tg = (NodeTag)0;
+
+        WRITE_SCALAR_FIELD(tg);
 		return;
 	}
 
@@ -189,44 +181,18 @@ _outList(StringInfo str, List *node)
 
 	foreach(lc, node)
 	{
-
 		if (IsA(node, List))
-		{
 			_outNode(str, lfirst(lc));	
-		}
 		else if (IsA(node, IntList))
-		{
-			int n = lfirst_int(lc);
-			appendBinaryStringInfo(str, (const char *)&n, sizeof(int));
-		}
+            WRITE_SCALAR_FIELD(lfirst_int(lc));
 		else if (IsA(node, OidList))
-		{
-			Oid n = lfirst_oid(lc);
-			appendBinaryStringInfo(str, (const char *)&n, sizeof(Oid));
-		}
+            WRITE_SCALAR_FIELD(lfirst_oid(lc));
 	}
 }
 
 /*
- * _outNodePtrArray
- */
-static void
-_outNodePtrArray(StringInfo str, void **nodeptrs, int numOfPtrs)
-{
-    int     i;
-
-    appendBinaryStringInfo(str, &numOfPtrs, sizeof(numOfPtrs));
-
-	for (i = 0; i < numOfPtrs; i++)
-        _outNode(str, nodeptrs[i]);
-}                               /* _outNodePtrArray */
-
-/*
  * _outBitmapset -
  *	   converts a bitmap set of integers
- *
- * Currently bitmapsets do not appear in any node type that is stored in
- * rules, so there is no support in readfast.c for reading this format.
  */
 static void
 _outBitmapset(StringInfo str, Bitmapset *bms)
@@ -863,6 +829,7 @@ _outIntoClause(StringInfo str, IntoClause *node)
 	WRITE_NODE_FIELD(options);
 	WRITE_ENUM_FIELD(onCommit, OnCommitAction);
 	WRITE_STRING_FIELD(tableSpaceName);
+    /* CDB: intoPolicy field isn't sent to QE */
 }
 
 static void
@@ -2597,7 +2564,8 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(resultRelations);
 	WRITE_NODE_FIELD(returningLists);
 		
-	WRITE_OID_FIELD(intoOidInfo.relOid);
+    /* 8.3 MERGE: These fields should be moved to the IntoClause */
+    WRITE_OID_FIELD(intoOidInfo.relOid);
 	WRITE_OID_FIELD(intoOidInfo.comptypeOid);
 	WRITE_OID_FIELD(intoOidInfo.toastOid);
 	WRITE_OID_FIELD(intoOidInfo.toastIndexOid);
@@ -3077,6 +3045,19 @@ _outCreateTrigStmt(StringInfo str, CreateTrigStmt *node)
 	WRITE_OID_FIELD(trigOid);
 
 }
+
+static void
+_outGpPolicy(StringInfo str, GpPolicy *node)
+{
+	WRITE_NODE_TYPE("GPPOLICY");
+
+    WRITE_ENUM_FIELD(ptype, GpPolicyType);
+    WRITE_INT_FIELD(nattrs);
+    WRITE_INT_ARRAY(attrs, nattrs, AttrNumber);
+}
+
+
+
 
 /*
  * _outNode -
@@ -3719,6 +3700,9 @@ _outNode(StringInfo str, void *obj)
 
             case T_CdbTopPlan:
                 _outCdbTopPlan(str, obj);
+                break;
+            case T_GpPolicy:
+                _outGpPolicy(str, obj);
                 break;
 
 			default:

@@ -12,9 +12,11 @@
  *
  *-------------------------------------------------------------------------
  */
-
 #ifndef _GP_POLICY_H_
 #define _GP_POLICY_H_
+
+#include "access/attnum.h"          /* AttrNumber */
+#include "nodes/nodes.h"            /* NodeTag */
 
 
 /*
@@ -56,17 +58,40 @@ typedef enum GpPolicyType
 typedef
 struct GpPolicy
 {
-	GpPolicyType ptype;
+	NodeTag		type;           /* T_GpPolicy */
+
+    GpPolicyType ptype;
 
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
 	int			nattrs;
-	AttrNumber	attrs[1];		/* the first of nattrs attribute numbers.  */
+	AttrNumber *attrs;		    /* -> array [0..nattrs-1] of column numbers */
 } GpPolicy;
+
+
+/*
+ * GpPolicyAlloc -- Allocate a GpPolicy object.
+ *
+ * To free the GpPolicy object, the caller should call GpPolicyFree(), or
+ * let it remain allocated until the containing MemoryContext 'mcxt' is
+ * destroyed or reset.  To minimize leakage when 'mcxt' is a long-lived
+ * context such as CacheMemoryContext, GpPolicyFree() should be called.
+ */
+GpPolicy *
+GpPolicyAlloc(MemoryContext mcxt, GpPolicyType ptype, int nattrs);
+
+/*
+ * GpPolicyFree -- Release the memory occupied by a GpPolicy object.
+ */
+void
+GpPolicyFree(GpPolicy *policy);
 
 /*
  * GpPolicyCopy -- Return a copy of a GpPolicy object.
  *
  * The copy is palloc'ed in the specified context.
+ *
+ * GpPolicyFree() should be called to free the returned policy if
+ * appropriate; see GpPolicyAlloc() comments above.
  */
 GpPolicy *
 GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src);
@@ -75,13 +100,17 @@ GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src);
  * GpPolicyFetch
  *
  * Looks up a given Oid in the gp_distribution_policy table.
+ *
  * If found, returns an GpPolicy object (palloc'd in the specified
  * context) containing the info from the gp_distribution_policy row.
- * Else returns NULL.
+ * Otherwise returns a policy of type POLICYTYPE_ENTRY.  Never returns NULL.
  *
  * The caller is responsible for passing in a valid relation oid.  This
  * function does not check and assigns a policy of type POLICYTYPE_ENTRY
  * for any oid not found in gp_distribution_policy.
+ *
+ * GpPolicyFree() should be called to free the returned policy if
+ * appropriate; see GpPolicyAlloc() comments above.
  */
 GpPolicy *
 GpPolicyFetch(MemoryContext mcxt, Oid tbloid);

@@ -34,7 +34,6 @@
 #include "access/transam.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
-#include "cdb/tupchunk.h"
 #include "commands/async.h"
 #include "commands/prepare.h"
 #include "commands/vacuum.h"
@@ -45,6 +44,7 @@
 #include "libpq/auth.h"
 #include "libpq/pqformat.h"
 #include "miscadmin.h"
+#include "nodes/parsenodes.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
 #include "optimizer/paths.h"
@@ -62,8 +62,10 @@
 #include "postmaster/walwriter.h"
 #include "storage/fd.h"
 #include "storage/freespace.h"
+#include "tcop/dest.h"                  /* DestReceiver */
 #include "tcop/tcopprot.h"
 #include "tsearch/ts_cache.h"
+#include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/guc_tables.h"
 #include "utils/memutils.h"
@@ -75,8 +77,10 @@
 #include "utils/xml.h"
 #include "utils/resscheduler.h"
 #include "pgstat.h"
-#include "cdb/cdbvars.h"
+
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbvars.h"
+#include "cdb/tupchunk.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -124,8 +128,8 @@ extern bool synchronize_seqscans;
 extern bool fullPageWrites;
 
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
-List       *gp_guc_list_for_explain;
-List       *gp_guc_list_for_no_plan;
+struct List    *gp_guc_list_for_explain;
+struct List    *gp_guc_list_for_no_plan;
 
 #ifdef TRACE_SORT
 extern bool trace_sort;
@@ -3587,8 +3591,8 @@ static int	guc_var_compare(const void *a, const void *b);
 static int	guc_name_compare(const char *namea, const char *nameb);
 static void push_old_value(struct config_generic * gconf, GucAction action);
 static void ReportGUCOption(struct config_generic * record);
-static void ShowGUCConfigOption(const char *name, DestReceiver *dest);
-static void ShowAllGUCConfig(DestReceiver *dest);
+static void ShowGUCConfigOption(const char *name, struct DestReceiver *dest);
+static void ShowAllGUCConfig(struct DestReceiver *dest);
 static char *_ShowOption(struct config_generic * record, bool use_units);
 static bool is_newvalue_equal(struct config_generic * record, const char *newvalue);
 
@@ -6058,7 +6062,7 @@ flatten_set_variable_args(const char *name, List *args)
  * SET command
  */
 void
-ExecSetVariableStmt(VariableSetStmt *stmt)
+ExecSetVariableStmt(struct VariableSetStmt *stmt)
 {
 	GucAction	action = stmt->is_local ? GUC_ACTION_LOCAL : GUC_ACTION_SET;
 
@@ -6147,7 +6151,7 @@ ExecSetVariableStmt(VariableSetStmt *stmt)
  * This is exported for use by actions such as ALTER ROLE SET.
  */
 char *
-ExtractSetVariableArgs(VariableSetStmt *stmt)
+ExtractSetVariableArgs(struct VariableSetStmt *stmt)
 {
 	switch (stmt->kind)
 	{
@@ -6167,7 +6171,7 @@ ExtractSetVariableArgs(VariableSetStmt *stmt)
  * by passing args == NIL), but not SET FROM CURRENT functionality.
  */
 void
-SetPGVariable(const char *name, List *args, bool is_local, bool gp_dispatch)
+SetPGVariable(const char *name, struct List *args, bool is_local, bool gp_dispatch)
 {
 	char	   *argstring = flatten_set_variable_args(name, args);
 
@@ -6525,7 +6529,7 @@ EmitWarningsOnPlaceholders(const char *className)
  * SHOW command
  */
 void
-GetPGVariable(const char *name, DestReceiver *dest)
+GetPGVariable(const char *name, struct DestReceiver *dest)
 {
 	if (guc_name_compare(name, "all") == 0)
 		ShowAllGUCConfig(dest);
@@ -6533,7 +6537,7 @@ GetPGVariable(const char *name, DestReceiver *dest)
 		ShowGUCConfigOption(name, dest);
 }
 
-TupleDesc
+struct TupleDescData *
 GetPGVariableResultDesc(const char *name)
 {
 	TupleDesc	tupdesc;
@@ -6570,7 +6574,7 @@ GetPGVariableResultDesc(const char *name)
  * SHOW command
  */
 static void
-ShowGUCConfigOption(const char *name, DestReceiver *dest)
+ShowGUCConfigOption(const char *name, struct DestReceiver *dest)
 {
 	TupOutputState *tstate;
 	TupleDesc	tupdesc;
@@ -6598,7 +6602,7 @@ ShowGUCConfigOption(const char *name, DestReceiver *dest)
  * SHOW ALL command
  */
 static void
-ShowAllGUCConfig(DestReceiver *dest)
+ShowAllGUCConfig(struct DestReceiver *dest)
 {
 	bool		am_superuser = superuser();
 	int			i;
@@ -7192,11 +7196,11 @@ gp_guc_list_init(void)
  * Returns the length of the string appended to the buffer.
  */
 int
-gp_guc_list_show(struct StringInfoData    *buf,
-                  const char               *pfx,
-                  const char               *fmt,
-                  GucSource                 excluding,
-                  List                     *guclist)
+gp_guc_list_show(struct StringInfoData *buf,
+                 const char            *pfx,
+                 const char            *fmt,
+                 GucSource              excluding,
+                 struct List           *guclist)
 {
     int         oldlen = buf->len;
     ListCell   *cell;
@@ -7510,7 +7514,7 @@ ParseLongOption(const char *string, char **name, char **value)
  * The array parameter must be an array of TEXT (it must not be NULL).
  */
 void
-ProcessGUCArray(ArrayType *array,
+ProcessGUCArray(struct ArrayType *array,
 				GucContext context, GucSource source, GucAction action)
 {
 	int			i;
@@ -7564,8 +7568,8 @@ ProcessGUCArray(ArrayType *array,
  * Add an entry to an option array.  The array parameter may be NULL
  * to indicate the current table entry is NULL.
  */
-ArrayType *
-GUCArrayAdd(ArrayType *array, const char *name, const char *value)
+struct ArrayType *
+GUCArrayAdd(struct ArrayType *array, const char *name, const char *value)
 {
 	const char *varname;
 	Datum		datum;
@@ -7643,8 +7647,8 @@ GUCArrayAdd(ArrayType *array, const char *name, const char *value)
  * to indicate the current table entry is NULL.  Also, if the return value
  * is NULL then a null should be stored.
  */
-ArrayType *
-GUCArrayDelete(ArrayType *array, const char *name)
+struct ArrayType *
+GUCArrayDelete(struct ArrayType *array, const char *name)
 {
 	const char *varname;
 	ArrayType  *newarray;

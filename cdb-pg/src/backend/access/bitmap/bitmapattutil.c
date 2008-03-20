@@ -8,6 +8,8 @@
  *
  * IDENTIFICATION
  *	  $PostgreSQL$
+ *	  $Id$
+ *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -58,7 +60,7 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	Oid			idxid;
 	int			indattrs;
 	int			i;
- 	GpPolicy   policy;
+ 	GpPolicy   *policy;
 
 	/* create the new names for the new lov heap and index */
 	snprintf(lovHeapName, sizeof(lovHeapName), 
@@ -132,8 +134,7 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	 */
 	tupDesc = _bitmap_create_lov_heapTupleDesc(rel);
 
- 	MemSet(&policy, 0, sizeof(policy));
- 	policy.ptype = POLICYTYPE_PARTITIONED;
+ 	policy = GpPolicyAlloc(CurrentMemoryContext, POLICYTYPE_PARTITIONED, 0);
  
   	heapid =
 		heap_create_with_catalog(lovHeapName, PG_BITMAPINDEX_NAMESPACE,
@@ -141,7 +142,7 @@ _bitmap_create_lov_heapandindex(Relation rel,
 								 *lovHeapOid, rel->rd_rel->relowner, 
 								 tupDesc, RELKIND_RELATION,
 								 rel->rd_rel->relisshared, false, 0, 
-								 ONCOMMIT_NOOP, &policy, (Datum)0, true,
+								 ONCOMMIT_NOOP, policy, (Datum)0, true,
 								 &lovComptypeOid);
 	Assert(heapid == *lovHeapOid);
 

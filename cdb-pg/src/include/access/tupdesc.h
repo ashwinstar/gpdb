@@ -66,7 +66,7 @@ typedef struct tupleConstr
  * field of such a descriptor to -1, while reference-counted descriptors
  * always have tdrefcount >= 0.
  */
-typedef struct tupleDesc
+typedef struct TupleDescData
 {
 	int			natts;			/* number of attributes in the tuple */
 	Form_pg_attribute *attrs;
@@ -76,7 +76,9 @@ typedef struct tupleDesc
 	int32		tdtypmod;		/* typmod for tuple type */
 	bool		tdhasoid;		/* tuple has oid attribute in its header */
 	int			tdrefcount;		/* reference count, or -1 if not counting */
-}	*TupleDesc;
+} TupleDescData;
+
+typedef struct TupleDescData   *TupleDesc;
 
 
 extern TupleDesc CreateTemplateTupleDesc(int natts, bool hasoid);

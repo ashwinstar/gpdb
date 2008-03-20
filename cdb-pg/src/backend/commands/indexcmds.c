@@ -470,7 +470,6 @@ DefineIndex(RangeVar *heapRelation,
 					if (indexInfo->ii_KeyAttrNumbers[ia] != policy->attrs[ia])
 					{
 						changespolicy = true;
-						
 					}
 				}
 				
@@ -479,7 +478,6 @@ DefineIndex(RangeVar *heapRelation,
 					if (cdbRelSize(rel->rd_id) != 0 || relationHasPrimaryKey(rel) || relationHasUniqueIndex(rel))
 					{
 						if (primary)
-
 							ereport(ERROR,
 									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 									 errmsg("You can only add a primary key on the distribution column(s)")));
@@ -490,10 +488,11 @@ DefineIndex(RangeVar *heapRelation,
 					}
 					else
 					{
-						policy = (GpPolicy *) palloc(sizeof(GpPolicy) + numberOfAttributes * sizeof(policy->attrs[0]));
-						policy->ptype = POLICYTYPE_PARTITIONED;
-						policy->nattrs = 0;
-						policy->attrs[0] = 1;
+						policy = GpPolicyAlloc(CurrentMemoryContext,
+                                               POLICYTYPE_PARTITIONED,
+                                               numberOfAttributes);
+                        Assert(numberOfAttributes > 0);
+                        policy->attrs[0] = 1;
 						for (ia=0; ia < numberOfAttributes; ia++)
 						{
 							policy->attrs[policy->nattrs++] = indexInfo->ii_KeyAttrNumbers[ia];	

@@ -19,10 +19,14 @@
 #include "cdb/cdbsrlz.h"
 #include "nodes/print.h"
 #include <math.h>
+
 #ifdef HAVE_LIBZ
 #include <zlib.h>
 #endif
-
+/* <zlib.h> includes "zconf.h" which may #define const as empty... restore it */
+#ifdef const
+#undef const
+#endif
 
 static char *compress_string(const char *src, int uncompressed_size, int *size);
 static char *uncompress_string(const char *src, int size, int * uncompressed_len );

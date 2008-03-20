@@ -4204,8 +4204,9 @@ Query *copy_common_subquery(Query *original, List *targetList)
 	common->windowClause = copyObject(original->windowClause);
 	
 	/* The rest is "blank". */
-	common->resultRelation = 0;
 	common->utilityStmt = NULL;
+	common->resultRelation = 0;
+	common->intoClause = NULL;
 	common->hasWindFuncs = false;
 	common->hasSubLinks = false; /* XXX */
 	common->returningList = NIL;
@@ -4217,7 +4218,6 @@ Query *copy_common_subquery(Query *original, List *targetList)
 	common->resultRelations = NIL;
 	common->returningLists = NIL;
 	memset(&common->intoOidInfo, 0, sizeof(common->intoOidInfo));
-	common->intoPolicy = NULL;
 	
 	return common;
 }

@@ -32,42 +32,55 @@
 #define READ_LOCALS(nodeTypeName) \
 	nodeTypeName *local_node = makeNode(nodeTypeName)
 
+/* Read a field of some simple scalar type */
+#define READ_SCALAR_FIELD(_fld) \
+    do { \
+	    memcpy(&_fld, *str, sizeof(_fld)); \
+        *str += sizeof(_fld); \
+    } while (0)
 
 /* Read an integer field  */
 #define READ_INT_FIELD(fldname) \
-	memcpy(&local_node->fldname, *str, sizeof(int));  (*str)+=sizeof(int)
+    READ_SCALAR_FIELD(local_node->fldname)
 
 /* Read an unsigned integer field) */
 #define READ_UINT_FIELD(fldname) \
-	memcpy(&local_node->fldname, *str, sizeof(int)); (*str)+=sizeof(int)
+    READ_SCALAR_FIELD(local_node->fldname)
 
 /* Read an uint64 field) */
 #define READ_UINT64_FIELD(fldname) \
-	memcpy(&local_node->fldname, *str, sizeof(uint64)); (*str)+=sizeof(uint64)
+    READ_SCALAR_FIELD(local_node->fldname)
 
 /* Read an OID field (don't hard-wire assumption that OID is same as uint) */
 #define READ_OID_FIELD(fldname) \
-	memcpy(&local_node->fldname, *str, sizeof(Oid)); (*str)+=sizeof(Oid)
+    READ_SCALAR_FIELD(local_node->fldname)
 
 /* Read a long-integer field  */
 #define READ_LONG_FIELD(fldname) \
-	memcpy(&local_node->fldname, *str, sizeof(long)); (*str)+=sizeof(long)
+    READ_SCALAR_FIELD(local_node->fldname)
 
 /* Read a char field (ie, one ascii character) */
 #define READ_CHAR_FIELD(fldname) \
-	memcpy(&local_node->fldname, *str, 1); (*str)++
+    do { \
+	    local_node->fldname = (*str)[0]; \
+        *str += 1; \
+    } while (0)
 
-/* Read an enumerated-type field that was written as a short integer code */
+/* Read an enumerated-type field */
 #define READ_ENUM_FIELD(fldname, enumtype) \
-	{ int16 ent; memcpy(&ent, *str, sizeof(int16));  (*str)+=sizeof(int16);local_node->fldname = (enumtype) ent; }
+    READ_SCALAR_FIELD(local_node->fldname)
 
 /* Read a float field */
 #define READ_FLOAT_FIELD(fldname) \
-	memcpy(&local_node->fldname, *str, sizeof(double)); (*str)+=sizeof(double)
+    READ_SCALAR_FIELD(local_node->fldname)
 
 /* Read a boolean field */
 #define READ_BOOL_FIELD(fldname) \
-	local_node->fldname = (*str)[0] != 0;  Assert((*str)[0]==1 || (*str)[0]==0); (*str)++
+    do { \
+        Assert((*str)[0] == 0 || (*str)[0] == 1); \
+	    local_node->fldname = (bool)(*str)[0]; \
+        *str += 1; \
+    } while (0)
 
 /* Read a character-string field */
 #define READ_STRING_FIELD(fldname) \
@@ -101,64 +114,47 @@
 #define READ_DONE() \
 	return local_node
 
-/* CDB: Read an array of Nodes */
-#define READ_NODEPTR_ARRAY(fldname, Type, count) \
+/* CDB: Read an array of Node pointers; returns number of ptrs in count_out */
+#define READ_NODEPTR_ARRAY(fldname, Type, count_out) \
     do { \
         int _i, _n; \
-        memcpy(&_n, *str, sizeof(int));  \
-        (*str) += sizeof(int); \
-        count = _n; \
+        memcpy(&_n, *str, sizeof(_n));  \
+        (*str) += sizeof(_n); \
+        count_out = _n; \
 	    if (_n > 0) \
 		    local_node->fldname = (Type **)palloc(_n * sizeof(Type*)); \
 	    for(_i=0; _i < _n; _i++) \
             local_node->fldname[_i] = (Type *)readNodeBinary(str); \
     } while (0)
 
-/* Read an integer array  */
+/* CDB: Read an array of some scalar type */
+#define READ_SCALAR_ARRAY(fldname, count, Type) \
+    do { \
+        int _n = (count); \
+	    if (_n > 0) \
+	    { \
+    		int _size = _n * sizeof(Type); \
+		    local_node->fldname = (Type *)palloc(_size); \
+    		memcpy(local_node->fldname, *str, _size); (*str)+=_size; \
+	    } \
+    } while (0)
+
+/* Read an array of some integer type */
 #define READ_INT_ARRAY(fldname, count, Type) \
-	if ( local_node->count > 0 ) \
-	{ \
-		int i; \
-		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
-		for(i=0; i<local_node->count; i++) \
-		{ \
-			memcpy(&local_node->fldname[i], *str, sizeof(Type)); (*str)+=sizeof(Type); \
-		} \
-	}
+    READ_SCALAR_ARRAY(fldname, local_node->count, Type)
 
 /* Read a bool array  */
 #define READ_BOOL_ARRAY(fldname, count) \
-	if ( local_node->count > 0 ) \
-	{ \
-		int i; \
-		local_node->fldname = (bool *)palloc(local_node->count * sizeof(bool)); \
-		for(i=0; i<local_node->count; i++) \
-		{ \
-			local_node->fldname[i] = (*str)[i] !=0 ; Assert((*str)[i]==1 || (*str)[i]==0); \
-		} \
-		(*str)+=i; \
-	}
-
-/* Read an Trasnaction ID array  */
-#define READ_XID_ARRAY(fldname, count) \
-	if ( local_node->count > 0 ) \
-	{ \
-		int i; \
-		local_node->fldname = (TransactionId *)palloc(local_node->count * sizeof(TransactionId)); \
-		for(i=0; i<local_node->count; i++) \
-		{ \
-			memcpy(&local_node->fldname[i], *str, sizeof(TransactionId)); (*str)+=sizeof(TransactionId); \
-		} \
-	}
+    READ_SCALAR_ARRAY(fldname, local_node->count, bool)
 
 /* Read an Oid array  */
 #define READ_OID_ARRAY(fldname, count) \
-	if ( local_node->count > 0 ) \
-	{ \
-		int _size = local_node->count * sizeof(Oid); \
-		local_node->fldname = (Oid *)palloc(_size); \
-		memcpy(local_node->fldname, *str, _size); (*str)+=_size; \
-	}
+    READ_SCALAR_ARRAY(fldname, local_node->count, Oid)
+
+/* Read an Transaction ID array  */
+#define READ_XID_ARRAY(fldname, count) \
+    READ_SCALAR_ARRAY(fldname, local_node->count, TransactionId)
+
 
 static void * readNodeBinary(const char ** str);
 
@@ -197,15 +193,12 @@ _readQuery(const char ** str)
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
 	READ_NODE_FIELD(returningLists);
-	                     
+
     READ_OID_FIELD(intoOidInfo.relOid);
-    READ_OID_FIELD(intoOidInfo.comptypeOid);                     
-    READ_OID_FIELD(intoOidInfo.toastOid);                  
-    READ_OID_FIELD(intoOidInfo.toastIndexOid);                 
+    READ_OID_FIELD(intoOidInfo.comptypeOid);
+    READ_OID_FIELD(intoOidInfo.toastOid);
+    READ_OID_FIELD(intoOidInfo.toastIndexOid);
     READ_OID_FIELD(intoOidInfo.toastComptypeOid);
-    
-	local_node->intoPolicy = NULL;
-	
 
 	READ_DONE();
 }
@@ -456,6 +449,7 @@ _readIntoClause(const char ** str)
 	READ_NODE_FIELD(options);
 	READ_ENUM_FIELD(onCommit, OnCommitAction);
 	READ_STRING_FIELD(tableSpaceName);
+    /* CDB: intoPolicy field isn't sent to QE */
 
 	READ_DONE();
 }
@@ -514,7 +508,6 @@ _readConstraint(const char ** str)
 	
 	READ_ENUM_FIELD(contype,ConstrType);
 	Assert(local_node->contype <= CONSTR_ATTR_IMMEDIATE);
-	 
 
 	switch (local_node->contype)
 	{
@@ -864,9 +857,7 @@ _readAConst(const char ** str)
 	READ_LOCALS(A_Const);
 
 	READ_ENUM_FIELD(val.type, NodeTag);
-	 
 
-	
 	switch (local_node->val.type)
 	{
 		case T_Integer:
@@ -951,9 +942,6 @@ _readAExpr(const char ** str)
 			elog(ERROR,"Unable to understand A_Expr node ");
 			break;
 	}
-
- 
-	
 
 	READ_NODE_FIELD(lexpr);
 	READ_NODE_FIELD(rexpr);
@@ -2203,9 +2191,9 @@ _readPlannedStmt(const char ** str)
 	READ_NODE_FIELD(returningLists);
 	READ_NODE_FIELD(rowMarks);
 	READ_NODE_FIELD(relationOids);
-	READ_INT_FIELD(nSlice);                                             /*CDB*/
-    READ_OID_ARRAY(paramExecTypes, nParamExec);                         /*CDB*/
 	READ_INT_FIELD(nParamExec);                                         /*CDB*/
+    READ_OID_ARRAY(paramExecTypes, nParamExec);                         /*CDB*/
+	READ_INT_FIELD(nSlice);                                             /*CDB*/
 	READ_BOOL_FIELD(dispatchParallel);                                  /*CDB*/
 
     Insist(nTopPlans == 1 + list_length(local_node->subplans));
@@ -3013,7 +3001,21 @@ _readCreateTrigStmt(const char ** str)
 
 }
 
-static Node * 
+static GpPolicy *
+_readGpPolicy(const char ** str)
+{
+	READ_LOCALS(GpPolicy);
+
+	READ_ENUM_FIELD(ptype, GpPolicyType);
+    READ_INT_FIELD(nattrs);
+    READ_INT_ARRAY(attrs, nattrs, AttrNumber);
+
+	READ_DONE();
+}
+
+
+
+static Node *
 _readValue(const char ** str, NodeTag nt)
 {
 	Node * result = NULL;
@@ -3056,72 +3058,76 @@ _readValue(const char ** str, NodeTag nt)
 
 }
 
+static Node *
+_readList(const char ** str, NodeTag nt)
+{
+    List       *result = NIL;
+    List        fakelist;
+    ListCell    fakecell;
+    ListCell   *cell = &fakecell;
+    int         i;
+	
+    READ_SCALAR_FIELD(fakelist.length);
+
+    switch (nt)
+    {
+        case T_List:
+            for (i = 0; i < fakelist.length; i++)
+				result = lappend(result, readNodeBinary(str));
+            break;
+        case T_IntList:
+            for (i = 0; i < fakelist.length; i++)
+            {
+                READ_SCALAR_FIELD(lfirst_int(cell));
+				result = lappend_int(result, lfirst_int(cell));
+            }
+            break;
+        case T_OidList:
+            for (i = 0; i < fakelist.length; i++)
+            {
+                READ_SCALAR_FIELD(lfirst_oid(cell));
+				result = lappend_oid(result, lfirst_oid(cell));
+            }
+            break;
+        default:
+            Insist(0);
+    }
+	Assert(list_length(result) == fakelist.length);
+	return (Node *)result;
+}                               /* _readList */
+
+
 void *
 readNodeBinary(const char ** str)
 {
 	void	   *return_value;
 	NodeTag 	nt;
-	int16       ntt;
 
 	if (str==NULL || *str==NULL)
 		return NULL;
-		
-	memcpy(&ntt,*str,sizeof(int16));
-	(*str)+=sizeof(int16);
-	nt = (NodeTag) ntt;
-	
-	if (nt==0)
-		return NULL;
-		
-	if (nt == T_List || nt == T_IntList || nt == T_OidList)
-	{
-		List	   *l = NIL;
-		int listsize = 0;
-		int i;
-		
-		memcpy(&listsize,*str,sizeof(int));
-		(*str)+=sizeof(int);
-		
-		if (nt == T_IntList)
-		{
-			int val;
-			for (i = 0; i < listsize; i++)
-			{
-				memcpy(&val,*str,sizeof(int));
-				(*str)+=sizeof(int);
-				l = lappend_int(l, val);
-			}
-		}
-		else if (nt == T_OidList)
-		{
-			Oid val;
-			for (i = 0; i < listsize; i++)
-			{
-				memcpy(&val,*str,sizeof(Oid));
-				(*str)+=sizeof(Oid);
-				l = lappend_oid(l, val);
-			}
-		}
-		else 
-		{
-			
-			for (i = 0; i < listsize; i++)
-			{
-				l = lappend(l, readNodeBinary(str));
-			}
-		}
-		Assert(l->length==listsize);
 
-		return l;
-	}
-	
-	if (nt == T_Integer || nt == T_Float || nt == T_String || nt == T_BitString)
-	{
-		return _readValue(str, nt);
-	}
-	
+    READ_SCALAR_FIELD(nt);
+
 	switch(nt)
 	{
+        case 0:
+            /* an empty List */
+            return_value = NIL;
+            break;
+
+        case T_List:
+        case T_IntList:
+        case T_OidList:
+		    return_value = _readList(str, nt);
+            break;
+
+        case T_Integer:
+        case T_Float:
+        case T_String:
+        case T_BitString:
+		    return_value = _readValue(str, nt);
+            break;
+
 		case T_PlannedStmt:
 			return_value = _readPlannedStmt(str);
 			break;
@@ -3733,6 +3739,9 @@ readNodeBinary(const char ** str)
 
             case T_CdbTopPlan:
                 return_value = _readCdbTopPlan(str);
+                break;
+            case T_GpPolicy:
+                return_value = _readGpPolicy(str);
                 break;
 
 			default:

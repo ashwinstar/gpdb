@@ -211,8 +211,9 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 	 */
 	if (stmt->into)
 	{
-		MemoryContext oldContext;
-		PlannedStmt *pstmt;
+		MemoryContext   oldContext;
+		PlannedStmt    *pstmt;
+        GpPolicy       *intoPolicy;
 
 		/* Replan if needed, and increment plan refcount transiently */
 		cplan = RevalidateCachedPlan(entry->plansource, true);
@@ -235,21 +236,13 @@ ExecuteQuery(ExecuteStmt *stmt, const char *queryString,
 					 errmsg("prepared statement is not a SELECT")));
 		pstmt->intoClause = copyObject(stmt->into);
 
+        /* CDB: Attach default DISTRIBUTED BY specification to the IntoClause */
+		intoPolicy = GpPolicyAlloc(CurrentMemoryContext, POLICYTYPE_PARTITIONED, 1);
+		intoPolicy->attrs[0] = 1;
+        pstmt->intoClause->intoPolicy = intoPolicy;
+
 		MemoryContextSwitchTo(oldContext);
 		
-		// MERGEBUG
-#warning MERGEBUG this code is broken by the 8.3 merge
-		/** GPDB PG 8.3 MERGE TODO:  probably need to find a place to
-		 *  store intoPolicy in the plan tree now that parse trees
-		 *  aren't available?
-		 
-		query->intoPolicy = palloc0(sizeof(GpPolicy)- sizeof(query->intoPolicy->attrs) + 255 * sizeof(query->intoPolicy->attrs[0]));
-		query->intoPolicy->nattrs = 1;			
-		query->intoPolicy->ptype = POLICYTYPE_PARTITIONED;
-		query->intoPolicy->attrs[0] = 1;
-        */
-        elog( WARNING, "PG 8.3 MERGE TODO:  set the intoPolicy!");
-
 		/* We no longer need the cached plan refcount ... */
 		ReleaseCachedPlan(cplan, true);
 		/* ... and we don't want the portal to depend on it, either */

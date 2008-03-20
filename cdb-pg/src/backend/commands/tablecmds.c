@@ -347,7 +347,7 @@ DefineRelation_int(CreateStmt *stmt,
 	char		relname[NAMEDATALEN];
 	Oid			namespaceId;
 	List	   *schema = stmt->tableElts;
-	Oid			relationId = (Oid) NULL;
+	Oid			relationId = InvalidOid;
 	Oid			tablespaceId;
 	Relation	rel;
 	TupleDesc	descriptor;
@@ -738,11 +738,10 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 */
 	if (shouldDispatch)
 	{		
-		createStmt->policy = (GpPolicy *) palloc(sizeof(GpPolicy) + 
-										sizeof(createStmt->policy->attrs[0]));
-		createStmt->policy->ptype = POLICYTYPE_PARTITIONED;
+		createStmt->policy = GpPolicyAlloc(CurrentMemoryContext,
+                                           POLICYTYPE_PARTITIONED, 1);
 		createStmt->policy->nattrs = 0;
-		createStmt->policy->attrs[0] = 1;		
+		createStmt->policy->attrs[0] = 1;		/* do we really need this? */
 	}
 	else
 	{

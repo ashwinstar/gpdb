@@ -38,6 +38,7 @@
 #include "storage/pg_shmem.h"
 #include "storage/proc.h"
 #include "storage/procarray.h"
+#include "utils/array.h"                /* ArrayType */
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/resscheduler.h"

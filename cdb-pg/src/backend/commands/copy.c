@@ -3536,7 +3536,7 @@ CopyFromDispatch(CopyState cstate)
 	pfree(cdbCopy);
 	
 	if(policy)
-		pfree(policy);
+		GpPolicyFree(policy);
 	
 	ExecDropSingleTupleTableSlot(slot);
 	

@@ -25,21 +25,73 @@ static void extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp);
 
 
 /*
+ * GpPolicyAlloc -- Allocate a GpPolicy object.
+ *
+ * To free the GpPolicy object, the caller should call GpPolicyFree(), or
+ * let it remain allocated until the containing MemoryContext 'mcxt' is
+ * destroyed or reset.  To minimize leakage when 'mcxt' is a long-lived
+ * context such as CacheMemoryContext, GpPolicyFree() should be called.
+ */
+GpPolicy *
+GpPolicyAlloc(MemoryContext mcxt, GpPolicyType ptype, int nattrs)
+{
+    GpPolicy   *policy = (GpPolicy *)MemoryContextAlloc(mcxt, sizeof(*policy));
+
+    Assert(nattrs >= 0 && nattrs < 2000);
+    Assert(ptype == POLICYTYPE_PARTITIONED ||
+           ptype == POLICYTYPE_ENTRY);
+
+    policy->ptype = ptype;
+    policy->nattrs = nattrs;
+
+    if (nattrs > 0)
+        policy->attrs = (AttrNumber *)MemoryContextAllocZero(mcxt, nattrs * sizeof(policy->attrs[0]));
+
+    return policy;
+}	                            /* GpPolicyAlloc */
+
+
+/*
+ * GpPolicyFree -- Release the memory occupied by a GpPolicy object.
+ */
+void
+GpPolicyFree(GpPolicy *policy)
+{
+    if (policy)
+    {
+        if (policy->attrs)
+            pfree(policy->attrs);
+        pfree(policy);
+    }
+}	                            /* GpPolicyFree */
+
+
+/*
  * GpPolicyCopy -- Return a copy of a GpPolicy object.
  *
  * The copy is palloc'ed in the specified context.
+ *
+ * GpPolicyFree() should be called to free the returned policy if
+ * appropriate; see GpPolicyAlloc() comments above.
  */
 GpPolicy *
 GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src)
 {
 	GpPolicy  *tgt;
-	size_t		nb;
 
 	if (!src)
 		return NULL;
-	nb = sizeof(*src) - sizeof(src->attrs) + src->nattrs * sizeof(src->attrs[0]);
-   	tgt = (GpPolicy *)MemoryContextAlloc(mcxt, nb);
-	memcpy(tgt, src, nb);
+
+   	tgt = (GpPolicy *)MemoryContextAlloc(mcxt, sizeof(*tgt));
+	memcpy(tgt, src, sizeof(*tgt));
+
+    if (tgt->nattrs > 0)
+    {
+        Size    nb = src->nattrs * sizeof(src->attrs[0]);
+
+        tgt->attrs = (AttrNumber *)MemoryContextAlloc(mcxt, nb);
+        memcpy(tgt->attrs, src->attrs, nb);
+    }
 	return tgt;
 }	                            /* GpPolicyCopy */
 
@@ -47,13 +99,17 @@ GpPolicyCopy(MemoryContext mcxt, const GpPolicy *src)
  * GpPolicyFetch
  *
  * Looks up a given Oid in the gp_distribution_policy table.
+ *
  * If found, returns an GpPolicy object (palloc'd in the specified
  * context) containing the info from the gp_distribution_policy row.
- * Else returns NULL.
+ * Otherwise returns a policy of type POLICYTYPE_ENTRY.  Never returns NULL.
  *
  * The caller is responsible for passing in a valid relation oid.  This
  * function does not check and assigns a policy of type POLICYTYPE_ENTRY
  * for any oid not found in gp_distribution_policy.
+ *
+ * GpPolicyFree() should be called to free the returned policy if
+ * appropriate; see GpPolicyAlloc() comments above.
  */
 GpPolicy *
 GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
@@ -63,13 +119,12 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 	ScanKeyData policy_key[1];
 	SysScanDesc gp_policy_scan;
 	HeapTuple	gp_policy_tuple = NULL;
-	size_t		nb;
 
 	/*
-	 * Skip if qExec or utility mode.
+	 * If qExec or utility mode, caller should access the table locally.
 	 */
 	if (Gp_role != GP_ROLE_DISPATCH)
-		return NULL;
+        return GpPolicyAlloc(mcxt, POLICYTYPE_ENTRY, 0);
 
 	/*
 	 * We need to read the gp_distribution_policy table
@@ -119,14 +174,9 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 		}
 			
 		/* Create an GpPolicy object. */
-		nb = sizeof(*policy) - sizeof(policy->attrs) + nattrs * sizeof(policy->attrs[0]);
-		policy = (GpPolicy *)MemoryContextAlloc(mcxt, nb);
-		policy->ptype = POLICYTYPE_PARTITIONED;
-		policy->nattrs = nattrs;
+        policy = GpPolicyAlloc(mcxt, POLICYTYPE_PARTITIONED, nattrs);
 		for (i = 0; i < nattrs; i++)
-		{
 			policy->attrs[i] = attrnums[i];
-		}
 	}
 
 	/*
@@ -137,12 +187,7 @@ GpPolicyFetch(MemoryContext mcxt, Oid tbloid)
 
 	/* Interpret absence of a valid policy row as POLICYTYPE_ENTRY */
 	if (policy == NULL)
-	{
-	    nb = sizeof(*policy) - sizeof(policy->attrs);
-    	policy = (GpPolicy *)MemoryContextAlloc(mcxt, nb);
-		policy->ptype = POLICYTYPE_ENTRY;
-		policy->nattrs = 0;
-	}
+        policy = GpPolicyAlloc(mcxt, POLICYTYPE_ENTRY, 0);
 
 	return policy;
 }                               /* GpPolicyFetch */

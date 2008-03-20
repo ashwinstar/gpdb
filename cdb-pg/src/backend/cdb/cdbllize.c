@@ -65,14 +65,14 @@ static List *
 getExprListFromTargetList(List         *tlist,
                           int           numCols,
                           AttrNumber   *colIdx);
-static bool 
+static bool
 has_correlation_params(List *planner_param_items);
 static GpPolicy *
 select_into_default_policy(Plan *plan);
 
-static void 
+static void
 prescan(PlannedStmt *plannedStmt, CdbTopPlan *topPlan, Plan *plan, PlanProfile *context);
-static bool 
+static bool
 prescan_walker(Node *node, PlanProfile * context);
 
 static bool
@@ -98,12 +98,12 @@ static void motion_sanity_check(Plan *plan);
  *
  * Outline of processing:
  *
- * - If the argument Plan produces a partitioned flow, a Motion appropriate 
- *   to the command is added to the top. For example, to consolidate the 
+ * - If the argument Plan produces a partitioned flow, a Motion appropriate
+ *   to the command is added to the top. For example, to consolidate the
  *   tuple streams from a SELECT command into a single tuple stream on the
  *   dispatcher.
  *
- * - Scan the input plan looking for references to distributed tables.  
+ * - Scan the input plan looking for references to distributed tables.
  *   If none are found, mark the plan for sequential dispatch and return it.
  *
  * - Implement the decisions recorded in the Flow nodes (apply_motion)
@@ -171,7 +171,7 @@ cdbparallelize(struct PlannerGlobal    *glob,
 		case CMD_DELETE:
             isTargetDistributed = final_motion_for_upd_del(plannedStmt);
             break;
-        
+
         default:
             Insist(0);
 	}
@@ -205,8 +205,8 @@ cdbparallelize(struct PlannerGlobal    *glob,
         Plan   *subqueryplan = (Plan *)lfirst(cell);
 
         /*
-         * Subquery result needs to be brought back to the QD.  Modify 
-         * its top Flow node to ask for motion to a single QE.  Later, 
+         * Subquery result needs to be brought back to the QD.  Modify
+         * its top Flow node to ask for motion to a single QE.  Later,
          * apply_motion will override that to bring it to the QD instead.
          */
         bring_result_to_qd(subqueryplan, NULL);
@@ -230,7 +230,7 @@ cdbparallelize(struct PlannerGlobal    *glob,
 		 */
 		plan = apply_motion(plannedStmt);
 		
-		/* 
+		/*
          * apply_motion() should have rejected unsupported subqueries,
          * but make an extra test to be safe.
          */
@@ -262,7 +262,7 @@ cdbparallelize(struct PlannerGlobal    *glob,
  * bring_result_to_qd
  *
  * Updates the plan's top Flow node to request delivery of the query
- * output to a single qExec.  Later, apply_motion() will override that 
+ * output to a single qExec.  Later, apply_motion() will override that
  * and instead deliver the output back here to the qDisp.
  */
 static void
@@ -272,15 +272,15 @@ bring_result_to_qd(Plan *plan, Query *query)
      * If the query has an ORDER BY clause, use Merge Receive to
      * preserve the ordering.
      *
-     * The plan has already been set up to ensure each qExec's 
-     * result is properly ordered according to the ORDER BY 
-     * specification.  The existing ordering could be stronger 
-     * than required; if so, omit the extra trailing columns 
+     * The plan has already been set up to ensure each qExec's
+     * result is properly ordered according to the ORDER BY
+     * specification.  The existing ordering could be stronger
+     * than required; if so, omit the extra trailing columns
      * from the Merge Receive key.
      *
      * An unordered result is ok if the ORDER BY ordering is
      * degenerate (on constant exprs) or the result is known to
-     * have at most one row. 
+     * have at most one row.
      */
     if (query &&
         query->sortClause &&
@@ -332,8 +332,8 @@ bring_result_to_target_table(PlannedStmt   *plannedStmt,
     /*
      * Make sure the top level flow is partitioned on the
      * partitioning key of the target relation.	Since this
-     * is a SELECT INTO or INSERT command, the target list 
-     * will correspond to the attributes of the target relation 
+     * is a SELECT INTO or INSERT command, the target list
+     * will correspond to the attributes of the target relation
      * in order.
      */
     hashExpr = getExprListFromTargetList(plan->targetlist,
@@ -385,7 +385,7 @@ colChangedByUpdate(Index        targetvarno,
 /*
  * final_motion_for_insert
  *
- * If inserting into a distributed table, requests that the query 
+ * If inserting into a distributed table, requests that the query
  * result be distributed to the target segments, and returns true.
  *
  * If inserting into a local table, requests that the query result be
@@ -409,7 +409,7 @@ final_motion_for_insert(PlannedStmt *plannedStmt)
 	reloid = getrelid(targetrelid, plannedStmt->rtable);
 
     /* Is target rel distributed? */
-    relation = relation_open(reloid, NoLock);               
+    relation = relation_open(reloid, NoLock);
     if (RelationIsDistributed(relation))
     {
         isTargetDistributed = true;
@@ -421,7 +421,7 @@ final_motion_for_insert(PlannedStmt *plannedStmt)
         bring_result_to_qd(plannedStmt->planTree, NULL);
 
     relation_close(relation, NoLock);
-    
+
     return isTargetDistributed;
 }                               /* final_motion_for_insert */
 
@@ -429,10 +429,10 @@ final_motion_for_insert(PlannedStmt *plannedStmt)
 /*
  * final_motion_for_select
  *
- * If SELECT INTO, requests that the query result be distributed to the 
+ * If SELECT INTO, requests that the query result be distributed to the
  * target segments, and returns true.
  *
- * For an ordinary query, requests that the query result be moved to the 
+ * For an ordinary query, requests that the query result be moved to the
  * QD, and returns false.
  */
 static bool
@@ -458,9 +458,9 @@ final_motion_for_select(PlannedStmt *plannedStmt, Query *query)
                                      intoClause->intoPolicy,
                                      "SELECT INTO");
 	}
-	else 
+	else
         bring_result_to_qd(plan, query);
-    
+
     return isTargetDistributed;
 }                               /* final_motion_for_select */
 
@@ -472,7 +472,7 @@ final_motion_for_select(PlannedStmt *plannedStmt, Query *query)
  *
  * - Requests that the query result be distributed to the target segments.
  *
- * - Throws an error and does not return if a column to be updated is in 
+ * - Throws an error and does not return if a column to be updated is in
  *   the table's DISTRIBUTED BY list.
  *
  * - Returns true.
@@ -510,13 +510,13 @@ final_motion_for_upd_del(PlannedStmt *plannedStmt)
     {
         Plan           *sourceplan = (Plan *)lfirst(plancell);
         int             targetrelid = lfirst_int(rticell);
-        RangeTblEntry  *rte; 
+        RangeTblEntry  *rte;
         Relation        relation;
 
         Insist(targetrelid > 0 &&
 		       targetrelid <= list_length(plannedStmt->rtable));
         rte = rt_fetch(targetrelid, plannedStmt->rtable);
-        relation = relation_open(rte->relid, NoLock);               
+        relation = relation_open(rte->relid, NoLock);
 
         /* Distributed target table? */
         if (RelationIsDistributed(relation))
@@ -525,14 +525,14 @@ final_motion_for_upd_del(PlannedStmt *plannedStmt)
 
             isTargetDistributed = true;
 
-            /* 
-             * Disallow updating of the DISTRIBUTED BY columns. 
+            /*
+             * Disallow updating of the DISTRIBUTED BY columns.
              */
             if (plannedStmt->commandType == CMD_UPDATE)
             {
-                int icol = colChangedByUpdate(targetrelid, 
-                                              sourceplan->targetlist, 
-                                              relation->rd_cdbpolicy->nattrs, 
+                int icol = colChangedByUpdate(targetrelid,
+                                              sourceplan->targetlist,
+                                              relation->rd_cdbpolicy->nattrs,
                                               relation->rd_cdbpolicy->attrs);
 
                 if (icol != InvalidAttrNumber)
@@ -562,13 +562,13 @@ final_motion_for_upd_del(PlannedStmt *plannedStmt)
                         ));
         }
 
-        /* 
-         * Not distributed.  UPDATE or DELETE takes place locally. 
+        /*
+         * Not distributed.  UPDATE or DELETE takes place locally.
          */
         else
             bring_result_to_qd(plan, NULL);
 
-        relation_close(relation, NoLock);                
+        relation_close(relation, NoLock);
     }
     return isTargetDistributed;
 }                               /* final_motion_for_upd_del */
@@ -640,12 +640,11 @@ select_into_default_policy(Plan *plan)
 	List       *hashExpr;
 	ListCell   *exp1;
     char       *columns;
-	int			maxattrs = 200;
     int         i;
 	
-    targetPolicy = palloc0(sizeof(GpPolicy)
-                            - sizeof(targetPolicy->attrs) 
-                            + maxattrs * sizeof(targetPolicy->attrs[0]));
+    targetPolicy = GpPolicyAlloc(CurrentMemoryContext,
+                                 POLICYTYPE_PARTITIONED,
+                                 list_length(plan->flow->hashExpr) + 1);
     targetPolicy->nattrs = 0;
 
     targetPolicy->ptype = POLICYTYPE_PARTITIONED;
@@ -761,7 +760,7 @@ prescan(PlannedStmt *plannedStmt, CdbTopPlan *topPlan, Plan *plan, PlanProfile *
 
     Assert(!topPlan->dispatchParallel);
 
-    /* Top node of plan must already have a Flow node. */ 
+    /* Top node of plan must already have a Flow node. */
     Assert(plan->flow &&
 		   plan->flow->flotype != FLOW_UNDEFINED);
 
@@ -779,7 +778,7 @@ prescan(PlannedStmt *plannedStmt, CdbTopPlan *topPlan, Plan *plan, PlanProfile *
  * prescan_walker
  *
  * Finds out whether any part of the plan needs to be dispatched to QEs
- * for execution. 
+ * for execution.
  *
  * Since the optimizer isn't in a position to view plan globally,
  * it may generate plans that we can't execute.  This function is
@@ -825,7 +824,7 @@ prescan_walker(Node *node, PlanProfile * context)
 		{
 			/*
 			 * A SubPlan node is not a Plan node, but an Expr node that
-			 * references a Plan.  (The plan itself is in a list attached 
+			 * references a Plan.  (The plan itself is in a list attached
              * to the PlannedStmt node.)  The SubPlan node corresponds to a
 			 * SubLink in the query tree (a SQL subquery expression) and
 			 * may occur in an expression or an initplan list.
@@ -836,7 +835,7 @@ prescan_walker(Node *node, PlanProfile * context)
             Assert(top &&
                    IsA(top, CdbTopPlan));
 
-            /* 
+            /*
              * Save some subplan info in the subquery's CdbTopPlan node so
              * we can find it later without walking the whole tree again.
              */
@@ -1106,11 +1105,11 @@ broadcastPlan(struct Plan *plan, bool live, bool stable, bool rescannable)
 /*
  * Function: repartitionPlan
  */
-bool 
-repartitionPlan(struct Plan    *plan, 
-                bool            live, 
-                bool            stable, 
-                bool            rescannable, 
+bool
+repartitionPlan(struct Plan    *plan,
+                bool            live,
+                bool            stable,
+                bool            rescannable,
                 struct List    *hashExpr)
 {
     Movement    req_move = MOVEMENT_REPARTITION;

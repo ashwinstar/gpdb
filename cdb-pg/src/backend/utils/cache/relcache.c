@@ -1819,7 +1819,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 	if (relation->rd_indexcxt)
 		MemoryContextDelete(relation->rd_indexcxt);
     if (relation->rd_cdbpolicy)
-        pfree(relation->rd_cdbpolicy);
+        GpPolicyFree(relation->rd_cdbpolicy);
 
 	/*
 	 * If we're really done with the relcache entry, blow it away. But if
@@ -2890,7 +2890,7 @@ CheckConstraintFetch(Relation relation)
  * RelationGetPartitioningKey -- get GpPolicy struct for distributed relation
  *
  * Returns a copy of the relation's GpPolicy object, palloc'd in
- * the caller's context.  Caller should pfree() it.  If NULL is
+ * the caller's context.  Caller should GpPolicyFree() it.  If NULL is
  * returned, relation should be accessed locally.
  */
 GpPolicy*

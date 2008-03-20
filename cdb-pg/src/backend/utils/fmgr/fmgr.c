@@ -23,6 +23,7 @@
 #include "executor/functions.h"
 #include "miscadmin.h"
 #include "parser/parse_expr.h"
+#include "utils/array.h"                /* ArrayType */
 #include "utils/guc.h"
 #include "utils/builtins.h"
 #include "utils/fmgrtab.h"

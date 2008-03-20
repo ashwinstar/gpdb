@@ -147,139 +147,96 @@
 #define READ_DONE() \
 	return local_node
 
-/* CDB: Read an array of Nodes */
-#define READ_NODEPTR_ARRAY(fldname, Type, count) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get number of elements */ \
-	count = atoi(token); \
-	if ( count > 0 ) \
-	{ \
-		int _i; \
-		local_node->fldname = (Type **)palloc(count * sizeof(Type*)); \
-		for(_i=0; _i < count; _i++) \
-	        local_node->fldname[_i] = nodeRead(NULL, 0); \
-	}
+/* CDB: Read an array of Nodes.  Number of items is returned in 'count_out'. */
+#define READ_NODEPTR_ARRAY(fldname, Type, count_out) \
+    local_node->fldname = (Type **)readNodePtrArray(count_out)
 
 /* Read an integer array (anything written as ":fldname %d %d ...") */
 #define READ_INT_ARRAY(fldname, count, Type) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	if ( local_node->count > 0 ) \
-	{ \
-		int i; \
-		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
-		for(i=0; i<local_node->count; i++) \
-		{ \
-			token = pg_strtok(&length);		/* get field value */ \
-			local_node->fldname[i] = (Type) atoi(token); \
-		} \
-	}
+    READ_ARRAY(fldname, local_node->count, Type, atoi)
 
 /* Read optional integer array (":fldname %d %d ..." or ":fldname <>") */
-#define READ_INT_ARRAY_OR_NULL(fldname, count, Type) \
-	if ( local_node->count > 0 && \
-         NULL != (token = pg_strtok(&length)) &&    /* skip :fldname */ \
-         NULL != (token = pg_strtok(&length)) &&    /* first value or <> */ \
-         length > 0 )                               /* proceed if isn't <> */ \
-	{ \
-		int i; \
-		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
-        local_node->fldname[0] = (Type) atoi(token); \
-		for(i=1; i<local_node->count; i++) \
-		{ \
-            token = pg_strtok(&length);		/* get field value */ \
-            local_node->fldname[i] = (Type) atoi(token); \
-		} \
-	}
+#define READ_INT_ARRAY_IF_NONEMPTY(fldname, count, Type) \
+    READ_ARRAY_IF_NONEMPTY(fldname, local_node->count, Type, atoi)
 
 /* Read an unsigned integer array (anything written as ":fldname %u %u ...") */
 #define READ_UINT_ARRAY(fldname, count, Type) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	if ( local_node->count > 0 ) \
-	{ \
-		int i; \
-		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
-		for(i=0; i<local_node->count; i++) \
-		{ \
-			token = pg_strtok(&length);		/* get field value */ \
-			local_node->fldname[i] = (Type) atoui(token); \
-		} \
-	}
+    READ_ARRAY(fldname, local_node->count, Type, atoui)
 
 /* Read optional unsigned integer array (":fldname %u %u ..." or ":fldname <>") */
-#define READ_UINT_ARRAY_OR_NULL(fldname, count, Type) \
-	if ( local_node->count > 0 && \
-         NULL != (token = pg_strtok(&length)) &&    /* skip :fldname */ \
-         NULL != (token = pg_strtok(&length)) &&    /* first value or <> */ \
-         length > 0 )                               /* proceed if isn't <> */ \
-	{ \
-		int i; \
-		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
-        local_node->fldname[0] = (Type) atoui(token); \
-		for(i=1; i<local_node->count; i++) \
-		{ \
-            token = pg_strtok(&length);		/* get field value */ \
-            local_node->fldname[i] = (Type) atoui(token); \
-		} \
-	}
+#define READ_UINT_ARRAY_IF_NONEMPTY(fldname, count, Type) \
+    READ_ARRAY_IF_NONEMPTY(fldname, local_node->count, Type, atoui)
 
 /* Read a bool array (anything written as ":fldname %s %s ...") */
 #define READ_BOOL_ARRAY(fldname, count) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	if ( local_node->count > 0 ) \
-	{ \
-		int i; \
-		local_node->fldname = (bool *)palloc(local_node->count * sizeof(bool)); \
-		for(i=0; i<local_node->count; i++) \
-		{ \
-			token = pg_strtok(&length);		/* get field value */ \
-			local_node->fldname[i] = (bool) strtobool(token); \
-		} \
-	}
+    READ_ARRAY(fldname, local_node->count, bool, strtobool)
 
 /* Read optional bool array (":fldname %s %s ..." or ":fldname <>") */
-#define READ_BOOL_ARRAY_OR_NULL(fldname, count) \
-	if ( local_node->count > 0 && \
-         NULL != (token = pg_strtok(&length)) &&    /* skip :fldname */ \
-         NULL != (token = pg_strtok(&length)) &&    /* first value or <> */ \
-         length > 0 )                               /* proceed if isn't <> */ \
-	{ \
-		int i; \
-		local_node->fldname = (bool *)palloc(local_node->count * sizeof(bool)); \
-        local_node->fldname[0] = (bool) strtobool(token); \
-		for(i=1; i<local_node->count; i++) \
-		{ \
-            token = pg_strtok(&length);		/* get field value */ \
-            local_node->fldname[i] = (bool) strtobool(token); \
-		} \
-	}
+#define READ_BOOL_ARRAY_IF_NONEMPTY(fldname, count) \
+    READ_ARRAY_IF_NONEMPTY(fldname, local_node->count, bool, strtobool)
 
-/* Read an Trasnaction ID array (written as ":fldname %u %u ... ") */
+/* Read an Transaction ID array (written as ":fldname %u %u ... ") */
 #define READ_XID_ARRAY(fldname, count) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	if ( local_node->count > 0 ) \
-	{ \
-		int i; \
-		local_node->fldname = (TransactionId *)palloc(local_node->count * sizeof(TransactionId)); \
-		for(i=0; i<local_node->count; i++) \
-		{ \
-			token = pg_strtok(&length);		/* get field value */ \
-			local_node->fldname[i] = ((TransactionId) strtoul((token), NULL, 10)); \
-		} \
-	}
+    READ_ARRAY(fldname, local_node->count, TransactionId, atoxid)
 
 /* Read an Oid array (written as ":fldname %u %u ...") */
 #define READ_OID_ARRAY(fldname, count) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	if ( local_node->count > 0 ) \
-	{ \
-		int i; \
-		local_node->fldname = (Oid *)palloc(local_node->count * sizeof(Oid)); \
-		for(i=0; i<local_node->count; i++) \
-		{ \
-			token = pg_strtok(&length);		/* get field value */ \
-			local_node->fldname[i] = atooid(token); \
-		} \
-	}
+    READ_ARRAY(fldname, local_node->count, Oid, atooid)
+
+
+/*
+ * Read some kind of array
+ */
+#define READ_ARRAY(fldname, count, Type, conversionFunction) \
+    do { \
+        int _i, _n = (count); \
+	    token = pg_strtok(&length);		/* skip :fldname */ \
+	    if (_n > 0) \
+	    { \
+		    local_node->fldname = (Type *)palloc(_n * sizeof(Type)); \
+		    for(_i = 0; _i < _n; _i++) \
+		    { \
+			    token = pg_strtok(&length);		/* get field value */ \
+			    local_node->fldname[_i] = (Type)conversionFunction(token); \
+		    } \
+	    } \
+    } while (0)
+
+/*
+ * Read some kind of array, but not if count is zero.
+ *
+ * If count > 0, the input string must contain a ":fldname" token followed by
+ * either the specified number of items, or exactly one null indicator "<>".
+ * In the latter case the array pointer remains NULL despite the nonzero count.
+ *
+ * If count is zero, nothing at all is read, not even a :fldname, and the
+ * array pointer remains NULL.
+ *
+ * This is mainly meant for cross-version compatibility... The newer version
+ * should make sure to specify a zero count when reading a string in which
+ * the new feature is not used; this allows upward compatibility from older
+ * versions which did not have the feature and did not write the array.  For
+ * downward compatibility the newer version should omit writing the array
+ * when the new feature is not used: the string will then be readable by
+ * older versions which were not expecting the array.
+ */
+#define READ_ARRAY_IF_NONEMPTY(fldname, count, Type, conversionFunction) \
+    do { \
+        int _i, _n = (count); \
+	    if ( _n > 0 && \
+             NULL != (token = pg_strtok(&length)) &&    /* skip :fldname */ \
+             NULL != (token = pg_strtok(&length)) &&    /* first value or <> */ \
+             length > 0 )                               /* proceed if isn't <> */ \
+	    { \
+		    local_node->fldname = (Type *)palloc(_n * sizeof(Type)); \
+            local_node->fldname[0] = (Type)conversionFunction(token); \
+		    for(_i = 1; _i < _n; _i++) \
+		    { \
+                token = pg_strtok(&length);		/* get field value */ \
+                local_node->fldname[_i] = (Type)conversionFunction(token); \
+		    } \
+	    } \
+    } while (0)
 
 /*
  * NOTE: use atoi() to read values written with %d, or atoui() to read
@@ -288,9 +245,8 @@
  * but this will probably change in the future.)
  */
 #define atoui(x)  ((unsigned int) strtoul((x), NULL, 10))
-
 #define atooid(x)  ((Oid) strtoul((x), NULL, 10))
-
+#define atoxid(x)  ((TransactionId) strtoul((x), NULL, 10))
 #define strtobool(x)  ((*(x) == 't') ? true : false)
 
 #define nullable_string(token,length)  \
@@ -298,6 +254,39 @@
 
 
 static Datum readDatum(bool typbyval);
+
+
+/*
+ * readNodePtrArray
+ */
+static Node **
+readNodePtrArray(int *count_out)
+{
+    Node  **nodes = NULL;
+    char   *token;
+    int     length;
+    int     n = 0;
+    int     i;
+
+    *count_out = 0;
+
+    token = pg_strtok(&length);                 /* skip :fldname */
+    token = pg_strtok(&length);                 /* get left paren or <> */
+    if (length > 0 &&                           /* proceed if not <> */
+        NULL != (token = pg_strtok(&length)))   /* get item count */
+    {
+        n = atoi(token);
+        if (n > 0)
+        {
+            nodes = (Node **)palloc(n * sizeof(nodes[0]));
+	        for (i = 0; i < n; i++)
+                nodes[i] = nodeRead(NULL, 0);
+            *count_out = n;
+        }
+        token = pg_strtok(&length);             /* skip right paren */
+    }
+    return nodes;
+}                               /* readNodePtrArray */
 
 
 /*
@@ -342,17 +331,11 @@ _readQuery(void)
     if (pg_strtok_peek_fldname("intoOidInfo.relOid"))
     {                            
         READ_OID_FIELD(intoOidInfo.relOid);
-     
         READ_OID_FIELD(intoOidInfo.comptypeOid);
-                             
         READ_OID_FIELD(intoOidInfo.toastOid);
-                             
         READ_OID_FIELD(intoOidInfo.toastIndexOid);
-                            
         READ_OID_FIELD(intoOidInfo.toastComptypeOid);
- 
     }
-	local_node->intoPolicy = NULL;
 	
 	/*
 	 * If the Query was a CTAS, and the CTAS was stored in the catalog as part of a rule, we
@@ -366,7 +349,6 @@ _readQuery(void)
 	local_node->intoOidInfo.toastOid = InvalidOid;
 	local_node->intoOidInfo.toastIndexOid = InvalidOid;
 	local_node->intoOidInfo.toastComptypeOid = InvalidOid;
-
 
 	READ_DONE();
 }
@@ -610,6 +592,7 @@ _readIntoClause(void)
 	READ_NODE_FIELD(options);
 	READ_ENUM_FIELD(onCommit, OnCommitAction);
 	READ_STRING_FIELD(tableSpaceName);
+    READ_NODE_FIELD(intoPolicy);                                        /*CDB*/
 
 	READ_DONE();
 }
@@ -1895,7 +1878,7 @@ _readPlannedStmt(void)
 
 	READ_ENUM_FIELD(commandType, CmdType);
 	READ_BOOL_FIELD(canSetTag);
-    READ_NODEPTR_ARRAY(topPlans, CdbTopPlan, nTopPlans);                /*CDB*/
+    READ_NODEPTR_ARRAY(topPlans, CdbTopPlan, &nTopPlans);               /*CDB*/
 	READ_NODE_FIELD(planTree);
 	READ_NODE_FIELD(rtable);
 	READ_NODE_FIELD(resultRelations);
@@ -2268,7 +2251,7 @@ _readWindowKey(void)
 	READ_LOCALS(WindowKey);
 
 	READ_INT_FIELD(numSortCols);
-	READ_INT_ARRAY_OR_NULL(sortColIdx, numSortCols, AttrNumber);
+	READ_INT_ARRAY_IF_NONEMPTY(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
 	READ_BOOL_ARRAY(nullsFirst, numSortCols);
 	READ_NODE_FIELD(frame);
@@ -2287,7 +2270,7 @@ _readWindow(void)
 	readPlanInfo((Plan *)local_node);
 
 	READ_INT_FIELD(numPartCols);
-	READ_INT_ARRAY_OR_NULL(partColIdx, numPartCols, AttrNumber);
+	READ_INT_ARRAY_IF_NONEMPTY(partColIdx, numPartCols, AttrNumber);
 	READ_NODE_FIELD(windowKeys);
 
 	READ_DONE();
@@ -2367,9 +2350,7 @@ _readSort(void)
 	readPlanInfo((Plan *)local_node);
 
 	READ_INT_FIELD(numCols);
-
 	READ_INT_ARRAY(sortColIdx, numCols, AttrNumber);
-
 	READ_OID_ARRAY(sortOperators, numCols);
 
     /* CDB */
@@ -2397,7 +2378,6 @@ _readUnique(void)
 	readPlanInfo((Plan *)local_node);
 
 	READ_INT_FIELD(numCols);
-
 	READ_INT_ARRAY(uniqColIdx, numCols, AttrNumber);
 
 	READ_DONE();
@@ -2415,9 +2395,7 @@ _readSetOp(void)
 
 	READ_ENUM_FIELD(cmd, SetOpCmd);
 	READ_INT_FIELD(numCols);
-
 	READ_INT_ARRAY(dupColIdx, numCols, AttrNumber);
-
 	READ_INT_FIELD(flagColIdx);
 
 	READ_DONE();
@@ -2469,7 +2447,7 @@ _readMotion(void)
 	READ_BOOL_FIELD(sendSorted);
 	
     READ_INT_FIELD(numInputSegs);
-    READ_INT_ARRAY_OR_NULL(inputSegIdx, numInputSegs, int);
+    READ_INT_ARRAY_IF_NONEMPTY(inputSegIdx, numInputSegs, int);
 
 	READ_INT_FIELD(numHashSegs);
 	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
@@ -2501,9 +2479,9 @@ _readFlow(void)
 	READ_INT_FIELD(segindex);
 
 	READ_INT_FIELD(numSortCols);
-	READ_INT_ARRAY_OR_NULL(sortColIdx, numSortCols, AttrNumber);
-	READ_UINT_ARRAY_OR_NULL(sortOperators, numSortCols, Oid);
-	READ_BOOL_ARRAY_OR_NULL(nullsFirst, numSortCols);
+	READ_INT_ARRAY_IF_NONEMPTY(sortColIdx, numSortCols, AttrNumber);
+	READ_UINT_ARRAY_IF_NONEMPTY(sortOperators, numSortCols, Oid);
+	READ_BOOL_ARRAY_IF_NONEMPTY(nullsFirst, numSortCols);
 
 	READ_NODE_FIELD(hashExpr);
 	READ_NODE_FIELD(flow_before_req_move);
@@ -2689,6 +2667,18 @@ _readCreateTrigStmt(void)
 	
 	READ_DONE();
 
+}
+
+static GpPolicy *
+_readGpPolicy(void)
+{
+	READ_LOCALS(GpPolicy);
+
+    READ_ENUM_FIELD(ptype, GpPolicyType);
+    READ_INT_FIELD(nattrs);
+    READ_INT_ARRAY(attrs, nattrs, AttrNumber);
+
+	READ_DONE();
 }
 
 /*
@@ -3269,6 +3259,7 @@ static ParseNodeInfo infoAr[] =
 	{"FUNCTIONPARAMETER", (ReadFn)_readFunctionParameter},
 	{"FUNCTIONSCAN", (ReadFn)_readFunctionScan},
 	{"FUNCWITHARGS", (ReadFn)_readFuncWithArgs},
+	{"GPPOLICY", (ReadFn)_readGpPolicy},                                /*CDB*/	
 	{"GRANTROLESTMT", (ReadFn)_readGrantRoleStmt},	
 	{"GRANTSTMT", (ReadFn)_readGrantStmt},
 	{"GROUP", (ReadFn)_readGroup},

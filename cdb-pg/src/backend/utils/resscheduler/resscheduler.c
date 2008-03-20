@@ -38,6 +38,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbllize.h"
+#include "cdb/cdbplan.h"                        /* plan_tree_walker() */
 #include "nodes/print.h"
 
 /*

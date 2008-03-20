@@ -23,6 +23,7 @@
 #include "cdb/cdbdef.h"                 /* CdbVisitOpt */
 
 struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
+struct DestReceiver;                    /* #include "tcop/dest.h" */
 
 /*
  * The "eflags" argument to ExecutorStart and the various ExecInitNode
@@ -151,7 +152,7 @@ extern void ExecConstraints(ResultRelInfo *resultRelInfo,
 extern TupleTableSlot *EvalPlanQual(EState *estate, Index rti,
 			 ItemPointer tid, TransactionId priorXmax);
 extern PlanState *ExecGetActivePlanTree(QueryDesc *queryDesc);
-extern DestReceiver *CreateIntoRelDestReceiver(void);
+extern struct DestReceiver *CreateIntoRelDestReceiver(void);
 
 /*
  * prototypes from functions in execProcnode.c
@@ -243,12 +244,12 @@ extern void UpdateChangedParamSet(PlanState *node, Bitmapset *newchg);
 typedef struct TupOutputState
 {
 	/* use "struct" here to allow forward reference */
-	struct AttInMetadata *metadata;
-	TupleTableSlot *slot;
-	DestReceiver *dest;
+	struct AttInMetadata   *metadata;
+	TupleTableSlot         *slot;
+	struct DestReceiver    *dest;
 } TupOutputState;
 
-extern TupOutputState *begin_tup_output_tupdesc(DestReceiver *dest,
+extern TupOutputState *begin_tup_output_tupdesc(struct DestReceiver *dest,
 						 TupleDesc tupdesc);
 extern void do_tup_output(TupOutputState *tstate, char **values);
 extern void do_text_output_multiline(TupOutputState *tstate, char *text);

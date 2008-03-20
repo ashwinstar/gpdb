@@ -2026,7 +2026,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 			elog(ERROR,"DISTRIBUTED BY clause in SELECT statement only makes sense for SELECT INTO");
 		}
 		
-		policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
+		policy = GpPolicyAlloc(CurrentMemoryContext, POLICYTYPE_PARTITIONED, maxattrs);
 		policy->ptype = POLICYTYPE_PARTITIONED;
 		policy->nattrs = 0;
 		policy->attrs[0] = 1;
@@ -2034,7 +2034,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 		if (stmt->distributedBy->length == 1 && (list_head(stmt->distributedBy) == NULL || linitial(stmt->distributedBy) == NULL))
 		{
 			/* distributed randomly */
-			qry->intoPolicy = policy;
+			qry->intoClause->intoPolicy = policy;
 		}
 		else
 		foreach(keys, stmt->distributedBy)
@@ -2090,7 +2090,7 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 
 		} /*foreach */
 		if (policy->nattrs > 0)
-			qry->intoPolicy = policy;
+			qry->intoClause->intoPolicy = policy;
 	}
 }
 

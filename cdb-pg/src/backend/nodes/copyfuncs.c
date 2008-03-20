@@ -24,7 +24,7 @@
 #include "postgres.h"
 
 #include "nodes/plannodes.h"
-#include "nodes/execnodes.h" /* CdbProcess, Slice, and SliceTable. */
+#include "nodes/execnodes.h"        /* CdbProcess, Slice, and SliceTable. */
 #include "nodes/relation.h"
 #include "utils/datum.h"
 
@@ -55,33 +55,36 @@
 /* Copy a field that is a pointer to a simple palloc'd object of size sz */
 #define COPY_POINTER_FIELD(fldname, sz) \
 	do { \
-		Size	_size = (sz); \
-		newnode->fldname = palloc(_size); \
-		memcpy(newnode->fldname, from->fldname, _size); \
-	} while (0)
-
-#define COPY_BINARY_FIELD(fldname, sz) \
-	do { \
-		Size _size = (sz); \
-		memcpy(&newnode->fldname, &from->fldname, _size); \
+        if (from->fldname) \
+        { \
+		    Size	_size = (sz); \
+		    newnode->fldname = palloc(_size); \
+		    memcpy(newnode->fldname, from->fldname, _size); \
+        } \
 	} while (0)
 
 /* CDB: Copy a field that is a pointer to an array of simple scalars */
 #define COPY_SCALAR_ARRAY(fldname, numOfElements, ElementType) \
 	do { \
-		Size _size = (numOfElements) * sizeof(ElementType); \
-		newnode->fldname = (ElementType*)palloc(_size); \
-        memcpy(newnode->fldname, from->fldname, _size); \
+        if (from->fldname) \
+        { \
+		    Size _size = (numOfElements) * sizeof(ElementType); \
+		    newnode->fldname = (ElementType*)palloc(_size); \
+            memcpy(newnode->fldname, from->fldname, _size); \
+        } \
 	} while (0)
 
 /* CDB: Copy a field that is a pointer to an array of Node pointers */
 #define COPY_NODEPTR_ARRAY(fldname, numOfPtrs, NodeType) \
 	do { \
-		int _n = (numOfPtrs); \
-        int _i; \
-		newnode->fldname = (NodeType**)palloc(_n * sizeof(NodeType*)); \
-        for (_i = 0; _i < _n; _i++) \
-            newnode->fldname[_i] = (NodeType*)copyObject(from->fldname[_i]); \
+        if (from->fldname) \
+        { \
+		    int _n = (numOfPtrs); \
+            int _i; \
+		    newnode->fldname = (NodeType**)palloc(_n * sizeof(NodeType*)); \
+            for (_i = 0; _i < _n; _i++) \
+                newnode->fldname[_i] = (NodeType*)copyObject(from->fldname[_i]); \
+        } \
 	} while (0)
 
 
@@ -961,6 +964,7 @@ _copyIntoClause(IntoClause *from)
 	COPY_NODE_FIELD(options);
 	COPY_SCALAR_FIELD(onCommit);
 	COPY_STRING_FIELD(tableSpaceName);
+    COPY_NODE_FIELD(intoPolicy);                                        /*CDB*/
 
 	return newnode;
 }
@@ -1875,7 +1879,7 @@ _copyGrouping(Grouping *from)
 	Grouping *newnode = makeNode(Grouping);
 
     UnusedArg(from);
-    
+
     return newnode;
 }
 
@@ -1885,7 +1889,7 @@ _copyGroupId(GroupId *from)
 	GroupId *newnode = makeNode(GroupId);
 
     UnusedArg(from);
-    
+
 	return newnode;
 }
 
@@ -2248,12 +2252,6 @@ _copyQuery(Query *from)
 	COPY_SCALAR_FIELD(intoOidInfo.toastOid);
 	COPY_SCALAR_FIELD(intoOidInfo.toastIndexOid);
 	COPY_SCALAR_FIELD(intoOidInfo.toastComptypeOid);
-	if (from->intoPolicy)
-	{
-		COPY_POINTER_FIELD(intoPolicy,sizeof(GpPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));
-	}
-	else
-		newnode->intoPolicy = NULL;
 
 	return newnode;
 }
@@ -3521,6 +3519,24 @@ _copyValue(Value *from)
 	return newnode;
 }
 
+/* ****************************************************************
+ *					  gp_policy.h copy functions
+ * ****************************************************************
+ */
+static GpPolicy *
+_copyGpPolicy(const GpPolicy *from)
+{
+	GpPolicy   *newnode = makeNode(GpPolicy);
+
+	COPY_SCALAR_FIELD(ptype);
+    COPY_SCALAR_FIELD(nattrs);
+    COPY_SCALAR_ARRAY(attrs, from->nattrs, AttrNumber);
+
+    return newnode;
+}
+
+
+
 /*
  * copyObject
  *
@@ -4198,6 +4214,9 @@ copyObject(void *from)
 			 */
         case T_CdbTopPlan:
             retval = _copyCdbTopPlan(from);
+            break;
+        case T_GpPolicy:
+            retval = _copyGpPolicy(from);
             break;
 
 		default:
