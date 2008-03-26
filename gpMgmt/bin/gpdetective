@@ -33,10 +33,11 @@ Produces a file name gpdetective.tar.gz in the current directory.
 =cut
 
 # Version updated by CVS
-my $version = '$Revision 1.00 $';
-$version =~ s/.*(\d.\d+).*/$1/;
+my $version = '$Revision$';
+$version =~ s/.*\#(\d*).*/$1/;
+$version = (100+$version)/100.0;
 
-my $debug = 0;
+my $debug = 1;
 
 # ---------------------------------------------------------------------
 # Usage
@@ -45,6 +46,9 @@ my ($help, $man, $config, $askversion);
 use Pod::Usage;
 use Getopt::Long;
 use File::Copy;
+use Cwd;
+use POSIX qw(tmpnam);
+
 GetOptions('help|?' => \$help,
 	       'man' => \$man,
 		   'version' => \$askversion,
@@ -66,8 +70,14 @@ die "$config does not exist\n" unless (-e $config);
 die "$config is not a file\n" unless (-f $config);
 die "Can not read file: $config\n" unless (-r $config);
 
-my $logs = 'gpdlogs';
-die "Can not write output, directory already exists: $logs\n" if (-e $logs);
+my $gphome = $ENV{GPHOME};
+die "Enviornment variable GPHOME is not set\n" unless (defined $gphome);
+my $PSQL      = "$gphome/bin/psql";
+my $PG_DUMP   = "$gphome/bin/pg_dump";
+my $GPSTATE   = "$gphome/bin/gpstate";
+my $GPCHECKOS = "$gphome/bin/gpcheckos";
+my $GPSSH     = "$gphome/bin/gpssh";
+my $GPSCP     = "$gphome/bin/gpscp";
 
 print "Collecting information:\n";
 
@@ -76,6 +86,7 @@ print "Collecting information:\n";
 # ---------------------------------------------------------------------
 my ($hostfile, $prefix, $master, @segment);
 {
+	print "  + configuration file\n";
 	open CONFIG, "<$config";
 	while (<CONFIG>) {
 		next if (/^\s*(\#.*)?$/);  # blank lines, comment lines
@@ -93,7 +104,6 @@ my ($hostfile, $prefix, $master, @segment);
 		}
 	}
 	close CONFIG;
-	print "  + configuration file\n";
 }
 
 if ($debug) {
@@ -109,6 +119,7 @@ if ($debug) {
 # ---------------------------------------------------------------------
 my @host;
 {
+	print "  + hostfile\n";
 	die "Can not read hostfile: $hostfile\n" unless (-r $hostfile);
 	open HOSTFILE, "<$hostfile";
 	while (<HOSTFILE>) {
@@ -119,13 +130,15 @@ my @host;
 		print "HOSTS = $#host [@host]\n";
 	}
 	close HOSTFILE;
-	print "  + hostfile\n";
 }
 
 # ---------------------------------------------------------------------
 # From now on we don't want to die without cleaning up
 # ---------------------------------------------------------------------
+my $logs = tmpnam();
+my $cwd  = cwd();
 mkdir $logs;
+chdir $logs;
 copy($config,$logs);
 copy($hostfile,$logs);
 
@@ -139,13 +152,14 @@ copy($hostfile,$logs);
 
 # Grab log file and postgres.conf from master
 {
+	print "  + master_$prefix-1.log\n";
 	copy("$master/$prefix-1.log", "$logs/master_$prefix-1.log");
 	copy("$master/$prefix-1/postgresql.conf", "$logs/postgresql_master.conf");
-	print "  + master_$prefix-1.log\n";
 }
 
 # Grab files from segments
 {
+	print "  + segment_$prefix.log\n";
 	foreach my $host (@host) {
 		for (my $d = 0; $d <= $#segment; $d++) {
 			my $seg = $segment[$d];
@@ -161,13 +175,13 @@ copy($hostfile,$logs);
 				   qq[2>>$logs/error.log]);
 		}
 	}
-	print "  + segment_$prefix.log\n";
 }
 
 # ---------------------------------------------------------------------
 # Run diffs on postgresql.conf files
 # ---------------------------------------------------------------------
 {
+	print "  + postgres.conf\n";
 	my $i;
 	my @conf = ();
 	my @files = <$logs/*.conf>;
@@ -184,23 +198,22 @@ copy($hostfile,$logs);
 		# compare against.
 		push @conf, $file if ($i > $#conf);
 	}
-	print "  + postgres.conf\n";
 }
 
 # ---------------------------------------------------------------------
 # Catalog
 # ---------------------------------------------------------------------
 {
-	system(qq[ pg_dump -s postgres > $logs/pg_dump.log ]  .
+	print "  + catalog tables\n";
+	system(qq[ $PG_DUMP -s postgres > $logs/pg_dump.log ]  .
 		   qq[2>>$logs/error.log]);
 	my $query = 
 		qq[select nspname || '.' || relname, attname, s.* ] .
 		qq[from pg_class c, pg_namespace n, pg_attribute a, pg_statistic s ] .
 		qq[where n.oid = c.relnamespace and c.oid = a.attrelid and ] .
 		qq[c.oid = s.starelid and a.attnum = s.staattnum order by 1, 2];
-	system(qq[psql -aX -d postgres -c "$query"  > $logs/catalog_q1.log] .
+	system(qq[$PSQL -aX -d postgres -c "$query"  > $logs/catalog_q1.log] .
 		   qq[ 2>> $logs/error.log]);
-	print "  + catalog tables\n";
 }
 
 
@@ -213,19 +226,19 @@ copy($hostfile,$logs);
 # 7) cpu type and memory size from master
 # ---------------------------------------------------------------------
 {
-	system(qq[ gpstate -m > $logs/gpstate_mirrors.log ]  .
-		   qq[2>>$logs/error.log]);
-	system(qq[ gpstate -f > $logs/gpstate_standby_master.log ]  .
-		   qq[2>>$logs/error.log]);
-	system(qq[ gpstate -d > $logs/gpstate_master.log ]  .
-		   qq[2>>$logs/error.log]);
 	print "  + gpstate\n";
+	system(qq[ $GPSTATE -m > $logs/gpstate_mirrors.log ]  .
+		   qq[2>>$logs/error.log]);
+	system(qq[ $GPSTATE -f > $logs/gpstate_standby_master.log ]  .
+		   qq[2>>$logs/error.log]);
+	system(qq[ $GPSTATE -d > $logs/gpstate_master.log ]  .
+		   qq[2>>$logs/error.log]);
 
-	system(qq[ gpcheckos -h $master > $logs/gpcheckos_master.log ] .
-		   qq[2>>$logs/error.log]);
-	system(qq[ gpcheckos -f $hostfile > $logs/gpcheckos_segments.log ] .
-		   qq[2>>$logs/error.log]);
 	print "  + gpcheckos\n";
+	system(qq[ $GPCHECKOS -h $master > $logs/gpcheckos_master.log ] .
+		   qq[2>>$logs/error.log]);
+	system(qq[ $GPCHECKOS -f $hostfile > $logs/gpcheckos_segments.log ] .
+		   qq[2>>$logs/error.log]);
 }
 
 
@@ -257,46 +270,52 @@ copy($hostfile,$logs);
 		return undef;
 	}
 
-	my $gphome = $ENV{GPHOME};
 	my $extension = qq[$gphome/share/gpdetective];
-	my @badwrite = `/usr/bin/find $extension -perm +002 -print`;
-	chomp @badwrite;
-	my @files = glob("$extension/*");
-	
-	if (inlist($extension, @badwrite)) 
-	{
-		system("echo Skipping Extensions: global write permission >> $logs/error.name");
-		print "WARNING global write permission to $extension - skipping\n";
-	}
-	elsif (-d $extension) 
-	{
-		foreach my $file (@files) {
-			if ($file =~ /^$extension\/(.*?)(\.\w+)?$/)
-			{
-				my ($name, $type) = ($1, $2);
-				$type = "" unless (defined($type));
 
-				if (inlist($file, @badwrite)) 
+	print "  + Extensions\n";
+
+	if (-d $extension) 
+	{
+		my @badwrite = `/usr/bin/find $extension -perm +002 -print`;
+		chomp @badwrite;
+		my @files = glob("$extension/*");
+	
+		if (inlist($extension, @badwrite)) 
+		{
+			system("echo Skipping Extensions: global write permission " .
+				   " >> $logs/error.name");
+			print "WARNING global write permission to $extension - skipping\n";
+		}
+		else
+		{
+			foreach my $file (@files) {
+				if ($file =~ /^$extension\/(.*?)(\.\w+)?$/)
 				{
-					system("echo SKIPPED: $file \\(a+w\\) >> $logs/error.name");
-					print "  + $name$type (skipped a+w)\n";
-				}
-				elsif ($type eq ".sql") 
-				{
-					system("psql -aX -d postgres -f $file > $logs/$name.log" .
-						   " 2>> $logs/error.log");
-					print "  + $name$type\n";
-				} 
-				elsif (-x $file) 
-				{
-					system("$file -c $config -d $logs > $logs/$name.log" .
-						   " 2>> $logs/error.log");
-					print "  + $name$type\n";
-				} 
-				else 
-				{
-					system("echo SKIPPED: $file >> $logs/error.log");
-					print "  + $name$type (skipped)\n";
+					my ($name, $type) = ($1, $2);
+					$type = "" unless (defined($type));
+					
+					if (inlist($file, @badwrite)) 
+					{
+						system("echo SKIPPED: $file \\(a+w\\) >> $logs/error.name");
+						print "    + $name$type (skipped a+w)\n";
+					}
+					elsif ($type eq ".sql") 
+					{
+						system("$PSQL -aX -d postgres -f $file > $logs/$name.log" .
+							   " 2>> $logs/error.log");
+						print "    + $name$type\n";
+					} 
+					elsif (-x $file) 
+					{
+						system("$file -c $config -d $logs > $logs/$name.log" .
+							   " 2>> $logs/error.log");
+						print "    + $name$type\n";
+					} 
+					else 
+					{
+						system("echo SKIPPED: $file >> $logs/error.log");
+						print "    + $name$type (skipped)\n";
+					}
 				}
 			}
 		}
@@ -309,11 +328,17 @@ copy($hostfile,$logs);
 # Cleanup
 # ---------------------------------------------------------------------
 print "  + error.log\n" if (-s "$logs/error.log");
-system("tar -cf gpdetective.tar $logs");
-system("tar -tf gpdetective.tar") if ($debug);
-system("gzip -f gpdetective.tar");
+
+my $timestamp = `date "+%Y%m%d%H%M%S"`;
+chomp($timestamp);
+system("echo tar -cf gpdetective$timestamp.tar *");
+system("tar -cf gpdetective$timestamp.tar *");
+system("tar -tf gpdetective$timestamp.tar") if ($debug);
+system("gzip -f gpdetective$timestamp.tar");
+copy("gpdetective$timestamp.tar.gz", $cwd);
+chdir $cwd;
 system("rm -rf $logs");
 
 print "Done\n";
-print "Created gpdetective.tar.gz\n";
+print "Created gpdetective$timestamp.tar.gz\n";
 exit(0);
