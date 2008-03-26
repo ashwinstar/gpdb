@@ -48,13 +48,14 @@ opt['-q'] = False
 opt['-d'] = None
 opt['-m'] = None
 opt['-B'] = 4
-opt['-c'] = False
 opt['-a'] = False
 opt['-s'] = False
 opt['-o'] = None
 opt['-p'] = 1000
 opt['-l'] = None
 
+arg = {}
+arg['exit'] = 0
 
 ################
 def usage(exitarg):
@@ -260,12 +261,11 @@ def chk_mirror_dir(qes, mirrors):
 ################
 # multi-thread running data sychronization
 class SyncDataThread(Thread):
-    def __init__(self, pri_host, pri_datadir, mir_cfg, rsync, timeout, logfile):
+    def __init__(self, pri_host, pri_datadir, mir_cfg, timeout, logfile):
         Thread.__init__(self)
         self.pri_host = pri_host
         self.pri_datadir = pri_datadir
         self.mir_cfg = mir_cfg
-        self.rsync = rsync
         self.status = False
         self.logfile = logfile
         self.timeout = datetime.today() + timedelta(seconds=timeout)
@@ -273,7 +273,7 @@ class SyncDataThread(Thread):
     def run(self):
         gpmlib.log_info('Start to synchronize data between primary segment (%s:%s) and mirror segment (%s:%s)' % (self.pri_host, self.pri_datadir, self.mir_cfg['hostname'], self.mir_cfg['datadir']))
 
-        if not gpmlib.sync_segment_datadir(self.pri_host, self.pri_datadir, self.mir_cfg, self.rsync):
+        if not gpmlib.sync_segment_datadir(self.pri_host, self.pri_datadir, self.mir_cfg, self.logfile):
             gpmlib.log_error('failed to copy data from (%s:%s) to (%s:%s)' % (self.pri_host, self.pri_datadir, self.mir_cfg['hostname'], self.mir_cfg['datadir']))    
             return
 
@@ -284,8 +284,8 @@ class SyncDataThread(Thread):
         return datetime.today() > self.timeout
 
 ################
-def create_mirrors(qes, mirrors, rsync):
-    global opt
+def create_mirrors(qes, mirrors):
+    global opt, arg
 
     # calculate the timeout
     pri_host = qes[0]['hostname']
@@ -318,7 +318,7 @@ def create_mirrors(qes, mirrors, rsync):
         pri_datadir = qes[i]['datadir']
         mir_cfg = mirrors[i]
 
-        th = SyncDataThread(pri_host, pri_datadir, mir_cfg, rsync, timeout, opt['-l'])
+        th = SyncDataThread(pri_host, pri_datadir, mir_cfg, timeout, opt['-l'])
         thlist.append(th)
         th.start()
 
@@ -388,7 +388,11 @@ def create_mirrors(qes, mirrors, rsync):
     gpmlib.log_info('-------------------------------------------')
 
     if failed + killed > 0:
+        gpmlib.log_warn('Errors detected in parallel processing, review %s for more details' % opt['-l'])
+        arg['exit'] = 1
         return False
+    else:
+        gpmlib.log_info('Completed data directory synchronization')
 
     return True
 
@@ -564,7 +568,7 @@ try:
 
     # copy data from primary segments to mirror segments
     gpmlib.log_info('Create mirror segments')
-    if not create_mirrors(qes, mirrors, opt['-c']):
+    if not create_mirrors(qes, mirrors):
         gpmlib.error('copy data from primary segments to mirror segments failed')
 
     # start master in admin mode
@@ -624,6 +628,8 @@ try:
     gpmlib.log_info('Successfully configured mirror segment instances')
     gpmlib.log_info('Run gpstate -c to display primary/mirror configuration')
     gpmlib.log_info('-----------------------------------------------------------')
+
+    sys.exit(arg['exit'])
 
 except KeyboardInterrupt:
     sys.exit('\nUser Interrupted')

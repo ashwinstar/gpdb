@@ -552,7 +552,7 @@ def edit_file(host, file, search_txt, sub_txt, append=False):
 
 
 #############
-def sync_segment_datadir(src_host, src_dir, dst_cfg, rsync=False, force_stop=True):
+def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     # make mirror data directory
     log_info('make directory %s' % dst_cfg['datadir'])
     (ok, out) = run('%s "%s %s && chmod 700 %s"' % 
@@ -577,7 +577,7 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, rsync=False, force_stop=Tru
     for f in out:
         files = '%s %s' % (files, f.strip())
 
-    (ok, out) = run('%s "cd %s ; %s cf - %s | %s %s \\"cd %s ; %s xf -\\""' % 
+    (ok, out) = run('%s "cd %s ; %s cf - %s | %s %s \\"cd %s ; %s xf -\\"" >> %s' % 
                     (gplib.ssh_prefix(host=src_host),
                      src_dir,
                      ENV.TAR,
@@ -585,7 +585,8 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, rsync=False, force_stop=Tru
                      ENV.SSH,
                      dst_cfg['hostname'],
                      dst_cfg['datadir'],
-                     ENV.TAR))
+                     ENV.TAR,
+                     logfile))
     if not ok:
         sys.exit('failed to synchronize data from primary segment to mirror segment')
 

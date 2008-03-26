@@ -61,6 +61,8 @@ opt['-f'] = False
 opt['-q'] = False
 opt['-l'] = None
 
+arg = {}
+arg['exit'] = 0
 
 ################
 def usage(exitarg):
@@ -559,7 +561,7 @@ class SyncDataThread(Thread):
         if not gpmlib.sync_segment_datadir(self.active_qe['hostname'], 
                                            self.active_qe['datadir'],
                                            self.pool_array,
-                                           rsync = False,
+                                           self.logfile,
                                            force_stop = opt['-f']):
             gpmlib.log_error(' failed to copy data from (%s:%s) to (%s:%s)' % 
                              (self.active_qe['hostname'], self.active_qe['datadir'], 
@@ -702,7 +704,7 @@ def update_gp_conf(mirrors):
 
 ################
 def display_param(fault_action, failed_array, active_array, multi_home):
-    global opt
+    global opt, arg
 
     gpmlib.log_info('Greenplum instance recovery parameters')
     gpmlib.log_info('---------------------------------------------------------')
@@ -728,6 +730,10 @@ def display_param(fault_action, failed_array, active_array, multi_home):
     count = 0
     gpmlib.log_info('Recovery parallel batch value = %d' % opt['-B'])
 
+
+    if arg['exit'] != 0:
+        gpmlib.log_warn('Warnings have been generated      <<<<<<<<<<<<<<<<<')
+        gpmlib.log_info('But recovery can continue')
 
     for i in range(len(failed_array)):
         gpmlib.log_info('---------------------------------------------------------')
@@ -769,16 +775,16 @@ def get_failed_dbids(db):
 
 ################                                      
 def chk_separate_host(db, mir_type_num, failed_dbids):
-    global opt
+    global opt, arg
 
     if mir_type_num == 3 and opt['-p']:
         # group mirror type is separate hosts, check to see if pool host is active
         db.execute("select distinct(definedprimary) from gp_configuration where hostname='%s'" % opt['-p'])
         type_active = [ r[0] for r in db.iterate_tuple() ]
         if len(type_active) == 0:
-            gpmlib.log_info(' Mirror type is separate hosts, no active segments on pool host')
+            gpmlib.log_info('Mirror type is separate hosts, no active segments on pool host')
         elif len(type_active) == 1:
-            gpmlib.log_info(' Mirror type is separate hosts, active type on pool host = %s' % str(type_active[0]))
+            gpmlib.log_info('Mirror type is separate hosts, active type on pool host = %s' % str(type_active[0]))
             pri_count = 0
             mir_count = 0
             
@@ -792,20 +798,23 @@ def chk_separate_host(db, mir_type_num, failed_dbids):
 
             if type_active[0] and mir_count > 0:
                 gpmlib.log_info('***************************************************')
-                gpmlib.log_info(' About to locate failed primary to pool host with mirror segments')
-                gpmlib.log_info(' Current array mirror type is separate hosts')
-                gpmlib.log_info(' Recovery will break this mirror configuration')
+                gpmlib.log_warn('About to locate failed primary to pool host with mirror segments')
+                gpmlib.log_warn('Current array mirror type is separate hosts')
+                gpmlib.log_warn('Recovery will break this mirror configuration')
+                gpmlib.log_info('***************************************************')
+                arg['exit'] = 1
 
             if type_action[0] == False and pri_count > 0:
                 gpmlib.log_info('***************************************************')
-                gpmlib.log_info(' About to locate failed primary to pool host with mirror segments')
-                gpmlib.log_info(' Current array mirror type is separate hosts')
-                gpmlib.log_info(' Recovery will break this mirror configuration')
-
+                gpmlib.log_warn('About to locate failed primary to pool host with mirror segments')
+                gpmlib.log_warn('Current array mirror type is separate hosts')
+                gpmlib.log_warn('Recovery will break this mirror configuration')
+                gpmlib.log_info('***************************************************')
+                arg['exit'] = 1
         else:
             gpmlib.log_warn('Mirror type is separate hosts.')
             gpmlib.log_warn('Have primary and mirror segment instances active on pool host')
-
+            arg['exit'] = 1
 
 ################                                      
 def get_mirror_details(db, failed_dbids):
@@ -1469,6 +1478,8 @@ try:
         gpmlib.log_warn('Segment recovery failures detected, please review log file')
 
     gpmlib.log_info('Recovered %d of %d failed segments' % (completed, total))
+
+    sys.exit(arg['exit'])
 
 except KeyboardInterrupt:
     sys.exit('\nUser Interrupted')
