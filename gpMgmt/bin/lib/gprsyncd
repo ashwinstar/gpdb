@@ -68,8 +68,8 @@ def parseCommandLine():
     if not GV.secret: 
         print '[ERROR] secret name not provided'
         sys.exit(75)
-    re.compile('[a-zA-Z0-9._]+')
-    if not re.match(GV.secret):
+    r = re.compile('[a-zA-Z0-9._]+')
+    if not r.match(GV.secret):
         print '[ERROR] illegal secret name'
         sys.exit(76)
 
@@ -102,10 +102,14 @@ def startRsyncDaemon(port, secret):
     sys.stdout.write('[START SYNC NOW]\n')
     sys.stdout.flush()
     os.execlp('rsync', 
+              'rsync',
               '--port=%d' % port, 
               '--daemon',
               '--no-detach', 
               '--config=%s' % confpath)
+    sys.stdout.write('[ERROR] starting rsync daemon failed\n')
+    sys.stdout.flush()
+    sys.exit(99)
 
 ###############################
 if __name__ == '__main__':

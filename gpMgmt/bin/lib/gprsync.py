@@ -92,9 +92,9 @@ def copy_gprsyncd(host):
     if not os.path.exists(path):
         sys.exit('[ERROR] cannot find file "%s"' % path)
 
-    cmd = "scp -o 'BatchMode yes' -o 'StrictHostKeyChecking no' %s %s:/tmp/%s_$USER" % (host, path)
+    cmd = "scp -o 'BatchMode yes' -o 'StrictHostKeyChecking no' %s %s:/tmp/gprsyncd_$USER" % (path, host)
     if GV.opt['-v']: print '[INFO]', cmd
-    if not os.system(cmd): 
+    if os.system(cmd):
         sys.exit('[ERROR] cannot scp gprsyncd to remote\n\tCommand was: %s' % cmd)
 
 
@@ -111,6 +111,7 @@ def startRemoteRsyncDaemon(host, port, destdir):
     proc.stdin.write('\n')
     proc.stdin.flush()
     time.sleep(1)
+    raw_input('wait wait')
 
     # test it 
     cmd = 'rsync --port=%d %s::' % (port, host)
@@ -212,12 +213,12 @@ def doRsync(host, port, destpath, srcpath):
 def doCleanup(proc = None):
     if proc:
         try:
+            os.kill(proc.pid, signal.SIGTERM)
+            time.sleep(1)
             os.kill(proc.pid, signal.SIGKILL)
         except OSError:
             pass
         proc.wait()
-    os.system('rm -f /tmp/rsyncd.*' + GV.SUFFIX)
-    pass
 
 
 ###############################
@@ -241,17 +242,18 @@ if __name__ == '__main__':
         print '[ERROR] rsync not found locally'
         sys.exit(1)
 
-    # start rsync daemon locally
+    # start rsync daemon remotely
+    copy_gprsyncd(GV.desthost)
     proc = None
     for x in xrange(10):
         port = portBase + x
-        opt['-p'] = port
-        proc = startLocalRsyncDaemon(port)
+        GV.opt['-p'] = port
+        proc = startRemoteRsyncDaemon(GV.desthost, port, GV.destpath)
         if proc: break
 
     if proc:
         # do remote rsync 
-        if not doRemoteRsync(port):
+        if not doRsync(GV.desthost, port, GV.destpath, GV.srcpath):
             doCleanup(proc)
             sys.exit('[ERROR] rsync failed')
     
