@@ -2,10 +2,11 @@
 '''
 gprsync.py -- perform an ad-hoc rsync operation
 
-Usage: gprsync.py [-v] [-p port] -o rsyncopt SRC HOST:DEST
+Usage: gprsync.py [-v] -p port -o rsyncopt SRC [SRC...] HOST:DEST
 
-	-p port     : specifies the port number
+	-?	    : print this help screen
         -v          : verbose
+	-p port     : specifies the port number
         -o rsyncopt : -o '-cnav' means checksum, dry-run, archive, verbose
                       -o '-cav' means checksum, archive, verbose
 		      -o '-cav --delete' means copy to DEST and delete files 
@@ -20,7 +21,6 @@ random.seed()
 
 class Global():
     USER = os.environ.get('USER')
-    PASS = random.randint(1, 1000000)
     SUFFIX = '%s.%d' % (USER, os.getpid())
     SECRET = '%d.%d' % (random.randint(1, 1000000), random.randint(1, 1000000))
     opt={}
@@ -30,10 +30,9 @@ class Global():
     desthost = ''
     destpath = ''
     srcpath = ''
-    
 
 GV = Global()
-
+MYD = os.path.abspath(os.path.dirname(__file__))
 
 ###############################
 def usage(exitarg = None):
@@ -51,7 +50,7 @@ def parse_port(val):
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], 'p:o:v')
+        (options, args) = getopt.getopt(sys.argv[1:], 'p:o:v?')
     except Exception, e:
         usage('Error: ' + str(e))
 
@@ -59,58 +58,63 @@ def parseCommandLine():
         if switch == '-p':	GV.opt['-p'] = parse_port(val)
         elif switch == '-v':	GV.opt['-v'] = True
         elif switch == '-o':	GV.opt['-o'] = val
+        elif switch == '-?':	usage(0)
+
+    if not GV.opt['-p']:
+        usage('Please specify -p port')
 
     if not GV.opt['-o']:
         usage('Please specify -o options')
 
-    if len(args) != 2:
-        usage()
+    if len(args) < 2:
+        usage('Missing arguments')
 
-    srcpath = args[0]
     try:
-        (GV.desthost, GV.destpath) = args[1].split(':')
+        (GV.desthost, GV.destpath) = args.pop().split(':')
     except ValueError:
         usage('Invalid HOST:DEST argument')
 
-    if not os.path.exists(srcpath):
-        usage('SRC path does not exist')
-
-    GV.srcpath = os.path.abspath(srcpath)
-
+    GV.srcpath = []
+    for i in args:
+        if not os.path.exists(i):
+            usage('file "%s" does not exist' % i)
+        GV.srcpath.append(os.path.abspath(i))
 
 
 ###############################
 def strcmd(cmd):
     return reduce(lambda x, y: x + ' ' + y, map(lambda x: x.find(' ') > 0 and "'" + x + "'" or x, cmd))
 
+###############################
+def copy_gprsyncd(host):
+    '''copy the file gprsyncd.py to remote host'''
+    path = os.path.join(MYD, 'gprsyncd')
+    if not os.path.exists(path):
+        sys.exit('[ERROR] cannot find file "%s"' % path)
+
+    cmd = "scp -o 'BatchMode yes' -o 'StrictHostKeyChecking no' %s %s:/tmp/%s_$USER" % (host, path)
+    if GV.opt['-v']: print '[INFO]', cmd
+    if not os.system(cmd): 
+        sys.exit('[ERROR] cannot scp gprsyncd to remote\n\tCommand was: %s' % cmd)
 
 
 ###############################
-def makeConfFile():
-    '''Create rsyncd config files in /tmp. Use the global SUFFIX to ensure unique filenames'''
-    fname = '/tmp/rsyncd.conf.' + GV.SUFFIX
-    f = open(fname, 'w')
-    f.write('pid file = /tmp/rsyncd.pid.%s\n' % GV.SUFFIX)
-    f.write('log file = /tmp/rsyncd.log.%s\n' % GV.SUFFIX)
-    f.write('\n')
-    f.write('[%s]\n' % SECRET)
-    f.write('\t path = %s\n' % srcpath)
-    f.write('\t use chroot = false\n')
-    f.close()
-    return fname
-
-
-
-###############################
-def startLocalRsyncDaemon(port):
-    '''Start rsync daemon locally'''
-    confpath = makeConfFile()
-    cmd = 'rsync --port=%d --daemon --no-detach --config=%s' % (port, confpath)
+def startRemoteRsyncDaemon(host, port, destdir):
+    '''Start rsync daemon remotely'''
+    cmd = ['ssh', '-o', 'BatchMode yes', 
+           '-o', 'StrictHostKeyChecking no', 
+           host, 
+           'python /tmp/gprsyncd_$USER %d %s' % (port, destdir)]
     if GV.opt['-v']: print '[INFO]', strcmd(cmd)
-    proc = subprocess.Popen(cmd.split(' '))
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+    proc.stdin.write(GV.SECRET)
+    proc.stdin.write('\n')
+    proc.stdin.flush()
     time.sleep(1)
-    cmd = 'rsync --port=%d localhost::' % opt['-p']
-    if GV.opt['-v']: print '[INFO]', strcmd(cmd)
+
+    # test it 
+    cmd = 'rsync --port=%d %s::' % (port, host)
+    if GV.opt['-v']: print '[INFO]', cmd
     x = subprocess.Popen(cmd.split(' '), stdout=subprocess.PIPE)
     print x.stdout.read(-1)
     ok = (not x.wait())
@@ -183,38 +187,19 @@ def doLocalWhich(fname):
 
 
 ###############################
-def doRemoteRsync(port):
-    cmd= []
-    cmd.append('ssh')
-    cmd.append('-o')
-    cmd.append('BatchMode yes')
-    cmd.append('-o')
-    cmd.append('StrictHostKeyChecking no')
-    cmd.append(desthost)
-    cmd.append('cat | python')
+def doRsync(host, port, destpath, srcpath):
+    cmd= ['rsync' 
+          '--port=%d' % port]
+    for i in srcpath:
+        cmd.append(i)
+    
+    cmd.append('%s:%s' % (host, destpath))
     if GV.opt['-v']: print '[INFO]', strcmd(cmd)
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    script = '''
-import os, sys
-host = os.environ.get('SSH_CLIENT').split()[0]
-port = %d
-src = '%s'
-dst = '%s'
-rsyncopt = '%s'
-# os.system('hostname')
-cmd = 'rsync --port=%%d %%s %%s::%%s %%s' %% (port, rsyncopt, host, src, dst)
-print cmd
-rc = 0
-rc = os.system(cmd)
-sys.exit(rc)
-''' % (port, SECRET, destpath, opt['-o'])
-    #print 'writing: '
-    #print script
-    proc.stdin.write(script)
-    proc.stdin.close()
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     #print 'reading: '
     while True:
         line = proc.stdout.readline()
+        if not line: break
         print '[RSYNC]', line,
     #print 'waiting: '
     rc = proc.wait()
