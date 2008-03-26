@@ -1,0 +1,35 @@
+<%
+    web.header('Content-Type', 'text/html;charset=utf-8')
+%>
+
+
+<!-- base href="http://www.greenplum.com/" -->
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<script type="text/javascript" src="/static/js/jquery-1.2.1.min.js"></script>
+
+</head><body>
+<div id="pagewrapper">
+
+   <div id="content">
+       <div id="leftNav">          
+<ul id="leftMenu">
+<li><a href="/index.psp" id="current"> Database Management</a></li>
+<li><a href="/initialize.psp"> Database Initialization </a></li>
+<li><a href="/configure.psp"> Database Configuration </a></li>
+<li><a href="/control.psp"> Database Control </a></li>
+</ul>
+
+         </div>
+       <div id="rightNav">
+
+            <p style="margin-top: 0pt;">Key Features of Greenplum database management</p>
+	    <ul style="margin-top: -0.8em;">
+	        <li><a href="/initialize.psp">Initialize the Greenplum database array</a></li>
+		<li><a href="/configure.psp">View the configuration of the Greenplum database</a></li>
+		<li><a href="/control.psp">Start/Stop the Greenplum database</a></li>
+	    </ul>
+
+       </div>
+   </div>
+</div>
+</body></html>

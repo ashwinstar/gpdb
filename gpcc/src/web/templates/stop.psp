@@ -1,0 +1,72 @@
+<%!
+import os, sys
+try:
+    import gpcc
+    import simplejson
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+
+error = {}
+
+def validate_exists(error, param, key, valueset = None):
+    if key not in param:
+        error[key] = key
+    elif valueset is not None and param[key] not in valueset:
+        error[key] = key
+	   
+
+def param_set_default(param, key, defvalue):
+    if key not in param:
+        param[key] = defvalue
+
+%>
+
+<%
+web.header('Content-Type', 'text/html;charset=utf-8')
+
+validate_exists(error, param, 'a')
+param_set_default(param, 'mode', 'immediate')
+validate_exists(error, param, 'mode', ('smart', 'fast', 'immediate'))
+
+%>
+
+% if len(error) > 0:
+{ status: "failure",
+    rset : {
+            total: 1,
+	    offset: 0,
+	    errmsg : { "_" : "missing parameters" }
+    }
+}
+
+% else: 
+
+<%
+params = { 'a' : param['a'], 'mode' : param['mode'] }
+
+redirect=0
+deadma = []
+while redirect < 5:
+    response = gpcc.hitMA(sctx['ma'], '/gpcc/stop', params)
+    if response is None:
+	deadma.append(sctx['ma'])
+	ma = gpcc.getMA(sctx['ma_list'], deadma)
+	if ma is not None:
+	   sctx['ma'] = ma
+	else:
+	   web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }}}')
+	   break
+    if response.status == 200:
+        web.output(response.read())
+	break
+    elif response.status == 301:
+    	json = simplejson.loads(response.read())
+	sctx['ma'] = json.get('location')
+        sys.stderr.write('redirect to %s' % location);
+	redirect += 1        
+
+%>
+
+% endif
+
+

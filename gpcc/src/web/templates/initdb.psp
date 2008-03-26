@@ -1,0 +1,138 @@
+<%!
+import os, sys, StringIO
+try:
+    import gpcc
+    import simplejson
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+%>
+
+<%
+def get_mirror_id(nodes, cid):
+    if len(nodes) == 1:
+        return nodes[0]
+
+    idx = nodes.index(cid)
+    newidx = idx - len(nodes)/2
+    return nodes[newidx]
+
+def get_config_from_multi_input():
+    param = web.input(node=[])
+    array_name = param['array_name']
+    segment_prefix = param['segment_prefix']
+    base_dir = param['base_directory']
+    qe_base_dir = param['qe_base_directory']
+    mirror_qe_base_dir = param['mirror_qe_base_directory']
+    qd_port = int(param['qd_port'])
+    qe_base_port = int(param['qe_base_port'])
+    qe_mirror_base_port = int(param['qe_mirror_base_port'])
+    qd_resides = int(param['qd_resides'])
+    standby_qd_resides = int(param['standby_qd_resides'])
+    qe_resides_opt = int(param['qe_resides_opt'])
+    node_arr = param['node']
+    node_arr = filter(lambda x: (x.strip() != ''), node_arr)
+    max_node = len(node_arr)
+
+    nodes = range(0, max_node)
+    if qe_resides_opt == 1:
+        nodes.remove(qd_resides)
+
+    qe_dirs = qe_base_dir.split()
+    mirror_qe_dirs = mirror_qe_base_dir.split()
+
+    mirror = len(mirror_qe_dirs) > 0 and True or False
+
+    if mirror and len(qe_dirs) != len(mirror_qe_dirs):
+       return None
+
+    cfg = StringIO.StringIO()
+    i = 0;
+    for n in node_arr:
+    	cfg.write('node.%d=%s\n' % (i, n))
+	i+=1
+
+    cfg.write('gpdb.name=%s\n' % array_name.strip())
+    cfg.write('gpdb.seg.master_port=%d\n' % qd_port)
+    cfg.write('gpdb.seg.base_port=%d\n' % qe_base_port)
+    cfg.write('gpdb.seg.mirror_base_port=%d\n' % qe_mirror_base_port)
+
+
+    gpid = -1
+    cfg.write('gpdb.seg.m.0=node.%d:%s/%s%d\n' % (qd_resides, base_dir, segment_prefix, gpid))
+    gpid += 1
+     
+    i = 0
+    for id in nodes:
+    	for j in range (len(qe_dirs)):
+    	    cfg.write('gpdb.seg.%d.0=node.%d:%s/%s%d\n' % (i, id, qe_dirs[j], segment_prefix, gpid))
+	    gpid += 1
+	    if mirror:
+	        mirror_id = get_mirror_id(nodes, id)
+	        cfg.write('gpdb.seg.%d.1=node.%d:%s/%s%d\n' % (i, mirror_id, mirror_qe_dirs[j], segment_prefix, gpid))
+		gpid += 1
+  	    i += 1
+
+    if standby_qd_resides != -1:
+       cfg.write('gpdb.seg.m.1=node.%d:%s/%s%d\n' % (standby_qd_resides, base_dir, segment_prefix, gpid))
+
+
+    data = cfg.getvalue()
+    cfg.close()
+
+    sys.stderr.write(data);
+
+    return data
+
+
+def get_config_from_file_upload():
+    if 'fileToUpload' in param:
+        return param['fileToUpload']
+    return None
+
+
+def get_config_from_textarea():
+    if 'text_config' in param:
+        return param['text_config']
+    return None
+
+%>
+
+<%
+web.header('Content-Type', 'text/html;charset=utf-8')
+
+data = None
+if 'array_name' in param:
+   data = get_config_from_multi_input()
+elif 'fileToUpload' in param:
+   data = get_config_from_file_upload()
+elif 'text_config' in param:
+   data = get_config_from_textarea()
+
+if data is None or data == '':
+    web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "empty config" }}}')
+    return
+
+redirect=0
+deadma = []
+while redirect < 5:
+    response = gpcc.hitMAbyPost(sctx['ma'], '/gpcc/init', {}, data)
+    if response is None:
+	deadma.append(sctx['ma'])
+        ma = gpcc.getMA(sctx['ma_list'], deadma)
+	if ma is not None:
+	   sctx['ma'] = ma
+	else:
+	   web.output('{ status: "failure",  rset : {  total: 1, offset: 0, errmsg : { "_" : "server error" }}}')
+	   break
+    elif response.status == 200:
+        web.output(response.read())
+	break
+    elif response.status == 301:
+    	json = simplejson.loads(response.read())
+	sctx['ma'] = json.get('location')
+        sys.stderr.write('redirect to %s' % location);
+	redirect += 1     
+
+
+%>
+

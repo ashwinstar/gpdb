@@ -1,0 +1,277 @@
+#!/usr/bin/env python
+'''
+Usage: gpcheckcat <option> [dbname]
+
+	-? 
+	-h host	   : DB host name
+	-p port    : DB port number
+	-P passwd  : DB password
+	-U uname   : DB User Name
+	-v         : verbose 
+
+'''
+import sys, os, getopt
+
+sys.path.append(sys.path[0] + '/lib')
+try:
+    import pg8000
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+
+################
+def parse_int(val):
+    try: val = int(val)
+    except ValueError: val = 0
+    return val
+
+
+###############################
+class Global():
+    opt = {}
+    opt['-h'] = None
+    opt['-p'] = None
+    opt['-P'] = None
+    opt['-U'] = None
+    opt['-v'] = False
+    opt['-V'] = False
+    cfg = None
+    dbname = None
+    db = {}
+
+GV = Global()
+
+###############################
+def usage(exitarg = None):
+    print __doc__
+    sys.exit(exitarg)
+
+
+###############################
+def verbose(x):
+    if GV.opt['-v']: print x
+
+
+###############################
+def veryverbose(x):
+    if GV.opt['-V']: print x
+
+###############################
+def parseCommandLine():
+    try:
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vV')
+    except Exception, e:
+        usage('Error: ' + str(e))
+
+    for (switch, val) in options:
+        if switch == '-?':	  usage(0)
+        elif switch[1] in 'hpBPU': GV.opt[switch] = val
+        elif switch[1] in 'vV':    GV.opt[switch] = True
+
+    def setdef(x, v):
+        if not GV.opt[x]:
+            t = os.environ.get(v)
+            GV.opt[x] = t
+            if t:
+                verbose('[INFO] %s not specified; default to %s (from %s)' % 
+                        (x, t, v))
+
+    setdef('-h', 'PGHOST')
+    setdef('-P', 'PGPASSWORD')
+    setdef('-U', 'PGUSER')
+    setdef('-U', 'USER')
+    setdef('-p', 'PGPORT')
+    GV.opt['-p'] = parse_int(GV.opt['-p'])
+    if not GV.opt['-p']:
+        usage('Please specify -p port')
+
+    if not GV.opt['-h']:
+        GV.opt['-h'] = 'localhost'
+        verbose('[INFO] -h not specified; default to %s' % GV.opt['-h'])
+    
+    if (len(args) != 0 and len(args) != 1):
+        usage('Too many arguments')
+
+    if len(args) == 0:
+        GV.dbname = os.environ.get('PGDATABASE') or GV.opt['-U']
+        verbose('[INFO] database is %s' % GV.dbname)
+    else:
+        GV.dbname = args[0]
+    
+    print ('[INFO] master at host %s, port %s, user %s, database %s' % 
+           (GV.opt['-h'], GV.opt['-p'], GV.opt['-U'], GV.dbname))
+    
+
+#############
+def connect(user=None, password=None, host=None, port=None, 
+            database=None, utilityMode=False):
+    '''Connect to DB using parameters in GV'''
+    options = utilityMode and '-c gp_session_role=utility' or None
+    if not user: user = GV.opt['-U']
+    if not password: password = GV.opt['-P']
+    if not host: host = GV.opt['-h']
+    if not port: port = GV.opt['-p']
+    if not database: database = GV.dbname
+    db = pg8000.Connection(user=user, password=password, host=host, port=port,
+			   database=database,
+                           options=options)
+    return db
+
+#############
+def connect2(cfgrec, user=None, password=None, database=None):
+    host = cfgrec['hostname']
+    port = cfgrec['port']
+    datadir = cfgrec['datadir']
+    veryverbose('[INFO] connect %s:%s:%s' % (host, port, datadir))
+    key = "%s.%s.%s.%s.%s.%s" % (host, port, datadir, user, password, database)
+    conn = GV.db.get(key)
+    if conn:
+        return conn
+
+    conn = connect(host=host, port=port, user=user, password=password, 
+                   database=database, utilityMode=True)
+    if conn:
+        conn.x_cfgrec = cfgrec
+        GV.db[key] = conn
+    
+    return conn
+
+
+
+#############
+def connect2run(qry, col):
+    verbose('[INFO] %s' % qry)
+        
+    batch = []
+    for dbid in GV.cfg:
+        c = GV.cfg[dbid]
+        db = connect2(c)
+        db.execute(qry)
+        batch.append( db )
+
+    err = []
+    for db in batch:
+        for row in db.iterate_dict():
+            c = db.x_cfgrec
+            s = ('%s:%s:%s, content %s, dbid %s' % 
+                 (c['hostname'], c['port'], c['datadir'],
+                  c['content'], c['dbid']))
+            for i in col:
+                s = '%s, %s %s' % (s, i, row[i])
+            err.append(s)
+        db.commit()
+
+    return err
+
+
+#############
+def getGPConfiguration():
+    cfg = {}
+    db = connect()
+    db.execute("select * from gp_configuration")
+    for row in db.iterate_dict():
+	if row['content'] == -1 and not row['isprimary']:
+	    continue	# skip standby master
+        cfg[row['dbid']] = row
+    db.close()
+    return cfg
+
+
+
+#############
+def checkPGClass():
+    print '-----------------------------------'
+    print 'Checking pg_class ...'
+    qry = '''SELECT relname, relkind, tc.oid as oid 
+         FROM pg_class tc left outer join 
+              pg_attribute ta on (tc.oid = ta.attrelid)
+        WHERE ta.attrelid is NULL'''
+    err = connect2run(qry, ('relname', 'relkind', 'oid'))
+    if not err:
+        print '[OK] pg_class'
+    else:
+        print '[ERROR] pg_class has %d issue(s)' % len(err)
+        print '[ERROR] %s' % qry
+        for e in err: print '[ERROR]', e
+
+#############
+def checkPGAttribute():
+    print '-----------------------------------'
+    print 'Checking pg_attribute ...'
+    qry = '''SELECT ta.attrelid, ta.attname 
+        FROM pg_attribute ta left outer join
+             pg_class tc on (tc.oid = ta.attrelid)
+       WHERE tc.relname is NULL'''
+    err = connect2run(qry, ('attrelid', 'attname'))
+    if not err:
+        print '[OK] pg_attribute'
+    else:
+        print '[ERROR] pg_attribute has %d issue(s)' % len(err)
+        print '[ERROR] %s' % qry
+        for e in err: print '[ERROR]', e
+
+
+
+#############
+def checkPGType():
+    print '-----------------------------------'
+    print 'Checking pg_type ...'
+    qry = '''SELECT typname, typtype 
+         FROM pg_type tt left outer join 
+              pg_class tc on (tt.typname = tc.relname) 
+        WHERE tt.typtype = 'c' and tc.relname is NULL'''
+    err = connect2run(qry, ('typname', 'typtype'))
+    if not err:
+        print '[OK] pg_type'
+    else:
+        print '[ERROR] pg_type has %d issue(s)' % len(err)
+        print '[ERROR] %s' % qry
+        for e in err: print '[ERROR]', e
+
+
+#############
+def checkPGExtTable():
+    print '-----------------------------------'
+    print 'Checking pg_exttable ...'
+    qry = '''SELECT reloid
+         FROM pg_exttable te left outer join 
+              pg_class tc on (te.reloid = tc.oid and tc.relkind = 'x')
+        WHERE tc.oid is NULL'''
+    err = connect2run(qry, ('reloid',))
+    if not err:
+        print '[OK] pg_exttable'
+    else:
+        print '[ERROR] pg_exttable has %d issue(s)' % len(err)
+        print '[ERROR] %s' % qry
+        for e in err: print '[ERROR]', e
+
+
+
+#############
+def checkPGClassToast():
+    print '-----------------------------------'
+    print 'Checking pg_class.reltoastrelid'
+    qry = '''SELECT c1.reltoastrelid 
+         FROM pg_class c1 left outer join 
+              pg_class c2 on (c1.reltoastrelid = c2.oid)
+        WHERE c1.reltoastrelid <> 0 AND c2.oid is NULL'''
+    err = connect2run(qry, ('reltoastrelid',))
+    if not err:
+        print '[OK] pg_class.reltoastrelid'
+    else:
+        print '[ERROR] pg_class.reltoastrelid has %d issue(s)' % len(err)
+        print '[ERROR] %s' % qry
+        for e in err: print '[ERROR]', e
+
+
+
+#############
+if __name__ == '__main__':
+    parseCommandLine()
+    GV.cfg = getGPConfiguration()
+    checkPGClass()
+    checkPGAttribute()
+    checkPGType()
+    checkPGExtTable()
+    checkPGClassToast()
+    
+

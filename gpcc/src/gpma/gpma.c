@@ -1,0 +1,819 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <gpcc_strings.h>
+#include <apr_getopt.h>
+#include <apr_strings.h>
+#include <apr_thread_proc.h>
+#include <gpcc_event.h>
+#include <gpcc_fsm.h>
+#include <gpcc_json.h>
+#include <json/json.h>
+#include <event.h>
+#include <ctype.h>
+
+#include "cmdslot.h"
+#include "gpma.h"
+
+gpma_t gpma = {0};
+
+static const char* verify_ma(const char* ma);
+
+/* Print usage info */
+static void usage(const char* msg)
+{
+    fprintf(stderr, "\nUsage: %s [-D?f] [-b ha_dir] ma_unit ma_dir ma_addr0 [ma_addr1 ma_addr2]\n\n", gpma.progname);
+    fprintf(stderr, "    -?         : print this help screen\n");
+    fprintf(stderr, "    -D         : debug mode and do not run as daemon\n");
+    fprintf(stderr, "    -f         : for the -b option, force the creation of new config\n");
+    fprintf(stderr, "    -b ha_dir  : the data directory for storing Host Agent data files\n");
+    fprintf(stderr, "    ma_unit    : the Master Agent Unit (e.g. ma.1) \n");
+    fprintf(stderr, "    ma_dir     : the data directory for storing Master Agent data files\n");
+    fprintf(stderr, "    ma_addrN   : ma address with the format IP:PORT\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr, "e.g. %s ma.0 /db/ma localhost:11000\n", gpma.progname);
+    fprintf(stderr, "\n");
+    if (msg)
+	fprintf(stderr, "Error: %s\n\n", msg);
+    exit(msg ? 1 : 0);
+}
+
+
+/*  Parse command line for - options and arguments according to 
+ *  Usage Info 
+ */
+void parse_cmdline(int argc, const char* argv[])
+{
+    apr_getopt_t* handle;
+    char opt;
+    const char* optarg;
+    int i, e;
+    char msg[1024];
+    char* p;
+
+    switch (argv[0][0]) {
+    case '/': case '.': 
+	break;
+    default:
+	sprintf(msg, "please specify %s with an explicit full or relative path", argv[0]);
+	usage(msg);
+    }
+
+    /* get full path to gpma executable */
+    apr_filepath_merge(&p, NULL, argv[0],
+		       APR_FILEPATH_TRUENAME | APR_FILEPATH_NOTRELATIVE, 
+		       gpma.pool);
+
+    /* get full path to parent directory of gpma executable */
+    gpma.gphome = p;
+    setenv("GPHOME", p, 1);
+
+    p += strlen(p) + 1;
+    while (*p != '/') *p-- = 0;
+    if (p == gpma.gphome) {
+	sprintf(msg, "unable to set get GPHOME from path %s", gpma.gphome);
+	usage(msg);
+    }
+    *p-- = 0;
+    while (*p != '/') *p-- = 0;
+
+    /* parse command line options */
+    GPCC_DO(0 == apr_getopt_init(&handle, gpma.pool, argc, argv));
+    while (0 == (e = apr_getopt(handle, "?fb:D", &opt, &optarg))) {
+	switch (opt) {
+	case 'f':
+	    gpma.boot_force = 1;
+	    break;
+	case 'b': 
+	    gpma.boot = 1;
+	    gpma.ha_datadir = optarg;
+	    break;
+	case 'D':
+	    gpma.debug = 1;
+	    break;
+	case '?':
+	    usage(0);
+	    break;
+	default:
+	    sprintf(msg, "Unknown option %c", opt);
+	    usage(msg);
+	}
+    }
+    if (e != APR_EOF) 
+	usage("bad command line");
+
+    if (argc - handle->ind < 3)
+	usage("Please specify ma_unit ma_dir ma_addr");
+
+    gpma.ma_unit = argv[handle->ind++];
+    gpma.datadir = argv[handle->ind++];
+
+    for (i = 0 ; handle->ind < argc ; i++) {
+	const char *v;
+	gpma.ma_addr[i] = argv[handle->ind++];
+	v = verify_ma(gpma.ma_addr[i]);
+	if (v) {
+	    sprintf(msg, "format error: ma.%d %s", i, v);
+	    usage(msg);
+	}
+    }
+    gpma.ma_max = i;
+
+
+    /* check ma of the pattern: ma.N */
+    sprintf(msg, "MA ID must look like 'ma.N' where N is a number between 0 and 2");
+    if (0 != strcmp(gpma.ma_unit, "ma.0") 
+	&& 0 != strcmp(gpma.ma_unit, "ma.1")
+	&& 0 != strcmp(gpma.ma_unit, "ma.2")) {
+	usage(msg);
+    }
+
+}
+
+static void net_opened(gpcc_net_conn_t conn, 
+		       const char* peer_addr,
+		       gpcc_net_header_t* to_peer, 
+		       gpcc_net_header_t* from_peer,
+		       apr_uint64_t arg)
+{
+    apr_uint32_t cmdidx = (apr_uint32_t) arg;
+    gpcc_event_t *ev;
+
+    if (from_peer->argc != 1 || strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) != 0) {
+	gpcc_net_close(conn, 0);
+	return;
+    }
+
+    gpcc_log_info("net_opened...");
+    
+    ev = gpcc_event_alloc(NET_OPENED_EVENT, cmdidx, sizeof(gpcc_net_conn_t));
+    memcpy(ev->pdata, &conn, sizeof(gpcc_net_conn_t));
+    gpcc_evqueue_put(gpma.evq, ev);
+    return;
+}
+
+
+static gpcc_event_t *mkhttp_event(event_t event, gpcc_net_conn_t conn, 
+				  apr_uint32_t cmdidx, apr_uint32_t sndidx, apr_uint32_t rcvidx,
+				  const char *msg, int len)
+{
+    gpcc_event_t *ev;
+
+    ev = gpcc_event_alloc(event, cmdidx, sizeof(gpcc_net_conn_t) + len);
+    memcpy(ev->pdata, &conn, sizeof(conn));
+    memcpy(ev->pdata+sizeof(conn), msg, len);
+    return ev;
+}
+
+#if 0
+static int keycmp(const void* a, const void* b)
+{
+    const char** aa = (const char**) a;
+    const char** bb = (const char**) b;
+    return strcmp(*aa, *bb);
+}
+
+static void process_lscfg(gpcc_net_conn_t conn)
+{
+    apr_pool_t* pool;
+    const char** keys;
+    int count, i, e;
+    char* buf;
+    int buflen;
+    char* p;
+    char* q;
+    const char* prev_value;
+
+    if (0 != (e = apr_pool_create(&pool, gpma.pool))) {
+	gpcc_fatal(FLINE, "out of memory");
+    }
+    keys = config_keys(gpma.cfg, pool);
+    for (count = 0; keys[count]; count++);
+    qsort(keys, count, sizeof(*keys), keycmp);
+
+    if (!conn) {
+	for (i = 0; i < count; i++) {
+	    const char* value = config_get(gpma.cfg, keys[i]);
+	    if (value) 
+		printf("%s: %s\n", keys[i], value);
+	}
+    }
+    else {
+	buflen = 16 * 1024;
+	buf = apr_palloc(pool, buflen);
+	p = buf;
+	q = buf + buflen;
+
+	apr_snprintf(p, q - p, "{ \"status\": \"ok\", ");
+	p += strlen(p);
+	apr_snprintf(p, q - p, "\"rset\": { \"total\": 1, ");
+	p += strlen(p);
+	apr_snprintf(p, q - p, "\"offset\": %d, ", 0);
+	p += strlen(p);
+	apr_snprintf(p, q - p, "\"result\": [ ");
+	p += strlen(p);
+
+	prev_value = 0;
+	for (i = 0; i < count; i++) {
+	    const char* value = config_get(gpma.cfg, keys[i]);
+	    if (value) {
+		apr_snprintf(p, q - p, "%s [ \"%s\", \"%s\" ]", 
+			     prev_value ? "," : "",
+			     keys[i], value);
+		p += strlen(p);
+	    }
+	    prev_value = value;
+	}
+	apr_snprintf(p, q - p, " ] } }");
+	p += strlen(p);
+
+	if (p >= q) 
+	    gpcc_net_http_close(conn, 500, "Internal error", "");
+	else 
+	    gpcc_net_http_close(conn, 200, "OK", buf);
+    }
+    apr_pool_destroy(pool);
+}
+#endif
+
+static void net_accepted(gpcc_net_conn_t conn,
+			 const char* peer_addr,
+			 gpcc_net_header_t* from_peer)
+{
+    gpcc_event_t* ev = 0;
+
+    gpcc_log_info("net_accepted");
+
+    if (from_peer->argc == 3
+	&& 0 == memcmp("HTTP/1.", from_peer->argv[2], 7)
+	&& (0 == strcmp("GET", from_peer->argv[0]) ||
+	    0 == strcmp("POST", from_peer->argv[0]))) {
+
+	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
+	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
+	const char *array_name = config_get(gpma.cfg, "gpdb.name");
+	int is_bad_uri = 0;
+	int is_bad_array_name = 0;
+
+	if (0 == strcmp("/gpcc/lscfg", uri->path)) {
+	    ev = mkhttp_event(ARRAY_CONFIG_EVENT, conn, gpma.cfg_cmdslot->cmdidx, 0,
+			     gpma.cfg_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	}
+	else if (0 == strcmp("/gpcc/status", uri->path)) {
+	    ev = mkhttp_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	}
+	else if (0 == strcmp("/gpcc/init", uri->path)) {
+	    ev = mkhttp_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+			     gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
+	}
+	else if (0 == strcmp("/gpcc/segment/status", uri->path)) {
+	    int i;
+	    char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
+	    if (gpma.unit_cmdtab) {
+		for (i = 0 ; i < gpma.unit_max && strcmp(seg, gpma.unit_cmdtab[i]->cmdname) != 0 ; i++) {;}
+		if (i < gpma.unit_max) {
+		    ev = mkhttp_event(UNIT_STATUS_EVENT, conn, gpma.unit_cmdtab[i]->cmdidx, 0,
+				     gpma.unit_cmdtab[i]->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		} else {
+		    gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"failure\", \"rset\": {\"result\": [], \"total\" : 0, \"offset\": 0}}");
+		}
+	    } else {
+		gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"failure\", \"rset\": {\"result\": [], \"total\" : 0, \"offset\": 0}}");
+	    }
+	}
+	else {
+	    is_bad_array_name = ! (array_name && a && 0 == strcmp(a, array_name));
+	    if (! is_bad_array_name) {
+		if (0 == strcmp("/gpcc/start", uri->path)) {
+		    /* send startcmd_event to FTS cmdslot ? */
+		    ev = mkhttp_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else if (0 == strcmp("/gpcc/stop", uri->path)) {
+		    ev = mkhttp_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else if (0 == strcmp("/gpcc/delete", uri->path)) {
+		    ev = mkhttp_event(ARRAY_DELETE_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else if (0 == strcmp("/gpcc/segment/start", uri->path)) {
+		    ev = mkhttp_event(SEGMENT_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
+				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else if (0 == strcmp("/gpcc/segment/stop", uri->path)) {
+		    ev = mkhttp_event(SEGMENT_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
+				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else 
+		    is_bad_uri = 1;
+	    }
+	}
+
+	if (ev) {
+	    gpcc_evqueue_put(gpma.evq, ev);
+	}
+	else if (is_bad_uri) {
+	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
+	    gpcc_net_http_close(conn, 200, "OK", 
+				"{ \"status\": \"failure\", \"errmsg\": { \"_\": \"invalid URI\" }}");
+	} 
+	else if (is_bad_array_name) {
+	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
+	    gpcc_net_http_close(conn, 200, "OK",
+				"{ \"status\": \"failure\", \"errmsg\": { \"_\": \"bad array name\" } }");
+	}
+
+	if (uri) 
+	    gpcc_net_uri_free(uri);
+	return;
+    }
+    
+    if (from_peer->argc == 1 && strcmp(from_peer->argv[0], GPCC_NET_PACKET_PROTO) == 0) {
+	int i;
+	const char *role = 0;
+	for (i = 0 ; i < from_peer->hc ; i++) {
+	    if (apr_strnatcasecmp(from_peer->hname[i], "X-GPCC-ROLE") == 0) {
+		role = from_peer->hvalue[i];
+	    }
+	}
+
+	if (role && strstr(role, "GPMA") == role) {
+	    char *s = 0;
+
+	    gpcc_log_info("ROLE = %s", role);
+	    /* find the corresponding ma slot */
+	    if (0 != (s = strchr(role, ':'))) {
+		s++;
+		gpcc_log_info("ACCEPTED (%d) MA = %s", gpma.ma_max, s);
+		for (i = 0 ; i < gpma.ma_max ; i++) {
+		    if (gpma.ma_cmdtab[i] && strcmp(gpma.ma_cmdtab[i]->cmdname, s) == 0) {
+			    gpcc_net_set_arg(conn, gpma.ma_cmdtab[i]->cmdidx);
+			    ev = gpcc_event_alloc(NET_ACCEPTED_EVENT, gpma.ma_cmdtab[i]->cmdidx, sizeof(gpcc_net_conn_t));
+			    memcpy(ev->pdata, &conn, sizeof(conn));
+			    gpcc_evqueue_put(gpma.evq, ev);
+			    return;
+		    }
+		}
+	    }
+	}
+	
+    }
+
+
+    /* unknown protocol - reject the connection */
+    gpcc_net_http_close(conn, 403, "Forbidden", "Bad protocol");
+}
+
+
+static int net_received(gpcc_net_conn_t conn, 
+			const char* buf, int buflen,
+			apr_uint64_t arg)
+{
+    /* should not invoke, yet */
+    gpcc_warning(FLINE, "net_received should not get called");
+    return -1;
+}
+
+
+static void net_received_packet(gpcc_net_conn_t conn, 
+				gpcc_net_packet_t* pkt,
+				apr_uint64_t arg)
+{
+    gpcc_event_t *ev;
+    apr_uint32_t cmdidx = pkt->mh.rcvidx;
+
+    if (cmdidx == 0) {
+	/* GPMA */
+	cmdidx = gpma.lma_cmdslot->cmdidx;
+	gpcc_log_info("LMA PACKET RECEIVED");
+    } 
+
+    ev = gpcc_event_alloc(pkt->mh.type, cmdidx, sizeof(*pkt) + pkt->mh.len);
+    memcpy(ev->pdata, pkt, sizeof(*pkt)+pkt->mh.len);
+    gpcc_evqueue_put(gpma.evq, ev);
+}
+
+
+static void net_closed(gpcc_net_conn_t conn, apr_uint64_t arg)
+{
+    apr_uint32_t cmdidx = (apr_uint32_t) arg;
+    gpcc_event_t *ev;
+
+    if (cmdidx) {
+	ev = gpcc_event_alloc(NET_CLOSED_EVENT, cmdidx, sizeof(gpcc_net_conn_t));
+	memcpy(ev->pdata, &conn, sizeof(gpcc_net_conn_t));
+	gpcc_evqueue_put(gpma.evq, ev);
+    }
+}
+
+
+static void net_tick(apr_time_t now)
+{
+    gpcc_event_t* ev = gpcc_event_alloc(TICK_EVENT, gpma.gpma_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);
+}
+
+void ma_init(void)
+{
+    char ma_name[100];
+    const char* ma;
+    int i;
+    cmdslot_t* cp;
+    char* p;
+
+    gpma.ma_cmdtab = apr_palloc(gpma.pool, (gpma.ma_max + 1) * sizeof(gpma.ma_cmdtab[0]));
+    for (i = 0; i < gpma.ma_max ; i++) {
+	sprintf(ma_name, "ma.%d", i);
+	if (0 == strcmp(ma_name, gpma.ma_unit)) {
+	    gpma.ma_cmdtab[i] = 0;
+	    ma = gpma.ma_addr[i];
+	    p = strchr(ma, ':');
+	    gpma.ma_port = strtol(++p, 0, 0);
+	    continue;
+	}
+
+	ma = gpma.ma_addr[i];
+	cp = gpma.ma_cmdtab[i] = cmdslot_alloc(ma_name, MA_OFF_CMDSTATE);
+	cp->u.ma.node_unit = apr_pstrdup(gpma.pool, ma);
+	p = strchr(cp->u.ma.node_unit, ':');
+	cp->u.ma.port = strtol(++p, 0, 0);
+	if (! (0 < cp->u.ma.port && cp->u.ma.port < (1 << 16)))
+	    gpcc_fatal(FLINE, "Illegal ma port specification: %s", ma);
+    }
+
+    /* MA set slot */
+    gpma.maset_cmdslot = cmdslot_alloc("MASET", MASET_OFF_CMDSTATE);
+    gpma.maset_cmdslot->u.maset.total = gpma.ma_max;
+
+    gpma.lma_cmdslot = cmdslot_alloc("LMA", LMA_OFF_CMDSTATE);
+
+}
+
+
+/* Main program for the daemon */
+void d_main(void)
+{
+    char date[APR_RFC822_DATE_LEN];
+    gpcc_evqueue_t* evq = 0;
+    gpcc_event_t* ev = 0;
+    int i;
+
+    gpma.logfpath = apr_psprintf(gpma.pool, "%s/%s-%s.log", 
+				 gpma.datadir, gpma.guid, gpma.ma_unit);
+
+    /* redirect cerr to log */
+    if (! freopen(gpma.logfpath, "a", stderr)) {
+	gpcc_warning(FLINE, "unable to open log file '%s'", gpma.logfpath);
+	gpma.logfpath = NULL;
+    }
+    else {
+	printf("Logs will be written to %s\n", gpma.logfpath);
+	setlinebuf(stderr);
+	freopen(gpma.logfpath, "a", stdout);
+	setlinebuf(stdout);
+    }
+
+    /* dump the config */
+    /*    process_lscfg(0); */
+
+    event_init();
+
+    cmdslot_init(gpma.pool);
+
+    /* configuration slot */
+    gpma.cfg_cmdslot = cmdslot_alloc("CFG", CFG_CMDSTATE);
+
+    /* GPMA slot */
+    gpma.gpma_cmdslot = cmdslot_alloc("GPMA", GPMA_CMDSTATE);
+
+    /* FTS slot */
+    gpma.fts_cmdslot = cmdslot_alloc("FTS", FTS_CMDSTATE);
+
+    
+    fsm_init();
+    ma_init();
+
+    /* create the event queue */
+    evq = gpma.evq = gpcc_evqueue_create(1000, gpma.pool);
+
+    /* greetings */
+    apr_rfc822_date(date, apr_time_now());
+    gpcc_log_info("[%s] started gpma %s %s %s", date, gpma.guid, gpma.ma_unit, gpma.datadir);
+
+    /* network up */
+    GPCC_DO(0 == gpcc_net_init(gpma.ma_port,
+			       NULL,
+			       net_opened, net_accepted, 
+			       net_received, net_received_packet,
+			       net_closed, net_tick));
+
+    gpcc_log_info("gpma listening to port %d", gpma.ma_port);
+
+    /* kick of FTS slot */
+    /*
+    ev = gpcc_event_alloc(INIT_EVENT, gpma.fts_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);
+    */
+
+    /* MA */
+    /* kick of MASET slot */
+    ev = gpcc_event_alloc(INIT_EVENT, gpma.maset_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);
+
+    /* kick of LMA slot */
+    gpma.lma_cmdslot->countdown = 1;
+
+    /* kick off all the nodes */
+    for (i = 0; i < gpma.ma_max; i++) {
+	if (gpma.ma_cmdtab[i])
+	    gpma.ma_cmdtab[i]->countdown = 1;
+    }
+
+    /* MAIN LOOP - 
+     *     - get an event from queue
+     *     - find the target slot of the event
+     *     - get the FSM of the slot 
+     *     - dispatch the event to the FSM
+     */
+    ev = 0;
+    for (;;) {
+	int nxtstate;
+	gpcc_fsm_func_t** fn;
+	cmdslot_t* slot;
+	
+	if (ev)
+	    gpcc_event_free(ev);
+
+	while ((ev = gpcc_evqueue_tryget(evq)) == 0) {
+	    if (gpcc_net_once(1))
+		gpcc_fatal(FLINE, "error reading network");
+	}
+
+
+	if (ev->cmdidx == 0) 
+	    ev->cmdidx = gpma.gpma_cmdslot->cmdidx;
+
+	/*
+	if (ev->etype != TICK_EVENT)
+	    printf("event %s, cmdidx %x\n", event_str(ev->etype), ev->cmdidx);
+	*/
+
+	/* find the right slot for the event */
+	if (! (slot = cmdslot_find(ev->cmdidx))) {
+	    gpcc_log_info("Event %s contains unknown cmdidx %x", 
+			  event_str(ev->etype), ev->cmdidx);
+	    continue;
+	}
+
+	cutin:
+
+	/* retrieve the fsm record */
+	if (0 != gpcc_fsm_get(slot->cmdstate, ev->etype, &nxtstate, &fn)) {
+	    gpcc_log_info("FSM[%x]: %s + %s not found", slot->cmdidx,
+			  cmdstate_str(slot->cmdstate), event_str(ev->etype));
+	    continue;
+	}
+
+	/* dispatch the event */
+	for ( ; *fn && 0 == (*fn)(ev, slot); fn++);
+
+	/* error out ? */
+	if (*fn) {
+	    gpcc_warning(FLINE, "FSM[%x]: FAILED - cancelling %s + %s = %s", 
+			 slot->cmdidx, cmdstate_str(slot->cmdstate), 
+			 event_str(ev->etype), cmdstate_str(nxtstate));
+
+	    ev->etype = FAILURE_EVENT;
+	    goto cutin;
+	}
+
+	/* effect the state transition */
+	if (gpma.debug) {
+	    if (ev->etype != TICK_EVENT && slot != gpma.gpma_cmdslot)
+		gpcc_log_info("FSM[%x]: %s + %s = %s", slot->cmdidx,
+			      cmdstate_str(slot->cmdstate), 
+			      event_str(ev->etype), cmdstate_str(nxtstate));
+	}
+	slot->cmdstate = nxtstate;
+
+	if (nxtstate == NULL_CMDSTATE)
+	    cmdslot_free(slot->cmdidx);
+    }
+    /* not reached */
+}
+
+
+static const char* verify_ma(const char* ma)
+{
+    char buf[1024];
+    char* p;
+    strncpy(buf, ma, sizeof(buf));
+    buf[sizeof(buf)-1] = 0;
+    if (strlen(buf) == sizeof(buf) - 1) 
+	return "specification too long";
+
+    p = strchr(buf, ':');
+    if (!p || strchr(p+1, ':'))
+	return "illegal format - expects node:port";
+
+    return NULL;
+}
+
+/*
+ *  Sanity check on config info.
+ */
+static void verify_config(void)
+{
+    int i;
+    const char* v;
+    char buf[1024];
+    int errcnt = 0;
+    char* errmsg[100];
+
+    /* guid must match */
+    if (! config_eq(gpma.cfg, "sys.guid", gpma.guid)) {
+	errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- sys.guid mismatch (expect %s, receive %s)",
+					gpma.guid, config_getx(gpma.cfg, "sys.guid", "[null]"));
+    }
+
+    /* name must exist */
+    if (config_get(gpma.cfg, "gpdb.name")) {
+
+	/* default master_port port if not set */
+	if (! config_get(gpma.cfg, "gpdb.seg.master_port")) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port missing");
+	}
+	i = config_get_int(gpma.cfg, "gpdb.seg.master_port");
+	if (! (0 < i && i < (1 << 16))) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port invalid (value %d)", i);
+	}
+	
+	/* default qe baseport if not set */
+	if (! config_get(gpma.cfg, "gpdb.seg.base_port")) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port missing");
+	}
+	i = config_get_int(gpma.cfg, "gpdb.seg.base_port");
+	if (! (0 < i && i < (1 << 16))) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port invalid (value %d)", i);
+	}
+	
+	/* default min mirror if not set */
+	i = config_get_or_set_int(gpma.cfg, "gpdb.min_mirror", 0);
+	if (! (0 <= i && i < 2)) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.min_mirror invalid (value %d)", i);
+	}
+	
+	/* qd must exist */
+	v = config_get(gpma.cfg, "gpdb.seg.m.0");
+	if (!v) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.m.0 not set");
+	}
+	
+	/* minimum 2 QEs, max 512 QEs */
+	for (i = 0; i < 512; i++) {
+	    sprintf(buf, "gpdb.seg.%d.0", i);
+	    v = config_get(gpma.cfg, buf);
+	    if (!v) {
+		if (i < 2) 
+		    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- %s not set", buf);
+		break;
+	    }
+	}
+	if (! (2 <= i && i < 512)) {
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- too many segments (max 512)");
+	}
+
+	/* set the number of QEs */
+	config_set_int(gpma.cfg, "gpdb.seg.max", i);
+    }
+
+    /* fail out */
+    if (errcnt) {
+	gpcc_log_error("config file error:");
+	for (i = 0; i < errcnt; i++)
+	    gpcc_log_error("%s", errmsg[i]);
+
+	gpcc_fatal(FLINE, "config file error - see log file '%s'", gpma.logfpath ? gpma.logfpath : "-");
+    }
+
+}
+
+
+
+
+/*
+ * Load the config into gpma. 
+ */
+void load_config(void)
+{
+    if (gpma.boot) {
+
+	/* booting - generate and write a new config file. */
+
+	apr_uint64_t guid;
+	apr_uint64_t rand;
+	char guidstr[16 + 4];
+	apr_time_t now = apr_time_now();
+
+	gpma.cfg = config_create(gpma.pool);
+
+	/* set HA datadir */
+	config_set(gpma.cfg, "ha.datadir", gpma.ha_datadir);
+
+	/* set the csn */
+	config_set_int64(gpma.cfg, "ma.csn", 1);
+
+	/* generate a guid */
+	guid = now;
+	rand = random();
+	rand <<= 32;
+	rand |= random();
+	guid ^= rand;
+	sprintf(guidstr, "%04x-%04x-%04x-%04x", 
+		0xffffU & (int) (guid >> 48), 0xffffU & (int) (guid >> 32),
+		0xffffU & (int) (guid >> 16), 0xffffU & (int) (guid));
+	gpma.guid = apr_pstrdup(gpma.pool, guidstr);
+	config_set(gpma.cfg, "sys.guid", gpma.guid);
+
+	/* check if config is legit */
+	verify_config();
+	
+	/* prep the datadir */
+	if (0 != apr_dir_make_recursive(gpma.datadir, 0x700, gpma.pool)) 
+	    gpcc_fatal(FLINE, "unable to create ma.datadir '%s'", gpma.datadir);
+
+	if (gpma.boot_force) {
+	    config_clean_dir(gpma.datadir, gpma.pool);
+	}
+
+	/* see if another config existed */
+	if (config_read(gpma.datadir, gpma.pool)) {
+	    gpcc_fatal(FLINE, "found another config file in dir %s; run with -f to force cleanup?", 
+		       gpma.datadir);
+	}
+    }
+    else {
+
+	/* regular case. read an old config file. */
+	 
+	gpma.cfg = config_read(gpma.datadir, gpma.pool);
+	if (gpma.cfg == 0) 
+	    gpcc_fatal(FLINE, "config file not found in dir %s", gpma.datadir);
+
+	gpma.guid = config_get(gpma.cfg, "sys.guid");
+	if (! gpma.guid) 
+	    gpcc_fatal(FLINE, "config file does not specify sys.guid");
+	gpma.guid = apr_pstrdup(gpma.pool, gpma.guid);
+
+	/* check if config is legit */
+	verify_config();
+    }
+
+    GPCC_DO(0 == config_write(gpma.datadir, gpma.guid, gpma.cfg));
+}
+
+
+void check_gphome(void)
+{
+    char ls[300];
+    apr_snprintf(ls, sizeof(ls), "ls %s/bin/gpha > /dev/null 2>&1", gpma.gphome);
+    if (0 != system(ls))
+	gpcc_fatal(FLINE, "gpha executable not found in GPHOME %s", gpma.gphome);
+    apr_snprintf(ls, sizeof(ls), "ls %s/bin/postgres > /dev/null 2>&1", gpma.gphome);
+    if (0 != system(ls))
+	gpcc_fatal(FLINE, "postgres executable not found in GPHOME %s", gpma.gphome);
+}
+
+
+int main(int argc, const char* argv[])
+{
+#ifdef SIGPIPE
+    signal(SIGPIPE, SIG_IGN);
+#endif
+
+    GPCC_DO(0 == apr_app_initialize(&argc, (char const* const **) &argv, NULL));
+    atexit(apr_terminate);
+
+    gpma.progname = argv[0];
+
+    srandom((unsigned long) apr_time_now());
+
+    GPCC_DO(0 == apr_pool_create(&gpma.pool, 0));
+
+    parse_cmdline(argc, argv);
+
+    GPCC_DO(0 == setenv("GPHOME", gpma.gphome, 1));
+    printf("GPHOME=%s\n", gpma.gphome);
+
+    check_gphome();
+    load_config();
+
+    if (! gpma.debug) {
+	GPCC_DO(0 == apr_proc_detach(1));
+	/* At this point, we are now a daemon */
+    }
+
+    d_main();
+    return 0;
+}

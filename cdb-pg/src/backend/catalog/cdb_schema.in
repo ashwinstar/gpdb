@@ -1,0 +1,32 @@
+-- --------------------------------------------------------------------
+--
+-- cdb_schema.sql
+--
+-- Define mpp administrative schema and several SQL functions to aid 
+-- in maintaining the mpp administrative schema.  
+--
+-- This is version 2 of the schema.
+--
+-- TODO Error checking is rudimentary and needs improvment.
+--
+-- $Id$
+--
+-- --------------------------------------------------------------------
+
+
+SET log_min_messages = WARNING;
+
+CREATE VIEW gp_pgdatabase AS 
+    SELECT *
+      FROM gp_pgdatabase() AS L(dbid smallint, isprimary boolean, content smallint, valid boolean, definedprimary boolean);
+
+GRANT SELECT ON gp_pgdatabase TO PUBLIC;
+
+
+CREATE VIEW gp_distributed_xacts AS 
+    SELECT *
+      FROM gp_distributed_xacts() AS L(distributed_xid xid, distributed_id text, state text, gp_session_id int, xmin_distributed_snapshot xid);
+
+GRANT SELECT ON gp_distributed_xacts TO PUBLIC;
+
+RESET log_min_messages;

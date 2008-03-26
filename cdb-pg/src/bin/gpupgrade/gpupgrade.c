@@ -1,0 +1,1579 @@
+#include "postgres.h"
+#include <ctype.h>
+#include <stdio.h>
+#include <limits.h>
+#include <stdlib.h>
+#include <string.h>
+#include <getopt.h>
+#include <signal.h>
+#include <time.h>
+#include <sys/time.h>
+
+#include "postgres_fe.h"
+#include "libpq-fe.h"
+#include "libpq/pqsignal.h"
+#include "gpupgrade_cmds.h"
+#include "gpdowngrade_cmds.h"
+#include "catalog/pg_class.h"
+#include "catalog/pg_exttable.h"
+#include "catalog/pg_resqueue.h"
+#include "catalog/pg_window.h"
+
+typedef struct 
+{
+	int content;
+	bool definedprimary;
+	int dbid;
+	bool isprimary;
+	bool valid;
+	char *hostname ;
+	char *port ;
+	char *dbname;
+	PGconn *conn;
+	PGresult *res;
+	char *conninfo;
+} config_t;
+
+/* command line options */
+static bool upgrade = true;
+static bool verbose = false;
+static char *myname = NULL; /* argv[0] */
+static bool do_it = true; /* really do it? */
+
+/* 
+ * In 3.1, QEs have pg_exttable entries. In 3.0, this was not the case. So,
+ * to make everything play nice, we must replicate the QE entries to the 
+ * QDs.
+ */
+struct exttable_contents
+{
+	char *dbname;
+	PGresult *res;
+} **exttable_cts = NULL;
+
+/*
+ * In 3.1, we have two new columns listing primary and mirror tablespace
+ * locations for each tablespace. Before, these were stored on each
+ * segment but for 3.1 upgrades we must consolidate them.
+ */
+struct tblspc_locs_str
+{
+	PGresult **prilocs;
+	PGresult **mirlocs;
+	int nlocs;
+} tblspc_locs;
+
+/* Convenient for passing the contents of pg_resqueue around */
+PGresult *pg_resqueue_cts = NULL;
+
+/* signal handling */
+bool caught_signal = false;
+bool query_failed = false;
+bool detailed_log_msg = false;
+
+#define GPUP_VERSION "3.1.0-1"
+
+/* conninfo options */
+#define CONNOPTIONS "options='-c gp_session_role=utility'"
+
+/* kinds of logging messages */
+#define UDEBUG 1
+#define UINFO 2
+#define UWARN 3
+#define UERROR 4
+
+#define lev2str(lev) \
+ (lev == UDEBUG ? "DEBUG" : (lev == UINFO ? "INFO" : "ERROR"))
+
+static void mylog(int level, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static PGresult *run_query(config_t *conf, char is_async, const char *str, 
+						   ...) __attribute__((format(printf, 3, 4)));
+static void setQDexttables(config_t *conf);
+static void readd_pg_resqueue_cts(config_t *conf);
+
+/* save QD external tables catalog for each database, for later use */
+static void
+setQDexttables(config_t *conf)
+{
+	PGresult *res;
+	int i;
+
+	/* 
+	 * Do not use quote_ident on datname as PQsetdbLogin() doesn't expect
+	 * to see " in it's db argument. It will still handle mixed case
+	 * database just fine.
+	 */
+	res = run_query(conf, 0, "select datname from pg_database "
+					"WHERE datname <> 'template0';");
+
+	exttable_cts = malloc(sizeof(*exttable_cts) * (PQntuples(res) + 1));
+
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		config_t *tmpconf = malloc(sizeof(config_t));
+		PGconn *conn = PQsetdbLogin(PQhost(conf->conn),
+									PQport(conf->conn),
+									PQoptions(conf->conn),
+									NULL,
+									PQgetvalue(res, i, 0),
+									PQuser(conf->conn),
+									PQpass(conf->conn));
+		MemSet(tmpconf, 0, sizeof(config_t));
+		tmpconf->conn = conn;
+		tmpconf->hostname = PQhost(conf->conn);
+
+		exttable_cts[i] = malloc(sizeof(exttable_cts));
+		exttable_cts[i]->dbname = strdup(PQgetvalue(res, i, 0));
+		exttable_cts[i]->res = run_query(tmpconf, 0, "select reloid, location, "
+										 "fmttype, fmtopts, command from "
+										 "pg_exttable;");
+		/* can't PQfinish() because we want to hang onto the result set */
+	}
+	exttable_cts[i] = NULL;
+
+	PQclear(res);
+}
+
+static void
+mylog(int level, const char *fmt, ...)
+{
+	char buf[1024];
+	va_list ap;
+	char dt[30];
+	struct timeval tv;
+	char prefix[100];
+
+	prefix[0] = '\0';
+	
+	if (detailed_log_msg)
+	{
+		gettimeofday(&tv, NULL);
+		strftime(dt, sizeof(dt), "%Y-%m-%d %H:%M:%S", 
+				 localtime(&tv.tv_sec));		 
+		snprintf(prefix, sizeof(prefix), "%s [%s]:-",dt, lev2str(level));
+	}
+	
+	va_start(ap, fmt);
+
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+
+	if (level == UDEBUG)
+	{
+		if (verbose)
+		{
+			printf("%s%s\n", prefix, buf);
+			fflush(stdout);
+		}
+	}
+	else if (level == UINFO)
+	{
+		printf("%s%s\n", prefix, buf);
+		fflush(stdout);
+	}
+	else
+	{
+		fprintf(stderr, "%s%s\n", prefix, buf);
+		fflush(stderr);
+	}
+}
+
+static PGresult *
+dbgetexttableres(config_t *conf)
+{
+	int i;
+
+	for (i = 0; exttable_cts && exttable_cts[i]; i++)
+	{
+		if (strcmp(conf->dbname, exttable_cts[i]->dbname) == 0)
+			return (exttable_cts[i]->res);
+	}
+	return NULL;
+}
+
+static void
+addexttablerows(config_t *conf)
+{
+	PGresult *exttableres;
+	int i = 0;
+	char query[8196];
+	
+	exttableres = dbgetexttableres(conf);
+	
+	run_query(conf, 0, "truncate pg_catalog.pg_exttable;");
+	
+	/* 
+	 * We only want to add pg_exttable entries to the QD on downgrade, so
+	 * that we restore the system to the way it was during 3.0.
+	 */
+	if (!upgrade && !(conf->content == -1 && conf->isprimary == true))
+		return;
+
+	if (exttableres)
+		mylog(UDEBUG, "found %u external table entries for database %s", 
+			  PQntuples(exttableres), conf->dbname);
+	else
+		mylog(UDEBUG, "found no external table entries for database %s",
+			  conf->dbname);
+	
+	/* add the rows */
+	for (i = 0; i < PQntuples(exttableres); i++)
+	{
+		int j;
+		int len;
+
+		len = snprintf(query, sizeof(query), "INSERT INTO "
+					   "pg_catalog.pg_exttable "
+				 	   "(reloid, location, fmttype, fmtopts, command) "
+				  	   "VALUES(");
+		for (j = 0; j < 5; j++)
+		{
+			int len = PQgetlength(exttableres, i, j);
+			
+			if (PQgetisnull(exttableres, i, j))
+			{
+				strncat(query, j == 0 ? "NULL" : ", NULL",
+					   	sizeof(query) - len);
+				len += 6;
+			}
+			else
+			{
+				char *tmp, *tmp2;
+			
+				tmp = PQgetvalue(exttableres, i, j);
+				tmp2 = malloc(strlen(tmp) * 2 + 1);
+				
+				PQescapeStringConn(conf->conn, tmp2, tmp, len, NULL);
+				if (j != 0)
+				{
+					strncat(query, ", ", sizeof(query) - len);
+					len += 2;
+				}
+				strncat(query, "'", sizeof(query) - len);
+				len++;
+				strncat(query, tmp2, sizeof(query) - len);
+				len += strlen(tmp2);
+				strncat(query, "'", sizeof(query) - len);
+				len++;
+
+				free(tmp2);
+			}
+		}
+
+		strncat(query, ")", sizeof(query) - len);
+		
+		run_query(conf, 0, query);
+	}
+	
+	/* add the default encoding (client_encoding) to each external table */
+	if(upgrade && i > 0)
+		run_query(conf, 0, "UPDATE pg_catalog.pg_exttable SET encoding="
+				  "(SELECT pg_char_to_encoding(pg_client_encoding()));");
+}
+
+static void
+downgrade_pg_resqueue(config_t *conf)
+{
+	if (strcmp(conf->dbname, "template1") == 0)
+	{
+		pg_resqueue_cts = run_query(conf, 0, 
+					"delete from pg_catalog.pg_resqueue"
+					" returning rsqname, rsqcountlimit, "
+					"rsqcostlimit, rsqovercommit, oid;");
+		mylog(UDEBUG, "found %u resource queues", 
+				  PQntuples(pg_resqueue_cts)); 
+	}
+	run_query(conf, 0, "delete from pg_attribute where "
+			  "attnum > 4 AND attrelid = '%u';", ResQueueRelationId);
+	run_query(conf, 0, "update pg_class set relnatts = '4' "
+			 "WHERE oid = '%u'", ResQueueRelationId);
+	readd_pg_resqueue_cts(conf);
+	
+	/* pg_tablespace */
+	run_query(conf, 0, "delete from pg_attribute where "
+			  "attnum > 4 AND attrelid = 'pg_tablespace'::regclass;");
+	run_query(conf, 0, "update pg_class set relnatts = '4' "
+			 "WHERE oid = 'pg_tablespace'::regclass");
+}
+
+/* 
+ * To downgrade the 3.1 schema changes (addition of columns to pg_exttable
+ * and pg_window), we must drop the table and recreate it because
+ * alter table drop column simply work. This is because the routines which
+ * interact with those tables (particularly pg_exttable) expect a layout
+ * which matches their Form_pg_ schema. The dropped columns skew this
+ * and so the mapping cannot be made.
+ *
+ * With pg_exttable we have to be careful insert the rows that we remove.
+ *
+ * We also need to remove internal dependencies on the system catalogs in order
+ * to successfully drop the table... we must re-add these too of course.
+ */
+static void
+downgrade_catalog_schema(config_t *conf)
+{
+	/* pg_exttable */
+	run_query(conf, 0, "delete from pg_attribute where "
+			  "attnum > 5 AND attrelid = '%u';", ExtTableRelationId);
+	run_query(conf, 0, "update pg_class set relnatts = '5' "
+			 "WHERE oid = '%u'", ExtTableRelationId);
+	
+	addexttablerows(conf);
+	/* pg_window */
+	run_query(conf, 0, "delete from pg_attribute where "
+			 "attnum > 9 AND attrelid = '%u';", WindowRelationId);
+	run_query(conf, 0, "update pg_class set relnatts = '9' "
+			 "WHERE oid = '%u'", WindowRelationId);
+	run_query(conf, 0, "truncate pg_catalog.pg_window;");
+
+	/* pg_resqueue */
+	downgrade_pg_resqueue(conf);
+
+}
+
+/*
+ * standalone routine to upgrade pg_resqueue. Since it's shared, the time at
+ * which we perform the upgrade is sensitive.
+ */
+static void
+upgrade_pg_resqueue(config_t *conf)
+{
+	/*
+	 * This is a potentially problematic change, because resource queues
+	 * affect the execution of queries and any execution of the resource
+	 * queue code while we're making these kinds of changes could be
+	 * very dangerous. We're safe, however, because ProcessQuery() is
+	 * smart enough to only run the resource queue code when we're
+	 * running in DISPATCH mode. Since we're connecting to all backends
+	 * in UTILITY mode, we're fine.
+	 *
+	 * It's also painful because pg_resqueue is a shared relation and
+	 * so we cannot use ALTER TABLE to update it, since the meta data
+	 * will not be updated in other databases. So, we just use raw
+	 * SQL.
+	 */
+	run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
+			  "atttypid, attstattarget, attlen, attnum, attndims, "
+			  "attcacheoff, atttypmod, attbyval, attstorage, attalign, "
+			  "attnotnull, atthasdef, attisdropped, attislocal, "
+			  "attinhcount) values('pg_catalog.pg_resqueue'::regclass, "
+			  "'rsqignorecostlimit', 'float4'::regtype, '-1', '4', '5', "
+			  "'0', '-1', '-1', 't', 'p', 'i', 't', 'f', 'f', 't', '0');");
+	run_query(conf, 0, "update pg_class set relnatts = relnatts + 1 WHERE "
+			  "oid = 'pg_catalog.pg_resqueue'::regclass;");
+
+	/* After MPP-2304, we also add columns for pg_tablespace */
+	run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
+			  "atttypid, attstattarget, attlen, attnum, attndims, "
+			  "attcacheoff, atttypmod, attbyval, attstorage, attalign, "
+			  "attnotnull, atthasdef, attisdropped, attislocal, "
+			  "attinhcount) values('pg_catalog.pg_tablespace'::regclass, "
+			  "'spcprilocations','_text'::regtype,'-1','-1','5','1','-1',"
+			  "'-1','f','x','i','f','f','f','t','0');");
+	run_query(conf, 0, "insert into pg_attribute (attrelid, attname, "
+			  "atttypid, attstattarget, attlen, attnum, attndims, "
+			  "attcacheoff, atttypmod, attbyval, attstorage, attalign, "
+			  "attnotnull, atthasdef, attisdropped, attislocal, "
+			  "attinhcount) values('pg_catalog.pg_tablespace'::regclass, "
+			  "'spcmirlocations','_text'::regtype, '-1', '-1', '6', '1', "
+			  "'-1','-1','f','x','i','f','f','f','t','0');");
+	run_query(conf, 0, "update pg_class set relnatts = relnatts + 2 WHERE "
+			  "oid = 'pg_catalog.pg_tablespace'::regclass;");
+}
+
+static void
+readd_pg_resqueue_cts(config_t *conf)
+{
+	int i;
+
+	if (strcmp(conf->dbname, "template1") != 0)
+		return;
+			   
+	/* add the rows */
+	mylog(UDEBUG, "re-adding '%u' pg_resqueue_ctsqueue entries",
+		  PQntuples(pg_resqueue_cts));
+	for (i = 0; i < PQntuples(pg_resqueue_cts); i++)
+	{
+		int j;
+		int len;
+		char query[8196], query2[8196];
+
+		len = snprintf(query, sizeof(query), "INSERT INTO "
+					   "pg_catalog.pg_resqueue "
+				 	   "(rsqname, rsqcountlimit, rsqcostlimit, "
+					   "rsqovercommit%s) "
+				  	   "VALUES(", upgrade ? ", rsqignorecostlimit" : "");
+		for (j = 0; j < PQnfields(pg_resqueue_cts) - 1; j++)
+		{
+			int len = PQgetlength(pg_resqueue_cts, i, j);
+			
+			if (PQgetisnull(pg_resqueue_cts, i, j))
+			{
+				strncat(query, j == 0 ? "NULL" : ", NULL",
+					   	sizeof(query) - len);
+				len += 6;
+			}
+			else
+			{
+				char *tmp, *tmp2;
+			
+				tmp = PQgetvalue(pg_resqueue_cts, i, j);
+				tmp2 = malloc(strlen(tmp) * 2 + 1);
+				
+				PQescapeStringConn(conf->conn, tmp2, tmp, len, NULL);
+				if (j != 0)
+				{
+					strncat(query, ", ", sizeof(query) - len);
+					len += 2;
+				}
+				strncat(query, "'", sizeof(query) - len);
+				len++;
+				strncat(query, tmp2, sizeof(query) - len);
+				len += strlen(tmp2);
+				strncat(query, "'", sizeof(query) - len);
+				len++;
+
+				free(tmp2);
+			}
+		}
+
+		strncat(query, upgrade ? ", 0)" : ")", sizeof(query) - len);
+		len += 2;
+		snprintf(query2, sizeof(query2), "%s  returning "
+				 "gp_oid_update(oid, '%s'::oid, ctid, "
+				 "'pg_catalog.pg_resqueue'::regclass::oid)",
+				 query, PQgetvalue(pg_resqueue_cts, i, j));
+		
+		run_query(conf, 0, query2);
+	}
+}
+
+static void
+init_tblspc_locs(config_t **segdbs)
+{
+	int size = 0;
+	int i;
+	bool hasmir = false;
+	
+	for (i = 0; segdbs[i] != NULL; i++)
+	{
+		if (strcmp(segdbs[i]->dbname, "template1") == 0 &&
+			segdbs[i]->definedprimary == true)
+			size++;
+		if (segdbs[i]->definedprimary == false)
+			hasmir = true;
+	}
+
+	tblspc_locs.prilocs = malloc(sizeof(PGresult *) * size);
+
+	if (hasmir)
+		tblspc_locs.mirlocs = malloc(sizeof(PGresult *) * size);
+	else
+		tblspc_locs.mirlocs = NULL;
+
+	tblspc_locs.nlocs = size;
+}
+
+static void
+remove_pg_tablespace_rows(config_t *conf)
+{
+	if (strcmp(conf->dbname, "template1") == 0)
+	{
+		int oset = conf->content + 1;
+		PGresult *res;
+
+		if (oset > tblspc_locs.nlocs)
+		{
+			mylog(UERROR, "BUG: oset (%i) > nlocs (%i)", oset,
+				  tblspc_locs.nlocs);
+			exit(1);
+		}
+
+		res = run_query(conf, 0, "delete from pg_catalog.pg_tablespace "
+						"returning oid, spcname, spcowner, spclocation, "
+						"spcacl");
+
+		if (conf->definedprimary)
+			tblspc_locs.prilocs[oset] = res;
+		else
+			tblspc_locs.mirlocs[oset] = res;
+	}
+}
+
+/* 
+ * Perform the ALTER TABLE operations necessary to upgrade from 3.0 to 3.1
+ */
+static void
+schema_upgrade(config_t *conf)
+{
+	remove_pg_tablespace_rows(conf);
+
+	if (upgrade)
+	{
+		/* exttable */
+		run_query(conf, 0, "alter table pg_catalog.pg_exttable "
+				  "add column rejectlimit int;");
+		run_query(conf, 0, "alter table pg_catalog.pg_exttable "
+				  "add column rejectlimittype \"char\";");
+		run_query(conf, 0, "alter table pg_catalog.pg_exttable "
+				  "add column fmterrtbl oid;");
+		run_query(conf, 0, "alter table pg_catalog.pg_exttable "
+				  "add column encoding int4;");
+
+		addexttablerows(conf);
+
+		/* pg_window */
+		run_query(conf, 0, "alter table pg_catalog.pg_window "
+				  "add column winkind \"char\";");
+
+
+		/* convenience functions for the upgrade */
+		run_query(conf, 0, "create or replace function "
+				  "gp_oid_update(oid, oid, tid, oid) returns bool "
+				  "as '$libdir/libgpupgradefuncs', 'gp_oid_update' "
+				  "LANGUAGE C VOLATILE STRICT;");
+
+		/* 
+		 * We create the function name as gp_str2node2str() so that we do
+		 * not have to special case for upgrade or downgrade. See downgrade
+		 * case below.
+		 */
+		run_query(conf, 0, "create or replace function "
+				  "gp_str2node2str(text) returns text as "
+				  "'$libdir/libgpupgradefuncs.so', 'gp_str30_2node2str' "
+				  "language c strict volatile;");
+	}
+	else
+	{
+		/* downgrade case */
+		run_query(conf, 0, "create or replace function "
+				  "gp_oid_update(oid, oid, tid, oid) returns bool "
+				  "as '$libdir/libgpupgradefuncs', 'gp_oid_update' "
+				  "LANGUAGE C VOLATILE STRICT;");
+
+		run_query(conf, 0, "create or replace function "
+				  "gp_str2node2str(text) returns text as "
+				  "'$libdir/libgpupgradefuncs.so', 'gp_str31_2node2str'"
+				  "language c strict volatile;");
+
+		run_query(conf, 0, "create or replace function "
+				  "gp_invalidate_syscache() returns bool as "
+				  "'$libdir/libgpupgradefuncs.so', 'gp_invalidate_syscache'"
+				  "language c strict volatile;");
+
+		run_query(conf, 0, "create or replace function "
+				  "gp_forget_relation(oid) returns bool as "
+				  "'$libdir/libgpupgradefuncs.so', 'gp_forget_relation'"
+				  "language c strict volatile;");
+		
+		run_query(conf, 0, "create or replace function "
+				  "gp_downgrade_controlfile() returns bool as "
+				  "'$libdir/libgpupgradefuncs.so', 'gp_downgrade_controlfile'"
+				  "language c strict volatile;");
+		downgrade_catalog_schema(conf);
+	}
+}
+
+static void
+run_upgrade_commands(config_t *conf)
+{
+	uint16 i;
+	const char **cmds;
+	const char *reindex_tables[] = { "pg_type", "pg_proc", "pg_operator",
+								   "pg_opclass", "pg_attribute", "pg_amop",
+								   "pg_amproc", /*"pg_window", "pg_exttable", */
+								   NULL};
+	/* update serialised strings */
+	if (upgrade)
+	{
+		run_query(conf, 0, "update pg_rewrite set ev_action = "
+			 "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual);");
+	}
+	else
+	{
+		run_query(conf, 0, "update pg_rewrite set ev_action = "
+			  "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual) "
+				  "WHERE ev_class != 'pg_stat_activity'::regclass;");
+
+	}
+	run_query(conf, 0, "update pg_type set typdefaultbin = "
+			  "gp_str2node2str(typdefaultbin) WHERE "
+			  "typdefaultbin NOTNULL;");
+	run_query(conf, 0, "update pg_constraint set conbin = "
+			  "gp_str2node2str(conbin) WHERE conbin NOTNULL;");
+	run_query(conf, 0, "update pg_index set indexprs = "
+			  "gp_str2node2str(indexprs), indpred = gp_str2node2str(indpred) "
+			  "WHERE indexprs NOTNULL or indpred NOTNULL;");
+	run_query(conf, 0, "update pg_attrdef set adbin = "
+			  "gp_str2node2str(adbin) WHERE adbin NOTNULL;");
+
+	if (upgrade)
+		cmds = upgrade_cmds;
+	else
+		cmds = downgrade_cmds;
+
+	for (i = 0; cmds[i]; i++)
+	{
+		const char *cmd = cmds[i];
+
+		run_query(conf, 0, cmd);
+	}
+
+	/* reindex the affected tables */
+	for (i = 0; reindex_tables[i]; i++)
+	{
+		run_query(conf, 0, "reindex table pg_catalog.\"%s\";",
+				 reindex_tables[i]);
+	}
+
+	/* update attributes using 64 bit types */
+	run_query(conf, 0,
+			 "update pg_attribute set attbyval = '%c' where "
+			  "attbyval != '%c' AND atttypid "
+			  "in('float4'::regtype, 'float8'::regtype, 'int8'::regtype, "
+			  "'time'::regtype, 'timestamp'::regtype, 'timestamptz'::regtype);",
+			  upgrade ? 't' : 'f', upgrade ? 't' : 'f');
+	/* handle domains too */
+	run_query(conf, 0, "update pg_type set typbyval = '%c' where typbasetype "
+			  "in ('float4'::regtype, 'float8'::regtype, 'int8'::regtype, "
+			  "'time'::regtype, 'timestamp'::regtype, "
+			  "'timestamptz'::regtype);", upgrade ? 't' : 'f');
+	run_query(conf, 0, "update pg_attribute set attbyval = '%c' where "
+			  "atttypid in (select oid from pg_type where typbasetype "
+			  "in('float4'::regtype, 'float8'::regtype, 'int8'::regtype, "
+			  "'time'::regtype, 'timestamp'::regtype, "
+			  "'timestamptz'::regtype));", upgrade ? 't' : 'f');
+}
+
+static void
+post_upgrade(config_t *conf)
+{
+
+	/* drop and readd pg_stat_activity */
+	if (upgrade)
+	{
+		/* must be fone here, because of 64 bit change */
+		upgrade_pg_resqueue(conf);
+
+		run_query(conf, 0, "DROP VIEW pg_catalog.pg_stat_activity;");
+		run_query(conf, 0, "CREATE VIEW pg_catalog.pg_stat_activity AS "
+   		 	"SELECT "
+            "D.oid AS datid, "
+            "D.datname AS datname, "
+            "pg_stat_get_backend_pid(S.backendid) AS procpid, "
+            "pg_stat_get_backend_session_id(S.backendid) AS sess_id, "
+            "pg_stat_get_backend_userid(S.backendid) AS usesysid, "
+            "U.rolname AS usename, "
+            "pg_stat_get_backend_activity(S.backendid) AS current_query, "
+            "pg_stat_get_backend_waiting(S.backendid) AS waiting, "
+            "pg_stat_get_backend_activity_start(S.backendid) AS query_start, "
+            "pg_stat_get_backend_start(S.backendid) AS backend_start, "
+            "pg_stat_get_backend_client_addr(S.backendid) AS client_addr, "
+            "pg_stat_get_backend_client_port(S.backendid) AS client_port "
+		    "FROM pg_database D,  "
+            "(SELECT pg_stat_get_backend_idset() AS backendid) AS S, "
+            "pg_authid U  "
+		    "WHERE pg_stat_get_backend_dbid(S.backendid) = D.oid AND "
+            "pg_stat_get_backend_userid(S.backendid) = U.oid;");
+		run_query(conf, 0, "grant select on pg_catalog.pg_stat_activity to public;");
+	}
+	else
+	{
+			run_query(conf, 0, "DROP VIEW pg_catalog.pg_stat_activity;");
+			run_query(conf, 0, "CREATE VIEW pg_catalog.pg_stat_activity AS "
+   		 	"SELECT "
+            "D.oid AS datid, "
+            "D.datname AS datname, "
+            "pg_stat_get_backend_pid(S.backendid) AS procpid, "
+            "pg_stat_get_backend_userid(S.backendid) AS usesysid, "
+            "U.rolname AS usename, "
+            "pg_stat_get_backend_activity(S.backendid) AS current_query, "
+            "pg_stat_get_backend_waiting(S.backendid) AS waiting, "
+            "pg_stat_get_backend_activity_start(S.backendid) AS query_start, "
+            "pg_stat_get_backend_start(S.backendid) AS backend_start, "
+            "pg_stat_get_backend_client_addr(S.backendid) AS client_addr, "
+            "pg_stat_get_backend_client_port(S.backendid) AS client_port "
+		    "FROM pg_database D,  "
+            "(SELECT pg_stat_get_backend_idset() AS backendid) AS S, "
+            "pg_authid U  "
+		    "WHERE pg_stat_get_backend_dbid(S.backendid) = D.oid AND "
+            "pg_stat_get_backend_userid(S.backendid) = U.oid;");
+		run_query(conf, 0, "grant select on pg_catalog.pg_stat_activity to public;");
+
+		run_query(conf, 0, "update pg_rewrite set ev_action = "
+		  "gp_str2node2str(ev_action), ev_qual = gp_str2node2str(ev_qual)"
+		  " WHERE ev_class = 'pg_stat_activity'::regclass;");
+	}
+	run_query(conf, 0, "drop function gp_str2node2str(text);");
+	if (!upgrade)
+		run_query(conf, 0, "drop function gp_invalidate_syscache();");
+}
+
+static void
+MyNoticeProcessor (void *arg, const char *message)
+{
+	mylog(UDEBUG, message);
+} 
+
+static void
+trapsig(int signum)
+{
+	/* handle systems that reset the handler, like Windows (grr) */
+	pqsignal(signum, trapsig);
+	caught_signal = true;
+	mylog(UDEBUG, "received signal %i", signum);
+}
+
+/*
+ * call exit_nicely() if we got a signal, or else output "ok".
+ */
+static void
+check_ok(config_t **segdbs)
+{
+	if (caught_signal)
+	{
+		int i;
+
+		mylog(UERROR, "received signal, rolling back upgrade");
+
+		for (i = 0; segdbs[i] != NULL; i++)
+		{
+			if (segdbs[i]->conn)
+				PQfinish(segdbs[i]->conn);
+		}
+		exit(1);
+	}
+	else if (query_failed)
+	{
+		if (segdbs)
+		{
+			int i;
+		
+			/* roll back all */
+			mylog(UINFO, "rolling back cluster wide upgrade");
+		
+			for (i = 0; segdbs[i] ; i++)
+			{
+				PQfinish(segdbs[i]->conn);
+			}
+		}
+		exit(1);
+	}
+	else
+	{
+		/* all seems well */
+		mylog(UDEBUG, "ok");
+	}
+}
+
+static PGresult *
+run_query(config_t *conf, char async, const char *fmt, ...)
+{
+	char buf[8196];
+	va_list ap;
+	
+	va_start(ap, fmt);
+
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+
+	if (verbose)
+		mylog(UDEBUG, buf);
+
+	if (async)
+	{
+		if (!PQisnonblocking(conf->conn))
+			PQsetnonblocking(conf->conn, 1);
+	}
+	else
+	{
+		if (PQisnonblocking(conf->conn))
+			PQsetnonblocking(conf->conn, 0);
+	}
+
+	if (async)
+	{
+		PQsendQuery(conf->conn, buf);
+		while (PQflush(conf->conn) > 0)
+			;
+		return NULL;
+	}
+	else
+	{
+		PGresult *res;
+	
+		res = PQexec(conf->conn, buf);
+	
+	
+		if (!(PQresultStatus(res) == PGRES_COMMAND_OK ||
+			  PQresultStatus(res) == PGRES_TUPLES_OK))
+		{
+			mylog(UERROR, "QUERY FAILED: \"%s\", error: \"%s\", "
+				  "connection info: %s\n", buf, PQerrorMessage(conf->conn),
+				  conf->hostname ? conf->hostname : "default host");
+			PQclear(res);
+	
+			query_failed = true;
+	
+			return NULL;
+		}
+		return res;
+	}
+}
+
+/* 
+ * Generate a transaction identifier for 2PC. Needs to be unique and
+ * descriptive.
+ */
+static char *
+ugstr(void)
+{
+	struct timeval tv;
+	char *buf;
+
+#define UG_STR_LEN 128
+	
+	buf = malloc(UG_STR_LEN);
+	gettimeofday(&tv, NULL);
+	strftime(buf, UG_STR_LEN, "gpuprade-%Y-%m-%d.%H:%M:%S", 
+			 localtime(&tv.tv_sec));		 
+	return buf;
+}
+
+static PGconn *
+connect_to_db(char *conninfo, bool require_password)
+{
+	PGconn	 *conn;
+	PGresult   *res;
+	bool		need_pass = false;
+	static char *password = NULL;
+	config_t conf;
+	
+	if (require_password && !password)
+		password = simple_prompt("Password: ", 100, false);
+	
+	do
+	{
+		need_pass = false;
+		
+		/* Make a connection to the database */
+		
+		if (password)
+		{
+		 	strcat(conninfo," password=");
+		 	strcat(conninfo,password);
+		}
+			
+		conn = PQconnectdb(conninfo);
+
+		if (PQstatus(conn) == CONNECTION_BAD &&
+			strcmp(PQerrorMessage(conn), PQnoPasswordSupplied) == 0 &&
+			!feof(stdin))
+		{
+			PQfinish(conn);
+			need_pass = true;
+			if (password)
+				free(password);
+			password = NULL;
+			password = simple_prompt("Password: ", 100, false);
+		}
+	} while (need_pass);
+	
+	 /* Check to see that the backend connection was successfully made */
+	if (PQstatus(conn) != CONNECTION_OK)
+	{
+		mylog(UERROR, "connection to database failed: %s", PQerrorMessage(conn));
+		mylog(UERROR, "conninfo \"%s\"",conninfo);
+		PQfinish(conn);
+		exit(1);
+	}
+	
+	PQsetNoticeProcessor(conn,
+					 MyNoticeProcessor,
+					 NULL);
+	
+	conf.conn = conn;
+	conf.hostname = PQhost(conn);
+	
+	res = run_query(&conf, 0, "BEGIN;");
+	PQclear(res);
+	res = run_query(&conf, 0, "SET SEARCH_PATH = 'pg_catalog'");
+	PQclear(res);
+	/* we corrupt some indexes doing the upgrade, so turn off index scan */
+	res = run_query(&conf, 0, "set enable_indexscan to off;");
+	PQclear(res);
+	return conn;
+}
+
+#if 0
+static void
+run_sql_command(PGconn *conn, char *cmd)
+{
+	PGresult   *res;
+	char		SqlState[6];
+	
+	if (verbose)
+		printf("%s\n",cmd);
+	res = PQexec(conn, cmd);
+	if (PQresultStatus(res) != PGRES_COMMAND_OK)
+	{
+		 SqlState[0] = '\0';
+		 if (PQresultErrorField(res, PG_DIAG_SQLSTATE) != NULL)
+			strcpy(SqlState, PQresultErrorField(res, PG_DIAG_SQLSTATE));
+			
+		if (strcmp(SqlState,"42P07")!=0 &&  /* Table already exists */
+			strcmp(SqlState,"42701")!=0)	/* Column already exists */
+		{
+			fprintf(stderr, " %s: command failed: \n%s %s\n", cmd,
+					SqlState, PQerrorMessage(conn));
+
+			PQclear(res);
+			PQfinish(conn);
+			fprintf(stderr," UPGRADE FAILED\n");
+			exit(1);
+		}
+		PQclear(res);
+	}
+	else
+		PQclear(res);
+	
+}
+
+#endif
+
+static char *
+create_master_string(config_t **segdbs, bool pri, char *tblspcname)
+{
+	char *str = NULL;
+	int i;
+
+	mylog(UDEBUG, "building %s string for %s",
+		pri ? "priloc" : "secloc", tblspcname);
+	
+	for (i = 0; segdbs[i]; i++)
+	{
+		int j;
+		PGresult *res;
+		int oset = segdbs[i]->content + 1;
+		
+		if (segdbs[i]->content == -1 ||
+			strcmp("template1", segdbs[i]->dbname) != 0)
+		{
+			continue;
+		}
+
+		if (segdbs[i]->definedprimary == pri)
+		{
+			if (str == NULL)
+			{
+				str = malloc((1024 + 2) * tblspc_locs.nlocs);
+				str[0] = '\0';
+			}
+		}
+		else
+			continue;
+
+		res = pri ? tblspc_locs.prilocs[oset] : tblspc_locs.mirlocs[oset];
+		
+		for (j = 0; j < PQntuples(res); j++)
+		{
+			char *restblspc = PQgetvalue(res, j, 1);
+
+			if (strcmp(tblspcname, restblspc) == 0)
+			{
+				char *loc = PQgetvalue(res, j, 3);
+
+				mylog(UDEBUG, "location is %s", loc);
+				
+				if (str[0] != '\0')
+					strcat(str, ", ");
+
+				if (loc[0] != '\0')
+					strcat(str, loc);
+				
+				break;
+			}
+		}
+	}
+	if (str[0] == '\0')
+	{
+		free(str);
+		str = NULL;
+	}
+	return str;
+}
+
+static void
+readd_pg_tablespace_rows(config_t **segdbs, config_t *conf)
+{
+	int oset;
+	PGresult *res;
+	int i;
+	
+	if (strcmp(conf->dbname, "template1") != 0)
+		return;
+
+	oset = conf->content + 1;
+	
+	res = conf->definedprimary ? tblspc_locs.prilocs[oset] :
+		tblspc_locs.mirlocs[oset];
+	
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		char *priloc = NULL;
+		char *mirloc = NULL;
+		char *query;
+		int len;
+
+		if (conf->content == -1 && upgrade)
+		{
+			priloc = create_master_string(segdbs, true,
+										  PQgetvalue(res, i, 1));
+			mylog(UDEBUG, "for tablespace %s, prilocations = '%s'",
+				  PQgetvalue(res, i, 1), priloc == NULL ? "(null)" :
+				  priloc);
+			if (tblspc_locs.mirlocs != NULL)
+			{
+				mirloc = create_master_string(segdbs, false,
+											  PQgetvalue(res, i, 1));
+			}
+			mylog(UDEBUG, "for tablespace %s, mirlocations = '%s'",
+				  PQgetvalue(res, i, 1), mirloc == NULL ? "(null)" :
+				  mirloc);
+		}
+
+
+		len = 8196 + (priloc == NULL ? 0 : strlen(priloc)) +
+			(mirloc == NULL ? 0 : strlen(mirloc)) + 1;
+		query = malloc(len);
+		if (upgrade)
+			snprintf(query, len, "insert into pg_catalog.pg_tablespace "
+					 "(spcname,spcowner,spclocation,spcacl,"
+					 "spcprilocations,spcmirlocations) values"
+					 "('%s','%s','%s',%s%s%s::_aclitem,"
+					 "%s%s%s::_text,%s%s%s::_text) "
+					 "returning gp_oid_update(oid, '%s'::oid, ctid, "
+					 "'pg_catalog.pg_tablespace'::regclass::oid);",
+					 PQgetvalue(res, i, 1), PQgetvalue(res, i, 2),
+					 PQgetvalue(res, i, 3), PQgetisnull(res,i,4) ? "" : "'",
+					 PQgetisnull(res,i,4) ? "NULL" : PQgetvalue(res, i, 4),
+					 PQgetisnull(res,i,4) ? "" : "'",
+					 priloc == NULL ? "" : "'{", 
+					 priloc == NULL ? "NULL" : priloc,
+					 priloc == NULL ? "" : "}'",
+					 mirloc == NULL ? "" : "'{",
+					 mirloc == NULL ? "NULL" : mirloc,
+					 mirloc == NULL ? "" : "}'",
+					 PQgetvalue(res, i, 0));
+		else
+			snprintf(query, len, "insert into pg_catalog.pg_tablespace "
+					 "(spcname,spcowner,spclocation,spcacl) values"
+					 "('%s', '%s', '%s',%s%s%s::_aclitem) returning "
+					 "gp_oid_update(oid, '%s'::oid, ctid, "
+					 "'pg_catalog.pg_tablespace'::regclass::oid);",
+					 PQgetvalue(res, i, 1), PQgetvalue(res, i, 2),
+					 PQgetvalue(res, i, 3), PQgetisnull(res,i,4) ? "" : "'",
+					 PQgetisnull(res,i,4) ? "NULL" : PQgetvalue(res, i, 4),
+					 PQgetisnull(res,i,4) ? "" : "'",
+					 PQgetvalue(res, i, 0));
+
+		run_query(conf, 0, query);
+
+		check_ok(segdbs);
+
+		free(query);
+		
+		if (priloc)
+			free(priloc);
+		if (mirloc)
+			free(mirloc);
+	}
+}
+
+static void
+help(void)
+{
+	/* The line below marks the start and end of the screen on an 80 col term
+	 *      ===============================================================================
+	 */
+	printf("%s is used to upgrade a Greenplum DB 3.0 series system to a \n"
+		   "Greenplum DB 3.1 series system.\n\n", myname);
+	printf("%s must be run from the master database node after upgrading the \n", myname);
+	printf("Greenplum Database software.\n\n");
+	printf("Usage:\n");
+	printf("  %s [OPTION]...\n", myname);
+
+	printf("\nGeneral options:\n");
+	printf(_("  --help                 show this help, then exit\n"));
+	printf(_("  --version              output version information, then exit\n"));
+	printf(_("\nConnection options:\n"));
+	printf(_("  -h, --host=HOSTNAME    database server host or socket directory\n"));
+	printf(_("  -p, --port=PORT        database server port number\n"));
+	printf(_("  -U, --username=NAME    connect as specified database user (must be superuser!)\n"));
+	printf(_("  -W, --password         force password prompt (should happen automatically)\n"));
+	printf(_("  -d, --debug            verbose/debugging output\n"));
+	printf(_("  -D, --downgrade        downgrade from 3.1 to 3.0\n"));
+	printf(_("  -t, --test             do everything but the actual upgrade\n"));
+	printf(_("                         (prints SQL, connection info, etc)\n"));
+	printf(_("  -L, --log-detail       print a log message with time details\n"));
+}
+
+int
+main(int argc, char **argv)
+{
+	char conninfo[1024];
+	PGconn	 *conn;
+	PGresult   *res;
+	int		 i;
+	config_t **segdbs;  
+	int segdbcount = 0;
+	config_t lconn;
+	
+	
+	static struct option long_options[] =
+	{
+		{"host", required_argument, NULL, 'h'},
+		{"port", required_argument, NULL, 'p'},
+		{"username", required_argument, NULL, 'U'},
+		{"version", no_argument, NULL, 'V'},
+		{"password", no_argument, NULL, 'W'},
+		{"debug", no_argument, NULL, 'd'},
+		{"help", no_argument, NULL, '?'},
+		{"downgrade", no_argument, NULL, 'D'},
+		{"test", no_argument, NULL, 't'},
+		{"log-detail", no_argument, NULL, 'L'},
+		{NULL, 0, NULL, 0}
+	};
+
+	int		 optindex;
+	extern char *optarg;
+	extern int  optind;
+	int		 c;
+	
+	char *dbname = NULL;
+	char *host = NULL;
+	char *port = NULL;
+	char *username = NULL;
+	char *version = NULL;
+	bool isMPP;
+	bool force_password = false;
+
+	char *txn_str = ugstr(); /* for 2PC */
+
+	
+	myname = argv[0];
+	
+	if (argc > 1)
+	{
+		if (strcmp(argv[1], "--help") == 0)
+		{
+			help();
+			exit(0);
+		}
+		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
+		{
+			fprintf(stderr, "%s (Greenplum Database) %s",
+				   	myname, GPUP_VERSION);
+			exit(0);
+		}
+	}
+
+	while ((c = getopt_long(argc, argv, "h:p:U:dD?tVWL",
+							long_options, &optindex)) != -1)
+	{
+		switch (c)
+		{
+
+			case 'h':
+				host = optarg;
+				break;
+			case 'p':
+				port = optarg;
+				break;
+			case 'U':
+				username = optarg;
+				break;
+			case 'W':
+				force_password = true;
+				break;
+			case 'd':
+				verbose = true;
+				break;
+			case '?':
+				{
+					help();
+					exit(EXIT_SUCCESS);
+				}
+				break;
+			case 't':
+				do_it = false;
+				break;
+			case 'D':
+				upgrade = false;
+				break;
+			case 'L':
+				detailed_log_msg = true;
+				break;
+			default:
+				mylog(UERROR, "unrecognised argument '%c'", c);
+				exit(EXIT_FAILURE);
+				break;
+		}
+	}
+  
+	/*
+	 * if we still have arguments, use it as the username
+	 */
+	while (argc - optind >= 1)
+	{
+	   if (!username)
+			username = argv[optind];
+		else 
+			mylog(UERROR, "extra command-line argument \"%s\" ignored",
+				  argv[optind]);
+
+		optind++;
+	}
+ 
+	/* some of these are not valid on Windows */
+#ifdef SIGHUP
+	pqsignal(SIGHUP, trapsig);
+#endif
+#ifdef SIGINT
+	pqsignal(SIGINT, trapsig);
+#endif
+#ifdef SIGQUIT
+	pqsignal(SIGQUIT, trapsig);
+#endif
+#ifdef SIGTERM
+	pqsignal(SIGTERM, trapsig);
+#endif
+
+	/* Ignore SIGPIPE when writing to backend, so we can clean up */
+#ifdef SIGPIPE
+	pqsignal(SIGPIPE, SIG_IGN);
+#endif
+
+	/* initial DB we connect to */
+	dbname = "template1";  
+
+
+	/*
+	 * If the user supplies a parameter on the command line, use it as the
+	 * conninfo string; otherwise default to setting dbname=postgres and using
+	 * environment variables or defaults for all other connection parameters.
+	 */
+	conninfo[0] = '\0';
+	if (host)
+	{
+		strcat(conninfo, "host=");
+	 	strcat(conninfo, host);
+	}
+	if (port)
+	{
+		strcat(conninfo," port=");
+	 	strcat(conninfo, port);
+	}
+	if (dbname)
+	{
+	 	strcat(conninfo," dbname=");
+	 	strcat(conninfo, dbname);
+	}
+	if (username)
+	{
+	 	strcat(conninfo," user=");
+	 	strcat(conninfo, username);
+	}
+	 
+	strcat(conninfo , " " CONNOPTIONS);
+	
+	mylog(UDEBUG, "%s running.", myname);
+
+	/* Make a connection to the database */
+	conn = connect_to_db(conninfo, force_password);
+
+	MemSet(&lconn, 0, sizeof(config_t));
+	lconn.conn = conn;
+	lconn.hostname = host;
+	
+	res = run_query(&lconn, 0, "SELECT VERSION()");
+
+	/* we don't have any segs up yet */
+	check_ok(NULL);
+
+	version = PQgetvalue(res, 0, 0);
+	
+	if (strchr(version,')') != NULL)
+	{
+		char *ptr = strchr(version,')') + 1;
+		*ptr = '\0';
+	}
+
+	mylog(UINFO, "version of system: %s", version);
+
+	if (strstr(version,"Greenplum Database") != 0) 
+		isMPP = 1;
+	else
+		isMPP = 0;
+		
+	if (!isMPP)
+	{	
+		mylog(UDEBUG, "This is not a Greenplum Database system!");
+		PQfinish(conn);
+		exit(1);
+	}
+
+	if (strncmp(version, "PostgreSQL 8.2.5",strlen("PostgreSQL 8.2.5")) != 0)
+	{
+		mylog(UERROR, "You must upgrade the Greenplum Database software to Greenplum Database 3.1");
+		mylog(UERROR, "and restart the system, before running this utility\n");
+		PQfinish(conn);
+		exit(1);
+		
+	}
+	PQclear(res);
+
+
+	/* set up external table entries */
+	setQDexttables(&lconn);
+
+
+	/* 
+	 * Get the list of databases and nodes in the cluster. Order is 
+	 * significant.
+	 */
+	res = run_query(&lconn, 0, "select content, definedprimary, dbid, "
+					"isprimary,"
+					"valid, hostname, port, datname from "
+					"pg_catalog.gp_configuration "
+					"cross join pg_catalog.pg_database "
+					"WHERE (content = -1 AND definedprimary = 't' "
+					"AND isprimary = 't') "
+					" OR (content <> -1) "
+					"order by content," 
+					"definedprimary desc, dbid;");
+	check_ok(NULL);
+	segdbcount = PQntuples(res);
+
+	/* 
+	 * segdbs stores connections to each db on each segment. The last entry
+	 * is NULL, so that we can loop until we find a NULL config.
+	 */
+	segdbs = malloc(sizeof(config_t *) * (segdbcount + 1));
+
+	/* next, save the rows */
+	for (i = 0; i < segdbcount; i++)
+	{
+		segdbs[i] = malloc(sizeof(config_t));
+		segdbs[i]->content = atol(PQgetvalue(res, i, 0));
+		segdbs[i]->definedprimary = PQgetvalue(res, i, 1)[0] == 't';
+		segdbs[i]->dbid = atol(PQgetvalue(res, i, 2));
+		segdbs[i]->isprimary = PQgetvalue(res, i, 3)[0] == 't';
+		segdbs[i]->valid = PQgetvalue(res, i, 4)[0] == 't';
+		
+		if (i == 0 && segdbs[i]->content == -1 && host != NULL)
+			segdbs[i]->hostname = host;
+		else 
+			segdbs[i]->hostname = strdup(PQgetvalue(res, i, 5));
+
+		segdbs[i]->port = strdup(PQgetvalue(res, i, 6));
+		segdbs[i]->dbname = strdup(PQgetvalue(res, i, 7));
+		segdbs[i]->conn = NULL;
+	}
+	
+	segdbs[i] = NULL;
+	
+	PQclear(res);
+	run_query(&lconn, 0, "abort;");
+	
+	mylog(UDEBUG, "got configuration information from entry db.");
+
+	mylog(UDEBUG, "opening template0 databases.");
+	
+	/* allow access to template0 */
+	for (i = 0; i < segdbcount; i++)
+	{
+		config_t *conf = segdbs[i];
+		char connstr[128];
+		
+		if (strcmp(conf->dbname, "template1") != 0)
+			continue;
+		
+		mylog(UDEBUG, "updating segdb content %d definedprimary %d dbid %d",
+			  conf->content,conf->definedprimary,conf->dbid);
+
+		sprintf(connstr, "host=%s port=%s dbname=%s " CONNOPTIONS,
+				conf->hostname, conf->port, conf->dbname);
+	
+		/* Make a connection to the database */
+	   	conf->conn = connect_to_db(connstr, false);
+
+		conf->conninfo = strdup(connstr);
+		check_ok(segdbs);
+		
+   		run_query(conf, 0, "update pg_database set "
+				  "datallowconn = 't' where datname='template0'");
+
+		check_ok(segdbs);
+
+		/* 
+		 * We must commit now and re-open a transaction block, so that
+		 * our update is visible.
+		 */
+
+		run_query(conf, 0, "commit;");
+		check_ok(segdbs);
+		run_query(conf, 0, "begin;");
+		check_ok(segdbs);
+   	}
+
+	for (i = 0; i < segdbcount; i++)
+	{
+		config_t *conf = segdbs[i];
+		char connstr[1024];
+		
+		mylog(UINFO, "upgrading segment %s:%s (%s)", conf->hostname,
+			   conf->port, conf->dbname);
+
+		if (!conf->conn)
+		{
+			sprintf(connstr,"host=%s port=%s dbname=%s " CONNOPTIONS,
+					conf->hostname, conf->port, conf->dbname);
+	
+			/* Make a connection to the database */
+		   	conf->conn = connect_to_db(connstr, false);
+			conf->conninfo = strdup(connstr);
+		}
+	}
+
+	init_tblspc_locs(segdbs);
+
+	/*
+	 * We now have a connection open to the database on every segDB 
+	 * (0 is masterDB)
+	 */
+	for (i = 0; i < segdbcount; i++)
+	{
+		check_ok(segdbs);
+
+		mylog(UDEBUG, "updating segdb content %d definedprimary %d dbid "
+				   "%d for database %s, connstr = \"%s\"",segdbs[i]->content,
+				   segdbs[i]->definedprimary, segdbs[i]->dbid,
+				   segdbs[i]->dbname, segdbs[i]->conninfo);
+
+		/* modify schema */
+		schema_upgrade(segdbs[i]);
+		check_ok(segdbs);
+
+		/* run the upgrade command */
+		run_upgrade_commands(segdbs[i]);
+
+		/* 
+		 * Do it only on the master. We must do it after the upgrade commands
+		 * because resqueue uses float4. The downgrade case is handled
+		 * else where because we must do it before changing the float4 type.
+		 */
+		if (upgrade)
+		{
+			if (segdbs[i]->content == -1 && segdbs[i]->definedprimary == true
+				&& strcmp(segdbs[i]->dbname, "template1") == 0)
+			{
+				pg_resqueue_cts = run_query(segdbs[i], 0, 
+								"delete from pg_catalog.pg_resqueue"
+								" returning rsqname, rsqcountlimit, "
+								"rsqcostlimit, rsqovercommit, oid;");
+				mylog(UDEBUG, "found %u resource queues", 
+					  PQntuples(pg_resqueue_cts));
+			}
+		}
+		check_ok(segdbs);		
+
+		post_upgrade(segdbs[i]);
+	}
+	
+	for (i = 0; i < segdbcount; i++)
+	{ 	
+		
+		if (strcmp(segdbs[i]->dbname, "template1") != 0)
+			continue;
+		
+		readd_pg_tablespace_rows(segdbs, segdbs[i]);
+
+		mylog(UDEBUG, "updating segdb content %d definedprimary %d dbid %d",
+				   segdbs[i]->content, segdbs[i]->definedprimary,
+				   segdbs[i]->dbid);
+	
+		run_query(segdbs[i], 0, "update pg_database set datallowconn = 'f' "
+						"where datname='template0'");
+		check_ok(segdbs);
+	}
+
+	/* prepare commit and commit */
+	for (i = 0; i < segdbcount; i++)
+	{	
+		run_query(segdbs[i], 0, "prepare transaction '%s-%s';",
+				 txn_str, segdbs[i]->dbname);
+		
+		check_ok(segdbs);
+	}
+
+	for (i = 0; i < segdbcount; i++)
+	{	
+		run_query(segdbs[i], 0, "commit prepared '%s-%s';",
+				 txn_str, segdbs[i]->dbname);
+	}
+	
+	for (i = 0; i < segdbcount; i++)
+	{	
+		if (strcmp(segdbs[i]->dbname, "template1") == 0 ||
+			strcmp(segdbs[i]->dbname,"template0") == 0)
+		{
+			/* run in parallel */
+			mylog(UDEBUG, "running parallel VACUUM on template database");
+			mylog(UDEBUG, "conninfo = %s", segdbs[i]->conninfo);
+			run_query(segdbs[i], 1, "VACUUM FULL; VACUUM FREEZE;");
+		}
+	}
+
+	/* 
+	 * We don't need anything special here since run_query made sure to 
+	 * send the query to the server. Just block straight away.
+	 */
+	for (i = 0; i < segdbcount; i++)
+	{
+		if (strcmp(segdbs[i]->dbname, "template1") == 0 ||		
+			strcmp(segdbs[i]->dbname,"template0") == 0)
+		{
+			PGresult *res = PQgetResult(segdbs[i]->conn);
+
+			if (PQresultStatus(res) != PGRES_COMMAND_OK)
+				mylog(UWARN, "VACUUM returned error on host \"%s\", port %s, "
+					  "database \"%s\"", segdbs[i]->hostname, segdbs[i]->port,
+					  segdbs[i]->dbname);
+		}
+	}
+
+	for (i = 0; i < segdbcount; i++)
+	{
+		/* upgrade each host, not every database, upgrade case only */
+		if (strcmp(segdbs[i]->dbname, "template1") == 0 && 
+			segdbs[i]->content == -1 && segdbs[i]->definedprimary == true
+			&& upgrade)
+		{
+			readd_pg_resqueue_cts(segdbs[i]);
+		}
+		if (!upgrade)
+		{
+			if (strcmp(segdbs[i]->dbname, "template1") == 0)
+				run_query(segdbs[i], 0, "select gp_downgrade_controlfile();");
+	
+			run_query(segdbs[i], 0, "drop function "
+					  "gp_downgrade_controlfile();");
+
+		}
+		run_query(segdbs[i], 0, 
+				  "drop function gp_oid_update(oid, oid, tid, oid);");
+		PQfinish(segdbs[i]->conn);
+	}
+	mylog(UINFO, "done");
+	/* close the connection to the database and cleanup */
+	return(0);	
+}

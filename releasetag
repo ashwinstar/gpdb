@@ -1,0 +1,10 @@
+#!/bin/bash
+
+TMP=`echo '$Name:  $' | awk 'BEGIN {FS = ":"} {print $2}' | awk '{print $1}'`
+echo -e "-\c"
+if [ x"$TMP" != x"$" ]; then
+  echo -e "$TMP\c"
+else
+  echo -e "devel\c"
+fi
+

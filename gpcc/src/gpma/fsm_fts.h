@@ -1,0 +1,1315 @@
+
+#define ARRAY_STOPPING_STATUS                        "stopping"
+#define ARRAY_STOPPED_STATUS                         "stopped"
+#define ARRAY_STARTING_STATUS                        "starting"
+#define ARRAY_RUNNING_STATUS                         "running"
+#define ARRAY_DELETING_STATUS                        "deleting"
+#define ARRAY_INITIALIZING_STATUS                    "initializing"
+#define ARRAY_INVALID_STATUS                         "invalid"
+#define ARRAY_NO_ARRAY_STATUS                        "no_array"
+#define ARRAY_CONNECTING_STATUS                      "connecting"
+#define ARRAY_BUSY_STATUS                            "busy"
+
+static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port, int node, 
+				     char *dir, char definedprimary, char isprimary, char valid, apr_pool_t *pool)
+{
+    char key[128];
+    const char *value, *s;
+    char addr[128];
+
+    cmdslot->u.fts.seginfo[idx].name = apr_pstrdup(pool, name);
+    cmdslot->u.fts.seginfo[idx].dbid = dbid;
+    cmdslot->u.fts.seginfo[idx].content = content;
+    cmdslot->u.fts.seginfo[idx].port = port;
+    cmdslot->u.fts.seginfo[idx].haidx = node;
+    cmdslot->u.fts.seginfo[idx].ha = apr_psprintf(pool, "node.%d", node);
+    cmdslot->u.fts.seginfo[idx].dir = apr_pstrdup(pool, dir);
+    cmdslot->u.fts.seginfo[idx].definedprimary = definedprimary;
+    cmdslot->u.fts.seginfo[idx].isprimary = isprimary;
+    cmdslot->u.fts.seginfo[idx].valid = valid;
+
+    sprintf(key, "node.%d", node);
+    value = config_get(gpma.cfg, key);
+    s = strchr(value, ' ');
+    if (!s) {
+	strcpy(addr, value);
+    } else {
+	strncpy(addr, value, s - value);
+	addr[s-value] = 0;
+    }
+    cmdslot->u.fts.seginfo[idx].host = apr_pstrdup(pool, addr);
+}
+
+static apr_status_t setup_cleanup_seginfo(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+
+    cmdslot->u.fts.nseginfo = 0;
+    cmdslot->u.fts.seginfo = 0;
+    return 0;
+}
+
+static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *)_cmdslot;
+    int i, n, dbid, content, node;
+    char key[128], dir[1024];
+    const char *value;
+    int master_port, base_port, mirror_base_port;
+    int *node_base_port, *node_mirror_base_port;
+
+    master_port = config_get_or_set_int(gpma.cfg, CONFIG_MASTER_PORT_KEY, CONFIG_MASTER_PORT_VALUE);
+    base_port = config_get_or_set_int(gpma.cfg, CONFIG_BASE_PORT_KEY, CONFIG_BASE_PORT_VALUE);
+    mirror_base_port = config_get_or_set_int(gpma.cfg, CONFIG_MIRROR_BASE_PORT_KEY, CONFIG_MIRROR_BASE_PORT_VALUE);
+
+    for (i = 0 ;  ; i++) {
+	sprintf(key, "node.%d", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    break;
+    }
+    if (i == 0) {
+	gpcc_log_error("gpdb must have at least one node");
+	return APR_EINVAL;
+    }
+    cmdslot->u.fts.nnode = i;
+    cmdslot->u.fts.nopened = 0;
+
+
+    for (i = 0 ; ; i++) {
+	sprintf(key, "gpdb.seg.m.%d", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    break;
+    }
+    
+    if (i == 0) {
+	gpcc_log_error("gpdb must have at least one master segment gpdb.seg.m.0");
+	return APR_EINVAL;
+    }
+	
+
+    n = i;
+
+    for (i = 0 ; ; i++) {
+	sprintf(key, "gpdb.seg.%d.0", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    break;
+	
+	n++;
+
+	sprintf(key, "gpdb.seg.%d.1", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    continue;
+
+	n++;
+    }	
+
+    cmdslot->u.fts.nseginfo = n;
+    cmdslot->u.fts.seginfo = apr_palloc(cmdslot->pool, sizeof(*cmdslot->u.fts.seginfo) * n);
+
+    node_base_port = apr_palloc(cmdslot->pool, sizeof(int) * cmdslot->u.fts.nnode);
+    node_mirror_base_port = apr_palloc(cmdslot->pool, sizeof(int) * cmdslot->u.fts.nnode);
+    for (i = 0 ; i < cmdslot->u.fts.nnode ; i++) {
+	node_base_port[i] = base_port;
+	node_mirror_base_port[i] = mirror_base_port;
+    }
+
+    /* master QD */
+    strcpy(key, "gpdb.seg.m.0");
+    value = config_get(gpma.cfg, key);
+    if (!value)
+	return APR_EINVAL;
+
+    dbid = 1;
+    content = -1;
+    if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
+	gpcc_warning(FLINE, "value format error. %s = %s", key, value);
+	return APR_EINVAL;
+    }	
+    
+    if (node >= cmdslot->u.fts.nnode) {
+	gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
+	return APR_EINVAL;
+    }
+
+    if (dir[0] != '/') {
+	gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	return APR_EINVAL;
+    }
+	
+    setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, 't', 't', 't', cmdslot->pool);
+    
+    for (i = 0 ;  ; i++) {
+	/* master QE */
+	sprintf(key, "gpdb.seg.%d.0", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    break;
+
+	if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
+	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
+	    return APR_EINVAL;
+	}	
+
+	if (node >= cmdslot->u.fts.nnode) {
+	    gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
+	    return APR_EINVAL;
+	}
+
+	if (dir[0] != '/') {
+	    gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	    return APR_EINVAL;
+	}
+	
+	dbid++;
+	content++;
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, node_base_port[node]++, node, dir, 't', 't', 't', cmdslot->pool);
+
+	/* mirror QE */
+	sprintf(key, "gpdb.seg.%d.1", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    continue;
+
+	if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
+	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
+	    return APR_EINVAL;
+	}
+
+	if (node >= cmdslot->u.fts.nnode) {
+	    gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
+	    return APR_EINVAL;
+	}
+
+	if (dir[0] != '/') {
+	    gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	    return APR_EINVAL;
+	}
+
+	dbid++;	
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, node_mirror_base_port[node]++, node, dir, 'f', 'f', 't', cmdslot->pool);
+    }
+
+    /* standby QD */
+    content = -1;
+    for (i = 1 ; ; i++) {
+	sprintf(key, "gpdb.seg.m.%d", i);
+	value = config_get(gpma.cfg, key);
+	if (!value)
+	    break;
+	if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
+	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
+	    return APR_EINVAL;
+	}
+
+	if (node >= cmdslot->u.fts.nnode) {
+	    gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
+	    return APR_EINVAL;
+	}
+
+	if (dir[0] != '/') {
+	    gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	    return APR_EINVAL;
+	}
+
+	dbid++;
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, 'f', 'f', 't', cmdslot->pool);
+    }	
+
+    return 0;
+}
+
+
+static apr_status_t a_fts_http_redirect_leadma(gpcc_net_conn_t conn, const char *url)
+{
+    char location[128], json[128];
+    int ma_id = 0;
+
+    if (*gpma.lma_cmdslot->u.lma.leadma) {
+	if (sscanf(gpma.lma_cmdslot->u.lma.leadma, "ma.%d", &ma_id) != 1 || ma_id >= gpma.ma_max)
+	    gpcc_fatal(FLINE, "Invalid ma name %s", gpma.lma_cmdslot->u.lma.leadma);
+	sprintf(location, "http://%s%s", gpma.ma_addr[ma_id], url);
+	sprintf(json, "{ \"location\" : \"%s\"}", gpma.ma_addr[ma_id]);
+	gpcc_net_http_redirect_close(conn, location, json);
+	return 0;
+    } 
+    return 0;
+}
+
+
+void a_fts_node_init(void)
+{
+    char node_name[100];
+    const char* node;
+    int cnt, i;
+    cmdslot_t* cp;
+    gpcc_event_t *ev;
+
+    for (cnt = 0; ; cnt++) {
+	sprintf(node_name, "node.%d", cnt);
+	node = config_get(gpma.cfg, node_name);
+	if (!node) 
+	    break;
+    }
+
+    if (cnt > 0) {
+	gpma.node_max = cnt;
+	gpma.node_cmdtab = apr_palloc(gpma.pool, (cnt + 1) * sizeof(gpma.node_cmdtab[0]));
+	memset(gpma.node_cmdtab, 0, (cnt + 1) * sizeof(gpma.node_cmdtab[0]));
+	for (i = 0; i < cnt; i++) {
+	    sprintf(node_name, "node.%d", i);
+	    node = config_get(gpma.cfg, node_name);
+	    cp = gpma.node_cmdtab[i] = cmdslot_alloc(node_name, NODE_CMDSTATE);
+	    if (apr_tokenize_to_argv(node, &cp->u.node.hosttab, cp->pool)) {
+		gpcc_fatal(FLINE, "Illegal format for entry '%s' in configuration", node_name);
+	    }
+	    for (cp->u.node.hosttab_max = 0 ; 
+		 cp->u.node.hosttab[cp->u.node.hosttab_max] ; 
+		 cp->u.node.hosttab_max++) ;
+	    cp->u.node.hostidx = 0;
+	}
+    }
+
+
+    /* kick off haset */
+    gpma.haset_cmdslot = cmdslot_alloc("HASET", HASET_OFF_CMDSTATE);
+    gpma.haset_cmdslot->u.haset.total = cnt;
+
+    ev = gpcc_event_alloc(INIT_EVENT, gpma.haset_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, ev);
+
+
+    /* kick off node */
+    for (i = 0 ; i < gpma.node_max ; i++) {
+	ev = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, ev);
+    }
+}
+
+
+static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    int i;
+    gpcc_event_t *evt;
+
+    if (config_get(gpma.cfg, "gpdb.name")) {
+	
+	if (setup_init_seginfo(ev, _cmdslot))
+	    gpcc_fatal(FLINE, "seginfo setup error.");
+
+
+	for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
+	    gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
+			  cmdslot->u.fts.seginfo[i].name,
+			  cmdslot->u.fts.seginfo[i].host,
+			  cmdslot->u.fts.seginfo[i].dbid,
+			  cmdslot->u.fts.seginfo[i].content,
+			  cmdslot->u.fts.seginfo[i].port,
+			  cmdslot->u.fts.seginfo[i].dir,
+			  cmdslot->u.fts.seginfo[i].haidx,
+			  cmdslot->u.fts.seginfo[i].ha);
+	}
+
+
+	/* kick off the node */
+	a_fts_node_init();
+    } else {
+	evt = gpcc_event_alloc(ARRAY_ABSENT_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
+
+    return 0;
+}
+
+
+static apr_status_t a_fts_waiting(gpcc_event_t *ev, void *_cmdslot)
+{
+    char *url, *cmd = "";
+    gpcc_net_conn_t conn;
+    struct json_object *obj;
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+
+    switch (ev->etype)	{ 
+    case ARRAY_INIT_EVENT:
+	url = "/gpcc/init";
+	cmd = "init";
+	break;
+    case ARRAY_STOP_EVENT:
+	cmd = "stop";
+	break;
+    case ARRAY_START_EVENT:
+	cmd = "start";
+	break;
+    case ARRAY_DELETE_EVENT:
+	cmd = "delete";
+	break;
+    default:
+	break;
+    }
+	
+    if (IS_NO_LEADMA) {
+	obj = gpcc_json_http_reply(cmd, "failure", "Lead MA is not determined");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);
+    } else if (!IS_LEADMA) {
+	a_fts_http_redirect_leadma(conn, url);
+    } else {
+	obj = gpcc_json_http_reply(cmd, "failure", "connecting");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);
+    }
+    return 0;
+}
+
+
+static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    char *url, *mode = "normal";
+    gpcc_net_conn_t conn;
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+    struct json_object *obj;
+    gpcc_net_uri_t *uri;
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+
+    uri = gpcc_net_uri_alloc(url);
+    if (uri) {
+	char *m = gpcc_net_uri_param(uri, "mode");
+	if (m) {
+	    char *opt[2] = {"normal", "force"};
+	    int i;
+	    for (i = 0 ; i < gpcc_lengthof(opt) ; i++) {
+		if (apr_strnatcasecmp(m, opt[i]) == 0)
+		    break;
+	    }
+	    if (i >= gpcc_lengthof(opt)) {
+		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+		gpcc_evqueue_put(gpma.evq, evt);
+		gpcc_net_uri_free(uri);
+		obj = gpcc_json_http_reply("start", "failure", "parameter missing");
+		gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+		json_object_put(obj);
+		return 0;
+	    }
+	    mode = m;
+	}
+    }
+
+    p = cmdslot_alloc("ARRAY_START", FTS_ARRAY_START_CMDSTATE);
+    p->u.array_start.parent_cmdidx = cmdslot->cmdidx;
+    p->u.array_start.mode = apr_pstrdup(p->pool, mode);
+    cmdslot->u.fts.active_cmdidx = p->cmdidx;
+    
+    evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    obj = gpcc_json_http_reply("start", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+
+    if (uri)
+	gpcc_net_uri_free(uri);
+    return 0;
+}
+
+static apr_status_t a_fts_array_start_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj;
+    gpcc_event_t *evt;
+    char *status;
+
+    obj = json_tokener_parse(pkt->payload);
+
+    status = gpcc_json_object_get_string(obj, "status", "failure");
+    if (strcmp(status, "ok") == 0) {
+	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+    } else {
+	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);	
+    }
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_net_conn_t conn;
+    struct json_object *obj = 0;
+    char *url;
+    char *state;
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+
+    if (IS_NO_LEADMA) {
+	obj = gpcc_json_http_status_reply(config_get(gpma.cfg, "gpdb.name"), "ok", "undetermined");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);
+    } else if (!IS_LEADMA) {
+	a_fts_http_redirect_leadma(conn, url);
+	return 0;
+    }
+
+    /* send the current state */
+    switch (cmdslot->cmdstate) {
+    case FTS_CMDSTATE:
+    case FTS_WAIT_CMDSTATE:
+	state = ARRAY_CONNECTING_STATUS;
+	break;
+    case FTS_EMPTY_CMDSTATE:
+	state = ARRAY_NO_ARRAY_STATUS;
+	break;
+    case FTS_INITIALIZING_CMDSTATE:
+    case FTS_INITIALIZING0_CMDSTATE:
+	state = ARRAY_INITIALIZING_STATUS;
+	break;
+    case FTS_STOPPED_CMDSTATE:
+	state = ARRAY_STOPPED_STATUS;
+	break;
+    case FTS_STARTING_CMDSTATE:
+	state = ARRAY_STARTING_STATUS;
+	break;
+    case FTS_RUNNING_CMDSTATE:
+	state = ARRAY_RUNNING_STATUS;
+	break;
+    case FTS_STOPPING_CMDSTATE:
+	state = ARRAY_STOPPING_STATUS;
+	break;
+    case FTS_DELETING_CMDSTATE:
+	state = ARRAY_DELETING_STATUS;
+	break;
+    default:
+	state = ARRAY_INVALID_STATUS;
+	break;
+    }
+
+    obj = gpcc_json_http_status_reply(config_get(gpma.cfg, "gpdb.name"), "ok", state);
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    return 0;
+}
+
+static apr_status_t a_fts_busy_ok_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    char *url;
+    gpcc_net_conn_t conn;
+    struct json_object *obj = 0;
+    char *msg;
+
+    if (cmdslot->cmdstate ==  FTS_CMDSTATE) {
+	msg = "server is waking up";
+    } else if (cmdslot->cmdstate ==  FTS_WAIT_CMDSTATE) {	
+	msg = "server is connecting";
+    } else if (cmdslot->cmdstate ==  FTS_EMPTY_CMDSTATE) {	
+	msg = "array is absent";
+    } else if (cmdslot->cmdstate ==  FTS_INITIALIZING_CMDSTATE) {	
+	msg = "server is initializing";
+    } else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
+	msg = "server stopped";
+    } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
+	msg = "server is starting";
+    } else if (cmdslot->cmdstate == FTS_RUNNING_CMDSTATE) {
+	msg = "server is running";
+    } else if (cmdslot->cmdstate == FTS_STOPPING_CMDSTATE) {
+	msg = "server is stopping";
+    } else if (cmdslot->cmdstate == FTS_DELETING_CMDSTATE) {
+	msg = "server is deleting";
+    } else {
+	msg = "invalid server state";
+    }
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+    obj = gpcc_json_http_reply("", "ok", msg);
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    return 0;
+}
+
+static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    char *url;
+    gpcc_net_conn_t conn;
+    struct json_object *obj = 0;
+    char *msg;
+
+    if (cmdslot->cmdstate ==  FTS_CMDSTATE) {
+	msg = "server is initializing";
+    } else if (cmdslot->cmdstate ==  FTS_WAIT_CMDSTATE) {
+	msg = "server is setting up"; 
+    }
+    else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
+	msg = "server is not running";
+    } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
+	msg = "server is starting";
+    } else if (cmdslot->cmdstate == FTS_RUNNING_CMDSTATE) {
+	msg = "server is running";
+    } else if (cmdslot->cmdstate == FTS_STOPPING_CMDSTATE) {
+	msg = "server is stopping";
+    } else if (cmdslot->cmdstate == FTS_DELETING_CMDSTATE) {
+	msg = "server is deleting";
+    } else {
+	msg = "invalid server state";
+    }
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+    obj = gpcc_json_http_reply("", "failure", msg);
+    gpcc_net_http_close(conn, 200, "failure", json_object_to_json_string(obj));
+    json_object_put(obj);
+    return 0;
+}
+
+static apr_status_t a_fts_running(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    cmdslot->u.fts.active_cmdidx = 0;
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_stop_forsure(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+
+    p = cmdslot_alloc("ARRAY_STOP", FTS_ARRAY_STOP_CMDSTATE);
+    p->u.array_stop.parent_cmdidx = cmdslot->cmdidx;
+    p->u.array_stop.mode = apr_pstrdup(p->pool, "immediate");
+    cmdslot->u.fts.active_cmdidx = p->cmdidx;
+    
+    evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    return 0;
+}
+
+
+static apr_status_t a_fts_array_stop(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    char *url, *mode = "immediate";
+    gpcc_net_conn_t conn;
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+    struct json_object *obj;
+    gpcc_net_uri_t *uri;
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+    
+    uri = gpcc_net_uri_alloc(url);
+    if (uri) {
+	char *m = gpcc_net_uri_param(uri, "mode");
+	if (m) {
+	    char *opt[3] = {"immediate", "fast", "smart"};
+	    int i;
+	    for (i = 0 ; i < gpcc_lengthof(opt) ; i++) {
+		if (apr_strnatcasecmp(m, opt[i]) == 0)
+		    break;
+	    }
+	    if (i >= gpcc_lengthof(opt)) {
+		/* invalid mode */
+		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+		gpcc_evqueue_put(gpma.evq, evt);
+		gpcc_net_uri_free(uri);
+		obj = gpcc_json_http_reply("stop", "failure", "parameter missing");
+		gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+		json_object_put(obj);
+		return 0;
+	    }
+	    
+	    mode = m;
+	}
+    }
+
+    p = cmdslot_alloc("ARRAY_STOP", FTS_ARRAY_STOP_CMDSTATE);
+    p->u.array_stop.parent_cmdidx = cmdslot->cmdidx;
+    p->u.array_stop.mode = apr_pstrdup(p->pool, mode);
+    cmdslot->u.fts.active_cmdidx = p->cmdidx;
+    
+    evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    obj = gpcc_json_http_reply("stop", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    if (uri)
+	gpcc_net_uri_free(uri);
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_stop_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj;
+    gpcc_event_t *evt;
+    char *status;
+
+    obj = json_tokener_parse(pkt->payload);
+
+    status = gpcc_json_object_get_string(obj, "status", "failure");
+    if (strcmp(status, "ok") == 0) {
+	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+    } else {
+	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);	
+    }
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    return 0;
+}
+
+
+static apr_status_t a_fts_stopped(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    cmdslot->u.fts.active_cmdidx = 0;
+    return 0;
+}
+
+static apr_status_t a_fts_failure(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    cmdslot->u.fts.active_cmdidx = 0;
+    return 0;
+}
+
+static apr_status_t a_fts_array_config_verify() {
+    int i, n;
+    const char *v;
+    int errcnt = 0;
+    char buf[1024];
+    int nnode = 0;
+    char dir[1024];
+
+    /* node.X */
+    for (i = 0 ; ; i++) {
+	sprintf(buf, "node.%d", i);
+	if (config_get(gpma.cfg, buf) == 0) 
+	    break;
+    }
+    nnode = i;
+    if (nnode == 0) {
+	gpcc_log_error("\t- node.0 missing");
+	errcnt++;
+    }
+
+    /* name must exist */
+    if (! config_get(gpma.cfg, "gpdb.name")) {
+	gpcc_log_error("\t- gpdb.name missing");
+	errcnt++;
+    }
+	
+    /* default master_port port if not set */
+    if (! config_get(gpma.cfg, "gpdb.seg.master_port")) {
+	gpcc_log_error("\t- gpdb.seg.master_port missing");
+	errcnt++;
+    }
+    i = config_get_int(gpma.cfg, "gpdb.seg.master_port");
+    if (! (0 < i && i < (1 << 16))) {
+	gpcc_log_error("\t- gpdb.seg.master_port invalid (value %d)", i);
+	errcnt++;
+    }
+    
+    /* default qe baseport if not set */
+    if (! config_get(gpma.cfg, "gpdb.seg.base_port")) {
+	gpcc_log_error("\t- gpdb.seg.base_port missing");
+	errcnt++;
+    }
+    i = config_get_int(gpma.cfg, "gpdb.seg.base_port");
+    if (! (0 < i && i < (1 << 16))) {
+	gpcc_log_error("\t- gpdb.seg.base_port invalid (value %d)", i);
+	errcnt++;
+    }
+    
+    /* default min mirror if not set */
+    i = config_get_or_set_int(gpma.cfg, "gpdb.min_mirror", 0);
+    if (! (0 <= i && i < 2)) {
+	gpcc_log_error("\t- gpdb.min_mirror invalid (value %d)", i);
+	errcnt++;
+    }
+    
+    /* qd must exist */
+    v = config_get(gpma.cfg, "gpdb.seg.m.0");
+    if (!v) {
+	gpcc_log_error("\t- gpdb.seg.m.0 not set");
+	errcnt++;
+    } else {
+    
+	if (sscanf(v, "node.%d:%s", &n, dir) == 2) {
+	    
+	    if (n >= nnode) {
+		gpcc_log_error("\t- segment %s value error.  node should be (%d < %d)", "gpdb.seg.m.0", n, nnode);
+		errcnt++;
+	    }
+	    
+	    if (dir[0] != '/') {
+		gpcc_log_error("\t- segment %s data directory %s must be in full path", "gpdb.seg.m.0", dir);
+		errcnt++;
+	    }
+	} else {
+	    gpcc_log_error("\t- %s value syntax error", v);
+	    errcnt++;
+	}
+    }
+
+    /* minimum 2 QEs, max 512 QEs */
+    for (i = 0; i < 512; i++) {
+	sprintf(buf, "gpdb.seg.%d.0", i);
+	v = config_get(gpma.cfg, buf);
+	if (!v) {
+	    if (i < 2) {
+		gpcc_log_error("\t- %s not set", buf);
+		errcnt++;
+	    }
+	    break;
+	} else {
+
+	    if (sscanf(v, "node.%d:%s", &n, dir) == 2) {
+		
+		if (n >= nnode) {
+		    gpcc_log_error("\t- segment %s value error.  node should be (%d < %d)", buf, n, nnode);
+		    errcnt++;
+		}
+		
+		if (dir[0] != '/') {
+		    gpcc_log_error("\t- segment %s data directory %s must be in full path", buf, dir);
+		    errcnt++;
+		}
+	    } else {
+		gpcc_log_error("\t- %s value syntax error", v);
+		errcnt++;
+	    }
+	}
+    }
+    if (! (2 <= i && i < 512)) {
+	gpcc_log_error("\t- too many segments (max 512)");
+	errcnt++;
+    }
+    
+    /* fail out */
+    if (errcnt) {
+	return errcnt;
+    }
+
+    /* set the number of QEs */
+    config_set_int(gpma.cfg, "gpdb.seg.max", i);
+
+    return 0;
+
+}
+
+static apr_status_t a_fts_array_init_start_nodes(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    char *config;
+    gpcc_net_conn_t conn;
+    gpcc_event_t *evt;
+    struct json_object *obj;
+    int i;
+    int len = ev->edatasz;
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    len -= sizeof(gpcc_net_conn_t);
+    config = ev->pdata + sizeof(gpcc_net_conn_t);
+   
+    if (gpma.maset_cmdslot->u.maset.nopened < gpma.maset_cmdslot->u.maset.total) {
+	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+	obj = gpcc_json_http_reply("init", "failure", "gp init can only be run when all MA's are active");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);	
+	return 0;
+    }
+
+    if (config_parse(gpma.cfg, config, len) || a_fts_array_config_verify()) {
+	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+	obj = gpcc_json_http_reply("init", "failure", "config syntax error");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);	
+	return 0;
+    }
+
+    if (setup_init_seginfo(ev, _cmdslot))
+	gpcc_fatal(FLINE, "seginfo setup error.");
+ 
+    for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
+	gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
+		      cmdslot->u.fts.seginfo[i].name,
+		      cmdslot->u.fts.seginfo[i].host,
+		      cmdslot->u.fts.seginfo[i].dbid,
+		      cmdslot->u.fts.seginfo[i].content,
+		      cmdslot->u.fts.seginfo[i].port,
+		      cmdslot->u.fts.seginfo[i].dir,
+		      cmdslot->u.fts.seginfo[i].haidx,
+		      cmdslot->u.fts.seginfo[i].ha);
+    }
+
+    a_fts_node_init();
+
+    obj = gpcc_json_http_reply("init", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+
+    /* check for connection timeout */
+    cmdslot->countdown = 30;
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_init_start_nodes_failure(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_event_t *evt;
+    int i;
+
+    /* shutdown nodes */
+    for (i = 0 ; i < gpma.node_max ; i++) {
+	evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
+    /* shutdown haset */
+    evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.haset_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    gpma.node_max = 0;
+    gpma.haset_cmdslot = 0;
+    gpma.node_cmdtab = 0;
+    cmdslot->u.fts.nnode = 0;
+    cmdslot->u.fts.nopened = 0;
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_init(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+
+    cmdslot->countdown = 0;
+    p = cmdslot_alloc("ARRAY_INIT", FTS_ARRAY_INIT_CMDSTATE);
+    p->u.array_init.parent_cmdidx = cmdslot->cmdidx;
+    cmdslot->u.fts.active_cmdidx = p->cmdidx;
+    
+    evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_init_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj;
+    gpcc_event_t *evt;
+    char *status;
+
+    obj = json_tokener_parse(pkt->payload);
+
+    status = gpcc_json_object_get_string(obj, "status", "failure");
+    if (strcmp(status, "ok") == 0) {
+	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+    } else {
+	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);	
+    }
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_init_success(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_event_t *evt;
+
+    cmdslot->u.fts.active_cmdidx = 0;
+    evt = gpcc_event_alloc(CFG_UPDATED_EVENT, gpma.cfg_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+    return 0;
+}
+
+static apr_status_t a_fts_array_init_failure(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    const char **keys;
+    int i;
+
+    cmdslot->u.fts.active_cmdidx = 0;
+
+    keys = config_keys(gpma.cfg, cmdslot->pool);
+    for (i = 0 ; keys[i] ; i++) {
+	if (strstr(keys[i], "gpdb.") == keys[i] || strstr(keys[i], "node.") == keys[i]) {
+	    config_set(gpma.cfg, keys[i], 0);
+	}
+    }
+
+    config_gc(gpma.cfg);
+    setup_cleanup_seginfo(ev, _cmdslot);
+    apr_pool_clear(cmdslot->pool);
+    return 0;
+}
+
+static apr_status_t a_fts_array_present(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_event_t *evt;
+
+    if (config_get(gpma.cfg, "gpdb.name") == 0) {
+	evt = gpcc_event_alloc(ARRAY_ABSENT_EVENT, cmdslot->cmdidx, 0);
+    } else {
+	evt = gpcc_event_alloc(ARRAY_PRESENT_EVENT, cmdslot->cmdidx, 0);
+    }
+
+    gpcc_evqueue_put(gpma.evq, evt);
+    return 0;
+}
+
+static apr_status_t a_fts_create_segment_slot(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *slot = _cmdslot;
+    int i;
+    cmdstate_t state = UNIT_CMDSTATE;
+
+    if (gpma.unit_cmdtab) {
+	gpcc_warning(FLINE, "unit cmdtab already exists");
+	return 0;
+    }
+
+    gpma.unit_max = slot->u.fts.nseginfo;
+    gpma.unit_cmdtab = apr_palloc(gpma.pool, (gpma.unit_max+1) * sizeof(gpma.unit_cmdtab[0]));
+    
+    if (slot->cmdstate == FTS_INITIALIZING_CMDSTATE)
+	state = UNIT_STOPPED_CMDSTATE;
+    
+    for (i = 0 ; i < gpma.unit_max ; i++) {
+	gpma.unit_cmdtab[i] = cmdslot_alloc(slot->u.fts.seginfo[i].name, state);
+	gpma.unit_cmdtab[i]->u.unit.content = slot->u.fts.seginfo[i].content;
+	gpma.unit_cmdtab[i]->u.unit.dbid = slot->u.fts.seginfo[i].dbid;
+	gpma.unit_cmdtab[i]->u.unit.port = slot->u.fts.seginfo[i].port;
+	gpma.unit_cmdtab[i]->u.unit.nodeid = slot->u.fts.seginfo[i].haidx;
+	gpma.unit_cmdtab[i]->u.unit.node = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].ha);
+	gpma.unit_cmdtab[i]->u.unit.datadir = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].dir);
+	gpma.unit_cmdtab[i]->u.unit.host = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].host);
+    }
+
+    return 0;
+}
+
+static apr_status_t a_fts_break(gpcc_event_t *ev, void *arg)
+{
+    int i;
+    gpcc_event_t *evt;
+
+    if (!gpma.unit_cmdtab)
+	return 0;
+
+    for (i = 0 ; i < gpma.unit_max ; i++) {
+	evt = gpcc_event_alloc(BREAK_EVENT, gpma.unit_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
+    return 0;
+}
+
+static apr_status_t a_fts_segment_start(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    struct json_object *obj = 0;
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+    gpcc_net_uri_t *uri = 0;
+    gpcc_net_conn_t conn;
+    char *mode, *url, *seg, *m, *errmsg;
+
+    seg = url = 0;
+    mode = "normal";
+    errmsg = "";
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+
+    uri = gpcc_net_uri_alloc(url);
+    m = gpcc_net_uri_param(uri, "mode");
+    seg = gpcc_net_uri_param(uri, "s");
+    
+    if (!seg) {
+	errmsg = "parameter 's' is missing";
+	goto bail;
+    } else {
+	int i;
+	for (i = 0 ; i < slot->u.fts.nseginfo && strcmp(seg, slot->u.fts.seginfo[i].name) != 0 ; i++);
+	if (i >= slot->u.fts.nseginfo) {
+	    errmsg = "invalid parameter 's'";
+	    goto bail;
+	}
+    }
+    
+    if (m) {
+	char *opt[2] = {"normal", "force"};
+	int i;
+	for (i = 0 ; i < gpcc_lengthof(opt) && apr_strnatcasecmp(m, opt[i]) != 0 ; i++);
+	if (i >= gpcc_lengthof(opt)) {
+	    errmsg = "invalid parameter 'mode'";
+	    goto bail;
+	}
+	mode = m;
+    }
+
+    p = cmdslot_alloc("SEGMENT_START", FTS_SEGMENT_START_CMDSTATE);
+    p->u.segment_start.parent_cmdidx = slot->cmdidx;
+    p->u.segment_start.nunit = 1;
+    p->u.segment_start.unit = apr_palloc(p->pool, sizeof(char *) * p->u.segment_start.nunit);
+    p->u.segment_start.unit[0] = apr_pstrdup(p->pool, seg);
+    p->u.segment_start.mode = apr_pstrdup(p->pool, mode);
+    slot->u.fts.active_cmdidx = p->cmdidx;
+    
+    evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    obj = gpcc_json_http_reply("start", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    
+    return 0;
+
+    bail:
+    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+    if (uri) gpcc_net_uri_free(uri);
+    obj = gpcc_json_http_reply("start", "failure", errmsg);
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    return 0;
+}
+
+
+static apr_status_t a_fts_segment_stop(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    struct json_object *obj = 0;
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+    char *mode, *seg, *url, *m, *errmsg;
+    gpcc_net_uri_t *uri = 0;
+    gpcc_net_conn_t conn;
+
+    errmsg = "";
+    seg = url = 0;
+    mode = "immediate";
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+    
+    uri = gpcc_net_uri_alloc(url);
+    m = gpcc_net_uri_param(uri, "mode");
+    seg = gpcc_net_uri_param(uri, "s");
+
+    if (!seg) {
+	errmsg = "parameter 's' is missing";
+	goto bail;
+    } else {
+	int i;
+	for (i = 0 ; i < slot->u.fts.nseginfo && strcmp(seg, slot->u.fts.seginfo[i].name) != 0 ; i++);
+	if (i >= slot->u.fts.nseginfo) {
+	    errmsg = "invalid parameter 's'";
+	    goto bail;
+	}
+    }
+	    
+	    
+    if (m) {
+	char *opt[3] = {"immediate", "fast", "smart"};
+	int i;
+	for (i = 0 ; i < gpcc_lengthof(opt) && apr_strnatcasecmp(m, opt[i]) != 0 ; i++) ;
+	if (i >= gpcc_lengthof(opt)) {
+	    /* invalid mode */
+	    errmsg = "invalid parameter 'mode'";
+	    goto bail;
+	}
+	
+	mode = m;
+    }
+
+    gpcc_log_info("SEGMENT_STOP %s %s", seg, mode);
+
+    p = cmdslot_alloc("SEGMENT_STOP", FTS_SEGMENT_STOP_CMDSTATE);
+    p->u.segment_stop.parent_cmdidx = slot->cmdidx;
+    p->u.segment_stop.nunit = 1;
+    p->u.segment_stop.unit = apr_palloc(p->pool, sizeof(char *) * p->u.segment_stop.nunit);
+    p->u.segment_stop.unit[0] = apr_pstrdup(p->pool, seg);
+    p->u.segment_stop.mode = apr_pstrdup(p->pool, mode);
+    slot->u.fts.active_cmdidx = p->cmdidx;
+    
+    evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+
+    obj = gpcc_json_http_reply("stop", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    
+    return 0;
+
+
+    bail:
+    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+    if (uri) gpcc_net_uri_free(uri);
+    obj = gpcc_json_http_reply("stop", "failure", errmsg);
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    return 0;    
+    
+}
+
+static apr_status_t a_fts_segment_command_reply(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+
+    slot->u.fts.active_cmdidx = 0;
+
+    return 0;
+}
+
+/* gp delete */
+static apr_status_t a_fts_array_delete(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    char *url, *mode = "immediate";
+    gpcc_net_conn_t conn;
+    cmdslot_t *p;
+    gpcc_event_t *evt;
+    struct json_object *obj;
+    gpcc_net_uri_t *uri;
+
+    memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
+    url = ev->pdata + sizeof(gpcc_net_conn_t);
+    
+    if (gpma.maset_cmdslot->u.maset.nopened < gpma.maset_cmdslot->u.maset.total) {
+	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+	obj = gpcc_json_http_reply("delete", "failure", "gp delete can only be run when all MA's are active");
+	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+	json_object_put(obj);	
+	return 0;
+    }
+
+
+    uri = gpcc_net_uri_alloc(url);
+
+    p = cmdslot_alloc("ARRAY_DELETE", FTS_ARRAY_DELETE_CMDSTATE);
+    p->u.array_delete.parent_cmdidx = cmdslot->cmdidx;
+    p->u.array_delete.mode = apr_pstrdup(p->pool, mode);
+    cmdslot->u.fts.active_cmdidx = p->cmdidx;
+    
+    evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    obj = gpcc_json_http_reply("delete", "pending", "pending");
+    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
+    if (uri)
+	gpcc_net_uri_free(uri);
+
+    return 0;
+}
+
+static apr_status_t a_fts_array_delete_reply(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    struct json_object *obj;
+    gpcc_event_t *evt;
+    char *status;
+
+    obj = json_tokener_parse(pkt->payload);
+
+    status = gpcc_json_object_get_string(obj, "status", "failure");
+    if (strcmp(status, "ok") == 0) {
+	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
+    } else {
+	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);	
+    }
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    return 0;
+}
+
+
+static apr_status_t a_fts_deleted(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    const char **keys;
+    int i;
+    gpcc_event_t *evt;
+
+    cmdslot->u.fts.active_cmdidx = 0;
+
+    keys = config_keys(gpma.cfg, cmdslot->pool);
+    for (i = 0 ; keys[i] ; i++) {
+	if (strstr(keys[i], "gpdb.") == keys[i] || strstr(keys[i], "node.") == keys[i]) {
+	    config_set(gpma.cfg, keys[i], 0);
+	}
+    }
+
+    evt = gpcc_event_alloc(CFG_UPDATED_EVENT, gpma.cfg_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    setup_cleanup_seginfo(ev, _cmdslot);
+    apr_pool_clear(cmdslot->pool);
+    return 0;
+}
+
+static apr_status_t a_fts_array_delete_shutdown_nodes(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    gpcc_event_t *evt;
+    int i;
+
+    /* shutdown nodes */
+    for (i = 0 ; i < gpma.node_max ; i++) {
+	evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
+    /* shutdown unit */
+    for (i = 0 ; i < gpma.unit_max ; i++) {
+	evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.unit_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
+    /* shutdown haset */
+    evt = gpcc_event_alloc(SHUTDOWN_EVENT, gpma.haset_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    gpma.node_max = 0;
+    gpma.haset_cmdslot = 0;
+    gpma.node_cmdtab = 0;
+    gpma.unit_max = 0;
+    gpma.unit_cmdtab = 0;
+    cmdslot->u.fts.nnode = 0;
+    cmdslot->u.fts.nopened = 0;
+
+    return 0;
+}

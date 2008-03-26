@@ -1,0 +1,280 @@
+--
+-- DISTRIBUTED TRANSACTIONS
+--
+SET debug_print_full_dtm=true;
+--
+-- We want to have an error between the point where all segments are prepared and our decision 
+-- to write the Distributed Commit record.
+--
+CREATE TABLE distxact1_1 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+BEGIN;
+INSERT INTO distxact1_1 VALUES (1);
+INSERT INTO distxact1_1 VALUES (2);
+INSERT INTO distxact1_1 VALUES (3);
+INSERT INTO distxact1_1 VALUES (4);
+INSERT INTO distxact1_1 VALUES (5);
+INSERT INTO distxact1_1 VALUES (6);
+INSERT INTO distxact1_1 VALUES (7);
+INSERT INTO distxact1_1 VALUES (8);
+SET debug_abort_after_distributed_prepared = true;
+COMMIT;
+ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2081)
+RESET debug_abort_after_distributed_prepared;
+SELECT * FROM distxact1_1;
+ a 
+---
+(0 rows)
+
+DROP TABLE distxact1_1;
+--
+-- We want to have an error during the prepare which will cause a Abort-Some-Prepared broadcast 
+-- to cleanup.
+--
+CREATE TABLE distxact1_2 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+BEGIN;
+INSERT INTO distxact1_2 VALUES (21);
+INSERT INTO distxact1_2 VALUES (22);
+INSERT INTO distxact1_2 VALUES (23);
+INSERT INTO distxact1_2 VALUES (24);
+INSERT INTO distxact1_2 VALUES (25);
+INSERT INTO distxact1_2 VALUES (26);
+INSERT INTO distxact1_2 VALUES (27);
+INSERT INTO distxact1_2 VALUES (28);
+SET debug_dtm_action = "fail_begin_command";
+SET debug_dtm_action_target = "protocol";
+SET debug_dtm_action_protocol = "prepare";
+COMMIT;
+ERROR:  The distributed transaction 'Prepare' broadcast failed to one or more segments for gid = 1182817508-0000003257. (cdbtm.c:551)
+RESET debug_dtm_action;
+RESET debug_dtm_action_target;
+RESET debug_dtm_action_protocol;
+SELECT * FROM distxact1_2;
+ a 
+---
+(0 rows)
+
+DROP TABLE distxact1_2;
+--
+-- We want to have an error during the commit-prepared broadcast which will cause a
+-- Retry-Commit-Prepared broadcast to cleanup.
+--
+CREATE TABLE distxact1_3 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+BEGIN;
+INSERT INTO distxact1_3 VALUES (31);
+INSERT INTO distxact1_3 VALUES (32);
+INSERT INTO distxact1_3 VALUES (33);
+INSERT INTO distxact1_3 VALUES (34);
+INSERT INTO distxact1_3 VALUES (35);
+INSERT INTO distxact1_3 VALUES (36);
+INSERT INTO distxact1_3 VALUES (37);
+INSERT INTO distxact1_3 VALUES (38);
+SET debug_dtm_action = "fail_begin_command";
+SET debug_dtm_action_target = "protocol";
+SET debug_dtm_action_protocol = "commit_prepared";
+COMMIT;
+WARNING:  The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = 1182817509-0000003264.
+NOTICE:  Releasing gangs for retry broadcast.
+NOTICE:  Retry of the distributed transaction 'Commit Prepared' broadcast succeeded to the segments for gid = 1182817509-0000003264.
+SELECT * FROM distxact1_3;
+ a  
+----
+ 31
+ 33
+ 35
+ 37
+ 32
+ 34
+ 36
+ 38
+(8 rows)
+
+DROP TABLE distxact1_3;
+RESET debug_dtm_action;
+RESET debug_dtm_action_target;
+RESET debug_dtm_action_protocol;
+--
+-- VARIANT of we want to have an error between the point where all segments are prepared and our decision 
+-- to write the Distributed Commit record.  Cause problem during abort-prepared broadcast.  
+--
+CREATE TABLE distxact1_4 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+BEGIN;
+INSERT INTO distxact1_4 VALUES (41);
+INSERT INTO distxact1_4 VALUES (42);
+INSERT INTO distxact1_4 VALUES (43);
+INSERT INTO distxact1_4 VALUES (44);
+INSERT INTO distxact1_4 VALUES (45);
+INSERT INTO distxact1_4 VALUES (46);
+INSERT INTO distxact1_4 VALUES (47);
+INSERT INTO distxact1_4 VALUES (48);
+SET debug_abort_after_distributed_prepared = true;
+SET debug_dtm_action = "fail_begin_command";
+SET debug_dtm_action_target = "protocol";
+SET debug_dtm_action_protocol = "abort_prepared";
+COMMIT;
+WARNING:  The distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = 1182817511-0000003271.
+NOTICE:  Releasing gangs for retry broadcast.
+NOTICE:  Retry of the distributed transaction 'Abort Prepared' broadcast succeeded to the segments for gid = 1182817511-0000003271.
+ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2081)
+SELECT * FROM distxact1_4;
+ a 
+---
+(0 rows)
+
+DROP TABLE distxact1_4;
+RESET debug_abort_after_distributed_prepared;
+RESET debug_dtm_action;
+RESET debug_dtm_action_target;
+RESET debug_dtm_action_protocol;
+--
+-- Fail general commands
+--
+--
+-- Invoke a failure during a CREATE TABLE command.  
+--
+SET debug_print_full_dtm=true;
+SET debug_dtm_action = "fail_begin_command";
+SET debug_dtm_action_target = "sql";
+SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
+CREATE TABLE distxact2_1 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ERROR:  Raise ERROR for debug_dtm_action = 2, commandTag = MPPEXEC UTILITY (postgres.c:1071)  (seg1 10.37.129.2:20003 pid=15600)
+RESET debug_dtm_action_sql_command_tag;
+RESET debug_dtm_action;
+RESET debug_dtm_action_target;
+SELECT * FROM distxact2_1;
+ERROR:  relation "distxact2_1" does not exist
+-- Should succeed
+CREATE TABLE distxact2_1 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+DROP TABLE distxact2_1;
+--
+-- Invoke a failure during a CREATE TABLE command.  
+-- Action_Target = 2 is SQL.
+--
+SET debug_dtm_action = "fail_end_command";
+SET debug_dtm_action_target = "sql";
+SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
+CREATE TABLE distxact2_2 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ERROR:  Raise ERROR for debug_dtm_action = 3, commandTag = MPPEXEC UTILITY (postgres.c:1215)  (seg1 10.37.129.2:20003 pid=15600)
+RESET debug_dtm_action_sql_command_tag;
+RESET debug_dtm_action;
+RESET debug_dtm_action_target;
+SELECT * FROM distxact2_2;
+ERROR:  relation "distxact2_2" does not exist
+-- Should succeed
+CREATE TABLE distxact2_2 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+DROP TABLE distxact2_2;
+--
+-- xact.c DTM related dispatches
+--
+--
+-- Invoke a failure during a SAVEPOINT command.  
+--
+SET debug_print_full_dtm=true;
+SET debug_dtm_action = "fail_begin_command";
+SET debug_dtm_action_target = "sql";
+SET debug_dtm_action_sql_command_tag = "SAVEPOINT";
+BEGIN;
+CREATE TABLE distxact3_1 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+SAVEPOINT s;
+WARNING:  DTM error (gathered 4 results from cmd 'SAVEPOINT s')
+DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = SAVEPOINT (postgres.c:1458)  (seg1 10.37.129.2:20003 pid=15600)
+ERROR:  Could not create a new savepoint (SAVEPOINT s) (xact.c:3750)
+ROLLBACK;
+RESET debug_dtm_action_sql_command_tag;
+RESET debug_dtm_action;
+RESET debug_dtm_action_target;
+SELECT * FROM distxact3_1;
+ERROR:  relation "distxact3_1" does not exist
+-- Should succeed
+CREATE TABLE distxact3_1 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+DROP TABLE distxact3_1;
+--
+-- Invoke a failure during a RELEASE SAVEPOINT command.  
+--
+SET debug_print_full_dtm=true;
+SET debug_dtm_action = "fail_begin_command";
+SET debug_dtm_action_target = "sql";
+SET debug_dtm_action_sql_command_tag = "RELEASE";
+BEGIN;
+CREATE TABLE distxact3_2 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+SAVEPOINT s;
+INSERT INTO distxact3_2 VALUES (21);
+INSERT INTO distxact3_2 VALUES (22);
+INSERT INTO distxact3_2 VALUES (23);
+INSERT INTO distxact3_2 VALUES (24);
+INSERT INTO distxact3_2 VALUES (25);
+INSERT INTO distxact3_2 VALUES (26);
+INSERT INTO distxact3_2 VALUES (27);
+INSERT INTO distxact3_2 VALUES (28);
+RELEASE SAVEPOINT s;
+WARNING:  DTM error (gathered 4 results from cmd 'RELEASE SAVEPOINT s')
+DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = RELEASE (postgres.c:1458)  (seg1 10.37.129.2:20003 pid=15600)
+ERROR:  Could not release savepoint (RELEASE SAVEPOINT s) (xact.c:3882)
+ROLLBACK;
+RESET debug_dtm_action_sql_command_tag;
+RESET debug_dtm_action;
+RESET debug_dtm_action_target;
+SELECT * FROM distxact3_2;
+ERROR:  relation "distxact3_2" does not exist
+-- Should succeed
+CREATE TABLE distxact3_2 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+DROP TABLE distxact3_2;
+--
+-- Invoke a failure during a ROLLBACK TO SAVEPOINT command.  
+--
+SET debug_print_full_dtm=true;
+SET debug_dtm_action = "fail_begin_command";
+SET debug_dtm_action_target = "sql";
+SET debug_dtm_action_sql_command_tag = "ROLLBACK";
+BEGIN;
+CREATE TABLE distxact3_3 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+SAVEPOINT s;
+INSERT INTO distxact3_3 VALUES (31);
+INSERT INTO distxact3_3 VALUES (32);
+INSERT INTO distxact3_3 VALUES (33);
+INSERT INTO distxact3_3 VALUES (34);
+INSERT INTO distxact3_3 VALUES (35);
+INSERT INTO distxact3_3 VALUES (36);
+INSERT INTO distxact3_3 VALUES (37);
+INSERT INTO distxact3_3 VALUES (38);
+ROLLBACK TO SAVEPOINT s;
+WARNING:  DTM error (gathered 4 results from cmd 'ROLLBACK TO SAVEPOINT s')
+DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = ROLLBACK (postgres.c:1458)  (seg1 10.37.129.2:20003 pid=15600)
+ERROR:  Could not rollback to savepoint (ROLLBACK TO SAVEPOINT s) (xact.c:4062)
+ROLLBACK;
+RESET debug_dtm_action_sql_command_tag;
+RESET debug_dtm_action;
+RESET debug_dtm_action_target;
+SELECT * FROM distxact3_3;
+ERROR:  relation "distxact3_3" does not exist
+-- Should succeed
+CREATE TABLE distxact3_3 (a int);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+DROP TABLE distxact3_3;
+RESET debug_print_full_dtm;

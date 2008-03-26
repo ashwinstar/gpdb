@@ -1,0 +1,33 @@
+<%!
+import os, sys
+
+try:
+    import gpcc
+    import simplejson
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+%>
+
+<%
+redirect=0
+deadma = []
+while redirect < 5:
+    response = gpcc.hitMA(sctx['ma'], '/gpcc/status', {})
+    if response is None:
+        deadma.append(sctx['ma'])
+        ma = gpcc.getMA(sctx['ma_list'], deadma)
+	if ma is not None:
+	   sctx['ma'] = ma
+	else:
+	   web.header('Content-Type', 'text/plain;charset=utf-8')
+	   web.output('{ status : "failure", rset : { result : ["server error"], total : 1, offset : 0}}')
+	   break
+    elif response.status == 200:
+        web.header('Content-Type', 'text/plain;charset=utf-8')
+        web.output(response.read())
+	break
+    elif response.status == 301:
+    	json = simplejson.loads(response.read())
+	sctx['ma'] = json.get('location')
+	redirect += 1
+%>
