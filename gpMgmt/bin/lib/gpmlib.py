@@ -4,13 +4,13 @@ from time import localtime, strftime
 progname = os.path.split(sys.argv[0])[-1]
 
 
-if sys.version_info < (2, 3, 5):
+if sys.version_info < (2, 5, 0):
     sys.exit(
-'''Error: %s is supported on Python versions 2.3.5 or greater
+'''Error: %s is supported on Python versions 2.5.0 or greater
 Please upgrade python installed on this machine.''' % progname)
 
 
-
+##################
 log = {}
 
 log['verbose'] = True
@@ -18,19 +18,22 @@ log['module'] = ''
 log['host'] = socket.gethostname().split('.')[0]
 log['user'] = os.environ.get('USER')
 log['file'] = None
-
+##################
 def log_set_module(module):
     global log
     log['module'] = module
 
+##################
 def log_set_verbose(verbose):
     global log
     log['verbose'] = verbose
 
+##################
 def log_set_file(file):
     global log
     log['file'] = file
 
+##################
 def log_info(msg, tofile=False):
     global log
     
@@ -41,6 +44,7 @@ def log_info(msg, tofile=False):
         if log['file']:
             run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))
 
+##################
 def log_error(msg, tofile=False):
     global log
     logs = '%s:%s:%s:%s-[ERROR]:- %s' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'], msg)
@@ -50,6 +54,7 @@ def log_error(msg, tofile=False):
         if log['file']:
             run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))        
 
+##################
 def log_warn(msg, tofile=False):
     global log
     logs = '%s:%s:%s:%s-[WARN]:- %s' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'], msg)
@@ -59,6 +64,7 @@ def log_warn(msg, tofile=False):
         if log['file']:
             run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))        
 
+##################
 def log_fatal(msg, tofile=False):
     global log
     logs = '%s:%s:%s:%s-[FATAL]:- %s' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'], msg)
@@ -68,6 +74,7 @@ def log_fatal(msg, tofile=False):
         if log['file']:
             run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))        
 
+##################
 def error(msg):
     global log
 
@@ -76,7 +83,7 @@ def error(msg):
         run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))    
     sys.exit(logs)
 
-
+##################
 def fatal(msg):
     global log
 
@@ -577,6 +584,20 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     for f in out:
         files = '%s %s' % (files, f.strip())
 
+    # cd datadir ; gprsync.py -p dst_cfg['port'] -o '-cav' file1 file2 ... fileN host:datadir
+    # use the same port as the destination segment port
+
+    #gprsync = os.path.join(os.environ.get('GPHOME'), 'bin/lib/gprsync.py')
+    #(ok, out) = run('%s "cd %s ; %s -p %d -o \'-cav\' %s %s:%s" >> %s' % 
+    #                (gplib.ssh_prefix(host=src_host),
+    #                 src_dir,
+    #                 gprsync,
+    #                 dst_cfg['port'],  
+    #                 files,
+    #                 dst_cfg['hostname'],
+    #                 dst_cfg['datadir'],
+    #                 logfile))
+
     (ok, out) = run('%s "cd %s ; %s cf - %s | %s %s \\"cd %s ; %s xf -\\"" >> %s' % 
                     (gplib.ssh_prefix(host=src_host),
                      src_dir,
@@ -675,6 +696,7 @@ def get_gp_prefix(datadir):
         return None
     return base[0:idx]
 
+##################
 def group_mirror(pri_qes, mir_datadirs, mir_port_offset, multihome):
     log_info(' Building group mirror array type %s, please wait...' % (multihome and 'Multi-Home' or 'Single-Home'))
 
@@ -725,7 +747,7 @@ def group_mirror(pri_qes, mir_datadirs, mir_port_offset, multihome):
 
     return cfg
 
-
+##################
 def spread_mirror(pri_qes, mir_datadirs, mir_port_offset, multihome):
     log_info(' Building spread mirror array type %s, please wait...' % (multihome and 'Multi-Home' or 'Single-Home'))
 
@@ -774,15 +796,15 @@ def chk_on_passive_standby(master_port):
         gpysnc_count = int(out[0])
 
     if ok and gpsync_count != 0:
-        print '[FATAL]:- Cannot run this script on a passive standby instance'
-        print '[FATAL]:- where there is a conflict with the current value of'
-        print '[FATAL]:- the MASTER_DATA_DIRECTORY environment variable setting.'
+        log_fatal('Cannot run this script on a passive standby instance')
+        log_fatal('where there is a conflict with the current value of')
+        log_fatal('the MASTER_DATA_DIRECTORY environment variable setting.')
         return True
 
     if gpsync_count != 0:
-        print '[FATAL]:- Cannont run this script on the standby instance'
-        print '[FATAL]:- Status indicates that standby instance process not running'
-        print '[FATAL]:- Check standby process status via gpstate -f on Master instance'
+        log_fatal('Cannont run this script on the standby instance')
+        log_fatal('Status indicates that standby instance process not running')
+        log_fatal('Check standby process status via gpstate -f on Master instance')
         return True
 
     return False
