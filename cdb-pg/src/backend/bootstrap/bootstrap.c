@@ -1129,9 +1129,9 @@ CompHash(char *str, int len)
 {
 	int			result;
 
-	result = (NUM * str[0] + NUMSQR * str[len - 1] + NUMCUBE * str[(len - 1) / 2]);
+	result = len==0?0:(NUM * str[0] + NUMSQR * str[len - 1] + NUMCUBE * str[(len - 1) / 2]);
 
-	return result % HASHTABLESIZE;
+	return (result % HASHTABLESIZE+HASHTABLESIZE)%HASHTABLESIZE;
 
 }
 
