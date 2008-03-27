@@ -49,19 +49,18 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *hostname,
  *  @param p memory pool
  *  @return APR_SUCCESS if succes otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *user, const char *hostname, int port, const char *cmd, int blocking, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *hostname, const char *cmd, int blocking, apr_pool_t *p);
 
 /**
  *  gpssh to run command line with a list of hosts
  *  @param proc list of proc
  *  @param hostnames list of hostnames
- *  @param port ssh port number
  *  @param cmd command line to run
  *  @param blocking flag to indicate blocking or non-blocking
  *  @param pool memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *user, const char *const *hostnames, int port, const char *cmd, int blocking, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *const *hostnames, const char *cmd, int blocking, apr_pool_t *p);
 
 /**
  *  gpcc_proc_scp to run a scp remote command
@@ -73,7 +72,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *user, c
  *  @param p memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, int port, const char *src, const char *target, int wait, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, const char *src, const char *target, int wait, apr_pool_t *p);
 
 /**
  *  gpcc_proc_gpscp to run scp with a list of hosts
@@ -90,8 +89,8 @@ APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, int port, const char *
  *  @return APR_SUCCESS if success otherwise failure
  *
  */
-APR_DECLARE(apr_status_t) gpcc_proc_gpscp(apr_proc_t **proc, const char *user, const char *const *hostnames, 
-					  int port, const char *src, const char *target, int wait, apr_pool_t *p);
+APR_DECLARE(apr_status_t) gpcc_proc_gpscp(apr_proc_t **proc, const char *const *hostnames, 
+					  const char *src, const char *target, int wait, apr_pool_t *p);
 
 
 

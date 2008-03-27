@@ -170,4 +170,25 @@ struct gpcc_pg_conf_subst_t {
 APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, gpcc_pg_conf_subst_t *subst, apr_pool_t *p);
 
 
+
+/**
+ *  get hostname
+ *
+ *  @param host input hostname
+ *  @param hostname output hostname from unix command 'hostname'
+ *  @param len size of the output buffer and changed to the string length when returned
+ *  @return APR_SUCCESS if success
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_gethostname(const char *host, char *hostname, int *len, apr_pool_t *p);
+
+/**
+ *  get the IP addresses of a host
+ *
+ *  @param host input hostname
+ *  @param address in a line
+ *  @param len length of the output buffer and changed to the string length when returned
+ *  @return APR_SUCCESS if success
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_get_addresses(const char *host, char *addr, int *len, apr_pool_t *p);
+
 #endif   /* GPCC_PG_H */

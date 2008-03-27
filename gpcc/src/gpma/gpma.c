@@ -640,30 +640,6 @@ static void verify_config(void)
     /* name must exist */
     if (config_get(gpma.cfg, "gpdb.name")) {
 
-	/* default master_port port if not set */
-	if (! config_get(gpma.cfg, "gpdb.seg.master_port")) {
-	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port missing");
-	}
-	i = config_get_int(gpma.cfg, "gpdb.seg.master_port");
-	if (! (0 < i && i < (1 << 16))) {
-	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.master_port invalid (value %d)", i);
-	}
-	
-	/* default qe baseport if not set */
-	if (! config_get(gpma.cfg, "gpdb.seg.base_port")) {
-	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port missing");
-	}
-	i = config_get_int(gpma.cfg, "gpdb.seg.base_port");
-	if (! (0 < i && i < (1 << 16))) {
-	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.base_port invalid (value %d)", i);
-	}
-	
-	/* default min mirror if not set */
-	i = config_get_or_set_int(gpma.cfg, "gpdb.min_mirror", 0);
-	if (! (0 <= i && i < 2)) {
-	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.min_mirror invalid (value %d)", i);
-	}
-	
 	/* qd must exist */
 	v = config_get(gpma.cfg, "gpdb.seg.m.0");
 	if (!v) {

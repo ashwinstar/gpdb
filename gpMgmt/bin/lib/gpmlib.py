@@ -512,6 +512,18 @@ def get_ipaddr(host):
     return addr
 
 #############
+def get_ipaddr_to_stdout(host):
+    addr = get_ipaddr(host)
+    if addr:
+        for a in addr:
+            sys.stdout.write(a)
+            sys.stdout.write(' ')
+        sys.stdout.write('\n')
+    else:
+        sys.exit(1)
+
+
+#############
 def edit_file(host, file, search_txt, sub_txt, append=False):
     if host != 'localhost':
         (ok, out) = run('''%s "python -c \\"import sys; sys.path.append('%s'); import gpmlib; gpmlib.edit_file('localhost', '%s', '%s', '%s', %s)\\""''' %

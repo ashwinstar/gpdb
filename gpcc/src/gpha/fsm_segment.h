@@ -434,7 +434,6 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     gpcc_log_info("[%s] copy the master QD directory to standby QD", cmdslot->cmdname);
     source = apr_psprintf(cmdslot->u.seg.request.subpool, "%s@%s:%s", user, host, m_data_dir);
     if (0 != (e = gpcc_proc_scp(&cmdslot->u.seg.request.proc,
-				22,
 				source,
 				cmdslot->u.seg.request.data_dir,
 				0, 

@@ -10,34 +10,18 @@
 #define ARRAY_CONNECTING_STATUS                      "connecting"
 #define ARRAY_BUSY_STATUS                            "busy"
 
-static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port, int node, 
-				     char *dir, char definedprimary, char isprimary, char valid, apr_pool_t *pool)
+static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port,
+				     char *host, char *dir, char definedprimary, char isprimary, char valid, apr_pool_t *pool)
 {
-    char key[128];
-    const char *value, *s;
-    char addr[128];
-
     cmdslot->u.fts.seginfo[idx].name = apr_pstrdup(pool, name);
     cmdslot->u.fts.seginfo[idx].dbid = dbid;
     cmdslot->u.fts.seginfo[idx].content = content;
     cmdslot->u.fts.seginfo[idx].port = port;
-    cmdslot->u.fts.seginfo[idx].haidx = node;
-    cmdslot->u.fts.seginfo[idx].ha = apr_psprintf(pool, "node.%d", node);
     cmdslot->u.fts.seginfo[idx].dir = apr_pstrdup(pool, dir);
     cmdslot->u.fts.seginfo[idx].definedprimary = definedprimary;
     cmdslot->u.fts.seginfo[idx].isprimary = isprimary;
     cmdslot->u.fts.seginfo[idx].valid = valid;
-
-    sprintf(key, "node.%d", node);
-    value = config_get(gpma.cfg, key);
-    s = strchr(value, ' ');
-    if (!s) {
-	strcpy(addr, value);
-    } else {
-	strncpy(addr, value, s - value);
-	addr[s-value] = 0;
-    }
-    cmdslot->u.fts.seginfo[idx].host = apr_pstrdup(pool, addr);
+    cmdslot->u.fts.seginfo[idx].host = apr_pstrdup(pool, host);
 }
 
 static apr_status_t setup_cleanup_seginfo(gpcc_event_t *ev, void *_cmdslot)
@@ -46,36 +30,54 @@ static apr_status_t setup_cleanup_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
     cmdslot->u.fts.nseginfo = 0;
     cmdslot->u.fts.seginfo = 0;
+    cmdslot->u.fts.ht = 0;
     return 0;
+}
+
+
+static apr_status_t setup_parse_segment(const char *key, const char *value, char *host, char *dir, int *port)
+{
+    char *s1, *s2;
+    char portstr[256];
+
+    if (!value)
+	return APR_EINVAL;
+
+    s1 = strchr(value, ':');
+    if (!s1) {
+	gpcc_log_error("value format error. %s = %s", key, value);
+	return APR_EINVAL;
+    }
+    s2 = strchr(s1+1, ':');
+    if (!s2) {
+	gpcc_log_error("value format error. %s = %s", key, value);
+	return APR_EINVAL;
+    }
+
+    strncpy(host, value, s1-value);
+    host[s1-value] = 0;
+    strncpy(portstr, s1+1, s2-s1);
+    portstr[s2-s1-1] = 0;
+    *port = atoi(portstr);
+    strcpy(dir, s2+1);
+    
+    if (dir[0] != '/') {
+	gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	return APR_EINVAL;
+    }
+
+    return APR_SUCCESS;
 }
 
 static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *)_cmdslot;
-    int i, n, dbid, content, node;
-    char key[128], dir[1024];
+    int i, j, n, dbid, content, port;
+    char key[128], dir[256], host[256];
     const char *value;
-    int master_port, base_port, mirror_base_port;
-    int *node_base_port, *node_mirror_base_port;
+    char *ptr;
 
-    master_port = config_get_or_set_int(gpma.cfg, CONFIG_MASTER_PORT_KEY, CONFIG_MASTER_PORT_VALUE);
-    base_port = config_get_or_set_int(gpma.cfg, CONFIG_BASE_PORT_KEY, CONFIG_BASE_PORT_VALUE);
-    mirror_base_port = config_get_or_set_int(gpma.cfg, CONFIG_MIRROR_BASE_PORT_KEY, CONFIG_MIRROR_BASE_PORT_VALUE);
-
-    for (i = 0 ;  ; i++) {
-	sprintf(key, "node.%d", i);
-	value = config_get(gpma.cfg, key);
-	if (!value)
-	    break;
-    }
-    if (i == 0) {
-	gpcc_log_error("gpdb must have at least one node");
-	return APR_EINVAL;
-    }
-    cmdslot->u.fts.nnode = i;
-    cmdslot->u.fts.nopened = 0;
-
-
+    /* build the segments */
     for (i = 0 ; ; i++) {
 	sprintf(key, "gpdb.seg.m.%d", i);
 	value = config_get(gpma.cfg, key);
@@ -90,134 +92,151 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	
 
     n = i;
-
     for (i = 0 ; ; i++) {
 	sprintf(key, "gpdb.seg.%d.0", i);
+	content = i;
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
-	
+
 	n++;
 
 	sprintf(key, "gpdb.seg.%d.1", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    continue;
-
 	n++;
-    }	
+    }
 
     cmdslot->u.fts.nseginfo = n;
     cmdslot->u.fts.seginfo = apr_palloc(cmdslot->pool, sizeof(*cmdslot->u.fts.seginfo) * n);
 
-    node_base_port = apr_palloc(cmdslot->pool, sizeof(int) * cmdslot->u.fts.nnode);
-    node_mirror_base_port = apr_palloc(cmdslot->pool, sizeof(int) * cmdslot->u.fts.nnode);
-    for (i = 0 ; i < cmdslot->u.fts.nnode ; i++) {
-	node_base_port[i] = base_port;
-	node_mirror_base_port[i] = mirror_base_port;
-    }
-
+    
     /* master QD */
     strcpy(key, "gpdb.seg.m.0");
     value = config_get(gpma.cfg, key);
     if (!value)
 	return APR_EINVAL;
 
-    dbid = 1;
-    content = -1;
-    if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
-	gpcc_warning(FLINE, "value format error. %s = %s", key, value);
-	return APR_EINVAL;
-    }	
-    
-    if (node >= cmdslot->u.fts.nnode) {
-	gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
+    if (setup_parse_segment(key, value, host, dir, &port)) {
 	return APR_EINVAL;
     }
 
-    if (dir[0] != '/') {
-	gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
-	return APR_EINVAL;
-    }
-	
-    setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, 't', 't', 't', cmdslot->pool);
+    dbid = 1;
+    content = -1;
+
+    setup_set_segment(cmdslot, dbid-1, key, dbid, content, port, 
+		      host, dir, 't', 't', 't', cmdslot->pool);
+
     
-    for (i = 0 ;  ; i++) {
-	/* master QE */
-	sprintf(key, "gpdb.seg.%d.0", i);
+    for (i = 0 ; ; i++) {
+	/* primary QE */
+	content = i;
+
+	sprintf(key, "gpdb.seg.%d.0", content);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
-
-	if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
-	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
-	    return APR_EINVAL;
-	}	
-
-	if (node >= cmdslot->u.fts.nnode) {
-	    gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
+	if (setup_parse_segment(key, value, host, dir, &port)) {
 	    return APR_EINVAL;
 	}
 
-	if (dir[0] != '/') {
-	    gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
-	    return APR_EINVAL;
-	}
-	
 	dbid++;
-	content++;
-	setup_set_segment(cmdslot, dbid-1, key, dbid, content, node_base_port[node]++, node, dir, 't', 't', 't', cmdslot->pool);
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, port, 
+			  host, dir, 't', 't', 't', cmdslot->pool);
 
 	/* mirror QE */
-	sprintf(key, "gpdb.seg.%d.1", i);
+	sprintf(key, "gpdb.seg.%d.1", content);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    continue;
-
-	if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
-	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
-	    return APR_EINVAL;
-	}
-
-	if (node >= cmdslot->u.fts.nnode) {
-	    gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
-	    return APR_EINVAL;
-	}
-
-	if (dir[0] != '/') {
-	    gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
-	    return APR_EINVAL;
-	}
-
-	dbid++;	
-	setup_set_segment(cmdslot, dbid-1, key, dbid, content, node_mirror_base_port[node]++, node, dir, 'f', 'f', 't', cmdslot->pool);
-    }
-
-    /* standby QD */
-    content = -1;
-    for (i = 1 ; ; i++) {
-	sprintf(key, "gpdb.seg.m.%d", i);
-	value = config_get(gpma.cfg, key);
-	if (!value)
-	    break;
-	if (sscanf(value, "node.%d:%s", &node, dir) != 2) {
-	    gpcc_warning(FLINE, "value format error. %s = %s", key, value);
-	    return APR_EINVAL;
-	}
-
-	if (node >= cmdslot->u.fts.nnode) {
-	    gpcc_warning(FLINE, "segment %s value error.  node should be (%d < %d)", key, node, cmdslot->u.fts.nnode);
-	    return APR_EINVAL;
-	}
-
-	if (dir[0] != '/') {
-	    gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	if (setup_parse_segment(key, value, host, dir, &port)) {
 	    return APR_EINVAL;
 	}
 
 	dbid++;
-	setup_set_segment(cmdslot, dbid-1, key, dbid, content, master_port, node, dir, 'f', 'f', 't', cmdslot->pool);
-    }	
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, port, 
+			  host, dir, 'f', 'f', 't', cmdslot->pool);
+    }
+
+
+    /* standby QD */
+    strcpy(key, "gpdb.seg.m.1");
+    value = config_get(gpma.cfg, key);
+    if (value) {
+	if (setup_parse_segment(key, value, host, dir, &port)) {
+	    return APR_EINVAL;
+	}
+	dbid++;
+	content = -1;
+	setup_set_segment(cmdslot, dbid-1, key, dbid, content, port, 
+			  host, dir, 'f', 'f', 't', cmdslot->pool);
+    }
+
+
+    /* get the hostname */
+    cmdslot->u.fts.ht = apr_hash_make(cmdslot->pool);
+
+    for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
+	char hostname[256], ipaddr[1024];
+	int len;
+
+	/* get hostname */
+	len = sizeof(hostname);
+	if (gpcc_pg_gethostname(cmdslot->u.fts.seginfo[i].host, hostname, &len, cmdslot->pool)) {
+	    gpcc_log_error("hostname %s error", cmdslot->u.fts.seginfo[i]);
+	    return APR_EINVAL;
+	}
+	    
+	ptr = gpcc_string_trim(hostname);
+	
+	cmdslot->u.fts.seginfo[i].hostname = apr_pstrdup(cmdslot->pool, ptr);
+	/* check hashable with key = gethostname */
+	if (apr_hash_get(cmdslot->u.fts.ht, ptr, APR_HASH_KEY_STRING) == 0) {
+	    /* get ip addresses of the gethostname */
+	    len = sizeof(ipaddr);
+	    if (gpcc_pg_get_addresses(ptr, ipaddr, &len, cmdslot->pool)) {
+		gpcc_log_error("get IP address from remote host %s error", hostname);
+		return APR_EINVAL;
+	    }
+
+	    /* save it in hashtable */
+	    ptr = gpcc_string_trim(ipaddr);
+	    apr_hash_set(cmdslot->u.fts.ht, 
+			 apr_pstrdup(cmdslot->pool, cmdslot->u.fts.seginfo[i].hostname),
+			 APR_HASH_KEY_STRING,
+			 apr_pstrdup(cmdslot->pool, ptr));
+
+	}
+    }
+
+    {
+	apr_hash_index_t *hi;
+	void *val;
+	const void *key;
+
+	for (i = 0, hi = apr_hash_first(cmdslot->pool, cmdslot->u.fts.ht) ; 
+	     hi ; 
+	     hi = apr_hash_next(hi), i++) {
+	    char node[20];
+
+	    sprintf(node, "node.%d", i);
+	    apr_hash_this(hi, &key, 0, &val);
+	    config_set(gpma.cfg, node, (const char *) val);
+
+	    for (j = 0 ; j < cmdslot->u.fts.nseginfo ; j++) {
+		if (strcmp((const char *) key, cmdslot->u.fts.seginfo[j].hostname) == 0) { 
+		    cmdslot->u.fts.seginfo[j].haidx = i;
+		    cmdslot->u.fts.seginfo[j].ha = apr_psprintf(cmdslot->pool, "node.%d", i);
+		}
+	    }
+	}
+
+	/* get unique host as node */
+	cmdslot->u.fts.nnode = i;
+	cmdslot->u.fts.nopened = 0;
+    }
+
 
     return 0;
 }
@@ -303,9 +322,10 @@ static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
 
 
 	for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
-	    gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
+	    gpcc_log_info("name=%s, host =%s, hostname = %s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
 			  cmdslot->u.fts.seginfo[i].name,
 			  cmdslot->u.fts.seginfo[i].host,
+			  cmdslot->u.fts.seginfo[i].hostname,
 			  cmdslot->u.fts.seginfo[i].dbid,
 			  cmdslot->u.fts.seginfo[i].content,
 			  cmdslot->u.fts.seginfo[i].port,
@@ -698,19 +718,9 @@ static apr_status_t a_fts_array_config_verify() {
     int errcnt = 0;
     char buf[1024];
     int nnode = 0;
+    char host[1024];
     char dir[1024];
-
-    /* node.X */
-    for (i = 0 ; ; i++) {
-	sprintf(buf, "node.%d", i);
-	if (config_get(gpma.cfg, buf) == 0) 
-	    break;
-    }
-    nnode = i;
-    if (nnode == 0) {
-	gpcc_log_error("\t- node.0 missing");
-	errcnt++;
-    }
+    int port;
 
     /* name must exist */
     if (! config_get(gpma.cfg, "gpdb.name")) {
@@ -718,55 +728,14 @@ static apr_status_t a_fts_array_config_verify() {
 	errcnt++;
     }
 	
-    /* default master_port port if not set */
-    if (! config_get(gpma.cfg, "gpdb.seg.master_port")) {
-	gpcc_log_error("\t- gpdb.seg.master_port missing");
-	errcnt++;
-    }
-    i = config_get_int(gpma.cfg, "gpdb.seg.master_port");
-    if (! (0 < i && i < (1 << 16))) {
-	gpcc_log_error("\t- gpdb.seg.master_port invalid (value %d)", i);
-	errcnt++;
-    }
-    
-    /* default qe baseport if not set */
-    if (! config_get(gpma.cfg, "gpdb.seg.base_port")) {
-	gpcc_log_error("\t- gpdb.seg.base_port missing");
-	errcnt++;
-    }
-    i = config_get_int(gpma.cfg, "gpdb.seg.base_port");
-    if (! (0 < i && i < (1 << 16))) {
-	gpcc_log_error("\t- gpdb.seg.base_port invalid (value %d)", i);
-	errcnt++;
-    }
-    
-    /* default min mirror if not set */
-    i = config_get_or_set_int(gpma.cfg, "gpdb.min_mirror", 0);
-    if (! (0 <= i && i < 2)) {
-	gpcc_log_error("\t- gpdb.min_mirror invalid (value %d)", i);
-	errcnt++;
-    }
-    
     /* qd must exist */
     v = config_get(gpma.cfg, "gpdb.seg.m.0");
     if (!v) {
 	gpcc_log_error("\t- gpdb.seg.m.0 not set");
 	errcnt++;
     } else {
-    
-	if (sscanf(v, "node.%d:%s", &n, dir) == 2) {
-	    
-	    if (n >= nnode) {
-		gpcc_log_error("\t- segment %s value error.  node should be (%d < %d)", "gpdb.seg.m.0", n, nnode);
-		errcnt++;
-	    }
-	    
-	    if (dir[0] != '/') {
-		gpcc_log_error("\t- segment %s data directory %s must be in full path", "gpdb.seg.m.0", dir);
-		errcnt++;
-	    }
-	} else {
-	    gpcc_log_error("\t- %s value syntax error", v);
+	if (setup_parse_segment("gpdb.seg.m.0", v, host, dir, &port)) {
+	    gpcc_log_error("\t- %s value syntax error.", v);
 	    errcnt++;
 	}
     }
@@ -783,19 +752,8 @@ static apr_status_t a_fts_array_config_verify() {
 	    break;
 	} else {
 
-	    if (sscanf(v, "node.%d:%s", &n, dir) == 2) {
-		
-		if (n >= nnode) {
-		    gpcc_log_error("\t- segment %s value error.  node should be (%d < %d)", buf, n, nnode);
-		    errcnt++;
-		}
-		
-		if (dir[0] != '/') {
-		    gpcc_log_error("\t- segment %s data directory %s must be in full path", buf, dir);
-		    errcnt++;
-		}
-	    } else {
-		gpcc_log_error("\t- %s value syntax error", v);
+	    if (setup_parse_segment(buf, v, host, dir, &port)) {
+		gpcc_log_error("\t- %s value syntax error.", v);
 		errcnt++;
 	    }
 	}

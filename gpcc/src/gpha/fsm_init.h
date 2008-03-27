@@ -76,23 +76,12 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
 
-    user = gpcc_json_object_get_string(obj, "gpdb.user", getenv("USER"));
-    
-    node = gpcc_json_object_get_string(seg, "node", 0);
+    host = gpcc_json_object_get_string(seg, "host", 0);
     m_data_dir = gpcc_json_object_get_string(seg, "dir", 0);
 
-    if (0 == (nodeobj = gpcc_json_object_get_object(obj, node, 0))) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "%s is missing", node);
-	json_object_put(obj);
-	return 0;
-    }
-   
-    host = json_object_get_string(json_object_array_get_idx(nodeobj, 0));
-
     gpcc_log_info("[%s] copy the master QD directory to standby QD", cmdslot->cmdname);
-    source = apr_psprintf(cmdslot->pool, "%s@%s:%s", user, host, m_data_dir);
+    source = apr_psprintf(cmdslot->pool, "%s:%s", host, m_data_dir);
     if (0 != (e = gpcc_proc_scp(&cmdslot->u.request.proc,
-				22,
 				source,
 				cmdslot->u.request.data_dir,
 				0, 
@@ -247,7 +236,7 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
 
 	    hostarray = gpcc_json_object_get_object(cmdslot->u.request.msg, nodestr, 0);
 	    
-	    for (j = 1 ; j < json_object_array_length(hostarray) ; j++) {
+	    for (j = 0 ; j < json_object_array_length(hostarray) ; j++) {
 		struct json_object *node = json_object_array_get_idx(hostarray, j);
 		hosts[n++] = json_object_get_string(node);
 	    }
@@ -271,7 +260,7 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
 	    sprintf(nodename, "node.%d", i);
 	    hostarray = gpcc_json_object_get_object(cmdslot->u.request.msg, nodename, 0);
 	    
-	    for (j = 1 ; j < json_object_array_length(hostarray) ; j++) {
+	    for (j = 0 ; j < json_object_array_length(hostarray) ; j++) {
 		struct json_object *node = json_object_array_get_idx(hostarray, j);
 		hosts[n++] = json_object_get_string(node);
 	    }
@@ -424,7 +413,6 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
     struct json_object *msg = cmdslot->u.request.msg;
     int e;
     struct json_object *seg, *hostarray;
-    char *node;
     char *data_dir;
     char *host;
     int port, dbid, content;
@@ -434,14 +422,11 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
 	return 1;
     }
 
-    node = gpcc_json_object_get_string(seg, "node", 0);
+    host = gpcc_json_object_get_string(seg, "host", 0);
     data_dir = gpcc_json_object_get_string(seg, "dir", 0);
     port = gpcc_json_object_get_int(seg, "port", 0);
     dbid = gpcc_json_object_get_int(seg, "dbid", 0);
     content = gpcc_json_object_get_int(seg, "content", 0);
-    
-    hostarray = gpcc_json_object_get_object(msg, node, 0);
-    host = json_object_get_string(json_object_array_get_idx(hostarray, 0));
     
     if (0 != (e = gpcc_pg_update_gp_configuration(0,
 						  cmdslot->u.request.port, 

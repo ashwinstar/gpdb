@@ -2,6 +2,7 @@
 #define CMDSLOT_H
 
 #include <gpcc.h>
+#include <apr_hash.h>
 #include "enum.h"
 #include <json/json.h>
 #include <apr_thread_proc.h>
@@ -14,6 +15,7 @@ typedef struct seginfo_t seginfo_t;
 struct seginfo_t {
     char *name;
     char *host;
+    char *hostname;
     int dbid;
     int content;
     int port;
@@ -38,6 +40,7 @@ struct cmdslot_t {
     union {
 
 	struct {
+	    apr_hash_t *ht;
 	    seginfo_t* seginfo;
 	    int nseginfo;
 	    int nopened;

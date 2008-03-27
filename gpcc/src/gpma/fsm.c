@@ -1,4 +1,5 @@
 #include <apr_strings.h>
+#include <apr_hash.h>
 #include <gpcc.h>
 #include <gpcc_fsm.h>
 #include <gpcc_net.h>

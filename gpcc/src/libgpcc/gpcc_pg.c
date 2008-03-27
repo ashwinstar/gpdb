@@ -534,3 +534,72 @@ APR_DECLARE(apr_status_t) gpcc_pg_update_postgresql_conf(const char *data_dir, g
     return 0;
 }
 
+/**
+ * get hostname
+ *
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_gethostname(const char *host, char *hostname, int *len, apr_pool_t *p)
+{
+    apr_proc_t proc;
+    int e;
+    apr_size_t nbytes = *len;
+    apr_size_t nread = 0;
+
+    e = gpcc_proc_ssh(&proc, host, "hostname", 1, p);
+    if (e) {
+	gpcc_log_error("hostname on remote host %s failure\n", host);
+	return e;
+    }
+
+     /* get the first line */
+    if ((e = apr_file_read_full(proc.out, hostname, nbytes, &nread)) != 0 && e != APR_EOF) {
+	gpcc_log_error("get string from hostname failure\n");
+	return e;
+    }
+    *len = nread;
+    hostname[nread] = 0;
+    gpcc_log_info(hostname);
+    return 0;   
+}
+
+/**
+ * get addresses
+ *
+ * python -c "import sys; 
+ *            sys.path.append('$GPHOME/bin/lib'); 
+ *            import gpmlib; 
+ *            addr = gpmlib.get_ipaddr('host');"
+ *
+ */
+APR_DECLARE(apr_status_t) gpcc_pg_get_addresses(const char *host, char *addr, int *len, apr_pool_t *p)
+{
+    char *argv[2];
+    apr_proc_t proc;
+    int e;
+    apr_size_t nbytes = *len;
+    apr_size_t nread = 0;
+    char cmd[1024];
+
+    sprintf(cmd, "python -c \"import sys; sys.path.append('%s/bin/lib'); import gpmlib; gpmlib.get_ipaddr_to_stdout('%s')\"",
+	    getenv("GPHOME"), host);
+
+    argv[0] = cmd;
+    argv[1] = 0;
+
+    e = gpcc_proc_run_shell(&proc, argv[0], (const char *const *) argv, 0, 1, p);
+    if (e) {
+	gpcc_log_error("get ip addresses on remote host %s failure\n", host);
+	return e;
+    }
+
+     /* get the first line */
+    if ((e = apr_file_read_full(proc.out, addr, nbytes, &nread)) != 0 && e != APR_EOF) {
+	gpcc_log_error("get string from get ip addresses on remote host %s failure\n", host);
+	return e;
+    }
+    *len = nread;
+    addr[nread] = 0;
+    gpcc_log_info(addr);
+    return 0;   
+}
+

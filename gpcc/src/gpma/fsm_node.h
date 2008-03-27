@@ -10,7 +10,6 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
     cmdslot_t* slot = arg;
     char cmd[256];
     int e;
-    const char *user = config_getx(gpma.cfg, CONFIG_USER_KEY, getenv("USER"));
     gpcc_event_t *nev;
 
     gpcc_log_info("a_node_ssh......");
@@ -32,9 +31,7 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
 #endif
     if (0 != (e = gpcc_proc_ssh(&slot->u.node.proc, 
-				user, 
 				slot->u.node.hosttab[slot->u.node.hostidx], 
-				22, 
 				cmd, 
 				0, 
 				slot->pool))) {
@@ -170,7 +167,6 @@ apr_status_t a_node_shutdown(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     char *cmd;
-    const char *user = config_getx(gpma.cfg, CONFIG_USER_KEY, getenv("USER"));
     int e;
 
     if (slot->u.node.conn) {
@@ -187,9 +183,7 @@ apr_status_t a_node_shutdown(gpcc_event_t *ev, void *arg)
     cmd = "killall -9 gpha";
 #endif
     if (0 != (e = gpcc_proc_ssh(&slot->u.node.proc, 
-				user, 
 				slot->u.node.hosttab[slot->u.node.hostidx], 
-				22, 
 				cmd, 
 				0, 
 				slot->pool))) {

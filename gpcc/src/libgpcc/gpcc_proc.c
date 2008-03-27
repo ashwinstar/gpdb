@@ -141,54 +141,25 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *hostname,
     return e;
 }
 
-APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *user, const char *hostname, int port, const char *cmd, int wait, apr_pool_t *p)
+APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *hostname, const char *cmd, int wait, apr_pool_t *p)
 {
     char *argv[10];
     int e;
     char cmdstr[1024];
 
-    sprintf(cmdstr, "ssh -p %d -o \"BatchMode yes\" -o \"StrictHostKeyChecking no\" %s@%s '%s'",
-	    port, user, hostname, cmd);
+    sprintf(cmdstr, "ssh -o \"BatchMode yes\" -o \"StrictHostKeyChecking no\" %s '%s'",
+	    hostname, cmd);
 
     argv[0] = cmdstr;
     argv[1] = 0;
 
-    gpcc_log_info("Execute: %s", cmdstr);
     e = gpcc_proc_run_shell(proc, argv[0], (const char *const *) argv, 0, wait, p);
     
     return e;
 }
 
-#if 0
-APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *user, const char *hostname, int port, const char *cmd, int wait, apr_pool_t *p)
-{
-    char *argv[10];
-    int e;
-    char host[256];
-    char portstr[10];
-    char cmdstr[1024];
-
-    sprintf(portstr, "%d", port);
-    sprintf(host, "%s@%s", user, hostname);
-    sprintf(cmdstr, "\"\"%s\"\"", cmd);
-    argv[0] = "ssh";
-    argv[1] = "-p";
-    argv[2] = portstr;
-    argv[3] = "-o";
-    argv[4] = "\"\"BatchMode yes\"\"";
-    argv[5] = "-o";
-    argv[6] = "\"\"StrictHostKeyChecking no\"\"";
-    argv[7] = host;
-    argv[8] = cmdstr;
-    argv[9] = 0;
-
-    e = gpcc_proc_run_prog(proc, "ssh", (const char *const *)argv, 0, wait, p);
-    return e;
-}
-#endif
-
-APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *user, const char *const *hostnames, 
-					  int port, const char *cmd, int wait, apr_pool_t *pool)
+APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *const *hostnames, 
+					  const char *cmd, int wait, apr_pool_t *pool)
 {
     int i, nhosts;
     int e = 0;
@@ -201,7 +172,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *user, c
 
     *proc = apr_palloc(pool, sizeof(apr_proc_t) * nhosts);    
     for (i = 0, p = *proc ; hostnames[i] ; i++, p++) {
-	e = gpcc_proc_ssh(p, user, hostnames[i], port, cmd, 0, pool);
+	e = gpcc_proc_ssh(p, hostnames[i], cmd, 0, pool);
 	if (e) {
 	    gpcc_log_error("gpcc_proc_ssh %s: command failed %s\n", hostnames[i], cmd);
 	    return e;
@@ -222,28 +193,24 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *user, c
     return e;
 }
 
-APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, int port, const char *src, const char *target, int wait, apr_pool_t *p)
+APR_DECLARE(apr_status_t) gpcc_proc_scp(apr_proc_t *proc, const char *src, const char *target, int wait, apr_pool_t *p)
 {
     char *argv[10];
     int e;
-    char portstr[10];
 
-    sprintf(portstr, "%d", port);
     argv[0] = "scp";
     argv[1] = "-pr";
-    argv[2] = "-P";
-    argv[3] = portstr;
-    argv[4] = (char *) src;
-    argv[5] = (char *) target;
-    argv[6] = 0;
+    argv[2] = (char *) src;
+    argv[3] = (char *) target;
+    argv[4] = 0;
 
     e = gpcc_proc_run_prog(proc, "scp", (const char *const *)argv, 0, wait, p);
     return e;
 }
 
 /* scp -pr data_dir user@host:/dir */
-APR_DECLARE(apr_status_t) gpcc_proc_gpscp(apr_proc_t **proc, const char *user, const char *const *hostnames, 
-					  int port, const char *src, const char *target, int wait, apr_pool_t *pool) 
+APR_DECLARE(apr_status_t) gpcc_proc_gpscp(apr_proc_t **proc, const char *const *hostnames, 
+					  const char *src, const char *target, int wait, apr_pool_t *pool) 
 {
     int i, nhosts;
     int e = 0;
@@ -257,8 +224,8 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpscp(apr_proc_t **proc, const char *user, c
     *proc = apr_palloc(pool, sizeof(apr_proc_t) * nhosts);
 
     for (i = 0, p = *proc ; hostnames[i] ; i++, p++) {
-	char *source = apr_psprintf(pool, "%s@%s:%s", user, hostnames[i], src);
-	e = gpcc_proc_scp(p, port, source, target, 0, pool);
+	char *source = apr_psprintf(pool, "%s:%s", hostnames[i], src);
+	e = gpcc_proc_scp(p, source, target, 0, pool);
 	if (e) {
 	    gpcc_log_error("gpcc_proc_scp %s: command failed copy %s to %s\n", hostnames[i], src, target);
 	    return e;
@@ -428,3 +395,4 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_status(apr_proc_t *proc, int port, co
     return e;
 
 }
+

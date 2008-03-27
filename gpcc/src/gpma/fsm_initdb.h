@@ -1,4 +1,4 @@
-static apr_status_t config_addsegment(struct json_object *msg, char *key, char *node, char *dir, int port, int dbid, int content)
+static apr_status_t config_addsegment(struct json_object *msg, char *key, char *node, char *host, char *dir, int port, int dbid, int content)
 {
     struct json_object *obj;
 
@@ -7,6 +7,7 @@ static apr_status_t config_addsegment(struct json_object *msg, char *key, char *
 	return APR_EINVAL;
 
     json_object_object_add(obj, "node", json_object_new_string(node));
+    json_object_object_add(obj, "host", json_object_new_string(host));
     json_object_object_add(obj, "dir", json_object_new_string(dir));
     json_object_object_add(obj, "port", json_object_new_int(port));
     json_object_object_add(obj, "dbid", json_object_new_int(dbid));
@@ -143,6 +144,7 @@ static struct json_object *config_to_json_object(gpcc_event_t *ev, void *_cmdslo
 	config_addsegment(obj, 
 			  cmdslot->u.initdb.req[i].unit, 
 			  cmdslot->u.initdb.req[i].node,
+			  cmdslot->u.initdb.req[i].host,
 			  cmdslot->u.initdb.req[i].datadir,
 			  cmdslot->u.initdb.req[i].port,
 			  cmdslot->u.initdb.req[i].dbid,
