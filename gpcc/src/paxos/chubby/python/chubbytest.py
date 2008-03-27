@@ -78,8 +78,6 @@ check("c.remove('/test/lock3')","x==0 or x==chubby.E_NOENT")
 check("c.remove('/test/lock3-info')","x==0 or x==chubby.E_NOENT")
 check("c.put('/test/test1result','no')","x==0")
 check("c.put('/test/test2result','no')","x==0")
-sys.exit(1)
-#aaaaaaaaaa
 l = c.lock('/test//lock',10,5)
 check("l","l[0]==0")
 l = l[1]

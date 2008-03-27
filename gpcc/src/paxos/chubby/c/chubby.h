@@ -3,6 +3,8 @@
 #ifndef CHUBBY_H
 #define CHUBBY_H
 
+#include <sys/types.h>
+
 #define CHUBBY_CHUNK_SIZE	30000
 
 #define CHUBBY_E_NOENT		1
@@ -27,7 +29,7 @@ struct chubby_stat{
     int size;
 };
 
-chubby_t*chubby_new(const char*addresses);
+chubby_t*chubby_new(const char*addresses,void*(*malloc)(size_t),void(*free)(void*));
 void chubby_close(chubby_t*thiz);
 chubby_connection_t*chubby_makeConnection(chubby_t*thiz);
 
@@ -37,7 +39,7 @@ int chubby_connection_put(chubby_connection_t*thiz,const char*name,chubby_string
 int chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_string_t*contents);
 int chubby_connection_remove(chubby_connection_t*thiz,const char*name);
 int chubby_connection_list(chubby_connection_t*thiz,char***answer,const char*name);
-void chubby_connection_listFree(char**answer);
+void chubby_connection_listFree(chubby_connection_t*thiz,char**answer);
 chubby_connection_t*chubby_connection_getLockFilenameDecreeNumberConnection(chubby_connection_t*thiz,const char*name,int64_t decreeNumber);
 chubby_connection_t*chubby_connection_getLockStringConnection(chubby_connection_t*thiz,const char*lockString);
 char*chubby_connection_getLockString(chubby_connection_t*thiz);

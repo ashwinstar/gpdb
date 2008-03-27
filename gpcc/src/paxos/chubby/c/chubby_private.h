@@ -34,6 +34,8 @@ typedef struct{
 
 struct chubby{
     struct chubby_counted super;
+    void*(*malloc)(size_t);
+    void(*free)(void*);
     char*addresses;
     char id[CHUBBY_ID_SIZE];
     int64_t count;
@@ -51,6 +53,6 @@ int chubby_udp_buffer_isOverflowed(chubby_udp_buffer_t*thiz);
 void chubby_udp_buffer_format(chubby_udp_buffer_t*thiz,char*format,...);
 void chubby_udp_buffer_cat(chubby_udp_buffer_t*thiz,chubby_string_t*a);
 
-chubby_string_t*chubby_string_format(const char*format,...);
+chubby_string_t*chubby_string_format(chubby_t*chubby,const char*format,...);
 
 #endif

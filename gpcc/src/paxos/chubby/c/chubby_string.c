@@ -30,7 +30,7 @@ chubby_udp_buffer_cat(chubby_udp_buffer_t*thiz,chubby_string_t*a)
 }
 
 chubby_string_t*
-chubby_string_format(const char*format,...)
+chubby_string_format(chubby_t*chubby,const char*format,...)
 {
     chubby_string_t*s;
     int len;
@@ -38,7 +38,7 @@ chubby_string_format(const char*format,...)
     va_start(va,format);
     len = vsnprintf(0,0,format,va);
     va_end(va);
-    s = malloc(sizeof*s+len);
+    s = chubby->malloc(sizeof*s+len);
     if (s){
 	s->length = len;
 	va_start(va,format);

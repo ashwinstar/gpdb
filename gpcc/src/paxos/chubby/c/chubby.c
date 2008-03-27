@@ -38,16 +38,17 @@ chubby_delete(struct chubby_counted*_thiz)
 {
     chubby_t*thiz=(chubby_t*)_thiz;
     if (thiz->addresses)
-	free(thiz->addresses);
-    free(thiz);
+	thiz->free(thiz->addresses);
+    thiz->free(thiz);
 }
 
 static int
 chubby_init(chubby_t*thiz,const char*addresses)
 {
-    thiz->addresses = strdup(addresses);
+    thiz->addresses = thiz->malloc(strlen(addresses)+1);
     if (!thiz->addresses)
 	return 1;
+    strcpy(thiz->addresses,addresses);
     if (gethostname(thiz->id,_POSIX_HOST_NAME_MAX))
 	return 1;
     sprintf(thiz->id+strlen(thiz->id),"-%d-%d-%p",(int)getpid(),(int)time(NULL),thiz);
@@ -55,12 +56,14 @@ chubby_init(chubby_t*thiz,const char*addresses)
 }
 
 chubby_t*
-chubby_new(const char*addresses)
+chubby_new(const char*addresses,void*(*malloc)(size_t),void(*free)(void*))
 {
     chubby_t*thiz=malloc(sizeof*thiz);
     if (thiz){
 	memset(thiz,0,sizeof*thiz);
 	thiz->super.delet = chubby_delete;
+	thiz->malloc = malloc;
+	thiz->free = free;
 	if (chubby_init(thiz,addresses)){
 	    chubby_counted_close(thiz);
 	    return NULL;
@@ -135,9 +138,7 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 	return CHUBBY_E_INVAL;
     timeout.tv_sec = TIMEOUT_USEC/1000000;
     timeout.tv_usec = TIMEOUT_USEC%1000000;
-e=
     setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);
-assert(!e);
     for (;;){
 	chubby_udp_buffer_t b;
 	int i,j;
@@ -154,8 +155,10 @@ assert(!e);
 	    sendto(fd,what->a,what->length,0,
 		   (struct sockaddr*) &thiz->leader,sizeof thiz->leader);
 	b.length = recvfrom(fd,b.a,65535,0,NULL,NULL);
-	if (b.length < 0)
-	    return CHUBBY_E_IO;
+	if (b.length < 0){
+	    thiz->leaderValid = 0;
+	    continue;
+	}
 	for (i=0; i<b.length; i++){
 	    for (j=i; i<b.length&&b.a[i]!=' '; i++);
 	    if (command == NULL){
@@ -166,19 +169,19 @@ assert(!e);
 		resultSize = unmangle(result,i-j-7);
 		result[resultSize] = 0;
 	    }else if (!memcmp(b.a+j,"decree=",7)){
-		decree = b.a+j+7;
-		decreeSize = unmangle(decree,i-j-7);
+		decree = b.a+j;
+		decreeSize = i-j;
 		decree[decreeSize] = 0;
 	    }
 	}
 	if (!strcmp(command,"Redirect"))
 	    thiz->leaderValid = !getSocketAddressByName(&thiz->leader,result);
 	else if (!strcmp(command,"Result")){
-	    if (what->length==decreeSize && !memcmp(what->a,decree,decreeSize)){
+	    if (what->length==decreeSize+8 && !memcmp(what->a+8,decree,decreeSize)){
 		if (!memcmp(result,"error ",6))
 		    return atoi(result+6);
 		if (answer){
-		    *answer = malloc(sizeof**answer+resultSize);
+		    *answer = thiz->malloc(sizeof**answer+resultSize);
 		    if (!*answer)
 			return CHUBBY_E_OOM;
 		    (*answer)->length = resultSize;
