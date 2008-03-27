@@ -690,6 +690,7 @@ enable_thread_safety
 with_tcl
 with_perl
 with_python
+with_r
 with_krb5
 krb_srvtab
 with_pam
@@ -23688,6 +23689,7 @@ enable_thread_safety!$enable_thread_safety$ac_delim
 with_tcl!$with_tcl$ac_delim
 with_perl!$with_perl$ac_delim
 with_python!$with_python$ac_delim
+with_r!$with_r$ac_delim
 with_krb5!$with_krb5$ac_delim
 krb_srvtab!$krb_srvtab$ac_delim
 with_pam!$with_pam$ac_delim
@@ -23715,7 +23717,7 @@ YACC!$YACC$ac_delim
 YFLAGS!$YFLAGS$ac_delim
 _ACEOF
 
-  if test `sed -n "s/.*$ac_delim\$/X/p" conf$$subs.sed | grep -c X` = 97; then
+  if test `sed -n "s/.*$ac_delim\$/X/p" conf$$subs.sed | grep -c X` = 98; then
     break
   elif $ac_last_try; then
     { { echo "$as_me:$LINENO: error: could not make $CONFIG_STATUS" >&5

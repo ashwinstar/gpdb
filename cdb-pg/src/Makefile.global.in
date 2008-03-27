@@ -152,6 +152,7 @@ sqlmansect_dummy = l
 with_perl	= @with_perl@
 with_python	= @with_python@
 with_tcl	= @with_tcl@
+with_r		= @with_r@
 with_openssl	= @with_openssl@
 with_zlib	= @with_zlib@
 enable_shared	= @enable_shared@

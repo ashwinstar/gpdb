@@ -473,6 +473,14 @@ AC_MSG_RESULT([$with_python])
 AC_SUBST(with_python)
 
 #
+# Optionally build R modules (PL/R)
+#
+AC_MSG_CHECKING([whether to build R modules])
+PGAC_ARG_BOOL(with, r, no, [  --with-r             build Perl modules (PL/R)])
+AC_MSG_RESULT([$with_r])
+AC_SUBST(with_r)
+
+#
 # Kerberos 5
 #
 AC_MSG_CHECKING([whether to build with Kerberos 5 support])
