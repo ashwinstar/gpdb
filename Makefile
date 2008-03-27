@@ -91,18 +91,23 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
 #
-# The checkTools target builds a subset of the GPDB package that includes
+# Platform Verification Kit (PVK)
+#   formerly checkTools
+#
+# The pvk target builds a subset of the GPDB package that includes
 # just the tools used to verify the configuration of a set of GPDB servers.
 #
-CHECKTOOLS_SCRIPTS = \
+PVK_SCRIPTS = \
 	bin/diskqual.ksh	\
-	bin/gpscp		\
-	bin/gpssh		\
-	bin/gpcheckos		\
-	bin/gpcheckperf		\
+	bin/generate_load_tpch.pl	\
+	bin/gpscp			\
+	bin/gpssh			\
+	bin/gpcheckos			\
+	bin/gpcheckperf			\
+	bin/run_operator_tests.pl	\
 	$(NULL)
 
-CHECKTOOLS_FILESET = \
+PVK_FILESET = \
 	$(CHECKTOOLS_SCRIPTS)	\
 	bin/lib/gplib.py	\
 	bin/lib/pxssh.py	\
@@ -114,16 +119,16 @@ CHECKTOOLS_FILESET = \
 	bin/lib/stream		\
 	$(NULL)
 
-checkTools : INSTCFLAGS=$(OPTFLAGS)
-checkTools : INSTLOC=$(DISTPATH)
-checkTools : gccVersionCheck version GPROOTDEP
+pvk : INSTCFLAGS=$(OPTFLAGS)
+pvk : INSTLOC=$(DISTPATH)
+pvk : gccVersionCheck version GPROOTDEP
 	cd $(GPMGMT)/bin && $(MAKE) netperf stream
 	mkdir -p $(INSTLOC)/bin/lib
-	@for file in $(CHECKTOOLS_FILESET); do \
+	@for file in $(PVK_FILESET); do \
 	    echo "cp -p $(GPMGMT)/$${file} $(INSTLOC)/$${file}"; \
 	    cp -p $(GPMGMT)/$${file} $(INSTLOC)/$${file}; \
 	done
-	perl putversion $(foreach script,$(CHECKTOOLS_SCRIPTS),$(INSTLOC)/$(script))
+	perl putversion $(foreach script,$(PVK_SCRIPTS),$(INSTLOC)/$(script))
 
 groupSession:
 	@cd $(GPMGMT)/bin && $(MAKE)
