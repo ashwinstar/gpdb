@@ -40,7 +40,7 @@
 #include "executor/nodeBitmapHeapscan.h"
 #include "pgstat.h"
 #include "utils/memutils.h"
-
+#include "miscadmin.h"
 
 static TupleTableSlot *BitmapHeapNext(BitmapHeapScanState *node);
 static void bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres);
@@ -135,6 +135,8 @@ BitmapHeapNext(BitmapHeapScanState *node)
 
 		if (tbmres == NULL || tbmres->ntuples == 0)
 		{
+			CHECK_FOR_INTERRUPTS();
+
 			if (tbm == NULL)
 				more = false;
 			else

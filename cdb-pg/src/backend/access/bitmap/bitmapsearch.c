@@ -144,6 +144,13 @@ _bitmap_nextbatchwords(IndexScanDesc scan,
 	if (so->bm_currPos->bm_batchWords->nwords > 0)
 		return true;
 
+	/*
+	 * Compute the next list of batch words. Before that,
+	 * reset the previous list of batch words, especially the
+	 * content and header bitmap words.
+	 */
+	_bitmap_reset_batchwords(so->bm_currPos->bm_batchWords);
+	so->bm_currPos->bm_batchWords->firstTid = so->bm_currPos->bm_result.nextTid;
 	next_batch_words(scan);
 
 	return true;
