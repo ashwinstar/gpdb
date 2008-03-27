@@ -5,7 +5,7 @@
 
 #include <sys/types.h>
 
-#define CHUBBY_CHUNK_SIZE	30000
+#define CHUBBY_CHUNK_SIZE	4000
 
 #define CHUBBY_E_NOENT		1
 #define CHUBBY_E_ISDIR		2
@@ -41,12 +41,12 @@ int chubby_connection_remove(chubby_connection_t*thiz,const char*name);
 int chubby_connection_list(chubby_connection_t*thiz,char***answer,const char*name);
 void chubby_connection_listFree(chubby_connection_t*thiz,char**answer);
 chubby_connection_t*chubby_connection_getLockFilenameDecreeNumberConnection(chubby_connection_t*thiz,const char*name,int64_t decreeNumber);
-chubby_connection_t*chubby_connection_getLockStringConnection(chubby_connection_t*thiz,const char*lockString);
-char*chubby_connection_getLockString(chubby_connection_t*thiz);
-int chubby_connection_isLockValid(chubby_connection_t*thiz);
+int chubby_connection_getLockStringConnection(chubby_connection_t*thiz,chubby_connection_t**answer,const char*lockString);
+int chubby_connection_getLockString(chubby_connection_t*thiz,chubby_string_t**answer);
+int chubby_connection_checkLock(chubby_connection_t*thiz);
 int chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int timeout,int lockTime);
 int chubby_connection_renew(chubby_connection_t*thiz,int lockTime);
-time_t chubby_connection_getLockExpireTime(chubby_connection_t*thiz);
+int chubby_connection_getLockExpireTime(chubby_connection_t*thiz,time_t*time);
 void chubby_connection_giveUpLock(chubby_connection_t*thiz);
 void chubby_connection_close(chubby_connection_t*thiz);
 

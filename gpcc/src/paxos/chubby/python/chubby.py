@@ -4,7 +4,6 @@ import time
 
 TIMEOUT = 1
 CHUNK_SIZE = 4000
-#CHUNK_SIZE = 1000
 DEFAULT_LOCK_TIME = 12
 
 TIME_RESOLUTION = .1
@@ -167,9 +166,9 @@ class Connection:
     def getLockString(self):
 	return "%d-%s"%(self.__lockDn,self.__lockFilename)
 
-    def isLockValid(self):
+    def checkLock(self):
 	a = self.stat(self.__lockFilename)
-	return a[0]==0 and a[1]==self.__lockDn
+	return 0 if a[0]==0 and a[1]==self.__lockDn else E_LOCKEXPIRED
 
     def __statLock(self,name):
 	a = self.get(name+"-info")
@@ -229,7 +228,7 @@ class Connection:
 	return e
 
     def getLockExpireTime(self):
-	return self.__lockExpireTime
+	return (0,self.__lockExpireTime)
 
     def giveUpLock(self):
 	self.renew(0)

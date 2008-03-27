@@ -337,33 +337,35 @@ chubby_connection_getLockFilenameDecreeNumberConnection(chubby_connection_t*thiz
     return c;
 }
 
-chubby_connection_t*
-chubby_connection_getLockStringConnection(chubby_connection_t*thiz,const char*lockString)
+int
+chubby_connection_getLockStringConnection(chubby_connection_t*thiz,chubby_connection_t**answer,const char*lockString)
 {
     int n=0;
     int64_t dn=0;
     sscanf(lockString,"%"APR_INT64_T_FMT"-%n",&dn,&n);
-    return chubby_connection_getLockFilenameDecreeNumberConnection(thiz,lockString+n,dn);
-}
-
-char*
-chubby_connection_getLockString(chubby_connection_t*thiz)
-{
-    char ls[PATH_MAX+NUMBER_STRING_LENGTH+1];
-    char*a;
-    sprintf(ls,"%"APR_INT64_T_FMT"-%s",thiz->lockDn,thiz->lockFilename);
-    a = thiz->chubby->malloc(strlen(ls)+1);
-    if (a)
-	strcpy(a,ls);
-    return a;
+    *answer = chubby_connection_getLockFilenameDecreeNumberConnection(thiz,lockString+n,dn);
+    return 0;
 }
 
 int
-chubby_connection_isLockValid(chubby_connection_t*thiz)
+chubby_connection_getLockString(chubby_connection_t*thiz,chubby_string_t**answer)
+{
+    char ls[PATH_MAX+NUMBER_STRING_LENGTH+1];
+    sprintf(ls,"%"APR_INT64_T_FMT"-%s",thiz->lockDn,thiz->lockFilename);
+    *answer = thiz->chubby->malloc(sizeof(chubby_string_t)+strlen(ls));
+    if (!*answer)
+	return CHUBBY_E_OOM;
+    (*answer)->length = strlen(ls);
+    strcpy((*answer)->a,ls);
+    return 0;
+}
+
+int
+chubby_connection_checkLock(chubby_connection_t*thiz)
 {
     struct chubby_stat stat;
     int e=chubby_connection_stat(thiz,&stat,thiz->lockFilename);
-    return e==0 && stat.decreeNumber==thiz->lockDn;
+    return e==0&&stat.decreeNumber==thiz->lockDn?0:CHUBBY_E_LOCKEXPIRED;
 }
 
 int
@@ -457,10 +459,11 @@ chubby_connection_renew(chubby_connection_t*thiz,int lockTime)
     return e;
 }
 
-time_t
-chubby_connection_getLockExpireTime(chubby_connection_t*thiz)
+int
+chubby_connection_getLockExpireTime(chubby_connection_t*thiz,time_t*t)
 {
-    return thiz->lockExpireTime;
+    *t = thiz->lockExpireTime;
+    return 0;
 }
 
 void
