@@ -1,344 +1,440 @@
-#!/usr/bin/perl
+#!/usr/bin/env python
+'''
+Usage: gpdetective <option> [dbname]
 
-use strict;
-use warnings;
+	-? 
+	-h host	   : DB host name
+	-p port    : DB port number
+	-P passwd  : DB password
+	-U uname   : DB User Name
 
-=head1 NAME
+'''
+#============================================================
+import sys, os, glob, tempfile, subprocess, re, getopt
+VERSION = '$Revision$'
+sys.path.append(sys.path[0] + '/lib')
+try: 
+    import pg8000
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
 
-B<gpdetective> - Greenplum diagnostic detective
+#============================================================
+def usage(exitarg = None):
+    '''
+    Print usage information and exit
+    '''
+    print __doc__
+    sys.exit(exitarg)
 
-=head1 SYNOPSIS
+#============================================================
+class GPDetective():
+    '''
+    GPDetecive main class
+    '''
+    opt    = {}         # Command line options
+    db     = 'postgres' # Default database
+    master = None       # Database connection to master
+    olddir = None       # Directory script was executed from
+    logdir = None       # Temporary directory
+    errlog = None       # Error log
 
-B<gpdetective> [OPTIONS] -c gp_config_file 
+    # Configuration information
+    masterdir = None
+    hosts     = []
+    segments  = []
+    mirrors   = []
+    databases = []
 
-=head1 OPTIONS
+    #------------------------------------------------------------
+    def __init__(self): 
+        '''
+        Initialize the Greenplum Detective
+          1) Extract command line arguments
+          2) Establish connection to master database
+          3) Create Logging Directory
+          4) Create error file
+        '''
+        self.olddir = os.getcwd()
+        if not os.access('.', os.W_OK):
+            sys.exit("No write permission to current directory")
 
-=over 8
+        # Get default option values from enviornment
+        self.opt = {
+            '-h': os.environ.get('PGHOST') or 'localhost',
+            '-P': os.environ.get('PGPASSWORD'),
+            '-U': os.environ.get('USER'),
+            '-p': os.environ.get('PGPORT'),
+            }
 
-=item B<-help>             : Print a brief help message and exits.
+        # Override defaults based on command line options
+        try:
+            (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U')
+            for (switch, val) in options:
+                if   switch == '-?':	   usage(0)
+                elif switch[1] in 'hpPU':  self.opt[switch] = val
+        except Exception, e:
+            usage('Error: ' + str(e))
 
-=item B<-man>              : Print the manual page and exits.
+        # If still no default port, resort to other methods
+        if not self.opt['-p']:
+            psql = subprocess.Popen(['psql', '-?'], stdout=subprocess.PIPE)
+            port = subprocess.Popen(['grep', 'PORT'], stdin=psql.stdout,
+                                    stdout=subprocess.PIPE)
+            line = port.communicate()[0]
+            port_re = re.compile('.*default: "(\d+)"')
+            m = port_re.match(line)
+            if not m: exit('Error: Could not determine PORT')
+            self.opt['-p'] = m.group(1)
 
-=item B<-c gp_config_file> : The Greenplum configuration file
+        # Make sure port is actually an integer
+        try: self.opt['-p'] = int(self.opt['-p'])
+        except ValueError: exit('Error: Could not determine PORT')
 
-=back
+        # Connect to master
+        self.master = self.connect(db=self.db)
 
-=head1 DESCRIPTION
+        # Setup the log directory
+        self.logdir = tempfile.mkdtemp()
+        os.chdir(self.logdir)
+        self.errlog = open('error.log', 'w')
 
-Runs a collection of scripts and utilities to capture information about
-an installation for diagnostic analysis.
-
-Produces a file name gpdetective.tar.gz in the current directory.
-
-=cut
-
-# Version updated by CVS
-my $version = '$Revision$';
-$version =~ s/.*\#(\d*).*/$1/;
-$version = (100+$version)/100.0;
-
-my $debug = 1;
-
-# ---------------------------------------------------------------------
-# Usage
-# ---------------------------------------------------------------------
-my ($help, $man, $config, $askversion);
-use Pod::Usage;
-use Getopt::Long;
-use File::Copy;
-use Cwd;
-use POSIX qw(tmpnam);
-
-GetOptions('help|?' => \$help,
-	       'man' => \$man,
-		   'version' => \$askversion,
-		   'c=s' => \$config)
-or pod2usage(2);
-pod2usage(-exitstatus => 1) if $help;
-pod2usage(-exitstatus => 0, -verbose => 2) if $man;
-if ($askversion) {
-	print "gpdetective version: $version\n";
-	exit(0);
-}
-
-# ---------------------------------------------------------------------
-# Check input for problems
-# ---------------------------------------------------------------------
-die "No write permission for output: ./\n" unless (-w '.');
-die "Please specify a configurationn file: -c gp_config_file\n" unless ($config);
-die "$config does not exist\n" unless (-e $config);
-die "$config is not a file\n" unless (-f $config);
-die "Can not read file: $config\n" unless (-r $config);
-
-my $gphome = $ENV{GPHOME};
-die "Enviornment variable GPHOME is not set\n" unless (defined $gphome);
-my $PSQL      = "$gphome/bin/psql";
-my $PG_DUMP   = "$gphome/bin/pg_dump";
-my $GPSTATE   = "$gphome/bin/gpstate";
-my $GPCHECKOS = "$gphome/bin/gpcheckos";
-my $GPSSH     = "$gphome/bin/gpssh";
-my $GPSCP     = "$gphome/bin/gpscp";
-
-print "Collecting information:\n";
-
-# ---------------------------------------------------------------------
-# read the config file and extract useful stuff.
-# ---------------------------------------------------------------------
-my ($hostfile, $prefix, $master, @segment);
-{
-	print "  + configuration file\n";
-	open CONFIG, "<$config";
-	while (<CONFIG>) {
-		next if (/^\s*(\#.*)?$/);  # blank lines, comment lines
-		$hostfile = $1 if (/^\s*MACHINE_LIST_FILE=(.*)$/);
-		$prefix = $1 if (/^\s*SEG_PREFIX=(.*)$/);
-		$master = $1 if (/^\s*MASTER_DIRECTORY=(.*)$/);
-		if (/DATA_DIRECTORY=\(([^\)]*)(\)?)\s*$/) {
-			my $segments = $1;
-			chomp($segments);
-			while ($2 ne ")" and $_ = <CONFIG>) {
-				$segments .= " $1" if (/\s*([^\)]*)(\)?)\s*$/);
-				chomp($segments);
-			}
-			@segment = split(" ", $segments);
-		}
-	}
-	close CONFIG;
-}
-
-if ($debug) {
-	print "HOSTFILE = $hostfile\n";
-	print "PREFIX = $prefix\n";
-	print "MASTER = $master\n";
-	print "SEGMENTS = $#segment [@segment]\n";
-}
+    #------------------------------------------------------------
+    def __del__(self):
+        '''
+        Cleanup open connections and remove temporary files
+        '''
+        if self.olddir: os.chdir(self.olddir)
+        if self.master: self.master.close()
+        if self.errlog: self.errlog.close()
+        if self.logdir: subprocess.call(['rm', '-rf', self.logdir])
 
 
-# ---------------------------------------------------------------------
-# Get the list of hosts
-# ---------------------------------------------------------------------
-my @host;
-{
-	print "  + hostfile\n";
-	die "Can not read hostfile: $hostfile\n" unless (-r $hostfile);
-	open HOSTFILE, "<$hostfile";
-	while (<HOSTFILE>) {
-		chomp;
-		push @host, $_;
-	}
-	if ($debug) {
-		print "HOSTS = $#host [@host]\n";
-	}
-	close HOSTFILE;
-}
+    #------------------------------------------------------------
+    def connect(self, user=None, password=None,host=None, port=None, db=None):
+        '''
+        Establish a connection to the Greenplum database
+        '''
+        user = user or self.opt['-U']
+        host = host or self.opt['-h']
+        port = port or self.opt['-p']
+        db   = db   or self.opt['-U']
+        return pg8000.Connection(user=user, password=password, 
+                                 host=host, port=port, database=db)
 
-# ---------------------------------------------------------------------
-# From now on we don't want to die without cleaning up
-# ---------------------------------------------------------------------
-my $logs = tmpnam();
-my $cwd  = cwd();
-mkdir $logs;
-chdir $logs;
-copy($config,$logs);
-copy($hostfile,$logs);
+    #------------------------------------------------------------
+    def writeCmd(self, filename, cmd):
+        '''
+        Execute a shell command and dumps the results to the
+        specified file.
+        '''
+        self.errlog.write('CMD: ')
+        for i in cmd:
+            self.errlog.write(str(i) + ' ')
+        self.errlog.write("\n")
+        self.errlog.flush()
 
+        if filename:
+            path = "%s/%s" % (self.logdir, filename)
+            file = open(path, 'w')
+        else:
+            file = self.errlog
+        try:
+            x = subprocess.call(cmd, stdout=file, stderr=self.errlog)
+        except Exception, e:
+            self.errlog.write("Error: " + str(e) + "\n");
+            self.errlog.flush()
 
-# ---------------------------------------------------------------------
-# General
-# 1) Grab log files from all segments
-# 2) postgresql.conf from master + 1 segment
-# 3) postgresql.conf from segments with different files
-# ---------------------------------------------------------------------
+        if filename: 
+            file.close()
 
-# Grab log file and postgres.conf from master
-{
-	print "  + master_$prefix-1.log\n";
-	copy("$master/$prefix-1.log", "$logs/master_$prefix-1.log");
-	copy("$master/$prefix-1/postgresql.conf", "$logs/postgresql_master.conf");
-}
+    #------------------------------------------------------------  
+    def writeSelect(self, filename, query):
+        '''
+        Execute a sql query and dump the results to the specified file.
+        '''
+        self.errlog.write('SQL: ' + query)
+        self.errlog.flush()
 
-# Grab files from segments
-{
-	print "  + segment_$prefix.log\n";
-	foreach my $host (@host) {
-		for (my $d = 0; $d <= $#segment; $d++) {
-			my $seg = $segment[$d];
-			
-			# Grab log file
-			system(qq[scp -q $host:$seg/$prefix$d.log ] .
-				   qq[$logs/$host\_$prefix$d.log ] .
-				   qq[2>>$logs/error.log]);
-			
-			# Grab postgresql.conf file
-			system(qq[scp -q $host:$seg/$prefix$d/postgresql.conf ] .
-				   qq[$logs/postgresql\_$host\_$prefix$d.conf ] .
-				   qq[2>>$logs/error.log]);
-		}
-	}
-}
+        try:
+            self.master.execute(query)
+        except Exception, e:
+            self.errlog.write("Error: " + str(e) + "\n");
+            self.errlog.flush()
+            return
 
-# ---------------------------------------------------------------------
-# Run diffs on postgresql.conf files
-# ---------------------------------------------------------------------
-{
-	print "  + postgres.conf\n";
-	my $i;
-	my @conf = ();
-	my @files = <$logs/*.conf>;
-	foreach my $file (@files) {
-		for ($i = 0; $i <= $#conf; $i++) {
-			my $d = `diff -q $file $conf[$i]`;
-			if ($d =~ /^\s*$/) {
-				unlink($file); # delete matching postgresql.conf file
-				last;
-			}
-		}
+        d = self.master.row_description
+        path = "%s/%s" % (self.logdir, filename)
+        file = open(path, 'w')
+        for column in d:
+            file.write(column['name'] + " |")
+        file.write("\n")
+        for tuple in self.master.iterate_tuple():
+            for item in tuple:
+                file.write(str(item))
+                file.write(" |")
+            file.write("\n")
+        file.close()
 
-		# If it didn't match any files, add it to the list of files to
-		# compare against.
-		push @conf, $file if ($i > $#conf);
-	}
-}
+   #------------------------------------------------------------  
+    def writeArray(self, filename, itemlist):
+        '''
+        Writes an array to a specified file
+        '''
+        path = "%s/%s" % (self.logdir, filename)
+        file = open(path, 'w')
+        for item in itemlist:
+            file.write(str(item) + "\n")
+        file.close()
 
-# ---------------------------------------------------------------------
-# Catalog
-# ---------------------------------------------------------------------
-{
-	print "  + catalog tables\n";
-	system(qq[ $PG_DUMP -s postgres > $logs/pg_dump.log ]  .
-		   qq[2>>$logs/error.log]);
-	my $query = 
-		qq[select nspname || '.' || relname, attname, s.* ] .
-		qq[from pg_class c, pg_namespace n, pg_attribute a, pg_statistic s ] .
-		qq[where n.oid = c.relnamespace and c.oid = a.attrelid and ] .
-		qq[c.oid = s.starelid and a.attnum = s.staattnum order by 1, 2];
-	system(qq[$PSQL -aX -d postgres -c "$query"  > $logs/catalog_q1.log] .
-		   qq[ 2>> $logs/error.log]);
-}
+    #------------------------------------------------------------  
+    def select(self, query):
+        '''
+        Execute a SQL query and return an array of result rows
+           + Single columns will be returned as an array of values
+           + Multiple columns will be returned as an array of tuples
+        '''
+        rows = []
+        self.master.execute(query)
+        for tuple in self.master.iterate_tuple():
+            if len(tuple) == 1: 
+                rows.append(tuple[0])
+            else: 
+                rows.append(tuple)
+        return rows
+    
+    #------------------------------------------------------------  
+    def getConfiguration(self):
+        '''
+        Collect configuration information
+        '''
+        print('  + Configuration ')
 
+        # Master directory
+        rows = self.select(
+        '''
+           SELECT datadir 
+           FROM   gp_configuration 
+           WHERE  content = -1  AND  definedprimary
+        ''')
+        self.masterdir = rows[0]
 
+        # List of hosts
+        self.hosts = self.select(
+        '''
+           SELECT distinct hostname
+           FROM   gp_configuration
+           WHERE  content >= 0
+        ''')
 
+        # list of segments
+        self.segments = self.select(
+        '''
+           SELECT hostname || ':' || datadir FROM gp_configuration
+           WHERE  content >= 0  AND  definedprimary
+        ''')
 
-# ---------------------------------------------------------------------
-# System
-# 5) postgres executable size, checksum, version from master
-# 6) kernel and filesytem information from master
-# 7) cpu type and memory size from master
-# ---------------------------------------------------------------------
-{
-	print "  + gpstate\n";
-	system(qq[ $GPSTATE -m > $logs/gpstate_mirrors.log ]  .
-		   qq[2>>$logs/error.log]);
-	system(qq[ $GPSTATE -f > $logs/gpstate_standby_master.log ]  .
-		   qq[2>>$logs/error.log]);
-	system(qq[ $GPSTATE -d > $logs/gpstate_master.log ]  .
-		   qq[2>>$logs/error.log]);
+        # list of mirrors
+        self.mirrors = self.select(
+        '''
+           SELECT hostname || ':' || datadir FROM gp_configuration
+           WHERE  content >= 0  AND  not definedprimary
+        ''')
 
-	print "  + gpcheckos\n";
-	system(qq[ $GPCHECKOS -h $master > $logs/gpcheckos_master.log ] .
-		   qq[2>>$logs/error.log]);
-	system(qq[ $GPCHECKOS -f $hostfile > $logs/gpcheckos_segments.log ] .
-		   qq[2>>$logs/error.log]);
-}
+        # list of databases
+        self.databases = self.select(
+        '''
+           SELECT datname FROM pg_database
+           WHERE  datname not in ('template0', 'template1')
+        ''')
 
-
-# ---------------------------------------------------------------------
-# Crashes
-# 8) Stack Traces
-# 9) Local Variables of current stack frame
-# 10) Offending statement
-# ---------------------------------------------------------------------
-{
-	# Where the stack traces?
-	print "  + Crash Report\n";
-}
-
-
-
-# ---------------------------------------------------------------------
-# Special
-# 11) Run all scripts in $GPHOME/share/gpdetective
-#     Skip test if directory is world writable
-# ---------------------------------------------------------------------
-{
-	sub inlist($@) {
-		my $i = shift;
-		my @list = @_;
-		foreach my $elem (@list) {
-			return $elem if ($elem eq $i);
-		}
-		return undef;
-	}
-
-	my $extension = qq[$gphome/share/gpdetective];
-
-	print "  + Extensions\n";
-
-	if (-d $extension) 
-	{
-		my @badwrite = `/usr/bin/find $extension -perm +002 -print`;
-		chomp @badwrite;
-		my @files = glob("$extension/*");
-	
-		if (inlist($extension, @badwrite)) 
-		{
-			system("echo Skipping Extensions: global write permission " .
-				   " >> $logs/error.name");
-			print "WARNING global write permission to $extension - skipping\n";
-		}
-		else
-		{
-			foreach my $file (@files) {
-				if ($file =~ /^$extension\/(.*?)(\.\w+)?$/)
-				{
-					my ($name, $type) = ($1, $2);
-					$type = "" unless (defined($type));
-					
-					if (inlist($file, @badwrite)) 
-					{
-						system("echo SKIPPED: $file \\(a+w\\) >> $logs/error.name");
-						print "    + $name$type (skipped a+w)\n";
-					}
-					elsif ($type eq ".sql") 
-					{
-						system("$PSQL -aX -d postgres -f $file > $logs/$name.log" .
-							   " 2>> $logs/error.log");
-						print "    + $name$type\n";
-					} 
-					elsif (-x $file) 
-					{
-						system("$file -c $config -d $logs > $logs/$name.log" .
-							   " 2>> $logs/error.log");
-						print "    + $name$type\n";
-					} 
-					else 
-					{
-						system("echo SKIPPED: $file >> $logs/error.log");
-						print "    + $name$type (skipped)\n";
-					}
-				}
-			}
-		}
-	}
-}
+        self.writeArray('hosts', self.hosts)
+        self.writeSelect('config.log', 
+        '''
+           SELECT * from gp_configuration
+        ''')
 
 
 
-# ---------------------------------------------------------------------
-# Cleanup
-# ---------------------------------------------------------------------
-print "  + error.log\n" if (-s "$logs/error.log");
+    #------------------------------------------------------------
+    def copyLogs(self):
+        '''
+        1. Copy logfiles from master and all segments
+        2. Copy postgresql.conf from master and all segments
+        3. Remove duplicate postgresql.conf files
+        '''
+        print('  + Logfiles')
 
-my $timestamp = `date "+%Y%m%d%H%M%S"`;
-chomp($timestamp);
-system("echo tar -cf gpdetective$timestamp.tar *");
-system("tar -cf gpdetective$timestamp.tar *");
-system("tar -tf gpdetective$timestamp.tar") if ($debug);
-system("gzip -f gpdetective$timestamp.tar");
-copy("gpdetective$timestamp.tar.gz", $cwd);
-chdir $cwd;
-system("rm -rf $logs");
+        # Grab master log and postgresql.conf
+        path_rx = re.compile('.*/([^/]*)')
+        m = path_rx.match(self.masterdir)
+        self.writeCmd(None, ['cp', 
+                             '%s.log' % self.masterdir, 
+                             'master_%s.log' % m.group(1)])
+        self.writeCmd(None, ['cp', 
+                             '%s/postgresql.conf' % self.masterdir, 
+                             'postgresql_master.conf'])
 
-print "Done\n";
-print "Created gpdetective$timestamp.tar.gz\n";
+        # Grab segment logs and postgresql.conf        
+        host_rx = re.compile('(.*)\:.*/([^/]*)')
+        for seg in self.segments:
+            m = host_rx.match(seg)
+            self.writeCmd(None, ['scp', '-q', 
+                                 '%s.log' % seg, 
+                                 '%s_%s.log' % m.group(1,2)])
+            self.writeCmd(None, ['scp', '-q', 
+                                 '%s/postgresql.conf' % seg,
+                                 'postgresql_%s_%s.conf' % m.group(1,2)])
+        
+        # Remove duplicate postgresql.conf files
+        files = glob.glob(self.logdir+'/postgresql*.conf')
+        conf = []
+        for f in files:
+            m = 0
+            for c in conf:
+                x = subprocess.Popen(['diff', '-q', f, c], 
+                                     stdout=subprocess.PIPE)
+                d = x.communicate()[0]
+                if not d:
+                    subprocess.call(['rm', f])
+                    m = 1
+                    break
+            if m == 0:
+                conf.append(f)
+
+
+    #------------------------------------------------------------
+    def systemInfo(self):
+        '''
+        1. Run gpstate
+        2. Run gpcheckos
+        '''
+        print "  + Run gpstate";
+        self.writeCmd('gpstate_mirrors.log',        ['gpstate', '-m'])
+        self.writeCmd('gpstate_standby_master.log', ['gpstate', '-f'])
+        self.writeCmd('gpstate_master.log',         ['gpstate', '-d'])
+    
+        print "  + Run gpcheckos";
+        self.writeCmd('gpcheckos_master.log',   ['gpcheckos', '-m'])
+        self.writeCmd('gpcheckos_segments.log', ['gpcheckos', '-f', 'hosts'])
+
+
+    #------------------------------------------------------------
+    def checkCatalog(self):
+        '''
+        1. Run gpcheckcat
+        2. pg_dump all databases
+        3. Run other catalog queries
+        '''
+        print "  + Catalog tables";
+
+        self.writeCmd('gpcheckcat.log', ['gpcheckcat'])
+
+        for db in self.databases:
+            self.writeCmd('pg_dump_' + db, ['pg_dump', '-s', db])
+
+        self.writeSelect('catalog_q1.log', 
+        '''
+           SELECT nspname || '.' || relname, attname, s.* 
+           FROM   pg_class c, 
+                  pg_namespace n, 
+                  pg_attribute a, 
+                  pg_statistic s 
+           WHERE  n.oid = c.relnamespace 
+             AND  c.oid = a.attrelid 
+             AND  c.oid = s.starelid 
+             AND  a.attnum = s.staattnum 
+          ORDER BY 1, 2
+        ''')
+
+    #------------------------------------------------------------
+    def crashReport(self):
+        '''
+        Find core files and extract useful information
+           + Stack Traces
+           + Local variables of current stack frame
+           + Offending statement
+        '''
+        pass
+    
+    #------------------------------------------------------------
+    def runExtensions(self):
+        '''
+        Run any extensions in $GPHOME/share/gpdetective
+           + Skips tests if the directory is word writeable
+           + Skips any test that is word writeable
+           + Runs any .sql file on the master database
+           + Executes any executable file
+              * stdout is directed to 'ext_file.log'
+              * stderr is directed to self.errlog
+        '''
+        print "  + Run extensions"
+        gphome = os.environ.get('GPHOME')
+        if not gphome:
+            print "    - skipped: env{GPHOME} not set"
+            return
+        ext  = gphome + '/share/gpdetective'
+        try:
+            stat_info = os.stat(ext)
+            files     = os.listdir(ext)
+        except OSError:
+            return     # directory doesn't exist
+        if stat_info.st_mode & 0x002:
+            print "    - skipped: a+w on " + ext
+            return
+        re_sql = re.compile('(.*)\.sql')
+        for f in files:
+            path = ext + '/' + f
+            stat_info = os.stat(path)
+            if stat_info.st_mode & 0x002:
+                print "    - %s [skipped]: global write permission" % f
+                continue
+            if not os.access(path, os.R_OK):
+                print "    - %s [skipped]: no execute permission" % f
+                continue
+            m = re_sql.match(f)
+            if m:
+                print "    + " + f
+                self.writeCmd('ext_' + f + '.log',
+                         ['psql', '-aX', '-d', self.db,
+                          '-U', self.opt['-U'],
+                          '-h', self.opt['-h'],
+                          '-p', self.opt['-p'],
+                          '-f', path])
+                continue
+            if not os.access(path, os.X_OK):
+                print "    - %s [skipped]: no execute permission" % f
+                continue
+            print "    + " + f
+            self.writeCmd('ext_' + f + '.log', [path])
+
+    #------------------------------------------------------------
+    def makeTar(self):
+        '''
+        Creates a tar archive from the files in the temporary logdir
+        '''
+        self.errlog.close();
+        self.errlog = None
+
+        x = subprocess.Popen(['date', '+%Y%m%d%H%M%S'], stdout=subprocess.PIPE)
+        timestamp = x.communicate()[0]
+        tarfile = 'gpdetective' + timestamp.strip() + '.tar'
+        print "  + Producing " + tarfile
+        tarcmd = ['tar', '-cjf', tarfile];
+        tarcmd.extend(os.listdir('.'))
+        x = subprocess.call(tarcmd)
+        x = subprocess.call(['cp', tarfile, self.olddir])
+
+#================================================================
+
+d = GPDetective()
+print 'Collecting information'
+d.getConfiguration()
+d.copyLogs()
+d.systemInfo()
+d.checkCatalog()
+d.crashReport()
+d.runExtensions()
+d.makeTar()
+print 'Done'
+
 exit(0);
