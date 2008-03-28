@@ -115,6 +115,7 @@ def makeConfFile(srcdir, flist):
     fname = '/tmp/rsyncd.conf.' + GV.SUFFIX
     f = open(fname, 'w')
     f.write('log file = /tmp/rsyncd.log.%s\n' % GV.SUFFIX)
+    f.write('pid file = /tmp/rsyncd.pid.%s\n' % GV.SUFFIX)
     f.write('\n')
     f.write('[%s]\n' % GV.SECRET)
     f.write('\t path = %s\n' % srcdir)
@@ -139,10 +140,13 @@ def startLocalRsyncDaemon(port, srcdir, flist):
     if GV.opt['-V']: 
         print '[INFO] ---------------- enter startLocalRsyncDaemon'
     confpath = makeConfFile(srcdir, flist)
-    cmd = 'rsync -vv --port=%d --daemon --no-detach --config=%s' % (port, confpath)
+    cmd = 'rsync -vv --port=%d --daemon --no-detach --config=%s < /dev/null' % (port, confpath)
     if GV.opt['-v']: print '[INFO]', cmd
-    proc = subprocess.Popen(cmd.split(' '))
+    proc = subprocess.Popen(cmd, shell=True, stderr=subprocess.STDOUT)
     time.sleep(1)
+    
+    if proc.poll(): 
+        return None
 
     # test
     doTest = True
@@ -150,7 +154,7 @@ def startLocalRsyncDaemon(port, srcdir, flist):
         testcmd = 'rsync --port=%d localhost::' % port
         if GV.opt['-v']: print '[INFO]', testcmd
         x = subprocess.Popen(testcmd.split(' '), stdout=subprocess.PIPE)
-        print x.stdout.read(-1)
+        x.stdout.read(-1)
         rc = x.wait()
         if rc:
             os.kill(proc.pid, signal.SIGKILL)
@@ -304,6 +308,9 @@ def doCleanup(proc = None):
         except OSError:
             pass
         proc.wait()
+
+        pidfile = '/tmp/rsyncd.pid.%s' % GV.SUFFIX
+        os.system("bash -c 'ls %s && kill $(< %s)' > /dev/null 2>&1 " % (pidfile, pidfile))
     os.system('rm -f /tmp/rsyncd.*' + GV.SUFFIX)
     return True
 
