@@ -336,7 +336,8 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
     gpha.dir = argv[handle->ind++];
 
     if (gpha.port == 0) {
-	gpha.port = 53333;
+	fprintf(stderr, "port must be specified\n");
+	exit(1);
     }
 
     if (strlen(gpha.dir) == 0) {
