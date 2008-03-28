@@ -707,6 +707,7 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 		/* start QD in admin/utility mode */
 		gpcc_log_info("[%s] start QD in admin mode", cmdslot->cmdname);
 		if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.seg.request.proc,
+							    0,
 							    cmdslot->u.seg.request.port,
 							    cmdslot->u.seg.request.data_dir,
 							    1, 1, 0,
@@ -717,6 +718,7 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 	    } else {
 		gpcc_log_info("[%s] start QE", cmdslot->cmdname);
 		if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
+							     0,
 							     cmdslot->u.seg.request.port,
 							     cmdslot->u.seg.request.data_dir,
 							     0, 1, 0,
@@ -986,7 +988,9 @@ static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
     
     gpcc_log_info("[%s] pg_ctl stop database", cmdslot->cmdname);
 
-    if (0 != (e = gpcc_proc_pg_ctl_stop(&proc, cmdslot->u.seg.request.port,
+    if (0 != (e = gpcc_proc_pg_ctl_stop(&proc, 
+					0,
+					cmdslot->u.seg.request.port,
 					cmdslot->u.seg.request.data_dir,
 					"immediate",
 					1, 1, 
@@ -1024,6 +1028,7 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 
     /* stop database */
     if (0 != (e = gpcc_proc_pg_ctl_stop(&proc,
+					0,
 					cmdslot->u.seg.request.port,
 					cmdslot->u.seg.request.data_dir,
 					"immediate",
@@ -1099,6 +1104,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 
 	gpcc_log_info("[%s] starting segment", gpcc_json_object_get_string(obj, "seg", ""));
 	if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.seg.request.proc,
+						     0,
 						     cmdslot->u.seg.request.port,
 						     cmdslot->u.seg.request.data_dir,
 						     0, 1, 0, 
@@ -1123,6 +1129,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 		utility = 1;
 
 	    if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.seg.request.proc,
+							0,
 							cmdslot->u.seg.request.port,
 							cmdslot->u.seg.request.data_dir,
 							utility,
@@ -1258,6 +1265,7 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     }
 
     if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.seg.request.proc,
+					0,
 					cmdslot->u.seg.request.port,
 					cmdslot->u.seg.request.data_dir,
 					cmdslot->u.seg.request.mode,
@@ -1530,6 +1538,7 @@ apr_status_t seg_delete(gpcc_event_t *ev, void *_cmdslot)
     }
 
     if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.seg.request.proc,
+					0,
 					cmdslot->u.seg.request.port,
 					cmdslot->u.seg.request.data_dir,
 					cmdslot->u.seg.request.mode,

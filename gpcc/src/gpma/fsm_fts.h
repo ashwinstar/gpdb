@@ -713,11 +713,10 @@ static apr_status_t a_fts_failure(gpcc_event_t *ev, void *_cmdslot)
 }
 
 static apr_status_t a_fts_array_config_verify() {
-    int i, n;
+    int i;
     const char *v;
     int errcnt = 0;
     char buf[1024];
-    int nnode = 0;
     char host[1024];
     char dir[1024];
     int port;

@@ -9,10 +9,9 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     int e;
     char *initdbfn = 0;
     int pid = 0;
-    struct json_object *seg = 0, *nodeobj = 0;
-    char *node, *m_data_dir;
+    struct json_object *seg = 0;
+    char *m_data_dir;
     char *source;
-    char *user;
     char *host;
 
     obj = json_tokener_parse(packet->payload);
@@ -346,6 +345,7 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 		/* start QD in admin/utility mode */
 		gpcc_log_info("[%s] start QD in admin mode", cmdslot->cmdname);
 		if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.request.proc,
+							    0,
 							    cmdslot->u.request.port,
 							    cmdslot->u.request.data_dir,
 							    1, 1, 0,
@@ -356,6 +356,7 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 	    } else {
 		gpcc_log_info("[%s] start QE", cmdslot->cmdname);
 		if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.request.proc,
+							     0,
 							     cmdslot->u.request.port,
 							     cmdslot->u.request.data_dir,
 							     0, 1, 0,
@@ -412,7 +413,7 @@ static apr_status_t seg_initdb_update_gp_conf_per_segment(gpcc_event_t *ev, void
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
     struct json_object *msg = cmdslot->u.request.msg;
     int e;
-    struct json_object *seg, *hostarray;
+    struct json_object *seg;
     char *data_dir;
     char *host;
     int port, dbid, content;
@@ -621,7 +622,9 @@ static apr_status_t seg_initdb_backout2(gpcc_event_t *ev, void *_cmdslot)
     
     gpcc_log_info("[%s] pg_ctl stop database", cmdslot->cmdname);
 
-    if (0 != (e = gpcc_proc_pg_ctl_stop(&proc, cmdslot->u.request.port,
+    if (0 != (e = gpcc_proc_pg_ctl_stop(&proc, 
+					0,
+					cmdslot->u.request.port,
 					cmdslot->u.request.data_dir,
 					"immediate",
 					1, 1, 
@@ -659,6 +662,7 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 
     /* stop database */
     if (0 != (e = gpcc_proc_pg_ctl_stop(&proc,
+					0,
 					cmdslot->u.request.port,
 					cmdslot->u.request.data_dir,
 					"immediate",

@@ -7,6 +7,7 @@
 #include <gpcc_event.h>
 #include <gpcc_fsm.h>
 #include <gpcc_json.h>
+#include <gpcc_proc.h>
 #include <json/json.h>
 #include <event.h>
 #include <ctype.h>
@@ -17,6 +18,7 @@
 gpma_t gpma = {0};
 
 static const char* verify_ma(const char* ma);
+static apr_status_t sync_config(void);
 
 /* Print usage info */
 static void usage(const char* msg)
@@ -474,6 +476,10 @@ void d_main(void)
 	setlinebuf(stdout);
     }
 
+    /* sync configuration from database */
+    if (sync_config()) 
+	gpcc_fatal(FLINE, "sync config failed");
+
     /* dump the config */
     /*    process_lscfg(0); */
 
@@ -620,6 +626,143 @@ static const char* verify_ma(const char* ma)
     return NULL;
 }
 
+
+/* sync the gp_configuration and gpcc config */
+static apr_status_t sync_config(void)
+{
+    int i, e = 0, stop = 0;
+    apr_pool_t *p = 0;
+    apr_proc_t proc;
+    char *s1, *s2;
+    const char *value;
+    char key[128], host[256], dir[1028], portstr[128], line[1024];
+    int master_port;
+    char *last;
+
+
+    if (! config_get(gpma.cfg, "gpdb.name"))
+	return 0;
+
+    strcpy(key, "gpdb.seg.m.0");
+    value = config_get(gpma.cfg, key);
+    if (!value)
+	return APR_EINVAL;
+
+    s1 = strchr(value, ':');
+    if (!s1) {
+	gpcc_log_error("value format error. %s = %s", key, value);
+	return APR_EINVAL;
+    }
+    s2 = strchr(s1+1, ':');
+    if (!s2) {
+	gpcc_log_error("value format error. %s = %s", key, value);
+	return APR_EINVAL;
+    }
+
+    strncpy(host, value, s1-value);
+    host[s1-value] = 0;
+    strncpy(portstr, s1+1, s2-s1);
+    portstr[s2-s1-1] = 0;
+    master_port = atoi(portstr);
+    strcpy(dir, s2+1);
+    
+    if (dir[0] != '/') {
+	gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
+	return APR_EINVAL;
+    }    
+
+    if (apr_pool_create(&p, 0))
+	gpcc_fatal(FLINE, "apr_pool_create: not enough memory\n");
+	
+    /* check if QD is running */
+    /* get gp_configuration and reset config */
+    if ((e = gpcc_proc_psql(&proc, host, master_port, "template1",
+			    "select * from gp_configuration order by content",
+			    1, 1, p)) != 0) {
+
+	/* start master QD in admin mode */
+	if ((e = gpcc_proc_pg_ctl_start_master(&proc, host, master_port, dir, 1, 1, 1, p)) != 0) {
+	    gpcc_log_error("start master QD failure");
+	    goto bail;
+	}
+	
+	if ((e = gpcc_proc_psql(&proc, host, master_port, "template1",
+				"select * from gp_configuration order by content",
+				1, 1, p)) != 0) {
+	    gpcc_log_error("psql -- select statement failure");
+	    goto bail;
+	}
+	
+	stop = 1;
+    }
+
+    /* cleanup config */
+    {
+	const char **keys;
+	
+	keys = config_keys(gpma.cfg, p);
+	for (i = 0; keys[i] ; i++) {
+	    if (strstr(keys[i], "gpdb.seg.") == keys[i] || strstr(keys[i], "node.") == keys[i]) {
+		config_set(gpma.cfg, keys[i], 0);
+	    }
+	}
+    }
+
+
+    /* read gp_configuration */
+    for (i = 0; apr_file_gets(line, sizeof(line), proc.out) == 0 ; i++) {
+	char *content, *definedprimary, *dbid, *isprimary, *valid, *hostname, *port, *datadir;
+	char v[1024];
+	int c;
+
+	gpcc_log_info(line);
+
+	content = apr_strtok(line, "|", &last);
+	definedprimary = apr_strtok(0, "|", &last);
+	dbid = apr_strtok(0, "|", &last);
+	isprimary = apr_strtok(0, "|", &last);
+	valid = apr_strtok(0, "|", &last);
+	hostname = apr_strtok(0, "|", &last);
+	port = apr_strtok(0, "|", &last);
+	datadir = apr_strtok(0, "|\r\n", &last);
+
+	/* key */
+	strcpy(key, "gpdb.seg.");
+	c = strtol(content, 0, 0);
+	if (c == -1)
+	    strcat(key, "m");
+	else
+	    strcat(key, content);
+	strcat(key, ".");
+	if (*definedprimary == 't')
+	    strcat(key, "0");
+	else 
+	    strcat(key, "1");
+
+	/* value */
+	sprintf(v, "%s:%s:%s", hostname, port, datadir);
+
+	config_set(gpma.cfg, key, v);
+    }
+
+    if (stop) {
+	/* stop master QD */
+	if ((e = gpcc_proc_pg_ctl_stop(&proc, host, master_port, dir, "immediate", 1, 1, p)) != 0) {
+	    gpcc_log_error("stop master QD failure");
+	    goto bail;
+	}
+    }
+
+    config_gc(gpma.cfg);
+    GPCC_DO(0 == config_write(gpma.datadir, gpma.guid, gpma.cfg));
+
+    bail:
+    if (p) apr_pool_destroy(p);
+
+    return e;
+
+}
+
 /*
  *  Sanity check on config info.
  */
@@ -662,6 +805,7 @@ static void verify_config(void)
 
 	/* set the number of QEs */
 	config_set_int(gpma.cfg, "gpdb.seg.max", i);
+
     }
 
     /* fail out */
@@ -744,6 +888,7 @@ void load_config(void)
 
 	/* check if config is legit */
 	verify_config();
+
     }
 
     GPCC_DO(0 == config_write(gpma.datadir, gpma.guid, gpma.cfg));

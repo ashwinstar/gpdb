@@ -122,7 +122,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_initdb(apr_proc_t *proc, const char *data_di
  *  @param pool memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, int port, const char *data_dir, 
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, const char *host, int port, const char *data_dir, 
 						 const char *option, int wait, int blocking, apr_pool_t *p);
 
 
@@ -137,7 +137,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, int port, con
  *  @param pool memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, int port, const char *data_dir, 
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, const char *host, int port, const char *data_dir, 
 							int utility, int wait, int blocking, apr_pool_t *p);
 
 
@@ -152,7 +152,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, int po
  *  @param pool memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, int port, const char *data_dir, 
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, const char *host, int port, const char *data_dir, 
 							 int utility, int wait, int blocking, apr_pool_t *p);
 
 /**
@@ -181,7 +181,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpsyncmaster_start(apr_proc_t *proc, int por
  *  @param pool memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
-APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_stop(apr_proc_t *proc, int port, const char *data_dir, const char *mode, int wait, int blocking, apr_pool_t *p); 
+APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_stop(apr_proc_t *proc, const char *host, int port, const char *data_dir, const char *mode, int wait, int blocking, apr_pool_t *p); 
 
 
 /**

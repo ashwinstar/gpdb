@@ -34,6 +34,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 
 	gpcc_log_info("[%s] starting segment", gpcc_json_object_get_string(obj, "seg", ""));
 	if (0 != (e = gpcc_proc_pg_ctl_start_segment(&cmdslot->u.request.proc,
+						     0,
 						     cmdslot->u.request.port,
 						     cmdslot->u.request.data_dir,
 						     0, 1, 0, 
@@ -58,6 +59,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 		utility = 1;
 
 	    if (0 != (e = gpcc_proc_pg_ctl_start_master(&cmdslot->u.request.proc,
+							0,
 							cmdslot->u.request.port,
 							cmdslot->u.request.data_dir,
 							utility,
