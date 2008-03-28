@@ -15,7 +15,7 @@ Usage: gpssh [--version] [-?v] [-h host] [-f hostfile] [cmd]
                       go into interactive mode
 '''
 
-import os, sys, getopt, popen2, cmd, signal, time, atexit, threading
+import os, sys, getopt, cmd, signal, time, atexit, threading, subprocess
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -72,20 +72,23 @@ def parseCommandLine():
 	argcmd = " ".join(args)
 
 
-
+###############################
+def strcmd(cmd):
+    return reduce(lambda x, y: x + ' ' + y, map(lambda x: x.find(' ') > 0 and "'" + x + "'" or x, cmd))
 
 #############
 def createOneTimeSession(cmd):
     session = []
     
     for peer in opt['-h']:
-	ssh = gplib.ssh_prefix(peer) + ' ' + cmd
-	if opt['-v']: print '[INFO %s] %s' % (peer, cmd)
-	elif opt['-e']: print cmd
-	p = popen2.Popen4(ssh)
-	p.x_cmd = cmd;   p.x_ssh = ssh
+        c = ['ssh', '-o', 'BatchMode yes', 
+             '-o', 'StrictHostKeyChecking no', 
+             peer, cmd]
+        
+        if opt['-v']: print '[INFO]', strcmd(c)
+        p = subprocess.Popen(c, stdout=subprocess.PIPE)
+	p.x_cmd = cmd;
 	p.x_peer = peer
-	p.tochild.close()
 	session.append(p)
     
     return session
@@ -94,7 +97,7 @@ def waitOneTimeSession(session):
     errmsg = None
     permissionDenied = False
     for p in session:
-	for out in p.fromchild:
+	for out in p.stdout:
 	    if len(out) > 1: 
 		print '[%s] %s' % (p.x_peer, out[:-1])
 		if not permissionDenied:
@@ -113,8 +116,9 @@ def waitOneTimeSession(session):
     if errmsg: sys.exit(1)
 
 def killOneTimeSession(session):
-    for p in session:
-        if p.pid > 0: os.kill(p.pid, signal.SIGTERM)
+    if session:
+        for p in session:
+            if p.pid > 0: os.kill(p.pid, signal.SIGTERM)
 
 def closePxsshOne(p):
     p.close(force = True)
@@ -265,14 +269,10 @@ try:
         hostlist.add(h)
     if opt['-f']:
         hostlist.parseFile(opt['-f'])
-
-    if len(opt['-h']) == 0:
-        usage('Error: missing hosts in -h and/or -f arguments')
-
     try:
         hostlist.checkSSH()
     except gplib.SSHError, e:
-        sys.exit('[ERROR] ' + e)
+        sys.exit('[ERROR] ' + str(e))
         
     opt['-h'] = hostlist.filterMultiHomedHosts()
     if len(opt['-h']) == 0:

@@ -151,6 +151,9 @@ class HostList():
     def __init__(self): 
         self.list = []
 
+    def get(self): 
+	return self.list
+
     def add(self, host):
         '''Add a host to the hostlist.'''
         if host.find(':') >= 0 or host.find('@') >= 0:
