@@ -504,7 +504,9 @@ apr_status_t a_lma_cfg_received(gpcc_event_t *ev, void *arg)
 
     keys = config_keys(gpma.cfg, slot->pool);
     for (i = 0 ; keys[i] ; i++) {
-	if (strstr(keys[i], "gpdb.") == keys[i] || strstr(keys[i], "node.") == keys[i]) {
+	if (strstr(keys[i], "seg.") == keys[i] || 
+	    strstr(keys[i], "node.") == keys[i] ||
+	    strcmp(keys[i], CONFIG_DBNAME_KEY) == 0) {
 	    config_set(gpma.cfg, keys[i], 0);
 	}
     }
@@ -522,7 +524,9 @@ apr_status_t a_lma_cfg_received(gpcc_event_t *ev, void *arg)
 	struct json_object *c = json_object_array_get_idx(arr, i);
 	key = json_object_get_string(json_object_array_get_idx(c, 0));
 	value = json_object_get_string(json_object_array_get_idx(c, 1));
-	if (strstr(key, "node.") == key || strstr(key, "gpdb.") == key) {
+	if (strstr(key, "node.") == key || 
+	    strstr(key, "seg.") == key ||
+	    strcmp(key, CONFIG_DBNAME_KEY) == 0) {
 	    config_set(gpma.cfg, key, value);
 	    gpcc_log_info("%s='%s'", key, value);
 	}

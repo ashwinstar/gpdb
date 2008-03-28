@@ -252,7 +252,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 
 	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
-	const char *array_name = config_get(gpma.cfg, "gpdb.name");
+	const char *array_name = config_get(gpma.cfg, CONFIG_DBNAME_KEY);
 	int is_bad_uri = 0;
 	int is_bad_array_name = 0;
 
@@ -640,10 +640,10 @@ static apr_status_t sync_config(void)
     char *last;
 
 
-    if (! config_get(gpma.cfg, "gpdb.name"))
+    if (! config_get(gpma.cfg, CONFIG_DBNAME_KEY))
 	return 0;
 
-    strcpy(key, "gpdb.seg.m.0");
+    strcpy(key, "seg.m.0");
     value = config_get(gpma.cfg, key);
     if (!value)
 	return APR_EINVAL;
@@ -702,7 +702,8 @@ static apr_status_t sync_config(void)
 	
 	keys = config_keys(gpma.cfg, p);
 	for (i = 0; keys[i] ; i++) {
-	    if (strstr(keys[i], "gpdb.seg.") == keys[i] || strstr(keys[i], "node.") == keys[i]) {
+	    if (strstr(keys[i], "seg.") == keys[i] || 
+		strstr(keys[i], "node.") == keys[i]) {
 		config_set(gpma.cfg, keys[i], 0);
 	    }
 	}
@@ -727,7 +728,7 @@ static apr_status_t sync_config(void)
 	datadir = apr_strtok(0, "|\r\n", &last);
 
 	/* key */
-	strcpy(key, "gpdb.seg.");
+	strcpy(key, "seg.");
 	c = strtol(content, 0, 0);
 	if (c == -1)
 	    strcat(key, "m");
@@ -781,17 +782,17 @@ static void verify_config(void)
     }
 
     /* name must exist */
-    if (config_get(gpma.cfg, "gpdb.name")) {
+    if (config_get(gpma.cfg, CONFIG_DBNAME_KEY)) {
 
 	/* qd must exist */
-	v = config_get(gpma.cfg, "gpdb.seg.m.0");
+	v = config_get(gpma.cfg, "seg.m.0");
 	if (!v) {
-	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- gpdb.seg.m.0 not set");
+	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- seg.m.0 not set");
 	}
 	
 	/* minimum 2 QEs, max 512 QEs */
 	for (i = 0; i < 512; i++) {
-	    sprintf(buf, "gpdb.seg.%d.0", i);
+	    sprintf(buf, "seg.%d.0", i);
 	    v = config_get(gpma.cfg, buf);
 	    if (!v) {
 		if (i < 2) 
@@ -802,9 +803,6 @@ static void verify_config(void)
 	if (! (2 <= i && i < 512)) {
 	    errmsg[errcnt++] = apr_psprintf(gpma.pool, "\t- too many segments (max 512)");
 	}
-
-	/* set the number of QEs */
-	config_set_int(gpma.cfg, "gpdb.seg.max", i);
 
     }
 

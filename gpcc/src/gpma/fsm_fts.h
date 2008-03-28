@@ -79,21 +79,21 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
     /* build the segments */
     for (i = 0 ; ; i++) {
-	sprintf(key, "gpdb.seg.m.%d", i);
+	sprintf(key, "seg.m.%d", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
     }
     
     if (i == 0) {
-	gpcc_log_error("gpdb must have at least one master segment gpdb.seg.m.0");
+	gpcc_log_error("gpdb must have at least one master segment seg.m.0");
 	return APR_EINVAL;
     }
 	
 
     n = i;
     for (i = 0 ; ; i++) {
-	sprintf(key, "gpdb.seg.%d.0", i);
+	sprintf(key, "seg.%d.0", i);
 	content = i;
 	value = config_get(gpma.cfg, key);
 	if (!value)
@@ -101,7 +101,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
 	n++;
 
-	sprintf(key, "gpdb.seg.%d.1", i);
+	sprintf(key, "seg.%d.1", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    continue;
@@ -113,7 +113,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
     
     /* master QD */
-    strcpy(key, "gpdb.seg.m.0");
+    strcpy(key, "seg.m.0");
     value = config_get(gpma.cfg, key);
     if (!value)
 	return APR_EINVAL;
@@ -133,7 +133,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	/* primary QE */
 	content = i;
 
-	sprintf(key, "gpdb.seg.%d.0", content);
+	sprintf(key, "seg.%d.0", content);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
@@ -146,7 +146,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 			  host, dir, 't', 't', 't', cmdslot->pool);
 
 	/* mirror QE */
-	sprintf(key, "gpdb.seg.%d.1", content);
+	sprintf(key, "seg.%d.1", content);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    continue;
@@ -161,7 +161,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
 
     /* standby QD */
-    strcpy(key, "gpdb.seg.m.1");
+    strcpy(key, "seg.m.1");
     value = config_get(gpma.cfg, key);
     if (value) {
 	if (setup_parse_segment(key, value, host, dir, &port)) {
@@ -315,7 +315,7 @@ static apr_status_t a_fts_init(gpcc_event_t *ev, void *_cmdslot)
     int i;
     gpcc_event_t *evt;
 
-    if (config_get(gpma.cfg, "gpdb.name")) {
+    if (config_get(gpma.cfg, CONFIG_DBNAME_KEY)) {
 	
 	if (setup_init_seginfo(ev, _cmdslot))
 	    gpcc_fatal(FLINE, "seginfo setup error.");
@@ -475,7 +475,7 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
     url = ev->pdata + sizeof(gpcc_net_conn_t);
 
     if (IS_NO_LEADMA) {
-	obj = gpcc_json_http_status_reply(config_get(gpma.cfg, "gpdb.name"), "ok", "undetermined");
+	obj = gpcc_json_http_status_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), "ok", "undetermined");
 	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
     } else if (!IS_LEADMA) {
@@ -516,7 +516,7 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 	break;
     }
 
-    obj = gpcc_json_http_status_reply(config_get(gpma.cfg, "gpdb.name"), "ok", state);
+    obj = gpcc_json_http_status_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), "ok", state);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;
@@ -722,18 +722,18 @@ static apr_status_t a_fts_array_config_verify() {
     int port;
 
     /* name must exist */
-    if (! config_get(gpma.cfg, "gpdb.name")) {
-	gpcc_log_error("\t- gpdb.name missing");
+    if (! config_get(gpma.cfg, CONFIG_DBNAME_KEY)) {
+	gpcc_log_error("\t- %s missing", CONFIG_DBNAME_KEY);
 	errcnt++;
     }
 	
     /* qd must exist */
-    v = config_get(gpma.cfg, "gpdb.seg.m.0");
+    v = config_get(gpma.cfg, "seg.m.0");
     if (!v) {
-	gpcc_log_error("\t- gpdb.seg.m.0 not set");
+	gpcc_log_error("\t- seg.m.0 not set");
 	errcnt++;
     } else {
-	if (setup_parse_segment("gpdb.seg.m.0", v, host, dir, &port)) {
+	if (setup_parse_segment("seg.m.0", v, host, dir, &port)) {
 	    gpcc_log_error("\t- %s value syntax error.", v);
 	    errcnt++;
 	}
@@ -741,7 +741,7 @@ static apr_status_t a_fts_array_config_verify() {
 
     /* minimum 2 QEs, max 512 QEs */
     for (i = 0; i < 512; i++) {
-	sprintf(buf, "gpdb.seg.%d.0", i);
+	sprintf(buf, "seg.%d.0", i);
 	v = config_get(gpma.cfg, buf);
 	if (!v) {
 	    if (i < 2) {
@@ -766,9 +766,6 @@ static apr_status_t a_fts_array_config_verify() {
     if (errcnt) {
 	return errcnt;
     }
-
-    /* set the number of QEs */
-    config_set_int(gpma.cfg, "gpdb.seg.max", i);
 
     return 0;
 
@@ -918,7 +915,9 @@ static apr_status_t a_fts_array_init_failure(gpcc_event_t *ev, void *_cmdslot)
 
     keys = config_keys(gpma.cfg, cmdslot->pool);
     for (i = 0 ; keys[i] ; i++) {
-	if (strstr(keys[i], "gpdb.") == keys[i] || strstr(keys[i], "node.") == keys[i]) {
+	if (strstr(keys[i], "seg.") == keys[i] || 
+	    strstr(keys[i], "node.") == keys[i] ||
+	    strcmp(keys[i], CONFIG_DBNAME_KEY) == 0) {
 	    config_set(gpma.cfg, keys[i], 0);
 	}
     }
@@ -934,7 +933,7 @@ static apr_status_t a_fts_array_present(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = _cmdslot;
     gpcc_event_t *evt;
 
-    if (config_get(gpma.cfg, "gpdb.name") == 0) {
+    if (config_get(gpma.cfg, CONFIG_DBNAME_KEY) == 0) {
 	evt = gpcc_event_alloc(ARRAY_ABSENT_EVENT, cmdslot->cmdidx, 0);
     } else {
 	evt = gpcc_event_alloc(ARRAY_PRESENT_EVENT, cmdslot->cmdidx, 0);
@@ -1225,7 +1224,9 @@ static apr_status_t a_fts_deleted(gpcc_event_t *ev, void *_cmdslot)
 
     keys = config_keys(gpma.cfg, cmdslot->pool);
     for (i = 0 ; keys[i] ; i++) {
-	if (strstr(keys[i], "gpdb.") == keys[i] || strstr(keys[i], "node.") == keys[i]) {
+	if (strstr(keys[i], "seg.") == keys[i] || 
+	    strstr(keys[i], "node.") == keys[i] ||
+	    strcmp(keys[i], CONFIG_DBNAME_KEY) == 0) {
 	    config_set(gpma.cfg, keys[i], 0);
 	}
     }

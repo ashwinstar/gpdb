@@ -120,7 +120,7 @@ static struct json_object *config_to_json_object()
     }
 
     for (i = 0 ; ; i++) {
-	sprintf(key, "gpdb.seg.m.%d", i);
+	sprintf(key, "seg.m.%d", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
@@ -129,13 +129,13 @@ static struct json_object *config_to_json_object()
     }
 
     for (i = 0 ; ; i++) {
-	sprintf(key, "gpdb.seg.%d.0", i);
+	sprintf(key, "seg.%d.0", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
 	config_addsegment(obj, key, value);
 
-	sprintf(key, "gpdb.seg.%d.1", i);
+	sprintf(key, "seg.%d.1", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    continue;
@@ -186,14 +186,14 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     mirror_base_port = config_get_or_set_int(gpma.cfg, CONFIG_MIRROR_BASE_PORT_KEY, CONFIG_MIRROR_BASE_PORT_VALUE);
 
     for (i = 0 ; ; i++) {
-	sprintf(key, "gpdb.seg.m.%d", i);
+	sprintf(key, "seg.m.%d", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
     }
     
     if (i == 0) {
-	gpcc_log_error("gpdb must have at least one master segment gpdb.seg.m.0");
+	gpcc_log_error("gpdb must have at least one master segment seg.m.0");
 	return APR_EINVAL;
     }
 	
@@ -201,14 +201,14 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     n = i;
 
     for (i = 0 ; ; i++) {
-	sprintf(key, "gpdb.seg.%d.0", i);
+	sprintf(key, "seg.%d.0", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
 	
 	n++;
 
-	sprintf(key, "gpdb.seg.%d.1", i);
+	sprintf(key, "seg.%d.1", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    continue;
@@ -220,7 +220,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     cmdslot->u.fts.seginfo = apr_palloc(cmdslot->pool, sizeof(*cmdslot->u.fts.seginfo) * n);
 
     /* master QD */
-    strcpy(key, "gpdb.seg.m.0");
+    strcpy(key, "seg.m.0");
     value = config_get(gpma.cfg, key);
     if (!value)
 	return APR_EINVAL;
@@ -236,7 +236,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     
     for (i = 0 ;  ; i++) {
 	/* master QE */
-	sprintf(key, "gpdb.seg.%d.0", i);
+	sprintf(key, "seg.%d.0", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
@@ -250,7 +250,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	setup_set_segment(cmdslot, dbid-1, key, dbid, content, base_port++, node, dir, cmdslot->pool);
 
 	/* mirror QE */
-	sprintf(key, "gpdb.seg.%d.1", i);
+	sprintf(key, "seg.%d.1", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    continue;
@@ -266,7 +266,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     /* standby QD */
     content = -1;
     for (i = 1 ; ; i++) {
-	sprintf(key, "gpdb.seg.m.%d", i);
+	sprintf(key, "seg.m.%d", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;

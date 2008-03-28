@@ -69,8 +69,8 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     }
 
 
-    if (0 == (seg = gpcc_json_object_get_object(obj, "gpdb.seg.m.0", 0))) {
-	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "gpdb.seg.m.0 is missing");
+    if (0 == (seg = gpcc_json_object_get_object(obj, "seg.m.0", 0))) {
+	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "seg.m.0 is missing");
 	json_object_put(obj);
 	return 0;
     }
@@ -163,8 +163,8 @@ static apr_status_t seg_initdb_qe_and_master_qd(gpcc_event_t *ev, void *_cmdslot
     }
 
     /* initdb start */
-    max_connect = gpcc_json_object_get_int(obj, "gpdb.max_connect", 25);
-    if (strstr(cmdslot->cmdname, "gpdb.seg.m.") == 0)  {
+    max_connect = gpcc_json_object_get_int(obj, CONFIG_MAX_CONNECT_KEY, CONFIG_MAX_CONNECT_VALUE);
+    if (strstr(cmdslot->cmdname, "seg.m.") == 0)  {
 	/* QE max_connect */
 	max_connect *= 5;
     }
@@ -226,7 +226,7 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
 	    struct json_object *seg;
 	    char *nodestr;
 
-	    sprintf(segname, "gpdb.seg.m.%d", i);
+	    sprintf(segname, "seg.m.%d", i);
 	    seg = gpcc_json_object_get_object(cmdslot->u.request.msg, segname, 0);
 	    if (!seg)
 		break;
@@ -285,7 +285,7 @@ static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
 	subst[2].insert = apr_psprintf(cmdslot->pool, "port=%d", cmdslot->u.request.port);
 	subst[3].pattern = "checkpoint_segments";
 	subst[3].insert = apr_psprintf(cmdslot->pool, "checkpoint_segments=%d", 
-				       gpcc_json_object_get_int(cmdslot->u.request.msg, "gpdb.checkpoint_segments", 31));
+				       gpcc_json_object_get_int(cmdslot->u.request.msg, CONFIG_CHECKPOINT_SEGMENT_KEY, CONFIG_CHECKPOINT_SEGMENT_VALUE));
 	subst[4].pattern = 0;
 	
 	/* gp_fault_action=readonly/continue/none */
@@ -296,7 +296,7 @@ static apr_status_t seg_initdb_pg_conf_update(gpcc_event_t *ev, void *_cmdslot)
 	subst[1].insert = apr_psprintf(cmdslot->pool, "port=%d", cmdslot->u.request.port);
 	subst[2].pattern = "checkpoint_segments";
 	subst[2].insert = apr_psprintf(cmdslot->pool, "checkpoint_segments=%d", 
-				       gpcc_json_object_get_int(cmdslot->u.request.msg, "gpdb.checkpoint_segments", 31));
+				       gpcc_json_object_get_int(cmdslot->u.request.msg, CONFIG_CHECKPOINT_SEGMENT_KEY, CONFIG_CHECKPOINT_SEGMENT_VALUE));
 	subst[3].pattern = 0;
 
     }
@@ -390,7 +390,7 @@ static apr_status_t seg_initdb_update_gp_id(gpcc_event_t *ev, void *_cmdslot)
     char *gpname = gpcc_json_object_get_string(cmdslot->u.request.msg, CONFIG_DBNAME_KEY, CONFIG_DBNAME_VALUE);
 
     while (1) {
-	sprintf(segname, "gpdb.seg.%d.0", nsegment);
+	sprintf(segname, "seg.%d.0", nsegment);
 	if (gpcc_json_object_get_object(cmdslot->u.request.msg, segname, 0) == 0) {
 	    break;
 	}
@@ -462,15 +462,15 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
     /* update gp_configuration table */
 
     /* master QD segment */
-    if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, "gpdb.seg.m.0", "t"))) {
-	gpcc_log_error("[%s] update gp_configuration for entry gpdb.seg.m.0 failed", cmdslot->cmdname);
+    if (0 != (e = seg_initdb_update_gp_conf_per_segment(ev, _cmdslot, "seg.m.0", "t"))) {
+	gpcc_log_error("[%s] update gp_configuration for entry seg.m.0 failed", cmdslot->cmdname);
 	return 1;
     }
 
     /* QEs segment */
     for (i = 0 ; ! done ; i++) {
 	for (j = 0 ; j < 2 ; j++) {
-	    sprintf(segname, "gpdb.seg.%d.%d", i, j);
+	    sprintf(segname, "seg.%d.%d", i, j);
 	    if ((seg = gpcc_json_object_get_object(msg, segname, 0)) == 0){
 		if (j == 0) 
 		    done = 1;
@@ -489,7 +489,7 @@ static apr_status_t seg_initdb_update_gp_configuration(gpcc_event_t *ev, void *_
 
     /* standby master */
     for (i = 1 ; 1 ; i++) {
-	sprintf(segname, "gpdb.seg.m.%d", i);
+	sprintf(segname, "seg.m.%d", i);
 	if ((seg = gpcc_json_object_get_object(msg, segname, 0)) == 0){
 	    break;
 	}

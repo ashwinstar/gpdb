@@ -284,7 +284,7 @@ static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     seginfo_t *seginfo = &gpma.fts_cmdslot->u.fts.seginfo[nseginfo-1];
     gpcc_event_t *evt;
 
-    if (strstr(seginfo->name, "gpdb.seg.m.") == 0) {
+    if (strstr(seginfo->name, "seg.m.") == 0) {
 	struct json_object *obj;
 	char *msg = 0;
 	obj = gpcc_json_http_reply("start", "ok", 0);

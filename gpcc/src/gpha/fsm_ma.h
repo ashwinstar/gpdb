@@ -259,9 +259,9 @@ static apr_status_t seg_cmdname_parse(const char *segname, int *isqd, int *idx, 
 {
     int index;
 
-    if (strstr(segname, "gpdb.seg.m.")) {
+    if (strstr(segname, "seg.m.")) {
 	/* this is QD */
-	if (1 != sscanf(segname, "gpdb.seg.m.%d", &index)) {
+	if (1 != sscanf(segname, "seg.m.%d", &index)) {
 	    gpcc_warning(FLINE, "segment name format error %s", segname);
 	    return 1;
 	}
@@ -272,7 +272,7 @@ static apr_status_t seg_cmdname_parse(const char *segname, int *isqd, int *idx, 
 
 	return 0;
     } else {
-	if (2 != sscanf(segname, "gpdb.seg.%d.%d", idx, primary)) {
+	if (2 != sscanf(segname, "seg.%d.%d", idx, primary)) {
 	    gpcc_warning(FLINE, "segment name format error %s", segname);
 	    return 1;
 	}

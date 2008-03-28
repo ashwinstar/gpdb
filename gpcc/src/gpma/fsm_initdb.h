@@ -122,15 +122,6 @@ static struct json_object *config_to_json_object(gpcc_event_t *ev, void *_cmdslo
     intvalue = config_get_or_set_int(gpma.cfg, CONFIG_CHECKPOINT_SEGMENT_KEY, CONFIG_CHECKPOINT_SEGMENT_VALUE);
     json_object_object_add(obj, CONFIG_CHECKPOINT_SEGMENT_KEY, json_object_new_int(intvalue));
 
-    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_MASTER_PORT_KEY, CONFIG_MASTER_PORT_VALUE);
-    json_object_object_add(obj, CONFIG_MASTER_PORT_KEY, json_object_new_int(intvalue));
-
-    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_BASE_PORT_KEY, CONFIG_BASE_PORT_VALUE);
-    json_object_object_add(obj, CONFIG_BASE_PORT_KEY, json_object_new_int(intvalue));
-
-    intvalue = config_get_or_set_int(gpma.cfg, CONFIG_MIRROR_BASE_PORT_KEY, CONFIG_MIRROR_BASE_PORT_VALUE);
-    json_object_object_add(obj, CONFIG_MIRROR_BASE_PORT_KEY, json_object_new_int(intvalue));
-
     for (i = 0 ;  ; i++) {
 	sprintf(key, "node.%d", i);
 	value = config_get(gpma.cfg, key);
@@ -153,7 +144,7 @@ static struct json_object *config_to_json_object(gpcc_event_t *ev, void *_cmdslo
 
     /*
     for (i = 0 ; ; i++) {
-	sprintf(key, "gpdb.seg.m.%d", i);
+	sprintf(key, "seg.m.%d", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
@@ -162,13 +153,13 @@ static struct json_object *config_to_json_object(gpcc_event_t *ev, void *_cmdslo
     }
 
     for (i = 0 ; ; i++) {
-	sprintf(key, "gpdb.seg.%d.0", i);
+	sprintf(key, "seg.%d.0", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
 	config_addsegment(obj, key, value);
 
-	sprintf(key, "gpdb.seg.%d.1", i);
+	sprintf(key, "seg.%d.1", i);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    continue;

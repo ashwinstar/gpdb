@@ -20,13 +20,15 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 
     gpcc_log_info("a_node_ssh");
 #ifdef DARWIN
-    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha -D %s %s", 
+    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha -D -p %d %s %s", 
 	    getenv("GPHOME"), 
+	    gpma.ma_port+1,
 	    config_get(gpma.cfg, "sys.guid"),
 	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
 #else
-    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha %s %s", 
+    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha -p %d %s %s", 
 	    getenv("GPHOME"), 
+	    gpma.ma_port+1,
 	    config_get(gpma.cfg, "sys.guid"),
 	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
 #endif
@@ -98,7 +100,7 @@ apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
     hname[1] = "X-GPCC-GUID";
     hvalue[1] = gpma.guid;
 
-    sprintf(addr, "%s:%d", slot->u.node.hosttab[slot->u.node.hostidx], DEFAULT_HA_PORT);
+    sprintf(addr, "%s:%d", slot->u.node.hosttab[slot->u.node.hostidx], gpma.ma_port+1);
     printf("NODE CONNECT\n");
     /* use gpcc_net to connect to gpha here */
     if (0 != (e = gpcc_net_open(&slot->u.node.conn, 
