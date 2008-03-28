@@ -11,6 +11,7 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
     char cmd[256];
     int e;
     gpcc_event_t *nev;
+    const char *guid;
 
     gpcc_log_info("a_node_ssh......");
 
@@ -20,16 +21,14 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 
     gpcc_log_info("a_node_ssh");
 #ifdef DARWIN
-    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha -D -p %d %s %s", 
+    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha -D -p %d -l %s", 
 	    getenv("GPHOME"), 
 	    gpma.ma_port+1,
-	    config_get(gpma.cfg, "sys.guid"),
 	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
 #else
-    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha -p %d %s %s", 
+    sprintf(cmd, "GPHOME=%s && export GPHOME && $GPHOME/bin/gpha -p %d -l %s", 
 	    getenv("GPHOME"), 
 	    gpma.ma_port+1,
-	    config_get(gpma.cfg, "sys.guid"),
 	    config_getx(gpma.cfg, "ha.datadir", "/tmp"));
 #endif
     if (0 != (e = gpcc_proc_ssh(&slot->u.node.proc, 
@@ -42,6 +41,16 @@ apr_status_t a_node_ssh(gpcc_event_t* ev, void* arg)
 	gpcc_evqueue_put(gpma.evq, nev);
 	return 0;
     }
+
+    guid = config_get(gpma.cfg, "sys.guid");
+    if (apr_file_write_full(slot->u.node.proc.in, guid, strlen(guid), 0) != 0) {
+	gpcc_warning(FLINE, "write guid to stdin failed");
+	nev = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, nev);
+	return 0;
+    }	
+
+    apr_file_close(slot->u.node.proc.in);
 
     slot->countdown = 5;
     return 0;

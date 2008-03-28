@@ -284,13 +284,12 @@ static void d_main(void)
 /* Print usage info */
 static void usage(const char* program, int status)
 {
-    fprintf(stderr, "\nUsage: %s [-?bD] [-p port] guid dir\n\n", program);
+    fprintf(stderr, "\nUsage: %s [-?bD] [-p port] [-l dir]\n\n", program);
     fprintf(stderr, "    -?   : print this help screen\n");
     fprintf(stderr, "    -b   : boot the Host Agent\n");
     fprintf(stderr, "    -D   : debug mode and do not run as daemon\n");
     fprintf(stderr, "    -p   : port number\n");
-    fprintf(stderr, "    guid : guid\n");
-    fprintf(stderr, "    dir  : agent local storage directory\n");
+    fprintf(stderr, "    -l   : agent log directory\n");
     fprintf(stderr, "\n");
     exit(status);
 }
@@ -306,9 +305,10 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
     const char* optarg;
     int e;
     FILE* f;
-    
+    char guid[64];
+
     GPCC_DO(0 == apr_getopt_init(&handle, gpha.pool, argc, argv));
-    while (0 == (e = apr_getopt(handle, "?bDp:", &opt, &optarg))) {
+    while (0 == (e = apr_getopt(handle, "?bDp:l:", &opt, &optarg))) {
 	switch (opt) {
 	case 'b': 
 	    gpha.boot_flag = 1;
@@ -318,6 +318,9 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
 	    break;
 	case 'p':
 	    gpha.port = strtol(optarg, 0, 0);
+	    break;
+	case 'l':
+	    gpha.dir = optarg;
 	    break;
 	case '?':
 	    usage(argv[0], 0);
@@ -330,10 +333,22 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
 
     if (e != APR_EOF) 
 	usage(argv[0], 1);
-    if (argc - handle->ind != 2)
+    if (argc - handle->ind != 0)
 	usage(argv[0], 1);
-    gpha.guid = argv[handle->ind++];
-    gpha.dir = argv[handle->ind++];
+
+
+    if (fgets(guid, sizeof(guid), stdin) == 0) {
+	fprintf(stderr, "guid must be specified from stdin\n");
+	exit(1);
+    }
+
+    gpha.guid = gpcc_string_trim(guid);
+    if (*gpha.guid == 0) {
+	fprintf(stderr, "guid must be specified from stdin\n");
+	exit(1);
+    }
+
+    gpha.guid = apr_pstrdup(gpha.pool, gpha.guid);
 
     if (gpha.port == 0) {
 	fprintf(stderr, "port must be specified\n");

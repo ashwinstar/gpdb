@@ -61,7 +61,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_run(apr_proc_t *proc, const char *prog, cons
 	gpcc_log_error("apr_procattr_create failure");
 	return e;
     }
-    if ((e = apr_procattr_io_set(attr, APR_NO_PIPE, APR_FULL_BLOCK, APR_NO_PIPE)) != APR_SUCCESS) {
+    if ((e = apr_procattr_io_set(attr, APR_FULL_BLOCK, APR_FULL_BLOCK, APR_NO_PIPE)) != APR_SUCCESS) {
 	return e;
     }
     /* default value: APR_PROGRAM */
