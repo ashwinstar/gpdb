@@ -28,7 +28,7 @@ Usage: gpcheckperf <options>
     -f file    : a file listing all hosts to connect to
 
 """
-import os, sys, getopt, math, StringIO, stat, subprocess
+import os, sys, getopt, math, StringIO, stat, subprocess, signal
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -239,7 +239,7 @@ def runTeardown():
 	print '  TEARDOWN'
 	print '--------------------'
     dirs = ''
-    for d in opt['-d']: dirs = '%s %s/gpcheckperf' % (dirs, d)
+    for d in opt['-d']: dirs = '%s %s/gpcheckperf_$USER' % (dirs, d)
     try:
         (ok, out) = gpssh('rm -rf ' + dirs)
     except:
@@ -272,7 +272,7 @@ def runSetup():
 	#mkdir cperf
 	if opt['-v']: print '[Info] making gpcheckperf directory on all hosts ... '
 	dirs = ''
-	for d in opt['-d']: dirs = '%s %s/gpcheckperf' % (dirs, d)
+	for d in opt['-d']: dirs = '%s %s/gpcheckperf_$USER' % (dirs, d)
 
         cmd = 'rm -rf %s ; mkdir -p %s' % (dirs, dirs)
 	(ok, out) = gpssh(cmd)
@@ -289,7 +289,7 @@ def copyExecOver(fname):
 
     #copy to this dir
     d = opt['-d'][0]
-    target = '%s/gpcheckperf/%s' % (d, fname)
+    target = '%s/gpcheckperf_$USER/%s' % (d, fname)
     path = '%s/lib/%s' % (sys.path[0], fname)
 
     if opt['-v']: print '[Info] copy local %s to remote %s' % (path, target)
@@ -348,7 +348,7 @@ def runDiskWriteTest(multidd):
     
     cmd = 'time -p ' + multidd
     for d in opt['-d']:
-	cmd = cmd + (' -i /dev/zero -o %s/gpcheckperf/ddfile' % d)
+	cmd = cmd + (' -i /dev/zero -o %s/gpcheckperf_$USER/ddfile' % d)
     if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
     if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
     (ok, out) = gpssh(cmd)
@@ -366,7 +366,7 @@ def runDiskReadTest(multidd):
 
     cmd = 'time -p ' + multidd
     for d in opt['-d']:
-	cmd = cmd + (' -o /dev/null -i %s/gpcheckperf/ddfile' % d)
+	cmd = cmd + (' -o /dev/null -i %s/gpcheckperf_$USER/ddfile' % d)
     if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
     if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
     (ok, out) = gpssh(cmd)
@@ -414,6 +414,16 @@ def startNetServer():
 
     return 0
 
+#############
+def killProc(proc):
+    if proc: 
+        try:
+            os.kill(proc.pid, signal.SIGKILL)
+        except os.OSError:
+            pass
+        return proc.wait()
+    return 0
+
 
 #############
 def spawnNetperfTestBetween(x, y, netperf_path, netserver_port, sec=5):
@@ -429,9 +439,7 @@ def spawnNetperfTestBetween(x, y, netperf_path, netserver_port, sec=5):
         out = proc.stdout.read(-1)
         rc = proc.wait()
     except KeyboardInterrupt:
-        if proc:
-            os.kill(proc.pid, signal.SIGKILL)
-            proc.wait()
+        killProc(proc)
         raise
     if not proc:
         print '[Warning] netperf failed on %s -> %s' % (x, y)
@@ -442,12 +450,16 @@ def spawnNetperfTestBetween(x, y, netperf_path, netserver_port, sec=5):
 
 #############
 def reapNetperfTest(proc, x, y):
-    try:
-        out = proc.read()
-        ok = not proc.close()
-    finally:
-        if proc: proc.close()
-        proc = None
+    ok = True
+    if proc:
+        try:
+            out = proc.stdout.read(-1)
+            ok = not killProc(proc)
+            proc = None
+        except:
+            pass
+        finally:
+            proc = None
     
     if opt['-v'] and out and out != '': print '[Info]',out
     if out and out.find('Permission denied') >= 0 and out.find('publickey') >= 0 : 
