@@ -302,15 +302,14 @@ def doRemoteRsync(desthost, destdir, localport, rsyncopt, slist):
 def doCleanup(proc = None):
     if GV.opt['-V']: 
         print '[INFO] ---------------- enter doCleanup'
-    if proc:
-        try:
-            os.kill(proc.pid, signal.SIGKILL)
-        except OSError:
-            pass
-        proc.wait()
 
-        pidfile = '/tmp/rsyncd.pid.%s' % GV.SUFFIX
-        os.system("bash -c 'ls %s && kill $(< %s)' > /dev/null 2>&1 " % (pidfile, pidfile))
+    pidfile = '/tmp/rsyncd.pid.%s' % GV.SUFFIX
+    if proc:
+        os.system("kill $(< %s) > /dev/null 2>&1 " % pidfile)
+        os.system('kill -9 %d > /dev/null 2>&1' % proc.pid)
+        proc.wait()
+        time.sleep(0.5)
+
     os.system('rm -f /tmp/rsyncd.*' + GV.SUFFIX)
     return True
 
