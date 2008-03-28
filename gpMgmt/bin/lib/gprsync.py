@@ -140,10 +140,11 @@ def startLocalRsyncDaemon(port, srcdir, flist):
     if GV.opt['-V']: 
         print '[INFO] ---------------- enter startLocalRsyncDaemon'
     confpath = makeConfFile(srcdir, flist)
-    cmd = 'rsync -vv --port=%d --daemon --no-detach --config=%s < /dev/null' % (port, confpath)
+    cmd = 'rsync -vv --port=%d --daemon --no-detach --config=%s' % (port, confpath)
     if GV.opt['-v']: print '[INFO]', cmd
-    proc = subprocess.Popen(cmd, shell=True, stderr=subprocess.STDOUT)
-    time.sleep(1)
+    proc = subprocess.Popen(cmd.split(' '), stdin=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc.stdin.close();  # this is necessary so otherwise, rsyncd tries to talk via stdin/out
+    time.sleep(0.5)
     
     if proc.poll(): 
         return None
@@ -305,10 +306,11 @@ def doCleanup(proc = None):
 
     pidfile = '/tmp/rsyncd.pid.%s' % GV.SUFFIX
     if proc:
-        os.system("kill $(< %s) > /dev/null 2>&1 " % pidfile)
-        os.system('kill -9 %d > /dev/null 2>&1' % proc.pid)
+        try:
+            os.kill(proc.pid, signal.SIGTERM)
+        except os.OSError:
+            pass
         proc.wait()
-        time.sleep(0.5)
 
     os.system('rm -f /tmp/rsyncd.*' + GV.SUFFIX)
     return True
