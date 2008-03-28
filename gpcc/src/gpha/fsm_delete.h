@@ -48,6 +48,7 @@ apr_status_t seg_delete(gpcc_event_t *ev, void *_cmdslot)
     }
 
     if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.request.proc,
+					0,
 					cmdslot->u.request.port,
 					cmdslot->u.request.data_dir,
 					cmdslot->u.request.mode,
