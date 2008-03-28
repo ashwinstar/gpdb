@@ -114,7 +114,6 @@ def makeConfFile(srcdir, flist):
         print '[INFO] ---------------- enter makeConfFile'
     fname = '/tmp/rsyncd.conf.' + GV.SUFFIX
     f = open(fname, 'w')
-    f.write('pid file = /tmp/rsyncd.pid.%s\n' % GV.SUFFIX)
     f.write('log file = /tmp/rsyncd.log.%s\n' % GV.SUFFIX)
     f.write('\n')
     f.write('[%s]\n' % GV.SECRET)
