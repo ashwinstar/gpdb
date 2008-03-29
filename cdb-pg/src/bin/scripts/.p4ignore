@@ -1,0 +1,12 @@
+clusterdb
+createdb
+createlang
+createuser
+dropdb
+droplang
+dropuser
+dumputils.c
+mbprint.c
+print.c
+reindexdb
+vacuumdb

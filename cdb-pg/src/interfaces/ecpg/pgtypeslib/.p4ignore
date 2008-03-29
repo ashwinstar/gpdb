@@ -1,0 +1,5 @@
+libpgtypes.a
+libpgtypes.so
+libpgtypes.so.2
+libpgtypes.so.2.2
+pgstrcasecmp.c
