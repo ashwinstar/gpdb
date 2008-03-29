@@ -15,7 +15,11 @@
 #ifdef ENABLE_THREAD_SAFETY
 static pthread_mutex_t connections_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_key_t actual_connection_key;
+#if pg_on_solaris
+static pthread_once_t actual_connection_key_once = { PTHREAD_ONCE_INIT };
+#else 
 static pthread_once_t actual_connection_key_once = PTHREAD_ONCE_INIT;
+#endif 
 #endif
 static struct connection *actual_connection = NULL;
 static struct connection *all_connections = NULL;
