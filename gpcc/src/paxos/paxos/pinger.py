@@ -37,29 +37,35 @@ class Pinger(Role):
 	if dn<0, returns leader for large decree numbers
 	otherwise, returns leader for specified decree number
 	"""
-	leader = self.address;
+	leader = None
 	for d in self.__map.itervalues():
-	    if dn<0 or d.dn<=dn:
-		if d.fro<leader:
+	    if d.dn>=0 if dn<0 else abs(d.dn)<=dn+ALPHA:
+		if not leader or d.fro<leader:
 		    leader = d.fro
-	return leader
+	return leader or self.address
+
+    def isFallenBehind(self,decreeNumber):
+	for d in self.__map.itervalues():
+	    if decreeNumber+ALPHA<=abs(d.dn):
+		return True
+	return False
 
     def __gotPing(self,fro,id,dn,result):
 	"""Handle Ping message.
 
 	fro: from address
 	id: id of Priest sending Ping
-	dn: Priest has learned all decrees < dn
+	dn: Priest has learned all decrees < dn-ALPHA
 	result: comma separated list of addresses of priests
 	"""
 	now = time.time()
 	self.__map[id] = Data(fro,id,dn,result,now)
 	self.__subtractTime[id] = now+PING_REMOVE_TIME
 
-    def __gotSubtractPriest(self,dn,priestId,result):
+    def __gotSubtractPriest(self,decreeNumber,priestId,result):
 	if result==self.__priest.acceptor.id:
 	    return
-	ps = self.__priest.learner.priestSet.get(dn)
+	ps = self.__priest.learner.priestSet.get(decreeNumber)
 	if priestId not in ps or result not in ps:
 	    return
 	now = time.time()
@@ -88,7 +94,10 @@ class Pinger(Role):
 	    if self.__map[i].time<now:
 		self.__map.pop(i)
 	mm = message.Maker("Ping")
-	mm.addDecreeNumber(decreeNumber-ALPHA)
+	if self.isFallenBehind(decreeNumber):
+	    mm.addDecreeNumber(-decreeNumber)
+	else:
+	    mm.addDecreeNumber(decreeNumber)
 	mm.addPriestId(self.__priest.acceptor.id)
 	r = set(self.__configSet)
 	for d in self.__map.itervalues():
@@ -112,11 +121,18 @@ class Pinger(Role):
 		mm.send(self.port,self.getLeader(-1))
 		self.__subtractTime[id] = now+PING_TIME
 
-    def sendRedirect(self,to):
+    def __gotGetPriestSet(self,decreeNumber,fro):
+	"""Send a PriestSet message."""
+	mm = message.Maker("PriestSet")
+	mm.addDecreeNumber(decreeNumber)
+	mm.addResult(",".join(self.__priest.learner.priestSet.get(decreeNumber)))
+	mm.send(self.port,fro)
+
+    def sendRedirect(self,fro):
 	"""Send a Redirect message."""
 	mm = message.Maker("Redirect")
 	mm.addResult(self.getLeader(-1))
-	mm.send(self.port,to)
+	mm.send(self.port,fro)
 
     def getAcceptorAddresses(self,dn):
 	"""Returns set of addresses of priests."""
@@ -138,6 +154,8 @@ class Pinger(Role):
 	if m.command=="Ping":
 	    self.__gotPing(m.fro,m.priestId,m.dn,m.result)
 	elif m.command=="GetLeader":
-	    self.sendRedirect(m.fro);
+	    self.sendRedirect(m.fro)
+	elif m.command=="GetPriestSet":
+	    self.__gotGetPriestSet(decreeNumber,m.fro)
 	elif m.command=="SubtractPriest":
 	    self.__gotSubtractPriest(decreeNumber,m.priestId,m.result)

@@ -48,9 +48,11 @@ class Proposer(Role):
 	mm.addDecreeNumber(dn)
 	mm.addBallotNumber(bn)
 	mm.send(self.port,self.__priest.pinger.getAddresses())
-	d.nextBallotTimeout = time.time()+DECREE_TIMEOUT;
+	d.nextBallotTimeout = time.time()+DECREE_TIMEOUT
 
     def __tick1(self,decreeNumber,dn):
+	if dn>=0 and self.__isLearned(decreeNumber,dn):
+	    return
 	if self.address!=self.__priest.pinger.getLeader(dn):
 	    return
 	d = self.__getData(decreeNumber,dn)

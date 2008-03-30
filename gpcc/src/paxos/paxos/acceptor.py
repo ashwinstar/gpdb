@@ -38,7 +38,7 @@ class Acceptor(Role):
 	    dn = self.__maxDecreeNumber+i
 	    d = self.__data[dn&ACCEPTOR_HISTORY-1]
 	    if d.dn!=dn:
-		d.dn = dn;
+		d.dn = dn
 		d.nextBal = self.__data[self.__maxDecreeNumber].nextBal
 		d.prevVote = self.__data[self.__maxDecreeNumber].prevVote
 
@@ -149,7 +149,7 @@ class Acceptor(Role):
 		self.__gotNextBallot1(decreeNumber,fro,dn,bn)
 		dn += 1
 	elif dn>decreeNumber-ACCEPTOR_HISTORY:
-	    self.__gotNextBallot1(decreeNumber,fro,dn,bn);
+	    self.__gotNextBallot1(decreeNumber,fro,dn,bn)
 	else:
 	    mm = message.Maker("DecreeNumberTooOld")
 	    mm.addDecreeNumber(dn)
@@ -187,6 +187,8 @@ class Acceptor(Role):
     def tick(self,decreeNumber):
 	now = time.time()
 	if now<self.__addPriestTimeout:
+	    return
+	if self.__priest.pinger.isFallenBehind(decreeNumber):
 	    return
 	self.__addPriestTimeout = now+ADD_PRIEST_TIMEOUT
 	if self.id not in self.__priest.learner.priestSet.get(decreeNumber):

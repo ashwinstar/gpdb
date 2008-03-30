@@ -17,7 +17,9 @@ Usage:
 	Result dn=<decree-number> decree=<decree> result=<result>
 	Redirect result=<address>
 	GetLeader
+	GetPriestSet
 	GetState
+	PriestSet dn=<decree-number> result=<priest,...>
 	State dn=<decree-number> result=<url>
 	SubtractPriest priestId=<id> result=<id>
 

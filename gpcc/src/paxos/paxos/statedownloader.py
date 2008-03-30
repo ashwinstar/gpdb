@@ -45,7 +45,7 @@ class StateDownloader(Role,threading.Thread):
 		if m.dn>dn:
 		    dn = m.dn
 		    best = m.result
-	self.log("dn="+str(dn)+" url="+best);
+	self.log("dn="+str(dn)+" url="+best)
 	return best
 
     def __doNftp(self,url):
@@ -100,8 +100,8 @@ class StateDownloader(Role,threading.Thread):
 	self.__raf.close()
 	dis = gzip.GzipFile(self.filename,"rb")
 	self.state = State()
-	self.state.read(dis);
-	dis.close();
+	self.state.read(dis)
+	dis.close()
 	self.__priest.lock.acquire()
 	try:
 	    self.__finished = True

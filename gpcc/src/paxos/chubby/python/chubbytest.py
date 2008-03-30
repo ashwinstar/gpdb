@@ -33,13 +33,14 @@ c = chu.makeConnection()
 if len(sys.argv)>1 and sys.argv[1]=="test1":
     test1_l = c.lock("test/lock2",10,5)
     check("test1_l","test1_l[0]==0")
-    test1_l = test1_l[1]
-    for i in xrange(10):
-	check("test1_l.renew(5)","True")
-	check("test1_l.getLockExpireTime()","x[0]==0 and time.time()+3<x[1]<time.time()+5")
-	time.sleep(3)
+    if test1_l[0]==0:
+	test1_l = test1_l[1]
+	for i in xrange(10):
+	    check("test1_l.renew(5)","True")
+	    check("test1_l.getLockExpireTime()","x[0]==0 and time.time()+3<x[1]<time.time()+5")
+	    time.sleep(3)
     time.sleep(5)
-    test1_l = c.lock("test/lock3",10,5)
+    c.lock("test/lock3",10,5)
     c.put("test/test1result","%d/%d"%(passed,ntest))
     sys.exit(1)
 
@@ -80,10 +81,11 @@ check("c.put('/test/test1result','no')","x==0")
 check("c.put('/test/test2result','no')","x==0")
 l = c.lock('/test//lock',10,5)
 check("l","l[0]==0")
-l = l[1]
-check("l.getLockString()","1")
-check("l.checkLock()","x==0")
-check("l.list('/')","x[0]==0")
+if l[0]==0:
+    l = l[1]
+    check("l.getLockString()","1")
+    check("l.checkLock()","x==0")
+    check("l.list('/')","x[0]==0")
 check("c.lock('test/lock',1,5)","x==(chubby.E_TIMEOUT,)")
 os.system("python %s test1&"%sys.argv[0])
 time.sleep(5)
@@ -91,16 +93,18 @@ check("c.lock('test/lock2',10,5)","x==(chubby.E_TIMEOUT,)")
 check("c.lock('test/lock2',30,5)","x[0]==0")
 l = c.lock('test/lock3',10,5)
 check("l","l[0]==0")
-l = l[1]
-check("l.checkLock()","x==0")
-check("l.list('/')","x[0]==0")
-time.sleep(10)
-check("l.checkLock()","x==chubby.E_LOCKEXPIRED")
-check("l.list('/')","x==(chubby.E_LOCKEXPIRED,)")
+if l[0]==0:
+    l = l[1]
+    check("l.checkLock()","x==0")
+    check("l.list('/')","x[0]==0")
+    time.sleep(10)
+    check("l.checkLock()","x==chubby.E_LOCKEXPIRED")
+    check("l.list('/')","x==(chubby.E_LOCKEXPIRED,)")
 l = c.lock('test/lock',10,5)
 check("l","l[0]==0")
-l = l[1]
-os.system("python %s test2 %s&"%(sys.argv[0],l.getLockString()))
+if l[0]==0:
+    l = l[1]
+    os.system("python %s test2 %s&"%(sys.argv[0],l.getLockString()))
 check("c.lock('test/lock',10,5)","x[0]==0")
 check("c.get('/test/test1result')","x[0]==0 and x[2]=='21/21'")
 time.sleep(10)

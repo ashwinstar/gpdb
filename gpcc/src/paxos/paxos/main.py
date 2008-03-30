@@ -6,6 +6,7 @@ import sys
 import utils
 
 from client import Client
+from status import Status
 from configuration import Configuration
 from priest import Priest
 from simplemessenger import SimpleMessenger
@@ -19,7 +20,7 @@ N_PRIEST = 3
 def test():
     m = UdpMessenger()
 #    m = SimpleMessenger()
-    m.setDisableLog(True)
+    m.setDisableLog(False)
     priests = []
     hostname = socket.gethostbyname(socket.gethostname())
     for i in xrange(N_PRIEST):
@@ -52,7 +53,7 @@ def lock():
 	sys.stderr.write("Can not lock.\n")
 	sys.exit(1)
     lockfile.truncate(0)
-    lockfile.write(str(os.getpid()))
+    lockfile.write(str(os.getpid())+'\n')
     lockfile.flush()
     ps = open("../log","a")
     sys.stdout = ps
@@ -60,6 +61,9 @@ def lock():
 
 def runClient(argv):
     Client(UdpMessenger(),argv)
+
+def runStatus(argv):
+    Status(UdpMessenger(),argv)
 
 def runPriest(argv):
     lock()
@@ -72,10 +76,12 @@ def runPriest(argv):
     except OSError,e:
 	if e.errno!=17:
 	    raise
-    Priest(config,UdpMessenger(),"data").start()
+    m = UdpMessenger()
+#    m.setDisableLog(False)
+    Priest(config,m,"data").start()
 
 def runTester(argv):
-    lock();
+    lock()
     messenger = UdpMessenger()
     priests = utils.stringToAddresses(messenger,argv[1])
     Tester(priests,messenger).start()
@@ -88,6 +94,8 @@ def main(argv):
 	test()
     elif argv[0]=="Client" and len(argv)>=2:
 	runClient(argv)
+    elif argv[0]=="Status" and len(argv)>=2:
+	runStatus(argv)
     elif argv[0]=="Priest":
 	runPriest(argv)
     elif argv[0]=="Tester" and len(argv)>=2:
@@ -97,10 +105,11 @@ def main(argv):
 
 def usage(argv0):
     sys.stderr.write("usage:\n")
-    sys.stderr.write("    python "+argv0+" test\n");
-    sys.stderr.write("    python "+argv0+" Client addresses [decree]\n");
-    sys.stderr.write("    python "+argv0+" Priest\n");
-    sys.stderr.write("    python "+argv0+" Tester addresses\n");
+    sys.stderr.write("    python "+argv0+" test\n")
+    sys.stderr.write("    python "+argv0+" Client addresses [decree]\n")
+    sys.stderr.write("    python "+argv0+" Status addresses [decree]\n")
+    sys.stderr.write("    python "+argv0+" Priest\n")
+    sys.stderr.write("    python "+argv0+" Tester addresses\n")
     sys.exit(1)
 
 main(sys.argv)

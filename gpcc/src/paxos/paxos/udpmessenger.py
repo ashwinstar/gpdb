@@ -14,7 +14,7 @@ class Port:
     def __init__(self,messenger,address):
 	self.__messenger = messenger
 	self.__socket = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-	self.__socket.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,65536);
+	self.__socket.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,65536)
 	self.__socket.bind(messenger.getSocketAddress(address))
 	self.__address = socketAddressToString(self.__socket.getsockname())
 
@@ -47,7 +47,7 @@ class Port:
 	    if random.random()>=DROP_CHANCE:
 		break
 	fro[0] = socketAddressToString(p[1])
-	self.log("from="+fro[0]+" to="+self.__address+" recv "+p[0]);
+	self.log("from="+fro[0]+" to="+self.__address+" recv "+p[0])
 	return p[0]
 
     def close(self):
@@ -72,6 +72,7 @@ class UdpMessenger(Logger):
 
     def __init__(self):
 	Logger.__init__(self,"Udp")
+	self.setDisableLog(True)
 
     def makePort(self,address):
 	return Port(self,address)

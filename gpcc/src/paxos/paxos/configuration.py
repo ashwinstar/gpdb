@@ -23,7 +23,7 @@ class Configuration:
 	    if i!=-1:
 		value = s[i+1:].strip()
 		s = s[:i].strip()
-	    self.__gotLine(s,value);
+	    self.__gotLine(s,value)
 
     def __gotLine(self,key,value):
 	if key=="priests":
@@ -33,4 +33,4 @@ class Configuration:
 	elif key=="port":
 	    self.port = int(value)
 	else:
-	    raise Exception("Got bad configuration "+key+'='+value);
+	    raise Exception("Got bad configuration "+key+'='+value)
