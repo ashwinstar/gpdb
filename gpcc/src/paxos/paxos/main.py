@@ -55,7 +55,7 @@ def lock():
     lockfile.truncate(0)
     lockfile.write(str(os.getpid())+'\n')
     lockfile.flush()
-    ps = open("../log","a")
+    ps = open("../log","a",1)
     sys.stdout = ps
     sys.stderr = ps
 

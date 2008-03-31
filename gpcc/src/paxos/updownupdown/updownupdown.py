@@ -14,7 +14,7 @@ from udpmessenger import UdpMessenger
 
 TIMEOUT = 1
 MAX_SLOWNESS = 10
-WAIT_TIME = 60
+WAIT_TIME = 100
 NPRIEST = 5
 
 ntest = 0
@@ -28,124 +28,21 @@ host = socket.gethostbyname(socket.gethostname())
 messenger = UdpMessenger()
 messenger.setDisableLog(True)
 
-lock = threading.Lock()
-
 priestAddresses = ["%s:%d"%(host,2000+i) for i in xrange(NPRIEST)]
-
-priestSet = set()
-priestSetDn = 0
 
 printNeedNl = False
 
 def print_line(s):
     global printNeedNl
-    lock.acquire()
-    try:
-	if printNeedNl:
-	    printNeedNl = False
-	    print
-	print s
-    finally:
-	lock.release()
+    if printNeedNl:
+	printNeedNl = False
+	print
+    print s
 
 def print_dot():
+    sys.stdout.write('.')
     global printNeedNl
-    lock.acquire()
-    try:
-	sys.stdout.write('.')
-	printNeedNl = True
-    finally:
-	lock.release()
-
-class Super:
-
-    def __init__(self):
-	self.leader = None
-	self.counter = 0
-	self.port = messenger.makePort("")
-	self.dn = 0
-
-    def getStuff(self,wantDn,wantPs):
-	fro = [None]
-	decree = None
-	startTime = time.time()
-	timeo = 0
-	while wantDn or wantPs:
-	    now = time.time()
-	    lock.acquire()
-	    try:
-		global slowness
-		if now-startTime>slowness:
-		    slowness = now-startTime
-	    finally:
-		lock.release()
-	    if timeo<now:
-		timeo = now+TIMEOUT
-		if self.leader==None:
-		    mm = message.Maker("GetLeader")
-		    mm.send(self.port,priestAddresses)
-		else:
-		    if wantPs:
-			mm = message.Maker("GetPriestSet")
-			mm.send(self.port,self.leader)
-		    if wantDn:
-			decree = "Tag %d Stat paxos/decreeNumber"%self.counter
-			self.counter += 1
-			mm = message.Maker("Propose")
-			mm.addDecree(decree)
-			mm.send(self.port,self.leader)
-	    messag = self.port.recv(TIMEOUT,fro)
-	    if messag==None:
-		self.leader = None
-		continue
-	    m = Message(messag,fro[0])
-	    if m.command=="Redirect":
-		self.leader = m.result
-		timeo = 0
-	    elif wantPs and m.command=="PriestSet":
-		wantPs = False
-		lock.acquire()
-		try:
-		    global priestSet
-		    global priestSetDn
-		    if priestSetDn<m.dn:
-			priestSet = set(m.result.split(','))
-			priestSetDn = m.dn
-		finally:
-		    lock.release()
-	    elif wantDn and m.command=="Result" and m.decree==decree:
-		wantDn = False
-		i = int(m.result[:m.result.index(' ')])
-		if i<=self.dn:
-		    print_line("ERROR DecreeNumber not monotone")
-		    lock.acquire()
-		    try:
-			not_monotone = True
-		    finally:
-			lock.release()
-		self.dn = i
-
-class ShootShootShoot(threading.Thread,Super):
-
-    def __init__(self):
-	threading.Thread.__init__(self)
-	Super.__init__(self)
-	self.done = False
-
-    def run(self):
-	while 1:
-	    lock.acquire()
-	    try:
-		if self.done:
-		    break
-	    finally:
-		lock.release()
-	    self.getStuff(True,True)
-	    print_dot()
-	    time.sleep(1)
-
-shoot = ShootShootShoot()
-shoot.start()
+    printNeedNl = True
 
 class Priest():
 
@@ -222,31 +119,88 @@ class Priest():
 	self.stopped = False
 	os.kill(self.pid,signal.SIGCONT)
 
-class UpDownUpDown(Super):
+class UpDownUpDown:
 
     def __init__(self):
-	Super.__init__(self)
+	self.leader = None
+	self.counter = 0
+	self.port = messenger.makePort("")
+	self.dn = 0
+	self.priestSet = set()
 	os.system("rm -rf data")
 	os.makedirs("data")
 	self.p = [Priest(i,i==0) for i in xrange(NPRIEST)]
 
-    def waitFor(self,what,f):
+    def getStuff(self):
+	fro = [None]
+	decree = None
+	startTime = time.time()
+	timeo = 0
+	while 1:
+	    now = time.time()
+	    if now-startTime>=WAIT_TIME:
+		print_line("Timed out")
+		return False
+	    global slowness
+	    if now-startTime>slowness:
+		slowness = now-startTime
+	    if timeo<now:
+		timeo = now+TIMEOUT
+		if self.leader==None:
+		    mm = message.Maker("GetLeader")
+		    mm.send(self.port,priestAddresses)
+		else:
+		    decree = "Tag %d GetPriestSet"%self.counter
+		    self.counter += 1
+		    mm = message.Maker("Propose")
+		    mm.addDecree(decree)
+		    mm.send(self.port,self.leader)
+	    messag = self.port.recv(TIMEOUT,fro)
+	    if messag==None:
+		self.leader = None
+		continue
+	    m = Message(messag,fro[0])
+	    if m.command=="Redirect":
+		self.leader = m.result
+		timeo = 0
+	    elif m.command=="Result" and m.decree==decree:
+		if m.dn<=self.dn:
+		    print_line("ERROR DecreeNumber not monotone")
+		    not_monotone = True
+		self.priestSet = set(m.result[2:].split(','))
+		self.dn = m.dn
+		return True
+
+    def wait(self,t):
+	t += time.time()
+	while time.time()<t:
+	    time.sleep(1)
+	    self.getStuff()
+	    print_dot()
+
+    def waitFor2(self,what,f,timeout=WAIT_TIME):
 	global ntest
 	global passed
 	ntest += 1
-	timeout = time.time()+WAIT_TIME
-	while time.time()<timeout:
-	    lock.acquire()
-	    try:
-		p = priestSet
-	    finally:
-		lock.release()
-	    if f(p):
-		print_line(what)
+	start = time.time()
+	while 1:
+	    now = time.time();
+	    if start+timeout<=now:
+		break
+	    if f(self.leader,self.priestSet):
+		print_line(what+" %f"%(time.time()-start))
 		passed += 1
 		return
 	    time.sleep(1)
+	    self.getStuff()
+	    print_dot()
 	print_line("ERROR gave up waiting for: "+what)
+
+    def waitFor(self,what,f,timeout=WAIT_TIME):
+	self.waitFor2(what,lambda l,ps:f(ps),timeout)
+
+    def waitForLeader(self,what,f,timeout=WAIT_TIME):
+	self.waitFor2(what,lambda l,ps:f(l),timeout)
 
     def kill(self,p):
 	p.kill()
@@ -265,21 +219,29 @@ class UpDownUpDown(Super):
 	self.waitFor("Priest %d has joined."%p.index,lambda x:p.id in x)
 
     def propose(self,n):
-	self.getStuff(True,False)
+	global ntest
+	global passed
+	ntest += 1
 	start = self.dn
 	while 1:
-	    self.getStuff(True,False)
+	    if not self.getStuff():
+		return
 	    i = self.dn-start
 	    print_line("decree %d/%d"%(i,n))
 	    if i>=n:
-		break
+		passed += 1
+		return
 
     def run(self):
+	global ntest
+	global passed
 	print_line("Starting the Priests")
 	for i in self.p:
 	    i.start()
 	allPriests = set([i.id for i in self.p])
 	self.waitFor("All priests have joined.",lambda x:allPriests<=x)
+
+	self.propose(constants.ALPHA)
 
 	print_line("Checking if kill and restart works.")
 	self.kill(self.p[0])
@@ -309,38 +271,94 @@ class UpDownUpDown(Super):
 	self.p[2].start()
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
 
+	print_line("Killing pairs.")
+	for i in self.p:
+	    i.kill()
+	    for j in self.p:
+		if j!=i:
+		    j.kill()
+		    self.wait(1)
+		    self.propose(1)
+		    self.start(j)
+		    self.propose(constants.ALPHA)
+	    self.start(i)
+	    self.propose(constants.ALPHA)
+
+	print_line("Checking speed.")
+	start = time.time()
+	self.propose(constants.ACCEPTOR_HISTORY/16)
+	print_line("time1=%f"%(time.time()-start))
+	self.kill(self.p[0])
+	start = time.time()
+	self.propose(constants.ACCEPTOR_HISTORY/16)
+	print_line("time2=%f"%(time.time()-start))
+	self.start(self.p[0])
+	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,constants.ACCEPTOR_HISTORY/8/20)
+	start = time.time()
+	self.propose(constants.ACCEPTOR_HISTORY/16)
+	print_line("time3=%f"%(time.time()-start))
+
+	print_line("Checking if kill, get a bit behind, restart works.")
+	self.kill(self.p[0])
+	self.propose(constants.ACCEPTOR_HISTORY/8)
+	self.stop(self.p[1])
+	self.propose(constants.ACCEPTOR_HISTORY/8)
+	self.p[1].cont()
+	self.waitForLeader("Priest 1 is leader.",lambda l:l==self.p[1].address,constants.ACCEPTOR_HISTORY/8/20)
+	self.p[0].start()
+	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,constants.ACCEPTOR_HISTORY/8/20)
+	self.propose(1)
+	self.p[2].kill()
+	self.propose(1)
+	self.p[2].start()
+
 	print_line("Checking if kill, get too far behind, restart works.")
 	self.kill(self.p[0])
 	self.stop(self.p[1])
 	self.propose(constants.ACCEPTOR_HISTORY)
-	self.cont(self.p[1])
-	self.start(self.p[0])
+	self.p[1].cont()
+	self.waitForLeader("Priest 1 is leader.",lambda l:l==self.p[1].address,constants.ACCEPTOR_HISTORY/8/20)
+	self.p[0].start()
+	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,constants.ACCEPTOR_HISTORY/8/20)
+	self.propose(1)
+	self.p[2].kill()
+	self.propose(1)
+	self.p[2].start()
 
-	lock.acquire()
-	shoot.done = True
-	lock.release()
-	shoot.join()
+	ntest += 1
+	print_line("slowness=%d"%slowness)
+	if slowness>MAX_SLOWNESS:
+	    print_line("too slow")
+	else:
+	    passed += 1
+
+	print_line("Killing three, then restarting.")
+	self.p[0].kill()
+	self.p[1].kill()
+	self.p[2].kill()
+	self.p[0].start()
+	self.p[1].start()
+	self.p[2].start()
+	self.propose(1)
+
+	print_line("Killing all, then restarting.")
+	for i in self.p:
+	    i.kill()
+	for i in self.p:
+	    i.start()
+	self.propose(1)
 
 	print_line("Killing all Priests.")
 	for i in self.p:
 	    if i.started:
 		i.kill()
 
+	ntest += 1
+	if not_monotone:
+	    print_line("not_monotone failed")
+	else:
+	    passed += 1
+
 UpDownUpDown().run()
 
-ntest += 1
-print_line("slowness=%d"%slowness)
-if slowness>MAX_SLOWNESS:
-    print_line("too slow")
-else:
-    passed += 1
-ntest += 1
-if not_monotone:
-    print_line("not_monotone failed")
-else:
-    passed += 1
-
 print_line("%d/%d passed"%(passed,ntest))
-
-# Python has trouble exiting, so we kill ourself.
-os.kill(os.getpid(),signal.SIGKILL)

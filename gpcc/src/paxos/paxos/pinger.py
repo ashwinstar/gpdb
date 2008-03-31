@@ -121,13 +121,6 @@ class Pinger(Role):
 		mm.send(self.port,self.getLeader(-1))
 		self.__subtractTime[id] = now+PING_TIME
 
-    def __gotGetPriestSet(self,decreeNumber,fro):
-	"""Send a PriestSet message."""
-	mm = message.Maker("PriestSet")
-	mm.addDecreeNumber(decreeNumber)
-	mm.addResult(",".join(self.__priest.learner.priestSet.get(decreeNumber)))
-	mm.send(self.port,fro)
-
     def sendRedirect(self,fro):
 	"""Send a Redirect message."""
 	mm = message.Maker("Redirect")
@@ -155,7 +148,5 @@ class Pinger(Role):
 	    self.__gotPing(m.fro,m.priestId,m.dn,m.result)
 	elif m.command=="GetLeader":
 	    self.sendRedirect(m.fro)
-	elif m.command=="GetPriestSet":
-	    self.__gotGetPriestSet(decreeNumber,m.fro)
 	elif m.command=="SubtractPriest":
 	    self.__gotSubtractPriest(decreeNumber,m.priestId,m.result)

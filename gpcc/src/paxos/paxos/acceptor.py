@@ -116,15 +116,28 @@ class Acceptor(Role):
 	mm.addBallotNumber(bn)
 	mm.send(self.port,fro)
 
-    def __gotNextBallot1(self,decreeNumber,fro,dn,bn):
+    def __sendSuccess(self,fro,dn,decree):
+	mm = message.Maker("Success")
+	mm.addDecreeNumber(dn)
+	mm.addDecree(decree)
+	mm.send(self.port,fro)
+
+    def __gotNextBallot1(self,fro,dn,bn):
+	if dn>=0:
+	    a = self.__priest.learner.getLearned(dn)
+	    if a!=None:
+		self.__sendSuccess(fro,dn,a)
+		return
 	if dn<0:
 	    d = self.__getData(~dn)
-	elif dn<decreeNumber:
+	elif dn<self.__maxDecreeNumber:
 	    d = self.__getData(dn)
 	else:
+	    self.log("NextBallot dn=%d max=%d"%(dn,self.__maxDecreeNumber))
 	    return
 	ps = self.__priest.learner.priestSet.get(d.dn)
 	if self.id not in ps:
+	    self.log("NextBallot dn=%d id=%s ps=%s"%(dn,self.id,str(ps)))
 	    return
 	if bn<=d.nextBal:
 	    self.__sendNak(fro,dn,d.nextBal)
@@ -140,25 +153,29 @@ class Acceptor(Role):
 
     def __gotNextBallot(self,decreeNumber,fro,dn,bn):
 	self.__growData(decreeNumber)
-	if dn<0 and ~dn>decreeNumber-ACCEPTOR_HISTORY:
+	if dn<0 and ~dn>self.__maxDecreeNumber-ACCEPTOR_HISTORY:
 	    dn = ~dn
 	    for i in xrange(ALPHA):
 		if dn==self.__maxDecreeNumber:
-		    self.__gotNextBallot1(decreeNumber,fro,~dn,bn)
+		    self.__gotNextBallot1(fro,~dn,bn)
 		    break
-		self.__gotNextBallot1(decreeNumber,fro,dn,bn)
+		self.__gotNextBallot1(fro,dn,bn)
 		dn += 1
-	elif dn>decreeNumber-ACCEPTOR_HISTORY:
-	    self.__gotNextBallot1(decreeNumber,fro,dn,bn)
+	elif dn>self.__maxDecreeNumber-ACCEPTOR_HISTORY:
+	    self.__gotNextBallot1(fro,dn,bn)
 	else:
 	    mm = message.Maker("DecreeNumberTooOld")
 	    mm.addDecreeNumber(dn)
 	    mm.send(self.port,fro)
 
     def __gotBeginBallot(self,decreeNumber,fro,dn,bn,decree):
-	if dn<=decreeNumber-ACCEPTOR_HISTORY or dn>=decreeNumber:
+	a = self.__priest.learner.getLearned(dn)
+	if a!=None:
+	    self.__sendSuccess(fro,dn,a)
 	    return
 	self.__growData(decreeNumber)
+	if dn<=self.__maxDecreeNumber-ACCEPTOR_HISTORY or dn>=self.__maxDecreeNumber:
+	    return
 	d = self.__getData(dn)
 	if bn<d.nextBal:
 	    self.__sendNak(fro,dn,d.nextBal)

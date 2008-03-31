@@ -68,9 +68,9 @@ class SimpleMessenger(Logger):
 
     def __init__(self):
 	Logger.__init__(self,"Simple")
-	self.__portsL = threading.Lock()
+	self.__portsL = threading.RLock()
 	self.__ports = dict()
-	self.__mapL = threading.Lock()
+	self.__mapL = threading.RLock()
 	self.__map = dict()
 	self.__counter = 0
 

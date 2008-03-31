@@ -17,7 +17,7 @@ class Priest(Role,threading.Thread):
 	threading.Thread.__init__(self)
 	self.configuration = configuration
 	self.dataDir = dataDir
-	self.lock = threading.Lock()
+	self.lock = threading.RLock()
 	self.lock.acquire()
 	try:
 	    self.pinger = Pinger(self)

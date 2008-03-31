@@ -4,6 +4,7 @@ import threading
 
 import message
 import priestset
+import utils
 
 from constants import *
 from priestset import PriestSet
@@ -21,11 +22,13 @@ DECREE_NUMBER = PAXOS_DIR+"/decreeNumber"
 class Data:
 
     def __init__(self):
-	self.clear()
+	self.clear(-1)
 
-    def clear(self):
+    def clear(self,dn):
+	self.dn = dn
 	self.map = dict()
 	self.decree = None
+	self.alreadyInLog = False
 	self.returnAddress = None
 	self.result = None
 	self.bn = 0
@@ -37,7 +40,7 @@ class Learner(Role):
 	Role.__init__(self,priest.port)
 	self.__priest = priest
 	self.saveDn = N_SAVE*[None]
-	self.__data = ALPHA*[None]
+	self.__data = ACCEPTOR_HISTORY*[None]
 	self.__lastPriestSet = set()
 	self.highestLearnedDn = 0
 	best = State()
@@ -59,7 +62,7 @@ class Learner(Role):
 		    best = s
 	self.state = best
 	self.priestSet = PriestSet(priest,self.state)
-	for i in xrange(ALPHA):
+	for i in xrange(ACCEPTOR_HISTORY):
 	    self.__data[i] = Data()
 	self.__stateUploader = StateUploader(priest)
 	self.__stateUploader.start()
@@ -67,17 +70,46 @@ class Learner(Role):
 	self.__stateSaver = None
 	if bestDn==0:
 	    self.__saveState()
+	    self.__finishSaveState()
+	for i in xrange(N_SAVE):
+	    f = priest.dataDir+"/learner-log%d"%i
+	    if os.path.exists(f):
+		raf = open(f,'r+b')
+		l = 0
+		try:
+		    while 1:
+			dn = utils.readLong(raf)
+			decree = utils.readString(raf)
+			l = raf.tell()
+			d = self.__data[dn&ACCEPTOR_HISTORY-1]
+			if d.dn<dn:
+			    d.clear(dn)
+			    d.decree = decree
+			    d.alreadyInLog = True
+		except EOFError:
+		    raf.seek(l)
+		    raf.truncate()
+		raf.close()
+	i = bestDn>>LOG_SAVE_PERIOD&N_SAVE-1
+	f = priest.dataDir+"/learner-log%d"%i
+	self.__logfile = open(f,"a+b" if os.path.exists(f) else "wb")
 
     def getDecreeNumber(self):
 	return self.state.get(DECREE_NUMBER).dn+ALPHA
 
-    def getData(self,decreeNumber,dn):
-	if decreeNumber-ALPHA<=dn<decreeNumber:
-	    return self.__data[dn&ALPHA-1]
-	assert 0
+    def getLearned(self,dn):
+	d = self.__data[dn&ACCEPTOR_HISTORY-1]
+	return d.decree if d.dn==dn else None
 
-    def __sendResult(self,decreeNumber,dn):
-	d = self.getData(decreeNumber,dn)
+    def __getData(self,dn):
+	d = self.__data[dn&ACCEPTOR_HISTORY-1]
+	if d.dn<dn:
+	    d.clear(dn)
+	assert d.dn==dn
+	return d
+
+    def __sendResult(self,dn):
+	d = self.__getData(dn)
 	mm = message.Maker("Result")
 	mm.addDecreeNumber(dn)
 	mm.addDecree(d.decree)
@@ -86,21 +118,36 @@ class Learner(Role):
 
     def __makeRoom(self,decreeNumber):
 	while 1:
-	    d = self.getData(decreeNumber,decreeNumber-ALPHA)
+	    dn = decreeNumber-ALPHA
+	    d = self.__getData(dn)
 	    if d.decree==None:
 		break
-	    d.result = self.state.execute(d.decree,decreeNumber-ALPHA)
+	    if not d.alreadyInLog:
+		utils.writeLong(self.__logfile,dn)
+		utils.writeString(self.__logfile,d.decree)
+		self.__logfile.write('\n')
+		self.__logfile.flush()
+		os.fsync(self.__logfile)
+	    d.result = self.state.execute(d.decree,dn,self.__lastPriestSet)
 	    if d.returnAddress and d.done:
-		self.__sendResult(decreeNumber,decreeNumber-ALPHA)
+		self.__sendResult(dn)
 	    decreeNumber += 1
 	    self.state.put(decreeNumber-ALPHA,DECREE_NUMBER,"")
 	    ps = self.priestSet.get(decreeNumber)
 	    self.__priest.proposer.shiftData(decreeNumber,ps!=self.__lastPriestSet)
 	    self.__lastPriestSet = ps
-	    d.clear()
 	    self.priestSet.clean(decreeNumber)
 	    if (decreeNumber-ALPHA&(1<<LOG_SAVE_PERIOD)-1)==0:
 		self.__saveState()
+		i = decreeNumber-ALPHA>>LOG_SAVE_PERIOD&N_SAVE-1
+		self.__logfile.close()
+		self.__logfile = open(self.__priest.dataDir+"/learner-log%d"%i,"wb")
+
+    def __sendSuccess(self,dn,decree):
+	mm = message.Maker("Success")
+	mm.addDecreeNumber(dn)
+	mm.addDecree(decree)
+	mm.send(self.port,self.__priest.pinger.getAddresses())
 
     def __gotVoted(self,decreeNumber,priestId,dn,bn,decree):
 	if decreeNumber-ALPHA<=dn<decreeNumber:
@@ -108,7 +155,7 @@ class Learner(Role):
 	    if priestId not in ps:
 		assert 0
 		return
-	    d = self.getData(decreeNumber,dn)
+	    d = self.__getData(dn)
 	    if d.decree!=None or bn<d.bn:
 		return
 	    if bn>d.bn:
@@ -120,20 +167,16 @@ class Learner(Role):
 	    s.add(priestId)
 	    if len(s)>len(ps)/2 and not d.done:
 		d.done = True
-		mm = message.Maker("Success")
-		mm.addDecreeNumber(dn)
-		mm.addDecree(decree)
-		mm.send(self.port,self.__priest.pinger.getAddresses())
+		self.__sendSuccess(dn,decree)
 
     def __gotSuccess(self,decreeNumber,fro,dn,decree):
 	if decreeNumber-ALPHA<=dn<decreeNumber:
-	    d = self.getData(decreeNumber,dn)
+	    d = self.__getData(dn)
 	    if d.decree!=None:
 		return
 	    i = decree.find('_')
 	    d.returnAddress = decree[0:i]
 	    d.decree = decree[i+1:]
-	    self.__makeRoom(decreeNumber)
 	    if dn>self.highestLearnedDn:
 		self.highestLearnedDn = dn
 
@@ -164,7 +207,7 @@ class Learner(Role):
 	decreeNumber = self.getDecreeNumber()
 	i = decreeNumber-ALPHA>>LOG_SAVE_PERIOD&N_SAVE-1
 	for d in self.__data:
-	    d.clear()
+	    d.clear(-1)
 	self.saveDn[i] = decreeNumber-ALPHA
 	name = self.__priest.dataDir+"/learner-data%d.gz"%i
 	os.rename(temp,name)
@@ -189,10 +232,10 @@ class Learner(Role):
 
     def handleMessage(self,decreeNumber,m):
 	if self.__stateDownloader:
-	    if self.__stateDownloader.isFinished():
+	    if not self.__stateDownloader.isAlive():
 		self.__finishDownload()
 	    return
-	if self.__stateSaver and self.__stateSaver.isFinished():
+	if self.__stateSaver and not self.__stateSaver.isAlive():
 	    self.__finishSaveState()
 	if m.command=="Voted":
 	    self.__gotVoted(decreeNumber,m.priestId,m.dn,m.bn,m.decree)
@@ -202,3 +245,4 @@ class Learner(Role):
 	    self.__gotSuccess(decreeNumber,m.fro,m.dn,m.decree)
 	elif m.command=="DecreeNumberTooOld":
 	    self.__gotDecreeNumberTooOld(decreeNumber,m.dn)
+	self.__makeRoom(decreeNumber)

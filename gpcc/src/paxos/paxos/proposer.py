@@ -51,7 +51,7 @@ class Proposer(Role):
 	d.nextBallotTimeout = time.time()+DECREE_TIMEOUT
 
     def __tick1(self,decreeNumber,dn):
-	if dn>=0 and self.__isLearned(decreeNumber,dn):
+	if dn>=0 and self.__isLearned(dn):
 	    return
 	if self.address!=self.__priest.pinger.getLeader(dn):
 	    return
@@ -152,6 +152,7 @@ class Proposer(Role):
 	    d.promiseMap[i[0]] = i[1].copy()
 	d.promiseDecree = self.__etc.promiseDecree
 	d.nextBallotTimeout = self.__etc.nextBallotTimeout
+	self.__tick1(decreeNumber,decreeNumber-1)
 
     def __sendBeginBallot(self,decreeNumber,fp,dn):
 	d = self.__getData(decreeNumber,dn)
@@ -169,7 +170,7 @@ class Proposer(Role):
 	    return
 	fp = fro+'_'+decree
 	for i in xrange(-ALPHA,0):
-	    if self.__isLearned(decreeNumber,decreeNumber+i):
+	    if self.__isLearned(decreeNumber+i):
 		continue
 	    d = self.__getData(decreeNumber,decreeNumber+i)
 	    if NULL_DECREE!=d.promiseDecree:
@@ -179,8 +180,8 @@ class Proposer(Role):
 	    return
 	self.log("no room")
 
-    def __isLearned(self,decreeNumber,dn):
-	return self.__priest.learner.getData(decreeNumber,dn).decree!=None
+    def __isLearned(self,dn):
+	return self.__priest.learner.getLearned(dn)!=None
 
     def handleMessage(self,decreeNumber,m):
 	if m.command=="Propose":

@@ -20,7 +20,6 @@ class StateDownloader(Role,threading.Thread):
 	self.__priest = priest
 	self.__raf = open(filename,"wb")
 	self.filename = filename
-	self.__finished = False
 
     def __getBestUrl(self):
 	dn = 0
@@ -89,9 +88,6 @@ class StateDownloader(Role,threading.Thread):
 		to = fro[0]
 		blockNumber += 1
 
-    def isFinished(self):
-	return self.__finished
-
     def work(self):
 	while not self.__doNftp(self.__getBestUrl()):
 	    pass
@@ -102,8 +98,3 @@ class StateDownloader(Role,threading.Thread):
 	self.state = State()
 	self.state.read(dis)
 	dis.close()
-	self.__priest.lock.acquire()
-	try:
-	    self.__finished = True
-	finally:
-	    self.__priest.lock.release()

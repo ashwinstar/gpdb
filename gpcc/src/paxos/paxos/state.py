@@ -202,7 +202,7 @@ class State:
 	self.__root.read(ni)
 	self.__cow = 0
 
-    def execute(self,decree,dn):
+    def execute(self,decree,dn,priestSet):
 	if not decree:
 	    return ""
 	try:
@@ -233,6 +233,8 @@ class State:
 		if command=="Remove":
 		    self.__commandRemove(name,dn)
 		    return "0"
+		if command=="GetPriestSet":
+		    return "0 "+",".join(sorted(priestSet))
 		raise StateException(E_INVAL)
 	except StateException,e:
 	    return "error %d %s"%(e.number,e.message)

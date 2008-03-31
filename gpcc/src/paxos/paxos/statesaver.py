@@ -13,10 +13,6 @@ class StateSaver(Role,threading.Thread):
 	self.__root = root
 	self.filename = filename
 	self.dn = dn
-	self.__finished = False
-
-    def isFinished(self):
-	return self.__finished
 
     def work(self):
 	dos = gzip.GzipFile(self.filename,'wb')
@@ -25,8 +21,3 @@ class StateSaver(Role,threading.Thread):
 	self.log("decreeNumber=%d crc=%d"%(self.dn,dos.crc))
 	os.fsync(dos)
 	dos.close()
-	self.__priest.lock.acquire()
-	try:
-	    self.__finished = True
-	finally:
-	    self.__priest.lock.release()
