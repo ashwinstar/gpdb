@@ -45,6 +45,11 @@ class Message:
 	self.fro = fro
 	st = messag.split(' ')
 	self.command = st.pop(0)
+	self.priestId = None
+	self.dn = None
+	self.bn = None
+	self.decree = None
+	self.result = None
 	for s in st:
 	    i = s.index('=')
 	    value = s[i+1:]

@@ -5,8 +5,6 @@ import sys
 
 import utils
 
-from client import Client
-from status import Status
 from configuration import Configuration
 from priest import Priest
 from simplemessenger import SimpleMessenger
@@ -59,12 +57,6 @@ def lock():
     sys.stdout = ps
     sys.stderr = ps
 
-def runClient(argv):
-    Client(UdpMessenger(),argv)
-
-def runStatus(argv):
-    Status(UdpMessenger(),argv)
-
 def runPriest(argv):
     lock()
     f = open("configuration","r")
@@ -92,10 +84,6 @@ def main(argv):
 	usage(argv0)
     if argv[0]=="test":
 	test()
-    elif argv[0]=="Client" and len(argv)>=2:
-	runClient(argv)
-    elif argv[0]=="Status" and len(argv)>=2:
-	runStatus(argv)
     elif argv[0]=="Priest":
 	runPriest(argv)
     elif argv[0]=="Tester" and len(argv)>=2:
@@ -106,8 +94,6 @@ def main(argv):
 def usage(argv0):
     sys.stderr.write("usage:\n")
     sys.stderr.write("    python "+argv0+" test\n")
-    sys.stderr.write("    python "+argv0+" Client addresses [decree]\n")
-    sys.stderr.write("    python "+argv0+" Status addresses [decree]\n")
     sys.stderr.write("    python "+argv0+" Priest\n")
     sys.stderr.write("    python "+argv0+" Tester addresses\n")
     sys.exit(1)

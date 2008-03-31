@@ -22,6 +22,7 @@ passed = 0
 
 slowness = 0
 not_monotone = False
+got_timeout = False
 
 host = socket.gethostbyname(socket.gethostname())
 
@@ -131,6 +132,29 @@ class UpDownUpDown:
 	os.makedirs("data")
 	self.p = [Priest(i,i==0) for i in xrange(NPRIEST)]
 
+    def waitCatchUp(self,p):
+	fro = [None]
+	bigtimeout = time.time()+WAIT_TIME
+	timeo = 0
+	while 1:
+	    now = time.time()
+	    if bigtimeout<now:
+		print_line("ERROR Timed out waiting for %s to catch up."%p.address)
+		global got_timeout
+		got_timeout = True
+		return False
+	    if timeo<now:
+		timeo = now+TIMEOUT
+		mm = message.Maker("Ping")
+		mm.send(self.port,p.address)
+	    messag = self.port.recv(TIMEOUT,fro)
+	    if messag==None:
+		continue
+	    m = Message(messag,fro[0])
+	    if m.command=="Ping" and m.fro==p.address and m.dn>=0:
+		print_line("%s has caught up."%p.address)
+		return True
+
     def getStuff(self):
 	fro = [None]
 	decree = None
@@ -139,7 +163,9 @@ class UpDownUpDown:
 	while 1:
 	    now = time.time()
 	    if now-startTime>=WAIT_TIME:
-		print_line("Timed out")
+		print_line("ERROR Timed out")
+		global got_timeout
+		got_timeout = True
 		return False
 	    global slowness
 	    if now-startTime>slowness:
@@ -175,8 +201,8 @@ class UpDownUpDown:
 	t += time.time()
 	while time.time()<t:
 	    time.sleep(1)
-	    self.getStuff()
-	    print_dot()
+	    if self.getStuff():
+		print_dot()
 
     def waitFor2(self,what,f,timeout=WAIT_TIME):
 	global ntest
@@ -192,8 +218,8 @@ class UpDownUpDown:
 		passed += 1
 		return
 	    time.sleep(1)
-	    self.getStuff()
-	    print_dot()
+	    if self.getStuff():
+		print_dot()
 	print_line("ERROR gave up waiting for: "+what)
 
     def waitFor(self,what,f,timeout=WAIT_TIME):
@@ -273,30 +299,40 @@ class UpDownUpDown:
 
 	print_line("Killing pairs.")
 	for i in self.p:
-	    i.kill()
+	    i.stop()
 	    for j in self.p:
 		if j!=i:
-		    j.kill()
-		    self.wait(1)
+		    j.stop()
 		    self.propose(1)
-		    self.start(j)
-		    self.propose(constants.ALPHA)
-	    self.start(i)
-	    self.propose(constants.ALPHA)
+		    j.cont()
+		    self.wait(3)
+		    self.waitCatchUp(j)
+		    self.wait(3)
+	    i.cont()
+	    self.wait(3)
+	    self.waitCatchUp(i)
+	    self.wait(3)
 
 	print_line("Checking speed.")
 	start = time.time()
-	self.propose(constants.ACCEPTOR_HISTORY/16)
+	self.propose(1000)
 	print_line("time1=%f"%(time.time()-start))
-	self.kill(self.p[0])
+	self.stop(self.p[0])
 	start = time.time()
-	self.propose(constants.ACCEPTOR_HISTORY/16)
+	self.propose(1000)
 	print_line("time2=%f"%(time.time()-start))
-	self.start(self.p[0])
-	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,constants.ACCEPTOR_HISTORY/8/20)
-	start = time.time()
-	self.propose(constants.ACCEPTOR_HISTORY/16)
-	print_line("time3=%f"%(time.time()-start))
+	self.p[0].cont()
+	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,100)
+
+	print_line("Kill priest while it is catching up.")
+	self.kill(self.p[0])
+	self.propose(1000)
+	for i in range(2,20,2):
+	    self.p[0].start()
+	    self.wait(i)
+	    self.kill(self.p[0])
+	self.p[0].start()
+	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,100)
 
 	print_line("Checking if kill, get a bit behind, restart works.")
 	self.kill(self.p[0])
@@ -306,29 +342,35 @@ class UpDownUpDown:
 	self.p[1].cont()
 	self.waitForLeader("Priest 1 is leader.",lambda l:l==self.p[1].address,constants.ACCEPTOR_HISTORY/8/20)
 	self.p[0].start()
-	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,constants.ACCEPTOR_HISTORY/8/20)
+	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,constants.ACCEPTOR_HISTORY/4/20)
 	self.propose(1)
-	self.p[2].kill()
+	self.p[2].stop()
 	self.propose(1)
-	self.p[2].start()
+	self.p[2].cont()
+	self.wait(3)
+	self.waitCatchUp(self.p[2])
+	self.wait(3)
 
 	print_line("Checking if kill, get too far behind, restart works.")
 	self.kill(self.p[0])
 	self.stop(self.p[1])
 	self.propose(constants.ACCEPTOR_HISTORY)
 	self.p[1].cont()
-	self.waitForLeader("Priest 1 is leader.",lambda l:l==self.p[1].address,constants.ACCEPTOR_HISTORY/8/20)
+	self.waitForLeader("Priest 1 is leader.",lambda l:l==self.p[1].address,constants.ACCEPTOR_HISTORY/4/20)
 	self.p[0].start()
-	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,constants.ACCEPTOR_HISTORY/8/20)
+	self.waitForLeader("Priest 0 is leader.",lambda l:l==self.p[0].address,constants.ACCEPTOR_HISTORY/4/20)
 	self.propose(1)
-	self.p[2].kill()
+	self.p[2].stop()
 	self.propose(1)
-	self.p[2].start()
+	self.p[2].cont()
+	self.wait(3)
+	self.waitCatchUp(self.p[2])
+	self.wait(3)
 
 	ntest += 1
 	print_line("slowness=%d"%slowness)
 	if slowness>MAX_SLOWNESS:
-	    print_line("too slow")
+	    print_line("ERROR too slow")
 	else:
 	    passed += 1
 
@@ -355,7 +397,13 @@ class UpDownUpDown:
 
 	ntest += 1
 	if not_monotone:
-	    print_line("not_monotone failed")
+	    print_line("ERROR not_monotone failed")
+	else:
+	    passed += 1
+
+	ntest += 1
+	if got_timeout:
+	    print_line("ERROR got_timeout failed")
 	else:
 	    passed += 1
 

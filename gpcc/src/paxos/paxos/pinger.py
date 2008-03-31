@@ -27,6 +27,7 @@ class Pinger(Role):
 	self.__pingTime = 0
 	self.__configSet = utils.stringToAddresses(self.port.getMessenger(),priest.configuration.priests)
 	self.__map = dict()
+	self.__extra = set()
 	self.__subtractTime = dict()
 	self.__subtractMap = dict()
 
@@ -59,8 +60,11 @@ class Pinger(Role):
 	result: comma separated list of addresses of priests
 	"""
 	now = time.time()
-	self.__map[id] = Data(fro,id,dn,result,now)
-	self.__subtractTime[id] = now+PING_REMOVE_TIME
+	if id:
+	    self.__map[id] = Data(fro,id,dn,result,now)
+	    self.__subtractTime[id] = now+PING_REMOVE_TIME
+	else:
+	    self.__extra.add(fro)
 
     def __gotSubtractPriest(self,decreeNumber,priestId,result):
 	if result==self.__priest.acceptor.id:
@@ -104,7 +108,8 @@ class Pinger(Role):
 	    r.add(d.fro)
 	r.discard(self.address)
 	mm.addResult(",".join(r))
-	mm.send(self.port,self.getAddresses())
+	mm.send(self.port,self.getAddresses()|self.__extra)
+	self.__extra = set()
 	ps = self.__priest.learner.priestSet.get(decreeNumber)
 	for i in self.__subtractTime.keys():
 	    if i not in ps:

@@ -1,19 +1,19 @@
+import sys
 import time
 
 import logger
 import message
 import utils
-from role import Role
 from message import Message
+from udpmessenger import UdpMessenger
 
 TIMEOUT = 1
 
-class Client(Role):
+class Client:
 
     def __init__(self,messenger,argv):
-	Role.__init__(self,messenger.makePort(""))
+	self.port = messenger.makePort("")
 	self.__counter = 0
-	messenger.setDisableLog(True)
 	self.__priests = utils.stringToAddresses(messenger,argv[1])
 	if len(argv)==2:
 	    self.__interactive()
@@ -55,3 +55,5 @@ class Client(Role):
 	    if not s:
 		return
 	    self.__sendPropose(s.strip())
+
+Client(UdpMessenger(),sys.argv)
