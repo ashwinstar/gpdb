@@ -6,6 +6,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -15,6 +16,7 @@
 #include <gpcc.h>
 #include <gpcc_proc.h>
 #include <gpcc_file.h>
+#include <gpcc_strings.h>
 #include <gpcc_pg.h>
 
 #include <apr_strings.h>
@@ -573,32 +575,59 @@ APR_DECLARE(apr_status_t) gpcc_pg_gethostname(const char *host, char *hostname, 
  */
 APR_DECLARE(apr_status_t) gpcc_pg_get_addresses(const char *host, char *addr, int *len, apr_pool_t *p)
 {
-    char *argv[2];
     apr_proc_t proc;
-    int e;
-    apr_size_t nbytes = *len;
-    apr_size_t nread = 0;
-    char cmd[1024];
+    int e, n, nn;
+    char cmd[1024], out[1024];
+    char *last, *tok, *ptr;
 
-    sprintf(cmd, "python -c \"import sys; sys.path.append('%s/bin/lib'); import gpmlib; gpmlib.get_ipaddr_to_stdout('%s')\"",
-	    getenv("GPHOME"), host);
+#ifdef SOLARIS2
+    char *ifconfig_txt = "-a inet";
+#else
+    char *ifconfig_txt = "";
+#endif
 
-    argv[0] = cmd;
-    argv[1] = 0;
+    sprintf(cmd, "ifconfig %s | grep inet | grep -v 127.0.0 | grep -v inet6", ifconfig_txt);
 
-    e = gpcc_proc_run_shell(&proc, argv[0], (const char *const *) argv, 0, 1, p);
+    e = gpcc_proc_ssh(&proc, host, cmd, 1, p);
     if (e) {
 	gpcc_log_error("get ip addresses on remote host %s failure\n", host);
 	return e;
     }
 
-     /* get the first line */
-    if ((e = apr_file_read_full(proc.out, addr, nbytes, &nread)) != 0 && e != APR_EOF) {
-	gpcc_log_error("get string from get ip addresses on remote host %s failure\n", host);
-	return e;
+    /* get the first line */
+    *addr = 0;
+    n = *len;
+    while (apr_file_gets(out, sizeof(out), proc.out) == 0) {
+	tok = apr_strtok(out, " ", &last);
+	if (!tok)
+	    return APR_EINVAL;
+
+	tok = apr_strtok(0, " ", &last);
+	if (!tok || *tok == 0)
+	    return APR_EINVAL;
+
+	if ((ptr = strchr(tok, ':')) == 0) {
+	    nn = strlen(tok) + 1;
+	    if (n < nn)
+		return APR_EINVAL;
+	    
+	    strcat(addr, tok);
+	    strcat(addr, " ");
+	    n -= nn;
+
+	} else {
+	    nn = strlen(ptr+1) + 1;
+	    if (n < nn)
+		return APR_EINVAL;
+
+	    strcat(addr, ptr+1);
+	    strcat(addr, " ");
+
+	    n -= nn;
+	}
     }
-    *len = nread;
-    addr[nread] = 0;
+
+    gpcc_string_trim(addr);
     gpcc_log_info(addr);
     return 0;   
 }
