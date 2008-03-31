@@ -117,7 +117,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_psql(apr_proc_t *proc, const char *hostname,
 					 int utility, int wait, apr_pool_t *p)
 {
     char *argv[2];
-    char cmd[1024];
+    char cmd[2048];
     int e;
 
     if ((e = gpcc_proc_initialize()) != 0) 
@@ -150,7 +150,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *hostname, 
 {
     char *argv[10];
     int e;
-    char cmdstr[1024];
+    char cmdstr[2048];
 
     sprintf(cmdstr, "ssh -o \"BatchMode yes\" -o \"StrictHostKeyChecking no\" %s '%s'",
 	    hostname, cmd);
@@ -258,7 +258,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_initdb(apr_proc_t *proc, const char *data_di
 					   int max_connect, const char *shared_buffer, int blocking, apr_pool_t *p)
 {
     int e;
-    char cmd[1024];
+    char cmd[2048];
     char *argv[2];
 
     if ((e = gpcc_proc_initialize()) != 0) 
@@ -282,7 +282,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_initdb(apr_proc_t *proc, const char *data_di
 APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, const char *host, int port, const char *data_dir, const char *option, int wait, int blocking, apr_pool_t *p)
 {
     int e;
-    char cmd[1024];
+    char cmd[2048];
     char *waitflag = (wait ? "-w" : "");
     char *argv[2];
 
@@ -311,7 +311,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, const char *h
 APR_DECLARE(apr_status_t) gpcc_proc_gpsyncmaster_start(apr_proc_t *proc, int port, const char *data_dir, const char *option, int blocking, apr_pool_t *p)
 {
     int e;
-    char cmd[1024];
+    char cmd[2048];
     char *argv[2];
 
     if ((e = gpcc_proc_initialize()) != 0) 
@@ -362,7 +362,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, const 
 APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_stop(apr_proc_t *proc, const char *host, int port, const char *data_dir, const char *mode, int wait, int blocking, apr_pool_t *p) 
 {
     int e;
-    char cmd[1024];
+    char cmd[2048];
     char *argv[2];
     char *waitflag = (wait ? "-w" : "-W");
     char option[128];
@@ -393,7 +393,7 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_status(apr_proc_t *proc, int port, co
 {
 
     int e;
-    char cmd[1024];
+    char cmd[2048];
     char *argv[2];
 
     if ((e = gpcc_proc_initialize()) != 0) 
