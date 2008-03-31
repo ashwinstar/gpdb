@@ -80,13 +80,11 @@ class Command():
 
     def __makeError(self, msg):
         '''Make an error packet with msg'''
-        r = {'status': 'error', 'action': self.cmd, 'a': self.gopt['-a'], 
-             'msg': msg}
+        r = {'status': 'error', 'action': self.cmd, 'a': self.gopt['-a'], 'msg': msg}
         return r
 
-    def __httpRequest(self, method, path, params, data=None):
+    def __httpRequest(self, addr, method, path, params, data=None):
         '''Make a http request to the first MA.'''
-        addr = self.gopt['-m'][0]
         p = params and urllib.urlencode(params) or ''
         query = '/%s?%s' % (self.cmd, p)
         f = None
@@ -128,27 +126,30 @@ class Command():
             return False
         return True
 
-    def _httpGet(self, path, params):
-        '''Locate the Lead MA and do a GET'''
+    def _httpGetOrPost(self, method, path, params, data = None):
+        failedList = []
         for i in xrange(len(self.gopt['-m']) + 1):
-            (rc, packet) = self.__httpRequest('GET', path, params)
+            addr = self.gopt['-m'][0]
+            if addr in failedList: continue
+            failedList.append(addr)
+            (rc, packet) = self.__httpRequest(addr, method, path, params, data)
             if not self.__checkMA(rc, packet):
                 continue
-            return (rc, packet)
-        return (-1, self.__makeError('Unable to contact MA'))
+            return packet
+        return self.__makeError('Unable to contact MA')
+        
+
+    def _httpGet(self, path, params):
+        '''Locate the Lead MA and do a GET'''
+        return self._httpGetOrPost('GET', path, params)
 
     def _httpPost(self, params, data):
         '''Locate the Lead MA and do a POST'''
-        for i in xrange(len(self.gopt['-m']) + 1):
-            (rc, packet) = self.__httpRequest('POST', path, params, data)
-            if not self.__checkMA(rc, packet):
-                continue
-            return (rc, packet)
-        return (-1, self.__makeError('Unable to contact MA'))
+        return self._httpGetOrPost('POST', path, params, data)
 
     def _getStatus(params):
         '''GET the status of GPDB'''
-        (rc, packet) = self._httpGet(self, '/gpcc/status', params)
+        packet = self._httpGet(self, '/gpcc/status', params)
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to get status. details:'
             printPacket(packet, '      ')
@@ -185,7 +186,7 @@ class StartCmd(Command):
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
-        (rc, packet) = self._httpGet('/gpcc/start', param)
+        packet = self._httpGet('/gpcc/start', param)
         if "ok" != packet.get('status'):
             print '[ERROR] unable to start, details:'
             printPacket(packet, '      ')
@@ -198,7 +199,7 @@ class StartCmd(Command):
             sys.exit('[ERROR] timeout')
 
         if succeed == (packet['rset'])[0]:
-            print '[INFO] succeed'
+            print '[INFO] ok'
             return
 
         print '[ERROR] unknown status, details:'
@@ -248,8 +249,16 @@ class LsCfgCmd(Command):
         Command.__init__(self, gopt, argv, '', self.__doc__)
         
     def run(self):
-        pass
-
+        packet = self._httpGet('/gpcc/lscfg', {})
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to lscfg, details:'
+            printPacket(packet, '      ')
+            sys.exit(1)
+        
+        rset = packet['rset']
+        for i in rset:
+            print i[0], '=', i[1]
+        print '[INFO] ok'
 
 ####################
 class StatusCmd(Command):
@@ -266,7 +275,7 @@ class StatusCmd(Command):
         packet = self._getStatus(params)
         for m in packet['rset']:
             print '[INFO]', m
-        print '[INFO] succeed'
+        print '[INFO] ok'
 
 
 ####################
@@ -349,11 +358,14 @@ class CmdLine():
         # map command text to command class
         if not args: usage('Error: missing command')
         c = args[0]
-        if c == 'help':     self.cmd = HelpCmd(self.gopt, args)
-        elif c == 'start':  self.cmd = StartCmd(self.gopt, args)
-        elif c == 'stop':   self.cmd = StopCmd(self.gopt, args)
-        elif c == 'status': self.cmd = StatusCmd(self.gopt, args)
-        elif c == 'lscfg':  self.cmd = LsCfgCmd(self.gopt, args)
+        if False:	     pass
+        elif c == 'delete':  self.cmd = DeleteCmd(self.gopt, args)
+        elif c == 'help':    self.cmd = HelpCmd(self.gopt, args)
+        elif c == 'init':    self.cmd = InitCmd(self.gopt, args)
+        elif c == 'lscfg':   self.cmd = LsCfgCmd(self.gopt, args)
+        elif c == 'start':   self.cmd = StartCmd(self.gopt, args)
+        elif c == 'status':  self.cmd = StatusCmd(self.gopt, args)
+        elif c == 'stop':    self.cmd = StopCmd(self.gopt, args)
         else: usage('Error: unknown command "%s"' % c)
 
         # if help, we are done; don't need to check -m, -a param
