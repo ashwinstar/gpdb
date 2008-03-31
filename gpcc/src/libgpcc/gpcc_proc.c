@@ -287,11 +287,11 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, const char *h
 	return e;
 
     if (!host) {
-	sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && pg_ctl start -D %s -l %s.log -o \"%s\" %s > /dev/null 2>&1", 
-		LD_LIBRARY_PATH, PATH, port, data_dir, data_dir, option, waitflag);
+	sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s > /dev/null 2>&1", 
+		LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, data_dir, option, waitflag);
     } else {
-	sprintf(cmd, "ssh %s 'LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && pg_ctl start -D %s -l %s.log -o \"%s\" %s > /dev/null 2>&1'", 
-		host, LD_LIBRARY_PATH, PATH, port, data_dir, data_dir, option, waitflag);	
+	sprintf(cmd, "ssh %s 'LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s > /dev/null 2>&1'", 
+		host, LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, data_dir, option, waitflag);	
     }
     
     argv[0] = cmd;
@@ -314,8 +314,8 @@ APR_DECLARE(apr_status_t) gpcc_proc_gpsyncmaster_start(apr_proc_t *proc, int por
     if ((e = gpcc_proc_initialize()) != 0) 
 	return e;
 
-    sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && export LD_LIBRARY_PATH PATH && gpsyncmaster -p %d -D %s -i >> %s.log 2>&1 &", 
-	    LD_LIBRARY_PATH, PATH, port, data_dir, data_dir);
+    sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && export LD_LIBRARY_PATH PATH && %s/bin/gpsyncmaster -p %d -D %s -i >> %s.log 2>&1 &", 
+	    LD_LIBRARY_PATH, PATH, GPHOME, port, data_dir, data_dir);
     
     argv[0] = cmd;
     argv[1] = 0;
@@ -369,11 +369,11 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_stop(apr_proc_t *proc, const char *ho
 	return e;
 
     if (!host) {
-	sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && pg_ctl stop -D %s -o \"%s\" -m %s %s > /dev/null 2>&1", 
-		LD_LIBRARY_PATH, PATH, port, data_dir, option, mode, waitflag);
+	sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl stop -D %s -o \"%s\" -m %s %s > /dev/null 2>&1", 
+		LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, option, mode, waitflag);
     } else {
-	sprintf(cmd, "ssh %s 'LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && pg_ctl stop -D %s -o \"%s\" -m %s %s > /dev/null 2>&1'", 
-		host, LD_LIBRARY_PATH, PATH, port, data_dir, option, mode, waitflag);
+	sprintf(cmd, "ssh %s 'LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl stop -D %s -o \"%s\" -m %s %s > /dev/null 2>&1'", 
+		host, LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, option, mode, waitflag);
     }    
     argv[0] = cmd;
     argv[1] = 0;
@@ -396,8 +396,8 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_status(apr_proc_t *proc, int port, co
     if ((e = gpcc_proc_initialize()) != 0) 
 	return e;
 
-    sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && pg_ctl status -D %s", 
-	    LD_LIBRARY_PATH, PATH, port, data_dir);
+    sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl status -D %s", 
+	    LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir);
     
     argv[0] = cmd;
     argv[1] = 0;
