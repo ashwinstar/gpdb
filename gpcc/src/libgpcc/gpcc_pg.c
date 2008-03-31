@@ -586,7 +586,12 @@ APR_DECLARE(apr_status_t) gpcc_pg_get_addresses(const char *host, char *addr, in
     char *ifconfig_txt = "";
 #endif
 
-    sprintf(cmd, "ifconfig %s | grep inet | grep -v 127.0.0 | grep -v inet6", ifconfig_txt);
+    n = sizeof(out);
+    if (gpcc_proc_findCmdInPath("ifconfig", out, &n)) {
+	gpcc_fatal(FLINE, "ifconfig command not found");
+    }
+
+    sprintf(cmd, "%s %s | grep inet | grep -v 127.0.0 | grep -v inet6", out, ifconfig_txt);
 
     e = gpcc_proc_ssh(&proc, host, cmd, 1, p);
     if (e) {
