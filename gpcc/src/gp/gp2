@@ -42,37 +42,63 @@ def usage(exitarg):
         print __doc__
     sys.exit(exitarg)
 
+####################
+def confirm(prompt, abortmsg):
+    line = raw_input(prompt)
+    line = line.strip().lower()
+    if line == 'y':
+        return True
+    print abortmsg
+    return False
+
+####################
+def printPacket(packet, indent = ''):
+    keys = packet.keys()
+    keys.sort()
+    for k in keys:
+        print '%s%s: %s' % (indent, k, packet[k])
+
+####################
+def printDot(sleeptime=0.5):
+    print '.', time.sleep(sleeptime)
 
 ####################
 class Command():
     '''Base class for all commands'''
     TIMEOUT = 30
     
-    def __init__(self, gopt, cmd):
-        self.cmd = cmd
+    def __init__(self, gopt, argv, optstr, usagestr):
+        self.cmd = argv[0]
         self.gopt = gopt
         self.opt = {}
-        self.args = []
+        try:
+            (self.options, self.args) = getopt.getopt(argv[1:], optstr)
+        except Exception, e:
+            print usagestr
+            sys.exit('[ERROR]: %s: %s' % (self.cmd, str(e)))
+
 
     def __makeError(self, msg):
+        '''Make an error packet with msg'''
         r = {'status': 'error', 'action': self.cmd, 'a': self.gopt['-a'], 
              'msg': msg}
         return r
 
     def __httpRequest(self, method, path, params, data=None):
+        '''Make a http request to the first MA.'''
         addr = self.gopt['-m'][0]
         p = params and urllib.urlencode(params) or ''
         query = '/%s?%s' % (self.cmd, p)
         f = None
         try:
-            if self.gopt['-v']: print '[INFO] http://%s/%s' % (addr, query)
+            if self.gopt['-v']: print '[INFO] http://%s%s' % (addr, query)
             f = httplib.HTTPConnection(addr)
             f.request('POST', query, data)
             response = f.getresponse()
             if response.status == 200 or response.status == 301:
                 s = response.read()
-                content = simplejson.loads(s)
-                return (response.status, content)
+                packet = simplejson.loads(s)
+                return (response.status, packet)
             else:
                 s = response.read()
                 return (response.status, self.__makeError(s))
@@ -86,7 +112,7 @@ class Command():
             if f: f.close()
         return (-1, self.__makeError('Unknown Error'))
 
-    def __checkMA(self, rc, content):
+    def __checkMA(self, rc, packet):
         '''Check the RC for failure or 301 Moved messages, and handle it.'''
         if (rc == -1):
             # try the next MA
@@ -95,7 +121,7 @@ class Command():
             return False
         if (rc == 301): 
             # put new location into MA array
-            location = content['location']
+            location = packet['location']
             try: self.gopt['-m'].remove(location)
             except ValueError: pass
             finally: self.gopt['-m'].insert(0, location)
@@ -103,87 +129,91 @@ class Command():
         return True
 
     def _httpGet(self, path, params):
+        '''Locate the Lead MA and do a GET'''
         for i in xrange(len(self.gopt['-m']) + 1):
-            (rc, content) = self.__httpRequest('GET', path, params)
-            if not self.__checkMA(rc, content):
+            (rc, packet) = self.__httpRequest('GET', path, params)
+            if not self.__checkMA(rc, packet):
                 continue
-            return (rc, content)
+            return (rc, packet)
         return (-1, self.__makeError('Unable to contact MA'))
 
     def _httpPost(self, params, data):
+        '''Locate the Lead MA and do a POST'''
         for i in xrange(len(self.gopt['-m']) + 1):
-            (rc, content) = self.__httpRequest('POST', path, params, data)
-            if not self.__checkMA(rc, content):
+            (rc, packet) = self.__httpRequest('POST', path, params, data)
+            if not self.__checkMA(rc, packet):
                 continue
-            return (rc, content)
+            return (rc, packet)
         return (-1, self.__makeError('Unable to contact MA'))
 
     def _getStatus(params):
-        (rc, content) = self._httpGet(self, '/gpcc/status', params)
-        if 'ok' != content['status']:
-            print '[ERROR] unable to get status'
-            print '        details:', content
+        '''GET the status of GPDB'''
+        (rc, packet) = self._httpGet(self, '/gpcc/status', params)
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to get status. details:'
+            printPacket(packet, '      ')
             sys.exit(1)
-        return (rc, content)
+        return packet
+
+    def _waitStatus(params, contMsg):
+        '''Wait while status returned matches contMsg. 
+           When a mismatch occurs, return the packet. 
+           If timeout, return None.'''
+        for i in xrange(Command.TIMEOUT):
+            printDot()
+            packet = self._getStatus(param)
+            msg = (packet['rset'])[0]
+            if msg == contMsg:
+                continue
+            return packet
+        return None
 
     def run(self):
+        '''Run the command. To be overridden by subclass.'''
         pass
+
 
 ####################
 class StartCmd(Command):
     '''Usage: gp start [-s seg]'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, 'start')
+        Command.__init__(self, gopt, argv, 's:', self.__doc__)
         self.opt['-s'] = None
-        try:
-            (options, args) = getopt.getopt(argv[1:], 's:')
-        except Exception, e:
-            usage('Error: start command: ' + str(e))
-
-        for (switch, val) in options:
+        for (switch, val) in self.options:
             if switch == '-s': self.opt[switch] = val
         
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
-        (rc, content) = self._httpGet('/gpcc/start', param)
-        if "ok" != content['status']:
-            print '[ERROR] unable to start'
-            print '        details:', content
+        (rc, packet) = self._httpGet('/gpcc/start', param)
+        if "ok" != packet.get('status'):
+            print '[ERROR] unable to start, details:'
+            printPacket(packet, '      ')
             sys.exit(1)
 
         in_progress = param['s'] and 'segment start in progress' or 'array start in progress'
         succeed = param ['s'] and 'segment started' or 'array started'
-        for j in xrange(Command.TIMEOUT):
-            print '.', 
-            time.sleep(1)
-            (rc, content) = self._getStatus(param)
-            msg = (content['rset'])[0]
-            if in_progress == msg:
-                continue
-            if succeed == msg: 
-                print '[INFO] succeed'
-                return
+        packet = self._waitStatus(param, in_progress)
+        if not packet:
+            sys.exit('[ERROR] timeout')
 
-            print '[ERROR] unknown reply message'
-            print '        details:', content
-            sys.exit(1)
-        
-        print '[ERROR] timeout'
+        if succeed == (packet['rset'])[0]:
+            print '[INFO] succeed'
+            return
+
+        print '[ERROR] unknown status, details:'
+        printPacket(packet, '      ')
         sys.exit(1)
-
-            
 
 
 ####################
 class StopCmd(Command):
     '''Usage: gp stop [-s seg]'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, 'stop')
-        try:
-            (options, args) = getopt.getopt(argv[1:], 's:')
-        except Exception, e:
-            usage('Error: start command: ' + str(e))
+        Command.__init__(self, gopt, argv, 's:', self.__doc__)
+        self.opt['-s'] = None
+        for (switch, val) in self.options:
+            if switch == '-s': self.opt[switch] = val
         
     def run(self):
         pass
@@ -193,24 +223,29 @@ class StopCmd(Command):
 class InitCmd(Command):
     '''Usage: gp init -c {- | conf_file}'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, 'init')
-        try:
-            (options, args) = getopt.getopt(argv[1:], 's:')
-        except Exception, e:
-            usage('Error: start command: ' + str(e))
+        Command.__init__(self, gopt, argv, 'c:', self.__doc__)
+        self.opt['-c'] = None
+        for (switch, val) in self.options:
+            if switch == '-c': self.opt[switch] = val
         
     def run(self):
         pass
 
 ####################
+class DeleteCmd(Command):
+    '''Usage: gp delete '''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, '', self.__doc__)
+        
+    def run(self):
+        pass
+
+
+####################
 class LsCfgCmd(Command):
     '''Usage: gp lscfg'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, 'lscfg')
-        try:
-            (options, args) = getopt.getopt(argv[1:], 's:')
-        except Exception, e:
-            usage('Error: start command: ' + str(e))
+        Command.__init__(self, gopt, argv, '', self.__doc__)
         
     def run(self):
         pass
@@ -218,16 +253,20 @@ class LsCfgCmd(Command):
 
 ####################
 class StatusCmd(Command):
-    '''Usage: gp status'''
+    '''Usage: gp status [-s seg] '''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, 'status')
-        try:
-            (options, args) = getopt.getopt(argv[1:], 's:')
-        except Exception, e:
-            usage('Error: start command: ' + str(e))
+        Command.__init__(self, gopt, argv, 's:', self.__doc__)
+        self.opt['-s'] = None
+        for (switch, val) in self.options:
+            if switch == '-s': self.opt[switch] = val
         
     def run(self):
-        pass
+        param = {}
+        if (self.opt['-s']): param['s'] = self.opt['-s']
+        packet = self._getStatus(params)
+        for m in packet['rset']:
+            print '[INFO]', m
+        print '[INFO] succeed'
 
 
 ####################
@@ -251,9 +290,9 @@ gp commands are:
 '''
     
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, 'help')
-        if len(argv) > 1:
-            c = argv[1]
+        Command.__init__(self, gopt, argv, '', self.__doc__)
+        if len(self.args) > 0:
+            c = self.args[0]
             if (False or
                 c == 'delete' or 
                 c == 'init' or
@@ -334,20 +373,9 @@ class CmdLine():
             if not (0 < x and x < 65536): 
                 usage('Error: -m %s is invalid. Bad port number.' % m)
 
-
         return self.cmd
 
 
-####################
-def confirm(prompt, abortmsg):
-    line = raw_input(prompt)
-    line = line.strip().lower()
-    if line == 'y':
-        return True
-    print abortmsg
-    return False
-
-    
 ####################
 def main():
     cmdline = CmdLine()
