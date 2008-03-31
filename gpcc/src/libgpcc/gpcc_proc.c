@@ -15,6 +15,9 @@ static apr_status_t gpcc_proc_initialize()
 {
     char *path = 0;
     int len;
+    int i;
+    char *cmdpath[10] = {"/usr/kerberos/bin", "/usr/sfw/bin", "/opt/sfw/bin", "/usr/local/bin", 
+			 "/bin", "/usr/bin", "/sbin", "/usr/sbin", "/usr/ucb", "/sw/bin" };
 
     if (initialize) 
 	return 0;
@@ -36,14 +39,14 @@ static apr_status_t gpcc_proc_initialize()
 	strcpy(LD_LIBRARY_PATH, path);
     }
 
-    sprintf(LD_LIBRARY_PATH, "%s/lib:%s", GPHOME, LD_LIBRARY_PATH);
+    sprintf(LD_LIBRARY_PATH, "%s/lib", GPHOME);
 
     *PATH = 0;
-    path = getenv("PATH");
-    if (path) {
-	strcpy(PATH, path);
+    sprintf(PATH, "%s/bin:.", GPHOME);
+    for (i = 0 ; i < gpcc_lengthof(cmdpath) ; i++) {
+	strcat(PATH, cmdpath[i]);
+	strcat(PATH, ":");
     }
-    sprintf(PATH, "%s/bin:%s", GPHOME, PATH);
 
     initialize = 1;
     return 0;
