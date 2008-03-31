@@ -261,8 +261,8 @@ APR_DECLARE(apr_status_t) gpcc_proc_initdb(apr_proc_t *proc, const char *data_di
     if ((e = gpcc_proc_initialize()) != 0) 
 	return e;
 
-    sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && export LD_LIBRARY_PATH PATH && initdb -E %s -D %s --locale=%s --max_connections=%d --shared_buffers=%s > /dev/null 2>&1", 
-	    LD_LIBRARY_PATH, PATH, encoding, data_dir, locale, max_connect, shared_buffer);
+    sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && export LD_LIBRARY_PATH PATH && %s/bin/initdb -E %s -D %s --locale=%s --max_connections=%d --shared_buffers=%s > /dev/null 2>&1", 
+	    LD_LIBRARY_PATH, PATH, GPHOME, encoding, data_dir, locale, max_connect, shared_buffer);
     
     argv[0] = cmd;
     argv[1] = 0;
