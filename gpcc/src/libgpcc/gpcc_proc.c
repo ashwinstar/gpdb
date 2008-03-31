@@ -49,6 +49,8 @@ static apr_status_t gpcc_proc_initialize()
     return 0;
 }
 
+
+
 APR_DECLARE(apr_status_t) gpcc_proc_run(apr_proc_t *proc, const char *prog, const char *const *argv, const char * const *env, apr_cmdtype_e cmdtype, int wait, apr_pool_t *p)
 {
     int e;
@@ -405,3 +407,26 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_status(apr_proc_t *proc, int port, co
 
 }
 
+APR_DECLARE(apr_status_t) gpcc_proc_findCmdInPath(const char *cmd, char *fpath, int *len) 
+{
+    char *cmdpath[10] = {"/usr/kerberos/bin", "/usr/sfw/bin", "/opt/sfw/bin", "/usr/local/bin", 
+			 "/bin", "/usr/bin", "/sbin", "/usr/sbin", "/usr/ucb", "/sw/bin" };
+    char path[1024];
+    int i;
+    FILE *f;
+
+    for (i = 0 ; i < gpcc_lengthof(cmdpath) ; i++) {
+	sprintf(path, "%s/%s", cmdpath[i], cmd);
+	f = fopen(path, "r");
+	if (f) {
+	    fclose(f);
+	    if (strlen(path) > *len)
+		return APR_EINVAL;
+	    *len = strlen(path);
+	    strcpy(fpath, path);
+	    return 0;
+	}
+    }
+    
+    return APR_EINVAL;
+}

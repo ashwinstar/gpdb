@@ -198,4 +198,6 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_status(apr_proc_t *proc, int port, co
 
 
 
+APR_DECLARE(apr_status_t) gpcc_proc_findCmdInPath(const char *cmd, char *cmdpath, int *len);
+
 #endif
