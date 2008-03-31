@@ -1413,7 +1413,7 @@ void gpcc_net_close(gpcc_net_conn_t conn, int flush)
     spin = gpcc_spin_release(spin);
     conn_setup_event(conn);	/* this will disable READ */
 
-    if (conn)
+    if (do_zap)
 	zap(pconn, conn);
     return;
 }
