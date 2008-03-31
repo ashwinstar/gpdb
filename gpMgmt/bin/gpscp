@@ -15,11 +15,12 @@ Usage: gpscp [--version] [-?v] [-r] [-p port] [-u user]
              -J character : character to be substitute as hostname [default='=']
 '''
 
-import sys, getopt, popen2, os
+import os, sys
 
 sys.path.append(sys.path[0] + '/lib')
 try:
     import gplib
+    import getopt, popen2, os
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 

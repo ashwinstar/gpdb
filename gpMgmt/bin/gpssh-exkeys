@@ -14,12 +14,13 @@ Usage: gpssh-exkeys [--version] [-?v] [-p port] [-u user]
 	     -f file   : a file listing all hosts to connect to
 '''
 
-import os, sys, getopt, time, getpass, logging
+import os, sys
 
 sys.path.append(sys.path[0] + '/lib')
 try:
     import gplib
     import paramiko
+    import getopt, time, getpass, logging
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 

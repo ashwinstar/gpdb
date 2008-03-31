@@ -28,11 +28,12 @@ Usage: gpcheckperf <options>
     -f file    : a file listing all hosts to connect to
 
 """
-import os, sys, getopt, math, StringIO, stat, subprocess, signal
+import os, sys
 
 sys.path.append(sys.path[0] + '/lib')
 try:
     import gplib
+    import getopt, math, StringIO, stat, subprocess, signal
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 

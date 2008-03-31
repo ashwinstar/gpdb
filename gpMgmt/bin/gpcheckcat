@@ -10,10 +10,11 @@ Usage: gpcheckcat <option> [dbname]
 	-v         : verbose 
 
 '''
-import sys, os, getopt
+import sys, os
 
 sys.path.append(sys.path[0] + '/lib')
 try:
+    import getopt
     import pg8000
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))

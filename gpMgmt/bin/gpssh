@@ -15,11 +15,12 @@ Usage: gpssh [--version] [-?v] [-h host] [-f hostfile] [cmd]
                       go into interactive mode
 '''
 
-import os, sys, getopt, cmd, signal, time, atexit, threading, subprocess
+import os, sys
 
 sys.path.append(sys.path[0] + '/lib')
 try:
     import gplib
+    import getopt, cmd, signal, time, atexit, threading, subprocess
     import pxssh, pexpect
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))

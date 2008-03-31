@@ -15,12 +15,13 @@ Usage: gpcheckos [--version] [-?v] [-m] [-h host] [-f hostfile] [-c checkfile]
           -m        : check for query dispatcher settings
 '''
 
-import os, sys, getopt, popen2, pickle, time
-from datetime import datetime, timedelta
+import os, sys
 
 sys.path.append(sys.path[0] + '/lib')
 try:
     import gplib
+    import getopt, popen2, pickle, time
+    from datetime import datetime, timedelta
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
