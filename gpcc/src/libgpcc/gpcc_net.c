@@ -1401,16 +1401,17 @@ void gpcc_net_close(gpcc_net_conn_t conn, int flush)
 {
     conncb_t* pconn = 0;
     apr_uint32_t* spin = 0;
+    int do_zap = 1;
 
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
     if (flush) {
 	pconn->flush_and_close = 1;
-	shutdown(pconn->sock, SHUT_RD);
 	if (pconn->to_peer.buf->bot != pconn->to_peer.buf->top)
-	    conn = 0;		/* don't zap immediately */
+	    do_zap = 0;		/* don't zap immediately */
     }
     spin = gpcc_spin_release(spin);
+    conn_setup_event(conn);	/* this will disable READ */
 
     if (conn)
 	zap(pconn, conn);
