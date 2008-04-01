@@ -167,7 +167,7 @@ class Command():
             if 'ok' != packet.get('status'):
                 print '[ERROR] unable to get status. details:'
                 printPacket(packet, '      ')
-                sys.exit(1)
+                sys.exit(2)
             msg = (packet['rset'])[0]
             if msg == contMsg:
                 continue
@@ -208,7 +208,7 @@ class StartCmd(Command):
         if "ok" != packet.get('status'):
             print '[ERROR] unable to start, details:'
             printPacket(packet, '      ')
-            sys.exit(1)
+            sys.exit(2)
 
         in_progress = ('s' in param) and 'segment starting' or 'array starting'
         succeed = ('s' in param) and 'segment running' or 'array running'
@@ -222,7 +222,7 @@ class StartCmd(Command):
 
         print '[ERROR] unknown status, details:'
         printPacket(packet, '      ')
-        sys.exit(1)
+        sys.exit(2)
 
 
 ####################
@@ -245,7 +245,7 @@ class StopCmd(Command):
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to stop, details:'
             printPacket(packet, '      ')
-            sys.exit(1)
+            sys.exit(2)
 
         in_progress = ('s' in param) and 'segment stopping' or 'array stopping'
         succeed = ('s' in param) and 'segment stopped' or 'array stopped'
@@ -259,7 +259,7 @@ class StopCmd(Command):
 
         print '[ERROR] unknown status, details:'
         printPacket(packet, '      ')
-        sys.exit(1)
+        sys.exit(2)
 
 
 ####################
@@ -287,26 +287,26 @@ class InitCmd(Command):
                     line = line.split('=')
                     if len(line) != 2: 
                         print '[ERROR] syntax error at line %d in config file' % lineno
-                        sys.exit(1)
+                        sys.exit(2)
                     #print '%d %s' % (lineno, line)
                     if line[0] == 'array_name' and line[1] != self.gopt['-a']:
                         print '[ERROR] array name mismatch at line %d in config file' % lineno
-                        sys.exit(1)
+                        sys.exit(2)
                     cfg[line[0].strip()] = line[1].strip()
         except IOError:
             print ('[ERROR] unable to read file "%s"' % 
                    (fname == '-' and 'stdin' or fname))
-            sys.exit(1)
+            sys.exit(2)
         finally:
             if fp: fp.close()
 
         if not cfg:
             print '[ERROR] config file is empty'
-            sys.exit(1)
+            sys.exit(2)
         
         if not cfg.get('array_name'): 
             print '[ERROR] array_name not specified in config file'
-            sys.exit(1)
+            sys.exit(2)
 
         param = {}
         if (self.gopt['-a']): param['a'] = self.gopt['-a']
@@ -317,7 +317,7 @@ class InitCmd(Command):
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to init, details:'
             printPacket(packet, '      ')
-            sys.exit(1)
+            sys.exit(2)
 
         in_progress = 'array initializing'
         succeed = 'array stopped'
@@ -331,7 +331,7 @@ class InitCmd(Command):
 
         print '[ERROR] unknown status, details:'
         printPacket(packet, '      ')
-        sys.exit(1)
+        sys.exit(2)
 
             
 
@@ -355,7 +355,7 @@ class DeleteCmd(Command):
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to delete, details:'
             printPacket(packet, '      ')
-            sys.exit(1)
+            sys.exit(2)
 
         in_progress = 'array deleting'
         succeed = 'array not initialized'
@@ -369,7 +369,7 @@ class DeleteCmd(Command):
 
         print '[ERROR] unknown status, details:'
         printPacket(packet, '      ')
-        sys.exit(1)
+        sys.exit(2)
 
 
 ####################
@@ -387,7 +387,7 @@ class LsCfgCmd(Command):
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to lscfg, details:'
             printPacket(packet, '      ')
-            sys.exit(1)
+            sys.exit(2)
         
         rset = packet['rset']
         for i in rset:
@@ -414,7 +414,7 @@ class StatusCmd(Command):
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to get status. details:'
             printPacket(packet, '      ')
-            sys.exit(1)
+            sys.exit(2)
 
         for m in packet['rset']:
             print '[INFO]', m
