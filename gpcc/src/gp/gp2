@@ -43,13 +43,10 @@ def usage(exitarg):
     sys.exit(exitarg)
 
 ####################
-def confirm(prompt, abortmsg):
-    line = raw_input(prompt)
+def confirm(prompt):
+    line = raw_input(prompt + ' (y/n) ')
     line = line.strip().lower()
-    if line == 'y':
-        return True
-    print abortmsg
-    return False
+    return line and line[0] == 'y'
 
 ####################
 def printPacket(packet, indent = ''):
@@ -59,7 +56,7 @@ def printPacket(packet, indent = ''):
         print '%s%s: %s' % (indent, k, packet[k])
 
 ####################
-def printDot(sleeptime=0.5):
+def printDot(sleeptime=1):
     print '.', time.sleep(sleeptime)
 
 ####################
@@ -143,24 +140,25 @@ class Command():
         '''Locate the Lead MA and do a GET'''
         return self._httpGetOrPost('GET', path, params)
 
-    def _httpPost(self, params, data):
+    def _httpPost(self, path, params, data):
         '''Locate the Lead MA and do a POST'''
         return self._httpGetOrPost('POST', path, params, data)
 
-    def _getStatus(params):
+    def _getStatus(self, params):
         '''GET the status of GPDB'''
-        packet = self._httpGet(self, '/gpcc/status', params)
+        packet = self._httpGet('/gpcc/status', params)
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to get status. details:'
             printPacket(packet, '      ')
             sys.exit(1)
         return packet
 
-    def _waitStatus(params, contMsg):
+    def _waitStatus(self, params, contMsg, timeout=-1):
         '''Wait while status returned matches contMsg. 
            When a mismatch occurs, return the packet. 
            If timeout, return None.'''
-        for i in xrange(Command.TIMEOUT):
+        if timeout <= 0: timeout = Command.TIMEOUT
+        for i in xrange(timeout):
             printDot()
             packet = self._getStatus(param)
             msg = (packet['rset'])[0]
@@ -193,7 +191,7 @@ class StartCmd(Command):
             sys.exit(1)
 
         in_progress = param['s'] and 'segment start in progress' or 'array start in progress'
-        succeed = param ['s'] and 'segment started' or 'array started'
+        succeed = param['s'] and 'segment started' or 'array started'
         packet = self._waitStatus(param, in_progress)
         if not packet:
             sys.exit('[ERROR] timeout')
@@ -217,7 +215,27 @@ class StopCmd(Command):
             if switch == '-s': self.opt[switch] = val
         
     def run(self):
-        pass
+        param = {}
+        if (self.opt['-s']): param['s'] = self.opt['-s']
+        packet = self._httpGet('/gpcc/stop', param)
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to stop, details:'
+            printPacket(packet, '      ')
+            sys.exit(1)
+
+        in_progress = param['s'] and 'segment stop in progress' or 'array stop in progress'
+        succeed = param['s'] and 'segment started' or 'array started'
+        packet = self._waitStatus(param, in_progress)
+        if not packet:
+            sys.exit('[ERROR] timeout')
+
+        if succeed == (packet['rset'])[0]:
+            print '[INFO] ok'
+            return
+
+        print '[ERROR] unknown status, details:'
+        printPacket(packet, '      ')
+        sys.exit(1)
 
 
 ####################
@@ -228,9 +246,44 @@ class InitCmd(Command):
         self.opt['-c'] = None
         for (switch, val) in self.options:
             if switch == '-c': self.opt[switch] = val
+        if not self.opt['-c']:
+            print self.__doc__
+            sys.exit('[ERROR] Please specify -c param')
         
     def run(self):
-        pass
+        fname = self.opt['-c']
+        try:
+            fp = None
+            fp = fname == '-' and sys.stdin or open(fname)
+            cfg = fp.read(-1)
+        except IOError:
+            print ('[ERROR] unable to read file "%s"' % 
+                   (fname == '-' and 'stdin' or fname))
+            sys.exit(1)
+        finally:
+            if fp: fp.close()
+
+        packet = self._httpPost('/gpcc/init', {}, cfg)
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to init, details:'
+            printPacket(packet, '      ')
+            sys.exit(1)
+
+        in_progress = 'array init in progress'
+        succeed = 'array started'
+        packet = self._waitStatus(param, in_progress, 60*5)
+        if not packet:
+            sys.exit('[ERROR] timeout')
+
+        if succeed == (packet['rset'])[0]:
+            print '[INFO] ok'
+            return
+
+        print '[ERROR] unknown status, details:'
+        printPacket(packet, '      ')
+        sys.exit(1)
+
+            
 
 ####################
 class DeleteCmd(Command):
@@ -239,7 +292,31 @@ class DeleteCmd(Command):
         Command.__init__(self, gopt, argv, '', self.__doc__)
         
     def run(self):
-        pass
+        proceed = confirm('This will erase the array "%s"!' % self.gopt['-a'])
+        if proceed:
+            proceed = confirm('FINALLY WARNING... PROCEED WITH DELETE?')
+        if not proceed: 
+            print '[INFO] aborted'
+            return
+        packet = self._httpGet('/gpcc/delete', {})
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to delete, details:'
+            printPacket(packet, '      ')
+            sys.exit(1)
+
+        in_progress = 'array delete in progress'
+        succeed = 'array not initialized'
+        packet = self._waitStatus(param, in_progress)
+        if not packet:
+            sys.exit('[ERROR] timeout')
+        
+        if succeed == (packet['rset'])[0]:
+            print '[INFO] succeed'
+            return
+
+        print '[ERROR] unknown status, details:'
+        printPacket(packet, '      ')
+        sys.exit(1)
 
 
 ####################
@@ -260,6 +337,7 @@ class LsCfgCmd(Command):
             print i[0], '=', i[1]
         print '[INFO] ok'
 
+
 ####################
 class StatusCmd(Command):
     '''Usage: gp status [-s seg] '''
@@ -272,7 +350,7 @@ class StatusCmd(Command):
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
-        packet = self._getStatus(params)
+        packet = self._getStatus(param)
         for m in packet['rset']:
             print '[INFO]', m
         print '[INFO] ok'
