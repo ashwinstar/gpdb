@@ -14,7 +14,7 @@ from udpmessenger import UdpMessenger
 
 TIMEOUT = 1
 MAX_SLOWNESS = 10
-WAIT_TIME = 100000
+WAIT_TIME = 60
 NPRIEST = 5
 CATCH_UP_SPEED = 50
 
@@ -46,7 +46,7 @@ def print_dot():
     global printNeedNl
     printNeedNl = True
 
-class Priest():
+class Priest:
 
     def __init__(self,index,start):
 	self.index = index
@@ -84,6 +84,7 @@ class Priest():
 			break
 		except IOError:
 		    pass
+		time.sleep(.1)
 	while 1:
 	    try:
 		f = open(self.dir+"/pid","r")
@@ -94,6 +95,7 @@ class Priest():
 		    break
 	    except IOError:
 		pass
+	    time.sleep(.1)
 
     def kill(self):
 	print_line("SIGKILL Priest %d"%self.index)
@@ -199,7 +201,8 @@ class UpDownUpDown:
 		    print_line("%s has caught up. %f"%(p.address,now-start))
 		    self.wait(3)
 		    return True
-		self.getStuff()
+		if self.getStuff():
+		    print_dot()
 
     def wait(self,t):
 	t += time.time()
