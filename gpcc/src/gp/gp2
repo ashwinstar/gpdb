@@ -57,7 +57,9 @@ def printPacket(packet, indent = ''):
 
 ####################
 def printDot(sleeptime=1):
-    print '.', time.sleep(sleeptime)
+    sys.stdout.write('.')
+    sys.stdout.flush()
+    time.sleep(sleeptime)
 
 
 ####################
@@ -88,7 +90,7 @@ class Command():
     def __httpRequest(self, addr, method, path, params, data=None):
         '''Make a http request to the first MA.'''
         p = params and urllib.urlencode(params) or ''
-        query = '/%s?%s' % (self.cmd, p)
+        query = '%s?%s' % (path, p)
         f = None
         try:
             self.verbose('http://%s%s' % (addr, query))
@@ -154,7 +156,7 @@ class Command():
         packet = self._httpGet('/gpcc/status', params)
         return packet
 
-    def _waitStatus(self, params, contMsg, timeout=-1):
+    def _waitStatus(self, param, contMsg, timeout=-1):
         '''Wait while status returned matches contMsg. 
            When a mismatch occurs, return the packet. 
            If timeout, return None.'''
@@ -169,14 +171,16 @@ class Command():
             msg = (packet['rset'])[0]
             if msg == contMsg:
                 continue
+            print
             return packet
+        print
         return None
 
     def raw(self, packet):
         '''If raw mode, print packet and exit(0)'''
         if self.gopt['-R']:
             simplejson.dump(packet, sys.stdout)
-        sys.exit(0)
+            sys.exit(0)
 
 
     def run(self):
@@ -192,10 +196,11 @@ class StartCmd(Command):
         self.opt['-s'] = None
         for (switch, val) in self.options:
             if switch == '-s': self.opt[switch] = val
-        
+
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
 
         packet = self._httpGet('/gpcc/start', param)
         self.raw(packet)
@@ -205,8 +210,8 @@ class StartCmd(Command):
             printPacket(packet, '      ')
             sys.exit(1)
 
-        in_progress = param['s'] and 'segment start in progress' or 'array start in progress'
-        succeed = param['s'] and 'segment started' or 'array started'
+        in_progress = ('s' in param) and 'segment starting' or 'array starting'
+        succeed = ('s' in param) and 'segment running' or 'array running'
         packet = self._waitStatus(param, in_progress)
         if not packet:
             sys.exit('[ERROR] timeout')
@@ -232,6 +237,7 @@ class StopCmd(Command):
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
 
         packet = self._httpGet('/gpcc/stop', param)
         self.raw(packet)
@@ -241,8 +247,8 @@ class StopCmd(Command):
             printPacket(packet, '      ')
             sys.exit(1)
 
-        in_progress = param['s'] and 'segment stop in progress' or 'array stop in progress'
-        succeed = param['s'] and 'segment started' or 'array started'
+        in_progress = ('s' in param) and 'segment stopping' or 'array stopping'
+        succeed = ('s' in param) and 'segment stopped' or 'array stopped'
         packet = self._waitStatus(param, in_progress)
         if not packet:
             sys.exit('[ERROR] timeout')
@@ -302,8 +308,10 @@ class InitCmd(Command):
             print '[ERROR] array_name not specified in config file'
             sys.exit(1)
 
+        param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
         content = '\n'.join('='.join([x, cfg[x]]) for x in cfg.keys())
-        packet = self._httpPost('/gpcc/init', {}, content)
+        packet = self._httpPost('/gpcc/init', param, content)
         self.raw(packet)
         
         if 'ok' != packet.get('status'):
@@ -311,8 +319,8 @@ class InitCmd(Command):
             printPacket(packet, '      ')
             sys.exit(1)
 
-        in_progress = 'array init in progress'
-        succeed = 'array started'
+        in_progress = 'array initializing'
+        succeed = 'array stopped'
         packet = self._waitStatus(param, in_progress, 60*5)
         if not packet:
             sys.exit('[ERROR] timeout')
@@ -340,13 +348,16 @@ class DeleteCmd(Command):
         if not proceed: 
             print '[INFO] aborted'
             return
-        packet = self._httpGet('/gpcc/delete', {})
+
+        param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
+        packet = self._httpGet('/gpcc/delete', param)
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to delete, details:'
             printPacket(packet, '      ')
             sys.exit(1)
 
-        in_progress = 'array delete in progress'
+        in_progress = 'array deleting'
         succeed = 'array not initialized'
         packet = self._waitStatus(param, in_progress)
         if not packet:
@@ -368,8 +379,9 @@ class LsCfgCmd(Command):
         Command.__init__(self, gopt, argv, '', self.__doc__)
         
     def run(self):
-
-        packet = self._httpGet('/gpcc/lscfg', {})
+        param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
+        packet = self._httpGet('/gpcc/lscfg', param)
         self.raw(packet)
 
         if 'ok' != packet.get('status'):
@@ -395,7 +407,7 @@ class StatusCmd(Command):
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
-
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
         packet = self._getStatus(param)
         self.raw(packet)
 
