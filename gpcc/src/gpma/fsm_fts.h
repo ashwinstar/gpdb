@@ -1,14 +1,30 @@
 
-#define ARRAY_STOPPING_STATUS                        "stopping"
-#define ARRAY_STOPPED_STATUS                         "stopped"
-#define ARRAY_STARTING_STATUS                        "starting"
-#define ARRAY_RUNNING_STATUS                         "running"
-#define ARRAY_DELETING_STATUS                        "deleting"
-#define ARRAY_INITIALIZING_STATUS                    "initializing"
-#define ARRAY_INVALID_STATUS                         "invalid"
-#define ARRAY_NO_ARRAY_STATUS                        "no_array"
-#define ARRAY_CONNECTING_STATUS                      "connecting"
-#define ARRAY_BUSY_STATUS                            "busy"
+#define SYSTEM_INITIALIZING_STATUS                   "system initializing"
+
+#define ARRAY_STOPPING_STATUS                        "array stopping"
+#define ARRAY_STOPPED_STATUS                         "array stopped"
+#define ARRAY_STARTING_STATUS                        "array starting"
+#define ARRAY_RUNNING_STATUS                         "array running"
+#define ARRAY_DELETING_STATUS                        "array deleting"
+#define ARRAY_INITIALIZING_STATUS                    "array initializing"
+#define ARRAY_INVALID_STATUS                         "array invalid"
+#define ARRAY_NOT_INITIALIZED_STATUS                 "array not initialized"
+#define ARRAY_CONNECTING_STATUS                      "array connecting"
+#define ARRAY_BUSY_STATUS                            "array busy"
+
+#define SEGMENT_NOT_INITIAILZED_STATUS               "segment not initialized"
+#define SEGMENT_STOPPED_STATUS                       "segment stopped"
+#define SEGMENT_INITIALIZING_STATUS                  "segment initializing"
+#define SEGMENT_STARTING_STATUS                      "segment starting"
+#define SEGMENT_STOPPING_STATUS                      "segment stopping"
+#define SEGMENT_RUNNING_STATUS                       "segment running"
+#define SEGMENT_DELETING_STATUS                      "segment deleting"
+#define SEGMENT_INVALID_STATUS                       "segment invalid"
+#define SEGMENT_CONNECTING_STATUS                    "segment connecting"
+#define SEGMENT_BUSY_STATUS                          "segment busy"
+
+#define OK_STATUS                                    "ok"
+#define FAIL_STATUS                                  "error"
 
 static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port,
 				     char *host, char *dir, char definedprimary, char isprimary, char valid, apr_pool_t *pool)
@@ -375,13 +391,15 @@ static apr_status_t a_fts_waiting(gpcc_event_t *ev, void *_cmdslot)
     }
 	
     if (IS_NO_LEADMA) {
-	obj = gpcc_json_http_reply(cmd, "failure", "Lead MA is not determined");
+	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+				   cmd, FAIL_STATUS, 0, "Lead MA is not determined");
 	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
     } else if (!IS_LEADMA) {
 	a_fts_http_redirect_leadma(conn, url);
     } else {
-	obj = gpcc_json_http_reply(cmd, "failure", "connecting");
+	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+				   cmd, FAIL_STATUS, 0, SYSTEM_INITIALIZING_STATUS);
 	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
     }
@@ -416,7 +434,8 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 		gpcc_evqueue_put(gpma.evq, evt);
 		gpcc_net_uri_free(uri);
-		obj = gpcc_json_http_reply("start", "failure", "parameter missing");
+		obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+					   "start", FAIL_STATUS, 0, "parameter missing");
 		gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 		json_object_put(obj);
 		return 0;
@@ -433,7 +452,8 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
 
-    obj = gpcc_json_http_reply("start", "pending", "pending");
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+			       "start", OK_STATUS, ARRAY_STARTING_STATUS, 0);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
 
@@ -452,8 +472,8 @@ static apr_status_t a_fts_array_start_reply(gpcc_event_t *ev, void *_cmdslot)
 
     obj = json_tokener_parse(pkt->payload);
 
-    status = gpcc_json_object_get_string(obj, "status", "failure");
-    if (strcmp(status, "ok") == 0) {
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
+    if (strcmp(status, OK_STATUS) == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
     } else {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);	
@@ -475,7 +495,8 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
     url = ev->pdata + sizeof(gpcc_net_conn_t);
 
     if (IS_NO_LEADMA) {
-	obj = gpcc_json_http_status_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), "ok", "undetermined");
+	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0, 
+				   "status", OK_STATUS, SYSTEM_INITIALIZING_STATUS, 0);
 	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
     } else if (!IS_LEADMA) {
@@ -490,7 +511,7 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 	state = ARRAY_CONNECTING_STATUS;
 	break;
     case FTS_EMPTY_CMDSTATE:
-	state = ARRAY_NO_ARRAY_STATUS;
+	state = ARRAY_NOT_INITIALIZED_STATUS;
 	break;
     case FTS_INITIALIZING_CMDSTATE:
     case FTS_INITIALIZING0_CMDSTATE:
@@ -516,7 +537,8 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 	break;
     }
 
-    obj = gpcc_json_http_status_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), "ok", state);
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0, 
+			       "status", OK_STATUS, state, 0);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;
@@ -531,30 +553,31 @@ static apr_status_t a_fts_busy_ok_reply(gpcc_event_t *ev, void *_cmdslot)
     char *msg;
 
     if (cmdslot->cmdstate ==  FTS_CMDSTATE) {
-	msg = "server is waking up";
+	msg = SYSTEM_INITIALIZING_STATUS;
     } else if (cmdslot->cmdstate ==  FTS_WAIT_CMDSTATE) {	
-	msg = "server is connecting";
+	msg = SYSTEM_INITIALIZING_STATUS;
     } else if (cmdslot->cmdstate ==  FTS_EMPTY_CMDSTATE) {	
-	msg = "array is absent";
+	msg = ARRAY_NOT_INITIALIZED_STATUS;
     } else if (cmdslot->cmdstate ==  FTS_INITIALIZING_CMDSTATE) {	
-	msg = "server is initializing";
+	msg = ARRAY_INITIALIZING_STATUS;
     } else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
-	msg = "server stopped";
+	msg = ARRAY_STOPPED_STATUS;
     } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
-	msg = "server is starting";
+	msg = ARRAY_STARTING_STATUS;
     } else if (cmdslot->cmdstate == FTS_RUNNING_CMDSTATE) {
-	msg = "server is running";
+	msg = ARRAY_RUNNING_STATUS;
     } else if (cmdslot->cmdstate == FTS_STOPPING_CMDSTATE) {
-	msg = "server is stopping";
+	msg = ARRAY_STOPPING_STATUS;
     } else if (cmdslot->cmdstate == FTS_DELETING_CMDSTATE) {
-	msg = "server is deleting";
+	msg = ARRAY_DELETING_STATUS;
     } else {
-	msg = "invalid server state";
+	msg = ARRAY_INVALID_STATUS;
     }
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
-    obj = gpcc_json_http_reply("", "ok", msg);
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+			       "", OK_STATUS, msg, 0);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;
@@ -569,27 +592,31 @@ static apr_status_t a_fts_busy_reply(gpcc_event_t *ev, void *_cmdslot)
     char *msg;
 
     if (cmdslot->cmdstate ==  FTS_CMDSTATE) {
-	msg = "server is initializing";
-    } else if (cmdslot->cmdstate ==  FTS_WAIT_CMDSTATE) {
-	msg = "server is setting up"; 
-    }
-    else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
-	msg = "server is not running";
+	msg = SYSTEM_INITIALIZING_STATUS;
+    } else if (cmdslot->cmdstate ==  FTS_WAIT_CMDSTATE) {	
+	msg = SYSTEM_INITIALIZING_STATUS;
+    } else if (cmdslot->cmdstate ==  FTS_EMPTY_CMDSTATE) {	
+	msg = ARRAY_NOT_INITIALIZED_STATUS;
+    } else if (cmdslot->cmdstate ==  FTS_INITIALIZING_CMDSTATE) {	
+	msg = ARRAY_INITIALIZING_STATUS;
+    } else if (cmdslot->cmdstate ==  FTS_STOPPED_CMDSTATE) {
+	msg = ARRAY_STOPPED_STATUS;
     } else if (cmdslot->cmdstate ==  FTS_STARTING_CMDSTATE) {
-	msg = "server is starting";
+	msg = ARRAY_STARTING_STATUS;
     } else if (cmdslot->cmdstate == FTS_RUNNING_CMDSTATE) {
-	msg = "server is running";
+	msg = ARRAY_RUNNING_STATUS;
     } else if (cmdslot->cmdstate == FTS_STOPPING_CMDSTATE) {
-	msg = "server is stopping";
+	msg = ARRAY_STOPPING_STATUS;
     } else if (cmdslot->cmdstate == FTS_DELETING_CMDSTATE) {
-	msg = "server is deleting";
+	msg = ARRAY_DELETING_STATUS;
     } else {
-	msg = "invalid server state";
+	msg = ARRAY_INVALID_STATUS;
     }
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
-    obj = gpcc_json_http_reply("", "failure", msg);
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0, 
+			       "", FAIL_STATUS, 0, msg);
     gpcc_net_http_close(conn, 200, "failure", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;
@@ -649,7 +676,8 @@ static apr_status_t a_fts_array_stop(gpcc_event_t *ev, void *_cmdslot)
 		evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 		gpcc_evqueue_put(gpma.evq, evt);
 		gpcc_net_uri_free(uri);
-		obj = gpcc_json_http_reply("stop", "failure", "parameter missing");
+		obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0, 
+					   "stop", FAIL_STATUS, 0, "parameter missing");
 		gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 		json_object_put(obj);
 		return 0;
@@ -667,7 +695,8 @@ static apr_status_t a_fts_array_stop(gpcc_event_t *ev, void *_cmdslot)
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
 
-    obj = gpcc_json_http_reply("stop", "pending", "pending");
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0, 
+			       "stop", OK_STATUS, ARRAY_STOPPING_STATUS, 0);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     if (uri)
@@ -686,7 +715,7 @@ static apr_status_t a_fts_array_stop_reply(gpcc_event_t *ev, void *_cmdslot)
 
     obj = json_tokener_parse(pkt->payload);
 
-    status = gpcc_json_object_get_string(obj, "status", "failure");
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
     if (strcmp(status, "ok") == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
     } else {
@@ -788,7 +817,8 @@ static apr_status_t a_fts_array_init_start_nodes(gpcc_event_t *ev, void *_cmdslo
     if (gpma.maset_cmdslot->u.maset.nopened < gpma.maset_cmdslot->u.maset.total) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply("init", "failure", "gp init can only be run when all MA's are active");
+	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+				   "init", FAIL_STATUS, 0, "gp init can only be run when all MA's are active");
 	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);	
 	return 0;
@@ -797,7 +827,8 @@ static apr_status_t a_fts_array_init_start_nodes(gpcc_event_t *ev, void *_cmdslo
     if (config_parse(gpma.cfg, config, len) || a_fts_array_config_verify()) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply("init", "failure", "config syntax error");
+	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+				   "init", FAIL_STATUS, 0, "config syntax error");
 	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);	
 	return 0;
@@ -820,7 +851,8 @@ static apr_status_t a_fts_array_init_start_nodes(gpcc_event_t *ev, void *_cmdslo
 
     a_fts_node_init();
 
-    obj = gpcc_json_http_reply("init", "pending", "pending");
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+			       "init", OK_STATUS, ARRAY_INITIALIZING_STATUS, 0);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
 
@@ -1044,7 +1076,8 @@ static apr_status_t a_fts_segment_start(gpcc_event_t *ev, void *arg)
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
 
-    obj = gpcc_json_http_reply("start", "pending", "pending");
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), seg,
+			       "start", OK_STATUS, SEGMENT_STARTING_STATUS, 0);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     
@@ -1054,7 +1087,8 @@ static apr_status_t a_fts_segment_start(gpcc_event_t *ev, void *arg)
     evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
     if (uri) gpcc_net_uri_free(uri);
-    obj = gpcc_json_http_reply("start", "failure", errmsg);
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), seg,
+			       "start", FAIL_STATUS, 0, errmsg);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;
@@ -1121,7 +1155,8 @@ static apr_status_t a_fts_segment_stop(gpcc_event_t *ev, void *arg)
     gpcc_evqueue_put(gpma.evq, evt);
 
 
-    obj = gpcc_json_http_reply("stop", "pending", "pending");
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), seg,
+			       "stop", OK_STATUS, SEGMENT_STOPPING_STATUS, 0);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     
@@ -1132,7 +1167,8 @@ static apr_status_t a_fts_segment_stop(gpcc_event_t *ev, void *arg)
     evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
     if (uri) gpcc_net_uri_free(uri);
-    obj = gpcc_json_http_reply("stop", "failure", errmsg);
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), seg,
+			       "stop", FAIL_STATUS, 0, errmsg);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;    
@@ -1165,7 +1201,9 @@ static apr_status_t a_fts_array_delete(gpcc_event_t *ev, void *_cmdslot)
     if (gpma.maset_cmdslot->u.maset.nopened < gpma.maset_cmdslot->u.maset.total) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply("delete", "failure", "gp delete can only be run when all MA's are active");
+	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+				   "delete", FAIL_STATUS, 0,
+				   "gp delete can only be run when all MA's are active");
 	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);	
 	return 0;
@@ -1182,7 +1220,8 @@ static apr_status_t a_fts_array_delete(gpcc_event_t *ev, void *_cmdslot)
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
 
-    obj = gpcc_json_http_reply("delete", "pending", "pending");
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+			       "delete", OK_STATUS, ARRAY_DELETING_STATUS, 0);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     if (uri)
@@ -1201,8 +1240,8 @@ static apr_status_t a_fts_array_delete_reply(gpcc_event_t *ev, void *_cmdslot)
 
     obj = json_tokener_parse(pkt->payload);
 
-    status = gpcc_json_object_get_string(obj, "status", "failure");
-    if (strcmp(status, "ok") == 0) {
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
+    if (strcmp(status, OK_STATUS) == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
     } else {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);	

@@ -66,7 +66,7 @@ static apr_status_t a_delete_reply(gpcc_event_t *ev, void *_cmdslot)
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
-    status = gpcc_json_object_get_string(obj, "status", "failed");
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
     reason = gpcc_json_object_get_string(obj, "reason", "");
     
     for (i = 0 ; i < cmdslot->u.delete.ntotal ; i++) {
@@ -83,7 +83,7 @@ static apr_status_t a_delete_reply(gpcc_event_t *ev, void *_cmdslot)
     
     cmdslot->u.delete.req[i].reply = apr_pstrdup(cmdslot->pool, pkt->payload);
     
-    if (strcmp(status, "ok") == 0) {
+    if (strcmp(status, OK_STATUS) == 0) {
 	gpcc_log_info("segment %s delete reply ok", seg);
 	cmdslot->u.delete.nsuccess++;
     } else {
@@ -129,11 +129,10 @@ static struct json_object * mkjson_delete_reply(gpcc_event_t *ev, void *_cmdslot
 						const char *action, const char *status, const char *reason)
 {
     cmdslot_t *cmdslot = (cmdslot_t*) _cmdslot;
-    struct json_object *obj, *rsetobj, *arrobj;
+    struct json_object *obj, *arrobj;
     int i, n;
 
-    obj = gpcc_json_http_reply(action, status, reason);
-    rsetobj = json_object_new_object();
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0, action, status, 0, reason);
     arrobj = json_object_new_array();
     for (i = 0, n = 0 ; i < cmdslot->u.delete.ntotal ; i++) {
 	if (cmdslot->u.delete.req[i].reply) {
@@ -141,9 +140,7 @@ static struct json_object * mkjson_delete_reply(gpcc_event_t *ev, void *_cmdslot
 	    n++;
 	}
     }
-    json_object_object_add(rsetobj, "total", json_object_new_int(n));
-    json_object_object_add(rsetobj, "result", arrobj);
-    json_object_object_add(obj, "rset", rsetobj);
+    json_object_object_add(obj, "rset", arrobj);
 
     return obj;
 }
@@ -156,7 +153,7 @@ static apr_status_t a_delete_success(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("segments delete finished successfully");
     gpcc_log_info("----------------------------------------------------------");
-    obj = mkjson_delete_reply(ev, _cmdslot, "delete", "ok", 0);
+    obj = mkjson_delete_reply(ev, _cmdslot, "delete", OK_STATUS, 0);
     a_delete_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -171,7 +168,7 @@ static apr_status_t a_delete_failure(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("segments delete failed");
     gpcc_log_info("----------------------------------------------------------");
-    obj = mkjson_stop_reply(ev, _cmdslot, "delete", "failure", 0);
+    obj = mkjson_stop_reply(ev, _cmdslot, "delete", FAIL_STATUS, 0);
     a_delete_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -184,7 +181,7 @@ static apr_status_t a_delete_timeout(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("segments delete timed out");
     gpcc_log_info("----------------------------------------------------------");
-    obj = mkjson_stop_reply(ev, _cmdslot, "delete", "failure", "timeout");
+    obj = mkjson_stop_reply(ev, _cmdslot, "delete", FAIL_STATUS, "timeout");
     a_delete_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;

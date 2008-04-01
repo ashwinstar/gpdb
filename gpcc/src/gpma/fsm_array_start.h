@@ -287,7 +287,8 @@ static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     if (strstr(seginfo->name, "seg.m.") == 0) {
 	struct json_object *obj;
 	char *msg = 0;
-	obj = gpcc_json_http_reply("start", "ok", 0);
+	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+				   "start", OK_STATUS, 0, 0);
 	msg = json_object_to_json_string(obj);
 	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, strlen(msg)+1);
 	memcpy(evt->pdata, msg, strlen(msg)+1);

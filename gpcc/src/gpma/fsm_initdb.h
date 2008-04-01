@@ -17,45 +17,6 @@ static apr_status_t config_addsegment(struct json_object *msg, char *key, char *
     return 0;
 }
 
-/*
-static apr_status_t config_addsegment(struct json_object *msg, char *key, const char *value)
-{
-    char *node, *last;
-    char *dir;
-    char *v = strdup(value);
-    struct json_object *obj;
-
-    if (!v) {
-	gpcc_fatal(FLINE, "out of memory");
-    }
-
-    node = apr_strtok(v, ":", &last);
-    if (!node)
-	goto bail;
-
-    dir = apr_strtok(0, ":", &last);
-    if (!dir)
-	goto bail;
-
-    obj = json_object_new_object();
-    if (!obj)
-	goto bail;
-
-    json_object_object_add(obj, "node", json_object_new_string(node));
-    json_object_object_add(obj, "dir", json_object_new_string(dir));
-    
-    json_object_object_add(msg, key, obj);
-
-    if (v) free(v);
-    return 0;
-
-    bail:
-    if (v) free(v);
-    return APR_EINVAL;
-
-}
-*/
-
 static apr_status_t config_addnode(struct json_object *msg, char *key, const char *value)
 {
     char *nodestr = strdup(value);
@@ -264,7 +225,7 @@ static apr_status_t a_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
-    status = gpcc_json_object_get_string(obj, "status", "failed");
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
     reason = gpcc_json_object_get_string(obj, "reason", "");
     
     
@@ -305,7 +266,8 @@ static apr_status_t a_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
 	success = 1;
     } else {
 	cmdslot->u.initdb.nfailed++;
-	gpcc_warning(FLINE, "[Error] segment %s initdb reply failed: status=%s, reason=%s", seg, status, reason);
+	gpcc_warning(FLINE, "[Error] segment %s initdb reply failed: status=%s, reason=%s", 
+		     seg, status, reason);
     }
 
     if (cmdslot->u.initdb.nsuccess + cmdslot->u.initdb.nfailed == cmdslot->u.initdb.ntotal) {
@@ -355,11 +317,10 @@ static struct json_object * mkjson_initdb_reply(gpcc_event_t *ev, void *_cmdslot
 						const char *action, const char *status, const char *reason)
 {
     cmdslot_t *cmdslot = (cmdslot_t*) _cmdslot;
-    struct json_object *obj, *rsetobj, *arrobj;
+    struct json_object *obj, *arrobj;
     int i, n;
 
-    obj = gpcc_json_http_reply(action, status, reason);
-    rsetobj = json_object_new_object();
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0, action, status, 0, reason);
     arrobj = json_object_new_array();
     for (i = 0, n = 0 ; i < cmdslot->u.initdb.ntotal ; i++) {
 	if (cmdslot->u.initdb.req[i].reply) {
@@ -367,9 +328,7 @@ static struct json_object * mkjson_initdb_reply(gpcc_event_t *ev, void *_cmdslot
 	    n++;
 	}
     }
-    json_object_object_add(rsetobj, "total", json_object_new_int(n));
-    json_object_object_add(rsetobj, "result", arrobj);
-    json_object_object_add(obj, "rset", rsetobj);
+    json_object_object_add(obj, "rset", arrobj);
 
     return obj;
 }
@@ -383,7 +342,7 @@ static apr_status_t a_initdb_success(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("initdb finished successfully");
     gpcc_log_info("-------------------------------------------------------");
-    obj = mkjson_initdb_reply(ev, _cmdslot, "init", "ok", 0);
+    obj = mkjson_initdb_reply(ev, _cmdslot, "init", OK_STATUS, 0);
     a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -398,7 +357,7 @@ static apr_status_t a_initdb_failure(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("initdb failed");
     gpcc_log_info("-------------------------------------------------------");
-    obj = mkjson_initdb_reply(ev, _cmdslot, "init", "failure", 0);
+    obj = mkjson_initdb_reply(ev, _cmdslot, "init", FAIL_STATUS, 0);
     a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -411,7 +370,7 @@ static apr_status_t a_initdb_timeout(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("initdb timed out");
     gpcc_log_info("-------------------------------------------------------");
-    obj = mkjson_initdb_reply(ev, _cmdslot, "init", "failure", "timeout");
+    obj = mkjson_initdb_reply(ev, _cmdslot, "init", FAIL_STATUS, "timeout");
     a_initdb_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;

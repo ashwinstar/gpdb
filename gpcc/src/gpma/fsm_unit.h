@@ -31,7 +31,7 @@ static apr_status_t a_unit_stop(gpcc_event_t *ev, void *arg)
 	gpcc_evqueue_put(gpma.evq, evt);
 	slot->u.unit.parentidx = 0;
 
-	obj = gpcc_json_segment_reply(slot->cmdname, "failed", "network failure");
+	obj = gpcc_json_segment_reply(slot->cmdname, FAIL_STATUS, "network failure");
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;
 	
@@ -62,13 +62,13 @@ static apr_status_t a_unit_stop_reply(gpcc_event_t *ev, void *arg)
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
-    status = gpcc_json_object_get_string(obj, "status", "failed");
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
 
     evt = gpcc_event_alloc(ev->etype, slot->u.unit.parentidx, ev->edatasz);
     memcpy(evt->pdata, ev->pdata, ev->edatasz);
     gpcc_evqueue_put(gpma.evq, evt);
 
-    if (strcmp(status, "ok") == 0) {
+    if (strcmp(status, OK_STATUS) == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
     } else {
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);	
@@ -90,7 +90,7 @@ static apr_status_t a_unit_timeout(gpcc_event_t *ev, void *arg)
     int len;
     gpcc_event_t *evt;
 
-    obj = gpcc_json_segment_reply(slot->cmdname, "failed", "timeout");
+    obj = gpcc_json_segment_reply(slot->cmdname, FAIL_STATUS, "timeout");
     msg = json_object_to_json_string(obj);
     len = strlen(msg) + 1;
     
@@ -140,7 +140,7 @@ static apr_status_t a_unit_start(gpcc_event_t *ev, void *arg)
 	gpcc_evqueue_put(gpma.evq, evt);
 	slot->u.unit.parentidx = 0;
 
-	obj = gpcc_json_segment_reply(slot->cmdname, "failed", "network failure");
+	obj = gpcc_json_segment_reply(slot->cmdname, FAIL_STATUS, "network failure");
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;
 	
@@ -170,13 +170,13 @@ static apr_status_t a_unit_start_reply(gpcc_event_t *ev, void *arg)
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
-    status = gpcc_json_object_get_string(obj, "status", "failed");
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
 
     evt = gpcc_event_alloc(ev->etype, slot->u.unit.parentidx, ev->edatasz);
     memcpy(evt->pdata, ev->pdata, ev->edatasz);
     gpcc_evqueue_put(gpma.evq, evt);
 
-    if (strcmp(status, "ok") == 0) {
+    if (strcmp(status, OK_STATUS) == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
     } else {
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);	
@@ -226,7 +226,7 @@ static apr_status_t a_unit_busy_ok_reply(gpcc_event_t *ev, void *arg)
 	break;
     }
 
-    obj = gpcc_json_segment_reply(slot->cmdname, "ok", reason);
+    obj = gpcc_json_segment_reply(slot->cmdname, OK_STATUS, reason);
     msg = json_object_to_json_string(obj);
     len = strlen(msg) + 1;
 
@@ -276,7 +276,7 @@ static apr_status_t a_unit_busy_error_reply(gpcc_event_t *ev, void *arg)
 	break;
     }
 
-    obj = gpcc_json_segment_reply(slot->cmdname, "failed", reason);
+    obj = gpcc_json_segment_reply(slot->cmdname, FAIL_STATUS, reason);
     msg = json_object_to_json_string(obj);
     len = strlen(msg) + 1;
 
@@ -304,29 +304,30 @@ static apr_status_t a_unit_status(gpcc_event_t *ev, void *arg)
 
     switch (slot->cmdstate) {
     case UNIT_CMDSTATE:
-	state = UNIT_CONNECTING_STATUS;
+	state = SEGMENT_CONNECTING_STATUS;
 	break;
     case UNIT_STOPPING_CMDSTATE:
-	state = UNIT_STOPPING_STATUS;
+	state = SEGMENT_STOPPING_STATUS;
 	break;
     case UNIT_STOPPED_CMDSTATE:
-	state = UNIT_STOPPED_STATUS;
+	state = SEGMENT_STOPPED_STATUS;
 	break;
     case UNIT_STARTING_CMDSTATE:
-	state = UNIT_STARTING_STATUS;
+	state = SEGMENT_STARTING_STATUS;
 	break;
     case UNIT_RUNNING_CMDSTATE:
-	state = UNIT_RUNNING_STATUS;
+	state = SEGMENT_RUNNING_STATUS;
 	break;
     case UNIT_DELETING_CMDSTATE:
-	state = UNIT_DELETING_STATUS;
+	state = SEGMENT_DELETING_STATUS;
 	break;
     default:
-	state = UNIT_INVALID_STATUS;
+	state = SEGMENT_INVALID_STATUS;
 	break;
     }
     
-    obj = gpcc_json_http_segment_status_reply(slot->cmdname, "ok", state);
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), slot->cmdname, 
+			       "status", OK_STATUS, state, 0);
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;
@@ -355,7 +356,7 @@ static apr_status_t a_unit_delete(gpcc_event_t *ev, void *arg)
 	gpcc_evqueue_put(gpma.evq, evt);
 	slot->u.unit.parentidx = 0;
 
-	obj = gpcc_json_segment_reply(slot->cmdname, "failed", "network failure");
+	obj = gpcc_json_segment_reply(slot->cmdname, FAIL_STATUS, "network failure");
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;
 	
@@ -386,13 +387,13 @@ static apr_status_t a_unit_delete_reply(gpcc_event_t *ev, void *arg)
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
-    status = gpcc_json_object_get_string(obj, "status", "failed");
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
 
     evt = gpcc_event_alloc(ev->etype, slot->u.unit.parentidx, ev->edatasz);
     memcpy(evt->pdata, ev->pdata, ev->edatasz);
     gpcc_evqueue_put(gpma.evq, evt);
 
-    if (strcmp(status, "ok") == 0) {
+    if (strcmp(status, OK_STATUS) == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
     } else {
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);	
@@ -453,9 +454,9 @@ static apr_status_t a_unit_postgres_status_reply(gpcc_event_t *ev, void *arg)
     obj = json_tokener_parse(pkt->payload);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
     status = gpcc_json_object_get_string(obj, "status", "stopped");
-    health = gpcc_json_object_get_string(obj, "health", "failed");
+    health = gpcc_json_object_get_string(obj, "health", FAIL_STATUS);
 
-    if (strcmp(health, "ok") == 0 && strcmp(status, "running") == 0) {
+    if (strcmp(health, OK_STATUS) == 0 && strcmp(status, "running") == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
     } else {
 	gpcc_log_info("seg = %s health = %s, status = %s, (%s)", slot->cmdname, health, status, pkt->payload);

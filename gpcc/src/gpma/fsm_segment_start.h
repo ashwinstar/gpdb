@@ -58,9 +58,9 @@ static apr_status_t a_segment_start_units_start_reply(gpcc_event_t *ev, void *ar
 
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
-    status = gpcc_json_object_get_string(obj, "status", "failure");
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
 
-    if (strcmp(status, "ok") == 0) {
+    if (strcmp(status, OK_STATUS) == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, pkt->mh.len);
 	memcpy(evt->pdata, pkt->payload, pkt->mh.len);
     } else {

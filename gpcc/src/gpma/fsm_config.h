@@ -26,13 +26,7 @@ static char *config_to_json(apr_pool_t *pool)
     p = buf;
     q = buf + buflen;
     
-    apr_snprintf(p, q - p, "{ \"status\": \"ok\", ");
-    p += strlen(p);
-    apr_snprintf(p, q - p, "\"rset\": { \"total\": 1, ");
-    p += strlen(p);
-    apr_snprintf(p, q - p, "\"offset\": %d, ", 0);
-    p += strlen(p);
-    apr_snprintf(p, q - p, "\"result\": [ ");
+    apr_snprintf(p, q - p, "{ \"status\": \"ok\", \"action\": \"lscfg\", \"a\": \"%s\", \"rset\": [", config_get(gpma.cfg, CONFIG_DBNAME_KEY));
     p += strlen(p);
     
     prev_value = 0;
@@ -46,7 +40,7 @@ static char *config_to_json(apr_pool_t *pool)
 	}
 	prev_value = value;
     }
-    apr_snprintf(p, q - p, " ] } }");
+    apr_snprintf(p, q - p, " ] }");
     p += strlen(p);
     
     if (p >= q) 

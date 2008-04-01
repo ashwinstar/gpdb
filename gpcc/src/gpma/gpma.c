@@ -166,77 +166,6 @@ static gpcc_event_t *mkhttp_event(event_t event, gpcc_net_conn_t conn,
     return ev;
 }
 
-#if 0
-static int keycmp(const void* a, const void* b)
-{
-    const char** aa = (const char**) a;
-    const char** bb = (const char**) b;
-    return strcmp(*aa, *bb);
-}
-
-static void process_lscfg(gpcc_net_conn_t conn)
-{
-    apr_pool_t* pool;
-    const char** keys;
-    int count, i, e;
-    char* buf;
-    int buflen;
-    char* p;
-    char* q;
-    const char* prev_value;
-
-    if (0 != (e = apr_pool_create(&pool, gpma.pool))) {
-	gpcc_fatal(FLINE, "out of memory");
-    }
-    keys = config_keys(gpma.cfg, pool);
-    for (count = 0; keys[count]; count++);
-    qsort(keys, count, sizeof(*keys), keycmp);
-
-    if (!conn) {
-	for (i = 0; i < count; i++) {
-	    const char* value = config_get(gpma.cfg, keys[i]);
-	    if (value) 
-		printf("%s: %s\n", keys[i], value);
-	}
-    }
-    else {
-	buflen = 16 * 1024;
-	buf = apr_palloc(pool, buflen);
-	p = buf;
-	q = buf + buflen;
-
-	apr_snprintf(p, q - p, "{ \"status\": \"ok\", ");
-	p += strlen(p);
-	apr_snprintf(p, q - p, "\"rset\": { \"total\": 1, ");
-	p += strlen(p);
-	apr_snprintf(p, q - p, "\"offset\": %d, ", 0);
-	p += strlen(p);
-	apr_snprintf(p, q - p, "\"result\": [ ");
-	p += strlen(p);
-
-	prev_value = 0;
-	for (i = 0; i < count; i++) {
-	    const char* value = config_get(gpma.cfg, keys[i]);
-	    if (value) {
-		apr_snprintf(p, q - p, "%s [ \"%s\", \"%s\" ]", 
-			     prev_value ? "," : "",
-			     keys[i], value);
-		p += strlen(p);
-	    }
-	    prev_value = value;
-	}
-	apr_snprintf(p, q - p, " ] } }");
-	p += strlen(p);
-
-	if (p >= q) 
-	    gpcc_net_http_close(conn, 500, "Internal error", "");
-	else 
-	    gpcc_net_http_close(conn, 200, "OK", buf);
-    }
-    apr_pool_destroy(pool);
-}
-#endif
-
 static void net_accepted(gpcc_net_conn_t conn,
 			 const char* peer_addr,
 			 gpcc_net_header_t* from_peer)
@@ -256,60 +185,66 @@ static void net_accepted(gpcc_net_conn_t conn,
 	int is_bad_uri = 0;
 	int is_bad_array_name = 0;
 
-	if (0 == strcmp("/gpcc/lscfg", uri->path)) {
-	    ev = mkhttp_event(ARRAY_CONFIG_EVENT, conn, gpma.cfg_cmdslot->cmdidx, 0,
-			     gpma.cfg_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	}
-	else if (0 == strcmp("/gpcc/status", uri->path)) {
-	    ev = mkhttp_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-			     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	}
-	else if (0 == strcmp("/gpcc/init", uri->path)) {
-	    ev = mkhttp_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-			     gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
-	}
-	else if (0 == strcmp("/gpcc/segment/status", uri->path)) {
-	    int i;
-	    char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
-	    if (gpma.unit_cmdtab) {
-		for (i = 0 ; i < gpma.unit_max && strcmp(seg, gpma.unit_cmdtab[i]->cmdname) != 0 ; i++) {;}
-		if (i < gpma.unit_max) {
-		    ev = mkhttp_event(UNIT_STATUS_EVENT, conn, gpma.unit_cmdtab[i]->cmdidx, 0,
-				     gpma.unit_cmdtab[i]->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-		} else {
-		    gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"failure\", \"rset\": {\"result\": [], \"total\" : 0, \"offset\": 0}}");
-		}
-	    } else {
-		gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"failure\", \"rset\": {\"result\": [], \"total\" : 0, \"offset\": 0}}");
+	is_bad_array_name = ! (array_name && a && 0 == strcmp(a, array_name));
+	if (! is_bad_array_name) {
+
+	    if (0 == strcmp("/gpcc/lscfg", uri->path)) {
+		ev = mkhttp_event(ARRAY_CONFIG_EVENT, conn, gpma.cfg_cmdslot->cmdidx, 0,
+				  gpma.cfg_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	    }
-	}
-	else {
-	    is_bad_array_name = ! (array_name && a && 0 == strcmp(a, array_name));
-	    if (! is_bad_array_name) {
-		if (0 == strcmp("/gpcc/start", uri->path)) {
+	    else if (0 == strcmp("/gpcc/status", uri->path)) {
+		char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
+
+		if (! seg) {
+		    ev = mkhttp_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		} else {
+		    int i;
+		    if (gpma.unit_cmdtab) {
+			for (i = 0 ; i < gpma.unit_max && strcmp(seg, gpma.unit_cmdtab[i]->cmdname) != 0 ; i++) {;}
+			if (i < gpma.unit_max) {
+			    ev = mkhttp_event(UNIT_STATUS_EVENT, conn, gpma.unit_cmdtab[i]->cmdidx, 0,
+					      gpma.unit_cmdtab[i]->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+			} else {
+			    gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"error\", 'errmsg': 'no segment found' }");
+			}
+		    } else {
+			gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"error\", 'errmsg' : 'no segment found' }");
+		    }
+		}
+	    }
+	    else if (0 == strcmp("/gpcc/init", uri->path)) {
+		ev = mkhttp_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				  gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
+	    }
+	    else if (0 == strcmp("/gpcc/start", uri->path)) {
+		char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
+
+		if (! seg) {
 		    /* send startcmd_event to FTS cmdslot ? */
 		    ev = mkhttp_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-		}
-		else if (0 == strcmp("/gpcc/stop", uri->path)) {
-		    ev = mkhttp_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-		}
-		else if (0 == strcmp("/gpcc/delete", uri->path)) {
-		    ev = mkhttp_event(ARRAY_DELETE_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-		}
-		else if (0 == strcmp("/gpcc/segment/start", uri->path)) {
+				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		} else {
 		    ev = mkhttp_event(SEGMENT_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
 				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		}
-		else if (0 == strcmp("/gpcc/segment/stop", uri->path)) {
-		    ev = mkhttp_event(SEGMENT_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
-				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-		}
-		else 
-		    is_bad_uri = 1;
 	    }
+	    else if (0 == strcmp("/gpcc/stop", uri->path)) {
+		char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
+		if (! seg) {
+		    ev = mkhttp_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		} else {
+		    ev = mkhttp_event(SEGMENT_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
+				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+	    }
+	    else if (0 == strcmp("/gpcc/delete", uri->path)) {
+		ev = mkhttp_event(ARRAY_DELETE_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				  gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    }
+	    else 
+		is_bad_uri = 1;
 	}
 
 	if (ev) {
@@ -318,12 +253,12 @@ static void net_accepted(gpcc_net_conn_t conn,
 	else if (is_bad_uri) {
 	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
 	    gpcc_net_http_close(conn, 200, "OK", 
-				"{ \"status\": \"failure\", \"errmsg\": { \"_\": \"invalid URI\" }}");
+				"{ \"status\": \"error\", \"errmsg\": \"invalid URI\" }");
 	} 
 	else if (is_bad_array_name) {
 	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
 	    gpcc_net_http_close(conn, 200, "OK",
-				"{ \"status\": \"failure\", \"errmsg\": { \"_\": \"bad array name\" } }");
+				"{ \"status\": \"error\", \"errmsg\": \"bad array name\" }");
 	}
 
 	if (uri) 

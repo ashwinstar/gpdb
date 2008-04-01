@@ -67,7 +67,7 @@ static apr_status_t a_start_reply(gpcc_event_t *ev, void *_cmdslot)
     pkt = (gpcc_net_packet_t *) ev->pdata;
     obj = json_tokener_parse(pkt->payload);
     seg = gpcc_json_object_get_string(obj, "seg", 0);
-    status = gpcc_json_object_get_string(obj, "status", "failed");
+    status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
     reason = gpcc_json_object_get_string(obj, "reason", "");
     
     for (i = 0 ; i < cmdslot->u.start.ntotal ; i++) {
@@ -84,7 +84,7 @@ static apr_status_t a_start_reply(gpcc_event_t *ev, void *_cmdslot)
     
     cmdslot->u.start.req[i].reply = apr_pstrdup(cmdslot->pool, pkt->payload);
     
-    if (strcmp(status, "ok") == 0) {
+    if (strcmp(status, OK_STATUS) == 0) {
 	gpcc_log_info("segment %s start reply ok", seg);
 	cmdslot->u.start.nsuccess++;
     } else {
@@ -130,21 +130,19 @@ static struct json_object * mkjson_start_reply(gpcc_event_t *ev, void *_cmdslot,
 					       const char *action, const char *status, const char *reason)
 {
     cmdslot_t *cmdslot = (cmdslot_t*) _cmdslot;
-    struct json_object *obj, *rsetobj, *arrobj;
+    struct json_object *obj, *arrobj;
     int i, n;
 
-    obj = gpcc_json_http_reply(action, status, reason);
-    rsetobj = json_object_new_object();
+    obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
+			       action, status, 0, reason);
     arrobj = json_object_new_array();
-    for (i = 0, n = 0 ; i < cmdslot->u.stop.ntotal ; i++) {
-	if (cmdslot->u.stop.req[i].reply) {
-	    json_object_array_add(arrobj, json_object_new_string(cmdslot->u.stop.req[i].reply));
+    for (i = 0, n = 0 ; i < cmdslot->u.start.ntotal ; i++) {
+	if (cmdslot->u.start.req[i].reply) {
+	    json_object_array_add(arrobj, json_object_new_string(cmdslot->u.start.req[i].reply));
 	    n++;
 	}
     }
-    json_object_object_add(rsetobj, "total", json_object_new_int(n));
-    json_object_object_add(rsetobj, "result", arrobj);
-    json_object_object_add(obj, "rset", rsetobj);
+    json_object_object_add(obj, "rset", arrobj);
 
     return obj;
 }
@@ -156,7 +154,7 @@ static apr_status_t a_start_success(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("segments start successfully");
     gpcc_log_info("----------------------------------------------------------");
-    obj = mkjson_start_reply(ev, _cmdslot, "start", "ok", 0);
+    obj = mkjson_start_reply(ev, _cmdslot, "start", OK_STATUS, 0);
     a_start_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -171,7 +169,7 @@ static apr_status_t a_start_failure(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("segments start failed");
     gpcc_log_info("----------------------------------------------------------");
-    obj = mkjson_start_reply(ev, _cmdslot, "start", "failure", 0);
+    obj = mkjson_start_reply(ev, _cmdslot, "start", FAIL_STATUS, 0);
     a_start_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
@@ -184,7 +182,7 @@ static apr_status_t a_start_timeout(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("segments start timed out");
     gpcc_log_info("----------------------------------------------------------");
-    obj = mkjson_start_reply(ev, _cmdslot, "start", "failure", "timeout");
+    obj = mkjson_start_reply(ev, _cmdslot, "start", FAIL_STATUS, "timeout");
     a_start_send_json_reply(ev, cmdslot, obj);
     json_object_put(obj);
     return 0;
