@@ -11,6 +11,7 @@ Usage: gpssh [--version] [-?v] [-h host] [-f hostfile] [cmd]
           -e        : echo commands as they are executed
           -h host   : the host to connect to (multiple -h is okay)
           -f file   : a file listing all hosts to connect to
+          -D        : do not filter multi-homed hosts 
           cmd       : the command to execute. If not present, 
                       go into interactive mode
 '''
@@ -29,15 +30,20 @@ except ImportError, e:
 #
 # all the command line options
 #
-script_name = os.path.split(__file__)[-1]
-USER = os.environ.get('LOGNAME') or os.environ.get('USER')
-opt = {}
-opt['-v'] = False
-opt['-e'] = False
-opt['-h'] = []
-opt['-f'] = False
-argcmd = None
-session = []
+class Global():
+    script_name = os.path.split(__file__)[-1]
+    USER = os.environ.get('LOGNAME') or os.environ.get('USER')
+    opt = {}
+    opt['-v'] = False
+    opt['-e'] = False
+    opt['-h'] = []
+    opt['-f'] = False
+    opt['-D'] = False
+    argcmd = None
+    session = None
+
+
+GV = Global()
 
 ################
 def usage(exitarg):
@@ -52,25 +58,24 @@ def print_version():
 
 #############
 def parseCommandLine():
-    global opt, argcmd
     try:
-	(options, args) = getopt.getopt(sys.argv[1:], '?evh:f:', ['version'])
+	(options, args) = getopt.getopt(sys.argv[1:], '?evh:f:D', ['version'])
     except Exception, e:
 	usage('Error: ' + str(e))
 
     for (switch, val) in options:
 	if (switch == '-?'):	      usage(0)
-	elif (switch[1] in 'ev'):     opt[switch] = True
-	elif (switch[1] in 'f'):      opt[switch] = val
-	elif (switch == '-h'):        opt[switch].append(val)
+	elif (switch[1] in 'evD'):    GV.opt[switch] = True
+	elif (switch[1] in 'f'):      GV.opt[switch] = val
+	elif (switch == '-h'):        GV.opt[switch].append(val)
         elif (switch == '--version'): print_version()
 
-    hf = (len(opt['-h']) and 1 or 0) + (opt['-f'] and 1 or 0)
+    hf = (len(GV.opt['-h']) and 1 or 0) + (GV.opt['-f'] and 1 or 0)
     if hf != 1:
 	usage('Error: please specify at least one of -h or -f args, but not both')
 
     if (len(args) >= 1):
-	argcmd = " ".join(args)
+	GV.argcmd = " ".join(args)
 
 
 ###############################
@@ -81,12 +86,12 @@ def strcmd(cmd):
 def createOneTimeSession(cmd):
     session = []
     
-    for peer in opt['-h']:
+    for peer in GV.opt['-h']:
         c = ['ssh', '-o', 'BatchMode yes', 
              '-o', 'StrictHostKeyChecking no', 
              peer, cmd]
         
-        if opt['-v']: print '[INFO]', strcmd(c)
+        if GV.opt['-v']: print '[INFO]', strcmd(c)
         p = subprocess.Popen(c, stdout=subprocess.PIPE)
 	p.x_cmd = cmd;
 	p.x_peer = peer
@@ -156,7 +161,7 @@ class Session(cmd.Cmd):
 	self.clean()
 	for host in hostList:
 	    p = pxssh.pxssh()
-	    p.loginAsync(host, USER)
+	    p.loginAsync(host, GV.USER)
 	    p.x_peer = host
 	    p.x_pid = p.pid
 	    self.pxssh.append(p)
@@ -188,7 +193,7 @@ class Session(cmd.Cmd):
         line = line.split('$')
         line = '\\$'.join(line)
 	line = 'eval "' + line + '" < /dev/null';
-	if opt['-e']: print line
+	if GV.opt['-e']: print line
 	for s in self.pxssh:
 	    s.sendline(line)
 	    s.flush()
@@ -203,15 +208,13 @@ class Session(cmd.Cmd):
 		    print (self.peerStringFormat() % s.x_peer), line
     
 
-session = None
 def cleanup():
-    global session
     while True:
 	try:
-	    if session: 
+	    if GV.session: 
                 print '\n[Cleanup...]'; 
-                session.clean()
-            session = None
+                GV.session.clean()
+            GV.session = None
 	    break
 	except KeyboardInterrupt:
 	    pass
@@ -230,7 +233,6 @@ def sigint_handle(signum, frame):
 
 
 def interactive():
-    global session
     try:
 	import readline
         #Read in the saved command history, if any
@@ -250,9 +252,9 @@ def interactive():
     while True:
 	try:
             cleanup()
-	    session = Session()
-	    session.login(opt['-h'])
-	    session.cmdloop()
+	    GV.session = Session()
+	    GV.session.login(GV.opt['-h'])
+	    GV.session.cmdloop()
 	except pexpect.EOF:
 	    print '\n[Unexpected EOF from some hosts...]'
 	    pass
@@ -266,28 +268,30 @@ def interactive():
 try:
     parseCommandLine()
     hostlist = gplib.HostList()
-    for h in opt['-h']:
+    for h in GV.opt['-h']:
         hostlist.add(h)
-    if opt['-f']:
-        hostlist.parseFile(opt['-f'])
+    if GV.opt['-f']:
+        hostlist.parseFile(GV.opt['-f'])
     try:
         hostlist.checkSSH()
     except gplib.SSHError, e:
         sys.exit('[ERROR] ' + str(e))
-        
-    opt['-h'] = hostlist.filterMultiHomedHosts()
-    if len(opt['-h']) == 0:
+
+    if not GV.opt['-D']:
+        GV.opt['-h'] = hostlist.filterMultiHomedHosts()
+
+    if len(GV.opt['-h']) == 0:
         usage('Error: missing hosts in -h and/or -f arguments')
 
-    if argcmd:
-	session = createOneTimeSession(argcmd)
-	waitOneTimeSession(session)
-	if opt['-v']: print '[INFO] completed successfully'
+    if GV.argcmd:
+	GV.session = createOneTimeSession(GV.argcmd)
+	waitOneTimeSession(GV.session)
+	if GV.opt['-v']: print '[INFO] completed successfully'
 	sys.exit(0)
 
     interactive()
 
 except KeyboardInterrupt:
-    if argcmd:
+    if GV.argcmd:
         killOneTimeSession(session)
     sys.exit('\nInterrupted...')
