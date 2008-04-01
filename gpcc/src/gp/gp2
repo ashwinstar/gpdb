@@ -253,9 +253,22 @@ class InitCmd(Command):
     def run(self):
         fname = self.opt['-c']
         try:
-            fp = None
+            fp = None; cfg = {}
             fp = fname == '-' and sys.stdin or open(fname)
-            cfg = fp.read(-1)
+            lineno = 0
+            for line in fp:
+                lineno = lineno + 1
+                line = line.strip().split('#')[0].strip()
+                if line: 
+                    line = line.split('=')
+                    if len(line) != 2: 
+                        print '[ERROR] syntax error at line %d in config file' % lineno
+                        sys.exit(1)
+                    #print '%d %s' % (lineno, line)
+                    if line[0] == 'array_name' and line[1] != self.gopt['-a']:
+                        print '[ERROR] array name mismatch at line %d in config file' % lineno
+                        sys.exit(1)
+                    cfg[line[0].strip()] = line[1].strip()
         except IOError:
             print ('[ERROR] unable to read file "%s"' % 
                    (fname == '-' and 'stdin' or fname))
@@ -263,7 +276,18 @@ class InitCmd(Command):
         finally:
             if fp: fp.close()
 
-        packet = self._httpPost('/gpcc/init', {}, cfg)
+        if not cfg:
+            print '[ERROR] config file is empty'
+            sys.exit(1)
+        
+        print cfg
+
+        if not cfg.get('array_name'): 
+            print '[ERROR] array_name not specified in config file'
+            sys.exit(1)
+
+        content = '\n'.join('='.join([x, cfg[x]]) for x in cfg.keys())
+        packet = self._httpPost('/gpcc/init', {}, content)
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to init, details:'
             printPacket(packet, '      ')
