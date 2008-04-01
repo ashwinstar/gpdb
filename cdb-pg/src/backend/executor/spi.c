@@ -2121,6 +2121,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 	SPITupleTable *volatile my_tuptable = NULL;
 	volatile int res = 0;
 	Snapshot	saveActiveSnapshot;
+	const char *saved_query_string;
 
 	/* Be sure to restore ActiveSnapshot on error exit */
 	saveActiveSnapshot = ActiveSnapshot;
@@ -2129,9 +2130,6 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 	 * If we can't execute this SQL statement locally, let's connect back to the QD
 	 * and ask it to execute the command for us.
 	 */
-
-		
-	
 	if (plan->run_via_callback_to_qd)
 	{
 		PGresult *pgres = NULL;
@@ -2673,6 +2671,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 	elog(DEBUG1,"_SPI_execute_plan local: %s",plan->query);
 	/*elog_node_display(DEBUG5,"_SPI_execute_plan queryTree",plan->qtlist,true);*/
 	
+	saved_query_string = debug_query_string;
 	debug_query_string = plan->query;
 	
 	PG_TRY();
@@ -2859,11 +2858,15 @@ fail:
 	}
 	PG_CATCH();
 	{
+		debug_query_string = saved_query_string;
+
 		/* Restore global vars and propagate error */
 		ActiveSnapshot = saveActiveSnapshot;
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+	debug_query_string = saved_query_string;
 
 	ActiveSnapshot = saveActiveSnapshot;
 

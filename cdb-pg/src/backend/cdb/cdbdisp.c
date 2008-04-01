@@ -3317,7 +3317,6 @@ pre_dispatch_function_evaluation_mutator(Node *node,
  * and for dispatching all statements from Query Dispatch Agents
  * when we are using dispatch agents.
  */
-
 void
 cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 					 bool cancelOnError,
@@ -3326,8 +3325,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 					 struct CdbDispatchResults ** pMirrorResults,       /* OUT */
 					 struct CdbDispatchCmdThreads ** pDispatchThreads)		/* OUT */
 {
-	
-	
 	int			oldLocalSlice = 0;
 	sliceVec	*sliceVector = NULL;
 	int			nSlices = 1;
@@ -3356,9 +3353,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		 * Keep old value so we can restore it.  We use this field as a parameter.
 		 */
 		oldLocalSlice = sliceTbl->localSlice;
-	
-	
-	 
+
 		/*
 		 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
 		 * vector of slice indexes specifying the order of [potential] dispatch.
@@ -3397,7 +3392,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				  sliceLim,
 				  cancelOnError);
 	}
-		
 
 	cdb_total_plans++;
 	cdb_total_slices += nSlices;
@@ -3599,14 +3593,12 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
                                    si, sliceLim);
 		}
 		
-	}
-
-	
+	}	
 
 	if (sliceVector)
 		pfree(sliceVector);
 
-	if(sliceTbl)
+	if (sliceTbl)
 		sliceTbl->localSlice = oldLocalSlice;
 
 	/*
@@ -3715,10 +3707,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	SliceTable *sliceTbl;
 	int			rootIdx;
 	int			oldLocalSlice;
-	sliceVec	*sliceVector = NULL;
-	int			nSlices,
-				sliceLim;
-
 	
 	DispatchCommandQueryParms queryParms;
  
@@ -3909,34 +3897,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 	ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len);
 	
- 
-	/*
-	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
-	 * vector of slice indexes specifying the order of [potential] dispatch.
-	 */
-	sliceLim = list_length(sliceTbl->slices);
-	sliceVector = palloc0(sliceLim * sizeof(sliceVec));
-
-	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim);
-
-	/* Allocate result array with enough slots for QEs of primary gangs. */
-	*pPrimaryResults = cdbdisp_makeDispatchResults(nSlices * getgpsegmentCount(),
-												   sliceLim,
-												   cancelOnError);
-
-	/* Allocate result array for mirror gang. */
-	if (queryDesc->operation != CMD_SELECT || queryDesc->parsetree->into != NULL)
-	{
-		Slice	   *slice = (Slice *) list_nth(sliceTbl->slices, rootIdx);
-
-		if (slice->mirrorGang)
-		{
-			*pMirrorResults = cdbdisp_makeDispatchResults(getgpsegmentCount(),
-														  sliceLim,
-														  cancelOnError);
-		}
-	}
-
 	MemSet(&queryParms, 0, sizeof(queryParms));
 	queryParms.strCommand = debug_query_string;
 	queryParms.serializedQuerytree = squery;
@@ -3960,11 +3920,6 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 */
 	queryParms.serializedDtxContextInfo = 
 			qdSerializeDtxContextInfo(&queryParms.serializedDtxContextInfolen, true /* wantSnapshot */, generateTxnOptions(planRequiresTxn), "cdbdisp_dispatchPlan");
-	
-	cdb_total_plans++;
-	cdb_total_slices += nSlices;
-	if (nSlices > cdb_max_slices)
-		cdb_max_slices = nSlices;
 	
 	Assert(sliceTbl);
 	Assert(sliceTbl->slices != NIL);
