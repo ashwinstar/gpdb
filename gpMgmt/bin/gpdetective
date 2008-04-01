@@ -2,7 +2,8 @@
 '''
 Usage: gpdetective <option> [dbname]
 
-	-? 
+	-?         : Print usage and exit
+        -v         : Print version and exit
 	-h host	   : DB host name
 	-p port    : DB port number
 	-P passwd  : DB password
@@ -10,13 +11,23 @@ Usage: gpdetective <option> [dbname]
 
 '''
 #============================================================
-import sys, os, glob, tempfile, subprocess, re, getopt
-VERSION = '$Revision$'
-sys.path.append(sys.path[0] + '/lib')
+import sys, os, glob, tempfile, subprocess, re, getopt, types
+libdir = sys.path[0] + '/lib'
+sys.path.append(libdir)
 try: 
     import pg8000
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
+
+#============================================================
+def pretty_version(v):
+    '''
+    Turns the RCS revision number into a prettier format
+    '''
+    m = re.compile('Revision: #(\d+)').search(v)
+    if m: return str((float(m.group(1))+100)/100)
+    else: return str(v)
+__version__ = pretty_version('$Revision$')
 
 #============================================================
 def usage(exitarg = None):
@@ -39,11 +50,11 @@ class GPDetective():
     errlog = None       # Error log
 
     # Configuration information
-    masterdir = None
-    hosts     = []
-    segments  = []
-    mirrors   = []
-    databases = []
+    masterdir = None    # Master Directory, assumed on this host
+    hosts     = []      # list of all segment hosts
+    segments  = []      # list of all segments
+    mirrors   = []      # list of all mirror segments
+    databases = []      # list of all databases (except template)
 
     #------------------------------------------------------------
     def __init__(self): 
@@ -57,7 +68,7 @@ class GPDetective():
         self.olddir = os.getcwd()
         if not os.access('.', os.W_OK):
             sys.exit("No write permission to current directory")
-
+            
         # Get default option values from enviornment
         self.opt = {
             '-h': os.environ.get('PGHOST') or 'localhost',
@@ -68,9 +79,14 @@ class GPDetective():
 
         # Override defaults based on command line options
         try:
-            (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U')
+            (options, args) = getopt.getopt(sys.argv[1:], 
+                                            '?h:p:P:U:vV',
+                                            ['version'])
             for (switch, val) in options:
                 if   switch == '-?':	   usage(0)
+                if   switch[1] in 'vV' or switch == '--version':
+                    print 'gpdetective ' + __version__
+                    sys.exit(0)
                 elif switch[1] in 'hpPU':  self.opt[switch] = val
         except Exception, e:
             usage('Error: ' + str(e))
@@ -81,11 +97,11 @@ class GPDetective():
             port = subprocess.Popen(['grep', 'PORT'], stdin=psql.stdout,
                                     stdout=subprocess.PIPE)
             line = port.communicate()[0]
-            port_re = re.compile('.*default: "(\d+)"')
-            m = port_re.match(line)
+            port_re = re.compile('default: "(\d+)"')
+            m = port_re.search(line)
             if not m: exit('Error: Could not determine PORT')
             self.opt['-p'] = m.group(1)
-
+            
         # Make sure port is actually an integer
         try: self.opt['-p'] = int(self.opt['-p'])
         except ValueError: exit('Error: Could not determine PORT')
@@ -97,16 +113,25 @@ class GPDetective():
         self.logdir = tempfile.mkdtemp()
         os.chdir(self.logdir)
         self.errlog = open('error.log', 'w')
+        self.errlog.write('gpdetective version ' + __version__ + '\n')
+        self.errlog.flush()
+        print 'Collecting information'
+        self.getConfiguration()
+
 
     #------------------------------------------------------------
     def __del__(self):
         '''
         Cleanup open connections and remove temporary files
         '''
+        if self.logdir:
+            try: self.makeTar()
+            except Exception, e: print str(e)
         if self.olddir: os.chdir(self.olddir)
         if self.master: self.master.close()
         if self.errlog: self.errlog.close()
         if self.logdir: subprocess.call(['rm', '-rf', self.logdir])
+        print "Done"
 
 
     #------------------------------------------------------------
@@ -127,19 +152,22 @@ class GPDetective():
         Execute a shell command and dumps the results to the
         specified file.
         '''
-        self.errlog.write('CMD: ')
-        for i in cmd:
-            self.errlog.write(str(i) + ' ')
+        self.errlog.write('localhost$ ')
+        for i in cmd: self.errlog.write(str(i) + ' ')
         self.errlog.write("\n")
         self.errlog.flush()
 
         if filename:
             path = "%s/%s" % (self.logdir, filename)
             file = open(path, 'w')
+            file.write('localhost$ ')
+            for i in cmd: file.write(str(i) + ' ')
+            file.write("\n")
+            file.flush()
         else:
             file = self.errlog
         try:
-            x = subprocess.call(cmd, stdout=file, stderr=self.errlog)
+            subprocess.call(cmd, stdout=file, stderr=self.errlog)
         except Exception, e:
             self.errlog.write("Error: " + str(e) + "\n");
             self.errlog.flush()
@@ -147,12 +175,12 @@ class GPDetective():
         if filename: 
             file.close()
 
-    #------------------------------------------------------------  
+    #------------------------------------------------------------
     def writeSelect(self, filename, query):
         '''
         Execute a sql query and dump the results to the specified file.
         '''
-        self.errlog.write('SQL: ' + query)
+        self.errlog.write('SQL: ' + query + "\n")
         self.errlog.flush()
 
         try:
@@ -165,13 +193,15 @@ class GPDetective():
         d = self.master.row_description
         path = "%s/%s" % (self.logdir, filename)
         file = open(path, 'w')
+        file.write('SQL: ' + query + "\n")
+        file.flush()
         for column in d:
-            file.write(column['name'] + " |")
+            file.write(column['name'] + " | ")
         file.write("\n")
         for tuple in self.master.iterate_tuple():
             for item in tuple:
                 file.write(str(item))
-                file.write(" |")
+                file.write(" | ")
             file.write("\n")
         file.close()
 
@@ -193,6 +223,9 @@ class GPDetective():
            + Single columns will be returned as an array of values
            + Multiple columns will be returned as an array of tuples
         '''
+        self.errlog.write('SQL: ' + query + "\n")
+        self.errlog.flush()
+
         rows = []
         self.master.execute(query)
         for tuple in self.master.iterate_tuple():
@@ -201,22 +234,52 @@ class GPDetective():
             else: 
                 rows.append(tuple)
         return rows
+
+    #------------------------------------------------------------  
+    def runCmd(self, cmd, host=None):
+        '''
+        Execute a shell command and returns the results
+        '''
+        if not host:
+            host = 'localhost'
+        if (self.errlog):
+            self.errlog.write('%s$ %s\n' % (host, cmd))
+            self.errlog.flush()
+        try:
+            cmd = cmd.split(' ')
+        except: pass
+        if host != 'localhost':
+            cmd.insert(0, 'ssh')
+            cmd.insert(1, host)
+        x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog)
+        return str(x.communicate()[0].strip())
+
+    def log(self, test):
+        '''
+        Logs the start of a test
+        '''
+        print '  + ' + test
+        if (self.errlog):
+            self.errlog.write('\nTEST: ' + test + '\n')
+            self.errlog.flush()
+
     
     #------------------------------------------------------------  
     def getConfiguration(self):
         '''
         Collect configuration information
         '''
-        print('  + Configuration ')
+        self.log('getConfiguration')
 
         # Master directory
         rows = self.select(
         '''
-           SELECT datadir 
+           SELECT hostname, datadir 
            FROM   gp_configuration 
-           WHERE  content = -1  AND  definedprimary
+           WHERE  content = -1  AND definedprimary
         ''')
-        self.masterdir = rows[0]
+        self.opt['-h'] = rows[0][0]
+        self.masterdir = rows[0][1]
 
         # List of hosts
         self.hosts = self.select(
@@ -248,11 +311,14 @@ class GPDetective():
         ''')
 
         self.writeArray('hosts', self.hosts)
+        os.mkdir('master')
+        for host in self.hosts:
+           os.mkdir(host)
         self.writeSelect('config.log', 
         '''
            SELECT * from gp_configuration
         ''')
-
+        
 
 
     #------------------------------------------------------------
@@ -260,46 +326,28 @@ class GPDetective():
         '''
         1. Copy logfiles from master and all segments
         2. Copy postgresql.conf from master and all segments
-        3. Remove duplicate postgresql.conf files
         '''
-        print('  + Logfiles')
+        self.log('copyLogs')
 
         # Grab master log and postgresql.conf
-        path_rx = re.compile('.*/([^/]*)')
-        m = path_rx.match(self.masterdir)
-        self.writeCmd(None, ['cp', 
-                             '%s.log' % self.masterdir, 
-                             'master_%s.log' % m.group(1)])
-        self.writeCmd(None, ['cp', 
-                             '%s/postgresql.conf' % self.masterdir, 
-                             'postgresql_master.conf'])
+        path_re = re.compile('/([^/]*)$')
+        m = path_re.search(self.masterdir)
+        self.runCmd(['scp', '-q',
+                     '%s.log' % self.masterdir, 
+                     'master/%s.log' % m.group(1)])
+        self.runCmd(['scp', '%s/postgresql.conf' % self.masterdir, 
+                     'master/postgresql.conf'])
 
         # Grab segment logs and postgresql.conf        
         host_rx = re.compile('(.*)\:.*/([^/]*)')
         for seg in self.segments:
-            m = host_rx.match(seg)
-            self.writeCmd(None, ['scp', '-q', 
-                                 '%s.log' % seg, 
-                                 '%s_%s.log' % m.group(1,2)])
-            self.writeCmd(None, ['scp', '-q', 
-                                 '%s/postgresql.conf' % seg,
-                                 'postgresql_%s_%s.conf' % m.group(1,2)])
-        
-        # Remove duplicate postgresql.conf files
-        files = glob.glob(self.logdir+'/postgresql*.conf')
-        conf = []
-        for f in files:
-            m = 0
-            for c in conf:
-                x = subprocess.Popen(['diff', '-q', f, c], 
-                                     stdout=subprocess.PIPE)
-                d = x.communicate()[0]
-                if not d:
-                    subprocess.call(['rm', f])
-                    m = 1
-                    break
-            if m == 0:
-                conf.append(f)
+            m = host_rx.search(seg)
+            self.runCmd(['scp', '-q', 
+                         '%s.log' % seg, 
+                         '%s/%s.log' % m.group(1,2)])
+            self.runCmd(['scp', '-q', 
+                         '%s/postgresql.conf' % seg,
+                         '%s/postgresql_%s.conf' % m.group(1,2)])
 
 
     #------------------------------------------------------------
@@ -308,14 +356,17 @@ class GPDetective():
         1. Run gpstate
         2. Run gpcheckos
         '''
-        print "  + Run gpstate";
+        self.log('systemInfo')
+
         self.writeCmd('gpstate_mirrors.log',        ['gpstate', '-m'])
         self.writeCmd('gpstate_standby_master.log', ['gpstate', '-f'])
-        self.writeCmd('gpstate_master.log',         ['gpstate', '-d'])
-    
-        print "  + Run gpcheckos";
-        self.writeCmd('gpcheckos_master.log',   ['gpcheckos', '-m'])
-        self.writeCmd('gpcheckos_segments.log', ['gpcheckos', '-f', 'hosts'])
+#        self.writeCmd('gpstate_master.log',         
+#                      ['gpstate', '-d', self.masterdir])
+
+        self.writeCmd('gpcheckos_master.log',   
+                      ['gpcheckos', '-vm', '-h', self.opt['-h']])
+        self.writeCmd('gpcheckos_segments.log', 
+                      ['gpcheckos', '-vf', 'hosts'])
 
 
     #------------------------------------------------------------
@@ -325,11 +376,18 @@ class GPDetective():
         2. pg_dump all databases
         3. Run other catalog queries
         '''
-        print "  + Catalog tables";
+        self.log('checkCatalog')
 
-        self.writeCmd('gpcheckcat.log', ['gpcheckcat'])
+        checkcat = ['gpcheckcat'] 
+        if self.opt['-h']: checkcat.extend(['-h', str(self.opt['-h'])])
+        if self.opt['-p']: checkcat.extend(['-p', str(self.opt['-p'])])
+        if self.opt['-U']: checkcat.extend(['-U', str(self.opt['-U'])])
+        if self.opt['-P']: checkcat.extend(['-P', str(self.opt['-P'])])
 
         for db in self.databases:
+            checkcat.append(db)
+            self.writeCmd('gpcheckcat_' + db + '.log', checkcat)
+            checkcat.pop()
             self.writeCmd('pg_dump_' + db, ['pg_dump', '-s', db])
 
         self.writeSelect('catalog_q1.log', 
@@ -354,7 +412,92 @@ class GPDetective():
            + Local variables of current stack frame
            + Offending statement
         '''
-        pass
+        self.log('crashReport')
+
+        path_re = re.compile('(.*/)?([^/]*)')
+        core_re = re.compile('^Core was generated by .*postgres')
+
+        # If master isn't in the list of hosts, add it in
+        hosts = set(self.hosts).union([self.opt['-h']])        
+
+        for host in hosts:
+            print "    + " + host
+            system = self.runCmd('uname', host)
+            cores  = [];
+
+            if system == 'Darwin':
+                # For OSX copy the CrashReporter files, these should exist even
+                # if no core files were generated; this assumes we are running 
+                # as the user that started postgres.
+                cr = host + ':~/Library/Logs/CrashReporter/postgres*'
+                crlogs = self.runCmd(['scp', cr, host])
+                core_pattern = self.runCmd(['/usr/sbin/sysctl', '-n', 
+                                            'kern.corefile'], host)
+
+            elif system == 'Linux':
+                core_pattern  = self.runCmd(['/sbin/sysctl', '-n', 
+                                            'kernel.core_pattern'], host)
+                if self.runCmd(['/sbin/sysctl', '-n', 
+                                'kernel.core_uses_pid'], host):
+                    core_pattern = core_pattern + '*'
+
+#            elif system == 'SunOS':
+#                pass
+
+            else:
+                self.writeArray('crash_report.log', 
+                                ['Unknown system: ' + system])
+                continue
+
+
+            # Make replacements in core_pattern            
+            m = path_re.search(core_pattern)
+            core_path    = m.group(1) or ''
+            core_pattern = m.group(2)
+            core_pattern = re.sub(re.compile('\%[hH]'), host, 
+                                  core_pattern)
+            core_pattern = re.sub(re.compile('\%[eE]'), 'postgres', 
+                                  core_pattern)
+            core_pattern = re.sub(re.compile('\%.'), '*', core_pattern)
+
+            # If the pattern is a full path then all the core files are
+            # conviently in one place for this host.  Otherwise we need
+            # to go searching
+            if len(core_path) > 0:
+                cores = self.runCmd('ls -1 ' + core_path + core_pattern, host)
+                cores = cores.split('\n')
+            else:
+                # cores inconvienently dumped into process directory,
+                # so go look in the relevant locations
+                dir = ''
+                if host == self.opt['-h']:
+                    dir = '%s %s/%s' % (dir, self.masterdir, core_pattern)
+
+                for seg in self.segments:
+                    (shost, sdir) = seg.split(':')
+                    if shost == host:
+                        dir = '%s %s/%s' % (dir, sdir, core_pattern)
+                for seg in self.mirrors:
+                    (shost, sdir) = seg.split(':')
+                    if shost == host:
+                        dir = '%s %s/%s' % (dir, sdir, core_pattern)
+                cores = self.runCmd('ls -1 ' + dir, host)
+                cores = cores.split('\n')
+
+            def is_pgcore(c):
+                corecheck = self.runCmd('gdb -batch -n -c ' + str(c), host)
+                return core_re.search(corecheck)
+            cores = filter(is_pgcore, cores)
+
+            for corefile in cores:
+                name = re.sub('/', '_', corefile)
+                dbgout = self.runCmd(['gdb', '--batch', '-n', '-c', corefile,
+                                      '-x', libdir + '/crashreport.gdb',
+                                      sys.path[0] + '/postgres'], host)
+                if host in self.hosts:
+                    self.writeArray('%s/core%s' % (host, name), [dbgout])
+                else:
+                    self.writeArray('master/core%s' % name, [dbgout])
     
     #------------------------------------------------------------
     def runExtensions(self):
@@ -367,7 +510,8 @@ class GPDetective():
               * stdout is directed to 'ext_file.log'
               * stderr is directed to self.errlog
         '''
-        print "  + Run extensions"
+        self.log('runExtensions')
+
         gphome = os.environ.get('GPHOME')
         if not gphome:
             print "    - skipped: env{GPHOME} not set"
@@ -395,10 +539,10 @@ class GPDetective():
             if m:
                 print "    + " + f
                 self.writeCmd('ext_' + f + '.log',
-                         ['psql', '-aX', '-d', self.db,
-                          '-U', self.opt['-U'],
-                          '-h', self.opt['-h'],
-                          '-p', self.opt['-p'],
+                         ['psql', '-aX', '-d', str(self.db),
+                          '-U', str(self.opt['-U']),
+                          '-h', str(self.opt['-h']),
+                          '-p', str(self.opt['-p']),
                           '-f', path])
                 continue
             if not os.access(path, os.X_OK):
@@ -412,29 +556,28 @@ class GPDetective():
         '''
         Creates a tar archive from the files in the temporary logdir
         '''
+        self.log('makeTar')
+
         self.errlog.close();
         self.errlog = None
-
-        x = subprocess.Popen(['date', '+%Y%m%d%H%M%S'], stdout=subprocess.PIPE)
-        timestamp = x.communicate()[0]
-        tarfile = 'gpdetective' + timestamp.strip() + '.tar'
-        print "  + Producing " + tarfile
+        timestamp = self.runCmd('date +%Y%m%d%H%M%S')
+        tarfile = 'gpdetective' + timestamp.strip() + '.tar.bz2'
         tarcmd = ['tar', '-cjf', tarfile];
         tarcmd.extend(os.listdir('.'))
-        x = subprocess.call(tarcmd)
-        x = subprocess.call(['cp', tarfile, self.olddir])
+        self.runCmd(tarcmd)
+        self.runCmd(['cp', tarfile, self.olddir])
 
 #================================================================
 
 d = GPDetective()
-print 'Collecting information'
-d.getConfiguration()
-d.copyLogs()
-d.systemInfo()
-d.checkCatalog()
-d.crashReport()
-d.runExtensions()
-d.makeTar()
-print 'Done'
+try:
+    d.copyLogs()
+    d.systemInfo()
+    d.checkCatalog()
+    d.crashReport()
+    d.runExtensions()
+except Exception, e:
+    self.log('Internal Error')
+    self.log(str(e))
 
 exit(0);

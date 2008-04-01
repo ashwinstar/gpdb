@@ -758,7 +758,7 @@ try:
     try:
         hostlist.checkSSH()
     except gplib.SSHError, e:
-        sys.exit('[ERROR] ' + e)
+        sys.exit('[ERROR] ' + str(e))
 
     opt['-h'] = hostlist.filterMultiHomedHosts()
     if len(opt['-h']) == 0:
