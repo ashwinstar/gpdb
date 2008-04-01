@@ -61,6 +61,7 @@ typedef enum HashAggState
 	HASHAGG_BEFORE_FIRST_PASS,
 	HASHAGG_IN_A_PASS,
 	HASHAGG_BETWEEN_PASSES,
+	HASHAGG_STREAMING,
 	HASHAGG_END_OF_PASSES
 } HashAggState;
 
@@ -128,6 +129,7 @@ extern HashAggTable *create_agg_hash_table(AggState *aggstate);
 extern bool agg_hash_initial_pass(AggState *aggstate);
 extern bool agg_hash_next_pass(AggState *aggstate);
 extern bool agg_hash_continue_pass(AggState *aggstate);
+extern bool agg_hash_stream(AggState *aggstate);
 
 extern HashAggEntry *agg_hash_iter(HashAggTable* ht);
 

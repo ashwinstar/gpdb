@@ -798,6 +798,16 @@ lookup_hash_entry(AggState *aggstate, TupleTableSlot *inputslot)
  *	  for the whole query.	In either case, the value of each aggregate is
  *	  stored in the expression context to be used when ExecProject evaluates
  *	  the result tuple.
+ *
+ * XXX: Fix BTree code.
+ *
+ * Streaming bottom: forces end of passes when no tuple for underlying node.  
+ *
+ * MPP-2614: Btree scan will return null tuple at end of scan.  However,
+ * if one calls ExecProNode again on a btree scan, it will restart from
+ * beginning even though we did not call rescan.  This is a bug on
+ * btree scan, but mask it off here for v3.1.  Really should fix Btree
+ * code.
  */
 TupleTableSlot *
 ExecAgg(AggState *node)
@@ -808,6 +818,7 @@ ExecAgg(AggState *node)
 	if (((Agg *) node->ss.ps.plan)->aggstrategy == AGG_HASHED)
 	{
 		TupleTableSlot *tuple = NULL;
+		bool streaming = ((Agg *) node->ss.ps.plan)->streaming;
 
 		/*
 		 * ExecAgg processing for hashed aggregation -- returns the
@@ -817,11 +828,28 @@ ExecAgg(AggState *node)
 	
 		if (node->hhashtable == NULL)
 		{
+			bool tupremain;
+			
 			node->hhashtable = create_agg_hash_table(node);
-			agg_hash_initial_pass(node);
-			node->hhashtable->state = HASHAGG_BETWEEN_PASSES;
+			tupremain = agg_hash_initial_pass(node);
+			
+			if ( streaming )
+			{
+				if ( tupremain )
+					node->hhashtable->state = HASHAGG_STREAMING;
+				else
+					node->hhashtable->state = HASHAGG_END_OF_PASSES;
+			}
+			else
+				node->hhashtable->state = HASHAGG_BETWEEN_PASSES;
 		}
-	
+		
+		/* On each call we either return a tuple corresponding to a hash 
+		 * entry (consuming the entry) or fall through to a state machine
+		 * that tries to make additional hash entries available and continue
+		 * the loop.  (This may result in reaching the "exit" state and
+		 * returning a NULL tuple).
+		 */
 		for (;;)
 		{
 			tuple = agg_retrieve_hash_table(node);
@@ -833,6 +861,7 @@ ExecAgg(AggState *node)
 			switch (node->hhashtable->state)
 			{
 				case HASHAGG_BETWEEN_PASSES:
+					Assert(!streaming);
 					if (!agg_hash_next_pass(node))
 					{
 						node->hhashtable->state = HASHAGG_END_OF_PASSES;
@@ -842,8 +871,15 @@ ExecAgg(AggState *node)
 					continue;
 		
 				case HASHAGG_IN_A_PASS:
+					Assert(!streaming);
 					if (!agg_hash_continue_pass(node))
 						node->hhashtable->state = HASHAGG_BETWEEN_PASSES;
+					continue;
+				
+				case HASHAGG_STREAMING:
+					Assert(streaming);
+					if ( !agg_hash_stream(node) )
+						node->hhashtable->state = HASHAGG_END_OF_PASSES;
 					continue;
 
 				case HASHAGG_END_OF_PASSES:

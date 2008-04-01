@@ -486,16 +486,14 @@ agg_hash_next_pass(AggState *aggstate)
 	unsigned int pass = aggstate->hhashtable->pass;
 	unsigned int nbatch = aggstate->hhashtable->nbatch;
 	BatchFileInfo *batches = aggstate->hhashtable->batches;
-	bool streaming = ((Agg *) aggstate->ss.ps.plan)->streaming;
+	
+	Assert( !((Agg *) aggstate->ss.ps.plan)->streaming );
 	
 	elog(HHA_MSG_LVL,
 		"hybrid hash aggregation: pass %d -- advancing to next pass",
 		aggstate->hhashtable->pass);
 
 	reset_agg_hash_table(aggstate);
-
-	if(streaming)
-		return agg_hash_initial_pass(aggstate);
 
 	for ( pass++; pass < nbatch; pass++ )
 	{
@@ -595,16 +593,14 @@ bool
 agg_hash_continue_pass(AggState *aggstate)
 {
 	int x;
-	bool streaming = ((Agg *) aggstate->ss.ps.plan)->streaming;
+	
+	Assert( !((Agg *) aggstate->ss.ps.plan)->streaming);
 
 	elog(HHA_MSG_LVL,
 		"hybrid hash aggregation: pass %d -- continuing",
 		aggstate->hhashtable->pass);
 	
 	reset_agg_hash_table(aggstate);
-	
-	if(streaming)
-		return agg_hash_initial_pass(aggstate);
 
 	/* Swap source and overflow files. */
 	x = aggstate->hhashtable->overflow;
@@ -612,6 +608,30 @@ agg_hash_continue_pass(AggState *aggstate)
 	aggstate->hhashtable->source = x;
 	
 	return agg_hash_reload(aggstate);
+}
+
+
+/* Function: agg_hash_stream
+ *
+ * Call agg_hash_initial (again) to load more input tuples
+ * into the hash table.  Used only for streaming lower phase
+ * of a multiphase hashed aggregation to avoid spilling to 
+ * file.
+ *
+ * Return true, if all input tuples have been consumed, else
+ * return false (call me again).
+ */
+bool
+agg_hash_stream(AggState *aggstate)
+{
+	Assert( ((Agg *) aggstate->ss.ps.plan)->streaming );
+	
+	elog(HHA_MSG_LVL,
+		"hybrid hash aggregation: streaming");
+
+	reset_agg_hash_table(aggstate);
+	
+	return agg_hash_initial_pass(aggstate);
 }
 
 
