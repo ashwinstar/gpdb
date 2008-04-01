@@ -75,9 +75,10 @@ class Command():
             sys.exit('[ERROR]: %s: %s' % (self.cmd, str(e)))
 
 
-    def __makeError(self, msg):
+    def __makeError(self, param, errmsg):
         '''Make an error packet with msg'''
-        r = {'status': 'error', 'action': self.cmd, 'a': self.gopt['-a'], 'msg': msg}
+        r = {'status': 'error', 'action': self.cmd, 'errmsg': errmsg}
+        r.update(param)
         return r
 
     def __httpRequest(self, addr, method, path, params, data=None):
@@ -91,21 +92,21 @@ class Command():
             f.request('POST', query, data)
             response = f.getresponse()
             if response.status == 200 or response.status == 301:
-                s = response.read()
-                packet = simplejson.loads(s)
+                str = response.read()
+                packet = simplejson.loads(str)
                 return (response.status, packet)
             else:
-                s = response.read()
-                return (response.status, self.__makeError(s))
+                str = response.read()
+                return (response.status, self.__makeError(param, str))
         except socket.error, msg:
-            return (-1, self.__makeError(msg))
+            return (-1, self.__makeError(param, msg))
         except httplib.HTTPException, msg:
-            return (-1, self.__makeError(msg))
+            return (-1, self.__makeError(param, msg))
         except Exception, msg:
-            return (-1, self.__makeError(msg))
+            return (-1, self.__makeError(param, msg))
         finally:
             if f: f.close()
-        return (-1, self.__makeError('Unknown Error'))
+        return (-1, self.__makeError(param, 'Unknown Error'))
 
     def __checkMA(self, rc, packet):
         '''Check the RC for failure or 301 Moved messages, and handle it.'''
@@ -133,7 +134,7 @@ class Command():
             if not self.__checkMA(rc, packet):
                 continue
             return packet
-        return self.__makeError('Unable to contact MA')
+        return self.__makeError(params, 'Unable to contact MA')
         
 
     def _httpGet(self, path, params):
