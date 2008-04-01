@@ -2,7 +2,7 @@
 
 #include "chubby_private.h"
 
-#define TIMEOUT_USEC		1000000
+#define TIMEOUT		1
 
 static void
 mangle(chubby_udp_buffer_t*b,chubby_string_t*s)
@@ -134,10 +134,12 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 {
     struct timeval timeout;
     int e;
+    time_t getLeaderTimeout=0;
+    time_t proposeTimeout=0;
     if (chubby_udp_buffer_isOverflowed(what))
 	return CHUBBY_E_INVAL;
-    timeout.tv_sec = TIMEOUT_USEC/1000000;
-    timeout.tv_usec = TIMEOUT_USEC%1000000;
+    timeout.tv_sec = TIMEOUT;
+    timeout.tv_usec = 0;
     setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout);
     for (;;){
 	chubby_udp_buffer_t b;
@@ -147,18 +149,20 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 	char*result=NULL;
 	int decreeSize=0;
 	char*decree=NULL;
-	if (!thiz->leaderValid){
+	time_t now=time(NULL);
+	if (getLeaderTimeout < now){
+	    getLeaderTimeout = now+TIMEOUT;
 	    e = chubby_sendGetLeader(thiz,fd);
 	    if (e)
 		return e;
-	}else
-	    sendto(fd,what->a,what->length,0,
-		   (struct sockaddr*) &thiz->leader,sizeof thiz->leader);
-	b.length = recvfrom(fd,b.a,65535,0,NULL,NULL);
-	if (b.length < 0){
-	    thiz->leaderValid = 0;
-	    continue;
 	}
+	if (thiz->leaderValid && proposeTimeout<now){
+	    proposeTimeout = now+TIMEOUT;
+	    sendto(fd,what->a,what->length,0,(struct sockaddr*)&thiz->leader,sizeof thiz->leader);
+	}
+	b.length = recvfrom(fd,b.a,65535,0,NULL,NULL);
+	if (b.length < 0)
+	    continue;
 	for (i=0; i<b.length; i++){
 	    for (j=i; i<b.length&&b.a[i]!=' '; i++);
 	    if (command == NULL){

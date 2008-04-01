@@ -27,6 +27,14 @@ class PriestSet:
 	mm.addDecree("Put %s 0 -%s"%(self.__getFilename(),i))
 	mm.send(self.__port,self.__priest.pinger.getLeader(-1))
 
+    def isChanging(self,dn):
+	state = self.__priest.learner.state
+	for i in state.list(PRIESTS_DIR):
+	    v = state.get(PRIESTS_DIR+'/'+i)
+	    if v.dn>dn-2*ALPHA:
+		return True
+	return False
+
     def __get1(self,dn):
 	state = self.__priest.learner.state
 	map = dict()

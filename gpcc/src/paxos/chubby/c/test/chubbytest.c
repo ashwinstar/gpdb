@@ -6,7 +6,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include "chubby.h"
+#include <chubby.h>
 
 #define CHUNK_SIZE	30000
 #define STRING_LENGTH	100

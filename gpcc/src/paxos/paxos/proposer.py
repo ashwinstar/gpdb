@@ -69,6 +69,8 @@ class Proposer(Role):
 	    if decreeNumber+i>=0:
 		self.__tick1(decreeNumber,decreeNumber+i)
 	self.__tick1(decreeNumber,~decreeNumber)
+	if self.__priest.learner.priestSet.isChanging(decreeNumber):
+	    self.__gotPropose(decreeNumber,"","")
 
     def __gotNak1(self,decreeNumber,priestId,dn,bn):
 	ps = self.__priest.learner.priestSet.get(~dn if dn<0 else dn)
@@ -166,7 +168,8 @@ class Proposer(Role):
 
     def __gotPropose(self,decreeNumber,fro,decree):
 	if self.address!=self.__priest.pinger.getLeader(-1):
-	    self.__priest.pinger.sendRedirect(fro)
+	    if fro:
+		self.__priest.pinger.sendRedirect(fro)
 	    return
 	fp = fro+'_'+decree
 	for i in xrange(-ALPHA,0):

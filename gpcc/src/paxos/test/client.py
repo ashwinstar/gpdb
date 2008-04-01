@@ -25,19 +25,21 @@ class Client:
 	fro = [None]
 	decree = "Tag %f-%d "%(time.time(),self.__counter)+decree
 	self.__counter += 1
-	timeo = 0
+	proposeTimeout = 0
+	getLeaderTimeout = 0
 	while 1:
-	    if leader==None:
+	    now = time.time()
+	    if getLeaderTimeout<now:
+		getLeaderTimeout = now+TIMEOUT
 		mm = message.Maker("GetLeader")
 		mm.send(self.port,self.__priests)
-	    elif timeo<time.time():
+	    if leader and proposeTimeout<now:
+		proposeTimeout = now+TIMEOUT
 		mm = message.Maker("Propose")
 		mm.addDecree(decree)
 		mm.send(self.port,leader)
-		timeo = time.time()+TIMEOUT
 	    messag = self.port.recv(TIMEOUT,fro)
 	    if messag==None:
-		leader = None
 		continue
 	    m = Message(messag,fro[0])
 	    if m.command=="Redirect":

@@ -128,7 +128,7 @@ class Learner(Role):
 		self.__logfile.write('\n')
 		self.__logfile.flush()
 		os.fsync(self.__logfile)
-	    d.result = self.state.execute(d.decree,dn,self.__lastPriestSet)
+	    d.result = self.state.execute(d.decree,dn,self.priestSet.get(dn))
 	    if d.returnAddress and d.done:
 		self.__sendResult(dn)
 	    decreeNumber += 1

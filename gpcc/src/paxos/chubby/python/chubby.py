@@ -252,21 +252,23 @@ class Chubby:
 	decree = "Tag %s "%self.getNewId()+decree
 	fd = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 	fd.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,65536);
-	timeo = 0;
+	getLeaderTimeout = 0;
+	proposeTimeout = 0;
 	try:
 	    fd.settimeout(TIMEOUT)
 	    while 1:
-		if not self.__leader:
+		now = time.time()
+		if getLeaderTimeout<now:
+		    getLeaderTimeout = now+TIMEOUT
 		    for a in self.__addresses.split(','):
 			if a:
 			    self.__sendto(fd,"GetLeader",a)
-		elif timeo<time.time():
+		if self.__leader and proposeTimeout<now:
+		    proposeTimeout = now+TIMEOUT
 		    self.__sendto(fd,"Propose decree="+self.__mangle(decree),self.__leader)
-		    timeo = time.time()+TIMEOUT
 		try:
 		    p = fd.recv(65536)
 		except socket.error:
-		    self.__leader = None
 		    continue
 		p = p.split(' ')
 		presult = None

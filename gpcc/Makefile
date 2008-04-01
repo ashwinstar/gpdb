@@ -15,7 +15,7 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp mkchubbytest
+all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp mklibchubby mkchubbytest
 
 mkgpfdist: 
 	@echo --- gpfdist --------------------------------------------------
@@ -24,11 +24,19 @@ mkgpfdist:
 	@mkdir -p build/bin
 	@cp -f src/gpfdist/gpfdist build/bin/
 
+mklibchubby: 
+	@echo --- libchubby --------------------------------------------------
+	(cd src/paxos/chubby/c; $(CC) -c $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror *.c)
+	@echo creating library
+	@(cd src/paxos/chubby/c; rm -f ../../../build/lib/libchubby.a; \
+		ar cru ../../../build/lib/libchubby.a *.o;	\
+		ranlib ../../../build/lib/libchubby.a)
+	@echo copying include files
+	@(cp -f -r src/paxos/chubby/c/chubby.h src/build/include/ )
+
 mkchubbytest: 
 	@echo --- chubbytest --------------------------------------------------
-	(cd src/paxos/chubby/c; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o chubbytest *.c $(APULIBS) $(APRLIBS))
-	@mkdir -p build/bin
-	@cp src/paxos/chubby/c/chubbytest build/bin/
+	(cd src/paxos/chubby/c/test; $(CC) -I../../../../build/include -L../../../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o chubbytest *.c $(APULIBS) $(APRLIBS) -lchubby)
 
 mkgp:
 	@echo --- gp -------------------------------------------------------
