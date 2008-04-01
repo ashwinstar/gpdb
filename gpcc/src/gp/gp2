@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 """gp -- Greenplum Terminal Control
+   
+  Usage: gp [gp-options] command [command-options-and-arguments]
 
-Usage: gp [gp_options] command [command_options] [command_args]
+    gp_options:
+        -v            : verbose mode.
+        -a array_name : specifies array name. If not provided explicitly,
+                        take the value of GP_ARRAY_NAME environment variable.
+        -m ma_addr    : specifies MA addr in format host:port. Multiple -m
+                        options are acceptable.
+                        If not provided explicity, take the value of 
+                        GP_MA_ADDR environment variable, assuming the format 
+                        'host1:port host2:port'.
+        -R            : raw mode. 
 
-	gp_options:
-	    -v verbose
-	    -a array_name
-            -m node_ip:port    (accepts multiple -m)
-
-	command:
-	    help
-	    start 
-	    stop
-            init config_file
-            delete
-            segment segidx [start|stop|status]
+  Run 'gp help' for details.
 
 """
 import os, sys
@@ -59,6 +59,7 @@ def printPacket(packet, indent = ''):
 def printDot(sleeptime=1):
     print '.', time.sleep(sleeptime)
 
+
 ####################
 class Command():
     '''Base class for all commands'''
@@ -75,6 +76,9 @@ class Command():
             sys.exit('[ERROR]: %s: %s' % (self.cmd, str(e)))
 
 
+    def verbose(self, msg):
+        if self.gopt['-v']: print '[INFO]', msg
+
     def __makeError(self, param, errmsg):
         '''Make an error packet with msg'''
         r = {'status': 'error', 'action': self.cmd, 'errmsg': errmsg}
@@ -87,7 +91,7 @@ class Command():
         query = '/%s?%s' % (self.cmd, p)
         f = None
         try:
-            if self.gopt['-v']: print '[INFO] http://%s%s' % (addr, query)
+            self.verbose('http://%s%s' % (addr, query))
             f = httplib.HTTPConnection(addr)
             f.request('POST', query, data)
             response = f.getresponse()
@@ -97,16 +101,16 @@ class Command():
                 return (response.status, packet)
             else:
                 str = response.read()
-                return (response.status, self.__makeError(param, str))
+                return (response.status, self.__makeError(params, str))
         except socket.error, msg:
-            return (-1, self.__makeError(param, msg))
+            return (-1, self.__makeError(params, msg))
         except httplib.HTTPException, msg:
-            return (-1, self.__makeError(param, msg))
+            return (-1, self.__makeError(params, msg))
         except Exception, msg:
-            return (-1, self.__makeError(param, msg))
+            return (-1, self.__makeError(params, msg))
         finally:
             if f: f.close()
-        return (-1, self.__makeError(param, 'Unknown Error'))
+        return (-1, self.__makeError(params, 'Unknown Error'))
 
     def __checkMA(self, rc, packet):
         '''Check the RC for failure or 301 Moved messages, and handle it.'''
@@ -148,10 +152,6 @@ class Command():
     def _getStatus(self, params):
         '''GET the status of GPDB'''
         packet = self._httpGet('/gpcc/status', params)
-        if 'ok' != packet.get('status'):
-            print '[ERROR] unable to get status. details:'
-            printPacket(packet, '      ')
-            sys.exit(1)
         return packet
 
     def _waitStatus(self, params, contMsg, timeout=-1):
@@ -162,11 +162,22 @@ class Command():
         for i in xrange(timeout):
             printDot()
             packet = self._getStatus(param)
+            if 'ok' != packet.get('status'):
+                print '[ERROR] unable to get status. details:'
+                printPacket(packet, '      ')
+                sys.exit(1)
             msg = (packet['rset'])[0]
             if msg == contMsg:
                 continue
             return packet
         return None
+
+    def raw(self, packet):
+        '''If raw mode, print packet and exit(0)'''
+        if self.gopt['-R']:
+            simplejson.dump(packet, sys.stdout)
+        sys.exit(0)
+
 
     def run(self):
         '''Run the command. To be overridden by subclass.'''
@@ -185,7 +196,10 @@ class StartCmd(Command):
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
+
         packet = self._httpGet('/gpcc/start', param)
+        self.raw(packet)
+
         if "ok" != packet.get('status'):
             print '[ERROR] unable to start, details:'
             printPacket(packet, '      ')
@@ -218,7 +232,10 @@ class StopCmd(Command):
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
+
         packet = self._httpGet('/gpcc/stop', param)
+        self.raw(packet)
+
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to stop, details:'
             printPacket(packet, '      ')
@@ -281,14 +298,14 @@ class InitCmd(Command):
             print '[ERROR] config file is empty'
             sys.exit(1)
         
-        print cfg
-
         if not cfg.get('array_name'): 
             print '[ERROR] array_name not specified in config file'
             sys.exit(1)
 
         content = '\n'.join('='.join([x, cfg[x]]) for x in cfg.keys())
         packet = self._httpPost('/gpcc/init', {}, content)
+        self.raw(packet)
+        
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to init, details:'
             printPacket(packet, '      ')
@@ -351,7 +368,10 @@ class LsCfgCmd(Command):
         Command.__init__(self, gopt, argv, '', self.__doc__)
         
     def run(self):
+
         packet = self._httpGet('/gpcc/lscfg', {})
+        self.raw(packet)
+
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to lscfg, details:'
             printPacket(packet, '      ')
@@ -375,7 +395,15 @@ class StatusCmd(Command):
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
+
         packet = self._getStatus(param)
+        self.raw(packet)
+
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to get status. details:'
+            printPacket(packet, '      ')
+            sys.exit(1)
+
         for m in packet['rset']:
             print '[INFO]', m
         print '[INFO] ok'
@@ -386,19 +414,38 @@ class HelpCmd(Command):
     '''Usage: gp [gp-options] command [command-options-and-arguments]
 
   Specify 'gp help' to get this message.
-  Specify 'gp help commands' to see a list of commands
-  Specify 'gp help options' to see gp-options
+  Specify 'gp help commands' to see a list of commands.
+  Specify 'gp help options' to see gp-options.
   Specify 'gp help' followed by a command name for command-specific help.
 '''
 
-    __helpCommands = '''
-gp commands are:
+    __helpCommands = '''Usage: gp [gp-options] command [command-options-and-arguments]
+
+  gp commands are:
 	init     Initialize the array
 	delete	 Delete the array
 	start    Start the array and/or segments
 	stop     Stop the array and/or segments
 	status   Get the current status of the array
 	lscfg    List the configuration
+
+  Specify 'gp help options' to see gp-options.
+  Specify 'gp help' followed by a command name for command-specific help.
+'''
+    __helpOptions = '''Usage: gp [gp-options] command [command-options-and-arguments]
+
+  gp-options are: 
+        -v            : verbose mode.
+        -a array_name : specifies array name. If not provided explicitly,
+                        take the value of GP_ARRAY_NAME environment variable.
+        -m ma_addr    : specifies MA addr in format host:port. Multiple -m
+                        options are acceptable.
+                        If not provided explicity, take the value of 
+                        GP_MA_ADDR environment variable, assuming the format 
+                        'host1:port host2:port'.
+        -R            : raw mode. 
+
+  Specify 'gp help commands' to see a list of commands.
 '''
     
     def __init__(self, gopt, argv):
@@ -406,13 +453,14 @@ gp commands are:
         if len(self.args) > 0:
             c = self.args[0]
             if (False or
+                c == 'commands' or
                 c == 'delete' or 
                 c == 'init' or
                 c == 'lscfg' or
+                c == 'options' or
                 c == 'start' or 
                 c == 'status' or
                 c == 'stop' or 
-                c == 'commands' or
                 True):
                 self.args = [c]
 
@@ -427,6 +475,7 @@ gp commands are:
         elif c == 'delete': 	print DeleteCmd.__doc__
         elif c == 'init':       print InitCmd.__doc__
         elif c == 'lscfg':	print LsCfgCmd.__doc__
+        elif c == 'options':    print self.__helpOptions
         elif c == 'start': 	print StartCmd.__doc__
         elif c == 'status': 	print StatusCmd.__doc__
         elif c == 'stop': 	print StopCmd.__doc__
@@ -443,17 +492,19 @@ class CmdLine():
         self.gopt['-m'] = os.environ.get('GP_MA_ADDR')
         if self.gopt['-m']: self.gopt['-m'] = self.gopt['-m'].split()
         self.gopt['-v'] = False
+        self.gopt['-R'] = False
         self.cmd = None
 
     def parse(self):
         try:
-            (options, args) = getopt.getopt(sys.argv[1:], 'va:m:')
+            (options, args) = getopt.getopt(sys.argv[1:], 'va:m:R')
         except Exception, e:
             usage('Error: ' + str(e))
 
         m = []
         for (switch, val) in options:
             if switch == '-v':  self.gopt[switch] = True
+            elif switch == '-R': self.gopt[switch] = True
             elif switch == '-a': self.gopt[switch] = val
             elif switch == '-m': m.append(val)
         if (m): self.gopt['-m'] = m
