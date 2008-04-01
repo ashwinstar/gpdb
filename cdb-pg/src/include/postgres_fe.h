@@ -11,12 +11,16 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1995, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/postgres_fe.h,v 1.11 2006/03/05 15:58:53 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/postgres_fe.h,v 1.14 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef POSTGRES_FE_H
 #define POSTGRES_FE_H
+
+#ifndef FRONTEND
+#define FRONTEND 1
+#endif
 
 #include "c.h"
 

@@ -13,7 +13,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/c.h,v 1.214.2.1 2007/01/11 02:40:12 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/c.h,v 1.222 2008/01/01 19:45:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -363,6 +363,8 @@ typedef regproc RegProcedure;
 
 typedef uint32 TransactionId;
 
+typedef uint32 LocalTransactionId;
+
 typedef uint32 SubTransactionId;
 
 #define InvalidSubTransactionId		((SubTransactionId) 0)
@@ -572,12 +574,12 @@ typedef NameData *Name;
 
 /* ----------------
  * Alignment macros: align a length or address appropriately for a given type.
+ * The fooALIGN() macros round up to a multiple of the required alignment,
+ * while the fooALIGN_DOWN() macros round down.  The latter are more useful
+ * for problems like "how many X-sized structures will fit in a page?".
  *
- * There used to be some incredibly crufty platform-dependent hackery here,
- * but now we rely on the configure script to get the info for us. Much nicer.
- *
- * NOTE: TYPEALIGN will not work if ALIGNVAL is not a power of 2.
- * That case seems extremely unlikely to occur in practice, however.
+ * NOTE: TYPEALIGN[_DOWN] will not work if ALIGNVAL is not a power of 2.
+ * That case seems extremely unlikely to be needed in practice, however.
  * ----------------
  */
 
@@ -592,6 +594,14 @@ typedef NameData *Name;
 /* MAXALIGN covers only built-in types, not buffers */
 #define BUFFERALIGN(LEN)		TYPEALIGN(ALIGNOF_BUFFER, (LEN))
 
+#define TYPEALIGN_DOWN(ALIGNVAL,LEN)  \
+	(((long) (LEN)) & ~((long) ((ALIGNVAL) - 1)))
+
+#define SHORTALIGN_DOWN(LEN)	TYPEALIGN_DOWN(ALIGNOF_SHORT, (LEN))
+#define INTALIGN_DOWN(LEN)		TYPEALIGN_DOWN(ALIGNOF_INT, (LEN))
+#define LONGALIGN_DOWN(LEN)		TYPEALIGN_DOWN(ALIGNOF_LONG, (LEN))
+#define DOUBLEALIGN_DOWN(LEN)	TYPEALIGN_DOWN(ALIGNOF_DOUBLE, (LEN))
+#define MAXALIGN_DOWN(LEN)		TYPEALIGN_DOWN(MAXIMUM_ALIGNOF, (LEN))
 
 /* ----------------------------------------------------------------
  *				Section 6:	widely useful macros
@@ -666,7 +676,7 @@ typedef NameData *Name;
 		int		_val = (val); \
 		Size	_len = (len); \
 \
-		if ((((long) _vstart) & LONG_ALIGN_MASK) == 0 && \
+		if ((((size_t) _vstart) & LONG_ALIGN_MASK) == 0 && /*CDB*/ \
 			(_len & LONG_ALIGN_MASK) == 0 && \
 			_val == 0 && \
 			_len <= MEMSET_LOOP_LIMIT && \
@@ -751,6 +761,18 @@ typedef NameData *Name;
 #define UnusedArg(arg)    ((void)(arg))
 
 
+/*
+ * UnusedInReleaseBuild
+ *  Silence the compiler's warning about a parameter or variable which is
+ *  used in debug builds but unused in release builds.
+ */
+#ifdef USE_ASSERT_CHECKING
+#define UnusedInReleaseBuild(arg)   (UnusedArg(arg))
+#else
+#define UnusedInReleaseBuild(arg)
+#endif
+
+
 /* ----------------------------------------------------------------
  *				Section 7:	random stuff
  * ----------------------------------------------------------------
@@ -785,10 +807,12 @@ typedef NameData *Name;
  */
 #if defined(WIN32) || defined(__CYGWIN__)
 #define PG_BINARY	O_BINARY
+#define PG_BINARY_A "ab"
 #define PG_BINARY_R "rb"
 #define PG_BINARY_W "wb"
 #else
 #define PG_BINARY	0
+#define PG_BINARY_A "a"
 #define PG_BINARY_R "r"
 #define PG_BINARY_W "w"
 #endif
