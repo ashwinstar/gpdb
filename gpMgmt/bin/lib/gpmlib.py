@@ -1,13 +1,14 @@
-import os, sys, platform, pg8000, gplib, socket, random
-from time import localtime, strftime
-
+import os, sys
 progname = os.path.split(sys.argv[0])[-1]
-
 
 if sys.version_info < (2, 5, 0):
     sys.exit(
 '''Error: %s is supported on Python versions 2.5.0 or greater
 Please upgrade python installed on this machine.''' % progname)
+
+import platform, pg8000, gplib, socket, random
+from time import localtime, strftime
+
 
 
 ##################
