@@ -145,10 +145,15 @@ RECOVER_SEGMENT () {
 	#Get list of files and directories to tar and exclude db_dumps directory
 	OBJECT_LIST=(`$TRUSTED_SHELL ${MIR_QE_HOST} "ls ${MIR_QE_DIR}|$GREP -v db_dumps|$TR '\n' ' '"`)
 	ERROR_CHK "obtain object transfer list" 2
+
 	if [ x"rsync" != x"$RSYNCOPT" ]; then
-	    $TRUSTED_SHELL ${MIR_QE_HOST} "cd ${MIR_QE_DIR};$TAR cf - ${OBJECT_LIST[@]}|$TRUSTED_SHELL ${FAIL_QE_HOST} \"cd ${FAIL_QE_DIR};$TAR xf -\"">/dev/null 2>&1
+	    LOG_MSG "[INFO][$INST_COUNT]:- Start TAR COPY"
+	    $TRUSTED_SHELL ${MIR_QE_HOST} "cd ${MIR_QE_DIR};$TAR cf - ${OBJECT_LIST[@]}|$TRUSTED_SHELL ${FAIL_QE_HOST} \"cd ${FAIL_QE_DIR};$TAR xf -\"">> $LOG_FILE 2>&1
 	else
-	    $TRUSTED_SHELL ${MIR_QE_HOST} "cd ${MIR_QE_DIR} ; $RSYNC -Cavzc ${OBJECT_LIST[@]} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" > /dev/null 2>&1
+	    LOG_MSG "[INFO][$INST_COUNT]:- Start GPRSYNC COPY"
+	    ((RSYNC_PORT=$FAIL_QE_PORT+500))
+	    $TRUSTED_SHELL ${MIR_QE_HOST} "${EXPORT_GPHOME}; ${GPHOME}/bin/lib/gprsync.py -p ${RSYNC_PORT} -d ${MIR_QE_DIR} -o '-cav' ${OBJECT_LIST[@]} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" >> $LOG_FILE 2>&1
+	    #$TRUSTED_SHELL ${MIR_QE_HOST} "cd ${MIR_QE_DIR} ; $RSYNC -Cavzc ${OBJECT_LIST[@]} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" > /dev/null 2>&1
 	fi
 
 	RETVAL=$?
@@ -178,6 +183,7 @@ CHK_RSYNC () {
         if [ $RETVAL -ne 0 ]; then
 	    ERROR_EXIT "[FATAL]:-rsync not found." 2
         fi
+	LOG_MSG "[INFO]:- rsync enabled"
     fi
     LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

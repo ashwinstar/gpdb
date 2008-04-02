@@ -42,6 +42,7 @@ PROG_NAME=`$BASENAME $0`
 unset VERBOSE
 GP_USER=$USER_NAME
 EXIT_STATUS=0
+RSYNC="rsync"
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -82,13 +83,27 @@ PROCESS_MIRROR () {
 	else
 		 LOG_MSG "[INFO][$INST_COUNT]:-Completed obtain object list from ${QE_PRI_NAME} for ${QE_PRI_BASE_DIR}"
 	fi
-	$TRUSTED_SHELL ${QE_PRI_NAME} "cd ${QE_PRI_BASE_DIR};$TAR cf - ${OBJECT_LIST[@]}|$TRUSTED_SHELL ${QE_MIR_NAME} \"cd ${QE_MIR_BASE_DIR};$TAR xf -\"" >> $LOG_FILE  2>&1
-	if [ $? -ne 0 ];then
+
+	if [ x"rsync" == x"$RSYNCOPT" ]; then
+	    # gprsync
+	    ((RSYNC_PORT=$QE_MIR_PORT+500))
+	    $TRUSTED_SHELL ${QE_PRI_NAME} "${EXPORT_GPHOME}; ${GPHOME}/bin/lib/gprsync.py -p ${RSYNC_PORT} -d ${QE_PRI_BASE_DIR} -o '-cav' ${OBJECT_LIST[@]} ${QE_MIR_NAME}:${QE_MIR_BASE_DIR}" > $LOG_FILE 2>&1
+	    if [ $? -ne 0 ];then
+		$ECHO "FAILED:${QE_LINE}:GPRSYNC_COPY" >> $PARALLEL_STATUS_FILE
+		LOG_MSG "[FATAL][$INST_COUNT]:-Failed gprsync copy from ${QE_PRI_NAME} to ${QE_MIR_BASE_DIR} on ${QE_MIR_NAME}" 1
+		ERROR_EXIT "[FATAL][$INST_COUNT]:-Exiting, unable to continue" 2
+	    else
+		LOG_MSG "[INFO][$INST_COUNT]:-Completed gprsync copy from ${QE_PRI_NAME} to ${QE_MIR_BASE_DIR} on ${QE_MIR_NAME}"
+	    fi
+	else
+	    $TRUSTED_SHELL ${QE_PRI_NAME} "cd ${QE_PRI_BASE_DIR};$TAR cf - ${OBJECT_LIST[@]}|$TRUSTED_SHELL ${QE_MIR_NAME} \"cd ${QE_MIR_BASE_DIR};$TAR xf -\"" >> $LOG_FILE  2>&1
+	    if [ $? -ne 0 ];then
 		$ECHO "FAILED:${QE_LINE}:TAR_COPY" >> $PARALLEL_STATUS_FILE
 		LOG_MSG "[FATAL][$INST_COUNT]:-Failed tar copy from ${QE_PRI_NAME} to ${QE_MIR_BASE_DIR} on ${QE_MIR_NAME}" 1
 		ERROR_EXIT "[FATAL][$INST_COUNT]:-Exiting, unable to continue" 2
-	else
+	    else
 		LOG_MSG "[INFO][$INST_COUNT]:-Completed tar copy from ${QE_PRI_NAME} to ${QE_MIR_BASE_DIR} on ${QE_MIR_NAME}"
+	    fi
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Setting port to $QE_MIR_PORT on ${QE_MIR_NAME}"
 	ED_FILE ${QE_MIR_BASE_DIR}/$PG_CONF "port=" "port=${QE_MIR_PORT}" 0 $QE_MIR_NAME 
@@ -121,6 +136,20 @@ PROCESS_MIRROR () {
 	fi	
 	LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
 }
+
+
+CHK_RSYNC () {
+    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+    if [ x"rsync" == x"$RSYNCOPT" ] ; then
+	RSYNC=`findCmdInPath rsync`
+	RETVAL=$?
+        if [ $RETVAL -ne 0 ]; then
+	    ERROR_EXIT "[FATAL]:-rsync not found." 2
+        fi
+    fi
+    LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 #******************************************************************************
 # Main Section
 #******************************************************************************
@@ -145,6 +174,8 @@ QE_MIR_BASE_DIR=$1;shift	#Name of mirror segment data directory
 QE_MIR_PORT=$1;shift		#Port number for mirror segment instance
 QE_MIR_DBID=$1;shift		#DBID of mirror segment instance
 PARALLEL_STATUS_FILE=$1;shift
+RSYNCOPT=$1;shift
+CHK_RSYNC
 QE_LINE=${QE_PRI_NAME}:${QE_PRI_BASE_DIR}:${QE_MIR_NAME}:${QE_MIR_BASE_DIR}:${QE_MIR_PORT}:${QE_MIR_DBID}
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 PROCESS_MIRROR

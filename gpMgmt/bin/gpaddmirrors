@@ -55,6 +55,7 @@ INTERACTIVE=1
 GPSEGMIRRORS=${WORKDIR}/lib/gpsegmirrors.sh
 BATCH_DEFAULT=10
 PARALLEL_STATUS_FILE=/tmp/${PROG_NAME}_parallel_status_file.$$
+RSYNCOPT=""
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -116,6 +117,9 @@ USAGE () {
 	$ECHO "      -B, <number> number of parallel process to spawn to process mirror creation"
 	$ECHO "          [default:-$BATCH_DEFAULT]"    
 	$ECHO
+	$ECHO "      Copy options:"
+	$ECHO "      -c rsync, use rsync to copy data to mirror segment"
+	$ECHO	
         $ECHO "      Return codes:"
         $ECHO "      0 No problems encountered with requested operation"
         $ECHO "      1 Warning generated"
@@ -466,7 +470,7 @@ CREATE_MIRRORS () {
 		ERROR_CHK $? "obtain primary hostname" 2
 		PRIMARY_DATADIR=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$DEFAULTDB" -A -t -c"select datadir from $CONFIG_TABLE where content=$MIRROR_CONTENT and dbid<>${MIRROR_DBID};"`
 		ERROR_CHK $? "obtain primary data directory for $PRIMARY_HOSTNAME" 2
-		$GPSEGMIRRORS $$ $COUNT $LOG_FILE $PRIMARY_HOSTNAME $MIRROR_HOSTNAME $PRIMARY_DATADIR $MIRROR_DATADIR $MIRROR_PORT $MIRROR_DBID $PARALLEL_STATUS_FILE &
+		$GPSEGMIRRORS $$ $COUNT $LOG_FILE $PRIMARY_HOSTNAME $MIRROR_HOSTNAME $PRIMARY_DATADIR $MIRROR_DATADIR $MIRROR_PORT $MIRROR_DBID $PARALLEL_STATUS_FILE $RSYNCOPT &
 		((COUNT=$COUNT+1))
 		PARALLEL_COUNT $BATCH_LIMIT $BATCH_DEFAULT 
 	done
@@ -483,11 +487,24 @@ CREATE_MIRRORS () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CHK_RSYNC () {
+    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+    if [ x"rsync" == x"$RSYNCOPT" ] ; then
+	RSYNC=`findCmdInPath rsync`
+	RETVAL=$?
+        if [ $RETVAL -ne 0 ]; then
+	    ERROR_EXIT "[FATAL]:-rsync not found." 2
+        fi
+	LOG_MSG "[INFO]:-rsync enabled"
+    fi
+    LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 #******************************************************************************
 # Main Section
 #******************************************************************************
 trap '$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE;$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
-        while getopts ":v'?'d:l:p:sam:!DB:" opt;do
+        while getopts ":v'?'d:l:p:sam:!DB:c:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 '?' ) USAGE ;;
@@ -501,6 +518,7 @@ trap '$CAT $PARALLEL_STATUS_FILE >> $LOG_FILE;$RM -f $PARALLEL_STATUS_FILE;ERROR
 		m ) MIRROR_MACHINE_LIST_FILE=$OPTARG ;;
 		D ) DEBUG_LEVEL=1 ;;
 		B ) BATCH_DEFAULT=$OPTARG ;;
+	        c ) RSYNCOPT=$OPTARG ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done
@@ -515,6 +533,7 @@ else
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_RSYNC
 CHK_GPDB_ID
 if [ x"" != x"$MIRROR_MASTER_DATA_DIRECTORY" ];then
 	MASTER_DATA_DIRECTORY=$MIRROR_MASTER_DATA_DIRECTORY

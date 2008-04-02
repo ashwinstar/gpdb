@@ -1134,6 +1134,7 @@ CHK_RSYNC () {
         if [ $RETVAL -ne 0 ]; then
 	    ERROR_EXIT "[FATAL]:-rsync not found." 2
         fi
+	LOG_MSG "[INFO]:-rsync enabled"
     fi
     LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -1157,9 +1158,7 @@ while getopts ":v'?'qfal:d:z:p:s:DB:c:" opt;do
         q ) unset VERBOSE ;;
 	f ) FORCESTOP=1 ;;
     	l ) LOG_DIR=$OPTARG ;;
-	z ) FORCE_RECOVER_STRING=$OPTARG 
-	    FORCE_RECOVER 
-	    exit $EXIT_STATUS ;;
+	z ) FORCE_RECOVER_STRING=$OPTARG ;;
 	p ) POOL_HOST=$OPTARG ;;
 	s ) POOL_DIR_SET=$OPTARG ;;
 	D ) DEBUG_LEVEL=1 ;;
@@ -1178,6 +1177,12 @@ else
 	fi
 fi
 LOG_MSG "[INFO]:-Start Main"
+
+if [ x"" != x"$FORCE_RECOVER_STRING" ] ; then
+    FORCE_RECOVER 
+    exit $EXIT_STATUS
+fi
+
 CHK_RSYNC
 CHK_GPDB_ID
 CHK_DB_RUNNING 1
