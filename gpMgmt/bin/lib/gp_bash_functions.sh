@@ -1444,21 +1444,40 @@ RESTORE_BATCH_VALUE () {
 CHK_GPDB_ID () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"	
 	if [ -f ${INITDB} ];then
+	        PERMISSION=`ls -al ${INITDB}|$AWK '{print $1}'`
 		MASTER_INITDB_ID=`ls -al ${INITDB}|$AWK '{print $3}'`
 		INIT_CHAR=`$ECHO $MASTER_INITDB_ID|$TR -d '\n'|$WC -c|$TR -d ' '`
+		MASTER_INITDB_GROUPID=`ls -al ${INITDB}|$AWK '{print $4}'`
+		GROUP_INIT_CHAR=`$ECHO $MASTER_INITDB_ID|$TR -d '\n'|$WC -c|$TR -d ' '`
 		GPDB_ID=`id|$TR '(' ' '|$TR ')' ' '|$AWK '{print $2}'`
+		GPDB_GROUPID=`id|$TR '(' ' '|$TR ')' ' '|$AWK '{print $4}'`
+
+
+		USER_EXECUTE=`$ECHO $PERMISSION | $SED -e 's/...\(.\)....../\1/g'`
+		GROUP_EXECUTE=`$ECHO $PERMISSION | $SED -e 's/......\(.\).../\1/g'`
+
 		if [ `$ECHO $GPDB_ID|$TR -d '\n'|$WC -c` -gt $INIT_CHAR ];then
 			GPDB_ID_CHK=`$ECHO $GPDB_ID|$CUT -c1-$INIT_CHAR`
 		else
 			GPDB_ID_CHK=$GPDB_ID
 		fi
-		if [ $GPDB_ID_CHK != $MASTER_INITDB_ID ];then
-			LOG_MSG "[WARN]:-User id mismatch, id returns $GPDB_ID_CHK, initdb owner is $MASTER_INITDB_ID" 1
-			LOG_MSG "[WARN]:-The GPDB super user account that owns the initdb binary should run these utilities" 1
-			LOG_MSG "[WARN]:-This may cause problems when these utilities are run as $GPDB_ID" 1
+
+		if [ `$ECHO $GPDB_GROUPID|$TR -d '\n'|$WC -c` -gt $GROUP_INIT_CHAR ];then
+			GPDB_GROUPID_CHK=`$ECHO $GPDB_GROUPID|$CUT -c1-$GROUP_INIT_CHAR`
 		else
-			LOG_MSG "[INFO]:-Current user id of $GPDB_ID, matches initdb id of $MASTER_INITDB_ID"
+			GPDB_GROUPID_CHK=$GPDB_GROUPID
+		fi		
+
+		if [ $GPDB_ID_CHK == $MASTER_INITDB_ID ] && [ x"x" == x"$USER_EXECUTE" ];then		
+		    LOG_MSG "[INFO]:-Current user id of $GPDB_ID, matches initdb id of $MASTER_INITDB_ID"
+		elif [ $GPDB_GROUPID_CHK == $MASTER_INITDB_GROUPID ] && [ x"x" == x"$GROUP_EXECUTE" ] ; then
+		    LOG_MSG "[INFO]:-Current group id of $GPDB_GROUPID, matches initdb group id of $MASTER_INITDB_GROUPID"
+		else
+			LOG_MSG "[WARN]:-File permission mismatch.  The $GPDB_ID_CHK owns the Greenplum Database installation directory."
+			LOG_MSG "[WARN]:-You are currently logged in as $MASTER_INITDB_ID and may not have sufficient"
+			LOG_MSG "[WARN]:-permissions to run the Greenplum binaries and management utilities."
 		fi
+
 		if [ x"" != x"$USER" ];then
 			if [ `$ECHO $USER|$TR -d '\n'|$WC -c` -gt $INIT_CHAR ];then
 				USER_CHK=`$ECHO $USER|$CUT -c1-$INIT_CHAR`
