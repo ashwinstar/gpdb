@@ -171,12 +171,8 @@ def checkRemoteSSH(host):
     '''Check that we are able to ssh to remote host without password'''
     if GV.opt['-V']: 
         print '[INFO] ---------------- enter checkRemoteSSH'
-    cmd= []
-    cmd.append('ssh')
-    cmd.append('-o')
-    cmd.append('BatchMode yes')
-    cmd.append('-o')
-    cmd.append('StrictHostKeyChecking no')
+    cmd= [ 'ssh', '-4', '-o', 'BatchMode yes', 
+           '-o', 'StrictHostKeyChecking no' ]
     cmd.append(host)
     cmd.append('pwd')
     if GV.opt['-v']: print '[INFO]', strcmd(cmd)
@@ -200,7 +196,7 @@ def checkRemote(host, dir):
     '''check that rsync available and dir exists on host, and is indeed a directory'''
     if GV.opt['-V']: 
         print '[INFO] ---------------- enter checkRemote'
-    cmd = ['ssh', '-o', 'BatchMode yes', 
+    cmd = ['ssh', '-4', '-o', 'BatchMode yes', 
            '-o', 'StrictHostKeyChecking no', host, 'python']
     E_NORSYNC = 10
     E_NOTEXIST = 11
@@ -252,14 +248,8 @@ def checkLocal():
 def doRemoteRsync(desthost, destdir, localport, rsyncopt, slist):
     if GV.opt['-V']: 
         print '[INFO] ---------------- enter doRemoteRsync'
-    cmd= []
-    cmd.append('ssh')
-    cmd.append('-o')
-    cmd.append('BatchMode yes')
-    cmd.append('-o')
-    cmd.append('StrictHostKeyChecking no')
-    cmd.append(desthost)
-    cmd.append('python')
+    cmd = ['ssh', '-4', '-o', 'BatchMode yes', 
+           '-o', 'StrictHostKeyChecking no', desthost, 'python']
     if GV.opt['-v']: print '[INFO]', strcmd(cmd)
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     script = [
@@ -271,8 +261,8 @@ def doRemoteRsync(desthost, destdir, localport, rsyncopt, slist):
         '''rsyncopt = '%s' ''' % rsyncopt,
         '''secret = '%s' ''' % GV.SECRET,
         '''for src in srclist:''',
-        '''    cmd = ('rsync -v --progress --port=%d %s %s::%s/%s %s 2>&1' % ''',
-        '''           (port, rsyncopt, host, secret, src, destdir))''',
+        '''    cmd = ('rsync -v --progress %s rsync://%s:%d/%s/%s %s 2>&1' % ''',
+        '''           (rsyncopt, host, port, secret, src, destdir))''',
         '''    print '-----------------' ''',
         '''    print 'Running', cmd''',
         '''    sys.stdout.flush()''',
