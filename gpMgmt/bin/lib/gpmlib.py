@@ -1,4 +1,4 @@
-import os, sys, platform, pg8000, gplib, socket
+import os, sys, platform, pg8000, gplib, socket, random
 from time import localtime, strftime
 
 progname = os.path.split(sys.argv[0])[-1]
@@ -591,7 +591,6 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
         sys.exit('failed to get a list of files in primary data directory for synchronization')
 
     # copy data from src to dst
-    log_info('synchronize data between segments')
     files = ''
     for f in out:
         files = '%s %s' % (files, f.strip())
@@ -599,29 +598,32 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     # cd datadir ; gprsync.py -p dst_cfg['port'] -o '-cav' file1 file2 ... fileN host:datadir
     # use the same port as the destination segment port
 
-    #gprsync = os.path.join(os.environ.get('GPHOME'), 'bin/lib/gprsync.py')
-    #(ok, out) = run('%s "cd %s ; %s -p %d -o \'-cav\' %s %s:%s" >> %s' % 
-    #                (gplib.ssh_prefix(host=src_host),
-    #                 src_dir,
-    #                 gprsync,
-    #                 dst_cfg['port'],  
-    #                 files,
-    #                 dst_cfg['hostname'],
-    #                 dst_cfg['datadir'],
-    #                 logfile))
-
-    (ok, out) = run('%s "cd %s ; %s cf - %s | %s %s \\"cd %s ; %s xf -\\"" >> %s' % 
+    gprsync = os.path.join(os.environ.get('GPHOME'), 'bin/lib/gprsync.py')
+    gprsync_port = dst_cfg['port'] + random.randint(500, 1000)
+    (ok, out) = run('%s "%s -p %d -d %s -o \'-cav\' %s %s:%s" >> %s' % 
                     (gplib.ssh_prefix(host=src_host),
+                     gprsync,
+                     gprsync_port,  
                      src_dir,
-                     ENV.TAR,
                      files,
-                     ENV.SSH,
                      dst_cfg['hostname'],
                      dst_cfg['datadir'],
-                     ENV.TAR,
                      logfile))
+
     if not ok:
-        sys.exit('failed to synchronize data from primary segment to mirror segment')
+        log_warn('gprsync.py failed. scp will be used instead.')
+        (ok, out) = run('%s "cd %s ; %s cf - %s | %s %s \\"cd %s ; %s xf -\\"" >> %s' % 
+                        (gplib.ssh_prefix(host=src_host),
+                         src_dir,
+                         ENV.TAR,
+                         files,
+                         ENV.SSH,
+                         dst_cfg['hostname'],
+                         dst_cfg['datadir'],
+                         ENV.TAR,
+                         logfile))
+        if not ok:
+            sys.exit('failed to synchronize data from primary segment to mirror segment')
 
     # delete postmaster.pid in case active segment is still running
     postmaster_pid = os.path.join(dst_cfg['datadir'], 'postmaster.pid')
