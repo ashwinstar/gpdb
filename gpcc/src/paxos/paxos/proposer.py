@@ -181,7 +181,6 @@ class Proposer(Role):
 	    d.tryDecree = fp
 	    self.__sendBeginBallot(decreeNumber,fp,decreeNumber+i)
 	    return
-	self.log("no room")
 
     def __isLearned(self,dn):
 	return self.__priest.learner.getLearned(dn)!=None

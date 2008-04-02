@@ -2,6 +2,7 @@ import fcntl
 import os
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -278,9 +279,11 @@ class UpDownUpDown:
 		passed += 1
 		return
 
-    def run(self):
+    def __run1(self):
 	global ntest
 	global passed
+	global slowness
+	slowness = 0
 	print_line("Starting the Priests")
 	for i in self.p:
 	    i.start()
@@ -345,13 +348,17 @@ class UpDownUpDown:
 	self.kill(self.p[0])
 	self.propose(1000)
 	i = 1
-	while 1:
+	ntest += 1
+	while i<WAIT_TIME+1000/CATCH_UP_SPEED:
 	    self.p[0].start()
 	    if self.waitCatchUp1(self.p[0],i):
+		passed += 1
 		break
 	    self.p[0].kill()
 	    self.wait(1)
-	    i += 1
+	    i = (i+1)*1.2
+	else:
+	    print_line("ERROR Priest 0 taking too long to catch up.")
 	self.waitFor("Priests 0 has joined.",lambda x:self.p[0].id in x)
 
 	print_line("Checking if kill, get a bit behind, restart works.")
@@ -377,9 +384,9 @@ class UpDownUpDown:
 	print_line("Checking if kill, get too far behind, restart works.")
 	self.kill(self.p[0])
 	self.stop(self.p[1])
-	self.propose(constants.ACCEPTOR_HISTORY)
+	self.propose(constants.ACCEPTOR_HISTORY+1)
 	self.p[1].cont()
-	self.waitCatchUp(self.p[1],WAIT_TIME+constants.ACCEPTOR_HISTORY/CATCH_UP_SPEED)
+	self.waitCatchUp(self.p[1],WAIT_TIME+constants.ACCEPTOR_HISTORY/4/CATCH_UP_SPEED)
 	self.p[0].start()
 	self.waitCatchUp(self.p[0],WAIT_TIME+constants.ACCEPTOR_HISTORY/4/CATCH_UP_SPEED)
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
@@ -421,6 +428,25 @@ class UpDownUpDown:
 	    if i.started:
 		i.kill()
 
+    def run(self,n):
+	global ntest
+	global passed
+	
+	for i in xrange(n):
+	    self.__run1()
+
+	ntest += 1
+	if not subprocess.call(['grep','Traceback','data/log']):
+	    print_line("ERROR log has Traceback")
+	else:
+	    passed += 1
+
+	ntest += 1
+	if not subprocess.call(['sh','-c',"grep crc= data/log|cut -d ' ' -f 3-|sort|uniq|cut -d ' ' -f 1|uniq -d|grep ."]):
+	    print_line("ERROR bad crc")
+	else:
+	    passed += 1
+
 	ntest += 1
 	if not_monotone:
 	    print_line("ERROR not_monotone failed")
@@ -435,6 +461,6 @@ class UpDownUpDown:
 
 starttime = time.time()
 
-UpDownUpDown().run()
+UpDownUpDown().run(len(sys.argv)<2 and 1 or int(sys.argv[1]))
 
 print_line("%d/%d passed %f"%(passed,ntest,time.time()-starttime))

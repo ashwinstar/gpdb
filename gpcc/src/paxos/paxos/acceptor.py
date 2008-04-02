@@ -7,7 +7,6 @@ from constants import *
 from role import Role
 
 ADD_PRIEST_TIMEOUT = 1
-FILE_SIZE_LIMIT = 1000*ACCEPTOR_HISTORY
 
 class Data:
     def __init__(self):
@@ -20,8 +19,7 @@ class Acceptor(Role):
     def __init__(self,priest):
 	Role.__init__(self,priest.port)
 	self.__priest = priest
-	self.__datafile0 = priest.dataDir+"/acceptor-data0"
-	self.__datafile1 = priest.dataDir+"/acceptor-data1"
+	self.__datafile = priest.dataDir+"/acceptor-data%d"
 	self.__data = [Data() for i in xrange(ACCEPTOR_HISTORY)]
 	self.__maxDecreeNumber = 0
 	self.__addPriestTimeout = 0
@@ -29,31 +27,34 @@ class Acceptor(Role):
 	for i in self.__data:
 	    i.dn = -1
 	self.id = self.__init()
-	self.__raf = open(self.__datafile0,'r+b')
-	self.__readHistory()
-	self.__raf.close()
-	self.__raf = open(self.__datafile1,'r+b')
-	self.__readHistory()
+	for i in xrange(2):
+	    fn = self.__datafile%i
+	    if os.path.exists(fn):
+		self.__raf = open(fn,'r+b')
+		self.__readHistory()
+		self.__raf.close()
+	self.__rafIndex = self.__maxDecreeNumber>>LOG_ACCEPTOR_HISTORY
+	self.__raf = open(self.__datafile%(self.__rafIndex&1),'ab')
 	for i in xrange(1-ACCEPTOR_HISTORY,0):
 	    dn = self.__maxDecreeNumber+i
 	    d = self.__data[dn&ACCEPTOR_HISTORY-1]
 	    if d.dn!=dn:
 		d.dn = dn
-		d.nextBal = self.__data[self.__maxDecreeNumber].nextBal
-		d.prevVote = self.__data[self.__maxDecreeNumber].prevVote
+		d.nextBal = self.__data[self.__maxDecreeNumber&ACCEPTOR_HISTORY-1].nextBal
+		d.prevVote = self.__data[self.__maxDecreeNumber&ACCEPTOR_HISTORY-1].prevVote
 
     def __init(self):
 	idfile = self.__priest.dataDir+"/acceptor-id"
 	if not os.path.exists(idfile):
-	    self.__raf = open(self.__datafile0,"wb")
+	    self.__rafIndex = -1
+	    self.__raf = None
 	    d = Data()
 	    d.prevVote = NULL_DECREE
 	    self.__writeData(d)
 	    self.__raf.flush()
 	    os.fsync(self.__raf)
 	    self.__raf.close()
-	    self.__raf = open(self.__datafile1,"wb")
-	    self.__raf.close()
+	    self.__raf = None
 	    tempfile = self.__priest.dataDir+"/acceptor-temp"
 	    f = open(tempfile,"wb")
 	    utils.writeString(f,self.address+'-%f'%time.time())
@@ -87,22 +88,26 @@ class Acceptor(Role):
 		return
 
     def __writeData(self,d):
+	i = self.__maxDecreeNumber>>LOG_ACCEPTOR_HISTORY
+	if i!=self.__rafIndex:
+	    if self.__raf:
+		self.__raf.flush()
+		os.fsync(self.__raf)
+		self.__raf.close()
+	    tempfile = self.__priest.dataDir+"/acceptor-temp"
+	    self.__raf = open(tempfile,'wb')
 	utils.writeLong(self.__raf,d.dn)
 	utils.writeLong(self.__raf,d.nextBal)
 	utils.writeString(self.__raf,d.prevVote)
 	self.__raf.write('\n')
-	if self.__raf.tell()>FILE_SIZE_LIMIT:
-	    for e in self.__data:
-		if e.dn!=-1 and e!=d:
-		    utils.writeLong(self.__raf,e.dn)
-		    utils.writeLong(self.__raf,e.nextBal)
-		    utils.writeString(self.__raf,e.prevVote)
-		    self.__raf.write('\n')
+	if i!=self.__rafIndex:
+	    self.__rafIndex = i
 	    self.__raf.flush()
 	    os.fsync(self.__raf)
 	    self.__raf.close()
-	    os.rename(self.__datafile1,self.__datafile0)
-	    self.__raf = open(self.__datafile1,"wb")
+	    fn = self.__datafile%(self.__rafIndex&1)
+	    os.rename(tempfile,fn)
+	    self.__raf = open(fn,'ab')
 
     def __getData(self,dn):
 	d = self.__data[dn&ACCEPTOR_HISTORY-1]
@@ -133,11 +138,9 @@ class Acceptor(Role):
 	elif dn<self.__maxDecreeNumber:
 	    d = self.__getData(dn)
 	else:
-	    self.log("NextBallot dn=%d max=%d"%(dn,self.__maxDecreeNumber))
 	    return
 	ps = self.__priest.learner.priestSet.get(d.dn)
 	if self.id not in ps:
-	    self.log("NextBallot dn=%d id=%s ps=%s"%(dn,self.id,str(ps)))
 	    return
 	if bn<=d.nextBal:
 	    self.__sendNak(fro,dn,d.nextBal)

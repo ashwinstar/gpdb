@@ -87,7 +87,7 @@ if l[0]==0:
     check("l.checkLock()","x==0")
     check("l.list('/')","x[0]==0")
 check("c.lock('test/lock',1,5)","x==(chubby.E_TIMEOUT,)")
-os.system("python %s test1&"%sys.argv[0])
+os.system("python -u %s test1&"%sys.argv[0])
 time.sleep(5)
 check("c.lock('test/lock2',10,5)","x==(chubby.E_TIMEOUT,)")
 check("c.lock('test/lock2',30,5)","x[0]==0")
@@ -104,7 +104,7 @@ l = c.lock('test/lock',10,5)
 check("l","l[0]==0")
 if l[0]==0:
     l = l[1]
-    os.system("python %s test2 %s&"%(sys.argv[0],l.getLockString()))
+    os.system("python -u %s test2 %s&"%(sys.argv[0],l.getLockString()))
 check("c.lock('test/lock',10,5)","x[0]==0")
 check("c.get('/test/test1result')","x[0]==0 and x[2]=='21/21'")
 time.sleep(10)

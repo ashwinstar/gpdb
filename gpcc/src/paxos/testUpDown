@@ -5,4 +5,4 @@ do
 done
 rm -rf data
 mkdir data
-python -u bin/updownupdown.pyc
+python -u bin/updownupdown.pyc "$@"
