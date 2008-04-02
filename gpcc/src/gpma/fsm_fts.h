@@ -1,5 +1,5 @@
 
-#define SYSTEM_INITIALIZING_STATUS                   "system initializing"
+#define SYSTEM_INITIALIZING_STATUS                   "MA initializing"
 
 #define ARRAY_STOPPING_STATUS                        "array stopping"
 #define ARRAY_STOPPED_STATUS                         "array stopped"
