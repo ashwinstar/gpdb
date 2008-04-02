@@ -207,13 +207,13 @@ class UpDownUpDown:
 		if m.dn>=0:
 		    n += 1
 		    if n>=5:
-			print_line("%s has caught up. %f"%(p.address,now-start))
+			print_line("Priest %d has caught up. %f"%(p.index,now-start))
 			return True
 
     def waitCatchUp(self,p,timeout=WAIT_TIME):
 	if self.waitCatchUp1(p,timeout):
 	    return True
-	print_line("ERROR Timed out waiting for %s to catch up."%p.address)
+	print_line("ERROR Timed out waiting for Priest %d to catch up."%p.index)
 	global got_timeout
 	got_timeout = True
 	return False
@@ -382,8 +382,9 @@ class UpDownUpDown:
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
 
 	print_line("Checking if kill, get too far behind, restart works.")
-	self.kill(self.p[0])
-	self.stop(self.p[1])
+	self.p[0].kill()
+	self.p[1].stop()
+	self.waitFor("Priest 0 and 1 are gone.",lambda x:self.p[0].id not in x and self.p[1].id not in x)
 	self.propose(constants.ACCEPTOR_HISTORY+1)
 	self.p[1].cont()
 	self.waitCatchUp(self.p[1],WAIT_TIME+constants.ACCEPTOR_HISTORY/4/CATCH_UP_SPEED)

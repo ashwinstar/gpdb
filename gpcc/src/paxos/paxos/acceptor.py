@@ -35,13 +35,14 @@ class Acceptor(Role):
 		self.__raf.close()
 	self.__rafIndex = self.__maxDecreeNumber>>LOG_ACCEPTOR_HISTORY
 	self.__raf = open(self.__datafile%(self.__rafIndex&1),'ab')
+	m = self.__data[self.__maxDecreeNumber&ACCEPTOR_HISTORY-1]
 	for i in xrange(1-ACCEPTOR_HISTORY,0):
 	    dn = self.__maxDecreeNumber+i
 	    d = self.__data[dn&ACCEPTOR_HISTORY-1]
 	    if d.dn!=dn:
 		d.dn = dn
-		d.nextBal = self.__data[self.__maxDecreeNumber&ACCEPTOR_HISTORY-1].nextBal
-		d.prevVote = self.__data[self.__maxDecreeNumber&ACCEPTOR_HISTORY-1].prevVote
+		d.nextBal = m.nextBal
+		d.prevVote = m.prevVote
 
     def __init(self):
 	idfile = self.__priest.dataDir+"/acceptor-id"
@@ -77,11 +78,12 @@ class Acceptor(Role):
 		decree = utils.readString(self.__raf)
 		l = self.__raf.tell()
 		d = self.__data[dn&ACCEPTOR_HISTORY-1]
-		d.dn = dn
-		d.nextBal = bn
-		d.prevVote = decree
-		if dn>self.__maxDecreeNumber:
-		    self.__maxDecreeNumber = dn
+		if dn>d.dn:
+		    d.dn = dn
+		    d.nextBal = bn
+		    d.prevVote = decree
+		    if dn>self.__maxDecreeNumber:
+			self.__maxDecreeNumber = dn
 	    except EOFError:
 		self.__raf.seek(l)
 		self.__raf.truncate()
@@ -164,7 +166,7 @@ class Acceptor(Role):
 		    break
 		self.__gotNextBallot1(fro,dn,bn)
 		dn += 1
-	elif dn>self.__maxDecreeNumber-ACCEPTOR_HISTORY:
+	elif dn>=0 and dn>self.__maxDecreeNumber-ACCEPTOR_HISTORY:
 	    self.__gotNextBallot1(fro,dn,bn)
 	else:
 	    mm = message.Maker("DecreeNumberTooOld")
@@ -193,10 +195,10 @@ class Acceptor(Role):
 	    self.__queue.append([fro,mm.toString()])
 
     def __growData(self,decreeNumber):
-	if self.__maxDecreeNumber<decreeNumber-ACCEPTOR_HISTORY:
-	    self.__maxDecreeNumber = decreeNumber-ACCEPTOR_HISTORY
 	while self.__maxDecreeNumber<decreeNumber:
 	    d = self.__data[self.__maxDecreeNumber&ACCEPTOR_HISTORY-1]
+	    if self.__maxDecreeNumber<decreeNumber-ACCEPTOR_HISTORY:
+		self.__maxDecreeNumber = decreeNumber-ACCEPTOR_HISTORY
 	    self.__maxDecreeNumber += 1
 	    e = self.__data[self.__maxDecreeNumber&ACCEPTOR_HISTORY-1]
 	    e.dn = self.__maxDecreeNumber
