@@ -133,7 +133,7 @@ def yesorno(msg, abortmsg):
 
 ################
 #   config file 
-#   host:port:data_dir
+#   mirrorN=host:port:data_dir
 
 def parseMirrorConfig():
     file = None
@@ -152,7 +152,10 @@ def parseMirrorConfig():
         l = l.strip()
         if l == '':
             continue
-        mirror = l.split(':')
+        param = l.split('=')
+        if len(param) != 2:
+            gpmlib.error('mirror config format error')
+        mirror = param[1].split(':')
         if len(mirror) != 3:
             gpmlib.error('mirror config format error')
         m = {}
@@ -465,8 +468,10 @@ def generate_mirrors(db, qes, multi_home):
         f = None
         try:
             f = open(opt['-o'], 'w')
+            i = 0
             for m in mirrors:
-                f.write('%s:%d:%s\n' % (m['hostname'], m['port'], m['datadir']))
+                f.write('mirror%d=%s:%d:%s\n' % (i, m['hostname'], m['port'], m['datadir']))
+                i += 1
         except IOError, e:
             gpmlib.error('cannot write to file %s' % opt['-o'])
         finally:
