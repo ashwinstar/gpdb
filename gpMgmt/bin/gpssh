@@ -53,7 +53,7 @@ def usage(exitarg):
 
 #############
 def print_version():
-    print '%s version $Revision$' % script_name
+    print '%s version $Revision$' % GV.script_name
     sys.exit(0)
 
 #############
