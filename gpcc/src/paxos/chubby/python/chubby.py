@@ -168,7 +168,7 @@ class Connection:
 
     def checkLock(self):
 	a = self.stat(self.__lockFilename)
-	return 0 if a[0]==0 and a[1]==self.__lockDn else E_LOCKEXPIRED
+	return (a[0]!=0 or a[1]!=self.__lockDn) and E_LOCKEXPIRED or 0
 
     def __statLock(self,name):
 	a = self.get(name+"-info")

@@ -43,7 +43,7 @@ class Port:
 	    while len(self.__queue)==0:
 		self.__queueCv.wait(timeout)
 		if len(self.__queue)==0:
-		    return None
+		    return
 	    o = self.__queue.pop()
 	finally:
 	    self.__queueCv.release()

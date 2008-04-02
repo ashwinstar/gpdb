@@ -40,7 +40,7 @@ class Pinger(Role):
 	"""
 	leader = None
 	for d in self.__map.itervalues():
-	    if d.dn>=0 if dn<0 else abs(d.dn)<=dn+ALPHA:
+	    if dn<0 and d.dn>=0 or dn>=0 and abs(d.dn)<=dn+ALPHA:
 		if not leader or d.fro<leader:
 		    leader = d.fro
 	return leader or self.address

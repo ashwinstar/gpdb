@@ -43,7 +43,7 @@ class Port:
 		start=time.time()
 		p = self.__socket.recvfrom(65536)
 	    except socket.error:
-		return None
+		return
 	    if random.random()>=DROP_CHANCE:
 		break
 	fro[0] = socketAddressToString(p[1])

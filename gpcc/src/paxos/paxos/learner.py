@@ -92,14 +92,15 @@ class Learner(Role):
 		raf.close()
 	i = bestDn>>LOG_SAVE_PERIOD&N_SAVE-1
 	f = priest.dataDir+"/learner-log%d"%i
-	self.__logfile = open(f,"a+b" if os.path.exists(f) else "wb")
+	self.__logfile = open(f,os.path.exists(f) and "a+b" or "wb")
 
     def getDecreeNumber(self):
 	return self.state.get(DECREE_NUMBER).dn+ALPHA
 
     def getLearned(self,dn):
 	d = self.__data[dn&ACCEPTOR_HISTORY-1]
-	return d.decree if d.dn==dn else None
+	if d.dn==dn:
+	    return d.decree
 
     def __getData(self,dn):
 	d = self.__data[dn&ACCEPTOR_HISTORY-1]

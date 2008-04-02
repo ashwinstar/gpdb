@@ -50,7 +50,7 @@ class Status:
 		    d = priests[i]
 		    sys.stdout.write("%s:"%i)
 		    sys.stdout.write(" dn=%d"%abs(d.dn))
-		    sys.stdout.write(" down" if d.deadTime<now else " up")
+		    sys.stdout.write(d.deadTime<now and " down" or " up")
 		    if d.priestId in ps:
 			sys.stdout.write(" voting")
 		    print

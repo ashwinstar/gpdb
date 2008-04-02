@@ -44,7 +44,10 @@ class PriestSet:
 		continue
 	    i = v.string[1:]
 	    if i not in map or v.dn>abs(map[i]):
-		map[i] = -v.dn if v.string[0]=='-' else v.dn
+		if v.string[0]=='-':
+		    map[i] = -v.dn
+		else:
+		    map[i] = v.dn
 	return map
 
     def clean(self,dn):

@@ -129,7 +129,7 @@ class Acceptor(Role):
 		self.__sendSuccess(fro,dn,a)
 		return
 	if dn<0:
-	    d = self.__getData(~dn)
+	    d = self.__getData(-dn)
 	elif dn<self.__maxDecreeNumber:
 	    d = self.__getData(dn)
 	else:
@@ -153,11 +153,11 @@ class Acceptor(Role):
 
     def __gotNextBallot(self,decreeNumber,fro,dn,bn):
 	self.__growData(decreeNumber)
-	if dn<0 and ~dn>self.__maxDecreeNumber-ACCEPTOR_HISTORY:
-	    dn = ~dn
+	if dn<0 and dn<ACCEPTOR_HISTORY-self.__maxDecreeNumber:
+	    dn = -dn
 	    for i in xrange(ALPHA):
 		if dn==self.__maxDecreeNumber:
-		    self.__gotNextBallot1(fro,~dn,bn)
+		    self.__gotNextBallot1(fro,-dn,bn)
 		    break
 		self.__gotNextBallot1(fro,dn,bn)
 		dn += 1

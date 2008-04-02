@@ -14,9 +14,9 @@ from udpmessenger import UdpMessenger
 
 TIMEOUT = 1
 MAX_SLOWNESS = 10
-WAIT_TIME = 60
+WAIT_TIME = 300
 NPRIEST = 5
-CATCH_UP_SPEED = 50
+CATCH_UP_SPEED = 20
 
 ntest = 0
 passed = 0
@@ -66,8 +66,12 @@ class Priest:
 	self.started = False
 	self.stopped = False
 	self.pid = None
+	self.killedTime = 0
 
     def start(self):
+	now = time.time()
+	if self.killedTime+1>now:
+	    time.sleep(self.killedTime+1-now)
 	print_line("starting Priest %d"%self.index)
 	assert not self.started
 	assert not self.stopped
@@ -108,6 +112,7 @@ class Priest:
 	fcntl.lockf(f,fcntl.LOCK_EX)
 	f.close()
 	os.remove(self.dir+"/pid")
+	self.killedTime = time.time()
 
     def stop(self):
 	print_line("SIGSTOP Priest %d"%self.index)
@@ -176,20 +181,19 @@ class UpDownUpDown:
 		self.dn = m.dn
 		return True
 
-    def waitCatchUp(self,p,timeout=WAIT_TIME):
-	self.wait(3)
+    def waitCatchUp1(self,p,timeout=WAIT_TIME):
 	fro = [None]
 	start = time.time()
 	timeo = 0
+	n = 0
 	while 1:
 	    now = time.time()
 	    if start+timeout<now:
-		print_line("ERROR Timed out waiting for %s to catch up."%p.address)
-		global got_timeout
-		got_timeout = True
 		return False
 	    if timeo<now:
 		timeo = now+TIMEOUT
+		if self.getStuff():
+		    print_dot()
 		mm = message.Maker("Ping")
 		mm.send(self.port,p.address)
 	    messag = self.port.recv(TIMEOUT,fro)
@@ -197,12 +201,21 @@ class UpDownUpDown:
 		continue
 	    m = Message(messag,fro[0])
 	    if m.command=="Ping" and m.fro==p.address:
+		if m.dn<0:
+		    n = 0
 		if m.dn>=0:
-		    print_line("%s has caught up. %f"%(p.address,now-start))
-		    self.wait(3)
-		    return True
-		if self.getStuff():
-		    print_dot()
+		    n += 1
+		    if n>=5:
+			print_line("%s has caught up. %f"%(p.address,now-start))
+			return True
+
+    def waitCatchUp(self,p,timeout=WAIT_TIME):
+	if self.waitCatchUp1(p,timeout):
+	    return True
+	print_line("ERROR Timed out waiting for %s to catch up."%p.address)
+	global got_timeout
+	got_timeout = True
+	return False
 
     def wait(self,t):
 	t += time.time()
@@ -331,12 +344,14 @@ class UpDownUpDown:
 	print_line("Kill priest while it is catching up.")
 	self.kill(self.p[0])
 	self.propose(1000)
-	for i in range(1000/CATCH_UP_SPEED):
+	i = 1
+	while 1:
 	    self.p[0].start()
-	    self.wait(i)
+	    if self.waitCatchUp1(self.p[0],i):
+		break
 	    self.p[0].kill()
-	self.p[0].start()
-	self.waitCatchUp(self.p[0])
+	    self.wait(1)
+	    i += 1
 	self.waitFor("Priests 0 has joined.",lambda x:self.p[0].id in x)
 
 	print_line("Checking if kill, get a bit behind, restart works.")

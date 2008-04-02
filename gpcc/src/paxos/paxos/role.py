@@ -17,6 +17,6 @@ class Role(Logger):
 	    self.work()
 	except:
 	    self.log("got except")
-	    raise
-	finally:
 	    self.log("done")
+	    raise
+	self.log("done")

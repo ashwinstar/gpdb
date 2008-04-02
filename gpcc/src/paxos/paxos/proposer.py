@@ -35,7 +35,7 @@ class Proposer(Role):
 	self.__ticktimeout = 0
 
     def __getData(self,decreeNumber,dn):
-	if dn==~decreeNumber:
+	if dn==-decreeNumber:
 	    return self.__etc
 	if decreeNumber-ALPHA<=dn<decreeNumber:
 	    return self.__data[dn&ALPHA-1]
@@ -68,12 +68,12 @@ class Proposer(Role):
 	for i in xrange(-ALPHA,0):
 	    if decreeNumber+i>=0:
 		self.__tick1(decreeNumber,decreeNumber+i)
-	self.__tick1(decreeNumber,~decreeNumber)
+	self.__tick1(decreeNumber,-decreeNumber)
 	if self.__priest.learner.priestSet.isChanging(decreeNumber):
 	    self.__gotPropose(decreeNumber,"","")
 
     def __gotNak1(self,decreeNumber,priestId,dn,bn):
-	ps = self.__priest.learner.priestSet.get(~dn if dn<0 else dn)
+	ps = self.__priest.learner.priestSet.get(abs(dn))
 	if priestId not in ps:
 	    return
 	if self.address!=self.__priest.pinger.getLeader(dn):
@@ -84,25 +84,25 @@ class Proposer(Role):
 
     def __gotNak(self,decreeNumber,priestId,dn,bn):
 	if dn<0:
-	    dn = ~dn
+	    dn = -dn
 	    if dn<decreeNumber-ALPHA:
 		dn = decreeNumber-ALPHA
 	    while dn<decreeNumber:
 		self.__gotNak1(decreeNumber,priestId,dn,bn)
 		dn += 1
 	    if dn==decreeNumber:
-		self.__gotNak1(decreeNumber,priestId,~dn,bn)
+		self.__gotNak1(decreeNumber,priestId,-dn,bn)
 	elif decreeNumber-ALPHA<=dn<decreeNumber:
 	    d = self.__getData(decreeNumber,dn)
 	    if d.limitLastTried==d.lastTried:
-		self.__gotNak(decreeNumber,priestId,~decreeNumber,bn)
+		self.__gotNak(decreeNumber,priestId,-decreeNumber,bn)
 	    self.__gotNak1(decreeNumber,priestId,dn,bn)
 
     def __gotLastVote1(self,decreeNumber,priestId,dn,bn,decree):
 	d = self.__getData(decreeNumber,dn)
 	if bn!=d.lastTried or d.promiseDecree!=None:
 	    return
-	ps = self.__priest.learner.priestSet.get(~dn if dn<0 else dn)
+	ps = self.__priest.learner.priestSet.get(abs(dn))
 	if priestId not in ps:
 	    return
 	if decree not in d.promiseMap:
@@ -133,14 +133,14 @@ class Proposer(Role):
 
     def __gotLastVote(self,decreeNumber,priestId,dn,bn,decree):
 	if dn<0:
-	    dn = ~dn
+	    dn = -dn
 	    if dn<decreeNumber-ALPHA:
 		dn = decreeNumber-ALPHA
 	    while dn<decreeNumber:
 		self.__gotLastVote1(decreeNumber,priestId,dn,bn,decree)
 		dn += 1
 	    if dn==decreeNumber:
-		self.__gotLastVote1(decreeNumber,priestId,~dn,bn,decree)
+		self.__gotLastVote1(decreeNumber,priestId,-dn,bn,decree)
 	elif decreeNumber-ALPHA<=dn<decreeNumber:
 	    self.__gotLastVote1(decreeNumber,priestId,dn,bn,decree)
 

@@ -17,5 +17,5 @@ class Logger:
 	    s = s[:225]+" (%d more)"%(len(s)-225)
 	t = []
 	for i in s:
-	    t.append(i if i>=' ' and i<='~' else '.')
+	    t.append(i>=' ' and i<='~' and i or '.')
 	print "".join(t)

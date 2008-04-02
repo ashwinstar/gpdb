@@ -5,4 +5,4 @@ do
 done
 rm -rf data
 mkdir data
-python -u bin/updownupdown.pyc 2>&1|tee data/updownupdown.log
+python -u bin/updownupdown.pyc

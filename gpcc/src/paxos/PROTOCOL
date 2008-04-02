@@ -21,7 +21,7 @@ Usage:
 	State dn=<decree-number> result=<url>
 	SubtractPriest priestId=<id> result=<id>
 
-NextBallot/Nak/LastVote with negative dn means all decree-numbers >= ~dn.
+NextBallot/Nak/LastVote with negative dn means all decree-numbers >= -dn.
 
 Client to Priest:
 	Propose

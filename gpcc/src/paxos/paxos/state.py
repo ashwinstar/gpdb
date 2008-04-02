@@ -48,11 +48,11 @@ class Dir:
 	    if i!=-1:
 		o = self.__map[name[:i]]
 		if not isinstance(o,Dir):
-		    return None
+		    return
 		return o.get(name[i+1:])
 	    return self.__map[name]
 	except KeyError:
-	    return None
+	    pass
 
     def __set(self,dn,cow,name,value):
 	dir = self
@@ -189,7 +189,9 @@ class State:
 
     def list(self,name):
 	a = self.__root.get(name)
-	return a.list() if a!=None else set()
+	if a!=None:
+	    return a.list()
+	return set()
 
     def put(self,dn,name,string):
 	self.__root = self.__root.put(dn,self.__cow,name,string)
@@ -213,7 +215,10 @@ class State:
 		if command=="If":
 		    l = int(sc.nextToken())
 		    o = self.__root.get(name)
-		    m = 0 if o==None else o.dn
+		    if o==None:
+			m = 0
+		    else:
+			m = o.dn
 		    if m!=l:
 			raise StateException(E_IFFAILED)
 		    continue
@@ -237,6 +242,6 @@ class State:
 		    return "0 "+",".join(sorted(priestSet))
 		raise StateException(E_INVAL)
 	except StateException,e:
-	    return "error %d %s"%(e.number,e.message)
+	    return "error %d %s"%(e.number," ".join(map(str,e.args)))
 	except Exception,e:
-	    return "error %d %s"%(E_INVAL,e.message)
+	    return "error %d %s"%(E_INVAL," ".join(map(str,e.args)))
