@@ -9,11 +9,13 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     int e;
     char *initdbfn = 0;
     int pid = 0;
-    /*
+
     struct json_object *seg = 0;
+    char *host;
+
+    /*
     char *m_data_dir;
     char *source;
-    char *host;
     */
 
     obj = json_tokener_parse(packet->payload);
@@ -70,7 +72,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 	return 0;	
     }
 
-    /*
+
     if (0 == (seg = gpcc_json_object_get_object(obj, "seg.m.0", 0))) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "seg.m.0 is missing");
 	json_object_put(obj);
@@ -78,8 +80,9 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     }
 
     host = gpcc_json_object_get_string(seg, "host", 0);
-    m_data_dir = gpcc_json_object_get_string(seg, "dir", 0);
 
+    /*
+    m_data_dir = gpcc_json_object_get_string(seg, "dir", 0);
     gpcc_log_info("[%s] copy the master QD directory to standby QD", cmdslot->cmdname);
     source = apr_psprintf(cmdslot->pool, "%s:%s", host, m_data_dir);
     if (0 != (e = gpcc_proc_scp(&cmdslot->u.request.proc,
@@ -92,24 +95,19 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
     */
-    {
-	char *argv[2];
-	char cmd[256];
 
-	strcpy(cmd, "ls /tmp");	
-	argv[0] = cmd;
-	argv[1] = 0;
-	if (0 != (e = gpcc_proc_run_shell(&cmdslot->u.request.proc,
-					  argv[0], (const char* const *) argv, 0, 0,
-					  cmdslot->pool))) {
-	    seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "dummy");
-	    json_object_put(obj);
-	    return 0;
-	}
-    }
-					  
-				
-				    
+    /* check ssh to master QD */
+    gpcc_log_info("[%s] check ssh connection between standby QD and master QD", cmdslot->cmdname);
+    if (0 != (e = gpcc_proc_ssh(&cmdslot->u.request.proc,
+				host,
+				"echo helloworld",
+				0,
+				cmdslot->pool))) {
+	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "ssh master QD failure");
+	json_object_put(obj);
+	return 0;
+    }	
+
     cmdslot->u.request.msg = obj;
     cmdslot->countdown = 1;
     
