@@ -389,15 +389,13 @@ void check_user(void)
     logname = getenv("LOGNAME");
     
 
-    if (user) {
+    if (user && *user) {
 	gpha.user = apr_pstrdup(gpha.pool, user);
-	gpcc_log_info("USER = %s", gpha.user);
 	return;
     }
     
-    if (logname) {
+    if (logname && *logname) {
 	gpha.user = apr_pstrdup(gpha.pool, logname);
-	gpcc_log_info("USER = %s", gpha.user);
 	return;
     }
 

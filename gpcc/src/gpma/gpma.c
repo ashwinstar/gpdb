@@ -854,15 +854,13 @@ void check_user(void)
     logname = getenv("LOGNAME");
     
 
-    if (user) {
+    if (user && *user) {
 	gpma.user = apr_pstrdup(gpma.pool, user);
-	gpcc_log_info("USER = %s", gpma.user);
 	return;
     }
     
-    if (logname) {
+    if (logname && *logname) {
 	gpma.user = apr_pstrdup(gpma.pool, logname);
-	gpcc_log_info("USER = %s", gpma.user);
 	return;
     }
 
