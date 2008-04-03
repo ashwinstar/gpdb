@@ -417,10 +417,6 @@ void d_main(void)
 	setlinebuf(stdout);
     }
 
-    /* sync configuration from database */
-    if (sync_config()) 
-	gpcc_fatal(FLINE, "sync config failed");
-
     /* dump the config */
     /*    process_lscfg(0); */
 
@@ -456,6 +452,10 @@ void d_main(void)
 			       net_closed, net_tick));
 
     gpcc_log_info("gpma listening to port %d", gpma.ma_port);
+
+    /* sync configuration from database */
+    if (sync_config()) 
+	gpcc_fatal(FLINE, "sync config failed");
 
     /* kick of FTS slot */
     /*
