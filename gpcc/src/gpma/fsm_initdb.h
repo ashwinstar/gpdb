@@ -261,7 +261,7 @@ static apr_status_t a_initdb_reply(gpcc_event_t *ev, void *_cmdslot)
     
     
     if (strcmp(status, "ok") == 0) {
-	gpcc_log_info("segment %s initdb reply ok");
+	gpcc_log_info("segment %s initdb reply ok", seg);
 	cmdslot->u.initdb.nsuccess++;
 	success = 1;
     } else {
