@@ -1,25 +1,23 @@
 #!/usr/bin/env python
+"""gp -- Greenplum Terminal Control
+   
+  Usage: gp [gp-options] command [command-options-and-arguments]
+
+    gp_options:
+        -v            : verbose mode.
+        -a array_name : specifies array name. If not provided explicitly,
+                        take the value of GP_ARRAY_NAME environment variable.
+        -m ma_addr    : specifies MA addr in format host:port. Multiple -m
+                        options are acceptable.
+                        If not provided explicity, take the value of 
+                        GP_MA_ADDR environment variable, assuming the format 
+                        'host1:port host2:port'.
+        -R            : raw mode. 
+
+  Run 'gp help' for details.
+
 """
-gp -- Greenplum Terminal Control
-
-Usage: gp [gp_options] command [command_options] [command_args]
-
-	gp_options:
-	    -v verbose
-	    -a array_name
-	    -h host_name
-	    -p port
-
-	command:
-	    start 
-	    stop
-            init config_file
-            delete
-            segment segidx [start|stop|status]
-
-"""
-import os, sys, getopt, types, time, popen2, urllib, httplib, socket, StringIO
-
+import os, sys
 
 if sys.version_info < (2, 5, 0):
     sys.exit("Error: gp is supported on Python versions 2.5.0 or greater\n"
@@ -27,13 +25,15 @@ if sys.version_info < (2, 5, 0):
 
 sys.path.append(sys.path[0] + '/lib')
 try:
+    import getopt, types, time, urllib, httplib, socket, StringIO
     import simplejson
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
 
+####################
 def usage(exitarg):
-    help_path = os.path.join(sys.path[0], '..', 'doc', 'gp_help');
+    help_path = os.path.join(sys.path[0], '..', 'doc', 'gp_help')
     try:
         f = open(help_path)
         for line in f:
@@ -42,566 +42,526 @@ def usage(exitarg):
         print __doc__
     sys.exit(exitarg)
 
-gp_opt = {}
-gp_cmd = None
-gp_args = []
-
-def resetCommandOptions():
-    global gp_opt, gp_cmd, gp_args
-    gp_opt = { 
-        '-v': False,
-        '-?': False,
-        '-a': os.environ.get('GPARRAY', None),
-        '-h': os.environ.get('GPHOST', None),
-        '-p': os.environ.get('GPPORT', None),
-        }
-    gp_cmd = None
-    gp_args = []
-    
-
-def parseCommandLine(argv):
-    global gp_opt, gp_cmd, gp_args
-    (options, args) = getopt.getopt(argv[1:], '?va:h:p:')
-    for (switch, val) in options:
-        if switch == '-?': gp_opt[switch] = True
-        elif switch == '-v': gp_opt[switch] = True
-        elif switch[1] in ('a', 'h', 'p'): gp_opt[switch] = val
-    if args:
-        gp_cmd = args[0]
-        gp_args = args[1:]
-
-
-def readRCFile():
-    global gp_opt, gp_cmd, gp_args
-    f = None
-    try:
-        fname = os.environ.get('HOME', '/') + '/.gprc'
-        try:
-            f = open(fname)
-        except IOError:
-            return
-        for line in f:
-            if line.startswith('gp '):
-                argv = line.split()
-                try:
-                    parseCommandLine(argv)
-                    if gp_cmd or gp_args:
-                        raise SystemExit
-                    gp_opt['-?'] = False
-                except (SystemExit, getopt.GetoptError):
-                    print "Warning: error in '%s'. Ignored." % fname
-                    resetCommandOptions()
-                    return
-    finally:
-        if f: f.close()
-
-def yesorno(msg, abortmsg):
-    print msg
-    line = sys.stdin.readline()
+####################
+def confirm(prompt):
+    line = raw_input(prompt + ' (y/n) ')
     line = line.strip().lower()
-    if line == 'y':
-        return True
-    print abortmsg
-    return False
+    return line and line[0] == 'y'
 
-def checkCommandLine():
-    if gp_opt['-?']: usage(0)
-    if not gp_opt['-a']: usage('Error: please specify -a array_name')
-    if not gp_opt['-h']: usage('Error: please specify -h host_name')
-    if not gp_opt['-p']: usage('Error: please specify -p port')
-    if not gp_cmd: usage('Error: please specify command')
-    try:
-        gp_opt['-p'] = int(gp_opt['-p'])
-    except ValueError:
-        usage('Error: bad -p port parameter')
+####################
+def printPacket(packet, indent = ''):
+    keys = packet.keys()
+    keys.sort()
+    for k in keys:
+        print '%s%s: %s' % (indent, k, packet[k])
 
-
-def getErrorJson(msg):
-    return simplejson.loads('{ "status": "failure", "errmsg" : { "_" : "%s"}}' % msg)
-
-def hitMA(cmd, params):
-    params = urllib.urlencode(params)
-    f = None
-    json = ''
-    try:
-        f = httplib.HTTPConnection("%s:%d" % (gp_opt['-h'], gp_opt['-p']))
-        f.request("GET", "%s?%s" % (cmd, params))
-        response = f.getresponse();
-        if response.status == 200 or response.status == 301:
-            s = response.read()
-            #print s
-            json = simplejson.loads(s)
-            return (response.status, json)
-        else:
-            s = response.read()
-            return (response.status, getErrorJson(s))
-    except socket.error, msg:
-        return (-1, getErrorJson(msg))
-    except httplib.HTTPException, msg:
-        return (-1, getErrorJson(msg))
-    except Exception, msg:
-        return (-1, getErrorJson(msg))
-    finally:
-        if f: f.close()
-    return (-1, json)
-    
-
-def hitMAbyPost(cmd, params, data):
-    params = urllib.urlencode(params)
-    f = None
-    json = ''
-    try:
-        f = httplib.HTTPConnection("%s:%d" % (gp_opt['-h'], gp_opt['-p']))
-        f.request("POST", "%s?%s" % (cmd, params), data)
-        response = f.getresponse();
-        if response.status == 200 or response.status == 301:
-            s = response.read()
-            # print s
-            json = simplejson.loads(s)
-            return (response.status, json)
-        else:
-            s = response.read()
-            return (response.status, getErrorJson(s))
-    except socket.error, msg:
-        return (-1, getErrorJson(msg))
-    except httplib.HTTPException, msg:
-        return (-1, getErrorJson(msg))
-    except Exception, msg:
-        return (-1, getErrorJson(msg))
-    finally:
-        if f: f.close()
-    return (-1, json)
-
-def printError(json):
-    output = StringIO.StringIO()
-    output.write('CRITICAL: ')
-    errmsg = json.get('errmsg')
-    if not errmsg:
-        output.write('unknown error')
-    elif errmsg.get('_', None):
-        output.write(errmsg.get('_'))
-        output.write('\n')
-    for key in errmsg:
-        if key != '_':
-            output.write('%s: %s\n' % (key, errmsg.get(key)))
-    print output.getvalue()
-    output.close()
-
-
-def getStatus():
-    params = { 'a': gp_opt['-a'] }
-    redirect = 0
-    while redirect < 5:
-        (retcode, json) = hitMA('/gpcc/status', params)
-    # print '/gpcc/status:', json
-        if retcode == 200:
-            status = json.get('status', '')
-            x = json.get('rset', {})
-            x = x.get('result', [])
-            if len(x): 
-                x = x[0] 
-            else:
-                x = ''
-            break
-        elif retcode == 301:
-            location = json.get('location')
-            addr = location.split(':')
-            gp_opt['-h'] = addr[0]
-            gp_opt['-p'] = int(addr[1])
-            redirect += 1
-            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
-        else:
-            return (json, 'failure', '')
-    return (json, status, x)
-
-
-def printDotSleep():
+####################
+def printDot(sleeptime=1):
     sys.stdout.write('.')
     sys.stdout.flush()
-    time.sleep(1)
+    time.sleep(sleeptime)
 
 
-def doStart(args):
-    params = {'a': gp_opt['-a']}
-    redirect = 0
-    while redirect < 5:
-        (retcode, json) = hitMA('/gpcc/start', params)
-        if retcode == 200:
-            if not json.get('status') in ('ok', 'pending'):
-                printError(json)
-                return
-            cur = 'starting'
-            for i in xrange(30):
-                printDotSleep()
-                (json, status, array_status) = getStatus()
-                if status != 'ok':
-                    print
-                    printError(json)
-                    return
-                if array_status != cur:
-                    cur = array_status
-                    break
-            print
-            if cur == 'starting':
-                print 'error: timeout'
-            elif cur == 'running':
-                print 'ok:', cur
-            elif cur == 'stopping' or cur == 'stopped':
-                print 'error:', cur
+####################
+class Command():
+    '''Base class for all commands'''
+    TIMEOUT = 30
+    
+    def __init__(self, gopt, argv, optstr, usagestr):
+        self.cmd = argv[0]
+        self.gopt = gopt
+        self.opt = {}
+        try:
+            (self.options, self.args) = getopt.getopt(argv[1:], optstr)
+        except Exception, e:
+            print usagestr
+            sys.exit('[ERROR]: %s: %s' % (self.cmd, str(e)))
+
+
+    def verbose(self, msg):
+        if self.gopt['-v']: print '[INFO]', msg
+
+    def __makeError(self, param, errmsg):
+        '''Make an error packet with msg'''
+        r = {'status': 'error', 'action': self.cmd, 'errmsg': errmsg}
+        r.update(param)
+        return r
+
+    def __httpRequest(self, addr, method, path, params, data=None):
+        '''Make a http request to the first MA.'''
+        p = params and urllib.urlencode(params) or ''
+        query = '%s?%s' % (path, p)
+        f = None
+        try:
+            self.verbose('http://%s%s' % (addr, query))
+            f = httplib.HTTPConnection(addr)
+            f.request('POST', query, data)
+            response = f.getresponse()
+            if response.status == 200 or response.status == 301:
+                str = response.read()
+                packet = simplejson.loads(str)
+                return (response.status, packet)
             else:
-                print 'error: unknown; not started.'
-            return
-        elif retcode == 301:
-            location = json.get('location')
-            addr = location.split(':')
-            gp_opt['-h'] = addr[0]
-            gp_opt['-p'] = int(addr[1])
-            redirect += 1
-            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
-        else:
-            printError(json)
-            return
+                str = response.read()
+                return (response.status, self.__makeError(params, str))
+        except socket.error, msg:
+            return (-1, self.__makeError(params, msg))
+        except httplib.HTTPException, msg:
+            return (-1, self.__makeError(params, msg))
+        except Exception, msg:
+            return (-1, self.__makeError(params, msg))
+        finally:
+            if f: f.close()
+        return (-1, self.__makeError(params, 'Unknown Error'))
 
+    def __checkMA(self, rc, packet):
+        '''Check the RC for failure or 301 Moved messages, and handle it.'''
+        if (rc == -1):
+            # try the next MA
+            location = self.gopt['-m'].pop()
+            self.gopt['-m'].insert(0, location)
+            return False
+        if (rc == 301): 
+            # put new location into MA array
+            location = packet['location']
+            try: self.gopt['-m'].remove(location)
+            except ValueError: pass
+            finally: self.gopt['-m'].insert(0, location)
+            return False
+        return True
 
+    def _httpGetOrPost(self, method, path, params, data = None):
+        failedList = []
+        for i in xrange(len(self.gopt['-m']) + 1):
+            addr = self.gopt['-m'][0]
+            if addr in failedList: continue
+            failedList.append(addr)
+            (rc, packet) = self.__httpRequest(addr, method, path, params, data)
+            if not self.__checkMA(rc, packet):
+                continue
+            return packet
+        return self.__makeError(params, 'Unable to contact MA')
+        
 
+    def _httpGet(self, path, params):
+        '''Locate the Lead MA and do a GET'''
+        return self._httpGetOrPost('GET', path, params)
 
-def doStop(args):
-    params = {'a': gp_opt['-a']}
-    redirect = 0
-    while redirect < 5:
-        (retcode, json) = hitMA('/gpcc/stop', params)
-        if retcode == 200:
-            if not json.get('status') in ('ok', 'pending'):
-                printError(json)
-                return
-            cur = 'stopping'
-            for i in xrange(30):
-                printDotSleep()
-                (json, status, array_status) = getStatus()
-                if status != 'ok':
-                    print
-                    printError(json)
-                    return
-                if array_status != cur:
-                    cur = array_status
-                    break
+    def _httpPost(self, path, params, data):
+        '''Locate the Lead MA and do a POST'''
+        return self._httpGetOrPost('POST', path, params, data)
+
+    def _getStatus(self, params):
+        '''GET the status of GPDB'''
+        packet = self._httpGet('/gpcc/status', params)
+        return packet
+
+    def _waitStatus(self, param, contMsg, timeout=-1):
+        '''Wait while status returned matches contMsg. 
+           When a mismatch occurs, return the packet. 
+           If timeout, return None.'''
+        if timeout <= 0: timeout = Command.TIMEOUT
+        for i in xrange(timeout):
+            printDot()
+            packet = self._getStatus(param)
+            if 'ok' != packet.get('status'):
+                print '[ERROR] unable to get status. details:'
+                printPacket(packet, '      ')
+                sys.exit(2)
+            msg = (packet['rset'])[0]
+            if msg == contMsg:
+                continue
             print
-            if cur == 'stopping':
-                print 'error: timeout'
-            elif cur == 'stopped':
-                print 'ok:', cur
-            elif cur == 'starting' or cur == 'running':
-                print 'error:', cur
-            else:
-                print 'error: unknown; not stopped.'
-            return
-        elif retcode == 301:
-            location = json.get('location')
-            addr = location.split(':')
-            gp_opt['-h'] = addr[0]
-            gp_opt['-p'] = int(addr[1])
-            redirect += 1
-            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
-        else:
-            printError(json)
-            return
-
-
-
-def doDelete(args):
-    params = {'a': gp_opt['-a']}
-    redirect = 0
-    while redirect < 5:
-        (retcode, json) = hitMA('/gpcc/delete', params)
-        if retcode == 200:
-            if not json.get('status') in ('ok', 'pending'):
-                printError(json)
-                return
-            cur = 'deleting'
-            for i in xrange(30):
-                printDotSleep()
-                (json, status, array_status) = getStatus()
-                if status != 'ok':
-                    print
-                    printError(json)
-                    return
-                if array_status != cur:
-                    cur = array_status
-                    break
-            print
-            if cur == 'deleting':
-                print 'error: timeout'
-            elif cur == 'no_array':
-                print 'ok:', cur
-            elif cur == 'stopping' or cur == 'starting' or cur == 'running':
-                print 'error:', cur
-            else:
-                print 'error: unknown; not deleted.'
-            return
-        elif retcode == 301:
-            location = json.get('location')
-            addr = location.split(':')
-            gp_opt['-h'] = addr[0]
-            gp_opt['-p'] = int(addr[1])
-            redirect += 1
-            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
-        else:
-            printError(json)
-            return
-
-def doStatus(args):
-    params = { 'a': gp_opt['-a'] }
-    (json, status, array_status) = getStatus()
-    if status != 'ok':
-        printError(json)
-        sys.exit(2)
-    if array_status == 'invalid':
-        print 'CRITICAL: system invalid'
-        sys.exit(2)
-    else:
-        print 'OK: %s' % array_status
-
-
-def doListConfig(args):
-    params = { 'a': gp_opt['-a'] }
-    (retcode, json) = hitMA('/gpcc/lscfg', params)
-    if retcode == 200:
-        if json.get('status') != 'ok':
-            printError(json)
-            return
-        cfg = json.get('rset', {})
-        cfg = cfg.get('result', [])
-        if not len(cfg):
-            print 'error: unknown; cannot get configuration'
-            return
-        for i in cfg:
-            print i[0], ':', i[1]
+            return packet
         print
-    else:
-        printError(json)
-        return
+        return None
+
+    def raw(self, packet):
+        '''If raw mode, print packet and exit(0)'''
+        if self.gopt['-R']:
+            simplejson.dump(packet, sys.stdout)
+            sys.exit(0)
 
 
-def doInit(args):
-    if len(args) == 0:
-        usage(1)
-    if not os.path.exists(args[0]):
-        print 'error: config file not found'
-        return
-    content = ''
-    try:
-        f = open(args[0], "r")
-        content = f.read()
-        f.close()
-    except IOError:
-        print 'error: open config file failed'
-        return
+    def run(self):
+        '''Run the command. To be overridden by subclass.'''
+        pass
 
-    redirect = 0
-    while redirect < 5:
-        (retcode, json) = hitMAbyPost('/gpcc/init', {}, content)
-        if retcode == 200:
-            if not json.get('status') in ('ok', 'pending'):
-                printError(json)
-                return
-            cur = 'initializing'
-            for i in xrange(3600):
-                printDotSleep()
-                (json, status, array_status) = getStatus()
-                if status != 'ok':
-                    print
-                    printError(json)
-                    return
-                if array_status != cur:
-                    cur = array_status
-                    break
-            print
-            if cur == 'initializing':
-                print 'error: timeout'
-            elif cur == 'stopped':
-                print 'ok: initialized.'
-            elif cur == 'none':
-                print 'error: not initialized.'
-            else:
-                print 'error: unknown; not initialized.'
+
+####################
+class StartCmd(Command):
+    '''Usage: gp start [-s seg]'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 's:', self.__doc__)
+        self.opt['-s'] = None
+        for (switch, val) in self.options:
+            if switch == '-s': self.opt[switch] = val
+
+    def run(self):
+        param = {}
+        if (self.opt['-s']): param['s'] = self.opt['-s']
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
+
+        packet = self._httpGet('/gpcc/start', param)
+        self.raw(packet)
+
+        if "ok" != packet.get('status'):
+            print '[ERROR] unable to start, details:'
+            printPacket(packet, '      ')
+            sys.exit(2)
+
+        in_progress = ('s' in param) and 'segment starting' or 'array starting'
+        succeed = ('s' in param) and 'segment running' or 'array running'
+        packet = self._waitStatus(param, in_progress)
+        if not packet:
+            sys.exit('[ERROR] timeout')
+
+        if succeed == (packet['rset'])[0]:
+            print '[INFO] ok'
             return
-        elif retcode == 301:
-            location = json.get('location')
-            addr = location.split(':')
-            gp_opt['-h'] = addr[0]
-            gp_opt['-p'] = int(addr[1])
-            redirect += 1
-            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
-        else:
-            printError(json)
+
+        print '[ERROR] unknown status, details:'
+        printPacket(packet, '      ')
+        sys.exit(2)
+
+
+####################
+class StopCmd(Command):
+    '''Usage: gp stop [-s seg]'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 's:', self.__doc__)
+        self.opt['-s'] = None
+        for (switch, val) in self.options:
+            if switch == '-s': self.opt[switch] = val
+        
+    def run(self):
+        param = {}
+        if (self.opt['-s']): param['s'] = self.opt['-s']
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
+
+        packet = self._httpGet('/gpcc/stop', param)
+        self.raw(packet)
+
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to stop, details:'
+            printPacket(packet, '      ')
+            sys.exit(2)
+
+        in_progress = ('s' in param) and 'segment stopping' or 'array stopping'
+        succeed = ('s' in param) and 'segment stopped' or 'array stopped'
+        packet = self._waitStatus(param, in_progress)
+        if not packet:
+            sys.exit('[ERROR] timeout')
+
+        if succeed == (packet['rset'])[0]:
+            print '[INFO] ok'
             return
+
+        print '[ERROR] unknown status, details:'
+        printPacket(packet, '      ')
+        sys.exit(2)
+
+
+####################
+class InitCmd(Command):
+    '''Usage: gp init -c {- | conf_file}'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 'c:', self.__doc__)
+        self.opt['-c'] = None
+        for (switch, val) in self.options:
+            if switch == '-c': self.opt[switch] = val
+        if not self.opt['-c']:
+            print self.__doc__
+            sys.exit('[ERROR] Please specify -c param')
+        
+    def run(self):
+        fname = self.opt['-c']
+        try:
+            fp = None; cfg = {}
+            fp = fname == '-' and sys.stdin or open(fname)
+            lineno = 0
+            for line in fp:
+                lineno = lineno + 1
+                line = line.strip().split('#')[0].strip()
+                if line: 
+                    line = line.split('=')
+                    if len(line) != 2: 
+                        print '[ERROR] syntax error at line %d in config file' % lineno
+                        sys.exit(2)
+                    #print '%d %s' % (lineno, line)
+                    if line[0] == 'array_name' and line[1] != self.gopt['-a']:
+                        print '[ERROR] array name mismatch at line %d in config file' % lineno
+                        sys.exit(2)
+                    cfg[line[0].strip()] = line[1].strip()
+        except IOError:
+            print ('[ERROR] unable to read file "%s"' % 
+                   (fname == '-' and 'stdin' or fname))
+            sys.exit(2)
+        finally:
+            if fp: fp.close()
+
+        if not cfg:
+            print '[ERROR] config file is empty'
+            sys.exit(2)
+        
+        if not cfg.get('array_name'): 
+            print '[ERROR] array_name not specified in config file'
+            sys.exit(2)
+
+        param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
+        content = '\n'.join('='.join([x, cfg[x]]) for x in cfg.keys())
+        packet = self._httpPost('/gpcc/init', param, content)
+        self.raw(packet)
+        
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to init, details:'
+            printPacket(packet, '      ')
+            sys.exit(2)
+
+        in_progress = 'array initializing'
+        succeed = 'array stopped'
+        packet = self._waitStatus(param, in_progress, 60*5)
+        if not packet:
+            sys.exit('[ERROR] timeout')
+
+        if succeed == (packet['rset'])[0]:
+            print '[INFO] ok'
+            return
+
+        print '[ERROR] unknown status, details:'
+        printPacket(packet, '      ')
+        sys.exit(2)
+
             
-def getSegmentStatus(args):
-    params = { 'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0] }
-    redirect = 0
-    while redirect < 5:
-        (retcode, json) = hitMA('/gpcc/segment/status', params)
-    # print '/gpcc/status:', json
-        if retcode == 200:
-            status = json.get('status', '')
-            x = json.get('rset', {})
-            x = x.get('result', [])
-            if len(x): 
-                x = x[0] 
-            else:
-                x = ''
-            break
-        elif retcode == 301:
-            location = json.get('location')
-            addr = location.split(':')
-            gp_opt['-h'] = addr[0]
-            gp_opt['-p'] = int(addr[1])
-            redirect += 1
-            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
-        else:
-            return (json, 'failure', '')
-    return (json, status, x)
 
+####################
+class DeleteCmd(Command):
+    '''Usage: gp delete '''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, '', self.__doc__)
+        
+    def run(self):
+        proceed = confirm('This will erase the array "%s"!' % self.gopt['-a'])
+        if proceed:
+            proceed = confirm('FINALLY WARNING... PROCEED WITH DELETE?')
+        if not proceed: 
+            print '[INFO] aborted'
+            return
 
-def doSegmentStatus(args):
-    params = {'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0]}
-    (json, status, array_status) = getSegmentStatus(args)
-    if status != 'ok':
-        printError(json)
+        param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
+        packet = self._httpGet('/gpcc/delete', param)
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to delete, details:'
+            printPacket(packet, '      ')
+            sys.exit(2)
+
+        in_progress = 'array deleting'
+        succeed = 'array not initialized'
+        packet = self._waitStatus(param, in_progress)
+        if not packet:
+            sys.exit('[ERROR] timeout')
+        
+        if succeed == (packet['rset'])[0]:
+            print '[INFO] succeed'
+            return
+
+        print '[ERROR] unknown status, details:'
+        printPacket(packet, '      ')
         sys.exit(2)
-    if array_status == 'invalid':
-        print 'CRITICAL: system invalid'
-        sys.exit(2)
-    else:
-        print 'OK: %s' % array_status
 
-def doSegmentStart(args):
-    params = {'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0]}
-    redirect = 0
-    while redirect < 5:
-        (retcode, json) = hitMA('/gpcc/segment/start', params)
-        if retcode == 200:
-            if not json.get('status') in ('ok', 'pending'):
-                printError(json)
-                return
-            cur = 'starting'
-            for i in xrange(30):
-                printDotSleep()
-                (json, status, array_status) = getSegmentStatus(args)
-                if status != 'ok':
-                    print
-                    printError(json)
-                    return
-                if array_status != cur:
-                    cur = array_status
-                    break
-            print
-            if cur == 'starting':
-                print 'error: timeout'
-            elif cur == 'running':
-                print 'ok:', cur
-            elif cur == 'stopping' or cur == 'stopped':
-                print 'error:', cur
-            else:
-                print 'error: unknown; not started.'
+
+####################
+class LsCfgCmd(Command):
+    '''Usage: gp lscfg'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, '', self.__doc__)
+        
+    def run(self):
+        param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
+        packet = self._httpGet('/gpcc/lscfg', param)
+        self.raw(packet)
+
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to lscfg, details:'
+            printPacket(packet, '      ')
+            sys.exit(2)
+        
+        rset = packet['rset']
+        for i in rset:
+            print i[0], '=', i[1]
+        print '[INFO] ok'
+
+
+####################
+class StatusCmd(Command):
+    '''Usage: gp status [-s seg] '''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 's:', self.__doc__)
+        self.opt['-s'] = None
+        for (switch, val) in self.options:
+            if switch == '-s': self.opt[switch] = val
+        
+    def run(self):
+        param = {}
+        if (self.opt['-s']): param['s'] = self.opt['-s']
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
+        packet = self._getStatus(param)
+        self.raw(packet)
+
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to get status. details:'
+            printPacket(packet, '      ')
+            sys.exit(2)
+
+        for m in packet['rset']:
+            print '[INFO]', m
+        print '[INFO] ok'
+
+
+####################
+class HelpCmd(Command):
+    '''Usage: gp [gp-options] command [command-options-and-arguments]
+
+  Specify 'gp help' to get this message.
+  Specify 'gp help commands' to see a list of commands.
+  Specify 'gp help options' to see gp-options.
+  Specify 'gp help' followed by a command name for command-specific help.
+'''
+
+    __helpCommands = '''Usage: gp [gp-options] command [command-options-and-arguments]
+
+  gp commands are:
+	init     Initialize the array
+	delete	 Delete the array
+	start    Start the array and/or segments
+	stop     Stop the array and/or segments
+	status   Get the current status of the array
+	lscfg    List the configuration
+
+  Specify 'gp help options' to see gp-options.
+  Specify 'gp help' followed by a command name for command-specific help.
+'''
+    __helpOptions = '''Usage: gp [gp-options] command [command-options-and-arguments]
+
+  gp-options are: 
+        -v            : verbose mode.
+        -a array_name : specifies array name. If not provided explicitly,
+                        take the value of GP_ARRAY_NAME environment variable.
+        -m ma_addr    : specifies MA addr in format host:port. Multiple -m
+                        options are acceptable.
+                        If not provided explicity, take the value of 
+                        GP_MA_ADDR environment variable, assuming the format 
+                        'host1:port host2:port'.
+        -R            : raw mode. 
+
+  Specify 'gp help commands' to see a list of commands.
+'''
+    
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, '', self.__doc__)
+        if len(self.args) > 0:
+            c = self.args[0]
+            if (False or
+                c == 'commands' or
+                c == 'delete' or 
+                c == 'init' or
+                c == 'lscfg' or
+                c == 'options' or
+                c == 'start' or 
+                c == 'status' or
+                c == 'stop' or 
+                True):
+                self.args = [c]
+
+    def run(self):
+        if not self.args:
+            print self.__doc__
             return
-        elif retcode == 301:
-            location = json.get('location')
-            addr = location.split(':')
-            gp_opt['-h'] = addr[0]
-            gp_opt['-p'] = int(addr[1])
-            redirect += 1
-            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
+
+        c = self.args[0]
+        if False:		pass
+        elif c == 'commands':	print self.__helpCommands
+        elif c == 'delete': 	print DeleteCmd.__doc__
+        elif c == 'init':       print InitCmd.__doc__
+        elif c == 'lscfg':	print LsCfgCmd.__doc__
+        elif c == 'options':    print self.__helpOptions
+        elif c == 'start': 	print StartCmd.__doc__
+        elif c == 'status': 	print StatusCmd.__doc__
+        elif c == 'stop': 	print StopCmd.__doc__
         else:
-            printError(json)
-            return
+            usage('Error: unknown command "%s"' % c)
+
+
+####################
+class CmdLine():
     
+    def __init__(self):
+        self.gopt = {}
+        self.gopt['-a'] = os.environ.get('GP_ARRAY_NAME')
+        self.gopt['-m'] = os.environ.get('GP_MA_ADDR')
+        if self.gopt['-m']: self.gopt['-m'] = self.gopt['-m'].split()
+        self.gopt['-v'] = False
+        self.gopt['-R'] = False
+        self.cmd = None
 
-def doSegmentStop(args):
-    params = {'a': gp_opt['-a'], 's': 'gpdb.seg.%s' % args[0]}
-    redirect = 0
-    while redirect < 5:
-        (retcode, json) = hitMA('/gpcc/segment/stop', params)
-        if retcode == 200:
-            if not json.get('status') in ('ok', 'pending'):
-                printError(json)
-                return
-            cur = 'stopping'
-            for i in xrange(30):
-                printDotSleep()
-                (json, status, array_status) = getSegmentStatus(args)
-                if status != 'ok':
-                    print
-                    printError(json)
-                    return
-                if array_status != cur:
-                    cur = array_status
-                    break
-            print
-            if cur == 'stopping':
-                print 'error: timeout'
-            elif cur == 'stopped':
-                print 'ok:', cur
-            elif cur == 'starting' or cur == 'running':
-                print 'error:', cur
-            else:
-                print 'error: unknown; not stopped.'
-            return
-        elif retcode == 301:
-            location = json.get('location')
-            addr = location.split(':')
-            gp_opt['-h'] = addr[0]
-            gp_opt['-p'] = int(addr[1])
-            redirect += 1
-            print 'redirect to %s:%d' % (gp_opt['-h'], gp_opt['-p'])
-        else:
-            printError(json)
-            return
+    def parse(self):
+        try:
+            (options, args) = getopt.getopt(sys.argv[1:], 'va:m:R')
+        except Exception, e:
+            usage('Error: ' + str(e))
+
+        m = []
+        for (switch, val) in options:
+            if switch == '-v':  self.gopt[switch] = True
+            elif switch == '-R': self.gopt[switch] = True
+            elif switch == '-a': self.gopt[switch] = val
+            elif switch == '-m': m.append(val)
+        if (m): self.gopt['-m'] = m
+
+        # map command text to command class
+        if not args: usage('Error: missing command')
+        c = args[0]
+        if False:	     pass
+        elif c == 'delete':  self.cmd = DeleteCmd(self.gopt, args)
+        elif c == 'help':    self.cmd = HelpCmd(self.gopt, args)
+        elif c == 'init':    self.cmd = InitCmd(self.gopt, args)
+        elif c == 'lscfg':   self.cmd = LsCfgCmd(self.gopt, args)
+        elif c == 'start':   self.cmd = StartCmd(self.gopt, args)
+        elif c == 'status':  self.cmd = StatusCmd(self.gopt, args)
+        elif c == 'stop':    self.cmd = StopCmd(self.gopt, args)
+        else: usage('Error: unknown command "%s"' % c)
+
+        # if help, we are done; don't need to check -m, -a param
+        if c == 'help': 
+            return self.cmd
+
+        # check -a
+        if not self.gopt['-a']: usage('Error: -a param not set.')
+
+        # check -m
+        if not self.gopt['-m']: usage('Error: -m param not set.')
+        for m in self.gopt['-m']:
+            try: x = int(m.split(':')[1])
+            except ValueError: x = 0
+            except IndexError: x = 0
+
+            if not (0 < x and x < 65536): 
+                usage('Error: -m %s is invalid. Bad port number.' % m)
+
+        return self.cmd
 
 
-def doSegment(args):
-
-    if len(args) < 2:
-        usage(1)
-
-    cmd = args[1]
-    
-    if cmd == 'start':
-        doSegmentStart(args)
-    elif cmd == 'stop':
-        doSegmentStop(args)
-    elif cmd == 'status':
-        doSegmentStatus(args)
-    else:
-        usage('Invalid command')
-
-    
-    
-
+####################
 def main():
-    resetCommandOptions()
-    readRCFile()
-    parseCommandLine(sys.argv)
-    checkCommandLine()
-    if gp_cmd == 'start':
-        doStart(gp_args)
-    elif gp_cmd == 'stop':
-        doStop(gp_args)
-    elif gp_cmd == 'delete':
-        if yesorno('Are you sure to delete gpdb permanently? [yY|nN]', 'User aborted delete operation'):
-            doDelete(gp_args)
-    elif gp_cmd == 'status':
-        doStatus(gp_args)
-    elif gp_cmd == 'lscfg':
-        doListConfig(gp_args)
-    elif gp_cmd == 'init':
-        doInit(gp_args)
-    elif gp_cmd == 'segment':
-        doSegment(gp_args)
-    else:
-        usage('Invalid command')
+    cmdline = CmdLine()
+    cmd = cmdline.parse()
+    if cmd: 
+        cmd.run()
 
-
+####################
 if __name__ == '__main__':
     main()
     
