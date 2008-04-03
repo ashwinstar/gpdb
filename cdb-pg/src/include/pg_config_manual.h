@@ -6,7 +6,7 @@
  * for developers.	If you edit any of these, be sure to do a *full*
  * rebuild (and an initdb if noted).
  *
- * $PostgreSQL: pgsql/src/include/pg_config_manual.h,v 1.23 2006/09/18 22:40:40 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/pg_config_manual.h,v 1.27 2007/06/08 18:23:53 tgl Exp $
  *------------------------------------------------------------------------
  */
 
@@ -61,6 +61,15 @@
  * Changing XLOG_SEG_SIZE requires an initdb.
  */
 #define XLOG_SEG_SIZE	(64*1024*1024)
+
+/*
+ * Maximum length for identifiers (e.g. table names, column names,
+ * function names).  It must be a multiple of sizeof(int) (typically
+ * 4).
+ *
+ * Changing this requires an initdb.
+ */
+#define NAMEDATALEN 64
 
 /*
  * Maximum number of arguments to a function.
@@ -239,6 +248,11 @@
  * see also the trace_sort GUC var.  For 8.1 this is enabled by default.
  */
 #define TRACE_SORT 1
+
+/*
+ * Enable tracing of syncscan operations (see also the trace_syncscan GUC var).
+ */
+/* #define TRACE_SYNCSCAN */
 
 /*
  * Other debug #defines (documentation, anyone?)

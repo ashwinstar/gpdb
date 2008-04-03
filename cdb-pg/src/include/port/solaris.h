@@ -9,6 +9,14 @@
 #define __i386__
 #endif
 
+#if defined(__amd64) && !defined(__amd64__)
+#define __amd64__
+#endif
+
+#if defined(__x86_64) && !defined(__x86_64__)
+#define __x86_64__
+#endif
+
 #if defined(__sparc) && !defined(__sparc__)
 #define __sparc__
 #endif
