@@ -141,46 +141,52 @@ class UpDownUpDown:
 	os.makedirs("data")
 	self.p = [Priest(i,i==0) for i in xrange(NPRIEST)]
 
-    def getStuff(self):
+    def getStuff(self,checkSlowness):
 	fro = [None]
 	decree = None
 	startTime = time.time()
 	getLeaderTimeout = 0
 	proposeTimeout = 0
-	while 1:
-	    now = time.time()
-	    if now-startTime>=WAIT_TIME:
-		print_line("ERROR Timed out")
-		global got_timeout
-		got_timeout = True
-		return False
-	    global slowness
-	    if now-startTime>slowness:
-		slowness = now-startTime
-	    if getLeaderTimeout<now:
-		getLeaderTimeout = now+TIMEOUT
-		mm = message.Maker("GetLeader")
-		mm.send(self.port,priestAddresses)
-	    if self.leader and proposeTimeout<now:
-		proposeTimeout = now+TIMEOUT
-		decree = "Tag %d GetPriestSet"%self.counter
-		self.counter += 1
-		mm = message.Maker("Propose")
-		mm.addDecree(decree)
-		mm.send(self.port,self.leader)
-	    messag = self.port.recv(TIMEOUT,fro)
-	    if messag==None:
-		continue
-	    m = Message(messag,fro[0])
-	    if m.command=="Redirect":
-		self.leader = m.result
-	    elif m.command=="Result" and m.decree==decree:
-		if m.dn<=self.dn:
-		    print_line("ERROR DecreeNumber not monotone")
-		    not_monotone = True
-		self.priestSet = set(m.result[2:].split(','))
-		self.dn = m.dn
-		return True
+	try:
+	    while 1:
+		now = time.time()
+		if now-startTime>=WAIT_TIME:
+		    print_line("ERROR Timed out")
+		    global got_timeout
+		    got_timeout = True
+		    return False
+		if getLeaderTimeout<now:
+		    getLeaderTimeout = now+TIMEOUT
+		    mm = message.Maker("GetLeader")
+		    mm.send(self.port,priestAddresses)
+		if self.leader and proposeTimeout<now:
+		    proposeTimeout = now+TIMEOUT
+		    decree = "Tag %d GetPriestSet"%self.counter
+		    self.counter += 1
+		    mm = message.Maker("Propose")
+		    mm.addDecree(decree)
+		    mm.send(self.port,self.leader)
+		messag = self.port.recv(TIMEOUT,fro)
+		if messag==None:
+		    continue
+		m = Message(messag,fro[0])
+		if m.command=="Redirect":
+		    self.leader = m.result
+		elif m.command=="Result" and m.decree==decree:
+		    if m.dn<=self.dn:
+			print_line("ERROR DecreeNumber not monotone")
+			not_monotone = True
+		    self.priestSet = set(m.result[2:].split(','))
+		    self.dn = m.dn
+		    return True
+	finally:
+	    if checkSlowness:
+		i = time.time()-startTime
+		if i>MAX_SLOWNESS:
+		    print_line("slowness=%f"%i)
+		global slowness
+		if i>slowness:
+		    slowness = i
 
     def waitCatchUp1(self,p,timeout=WAIT_TIME):
 	fro = [None]
@@ -193,7 +199,7 @@ class UpDownUpDown:
 		return False
 	    if timeo<now:
 		timeo = now+TIMEOUT
-		if self.getStuff():
+		if self.getStuff(True):
 		    print_dot()
 		mm = message.Maker("Ping")
 		mm.send(self.port,p.address)
@@ -222,7 +228,7 @@ class UpDownUpDown:
 	t += time.time()
 	while time.time()<t:
 	    time.sleep(1)
-	    if self.getStuff():
+	    if self.getStuff(True):
 		print_dot()
 
     def waitFor2(self,what,f,timeout=WAIT_TIME):
@@ -239,7 +245,7 @@ class UpDownUpDown:
 		passed += 1
 		return
 	    time.sleep(1)
-	    if self.getStuff():
+	    if self.getStuff(True):
 		print_dot()
 	print_line("ERROR gave up waiting for: "+what)
 
@@ -265,13 +271,13 @@ class UpDownUpDown:
 	p.cont()
 	self.waitFor("Priest %d has joined."%p.index,lambda x:p.id in x,timeout)
 
-    def propose(self,n):
+    def propose(self,n,checkSlowness=True):
 	global ntest
 	global passed
 	ntest += 1
 	start = self.dn
 	while 1:
-	    if not self.getStuff():
+	    if not self.getStuff(checkSlowness):
 		return
 	    i = self.dn-start
 	    print_line("decree %d/%d"%(i,n))
@@ -282,11 +288,10 @@ class UpDownUpDown:
     def __run1(self):
 	global ntest
 	global passed
-	global slowness
-	slowness = 0
 	print_line("Starting the Priests")
 	for i in self.p:
 	    i.start()
+	self.propose(1,False)
 	allPriests = set([i.id for i in self.p])
 	self.waitFor("All priests have joined.",lambda x:allPriests<=x)
 
@@ -401,13 +406,6 @@ class UpDownUpDown:
 	self.waitCatchUp(self.p[3])
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
 
-	ntest += 1
-	print_line("slowness=%f"%slowness)
-	if slowness>MAX_SLOWNESS:
-	    print_line("ERROR too slow")
-	else:
-	    passed += 1
-
 	print_line("Killing three, then restarting.")
 	self.p[0].kill()
 	self.p[1].kill()
@@ -415,14 +413,14 @@ class UpDownUpDown:
 	self.p[0].start()
 	self.p[1].start()
 	self.p[2].start()
-	self.propose(1)
+	self.propose(1,False)
 
 	print_line("Killing all, then restarting.")
 	for i in self.p:
 	    i.kill()
 	for i in self.p:
 	    i.start()
-	self.propose(1)
+	self.propose(1,False)
 
 	print_line("Killing all Priests.")
 	for i in self.p:
@@ -432,6 +430,7 @@ class UpDownUpDown:
     def run(self,n):
 	global ntest
 	global passed
+	global slowness
 	
 	for i in xrange(n):
 	    self.__run1()
@@ -445,6 +444,13 @@ class UpDownUpDown:
 	ntest += 1
 	if not subprocess.call(['sh','-c',"grep crc= data/log|cut -d ' ' -f 3-|sort|uniq|cut -d ' ' -f 1|uniq -d|grep ."]):
 	    print_line("ERROR bad crc")
+	else:
+	    passed += 1
+
+	ntest += 1
+	print_line("slowness=%f"%slowness)
+	if slowness>MAX_SLOWNESS:
+	    print_line("ERROR too slow")
 	else:
 	    passed += 1
 
