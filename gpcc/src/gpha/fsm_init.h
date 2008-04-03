@@ -92,6 +92,23 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 	return 0;
     }
     */
+    {
+	char *argv[2];
+	char cmd[256];
+
+	strcpy(cmd, "ls /tmp");	
+	argv[0] = cmd;
+	argv[1] = 0;
+	if (0 != (e = gpcc_proc_run_shell(&cmdslot->u.request.proc,
+					  argv[0], (const char* const *) argv, 0, 0,
+					  cmdslot->pool))) {
+	    seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, e, "dummy");
+	    json_object_put(obj);
+	    return 0;
+	}
+    }
+					  
+				
 				    
     cmdslot->u.request.msg = obj;
     cmdslot->countdown = 1;
