@@ -114,7 +114,27 @@ static apr_status_t a_unit_stopped(gpcc_event_t *ev, void *arg)
 
 static apr_status_t a_unit_invalid(gpcc_event_t *ev, void *arg)
 {
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    gpcc_event_t *evt;
+    struct json_object *obj;
+    char *msg;
+    int len;
 
+    slot->u.unit.parentidx = pkt->mh.sndidx;
+
+    obj = gpcc_json_segment_reply(slot->cmdname, FAIL_STATUS, "segment is invalid");
+    msg = json_object_to_json_string(obj);
+    len = strlen(msg) + 1;
+	
+    evt = gpcc_event_alloc(SEGMENT_REPLY_MSG_EVENT, pkt->mh.sndidx, sizeof(*pkt) + len);
+    pkt = (gpcc_net_packet_t *) evt->pdata;
+    pkt->mh.sndidx = slot->cmdidx;
+    pkt->mh.rcvidx = 0;
+    pkt->mh.len = len;
+    strcpy(pkt->payload, msg);
+    
+    gpcc_evqueue_put(gpma.evq, evt);
     return 0;
 }
 
@@ -376,6 +396,48 @@ static apr_status_t a_unit_delete(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
+
+static apr_status_t a_unit_delete_invalid(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_net_packet_t *pkt = (gpcc_net_packet_t *) ev->pdata;
+    gpcc_event_t *evt;
+    int e;
+    struct json_object *obj;
+    char *msg;
+    int len;
+
+    slot->u.unit.parentidx = pkt->mh.sndidx;
+
+    if (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
+					SEGMENT_REQUEST_MSG,
+					slot->cmdidx,
+					0,
+					pkt->payload,
+					pkt->mh.len))) {
+	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+	slot->u.unit.parentidx = 0;
+
+	obj = gpcc_json_segment_reply(slot->cmdname, OK_STATUS, "network failure but ignored");
+	msg = json_object_to_json_string(obj);
+	len = strlen(msg) + 1;
+	
+	evt = gpcc_event_alloc(SEGMENT_REPLY_MSG_EVENT, pkt->mh.sndidx, sizeof(*pkt) + len);
+	pkt = (gpcc_net_packet_t *) evt->pdata;
+	pkt->mh.sndidx = slot->cmdidx;
+	pkt->mh.rcvidx = 0;
+	pkt->mh.len = len;
+	strcpy(pkt->payload, msg);
+	
+	gpcc_evqueue_put(gpma.evq, evt);
+	return 0;
+    }
+    
+    slot->countdown = 60 * 5;
+
+    return 0;
+}
 static apr_status_t a_unit_delete_reply(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;

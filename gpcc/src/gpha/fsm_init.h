@@ -9,10 +9,12 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     int e;
     char *initdbfn = 0;
     int pid = 0;
+    /*
     struct json_object *seg = 0;
     char *m_data_dir;
     char *source;
     char *host;
+    */
 
     obj = json_tokener_parse(packet->payload);
     if (!obj) {
@@ -68,7 +70,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 	return 0;	
     }
 
-
+    /*
     if (0 == (seg = gpcc_json_object_get_object(obj, "seg.m.0", 0))) {
 	seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL0_EVENT, 1, "seg.m.0 is missing");
 	json_object_put(obj);
@@ -89,6 +91,7 @@ static apr_status_t seg_initdb_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 	json_object_put(obj);
 	return 0;
     }
+    */
 				    
     cmdslot->u.request.msg = obj;
     cmdslot->countdown = 1;

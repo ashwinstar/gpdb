@@ -1,3 +1,47 @@
+static apr_status_t a_array_sync_standby_qd(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    seginfo_t *seginfo = gpma.fts_cmdslot->u.fts.seginfo;
+    int nseginfo = gpma.fts_cmdslot->u.fts.nseginfo;
+    int i, e;
+    int standby_qd_idx, master_qd_idx;
+    char cmd[2048];
+    apr_proc_t proc;
+
+    for (i = 0 ; i < nseginfo ; i++) {
+	const seginfo_t *info = &seginfo[i];
+	if (strcmp(info->name, "seg.m.1") == 0)
+	    break;
+    }
+    if (i >= nseginfo)
+	return 0;
+
+    standby_qd_idx = i;
+
+
+    for (i = 0 ; i < nseginfo ; i++) {
+	const seginfo_t *info = &seginfo[i];
+	if (strcmp(info->name, "seg.m.0") == 0)
+	    break;
+    }
+    if (i >= nseginfo)
+	return APR_EINVAL;
+
+    master_qd_idx = i;
+
+    /* ssh master_host scp src_dir standby_host:dst_dst */
+    gpcc_log_info("start to sync data from master QD to standby QD");
+    sprintf(cmd, "scp -r %s %s:%s", seginfo[master_qd_idx].dir,
+	    seginfo[standby_qd_idx].host,
+	    seginfo[standby_qd_idx].dir);
+    
+    e = gpcc_proc_ssh(&proc, seginfo[master_qd_idx].host, cmd, 1, cmdslot->pool);
+    if (e) {
+	gpcc_log_error("copy data from master QD datadir to standby QD datadir failed");
+    }
+
+    return e;
+}
 
 static apr_status_t a_array_init_units_init_reply(gpcc_event_t *ev, void *_cmdslot)
 {
@@ -12,8 +56,14 @@ static apr_status_t a_array_init_units_init_reply(gpcc_event_t *ev, void *_cmdsl
     status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
 
     if (strcmp(status, OK_STATUS) == 0) {
-	evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, pkt->mh.len);
-	memcpy(evt->pdata, pkt->payload, pkt->mh.len);
+	if (a_array_sync_standby_qd(ev, _cmdslot)) {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, pkt->mh.len);
+	    memcpy(evt->pdata, pkt->payload, pkt->mh.len);
+	    gpcc_warning(FLINE, "[Error] init array failed: status=%s, error=%s", status, pkt->payload);
+	} else {
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, pkt->mh.len);
+	    memcpy(evt->pdata, pkt->payload, pkt->mh.len);
+	}
     } else {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, pkt->mh.len);
 	memcpy(evt->pdata, pkt->payload, pkt->mh.len);
