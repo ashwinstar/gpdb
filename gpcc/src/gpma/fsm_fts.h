@@ -508,7 +508,7 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
     switch (cmdslot->cmdstate) {
     case FTS_CMDSTATE:
     case FTS_WAIT_CMDSTATE:
-	state = ARRAY_CONNECTING_STATUS;
+	state = SYSTEM_INITIALIZING_STATUS;
 	break;
     case FTS_EMPTY_CMDSTATE:
 	state = ARRAY_NOT_INITIALIZED_STATUS;

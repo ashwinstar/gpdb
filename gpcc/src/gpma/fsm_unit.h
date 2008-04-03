@@ -227,22 +227,22 @@ static apr_status_t a_unit_busy_ok_reply(gpcc_event_t *ev, void *arg)
 
     switch (slot->cmdstate) {
     case UNIT_CMDSTATE:
-	reason = "segment is waking up";
+	reason = SYSTEM_INITIALIZING_STATUS;
 	break;
     case UNIT_STOPPING_CMDSTATE:
-	reason = "segment is stopping";
+	reason = SEGMENT_STOPPING_STATUS;
 	break;
     case UNIT_STOPPED_CMDSTATE:
-	reason = "segment stopped";
+	reason = SEGMENT_STOPPED_STATUS;
 	break;
     case UNIT_STARTING_CMDSTATE:
-	reason = "segment is starting";
+	reason = SEGMENT_STARTING_STATUS;
 	break;
     case UNIT_RUNNING_CMDSTATE:
-	reason = "segment is running";
+	reason = SEGMENT_RUNNING_STATUS;
 	break;
     default:
-	reason = "invalid segment state";
+	reason = SEGMENT_INVALID_STATUS;
 	break;
     }
 
@@ -274,25 +274,25 @@ static apr_status_t a_unit_busy_error_reply(gpcc_event_t *ev, void *arg)
 
     switch (slot->cmdstate) {
     case UNIT_CMDSTATE:
-	reason = "segment is waking up";
+	reason = SYSTEM_INITIALIZING_STATUS;
 	break;
     case UNIT_STOPPING_CMDSTATE:
-	reason = "segment is stopping";
+	reason = SEGMENT_STOPPING_STATUS;
 	break;
     case UNIT_STOPPED_CMDSTATE:
-	reason = "segment stopped";
+	reason = SEGMENT_STOPPED_STATUS;
 	break;
     case UNIT_STARTING_CMDSTATE:
-	reason = "segment is starting";
+	reason = SEGMENT_STARTING_STATUS;
 	break;
     case UNIT_RUNNING_CMDSTATE:
-	reason = "segment is running";
+	reason = SEGMENT_RUNNING_STATUS;
 	break;
     case UNIT_DELETING_CMDSTATE:
-	reason = "segment is deleting";
+	reason = SEGMENT_DELETING_STATUS;
 	break;
     default:
-	reason = "invalid segment state";
+	reason = SEGMENT_INVALID_STATUS;
 	break;
     }
 
