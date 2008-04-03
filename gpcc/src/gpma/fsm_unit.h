@@ -521,7 +521,7 @@ static apr_status_t a_unit_postgres_status_reply(gpcc_event_t *ev, void *arg)
     if (strcmp(health, OK_STATUS) == 0 && strcmp(status, "running") == 0) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
     } else {
-	gpcc_log_info("seg = %s health = %s, status = %s, (%s)", slot->cmdname, health, status, pkt->payload);
+	gpcc_log_error("Segment %s failed. health = %s, status = %s, (%s)", slot->cmdname, health, status, pkt->payload);
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);	
     }
     gpcc_evqueue_put(gpma.evq, evt);
