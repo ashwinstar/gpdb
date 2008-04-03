@@ -23,10 +23,11 @@ static apr_status_t sync_config(void);
 /* Print usage info */
 static void usage(const char* msg)
 {
-    fprintf(stderr, "\nUsage: %s [-D?f] [-b ha_dir] ma_unit ma_dir ma_addr0 [ma_addr1 ma_addr2]\n\n", gpma.progname);
+    fprintf(stderr, "\nUsage: %s [-D?f] [-b ha_dir] [-a array_name] ma_unit ma_dir ma_addr0 [ma_addr1 ma_addr2]\n\n", gpma.progname);
     fprintf(stderr, "    -?         : print this help screen\n");
     fprintf(stderr, "    -D         : debug mode and do not run as daemon\n");
     fprintf(stderr, "    -f         : for the -b option, force the creation of new config\n");
+    fprintf(stderr, "    -a         : array name\n");
     fprintf(stderr, "    -b ha_dir  : the data directory for storing Host Agent data files\n");
     fprintf(stderr, "    ma_unit    : the Master Agent Unit (e.g. ma.1) \n");
     fprintf(stderr, "    ma_dir     : the data directory for storing Master Agent data files\n");
@@ -80,7 +81,7 @@ void parse_cmdline(int argc, const char* argv[])
 
     /* parse command line options */
     GPCC_DO(0 == apr_getopt_init(&handle, gpma.pool, argc, argv));
-    while (0 == (e = apr_getopt(handle, "?fb:D", &opt, &optarg))) {
+    while (0 == (e = apr_getopt(handle, "?fb:Da:", &opt, &optarg))) {
 	switch (opt) {
 	case 'f':
 	    gpma.boot_force = 1;
@@ -91,6 +92,9 @@ void parse_cmdline(int argc, const char* argv[])
 	    break;
 	case 'D':
 	    gpma.debug = 1;
+	    break;
+	case 'a':
+	    gpma.array_name = optarg;
 	    break;
 	case '?':
 	    usage(0);
@@ -120,6 +124,9 @@ void parse_cmdline(int argc, const char* argv[])
     }
     gpma.ma_max = i;
 
+    if (! gpma.array_name) {
+	usage("Please specify array name");
+    }
 
     /* check ma of the pattern: ma.N */
     sprintf(msg, "MA ID must look like 'ma.N' where N is a number between 0 and 2");
@@ -181,11 +188,10 @@ static void net_accepted(gpcc_net_conn_t conn,
 
 	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
-	const char *array_name = config_get(gpma.cfg, CONFIG_DBNAME_KEY);
 	int is_bad_uri = 0;
 	int is_bad_array_name = 0;
 
-	is_bad_array_name = ! (array_name && a && 0 == strcmp(a, array_name));
+	is_bad_array_name = ! (gpma.array_name && a && 0 == strcmp(a, gpma.array_name));
 	if (! is_bad_array_name) {
 
 	    if (0 == strcmp("/gpcc/lscfg", uri->path)) {

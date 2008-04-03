@@ -36,6 +36,7 @@ struct gpma_t {
     apr_pool_t*  pool;
     const char*  progname;    /* argv[0] of cmdline  */
     const char*  guid; 	      /* Global unique ID (generated from gpdb_id) */
+    const char*  array_name;  /* array name */
     const char*  ma_unit;     /* MA ID - e.g. ma.0 */
     int          ma_port;     /* MA Port */
     const char*  ma_addr[5];  /* MA Address */
