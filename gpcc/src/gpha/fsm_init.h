@@ -236,7 +236,7 @@ static apr_status_t seg_initdb_pg_hba_append(gpcc_event_t* ev, void *_cmdslot)
     gpcc_log_info("[%s] adding the entries in pg_hba.conf", cmdslot->cmdname);
     
     if (seg_is_qd(cmdslot)) {
-	char *user = gpcc_json_object_get_string(cmdslot->u.request.msg, CONFIG_USER_KEY, getenv("USER"));
+	char *user = gpcc_json_object_get_string(cmdslot->u.request.msg, CONFIG_USER_KEY, (char *) gpha.user);
 
 	hosts = apr_pcalloc(cmdslot->pool, sizeof(char *) * (2 * MAX_HOSTS_PER_NODE + 1));	
 	n = 0;
@@ -664,7 +664,7 @@ static apr_status_t seg_initdb_checkdb(gpcc_event_t* ev, void *_cmdslot)
 
     if (seg_is_qd(cmdslot)) {
 	/* this is QD */
-	user = gpcc_json_object_get_string(cmdslot->u.request.msg, CONFIG_USER_KEY, getenv("USER"));
+	user = gpcc_json_object_get_string(cmdslot->u.request.msg, CONFIG_USER_KEY, (char *) gpha.user);
 	passwd = gpcc_json_object_get_string(cmdslot->u.request.msg, CONFIG_PASSWORD_KEY, CONFIG_PASSWORD_VALUE);
 	if (0 != (e = gpcc_pg_change_password(0,
 					      cmdslot->u.request.port,

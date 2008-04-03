@@ -381,6 +381,28 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
     return 0;
 }
 
+void check_user(void)
+{
+    char *user, *logname;
+    
+    user = getenv("USER");
+    logname = getenv("LOGNAME");
+    
+
+    if (user) {
+	gpha.user = apr_pstrdup(gpha.pool, user);
+	gpcc_log_info("USER = %s", gpha.user);
+	return;
+    }
+    
+    if (logname) {
+	gpha.user = apr_pstrdup(gpha.pool, logname);
+	gpcc_log_info("USER = %s", gpha.user);
+	return;
+    }
+
+    gpcc_fatal(FLINE, "environment variable USER or LOGNAME not exist");
+}
 
 int main(int argc, const char* argv[])
 {
@@ -392,6 +414,8 @@ int main(int argc, const char* argv[])
     GPCC_DO(0 == parse_cmdline(argc, argv));
 
     GPCC_DO(0 != (gpha.gphome = getenv("GPHOME")));
+
+    check_user();
 
     if (! gpha.debug) {
 	GPCC_DO(0 == apr_proc_detach(1));

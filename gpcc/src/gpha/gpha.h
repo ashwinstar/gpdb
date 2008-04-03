@@ -77,6 +77,7 @@ struct cmdslot_t {
 typedef struct gpha_t gpha_t;
 struct gpha_t {
     apr_pool_t*  pool;
+    const char*  user;          /* login username */
     const char*  guid;          /* GUID */
     const char*  dir;		/* HA data & log directory */
     int          port;          /* HA port number */

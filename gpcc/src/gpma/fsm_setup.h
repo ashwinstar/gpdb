@@ -79,7 +79,7 @@ static struct json_object *config_to_json_object()
     value = config_getx(gpma.cfg, CONFIG_DBNAME_KEY, CONFIG_DBNAME_VALUE);
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
-    value = config_getx(gpma.cfg, CONFIG_USER_KEY, getenv("USER"));
+    value = config_getx(gpma.cfg, CONFIG_USER_KEY, gpma.user);
     json_object_object_add(obj, key, json_object_new_string((char *)value));    
 
     value = config_getx(gpma.cfg, CONFIG_PASSWORD_KEY, CONFIG_PASSWORD_VALUE);

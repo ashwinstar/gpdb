@@ -846,6 +846,29 @@ void check_gphome(void)
 }
 
 
+void check_user(void)
+{
+    char *user, *logname;
+    
+    user = getenv("USER");
+    logname = getenv("LOGNAME");
+    
+
+    if (user) {
+	gpma.user = apr_pstrdup(gpma.pool, user);
+	gpcc_log_info("USER = %s", gpma.user);
+	return;
+    }
+    
+    if (logname) {
+	gpma.user = apr_pstrdup(gpma.pool, logname);
+	gpcc_log_info("USER = %s", gpma.user);
+	return;
+    }
+
+    gpcc_fatal(FLINE, "environment variable USER or LOGNAME not exist");
+}
+
 int main(int argc, const char* argv[])
 {
 #ifdef SIGPIPE
@@ -866,6 +889,7 @@ int main(int argc, const char* argv[])
     GPCC_DO(0 == setenv("GPHOME", gpma.gphome, 1));
     printf("GPHOME=%s\n", gpma.gphome);
 
+    check_user();
     check_gphome();
     load_config();
 

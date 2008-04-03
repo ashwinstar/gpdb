@@ -34,6 +34,7 @@
 typedef struct gpma_t gpma_t;
 struct gpma_t {
     apr_pool_t*  pool;
+    const char*  user;        /* login user name */
     const char*  progname;    /* argv[0] of cmdline  */
     const char*  guid; 	      /* Global unique ID (generated from gpdb_id) */
     const char*  array_name;  /* array name */
