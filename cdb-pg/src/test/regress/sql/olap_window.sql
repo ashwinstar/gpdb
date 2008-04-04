@@ -457,7 +457,7 @@ select cn, dt, qty,
 from sale; --mvd 2->4
 
 -- Test for FOLLOWING frames
-select cn, prc, dt, sum(prc) over (order by dt,cn rows between 2 following and 3 following) as f from sale;
+select cn, prc, dt, sum(prc) over (order by ord,dt,cn rows between 2 following and 3 following) as f from sale_ord;
 
 -- Check that mixing cume_dist() with other window functions on the same
 -- window does not result in badness
@@ -510,7 +510,7 @@ group by cn;
 SELECT sale.cn,sale.vn,AVG(cast (sale.vn as int)) OVER(order by ord desc,sale.cn desc) as avg from sale_ord as sale;
 
 -- a bit harder
-SELECT sale.cn,sale.dt, sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc, sale.dt asc) as avg from sale;
+SELECT sale.cn,sale.dt, sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc, sale.dt asc) as avg from sale;--mvd 1,2->4
 
 -- Even harder (MPP-1805)
 SELECT sale.cn,sale.prc,sale.qty,                                  

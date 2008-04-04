@@ -1393,17 +1393,17 @@ select cn, dt, qty,
 from sale; --mvd 2->4
 ERROR:  window specification RANGE parameter type must be coercable to ORDER BY column type
 -- Test for FOLLOWING frames
-select cn, prc, dt, sum(prc) over (order by dt,cn rows between 2 following and 3 following) as f from sale;
+select cn, prc, dt, sum(prc) over (order by ord,dt,cn rows between 2 following and 3 following) as f from sale_ord;
  cn | prc  |     dt     | f  
 ----+------+------------+----
   2 | 2400 | 01-01-1401 |  0
   1 |    0 | 03-01-1401 |  0
   3 |    0 | 04-01-1401 |  0
-  1 |    0 | 05-01-1401 |  5
+  1 |    0 | 05-01-1401 |  0
   1 |    0 | 05-02-1401 |  5
-  1 |    0 | 06-01-1401 |  5
-  1 |    5 | 06-01-1401 | 10
-  2 |    0 | 06-01-1401 |  6
+  1 |    0 | 06-01-1401 | 10
+  2 |    0 | 06-01-1401 | 10
+  1 |    5 | 06-01-1401 |  6
   3 |    5 | 06-01-1401 |  2
   3 |    5 | 06-01-1401 |  1
   4 |    1 | 06-01-1401 |   
@@ -1533,7 +1533,7 @@ SELECT sale.cn,sale.vn,AVG(cast (sale.vn as int)) OVER(order by ord desc,sale.cn
 (12 rows)
 
 -- a bit harder
-SELECT sale.cn,sale.dt, sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc, sale.dt asc) as avg from sale;
+SELECT sale.cn,sale.dt, sale.vn,AVG(cast (sale.vn as int)) OVER(order by sale.cn desc, sale.dt asc) as avg from sale;--mvd 1,2->4
  cn |     dt     | vn |       avg        
 ----+------------+----+------------------
   4 | 06-01-1401 | 40 |               40
