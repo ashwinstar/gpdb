@@ -79,6 +79,15 @@ heap_compute_data_size(TupleDesc tupleDesc,
 	return data_length;
 }
 
+static inline char * att_align_zero(char *data, char alignchar)
+{
+	char *ret = (char *) att_align(data, alignchar);
+	while(data != ret)
+		*(data++) = 0;
+
+	return ret;
+}
+
 /*
  * heap_fill_tuple
  *		Load data portion of a tuple from values/isnull arrays
@@ -142,7 +151,7 @@ heap_fill_tuple(TupleDesc tupleDesc,
 		if (att[i]->attbyval)
 		{
 			/* pass-by-value */
-			data = (char *) att_align((long) data, att[i]->attalign);
+			data = (char *) att_align_zero(data, att[i]->attalign);
 			store_att_byval(data, values[i], att[i]->attlen);
 			data_length = att[i]->attlen;
 		}
@@ -155,7 +164,7 @@ heap_fill_tuple(TupleDesc tupleDesc,
 			if (VARATT_IS_EXTERNAL_D(values[i])) 
 			{
 				*infomask |= HEAP_HASEXTERNAL;
-				data = (char *) att_align((long) data, att[i]->attalign);
+				data = (char *) att_align_zero(data, att[i]->attalign);
 				data_length = VARSIZE_EXTERNAL(DatumGetPointer(values[i]));
 				memcpy(data, DatumGetPointer(values[i]), data_length);
 			}
@@ -180,7 +189,7 @@ heap_fill_tuple(TupleDesc tupleDesc,
 			else
 			{
 				/* must store full 4-byte header varlena */
-				data = (char *) att_align((long) data, att[i]->attalign);
+				data = (char *) att_align_zero(data, att[i]->attalign);
 				data_length = VARSIZE(DatumGetPointer(values[i]));
 				memcpy(data, DatumGetPointer(values[i]), data_length);
 			}
@@ -188,7 +197,7 @@ heap_fill_tuple(TupleDesc tupleDesc,
 		else if (att[i]->attlen == -2)
 		{
 			/* cstring */
-			data = (char *) att_align((long) data, att[i]->attalign);
+			data = (char *) att_align_zero(data, att[i]->attalign);
 			*infomask |= HEAP_HASVARWIDTH;
 			data_length = strlen(DatumGetCString(values[i])) + 1;
 			memcpy(data, DatumGetPointer(values[i]), data_length);
@@ -196,7 +205,7 @@ heap_fill_tuple(TupleDesc tupleDesc,
 		else
 		{
 			/* fixed-length pass-by-reference */
-			data = (char *) att_align((long) data, att[i]->attalign);
+			data = (char *) att_align_zero(data, att[i]->attalign);
 			Assert(att[i]->attlen > 0);
 			data_length = att[i]->attlen;
 			memcpy(data, DatumGetPointer(values[i]), data_length);
@@ -702,11 +711,10 @@ heaptuple_form_to(TupleDesc tupleDescriptor, Datum *values, bool *isnull, HeapTu
 	if(dstlen)
 	{
 		*dstlen = HEAPTUPLESIZE + len;
-		memset(dst, 0, *dstlen);
 		tuple = dst;
 	}
 	else
-		tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + len);
+		tuple = (HeapTuple) palloc(HEAPTUPLESIZE + len);
 
 	/*
 	 * Allocate and zero the space needed.	Note that the tuple body and
@@ -722,16 +730,34 @@ heaptuple_form_to(TupleDesc tupleDescriptor, Datum *values, bool *isnull, HeapTu
 	ItemPointerSetInvalid(&(tuple->t_self));
 	tuple->t_tableOid = InvalidOid;
 
+	/* 
+	 * The following 3 calls will setup the first 12 bytes of td (tuple->t_data) 
+	 */
 	HeapTupleHeaderSetDatumLength(td, len);
 	HeapTupleHeaderSetTypeId(td, tupleDescriptor->tdtypeid);
 	HeapTupleHeaderSetTypMod(td, tupleDescriptor->tdtypmod);
 
+	/* t_ctid does not matter */
+
+	/* num of attrs are stored in t_infomask2.  Clear the other flags first */
+	td->t_infomask2 = 0;
 	HeapTupleHeaderSetNatts(td, numberOfAttributes);
+
+	/* 
+	 * Set up t_hoff.  This need to be done before set up t_infomask
+	 * because HeapTupleHeaderSetOid will use t_hoff 
+	 */
 	td->t_hoff = hoff;
 
-	if (tupleDescriptor->tdhasoid)		/* else leave infomask = 0 */
+	if (tupleDescriptor->tdhasoid)
+	{
 		td->t_infomask = HEAP_HASOID;
+		HeapTupleHeaderSetOid(td, InvalidOid);
+	}
+	else
+		td->t_infomask = 0;
 
+	/* Really fill in the data. */
 	actual_len = 
 		heap_fill_tuple(tupleDescriptor,
 						values,
