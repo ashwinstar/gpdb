@@ -6274,7 +6274,7 @@ record_sortrefs_walker(Node *node, void *context)
 	sortref_ctx *ctx = (sortref_ctx *)context;
 
 	if (node == NULL)
-		return true;
+		return false;
 	
 #define RECORD(ref) \
 do \
@@ -6382,14 +6382,29 @@ rewrite_sortrefs(Query *qry)
 	ctx.levelsup = 1;
 	ctx.level = 0;
 	
-	expression_tree_walker((Node *)qry->sortClause, record_sortrefs_walker, 
-						   &ctx);
-	expression_tree_walker((Node *)qry->distinctClause, record_sortrefs_walker,
-						   &ctx);
-	expression_tree_walker((Node *)qry->groupClause, record_sortrefs_walker,
-						   &ctx);
-	expression_tree_walker((Node *)qry->windowClause, record_sortrefs_walker,
-						   &ctx);
+	if (expression_tree_walker((Node *)qry->sortClause, record_sortrefs_walker, 
+							   &ctx))
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("error in building sortref mapping for sortClause")));
+	
+	if (expression_tree_walker((Node *)qry->distinctClause, record_sortrefs_walker,
+							   &ctx))
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("error in building sortref mapping for distinctClause")));
+
+	if (expression_tree_walker((Node *)qry->groupClause, record_sortrefs_walker,
+							   &ctx))
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("error in building sortref mapping for groupClause")));
+
+	if (expression_tree_walker((Node *)qry->windowClause, record_sortrefs_walker,
+							   &ctx))
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("error in building sortref mapping for windowClause")));
 
 	for (i = 0, max = 1; i < ctx.size; i++)
 	{
