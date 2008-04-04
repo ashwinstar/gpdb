@@ -787,6 +787,18 @@ ExecutorEnd(QueryDesc *queryDesc)
 		 * we got an error. do all the necessary cleanup.
 		 */
 		mppExecutorCleanup(queryDesc);
+
+		/* 
+		 * Remove our own query's motion layer. 
+		 */
+		RemoveMotionLayer(estate->motionlayer_context, true);
+
+		/*
+		 * Release EState and per-query memory context.  This should release
+		 * everything the executor has allocated.
+		 */
+		FreeExecutorState(estate);
+
 		PG_RE_THROW();
 	}
 	PG_END_TRY();

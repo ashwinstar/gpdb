@@ -921,6 +921,11 @@ ExecEndMotion(MotionState * node)
 	ExecFreeExprContext(&node->ps);
 
 	/*
+	 * clean out the tuple table
+	 */
+	ExecClearTuple(node->ps.ps_ResultTupleSlot);
+
+	/*
 	 * shut down the subplan
 	 */
 	ExecEndNode(outerPlanState(node));
