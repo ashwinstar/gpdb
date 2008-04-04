@@ -14,11 +14,11 @@ use warnings;
 
 =head1 NAME
 
-B<atmsort.pl> - [A] [T]est [M]echanism Sort: sort the contents of SQL log files to aid diff comparison
+B<gpugpart.pl> - GreenPlum UpGrade Partitioned Tables
 
 =head1 SYNOPSIS
 
-B<atmsort.pl> [options] logfile [logfile...]
+B<gpugpart.pl> [options] 
 
 Options:
 
