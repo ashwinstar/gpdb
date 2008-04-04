@@ -18,7 +18,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/interfaces/libpq/pqexpbuffer.c,v 1.22 2006/03/05 15:59:10 momjian Exp $
+ * $PostgreSQL: pgsql/src/interfaces/libpq/pqexpbuffer.c,v 1.24 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

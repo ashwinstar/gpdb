@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/fseeko.c,v 1.20 2006/03/05 15:59:10 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/fseeko.c,v 1.22 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

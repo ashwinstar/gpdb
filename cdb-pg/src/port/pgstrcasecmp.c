@@ -16,7 +16,7 @@
  *
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/port/pgstrcasecmp.c,v 1.8 2006/10/07 21:48:43 tgl Exp $
+ * $PostgreSQL: pgsql/src/port/pgstrcasecmp.c,v 1.10 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

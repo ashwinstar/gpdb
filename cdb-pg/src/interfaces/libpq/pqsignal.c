@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/pqsignal.c,v 1.26 2006/05/30 15:57:56 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/pqsignal.c,v 1.28 2008/01/01 19:46:00 momjian Exp $
  *
  * NOTES
  *		This shouldn't be in libpq, but the monitor and some other

@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/libpq/pqcomm.h,v 1.101 2006/06/07 22:24:45 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/libpq/pqcomm.h,v 1.108 2008/01/01 19:45:58 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -156,6 +156,9 @@ extern bool Db_user_namespace;
 #define AUTH_REQ_CRYPT		4	/* crypt password */
 #define AUTH_REQ_MD5		5	/* md5 password */
 #define AUTH_REQ_SCM_CREDS	6	/* transfer SCM credentials */
+#define AUTH_REQ_GSS		7	/* GSSAPI without wrap() */
+#define AUTH_REQ_GSS_CONT	8	/* Continue GSS exchanges */
+#define AUTH_REQ_SSPI		9	/* SSPI negotiate without wrap() */
 
 typedef uint32 AuthRequest;
 

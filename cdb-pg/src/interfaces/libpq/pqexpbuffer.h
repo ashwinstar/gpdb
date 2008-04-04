@@ -19,7 +19,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/interfaces/libpq/pqexpbuffer.h,v 1.16 2006/03/05 15:59:10 momjian Exp $
+ * $PostgreSQL: pgsql/src/interfaces/libpq/pqexpbuffer.h,v 1.19 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -50,7 +50,7 @@ typedef PQExpBufferData *PQExpBuffer;
 /*------------------------
  * Initial size of the data buffer in a PQExpBuffer.
  * NB: this must be large enough to hold error messages that might
- * be returned by PQrequestCancel() or any routine in fe-auth.c.
+ * be returned by PQrequestCancel().
  *------------------------
  */
 #define INITIAL_EXPBUFFER_SIZE	256

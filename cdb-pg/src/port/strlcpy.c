@@ -7,7 +7,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/strlcpy.c,v 1.3 2006/10/04 00:30:14 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/strlcpy.c,v 1.5 2008/01/01 19:46:00 momjian Exp $
  *
  * This file was taken from OpenBSD and is used on platforms that don't
  * provide strlcpy().  The OpenBSD copyright terms follow.

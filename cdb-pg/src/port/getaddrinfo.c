@@ -16,7 +16,7 @@
  * Copyright (c) 2003-2008, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/getaddrinfo.c,v 1.26 2006/10/04 00:30:14 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/getaddrinfo.c,v 1.28 2008/01/01 19:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */

@@ -7,7 +7,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/memcmp.c,v 1.10 2006/03/05 15:59:10 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/memcmp.c,v 1.12 2008/01/01 19:46:00 momjian Exp $
  *
  * This file was taken from NetBSD and is used by SunOS because memcmp
  * on that platform does not properly compare negative bytes. The
