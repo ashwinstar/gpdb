@@ -108,8 +108,8 @@ trap "rm -f $TMPFILE ${OUTPUT_PREFIX}.bki.$$ ${OUTPUT_PREFIX}.description.$$ ${O
 
 # Get NAMEDATALEN from postgres_ext.h
 for dir in $INCLUDE_DIRS; do
-    if [ -f "$dir/postgres_ext.h" ]; then
-        NAMEDATALEN=`grep '^#define[ 	]*NAMEDATALEN' $dir/postgres_ext.h | $AWK '{ print $3 }'`
+    if [ -f "$dir/pg_config_manual.h" ]; then
+        NAMEDATALEN=`grep '^#define[ 	]*NAMEDATALEN' $dir/pg_config_manual.h | $AWK '{ print $3 }'`
         break
     fi
 done
