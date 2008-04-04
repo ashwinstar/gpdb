@@ -496,6 +496,9 @@ ClientAuthentication(Port *port)
 		case uaTrust:
 			status = STATUS_OK;
 			break;
+		default:
+			/* XXX Build break! */
+			Assert(!"Build Break!");
 	}
 
 	if (status == STATUS_OK)
