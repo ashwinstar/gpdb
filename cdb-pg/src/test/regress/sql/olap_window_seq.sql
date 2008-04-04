@@ -532,8 +532,8 @@ select cn, cast(cname as varchar(10)), first_value(cast(cname as varchar(10)))
   over(order by cn range 2 preceding) as f
 from customer;
 
-select cn, prc, dt, first_value(prc) over (order by dt rows between 1 following
-and 4 following) as f from sale;
+select cn, prc, dt, first_value(prc) over (order by ord,dt rows between 1 following
+and 4 following) as f from sale_ord;
 
 -- test for second issue in MPP-1810
 select vn, first_value(vn) over(order by vn range 2 preceding) from vendor;
@@ -1096,20 +1096,20 @@ select cn,vn,first_value(vn) over (order by ord,cn rows between 0 following and 
 select cn,vn,first_value(vn) over (order by ord,cn rows between 1 following and unbounded following) as first_value from sale_ord;
 select cn,vn,first_value(vn) over (order by ord,cn rows between unbounded preceding and unbounded following) as first_value from sale_ord;
 
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 200 preceding and 150 preceding) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 200 preceding and 0 preceding) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 200 preceding and 150 following) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 0 preceding and 150 following) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 0 following and 150 following) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 150 following and 200 following) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between unbounded preceding and 200 preceding) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between unbounded preceding and 0 preceding) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between unbounded preceding and 200 following) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 200 preceding and unbounded following) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 0 preceding and unbounded following) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 0 following and unbounded following) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 150 following and unbounded following) as last_value from sale;
-select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between unbounded preceding and unbounded following) as last_value from sale;
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 200 preceding and 150 preceding) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 200 preceding and 0 preceding) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 200 preceding and 150 following) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 0 preceding and 150 following) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 0 following and 150 following) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 150 following and 200 following) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between unbounded preceding and 200 preceding) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between unbounded preceding and 0 preceding) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between unbounded preceding and 200 following) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 200 preceding and unbounded following) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 0 preceding and unbounded following) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 0 following and unbounded following) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between 150 following and unbounded following) as last_value from sale;--mvd 1->3
+select pn,vn,last_value((pn+vn)/100) over (order by pn desc range between unbounded preceding and unbounded following) as last_value from sale;--mvd 1->3
 
 select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 1 preceding) as last_value from sale; --mvd 1->4
 select cn,vn,pn,last_value(vn) over (partition by cn order by pn rows between 2 preceding and 0 preceding) as last_value from sale; --mvd 1->4
