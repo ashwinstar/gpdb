@@ -642,29 +642,32 @@ tbm_iterate_page(PagetableEntry *page, TBMIterateResult *output)
 
 	if(page->ischunk)
 	{
-		output->ntuples = -1;
-		return true;
+		ntuples = -1;
 	}
 
-	/* scan bitmap to extract individual offset numbers */
-	ntuples = 0;
-	for (wordnum = 0; wordnum < WORDS_PER_PAGE; wordnum++)
+	else
 	{
-		tbm_bitmapword	w = page->words[wordnum];
-
-		if (w != 0)
+		/* scan bitmap to extract individual offset numbers */
+		ntuples = 0;
+		for (wordnum = 0; wordnum < WORDS_PER_PAGE; wordnum++)
 		{
-			int			off = wordnum * TBM_BITS_PER_BITMAPWORD + 1;
+			tbm_bitmapword	w = page->words[wordnum];
 
-			while (w != 0)
+			if (w != 0)
 			{
-				if (w & 1)
-					output->offsets[ntuples++] = (OffsetNumber) off;
-				off++;
-				w >>= 1;
+				int			off = wordnum * TBM_BITS_PER_BITMAPWORD + 1;
+
+				while (w != 0)
+				{
+					if (w & 1)
+						output->offsets[ntuples++] = (OffsetNumber) off;
+					off++;
+					w >>= 1;
+				}
 			}
 		}
 	}
+	
 	output->blockno = page->blockno;
 	output->ntuples = ntuples;
 
