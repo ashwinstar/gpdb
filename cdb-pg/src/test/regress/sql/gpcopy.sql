@@ -278,11 +278,17 @@ c:\\file\data\neew\path|5|c text data|d text data|e text data
 \.
 COPY copy_regression_text3 from stdin with delimiter '|';
 the at sign: \100|6|c text data|d text data|e text data
-an embedded linefeed \
-and another one \
-in column a|7|c text data|d text data|e text data
 a single backslash \\ in col a|8|c text data|d text data|e text data
 \.
+COPY copy_regression_text3 from stdin with delimiter '|';
+an embedded linefeed is not supported\
+and another one that should fail\
+in column a|7|c text data|d text data|e text data
+\.
+COPY copy_regression_text3 from stdin with delimiter '|';
+an embedded linefeed sequence\nin column a|7|c text data|d text data|e text data
+\.
+
 SELECT * FROM copy_regression_text3 ORDER BY b;
 
 DROP TABLE copy_regression_text1;

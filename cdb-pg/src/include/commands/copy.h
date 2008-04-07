@@ -129,7 +129,6 @@ typedef struct CopyStateData
 	QueryDesc  *queryDesc;		/* executable query to copy from */
 	List	   *attnumlist;		/* integer list of attnums to copy */
 	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
-	bool		binary;			/* binary format? */
 	bool		oids;			/* include OIDs? */
 	bool		csv_mode;		/* Comma Separated Value format? */
 	bool		header_line;	/* CSV header line? */
@@ -212,8 +211,6 @@ typedef struct CopyStateData
 	bool		last_was_esc;
 
 	/* for TEXT format */
-	bool		esc_in_prevbuf; /* escape was last character of the data input
-								 * buffer */
 	bool		cr_in_prevbuf;	/* CR was last character of the data input
 								 * buffer */
 
