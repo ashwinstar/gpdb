@@ -81,7 +81,7 @@ def gpssh(cmd):
             c.append(h)
     c.append(cmd)
     if opt['-v']: print '[Info]', strcmd(c)
-    p = subprocess.Popen(c, stdout=subprocess.PIPE)
+    p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     out = p.stdout.read(-1)
     rc = p.wait()
     return (not rc, out)

@@ -92,7 +92,7 @@ def createOneTimeSession(cmd):
              peer, cmd]
         
         if GV.opt['-v']: print '[INFO]', strcmd(c)
-        p = subprocess.Popen(c, stdout=subprocess.PIPE)
+        p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 	p.x_cmd = cmd;
 	p.x_peer = peer
 	session.append(p)
