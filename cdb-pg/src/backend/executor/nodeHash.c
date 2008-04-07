@@ -508,12 +508,21 @@ ExecHashTableDestroy(HashJoinTable hashtable)
 	 */
 	for (i = 1; i < hashtable->nbatch; i++)
 	{
-        HashJoinBatchData  *batch = hashtable->batches[i];
+		HashJoinBatchData  *batch = hashtable->batches[i];
 
-		if (batch->innerside.bufFile)
-			BufFileClose(batch->innerside.bufFile);
-		if (batch->outerside.bufFile)
-			BufFileClose(batch->outerside.bufFile);
+		if (batch->innerside.bfz)
+		{
+			bfz_close(batch->innerside.bfz); 
+			pfree(batch->innerside.bfz);
+			batch->innerside.bfz = NULL;
+		}
+
+		if (batch->outerside.bfz)
+		{
+			bfz_close(batch->outerside.bfz); 
+			pfree(batch->outerside.bfz);
+			batch->outerside.bfz = NULL;
+		}
 	}
 
 	/* Release working memory (batchCxt is a child, so it goes away too) */
@@ -1292,10 +1301,8 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
         batchstats->irdbytes = batchstats->innerfilesize;
 
         /* How much was read from outer workfiles for current batch? */
-        if (curbatch > 0 &&
-            hashtable->batches[curbatch]->outerside.bufFile)
-            batchstats->ordbytes =
-                BufFileTell64(hashtable->batches[curbatch]->outerside.bufFile);
+        if (curbatch > 0 && hashtable->batches[curbatch]->outerside.bfz)
+            batchstats->ordbytes = bfz_totalbytes(hashtable->batches[curbatch]->outerside.bfz);
 
         /* How much was written to workfiles for the remaining batches? */
         for (i = curbatch + 1; i < hashtable->nbatch; i++)
@@ -1304,15 +1311,15 @@ ExecHashTableExplainBatchEnd(HashJoinTable hashtable)
             HashJoinBatchStats *bs = &stats->batchstats[i];
             uint64              filebytes = 0;
 
-            if (batch->outerside.bufFile)
-                filebytes = BufFileTell64(batch->outerside.bufFile);
+            if (batch->outerside.bfz)
+                filebytes = bfz_totalbytes(batch->outerside.bfz); 
             Assert(filebytes >= bs->outerfilesize);
             owrbytes += filebytes - bs->outerfilesize;
             bs->outerfilesize = filebytes;
 
             filebytes = 0;
-            if (batch->innerside.bufFile)
-                filebytes = BufFileTell64(batch->innerside.bufFile);
+            if (batch->innerside.bfz)
+                filebytes = bfz_totalbytes(batch->innerside.bfz);
             Assert(filebytes >= bs->innerfilesize);
             iwrbytes += filebytes - bs->innerfilesize;
             bs->innerfilesize = filebytes;

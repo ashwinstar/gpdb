@@ -63,6 +63,11 @@ extern bfz_t*bfz_create(bfz_t*thiz,const char*filePrefix,int compress);
 extern void bfz_close(bfz_t*thiz);
 extern void bfz_scan_begin(bfz_t*thiz);
 
+static inline uint64 bfz_totalbytes(bfz_t *bfz)
+{
+	return bfz->tot_bytes;
+}
+
 static inline void
 bfz_append(bfz_t*thiz,const char*buffer,int size)
 {

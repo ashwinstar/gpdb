@@ -23,6 +23,7 @@
 #include "executor/nodeHashjoin.h"
 #include "utils/memutils.h"
 
+#include "cdb/cdbvars.h"
 #include "miscadmin.h" /* work_mem */
 
 static TupleTableSlot *ExecHashJoinOuterGetTuple(PlanState *outerNode,
@@ -653,7 +654,6 @@ ExecHashJoinNewBatch(HashJoinState *hjstate)
     HashJoinBatchData  *batch;
 	int			nbatch;
 	int			curbatch;
-	BufFile    *innerFile;
 	TupleTableSlot *slot;
 	uint32		hashvalue;
 
@@ -673,10 +673,13 @@ start_over:
 		 * We no longer need the previous outer batch file; close it right
 		 * away to free disk space.
 		 */
-        batch = hashtable->batches[curbatch];
-		if (batch->outerside.bufFile)
-			BufFileClose(batch->outerside.bufFile);
-		batch->outerside.bufFile = NULL;
+		batch = hashtable->batches[curbatch];
+		if (batch->outerside.bfz)
+		{
+			bfz_close(batch->outerside.bfz);
+			pfree(batch->outerside.bfz);
+		}
+		batch->outerside.bfz = NULL;
 	}
 
 	/*
@@ -697,27 +700,34 @@ start_over:
 	 */
 	curbatch++;
 	while (curbatch < nbatch &&
-		   (hashtable->batches[curbatch]->outerside.bufFile == NULL ||
-			hashtable->batches[curbatch]->innerside.bufFile == NULL))
+		   (hashtable->batches[curbatch]->outerside.bfz == NULL ||
+			hashtable->batches[curbatch]->innerside.bfz == NULL))
 	{
         batch = hashtable->batches[curbatch];
-		if (batch->outerside.bufFile &&
+		if (batch->outerside.bfz &&
 			hjstate->js.jointype == JOIN_LEFT)
 			break;				/* must process due to rule 1 */
-		if (batch->innerside.bufFile &&
+		if (batch->innerside.bfz &&
 			nbatch != hashtable->nbatch_original)
 			break;				/* must process due to rule 2 */
-		if (batch->outerside.bufFile &&
+		if (batch->outerside.bfz &&
 			nbatch != hashtable->nbatch_outstart)
 			break;				/* must process due to rule 3 */
 		/* We can ignore this batch. */
 		/* Release associated temp files right away. */
-		if (batch->innerside.bufFile)
-			BufFileClose(batch->innerside.bufFile);
-		batch->innerside.bufFile = NULL;
-		if (batch->outerside.bufFile)
-			BufFileClose(batch->outerside.bufFile);
-		batch->outerside.bufFile = NULL;
+		if (batch->innerside.bfz)
+		{
+			bfz_close(batch->innerside.bfz);
+			pfree(batch->innerside.bfz);
+		}
+		batch->innerside.bfz = NULL;
+
+		if (batch->outerside.bfz)
+		{
+			bfz_close(batch->outerside.bfz);
+			pfree(batch->outerside.bfz);
+		}
+		batch->outerside.bfz = NULL;
 		curbatch++;
 	}
 
@@ -726,63 +736,55 @@ start_over:
                                          * whether join was run to completion
                                          */
 
-	if (curbatch >= nbatch)
-		return curbatch;		/* no more batches */
+    if (curbatch >= nbatch)
+	    return curbatch;		/* no more batches */
 
     batch = hashtable->batches[curbatch];
 
     /*
-	 * Reload the hash table with the new inner batch (which could be empty)
-	 */
-	ExecHashTableReset(hashtable);
+     * Reload the hash table with the new inner batch (which could be empty)
+     */
+    ExecHashTableReset(hashtable);
 
- 	innerFile = batch->innerside.bufFile;
+    if (batch->innerside.bfz != NULL)
+    {
+	    bfz_scan_begin(batch->innerside.bfz); 
 
-	if (innerFile != NULL)
-	{
-		if (BufFileSeek(innerFile, 0, 0L, SEEK_SET))
-			ereport(ERROR,
-					(errcode_for_file_access(),
-				   errmsg("could not rewind hash-join temporary file: %m")));
+	    for (;;)
+	    {
+		    slot = ExecHashJoinGetSavedTuple(&batch->innerside,
+				    &hashvalue,
+				    hjstate->hj_HashTupleSlot);
+		    if (!slot)
+			    break;
 
-		for (;;)
-		{
-	        slot = ExecHashJoinGetSavedTuple(&batch->innerside,
-									         &hashvalue,
-									         hjstate->hj_HashTupleSlot);
-            if (!slot)
-                break;
+		    /*
+		     * NOTE: some tuples may be sent to future batches.  Also, it is
+		     * possible for hashtable->nbatch to be increased here!
+		     */
+		    ExecHashTableInsert(hashtable, slot, hashvalue);
+	    }
 
-			/*
-			 * NOTE: some tuples may be sent to future batches.  Also, it is
-			 * possible for hashtable->nbatch to be increased here!
-			 */
-			ExecHashTableInsert(hashtable, slot, hashvalue);
-		}
+	    /*
+	     * after we build the hash table, the inner batch file is no longer
+	     * needed
+	     */
+	    bfz_close(batch->innerside.bfz);
+	    pfree(batch->innerside.bfz);
+	    batch->innerside.bfz = NULL;
+    }
 
-		/*
-		 * after we build the hash table, the inner batch file is no longer
-		 * needed
-		 */
-		BufFileClose(innerFile);
-		batch->innerside.bufFile = NULL;
-	}
+    /*
+     * If there's no outer batch file, advance to next batch.
+     */
+    if (batch->outerside.bfz == NULL)
+	    goto start_over;
 
-	/*
-	 * If there's no outer batch file, advance to next batch.
-	 */
-	if (batch->outerside.bufFile == NULL)
-		goto start_over;
-
-	/*
-	 * Rewind outer batch file, so that we can start reading it.
-	 */
-	if (BufFileSeek(batch->outerside.bufFile, 0, 0L, SEEK_SET))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not rewind hash-join temporary file: %m")));
-
-	return curbatch;
+    /*
+     * Rewind outer batch file, so that we can start reading it.
+     */
+    bfz_scan_begin(batch->outerside.bfz);
+    return curbatch;
 }
 
 /*
@@ -801,10 +803,7 @@ ExecHashJoinSaveTuple(MemTuple tuple, uint32 hashvalue,
 					  struct HashJoinBatchSide *batchside,
 					  MemoryContext bfCxt)
 {
-	BufFile    *file = batchside->bufFile;
-	size_t		written;
-
-	if (file == NULL)
+	if (batchside->bfz == NULL)
 	{
 		extern int currentSliceId;
 		char tmpprefix[50];
@@ -813,24 +812,15 @@ ExecHashJoinSaveTuple(MemTuple tuple, uint32 hashvalue,
 		oldcxt = MemoryContextSwitchTo(bfCxt);
 
 		snprintf(tmpprefix, 50, "HashJoin_Slice%d", currentSliceId);
-		file = BufFileCreateTemp(tmpprefix, false);
+		
+		batchside->bfz = palloc(sizeof(bfz_t));
+		batchside->bfz = bfz_create(batchside->bfz, tmpprefix, gp_hashagg_compress_spill_files);
 
 		MemoryContextSwitchTo(oldcxt);
-
-		batchside->bufFile = file;
 	}
 
-	written = BufFileWrite(file, (void *) &hashvalue, sizeof(uint32));
-	if (written != sizeof(uint32))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write to hash-join temporary file: %m")));
-
-	written = BufFileWrite(file, (void *) tuple, memtuple_get_size(tuple, NULL)); 
-	if (written != memtuple_get_size(tuple, NULL))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write to hash-join temporary file: %m")));
+	bfz_append(batchside->bfz, (void *) &hashvalue, sizeof(uint32));
+	bfz_append(batchside->bfz, (void *) tuple, memtuple_get_size(tuple, NULL)); 
 }
 
 /*
@@ -845,7 +835,6 @@ ExecHashJoinGetSavedTuple(HashJoinBatchSide *batchside,
 						  uint32 *hashvalue,
 						  TupleTableSlot *tupleSlot)
 {
-	BufFile    *file = batchside->bufFile;
 	uint32		header[2];
 	size_t		nread;
 	MemTuple tuple;
@@ -855,20 +844,17 @@ ExecHashJoinGetSavedTuple(HashJoinBatchSide *batchside,
 	 * we can read them both in one BufFileRead() call without any type
 	 * cheating.
 	 */
-	nread = BufFileRead(file, (void *) header, sizeof(header));
-	if (nread == 0)				/* end of file */
+	nread = bfz_scan_next(batchside->bfz, (void *) header, sizeof(header));
+	if (nread != sizeof(header))				/* end of file */
 	{
 		ExecClearTuple(tupleSlot);
 		return NULL;
 	}
-	if (nread != sizeof(header))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read from hash-join temporary file: %m")));
+
 	*hashvalue = header[0];
 	tuple = (MemTuple) palloc(memtuple_size_from_uint32(header[1]));
 	memtuple_set_mtlen(tuple, NULL, header[1]);
-	nread = BufFileRead(file,
+	nread = bfz_scan_next(batchside->bfz,
 						(void *) ((char *) tuple + sizeof(uint32)),
 						memtuple_size_from_uint32(header[1]) - sizeof(uint32));
 

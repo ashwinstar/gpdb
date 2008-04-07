@@ -16,7 +16,7 @@
 #define HASHJOIN_H
 
 #include "fmgr.h"
-#include "storage/buffile.h"
+#include "storage/bfz.h"
 
 #include "cdb/cdbexplain.h"                 /* CdbExplain_Agg */
 
@@ -115,13 +115,13 @@ typedef struct HashJoinTableStats
  */
 typedef struct HashJoinBatchSide
 {
-    /*
-     * A file is opened only when we first write a tuple into it
-     * (otherwise its pointer remains NULL).  Note that the zero'th
-     * batch never has files, since we will process rather than dump
-     * out any tuples of batch zero.
-     */
-    BufFile    *bufFile;            /* buffered virtual temp file */
+	/*
+	 * A file is opened only when we first write a tuple into it
+	 * (otherwise its pointer remains NULL).  Note that the zero'th
+	 * batch never has files, since we will process rather than dump
+	 * out any tuples of batch zero.
+	 */
+	bfz_t  *bfz; 	/* buffered temp file */
 } HashJoinBatchSide;
 
 
