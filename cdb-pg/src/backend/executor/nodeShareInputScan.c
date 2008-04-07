@@ -521,6 +521,10 @@ void *shareinput_reader_waitready(int share_id)
 
 	ShareInput_Lk_Context *pctxt = malloc(sizeof(ShareInput_Lk_Context));
 
+	if(!pctxt)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+			errmsg("Share input reader failed: out of memory")));
+
 	pctxt->readyfd = -1;
 	pctxt->donefd = -1;
 	pctxt->zcnt = 0;
@@ -587,6 +591,10 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 	int bsize;
 
 	ShareInput_Lk_Context *pctxt = malloc(sizeof(ShareInput_Lk_Context));
+
+	if(!pctxt)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+			errmsg("Shareinput Writer failed: out of memory")));
 
 	pctxt->readyfd = -1;
 	pctxt->donefd = -1;

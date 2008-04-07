@@ -1038,6 +1038,10 @@ cdbdisp_returnResults(CdbDispatchResults *primaryResults,
 	nslots = 2 * largestGangsize() + 1;
 	resultSets = (struct pg_result **) calloc(nslots, sizeof(*resultSets));
 
+	if(!resultSets)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("cdbdisp_returnResults failed: out of memory")));
+
 	/* Collect results from primary gang. */
 	gangResults = primaryResults;
 	if (gangResults)

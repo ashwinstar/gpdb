@@ -176,8 +176,19 @@ save_ps_display_args(int argc, char **argv)
 		 * move the environment out of the way
 		 */
 		new_environ = (char **) malloc((i + 1) * sizeof(char *));
+		if(!new_environ)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("Setting new environment variable failed: Out of memory")));
+
 		for (i = 0; environ[i] != NULL; i++)
+		{
 			new_environ[i] = strdup(environ[i]);
+			if(!new_environ[i])
+				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Setting new environment variable failed: Out of memory")));
+		}
+
+
 		new_environ[i] = NULL;
 		environ = new_environ;
 	}
@@ -202,8 +213,19 @@ save_ps_display_args(int argc, char **argv)
 		int			i;
 
 		new_argv = (char **) malloc((argc + 1) * sizeof(char *));
+
+		if(!new_argv)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("Setting argv failed: Out of memory")));
+
 		for (i = 0; i < argc; i++)
+		{
 			new_argv[i] = strdup(argv[i]);
+			if(!new_argv[i])
+				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Setting argv failed: Out of memory")));
+		}
+
 		new_argv[argc] = NULL;
 
 #if defined(__darwin__)

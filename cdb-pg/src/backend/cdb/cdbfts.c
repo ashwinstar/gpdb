@@ -860,6 +860,9 @@ markSegDBPersistentState(int dbid, bool state)
 
 	tupdesc = SPI_tuptable->tupdesc;
 	user = strdup(SPI_getvalue(SPI_tuptable->vals[0], tupdesc, 1));
+	if(!user)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("FTS: out of memory")));
 
 	SPI_finish();
 
@@ -908,6 +911,9 @@ markSegDBPersistentState(int dbid, bool state)
 		 * this.
 		 */
 		char	   *error_message = strdup(PQerrorMessage(entryConn));
+		if(!error_message)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+					errmsg("FTS: out of memory")));
 
 		free(entryBuffer->data);
 		PQfinish(entryConn);

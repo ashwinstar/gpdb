@@ -105,14 +105,16 @@ static mpool_block_t* mpool_block_alloc(mpool_context_t* mpool, int minsz)
 		tot = minsz + MPOOL_CHUNKHDR_SIZE + hdrsz;
 
 	bp = malloc(tot);
-	if (bp) 
-	{
-		bp->owner = mpool;
-		bp->begin = bp->cur = ((char*) bp) + hdrsz;
-		bp->end = ((char*) bp) + tot;
-		bp->next = 0;
-		MemoryContextNoteAlloc(&mpool->header, tot);
-	}
+	if (!bp)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+			errmsg("Mpool allocation out of memory")));
+
+	bp->owner = mpool;
+	bp->begin = bp->cur = ((char*) bp) + hdrsz;
+	bp->end = ((char*) bp) + tot;
+	bp->next = 0;
+	MemoryContextNoteAlloc(&mpool->header, tot);
+
 	mpool->blocks_allocated++;
 	if (mpool->blocks_allocated > mpool->max_blocks_allocated)
 		mpool->max_blocks_allocated = mpool->blocks_allocated;

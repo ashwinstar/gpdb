@@ -510,9 +510,13 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
     }
 
     /* Store updated whoami text. */
-	if (segdbDesc->whoami != NULL)
-		free(segdbDesc->whoami);
+    if (segdbDesc->whoami != NULL)
+	    free(segdbDesc->whoami);
+
     segdbDesc->whoami = strdup(scratchbuf->data + scratchoff);
+    if(!segdbDesc->whoami)
+	    ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+	    	    errmsg("Cdb connection set slice index failed: out of memory")));
 
     /* Give back our scratch space at tail of error_message buffer. */
     truncatePQExpBuffer(scratchbuf, scratchoff);

@@ -825,7 +825,10 @@ MemoryContextCreate(NodeTag tag, Size size,
 	{
 		/* Special case for startup: use good ol' malloc */
 		node = (MemoryContext) malloc(needed);
-		Assert(node != NULL);
+		if(!node)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("Failed to create memory context: out of memory")
+				));
 	}
 
 	/* Initialize the node as best we can */

@@ -2815,8 +2815,10 @@ backtrace_symbols(void *const *buffer, int size)
 
 	result = malloc(bufsize);
 
-	/* now fill it in */
-	if (result != NULL)
+	if(!result)
+		ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY), 
+			errmsg("Failed to get backtrace symbol: out of memory"));
+
 	{
 		int n;
 		char *cur = (char *)(result + size);

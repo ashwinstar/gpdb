@@ -284,6 +284,10 @@ BootstrapMain(int argc, char *argv[])
 				break;
 			case 'y':
 				dbname = strdup(optarg);
+				if(!dbname)
+					ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Bootstrap failed: out of memory")));
+
 				break;
 			case 'c':
 			case '-':

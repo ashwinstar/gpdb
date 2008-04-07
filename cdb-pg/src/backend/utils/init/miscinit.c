@@ -138,6 +138,9 @@ SetDatabasePath(const char *path)
 	if (path)
 	{
 		DatabasePath = strdup(path);
+		if(!DatabasePath)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+					errmsg("Set database path failed: out of memory")));
 		AssertState(DatabasePath);
 	}
 }
@@ -919,7 +922,13 @@ CreateLockFile(const char *filename, bool amPostmaster,
 	/*
 	 * Arrange for automatic removal of lockfile at proc_exit.
 	 */
-	on_proc_exit(UnlinkLockFile, PointerGetDatum(strdup(filename)));
+	 {
+		 char *tmpptr = strdup(filename);
+		 if(!tmpptr)
+			 ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+			 		errmsg("Create lock file failed: out of memory")));
+		 on_proc_exit(UnlinkLockFile, PointerGetDatum(tmpptr)); 
+	 }
 }
 
 /*

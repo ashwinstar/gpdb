@@ -27,12 +27,26 @@ putenv(char *name)
 
 		was_mallocated = 1;
 		environ = malloc(size * sizeof(char *));
+
+		if(!environ)
+			ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("Put env failed: out of memory"));
+
 		for (i = 0; i < size; i++)
 			environ[i] = tmp[i];
 	}
 
 	environ = realloc(environ, (size + 1) * sizeof(char *));
-	environ[size - 1] = strcpy(malloc(strlen(name) + 1), name);
+	if(!environ)
+		ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("Put env failed: out of memory"));
+
+	environ[size - 1] = malloc(strlen(name) + 1);
+	if(!environ[size - 1])
+		ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("Put env failed: out of memory"));
+
+	strcpy(environ[size-1], name);
 	environ[size] = NULL;
 }
 

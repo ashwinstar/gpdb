@@ -337,6 +337,11 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 		sh_acquire_counts = calloc(numLocks, sizeof(int));
 		ex_acquire_counts = calloc(numLocks, sizeof(int));
 		block_counts = calloc(numLocks, sizeof(int));
+
+		if(!sh_acquire_counts || !ex_acquire_counts || !block_counts)
+			ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY),
+				errmsg("LWLockAcquire failed: out of memory"));
+
 		counts_for_pid = MyProcPid;
 		on_shmem_exit(print_lwlock_stats, 0);
 	}

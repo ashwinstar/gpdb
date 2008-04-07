@@ -3401,7 +3401,8 @@ ReadRecord(XLogRecPtr *RecPtr, int emode)
 		 * alignment, whereas malloc() will provide MAXALIGN'd storage.
 		 */
 		readBuf = (char *) malloc(XLOG_BLCKSZ);
-		Assert(readBuf != NULL);
+		if(!readBuf)
+			ereport(PANIC, (errmsg("Cannot allocate memory for read log record.  Out of Memory")));
 	}
 
 	if (RecPtr == NULL)

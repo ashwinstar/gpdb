@@ -79,6 +79,10 @@ pg_dlsym(void *handle, char *funcname)
 	NSSymbol	symbol;
 	char	   *symname = (char *) malloc(strlen(funcname) + 2);
 
+	if(!symname)
+		ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY),
+			errmsg("pg_dlsym failed: out of memory"));
+
 	sprintf(symname, "_%s", funcname);
 	if (NSIsSymbolNameDefined(symname))
 	{

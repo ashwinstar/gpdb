@@ -1835,6 +1835,10 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 			conn->pkt_q_tail = 0;
 			conn->pkt_q = (uint8 **)malloc(Gp_interconnect_queue_depth * sizeof(char *));
 
+			if(!conn->pkt_q)
+				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+					errmsg("Setup UDP interconnect failed: out of memory")));
+
 			/* connection header info (defining characteristics of this connection) */
 			MemSet(&conn->conn_info, 0, sizeof(conn->conn_info));
 			conn->route = i;
