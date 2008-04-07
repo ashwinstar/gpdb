@@ -310,7 +310,7 @@ MemTupleBinding *create_memtuple_binding(TupleDesc tupdesc)
 	return pbind;
 }
 
-static uint32 compute_memtuple_size_using_bind(Datum *values, bool *isnull, bool hasnull, uint32 *nullsaves, MemTupleBindingCols *colbind, TupleDesc tupdesc)
+static uint32 compute_memtuple_size_using_bind(Datum *values, bool *isnull, bool hasnull, int nullbit_extra, uint32 *nullsaves, MemTupleBindingCols *colbind, TupleDesc tupdesc)
 {
 	uint32 data_length = colbind->var_start; 
 	int i;
@@ -319,6 +319,8 @@ static uint32 compute_memtuple_size_using_bind(Datum *values, bool *isnull, bool
 
 	if(hasnull)
 	{
+		data_length += nullbit_extra;
+
 		for(i=0; i<tupdesc->natts; ++i)
 		{
 			if(isnull[i])
@@ -367,12 +369,12 @@ static uint32 compute_memtuple_size_using_bind(Datum *values, bool *isnull, bool
 static uint32 compute_memtuple_size(MemTupleBinding *pbind, Datum *values, bool *isnull, bool hasnull, uint32 *nullsaves) 
 {
 	uint32 ret_len = 0;
-	ret_len = compute_memtuple_size_using_bind(values, isnull, hasnull, nullsaves, &pbind->bind, pbind->tupdesc);
+	ret_len = compute_memtuple_size_using_bind(values, isnull, hasnull, pbind->null_bitmap_extra_size, nullsaves, &pbind->bind, pbind->tupdesc);
 
 	if(ret_len <= MEMTUPLE_LEN_FITSHORT) 
 		return ret_len;
 
-	ret_len = compute_memtuple_size_using_bind(values, isnull, hasnull, nullsaves, &pbind->large_bind, pbind->tupdesc);
+	ret_len = compute_memtuple_size_using_bind(values, isnull, hasnull, pbind->null_bitmap_extra_size, nullsaves, &pbind->large_bind, pbind->tupdesc);
 	Assert(ret_len > MEMTUPLE_LEN_FITSHORT);
 
 	return ret_len;
