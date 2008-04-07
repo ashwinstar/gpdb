@@ -166,23 +166,23 @@ APR_DECLARE(apr_status_t) gpcc_proc_ssh(apr_proc_t *proc, const char *hostname, 
 APR_DECLARE(apr_status_t) gpcc_proc_gpssh(apr_proc_t **proc, const char *const *hostnames, 
 					  const char *cmd, int wait, apr_pool_t *pool)
 {
-    int i, nhosts;
+    int i, nhosts, n;
     int e = 0;
     int ret;
     apr_proc_t *p;
     apr_exit_why_e exitwhy;
-
+    
     for (i = 0 ; hostnames[i] ; i++) { ; }
     nhosts = i;
 
     *proc = apr_palloc(pool, sizeof(apr_proc_t) * nhosts);    
+    n = 0;
     for (i = 0, p = *proc ; hostnames[i] ; i++, p++) {
 	e = gpcc_proc_ssh(p, hostnames[i], cmd, 0, pool);
 	if (e) {
 	    gpcc_log_error("gpcc_proc_ssh %s: command failed %s\n", hostnames[i], cmd);
 	    return e;
 	}
-	
     }
  
     if (wait) {

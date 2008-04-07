@@ -564,6 +564,71 @@ APR_DECLARE(apr_status_t) gpcc_pg_gethostname(const char *host, char *hostname, 
     return 0;   
 }
 
+
+APR_DECLARE(apr_status_t) gpcc_pg_gethostname_by_hosts(const char *const *host, char **hostname, 
+						       int nhost, apr_pool_t *pool)
+{
+#define MAX_THREAD_NUM 20
+
+    apr_proc_t *proc, *p;
+    char buf[1024];
+    apr_size_t nbytes = sizeof(buf);
+    apr_size_t nread = 0;
+    int i, j,k, e, run, nthread;
+    char *ptr;
+    char *argv[MAX_THREAD_NUM];
+
+    nthread = 0;
+    run = 0;
+
+    gpcc_log_info("gethostname for %d hosts", nhost);
+
+    for (i = 0, j = 0 ; i < nhost ; i++) {
+
+	argv[nthread] = host[i];
+	nthread++;
+
+	if (nthread >= MAX_THREAD_NUM-1) {
+	    run = 1;
+	}
+	
+	if (!run && i == nhost-1) {
+	    run = 1;
+	    gpcc_log_info("gethostname last batch....%d", nthread);
+	}
+
+	if (run) {
+	    gpcc_log_info("gethostname run batch with %d processes....", nthread);
+	    argv[nthread] = 0;
+	    run = 0;
+
+	    if ((e = gpcc_proc_gpssh(&proc, (const char *const *) argv, "hostname", 1, pool)) != 0 ) {
+		gpcc_log_error("gpcc_pg_gethostname_by_hosts: gpssh failed.");
+		return APR_EINVAL;
+	    }
+
+	    for (k = 0, p = proc ; k < nthread ; k++, p++) {
+		/* get the first line */
+		if ((e = apr_file_read_full(p->out, buf, nbytes, &nread)) != 0 && e != APR_EOF) {
+		    gpcc_log_error("get string from hostname failure\n");
+		    return e;
+		}
+		buf[nread] = 0;
+		ptr = gpcc_string_trim(buf);
+		hostname[j] = apr_pstrdup(pool, ptr);
+		gpcc_log_info("hostname of %s = %s", host[j], hostname[j]);	
+		j++;
+	    }
+
+	    nthread = 0;
+	}
+    }
+
+
+    return 0;
+}
+							
+
 /**
  * get addresses
  *
@@ -637,3 +702,75 @@ APR_DECLARE(apr_status_t) gpcc_pg_get_addresses(const char *host, char *addr, in
     return 0;   
 }
 
+APR_DECLARE(apr_status_t) gpcc_pg_get_addresses_by_hosts(const char *const *hosts,
+							 char **ipaddrs,
+							 int cnt,
+							 apr_pool_t *pool)
+{
+    apr_proc_t *proc, *p;
+    int e, n, nn, i;
+    char cmd[1024], out[1024], addr[1024];
+    char *last, *tok, *ptr;
+
+#ifdef SOLARIS2
+    char *ifconfig_txt = "-a inet";
+#else
+    char *ifconfig_txt = "";
+#endif
+
+
+    n = sizeof(out);
+    if (gpcc_proc_findCmdInPath("ifconfig", out, &n)) {
+	gpcc_fatal(FLINE, "ifconfig command not found");
+    }
+
+    sprintf(cmd, "%s %s | grep inet | grep -v 127.0.0 | grep -v inet6", out, ifconfig_txt);
+
+
+    if ((e = gpcc_proc_gpssh(&proc, hosts, cmd, 1, pool)) != 0) {
+	gpcc_log_error("gpssh failed");
+	return APR_EINVAL;
+    }
+
+    for (i = 0, p = proc ; i < cnt ; i++, p++) {
+	
+	/* get the first line */
+	*addr = 0;
+	n = sizeof(addr);
+	while (apr_file_gets(out, sizeof(out), p->out) == 0) {
+	    tok = apr_strtok(out, " ", &last);
+	    if (!tok)
+		return APR_EINVAL;
+	    
+	    tok = apr_strtok(0, " ", &last);
+	    if (!tok || *tok == 0)
+		return APR_EINVAL;
+	    
+	    if ((ptr = strchr(tok, ':')) == 0) {
+		nn = strlen(tok) + 1;
+		if (n < nn)
+		    return APR_EINVAL;
+		
+		strcat(addr, tok);
+		strcat(addr, " ");
+		n -= nn;
+		
+	    } else {
+		nn = strlen(ptr+1) + 1;
+		if (n < nn)
+		    return APR_EINVAL;
+		
+		strcat(addr, ptr+1);
+		strcat(addr, " ");
+		
+		n -= nn;
+	    }
+	}	
+	
+	ipaddrs[i] = apr_pstrdup(pool, addr);
+	gpcc_log_info("IP(s) of %s = '%s'", hosts[i], addr);
+	
+    }
+
+    return 0;
+}

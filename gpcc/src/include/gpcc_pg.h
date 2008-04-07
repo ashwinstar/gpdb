@@ -191,4 +191,13 @@ APR_DECLARE(apr_status_t) gpcc_pg_gethostname(const char *host, char *hostname, 
  */
 APR_DECLARE(apr_status_t) gpcc_pg_get_addresses(const char *host, char *addr, int *len, apr_pool_t *p);
 
+
+APR_DECLARE(apr_status_t) gpcc_pg_gethostname_by_hosts(const char *const *host, char **hostname, 
+						       int nhost, apr_pool_t *pool);
+
+APR_DECLARE(apr_status_t) gpcc_pg_get_addresses_by_hosts(const char *const *hosts,
+							 char **ipaddrs,
+							 int cnt,
+							 apr_pool_t *pool);
+
 #endif   /* GPCC_PG_H */

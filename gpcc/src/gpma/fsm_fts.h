@@ -91,7 +91,6 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     int i, j, n, dbid, content, port;
     char key[128], dir[256], host[256];
     const char *value;
-    char *ptr;
 
     /* build the segments */
     for (i = 0 ; ; i++) {
@@ -193,61 +192,80 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     /* get the hostname */
     cmdslot->u.fts.ht = apr_hash_make(cmdslot->pool);
 
-    for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
-	char hostname[256], ipaddr[1024];
-	int len;
+    {
+	char *argv[1024];
+	char *hosts[1024];
 
-	/* get hostname */
-	len = sizeof(hostname);
-	if (gpcc_pg_gethostname(cmdslot->u.fts.seginfo[i].host, hostname, &len, cmdslot->pool)) {
-	    gpcc_log_error("hostname %s error", cmdslot->u.fts.seginfo[i]);
+	for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
+	    argv[i] = cmdslot->u.fts.seginfo[i].host;
+	}
+	argv[i] = 0;
+
+	if (gpcc_pg_gethostname_by_hosts((const char *const *) argv, hosts, cmdslot->u.fts.nseginfo, cmdslot->pool)) {
+	    gpcc_log_error("get hostname error");
 	    return APR_EINVAL;
 	}
-	    
-	ptr = gpcc_string_trim(hostname);
-	
-	cmdslot->u.fts.seginfo[i].hostname = apr_pstrdup(cmdslot->pool, ptr);
-	/* check hashable with key = gethostname */
-	if (apr_hash_get(cmdslot->u.fts.ht, ptr, APR_HASH_KEY_STRING) == 0) {
-	    /* get ip addresses of the gethostname */
-	    len = sizeof(ipaddr);
-	    if (gpcc_pg_get_addresses(ptr, ipaddr, &len, cmdslot->pool)) {
-		gpcc_log_error("get IP address from remote host %s error", hostname);
-		return APR_EINVAL;
+
+	for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
+	    cmdslot->u.fts.seginfo[i].hostname = hosts[i];
+
+	    if (apr_hash_get(cmdslot->u.fts.ht, cmdslot->u.fts.seginfo[i].hostname, APR_HASH_KEY_STRING) == 0) {
+		apr_hash_set(cmdslot->u.fts.ht,
+			     cmdslot->u.fts.seginfo[i].hostname,
+			     APR_HASH_KEY_STRING,
+			     "0");
 	    }
-
-	    /* save it in hashtable */
-	    ptr = gpcc_string_trim(ipaddr);
-	    apr_hash_set(cmdslot->u.fts.ht, 
-			 apr_pstrdup(cmdslot->pool, cmdslot->u.fts.seginfo[i].hostname),
-			 APR_HASH_KEY_STRING,
-			 apr_pstrdup(cmdslot->pool, ptr));
-
 	}
+
+
+	
     }
 
+    /* get hostname */
     {
+	int cnt = apr_hash_count(cmdslot->u.fts.ht);
+	char *argv[1024];
+	char *ipaddrs[1024];
 	apr_hash_index_t *hi;
 	void *val;
 	const void *key;
 
+	if (cnt >= gpcc_lengthof(argv)) {
+	    gpcc_log_error("more than Maximum number of host = %d", cnt);
+	    return APR_EINVAL;
+	}
+
 	for (i = 0, hi = apr_hash_first(cmdslot->pool, cmdslot->u.fts.ht) ; 
 	     hi ; 
 	     hi = apr_hash_next(hi), i++) {
+
+	    apr_hash_this(hi, &key, 0, &val);
+
+	    argv[i] = (char *) key;
+	}
+	argv[i] = 0;
+	
+	gpcc_pg_get_addresses_by_hosts((const char *const *) argv,
+				       ipaddrs,
+				       cnt,
+				       cmdslot->pool);
+
+
+	for (i = 0 ; i < cnt ; i++) {
 	    char node[20];
 
 	    sprintf(node, "node.%d", i);
-	    apr_hash_this(hi, &key, 0, &val);
-	    config_set(gpma.cfg, node, (const char *) val);
+	    apr_hash_set(cmdslot->u.fts.ht, argv[i], APR_HASH_KEY_STRING, ipaddrs[i]);
+	    config_set(gpma.cfg, node, (const char *) ipaddrs[i]);
 
 	    for (j = 0 ; j < cmdslot->u.fts.nseginfo ; j++) {
-		if (strcmp((const char *) key, cmdslot->u.fts.seginfo[j].hostname) == 0) { 
+		if (strcmp((const char *) argv[i], cmdslot->u.fts.seginfo[j].hostname) == 0) { 
 		    cmdslot->u.fts.seginfo[j].haidx = i;
 		    cmdslot->u.fts.seginfo[j].ha = apr_psprintf(cmdslot->pool, "node.%d", i);
 		}
 	    }
 	}
-
+	    
 	/* get unique host as node */
 	cmdslot->u.fts.nnode = i;
 	cmdslot->u.fts.nopened = 0;
