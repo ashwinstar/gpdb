@@ -288,14 +288,16 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 
 static apr_status_t a_fts_http_redirect_leadma(gpcc_net_conn_t conn, const char *url)
 {
-    char location[128], json[128];
+    char location[128], json[1024];
     int ma_id = 0;
 
     if (*gpma.lma_cmdslot->u.lma.leadma) {
 	if (sscanf(gpma.lma_cmdslot->u.lma.leadma, "ma.%d", &ma_id) != 1 || ma_id >= gpma.ma_max)
 	    gpcc_fatal(FLINE, "Invalid ma name %s", gpma.lma_cmdslot->u.lma.leadma);
 	sprintf(location, "http://%s%s", gpma.ma_addr[ma_id], url);
-	sprintf(json, "{ \"location\" : \"%s\"}", gpma.ma_addr[ma_id]);
+	sprintf(json, "{ \"a\": \"%s\", \"status\": \"error\", \"location\" : \"%s\", \"errmsg\": \"this is not a lead MA\"}", 
+		gpma.array_name,
+		gpma.ma_addr[ma_id]);
 	gpcc_net_http_redirect_close(conn, location, json);
 	return 0;
     } 
