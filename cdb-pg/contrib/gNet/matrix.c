@@ -165,7 +165,7 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 	
 	/* Output array is always either int8[] or float8[] */
 	size = ARR_OVERHEAD_NONULLS(2);  /* overhead for two dimensional array */
-	size += ARR_DIMS(m)[0] * ARR_DIMS(n)[1] * sizeof(int8);
+	size += ARR_DIMS(m)[0] * ARR_DIMS(n)[1] * sizeof(int64);
 	result = (ArrayType *) palloc(size);
 	SET_VARSIZE(result, size);
 	result->ndim = 2;
@@ -187,7 +187,8 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 		default:
 			Assert(false);
 	}
-
+	data_r = ARR_DATA_PTR(result);
+	memset(data_r, 0, ARR_DIMS(m)[0] * ARR_DIMS(n)[1] * sizeof(int64));
 
 	/* 
 	 * Three dimensional loop over result arrays two dimensional space and
@@ -196,13 +197,11 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 	 *
 	 * This will need to be reworked for variable length numeric elements.
 	 */
-	data_r = ARR_DATA_PTR(result);
 	for (i = 0; i < ARR_DIMS(result)[1]; i++)
 	{
 		for (j = 0; j < ARR_DIMS(result)[0]; j++)
 		{
 			data_m = ARR_DATA_PTR(m) + j * ARR_DIMS(m)[1] * elsize;
-			memset(data_r, 0, elsize);
 			for (k = 0; k < ARR_DIMS(m)[1]; k++)
 			{
 				data_n = ARR_DATA_PTR(n) + k * ARR_DIMS(n)[1] * elsize;
