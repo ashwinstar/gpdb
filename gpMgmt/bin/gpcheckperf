@@ -48,17 +48,20 @@ def usage(exitarg):
     sys.exit(exitarg)
 
 
-script_name = os.path.split(__file__)[-1]
-opt = {}
-opt['-d'] = []
-opt['-D'] = False
-opt['-v'] = False
-opt['-V'] = False
-opt['-r'] = 'dsN'
-opt['-B'] = 1024 * 32
-opt['-S'] = 0
-opt['-h'] = []
-opt['-f'] = None
+class Global():
+    script_name = os.path.split(__file__)[-1]
+    opt = {}
+    opt['-d'] = []
+    opt['-D'] = False
+    opt['-v'] = False
+    opt['-V'] = False
+    opt['-r'] = 'dsN'
+    opt['-B'] = 1024 * 32
+    opt['-S'] = 0
+    opt['-h'] = []
+    opt['-f'] = None
+
+GV = Global()
 
 #############
 def killall(procname):
@@ -71,16 +74,16 @@ def strcmd(cmd):
 #############
 def gpssh(cmd):
     c = ['%s/bin/gpssh' % GPHOME]
-    if (opt['-V']): c.append('-v')
-    if (opt['-f']):
+    if (GV.opt['-V']): c.append('-v')
+    if (GV.opt['-f']):
         c.append('-f')
-        c.append(opt['-f'])
+        c.append(GV.opt['-f'])
     else:
-	for h in opt['-h']: 
+	for h in GV.opt['-h']: 
             c.append('-h')
             c.append(h)
     c.append(cmd)
-    if opt['-v']: print '[Info]', strcmd(c)
+    if GV.opt['-v']: print '[Info]', strcmd(c)
     p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     out = p.stdout.read(-1)
     rc = p.wait()
@@ -89,17 +92,17 @@ def gpssh(cmd):
 #############
 def gpscp(src, dst):
     c = ['%s/bin/gpscp' % GPHOME]
-    if (opt['-V']): c.append('-v')
-    if (opt['-f']):
+    if (GV.opt['-V']): c.append('-v')
+    if (GV.opt['-f']):
         c.append('-f')
-        c.append(opt['-f'])
+        c.append(GV.opt['-f'])
     else:
-	for h in opt['-h']: 
+	for h in GV.opt['-h']: 
             c.append('-h')
             c.append(h)
     c.append(src)
     c.append(dst)
-    if opt['-v']: print '[Info]', strcmd(c)
+    if GV.opt['-v']: print '[Info]', strcmd(c)
     p = subprocess.Popen(c, stdout=subprocess.PIPE)
     out = p.stdout.read(-1)
     rc = p.wait()
@@ -157,7 +160,7 @@ def parseMemorySize(line):
 
 #############
 def print_version():
-    print '%s version $Revision$' % script_name
+    print '%s version $Revision$' % GV.script_name
     sys.exit(0)
 
 #############
@@ -170,38 +173,43 @@ def parseCommandLine():
 
     for (switch, val) in options:
 	if (switch == '-?'): usage(0)
-	elif (switch[1] in 'vVD'): opt[switch] = True
-	elif (switch[1] in 'dh'): opt[switch].append(val)
-	elif (switch[1] in 'rf'): opt[switch] = val
-	elif (switch[1] in 'BS'): opt[switch] = parseMemorySize(val)
+	elif (switch[1] in 'vVD'): GV.opt[switch] = True
+	elif (switch[1] in 'dh'): GV.opt[switch].append(val)
+	elif (switch[1] in 'rf'): GV.opt[switch] = val
+	elif (switch[1] in 'BS'): GV.opt[switch] = parseMemorySize(val)
 	elif (switch == '--version'): print_version()
 
-    if opt['-V']: opt['-v'] = True
+    if GV.opt['-V']: GV.opt['-v'] = True
 
-    if (len(opt['-d']) == 0): 
+    if (len(GV.opt['-d']) == 0): 
 	usage('Error: please specify at least one segdir (-d switch)')
 
-    if not (0 <= opt['-B'] and 0 <= opt['-S']):
+    if not (0 <= GV.opt['-B'] and 0 <= GV.opt['-S']):
 	usage('Error: please enter valid memory sizes for -B or -S switches')
 
-    hf = (len(opt['-h']) and 1 or 0) + (opt['-f'] and 1 or 0)
+    hf = (len(GV.opt['-h']) and 1 or 0) + (GV.opt['-f'] and 1 or 0)
     if hf != 1:
 	usage('Error: please specify at least one of -h or -f args, but not both')
 
-    if (opt['-B']) > 1024*1024:
+    if (GV.opt['-B']) > 1024*1024:
 	usage('Error: maximum size for -B parameter is 1MB')
 
-    if opt['-S'] == 0:
-        opt['-S'] = 2 * getMemory() / len(opt['-d'])
+    if GV.opt['-S'] == 0:
+        GV.opt['-S'] = 2 * getMemory() / len(GV.opt['-d'])
     else:
-        opt['-S'] /= len(opt['-d'])
+        GV.opt['-S'] /= len(GV.opt['-d'])
 
     # strip the last '/' from the dir
     dd = []
-    for d in opt['-d']:
+    for d in GV.opt['-d']:
 	if d and d[-1] == '/': d = d[:-1]
 	dd.append(d)
-    opt['-d'] = dd
+    GV.opt['-d'] = dd
+
+    def strcmd(cmd):
+        return reduce(lambda x, y: x + ' ' + y, map(lambda x: x.find(' ') > 0 and "'" + x + "'" or x, cmd))
+
+    print strcmd(sys.argv)
 
 
 #############
@@ -211,7 +219,7 @@ def run(cmd):
     out = ''
     try:
 	try:
-	    if opt['-v']: print '[Info]', cmd
+	    if GV.opt['-v']: print '[Info]', cmd
 	    f = os.popen(cmd)
 	    out = f.read()
 	    ok = not f.close()
@@ -221,10 +229,10 @@ def run(cmd):
     finally:
 	if f: f.close()
 
-    if opt['-v'] and out and out != '': print out
+    if GV.opt['-v'] and out and out != '': print out
 
     if out and out.find('Permission denied') >= 0 and out.find('publickey') >= 0 : 
-	if not opt['-v']: print out
+	if not GV.opt['-v']: print out
 	print 'Please use gpssh-exkeys to exchange keys ...'
 	sys.exit(1)
 
@@ -235,19 +243,19 @@ runTeardown_torndown = False
 def runTeardown():
     global runTeardown_torndown
     if runTeardown_torndown: return
-    if opt['-v']:
+    if GV.opt['-v']:
 	print '--------------------'
 	print '  TEARDOWN'
 	print '--------------------'
     dirs = ''
-    for d in opt['-d']: dirs = '%s %s/gpcheckperf_$USER' % (dirs, d)
+    for d in GV.opt['-d']: dirs = '%s %s/gpcheckperf_$USER' % (dirs, d)
     try:
         (ok, out) = gpssh('rm -rf ' + dirs)
     except:
 	pass
 
     try:
-        if opt['-r'].find('n') >= 0 or opt['-r'].find('N') >= 0:
+        if GV.opt['-r'].find('n') >= 0 or GV.opt['-r'].find('N') >= 0:
             (ok, out) = gpssh(killall('netserver'))
     except:
         pass
@@ -256,24 +264,24 @@ def runTeardown():
 
 #############
 def runSetup():
-    if opt['-v']:
+    if GV.opt['-v']:
 	print '--------------------'
 	print '  SETUP'
 	print '--------------------'
     okCount = 0
     try:
 	#check python reachable
-	if opt['-v']: print '[Info] verify python interpreter exists'
+	if GV.opt['-v']: print '[Info] verify python interpreter exists'
 	(ok, out) = gpssh('python -c print')
 	if not ok:
-	    if not opt['-v']: print out
+	    if not GV.opt['-v']: print out
 	    sys.exit("[Error] unable to find python interpreter on some hosts\n"
 		     +"        verify PATH variables on the hosts")
 
 	#mkdir cperf
-	if opt['-v']: print '[Info] making gpcheckperf directory on all hosts ... '
+	if GV.opt['-v']: print '[Info] making gpcheckperf directory on all hosts ... '
 	dirs = ''
-	for d in opt['-d']: dirs = '%s %s/gpcheckperf_$USER' % (dirs, d)
+	for d in GV.opt['-d']: dirs = '%s %s/gpcheckperf_$USER' % (dirs, d)
 
         cmd = 'rm -rf %s ; mkdir -p %s' % (dirs, dirs)
 	(ok, out) = gpssh(cmd)
@@ -289,11 +297,11 @@ def runSetup():
 def copyExecOver(fname):
 
     #copy to this dir
-    d = opt['-d'][0]
+    d = GV.opt['-d'][0]
     target = '%s/gpcheckperf_$USER/%s' % (d, fname)
     path = '%s/lib/%s' % (sys.path[0], fname)
 
-    if opt['-v']: print '[Info] copy local %s to remote %s' % (path, target)
+    if GV.opt['-v']: print '[Info] copy local %s to remote %s' % (path, target)
 
     try: pathStat = os.stat(path)
     except: sys.exit('[Error] cannot stat file ' + path)
@@ -348,10 +356,10 @@ def runDiskWriteTest(multidd):
     print '--------------------'
     
     cmd = 'time -p ' + multidd
-    for d in opt['-d']:
+    for d in GV.opt['-d']:
 	cmd = cmd + (' -i /dev/zero -o %s/gpcheckperf_$USER/ddfile' % d)
-    if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
-    if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
+    if GV.opt['-B']: cmd = cmd + (' -B %d' % GV.opt['-B'])
+    if GV.opt['-S']: cmd = cmd + (' -S %d' % GV.opt['-S'])
     (ok, out) = gpssh(cmd)
     if not ok:
 	sys.exit('[Error] command failed: ' + cmd)
@@ -366,10 +374,10 @@ def runDiskReadTest(multidd):
     print '--------------------'
 
     cmd = 'time -p ' + multidd
-    for d in opt['-d']:
+    for d in GV.opt['-d']:
 	cmd = cmd + (' -o /dev/null -i %s/gpcheckperf_$USER/ddfile' % d)
-    if opt['-B']: cmd = cmd + (' -B %d' % opt['-B'])
-    if opt['-S']: cmd = cmd + (' -S %d' % opt['-S'])
+    if GV.opt['-B']: cmd = cmd + (' -B %d' % GV.opt['-B'])
+    if GV.opt['-S']: cmd = cmd + (' -S %d' % GV.opt['-S'])
     (ok, out) = gpssh(cmd)
     if not ok:
 	sys.exit('[Error] command failed: ' + cmd)
@@ -410,7 +418,7 @@ def startNetServer():
         (ok, out) = gpssh('%s -p %d > /dev/null 2>&1' % (rmtPath, port))
         if ok: return port
 
-        if opt['-v']: print '[Warning] start netserver with port %d failed' % port
+        if GV.opt['-v']: print '[Warning] start netserver with port %d failed' % port
         port += 12
 
     return 0
@@ -435,7 +443,7 @@ def spawnNetperfTestBetween(x, y, netperf_path, netserver_port, sec=5):
          x, cmd]
     proc = None
     try: 
-        if opt['-v']: print '[Info]', strcmd(c)
+        if GV.opt['-v']: print '[Info]', strcmd(c)
         proc = subprocess.Popen(c, stdout=subprocess.PIPE)
         out = proc.stdout.read(-1)
         rc = proc.wait()
@@ -462,9 +470,9 @@ def reapNetperfTest(proc, x, y):
         finally:
             proc = None
     
-    if opt['-v'] and out and out != '': print '[Info]',out
+    if GV.opt['-v'] and out and out != '': print '[Info]',out
     if out and out.find('Permission denied') >= 0 and out.find('publickey') >= 0 : 
-	if not opt['-v']: print out
+	if not GV.opt['-v']: print out
 	print '[Error] Please use gpssh-exkeys to exchange keys ...'
 	sys.exit(1)
 
@@ -477,7 +485,7 @@ def reapNetperfTest(proc, x, y):
         if len(line) != 5: continue
 	l = [x, y]
 	l.extend(map(lambda x: float(x), line))
-        if opt['-v']: 
+        if GV.opt['-v']: 
             print '[Info] %s -> %s : %s' % (x, y, str(line))
 	return l
 
@@ -504,8 +512,8 @@ def setupNetPerfTest():
     print '-------------------'
     
     hostlist = gplib.HostList()
-    for h in opt['-h']: hostlist.add(h)
-    if opt['-f']: hostlist.parseFile(opt['-f'])
+    for h in GV.opt['-h']: hostlist.add(h)
+    if GV.opt['-f']: hostlist.parseFile(GV.opt['-f'])
 
     h = hostlist.get()
     if len(h) == 0:
@@ -666,7 +674,7 @@ def printResult(title, result):
     print ' %s tot bandwidth (MB/s): %3.2f' % (title, totMBPS)
     print ' %s min bandwidth (MB/s): %3.2f [%s]' % (title, min, minHost)
     print ' %s max bandwidth (MB/s): %3.2f [%s]' % (title, max, maxHost)
-    if opt['-D']:
+    if GV.opt['-D']:
 	print ' -- per host bandwidth --'
 	for h in result:
 	    (mbps, time, bytes) = result[h]
@@ -681,17 +689,17 @@ try:
     diskWriteResult = diskReadResult = streamResult = netResult = None
     tornDown = False
     try:
-	if opt['-r'].find('d') >= 0:
+	if GV.opt['-r'].find('d') >= 0:
 	    multidd = copyExecOver('multidd')
 	    diskWriteResult = runDiskWriteTest(multidd)
 	    diskReadResult = runDiskReadTest(multidd)
 
-	if opt['-r'].find('s') >= 0:
+	if GV.opt['-r'].find('s') >= 0:
 	    streamResult = runStreamTest()
 
-        if opt['-r'].find('n') >= 0:
+        if GV.opt['-r'].find('n') >= 0:
             netResult = runNetPerfTest()
-        elif opt['-r'].find('N') >= 0:
+        elif GV.opt['-r'].find('N') >= 0:
             netResult = runNetPerfTestParallel()
 
 	runTeardown()
