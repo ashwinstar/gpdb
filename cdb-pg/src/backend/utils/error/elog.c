@@ -2816,8 +2816,8 @@ backtrace_symbols(void *const *buffer, int size)
 	result = malloc(bufsize);
 
 	if(!result)
-		ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY), 
-			errmsg("Failed to get backtrace symbol: out of memory"));
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY), 
+					errmsg("Failed to get backtrace symbol: out of memory")));
 
 	{
 		int n;
