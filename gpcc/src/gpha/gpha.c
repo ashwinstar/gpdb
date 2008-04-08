@@ -412,6 +412,7 @@ int main(int argc, const char* argv[])
     GPCC_DO(0 == parse_cmdline(argc, argv));
 
     GPCC_DO(0 != (gpha.gphome = getenv("GPHOME")));
+    GPCC_DO(0 == setenv("GPHOME", gpha.gphome, 1));
 
     check_user();
 
