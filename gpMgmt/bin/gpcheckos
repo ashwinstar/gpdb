@@ -526,13 +526,16 @@ def waitSession(session):
             if opt['-v']: print p.x_res
             permissionDenied = (p.x_res.find('Permission denied') >= 0)
             if permissionDenied:
-                errmsg = '[ERROR %s] ssh permission denied while %s' % (p.x_peer, p.x_ssh)
+                errmsg = ('[ERROR %s] ssh permission denied while %s\n\t%s' 
+                          % (p.x_peer, p.x_ssh, p.x_res))
             else:
                 noSuchFile = (p.x_res.find('No such file') >= 0)
                 if noSuchFile:
-                    errmsg = '[ERROR %s] no such file error while %s' % (p.x_peer, p.x_ssh)
+                    errmsg = ('[ERROR %s] no such file error while %s\n\t%s' 
+                              % (p.x_peer, p.x_ssh, p.x_res))
                 else:
-                    errmsg = '[ERROR %s] bad output while %s' % (p.x_peer, p.x_ssh)
+                    errmsg = ('[ERROR %s] bad output while %s\n\t%s' 
+                              % (p.x_peer, p.x_ssh, p.x_res))
             print errmsg
         if opt['-v']: 
             keys = p.x_res.keys()
