@@ -23,6 +23,16 @@
 #define SEGMENT_CONNECTING_STATUS                    "segment connecting"
 #define SEGMENT_BUSY_STATUS                          "segment busy"
 
+#define UNIT_STOPPING_STATUS                        "stopping"
+#define UNIT_STOPPED_STATUS                         "stopped"
+#define UNIT_STARTING_STATUS                        "starting"
+#define UNIT_RUNNING_STATUS                         "running"
+#define UNIT_DELETING_STATUS                        "deleting"
+#define UNIT_INITIALIZING_STATUS                    "initializing"
+#define UNIT_INVALID_STATUS                         "invalid"
+#define UNIT_CONNECTING_STATUS                      "connecting"
+#define UNIT_SETUP_STATUS                           "setting up"
+
 #define OK_STATUS                                    "ok"
 #define FAIL_STATUS                                  "error"
 
@@ -501,6 +511,50 @@ static apr_status_t a_fts_array_start_reply(gpcc_event_t *ev, void *_cmdslot)
     return 0;
 }
 
+static apr_status_t a_fts_array_units_status(gpcc_event_t *ev, void *_cmdslot, struct json_object *obj)
+{
+    char *status;
+    struct json_object *new_obj, *array;
+    int i;
+
+    if (!gpma.unit_cmdtab)
+	return 0;
+
+    new_obj = json_object_new_object();
+    for (i = 0 ; i < gpma.unit_max ; i++) {
+	cmdslot_t *slot = gpma.unit_cmdtab[i];
+
+	switch (slot->cmdstate) {
+	case UNIT_CMDSTATE:
+	    status= UNIT_SETUP_STATUS;
+	    break;
+	case UNIT_STOPPING_CMDSTATE:
+	    status = UNIT_STOPPING_STATUS;
+	    break;
+	case UNIT_STOPPED_CMDSTATE:
+	    status = UNIT_STOPPED_STATUS;
+	    break;
+	case UNIT_STARTING_CMDSTATE:
+	    status = UNIT_STARTING_STATUS;
+	    break;
+	case UNIT_RUNNING_CMDSTATE:
+	    status = UNIT_RUNNING_STATUS;
+	    break;
+	default:
+	    status = UNIT_INVALID_STATUS;
+	    break;
+	}
+	
+	json_object_object_add(new_obj, slot->cmdname, json_object_new_string(status));
+    }
+
+    array = json_object_object_get(obj, "rset");
+    json_object_array_add(array, new_obj);
+
+    return 0;
+}
+
+
 static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = _cmdslot;
@@ -557,6 +611,9 @@ static apr_status_t a_fts_array_status_reply(gpcc_event_t *ev, void *_cmdslot)
 
     obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0, 
 			       "status", OK_STATUS, state, 0);
+
+    a_fts_array_units_status(ev, _cmdslot, obj);
+
     gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0;

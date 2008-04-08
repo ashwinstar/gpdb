@@ -585,7 +585,7 @@ APR_DECLARE(apr_status_t) gpcc_pg_gethostname_by_hosts(const char *const *host, 
 
     for (i = 0, j = 0 ; i < nhost ; i++) {
 
-	argv[nthread] = host[i];
+	argv[nthread] = (char *) host[i];
 	nthread++;
 
 	if (nthread >= MAX_THREAD_NUM-1) {

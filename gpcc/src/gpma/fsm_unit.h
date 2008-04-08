@@ -1,13 +1,4 @@
 
-#define UNIT_STOPPING_STATUS                        "stopping"
-#define UNIT_STOPPED_STATUS                         "stopped"
-#define UNIT_STARTING_STATUS                        "starting"
-#define UNIT_RUNNING_STATUS                         "running"
-#define UNIT_DELETING_STATUS                        "deleting"
-#define UNIT_INITIALIZING_STATUS                    "initializing"
-#define UNIT_INVALID_STATUS                         "invalid"
-#define UNIT_CONNECTING_STATUS                      "connecting"
-
 
 static apr_status_t a_unit_stop(gpcc_event_t *ev, void *arg)
 {
