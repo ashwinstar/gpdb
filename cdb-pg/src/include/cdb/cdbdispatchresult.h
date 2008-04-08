@@ -221,6 +221,9 @@ typedef struct CdbDispatchResults
                                          *    or NULL
                                          */
     int                 sliceCapacity;  /* num of slots in sliceMap */
+
+	/* see cdbdisp_markDispatchMelee() */
+	struct CdbDispatchResults	*peerMelee;
 } CdbDispatchResults;
 
 
@@ -229,6 +232,13 @@ CdbDispatchResults *
 cdbdisp_makeDispatchResults(int     resultCapacity,
                             int     sliceCapacity,
                             bool    cancelOnError);
+
+
+/* For cancellation to work properly, we need to "cross-couple" the
+ * primary and mirror gangs, so they can check each other's status
+ * during the dispatcher "melee" check (see cdbdisp.c:handleSelectTimeout()) */
+void
+cdbdisp_markDispatchMelee(CdbDispatchResults *pri, CdbDispatchResults *mir);
 
 /* Clean up and free a CdbDispatchResults object. */
 void

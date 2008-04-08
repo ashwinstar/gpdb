@@ -2646,7 +2646,8 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 		 */
 		if (pleaseCancel ||
 			InterruptPending ||
-			meleeResults->errcode)
+			meleeResults->errcode ||
+			(meleeResults->peerMelee && meleeResults->peerMelee->errcode))
 		{
 			if (meleeResults->cancelOnError &&
 				!dispatchResult->requestedCancel &&
@@ -3386,6 +3387,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				*pMirrorResults = cdbdisp_makeDispatchResults(largestGangsize(),
 														  sliceLim,
 														  cancelOnError);
+			cdbdisp_markDispatchMelee(*pPrimaryResults, *pMirrorResults);
 		}
 	}
 	
@@ -3395,6 +3397,8 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		*pMirrorResults = cdbdisp_makeDispatchResults(largestGangsize(),
 				  sliceLim,
 				  cancelOnError);
+
+		cdbdisp_markDispatchMelee(*pPrimaryResults, *pMirrorResults);
 	}
 
 	cdb_total_plans++;
@@ -3435,6 +3439,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 		Gang	   *mirrorGang = NULL;
 		Slice *slice = NULL;
 		int si = -1;
+
 		if (sliceVector)
 		{
 			/*
@@ -3537,9 +3542,6 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			primaryGang = mirrorGang;
 		}
 		
-
-		
-
 		Assert(primaryGang != NULL || mirrorGang != NULL);	/* Must have a gang to dispatch to */
 		if (primaryGang)
 		{

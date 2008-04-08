@@ -780,6 +780,7 @@ cdbdisp_makeDispatchResults(int     resultCapacity,
     results->iFirstError = -1;
     results->errcode = 0;
     results->cancelOnError = cancelOnError;
+	results->peerMelee = NULL;
 
     results->sliceMap = NULL;
     results->sliceCapacity = sliceCapacity;
@@ -792,6 +793,25 @@ cdbdisp_makeDispatchResults(int     resultCapacity,
     return results;
 }                               /* cdbdisp_makeDispatchResults */
 
+/*
+ * cdbdisp_markDispatchMelee: connect the error-recovery melee
+ * structures of a primary with its mirror, and vice versa.
+ *
+ * This cross-connection is used by the code in
+ * cdbdisp.c:handleSelectTimeout() to propagate cancels between
+ * primary and mirror gangs.
+ */
+void
+cdbdisp_markDispatchMelee(CdbDispatchResults *pri, CdbDispatchResults *mir)
+{
+	Assert(pri != NULL);
+	Assert(mir != NULL);
+
+	pri->peerMelee = mir;
+	mir->peerMelee = pri;
+
+	return;
+}
 
 /*
  * cdbdisp_destroyDispatchResults:
