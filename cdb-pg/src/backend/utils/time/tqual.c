@@ -147,11 +147,12 @@ SharedSnapshotShmemSize(void)
 
 	slotSize = sizeof(SharedSnapshotSlot);
 	slotSize += sizeof(TransactionId) * (MaxBackends + max_prepared_xacts);
+	slotSize = MAXALIGN(slotSize);
 	
 	size = offsetof(SharedSnapshotStruct, slots);
 	size = add_size(size, mul_size(slotSize, MaxBackends));
 	
-	return size;
+	return MAXALIGN(size);
 }
 
 /*
