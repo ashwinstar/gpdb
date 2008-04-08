@@ -52,6 +52,11 @@ static int pivot_find(ArrayType *labels, text *attr)
 	bool     typbyval;
 	char     typalign;
 	
+	if (ARR_ELEMTYPE(labels) != TEXTOID)
+		ereport(ERROR, 
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("pivot_accum: labels are not type text")));
+
 	/* Text alignment properties */
 	get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
 	
@@ -103,7 +108,7 @@ static Datum oid_pivot_accum(FunctionCallInfo fcinfo, Oid type)
 	/* Do nothing if the attr isn't in the labels array. */
 	if ((i = pivot_find(labels, attr)) < 0)
 	{
-		if (!PG_ARGISNULL(0))
+		if (PG_ARGISNULL(0))
 			PG_RETURN_NULL();
 		PG_RETURN_ARRAYTYPE_P(PG_GETARG_ARRAYTYPE_P(0));
 	}

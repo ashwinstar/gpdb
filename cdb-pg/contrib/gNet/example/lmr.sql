@@ -18,6 +18,8 @@ select regr_R(sum(matrix_multiply(matrix_transpose(x),x)),
               sum(matrix_multiply(x,y)))
 FROM (SELECT ARRAY[[1, x1]] as x, y from mydata) s1;
 
+select mregr_coef(y, ARRAY[1, x1]) FROM mydata;
+
 -- built in
 select regr_intercept(y,x2), regr_slope(y,x2) FROM mydata;
 
@@ -26,6 +28,8 @@ select regr_R(sum(matrix_multiply(matrix_transpose(x),x)),
               sum(matrix_multiply(x,y)))
 FROM (SELECT ARRAY[[1, x2]] as x, y from mydata) s1;
 
+select mregr_coef(y, ARRAY[1, x2]) FROM mydata;
+
 
 -- using gNet features we can also do multiple linear regression
 --   * just add extra parameters to the X array
@@ -33,11 +37,11 @@ select regr_R(sum(matrix_multiply(matrix_transpose(x),x)),
               sum(matrix_multiply(x,y)))
 FROM (SELECT ARRAY[[1, x1, x2]] as x, y from mydata) s1;
 
+select mregr_coef(y, ARRAY[1, x1, x2]) FROM mydata;
+
 
 -- example including UNPIVOT
 SELECT attr(tuple), attr_value(tuple)
-FROM (SELECT unpivot(calculated_regression, ARRAY['INTERCEPT', 'X1', 'X2']) as tuple
-      FROM (SELECT regr_R(sum(matrix_multiply(matrix_transpose(x),x)),
-                          sum(matrix_multiply(x,y))) as calculated_regression
-            FROM (SELECT ARRAY[[1, x1, x2]] as x, y from mydata) s1) s2) s3;
+FROM (SELECT unpivot(mregr_coef, ARRAY['INTERCEPT', 'X1', 'X2']) as tuple
+      FROM (SELECT mregr_coef(y, ARRAY[1, x1, x2]) FROM mydata) q1) q2;
 \timing

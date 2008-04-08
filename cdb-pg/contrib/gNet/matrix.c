@@ -13,17 +13,17 @@ PG_MODULE_MAGIC;
 /* External functions */
 PG_FUNCTION_INFO_V1(matrix_transpose);
 PG_FUNCTION_INFO_V1(matrix_multiply);
+PG_FUNCTION_INFO_V1(matrix_add);
+
 PG_FUNCTION_INFO_V1(int8_matrix_smultiply);
-PG_FUNCTION_INFO_V1(int4_matrix_add);
-PG_FUNCTION_INFO_V1(int8_matrix_add);
-PG_FUNCTION_INFO_V1(float8_matrix_add);
+PG_FUNCTION_INFO_V1(float8_matrix_smultiply);
 
 Datum matrix_transpose(PG_FUNCTION_ARGS);
 Datum matrix_multiply(PG_FUNCTION_ARGS);
+Datum matrix_add(PG_FUNCTION_ARGS);
+
 Datum int8_matrix_smultiply(PG_FUNCTION_ARGS);
-Datum int4_matrix_add(PG_FUNCTION_ARGS);
-Datum int8_matrix_add(PG_FUNCTION_ARGS);
-Datum float8_matrix_add(PG_FUNCTION_ARGS);
+Datum float8_matrix_smultiply(PG_FUNCTION_ARGS);
 
 /*
  * matrix_transpose - transpose an array[x][y] into an array[y][x].
@@ -163,18 +163,32 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 	get_typlenbyvalalign(eltype, &typlen, &typbyval, &typalign);
 	elsize = att_align(typlen, typalign);
 	
+	/* Output array is always either int8[] or float8[] */
 	size = ARR_OVERHEAD_NONULLS(2);  /* overhead for two dimensional array */
-	size += ARR_DIMS(m)[0] * ARR_DIMS(n)[1] * elsize;
+	size += ARR_DIMS(m)[0] * ARR_DIMS(n)[1] * sizeof(int8);
 	result = (ArrayType *) palloc(size);
 	SET_VARSIZE(result, size);
 	result->ndim = 2;
 	result->dataoffset = 0;          /* We dissallowed arrays with NULLS */
-	result->elemtype = eltype;
 	ARR_DIMS(result)[0] = ARR_DIMS(m)[0];
 	ARR_DIMS(result)[1] = ARR_DIMS(n)[1];
 	ARR_LBOUND(result)[0] = 1;       /* may need better lbound handling? */
 	ARR_LBOUND(result)[1] = 1;
-	
+	switch (eltype) {
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+			result->elemtype = INT8OID;
+			break;
+		case FLOAT4OID:
+		case FLOAT8OID:
+			result->elemtype = FLOAT8OID;
+			break;
+		default:
+			Assert(false);
+	}
+
+
 	/* 
 	 * Three dimensional loop over result arrays two dimensional space and
 	 * over the intersection dimension of the two input matrices.
@@ -194,11 +208,11 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 				data_n = ARR_DATA_PTR(n) + k * ARR_DIMS(n)[1] * elsize;
 				switch (eltype) {
 					case INT2OID:
-						*(int16*)data_r += 
+						*(int64*)data_r += 
 							((int16*)data_n)[i] * ((int16*)data_m)[k];
 						break;
 					case INT4OID:
-						*(int32*)data_r += 
+						*(int64*)data_r += 
 							((int32*)data_n)[i] * ((int32*)data_m)[k];
 						break;
 					case INT8OID:
@@ -206,7 +220,7 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 							((int64*)data_n)[i] * ((int64*)data_m)[k];
 						break;
 					case FLOAT4OID:
-						*(float*)data_r += 
+						*(float8*)data_r += 
 							((float*)data_n)[i] * ((float*)data_m)[k];
 						break;
 					case FLOAT8OID:
@@ -217,10 +231,602 @@ Datum matrix_multiply(PG_FUNCTION_ARGS)
 						Assert(false);
 				}
 			}
-			data_r += elsize;
+			data_r += 8;
 		}
 	}
 	PG_RETURN_ARRAYTYPE_P(result);
+}
+
+/*
+ * matrix_add - array summation over two input arrays
+ */
+Datum matrix_add(PG_FUNCTION_ARGS)
+{
+	ArrayType  *m, *n;
+	Oid         mtype, ntype;
+	int         i, ndim, len;
+	bool        transition_function;
+	
+	/* If we're in a transition function we can be smarter */
+	transition_function = fcinfo->context && IsA(fcinfo->context, AggState);
+	
+	/* Validate arguments */
+	if (PG_NARGS() != 2) 
+    {
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("matrix_add called with %d arguments", PG_NARGS())));
+	}   
+	
+	/* We are declared as strict, so we should never be called on NULL input */
+	if ((!transition_function && PG_ARGISNULL(0)) || PG_ARGISNULL(1))
+		PG_RETURN_NULL();
+
+	n = PG_GETARG_ARRAYTYPE_P(1);
+	ndim  = ARR_NDIM(n);
+	ntype = ARR_ELEMTYPE(n);
+
+	/* Typecheck the input arrays, we only handle fixed length numeric data. */
+	if (ntype != INT2OID   && ntype != INT4OID && ntype != INT8OID && 
+		ntype != FLOAT4OID && ntype != FLOAT8OID)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("matrix_add: unsupported datatype")));
+
+	/* count total number of elements */
+	for (len = 1, i = 0; i < ndim; i++)
+		len *= ARR_DIMS(n)[i];
+
+	if (PG_ARGISNULL(0))
+	{
+		int size;
+
+		/* First time, we need to allocate our state */
+		Assert(transition_function);
+		
+		/* The two default types supported are int8 and float8 */
+		if (ntype == INT2OID || ntype == INT4OID || ntype == INT8OID)
+			mtype = INT8OID;
+		else
+			mtype = FLOAT8OID;	
+
+		/* ALlocate the state matrix */
+		size = ARR_OVERHEAD_NONULLS(ndim) + len * 8;
+		m = (ArrayType *) palloc(size);
+		SET_VARSIZE(m, size);
+		m->ndim = ndim;
+		m->dataoffset = 0;
+		m->elemtype = mtype;
+		for (i = 0; i < ndim; i++)
+		{
+			ARR_DIMS(m)[i] = ARR_DIMS(n)[i];
+			ARR_LBOUND(m)[i] = 1;
+		}
+		memset(ARR_DATA_PTR(m), 0, len*8);
+	}
+	else
+	{
+		m = PG_GETARG_ARRAYTYPE_P(0);
+		mtype = ARR_ELEMTYPE(m);
+		if (ndim != ARR_NDIM(m))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("matrix_add: Dimensionality of both arrays must match")));
+		for (i = 0; i < ndim; i++)
+		{
+			if (ARR_DIMS(m)[i] != ARR_DIMS(n)[i])
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("matrix_add: non-conformable arrays")));
+		}
+		if (ARR_NULLBITMAP(m) || ARR_NULLBITMAP(n))
+			ereport(ERROR,
+					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+					 errmsg("matrix_add: null array element not allowed in this context")));
+
+		/* Typecheck the input arrays, we only handle fixed length numeric data. */
+		if (ntype != INT2OID   && ntype != INT4OID && ntype != INT8OID && 
+			ntype != FLOAT4OID && ntype != FLOAT8OID)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("matrix_add: unsupported datatype")));
+	}
+	
+	/* Transition function updates in place, otherwise allocate result */
+	if (transition_function) 
+	{
+		switch (mtype)
+		{
+			case INT2OID:
+			{
+				int16 *data_m = (int16*) ARR_DATA_PTR(m);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					default:
+						ereport(ERROR,
+								(errcode(ERRCODE_DATATYPE_MISMATCH),
+								 errmsg("matrix_add: can not downconvert state")));
+				}
+				break;
+			}
+			case INT4OID:
+			{
+				int32 *data_m = (int32*) ARR_DATA_PTR(m);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case INT4OID:
+					{
+						int32 *data_n = (int32*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					default:
+						ereport(ERROR,
+								(errcode(ERRCODE_DATATYPE_MISMATCH),
+								 errmsg("matrix_add: can not downconvert state")));
+				}
+				break;
+			}
+			case INT8OID:
+			{
+				int64 *data_m = (int64*) ARR_DATA_PTR(m);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case INT4OID:
+					{
+						int32 *data_n = (int32*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case INT8OID:
+					{
+						int64 *data_n = (int64*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					default:
+						ereport(ERROR,
+								(errcode(ERRCODE_DATATYPE_MISMATCH),
+								 errmsg("matrix_add: can not downconvert state")));
+				}
+				break;
+			}
+			case FLOAT4OID:
+			{
+				float4 *data_m = (float4*) ARR_DATA_PTR(m);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case INT4OID:
+					{
+						int32 *data_n = (int32*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case INT8OID:
+					{
+						int64 *data_n = (int64*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case FLOAT4OID:
+					{
+						float4 *data_n = (float4*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					default:
+						ereport(ERROR,
+								(errcode(ERRCODE_DATATYPE_MISMATCH),
+								 errmsg("matrix_add: can not downconvert state")));
+				}
+				break;
+			}
+			case FLOAT8OID:
+			{
+				float8 *data_m = (float8*) ARR_DATA_PTR(m);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case INT4OID:
+					{
+						int32 *data_n = (int32*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case INT8OID:
+					{
+						int64 *data_n = (int64*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case FLOAT4OID:
+					{
+						float4 *data_n = (float4*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					case FLOAT8OID:
+					{
+						float8 *data_n = (float8*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_m[i] += data_n[i];
+						break;
+					}
+					default:
+						ereport(ERROR,
+								(errcode(ERRCODE_DATATYPE_MISMATCH),
+								 errmsg("matrix_add: can not downconvert state")));
+				}
+				break;
+			}
+			default:
+				Assert(false);
+		}
+		PG_RETURN_ARRAYTYPE_P(m);
+	}
+	else
+	{
+		ArrayType *result;
+		Oid        rtype  = InvalidOid;
+		int        elsize = 0;
+		int        size;
+
+		/* Result type for non-transition function is the higher of the two input types */
+		if (ntype == FLOAT8OID || mtype == FLOAT8OID)
+		{
+			rtype  = FLOAT8OID;
+			elsize = sizeof(float8);
+		}
+		else if (ntype == FLOAT4OID || mtype == FLOAT4OID)
+		{
+			rtype  = FLOAT4OID;
+			elsize = sizeof(float4);
+		}
+		else if (ntype == INT8OID || mtype == INT8OID)
+		{
+			rtype  = INT8OID;
+			elsize = sizeof(int64);
+		}
+		else if (ntype == INT4OID || mtype == INT4OID)
+		{
+			rtype  = INT4OID;
+			elsize = sizeof(int32);
+		}
+		else if (ntype == INT2OID || mtype == INT2OID)
+		{
+			rtype  = INT2OID;
+			elsize = sizeof(int16);
+		}
+		Assert(rtype != InvalidOid && elsize > 0);
+
+		size = ARR_OVERHEAD_NONULLS(ndim) + len * elsize;
+		result = (ArrayType *) palloc(size);
+		SET_VARSIZE(result, size);
+		result->ndim = ndim;
+		result->dataoffset = 0;          /* We dissallowed arrays with NULLS */
+		result->elemtype = rtype;
+		for (i = 0; i < ndim; i++)
+		{
+			ARR_DIMS(result)[i] = ARR_DIMS(n)[i];
+			ARR_LBOUND(result)[i] = 1;
+		}
+		switch (mtype)
+		{
+			case INT2OID:
+			{
+				int16 *data_m = (int16*) ARR_DATA_PTR(m);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						int16 *data_r = (int16*) ARR_DATA_PTR(result);
+						Assert(rtype == INT2OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT4OID:
+					{
+						int32 *data_n = (int32*) ARR_DATA_PTR(n);
+						int32 *data_r = (int32*) ARR_DATA_PTR(result);
+						Assert(rtype == INT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT8OID:
+					{
+						int64 *data_n = (int64*) ARR_DATA_PTR(n);
+						int64 *data_r = (int64*) ARR_DATA_PTR(result);
+						Assert(rtype == INT8OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT4OID:
+					{
+						float4 *data_n = (float4*) ARR_DATA_PTR(n);
+						float4 *data_r = (float4*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT8OID:
+					{
+						float8 *data_n = (float8*) ARR_DATA_PTR(n);
+						float8 *data_r = (float8*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT8OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					default:
+						Assert(false);
+				}
+				break;
+			}
+			case INT4OID:
+			{
+				int32 *data_m = (int32*) ARR_DATA_PTR(m);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						int32 *data_r = (int32*) ARR_DATA_PTR(result);
+						Assert(rtype == INT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT4OID:
+					{
+						int32 *data_n = (int32*) ARR_DATA_PTR(n);
+						int32 *data_r = (int32*) ARR_DATA_PTR(result);
+						Assert(rtype == INT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT8OID:
+					{
+						int64 *data_n = (int64*) ARR_DATA_PTR(n);
+						int64 *data_r = (int64*) ARR_DATA_PTR(result);
+						Assert(rtype == INT8OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT4OID:
+					{
+						float4 *data_n = (float4*) ARR_DATA_PTR(n);
+						float4 *data_r = (float4*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT8OID:
+					{
+						float8 *data_n = (float8*) ARR_DATA_PTR(n);
+						float8 *data_r = (float8*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT8OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					default:
+						Assert(false);
+				}
+				break;
+			}
+			case INT8OID:
+			{
+				int64 *data_m = (int64*) ARR_DATA_PTR(m);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						int64 *data_r = (int64*) ARR_DATA_PTR(result);
+						Assert(rtype == INT8OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT4OID:
+					{
+						int32 *data_n = (int32*) ARR_DATA_PTR(n);
+						int64 *data_r = (int64*) ARR_DATA_PTR(result);
+						Assert(rtype == INT8OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT8OID:
+					{
+						int64 *data_n = (int64*) ARR_DATA_PTR(n);
+						int64 *data_r = (int64*) ARR_DATA_PTR(result);
+						Assert(rtype == INT8OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT4OID:
+					{
+						float4 *data_n = (float4*) ARR_DATA_PTR(n);
+						float4 *data_r = (float4*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT8OID:
+					{
+						float8 *data_n = (float8*) ARR_DATA_PTR(n);
+						float8 *data_r = (float8*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT8OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					default:
+						Assert(false);
+				}
+				break;
+			}
+			case FLOAT4OID:
+			{
+				float4 *data_m = (float4*) ARR_DATA_PTR(m);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						float4 *data_r = (float4*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT4OID:
+					{
+						int32 *data_n = (int32*) ARR_DATA_PTR(n);
+						float4 *data_r = (float4*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT8OID:
+					{
+						int64 *data_n = (int64*) ARR_DATA_PTR(n);
+						float4 *data_r = (float4*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT4OID:
+					{
+						float4 *data_n = (float4*) ARR_DATA_PTR(n);
+						float4 *data_r = (float4*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT4OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT8OID:
+					{
+						float8 *data_n = (float8*) ARR_DATA_PTR(n);
+						float8 *data_r = (float8*) ARR_DATA_PTR(result);
+						Assert(rtype == FLOAT8OID);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					default:
+						Assert(false);
+				}
+				break;
+			}
+			case FLOAT8OID:
+			{
+				float8 *data_m = (float8*) ARR_DATA_PTR(m);
+				float8 *data_r = (float8*) ARR_DATA_PTR(result);
+				Assert(rtype == FLOAT8OID);
+				switch (ntype)
+				{
+					case INT2OID:
+					{
+						int16 *data_n = (int16*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT4OID:
+					{
+						int32 *data_n = (int32*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case INT8OID:
+					{
+						int64 *data_n = (int64*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT4OID:
+					{
+						float4 *data_n = (float4*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					case FLOAT8OID:
+					{
+						float8 *data_n = (float8*) ARR_DATA_PTR(n);
+						for (i = 0; i < len; i++)
+							data_r[i] = data_m[i] + data_n[i];
+						break;
+					}
+					default:
+						Assert(false);
+				}
+				break;
+			}
+			default:
+				Assert(false);
+		}
+		PG_RETURN_ARRAYTYPE_P(result);
+	} 
 }
 
 
@@ -270,418 +876,50 @@ Datum int8_matrix_smultiply(PG_FUNCTION_ARGS)
 	PG_RETURN_ARRAYTYPE_P(result);
 }
 
-
 /*
- * matrix_add - array summation over two input arrays
+ * float8_matrix_smultiply - scalar multiple of input array by a float8
  */
-Datum int4_matrix_add(PG_FUNCTION_ARGS)
+Datum float8_matrix_smultiply(PG_FUNCTION_ARGS)
 {
-	ArrayType  *m, *n;
-	int32      *data_m, *data_n;
-	int         i, ndim, len;
-	bool        transition_function;
+	ArrayType  *m, *result;
+	float8     *data_r;
+	float8      scalar;
+	int         size, nelem, ndim;
+	int         i;
 	
-	/* If we're in a transition function we can be smarter */
-	transition_function = fcinfo->context && IsA(fcinfo->context, AggState);
-	
-	/* Validate arguments */
-	if (PG_NARGS() != 2) 
-    {
+	if (PG_NARGS() != 2)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("matrix_sum called with %d arguments", PG_NARGS())));
-	}   
-	
-	/* Both are NULL - easy */
-	if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+				 errmsg("matrix_smultiply_float8 called with %d arguments", 
+						PG_NARGS())));
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		PG_RETURN_NULL();
 	
-	/* One is null, but not the other */
-	if (PG_ARGISNULL(1) || (PG_ARGISNULL(0) && !transition_function))
-	{
-		if (PG_ARGISNULL(1))
-			m = PG_GETARG_ARRAYTYPE_P(0);
-		else
-			m = PG_GETARG_ARRAYTYPE_P(1);
-		if (ARR_ELEMTYPE(m) != INT4OID)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("input did not match bigint[]")));
-		if (ARR_NULLBITMAP(m))
-			ereport(ERROR,
-					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-					 errmsg("null array element not allowed in this context")));
-		
-		PG_RETURN_ARRAYTYPE_P(m);
-	}
-	
-	/* When the state is null and we are called as a transition function we
-	   can't simply return the later pointer because we will try to update the
-	   state in place on future calls, in this case we must allocate a new
-	   array and copy the old values */
-	if (PG_ARGISNULL(0))
-	{
-		int size;
-		
-		n = PG_GETARG_ARRAYTYPE_P(1);
-		if (ARR_ELEMTYPE(n) != INT4OID)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("input did not match bigint[]")));
-		if (ARR_NULLBITMAP(n))
-			ereport(ERROR,
-					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-					 errmsg("null array element not allowed in this context")));
-		
-		/* count total number of elements */
-		ndim = ARR_NDIM(n);
-		for (len = 1, i = 0; i < ndim; i++)
-			len *= ARR_DIMS(n)[i];
-		
-		size = ARR_OVERHEAD_NONULLS(ndim); 
-		size += len * sizeof(int32);
-		m = (ArrayType *) palloc(size);
-		memcpy(m, n, size);
-		PG_RETURN_ARRAYTYPE_P(m);
-	}
-	
-	/* Both non-null we have work to do */
-	m = PG_GETARG_ARRAYTYPE_P(0);
-	n = PG_GETARG_ARRAYTYPE_P(1);
-	data_n = (int32*) ARR_DATA_PTR(n);
-	data_m = (int32*) ARR_DATA_PTR(m);
-	
+	scalar = PG_GETARG_FLOAT8(1);
+    m = PG_GETARG_ARRAYTYPE_P(0);
 	ndim = ARR_NDIM(m);
-	if (ndim != ARR_NDIM(n))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Dimensionality of both arrays must match")));
-	for (i = 0; i < ndim; i++)
-	{
-		if (ARR_DIMS(m)[i] != ARR_DIMS(n)[i])
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("non-conformable arrays")));
-	}
-	if (ARR_ELEMTYPE(m) != INT4OID || ARR_ELEMTYPE(n) != INT4OID)
+	
+	/* Do all error checking */
+	if (ARR_ELEMTYPE(m) != FLOAT8OID)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("input did not match bigint[]")));
-	if (ARR_NULLBITMAP(m) || ARR_NULLBITMAP(n))
-		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-				 errmsg("null array element not allowed in this context")));
+				 errmsg("matrix_smultiply_float8 datatype mismatch")));
 	
-	/* count total number of elements */
-	for (len = 1, i = 0; i < ndim; i++)
-		len *= ARR_DIMS(n)[i];
+	/* count number of elements */
+	for (nelem = 1, i = 0; i < ndim; i++)
+		nelem *= ARR_DIMS(m)[i];
 	
-	/* Transition function updates in place, otherwise allocate result */
-	if (transition_function) 
-	{
-		for (i = 0; i < len; i++)
-			data_m[i] += data_n[i];
-		PG_RETURN_ARRAYTYPE_P(m);
-	}
-	else
-	{
-		ArrayType *result;
-		int32     *data_r;
-		int        size;
-		
-		size = ARR_OVERHEAD_NONULLS(ndim); 
-		size += len * sizeof(int32);
-		result = (ArrayType *) palloc(size);
-		SET_VARSIZE(result, size);
-		result->ndim = ndim;
-		result->dataoffset = 0;          /* We dissallowed arrays with NULLS */
-		result->elemtype = INT4OID;
-		for (i = 0; i < ndim; i++)
-		{
-			ARR_DIMS(result)[i] = ARR_DIMS(n)[i];
-			ARR_LBOUND(result)[i] = 1;
-		}
-		data_r = (int32*) ARR_DATA_PTR(result);
-		for (i = 0; i < len; i++)
-			data_r[i] = data_m[i] + data_n[i];
-		
-		PG_RETURN_ARRAYTYPE_P(result);
-	} 
+	/* Make a copy of the input matrix */
+	size = VARSIZE(m);
+	result = (ArrayType *) palloc(size);
+	SET_VARSIZE(result, size);
+	memcpy(result, m, size);
+	
+	/* And multiply by the scalar in place */
+	data_r = (float8*) ARR_DATA_PTR(result);
+	for (i = 0; i < nelem; i++)
+		data_r[i] *= scalar;
+	PG_RETURN_ARRAYTYPE_P(result);
 }
 
 
-/*
- * matrix_add - array summation over two input arrays
- */
-Datum int8_matrix_add(PG_FUNCTION_ARGS)
-{
-	ArrayType  *m, *n;
-	int64      *data_m, *data_n;
-	int         i, ndim, len;
-	bool        transition_function;
-	
-	/* If we're in a transition function we can be smarter */
-	transition_function = fcinfo->context && IsA(fcinfo->context, AggState);
-	
-	/* Validate arguments */
-	if (PG_NARGS() != 2) 
-    {
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("matrix_sum called with %d arguments", PG_NARGS())));
-	}   
-	
-	/* Both are NULL - easy */
-	if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
-		PG_RETURN_NULL();
-	
-	/* One is null, but not the other */
-	if (PG_ARGISNULL(1) || (PG_ARGISNULL(0) && !transition_function))
-	{
-		if (PG_ARGISNULL(1))
-			m = PG_GETARG_ARRAYTYPE_P(0);
-		else
-			m = PG_GETARG_ARRAYTYPE_P(1);
-		if (ARR_ELEMTYPE(m) != INT8OID)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("input did not match bigint[]")));
-		if (ARR_NULLBITMAP(m))
-			ereport(ERROR,
-					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-					 errmsg("null array element not allowed in this context")));
-		
-		PG_RETURN_ARRAYTYPE_P(m);
-	}
-	
-	/* When the state is null and we are called as a transition function we
-	   can't simply return the later pointer because we will try to update the
-	   state in place on future calls, in this case we must allocate a new
-	   array and copy the old values */
-	if (PG_ARGISNULL(0))
-	{
-		int size;
-		
-		n = PG_GETARG_ARRAYTYPE_P(1);
-		if (ARR_ELEMTYPE(n) != INT8OID)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("input did not match bigint[]")));
-		if (ARR_NULLBITMAP(n))
-			ereport(ERROR,
-					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-					 errmsg("null array element not allowed in this context")));
-		
-		/* count total number of elements */
-		ndim = ARR_NDIM(n);
-		for (len = 1, i = 0; i < ndim; i++)
-			len *= ARR_DIMS(n)[i];
-		
-		size = ARR_OVERHEAD_NONULLS(ndim); 
-		size += len * sizeof(int64);
-		m = (ArrayType *) palloc(size);
-		memcpy(m, n, size);
-		PG_RETURN_ARRAYTYPE_P(m);
-	}
-	
-	/* Both non-null we have work to do */
-	m = PG_GETARG_ARRAYTYPE_P(0);
-	n = PG_GETARG_ARRAYTYPE_P(1);
-	data_n = (int64*) ARR_DATA_PTR(n);
-	data_m = (int64*) ARR_DATA_PTR(m);
-	
-	ndim = ARR_NDIM(m);
-	if (ndim != ARR_NDIM(n))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Dimensionality of both arrays must match")));
-	for (i = 0; i < ndim; i++)
-	{
-		if (ARR_DIMS(m)[i] != ARR_DIMS(n)[i])
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("non-conformable arrays")));
-	}
-	if (ARR_ELEMTYPE(m) != INT8OID || ARR_ELEMTYPE(n) != INT8OID)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("input did not match bigint[]")));
-	if (ARR_NULLBITMAP(m) || ARR_NULLBITMAP(n))
-		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-				 errmsg("null array element not allowed in this context")));
-	
-	/* count total number of elements */
-	for (len = 1, i = 0; i < ndim; i++)
-		len *= ARR_DIMS(n)[i];
-	
-	/* Transition function updates in place, otherwise allocate result */
-	if (transition_function) 
-	{
-		for (i = 0; i < len; i++)
-			data_m[i] += data_n[i];
-		PG_RETURN_ARRAYTYPE_P(m);
-	}
-	else
-	{
-		ArrayType *result;
-		int64     *data_r;
-		int        size;
-		
-		size = ARR_OVERHEAD_NONULLS(ndim); 
-		size += len * sizeof(int64);
-		result = (ArrayType *) palloc(size);
-		SET_VARSIZE(result, size);
-		result->ndim = ndim;
-		result->dataoffset = 0;          /* We dissallowed arrays with NULLS */
-		result->elemtype = INT8OID;
-		for (i = 0; i < ndim; i++)
-		{
-			ARR_DIMS(result)[i] = ARR_DIMS(n)[i];
-			ARR_LBOUND(result)[i] = 1;
-		}
-		data_r = (int64*) ARR_DATA_PTR(result);
-		for (i = 0; i < len; i++)
-			data_r[i] = data_m[i] + data_n[i];
-		
-		PG_RETURN_ARRAYTYPE_P(result);
-	} 
-}
-
-/*
- * matrix_add - array summation over two input arrays
- */
-Datum float8_matrix_add(PG_FUNCTION_ARGS)
-{
-	ArrayType  *m, *n;
-	float8     *data_m, *data_n;
-	int         i, ndim, len;
-	bool        transition_function;
-	
-	/* If we're in a transition function we can be smarter */
-	transition_function = fcinfo->context && IsA(fcinfo->context, AggState);
-	
-	/* Validate arguments */
-	if (PG_NARGS() != 2) 
-    {
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("matrix_sum called with %d arguments", PG_NARGS())));
-	}   
-	
-	/* Both are NULL - easy */
-	if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
-		PG_RETURN_NULL();
-	
-	/* One is null, but not the other */
-	if (PG_ARGISNULL(1) || (PG_ARGISNULL(0) && !transition_function))
-	{
-		if (PG_ARGISNULL(1))
-			m = PG_GETARG_ARRAYTYPE_P(0);
-		else
-			m = PG_GETARG_ARRAYTYPE_P(1);
-		if (ARR_ELEMTYPE(m) != FLOAT8OID)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("input did not match bigint[]")));
-		if (ARR_NULLBITMAP(m))
-			ereport(ERROR,
-					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-					 errmsg("null array element not allowed in this context")));
-		
-		PG_RETURN_ARRAYTYPE_P(m);
-	}
-	
-	/* When the state is null and we are called as a transition function we
-	   can't simply return the later pointer because we will try to update the
-	   state in place on future calls, in this case we must allocate a new
-	   array and copy the old values */
-	if (PG_ARGISNULL(0))
-	{
-		int size;
-		
-		n = PG_GETARG_ARRAYTYPE_P(1);
-		if (ARR_ELEMTYPE(n) != FLOAT8OID)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("input did not match bigint[]")));
-		if (ARR_NULLBITMAP(n))
-			ereport(ERROR,
-					(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-					 errmsg("null array element not allowed in this context")));
-		
-		/* count total number of elements */
-		ndim = ARR_NDIM(n);
-		for (len = 1, i = 0; i < ndim; i++)
-			len *= ARR_DIMS(n)[i];
-		
-		size = ARR_OVERHEAD_NONULLS(ndim); 
-		size += len * sizeof(float8);
-		m = (ArrayType *) palloc(size);
-		memcpy(m, n, size);
-		PG_RETURN_ARRAYTYPE_P(m);
-	}
-	
-	/* Both non-null we have work to do */
-	m = PG_GETARG_ARRAYTYPE_P(0);
-	n = PG_GETARG_ARRAYTYPE_P(1);
-	data_n = (float8*) ARR_DATA_PTR(n);
-	data_m = (float8*) ARR_DATA_PTR(m);
-	
-	ndim = ARR_NDIM(m);
-	if (ndim != ARR_NDIM(n))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Dimensionality of both arrays must match")));
-	for (i = 0; i < ndim; i++)
-	{
-		if (ARR_DIMS(m)[i] != ARR_DIMS(n)[i])
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("non-conformable arrays")));
-	}
-	if (ARR_ELEMTYPE(m) != FLOAT8OID || ARR_ELEMTYPE(n) != FLOAT8OID)
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("input did not match bigint[]")));
-	if (ARR_NULLBITMAP(m) || ARR_NULLBITMAP(n))
-		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-				 errmsg("null array element not allowed in this context")));
-	
-	/* count total number of elements */
-	for (len = 1, i = 0; i < ndim; i++)
-		len *= ARR_DIMS(n)[i];
-	
-	/* Transition function updates in place, otherwise allocate result */
-	if (transition_function) 
-	{
-		for (i = 0; i < len; i++)
-			data_m[i] += data_n[i];
-		PG_RETURN_ARRAYTYPE_P(m);
-	}
-	else
-	{
-		ArrayType *result;
-		float8    *data_r;
-		int        size;
-		
-		size = ARR_OVERHEAD_NONULLS(ndim); 
-		size += len * sizeof(float8);
-		result = (ArrayType *) palloc(size);
-		SET_VARSIZE(result, size);
-		result->ndim = ndim;
-		result->dataoffset = 0;          /* We dissallowed arrays with NULLS */
-		result->elemtype = FLOAT8OID;
-		for (i = 0; i < ndim; i++)
-		{
-			ARR_DIMS(result)[i] = ARR_DIMS(n)[i];
-			ARR_LBOUND(result)[i] = 1;
-		}
-		data_r = (float8*) ARR_DATA_PTR(result);
-		for (i = 0; i < len; i++)
-			data_r[i] = data_m[i] + data_n[i];
-		
-		PG_RETURN_ARRAYTYPE_P(result);
-	} 
-}
