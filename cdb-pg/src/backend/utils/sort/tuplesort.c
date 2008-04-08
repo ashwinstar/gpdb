@@ -565,10 +565,7 @@ tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple)
 
 		/* workMem must be large enough for the minimal memtuples array */
 		if (LACKMEM(state))
-		{
-			Assert(!"Catch me");
 			elog(ERROR, "insufficient memory allowed for sort");
-		}
 	} 
 	else
 	{
@@ -1040,15 +1037,15 @@ tuplesort_putdatum(Tuplesortstate *state, Datum val, bool isNull)
 	 */
 	if (isNull || state->datumTypeByVal)
 	{
-		stup.datum1 = val;		/* no separate storage */
+		stup.datum1 = val;	
 		stup.isnull1 = isNull;
-		stup.tuple = NULL;
+		stup.tuple = NULL;   /* No separate storage */
 	}
 	else
 	{
 		stup.datum1 = datumCopy(val, false, state->datumTypeLen);
 		stup.isnull1 = false;
-		stup.tuple = NULL;
+		stup.tuple = DatumGetPointer(stup.datum1); 
 		USEMEM(state, GetMemoryChunkSpace(DatumGetPointer(stup.datum1))); 
 	}
 
@@ -2905,7 +2902,17 @@ comparetup_heap(const SortTuple *a, const SortTuple *b, Tuplesortstate *state)
 	/* Allow interrupting long sorts */
 	CHECK_FOR_INTERRUPTS();
 
-	for (nkey = 0; nkey < state->nKeys; nkey++, scanKey++)
+	Assert(state->mt_bind);
+	compare = inlineApplySortFunction(&scanKey->sk_func, state->sortFnKinds[0],
+			a->datum1, a->isnull1,
+			b->datum1, b->isnull1
+			);
+
+	if(compare != 0)
+		return compare;
+
+	scanKey++;
+	for (nkey = 1; nkey < state->nKeys; nkey++, scanKey++)
 	{
 		AttrNumber	attno = scanKey->sk_attno;
 		Datum		datum1, datum2; 
@@ -2939,6 +2946,9 @@ copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup)
 	/* copy the tuple into sort storage */
 	stup->tuple = ExecCopySlotMemTuple(slot);
 	USEMEM(state, GetMemoryChunkSpace(stup->tuple));
+
+	Assert(state->mt_bind);
+	stup->datum1 = memtuple_getattr(stup->tuple, state->mt_bind, state->scanKeys[0].sk_attno, &stup->isnull1);
 }
 
 /*
@@ -2983,6 +2993,15 @@ readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup, LogicalT
 
 		if(readSize != sizeof(tuplen))
 			elog(ERROR, "unexpected end of data");
+	}
+
+	/* For shareinput on sort, the reader will not set mt_bind.  In this case,
+	 * we will not call compare.
+	 */
+	if(state->mt_bind)
+	{
+		Assert(state->status == TSS_SORTEDONTAPE);
+		stup->datum1 = memtuple_getattr(stup->tuple, state->mt_bind, state->scanKeys[0].sk_attno, &stup->isnull1);
 	}
 }
 
