@@ -43,7 +43,9 @@ class Client:
 		continue
 	    m = Message(messag,fro[0])
 	    if m.command=="Redirect":
-		leader = m.result
+		if leader!=m.result:
+		    leader = m.result
+		    proposeTimeout = 0
 	    elif m.command=="Result":
 		if m.decree==decree:
 		    print "dn="+str(m.dn)+" result="+m.result

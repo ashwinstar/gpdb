@@ -104,8 +104,6 @@ class Pinger(Role):
 	    mm.addDecreeNumber(decreeNumber)
 	mm.addPriestId(self.__priest.acceptor.id)
 	r = set(self.__configSet)
-	for d in self.__map.itervalues():
-	    r.add(d.fro)
 	r.discard(self.address)
 	mm.addResult(",".join(r))
 	mm.send(self.port,self.getAddresses()|self.__extra)
@@ -133,7 +131,7 @@ class Pinger(Role):
 	mm.send(self.port,fro)
 
     def getAcceptorAddresses(self,dn):
-	"""Returns set of addresses of priests."""
+	"""Returns addresses of acceptor priests."""
 	s = set()
 	for i in self.__priest.learner.priestSet.get(dn):
 	    if i in self.__map:

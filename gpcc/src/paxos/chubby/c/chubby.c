@@ -178,9 +178,14 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 		decree[decreeSize] = 0;
 	    }
 	}
-	if (!strcmp(command,"Redirect"))
-	    thiz->leaderValid = !getSocketAddressByName(&thiz->leader,result);
-	else if (!strcmp(command,"Result")){
+	if (!strcmp(command,"Redirect")){
+	    struct sockaddr_in l;
+	    if (!getSocketAddressByName(&l,result) && memcmp(&l,&thiz->leader,sizeof l)){
+		thiz->leaderValid = 1;
+		thiz->leader = l;
+		proposeTimeout = 0;
+	    }
+	}else if (!strcmp(command,"Result")){
 	    if (what->length==decreeSize+8 && !memcmp(what->a+8,decree,decreeSize)){
 		if (!memcmp(result,"error ",6))
 		    return atoi(result+6);

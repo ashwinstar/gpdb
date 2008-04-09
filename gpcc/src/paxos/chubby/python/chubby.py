@@ -283,7 +283,9 @@ class Chubby:
 		    elif key=="decree":
 			pdecree = self.__unmangle(value)
 		if pcommand=="Redirect":
-		    self.__leader = presult
+		    if self.__leader!=presult:
+			self.__leader = presult
+			proposeTimeout = 0
 		elif pcommand=="Result":
 		    if pdecree==decree:
 			if presult.startswith("error "):

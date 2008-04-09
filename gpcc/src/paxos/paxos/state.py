@@ -161,6 +161,9 @@ class State:
 	    sb = o.string
 	return (o.dn,sb)
 
+    def __commandGetPriestSet(self,priestSet):
+	return "0 "+",".join(sorted(priestSet))
+
     def __commandGet(self,name,offset,size):
 	o = self.__get1(name)
 	return "%d %d "%(o[0],len(o[1]))+o[1][offset:offset+size]
@@ -239,7 +242,7 @@ class State:
 		    self.__commandRemove(name,dn)
 		    return "0"
 		if command=="GetPriestSet":
-		    return "0 "+",".join(sorted(priestSet))
+		    return self.__commandGetPriestSet(priestSet)
 		raise StateException(E_INVAL)
 	except StateException,e:
 	    return "error %d %s"%(e.number," ".join(map(str,e.args)))

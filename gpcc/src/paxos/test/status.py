@@ -19,6 +19,7 @@ class Data:
 	self.deadTime = 0
 	self.address = address
 	self.priestId = ""
+	self.leader = ""
 
 class Status:
 
@@ -27,7 +28,6 @@ class Status:
 	self.__priests = utils.stringToAddresses(messenger,argv[1])
 
     def run(self):
-	leader = ""
 	fro = [None]
 	ps = set()
 	pingTimeout = 0
@@ -44,8 +44,6 @@ class Status:
 		print
 		print "decreeNumber=%d"%dn
 		print
-		print "leader="+leader
-		print
 		for i in sorted(priests.keys()):
 		    d = priests[i]
 		    sys.stdout.write("%s:"%i)
@@ -53,6 +51,8 @@ class Status:
 		    sys.stdout.write(d.deadTime<now and " down" or " up")
 		    if d.priestId in ps:
 			sys.stdout.write(" voting")
+		    if d.leader:
+			sys.stdout.write(" leader=%s"%d.leader)
 		    print
 	    if pingTimeout<now:
 		pingTimeout = now+PING_TIMEOUT
@@ -68,8 +68,8 @@ class Status:
 	    if messag==None:
 		continue
 	    m = Message(messag,fro[0])
+	    d = priests.setdefault(m.fro,Data(m.fro))
 	    if m.command=="Ping":
-		d = priests.setdefault(m.fro,Data(m.fro))
 		d.priestId = m.priestId
 		d.dn = m.dn
 		d.deadTime = time.time()+DEAD_TIMEOUT
@@ -77,13 +77,14 @@ class Status:
 		    for i in m.result.split(','):
 			priests.setdefault(i,Data(i))
 	    elif m.command=="Redirect":
-		leader = m.result
-	    elif m.command=="Result" and m.decree==decree:
-		leader = m.fro
-		dn = m.dn
-		if len(m.result)<=2:
-		    ps = set()
-		else:
-		    ps = set(m.result[2:].split(','))
+		d.leader = m.result
+	    elif m.command=="Result":
+		d.leader = m.fro
+		if m.decree==decree:
+		    dn = m.dn
+		    if len(m.result)<=2:
+			ps = set()
+		    else:
+			ps = set(m.result[2:].split(','))
 
 Status(UdpMessenger(),sys.argv).run()

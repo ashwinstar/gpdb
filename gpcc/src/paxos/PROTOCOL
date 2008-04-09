@@ -20,6 +20,8 @@ Usage:
 	GetState
 	State dn=<decree-number> result=<url>
 	SubtractPriest priestId=<id> result=<id>
+	WantToJoin priestId=<id>
+	WantToJoinReply result=<0 or 1>
 
 NextBallot/Nak/LastVote with negative dn means all decree-numbers >= -dn.
 

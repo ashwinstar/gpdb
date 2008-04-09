@@ -16,8 +16,9 @@ from udpmessenger import UdpMessenger
 TIMEOUT = 1
 MAX_SLOWNESS = 10
 WAIT_TIME = 300
-NPRIEST = 5
+NPRIEST = 6
 CATCH_UP_SPEED = 20
+SHOOT_INTERVAL = .05
 
 ntest = 0
 passed = 0
@@ -46,6 +47,48 @@ def print_dot():
     sys.stdout.write('.')
     global printNeedNl
     printNeedNl = True
+
+class ShootShootShoot(threading.Thread):
+
+    def __init__(self):
+	threading.Thread.__init__(self)
+	self.lock = threading.RLock()
+	self.finished = False
+
+    def run(self):
+	port = messenger.makePort("")
+	fro = [None]
+	decree = None
+	timeout = 0
+	counter = 0
+	while 1:
+	    self.lock.acquire()
+	    try:
+		if self.finished:
+		    break
+	    finally:
+		self.lock.release()
+	    now = time.time()
+	    if timeout<now:
+		timeout = now+TIMEOUT
+		decree = "Tag %d Stat /"%counter
+		counter += 1
+		mm = message.Maker("Propose")
+		mm.addDecree(decree)
+		mm.send(port,priestAddresses)
+	    messag = port.recv(TIMEOUT,fro)
+	    if messag:
+		m = Message(messag,fro[0])
+		if m.command=="Result" and m.decree==decree:
+		    timeout = now+SHOOT_INTERVAL
+
+    def unstart(self):
+	self.lock.acquire()
+	try:
+	    self.finished = True
+	finally:
+	    self.lock.release()
+	self.join()
 
 class Priest:
 
@@ -171,7 +214,9 @@ class UpDownUpDown:
 		    continue
 		m = Message(messag,fro[0])
 		if m.command=="Redirect":
-		    self.leader = m.result
+		    if self.leader!=m.result:
+			self.leader = m.result
+			proposeTimeout = 0
 		elif m.command=="Result" and m.decree==decree:
 		    if m.dn<=self.dn:
 			print_line("ERROR DecreeNumber not monotone")
@@ -188,7 +233,8 @@ class UpDownUpDown:
 		if i>slowness:
 		    slowness = i
 
-    def waitCatchUp1(self,p,timeout=WAIT_TIME):
+    def waitCatchUp1(self,index,timeout=WAIT_TIME):
+	p = self.p[index]
 	fro = [None]
 	start = time.time()
 	timeo = 0
@@ -216,10 +262,10 @@ class UpDownUpDown:
 			print_line("Priest %d has caught up. %f"%(p.index,now-start))
 			return True
 
-    def waitCatchUp(self,p,timeout=WAIT_TIME):
-	if self.waitCatchUp1(p,timeout):
+    def waitCatchUp(self,index,timeout=WAIT_TIME):
+	if self.waitCatchUp1(index,timeout):
 	    return True
-	print_line("ERROR Timed out waiting for Priest %d to catch up."%p.index)
+	print_line("ERROR Timed out waiting for Priest %d to catch up."%index)
 	global got_timeout
 	got_timeout = True
 	return False
@@ -255,21 +301,25 @@ class UpDownUpDown:
     def waitForLeader(self,what,f,timeout=WAIT_TIME):
 	self.waitFor2(what,lambda l,ps:f(l),timeout)
 
-    def kill(self,p,timeout=WAIT_TIME):
+    def kill(self,index,timeout=WAIT_TIME):
+	p = self.p[index]
 	p.kill()
-	self.waitFor("Priest %d is gone."%p.index,lambda x:p.id not in x,timeout)
+	self.waitFor("Priest %d is gone."%index,lambda x:p.id not in x,timeout)
 
-    def stop(self,p,timeout=WAIT_TIME):
+    def stop(self,index,timeout=WAIT_TIME):
+	p = self.p[index]
 	p.stop()
-	self.waitFor("Priest %d is gone."%p.index,lambda x:p.id not in x,timeout)
+	self.waitFor("Priest %d is gone."%index,lambda x:p.id not in x,timeout)
 
-    def start(self,p,timeout=WAIT_TIME):
+    def start(self,index,timeout=WAIT_TIME):
+	p = self.p[index]
 	p.start()
-	self.waitFor("Priest %d has joined."%p.index,lambda x:p.id in x,timeout)
+	self.waitFor("Priest %d has joined."%index,lambda x:p.id in x,timeout)
 
-    def cont(self,p,timeout=WAIT_TIME):
+    def cont(self,index,timeout=WAIT_TIME):
+	p = self.p[index]
 	p.cont()
-	self.waitFor("Priest %d has joined."%p.index,lambda x:p.id in x,timeout)
+	self.waitFor("Priest %d has joined."%index,lambda x:p.id in x,timeout)
 
     def propose(self,n,checkSlowness=True):
 	global ntest
@@ -289,21 +339,24 @@ class UpDownUpDown:
 	global ntest
 	global passed
 	print_line("Starting the Priests")
-	for i in self.p:
-	    i.start()
+
+	mainRange = xrange(constants.MAXIMUM_NUMBER_OF_PRIESTS)
+	for i in mainRange:
+	    self.p[i].start()
 	self.propose(1,False)
-	allPriests = set([i.id for i in self.p])
+
+	allPriests = set([self.p[i].id for i in mainRange])
 	self.waitFor("All priests have joined.",lambda x:allPriests<=x)
 
 	self.propose(constants.ALPHA)
 
 	print_line("Checking if kill and restart works.")
-	self.kill(self.p[0])
-	self.start(self.p[0])
+	self.kill(0)
+	self.start(0)
 
 	print_line("Checking if stop and continue works.")
-	self.stop(self.p[0])
-	self.cont(self.p[0])
+	self.stop(0)
+	self.cont(0)
 
 	print_line("Killing two at the same time.")
 	self.p[0].kill()
@@ -326,11 +379,11 @@ class UpDownUpDown:
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
 
 	print_line("Killing pairs.")
-	for i in self.p:
-	    i.stop()
-	    for j in self.p:
+	for i in mainRange:
+	    self.p[i].stop()
+	    for j in mainRange:
 		if j!=i:
-		    j.stop()
+		    self.p[j].stop()
 		    self.propose(1)
 		    self.cont(j)
 		    self.waitCatchUp(j)
@@ -341,22 +394,22 @@ class UpDownUpDown:
 	start = time.time()
 	self.propose(1000)
 	print_line("time1=%f"%(time.time()-start))
-	self.stop(self.p[0])
+	self.stop(0)
 	start = time.time()
 	self.propose(1000)
 	print_line("time2=%f"%(time.time()-start))
 	self.p[0].cont()
-	self.waitCatchUp(self.p[0],WAIT_TIME+1000/CATCH_UP_SPEED)
+	self.waitCatchUp(0,WAIT_TIME+1000/CATCH_UP_SPEED)
 	self.waitFor("Priests 0 has joined.",lambda x:self.p[0].id in x)
 
 	print_line("Kill priest while it is catching up.")
-	self.kill(self.p[0])
+	self.kill(0)
 	self.propose(1000)
 	i = 1
 	ntest += 1
 	while i<WAIT_TIME+1000/CATCH_UP_SPEED:
 	    self.p[0].start()
-	    if self.waitCatchUp1(self.p[0],i):
+	    if self.waitCatchUp1(0,i):
 		passed += 1
 		break
 	    self.p[0].kill()
@@ -367,14 +420,14 @@ class UpDownUpDown:
 	self.waitFor("Priests 0 has joined.",lambda x:self.p[0].id in x)
 
 	print_line("Checking if kill, get a bit behind, restart works.")
-	self.kill(self.p[0])
+	self.kill(0)
 	self.propose(constants.ACCEPTOR_HISTORY/8)
-	self.stop(self.p[1])
+	self.stop(1)
 	self.propose(constants.ACCEPTOR_HISTORY/8)
 	self.p[1].cont()
-	self.waitCatchUp(self.p[1],WAIT_TIME+constants.ACCEPTOR_HISTORY/8/CATCH_UP_SPEED)
+	self.waitCatchUp(1,WAIT_TIME+constants.ACCEPTOR_HISTORY/8/CATCH_UP_SPEED)
 	self.p[0].start()
-	self.waitCatchUp(self.p[0],WAIT_TIME+constants.ACCEPTOR_HISTORY/4/CATCH_UP_SPEED)
+	self.waitCatchUp(0,WAIT_TIME+constants.ACCEPTOR_HISTORY/4/CATCH_UP_SPEED)
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
 	self.propose(1)
 	self.p[2].stop()
@@ -382,8 +435,8 @@ class UpDownUpDown:
 	self.propose(1)
 	self.p[2].cont()
 	self.p[3].cont()
-	self.waitCatchUp(self.p[2])
-	self.waitCatchUp(self.p[3])
+	self.waitCatchUp(2)
+	self.waitCatchUp(3)
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
 
 	print_line("Checking if kill, get too far behind, restart works.")
@@ -392,9 +445,9 @@ class UpDownUpDown:
 	self.waitFor("Priest 0 and 1 are gone.",lambda x:self.p[0].id not in x and self.p[1].id not in x)
 	self.propose(constants.ACCEPTOR_HISTORY+1)
 	self.p[1].cont()
-	self.waitCatchUp(self.p[1],WAIT_TIME+constants.ACCEPTOR_HISTORY/4/CATCH_UP_SPEED)
+	self.waitCatchUp(1,WAIT_TIME+constants.ACCEPTOR_HISTORY/4/CATCH_UP_SPEED)
 	self.p[0].start()
-	self.waitCatchUp(self.p[0],WAIT_TIME+constants.ACCEPTOR_HISTORY/4/CATCH_UP_SPEED)
+	self.waitCatchUp(0,WAIT_TIME+constants.ACCEPTOR_HISTORY/4/CATCH_UP_SPEED)
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
 	self.propose(1)
 	self.p[2].stop()
@@ -402,8 +455,8 @@ class UpDownUpDown:
 	self.propose(1)
 	self.p[2].cont()
 	self.p[3].cont()
-	self.waitCatchUp(self.p[2])
-	self.waitCatchUp(self.p[3])
+	self.waitCatchUp(2)
+	self.waitCatchUp(3)
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
 
 	print_line("Killing three, then restarting.")
@@ -416,10 +469,10 @@ class UpDownUpDown:
 	self.propose(1,False)
 
 	print_line("Killing all, then restarting.")
-	for i in self.p:
-	    i.kill()
-	for i in self.p:
-	    i.start()
+	for i in mainRange:
+	    self.p[i].kill()
+	for i in mainRange:
+	    self.p[i].start()
 	self.propose(1,False)
 
 	print_line("Killing all Priests.")
@@ -468,6 +521,15 @@ class UpDownUpDown:
 
 starttime = time.time()
 
-UpDownUpDown().run(len(sys.argv)<2 and 1 or int(sys.argv[1]))
+shootshootshoot = ShootShootShoot()
+shootshootshoot.start()
+
+try:
+    UpDownUpDown().run(len(sys.argv)<2 and 1 or int(sys.argv[1]))
+except KeyboardInterrupt:
+    print_line("Interrupted")
+    pass
+
+shootshootshoot.unstart()
 
 print_line("%d/%d passed %f"%(passed,ntest,time.time()-starttime))

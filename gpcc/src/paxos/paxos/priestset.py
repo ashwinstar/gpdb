@@ -18,9 +18,12 @@ class PriestSet:
 	return PRIESTS_DIR+'/'+self.__port.getAddress()+"-%f-%d"%(time.time(),self.__counter)
 
     def add(self,i):
-	mm = message.Maker("Propose")
-	mm.addDecree("Put %s 0 +%s"%(self.__getFilename(),i))
-	mm.send(self.__port,self.__priest.pinger.getLeader(-1))
+	if len(self.get(-1))<MAXIMUM_NUMBER_OF_PRIESTS:
+	    a = self.__priest.learner.state.get(PRIESTS_DIR)
+	    if a:
+		mm = message.Maker("Propose")
+		mm.addDecree("If %s %d Put %s 0 +%s"%(PRIESTS_DIR,a.dn,self.__getFilename(),i))
+		mm.send(self.__port,self.__priest.pinger.getLeader(-1))
 
     def subtract(self,i):
 	mm = message.Maker("Propose")
