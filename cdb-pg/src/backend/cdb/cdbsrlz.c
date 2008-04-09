@@ -112,7 +112,6 @@ deserializeNode(const char *strNode, int size)
 	return node;
 }
 
-
 /*
  * Compress a (binary) string using zlib.
  * 
@@ -123,6 +122,7 @@ compress_string(const char *src, int uncompressed_size, int *size)
 {
 	int level = 3;
 	unsigned long compressed_size;
+	int status;
 
 	Bytef * result;
 
@@ -139,8 +139,9 @@ compress_string(const char *src, int uncompressed_size, int *size)
 	result = palloc(compressed_size + sizeof(int));
 	memcpy(result,&uncompressed_size,sizeof(int)); 		/* save the original length */
 	
-	if (compress2(result+4, &compressed_size, (Bytef *)src, uncompressed_size, level) != Z_OK)
-		elog(ERROR,"Compression failed");
+	status = compress2(result+4, &compressed_size, (Bytef *)src, uncompressed_size, level);
+	if (status != Z_OK)
+		elog(ERROR,"Compression failed: %s (errno=%d)", zError(status), status);
 		
 	*size = compressed_size + sizeof(int);
 	elog(DEBUG2,"Compressed from %d to %d ",(int)uncompressed_size,(int)*size);
@@ -156,6 +157,7 @@ uncompress_string(const char *src, int size, int * uncompressed_len )
 {
 	Bytef * result;
 	unsigned long resultlen;
+	int status;
 	*uncompressed_len = 0;
 	
 	if (src==NULL)
@@ -168,8 +170,9 @@ uncompress_string(const char *src, int size, int * uncompressed_len )
 	resultlen = *uncompressed_len;
 	result = palloc(resultlen);
 		
-	if (uncompress(result, &resultlen, (Bytef *)(src+sizeof(int)), size-sizeof(int)) != Z_OK)
-		elog(ERROR,"Uncompress failed");
+	status = uncompress(result, &resultlen, (Bytef *)(src+sizeof(int)), size-sizeof(int));
+	if (status != Z_OK)
+		elog(ERROR,"Uncompress failed: %s (errno=%d)", zError(status), status);
 		
 	return (char *)result;
 }
