@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/stat.h>
 #define PROVIDE_64BIT_CRC
 
