@@ -57,6 +57,7 @@ static pid_t walsendserver_forkexec(void);
 #endif
 
 
+static void WalSendServerGetStandbyTimeout(struct timeval *timeout);
 static void WalSendServerInitContext(void);
 static void WalSendServerDoRequest(WalSendRequest *walSendRequest);
 
@@ -64,6 +65,7 @@ static void WalSendServerDoRequest(WalSendRequest *walSendRequest);
  * The following are standard procedure signatures needed by
  * the Service shared library.
  */
+static void WalSendServer_ServiceClientTimeout(struct timeval *timeout);
 static void WalSendServer_ServiceRequestShutdown(SIGNAL_ARGS);
 static void WalSendServer_ServicePostgresInit(void);
 static void WalSendServer_ServiceInit(int listenerPort);
@@ -83,8 +85,7 @@ static ServiceConfig WalSendServer_ServiceConfig =
 	{"WALSND",
 	"WAL Send Server", "WAL Send Server process", "walsendserver",
 	sizeof(WalSendRequest), sizeof(WalSendResponse),
-	{1,0},		// shutdownTimeout = 1 second.
-	{0,250000},	// readClientTimeout = 0.25 second.
+	WalSendServer_ServiceClientTimeout,
 	WalSendServer_ServiceRequestShutdown,
 	NULL,		// No EarlyInit.
 	WalSendServer_ServicePostgresInit,
@@ -208,6 +209,13 @@ bool walsend_shutdown_requested=false;
  */
 
 static void
+WalSendServer_ServiceClientTimeout(struct timeval *timeout)
+{
+	timeout->tv_sec = WalSendClientTimeout / 1000;
+	timeout->tv_usec = (WalSendClientTimeout % 1000) * 1000;
+}
+
+static void
 WalSendServer_ServiceRequestShutdown(SIGNAL_ARGS)
 {
 	walsend_shutdown_requested = true;
@@ -286,6 +294,22 @@ WalSendServer_ServicePostmasterDied(void)
 	}
 }
 
+//==============================================================================
+
+static void
+WalSendServerGetStandbyTimeout(struct timeval *timeout)
+{
+	struct timeval standbyTimeout = {30,0};		// 30 seconds.
+
+	*timeout = standbyTimeout;
+}
+
+void
+WalSendServerGetClientTimeout(struct timeval *timeout)
+{
+	ServiceGetClientTimeout(&WalSendServer_ServiceConfig, timeout);
+}
+
 /*
  * Process local static that contains the connection to the WAL send server.
  */
@@ -359,7 +383,9 @@ static void
 WalSendServerDoRequest(WalSendRequest *walSendRequest)
 {
 	bool successful;
-	struct timeval temporaryTimeout = {2,0};
+	struct timeval standbyTimeout;
+
+	WalSendServerGetStandbyTimeout(&standbyTimeout);
 	
 	switch (walSendRequest->command)
 	{
@@ -405,7 +431,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 					successful = XLogCatchupQDMirror(
 									&originalEndLocation, 
 									&walSendRequest->flushedLocation,
-									&temporaryTimeout,
+									&standbyTimeout,
 									&walsend_shutdown_requested);
 				}
 				PG_CATCH();
@@ -572,7 +598,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 					     writeLogId, writeLogSeg);
 				
 				successful = write_qd_sync(cmd, saveBuffer, saveBufferLen, 
-							               &temporaryTimeout,
+							               &standbyTimeout,
 							               &walsend_shutdown_requested);
 				if (successful)
 				{

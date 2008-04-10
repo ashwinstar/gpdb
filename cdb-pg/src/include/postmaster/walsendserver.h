@@ -57,6 +57,7 @@ extern bool IsWalSendProcess(void);
 
 extern void WalSendServerShmemInit(void);
 extern int WalSendServerShmemSize(void);
+extern void WalSendServerGetClientTimeout(struct timeval *timeout);
 extern bool WalSendServerClientConnect(bool complain);
 extern bool WalSendServerClientSendRequest(WalSendRequest* walSendRequest);
 extern bool WalSendServerClientReceiveResponse(WalSendResponse* walSendResponse, struct timeval *timeout);

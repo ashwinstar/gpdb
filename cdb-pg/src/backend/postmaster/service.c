@@ -146,6 +146,20 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 	return true;
 }
 
+void 
+ServiceGetClientTimeout(ServiceConfig *serviceConfig, struct timeval *timeout)
+{
+	Assert(serviceConfig != NULL);
+
+	if (serviceConfig->ServiceClientTimeout == NULL)
+	{
+		timeout->tv_sec = 0;
+		timeout->tv_usec = 250000;	// 0.25 second.
+	}
+	else
+		serviceConfig->ServiceClientTimeout(timeout);
+}
+
 /*
  * Used by clients to connect to a service.
  */
@@ -224,7 +238,7 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 	Assert(serviceClient != NULL);
 	serviceConfig = (ServiceConfig*)serviceClient->serviceConfig;
 	Assert(serviceConfig != NULL);
-	rundownTimeout = serviceConfig->clientTransferTimeout;
+	ServiceGetClientTimeout(serviceConfig, &rundownTimeout);
 	Assert(request != NULL);
 		
 	if (serviceClient->sockfd == -1)
@@ -278,11 +292,15 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 					n = select(serviceClient->sockfd + 1, NULL, &wset, NULL, &rundownTimeout);
 					if (n == 0)
 					{
+						struct timeval wholeTimeout;
+						
+						ServiceGetClientTimeout(serviceConfig, &wholeTimeout);
+
 						elog(NOTICE,"socket write to '%s' timed out (sockfd %d, %u seconds, %u milliseconds)",
 							 serviceConfig->title,
 							 serviceClient->sockfd,
-							 (unsigned int)serviceConfig->clientTransferTimeout.tv_sec, 
-					 		 (unsigned int)serviceConfig->clientTransferTimeout.tv_usec / 1000);
+							 (unsigned int)wholeTimeout.tv_sec, 
+					 		 (unsigned int)wholeTimeout.tv_usec / 1000);
 						return false;
 					}
 					else if (n < 0 && errno == EINTR)
@@ -415,9 +433,10 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 						ereport(NOTICE, (errcode(ERRCODE_GP_INTERNAL_ERROR),
 									     errmsg("Error: Could not read() message from '%s'",
 									            serviceConfig->title),
-										 errdetail("error during read() call (error:%d) from remote"
+										 errdetail("error during read() call (errno: %d \"%s\") from remote"
 												   "sockfd = %d", 
-												   errno, 
+												   saved_err,
+												   strerror(saved_err),
 												   serviceClient->sockfd)));
 						return false;		
 					}
@@ -733,7 +752,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 	 */
 	while(true)
 	{
-		struct timeval rundownTimeout = serviceConfig->shutdownTimeout;
+		struct timeval shutdownTimeout = {1,0};		// 1 second.
 			// Use local variable since select modifies
 			// the timeout parameter with remaining time.
 	
@@ -765,7 +784,7 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 		
 		memcpy(&rrset, &rset, sizeof(fd_set));
 		
-		n = select(highsock + 1, &rrset, NULL, NULL, &rundownTimeout);
+		n = select(highsock + 1, &rrset, NULL, NULL, &shutdownTimeout);
 		if (n == 0 || (n < 0 && errno == EINTR))
 		{
 			/* intr or timeout: Have we been here too long ? */			
@@ -883,17 +902,18 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 	
 	int			saved_err;
 	fd_set		rset;
-	struct timeval rundownTimeout = serviceConfig->clientTransferTimeout;
+	struct timeval rundownTimeout;
 		// Use local variable since select modifies
 		// the timeout parameter with remaining time.
-	
-	
+
 	int n;
 	int bytesRead = 0;
 	uint8 *request = NULL;
 	int reqlen;	
 
 	bool successful;
+
+	ServiceGetClientTimeout(serviceConfig, &rundownTimeout);
 
 	if (newConnection)
 	{
@@ -954,11 +974,15 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 					n = select(sockfd + 1, &rset, NULL, NULL, &rundownTimeout);
 					if (n == 0)
 					{
+						struct timeval wholeTimeout;
+						
+						ServiceGetClientTimeout(serviceConfig, &wholeTimeout);
+
 						elog(NOTICE,"'%s': socket read from backend process timed out (sockfd %d, %u seconds, %u milliseconds)",
 							 serviceConfig->title,
 							 sockfd,
-							 (unsigned int)serviceConfig->clientTransferTimeout.tv_sec, 
-					 		 (unsigned int)serviceConfig->clientTransferTimeout.tv_usec / 1000);
+							 (unsigned int)wholeTimeout.tv_sec, 
+					 		 (unsigned int)wholeTimeout.tv_usec / 1000);
 						return false;
 					}
 					if (n < 0 && errno == EINTR)
@@ -967,9 +991,10 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 					{
 						saved_err = errno;
 
-						elog(NOTICE, "'%s': error reading incoming message from client (errno: %d)",
+						elog(NOTICE, "'%s': error reading incoming message from client (errno: %d \"%s\")",
 							 serviceConfig->title,
-							 saved_err);
+							 saved_err,
+							 strerror(saved_err));
 						return false;
 					}
 				}
@@ -1002,10 +1027,11 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 	
 	int bytesWritten = 0;
 	
-	struct timeval rundownTimeout = serviceConfig->clientTransferTimeout;
+	struct timeval rundownTimeout;
 		// Use local variable since select modifies
 		// the timeout parameter with remaining time.
 	
+	ServiceGetClientTimeout(serviceConfig, &rundownTimeout);
 
 //	elog(LOG,"ServiceProcessRespond called for sockfd %d, responseLen %d",
 //		 sockfd, responseLen);
@@ -1054,11 +1080,15 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 					n = select(sockfd + 1, NULL, &wset, NULL, &rundownTimeout);
 					if (n == 0)
 					{
+						struct timeval wholeTimeout;
+
+						ServiceGetClientTimeout(serviceConfig, &wholeTimeout);
+
 						elog(NOTICE,"'%s': socket write from backend process timed out (sockfd %d, %u seconds, %u milliseconds)",
 							 serviceConfig->title,
 							 sockfd,
-							 (unsigned int)serviceConfig->clientTransferTimeout.tv_sec, 
-					 		 (unsigned int)serviceConfig->clientTransferTimeout.tv_usec / 1000);
+							 (unsigned int)wholeTimeout.tv_sec, 
+					 		 (unsigned int)wholeTimeout.tv_usec / 1000);
 						return false;
 					}
 					if (n < 0 && errno == EINTR)

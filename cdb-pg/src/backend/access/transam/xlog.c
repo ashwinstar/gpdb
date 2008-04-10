@@ -549,6 +549,7 @@ static void rm_redo_error_callback(void *arg);
 static void XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff);
 static void XLogQDMirrorFlush(void);
 static bool XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct timeval *timeout, bool *shutdownGlobal);
+static bool XLogQDMirrorWaitForResponse(bool waitForever);
 
 static void CloseReadRecord(void);
 
@@ -1725,19 +1726,26 @@ XLogQDMirrorPositionToEnd(void)
 		 * Infinite timeout since we do not know how long it will
 		 * take to determine the end position.
 		 */
-		successful = XLogQDMirrorWaitForResponse(NULL);
+		successful = XLogQDMirrorWaitForResponse(/* waitForever */ true);
 	}
 
 	return successful;
 }
 
-bool
-XLogQDMirrorWaitForResponse(struct timeval *timeout)
+static bool
+XLogQDMirrorWaitForResponse(bool waitForever)
 {
 	WalSendResponse walSendResponse;
 	bool receiveSuccessful;
+	struct timeval timeout;
+
+	if (!waitForever)
+		WalSendServerGetClientTimeout(&timeout);
 	
-	receiveSuccessful = WalSendServerClientReceiveResponse(&walSendResponse, timeout);
+	receiveSuccessful = 
+		WalSendServerClientReceiveResponse(
+					&walSendResponse,
+					(waitForever ? NULL : &timeout));
 
 	if (receiveSuccessful && !walSendResponse.ok)
 		elog(ERROR,"response returned not OK");
@@ -1774,7 +1782,7 @@ XLogQDMirrorCatchup(XLogRecPtr *flushedLocation)
 		 * Infinite timeout since we do not know how long it will
 		 * take to catch-up.
 		 */
-		successful = XLogQDMirrorWaitForResponse(NULL);
+		successful = XLogQDMirrorWaitForResponse(/* waitForever */ true);
 	}
 
 	return successful;
@@ -1786,7 +1794,6 @@ XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId,
 	bool connected;
 	WalSendRequest walSendRequest;
 	bool successful;
-	struct timeval timeout = {0,250000};		// 0.25 seconds.
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring WriteWalPages parameters startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff %X",
 		 startidx, npages, timeLineID, logId, logSeg, logOff);
@@ -1823,12 +1830,12 @@ XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId,
 		return;
 	}
 
-	successful = XLogQDMirrorWaitForResponse(&timeout);
+	successful = XLogQDMirrorWaitForResponse(/* waitForever */ false);
 	
 	if (!successful)
 	{
 		disableQDMirroring_WalSendServerError();
-		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not receive from WAL Send server)");
+		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not get response from WAL Send server)");
 		return;
 	}
 }
@@ -1842,7 +1849,6 @@ XLogQDMirrorFlush(void)
 	XLogRecPtr newCheckpointLocation;
 	WalSendRequest walSendRequest;
 	bool successful;
-	struct timeval timeout = {0,250000};		// 0.25 seconds.
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring FlushWalPages");
 
@@ -1876,12 +1882,12 @@ XLogQDMirrorFlush(void)
 		return;
 	}
 
-	successful = XLogQDMirrorWaitForResponse(&timeout);
+	successful = XLogQDMirrorWaitForResponse(/* waitForever */ false);
 	
 	if (!successful)
 	{
 		disableQDMirroring_WalSendServerError();
-		elog(NOTICE, "disabling QD mirroring (request FlushWalPages -- could not receive from WAL Send server)");
+		elog(NOTICE, "disabling QD mirroring (request FlushWalPages -- could not get response from WAL Send server)");
 		return;
 	}
 }
@@ -1892,7 +1898,6 @@ XLogQDMirrorCloseForShutdown(void)
 	bool connected;
 	WalSendRequest walSendRequest;
 	bool successful;
-	struct timeval timeout = {0,250000};		// 0.25 seconds.
 
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring CloseForShutdown");
 
@@ -1929,12 +1934,12 @@ XLogQDMirrorCloseForShutdown(void)
 		return;
 	}
 
-	successful = XLogQDMirrorWaitForResponse(&timeout);
+	successful = XLogQDMirrorWaitForResponse(/* waitForever */ false);
 	
 	if (!successful)
 	{
 		/* Ignore */
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"could not receive from WAL Send server");
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"could not get response from WAL Send server");
 		return;
 	}
 	

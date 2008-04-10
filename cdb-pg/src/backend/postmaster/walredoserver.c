@@ -81,8 +81,7 @@ static ServiceConfig WalRedoServer_ServiceConfig =
 	{"WALRDO",
 	"WAL Redo Server", "WAL Redo Server process", "walredoserver",
 	sizeof(WalRedoRequest), sizeof(WalRedoResponse),
-	{1,0},		// shutdownTimeout = 1 second.
-	{0,250000},	// readClientTimeout = 0.25 second.
+	NULL,	// Default client timeout.
 	WalRedoServer_ServiceRequestShutdown,
 	WalRedoServer_ServiceEarlyInit,
 	WalRedoServer_ServicePostgresInit,
@@ -90,7 +89,7 @@ static ServiceConfig WalRedoServer_ServiceConfig =
 	WalRedoServer_ServiceShutdownRequested,
 	WalRedoServer_ServiceRequest,
 	WalRedoServer_ServiceShutdown,
-	NULL};
+	NULL};	// No PostmasterDied callback.
 
 static ServiceCtrl WalRedoServer_ServiceCtrl;
 
@@ -197,10 +196,14 @@ WalRedoServerQuiesce(void)
 	successful = WalRedoServerClientSendRequest(&walRedoRequest);
 	if (successful)
 	{
+		struct timeval clientTimeout;
+
+		ServiceGetClientTimeout(&WalRedoServer_ServiceConfig, &clientTimeout);
+
 		/*
 		 * See if we received a quiesced response.
 		 */
-		successful = WalRedoServerClientReceiveResponse(&walRedoResponse, &WalRedoServer_ServiceConfig.clientTransferTimeout);
+		successful = WalRedoServerClientReceiveResponse(&walRedoResponse, &clientTimeout);
 		if (successful)
 		{
 //			elog(LOG,"received response %s",

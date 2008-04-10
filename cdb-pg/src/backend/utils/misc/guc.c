@@ -256,6 +256,9 @@ char       *Debug_dtm_action_protocol_str;
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
 int			tcp_keepalives_count;
+
+int			WalSendClientTimeout = 500;
+
 char 	   *data_directory;
 
 /*
@@ -2628,6 +2631,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&server_version_num,
 		PG_VERSION_NUM, PG_VERSION_NUM, PG_VERSION_NUM, NULL, NULL
+	},
+
+	{
+		{"wal_send_client_timeout", PGC_SIGHUP, GP_ARRAY_TUNING,
+			gettext_noop("The time in milliseconds for a backend process to wait on the WAL Send server to finish a request to the QD mirroring standby."),
+			NULL,
+			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&WalSendClientTimeout,
+		500, 100, INT_MAX/1000, NULL, NULL
 	},
 
 	/* End-of-list marker */

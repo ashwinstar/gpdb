@@ -187,6 +187,8 @@ extern int	tcp_keepalives_idle;
 extern int	tcp_keepalives_interval;
 extern int	tcp_keepalives_count;
 
+extern int  WalSendClientTimeout;
+
 extern char  *data_directory;
 
 extern void SetConfigOption(const char *name, const char *value,

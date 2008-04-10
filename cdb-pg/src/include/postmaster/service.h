@@ -43,10 +43,7 @@ typedef struct ServiceConfig
 	int			requestLen;
 	int			responseLen;
 
-	/* our timeout value for select() and other socket operations. */
-	struct timeval shutdownTimeout;
-	struct timeval clientTransferTimeout;
-	
+	void		(*ServiceClientTimeout) (struct timeval *clientTimeout);
 	void		(*ServiceRequestShutdown) (SIGNAL_ARGS);
 	void		(*ServiceEarlyInit) (void);
 	void		(*ServicePostgresInit) (void);
@@ -68,6 +65,7 @@ typedef struct ServiceClient
 
 extern void ServiceInit(ServiceConfig *serviceConfig, ServiceCtrl *serviceCtrl);
 extern void ServiceMain(ServiceCtrl *serviceCtrl);
+extern void ServiceGetClientTimeout(ServiceConfig *serviceConfig, struct timeval *timeout); 
 extern bool ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serverClient, bool complain);
 extern bool ServiceClientSendRequest(ServiceClient *serverClient, void* request, int requestLen);
 extern bool ServiceClientReceiveResponse(ServiceClient *serverClient, void* response, int responseLen, struct timeval *timeout);
