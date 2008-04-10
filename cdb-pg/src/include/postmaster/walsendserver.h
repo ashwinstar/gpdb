@@ -18,6 +18,8 @@ typedef enum WalSendRequestCommand
 	PositionToEnd = 0,
 	Catchup,
 	WriteWalPages,
+	FlushWalPages,
+	CloseForShutdown,
 	MaxWalSendRequestCommand /* must always be last */
 } WalSendRequestCommand;
 
@@ -55,7 +57,7 @@ extern bool IsWalSendProcess(void);
 
 extern void WalSendServerShmemInit(void);
 extern int WalSendServerShmemSize(void);
-extern bool WalSendServerClientConnect(void);
+extern bool WalSendServerClientConnect(bool complain);
 extern bool WalSendServerClientSendRequest(WalSendRequest* walSendRequest);
 extern bool WalSendServerClientReceiveResponse(WalSendResponse* walSendResponse, struct timeval *timeout);
 extern char* WalSendRequestCommandToString(WalSendRequestCommand command);

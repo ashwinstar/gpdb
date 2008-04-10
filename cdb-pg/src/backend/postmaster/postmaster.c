@@ -247,10 +247,11 @@ static pid_t StartupPID = 0,
 
 typedef enum PMSUBPROC_FLAGS
 {
-	PMSUBPROC_FLAG_QD 			= 0x1,
-	PMSUBPROC_FLAG_STANDBY 		= 0x2,
-	PMSUBPROC_FLAG_QE 			= 0x4,
-	PMSUBPROC_FLAG_QD_AND_QE 	= PMSUBPROC_FLAG_QD & PMSUBPROC_FLAG_QE,
+	PMSUBPROC_FLAG_QD 					= 0x1,
+	PMSUBPROC_FLAG_STANDBY 				= 0x2,
+	PMSUBPROC_FLAG_QE 					= 0x4,
+	PMSUBPROC_FLAG_QD_AND_QE 			= (PMSUBPROC_FLAG_QD|PMSUBPROC_FLAG_QE),
+	PMSUBPROC_FLAG_STOP_AFTER_BGWRITER 	= 0x8,
 } PMSUBPROC_FLAGS;
 
 
@@ -272,7 +273,7 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	 "seqserver process", PMSUBPROC_FLAG_QD},
 	{0, WalSendServerProc, 
 	 (PMSubStartCallback*)&walsendserver_start, 
-	 "walsendserver process", PMSUBPROC_FLAG_QD},
+	 "walsendserver process",(PMSUBPROC_FLAG_QD|PMSUBPROC_FLAG_STOP_AFTER_BGWRITER)},
 	{0, WalRedoServerProc, 
 	 (PMSubStartCallback*)&walredoserver_start, 
 	 "walredoserver process", PMSUBPROC_FLAG_STANDBY},
@@ -330,6 +331,9 @@ static void reset_shared(int port);
 static void SIGHUP_handler(SIGNAL_ARGS);
 static void pmdie(SIGNAL_ARGS);
 static void reaper(SIGNAL_ARGS);
+static bool ServiceProcessesExist(int excludeFlags);
+static bool StopServices(int excludeFlags, int signal);
+static char *GetServerProcessTitle(int pid);
 static void sigusr1_handler(SIGNAL_ARGS);
 static void dummy_handler(SIGNAL_ARGS);
 static void CleanupBackend(int pid, int exitstatus);
@@ -339,7 +343,7 @@ static void LogChildExit(int lev, const char *procname,
 static void BackendInitialize(Port *port);
 static int	BackendRun(Port *port);
 static void ExitPostmaster(int status);
-static bool SubProcStartable(PMSubProc *subProc);
+static bool ServiceStartable(PMSubProc *subProc);
 static int	ServerLoop(void);
 static int	BackendStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool SSLdone);
@@ -1273,7 +1277,7 @@ pmdaemonize(void)
 }
 
 static bool
-SubProcStartable(PMSubProc *subProc)
+ServiceStartable(PMSubProc *subProc)
 {
 	int flagNeeded;
 	bool result;
@@ -1323,6 +1327,7 @@ ServerLoop(void)
 		struct timeval timeout;
 		int			selres;
 		int			i;
+		int			s;
 
 		/*
 		 * Wait for something to happen.
@@ -1405,7 +1410,12 @@ ServerLoop(void)
 
 		/* If we have lost the system logger, try to start a new one */
 		if (SysLoggerPID == 0 && Redirect_stderr && !SyncMaster)
+		{
 			SysLoggerPID = SysLogger_Start();
+			if (Debug_print_server_processes)
+				elog(LOG,"restarted 'system logger process' as pid %ld",
+					 (long)SysLoggerPID);
+		}
 
 		/*
 		 * If no background writer process is running, and we are not in a
@@ -1415,6 +1425,9 @@ ServerLoop(void)
 		if (BgWriterPID == 0 && StartupPID == 0 && !FatalError && !SyncMaster)
 		{
 			BgWriterPID = StartBackgroundWriter();
+			if (Debug_print_server_processes)
+				elog(LOG,"restarted 'background writer process' as pid %ld",
+					 (long)BgWriterPID);
 			/* If shutdown is pending, set it going */
 			if (Shutdown > NoShutdown && BgWriterPID != 0)
 				signal_child(BgWriterPID, SIGUSR2);
@@ -1429,6 +1442,9 @@ ServerLoop(void)
 			StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
 		{
 			AutoVacPID = autovac_start();
+			if (Debug_print_server_processes)
+				elog(LOG,"restarted 'autovacuum process' as pid %ld",
+					 (long)AutoVacPID);
 			if (AutoVacPID != 0)
 				force_autovac = false;	/* signal successfully processed */
 		}
@@ -1436,33 +1452,40 @@ ServerLoop(void)
 		/* If we have lost the archiver, try to start a new one */
 		if (XLogArchivingActive() && PgArchPID == 0 &&
 			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
+		{
 			PgArchPID = pgarch_start();
+			if (Debug_print_server_processes)
+				elog(LOG,"restarted 'archiver process' as pid %ld",
+					 (long)PgArchPID);
+		}
 
 		/* If we have lost the stats collector, try to start a new one */
 		if (PgStatPID == 0 &&
 			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
+		{
 			PgStatPID = pgstat_start();
+			if (Debug_print_server_processes)
+				elog(LOG,"restarted 'statistics collector process' as pid %ld",
+					 (long)PgStatPID);
+
+		}
 		
 		/* MPP: If we have lost one of our servers, try to start a new one */
+		for (s=0; s < MaxPMSubType; s++)
 		{
-			int ii;
+			PMSubProc *subProc = &PMSubProcList[s];
 
-			for (ii=0; ii < MaxPMSubType; ii++)
+			if (subProc->pid == 0 && 
+				StartupPID == 0 && 
+				!FatalError && 
+				Shutdown == NoShutdown &&
+				ServiceStartable(subProc))
 			{
-				PMSubProc *subProc = &PMSubProcList[ii];
-
-				Assert(subProc->procName != NULL &&
-					   isalpha((unsigned char)subProc->procName[0]));
-
-				if (subProc->pid == 0 && 
-					StartupPID == 0 && 
-					!FatalError && 
-					Shutdown == NoShutdown &&
-					SubProcStartable(subProc))
-				{
-					subProc->pid = 
-						(subProc->serverStart)();
-				}
+				subProc->pid = 
+					(subProc->serverStart)();
+				if (Debug_print_server_processes)
+					elog(LOG,"started '%s' as pid %ld",
+						 subProc->procName, (long)subProc->pid);
 			}
 		}
 		
@@ -2100,6 +2123,7 @@ static void
 pmdie(SIGNAL_ARGS)
 {
 	int			save_errno = errno;
+	bool        anyServiceSignaled;
 
 	PG_SETMASK(&BlockSig);
 
@@ -2133,38 +2157,51 @@ pmdie(SIGNAL_ARGS)
 			}
 
 			if (DLGetHead(BackendList))
-				break;			/* let reaper() handle this */
+ 			{
+ 				if (Debug_print_server_processes)
+ 					elog(LOG,"BackendList not empty");
+  				break;			/* let reaper() handle this */
+ 			}
 
 			/*
 			 * No children left. Begin shutdown of data base system.
 			 */
 			if (StartupPID != 0 || FatalError)
-				break;			/* let reaper() handle this */
+ 			{
+ 				if (Debug_print_server_processes)
+ 					elog(LOG,"Startup going or fatal error");
+  				break;			/* let reaper() handle this */
+ 			}
+ 
+ 			/* 
+ 			 * Tell the various services to shut down too; nothing left for
+ 			 * them to do 
+ 			 */
+ 			anyServiceSignaled = 
+ 				StopServices(
+ 					/* excludeFlags */ PMSUBPROC_FLAG_STOP_AFTER_BGWRITER,
+ 					SIGUSR2);
+ 			if (anyServiceSignaled)
+ 				break;			/* let reaper() handle this */		
+
 			/* Start the bgwriter if not running */
 			if (BgWriterPID == 0 && !SyncMaster)
 				BgWriterPID = StartBackgroundWriter();
 			/* And tell it to shut down */
 			if (BgWriterPID != 0)
 				signal_child(BgWriterPID, SIGUSR2);
+ 			
+ 			/* 
+ 			 * Stop the services that wanted to be stopped after the 
+ 			 * background writer.
+ 			 */
+ 			anyServiceSignaled = StopServices(0, SIGUSR2);
+ 			if (anyServiceSignaled)
+ 				break;			/* let reaper() handle this */		
+ 
 			/* Tell pgarch to shut down too; nothing left for it to do */
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
-			/* Tell seqserver to shut down too; nothing left for it to do */
-			{
-				int ii;
-
-				for (ii=0; ii < MaxPMSubType; ii++)
-				{
-					PMSubProc *subProc = &PMSubProcList[ii];
-
-					if (subProc->pid != 0)
-					{
-						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For smart shutdown, send SIGUSR2 to pid %d",
-							 (int)subProc->pid);
-						signal_child(subProc->pid, SIGUSR2);
-					}
-				}
-			}
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
@@ -2211,34 +2248,44 @@ pmdie(SIGNAL_ARGS)
 			}
 			if (FatalError)
 				break;			/* let reaper() handle this case */
+ 
+ 			
+ 			/* Tell seqserver to shut down too; nothing left for it to do */
+ 			anyServiceSignaled = 
+ 				StopServices(
+ 					/* excludeFlags */ PMSUBPROC_FLAG_STOP_AFTER_BGWRITER,
+ 					SIGUSR2);
+ 			if (anyServiceSignaled)
+ 				break;			/* let reaper() handle this */		
+ 
 			/* Start the bgwriter if not running */
 			if (BgWriterPID == 0 && !SyncMaster)
 				BgWriterPID = StartBackgroundWriter();
 			/* And tell it to shut down */
 			if (BgWriterPID != 0)
 				signal_child(BgWriterPID, SIGUSR2);
+ 			{
+  				signal_child(BgWriterPID, SIGUSR2);
+ 				break;
+ 			}
+ 			
+ 			/* 
+ 			 * Stop the services that wanted to be stopped after the 
+ 			 * background writer.
+ 			 */
+ 			anyServiceSignaled = StopServices(/* excludeFlags */ 0, SIGUSR2);
+ 			if (anyServiceSignaled)
+ 				break;			/* let reaper() handle this */		
+
 			/* Tell pgarch to shut down too; nothing left for it to do */
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
-			/* Tell seqserver to shut down too; nothing left for it to do */
-			{
-				int ii;
-
-				for (ii=0; ii < MaxPMSubType; ii++)
-				{
-					PMSubProc *subProc = &PMSubProcList[ii];
-
-					if (subProc->pid != 0)
-					{
-						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For fast shutdown, send SIGQUIT to pid %d",
-							 (int)subProc->pid);
-						signal_child(subProc->pid, SIGQUIT);
-					}
-				}
-			}
 			/* Tell pgstat to shut down too; nothing left for it to do */
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
+ 
+ 			if (SyncMaster)
+ 				ExitPostmaster(0);
 			break;
 
 		case SIGQUIT:
@@ -2253,27 +2300,13 @@ pmdie(SIGNAL_ARGS)
 					(errmsg("received immediate shutdown request")));
 			if (StartupPID != 0)
 				signal_child(StartupPID, SIGQUIT);
+ 			StopServices(0, SIGQUIT);
 			if (BgWriterPID != 0)
 				signal_child(BgWriterPID, SIGQUIT);
 			if (AutoVacPID != 0)
 				signal_child(AutoVacPID, SIGQUIT);
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
-			{
-				int ii;
-
-				for (ii=0; ii < MaxPMSubType; ii++)
-				{
-					PMSubProc *subProc = &PMSubProcList[ii];
-
-					if (subProc->pid != 0)
-					{
-						elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"pmdie: For immediate shutdown request, send SIGQUIT to pid %d",
-							 (int)subProc->pid);
-						signal_child(subProc->pid, SIGQUIT);
-					}
-				}
-			}
 			if (PgStatPID != 0)
 				signal_child(PgStatPID, SIGQUIT);
 			if (DLGetHead(BackendList))
@@ -2281,6 +2314,9 @@ pmdie(SIGNAL_ARGS)
 			ExitPostmaster(0);
 			break;
 	}
+
+	if (Debug_print_server_processes)
+		elog(LOG,"returning from pmdie");
 
 	PG_SETMASK(&UnBlockSig);
 
@@ -2294,6 +2330,10 @@ static void
 reaper(SIGNAL_ARGS)
 {
 	int			save_errno = errno;
+	int         s;
+	bool        wasServiceProcess;
+	bool        didServiceProcessWork = false;
+	bool		anyServiceSignaled;
 
 #ifdef HAVE_WAITPID
 	int			status;			/* backend exit status */
@@ -2329,6 +2369,19 @@ reaper(SIGNAL_ARGS)
 		win32_RemoveChild(pid);
 #endif   /* WIN32 */
 #endif   /* HAVE_WAITPID */
+
+		if (Debug_print_server_processes)
+		{
+			char *procName;
+
+			procName = GetServerProcessTitle(pid);
+			if (procName != NULL)
+			{
+				elog(LOG,"'%s' pid %ld exit status %d",
+				     procName, (long)pid, exitstatus);
+				didServiceProcessWork = true;
+			}
+		}
 
 		/*
 		 * Check if this child was a startup process.
@@ -2376,30 +2429,90 @@ reaper(SIGNAL_ARGS)
 			else if (Shutdown == NoShutdown)
 			{
 				if (XLogArchivingActive() && PgArchPID == 0)
+				{
 					PgArchPID = pgarch_start();
+					if (Debug_print_server_processes)
+					{
+						elog(LOG,"on startup successful: started 'archiver process' as pid %ld",
+							 (long)PgArchPID);
+						didServiceProcessWork = true;
+					}
+				}
 				if (PgStatPID == 0)
 				{
 					PgStatPID = pgstat_start();
-				}
-				{
-					int ii;
-
-					for (ii=0; ii < MaxPMSubType; ii++)
+					if (Debug_print_server_processes)
 					{
-						PMSubProc *subProc = &PMSubProcList[ii];
+						elog(LOG,"on startup successful: started 'statistics collector process' as pid %ld",
+							 (long)PgStatPID);
+						didServiceProcessWork = true;
+					}
+				}
 
-						Assert(subProc->procName != NULL &&
-							   isalpha((unsigned char)subProc->procName[0]));
+				for (s = 0; s < MaxPMSubType; s++)
+				{
+					PMSubProc *subProc = &PMSubProcList[s];
 
-						if (subProc->pid == 0 && 
-							SubProcStartable(subProc))
-							subProc->pid = 
-								(subProc->serverStart)();
+					if (subProc->pid == 0 && 
+						ServiceStartable(subProc))
+					{
+						subProc->pid = 
+							(subProc->serverStart)();
+
+						if (Debug_print_server_processes)
+						{
+							elog(LOG,"on startup successful: started '%s' as pid %ld",
+								 subProc->procName, (long)subProc->pid);
+							didServiceProcessWork = true;
+						}
 					}
 				}
 			}
 			continue;
 		}
+
+		/*
+		 * MPP: Was it one of our servers? If so, just try to start a new one;
+		 * no need to force reset of the rest of the system. (If fail, we'll
+		 * try again in future cycles of the main loop.)
+		 */
+		wasServiceProcess = false;
+		for (s = 0; s < MaxPMSubType; s++)
+		{
+			PMSubProc *subProc = &PMSubProcList[s];
+
+			if (subProc->pid != 0 && 
+				pid == subProc->pid)
+			{
+				subProc->pid = 0;
+
+				if (!EXIT_STATUS_0(exitstatus))
+					LogChildExit(LOG, subProc->procName,
+								 pid, exitstatus);
+				
+				if (ServiceStartable(subProc))
+				{
+					if (StartupPID == 0 && 
+						!FatalError && Shutdown == NoShutdown)
+					{
+						subProc->pid = 
+							(subProc->serverStart)();
+						if (Debug_print_server_processes)
+						{
+							elog(LOG,"restarted '%s' as pid %ld",
+								 subProc->procName, (long)subProc->pid);
+							didServiceProcessWork = true;
+						}
+					}
+				}
+				
+				wasServiceProcess = true;
+				break;
+			}
+		}
+
+		if (wasServiceProcess)
+			continue;
 
 		/*
 		 * Was it the bgwriter?
@@ -2422,6 +2535,20 @@ reaper(SIGNAL_ARGS)
 				 * and in any case contain logic to commit hara-kiri if they
 				 * notice the postmaster is gone.
 				 */
+
+				/*
+				 * Note for GP: we have the background writer tell the
+				 * WAL Send server to do a clean close of the standby for
+				 * shutdown after it was logged the shutdown checkpoint.
+				 *
+				 * And, we have the WAL Send server not print anything to
+				 * the system log if QD mirroring has been disabled
+				 * and the postmaster dies.  A bit of a kludge.
+				 */
+				StopServices(/* excludeFlags */ 0, SIGUSR2);
+										// Get the service processes that
+										// want to stop after bgwriter.
+				
 				ExitPostmaster(0);
 			}
 
@@ -2478,48 +2605,18 @@ reaper(SIGNAL_ARGS)
 							 pid, exitstatus);
 			if (XLogArchivingActive() &&
 				StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
+			{
 				PgArchPID = pgarch_start();
+				if (Debug_print_server_processes)
+				{
+					elog(LOG,"restarted 'archiver process' as pid %ld",
+						 (long)PgArchPID);
+					didServiceProcessWork = true;
+				}
+			}
 			continue;
 		}
 
-		/*
-		 * MPP: Was it the SequenceServer? If so, just try to start a new one;
-		 * no need to force reset of the rest of the system. (If fail, we'll
-		 * try again in future cycles of the main loop.)
-		 */
-		{
-			int ii;
-			int startstat = 0;
-
-			for (ii=0; ii < MaxPMSubType; ii++)
-			{
-				PMSubProc *subProc = &PMSubProcList[ii];
-
-				Assert(subProc->procName != NULL &&
-					   isalpha((unsigned char)subProc->procName[0]));
-
-				if (subProc->pid != 0 && 
-					pid == subProc->pid && 
-					SubProcStartable(subProc))
-				{
-					subProc->pid = 0;
-					if (!EXIT_STATUS_0(exitstatus))
-						LogChildExit(LOG, subProc->procName,
-									 pid, exitstatus);
-					if (StartupPID == 0 && 
-						!FatalError && Shutdown == NoShutdown)
-					{
-						subProc->pid = 
-							(subProc->serverStart)();
-					}
-					startstat++;
-				} /* end if pid != 0 */
-			}
-
-			if (startstat)
-				continue;
-		}
-				
 		/*
 		 * Was it the statistics collector?  If so, just try to start a new
 		 * one; no need to force reset of the rest of the system.  (If fail,
@@ -2532,7 +2629,15 @@ reaper(SIGNAL_ARGS)
 				LogChildExit(LOG, _("statistics collector process"),
 							 pid, exitstatus);
 			if (StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
+			{
 				PgStatPID = pgstat_start();
+				if (Debug_print_server_processes)
+				{
+					elog(LOG,"restarted 'statistics collector process' as pid %ld",
+						 (long)PgStatPID);
+					didServiceProcessWork = true;
+				}
+			}
 			continue;
 		}
 
@@ -2542,6 +2647,12 @@ reaper(SIGNAL_ARGS)
 			SysLoggerPID = 0;
 			/* for safety's sake, launch new logger *first* */
 			SysLoggerPID = SysLogger_Start();
+			if (Debug_print_server_processes)
+			{
+				elog(LOG,"restarted 'system logger process' as pid %ld",
+					 (long)SysLoggerPID);
+				didServiceProcessWork = true;
+			}
 			if (!EXIT_STATUS_0(exitstatus))
 				LogChildExit(LOG, _("system logger process"),
 							 pid, exitstatus);
@@ -2562,7 +2673,7 @@ reaper(SIGNAL_ARGS)
 		 * here since they are not connected to shmem.)
 		 */
 		if (DLGetHead(BackendList) || StartupPID != 0 || BgWriterPID != 0 ||
-			AutoVacPID != 0)
+			AutoVacPID != 0 || ServiceProcessesExist(0))
 			goto reaper_done;
 		ereport(LOG,
 				(errmsg("all server processes terminated; reinitializing")));
@@ -2594,38 +2705,113 @@ reaper(SIGNAL_ARGS)
 	{
 		if (DLGetHead(BackendList) || StartupPID != 0 || AutoVacPID != 0)
 			goto reaper_done;
+				
+		anyServiceSignaled = 
+			StopServices(
+				/* excludeFlags */ PMSUBPROC_FLAG_STOP_AFTER_BGWRITER,
+				SIGUSR2);
+		if (anyServiceSignaled)
+			goto reaper_done;
+
 		/* Start the bgwriter if not running */
 		if (BgWriterPID == 0)
 			BgWriterPID = StartBackgroundWriter();
 		/* And tell it to shut down */
 		if (BgWriterPID != 0)
 			signal_child(BgWriterPID, SIGUSR2);
+		else
+		{
+			/*
+			 * Stop the services that needed the background writer
+			 * stopped first.
+			 */
+			StopServices(/* excludeFlags */ 0, SIGUSR2);
+		}
+		
 		/* Tell pgarch to shut down too; nothing left for it to do */
 		if (PgArchPID != 0)
 			signal_child(PgArchPID, SIGQUIT);
-		/* Tell seqserver to shut down too; nothing left for it to do */
-		{
-			int ii;
-
-			for (ii=0; ii < MaxPMSubType; ii++)
-			{
-				PMSubProc *subProc = &PMSubProcList[ii];
-
-				if (subProc->pid != 0)
-					signal_child(subProc->pid, SIGQUIT);
-			}
-		}
 		/* Tell pgstat to shut down too; nothing left for it to do */
 		if (PgStatPID != 0)
 			signal_child(PgStatPID, SIGQUIT);
 	}
 
 reaper_done:
+
+	if (Debug_print_server_processes && didServiceProcessWork)
+		elog(LOG,"returning from reaper");
+
 	PG_SETMASK(&UnBlockSig);
 
 	errno = save_errno;
 }
 
+static bool
+ServiceProcessesExist(int excludeFlags)
+{
+	int s;
+	
+	for (s=0; s < MaxPMSubType; s++)
+	{
+		PMSubProc *subProc = &PMSubProcList[s];
+		if (subProc->pid != 0 &&
+			(subProc->flags & excludeFlags) == 0)
+			return true;
+	}
+
+	return false;
+}
+
+static bool
+StopServices(int excludeFlags, int signal)
+{
+	int s;
+	bool signaled = false;
+	
+	for (s=0; s < MaxPMSubType; s++)
+	{
+		PMSubProc *subProc = &PMSubProcList[s];
+
+		if (subProc->pid != 0 &&
+			(subProc->flags & excludeFlags) == 0)
+		{
+			signal_child(subProc->pid, signal);
+			signaled = true;
+		}
+	}
+
+	return signaled;
+}
+
+static char *
+GetServerProcessTitle(int pid)
+{
+	int s;
+	
+	for (s=0; s < MaxPMSubType; s++)
+	{
+		PMSubProc *subProc = &PMSubProcList[s];
+		if (subProc->pid == pid)
+			return subProc->procName;
+	}
+	
+	if (pid == BgWriterPID)
+		return "background writer process";
+	else if (pid == AutoVacPID)
+		return "autovacuum process";
+	else if (pid == PgStatPID)
+		return "statistics collector process";
+	else if (pid == PgArchPID)
+		return "archiver process";
+	else if (pid == SysLoggerPID)
+		return "system logger process";
+	else if (pid == StartupPID)
+		return "startup process";
+	else if (pid == PostmasterPid)
+		return "postmaster process";
+
+	return NULL;
+}
 
 /*
  * CleanupBackend -- cleanup after terminated backend.
@@ -2724,7 +2910,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			 */
 			if (!FatalError)
 			{
-				ereport(DEBUG2,
+				ereport((Debug_print_server_processes ? LOG : DEBUG2),
 						(errmsg_internal("sending %s to process %d",
 										 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 										 (int) bp->pid)));
@@ -2738,7 +2924,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		BgWriterPID = 0;
 	else if (BgWriterPID != 0 && !FatalError)
 	{
-		ereport(DEBUG2,
+		ereport((Debug_print_server_processes ? LOG : DEBUG2),
 				(errmsg_internal("sending %s to process %d",
 								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 								 (int) BgWriterPID)));
@@ -2750,7 +2936,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		AutoVacPID = 0;
 	else if (AutoVacPID != 0 && !FatalError)
 	{
-		ereport(DEBUG2,
+		ereport((Debug_print_server_processes ? LOG : DEBUG2),
 				(errmsg_internal("sending %s to process %d",
 								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 								 (int) AutoVacPID)));
@@ -2761,7 +2947,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	/* (Shouldn't be necessary, but just for luck) */
 	if (PgArchPID != 0 && !FatalError)
 	{
-		ereport(DEBUG2,
+		ereport((Debug_print_server_processes ? LOG : DEBUG2),
 				(errmsg_internal("sending %s to process %d",
 								 "SIGQUIT",
 								 (int) PgArchPID)));
@@ -2779,7 +2965,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 
 			if (subProc->pid != 0 && !FatalError)
 			{
-				ereport(DEBUG2,
+				ereport((Debug_print_server_processes ? LOG : DEBUG2),
 						(errmsg_internal("sending %s to process %d",
 										 "SIGQUIT",
 										 (int) subProc->pid)));
@@ -2792,7 +2978,7 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	/* (Shouldn't be necessary, but just for luck) */
 	if (PgStatPID != 0 && !FatalError)
 	{
-		ereport(DEBUG2,
+		ereport((Debug_print_server_processes ? LOG : DEBUG2),
 				(errmsg_internal("sending %s to process %d",
 								 "SIGQUIT",
 								 (int) PgStatPID)));
@@ -2836,6 +3022,21 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 						procname, pid, exitstatus)));
 }
 
+static char *
+signal_to_name(int signal)
+{
+	switch (signal)
+	{
+	case SIGINT:	return "SIGINT";
+	case SIGTERM:	return "SIGTERM";
+	case SIGQUIT:	return "SIGQUIT";
+	case SIGSTOP:	return "SIGSTOP";
+	case SIGUSR1:	return "SIGUSR1";
+	case SIGUSR2:	return "SIGUSR2";
+	default:		return NULL;
+	}
+}
+
 /*
  * Send a signal to a postmaster child process
  *
@@ -2855,6 +3056,26 @@ LogChildExit(int lev, const char *procname, int pid, int exitstatus)
 static void
 signal_child(pid_t pid, int signal)
 {
+
+	if (Debug_print_server_processes)
+	{
+		char *procName;
+
+		procName = GetServerProcessTitle(pid);
+		if (procName != NULL)
+		{
+			char *signalName;
+
+			signalName = signal_to_name(signal);
+			if (signalName != NULL)
+				elog(LOG,"signal %s sent to '%s' pid %ld",
+				     signalName, procName, (long)pid);
+			else
+				elog(LOG,"signal %d sent to '%s' pid %ld",
+				     signal, procName, (long)pid);
+		}
+	}
+
 	if (kill(pid, signal) < 0)
 		elog(DEBUG3, "kill(%ld,%d) failed: %m", (long) pid, signal);
 #ifdef HAVE_SETSID
@@ -2885,7 +3106,7 @@ SignalChildren(int signal)
 	{
 		Backend    *bp = (Backend *) DLE_VAL(curr);
 
-		ereport(DEBUG4,
+		ereport((Debug_print_server_processes ? LOG : DEBUG4),
 				(errmsg_internal("sending signal %d to process %d",
 								 signal, (int) bp->pid)));
 		signal_child(bp->pid, signal);

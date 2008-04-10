@@ -54,6 +54,7 @@ typedef struct ServiceConfig
 	bool		(*ServiceShutdownRequested) (void);
 	bool		(*ServiceRequest) (ServiceCtrl *serviceCtrl, int sockfd, uint8 *request);
 	void		(*ServiceShutdown) (void);
+	void		(*ServicePostmasterDied) (void);
 	
 }	ServiceConfig;
 
@@ -67,7 +68,7 @@ typedef struct ServiceClient
 
 extern void ServiceInit(ServiceConfig *serviceConfig, ServiceCtrl *serviceCtrl);
 extern void ServiceMain(ServiceCtrl *serviceCtrl);
-extern bool ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serverClient);
+extern bool ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serverClient, bool complain);
 extern bool ServiceClientSendRequest(ServiceClient *serverClient, void* request, int requestLen);
 extern bool ServiceClientReceiveResponse(ServiceClient *serverClient, void* response, int responseLen, struct timeval *timeout);
 extern bool ServiceClientPollResponse(ServiceClient *serverClient, void* response, int responseLen, bool *pollResponseReceived);

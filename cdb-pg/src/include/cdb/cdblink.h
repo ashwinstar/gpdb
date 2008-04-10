@@ -62,16 +62,14 @@ extern bool isQDMirroringCatchingUp(void);
 extern bool isQDMirroringNotConfigured(void);
 extern bool isQDMirroringNotKnownYet(void);
 extern bool isQDMirroringDisabled(void);
-extern bool isQDMirroringUnexpectedError(void);
 
 extern char *QDMirroringStateString(void);
 
-extern bool write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout);
+extern bool write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shutdownGlobal);
 
-extern bool write_position_to_end(XLogRecPtr *endLocation);
+extern bool write_position_to_end(XLogRecPtr *endLocation, struct timeval *timeout, bool *shutdownGlobal);
 
-extern bool disconnectMirrorQD(void);
-
-extern void markStandbyInvalid(void);
+extern bool disconnectMirrorQD_SendClose(void);
+extern bool disconnectMirrorQD_Abrupt(void);
 
 #endif   /* CDBLINK_H */

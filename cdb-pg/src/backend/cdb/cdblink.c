@@ -209,27 +209,12 @@ buildMirrorQDDefinition(void)
 
 	/* we are the primary connecting to the mirror */
 
-	/* if it is set to invalid, do not connect */
-	if (!mirrorDb->valid)
-	{
-		elog(NOTICE, "QD mirroring disabled for entry db because it is not marked 'valid'.");
-		FtsSetNoQDMirroring();
-		return;
-	}
-
-	elog(LOG, "QD mirroring standby configuration found -- will attempt to connect and synchronize");
+	elog(LOG, 
+	     "QD mirroring standby configuration found -- will attempt to connect and synchronize. "
+	     "Standby master row's 'valid' field indicating synchronized is %s.",
+	     (mirrorDb->valid ? "'t' (true)" : "'f' (false)"));
 	FtsSetQDMirroring(mirrorDb);
 
-}
-
-void
-markStandbyInvalid(void)
-{
-	if (cdb_mirrored_entry_db != NULL)
-	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"markStandbyInvalid: skipping calling to markStandbyStatus...");
-//		markStandbyStatus(cdb_mirrored_entry_db->segment_database_info->dbid, false);
-	}
 }
 
 static bool HaveStandbyMasterEndLocation = false;
@@ -274,14 +259,15 @@ buildQDMirrorFromShmem(void)
 }
 
 bool
-write_position_to_end(XLogRecPtr *endLocation)
+write_position_to_end(XLogRecPtr *endLocation, struct timeval *timeout, bool *shutdownGlobal)
 {
 	bool successful;
 	
 	HaveStandbyMasterEndLocation = false;
 	StandbyMaster_xlogid = 0;
 	StandbyMaster_xrecoff = 0;
-	successful = write_qd_sync("position_to_end", NULL, 0, NULL);
+	successful = write_qd_sync("position_to_end", NULL, 0, 
+							   timeout, shutdownGlobal);
 	if (!successful)
 		return false;
 
@@ -300,7 +286,7 @@ write_position_to_end(XLogRecPtr *endLocation)
 }
 
 bool
-write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout)
+write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shutdownGlobal)
 {
 	PGconn	   *conn;
 	bool		failed = false;
@@ -336,6 +322,19 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout)
 		}
 		else if (len > 0)
 		{
+			/*
+			 * UNDONE: This part can end up hung in this call stack:
+			 *    poll
+			 *    pqSocketPoll
+			 *    pqSocketCheck
+			 *    pqWaitTimed
+			 *    pqWait
+			 *    pqSendSome
+			 *    pqPutMsgEnd
+			 *    ...
+			 *
+			 * Which kind of defeats the purpose of asynchronous!?!?
+			 */
 			if (pqPutMsgStart(0, false, conn) < 0 ||
 				pqPutnchar(buf, len, conn) < 0 ||
 				pqPutMsgEnd(conn) < 0)
@@ -370,6 +369,10 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout)
 					FD_SET(sock, &rset);
 					while (true)
 					{
+						CHECK_FOR_INTERRUPTS();
+						if (shutdownGlobal != NULL && *shutdownGlobal)
+							elog(ERROR,"timed QD mirror send detected shutdown");
+						
 						n = select(sock + 1, &rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
 						if (n == 0)
 						{
@@ -380,7 +383,9 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout)
 						 		 (unsigned int)timeout->tv_usec / 1000);
 						}
 						else if (n < 0 && errno == EINTR)
+						{
 							continue;
+						}
 						
 						if (FD_ISSET(sock, &rset))
 							break;
@@ -531,16 +536,29 @@ getEntrySegDB(int *count)
 }
 
 bool
-disconnectMirrorQD(void)
+disconnectMirrorQD_SendClose(void)
 {
-	if (cdb_mirrored_entry_db == NULL || 
-		PQstatus(cdb_mirrored_entry_db->conn) != CONNECTION_OK)
+	struct timeval closeTimeout = {0,250000};	// UNDONE: Better timeout?
+	
+	if (cdb_mirrored_entry_db == NULL)
 		return false;
 
-	write_qd_sync("close", NULL, 0, NULL);
+	if (PQstatus(cdb_mirrored_entry_db->conn) == CONNECTION_OK)
+		write_qd_sync("close", NULL, 0, &closeTimeout, NULL);
+	
 	PQfinish(cdb_mirrored_entry_db->conn);
-
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirror disconnected");
 
 	return true;
 }
+
+bool
+disconnectMirrorQD_Abrupt(void)
+{
+	if (cdb_mirrored_entry_db == NULL)
+		return false;
+
+	PQfinish(cdb_mirrored_entry_db->conn);
+
+	return true;
+}
+

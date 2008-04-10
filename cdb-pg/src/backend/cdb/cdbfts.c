@@ -42,6 +42,7 @@ static int	localFtsSyncCount = -1;
 static bool InReConfigure = false;
 
 static LWLockId ftsQDMirrorLock;
+static LWLockId ftsQDMirrorUpdateConfigLock;
 static struct FtsQDMirrorInfo *ftsQDMirrorInfo=NULL;
 
 static void CdbShutdown(void);
@@ -78,6 +79,7 @@ FtsShmemInit(void)
 	ftsReadOnlyFlag = &shared->ftsReadOnlyFlag;
 
 	ftsQDMirrorLock = shared->ftsQDMirrorLock;
+	ftsQDMirrorUpdateConfigLock = shared->ftsQDMirrorUpdateConfigLock;
 	ftsQDMirrorInfo = &shared->ftsQDMirror;
 	ftsSegDBTransientState = shared->ftsSegDBTransientState;
 	ftsSegDBTransientCount = &shared->ftsSegDBTransientCount;
@@ -90,8 +92,13 @@ FtsShmemInit(void)
 		shared->ftsQDMirrorLock = LWLockAssign();
 		ftsQDMirrorLock = shared->ftsQDMirrorLock;
 		
+		shared->ftsQDMirrorUpdateConfigLock = LWLockAssign();
+		ftsQDMirrorUpdateConfigLock = shared->ftsQDMirrorUpdateConfigLock;
+
 		ftsQDMirrorInfo->configurationChecked = false;
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_NONE;
+		ftsQDMirrorInfo->qdMirrorUpdate = QDMIRROR_UPDATE_NONE;
+		ftsQDMirrorInfo->disabledReason = QDMIRROR_DISABLEDREASON_NONE;
 		ftsQDMirrorInfo->haveNewCheckpointLocation = false;
 		memset(&ftsQDMirrorInfo->newCheckpointLocation, 0, sizeof(XLogRecPtr));
 		memset(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
@@ -282,31 +289,227 @@ CdbShutdown(void)
 	elog(ERROR, "FTS: Greenplum system is shut down (segment failure)");
 }
 
-void
-disableQDMirroring(void)
+static void
+QDMirroringUpdateGpConfiguration(QDMIRRORUpdate qdMirrorUpdate)
 {
-	Assert(ftsQDMirrorInfo != NULL);
-	
-	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_DISABLED &&
-		ftsQDMirrorInfo->state != QDMIRROR_STATE_UNEXPECTEDERROR)
+#define UPDATE_CMD "update gp_configuration set valid='%c' where dbid = CAST(%d AS SMALLINT)"
+#define DELETE_CMD "delete from gp_configuration where dbid = CAST(%d AS SMALLINT)"
+	int count;
+	char cmd[200];
+	int expectedErr;
+	int err;
+
+	PG_TRY();
 	{
-		/*
-		 * Don't overwrite an unexpected error.
-		 */
-		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		switch (qdMirrorUpdate)
+		{
+		case QDMIRROR_UPDATE_MARKVALID:
+		case QDMIRROR_UPDATE_MARKINVALID:
+			count = snprintf(cmd, sizeof(cmd),
+					 		 UPDATE_CMD,
+					 		 (qdMirrorUpdate == QDMIRROR_UPDATE_MARKVALID ?
+					 		 	't' : 'f'),
+					 		 ftsQDMirrorInfo->dbid);
+			break;
+			
+		case QDMIRROR_UPDATE_REMOVE:
+			count = snprintf(cmd, sizeof(cmd),
+					 		 DELETE_CMD,
+					 		 ftsQDMirrorInfo->dbid);
+			break;
+
+		default:
+			elog(FATAL, "Unexpected QD mirror update: %d",
+				(int) qdMirrorUpdate);
+		}
+		if (count >= sizeof(cmd))
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errmsg("FTS: could not invalidate invalid node in config: format command string failure")));
+		}
+
+		StartTransactionCommand();
+
+		err = SPI_connect();
+		if (err != SPI_OK_CONNECT)
+		{
+			elog(ERROR, "SPI_connect failed with error %d",
+				 err);
+		}
+
+		expectedErr = (qdMirrorUpdate == QDMIRROR_UPDATE_REMOVE ? 
+						   SPI_OK_DELETE : SPI_OK_UPDATE);
+		err = SPI_execute(cmd, false, 0);
+		if (err != expectedErr)
+		{
+			elog(ERROR, "SPI_execute command \"%s\" failed with error %d",
+				 cmd, err);
+		}
+
+		SPI_finish();
+
+		CommitTransactionCommand();
+
+		switch (qdMirrorUpdate)
+		{
+		case QDMIRROR_UPDATE_MARKVALID:
+			elog(LOG,"Indicate QD mirrors are synchronized in gp_configuration: update standby master row's 'valid' field to 't' (true)"); 
+			break;
+			
+		case QDMIRROR_UPDATE_MARKINVALID:
+			elog(LOG,"Indicate QD mirrors are not synchronized in gp_configuration: update standby master row's 'valid' field to 'f' (false)"); 
+			break;
+			
+		case QDMIRROR_UPDATE_REMOVE:
+			elog(LOG,"Indicate QD mirrors are too far behind to be synchronized in gp_configuration: delete standby master row"); 
+			break;
+
+		default:
+			elog(FATAL, "Unexpected QD mirror update: %d",
+				(int) qdMirrorUpdate);
+		}
 	}
-	LWLockRelease(ftsQDMirrorLock);
+	PG_CATCH();
+	{
+		/* 
+		 * Report the unexpected error.
+		 */
+		elog_dismiss(NOTICE);
+
+		AbortCurrentTransaction();
+	}
+	PG_END_TRY();
+
 }
 
 void
-unexpectedErrorQDMirroring(void)
+CheckForQDMirroringDisabledWork(void)
+{
+	QDMIRRORUpdate qdMirrorUpdate;
+	
+	if (ftsQDMirrorInfo == NULL)
+		return;
+	/*
+	 * Test without taking lock.
+	 */
+	if (ftsQDMirrorInfo->qdMirrorUpdate == QDMIRROR_UPDATE_NONE)
+		return;
+
+	if (IsTransactionOrTransactionBlock())
+		return;
+
+	/*
+	 * NOTE: We are trying to use the longer-term update config lock here.
+	 */
+	if (!LWLockConditionalAcquire(ftsQDMirrorUpdateConfigLock, LW_EXCLUSIVE))
+		return;
+	
+	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
+	
+	if (ftsQDMirrorInfo->qdMirrorUpdate == QDMIRROR_UPDATE_NONE)
+	{
+		LWLockRelease(ftsQDMirrorLock);
+		LWLockRelease(ftsQDMirrorUpdateConfigLock);
+		return;
+	}
+
+	qdMirrorUpdate = ftsQDMirrorInfo->qdMirrorUpdate;
+	ftsQDMirrorInfo->qdMirrorUpdate = QDMIRROR_UPDATE_NONE;
+
+	/*
+	 * Assume we are successful...
+	 */
+	if (qdMirrorUpdate == QDMIRROR_UPDATE_MARKVALID)
+	{
+		ftsQDMirrorInfo->valid = true;
+	}
+	else if (qdMirrorUpdate == QDMIRROR_UPDATE_MARKINVALID)
+	{
+		ftsQDMirrorInfo->valid = false;
+	}
+	
+	LWLockRelease(ftsQDMirrorLock);
+
+	QDMirroringUpdateGpConfiguration(qdMirrorUpdate);
+	
+	LWLockRelease(ftsQDMirrorUpdateConfigLock);
+}
+
+void
+disableQDMirroring(QDMIRRORDisabledReason disabledReason)
 {
 	Assert(ftsQDMirrorInfo != NULL);
 	
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-	ftsQDMirrorInfo->state = QDMIRROR_STATE_UNEXPECTEDERROR;
+	
+	/*
+	 * Don't overwrite an unexpected error.
+	 */
+	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_DISABLED)
+	{
+		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		ftsQDMirrorInfo->disabledReason = disabledReason;
+
+		switch (disabledReason)
+		{
+		case QDMIRROR_DISABLEDREASON_TOOFARBEHIND:
+			ftsQDMirrorInfo->qdMirrorUpdate = QDMIRROR_UPDATE_REMOVE;
+			break;
+
+		case QDMIRROR_DISABLEDREASON_CONNECTIONERROR:
+		case QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR:
+			if (ftsQDMirrorInfo->valid)
+			{
+				ftsQDMirrorInfo->qdMirrorUpdate = QDMIRROR_UPDATE_MARKINVALID;
+			}
+			break;
+
+		case QDMIRROR_DISABLEDREASON_SHUTDOWN:
+			ftsQDMirrorInfo->qdMirrorUpdate = QDMIRROR_UPDATE_NONE;
+			break;
+			
+		default:
+			elog(ERROR, "Unknown disabled reason %d", (int)disabledReason);
+		}
+	}
+	
 	LWLockRelease(ftsQDMirrorLock);
+}
+
+// Helps avoid pulling in cdbfts.h in xlog.c
+void
+disableQDMirroring_WalSendServerError(void)
+{
+	disableQDMirroring(QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR);
+}
+
+// Helps avoid pulling in cdbfts.h in walsendserver.c
+void
+disableQDMirroring_TooFarBehind(void)
+{
+	disableQDMirroring(QDMIRROR_DISABLEDREASON_TOOFARBEHIND);
+}
+
+// Helps avoid pulling in cdbfts.h in walsendserver.c
+void
+disableQDMirroring_ConnectionError(void)
+{
+	disableQDMirroring(QDMIRROR_DISABLEDREASON_CONNECTIONERROR);
+}
+
+// Helps avoid pulling in cdbfts.h in walsendserver.c
+void
+disableQDMirroring_UnexpectedError(void)
+{
+	disableQDMirroring(QDMIRROR_DISABLEDREASON_UNEXPECTEDERROR);
+}
+
+// Helps avoid pulling in cdbfts.h in walsendserver.c
+void
+disableQDMirroring_ShutDown(void)
+{
+	disableQDMirroring(QDMIRROR_DISABLEDREASON_SHUTDOWN);
 }
 
 bool
@@ -384,19 +587,38 @@ isQDMirroringDisabled(void)
 	return result;
 }
 
-bool
-isQDMirroringUnexpectedError(void)
+char *
+QDMirroringStateToString(QDMIRRORState state)
 {
-	bool result;
-	
-	if (ftsQDMirrorInfo == NULL)
-		return false;	// Don't know yet.
-	
-	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-	result = (ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR);
-	LWLockRelease(ftsQDMirrorLock);
+	switch (state)
+	{
+	case QDMIRROR_STATE_NONE:
+		return "None";
 
-	return result;
+	case QDMIRROR_STATE_NOTCONFIGURED:
+		return "Not Configured";
+
+	case QDMIRROR_STATE_CONNECTINGWALSENDSERVER:
+		return "Connecting to WAL Send server";
+
+	case QDMIRROR_STATE_POSITIONINGTOEND:
+		return "Positioning to End";
+
+	case QDMIRROR_STATE_CATCHUPPENDING:
+		return "Catchup Pending";
+
+	case QDMIRROR_STATE_CATCHINGUP:
+		return "Catching Up";
+
+	case QDMIRROR_STATE_ENABLED:
+		return "Enabled";
+
+	case QDMIRROR_STATE_DISABLED:
+		return "Disabled";
+
+	default:
+		return "unknown";
+	}
 }
 
 char *
@@ -411,36 +633,7 @@ QDMirroringStateString(void)
 	state = ftsQDMirrorInfo->state;
 	LWLockRelease(ftsQDMirrorLock);
 
-	switch (state)
-	{
-		case QDMIRROR_STATE_NONE:
-			return "none";
-
-		case QDMIRROR_STATE_NOTCONFIGURED:
-			return "not configured";
-
-		case QDMIRROR_STATE_LOCALCONNECTING:
-			return "connecting to WAL Send server";
-
-		case QDMIRROR_STATE_POSITIONINGTOEND:
-			return "positioning to end";
-
-		case QDMIRROR_STATE_CATCHUPPENDING:
-			return "catchup pending";
-
-		case QDMIRROR_STATE_CATCHINGUP:
-			return "catching up";
-
-		case QDMIRROR_STATE_ENABLED:
-			return "enabled";
-
-		case QDMIRROR_STATE_DISABLED:
-			return "unexpected error";
-
-		default:
-			return "unknown";
-	}
-	
+	return QDMirroringStateToString(state);
 }
 
 void
@@ -1218,8 +1411,8 @@ void
 FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 {
 	int len;
-	bool connected;
-	bool successful;
+	bool connectedToWalSendServer;
+	bool walSendServerOk;
 
 	Assert(dbinfo != NULL);
 
@@ -1242,60 +1435,96 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	memcpy(ftsQDMirrorInfo->name, dbinfo->hostname, len);
 	ftsQDMirrorInfo->name[len] = 0;
 	ftsQDMirrorInfo->port = dbinfo->port;
+	
+	ftsQDMirrorInfo->dbid = dbinfo->dbid;
+	ftsQDMirrorInfo->valid = dbinfo->valid;
 
 	/*
 	 * Connect to our WAL Send server, but not under lock.
 	 * 
 	 */
 	ftsQDMirrorInfo->configurationChecked = true;
-	ftsQDMirrorInfo->state = QDMIRROR_STATE_LOCALCONNECTING;
+	ftsQDMirrorInfo->state = QDMIRROR_STATE_CONNECTINGWALSENDSERVER;
 	LWLockRelease(ftsQDMirrorLock);
 
-	connected = WalSendServerClientConnect();
+	connectedToWalSendServer = WalSendServerClientConnect(/* complain */ true);
 
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED ||
-		ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR)
+	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_CONNECTINGWALSENDSERVER)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD mirroring already disabled (connecting)");
-
-		LWLockRelease(ftsQDMirrorLock);
-		return;
+		/*
+		 * We've changed state while unlocked.
+		 */
+		if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
+		{
+			LWLockRelease(ftsQDMirrorLock);
+			
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
+				 "QD mirroring already disabled (connecting)");
+			return;
+		}
+		else
+		{
+			QDMIRRORState state = ftsQDMirrorInfo->state;
+			
+			LWLockRelease(ftsQDMirrorLock);
+			elog(ERROR,"Unexpected QD Mirror state '%s'",
+				 QDMirroringStateToString(state));
+		}
 	}
-	if (!connected)
+	if (!connectedToWalSendServer)
 	{
-		elog(NOTICE, "disabling QD mirroring (cannot connect to WAL Send server)");
-
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		ftsQDMirrorInfo->disabledReason = QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR;
 		LWLockRelease(ftsQDMirrorLock);
+
+		elog(NOTICE, 
+			 "disabling QD mirroring (cannot connect to WAL Send server)");
 		return;
 	}
 	
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_POSITIONINGTOEND;
 	LWLockRelease(ftsQDMirrorLock);
 
-	successful = XLogQDMirrorPositionToEnd();
+	walSendServerOk = XLogQDMirrorPositionToEnd();
 	
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED ||
-		ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR)
+	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_POSITIONINGTOEND)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD mirroring already disabled (request PositionToEnd -- could not send to WAL Send server)");
-
-		LWLockRelease(ftsQDMirrorLock);
-		return;
+		/*
+		 * We've changed state while unlocked.
+		 */
+		if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
+		{
+			LWLockRelease(ftsQDMirrorLock);
+			
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
+				 "QD mirroring already disabled (request PositionToEnd -- could not send to WAL Send server)");
+			return;
+		}
+		else
+		{
+			QDMIRRORState state = ftsQDMirrorInfo->state;
+			
+			LWLockRelease(ftsQDMirrorLock);
+			elog(ERROR,"Unexpected QD Mirror state '%s'",
+				 QDMirroringStateToString(state));
+		}
 	}
-	if (!successful)
+	if (!walSendServerOk)
 	{
-		elog(NOTICE, "disabling QD mirroring (request PositionToEnd -- could not send to WAL Send server)");
-
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		ftsQDMirrorInfo->disabledReason = QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR;
 		LWLockRelease(ftsQDMirrorLock);
+		
+		elog(NOTICE, 
+			 "disabling QD mirroring (request PositionToEnd -- could not send to WAL Send server)");
 		return;
 	}
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHUPPENDING;
 	LWLockRelease(ftsQDMirrorLock);
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"positioning QD mirror to end complete -- next step is catch-up");
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
+		 "positioning QD mirror to end complete -- next step is catch-up");
 }
 
 /*
@@ -1309,7 +1538,7 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 void
 FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 {
-	bool successful;
+	bool walSendServerOk;
 
 	Assert(flushedLocation != NULL);
 
@@ -1324,28 +1553,49 @@ FtsQDMirroringCatchup(XLogRecPtr *flushedLocation)
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_CATCHINGUP;
 	LWLockRelease(ftsQDMirrorLock);
 	
-	successful = XLogQDMirrorCatchup(flushedLocation);
+	walSendServerOk = XLogQDMirrorCatchup(flushedLocation);
 	
 	LWLockAcquire(ftsQDMirrorLock, LW_EXCLUSIVE);
-	if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED ||
-		ftsQDMirrorInfo->state == QDMIRROR_STATE_UNEXPECTEDERROR)
+	if (ftsQDMirrorInfo->state != QDMIRROR_STATE_CATCHINGUP)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD mirroring already disabled (request Catchup -- could not send to WAL Send server)");
-
-		LWLockRelease(ftsQDMirrorLock);
-		return;
+		/*
+		 * We've changed state while unlocked.
+		 */
+		if (ftsQDMirrorInfo->state == QDMIRROR_STATE_DISABLED)
+		{
+			LWLockRelease(ftsQDMirrorLock);
+			
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
+				 "QD mirroring already disabled (request Catchup -- could not send to WAL Send server)");
+			return;
+		}
+		else
+		{
+			QDMIRRORState state = ftsQDMirrorInfo->state;
+			
+			LWLockRelease(ftsQDMirrorLock);
+			elog(ERROR,"Unexpected QD Mirror state '%s'",
+				 QDMirroringStateToString(state));
+		}
 	}
-	if (!successful)
+	if (!walSendServerOk)
 	{
-		elog(NOTICE, "disabling QD mirroring (request Catchup -- could not send to WAL Send server)");
-
 		ftsQDMirrorInfo->state = QDMIRROR_STATE_DISABLED;
+		ftsQDMirrorInfo->disabledReason = QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR;
 		LWLockRelease(ftsQDMirrorLock);
+
+		elog(NOTICE, 
+			 "disabling QD mirroring (request Catchup -- could not send to WAL Send server)");
 		return;
 	}
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_ENABLED;
+	if (!ftsQDMirrorInfo->valid)
+	{
+		ftsQDMirrorInfo->qdMirrorUpdate = QDMIRROR_UPDATE_MARKVALID;
+	}
 	LWLockRelease(ftsQDMirrorLock);
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"finished catching up QD mirror");
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
+		 "finished catching up QD mirror");
 }
 
 /*
@@ -1455,7 +1705,9 @@ FtsDumpQDMirrorInfo(void)
 	}
 
 	elog(LOG, "QD mirror active name (%s:%d), port %d",
-		 ftsQDMirrorInfo->name, (int)strlen(ftsQDMirrorInfo->name), ftsQDMirrorInfo->port);
+		 ftsQDMirrorInfo->name, 
+		 (int)strlen(ftsQDMirrorInfo->name), 
+		 ftsQDMirrorInfo->port);
 	return;
 }
 

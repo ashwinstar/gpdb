@@ -197,6 +197,8 @@ bool 		Debug_print_semaphore_detail = false;
 bool		Debug_disable_distributed_snapshot = false;
 bool 		Debug_abort_after_distributed_prepared = false;
 bool		Debug_print_tablespace = false;
+bool		Debug_print_server_processes = false;
+bool		Debug_print_control_checkpoints = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -1615,7 +1617,27 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 		
-	
+ 	{
+ 		{"debug_print_server_processes", PGC_SUSET, LOGGING_WHAT,
+ 			gettext_noop("Prints server process management to server log."),
+ 			NULL,
+ 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+ 		},
+ 		&Debug_print_server_processes,
+ 		false, NULL, NULL
+ 	},
+ 
+ 	{
+ 		{"debug_print_control_checkpoints", PGC_SUSET, LOGGING_WHAT,
+ 			gettext_noop("Prints pg_control file checkpoint changes to server log."),
+ 			NULL,
+ 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+ 		},
+ 		&Debug_print_control_checkpoints,
+ 		false, NULL, NULL
+ 	},
+
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL

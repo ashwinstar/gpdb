@@ -118,7 +118,7 @@ cdb_init_log_sync(void)
 /*
  * cdb_sync_command - process sync command
  */
-void
+bool
 cdb_sync_command(const char *cmd)
 {
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: %s", cmd);
@@ -135,13 +135,15 @@ cdb_sync_command(const char *cmd)
 		case SYNC_NEW_CHECKPOINT_LOC:
 			cdb_new_checkpoint_loc();
 			break;
+		case SYNC_SHUTDOWN_TOO_FAR_BEHIND:
+			return true;
 		case SYNC_CLOSE:
 			cdb_close();
 			elog(LOG,"QDSYNC: master is closing...");
 			break;
 	}
 
-	return;
+	return false;
 }
 
 /*
@@ -267,6 +269,21 @@ cdb_new_checkpoint_loc(void)
 	{
 		elog(ERROR, "QDSYNC: redo error occurred");
 	}
+}
+
+void
+cdb_shutdown_too_far_behind(void)
+{
+	if (kill(PostmasterPid, SIGINT) < 0)
+		ereport(ERROR,
+		 (errmsg(
+		     "kill(%ld,%d) failed: %m",
+			 (long) PostmasterPid, SIGINT)));
+	ereport(LOG,
+	 (errmsg(
+	     "QDSYNC: standby is too far behind the master to be synchronized -- "
+		 "requested the standby to do a fast shutdown by signaling the postmaster (pid %d) with SIGINT",
+		 (int)PostmasterPid)));
 }
 
 void
@@ -553,6 +570,10 @@ parseCmd(const char *cmd)
 	{
 		cmdtype = SYNC_NEW_CHECKPOINT_LOC;
 		getNewCheckpointLocCmdArgs(cmd + strlen("new_checkpoint_location") + 1);
+	}
+	else if (strncmp(cmd, "shutdown_too_far_behind",23) == 0)
+	{
+		cmdtype = SYNC_SHUTDOWN_TOO_FAR_BEHIND;
 	}
 	else if (strncmp(cmd, "close", 5) == 0)
 	{

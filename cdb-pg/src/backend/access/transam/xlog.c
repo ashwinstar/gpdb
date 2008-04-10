@@ -60,7 +60,7 @@ extern bool isQDMirroringPendingCatchup(void);
 extern void FtsQDMirroringCatchup(XLogRecPtr *flushedLocation);
 extern void FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *newCheckpointLocation);
 extern void FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation);
-extern void disableQDMirroring(void);
+extern void disableQDMirroring_WalSendServerError(void);
 
 /*
  *	Because O_DIRECT bypasses the kernel buffers, and because we never
@@ -535,6 +535,7 @@ static void writeTimeLineHistory(TimeLineID newTLI, TimeLineID parentTLI,
 					 uint32 endLogId, uint32 endLogSeg);
 static void ControlFileWatcherSaveInitial(void);
 static void ControlFileWatcherCheckForChange(void);
+static bool XLogGetWriteAndFlushedLoc(XLogRecPtr *writeLoc, XLogRecPtr *flushedLoc);
 static void WriteControlFile(void);
 static void ReadControlFile(void);
 static char *str_time(time_t tnow);
@@ -545,8 +546,9 @@ static bool read_backup_label(XLogRecPtr *checkPointLoc,
 				  XLogRecPtr *minRecoveryLoc);
 static void rm_redo_error_callback(void *arg);
 
-static void XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff);
-static bool XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct timeval *timeout);
+static void XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff);
+static void XLogQDMirrorFlush(void);
+static bool XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct timeval *timeout, bool *shutdownGlobal);
 
 static void CloseReadRecord(void);
 
@@ -1543,7 +1545,7 @@ void XLogGetBuffer(int startidx, int npages, char **from, Size *nbytes)
 }
 
 static bool
-XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct timeval *timeout)
+XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct timeval *timeout, bool *shutdownGlobal)
 {
 	char		fname[MAXPGPATH];
 	char		path[MAXPGPATH];
@@ -1633,7 +1635,7 @@ XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct
             elog(ERROR, "XLogCatchupQDSegment: error formatting command to mirror 'xlog %d %d %d %d' (insufficient space)", logId, seg, offset, requestLen);
 		}
 		
-        successful = write_qd_sync(cmd, buf, requestLen, timeout);
+        successful = write_qd_sync(cmd, buf, requestLen, timeout, shutdownGlobal);
 		if (!successful)
 			return false;
 		
@@ -1649,7 +1651,7 @@ XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct
  * Send primary XLOG to standby master to catch it up.
  */
 bool
-XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation, struct timeval *timeout)
+XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation, struct timeval *timeout, bool *shutdownGlobal)
 {
 	uint32		standbyLogId;
 	uint32		standbySeg;
@@ -1684,7 +1686,7 @@ XLogCatchupQDMirror(XLogRecPtr *standbyLocation, XLogRecPtr *flushedLocation, st
 		else
 			end = -1;
 
-		successful = XLogCatchupQDSegment(logId, seg, offset, end, timeout);
+		successful = XLogCatchupQDSegment(logId, seg, offset, end, timeout, shutdownGlobal);
 		if (!successful)
 			return false;
 
@@ -1748,7 +1750,7 @@ XLogQDMirrorCatchup(XLogRecPtr *flushedLocation)
 	walSendRequest.command = Catchup;
 	walSendRequest.flushedLocation = *flushedLocation;
 
-	connected = WalSendServerClientConnect();
+	connected = WalSendServerClientConnect(/* complain */ true);
 	if (!connected)
 	{
 		elog(LOG, "disabling QD mirroring (cannot connect to WAL Send server)");
@@ -1771,7 +1773,60 @@ XLogQDMirrorCatchup(XLogRecPtr *flushedLocation)
 }
 
 static void
-XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff)
+XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId, uint32 logSeg, uint32 logOff)
+{
+	bool connected;
+	WalSendRequest walSendRequest;
+	bool successful;
+	struct timeval timeout = {0,250000};		// 0.25 seconds.
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring WriteWalPages parameters startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff %X",
+		 startidx, npages, timeLineID, logId, logSeg, logOff);
+
+	if (!isQDMirroringEnabled())
+	{
+		if (Debug_print_qd_mirroring)
+			elog(LOG,"Skipping QD mirroring -- not enabled");
+		return;
+	}
+	connected = WalSendServerClientConnect(/* complain */ true);
+	if (!connected)
+	{
+		disableQDMirroring_WalSendServerError();
+		elog(NOTICE, "disabling QD mirroring (cannot connect to WAL Send server)");
+		return;
+	}
+
+	memset(&walSendRequest, 0, sizeof(walSendRequest));
+	walSendRequest.command = WriteWalPages;
+	walSendRequest.startidx = startidx;
+	walSendRequest.npages = npages;
+	walSendRequest.timeLineID = timeLineID;
+	walSendRequest.logId = logId;
+	walSendRequest.logSeg = logSeg;
+	walSendRequest.logOff = logOff;
+
+	successful = WalSendServerClientSendRequest(&walSendRequest);
+	
+	if (!successful)
+	{
+		disableQDMirroring_WalSendServerError();
+		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not send to WAL Send server)");
+		return;
+	}
+
+	successful = XLogQDMirrorWaitForResponse(&timeout);
+	
+	if (!successful)
+	{
+		disableQDMirroring_WalSendServerError();
+		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not receive from WAL Send server)");
+		return;
+	}
+}
+
+static void
+XLogQDMirrorFlush(void)
 {
 	bool ready;
 	bool connected;
@@ -1781,8 +1836,7 @@ XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, 
 	bool successful;
 	struct timeval timeout = {0,250000};		// 0.25 seconds.
 
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring WriteWalPages parameters startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff %X",
-		 startidx, npages, timeLineID, logId, logSeg, logOff);
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring FlushWalPages");
 
 	FtsCheckReadyToSend(&ready, 
 		                &haveNewCheckpointLocation, &newCheckpointLocation);
@@ -1792,27 +1846,16 @@ XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, 
 			elog(LOG,"Skipping QD mirroring -- not enabled");
 		return;
 	}
-//	if (shmDtmStarted == NULL || !*shmDtmStarted)
-//	{
-//		elog(LOG,"XLogQDMirrorSend: Skipping... DTM not started");
-//		return;
-//	}
-
-	connected = WalSendServerClientConnect();
+	connected = WalSendServerClientConnect(/* complain */ true);
 	if (!connected)
 	{
+		disableQDMirroring_WalSendServerError();
 		elog(NOTICE, "disabling QD mirroring (cannot connect to WAL Send server)");
-		disableQDMirroring();
 		return;
 	}
 
-	walSendRequest.command = WriteWalPages;
-	walSendRequest.startidx = startidx;
-	walSendRequest.npages = npages;
-	walSendRequest.timeLineID = timeLineID;
-	walSendRequest.logId = logId;
-	walSendRequest.logSeg = logSeg;
-	walSendRequest.logOff = logOff;
+	memset(&walSendRequest, 0, sizeof(walSendRequest));
+	walSendRequest.command = FlushWalPages;
 	walSendRequest.haveNewCheckpointLocation = haveNewCheckpointLocation;
 	walSendRequest.newCheckpointLocation = newCheckpointLocation;
 
@@ -1820,8 +1863,8 @@ XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, 
 	
 	if (!successful)
 	{
-		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not send to WAL Send server)");
-		disableQDMirroring();
+		disableQDMirroring_WalSendServerError();
+		elog(NOTICE, "disabling QD mirroring (request FlushWalPages -- could not send to WAL Send server)");
 		return;
 	}
 
@@ -1829,11 +1872,67 @@ XLogQDMirrorSend(int startidx, int npages, TimeLineID timeLineID, uint32 logId, 
 	
 	if (!successful)
 	{
-		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not receive from WAL Send server)");
-		disableQDMirroring();
+		disableQDMirroring_WalSendServerError();
+		elog(NOTICE, "disabling QD mirroring (request FlushWalPages -- could not receive from WAL Send server)");
 		return;
 	}
 }
+
+static void
+XLogQDMirrorCloseForShutdown(void)
+{
+	bool connected;
+	WalSendRequest walSendRequest;
+	bool successful;
+	struct timeval timeout = {0,250000};		// 0.25 seconds.
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring CloseForShutdown");
+
+	if (isQDMirroringNotConfigured() ||
+		isQDMirroringNotKnownYet())
+	{
+		if (Debug_print_qd_mirroring)
+			elog(LOG,"Skipping QD mirroring -- not configured or known");
+		return;
+	}
+	if (isQDMirroringDisabled())
+	{
+		if (Debug_print_qd_mirroring)
+			elog(LOG,"Skipping QD mirroring -- disabled");
+		return;
+	}
+	connected = WalSendServerClientConnect(/* complain */ false);
+	if (!connected)
+	{
+		/* Ignore */
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"cannot connect to WAL Send server");
+		return;
+	}
+
+	memset(&walSendRequest, 0, sizeof(walSendRequest));
+	walSendRequest.command = CloseForShutdown;
+
+	successful = WalSendServerClientSendRequest(&walSendRequest);
+	
+	if (!successful)
+	{
+		/* Ignore */
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"could not send to WAL Send server");
+		return;
+	}
+
+	successful = XLogQDMirrorWaitForResponse(&timeout);
+	
+	if (!successful)
+	{
+		/* Ignore */
+		elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"could not receive from WAL Send server");
+		return;
+	}
+	
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"Successful QD mirroring CloseForShutdown");
+}
+
 
 /*
  * Write and/or fsync the log at least as far as WriteRqst indicates.
@@ -2043,11 +2142,13 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 								openLogOff, (unsigned long) nbytes)));
 			}
 			
-			/* ***********************************************************
-	         * if qd mirroring is on, sync the xlog write to mirrorred qd.
-	         * ***********************************************************
+			/* 
+			 * Send information about the write to the WAL Send server.
+			 * For now, it will copy the directly out of the cache.
+			 * Later, we will tell the WAL Send server to actually send
+			 * the information to standby as part of flush.
 	         */
-			XLogQDMirrorSend(
+			XLogQDMirrorWrite(
 						startidx,
 						npages,
 						ThisTimeLineID,
@@ -2074,18 +2175,18 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 			 * segment is ready to copy to archival storage, and to update the
 			 * timer for archive_timeout.
 			 */
-			if (finishing_seg || (xlog_switch && last_iteration) ||
-				isQDMirroringPendingCatchup())
+			if (finishing_seg || (xlog_switch && last_iteration))
 			{
 				issue_xlog_fsync();
+				
+				elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
+					 "XLogWrite (#1): flush loc %s; write loc %s",
+					 XLogLocationToString_Long(&LogwrtResult.Flush),
+					 XLogLocationToString2_Long(&LogwrtResult.Write));
+				XLogQDMirrorFlush();
+		
 				LogwrtResult.Flush = LogwrtResult.Write;		/* end of page */
 
-				if (isQDMirroringPendingCatchup())
-				{
-					elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"synchronize rendezvous (write and flushed = %s)",
-						 XLogLocationToString(&LogwrtResult.Flush));
-					FtsQDMirroringCatchup(&LogwrtResult.Flush);
-				}
 				if (XLogArchivingActive())
 					XLogArchiveNotifySeg(openLogId, openLogSeg);
 
@@ -2132,7 +2233,15 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible, bool xlog_switch)
 				openLogOff = 0;
 			}
 			issue_xlog_fsync();
+			
+			elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
+				 "XLogWrite (#2): flush loc %s; write loc %s",
+				 XLogLocationToString_Long(&LogwrtResult.Flush),
+				 XLogLocationToString2_Long(&LogwrtResult.Write));
+		
+			XLogQDMirrorFlush();
 		}
+
 		LogwrtResult.Flush = LogwrtResult.Write;
 	}
 
@@ -2249,6 +2358,27 @@ XLogFlush(XLogRecPtr record)
 				WriteRqst.Flush = record;
 			}
 			XLogWrite(WriteRqst, false, false);
+
+			/*
+			 * 1) We are holding the write lock which prevents other calls
+			 *    to XLogWrite -- which sends requests to the
+			 *    WAL Send server.
+			 *
+			 * 2) We just called XLogWrite requesting it to flush.
+			 *
+			 * So, this seems to be a good point to synchronize
+			 * the QD Mirror.
+			 */
+			if (isQDMirroringPendingCatchup())
+			{
+				elog((Debug_print_qd_mirroring ? LOG : DEBUG5),
+					 "synchronize rendezvous (write loc %s, flushed loc %s)",
+					 XLogLocationToString_Long(&LogwrtResult.Write),
+					 XLogLocationToString2_Long(&LogwrtResult.Flush));
+				
+				FtsQDMirroringCatchup(&LogwrtResult.Flush);
+			}
+
 		}
 		LWLockRelease(WALWriteLock);
 	}
@@ -4239,10 +4369,11 @@ ControlFileWatcherSaveInitial(void)
 	ControlFileWatcher->current_prevCheckPointLoc = ControlFile->prevCheckPoint;
 	ControlFileWatcher->current_checkPointCopy_redo = ControlFile->checkPointCopy.redo;
 
-	elog(LOG,"ControlFileWatcher: initial values (checkpoint loc %s, previous loc %s, copy's redo loc %s)",
-		 XLogLocationToString(&ControlFile->checkPoint),
-		 XLogLocationToString2(&ControlFile->prevCheckPoint),
-		 XLogLocationToString3(&ControlFile->checkPointCopy.redo));
+	if (Debug_print_control_checkpoints)
+		elog(LOG,"pg_control checkpoint: initial values (checkpoint loc %s, previous loc %s, copy's redo loc %s)",
+			 XLogLocationToString_Long(&ControlFile->checkPoint),
+			 XLogLocationToString2_Long(&ControlFile->prevCheckPoint),
+			 XLogLocationToString3_Long(&ControlFile->checkPointCopy.redo));
 
 	ControlFileWatcher->watcherInitialized = true;
 }
@@ -4250,6 +4381,9 @@ ControlFileWatcherSaveInitial(void)
 static void
 ControlFileWatcherCheckForChange(void)
 {
+	XLogRecPtr  writeLoc;
+	XLogRecPtr  flushedLoc;
+
 	if (!XLByteEQ(ControlFileWatcher->current_checkPointLoc,ControlFile->checkPoint) ||
 		!XLByteEQ(ControlFileWatcher->current_prevCheckPointLoc,ControlFile->prevCheckPoint) ||
 		!XLByteEQ(ControlFileWatcher->current_checkPointCopy_redo,ControlFile->checkPointCopy.redo))
@@ -4258,10 +4392,31 @@ ControlFileWatcherCheckForChange(void)
 		ControlFileWatcher->current_prevCheckPointLoc = ControlFile->prevCheckPoint;
 		ControlFileWatcher->current_checkPointCopy_redo = ControlFile->checkPointCopy.redo;
 
-		elog(LOG,"ControlFileWatcher: change (checkpoint loc %s, previous loc %s, copy's redo loc %s)",
-			 XLogLocationToString(&ControlFile->checkPoint),
-			 XLogLocationToString2(&ControlFile->prevCheckPoint),
-			 XLogLocationToString3(&ControlFile->checkPointCopy.redo));
+		if (XLogGetWriteAndFlushedLoc(&writeLoc, &flushedLoc))
+		{
+			bool problem = XLByteLE(flushedLoc,ControlFile->checkPoint);
+			if (problem)
+				elog(PANIC,"Checkpoint location %s for pg_control file is not flushed (write loc %s, flushed loc is %s)",
+				     XLogLocationToString_Long(&ControlFile->checkPoint),
+				     XLogLocationToString2_Long(&writeLoc),
+				     XLogLocationToString3_Long(&flushedLoc));
+
+			if (Debug_print_control_checkpoints)
+				elog(LOG,"pg_control checkpoint: change (checkpoint loc %s, previous loc %s, copy's redo loc %s, write loc %s, flushed loc %s)",
+					 XLogLocationToString_Long(&ControlFile->checkPoint),
+					 XLogLocationToString2_Long(&ControlFile->prevCheckPoint),
+					 XLogLocationToString3_Long(&ControlFile->checkPointCopy.redo),
+					 XLogLocationToString4_Long(&writeLoc),
+					 XLogLocationToString5_Long(&flushedLoc));
+		}
+		else
+		{
+			if (Debug_print_control_checkpoints)
+				elog(LOG,"pg_control checkpoint: change (checkpoint loc %s, previous loc %s, copy's redo loc %s)",
+					 XLogLocationToString_Long(&ControlFile->checkPoint),
+					 XLogLocationToString2_Long(&ControlFile->prevCheckPoint),
+					 XLogLocationToString3_Long(&ControlFile->checkPointCopy.redo));
+		}
 	}
 }
 
@@ -4548,6 +4703,20 @@ ReadControlFile(void)
 	{
 		ControlFileWatcherCheckForChange();
 	}
+}
+
+static bool
+XLogGetWriteAndFlushedLoc(XLogRecPtr *writeLoc, XLogRecPtr *flushedLoc)
+{
+	/* use volatile pointer to prevent code rearrangement */
+	volatile XLogCtlData *xlogctl = XLogCtl;
+
+	SpinLockAcquire(&xlogctl->info_lck);
+	*writeLoc = xlogctl->LogwrtResult.Write;
+	*flushedLoc = xlogctl->LogwrtResult.Flush;
+	SpinLockRelease(&xlogctl->info_lck);
+	
+	return (writeLoc->xlogid != 0 || writeLoc->xrecoff != 0);
 }
 
 void
@@ -5245,6 +5414,48 @@ recoveryStopsHere(XLogRecord *record, bool *includeThis)
 	return stopsHere;
 }
 
+static void
+printEndOfXLogFile(XLogRecPtr	*loc)
+{
+	uint32 seg = loc->xrecoff / XLogSegSize;
+
+	XLogRecPtr roundedDownLoc;
+	
+	XLogRecord *record;
+	XLogRecPtr	LastRec;
+	
+	/*
+	 * Go back to the beginning of the log file and read forward to find
+	 * the end of the transaction log.
+	 */
+	roundedDownLoc.xlogid = loc->xlogid;
+	roundedDownLoc.xrecoff = (seg * XLogSegSize) + SizeOfXLogLongPHD;
+	
+	CloseReadRecord();
+
+	record = ReadRecord(&roundedDownLoc, LOG);
+	if (record == NULL)
+	{
+		elog(LOG,"Couldn't read transaction log file (logid %d, seg %d)",
+			 loc->xlogid, seg);
+		return;
+	}
+	
+	do
+	{
+		LastRec = ReadRecPtr;
+
+		record = ReadRecord(NULL, DEBUG5);
+	} while (record != NULL);
+
+	record = ReadRecord(&LastRec, ERROR);
+	
+	elog(LOG,"found end of transaction log file %s",
+		 XLogLocationToString_Long(&EndRecPtr));
+	
+	CloseReadRecord();
+}
+
 /*
  * This must be called ONCE during postmaster or standalone-backend startup
  */
@@ -5374,8 +5585,6 @@ StartupXLOG(void)
 		 */
 		checkPointLoc = ControlFile->checkPoint;
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 1) at %s",
-			 XLogLocationToString(&checkPointLoc));
 		record = ReadCheckpointRecord(checkPointLoc, 1);
 		if (record != NULL)
 		{
@@ -5385,9 +5594,9 @@ StartupXLOG(void)
 		}
 		else
 		{
+			printEndOfXLogFile(&checkPointLoc);
+			
 			checkPointLoc = ControlFile->prevCheckPoint;
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartupXLOG going to call ReadCheckpointRecord(checkPointLoc, 2) at %s",
-				 XLogLocationToString(&checkPointLoc));
 			record = ReadCheckpointRecord(checkPointLoc, 2);
 			if (record != NULL)
 			{
@@ -5397,8 +5606,11 @@ StartupXLOG(void)
 				InRecovery = true;		/* force recovery even if SHUTDOWNED */
 			}
 			else
+			{
+				printEndOfXLogFile(&checkPointLoc);
 				ereport(PANIC,
 					 (errmsg("could not locate a valid checkpoint record")));
+			}
 		}
 	}
 
@@ -5660,11 +5872,8 @@ StartupXLOG(void)
 	EndOfLog = EndRecPtr;
 	XLByteToPrevSeg(EndOfLog, endLogId, endLogSeg);
 
-	if (Debug_print_qd_mirroring)
-	{
-		elog(LOG,"EndOfLog %s",
-			 XLogLocationToString(&EndOfLog));
-	}
+	elog(LOG,"end of transaction log location is %s",
+		 XLogLocationToString(&EndOfLog));
 	
 	/*
 	 * Complain if we did not roll forward far enough to render the backup
@@ -6301,21 +6510,22 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 
 	if (record == NULL)
 	{
-	    elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"ReadCheckpointRecord call to ReadRecord at location %s returned no checkpoint #%d record",
-		     XLogLocationToString(&RecPtr), whichChkpt);
 		switch (whichChkpt)
 		{
 			case 1:
 				ereport(LOG,
-						(errmsg("invalid primary checkpoint record")));
+						(errmsg("invalid primary checkpoint record at location %s",
+						        XLogLocationToString_Long(&RecPtr))));
 				break;
 			case 2:
 				ereport(LOG,
-						(errmsg("invalid secondary checkpoint record")));
+						(errmsg("invalid secondary checkpoint record at location %s",
+						        XLogLocationToString_Long(&RecPtr))));
 				break;
 			default:
 				ereport(LOG,
-						(errmsg("invalid checkpoint record")));
+						(errmsg("invalid checkpoint record at location %s",
+						        XLogLocationToString_Long(&RecPtr))));
 				break;
 		}
 		return NULL;
@@ -6326,15 +6536,18 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		{
 			case 1:
 				ereport(LOG,
-						(errmsg("invalid resource manager ID in primary checkpoint record")));
+						(errmsg("invalid resource manager ID in primary checkpoint record at location %s",
+						        XLogLocationToString_Long(&RecPtr))));
 				break;
 			case 2:
 				ereport(LOG,
-						(errmsg("invalid resource manager ID in secondary checkpoint record")));
+						(errmsg("invalid resource manager ID in secondary checkpoint record at location %s",
+						        XLogLocationToString_Long(&RecPtr))));
 				break;
 			default:
 				ereport(LOG,
-				(errmsg("invalid resource manager ID in checkpoint record")));
+				(errmsg("invalid resource manager ID in checkpoint record at location %s",
+				        XLogLocationToString_Long(&RecPtr))));
 				break;
 		}
 		return NULL;
@@ -6346,15 +6559,18 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		{
 			case 1:
 				ereport(LOG,
-				   (errmsg("invalid xl_info in primary checkpoint record")));
+				   (errmsg("invalid xl_info in primary checkpoint record at location %s",
+				           XLogLocationToString_Long(&RecPtr))));
 				break;
 			case 2:
 				ereport(LOG,
-				 (errmsg("invalid xl_info in secondary checkpoint record")));
+				 (errmsg("invalid xl_info in secondary checkpoint record at location %s",
+				         XLogLocationToString_Long(&RecPtr))));
 				break;
 			default:
 				ereport(LOG,
-						(errmsg("invalid xl_info in checkpoint record")));
+						(errmsg("invalid xl_info in checkpoint record at location %s",
+						        XLogLocationToString_Long(&RecPtr))));
 				break;
 		}
 		return NULL;
@@ -6385,15 +6601,18 @@ ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt)
 		{
 			case 1:
 				ereport(LOG,
-					(errmsg("invalid length of primary checkpoint")));
+					(errmsg("invalid length of primary checkpoint at location %s",
+					        XLogLocationToString_Long(&RecPtr))));
 				break;
 			case 2:
 				ereport(LOG,
-				  (errmsg("invalid length of secondary checkpoint record")));
+				  (errmsg("invalid length of secondary checkpoint record at location %s",
+				          XLogLocationToString_Long(&RecPtr))));
 				break;
 			default:
 				ereport(LOG,
-						(errmsg("invalid length of checkpoint record")));
+						(errmsg("invalid length of checkpoint record at location %s",
+						        XLogLocationToString_Long(&RecPtr))));
 				break;
 		}
 		return NULL;
@@ -6507,6 +6726,13 @@ ShutdownXLOG(int code __attribute__((unused)) , Datum arg __attribute__((unused)
 	if (!GPStandby())
 	{
 		CreateCheckPoint(true, true);
+
+		/*
+		 * Now that we have written the final shutdown checkpoint,
+		 * let's shutdown QD mirroring.
+		 */
+		XLogQDMirrorCloseForShutdown();
+		
 		ShutdownCLOG();
 		ShutdownSUBTRANS();
 		ShutdownMultiXact();
@@ -6884,7 +7110,7 @@ RecoveryRestartPoint(const CheckPoint *checkPoint)
 	ControlFile->time = time(NULL);
 	UpdateControlFile();
 
-	ereport(DEBUG2,
+	ereport(LOG,
 			(errmsg("recovery restart point at %X/%X",
 					checkPoint->redo.xlogid, checkPoint->redo.xrecoff)));
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "RecoveryRestartPoint: checkpoint copy redo location %s, previous checkpoint location %s",
@@ -7863,10 +8089,10 @@ rm_redo_error_callback(void *arg)
 }
 
 static char *
-XLogLocationToBuffer(char *buffer, XLogRecPtr *loc)
+XLogLocationToBuffer(char *buffer, XLogRecPtr *loc, bool longFormat)
 {
 
-	if (Debug_print_qd_mirroring)
+	if (longFormat)
 	{
 		uint32 seg = loc->xrecoff / XLogSegSize;
 		uint32 offset = loc->xrecoff % XLogSegSize;
@@ -7887,28 +8113,66 @@ static char xlogLocationBuffer[50];
 static char xlogLocationBuffer2[50];
 static char xlogLocationBuffer3[50];
 static char xlogLocationBuffer4[50];
+static char xlogLocationBuffer5[50];
 
 char *
 XLogLocationToString(XLogRecPtr *loc)
 {
-	return XLogLocationToBuffer(xlogLocationBuffer, loc);
+	return XLogLocationToBuffer(xlogLocationBuffer, loc, Debug_print_qd_mirroring);
 }
 
 char *
 XLogLocationToString2(XLogRecPtr *loc)
 {
-	return XLogLocationToBuffer(xlogLocationBuffer2, loc);
+	return XLogLocationToBuffer(xlogLocationBuffer2, loc, Debug_print_qd_mirroring);
 }
 
 char *
 XLogLocationToString3(XLogRecPtr *loc)
 {
-	return XLogLocationToBuffer(xlogLocationBuffer3, loc);
+	return XLogLocationToBuffer(xlogLocationBuffer3, loc, Debug_print_qd_mirroring);
 }
 
 char *
 XLogLocationToString4(XLogRecPtr *loc)
 {
-	return XLogLocationToBuffer(xlogLocationBuffer4, loc);
+	return XLogLocationToBuffer(xlogLocationBuffer4, loc, Debug_print_qd_mirroring);
 }
+
+char *
+XLogLocationToString5(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer5, loc, Debug_print_qd_mirroring);
+}
+
+char *
+XLogLocationToString_Long(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer, loc, true);
+}
+
+char *
+XLogLocationToString2_Long(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer2, loc, true);
+}
+
+char *
+XLogLocationToString3_Long(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer3, loc, true);
+}
+
+char *
+XLogLocationToString4_Long(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer4, loc, true);
+}
+
+char *
+XLogLocationToString5_Long(XLogRecPtr *loc)
+{
+	return XLogLocationToBuffer(xlogLocationBuffer5, loc, true);
+}
+
 

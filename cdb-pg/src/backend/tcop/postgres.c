@@ -179,6 +179,7 @@ static int	UseNewLine = 0;		/* Use EOF as query delimiters */
 
 static DtxContextInfo TempDtxContextInfo;
 
+extern void CheckForQDMirroringDisabledWork(void);
 
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
@@ -4980,6 +4981,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 		DoingCommandRead = true;
 
 		/*
+		 * (2b) Check for disable work for QD mirroring.
+		 */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			CheckForQDMirroringDisabledWork();
+
+		/*
 		 * (3) read a command (loop blocks here)
 		 */
 		firstchar = ReadCommand(&input_message);
@@ -5794,6 +5801,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
 	volatile bool send_rfq = true;
+	bool		shutdownTooFarBehind = false;
 
 #define PendingConfigOption(name,val) \
 	(guc_names = lappend(guc_names, pstrdup(name)), \
@@ -6411,6 +6419,14 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 		}
 
 		/*
+		 * (2b)
+		 * If we need to shutdown because we are too far behind,
+		 * do it here...
+		 */
+		if (shutdownTooFarBehind)
+			cdb_shutdown_too_far_behind();
+
+		/*
 		 * (2) deal with pending asynchronous NOTIFY from other backends,
 		 * and enable async.c's signal handler to execute NOTIFY directly.
 		 * Then set up other stuff needed before blocking for input.
@@ -6472,7 +6488,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
                     query_string = pq_getmsgstring(&input_message);
                     pq_getmsgend(&input_message);
 
-                    cdb_sync_command(query_string);
+                    shutdownTooFarBehind = cdb_sync_command(query_string);
 
                     send_rfq = true;
                     pq_getmsgend(&input_message);

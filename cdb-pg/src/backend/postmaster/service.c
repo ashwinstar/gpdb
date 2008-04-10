@@ -84,7 +84,7 @@ typedef struct ServiceConnectionResponseMsg
 	
 }	ServiceConnectionResponseMsg;
 
-static bool ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient);
+static bool ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient, bool complain);
 static bool ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen, struct timeval *timeout);
 static bool ServiceClientPollRead(ServiceClient *serviceClient, void* response, int responseLen, bool *pollResponseReceived);
 static bool ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen);
@@ -105,7 +105,7 @@ ServiceInit(ServiceConfig *serviceConfig, ServiceCtrl *serviceCtrl)
 }
 
 static bool
-ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient)
+ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient, bool complain)
 {
 	int  n;
 	struct sockaddr_in addr;	
@@ -121,10 +121,11 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 
 	if ((n = connect(serviceClient->sockfd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
 	{
-		ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						 errmsg("Interconnect Error: Could not connect to '%s'.", 
-						        serviceConfig->title),
-		                 errdetail("%m%s", "connect")));
+		if (complain)
+			ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 errmsg("Interconnect Error: Could not connect to '%s'.", 
+							        serviceConfig->title),
+			                 errdetail("%m%s", "connect")));
 		serviceClient->sockfd = -1;
 		return false;
 	}
@@ -132,10 +133,11 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
 	/* make socket non-blocking BEFORE we connect. */
 	if (!pg_set_noblock(serviceClient->sockfd))
 	{
-		ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						 errmsg("Interconnect Error: Could not set '%s' socket"
-						        "to non-blocking mode.", serviceConfig->title),
-			             errdetail("%m%s sockfd=%d", "fcntl", serviceClient->sockfd)));
+		if (complain)
+			ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 errmsg("Interconnect Error: Could not set '%s' socket"
+							        "to non-blocking mode.", serviceConfig->title),
+				             errdetail("%m%s sockfd=%d", "fcntl", serviceClient->sockfd)));
 		close(serviceClient->sockfd);
 		serviceClient->sockfd = -1;
 		return false;
@@ -148,7 +150,7 @@ ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *
  * Used by clients to connect to a service.
  */
 bool
-ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient)
+ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient, bool complain)
 {	
 //	ServiceConnectionRequestMsg newConnectionRequestMsg;
 //	ServiceConnectionResponseMsg newConnectionResponseMsg;
@@ -167,7 +169,7 @@ ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClie
 
 	serviceClient->serviceConfig = serviceConfig;
 
-	connected = ServiceDoConnect(serviceConfig, listenerPort, serviceClient);
+	connected = ServiceDoConnect(serviceConfig, listenerPort, serviceClient, complain);
 
 //	ServiceClientWrite(serviceClient, &newConnectionRequestMsg, sizeof(newConnectionRequestMsg));
 //	ServiceClientRead(serviceClient, &newConnectionResponseMsg, sizeof(newConnectionResponseMsg));
@@ -555,6 +557,9 @@ ServiceQuickDie(SIGNAL_ARGS)
 {
 	PG_SETMASK(&BlockSig);
 
+	ereport(LOG,
+			(errmsg("terminating immediately")));
+	
 	/*
 	 * DO NOT proc_exit() -- we're here because shared memory may be
 	 * corrupted, so we don't want to try to clean up our transaction. Just
@@ -566,6 +571,19 @@ ServiceQuickDie(SIGNAL_ARGS)
 	 * shared memory state.
 	 */
 	exit(2);
+}
+
+/*
+ * Shutdown signal from postmaster: abort transaction and exit
+ * at soonest convenient time
+ */
+static void
+ServiceDie(SIGNAL_ARGS)
+{
+	ereport(LOG,
+			(errmsg("terminating")));
+
+	die(postgres_signal_arg);
 }
 
 /*
@@ -618,7 +636,7 @@ ServiceMain(ServiceCtrl *serviceCtrl)
 	 * we handle ereport(ERROR).  It could be improved however.
 	 */
 	pqsignal(SIGINT, StatementCancelHandler);
-	pqsignal(SIGTERM, die);
+	pqsignal(SIGTERM, ServiceDie);
 	pqsignal(SIGQUIT, ServiceQuickDie);
 	pqsignal(SIGALRM, handle_sig_alarm);
 
@@ -733,8 +751,16 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 		/* no need to live on if postmaster has died */
 		if (!PostmasterIsAlive(true))
 		{
-			elog(LOG,"exiting because postmaster has died");
-			exit(1);
+			if (serviceConfig->ServicePostmasterDied != NULL)
+			{
+				serviceConfig->ServicePostmasterDied();
+			}
+			else
+			{
+				ereport(LOG,
+						(errmsg("exiting because postmaster has died")));
+				proc_exit(1);
+			}
 		}
 		
 		memcpy(&rrset, &rset, sizeof(fd_set));
@@ -839,8 +865,9 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 		}
 	}
 
-	elog(LOG,"exiting");
-	exit(1);
+	ereport(LOG,
+			(errmsg("normal shutdown")));
+	proc_exit(0);
 
 }
 

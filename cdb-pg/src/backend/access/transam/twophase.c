@@ -1054,6 +1054,9 @@ ReadTwoPhaseFile(TransactionId xid)
 	uint32		crc_offset;
 	pg_crc32	calc_crc,
 				file_crc;
+	int			minimumLen;
+	int			alignedOffset;
+	int			twoPhaseMagic;
 
 	TwoPhaseFilePath(path, xid);
 
@@ -1081,18 +1084,32 @@ ReadTwoPhaseFile(TransactionId xid)
 		return NULL;
 	}
 
-	if (stat.st_size < (MAXALIGN(sizeof(TwoPhaseFileHeader)) +
-						MAXALIGN(sizeof(TwoPhaseRecordOnDisk)) +
-						sizeof(pg_crc32)) ||
-		stat.st_size > 10000000)
+	minimumLen = MAXALIGN(sizeof(TwoPhaseFileHeader)) +
+				 MAXALIGN(sizeof(TwoPhaseRecordOnDisk)) +
+				 sizeof(pg_crc32);
+	if (stat.st_size < minimumLen)
 	{
+		ereport(WARNING,
+			    (errmsg("file size less than minimum %d", minimumLen)));
+		close(fd);
+		return NULL;
+	}
+
+	if (stat.st_size > 10000000)
+	{
+		ereport(WARNING,
+			    (errmsg("file size greater than maximum 10,000,000 bytes")));
 		close(fd);
 		return NULL;
 	}
 
 	crc_offset = stat.st_size - sizeof(pg_crc32);
-	if (crc_offset != MAXALIGN(crc_offset))
+	alignedOffset = MAXALIGN(crc_offset);
+	if (crc_offset != alignedOffset)
 	{
+		ereport(WARNING,
+			    (errmsg("CRC offset not aligned (offset %d, aligned %d)", 
+			            crc_offset, alignedOffset)));
 		close(fd);
 		return NULL;
 	}
@@ -1104,11 +1121,11 @@ ReadTwoPhaseFile(TransactionId xid)
 
 	if (read(fd, buf, stat.st_size) != stat.st_size)
 	{
-		close(fd);
 		ereport(WARNING,
 				(errcode_for_file_access(),
 				 errmsg("could not read two-phase state file \"%s\": %m",
 						path)));
+		close(fd);
 		pfree(buf);
 		return NULL;
 	}
@@ -1116,12 +1133,24 @@ ReadTwoPhaseFile(TransactionId xid)
 	close(fd);
 
 	hdr = (TwoPhaseFileHeader *) buf;
-	if (hdr->magic != TWOPHASE_MAGIC || hdr->total_len != stat.st_size)
+	twoPhaseMagic = TWOPHASE_MAGIC;
+	if (hdr->magic != twoPhaseMagic)
 	{
+		ereport(WARNING,
+			    (errmsg("two-phase identifier doesn't match (identifer 0x%X, expected 0x%X)", 
+			            hdr->magic, twoPhaseMagic)));
 		pfree(buf);
 		return NULL;
 	}
-
+	if (hdr->total_len != stat.st_size)
+	{
+		ereport(WARNING,
+			    (errmsg("length field doesn't match length (field %d, actual length %d)", 
+			            hdr->total_len, (int)stat.st_size)));
+		pfree(buf);
+		return NULL;
+	}
+	
 	INIT_CRC32(calc_crc);
 	COMP_CRC32(calc_crc, buf, crc_offset);
 	FIN_CRC32(calc_crc);
@@ -1130,6 +1159,9 @@ ReadTwoPhaseFile(TransactionId xid)
 
 	if (!EQ_CRC32(calc_crc, file_crc))
 	{
+		ereport(WARNING,
+			    (errmsg("CRC doesn't length (crc 0x%X, calculated 0x%X)", 
+			            file_crc, calc_crc)));
 		pfree(buf);
 		return NULL;
 	}

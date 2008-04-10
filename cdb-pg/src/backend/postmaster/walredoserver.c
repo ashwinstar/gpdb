@@ -89,7 +89,8 @@ static ServiceConfig WalRedoServer_ServiceConfig =
 	WalRedoServer_ServiceInit,
 	WalRedoServer_ServiceShutdownRequested,
 	WalRedoServer_ServiceRequest,
-	WalRedoServer_ServiceShutdown};
+	WalRedoServer_ServiceShutdown,
+	NULL};
 
 static ServiceCtrl WalRedoServer_ServiceCtrl;
 
@@ -347,7 +348,8 @@ WalRedoServerClientConnect(void)
 
 	connected = ServiceClientConnect(&WalRedoServer_ServiceConfig, 
 									WalRedoServerShared->listenerPort,
-									&WalRedoServerClient);
+									&WalRedoServerClient,
+									/* complain */ true);
 
 	return connected;
 }
