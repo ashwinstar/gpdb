@@ -401,6 +401,16 @@ typedef struct XLogCtlData
 	TimeLineID	ThisTimeLineID;
 
 	slock_t		info_lck;		/* locks shared variables shown above */
+
+	/*
+	 * Save the location of the last checkpoint record to enable supressing
+	 * unnecessary checkpoint records -- when no new xlog has been written
+	 * since the last one.
+	 */
+	bool 		haveLastCheckpointLoc;
+	XLogRecPtr	lastCheckpointLoc;
+	XLogRecPtr	lastCheckpointEndLoc;
+
 } XLogCtlData;
 
 static XLogCtlData *XLogCtl = NULL;
@@ -4859,6 +4869,10 @@ XLOGShmemInit(void)
 	XLogCtl->Insert.currpage = (XLogPageHeader) (XLogCtl->pages);
 	SpinLockInit(&XLogCtl->info_lck);
 
+	XLogCtl->haveLastCheckpointLoc = false;
+	memset(&XLogCtl->lastCheckpointLoc, 0, sizeof(XLogRecPtr));
+	memset(&XLogCtl->lastCheckpointEndLoc, 0, sizeof(XLogRecPtr));
+
 	/*
 	 * If we are not in bootstrap mode, pg_control should already exist. Read
 	 * and validate it immediately (see comments in ReadControlFile() for the
@@ -6835,6 +6849,7 @@ CreateCheckPoint(bool shutdown, bool force)
 		XLogRecPtr	curInsert;
 
 		INSERT_RECPTR(curInsert, Insert, Insert->curridx);
+#ifdef originalCheckpointChecking
 		if (curInsert.xlogid == ControlFile->checkPoint.xlogid &&
 			curInsert.xrecoff == ControlFile->checkPoint.xrecoff +
 			MAXALIGN(SizeOfXLogRecord + sizeof(CheckPoint)) &&
@@ -6842,6 +6857,17 @@ CreateCheckPoint(bool shutdown, bool force)
 			ControlFile->checkPointCopy.redo.xlogid &&
 			ControlFile->checkPoint.xrecoff ==
 			ControlFile->checkPointCopy.redo.xrecoff)
+#else
+		/*
+		 * GP: Modified since the checkpoint record is not fixed length
+		 * so we keep track of the last checkpoint locations (beginning and
+		 * end) and use thoe values for comparison.
+		 */
+		if (XLogCtl->haveLastCheckpointLoc &&
+			XLByteEQ(XLogCtl->lastCheckpointLoc,ControlFile->checkPoint) &&
+			XLByteEQ(curInsert,XLogCtl->lastCheckpointEndLoc) &&
+			XLByteEQ(ControlFile->checkPoint,ControlFile->checkPointCopy.redo))
+#endif
 		{
 			LWLockRelease(WALInsertLock);
 			LWLockRelease(CheckpointStartLock);
@@ -6990,6 +7016,14 @@ CreateCheckPoint(bool shutdown, bool force)
 	ControlFile->checkPoint = ProcLastRecPtr;
 	ControlFile->checkPointCopy = checkPoint;
 	ControlFile->time = time(NULL);
+
+	/*
+	 * Save the last checkpoint position.
+	 */
+	XLogCtl->haveLastCheckpointLoc = true;
+	XLogCtl->lastCheckpointLoc = ProcLastRecPtr;
+	XLogCtl->lastCheckpointEndLoc = ProcLastRecEnd;
+
 	UpdateControlFile();
 	LWLockRelease(ControlFileLock);
 
@@ -7121,6 +7155,14 @@ RecoveryRestartPoint(const CheckPoint *checkPoint)
 	ControlFile->checkPoint = ReadRecPtr;
 	ControlFile->checkPointCopy = *checkPoint;
 	ControlFile->time = time(NULL);
+
+	/*
+	 * Save the last checkpoint position.
+	 */
+	XLogCtl->haveLastCheckpointLoc = true;
+	XLogCtl->lastCheckpointLoc = ReadRecPtr;
+	XLogCtl->lastCheckpointEndLoc = EndRecPtr;
+
 	UpdateControlFile();
 
 	ereport(LOG,
