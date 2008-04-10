@@ -11,7 +11,7 @@ Usage: gpdetective <option> [dbname]
 
 '''
 #============================================================
-import sys, os, glob, tempfile, subprocess, re, getopt, types
+import sys, os, tempfile, subprocess, re, getopt, types, traceback
 libdir = sys.path[0] + '/lib'
 sys.path.append(libdir)
 try: 
@@ -48,6 +48,7 @@ class GPDetective():
     olddir = None       # Directory script was executed from
     logdir = None       # Temporary directory
     errlog = None       # Error log
+    tardir = None       # name of the produced tarball
 
     # Configuration information
     masterdir = None    # Master Directory, assumed on this host
@@ -110,8 +111,7 @@ class GPDetective():
         self.master = self.connect(db=self.db)
 
         # Setup the log directory
-        self.logdir = tempfile.mkdtemp()
-        os.chdir(self.logdir)
+        self.mklogdir()
         self.errlog = open('error.log', 'w')
         self.errlog.write('gpdetective version ' + __version__ + '\n')
         self.errlog.flush()
@@ -158,8 +158,7 @@ class GPDetective():
         self.errlog.flush()
 
         if filename:
-            path = "%s/%s" % (self.logdir, filename)
-            file = open(path, 'w')
+            file = open(filename, 'w')
             file.write('localhost$ ')
             for i in cmd: file.write(str(i) + ' ')
             file.write("\n")
@@ -179,6 +178,9 @@ class GPDetective():
     def writeSelect(self, filename, query):
         '''
         Execute a sql query and dump the results to the specified file.
+
+        For formatting purposes it materializes the entire query in
+        memory, so don't get out of hand!
         '''
         self.errlog.write('SQL: ' + query + "\n")
         self.errlog.flush()
@@ -191,17 +193,36 @@ class GPDetective():
             return
 
         d = self.master.row_description
-        path = "%s/%s" % (self.logdir, filename)
-        file = open(path, 'w')
+        file = open(filename, 'w')
         file.write('SQL: ' + query + "\n")
         file.flush()
-        for column in d:
-            file.write(column['name'] + " | ")
-        file.write("\n")
+
+        # In order to produce formatted output we need to scan through
+        # all the data first before we output anything.
+        width = map(lambda(x): len(x['name']), d)
+        data  = []
         for tuple in self.master.iterate_tuple():
-            for item in tuple:
-                file.write(str(item))
-                file.write(" | ")
+            data.append(tuple)
+            for column in d:
+                index = column['column_attrnum']-1
+                item = str(tuple[index])
+                width[index] = max(width[index], len(item))
+
+        # Now that we have calculated the width, output the result
+        for column in d:
+            index = column['column_attrnum']-1
+            file.write(column['name'].ljust(width[index]) + ' | ')
+        file.write("\n")
+        for column in d:
+            index = column['column_attrnum']-1
+            if (index > 0): 
+                file.write('-')
+            file.write('-' * width[index] + '-+')
+        file.write("\n")
+        for tuple in data:
+            for column in d:
+                index = column['column_attrnum']-1
+                file.write(str(tuple[index]).ljust(width[index]) + ' | ')
             file.write("\n")
         file.close()
 
@@ -210,8 +231,7 @@ class GPDetective():
         '''
         Writes an array to a specified file
         '''
-        path = "%s/%s" % (self.logdir, filename)
-        file = open(path, 'w')
+        file = open(filename, 'w')
         for item in itemlist:
             file.write(str(item) + "\n")
         file.close()
@@ -242,8 +262,16 @@ class GPDetective():
         '''
         if not host:
             host = 'localhost'
+        
+        # For logging purposes get the string version of the command
+        if isinstance(cmd, list):
+            cmdstr = ''
+            for c in cmd: cmdstr += c + ' '
+        else:
+            cmdstr = str(cmd)
+
         if (self.errlog):
-            self.errlog.write('%s$ %s\n' % (host, cmd))
+            self.errlog.write('%s$ %s\n' % (host, cmdstr))
             self.errlog.flush()
         try:
             cmd = cmd.split(' ')
@@ -251,7 +279,12 @@ class GPDetective():
         if host != 'localhost':
             cmd.insert(0, 'ssh')
             cmd.insert(1, host)
-        x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog)
+        
+        # A stupid hack to ignore unmatched globs in 'ls'
+        if (cmd[0] == 'ls'):
+            x = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        else:
+            x = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=self.errlog)
         return str(x.communicate()[0].strip())
 
     def log(self, test):
@@ -388,11 +421,36 @@ class GPDetective():
             checkcat.append(db)
             self.writeCmd('gpcheckcat_' + db + '.log', checkcat)
             checkcat.pop()
-            self.writeCmd('pg_dump_' + db, ['pg_dump', '-s', db])
+
+        self.writeCmd('pg_dumpall.log', 
+                      ['pg_dumpall', '--schema-only', '--gp-syntax']);
 
         self.writeSelect('catalog_q1.log', 
         '''
-           SELECT nspname || '.' || relname, attname, s.* 
+           SELECT 
+             nspname || '.' || relname, 
+             attname, 
+             starelid,
+             staattnum,
+             stanullfrac,
+             stawidth,
+             stadistinct,
+             stakind1,
+             stakind2,
+             stakind3,
+             stakind4,
+             staop1,
+             staop2,
+             staop3,
+             staop4,
+             array_to_string(stanumbers1, ','),
+             array_to_string(stanumbers2, ','),
+             array_to_string(stanumbers3, ','),
+             array_to_string(stanumbers4, ','),
+             array_to_string(stavalues1, ','),
+             array_to_string(stavalues2, ','),
+             array_to_string(stavalues3, ','),
+             array_to_string(stavalues4, ',')
            FROM   pg_class c, 
                   pg_namespace n, 
                   pg_attribute a, 
@@ -445,6 +503,7 @@ class GPDetective():
 #                pass
 
             else:
+                self.log('Crash Report - Unknown System: ' + system)
                 self.writeArray('crash_report.log', 
                                 ['Unknown system: ' + system])
                 continue
@@ -552,6 +611,19 @@ class GPDetective():
             self.writeCmd('ext_' + f + '.log', [path])
 
     #------------------------------------------------------------
+    def mklogdir(self):
+        '''
+        Creates the temporary directory and cds to that location
+        '''
+        self.logdir = tempfile.mkdtemp()
+        os.chdir(self.logdir)
+        timestamp = self.runCmd('date +%Y%m%d%H%M%S')
+        self.tardir = 'gpdetective' + timestamp.strip()
+        os.mkdir(self.tardir)
+        os.chdir(self.tardir)
+
+
+    #------------------------------------------------------------
     def makeTar(self):
         '''
         Creates a tar archive from the files in the temporary logdir
@@ -560,12 +632,13 @@ class GPDetective():
 
         self.errlog.close();
         self.errlog = None
-        timestamp = self.runCmd('date +%Y%m%d%H%M%S')
-        tarfile = 'gpdetective' + timestamp.strip() + '.tar.bz2'
+        os.chdir(self.logdir)
+        tarfile = self.tardir + '.tar.bz2'
         tarcmd = ['tar', '-cjf', tarfile];
         tarcmd.extend(os.listdir('.'))
         self.runCmd(tarcmd)
         self.runCmd(['cp', tarfile, self.olddir])
+        os.chdir(self.tardir)
 
 #================================================================
 
@@ -577,7 +650,12 @@ try:
     d.crashReport()
     d.runExtensions()
 except Exception, e:
-    self.log('Internal Error')
-    self.log(str(e))
+    print "INTERNAL ERROR: " + str(e)
+    print "Aborting"
+    if (d.errlog):
+       d.errlog.write('\nINTERNAL ERROR:\n')
+       d.errlog.write('   %s\n' % repr(e))
+       d.errlog.write(traceback.format_exc())
+       d.errlog.flush()
 
 exit(0);
