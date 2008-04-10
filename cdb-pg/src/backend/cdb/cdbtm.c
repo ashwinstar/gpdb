@@ -1590,7 +1590,9 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 		if (*shmNumGxacts >= max_tm_gxacts)
 		{
 			ereport(ERROR,
-					(errmsg("cannot allocate global transaction")));
+					(errmsg("the limit of %d distributed transactions has been reached.",
+					        max_tm_gxacts),
+					 errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit.")));
 		}
 
 		currentGxact = shmGxactArray[(*shmNumGxacts)++];
@@ -2048,7 +2050,9 @@ createDtx(TransactionId *pLocalXid)
 		dumpAllDtx();
 		releaseTmLock();
 		ereport(ERROR,
-				(errmsg("cannot allocate global transaction")));
+				(errmsg("the limit of %d distributed transactions has been reached.",
+				        max_tm_gxacts),
+				 errdetail("The global user configuration (GUC) server parameter max_prepared_transactions controls this limit.")));
 	}
 
 	gxact = shmGxactArray[(*shmNumGxacts)++];
