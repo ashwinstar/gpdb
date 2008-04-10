@@ -454,13 +454,13 @@ disableQDMirroring(QDMIRRORDisabledReason disabledReason)
 		switch (disabledReason)
 		{
 		case QDMIRROR_DISABLEDREASON_TOOFARBEHIND:
-			ftsQDMirrorInfo->qdMirrorUpdate = QDMIRROR_UPDATE_REMOVE;
-			break;
-
 		case QDMIRROR_DISABLEDREASON_CONNECTIONERROR:
 		case QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR:
 			if (ftsQDMirrorInfo->valid)
 			{
+				/*
+				 * Only do the update if we need to.
+				 */
 				ftsQDMirrorInfo->qdMirrorUpdate = QDMIRROR_UPDATE_MARKINVALID;
 			}
 			break;

@@ -431,21 +431,6 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 						 XLogLocationToString2(&walSendRequest->flushedLocation));
 				}
 
-				if (tooFarBehind)
-				{
-					/*
-					 * Send message to standby to have it shutdown.
-					 * The result can be a "server closed the connection
-					 * unexpectedly", so we ignore the return from
-					 * write_qd_sync and disconnectMirrorQD_Abrupt.
-					 */
-					elog(NOTICE,"Sending message to shutdown QD mirror since it too far behind to synchronize");
-					write_qd_sync("shutdown_too_far_behind", NULL, 0, 
-				                   NULL, &walsend_shutdown_requested);
-					disconnectMirrorQD_Abrupt();
-					disableQDMirroring_TooFarBehind();
-					elog(NOTICE,"disabling QD mirror (too far behind)");
-				}
 			}
 			else if (XLByteEQ(originalEndLocation, walSendRequest->flushedLocation))
 			{
@@ -471,10 +456,18 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 				periodicLen = 0;
 				periodicLocation = currentEndLocation;
 			}
-			else if (!tooFarBehind)
+			else
 			{
-				disableQDMirroring_ConnectionError();
-				elog(NOTICE,"disabling QD mirror (unable to catchup)");
+				if (tooFarBehind)
+				{
+					disableQDMirroring_TooFarBehind();
+					elog(NOTICE,"disabling QD mirror (too far behind)");
+				}
+				else
+				{
+					disableQDMirroring_ConnectionError();
+					elog(NOTICE,"disabling QD mirror (unable to catchup)");
+				}
 				disconnectMirrorQD_SendClose();
 			}
 		}
