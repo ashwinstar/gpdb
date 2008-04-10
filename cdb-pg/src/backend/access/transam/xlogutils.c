@@ -304,8 +304,12 @@ _xl_init_rel_cache(void)
 	_xlcnt = _XLOG_RELCACHESIZE;
 	_xlast = 0;
 	_xlrelarr = (XLogRelDesc *) malloc(sizeof(XLogRelDesc) * _xlcnt);
+	if (_xlrelarr == NULL)
+		elog(ERROR,"could not allocate memory for light-weight relation cache");
 	memset(_xlrelarr, 0, sizeof(XLogRelDesc) * _xlcnt);
 	_xlpgcarr = (Form_pg_class) malloc(sizeof(FormData_pg_class) * _xlcnt);
+	if (_xlpgcarr == NULL)
+		elog(ERROR,"could not allocate memory for light-weight relation cache");
 	memset(_xlpgcarr, 0, sizeof(FormData_pg_class) * _xlcnt);
 
 	_xlrelarr[0].moreRecently = &(_xlrelarr[0]);

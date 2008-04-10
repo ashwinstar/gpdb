@@ -243,6 +243,9 @@ buildQDMirrorFromShmem(void)
 	mirrorDb.port = port;
 
 	cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
+	if (cdb_mirrored_entry_db == NULL)
+		elog(ERROR, "could not allocate segment descriptor");
+		
 	memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
 	cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, &mirrorDb);
 
