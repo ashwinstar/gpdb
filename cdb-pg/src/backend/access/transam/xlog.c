@@ -1558,7 +1558,7 @@ XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct
 	char 		cmd[MAXFNAMELEN + 30];
 	bool		successful;
 	
-	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "catchup segment logId %u, seg %u, offset 0x%X, end 0x%X",
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG1), "catch-up segment logId %u, seg %u, offset 0x%X, end 0x%X",
 		 logId, seg, offset, end);
 	Assert(offset < end);
 
@@ -1572,10 +1572,18 @@ XLogCatchupQDSegment(uint32 logId, uint32 seg, uint32 offset, uint32 end, struct
 
 	fd = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
 	if (fd < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-		   errmsg("could not open file \"%s\" (log file %u, segment %u): %m",
-				  path, logId, seg)));
+	{
+		if (errno == ENOENT)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+			   errmsg("could not open transaction log file for catch-up purposes -- it has been reclaimed (\"%s\")",
+					  path)));
+		else
+			ereport(ERROR,
+					(errcode_for_file_access(),
+			   errmsg("could not open transaction log file for catch-up purposes (\"%s\"): %m",
+					  path)));
+	}
 
 	if (end == -1)
 	{

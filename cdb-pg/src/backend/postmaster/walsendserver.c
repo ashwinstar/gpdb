@@ -414,10 +414,21 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 					 * Report the error related to reading the primary's WAL
 					 * to the server log 
 					 */
+					 
+					/* 
+					 * But first demote the error to something much less
+					 * scary.
+					 */
+				    if (!elog_demote(NOTICE))
+			    	{
+			    		elog(LOG,"unable to demote error");
+			        	PG_RE_THROW();
+			    	}
+					
 					EmitErrorReport();
 					FlushErrorState();
 
-					elog(NOTICE,"Mirror cannot be synchronized because it is too far behind (unable to read old primary log during catchup)");
+					elog(NOTICE,"Mirror cannot be synchronized because it is too far behind (unable to read old primary transaction log during catchup)");
 					successful = false;
 					tooFarBehind = true;
 				}
