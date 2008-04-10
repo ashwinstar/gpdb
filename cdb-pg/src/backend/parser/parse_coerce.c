@@ -19,6 +19,7 @@
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
+#include "parser/parsetree.h"               /* get_tle_by_resno */
 #include "parser/parse_coerce.h"
 #include "parser/parse_expr.h"
 #include "parser/parse_func.h"
@@ -29,6 +30,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#include "nodes/print.h"
 
 
 static Node *coerce_type_typmod(Node *node,
@@ -43,7 +45,10 @@ static Node *coerce_record_to_complex(ParseState *pstate, Node *node,
 						 Oid targetTypeId,
 						 CoercionContext ccontext,
 						 CoercionForm cformat);
-
+static Var *coerce_unknown_var(ParseState *pstate, Var *var,
+							   Oid targetTypeId, int32 targetTypeMod,
+							   CoercionContext ccontext, CoercionForm cformat,
+							   int levelsup);
 
 /*
  * coerce_to_target_type()
@@ -89,7 +94,8 @@ coerce_to_target_type(ParseState *pstate, Node *expr, Oid exprtype,
 								targettype, targettypmod,
 								cformat,
 								(cformat != COERCE_IMPLICIT_CAST),
-								(result != expr && !IsA(result, Const)));
+								(result != expr && !IsA(result, Const)
+								 && !IsA(result, Var)));
 
 	return result;
 }
@@ -267,6 +273,25 @@ coerce_type(ParseState *pstate, Node *node,
 
 		return (Node *) param;
 	}
+	if (inputTypeId == UNKNOWNOID && IsA(node, Var))
+	{
+        /*
+         * CDB:  Var of type UNKNOWN probably comes from an untyped Const
+         * or Param in the targetlist of a range subquery.  For a successful
+         * conversion we must coerce the underlying Const or Param to a
+         * proper type and remake the Var.
+         */
+		int32	baseTypeMod = -1;
+		Oid		baseTypeId = getBaseTypeAndTypmod(targetTypeId, &baseTypeMod);
+        Var    *fixvar = coerce_unknown_var(pstate, (Var *)node,
+                                            baseTypeId, baseTypeMod,
+                                            ccontext, cformat,
+                                            0);
+        node = (Node *)fixvar;
+        inputTypeId = fixvar->vartype;
+        if (targetTypeId == inputTypeId)
+            return node;
+	}
 	if (find_coercion_pathway(targetTypeId, inputTypeId, ccontext,
 							  &funcId))
 	{
@@ -363,6 +388,175 @@ coerce_type(ParseState *pstate, Node *node,
 		 format_type_be(inputTypeId), format_type_be(targetTypeId));
 	return NULL;				/* keep compiler quiet */
 }
+
+
+/*
+ * coerce_unknown_var
+ *
+ * A Var of type UNKNOWN probably refers, directly or indirectly, to a
+ * Const or Param node of type UNKNOWN in the targetlist of a subquery.
+ * Coercing the Var to a proper type (such as TEXT) implies that the
+ * same must be done to the underlying Const or Param.
+ *
+ * Returns a new Var node; or if the type is still UNKNOWN, returns the
+ * given Var unchanged.
+ *
+ * When 'targettypeid' is UNKNOWNOID, this function returns a new Var if an
+ * already properly typed underlying expr is found; but returns the unchanged
+ * Var with no coercion if the Const or Param type is still UNKNOWN.  In this
+ * case the targetTypeMod, ccontext, and cformat parameters are not used.
+ *
+ * 'levelsup' is an extra offset to interpret the Var's varlevelsup correctly.
+ * See also markTargetListOrigin() in parse_target.c.
+ */
+static Var *
+coerce_unknown_var(ParseState *pstate, Var *var,
+                   Oid targetTypeId, int32 targetTypeMod,
+			       CoercionContext ccontext, CoercionForm cformat,
+                   int levelsup)
+{
+	RangeTblEntry  *rte;
+    int             netlevelsup = var->varlevelsup + levelsup;
+
+    Assert(IsA(var, Var));
+
+    rte = GetRTEByRangeTablePosn(pstate, var->varno, netlevelsup);
+
+    switch (rte->rtekind)
+    {
+        /* Descend thru Join RTEs to a leaf RTE. */
+        case RTE_JOIN:
+        {
+            ListCell   *cell;
+            Var        *joinvar;
+
+            Assert(var->varattno > 0 &&
+                   var->varattno <= list_length(rte->joinaliasvars));
+
+            /* Get referenced join result Var */
+            cell = list_nth_cell(rte->joinaliasvars, var->varattno - 1);
+            joinvar = (Var *)lfirst(cell);
+
+            /* If still untyped, try to replace it with a properly typed Var */
+            if (joinvar->vartype == UNKNOWNOID &&
+                targetTypeId != UNKNOWNOID)
+            {
+                joinvar = coerce_unknown_var(pstate, joinvar,
+                                             targetTypeId, targetTypeMod,
+                                             ccontext, cformat,
+                                             netlevelsup);
+
+                /* Substitute new Var into join result list. */
+                lfirst(cell) = joinvar;
+            }
+
+            /* Make a new Var for the caller */
+            if (joinvar->vartype != UNKNOWNOID)
+            {
+                var = (Var *)copyObject(var);
+                var->vartype = joinvar->vartype;
+                var->vartypmod = joinvar->vartypmod;
+            }
+            break;
+        }
+
+        /* Impose requested type on Const or Param in subquery's targetlist. */
+        case RTE_SUBQUERY:
+		{
+			TargetEntry    *ste;
+            Node           *targetexpr;
+            Oid             exprtype;
+
+            /* Get referenced subquery result expr */
+            ste = get_tle_by_resno(rte->subquery->targetList, var->varattno);
+			Assert(ste && !ste->resjunk && ste->expr);
+            targetexpr = (Node *)ste->expr;
+
+            /* If still untyped, try to coerce it to the requested type. */
+            exprtype = exprType(targetexpr);
+            if (exprtype == UNKNOWNOID &&
+                targetTypeId != UNKNOWNOID)
+            {
+				ParseState	   *subpstate = make_parsestate(pstate);
+				subpstate->p_rtable = rte->subquery->rtable;
+
+				targetexpr = coerce_type(subpstate, targetexpr, exprtype,
+										 targetTypeId, targetTypeMod,
+										 ccontext, cformat);
+
+				pfree(subpstate);
+				/* Substitute coerced expr into subquery's targetlist. */
+				ste->expr = (Expr *)targetexpr;
+				exprtype = exprType(targetexpr);
+            }
+
+            /* Make a new Var for the caller */
+            if (exprtype != UNKNOWNOID)
+            {
+                var = (Var *)copyObject(var);
+                var->vartype = exprtype;
+                var->vartypmod = exprTypmod(targetexpr);
+            }
+            break;
+		}
+
+        /* Return unchanged Var if leaf RTE is not a subquery. */
+        default:
+            break;
+    }
+
+    return var;
+}                               /* coerce_unknown_var */
+
+
+/*
+ * fixup_unknown_vars_in_exprlist / fixup_unknown_vars_in_targetlist
+ *
+ * A Var of type UNKNOWN could have been created as a reference to an
+ * untyped expression in the targetlist of a range subquery.  Afterwards
+ * coerce_type() could have changed the underlying Const or Param node
+ * from UNKNOWN to some proper type.  Here we try to update Var nodes
+ * in the given list to reflect recent knowledge of source column types.
+ */
+void
+fixup_unknown_vars_in_exprlist(ParseState *pstate, List *exprlist)
+{
+    ListCell   *cell;
+
+    foreach(cell, exprlist)
+    {
+        if (IsA(lfirst(cell), Var) &&
+            ((Var *)lfirst(cell))->vartype == UNKNOWNOID)
+        {
+            lfirst(cell) = coerce_unknown_var(pstate, (Var *)lfirst(cell),
+                                              UNKNOWNOID, -1,
+                                              COERCION_IMPLICIT, COERCE_DONTCARE,
+                                              0);
+        }
+    }
+}                               /* fixup_unknown_vars_in_exprlist */
+
+void
+fixup_unknown_vars_in_targetlist(ParseState *pstate, List *targetlist)
+{
+    ListCell   *cell;
+
+    foreach(cell, targetlist)
+    {
+        TargetEntry    *tle = (TargetEntry *)lfirst(cell);
+
+        Assert(IsA(tle, TargetEntry));
+
+        if (IsA(tle->expr, Var) &&
+            ((Var *)tle->expr)->vartype == UNKNOWNOID)
+        {
+            tle->expr = (Expr *)coerce_unknown_var(pstate, (Var *)tle->expr,
+                                                   UNKNOWNOID, -1,
+                                                   COERCION_IMPLICIT, COERCE_DONTCARE,
+                                                   0);
+        }
+    }
+}                               /* fixup_unknown_vars_in_targetlist */
 
 
 /*

@@ -618,6 +618,59 @@ SELECT text 'text' || varchar ' and varchar' AS "Concat text to varchar";
  text and varchar
 (1 row)
 
+-- Test "unknown" from sub queries - MPP-2510
+select foo || 'bar'::text from (select 'bar' as foo) a;
+ ?column? 
+----------
+ barbar
+(1 row)
+
+select foo || 'bar'::text from (select 'bar'::text as foo) a;
+ ?column? 
+----------
+ barbar
+(1 row)
+
+select * from ( select 'a' as a) x join (select 'b' as b) y on a=b;
+ a | b 
+---+---
+(0 rows)
+
+-- Test "unknown" with typmod MPP-2658
+create table unknown_test (v varchar(20), n numeric(20, 2), t timestamp(2));
+insert into unknown_test select '100', '123.23', '2008-01-01 11:11:11';
+select 'foo'::varchar(10) || bar from (select 'bar' as bar) moo;
+ ?column? 
+----------
+ foobar
+(1 row)
+
+select '123'::numeric(4,1) + bar from (select '123' as bar) baz;
+ ?column? 
+----------
+    246.0
+(1 row)
+
+drop table unknown_test;
+-- Test nested "unknown"s from MPP-2689
+select 'foo'::text || foo from ( select foo from (select 4.5, foo from ( select
+1, 'foo' as foo) a ) b ) c;
+ ?column? 
+----------
+ foofoo
+(1 row)
+
+select 'foo'::text || foo from ( select foo from 
+ (select foo || bar as foo from ( select 'bar' as bar, 'foo' as foo) a ) b ) c;
+ ?column?  
+-----------
+ foofoobar
+(1 row)
+
+create domain u_d as text;
+prepare p1 as select $1::u_d || foo from (select 'foo' as foo) a;
+prepare p2 as select 'foo' || foo 
+from (select $1::u_d || bar as foo from (select 'bar' as bar) a ) b;
 --
 -- test substr with toasted text values
 --

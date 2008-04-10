@@ -794,34 +794,13 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		 * separate from the subquery's tlist because we may add columns,
 		 * insert datatype coercions, etc.)
 		 *
-		 * HACK: unknown-type constants and params in the SELECT's targetlist
-		 * are copied up as-is rather than being referenced as subquery
-		 * outputs.  This is to ensure that when we try to coerce them to
-		 * the target column's datatype, the right things happen (see
-		 * special cases in coerce_type).  Otherwise, this fails:
-		 *		INSERT INTO foo SELECT 'bar', ... FROM baz
+		 * Const and Param nodes of type UNKNOWN in the SELECT's targetlist
+		 * no longer need special treatment here.  They'll be assigned proper
+         * types later by coerce_type() upon assignment to the target columns.
+		 * Otherwise this fails:  INSERT INTO foo SELECT 'bar', ... FROM baz
 		 *----------
 		 */
-		exprList = NIL;
-		foreach(lc, selectQuery->targetList)
-		{
-			TargetEntry *tle = (TargetEntry *) lfirst(lc);
-			Expr	   *expr;
-
-			if (tle->resjunk)
-				continue;
-			if (tle->expr &&
-				(IsA(tle->expr, Const) ||IsA(tle->expr, Param)) &&
-				exprType((Node *) tle->expr) == UNKNOWNOID)
-				expr = tle->expr;
-			else
-				expr = (Expr *) makeVar(rtr->rtindex,
-										tle->resno,
-										exprType((Node *) tle->expr),
-										exprTypmod((Node *) tle->expr),
-										0);
-			exprList = lappend(exprList, expr);
-		}
+		expandRTE(rte, rtr->rtindex, 0, false, NULL, &exprList);
 
 		/* Prepare row for assignment to target table */
 		exprList = transformInsertRow(pstate, exprList,
@@ -6669,6 +6648,13 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	pstate->having_qual = transformWhereClause(pstate, stmt->havingClause,
 										   "HAVING");
 
+    /*
+     * CDB: Untyped Const or Param nodes in a subquery in the FROM clause
+     * might have been assigned proper types when we transformed the WHERE
+     * clause, targetlist, etc.  Bring targetlist Var types up to date.
+     */
+    fixup_unknown_vars_in_targetlist(pstate, qry->targetList);
+
 	/*
 	 * Transform sorting/grouping stuff.  Do ORDER BY first because both
 	 * transformGroupClause and transformDistinctClause need the results.
@@ -7453,6 +7439,17 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	qual = transformWhereClause(pstate, stmt->whereClause, "WHERE");
 
 	qry->returningList = transformReturningList(pstate, stmt->returningList);
+
+    /*
+     * CDB: Untyped Const or Param nodes in a subquery in the FROM clause
+     * could have been assigned proper types when we transformed the WHERE
+     * clause or targetlist above.  Bring targetlist Var types up to date.
+     */
+    if (stmt->fromClause)
+    {
+        fixup_unknown_vars_in_targetlist(pstate, qry->targetList);
+        fixup_unknown_vars_in_targetlist(pstate, qry->returningList);
+    }
 
 	qry->rtable = pstate->p_rtable;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
