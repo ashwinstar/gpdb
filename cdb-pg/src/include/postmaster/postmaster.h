@@ -51,5 +51,6 @@ extern void ShmemBackendArrayAllocation(void);
 typedef int (PMSubStartCallback)(void);
 bool GPPostmaster(void);
 bool GPStandby(void);
+extern int PostmasterGetMppLocalProcessCounter(void);
 
 #endif   /* _POSTMASTER_H */

@@ -234,7 +234,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 * Set up process table
 	 */
 	if (!IsUnderPostmaster)
-		InitProcGlobal();
+		InitProcGlobal(PostmasterGetMppLocalProcessCounter());
 	CreateSharedProcArray();
 	CreateSharedBackendStatus();
 	

@@ -452,6 +452,8 @@ static bool SyncMaster = false;
 /* if we are a QD postmaster or not */
 static bool Gp_entry_postmaster = false;
 
+static int Save_MppLocalProcessCounter = 0;
+
 bool GPPostmaster()
 {
 	return (Gp_entry_postmaster);
@@ -472,6 +474,11 @@ gpsyncMain(int argc, char *argv[])
     return PostmasterMain( argc, argv );
 }
 
+int
+PostmasterGetMppLocalProcessCounter(void)
+{
+	return Save_MppLocalProcessCounter;
+}
 
 /*
  * Postmaster main entry point
@@ -2560,6 +2567,20 @@ reaper(SIGNAL_ARGS)
 		ereport(LOG,
 				(errmsg("all server processes terminated; reinitializing")));
 
+
+
+		/*
+		 * Save the MPP session number from shared-memory before we reset
+		 * everything.  There is some risk here accessing the shared-memory,
+		 * but we don't want to reuse session-ids on the master.
+		 */
+
+		if (ProcGetMppLocalProcessCounter(&Save_MppLocalProcessCounter))
+			ereport(LOG,
+					(errmsg("gp_session_id high-water mark is %d", 
+					        Save_MppLocalProcessCounter)));
+
+		
 		shmem_exit(0);
 		reset_shared(PostPortNumber);
 
