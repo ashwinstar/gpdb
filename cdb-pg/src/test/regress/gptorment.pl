@@ -9,6 +9,7 @@
 use Pod::Usage;
 use Getopt::Long;
 use Data::Dumper;
+use Config;
 use strict;
 use warnings;
 
@@ -63,11 +64,13 @@ Options:
 =item B<-parallel>
     
     The degree of parallelism of testing.  Spawn this many concurrent
-    child test processes.  
+    child test processes.  Degree=1 if not set.
 
 =item B<-iter>
-    
-    The number of test iterations (1 by default).
+
+    The number of test iterations (1 by default). Note that if only
+    iter is set and not timelimit, then gptorment has no way to detect
+    test failures like infinite loops or hangs.
 
 =item B<-timelimit>
 
@@ -93,11 +96,12 @@ Options:
 =item B<-grace_period>
 
     If a timelimit is specified, the grace period is the amount of
-    time gptorment waits before trying to kill -9 the child processes.
-    A grace period can be negative, which will cause gptorment to kill
-    the children prematurely.  Note that if you use a negative number,
-    you must quote the expression e.g. -grace='-10 sec' to prevent
-    gptorment from confusing the leading minus with a command argument.
+    time gptorment waits after the timelimit is exceeded before trying
+    to B<kill -9> the child processes.  A grace period can be negative,
+    which will cause gptorment to kill the children prematurely.  Note
+    that if you use a negative number, you must quote the expression
+    e.g. -grace='-10 sec' to prevent gptorment from confusing the
+    leading minus with a command argument.
 
 =back
 
@@ -467,6 +471,73 @@ sub tablelizer
     return \@rows;
 }
 
+sub do_ps_pids
+{
+    my $uid = shift;
+
+    my $pidlist = [];
+    my $pidh = {};
+
+    if ($Config{'osname'} =~ m/solaris|sunos/i)
+    {
+        my $cmd = 'ps -elf -o pid,args | grep -v grep | grep gptorment ';
+
+        my $psout = `$cmd`;
+
+        my @lines = split(/\n/, $psout);
+
+        for my $lin (@lines)
+        {
+            my @foo = split(/\s+/, $lin, 2);
+        
+            next 
+                unless (2 == scalar(@foo));
+
+            my $pid = shift @foo;
+
+            # on solaris, ps args are truncated, so use pargs to get args
+            my $pidpargs = `pargs $pid`;
+
+            next
+                unless (defined($pidpargs)
+                        && ($pidpargs =~ m/$uid/m));
+        
+            push @{$pidlist}, $pid;
+
+            $pidh->{$pid} = 1;
+
+        }
+    }
+    else # linux or osx
+    {
+
+        my $cmd = 'ps auxww | grep -v grep | grep gptorment | grep ' . $uid;
+   
+        my $psout = `$cmd`;
+
+        my @lines = split(/\n/, $psout);
+
+        for my $lin (@lines)
+        {
+            my @foo = split(/\s+/, $lin, 3);
+        
+            next 
+                unless (3 == scalar(@foo));
+
+            shift @foo;
+
+            my $pid = shift @foo;
+        
+            push @{$pidlist}, $pid;
+
+            $pidh->{$pid} = 1;
+
+        }
+    }
+    return ($pidh, $pidlist);
+} # end do_ps_pids
+
+
 sub init_monitor
 {
     my ($uid, $iter, $tlim, $paral) = @_;
@@ -478,32 +549,8 @@ sub init_monitor
     $mon_stat->{tlim}  = $tlim;
     $mon_stat->{paral} = $paral;
 
-    my $cmd = 'ps auxww | grep -v grep | grep gptorment | grep ' . $uid;
-   
-    my $psout = `$cmd`;
-
-    my @lines = split(/\n/, $psout);
-
-    my $pidlist = [];
-    my $pidh = {};
-
-    for my $lin (@lines)
-    {
-        my @foo = split(/\s+/, $lin, 3);
-        
-        next 
-            unless (3 == scalar(@foo));
-
-        shift @foo;
-
-        my $pid = shift @foo;
-        
-        push @{$pidlist}, $pid;
-
-        $pidh->{$pid} = 1;
-
-    }
-
+    my ($pidh, $pidlist) = do_ps_pids($uid);
+ 
     $mon_stat->{orig_pidlist} = $pidlist;
     $mon_stat->{curr_pidlist} = [];
     push @{$mon_stat->{curr_pidlist}}, @{$pidlist};
@@ -529,31 +576,7 @@ sub do_monitor
 {
     my ($mon_stat, $tim) = @_;
 
-    my $cmd = 'ps auxww | grep -v grep | grep gptorment | grep ' . $mon_stat->{uid};
-   
-    my $psout = `$cmd`;
-
-    my @lines = split(/\n/, $psout);
-
-    my $pidlist = [];
-    my $pidh = {};
-
-    for my $lin (@lines)
-    {
-        my @foo = split(/\s+/, $lin, 3);
-        
-        next 
-            unless (3 == scalar(@foo));
-
-        shift @foo;
-
-        my $pid = shift @foo;
-        
-        push @{$pidlist}, $pid;
-
-        $pidh->{$pid} = 1;
-
-    }
+    my ($pidh, $pidlist) = do_ps_pids($mon_stat->{uid});
 
     if (exists($mon_stat->{msg}))
     {
@@ -606,12 +629,40 @@ sub do_kill
 
     my $pcount = scalar(@{$mon_stat->{curr_pidlist}});
 
-    print time(), ": $pcount processes remain...\n";
+    print time(), ": $pcount processes remain at test end\n";
 
     for my $pid (@{$mon_stat->{curr_pidlist}})
     {
         print "killing $pid\n";
         system ("kill -9 $pid");
+    }
+
+    my $time_diff = $maxtime - time();
+
+    if ($glob_grace > 0)
+    {
+        if ($time_diff <= $glob_grace)
+        {
+            print "test ended on time (grace period $glob_grace)\n";
+        }
+        else
+        {
+            print "test ended $time_diff seconds prematurely\n";
+        }
+    }
+    else
+    {
+        my $grt = (-1 * $glob_grace);
+
+        if ($time_diff <= $grt)
+        {
+            print "test ended on time (negative grace period $glob_grace)\n";
+        }
+        else
+        {
+            print "test ended ", ($time_diff - $grt),
+            " seconds prematurely\n";
+        }
     }
 
 } # end do_kill
