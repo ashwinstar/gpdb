@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# $Header: /Users/jcohen/perl/RCS/explain.pl,v 1.3 2006/11/06 23:32:06 jcohen Exp jcohen $
+# $Header: //cdb2/main/cdb-pg/src/test/regress/explain.pl#13 $
 #
 # copyright (c) 2008
 # Author: Jeffrey I Cohen
