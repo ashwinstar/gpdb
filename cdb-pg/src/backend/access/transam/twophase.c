@@ -1095,13 +1095,23 @@ ReadTwoPhaseFile(TransactionId xid)
 		return NULL;
 	}
 
-	if (stat.st_size > 10000000)
-	{
-		ereport(WARNING,
-			    (errmsg("file size greater than maximum 10,000,000 bytes")));
-		close(fd);
-		return NULL;
-	}
+	/*
+	 * For GP, we are eliminating the arbitrary limit because it causes
+	 * COMMIT PREPARED and system restart to fail when a very large
+	 * prepare record is written.  Example: a partitioned table drop with
+	 * 25,000 children using DROP TABLE ... CASCADE.  The 10,000,000 byte limit
+	 * is not enforced when the prepare record is written, so this ends up not
+	 * aborting the transaction but putting the transaction in limbo in 
+	 * prepared state...
+	 */
+//	if (stat.st_size > 10000000)
+//	{
+//		ereport(WARNING,
+//			    (errmsg("file size greater than maximum 10,000,000 bytes")));
+//		close(fd);
+//		return NULL;
+//	}
+
 
 	crc_offset = stat.st_size - sizeof(pg_crc32);
 	alignedOffset = MAXALIGN(crc_offset);
