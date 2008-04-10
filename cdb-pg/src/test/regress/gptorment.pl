@@ -129,7 +129,10 @@ gptorment does not create or startup a database.
 
 -head1 TODO
 
-Solaris port
+invoke perl scripts
+init, cleanup
+ctrl-c handling
+
 
 =head1 AUTHORS
 
