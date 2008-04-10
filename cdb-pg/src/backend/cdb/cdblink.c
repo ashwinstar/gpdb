@@ -540,24 +540,30 @@ disconnectMirrorQD_SendClose(void)
 {
 	struct timeval closeTimeout = {0,250000};	// UNDONE: Better timeout?
 	
-	if (cdb_mirrored_entry_db == NULL)
+	if (cdb_mirrored_entry_db == NULL || 
+		PQstatus(cdb_mirrored_entry_db->conn) != CONNECTION_OK)
 		return false;
-
-	if (PQstatus(cdb_mirrored_entry_db->conn) == CONNECTION_OK)
-		write_qd_sync("close", NULL, 0, &closeTimeout, NULL);
+	
+	write_qd_sync("close", NULL, 0, &closeTimeout, NULL);
+	
+	if (PQstatus(cdb_mirrored_entry_db->conn) != CONNECTION_OK)
+		return false;
 	
 	PQfinish(cdb_mirrored_entry_db->conn);
-
+	cdb_mirrored_entry_db->conn = NULL;
+	
 	return true;
 }
 
 bool
 disconnectMirrorQD_Abrupt(void)
 {
-	if (cdb_mirrored_entry_db == NULL)
+	if (cdb_mirrored_entry_db == NULL || 
+		PQstatus(cdb_mirrored_entry_db->conn) != CONNECTION_OK)
 		return false;
-
+	
 	PQfinish(cdb_mirrored_entry_db->conn);
+	cdb_mirrored_entry_db->conn = NULL;
 
 	return true;
 }
