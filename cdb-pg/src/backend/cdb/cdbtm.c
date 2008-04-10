@@ -1598,13 +1598,12 @@ redoDistributedCommitRecord(TMGXACT_LOG * gxact_log)
 	
 	restoreGxact(gxact_log, DTX_STATE_CRASH_COMMITTED);
 
+	elog((Debug_print_full_dtm ? INFO : DEBUG5), "Crash recovery redo added committed distributed transaction gid = %s",currentGxact->gid);
+
 	/*
 	 * Don't leave the currentGxact point in-use.
 	 */
     currentGxact = NULL;
-
-	elog((Debug_print_full_dtm ? INFO : DEBUG5), "Crash recovery redo added committed distributed transaction gid = %s",currentGxact->gid);
-
 }
 
 /*
