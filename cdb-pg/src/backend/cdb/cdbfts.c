@@ -294,7 +294,7 @@ QDMirroringUpdateGpConfiguration(QDMIRRORUpdate qdMirrorUpdate)
 {
 #define UPDATE_CMD "update gp_configuration set valid='%c' where dbid = CAST(%d AS SMALLINT)"
 #define DELETE_CMD "delete from gp_configuration where dbid = CAST(%d AS SMALLINT)"
-	int count;
+	int count = 0;
 	char cmd[200];
 	int expectedErr;
 	int err;
