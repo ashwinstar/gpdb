@@ -133,8 +133,9 @@ static void BufferedAppendWrite(
 
 	if (currentWritePosition != bufferedAppend->position)
 	{
-		fprintf(stderr,"Current position mismatch actual %lld, expected %lld",
-							   currentWritePosition, bufferedAppend->position);
+		fprintf(stderr,"Current position mismatch actual " INT64_FORMAT "," 
+				"expected " INT64_FORMAT,
+				currentWritePosition, bufferedAppend->position);
 		exit(1);
 	}
 #else
