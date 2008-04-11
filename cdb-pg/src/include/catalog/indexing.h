@@ -242,6 +242,8 @@ DECLARE_UNIQUE_INDEX(gp_policy_localoid_index, 6103, on gp_distribution_policy u
 DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfnoid oid_ops));
 #define WindowFnoidIndexId  5005
 
+DECLARE_UNIQUE_INDEX(pg_appendonly_relfilenode_index, 5007, on pg_appendonly using btree(relfilenode oid_ops));
+#define AppendOnlyRelfilenodeIndexId  5007
 
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES

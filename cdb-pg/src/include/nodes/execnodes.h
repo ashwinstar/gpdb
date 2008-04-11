@@ -222,6 +222,8 @@ typedef struct JunkFilter
  *
  *		RangeTableIndex			result relation's range table index
  *		RelationDesc			relation descriptor for result relation
+ *		HeapInsertDesc			context for relation buffered INSERT.
+ *		osInsertDesc			context for appendonly relation buffered INSERT.
  *		NumIndices				# of indices existing on result relation
  *		IndexRelationDescs		array of relation descriptors for indices
  *		IndexRelationInfo		array of key/attr info for indices
@@ -238,7 +240,6 @@ typedef struct ResultRelInfo
 	NodeTag		type;
 	Index		ri_RangeTableIndex;
 	Relation	ri_RelationDesc;
-	struct HeapInsertDesc *ri_HeapInsertDesc;
 	int			ri_NumIndices;
 	RelationPtr ri_IndexRelationDescs;
 	struct IndexInfo  **ri_IndexRelationInfo;
@@ -498,6 +499,10 @@ typedef struct EState
 
     /* CDB: EXPLAIN ANALYZE statistics */
     struct CdbExplain_ShowStatCtx  *showstatctx;
+	
+	/* CDB: INSERT state */
+	struct AppendOnlyInsertDescData *es_aoInsertDesc;
+	struct HeapInsertDesc *es_HeapInsertDesc;
 
 } EState;
 
@@ -1325,6 +1330,21 @@ typedef struct ExternalScanState
 	ScanState	ss;
 	FileScanDesc	ess_ScanDesc;
 } ExternalScanState;
+
+/* ----------------
+*	 AppendOnlyScanState information
+*
+*		AppendOnlyScan nodes are used to scan append only tables
+*
+*		aos_ScanDesc		the context of the append only scan
+* ----------------
+*/
+typedef struct AppendOnlyScanState
+{
+	ScanState	ss;
+	AppendOnlyScanDesc	aos_ScanDesc;
+} AppendOnlyScanState;
+
 
 /* ----------------------------------------------------------------
  *				 Join State Information

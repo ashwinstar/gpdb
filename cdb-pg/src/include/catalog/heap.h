@@ -70,6 +70,8 @@ extern void InsertPgClassTuple(Relation pg_class_desc,
 				   Oid new_rel_oid,
 				   Datum reloptions);
 
+extern void InsertPgAppendOnlyTuple(Oid relfilenode);
+
 extern List *AddRelationRawConstraints(Relation rel,
 						  List *rawColDefaults,
 						  List *rawConstraints);

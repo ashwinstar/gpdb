@@ -350,6 +350,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 	switch (relation->rd_rel->relkind)
 	{
 		case RELKIND_RELATION:
+		case RELKIND_APPEND_ONLY:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_UNCATALOGED:
 		case RELKIND_INDEX:
@@ -374,6 +375,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 	switch (relation->rd_rel->relkind)
 	{
 		case RELKIND_RELATION:
+		case RELKIND_APPEND_ONLY:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_UNCATALOGED:
 			options = heap_reloptions(relation->rd_rel->relkind, datum,
@@ -896,7 +898,8 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
      * initialize Greenplum Database partitioning info
      */
     if ((relation->rd_rel->relkind == RELKIND_RELATION ||
-		 relation->rd_rel->relkind == RELKIND_EXTERNAL) &&
+		 relation->rd_rel->relkind == RELKIND_EXTERNAL ||
+		 relation->rd_rel->relkind == RELKIND_APPEND_ONLY) &&
         !IsSystemRelation(relation))
         relation->rd_cdbpolicy = GpPolicyFetch(CacheMemoryContext, targetRelId);
 

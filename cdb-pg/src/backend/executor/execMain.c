@@ -34,6 +34,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/appendonlyam.h"
 #include "access/reloptions.h"
 #include "access/transam.h"
 #include "access/xact.h"
@@ -1505,7 +1506,9 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
     /* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
     if (needLock)
    	{
-   		if (operation == CMD_UPDATE || operation == CMD_DELETE)
+   		if (operation == CMD_UPDATE || operation == CMD_DELETE ||
+			(operation == CMD_INSERT && 
+			 resultRelationDesc->rd_rel->relkind == RELKIND_APPEND_ONLY))
     		CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
     	else
     		LockRelation(resultRelationDesc, RowExclusiveLock);
@@ -1541,6 +1544,7 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	resultRelInfo->ri_NumIndices = 0;
 	resultRelInfo->ri_IndexRelationDescs = NULL;
 	resultRelInfo->ri_IndexRelationInfo = NULL;
+	
 	/* make a copy so as not to depend on relcache info not changing... */
 	resultRelInfo->ri_TrigDesc = CopyTriggerDesc(resultRelationDesc->trigdesc);
 	if (resultRelInfo->ri_TrigDesc)
@@ -1674,9 +1678,13 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 	resultRelInfo = estate->es_result_relations;
 	for (i = estate->es_num_result_relations; i > 0; i--)
 	{
+		/* end (flush) the INSERT operation in the access layer */
+		if (estate->es_HeapInsertDesc)
+			heap_endinsert(estate->es_HeapInsertDesc);
+		if (estate->es_aoInsertDesc)
+			appendonly_insert_finish(estate->es_aoInsertDesc);
+
 		/* Close indices and then the relation itself */
-		if (resultRelInfo->ri_HeapInsertDesc)
-			heap_endinsert(resultRelInfo->ri_HeapInsertDesc);
 		ExecCloseIndices(resultRelInfo);
 		heap_close(resultRelInfo->ri_RelationDesc, NoLock);
 		resultRelInfo++;
@@ -2037,6 +2045,7 @@ ExecInsert(TupleTableSlot *slot,
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	Oid			newId;
+	char		relkind;
 
 	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a
@@ -2049,6 +2058,7 @@ ExecInsert(TupleTableSlot *slot,
 	 */
 	resultRelInfo = estate->es_result_relation_info;
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
+	relkind = resultRelationDesc->rd_rel->relkind;
 
 	/* BEFORE ROW INSERT Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
@@ -2090,24 +2100,37 @@ ExecInsert(TupleTableSlot *slot,
 	 *
 	 * Note: heap_insert returns the tid (location) of the new tuple in the
 	 * t_self field.
+	 *
+	 * NOTE: for append-only relations we use the append-only access methods.
 	 */
-	if (heap_enableHeapInsertDesc)
+	if (relkind != RELKIND_APPEND_ONLY)
 	{
-		if (resultRelInfo->ri_HeapInsertDesc == NULL)
+		if (heap_enableHeapInsertDesc)
 		{
-			resultRelInfo->ri_HeapInsertDesc = 
-				heap_begininsert(resultRelationDesc,
-								 estate->es_snapshot->curcid,
-								 true, true);
+			if (estate->es_HeapInsertDesc == NULL)
+			{
+				estate->es_HeapInsertDesc = 
+					heap_begininsert(resultRelationDesc,
+									 estate->es_snapshot->curcid,
+									 true, true);
+			}
+			newId = heap_insertnext(estate->es_HeapInsertDesc, tuple);
 		}
-		newId = heap_insertnext(resultRelInfo->ri_HeapInsertDesc, tuple);
+		else
+		{
+			newId = heap_insert(resultRelationDesc, tuple,
+								estate->es_snapshot->curcid,
+								true, true, GetCurrentTransactionId());
+		}
 	}
 	else
 	{
-		newId = heap_insert(resultRelationDesc, tuple,
-							estate->es_snapshot->curcid,
-							true, true, false);
+		if (estate->es_aoInsertDesc == NULL)
+			estate->es_aoInsertDesc = appendonly_insert_init(resultRelationDesc);
+		
+		newId = appendonly_insert(estate->es_aoInsertDesc, tuple);				
 	}
+	
 	IncrAppended();
 	(estate->es_processed)++;
 	estate->es_lastoid = newId;
@@ -3064,6 +3087,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	EState	   *estate = queryDesc->estate;
 	Relation	intoRelationDesc;
 	char	   *intoName;
+	char		relkind = RELKIND_RELATION;
 	Oid			namespaceId;
 	Oid			tablespaceId;
 	Datum		reloptions;
@@ -3073,8 +3097,10 @@ OpenIntoRel(QueryDesc *queryDesc)
 	DR_intorel *myState;
     Oid         intoOid;
     Oid         intoComptypeOid;
-    GpPolicy          *targetPolicy = parseTree->intoPolicy;
-
+    GpPolicy   *targetPolicy = parseTree->intoPolicy;
+	bool		appendOnlyRel; /* was appendonly relation requested? */
+	bool		compressedRel; /* was compression requested? */
+	int			compressLevel; /* compression level 1-9 */	
 
 	/*
 	 * Check consistency of arguments
@@ -3138,8 +3164,18 @@ OpenIntoRel(QueryDesc *queryDesc)
 									 parseTree->intoOptions,
 									 true,
 									 false);
-	(void) heap_reloptions(RELKIND_RELATION, reloptions, true);
+	(void) heap_reloptions(relkind, reloptions, true);
 
+	/*
+	 * Was "appendonly" specified in the relopts? If yes, fix our relkind.
+	 */
+	appendOnlyRel = interpretAppendOnlyOption(parseTree->intoOptions);
+	compressedRel = interpretCompressionOption(parseTree->intoOptions);
+	compressLevel = interpretCompressLevelOption(parseTree->intoOptions);
+	validateAppendOnlyRelOptions(appendOnlyRel, compressedRel, compressLevel, relkind);
+	if(appendOnlyRel)
+		relkind = RELKIND_APPEND_ONLY;
+	
 	/* have to copy the actual tupdesc to get rid of any constraints */
 	tupdesc = CreateTupleDescCopy(queryDesc->tupDesc);
 
@@ -3150,7 +3186,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 											  intoOid,			/* MPP */
 											  GetUserId(),
 											  tupdesc,
-											  RELKIND_RELATION,
+											  relkind,
 											  false,
 											  true,
 											  0,
@@ -3173,7 +3209,8 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 * AlterTableCreateToastTable ends with CommandCounterIncrement(), so that
 	 * the TOAST table will be visible for insertion.
 	 */
-	AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid);
+	if(relkind != RELKIND_APPEND_ONLY)
+		AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid);
 
 	/*
 	 * And open the constructed table for writing.
@@ -3192,7 +3229,8 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 * transaction commit.	Else the commit might be lost, even though all the
 	 * data is safely fsync'd ...
 	 */
-	estate->es_into_relation_use_wal = XLogArchivingActive();
+	estate->es_into_relation_use_wal = (relkind != RELKIND_APPEND_ONLY ? 
+										XLogArchivingActive() : false);
 	estate->es_into_relation_descriptor = intoRelationDesc;
 
 	/*
@@ -3211,28 +3249,39 @@ static void
 CloseIntoRel(QueryDesc *queryDesc)
 {
 	EState	   *estate = queryDesc->estate;
-
+	Relation	rel = estate->es_into_relation_descriptor;
+	
 	/* OpenIntoRel might never have gotten called */
-	if (estate->es_into_relation_descriptor)
+	if (rel)
 	{
-		/*
-		 * If we skipped using WAL, and it's not a temp relation, we must
-		 * force the relation down to disk before it's safe to commit the
-		 * transaction.  This requires forcing out any dirty buffers and then
-		 * doing a forced fsync.
-		 */
-		if (!estate->es_into_relation_use_wal &&
-			!estate->es_into_relation_descriptor->rd_istemp)
+		char		relkind = rel->rd_rel->relkind;
+
+		if(relkind != RELKIND_APPEND_ONLY)
 		{
-			FlushRelationBuffers(estate->es_into_relation_descriptor);
-			/* FlushRelationBuffers will have opened rd_smgr */
-			smgrimmedsync(estate->es_into_relation_descriptor->rd_smgr);
+			/*
+			 * If we skipped using WAL, and it's not a temp relation, we must
+			 * force the relation down to disk before it's safe to commit the
+			 * transaction.  This requires forcing out any dirty buffers and then
+			 * doing a forced fsync.
+			 */
+			if (!estate->es_into_relation_use_wal &&
+				!rel->rd_istemp)
+			{
+				FlushRelationBuffers(rel);
+				/* FlushRelationBuffers will have opened rd_smgr */
+				smgrimmedsync(rel->rd_smgr);
+			}			
+		}
+		else
+		{
+			if(estate->es_aoInsertDesc)
+				appendonly_insert_finish(estate->es_aoInsertDesc);	
 		}
 
 		/* close rel, but keep lock until commit */
-		heap_close(estate->es_into_relation_descriptor, NoLock);
+		heap_close(rel, NoLock);
 
-		estate->es_into_relation_descriptor = NULL;
+		rel = NULL;
 	}
 }
 
@@ -3277,16 +3326,28 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	DR_intorel *myState = (DR_intorel *) self;
 	EState	   *estate = myState->estate;
 	HeapTuple	tuple;
-
+	Relation	into_rel = estate->es_into_relation_descriptor;
+	char		relkind = into_rel->rd_rel->relkind;
+	
 	tuple = ExecCopySlotHeapTuple(slot);
 
-	heap_insert(estate->es_into_relation_descriptor,
-				tuple,
-				estate->es_snapshot->curcid,
-				estate->es_into_relation_use_wal,
-				false,		/* never any point in using FSM */
-				false);			
+	if (relkind != RELKIND_APPEND_ONLY)
+	{
+		heap_insert(into_rel,
+					tuple,
+					estate->es_snapshot->curcid,
+					estate->es_into_relation_use_wal,
+					false, /* never any point in using FSM */
+					GetCurrentTransactionId());								
+	}
+	else
+	{		
+		if (estate->es_aoInsertDesc == NULL)
+			estate->es_aoInsertDesc = appendonly_insert_init(into_rel);
 
+		appendonly_insert(estate->es_aoInsertDesc, tuple);		
+	}
+				
 	/* We know this is a newly created relation, so there are no indexes */
 
 	heap_freetuple(tuple);

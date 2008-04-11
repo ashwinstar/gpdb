@@ -222,7 +222,7 @@ ExecEndExternalScan(ExternalScanState *node)
 	/*
 	 * close the external relation.
 	 */
-	ExecCloseScanExternalRelation(relation);
+	ExecCloseScanRelation(relation);
 }
 
 /* ----------------------------------------------------------------

@@ -2071,6 +2071,10 @@ getRelationDescription(StringInfo buffer, Oid relid)
 			appendStringInfo(buffer, _("table %s"),
 							 relname);
 			break;
+		case RELKIND_APPEND_ONLY:
+			appendStringInfo(buffer, _("append only table %s"),
+							 relname);
+			break;			
 		case RELKIND_EXTERNAL:
 			appendStringInfo(buffer, _("external table %s"),
 							 relname);

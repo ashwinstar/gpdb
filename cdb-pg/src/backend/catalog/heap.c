@@ -39,6 +39,7 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_appendonly.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_exttable.h"
@@ -81,7 +82,6 @@ static void StoreConstraints(Relation rel, TupleDesc tupdesc);
 static void SetRelationNumChecks(Relation rel, int numchecks);
 static List *insert_ordered_unique_oid(List *list, Oid datum);
 static void remove_exttable_tuple(Oid relid);
-
 /* ----------------------------------------------------------------
  *				XXX UGLY HARD CODED BADNESS FOLLOWS XXX
  *
@@ -634,6 +634,49 @@ InsertPgClassTuple(Relation pg_class_desc,
 	heap_freetuple(tup);
 }
 
+/*
+ * Adds an entry into the pg_appendonly catalog table. The entry
+ * includes the new relfilenode of the appendonly relation that 
+ * was just created and an initial eof and reltuples values of 0
+ */
+void
+InsertPgAppendOnlyTuple(Oid relfilenode)
+{
+	Relation	pg_appendonly_rel;
+	HeapTuple	pg_appendonly_tuple = NULL;
+	char		nulls[Natts_pg_appendonly];
+	Datum		values[Natts_pg_appendonly];
+		
+ 	MemSet(values, 0, sizeof(values));
+	MemSet(nulls, ' ', sizeof(nulls));
+	
+    /*
+     * Open and lock the pg_appendonly catalog.
+     */
+	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
+	
+	values[Anum_pg_appendonly_relfilenode - 1] = ObjectIdGetDatum(relfilenode);
+	values[Anum_pg_appendonly_eof - 1] = Float8GetDatum(0);
+	values[Anum_pg_appendonly_tupcount - 1] = Float8GetDatum(0);
+	values[Anum_pg_appendonly_varblockcount - 1] = Float8GetDatum(0);
+	
+	/*
+	 * form the tuple and insert it
+	 */
+	pg_appendonly_tuple = heap_formtuple(RelationGetDescr(pg_appendonly_rel), 
+										 values, nulls);
+	simple_heap_insert(pg_appendonly_rel, pg_appendonly_tuple);
+	CatalogUpdateIndexes(pg_appendonly_rel, pg_appendonly_tuple);
+	
+	/*
+     * Close the pg_exttable_rel relcache entry without unlocking.
+     * We have updated the catalog: consequently the lock must be 
+	 * held until end of transaction.
+     */
+    heap_close(pg_appendonly_rel, NoLock);
+	
+}
+
 /* --------------------------------
  *		AddNewRelationTuple
  *
@@ -661,6 +704,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 	switch (relkind)
 	{
 		case RELKIND_RELATION:
+		case RELKIND_APPEND_ONLY:
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
 			/* The relation is real, but as yet empty */
@@ -687,6 +731,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 
 	/* Initialize relfrozenxid */
 	if (relkind == RELKIND_RELATION ||
+		relkind == RELKIND_APPEND_ONLY ||
 		relkind == RELKIND_TOASTVALUE)
 	{
 		/*
@@ -890,6 +935,12 @@ heap_create_with_catalog(const char *relname,
 						reloptions);
 
 	/*
+	 * if this is an append-only relation, add an entry in pg_appendonly
+	 */
+	if(relkind == RELKIND_APPEND_ONLY)
+		InsertPgAppendOnlyTuple(new_rel_desc->rd_rel->relfilenode);
+	
+	/*
 	 * now add tuples to pg_attribute for the attributes in our new relation.
 	 */
 	AddNewAttributeTuples(relid, new_rel_desc->rd_att, relkind,
@@ -947,7 +998,7 @@ heap_create_with_catalog(const char *relname,
     if (policy &&
         Gp_role == GP_ROLE_DISPATCH)
     {
-        Assert(relkind == RELKIND_RELATION || relkind == RELKIND_EXTERNAL);
+        Assert(relkind == RELKIND_RELATION || relkind == RELKIND_EXTERNAL || relkind == RELKIND_APPEND_ONLY);
         new_rel_desc->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(new_rel_desc), policy);
         GpPolicyStore(relid, policy);
     }
@@ -1301,6 +1352,9 @@ heap_drop_with_catalog(Oid relid)
 	Relation	rel;
 	const struct GpPolicy *policy;
 	bool		removePolicy = false;
+	bool		is_appendonly_table = false;
+	Oid			relfilenode;
+		
 	bool 		is_ext_table;
 
 	/*
@@ -1308,6 +1362,8 @@ heap_drop_with_catalog(Oid relid)
 	 */
 	rel = relation_open(relid, AccessExclusiveLock);
 
+	is_appendonly_table = rel->rd_rel->relkind == RELKIND_APPEND_ONLY;
+		
 	is_ext_table = rel->rd_rel->relkind == RELKIND_EXTERNAL;
 	/*
  	 * Get the distribution policy and figure out if it is to be removed.
@@ -1317,7 +1373,8 @@ heap_drop_with_catalog(Oid relid)
 		policy->ptype == POLICYTYPE_PARTITIONED &&
 		Gp_role == GP_ROLE_DISPATCH &&
 		(rel->rd_rel->relkind == RELKIND_RELATION || 
-		 rel->rd_rel->relkind == RELKIND_EXTERNAL))
+		 rel->rd_rel->relkind == RELKIND_EXTERNAL ||
+		 rel->rd_rel->relkind == RELKIND_APPEND_ONLY))
 		removePolicy = true;
 
 	/*
@@ -1328,6 +1385,10 @@ heap_drop_with_catalog(Oid relid)
 		rel->rd_rel->relkind != RELKIND_EXTERNAL)
 	{
 		RelationOpenSmgr(rel);
+		
+		if(is_appendonly_table)
+			relfilenode = rel->rd_smgr->smgr_rnode.relNode; 
+		
 		smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);
 	}
 
@@ -1372,6 +1433,12 @@ heap_drop_with_catalog(Oid relid)
 	 */
 	DeleteRelationTuple(relid);
 
+	/*
+	 * append-only table? delete the corresponding pg_appendonly tuples
+	 */
+	if(is_appendonly_table)
+		RemoveAppendonlyEntries(relfilenode);
+		
 	/*
 	 * External table? If so, delete the pg_exttable tuple.
 	 */

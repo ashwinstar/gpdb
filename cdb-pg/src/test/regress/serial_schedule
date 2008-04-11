@@ -108,3 +108,4 @@ ignore: tablespace
 test: resource_queue
 test: gpcopy
 test: sreh
+test: appendonly

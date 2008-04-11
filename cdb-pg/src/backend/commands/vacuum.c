@@ -90,28 +90,6 @@ typedef struct VacPageListData
 
 typedef VacPageListData *VacPageList;
 
-/*
- * The "vtlinks" array keeps information about each recently-updated tuple
- * ("recent" meaning its XMAX is too new to let us recycle the tuple).
- * We store the tuple's own TID as well as its t_ctid (its link to the next
- * newer tuple version).  Searching in this array allows us to follow update
- * chains backwards from newer to older tuples.  When we move a member of an
- * update chain, we must move *all* the live members of the chain, so that we
- * can maintain their t_ctid link relationships (we must not just overwrite
- * t_ctid in an existing tuple).
- *
- * Note: because t_ctid links can be stale (this would only occur if a prior
- * VACUUM crashed partway through), it is possible that new_tid points to an
- * empty slot or unrelated tuple.  We have to check the linkage as we follow
- * it, just as is done in EvalPlanQual.
- */
-typedef struct VTupleLinkData
-{
-	ItemPointerData new_tid;	/* t_ctid of an updated tuple */
-	ItemPointerData this_tid;	/* t_self of the tuple */
-} VTupleLinkData;
-
-typedef VTupleLinkData *VTupleLink;
 
 /*
  * We use an array of VTupleMoveData to plan a chain tuple move fully
@@ -126,21 +104,6 @@ typedef struct VTupleMoveData
 
 typedef VTupleMoveData *VTupleMove;
 
-/*
- * VRelStats contains the data acquired by scan_heap for use later
- */
-typedef struct VRelStats
-{
-	/* miscellaneous statistics */
-	BlockNumber rel_pages;
-	double		rel_tuples;
-	Size		min_tlen;
-	Size		max_tlen;
-	bool		hasindex;
-	/* vtlinks array for tuple chain following - sorted by new_tid */
-	int			num_vtlinks;
-	VTupleLink	vtlinks;
-} VRelStats;
 
 /*----------------------------------------------------------------------
  * ExecContext:
@@ -722,7 +685,26 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype)
 		}
 
 		heap_endscan(scan);
+		
+		/* Now rescan pgclass for appendonly relations and add to rel list */
+		ScanKeyInit(&key,
+					Anum_pg_class_relkind,
+					BTEqualStrategyNumber, F_CHAREQ,
+					CharGetDatum(RELKIND_APPEND_ONLY));
+				
+		scan = heap_beginscan(pgclass, SnapshotNow, 1, &key);
+		
+		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		{
+			/* Make a relation list entry for this guy */
+			oldcontext = MemoryContextSwitchTo(vac_context);
+			oid_list = lappend_oid(oid_list, HeapTupleGetOid(tuple));
+			MemoryContextSwitchTo(oldcontext);
+		}
+		
+		heap_endscan(scan);
 		heap_close(pgclass, AccessShareLock);
+		
 	}
 
 	return oid_list;
@@ -1232,12 +1214,16 @@ vacuum_rel(Oid relid, VacuumStmt *vacstmt, char expected_relkind)
 	 */
 	if (onerel->rd_rel->relkind != expected_relkind)
 	{
-		ereport(WARNING,
-				(errmsg("skipping \"%s\" --- cannot vacuum indexes, views, or special system tables",
-						RelationGetRelationName(onerel))));
-		relation_close(onerel, lmode);
-		CommitTransactionCommand();
-		return;
+		/* ugly hack, allow append only tables in */
+		if(!(expected_relkind == RELKIND_RELATION && onerel->rd_rel->relkind == RELKIND_APPEND_ONLY))
+		{	
+			ereport(WARNING,
+					(errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables or special system tables",
+							RelationGetRelationName(onerel))));
+			relation_close(onerel, lmode);
+			CommitTransactionCommand();
+			return;
+		}
 	}
 
 	/*
@@ -1358,6 +1344,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	int			nindexes,
 				i;
 	VRelStats  *vacrelstats;
+	char		relkind = onerel->rd_rel->relkind;
 
 	vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
 						  &OldestXmin, &FreezeLimit);
@@ -1370,51 +1357,60 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	vacrelstats->rel_tuples = 0;
 	vacrelstats->hasindex = false;
 
-	/* scan the heap */
-	vacuum_pages.num_pages = fraged_pages.num_pages = 0;
-	scan_heap(vacrelstats, onerel, &vacuum_pages, &fraged_pages);
-
-	/* Now open all indexes of the relation */
-	vac_open_indexes(onerel, AccessExclusiveLock, &nindexes, &Irel);
-	if (nindexes > 0)
-		vacrelstats->hasindex = true;
-
-	/* Clean/scan index relation(s) */
-	if (Irel != NULL)
+	if(relkind != RELKIND_APPEND_ONLY)
 	{
-		if (vacuum_pages.num_pages > 0)
+
+		/* scan the heap */
+		vacuum_pages.num_pages = fraged_pages.num_pages = 0;
+		scan_heap(vacrelstats, onerel, &vacuum_pages, &fraged_pages);
+
+		/* Now open all indexes of the relation */
+		vac_open_indexes(onerel, AccessExclusiveLock, &nindexes, &Irel);
+		if (nindexes > 0)
+			vacrelstats->hasindex = true;
+
+		/* Clean/scan index relation(s) */
+		if (Irel != NULL)
 		{
-			for (i = 0; i < nindexes; i++)
-				vacuum_index(&vacuum_pages, Irel[i],
-							 vacrelstats->rel_tuples, 0);
+			if (vacuum_pages.num_pages > 0)
+			{
+				for (i = 0; i < nindexes; i++)
+					vacuum_index(&vacuum_pages, Irel[i],
+								 vacrelstats->rel_tuples, 0);
+			}
+			else
+			{
+				/* just scan indexes to update statistic */
+				for (i = 0; i < nindexes; i++)
+					scan_index(Irel[i], vacrelstats->rel_tuples);
+			}
+		}
+
+		if (fraged_pages.num_pages > 0)
+		{
+			/* Try to shrink heap */
+			repair_frag(vacrelstats, onerel, &vacuum_pages, &fraged_pages,
+						nindexes, Irel);
+			vac_close_indexes(nindexes, Irel, NoLock);
 		}
 		else
 		{
-			/* just scan indexes to update statistic */
-			for (i = 0; i < nindexes; i++)
-				scan_index(Irel[i], vacrelstats->rel_tuples);
+			vac_close_indexes(nindexes, Irel, NoLock);
+			if (vacuum_pages.num_pages > 0)
+			{
+				/* Clean pages from vacuum_pages list */
+				vacuum_heap(vacrelstats, onerel, &vacuum_pages);
+			}
 		}
-	}
 
-	if (fraged_pages.num_pages > 0)
-	{
-		/* Try to shrink heap */
-		repair_frag(vacrelstats, onerel, &vacuum_pages, &fraged_pages,
-					nindexes, Irel);
-		vac_close_indexes(nindexes, Irel, NoLock);
+		/* update shared free space map with final free space info */
+		vac_update_fsm(onerel, &fraged_pages, vacrelstats->rel_pages);
 	}
 	else
 	{
-		vac_close_indexes(nindexes, Irel, NoLock);
-		if (vacuum_pages.num_pages > 0)
-		{
-			/* Clean pages from vacuum_pages list */
-			vacuum_heap(vacrelstats, onerel, &vacuum_pages);
-		}
+		/* append-only relation. has a special path */
+		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ true);
 	}
-
-	/* update shared free space map with final free space info */
-	vac_update_fsm(onerel, &fraged_pages, vacrelstats->rel_pages);
 
 	/* update statistics in pg_class */
 	vac_update_relstats(onerel, vacrelstats->rel_pages,

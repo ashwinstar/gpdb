@@ -220,6 +220,7 @@ pathnode_walk_kids(Path            *path,
 	{
 	    case T_SeqScan:
 		case T_ExternalScan:
+		case T_AppendOnlyScan:
 	    case T_IndexScan:
 	    case T_TidScan:
 	    case T_SubqueryScan:
@@ -1218,6 +1219,27 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel)
 
 	cost_seqscan(pathnode, root, rel);
 
+	return pathnode;
+}
+
+/* 
+ * Create a path for scanning an append-only table
+ */
+AppendOnlyPath *
+create_appendonly_path(PlannerInfo *root, RelOptInfo *rel)
+{
+	AppendOnlyPath	   *pathnode = makeNode(AppendOnlyPath);
+	
+	pathnode->path.pathtype = T_AppendOnlyScan;
+	pathnode->path.parent = rel;
+	pathnode->path.pathkeys = NIL;	/* seqscan has unordered result */
+	
+    pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+    pathnode->path.motionHazard = false;
+	pathnode->path.rescannable = true;
+	
+	cost_appendonlyscan(pathnode, root, rel);
+	
 	return pathnode;
 }
 

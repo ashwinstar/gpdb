@@ -250,6 +250,22 @@ _copySeqScan(SeqScan *from)
 }
 
 /*
+ * _copyAppendOnlyScan
+ */
+static AppendOnlyScan *
+_copyAppendOnlyScan(AppendOnlyScan *from)
+{
+	AppendOnlyScan    *newnode = makeNode(AppendOnlyScan);
+	
+	/*
+	 * copy node superclass fields
+	 */
+	CopyScanFields((Scan *) from, (Scan *) newnode);
+	
+	return newnode;
+}
+
+/*
  * _copyExternalScan
  */
 static ExternalScan *
@@ -3416,6 +3432,9 @@ copyObject(void *from)
 			break;
 		case T_SeqScan:
 			retval = _copySeqScan(from);
+			break;
+		case T_AppendOnlyScan:
+			retval = _copyAppendOnlyScan(from);
 			break;
 		case T_ExternalScan:
 			retval = _copyExternalScan(from);

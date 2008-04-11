@@ -20,11 +20,14 @@
 #include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/file.h>
 
 #include "access/heapam.h"
+#include "access/appendonlyam.h"
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "catalog/catalog.h"
 #include "commands/copy.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
@@ -36,6 +39,7 @@
 #include "parser/parse_relation.h"
 #include "rewrite/rewriteHandler.h"
 #include "storage/fd.h"
+#include "storage/smgr.h"
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
@@ -50,6 +54,8 @@
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbrelsize.h"
+#include "cdb/cdbvarblock.h"
+#include "cdb/cdbbufferedappend.h"
 
 
 /* DestReceiver for COPY (SELECT) TO */
@@ -630,7 +636,6 @@ DoCopy(const CopyStmt *stmt)
 						errmsg("KEEP may only be specified with a LOG INTO errortable clause")));
 			
 		}
-	
 		cstate->cdbsreh = makeCdbSreh(sreh->is_keep, 
 									  sreh->reusing_existing_errtable,
 									  sreh->rejectlimit, 
@@ -827,9 +832,13 @@ DoCopy(const CopyStmt *stmt)
 		cstate->queryDesc = NULL;
 		
 		/* Open and lock the relation, using the appropriate lock type. */
-		cstate->rel = heap_openrv(stmt->relation,
-								  (is_from ? RowExclusiveLock : AccessShareLock));
-		
+		/* XXX for now use exclusive lock for inserts on appendonly tables */
+		cstate->rel = heap_openrv(stmt->relation, NoLock);
+		if(cstate->rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
+			LockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock));
+		else
+			CdbLockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock), false);
+
 		/* Check relation permissions. */
 		aclresult = pg_class_aclcheck(RelationGetRelid(cstate->rel),
 									  GetUserId(),
@@ -1030,7 +1039,8 @@ DoCopy(const CopyStmt *stmt)
 		
 		Assert(cstate->rel);
 		
-		if (cstate->rel->rd_rel->relkind != RELKIND_RELATION)
+		if (cstate->rel->rd_rel->relkind != RELKIND_RELATION &&
+			cstate->rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
 		{
 			if (cstate->rel->rd_rel->relkind == RELKIND_VIEW)
 				ereport(ERROR,
@@ -1145,21 +1155,23 @@ DoCopyTo(CopyState cstate)
 	
 	if (cstate->rel)
 	{
-		if (cstate->rel->rd_rel->relkind != RELKIND_RELATION)
+		char		relkind = cstate->rel->rd_rel->relkind;
+		
+		if (relkind != RELKIND_RELATION && relkind != RELKIND_APPEND_ONLY)
 		{
-			if (cstate->rel->rd_rel->relkind == RELKIND_VIEW)
+			if (relkind == RELKIND_VIEW)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot copy from view \"%s\"",
 								RelationGetRelationName(cstate->rel)),
 						 errhint("Try the COPY (SELECT ...) TO variant.")));
-			else if (cstate->rel->rd_rel->relkind == RELKIND_EXTERNAL)
+			else if (relkind == RELKIND_EXTERNAL)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot copy from external relation \"%s\"",
 								RelationGetRelationName(cstate->rel)),
 						 errhint("Try the COPY (SELECT ...) TO variant.")));			
-			else if (cstate->rel->rd_rel->relkind == RELKIND_SEQUENCE)
+			else if (relkind == RELKIND_SEQUENCE)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot copy from sequence \"%s\"",
@@ -1304,26 +1316,54 @@ CopyTo(CopyState cstate)
 	{
 		Datum	   *values;
 		bool	   *nulls;
-		HeapScanDesc scandesc;
+		char		relkind = cstate->rel->rd_rel->relkind;
+		HeapScanDesc scandesc = NULL;			/* used if heap table */
+		AppendOnlyScanDesc aoscandesc = NULL;	/* used if append only table */
 		HeapTuple	tuple;
 		
 		values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
 		nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
 		
-		scandesc = heap_beginscan(cstate->rel, ActiveSnapshot, 0, NULL);
 		
-		while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+		if(relkind == RELKIND_RELATION)
 		{
-			CHECK_FOR_INTERRUPTS();
+			scandesc = heap_beginscan(cstate->rel, ActiveSnapshot, 0, NULL);
+
+			while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+			{
+				CHECK_FOR_INTERRUPTS();
+				
+				/* Deconstruct the tuple ... faster than repeated heap_getattr */
+				heap_deform_tuple(tuple, tupDesc, values, nulls);
+				
+				/* Format and send the data */
+				CopyOneRowTo(cstate, HeapTupleGetOid(tuple), values, nulls);
+			}
 			
-			/* Deconstruct the tuple ... faster than repeated heap_getattr */
-			heap_deform_tuple(tuple, tupDesc, values, nulls);
-			
-			/* Format and send the data */
-			CopyOneRowTo(cstate, HeapTupleGetOid(tuple), values, nulls);
+			heap_endscan(scandesc);			
 		}
-		
-		heap_endscan(scandesc);
+		else if(relkind == RELKIND_APPEND_ONLY)
+		{
+			aoscandesc = appendonly_beginscan(cstate->rel, 0, NULL);
+			
+			while ((tuple = appendonly_getnext(aoscandesc, ForwardScanDirection)) != NULL)
+			{
+				CHECK_FOR_INTERRUPTS();
+				
+				/* Deconstruct the tuple ... faster than repeated heap_getattr */
+				heap_deform_tuple(tuple, tupDesc, values, nulls);
+				
+				/* Format and send the data */
+				CopyOneRowTo(cstate, HeapTupleGetOid(tuple), values, nulls);
+			}
+			
+			appendonly_endscan(aoscandesc);			
+		}
+		else
+		{
+			/* should never get here */
+			Assert(false); 
+		}
 	}
 	else
 	{
@@ -3063,6 +3103,13 @@ CopyFrom(CopyState cstate)
 	CdbCopy    *cdbCopy = NULL; /* never used... for compiling COPY_HANDLE_ERROR */
 	int			target_seg = -1; /* not used in utility mode */
 
+	/* append-only table stuff */
+	AppendOnlyInsertDesc aoInsertDesc = NULL;
+	
+	if(cstate->rel->rd_rel->relkind == RELKIND_APPEND_ONLY)
+		aoInsertDesc = appendonly_insert_init(cstate->rel);
+		
+	
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
@@ -3529,22 +3576,31 @@ CopyFrom(CopyState cstate)
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
-					if (heap_enableHeapInsertDesc)
+					if(cstate->rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
 					{
-						if (cstate->heapInsertDesc == NULL)
+						if (heap_enableHeapInsertDesc)
 						{
-							cstate->heapInsertDesc = heap_begininsert(cstate->rel, 
-																	  GetCurrentCommandId(), true, true);
+							if (cstate->heapInsertDesc == NULL)
+							{
+								cstate->heapInsertDesc = heap_begininsert(cstate->rel, 
+																		  GetCurrentCommandId(), true, true);
+							}
+							heap_insertnext(cstate->heapInsertDesc, tuple);
 						}
-						heap_insertnext(cstate->heapInsertDesc, tuple);
+						else 
+						{
+							simple_heap_insert(cstate->rel, tuple);
+						}
+						
+						if (resultRelInfo->ri_NumIndices > 0)
+							ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
 					}
-					else 
+					else
 					{
-						simple_heap_insert(cstate->rel, tuple);
+						/* inserting into an append only relation */
+						appendonly_insert(aoInsertDesc, tuple);
 					}
 
-					if (resultRelInfo->ri_NumIndices > 0)
-						ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
 
 					/* AFTER ROW INSERT Triggers */
 					ExecARInsertTriggers(estate, resultRelInfo, tuple);
@@ -3570,6 +3626,12 @@ CopyFrom(CopyState cstate)
 			no_more_data = true;
 		}
 	} while (!no_more_data);
+
+	/* 
+	 * if append-only table, finish up the last append 
+	 */
+	if(cstate->rel->rd_rel->relkind == RELKIND_APPEND_ONLY)
+		appendonly_insert_finish(aoInsertDesc);
 
 	/*
 	 * Done, clean up
@@ -4652,6 +4714,7 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 							 errmsg("unterminated CSV quoted field")));
 				
+
 			}
 
 			if (lnext(cur) != NULL)

@@ -440,12 +440,12 @@ permissionsList(const char *pattern)
 	printfPQExpBuffer(&buf,
 					  "SELECT n.nspname as \"%s\",\n"
 					  "  c.relname as \"%s\",\n"
-					  "  CASE c.relkind WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'S' THEN '%s' END as \"%s\",\n"
+					  "  CASE c.relkind WHEN 'r' THEN '%s' WHEN 'a' THEN '%s' WHEN 'x' THEN '%s' WHEN 'v' THEN '%s' WHEN 'S' THEN '%s' END as \"%s\",\n"
 					  "  c.relacl as \"%s\"\n"
 					  "FROM pg_catalog.pg_class c\n"
 	   "     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n"
-					  "WHERE c.relkind IN ('r', 'v', 'S', 'x')\n",
-					  _("Schema"), _("Name"), _("table"), _("view"), _("sequence"), _("Type"), _("Access privileges"));
+					  "WHERE c.relkind IN ('r', 'v', 'S', 'x', 'a')\n",
+					  _("Schema"), _("Name"), _("table"), _("table"), _("table"), _("view"), _("sequence"), _("Type"), _("Access privileges"));
 
 	/*
 	 * Unless a schema pattern is specified, we suppress system and temp
@@ -570,12 +570,12 @@ objectDescription(const char *pattern)
 					  "  n.nspname as nspname,\n"
 					  "  CAST(c.relname AS pg_catalog.text) as name,\n"
 					  "  CAST(\n"
-					  "    CASE c.relkind WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' END"
+					  "    CASE c.relkind WHEN 'a' THEN '%s' WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' END"
 					  "  AS pg_catalog.text) as object\n"
 					  "  FROM pg_catalog.pg_class c\n"
 	 "       LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n"
-					  "  WHERE c.relkind IN ('r', 'x', 'v', 'i', 'S')\n",
-					  _("external"), _("table"), _("view"), _("index"), _("sequence"));
+					  "  WHERE c.relkind IN ('r', 'x', 'v', 'i', 'S', 'a')\n",
+					  _("append-only"), _("external"), _("table"), _("view"), _("index"), _("sequence"));
 	processSQLNamePattern(pset.db, &buf, pattern, true, false,
 						  "n.nspname", "c.relname", NULL,
 						  "pg_catalog.pg_table_is_visible(c.oid)");
@@ -788,7 +788,8 @@ describeOneTableDetails(const char *schemaname,
 	headers[1] = _("Type");
 	cols = 2;
 
-	if (tableinfo.relkind == 'r' || tableinfo.relkind == 'v' || tableinfo.relkind == 'x')
+	if (tableinfo.relkind == 'r' || tableinfo.relkind == 'v' || 
+		tableinfo.relkind == 'x' || tableinfo.relkind == 'a')
 	{
 		show_modifiers = true;
 		cols++;
@@ -901,6 +902,10 @@ describeOneTableDetails(const char *schemaname,
 	{
 		case 'r':
 			printfPQExpBuffer(&title, _("Table \"%s.%s\""),
+							  schemaname, relationname);
+			break;
+		case 'a':
+			printfPQExpBuffer(&title, _("Append-Only table \"%s.%s\""),
 							  schemaname, relationname);
 			break;
 		case 'x':
@@ -1162,7 +1167,7 @@ describeOneTableDetails(const char *schemaname,
 		footers[count_footers] = NULL;
 
 	}
-	else if (tableinfo.relkind == 'r')
+	else if (tableinfo.relkind == 'r' || tableinfo.relkind == 'a')
 	{
 		/* Footer information about a table */
 		PGresult   *result1 = NULL,
@@ -1600,7 +1605,7 @@ add_tablespace_footer(char relkind, Oid tablespace, char **footers,
 					  int *count, PQExpBufferData buf, bool newline)
 {
 	/* relkinds for which we support tablespaces */
-	if (relkind == 'r' || relkind == 'i')
+	if (relkind == 'r' || relkind == 'i' || relkind == 'a')
 	{
 		/*
 		 * We ignore the database default tablespace so that users not using
@@ -1735,10 +1740,10 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 	printfPQExpBuffer(&buf,
 					  "SELECT n.nspname as \"%s\",\n"
 					  "  c.relname as \"%s\",\n"
-					  "  CASE c.relkind WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' WHEN 's' THEN '%s' END as \"%s\",\n"
+					  "  CASE c.relkind WHEN 'a' THEN '%s' WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' WHEN 's' THEN '%s' END as \"%s\",\n"
 					  "  r.rolname as \"%s\"",
 					  _("Schema"), _("Name"),
-					  _("external"), _("table"), _("view"), _("index"), _("sequence"),
+					  _("append-only"), _("external"), _("table"), _("view"), _("index"), _("sequence"),
 					  _("special"), _("Type"), _("Owner"));
 
 	if (showIndexes)
@@ -1762,7 +1767,7 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 
 	appendPQExpBuffer(&buf, "\nWHERE c.relkind IN (");
 	if (showTables)
-		appendPQExpBuffer(&buf, "'r',");
+		appendPQExpBuffer(&buf, "'r','a',");
 	if (showViews)
 		appendPQExpBuffer(&buf, "'v',");
 	if (showIndexes)

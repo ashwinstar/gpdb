@@ -1772,7 +1772,8 @@ get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 												 format_type_be(domainOid));
 
 			/* Otherwise we can ignore views, composite types, etc */
-			if (rel->rd_rel->relkind != RELKIND_RELATION)
+			if (rel->rd_rel->relkind != RELKIND_RELATION &&
+				rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
 			{
 				relation_close(rel, lockmode);
 				continue;

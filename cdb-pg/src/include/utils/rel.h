@@ -198,6 +198,7 @@ typedef struct RelationData
 
 	/* statistics collection area */
 	PgStat_Info pgstat_info;
+	
 } RelationData;
 
 typedef RelationData *Relation;
@@ -224,6 +225,9 @@ typedef struct StdRdOptions
 {
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int			fillfactor;		/* page fill factor in percent (0..100) */
+	bool		appendonly;		/* is this an appendonly relation? */
+	bool		compression;	/* is the relation compressed? (AO rels only) */
+	int			compresslevel;  /* compression level (AO rels only) */
 } StdRdOptions;
 
 #define HEAP_MIN_FILLFACTOR			10
@@ -236,6 +240,22 @@ typedef struct StdRdOptions
 #define RelationGetFillFactor(relation, defaultff) \
 	((relation)->rd_options ? \
 	 ((StdRdOptions *) (relation)->rd_options)->fillfactor : (defaultff))
+
+/*
+ * RelationGetCompressLevel
+ *		Returns the relation's compression level.  Note multiple eval of argument!
+ */
+#define RelationGetCompressLevel(relation, defaultcl) \
+((relation)->rd_options ? \
+ ((StdRdOptions *) (relation)->rd_options)->compresslevel : (defaultcl))
+
+/*
+ * RelationUsesCopmression
+ *		Returns true if relation uses compression. Note multiple eval of argument!
+ */
+#define RelationUsesCopmression(relation, defaultc) \
+((relation)->rd_options ? \
+ ((StdRdOptions *) (relation)->rd_options)->compression : (defaultc))
 
 /*
  * RelationGetTargetPageUsage

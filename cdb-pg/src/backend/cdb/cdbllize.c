@@ -663,6 +663,7 @@ is_plan_node(Node *node)
 		case T_Append:
 		case T_SeqScan:
 		case T_ExternalScan:
+		case T_AppendOnlyScan:
 		case T_IndexScan:
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:
@@ -1088,6 +1089,7 @@ motion_sanity_walker(Node *node, int *result)
 		case T_Append:
 		case T_SeqScan:
 		case T_ExternalScan:
+		case T_AppendOnlyScan:
 		case T_IndexScan:
 		case T_BitmapIndexScan:
 		case T_BitmapHeapScan:

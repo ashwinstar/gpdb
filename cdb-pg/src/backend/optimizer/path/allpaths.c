@@ -46,8 +46,8 @@ bool		enable_tidscan = true;
 bool		enable_sort = true;
 bool		enable_hashagg = true;
 bool		enable_groupagg = true;
-bool		enable_nestloop = true;
-bool		enable_mergejoin = true;
+bool		enable_nestloop = false;
+bool		enable_mergejoin = false;
 bool		enable_hashjoin = true;
 bool        gp_enable_hashjoin_size_heuristic = false;  /*CDB*/
 bool		gp_enable_fallback_plan = true;
@@ -304,14 +304,27 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
      * in a temporary list, then add them.
 	 */
 
+	/* early exit for external and append only relations */
+	if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
+	{
 	/*
 	 * If the relation is external, create an external path for
 	 * it and select it (only external path is considered for
-	 * an external base rel.
-	 */
-	if(get_rel_relkind(rte->relid) == RELKIND_EXTERNAL)
-	{
+		 * an external base rel).
+		 */
 		add_path(root, rel, (Path *) create_external_path(root, rel));
+		
+		set_cheapest(root, rel);
+		return;
+	}
+	else if(get_rel_relkind(rte->relid) == RELKIND_APPEND_ONLY)
+	{
+		/*
+		 * If the relation is append-only, create an append-only 
+		 * path for it and select it (only append-only path is 
+		 * considered for an append-only base rel).
+		 */
+		add_path(root, rel, (Path *) create_appendonly_path(root, rel));
 		
 		set_cheapest(root, rel);
 		return;

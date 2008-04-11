@@ -199,6 +199,8 @@ bool 		Debug_abort_after_distributed_prepared = false;
 bool		Debug_print_tablespace = false;
 bool		Debug_print_server_processes = false;
 bool		Debug_print_control_checkpoints = false;
+bool 		Debug_appendonly_print_insert = false;
+bool 		Debug_appendonly_print_scan = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -1601,6 +1603,26 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	
+	{
+		{"debug_appendonly_print_insert", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only insert."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_insert,
+		false, NULL, NULL
+	},
+	
+	{
+		{"debug_appendonly_print_scan", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Print log messages for append-only scan."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Debug_appendonly_print_scan,
+		false, NULL, NULL
+	},
+
 	{
 		{"debug_dtm_action_primary", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Specify if the primary or mirror segment is the target of the debug DTM action."),

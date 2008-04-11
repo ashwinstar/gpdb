@@ -16,6 +16,7 @@
 #include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
+#include "executor/nodeAppendOnlyscan.h"
 #include "executor/nodeBitmapAnd.h"
 #include "executor/nodeBitmapHeapscan.h"
 #include "executor/nodeBitmapIndexscan.h"
@@ -132,6 +133,10 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 			ExecExternalReScan((ExternalScanState *) node, exprCtxt);
 			break;			
 
+		case T_AppendOnlyScanState:
+			ExecAppendOnlyReScan((AppendOnlyScanState *) node, exprCtxt);
+			break;
+
 		case T_BitmapIndexScanState:
 			ExecBitmapIndexReScan((BitmapIndexScanState *) node, exprCtxt);
 			break;
@@ -234,6 +239,10 @@ ExecMarkPos(PlanState *node)
 			ExecSeqMarkPos((SeqScanState *) node);
 			break;
 
+		case T_AppendOnlyScanState:
+			elog(ERROR, "Marking scan position for append-only relation is not supported");
+			break;			
+			
 		case T_IndexScanState:
 			ExecIndexMarkPos((IndexScanState *) node);
 			break;
@@ -302,6 +311,10 @@ ExecRestrPos(PlanState *node)
 		case T_SeqScanState:
 			ExecSeqRestrPos((SeqScanState *) node);
 			break;
+
+		case T_AppendOnlyScanState:
+			elog(ERROR, "Restoring scan position is not yet supported for append-only relation scan");
+			break;			
 
 		case T_IndexScanState:
 			ExecIndexRestrPos((IndexScanState *) node);

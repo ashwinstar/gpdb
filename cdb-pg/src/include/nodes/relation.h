@@ -519,6 +519,16 @@ typedef struct Path
 } Path;
 
 /* 
+ * AppendOnlyPath is used for append-only table scans. 
+ */
+typedef struct AppendOnlyPath
+{
+	Path		path;
+	
+	/* for now it's pretty plain.. */
+} AppendOnlyPath;
+
+/* 
  * ExternalPath is used for external table scans. 
  */
 typedef struct ExternalPath

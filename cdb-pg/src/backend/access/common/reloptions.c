@@ -234,43 +234,93 @@ parseRelOptions(Datum options, int numkeywords, const char *const * keywords,
 
 
 /*
- * Parse reloptions for anything using StdRdOptions (ie, fillfactor only)
+ * Parse reloptions for anything using StdRdOptions
  */
 bytea *
 default_reloptions(Datum reloptions, bool validate,
 				   int minFillfactor, int defaultFillfactor)
 {
-	static const char *const default_keywords[1] = {"fillfactor"};
-	char	   *values[1];
+	static const char *const default_keywords[4] = {"fillfactor", "appendonly", "compression", "compresslevel"};
+	char	   *values[4];
 	int32		fillfactor;
+	bool		compression;
+	bool		appendonly;
+	int32		compresslevel;
+	int32		defaultCompressLevel = 3;
+	
 	StdRdOptions *result;
 
-	parseRelOptions(reloptions, 1, default_keywords, values, validate);
+	parseRelOptions(reloptions, 4, default_keywords, values, validate);
 
 	/*
 	 * If no options, we can just return NULL rather than doing anything.
-	 * (defaultFillfactor is thus not used, but we require callers to pass it
-	 * anyway since we would need it if more options were added.)
 	 */
-	if (values[0] == NULL)
+	if (values[0] == NULL && 
+		values[1] == NULL && 
+		values[2] == NULL && 
+		values[3] == NULL)
 		return NULL;
 
-	fillfactor = pg_atoi(values[0], sizeof(int32), 0);
-	if (fillfactor < minFillfactor || fillfactor > 100)
+	/* fillfactor */
+	if(values[0] != NULL)
 	{
-		if (validate)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("fillfactor=%d is out of range (should be between %d and 100)",
-							fillfactor, minFillfactor)));
-		return NULL;
+		fillfactor = pg_atoi(values[0], sizeof(int32), 0);
+		if (fillfactor < minFillfactor || fillfactor > 100)
+		{
+			if (validate)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("fillfactor=%d is out of range (should be between %d and 100)",
+								fillfactor, minFillfactor)));
+			
+			fillfactor = defaultFillfactor;
+		}		
+	}
+	else
+	{
+		fillfactor = defaultFillfactor;
 	}
 
+	/* appendonly */
+	if(values[1] != NULL)
+		appendonly = (pg_strcasecmp(values[1], "true") == 0 ? true : false);
+	else
+		appendonly = false; /* default */
+		
+	/* compression */
+	if(values[2] != NULL)
+		compression = (pg_strcasecmp(values[2], "true") == 0 ? true : false);
+	else
+		compression = appendonly; /* default */
+		
+	/* compression level */
+	if(values[3] != NULL)
+	{
+		compresslevel = pg_atoi(values[3], sizeof(int32), 0);
+		if (compresslevel < 1 || compresslevel > 9)
+		{
+			if (validate)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("compresslevel=%d is out of range (should be between 1 and 9)",
+								compresslevel)));
+			
+			compresslevel = defaultCompressLevel;
+		}		
+	}
+	else
+	{
+		compresslevel = defaultCompressLevel;
+	}
+	
+	
 	result = (StdRdOptions *) palloc(sizeof(StdRdOptions));
 	SET_VARSIZE(result, sizeof(StdRdOptions));
 
 	result->fillfactor = fillfactor;
-
+	result->appendonly = appendonly;
+	result->compression = compression;
+	result->compresslevel = compresslevel;
 	return (bytea *) result;
 }
 
@@ -323,4 +373,42 @@ index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
 		return NULL;
 
 	return DatumGetByteaP(result);
+}
+
+/*
+ * validateAppendOnlyRelOptions
+ *
+ *		Various checks for validity of appendonly relation rules.
+ */
+void validateAppendOnlyRelOptions(bool ao, bool comp, int complevel, char relkind)
+{
+
+	if(ao && relkind != RELKIND_APPEND_ONLY && relkind != RELKIND_RELATION)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+				 errmsg("appendonly may only be specified for base relations")));
+	
+	
+	if(comp && !ao)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+				 errmsg("compression may only be specified for append-only "
+						"relations")));
+		
+	if(complevel != 0)
+	{
+		/* this should have been caught in reloptions.c but just to be safe */
+		if(complevel < 1 || complevel > 9)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("compresslevel=%d is out of range (should be between 1 and 9)",
+							complevel)));
+		
+		if(!comp)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("copmression level may only be specified when "
+							"compression=true is specified")));		
+	}
+	
 }

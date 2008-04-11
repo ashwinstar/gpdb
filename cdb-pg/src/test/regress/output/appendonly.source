@@ -1,0 +1,323 @@
+CREATE TABLE tenk_heap (
+	unique1 	int4,
+	unique2 	int4,
+	two 	 	int4,
+	four 		int4,
+	ten			int4,
+	twenty 		int4,
+	hundred 	int4,
+	thousand 	int4,
+	twothousand int4,
+	fivethous 	int4,
+	tenthous	int4,
+	odd			int4,
+	even		int4,
+	stringu1	name,
+	stringu2	name,
+	string4		name
+) with (appendonly=false);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE TABLE tenk_ao1 (
+	unique1 	int4,
+	unique2 	int4,
+	two 	 	int4,
+	four 		int4,
+	ten			int4,
+	twenty 		int4,
+	hundred 	int4,
+	thousand 	int4,
+	twothousand int4,
+	fivethous 	int4,
+	tenthous	int4,
+	odd			int4,
+	even		int4,
+	stringu1	name,
+	stringu2	name,
+	string4		name
+) with (appendonly=true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE TABLE tenk_ao2 (
+	unique1 	int4,
+	unique2 	int4,
+	two 	 	int4,
+	four 		int4,
+	ten			int4,
+	twenty 		int4,
+	hundred 	int4,
+	thousand 	int4,
+	twothousand int4,
+	fivethous 	int4,
+	tenthous	int4,
+	odd			int4,
+	even		int4,
+	stringu1	name,
+	stringu2	name,
+	string4		name
+) with (appendonly=true, compression=true);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE TABLE tenk_ao3 (
+	unique1 	int4,
+	unique2 	int4,
+	two 	 	int4,
+	four 		int4,
+	ten			int4,
+	twenty 		int4,
+	hundred 	int4,
+	thousand 	int4,
+	twothousand int4,
+	fivethous 	int4,
+	tenthous	int4,
+	odd			int4,
+	even		int4,
+	stringu1	name,
+	stringu2	name,
+	string4		name
+) with (appendonly=true, compression=true, compresslevel=6);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+-------------------- 
+-- catalog checks
+--------------------
+-- check reloptions
+SELECT relkind, reloptions FROM pg_class WHERE relname LIKE 'tenk_ao%' ORDER BY relname;
+ relkind |                     reloptions                     
+---------+----------------------------------------------------
+ a       | {appendonly=true}
+ a       | {appendonly=true,compression=true}
+ a       | {appendonly=true,compression=true,compresslevel=6}
+(3 rows)
+
+-- check pg_appendonly for correct number of entries
+SELECT count(*) FROM pg_appendonly;
+ count 
+-------
+     3
+(1 row)
+
+-- make sure relfilenode is the same in pg_class and pg_appendonly for all tables
+SELECT count(*) FROM pg_class c, pg_appendonly a WHERE c.relkind='a' AND  c.relfilenode=a.relfilenode;
+ count 
+-------
+     3
+(1 row)
+
+-- TRUNCATE and make sure new relfilenode is updated in pg_appendonly
+TRUNCATE tenk_ao1;
+SELECT count(*) FROM pg_class c, pg_appendonly a WHERE c.relkind='a' AND  c.relfilenode=a.relfilenode;
+ count 
+-------
+     3
+(1 row)
+
+-------------------- 
+-- supported sql
+--------------------
+-- COPY
+COPY tenk_heap FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_ao1 FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_ao2 FROM '@abs_srcdir@/data/tenk.data';
+COPY tenk_ao3 FROM '@abs_srcdir@/data/tenk.data';
+-- SELECT
+SELECT count(*) FROM tenk_heap;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao1;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao2;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao3;
+ count 
+-------
+ 10000
+(1 row)
+
+-- INSERT SELECT
+INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
+INSERT INTO tenk_ao2 SELECT * FROM tenk_heap;
+INSERT INTO tenk_ao3 SELECT * FROM tenk_heap;
+-- mix and match some
+INSERT INTO tenk_ao1 SELECT * FROM tenk_ao1;
+INSERT INTO tenk_ao2 SELECT * FROM tenk_ao3;
+INSERT INTO tenk_ao3 SELECT * FROM tenk_ao2;
+-- SELECT
+SELECT count(*) FROM tenk_heap;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao1;
+ count 
+-------
+ 40000
+(1 row)
+
+SELECT count(*) FROM tenk_ao2;
+ count 
+-------
+ 40000
+(1 row)
+
+SELECT count(*) FROM tenk_ao3;
+ count 
+-------
+ 60000
+(1 row)
+
+--
+-- Test that the catalog eof entry doesn't change even if the file gets
+-- larger due to bad data that isn't cleaned up until the next VACUUM. 
+-- make sure the SELECT stops at eof (count is the same). 
+-- The first row is good (so it grows the file), the second is bad.
+--
+COPY tenk_ao1 FROM STDIN;
+ERROR:  missing data for column "unique2"
+CONTEXT:  COPY tenk_ao1, line 2: "bad data row"
+COPY tenk_ao2 FROM STDIN;
+ERROR:  missing data for column "unique2"
+CONTEXT:  COPY tenk_ao2, line 2: "bad data row"
+COPY tenk_ao3 FROM STDIN;
+ERROR:  missing data for column "unique2"
+CONTEXT:  COPY tenk_ao3, line 2: "bad data row"
+SELECT count(*) FROM tenk_ao1;
+ count 
+-------
+ 40000
+(1 row)
+
+SELECT count(*) FROM tenk_ao2;
+ count 
+-------
+ 40000
+(1 row)
+
+SELECT count(*) FROM tenk_ao3;
+ count 
+-------
+ 60000
+(1 row)
+
+-- DROP
+DROP TABLE tenk_ao1;
+DROP TABLE tenk_ao2;
+DROP TABLE tenk_ao3;
+-- CTAS
+CREATE TABLE tenk_ao1 with(appendonly=true) AS SELECT * FROM tenk_heap;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE TABLE tenk_ao2 with(appendonly=true, compression=true) AS SELECT * FROM tenk_heap;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+CREATE TABLE tenk_ao3 with(appendonly=true, compression=true, compresslevel=6) AS SELECT * FROM tenk_heap;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+SELECT relkind, reloptions FROM pg_class WHERE relname LIKE 'tenk_ao%' ORDER BY relname;
+ relkind |                     reloptions                     
+---------+----------------------------------------------------
+ a       | {appendonly=true}
+ a       | {appendonly=true,compression=true}
+ a       | {appendonly=true,compression=true,compresslevel=6}
+(3 rows)
+
+SELECT count(*) FROM tenk_ao1;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao2;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao3;
+ count 
+-------
+ 10000
+(1 row)
+
+-- VACUUM
+VACUUM tenk_ao1;
+VACUUM tenk_ao2;
+VACUUM tenk_ao3;
+VACUUM FULL tenk_ao1;
+NOTICE:  'VACUUM FULL' is not safe for large tables and has been known to yield unpredictable runtimes.
+HINT:  Use 'VACUUM' instead.
+ANALYZE tenk_ao2;
+VACUUM ANALYZE tenk_ao3;
+SELECT count(*) FROM tenk_ao1;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao2;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao3;
+ count 
+-------
+ 10000
+(1 row)
+
+-- JOIN
+SELECT count(*) FROM tenk_ao1 t1, tenk_ao2 t2 where t1.unique1 = t2.unique2;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT count(*) FROM tenk_ao1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
+ count 
+-------
+ 10000
+(1 row)
+
+-- TRUNCATE
+TRUNCATE tenk_ao1;
+-------------------- 
+-- unsupported sql 
+--------------------
+-- DELETE (not supported)
+DELETE FROM tenk_ao2 WHERE unique2 = 1;
+ERROR:  Append-only tables are not updatable. Operation not permitted.
+-- UPDATE (not supported)
+UPDATE tenk_ao2 SET unique2 = 1 WHERE unique2 = 2;
+ERROR:  Append-only tables are not updatable. Operation not permitted.
+-- CREATE INDEX (not supported)
+CREATE INDEX tenk_ao1_unique1 ON tenk_ao1 USING btree(unique1 int4_ops);
+ERROR:  cannot create indexes on append only tables yet.
+-------------------- 
+-- supported sql 
+--------------------
+DROP TABLE tenk_heap;
+DROP TABLE tenk_ao1;
+DROP TABLE tenk_ao2;
+DROP TABLE tenk_ao3;
+-------------------- 
+-- catalog check 
+--------------------
+SELECT count(*) FROM pg_appendonly;
+ count 
+-------
+     0
+(1 row)
+

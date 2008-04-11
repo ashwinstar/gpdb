@@ -582,7 +582,8 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 
 		/* Consider only regular and toast tables. */
 		if (classForm->relkind != RELKIND_RELATION &&
-			classForm->relkind != RELKIND_TOASTVALUE)
+			classForm->relkind != RELKIND_TOASTVALUE &&
+			classForm->relkind != RELKIND_APPEND_ONLY)
 			continue;
 
 		/*

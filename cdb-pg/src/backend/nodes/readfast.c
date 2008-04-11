@@ -1638,6 +1638,7 @@ _readCreateStmt(const char ** str)
 			local_node->relKind == RELKIND_TOASTVALUE || 
 			local_node->relKind == RELKIND_VIEW ||
 			local_node->relKind == RELKIND_EXTERNAL || 
+			local_node->relKind == RELKIND_APPEND_ONLY ||
 			local_node->relKind == RELKIND_COMPOSITE_TYPE); 
 	Assert(local_node->oncommit <= ONCOMMIT_DROP);
 
@@ -2248,6 +2249,19 @@ _readSeqScan(const char ** str)
 
 	readScanInfo(str, (Scan *)local_node);
 
+	READ_DONE();
+}
+
+/*
+ * _readAppendOnlyScan
+ */
+static AppendOnlyScan *
+_readAppendOnlyScan(const char ** str)
+{
+	READ_LOCALS(AppendOnlyScan);
+	
+	readScanInfo(str, (Scan *)local_node);
+	
 	READ_DONE();
 }
 
@@ -3067,6 +3081,9 @@ readNodeBinary(const char ** str)
 			case T_SeqScan:
 				return_value = _readSeqScan(str);
 				break;
+			case T_AppendOnlyScan:
+				return_value = _readAppendOnlyScan(str);
+				break;				
 			case T_ExternalScan:
 				return_value = _readExternalScan(str);
 				break;

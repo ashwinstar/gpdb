@@ -371,6 +371,21 @@ typedef struct ExternalScan
 
 } ExternalScan;
 
+/* ----------------
+ * AppendOnly Scan node
+ * 
+ * Field scan.scanrelid is the index of the append only relation for
+ * this node.
+ *
+ * ----------------
+ */
+typedef struct AppendOnlyScan
+{
+	Scan		scan;
+	/* nothing for now... */
+	
+} AppendOnlyScan;
+
 /*
  * ==========
  * Join nodes

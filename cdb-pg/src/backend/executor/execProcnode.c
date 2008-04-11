@@ -89,6 +89,7 @@
 #include "executor/nodeBitmapIndexscan.h"
 #include "executor/nodeBitmapOr.h"
 #include "executor/nodeExternalscan.h"
+#include "executor/nodeAppendOnlyscan.h"
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeGroup.h"
 #include "executor/nodeHash.h"
@@ -182,6 +183,11 @@ ExecInitNode(Plan *node, EState *estate, int eflags)
 		case T_SeqScan:
 			result = (PlanState *) ExecInitSeqScan((SeqScan *) node,
 												   estate, eflags);
+			break;
+			
+		case T_AppendOnlyScan:
+			result = (PlanState *) ExecInitAppendOnlyScan((AppendOnlyScan *) node,
+														  estate, eflags);
 			break;
 			
 		case T_ExternalScan:
@@ -435,6 +441,10 @@ ExecProcNode(PlanState *node)
 			result = ExecIndexScan((IndexScanState *) node);
 			break;
 
+		case T_AppendOnlyScanState:
+			result = ExecAppendOnlyScan((AppendOnlyScanState *) node);
+			break;
+			
 		case T_ExternalScanState:
 			result = ExecExternalScan((ExternalScanState *) node);
 			break;
@@ -635,6 +645,9 @@ ExecCountSlotsNode(Plan *node)
 			 */
 		case T_SeqScan:
 			return ExecCountSlotsSeqScan((SeqScan *) node);
+
+		case T_AppendOnlyScan:
+			return ExecCountSlotsAppendOnlyScan((AppendOnlyScan *) node);
 
 		case T_ExternalScan:
 			return ExecCountSlotsExternalScan((ExternalScan *) node);
@@ -849,6 +862,10 @@ ExecEndNode(PlanState *node)
 		case T_ExternalScanState:
 			ExecEndExternalScan((ExternalScanState *) node);
 			break;			
+
+		case T_AppendOnlyScanState:
+			ExecEndAppendOnlyScan((AppendOnlyScanState *) node);
+			break;
 
 		case T_BitmapIndexScanState:
 			ExecEndBitmapIndexScan((BitmapIndexScanState *) node);

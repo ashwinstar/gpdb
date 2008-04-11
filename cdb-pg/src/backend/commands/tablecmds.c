@@ -352,6 +352,9 @@ DefineRelation_int(CreateStmt *stmt,
 	List	   *inheritOids;
 	List	   *old_constraints;
 	bool		localHasOids;
+	bool		appendOnlyRel; /* was appendonly relation requested? */
+	bool		compressedRel; /* was compression requested? */
+	int			compressLevel; /* compression level 1-9 */
 	int			parentOidCount;
 	List	   *rawDefaults;
 	Datum		reloptions;
@@ -421,6 +424,16 @@ DefineRelation_int(CreateStmt *stmt,
 	reloptions = transformRelOptions((Datum) 0, stmt->options, true, false);
 
 	(void) heap_reloptions(relkind, reloptions, true);
+
+	/*
+	 * Was "appendonly" specified in the relopts? If yes, fix our relkind.
+	 */
+	appendOnlyRel = interpretAppendOnlyOption(stmt->options);
+	compressedRel = interpretCompressionOption(stmt->options);
+	compressLevel = interpretCompressLevelOption(stmt->options);
+	validateAppendOnlyRelOptions(appendOnlyRel, compressedRel, compressLevel, relkind);
+	if(appendOnlyRel)
+		relkind = RELKIND_APPEND_ONLY;
 
 	/* Check permissions except when using database's default */
 	if (OidIsValid(tablespaceId))
@@ -1286,8 +1299,9 @@ ExecuteTruncate(TruncateStmt *stmt)
 static void
 truncate_check_rel(Relation rel)
 {
-	/* Only allow truncate on regular tables */
-	if (rel->rd_rel->relkind != RELKIND_RELATION)
+	/* Only allow truncate on regular or append-only tables */
+	if (rel->rd_rel->relkind != RELKIND_RELATION && 
+		rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
 	{
 		if (rel->rd_rel->relkind == RELKIND_EXTERNAL)
 			ereport(ERROR,
@@ -3665,6 +3679,13 @@ ATSimplePermissions(Relation rel, bool allowView)
 							RelationGetRelationName(rel)),
 					 errhint("drop the external relation and re-create it with your changes")));
 		}		
+		else if (rel->rd_rel->relkind == RELKIND_APPEND_ONLY)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+					 errmsg("altering an append-only relation (\"%s\") is not yet supported",
+							RelationGetRelationName(rel))));
+		}
 		else if (allowView)
 		{
 			if (rel->rd_rel->relkind != RELKIND_VIEW)
@@ -6547,6 +6568,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 		case RELKIND_RELATION:
 		case RELKIND_VIEW:
 		case RELKIND_EXTERNAL:
+		case RELKIND_APPEND_ONLY:
 			/* ok to change owner */
 			break;
 		case RELKIND_INDEX:
@@ -8146,6 +8168,12 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 		
 		/* get reject limit */
 		rejectlimit = singlerowerrorDesc->rejectlimit;
+		
+		if(rejectlimit < 2)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Segment reject limit for single row error handling "
+							"must be 2 or larger (got %d)", rejectlimit)));
 		
 		/* get reject limit type - (r)ows or (p)ercent */
 		rejectlimittype = (singlerowerrorDesc->is_limit_in_rows ? 'r' : 'p');

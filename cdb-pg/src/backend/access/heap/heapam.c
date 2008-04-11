@@ -2041,13 +2041,10 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
  */
 Oid
 heap_insert(Relation relation, HeapTuple tup, CommandId cid,
-			bool use_wal, bool use_fsm, bool freeze)
+			bool use_wal, bool use_fsm, TransactionId xid)
 {
-	TransactionId xid;
 	HeapTuple	heaptup;
 	Buffer		buffer;
-
-	xid = (freeze ? FrozenTransactionId : GetCurrentTransactionId());
 
 	if (relation->rd_rel->relhasoids)
 	{
@@ -2148,20 +2145,8 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 Oid
 simple_heap_insert(Relation relation, HeapTuple tup)
 {
-	return heap_insert(relation, tup, GetCurrentCommandId(), true, true, false);
-}
-
-/*
- *	freeze_heap_insert - insert a tuple and freeze it (always visible).
- *
- * Same as simple_heap_insert, but without a default command id and also
- * passing in a 'freeze' request so that heap_insert will set the MVCC
- * information accordingly.
- */
-Oid
-freeze_heap_insert(Relation relation, HeapTuple tup)
-{
-	return heap_insert(relation, tup, GetCurrentCommandId(), true, true, true);
+	return heap_insert(relation, tup, GetCurrentCommandId(), 
+					   true, true, GetCurrentTransactionId());
 }
 
 /*

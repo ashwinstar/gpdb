@@ -379,6 +379,14 @@ _outSeqScan(StringInfo str, SeqScan *node)
 }
 
 static void
+_outAppendOnlyScan(StringInfo str, AppendOnlyScan *node)
+{
+	WRITE_NODE_TYPE("APPENDONLYSCAN");
+	
+	_outScanInfo(str, (Scan *) node);
+}
+
+static void
 _outExternalScan(StringInfo str, ExternalScan *node)
 {
 	WRITE_NODE_TYPE("EXTERNALSCAN");
@@ -2952,6 +2960,9 @@ _outNode(StringInfo str, void *obj)
 			case T_SeqScan:
 				_outSeqScan(str, obj);
 				break;
+			case T_AppendOnlyScan:
+				_outAppendOnlyScan(str, obj);
+				break;				
 			case T_ExternalScan:
 				_outExternalScan(str, obj);
 				break;								

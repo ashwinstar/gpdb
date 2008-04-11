@@ -722,6 +722,14 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("External tables are read only. Operation not permitted.")));
 	
+	/* Append Only relations are read and insert only */
+	if (pstate->p_target_relation->rd_rel->relkind == RELKIND_APPEND_ONLY &&
+		requiredPerms != ACL_SELECT && requiredPerms != ACL_INSERT)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Append-only tables are not updatable. Operation not permitted.")));
+	
+	
 	if (pstate->p_is_insert && !pstate->p_is_update)
 		LockRelation(pstate->p_target_relation, RowExclusiveLock);
 	else
@@ -805,6 +813,74 @@ interpretOidsOption(List *defList)
 
 	/* OIDS option was not specified, so use default. */
 	return default_with_oids;
+}
+
+/*
+ * Given a relation-options list (of DefElems), return true iff the specified
+ * table/result set should be created as an append-only relation. This function
+ * is the same as interpretOidsOption() above, but looks for "appendonly".
+ */
+bool
+interpretAppendOnlyOption(List *defList)
+{
+	ListCell   *cell;
+	
+	/* Scan list to see if appendonly was included */
+	foreach(cell, defList)
+	{
+		DefElem    *def = (DefElem *) lfirst(cell);
+		
+		if (pg_strcasecmp(def->defname, "appendonly") == 0)
+			return defGetBoolean(def);
+	}
+	
+	/* appendonly option was not specified, so use default - false. */
+	return false;
+}
+
+/*
+ * Given a relation-options list (of DefElems), return true iff the specified
+ * table/result set was defined with "compressed=true" option. This function
+ * is the same as interpretOidsOption() above, but looks for "compression".
+ */
+bool
+interpretCompressionOption(List *defList)
+{
+	ListCell   *cell;
+	
+	/* Scan list to see if comp[ression was included */
+	foreach(cell, defList)
+	{
+		DefElem    *def = (DefElem *) lfirst(cell);
+		
+		if (pg_strcasecmp(def->defname, "compression") == 0)
+			return defGetBoolean(def);
+	}
+	
+	/* compression option was not specified, so use default - false. */
+	return false;
+}
+
+/*
+ * Given a relation-options list (of DefElems), return the compression level
+ * iff the specified table/result set was defined with "compresslevel=N" option. 
+ */
+int
+interpretCompressLevelOption(List *defList)
+{
+	ListCell   *cell;
+	
+	/* Scan list to see if comp[ression was included */
+	foreach(cell, defList)
+	{
+		DefElem    *def = (DefElem *) lfirst(cell);
+		
+		if (pg_strcasecmp(def->defname, "compresslevel") == 0)
+			return (int)defGetNumeric(def);
+	}
+	
+	/* compresslevel option was not specified, so use default - 0. */
+	return 0;
 }
 
 /*

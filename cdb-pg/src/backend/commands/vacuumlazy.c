@@ -44,18 +44,25 @@
  */
 #include "postgres.h"
 
+#include <sys/file.h>
 #include <math.h>
 
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/transam.h"
+#include "access/appendonlyam.h"
 #include "commands/vacuum.h"
+#include "catalog/catalog.h"
+#include "catalog/pg_appendonly.h"
+#include "catalog/indexing.h"
 #include "miscadmin.h"
 #include "pgstat.h"
 #include "storage/freespace.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/pg_rusage.h"
+#include "utils/fmgroids.h"
+#include "storage/smgr.h"
 
 #include "cdb/cdbvars.h"
 
@@ -150,6 +157,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	Relation   *Irel;
 	int			nindexes;
 	BlockNumber possibly_freeable;
+	char		relkind = onerel->rd_rel->relkind;
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -159,38 +167,51 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	if (Gp_role == GP_ROLE_DISPATCH)
 		elevel = DEBUG2; /* vacuum and analyze messages aren't interesting from the QD */
 
-	vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
-						  &OldestXmin, &FreezeLimit);
-
 	vacrelstats = (LVRelStats *) palloc0(sizeof(LVRelStats));
-
-	/* Set threshold for interesting free space = average request size */
-	/* XXX should we scale it up or down?  Adjust vacuum.c too, if so */
-	vacrelstats->threshold = GetAvgFSMRequestSize(&onerel->rd_node);
-
-	/* Open all indexes of the relation */
-	vac_open_indexes(onerel, RowExclusiveLock, &nindexes, &Irel);
-	vacrelstats->hasindex = (nindexes > 0);
-
-	/* Do the vacuuming */
-	lazy_scan_heap(onerel, vacrelstats, Irel, nindexes);
-
-	/* Done with indexes */
-	vac_close_indexes(nindexes, Irel, NoLock);
-
+	
 	/*
-	 * Optionally truncate the relation.
-	 *
-	 * Don't even think about it unless we have a shot at releasing a goodly
-	 * number of pages.  Otherwise, the time taken isn't worth it.
+	 * Execute the various vaccum operations. Appendonly tables are treated
+	 * differently as they are not heap based and have no indexes.
 	 */
-	possibly_freeable = vacrelstats->rel_pages - vacrelstats->nonempty_pages;
-	if (possibly_freeable >= REL_TRUNCATE_MINIMUM ||
-		possibly_freeable >= vacrelstats->rel_pages / REL_TRUNCATE_FRACTION)
-		lazy_truncate_heap(onerel, vacrelstats);
+	if(relkind != RELKIND_APPEND_ONLY)
+	{
+		vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
+							  &OldestXmin, &FreezeLimit);
+		
+		/* Set threshold for interesting free space = average request size */
+		/* XXX should we scale it up or down?  Adjust vacuum.c too, if so */
+		vacrelstats->threshold = GetAvgFSMRequestSize(&onerel->rd_node);
 
-	/* Update shared free space map with final free space info */
-	lazy_update_fsm(onerel, vacrelstats);
+		/* Open all indexes of the relation */
+		vac_open_indexes(onerel, RowExclusiveLock, &nindexes, &Irel);
+		vacrelstats->hasindex = (nindexes > 0);
+
+		/* Do the vacuuming */
+		lazy_scan_heap(onerel, vacrelstats, Irel, nindexes);
+
+		/* Done with indexes */
+		vac_close_indexes(nindexes, Irel, NoLock);
+
+		/*
+		 * Optionally truncate the relation.
+		 *
+		 * Don't even think about it unless we have a shot at releasing a goodly
+		 * number of pages.  Otherwise, the time taken isn't worth it.
+		 */
+		possibly_freeable = vacrelstats->rel_pages - vacrelstats->nonempty_pages;
+		if (possibly_freeable >= REL_TRUNCATE_MINIMUM ||
+			possibly_freeable >= vacrelstats->rel_pages / REL_TRUNCATE_FRACTION)
+			lazy_truncate_heap(onerel, vacrelstats);
+
+		/* Update shared free space map with final free space info */
+		lazy_update_fsm(onerel, vacrelstats);
+	}
+	else
+	{
+		/* append-only relation. has a special path */
+		vacuum_appendonly_rel(onerel, vacrelstats, /* FULL */ false);
+		
+	}
 
 	/* Update statistics in pg_class */
 	vac_update_relstats(onerel,
@@ -816,6 +837,170 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 					old_rel_pages, new_rel_pages),
 			 errdetail("%s.",
 					   pg_rusage_show(&ru0))));
+}
+
+/*
+ *	vacuum_appendonly_rel() -- vaccum an append-only relation
+ *
+ *		This prodecure will be what gets executed both for VACUUM
+ *		and VACUUM FULL (and also ANALYZE or any other thing that
+ *		needs the pg_class stats updated).
+ *
+ *		In here we don't really vacuum nor scan anything per-se. We 
+ *		already have the information that we need in pg_appendonly
+ *		catalog on each segment. We are interested in reltuples and
+ *		relpages. reltuples is the same as "pg_appendonly:tupcount"
+ *		column and we simulate relpages by subdividing the eof value
+ *		("pg_appendonly:eof") over the defined page size.
+ *
+ *		If FULL, we also truncate any leftover bytes that come after eof
+ *		and are not a valid part of the relation (for example invalid rows
+ *		that were left over after a failed COPY operation and needs
+ *		vacuuming).
+ *
+ *		There are no indexes, txn ids, hint bits, free space, dead tuples,
+ *		etc. these are all irrelevant in the append only relation context.
+ */
+void
+vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
+{
+	Relation	pg_appendonly_rel;
+	TupleDesc	pg_appendonly_dsc;
+	HeapTuple	tuple;
+	ScanKeyData	key;
+	SysScanDesc	aoscan;
+	Datum		eof,
+				tupcount;
+	bool		isNull;
+	BlockNumber nblocks;
+	char	   *relname;
+	double		num_tuples;
+	double		totalbytes;
+	Oid			relfilenode;
+	char	   *path;
+	File		relfile;
+	PGRUsage	ru0;
+		
+	pg_rusage_init(&ru0);
+	
+	relname = RelationGetRelationName(aorel);
+	ereport(elevel,
+			(errmsg("vacuuming \"%s.%s\"",
+					get_namespace_name(RelationGetNamespace(aorel)),
+					relname)));
+	
+	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
+	pg_appendonly_dsc = RelationGetDescr(pg_appendonly_rel);
+	
+	relfilenode = aorel->rd_node.relNode;
+	Assert(relfilenode != InvalidOid);
+	
+	
+	ScanKeyInit(&key,
+				Anum_pg_appendonly_relfilenode,
+				BTEqualStrategyNumber,
+				F_OIDEQ,
+				ObjectIdGetDatum(relfilenode));
+	
+    aoscan = systable_beginscan(pg_appendonly_rel, 
+								AppendOnlyRelfilenodeIndexId, 
+								true,
+								SnapshotNow, 
+								1, 
+								&key);
+	
+    tuple = systable_getnext(aoscan);
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("append-only table entry with relfilenode \"%d\" does not exist",
+						relfilenode)));
+	
+	/* get eof */
+	eof = heap_getattr(tuple, 
+					   Anum_pg_appendonly_eof, 
+					   pg_appendonly_rel->rd_att, 
+					   &isNull);
+
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid eof value: NULL")));	
+	
+	/* get tupcount */
+	tupcount = heap_getattr(tuple, 
+							Anum_pg_appendonly_tupcount, 
+							pg_appendonly_rel->rd_att, 
+							&isNull);
+	
+	if(isNull)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("got invalid tupcount value: NULL")));	
+	
+	/* Finish up scan */
+	systable_endscan(aoscan);
+	
+	heap_close(pg_appendonly_rel, RowExclusiveLock);
+
+	/* calculate the values we care about */
+	num_tuples = (double)DatumGetFloat8(tupcount);
+	totalbytes = (double)DatumGetFloat8(eof);
+	nblocks = (uint32)RelationGuessNumberOfBlocks(totalbytes);
+	
+	/* 
+	 * if VACUUM FULL we want to also truncate the relation after eof.
+	 * This must only be done when the relation is exclusively locked
+	 * or otherwise we can truncate concurrent user's data while he's
+	 * in the process of writing it! Therefore allowed in FULL only.
+	 */
+	if(isVacFull)
+	{
+		/* FULL */
+		
+		/* Open the relation file */
+		path = relpath(aorel->rd_node);	
+		relfile = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
+				
+		if (FileTruncate(relfile, (long)DatumGetFloat8(eof)) < 0)
+			ereport(elevel,
+					(errmsg("\"%s\": failed to remove data after eof", relname)));
+		
+		if(relfile > 0)
+			FileClose(relfile);	
+
+		/* fill in remaining VRelStats values */
+		((VRelStats *)vacrelstats)->rel_pages = nblocks;
+		((VRelStats *)vacrelstats)->rel_tuples = num_tuples;
+		((VRelStats *)vacrelstats)->hasindex = false;		
+		((VRelStats *)vacrelstats)->min_tlen = 0;
+		((VRelStats *)vacrelstats)->max_tlen = 0;
+		((VRelStats *)vacrelstats)->num_vtlinks = 0;
+		((VRelStats *)vacrelstats)->vtlinks = NULL;
+	}
+	else
+	{
+		/* LAZY */
+		
+		/* fill in remaining LVRelStats values */
+		((LVRelStats *)vacrelstats)->rel_pages = nblocks;
+		((LVRelStats *)vacrelstats)->rel_tuples = num_tuples;
+		((LVRelStats *)vacrelstats)->hasindex = false;				
+		((LVRelStats *)vacrelstats)->nonempty_pages = 0;
+		((LVRelStats *)vacrelstats)->num_dead_tuples = 0;
+		((LVRelStats *)vacrelstats)->max_dead_tuples = 0;
+		((LVRelStats *)vacrelstats)->tuples_deleted = 0;
+		((LVRelStats *)vacrelstats)->tot_free_pages = 0;
+		((LVRelStats *)vacrelstats)->fs_is_heap = false;
+		((LVRelStats *)vacrelstats)->num_free_pages = 0;
+		((LVRelStats *)vacrelstats)->max_free_pages = 0;
+		((LVRelStats *)vacrelstats)->pages_removed = 0;
+	}
+	
+	ereport(elevel,
+			(errmsg("\"%s\": found %.0f rows in %u pages. %s",
+					relname, num_tuples, nblocks,
+					(isVacFull ? "truncated unused data after eof." : ""))));
 }
 
 /*

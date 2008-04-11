@@ -199,6 +199,7 @@ plan_tree_walker(Node *node,
 
 		case T_SeqScan:
 		case T_ExternalScan:
+		case T_AppendOnlyScan:
 		case T_BitmapHeapScan:
 		case T_FunctionScan:
 		case T_ValuesScan:
@@ -630,6 +631,18 @@ plan_tree_mutator(Node *node,
 			}
 			break;
 
+		case T_AppendOnlyScan:
+			{
+				AppendOnlyScan    *appendonlyscan = (AppendOnlyScan *) node;
+				AppendOnlyScan    *newappendonlyscan;
+				
+				FLATCOPY(newappendonlyscan, appendonlyscan, AppendOnlyScan);
+				SCANMUTATE(newappendonlyscan, appendonlyscan);
+				/* (for now) A AppendOnlyScan is really just a Scan, so we're done. */
+				return (Node *) newappendonlyscan;
+			}
+			break;
+			
 		case T_ExternalScan:
 			{
 				ExternalScan    *extscan = (ExternalScan *) node;

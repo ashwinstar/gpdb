@@ -17,11 +17,13 @@
 #include <math.h>
 
 #include "access/heapam.h"
+#include "access/appendonlyam.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_appendonly.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -82,6 +84,9 @@ static void compute_index_stats(Relation onerel, double totalrows,
 static VacAttrStats *examine_attribute(Relation onerel, int attnum);
 static int acquire_sample_rows(Relation onerel, HeapTuple *rows,
 					int targrows, double *totalrows, double *totaldeadrows);
+static int acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
+								  double *totalrows, double *totaldeadrows,
+								  double *totalbytes);
 static double random_fract(void);
 static double init_selection_state(int n);
 static double get_next_S(double t, int n, double *stateptr);
@@ -113,8 +118,10 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	int			targrows,
 				numrows;
 	double		totalrows,
-				totaldeadrows;
+				totaldeadrows,
+				totalbytes;
 	HeapTuple  *rows;
+	bool		is_appendonly;
 	Oid			save_userid;
 	bool		save_secdefcxt;
 
@@ -156,6 +163,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	if (!onerel)
 		return;
 
+	is_appendonly = (onerel->rd_rel->relkind == RELKIND_APPEND_ONLY ? true : false);
+
 	/*
 	 * Check permissions --- this should match vacuum's check!
 	 */
@@ -176,7 +185,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 * Check that it's a plain table; we used to do this in get_rel_oids() but
 	 * seems safer to check after we've locked the relation.
 	 */
-	if (onerel->rd_rel->relkind != RELKIND_RELATION)
+	if (onerel->rd_rel->relkind != RELKIND_RELATION && !is_appendonly)
 	{
 		/* No need for a WARNING if we already complained during VACUUM */
 		if (!vacstmt->vacuum)
@@ -375,8 +384,14 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 * Acquire the sample rows
 	 */
 	rows = (HeapTuple *) palloc(targrows * sizeof(HeapTuple));
-	numrows = acquire_sample_rows(onerel, rows, targrows,
-								  &totalrows, &totaldeadrows);
+	if(!is_appendonly)
+		numrows = acquire_sample_rows(onerel, rows, targrows,
+									  &totalrows, &totaldeadrows);
+	else
+		numrows = acquire_sample_ao_rows(onerel, rows, targrows,
+										 &totalrows, &totaldeadrows,
+										 &totalbytes);
+
 
 	/*
 	 * Compute the statistics.	Temporary results during the calculations for
@@ -446,8 +461,12 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 */
 	if (!vacstmt->vacuum)
 	{
+		BlockNumber numblocks = (is_appendonly ? 
+								 RelationGuessNumberOfBlocks(totalbytes) : 
+								 RelationGetNumberOfBlocks(onerel));
+			
 		vac_update_relstats(onerel,
-							RelationGetNumberOfBlocks(onerel),
+							numblocks,
 							totalrows, hasindex,
 							InvalidTransactionId);
 
@@ -961,6 +980,140 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 					liverows, deadrows,
 					numrows, *totalrows)));
 
+	return numrows;
+}
+
+/*
+ * acquire_sample_ao_rows -- same as acquire_sample_rows but designed
+ * specifically for append only tables.
+ *
+ * Since append only tables have a very different storage than heap tables
+ * and since it can not be randomly accessed we need a separate routine for
+ * append only tables column level analysis and statistics.
+ *
+ * In here we try to stick with Vitter's algorithms and using a reservoir 
+ * while calculating the number of tuples to skip as we go. The main change
+ * is that we don't sample (var)block numbers. Since varblocks vary in size
+ * (unlike heap table blocks) we may theoretically choose to sample varblocks
+ * of size 1 tuple if such exist (idealy they won't but it's possible). But,
+ * we could probably come up with a way of getting this done better/faster 
+ * if we see that it's slower than heap tables analysis. For now keep it simple.
+ * 
+ */
+static int
+acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
+					   double *totalrows, double *totaldeadrows,
+					   double *totalbytes)
+{
+	int					numrows = 0;	/* # rows collected */
+	double				liverows = 0;	/* # rows seen */
+	double				deadrows = 0;	/* # dead rows seen */
+	double				rowstoskip = -1;	/* -1 means not set yet */
+	double				rstate;
+	BlockNumber			totalvarblocks;
+	AppendOnlyEntry		*aoentry;
+	AppendOnlyScanDesc	aoscandesc = NULL;
+	
+	Assert(targrows > 1);
+	
+	/* get the catalog entry with information for this table */
+	aoentry = GetAppendOnlyEntry(onerel->rd_node.relNode);
+
+	totalvarblocks = (BlockNumber)aoentry->varblockcount;
+	*totalbytes = (double)aoentry->eof;
+	
+	/* Prepare for sampling rows */
+	rstate = init_selection_state(targrows);
+	
+	aoscandesc = appendonly_beginscan(onerel, 0, NULL);
+		
+	for(;;)
+	{
+		HeapTuple targtuple = appendonly_getnext(aoscandesc, ForwardScanDirection);
+
+		/* no more data. done */
+		if(targtuple == NULL)
+			break;
+		
+		/* check for interrupts once in a while */
+		if((int)liverows % 400 == 0)
+			vacuum_delay_point();
+		
+		/*
+		 * The first targrows live rows are simply copied into the
+		 * reservoir. Then we start replacing tuples in the sample
+		 * until we reach the end of the relation.	This algorithm is
+		 * from Jeff Vitter's paper (see full citation below). It
+		 * works by repeatedly computing the number of tuples to skip
+		 * before selecting a tuple, which replaces a randomly chosen
+		 * element of the reservoir (current set of tuples).  At all
+		 * times the reservoir is a true random sample of the tuples
+		 * we've passed over so far, so when we fall off the end of
+		 * the relation we're done.
+		 */
+		if (numrows < targrows)
+			rows[numrows++] = heap_copytuple(targtuple);
+		else
+		{
+			/*
+			 * t in Vitter's paper is the number of records already
+			 * processed.  If we need to compute a new S value, we
+			 * must use the not-yet-incremented value of liverows as
+			 * t.
+			 */
+			if (rowstoskip < 0)
+				rowstoskip = get_next_S(liverows, targrows, &rstate);
+			
+			if (rowstoskip <= 0)
+			{
+				/*
+				 * Found a suitable tuple, so save it, replacing one
+				 * old tuple at random
+				 */
+				int			k = (int) (targrows * random_fract());
+				
+				Assert(k >= 0 && k < targrows);
+				heap_freetuple(rows[k]);
+				rows[k] = heap_copytuple(targtuple);
+			}
+			
+			rowstoskip -= 1;
+		}
+		
+		liverows += 1;
+	}
+	
+	appendonly_endscan(aoscandesc);			
+
+	/* 
+	 * In the heap table version acquire_sample_rows will now sort the sample 
+	 * tuples by position (itempointer). However with AO tables we can't sort
+	 * because we have no valid TIDs to use. Kurt explains why this is ok to 
+	 * skip: The sort is used to give a (poor) indication of whether an index 
+	 * scan, in key order, will cause base rel pages to be accessed sequentially
+	 * or randomly.  With no indexes on AO tables, it's not needed. Skip it.
+	 */
+	 	
+	/*
+	 * Set total numbers of rows in relation.
+	 */
+	*totalrows = (double)aoentry->tupcount;
+	*totaldeadrows = 0;
+
+	/*
+	 * Emit some interesting relation info
+	 */
+	ereport(elevel,
+			(errmsg("\"%s\": scanned %d of %u varblocks, "
+					"containing %.0f live rows and %.0f dead rows; "
+					"%d rows in sample, %.0f total rows",
+					RelationGetRelationName(onerel),
+					totalvarblocks, totalvarblocks,
+					liverows, deadrows,
+					numrows, *totalrows)));
+	
+	pfree(aoentry);
+	
 	return numrows;
 }
 

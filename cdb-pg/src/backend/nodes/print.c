@@ -499,6 +499,8 @@ char * plannode_type(Plan *p)
 			return "SCAN";
 		case T_SeqScan:
 			return "SEQSCAN";
+		case T_AppendOnlyScan:
+			return "APPENDONLYSCAN";
 		case T_ExternalScan:
 			return "EXTERNALSCAN";
 		case T_IndexScan:

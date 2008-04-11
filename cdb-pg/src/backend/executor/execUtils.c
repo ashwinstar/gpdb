@@ -280,7 +280,8 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->primaryResults = NULL;
 	estate->mirrorResults = NULL;
 	estate->dispatchThreads = NULL;
-
+	estate->es_aoInsertDesc = NULL;
+	
 	/*
 	 * Return the executor state structure
 	 */
@@ -961,6 +962,23 @@ ExecOpenScanExternalRelation(EState *estate, Index scanrelid)
 	return relation_open(reloid, NoLock);
 }
 
+/*
+ * same as above, but for appendonly table scans.
+ */
+Relation
+ExecOpenScanAppendOnlyRelation(EState *estate, Index scanrelid)
+{
+	RangeTblEntry *rtentry;
+	Oid			reloid;
+	LOCKMODE	lockmode;
+	
+	lockmode = NoLock;
+	
+	rtentry = rt_fetch(scanrelid, estate->es_range_table);
+	reloid = rtentry->relid;
+	
+	return relation_open(reloid, NoLock);
+}
 
 /* ----------------------------------------------------------------
  *		ExecCloseScanRelation
@@ -980,13 +998,6 @@ void
 ExecCloseScanRelation(Relation scanrel)
 {
 	heap_close(scanrel, NoLock);
-}
-
-/* same as above. Used in the context of external relations */
-void
-ExecCloseScanExternalRelation(Relation scanrel)
-{
-	relation_close(scanrel, NoLock);
 }
 
 

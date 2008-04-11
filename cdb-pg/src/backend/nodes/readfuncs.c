@@ -2333,6 +2333,19 @@ _readSeqScan(void)
 }
 
 /*
+ * _readAppendOnlyScan
+ */
+static AppendOnlyScan *
+_readAppendOnlyScan(void)
+{
+	READ_LOCALS_NO_FIELDS(AppendOnlyScan);
+	
+	readScanInfo((Scan *)local_node);
+	
+	READ_DONE();
+}
+
+/*
  * _readExternalScan
  */
 static ExternalScan *
@@ -3049,6 +3062,7 @@ static ParseNodeInfo infoAr[] =
 	{"ALTERTABLECMD", (ReadFn)_readAlterTableCmd},
 	{"ALTERTABLESTMT", (ReadFn)_readAlterTableStmt},
 	{"APPEND", (ReadFn)_readAppend},
+	{"APPENDONLYSCAN", (ReadFn)_readAppendOnlyScan},
 	{"ARRAY", (ReadFn)_readArrayExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},
 	{"A_CONST", (ReadFn)_readAConst},	

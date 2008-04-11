@@ -173,6 +173,11 @@ DefineIndex(RangeVar *heapRelation,
 	relationId = RelationGetRelid(rel);
 	namespaceId = RelationGetNamespace(rel);
 
+	if(rel->rd_rel->relkind == RELKIND_APPEND_ONLY)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+				 errmsg("cannot create indexes on append only tables yet.")));
+	
 	/* Note: during bootstrap may see uncataloged relation */
 	if (rel->rd_rel->relkind != RELKIND_RELATION &&
 		rel->rd_rel->relkind != RELKIND_UNCATALOGED)
@@ -857,7 +862,6 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("cannot use window function in index expression")));
 	
-
 
 			/*
 			 * A expression using mutable functions is probably wrong, since

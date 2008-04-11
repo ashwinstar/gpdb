@@ -19,7 +19,7 @@ SUBDIRS := motion
 SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 
 OBJS = cdbanalyze.o \
-	   cdbbackup.o \
+	   cdbbackup.o cdbbufferedappend.o cdbbufferedread.o \
 	   cdbcat.o cdbcellbuf.o cdbchunkbuf.o cdbchunkpool.o cdbconn.o cdbcopy.o \
 	   cdbdisp.o cdbdispatchresult.o \
 	   cdbdistributedxid.o cdbdistributedxidmap.o cdbdistributedxacts.o \
@@ -34,9 +34,10 @@ OBJS = cdbanalyze.o \
 	   cdbplan.o cdbpullup.o \
 	   cdbrelsize.o \
 	   cdbsetop.o cdbsreh.o cdbsrlz.o cdbsubplan.o cdbsubselect.o \
+	   cdbthreadwork.o \
 	   cdbtm.o \
 	   cdbutil.o \
-	   cdbvars.o \
+	   cdbvars.o cdbvarblock.o \
 	   cdbworkfile.o
 
 ifeq ($(PORTNAME),cygwin)

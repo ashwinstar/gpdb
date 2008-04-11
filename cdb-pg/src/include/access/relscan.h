@@ -17,6 +17,8 @@
 #include "access/skey.h"
 #include "storage/bufpage.h"
 #include "utils/tqual.h"
+#include "cdb/cdbbufferedread.h"
+#include "cdb/cdbvarblock.h"
 
 
 typedef struct HeapScanDescData
@@ -127,6 +129,42 @@ typedef struct FileScanDescData
 }	FileScanDescData;
 
 typedef FileScanDescData *FileScanDesc;
+
+/*
+ * used for scan of append only relations using BufferedRead and VarBlocks
+ */
+typedef struct AppendOnlyScanDescData
+{
+	/* scan parameters */
+	Relation	aos_rd;				/* target relation descriptor */
+	Index       aos_scanrelid;
+	File	    aos_file;			/* the relation file */
+	Oid			aos_relfilenode;	/* relation file id */
+	int			aos_nkeys;			/* number of scan keys */
+	ScanKey		aos_key;			/* array of scan key descriptors */
+	bool		aos_compressed;		/* is relation stored compressed? */
+	
+	/* buffered read context */
+	BufferedRead    bufferedRead;
+	VarBlockReader  varBlockReader;
+#define MAX_VARBLOCK_BUF_LEN 50000
+	uint8			varBlockBuffer[MAX_VARBLOCK_BUF_LEN]; /* for decompression */
+
+	int32           bufferCount;
+	int				readerItemCount;
+	int				currentItemCount;
+	
+	/* current scan state */
+	bool		bufferDone;
+	bool		aos_inited;		/* false = scan not init'd yet */
+	TupleDesc	aos_tupDesc;
+	HeapTupleData aos_ctup;		/* current tuple in scan, if any */
+	
+	PgStat_Info aos_pgstat_info; /* statistics collector hook */
+	
+}	AppendOnlyScanDescData;
+
+typedef AppendOnlyScanDescData *AppendOnlyScanDesc;
 
 /*
  * HeapScanIsValid
