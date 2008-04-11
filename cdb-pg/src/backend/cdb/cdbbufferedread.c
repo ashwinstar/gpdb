@@ -151,7 +151,7 @@ static void BufferedReadIo(
 		
 	if (currentReadPosition != bufferedRead->position)
 	{
-		fprintf(stderr,"Current position mismatch actual %lld, expected %lld",
+		fprintf(stderr,"Current position mismatch actual " INT64_FORMAT ", expected " INT64_FORMAT,
 			    currentReadPosition, bufferedRead->position);
 		exit(1);
 	}
@@ -164,7 +164,7 @@ static void BufferedReadIo(
 		
 	if (currentReadPosition != bufferedRead->position)
 	{
-		elog(ERROR, "Current position mismatch actual %lld, expected %lld",
+		elog(ERROR, "Current position mismatch actual " INT64_FORMAT ", expected " INT64_FORMAT,
 			    currentReadPosition, bufferedRead->position);
 	}
 #endif

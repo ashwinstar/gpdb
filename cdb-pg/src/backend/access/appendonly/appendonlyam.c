@@ -204,8 +204,8 @@ appendonlygettup(AppendOnlyScanDesc scan,
 			int32	availableLen;
 			int32	maxralen;
 			uint8  *buffer;
-			int32	compressedDataLen;
-			int32	uncompressedDataLen;
+			int32	compressedDataLen = 0;
+			int32	uncompressedDataLen = 0;
 
 			VarBlockCheckError varBlockCheckError;
 
