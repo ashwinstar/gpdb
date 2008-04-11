@@ -1353,8 +1353,7 @@ heap_drop_with_catalog(Oid relid)
 	const struct GpPolicy *policy;
 	bool		removePolicy = false;
 	bool		is_appendonly_table = false;
-	Oid			relfilenode;
-		
+	Oid			relfilenode = InvalidOid;
 	bool 		is_ext_table;
 
 	/*

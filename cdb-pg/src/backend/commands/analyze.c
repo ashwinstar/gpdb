@@ -119,7 +119,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 				numrows;
 	double		totalrows,
 				totaldeadrows,
-				totalbytes;
+				totalbytes = 0.0;
 	HeapTuple  *rows;
 	bool		is_appendonly;
 	Oid			save_userid;
