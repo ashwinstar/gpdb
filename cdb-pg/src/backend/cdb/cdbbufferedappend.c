@@ -146,7 +146,8 @@ static void BufferedAppendWrite(
 
 	if (currentWritePosition != bufferedAppend->position)
 		ereport(ERROR, (errcode_for_file_access(),
-						errmsg("Current position mismatch actual %lld, expected %lld",
+						errmsg("Current position mismatch actual "
+							   INT64_FORMAT ", expected " INT64_FORMAT,
 							   currentWritePosition, bufferedAppend->position)));
 #endif
 		
