@@ -480,10 +480,10 @@ write_auth_file(Relation rel_authid, Relation rel_authmem)
 		{
 			/*
 			 * rolvaliduntil is timestamptz, which we assume is double
-			 * alignment and pass-by-reference.
+			 * alignment and pass-by-value.
 			 */
 			off = att_align(off, 'd');
-			datum = PointerGetDatum(tp + off);
+			datum = fetch_att(tp + off, true, sizeof(TimestampTz));
 			auth_info[curr_role].rolvaliduntil = DatumGetCString(DirectFunctionCall1(timestamptz_out, datum));
 		}
 
