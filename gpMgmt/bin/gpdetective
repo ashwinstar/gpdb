@@ -37,6 +37,7 @@ def usage(exitarg = None):
     print __doc__
     sys.exit(exitarg)
 
+
 #============================================================
 class GPDetective():
     '''
@@ -49,6 +50,7 @@ class GPDetective():
     logdir = None       # Temporary directory
     errlog = None       # Error log
     tardir = None       # name of the produced tarball
+    error  = None
 
     # Configuration information
     masterdir = None    # Master Directory, assumed on this host
@@ -69,7 +71,7 @@ class GPDetective():
         self.olddir = os.getcwd()
         if not os.access('.', os.W_OK):
             sys.exit("No write permission to current directory")
-            
+        
         # Get default option values from enviornment
         self.opt = {
             '-h': os.environ.get('PGHOST') or 'localhost',
@@ -91,6 +93,10 @@ class GPDetective():
                 elif switch[1] in 'hpPU':  self.opt[switch] = val
         except Exception, e:
             usage('Error: ' + str(e))
+
+        # Before we go calling psql, we should check the path to ensure
+        # that we have everything we need.
+        self.checkPath();
 
         # If still no default port, resort to other methods
         if not self.opt['-p']:
@@ -131,8 +137,34 @@ class GPDetective():
         if self.master: self.master.close()
         if self.errlog: self.errlog.close()
         if self.logdir: subprocess.call(['rm', '-rf', self.logdir])
-        print "Done"
 
+        if self.error:
+            try:
+                raise self.error
+            except Exception, e:
+                print "INTERNAL ERROR: " + str(e)
+                print "Aborting"
+                if (d.errlog):
+                    d.errlog.write('\nINTERNAL ERROR:\n')
+                    d.errlog.write('   %s\n' % repr(e))
+                    d.errlog.write(traceback.format_exc())
+                    d.errlog.flush()
+        else:
+            print "Done"
+
+    #------------------------------------------------------------
+    def checkPath(self):
+        '''
+        Ensures that we can find all the needed utilities used by
+        the script.
+        '''
+        def cmdExists(cmd):
+            if (not self.runCmd(['which', cmd])):
+                sys.exit("Error: Could not find %s in path" % cmd)
+        cmds = ['psql', 'ssh', 'scp', 'uname', 'ls', 'date', 'tar']
+        map(cmdExists, cmds)
+        
+        
 
     #------------------------------------------------------------
     def connect(self, user=None, password=None,host=None, port=None, db=None):
@@ -145,6 +177,7 @@ class GPDetective():
         db   = db   or self.opt['-U']
         return pg8000.Connection(user=user, password=password, 
                                  host=host, port=port, database=db)
+        
 
     #------------------------------------------------------------
     def writeCmd(self, filename, cmd):
@@ -370,6 +403,11 @@ class GPDetective():
                      'master/%s.log' % m.group(1)])
         self.runCmd(['scp', '%s/postgresql.conf' % self.masterdir, 
                      'master/postgresql.conf'])
+        self.runCmd(['scp', '%s/global/pg_database' % self.masterdir, 
+                     'master/pg_database'])
+        self.runCmd(['scp', '%s/global/pg_auth' % self.masterdir, 
+                     'master/pg_pgauth'])
+
 
         # Grab segment logs and postgresql.conf        
         host_rx = re.compile('(.*)\:.*/([^/]*)')
@@ -642,20 +680,24 @@ class GPDetective():
 
 #================================================================
 
-d = GPDetective()
 try:
-    d.copyLogs()
-    d.systemInfo()
-    d.checkCatalog()
-    d.crashReport()
-    d.runExtensions()
+    d = GPDetective()
+    try:    
+        d.copyLogs()
+        d.systemInfo()
+        d.checkCatalog()
+        d.crashReport()
+        d.runExtensions()
+    except Exception, e:
+        d.error = e
+        exit(1)
+except pg8000.InterfaceError, (errno, strerror):
+    print "ERROR:" 
+    print "   Database %s: %s" % (errno, strerror)
 except Exception, e:
-    print "INTERNAL ERROR: " + str(e)
-    print "Aborting"
-    if (d.errlog):
-       d.errlog.write('\nINTERNAL ERROR:\n')
-       d.errlog.write('   %s\n' % repr(e))
-       d.errlog.write(traceback.format_exc())
-       d.errlog.flush()
+    print "ERROR:"
+    print "   Unhandled internal error:" + str(e)
+    print traceback.format_exc()
+    exit(1)
 
 exit(0);
