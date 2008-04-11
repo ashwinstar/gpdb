@@ -698,7 +698,7 @@ void get_expected_row_counts(size_t& expected_namespace_size, size_t & expected_
 void usage()
 {
 	cout << "Usage:\n";
-	cout << " verifier [OPTIONS]... \n";
+	cout << " gpcheckdb [OPTIONS]... \n";
 	cout << "  -d DBNAME       specify database name to connect to \n";
 	cout << "  -h HOSTNAME     database server host or socket directory \n";
 	cout << "  -p PORT         database server port \n";
