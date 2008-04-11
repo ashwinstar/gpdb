@@ -46,6 +46,7 @@
 
 #include <sys/file.h>
 #include <math.h>
+#include <fcntl.h>
 
 #include "access/genam.h"
 #include "access/heapam.h"
