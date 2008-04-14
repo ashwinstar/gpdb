@@ -289,11 +289,11 @@ appendonlygettup(AppendOnlyScanDesc scan,
 			if(scan->aos_compressed)
 			{	
 				int res;
-				size_t compressedSize;
-				size_t uncompressedSize;
+				unsigned long compressedSize;
+				unsigned long uncompressedSize;
 				
-				compressedSize = (size_t)bufferLen;
-				uncompressedSize = (size_t)(scan->bufferedRead).maxBufferLen;
+				compressedSize = (unsigned long)bufferLen;
+				uncompressedSize = (unsigned long)(scan->bufferedRead).maxBufferLen;
 
 #ifndef HAVE_LIBZ
 				ereport(ERROR,
@@ -931,7 +931,7 @@ doCompressAppend(BufferedAppend	*bufferedAppend,
 				 int			 compressLevel)
 {
 	uint8	*buffer;
-	size_t	 compressedSize;
+	unsigned long compressedSize;
 	int32	 compressedDataLen;
 	int32	*lengthWord;
 	int32	 roundUpLen;
@@ -944,7 +944,7 @@ doCompressAppend(BufferedAppend	*bufferedAppend,
 			 errmsg("Don't have ZLIB on the system!")));			
 #else
 	
-	compressedSize = bufferedAppend->maxBufferLen; /*Input to compress2. UNDONE: Create function to get this value. */
+	compressedSize = (unsigned long)bufferedAppend->maxBufferLen; /*Input to compress2. UNDONE: Create function to get this value. */
 	
 	if (compress2(buffer + sizeof(int32), &compressedSize, (Bytef *)sourceData, sourceLen, compressLevel) != Z_OK)
 		ereport(ERROR,
