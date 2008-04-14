@@ -227,17 +227,34 @@ class StartCmd(Command):
 
 ####################
 class StopCmd(Command):
-    '''Usage: gp stop [-s seg]'''
+    '''Usage: gp stop [-s seg] [-f] [-i]
+          -s seg  : stop the named segment only.
+          -f      : fast-shutdown mode.  All transaction in progress are interrupted and rolled back. [default: smart-shutdown mode]
+          -i      : immediate-shutdown mode [default: smart-shutdown mode]'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, 's:', self.__doc__)
+        Command.__init__(self, gopt, argv, 'ifs:', self.__doc__)
         self.opt['-s'] = None
+        self.opt['-i'] = False
+        self.opt['-f'] = False
         for (switch, val) in self.options:
             if switch == '-s': self.opt[switch] = val
+            if switch == '-i': self.opt[switch] = True
+            if switch == '-f': self.opt[switch] = True
         
+        if self.opt['-i'] and self.opt['-f']:
+            print '[ERROR] flag -i and -f cannot appear at the same time'
+            sys.exit(2)
+
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
         if (self.gopt['-a']): param['a'] = self.gopt['-a']
+        if (self.opt['-i']): 
+            param['mode'] = 'immediate'
+        elif (self.opt['-f']): 
+            param['mode'] = 'fast'
+        else:
+            param['mode'] = 'smart'
 
         packet = self._httpGet('/gpcc/stop', param)
         self.raw(packet)
