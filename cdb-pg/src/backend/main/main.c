@@ -410,8 +410,7 @@ get_current_username(const char *progname)
 	name = malloc(namesize);
 
 	if(!name)
-		ereport(ERROR, errcode(ERRCODE_OUT_OF_MEMORY),
-			errmsg("Get current username failed: out of memory"));
+		return NULL;
 
 	if (!GetUserName(name, &namesize))
 	{
