@@ -63,6 +63,7 @@ struct cmdslot_t {
 	    char *action;
 	    char *mode;
 	    char *data_dir;
+	    char *rotate_log;
 	    char *reason;
 	    apr_proc_t proc;
 	} request;

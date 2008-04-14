@@ -19,6 +19,7 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     cmdslot->u.request.port = gpcc_json_object_get_int(obj, "port", 0);
     cmdslot->u.request.mode = gpcc_json_object_get_string(obj, "mode", 0);
     cmdslot->u.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
+    cmdslot->u.request.rotate_log = gpcc_json_object_get_string(obj, "rotate_log", 0);
 
     if (cmdslot->u.request.port == 0 ||
 	cmdslot->u.request.mode == 0 ||
@@ -28,7 +29,10 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 	return 0;
     }
 
-    
+    if (cmdslot->u.request.rotate_log && 0 != (e = gpcc_pg_log_rotate(cmdslot->u.request.data_dir, cmdslot->pool))) {
+	;
+    }
+
     if (! seg_is_qd(cmdslot)) {
 	/* this is QE */
 
@@ -45,9 +49,6 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 	}
     } else {
 	/* this is QD */
-	if (0 != (e = gpcc_pg_log_rotate(cmdslot->u.request.data_dir, cmdslot->pool))) {
-	    ;
-	}
 
 	if (seg_is_master_qd(cmdslot)) {
 	    int utility = 0;
