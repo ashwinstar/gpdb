@@ -121,5 +121,5 @@ test: gpupgrade
 test: appendonly
 test: gp_hashagg
 test: gpic
-ignore: gpic_bigtup
+test: gpic_bigtup
 test: filter
