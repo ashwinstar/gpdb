@@ -185,6 +185,12 @@ if (1)
             my $vv = $bigh->{$kk};
             my $k2 = '@' . $kk . '@';
 
+            if ($kk =~ m/^(perl_osname|gpuname_p|gpisainfo|number_of_segs)$/i)
+            {
+                # these tokens are for gpexclude, not general test output
+                next;
+            }
+
             if ($kk =~ m/DLSUFFIX/ && !$glob_dlsuffix)
             {
                 # ignore if -nodlsuffix

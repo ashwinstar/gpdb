@@ -69,16 +69,45 @@ The tokens are:
  from the gp_configuration table and replaces all 
  instances of the token @hostname@.
 
-=item killall
+=item ps_pidfirst
 
- generate killall command
- pkill for solaris
- killall for other unix OS
+ generate a long ps listing with the pid first, equivalent to 
+ ps -axww on osx
 
 =item gpwhich_(executable)
 
  Find the full path for the executable and substitute.  For example, 
  @gpwhich_gpfdist@ is replaced with the full path for "gpfdist".
+
+=item gpuname_(flag)
+
+ Run "uname" with the specified flag and substitute the result.  For
+ example, @gpuname_p@ is replaced with the output of "uname -p", which
+ finds the generic processor type:
+
+=over 12
+
+=item Mac OSX intel: i386
+=item Mac OSX ppc: powerpc
+=item Linux 64: x86_64
+=item Linux 32: i686
+=item Sun Sparc: sparc
+=item Sun Solaris 64: i386
+
+=back
+
+=item gpisainfo
+
+  If on Solaris, run "isainfo" and get the real architecture, eg sparcv9
+  or amd64, else just use "uname -p".
+
+=item number_of_segs
+
+  Number of segments.
+
+=item perl_osname
+
+  Use what perl thinks the osname is.  
 
 =back
 
@@ -237,21 +266,67 @@ if (1)
         
     }
 
+
+    $psql_str = "psql ";
+    
+    $psql_str .= $glob_connect
+        if (defined($glob_connect));
+
+    $psql_str .= " -c \'select count(*) from gp_configuration where content != -1 and isprimary = true \'";
+
+    $tabdef = `$psql_str`;
+
+    $mpp_config_table = tablelizer($tabdef);
+
+    my $numsegs = 0;
+
+#   print Data::Dumper->Dump([$mpp_config_table]);
+
+    for my $rowh (@{$mpp_config_table})
+    {
+        $numsegs = $rowh->{1};
+        last;
+    }
+
+    my $numsegexp = '\\@number_of_segs\\@';
+
     my $hostexp = '\\@hostname\\@';
-    my $psexp   = '\\@killall\\@';
-    my $locps   = 'killall';
+    my $psexp   = '\\@ps_pidfirst\\@';
+    my $locps   = 'ps axww';
+
+    # get the perl osname
+    my $perlosexp = '\\@perl_osname\\@';
+    my $locperlos = $^O;
+
+    # Sun Solaris only -- use uname -p otherwise
+    my $isainfoexp = '\\@gpisainfo\\@';
+    
+    my $devn = '2>/dev/null';
+    my $isainfoloc = `which isainfo $devn`;
+    my $locisainfo = `uname -p`;
+    chomp $locisainfo;
+
+    if (length($isainfoloc) && ($isainfoloc !~ m/no isainfo/)) # on solaris
+    {
+        my $realinfo = `isainfo`;
+        chomp $realinfo;
+
+        my @foo = split(/\s+/, $realinfo);
+
+        $locisainfo = $foo[0]
+            if (scalar(@foo));
+    }
 
     if ($^O !~ /darwin|mac|osx|linux/i)
     {
-         $psexp = '\\@killall\\@';
-         $locps = 'pkill';
         # error!
     }
 
     my $gpwhich_all = `grep gpwhich_ $filnam`;
+    my $gpuname_all = `grep uname_ $filnam`;
 
 #    print "$filnam\n";
-    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm\' $filnam\n";
+    system "perl -i -ple \' s/$hostexp/$hostname/gm; s/$psexp/$locps/gm; s/$isainfoexp/$locisainfo/gm; s/$perlosexp/$locperlos/gm; s/$numsegexp/$numsegs/gm  \' $filnam\n";
 
     # replace all "which" expressions with binary
     if (defined($gpwhich_all) && length($gpwhich_all))
@@ -292,9 +367,52 @@ if (1)
                 system "perl -i -ple \' s/$whichexp/$binloc/gm;\' $filnam\n";
 
             } # end for
-        }
+        } # end if scalar foo
+    } # end if which all
 
-    }
+    # replace all "gpuname" expressions with "uname -<flag>" output
+    if (defined($gpuname_all) && length($gpuname_all))
+    {
+        my @foo = split(/\@/, $gpuname_all);
+
+#        print Data::Dumper->Dump(\@foo);
+
+        my @gpuname_list;
+
+        if (scalar(@foo))
+        {
+            for my $gpw (@foo)
+            {
+                my @flag_thing;
+
+                next
+                    if (($gpw =~ m/is\_transformed\_to/));
+
+                next
+                    unless (($gpw =~ m/gpuname\_\w/));
+
+                @flag_thing = ($gpw =~ m/gpuname\_(.*)/);
+
+                next
+                    unless (scalar(@flag_thing));
+
+                my $flag = $flag_thing[0];
+                my $binloc = `uname -$flag`;
+
+                next
+                    unless (length($binloc));
+
+                chomp $binloc;
+                $binloc = quotemeta($binloc);
+
+                my $unameexp = '\\@gpuname_' . $flag . '\\@';
+
+                system "perl -i -ple \' s/$unameexp/$binloc/gm;\' $filnam\n";
+
+            } # end for
+        }
+    } # end gpuname
+
 
     exit(0);
 }
