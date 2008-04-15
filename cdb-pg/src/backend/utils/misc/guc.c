@@ -259,7 +259,7 @@ int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
 int			tcp_keepalives_count;
 
-int			WalSendClientTimeout = 500;
+int			WalSendClientTimeout = 30000;	// 30 seconds.
 
 char 	   *data_directory;
 
@@ -2662,7 +2662,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS | GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
 		&WalSendClientTimeout,
-		500, 100, INT_MAX/1000, NULL, NULL
+		30000, 100, INT_MAX/1000, NULL, NULL
 	},
 
 	/* End-of-list marker */

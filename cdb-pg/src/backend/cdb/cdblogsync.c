@@ -25,6 +25,7 @@
 #include "cdb/cdbtm.h"
 #include "catalog/pg_control.h"
 #include "postmaster/walredoserver.h"
+#include "storage/fd.h"
 
 /*
  * There is a protocol consisting of 3 messages from primary->mirror:
@@ -366,6 +367,99 @@ cdb_close(void)
 }
 
 /*
+ * Most of this procedure is from XLogFileInit.
+ */
+static void
+createZeroFilledNewFile(char *path)
+{
+	char		tmppath[MAXPGPATH];
+	int         fd;
+	char		zbuffer[XLOG_BLCKSZ];
+	int         nbytes;
+	
+	/*
+	 * Initialize an empty (all zeroes) segment.
+	 */
+	snprintf(tmppath, MAXPGPATH, XLOGDIR "/xlogtemp.%d", (int) getpid());
+
+	unlink(tmppath);
+
+	/* do not use XLOG_SYNC_BIT here --- want to fsync only at end of fill */
+	fd = open(tmppath, O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
+			  S_IRUSR | S_IWUSR);
+	if (fd < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not create file \"%s\": %m", tmppath)));
+
+	/*
+	 * Zero-fill the file.	We have to do this the hard way to ensure that all
+	 * the file space has really been allocated --- on platforms that allow
+	 * "holes" in files, just seeking to the end doesn't allocate intermediate
+	 * space.  This way, we know that we have all the space and (after the
+	 * fsync below) that all the indirect blocks are down on disk.	Therefore,
+	 * fdatasync(2) or O_DSYNC will be sufficient to sync future writes to the
+	 * log file.
+	 */
+	MemSet(zbuffer, 0, sizeof(zbuffer));
+	for (nbytes = 0; nbytes < XLogSegSize; nbytes += sizeof(zbuffer))
+	{
+		errno = 0;
+		if ((int) write(fd, zbuffer, sizeof(zbuffer)) != (int) sizeof(zbuffer))
+		{
+			int			save_errno = errno;
+
+			/*
+			 * If we fail to make the file, delete it to release disk space
+			 */
+			unlink(tmppath);
+			/* if write didn't set errno, assume problem is no disk space */
+			errno = save_errno ? save_errno : ENOSPC;
+
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not write to file \"%s\": %m", tmppath)));
+		}
+	}
+
+	if (pg_fsync(fd) != 0)
+	{
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not fsync file \"%s\": %m", tmppath)));
+	}
+
+	if (close(fd))
+	{
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not close file \"%s\": %m", tmppath)));
+	}
+
+	if (rename(tmppath, path) < 0)
+	{
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not rename file \"%s\" to \"%s\" (initialization of log file %u, segment %u): %m",
+						tmppath, path, xlogid, xseg)));
+	}
+	
+	/*
+	 * Re-open with different open flags.
+	 */
+	xlogfilefd = open(path, O_RDWR, 0);
+	if (xlogfilefd < 0)
+	{
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("QDSYNC: could not create xlog file \"%s\"",
+							path)));
+	}
+	
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: created zero-filled xlog file %s", xlogfilename);
+}
+
+/*
  * open xlog file
  */
 static void
@@ -389,15 +483,7 @@ openXlogNextFile(void)
 	xlogfilefd = open(path, O_RDWR, 0);
 	if (xlogfilefd < 0)
 	{
-		elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QDSYNC: creating xlog file %s", xlogfilename);
-		xlogfilefd = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-		if (xlogfilefd < 0)
-		{
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("QDSYNC: could not create xlog file \"%s\"",
-							path)));
-		}
+		createZeroFilledNewFile(path);
 	}
 
 	xlogfileoffset = 0;
@@ -621,9 +707,14 @@ syncWriteLog(int fd, void *buf, int offset, int len)
 
 	if (loffset != offset)
 	{
-		elog(ERROR, "QDSYNC: error lseek lo: %d, offset: %d, errno: %d", loffset, offset, errno);
+		elog(ERROR, "QDSYNC: error lseek location: %d, offset: %d, filename '%s', errno: %d", loffset, offset, xlogfilename, errno);
 	}
 	write_with_ereport(fd, buf, len);
+	
+	if (pg_fsync(fd) != 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("QDSYNC: could not fsync file '%s': %m", xlogfilename)));
 }
 
 /*

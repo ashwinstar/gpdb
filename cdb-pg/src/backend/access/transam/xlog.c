@@ -2623,6 +2623,9 @@ XLogFileCopy(uint32 log, uint32 seg,
 
 	unlink(tmppath);
 
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), "QD Mirroring: copying xlog file '%s' to '%s'",
+		 path, tmppath);
+	
 	/* do not use XLOG_SYNC_BIT here --- want to fsync only at end of fill */
 	fd = BasicOpenFile(tmppath, O_RDWR | O_CREAT | O_EXCL | PG_BINARY,
 					   S_IRUSR | S_IWUSR);
@@ -2948,6 +2951,9 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	bool		signaled;
 	struct stat stat_buf;
 
+	ereport((Debug_print_qd_mirroring ? LOG : DEBUG3),
+			(errmsg_internal("restore archived file path = \"%s\", xlogfname = \"%s\", recovername = \"%s\", expectedSize %d",
+							 path, xlogfname, recovername, (int)expectedSize)));
 	/*
 	 * When doing archive recovery, we always prefer an archived log file even
 	 * if a file of the same name exists in XLOGDIR.  The reason is that the
@@ -3040,7 +3046,7 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	}
 	*dp = '\0';
 
-	ereport(DEBUG3,
+	ereport((Debug_print_qd_mirroring ? LOG : DEBUG3),
 			(errmsg_internal("executing restore command \"%s\"",
 							 xlogRestoreCmd)));
 
@@ -5235,6 +5241,10 @@ readRecoveryCommandFile(int emode)
 			recoveryTargetTLI = findNewestTimeLine(recoveryTargetTLI);
 		}
 	}
+
+	elog((Debug_print_qd_mirroring ? LOG : DEBUG5), 
+		 "finishing readRecoveryCommandFile recoveryTargetTLI %d",
+		 recoveryTargetTLI);
 }
 
 /*
@@ -5563,8 +5573,13 @@ StartupXLOG(void)
 	/*
 	 * Check for recovery control file, and if so set up state for offline
 	 * recovery
+     *
+	 * GP: We do not support offline recovery. The effect of not calling
+	 * the readRecoveryCommandFile routine is InArchiveRecovery will be
+	 * false.  This will prevent later mischief in the code sometimes tries
+	 * to increment the timeline.  For GP, our timeline is always 1.
 	 */
-	readRecoveryCommandFile(LOG);
+//	readRecoveryCommandFile(LOG);
 
 	/* Now we can determine the list of expected TLIs */
 	expectedTLIs = readTimeLineHistory(recoveryTargetTLI);
