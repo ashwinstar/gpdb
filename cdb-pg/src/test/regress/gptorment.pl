@@ -336,6 +336,56 @@ BEGIN {
     $glob_connect = '-p 11000 template1'
         unless (defined($glob_connect));
 
+    {  # check for bad connection
+        my $badconnect = 0;
+        my $psql_str = "psql ";
+
+        $psql_str .= $glob_connect
+            if (defined($glob_connect));
+
+        $psql_str .= " -c \"select version()\" ";
+
+        my $tabdef = `( $psql_str ) 2>&1`;
+
+        # should say something like:
+        #
+        #    version
+        # --------------
+        # PostgreSQL 8.2.5 (Greenplum Database...
+        #
+        my @l3 = split(/\n/, $tabdef, 3);
+
+        if (3 != scalar(@l3))
+        {
+            $badconnect = 1;
+            goto l_badconnect;
+        }
+
+        my $hd1 = shift @l3;
+
+        if ($hd1 !~ m/^\s*version\s*$/)
+        {
+            $badconnect = 1;
+            goto l_badconnect;
+        }
+        my $hd2 = shift @l3;
+
+        if ($hd2 !~ m/^\s*(\-)+\s*$/)
+        {
+            $badconnect = 1;
+            goto l_badconnect;
+        }
+
+      l_badconnect:
+
+        if ($badconnect)
+        {
+            $glob_id = "connect failed using \'" . $glob_connect . "\'";
+
+            pod2usage(-msg => $glob_id, -exitstatus => 1);
+        }
+    }
+
     $paral = 1
         unless (defined($paral));
 
@@ -360,6 +410,13 @@ BEGIN {
     unless (defined($sqlfile))
     {
         $glob_id = "no sql file";
+
+        pod2usage(-msg => $glob_id, -exitstatus => 1);
+    }
+
+    unless (-e $sqlfile)
+    {
+        $glob_id = "sql file \'" . $sqlfile . "\' does not exist";
 
         pod2usage(-msg => $glob_id, -exitstatus => 1);
     }
