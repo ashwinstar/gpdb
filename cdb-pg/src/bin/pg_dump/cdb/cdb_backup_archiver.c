@@ -20,8 +20,8 @@
  *-------------------------------------------------------------------------
  */
 
-#include "../pg_backup_db.h"
-#include "../dumputils.h"
+#include "pg_backup_db.h"
+#include "dumputils.h"
 
 #include <ctype.h>
 

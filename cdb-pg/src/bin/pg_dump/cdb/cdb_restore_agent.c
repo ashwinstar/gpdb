@@ -39,9 +39,9 @@
  *-------------------------------------------------------------------------
  */
 
-#include "../pg_backup.h"
-#include "../pg_backup_archiver.h"
-#include "../dumputils.h"
+#include "pg_backup.h"
+#include "pg_backup_archiver.h"
+#include "dumputils.h"
 
 #include <ctype.h>
 //#include <sys/types.h>

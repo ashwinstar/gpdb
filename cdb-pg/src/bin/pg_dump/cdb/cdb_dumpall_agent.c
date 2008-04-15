@@ -29,9 +29,9 @@
 int			optreset;
 #endif
 
-#include "../dumputils.h"
+#include "dumputils.h"
 #include "libpq-fe.h"
-#include "../pg_backup.h"
+#include "pg_backup.h"
 #include "pqexpbuffer.h"
 
 #define _(x) gettext((x))

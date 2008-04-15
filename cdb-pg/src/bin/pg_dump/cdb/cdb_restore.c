@@ -17,7 +17,7 @@
 #include "pqexpbuffer.h"
 #include "libpq-fe.h"
 #include "fe-auth.h"
-#include "../pg_backup.h"
+#include "pg_backup.h"
 #include "cdb_table.h"
 #include "cdb_dump_util.h"
 #include "cdb_backup_state.h"

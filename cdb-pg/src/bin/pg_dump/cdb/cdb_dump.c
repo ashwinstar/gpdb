@@ -24,6 +24,7 @@
 #include "cdb_dump_util.h"
 #include "cdb_backup_state.h"
 #include "cdb_dump.h"
+#include "dumputils.h"
 
 
 /* This is necessary on platforms where optreset variable is not available.
@@ -308,9 +309,9 @@ bool doInitialActions(PGconn* pMasterConn)
 				appendPQExpBuffer(pQry, ",");
 			
 			appendPQExpBuffer(pQry, " ");
-			appendPQExpBuffer(pQry, TableAr.pData[i].pszNspName);
+			appendPQExpBuffer(pQry, (char *)fmtId(TableAr.pData[i].pszNspName));
 			appendPQExpBuffer(pQry, ".");
-			appendPQExpBuffer(pQry, TableAr.pData[i].pszTableName);
+			appendPQExpBuffer(pQry, (char *)fmtId(TableAr.pData[i].pszTableName));
 		}
 		
 		appendPQExpBuffer(pQry, " IN EXCLUSIVE MODE");
