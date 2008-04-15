@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 #
-# $Header: //cdb2/main/cdb-pg/src/test/regress/explain.pl#13 $
+# $Header$
 #
 # copyright (c) 2008
 # Author: Jeffrey I Cohen
