@@ -363,6 +363,7 @@ typedef struct ExternalScan
 	List		*uriList;       /* data uri or null for each segment  */
 	List		*fmtOpts;       /* data format options                */
 	bool		isText;         /* true for text false for csv        */
+	bool		isMasterOnly;   /* true for EXECUTE on master seg only */
 	int			rejLimit;       /* reject limit (-1 for no sreh)      */
 	bool		rejLimitInRows; /* true if ROWS false if PERCENT      */
 	Oid			fmterrtbl;      /* format error table, InvalidOid if none */

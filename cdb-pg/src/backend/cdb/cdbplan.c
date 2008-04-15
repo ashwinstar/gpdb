@@ -654,6 +654,7 @@ plan_tree_mutator(Node *node,
 				MUTATE(newextscan->uriList, extscan->uriList, List *);
 				MUTATE(newextscan->fmtOpts, extscan->fmtOpts, List *);
 				newextscan->isText = extscan->isText;
+				newextscan->isMasterOnly = extscan->isMasterOnly;
 				
 				return (Node *) newextscan;
 			}

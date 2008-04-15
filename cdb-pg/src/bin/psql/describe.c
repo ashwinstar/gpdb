@@ -1070,6 +1070,8 @@ describeOneTableDetails(const char *schemaname,
 					printfPQExpBuffer(&tmpbuf, _("Execute on: host '%s'"), location + strlen("HOST:"));
 				else if(strncmp(location, "PER_HOST", strlen("PER_HOST")) == 0)
 					printfPQExpBuffer(&tmpbuf, _("Execute on: one segment per host"));
+				else if(strncmp(location, "MASTER_ONLY", strlen("MASTER_ONLY")) == 0)
+					printfPQExpBuffer(&tmpbuf, _("Execute on: master segment"));
 				else if(strncmp(location, "SEGMENT_ID:", strlen("SEGMENT_ID:")) == 0)
 					printfPQExpBuffer(&tmpbuf, _("Execute on: segment %s"), location + strlen("SEGMENT_ID:"));
 				else if(strncmp(location, "TOTAL_SEGS:", strlen("TOTAL_SEGS:")) == 0)

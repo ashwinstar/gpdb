@@ -714,14 +714,14 @@ DefineRelation_int(CreateStmt *stmt,
 extern void
 DefineExternalRelation(CreateExternalStmt *createExtStmt)
 {
-	bool shouldDispatch = (Gp_role == GP_ROLE_DISPATCH && 
-						   IsNormalProcessingMode());
 	struct CdbDispatchResults *primaryResults = NULL;
     struct CdbDispatchResults *mirrorResults = NULL;
 	CdbDispatchCmdThreads     *dispatchThreads = NULL;
-	
-	CreateStmt *createStmt = makeNode(CreateStmt);
-	Oid reloid = 0;
+	ExtTableTypeDesc		  *exttypeDesc = NULL;
+	CreateStmt				  *createStmt = makeNode(CreateStmt);
+	Oid						  reloid = 0;
+	bool					  shouldDispatch = (Gp_role == GP_ROLE_DISPATCH && 
+												IsNormalProcessingMode());
 	
 	/*
 	 * Only superusers allowed to create an external table
@@ -747,16 +747,58 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	 * Policy for external tables is a NULL policy (randomly distributed)
 	 */
 	if (shouldDispatch)
-	{		
-		createStmt->policy = (GpPolicy *) palloc(sizeof(GpPolicy) + 
-										sizeof(createStmt->policy->attrs[0]));
-		createStmt->policy->ptype = POLICYTYPE_PARTITIONED;
-		createStmt->policy->nattrs = 0;
-		createStmt->policy->attrs[0] = 1;		
+	{	
+		bool	create_policy = true;
+		
+		/*
+		 * We always create a random distribution policy entry *unless*
+		 * this is an EXECUTE table with ON MASTER specified, in which
+		 * case we create no policy so that the master will be accessed.
+		 *
+		 * we check for this condition in the following block:
+		 */
+		exttypeDesc = (ExtTableTypeDesc *)createExtStmt->exttypedesc;
+		
+		if(exttypeDesc->exttabletype == EXTTBL_TYPE_EXECUTE)
+		{
+			ListCell   *exec_location_opt;
+
+			foreach(exec_location_opt, exttypeDesc->on_clause)
+			{
+				DefElem    *defel = (DefElem *) lfirst(exec_location_opt);
+				
+				if (strcmp(defel->defname, "master") == 0)
+				{
+					SingleRowErrorDesc *srehDesc = (SingleRowErrorDesc *)createExtStmt->sreh;
+					
+					create_policy = false;
+					
+					if(srehDesc && srehDesc->errtable)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("External web table with ON MASTER clause "
+										"cannot use error tables.")));
+				}
+			}		
+		}
+		
+		if(create_policy)
+		{
+			createStmt->policy = (GpPolicy *) palloc(sizeof(GpPolicy) + 
+													 sizeof(createStmt->policy->attrs[0]));
+			createStmt->policy->ptype = POLICYTYPE_PARTITIONED;
+			createStmt->policy->nattrs = 0;
+			createStmt->policy->attrs[0] = 1;					
+		}
+		else
+		{
+			createStmt->policy = NULL;
+		}
+			
+			
 	}
 	else
 	{
-		/* only needed in dispatch mode */
 		createStmt->policy = NULL;
 	}
 	
@@ -8519,6 +8561,12 @@ static Datum transformExecOnClause(List	*on_clause)
 			exec_location_str = (char *) palloc(8 + 1);
 			exec_location_str = "PER_HOST";			
 		}
+		else if (strcmp(defel->defname, "master") == 0)
+		{
+			/* result: "MASTER_ONLY" */
+			exec_location_str = (char *) palloc(11 + 1);
+			exec_location_str = "MASTER_ONLY";			
+		}		
 		else if (strcmp(defel->defname, "segment") == 0)
 		{			
 			/* result: "SEGMENT_ID:<segid>" */

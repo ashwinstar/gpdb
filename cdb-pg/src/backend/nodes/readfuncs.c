@@ -2358,6 +2358,7 @@ _readExternalScan(void)
 	READ_NODE_FIELD(uriList);
 	READ_NODE_FIELD(fmtOpts);
 	READ_BOOL_FIELD(isText);
+	READ_BOOL_FIELD(isMasterOnly);
 	READ_INT_FIELD(rejLimit);
 	READ_BOOL_FIELD(rejLimitInRows);
 	READ_OID_FIELD(fmterrtbl);

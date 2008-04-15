@@ -284,6 +284,7 @@ _copyExternalScan(ExternalScan *from)
 	COPY_NODE_FIELD(uriList);
 	COPY_NODE_FIELD(fmtOpts);
 	COPY_SCALAR_FIELD(isText);
+	COPY_SCALAR_FIELD(isMasterOnly);
 	COPY_SCALAR_FIELD(rejLimit);
 	COPY_SCALAR_FIELD(rejLimitInRows);
 	COPY_SCALAR_FIELD(fmterrtbl);

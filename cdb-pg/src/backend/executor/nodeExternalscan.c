@@ -157,6 +157,7 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 									 node->uriList,
 									 node->fmtOpts,
 									 node->isText,
+									 node->isMasterOnly,
 									 node->rejLimit,
 									 node->rejLimitInRows,
 									 node->fmterrtbl,

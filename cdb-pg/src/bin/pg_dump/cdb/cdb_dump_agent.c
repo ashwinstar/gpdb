@@ -6737,6 +6737,8 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 				appendPQExpBuffer(q, "ON HOST '%s' ", on_clause + strlen("HOST:"));
 			else if(strncmp(on_clause, "PER_HOST", strlen("PER_HOST")) == 0)
 				appendPQExpBuffer(q, "ON HOST ");
+			else if(strncmp(on_clause, "MASTER_ONLY", strlen("MASTER_ONLY")) == 0)
+				appendPQExpBuffer(q, "ON MASTER ");
 			else if(strncmp(on_clause, "SEGMENT_ID:", strlen("SEGMENT_ID:")) == 0)
 				appendPQExpBuffer(q, "ON SEGMENT %s ", on_clause + strlen("SEGMENT_ID:"));
 			else if(strncmp(on_clause, "TOTAL_SEGS:", strlen("TOTAL_SEGS:")) == 0)

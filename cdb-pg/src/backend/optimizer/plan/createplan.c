@@ -114,6 +114,7 @@ static ExternalScan *make_externalscan(List *qptlist,
 									   List *filenames,
 									   List *fmtopts,
 									   bool istext,
+									   bool ismasteronly,
 									   int rejectlimit,
 									   bool rejectlimitinrows,
 									   Oid fmterrtableOid,
@@ -1014,6 +1015,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	char			**segdb_file_map = NULL;
 	char			*first_uri_str = NULL;
 	bool			istext = false;
+	bool			ismasteronly = false;
 	bool			islimitinrows = false;
 	int				rejectlimit = -1;
 	int				encoding = -1;
@@ -1442,6 +1444,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 		 * 3) all segs on host <foo>
 		 * 4) seg <n> only
 		 * 5) <n> random segs
+		 * 6) master only
 		 */
 		if(strcmp(on_clause, "ALL_SEGMENTS") == 0)
 		{
@@ -1585,6 +1588,15 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 				}
 			}
 		}
+		else if(strcmp(on_clause, "MASTER_ONLY") == 0)
+		{
+			/* 
+			 * store the command in first array entry and indicate
+			 * that it is meant for the master segment (not seg o).
+			 */
+			segdb_file_map[0] = pstrdup(prefixed_command);
+			ismasteronly = true;
+		}
 		else
 		{
 			ereport(ERROR,
@@ -1636,6 +1648,7 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 								  filenames,
 								  fmtopts,
 								  istext,
+								  ismasteronly,
 								  rejectlimit,
 								  islimitinrows,
 								  fmtErrTblOid,
@@ -3024,6 +3037,7 @@ make_externalscan(List *qptlist,
 				  List *urilist,
 				  List *fmtopts,
 				  bool istext,
+				  bool ismasteronly,
 				  int rejectlimit,
 				  bool rejectlimitinrows,
 				  Oid fmterrtableOid,
@@ -3044,6 +3058,7 @@ make_externalscan(List *qptlist,
 	node->uriList = urilist;
 	node->fmtOpts = fmtopts;
 	node->isText = istext;
+	node->isMasterOnly = ismasteronly;
 	node->rejLimit = rejectlimit;
 	node->rejLimitInRows = rejectlimitinrows;
 	node->fmterrtbl = fmterrtableOid;

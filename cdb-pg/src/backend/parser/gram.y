@@ -2980,6 +2980,10 @@ ext_on_clause_item:
 			{
 				$$ = makeDefElem("eachhost", (Node *)makeInteger(TRUE));
 			}
+			| ON MASTER
+			{
+				$$ = makeDefElem("master", (Node *)makeInteger(TRUE));
+			}
 			| ON SEGMENT Iconst
 			{
 				$$ = makeDefElem("segment", (Node *)makeInteger($3));
