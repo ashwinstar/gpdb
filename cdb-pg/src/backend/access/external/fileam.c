@@ -73,7 +73,7 @@ struct extvar_t
 
 static HeapTuple filegettup(FileScanDesc scan, ScanDirection dir);
 static void initParseState(CopyState pstate, Relation relation, List *fmtOpts, 
-						   bool isText, char *uri, int rejectlimit, 
+						   bool isText, bool isMasterOnly, char *uri, int rejectlimit, 
 						   bool islimitinrows, Oid fmterrtbl, int encoding);
 static void open_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
@@ -114,14 +114,15 @@ static char *g_dataSourceName = NULL;
 */
 FileScanDesc
 file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
-			   List *uriList, List *fmtOpts, bool isText, int rejLimit,
-			   bool rejLimitInRows, Oid fmterrtbl, int encoding)
+			   List *uriList, List *fmtOpts, bool isText, bool isMasterOnly,
+			   int rejLimit, bool rejLimitInRows, Oid fmterrtbl, int encoding)
 {
 	FileScanDesc scan;
 	TupleDesc	tupDesc = NULL;
 	int			attnum;
+	int			segindex = GpIdentity.segindex;
 	char		*uri = NULL;
-
+	
 	/*
 	 * increment relation ref count while scanning relation
 	 *
@@ -147,10 +148,24 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	scan->fs_file = NULL;
 
 	/*
-	 * get the external URI assigned to us. 
+	 * get the external URI assigned to us.
+	 *
+	 * The URI assigned for this segment is normally in the uriList list
+	 * at the index of this segment id. However, if we are executing on
+	 * MASTER ONLY the (one and only) entry which is destined for the master
+	 * will be at the first entry of the uriList list.
 	 */
 	if(Gp_role == GP_ROLE_EXECUTE)
-		uri = (char *) strVal(list_nth(uriList, GpIdentity.segindex));
+	{
+		/* this is the normal path for most ext tables */
+		uri = (char *) strVal(list_nth(uriList, segindex));	
+	}
+	else if(Gp_role == GP_ROLE_DISPATCH && isMasterOnly)
+	{
+		/* this is a ON MASTER table. Only get uri if we are the master */
+		if(segindex == -1)
+			uri = (char *) strVal(list_nth(uriList, 0));
+	}
 	
 	/*
 	 * if a uri is assigned to us - get a reference to it. Some executors
@@ -206,8 +221,8 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	 * Allocate and init our structure that keeps track of data parsing state
 	 */
 	scan->fs_pstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
-	initParseState(scan->fs_pstate, relation, fmtOpts, isText, scan->fs_uri,
-				   rejLimit, rejLimitInRows, fmterrtbl, encoding);
+	initParseState(scan->fs_pstate, relation, fmtOpts, isText, isMasterOnly,
+				   scan->fs_uri, rejLimit, rejLimitInRows, fmterrtbl, encoding);
 
 	/* Set up callback to identify error line number */
 	scan->errcontext.callback = file_scan_error_callback;
@@ -776,8 +791,8 @@ else\
  */
 static void
 initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText, 
-			   char *uri, int rejectlimit, bool islimitinrows, Oid fmterrtbl,
-			   int encoding)
+			   bool isMasterOnly, char *uri, int rejectlimit, 
+			   bool islimitinrows, Oid fmterrtbl, int encoding)
 {
 	TupleDesc	tupDesc = NULL;
 	char	   *format_str = NULL;
