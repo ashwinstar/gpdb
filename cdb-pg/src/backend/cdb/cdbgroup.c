@@ -2536,6 +2536,16 @@ add_second_stage_agg(PlannerInfo *root,
 								  agg_node->lefttree, 
 								  (*p_current_pathkeys != NIL));
 
+	/* 
+	 * Since the rtable has changed, we had better recreate a RelOptInfo entry for it.
+	 */
+	if (root->simple_rel_array)
+		pfree(root->simple_rel_array);
+	root->simple_rel_array_size = list_length(parse->rtable) + 1;
+	root->simple_rel_array = (RelOptInfo **)
+		palloc0(root->simple_rel_array_size * sizeof(RelOptInfo *));
+	build_simple_rel(root, 1, RELOPT_BASEREL);
+
 	return agg_node;
 }
 
