@@ -204,6 +204,14 @@ The supported commands are:
 
   Ends the equivalent region that started with "start_equiv"
 
+=item -- force_explain
+
+  Normally, atmsort can detect that a SQL query is being EXPLAINed,
+  and the expain processing will happen automatically.  However, if
+  the query is complex, you may need to tag it with a comment to force
+  the explain.  Using this command for non-EXPLAIN statements is
+  inadvisable.
+
 =back
 
 Note that you can combine the directives for a single query, but each
@@ -919,6 +927,11 @@ if (1)
 
             }
 
+            if ($ini =~ m/\-\-\s*force\_explain\s*$/i)
+            {
+                # ENGINF-137: force_explain 
+                $directive->{explain} = 1;
+            }
             if ($ini =~ m/\-\-\s*ignore\s*$/i)
             { 
                 $directive->{ignore} = "ignore";
