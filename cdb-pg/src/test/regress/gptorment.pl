@@ -634,32 +634,44 @@ sub init_monitor
 
 sub do_monitor
 {
-    my ($mon_stat, $tim) = @_;
+    my ($mon_stat, $tim, $test_fh) = @_;
 
     my ($pidh, $pidlist) = do_ps_pids($mon_stat->{uid});
 
     if (exists($mon_stat->{msg}))
     {
         print $mon_stat->{msg};
+
+        print $test_fh $mon_stat->{msg} if (defined($test_fh));
+
         delete $mon_stat->{msg};
     }
 
     my $pcount = scalar(@{$pidlist});
     my $old_pcount = scalar(@{$mon_stat->{curr_pidlist}});
 
+    my $status_change = 1;
+    my $mmm;
     if ($pcount < $old_pcount)
     {
-        print time(), ": ", $old_pcount - $pcount, " processes died, $pcount remaining\n";
+        $mmm = time() . ": " . ($old_pcount - $pcount) . 
+            " processes died, $pcount remaining\n";
     }
     elsif ($pcount > $old_pcount)
     {
-        print time(), ": ", $pcount - $old_pcount, " processes BORN, $pcount now remaining\n";
+        $mmm = time() . ": " . ($pcount - $old_pcount) . 
+            " processes BORN, $pcount now remaining\n";
 
     }
     else
     {
-        print time(), ": ", $pcount, " processes still remaining\n";
+        $mmm = time() . ": " . $pcount . " processes still remaining\n";
+        $status_change = 0;
     }
+
+    print $mmm;
+
+    print $test_fh $mmm if (defined($test_fh) && $status_change);
 
     $mon_stat->{curr_pidlist} = $pidlist;
     $mon_stat->{pidh} = $pidh;
@@ -672,24 +684,27 @@ sub do_monitor
 
 sub do_kill
 {
-    my ($uid, $iter, $tlim, $paral) = @_;
+    my ($uid, $iter, $tlim, $paral, $test_fh) = @_;
 
     my $mon_stat = init_monitor($uid, $iter, $tlim, $paral);
 
     my $maxtime = time() + ($glob_iter * $glob_tlim) + $glob_grace;
 
-    while (do_monitor($mon_stat, 10) && (time() < $maxtime))
+    while (do_monitor($mon_stat, 10, $test_fh) && (time() < $maxtime))
     {
 
     }
 
     # kill if necessary
 
-    do_monitor($mon_stat, 0);
+    do_monitor($mon_stat, 0, $test_fh);
 
     my $pcount = scalar(@{$mon_stat->{curr_pidlist}});
 
-    print time(), ": $pcount processes remain at test end\n";
+    my $mmm = time() . ": $pcount processes remain at test end\n";
+
+    print $mmm;
+    print $test_fh $mmm if (defined($test_fh));
 
     for my $pid (@{$mon_stat->{curr_pidlist}})
     {
@@ -703,11 +718,11 @@ sub do_kill
     {
         if ($time_diff <= $glob_grace)
         {
-            print "test ended on time (grace period $glob_grace)\n";
+            $mmm = "test ended on time (grace period $glob_grace)\n";
         }
         else
         {
-            print "test ended $time_diff seconds prematurely\n";
+            $mmm = "test ended $time_diff seconds prematurely\n";
         }
     }
     else
@@ -716,14 +731,17 @@ sub do_kill
 
         if ($time_diff <= $grt)
         {
-            print "test ended on time (negative grace period $glob_grace)\n";
+            $mmm = "test ended on time (negative grace period $glob_grace)\n";
         }
         else
         {
-            print "test ended ", ($time_diff - $grt),
+            $mmm = "test ended " . ($time_diff - $grt) .
             " seconds prematurely\n";
         }
     }
+    print $mmm;
+    print $test_fh $mmm if (defined($test_fh));
+
 
 } # end do_kill
 
@@ -865,12 +883,15 @@ sub do_sql
         {
             if (defined($glob_tlim))
             {
-                do_kill($glob_uid, $glob_iter, $glob_tlim, $glob_paral);
+                do_kill($glob_uid, $glob_iter, 
+                        $glob_tlim, $glob_paral, $tstfh);
             }
             else
             {
-                my $mon_stat = init_monitor($glob_uid, $glob_iter, $glob_tlim,$glob_paral);
-                while (do_monitor($mon_stat, 10))
+                my $mon_stat = 
+                    init_monitor($glob_uid, $glob_iter, 
+                                 $glob_tlim, $glob_paral);
+                while (do_monitor($mon_stat, 10, $tstfh))
                 {
 
                 }
