@@ -217,3 +217,16 @@ select min(tenthous) from tenk1 where thousand = 33;
 -- check parameter propagation into an indexscan subquery
 select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
 from int4_tbl;
+
+-- check for mpp-2687
+CREATE TEMPORARY TABLE mpp2687t (
+    dk text,
+    gk text
+) DISTRIBUTED BY (dk);
+
+CREATE VIEW mpp2687v AS
+    SELECT DISTINCT gk
+    FROM mpp2687t 
+    GROUP BY gk;
+
+SELECT * FROM mpp2687v;
