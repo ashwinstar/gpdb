@@ -914,6 +914,7 @@ if (1)
                 $directive->{make_equiv_expected} = 1;
             }
 
+            # Note: \d is for the psql "describe"
             if ($ini =~ m/(insert|update|delete|select|\\d|copy)/i)
             {                
                 $copy_select = 0;
@@ -1181,6 +1182,16 @@ if (1)
         {
             next;
         }
+        # ignore notices for DROP sqlobject IF EXISTS "objectname"
+        # eg NOTICE:  table "foo" does not exist, skipping
+        #
+        # the NOTICE is different from the ERROR case, which does not
+        # end with "skipping"
+        if ($ini =~ m/^NOTICE:\s+\w+\s+\".*\"\s+does not exist\,\s+skipping\s*$/)
+        {
+            next;
+        }
+
 
         push @outarr, $ini;
 
