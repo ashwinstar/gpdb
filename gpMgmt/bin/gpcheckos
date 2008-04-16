@@ -197,8 +197,7 @@ def do_python(res):
 
 def do_system(res):
     SYSTEM_KEYS = ('rlim_fd_max', 'rlim_fd_cur', 
-		'shmsys:shminfo_shmmax', 'semsys:seminfo_semmni',
-		'sata:sata_func_enable')
+		'shmsys:shminfo_shmmax', 'semsys:seminfo_semmni')
     f = open('/etc/system', 'r')
     content = f.read()
     f.close()
@@ -339,15 +338,15 @@ system.rlim_fd_max			int	= 262144
 system.rlim_fd_cur			int	= 65536
 system.shmsys:shminfo_shmmax		int	>= 0x2000000
 system.semsys:seminfo_semmni		int	= 1024
-system.sata:sata_func_enable		str	= 0x5
 solaris.release				str	= Solaris 10 8/07 s10x_u4wos_12b X86
-platform.version			str	contains 118855-36
+platform.version				str	contains Generic_127112-05
 solaris.patch				str	contains 125370-06
-solaris.patch				str	contains 127112-05
-solaris.patch				str	contains 127729-02
-solaris.patch				str	contains 121431-20
-solaris.patch				str	contains 125205-07
-solaris.patch				str	contains 125417-04
+solaris.patch                       str   contains 127112-05
+solaris.patch                       str   contains 125205-07
+solaris.patch                       str   contains 121431-20
+solaris.patch                       str   contains 125417-04
+solaris.patch                       str   contains 127729-07
+solaris.patch                       str   contains IDR136658-01
 
 '''
 
