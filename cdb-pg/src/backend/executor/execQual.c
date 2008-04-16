@@ -4584,7 +4584,7 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 	 * us to use the slot's Datum/isnull arrays as workspace. (Also, we can
 	 * return the slot as-is if we decide no rows can be projected.)
 	 */
-	ExecStoreAllNullTuple(slot);
+	ExecClearTuple(slot); 
 
 	/*
 	 * form a new result tuple (if possible); if successful, mark the result
@@ -4595,7 +4595,9 @@ ExecProject(ProjectionInfo *projInfo, ExprDoneCond *isDone)
 		/* simple Var list: this always succeeds with one result row */
 		if (isDone)
 			*isDone = ExprSingleResult;
+
 		ExecVariableList(projInfo, slot_get_values(slot), slot_get_isnull(slot));
+		ExecStoreVirtualTuple(slot);
 	}
 	else
 	{

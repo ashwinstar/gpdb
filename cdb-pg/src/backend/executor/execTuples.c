@@ -459,14 +459,10 @@ ExecStoreHeapTuple(HeapTuple tuple,
 	 */
 
 	/* Clear tts_flags, here isempty set to false */
-	if(shouldFree)
-		TupSetShouldFree(slot);
-	else
-		TupClearShouldFree(slot);
-		
-	slot->PRIVATE_tts_heaptuple = (void *) tuple;
+	slot->PRIVATE_tts_flags = shouldFree ? TTS_SHOULDFREE : 0;
 
-	TupClearIsEmpty(slot);
+	/* store the tuple */
+	slot->PRIVATE_tts_heaptuple = (void *) tuple;
 
 	/* Mark extracted state invalid */
 	slot->PRIVATE_tts_nvalid = 0;

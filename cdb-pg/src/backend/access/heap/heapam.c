@@ -3,7 +3,7 @@
  * heapam.c
  *	  heap access method code
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -226,26 +226,32 @@ heapgetpage(HeapScanDesc scan, BlockNumber page, bool backward)
 	{
 		if (ItemIdIsUsed(lpp))
 		{
-			HeapTupleData loctup;
+
 			bool		valid;
+			HeapTupleHeader theader = (HeapTupleHeader) PageGetItem((Page) dp, lpp);
 
-			loctup.t_data = (HeapTupleHeader) PageGetItem((Page) dp, lpp);
-			loctup.t_len = ItemIdGetLength(lpp);
-			ItemPointerSet(&(loctup.t_self), page, lineoff);
+			valid = (t_xmax == HeapTupleHeaderGetXmax(theader) &&
+					 t_xmin == HeapTupleHeaderGetXmin(theader) &&
+					 t_cid == HeapTupleHeaderGetRawCommandId(theader));
 
-			valid = (t_xmax == HeapTupleHeaderGetXmax(loctup.t_data)  &&
-					 t_xmin == HeapTupleHeaderGetXmin(loctup.t_data) &&
-					 t_cid == HeapTupleHeaderGetRawCommandId(loctup.t_data));
-			if (! valid) {
+			if(!valid)
+			{
+				HeapTupleData loctup;
+
+				loctup.t_data = theader; 
+				loctup.t_len = ItemIdGetLength(lpp);
+				ItemPointerSet(&(loctup.t_self), page, lineoff);
+
 				valid = HeapTupleSatisfiesVisibility(&loctup, snapshot, buffer);
 				if (valid) 
 				{
 					t_xmax = HeapTupleHeaderGetXmax(loctup.t_data);
 					t_xmin = HeapTupleHeaderGetXmin(loctup.t_data);
 					t_cid = HeapTupleHeaderGetRawCommandId(loctup.t_data);
+					scan->rs_vistuples[ntup++] = lineoff;
 				}
 			}
-			if (valid)
+			else
 				scan->rs_vistuples[ntup++] = lineoff;
 		}
 	}

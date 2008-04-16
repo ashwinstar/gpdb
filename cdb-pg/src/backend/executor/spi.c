@@ -1442,7 +1442,7 @@ SPI_cursor_open(const char *name, void *plan,
 
 		
 		init_slot(&slot, tempTupleDesc);
-		ExecStoreAllNullTuple(&slot);
+		ExecClearTuple(&slot);
 				
         	/* This sets up tuptable */
         	spi_dest_startup(NULL, 0, tempTupleDesc);
@@ -2551,7 +2551,7 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
         	spi_dest_startup(NULL, 0, tempTupleDesc);
         	
 		init_slot(&slot, tempTupleDesc);
-		ExecStoreAllNullTuple(&slot);
+		ExecClearTuple(&slot); 
         	
 		isnull = slot_get_isnull(&slot); 
 		values = slot_get_values(&slot); 

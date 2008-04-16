@@ -190,15 +190,11 @@ static inline void TupSetVirtualTuple(TupleTableSlot *slot)
 
 static inline Datum *slot_get_values(TupleTableSlot *slot)
 {
-	Assert(slot && TupHasVirtualTuple(slot));
-	Assert(slot->PRIVATE_tts_nvalid == slot->tts_tupleDescriptor->natts);
 	return slot->PRIVATE_tts_values;
 }
 
 static inline bool *slot_get_isnull(TupleTableSlot *slot)
 {
-	Assert(slot && TupHasVirtualTuple(slot));
-	Assert(slot->PRIVATE_tts_nvalid == slot->tts_tupleDescriptor->natts);
 	return slot->PRIVATE_tts_isnull;
 }
 

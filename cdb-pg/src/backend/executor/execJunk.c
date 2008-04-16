@@ -274,7 +274,7 @@ ExecFilterJunk(JunkFilter *junkfilter, TupleTableSlot *slot)
 	/*
 	 * Prepare to build a virtual result tuple.
 	 */
-	ExecStoreAllNullTuple(resultSlot);
+	ExecClearTuple(resultSlot);
 	values = slot_get_values(resultSlot); 
 	isnull = slot_get_isnull(resultSlot); 
 

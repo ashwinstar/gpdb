@@ -131,7 +131,7 @@ ValuesNext(ValuesScanState *node)
 		 * Compute the expressions and build a virtual result tuple. We
 		 * already did ExecClearTuple(slot).
 		 */
-		ExecStoreAllNullTuple(slot); 
+		ExecClearTuple(slot); 
 		values = slot_get_values(slot); 
 		isnull = slot_get_isnull(slot);
 
