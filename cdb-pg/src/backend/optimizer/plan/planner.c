@@ -2341,6 +2341,10 @@ postprocess_setop_tlist(List *new_tlist, List *orig_tlist)
 	ListCell   *l;
 	ListCell   *orig_tlist_item = list_head(orig_tlist);
 
+ 	/* empty orig has no effect on info in new (MPP-2655) */
+ 	if ( orig_tlist_item == NULL )
+ 		return new_tlist;
+ 	
 	foreach(l, new_tlist)
 	{
 		TargetEntry *new_tle = (TargetEntry *) lfirst(l);
