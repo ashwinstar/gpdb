@@ -79,7 +79,8 @@ class Pinger(Role):
 	m[priestId] = now+PING_DEAD_TIME
 	if len(m)>len(ps)/2:
 	    self.__subtractMap.pop(result)
-	    self.__priest.learner.priestSet.subtract(result)
+	    if result in ps:
+		self.__priest.learner.priestSet.subtract(result)
 
     def tick(self,decreeNumber):
 	"""Handle timeouts."""

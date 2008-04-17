@@ -15,8 +15,8 @@ class StateUploader(Role,threading.Thread):
 	threading.Thread.__init__(self)
 
     def __work1(self):
-	fro = [None]
-	sc = StringChopper(self.port.recv(None,fro))
+	m,fro = self.port.recv(None)
+	sc = StringChopper(m)
 	command = sc.nextToken()
 	if command!="Get":
 	    return
@@ -26,7 +26,7 @@ class StateUploader(Role,threading.Thread):
 	try:
 	    saveDn = self.__priest.learner.saveDn
 	    if dn not in saveDn:
-		self.port.send(fro[0],"Error %d %d File not found"%(blockNumber,dn))
+		self.port.send(fro,"Error %d %d File not found"%(blockNumber,dn))
 		return
 	    name = self.__priest.dataDir+"/learner-data%d.gz"%saveDn.index(dn)
 	    raf = open(name,"rb")
@@ -42,7 +42,7 @@ class StateUploader(Role,threading.Thread):
 	    raf.close()
 	finally:
 	    self.__priest.lock.release()
-	self.port.send(fro[0],"Data %d %d "%(blockNumber,dn)+c)
+	self.port.send(fro,"Data %d %d "%(blockNumber,dn)+c)
 
     def work(self):
 	while 1:

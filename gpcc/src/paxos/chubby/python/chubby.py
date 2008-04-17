@@ -5,6 +5,7 @@ import time
 TIMEOUT = 1
 CHUNK_SIZE = 4000
 DEFAULT_LOCK_TIME = 12
+PAXOS_PROTOCOL_VERSION = 0
 
 TIME_RESOLUTION = .1
 
@@ -251,9 +252,9 @@ class Chubby:
     def propose(self,decree):
 	decree = "Tag %s "%self.getNewId()+decree
 	fd = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-	fd.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,65536);
-	getLeaderTimeout = 0;
-	proposeTimeout = 0;
+	fd.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,65536)
+	getLeaderTimeout = 0
+	proposeTimeout = 0
 	try:
 	    fd.settimeout(TIMEOUT)
 	    while 1:
@@ -262,15 +263,16 @@ class Chubby:
 		    getLeaderTimeout = now+TIMEOUT
 		    for a in self.__addresses.split(','):
 			if a:
-			    self.__sendto(fd,"GetLeader",a)
+			    self.__sendto(fd,"GetLeader version=%d"%PAXOS_PROTOCOL_VERSION,a)
 		if self.__leader and proposeTimeout<now:
 		    proposeTimeout = now+TIMEOUT
-		    self.__sendto(fd,"Propose decree="+self.__mangle(decree),self.__leader)
+		    self.__sendto(fd,"Propose version=%d decree=%s"%(PAXOS_PROTOCOL_VERSION,self.__mangle(decree)),self.__leader)
 		try:
 		    p = fd.recv(65536)
 		except socket.error:
 		    continue
 		p = p.split(' ')
+		pversion = None
 		presult = None
 		pdecree = None
 		pcommand = p[0]
@@ -278,10 +280,14 @@ class Chubby:
 		    j = i.index('=')
 		    key = i[:j]
 		    value = i[j+1:]
-		    if key=="result":
+		    if key=="version":
+			pversion = int(value)
+		    elif key=="result":
 			presult = self.__unmangle(value)
 		    elif key=="decree":
 			pdecree = self.__unmangle(value)
+		if pversion!=PAXOS_PROTOCOL_VERSION:
+		    continue
 		if pcommand=="Redirect":
 		    if self.__leader!=presult:
 			self.__leader = presult

@@ -5,23 +5,21 @@ Id must contain no space.
 Decree and result must be message.mangled.
 
 Usage:
-	Ping priestId=<id> dn=<decree-number> result=<address,...>
-	Propose decree=<decree>
-	NextBallot dn=<decree-number> bn=<ballot-number>
-	LastVote priestId=<id> dn=<decree-number> bn=<ballot-number> decree=<decree>
-	Nak dn=<decree-number> bn=<ballot-number>
-	DecreeNumberTooOld dn=<decree-number>
-	BeginBallot dn=<decree-number> bn=<ballot-number> decree=<decree>
-	Voted priestId=<id> dn=<decree-number> bn=<ballot-number> decree=<decree>
-	Success dn=<decree-number> decree=<decree>
-	Result dn=<decree-number> decree=<decree> result=<result>
-	Redirect result=<address>
-	GetLeader
-	GetState
-	State dn=<decree-number> result=<url>
-	SubtractPriest priestId=<id> result=<id>
-	WantToJoin priestId=<id>
-	WantToJoinReply result=<0 or 1>
+	Ping version=<version> priestId=<id> dn=<decree-number> result=<address,...>
+	Propose version=<version> decree=<decree>
+	NextBallot version=<version> dn=<decree-number> bn=<ballot-number>
+	LastVote version=<version> priestId=<id> dn=<decree-number> bn=<ballot-number> decree=<decree>
+	Nak version=<version> dn=<decree-number> bn=<ballot-number>
+	DecreeNumberTooOld version=<version> dn=<decree-number>
+	BeginBallot version=<version> dn=<decree-number> bn=<ballot-number> decree=<decree>
+	Voted version=<version> priestId=<id> dn=<decree-number> bn=<ballot-number> decree=<decree>
+	Success version=<version> dn=<decree-number> decree=<decree>
+	Result version=<version> dn=<decree-number> decree=<decree> result=<result>
+	Redirect version=<version> result=<address>
+	GetLeader version=<version>
+	GetState version=<version>
+	State version=<version> dn=<decree-number> result=<url>
+	SubtractPriest version=<version> priestId=<id> result=<id>
 
 NextBallot/Nak/LastVote with negative dn means all decree-numbers >= -dn.
 

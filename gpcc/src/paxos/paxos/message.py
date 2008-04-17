@@ -1,7 +1,10 @@
+PAXOS_PROTOCOL_VERSION = 0
+
 class Maker:
 
     def __init__(self,command):
 	self.__sb = [command]
+	self.__sb.append("version=%d"%PAXOS_PROTOCOL_VERSION)
 
     def send(self,port,to):
 	a = self.toString()
@@ -41,20 +44,23 @@ class Maker:
 
 class Message:
 
-    def __init__(self,messag,fro):
-	self.fro = fro
-	st = messag.split(' ')
+    def __init__(self,messageAndFrom):
+	self.fro = messageAndFrom[1]
+	st = messageAndFrom[0].split(' ')
 	self.command = st.pop(0)
 	self.priestId = None
 	self.dn = None
 	self.bn = None
 	self.decree = None
 	self.result = None
+	self.version = None
 	for s in st:
 	    i = s.index('=')
 	    value = s[i+1:]
 	    s = s[:i]
-	    if s=="priestId":
+	    if s=="version":
+		self.version = int(value)
+	    elif s=="priestId":
 		self.priestId = value
 	    elif s=="dn":
 		self.dn = int(value)
@@ -80,3 +86,9 @@ class Message:
 		i += 1
 	    sb.append(c)
 	return "".join(sb)
+
+def getMessage(messageAndFrom):
+    if messageAndFrom[0]:
+	m = Message(messageAndFrom)
+	if m.version==PAXOS_PROTOCOL_VERSION:
+	    return m

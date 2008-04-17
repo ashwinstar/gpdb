@@ -1,3 +1,4 @@
+import atexit
 import fcntl
 import os
 import signal
@@ -10,13 +11,12 @@ import time
 import constants
 import message
 import utils
-from message import Message
 from udpmessenger import UdpMessenger
 
 TIMEOUT = 1
 MAX_SLOWNESS = 10
 WAIT_TIME = 300
-NPRIEST = 6
+NPRIEST = 5
 CATCH_UP_SPEED = 20
 SHOOT_INTERVAL = .05
 
@@ -57,7 +57,6 @@ class ShootShootShoot(threading.Thread):
 
     def run(self):
 	port = messenger.makePort("")
-	fro = [None]
 	decree = None
 	timeout = 0
 	counter = 0
@@ -76,9 +75,8 @@ class ShootShootShoot(threading.Thread):
 		mm = message.Maker("Propose")
 		mm.addDecree(decree)
 		mm.send(port,priestAddresses)
-	    messag = port.recv(TIMEOUT,fro)
-	    if messag:
-		m = Message(messag,fro[0])
+	    m = message.getMessage(port.recv(TIMEOUT))
+	    if m:
 		if m.command=="Result" and m.decree==decree:
 		    timeout = now+SHOOT_INTERVAL
 
@@ -185,7 +183,6 @@ class UpDownUpDown:
 	self.p = [Priest(i,i==0) for i in xrange(NPRIEST)]
 
     def getStuff(self,checkSlowness):
-	fro = [None]
 	decree = None
 	startTime = time.time()
 	getLeaderTimeout = 0
@@ -209,10 +206,9 @@ class UpDownUpDown:
 		    mm = message.Maker("Propose")
 		    mm.addDecree(decree)
 		    mm.send(self.port,self.leader)
-		messag = self.port.recv(TIMEOUT,fro)
-		if messag==None:
+		m = message.getMessage(self.port.recv(TIMEOUT))
+		if m==None:
 		    continue
-		m = Message(messag,fro[0])
 		if m.command=="Redirect":
 		    if self.leader!=m.result:
 			self.leader = m.result
@@ -235,7 +231,6 @@ class UpDownUpDown:
 
     def waitCatchUp1(self,index,timeout=WAIT_TIME):
 	p = self.p[index]
-	fro = [None]
 	start = time.time()
 	timeo = 0
 	n = 0
@@ -249,10 +244,9 @@ class UpDownUpDown:
 		    print_dot()
 		mm = message.Maker("Ping")
 		mm.send(self.port,p.address)
-	    messag = self.port.recv(TIMEOUT,fro)
-	    if messag==None:
+	    m = message.getMessage(self.port.recv(TIMEOUT))
+	    if m==None:
 		continue
-	    m = Message(messag,fro[0])
 	    if m.command=="Ping" and m.fro==p.address:
 		if m.dn<0:
 		    n = 0
@@ -340,12 +334,11 @@ class UpDownUpDown:
 	global passed
 	print_line("Starting the Priests")
 
-	mainRange = xrange(constants.MAXIMUM_NUMBER_OF_PRIESTS)
-	for i in mainRange:
-	    self.p[i].start()
+	for i in self.p:
+	    i.start()
 	self.propose(1,False)
 
-	allPriests = set([self.p[i].id for i in mainRange])
+	allPriests = set([i.id for i in self.p])
 	self.waitFor("All priests have joined.",lambda x:allPriests<=x)
 
 	self.propose(constants.ALPHA)
@@ -379,16 +372,16 @@ class UpDownUpDown:
 	self.waitFor("All Priests have joined.",lambda x:allPriests<=x)
 
 	print_line("Killing pairs.")
-	for i in mainRange:
-	    self.p[i].stop()
-	    for j in mainRange:
+	for i in self.p:
+	    i.stop()
+	    for j in self.p:
 		if j!=i:
-		    self.p[j].stop()
+		    j.stop()
 		    self.propose(1)
-		    self.cont(j)
-		    self.waitCatchUp(j)
-	    self.cont(i)
-	    self.waitCatchUp(i)
+		    self.cont(j.index)
+		    self.waitCatchUp(j.index)
+	    self.cont(i.index)
+	    self.waitCatchUp(i.index)
 
 	print_line("Checking speed.")
 	start = time.time()
@@ -469,10 +462,10 @@ class UpDownUpDown:
 	self.propose(1,False)
 
 	print_line("Killing all, then restarting.")
-	for i in mainRange:
-	    self.p[i].kill()
-	for i in mainRange:
-	    self.p[i].start()
+	for i in self.p:
+	    i.kill()
+	for i in self.p:
+	    i.start()
 	self.propose(1,False)
 
 	print_line("Killing all Priests.")
@@ -519,16 +512,15 @@ class UpDownUpDown:
 	else:
 	    passed += 1
 
+utils.helpPythonExit()
+
 starttime = time.time()
 
 shootshootshoot = ShootShootShoot()
+
 shootshootshoot.start()
 
-try:
-    UpDownUpDown().run(len(sys.argv)<2 and 1 or int(sys.argv[1]))
-except KeyboardInterrupt:
-    print_line("Interrupted")
-    pass
+UpDownUpDown().run(len(sys.argv)<2 and 1 or int(sys.argv[1]))
 
 shootshootshoot.unstart()
 

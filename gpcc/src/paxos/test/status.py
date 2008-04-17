@@ -4,7 +4,6 @@ import time
 import logger
 import message
 import utils
-from message import Message
 from udpmessenger import UdpMessenger
 
 TIMEOUT = .1
@@ -28,7 +27,6 @@ class Status:
 	self.__priests = utils.stringToAddresses(messenger,argv[1])
 
     def run(self):
-	fro = [None]
 	ps = set()
 	pingTimeout = 0
 	proposeTimeout = 0
@@ -64,10 +62,9 @@ class Status:
 		decree = "Tag %d GetPriestSet"%now
 		mm.addDecree(decree)
 		mm.send(self.port,priests.keys())
-	    messag = self.port.recv(TIMEOUT,fro)
-	    if messag==None:
+	    m = message.getMessage(self.port.recv(TIMEOUT))
+	    if m==None:
 		continue
-	    m = Message(messag,fro[0])
 	    d = priests.setdefault(m.fro,Data(m.fro))
 	    if m.command=="Ping":
 		d.priestId = m.priestId

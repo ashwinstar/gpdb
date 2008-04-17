@@ -1,5 +1,7 @@
+import atexit
 import fcntl
 import os
+import signal
 import socket
 import sys
 
@@ -24,6 +26,7 @@ def test():
     for i in xrange(N_PRIEST):
 	priests.append(hostname+":"+str(BASE_PORT+i))
     priests = ",".join(priests)
+    t = []
     for i in xrange(N_PRIEST):
 	sb = ["priests="+priests]
 	sb.append("\nhost=%s\n"%hostname)
@@ -35,9 +38,12 @@ def test():
 	except OSError,e:
 	    if e.errno!=17:
 		raise
-	Priest(config,m,f).start()
+	t.append(Priest(config,m,f))
     for i in xrange(N_TESTER):
-	Tester(utils.stringToAddresses(m,priests),m).start()
+	t.append(Tester(utils.stringToAddresses(m,priests),m))
+    for i in t[0:]:
+	i.start()
+    t[0].run()
 
 def lock():
     global lockfile
@@ -70,13 +76,13 @@ def runPriest(argv):
 	    raise
     m = UdpMessenger()
 #    m.setDisableLog(False)
-    Priest(config,m,"data").start()
+    Priest(config,m,"data").run()
 
 def runTester(argv):
     lock()
     messenger = UdpMessenger()
     priests = utils.stringToAddresses(messenger,argv[1])
-    Tester(priests,messenger).start()
+    Tester(priests,messenger).run()
 
 def main(argv):
     argv0 = argv.pop(0)
@@ -98,4 +104,5 @@ def usage(argv0):
     sys.stderr.write("    python "+argv0+" Tester addresses\n")
     sys.exit(1)
 
+utils.helpPythonExit()
 main(sys.argv)

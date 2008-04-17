@@ -2,6 +2,8 @@
 
 #include "chubby_private.h"
 
+#define PAXOS_PROTOCOL_VERSION	0
+
 #define TIMEOUT		1
 
 static void
@@ -124,7 +126,8 @@ chubby_sendGetLeader(chubby_t*thiz,int fd)
 	a[s-t] = 0;
 	if (getSocketAddressByName(&sa,a))
 	    return CHUBBY_E_IO;
-	sendto(fd,"GetLeader",9,0,(struct sockaddr*) &sa,sizeof sa);
+	sprintf(a,"GetLeader version=%d",PAXOS_PROTOCOL_VERSION);
+	sendto(fd,a,strlen(a),0,(struct sockaddr*)&sa,sizeof sa);
     }
     return 0;
 }
@@ -144,6 +147,7 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
     for (;;){
 	chubby_udp_buffer_t b;
 	int i,j;
+	int version=-1;
 	char*command=NULL;
 	int resultSize=0;
 	char*result=NULL;
@@ -168,7 +172,9 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 	    if (command == NULL){
 		command = b.a+j;
 		b.a[i] = 0;
-	    }else if (!memcmp(b.a+j,"result=",7)){
+	    }else if (!memcmp(b.a+j,"version=",8))
+		version = atoi(b.a+j+8);
+	    else if (!memcmp(b.a+j,"result=",7)){
 		result = b.a+j+7;
 		resultSize = unmangle(result,i-j-7);
 		result[resultSize] = 0;
@@ -178,6 +184,8 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 		decree[decreeSize] = 0;
 	    }
 	}
+	if (version != PAXOS_PROTOCOL_VERSION)
+	    continue;
 	if (!strcmp(command,"Redirect")){
 	    struct sockaddr_in l;
 	    if (!getSocketAddressByName(&l,result) && memcmp(&l,&thiz->leader,sizeof l)){
@@ -186,7 +194,9 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 		proposeTimeout = 0;
 	    }
 	}else if (!strcmp(command,"Result")){
-	    if (what->length==decreeSize+8 && !memcmp(what->a+8,decree,decreeSize)){
+	    const char*a=strstr(what->a,"decree=");
+	    assert(a);
+	    if (what->a+what->length==a+decreeSize && !memcmp(a,decree,decreeSize)){
 		if (!memcmp(result,"error ",6))
 		    return atoi(result+6);
 		if (answer){
@@ -213,7 +223,7 @@ chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
     if (fd == -1)
 	return CHUBBY_E_IO;
     b.length = 0;
-    chubby_udp_buffer_format(&b,"Propose decree=Tag!!");
+    chubby_udp_buffer_format(&b,"Propose version=%d decree=Tag!!",PAXOS_PROTOCOL_VERSION);
     chubby_getNewId(thiz,b.a+b.length);
     b.length += strlen(b.a+b.length);
     chubby_udp_buffer_format(&b,"!!");

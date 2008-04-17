@@ -18,96 +18,108 @@ def check(__a,__b):
     global ntest
     global passed
     ntest += 1
-    print __a
+    print "%s\t%s"%(prefix,__a)
     x = eval(__a)
     if eval(__b):
-	print '\t',x
+	print "%s\t\t%s"%(prefix,str(x))
 	passed += 1
     else:
-	print '\tBAD',x,'good',__b
+	print "%s\t\tBAD %s good %s"%(prefix,str(x),__b)
+
+def test1():
+    global global_l
+    global_l = c.lock("test/lock2",20,10)
+    check("global_l","global_l[0]==0")
+    if global_l[0]==0:
+	global_l = global_l[1]
+	for i in xrange(10):
+	    check("global_l.renew(10)","True")
+	    check("global_l.getLockExpireTime()","x[0]==0 and time.time()+6<x[1]<time.time()+10")
+	    time.sleep(6)
+    time.sleep(10)
+    c.lock("test/lock3",20,10)
+    c.put("test/test1result","%d/%d"%(passed,ntest))
+
+def test2(lockString):
+    global global_l
+    global_l = c.getLockStringConnection(lockString)
+    check("global_l.list('/')","x[0]==0")
+    time.sleep(20)
+    check("global_l.list('/')","x[0]==chubby.E_LOCKEXPIRED")
+    c.put("test/test2result","%d/%d"%(passed,ntest))
+
+def test0():
+    global global_a
+    global global_l
+    check("c.put('/test/file','contents')","x==0")
+    check("c.get('/test/file')","x[0]==0 and x[2]=='contents'")
+    check("c.list('/')","x[0]==0 and x[2:]==('paxos','test')")
+    check("c.list('noentfile')","x==(chubby.E_NOENT,)")
+    check("c.stat('test/file')","x[0]==0")
+    check("c.remove('//test//1/1')","x==0 or x==chubby.E_NOENT")
+    check("c.put('test///1/1','')","x==0")
+    check("c.stat('test/1//1')","x[0]==0")
+    dn = x[1]
+    check("c.stat('test/1')","x[0:2]==(0,%d)"%dn)
+    check("c.stat('test')","x[0:2]==(0,%d)"%dn)
+    check("c.remove('//test//1/1')","x==0")
+    check("c.stat('test')","x[0]==0 and x[1]>%d"%dn)
+    check("c.list('/test')","'1' not in x")
+    global_a = CHUNK_SIZE*'!'+"".join(map(str,xrange(0,CHUNK_SIZE)))
+    check("c.putBigFile('///test/bi g',global_a)","x==0")
+    check("c.get('/test//bi g')","x[0]==0 and x[2]==global_a")
+    check("c.remove('/test/bi g')","x==0")
+    check("c.list('/test')","'bi g' not in x")
+    check("c.remove('/test/lock')","x==0 or x==chubby.E_NOENT")
+    check("c.remove('/test/lock-info')","x==0 or x==chubby.E_NOENT")
+    check("c.remove('/test/lock2')","x==0 or x==chubby.E_NOENT")
+    check("c.remove('/test/lock2-info')","x==0 or x==chubby.E_NOENT")
+    check("c.remove('/test/lock3')","x==0 or x==chubby.E_NOENT")
+    check("c.remove('/test/lock3-info')","x==0 or x==chubby.E_NOENT")
+    check("c.put('/test/test1result','no')","x==0")
+    check("c.put('/test/test2result','no')","x==0")
+    global_l = c.lock('/test//lock',20,10)
+    check("global_l","global_l[0]==0")
+    if global_l[0]==0:
+	global_l = global_l[1]
+	check("global_l.getLockString()","1")
+	check("global_l.checkLock()","x==0")
+	check("global_l.list('/')","x[0]==0")
+    check("c.lock('test/lock',2,10)","x==(chubby.E_TIMEOUT,)")
+    os.system("python -u %s test1&"%sys.argv[0])
+    time.sleep(10)
+    check("c.lock('test/lock2',20,10)","x==(chubby.E_TIMEOUT,)")
+    check("c.lock('test/lock2',60,10)","x[0]==0")
+    global_l = c.lock('test/lock3',20,10)
+    check("global_l","global_l[0]==0")
+    if global_l[0]==0:
+	global_l = global_l[1]
+	check("global_l.checkLock()","x==0")
+	check("global_l.list('/')","x[0]==0")
+	time.sleep(20)
+	check("global_l.checkLock()","x==chubby.E_LOCKEXPIRED")
+	check("global_l.list('/')","x==(chubby.E_LOCKEXPIRED,)")
+    global_l = c.lock('test/lock',20,10)
+    check("global_l","global_l[0]==0")
+    if global_l[0]==0:
+	global_l = global_l[1]
+	os.system("python -u %s test2 %s&"%(sys.argv[0],global_l.getLockString()))
+    check("c.lock('test/lock',20,10)","x[0]==0")
+    check("c.get('/test/test1result')","x[0]==0 and x[2]=='21/21'")
+    time.sleep(20)
+    check("c.get('/test/test2result')","x[0]==0 and x[2]=='2/2'")
 
 hostname = socket.gethostbyname(socket.gethostname())
 chu = Chubby(hostname+":2000,"+hostname+":2001,"+hostname+":2002")
 c = chu.makeConnection()
 
 if len(sys.argv)>1 and sys.argv[1]=="test1":
-    test1_l = c.lock("test/lock2",10,5)
-    check("test1_l","test1_l[0]==0")
-    if test1_l[0]==0:
-	test1_l = test1_l[1]
-	for i in xrange(10):
-	    check("test1_l.renew(5)","True")
-	    check("test1_l.getLockExpireTime()","x[0]==0 and time.time()+3<x[1]<time.time()+5")
-	    time.sleep(3)
-    time.sleep(5)
-    c.lock("test/lock3",10,5)
-    c.put("test/test1result","%d/%d"%(passed,ntest))
-    sys.exit(1)
-
-if len(sys.argv)>2 and sys.argv[1]=="test2":
-    test2_l = c.getLockStringConnection(sys.argv[2])
-    check("test2_l.list('/')","x[0]==0")
-    time.sleep(10)
-    check("test2_l.list('/')","x[0]==chubby.E_LOCKEXPIRED")
-    c.put("test/test2result","%d/%d"%(passed,ntest))
-    sys.exit(1)
-
-check("c.put('/test/file','contents')","x==0")
-check("c.get('/test/file')","x[0]==0 and x[2]=='contents'")
-check("c.list('/')","x[0]==0 and x[2:]==('paxos','test')")
-check("c.list('noentfile')","x==(chubby.E_NOENT,)")
-check("c.stat('test/file')","x[0]==0")
-check("c.remove('//test//1/1')","x==0 or x==chubby.E_NOENT")
-check("c.put('test///1/1','')","x==0")
-check("c.stat('test/1//1')","x[0]==0")
-dn = x[1]
-check("c.stat('test/1')","x[0:2]==(0,%d)"%dn)
-check("c.stat('test')","x[0:2]==(0,%d)"%dn)
-check("c.remove('//test//1/1')","x==0")
-check("c.stat('test')","x[0]==0 and x[1]>%d"%dn)
-check("c.list('/test')","'1' not in x")
-global_a = CHUNK_SIZE*'!'+"".join(map(str,xrange(0,CHUNK_SIZE)))
-check("c.putBigFile('///test/bi g',global_a)","x==0")
-check("c.get('/test//bi g')","x[0]==0 and x[2]==global_a")
-check("c.remove('/test/bi g')","x==0")
-check("c.list('/test')","'bi g' not in x")
-check("c.remove('/test/lock')","x==0 or x==chubby.E_NOENT")
-check("c.remove('/test/lock-info')","x==0 or x==chubby.E_NOENT")
-check("c.remove('/test/lock2')","x==0 or x==chubby.E_NOENT")
-check("c.remove('/test/lock2-info')","x==0 or x==chubby.E_NOENT")
-check("c.remove('/test/lock3')","x==0 or x==chubby.E_NOENT")
-check("c.remove('/test/lock3-info')","x==0 or x==chubby.E_NOENT")
-check("c.put('/test/test1result','no')","x==0")
-check("c.put('/test/test2result','no')","x==0")
-l = c.lock('/test//lock',10,5)
-check("l","l[0]==0")
-if l[0]==0:
-    l = l[1]
-    check("l.getLockString()","1")
-    check("l.checkLock()","x==0")
-    check("l.list('/')","x[0]==0")
-check("c.lock('test/lock',1,5)","x==(chubby.E_TIMEOUT,)")
-os.system("python -u %s test1&"%sys.argv[0])
-time.sleep(5)
-check("c.lock('test/lock2',10,5)","x==(chubby.E_TIMEOUT,)")
-check("c.lock('test/lock2',30,5)","x[0]==0")
-l = c.lock('test/lock3',10,5)
-check("l","l[0]==0")
-if l[0]==0:
-    l = l[1]
-    check("l.checkLock()","x==0")
-    check("l.list('/')","x[0]==0")
-    time.sleep(10)
-    check("l.checkLock()","x==chubby.E_LOCKEXPIRED")
-    check("l.list('/')","x==(chubby.E_LOCKEXPIRED,)")
-l = c.lock('test/lock',10,5)
-check("l","l[0]==0")
-if l[0]==0:
-    l = l[1]
-    os.system("python -u %s test2 %s&"%(sys.argv[0],l.getLockString()))
-check("c.lock('test/lock',10,5)","x[0]==0")
-check("c.get('/test/test1result')","x[0]==0 and x[2]=='21/21'")
-time.sleep(10)
-check("c.get('/test/test2result')","x[0]==0 and x[2]=='2/2'")
-
-print "%d/%d passed"%(passed,ntest)
+    prefix = "test1"
+    test1()
+elif len(sys.argv)>2 and sys.argv[1]=="test2":
+    prefix = "test2"
+    test2(sys.argv[2])
+else:
+    prefix = ""
+    test0()
+    print "%d/%d passed"%(passed,ntest)

@@ -4,7 +4,6 @@ import time
 import logger
 import message
 import utils
-from message import Message
 from udpmessenger import UdpMessenger
 
 TIMEOUT = 1
@@ -22,7 +21,6 @@ class Client:
 
     def __sendPropose(self,decree):
 	leader = None
-	fro = [None]
 	decree = "Tag %f-%d "%(time.time(),self.__counter)+decree
 	self.__counter += 1
 	proposeTimeout = 0
@@ -38,10 +36,9 @@ class Client:
 		mm = message.Maker("Propose")
 		mm.addDecree(decree)
 		mm.send(self.port,leader)
-	    messag = self.port.recv(TIMEOUT,fro)
-	    if messag==None:
+	    m = message.getMessage(self.port.recv(TIMEOUT))
+	    if m==None:
 		continue
-	    m = Message(messag,fro[0])
 	    if m.command=="Redirect":
 		if leader!=m.result:
 		    leader = m.result

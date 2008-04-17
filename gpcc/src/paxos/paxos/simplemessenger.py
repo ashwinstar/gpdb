@@ -37,26 +37,25 @@ class Port:
 	if not self.__checkDrop():
 	    self.__messenger.send(self,to,messag)
 
-    def recv(self,timeout,fro):
+    def recv(self,timeout):
 	self.__queueCv.acquire()
 	try:
 	    while len(self.__queue)==0:
 		self.__queueCv.wait(timeout)
 		if len(self.__queue)==0:
-		    return
+		    return (None,None)
 	    o = self.__queue.pop()
 	finally:
 	    self.__queueCv.release()
 	self.log("from="+o[1]+" to="+self.__address+" recv "+o[0])
-	fro[0] = o[1]
-	return o[0]
+	return o
 
     def add(self,fro,messag):
 	if not self.__checkDrop():
 	    self.__queueCv.acquire()
 	    try:
 		if len(self.__queue)<MAX_QUEUE_SIZE:
-		    self.__queue.append([messag,fro])
+		    self.__queue.append((messag,fro))
 		    self.__queueCv.notify()
 	    finally:
 		self.__queueCv.release()

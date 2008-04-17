@@ -1,9 +1,10 @@
 import threading
 import time
 
+import message
+
 from acceptor import Acceptor
 from learner import Learner
-from message import Message
 from pinger import Pinger
 from proposer import Proposer
 from role import Role
@@ -30,10 +31,8 @@ class Priest(Role,threading.Thread):
     def work(self):
 	ticktime = 0
 	while 1:
-	    fro = [None]
-	    messag = self.port.recv(TICK,fro)
-	    if messag:
-		m = Message(messag,fro[0])
+	    m = message.getMessage(self.port.recv(TICK))
+	    if m:
 		self.lock.acquire()
 		try:
 		    decreeNumber = self.learner.getDecreeNumber()

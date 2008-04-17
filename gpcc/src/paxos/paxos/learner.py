@@ -89,6 +89,7 @@ class Learner(Role):
 		except EOFError:
 		    raf.seek(l)
 		    raf.truncate()
+		    raf.write('\n')
 		raf.close()
 	i = bestDn>>LOG_SAVE_PERIOD&N_SAVE-1
 	self.__logfile = open(priest.dataDir+"/learner-log%d"%i,"ab")

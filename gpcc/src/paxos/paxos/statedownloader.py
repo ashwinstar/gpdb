@@ -5,7 +5,6 @@ import time
 
 import message
 
-from message import Message
 from role import Role
 from state import State
 from stringchopper import StringChopper
@@ -24,7 +23,6 @@ class StateDownloader(Role,threading.Thread):
     def __getBestUrl(self):
 	dn = 0
 	best = None
-	fro = [None]
 	while best==None:
 	    mm = message.Maker("GetState")
 	    self.__priest.lock.acquire()
@@ -35,10 +33,9 @@ class StateDownloader(Role,threading.Thread):
 	    mm.send(self.port,a)
 	    timeout = time.time()+TIMEOUT
 	    while timeout>time.time():
-		messag = self.port.recv(TIMEOUT,fro)
-		if messag==None:
+		m = message.getMessage(self.port.recv(TIMEOUT))
+		if m==None:
 		    continue
-		m = Message(messag,fro[0])
 		if m.command!="State":
 		    continue
 		if m.dn>dn:
@@ -53,7 +50,6 @@ class StateDownloader(Role,threading.Thread):
 	i = url.index('/')
 	to = url[:i]
 	filename = url[i+1:]
-	fro = [None]
 	p = self.port.getMessenger().makePort(self.__priest.configuration.host)
 	bigtimeout = time.time()+10*TIMEOUT
 	timeout = 0
@@ -67,7 +63,7 @@ class StateDownloader(Role,threading.Thread):
 	    if timeout<now:
 		timeout = now+TIMEOUT
 		p.send(to,"Get "+str(blockNumber)+' '+filename)
-	    s = p.recv(TIMEOUT,fro)
+	    s,fro = p.recv(TIMEOUT)
 	    if s==None:
 		continue
 	    sc = StringChopper(s)
@@ -85,7 +81,7 @@ class StateDownloader(Role,threading.Thread):
 		    return True
 		bigtimeout = now+10*TIMEOUT
 		self.__raf.write(t)
-		to = fro[0]
+		to = fro
 		blockNumber += 1
 
     def work(self):

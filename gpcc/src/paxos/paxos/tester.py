@@ -4,7 +4,6 @@ import time
 
 import message
 
-from message import Message
 from role import Role
 
 class Tester(Role,threading.Thread):
@@ -24,12 +23,10 @@ class Tester(Role,threading.Thread):
 	assert self.__learnedList[dn]==s
 
     def __readMessages(self):
-	fro = [None]
 	while 1:
-	    messag = self.port.recv(0,fro)
-	    if messag==None:
+	    m = message.getMessage(self.port.recv(0))
+	    if m==None:
 		break
-	    m = Message(messag,fro[0])
 	    if m.command=="Result":
 		self.__checkResult(m.dn,m.decree,m.result)
 	    else:

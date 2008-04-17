@@ -102,20 +102,20 @@ test1(int argc,char**argv,chubby_connection_t*c)
     struct string s;
     chubby_connection_t*c2=NULL;
     int i;
-    TEST(chubby_connection_lock(c,&c2,"test/lock2",10,5),t.ret==0);
+    TEST(chubby_connection_lock(c,&c2,"test/lock2",20,10),t.ret==0);
     if (c2){
 	for (i=0; i<10; i++){
 	    time_t now;
-	    TEST(chubby_connection_renew(c2,5),t.ret==0);
+	    TEST(chubby_connection_renew(c2,10),t.ret==0);
 	    now = time(NULL);
-	    TEST(chubby_connection_getLockExpireTime(c2,&t.time),t.ret==0&&now+3<t.time&&t.time<=now+5);
-	    sleep(3);
+	    TEST(chubby_connection_getLockExpireTime(c2,&t.time),t.ret==0&&now+6<t.time&&t.time<=now+10);
+	    sleep(6);
 	}
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    sleep(7);
-    TEST(chubby_connection_lock(c,&c2,"test/lock3",10,5),1);
+    sleep(14);
+    TEST(chubby_connection_lock(c,&c2,"test/lock3",20,10),1);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
@@ -135,7 +135,7 @@ test2(int argc,char**argv,chubby_connection_t*c)
     TEST(chubby_connection_getLockStringConnection(c,&c2,argv[2]),t.ret==0);
     if (c2){
 	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==0);
-	sleep(10);
+	sleep(20);
 	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==CHUBBY_E_LOCKEXPIRED);
 	chubby_connection_close(c2);
 	c2 = NULL;
@@ -198,7 +198,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
     TEST(chubby_connection_remove(c,"/test/lock3-info"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_put(c,"/test/test1result",make_string(&s,"no")),t.ret==0);
     TEST(chubby_connection_put(c,"/test/test2result",make_string(&s,"no")),t.ret==0);
-    TEST(chubby_connection_lock(c,&c2,"/test//lock",10,5),t.ret==0);
+    TEST(chubby_connection_lock(c,&c2,"/test//lock",20,10),t.ret==0);
     if (c2){
 	TEST(chubby_connection_getLockString(c2,&t.answer),t.ret==0);
 	TEST(chubby_connection_checkLock(c2),t.ret==0);
@@ -206,35 +206,35 @@ test0(int argc,char**argv,chubby_connection_t*c)
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock",1,5),t.ret==CHUBBY_E_TIMEOUT);
+    TEST(chubby_connection_lock(c,&c2,"test/lock",2,10),t.ret==CHUBBY_E_TIMEOUT);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
     sprintf(s.a,"%s test1&",argv[0]);
     system(s.a);
-    sleep(5);
-    TEST(chubby_connection_lock(c,&c2,"test/lock2",10,5),t.ret==CHUBBY_E_TIMEOUT);
+    sleep(10);
+    TEST(chubby_connection_lock(c,&c2,"test/lock2",20,10),t.ret==CHUBBY_E_TIMEOUT);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock2",30,5),t.ret==0);
+    TEST(chubby_connection_lock(c,&c2,"test/lock2",60,10),t.ret==0);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock3",10,5),t.ret==0);
+    TEST(chubby_connection_lock(c,&c2,"test/lock3",20,10),t.ret==0);
     if (c2){
 	TEST(chubby_connection_checkLock(c2),t.ret==0);
 	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==0);
-	sleep(10);
+	sleep(20);
 	TEST(chubby_connection_checkLock(c2),t.ret==CHUBBY_E_LOCKEXPIRED);
 	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==CHUBBY_E_LOCKEXPIRED);
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock",10,5),t.ret==0);
+    TEST(chubby_connection_lock(c,&c2,"test/lock",20,10),t.ret==0);
     if (c2){
 	chubby_string_t*a=NULL;
 	TEST(chubby_connection_getLockString(c2,&a),t.ret==0);
@@ -246,13 +246,13 @@ test0(int argc,char**argv,chubby_connection_t*c)
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock",10,5),t.ret==0);
+    TEST(chubby_connection_lock(c,&c2,"test/lock",20,10),t.ret==0);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
     TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/test1result"),t.ret==0&&!strcmp(t.answer->a,"22/22"));
-    sleep(10);
+    sleep(20);
     TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/test2result"),t.ret==0&&!strcmp(t.answer->a,"3/3"));
 }
 

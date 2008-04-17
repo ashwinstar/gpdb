@@ -36,19 +36,19 @@ class Port:
 		self.log("exception with "+messag)
 		raise
 
-    def recv(self,timeout,fro):
+    def recv(self,timeout):
 	self.__socket.settimeout(timeout)
 	while 1:
 	    try:
 		start=time.time()
 		p = self.__socket.recvfrom(65536)
 	    except socket.error:
-		return
+		return (None,None)
 	    if random.random()>=DROP_CHANCE:
 		break
-	fro[0] = socketAddressToString(p[1])
-	self.log("from="+fro[0]+" to="+self.__address+" recv "+p[0])
-	return p[0]
+	fro = socketAddressToString(p[1])
+	self.log("from="+fro+" to="+self.__address+" recv "+p[0])
+	return (p[0],fro)
 
     def close(self):
 	self.__socket.close()

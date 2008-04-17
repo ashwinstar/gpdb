@@ -87,6 +87,7 @@ class Acceptor(Role):
 	    except EOFError:
 		self.__raf.seek(l)
 		self.__raf.truncate()
+		self.__raf.write('\n')
 		return
 
     def __writeData(self,d):
