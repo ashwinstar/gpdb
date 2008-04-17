@@ -5,12 +5,14 @@
 Recovers Greenplum segment instances that are marked as invalid, if 
 mirroring is configured and operational
 
-Usage: gprecoverseg.py [--version] [-?qaf] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
+Usage: gprecoverseg.py [--version] [-?qaf] [-c input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
            
           --version : print version information
           -?        : print this help screen
           -q        : quiet mode, do not log progress to screen [default: verbose output to screen]
           -a        : non-interactive mode [default: interactive mode]
+          -c        : <input_config> input configuration file which is generated from -o option
+          -o        : <output_config> output configuration file
           -d        : master data directory
           -l        : <log directory> alternative log file directory [optional]
           -p        : <hostname> recover to spare pool node
@@ -33,7 +35,7 @@ Usage: gprecoverseg.py [--version] [-?qaf] [-d master_data_dir] [-l log_dir] [-p
 
 
 '''
-
+from __future__ import with_statement
 import os, sys, getopt, socket, StringIO
 from threading import Thread
 from datetime import date, datetime, timedelta
@@ -60,6 +62,8 @@ opt['-p'] = None
 opt['-f'] = False
 opt['-q'] = False
 opt['-l'] = None
+opt['-c'] = None
+opt['-o'] = None
 
 arg = {}
 arg['exit'] = 0
@@ -78,7 +82,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?qafs:d:z:B:p:l:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?qafs:d:z:B:p:l:c:o:', ['version'])
     except Exception, e:
         usage('[ERROR]:-' + str(e))
 
@@ -93,6 +97,8 @@ def parseCommandLine():
         elif (switch == '-f'):        opt[switch] = True
         elif (switch == '-q'):        opt[switch] = True
         elif (switch == '-l'):        opt[switch] = val
+        elif (switch == '-c'):        opt[switch] = val
+        elif (switch == '-o'):        opt[switch] = val
 
     gpmlib.log_set_module(script_name)
     # set verbose
@@ -834,7 +840,7 @@ def get_mirror_details(db, failed_dbids):
         r = db.read_tuple()
         active_dbid = r[0]
 
-        db.execute('''select definedprimary, hostname, port, datadir, dbid from gp_configuration 
+        db.execute('''select definedprimary, hostname, port, datadir, dbid, content from gp_configuration 
                       where valid='t' and 
                       content in (select content from gp_configuration where dbid=%d) 
                       and dbid <> %d''' % (active_dbid, dbid))
@@ -1124,7 +1130,7 @@ def force_recover(db):
     failed_instance_array = [ x for x in db.iterate_dict() ]
 
     failed_dbids = [ x['dbid'] for x in failed_instance_array]
-    db.execute('''select definedprimary, hostname, port, datadir, dbid from gp_configuration 
+    db.execute('''select definedprimary, hostname, port, datadir, dbid, content from gp_configuration 
                   where dbid<> %d and 
                   content in (select content from gp_configuration where dbid=%d)''' %
                (failed_dbids[0], failed_dbids[0]))
@@ -1288,6 +1294,103 @@ def reset_qe_connect(db):
         gpmlib.log_info(buf.getvalue())
 
 ################                                      
+# [failed_instance_array]
+# definedprimary|hostname|port|datadir|dbid|content
+#  ...
+# [active_instance_array]
+# definedprimary|hostname|port|datadir|dbid|content
+# ...
+# [pool_failed_instance_array]
+# definedprimary|hostname|port|datadir|dbid|content
+# ...
+#
+################
+def parse_config():
+    global opt
+
+    failed_instance_array = []
+    active_instance_array = []
+    pool_failed_instance_array = []
+    array = None
+    with open(opt['-c']) as f:
+        for line in f:
+            line = line.strip()
+            if line == '':
+                continue
+            if line == '.':
+                array = None
+            elif line == '[failed_instances]':
+                array = failed_instance_array
+            elif line == '[active_instances]':
+                array = active_instance_array
+            elif line == '[pool_failed_instances]':
+                array = pool_failed_instance_array
+            else:
+                qe = line.split('|')
+                if len(qe) != 6:
+                    gpmlib.error('[FATAL]:- config file format error. %s' % line)
+                a = {}
+                a['definedprimary'] = qe[0] == 't' and True or False
+                a['hostname'] = qe[1]
+                a['port'] = int(qe[2])
+                a['datadir'] = qe[3]
+                a['dbid'] = int(qe[4])
+                a['content'] = int(qe[5])
+                if array is not None:
+                    array.append(a)
+                else:
+                    gpmlib.error('[FATAL]:- config file format error. no header found.')
+
+        if array is not None:
+            gpmlib.error('[FATAL]:- config file format error. unexpected EOF.')
+
+    if len(pool_failed_instance_array) == 0:
+        pool_failed_instance_array = None
+
+    if len(failed_instance_array) != len(active_instance_array):
+        gpmlib.error('[FATAL]:- number of failed instances must be equal to number of active instances')
+    
+    if pool_failed_instance_array is not None and len(failed_instance_array) != len(pool_failed_instance_array):
+        gpmlib.error('[FATAL]:- number of failed instances must be equal to number of pool failed instances')        
+
+    failed_dbids = [ x['dbid'] for x in failed_instance_array]
+
+    update_sql = None
+    if pool_failed_instance_array is not None:
+        update_sql = []
+        for qe in pool_failed_instance_array:
+            update_sql.append((qe['hostname'], qe['datadir'], qe['port'], qe['dbid']))
+
+    return (failed_dbids, failed_instance_array, active_instance_array, pool_failed_instance_array, update_sql)
+
+###############
+def print_array_config(f, title, array):
+    f.write('%s\n' % title)
+    for qe in array:
+        f.write(qe['definedprimary'] and 't' or 'f')
+        f.write('|')
+        f.write(qe['hostname'])
+        f.write('|')
+        f.write(str(qe['port']))
+        f.write('|')
+        f.write(qe['datadir'])
+        f.write('|')
+        f.write(str(qe['dbid']))    
+        f.write('|')
+        f.write(str(qe['content']))
+        f.write('\n')
+    f.write('.\n')
+
+################
+def print_config(failed_instance_array, active_instance_array, pool_failed_instance_array):
+    global opt
+    with open(opt['-o'], 'w') as f:    
+        print_array_config(f, '[failed_instances]', failed_instance_array)
+        print_array_config(f, '[active_instances]', active_instance_array)
+        if pool_failed_instance_array:
+            print_array_config(f, '[pool_failed_instances]', pool_failed_instance_array)        
+
+################                                      
 try:
 
     parseCommandLine()
@@ -1359,50 +1462,57 @@ try:
             gpmlib.fatal('Unable to continue')
 
         # generate list of failed instances, active instances and failed dbids
-        if opt['-z']:
-            # Force recovery
-            (failed_dbids, failed_instance_array, active_instance_array) = force_recover(db)
+        if opt['-c']:
+            (failed_dbids, failed_instance_array, active_instance_array, pool_failed_instance_array, update_sql) = parse_config()
         else:
 
-            # get mirror type
-            (mir_type_num, mir_type) = gpmlib.get_mirror_type(db, multi_home)
+            if opt['-z']:
+                # Force recovery
+                (failed_dbids, failed_instance_array, active_instance_array) = force_recover(db)
+            else:
 
-            # get failed segments' dbid
-            failed_dbids = get_failed_dbids(db)
-            if len(failed_dbids) == 0:
-                gpmlib.log_info('No invalid segment instances located')
+                # get mirror type
+                (mir_type_num, mir_type) = gpmlib.get_mirror_type(db, multi_home)
+
+                # get failed segments' dbid
+                failed_dbids = get_failed_dbids(db)
+                if len(failed_dbids) == 0:
+                    gpmlib.log_info('No invalid segment instances located')
+                    sys.exit(0)
+
+                # check separate host
+                chk_separate_host(db, mir_type_num, failed_dbids)
+
+                # check failed segment count
+                if len(failed_dbids) > len(qes):
+                    gpmlib.log_fatal('Insufficient remaining active instances to be able to recover instance')
+                    gpmlib.fatal('Unable to continue')
+                else:
+                    gpmlib.log_info('Sufficient active instances to be able to start recovery')
+            
+                # get details of failed and its segment
+                (failed_instance_array, active_instance_array) = get_mirror_details(db, failed_dbids)
+
+
+
+            # pool host opt['-p']
+            if opt['-p']:
+                (pri_pool_host_in_use, mir_pool_host_in_use, pri_datadir_prefix, mir_datadir_prefix) = chk_pool_host(db, failed_dbids)
+            
+                (update_sql, pool_failed_instance_array) = pool_host_dir_validation(db, failed_instance_array, pri_pool_host_in_use, 
+                                                                                    mir_pool_host_in_use, pri_datadir_prefix, mir_datadir_prefix)
+
+            # pool dir opt['-s']
+            if opt['-s']:
+                chk_pool_dir_available(db, failed_dbids)
+                (update_sql, pool_failed_instance_array) = pool_dir_validation(db, failed_instance_array)
+
+            if opt['-o']:
+                print_config(failed_instance_array, active_instance_array, pool_failed_instance_array)
                 sys.exit(0)
 
-            # check separate host
-            chk_separate_host(db, mir_type_num, failed_dbids)
-
-            # check failed segment count
-            if len(failed_dbids) > len(qes):
-                gpmlib.log_fatal('Insufficient remaining active instances to be able to recover instance')
-                gpmlib.fatal('Unable to continue')
-            else:
-                gpmlib.log_info('Sufficient active instances to be able to start recovery')
-            
-            # get details of failed and its segment
-            (failed_instance_array, active_instance_array) = get_mirror_details(db, failed_dbids)
-
-
-
-        # pool host opt['-p']
-        if opt['-p']:
-            (pri_pool_host_in_use, mir_pool_host_in_use, pri_datadir_prefix, mir_datadir_prefix) = chk_pool_host(db, failed_dbids)
-            
-            (update_sql, pool_failed_instance_array) = pool_host_dir_validation(db, failed_instance_array, pri_pool_host_in_use, 
-                                                                                mir_pool_host_in_use, pri_datadir_prefix, mir_datadir_prefix)
-
-        # pool dir opt['-s']
-        if opt['-s']:
-            chk_pool_dir_available(db, failed_dbids)
-            (update_sql, pool_failed_instance_array) = pool_dir_validation(db, failed_instance_array)
-
-
         active_array = active_instance_array
-        if opt['-p'] or opt['-s']:
+        if opt['-p'] or opt['-s'] or pool_failed_instance_array is not None:
             failed_array = pool_failed_instance_array
         else:
             failed_array = failed_instance_array
