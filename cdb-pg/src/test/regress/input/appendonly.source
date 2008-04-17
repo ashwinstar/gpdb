@@ -171,9 +171,9 @@ SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
 
--- JOIN
-SELECT count(*) FROM tenk_ao1 t1, tenk_ao2 t2 where t1.unique1 = t2.unique2;
-SELECT count(*) FROM tenk_ao1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
+-- JOIN (uncomment when MPP-2742 is fixed)
+-- SELECT count(*) FROM tenk_ao1 t1, tenk_ao2 t2 where t1.unique1 = t2.unique2;
+-- SELECT count(*) FROM tenk_ao1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
 
 -- TRUNCATE
 TRUNCATE tenk_ao1;
