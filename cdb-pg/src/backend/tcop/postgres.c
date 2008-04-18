@@ -166,6 +166,9 @@ pthread_t main_tid = (pthread_t)0;
 pthread_t main_tid = {0,0};
 #endif
 
+/* if we're in the middle of dying, let our threads exit with some dignity */
+static volatile sig_atomic_t in_quickdie = false;
+
 /*
  * people who want to use EOF should #define DONTUSENEWLINE in
  * tcop/tcopdebug.h
@@ -2969,6 +2972,8 @@ quickdie(SIGNAL_ARGS)
 {
 	PG_SETMASK(&BlockSig);
 
+	in_quickdie=true;
+
 	/*
 	 * Ideally this should be ereport(FATAL), but then we'd not get control
 	 * back...
@@ -3116,7 +3121,10 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 		write_stderr("\nUnexpected internal error: QD %d received signal %d in worker thread %lu (forwarding signal to main thread)\n\n",
 					 MyProcPid, postgres_signal_arg, (unsigned long)pthread_self().p);
 #endif 
-		pthread_kill(main_tid, postgres_signal_arg);
+		/* Only forward if the main thread isn't quick-dying. */
+		if (!in_quickdie)
+			pthread_kill(main_tid, postgres_signal_arg);
+
 		pthread_exit(NULL);
 		return;
 	}
