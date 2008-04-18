@@ -77,7 +77,7 @@ bfz_scan_begin(bfz_t*thiz)
     thiz->buffer_end = thiz->buffer;
     thiz->mode = BFZ_MODE_SCAN;
     thiz->scan_begin_ex(thiz);
-    elog(LOG, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", (long long)thiz->tot_bytes, (long long)thiz->tot_compressed, 
+    elog(DEBUG5, "bfz file size uncompressed %lld, compressed %lld, savings %d%%", (long long)thiz->tot_bytes, (long long)thiz->tot_compressed, 
 		 thiz->tot_bytes == 0 ? 0 : 
 		 (int) ((thiz->tot_bytes - thiz->tot_compressed) * 100 / thiz->tot_bytes));
 }
