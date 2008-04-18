@@ -251,6 +251,7 @@ makeRangeVar(char *schemaname, char *relname)
 	r->inhOpt = INH_DEFAULT;
 	r->istemp = false;
 	r->alias = NULL;
+	r->location = -1;   /*CDB*/
 
 	return r;
 }

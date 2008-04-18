@@ -225,6 +225,8 @@ SELECT '' AS Five, NULLIF(a.i,b.i) AS "NULLIF(a.i,b.i)",
   NULLIF(b.i, 4) AS "NULLIF(b.i,4)"
   FROM CASE_TBL a, CASE2_TBL b ORDER BY 2,3,4,5;
 ERROR:  ORDER BY position 4 is not in select list
+LINE 3:   FROM CASE_TBL a, CASE2_TBL b ORDER BY 2,3,4,5;
+                                                    ^
 SELECT '' AS "Two", a.i,a.f,b.i,b.j
   FROM CASE_TBL a, CASE2_TBL b
   WHERE COALESCE(f,b.i) = 2 ORDER BY 2,3,4,5;

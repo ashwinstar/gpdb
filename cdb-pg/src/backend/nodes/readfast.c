@@ -330,6 +330,7 @@ _readWindowSpec(const char ** str)
 	READ_NODE_FIELD(partition);
 	READ_NODE_FIELD(order);
 	READ_NODE_FIELD(frame);
+	READ_INT_FIELD(location);
 
 	READ_DONE();
 }
@@ -421,6 +422,7 @@ _readRangeVar(const char ** str)
 	READ_ENUM_FIELD(inhOpt, InhOption); Assert(local_node->inhOpt <= INH_DEFAULT);
 	READ_BOOL_FIELD(istemp);
 	READ_NODE_FIELD(alias);
+    READ_INT_FIELD(location);   /*CDB*/
 
 	READ_DONE();
 }
@@ -861,6 +863,7 @@ _readAConst(const char ** str)
 	
 	local_node->typname = NULL;
 	READ_NODE_FIELD(typname);
+    READ_INT_FIELD(location);   /*CDB*/
 	READ_DONE();
 }
 
@@ -1112,6 +1115,7 @@ _readSubLink(const char ** str)
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
 	READ_NODE_FIELD(testexpr);
 	READ_NODE_FIELD(operName);
+	READ_INT_FIELD(location);   /*CDB*/
 	READ_NODE_FIELD(subselect);
 
 	READ_DONE();

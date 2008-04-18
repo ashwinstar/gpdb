@@ -244,7 +244,7 @@ transformWindowFrameEdge(ParseState *pstate, WindowFrameEdge *e,
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("window specification RANGE parameter type "
-								"must be coercable to ORDER BY column type")));
+								"must be coercible to ORDER BY column type")));
 			
 			oprresult = ((Form_pg_operator)GETSTRUCT(tup))->oprresult;
 			newrtype = ((Form_pg_operator)GETSTRUCT(tup))->oprright;
@@ -405,7 +405,10 @@ transformWindowClause(ParseState *pstate, Query *qry)
 
 		clauseno++;
 
-		if (checkExprHasWindFuncs((Node *)ws))
+        /* Include this WindowSpec's location in error messages. */
+        pstate->p_breadcrumb.node = (Node *)ws;
+
+        if (checkExprHasWindFuncs((Node *)ws))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -490,7 +493,9 @@ transformWindowClause(ParseState *pstate, Query *qry)
 								 errhint("Window specifications which are "
 										 "referenced by other window "
 										 "specifications cannot have framing "
-										 "clauses")));
+										 "clauses"),
+                                 parser_errposition(pstate, ws2->location)
+                                 ));
 
 					/*
 					 * The specifications are valid so just copy the details
@@ -516,6 +521,8 @@ transformWindowClause(ParseState *pstate, Query *qry)
 		}
 
 		newspec->name = ws->name;
+		newspec->location = ws->location;
+
 		/*
 		 * Process partition, if one is defined and if it isn't already
 		 * in newspec.
@@ -541,6 +548,9 @@ transformWindowClause(ParseState *pstate, Query *qry)
 													 true);
 			}
 		}
+
+        /* Refresh our breadcrumb in case transformSortClause stepped on it. */
+        pstate->p_breadcrumb.node = (Node *)ws;
 
 		/* see if any WindowRefs using this spec are DISTINCT qualified */
 		if (newspec->order || ws->frame)
@@ -1240,6 +1250,15 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 						List **relnamespace,
 						Relids *containedRels)
 {
+    Node                   *result;
+    ParseStateBreadCrumb    savebreadcrumb;
+
+    /* CDB: Push error location stack.  Must pop before return! */
+    Assert(pstate);
+    savebreadcrumb = pstate->p_breadcrumb;
+    pstate->p_breadcrumb.pop = &savebreadcrumb;
+    pstate->p_breadcrumb.node = n;
+
 	if (IsA(n, RangeVar))
 	{
 		/* Plain relation reference */
@@ -1257,7 +1276,7 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		*containedRels = bms_make_singleton(rtindex);
 		rtr = makeNode(RangeTblRef);
 		rtr->rtindex = rtindex;
-		return (Node *) rtr;
+		result = (Node *) rtr;
 	}
 	else if (IsA(n, RangeSubselect))
 	{
@@ -1276,7 +1295,7 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		*containedRels = bms_make_singleton(rtindex);
 		rtr = makeNode(RangeTblRef);
 		rtr->rtindex = rtindex;
-		return (Node *) rtr;
+		result = (Node *) rtr;
 	}
 	else if (IsA(n, RangeFunction))
 	{
@@ -1295,7 +1314,7 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		*containedRels = bms_make_singleton(rtindex);
 		rtr = makeNode(RangeTblRef);
 		rtr->rtindex = rtindex;
-		return (Node *) rtr;
+		result = (Node *) rtr;
 	}
 	else if (IsA(n, JoinExpr))
 	{
@@ -1581,11 +1600,19 @@ transformFromClauseItem(ParseState *pstate, Node *n,
 		 */
 		*containedRels = bms_add_member(my_containedRels, j->rtindex);
 
-		return (Node *) j;
+		result = (Node *) j;
 	}
 	else
+    {
+        result = NULL;
 		elog(ERROR, "unrecognized node type: %d", (int) nodeTag(n));
-	return NULL;				/* can't get here, keep compiler quiet */
+    }
+
+    /* CDB: Pop error location stack. */
+    Assert(pstate->p_breadcrumb.pop == &savebreadcrumb);
+    pstate->p_breadcrumb = savebreadcrumb;
+
+	return result;
 }
 
 /*
@@ -1892,6 +1919,9 @@ findTargetlistEntry(ParseState *pstate, Node *node, List **tlist, int clause)
 	TargetEntry *target_result = NULL;
 	ListCell   *tl;
 	Node	   *expr;
+
+    /* CDB: Drop a breadcrumb in case of error. */
+    pstate->p_breadcrumb.node = node;
 
 	/*----------
 	 * Handle two special cases as mandated by the SQL92 spec:
@@ -2277,6 +2307,9 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 		node = (Node*)lfirst(l);
 		tl = findListTargetlistEntries(pstate, node, targetlist, false, false);
 
+        /* CDB: Cursor position not available for errors below this point. */
+        pstate->p_breadcrumb.node = NULL;
+
 		foreach(tl_cell, tl)
 		{
 			tle = (TargetEntry*)lfirst(tl_cell);
@@ -2426,6 +2459,9 @@ transformGroupClause(ParseState *pstate, List *grouplist,
 				findListTargetlistEntries(pstate, lfirst(lc),
 										  targetlist, false, true));
 		}
+
+        /* CDB: Cursor position not available for errors below this point. */
+        pstate->p_breadcrumb.node = NULL;
 
 		/*
 		 * For each GROUPING function, check if its argument(s) appear in the

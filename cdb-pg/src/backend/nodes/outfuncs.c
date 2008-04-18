@@ -58,7 +58,7 @@
 
 /* Write an uint64 field (anything written as ":fldname %u") */
 #define WRITE_UINT64_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %lld", (long long)node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " " UINT64_FORMAT, node->fldname)
 
 /* Write an OID field (don't hard-wire assumption that OID is same as uint) */
 #define WRITE_OID_FIELD(fldname) \
@@ -815,6 +815,7 @@ _outRangeVar(StringInfo str, RangeVar *node)
 	WRITE_ENUM_FIELD(inhOpt, InhOption);
 	WRITE_BOOL_FIELD(istemp);
 	WRITE_NODE_FIELD(alias);
+    WRITE_INT_FIELD(location);  /*CDB*/
 }
 
 static void
@@ -991,6 +992,12 @@ _outSubLink(StringInfo str, SubLink *node)
 	WRITE_ENUM_FIELD(subLinkType, SubLinkType);
 	WRITE_NODE_FIELD(testexpr);
 	WRITE_NODE_FIELD(operName);
+    /* 
+     * CDB: For now we don't serialize the 'location' field, for compatibility
+     * so stored sublinks can be read by pre-3.2 releases.  Anyway it's only
+     * meaningful with the original source string, which isn't kept when a
+     * view or rule definition is stored in the catalog.
+     */
 	WRITE_NODE_FIELD(subselect);
 }
 
@@ -2651,6 +2658,7 @@ _outWindowSpec(StringInfo str, WindowSpec *node)
 	WRITE_NODE_FIELD(partition);
 	WRITE_NODE_FIELD(order);
 	WRITE_NODE_FIELD(frame);
+    WRITE_INT_FIELD(location);
 }
 
 static void
@@ -2847,6 +2855,7 @@ _outParamRef(StringInfo str, ParamRef *node)
 	WRITE_NODE_TYPE("PARAMREF");
 
 	WRITE_INT_FIELD(number);
+	WRITE_INT_FIELD(location);  /*CDB*/
 }
 
 static void
@@ -2858,7 +2867,12 @@ _outAConst(StringInfo str, A_Const *node)
 
 	_outValue(str, &(node->val));
 	WRITE_NODE_FIELD_AS(typname, typename);
-	
+    /* 
+     * CDB: For now we don't serialize the 'location' field, for compatibility
+     * so stored constants can be read by pre-3.2 releases.  Anyway it's only
+     * meaningful with the original source string, which isn't kept when a
+     * view or rule definition is stored in the catalog.
+     */
 }
 
 static void

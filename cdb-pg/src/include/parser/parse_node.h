@@ -17,6 +17,17 @@
 #include "nodes/parsenodes.h"
 #include "utils/rel.h"
 
+
+/*
+ * CDB: Parse analysis location stack for error reporting
+ */
+typedef struct ParseStateBreadCrumb 
+{
+	Node						   *node;
+	struct ParseStateBreadCrumb	   *pop; 
+} ParseStateBreadCrumb;
+
+
 /*
  * State information used during parse analysis
  *
@@ -62,6 +73,7 @@
 typedef struct ParseState
 {
 	struct ParseState *parentParseState;		/* stack link */
+	ParseStateBreadCrumb    p_breadcrumb;       /* top of err location stack */
 	const char *p_sourcetext;	/* source text, or NULL if not available */
 	List	   *p_rtable;		/* range table so far */
 	List	   *p_joinlist;		/* join items so far (will become FromExpr

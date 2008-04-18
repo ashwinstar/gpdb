@@ -96,11 +96,17 @@ static Expr *make_distinct_op(ParseState *pstate, List *opname,
  * another, such as A_Const => Const; we just do nothing when handed
  * a Const.  More care is needed for node types that are used as both
  * input and output of transformExpr; see SubLink for example.
+ *
+ * CDB: On return, pstate->breadcrumb.node points to the original 'expr' node.
+ * This is intended to provide a default cursor location in case an error is
+ * reported during further processing of the result, such as conversion to a
+ * target type.
  */
 Node *
 transformExpr(ParseState *pstate, Node *expr)
 {
-	Node	   *result = NULL;
+	Node	               *result;
+	ParseStateBreadCrumb    savebreadcrumb;
 
 	if (expr == NULL)
 		return NULL;
@@ -108,6 +114,13 @@ transformExpr(ParseState *pstate, Node *expr)
 	/* Guard against stack overflow due to overly complex expressions */
 	check_stack_depth();
 
+	/* CDB: Drop a breadcrumb, then push location stack. Must pop before return! */
+	Assert(pstate);
+	pstate->p_breadcrumb.node = (Node *)expr;   
+	savebreadcrumb = pstate->p_breadcrumb;
+	pstate->p_breadcrumb.pop = &savebreadcrumb;
+
+	result = NULL;
 	switch (nodeTag(expr))
 	{
 		case T_ColumnRef:
@@ -328,8 +341,186 @@ transformExpr(ParseState *pstate, Node *expr)
 			break;
 	}
 
+	/* CDB: Pop error location stack, leaving breadcrumb on our input expr. */
+	Assert(pstate->p_breadcrumb.pop == &savebreadcrumb);
+	pstate->p_breadcrumb = savebreadcrumb;
+
 	return result;
 }
+
+
+/*
+ * parse_expr_location
+ *
+ * Looks for a node with a 'location' field in the given parse tree expression.
+ * Returns the location (the byte offset of a token within the source string),
+ * or -1 if unknown.
+ *
+ * NB: For best results, expr should be an untransformed expression, because
+ * after transformExpr() most nodes have no 'location' field.
+ */
+int
+parse_expr_location(Expr *expr)
+{
+    int         loc;
+    ListCell   *cell;
+
+    if (expr == NULL)
+         return -1;
+
+    switch (nodeTag(expr))
+    {
+        case T_ColumnRef:
+            loc = ((ColumnRef *)expr)->location;
+            break;
+
+        case T_ParamRef:
+            loc = ((ParamRef *)expr)->location;
+            break;
+
+        case T_A_Const:
+            loc = ((A_Const *)expr)->location;
+            break;
+
+        case T_A_Indirection:
+        {
+            A_Indirection  *ind = (A_Indirection *)expr;
+
+            loc = parse_expr_location((Expr *)ind->arg);
+            if (loc < 0)
+                loc = parse_expr_location((Expr *)ind->indirection);
+            break;
+        }
+
+        case T_TypeCast:
+        {
+            TypeCast   *typecast = (TypeCast *)expr;
+
+            loc = parse_expr_location((Expr *)typecast->arg);
+            if (loc < 0)
+                loc = parse_expr_location((Expr *)typecast->typname);
+            break;
+        }
+
+        case T_A_Expr:
+            loc = ((A_Expr *)expr)->location;
+            break;
+
+        case T_FuncCall:
+            loc = ((FuncCall *)expr)->location;
+            break;
+
+        case T_SubLink:
+            loc = ((SubLink *)expr)->location;
+            break;
+
+        case T_CaseExpr:
+        {
+            CaseExpr   *caseexpr = (CaseExpr *)expr;
+            CaseWhen   *casewhen;
+
+            loc = parse_expr_location(caseexpr->arg);
+            foreach(cell, caseexpr->args)
+            {
+                if (loc >= 0)
+                    break;
+                casewhen = (CaseWhen *)lfirst(cell);
+                loc = parse_expr_location(casewhen->expr);
+                if (loc < 0)
+                    loc = parse_expr_location(casewhen->result);
+            }
+            if (loc < 0)
+                loc = parse_expr_location(caseexpr->defresult);
+            break;
+        }
+
+        case T_ArrayExpr:
+            loc = parse_expr_location((Expr *)((ArrayExpr *)expr)->elements);
+            break;
+
+        case T_RowExpr:
+            loc = parse_expr_location((Expr *)((RowExpr *)expr)->args);
+            break;
+
+        case T_CoalesceExpr:
+            loc = parse_expr_location((Expr *)((CoalesceExpr *)expr)->args);
+            break;
+
+        case T_MinMaxExpr:
+            loc = parse_expr_location((Expr *)((MinMaxExpr *)expr)->args);
+            break;
+
+        case T_NullTest:
+            loc = parse_expr_location(((NullTest *)expr)->arg);
+            break;
+
+        case T_BooleanTest:
+            loc = parse_expr_location(((BooleanTest *)expr)->arg);
+            break;
+
+        case T_GroupingFunc:
+            loc = parse_expr_location((Expr *)((GroupingFunc *)expr)->args);
+            break;
+
+        /* Above nodes taken from transformExpr().  Additional nodes below. */
+
+        case T_JoinExpr:
+            loc = parse_expr_location((Expr *)((JoinExpr *)expr)->rarg);
+            break;
+
+        case T_List:
+            loc = -1;
+            foreach(cell, (List *)expr)
+            {
+                loc = parse_expr_location((Expr *)lfirst(cell));
+                if (loc >= 0)
+                    break;
+            }
+            break;
+
+        case T_RangeFunction:
+            loc = parse_expr_location((Expr *)((RangeFunction *)expr)->funccallnode);
+            break;
+
+        case T_RangeSubselect:
+            loc = parse_expr_location((Expr *)((RangeSubselect *)expr)->subquery);
+            break;
+
+        case T_RangeVar:
+            loc = ((RangeVar *)expr)->location;
+            break;
+
+        case T_ResTarget:
+            loc = ((ResTarget *)expr)->location;
+            break;
+
+        case T_SelectStmt:
+        {
+            SelectStmt *ss = (SelectStmt *)expr;
+
+            if (ss->larg)
+                loc = parse_expr_location((Expr *)ss->larg);        /* set op */
+            else if (ss->valuesLists)
+                loc = parse_expr_location((Expr *)ss->valuesLists); /* VALUES */
+            else
+                loc = parse_expr_location((Expr *)ss->targetList);  /* SELECT */
+            break;
+        }
+
+        case T_TypeName:
+            loc = ((TypeName *)expr)->location;
+            break;
+
+        case T_WindowSpec:
+            loc = ((WindowSpec *)expr)->location;
+            break;
+
+        default:
+            loc = -1;
+    }
+    return loc;
+}                               /* parse_expr_location */
+
 
 static Node *
 transformIndirection(ParseState *pstate, Node *basenode, List *indirection)
@@ -337,6 +528,12 @@ transformIndirection(ParseState *pstate, Node *basenode, List *indirection)
 	Node	   *result = basenode;
 	List	   *subscripts = NIL;
 	ListCell   *i;
+	ParseStateBreadCrumb    savebreadcrumb;
+
+	/* CDB: Push error location stack.  Must pop before return! */
+	Assert(pstate);
+	savebreadcrumb = pstate->p_breadcrumb;
+	pstate->p_breadcrumb.pop = &savebreadcrumb;
 
 	/*
 	 * We have to split any field-selection operations apart from
@@ -381,6 +578,10 @@ transformIndirection(ParseState *pstate, Node *basenode, List *indirection)
 												   subscripts,
 												   NULL);
 
+	/* CDB: Pop error location stack. */
+	Assert(pstate->p_breadcrumb.pop == &savebreadcrumb);
+	pstate->p_breadcrumb = savebreadcrumb;
+
 	return result;
 }
 
@@ -390,6 +591,13 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 	int			numnames = list_length(cref->fields);
 	Node	   *node;
 	int			levels_up;
+	ParseStateBreadCrumb    savebreadcrumb;
+
+	/* CDB: Push error location stack.  Must pop before return! */
+	Assert(pstate);
+	savebreadcrumb = pstate->p_breadcrumb;
+	pstate->p_breadcrumb.pop = &savebreadcrumb;
+	pstate->p_breadcrumb.node = (Node *)cref;
 
 	/*----------
 	 * The allowed syntaxes are:
@@ -576,6 +784,10 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 			break;
 	}
 
+	/* CDB: Pop error location stack. */
+	Assert(pstate->p_breadcrumb.pop == &savebreadcrumb);
+	pstate->p_breadcrumb = savebreadcrumb;
+
 	return node;
 }
 
@@ -687,6 +899,9 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 		Assert(IsA(lexpr, RowExpr));
 		Assert(IsA(rexpr, RowExpr));
 
+		/* CDB: Drop a breadcrumb in case of error. */
+		pstate->p_breadcrumb.node = (Node *)a;
+
 		result = make_row_comparison_op(pstate,
 										a->name,
 										((RowExpr *) lexpr)->args,
@@ -698,6 +913,9 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 		/* Ordinary scalar operator */
 		lexpr = transformExpr(pstate, lexpr);
 		rexpr = transformExpr(pstate, rexpr);
+
+		/* CDB: Drop a breadcrumb in case of error. */
+		pstate->p_breadcrumb.node = (Node *)a;
 
 		result = (Node *) make_op(pstate,
 								  a->name,
@@ -899,6 +1117,9 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 		typeids = lappend_oid(typeids, exprType(rexpr));
 	}
 
+	/* CDB: Drop a breadcrumb in case of error. */
+	pstate->p_breadcrumb.node = (Node *)a;
+
 	/*
 	 * If not forced by presence of RowExpr, try to resolve a common scalar
 	 * type for all the expressions, and see if it has an array type. (But if
@@ -1014,6 +1235,9 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 									 (Node *) lfirst(args));
 	}
 
+	/* CDB: Drop a breadcrumb in case of error. */
+	pstate->p_breadcrumb.node = (Node *)fn;
+    
 	return ParseFuncOrColumn(pstate,
 							 fn->funcname,
 							 targs,
@@ -1120,6 +1344,9 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 	 * seems a little bogus to me --- tgl
 	 */
 	typeids = lcons_oid(exprType((Node *) newc->defresult), typeids);
+
+	/* CDB: Drop a breadcrumb in case of error. */
+	pstate->p_breadcrumb.node = (Node *)c;
 
 	ptype = select_common_type(typeids, "CASE");
 	Assert(OidIsValid(ptype));
@@ -1244,6 +1471,9 @@ transformSubLink(ParseState *pstate, SubLink *sublink)
 			right_list = lappend(right_list, param);
 		}
 
+		/* CDB: Drop a breadcrumb in case of error. */
+		pstate->p_breadcrumb.node = (Node *)sublink;
+
 		/*
 		 * We could rely on make_row_comparison_op to complain if the list
 		 * lengths differ, but we prefer to generate a more specific error
@@ -1293,6 +1523,9 @@ transformArrayExpr(ParseState *pstate, ArrayExpr *a)
 		newelems = lappend(newelems, newe);
 		typeids = lappend_oid(typeids, exprType(newe));
 	}
+
+	/* CDB: Drop a breadcrumb in case of error. */
+	pstate->p_breadcrumb.node = (Node *)a;
 
 	/* Select a common type for the elements */
 	element_type = select_common_type(typeids, "ARRAY");

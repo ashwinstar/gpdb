@@ -99,6 +99,7 @@ _equalRangeVar(RangeVar *a, RangeVar *b)
 	COMPARE_SCALAR_FIELD(inhOpt);
 	COMPARE_SCALAR_FIELD(istemp);
 	COMPARE_NODE_FIELD(alias);
+	/* do not compare 'location' field */
 
 	return true;
 }
@@ -301,6 +302,7 @@ _equalSubLink(SubLink *a, SubLink *b)
 	COMPARE_NODE_FIELD(testexpr);
 	COMPARE_NODE_FIELD(operName);
 	COMPARE_NODE_FIELD(subselect);
+	/* do not compare 'location' field */
 
 	return true;
 }
@@ -1673,6 +1675,7 @@ static bool
 _equalParamRef(ParamRef *a, ParamRef *b)
 {
 	COMPARE_SCALAR_FIELD(number);
+	/* do not compare 'location' field */
 
 	return true;
 }
@@ -1683,6 +1686,7 @@ _equalAConst(A_Const *a, A_Const *b)
 	if (!equal(&a->val, &b->val))		/* hack for in-line Value field */
 		return false;
 	COMPARE_NODE_FIELD(typname);
+	/* do not compare 'location' field */;
 
 	return true;
 }
@@ -1919,6 +1923,7 @@ _equalWindowSpec(WindowSpec *a, WindowSpec *b)
 	COMPARE_NODE_FIELD(partition);
 	COMPARE_NODE_FIELD(order);
 	COMPARE_NODE_FIELD(frame);
+	/* do not compare 'location' field */
 
 	return true;
 }

@@ -239,6 +239,8 @@ NOTICE:  Dropping the auto-generated unused error table
 HINT:  Use KEEP in LOG INTO clause to force keeping the error table alive
 SELECT * FROM sreh_copy_errtbl; -- it should not exist
 ERROR:  relation "sreh_copy_errtbl" does not exist
+LINE 1: SELECT * FROM sreh_copy_errtbl;
+                      ^
 --
 -- autodrop - error table not auto-dropped when KEEP specified
 --

@@ -311,6 +311,8 @@ select '-9223372036854775808'::int8;
 
 select '-9223372036854775809'::int8;
 ERROR:  value "-9223372036854775809" is out of range for type bigint
+LINE 1: select '-9223372036854775809'::int8;
+               ^
 select '9223372036854775807'::int8;
         int8         
 ---------------------
@@ -319,3 +321,5 @@ select '9223372036854775807'::int8;
 
 select '9223372036854775808'::int8;
 ERROR:  value "9223372036854775808" is out of range for type bigint
+LINE 1: select '9223372036854775808'::int8;
+               ^

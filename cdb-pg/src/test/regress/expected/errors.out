@@ -25,6 +25,8 @@ LINE 1: select;
 -- no such relation 
 select * from nonesuch;
 ERROR:  relation "nonesuch" does not exist
+LINE 1: select * from nonesuch;
+                      ^
 -- missing target list
 select from pg_database;
 ERROR:  syntax error at or near "from"

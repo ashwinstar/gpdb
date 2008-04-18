@@ -92,11 +92,11 @@ static bool QueryIsRule = FALSE;
 
 static Node *makeColumnRef(char *relname, List *indirection, int location);
 static Node *makeTypeCast(Node *arg, TypeName *typname);
-static Node *makeStringConst(char *str, TypeName *typname);
-static Node *makeIntConst(int val);
-static Node *makeFloatConst(char *str);
-static Node *makeAConst(Value *v);
-static A_Const *makeBoolAConst(bool state);
+static Node *makeStringConst(char *str, TypeName *typname, int location);
+static Node *makeIntConst(int val, int location);
+static Node *makeFloatConst(char *str, int location);
+static Node *makeAConst(Value *v, int location);
+static A_Const *makeBoolAConst(bool state, int location);
 static FuncCall *makeOverlaps(List *largs, List *rargs, int location);
 static void check_qualified_name(List *names);
 static List *check_func_name(List *names);
@@ -1217,21 +1217,21 @@ set_rest:  var_name TO var_list_or_default
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->name = "client_encoding";
 					if ($2 != NULL)
-						n->args = list_make1(makeStringConst($2, NULL));
+						n->args = list_make1(makeStringConst($2, NULL, @2));
 					$$ = n;
 				}
 			| ROLE ColId_or_Sconst
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->name = "role";
-					n->args = list_make1(makeStringConst($2, NULL));
+					n->args = list_make1(makeStringConst($2, NULL, @2));
 					$$ = n;
 				}
 			| SESSION AUTHORIZATION ColId_or_Sconst
 				{
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->name = "session_authorization";
-					n->args = list_make1(makeStringConst($3, NULL));
+					n->args = list_make1(makeStringConst($3, NULL, @3));
 					$$ = n;
 				}
 			| SESSION AUTHORIZATION DEFAULT
@@ -1266,11 +1266,11 @@ var_list:	var_value								{ $$ = list_make1($1); }
 		;
 
 var_value:	opt_boolean
-				{ $$ = makeStringConst($1, NULL); }
+				{ $$ = makeStringConst($1, NULL, @1); }
 			| ColId_or_Sconst
-				{ $$ = makeStringConst($1, NULL); }
+				{ $$ = makeStringConst($1, NULL, @1); }
 			| NumericOnly
-				{ $$ = makeAConst($1); }
+				{ $$ = makeAConst($1, @1); }
 		;
 
 iso_level:	READ UNCOMMITTED						{ $$ = "read uncommitted"; }
@@ -1297,15 +1297,15 @@ opt_boolean:
 zone_value:
 			Sconst
 				{
-					$$ = makeStringConst($1, NULL);
+					$$ = makeStringConst($1, NULL, @1);
 				}
 			| IDENT
 				{
-					$$ = makeStringConst($1, NULL);
+					$$ = makeStringConst($1, NULL, @1);
 				}
 			| ConstInterval Sconst opt_interval
 				{
-					A_Const *n = (A_Const *) makeStringConst($2, $1);
+					A_Const *n = (A_Const *) makeStringConst($2, $1, @2);
 					if ($3 != INTERVAL_FULL_RANGE)
 					{
 						if (($3 & ~(INTERVAL_MASK(HOUR) | INTERVAL_MASK(MINUTE))) != 0)
@@ -1318,7 +1318,7 @@ zone_value:
 				}
 			| ConstInterval '(' Iconst ')' Sconst opt_interval
 				{
-					A_Const *n = (A_Const *) makeStringConst($5, $1);
+					A_Const *n = (A_Const *) makeStringConst($5, $1, @5);
 					if ($3 < 0)
 						ereport(ERROR,
 								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -1343,7 +1343,7 @@ zone_value:
 
 					$$ = (Node *)n;
 				}
-			| NumericOnly							{ $$ = makeAConst($1); }
+			| NumericOnly							{ $$ = makeAConst($1, @1); }
 			| DEFAULT								{ $$ = NULL; }
 			| LOCAL									{ $$ = NULL; }
 		;
@@ -2521,11 +2521,11 @@ OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
 
 /* START PARTITION RULES */
 
-OptTabPartitionsNumber: PARTITIONS IntegerOnly 		{ $$ = makeAConst($2); }
+OptTabPartitionsNumber: PARTITIONS IntegerOnly 		{ $$ = makeAConst($2, @2); }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-OptTabSubPartitionsNumber: SUBPARTITIONS IntegerOnly { $$ = makeAConst($2); }
+OptTabSubPartitionsNumber: SUBPARTITIONS IntegerOnly { $$ = makeAConst($2, @2); }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
@@ -2620,7 +2620,7 @@ OptTabPartitionBoundarySpecEvery:
 				{
                         PartitionRangeItem *n = makeNode(PartitionRangeItem); 
                         if ($2)
-                            n->partEveryNum  = makeAConst($2); 
+                            n->partEveryNum  = makeAConst($2, @2); 
                         else
                             n->partEveryNum  = NULL; 
                         n->partRangeVal  = $4;
@@ -3688,6 +3688,7 @@ DefineStmt:
 				{
 					CompositeTypeStmt *n = makeNode(CompositeTypeStmt);
 					RangeVar *r = makeNode(RangeVar);
+					r->location = @3;
 
 					/* can't use qualified_name, sigh */
 					switch (list_length($3))
@@ -5635,13 +5636,13 @@ opt_transaction:	WORK							{}
 transaction_mode_item:
 			ISOLATION LEVEL iso_level
 					{ $$ = makeDefElem("transaction_isolation",
-									   makeStringConst($3, NULL)); }
+									   makeStringConst($3, NULL, @3)); }
 			| READ ONLY
 					{ $$ = makeDefElem("transaction_read_only",
-									   makeIntConst(TRUE)); }
+									   makeIntConst(TRUE, @1)); }
 			| READ WRITE
 					{ $$ = makeDefElem("transaction_read_only",
-									   makeIntConst(FALSE)); }
+									   makeIntConst(FALSE, @1)); }
 		;
 
 /* Syntax with commas is SQL-spec, without commas is Postgres historical */
@@ -6844,11 +6845,13 @@ window_definition_list:
 			window_name AS '(' window_spec ')'
 				{
                     ((WindowSpec *)$4)->name = $1;
+                    ((WindowSpec *)$4)->location = @3;
 					$$ = list_make1($4);
 				}
 			| window_definition_list ',' window_name AS '(' window_spec ')'
 				{
 					((WindowSpec *)$6)->name = $3;
+					((WindowSpec *)$6)->location = @5;
 					$$ = lappend($1, $6);
 				}
 		;
@@ -6861,6 +6864,7 @@ window_spec: opt_window_name opt_window_partition_clause
 					n->partition = $2;
 					n->order = $3;
 					n->frame = (WindowFrame *)$4;
+					n->location = -1;
 					$$ = (Node *)n;
 				}
 		;
@@ -8282,6 +8286,7 @@ a_expr:		c_expr									{ $$ = $1; }
 						n->subLinkType = ANY_SUBLINK;
 						n->testexpr = $1;
 						n->operName = list_make1(makeString("="));
+    					n->location = @2;   /*CDB*/
 						$$ = (Node *)n;
 					}
 					else
@@ -8301,6 +8306,7 @@ a_expr:		c_expr									{ $$ = $1; }
 						n->subLinkType = ANY_SUBLINK;
 						n->testexpr = $1;
 						n->operName = list_make1(makeString("="));
+    					n->location = @3;   /*CDB*/
 						/* Stick a NOT on top */
 						$$ = (Node *) makeA_Expr(AEXPR_NOT, NIL, NULL, (Node *) n, @2);
 					}
@@ -8317,6 +8323,7 @@ a_expr:		c_expr									{ $$ = $1; }
 					n->testexpr = $1;
 					n->operName = $2;
 					n->subselect = $4;
+					n->location = @3;   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| a_expr subquery_Op sub_type '(' a_expr ')'		%prec Op
@@ -8434,6 +8441,7 @@ c_expr:		columnref								{ $$ = $1; }
 				{
 					ParamRef *p = makeNode(ParamRef);
 					p->number = $1;
+					p->location = @1;   /*CDB*/
 					if ($2)
 					{
 						A_Indirection *n = makeNode(A_Indirection);
@@ -8467,6 +8475,7 @@ c_expr:		columnref								{ $$ = $1; }
 					n->testexpr = NULL;
 					n->operName = NIL;
 					n->subselect = $1;
+					n->location = @1;   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| EXISTS select_with_parens
@@ -8476,6 +8485,7 @@ c_expr:		columnref								{ $$ = $1; }
 					n->testexpr = NULL;
 					n->operName = NIL;
 					n->subselect = $2;
+					n->location = @1;   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| ARRAY select_with_parens
@@ -8485,6 +8495,7 @@ c_expr:		columnref								{ $$ = $1; }
 					n->testexpr = NULL;
 					n->operName = NIL;
 					n->subselect = $2;
+					n->location = @1;   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| ARRAY array_expr
@@ -9479,6 +9490,7 @@ qualified_name:
 					$$->catalogname = NULL;
 					$$->schemaname = NULL;
 					$$->relname = $1;
+					$$->location = @1;
 				}
 			| relation_name indirection
 				{
@@ -9503,6 +9515,7 @@ qualified_name:
 											NameListToString(lcons(makeString($1), $2)))));
 							break;
 					}
+					$$->location = @1;
 				}
 		;
 
@@ -9550,6 +9563,7 @@ AexprConst: Iconst
 					A_Const *n = makeNode(A_Const);
 					n->val.type = T_Integer;
 					n->val.val.ival = $1;
+					n->location = @1;                   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| FCONST
@@ -9557,6 +9571,7 @@ AexprConst: Iconst
 					A_Const *n = makeNode(A_Const);
 					n->val.type = T_Float;
 					n->val.val.str = $1;
+					n->location = @1;                   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| Sconst
@@ -9564,6 +9579,7 @@ AexprConst: Iconst
 					A_Const *n = makeNode(A_Const);
 					n->val.type = T_String;
 					n->val.val.str = $1;
+					n->location = @1;                   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| BCONST
@@ -9571,6 +9587,7 @@ AexprConst: Iconst
 					A_Const *n = makeNode(A_Const);
 					n->val.type = T_BitString;
 					n->val.val.str = $1;
+					n->location = @1;                   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| XCONST
@@ -9583,6 +9600,7 @@ AexprConst: Iconst
 					A_Const *n = makeNode(A_Const);
 					n->val.type = T_BitString;
 					n->val.val.str = $1;
+					n->location = @1;                   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| ConstTypename Sconst
@@ -9591,6 +9609,7 @@ AexprConst: Iconst
 					n->typname = $1;
 					n->val.type = T_String;
 					n->val.val.str = $2;
+					n->location = @2;                   /*CDB*/
 					$$ = (Node *)n;
 				}
 			| ConstInterval Sconst opt_interval
@@ -9599,6 +9618,7 @@ AexprConst: Iconst
 					n->typname = $1;
 					n->val.type = T_String;
 					n->val.val.str = $2;
+					n->location = @2;                   /*CDB*/
 					/* precision is not specified, but fields may be... */
 					if ($3 != INTERVAL_FULL_RANGE)
 						n->typname->typmod = INTERVAL_TYPMOD(INTERVAL_FULL_PRECISION, $3);
@@ -9610,6 +9630,7 @@ AexprConst: Iconst
 					n->typname = $1;
 					n->val.type = T_String;
 					n->val.val.str = $5;
+					n->location = @5;                   /*CDB*/
 					/* precision specified, and fields may be... */
 					if ($3 < 0)
 						ereport(ERROR,
@@ -9629,16 +9650,17 @@ AexprConst: Iconst
 				}
 			| TRUE_P
 				{
-					$$ = (Node *)makeBoolAConst(TRUE);
+					$$ = (Node *)makeBoolAConst(TRUE, @1);
 				}
 			| FALSE_P
 				{
-					$$ = (Node *)makeBoolAConst(FALSE);
+					$$ = (Node *)makeBoolAConst(FALSE, @1);
 				}
 			| NULL_P
 				{
 					A_Const *n = makeNode(A_Const);
 					n->val.type = T_Null;
+					n->location = @1;                   /*CDB*/
 					$$ = (Node *)n;
 				}
 		;
@@ -10207,7 +10229,7 @@ makeTypeCast(Node *arg, TypeName *typname)
 }
 
 static Node *
-makeStringConst(char *str, TypeName *typname)
+makeStringConst(char *str, TypeName *typname, int location)
 {
 	A_Const *n = makeNode(A_Const);
 
@@ -10219,7 +10241,7 @@ makeStringConst(char *str, TypeName *typname)
 }
 
 static Node *
-makeIntConst(int val)
+makeIntConst(int val, int location)
 {
 	A_Const *n = makeNode(A_Const);
 	n->val.type = T_Integer;
@@ -10230,7 +10252,7 @@ makeIntConst(int val)
 }
 
 static Node *
-makeFloatConst(char *str)
+makeFloatConst(char *str, int location)
 {
 	A_Const *n = makeNode(A_Const);
 
@@ -10242,23 +10264,23 @@ makeFloatConst(char *str)
 }
 
 static Node *
-makeAConst(Value *v)
+makeAConst(Value *v, int location)
 {
 	Node *n;
 
 	switch (v->type)
 	{
 		case T_Float:
-			n = makeFloatConst(v->val.str);
+			n = makeFloatConst(v->val.str, location);
 			break;
 
 		case T_Integer:
-			n = makeIntConst(v->val.ival);
+			n = makeIntConst(v->val.ival, location);
 			break;
 
 		case T_String:
 		default:
-			n = makeStringConst(v->val.str, NULL);
+			n = makeStringConst(v->val.str, NULL, location);
 			break;
 	}
 
@@ -10269,12 +10291,13 @@ makeAConst(Value *v)
  * Create an A_Const node and initialize to a boolean constant.
  */
 static A_Const *
-makeBoolAConst(bool state)
+makeBoolAConst(bool state, int location)
 {
 	A_Const *n = makeNode(A_Const);
 	n->val.type = T_String;
 	n->val.val.str = (state? "t": "f");
 	n->typname = SystemTypeName("bool");
+	n->location = location;     /*CDB*/
 	return n;
 }
 

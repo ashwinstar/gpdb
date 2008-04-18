@@ -244,6 +244,7 @@ typedef struct ParamRef
 {
 	NodeTag		type;
 	int			number;			/* the number of the parameter */
+	int			location;		/* CDB: token location, or -1 if unknown */
 } ParamRef;
 
 /*
@@ -281,6 +282,7 @@ typedef struct A_Const
 	NodeTag		type;
 	Value		val;			/* the value (with the tag) */
 	TypeName   *typname;		/* typecast, or NULL if none */
+	int			location;		/* CDB: token location, or -1 if unknown */
 } A_Const;
 
 /*
@@ -870,6 +872,7 @@ typedef struct WindowSpec
 	List *partition; /* PARTITION BY clause */
 	List *order; /* ORDER BY clause */
 	WindowFrame *frame;
+	int			location;		/* token location, or -1 if unknown */
 } WindowSpec;
 
 /*

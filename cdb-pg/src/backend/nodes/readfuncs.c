@@ -60,88 +60,64 @@
 	READ_LOCALS_NO_FIELDS(nodeTypeName);	\
 	READ_TEMP_LOCALS()
 
+/* Read a simple scalar field (written as ":fldname value") */
+#define READ_SCALAR_FIELD(fldname, conversion) \
+    do { \
+	    token = pg_strtok(&length);		/* skip :fldname */ \
+	    token = pg_strtok(&length);		/* get field value */ \
+	    local_node->fldname = (conversion); \
+    } while (0)
+
 /* Read an integer field (anything written as ":fldname %d") */
-#define READ_INT_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = atoi(token)
+#define READ_INT_FIELD(fldname)     READ_SCALAR_FIELD(fldname, atoi(token))
 
 /* Read an unsigned integer field (anything written as ":fldname %u") */
-#define READ_UINT_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = atoui(token)
+#define READ_UINT_FIELD(fldname)    READ_SCALAR_FIELD(fldname, atoui(token))
 
 /* Read an uint64 field (anything written as ":fldname %ll") */
 #ifndef WIN32
-#define READ_UINT64_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = atoll(token)
+#define READ_UINT64_FIELD(fldname)  READ_SCALAR_FIELD(fldname, atoll(token))
 #else
-#define READ_UINT64_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = _atoi64(token)
+#define READ_UINT64_FIELD(fldname)  READ_SCALAR_FIELD(fldname, _atoi64(token))
 #endif
 
 /* Read an OID field (don't hard-wire assumption that OID is same as uint) */
-#define READ_OID_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = atooid(token)
+#define READ_OID_FIELD(fldname)     READ_SCALAR_FIELD(fldname, atooid(token))
 
 /* Read a long-integer field (anything written as ":fldname %ld") */
-#define READ_LONG_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = atol(token)
+#define READ_LONG_FIELD(fldname)    READ_SCALAR_FIELD(fldname, atol(token))
 
 /* Read a char field (ie, one ascii character) */
-#define READ_CHAR_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = token[0]
+#define READ_CHAR_FIELD(fldname)    READ_SCALAR_FIELD(fldname, token[0])
 
 /* Read an enumerated-type field that was written as an integer code */
-#define READ_ENUM_FIELD(fldname, enumtype) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = (enumtype) atoi(token)
+#define READ_ENUM_FIELD(fldname, enumtype)  READ_SCALAR_FIELD(fldname, (enumtype)atoi(token))
 
 /* Read a float field */
-#define READ_FLOAT_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = atof(token)
+#define READ_FLOAT_FIELD(fldname)   READ_SCALAR_FIELD(fldname, atof(token))
 
 /* Read a boolean field */
-#define READ_BOOL_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = strtobool(token)
+#define READ_BOOL_FIELD(fldname)    READ_SCALAR_FIELD(fldname, strtobool(token))
 
 /* Read a character-string field */
-#define READ_STRING_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = nullable_string(token, length)
+#define READ_STRING_FIELD(fldname)  READ_SCALAR_FIELD(fldname, nullable_string(token, length))
 
 /* Read a Node field */
 #define READ_NODE_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	local_node->fldname = nodeRead(NULL, 0)
+    do { \
+	    token = pg_strtok(&length);		/* skip :fldname */ \
+	    local_node->fldname = nodeRead(NULL, 0); \
+    } while (0)
 
 /* Read a bitmapset field */
 #define READ_BITMAPSET_FIELD(fldname) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	 local_node->fldname = bitmapsetRead()
+    do { \
+	    token = pg_strtok(&length);		/* skip :fldname */ \
+	    local_node->fldname = bitmapsetRead(); \
+    } while (0)
 
-/* Read a dummy field */
-#define READ_DUMMY_FIELD(fldname,fldvalue) \
-	token = pg_strtok(&length);		/* skip :fldname */ \
-	token = pg_strtok(&length);		/* get field value */ \
-	local_node->fldname = (fldvalue)
+/* Set field to a given value, ignoring the value read from the input */
+#define READ_DUMMY_FIELD(fldname,fldvalue)  READ_SCALAR_FIELD(fldname, fldvalue)
 
 /* Routine exit */
 #define READ_DONE() \
@@ -466,6 +442,12 @@ _readWindowSpec(const char ** str)
 	READ_NODE_FIELD(order);
 	READ_NODE_FIELD(frame);
 
+    /* CDB: location field added in 3.2; missing from older serialized trees */
+    if (pg_strtok_peek_fldname("location"))
+    	READ_INT_FIELD(location);
+    else
+        local_node->location = -1;
+
 	READ_DONE();
 }
 
@@ -556,6 +538,12 @@ _readRangeVar(void)
 	READ_ENUM_FIELD(inhOpt, InhOption);
 	READ_BOOL_FIELD(istemp);
 	READ_NODE_FIELD(alias);
+
+    /* CDB: location field added in 3.2; missing from older serialized trees */
+    if (pg_strtok_peek_fldname("location"))
+    	READ_INT_FIELD(location);
+    else
+        local_node->location = -1;
 
 	READ_DONE();
 }
@@ -923,9 +911,11 @@ _readFuncCall(void)
 	READ_NODE_FIELD(args);
 	READ_BOOL_FIELD(agg_star);
 	READ_BOOL_FIELD(agg_distinct);
-	READ_NODE_FIELD(over);
-	READ_INT_FIELD(location);
-	READ_NODE_FIELD(agg_filter);
+    READ_INT_FIELD(location);
+	
+    READ_NODE_FIELD(over);          /*CDB*/
+    READ_NODE_FIELD(agg_filter);    /*CDB*/
+
 	READ_DONE();
 }
 
@@ -998,6 +988,10 @@ _readAConst(void)
 	
 	local_node->typname = NULL;
 	READ_NODE_FIELD(typname);
+
+    /* CDB: 'location' field is not serialized */
+    local_node->location = -1;
+
 	READ_DONE();
 }
 
@@ -1288,6 +1282,10 @@ _readSubLink(void)
 	READ_ENUM_FIELD(subLinkType, SubLinkType);
 	READ_NODE_FIELD(testexpr);
 	READ_NODE_FIELD(operName);
+
+    /* CDB: 'location' field is not serialized */
+    local_node->location = -1;
+
 	READ_NODE_FIELD(subselect);
 
 	READ_DONE();

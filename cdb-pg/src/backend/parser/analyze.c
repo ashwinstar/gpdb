@@ -135,6 +135,7 @@ typedef struct
 } partValidationState;
 
 static List *do_parse_analyze(Node *parseTree, ParseState *pstate);
+static void parse_analyze_error_callback(void *parsestate);     /*CDB*/
 static Query *transformStmt(ParseState *pstate, Node *stmt,
 			  List **extras_before, List **extras_after);
 static Query *transformViewStmt(ParseState *pstate, ViewStmt *stmt,
@@ -353,7 +354,21 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 	Query	   *query;
 	ListCell   *l;
 
+   	ErrorContextCallback errcontext;
+
+	/* CDB: Request a callback in case ereport or elog is called. */
+	errcontext.callback = parse_analyze_error_callback;
+	errcontext.arg = pstate;
+	errcontext.previous = error_context_stack;
+	error_context_stack = &errcontext;
+
 	query = transformStmt(pstate, parseTree, &extras_before, &extras_after);
+
+	/* CDB: Pop error context callback stack. */
+	error_context_stack = errcontext.previous;
+
+	/* CDB: All breadcrumbs should have been popped. */
+	Assert(!pstate->p_breadcrumb.pop);
 
 	/* don't need to access result relation any more */
 	release_pstate_resources(pstate);
@@ -399,6 +414,50 @@ release_pstate_resources(ParseState *pstate)
 	pstate->p_target_relation = NULL;
 	pstate->p_target_rangetblentry = NULL;
 }
+
+
+/*
+ * parse_analyze_error_callback
+ *
+ * Called during elog/ereport to add context information to the error message.
+ */
+static void
+parse_analyze_error_callback(void *parsestate)
+{
+    ParseState             *pstate = (ParseState *)parsestate;
+    ParseStateBreadCrumb   *bc;
+    int                     location = -1;
+
+    /* No-op if errposition has already been set. */
+    if (geterrposition() > 0)
+        return;
+
+    /* NOTICE messages don't need any extra baggage. */
+    if (elog_getelevel() == NOTICE)
+        return;
+
+    /*
+	 * Backtrack through trail of breadcrumbs to find a node with location
+	 * info. A null node ptr tells us to keep quiet rather than give a
+	 * misleading pointer to a token which may be far from the actual problem.
+     */
+    for (bc = &pstate->p_breadcrumb; bc && bc->node; bc = bc->pop)
+    {
+        location = parse_expr_location((Expr *)bc->node);
+        if (location >= 0)
+            break;
+    }
+
+    /* Shush the parent query's error callback if we found a location or null */
+    if (bc &&
+        pstate->parentParseState)
+        pstate->parentParseState->p_breadcrumb.node = NULL;
+
+    /* Report approximate offset of error from beginning of statement text. */
+    if (location >= 0)
+        parser_errposition(pstate, location);
+}                               /* parse_analyze_error_callback */
+
 
 /*
  * transformStmt -
@@ -638,6 +697,9 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 
 	qry->returningList = transformReturningList(pstate, stmt->returningList);
 
+	/* CDB: Cursor position not available for errors below this point. */
+	pstate->p_breadcrumb.node = NULL;
+
 	/* done building the range table and jointree */
 	qry->rtable = pstate->p_rtable;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
@@ -822,6 +884,9 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		{
 			List	   *sublist = (List *) lfirst(lc);
 
+			/* CDB: In case of error, note which sublist is involved. */
+			pstate->p_breadcrumb.node = (Node *)sublist;
+
 			/* Do basic expression transformation (same as a ROW() expr) */
 			sublist = transformExpressionList(pstate, sublist);
 
@@ -849,6 +914,9 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 
 			exprsLists = lappend(exprsLists, sublist);
 		}
+
+		/* CDB: Clear error location. */
+		pstate->p_breadcrumb.node = NULL;
 
 		/*
 		 * There mustn't have been any table references in the expressions,
@@ -955,6 +1023,9 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		qry->returningList = transformReturningList(pstate,
 													stmt->returningList);
 	}
+
+	/* CDB: Cursor position not available for errors below this point. */
+	pstate->p_breadcrumb.node = NULL;
 
 	/* done building the range table and jointree */
 	qry->rtable = pstate->p_rtable;
@@ -1384,6 +1455,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 		snamenode->val.type = T_String;
 		snamenode->val.val.str = qstring;
 		snamenode->typname = SystemTypeName("regclass");
+        snamenode->location = -1;                                       /*CDB*/
 		funccallnode = makeNode(FuncCall);
 		funccallnode->funcname = SystemFuncName("nextval");
 		funccallnode->args = list_make1(snamenode);
@@ -2752,6 +2824,7 @@ make_a_const(A_Const *pValConst, char *val_str)
 
 	pNewValConst->val.type = pValConst->val.type;
 	pNewValConst->typname = pValConst->typname;
+    pNewValConst->location = pValConst->location;
 	
 	switch (pValConst->val.type)
 	{
@@ -2840,11 +2913,13 @@ make_prule_catalog(ParseState *pstate,
 	parent_tab_name->catalogname = cxt->relation->catalogname;
 	parent_tab_name->schemaname  = cxt->relation->schemaname;
 	parent_tab_name->relname     = cxt->relation->relname;
+	parent_tab_name->location    = -1;
 
 	child_tab_name = makeNode(RangeVar);
 	child_tab_name->catalogname = cxt->relation->catalogname;
 	child_tab_name->schemaname  = cxt->relation->schemaname;
 	child_tab_name->relname     = child_name_str;
+	child_tab_name->location    = -1;
 
 	snprintf(ruleBuf, sizeof(ruleBuf),
 			 "CREATE RULE %s AS ON INSERT to %s WHERE %s DO INSTEAD INSERT INTO %s %s", child_name_str, parent_tab_name->relname, exprBuf, child_name_str, newVals);
@@ -2857,6 +2932,7 @@ make_prule_catalog(ParseState *pstate,
 	pIns->relation->catalogname = NULL;
 	pIns->relation->schemaname = NULL;
 	pIns->relation->relname = "partition_rule";
+	pIns->relation->location = -1;
 	pIns->returningList = NULL;
 
 	pIns->cols = NIL;
@@ -2869,6 +2945,7 @@ make_prule_catalog(ParseState *pstate,
 		acs->val.type = T_String;
 		acs->val.val.str = pstrdup(parent_tab_name->relname);
 		acs->typname = SystemTypeName("text");
+        acs->location = -1;
 
 		vl1 = list_make1(acs);
 
@@ -2876,6 +2953,7 @@ make_prule_catalog(ParseState *pstate,
 		acs->val.type = T_String;
 		acs->val.val.str = pstrdup(child_name_str);
 		acs->typname = SystemTypeName("text");
+        acs->location = -1;
 		
 		vl1 = lappend(vl1, acs);
 
@@ -2883,6 +2961,7 @@ make_prule_catalog(ParseState *pstate,
 		acs->val.type = T_String;
 		acs->val.val.str = pstrdup(exprBuf);
 		acs->typname = SystemTypeName("text");
+        acs->location = -1;
 
 		vl1 = lappend(vl1, acs);
 
@@ -2890,6 +2969,7 @@ make_prule_catalog(ParseState *pstate,
 		acs->val.type = T_String;
 		acs->val.val.str = pstrdup(ruleBuf);
 		acs->typname = SystemTypeName("text");
+        acs->location = -1;
 
 		vl1 = lappend(vl1, acs);
 				
@@ -2921,11 +3001,13 @@ make_prule_rulestmt(ParseState *pstate,
 	parent_tab_name->catalogname = cxt->relation->catalogname;
 	parent_tab_name->schemaname  = cxt->relation->schemaname;
 	parent_tab_name->relname     = cxt->relation->relname;
+	parent_tab_name->location    = -1;
 
 	child_tab_name = makeNode(RangeVar);
 	child_tab_name->catalogname = cxt->relation->catalogname;
 	child_tab_name->schemaname  = cxt->relation->schemaname;
 	child_tab_name->relname     = child_name_str;
+	child_tab_name->location    = -1;
 
 	pIns = makeNode(InsertStmt);
 
@@ -2944,6 +3026,7 @@ make_prule_rulestmt(ParseState *pstate,
 	pIns->relation->catalogname = cxt->relation->catalogname;
 	pIns->relation->schemaname  = cxt->relation->schemaname;
 	pIns->relation->relname     = child_name_str;
+	pIns->relation->location    = -1;
 
 	pIns->returningList = NULL;
 
@@ -3118,10 +3201,12 @@ make_partition_rules(ParseState *pstate,
 			pModBy  = makeNode(A_Const);
 			pModBy->val.type = T_Integer;
 			pModBy->val.val.ival = maxPartNum;
+            pModBy->location = -1;
 
 			pPartID  = makeNode(A_Const);
 			pPartID->val.type = T_Integer;
 			pPartID->val.val.ival = (partNumId - 1);
+            pPartID->location = -1;
 
 			pModOp = (Node *)makeSimpleA_Expr(AEXPR_OP, "%",
 									  (Node *)pFC, (Node *)pModBy, -1);
@@ -3235,6 +3320,7 @@ make_partition_rules(ParseState *pstate,
 
 					val= makeString(DatumGetCString(dat));
 					aconst->val = *val;
+                    aconst->location = -1;
 					ReleaseSysCache(typ);
 
 					pValConst = aconst;
@@ -3525,6 +3611,7 @@ make_partition_rules(ParseState *pstate,
 
 						val= makeString(DatumGetCString(dat));
 						aconst->val = *val;
+                        aconst->location = -1;
 						ReleaseSysCache(typ);
 
 						pValConst = aconst;
@@ -5006,10 +5093,12 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	parent_tab_name->catalogname = cxt->relation->catalogname;
 	parent_tab_name->schemaname  = cxt->relation->schemaname;
 	parent_tab_name->relname     = cxt->relation->relname;
+    parent_tab_name->location    = -1;
 	
 	child_tab_name->catalogname = cxt->relation->catalogname;
 	child_tab_name->schemaname  = cxt->relation->schemaname;
 	child_tab_name->relname = relname;
+    child_tab_name->location = -1;
 
 	child_tab_stmt->relation = child_tab_name;
 
@@ -5313,6 +5402,9 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	/* XXX: move this above? */
 	if (pBy->partType == PARTTYP_RANGE)	
 		partition_range_every(pstate, cxt, stmt, pBy, at_depth);
+
+    /* Clear error position. */
+    pstate->p_breadcrumb.node = NULL;
 
 	/*
 	 * Determine namespace and name to use for the child table.
@@ -5799,6 +5891,9 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
 	/* take care of the where clause */
 	stmt->whereClause = transformWhereClause(pstate, stmt->whereClause,
 											 "WHERE");
+
+    /* CDB: Cursor position not available for errors below this point. */
+    pstate->p_breadcrumb.node = NULL;
 
 	if (list_length(pstate->p_rtable) != 2)		/* naughty, naughty... */
 		ereport(ERROR,
@@ -6687,6 +6782,9 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->limitCount = transformLimitClause(pstate, stmt->limitCount,
 										   "LIMIT");
 
+    /* CDB: Cursor position not available for errors below this point. */
+    pstate->p_breadcrumb.node = NULL;
+
 	/* handle any SELECT INTO/CREATE TABLE AS spec */
 	if (stmt->into)
 	{
@@ -6868,6 +6966,9 @@ transformValuesClause(ParseState *pstate, SelectStmt *stmt)
 											"OFFSET");
 	qry->limitCount = transformLimitClause(pstate, stmt->limitCount,
 										   "LIMIT");
+
+    /* CDB: Cursor position not available for errors below this point. */
+    pstate->p_breadcrumb.node = NULL;
 
 	if (stmt->lockingClause)
 		ereport(ERROR,
@@ -7124,6 +7225,9 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 											"OFFSET");
 	qry->limitCount = transformLimitClause(pstate, limitCount,
 										   "LIMIT");
+
+    /* CDB: Cursor position not available for errors below this point. */
+    pstate->p_breadcrumb.node = NULL;
 
 	/*
 	 * Handle SELECT INTO/CREATE TABLE AS.
@@ -7451,6 +7555,9 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
         fixup_unknown_vars_in_targetlist(pstate, qry->returningList);
     }
 
+    /* CDB: Cursor position not available for errors below this point. */
+    pstate->p_breadcrumb.node = NULL;
+
 	qry->rtable = pstate->p_rtable;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
 
@@ -7506,6 +7613,9 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 		origTarget = (ResTarget *) lfirst(origTargetList);
 		Assert(IsA(origTarget, ResTarget));
 
+        /* CDB: Drop a breadcrumb in case of error. */
+        pstate->p_breadcrumb.node = (Node *)origTarget;
+
 		attrno = attnameAttNum(pstate->p_target_relation,
 							   origTarget->name, true);
 		if (attrno == InvalidAttrNumber)
@@ -7559,6 +7669,9 @@ transformReturningList(ParseState *pstate, List *returningList)
 
 	/* transform RETURNING identically to a SELECT targetlist */
 	rlist = transformTargetList(pstate, returningList);
+
+    /* CDB: Cursor position not available for errors below this point. */
+    pstate->p_breadcrumb.node = NULL;
 
 	/* check for disallowed stuff */
 

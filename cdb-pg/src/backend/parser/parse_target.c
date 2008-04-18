@@ -101,10 +101,19 @@ transformTargetList(ParseState *pstate, List *targetlist)
 {
 	List	   *p_target = NIL;
 	ListCell   *o_target;
+	ParseStateBreadCrumb    savebreadcrumb;
+
+	/* CDB: Push error location stack.  Must pop before return! */
+	Assert(pstate);
+	savebreadcrumb = pstate->p_breadcrumb;
+	pstate->p_breadcrumb.pop = &savebreadcrumb;
 
 	foreach(o_target, targetlist)
 	{
 		ResTarget  *res = (ResTarget *) lfirst(o_target);
+
+		/* CDB: Drop a breadcrumb in case of error. */
+		pstate->p_breadcrumb.node = (Node *)res;
 
 		/*
 		 * Check for "something.*".  Depending on the complexity of the
@@ -151,6 +160,10 @@ transformTargetList(ParseState *pstate, List *targetlist)
 												false));
 	}
 
+	/* CDB: Pop error location stack. */
+	Assert(pstate->p_breadcrumb.pop == &savebreadcrumb);
+	pstate->p_breadcrumb = savebreadcrumb;
+
 	return p_target;
 }
 
@@ -168,10 +181,19 @@ transformExpressionList(ParseState *pstate, List *exprlist)
 {
 	List	   *result = NIL;
 	ListCell   *lc;
+	ParseStateBreadCrumb    savebreadcrumb;
+
+	/* CDB: Push error location stack.  Must pop before return! */
+	Assert(pstate);
+	savebreadcrumb = pstate->p_breadcrumb;
+	pstate->p_breadcrumb.pop = &savebreadcrumb;
 
 	foreach(lc, exprlist)
 	{
 		Node	   *e = (Node *) lfirst(lc);
+
+		/* CDB: Drop a breadcrumb in case of error. */
+		pstate->p_breadcrumb.node = (Node *)e;
 
 		/*
 		 * Check for "something.*".  Depending on the complexity of the
@@ -213,6 +235,10 @@ transformExpressionList(ParseState *pstate, List *exprlist)
 		result = lappend(result,
 						 transformExpr(pstate, e));
 	}
+
+	/* CDB: Pop error location stack. */
+	Assert(pstate->p_breadcrumb.pop == &savebreadcrumb);
+	pstate->p_breadcrumb = savebreadcrumb;
 
 	return result;
 }

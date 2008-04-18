@@ -874,6 +874,7 @@ _copyRangeVar(RangeVar *from)
 	COPY_SCALAR_FIELD(inhOpt);
 	COPY_SCALAR_FIELD(istemp);
 	COPY_NODE_FIELD(alias);
+	COPY_SCALAR_FIELD(location);    /*CDB*/
 
 	return newnode;
 }
@@ -1105,6 +1106,7 @@ _copySubLink(SubLink *from)
 	COPY_SCALAR_FIELD(subLinkType);
 	COPY_NODE_FIELD(testexpr);
 	COPY_NODE_FIELD(operName);
+	COPY_SCALAR_FIELD(location);    /*CDB*/
 	COPY_NODE_FIELD(subselect);
 
 	return newnode;
@@ -1747,6 +1749,7 @@ _copyWindowSpec(WindowSpec *from)
 	COPY_NODE_FIELD(partition);
 	COPY_NODE_FIELD(order);
 	COPY_NODE_FIELD(frame);
+	COPY_SCALAR_FIELD(location);
 
 	return newnode;
 }
@@ -1819,6 +1822,7 @@ _copyParamRef(ParamRef *from)
 	ParamRef   *newnode = makeNode(ParamRef);
 
 	COPY_SCALAR_FIELD(number);
+	COPY_SCALAR_FIELD(location);    /*CDB*/
 
 	return newnode;
 }
@@ -1850,6 +1854,7 @@ _copyAConst(A_Const *from)
 	}
 
 	COPY_NODE_FIELD(typname);
+	COPY_SCALAR_FIELD(location);    /*CDB*/
 
 	return newnode;
 }

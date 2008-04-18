@@ -69,10 +69,16 @@ SELECT '          -INFINiTY   '::float4;
 -- bad special inputs
 SELECT 'N A N'::float4;
 ERROR:  invalid input syntax for type real: "N A N"
+LINE 1: SELECT 'N A N'::float4;
+               ^
 SELECT 'NaN x'::float4;
 ERROR:  invalid input syntax for type real: "NaN x"
+LINE 1: SELECT 'NaN x'::float4;
+               ^
 SELECT ' INFINITY    x'::float4;
 ERROR:  invalid input syntax for type real: " INFINITY    x"
+LINE 1: SELECT ' INFINITY    x'::float4;
+               ^
 SELECT 'Infinity'::float4 + 100.0;
 ERROR:  type "double precision" value out of range: overflow
 SELECT 'Infinity'::float4 / 'Infinity'::float4;

@@ -70,6 +70,7 @@ typedef struct RangeVar
 								 * on children? */
 	bool		istemp;			/* is this a temp relation/sequence? */
 	Alias	   *alias;			/* table alias & optional column aliases */
+	int			location;		/* CDB: token location, or -1 if unknown */
 } RangeVar;
 
 
@@ -503,6 +504,7 @@ typedef struct SubLink
 	SubLinkType subLinkType;	/* see above */
 	Node	   *testexpr;		/* outer-query test for ALL/ANY/ROWCOMPARE */
 	List	   *operName;		/* originally specified operator name */
+	int			location;		/* CDB: token location, or -1 if unknown */
 	Node	   *subselect;		/* subselect as Query* or parsetree */
 } SubLink;
 

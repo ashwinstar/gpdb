@@ -152,6 +152,8 @@ RESET debug_dtm_action;
 RESET debug_dtm_action_target;
 SELECT * FROM distxact2_1;
 ERROR:  relation "distxact2_1" does not exist
+LINE 1: SELECT * FROM distxact2_1;
+                      ^
 -- Should succeed
 CREATE TABLE distxact2_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -173,6 +175,8 @@ RESET debug_dtm_action;
 RESET debug_dtm_action_target;
 SELECT * FROM distxact2_2;
 ERROR:  relation "distxact2_2" does not exist
+LINE 1: SELECT * FROM distxact2_2;
+                      ^
 -- Should succeed
 CREATE TABLE distxact2_2 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -202,6 +206,8 @@ RESET debug_dtm_action;
 RESET debug_dtm_action_target;
 SELECT * FROM distxact3_1;
 ERROR:  relation "distxact3_1" does not exist
+LINE 1: SELECT * FROM distxact3_1;
+                      ^
 -- Should succeed
 CREATE TABLE distxact3_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -237,6 +243,8 @@ RESET debug_dtm_action;
 RESET debug_dtm_action_target;
 SELECT * FROM distxact3_2;
 ERROR:  relation "distxact3_2" does not exist
+LINE 1: SELECT * FROM distxact3_2;
+                      ^
 -- Should succeed
 CREATE TABLE distxact3_2 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
@@ -272,6 +280,8 @@ RESET debug_dtm_action;
 RESET debug_dtm_action_target;
 SELECT * FROM distxact3_3;
 ERROR:  relation "distxact3_3" does not exist
+LINE 1: SELECT * FROM distxact3_3;
+                      ^
 -- Should succeed
 CREATE TABLE distxact3_3 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
