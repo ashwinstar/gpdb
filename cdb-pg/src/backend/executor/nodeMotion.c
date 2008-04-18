@@ -13,6 +13,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "nodes/execnodes.h" /* Slice, SliceTable */
 #include "cdb/cdbheap.h"
 #include "cdb/cdblink.h"
 #include "cdb/cdbmotion.h"

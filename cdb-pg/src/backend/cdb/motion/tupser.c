@@ -11,6 +11,7 @@
 #include "postgres.h"
 
 #include "catalog/pg_type.h"
+#include "nodes/execnodes.h" //SliceTable
 #include "cdb/cdbmotion.h"
 #include "cdb/tupser.h"
 #include "cdb/cdbvars.h"

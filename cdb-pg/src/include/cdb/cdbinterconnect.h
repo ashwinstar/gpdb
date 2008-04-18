@@ -111,8 +111,8 @@ typedef struct MotionConn
 }	MotionConn;
 
 /* used to organize all of the information for a given motion node.
-*
-*/
+ *
+ */
 typedef struct ChunkTransportStateEntry
 {
 	int         motNodeId;
@@ -151,25 +151,6 @@ typedef struct ChunkTransportStateEntry
 
 /* ChunkTransportState array initial size */
 #define CTS_INITIAL_SIZE (10)
-
-typedef struct ChunkTransportState
-{
-	/* array of per-motion-node chunk transport state */
-	int size;
-	ChunkTransportStateEntry *states;
-		
-	/* keeps track of if we've "activated" connections via SetupInterconnect(). */
-	bool		activated;
-
-	bool		aggressiveRetry;
-	
-	bool		teardownActive;
-	List	   *incompleteConns;
-	
-	/*slice table stuff. */
-	struct SliceTable  *sliceTable;
-	int			sliceId;	
-} ChunkTransportState;
 
 /* This is the entry data-structure for a motion node. */
 typedef struct MotionNodeEntry
@@ -296,6 +277,32 @@ typedef struct MotionLayerState
 		* processIncomingChunks() */
 	
 }	MotionLayerState;
+
+typedef struct ChunkTransportState
+{
+	/* array of per-motion-node chunk transport state */
+	int size;
+	ChunkTransportStateEntry *states;
+		
+	/* keeps track of if we've "activated" connections via SetupInterconnect(). */
+	bool		activated;
+
+	bool		aggressiveRetry;
+	
+	bool		teardownActive;
+	List	   *incompleteConns;
+	
+	/*slice table stuff. */
+	struct SliceTable  *sliceTable;
+	int			sliceId;	
+
+	/* Function pointers to our send/receive functions */
+	bool (*SendChunk)(MotionLayerState *mlStates, struct ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, TupleChunkListItem tcItem, int16 motionId);
+	TupleChunkListItem (*RecvTupleChunkFrom)(struct ChunkTransportState *transportStates, int16 motNodeID, int16 srcRoute);
+	TupleChunkListItem (*RecvTupleChunkFromAny)(MotionLayerState *mlStates, struct ChunkTransportState *transportStates, int16 motNodeID, int16 *srcRoute);
+	void (*doSendStopMessage)(struct ChunkTransportState *transportStates, int16 motNodeID);
+	void (*SendEos)(MotionLayerState *mlStates, struct ChunkTransportState *transportStates, int motNodeID, TupleChunkListItem tcItem);
+} ChunkTransportState;
 
 #endif   /* CDBINTERCONNECT_H */
 

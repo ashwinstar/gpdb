@@ -17,6 +17,7 @@
 #include "miscadmin.h"
 #include "access/heapam.h"
 #include "cdb/cdbconn.h"
+#include "nodes/execnodes.h" //SliceTable
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
 #include "cdb/htupfifo.h"
@@ -25,7 +26,6 @@
 #include "libpq/pqformat.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
-#include "nodes/execnodes.h" //SliceTable
 
 
 /*=========================================================================
@@ -464,7 +464,7 @@ SendStopMessage(MotionLayerState *mlStates,
 
 	pEntry->stopped = true;
 	if (transportStates != NULL)
-		doSendStopMessage(transportStates, motNodeID);
+		transportStates->doSendStopMessage(transportStates, motNodeID);
 }
 
 /*
@@ -562,7 +562,7 @@ SendEndOfStream(MotionLayerState       *mlStates,
 	 */
 	pMNEntry = getMotionNodeEntry(mlStates, motNodeID, "SendEndOfStream");
 
-	SendEosToAMS(mlStates, transportStates, motNodeID, &s_eos_chunk_data);
+	transportStates->SendEos(mlStates, transportStates, motNodeID, &s_eos_chunk_data);
 
 	/*
 	 * We increment our own "stream-ends received" count when we send our own,
@@ -714,9 +714,9 @@ processIncomingChunks(MotionLayerState *mlStates,
 	 * the chunk-sorter.
 	 */
 	if (srcRoute == ANY_ROUTE)
-		tcItem = RecvTupleChunkFromAny(mlStates, transportStates, motNodeID, &srcRoute);
+		tcItem = transportStates->RecvTupleChunkFromAny(mlStates, transportStates, motNodeID, &srcRoute);
 	else
-		tcItem = RecvTupleChunkFrom(transportStates, motNodeID, srcRoute);
+		tcItem = transportStates->RecvTupleChunkFrom(transportStates, motNodeID, srcRoute);
 
 	numChunks = 0;
 	chunkBytes = 0;

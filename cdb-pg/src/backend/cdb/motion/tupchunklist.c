@@ -11,7 +11,7 @@
 #include "postgres.h"
 
 #include <arpa/inet.h>
-
+#include "nodes/execnodes.h" //SliceTable
 #include "cdb/cdbmotion.h"
 #include "cdb/tupser.h"
 #include "lib/stringinfo.h"

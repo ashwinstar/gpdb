@@ -34,6 +34,7 @@
 #include "cdb/cdbcat.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdblink.h"
+#include "nodes/execnodes.h"	/* Slice, SliceTable */
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbgang.h"

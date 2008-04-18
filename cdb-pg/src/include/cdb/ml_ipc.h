@@ -14,6 +14,10 @@
 
 struct SliceTable;                          /* #include "nodes/execnodes.h" */
 
+/* listener filedescriptors */
+extern int		TCP_listenerFd;
+extern int		UDP_listenerFd;
+
 /*
  * Registration message
  *
@@ -87,6 +91,11 @@ extern void SetupInterconnect(ChunkTransportState **transportStates,
 							  int mySliceId,
 							  MotionLayerState *mlStates);
 
+extern void SetupTCPInterconnect(ChunkTransportState **transportStates, 
+							  struct SliceTable * mySliceTable, 
+							  int mySliceId,
+							  MotionLayerState *mlStates);
+
 extern void
 SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 					 struct SliceTable * mySliceTable,
@@ -107,6 +116,13 @@ extern void TeardownInterconnect(ChunkTransportState *transportStates,
 								 MotionLayerState *mlStates,
 								 bool forceEOS);
 
+extern void TeardownTCPInterconnect(ChunkTransportState *transportStates,
+								 MotionLayerState *mlStates,
+								 bool forceEOS);
+
+extern void TeardownUDPInterconnect(ChunkTransportState *transportStates,
+								 MotionLayerState *mlStates,
+								 bool forceEOS);
 
 
 extern void SetupSequenceServer(struct SliceTable *mySliceTable);
@@ -199,17 +215,12 @@ extern TupleChunkListItem RecvTupleChunkFrom(ChunkTransportState *transportState
  *	 - srcRoute:  which connection to turn off reads for.
  *
  */
-void
-DeregisterReadInterest(ChunkTransportState *transportStates, 
-                       int                  motNodeID, 
-                       int                  srcRoute,
-                       const char          *reason);
+extern void DeregisterReadInterest(ChunkTransportState *transportStates, 
+								   int                  motNodeID, 
+								   int                  srcRoute,
+								   const char          *reason);
 
-/*
- * doSendStopMessage() actually does the work of sending the stop message.
- */
-extern void doSendStopMessage(ChunkTransportState *transportStates, 
-							  int16 motNodeID);
+extern void readPacket(MotionConn *conn, bool inTeardown);
 
 /* 
  * Return a UDP receive buffer to our freelist.
@@ -218,5 +229,59 @@ extern void doSendStopMessage(ChunkTransportState *transportStates,
  * (see inplace in chunklist).
  */
 extern void  ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeID, int route);
+
+#define getChunkTransportState(transportState, motNodeID, ppEntry) \
+	do { \
+		Assert((transportState) != NULL);		\
+		if ((motNodeID) > 0 &&					\
+			(transportState) &&					 \
+			(motNodeID) <= (transportState)->size &&					\
+			(transportState)->states[(motNodeID)-1].motNodeId == (motNodeID) && \
+			(transportState)->states[(motNodeID)-1].valid)				\
+		{ \
+			*(ppEntry) = &(transportState)->states[(motNodeID) - 1];	\
+		} \
+		else \
+		{ \
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), \
+							errmsg("Interconnect Error: Unexpected Motion Node Id: %d.  This means" \
+								   " a motion node that wasn't setup is requesting interconnect" \
+								   " resources.", (motNodeID))));		\
+			/* not reached */ \
+		} \
+	} while (0)
+
+#define ML_CHECK_FOR_INTERRUPTS(teardownActive) \
+		do {if (!teardownActive && InterruptPending) CHECK_FOR_INTERRUPTS(); } while (0)
+
+
+extern ChunkTransportStateEntry *createChunkTransportState(ChunkTransportState *transportStates,
+														   Slice *sendSlice,
+														   Slice *recvSlice,
+														   int numPrimaryConns,
+														   int numMirrorConns);
+
+extern ChunkTransportStateEntry *removeChunkTransportState(ChunkTransportState *transportStates,
+														   int16 motNodeID);
+
+extern void forceEosToPeers(MotionLayerState       *mlStates,
+							ChunkTransportState    *transportStates,
+							int                     motNodeID);
+
+extern void InitMotionTCP(int *listenerSocketFd, uint16 *listenerPort);
+extern void InitMotionUDP(int *listenerSocketFd, uint16 *listenerPort);
+
+extern TupleChunkListItem receiveChunksUDP(ChunkTransportStateEntry *pEntry, 
+									int16 motNodeID, int16 *srcRoute, MotionConn *conn, bool inTeardown);
+
+extern TupleChunkListItem RecvTupleChunk(MotionConn *conn, bool inTeardown);
+
+extern int doBroadcast(MotionLayerState *mlStates, ChunkTransportState *transportStates,
+					   ChunkTransportStateEntry *pEntry, TupleChunkListItem tcItem);
+
+extern void markUDPConnInactive(MotionConn *conn);
+
+extern void CleanupMotionTCP(void);
+extern void CleanupMotionUDP(void);
 
 #endif   /* ML_IPC_H */
