@@ -715,6 +715,9 @@ def display_param(fault_action, failed_array, active_array, multi_home):
     gpmlib.log_info('Greenplum instance recovery parameters')
     gpmlib.log_info('---------------------------------------------------------')
     gpmlib.log_info('Fault tolerance setting       = %s' % fault_action)
+    if opt['-c']:
+        gpmlib.log_info('Recovery from configuration -c option supplied')
+
     if opt['-z']:
         gpmlib.log_info('Forced Recovery -z option supplied')
 
