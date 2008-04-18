@@ -762,12 +762,22 @@ def display_param(fault_action, failed_array, active_array, multi_home):
         gpmlib.log_info('Recovery instance host        = %s' % (active_array[i]['hostname']))
         gpmlib.log_info('Recovery instance directory   = %s' % (active_array[i]['datadir']))
         gpmlib.log_info('Recovery instance port        = %s' % (active_array[i]['port']))
-          
-    if opt['-f']:
-        gpmlib.log_info('---------------------------------------------------------')
-        gpmlib.log_info('Procedure can continue without database interruption')
-        gpmlib.log_info('as gp_fault_action=%s' % fault_action)
-        gpmlib.log_info('---------------------------------------------------------')
+
+    gpmlib.log_info('---------------------------------------------------------')          
+    if fault_action == 'continue':
+        if opt['-f']:
+            gpmlib.log_info('Procedure will STOP database as gp_fault_action=%s' % fault_action)
+        else:
+            gpmlib.log_fatal('Procedure cannot continue without database interruption')
+            gpmlib.log_fatal('as gp_fault_action=%s' % fault_action)
+            gpmlib.fatal('Unable to continue')
+    else:
+        if opt['-f']:
+            gpmlib.log_info('Procedure will STOP database as -f option supplied')
+        else:
+            gpmlib.log_info('Procedure can continue without database interruption')
+            gpmlib.log_info('as gp_fault_action=%s' % fault_action)
+    gpmlib.log_info('---------------------------------------------------------')
 
 ################                                      
 def get_datadirs(ndatadir):
@@ -1449,11 +1459,8 @@ try:
             info_text()
             gpmlib.fatal('Unable to continue')
 
-        if fault_action != 'readonly':
-            gpmlib.log_info('Fault tolerance is set to %s' % fault_action)
-            gpmlib.log_info('Please review the following')
-            info_text()
-            gpmlib.fatal('Unable to continue')
+        if fault_action == 'continue':
+            opt['-f'] = True
 
         # generate list of failed instances, active instances and failed dbids
         if opt['-c']:
@@ -1505,6 +1512,16 @@ try:
                 print_config(failed_instance_array, active_instance_array, pool_failed_instance_array)
                 gpmlib.log_info('Configuration file output to %s successfully.' % opt['-o'])
                 sys.exit(0)
+
+
+        if len(failed_dbids) == 0:
+            gpmlib.log_info('No invalid segment instances located')
+            if fault_action != 'readonly':
+                gpmlib.log_info('Fault tolerance is set to %s' % fault_action)
+                gpmlib.log_info('Please review the following')
+                info_text()
+                gpmlib.fatal('Unable to continue')
+            sys.exit(0)
 
         active_array = active_instance_array
         if opt['-p'] or opt['-s'] or pool_failed_instance_array is not None:
