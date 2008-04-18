@@ -8,10 +8,11 @@ be able to generate mirror copies of primary segments.
 
 gpaddmirror -- add mirror segment
 
-Usage: gpaddmirror [--version] [-?aq] [-d master_data_dir] [-l log_dir] [-p port] [-o outfile] [-s] [-m mirror_config] [-B number]
+Usage: gpaddmirror [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p port] [-o outfile] [-s] [-m mirror_config] [-B number]
            
           --version : print version information
           -?        : print this help screen
+          -D        : set logging output to debug level
           -q        : quiet mode, do not log progress to screen [default: verbose output to screen]
           -a        : non-interactive mode [default: interactive mode]
           -d        : master data directory
@@ -25,6 +26,9 @@ Usage: gpaddmirror [--version] [-?aq] [-d master_data_dir] [-l log_dir] [-p port
           -B        : number of parallel process to spawn to process mirror creation
 
 
+          Format of the configuration file:
+          mirror[N]=host:port:data_dir
+          where N is content in gp_configuration table
 '''
 
 import os, sys, getopt, socket
@@ -53,6 +57,7 @@ opt['-s'] = False
 opt['-o'] = None
 opt['-p'] = 1000
 opt['-l'] = None
+opt['-D'] = False
 
 arg = {}
 arg['exit'] = 0
@@ -71,7 +76,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?qaso:d:m:B:p:l:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?qaso:d:m:B:p:l:D', ['version'])
     except Exception, e:
         usage(str(e))
 
@@ -86,6 +91,7 @@ def parseCommandLine():
         elif (switch == '-p'):        opt[switch] = int(val)
         elif (switch == '-d'):        opt[switch] = val
         elif (switch == '-l'):        opt[switch] = val
+        elif (switch == '-D'):        opt[switch] = True
 
     gpmlib.log_set_module(script_name)
 

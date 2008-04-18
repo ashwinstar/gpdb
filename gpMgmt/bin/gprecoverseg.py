@@ -5,10 +5,11 @@
 Recovers Greenplum segment instances that are marked as invalid, if 
 mirroring is configured and operational
 
-Usage: gprecoverseg.py [--version] [-?qaf] [-c input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
+Usage: gprecoverseg.py [--version] [-?qaf] [-D] [-c input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
            
           --version : print version information
           -?        : print this help screen
+          -D        : set logging output to debug level
           -q        : quiet mode, do not log progress to screen [default: verbose output to screen]
           -a        : non-interactive mode [default: interactive mode]
           -c        : <input_config> input configuration file which is generated from -o option
@@ -71,6 +72,7 @@ opt['-q'] = False
 opt['-l'] = None
 opt['-c'] = None
 opt['-o'] = None
+opt['-D'] = False
 
 arg = {}
 arg['exit'] = 0
@@ -89,7 +91,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?qafs:d:z:B:p:l:c:o:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?Dqafs:d:z:B:p:l:c:o:', ['version'])
     except Exception, e:
         usage('[ERROR]:-' + str(e))
 
@@ -106,6 +108,7 @@ def parseCommandLine():
         elif (switch == '-l'):        opt[switch] = val
         elif (switch == '-c'):        opt[switch] = val
         elif (switch == '-o'):        opt[switch] = val
+        elif (switch == '-D'):        opt[switch] = True
 
     gpmlib.log_set_module(script_name)
     # set verbose
