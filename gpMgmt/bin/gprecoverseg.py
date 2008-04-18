@@ -1294,66 +1294,60 @@ def reset_qe_connect(db):
         gpmlib.log_info(buf.getvalue())
 
 ################                                      
-# [failed_instance_array]
-# definedprimary|hostname|port|datadir|dbid|content
-#  ...
-# [active_instance_array]
-# definedprimary|hostname|port|datadir|dbid|content
-# ...
-# [pool_failed_instance_array]
-# definedprimary|hostname|port|datadir|dbid|content
-# ...
 #
+# host:port:data_dir  [pool_host:port:pool_dir]
 ################
-def parse_config():
+
+def parse_config(db):
     global opt
 
     failed_instance_array = []
     active_instance_array = []
     pool_failed_instance_array = []
-    array = None
+    
     with open(opt['-c']) as f:
         for line in f:
             line = line.strip()
             if line == '':
                 continue
-            if line == '.':
-                array = None
-            elif line == '[failed_instances]':
-                array = failed_instance_array
-            elif line == '[active_instances]':
-                array = active_instance_array
-            elif line == '[pool_failed_instances]':
-                array = pool_failed_instance_array
-            else:
-                qe = line.split('|')
-                if len(qe) != 6:
+            failed_qe = line.split()
+            if len(failed_qe) == 1 or len(failed_qe) == 2:
+                cfg = failed_qe[0].split(':')
+                if len(cfg) != 3:
                     gpmlib.error('[FATAL]:- config file format error. %s' % line)
-                a = {}
-                a['definedprimary'] = qe[0] == 't' and True or False
-                a['hostname'] = qe[1]
-                a['port'] = int(qe[2])
-                a['datadir'] = qe[3]
-                a['dbid'] = int(qe[4])
-                a['content'] = int(qe[5])
-                if array is not None:
-                    array.append(a)
-                else:
-                    gpmlib.error('[FATAL]:- config file format error. no header found.')
+                db.execute('''select definedprimary, hostname, port, datadir, dbid, content from gp_configuration where hostname=$1 and port=$2 and datadir=$3''',
+                           cfg[0].strip(), int(cfg[1]), cfg[2].strip())
+                r = db.read_dict()
+                if r is None:
+                    gpmlib.error('[FATAL]:- segment %s not found' % line)                
+                failed_instance_array.append(r)
+            else:
+                gpmlib.error('[FATAL]:- config file format error')
+                
+            if len(failed_qe) == 2:
+                cfg = failed_qe[1].split(':')
+                if len(cfg) != 3:
+                    gpmlib.error('[FATAL]:- config file format error. %s' % line)
+                a = failed_instance_array[-1].copy()
+                a['hostname'] = cfg[0].strip()
+                a['port'] = int(cfg[1])
+                a['datadir'] = cfg[2].strip()
+                pool_failed_instance_array.append(a)
+            else:
+                pool_failed_instance_array.append(failed_instance_array[-1])
 
-        if array is not None:
-            gpmlib.error('[FATAL]:- config file format error. unexpected EOF.')
-
-    if len(pool_failed_instance_array) == 0:
+    if pool_failed_instance_array == failed_instance_array:
         pool_failed_instance_array = None
 
-    if len(failed_instance_array) != len(active_instance_array):
-        gpmlib.error('[FATAL]:- number of failed instances must be equal to number of active instances')
-    
-    if pool_failed_instance_array is not None and len(failed_instance_array) != len(pool_failed_instance_array):
-        gpmlib.error('[FATAL]:- number of failed instances must be equal to number of pool failed instances')        
-
     failed_dbids = [ x['dbid'] for x in failed_instance_array]
+
+    for failed_dbid in failed_dbids:
+        db.execute('''select definedprimary, hostname, port, datadir, dbid, content from gp_configuration 
+                  where dbid<> %d and 
+                  content in (select content from gp_configuration where dbid=%d)''' %
+                   (failed_dbid, failed_dbid))  
+        r = db.read_dict()
+        active_instance_array.append(r)
 
     update_sql = None
     if pool_failed_instance_array is not None:
@@ -1362,33 +1356,21 @@ def parse_config():
             update_sql.append((qe['hostname'], qe['datadir'], qe['port'], qe['dbid']))
 
     return (failed_dbids, failed_instance_array, active_instance_array, pool_failed_instance_array, update_sql)
-
-###############
-def print_array_config(f, title, array):
-    f.write('%s\n' % title)
-    for qe in array:
-        f.write(qe['definedprimary'] and 't' or 'f')
-        f.write('|')
-        f.write(qe['hostname'])
-        f.write('|')
-        f.write(str(qe['port']))
-        f.write('|')
-        f.write(qe['datadir'])
-        f.write('|')
-        f.write(str(qe['dbid']))    
-        f.write('|')
-        f.write(str(qe['content']))
-        f.write('\n')
-    f.write('.\n')
-
+    
 ################
 def print_config(failed_instance_array, active_instance_array, pool_failed_instance_array):
     global opt
     with open(opt['-o'], 'w') as f:    
-        print_array_config(f, '[failed_instances]', failed_instance_array)
-        print_array_config(f, '[active_instances]', active_instance_array)
-        if pool_failed_instance_array:
-            print_array_config(f, '[pool_failed_instances]', pool_failed_instance_array)        
+        for i in range(len(failed_instance_array)):
+            f.write('%s:%d:%s' % (failed_instance_array[i]['hostname'],
+                                  failed_instance_array[i]['port'],
+                                  failed_instance_array[i]['datadir']))
+            if pool_failed_instance_array is not None:
+                f.write('%s:%d:%s' % (pool_failed_instance_array[i]['hostname'],
+                                      pool_failed_instance_array[i]['port'],
+                                      pool_failed_instance_array[i]['datadir']))
+            f.write('\n')
+
 
 ################                                      
 try:
@@ -1463,7 +1445,7 @@ try:
 
         # generate list of failed instances, active instances and failed dbids
         if opt['-c']:
-            (failed_dbids, failed_instance_array, active_instance_array, pool_failed_instance_array, update_sql) = parse_config()
+            (failed_dbids, failed_instance_array, active_instance_array, pool_failed_instance_array, update_sql) = parse_config(db)
         else:
 
             if opt['-z']:
