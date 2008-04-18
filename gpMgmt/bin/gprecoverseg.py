@@ -34,6 +34,13 @@ Usage: gprecoverseg.py [--version] [-?qaf] [-c input_config] [-o output_config] 
           -B        : <number> run this batch of recovery segment processes in parallel [default: 4]
 
 
+          Format of configuration file:
+          failed_host:failed_port:failed_datadir [pool_host:pool_port:pool_datadir]
+          e.g.
+              dbhost1:41023:/data1/primary/gp-0 dbhost3:41023:/data1/primary/gp-0
+              dbhost2:41024:/data1/primary/gp-1 dbhost2:41025:/data2/primary/gp-1
+              dbhost1:42022:/data1/mirror/gp-2
+
 '''
 from __future__ import with_statement
 import os, sys, getopt, socket, StringIO
