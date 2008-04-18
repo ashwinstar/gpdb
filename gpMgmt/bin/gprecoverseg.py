@@ -881,6 +881,8 @@ def chk_pool_dir_available(db, failed_dbids):
     global opt
 
     dir = opt['-s'].split(',')
+    if len(dir) != 2:
+        gpmlib.error('[FATAL]:- option -s %s format error' % opt['-s'])
     pri_pool_dir = dir[0]
     mir_pool_dir = dir[1]
 
@@ -1369,9 +1371,9 @@ def print_config(failed_instance_array, active_instance_array, pool_failed_insta
                                   failed_instance_array[i]['port'],
                                   failed_instance_array[i]['datadir']))
             if pool_failed_instance_array is not None:
-                f.write('%s:%d:%s' % (pool_failed_instance_array[i]['hostname'],
-                                      pool_failed_instance_array[i]['port'],
-                                      pool_failed_instance_array[i]['datadir']))
+                f.write(' %s:%d:%s' % (pool_failed_instance_array[i]['hostname'],
+                                       pool_failed_instance_array[i]['port'],
+                                       pool_failed_instance_array[i]['datadir']))
             f.write('\n')
 
 
@@ -1494,6 +1496,7 @@ try:
 
             if opt['-o']:
                 print_config(failed_instance_array, active_instance_array, pool_failed_instance_array)
+                gpmlib.log_info('Configuration file output to %s successfully.' % opt['-o'])
                 sys.exit(0)
 
         active_array = active_instance_array
