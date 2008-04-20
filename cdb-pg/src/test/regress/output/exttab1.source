@@ -15,7 +15,7 @@ CREATE EXTERNAL TABLE EXT_REGION  ( R_REGIONKEY  INTEGER ,
                             R_NAME       CHAR(25) ,
                             R_COMMENT    VARCHAR(152))
 location ('file://@hostname@@abs_srcdir@/data/region.tbl' )
-FORMAT 'text' (delimiter '|');  
+FORMAT 'text' (delimiter '|');
 -- drop tables
 DROP EXTERNAL TABLE EXT_NATION;
 DROP EXTERNAL TABLE EXT_REGION;
@@ -27,7 +27,7 @@ execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/nul
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
-execute E'(@killall@ gpfdist ) ; echo "stopping..."'
+execute E'(/bin/pkill gpfdist || killall gpfdist) > /dev/null 2>&1; echo "stopping..."'
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 select * from gpfdist_stop;
@@ -122,7 +122,7 @@ SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONK
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          13 | JORDAN                    |           4 | ic deposits are blithely about the carefully regular pa
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          20 | SAUDI ARABIA              |           4 | ts. silent requests haggle. closely express packages sleep across the blithely
 (25 rows)
-  
+
 select * from gpfdist_stop;
       x      
 -------------
@@ -154,7 +154,7 @@ select * from gpfdist_csv_start;
 -------------
  starting...
 (1 row)
-  
+
 create external table ext_whois (
 source_lineno			int,
 domain_name			varchar(350),
@@ -250,10 +250,10 @@ format 'csv' ( quote as '"');
 -- "
 -- no header option because we specified it for gpfdist_csv...
 select count(*) from ext_whois;
-  count 
- -------
-     23
- (1 row)
+ count 
+-------
+    23
+(1 row)
  
 -- --------------------------------------
 -- some negative tests
