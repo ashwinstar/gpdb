@@ -2998,7 +2998,7 @@ readtup_heap(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup, LogicalT
 	/* For shareinput on sort, the reader will not set mt_bind.  In this case,
 	 * we will not call compare.
 	 */
-	AssertImply(state->mt_bind, state->status == TSS_SORTEDONTAPE);
+	AssertImply(!state->mt_bind, state->status == TSS_SORTEDONTAPE);
 	if(state->mt_bind)
 		stup->datum1 = memtuple_getattr(stup->tuple, state->mt_bind, state->scanKeys[0].sk_attno, &stup->isnull1);
 }
