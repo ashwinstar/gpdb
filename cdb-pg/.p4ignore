@@ -1,2 +1,3 @@
 GNUmakefile
 config.status
+a.out.dSYM
