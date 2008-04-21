@@ -951,6 +951,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	ListCell   *l;
 	bool		found = false;
 	ArrayBuildState *astate = NULL;
+    Size        savepeakspace = MemoryContextGetPeakSpace(planstate->state->es_query_cxt);
 
 	Query	   *query;
 	QueryDesc  *queryDesc = NULL;
@@ -969,6 +970,12 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		shouldDispatch = true;
 
     node->cdbextratextbuf = NULL;
+
+    /* 
+     * Reset memory high-water mark so EXPLAIN ANALYZE can report each
+     * root slice's usage separately.
+     */
+    MemoryContextSetPeakSpace(planstate->state->es_query_cxt, 0);
 
 	/*
 	 * Let's initialize 'queryDesc' before our PG_TRY, to ensure the correct
@@ -1255,6 +1262,9 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
             }
         }
 
+        /* Restore memory high-water mark for root slice of main query. */
+        MemoryContextSetPeakSpace(planstate->state->es_query_cxt, savepeakspace);
+
         /*
 		 * Request any commands still executing on qExecs to stop.
 		 * Wait for them to finish and clean up the dispatching structures.
@@ -1283,6 +1293,9 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
     if (planstate->instrument)
         cdbexplain_localExecStats(planstate, econtext->ecxt_estate->showstatctx);
    
+    /* Restore memory high-water mark for root slice of main query. */
+    MemoryContextSetPeakSpace(planstate->state->es_query_cxt, savepeakspace);
+
     MemoryContextSwitchTo(oldcontext);
 }
 

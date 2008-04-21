@@ -1406,15 +1406,27 @@ explain_outNode(StringInfo str,
 			SubPlan    *sp = (SubPlan *) sps->xprstate.expr;
             SliceTable *sliceTable = planstate->state->es_sliceTable;
 
+			appendStringInfoFill(str, 2*indent, ' ');
+		    appendStringInfoString(str, "  InitPlan");
+
             /* Subplan might have its own root slice */
             if (sliceTable &&
                 sp->qDispSliceId > 0)
+            {
                 es->currentSlice = (Slice *)list_nth(sliceTable->slices,
                                                      sp->qDispSliceId);
+    		    appendStringInfo(str, "  (slice%d)", sp->qDispSliceId);
+            }
+            else
+            {
+                /* 
+                 * CDB TODO: In non-parallel query, all qDispSliceId's are 0.
+                 * Should fill them in properly before ExecutorStart(), but
+                 * for now, just omit the slice id.
+                 */
+            }
 
-		    for (i = 0; i < indent; i++)
-			    appendStringInfo(str, "  ");
-		    appendStringInfo(str, "  InitPlan  (slice%d)\n", sp->qDispSliceId);
+            appendStringInfoChar(str, '\n');
 
             es->rtable = sp->rtable;
 			for (i = 0; i < indent; i++)

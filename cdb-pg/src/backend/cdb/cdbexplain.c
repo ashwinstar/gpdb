@@ -606,6 +606,12 @@ cdbexplain_collectSliceStats(PlanState                 *planstate,
  *    Transfer a worker's per-slice stats contribution from StatHdr into the
  *    SliceSummary array in the ShowStatCtx.  Transfer the rollup of per-node
  *    stats from the RecvStatCtx into the SliceSummary.
+ *
+ * Kludge: In a non-parallel plan, slice numbers haven't been assigned, so we
+ * may be called more than once with sliceIndex == 0: once for the outermost
+ * query and once for each InitPlan subquery.  In this case we dynamically
+ * expand the SliceSummary array.  CDB TODO: Always assign proper root slice
+ * ids (in qDispSliceId field of SubPlan node); then remove this kludge.
  */
 static void
 cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
@@ -619,6 +625,23 @@ cdbexplain_depositSliceStats(CdbExplain_StatHdr        *hdr,
 
     Insist(sliceIndex >= 0 &&
            sliceIndex < showstatctx->nslice);
+
+    /* Kludge:  QD can have more than one 'Slice 0' if plan is non-parallel. */
+    if (sliceIndex == 0 &&
+        recvstatctx->dispatchResults == NULL &&
+        ss->workers)
+    {
+        Assert(ss->nworker == 1 &&
+               recvstatctx->segindexMin == hdr->segindex &&
+               recvstatctx->segindexMax == hdr->segindex);
+
+        /* Expand the SliceSummary array to make room for InitPlan subquery. */
+        sliceIndex = showstatctx->nslice++;
+        showstatctx->slices = (CdbExplain_SliceSummary *)
+                repalloc(showstatctx->slices, showstatctx->nslice * sizeof(showstatctx->slices[0]));
+        ss = &showstatctx->slices[sliceIndex];
+        memset(ss, 0, sizeof(*ss));
+    }    
 
     /* Slice's first worker? */
     if (!ss->workers)
