@@ -1,4 +1,5 @@
 blibpqdll.def
+exports.list
 encnames.c
 inet_aton.c
 ip.c

@@ -1,3 +1,5 @@
 libecpg.a
 libecpg.so
 libecpg.so.5
+path.c
+thread.c
