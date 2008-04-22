@@ -1,47 +1,3 @@
-/*****************************************************************************
- *
- * This example source code introduces a c library buffered I/O interface to
- * URL reads it supports fopen(), fread(), fgets(), feof(), fclose(),
- * rewind(). Supported functions have identical prototypes to their normal c
- * lib namesakes and are preceaded by url_ .
- *
- * Using this code you can replace your program's fopen() with url_fopen()
- * and fread() with url_fread() and it become possible to read remote streams
- * instead of (only) local files. Local files (ie those that can be directly
- * fopened) will drop back to using the underlying clib implementations
- *
- * See the main() function at the bottom that shows an app that retrives from a
- * specified url using fgets() and fread() and saves as two output files.
- *
- * Coyright (c)2003 Simtec Electronics
- *
- * Re-implemented by Vincent Sanders <vince@kyllikki.org> with extensive
- * reference to original curl example code
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- * 1. Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- * 2. Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- * 3. The name of the author may not be used to endorse or promote products
- *    derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
- * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
- * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
- * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
- * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * This example requires libcurl 7.9.7 or later.
- */
 /*
  * Portions Copyright (c) 2007-2008, Greenplum inc
  */
@@ -51,6 +7,7 @@
 #include <sys/time.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <unistd.h>
 
 #include <curl/curl.h>
 
@@ -65,6 +22,36 @@
 
 enum fcurl_type_e { CFTYPE_NONE=0, CFTYPE_FILE=1, CFTYPE_CURL=2, CFTYPE_EXEC=3 };
 
+#if BYTE_ORDER == BIG_ENDIAN
+#define local_htonll(n)  (n)
+#define local_ntohll(n)  (n)
+#else
+#define local_htonll(n)  ((((uint64) htonl(n)) << 32LL) | htonl((n) >> 32LL))
+#define local_ntohll(n)  ((((uint64) ntohl(n)) << 32LL) | (uint32) ntohl(((uint64)n) >> 32LL))
+#endif
+
+
+typedef struct curlctl_t curlctl_t;
+struct curlctl_t {
+	CURL *handle;
+	char *curl_url;
+	struct curl_slist *x_httpheader;
+	struct {
+		char* ptr;	   /* malloc-ed buffer */
+		int   max;
+		int   bot, top;
+	} buf;
+	int still_running;          /* Is background url fetch still in progress */
+	int error, eof;				/* error & eof flags */
+	int gp_proto;
+	struct {
+		char* fname;	/* current filename */
+		int64 foff;		/* current file offset */
+		int   datalen;  /* remaining datablock length */
+	} block;
+};
+
+
 typedef struct URL_FILE URL_FILE;
 struct URL_FILE
 {
@@ -74,15 +61,8 @@ struct URL_FILE
 		struct {
 			FILE *fp;
 		} file;
-		struct {
-			CURL *handle;
-			char *curl_url;
-			struct curl_slist *x_httpheader;
-			char *buffer;               /* buffer to store cached data*/
-			int buffer_len;             /* currently allocated buffers length */
-			int buffer_pos;             /* end of data in buffer*/
-			int still_running;          /* Is background url fetch still in progress */
-		} curl;
+
+		curlctl_t curl;
 
 		struct {
 			FILE* fp;
@@ -96,11 +76,40 @@ struct URL_FILE
 URL_FILE *url_fopen(char *url, const char *operation, extvar_t* ev);
 int url_fclose(URL_FILE *file);
 int url_feof(URL_FILE *file);
+int url_ferror(URL_FILE *file);
 size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file);
 void url_rewind(URL_FILE *file);
 
 /* we use a global one for convenience */
 CURLM *multi_handle = 0;
+
+/* curl calls this routine to return HTTP header from server */
+static size_t 
+header_callback(void* ptr_, size_t size, size_t nmemb, void* userp)
+{
+    URL_FILE *url = (URL_FILE *)userp;
+	char* ptr = ptr_;
+	int len = size * nmemb;
+	int i;
+	char buf[20];
+
+	if (len > 10 && *ptr == 'X' && 0 == strncmp("X-GP-PROTO", ptr, 10)) {
+		ptr += 10, len -= 10;
+		while (len > 0 && (*ptr == ' ' || *ptr == '\t')) ptr++, len--;
+		if (len > 0 && *ptr == ':') {
+			ptr++, len--;
+			while (len > 0 && (*ptr == ' ' || *ptr == '\t')) ptr++, len--;
+			for (i = 0; i < sizeof(buf) - 1 && i < len; i++) 
+				buf[i] = ptr[i];
+			buf[i] = 0;
+			url->u.curl.gp_proto = strtol(buf, 0, 0);
+			// elog(NOTICE, "X-GP-PROTO: %s (%d)", buf, url->u.curl.gp_proto);
+		}
+	}
+	
+	return size*nmemb;
+}
+
 
 /* curl calls this routine to get more data */
 static size_t
@@ -109,44 +118,46 @@ write_callback(char *buffer,
                size_t nitems,
                void *userp)
 {
-    char *newbuff;
-    int rembuff;
+    URL_FILE *file = (URL_FILE *)userp;
+	curlctl_t* curl = &file->u.curl;
+	const int nbytes = size * nitems;
+	int n;
 
-    URL_FILE *url = (URL_FILE *)userp;
-    size *= nitems;
+	// elog(NOTICE, "write_callback %d", nbytes);
 
-    rembuff=url->u.curl.buffer_len - url->u.curl.buffer_pos;//remaining space in buffer
-
-    if(size > rembuff)
-    {
-        //not enuf space in buffer
-        newbuff=realloc(url->u.curl.buffer,url->u.curl.buffer_len + (size - rembuff));
-        if(newbuff==NULL)
-        {
-            fprintf(stderr,"callback buffer grow failed\n");
-            size=rembuff;
-        }
-        else
-        {
-            /* realloc suceeded increase buffer size*/
-            url->u.curl.buffer_len+=size - rembuff;
-            url->u.curl.buffer=newbuff;
-
-            /*printf("Callback buffer grown to %d bytes\n",url->buffer_len);*/
-        }
-    }
-
-    memcpy(&url->u.curl.buffer[url->u.curl.buffer_pos], buffer, size);
-    url->u.curl.buffer_pos += size;
-
-    /*fprintf(stderr, "callback %d size bytes\n", size);*/
-
-    return size;
+	/* if insufficient space in buffer ... */
+	if (curl->buf.top + nbytes >= curl->buf.max) {
+		/* compact ? */
+		if (curl->buf.bot) {
+			n = curl->buf.top - curl->buf.bot;
+			memmove(curl->buf.ptr, curl->buf.ptr + curl->buf.bot, n);
+			curl->buf.bot = 0;
+			curl->buf.top = n;
+		}
+		/* if still insufficient space in buffer, then do realloc */
+		if (curl->buf.top + nbytes >= curl->buf.max) {
+			char* newbuf;
+			n = curl->buf.top - curl->buf.bot + nbytes + 1024;
+			newbuf = realloc(curl->buf.ptr, n);
+			if (! newbuf) {
+				elog(ERROR, "out of memory");
+				return -1;
+			}
+			curl->buf.ptr = newbuf;
+			curl->buf.max = n;
+			// elog(NOTICE, "max now at %d", n);
+			Assert(curl->buf.top + nbytes < curl->buf.max);
+		}
+	}
+	/* enough space. copy buffer into curl->buf */
+	memcpy(curl->buf.ptr + curl->buf.top, buffer, nbytes);
+	curl->buf.top += nbytes;
+	return nbytes;
 }
 
 
 static int
-is_error(URL_FILE* file)
+check_response(URL_FILE* file)
 {
 	long response_code;
 	char* effective_url;
@@ -162,8 +173,16 @@ is_error(URL_FILE* file)
 	if (! (200 <= response_code && response_code < 300)) {
 		if (response_code == 0) 
 			elog(ERROR, "connection failed while %s", file->url);
-		else
+		else {
+			/* we need to sleep 1 sec to avoid this condition:
+				1- seg X gets an error message from gpfdist
+				2- I gets a 500 error
+				3- I report error before seg X, and error message 
+					in seg X is thrown away.
+			*/
+			sleep(1);
 			elog(ERROR, "http response code %ld while %s", response_code, file->url);
+		}
 		return -1;
 	}
 
@@ -182,17 +201,14 @@ fill_buffer(URL_FILE *file,int want)
     int maxfd;
     struct timeval timeout;
     int nfds, e;
+	curlctl_t* curl = &file->u.curl;
 
-    /* only attempt to fill buffer if transactions still running and buffer
-     * doesnt exceed required size already
-     */
-	if (! file->u.curl.still_running)
-		return 0;
-	if (file->u.curl.buffer_pos >= want)
-		return 0;
+	/* elog(NOTICE, "= still_running %d, bot %d, top %d, want %d", 
+		 file->u.curl.still_running, curl->buf.bot, curl->buf.top, want);
+	*/
 
     /* attempt to fill buffer */
-	while (file->u.curl.still_running && file->u.curl.buffer_pos < want)
+	while (curl->still_running && curl->buf.top - curl->buf.bot < want)
     {
         FD_ZERO(&fdread);
         FD_ZERO(&fdwrite);
@@ -212,13 +228,13 @@ fill_buffer(URL_FILE *file,int want)
 
 		if (maxfd <= 0)
 		{
-			elog(ERROR, "internal error: curl_multi_fdset reports no more fd");
-			return -1;
+			curl->still_running = 0;
+			break;
 		}
 
         if (-1 == (nfds = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout))) 
 		{
-			if (errno == EINTR)
+			if (errno == EINTR || errno == EAGAIN)
 				continue;
 			elog(ERROR, "internal error: select failed on curl_multi_fdset (maxfd %d) (%d - %s)",
 				 maxfd, errno, strerror(errno));
@@ -237,39 +253,17 @@ fill_buffer(URL_FILE *file,int want)
 			{
 				elog(ERROR, "internal error: curl_multi_perform failed (%d - %s)", 
 					 e, curl_easy_strerror(e));
-				return 1;
+				return -1;
 			}
         }
+
+		/* elog(NOTICE, "- still_running %d, bot %d, top %d, want %d", 
+			 file->u.curl.still_running, curl->buf.bot, curl->buf.top, want);
+		*/
     } 
-    return 1;
-}
-
-/* use to remove want bytes from the front of a files buffer */
-static int
-use_buffer(URL_FILE *file,int want)
-{
-    /* sort out buffer */
-    if ((file->u.curl.buffer_pos - want) <=0)
-    {
-        /* ditch buffer - write will recreate */
-        if (file->u.curl.buffer)
-            free(file->u.curl.buffer);
-
-        file->u.curl.buffer=NULL;
-        file->u.curl.buffer_pos=0;
-        file->u.curl.buffer_len=0;
-    }
-    else
-    {
-        /* move rest down make it available for later */
-        memmove(file->u.curl.buffer,
-                &file->u.curl.buffer[want],
-                (file->u.curl.buffer_pos - want));
-
-        file->u.curl.buffer_pos -= want;
-    }
     return 0;
 }
+
 
 
 static int set_httpheader(URL_FILE* fcurl, const char* name, const char* value)
@@ -343,6 +337,7 @@ static int make_command(const char* cmd, extvar_t* ev, char* buf)
 	sz += make_export("GP_SEGMENT_ID", ev->GP_SEGMENT_ID, buf ? buf + sz : 0);
 	sz += make_export("GP_SEG_PORT", ev->GP_SEG_PORT, buf ? buf + sz : 0);
 	sz += make_export("GP_SESSION_ID", ev->GP_SESSION_ID, buf ? buf + sz : 0);
+	sz += make_export("GP_SEGMENT_COUNT", ev->GP_SEGMENT_COUNT, buf ? buf + sz : 0);
 	
 	if (buf)
 		strcpy(buf + sz, cmd);
@@ -352,100 +347,121 @@ static int make_command(const char* cmd, extvar_t* ev, char* buf)
 }
 
 
-static int encode_url(const char* s, char* buf)
-{
-	char* p = buf;
-	int ch;
-	for ( ; 0 != (ch = * (unsigned char*) s); s++) 
-	{
-		if (('a' <= ch && ch <= 'z')
-			|| ('A' <= ch && ch <= 'Z')
-			|| ('0' <= ch && ch <= '9')
-			|| ('-' == ch)
-			|| ('.' == ch)
-			|| ('_' == ch)
-			|| ('~' == ch))
-		{
-			if (buf)
-				*p = (char) ch;
-			p++;
-		}
-		else if (' ' == ch)
-		{
-			if (buf)
-				*p = '+';
-			p++;
-		}
-		else 
-		{
-			if (buf)
-			{
-				int x = ch >> 4;
-				int y = ch & 0xf;
-				x = (x < 10) ? x + '0' : x - 10 + 'A';
-				y = (y < 10) ? y + '0' : y - 10 + 'A';
-				p[0] = '%';
-				p[1] = x;
-				p[2] = y;
-			}
-			p += 3;
-		}
-	}
-	if (buf)
-		*p = 0;
-	p++;
 
-	return p - buf;
+
+static char* local_strstr(const char* str1, const char* str2)
+{
+	char *cp = (char *) str1;
+	char *s1, *s2;
+
+	if ( !*str2 )
+		return((char *)str1);
+
+	while (*cp)
+    {
+		s1 = cp;
+		s2 = (char *) str2;
+
+		while (*s1 && (*s1==*s2))
+			s1++, s2++;
+
+		if (!*s2)
+			return(cp);
+
+		cp++;
+	}
+
+	return(NULL);
 }
 
 static int make_url(const char* url, extvar_t* ev, char* buf)
 {
-	char* p = buf;
-	for ( ; *url; url++)
-	{
-		if (strncmp(url, "GP_", 3) == 0)
-		{
-			if (0 == strcmp(url, "GP_MASTER_HOST"))
-				p += encode_url(ev->GP_MASTER_HOST, p);
-			else if (0 == strcmp(url, "GP_MASTER_PORT"))
-				p += encode_url(ev->GP_MASTER_PORT, p);
-			else if (0 == strcmp(url, "GP_SEG_PG_CONF"))
-				p += encode_url(ev->GP_SEG_PG_CONF, p);
-			else if (0 == strcmp(url, "GP_SEG_DATADIR"))
-				p += encode_url(ev->GP_SEG_DATADIR, p);
-			else if (0 == strcmp(url, "GP_DATABASE"))
-				p += encode_url(ev->GP_DATABASE, p);
-			else if (0 == strcmp(url, "GP_DATE"))
-				p += encode_url(ev->GP_DATE, p);
-			else if (0 == strcmp(url, "GP_TIME"))
-				p += encode_url(ev->GP_TIME, p);
-			else if (0 == strcmp(url, "GP_XID"))
-				p += encode_url(ev->GP_XID, p);
-			else if (0 == strcmp(url, "GP_CID"))
-				p += encode_url(ev->GP_CID, p);
-			else if (0 == strcmp(url, "GP_SN"))
-				p += encode_url(ev->GP_SN, p);
-			else if (0 == strcmp(url, "GP_SEGMENT_ID"))
-				p += encode_url(ev->GP_SEGMENT_ID, p);
-			else if (0 == strcmp(url, "GP_SEG_PORT"))
-				p += encode_url(ev->GP_SEG_PORT,p);
-			else if (0 == strcmp(url, "GP_SESSION_ID"))
-				p += encode_url(ev->GP_SESSION_ID, p);	
-			else
-				return -1;
-		}
-		else 
-		{
-			if (buf)
-				*p = *url;
-			p++;
-		}
+	char* authority_start = local_strstr(url, "//");
+	char* authority_end;
+	char* hostname_start;
+	char* hostname_end;
+	char hostname[100];
+	char hostip[20];
+	struct hostent * he;
+	int len;
+	char* p;
+
+	if (! authority_start) {
+		elog(ERROR, "illegal url '%s'", url);
+		return -1;
 	}
 
-	if (buf)
-		*p = 0;					/* NUL terminator */
-	p++;
+	authority_start += 2;
+	authority_end = strchr(authority_start, '/');
+	if (! authority_end)
+		authority_end = authority_start + strlen(authority_start);
 
+	hostname_start = strchr(authority_start, '@');
+	if (! (hostname_start && hostname_start < authority_end))
+		hostname_start = authority_start;
+	
+	hostname_end = strchr(hostname_start, ':');
+	if (! (hostname_end && hostname_end < authority_end))
+		hostname_end = authority_end;
+
+	if (hostname_end - hostname_start >= sizeof(hostname))  {
+		elog(ERROR, "hostname too long for url '%s'", url);
+		return -1;
+	}
+
+	memcpy(hostname, hostname_start, hostname_end - hostname_start);
+	hostname[hostname_end - hostname_start] = 0;
+	he = gethostbyname(hostname);
+	if (he) {
+		strcpy(hostip, inet_ntoa(*(struct in_addr*)he->h_addr));
+		/* elog(NOTICE, "IP: %s", hostip); */
+	} 
+	else {
+#if 0
+		char line[1024];
+		FILE* fp;
+		int a, b, c, d;
+
+		snprintf(line, sizeof(line), 
+				 "python -c 'from socket import *; print gethostbyname(\"%s\") ' 2> /tmp/tt",
+				 hostname);
+		line[sizeof(line)-1] = 0;
+		if (! (fp = popen(line, "r"))) {
+			line[0] = 0;
+		}
+		else {
+			if (0 == fgets(line, sizeof(line), fp)) 
+				line[0] = 0;
+			pclose(fp);
+			line[sizeof(line)-1] = 0;
+		}
+		if (4 != sscanf(line, "%d.%d.%d.%d", &a, &b, &c, &d)) {
+			elog(ERROR, "unable to resolve host '%s' in url '%s'", hostname, url);
+			return -1;
+		}
+		sprintf(hostip, "%d.%d.%d.%d", a, b, c, d);
+		/* elog(NOTICE, "IP: %s", hostip); */
+#else
+		elog(ERROR, "unable to resolve host '%s' in url '%s'", hostname, url);
+		return -1;
+#endif
+	}
+
+	if (!buf)
+		return strlen(url) + 1 - strlen(hostname) + strlen(hostip);
+
+
+	p = buf;
+	len = hostname_start - url;
+	strncpy(p, url, len); p += len; url += len;
+
+	len = strlen(hostname);
+	url += len;
+
+	len = strlen(hostip);
+	strncpy(p, hostip, len); p += len;
+
+	strcpy(p, url);
 	return p - buf;
 }
 
@@ -543,6 +559,8 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			return NULL;
 		}
 
+		/* elog(NOTICE, "URL: %s", file->u.curl.curl_url); */
+
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_URL, file->u.curl.curl_url))) 
 		{
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_URL %s error (%d - %s)",
@@ -558,6 +576,23 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			url_fclose(file);
 			return NULL;
 		}
+		/* set callback for each header received from server */
+		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_HEADERFUNCTION, header_callback)))
+		{
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_HEADERFUNCTION error (%d - %s)", 
+				 e, curl_easy_strerror(e));
+			url_fclose(file);
+			return NULL;
+		}
+		/* file gets passed to header_callback */
+		if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEHEADER, file)))
+		{
+			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEHEADER error (%d - %s)",
+				 e, curl_easy_strerror(e));
+			url_fclose(file);
+			return NULL;
+		}
+		/* set callback for each data block received from server */
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEFUNCTION, write_callback)))
 		{
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEFUNCTION error (%d - %s)", 
@@ -565,6 +600,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			url_fclose(file);
 			return NULL;
 		}
+		/* file gets passed to write_callback */
         if (0 != (e = curl_easy_setopt(file->u.curl.handle, CURLOPT_WRITEDATA, file)))
 		{
 			elog(ERROR, "internal error: curl_easy_setopt CURLOPT_WRITEDATA error (%d - %s)",
@@ -583,15 +619,18 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		file->u.curl.x_httpheader = 0;
 		if (set_httpheader(file, "X-GP-MASTER_HOST", ev->GP_MASTER_HOST)
 			|| set_httpheader(file, "X-GP-MASTER_PORT", ev->GP_MASTER_PORT)
+			|| set_httpheader(file, "X-GP-CSVOPT", ev->GP_CSVOPT)
 			|| set_httpheader(file, "X-GP_SEG_PG_CONF", ev->GP_SEG_PG_CONF)
 			|| set_httpheader(file, "X-GP_SEG_DATADIR", ev->GP_SEG_DATADIR)
 			|| set_httpheader(file, "X-GP-DATABASE", ev->GP_DATABASE)
 			|| set_httpheader(file, "X-GP-XID", ev->GP_XID)
 			|| set_httpheader(file, "X-GP-CID", ev->GP_CID)
 			|| set_httpheader(file, "X-GP-SN", ev->GP_SN)
+			|| set_httpheader(file, "X-GP-PROTO", "1")
 			|| set_httpheader(file, "X-GP-SEGMENT-ID", ev->GP_SEGMENT_ID)  
 			|| set_httpheader(file, "X-GP-SEG-PORT", ev->GP_SEG_PORT)
-			|| set_httpheader(file, "X-GP-SESSION-ID", ev->GP_SESSION_ID))
+			|| set_httpheader(file, "X-GP-SESSION-ID", ev->GP_SESSION_ID)
+			|| set_httpheader(file, "X-GP-SEGMENT-COUNT", ev->GP_SEGMENT_COUNT))
 		{
 			elog(ERROR, "internal error: some variable value is too long");
 			url_fclose(file);
@@ -638,9 +677,12 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 			url_fclose(file);
 			return NULL;
 		}
-
+		
+		/* read some bytes to make sure the connection is established */
 		fill_buffer(file, 1);
-		if (is_error(file))
+
+		/* check the connection */
+		if (check_response(file) == -1)
 		{
 			url_fclose(file);
 			return NULL;
@@ -656,40 +698,47 @@ url_fclose(URL_FILE *file)
 
     switch (file->type)
     {
-    case CFTYPE_FILE:
-        ret=FreeFile(file->u.file.fp); /* passthrough */
-        break;
+		case CFTYPE_FILE:
+			ret=FreeFile(file->u.file.fp); /* passthrough */
+			break;
 
-    case CFTYPE_EXEC:
-    	pclose(file->u.exec.fp);
-    	break;
+		case CFTYPE_EXEC:
+			ret = pclose(file->u.exec.fp);
+			break;
 
-    case CFTYPE_CURL:
-		if (file->u.curl.x_httpheader)
-			curl_slist_free_all(file->u.curl.x_httpheader);
+		case CFTYPE_CURL:
+			if (file->u.curl.x_httpheader)
+				curl_slist_free_all(file->u.curl.x_httpheader);
 
-        /* make sure the easy handle is not in the multi handle anymore */
-		if (file->u.curl.handle)
-		{
-			curl_multi_remove_handle(multi_handle, file->u.curl.handle);
-			/* cleanup */
-			curl_easy_cleanup(file->u.curl.handle);
-		}
+			/* make sure the easy handle is not in the multi handle anymore */
+			if (file->u.curl.handle)
+			{
+				curl_multi_remove_handle(multi_handle, file->u.curl.handle);
+				/* cleanup */
+				curl_easy_cleanup(file->u.curl.handle);
+			}
 
-		if (file->u.curl.buffer)
-			free(file->u.curl.buffer);/* free any allocated buffer space */
-        break;
+			/* free any allocated buffer space */
+			if (file->u.curl.buf.ptr)
+				free(file->u.curl.buf.ptr);
+			if (file->u.curl.block.fname)
+				free(file->u.curl.block.fname);
 
-    default: /* unknown or supported type - oh dear */
-        ret=EOF;
-        errno=EBADF;
-        break;
+			file->u.curl.gp_proto = 0;
+			file->u.curl.error = file->u.curl.eof = 0;
+			memset(&file->u.curl.buf, 0, sizeof(file->u.curl.buf));
+			memset(&file->u.curl.block, 0, sizeof(file->u.curl.block));
+			break;
 
+		default: /* unknown or supported type - oh dear */
+			ret=EOF;
+			errno=EBADF;
+			break;
     }
 
     free(file);
 
-    return 0;
+    return ret;
 }
 
 int
@@ -708,8 +757,7 @@ url_feof(URL_FILE *file)
         break;    	
 
     case CFTYPE_CURL:
-        if ((file->u.curl.buffer_pos == 0) && (!file->u.curl.still_running))
-            ret = 1;
+		ret = file->u.curl.eof;
         break;
 
     default: /* unknown or supported type - oh dear */
@@ -720,10 +768,227 @@ url_feof(URL_FILE *file)
     return ret;
 }
 
+
+int url_ferror(URL_FILE * file)
+{
+	int ret = 0;
+
+	switch (file->type)
+	{
+    case CFTYPE_FILE:
+		ret = ferror(file->u.file.fp);
+		break;
+
+    case CFTYPE_EXEC:
+        ret = ferror(file->u.exec.fp);
+        break;    	
+
+    case CFTYPE_CURL:
+		ret = file->u.curl.error ? -1 : 0;
+        break;
+
+    default: /* unknown or supported type - oh dear */
+        ret = -1;
+        errno = EBADF;
+        break;
+	}
+
+	return ret;
+}
+
+
+static size_t gp_proto0_read(char* buf, int bufsz, URL_FILE* file)
+{
+	int n = 0;
+	curlctl_t* curl = &file->u.curl;
+
+	fill_buffer(file, bufsz);
+
+	/* check if there's data in the buffer - if not fill_buffer()
+	 * either errored or EOF. For proto0, we cannot distinguish
+	 * between error and EOF. */
+	n = curl->buf.top - curl->buf.bot;
+	if (n == 0 && !curl->still_running) 
+		curl->eof = 1;
+
+	if (n > bufsz)
+		n = bufsz;
+
+	/* xfer data to caller */
+	memcpy(buf, curl->buf.ptr, n);
+	curl->buf.bot += n;
+	return n;
+}
+
+
+static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
+{
+	char type;
+	int  n, len;
+	curlctl_t* curl = &file->u.curl;
+
+	while (curl->block.datalen == 0 && !curl->eof) {
+
+		/* need 5 bytes, 1 byte type + 4 bytes length */
+		fill_buffer(file, 5);
+		n = curl->buf.top - curl->buf.bot;
+		if (n < 5) {
+			elog(ERROR, "gpfdist protocol error - packet len %d\n", n);
+			return -1;
+		}
+
+		/* read type */
+		type = curl->buf.ptr[curl->buf.bot++];
+
+		/* read len */
+		memcpy(&len, &curl->buf.ptr[curl->buf.bot], 4);
+		len = ntohl(len);		/* change order */
+		curl->buf.bot += 4;
+		if (len < 0) {
+			elog(ERROR, "gpfdist protocol error (bad packet) - type %d len %d", 
+				 type, len);
+			return -1;
+		}
+
+		/* elog(NOTICE, "HEADER %c %d, bot %d, top %d", type, len, 
+			 curl->buf.bot, curl->buf.top);
+		*/
+
+		if (type == 'E') {
+			fill_buffer(file, len);
+			n = curl->buf.top - curl->buf.bot;
+			if (n > len) 
+				n = len;
+			if (n > 0) {
+				/* cheat a little. swap last char and NUL-terminator. then
+				   print string (without last char) and print last char artificially */
+				char x = curl->buf.ptr[curl->buf.bot + n - 1];
+				curl->buf.ptr[curl->buf.bot + n - 1] = 0;
+				elog(ERROR, "gpfdist error - %s%c", &curl->buf.ptr[curl->buf.bot], x);
+				return -1;
+			}
+			elog(ERROR, "gpfdist error - please check gpfdist log messages.");
+			return -1;
+		}
+
+		if (type == 'F') {
+			if (len > 256) {
+				elog(ERROR, "gpfdist protocol error - filename too long (%d)", len);
+				return -1;
+			}
+			if (-1 == fill_buffer(file, len)) {
+				elog(ERROR, "gpfdist protocol error - stream ends suddenly");
+				return -1;
+			}
+			if (curl->block.fname) 
+				free(curl->block.fname);
+			curl->block.fname = malloc(len + 1);
+			if (! curl->block.fname) {
+				elog(ERROR, "out of memory");
+				return -1;
+			}
+			memcpy(curl->block.fname, curl->buf.ptr + curl->buf.bot, len);
+			curl->block.fname[len] = 0;
+			curl->buf.bot += len;
+			Assert(curl->buf.bot <= curl->buf.top);
+			curl->block.foff = 0;
+			//elog(NOTICE, "F %s", curl->block.fname);
+			continue;
+		}
+
+		if (type == 'O') {
+			if (len != 8) {
+				elog(ERROR, "gpfdist protocol error - offset not of length 8 (%d)", len);
+				return -1;
+			}
+			if (-1 == fill_buffer(file, len)) {
+				elog(ERROR, "gpfdist protocol error -- stream ends suddenly");
+				return -1;
+			}
+			memcpy(&curl->block.foff, curl->buf.ptr + curl->buf.bot, len);
+			curl->block.foff = local_ntohll(curl->block.foff);
+			curl->buf.bot += 8;
+			Assert(curl->buf.bot <= curl->buf.top);
+			//elog(NOTICE, "O %d", (int) curl->block.foff);
+			continue;
+		}
+
+		if (type == 'D') {
+			curl->block.datalen = len;
+			curl->eof = (len == 0);
+			// elog(NOTICE, "D %d", curl->block.datalen);
+			break;
+		}
+
+		elog(ERROR, "gpfdist protocol error - unknown meta type");
+		return -1;
+	}
+
+	/* read data block */
+	if (bufsz > curl->block.datalen)
+		bufsz = curl->block.datalen;
+	
+	n = curl->buf.top - curl->buf.bot;
+	// elog(NOTICE, "n = %d", n);
+	fill_buffer(file, bufsz);
+	n = curl->buf.top - curl->buf.bot;
+	if (n == 0 && !curl->eof) {
+		//elog(NOTICE, "bufsz = %d, not eof -> error", bufsz);
+		curl->error = 1;
+	}
+
+	if (n > bufsz)
+		n = bufsz;
+	memcpy(buf, curl->buf.ptr + curl->buf.bot, n);
+	curl->buf.bot += n;
+	curl->block.datalen -= n;
+	// elog(NOTICE, "returning %d bytes, %d bytes left \n", n, curl->block.datalen);
+	return n;
+}
+
+
+static size_t curl_fread(char* buf, int bufsz, URL_FILE* file)
+{
+	curlctl_t* curl = &file->u.curl;
+	char* p = buf;
+	char* q = buf + bufsz;
+	int n;
+	const int gp_proto = curl->gp_proto;
+	
+	if (gp_proto != 0 && gp_proto != 1) {
+		elog(ERROR, "unknown gp protocol %d", curl->gp_proto);
+		return 0;
+	}
+
+	for (n = 0; p < q; p += n) {
+		if (gp_proto == 0)
+			n = gp_proto0_read(p, q - p, file);
+		else 
+			n = gp_proto1_read(p, q - p, file);
+		
+		//elog(NOTICE, "curl_fread %d bytes", n);
+
+		if (n <= 0)
+			break;
+	}
+
+#if 0
+	{
+		FILE* fp = fopen("/tmp/t", "a");
+		fwrite(buf, 1, p - buf, fp);
+		fclose(fp);
+	}
+#endif
+
+	return p - buf;
+}
+
+
 size_t
 url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
 {
     size_t want;
+	int n;
 
     switch (file->type)
     {
@@ -736,31 +1001,16 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
         break;
     	
     case CFTYPE_CURL:
-        want = nmemb * size;
-
-        fill_buffer(file,want);
-
-        /* check if theres data in the buffer - if not fill_buffer()
-         * either errored or EOF */
-        if (!file->u.curl.buffer_pos)
-            return is_error(file);
-
-        /* ensure only available data is considered */
-        if(file->u.curl.buffer_pos < want)
-            want = file->u.curl.buffer_pos;
-
-        /* xfer data to caller */
-        memcpy(ptr, file->u.curl.buffer, want);
-
-        use_buffer(file,want);
-
-        want = want / size;     /* number of items - nb correct op - checked
+		
+		n = curl_fread(ptr, nmemb * size, file);
+		/* number of items - nb correct op - checked
                                  * with glibc code*/
+		want = n / size;
 
         /*printf("(fread) return %d bytes %d left\n", want,file->u.curl.buffer_pos);*/
         break;
 
-    default: /* unknown or supported type - oh dear */
+    default: /* unknown or supported type */
         want = 0;
         errno = EBADF;
         break;
@@ -796,13 +1046,16 @@ url_rewind(URL_FILE *file)
         curl_multi_add_handle(multi_handle, file->u.curl.handle);
 
         /* ditch buffer - write will recreate - resets stream pos*/
-        if (file->u.curl.buffer)
-		{
-            free(file->u.curl.buffer);
-			file->u.curl.buffer=NULL;
-		}
-        file->u.curl.buffer_pos=0;
-        file->u.curl.buffer_len=0;
+        if (file->u.curl.buf.ptr)
+            free(file->u.curl.buf.ptr);
+
+		if (file->u.curl.block.fname) 
+			free(file->u.curl.block.fname);
+
+		file->u.curl.gp_proto = 0;
+		file->u.curl.error = file->u.curl.eof = 0;
+		memset(&file->u.curl.buf, 0, sizeof(file->u.curl.buf));
+		memset(&file->u.curl.block, 0, sizeof(file->u.curl.block));
 
         break;
 

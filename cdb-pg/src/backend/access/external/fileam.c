@@ -48,6 +48,7 @@
 #include "nodes/makefuncs.h"
 #include "cdb/cdbvars.h"
 #include "postmaster/postmaster.h"  /*postmaster port*/
+#include <arpa/inet.h>
 
 
 
@@ -67,6 +68,8 @@ struct extvar_t
 	char GP_SEGMENT_ID[6];  /*segments content id*/
 	char GP_SEG_PORT[10];
 	char GP_SESSION_ID[10];  /* session id */
+ 	char GP_SEGMENT_COUNT[6]; /* total number of (primary) segs in the system */
+ 	char GP_CSVOPT[5]; /* "q.x." former -q and -x options for gpfdist.*/
 };
 
 #include "url.i"
@@ -422,6 +425,7 @@ else \
 	pstate->cdbsreh->is_server_enc = pstate->line_buf_converted; \
 	pstate->cdbsreh->linenumber = pstate->cur_lineno; \
 	pstate->cdbsreh->processed = ++pstate->processed; \
+ 	pstate->cdbsreh->consec_csv_err = pstate->num_consec_csv_err; \
 \
 	/* set the error message. Use original msg and add column name if availble */ \
 	if (pstate->cur_attname)\
@@ -460,24 +464,33 @@ if(IsRejectLimitReached(pstate->cdbsreh)) \
 { \
 	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
 	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
+ 	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
 	char *finalmsg;\
 \
-	if(!FIRST_1000_BAD(pstate->cdbsreh))\
-	{\
-		/* the normal case */\
-		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_normal) + 12 + 1)\
-								   * sizeof(char)); \
-	    sprintf(finalmsg, "%s %s", rejectmsg_normal, pstate->cdbsreh->errmsg);\
-	}\
-	else\
-	{\
-		/* the special "first 1000 are bad" case */\
-		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_allbad) + 12 + 1)\
-								   * sizeof(char)); \
- 	    sprintf(finalmsg, "%s %s", rejectmsg_allbad, pstate->cdbsreh->errmsg);\
-	}\
+ 	if(FIRST_1000_BAD(pstate->cdbsreh))\
+ 	{\
+ 		/* the special "first 1000 are bad" case */\
+ 		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
+ 									strlen(rejectmsg_allbad) + 12 + 1)\
+ 								   * sizeof(char)); \
+ 		sprintf(finalmsg, "%s %s", rejectmsg_allbad, pstate->cdbsreh->errmsg);\
+ 	}\
+ 	else if(CSV_IS_UNPARSABLE(pstate->cdbsreh))\
+  	{\
+ 		/* the special "csv un-parsable" case */\
+  		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
+ 									strlen(rejectmsg_csv_unparsable) + 12 + 1)\
+  								   * sizeof(char)); \
+ 		sprintf(finalmsg, "%s %s", rejectmsg_csv_unparsable, pstate->cdbsreh->errmsg);\
+  	}\
+  	else\
+  	{\
+ 		/* the normal case */\
+  		finalmsg = (char *) palloc((strlen(pstate->cdbsreh->errmsg) + \
+ 									strlen(rejectmsg_normal) + 12 + 1)\
+  								   * sizeof(char)); \
+ 		sprintf(finalmsg, "%s %s", rejectmsg_normal, pstate->cdbsreh->errmsg);\
+  	}\
 \
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
@@ -592,7 +605,8 @@ filegettup(FileScanDesc scan,
 				}
 				PG_CATCH();
 				{
-					/* got here? encoding conversion/check error occured */
+ 					/* got here? encoding conversion/check error or
+ 					   invalid csv format error occured */
 					FILEAM_HANDLE_ERROR;
 				}
 				PG_END_TRY();					
@@ -896,6 +910,8 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		/* if necessary warn the user of the risk of table getting dropped */
 		if(Gp_role == GP_ROLE_DISPATCH && curTxnCreatedErrtbl)
 			emitSameTxnWarning();
+ 
+ 		pstate->num_consec_csv_err = 0;
 	}
 			
 	initStringInfo(&pstate->attribute_buf);
@@ -1056,6 +1072,8 @@ open_external_file(FileScanDesc scan)
 	/* set up extvar */
 
 	memset(&extvar, 0, sizeof(extvar));
+ 	if (scan->fs_pstate->csv_mode)
+ 	    sprintf(extvar.GP_CSVOPT,"q%cx%c",*scan->fs_pstate->quote,*scan->fs_pstate->escape);
 	extvar.GP_MASTER_HOST = qdHostname;
 	
 	pg_itoa(qdPostmasterPort, result);
@@ -1078,6 +1096,7 @@ open_external_file(FileScanDesc scan)
 	sprintf(extvar.GP_SEGMENT_ID, "%d", Gp_segment);
     sprintf(extvar.GP_SEG_PORT, "%d", PostPortNumber);
     sprintf(extvar.GP_SESSION_ID, "%d", gp_session_id);
+ 	sprintf(extvar.GP_SEGMENT_COUNT, "%d", GpIdentity.numsegments);
     
     /*
      * Open the url with url_open().
@@ -1112,10 +1131,13 @@ close_external_file(FILE *dataSource, char *dataSourceName)
 	
 	if(dataSource)
 		if (url_fclose((URL_FILE*) dataSource))
+ 		{
+ 			g_dataSource = dataSource = NULL;
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					errmsg("could not close file \"%s\": %m",
+ 					 errmsg("error closing file or executing program \"%s\": %m",
 							dataSourceName)));
+ 		}
 	
 	g_dataSource = dataSource = NULL;
 }
@@ -1128,13 +1150,27 @@ file_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
 {
 	int			bytesread = 0;
 
+ 	/* CK: this code is very delicate. The caller expects this:
+ 	    - if url_fread returns something, and the EOF is reached, it
+ 		  this call must return with both the content and the fe_eof
+ 		  flag set.
+ 		- failing to do so will result in skipping the last line.
+ 	*/
+ 
 	bytesread = url_fread((void *) pstate->raw_buf, 1, maxread, extfile);
-	if (url_feof(extfile))
-		pstate->fe_eof = true;
-	if (bytesread == -1) 
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not read from external file: %m")));
+ 
+ 	if (url_feof(extfile)) 
+ 	{
+  		pstate->fe_eof = true;
+ 	}
+ 
+ 	if (bytesread <= 0) 
+ 	{
+ 		if (url_ferror(extfile))
+ 			ereport(ERROR,
+ 					(errcode_for_file_access(),
+ 					 errmsg("could not read from external file: %m")));
+ 	}
 
 	return bytesread;
 }

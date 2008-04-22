@@ -129,6 +129,7 @@ typedef struct CopyStateData
 	QueryDesc  *queryDesc;		/* executable query to copy from */
 	List	   *attnumlist;		/* integer list of attnums to copy */
 	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
+	bool		binary;			/* binary format? */
 	bool		oids;			/* include OIDs? */
 	bool		csv_mode;		/* Comma Separated Value format? */
 	bool		header_line;	/* CSV header line? */
@@ -209,8 +210,11 @@ typedef struct CopyStateData
 	/* for CSV format */
 	bool		in_quote;
 	bool		last_was_esc;
-
+#define MAX_CSV_LINE_LEN RAW_BUF_SIZE
+	
 	/* for TEXT format */
+	bool		esc_in_prevbuf; /* escape was last character of the data input
+								 * buffer */
 	bool		cr_in_prevbuf;	/* CR was last character of the data input
 								 * buffer */
 
@@ -221,6 +225,7 @@ typedef struct CopyStateData
 	/* Error handling options */
 	CopyErrMode	errMode;
 	CdbSreh		*cdbsreh; /* single row error handler */
+	int			num_consec_csv_err; /* # of consecutive csv invalid format errs */
 
 	struct HeapInsertDesc *heapInsertDesc;
 

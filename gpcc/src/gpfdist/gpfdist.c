@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,31 @@
 #include <apr_fnmatch.h>
 #include "gfile.h"
 
+/**************
+
+  NOTE on GP_PROTO
+  ================
+  When a gpdb segment connects to gpfdist, it provides the following parameters:
+	X-GP-XID   - transaction ID
+	X-GP-CID   - command ID
+	X-GP-SN    - session ID
+	X-GP-PROTO - protocol number
+
+  X-GP-PROTO = 0 or not provided:
+	return the content of the file without any kind of meta info
+
+  X-GP-PROTO = 1
+	each data block is tagged by meta info like this:
+	byte 0: type (can be 'F'ilename, 'O'ffset, 'D'ata, 'E'rror)
+	byte 1-4: length. # bytes of following data block. in network-order.
+	byte 5-X: the block itself.
+
+	The stream is terminated by a Data block of length 0. If the stream is
+	not property terminated, then gpfdist encountered some error, and caller
+	should check the gpfdist error log.
+
+ **************/
+
 typedef struct gnet_request_t gnet_request_t;
 struct gnet_request_t {
     int argc;
@@ -33,13 +59,10 @@ struct gnet_request_t {
     int hc;
     char* hname[50];
     char* hvalue[50];
-    int datalen;
-    int offset;
-    char *data;
 };
 
-APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_pool_t* pool);
-APR_DECLARE(char*) gstring_trim(char* s);
+static APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_pool_t* pool);
+static APR_DECLARE(char*) gstring_trim(char* s);
 
 
 #include <event.h>
@@ -58,29 +81,91 @@ APR_DECLARE(char*) gstring_trim(char* s);
 #endif
 
 /*  Struct of command line options */
-struct {
+static struct {
     int p;			/* port */
     int v;			/* verbose */
     int V;			/* very verbose */
     int h;			/* skip first-row header */
-    int P;                      /* progress indicator */
     const char* d;		/* directory */
-    const char* q;		/* quote char */
-    const char* x;		/* escape char */
     const char* l;              /* log filename */
-} opt = { 8080, 0, 0, 0, 0, ".", 0, 0, 0 };
+    int g;			/* gp_proto (0 or 1) (internal, not documented) */
+} opt = { 8080, 0, 0, 0, ".", 0, -1 };
 
 
 /*  A data block */
-typedef struct block_t block_t;
-struct block_t {
-    int      bot, top;
-    block_t* __next;		/* chaining for freelist */
-    char     byte[BLOCKSIZE - 16];
+typedef struct blockhdr_t blockhdr_t;
+struct blockhdr_t {
+    char        fname[256];
+    int         fname_len;
+    apr_int64_t foff;
+    char	hbyte[280];
+    int         hbot, htop;
 };
 
+typedef struct block_t block_t;
+struct block_t {
+    blockhdr_t  hdr;
+    int         bot, top;
+    block_t*    __next;		/* chaining for freelist */
+    char        byte[BLOCKSIZE - sizeof(blockhdr_t) - sizeof(int)*2 - sizeof(block_t*)];
+};
+
+#if APR_IS_BIGENDIAN
+#define local_htonll(n)  (n)
+#define local_ntohll(n)  (n)
+#else
+#define local_htonll(n)  ((((apr_uint64_t) htonl(n)) << 32LL) | htonl((n) >> 32LL))
+#define local_ntohll(n)  ((((apr_uint64_t) ntohl(n)) << 32LL) | (apr_uint32_t) ntohl(((apr_uint64_t)n) >> 32LL))
+#endif
+
+#define TR(x)  if (!opt.V) ; else printf x
+
+
+#define TR2(x) 
+
+static void block_fill_header(block_t* b)
+{
+    blockhdr_t* h = &b->hdr;
+    apr_int32_t len;
+    apr_int64_t len8;
+    char* p;
+
+    h->hbot = h->htop = 0;
+    if (h->fname_len == 0) 
+	h->fname_len = strlen(h->fname);
+
+    p = h->hbyte;
+    /* 'F' + len + fname */
+    *p = 'F';                              p++;
+    len = htonl(h->fname_len);
+    memcpy(p, &len, 4);                    p += 4;
+    memcpy(p, h->fname, h->fname_len);     p += h->fname_len;
+    TR(("F %d %s\n", ntohl(len), h->fname));
+    
+    /* 'O' + len + foff */
+    *p = 'O';                              p++;
+    len = htonl(8);
+    len8 = local_htonll(h->foff);
+    memcpy(p, &len, 4);                    p += 4;
+    memcpy(p, &len8, 8);                   p += 8;
+    TR(("O %d\n", (int) local_ntohll(len8)));
+    
+    /* 'D' + len */
+    *p = 'D';                              p++;
+    len = htonl(b->top - b->bot);
+    memcpy(p, &len, 4);                    p += 4;
+    TR(("D %d\n", ntohl(len)));
+
+    h->htop = (p - h->hbyte);
+    if (h->htop > sizeof(h->hbyte)) {
+	gfatal(FLINE, "assert failed, h->htop = %d, max = %d\n", h->htop, sizeof(h->hbyte));
+    }
+
+    TR(("header size: %d\n", h->htop - h->hbot));
+}
+
 /*  Global constrol block */
-struct {
+static struct {
     apr_pool_t* pool;
     SOCKET listen_sock;
     struct event listen_event;
@@ -105,11 +190,10 @@ struct fstream_t {
     apr_uint64_t foff;		/* current offset in ffd[fidx] */
     int          fskip;		/* reflect opt.h (skip first line) */
     block_t*     fblock;	/* residue block */
-    int 	 ferror;	/* error flag */
-    apr_uint64_t fsoff;         /* offset in the fstream */
-    apr_uint64_t fsize;
-    apr_uint64_t flog;          /* print log when foff > flog */
-    apr_uint64_t finterval;     /* interval to print log (5 percent of total size) */
+    char* 	 ferror;	/* error flag */
+    int 	 is_csv;	/* is the file csv? */
+    char 	 quote;		/* quote char */
+    char 	 escape;	/* escape char */
 };
 
 
@@ -130,14 +214,16 @@ struct session_t {
 /*  A http request */
 typedef struct request_t request_t;
 struct request_t {
-    SOCKET sock;		/* the socket */
-    apr_pool_t* pool;		/* memory pool container */
+    SOCKET         sock;  	/* the socket */
+    apr_pool_t*    pool;	/* memory pool container */
     struct timeval tm;		/* timeout for struct event */
-    struct event ev;		/* event we are watching for this request */
-    const char* peer;		/* peer IP:port string */
-    char* path;			/* path to file */
-    const char* tid;		/* transaction id */
-    session_t* session;		/* the session this request is attached to */
+    struct event   ev;		/* event we are watching for this request */
+    const char*    peer;	/* peer IP:port string */
+    char*          path;	/* path to file */
+    const char*    tid;		/* transaction id */
+    const char*    csvopt;	/* options for csv file */
+    session_t*     session;     /* the session this request is attached to */
+    int            gp_proto;
 
     struct {
 	char* hbuf;		/* buffer for raw incoming HTTP request */
@@ -153,7 +239,7 @@ struct request_t {
 
 
 /* Get a block from freelist if possible, otherwise, malloc */
-block_t* block_get()
+static block_t* block_get(void)
 {
     block_t* b;
     if (0 != (b = gcb.freelist)) {
@@ -167,31 +253,40 @@ block_t* block_get()
 
     b->bot = b->top = 0;
     b->__next = 0;
+    b->hdr.fname[0] = 0;
+    b->hdr.fname_len = 0;
+    b->hdr.foff = 0;
+    b->hdr.htop = b->hdr.hbot = 0;
     return b;
 }
 
 
 /* Put the block back into freelist */
-void block_put(block_t* b)
+static void block_put(block_t* b)
 {
     b->__next = gcb.freelist;
     gcb.freelist = b;
     gcb.freecnt++;
 }
 
-/* split the block at byte n (relative to bot) */
-block_t* block_split(block_t* b, int n)
+/* split the block at byte n (relative to bot). 
+ *   b - left side: byte[0:n]
+ *   bb - right side: byte[n:]
+ */
+static block_t* block_split(block_t* b, int n)
 {
-    block_t* bb;
+    block_t* bb;	       
     int m = b->top - b->bot - n;
     if (m < 0)
 	gfatal(FLINE, "assert failed, n = %d, bot %d, top %d", n, b->bot, b->top);
 
     if (m == 0)
 	return 0;
-    
+
     bb = block_get();
     memcpy(bb->byte, b->byte + b->bot + n, m);
+    strcpy(bb->hdr.fname, b->hdr.fname);
+    bb->hdr.foff = b->hdr.foff + n;
     b->top = b->bot + n;
     bb->top = m;
     return bb;
@@ -199,12 +294,12 @@ block_t* block_split(block_t* b, int n)
 
 
 /* Scan as many record as possible in [p, q), taking quotes and escapes into account. */
-const char* scan_rec(const char* p, const char* q, int cnt)
+static const char* scan_rec(const char* p, const char* q, int cnt,fstream_t*fs)
 {
     int in_quote = 0, last_was_esc = 0;
     const char* last_complete = 0;
-    int xc = opt.x[0];
-    int qc = opt.q[0];
+    int qc=fs->quote;
+    int xc=fs->escape;
     int ch;
     
     if (xc == qc) 
@@ -231,7 +326,7 @@ const char* scan_rec(const char* p, const char* q, int cnt)
 
 
 /* free the file stream */
-void fstream_free(fstream_t* fs)
+static void fstream_free(fstream_t* fs)
 {
     int i;
 
@@ -249,7 +344,7 @@ void fstream_free(fstream_t* fs)
 
 
 /* alloc a new file stream */
-fstream_t* fstream_alloc(char** path, int npath, apr_pool_t* pool)
+static fstream_t* fstream_alloc(char** path, int npath, apr_pool_t* pool)
 {
     int i;
     fstream_t* fs;
@@ -267,20 +362,10 @@ fstream_t* fstream_alloc(char** path, int npath, apr_pool_t* pool)
 
     memset(fs->fpath, 0, sizeof(char*) * npath);
     memset(fs->fd, 0, sizeof(gfile_t*) * npath);
-    fs->fsize = 0;
+	
     for (i = 0; i < npath; i++) {
-	apr_finfo_t finfo;
-
 	if (0 == (fs->fpath[i] = apr_pstrdup(pool, path[i])))
 	    gfatal(FLINE, "out of memory");
-
-	if (0 != apr_stat(&finfo, fs->fpath[i], APR_FINFO_TYPE, pool))  {
-	    gwarning(FLINE, "unable to stat file %s", path[i]);
-	    fstream_free(fs);
-	    return 0;
-	}
-	
-	fs->fsize += finfo.size;
 
 	/* check READ access right */
 	if (0 == (fs->fd[i] = gfile_open(path[i], O_RDONLY|O_BINARY, pool))) {
@@ -297,10 +382,7 @@ fstream_t* fstream_alloc(char** path, int npath, apr_pool_t* pool)
     }
     fs->fidx = 0;
     fs->foff = 0;
-    fs->fsoff = 0;
     fs->fskip = opt.h;
-    fs->finterval = fs->fsize * 5 / 100;
-    fs->flog = fs->finterval;
 
     return fs;
 }
@@ -308,7 +390,7 @@ fstream_t* fstream_alloc(char** path, int npath, apr_pool_t* pool)
 
 
 /* get a block from the file stream */
-block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
+static block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 {
     block_t* b;
     int n;
@@ -320,10 +402,15 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	return 0;
 
     /* use residue block if available. otherwise, alloc new block. */
-    if (0 != (b = fs->fblock)) 
+    if (0 != (b = fs->fblock)) {
+	TR2(("popped foff = %" APR_INT64_T_FMT ", len %d, full foff %" APR_INT64_T_FMT "\n",
+	     b->hdr.foff, b->top - b->bot, fs->foff));
 	fs->fblock = 0;
-    else
+    }
+    else {
 	b = block_get();
+	b->hdr.foff = fs->foff;
+    }
 
     /* on to next file? */
     if (fs->fd[fs->fidx] == 0) {
@@ -338,19 +425,26 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	    return 0;
 	}
 
-	fs->foff = 0;
+	fs->foff = b->hdr.foff = 0;
 	fs->fskip = opt.h;
 
 	if (opt.V) 
 	    gprint("   opening %s\n", fs->fpath[fs->fidx]);
 	if (0 == (fs->fd[fs->fidx] = gfile_open(fs->fpath[fs->fidx], O_RDONLY|O_BINARY, pool))) {
 	    gwarning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
-	    fs->ferror = 1;
+	    fs->ferror = "unable to open file";
 	    block_put(b);
 	    return 0;
 	}	
     }
 
+    strncpy(b->hdr.fname, fs->fpath[fs->fidx], sizeof(b->hdr.fname) - 1);
+    b->hdr.fname[sizeof(b->hdr.fname)-1] = 0;
+    if (b->hdr.foff + (b->top - b->bot) != fs->foff) {
+	gfatal(FLINE, "internal error: offset mismatch %" 
+	       APR_INT64_T_FMT " + (%d - %d) != %" APR_INT64_T_FMT, 
+	       b->hdr.foff, b->top, b->bot, fs->foff);
+    }
 
     /* fill up b */
     while (0 != (n = sizeof(b->byte) - b->top)) {
@@ -358,7 +452,7 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	/* read into b */
 	n = gfile_read(fs->fd[fs->fidx], b->byte + b->top, n);
 	if (n < 0) {
-	    fs->ferror = 1;
+	    fs->ferror = "cannot read file";
 	    block_put(b);
 	    return 0;
 	}
@@ -370,35 +464,30 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	}
 	b->top += n;
 	fs->foff += n;
-	fs->fsoff += n;
 
-	if (opt.P) {
-	    if (fs->fsoff >= fs->flog) {
-		gprint("%s [reading %"APR_INT64_T_FMT"/%"APR_INT64_T_FMT"=%"APR_INT64_T_FMT"%%]\n", fs->fpath[fs->fidx], fs->fsoff, fs->fsize, (fs->fsoff*100/fs->fsize));
-		fs->flog = fs->fsoff + fs->finterval;
-		fs->flog = (fs->flog > fs->fsize) ? fs->fsize : fs->flog;
-	    }
-	}
-
+	/* way too verbose
+	if (opt.V)
+	    printf("[INFO] %s [off %lld]\n", fs->fpath[fs->fidx], fs->foff);
+	*/
     }
 
     skipfirst = fs->fskip;
-    if (skipfirst)
-	fs->fskip = 0;
+    fs->fskip = 0;
 
     /* find the split position */
     p = b->byte + b->bot;
     q = b->byte + b->top;
     if (skipfirst && p < q) {
 	/* first record is header - skip it. */
-	if (opt.q) 
-	    p = (char*) scan_rec(p, q, 1);
+	if (fs->is_csv) 
+	    p = (char*) scan_rec(p, q, 1,fs);
 	else {
 	    for ( ; p < q && *p != '\n'; p++);
 	    p = (p < q) ? p + 1 : 0;
 	}
 	if (!p)  
 	    p = q;
+	b->hdr.foff = p - b->byte;
 	b->bot = p - b->byte;
 	p = b->byte + b->bot;
 	q = b->byte + b->top;
@@ -409,9 +498,9 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	return b;
     }
 
-    if (opt.q) {
+    if (fs->is_csv) {
 	/* go slow, scan byte-by-byte for record boundary */
-	p = (char*) scan_rec(p, q, sizeof(b->byte) /*artificial max */);
+	p = (char*) scan_rec(p, q, sizeof(b->byte) /*artificial max */,fs);
     }
     else {
 	/* go fast, scan for \n for record boundary */
@@ -425,7 +514,7 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
     if (!p) {
 	gwarning(FLINE, "ERROR: line too long in file %s (%d bytes)", 
 		     fs->fpath[fs->fidx], b->top - b->bot);
-	fs->ferror = 1;
+	fs->ferror = "line too long in file";
 	block_put(b);
 	return 0;
     }
@@ -438,7 +527,7 @@ block_t* fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 
 
 /* Print usage */
-void usage(const char* msg)
+static void usage(const char* msg)
 {
     char* GPHOME = 0;
     FILE* fp = 0;
@@ -469,15 +558,11 @@ void usage(const char* msg)
 		"        -p port   : which port to serve HTTP. Default to 8080.\n"
 		"        -d dir    : serve files under the specified directory.\n"
 		"                    Default to '.'\n"
-		"        -q qchar  : set quote character. If not specified, the\n"
-		"                    program will not parse for CSV, and will\n"
-		"                    assume each record is separated by newline\n"
-		"                    character that never occurs inside a record.\n"
-		"        -x xchar  : set escape character (default to qchar)\n"
+		"        -q qchar  : deprecated and ignored\n"
+		"        -x xchar  : deprecated and ignored\n"
 		"        -h        : flag indicates first data row in all files is\n"
 		"                    a header row. skip it.\n"
 		"        -l logfn  : log filename\n"
-		"        -P        : progress indicator\n"
 		"        --version : print version information.\n\n");
     }
 
@@ -487,15 +572,21 @@ void usage(const char* msg)
     exit(msg ? 1 : 0);
 }
 
-void print_version()
+static void print_version(void)
 {
     printf("gpfdist version \"%s\"\n", GP_VERSIONX);
     exit(0);
 }
 
+static void print_q_x_deprecated(void)
+{
+    fprintf(stderr,"-q and -x are deprecated.  Please specify these as in this example:\n");
+    fprintf(stderr,"create external table a (a int) location ('gpfdist://...') format 'csv' (quote as '\"' escape as '\"');\n");
+}
+
 
 /* Parse command line */
-void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
+static void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 {
     apr_getopt_t* os;
     int ch;
@@ -507,11 +598,11 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	{      NULL, 'v', 0, "verbose mode" },
 	{      NULL, 'p', 1, "which port to serve HTTP" },
 	{      NULL, 'd', 1, "serve files under this directory" },
-	{      NULL, 'q', 1, "set quote character" },
-	{      NULL, 'x', 1, "set escape character" },
+	{      NULL, 'q', 1, "deprecated and ignored" },
+	{      NULL, 'x', 1, "deprecated and ignored" },
 	{      NULL, 'h', 0, "flag to skip first row in data files" },
 	{      NULL, 'l', 1, "log filename" },
-	{      NULL, 'P', 0, "progress indicator" },
+	{      NULL, 'g', 1, "internal - gp_proto number" },
 	{ "version", 256, 0, "print version number" }
     };
     
@@ -526,11 +617,11 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	case 'V': opt.v = opt.V = 1; break;
 	case 'h': opt.h = 1; break;
 	case 'd': opt.d = arg; break;
-	case 'q': opt.q = arg; break;
-	case 'x': opt.x = arg; break;
+	case 'q': print_q_x_deprecated(); break;
+	case 'x': print_q_x_deprecated(); break;
 	case 'p': opt.p = atoi(arg); break;
 	case 'l': opt.l = arg; break;
-	case 'P': opt.P = 1; break;
+	case 'g': opt.g = atoi(arg); break;
 	case 256: print_version(); break;
 	}
     }
@@ -540,6 +631,10 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
     if (! (0 < opt.p && opt.p < (1 << 16)))
 	usage("Error: please specify a valid port number for -p switch");
 
+    if (-1 != opt.g) {
+	if (! (0 == opt.g || 1 == opt.g)) 
+	    usage("Error: please specify 0 or 1 for -g switch (note: this is internal)");
+    }
 
     /* validate opt.d */
     {
@@ -603,42 +698,29 @@ void parse_command_line(int argc, const char* const argv[], apr_pool_t* pool)
 	fclose(f);
 
     }
-
-    /* check quote and escape options */
-    if (opt.q && ! (opt.q[0] && !opt.q[1])) 
-	usage("Error: please specify a character for -q switch\n"
-	      "       e.g. gpfdist -q '\"'");
-
-    if (opt.x && ! (opt.x[0] && !opt.x[1]))
-	usage("Error: please specify a character for -x switch\n"
-	      "       e.g. gpfdist -q '\"' -x '\\'");
-
-    if (!opt.q && opt.x)
-	usage("Error: you must specify -q qchar with -x xchar");
-
-    if (opt.q && !opt.x)
-	opt.x = opt.q;
-
     /* there should not be any more args left */
     if (os->ind != argc) 
 	usage("Error: illegal arguments");
 }
 
 
+/* send gp-proto==1 ctl info */
+static void gp1_send_eof(request_t* r);
+static void gp1_send_errmsg(request_t* r, const char* msg);
 
-int setup_read(request_t* r);
-int setup_write(request_t* r);
-void session_attach(request_t* r);
-void session_detach(request_t* r);
-void session_end(session_t* s, int error);
-void session_free(session_t* s);
-void request_end(request_t* r);
-block_t* session_get_block(session_t* s);
-char* path_basename(const char* path, apr_pool_t* pool);
+static int setup_read(request_t* r);
+static int setup_write(request_t* r);
+static void session_attach(request_t* r);
+static void session_detach(request_t* r);
+static void session_end(session_t* s, int error);
+static void session_free(session_t* s);
+static void request_end(request_t* r, int error, const char* errmsg);
+static const char* session_get_block(session_t* s, block_t** retblock);
+static char* path_basename(const char* path, apr_pool_t* pool);
 
 
 /* send an error response */
-void send_error(request_t* r, int code, const char* msg)
+static void http_error(request_t* r, int code, const char* msg)
 {
     char buf[1024];
     int n;
@@ -655,7 +737,7 @@ void send_error(request_t* r, int code, const char* msg)
 
 
 /* send an empty response */
-void send_empty(request_t* r)
+static void http_empty(request_t* r)
 {
     const char* buf = "HTTP/1.0 200 ok\r\n"
 	"Content-type: text/plain\r\n"
@@ -667,7 +749,7 @@ void send_empty(request_t* r)
     static int n = 0;
     int m;
 
-    gprint("%s - EMPTY\n", r->peer);
+    gprint("%s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 
     if (n == 0) 
 	n = strlen(buf);
@@ -678,29 +760,36 @@ void send_empty(request_t* r)
 
 
 /* send an OK response */
-void send_ok(request_t* r)
+static apr_status_t http_ok(request_t* r)
 {
-    const char* buf = "HTTP/1.0 200 ok\r\n"
+    const char* fmt = "HTTP/1.0 200 ok\r\n"
 	"Content-type: text/plain\r\n"
 	"Expires: 0\r\n"
+	"X-GP-PROTO: %d\r\n"
 	"Cache-Control: no-cache\r\n"
 	"Connection: close\r\n\r\n";
-        
-    static int n = 0;
-    static int m;
+    char buf[1024];
+    int m, n;
 
-    gprint("%s - OK\n", r->peer);
+    n = apr_snprintf(buf, sizeof(buf), fmt, r->gp_proto);
+    if (n >= sizeof(buf) - 1)
+	gfatal(FLINE, "internal error - buffer overflow");
 
-    if (n == 0) 
-	n = strlen(buf);
+
     m = send(r->sock, buf, n, 0);
-    if (m != n) 
-	gfatal(FLINE, "assert failed");
+    if (m != n) {
+	gprint("%s - socket error\n", r->peer);
+	return APR_EGENERAL;
+    }
+
+    gprint("%s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+
+    return 0;
 }
 
-
-
-void print_request(gnet_request_t* r)
+#if 0
+// Unused function.
+static void print_request(gnet_request_t* r)
 {
     int i;
     for (i = 0; i < r->argc; i++) {
@@ -711,17 +800,25 @@ void print_request(gnet_request_t* r)
         gprint("  hdr[%s] = %s\n", r->hname[i], r->hvalue[i]);
     }
 }
-
-
+#endif
 
 /* Finished a request. Close socket and cleanup. 
    Note: ending a request does not mean that the session is ended.
    Maybe there is a request out there (of the same session), that still 
    has a block to send out.
  */
-void request_end(request_t* r)
+static void request_end(request_t* r, int error, const char* errmsg)
 {
     session_t* s = r->session;
+
+    if (r->gp_proto == 1) {
+	if (!error)
+	    gp1_send_eof(r);
+	else if (errmsg)
+	    gp1_send_errmsg(r, errmsg);
+    }
+
+    TR(("[%d] request end\n", r->sock));
 
     /* If we still have a block outstanding, the session is corrupted. */
     if (r->out.block) {
@@ -742,32 +839,99 @@ void request_end(request_t* r)
 }
 
 
+static int local_send(int fd, const char* buf, int buflen)
+{
+    int n = send(fd, buf, buflen, 0);
+    if (n < 0) {
+#ifdef WIN32
+	int e = WSAGetLastError();
+	int ok = (e == WSAEINTR || e == WSAEWOULDBLOCK);
+#else
+	int e = errno;
+	int ok = (e == EINTR || e == EAGAIN);
+#endif
+	return ok ? 0 : -1;
+    }
+    return n;
+}
+
+static void gp1_send_eof(request_t* r)
+{
+    static char EOFSTR[5] = { 'D', 0, 0, 0, 0 };
+    char* p = EOFSTR;
+    char* q = EOFSTR + sizeof(EOFSTR);
+    while (p < q) {
+	int n = q - p;
+	n = local_send(r->sock, p, n);
+	if (n < 0) 
+	    return;
+	p += n;
+    }
+    TR(("[%d] sent EOF\n", r->sock));
+}
+
+
+static void gp1_send_errmsg(request_t* r, const char* errmsg)
+{
+    char hdr[5];
+    apr_int32_t len = strlen(errmsg);
+    const char* p;
+    const char* q;
+    
+    hdr[0] = 'E';
+    len = htonl(len);
+    memcpy(&hdr[1], &len, 4);
+
+    p = hdr;
+    q = p + sizeof(hdr);
+    while (p < q) {
+	int n = q - p;
+	n = local_send(r->sock, p, n);
+	if (n < 0) 
+	    return;
+	p += n;
+    }
+
+    p = errmsg;
+    q = p + strlen(p);
+    while (p < q) {
+	int n = q - p;
+	n = local_send(r->sock, p, n);
+	if (n < 0) 
+	    return;
+	p += n;
+    }
+}
 
 
 
-/* Get a block out of the session */
-block_t* session_get_block(session_t* s)
+/* Get a block out of the session. return error string. */
+static const char* session_get_block(session_t* s, block_t** retblock)
 {
     block_t* b;
 
+    *retblock = 0;
     if (s->is_error || 0 == s->fstream) {
 	session_end(s, 0);
 	return 0;
     }
 
     if (0 == (b = fstream_get_block(s->fstream, s->pool))) {
-	if (s->fstream->ferror)
+	const char* ferror = s->fstream->ferror;
+	if (ferror) {
 	    session_end(s, 1);
-	else
-	    session_end(s, 0);
+	    return ferror;
+	}
+	session_end(s, 0);
 	return 0;
     }
-    return b;
+    *retblock = b;
+    return 0;
 }
 
 
 /* finish the session - close the file */
-void session_end(session_t* s, int error)
+static void session_end(session_t* s, int error)
 {
     if (error)
 	s->is_error = error;
@@ -783,69 +947,7 @@ static int fpath_compare(const void *a, const void *b)
     return strcmp(*((char **) a), *((char **) b));
 }
 
-
-char** glob2(char* path, int* retcnt, apr_pool_t* pool)
-{
-    char buf[2000];
-    FILE* f;
-    apr_array_header_t* arr;
-    int n;
-    char* p;
-    char** fpath;
-    char** elts;
-
-    if (apr_filepath_merge(&p, opt.d, path, 0, pool)) {
-	gwarning(FLINE, "internal erro: apr_filepath_merge(%s, %s) failed", opt.d, path);
-	return 0;
-    }
-    n = apr_snprintf(buf, sizeof(buf), "ls -1d %s", p);
-    if (n + 1 == sizeof(buf)) 
-	return NULL;
-
-    if (! (arr = apr_array_make(pool, 20, sizeof(char*))))
-	return NULL;
-
-    f = popen(buf, "r");
-    if (!f) 
-	return NULL;
-
-    buf[sizeof(buf) - 1] = 0;
-    while (fgets(buf, sizeof(buf) - 1, f)) {
-	char* line = gstring_trim(buf);
-	char** pp;
-	if (!(line && *line))
-	    continue;
-	pp = apr_array_push(arr);
-	if (! (*pp = apr_pstrdup(pool, line))) {
-	    gwarning(FLINE, "out of memory");
-	    pclose(f);
-	    return NULL;
-	}
-    }
-    pclose(f);
-
-    n = arr->nelts;
-    fpath = apr_pcalloc(pool, sizeof(char*) * (n + 1));
-    elts = (char**) arr->elts;
-    memcpy(fpath, elts, sizeof(char*) * n);
-    if (retcnt)
-	*retcnt = n;
-    
-    qsort(fpath, n, sizeof(char*), fpath_compare);
-
-    if (opt.v) {
-	int i;
-	for (i = 0 ; i < n ; i++) {
-	    gprint("glob2: %s\n", fpath[i]);
-	}
-    }
-    
-    return fpath;
-}
-
-
-
-char** glob(char* path, int* retcnt, apr_pool_t* pool)
+static char** glob(char* path, int* retcnt, apr_pool_t* pool)
 {
     apr_array_header_t* arr;
     char** elts;
@@ -867,17 +969,16 @@ char** glob(char* path, int* retcnt, apr_pool_t* pool)
 	    return 0;
 	p++;
     }
-
-    n = p - fpath;
+    
     if (retcnt) 
-	*retcnt = n;
+	*retcnt = p - fpath;
 
 
-    qsort(fpath, n, sizeof(char *), fpath_compare);
+    qsort(fpath, *retcnt, sizeof(char *), fpath_compare);
     return fpath;
 }
 
-int fpath_all_directories(char **fpath, int n, apr_pool_t *pool)
+static int fpath_all_directories(char **fpath, int n, apr_pool_t *pool)
 {
     int i;
 
@@ -897,7 +998,7 @@ int fpath_all_directories(char **fpath, int n, apr_pool_t *pool)
     return 1;
 }
 
-char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_pool_t *p)
+static char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_pool_t *p)
 {
     char **fpath;
     
@@ -919,10 +1020,10 @@ char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_poo
 
 
 /* deallocate session, remove from hashtable */
-void session_free(session_t* s)
+static void session_free(session_t* s)
 {
     if (opt.v) 
-	gprint("[INFO] free session %s\n", s->key);
+	gprint("free session %s\n", s->key);
 
     if (s->fstream) {
 	fstream_free(s->fstream);
@@ -935,7 +1036,7 @@ void session_free(session_t* s)
 
 
 /* detach a request from a session */
-void session_detach(request_t* r)
+static void session_detach(request_t* r)
 {
     session_t* s = r->session;
     r->session = 0;
@@ -955,7 +1056,7 @@ void session_detach(request_t* r)
     }
 }
 
-void sessions_cleanup() 
+static void sessions_cleanup(void) 
 {
     apr_hash_index_t *hi;
     int i, n = 0;
@@ -981,7 +1082,7 @@ void sessions_cleanup()
 
     for (i = 0 ; i < n ; i++) {
 	if (opt.v) 
-	    gprint("[INFO] remove out-dated session %s\n", session[i]->key);
+	    gprint("remove out-dated session %s\n", session[i]->key);
 	session_free(session[i]);
 	session[i] = 0;
     }
@@ -989,15 +1090,15 @@ void sessions_cleanup()
     free(session);
 }
 
-void session_attach(request_t* r)
+static void session_attach(request_t* r)
 {
     char key[1024];
     session_t* s = 0;
     
     /* create the key */
     if (sizeof(key) -1 == apr_snprintf(key, sizeof(key), "%s:%s", r->tid, r->path)) {
-	send_error(r, 400, "path too long");
-	request_end(r);
+	http_error(r, 400, "path too long");
+	request_end(r, 1, 0);
 	return;
     }
 
@@ -1015,8 +1116,8 @@ void session_attach(request_t* r)
 
 	if (apr_pool_create(&pool, gcb.pool)) {
 	    gwarning(FLINE, "out of memory");
-	    send_error(r, 500, "internal error - out of memory");
-	    request_end(r);
+	    http_error(r, 500, "internal error - out of memory");
+	    request_end(r, 1, 0);
 	    return;
 	}
 
@@ -1027,18 +1128,24 @@ void session_attach(request_t* r)
 	}
 	else {
 	    /* glob for all files matching r->path pattern */
-	    fpath = glob2(r->path, &n, pool);
+	    fpath = glob(r->path, &n, pool);
 	    if (!fpath || n == 0) {
 		gwarning(FLINE, "bad path: %s", r->path);
-		send_error(r, 404, "not found");
-		request_end(r);
+		http_error(r, 404, "not found");
+		request_end(r, 1, 0);
 		apr_pool_destroy(pool);
 		return;
 	    }
 	    if (opt.v) {
 		int i;
-		for (i = 0; i < n; i++) 
-		    gprint("  glob: %s\n", fpath[i]);
+		const int dlen = strlen(opt.d);
+		gprint("  glob root at %s\n", opt.d);
+		for (i = 0; i < n; i++) {
+		    if (0 == memcmp(opt.d, fpath[i], dlen))
+			gprint("  glob: %s\n", fpath[i] + dlen);
+		    else
+			gprint("  glob: %s\n", fpath[i]);
+		}
 	    }
 	}
 
@@ -1055,8 +1162,8 @@ void session_attach(request_t* r)
 		int dirnf = 0;
 		if (apr_filepath_merge(&newpath, fpath[i], "*", 0, pool)) {
 		    gwarning(FLINE, "bad path: %s (filepathmerge)", r->path);
-		    send_error(r, 404, "not found");
-		    request_end(r);
+		    http_error(r, 404, "not found");
+		    request_end(r, 1, 0);
 		    apr_pool_destroy(pool);
 		    return;
 		}
@@ -1075,8 +1182,8 @@ void session_attach(request_t* r)
 
 	    if (n == 0) {
 		gwarning(FLINE, "bad path: %s", r->path);
-		send_error(r, 404, "not found");
-		request_end(r);
+		http_error(r, 404, "not found");
+		request_end(r, 1, 0);
 		apr_pool_destroy(pool);
 		return;
 	    }
@@ -1086,12 +1193,24 @@ void session_attach(request_t* r)
 	fstream = fstream_alloc(fpath, n, pool);
 	if (! fstream) {
 	    gwarning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
-	    send_error(r, 404, "not found");
-	    request_end(r);
+	    http_error(r, 404, "not found");
+	    request_end(r, 1, 0);
 	    apr_pool_destroy(pool);
 	    return;
 	}
-
+	/* parse csvopt header */
+	{
+	    const char*a;
+	    for (a=r->csvopt; *a; a++)
+		if (*a=='q' && a[1]){
+		    fstream->quote = *++a;
+		    fstream->is_csv = 1;
+		}else if (*a=='x' && a[1]){
+		    fstream->escape = *++a;
+		    fstream->is_csv = 1;
+		}else
+		    assert(0);
+	}
 	/* allocate session */
 	if (0 == (s = apr_palloc(pool, sizeof(session_t))))
 	    gfatal(FLINE, "out of memory");
@@ -1110,32 +1229,32 @@ void session_attach(request_t* r)
 	apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, s);
 
 	if (opt.v) 
-	    gprint("[INFO] new session (%s, %s)\n", s->path, s->tid);
+	    gprint("new session (%s, %s)\n", s->path, s->tid);
     }
 
     /* found a session in hashtable*/
 
     /* if error, send an error and close */
     if (s->is_error) {
-	send_error(r, 500, "session error");
-	request_end(r);
+	http_error(r, 500, "session error");
+	request_end(r, 1, 0);
 	return;
     }
 
     /* session already ended. send an empty response, and close. */
     if (0 == s->fstream) {
-	send_empty(r);
-	request_end(r);
+	http_empty(r);
+	request_end(r, 0, 0);
 	return;
     }
 
     if (opt.v) 
-	gprint("[INFO] joined session (%s, %s)\n", s->path, s->tid);
+	gprint("joined session (%s, %s)\n", s->path, s->tid);
 
     /* setup so receive EV_WRITE events to write to socket */
     if (setup_write(r)) {
-	send_error(r, 500, "internal error");
-	request_end(r);
+	http_error(r, 500, "internal error");
+	request_end(r, 1, 0);
 	return;
     }
 
@@ -1145,7 +1264,12 @@ void session_attach(request_t* r)
     r->session = s;
 
     /* finally, tell peer that we are ready to send data */
-    send_ok(r);
+    if (0 != http_ok(r)) {
+	request_end(r, 1, 0);
+	return;
+    }
+
+
     return;
 }
 
@@ -1154,7 +1278,7 @@ void session_attach(request_t* r)
 
 
 /* Callback when the socket is ready to be written */
-void do_write(int fd, short event, void* arg)
+static void do_write(int fd, short event, void* arg)
 {
     request_t* r = (request_t*) arg;
     int n, i;
@@ -1165,48 +1289,84 @@ void do_write(int fd, short event, void* arg)
 
     /* Loop at most 3 blocks or until we choke on the socket */
     for (i = 0; i < 3; i++) {
-
 	/* get a block (or find a remaining block) */
 	if (! r->out.block) {
-	    r->out.block = session_get_block(r->session);
+	    const char* ferror = session_get_block(r->session, &r->out.block);
+	    if (ferror) {
+		request_end(r, 1, ferror);
+		return;
+	    }
 	    if (! r->out.block) {
-		request_end(r);
+		request_end(r, 0, 0);
 		return;
 	    }
 	}
 
-	/* write out the block */
 	b = r->out.block;
-	n = b->top - b->bot;
-	n = send(fd, b->byte + b->bot, n, 0);
-	if (n < 0) {
-#ifdef WIN32
-	    int e = WSAGetLastError();
-	    int ok = (e == WSAEINTR || e == WSAEWOULDBLOCK);
-#else
-	    int e = errno;
-	    int ok = (e == EINTR || e == EAGAIN);
-#endif
-	    if (! ok) {
-		perror("send");
-		block_put(r->out.block);
-		r->out.block = 0;
-		request_end(r);
-		return;
-	    }
-	    n = 0;
+	if (b->bot == b->top) {
+	    /* skip empty file */
+	    block_put(r->out.block);
+	    r->out.block = 0;
+	    continue;
 	}
-	b->bot += n;
+	if (r->gp_proto == 1) {
+	    if (b->hdr.htop == 0) 
+		block_fill_header(b);
+
+	    n = b->hdr.htop - b->hdr.hbot;
+	    if (n > 0) {
+		n = local_send(fd, b->hdr.hbyte + b->hdr.hbot, n);
+		if (n < 0) {
+		    perror("send");
+		    block_put(r->out.block);
+		    r->out.block = 0;
+		    request_end(r, 1, 0);
+		    return;
+		}
+
+		TR(("[%d] send header bytes %d .. %d (top %d)\n", 
+		    fd, b->hdr.hbot, b->hdr.hbot + n, b->hdr.htop));
+
+		b->hdr.hbot += n;
+		n = b->hdr.htop - b->hdr.hbot;
+		if (n > 0) 
+		    break;	/* network chocked */
+	    }
+	}
+
+	if (b->hdr.htop != b->hdr.hbot) 
+	    gfatal(FLINE, "internal error: hbot != htop");
+
+	/* write out the block */
 	n = b->top - b->bot;
-	if (n > 0) 		/* network chocked */
+	/*
+	if (n == 0) 
+	    gfatal(FLINE, "internal error: 0 bytes");
+	*/
+
+	n = local_send(fd, b->byte + b->bot, n);
+	if (n < 0) {
+	    perror("send");
+	    block_put(r->out.block);
+	    r->out.block = 0;
+	    request_end(r, 1, 0);
+	    return;
+	}
+	TR(("[%d] send data bytes off %" APR_INT64_T_FMT "  buf %d .. %d (top %d)\n", 
+	    fd, b->hdr.foff, b->bot, b->bot + n, b->top));
+	b->bot += n, b->hdr.foff += n;
+
+	if (b->top != b->bot) {	/* network chocked */
+	    TR(("[%d] network full\n", fd));
 	    break;
+	}
 	block_put(r->out.block);
 	r->out.block = 0;
     }
 
     /* Set up for this routine to be called again */
     if (setup_write(r)) 
-	request_end(r);
+	request_end(r, 1, 0);
     return;
 }
 
@@ -1214,7 +1374,7 @@ void do_write(int fd, short event, void* arg)
 /* Callback when a socket is ready to be read. Read the 
  * socket for a complete HTTP request.
  */
-void do_read(int fd, short event, void* arg)
+static void do_read(int fd, short event, void* arg)
 {
     request_t* r = (request_t*) arg;
     int n, i;
@@ -1223,16 +1383,16 @@ void do_read(int fd, short event, void* arg)
 
     /* If we timeout, close the request. */
     if (event & EV_TIMEOUT) {
-	send_error(r, 400, "time out");
-	request_end(r);
+	http_error(r, 400, "time out");
+	request_end(r, 1, 0);
 	return;
     }
 
     /* how many bytes left in the header buf */
     n = r->in.hbufmax - r->in.hbuftop;
     if (n <= 0) {
-	send_error(r, 500, "internal error");
-	request_end(r);
+	http_error(r, 500, "internal error");
+	request_end(r, 1, 0);
 	return;
     }
 
@@ -1247,13 +1407,13 @@ void do_read(int fd, short event, void* arg)
 	int ok = (e == EINTR || e == EAGAIN);
 #endif
 	if (! ok) {
-	    request_end(r);
+	    request_end(r, 1, 0);
 	    return;
 	}
     }
     else if (n == 0) {
 	/* socket close by peer will return 0 */
-	request_end(r);
+	request_end(r, 1, 0);
 	return;
     }
     else {
@@ -1263,8 +1423,8 @@ void do_read(int fd, short event, void* arg)
 	r->in.req = gnet_parse_request(r->in.hbuf, &n, r->pool);
 	if (!r->in.req && r->in.hbuftop >= r->in.hbufmax) {
 	    /* not available, but headerbuf is full - send error and close */
-	    send_error(r, 400, "forbidden");
-	    request_end(r);
+	    http_error(r, 400, "forbidden");
+	    request_end(r, 1, 0);
 	    return;
 	}
     }
@@ -1273,22 +1433,22 @@ void do_read(int fd, short event, void* arg)
        called again for */
     if (!r->in.req) {
 	if (setup_read(r)) {
-	    send_error(r, 500, "internal error");
-	    request_end(r);
+	    http_error(r, 500, "internal error");
+	    request_end(r, 1, 0);
 	}
 	return;
     }
 
     /* Hurray, got a request !!! */
     if (opt.v) 
-	gprint("[INFO] %s requests %s\n", 
+	gprint("%s requests %s\n", 
 	       r->peer, r->in.req->argv[1] ? r->in.req->argv[1] : "(none)");
 
     /* we don't need to read from the socket anymore */
     shutdown(r->sock, SHUT_RD);
 
     if (opt.V) {
-	gprint("[INFO] request");
+	gprint("request");
 	for (i = 0; i < r->in.req->argc; i++)
 	    gprint(" %s", r->in.req->argv[i]);
 	gprint("\n");
@@ -1297,20 +1457,21 @@ void do_read(int fd, short event, void* arg)
     /* parse the HTTP request. Expect "GET /path HTTP/1.X" */
     if (r->in.req->argc != 3) {
 	gwarning(FLINE, "reject invalid request from %s", r->peer);
-	send_error(r, 400, "invalid request");
-	request_end(r);
+	http_error(r, 400, "invalid request");
+	request_end(r, 1, 0);
 	return;
     }
     if (0 != strncmp("HTTP/1.", r->in.req->argv[2], 7)) {
 	gwarning(FLINE, "reject invalid protocol from %s [%s]", r->peer, r->in.req->argv[2]);
-	send_error(r, 400, "invalid request");
-	request_end(r);
+	http_error(r, 400, "invalid request");
+	request_end(r, 1, 0);
 	return;
     }
     if (0 != strcmp("GET", r->in.req->argv[0])) {
-	gwarning(FLINE, "reject invalid request from %s [%s %s]", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-	send_error(r, 400, "invalid request");
-	request_end(r);
+	gwarning(FLINE, "reject invalid request from %s [%s %s]", 
+		 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	http_error(r, 400, "invalid request");
+	request_end(r, 1, 0);
 	return;
     }
 
@@ -1357,8 +1518,8 @@ void do_read(int fd, short event, void* arg)
         if (p[1] == '.') {
             gwarning(FLINE, "reject invalid request from %s [%s %s]",
                          r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-            send_error(r, 400, "invalid request");
-            request_end(r);
+            http_error(r, 400, "invalid request");
+            request_end(r, 1, 0);
             return;
         }
     }
@@ -1371,6 +1532,8 @@ void do_read(int fd, short event, void* arg)
 	const char* xid = 0;
 	const char* cid = 0;
 	const char* sn = 0;
+	const char* gp_proto = "0";
+	r->csvopt = "";
 	for (i = 0; i < r->in.req->hc; i++) {
 	    if (0 == strcmp("X-GP-XID", r->in.req->hname[i])) 
 		xid = r->in.req->hvalue[i];
@@ -1378,20 +1541,34 @@ void do_read(int fd, short event, void* arg)
 		cid = r->in.req->hvalue[i];
 	    else if (0 == strcmp("X-GP-SN", r->in.req->hname[i]))
 		sn = r->in.req->hvalue[i];
-	    /*
+	    else if (0 == strcmp("X-GP-CSVOPT", r->in.req->hname[i]))
+		r->csvopt = r->in.req->hvalue[i];
+	    else if (0 == strcmp("X-GP-PROTO", r->in.req->hname[i]))
+		gp_proto = r->in.req->hvalue[i];
+
 	    if (r->in.req->hname[i][0] == 'X') {
-		printf("%s: %s\n", r->in.req->hname[i], r->in.req->hvalue[i]);
+		TR(("%s: %s\n", r->in.req->hname[i], r->in.req->hvalue[i]));
 	    }
-	    */
+
 	}
+	r->gp_proto = strtol(gp_proto, 0, 0);
+	if (r->gp_proto != 0 && r->gp_proto != 1) {
+	    gwarning(FLINE, "reject invalid request from %s [%s %s] - X-GP-PROTO invalid '%s'",
+		     r->peer, r->in.req->argv[0], r->in.req->argv[1], gp_proto);
+	    http_error(r, 400, "invalid request");
+	    request_end(r, 1, 0);
+	    return;
+	}
+	if (opt.g != -1)	/* override?  */
+	    r->gp_proto = opt.g; 
 	if (xid && cid && sn) {
-	    r->tid = apr_psprintf(r->pool, "%s.%s.%s", xid, cid, sn);
+	    r->tid = apr_psprintf(r->pool, "%s.%s.%s.%d", xid, cid, sn, r->gp_proto);
 	}
 	else if (xid || cid || sn) {
 	    gwarning(FLINE, "reject invalid request from %s [%s %s] - missing X-GP-* header", 
 			 r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-	    send_error(r, 400, "invalid request");
-	    request_end(r);
+	    http_error(r, 400, "invalid request");
+	    request_end(r, 1, 0);
 	    return;
 	}
 	else {
@@ -1405,7 +1582,7 @@ void do_read(int fd, short event, void* arg)
 
 
 /* Callback when the listen socket is ready to accept connections. */
-void do_accept(int fd, short event, void* arg)
+static void do_accept(int fd, short event, void* arg)
 {
     struct sockaddr_in a;
     socklen_t len = sizeof(a);
@@ -1469,8 +1646,8 @@ void do_accept(int fd, short event, void* arg)
 
     /* set up for callback when socket ready for reading */
     if (setup_read(r)) {
-	send_error(r, 500, "internal error");
-	request_end(r);
+	http_error(r, 500, "internal error");
+	request_end(r, 1, 0);
     }
 
     return;
@@ -1480,7 +1657,7 @@ void do_accept(int fd, short event, void* arg)
     return;
 }
 
-int setup_write(request_t* r)
+static int setup_write(request_t* r)
 {
     if (r->sock < 0) 
 	gfatal(FLINE, "assert failed");
@@ -1489,9 +1666,8 @@ int setup_write(request_t* r)
     return (event_add(&r->ev, 0));
 }
 
-int setup_read(request_t* r)
+static int setup_read(request_t* r)
 {
-    //    printf("r->fd = %d\n", r->sock);
     if (r->sock < 0) 
 	gfatal(FLINE, "assert failed");
     event_del(&r->ev);
@@ -1504,7 +1680,7 @@ int setup_read(request_t* r)
 
 
 /* Create HTTP port and start to receive request */
-void http_setup(void)
+static void http_setup(void)
 {
     struct sockaddr_in a;
     SOCKET f;
@@ -1604,7 +1780,7 @@ int main(int argc, const char* const argv[])
     return 0;
 }
 
-char* path_basename(const char* path, apr_pool_t* pool)
+static char* path_basename(const char* path, apr_pool_t* pool)
 {
     char* idx = strrchr(path, '/');
     if (! idx) 
@@ -1613,7 +1789,7 @@ char* path_basename(const char* path, apr_pool_t* pool)
     return apr_pstrndup(pool, path, idx - path);
 }
 
-APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
+static APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 {
     int n = *len;
     const char* p;
@@ -1696,7 +1872,7 @@ APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_p
 }
 
 
-APR_DECLARE(char*) gstring_trim(char* s)
+static APR_DECLARE(char*) gstring_trim(char* s)
 {
     char* p;
     s += strspn(s, " \t\r\n");
