@@ -177,15 +177,19 @@ save_ps_display_args(int argc, char **argv)
 		 */
 		new_environ = (char **) malloc((i + 1) * sizeof(char *));
 		if(!new_environ)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("Setting new environment variable failed: Out of memory")));
+		{
+			write_stderr("Failed to change/set ps status: Out of Memory");
+			exit(1);
+		}
 
 		for (i = 0; environ[i] != NULL; i++)
 		{
 			new_environ[i] = strdup(environ[i]);
 			if(!new_environ[i])
-				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("Setting new environment variable failed: Out of memory")));
+			{
+				write_stderr("Failed to change/set ps status: Out of Memory");
+				exit(1);
+			}
 		}
 
 
@@ -215,15 +219,19 @@ save_ps_display_args(int argc, char **argv)
 		new_argv = (char **) malloc((argc + 1) * sizeof(char *));
 
 		if(!new_argv)
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("Setting argv failed: Out of memory")));
+		{
+			write_stderr("Failed to change/set argv: Out of Memory");
+			exit(1);
+		}
 
 		for (i = 0; i < argc; i++)
 		{
 			new_argv[i] = strdup(argv[i]);
 			if(!new_argv[i])
-				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("Setting argv failed: Out of memory")));
+			{
+				write_stderr("Failed to change/set argv: Out of Memory");
+				exit(1);
+			}
 		}
 
 		new_argv[argc] = NULL;
