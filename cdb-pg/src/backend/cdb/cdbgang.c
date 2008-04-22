@@ -3229,7 +3229,9 @@ cleanupGang(Gang * gp)
 		}
 
 		/* QE is no longer associated with a slice. */
-		cdbconn_setSliceIndex(segdbDesc, -1);
+		if(!cdbconn_setSliceIndex(segdbDesc, -1))
+			elog(ERROR, "cleanupGang: setSlideIndex failed");
+
 	}
 
 	gp->allocated = false;

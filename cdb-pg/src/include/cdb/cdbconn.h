@@ -86,7 +86,7 @@ cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
                   const char                   *options);
 
 /* Set the slice index for error messages related to this QE. */
-void
+bool
 cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
                       int                           sliceIndex);
 

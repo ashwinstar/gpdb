@@ -317,7 +317,18 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     segdbDesc->conn = PQconnectdb(buffer.data);
 
     /* Build whoami string to identify the QE for use in messages. */
-    cdbconn_setSliceIndex(segdbDesc, -1);
+    if(!cdbconn_setSliceIndex(segdbDesc, -1))
+    {
+        if (!segdbDesc->errcode)
+            segdbDesc->errcode = ERRCODE_GP_INTERCONNECTION_ERROR;
+
+        /* Don't use elog, it's not thread-safe */
+        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+            write_log("%s\n", segdbDesc->error_message.data);
+
+        PQfinish(segdbDesc->conn);
+        segdbDesc->conn = NULL;
+    }
 
     /*
      * Check for connection failure.
@@ -419,9 +430,19 @@ cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
 
     /* Build whoami string to identify the QE for use in messages. */
-    cdbconn_setSliceIndex(segdbDesc, -1);
+    if(!cdbconn_setSliceIndex(segdbDesc, -1))
+    {
+	    if (!segdbDesc->errcode)
+		    segdbDesc->errcode = ERRCODE_GP_INTERCONNECTION_ERROR;
 
-    
+	    /* Don't use elog, it's not thread-safe */
+	    if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
+		    write_log("%s\n", segdbDesc->error_message.data);
+
+	    PQfinish(segdbDesc->conn);
+	    segdbDesc->conn = NULL;
+    }
+
     /*
      * Check for connection failure.
      */
@@ -469,7 +490,7 @@ cdbconn_doDispatchAgentConnect(SegmentDatabaseDescriptor    *segdbDesc,
 }                               
 
 /* Build text to identify this QE in error messages. */
-void
+bool
 cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
                       int                           sliceIndex)
 {
@@ -515,11 +536,14 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
 
     segdbDesc->whoami = strdup(scratchbuf->data + scratchoff);
     if(!segdbDesc->whoami)
-	    ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-	    	    errmsg("Cdb connection set slice index failed: out of memory")));
+    {
+	    appendPQExpBuffer(scratchbuf, " Error: Out of Memory");
+	    return false;
+    }
 
     /* Give back our scratch space at tail of error_message buffer. */
     truncatePQExpBuffer(scratchbuf, scratchoff);
+    return true;
 }                               /* cdbconn_setSliceIndex */
 
 
