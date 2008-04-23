@@ -486,7 +486,7 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	/*
 	 * allocate and initialize scan descriptor
 	 */
-	scan = (AppendOnlyScanDesc) palloc(sizeof(AppendOnlyScanDescData));
+	scan = (AppendOnlyScanDesc) palloc0(sizeof(AppendOnlyScanDescData));
 
 	scan->aos_rd = relation;
 	scan->aos_nkeys = nkeys;
