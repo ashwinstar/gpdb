@@ -52,7 +52,7 @@ class Global():
     opt['-r'] = 'N'
     opt['-h'] = []
     opt['-f'] = None
-
+    hostlist = []
 GV = Global()
 
 #############
@@ -67,13 +67,9 @@ def strcmd(cmd):
 def gpssh(cmd):
     c = ['%s/bin/gpssh' % GPHOME]
     if (GV.opt['-V']): c.append('-v')
-    if (GV.opt['-f']):
-        c.append('-f')
-        c.append(GV.opt['-f'])
-    else:
-	for h in GV.opt['-h']: 
-            c.append('-h')
-            c.append(h)
+    for h in GV.hostlist: 
+        c.append('-h')
+        c.append(h)
     c.append(cmd)
     if GV.opt['-v']: print '[Info]', strcmd(c)
     p = subprocess.Popen(c, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -85,13 +81,9 @@ def gpssh(cmd):
 def gpscp(src, dst):
     c = ['%s/bin/gpscp' % GPHOME]
     if (GV.opt['-V']): c.append('-v')
-    if (GV.opt['-f']):
-        c.append('-f')
-        c.append(GV.opt['-f'])
-    else:
-	for h in GV.opt['-h']: 
-            c.append('-h')
-            c.append(h)
+    for h in GV.hostlist: 
+        c.append('-h')
+        c.append(h)
     c.append(src)
     c.append(dst)
     if GV.opt['-v']: print '[Info]', strcmd(c)
@@ -142,6 +134,28 @@ def parseCommandLine():
 	if d and d[-1] == '/': d = d[:-1]
 	dd.append(d)
     GV.opt['-d'] = dd
+
+    # get unique host
+    hostlist = gplib.HostList()
+    for h in GV.opt['-h']: hostlist.add(h)
+    if GV.opt['-f']: hostlist.parseFile(GV.opt['-f'])
+
+    h = hostlist.get()
+    if len(h) == 0:
+        usage('Error: missing hosts in -h and/or -f arguments')
+    
+    if len(h) == 1:
+        print '[Warning] single host only - abandon netperf test'
+        return (None, None, None)
+
+    hosts = gpmlib.unique(h)
+    hostnames = []
+    for host in hosts:
+        (ok, out) = gpmlib.run('%s %s' % (gplib.ssh_prefix(host=host), 'hostname'))
+        if not ok:
+            sys.exit('Error: failed to run hostname on remote host %s' % host)
+        hostnames.append(out[0].strip())
+    GV.hostlist = gpmlib.unique(hostnames)
 
     def strcmd(cmd):
         return reduce(lambda x, y: x + ' ' + y, map(lambda x: x.find(' ') > 0 and "'" + x + "'" or x, cmd))
@@ -360,27 +374,6 @@ def setupNetPerfTest():
     print '--  NETPERF TEST'
     print '-------------------'
     
-    hostlist = gplib.HostList()
-    for h in GV.opt['-h']: hostlist.add(h)
-    if GV.opt['-f']: hostlist.parseFile(GV.opt['-f'])
-
-    h = hostlist.get()
-    if len(h) == 0:
-        usage('Error: missing hosts in -h and/or -f arguments')
-    
-    if len(h) == 1:
-        print '[Warning] single host only - abandon netperf test'
-        return (None, None, None)
-
-    hosts = gpmlib.unique(h)
-    hostnames = []
-    for host in hosts:
-        (ok, out) = gpmlib.run('%s %s' % (gplib.ssh_prefix(host=host), 'hostname'))
-        if not ok:
-            sys.exit('Error: failed to run hostname on remote host %s' % host)
-        hostnames.append(out[0].strip())
-    h = gpmlib.unique(hostnames)
-
     # start netserver
     netserver_port = startNetServer()
     if netserver_port == 0:
@@ -388,7 +381,7 @@ def setupNetPerfTest():
         return (None, None, None)
     
     netperf = copyExecOver('netperf')
-    return (netperf, h, netserver_port)
+    return (netperf, GV.hostlist, netserver_port)
     
 
 #############
