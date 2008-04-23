@@ -445,8 +445,6 @@ def spawnNetperfTestBetween(x, y, netperf_path, netserver_port, sec=5):
     try: 
         if GV.opt['-v']: print '[Info]', strcmd(c)
         proc = subprocess.Popen(c, stdout=subprocess.PIPE)
-        out = proc.stdout.read(-1)
-        rc = proc.wait()
     except KeyboardInterrupt:
         killProc(proc)
         raise
@@ -462,6 +460,7 @@ def reapNetperfTest(proc, x, y):
     ok = True
     if proc:
         try:
+            rc = proc.wait()
             out = proc.stdout.read(-1)
             ok = not killProc(proc)
             proc = None
