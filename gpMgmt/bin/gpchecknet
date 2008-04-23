@@ -445,8 +445,13 @@ def runNetPerfTestParallel():
         if p[0]: 
             procList.append(p)
     
-    if odd not None:
-        for i in xrang(len(odd)):
+    for (proc, x, y) in procList:
+        res = reapNetperfTest(proc, x, y)
+	if res and len(res) >= 6: result.append(res)
+
+    if odd is not None:
+        procList = []
+        for i in xrange(len(odd)):
             if i & 1 == 0: continue
             x = odd[i-1]
             y = odd[i]
@@ -454,9 +459,9 @@ def runNetPerfTestParallel():
             if p[0]: 
                 procList.append(p)            
 
-    for (proc, x, y) in procList:
-        res = reapNetperfTest(proc, x, y)
-	if res and len(res) >= 6: result.append(res)
+        for (proc, x, y) in procList:
+            res = reapNetperfTest(proc, x, y)
+            if res and len(res) >= 6: result.append(res)
 
     # second round: test between host[1] & host[0], host[3] & host[2], ...
     procList = []
@@ -468,8 +473,13 @@ def runNetPerfTestParallel():
         if p[0]: 
             procList.append(p)
     
-    if odd not None:
-        for i in xrang(len(odd)):
+    for (proc, x, y) in procList:
+        res = reapNetperfTest(proc, x, y)
+	if res and len(res) >= 6: result.append(res)
+
+    if odd is not None:
+        procList = []
+        for i in xrange(len(odd)):
             if i & 1 == 0: continue
             x = odd[i-1]
             y = odd[i]
@@ -477,9 +487,9 @@ def runNetPerfTestParallel():
             if p[0]: 
                 procList.append(p)      
 
-    for (proc, x, y) in procList:
-        res = reapNetperfTest(proc, x, y)
-	if res and len(res) >= 6: result.append(res)
+        for (proc, x, y) in procList:
+            res = reapNetperfTest(proc, x, y)
+            if res and len(res) >= 6: result.append(res)
 
 
     return result
