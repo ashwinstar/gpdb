@@ -307,6 +307,9 @@ PROMPT_CONTINUE () {
 		LOG_MSG "[INFO]:-Master standby start       = On" 1
 		else
 		LOG_MSG "[INFO]:-Master standby start       = Off" 1
+		    if [ $STANDBY_COUNT -ne 0 ];then
+			LOG_MSG "[WARN]:-Master standby     = Off" 1
+		    fi
 		fi
 		LOG_MSG "[INFO]:----------------------------------------" 1
 		LOG_MSG "[INFO]:-Segment instances that will be started:" 1
