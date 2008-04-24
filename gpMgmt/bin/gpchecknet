@@ -13,7 +13,7 @@ Usage: gpchecknet <options>
     -?         : print this help text
     -v         : enable verbose
     -V         : enable very verbose
-    -D         : print per host disk stats on disk read/write tests
+    -D         : do not filter multi-homed hosts
     -r flags   : where flags specifies the tests to run [default=dsn]. 
                  Supported test flags are:
                        n: runs only netperf tests (serial)
@@ -52,7 +52,7 @@ class Global():
     opt['-r'] = 'N'
     opt['-h'] = []
     opt['-f'] = None
-    hostlist = []
+
 GV = Global()
 
 #############
@@ -67,7 +67,7 @@ def strcmd(cmd):
 def gpssh(cmd):
     c = ['%s/bin/gpssh' % GPHOME]
     if (GV.opt['-V']): c.append('-v')
-    for h in GV.hostlist: 
+    for h in GV.opt['-h']: 
         c.append('-h')
         c.append(h)
     c.append(cmd)
@@ -81,7 +81,7 @@ def gpssh(cmd):
 def gpscp(src, dst):
     c = ['%s/bin/gpscp' % GPHOME]
     if (GV.opt['-V']): c.append('-v')
-    for h in GV.hostlist: 
+    for h in GV.opt['-h']: 
         c.append('-h')
         c.append(h)
     c.append(src)
@@ -140,25 +140,17 @@ def parseCommandLine():
     for h in GV.opt['-h']: hostlist.add(h)
     if GV.opt['-f']: hostlist.parseFile(GV.opt['-f'])
 
-    h = hostlist.get()
-    if len(h) == 0:
+    if not GV.opt['-D']:
+        GV.opt['-h'] = hostlist.filterMultiHomedHosts()
+
+    if len(GV.opt['-h']) == 0:
         usage('Error: missing hosts in -h and/or -f arguments')
     
-    if len(h) == 1:
-        print '[Warning] single host only - abandon netperf test'
-        return (None, None, None)
-
-    hosts = gpmlib.unique(h)
-    hostnames = []
-    for host in hosts:
-        (ok, out) = gpmlib.run('%s %s' % (gplib.ssh_prefix(host=host), 'hostname'))
-        if not ok:
-            sys.exit('Error: failed to run hostname on remote host %s' % host)
-        hostnames.append(out[0].strip())
-    GV.hostlist = gpmlib.unique(hostnames)
+    if len(GV.opt['-h']) == 1:
+        usage('[Warning] single host only - abandon netperf test')
 
     if GV.opt['-v']:
-        print 'unique hosts: %s ' % str(GV.hostlist)
+        print 'unique hosts: %s ' % str(GV.opt['-h'])
 
     def strcmd(cmd):
         return reduce(lambda x, y: x + ' ' + y, map(lambda x: x.find(' ') > 0 and "'" + x + "'" or x, cmd))
@@ -383,7 +375,7 @@ def setupNetPerfTest():
         return (None, None, None)
     
     netperf = copyExecOver('netperf')
-    return (netperf, GV.hostlist, netserver_port)
+    return (netperf, GV.opt['-h'], netserver_port)
     
 
 #############
