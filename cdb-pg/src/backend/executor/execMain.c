@@ -1130,8 +1130,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		}
 	}
 	else
-	
-	ExecCheckRTPerms(parseTree->rtable);
+		ExecCheckRTPerms(parseTree->rtable);
 
 	/*
 	 * get information from query descriptor
