@@ -5044,6 +5044,54 @@ str_time(time_t tnow)
 	return buf;
 }
 
+static bool StandbyTakeover = false;
+
+/*
+ * See if there is a recovery command file (recovery.conf) indicating
+ * there was a standby master that is being started as the primary.
+ *
+ * This is basically the first part of the readRecoveryCommandFile routine.
+ */
+static bool
+StandbyTakeoverTest(void)
+{
+	FILE	   *fd;
+
+	fd = AllocateFile(RECOVERY_COMMAND_FILE, "r");
+	if (fd == NULL)
+	{
+		if (errno == ENOENT)
+			return false;				/* not there */
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 errmsg("could not open recovery command file \"%s\": %m",
+						RECOVERY_COMMAND_FILE)));
+	}
+	ereport(LOG,
+		(errmsg("found recovery.conf file indicating standby takeover recovery needed")));
+
+
+	return true;
+}
+
+static void
+exitStandbyTakeover(void)
+{
+	/*
+	 * Rename the config file out of the way, so that we don't accidentally
+	 * re-enter recovery mode in a subsequent crash.
+	 */
+	unlink(RECOVERY_COMMAND_DONE);
+	if (rename(RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE) != 0)
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 errmsg("could not rename file \"%s\" to \"%s\": %m",
+						RECOVERY_COMMAND_FILE, RECOVERY_COMMAND_DONE)));
+
+	ereport(LOG,
+			(errmsg("standby takeover recovery complete")));
+}
+
 /*
  * See if there is a recovery command file (recovery.conf), and if so
  * read in parameters for archive recovery.
@@ -5580,7 +5628,8 @@ StartupXLOG(void)
 	 * to increment the timeline.  For GP, our timeline is always 1.
 	 */
 //	readRecoveryCommandFile(LOG);
-
+	StandbyTakeover = StandbyTakeoverTest();
+	
 	/* Now we can determine the list of expected TLIs */
 	expectedTLIs = readTimeLineHistory(recoveryTargetTLI);
 
@@ -5718,7 +5767,7 @@ StartupXLOG(void)
 	}
 	else if (ControlFile->state != DB_SHUTDOWNED)
 		InRecovery = true;
-	else if (InArchiveRecovery)
+	else if (StandbyTakeover || InArchiveRecovery)
 	{
 		/* force recovery due to presence of recovery.conf */
 		InRecovery = true;
@@ -5740,6 +5789,12 @@ StartupXLOG(void)
 			ereport(LOG,
 					(errmsg("automatic recovery in progress")));
 			ControlFile->state = DB_IN_ARCHIVE_RECOVERY;
+		}
+		else if (StandbyTakeover)
+		{
+			ereport(LOG,
+					(errmsg("standby takeover recovery in progress")));
+			ControlFile->state = DB_IN_CRASH_RECOVERY;
 		}
 		else
 		{
@@ -5966,6 +6021,9 @@ StartupXLOG(void)
 	if (InArchiveRecovery)
 		exitArchiveRecovery(curFileTLI, endLogId, endLogSeg);
 
+	if (StandbyTakeover)
+		exitStandbyTakeover();
+	
 	/*
 	 * Prepare to write WAL starting at EndOfLog position, and init xlog
 	 * buffer cache using the block containing the last record from the
