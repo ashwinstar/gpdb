@@ -208,11 +208,6 @@ buildMirrorQDDefinition(void)
 	}
 
 	/* we are the primary connecting to the mirror */
-
-	elog(LOG, 
-	     "QD mirroring standby configuration found -- will attempt to connect and synchronize. "
-	     "Standby master row's 'valid' field indicating synchronized is %s.",
-	     (mirrorDb->valid ? "'t' (true)" : "'f' (false)"));
 	FtsSetQDMirroring(mirrorDb);
 
 }
@@ -288,6 +283,14 @@ write_position_to_end(XLogRecPtr *endLocation, struct timeval *timeout, bool *sh
 	return true;
 }
 
+static char StandbyErrorString[200] = "";
+
+char *
+GetStandbyErrorString(void)
+{
+	return StandbyErrorString;
+}
+
 bool
 write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shutdownGlobal)
 {
@@ -297,6 +300,7 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 	int			sock;
 	fd_set		rset;
 	int			n;
+	char        *message;
 	bool		result = false;
 
 	PG_TRY();
@@ -374,16 +378,19 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 					{
 						CHECK_FOR_INTERRUPTS();
 						if (shutdownGlobal != NULL && *shutdownGlobal)
-							elog(ERROR,"timed QD mirror send detected shutdown");
+							ereport(ERROR,
+									(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									 errmsg("Shutdown detected during send to standby master")));
 						
 						n = select(sock + 1, &rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
 						if (n == 0)
 						{
 							Assert(timeout != NULL);
-							elog(ERROR,"QD mirror connection read timed out (sockfd %d, %u seconds, %u milliseconds)",
-								 sock,
-								 (unsigned int)timeout->tv_sec, 
-						 		 (unsigned int)timeout->tv_usec / 1000);
+							ereport(ERROR,
+									(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									 errmsg("Send to standby master timed out after %d.%03d seconds",
+									        (int)timeout->tv_sec,
+									        (int)timeout->tv_usec / 1000)));
 						}
 						else if (n < 0 && errno == EINTR)
 						{
@@ -434,8 +441,9 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 			msg = pstrdup(PQerrorMessage(conn));
 			PQfinish(conn);
 			cdb_mirrored_entry_db->conn = NULL;
-			elog(ERROR, "QD mirrored entry database write error: %s",
-				 msg);
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+					 errmsg("Error from sending to standby master: %s",msg)));
 		}
 		else
 		{
@@ -447,11 +455,18 @@ write_qd_sync(char *cmd, void *buf, int len, struct timeval *timeout, bool *shut
 	PG_CATCH();
 	{
 		/* Report the error to the server log */
-	    if (!elog_demote(NOTICE))
+	    if (!elog_demote(WARNING))
     	{
     		elog(LOG,"unable to demote error");
         	PG_RE_THROW();
     	}
+
+		message = elog_message();
+ 		if (message != NULL && strlen(message) + 1 < sizeof(StandbyErrorString))
+			strcpy(StandbyErrorString, message);
+		else
+			strcpy(StandbyErrorString, "");
+		
 		EmitErrorReport();
 		FlushErrorState();
 	

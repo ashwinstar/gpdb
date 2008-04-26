@@ -35,6 +35,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/gp_configuration.h"
+#include "catalog/gp_master_mirroring.h"
 #include "catalog/gp_id.h"
 #include "catalog/gp_version.h"
 #include "catalog/toasting.h"
@@ -267,7 +268,8 @@ IsSharedRelation(Oid relationId)
 		relationId == GpConfigurationRelationId ||
 		relationId == GpIdRelationId ||
 		relationId == GpVersionRelationId ||
-		relationId == ResQueueRelationId)
+		relationId == ResQueueRelationId ||
+		relationId == GpMasterMirroringRelationId)
 		return true;
 	/* These are their indexes (see indexing.h) */
 	if (relationId == AuthIdRolnameIndexId ||

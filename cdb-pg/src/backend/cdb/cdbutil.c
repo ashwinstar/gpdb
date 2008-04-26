@@ -718,6 +718,12 @@ cdb_setup(void)
 			 */
 			RequestCheckpoint(true, false);
 		}
+
+		/*
+		 * This call will generate a warning if master mirroring
+		 * is not synchronized.
+		 */
+		QDMirroringWriteCheck();
 		
 		/* initialize TM */
 		initTM();

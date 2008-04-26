@@ -70,6 +70,7 @@ extern bool ServiceClientConnect(ServiceConfig *serviceConfig, int listenerPort,
 extern bool ServiceClientSendRequest(ServiceClient *serverClient, void* request, int requestLen);
 extern bool ServiceClientReceiveResponse(ServiceClient *serverClient, void* response, int responseLen, struct timeval *timeout);
 extern bool ServiceClientPollResponse(ServiceClient *serverClient, void* response, int responseLen, bool *pollResponseReceived);
+extern char *ServiceGetLastClientErrorString(void);
 extern bool ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int responseLen);
 
 #ifdef EXEC_BACKEND

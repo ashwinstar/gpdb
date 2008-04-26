@@ -20,7 +20,7 @@ typedef enum QDMIRRORState
 	QDMIRROR_STATE_POSITIONINGTOEND,
 	QDMIRROR_STATE_CATCHUPPENDING,
 	QDMIRROR_STATE_CATCHINGUP,
-	QDMIRROR_STATE_ENABLED,
+	QDMIRROR_STATE_SYNCHRONIZED,
 	QDMIRROR_STATE_DISABLED,
 	QDMIRROR_STATE_MAX /* must always be last */
 } QDMIRRORState;
@@ -33,27 +33,33 @@ typedef enum QDMIRRORDisabledReason
 	QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR,
 	QDMIRROR_DISABLEDREASON_UNEXPECTEDERROR,
 	QDMIRROR_DISABLEDREASON_SHUTDOWN,
+	QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED,
 	QDMIRROR_DISABLEDREASON_MAX /* must always be last */
 } QDMIRRORDisabledReason;
 
-typedef enum QDMIRRORUpdate
+
+typedef enum QDMIRRORUpdateMask
 {
-	QDMIRROR_UPDATE_NONE = 0,
-	QDMIRROR_UPDATE_MARKVALID,
-	QDMIRROR_UPDATE_MARKINVALID,
-	QDMIRROR_UPDATE_REMOVE,
-	QDMIRROR_UPDATE_MAX /* must always be last */
-} QDMIRRORUpdate;
+	QDMIRROR_UPDATEMASK_NONE 				= 0,
+	QDMIRROR_UPDATEMASK_VALIDFLAG 			= 0x1,
+	QDMIRROR_UPDATEMASK_MASTERMIRRORING		= 0x2,
+	QDMIRROR_UPDATEMASK_MAX /* must always be last */
+} QDMIRRORUpdateMask;
+
+#define QDMIRRORErrorMessageSize 200
 
 struct FtsQDMirrorInfo
 {
 	bool			configurationChecked;
 	QDMIRRORState 	state;
 
-
-	QDMIRRORUpdate	qdMirrorUpdate;
+	QDMIRRORUpdateMask	updateMask;
 	
 	QDMIRRORDisabledReason	disabledReason;
+
+	struct timeval lastLogTimeVal;
+
+	char errorMessage[QDMIRRORErrorMessageSize];
 
 	bool			haveNewCheckpointLocation;
 	XLogRecPtr		newCheckpointLocation;
@@ -126,13 +132,17 @@ extern bool assign_gp_set_read_only(bool, bool, GucSource);
 extern int	convertFaultActionValue(char *);
 extern bool verifyFtsSyncCount(void);
 extern void FtsCondSetTxnReadOnly(bool *);
-extern void CheckForQDMirroringDisabledWork(void);
-extern void disableQDMirroring(QDMIRRORDisabledReason disabledReason);
-extern void disableQDMirroring_WalSendServerError(void);
-extern void disableQDMirroring_ConnectionError(void);
-extern void disableQDMirroring_TooFarBehind(void);
-extern void disableQDMirroring_UnexpectedError(void);
+extern void CheckForQDMirroringWork(void);
+extern void disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disabledReason);
+extern void disableQDMirroring_WalSendServerError(char *detail);
+extern void disableQDMirroring_ConnectionError(char *detail, char *errorMessage);
+extern void disableQDMirroring_TooFarBehind(char *detail);
+extern void disableQDMirroring_UnexpectedError(char *detail);
 extern void disableQDMirroring_ShutDown(void);
+extern void disableQDMirroring_AdministratorDisabled(char *detail);
+extern void enableQDMirroring(char *message, char *detail);
+extern char *QDMirroringStateString(void);
+extern char *QDMirroringDisabledReasonString(void);
 extern CdbComponentDatabases *applyTransientState(CdbComponentDatabases *);
 extern void FtsEvaluateTransientState(void);
 extern bool isFtsReadOnlySet(void);
@@ -147,5 +157,6 @@ extern void FtsQDMirroringCatchup(XLogRecPtr *flushedLocation);
 extern void FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *newCheckpointLocation);
 extern void FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation);
 extern char *QDMirroringStateToString(QDMIRRORState state);
+extern bool QDMirroringWriteCheck(void);
 
 #endif   /* CDBFTS_H */

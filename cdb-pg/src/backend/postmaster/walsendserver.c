@@ -42,10 +42,11 @@
 
 // To avoid pulling in cdbfts.h
 extern bool isQDMirroringEnabled(void);	
-extern void disableQDMirroring_TooFarBehind(void);
-extern void disableQDMirroring_ConnectionError(void);
-extern void disableQDMirroring_UnexpectedError(void);
+extern void disableQDMirroring_TooFarBehind(char *detail);
+extern void disableQDMirroring_ConnectionError(char *detail, char *errorMessage);
+extern void disableQDMirroring_UnexpectedError(char *detail);
 extern void disableQDMirroring_ShutDown(void);
+extern void enableQDMirroring(char *message, char *detail);
 
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
@@ -395,12 +396,13 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 		successful = write_position_to_end(&originalEndLocation,
 			                               NULL, &walsend_shutdown_requested);
 		if (successful)
-			elog(LOG,"QD Mirror returned end location %s",
+			elog(LOG,"Standby master returned transaction log end location %s",
 				 XLogLocationToString(&originalEndLocation));
 		else
 		{
-			disableQDMirroring_ConnectionError();
-			elog(NOTICE,"disabling QD mirror (unable to connect to standby and determine log end location)");
+			disableQDMirroring_ConnectionError(
+				"Unable to connect to standby master and determine transaction log end location",
+				GetStandbyErrorString());
 			disconnectMirrorQD_SendClose();
 		}
 		break;
@@ -412,7 +414,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
     	{
     		bool tooFarBehind = false;
 
-			elog(LOG,"QD Primary is flushed through location %s",
+			elog(LOG,"Current master transaction log is flushed through location %s",
 				 XLogLocationToString(&walSendRequest->flushedLocation));
 			
 			if (XLByteLT(originalEndLocation, walSendRequest->flushedLocation))
@@ -445,7 +447,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 					 * But first demote the error to something much less
 					 * scary.
 					 */
-				    if (!elog_demote(NOTICE))
+				    if (!elog_demote(WARNING))
 			    	{
 			    		elog(LOG,"unable to demote error");
 			        	PG_RE_THROW();
@@ -454,7 +456,6 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 					EmitErrorReport();
 					FlushErrorState();
 
-					elog(NOTICE,"Mirror cannot be synchronized because it is too far behind (unable to read old primary transaction log during catchup)");
 					successful = false;
 					tooFarBehind = true;
 				}
@@ -476,7 +477,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 			}
 			else
 			{
-				elog(NOTICE,"QD mirror transaction log location %s is beyond master location %s",
+				elog(WARNING,"Standby master transaction log location %s is beyond the current master end location %s",
 				     XLogLocationToString(&originalEndLocation),
 				     XLogLocationToString2(&walSendRequest->flushedLocation));
 				successful = false;
@@ -484,10 +485,23 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 			
 			if (successful)
 			{
-				elog(LOG,"successfully copied transaction log from locations %s through %s to QD Mirror to synchronize it",
-				     XLogLocationToString(&originalEndLocation),
-				     XLogLocationToString2(&walSendRequest->flushedLocation));
+				char detail[200];
+				int count;
 				
+				count = snprintf(
+							 detail, sizeof(detail),
+							 "Transaction log copied from locations %s through %s to the standby master",
+						     XLogLocationToString(&originalEndLocation),
+						     XLogLocationToString2(&walSendRequest->flushedLocation));
+				if (count >= sizeof(detail))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errmsg("format command string failure")));
+				}
+
+				enableQDMirroring("Master mirroring is now synchronized", detail);
+
 				currentEndLocation = walSendRequest->flushedLocation;
 
 				periodicLen = 0;
@@ -497,13 +511,17 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 			{
 				if (tooFarBehind)
 				{
-					disableQDMirroring_TooFarBehind();
-					elog(NOTICE,"disabling QD mirror (too far behind)");
+					disableQDMirroring_TooFarBehind(
+						"The current master was unable to synchronize the standby master "
+						"because the transaction logs on the current master were recycled.  "
+						"A gpinitstandby (at an appropriate time) will be necessary to copy "
+						"over the whole master database to the standby master so it may be synchronized");
 				}
 				else
 				{
-					disableQDMirroring_ConnectionError();
-					elog(NOTICE,"disabling QD mirror (unable to catchup)");
+					disableQDMirroring_ConnectionError(
+						"Connection to the standby master was lost during transaction log catchup",
+						GetStandbyErrorString());
 				}
 				disconnectMirrorQD_SendClose();
 			}
@@ -620,7 +638,7 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 						if (periodicLen > periodicReportLen)
 						{
 							elog(LOG,
-								 "periodic report: %d bytes successfully send to QD mirror for locations %s through %s",
+								 "Master mirroring periodic report: %d bytes successfully send to standby master for locations %s through %s",
 								 periodicLen,
 								 XLogLocationToString(&periodicLocation),
 								 XLogLocationToString2(&currentEndLocation));
@@ -640,8 +658,9 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 				}
 				else
 				{
-					disableQDMirroring_ConnectionError();
-					elog(NOTICE,"disabling QD mirror (unable to send new log)");
+					disableQDMirroring_ConnectionError(
+						"Connection to the standby master was lost attempting to send new transaction log",
+						GetStandbyErrorString());
 					disconnectMirrorQD_SendClose();
 				}
 
@@ -678,8 +697,9 @@ WalSendServerDoRequest(WalSendRequest *walSendRequest)
 				}
 				else
 				{
-					disableQDMirroring_ConnectionError();
-					elog(NOTICE,"disabling QD mirror (unable to send new checkpoint location)");
+					disableQDMirroring_ConnectionError(
+						"Connection to the standby master was lost attempting to send new checkpoint location",
+						GetStandbyErrorString());
 					disconnectMirrorQD_SendClose();
 				}
 			}
@@ -719,8 +739,6 @@ static bool WalSendServer_ServiceRequest(ServiceCtrl *serviceCtrl, int sockfd, u
 	WalSendResponse walSendResponse;
 	bool result = false;
 
-	//*** Missing: On normal shutdown, disable and disconnect.
-	
 	/* 
 	 * Use a TRY block to catch unexpected errors that bubble up to this level
 	 * and disable QD mirroring.
@@ -749,8 +767,8 @@ static bool WalSendServer_ServiceRequest(ServiceCtrl *serviceCtrl, int sockfd, u
 		EmitErrorReport();
 		FlushErrorState();
 
-		disableQDMirroring_UnexpectedError();
-		elog(NOTICE,"disabling QD mirroring (unexpected error encountered)");
+		disableQDMirroring_UnexpectedError(
+			"An unexpected error encountered.  Please report this problem to Greenplum");
 
 		result = false;
 	}

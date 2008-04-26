@@ -182,7 +182,7 @@ static int	UseNewLine = 0;		/* Use EOF as query delimiters */
 
 static DtxContextInfo TempDtxContextInfo;
 
-extern void CheckForQDMirroringDisabledWork(void);
+extern void CheckForQDMirroringWork(void);
 
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
@@ -4992,7 +4992,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 		 * (2b) Check for disable work for QD mirroring.
 		 */
 		if (Gp_role == GP_ROLE_DISPATCH)
-			CheckForQDMirroringDisabledWork();
+			CheckForQDMirroringWork();
 
 		/*
 		 * (3) read a command (loop blocks here)

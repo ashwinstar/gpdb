@@ -72,4 +72,6 @@ extern bool write_position_to_end(XLogRecPtr *endLocation, struct timeval *timeo
 extern bool disconnectMirrorQD_SendClose(void);
 extern bool disconnectMirrorQD_Abrupt(void);
 
+extern char *GetStandbyErrorString(void);
+
 #endif   /* CDBLINK_H */

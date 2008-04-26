@@ -42,7 +42,7 @@ POSTGRES_BKI_SRCS := $(addprefix $(top_srcdir)/src/include/catalog/,\
 	pg_authid.h pg_auth_members.h pg_shdepend.h pg_shdescription.h pg_resqueue.h \
 	gp_configuration.h gp_id.h gp_policy.h gp_version.h \
 	pg_window.h \
-	pg_exttable.h pg_appendonly.h toasting.h indexing.h \
+	pg_exttable.h pg_appendonly.h gp_master_mirroring.h toasting.h indexing.h \
     )
 
 pg_includes := $(sort -I$(top_srcdir)/src/include -I$(top_builddir)/src/include)

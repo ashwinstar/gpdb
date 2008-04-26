@@ -181,6 +181,10 @@ int errOmitLocation(bool omitLocation);   /*CDB*/
 
 int errFatalReturn(bool fatalReturn);   /* CDB: true => return on FATAL error */
 
+int errSuppressOutputToLog(void);   /* GP */
+
+// Generally a good idea!
+extern bool SuppressPanic;   /* GP */
 
 /*----------
  * Old-style error reporting API: to be used in this way:
@@ -346,6 +350,7 @@ bool        elog_dismiss(int downgrade_to_elevel);
  */
 int         elog_geterrcode(void);      
 int         elog_getelevel(void);      
+char        *elog_message(void);
 
 
 /* GUC-configurable parameters */
@@ -389,5 +394,7 @@ __attribute__((format(printf, 1, 2)));
 extern size_t backtrace(void **buffer, int size);
 extern char **backtrace_symbols(void *const *buffer, int size);
 #endif
+
+extern void GetLastLogTimeVal(struct timeval *lastLogTimeVal);
 
 #endif   /* ELOG_H */

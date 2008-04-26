@@ -134,6 +134,7 @@ static int	recursion_depth = 0;	/* to detect actual recursion */
 		} \
 	} while (0)
 
+bool SuppressPanic = false;   /* GP */
 
 static void cdb_tidy_message(ErrorData *edata);
 static void log_line_prefix(StringInfo buf);
@@ -201,7 +202,7 @@ errstart(int elevel, const char *filename, int lineno,
 		 * If we are inside a critical section, all errors become PANIC
 		 * errors.	See miscadmin.h.
 		 */
-		if (CritSectionCount > 0)
+		if (CritSectionCount > 0 && !SuppressPanic)
 			elevel = PANIC;
 
 		/*
@@ -401,6 +402,13 @@ errfinish(int dummy,...)
 	if (elevel == ERROR)
 	{
 		/*
+		 * GP: While doing local error try/catch, do not reset all these
+		 * important variables!
+		 */
+		if (!SuppressPanic)
+		{  // GP: Don't indent so we can watch this section...
+		
+		/*
 		 * We do some minimal cleanup before longjmp'ing so that handlers can
 		 * execute in a reasonably sane state.
 		 */
@@ -418,7 +426,8 @@ errfinish(int dummy,...)
 		InterruptHoldoffCount = 0;
 
 		CritSectionCount = 0;	/* should be unnecessary, but... */
-
+		}// GP: End watching section.
+		
 		/*
 		 * Note that we leave CurrentMemoryContext set to ErrorContext. The
 		 * handler should reset it to something else soon.
@@ -974,6 +983,22 @@ errOmitLocation(bool omitLocation)
     return 0;					/* return value does not matter */
 }
 
+/*
+ * GP: errSuppressOutputToLog -- set flag indicating message is not to go to
+ * the system log.
+ */
+int errSuppressOutputToLog(void)
+{
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
+
+    edata->output_to_server = false;
+
+    return 0;					/* return value does not matter */
+}
+
 
 /*
  * CDB: errFatalReturn -- set flag indicating errfinish() should return 
@@ -1379,6 +1404,17 @@ elog_getelevel(void)
                 : errordata[errordata_stack_depth].elevel;
 } /* elog_getelevel */
 
+/*
+ * Note: A pointer is returned.  Make a copy of the message
+ * before re-throwing or flusing the error state.
+ */
+char*
+elog_message(void)
+{
+    return (errordata_stack_depth < 0)
+                ? NULL
+                : errordata[errordata_stack_depth].message;
+}
 
 /*
  * Initialization of error output file
@@ -1749,6 +1785,15 @@ cdb_tidy_message(ErrorData *edata)
     }
 }                               /* cdb_tidy_message */
 
+static struct timeval LastLogTimeVal = {0, 0};
+
+void
+GetLastLogTimeVal(struct timeval *lastLogTimeVal)
+{
+	Assert(lastLogTimeVal != NULL);
+
+	*lastLogTimeVal = LastLogTimeVal;
+}
 
 /*
  * Format tag info for log lines; append to the provided buffer.
@@ -1853,6 +1898,11 @@ log_line_prefix(StringInfo buf)
 					gettimeofday(&tv, NULL);
 					stamp_time = tv.tv_sec;
 
+					/*
+					 * GP: Save the time of the last log line.
+					 */
+					LastLogTimeVal = tv;
+
 					strftime(strfbuf, sizeof(strfbuf),
 					/* leave room for microseconds... */
 					/* Win32 timezone names are too long so don't print them */
@@ -1875,6 +1925,12 @@ log_line_prefix(StringInfo buf)
 					time_t		stamp_time = time(NULL);
 					char		strfbuf[128];
 
+					/*
+					 * GP: Save the time of the last log line.
+					 */
+					LastLogTimeVal.tv_sec = stamp_time;
+					LastLogTimeVal.tv_usec = 0;
+					
 					strftime(strfbuf, sizeof(strfbuf),
 					/* Win32 timezone names are too long so don't print them */
 #ifndef WIN32

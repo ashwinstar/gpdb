@@ -60,7 +60,8 @@ extern bool isQDMirroringPendingCatchup(void);
 extern void FtsQDMirroringCatchup(XLogRecPtr *flushedLocation);
 extern void FtsCheckReadyToSend(bool *ready, bool *haveNewCheckpointLocation, XLogRecPtr *newCheckpointLocation);
 extern void FtsQDMirroringNewCheckpointLoc(XLogRecPtr *newCheckpointLocation);
-extern void disableQDMirroring_WalSendServerError(void);
+extern void disableQDMirroring_WalSendServerError(char *detail);
+extern bool QDMirroringWriteCheck(void);
 
 /*
  *	Because O_DIRECT bypasses the kernel buffers, and because we never
@@ -1808,7 +1809,7 @@ XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId,
 	elog((Debug_print_qd_mirroring ? LOG : DEBUG1),"QD mirroring WriteWalPages parameters startidx %d, npages %d, timeLineID %d, logId %u, logSeg %u, logOff %X",
 		 startidx, npages, timeLineID, logId, logSeg, logOff);
 
-	if (!isQDMirroringEnabled())
+	if (!QDMirroringWriteCheck())
 	{
 		if (Debug_print_qd_mirroring)
 			elog(LOG,"Skipping QD mirroring -- not enabled");
@@ -1817,8 +1818,7 @@ XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId,
 	connected = WalSendServerClientConnect(/* complain */ true);
 	if (!connected)
 	{
-		disableQDMirroring_WalSendServerError();
-		elog(NOTICE, "disabling QD mirroring (cannot connect to WAL Send server)");
+		disableQDMirroring_WalSendServerError("Cannot connect to the WAL Send server");
 		return;
 	}
 
@@ -1835,8 +1835,7 @@ XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId,
 	
 	if (!successful)
 	{
-		disableQDMirroring_WalSendServerError();
-		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not send to WAL Send server)");
+		disableQDMirroring_WalSendServerError("Error occurred sending the WriteWalPages request to the WAL Send server");
 		return;
 	}
 
@@ -1844,8 +1843,7 @@ XLogQDMirrorWrite(int startidx, int npages, TimeLineID timeLineID, uint32 logId,
 	
 	if (!successful)
 	{
-		disableQDMirroring_WalSendServerError();
-		elog(NOTICE, "disabling QD mirroring (request WriteWalPages -- could not get response from WAL Send server)");
+		disableQDMirroring_WalSendServerError("Error occurred receiving the WriteWalPages response from the WAL Send server");
 		return;
 	}
 }
@@ -1873,8 +1871,7 @@ XLogQDMirrorFlush(void)
 	connected = WalSendServerClientConnect(/* complain */ true);
 	if (!connected)
 	{
-		disableQDMirroring_WalSendServerError();
-		elog(NOTICE, "disabling QD mirroring (cannot connect to WAL Send server)");
+		disableQDMirroring_WalSendServerError("Cannot connect to the WAL Send server");
 		return;
 	}
 
@@ -1887,8 +1884,7 @@ XLogQDMirrorFlush(void)
 	
 	if (!successful)
 	{
-		disableQDMirroring_WalSendServerError();
-		elog(NOTICE, "disabling QD mirroring (request FlushWalPages -- could not send to WAL Send server)");
+		disableQDMirroring_WalSendServerError("Error occurred sending the FlushWalPages request to the WAL Send server");
 		return;
 	}
 
@@ -1896,8 +1892,7 @@ XLogQDMirrorFlush(void)
 	
 	if (!successful)
 	{
-		disableQDMirroring_WalSendServerError();
-		elog(NOTICE, "disabling QD mirroring (request FlushWalPages -- could not get response from WAL Send server)");
+		disableQDMirroring_WalSendServerError("Error occurred receiving the FlushWalPages response from the WAL Send server");
 		return;
 	}
 }

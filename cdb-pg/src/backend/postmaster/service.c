@@ -104,46 +104,111 @@ ServiceInit(ServiceConfig *serviceConfig, ServiceCtrl *serviceCtrl)
 	serviceCtrl->listenerPort = -1;
 }
 
+// -----------------------------------------------------------------------------
+
+/*
+ * Kludge to prevent our error handling by raising and
+ * catching ERROR from becoming a PANIC in critical sections...
+ */
+#define DECLARE_SAVE_SUPPRESS_PANIC()\
+	int SaveSuppressPanic = false
+
+#define SUPPRESS_PANIC()\
+	{\
+		SaveSuppressPanic = SuppressPanic;\
+		SuppressPanic = true;\
+	}
+
+#define RESTORE_PANIC()\
+	{\
+		SuppressPanic = SaveSuppressPanic;\
+	}
+
+// -----------------------------------------------------------------------------
+
+static char ClientErrorString[200] = "";
+
+char *ServiceGetLastClientErrorString(void)
+{
+	return ClientErrorString;
+}
+
 static bool
 ServiceDoConnect(ServiceConfig *serviceConfig, int listenerPort, ServiceClient *serviceClient, bool complain)
 {
 	int  n;
-	struct sockaddr_in addr;	
+	struct sockaddr_in addr;
+	int saved_err;
+	char        *message;
+	bool		result = false;
+	DECLARE_SAVE_SUPPRESS_PANIC();
 	
-	/*
-	 * Open a connection to the service.
-	 */
-	serviceClient->sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(listenerPort);
-	addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-	if ((n = connect(serviceClient->sockfd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
+	PG_TRY();
 	{
-		if (complain)
-			ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							 errmsg("Interconnect Error: Could not connect to '%s'.", 
-							        serviceConfig->title),
-			                 errdetail("%m%s", "connect")));
-		serviceClient->sockfd = -1;
-		return false;
-	}
-	
-	/* make socket non-blocking BEFORE we connect. */
-	if (!pg_set_noblock(serviceClient->sockfd))
-	{
-		if (complain)
-			ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							 errmsg("Interconnect Error: Could not set '%s' socket"
-							        "to non-blocking mode.", serviceConfig->title),
-				             errdetail("%m%s sockfd=%d", "fcntl", serviceClient->sockfd)));
-		close(serviceClient->sockfd);
-		serviceClient->sockfd = -1;
-		return false;
-	}
+		SUPPRESS_PANIC();
+		
+		/*
+		 * Open a connection to the service.
+		 */
+		serviceClient->sockfd = socket(AF_INET, SOCK_STREAM, 0);
+		
+		addr.sin_family = AF_INET;
+		addr.sin_port = htons(listenerPort);
+		addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-	return true;
+		if ((n = connect(serviceClient->sockfd, (struct sockaddr *) & addr, sizeof(addr))) < 0)
+		{
+			saved_err = errno;
+
+			serviceClient->sockfd = -1;
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							  errmsg("Could not connect to '%s': %s", 
+									 serviceConfig->title,
+									 strerror(saved_err))));
+		}
+		
+		/* make socket non-blocking BEFORE we connect. */
+		if (!pg_set_noblock(serviceClient->sockfd))
+		{
+			saved_err = errno;
+
+			close(serviceClient->sockfd);
+			serviceClient->sockfd = -1;
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 errmsg("Could not set '%s' socket to non-blocking mode: %s", 
+							        serviceConfig->title,
+								    strerror(saved_err))));
+		}
+	
+		result = true;
+		RESTORE_PANIC();
+	}
+	PG_CATCH();
+	{
+		RESTORE_PANIC();
+
+		/* Report the error to the server log */
+	    if (!elog_demote(WARNING))
+    	{
+    		elog(LOG,"unable to demote error");
+        	PG_RE_THROW();
+    	}
+
+		message = elog_message();
+ 		if (message != NULL && strlen(message) + 1 < sizeof(ClientErrorString))
+			strcpy(ClientErrorString, message);
+		else
+			strcpy(ClientErrorString, "");
+		
+		if (complain)
+			EmitErrorReport();
+		FlushErrorState();
+	
+		result = false;
+	}
+	PG_END_TRY();
+
+	return result;
 }
 
 void 
@@ -202,25 +267,60 @@ bool
 ServiceClientSendRequest(ServiceClient *serviceClient, void* request, int requestLen)
 {	
 	ServiceConfig *serviceConfig;
-	bool successful;
+	char        *message;
+	bool		result = false;
+	DECLARE_SAVE_SUPPRESS_PANIC();
 	
 	Assert(serviceClient != NULL);
 	Assert(request != NULL);
-	serviceConfig = serviceClient->serviceConfig;
-	if (serviceConfig == NULL)
+	
+	PG_TRY();
 	{
-		elog(ERROR,"'%s' not connected", serviceConfig->title);
+		SUPPRESS_PANIC();
+		
+		serviceConfig = serviceClient->serviceConfig;
+		if (serviceConfig == NULL)
+		{
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						    errmsg("Not connected to '%s'", 
+						           serviceConfig->title)));
+		}
+		if (requestLen != serviceClient->serviceConfig->requestLen)
+		{
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 errmsg("Expecting request length %d and actual length is %d for '%s'",
+				 					serviceClient->serviceConfig->requestLen, requestLen,
+				 					serviceConfig->title)));
+		}
+
+		result = ServiceClientWrite(serviceClient, request, requestLen);
+		RESTORE_PANIC();
 	}
-	if (requestLen != serviceClient->serviceConfig->requestLen)
+	PG_CATCH();
 	{
-		elog(ERROR,"'%s' request length is %d and expected length %d",
-		     serviceConfig->title,
-		     requestLen, serviceClient->serviceConfig->requestLen);
+		RESTORE_PANIC();
+		/* Report the error to the server log */
+	    if (!elog_demote(WARNING))
+    	{
+    		elog(LOG,"unable to demote error");
+        	PG_RE_THROW();
+    	}
+
+		message = elog_message();
+ 		if (message != NULL && strlen(message) + 1 < sizeof(ClientErrorString))
+			strcpy(ClientErrorString, message);
+		else
+			strcpy(ClientErrorString, "");
+		
+		EmitErrorReport();
+		FlushErrorState();
+	
+		result = false;
 	}
+	PG_END_TRY();
 
-	successful = ServiceClientWrite(serviceClient, request, requestLen);
+	return result;
 
-	return successful;
 }
 
 static bool
@@ -230,10 +330,13 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 	int		n;
 	int    bytesWritten = 0;
 	int			saved_err;
+	char        *message;
+	bool		result = false;
 	fd_set		wset;
 	struct timeval rundownTimeout;
 		// Use local variable since select modifies
 		// the timeout parameter with remaining time.
+	DECLARE_SAVE_SUPPRESS_PANIC();
 	
 	Assert(serviceClient != NULL);
 	serviceConfig = (ServiceConfig*)serviceClient->serviceConfig;
@@ -241,95 +344,115 @@ ServiceClientWrite(ServiceClient *serviceClient, void* request, int requestLen)
 	ServiceGetClientTimeout(serviceConfig, &rundownTimeout);
 	Assert(request != NULL);
 		
-	if (serviceClient->sockfd == -1)
-		elog( ERROR, "lost Connection to '%s'", serviceConfig->title);
-		
-	/*
-	 * write the request
-	 */	
-	while( bytesWritten < requestLen )
+	PG_TRY();
 	{
-//		CHECK_FOR_INTERRUPTS();
-					
-		n = write(serviceClient->sockfd, 
-			      ((char *)request) + bytesWritten,
-			      requestLen - bytesWritten);
-		saved_err = errno;
-	
-		if (n == 0)
-		{
-			elog(NOTICE, "Error: '%s' socket closed.", serviceConfig->title);
-			return false;
-		}
+		SUPPRESS_PANIC();
 		
-		if (n < 0)
+		if (serviceClient->sockfd == -1)
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						     errmsg("Lost connection to '%s'", 
+						            serviceConfig->title)));
+		
+		/*
+		 * write the request
+		 */	
+		while( bytesWritten < requestLen )
 		{
-			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
+			n = write(serviceClient->sockfd, 
+				      ((char *)request) + bytesWritten,
+				      requestLen - bytesWritten);
+			saved_err = errno;
+		
+			if (n == 0)
 			{
-				ereport(NOTICE, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-								 errmsg("Error: Could not write() message to '%s': %s",
-								        serviceConfig->title,
-								        strerror(errno)),
-								 errdetail("error during write() call (error:%d) to %s on sockfd: %d ",
-											errno, 
-											serviceConfig->title, 
-											serviceClient->sockfd)));
-				return false;
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									 errmsg("Connection to '%s' is closed", 
+							                serviceConfig->title)));
 			}
-
-			if (saved_err == EWOULDBLOCK)
+			
+			if (n < 0)
 			{
-				/* we shouldn't really get here since we are dealing with
-				 * small messages, but once we've read a bit of data we
-				 * need to finish out reading till we get the message (or error)
-				 */
-				do
+				if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 				{
-//					CHECK_FOR_INTERRUPTS();
-					
-					FD_ZERO(&wset);
-					FD_SET(serviceClient->sockfd, &wset);
-					n = select(serviceClient->sockfd + 1, NULL, &wset, NULL, &rundownTimeout);
-					if (n == 0)
-					{
-						struct timeval wholeTimeout;
-						
-						ServiceGetClientTimeout(serviceConfig, &wholeTimeout);
-
-						elog(NOTICE,"socket write to '%s' timed out (sockfd %d, %u seconds, %u milliseconds)",
-							 serviceConfig->title,
-							 serviceClient->sockfd,
-							 (unsigned int)wholeTimeout.tv_sec, 
-					 		 (unsigned int)wholeTimeout.tv_usec / 1000);
-						return false;
-					}
-					else if (n < 0 && errno == EINTR)
-						continue;
-					else if (n < 0)
-					{
-						saved_err = errno;
-
-						ereport(NOTICE, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-										 errmsg("Error: Could not write() message to '%s': %s",
-										        serviceConfig->title, strerror(errno)),
-										 errdetail("error during write() call (error:%d) to '%s' on sockfd: %d ",
-												   errno,
-												   serviceConfig->title,
-												   serviceClient->sockfd)));
-						return false;
-					}
+					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									 errmsg("Write error to '%s': %s",
+									        serviceConfig->title,
+									        strerror(saved_err))));
 				}
-				while (n < 1);
-			}
-			/* else saved_err == EINTR */
 
-			continue;
+				if (saved_err == EWOULDBLOCK)
+				{
+					/* we shouldn't really get here since we are dealing with
+					 * small messages, but once we've read a bit of data we
+					 * need to finish out reading till we get the message (or error)
+					 */
+					do
+					{
+						FD_ZERO(&wset);
+						FD_SET(serviceClient->sockfd, &wset);
+						n = select(serviceClient->sockfd + 1, NULL, &wset, NULL, &rundownTimeout);
+						if (n == 0)
+						{
+							struct timeval wholeTimeout;
+							
+							ServiceGetClientTimeout(serviceConfig, &wholeTimeout);
+
+							ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+											 errmsg("Write to '%s' timed out after %d.%03d seconds)",
+								 		            serviceConfig->title,
+								                    (int)wholeTimeout.tv_sec, 
+						 		                    (int)wholeTimeout.tv_usec / 1000)));
+						}
+						else if (n < 0 && errno == EINTR)
+							continue;
+						else if (n < 0)
+						{
+							saved_err = errno;
+
+							ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+											 errmsg("Write error to '%s': %s",
+											        serviceConfig->title, 
+											        strerror(saved_err))));
+						}
+					}
+					while (n < 1);
+				}
+				/* else saved_err == EINTR */
+
+				continue;
+			}
+
+			bytesWritten += n;
 		}
 
-		bytesWritten += n;
+		result = true;
+		RESTORE_PANIC();
 	}
+	PG_CATCH();
+	{
+		RESTORE_PANIC();
 
-	return true;
+		/* Report the error to the server log */
+	    if (!elog_demote(WARNING))
+    	{
+    		elog(LOG,"unable to demote error");
+        	PG_RE_THROW();
+    	}
+
+		message = elog_message();
+ 		if (message != NULL && strlen(message) + 1 < sizeof(ClientErrorString))
+			strcpy(ClientErrorString, message);
+		else
+			strcpy(ClientErrorString, "");
+		
+		EmitErrorReport();
+		FlushErrorState();
+	
+		result = false;
+	}
+	PG_END_TRY();
+
+	return result;
 }
 
 /*
@@ -359,10 +482,13 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 	int		n;
 	int	   bytesRead = 0;
 	int			saved_err;
+	char        *message;
+	bool		result = false;
 	fd_set		rset;
 	struct timeval rundownTimeout = {0,0};
 		// Use local variable since select modifies
 		// the timeout parameter with remaining time.
+	DECLARE_SAVE_SUPPRESS_PANIC();
 
 	Assert(serviceClient != NULL);
 	serviceConfig = serviceClient->serviceConfig;
@@ -371,87 +497,109 @@ ServiceClientRead(ServiceClient *serviceClient, void* response, int responseLen,
 	if (timeout != NULL)
 		rundownTimeout = *timeout;
 
-	/*
-	 * read the response
-	 */	
-	while (bytesRead < responseLen)
+	PG_TRY();
 	{
+		SUPPRESS_PANIC();
 		
-//		CHECK_FOR_INTERRUPTS();
+		/*
+		 * read the response
+		 */	
+		while (bytesRead < responseLen)
+		{
+			n = read(serviceClient->sockfd, 
+				     ((char *)response) + bytesRead, 
+				     responseLen - bytesRead);
+			saved_err = errno;
 			
-		n = read(serviceClient->sockfd, 
-			     ((char *)response) + bytesRead, 
-			     responseLen - bytesRead);
-		saved_err = errno;
-		
-		if (n == 0)
-		{
-			elog( NOTICE, "'%s' socket is closed", serviceConfig->title);
-			return false;
-		}
-		
-		if (n < 0)
-		{
-			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
+			if (n == 0)
 			{
-				elog( NOTICE, "Error: Could not read() message from '%s'."
-							   "(error:%d). Closing connection.", 
-							   serviceConfig->title,
-							   saved_err);
-				return false;
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								 errmsg("Connection to '%s' is closed", 
+								        serviceConfig->title)));
 			}
-
-			if (saved_err == EWOULDBLOCK)
+			
+			if (n < 0)
 			{
-				/* we shouldn't really get here since we are dealing with
-				 * small messages, but once we've read a bit of data we
-				 * need to finish out reading till we get the message (or error)
-				 */
-				do
+				if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 				{
-//					CHECK_FOR_INTERRUPTS();
-					
-					FD_ZERO(&rset);
-					FD_SET(serviceClient->sockfd, &rset);
-					n = select(serviceClient->sockfd + 1, &rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
-					if (n == 0)
-					{
-						if (timeout != NULL)
-							elog(NOTICE,"socket read from '%s' timed out (sockfd %d, %u seconds, %u milliseconds)",
-								 serviceConfig->title,
-								 serviceClient->sockfd,
-								 (unsigned int)timeout->tv_sec, 
-						 		 (unsigned int)timeout->tv_usec / 1000);
-						return false;
-					}
-					else if (n < 0 && errno == EINTR)
-						continue;
-					else if (n < 0)
-					{
-						saved_err = errno;
-
-						ereport(NOTICE, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-									     errmsg("Error: Could not read() message from '%s'",
-									            serviceConfig->title),
-										 errdetail("error during read() call (errno: %d \"%s\") from remote"
-												   "sockfd = %d", 
-												   saved_err,
-												   strerror(saved_err),
-												   serviceClient->sockfd)));
-						return false;		
-					}
+					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								     errmsg("Read error from '%s': %s",
+								            serviceConfig->title,
+								            strerror(saved_err))));
 				}
-				while (n < 1);
+
+				if (saved_err == EWOULDBLOCK)
+				{
+					/* we shouldn't really get here since we are dealing with
+					 * small messages, but once we've read a bit of data we
+					 * need to finish out reading till we get the message (or error)
+					 */
+					do
+					{
+						FD_ZERO(&rset);
+						FD_SET(serviceClient->sockfd, &rset);
+						n = select(serviceClient->sockfd + 1, &rset, NULL, NULL, (timeout == NULL ? NULL : &rundownTimeout));
+						if (n == 0)
+						{
+							if (timeout != NULL)
+							{
+								ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+										          errmsg("Read from '%s' timed out after %d.%03d seconds",
+												         serviceConfig->title,
+												         (int)timeout->tv_sec, 
+												         (int)timeout->tv_usec / 1000)));
+							}
+						}
+						else if (n < 0 && errno == EINTR)
+							continue;
+						else if (n < 0)
+						{
+							saved_err = errno;
+
+							ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+										     errmsg("Read error from '%s': %s",
+										            serviceConfig->title,
+										            strerror(saved_err))));
+						}
+					}
+					while (n < 1);
+				}
+				/* else saved_err == EINTR */
+
+				continue;
 			}
-			/* else saved_err == EINTR */
-
-			continue;
+			else
+				bytesRead += n;
 		}
-		else
-			bytesRead += n;
-	}
 
-	return true;
+		result = true;
+		RESTORE_PANIC();
+	}
+	PG_CATCH();
+	{
+		RESTORE_PANIC();
+
+		/* Report the error to the server log */
+	    if (!elog_demote(WARNING))
+    	{
+    		elog(LOG,"unable to demote error");
+        	PG_RE_THROW();
+    	}
+
+		message = elog_message();
+ 		if (message != NULL && strlen(message) + 1 < sizeof(ClientErrorString))
+			strcpy(ClientErrorString, message);
+		else
+			strcpy(ClientErrorString, "");
+		
+		EmitErrorReport();
+		FlushErrorState();
+	
+		result = false;
+	}
+	PG_END_TRY();
+
+	return result;
 }
 
 /*
@@ -480,59 +628,93 @@ ServiceClientPollRead(ServiceClient *serviceClient, void* response, int response
 	ServiceConfig 	*serviceConfig;
 	int				n;
 	int				saved_err;
+	char            *message;
+	bool		    result = false;
+	DECLARE_SAVE_SUPPRESS_PANIC();
 
 	Assert(serviceClient != NULL);
 	serviceConfig = serviceClient->serviceConfig;
 	Assert(serviceConfig != NULL);
 	Assert(response != NULL);
 
-	/*
-	 * Attempt to read the response
-	 */	
-	while (true)
+	PG_TRY();
 	{
-//		CHECK_FOR_INTERRUPTS();
-			
-		n = read(serviceClient->sockfd, 
-			     ((char *)response), 
-			     responseLen);
-		saved_err = errno;
+		SUPPRESS_PANIC();
 		
-		if (n == 0)
+		/*
+		 * Attempt to read the response
+		 */	
+		while (true)
 		{
-			elog( NOTICE, "'%s' socket is closed", serviceConfig->title);
-			return false;
-		}
-		else if (n < 0)
-		{
-			if (saved_err == EWOULDBLOCK)
+			n = read(serviceClient->sockfd, 
+				     ((char *)response), 
+				     responseLen);
+			saved_err = errno;
+			
+			if (n == 0)
 			{
-				*pollResponseReceived = false;
-				return true;
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								 errmsg("Connection to '%s' is closed", 
+								         serviceConfig->title)));
 			}
-			
-			if (saved_err == EINTR)
-				continue;
-			
-			elog( NOTICE, "Error: Could not read() message from '%s'."
-						   "(error:%d). Closing connection.", 
-						   serviceConfig->title,
-						   saved_err);
-			return false;
+			else if (n < 0)
+			{
+				if (saved_err == EWOULDBLOCK)
+				{
+					*pollResponseReceived = false;
+					break;
+				}
+				
+				if (saved_err == EINTR)
+					continue;
+				
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								 errmsg("Read error from '%s': %s",
+								        serviceConfig->title,
+								        strerror(saved_err))));
+			}
+
+			if (n != responseLen)
+			{
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								 errmsg("Expecting message length %d and actual read length was %d from '%s'",
+					 			        responseLen, n,
+					 			        serviceConfig->title)));
+				return false;
+			}
+
+			*pollResponseReceived = true;
+			break;
 		}
 
-		if (n != responseLen)
-		{
-			elog(NOTICE,"expecting message length %d and read %d",
-				 responseLen, n);
-			return false;
-		}
-
-		*pollResponseReceived = true;
-		break;
+		result = true;
+		RESTORE_PANIC();
 	}
+	PG_CATCH();
+	{
+		RESTORE_PANIC();
 
-	return true;
+		/* Report the error to the server log */
+	    if (!elog_demote(WARNING))
+    	{
+    		elog(LOG,"unable to demote error");
+        	PG_RE_THROW();
+    	}
+
+		message = elog_message();
+ 		if (message != NULL && strlen(message) + 1 < sizeof(ClientErrorString))
+			strcpy(ClientErrorString, message);
+		else
+			strcpy(ClientErrorString, "");
+		
+		EmitErrorReport();
+		FlushErrorState();
+	
+		result = false;
+	}
+	PG_END_TRY();
+
+	return result;
 }
 
 
@@ -797,19 +979,15 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 			 * we'll just go ahead and blow up.  This will result in the 
 			 * postmaster re-spawning a new process. 
 			 */
-			elog(ERROR,"'%s': error during select() call (error:%d).", 
-			     serviceConfig->title, errno);
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 errmsg("'%s': error during select() call (error:%d).", 
+			     			        serviceConfig->title, errno)));
 			break;	
 		}
 		
-//		elog(LOG, "'%s' select() returned %d ready sockets", 
-//			 serviceConfig->title, n);
-
 		/* is it someone tickling our listener port? */
 		if (FD_ISSET(serviceCtrl->listenerFd, &rrset))
 		{
-//			elog(LOG, "'%s': accepting an incoming connection",
-//				 serviceConfig->title);
             addrlen = sizeof(addr);
 			if ((newsockfd = accept(serviceCtrl->listenerFd,
 				                    (struct sockaddr *) & addr,
@@ -819,8 +997,10 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 				 * TODO: would be nice to read the errno and try and provide
 				 * more useful info as to why this happened.
 				 */
-				elog(NOTICE, "'%s': error during accept() call (error:%d)", 
-				     serviceConfig->title, errno);
+				ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 	 errmsg("'%s': error from client connection: %s)", 
+				     				    serviceConfig->title, 
+				     				    strerror(errno))));
 			}
 			
 			/* make socket non-blocking BEFORE we connect. */
@@ -830,11 +1010,10 @@ ServiceListenLoop(ServiceCtrl *serviceCtrl)
 				 * TODO: would be nice to read the errno and try and provide
 				 * more useful info as to why this happened.
 				 */
-				elog(NOTICE, "'%s': Could not set outbound socket to non-blocking mode"
-					 			"error during fcntl() call (error:%d) for sockfd: %d",
-							   serviceConfig->title,
-							   errno, 
-							   newsockfd);
+				ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 	 errmsg("'%s': could not set outbound socket to non-blocking mode: %s",
+									    serviceConfig->title,
+									    strerror(errno))));
 			}
 			
 			if (newsockfd > highsock)
@@ -929,8 +1108,6 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 	/* 
 	 * Read in the incoming request message.
 	 */
-//	elog(LOG,"ServiceProcessRequest called on sockfd %d, expecting %d byte request",
-//	     sockfd, reqlen);
 	while (bytesRead < reqlen)
 	{
 		CHECK_FOR_INTERRUPTS();
@@ -949,10 +1126,10 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 		{
 			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 			{
-				elog(NOTICE, "'%s': Error: Could not read() message from client "
-					  "(error:%d). Closing connection.", 
-					  serviceConfig->title,
-					  saved_err);
+				ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								  errmsg("'%s': read error from backend process: %s",
+									     serviceConfig->title,
+									     strerror(saved_err))));
 				return false;
 			}
 
@@ -978,11 +1155,11 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 						
 						ServiceGetClientTimeout(serviceConfig, &wholeTimeout);
 
-						elog(NOTICE,"'%s': socket read from backend process timed out (sockfd %d, %u seconds, %u milliseconds)",
-							 serviceConfig->title,
-							 sockfd,
-							 (unsigned int)wholeTimeout.tv_sec, 
-					 		 (unsigned int)wholeTimeout.tv_usec / 1000);
+						ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+										 errmsg("'%s': read from backend process timed out after %d.%03d seconds",
+												serviceConfig->title,
+												(int)wholeTimeout.tv_sec, 
+										 		(int)wholeTimeout.tv_usec / 1000)));
 						return false;
 					}
 					if (n < 0 && errno == EINTR)
@@ -991,10 +1168,10 @@ ServiceProcessRequest(ServiceCtrl *serviceCtrl, int sockfd, uint8 *inputBuff, bo
 					{
 						saved_err = errno;
 
-						elog(NOTICE, "'%s': error reading incoming message from client (errno: %d \"%s\")",
-							 serviceConfig->title,
-							 saved_err,
-							 strerror(saved_err));
+						ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+										 errmsg("'%s': read error from backend process: %s",
+												serviceConfig->title,
+												strerror(saved_err))));
 						return false;
 					}
 				}
@@ -1051,7 +1228,9 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 	
 		if (n == 0)
 		{
-			elog(NOTICE, "'%s': client socket is closed", serviceConfig->title);
+			ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							 errmsg("'%s': connection to backend process is closed", 
+							        serviceConfig->title)));
 			return false;
 		}
 		
@@ -1059,9 +1238,10 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 		{
 			if (saved_err != EINTR && saved_err != EWOULDBLOCK)
 			{
-				elog(NOTICE, "'%s': Error: Could not write() message from client "
-					  "(error:%d). Closing connection.", 
-					  serviceConfig->title, sockfd);
+				ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							     errmsg("'%s': write error to backend process: %s",
+					  					serviceConfig->title, 
+					  					strerror(saved_err))));
 				return false;
 			}
 
@@ -1084,11 +1264,11 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 
 						ServiceGetClientTimeout(serviceConfig, &wholeTimeout);
 
-						elog(NOTICE,"'%s': socket write from backend process timed out (sockfd %d, %u seconds, %u milliseconds)",
-							 serviceConfig->title,
-							 sockfd,
-							 (unsigned int)wholeTimeout.tv_sec, 
-					 		 (unsigned int)wholeTimeout.tv_usec / 1000);
+						ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							     		 errmsg("'%s': write to backend process timed out after %d.%03d seconds)",
+												 serviceConfig->title,
+												 (int)wholeTimeout.tv_sec, 
+										 		 (int)wholeTimeout.tv_usec / 1000)));
 						return false;
 					}
 					if (n < 0 && errno == EINTR)
@@ -1097,8 +1277,10 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 					{
 						saved_err = errno;
 
-						elog(NOTICE, "'%s': error writing incoming message from client. (errno: %d)",
-							 serviceConfig->title, saved_err);
+						ereport(NOTICE, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							     		 errmsg("'%s': write error to backend process: %s)",
+							 					serviceConfig->title, 
+							 					strerror(saved_err))));
 						return false;
 					}
 				}
@@ -1149,11 +1331,10 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("'%s' Error: Could not setup listener socket: %s", 
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("'%s' could not create listener socket: %s", 
 						       serviceConfig->title,
-						       strerror(errno)),
-				errdetail("error during socket() call (error:%d).", errno)));
+						       strerror(errno))));
 	}
 
 	memset(&addr, 0, sizeof(addr));
@@ -1172,10 +1353,11 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-			   errmsg("'%s' Error: Could not setup listener socket",
-			          serviceConfig->title),
-				  errdetail("error during bind() call (error:%d).", errno)));
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+					    errmsg("'%s' could not setup listener socket: %s",
+					           serviceConfig->title,
+					           strerror(errno)),
+						       errdetail("error during bind() call (error:%d).", errno)));
 		
 	}
 
@@ -1185,11 +1367,11 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("'%s' Error: Could not setup listener socket: %s", 
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("'%s' could not setup listener socket: %s", 
 						       serviceConfig->title,
 						       strerror(errno)),
-				errdetail("error during listen() call (error:%d).", errno)));
+							   errdetail("error during listen() call (error:%d).", errno)));
 	}
 
 
@@ -1202,10 +1384,10 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 		 * more useful info as to why this happened.
 		 */
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERNAL_ERROR),
-						errmsg("'%s' Error: Could not setup listener socket: %s", 
+						errmsg("'%s' could not setup listener socket: %s", 
 						       serviceConfig->title,
 						       strerror(errno)),
-		   errdetail("error during getsockname() call (error:%d).", errno)));
+		   					   errdetail("error during getsockname() call (error:%d).", errno)));
 	}
 
 
@@ -1216,5 +1398,3 @@ ServiceListenerSetup(ServiceCtrl *serviceCtrl)
 
 	return listenerPort;
 }
-
-// TEMP END
