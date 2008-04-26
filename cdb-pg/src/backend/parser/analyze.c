@@ -2038,9 +2038,6 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 	 * If distributedBy is NIL, the user did not explicitly say what he 
 	 * wanted for a distribution policy.  So, we need to assign one.
 	 */
-		 
-		
-	
 	if (distributedBy == NIL && cxt && cxt->pkey != NULL)
 	{
 		/*
@@ -2344,21 +2341,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 		 * set the distribution policy.
 		 */
 		policy->nattrs = 0;
-		if (distributedBy->length == 1 && (distributedBy->head == NULL || distributedBy->head->data.ptr_value == NULL))
+		if (!(distributedBy->length == 1 && linitial(distributedBy) == NULL))
 		{ 
-			if (cxt && cxt->pkey)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("PRIMARY KEY and DISTRIBUTED RANDOMLY are incompatible"
-								)));
-			else if (uniqueindex)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("UNIQUE and DISTRIBUTED RANDOMLY are incompatible"
-								)));
-		}
-		else
-		foreach(keys, distributedBy)
+			foreach(keys, distributedBy)
 		{
 			char	   *key = strVal(lfirst(keys));
 			bool		found = false;
@@ -2412,6 +2397,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 			}
 			
 			if (!found)
+			{
 			foreach(columns, cxt->columns)
 			{
 				column = (ColumnDef *) lfirst(columns);
@@ -2440,6 +2426,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 					found = true;
 					break;
 				}
+			}
 			}
 
 			if (found)
@@ -2474,6 +2461,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt,
 
 
 			/* we should check for duplicate column usage */
+		}
 		}
 
 	}

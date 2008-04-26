@@ -231,3 +231,21 @@ CREATE TABLE array_index_op_test (
 	i			int4[],
 	t			text[]
 );
+
+-- MPP-2764: distributed randomly is not compatible with primary key or unique
+-- constraints
+create table distrand(i int, j int, primary key (i)) distributed randomly;
+create table distrand(i int, j int, unique (i)) distributed randomly;
+create table distrand(i int, j int, primary key (i, j)) distributed randomly;
+create table distrand(i int, j int, unique (i, j)) distributed randomly;
+create table distrand(i int, j int, constraint "test" primary key (i)) 
+   distributed randomly;
+create table distrand(i int, j int, constraint "test" unique (i)) 
+   distributed randomly;
+-- this should work though
+create table distrand(i int, j int, constraint "test" unique (i, j)) 
+   distributed by(i, j);
+drop table distrand;
+create table distrand(i int, j int) distributed randomly;
+create unique index distrand_idx on distrand(i);
+drop table distrand; 

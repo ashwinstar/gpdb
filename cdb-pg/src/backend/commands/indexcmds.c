@@ -186,6 +186,18 @@ DefineIndex(RangeVar *heapRelation,
 				 errmsg("\"%s\" is not a table",
 						heapRelation->relname)));
 
+	/* 
+	 * Prevent unique or primary key indexes when table is distributed 
+	 * randomly
+	 */
+	if (rel->rd_cdbpolicy && 
+		rel->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED && 
+		rel->rd_cdbpolicy->nattrs == 0 /* distributed randomly */ && 
+		(primary || unique))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("%s and DISTRIBUTED RANDOMLY are incompatible",
+						primary ? "PRIMARY KEY" : "UNIQUE")));
 	/*
 	 * Don't try to CREATE INDEX on temp tables of other backends.
 	 */
