@@ -1641,7 +1641,6 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_disable_tuple_hints,
 		true, NULL, NULL
 	},
-		
  	{
  		{"debug_print_server_processes", PGC_SUSET, LOGGING_WHAT,
  			gettext_noop("Prints server process management to server log."),

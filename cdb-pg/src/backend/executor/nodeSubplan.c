@@ -1055,10 +1055,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 */
 			shouldTeardownInterconnect = true;
 			Assert(!(queryDesc->estate->interconnect_context));
-			SetupInterconnect((ChunkTransportState **)&queryDesc->estate->interconnect_context,
-							   queryDesc->estate->es_sliceTable,
-							   queryDesc->estate->es_sliceTable->localSlice,
-							   queryDesc->estate->motionlayer_context);
+			SetupInterconnect(queryDesc->estate);
 			Assert((queryDesc->estate->interconnect_context));
 
 			ExecUpdateTransportState(planstate, queryDesc->estate->interconnect_context);

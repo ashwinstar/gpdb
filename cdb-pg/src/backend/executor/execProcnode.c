@@ -778,7 +778,7 @@ transportUpdateNodeWalker(PlanState *node, void *context)
 }	/* transportUpdateNodeWalker */
 
 void
-ExecUpdateTransportState(PlanState *node, struct ChunkTransportState *state)
+ExecUpdateTransportState(PlanState *node, ChunkTransportState *state)
 {
 	planstate_walk_node(node, transportUpdateNodeWalker, state);
 }	                            /* ExecUpdateTransportState */

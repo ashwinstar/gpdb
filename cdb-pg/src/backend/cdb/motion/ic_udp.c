@@ -25,6 +25,7 @@
 #include "cdb/tupchunklist.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 #include <fcntl.h>
 #include <limits.h>
@@ -193,6 +194,9 @@ static void SendEosUDP(MotionLayerState *mlStates, ChunkTransportState *transpor
 					   int motNodeID, TupleChunkListItem tcItem);
 static bool SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 						 ChunkTransportStateEntry *pEntry, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
+
+static TupleChunkListItem receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry, 
+										   int16 motNodeID, int16 *srcRoute, MotionConn *conn, bool inTeardown);
 
 static bool flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, 
 						   ChunkTransportStateEntry *pEntry, MotionConn * conn, int16 motionId);
@@ -1036,10 +1040,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 }                               /* setupOutgoingUDPConnection */
 
 void
-SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
-					 struct SliceTable	*mySliceTable,
-					 int mySliceId,
-					 MotionLayerState *mlStates)
+SetupUDPInterconnect(EState *estate)
 {
 	int			i, n;
 	ListCell   *cell;
@@ -1057,37 +1058,38 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 
 	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
 
-	Insist(!*ppTransportStates && mySliceTable);
+	Insist(!estate->interconnect_context && estate->es_sliceTable);
 
-	*ppTransportStates = palloc0(sizeof(ChunkTransportState));
-	
+	estate->interconnect_context = palloc0(sizeof(ChunkTransportState));
+
+	/* add back-pointer for dispatch check. */
+	estate->interconnect_context->estate = estate;
+
 	/* initialize state variables */
-	Assert((*ppTransportStates)->size == 0);
-	(*ppTransportStates)->size = CTS_INITIAL_SIZE;
-	(*ppTransportStates)->states = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportStateEntry));
+	Assert(estate->interconnect_context->size == 0);
+	estate->interconnect_context->size = CTS_INITIAL_SIZE;
+	estate->interconnect_context->states = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportStateEntry));
 
-	(*ppTransportStates)->teardownActive = false;
-	(*ppTransportStates)->activated = false;
-	(*ppTransportStates)->incompleteConns = NIL;
-	(*ppTransportStates)->sliceTable = NULL;
-	(*ppTransportStates)->sliceId = -1;
+	estate->interconnect_context->teardownActive = false;
+	estate->interconnect_context->activated = false;
+	estate->interconnect_context->incompleteConns = NIL;
+	estate->interconnect_context->sliceTable = NULL;
+	estate->interconnect_context->sliceId = -1;
 
-	(*ppTransportStates)->sliceTable = mySliceTable;
-	(*ppTransportStates)->sliceId = mySliceId;
+	estate->interconnect_context->sliceTable = estate->es_sliceTable;
+	estate->interconnect_context->sliceId = estate->es_cur_slice_idx;
 
-	(*ppTransportStates)->RecvTupleChunkFrom = RecvTupleChunkFromUDP;
-	(*ppTransportStates)->RecvTupleChunkFromAny = RecvTupleChunkFromAnyUDP;
-	(*ppTransportStates)->SendEos = SendEosUDP;
-	(*ppTransportStates)->SendChunk = SendChunkUDP;
-	(*ppTransportStates)->doSendStopMessage = doSendStopMessageUDP;
+	estate->interconnect_context->RecvTupleChunkFrom = RecvTupleChunkFromUDP;
+	estate->interconnect_context->RecvTupleChunkFromAny = RecvTupleChunkFromAnyUDP;
+	estate->interconnect_context->SendEos = SendEosUDP;
+	estate->interconnect_context->SendChunk = SendChunkUDP;
+	estate->interconnect_context->doSendStopMessage = doSendStopMessageUDP;
 
-	mySlice = (Slice *) list_nth((*ppTransportStates)->sliceTable->slices, mySliceId);
+	mySlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, estate->es_cur_slice_idx);
 
     Assert(mySlice &&
            IsA(mySlice, Slice) &&
-           mySlice->sliceIndex == mySliceId);
-
-	gp_udp_ic_cleanup = false;
+           mySlice->sliceIndex == estate->es_cur_slice_idx);
 
 #ifdef USE_ASSERT_CHECKING
 	if (gp_udpic_dropseg != UNDEF_SEGMENT ||
@@ -1116,7 +1118,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 		elog(DEBUG5, "Setting up RECEIVING motion node %d", childId);
 #endif
 
-		aSlice = (Slice *) list_nth((*ppTransportStates)->sliceTable->slices, childId);
+		aSlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, childId);
 		numProcs = list_length(aSlice->primaryProcesses);
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -1124,13 +1126,13 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 			 mySlice->sliceIndex, childId);
 #endif
 
-		pEntry = createChunkTransportState(*ppTransportStates, aSlice, mySlice, numProcs, 0);
+		pEntry = createChunkTransportState(estate->interconnect_context, aSlice, mySlice, numProcs, 0);
 
 		Assert(pEntry);
 		Assert(pEntry->valid);
 
 		/* let cdbmotion now how many receivers to expect. */
-		setExpectedReceivers(mlStates, childId, numProcs);
+		setExpectedReceivers(estate->motionlayer_context, childId, numProcs);
 
 		for (i=0; i < pEntry->numConns; i++)
 		{
@@ -1166,7 +1168,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 			conn->conn_info.sessionId = gp_session_id;
 			conn->conn_info.commandCount = gp_command_count;
 
-			(*ppTransportStates)->incompleteConns = lappend((*ppTransportStates)->incompleteConns, conn);
+			estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, conn);
 
 			conn_addhash(conn);
 		}
@@ -1179,7 +1181,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 
     /* Initiate outgoing connections. */
     if (mySlice->parentIndex != -1)
-		sendingChunkTransportState = startOutgoingUDPConnections(*ppTransportStates, mySlice, &expectedTotalOutgoing);
+		sendingChunkTransportState = startOutgoingUDPConnections(estate->interconnect_context, mySlice, &expectedTotalOutgoing);
 
 	pthread_mutex_unlock(&rx_thread_mutex);
 
@@ -1229,7 +1231,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 			/* Time to (re)connect? */
 			if (conn->wakeup_ms <= elapsed_ms + 1)
 			{
-				setupOutgoingUDPConnection(*ppTransportStates, sendingChunkTransportState, conn);
+				setupOutgoingUDPConnection(estate->interconnect_context, sendingChunkTransportState, conn);
 				switch (conn->state)
 				{
 					case mcsSetupOutgoingConnection:
@@ -1347,10 +1349,10 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 
 		/* now do inbound */
 		if (incoming_count < expectedTotalIncoming &&
-			list_length((*ppTransportStates)->incompleteConns) != 0)
+			list_length(estate->interconnect_context->incompleteConns) != 0)
 		{
 			/* We can't use foreach() because we're going to delete elements as we go */
-			cell = list_head((*ppTransportStates)->incompleteConns);
+			cell = list_head(estate->interconnect_context->incompleteConns);
 			while (cell != NULL)
 			{
 				conn = (MotionConn *) lfirst(cell);
@@ -1360,7 +1362,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 				if (conn->state == mcsStarted)
 				{
 					incoming_count++;
-					(*ppTransportStates)->incompleteConns = list_delete_ptr((*ppTransportStates)->incompleteConns, conn);
+					estate->interconnect_context->incompleteConns = list_delete_ptr(estate->interconnect_context->incompleteConns, conn);
 				}
 			}
 		}
@@ -1397,7 +1399,7 @@ SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
 		elapsed_ms = gettime_elapsed_ms(startTime);
 	} while (1);
 
-	(*ppTransportStates)->activated = true;
+	estate->interconnect_context->activated = true;
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
     {
@@ -1420,8 +1422,6 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 	int			i;
 	Slice	   *mySlice;
 	MotionConn *conn;
-
-	gp_udp_ic_cleanup = false;
 
 	Insist(transportStates->sliceTable != NULL);
 
@@ -1715,9 +1715,10 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 
 /* ALWAYS CALLED WITH THREAD MUTEX *LOCKED* BEFORE RETURNING, *MUST* UNLOCK. */
 TupleChunkListItem
-receiveChunksUDP(ChunkTransportStateEntry *pEntry, 
+receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry, 
 				 int16 motNodeID, int16 *srcRoute, MotionConn *conn, bool inTeardown)
 {
+	int			retries=0;
 	bool		directed=false;
 	MotionConn	*rxconn = NULL;
 	TupleChunkListItem	tcItem=NULL;
@@ -1743,6 +1744,8 @@ receiveChunksUDP(ChunkTransportStateEntry *pEntry,
 	/* we didn't have any data, so we've got to read it from the network. */
 	for (;;)
 	{
+		retries++;
+
 		/* 1. Do we have data ready */
 		if (directed && conn->pBuff)
 		{
@@ -1775,16 +1778,20 @@ receiveChunksUDP(ChunkTransportStateEntry *pEntry,
 			return tcItem;
 		}
 
-		if (gp_udp_ic_cleanup)
+		/* every 15 or 16 wait-intervals, check to see if the dispatcher*/
+		if (Gp_role == GP_ROLE_DISPATCH &&
+			(retries & 0x0f) == 0)
 		{
-			pthread_mutex_unlock(&rx_thread_mutex);
+			if (cdbdisp_check_estate_for_cancel(pTransportStates->estate))
+			{
+				pthread_mutex_unlock(&rx_thread_mutex);
 
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect error QD lost contact with QE"),
-			                errdetail("%m%s", "select")));
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect error QD lost contact with QE")));
 
-			/* not reached */
-			return NULL;
+				/* not reached */
+				return NULL;
+			}
 		}
 
 		/* 2. Wait for data to become ready */
@@ -1864,7 +1871,7 @@ RecvTupleChunkFromAnyUDP(MotionLayerState *mlStates,
 		return NULL;
 
 	/* receiveChunksUDP() releases rx_thread_mutex as a side-effect */
-	tcItem = receiveChunksUDP(pEntry, motNodeID, srcRoute, NULL, transportStates->teardownActive);
+	tcItem = receiveChunksUDP(transportStates, pEntry, motNodeID, srcRoute, NULL, transportStates->teardownActive);
 
 	pEntry->scanStart = *srcRoute + 1;
 
@@ -1919,7 +1926,7 @@ RecvTupleChunkFromUDP(ChunkTransportState *transportStates,
 
 	/* no existing data, we've got to read a packet */
 	/* receiveChunksUDP() releases rx_thread_mutex as a side-effect */
-	return receiveChunksUDP(pEntry, motNodeID, &route, conn, transportStates->teardownActive);
+	return receiveChunksUDP(transportStates, pEntry, motNodeID, &route, conn, transportStates->teardownActive);
 }
 
 void
@@ -2751,7 +2758,8 @@ ic_rx_thread_func(void *arg)
 					if (!conn->stillActive)
 					{
 						/* peer may have dropped ack */
-						if (DEBUG1 >= log_min_messages)
+						if (gp_log_interconnect >= GPVARS_VERBOSITY_VERBOSE &&
+							DEBUG1 >= log_min_messages)
 							write_log("received on inactive connection node %d route %d (seq %d pkt->seq %d)\n",
 									  pkt->motNodeId, conn->route, conn->conn_info.seq, pkt->seq);
 

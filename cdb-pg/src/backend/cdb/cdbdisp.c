@@ -1595,6 +1595,21 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
     }
 }                               /* cdbdisp_handleError */
 
+bool
+cdbdisp_check_estate_for_cancel(EState *estate)
+{
+	struct CdbDispatchResults  *meleeResults = estate->primaryResults;
+
+	if (pleaseCancel ||
+		meleeResults->errcode ||
+		(meleeResults->peerMelee && meleeResults->peerMelee->errcode))
+	{
+		return true;
+	}
+
+	return false;
+}
+
 void
 cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 						char				   		*serializedQuerytree,
@@ -1854,12 +1869,6 @@ thread_DispatchOut(DispatchCommandParms		*pParms)
 				dispatchResult->segdbDesc->conn = NULL;
 				dispatchResult->stillRunning = false;
 
-				if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-				{
-					if (DEBUG1 >= log_min_messages)
-						write_log("UDP interconnect, peer may have gone missing, force teardown.");
-					gp_udp_ic_cleanup = true;
-				}
 				continue;
 			}
 #ifdef USE_NONBLOCKING
@@ -2589,13 +2598,6 @@ handleSelectError(DispatchCommandParms * pParms,
 			PQfinish(dispatchResult->segdbDesc->conn);
 			dispatchResult->segdbDesc->conn = NULL;
 			dispatchResult->stillRunning = false;
-
-			if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-			{
-				if (DEBUG1 >= log_min_messages)
-					write_log("UDP interconnect, peer may have gone missing, force teardown.");
-				gp_udp_ic_cleanup = true;
-			}
 		}
 	}
 
@@ -2945,12 +2947,6 @@ connection_error:
 	segdbDesc->conn = NULL;
 	dispatchResult->stillRunning = false;
 
-	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-	{
-		if (DEBUG1 >= log_min_messages)
-			write_log("UDP interconnect, peer may have gone missing, force teardown.");
-		gp_udp_ic_cleanup = true;
-	}
 	return true; /* connection is gone! */	
 }	/* processResults */
 

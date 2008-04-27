@@ -1224,10 +1224,7 @@ acceptIncomingConnection(void)
 
 /* See ml_ipc.h */
 void
-SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
-				  struct SliceTable * mySliceTable,
-				  int mySliceId,
-				  MotionLayerState *mlStates)
+SetupTCPInterconnect(EState *estate)
 {
 	int			i, index, n;
 	ListCell   *cell;
@@ -1246,41 +1243,41 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
 	/* we can have at most one of these. */
 	ChunkTransportStateEntry *sendingChunkTransportState = NULL;
 
-	Insist(!*ppTransportStates && mySliceTable);
+	Insist(!estate->interconnect_context && estate->es_sliceTable);
 
-	*ppTransportStates = palloc0(sizeof(ChunkTransportState));
+	estate->interconnect_context = palloc0(sizeof(ChunkTransportState));
 	
 	/* initialize state variables */
-	Assert((*ppTransportStates)->size == 0);
-	(*ppTransportStates)->size = CTS_INITIAL_SIZE;
-	(*ppTransportStates)->states = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportStateEntry));
+	Assert(estate->interconnect_context->size == 0);
+	estate->interconnect_context->size = CTS_INITIAL_SIZE;
+	estate->interconnect_context->states = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportStateEntry));
 
-	(*ppTransportStates)->teardownActive = false;
-	(*ppTransportStates)->activated = false;
-	(*ppTransportStates)->incompleteConns = NIL;
-	(*ppTransportStates)->sliceTable = NULL;
-	(*ppTransportStates)->sliceId = -1;
+	estate->interconnect_context->teardownActive = false;
+	estate->interconnect_context->activated = false;
+	estate->interconnect_context->incompleteConns = NIL;
+	estate->interconnect_context->sliceTable = NULL;
+	estate->interconnect_context->sliceId = -1;
 
-	(*ppTransportStates)->sliceTable = mySliceTable;
-	(*ppTransportStates)->sliceId = mySliceId;
+	estate->interconnect_context->sliceTable = estate->es_sliceTable;
+	estate->interconnect_context->sliceId = estate->es_cur_slice_idx;
 
-	(*ppTransportStates)->RecvTupleChunkFrom = RecvTupleChunkFromTCP;
-	(*ppTransportStates)->RecvTupleChunkFromAny = RecvTupleChunkFromAnyTCP;
-	(*ppTransportStates)->SendEos = SendEosTCP;
-	(*ppTransportStates)->SendChunk = SendChunkTCP;
-	(*ppTransportStates)->doSendStopMessage = doSendStopMessageTCP;
+	estate->interconnect_context->RecvTupleChunkFrom = RecvTupleChunkFromTCP;
+	estate->interconnect_context->RecvTupleChunkFromAny = RecvTupleChunkFromAnyTCP;
+	estate->interconnect_context->SendEos = SendEosTCP;
+	estate->interconnect_context->SendChunk = SendChunkTCP;
+	estate->interconnect_context->doSendStopMessage = doSendStopMessageTCP;
 
-	mySlice = (Slice *) list_nth((*ppTransportStates)->sliceTable->slices, mySliceId);
+	mySlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, estate->es_cur_slice_idx);
 
-    Assert(mySlice &&
+    Assert(estate->es_sliceTable &&
            IsA(mySlice, Slice) &&
-           mySlice->sliceIndex == mySliceId);
+           mySlice->sliceIndex == estate->es_cur_slice_idx);
 
   	gettimeofday(&startTime, NULL);
 
     /* Initiate outgoing connections. */
     if (mySlice->parentIndex != -1)
-		sendingChunkTransportState = startOutgoingConnections(*ppTransportStates, mySlice, &expectedTotalOutgoing);
+		sendingChunkTransportState = startOutgoingConnections(estate->interconnect_context, mySlice, &expectedTotalOutgoing);
 
 	/* now we'll do some setup for each of our Receiving Motion Nodes. */
 	foreach(cell, mySlice->children)
@@ -1293,13 +1290,13 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
 		elog(DEBUG5, "Setting up RECEIVING motion node %d", childId);
 #endif
 
-		aSlice = (Slice *) list_nth((*ppTransportStates)->sliceTable->slices, childId);
+		aSlice = (Slice *) list_nth(estate->interconnect_context->sliceTable->slices, childId);
 		numProcs = list_length(aSlice->primaryProcesses);
 
-		pEntry = createChunkTransportState(*ppTransportStates, aSlice, mySlice, numProcs, 0);
+		pEntry = createChunkTransportState(estate->interconnect_context, aSlice, mySlice, numProcs, 0);
 
 		/* let cdbmotion now how many receivers to expect. */
-		setExpectedReceivers(mlStates, childId, numProcs);
+		setExpectedReceivers(estate->motionlayer_context, childId, numProcs);
 
 		expectedTotalIncoming += pEntry->numConns;
 	}
@@ -1309,8 +1306,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
                                 "%d incoming, %d outgoing routes.  "
                                 "Listening on port=%d sockfd=%d.",
                                 expectedTotalIncoming, expectedTotalOutgoing,
-                                Gp_listener_port, TCP_listenerFd)
-					));
+                                Gp_listener_port, TCP_listenerFd)));
 
 	/*
      * Loop until all connections are completed or time limit is exceeded.
@@ -1339,7 +1335,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
         }
 
         /* Inbound connections awaiting registration message */
-        foreach(cell, (*ppTransportStates)->incompleteConns)
+        foreach(cell, estate->interconnect_context->incompleteConns)
         {
 			conn = (MotionConn *)lfirst(cell);
             Insist(conn->state == mcsRecvRegMsg && conn->sockfd >= 0);
@@ -1369,8 +1365,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
                                      conn->remoteContentId,
                                      conn->remoteHostAndPort,
                                      conn->localHostAndPort,
-                                     conn->wakeup_ms, (elapsed_ms + 20))
-							));
+                                     conn->wakeup_ms, (elapsed_ms + 20))));
                 conn->state = mcsSetupOutgoingConnection;
             }
 
@@ -1378,7 +1373,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
             if (conn->state == mcsSetupOutgoingConnection &&
                 conn->wakeup_ms <= elapsed_ms + 20)
             {
-                setupOutgoingConnection(*ppTransportStates, sendingChunkTransportState, conn);
+                setupOutgoingConnection(estate->interconnect_context, sendingChunkTransportState, conn);
                 switch (conn->state)
                 {
                     case mcsSetupOutgoingConnection:
@@ -1387,7 +1382,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
                         break;
                     case mcsConnecting:
                         /* Set time limit for connect() to complete. */
-						if ((*ppTransportStates)->aggressiveRetry)
+						if (estate->interconnect_context->aggressiveRetry)
 							conn->wakeup_ms = CONNECT_AGGRESSIVERETRY_MS + elapsed_ms;
 						else
 							conn->wakeup_ms = CONNECT_RETRY_MS + elapsed_ms;
@@ -1476,9 +1471,9 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
             /* Wait until earliest wakeup time or overall timeout. */
             if (timeout_ms > 0)
             {
-                ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
+                ML_CHECK_FOR_INTERRUPTS(estate->interconnect_context->teardownActive);
                 pg_usleep(timeout_ms * 1000);
-                ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
+                ML_CHECK_FOR_INTERRUPTS(estate->interconnect_context->teardownActive);
             }
 
             /* Back to top of loop and look again. */
@@ -1521,9 +1516,9 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
             MemSet(&logbuf, 0, sizeof(logbuf));
         }
 
-		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
+		ML_CHECK_FOR_INTERRUPTS(estate->interconnect_context->teardownActive);
         n = select(highsock + 1, (fd_set *)&rset, (fd_set *)&wset, (fd_set *)&eset, &timeout);
-		ML_CHECK_FOR_INTERRUPTS((*ppTransportStates)->teardownActive);
+		ML_CHECK_FOR_INTERRUPTS(estate->interconnect_context->teardownActive);
 
         elapsed_ms = gettime_elapsed_ms(startTime);
 
@@ -1578,7 +1573,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
 		 * that causes problems if some connections are left over -- better to just process them
 		 * here.
 		 */
-		cell = list_head((*ppTransportStates)->incompleteConns);
+		cell = list_head(estate->interconnect_context->incompleteConns);
 		while (n > 0 && cell != NULL)
 		{
 			conn = (MotionConn *) lfirst(cell);
@@ -1592,12 +1587,12 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
 			if (MPP_FD_ISSET(conn->sockfd, &rset))
 			{
                 n--;
-                if (readRegisterMessage(*ppTransportStates, conn))
+                if (readRegisterMessage(estate->interconnect_context, conn))
                 {
 					/* We're done with this connection (either it is
 					 * bogus (and has been dropped), or we've added it to the appropriate
 					 * hash table) */
-                    (*ppTransportStates)->incompleteConns = list_delete_ptr((*ppTransportStates)->incompleteConns, conn);
+                    estate->interconnect_context->incompleteConns = list_delete_ptr(estate->interconnect_context->incompleteConns, conn);
 
 					/* is the connection ready ? */
 					if (conn->sockfd != -1)
@@ -1624,7 +1619,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
 				conn->msgSize = sizeof(RegisterMessage);
 				conn->msgPos = conn->pBuff;
 
-				(*ppTransportStates)->incompleteConns = lappend((*ppTransportStates)->incompleteConns, conn);
+				estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, conn);
             }
 		}
 
@@ -1645,7 +1640,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
                         MPP_FD_ISSET(conn->sockfd, &eset))
                     {
                         n--;
-                        updateOutgoingConnection(*ppTransportStates, sendingChunkTransportState, conn, -1);
+                        updateOutgoingConnection(estate->interconnect_context, sendingChunkTransportState, conn, -1);
                         switch (conn->state)
                         {
                             case mcsSetupOutgoingConnection:
@@ -1671,7 +1666,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
                     if (MPP_FD_ISSET(conn->sockfd, &wset))
                     {
                         n--;
-                        sendRegisterMessage(*ppTransportStates, sendingChunkTransportState, conn);
+                        sendRegisterMessage(estate->interconnect_context, sendingChunkTransportState, conn);
                         if (conn->state == mcsStarted)
                             outgoing_count++;
                     }
@@ -1698,13 +1693,13 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
 	 * obviously be better if we could avoid these connections in the
 	 * first place!
 	 */
-	if (list_length((*ppTransportStates)->incompleteConns) != 0)
+	if (list_length(estate->interconnect_context->incompleteConns) != 0)
 	{
         if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
             elog(DEBUG2, "Incomplete connections after known connections done, cleaning %d",
-			     list_length((*ppTransportStates)->incompleteConns));
+			     list_length(estate->interconnect_context->incompleteConns));
 
-		while ((cell = list_head((*ppTransportStates)->incompleteConns)) != NULL)
+		while ((cell = list_head(estate->interconnect_context->incompleteConns)) != NULL)
 		{
 			conn = (MotionConn *) lfirst(cell);
 
@@ -1716,7 +1711,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
 				conn->sockfd = -1;
 			}
 
-			(*ppTransportStates)->incompleteConns = list_delete_ptr((*ppTransportStates)->incompleteConns, conn);
+			estate->interconnect_context->incompleteConns = list_delete_ptr(estate->interconnect_context->incompleteConns, conn);
 
 			if (conn->pBuff)
                 pfree(conn->pBuff);
@@ -1724,7 +1719,7 @@ SetupTCPInterconnect(ChunkTransportState **ppTransportStates,
 		}
 	}
 
-	(*ppTransportStates)->activated = true;
+	estate->interconnect_context->activated = true;
 
     if (gp_log_interconnect >= GPVARS_VERBOSITY_TERSE)
     {

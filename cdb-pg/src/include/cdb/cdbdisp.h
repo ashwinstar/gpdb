@@ -469,6 +469,10 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 void
 CdbShutdownPortals(void);
 
+/* used in the interconnect on the dispatcher to avoid error-cleanup deadlocks. */
+bool
+cdbdisp_check_estate_for_cancel(EState *estate);
+
 /*--------------------------------------------------------------------*/
 
 #endif   /* CDBDISP_H */

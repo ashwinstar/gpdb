@@ -292,9 +292,12 @@ typedef struct ChunkTransportState
 	bool		teardownActive;
 	List	   *incompleteConns;
 	
-	/*slice table stuff. */
+	/* slice table stuff. */
 	struct SliceTable  *sliceTable;
 	int			sliceId;	
+
+	/* Estate pointer for this statement (UDP-IC specific) */
+	EState		*estate;
 
 	/* Function pointers to our send/receive functions */
 	bool (*SendChunk)(MotionLayerState *mlStates, struct ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, TupleChunkListItem tcItem, int16 motionId);

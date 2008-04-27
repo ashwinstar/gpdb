@@ -306,8 +306,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				estate->es_interconnect_is_setup = true;
 
 				Assert(!estate->interconnect_context);
-				SetupInterconnect(&estate->interconnect_context,
-								  estate->es_sliceTable, estate->es_cur_slice_idx, estate->motionlayer_context);
+				SetupInterconnect(estate);
 				Assert(estate->interconnect_context);
 			}
 			PG_CATCH();
@@ -483,9 +482,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 				estate->es_interconnect_is_setup = true;
 
 				Assert(!estate->interconnect_context);
-				SetupInterconnect(&estate->interconnect_context,
-								  estate->es_sliceTable, estate->es_cur_slice_idx,
-								  estate->motionlayer_context);
+				SetupInterconnect(estate);
 				Assert(estate->interconnect_context);
 			}
 			if (estate->es_interconnect_is_setup)

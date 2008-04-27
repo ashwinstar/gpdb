@@ -561,35 +561,32 @@ setupSeqServerConnection(char *seqServerHost, int seqServerPort)
 }
 
 void
-SetupInterconnect(ChunkTransportState **ppTransportStates,
-				  struct SliceTable * mySliceTable,
-				  int mySliceId,
-				  MotionLayerState *mlStates)
+SetupInterconnect(EState *estate)
 {
 	if (Gp_interconnect_type == INTERCONNECT_TYPE_UDP)
-		SetupUDPInterconnect(ppTransportStates, mySliceTable, mySliceId, mlStates);
+		SetupUDPInterconnect(estate);
 	else if (Gp_interconnect_type == INTERCONNECT_TYPE_TCP)
-		SetupTCPInterconnect(ppTransportStates, mySliceTable, mySliceId, mlStates);
+		SetupTCPInterconnect(estate);
 	else
 	{
 		Insist(Gp_interconnect_type == INTERCONNECT_TYPE_NIL);
-		Insist(!*ppTransportStates && mySliceTable);
+		Insist(!estate->interconnect_context && estate->es_sliceTable);
 
-		*ppTransportStates = palloc0(sizeof(ChunkTransportState));
+		estate->interconnect_context = palloc0(sizeof(ChunkTransportState));
 	
 		/* initialize state variables */
-		Assert((*ppTransportStates)->size == 0);
-		(*ppTransportStates)->size = CTS_INITIAL_SIZE;
-		(*ppTransportStates)->states = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportStateEntry));
+		Assert(estate->interconnect_context->size == 0);
+		estate->interconnect_context->size = CTS_INITIAL_SIZE;
+		estate->interconnect_context->states = palloc0(CTS_INITIAL_SIZE * sizeof(ChunkTransportStateEntry));
 
-		(*ppTransportStates)->teardownActive = false;
-		(*ppTransportStates)->activated = false;
-		(*ppTransportStates)->incompleteConns = NIL;
-		(*ppTransportStates)->sliceTable = NULL;
-		(*ppTransportStates)->sliceId = -1;
+		estate->interconnect_context->teardownActive = false;
+		estate->interconnect_context->activated = false;
+		estate->interconnect_context->incompleteConns = NIL;
+		estate->interconnect_context->sliceTable = NULL;
+		estate->interconnect_context->sliceId = -1;
 
-		(*ppTransportStates)->sliceTable = mySliceTable;
-		(*ppTransportStates)->sliceId = mySliceId;
+		estate->interconnect_context->sliceTable = estate->es_sliceTable;
+		estate->interconnect_context->sliceId = estate->es_cur_slice_idx;
 	}
 
 	return;
