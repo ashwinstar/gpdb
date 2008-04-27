@@ -528,6 +528,7 @@ CheckForQDMirroringWork(void)
 	updateMask = ftsQDMirrorInfo->updateMask;
 	ftsQDMirrorInfo->updateMask = QDMIRROR_UPDATEMASK_NONE;
 
+	validFlag = false;
 	if ((updateMask & QDMIRROR_UPDATEMASK_VALIDFLAG) != 0)
 	{
 		validFlag = !ftsQDMirrorInfo->valid;
