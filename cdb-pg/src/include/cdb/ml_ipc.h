@@ -86,30 +86,10 @@ extern int  GetSeqServerFD(void);
  *	 mySliceId - the index of the slice in the slicetable that we are a member of.
  *
  */
-#if 0
 extern void SetupInterconnect(EState *estate);
 extern void SetupUDPInterconnect(EState *estate);
 extern void SetupTCPInterconnect(EState *estate);
 
->>>> ORIGINAL //cdb2/private/tkordas/main/cdb-pg/src/include/cdb/ml_ipc.h#4
-extern void
-SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
-					 struct SliceTable * mySliceTable,
-					 int mySliceId,
-					 MotionLayerState *mlStates);
-
-==== THEIRS //cdb2/private/tkordas/main/cdb-pg/src/include/cdb/ml_ipc.h#6
-==== YOURS //tjk-laptop/HEAD/cdb2/cdb-pg/src/include/cdb/ml_ipc.h
-extern void SetupUDPInterconnect(ChunkTransportState **ppTransportStates,
-								 struct SliceTable * mySliceTable,
-								 int mySliceId,
-								 MotionLayerState *mlStates);
-#else
-extern void SetupInterconnect(EState *estate);
-extern void SetupUDPInterconnect(EState *estate);
-extern void SetupTCPInterconnect(EState *estate);
-#endif
-<<<<
 /* The TeardownInterconnect() function should be called at the end of executing
  * a DML statement to close down all TCP socket resources that were setup during
  * SetupInterconnect().
