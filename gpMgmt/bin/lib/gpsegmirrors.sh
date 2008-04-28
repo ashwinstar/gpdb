@@ -87,7 +87,7 @@ PROCESS_MIRROR () {
 	if [ x"rsync" == x"$RSYNCOPT" ]; then
 	    # gprsync
 	    ((RSYNC_PORT=$QE_MIR_PORT+500))
-	    $TRUSTED_SHELL ${QE_PRI_NAME} "${EXPORT_GPHOME}; ${GPHOME}/bin/lib/gprsync.py -p ${RSYNC_PORT} -d ${QE_PRI_BASE_DIR} -o '-cav' ${OBJECT_LIST[@]} ${QE_MIR_NAME}:${QE_MIR_BASE_DIR}" > $LOG_FILE 2>&1
+	    $TRUSTED_SHELL ${QE_PRI_NAME} "${EXPORT_GPHOME}; ${GPHOME}/bin/lib/gprsync.py -p ${RSYNC_PORT} -d ${QE_PRI_BASE_DIR} -o '-av' ${OBJECT_LIST[@]} ${QE_MIR_NAME}:${QE_MIR_BASE_DIR}" > $LOG_FILE 2>&1
 	    if [ $? -ne 0 ];then
 		$ECHO "FAILED:${QE_LINE}:GPRSYNC_COPY" >> $PARALLEL_STATUS_FILE
 		LOG_MSG "[FATAL][$INST_COUNT]:-Failed gprsync copy from ${QE_PRI_NAME} to ${QE_MIR_BASE_DIR} on ${QE_MIR_NAME}" 1

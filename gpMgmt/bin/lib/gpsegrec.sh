@@ -152,7 +152,7 @@ RECOVER_SEGMENT () {
 	else
 	    LOG_MSG "[INFO][$INST_COUNT]:- Start GPRSYNC COPY"
 	    ((RSYNC_PORT=$FAIL_QE_PORT+500))
-	    $TRUSTED_SHELL ${MIR_QE_HOST} "${EXPORT_GPHOME}; ${GPHOME}/bin/lib/gprsync.py -p ${RSYNC_PORT} -d ${MIR_QE_DIR} -o '-cav' ${OBJECT_LIST[@]} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" >> $LOG_FILE 2>&1
+	    $TRUSTED_SHELL ${MIR_QE_HOST} "${EXPORT_GPHOME}; ${GPHOME}/bin/lib/gprsync.py -p ${RSYNC_PORT} -d ${MIR_QE_DIR} -o '-av' ${OBJECT_LIST[@]} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" >> $LOG_FILE 2>&1
 	    #$TRUSTED_SHELL ${MIR_QE_HOST} "cd ${MIR_QE_DIR} ; $RSYNC -Cavzc ${OBJECT_LIST[@]} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" > /dev/null 2>&1
 	fi
 

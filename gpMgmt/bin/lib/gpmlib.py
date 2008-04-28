@@ -601,7 +601,7 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
 
     gprsync = os.path.join(os.environ.get('GPHOME'), 'bin/lib/gprsync.py')
     gprsync_port = dst_cfg['port'] + random.randint(500, 1000)
-    (ok, out) = run('%s "%s -p %d -d %s -o \'-cav\' %s %s:%s" >> %s' % 
+    (ok, out) = run('%s "%s -p %d -d %s -o \'-av\' %s %s:%s" >> %s' % 
                     (gplib.ssh_prefix(host=src_host),
                      gprsync,
                      gprsync_port,  
