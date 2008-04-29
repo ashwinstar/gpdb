@@ -1,3 +1,5 @@
+import hashlib
+import os
 import random
 import socket
 import threading
@@ -17,6 +19,7 @@ class Port:
 	self.__socket.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,65536)
 	self.__socket.bind(messenger.getSocketAddress(address))
 	self.__address = socketAddressToString(self.__socket.getsockname())
+	self.__key = messenger.key
 
     def log(self,s):
 	self.__messenger.log(s)
@@ -29,6 +32,10 @@ class Port:
 
     def send(self,to,messag):
 	self.log("from="+self.__address+" to="+to+" send "+messag)
+	m = hashlib.md5()
+	m.update(self.__key)
+	m.update(messag)
+	messag = m.hexdigest()+" "+messag
 	if random.random()>=DROP_CHANCE:
 	    try:
 		self.__socket.sendto(messag,self.__messenger.getSocketAddress(to))
@@ -40,15 +47,23 @@ class Port:
 	self.__socket.settimeout(timeout)
 	while 1:
 	    try:
-		start=time.time()
-		p = self.__socket.recvfrom(65536)
+		p,fro = self.__socket.recvfrom(65536)
 	    except socket.error:
 		return (None,None)
+	    i = p.find(' ')
+	    if i==-1:
+		continue
+	    m = hashlib.md5()
+	    m.update(self.__key)
+	    m.update(p[i+1:])
+	    if m.hexdigest()!=p[:i]:
+		continue
+	    p = p[i+1:]
 	    if random.random()>=DROP_CHANCE:
 		break
-	fro = socketAddressToString(p[1])
-	self.log("from="+fro+" to="+self.__address+" recv "+p[0])
-	return (p[0],fro)
+	fro = socketAddressToString(fro)
+	self.log("from="+fro+" to="+self.__address+" recv "+p)
+	return (p,fro)
 
     def close(self):
 	self.__socket.close()
@@ -64,7 +79,7 @@ class UdpMessenger(Logger):
 	if not address:
 	    address = socket.gethostname()
 	try:
-	    a=socket.gethostbyname(address)
+	    a = socket.gethostbyname(address)
 	except:
 	    self.log("address="+address)
 	    raise
@@ -72,6 +87,33 @@ class UdpMessenger(Logger):
 
     def __init__(self):
 	Logger.__init__(self,"Udp")
+	keyfile = os.environ["HOME"]+"/.paxos_key"
+	if not os.path.exists(keyfile):
+	    idrsa = os.environ["HOME"]+"/.ssh/id_rsa"
+	    m = hashlib.md5()
+	    if os.path.exists(idrsa):
+	    	self.log("hashing %s into %s"%(idrsa,keyfile))
+		f = open(idrsa,"r")
+		for i in f.read():
+		    if i>' ' and i<='~':
+		        m.update(i)
+		f.close()
+	    else:
+	    	self.log("No %s or %s.  Creating random key."%(idrsa,keyfile))
+		m.update(os.urandom(16))
+	    oldumask = os.umask(077)
+	    f = open(keyfile,"w")
+	    os.umask(oldumask)
+	    f.write(m.hexdigest())
+	    f.write('\n')
+	    f.close()
+	key = []
+	f = open(keyfile,"r")
+	for i in f.read():
+	    if i>' ' and i<='~':
+		key.append(i)
+	f.close()
+	self.key = "".join(key)
 	self.setDisableLog(True)
 
     def makePort(self,address):
