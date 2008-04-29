@@ -131,7 +131,6 @@ gptorment does not create or startup a database.
 
 invoke perl scripts
 init, cleanup
-ctrl-c handling
 
 
 =head1 AUTHORS
@@ -147,16 +146,7 @@ Address bug reports and comments to: jcohen@greenplum.com
 
 my $glob_id = "";
 
-my $glob_tab;
-my $glob_connect;
-my $glob_paral;
-my $glob_uid;
-my $glob_sqlfile;
-my $glob_iter;
-my $glob_tlim;
-my $glob_debug;
-my $glob_tmpdir;
-my $glob_grace;
+my %GH; # GLOBAL HASH of all arguments
 
 sub gettimelimit
 {
@@ -313,7 +303,6 @@ BEGIN {
 
     GetOptions(
                'help|?' => \$help, man => \$man, 
-               "table=s" => \$table,
                "connect=s" => \$conn,
                "id:s" => \$uid,
                "parallel:i" => \$paral,
@@ -330,18 +319,17 @@ BEGIN {
     pod2usage(-msg => $glob_id, -exitstatus => 1) if $help;
     pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
 
-    $glob_tab = $table;
-    $glob_connect = $conn;
+    $GH{connect} = $conn;
 
-    $glob_connect = '-p 11000 template1'
-        unless (defined($glob_connect));
+    $GH{connect} = '-p 11000 template1'
+        unless (defined($GH{connect}));
 
     {  # check for bad connection
         my $badconnect = 0;
         my $psql_str = "psql ";
 
-        $psql_str .= $glob_connect
-            if (defined($glob_connect));
+        $psql_str .= $GH{connect}
+            if (defined($GH{connect}));
 
         $psql_str .= " -c \"select version()\" ";
 
@@ -380,7 +368,7 @@ BEGIN {
 
         if ($badconnect)
         {
-            $glob_id = "connect failed using \'" . $glob_connect . "\'";
+            $glob_id = "connect failed using \'" . $GH{connect} . "\'";
 
             pod2usage(-msg => $glob_id, -exitstatus => 1);
         }
@@ -465,14 +453,14 @@ BEGIN {
     }
 
 
-    $glob_uid = $uid;
-    $glob_paral = $paral;
-    $glob_iter = $iter;
-    $glob_sqlfile = $sqlfile;
-    $glob_tlim = $tlim;
-    $glob_debug = $dbg;
-    $glob_tmpdir = $tmpdir;
-    $glob_grace = $grace;
+    $GH{uid} = $uid;
+    $GH{parallel} = $paral;
+    $GH{iter} = $iter;
+    $GH{sqlfile} = $sqlfile;
+    $GH{tlim} = $tlim;
+    $GH{debug} = $dbg;
+    $GH{tmpdir} = $tmpdir;
+    $GH{grace} = $grace;
 
 #    print "loading...\n" ;
 }
@@ -570,7 +558,6 @@ sub do_ps_pids
     }
     else # linux or osx
     {
-
         my $cmd = 'ps auxww | grep -v grep | grep gptorment | grep ' . $uid;
    
         my $psout = `$cmd`;
@@ -636,6 +623,11 @@ sub do_monitor
 {
     my ($mon_stat, $tim, $test_fh) = @_;
 
+#    print $$, ": ", Data::Dumper->Dump([$mon_stat]), "\nGH: ",
+#    Data::Dumper->Dump([%GH]), "\n"
+#        unless (exists($mon_stat->{uid}) 
+#                && exists($mon_stat->{curr_pidlist}));
+
     my ($pidh, $pidlist) = do_ps_pids($mon_stat->{uid});
 
     if (exists($mon_stat->{msg}))
@@ -682,18 +674,10 @@ sub do_monitor
     return $pcount;
 }
 
-sub do_kill
+
+sub do_kill_kill
 {
-    my ($uid, $iter, $tlim, $paral, $test_fh) = @_;
-
-    my $mon_stat = init_monitor($uid, $iter, $tlim, $paral);
-
-    my $maxtime = time() + ($glob_iter * $glob_tlim) + $glob_grace;
-
-    while (do_monitor($mon_stat, 10, $test_fh) && (time() < $maxtime))
-    {
-
-    }
+    my ($uid, $iter, $tlim, $paral, $test_fh, $mon_stat, $maxtime) = @_;
 
     # kill if necessary
 
@@ -712,91 +696,158 @@ sub do_kill
         system ("kill -9 $pid");
     }
 
-    my $time_diff = $maxtime - time();
-
-    if ($glob_grace > 0)
+    if (!defined($maxtime))
     {
-        if ($time_diff <= $glob_grace)
-        {
-            $mmm = "test ended on time (grace period $glob_grace)\n";
-        }
-        else
-        {
-            $mmm = "test ended $time_diff seconds prematurely\n";
-        }
+        $mmm = "test ended prematurely (no time limit specified)";
+
     }
     else
     {
-        my $grt = (-1 * $glob_grace);
+        my $time_diff = $maxtime - time();
 
-        if ($time_diff <= $grt)
+        if ($GH{grace} > 0)
         {
-            $mmm = "test ended on time (negative grace period $glob_grace)\n";
+            if ($time_diff <= $GH{grace})
+            {
+                $mmm = "test ended on time (grace period $GH{grace})\n";
+            }
+            else
+            {
+                $mmm = "test ended $time_diff seconds prematurely\n";
+            }
         }
         else
         {
-            $mmm = "test ended " . ($time_diff - $grt) .
-            " seconds prematurely\n";
+            my $grt = (-1 * $GH{grace});
+
+            if ($time_diff <= $grt)
+            {
+                $mmm = 
+                    "test ended on time (negative grace period $GH{grace})\n";
+            }
+            else
+            {
+                $mmm = "test ended " . ($time_diff - $grt) .
+                    " seconds prematurely\n";
+            }
         }
     }
+
     print $mmm;
     print $test_fh $mmm if (defined($test_fh));
 
+} # end do_kill_kill
 
+sub do_kill
+{
+    my ($uid, $iter, $tlim, $paral, $test_fh) = @_;
+
+    my $mon_stat = init_monitor($uid, $iter, $tlim, $paral);
+    $GH{mon_stat} = $mon_stat;
+
+    my $maxtime = time() + ($GH{iter} * $GH{tlim}) + $GH{grace};
+    $GH{maxtime} = $maxtime;
+
+    while (do_monitor($mon_stat, 10, $test_fh) && (time() < $maxtime))
+    {
+        $GH{mon_stat} = $mon_stat;
+    }
+
+    do_kill_kill($uid, $iter, $tlim, $paral, $test_fh, $mon_stat, $maxtime);
 } # end do_kill
 
+# cntrl c handler
+sub do_handle_interrupt
+{
+    my $test_fh = $GH{test_fh};
+
+    my $mmm = "\n" . time() . ": Test interrupted!\n";
+
+    print $mmm;
+    print $test_fh $mmm
+        if (defined($test_fh));
+
+#    print Data::Dumper->Dump([%GH]), "\n";
+
+    if (defined($GH{mon_stat}) && defined($GH{parallel})
+        && $GH{parallel} > 1)
+    {
+        $mmm = "\n" . time() . ": Attempting to clean up child processes\n";
+        print $mmm;
+        print $test_fh $mmm
+            if (defined($test_fh));
+        
+        do_kill_kill($GH{uid}, $GH{iter}, $GH{tlim}, $GH{parallel}, 
+                     $GH{test_fh}, $GH{mon_stat}, $GH{maxtime});
+    }
+    else
+    {
+        $mmm = "cleaning up...";
+        print $mmm;
+        print $test_fh $mmm
+            if (defined($test_fh));
+
+    }
+
+    close $test_fh
+        if (defined($test_fh));
+
+    exit;
+}
 
 sub do_sql
 {
     my $psql_str = "psql ";
 
-    $psql_str .= $glob_connect
-        if (defined($glob_connect));
+    $psql_str .= $GH{connect}
+        if (defined($GH{connect}));
 
 #    $psql_str .= " -c \'\\d $glob_tab \'";
 #    $psql_str .= " -c \'select * from gp_configuration \'";
 
-    $psql_str .= " -a -e  -f $glob_sqlfile";
+    $psql_str .= " -a -e  -f $GH{sqlfile}";
 
 #    print $psql_str, "\n";
 
-    my $tstout = "gpt_" . $glob_uid;
+    my $tstout = "gpt_" . $GH{uid};
 
     $tstout =~ s/\./\_/gm;
 
     $tstout .= ".out";
 
-    $tstout = File::Spec->catfile($glob_tmpdir, $tstout);
+    $tstout = File::Spec->catfile($GH{tmpdir}, $tstout);
 
     my $tstfh;
 
     open ($tstfh, ">$tstout" ) or die "can't open $tstout: $!";
 
-    if (($glob_paral == 1) && (!defined($glob_debug)))
+    $GH{test_fh} = $tstfh;
+
+    if (($GH{parallel} == 1) && (!defined($GH{debug})))
     {
         my $start_time = time();
         my $end_time;
-        $end_time = $start_time + $glob_tlim
-            if (defined($glob_tlim));
+        $end_time = $start_time + $GH{tlim}
+            if (defined($GH{tlim}));
 
-#        print "sql tlim: $glob_tlim\n"
-#            if (defined($glob_tlim));
+#        print "sql tlim: $GH{tlim}\n"
+#            if (defined($GH{tlim}));
 
         my $realSTDOUT;
 
         open $realSTDOUT, ">&STDOUT"  or die "Can't dup STDOUT: $!";
 
-        for my $ii (1..$glob_iter)
+        for my $ii (1..$GH{iter})
         {
             my $filnam;
 
-            $filnam = "sql_" . $glob_uid . "_" . $ii;
+            $filnam = "sql_" . $GH{uid} . "_" . $ii;
             
             $filnam =~ s/\./\_/gm;
 
             $filnam .= ".out";
 
-            my $tmpnam = File::Spec->catfile($glob_tmpdir, $filnam);
+            my $tmpnam = File::Spec->catfile($GH{tmpdir}, $filnam);
 
             close STDOUT;
             open (STDOUT, ">$tmpnam" ) or die "can't open STDOUT: $!";
@@ -823,7 +874,7 @@ sub do_sql
                 }
 
 #            undef $end_time;
-                $end_time = time() + $glob_tlim;
+                $end_time = time() + $GH{tlim};
             }
         }
 
@@ -837,9 +888,9 @@ sub do_sql
     }
     else
     {
-        my $do_para = $glob_paral;
+        my $do_para = $GH{parallel};
 
-        if (defined($glob_debug))
+        if (defined($GH{debug}))
         {
             my $timetxt = localtime();
             print "# start at $timetxt\n";
@@ -853,25 +904,25 @@ sub do_sql
 
             $cmd = $0 . " ";
 
-            $cmd .= "--id=" . $glob_uid . " ";
-            $cmd .= "--conn=\'" . $glob_connect . "\' "
-                if (defined($glob_connect));
-            $cmd .= "--iter=" . $glob_iter . " ";
-            $cmd .= "--sqlfile=" . $glob_sqlfile . " ";
+            $cmd .= "--id=" . $GH{uid} . " ";
+            $cmd .= "--conn=\'" . $GH{connect} . "\' "
+                if (defined($GH{connect}));
+            $cmd .= "--iter=" . $GH{iter} . " ";
+            $cmd .= "--sqlfile=" . $GH{sqlfile} . " ";
 
-            $cmd .= "--timelimit=\'" . $glob_tlim . " seconds\' "
-                if (defined($glob_tlim));
+            $cmd .= "--timelimit=\'" . $GH{tlim} . " seconds\' "
+                if (defined($GH{tlim}));
 
-            $cmd .= "--tempdir=\'" . $glob_tmpdir . "\' "
-                if (defined($glob_tmpdir));
+            $cmd .= "--tempdir=\'" . $GH{tmpdir} . "\' "
+                if (defined($GH{tmpdir}));
 
-            $cmd .= "--grace_period=\'" . $glob_grace . " seconds\' ";
+            $cmd .= "--grace_period=\'" . $GH{grace} . " seconds\' ";
 
             $cmd .= " & ";
 
             print $cmd, "\n";
 
-            unless (defined($glob_debug))
+            unless (defined($GH{debug}))
             {
                 print $tstfh $cmd, "\n";
                 system($cmd);
@@ -879,21 +930,24 @@ sub do_sql
 
         } # end for ii
 
-        unless (defined($glob_debug))
+        unless (defined($GH{debug}))
         {
-            if (defined($glob_tlim))
+            if (defined($GH{tlim}))
             {
-                do_kill($glob_uid, $glob_iter, 
-                        $glob_tlim, $glob_paral, $tstfh);
+                do_kill($GH{uid}, $GH{iter}, 
+                        $GH{tlim}, $GH{parallel}, $tstfh);
             }
             else
             {
                 my $mon_stat = 
-                    init_monitor($glob_uid, $glob_iter, 
-                                 $glob_tlim, $glob_paral);
+                    init_monitor($GH{uid}, $GH{iter}, 
+                                 $GH{tlim}, $GH{parallel});
+
+                $GH{mon_stat} = $mon_stat;
+
                 while (do_monitor($mon_stat, 10, $tstfh))
                 {
-
+                    $GH{mon_stat} = $mon_stat;
                 }
             }
         }
@@ -902,13 +956,18 @@ sub do_sql
     } # end else
 
     close $tstfh;
+    undef $GH{test_fh};
 
 } # end do_sql
 
+foreach my $signal (qw (INT TERM HUP)) {
+    $SIG{$signal} = \&do_handle_interrupt; # handle cntrl-c
+}
+
 if (1)
 {
-    if (defined($glob_sqlfile)
-        && length($glob_sqlfile))
+    if (defined($GH{sqlfile})
+        && length($GH{sqlfile}))
     {
         do_sql();
     }
