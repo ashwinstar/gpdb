@@ -282,10 +282,18 @@ LOG_MSG () {
 		CUR_DATE=`$DATE +%Y%m%d`
 		DISPLAY_TXT=0
 		#Check to see if we need to update value of EXIT_STATUS
-		if [ `$ECHO $1|$AWK -F"]" '{print $1}'|$TR -d '\133'|$GREP -c "WARN"` -eq 1 ];then
+		WARN=`$ECHO $1|$AWK -F"]" '{print $1}'|$TR -d '\133'|$GREP -c "WARN"`
+		if [ x"$WARN" == x"" ]; then
+		    WARN=0
+		fi
+		if [ $WARN -eq 1 ];then
 			EXIT_STATUS=1
 		fi
-		if [ `$ECHO $1|$AWK -F"]" '{print $1}'|$TR -d '\133'|$GREP -c "FATAL"` -eq 1 ];then
+		FATAL=`$ECHO $1|$AWK -F"]" '{print $1}'|$TR -d '\133'|$GREP -c "FATAL"`
+		if [ x"$FATAL" == x"" ]; then
+		    FATAL=0
+		fi
+		if [ $FATAL -eq 1 ];then
 			EXIT_STATUS=2
 		fi
 		if [ x"" == x"$DEBUG_LEVEL" ];then
