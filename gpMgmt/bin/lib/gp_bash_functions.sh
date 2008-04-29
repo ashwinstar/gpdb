@@ -325,7 +325,7 @@ ERROR_EXIT () {
 				if [ -s $BACKOUT_FILE ]; then
 						LOG_MSG "[WARN]:-Script has left Greenplum Database in an incomplete state"
 						LOG_MSG "[WARN]:-Run command /bin/bash $BACKOUT_FILE to remove these changes"
-						BACKOUT_COMMAND "if [ $MASTER_HOSTNAME != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
+						BACKOUT_COMMAND "if [ x$MASTER_HOSTNAME != x\`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
 						$ECHO "$RM -f $BACKOUT_FILE" >> $BACKOUT_FILE
 				fi
 		fi
@@ -1476,9 +1476,9 @@ CHK_GPDB_ID () {
 			GPDB_GROUPID_CHK=$GPDB_GROUPID
 		fi		
 
-		if [ $GPDB_ID_CHK == $MASTER_INITDB_ID ] && [ x"x" == x"$USER_EXECUTE" ];then		
+		if [ x$GPDB_ID_CHK == x$MASTER_INITDB_ID ] && [ x"x" == x"$USER_EXECUTE" ];then		
 		    LOG_MSG "[INFO]:-Current user id of $GPDB_ID, matches initdb id of $MASTER_INITDB_ID"
-		elif [ $GPDB_GROUPID_CHK == $MASTER_INITDB_GROUPID ] && [ x"x" == x"$GROUP_EXECUTE" ] ; then
+		elif [ x$GPDB_GROUPID_CHK == x$MASTER_INITDB_GROUPID ] && [ x"x" == x"$GROUP_EXECUTE" ] ; then
 		    LOG_MSG "[INFO]:-Current group id of $GPDB_GROUPID, matches initdb group id of $MASTER_INITDB_GROUPID"
 		else
 			LOG_MSG "[WARN]:-File permission mismatch.  The $GPDB_ID_CHK owns the Greenplum Database installation directory."
@@ -1492,7 +1492,7 @@ CHK_GPDB_ID () {
 			else
 				USER_CHK=$USER
 			fi
-			if [ $GPDB_ID_CHK != $USER_CHK ];then
+			if [ x$GPDB_ID_CHK != x$USER_CHK ];then
 				LOG_MSG "[WARN]:-\$USER mismatch, id returns $GPDB_ID, \$USER returns $USER" 1
 				LOG_MSG "[WARN]:-The GPDB super user account that owns the initdb binary should run these utilities" 1
 				LOG_MSG "[WARN]:-This may cause problems when these utilities are run as $USER" 1
@@ -1507,7 +1507,7 @@ CHK_GPDB_ID () {
 			else
 				LOGNAME_CHK=$LOGNAME
 			fi
-			if [ $GPDB_ID_CHK != $LOGNAME_CHK ];then
+			if [ x$GPDB_ID_CHK != x$LOGNAME_CHK ];then
 				LOG_MSG "[WARN]:-\$LOGNAME mismatch, id returns $GPDB_ID_CHK, \$LOGNAME returns $LOGNAME_CHK" 1
 				LOG_MSG "[WARN]:-The GPDB super user account that owns the initdb binary should run these utilities" 1
 				LOG_MSG "[WARN]:-This may cause problems when these utilities are run as $LOGNAME" 1
@@ -1543,18 +1543,20 @@ PARSE_PERMISSIONS () {
 	for PERM_LINE in `$PSQL -p $PORT -d "$DB" -A -t -c "select relacl from pg_class where relname='${TABLENAME}' and relnamespace in (select oid from pg_namespace where nspname='$SCHEMA_NAME');"|$TR -d '{'|$TR -d '}'|$TR ',' '\n'|$GREP -v "${USER}="|$TR '/' '\n'|$GREP -v "${USER}" `
 	do
 		DB_ACCOUNTNAME=`$ECHO $PERM_LINE|$AWK -F"=" '{print $1}'`
-		PERM_ALLOW=`$ECHO $PERM_LINE|$AWK -F"=" '{print $2}'`
-		if [ `$ECHO $PERM_ALLOW|$GREP -c "r"` -eq 1 ];then PERM_TEXT="$PERM_TEXT select";fi
-		if [ `$ECHO $PERM_ALLOW|$GREP -c "w"` -eq 1 ];then PERM_TEXT="$PERM_TEXT update";fi
-		if [ `$ECHO $PERM_ALLOW|$GREP -c "d"` -eq 1 ];then PERM_TEXT="$PERM_TEXT delete";fi
-		if [ `$ECHO $PERM_ALLOW|$GREP -c "a"` -eq 1 ];then PERM_TEXT="$PERM_TEXT insert";fi
-		if [ `$ECHO $PERM_ALLOW|$GREP -c "R"` -eq 1 ];then PERM_TEXT="$PERM_TEXT rule";fi
-		if [ `$ECHO $PERM_ALLOW|$GREP -c "x"` -eq 1 ];then PERM_TEXT="$PERM_TEXT references";fi
-		if [ `$ECHO $PERM_ALLOW|$GREP -c "t"` -eq 1 ];then PERM_TEXT="$PERM_TEXT trigger";fi
-		PERM_TEXT=`$ECHO $PERM_TEXT|$TR ' ' ','`
-		PERM_ARRAY[$PERM_COUNT]="grant $PERM_TEXT on ~ to $DB_ACCOUNTNAME;"
-		PERM_TEXT=''
-		((PERM_COUNT=$PERM_COUNT+1))
+		if [ x"" != x"$DB_ACCOUNTNAME" ];then
+		    PERM_ALLOW=`$ECHO $PERM_LINE|$AWK -F"=" '{print $2}'`
+		    if [ `$ECHO $PERM_ALLOW|$GREP -c "r"` -eq 1 ];then PERM_TEXT="$PERM_TEXT select";fi
+		    if [ `$ECHO $PERM_ALLOW|$GREP -c "w"` -eq 1 ];then PERM_TEXT="$PERM_TEXT update";fi
+		    if [ `$ECHO $PERM_ALLOW|$GREP -c "d"` -eq 1 ];then PERM_TEXT="$PERM_TEXT delete";fi
+		    if [ `$ECHO $PERM_ALLOW|$GREP -c "a"` -eq 1 ];then PERM_TEXT="$PERM_TEXT insert";fi
+		    if [ `$ECHO $PERM_ALLOW|$GREP -c "R"` -eq 1 ];then PERM_TEXT="$PERM_TEXT rule";fi
+		    if [ `$ECHO $PERM_ALLOW|$GREP -c "x"` -eq 1 ];then PERM_TEXT="$PERM_TEXT references";fi
+		    if [ `$ECHO $PERM_ALLOW|$GREP -c "t"` -eq 1 ];then PERM_TEXT="$PERM_TEXT trigger";fi
+		    PERM_TEXT=`$ECHO $PERM_TEXT|$TR ' ' ','`
+		    PERM_ARRAY[$PERM_COUNT]="grant $PERM_TEXT on ~ to $DB_ACCOUNTNAME;"
+		    PERM_TEXT=''
+		    ((PERM_COUNT=$PERM_COUNT+1))
+		fi
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
