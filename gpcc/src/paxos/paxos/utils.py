@@ -3,13 +3,9 @@ import os
 import signal
 import threading
 
-def pythonExitHelper():
-    if threading.activeCount()>1:
-	print "Python 2.5 has trouble exiting.  Helping Python exit."
-	os.kill(os.getpid(),signal.SIGKILL)
-
-def helpPythonExit():
-    atexit.register(pythonExitHelper)
+def killPython():
+    print "Python 2.5 has trouble exiting.  Helping Python exit."
+    os.kill(os.getpid(),signal.SIGKILL)
 
 def stringToAddresses(m,s):
     return set([m.normalize(i.strip()) for i in s.split(',')])

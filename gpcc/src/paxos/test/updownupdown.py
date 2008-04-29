@@ -512,15 +512,16 @@ class UpDownUpDown:
 	else:
 	    passed += 1
 
-utils.helpPythonExit()
-
 starttime = time.time()
 
 shootshootshoot = ShootShootShoot()
 
 shootshootshoot.start()
 
-UpDownUpDown().run(len(sys.argv)<2 and 1 or int(sys.argv[1]))
+try:
+    UpDownUpDown().run(len(sys.argv)<2 and 1 or int(sys.argv[1]))
+except KeyboardInterrupt:
+    utils.killPython()
 
 shootshootshoot.unstart()
 

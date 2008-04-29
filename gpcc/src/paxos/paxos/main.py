@@ -104,5 +104,7 @@ def usage(argv0):
     sys.stderr.write("    python "+argv0+" Tester addresses\n")
     sys.exit(1)
 
-utils.helpPythonExit()
-main(sys.argv)
+try:
+    main(sys.argv)
+except KeyboardInterrupt:
+    utils.killPython()

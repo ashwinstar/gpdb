@@ -34,6 +34,10 @@ class Port:
 	self.log("from="+self.__address+" to="+to+" send "+messag)
 	m = hashlib.md5()
 	m.update(self.__key)
+	m.update(self.__address)
+	m.update(' ')
+	m.update(to)
+	m.update(' ')
 	m.update(messag)
 	messag = m.hexdigest()+" "+messag
 	if random.random()>=DROP_CHANCE:
@@ -53,15 +57,19 @@ class Port:
 	    i = p.find(' ')
 	    if i==-1:
 		continue
+	    fro = socketAddressToString(fro)
 	    m = hashlib.md5()
 	    m.update(self.__key)
+	    m.update(fro)
+	    m.update(' ')
+	    m.update(self.__address)
+	    m.update(' ')
 	    m.update(p[i+1:])
 	    if m.hexdigest()!=p[:i]:
 		continue
 	    p = p[i+1:]
 	    if random.random()>=DROP_CHANCE:
 		break
-	fro = socketAddressToString(fro)
 	self.log("from="+fro+" to="+self.__address+" recv "+p)
 	return (p,fro)
 
