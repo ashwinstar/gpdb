@@ -1,0 +1,1272 @@
+#!/usr/bin/env python
+'''
+Usage: gpdbupgrade <options>
+       ...
+'''
+
+#============================================================
+import sys, os, optparse, tempfile, re, types, subprocess, traceback
+
+EXECNAME = sys.argv[0][sys.argv[0].rfind('/')+1:]
+libdir = sys.path[0] + '/lib'
+sys.path.append(libdir)
+try: 
+    import pg8000
+except ImportError, e:
+    sys.exit('Error: unable to import module: ' + str(e))
+
+#============================================================
+def pretty_version(v):
+    '''
+    Turns the RCS revision number into a prettier format
+    '''
+    m = re.compile('Revision: #(\d+)').search(v)
+    if m: return str(2 + (float(m.group(1))/100))
+    else: return str(v)
+__version__ = pretty_version('$Revision: #1 $')
+
+#============================================================
+def usage(exitarg = None):
+    '''
+    Print usage information and exit
+    '''
+    print __doc__
+    sys.exit(exitarg)
+
+#============================================================
+class ConnectionError(StandardError): pass
+class UpgradeError(StandardError): pass
+class CmdError(StandardError):
+    def __init__(self, cmd, stdout, stderr):
+        self.cmd = cmd
+        self.stdout = stdout
+        self.stderr = stderr
+    def __str__(self):
+        return self.stderr
+
+
+#============================================================
+class GPUpgrade:
+    '''
+    Greenplum Database Upgrade Utility
+    '''
+
+    # INTERNAL command:
+    #   MASTER    - default, run on master
+    #   MKDIR      - Create directories, run on every host
+    #   REMAPOID   - Link newdb to old oids, run on every host
+    cmd       = None     # Command being run
+    option    = None     # Argument passed to cmd
+    option2   = None     # Argument passed to cmd
+    pid       = None     # Process ID of the master
+
+    # Enviornment and system info
+    masterdir = None     # Master Data Directory
+    datadirs  = None     # Set of all data and mirror directories
+    oldbin    = None     # Old gphome/bin directory
+    newbin    = None     # New gphome/bin directory
+    oldenv    = None     # enviornment: old gp env
+    newenv    = None     # enviornment: new gp env
+    user      = None     # db admin user
+    host      = None     # master hostname
+
+    # Upgrade information and state
+    debug     = False
+    root      = None     # directory: masterdir/..
+    backup    = None     # directory: root/backup
+    tmpdir    = None     # directory: root/upgrade
+    newmaster = None     # directory: upgrade/gp-1
+    state     = None     # file:      backup/state
+    config    = {}       # gp_init_config for new db
+    mappings  = None     # Mappings of old oid to new oids
+    hosts     = []       # list of hosts
+    segments  = []       # list of segments
+    mirrors   = None     # list of mirrors
+
+    #------------------------------------------------------------
+    def __init__(self):
+        pass
+
+
+    #------------------------------------------------------------
+    def Setup(self):
+        '''
+        Basic initialization, separate from __init__ for exception
+        handling purposes.
+        '''
+
+        # Set defaults 
+        self.cmd       = 'MASTER'
+        self.user      = self.RunCmd('id -un')
+        self.host      = self.RunCmd('hostname')
+        self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
+
+        # (???) - stop hard coding these!
+        self.masterdir = '/gpdata/gp-1'
+        self.oldbin    = '/Users/cwelton/greenplum-db-devel'        
+        self.newbin    = self.oldbin
+
+        self.ParseInput()
+
+        # Extract path from input master directory
+        pathsplit = re.compile('(.*)(/[^/]*)').match(self.masterdir)
+        if pathsplit == None:
+            raise UpgradeError('Bad MASTER_DATA_DIRECTORY: ' + self.masterdir)
+        self.root   = pathsplit.group(1)
+        self.tmpdir = self.root + '/upgrade'
+        self.backup = self.root + '/backup'
+
+        self.newmaster = self.tmpdir + pathsplit.group(2)
+        self.oldenv = self.SetupEnv(self.oldbin, self.masterdir)
+        self.newenv = self.SetupEnv(self.newbin, self.newmaster)
+
+
+    #------------------------------------------------------------
+    def __del__(self):
+        '''
+        Final cleanup, remove temporory files
+        '''
+        if self.state:  self.state.close()
+
+#        if self.tmpdir: 
+#            for root, dirs, files in os.walk(self.tmpdir, topdown=False):
+#                for name in files:
+#                    os.remove(os.path.join(root, name))
+#                for name in dirs:
+#                    os.rmdir(os.path.join(root, name))
+#            os.rmdir(root)
+
+
+    #------------------------------------------------------------
+    def ParseInput(self):
+        '''
+        Parses and validates input to the script
+        '''
+
+        try:
+
+            parser = optparse.OptionParser(
+                '%prog [options] old-bin-directory new-bin-directory')
+            parser.add_option('-v', '--version', action='store_true',
+                              help="show the program's version number and exit")
+            parser.add_option('-d', dest='directory', 
+                              help='the master host data directory')
+            parser.add_option('--internal-command', dest='command',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-pid', dest='pid',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-dirs', dest='datadirs',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal-option', dest='option',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('--internal_option2', dest='option2',
+                              help=optparse.SUPPRESS_HELP)
+            (options, args) = parser.parse_args()
+#            if len(args) != 2:
+#                parser.error("incorrect number of arguments")
+
+        except Exception, e:
+            raise UpgradeError('Error parsing input: ' + str(e))
+
+        if options.version:
+            print EXECNAME + ' ' + __version__
+            sys.exit(0)
+        if options.directory:
+            self.masterdir = options.directory
+        if options.command:
+            if self.cmd not in ['MKDIR', 'REMAPOID', 'DEEPLINK']:
+                parser.error('INVALID INTERNAL COMMAND')
+            self.cmd = options.command
+        else:
+            self.cmd = 'MASTER'
+        if options.pid:
+            if self.cmd == 'MASTER':
+                parser.error('INVALID INTERNAL COMMAND')
+            self.pid = options.pid
+        self.datadirs = options.datadirs;
+        self.option   = options.option
+        self.option2  = options.option2
+
+        self.debug    = False
+        
+        if self.cmd == 'MASTER':
+            if self.masterdir == None:
+                self.Log('FATAL', 'MASTER_DATA_DIRECTORY parameter not set')
+                raise UpgradeError('Initialization failed')
+            if not os.path.exists(self.masterdir):
+                self.Log('FATAL', 'MASTER_DATA_DIRECTORY: %s not found'
+                         % self.masterdir)
+                raise UpgradeError('Initialization failed')
+            if self.oldbin == None:
+                self.Log('FATAL' ' -oldbin parameter not set')
+                raise UpgradeError('Initialization failed')
+            if not os.path.exists(self.oldbin):
+                self.Log('FATAL', ' directory not found: %s', self.oldbin)
+                raise UpgradeError('Initialization failed')
+            if self.newbin == None:
+                self.Log('FATAL', ' --newbin parameter not set')
+                raise UpgradeError('Initialization failed')
+            if not os.path.exists(self.newbin):
+                self.Log('FATAL', ' directory not found: %s', self.newbin)
+                raise UpgradeError('Initialization failed')
+
+            # internal only, does not apply to MASTER
+            if self.option or self.pid:    
+                usage(1)
+            self.pid = os.getpid()
+            
+
+    #------------------------------------------------------------
+    def Cleanup(self):
+        '''
+        Cleanup open connections.
+        Separate from __del__ because that caused weird issues with exit() behavior.
+        '''
+        olddir = self.oldenv['MASTER_DATA_DIRECTORY']
+        if olddir and os.path.exists('%s/postmaster.pid' % olddir):        
+            self.Log('INFO', 'Shutting down old Greenplum postmaster')
+            subprocess.call('gpstop -a -m', env=self.oldenv, shell=True)
+        newdir = self.newenv['MASTER_DATA_DIRECTORY']
+        if newdir and os.path.exists('%s/postmaster.pid' % newdir):
+            self.Log('INFO', 'Shutting down new Greenplum postmaster')
+            subprocess.call('gpstop -a', env=self.newenv, shell=True)
+
+    #------------------------------------------------------------
+    def SetState(self, newstate):
+        '''
+        Sets the state in the upgrader state file
+        '''
+        try:
+            self.state.write(str(newstate) + "\n")
+            self.state.flush()
+        except Exception, e:
+            raise UpgradeError('Error writing to statefile: (%s)' % str(e))
+
+    #------------------------------------------------------------
+    def RunCmd(self, cmd, env=None, utility=False):
+        '''
+        Runs a single command on this machine
+        '''
+
+        if self.debug: 
+            print "CMD: " + cmd
+
+        # If utility mode has been specified add role to env
+        if utility:
+            if env:
+                env['PGOPTIONS'] = '-c gp_session_role=utility'
+            else:
+                env = {'PGOPTIONS': '-c gp_session_role=utility'}
+
+        cmd = cmd.split(' ')
+        pipe = subprocess.Popen(cmd, env=env, 
+                                stdout=subprocess.PIPE, 
+                                stderr=subprocess.PIPE)
+        result  = pipe.communicate();
+
+        if pipe.returncode:
+            raise CmdError(cmd, result[0], result[1])
+        else:
+            return result[0].strip();
+
+    #------------------------------------------------------------
+    def CallSlaves(self, cmd, option='', option2=''):
+        '''
+        Calls every host to execute the given command with the given option value
+        '''
+
+
+        # Check for things that should never happen
+        if self.cmd != 'MASTER':
+            raise UpgradeError("Recursive communication error")
+        if not self.datadirs:
+            raise UpgradeError("Failure initializing data directories")
+
+        # Construct a string of '-h hostname' for all hosts
+        exec_cmd = 'gpssh'
+        for h in self.hosts: exec_cmd += ' -h %s' % h
+        exec_cmd += ' %s/bin/%s' % (self.newbin, EXECNAME)
+        exec_cmd += ' -o ' + self.oldbin
+        exec_cmd += ' -n ' + self.newbin
+        exec_cmd += ' --internal-command=' + str(cmd)
+        exec_cmd += ' --internal-pid=' + str(self.pid)
+        exec_cmd += ' --internal-dirs="%s"' % self.datadirs
+        exec_cmd += ' --internal-option="%s"' % option
+        exec_cmd += ' --internal-option2="%s"' % option2
+
+        try:
+            result = self.RunCmd(exec_cmd)
+            sys.stdout.write(result)
+        except CmdError, e:
+            if self.debug:
+                print e.cmd
+            sys.stdout.write(e.stdout)
+            sys.stderr.write(e.stderr)
+            raise UpgradeError('Fatal Segment Error.')
+        
+        if self.debug: 
+            print '[GPSSH] ' + result
+
+    #------------------------------------------------------------
+    def SetupEnv(self, gphome, masterdir):
+        '''
+        Sets up environment variables for Greenplum Administration
+        '''
+        home  = os.environ.get('HOME')
+        path  = os.environ.get('PATH')
+        lpath = os.environ.get('LD_LIBRARY_PATH')
+        if lpath:
+            lpath = '%s/lib:%s/ext/python/lib:%s' % (gphome, gphome, lpath)
+        else:
+            lpath = '%s/lib:%s/ext/python/lib' % (gphome, gphome)
+
+        return {
+            'HOME':                   home,
+            'USER':                   self.user,
+            'LOGNAME':                self.user,
+            'GPHOME':                 gphome,
+            'MASTER_DATA_DIRECTORY':  masterdir,
+            'PATH':                   '%s/bin:%s' % (gphome, path),
+            'LD_LIBRARY_PATH':        lpath
+            }
+
+    #------------------------------------------------------------
+    def Log(self, type, msg):
+
+        if type not in ['NONE', 'INFO', 'WARN', 'FATAL']:
+            self.Log('WARNING', 'Odd log type: ' + str(type))
+        
+        if type == 'NONE':
+            prefix = ''
+#        elif self.cmd != 'MASTER':
+#            prefix = '[%s] ' % self.host
+        else:
+            time = self.RunCmd('date +%Y%m%d:%H:%M:%S')
+            prefix = ':'.join(
+                [time, EXECNAME, self.host, self.user, '[%s]' % type, '-'])
+
+        for m in msg.splitlines():
+            if m.strip() == '': 
+                continue
+            if type == 'FATAL':
+                sys.stderr.write('%s%s\n' % (prefix, m))
+            else:
+                sys.stdout.write('%s%s\n' % (prefix, m))
+
+    #------------------------------------------------------------
+    def Select(self, qry, db='template1', utility=True):
+        '''
+        Execute a SQL query and return an array of result rows
+           + Single columns will be returned as an array of values
+           + Multiple columns will be returned as an array of tuples
+        '''
+        
+        if utility:
+            options = '-c gp_session_role=utility'
+        else:
+            options = ''
+        try:
+            db = pg8000.Connection(user=self.user, host=self.host,
+                                   database=db, options=options)
+            db.execute(qry)
+        except Exception, e:
+            if db: db.close()
+            raise ConnectionError("Error (%s) executing sql: %s", 
+                                  (str(e), qry))
+
+        rows = []
+        for tuple in db.iterate_dict():
+            if len(tuple) == 1: 
+                rows.append(tuple.values()[0])
+            else: 
+                rows.append(tuple)
+        db.close()
+        return rows
+
+    #------------------------------------------------------------
+    def Update(self, qry, db='template1', utility=True):
+        '''
+        Execute a SQL query expecting no output
+        '''
+        
+        if utility:  options = '-c gp_session_role=utility'
+        else:        options = ''
+
+        try:
+            db = pg8000.Connection(user=self.user, host=self.host,
+                                   database=db, options=options)
+            db.execute(qry)
+        except Exception, e:
+            raise ConnectionError("Error (%s) executing sql: %s", 
+                                  (str(e), qry))
+        finally:
+            if db: db.close()
+        
+
+
+    #------------------------------------------------------------
+    def CheckDown(self):
+        '''
+        Checks that neither postmaster is running
+        '''
+        olddir = self.oldenv['MASTER_DATA_DIRECTORY']
+        newdir = self.newenv['MASTER_DATA_DIRECTORY']
+
+        if olddir and os.path.exists('%s/postmaster.pid' % olddir):
+            raise UpgradeError("Old Master instance process running: " +
+                               "%s/postmaster.pid" % olddir)
+
+        if newdir and os.path.exists('%s/postmaster.pid' % newdir):
+            raise UpgradeError("Old Master instance process running: " +
+                               "%s/postmaster.pid" % newdir)
+        return True
+
+    #------------------------------------------------------------
+    def CheckUp(self):
+        '''
+        Checks if one of the postmasters is up and running.
+        Return the environment of the running server
+        '''
+        olddir = self.oldenv['MASTER_DATA_DIRECTORY']
+        newdir = self.newenv['MASTER_DATA_DIRECTORY']
+
+        if olddir and os.path.exists('%s/postmaster.pid' % olddir):
+            return self.oldenv
+        if newdir and os.path.exists('%s/postmaster.pid' % newdir):
+            return self.newenv
+        raise UpgradeError("Postmaster failed to start")
+
+    #------------------------------------------------------------
+    def Startup(self, env, utility):
+        '''
+        Starts up the specified database
+        '''
+        if (env == self.oldenv):
+            self.Log('INFO', 'Starting old Greenplum postmaster')
+        else:
+            self.Log('INFO', 'Starting new Greenplum postmaster')
+        if utility:
+            subprocess.call('gpstart -a -m', env=env, shell=True)
+        else:
+            subprocess.call('gpstart -a', env=env, shell=True)
+        self.CheckUp();
+
+    #------------------------------------------------------------
+    def Shutdown(self, env, utility):
+        '''
+        Stops the specified database
+        '''
+        if (env == self.oldenv):
+            self.Log('INFO', 'Shutting down old Greenplum postmaster')
+        else:
+            self.Log('INFO', 'Shutting down new Greenplum postmaster')
+        if utility:
+            subprocess.call('gpstop -a -m', env=env, shell=True)
+        else:
+            subprocess.call('gpstop -a', env=env, shell=True)
+        self.CheckDown();
+
+    #------------------------------------------------------------
+    def Revert(self):
+        '''
+        Revert to backup
+        '''
+        raise UpgradeError('Revert to backup not implemented')
+
+
+    #------------------------------------------------------------
+    def RemoveDirectories(self):
+        '''
+        Removes upgrade/ and backup/ directories on all segments
+        '''
+        raise UpgradeError('RemoveDirectories not implemented')
+
+    #------------------------------------------------------------
+    def CreateDirectories(self):
+        '''
+        Creates the upgrade/ and backup/ directories on all segments
+        '''
+
+        if self.cmd == 'MASTER':
+
+            self.Log('INFO', 'Creating temporary directories')
+
+            # Before calling slaves check to see if self.tmpdir exists
+            if os.path.exists(self.tmpdir):
+                self.Log('WARN', ' %s: File exists' % self.tmpdir)
+                print '  [R] Revert to Backup'
+                print '  [D] Delete old files and continue'
+                print '  [X] Cancel upgrade'
+                value = ''
+                while value.upper() not in ['R', 'D', 'X']:
+                    value = raw_input('>')
+                    value = value.upper()
+                    if value not in ['R', 'D', 'X']:
+                        print 'Invalid input'
+                if value == 'X':
+                    raise UpgradeError('Upgrade Cancelled')
+                if value == 'R':
+                    self.Revert()
+                    sys.exit(0)
+                self.RemoveDirectories()
+                self.CreateDirectories()
+                return
+
+            # Have the slaves create their directories
+            self.CallSlaves('MKDIR')
+            
+            # Additionally we need upgrade/ and backup/ under the masterdir
+            # if the masterdir is located in a different location or on
+            # another host.
+            if (not os.path.exists(self.tmpdir)):
+                try:
+                    os.mkdir(self.tmpdir)
+                    flag = open('%s/flag' % self.tmpdir, 'w')
+                    flag.write('%s\n' % str(self.pid))
+                    flag.close()
+                    os.mkdir(self.backup)
+                    flag = open('%s/flag' % self.tmpdir, 'w')
+                    flag.write('%s\n' % str(self.pid))
+                    flag.close()
+                except:
+                    raise UpgradeError('Failed to create upgrade directories')
+            else:
+                # if it does exist then chances are very good that one of
+                # the slaves just created it since we checked for it before
+                # we called the slaves.  But there is a remote chance that
+                # someone else created the directory in the meantime.  
+                # -- check the flag to be safe (not foolproof).
+                if (not os.path.exists(self.tmpdir + '/flag') or
+                    not os.path.exists(self.backup + '/flag') or
+                    self.RunCmd('cat %s/flag' % self.tmpdir) != str(self.pid) or
+                    self.RunCmd('cat %s/flag' % self.backup) != str(self.pid)):
+                    raise UpgradeError('Failed to create upgrade directories')
+
+            # Finally now that we have those directories we'll make a state file
+            self.state = open('%s/state' % self.backup, 'w')
+
+        else:
+            if self.cmd != 'MKDIR': 
+                raise Exception(self.cmd + ' != MKDIR]')
+
+            for d in self.datadirs:
+                if d == '': continue
+
+                # Creating directories is an atomic operation, if mkdir 
+                # succeeds then it did not exist previously making it ours
+                os.mkdir(d+'/upgrade')
+
+                # Claim it in the name of our parent process.  We make use of
+                # this flag during tear down to confirm that we created it.
+                flag = open('%s/upgrade/flag' % d, 'w')
+                flag.write('%s\n' % str(self.pid))
+                flag.close()
+
+                # Repeat for the backup directory
+                os.mkdir(d+'/backup')
+                flag = open('%s/backup/flag' % d, 'w')
+                flag.write('%s\n' % str(self.pid))
+                flag.close()
+        
+
+    #------------------------------------------------------------
+    def GenerateConfigFiles(self):
+        '''
+        Creates 'hosts' and 'gp_init_config' files
+        '''
+
+        # Write host list file
+        host_file = '%s/hosts' % self.tmpdir
+        o = open(host_file, 'w')
+        for host in self.hosts:
+            o.write(host + '\n')
+        o.close()
+
+        # Write our new gp_init_config file
+        gp_init_config = '%s/gp_init_config' % self.tmpdir
+        o = open(gp_init_config, 'w')
+        o.write('ARRAY_NAME="%s"\n'          % self.config['ARRAY_NAME'])
+        o.write('MACHINE_LIST_FILE=%s\n'     % host_file)
+        o.write('SEG_PREFIX=%s\n'            % self.config['SEG_PREFIX'])
+        o.write('PORT_BASE=%s\n'             % self.config['PORT_BASE'])
+        o.write('declare -a DATA_DIRECTORY=(%s)\n' % self.config['DATA_DIRECTORY'])
+        o.write('MASTER_HOSTNAME=%s\n'       % self.config['MASTER_HOSTNAME'])
+        o.write('MASTER_DIRECTORY=%s\n'      % self.config['MASTER_DIRECTORY'])
+        o.write('MASTER_PORT=%s\n'           % self.config['MASTER_PORT'])
+        o.write('TRUSTED_SHELL=%s\n'         % self.config['TRUSTED_SHELL'])
+        o.write('CHECK_POINT_SEGMENTS=%s\n'  % self.config['CHECK_POINT_SEGMENTS'])
+        o.write('ENCODING=%s\n'              % self.config['ENCODING'])
+        if (self.mirrors):
+            o.write('MIRROR_PORT_BASE=%s\n'  % self.config['MIRROR_PORT_BASE'])
+            o.write('declare -a MIRROR_DATA_DIRECTORY=(%s)\n' % 
+                    self.confing['MIRROR_DATA_DIRECTORY'])
+        o.close()
+        self.Log('INFO', 'Configuration files generated')
+
+
+    #------------------------------------------------------------
+    def ExtractInfo(self):
+        '''
+        Get all the information we need from the old instance
+        '''
+
+        # If we don't have a good connection give up now
+        version = str(self.Select('SELECT version()')[0])
+
+        # Determine the greenplum version, if the database we have connect to
+        # isn't actually greenplum this will fail.
+        try:
+            self.oldversion = str(self.Select(
+            '''
+               SELECT productversion from gp_version_at_initdb
+            ''')[0])
+            self.Log('INFO', 'Greenplum Database %s' % self.oldversion)
+        except:
+            raise UpgradeError('Version: %s is not supported for upgrade' % 
+                               version)
+
+        # Determine if there are any invalid segments
+        invalid = self.Select(
+        '''
+           SELECT hostname, datadir FROM gp_configuration
+           WHERE not valid
+        ''')
+        if len(invalid) > 0:
+            for item in invalid:
+                self.Log('FATAL', 'INVALID SEGMENT: %s:/%s' % item)
+            raise UpgradeError('Cannot upgrade database with invalid segments')
+        self.Log('INFO', 'All segments valid')
+
+        # Extract the information needed to construct a gp_init_config file
+        gp_config = self.Select(
+        '''
+           SELECT content, definedprimary, dbid, hostname, port, datadir 
+           FROM gp_configuration 
+        ''');
+        master = filter(lambda(x): x['content'] < 0 and 
+                                   x['definedprimary'], gp_config);
+        standbymaster = filter(lambda(x): x['content'] < 0 and 
+                                      not x['definedprimary'], gp_config);
+        segments = filter(lambda(x): x['content'] >= 0 and 
+                                     x['definedprimary'], gp_config);
+        mirrors = filter(lambda(x): x['content'] >= 0 and 
+                                 not x['definedprimary'], gp_config);
+        self.segments = segments
+        if (len(mirrors) > 0): 
+            self.mirrors = mirrors
+        
+        # Internal sanity checking
+        if len(master) != 1:
+            raise UpgradeError('Too many master segments, aborting')
+        if len(segments) == 0:
+            raise UpgradeError('No segments found')
+
+        master = master[0]
+
+        # ARRAY_NAME  (???)
+        self.config['ARRAY_NAME'] = 'Greenplum Upgrade'
+
+        # HOSTS can be used to build a MACHINE_LIST_FILE
+        self.hosts = self.Select(
+        '''
+           SELECT DISTINCT hostname FROM gp_configuration
+        ''')
+        self.hosts = map(lambda(x): str(x), self.hosts)
+
+        # Determine the SEG_PREFIX, use any old segment
+        datadir = str(segments[0]['datadir'])
+        content = str(segments[0]['content'])
+        seg_prefix = datadir[datadir.rindex('/')+1:datadir.rindex(content)]
+        self.config['SEG_PREFIX'] = seg_prefix
+
+        # Determine PORT_BASE, use any old segment (??? this is wrong ???)
+        self.config['PORT_BASE'] = segments[0]['port'] - segments[0]['content'] - 1
+
+        # Determine DATA_DIRECTORY, use any host
+        # We also keep track of a SET() of data and mirror dirs without
+        # the /upgrade suffix
+        dirs = set();
+        data_dir = ''
+        for seg in segments:
+            if (seg['hostname'] != segments[0]['hostname']): 
+                continue
+            newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
+            dirs.add(newdir)
+            data_dir = data_dir + str(newdir) + '/upgrade '
+        self.config['DATA_DIRECTORY'] = data_dir
+
+        # MASTER_HOSTNAME, super easy
+        self.config['MASTER_HOSTNAME'] = master['hostname']
+
+        # MASTER_DIRECTORY, also easy - we already set it up
+        self.config['MASTER_DIRECTORY'] = self.tmpdir
+
+        # MASTER_PORT, super easy
+        self.config['MASTER_PORT'] = master['port']
+
+        # TRUSTED_SHELL, set manually since there's only one supported value
+        self.config['TRUSTED_SHELL'] = 'ssh'
+
+        # CHECK_POINT_SEGMENTS 
+        self.config['CHECK_POINT_SEGMENTS'] = self.Select('show checkpoint_segments')[0]
+
+        # ENCODING
+        self.config['ENCODING'] = self.Select('show client_encoding')[0]
+
+        # Handle mirrors, if present
+        if self.mirrors:
+
+            # MIRROR_PORT_BASE (??? this is wrong ???)
+            self.config['MIRROR_PORT_BASE'] = mirrors[0]['port']-mirrors[0]['content']-1
+
+            # MIRROR_DATA_DIRECTORY, use any mirror
+            mirror_data_dir = ' '
+            for seg in mirrors:
+                if (seg['hostname'] != mirrors[0]['hostname']): 
+                    continue
+                newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
+                newdir = self.tmpdir + str(newdir)
+                dirs.add(newdir)
+                mirror_data_dir = mirror_data_dir + self.tmpdir + str(newdir) + ' '
+            self.config['MIRROR_DATA_DIRECTORY'] = mirror_data_dir
+
+        # standby masters (???)
+
+        # We collected a set of data and mirror directories, convert it back
+        # to a string.
+        self.datadirs = ''
+        for d in dirs:
+            self.datadirs = '%s%s ' % (self.datadirs, d)
+        self.datadirs = self.datadirs.strip()
+
+        self.Log('INFO', 'Configuration acquired')
+
+
+    #------------------------------------------------------------
+    def BuildMappings(self):
+        '''
+        Constructs the mappings of user objects to data files.
+        It is called twice over the course of the upgrade, the first time it
+        extracts mappings from the olddb, the second time it extracts mappings
+        from the new db and joins the two mappings together.
+        '''
+
+        if self.mappings == None:
+            self.Log('INFO', 'Building original oid Mappings')
+            self.mappings = {}
+            prefix = 'old'
+        else:
+            self.Log('INFO', 'Building upgraded oid Mappings')
+            prefix = 'new'
+
+        # Get a list of databases
+        databases = self.Select(
+        '''
+           SELECT  
+             datname        as dbname,
+             oid            as oid,
+             datlastsysoid  as max_sysoid
+           FROM pg_database 
+           WHERE datname != 'template0'
+           ORDER BY dbname
+        ''')
+
+        # Build up the list of mapping objects
+        for db in databases:
+            oids = self.Select(
+                '''
+                   SELECT
+                      c.relname || '_' || c.relkind as name,
+                      c.relfilenode as filenode,
+                      c2.relfilenode as toast,
+                      c3.relfilenode as toast_index
+                   FROM 
+                      pg_namespace n,
+                      pg_class c 
+                      left outer join pg_class c2 on c.reltoastrelid=c2.oid
+                      left outer join pg_class c3 on c2.reltoastidxid=c3.oid
+                   WHERE c.oid >= %s 
+                     AND c.relkind in ('r', 't', 'i')
+                     AND c.relnamespace = n.oid AND n.nspname != 'pg_toast'
+                   ORDER BY c.relname, c.relkind;
+                ''' % db['max_sysoid'], 
+                db=db['dbname'])
+            for o in oids:
+                # Prefix each name with the database it's in
+                name = '%s.%s' % (db['dbname'], o['name'])
+
+                if name not in self.mappings:
+                    self.mappings[name] = {}
+                self.mappings[name][prefix+'db']    = db['oid']
+                self.mappings[name][prefix+'id']    = o['filenode']
+                self.mappings[name][prefix+'toast'] = o['toast']
+                self.mappings[name][prefix+'index'] = o['toast_index']
+
+        # Make a sanity check that everything makes a 1:1 mapping
+        if prefix == 'foo':
+            for (x, name) in enumerate(self.mappings):
+
+                # every mapping must:
+                #   + have a valid newdb, olddb, newid, oldid
+                #   + If it has 'oldtoast' it must have 'newtoast' and vice versa
+                #   + If it has 'oldindex' it must have 'newindex' and vice versa
+                if (('newid' in x) and 
+                    ('oldid' in x) and
+                    ('newdb' in x) and 
+                    ('olddb' in x) and
+                    (('oldtoast' in x) ^ ('newtoast' in x)) and
+                    (('oldindex' in x) ^ ('newindex' in x))):
+                    return True
+
+                # There /must/ be an easier way of doing this...
+                olddb = oldid = oldtoast = oldindex = 0
+                newdb = newid = newtoast = newindex = 0
+                if 'olddb' in x: olddb = x['olddb']
+                if 'oldid' in x: oldid = x['oldid']
+                if 'oldtoast' in x: oldtoast = x['oldtoast']
+                if 'oldindex' in x: oldindex = x['oldindex']
+                if 'newdb' in x: newdb = x['newdb']
+                if 'newid' in x: newid = x['newid']
+                if 'newtoast' in x: newtoast = x['newtoast']
+                if 'newindex' in x: newindex = x['newindex']
+                self.Log('FATAL', '-----------------------------------------------')
+                self.Log('FATAL', 'Old OID: %s %s %s %s %s' %
+                         (name, olddb, oldid, oldtoast, oldindex))
+                self.Log('FATAL', 'New OID: %s %s %s %s %s' %
+                         (name, newdb, newid, newtoast, newindex))
+                self.Log('FATAL', '-----------------------------------------------')
+                raise UpgradeException('OID Mappings must be 1:1')
+
+
+    #------------------------------------------------------------
+    def DumpSchema(self):
+        '''
+        Runs pgdump_all to dump the schema.
+        Run on the master in utility mode.
+        '''
+        self.oldenv['PGOPTIONS'] = '-c gp_session_role=utility'
+        subprocess.call('pg_dumpall --schema-only --gp-syntax > %s/pgdump.sql' %
+                        self.tmpdir, env=self.oldenv, shell=True)
+
+
+    #------------------------------------------------------------
+    def InitNewDB(self):
+        '''
+        Create and configure the upgrade instance
+        '''
+#        self.Log('INFO', 'Exchanging keys with hosts')
+#        keys = subprocess.call('gpssh-exkeys -f %s/hosts' % self.tmpdir,
+#                               env=self.newenv, shell=True)
+
+        self.Log('INFO', 'Initializing upgraded cluster')
+        subprocess.call('gpinitsystem -a -c %s/gp_init_config' % self.tmpdir,
+                        env=self.newenv, shell=True)
+        self.CheckUp()
+        self.Log('INFO', 'Importing old schema')
+        subprocess.call('psql -f %s/pgdump.sql template1' % self.tmpdir,
+                        env=self.newenv, shell=True)
+
+
+    #------------------------------------------------------------
+    def RemapOID(self):
+        '''
+        Remaps OIDs for the NEW database
+        '''
+
+        if self.cmd == 'MASTER':
+
+            self.Log('INFO', 'Remapping OIDs')
+
+            datadirs    = [self.root]
+            mapfilename = '%s/mapping' % self.backup
+            seg_prefix  = self.config['SEG_PREFIX'] + '-'
+
+            # Write out a mapping file
+            o = open(mapfilename, 'w')
+            for name in self.mappings:
+                o.write('%s/%s %s/%s\n' % (
+                        self.mappings[name]['olddb'],
+                        self.mappings[name]['oldid'],
+                        self.mappings[name]['newdb'],
+                        self.mappings[name]['newid']
+                        ))
+                if self.mappings[name]['oldtoast']:
+                    o.write('%s/%s %s/%s\n' % (
+                            self.mappings[name]['olddb'],
+                            self.mappings[name]['oldtoast'],
+                            self.mappings[name]['newdb'],
+                            self.mappings[name]['newtoast']
+                            ))
+                    o.write('%s/%s %s/%s\n' % (
+                            self.mappings[name]['olddb'],
+                            self.mappings[name]['oldindex'],
+                            self.mappings[name]['newdb'],
+                            self.mappings[name]['newindex']
+                            ))
+            o.close()
+
+            # Done with self.mappings, release the memory
+            self.mappings = None
+            
+
+            # they believe the mapping is valid.
+            self.CallSlaves('REMAPOID', 
+                            '%s:%s' % (self.host, mapfilename),
+                            self.config['SEG_PREFIX'])
+
+
+        else:
+            if self.cmd != 'REMAPOID': 
+                raise Exception(self.cmd + ' != REMAPOID]')
+
+            datadirs       = self.datadirs
+            master_mapping = self.option
+            seg_prefix     = self.option2
+
+
+            # We should always have at least on data directory...
+            if len(self.datadirs) < 1:
+                return
+
+            # Slave process, first pull the mapping file from the master,
+            #   + Place it in the 'first' data dir
+            mapfilename = self.datadirs[0] + '/mapping'
+            self.RunCmd('scp %s %s' % (master_mapping, mapfilename))
+            
+
+        # Both master and slave processes need to do mappings.
+        #   + On master this is just MASTER_DATA_DIR
+        #   + On slaves its the DATA_DIRECTORY and MIRROR_DATA_DIRECTORY
+
+        # Check the mapping in all data directories
+        for d in datadirs:
+            # Find the segments for this directory, we base this on 
+            # directories under the upgrade directory that match
+            # the naming convention of the segments.
+            for file in os.listdir('%s/upgrade' % d):
+                if re.compile('^%s\d+$' % seg_prefix).match(file):
+                    olddir  = d + '/' + file
+                    newdir  = d + '/upgrade/' + file
+                    
+                    # Read the mapping file
+                    mapfile = open(mapfilename, 'r')
+                    for line in mapfile:
+                        (oldoid, newoid) = line.strip().split(' ')
+                        oldfile = '%s/base/%s' % (olddir, oldoid)
+                        newfile = '%s/base/%s' % (newdir, newoid)
+
+                        # Both old and new file should exist
+                        if not os.path.exists(oldfile):
+                            raise UpgradeError(oldfile + ' not found')
+                        if not os.path.exists(newfile):
+                            raise UpgradeError(newfile + ' not found')
+
+                        # Remove the new file, hard link to the old file
+                        os.remove(newfile)
+                        os.link(oldfile, newfile)
+                    mapfile.close()
+
+                    # Links are in place, but data will not be visible until 
+                    # we sync the pg_control info
+                    oldsync = self.RunCmd('pg_resetxlog -n ' + olddir, 
+                                          env=self.oldenv)
+
+                    # Nasty bit of code to turn the control data into a
+                    # nice dict object
+                    sync = {}
+                    for line in oldsync.split('\n'):
+                        if len(line) == 0: continue
+                        (field, value) = line.split(':')
+                        sync[field] = value.lstrip()
+
+                    # Set the next transaction id in new control
+                    x = sync["Latest checkpoint's NextXID"].find('/')
+                    if x < 0:
+                        nextxid = sync["Latest checkpoint's NextXID"]
+                    else:
+                        nextxid = sync["Latest checkpoint's NextXID"][x+1:]
+
+                    self.RunCmd('pg_resetxlog -f -x %s %s' % (nextxid, newdir), 
+                                env=self.newenv)
+
+                    # Set the WAL archives
+                    self.RunCmd('pg_resetxlog -l %s,%s,%s %s' % 
+                                (sync["Latest checkpoint's TimeLineID"],
+                                 sync["Current log file ID"],
+                                 sync["Next log file segment"],
+                                 newdir), env=self.newenv)
+
+                    # Set next oid
+                    self.RunCmd('pg_resetxlog -o %s %s' % 
+                                (sync["Latest checkpoint's NextOID"],
+                                 newdir), env=self.newenv)
+
+                    # Replace the new comit logs with the old ones
+                    #   + Just copy these... it's safer
+                    self.RunCmd('rm -rf %s/pg_clog' % newdir)
+                    self.RunCmd('cp -rf %s/pg_clog %s/pg_clog' % (olddir, newdir))
+
+                    # Do the same for the .conf files
+                    self.RunCmd('rm -rf %s/*.conf' % newdir)
+                    self.RunCmd('cp -rf %s/*.conf %s/.' % (olddir, newdir))
+
+
+
+    #------------------------------------------------------------
+    def DeepLink(self, style):
+        '''
+        Makes a deep hard link copy of one directory into another
+        '''
+
+        if style == 'CLEANUP':   # Is this really a DeepLink?
+            return
+#        if style == 'INSTALL':
+#            return               # debug that backup works first
+        
+        if self.cmd == 'MASTER':
+            prefix      = self.config['SEG_PREFIX'] + '-'
+
+            if style == 'BACKUP':
+                # copying data_dir => data_dir/backup
+                self.Log('INFO', 'Linking backup')
+                datadirs    = [self.root]
+                destination = self.backup
+
+            elif style == 'INSTALL':
+                self.Log('INFO', 'Linking upgrade')
+                # copying data_dir/upgrade => data_dir
+                datadirs    = [self.tmpdir]
+                destination = self.root
+            else:
+                raise UpgradeError('FATAL', ' DeepLink(%s)!?' % style)
+
+            # Have all hosts perform the link first
+            self.CallSlaves('DEEPLINK', style, self.config['SEG_PREFIX'])
+
+        else:
+            prefix      = self.option2
+
+            if style == 'BACKUP':
+                datadirs    = self.datadirs
+                destination = self.backup
+
+            elif style == 'INSTALL':
+                datadirs    = [self.tmpdir]
+                destination = self.root
+            else:
+                raise UpgradeError('FATAL', ' DeepLink(%s)!?' % style)
+
+            self.Log('INFO', 'PREFIX: %s, datadirs: %s, dest: %s' \
+                         % (prefix, datadirs, destination))
+
+        # Look in each data directory, identify the segment directories,
+        # walk each segment directory.
+        segdir_re = re.compile(prefix+'\d+(.log)?$')
+        for dir in datadirs:
+            for content in os.listdir(dir):
+                if segdir_re.match(content):
+                    content = os.path.join(dir, content)
+                    if os.path.isfile(content):
+                        oldfile = content
+                        newfile = content.replace(dir, destination,1)
+                        if os.path.exists(newfile):
+                            self.Log('WARN', 'File exists ' + newfile)
+                            os.remove(newfile)
+                        os.link(oldfile, newfile)
+
+                    for root, dirs, files in os.walk(content, topdown = True):
+                        newroot = root.replace(dir,destination,1)
+                        if not os.path.exists(newroot):
+                            os.mkdir(newroot)
+                        for name in files:
+                            oldfile = os.path.join(root, name)
+                            newfile = os.path.join(newroot, name)
+                            if os.path.exists(newfile):
+                                self.Log('WARN', 'File exists ' + newfile)
+                                os.remove(newfile)
+                            os.link(oldfile, newfile)
+
+    #------------------------------------------------------------
+    def FixConfig(self):
+        '''
+        After moving the upgraded db from DATA_DIR/upgrade to just DATA_DIR
+        we need to go and fix the gp_configuration table to point to the
+        correct location.
+        '''
+
+        # We can do this in utility mode since the master host is the only
+        # host that contains gp_configuration information
+        self.Log('INFO', 'Adjusting gp_configuration')
+        self.Startup(self.oldenv, True)
+        self.Update(
+         '''
+            UPDATE gp_configuration 
+              SET datadir=regexp_replace(datadir, 'upgrade/([^/]*)$', E'\\1')
+         ''')
+        self.Shutdown(self.oldenv, True)
+            
+
+
+#============================================================
+
+# Create a new GPUpgrade - should never throw exception
+u = GPUpgrade()
+
+# GPUpgrade calls itself on individual hosts, we switch behavior based
+# on the way that it gets called.  These options are not listed in
+# the usage information because they are strictly an internal interface.
+try:
+    # parses and validates input
+    u.Setup()
+
+    # MASTER - the main case, run on master only
+    if u.cmd == 'MASTER':
+
+        # Make sure that the database isn't running
+        try:
+            u.CheckDown()
+        except Exception, e:
+            u.Log('FATAL', str(e))
+            sys.exit(1)        
+
+        # Startup the old database in utility mode
+        u.Startup(u.oldenv, True)
+
+        # Get configuration and catalog information
+        # + Requires running old db
+        u.ExtractInfo()
+        u.BuildMappings()
+
+        # Create working directories on all hosts
+        # + Requires configuration info collected in ExtractInfo
+        # + Requires Execution on all hosts
+        if not u.debug:
+            u.CreateDirectories()
+        else:
+            u.state = open('%s/state' % u.backup, 'w')
+        u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
+
+        # Write configuration files for new db
+        # + Requires configuration info collected in ExtractInfo
+        # + Requires working directory on master node
+        u.GenerateConfigFiles()
+
+        # Call pg_dumpall and put results in a file
+        # + Requires running old db
+        # + Requires working directory on master node
+        u.DumpSchema()
+
+        # All information collected, shutdown old database
+        u.Shutdown(u.oldenv, True)
+
+        # Initalize the new database
+        # + Requires working directories on all nodes
+        # + Requires generated configuration file
+        if not u.debug: 
+            u.InitNewDB()
+        else: 
+            u.Startup(u.newenv, True)
+        u.BuildMappings()
+
+        if not u.debug: 
+            u.Shutdown(u.newenv, False)
+        else: 
+            u.Shutdown(u.newenv, True)
+
+        # Remap oids for the new database
+        # + Requires working directories on all hosts
+        # + Requires new db initialized
+        u.RemapOID()
+        u.SetState('NEWDB VALID')
+
+        # We haven't modified anything under the master directory yet.
+        # If anything has gone wrong up to this point it is pretty much
+        # Safe to blow away everything under 'upgrade/' and 'backup/'
+        # (The only thing to be careful about is that we shutdown the
+        #  new db before we remove the storage from under it.)
+            
+        # To install the new db under the old master path we go through
+        # pains to make it as robust as possible.  This is done via a
+        # combination of redundancy and hard links.
+
+        # --------
+        # Stage 1:
+        # -------- 
+        # The current state of the world is as follows
+        #    DATA_DIR/         = untouched original db
+        #    DATA_DIR/upgrade  = fully upgraded new db
+        #    DATA_DIR/backup   = empty except for the state and flag files.        
+        # => Make a deep hardlink copy of DATA_DIR -> DATA_DIR/backup
+        u.DeepLink('BACKUP')
+        u.SetState('BACKUP VALID')
+
+        # --------
+        # Stage 2:
+        # -------- 
+        # The current state of the world is as follows
+        #    DATA_DIR/         = untouched original db
+        #    DATA_DIR/upgrade  = fully upgraded new db
+        #    DATA_DIR/backup   = untouched original db
+        # => Make a deep hard link copy of DATA_DIR/upgrade -> DATA_DIR
+        # => Adjust new pg_configuration to point to DATA_DIR
+#        u.DeepLink('INSTALL')
+#       u.FixConfig()
+#        u.SetState('INSTALL VALID')
+
+        # --------
+        # Stage 3:
+        # -------- 
+        # The current state of the world is as follows
+        #    DATA_DIR/         = fully upgraded new db
+        #    DATA_DIR/upgrade  = fully upgraded new db
+        #    DATA_DIR/backup   = untouched original db
+        # => Remove redundant DATA_DIR/upgrade
+        
+        # => Remove hardlinks from DATA_DIR/backup  (???) or,
+        # => Remove historical DATA_DIR/backup      (???)
+        
+#        u.DeepLink('CLEANUP')
+#        u.SetState('UPGRADE COMPLETE')
+
+        # -----------------
+        # Upgrade Complete:
+        # -----------------
+        # The current state of the world is as follows
+        #    DATA_DIR/         = fully upgraded new db
+        u.Log('INFO', 
+'''
+--------------------------------------------
+Upgrade Sucessful
+--------------------------------------------
+To complete the environment configuration
+1. Update %s .bashrc to source the file:
+   %s/greenplum_path.sh
+--------------------------------------------
+''' 
+              % (u.user, u.newbin))
+
+
+#---------------------------------------------------------
+# The rest of the options are executed on a per-host basis
+    elif u.cmd == 'MKDIR':
+        u.CreateDirectories()
+    elif u.cmd == 'REMAPOID':
+        u.RemapOID()
+    elif u.cmd == 'DEEPLINK':
+        u.DeepLink(u.option)
+    else:
+        raise Exception('Unknown cmd: ' + str(u.cmd))
+
+# Any error that can happen
+except UpgradeError, e:
+    u.Log('FATAL', str(e))
+    u.Cleanup()
+    sys.exit(1)
+
+# Shouldn't get any of these, if they occur it is probably a bug in
+# the upgrader.
+except Exception, e:
+    u.Log('FATAL', str(e))
+    u.Cleanup()
+    sys.stderr.write(traceback.format_exc())
+    sys.exit(1)
