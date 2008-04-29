@@ -1598,7 +1598,18 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 bool
 cdbdisp_check_estate_for_cancel(EState *estate)
 {
-	struct CdbDispatchResults  *meleeResults = estate->primaryResults;
+	struct CdbDispatchResults  *meleeResults;
+
+	Assert(estate);
+
+	meleeResults = estate->primaryResults;
+
+	if (meleeResults == NULL) /* cleanup ? */
+	{
+		return false;
+	}
+
+	Assert(meleeResults);
 
 	if (pleaseCancel ||
 		meleeResults->errcode ||
