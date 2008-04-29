@@ -1,7 +1,11 @@
 #!/usr/bin/env python
 '''
-Usage: gpdbupgrade <options>
-       ...
+Usage: gp_migrator [options] old-gphome new-gphome
+
+Options:
+  -h, --help            show this help message and exit
+  -v, --version         show the program's version number and exit
+  -d DIRECTORY          the master host data directory
 '''
 
 #============================================================
@@ -26,14 +30,6 @@ def pretty_version(v):
 __version__ = pretty_version('$Revision: #1 $')
 
 #============================================================
-def usage(exitarg = None):
-    '''
-    Print usage information and exit
-    '''
-    print __doc__
-    sys.exit(exitarg)
-
-#============================================================
 class ConnectionError(StandardError): pass
 class UpgradeError(StandardError): pass
 class CmdError(StandardError):
@@ -44,11 +40,10 @@ class CmdError(StandardError):
     def __str__(self):
         return self.stderr
 
-
 #============================================================
 class GPUpgrade:
     '''
-    Greenplum Database Upgrade Utility
+    Greenplum Database Upgrade/Downgrade Utility
     '''
 
     # INTERNAL command:
@@ -87,7 +82,6 @@ class GPUpgrade:
     def __init__(self):
         pass
 
-
     #------------------------------------------------------------
     def Setup(self):
         '''
@@ -100,26 +94,20 @@ class GPUpgrade:
         self.user      = self.RunCmd('id -un')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
-
-        # (???) - stop hard coding these!
-        self.masterdir = '/gpdata/gp-1'
-        self.oldbin    = '/Users/cwelton/greenplum-db-devel'        
-        self.newbin    = self.oldbin
-
         self.ParseInput()
 
         # Extract path from input master directory
-        pathsplit = re.compile('(.*)(/[^/]*)').match(self.masterdir)
-        if pathsplit == None:
-            raise UpgradeError('Bad MASTER_DATA_DIRECTORY: ' + self.masterdir)
-        self.root   = pathsplit.group(1)
-        self.tmpdir = self.root + '/upgrade'
-        self.backup = self.root + '/backup'
-
-        self.newmaster = self.tmpdir + pathsplit.group(2)
-        self.oldenv = self.SetupEnv(self.oldbin, self.masterdir)
-        self.newenv = self.SetupEnv(self.newbin, self.newmaster)
-
+        if self.cmd == 'MASTER':
+            masterpath, masterdir = os.path.split(self.masterdir)
+            self.root   = masterpath
+            self.tmpdir = os.path.join(masterpath, 'upgrade')
+            self.backup = os.path.join(masterpath, 'backup')
+            self.newmaster = os.path.join(masterpath, 'upgrade', masterdir)
+            self.oldenv = self.SetupEnv(self.oldbin, self.masterdir)
+            self.newenv = self.SetupEnv(self.newbin, self.newmaster)
+        else:
+            self.oldenv = self.SetupEnv(self.oldbin, None)
+            self.newenv = self.SetupEnv(self.newbin, None)
 
     #------------------------------------------------------------
     def __del__(self):
@@ -146,7 +134,7 @@ class GPUpgrade:
         try:
 
             parser = optparse.OptionParser(
-                '%prog [options] old-bin-directory new-bin-directory')
+                '%prog [options] old-gphome new-gphome')
             parser.add_option('-v', '--version', action='store_true',
                               help="show the program's version number and exit")
             parser.add_option('-d', dest='directory', 
@@ -159,11 +147,11 @@ class GPUpgrade:
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-option', dest='option',
                               help=optparse.SUPPRESS_HELP)
-            parser.add_option('--internal_option2', dest='option2',
+            parser.add_option('--internal-option2', dest='option2',
                               help=optparse.SUPPRESS_HELP)
             (options, args) = parser.parse_args()
-#            if len(args) != 2:
-#                parser.error("incorrect number of arguments")
+            if len(args) != 2:
+                parser.error("incorrect number of arguments")
 
         except Exception, e:
             raise UpgradeError('Error parsing input: ' + str(e))
@@ -174,22 +162,24 @@ class GPUpgrade:
         if options.directory:
             self.masterdir = options.directory
         if options.command:
-            if self.cmd not in ['MKDIR', 'REMAPOID', 'DEEPLINK']:
-                parser.error('INVALID INTERNAL COMMAND')
+            if options.command not in ['MKDIR', 'REMAPOID', 'DEEPLINK']:
+                parser.error('INVALID INTERNAL COMMAND: ' + options.command)
             self.cmd = options.command
-        else:
-            self.cmd = 'MASTER'
         if options.pid:
             if self.cmd == 'MASTER':
-                parser.error('INVALID INTERNAL COMMAND')
+                parser.error('INVALID INTERNAL COMMAND: ' + self.cmd)
             self.pid = options.pid
-        self.datadirs = options.datadirs;
+        self.oldbin   = args[0]
+        self.newbin   = args[1]
+        if options.datadirs:
+            self.datadirs = options.datadirs.split();
         self.option   = options.option
         self.option2  = options.option2
 
         self.debug    = False
         
         if self.cmd == 'MASTER':
+            self.pid = os.getpid()
             if self.masterdir == None:
                 self.Log('FATAL', 'MASTER_DATA_DIRECTORY parameter not set')
                 raise UpgradeError('Initialization failed')
@@ -197,24 +187,12 @@ class GPUpgrade:
                 self.Log('FATAL', 'MASTER_DATA_DIRECTORY: %s not found'
                          % self.masterdir)
                 raise UpgradeError('Initialization failed')
-            if self.oldbin == None:
-                self.Log('FATAL' ' -oldbin parameter not set')
-                raise UpgradeError('Initialization failed')
             if not os.path.exists(self.oldbin):
                 self.Log('FATAL', ' directory not found: %s', self.oldbin)
                 raise UpgradeError('Initialization failed')
-            if self.newbin == None:
-                self.Log('FATAL', ' --newbin parameter not set')
-                raise UpgradeError('Initialization failed')
             if not os.path.exists(self.newbin):
                 self.Log('FATAL', ' directory not found: %s', self.newbin)
-                raise UpgradeError('Initialization failed')
-
-            # internal only, does not apply to MASTER
-            if self.option or self.pid:    
-                usage(1)
-            self.pid = os.getpid()
-            
+                raise UpgradeError('Initialization failed')            
 
     #------------------------------------------------------------
     def Cleanup(self):
@@ -285,9 +263,8 @@ class GPUpgrade:
         # Construct a string of '-h hostname' for all hosts
         exec_cmd = 'gpssh'
         for h in self.hosts: exec_cmd += ' -h %s' % h
-        exec_cmd += ' %s/bin/%s' % (self.newbin, EXECNAME)
-        exec_cmd += ' -o ' + self.oldbin
-        exec_cmd += ' -n ' + self.newbin
+        exec_cmd += ' %s/bin/%s ' % (self.newbin, EXECNAME)
+        exec_cmd += self.oldbin + ' ' + self.newbin
         exec_cmd += ' --internal-command=' + str(cmd)
         exec_cmd += ' --internal-pid=' + str(self.pid)
         exec_cmd += ' --internal-dirs="%s"' % self.datadirs
@@ -315,20 +292,26 @@ class GPUpgrade:
         home  = os.environ.get('HOME')
         path  = os.environ.get('PATH')
         lpath = os.environ.get('LD_LIBRARY_PATH')
+        if path:
+            path = '%s/bin:%s' % (gphome, path)
+        else:
+            path = '%s/bin' % gphome
         if lpath:
             lpath = '%s/lib:%s/ext/python/lib:%s' % (gphome, gphome, lpath)
         else:
             lpath = '%s/lib:%s/ext/python/lib' % (gphome, gphome)
 
-        return {
-            'HOME':                   home,
-            'USER':                   self.user,
-            'LOGNAME':                self.user,
-            'GPHOME':                 gphome,
-            'MASTER_DATA_DIRECTORY':  masterdir,
-            'PATH':                   '%s/bin:%s' % (gphome, path),
-            'LD_LIBRARY_PATH':        lpath
-            }
+        env = {}
+        env['HOME']    = home
+        env['USER']    = self.user
+        env['LOGNAME'] = self.user
+        env['GPHOME']  = gphome
+        env['PATH']    = path
+        env['LD_LIBRARY_PATH'] = lpath
+        if masterdir:
+            env['MASTER_DATA_DIRECTORY'] = masterdir
+        return env
+
 
     #------------------------------------------------------------
     def Log(self, type, msg):
@@ -962,9 +945,14 @@ class GPUpgrade:
                             raise UpgradeError(newfile + ' not found')
 
                         # Remove the new file, hard link to the old file
+                        self.Log('INFO', 'Linking %s => %s' % (oldfile, newfile))
+
                         os.remove(newfile)
                         os.link(oldfile, newfile)
                     mapfile.close()
+
+                    # Remove the new file, hard link to the old file
+                    self.Log('INFO', 'Linking Complete')
 
                     # Links are in place, but data will not be visible until 
                     # we sync the pg_control info
@@ -1001,14 +989,22 @@ class GPUpgrade:
                                 (sync["Latest checkpoint's NextOID"],
                                  newdir), env=self.newenv)
 
+                    self.Log('INFO', 'XLOG Complete')
+
                     # Replace the new comit logs with the old ones
                     #   + Just copy these... it's safer
                     self.RunCmd('rm -rf %s/pg_clog' % newdir)
-                    self.RunCmd('cp -rf %s/pg_clog %s/pg_clog' % (olddir, newdir))
+                    self.RunCmd('cp -rf %s/pg_clog %s/pg_clog' 
+                                % (olddir, newdir))
+
+                    self.Log('INFO', 'pg_clog Complete')
 
                     # Do the same for the .conf files
-                    self.RunCmd('rm -rf %s/*.conf' % newdir)
-                    self.RunCmd('cp -rf %s/*.conf %s/.' % (olddir, newdir))
+                    for f in ['pg_hba', 'pg_ident', 'postgresql']:
+                        self.RunCmd('cp -f %s/%s.conf %s/.' 
+                                    % (olddir, f, newdir))
+
+                    self.Log('INFO', '.conf files Complete')
 
 
 
@@ -1020,49 +1016,42 @@ class GPUpgrade:
 
         if style == 'CLEANUP':   # Is this really a DeepLink?
             return
-#        if style == 'INSTALL':
-#            return               # debug that backup works first
+
+        if style not in ['BACKUP', 'INSTALL']:
+            raise UpgradeError('FATAL', ' DeepLink(%s)!?' % style)            
         
         if self.cmd == 'MASTER':
-            prefix      = self.config['SEG_PREFIX'] + '-'
-
+            prefix = self.config['SEG_PREFIX'] + '-'
             if style == 'BACKUP':
-                # copying data_dir => data_dir/backup
                 self.Log('INFO', 'Linking backup')
                 datadirs    = [self.root]
-                destination = self.backup
-
             elif style == 'INSTALL':
                 self.Log('INFO', 'Linking upgrade')
-                # copying data_dir/upgrade => data_dir
                 datadirs    = [self.tmpdir]
-                destination = self.root
-            else:
-                raise UpgradeError('FATAL', ' DeepLink(%s)!?' % style)
 
             # Have all hosts perform the link first
             self.CallSlaves('DEEPLINK', style, self.config['SEG_PREFIX'])
 
         else:
-            prefix      = self.option2
-
+            prefix = self.option2
             if style == 'BACKUP':
                 datadirs    = self.datadirs
-                destination = self.backup
-
             elif style == 'INSTALL':
                 datadirs    = [self.tmpdir]
-                destination = self.root
-            else:
-                raise UpgradeError('FATAL', ' DeepLink(%s)!?' % style)
-
-            self.Log('INFO', 'PREFIX: %s, datadirs: %s, dest: %s' \
-                         % (prefix, datadirs, destination))
 
         # Look in each data directory, identify the segment directories,
         # walk each segment directory.
         segdir_re = re.compile(prefix+'\d+(.log)?$')
         for dir in datadirs:
+
+            if style == 'BACKUP':
+                destination = os.path.join(dir,'backup')
+            if style == 'INSTALL':
+                destination, foo = os.path.split(dir)
+                if foo != 'upgrade':
+                    raise UpgradeError('FATAL', 
+                                       'Internal error - deeplink from ' + dir)
+
             for content in os.listdir(dir):
                 if segdir_re.match(content):
                     content = os.path.join(dir, content)
@@ -1267,6 +1256,6 @@ except UpgradeError, e:
 # the upgrader.
 except Exception, e:
     u.Log('FATAL', str(e))
-    u.Cleanup()
+#    u.Cleanup()
     sys.stderr.write(traceback.format_exc())
     sys.exit(1)
