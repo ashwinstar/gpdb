@@ -3087,6 +3087,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	Oid			namespaceId;
 	Oid			tablespaceId;
 	Datum		reloptions;
+	StdRdOptions *stdRdOptions;
 	AclResult	aclresult;
 	Oid			intoRelationId;
 	TupleDesc	tupdesc;
@@ -3095,8 +3096,6 @@ OpenIntoRel(QueryDesc *queryDesc)
     Oid         intoComptypeOid;
     GpPolicy   *targetPolicy = parseTree->intoPolicy;
 	bool		appendOnlyRel; /* was appendonly relation requested? */
-	bool		compressedRel; /* was compression requested? */
-	int			compressLevel; /* compression level 1-9 */	
 
 	/*
 	 * Check consistency of arguments
@@ -3160,15 +3159,18 @@ OpenIntoRel(QueryDesc *queryDesc)
 									 parseTree->intoOptions,
 									 true,
 									 false);
-	(void) heap_reloptions(relkind, reloptions, true);
+	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
+
+	heap_test_override_reloptions(relkind, stdRdOptions);
 
 	/*
 	 * Was "appendonly" specified in the relopts? If yes, fix our relkind.
 	 */
-	appendOnlyRel = interpretAppendOnlyOption(parseTree->intoOptions);
-	compressedRel = interpretCompressionOption(parseTree->intoOptions);
-	compressLevel = interpretCompressLevelOption(parseTree->intoOptions);
-	validateAppendOnlyRelOptions(appendOnlyRel, compressedRel, compressLevel, relkind);
+	appendOnlyRel = stdRdOptions->appendonly;
+	validateAppendOnlyRelOptions(appendOnlyRel, 
+								 stdRdOptions->compression, 
+								 stdRdOptions->compresslevel, 
+								 relkind);
 	if(appendOnlyRel)
 		relkind = RELKIND_APPEND_ONLY;
 	

@@ -21,6 +21,8 @@
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/rel.h"
+#include "utils/guc.h"
+#include "miscadmin.h"
 
 
 /*
@@ -252,14 +254,18 @@ default_reloptions(Datum reloptions, bool validate,
 
 	parseRelOptions(reloptions, 4, default_keywords, values, validate);
 
-	/*
-	 * If no options, we can just return NULL rather than doing anything.
+	/* 
+	 * GP: Always return the options so we can later override the values for 
+	 * testing purposes.
 	 */
-	if (values[0] == NULL && 
-		values[1] == NULL && 
-		values[2] == NULL && 
-		values[3] == NULL)
-		return NULL;
+//	/*
+//	 * If no options, we can just return NULL rather than doing anything.
+//	 */
+//	if (values[0] == NULL && 
+//		values[1] == NULL && 
+//		values[2] == NULL && 
+//		values[3] == NULL)
+//		return NULL;
 
 	/* fillfactor */
 	if(values[0] != NULL)
@@ -312,6 +318,12 @@ default_reloptions(Datum reloptions, bool validate,
 	{
 		compresslevel = defaultCompressLevel;
 	}
+
+	/*
+	 * Make compresslevel 0 when not doing compression.
+	 */
+	if (!compression)
+		compresslevel = 0;
 	
 	
 	result = (StdRdOptions *) palloc(sizeof(StdRdOptions));
@@ -321,9 +333,48 @@ default_reloptions(Datum reloptions, bool validate,
 	result->appendonly = appendonly;
 	result->compression = compression;
 	result->compresslevel = compresslevel;
+
 	return (bytea *) result;
 }
 
+void
+heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions)
+{
+	if (IsBootstrapProcessingMode())
+		return;
+
+	if (relkind != RELKIND_RELATION)
+		return;
+	
+	/*
+	 * Normally, the default is a regular table.
+	 * If the override is on, change the default to be an appendonly
+	 * table.
+	 */
+	if (!stdRdOptions->appendonly && Test_appendonly_override)
+	{
+		stdRdOptions->appendonly = true;
+	}
+
+	if (!stdRdOptions->appendonly)
+		return;
+	
+	/*
+	 * Normally, we compress appendonly tables by default.
+	 * If the override is on, do not compress.
+	 */
+
+	if (stdRdOptions->compression && Test_compression_override)
+	{
+		// Turn off.
+		stdRdOptions->compression = false;
+	}
+
+	if (stdRdOptions->compression && Test_compresslevel_override != 0)
+	{
+		stdRdOptions->compresslevel = Test_compresslevel_override;
+	}
+}
 
 /*
  * Parse options for heaps (and perhaps someday toast tables).
@@ -382,7 +433,6 @@ index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
  */
 void validateAppendOnlyRelOptions(bool ao, bool comp, int complevel, char relkind)
 {
-
 	if(ao && relkind != RELKIND_APPEND_ONLY && relkind != RELKIND_RELATION)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),

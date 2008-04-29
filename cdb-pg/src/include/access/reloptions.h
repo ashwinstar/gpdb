@@ -19,6 +19,7 @@
 #define RELOPTIONS_H
 
 #include "nodes/pg_list.h"
+#include "utils/rel.h"
 
 extern Datum transformRelOptions(Datum oldOptions, List *defList,
 					bool ignoreOids, bool isReset);
@@ -29,6 +30,8 @@ extern void parseRelOptions(Datum options, int numkeywords,
 
 extern bytea *default_reloptions(Datum reloptions, bool validate,
 				   int minFillfactor, int defaultFillfactor);
+
+extern void heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions);
 
 extern bytea *heap_reloptions(char relkind, Datum reloptions, bool validate);
 

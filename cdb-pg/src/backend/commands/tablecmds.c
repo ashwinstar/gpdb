@@ -353,11 +353,10 @@ DefineRelation_int(CreateStmt *stmt,
 	List	   *old_constraints;
 	bool		localHasOids;
 	bool		appendOnlyRel; /* was appendonly relation requested? */
-	bool		compressedRel; /* was compression requested? */
-	int			compressLevel; /* compression level 1-9 */
 	int			parentOidCount;
 	List	   *rawDefaults;
 	Datum		reloptions;
+	StdRdOptions *stdRdOptions;
 	ListCell   *listptr;
 	AttrNumber	attnum;
 	bool		shared_relation = false;
@@ -423,15 +422,18 @@ DefineRelation_int(CreateStmt *stmt,
 	 */
 	reloptions = transformRelOptions((Datum) 0, stmt->options, true, false);
 
-	(void) heap_reloptions(relkind, reloptions, true);
+	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
+
+	heap_test_override_reloptions(relkind, stdRdOptions);
 
 	/*
 	 * Was "appendonly" specified in the relopts? If yes, fix our relkind.
 	 */
-	appendOnlyRel = interpretAppendOnlyOption(stmt->options);
-	compressedRel = interpretCompressionOption(stmt->options);
-	compressLevel = interpretCompressLevelOption(stmt->options);
-	validateAppendOnlyRelOptions(appendOnlyRel, compressedRel, compressLevel, relkind);
+	appendOnlyRel = stdRdOptions->appendonly;
+	validateAppendOnlyRelOptions(appendOnlyRel, 
+								 stdRdOptions->compression, 
+								 stdRdOptions->compresslevel, 
+								 relkind);
 	if(appendOnlyRel)
 		relkind = RELKIND_APPEND_ONLY;
 

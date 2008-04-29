@@ -201,6 +201,9 @@ bool		Debug_print_server_processes = false;
 bool		Debug_print_control_checkpoints = false;
 bool 		Debug_appendonly_print_insert = false;
 bool 		Debug_appendonly_print_scan = false;
+bool 		Test_appendonly_override = false;
+bool 		Test_compression_override = false;
+int         Test_compresslevel_override = 0;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -1624,6 +1627,26 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"test_appendonly_override", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("For testing purposes, change the default of the appendonly create table option."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Test_appendonly_override,
+		false, NULL, NULL
+	},
+
+	{
+		{"test_compression_override", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("For testing purposes, change the default of the create table option so compresssion is not performed for appendonly."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Test_compression_override,
+		false, NULL, NULL
+	},
+
+	{
 		{"debug_dtm_action_primary", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Specify if the primary or mirror segment is the target of the debug DTM action."),
 			NULL,
@@ -1835,6 +1858,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&Debug_dtm_action_segment,
 		DEBUG_DTM_ACTION_SEGMENT_DEFAULT, 0, 1000, NULL, NULL
+	},
+
+	{
+		{"test_compresslevel_override", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("For testing purposes, the override value for compresslevel when non-zero."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Test_compresslevel_override,
+		0, 0, 9, NULL, NULL
 	},
 
 	{
