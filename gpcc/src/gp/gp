@@ -27,6 +27,7 @@ sys.path.append(sys.path[0] + '/lib')
 try:
     import getopt, types, time, urllib, httplib, socket, StringIO
     import simplejson
+    from getpass import getpass
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -453,6 +454,43 @@ class StatusCmd(Command):
             print '[INFO]', m
         print '[INFO] ok'
 
+####################
+class LoginCmd(Command):
+    '''Usage: gp login [-u username]'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        self.opt['-u'] = None
+        for (switch, val) in self.options:
+            if switch == '-u': self.opt[switch] = val
+
+        if self.opt['-u'] is None:
+            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+
+    def run(self):
+        if self.opt['-u'] is None:
+            sys.stdout.write('username: ')
+            user = sys.stdin.readline()
+            user = user.strip()
+            if user == '':
+                sys.exit('please specify username.')
+            self.opt['-u'] = user
+        for i in xrange(3):
+            passwd = getpass('password:')
+            param = {}
+            param['user'] = self.opt['-u']
+            param['password'] = passwd
+            packet = self._httpPost('/gpcc/login', param, None)
+            self.raw(packet)         
+            if 'ok' != packet.get('status'):
+                print '[ERROR] unable to login. details:'
+                printPacket(packet, '     ')
+                sys.exit(2)
+            else:
+                print '%s logged on' % self.opt['-u']
+                sys.exit(0)
+
+        print '[ERROR] login failed.'
+        sys.exit(2)
 
 ####################
 class HelpCmd(Command):
@@ -467,6 +505,7 @@ class HelpCmd(Command):
     __helpCommands = '''Usage: gp [gp-options] command [command-options-and-arguments]
 
   gp commands are:
+        login    Login
 	init     Initialize the array
 	delete	 Delete the array
 	start    Start the array and/or segments
@@ -506,6 +545,7 @@ class HelpCmd(Command):
                 c == 'start' or 
                 c == 'status' or
                 c == 'stop' or 
+                c == 'login' or
                 True):
                 self.args = [c]
 
@@ -524,6 +564,7 @@ class HelpCmd(Command):
         elif c == 'start': 	print StartCmd.__doc__
         elif c == 'status': 	print StatusCmd.__doc__
         elif c == 'stop': 	print StopCmd.__doc__
+        elif c == 'login':      print LoginCmd.__doc__
         else:
             usage('Error: unknown command "%s"' % c)
 
@@ -565,6 +606,7 @@ class CmdLine():
         elif c == 'start':   self.cmd = StartCmd(self.gopt, args)
         elif c == 'status':  self.cmd = StatusCmd(self.gopt, args)
         elif c == 'stop':    self.cmd = StopCmd(self.gopt, args)
+        elif c == 'login':   self.cmd = LoginCmd(self.gopt, args)
         else: usage('Error: unknown command "%s"' % c)
 
         # if help, we are done; don't need to check -m, -a param
