@@ -25,8 +25,6 @@ LINE 1: select;
 -- no such relation 
 select * from nonesuch;
 ERROR:  relation "nonesuch" does not exist
-LINE 1: select * from nonesuch;
-                      ^
 -- missing target list
 select from pg_database;
 ERROR:  syntax error at or near "from"
@@ -456,5 +454,13 @@ LINE 16: ...L, id2 TEXT NOT NULL PRIMARY KEY, id3 INTEGER NOT NUL, id4 I...
 create function infinite_recurse() returns int as
 'select infinite_recurse()' language sql;
 \set VERBOSITY terse
+-- start_ignore
 select infinite_recurse();
 ERROR:  stack depth limit exceeded
+-- end_ignore
+select 1; -- test that this works
+ ?column? 
+----------
+        1
+(1 row)
+
