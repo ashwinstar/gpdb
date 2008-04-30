@@ -198,12 +198,6 @@ static bool SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transp
 static TupleChunkListItem receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry *pEntry, 
 										   int16 motNodeID, int16 *srcRoute, MotionConn *conn, bool inTeardown);
 
-static bool flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, 
-						   ChunkTransportStateEntry *pEntry, MotionConn * conn, int16 motionId);
-
-static inline bool flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
-							   ChunkTransportStateEntry *pEntry, MotionConn *conn, int16 motionId);
-
 static void doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID);
 
 static void *ic_rx_thread_func(void *arg);
@@ -830,7 +824,10 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
         if (cdbProc)
 		{
             conn->cdbProc = cdbProc;
-            conn->pBuff = palloc(Gp_max_packet_size);
+            conn->ping = palloc(Gp_max_packet_size);
+            conn->pong = palloc(Gp_max_packet_size);
+            conn->pBuff = conn->ping;
+			conn->activeXmit = NULL;
             conn->state = mcsSetupOutgoingConnection;
 			conn->route = i++;
             (*pOutgoingCount)++;
@@ -839,6 +836,8 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
         conn++;
 	}
 
+	/* NOTE: we don't reset conn here -- we're walking down the second
+	 * half of the connection-list */
 	i = 0;
 	foreach(cell, recvSlice->mirrorProcesses)
 	{
@@ -846,7 +845,10 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
         if (cdbProc)
 		{
             conn->cdbProc = cdbProc;
-            conn->pBuff = palloc(Gp_max_packet_size);
+            conn->ping = palloc(Gp_max_packet_size);
+            conn->pong = palloc(Gp_max_packet_size);
+            conn->pBuff = conn->ping;
+			conn->activeXmit = NULL;
             conn->state = mcsSetupOutgoingConnection;
 			conn->route = i++;
             (*pOutgoingCount)++;
@@ -882,7 +884,6 @@ startOutgoingUDPConnections(ChunkTransportState *transportStates,
 
 
 	pEntry->txport = saddr.sin_port;
-//	elog(LOG, "Connecting from UDP port %d", ntohs(saddr.sin_port));
 
 	{
 		int                 rcvbuf;
@@ -1514,9 +1515,17 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 
 			conn_delhash(conn);
 
-			if (conn->pBuff)
+			conn->pBuff = NULL;
+			conn->activeXmit = NULL;
+
+			if (conn->ping)
 			{
-				pfree(conn->pBuff);
+				pfree(conn->ping);
+				conn->ping = NULL;
+			}
+			if (conn->pong)
+			{
+				pfree(conn->pong);
 				conn->pBuff = NULL;
 			}
 		}
@@ -1782,6 +1791,9 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 		if (Gp_role == GP_ROLE_DISPATCH &&
 			(retries & 0x0f) == 0)
 		{
+			Assert(pTransportStates);
+			Assert(pTransportStates->estate);
+
 			if (cdbdisp_check_estate_for_cancel(pTransportStates->estate))
 			{
 				pthread_mutex_unlock(&rx_thread_mutex);
@@ -1940,6 +1952,234 @@ markUDPConnInactive(MotionConn *conn)
 }
 
 /*
+ * handle acks incoming from our upstream peers.
+ *
+ * if we receive a stop message, return true (caller will clean up).
+ */
+static bool
+handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry)
+{
+	bool ret=false;
+	MotionConn *ackConn;
+	int n;
+
+	struct sockaddr_in peer;
+	socklen_t peerlen;
+
+	struct icpkthdr pkt;
+
+	for (;;)
+	{
+		/* ready to read on our socket ? */
+		peerlen = sizeof(peer);
+		n = recvfrom(pEntry->txfd, (char *)&pkt, sizeof(pkt), 0,
+					 (struct sockaddr *)&peer, &peerlen);
+
+		if (n < 0)
+		{
+			if (errno == EWOULDBLOCK) /* had nothing to read. */
+				return ret;
+
+			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
+			if (errno == EINTR)
+				continue;
+
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error waiting for peer ack"),
+							errdetail("During recvfrom() call.\n")));
+			/* not reached */
+		}
+		else if (n < sizeof(pkt))
+		{
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error waiting for peer ack"),
+							errdetail("short read during recvfrom() call. (%d)\n", n)));
+			/* not reached */
+		}
+
+		/* read packet, is this the ack we want ? */
+		if (pkt.srcContentId == Gp_segment &&
+			pkt.srcPid == MyProcPid &&
+			pkt.srcListenerPort == ((Gp_listener_port>>16) & 0x0ffff) &&
+			pkt.sessionId == gp_session_id &&
+			pkt.commandCount == gp_command_count)
+		{
+			/* packet is for me */
+
+			ackConn = findConnByHeader(&pkt);
+
+			if (ackConn == NULL)
+			{
+				elog(LOG, "Received ack for unknown connection (flags 0x%x)", pkt.flags);
+				continue;
+			}
+
+			if (pkt.flags & UDPIC_FLAGS_STOP)
+			{
+				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+					elog(DEBUG2, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x seq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq);
+
+				ackConn->stopRequested = true;
+				ackConn->conn_info.flags |= UDPIC_FLAGS_STOP;
+
+				if (pkt.seq == ackConn->conn_info.seq)
+				{
+					ackConn->conn_info.seq++;
+					if (ackConn->activeXmit)
+						ackConn->activeXmit = NULL;
+
+					ret = true;
+				}
+
+				continue;
+			}
+
+			if (pkt.flags & UDPIC_FLAGS_ACK)
+			{
+				if (pkt.seq != ackConn->conn_info.seq)
+				{
+					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+						elog(DEBUG2, "ack with bad seq?! expected %d got %d", ackConn->conn_info.seq, pkt.seq);
+
+					continue;
+				}
+				ackConn->conn_info.seq++;
+
+				if (ackConn->activeXmit)
+					ackConn->activeXmit = NULL;
+
+				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+					elog(DEBUG5, "got good ack with seq %d node %d route %d peer %d", pkt.seq, pkt.motNodeId, ackConn->route, pkt.dstPid);
+				continue;
+			}
+		}
+		else
+			elog(DEBUG4, "flushUDPbuffer: not the ack we're looking for (flags 0x%x)...mot(%d) content(%d:%d) srcpid(%d:%d) dstpid(%d) srcport(%d:%d) dstport(%d) sess(%d:%d) cmd(%d:%d)",
+				 pkt.flags, pkt.motNodeId,
+				 pkt.srcContentId, Gp_segment,
+				 pkt.srcPid, MyProcPid, 
+				 pkt.dstPid,
+				 pkt.srcListenerPort, ((Gp_listener_port>>16) & 0x0ffff),
+				 pkt.dstListenerPort,
+				 pkt.sessionId, gp_session_id,
+				 pkt.commandCount, gp_command_count);
+	}
+
+	return ret;
+}
+
+static void
+sendOnce(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn)
+{
+	int			n;
+
+	Assert(conn->activeXmit);
+
+#ifdef USE_ASSERT_CHECKING
+	if (testmode_drop(gp_udpic_dropxmit_percent))
+	{
+		return;
+	}
+#endif
+
+xmit_retry:
+	n = sendto(pEntry->txfd, conn->activeXmit, conn->conn_info.len, 0,
+			   (struct sockaddr *)&conn->peer, (socklen_t)sizeof(conn->peer));
+	if (n < 0)
+	{
+		ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
+		if (errno == EINTR)
+			goto xmit_retry;
+
+		if (errno == EAGAIN) /* no space ? not an error. */
+			return;
+			
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect error writing an outgoing packet"),
+						errdetail("error during sendto() call (error:%d).\n"
+								  "For Remote Connection: contentId=%d at %s",
+								  errno, conn->remoteContentId,
+								  conn->remoteHostAndPort)));
+		/* not reached */
+	}
+
+	if (n != conn->conn_info.len)
+	{
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect error writing an outgoing packet"),
+						errdetail("short transmit during sendto() call.\n"
+								  "For Remote Connection: contentId=%d at %s",
+								  conn->remoteContentId,
+								  conn->remoteHostAndPort)));
+		/* not reached */
+	}
+
+	return;
+}
+
+static bool
+waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn)
+{
+	int		retry = 1;
+	int		timeout;
+	int		elapsed_ms;
+	bool	got_stops=false;
+	int		n;
+	struct pollfd nfd;
+
+	/* send this packet */
+	for (;;)
+	{
+		elapsed_ms = gettime_elapsed_ms(conn->activeXmitTime);
+
+		timeout = TIMEOUT(retry);
+
+		if (timeout <= elapsed_ms)
+		{
+			sendOnce(transportStates, pEntry, conn);
+
+			if (retry)
+				ic_stats_retrans++;
+
+			retry++;
+		}
+
+		timeout = Max(1, timeout);
+
+		nfd.fd = pEntry->txfd;
+		nfd.events = POLLIN;
+
+		n = poll(&nfd, 1, timeout);
+		if (n < 0)
+		{
+			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
+			if (errno == EINTR)
+				continue;
+
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error waiting for peer ack"),
+							errdetail("During poll() call.\n")));
+			/* not reached */
+		}
+
+		if (n == 0) /* timeout */
+			continue;
+
+		/* got an ack to handle (possibly a stop message) */
+		if (n == 1 && (nfd.events & POLLIN))
+		{
+			if (handleAcks(transportStates, pEntry))
+				got_stops = true;
+
+			if (!conn->activeXmit)
+				break;
+		}
+	}
+
+	return got_stops;
+}
+
+/*
  * This is a helper function for flushUDPBuffer(). We're essentially
  * acknowledging the stop message, and agreeing that the connection is
  * done. Note that as we do this we may be getting more stop messages;
@@ -1950,11 +2190,10 @@ markUDPConnInactive(MotionConn *conn)
  * flushUDPBuffer().
  */
 static void
-handleStopMsgs(MotionLayerState *mlStates, ChunkTransportState *transportStates,
-			   ChunkTransportStateEntry *pEntry, int16 motionId)
+handleStopMsgs(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, int16 motionId)
 {
 	int i=0;
-	bool res=false;
+	bool morestops=false;
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "handleStopMsgs: node %d", motionId);
@@ -1987,13 +2226,27 @@ handleStopMsgs(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 			conn->pBuff[conn->msgSize] = 'S';
 			conn->msgSize += 1;
 
+			/* prepare this for transmit */
+			conn->conn_info.len = conn->msgSize;
+
+			memcpy(conn->pBuff, &conn->conn_info, sizeof(conn->conn_info));
+
+			gettimeofday(&conn->activeXmitTime, NULL);
+
+			/* active xmit, advance xmit buffer */
+			conn->activeXmit = conn->pBuff;
+
+			/* now ready to actually send */
+
 			elog(DEBUG3, "handleStopMsgs: node %d route %d", motionId, i);
-			res = flushUDPBuffer(mlStates, transportStates, pEntry, conn, motionId);
+			morestops = waitOnXmit(transportStates, pEntry, conn);
+
+			Assert(!conn->activeXmit);
 
 			conn->stillActive = false;
 			conn->stopRequested = false;
 
-			if (!res)
+			if (morestops)
 			{
 				i=0;
 				continue;
@@ -2004,268 +2257,81 @@ handleStopMsgs(MotionLayerState *mlStates, ChunkTransportState *transportStates,
 	}
 }
 
-/* Function flushUDPBuffer() is used to write the contents of a MotionConn buffer
- * out to the network.	This function blocks until the entire contents have
- * been written to the socket.
- *
- * We also have to check for reads here.  Having data to read on a "sending"
- * socket means the receiver is sending us a stopSending Message.  Below, we
- * only check during select() and don't have to worry about write().  The reason
- * is that if the Receiver sends us a stopSending message it will also stop
- * reading data from the socket.  This guarantees that eventually our write()
- * call will get an EWOULDBLOCK and our select() call will pick it up.
- *
+/* The Function sendChunk() is used to send a tcItem to a single
+ * destination. Tuples often are *very small* we aggregate in our
+ * local buffer before sending into the kernel.
  *
  * PARAMETERS
- *
- *	 conn - MotionConn whose buffer needs to be flushed.
- *
+ *	 conn - MotionConn that the tcItem is to be sent to.
+ *	 tcItem - message to be sent.
+ *	 motionId - Node Motion Id.
  */
 static bool
-flushUDPBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates, 
-			   ChunkTransportStateEntry *pEntry, MotionConn * conn, int16 motionId)
+SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn, TupleChunkListItem tcItem, int16 motionId)
 {
-	char	   *sendptr;
-	int			n;
+	bool	gotStops=false;
+	int		length=TYPEALIGN(TUPLE_CHUNK_ALIGN, tcItem->chunk_length);
 
-	struct pollfd nfd;
-
-	struct timeval  startTime;
-	int			timeout;
-	int			elapsed_ms;
-	int			retry=0;
-
-	bool		result = true; /* assume that the connection is going to stay "live" */
+	Assert(conn->msgSize > 0);
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(LOG, "flushUDPBUffer: msgSize %d tuplecount %d route %d", conn->msgSize, conn->tupleCount, conn->route);
+	elog(DEBUG5, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
 #endif
 
-#ifdef AMS_VERBOSE_LOGGING
+	if (conn->msgSize + length <= Gp_max_packet_size)
 	{
-		struct timeval snapTime;
+		memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
+		conn->msgSize += length;
 
-		gettimeofday(&snapTime, NULL);
-		elog(DEBUG5, "----sending chunk @%s.%d time is %d.%d",
-			 __FILE__, __LINE__, (int)snapTime.tv_sec, (int)snapTime.tv_usec);
+		conn->tupleCount++;
+
+		return true;
 	}
-#endif
+	else if (conn->activeXmit)
+	{
+		if (waitOnXmit(transportStates, pEntry, conn))
+			gotStops = true;
+	}
 
-	/* first set up our header */
+	Assert(!conn->activeXmit);
+
+	/* prepare this for transmit */
 	conn->conn_info.len = conn->msgSize;
 	if (pEntry->sendingEos)
 		conn->conn_info.flags |= UDPIC_FLAGS_EOS;
 
 	memcpy(conn->pBuff, &conn->conn_info, sizeof(conn->conn_info));
 
-	/* now send message */
-	sendptr = (char *) conn->pBuff;
+	gettimeofday(&conn->activeXmitTime, NULL);
 
-  	gettimeofday(&startTime, NULL);
+	/* active xmit, advance xmit buffer */
+	conn->activeXmit = conn->pBuff;
+	conn->pBuff = (conn->pBuff == conn->ping ? conn->pong : conn->ping);
 
-	/* send this packet */
-	for (;;)
-	{
-		elapsed_ms = gettime_elapsed_ms(startTime);
-
-		timeout = TIMEOUT(retry);
-
-		if (timeout <= elapsed_ms)
-		{
-#ifdef USE_ASSERT_CHECKING
-			if (testmode_drop(gp_udpic_dropxmit_percent))
-			{
-				if (retry)
-					ic_stats_retrans++;
-
-				retry++;
-				continue;
-			}
-#endif
-			n = sendto(pEntry->txfd, conn->pBuff, conn->msgSize, 0,
-					   (struct sockaddr *)&conn->peer, (socklen_t)sizeof(conn->peer));
-			if (n < 0)
-			{
-				ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-				if (errno == EINTR || errno == EAGAIN)
-					continue;
-			
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error writing an outgoing packet"),
-								errdetail("error during sendto() call (error:%d).\n"
-										  "For Remote Connection: contentId=%d at %s",
-										  errno, conn->remoteContentId,
-										  conn->remoteHostAndPort)));
-			}
-
-			if (n != conn->msgSize)
-			{
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error writing an outgoing packet"),
-								errdetail("short transmit during sendto() call.\n"
-										  "For Remote Connection: contentId=%d at %s",
-										  conn->remoteContentId,
-										  conn->remoteHostAndPort)));
-			}
-		}
-
-		if (retry)
-			ic_stats_retrans++;
-
-		retry++;
-
-		if (timeout < 1)
-			timeout = 1;
-
-		/* now we're waiting for our ack */
-		nfd.fd = pEntry->txfd;
-		nfd.events = POLLIN;
-
-		n = poll(&nfd, 1, timeout);
-		if (n < 0)
-		{
-			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-			if (errno == EINTR)
-				continue;
-
-			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-							errmsg("Interconnect error waiting for peer ack"),
-							errdetail("During poll() call.\n"
-									  "For Remote Connection: contentId=%d at %s",
-									  conn->remoteContentId,
-									  conn->remoteHostAndPort)));
-		}
-
-		if (n == 0)
-		{
-			/* timeout, retry */
-			ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-			elog(DEBUG4, "waiting for ack, need to retry at elapsed %d", elapsed_ms);
-			continue;
-		}
-
-		/* if we've got something to read, handle it. */
-		if (n == 1 && (nfd.events & POLLIN))
-		{
-			/* ready to read on our socket */
-			struct sockaddr_in peer;
-			socklen_t peerlen;
-
-			struct icpkthdr pkt;
-
-			peerlen = sizeof(peer);
-			n = recvfrom(pEntry->txfd, (char *)&pkt, sizeof(pkt), 0,
-						 (struct sockaddr *)&peer, &peerlen);
-
-			if (n < 0)
-			{
-				ML_CHECK_FOR_INTERRUPTS(transportStates->teardownActive);
-				if (errno == EINTR)
-					continue;
-
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error waiting for peer ack"),
-								errdetail("During recvfrom() call.\n"
-										  "For Remote Connection: contentId=%d at %s",
-										  conn->remoteContentId,
-										  conn->remoteHostAndPort)));
-				/* not reached */
-			}
-			else if (n < sizeof(pkt))
-			{
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error waiting for peer ack"),
-								errdetail("short read during recvfrom() call. (%d)\n"
-										  "For Remote Connection: contentId=%d at %s",
-										  n, conn->remoteContentId,
-										  conn->remoteHostAndPort)));
-				/* not reached */
-			}
-
-			/* read packet, is this the ack we want ? */
-			if (pkt.motNodeId == conn->conn_info.motNodeId &&
-				pkt.srcContentId == conn->conn_info.srcContentId &&
-				pkt.srcPid == conn->conn_info.srcPid &&
-				pkt.srcListenerPort == ((Gp_listener_port>>16) & 0x0ffff) &&
-				pkt.sessionId == gp_session_id &&
-				pkt.commandCount == gp_command_count)
-			{
-				/* packet is for me */
-				if (pkt.flags & UDPIC_FLAGS_STOP)
-				{
-					MotionConn *stopConn = NULL;
-
-					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-						elog(DEBUG2, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x seq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq);
-
-					stopConn = findConnByHeader(&pkt);
-
-					if (!stopConn)
-					{
-						elog(DEBUG2, "got ack with stop, but can't find connection!");
-						continue;
-					}
-
-					result = false; /* regardless of which connection this is, we'll need to count later */
-					stopConn->stopRequested = true;
-					stopConn->conn_info.flags |= UDPIC_FLAGS_STOP;
-
-					if (stopConn == conn && pkt.seq == conn->conn_info.seq)
-					{
-						conn->conn_info.seq++;
-						break;
-					}
-
-					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-						elog(DEBUG4, "stopped conn was 'other' %d (expected seq %d) than the sending conn %d",
-							 stopConn->route, stopConn->conn_info.seq, conn->route);
-
-					continue;
-				}				
-
-				if (pkt.dstPid == conn->conn_info.dstPid &&
-					pkt.dstListenerPort == conn->conn_info.dstListenerPort)
-				{
-					/* this was a reply to the packet we just sent */
-
-					if (pkt.flags & UDPIC_FLAGS_ACK)
-					{
-						if (pkt.seq != conn->conn_info.seq)
-						{
-							if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-								elog(DEBUG2, "ack with bad seq?! expected %d got %d", conn->conn_info.seq, pkt.seq);
-
-							continue;
-						}
-						conn->conn_info.seq++;
-
-						if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-							elog(DEBUG5, "got good ack with seq %d node %d route %d peer %d", pkt.seq, pkt.motNodeId, conn->route, pkt.dstPid);
-						break;
-					}
-				}
-			}
-			else
-				elog(DEBUG4, "flushUDPbuffer: not the ack we're looking for (flags 0x%x)...mot(%d:%d) content(%d:%d) srcpid(%d:%d) dstpid(%d:%d) srcport(%d:%d) dstport(%d:%d) sess(%d:%d) cmd(%d:%d)",
-					 pkt.flags, pkt.motNodeId, conn->conn_info.motNodeId,
-					 pkt.srcContentId, conn->conn_info.srcContentId,
-					 pkt.srcPid,conn->conn_info.srcPid,
-					 pkt.dstPid, conn->conn_info.dstPid,
-					 pkt.srcListenerPort, ((Gp_listener_port>>16) & 0x0ffff),
-					 pkt.dstListenerPort, conn->conn_info.dstListenerPort,
-					 pkt.sessionId, gp_session_id,
-					 pkt.commandCount, gp_command_count);
-		}
-	}
-
-	/* now, reset so that we're ready to send more. */
 	conn->tupleCount = 0;
 	conn->msgSize = sizeof(conn->conn_info);
 
-	if (!result)
-		elog(DEBUG3, "flushUDPBuffer(): pending stop messages.");
+	/* Send the packet */
+	sendOnce(transportStates, pEntry, conn);
 
-	return result;
+	/* handle any acks, but don't wait */
+	if (handleAcks(transportStates, pEntry))
+		gotStops = true;
+
+	/* if we got a stop */
+	if (gotStops)
+	{
+		/* handle stop messages here */
+		handleStopMsgs(transportStates, pEntry, motionId);
+	}
+
+	/* now we can copy the input to the new buffer */
+	memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
+	conn->msgSize += length;
+
+	conn->tupleCount++;
+
+	return true;
 }
 
 /* See ml_ipc.h */
@@ -2295,7 +2361,8 @@ SendEosUDP(MotionLayerState *mlStates,
 
 	/* we want to add our tcItem onto each of the outgoing buffers --
 	 * this is guaranteed to leave things in a state where a flush is
-	 * *required*. */
+	 * *required*. 
+	 */
 	doBroadcast(mlStates, transportStates, pEntry, tcItem);
 
 	/* now flush all of the buffers. */
@@ -2303,11 +2370,44 @@ SendEosUDP(MotionLayerState *mlStates,
 	{
 		conn = pEntry->conns + i;
 
-		if (conn->state == mcsStarted)
-		{
-			elog(DEBUG2, "sent eos to route %d tuplecount %d seq %d flags 0x%x stillActive %s", conn->route, conn->tupleCount, conn->conn_info.seq, conn->conn_info.flags, (conn->stillActive ? "true" : "false"));
+#ifdef AMS_VERBOSE_LOGGING
+		elog(LOG, "SendEosUDP: %d, flags %d %s %s %d",
+			 i, conn->conn_info.flags, conn->state == mcsStarted ? "started" : "not started", conn->stillActive ? "active" : "not active", conn->stopRequested);
+#endif
 
-			if (!flushUDPBuffer(mlStates, transportStates, pEntry, conn, motNodeID))
+		if (conn->state == mcsStarted && conn->stillActive)
+		{
+			elog(DEBUG2, "sent eos to route %d tuplecount %d seq %d flags 0x%x stillActive %s",
+				 conn->route, conn->tupleCount, conn->conn_info.seq, conn->conn_info.flags, (conn->stillActive ? "true" : "false"));
+
+			if (conn->activeXmit)
+			{
+				if (waitOnXmit(transportStates, pEntry, conn))
+				{
+					handleStopMsgs(transportStates, pEntry, motNodeID);
+					if (!conn->stillActive)
+						continue;
+				}
+			}
+			Assert(!conn->activeXmit);
+
+			/* prepare this for transmit */
+			conn->conn_info.len = conn->msgSize;
+			if (pEntry->sendingEos)
+				conn->conn_info.flags |= UDPIC_FLAGS_EOS;
+
+			memcpy(conn->pBuff, &conn->conn_info, sizeof(conn->conn_info));
+
+			gettimeofday(&conn->activeXmitTime, NULL);
+
+			/* active xmit, advance xmit buffer */
+			conn->activeXmit = conn->pBuff;
+			conn->pBuff = (conn->pBuff == conn->ping ? conn->pong : conn->ping);
+
+			conn->tupleCount = 0;
+			conn->msgSize = sizeof(conn->conn_info);
+
+			if (waitOnXmit(transportStates, pEntry, conn))
 			{
 				stopRace = true;
 			}
@@ -2316,6 +2416,7 @@ SendEosUDP(MotionLayerState *mlStates,
 				conn->state = mcsEosSent;
 				conn->stillActive = false;
 			}
+			Assert(!conn->activeXmit);
 		}
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "SendEosUDP() Leaving");
@@ -2323,69 +2424,7 @@ SendEosUDP(MotionLayerState *mlStates,
 	}
 
 	if (stopRace)
-		handleStopMsgs(mlStates, transportStates, pEntry, motNodeID);
-}
-
-/*
- * flushBuffer(): handle stop messages on outbound packets.
- */
-static inline bool
-flushBuffer(MotionLayerState *mlStates, ChunkTransportState *transportStates,
-			ChunkTransportStateEntry *pEntry, MotionConn *conn, int16 motionId)
-{
-#ifdef AMS_VERBOSE_LOGGING
-	{
-		struct timeval snapTime;
-
-		gettimeofday(&snapTime, NULL);
-		elog(DEBUG5, "----sending chunk @%s.%d time is %d.%d",
-			 __FILE__, __LINE__, (int)snapTime.tv_sec, (int)snapTime.tv_usec);
-	}
-#endif
-
-	if (!flushUDPBuffer(mlStates, transportStates, pEntry, conn, motionId))
-	{
-		handleStopMsgs(mlStates, transportStates, pEntry, motionId);
-		/* MPP-2427: handleStopMsgs() does all of the updating, we
-		 * must return true or we will confuse our caller
-		 *
-		 * return false;
-		 */
-	}
-
-	return true;
-}
-
-/* The Function sendChunk() is used to send a tcItem to a single
- * destination. Tuples often are *very small* we aggregate in our
- * local buffer before sending into the kernel.
- *
- * PARAMETERS
- *	 conn - MotionConn that the tcItem is to be sent to.
- *	 tcItem - message to be sent.
- *	 motionId - Node Motion Id.
- */
-static bool
-SendChunkUDP(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
-{
-	int length=TYPEALIGN(TUPLE_CHUNK_ALIGN,tcItem->chunk_length);
-	Assert(conn->msgSize > 0);
-
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG5, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
-#endif
-
-	if (conn->msgSize + length > Gp_max_packet_size)
-	{
-		if (!flushBuffer(mlStates, transportStates, pEntry, conn, motionId))
-			return false;
-	}
-
-	memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
-	conn->msgSize += length;
-
-	conn->tupleCount++;
-	return true;
+		handleStopMsgs(transportStates, pEntry, motNodeID);
 }
 
 static void

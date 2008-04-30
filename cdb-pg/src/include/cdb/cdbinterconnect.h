@@ -71,6 +71,12 @@ typedef struct MotionConn
 	/* pointer to the data buffer. */
 	uint8	   *pBuff;
 
+	/* transmit uses two data buffers, along with a timer */
+	uint8	   *ping;
+	uint8	   *pong;
+	uint8	   *activeXmit;
+	struct timeval activeXmitTime;
+
 	uint16		route;
 	
 	/* size of the message in the buffer, if any. */
