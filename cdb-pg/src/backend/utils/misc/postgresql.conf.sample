@@ -558,6 +558,7 @@ gp_selectivity_damping_for_joins = on
 
 #gp_interconnect_setup_timeout = 10s
 #gp_max_packet_size = 8192
+gp_interconnect_type=udp
 
 # - Worker Process Creation -
 
