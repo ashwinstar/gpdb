@@ -2,6 +2,9 @@ import os
 import socket
 import time
 
+import message
+from udpmessenger import UdpMessenger
+
 TIMEOUT = 1
 CHUNK_SIZE = 4000
 DEFAULT_LOCK_TIME = 12
@@ -102,6 +105,22 @@ class Connection:
 		    return E_LOCKEXPIRED
 	return a[0]
 
+    def __move(self,name,toname):
+	a = self.__stat(name)
+	if a[0]!=0:
+	    return a[0]
+	dn = a[1]
+	a = self.__stat(toname)
+	if a[0]!=0:
+	    return a[0]
+	todn = a[1]
+	a = self.__propose("If %s %d If %s %d Move %s %s"%(name,dn,toname,todn,name,toname))
+	if a[0]==E_IFFAILED:
+	    a = self.__chubbyStat(name)
+	    if a[0]==0 and a[1]==dn:
+		return E_LOCKEXPIRED
+	return a[0]
+
     def __put(self,name,contents):
 	a = self.__stat(name)
 	if a[0]!=0:
@@ -123,6 +142,11 @@ class Connection:
 	    offset += CHUNK_SIZE
 	    if offset>=len(contents):
 		return 0
+
+    def move(self,name,toname):
+	name = self.__fixFilename(name)
+	toname = self.__fixFilename(toname)
+	return self.__move(name,toname)
 
     def get(self,name):
 	name = self.__fixFilename(name)
@@ -237,10 +261,11 @@ class Connection:
 class Chubby:
 
     def __init__(self,addresses):
-	self.__addresses = addresses
+	self.__addresses = addresses.split(',')
 	self.__id = socket.gethostname()+"-%d-%f-%d"%(os.getpid(),time.time(),id(self))
 	self.__count = 0
 	self.__leader = None
+	self.__messenger = UdpMessenger()
 
     def makeConnection(self):
 	return Connection(self)
@@ -251,88 +276,37 @@ class Chubby:
 
     def propose(self,decree):
 	decree = "Tag %s "%self.getNewId()+decree
-	fd = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-	fd.setsockopt(socket.SOL_SOCKET,socket.SO_RCVBUF,65536)
+	port = self.__messenger.makePort("")
 	getLeaderTimeout = 0
 	proposeTimeout = 0
 	try:
-	    fd.settimeout(TIMEOUT)
 	    while 1:
 		now = time.time()
 		if getLeaderTimeout<now:
 		    getLeaderTimeout = now+TIMEOUT
-		    for a in self.__addresses.split(','):
-			if a:
-			    self.__sendto(fd,"GetLeader version=%d"%PAXOS_PROTOCOL_VERSION,a)
+		    message.Maker("GetLeader").send(port,self.__addresses)
 		if self.__leader and proposeTimeout<now:
 		    proposeTimeout = now+TIMEOUT
-		    self.__sendto(fd,"Propose version=%d decree=%s"%(PAXOS_PROTOCOL_VERSION,self.__mangle(decree)),self.__leader)
-		try:
-		    p = fd.recv(65536)
-		except socket.error:
+		    mm = message.Maker("Propose")
+		    mm.addDecree(decree)
+		    mm.send(port,self.__leader)
+		m = message.getMessage(port.recv(TIMEOUT))
+		if m==None:
 		    continue
-		p = p.split(' ')
-		pversion = None
-		presult = None
-		pdecree = None
-		pcommand = p[0]
-		for i in p[1:]:
-		    j = i.index('=')
-		    key = i[:j]
-		    value = i[j+1:]
-		    if key=="version":
-			pversion = int(value)
-		    elif key=="result":
-			presult = self.__unmangle(value)
-		    elif key=="decree":
-			pdecree = self.__unmangle(value)
-		if pversion!=PAXOS_PROTOCOL_VERSION:
-		    continue
-		if pcommand=="Redirect":
-		    if self.__leader!=presult:
-			self.__leader = presult
+		if m.command=="Redirect":
+		    if self.__leader!=m.result:
+			self.__leader = m.result
 			proposeTimeout = 0
-		elif pcommand=="Result":
-		    if pdecree==decree:
-			if presult.startswith("error "):
-			    a = presult[6:]
+		elif m.command=="Result":
+		    if m.decree==decree:
+			if m.result.startswith("error "):
+			    a = m.result[6:]
 			    j = a.find(' ')
 			    if j!=-1:
 				a = a[:j]
 			    return (int(a),)
-			return (0,presult)
+			return (0,m.result)
 		else:
 		    assert 0
 	finally:
-	    fd.close()
-
-    @staticmethod
-    def __sendto(fd,what,address):
-	i = address.index(':')
-	port = int(address[i+1:])
-	host = address[0:i]
-	fd.sendto(what,(socket.gethostbyname(host),port))
-
-    @staticmethod
-    def __mangle(s):
-	sb = []
-	for c in s:
-	    if c==' ' or c=='!':
-		sb.append('!')
-		c = chr(ord(c)+1)
-	    sb.append(c)
-	return "".join(sb)
-
-    @staticmethod
-    def __unmangle(s):
-	sb = []
-	escape = False
-	for c in s:
-	    if escape:
-		sb.append(chr(ord(c)-1))
-		escape = False
-	    elif c=='!':
-		escape = True
-	    else:
-		sb.append(c)
-	return "".join(sb)
+	    port.close()

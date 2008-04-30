@@ -37,6 +37,7 @@ Priest to Priest:
 Decree:
 	"Null" is the null decree.
 	predicate* Put filename offset value
+	predicate* Move filename filename
 	predicate* Get filename offset size
 	predicate* Stat filename
 	predicate* Remove filename

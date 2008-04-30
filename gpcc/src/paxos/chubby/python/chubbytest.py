@@ -53,9 +53,12 @@ def test0():
     global global_l
     check("c.put('/test/file','contents')","x==0")
     check("c.get('/test/file')","x[0]==0 and x[2]=='contents'")
+    check("c.move('/test/file','/test/tofile')","x==0")
+    check("c.stat('test/file')","x==(0,0,0)")
+    check("c.get('/test/tofile')","x[0]==0 and x[2]=='contents'")
     check("c.list('/')","x[0]==0 and x[2:]==('paxos','test')")
     check("c.list('noentfile')","x==(chubby.E_NOENT,)")
-    check("c.stat('test/file')","x[0]==0")
+    check("c.stat('test/tofile')","x[0]==0")
     check("c.remove('//test//1/1')","x==0 or x==chubby.E_NOENT")
     check("c.put('test///1/1','')","x==0")
     check("c.stat('test/1//1')","x[0]==0")

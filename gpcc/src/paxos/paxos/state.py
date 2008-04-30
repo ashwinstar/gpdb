@@ -227,6 +227,11 @@ class State:
 		    continue
 		if command=="Tag":
 		    continue
+		if command=="Move":
+		    toname = sc.nextToken()
+		    self.__commandPut(toname,dn,0,self.__get1(name)[1])
+		    self.__commandRemove(name,dn)
+		    return "0"
 		if command=="Put":
 		    offset = int(sc.nextToken())
 		    s = sc.remainingStuff()
