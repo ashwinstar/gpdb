@@ -290,7 +290,7 @@ AggregateCreateWithOid(const char *aggName,
 	for (i = 0; i < Natts_pg_aggregate; i++)
 	{
 		nulls[i] = ' ';
-		values[i] = (Datum) NULL;
+		values[i] = 0;
 	}
 	values[Anum_pg_aggregate_aggfnoid - 1] = ObjectIdGetDatum(procOid);
 	values[Anum_pg_aggregate_aggtransfn - 1] = ObjectIdGetDatum(transfn);

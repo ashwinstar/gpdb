@@ -62,7 +62,7 @@
 		att_isnull((attnum)-1, (tup)->t_data->t_bits) ?				\
 		(															\
 			(((isnull) != NULL) ? (*(isnull) = true) : (dummyret)NULL),		\
-			(Datum)NULL												\
+			0												\
 		)															\
 		:															\
 		(															\
@@ -101,7 +101,7 @@ extern Datum fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
 			((attnum) > (int) HeapTupleHeaderGetNatts((tup)->t_data)) ? \
 			( \
 				(((isnull) != NULL) ? (*(isnull) = true) : (dummyret)NULL), \
-				(Datum)NULL \
+				0 \
 			) \
 			: \
 				fastgetattr((tup), (attnum), (tupleDesc), (isnull)) \

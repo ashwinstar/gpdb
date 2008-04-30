@@ -553,7 +553,7 @@ postquel_execute(execution_state *es,
 		 */
 		postquel_end(es);
 		fcinfo->isnull = true;
-		return (Datum) NULL;
+		return 0;
 	}
 
 	/*

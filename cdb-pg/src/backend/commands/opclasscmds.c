@@ -339,7 +339,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	for (i = 0; i < Natts_pg_opclass; ++i)
 	{
 		nulls[i] = ' ';
-		values[i] = (Datum) NULL;		/* redundant, but safe */
+		values[i] = 0;		/* redundant, but safe */
 	}
 
 	i = 0;
@@ -595,7 +595,7 @@ storeOperators(Oid opclassoid, List *operators)
 		for (i = 0; i < Natts_pg_amop; ++i)
 		{
 			nulls[i] = ' ';
-			values[i] = (Datum) NULL;
+			values[i] = 0;
 		}
 
 		i = 0;
@@ -639,7 +639,7 @@ storeProcedures(Oid opclassoid, List *procedures)
 		for (i = 0; i < Natts_pg_amproc; ++i)
 		{
 			nulls[i] = ' ';
-			values[i] = (Datum) NULL;
+			values[i] = 0;
 		}
 
 		i = 0;

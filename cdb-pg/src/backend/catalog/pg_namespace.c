@@ -54,7 +54,7 @@ NamespaceCreate(const char *nspName, Oid ownerId, Oid forceOid)
 	for (i = 0; i < Natts_pg_namespace; i++)
 	{
 		nulls[i] = ' ';
-		values[i] = (Datum) NULL;
+		values[i] = 0;
 	}
 	namestrcpy(&nname, nspName);
 	values[Anum_pg_namespace_nspname - 1] = NameGetDatum(&nname);

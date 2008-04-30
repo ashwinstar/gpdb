@@ -225,7 +225,7 @@ OperatorShellMake(const char *operatorName,
 	for (i = 0; i < Natts_pg_operator; ++i)
 	{
 		nulls[i] = ' ';
-		values[i] = (Datum) NULL;		/* redundant, but safe */
+		values[i] = 0;		/* redundant, but safe */
 	}
 
 	/*
@@ -549,7 +549,7 @@ OperatorCreateWithOid(const char *operatorName,
 
 	for (i = 0; i < Natts_pg_operator; ++i)
 	{
-		values[i] = (Datum) NULL;
+		values[i] = 0;
 		replaces[i] = 'r';
 		nulls[i] = ' ';
 	}
@@ -883,7 +883,7 @@ OperatorUpd(Oid baseId, Oid commId, Oid negId)
 
 		CatalogUpdateIndexes(pg_operator_desc, tup);
 
-		values[Anum_pg_operator_oprcom - 1] = (Datum) NULL;
+		values[Anum_pg_operator_oprcom - 1] = 0;
 		replaces[Anum_pg_operator_oprcom - 1] = ' ';
 	}
 

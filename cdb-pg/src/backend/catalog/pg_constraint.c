@@ -107,7 +107,7 @@ CreateConstraintEntry(const char *constraintName,
 	for (i = 0; i < Natts_pg_constraint; i++)
 	{
 		nulls[i] = ' ';
-		values[i] = (Datum) NULL;
+		values[i] = 0;
 	}
 
 	values[Anum_pg_constraint_conname - 1] = NameGetDatum(&cname);

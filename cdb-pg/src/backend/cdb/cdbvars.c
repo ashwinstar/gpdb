@@ -426,7 +426,7 @@ assign_gp_role(const char *newval, bool doit, GucSource source)
 		}
 
 		if (do_disconnect)
-			cdb_cleanup(0, (Datum) NULL);
+			cdb_cleanup(0,0);
 
 		Gp_role = newrole;
 
@@ -445,7 +445,7 @@ assign_gp_role(const char *newval, bool doit, GucSource source)
 			}
 			PG_CATCH();
 			{
-				cdb_cleanup(0, (Datum) NULL);
+				cdb_cleanup(0,0);
 				Gp_role = oldrole;
 				if (Gp_role != GP_ROLE_UTILITY)
 					cdb_setup();

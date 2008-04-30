@@ -266,9 +266,9 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 	if (*isNull)
 	{
 		if (isDone && *isDone == ExprEndResult)
-			return (Datum) NULL;	/* end of set result */
+			return 0;	/* end of set result */
 		if (!isAssignment)
-			return (Datum) NULL;
+			return 0;
 	}
 
 	foreach(l, astate->refupperindexpr)
@@ -293,7 +293,7 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				  errmsg("array subscript in assignment must not be null")));
 			*isNull = true;
-			return (Datum) NULL;
+			return 0;
 		}
 	}
 
@@ -321,7 +321,7 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 							(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 							 errmsg("array subscript in assignment must not be null")));
 				*isNull = true;
-				return (Datum) NULL;
+				return 0;
 			}
 		}
 		/* this can't happen unless parser messed up */

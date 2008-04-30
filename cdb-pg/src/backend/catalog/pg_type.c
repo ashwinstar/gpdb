@@ -76,7 +76,7 @@ TypeShellMakeWithOid(const char *typeName, Oid typeNamespace, Oid shelltypeOid)
 	for (i = 0; i < Natts_pg_type; ++i)
 	{
 		nulls[i] = ' ';
-		values[i] = (Datum) NULL;		/* redundant, but safe */
+		values[i] = 0;		/* redundant, but safe */
 	}
 
 	/*

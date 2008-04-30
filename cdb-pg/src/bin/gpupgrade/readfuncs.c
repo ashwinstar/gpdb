@@ -3122,7 +3122,7 @@ readDatum(bool typbyval)
 		}
 	}
 	else if (length <= 0)
-		res = (Datum) NULL;
+		res = 0;
 	else
 	{
 		s = (char *) palloc(length);

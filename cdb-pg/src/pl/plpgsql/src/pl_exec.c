@@ -1870,7 +1870,7 @@ exec_stmt_return(PLpgSQL_execstate *estate, PLpgSQL_stmt_return *stmt)
 					Assert(row->rowtupdesc);
 					estate->retval = PointerGetDatum(make_tuple_from_row(estate, row,
 															row->rowtupdesc));
-					if (estate->retval == (Datum) NULL) /* should not happen */
+					if (estate->retval == 0) /* should not happen */
 						elog(ERROR, "row not compatible with its own tupdesc");
 					estate->rettupdesc = row->rowtupdesc;
 					estate->retisnull = false;

@@ -3722,7 +3722,7 @@ readDatum(const char ** str, bool typbyval)
 	{
 		memcpy(&length, *str, sizeof(Size)); (*str)+=sizeof(Size);
 	  	if (length <= 0)
-			res = (Datum) NULL;
+			res = 0;
 		else
 		{
 			s = (char *) palloc(length+1);
