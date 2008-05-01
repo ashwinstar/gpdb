@@ -36,7 +36,7 @@ mklibzookeeper:
 
 mkzookeepertest: 
 	@echo --- zookeepertest --------------------------------------------------
-	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o zookeepertest zookeepertest.c $(APULIBS) $(APRLIBS) -lzookeeper)
+	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o zookeepertest zookeepertest.c $(APULIBS) $(APRLIBS) -lzookeeper -lssl)
 
 mkgp:
 	@echo --- gp -------------------------------------------------------
