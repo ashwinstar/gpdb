@@ -259,3 +259,23 @@ create table distpol as select random(), 2 as foo distributed by (foo);
 select attrnums from gp_distribution_policy where 
   localoid = 'distpol'::regclass;
 drop table distpol;
+-- now test that MPP-101 /actually/ works
+create table distpol (i int, j int, k int);
+alter table distpol add primary key (j);
+select attrnums from gp_distribution_policy where 
+  localoid = 'distpol'::regclass;
+-- make sure we can't overwrite it
+create unique index distpol_uidx on distpol(k);
+-- should be able to now
+alter table distpol drop constraint distpol_pkey;
+create unique index distpol_uidx on distpol(k);
+select attrnums from gp_distribution_policy where 
+  localoid = 'distpol'::regclass;
+drop index distpol_uidx;
+-- expressions shouldn't be able to update the distribution key
+create unique index distpol_uidx on distpol(ln(k));
+drop index distpol_uidx;
+-- lets make sure we don't change the policy when the table is full
+insert into distpol values(1, 2, 3);
+create unique index distpol_uidx on distpol(i);
+alter table distpol add primary key (i);

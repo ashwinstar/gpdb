@@ -19,5 +19,9 @@
 #include "catalog/gp_id.h"
 #include "catalog/gp_policy.h"
 
+extern void checkPolicyForUniqueIndex(Relation rel, AttrNumber *indattr,
+									  int nidxatts, bool isprimary, 
+									  bool has_exprs, bool has_pkey,
+									  bool has_ukey);
 
 #endif   /* CDBCAT_H */

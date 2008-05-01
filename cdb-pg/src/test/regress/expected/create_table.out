@@ -240,3 +240,41 @@ select attrnums from gp_distribution_policy where
 (1 row)
 
 drop table distpol;
+-- now test that MPP-101 /actually/ works
+create table distpol (i int, j int, k int);
+alter table distpol add primary key (j);
+NOTICE:  updating distribution policy to match new primary key
+NOTICE:  ALTER TABLE / ADD PRIMARY KEY will create implicit index "distpol_pkey" for table "distpol"
+select attrnums from gp_distribution_policy where 
+  localoid = 'distpol'::regclass;
+ attrnums 
+----------
+ {2}
+(1 row)
+
+-- make sure we can't overwrite it
+create unique index distpol_uidx on distpol(k);
+ERROR:  UNIQUE index must contain all columns in the distribution key of relation "distpol"
+-- should be able to now
+alter table distpol drop constraint distpol_pkey;
+create unique index distpol_uidx on distpol(k);
+NOTICE:  updating distribution policy to match new unique index
+select attrnums from gp_distribution_policy where 
+  localoid = 'distpol'::regclass;
+ attrnums 
+----------
+ {3}
+(1 row)
+
+drop index distpol_uidx;
+-- expressions shouldn't be able to update the distribution key
+create unique index distpol_uidx on distpol(ln(k));
+ERROR:  UNIQUE index cannot contain expressions
+drop index distpol_uidx;
+ERROR:  index "distpol_uidx" does not exist
+-- lets make sure we don't change the policy when the table is full
+insert into distpol values(1, 2, 3);
+create unique index distpol_uidx on distpol(i);
+ERROR:  UNIQUE index must contain all columns in the distribution key of relation "distpol"
+alter table distpol add primary key (i);
+ERROR:  PRIMARY KEY must contain all columns in the distribution key of relation "distpol"

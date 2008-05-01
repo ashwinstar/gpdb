@@ -186,18 +186,6 @@ DefineIndex(RangeVar *heapRelation,
 				 errmsg("\"%s\" is not a table",
 						heapRelation->relname)));
 
-	/* 
-	 * Prevent unique or primary key indexes when table is distributed 
-	 * randomly
-	 */
-	if (rel->rd_cdbpolicy && 
-		rel->rd_cdbpolicy->ptype == POLICYTYPE_PARTITIONED && 
-		rel->rd_cdbpolicy->nattrs == 0 /* distributed randomly */ && 
-		(primary || unique))
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("%s and DISTRIBUTED RANDOMLY are incompatible",
-						primary ? "PRIMARY KEY" : "UNIQUE")));
 	/*
 	 * Don't try to CREATE INDEX on temp tables of other backends.
 	 */
@@ -469,62 +457,15 @@ DefineIndex(RangeVar *heapRelation,
 				stmt->idxOids = lappend_oid(stmt->idxOids, indexRelationId);
 		}
 
-		/*
-		 * if unique index on distributed table, index must contain distribution columns
-		 *
-		 */
-		if (unique || primary)
-		{
-			GpPolicy  *policy = rel->rd_cdbpolicy;
-			bool changespolicy = false;
+		if (primary || unique)
+			checkPolicyForUniqueIndex(rel, 
+									 indexInfo->ii_KeyAttrNumbers,
+									 indexInfo->ii_NumIndexAttrs,
+									 primary, 
+									 list_length(indexInfo->ii_Expressions),
+									 relationHasPrimaryKey(rel),
+									 relationHasUniqueIndex(rel));
 
-			if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
-			{
-				int			ia = 0;
-
-				for (ia = 0; ia < policy->nattrs && ia < numberOfAttributes; ia++)
-				{
-					if (indexInfo->ii_KeyAttrNumbers[ia] != policy->attrs[ia])
-					{
-						changespolicy = true;
-						
-					}
-				}
-				
-				if (changespolicy)
-				{
-					if (cdbRelSize(rel->rd_id) != 0 || relationHasPrimaryKey(rel) || relationHasUniqueIndex(rel))
-					{
-						if (primary)
-
-							ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 errmsg("You can only add a primary key on the distribution column(s)")));
-						else
-							ereport(ERROR,
-									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-									 errmsg("you can only create a unique index on the distribution column(s)")));
-					}
-					else
-					{
-						policy = (GpPolicy *) palloc(sizeof(GpPolicy) + numberOfAttributes * sizeof(policy->attrs[0]));
-						policy->ptype = POLICYTYPE_PARTITIONED;
-						policy->nattrs = 0;
-						policy->attrs[0] = 1;
-						for (ia=0; ia < numberOfAttributes; ia++)
-						{
-							policy->attrs[policy->nattrs++] = indexInfo->ii_KeyAttrNumbers[ia];	
-						}
-						GpPolicyReplace(rel->rd_id, policy);
-						if (primary)
-							elog(NOTICE,"Updating distribution policy to match new primary key.");
-						else
-							elog(NOTICE,"Updating distribution policy to match new unique index.");
-					}	
-				}
-				
-			}
-		}
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{

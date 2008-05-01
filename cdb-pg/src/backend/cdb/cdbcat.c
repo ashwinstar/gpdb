@@ -18,6 +18,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "cdb/cdbcat.h"
+#include "cdb/cdbrelsize.h"
 #include "cdb/cdbvars.h"		/* Gp_role */
 #include "catalog/pg_type.h"
 #include "utils/array.h"
@@ -403,3 +404,93 @@ GpPolicyRemove(Oid tbloid)
      */
     heap_close(gp_policy_rel, NoLock);
 }                               /* GpPolicyRemove */
+
+/*
+ * Does the supplied GpPolicy support unique indexing on the specified
+ * attributes?
+ *
+ * If the table is distributed randomly, no unique indexing is supported.
+ * Otherwise, the set of columns being indexed should be a superset of the
+ * policy.
+ *
+ * If the proposed index does not match the distribution policy but the relation
+ * is empty and does not have a primary key or unique index, update the
+ * distribution policy to match the index definition (MPP-101), as long as it
+ * doesn't contain expressions.
+ */
+void
+checkPolicyForUniqueIndex(Relation rel, AttrNumber *indattr, int nidxatts,
+			 			  bool isprimary, bool has_exprs, bool has_pkey,
+						  bool has_ukey)
+{
+	Bitmapset *polbm = NULL;
+	Bitmapset *indbm = NULL;
+	int i;
+	GpPolicy *pol = rel->rd_cdbpolicy;
+
+	/* 
+	 * Firstly, unique/primary key indexes aren't supported if we're
+	 * distributing randomly.
+	 */
+	if (pol->ptype == POLICYTYPE_PARTITIONED &&
+		pol->nattrs == 0 /* distributed randomly */)
+	{
+        ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("%s and DISTRIBUTED RANDOMLY are incompatible",
+						isprimary ? "PRIMARY KEY" : "UNIQUE")));
+	}
+
+	/* 
+	 * We use bitmaps to make intersection tests easier. As noted, order is
+	 * not relevant so looping is just painful.
+	 */
+	for (i = 0; i < pol->nattrs; i++)
+		polbm = bms_add_member(polbm, pol->attrs[i]);
+	for (i = 0; i < nidxatts; i++)
+		indbm = bms_add_member(indbm, indattr[i]);
+
+	Assert(bms_membership(polbm) != BMS_EMPTY_SET);
+	Assert(bms_membership(indbm) != BMS_EMPTY_SET);
+
+	/* 
+	 * If the existing policy is not a subset, we must either error out or
+	 * update the distribution policy. It might be tempting to say that even
+	 * when the policy is a subset, we should update it to match the index
+	 * definition. The problem then is that if the user actually wants to
+	 * distribution on (a, b) but then creates an index on (a, b, c) we'll
+	 * change the policy underneath them.
+	 *
+	 * What is really needed is a new field in gp_distribution_policy telling us
+	 * if the policy has been explicitly set.
+	 */
+	if (!bms_is_subset(polbm, indbm))
+	{
+       	if (cdbRelSize(rel->rd_id) != 0 || has_pkey || has_ukey || has_exprs)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("%s must contain all columns in the "
+							"distribution key of relation \"%s\"",
+							isprimary ? "PRIMARY KEY" : "UNIQUE index",
+						RelationGetRelationName(rel))));
+		}
+		else
+		{
+			/* update policy since table is not populated yet. See MPP-101 */
+			GpPolicy *policy = palloc(sizeof(GpPolicy) + 
+									  (sizeof(AttrNumber) * nidxatts));
+			policy->ptype = POLICYTYPE_PARTITIONED;
+			policy->nattrs = 0;
+			for (i = 0; i < nidxatts; i++)
+				policy->attrs[policy->nattrs++] = indattr[i];	
+
+			GpPolicyReplace(rel->rd_id, policy);
+
+			if (isprimary)
+				elog(NOTICE, "updating distribution policy to match new primary key");
+			else
+				elog(NOTICE, "updating distribution policy to match new unique index");
+		}
+	}
+}
