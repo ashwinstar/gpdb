@@ -249,3 +249,13 @@ drop table distrand;
 create table distrand(i int, j int) distributed randomly;
 create unique index distrand_idx on distrand(i);
 drop table distrand; 
+
+-- Make sure distribution policy determined from CTAS actually works, MPP-101
+create table distpol as select random(), 1 as a, 2 as b;
+select attrnums from gp_distribution_policy where 
+  localoid = 'distpol'::regclass;
+drop table distpol;
+create table distpol as select random(), 2 as foo distributed by (foo);
+select attrnums from gp_distribution_policy where 
+  localoid = 'distpol'::regclass;
+drop table distpol;

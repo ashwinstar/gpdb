@@ -232,13 +232,14 @@ apply_motion(Plan *plan, Query *query)
 						int i;
 						for (i = 0; i < list_length(plan->targetlist); i++)
 						{
-							TargetEntry *target = get_tle_by_resno(plan->targetlist, targetPolicy->attrs[i]);
+							TargetEntry *target = 
+								get_tle_by_resno(plan->targetlist, i + 1);
+
 							if (target)
 							{
 								Oid typeOid = exprType((Node *) target->expr);
-								bool isArray = false;  /* How do I find this out? */
 								
-								if(isGreenplumDbHashable(typeOid) || isArray)
+								if(isGreenplumDbHashable(typeOid))
 								{
 									targetPolicy->attrs[targetPolicy->nattrs++] = i+1;
 									break;
