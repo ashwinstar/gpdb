@@ -1,4 +1,4 @@
 /* lock.c */
 
-#include "chubby_private.h"
+#include "header.h"
 

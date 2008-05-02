@@ -1,6 +1,6 @@
 /* azookeeper.c */
 
-#include "chubby_private.h"
+#include "header.h"
 
 static int
 complete_void(void_completion_t completion,int rc,const void*data)
@@ -112,14 +112,14 @@ zoo_aget(zhandle_t*thiz,const char*path,int watch,data_completion_t completion,c
     do{
 	size = buffer_len;
 	if (buffer)
-	    chubby_free(buffer);
-	buffer = chubby_malloc(size);
+	    zookeeper_free(buffer);
+	buffer = zookeeper_malloc(size);
 	if (!buffer)
 	    return ZMARSHALLINGERROR;
 	rc = zoo_get(thiz,path,watch,buffer,&buffer_len,&stat);
     }while (rc==ZOK && buffer_len>size);
     rc = complete_data(completion,rc,buffer,buffer_len,&stat,data);
-    chubby_free(buffer);
+    zookeeper_free(buffer);
     return rc;
 }
 

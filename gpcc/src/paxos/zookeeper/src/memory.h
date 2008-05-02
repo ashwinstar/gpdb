@@ -3,7 +3,7 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
-extern void*(*chubby_malloc)(size_t);
-extern void(*chubby_free)(void*);
+extern void*(*zookeeper_malloc)(size_t);
+extern void(*zookeeper_free)(void*);
 
 #endif

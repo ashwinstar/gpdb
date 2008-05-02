@@ -40,7 +40,7 @@ mklibzookeeper: src/build/lib/libzookeeper.a
 
 src/build/lib/libzookeeper.a: src/paxos/zookeeper/include/*.h src/paxos/zookeeper/src/*.[ch] src/build/lib/libchubby.a
 	@echo --- libzookeeper --------------------------------------------------
-	(cd src/paxos/zookeeper/src; $(CC) -c -I../include $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror *.c)
+	(cd src/paxos/zookeeper/src; $(CC) -c -I../include -I../../../build/include $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror *.c)
 	@echo copying include files
 	@(cp -f -r src/paxos/zookeeper/include/* src/build/include/ )
 	@echo creating library

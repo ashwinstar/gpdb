@@ -1,6 +1,6 @@
-/* chubby.c */
+/* constants.c */
 
-#include "chubby_private.h"
+#include "header.h"
 
 ZOOAPI const int PERM_READ=0;
 ZOOAPI const int PERM_WRITE=1;

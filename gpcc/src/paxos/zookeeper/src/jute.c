@@ -1,12 +1,12 @@
 /* jute.c */
 
-#include "chubby_private.h"
+#include "header.h"
 
 void
 deallocate_String(char**s)
 {
     if (*s){
-        chubby_free(*s);
+        zookeeper_free(*s);
 	*s = NULL;
     }
 }
@@ -32,7 +32,7 @@ deallocate_String_vector(struct String_vector*v)
 	for (i=0; i<v->count; i++)
 	    if (v->data[i])
 		deallocate_String(v->data+i);
-	chubby_free(v->data);
+	zookeeper_free(v->data);
 	v->data = NULL;
     }
     return 0;
@@ -45,7 +45,7 @@ deallocate_ACL_vector(struct ACL_vector *v)
 	int i;
 	for (i=0; i<v->count; i++)
 	    deallocate_ACL(v->data+i);
-	chubby_free(v->data);
+	zookeeper_free(v->data);
 	v->data = NULL;
     }
     return 0;
