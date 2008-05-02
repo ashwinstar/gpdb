@@ -80,7 +80,7 @@ doesUpdateAffectPartitionCols(Plan         *plan,
 static void
 warn_ctid_without_segid(Query *query, Plan *plan);
 
-static bool has_ctid_outside_tlist_walker(Node *node, void* unused  __attribute__((unused)) );
+static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 
 #if 0
 static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
@@ -1307,18 +1307,40 @@ ctid_inventory_walker(Node *node, ctid_inv_data * inv)
 }
 
 bool
-has_ctid_outside_tlist_walker(Node *node, void* unused __attribute__((unused)) )
+has_ctid_outside_tlist_walker(Node *node, void* unused)
 {
+    UnusedArg(unused);
+
 	if (node == NULL)
 		return false;
 
 	switch (nodeTag(node))
 	{
 		case T_TargetEntry:
+        {
+            TargetEntry    *tle = (TargetEntry *)node;
+
             /* Ignore Var nodes at top level of target list. */
-            if (IsA(((TargetEntry *)node)->expr, Var))
+            if (IsA(tle->expr, Var))
                 return false;
+
+            /* 
+             * MPP-2792:  Ignore Var with cast at top level of target list.
+             * In a command like DELETE FROM t WHERE key IN (SELECT...), 
+             * cdbpath_dedup_fixup_unique() might have inserted a reference 
+             * to the target's ctid with a conversion to 64-bit integer type.
+             */
+            if (IsA(tle->expr, FuncExpr))
+            {
+                FuncExpr   *fe = (FuncExpr *)tle->expr;
+
+                if (fe->funcformat == COERCE_EXPLICIT_CAST &&
+                    fe->args &&
+                    IsA(linitial(fe->args), Var))
+                    return false;
+            }
             break;
+        }
 
 		case T_Var:
 			/* Return true if found CTID outside target list. */
