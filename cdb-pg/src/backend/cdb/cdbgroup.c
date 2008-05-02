@@ -264,8 +264,16 @@ cdb_grouping_planner(PlannerInfo* root,
 		}
 		else
 		{
-			group_prep = MPP_GRP_PREP_HASH_GROUPS;
-			CdbPathLocus_MakeHashed(&output_locus, root->group_pathkeys);
+			if (hash_safe_grouping(root))
+			{
+				group_prep = MPP_GRP_PREP_HASH_GROUPS;
+				CdbPathLocus_MakeHashed(&output_locus, root->group_pathkeys);
+			}
+			else
+			{
+				group_prep = MPP_GRP_PREP_FOCUS_QE;
+				CdbPathLocus_MakeSingleQE(&output_locus);
+			}
 		}
 	}
 	else if ( has_aggs ) /* and not grouped and not single or replicated  */
@@ -2586,3 +2594,28 @@ sorting_prefixes_grouping(PlannerInfo *root)
 			&& pathkeys_contained_in(root->sort_pathkeys, root->group_pathkeys);
 }
 
+/*
+ * hash_safe_grouping - are grouping operators hashable?
+ *
+ * We assume hashed aggregation will work if the datatype's equality operator
+ * is marked hashjoinable.
+ */
+bool
+hash_safe_grouping(PlannerInfo *root)
+{
+	List *grouptles;
+	ListCell   *glc;
+
+	grouptles = get_sortgroupclauses_tles(root->parse->groupClause,
+										 root->parse->targetList);
+	foreach(glc, grouptles)
+	{
+		TargetEntry *tle = (TargetEntry *)lfirst(glc);
+		bool		oprcanhash;
+
+		oprcanhash = hash_safe_type(exprType((Node *) tle->expr));
+		if (!oprcanhash)
+			return false;
+	}
+	return true;
+}
