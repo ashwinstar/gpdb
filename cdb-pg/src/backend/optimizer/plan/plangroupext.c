@@ -790,10 +790,18 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	/* The common source plan is a Gather merge node on top of the given
 	 * subplan
 	 */
-	common_source_plan =
-		(Plan *)make_motion_gather_to_QE(lefttree, (context->current_pathkeys != NIL));
-	common_source_plan->total_cost +=
-		motion_cost_per_row * common_source_plan->plan_rows;
+	Assert(lefttree->flow != NULL);
+	if (lefttree->flow->flotype != FLOW_SINGLETON)
+	{
+		common_source_plan =
+			(Plan *)make_motion_gather_to_QE(lefttree, (context->current_pathkeys != NIL));
+		common_source_plan->total_cost +=
+			motion_cost_per_row * common_source_plan->plan_rows;
+	}
+	else
+	{
+		common_source_plan = lefttree;
+	}
 
 	/* Plan a list of Agg/Group nodes with the common source plan */
 	agg_plans = plan_list_aggs(root, context, common_source_plan);
@@ -801,12 +809,8 @@ make_append_aggs_for_rollup(PlannerInfo *root,
 	/* Add 'Append' if there are more than one subplan. */
 	if (list_length(agg_plans) > 1)
 	{
-		/* Decide on approach, condition argument plans to suit. */
-		if ( Gp_role == GP_ROLE_DISPATCH )
-		{
-			optype = choose_setop_type(agg_plans);
-			adjust_setop_arguments(agg_plans, optype);
-		}
+		optype = choose_setop_type(agg_plans);
+		adjust_setop_arguments(agg_plans, optype);
 
 		/* Generate the targetlist for Append node */
 		targetlist = generate_append_tlist(context->tlist, 1);

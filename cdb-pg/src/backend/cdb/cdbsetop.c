@@ -59,7 +59,7 @@ GpSetOpType choose_setop_type(List *planlist)
 	bool ok_single_qe = TRUE;
 	bool has_partitioned = FALSE;
 	
-	Assert( Gp_role == GP_ROLE_DISPATCH );
+	Assert( Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY );
 	
 	foreach(cell, planlist)
 	{
