@@ -770,6 +770,9 @@ CdbChunkBuf_AddChunkHelper(struct CdbChunkBuf  *cbuf,
                            const char          *src,
                            Size                 len)
 {
+    UnusedArg(src);
+    UnusedArg(len);
+
     cbuf->lastchunk = CdbChunkPool_Alloc(cbuf->chunkpool);
     CdbPtrBuf_Append(&cbuf->chunklist, cbuf->lastchunk);
     cbuf->freespace_beg = cbuf->lastchunk;
@@ -779,13 +782,43 @@ CdbChunkBuf_AddChunkHelper(struct CdbChunkBuf  *cbuf,
 
 
 /*
+ * CdbChunkBuf_AllocHelper
+ *
+ * Helper called by CdbChunkBuf_Alloc when the last chunk doesn't have room
+ * to append 'len' bytes of data.
+ */
+void
+CdbChunkBuf_AllocHelper(CdbChunkBuf *cbuf, Size len)
+{
+    Assert((Size)(cbuf->freespace_end - cbuf->freespace_beg) <= cbuf->chunksize);
+    Assert(cbuf->lastchunk
+            ? (cbuf->chunksize == (Size)(cbuf->freespace_end - cbuf->lastchunk))
+            : (!cbuf->freespace_beg && !cbuf->freespace_end));
+
+    if (len > cbuf->chunksize)
+        ereport(ERROR, (errmsg_internal("Invalid length for CdbChunkBuf_Alloc. "
+                                        "len=%ld exceeds limit of %ld bytes.",
+                                        (long)len,
+                                        (long)cbuf->chunksize)
+                        ));
+
+    /* Any space left in the current chunk is wasted. */
+    cbuf->len += cbuf->freespace_end - cbuf->freespace_beg;
+    cbuf->freespace_beg = cbuf->freespace_end;
+
+    /* Allocate a new chunk. */
+    cbuf->addchunk(cbuf, NULL, 0);
+}                               /* CdbChunkBuf_AllocHelper */
+
+
+/*
  * CdbChunkBuf_AppendHelper
  *
  * Helper called by CdbChunkBuf_Append when the last chunk doesn't have room
  * to append 'len' bytes of data.
  */
 void
-CdbChunkBuf_AppendHelper(struct CdbChunkBuf *cbuf, const void *src, Size len)
+CdbChunkBuf_AppendHelper(CdbChunkBuf *cbuf, const void *src, Size len)
 {
     Size        nbytes_free = cbuf->freespace_end - cbuf->freespace_beg;
     const char *pos = (const char *)src;
@@ -1259,6 +1292,8 @@ static void
 CdbChunkBuf_DestructiveIterator_SetPosHelper(struct CdbChunkBuf_Iterator *it,
                                              CdbChunkBuf_Length           newoffset)
 {
+    UnusedArg(it);
+    UnusedArg(newoffset);
     Insist(0);                  /* unsupported */
 }                               /* CdbChunkBuf_DestructiveIterator_SetPosHelper */
 
@@ -1321,6 +1356,8 @@ static void
 CdbChunkBuf_GrotesqueIterator_SetPosHelper(struct CdbChunkBuf_Iterator *it,
                                            CdbChunkBuf_Length           newoffset)
 {
+    UnusedArg(it);
+    UnusedArg(newoffset);
     Insist(0);                  /* unsupported */
 }                               /* CdbChunkBuf_GrotesqueIterator_SetPosHelper */
 

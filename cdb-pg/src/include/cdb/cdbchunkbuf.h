@@ -292,14 +292,44 @@ CdbChunkBuf_FileBuf_Flush(CdbChunkBuf *cbuf);
  *-------------------------------------------------------------------------
  */
 
-/*
- * CdbChunkBuf_AppendHelper
- *
- * Helper called by CdbChunkBuf_Append when the last chunk doesn't have room
- * to append 'len' bytes of data.
- */
+/* Helpers for inline functions */
 void
-CdbChunkBuf_AppendHelper(struct CdbChunkBuf *cbuf, const void *src, Size len);
+CdbChunkBuf_AllocHelper(CdbChunkBuf *cbuf, Size len);
+void
+CdbChunkBuf_AppendHelper(CdbChunkBuf *cbuf, const void *src, Size len);
+
+
+/*
+ * CdbChunkBuf_Alloc
+ *
+ * Allocates 'len' bytes of uninitialized space from chunkbuf 'cbuf'.
+ * Returns a pointer to the area (never NULL).  0 < len < cbuf->chunksize
+ *
+ * Alignment is the same as the ending alignment of the data already in
+ * the chunkbuf, or MAXALIGN(1) if the allocated space happens to be at
+ * the beginning of a chunk.
+ */
+static inline void *
+CdbChunkBuf_Alloc(CdbChunkBuf *cbuf, Size len)
+{
+    char   *area;
+
+    Assert(cbuf &&
+           len > 0 &&
+           len < cbuf->chunksize &&
+           cbuf->lastchunk <= cbuf->freespace_beg &&
+           cbuf->freespace_beg <= cbuf->freespace_end);
+
+    /* Allocate a new chunk if current chunk doesn't have enough space. */
+    if (len > cbuf->freespace_end - cbuf->freespace_beg)
+        CdbChunkBuf_AllocHelper(cbuf, len);
+
+    /* Allocate 'len' bytes, appending to current chunk contents if any. */
+    area = cbuf->freespace_beg;
+    cbuf->freespace_beg += len;
+    cbuf->len += len;
+    return area;
+}                               /* CdbChunkBuf_Alloc */
 
 
 /*
@@ -310,6 +340,7 @@ CdbChunkBuf_Append(CdbChunkBuf *cbuf, const void *src, Size len)
 {
     Assert(src &&
            cbuf &&
+           len > 0 &&
            cbuf->lastchunk <= cbuf->freespace_beg &&
            cbuf->freespace_beg <= cbuf->freespace_end);
 
