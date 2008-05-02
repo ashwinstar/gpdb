@@ -19,7 +19,7 @@
 
 #include <sys/time.h>
 #include <stdio.h>
-//#include "recordio.h"
+#include "recordio.h"
 #include "zookeeper.jute.h"
 
 /**

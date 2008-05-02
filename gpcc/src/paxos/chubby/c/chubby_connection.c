@@ -471,3 +471,34 @@ chubby_connection_giveUpLock(chubby_connection_t*thiz)
 {
     chubby_connection_renew(thiz,0);
 }
+
+int
+chubby_connection_move(chubby_connection_t*thiz,const char*fromname,const char*toname)
+{
+    struct chubby_stat fstat,tstat;
+    int e=chubby_connection_stat(thiz,&fstat,fromname);
+    chubby_udp_buffer_t b;
+    if (e)
+        return e;
+    if (!fstat.decreeNumber)
+    	return CHUBBY_E_NOENT;
+    e = chubby_connection_stat(thiz,&tstat,toname);
+    if (e)
+        return e;
+    b.length = 0;
+    chubby_udp_buffer_format(&b,"If ");
+    fixFilename(&b,fromname);
+    chubby_udp_buffer_format(&b," %"APR_INT64_T_FMT" If ",fstat.decreeNumber);
+    fixFilename(&b,toname);
+    chubby_udp_buffer_format(&b," %"APR_INT64_T_FMT" Move ",tstat.decreeNumber);
+    fixFilename(&b,fromname);
+    chubby_udp_buffer_format(&b," ");
+    fixFilename(&b,toname);
+    e = chubby_connection_propose(thiz,NULL,&b);
+    if (e == CHUBBY_E_IFFAILED){
+	e = chubby_connection_chubbyStat(thiz,&tstat,fromname);
+	if (e==0 && fstat.decreeNumber==tstat.decreeNumber)
+	    return CHUBBY_E_LOCKEXPIRED;
+    }
+    return e;
+}

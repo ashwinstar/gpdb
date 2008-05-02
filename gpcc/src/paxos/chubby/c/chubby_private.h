@@ -37,14 +37,16 @@ struct chubby{
     void*(*malloc)(size_t);
     void(*free)(void*);
     char*addresses;
+    char*paxosKey;
     char id[CHUBBY_ID_SIZE];
     int64_t count;
     int leaderValid;
-    struct sockaddr_in leader;
+    struct sockaddr leader;
 };
 
 void chubby_counted_set(void*a,void*b);
 void chubby_counted_close(void*a);
+
 chubby_connection_t*chubby_connection_new(chubby_t*chubby);
 void chubby_getNewId(chubby_t*thiz,char*a);
 int chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what);
@@ -54,5 +56,11 @@ void chubby_udp_buffer_format(chubby_udp_buffer_t*thiz,char*format,...);
 void chubby_udp_buffer_cat(chubby_udp_buffer_t*thiz,chubby_string_t*a);
 
 chubby_string_t*chubby_string_format(chubby_t*chubby,const char*format,...);
+
+#define SIGNSTRING		"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx "
+#define SIGNSTRING_LENGTH	33
+
+int chubby_readPaxosKey(chubby_t*thiz);
+void chubby_sign(chubby_t*thiz,char*a,const char*b,int len,const struct sockaddr*f,const struct sockaddr*t);
 
 #endif

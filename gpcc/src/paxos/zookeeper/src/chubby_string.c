@@ -2,13 +2,6 @@
 
 #include "chubby_private.h"
 
-void
-chubby_string_free(chubby_string_t*thiz)
-{
-    chubby_free(thiz->a);
-    chubby_free(thiz);
-}
-
 chubby_udp_buffer_t*
 chubby_udp_buffer_init(chubby_udp_buffer_t*thiz)
 {
@@ -44,25 +37,31 @@ chubby_udp_buffer_cat(chubby_udp_buffer_t*thiz,chubby_string_t*a)
     thiz->length += len;
 }
 
-chubby_string_t*
-chubby_string_format(const char*format,...)
+void
+chubby_string_free(chubby_string_t*thiz)
 {
-    chubby_string_t*s=chubby_malloc(sizeof*s);
+    if (thiz->a)
+	chubby_free(thiz->a);
+    thiz->a = NULL;
+    thiz->length = 0;
+}
+
+chubby_string_t*
+chubby_string_format(chubby_string_t*thiz,const char*format,...)
+{
     int len;
     va_list va;
-    if (!s)
-        return NULL;
     va_start(va,format);
     len = vsnprintf(0,0,format,va);
     va_end(va);
-    s->a = chubby_malloc(len+1);
-    if (!s->a){
-	chubby_free(s);
+    thiz->a = chubby_malloc(len+1);
+    if (!thiz->a){
+	thiz->length = 0;
 	return NULL;
     }
-    s->length = len;
+    thiz->length = len;
     va_start(va,format);
-    vsnprintf(s->a,len+1,format,va);
+    vsnprintf(thiz->a,len+1,format,va);
     va_end(va);
-    return s;
+    return thiz;
 }

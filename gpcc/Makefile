@@ -15,7 +15,7 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp mklibzookeeper mkzookeepertest
+all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp mklibchubby mkchubbytest mklibzookeeper mkzookeepertest
 
 mkgpfdist: 
 	@echo --- gpfdist --------------------------------------------------
@@ -24,19 +24,41 @@ mkgpfdist:
 	@mkdir -p build/bin
 	@cp -f src/gpfdist/gpfdist build/bin/
 
-mklibzookeeper: 
+mklibchubby: src/build/lib/libchubby.a
+
+src/build/lib/libchubby.a: src/paxos/chubby/c/*.[ch]
+	@echo --- libchubby --------------------------------------------------
+	(cd src/paxos/chubby/c; $(CC) -c -I../include $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror *.c)
+	@echo copying include files
+	@(cp -f -r src/paxos/chubby/c/chubby.h src/build/include/ )
+	@echo creating library
+	@(cd src/paxos/chubby/c; rm -f ../../../build/lib/libchubby.a; \
+		ar cru ../../../build/lib/libchubby.a *.o;	\
+		ranlib ../../../build/lib/libchubby.a)
+
+mklibzookeeper: src/build/lib/libzookeeper.a
+
+src/build/lib/libzookeeper.a: src/paxos/zookeeper/include/*.h src/paxos/zookeeper/src/*.[ch] src/build/lib/libchubby.a
 	@echo --- libzookeeper --------------------------------------------------
 	(cd src/paxos/zookeeper/src; $(CC) -c -I../include $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror *.c)
+	@echo copying include files
+	@(cp -f -r src/paxos/zookeeper/include/* src/build/include/ )
 	@echo creating library
 	@(cd src/paxos/zookeeper/src; rm -f ../../../build/lib/libzookeeper.a; \
 		ar cru ../../../build/lib/libzookeeper.a *.o;	\
 		ranlib ../../../build/lib/libzookeeper.a)
-	@echo copying include files
-	@(cp -f -r src/paxos/zookeeper/include/* src/build/include/ )
 
-mkzookeepertest: 
+mkchubbytest: src/paxos/test/chubbytest
+
+src/paxos/test/chubbytest: src/paxos/test/chubbytest.c src/build/lib/libchubby.a
+	@echo --- chubbytest --------------------------------------------------
+	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o chubbytest chubbytest.c $(APULIBS) $(APRLIBS) -lchubby -lssl)
+
+mkzookeepertest: src/paxos/test/zookeepertest
+
+src/paxos/test/zookeepertest: src/paxos/test/zookeepertest.c src/build/lib/libzookeeper.a src/build/lib/libchubby.a
 	@echo --- zookeepertest --------------------------------------------------
-	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o zookeepertest zookeepertest.c $(APULIBS) $(APRLIBS) -lzookeeper -lssl)
+	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o zookeepertest zookeepertest.c $(APULIBS) $(APRLIBS) -lzookeeper -lchubby -lssl)
 
 mkgp:
 	@echo --- gp -------------------------------------------------------

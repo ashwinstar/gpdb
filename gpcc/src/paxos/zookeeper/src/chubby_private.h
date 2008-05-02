@@ -18,7 +18,6 @@
 #include <sys/types.h>
 #include <zookeeper.h>
 
-#include "sign.h"
 #include "chubby_counted.h"
 #include "chubby_string.h"
 #include "memory.h"
@@ -52,7 +51,7 @@ struct _zhandle{
 };
 
 void chubby_getNewId(zhandle_t*thiz,char*a);
-int chubby_propose(zhandle_t*thiz,chubby_string_t**answer,chubby_string_t*what);
+int chubby_propose(zhandle_t*thiz,chubby_string_t*answer,const chubby_udp_buffer_t*what);
 
 int chubby_stat(zhandle_t*thiz,struct chubby_stat*stat,const char*name);
 

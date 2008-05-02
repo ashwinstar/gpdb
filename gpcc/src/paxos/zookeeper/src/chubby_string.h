@@ -16,7 +16,7 @@ typedef struct{
 }chubby_udp_buffer_t;
 
 void chubby_string_free(chubby_string_t*thiz);
-chubby_string_t*chubby_string_format(const char*format,...);
+chubby_string_t*chubby_string_format(chubby_string_t*thiz,const char*format,...);
 
 chubby_udp_buffer_t*chubby_udp_buffer_init(chubby_udp_buffer_t*thiz);
 int chubby_udp_buffer_isOverflowed(chubby_udp_buffer_t*thiz);

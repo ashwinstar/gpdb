@@ -110,6 +110,8 @@ class Connection:
 	if a[0]!=0:
 	    return a[0]
 	dn = a[1]
+	if dn==0:
+	    return E_NOENT
 	a = self.__stat(toname)
 	if a[0]!=0:
 	    return a[0]
