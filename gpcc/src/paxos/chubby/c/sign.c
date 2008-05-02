@@ -1,6 +1,14 @@
 /* sign.c */
 
+#ifdef sun
+#include <md5.h>
+#define MD5_Init	MD5Init
+#define MD5_Update	MD5Update
+#define MD5_Final	MD5Final
+#else
 #include <openssl/md5.h>
+#endif
+
 #include "chubby_private.h"
 
 int

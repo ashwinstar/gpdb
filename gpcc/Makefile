@@ -52,7 +52,7 @@ mkchubbytest: src/paxos/test/chubbytest
 
 src/paxos/test/chubbytest: src/paxos/test/chubbytest.c src/build/lib/libchubby.a
 	@echo --- chubbytest --------------------------------------------------
-	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o chubbytest chubbytest.c $(APULIBS) $(APRLIBS) -lchubby -lssl)
+	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o chubbytest chubbytest.c $(APULIBS) $(APRLIBS) -lchubby -lssl -lmd)
 
 mkzookeepertest: src/paxos/test/zookeepertest
 
