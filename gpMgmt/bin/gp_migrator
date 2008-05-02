@@ -4,8 +4,10 @@ Usage: gp_migrator [options] old-gphome new-gphome
 
 Options:
   -h, --help            show this help message and exit
-  -v, --version         show the program's version number and exit
+  --version             show the program's version number and exit
   -d DIRECTORY          the master host data directory
+  -l DIRECTORY          log file directory
+  -R                    revert to pre-upgrade state (if available)
 '''
 
 #============================================================
@@ -47,40 +49,48 @@ class GPUpgrade:
     '''
 
     # INTERNAL command:
-    #   MASTER    - default, run on master
-    #   MKDIR      - Create directories, run on every host
-    #   REMAPOID   - Link newdb to old oids, run on every host
-    cmd       = None     # Command being run
-    option    = None     # Argument passed to cmd
-    option2   = None     # Argument passed to cmd
-    pid       = None     # Process ID of the master
-
-    # Enviornment and system info
-    masterdir = None     # Master Data Directory
-    datadirs  = None     # Set of all data and mirror directories
-    oldbin    = None     # Old gphome/bin directory
-    newbin    = None     # New gphome/bin directory
-    oldenv    = None     # enviornment: old gp env
-    newenv    = None     # enviornment: new gp env
-    user      = None     # db admin user
-    host      = None     # master hostname
-
-    # Upgrade information and state
-    debug     = False
-    root      = None     # directory: masterdir/..
-    backup    = None     # directory: root/backup
-    tmpdir    = None     # directory: root/upgrade
-    newmaster = None     # directory: upgrade/gp-1
-    state     = None     # file:      backup/state
-    config    = {}       # gp_init_config for new db
-    mappings  = None     # Mappings of old oid to new oids
-    hosts     = []       # list of hosts
-    segments  = []       # list of segments
-    mirrors   = None     # list of mirrors
+    #   MASTER    - default, run on master, [not included in list]
+    #   MKDIR     - Create directories, run on every host
+    #   RMDIR     - Remove directories, run on every host
+    #   RESETXLOG - Syncronize xlogs
+    #   REMAPOID  - Link newdb to old oids, run on every host
+    #   DEEPLINK  - Recursive hardlink
+    commands = ['MKDIR', 'RMDIR', 'RESETXLOG', 'REMAPOID', 'DEEPLINK']
 
     #------------------------------------------------------------
     def __init__(self):
-        pass
+        '''
+        The most basic of initialization
+        '''
+        self.cmd       = 'MASTER'      # Command being run
+        self.pid       = os.getpid()   # Process ID of the master
+
+        # Non-master variables
+        self.option    = None     # Argument passed to cmd
+        self.option2   = None     # Argument passed to cmd
+        
+    # Enviornment and system info
+        self.masterdir = None     # Master Data Directory
+        self.datadirs  = None     # Set of all data and mirror directories
+        self.oldhome    = None     # Old gphome/bin directory
+        self.newhome    = None     # New gphome/bin directory
+        self.oldenv    = None     # enviornment: old gp env
+        self.newenv    = None     # enviornment: new gp env
+        self.user      = None     # db admin user
+        self.host      = None     # master hostname
+
+    # Upgrade information and state
+        self.debug     = False
+        self.root      = None     # directory: masterdir/..
+        self.backup    = None     # directory: root/backup
+        self.tmpdir    = None     # directory: root/upgrade
+        self.newmaster = None     # directory: upgrade/gp-1
+        self.state     = None     # file:      backup/state
+        self.config    = {}       # gp_init_config for new db
+        self.mappings  = None     # Mappings of old oid to new oids
+        self.hosts     = []       # list of hosts
+        self.segments  = []       # list of segments
+        self.mirrors   = None     # list of mirrors
 
     #------------------------------------------------------------
     def Setup(self):
@@ -90,7 +100,6 @@ class GPUpgrade:
         '''
 
         # Set defaults 
-        self.cmd       = 'MASTER'
         self.user      = self.RunCmd('id -un')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
@@ -103,11 +112,11 @@ class GPUpgrade:
             self.tmpdir = os.path.join(masterpath, 'upgrade')
             self.backup = os.path.join(masterpath, 'backup')
             self.newmaster = os.path.join(masterpath, 'upgrade', masterdir)
-            self.oldenv = self.SetupEnv(self.oldbin, self.masterdir)
-            self.newenv = self.SetupEnv(self.newbin, self.newmaster)
+            self.oldenv = self.SetupEnv(self.oldhome, self.masterdir)
+            self.newenv = self.SetupEnv(self.newhome, self.newmaster)
         else:
-            self.oldenv = self.SetupEnv(self.oldbin, None)
-            self.newenv = self.SetupEnv(self.newbin, None)
+            self.oldenv = self.SetupEnv(self.oldhome, None)
+            self.newenv = self.SetupEnv(self.newhome, None)
 
     #------------------------------------------------------------
     def __del__(self):
@@ -116,6 +125,8 @@ class GPUpgrade:
         '''
         if self.state:  self.state.close()
 
+        # We don't actually want to remove files if the upgrade failed, they
+        # contain our revert state.
 #        if self.tmpdir: 
 #            for root, dirs, files in os.walk(self.tmpdir, topdown=False):
 #                for name in files:
@@ -123,7 +134,6 @@ class GPUpgrade:
 #                for name in dirs:
 #                    os.rmdir(os.path.join(root, name))
 #            os.rmdir(root)
-
 
     #------------------------------------------------------------
     def ParseInput(self):
@@ -139,6 +149,8 @@ class GPUpgrade:
                               help="show the program's version number and exit")
             parser.add_option('-d', dest='directory', 
                               help='the master host data directory')
+            parser.add_option('--debug', action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-command', dest='command',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-pid', dest='pid',
@@ -162,21 +174,21 @@ class GPUpgrade:
         if options.directory:
             self.masterdir = options.directory
         if options.command:
-            if options.command not in ['MKDIR', 'REMAPOID', 'DEEPLINK']:
+            if options.command not in self.commands:
                 parser.error('INVALID INTERNAL COMMAND: ' + options.command)
             self.cmd = options.command
         if options.pid:
             if self.cmd == 'MASTER':
                 parser.error('INVALID INTERNAL COMMAND: ' + self.cmd)
             self.pid = options.pid
-        self.oldbin   = args[0]
-        self.newbin   = args[1]
+        self.oldhome   = args[0]
+        self.newhome   = args[1]
         if options.datadirs:
             self.datadirs = options.datadirs.split();
         self.option   = options.option
         self.option2  = options.option2
-
-        self.debug    = False
+        if options.debug:
+            self.debug = True
         
         if self.cmd == 'MASTER':
             self.pid = os.getpid()
@@ -187,11 +199,11 @@ class GPUpgrade:
                 self.Log('FATAL', 'MASTER_DATA_DIRECTORY: %s not found'
                          % self.masterdir)
                 raise UpgradeError('Initialization failed')
-            if not os.path.exists(self.oldbin):
-                self.Log('FATAL', ' directory not found: %s', self.oldbin)
+            if not os.path.exists(self.oldhome):
+                self.Log('FATAL', ' directory not found: %s', self.oldhome)
                 raise UpgradeError('Initialization failed')
-            if not os.path.exists(self.newbin):
-                self.Log('FATAL', ' directory not found: %s', self.newbin)
+            if not os.path.exists(self.newhome):
+                self.Log('FATAL', ' directory not found: %s', self.newhome)
                 raise UpgradeError('Initialization failed')            
 
     #------------------------------------------------------------
@@ -200,20 +212,23 @@ class GPUpgrade:
         Cleanup open connections.
         Separate from __del__ because that caused weird issues with exit() behavior.
         '''
-        olddir = self.oldenv['MASTER_DATA_DIRECTORY']
-        if olddir and os.path.exists('%s/postmaster.pid' % olddir):        
-            self.Log('INFO', 'Shutting down old Greenplum postmaster')
-            subprocess.call('gpstop -a -m', env=self.oldenv, shell=True)
-        newdir = self.newenv['MASTER_DATA_DIRECTORY']
-        if newdir and os.path.exists('%s/postmaster.pid' % newdir):
-            self.Log('INFO', 'Shutting down new Greenplum postmaster')
-            subprocess.call('gpstop -a', env=self.newenv, shell=True)
+        if self.cmd == 'MASTER':
+            olddir = self.oldenv['MASTER_DATA_DIRECTORY']
+            if olddir and os.path.exists('%s/postmaster.pid' % olddir):        
+                self.Log('INFO', 'Shutting down old Greenplum postmaster')
+                subprocess.call('gpstop -a -m', env=self.oldenv, shell=True)
+            newdir = self.newenv['MASTER_DATA_DIRECTORY']
+            if newdir and os.path.exists('%s/postmaster.pid' % newdir):
+                self.Log('INFO', 'Shutting down new Greenplum postmaster')
+                subprocess.call('gpstop -a', env=self.newenv, shell=True)
 
     #------------------------------------------------------------
     def SetState(self, newstate):
         '''
         Sets the state in the upgrader state file
         '''
+
+        # FIXME - should set state across all segments
         try:
             self.state.write(str(newstate) + "\n")
             self.state.flush()
@@ -221,12 +236,12 @@ class GPUpgrade:
             raise UpgradeError('Error writing to statefile: (%s)' % str(e))
 
     #------------------------------------------------------------
-    def RunCmd(self, cmd, env=None, utility=False):
+    def RunCmd(self, cmd, env=None, utility=False, supressDebug=False):
         '''
         Runs a single command on this machine
         '''
 
-        if self.debug: 
+        if self.debug and not supressDebug: 
             print "CMD: " + cmd
 
         # If utility mode has been specified add role to env
@@ -263,8 +278,8 @@ class GPUpgrade:
         # Construct a string of '-h hostname' for all hosts
         exec_cmd = 'gpssh'
         for h in self.hosts: exec_cmd += ' -h %s' % h
-        exec_cmd += ' %s/bin/%s ' % (self.newbin, EXECNAME)
-        exec_cmd += self.oldbin + ' ' + self.newbin
+        exec_cmd += ' %s/bin/%s ' % (self.newhome, EXECNAME)
+        exec_cmd += self.oldhome + ' ' + self.newhome
         exec_cmd += ' --internal-command=' + str(cmd)
         exec_cmd += ' --internal-pid=' + str(self.pid)
         exec_cmd += ' --internal-dirs="%s"' % self.datadirs
@@ -279,7 +294,7 @@ class GPUpgrade:
                 print e.cmd
             sys.stdout.write(e.stdout)
             sys.stderr.write(e.stderr)
-            raise UpgradeError('Fatal Segment Error.')
+            raise UpgradeError('Fatal Segment Error')
         
         if self.debug: 
             print '[GPSSH] ' + result
@@ -312,19 +327,16 @@ class GPUpgrade:
             env['MASTER_DATA_DIRECTORY'] = masterdir
         return env
 
-
     #------------------------------------------------------------
     def Log(self, type, msg):
 
         if type not in ['NONE', 'INFO', 'WARN', 'FATAL']:
-            self.Log('WARNING', 'Odd log type: ' + str(type))
+            self.Log('WARN', 'Odd log type: ' + str(type))
         
         if type == 'NONE':
             prefix = ''
-#        elif self.cmd != 'MASTER':
-#            prefix = '[%s] ' % self.host
         else:
-            time = self.RunCmd('date +%Y%m%d:%H:%M:%S')
+            time = self.RunCmd('date +%Y%m%d:%H:%M:%S', supressDebug=True)
             prefix = ':'.join(
                 [time, EXECNAME, self.host, self.user, '[%s]' % type, '-'])
 
@@ -383,9 +395,7 @@ class GPUpgrade:
             raise ConnectionError("Error (%s) executing sql: %s", 
                                   (str(e), qry))
         finally:
-            if db: db.close()
-        
-
+            if db: db.close()        
 
     #------------------------------------------------------------
     def CheckDown(self):
@@ -454,15 +464,75 @@ class GPUpgrade:
         '''
         Revert to backup
         '''
-        raise UpgradeError('Revert to backup not implemented')
+
+        # -- FIXME -- add checks!
+        self.CheckDown()
+        self.Log('INFO', 'Reverting to Backup')
+        self.DeepLink('REVERT')
+#        self.RemoveDirectories(True, True)
+        self.Cleanup()
+        self.Log('INFO', 'Revert Successful')
+        sys.exit(0)
+
 
 
     #------------------------------------------------------------
-    def RemoveDirectories(self):
+    def RemoveDirectories(self, force=False, silent=False):
         '''
         Removes upgrade/ and backup/ directories on all segments
         '''
-        raise UpgradeError('RemoveDirectories not implemented')
+
+        # If force is set then we remove the directories regardless of
+        # whether we created them or they were created by another process.
+        # If force is not set then we will throw an exception when we are
+        # done if there were directories that we failed to remove.
+        failures = False
+        doerror = False
+        if self.cmd == 'MASTER':
+            self.Log('INFO', 'Removing temporary directories')
+            self.CallSlaves('RMDIR', force)
+            datadirs = [self.root]
+        else:
+            datadirs = self.datadirs
+
+        for d in filter(os.path.exists, datadirs):
+            for dir in ['upgrade', 'backup']:
+                dir = os.path.join(d, dir)
+                if not os.path.exists(dir):
+                    continue
+                flag = os.path.join(dir, 'flag')
+                if (not force) and os.path.exists(flag):
+                    try:
+                        dpid = self.RunCmd('cat ' + flag)
+                    except:
+                        if not silent:
+                            self.Log('WARN', 'Read error on file:  ' + str(e))
+                            doerror = True
+                        failures = True
+                        continue
+                    if dpid != self.pid:
+                        if not silent:
+                            self.Log('WARN', 'Directory %s owned by pid %s' 
+                                     % (dir, dpid))
+                            doerror = True
+                        failures = True
+                        continue
+                
+                # Regardless of the setting of force or silent, if there is
+                # an active process running, we won't remove the directory.
+                running = self.RunCmd('find %s -name postmaster.pid -print' % dir)
+                if (running):
+                    self.Log('INFO', running)
+                    self.Log('FATAL', 'Active processes running')
+                    failures = True
+                    doerror = True
+                else:
+                    self.RunCmd('rm -rf ' + dir)
+
+        # We hold off throwing the error until the end, because we want to make
+        # sure we removed all of our own directories.
+        if doerror:
+            raise UpgradeError('Failed to remove old upgrade directories')            
 
     #------------------------------------------------------------
     def CreateDirectories(self):
@@ -475,23 +545,28 @@ class GPUpgrade:
             self.Log('INFO', 'Creating temporary directories')
 
             # Before calling slaves check to see if self.tmpdir exists
-            if os.path.exists(self.tmpdir):
-                self.Log('WARN', ' %s: File exists' % self.tmpdir)
-                print '  [R] Revert to Backup'
+            if os.path.exists(self.tmpdir) or os.path.exists(self.backup):
+                if os.path.exists(self.tmpdir) and not os.path.exists(self.backup):
+                    self.Log('WARN', ' %s: File exists' % self.tmpdir)
+                if os.path.exists(self.backup):
+                    self.Log('WARN', ' %s: File exists' % self.backup)
+                    print '  [R] Revert to Backup'
                 print '  [D] Delete old files and continue'
                 print '  [X] Cancel upgrade'
                 value = ''
                 while value.upper() not in ['R', 'D', 'X']:
-                    value = raw_input('>')
+                    value = raw_input('> ')
                     value = value.upper()
+                    if value == 'R' and not os.path.exists(self.backup):
+                        value = ''
                     if value not in ['R', 'D', 'X']:
                         print 'Invalid input'
                 if value == 'X':
                     raise UpgradeError('Upgrade Cancelled')
                 if value == 'R':
+                    self.Shutdown(self.oldenv, True)
                     self.Revert()
-                    sys.exit(0)
-                self.RemoveDirectories()
+                self.RemoveDirectories(force=True)
                 self.CreateDirectories()
                 return
 
@@ -504,10 +579,12 @@ class GPUpgrade:
             if (not os.path.exists(self.tmpdir)):
                 try:
                     os.mkdir(self.tmpdir)
+                    self.RunCmd('chmod %s 700' % self.tmpdir)
                     flag = open('%s/flag' % self.tmpdir, 'w')
                     flag.write('%s\n' % str(self.pid))
                     flag.close()
                     os.mkdir(self.backup)
+                    self.RunCmd('chmod %s 700' % self.backup)
                     flag = open('%s/flag' % self.tmpdir, 'w')
                     flag.write('%s\n' % str(self.pid))
                     flag.close()
@@ -538,6 +615,7 @@ class GPUpgrade:
                 # Creating directories is an atomic operation, if mkdir 
                 # succeeds then it did not exist previously making it ours
                 os.mkdir(d+'/upgrade')
+                self.RunCmd('chmod 700 %s/upgrade' % d)
 
                 # Claim it in the name of our parent process.  We make use of
                 # this flag during tear down to confirm that we created it.
@@ -547,6 +625,7 @@ class GPUpgrade:
 
                 # Repeat for the backup directory
                 os.mkdir(d+'/backup')
+                self.RunCmd('chmod 700 %s/backup' % d)
                 flag = open('%s/backup/flag' % d, 'w')
                 flag.write('%s\n' % str(self.pid))
                 flag.close()
@@ -598,6 +677,9 @@ class GPUpgrade:
 
         # Determine the greenplum version, if the database we have connect to
         # isn't actually greenplum this will fail.
+        
+        # -- FIXME -- not actually a valid check, since the actual version
+        # may not have been the version at initdb
         try:
             self.oldversion = str(self.Select(
             '''
@@ -822,6 +904,23 @@ class GPUpgrade:
 
 
     #------------------------------------------------------------
+    def CheckCatalog(self, env):
+        '''
+        Validate that the created catalog looks good
+        '''
+        self.Log('INFO', 'Checking Catalog')
+        self.CheckUp()
+        databases = self.Select(
+            '''
+               SELECT datname FROM pg_database
+               WHERE datname != 'template0'
+               ORDER by oid
+            ''')
+        for db in databases:
+            self.RunCmd('gpcheckcat -p %s %s' % (self.config['MASTER_PORT'],db), 
+                        env=env)
+
+    #------------------------------------------------------------
     def DumpSchema(self):
         '''
         Runs pgdump_all to dump the schema.
@@ -837,18 +936,100 @@ class GPUpgrade:
         '''
         Create and configure the upgrade instance
         '''
-#        self.Log('INFO', 'Exchanging keys with hosts')
-#        keys = subprocess.call('gpssh-exkeys -f %s/hosts' % self.tmpdir,
-#                               env=self.newenv, shell=True)
-
         self.Log('INFO', 'Initializing upgraded cluster')
+        self.CheckDown()
         subprocess.call('gpinitsystem -a -c %s/gp_init_config' % self.tmpdir,
                         env=self.newenv, shell=True)
+        self.Shutdown(u.newenv, False)
+
+    #------------------------------------------------------------
+    def ResetXLogs(self):
+        '''
+        Resets the xlog prior to recreating the schema
+        '''
+        if self.cmd == 'MASTER':
+            self.Log('INFO', 'Syncing XLogs')
+            seg_prefix = self.config['SEG_PREFIX'] + '-'
+            datadirs = [self.root]
+            self.CallSlaves('RESETXLOG', self.config['SEG_PREFIX'])
+        else:
+            seg_prefix = self.option
+            datadirs   = self.datadirs
+
+        # We should always have at least one data directory...
+        if len(self.datadirs) < 1:
+            return
+
+        # Check the mapping in all data directories
+        for d in datadirs:
+            # Find the segments for this directory, we base this on 
+            # directories under the upgrade directory that match
+            # the naming convention of the segments.
+            for file in os.listdir('%s/upgrade' % d):
+                if re.compile('^%s\d+$' % seg_prefix).match(file):
+                    olddir  = d + '/' + file
+                    newdir  = d + '/upgrade/' + file
+
+                    # Links are in place, but data will not be visible until 
+                    # we sync the pg_control info
+                    oldsync = self.RunCmd('pg_resetxlog -n ' + olddir, 
+                                          env=self.oldenv)
+
+                    # Nasty bit of code to turn the control data into a
+                    # nice dict object
+                    sync = {}
+                    for line in oldsync.split('\n'):
+                        if len(line) == 0: continue
+                        (field, value) = line.split(':')
+                        sync[field] = value.lstrip()
+
+                    # Set the next transaction id in new control
+                    x = sync["Latest checkpoint's NextXID"].find('/')
+                    if x < 0:
+                        nextxid = sync["Latest checkpoint's NextXID"]
+                    else:
+                        nextxid = sync["Latest checkpoint's NextXID"][x+1:]
+
+                    self.RunCmd('pg_resetxlog -f -x %s %s' % (nextxid, newdir), 
+                                env=self.newenv)
+
+                    # Set the WAL archives
+                    self.RunCmd('pg_resetxlog -l %s,%s,%s %s' % 
+                                (sync["Latest checkpoint's TimeLineID"],
+                                 sync["Current log file ID"],
+                                 sync["Next log file segment"],
+                                 newdir), env=self.newenv)
+
+                    # Set next oid
+                    self.RunCmd('pg_resetxlog -o %s %s' % 
+                                (sync["Latest checkpoint's NextOID"],
+                                 newdir), env=self.newenv)
+
+                    # Replace the new comit logs with the old ones
+                    #   + Just copy these... it's safer
+                    # DISABLED:
+                    #  pg_migrator did this, but it doesn't seem necessary,
+                    #  and in fact is dangerous if the commit log format has
+                    #  changed.
+                    # REENABLES:
+                    #  Seems to be necessary for 'create table foo as select'
+                    # -- FIXME -- figure out what's up with this
+                    self.RunCmd('rm -rf %s/pg_clog' % newdir)
+                    self.RunCmd('cp -rf %s/pg_clog %s/pg_clog' 
+                                % (olddir, newdir))
+
+                    # Do the same for the .conf files
+                    for f in ['pg_hba', 'pg_ident', 'postgresql']:
+                        self.RunCmd('cp -f %s/%s.conf %s/.' 
+                                    % (olddir, f, newdir))
+
+
+    #------------------------------------------------------------
+    def ImportSchema(self):
         self.CheckUp()
         self.Log('INFO', 'Importing old schema')
         subprocess.call('psql -f %s/pgdump.sql template1' % self.tmpdir,
                         env=self.newenv, shell=True)
-
 
     #------------------------------------------------------------
     def RemapOID(self):
@@ -945,66 +1126,21 @@ class GPUpgrade:
                             raise UpgradeError(newfile + ' not found')
 
                         # Remove the new file, hard link to the old file
-                        self.Log('INFO', 'Linking %s => %s' % (oldfile, newfile))
+                        if self.debug:
+                            self.Log('INFO', 'Linking %s => %s' % (oldfile, newfile))
 
                         os.remove(newfile)
                         os.link(oldfile, newfile)
+
+                        # Large tables will have additional extensions, these
+                        # are named 'relfilenode.extension#'.
+                        ext = 1
+                        while (os.path.exists(oldfile + '.' + str(ext))):
+                            os.link('%s.%s' % (oldfile, str(ext)),
+                                    '%s.%s' % (newfile, str(ext)))
+                            ext = ext + 1
+
                     mapfile.close()
-
-                    # Remove the new file, hard link to the old file
-                    self.Log('INFO', 'Linking Complete')
-
-                    # Links are in place, but data will not be visible until 
-                    # we sync the pg_control info
-                    oldsync = self.RunCmd('pg_resetxlog -n ' + olddir, 
-                                          env=self.oldenv)
-
-                    # Nasty bit of code to turn the control data into a
-                    # nice dict object
-                    sync = {}
-                    for line in oldsync.split('\n'):
-                        if len(line) == 0: continue
-                        (field, value) = line.split(':')
-                        sync[field] = value.lstrip()
-
-                    # Set the next transaction id in new control
-                    x = sync["Latest checkpoint's NextXID"].find('/')
-                    if x < 0:
-                        nextxid = sync["Latest checkpoint's NextXID"]
-                    else:
-                        nextxid = sync["Latest checkpoint's NextXID"][x+1:]
-
-                    self.RunCmd('pg_resetxlog -f -x %s %s' % (nextxid, newdir), 
-                                env=self.newenv)
-
-                    # Set the WAL archives
-                    self.RunCmd('pg_resetxlog -l %s,%s,%s %s' % 
-                                (sync["Latest checkpoint's TimeLineID"],
-                                 sync["Current log file ID"],
-                                 sync["Next log file segment"],
-                                 newdir), env=self.newenv)
-
-                    # Set next oid
-                    self.RunCmd('pg_resetxlog -o %s %s' % 
-                                (sync["Latest checkpoint's NextOID"],
-                                 newdir), env=self.newenv)
-
-                    self.Log('INFO', 'XLOG Complete')
-
-                    # Replace the new comit logs with the old ones
-                    #   + Just copy these... it's safer
-                    self.RunCmd('rm -rf %s/pg_clog' % newdir)
-                    self.RunCmd('cp -rf %s/pg_clog %s/pg_clog' 
-                                % (olddir, newdir))
-
-                    self.Log('INFO', 'pg_clog Complete')
-
-                    # Do the same for the .conf files
-                    for f in ['pg_hba', 'pg_ident', 'postgresql']:
-                        self.RunCmd('cp -f %s/%s.conf %s/.' 
-                                    % (olddir, f, newdir))
-
-                    self.Log('INFO', '.conf files Complete')
 
 
 
@@ -1017,40 +1153,40 @@ class GPUpgrade:
         if style == 'CLEANUP':   # Is this really a DeepLink?
             return
 
-        if style not in ['BACKUP', 'INSTALL']:
+        if style not in ['BACKUP', 'INSTALL', 'REVERT']:
             raise UpgradeError('FATAL', ' DeepLink(%s)!?' % style)            
         
         if self.cmd == 'MASTER':
-            prefix = self.config['SEG_PREFIX'] + '-'
+            prefix   = self.config['SEG_PREFIX'] + '-'
+            datadirs = [self.root]
             if style == 'BACKUP':
                 self.Log('INFO', 'Linking backup')
-                datadirs    = [self.root]
             elif style == 'INSTALL':
                 self.Log('INFO', 'Linking upgrade')
-                datadirs    = [self.tmpdir]
 
             # Have all hosts perform the link first
             self.CallSlaves('DEEPLINK', style, self.config['SEG_PREFIX'])
 
         else:
-            prefix = self.option2
-            if style == 'BACKUP':
-                datadirs    = self.datadirs
-            elif style == 'INSTALL':
-                datadirs    = [self.tmpdir]
+            prefix   = self.option2
+            datadirs = self.datadirs
 
         # Look in each data directory, identify the segment directories,
         # walk each segment directory.
         segdir_re = re.compile(prefix+'\d+(.log)?$')
         for dir in datadirs:
 
+            # For Backup datadirs is the source, for INSTALL it's the target
             if style == 'BACKUP':
                 destination = os.path.join(dir,'backup')
             if style == 'INSTALL':
-                destination, foo = os.path.split(dir)
-                if foo != 'upgrade':
-                    raise UpgradeError('FATAL', 
-                                       'Internal error - deeplink from ' + dir)
+                destination = dir
+                dir = os.path.join(dir,'upgrade')
+            if style == 'REVERT':
+                destination = dir
+                dir = os.path.join(dir,'backup')
+                if not os.path.exists(dir):
+                    continue
 
             for content in os.listdir(dir):
                 if segdir_re.match(content):
@@ -1059,20 +1195,30 @@ class GPUpgrade:
                         oldfile = content
                         newfile = content.replace(dir, destination,1)
                         if os.path.exists(newfile):
-                            self.Log('WARN', 'File exists ' + newfile)
+                            if style == 'BACKUP':
+                                self.Log('WARN', 'File exists ' + newfile)
                             os.remove(newfile)
+                        if self.debug:
+                            self.Log('INFO', 'Linking file ' + newfile)
                         os.link(oldfile, newfile)
 
                     for root, dirs, files in os.walk(content, topdown = True):
                         newroot = root.replace(dir,destination,1)
                         if not os.path.exists(newroot):
                             os.mkdir(newroot)
+                            self.RunCmd('chmod 700 ' + newroot)
+                        elif style in ['INSTALL', 'REVERT']:
+                            self.RunCmd('rm -rf ' + newroot)
+                            os.mkdir(newroot)
+                            self.RunCmd('chmod 700 ' + newroot)
                         for name in files:
                             oldfile = os.path.join(root, name)
                             newfile = os.path.join(newroot, name)
                             if os.path.exists(newfile):
                                 self.Log('WARN', 'File exists ' + newfile)
                                 os.remove(newfile)
+#                            if self.debug:
+                                self.Log('INFO', 'Linking file ' + newfile)
                             os.link(oldfile, newfile)
 
     #------------------------------------------------------------
@@ -1090,7 +1236,7 @@ class GPUpgrade:
         self.Update(
          '''
             UPDATE gp_configuration 
-              SET datadir=regexp_replace(datadir, 'upgrade/([^/]*)$', E'\\1')
+              SET datadir=regexp_replace(datadir, 'upgrade/([^/]*)$', E'\\\\1')
          ''')
         self.Shutdown(self.oldenv, True)
             
@@ -1129,10 +1275,7 @@ try:
         # Create working directories on all hosts
         # + Requires configuration info collected in ExtractInfo
         # + Requires Execution on all hosts
-        if not u.debug:
-            u.CreateDirectories()
-        else:
-            u.state = open('%s/state' % u.backup, 'w')
+        u.CreateDirectories()
         u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
 
         # Write configuration files for new db
@@ -1151,16 +1294,19 @@ try:
         # Initalize the new database
         # + Requires working directories on all nodes
         # + Requires generated configuration file
-        if not u.debug: 
-            u.InitNewDB()
-        else: 
-            u.Startup(u.newenv, True)
-        u.BuildMappings()
-
-        if not u.debug: 
+        u.InitNewDB()
+        u.ResetXLogs()
+        try:
+            u.Startup(u.newenv, False)
+            u.ImportSchema()
+            u.BuildMappings()
+            # -- FIXME -- Move CheckCatalog after we have finally installed
+            # the new DB and brought the database up, it's a little silly to
+            # check before we remap the OIDs, but we don't want to do that
+            # while the database is up.
+            u.CheckCatalog(u.newenv)
+        finally:
             u.Shutdown(u.newenv, False)
-        else: 
-            u.Shutdown(u.newenv, True)
 
         # Remap oids for the new database
         # + Requires working directories on all hosts
@@ -1198,9 +1344,9 @@ try:
         #    DATA_DIR/backup   = untouched original db
         # => Make a deep hard link copy of DATA_DIR/upgrade -> DATA_DIR
         # => Adjust new pg_configuration to point to DATA_DIR
-#        u.DeepLink('INSTALL')
-#       u.FixConfig()
-#        u.SetState('INSTALL VALID')
+        u.DeepLink('INSTALL')
+        u.FixConfig()
+        u.SetState('INSTALL VALID')
 
         # --------
         # Stage 3:
@@ -1210,12 +1356,8 @@ try:
         #    DATA_DIR/upgrade  = fully upgraded new db
         #    DATA_DIR/backup   = untouched original db
         # => Remove redundant DATA_DIR/upgrade
-        
-        # => Remove hardlinks from DATA_DIR/backup  (???) or,
         # => Remove historical DATA_DIR/backup      (???)
-        
-#        u.DeepLink('CLEANUP')
-#        u.SetState('UPGRADE COMPLETE')
+        u.RemoveDirectories()
 
         # -----------------
         # Upgrade Complete:
@@ -1232,13 +1374,20 @@ To complete the environment configuration
    %s/greenplum_path.sh
 --------------------------------------------
 ''' 
-              % (u.user, u.newbin))
+              % (u.user, u.newhome))
 
 
 #---------------------------------------------------------
 # The rest of the options are executed on a per-host basis
     elif u.cmd == 'MKDIR':
         u.CreateDirectories()
+    elif u.cmd == 'RMDIR':
+        if u.option == 'False':
+            u.RemoveDirectories(False)
+        else:
+            u.RemoveDirectories(True)
+    elif u.cmd == 'RESETXLOG':
+        u.ResetXLogs()
     elif u.cmd == 'REMAPOID':
         u.RemapOID()
     elif u.cmd == 'DEEPLINK':
@@ -1256,6 +1405,6 @@ except UpgradeError, e:
 # the upgrader.
 except Exception, e:
     u.Log('FATAL', str(e))
-#    u.Cleanup()
+    u.Cleanup()
     sys.stderr.write(traceback.format_exc())
     sys.exit(1)
