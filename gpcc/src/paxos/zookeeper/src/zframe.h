@@ -12,6 +12,7 @@ struct zframe{
 void zframe_init(struct zframe*thiz,zhandle_t*zh);
 
 int zframe_lock(struct zframe*thiz);
+void zframe_renew(struct zframe*thiz);
 void zframe_unlock(struct zframe*thiz);
 
 int zframe_returnRc(struct zframe*thiz,int rc);

@@ -9,12 +9,15 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <chubby.h>
 #include <zookeeper.h>
 
+#include "mangle.h"
 #include "memory.h"
 #include "zframe.h"
+#include "version.h"
 
 #define ZOOKEEPER_LOCKTIME	10
 
@@ -25,8 +28,5 @@ struct _zhandle{
     void*context;
     int recv_timeout;
 };
-
-int mangle_path(char*realpath,int max_realpath_len,const char*path,int isdir);
-int unmangle_path(char*path);
 
 #endif

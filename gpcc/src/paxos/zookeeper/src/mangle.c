@@ -70,3 +70,17 @@ unmangle_path(char*path)
     *path = 0;
     return 0;
 }
+
+char
+mangle_setChar(char*path,char what)
+{
+    char*a=strrchr(path,'/');
+    char old;
+    if (!a || !a[1]){
+        assert(0);
+	return 0;
+    }
+    old = a[1];
+    a[1] = what;
+    return old;
+}

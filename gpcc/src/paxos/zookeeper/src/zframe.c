@@ -22,6 +22,15 @@ zframe_lock(struct zframe*thiz)
 }
 
 void
+zframe_renew(struct zframe*thiz)
+{
+    time_t t;
+    chubby_connection_getLockExpireTime(thiz->l,&t);
+    if (t <= time(NULL)+ZOOKEEPER_LOCKTIME*3/4)
+	chubby_connection_renew(thiz->l,ZOOKEEPER_LOCKTIME);
+}
+
+void
 zframe_unlock(struct zframe*thiz)
 {
     if (thiz->l){

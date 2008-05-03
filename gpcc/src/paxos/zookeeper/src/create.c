@@ -5,7 +5,7 @@
 ZOOAPI int
 zoo_create(zhandle_t*thiz,const char*path,const char*value,int valuelen,const struct ACL_vector*acl,int flags,char*realpath,int max_realpath_len)
 {
-    int i;
+    int i,v;
     struct zframe z;
     struct chubby_stat stat;
     chubby_string_t*s;
@@ -36,6 +36,10 @@ zoo_create(zhandle_t*thiz,const char*path,const char*value,int valuelen,const st
 	return zframe_returnE(&z,i);
     if (stat.decreeNumber)
 	return zframe_returnRc(&z,ZNODEEXISTS);
+    if (getVersion(&z,realpath,&v))
+	return zframe_returnRc(&z,ZMARSHALLINGERROR);
+    if (setVersion(&z,realpath,v+1))
+	return zframe_returnRc(&z,ZMARSHALLINGERROR);
     i = chubby_connection_putBigFile(z.l,realpath,s,ZOOKEEPER_LOCKTIME);
     if (i)
 	return zframe_returnE(&z,i);
