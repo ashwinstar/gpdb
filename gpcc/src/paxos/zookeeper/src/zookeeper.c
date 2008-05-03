@@ -3,9 +3,9 @@
 #include "header.h"
 
 ZOOAPI int
-is_unrecoverable(zhandle_t *zh)
+is_unrecoverable(zhandle_t*thiz)
 {
-    return ZOK;
+    return thiz->c?ZOK:ZINVALIDSTATE;
 }
 
 ZOOAPI void
@@ -23,14 +23,31 @@ zoo_deterministic_conn_order(int yesOrNo)
 {
 }
 
+static int
+zookeeper_init1(zhandle_t*thiz,const char*host,watcher_fn fn,int recv_timeout,void*context)
+{
+    thiz->fn = fn;
+    thiz->recv_timeout = recv_timeout;
+    thiz->context = context;
+    thiz->chubby = chubby_new(host,zookeeper_malloc,zookeeper_free);
+    if (!thiz->chubby)
+        return 1;
+    thiz->c = chubby_makeConnection(thiz->chubby);
+    if (!thiz->c)
+        return 1;
+    return 0;
+}
+
 ZOOAPI zhandle_t*
 zookeeper_init(const char*host,watcher_fn fn,int recv_timeout,const clientid_t*clientid,void*context,int flags)
 {
     zhandle_t*thiz=zookeeper_malloc(sizeof*thiz);
     if (thiz){
 	memset(thiz,0,sizeof*thiz);
-	thiz->fn = fn;
-	thiz->context = context;
+	if (zookeeper_init1(thiz,host,fn,recv_timeout,context)){
+	    zookeeper_close(thiz);
+	    return NULL;
+	}
     }
     return thiz;
 }
@@ -38,6 +55,10 @@ zookeeper_init(const char*host,watcher_fn fn,int recv_timeout,const clientid_t*c
 ZOOAPI int
 zookeeper_close(zhandle_t*thiz)
 {
+    if (thiz->chubby)
+        chubby_close(thiz->chubby);
+    if (thiz->c)
+        chubby_connection_close(thiz->c);
     zookeeper_free(thiz);
     return ZOK;
 }
@@ -45,13 +66,14 @@ zookeeper_close(zhandle_t*thiz)
 ZOOAPI const clientid_t*
 zoo_client_id(zhandle_t*thiz)
 {
-    return NULL;
+    static const clientid_t id;
+    return &id;
 }
 
 ZOOAPI int
 zoo_recv_timeout(zhandle_t*thiz)
 {
-    return 0;
+    return thiz->recv_timeout;
 }
 
 ZOOAPI const void*
@@ -77,15 +99,7 @@ zoo_set_watcher(zhandle_t*thiz,watcher_fn newFn)
 ZOOAPI int
 zoo_state(zhandle_t*thiz)
 {
-//...
-    return CONNECTED_STATE;
-}
-
-ZOOAPI int
-zoo_create(zhandle_t*thiz,const char*path,const char*value,int valuelen,const struct ACL_vector*acl,int flags,char*realpath,int max_realpath_len)
-{
-//...
-    return ZOK;
+    return thiz->c?CONNECTED_STATE:EXPIRED_SESSION_STATE;
 }
 
 #define ZERRORCASE(a)	case a:return #a;

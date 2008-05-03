@@ -92,8 +92,15 @@ chubby_connection_freeChubbyStringLinkedList(chubby_connection_t*thiz,struct chu
     }
 }
 
+static void
+checkRenew(chubby_connection_t*thiz,int renewLockTime)
+{
+    if (renewLockTime && thiz->lockExpireTime<=time(NULL)+renewLockTime*3/4)
+	chubby_connection_renew(thiz,renewLockTime);
+}
+
 int
-chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name)
+chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int renewLockTime)
 {
     int64_t dn=0;
     struct chubby_string_linked_list*ll=NULL,*m;
@@ -152,6 +159,7 @@ chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_st
 	    assert(size == 0);
 	    break;
 	}
+	checkRenew(thiz,renewLockTime);
     }
     chubby_connection_freeChubbyStringLinkedList(thiz,ll);
     return e;
@@ -221,7 +229,7 @@ chubby_connection_put(chubby_connection_t*thiz,const char*name,chubby_string_t*c
 }
 
 int
-chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_string_t*contents)
+chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_string_t*contents,int renewLockTime)
 {
     int offset=0,len,e;
     chubby_udp_buffer_t b;
@@ -236,6 +244,7 @@ chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_str
 	for (; len&&b.length<sizeof b.a; --len)
 	    b.a[b.length++] = contents->a[offset++];
 	e = chubby_connection_propose(thiz,NULL,&b);
+	checkRenew(thiz,renewLockTime);
     }while (!e && offset<contents->length);
     return e;
 }
@@ -268,9 +277,9 @@ chubby_connection_remove(chubby_connection_t*thiz,const char*name)
 }
 
 static int
-chubby_connection_list1(chubby_connection_t*thiz,chubby_string_t**a,char***answer,const char*name)
+chubby_connection_list1(chubby_connection_t*thiz,chubby_string_t**a,char***answer,const char*name,int renewLockTime)
 {
-    int e=chubby_connection_get(thiz,NULL,a,name);
+    int e=chubby_connection_get(thiz,NULL,a,name,renewLockTime);
     if (!e){
 	int count=0,i;
 	if ((*a)->length != 0){
@@ -301,11 +310,11 @@ chubby_connection_list1(chubby_connection_t*thiz,chubby_string_t**a,char***answe
 }
 
 int
-chubby_connection_list(chubby_connection_t*thiz,char***answer,const char*name)
+chubby_connection_list(chubby_connection_t*thiz,char***answer,const char*name,int renewLockTime)
 {
     chubby_string_t*a=NULL;
     char**aa=NULL;
-    int e=chubby_connection_list1(thiz,&a,&aa,name);
+    int e=chubby_connection_list1(thiz,&a,&aa,name,renewLockTime);
     if (a)
 	thiz->chubby->free(a);
     if (e)
@@ -383,7 +392,7 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
     sprintf(info,"%s-info",name);
     chubby_getNewId(thiz->chubby,id);
     while (time(NULL) < timedout){
-	e = chubby_connection_get(thiz,&stat,&a,info);
+	e = chubby_connection_get(thiz,&stat,&a,info,0);
 	if (!e){
 	    sscanf(a->a,"%d",&waitTime);
 	    thiz->chubby->free(a);
@@ -404,7 +413,7 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
 	    thiz->chubby->free(a);
 	    if (e)
 		return e;
-	    e = chubby_connection_get(thiz,&stat,&a,name);
+	    e = chubby_connection_get(thiz,&stat,&a,name,0);
 	    if (e)
 		return e;
 	    if (a->length==strlen(id) && !memcmp(a->a,id,a->length)){
@@ -446,7 +455,7 @@ chubby_connection_renew(chubby_connection_t*thiz,int lockTime)
     sprintf(info,"%s-info",thiz->lockFilename);
     e = chubby_connection_put(thiz,info,a);
     if (!e){
-	e = chubby_connection_get(thiz,NULL,&b,info);
+	e = chubby_connection_get(thiz,NULL,&b,info,0);
 	if (!e){
 	    if (a->length==b->length && !memcmp(a->a,b->a,a->length))
 		thiz->lockExpireTime = now+lockTime;

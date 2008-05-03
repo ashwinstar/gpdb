@@ -43,7 +43,11 @@ class Connection:
 	    return self.__parent.__propose("If %s %d "%(self.__fixFilename(self.__lockFilename),self.__lockDn)+decree)
 	return self.__chubby.propose(decree)
 
-    def __get1(self,name):
+    def __checkRenew(self,renewLockTime):
+	if renewLockTime and self.__lockExpireTime<=time.time()+.75*renewLockTime:
+	    self.renew(renewLockTime)
+
+    def __get1(self,name,renewLockTime):
 	dn = 0
 	s = []
 	length = 0
@@ -71,6 +75,7 @@ class Connection:
 		length += len(b)
 	    if length==size:
 		break
+	    self.__checkRenew(renewLockTime)
 	return (0,dn,"".join(s))
 
     @staticmethod
@@ -135,7 +140,7 @@ class Connection:
 		return E_LOCKEXPIRED
 	return a[0]
 
-    def __putBigFile(self,name,contents):
+    def __putBigFile(self,name,contents,renewLockTime):
 	offset = 0
 	while 1:
 	    a = self.__propose("Put %s %d "%(name,offset)+contents[offset:offset+CHUNK_SIZE])
@@ -144,15 +149,16 @@ class Connection:
 	    offset += CHUNK_SIZE
 	    if offset>=len(contents):
 		return 0
+	    self.__checkRenew(renewLockTime)
 
     def move(self,name,toname):
 	name = self.__fixFilename(name)
 	toname = self.__fixFilename(toname)
 	return self.__move(name,toname)
 
-    def get(self,name):
+    def get(self,name,renewLockTime=0):
 	name = self.__fixFilename(name)
-	return self.__get1(name)
+	return self.__get1(name,renewLockTime)
 
     def stat(self,name):
 	name = self.__fixFilename(name)
@@ -162,17 +168,17 @@ class Connection:
 	name = self.__fixFilename(name)
 	return self.__put(name,contents)
 
-    def putBigFile(self,name,contents):
+    def putBigFile(self,name,contents,renewLockTime=0):
 	name = self.__fixFilename(name)
-	return self.__putBigFile(name,contents)
+	return self.__putBigFile(name,contents,renewLockTime)
 
     def remove(self,name):
 	name = self.__fixFilename(name)
 	return self.__remove(name)
 
-    def list(self,name):
+    def list(self,name,renewLockTime=0):
 	name = self.__fixFilename(name)
-	a = self.__get1(name)
+	a = self.__get1(name,renewLockTime)
 	if a[0]!=0:
 	    return a
 	return tuple([0,a[1]]+map(self.__unfixFilename,a[2].split(' ')))
