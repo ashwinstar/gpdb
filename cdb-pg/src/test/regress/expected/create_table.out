@@ -269,7 +269,7 @@ select attrnums from gp_distribution_policy where
 drop index distpol_uidx;
 -- expressions shouldn't be able to update the distribution key
 create unique index distpol_uidx on distpol(ln(k));
-ERROR:  UNIQUE index cannot contain expressions
+ERROR:  UNIQUE index must contain all columns in the distribution key of relation "distpol"
 drop index distpol_uidx;
 ERROR:  index "distpol_uidx" does not exist
 -- lets make sure we don't change the policy when the table is full
