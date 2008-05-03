@@ -592,6 +592,9 @@
 #undef PG_KRB_SRVNAM
 
 /* Greenplum Database version */
+#undef GP_VERSION
+
+/* Postgres version Greenplum Database is based on */
 #undef PG_VERSION
 
 /* PostgreSQL version as a number */

@@ -30,6 +30,7 @@ usage(const char *progname)
 		   "Options:\n"
 		   "  --help         show this help, then exit\n"
 		   "  --version      output version information, then exit\n"
+		   "  --gp-version   output Greenplum version information, then exit\n"
 		   ),
 		 progname
 		);
@@ -91,6 +92,12 @@ main(int argc, char *argv[])
 			puts("pg_controldata (Greenplum Database) " PG_VERSION);
 			exit(0);
 		}
+		if (strcmp(argv[1], "--gp-version") == 0)
+		{
+			puts("pg_controldata (Greenplum Database) " GP_VERSION);
+			exit(0);
+		}
+
 	}
 
 	if (argc > 1)

@@ -102,6 +102,11 @@ main(int argc, char *argv[])
 			puts("pg_resetxlog (Greenplum Database) " PG_VERSION);
 			exit(0);
 		}
+		if (strcmp(argv[1], "--gp-version") == 0)
+		{
+			puts("pg_resetxlog (Greenplum Database) " GP_VERSION);
+			exit(0);
+		}
 	}
 
 
@@ -854,5 +859,6 @@ usage(void)
 	printf(_("  -e XIDEPOCH     set next transaction ID epoch\n"));
 	printf(_("  --help          show this help, then exit\n"));
 	printf(_("  --version       output version information, then exit\n"));
+	printf(_("  --gp-version    output Greenplum version information, then exit\n"));
 	printf(_("\nReport bugs to <pgsql-bugs@postgresql.org>.\n"));
 }

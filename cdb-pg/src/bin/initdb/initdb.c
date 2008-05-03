@@ -2637,6 +2637,7 @@ usage(const char *progname)
 	printf(_("  --pwfile=FILE             read password for the new superuser from file\n"));
 	printf(_("  -?, --help                show this help, then exit\n"));
 	printf(_("  -V, --version             output version information, then exit\n"));
+	printf(_("  --gp-version             output Greenplum version information, then exit\n"));
 	printf(_("\nShared memory allocation:\n"));
 	printf(_("  --max_connections=MAX-CONNECT  maximum number of allowed connections\n"));
 	printf(_("  --shared_buffers=NBUFFERS number of shared buffers; or, amount of memory for\n"
@@ -2729,6 +2730,11 @@ main(int argc, char *argv[])
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
 			puts("initdb (Greenplum Database) " PG_VERSION);
+			exit(0);
+		}
+		if (strcmp(argv[1], "--gp-version") == 0)
+		{
+			puts("initdb (Greenplum Database) " GP_VERSION);
 			exit(0);
 		}
 	}

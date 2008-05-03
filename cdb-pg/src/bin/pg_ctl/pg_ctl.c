@@ -1447,6 +1447,7 @@ do_help(void)
 	printf(_("  -W                     do not wait until operation completes\n"));
 	printf(_("  --help                 show this help, then exit\n"));
 	printf(_("  --version              output version information, then exit\n"));
+	printf(_("  --gp-version           output Greenplum version information, then exit\n"));
 	printf(_("(The default is to wait for shutdown, but not for start or restart.)\n\n"));
 	printf(_("If the -D option is omitted, the environment variable PGDATA is used.\n"));
 
@@ -1585,6 +1586,11 @@ main(int argc, char **argv)
 		else if (strcmp(argv[1], "-V") == 0 || strcmp(argv[1], "--version") == 0)
 		{
 			printf("%s (Greenplum Database) %s\n", progname, PG_VERSION);
+			exit(0);
+		}
+		else if (strcmp(argv[1], "--gp-version") == 0)
+		{
+			printf("%s (Greenplum Database) %s\n", progname, GP_VERSION);
 			exit(0);
 		}
 	}
