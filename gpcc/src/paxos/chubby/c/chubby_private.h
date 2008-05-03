@@ -4,6 +4,7 @@
 #define CHUBBY_PRIVATE_H
 
 #include <apr.h>
+#include <apr_md5.h>
 #include <assert.h>
 #include <limits.h>
 #include <netdb.h>

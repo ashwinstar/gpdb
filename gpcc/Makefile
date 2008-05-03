@@ -52,13 +52,13 @@ mkchubbytest: src/paxos/test/chubbytest
 
 src/paxos/test/chubbytest: src/paxos/test/chubbytest.c src/build/lib/libchubby.a
 	@echo --- chubbytest --------------------------------------------------
-	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o chubbytest chubbytest.c $(APULIBS) $(APRLIBS) -lchubby)
+	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o chubbytest chubbytest.c -lchubby $(APULIBS) $(APRLIBS))
 
 mkzookeepertest: src/paxos/test/zookeepertest
 
 src/paxos/test/zookeepertest: src/paxos/test/zookeepertest.c src/build/lib/libzookeeper.a src/build/lib/libchubby.a
 	@echo --- zookeepertest --------------------------------------------------
-	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o zookeepertest zookeepertest.c $(APULIBS) $(APRLIBS) -lzookeeper -lchubby)
+	(cd src/paxos/test; $(CC) -I../../build/include -L../../build/lib $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror -o zookeepertest zookeepertest.c -lzookeeper -lchubby $(APULIBS) $(APRLIBS))
 
 mkgp:
 	@echo --- gp -------------------------------------------------------
