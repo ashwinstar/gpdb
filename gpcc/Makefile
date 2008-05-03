@@ -65,7 +65,7 @@ mkgp:
 	@mkdir -p build/bin
 	@cp -f src/gp/gp build/bin/
 
-mkgpma: mkext
+mkgpma: mklibgpcc
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o gpma *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
@@ -73,14 +73,14 @@ mkgpma: mkext
 	@cp -f src/gpma/gpma build/bin/
 
 
-mkgpha: mkext
+mkgpha: mklibgpcc
 	@echo --- gpha -----------------------------------------------------
 	@(cd src/gpha; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
 	@mkdir -p build/bin
 	@cp -f src/gpha/gpha build/bin/
 
-mkfts: mkext
+mkfts: mklibgpcc
 	@echo --- fts -----------------------------------------------------
 	@(cd src/fts; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o fts *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
@@ -102,7 +102,7 @@ mklibgpcc: mkext
 	@(cp -f -r src/include/* src/build/include/ )
 
 
-mktest: mkext
+mktest: mklibgpcc
 	@echo --- test ------------------------------------------------------	
 	(cd test; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) \
 			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent -lresolv)
