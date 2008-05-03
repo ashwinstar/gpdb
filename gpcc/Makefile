@@ -17,7 +17,7 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
 all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp mklibchubby mkchubbytest mklibzookeeper mkzookeepertest
 
-mkgpfdist: 
+mkgpfdist: mkext
 	@echo --- gpfdist --------------------------------------------------
 	(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -lz)
@@ -26,7 +26,7 @@ mkgpfdist:
 
 mklibchubby: src/build/lib/libchubby.a
 
-src/build/lib/libchubby.a: src/paxos/chubby/c/*.[ch]
+src/build/lib/libchubby.a: mkext src/paxos/chubby/c/*.[ch]
 	@echo --- libchubby --------------------------------------------------
 	(cd src/paxos/chubby/c; $(CC) -c -I../include $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -Wall -Werror *.c)
 	@echo copying include files
@@ -65,7 +65,7 @@ mkgp:
 	@mkdir -p build/bin
 	@cp -f src/gp/gp build/bin/
 
-mkgpma:
+mkgpma: mkext
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o gpma *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
@@ -73,14 +73,14 @@ mkgpma:
 	@cp -f src/gpma/gpma build/bin/
 
 
-mkgpha:
+mkgpha: mkext
 	@echo --- gpha -----------------------------------------------------
 	@(cd src/gpha; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
 	@mkdir -p build/bin
 	@cp -f src/gpha/gpha build/bin/
 
-mkfts:
+mkfts: mkext
 	@echo --- fts -----------------------------------------------------
 	@(cd src/fts; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-o fts *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
@@ -90,7 +90,7 @@ mkfts:
 mkdir:
 	@mkdir -p src/build/lib src/build/include build/bin
 
-mklibgpcc: mkdir
+mklibgpcc: mkext
 	@echo --- libgpcc --------------------------------------------------
 	@echo compiling
 	@(cd src/libgpcc; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -c *.c)
@@ -102,7 +102,7 @@ mklibgpcc: mkdir
 	@(cp -f -r src/include/* src/build/include/ )
 
 
-mktest:
+mktest: mkext
 	@echo --- test ------------------------------------------------------	
 	(cd test; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) \
 			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent -lresolv)
