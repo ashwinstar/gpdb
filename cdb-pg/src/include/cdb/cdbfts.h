@@ -139,7 +139,7 @@ extern void disableQDMirroring_ConnectionError(char *detail, char *errorMessage)
 extern void disableQDMirroring_TooFarBehind(char *detail);
 extern void disableQDMirroring_UnexpectedError(char *detail);
 extern void disableQDMirroring_ShutDown(void);
-extern void disableQDMirroring_AdministratorDisabled(char *detail);
+extern void disableQDMirroring_AdministratorDisabled(void);
 extern void enableQDMirroring(char *message, char *detail);
 extern char *QDMirroringStateString(void);
 extern char *QDMirroringDisabledReasonString(void);

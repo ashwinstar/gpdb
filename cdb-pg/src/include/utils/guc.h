@@ -127,6 +127,7 @@ extern bool Debug_appendonly_print_scan;
 extern bool Test_appendonly_override;
 extern bool Test_compression_override;
 extern int  Test_compresslevel_override;
+extern bool Master_mirroring_administrator_disable;
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;
 extern bool Debug_print_control_checkpoints;

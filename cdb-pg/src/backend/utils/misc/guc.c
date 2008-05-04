@@ -204,6 +204,7 @@ bool 		Debug_appendonly_print_scan = false;
 bool 		Test_appendonly_override = false;
 bool 		Test_compression_override = false;
 int         Test_compresslevel_override = 0;
+bool        Master_mirroring_administrator_disable = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -1633,6 +1634,16 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Test_appendonly_override,
+		false, NULL, NULL
+	},
+
+	{
+		{"master_mirroring_administrator_disable", PGC_POSTMASTER, GP_ARRAY_CONFIGURATION,
+			gettext_noop("Used by gpstart to indicate the standby master was not started by the administrator."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Master_mirroring_administrator_disable,
 		false, NULL, NULL
 	},
 

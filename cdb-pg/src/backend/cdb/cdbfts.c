@@ -623,10 +623,15 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 		case QDMIRROR_DISABLEDREASON_WALSENDSERVERERROR:
 		case QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED:
 		case QDMIRROR_DISABLEDREASON_UNEXPECTEDERROR:
-			ereport(WARNING,
-					(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-					 errmsg("Master mirroring synchronization lost"),
-					        errdetail(detail)));
+			if (disabledReason == QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED)
+				ereport(NOTICE,
+						(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						 errmsg("Master mirroring not synchronized because the standby master was not started by the administrator")));
+			else
+				ereport(WARNING,
+						(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						 errmsg("Master mirroring synchronization lost"),
+						        errdetail(detail)));
 			GetLastLogTimeVal(&lastLogTimeVal);		// Get the log message time
 													// from the WARNING we just issued.
 
@@ -640,11 +645,6 @@ disableQDMirroring(char *detail, char *errorMessage, QDMIRRORDisabledReason disa
 				ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_VALIDFLAG;
 			}
 			ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_MASTERMIRRORING;
-
-			if (disabledReason == QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED)
-			{
-				ftsQDMirrorInfo->configurationChecked = true;
-			}
 
 			ftsQDMirrorInfo->lastLogTimeVal = lastLogTimeVal;
 
@@ -708,9 +708,9 @@ disableQDMirroring_ShutDown(void)
 
 // Helps avoid pulling in cdbfts.h in walsendserver.c
 void
-disableQDMirroring_AdministratorDisabled(char *detail)
+disableQDMirroring_AdministratorDisabled(void)
 {
-	disableQDMirroring(detail, NULL, QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED);
+	disableQDMirroring(NULL, NULL, QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED);
 }
 
 void
@@ -912,7 +912,7 @@ QDMirroringDisabledReasonToString(QDMIRRORDisabledReason disabledReason)
 		return "Shutdown";
 
 	case QDMIRROR_DISABLEDREASON_ADMINISTRATORDISABLED:
-		return "Administrator disabled";
+		return "Standby master was not started by the administrator";
 
 	default:
 		return "unknown";
@@ -1748,6 +1748,13 @@ FtsSetQDMirroring(struct CdbComponentDatabaseInfo *dbinfo)
 	 * 
 	 */
 	ftsQDMirrorInfo->configurationChecked = true;
+	if (Master_mirroring_administrator_disable)
+	{
+		LWLockRelease(ftsQDMirrorLock);
+		disableQDMirroring_AdministratorDisabled();
+		return;
+	}
+	
 	ftsQDMirrorInfo->state = QDMIRROR_STATE_CONNECTINGWALSENDSERVER;
 	ftsQDMirrorInfo->updateMask |= QDMIRROR_UPDATEMASK_MASTERMIRRORING;
 	elog(NOTICE, "Master mirroring synchronizing");
