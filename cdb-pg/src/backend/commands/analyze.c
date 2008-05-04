@@ -1013,6 +1013,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	BlockNumber			totalvarblocks;
 	AppendOnlyEntry		*aoentry;
 	AppendOnlyScanDesc	aoscandesc = NULL;
+	TupleTableSlot		*slot;
 	
 	Assert(targrows > 1);
 	
@@ -1027,9 +1028,11 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	
 	aoscandesc = appendonly_beginscan(onerel, 0, NULL);
 		
+	slot = MakeSingleTupleTableSlot(RelationGetDescr(onerel));
+
 	for(;;)
 	{
-		HeapTuple targtuple = appendonly_getnext(aoscandesc, ForwardScanDirection);
+		MemTuple targtuple = appendonly_getnext(aoscandesc, ForwardScanDirection, slot);
 
 		/* no more data. done */
 		if(targtuple == NULL)
@@ -1052,7 +1055,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 		 * the relation we're done.
 		 */
 		if (numrows < targrows)
-			rows[numrows++] = heap_copytuple(targtuple);
+			rows[numrows++] = heap_copytuple(ExecFetchSlotHeapTuple(slot));
 		else
 		{
 			/*
@@ -1074,7 +1077,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 				
 				Assert(k >= 0 && k < targrows);
 				heap_freetuple(rows[k]);
-				rows[k] = heap_copytuple(targtuple);
+				rows[k] = heap_copytuple(ExecFetchSlotHeapTuple(slot));
 			}
 			
 			rowstoskip -= 1;
@@ -1082,6 +1085,8 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 		
 		liverows += 1;
 	}
+	
+	ExecDropSingleTupleTableSlot(slot);
 	
 	appendonly_endscan(aoscandesc);			
 

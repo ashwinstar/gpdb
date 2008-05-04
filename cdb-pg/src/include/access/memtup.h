@@ -8,6 +8,23 @@
 
 #include "access/tupdesc.h"
 
+/* 
+ * TODO: implement these 2 macros - equivalent
+ * in functionality to the ones in htup.h
+ */
+#define MemTupleGetOid(tuple) InvalidOid \
+
+#define MemTupleSetOid(tuple, oid) Assert(0) \
+
+/* 
+ * TODO: implement this macro - equivalent
+ * in functionality to the the following check
+ * Assert(!(tup->t_data->t_infomask & HEAP_HASOID));
+ * it's a sanity check.
+ */
+#define MemTupleNoOidSpace(tuple) Assert(tuple) \
+
+
 typedef enum MemTupleBindFlag
 {
 	MTB_ByVal_Native = 1,	/* Fixed len, native (returned as datum ) */

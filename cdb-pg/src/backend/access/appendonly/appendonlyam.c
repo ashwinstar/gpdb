@@ -111,10 +111,6 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 					 largeReadLen);
 
 	scan->aos_inited = false;
-	scan->aos_ctup.t_data = NULL;
-	ItemPointerSetInvalid(&scan->aos_ctup.t_self);
-
-	/* page-at-a-time fields are always invalid when not aos_inited */
 
 	/*
 	 * copy the scan key, if appropriate
@@ -138,13 +134,14 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
  * the scankeys.
  * ----------------
  */
-static void
+static MemTuple
 appendonlygettup(AppendOnlyScanDesc scan,
 				 ScanDirection dir,
 				 int nkeys,
-				 ScanKey key)
+				 ScanKey key,
+				 TupleTableSlot *slot)
 {
-	HeapTuple	tuple = &(scan->aos_ctup);
+	MemTuple	tuple = &(scan->aos_ctup);
 	int32		byteLen = (!scan->aos_compressed ? sizeof(VarBlockHeader) : sizeof(int32));
 	int32	   *lengthWord;
 	int32		bufferLen;
@@ -224,8 +221,8 @@ appendonlygettup(AppendOnlyScanDesc scan,
 				/* done reading the file */
 				BufferedReadCompleteFile(&scan->bufferedRead);
 				scan->aos_inited = false;	
-				tuple->t_data = NULL;
-				return;			
+				tuple = NULL;
+				return tuple;			
 			}
 			
 			scan->bufferCount++;
@@ -433,19 +430,18 @@ appendonlygettup(AppendOnlyScanDesc scan,
 							(errcode(ERRCODE_GP_INTERNAL_ERROR),
 							 errmsg("Invalid tuple format in appendonlygettup")));			
 				
-				tuple->t_data = (HeapTupleHeader) ((char *) itemPtr);
-				tuple->t_len = itemLen;
+				tuple = (MemTuple) itemPtr;
 				
-				Assert(HeapTupleIsValid(tuple) && tuple->t_data != NULL);
-
+				if(slot)
+					ExecStoreMemTuple(tuple, slot, false);
+				
 				/* skip visibility test, all tuples are visible */
 				
 				if (key != NULL)
-					HeapKeyTest(tuple, RelationGetDescr(scan->aos_rd),
-								nkeys, key, valid);
+					HeapKeyTestUsingSlot(slot, nkeys, key, valid);
 				
 				if (valid)
-					return;				
+					return tuple;				
 			}
 			
 		}
@@ -495,7 +491,7 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 												   compressed_by_default);
 
 	/* we only need to set this up once */
-	scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
+	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
 
 	/*
 	 * we do this here instead of in initscan() because appendonly_rescan also calls
@@ -570,26 +566,22 @@ appendonly_endscan(AppendOnlyScanDesc scan)
  *		appendonly_getnext	- retrieve next tuple in scan
  * ----------------
  */
-HeapTuple
-appendonly_getnext(AppendOnlyScanDesc scan, ScanDirection direction)
+MemTuple
+appendonly_getnext(AppendOnlyScanDesc scan, ScanDirection direction, TupleTableSlot *slot)
 {
-	/* Note: no locking manipulations needed */
+	MemTuple tup = appendonlygettup(scan, direction, scan->aos_nkeys, scan->aos_key, slot);
 
-	appendonlygettup(scan, direction, scan->aos_nkeys, scan->aos_key);
-
-	if (scan->aos_ctup.t_data == NULL)
+	if (tup == NULL)
 	{
+		if(slot)
+			ExecClearTuple(slot);
+		
 		return NULL;
 	}
 
-	/*
-	 * if we get here it means we have a new current scan tuple, so point to
-	 * the proper return buffer and return the tuple.
-	 */
-
 	pgstat_count_heap_getnext(&scan->aos_pgstat_info);
 
-	return &(scan->aos_ctup);
+	return tup;
 }
 
 /*
@@ -617,6 +609,7 @@ appendonly_insert_init(Relation rel)
 	
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc(sizeof(AppendOnlyInsertDescData));
 	aoInsertDesc->aoi_rel = rel;
+	aoInsertDesc->mt_bind = create_memtuple_binding(RelationGetDescr(rel));
 	aoInsertDesc->bufferCount = 0;
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->shouldCompress = RelationUsesCopmression(rel, 
@@ -726,7 +719,7 @@ appendonly_insert_init(Relation rel)
  * to match the stored tuple;  
  */
 Oid
-appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, HeapTuple tup)
+appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple tup)
 {
 	Relation		 relation = aoInsertDesc->aoi_rel;
 	uint8			*buffer;
@@ -735,10 +728,6 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, HeapTuple tup)
 
 	if (relation->rd_rel->relhasoids)
 	{
-#ifdef NOT_USED
-		/* this is redundant with an Assert in HeapTupleSetOid */
-		Assert(tup->t_data->t_infomask & HEAP_HASOID);
-#endif
 
 		/*
 		 * If the object id of this tuple has already been assigned, trust the
@@ -748,23 +737,21 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, HeapTuple tup)
 		 * users to set their own object ids in order to support a persistent
 		 * object store (objects need to contain pointers to one another).
 		 */
-		if (!OidIsValid(HeapTupleGetOid(tup)))
-			HeapTupleSetOid(tup, GetNewOid(relation));
+		if (!OidIsValid(MemTupleGetOid(tup)))
+			MemTupleSetOid(tup, GetNewOid(relation));
 	}
 	else
 	{
 		/* check there is not space for an OID */
-		Assert(!(tup->t_data->t_infomask & HEAP_HASOID));
+		MemTupleNoOidSpace(tup);
 	}
 
-	tup->t_data->t_infomask &= ~(HEAP_XACT_MASK);
-	tup->t_data->t_infomask |= HEAP_XMAX_INVALID;
-	tup->t_tableOid = RelationGetRelid(relation);
+//	tup->t_tableOid = RelationGetRelid(relation);
 
 	/* 
 	 * get space to insert our next item (tuple) 
 	 */
-	itemLen = tup->t_len;
+	itemLen = memtuple_get_size(tup, aoInsertDesc->mt_bind);
 	itemPtr = VarBlockMakerGetNextItemPtr(&aoInsertDesc->varBlockMaker, itemLen);
 	
 	/*
@@ -847,12 +834,12 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, HeapTuple tup)
 	Assert(itemPtr != NULL);
 	
 	if (itemLen > 0)
-		memcpy(itemPtr, tup->t_data, itemLen);
+		memcpy(itemPtr, tup, itemLen);
 	
 	aoInsertDesc->insertCount++;
 	pgstat_count_heap_insert(&relation->pgstat_info);
 
-	return HeapTupleGetOid(tup);
+	return MemTupleGetOid(tup);
 }
 
 /*

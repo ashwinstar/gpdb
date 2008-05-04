@@ -199,7 +199,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	scan->num_phys_attrs = tupDesc->natts;
 
 	scan->values = (Datum *) palloc(scan->num_phys_attrs * sizeof(Datum));
-	scan->nulls = (char *) palloc(scan->num_phys_attrs * sizeof(char));
+	scan->nulls = (bool *) palloc(scan->num_phys_attrs * sizeof(bool));
 
 	/*
 	 * Pick up the required catalog information for each attribute in the
@@ -592,7 +592,7 @@ filegettup(FileScanDesc scan,
 				
 				/* Initialize all values for row to NULL */
 				MemSet(scan->values, 0, scan->num_phys_attrs * sizeof(Datum));
-				MemSet(scan->nulls, 'n', scan->num_phys_attrs * sizeof(char));
+				MemSet(scan->nulls, true, scan->num_phys_attrs * sizeof(char));
 
 				MemSet(pstate->attr_offsets, 0, scan->num_phys_attrs * sizeof(int));
 
@@ -667,7 +667,7 @@ filegettup(FileScanDesc scan,
 
 					string = pstate->attribute_buf.data + pstate->attr_offsets[m];
 
-					if (scan->nulls[m] == ' ')
+					if (scan->nulls[m] == false)
 						isnull = false;
 					else
 						isnull = true;
@@ -694,7 +694,7 @@ filegettup(FileScanDesc scan,
 						if(cur_row_rejected)
 							break; /* get out of loop, then go to next row */
 
-						scan->nulls[m] = ' ';
+						scan->nulls[m] = false;
 						pstate->cur_attname = NULL;
 					}
 				}
@@ -711,7 +711,7 @@ filegettup(FileScanDesc scan,
 				EXT_RESET_LINEBUF;
 				
 				/* convert to heap tuple */
-				tuple = heap_formtuple(scan->fs_tupDesc, scan->values, scan->nulls);
+				tuple = heap_form_tuple(scan->fs_tupDesc, scan->values, scan->nulls);
 
 				pstate->processed++;
 				

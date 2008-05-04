@@ -15,6 +15,7 @@
 #define RELSCAN_H
 
 #include "access/skey.h"
+#include "access/memtup.h"
 #include "storage/bufpage.h"
 #include "utils/tqual.h"
 #include "cdb/cdbbufferedread.h"
@@ -113,7 +114,7 @@ typedef struct FileScanDescData
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 	int		   *attr_offsets;
 	FmgrInfo   *in_functions;
 	Oid		   *typioparams;
@@ -158,7 +159,7 @@ typedef struct AppendOnlyScanDescData
 	bool		bufferDone;
 	bool		aos_inited;		/* false = scan not init'd yet */
 	TupleDesc	aos_tupDesc;
-	HeapTupleData aos_ctup;		/* current tuple in scan, if any */
+	MemTupleData aos_ctup;		/* current tuple in scan, if any */
 	
 	PgStat_Info aos_pgstat_info; /* statistics collector hook */
 	

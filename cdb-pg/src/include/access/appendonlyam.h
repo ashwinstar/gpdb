@@ -18,6 +18,7 @@
 #include "access/sdir.h"
 #include "access/tupmacs.h"
 #include "access/xlogutils.h"
+#include "executor/tuptable.h"
 #include "nodes/primnodes.h"
 #include "storage/block.h"
 #include "storage/lmgr.h"
@@ -39,6 +40,7 @@
 typedef struct AppendOnlyInsertDescData
 {
 	Relation		aoi_rel;
+	MemTupleBinding *mt_bind;
 	Oid				relfilenode;
 	float8			insertCount;
 	float8			varblockCount;
@@ -64,10 +66,11 @@ extern AppendOnlyScanDesc appendonly_beginscan(Relation relation,
 											   ScanKey key);
 extern void appendonly_rescan(AppendOnlyScanDesc scan, ScanKey key);
 extern void appendonly_endscan(AppendOnlyScanDesc scan);
-extern HeapTuple appendonly_getnext(AppendOnlyScanDesc scan, 
-									ScanDirection direction);
+extern MemTuple appendonly_getnext(AppendOnlyScanDesc scan, 
+									ScanDirection direction,
+									TupleTableSlot *slot);
 extern AppendOnlyInsertDesc appendonly_insert_init(Relation rel);
-extern Oid appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, HeapTuple tup);
+extern Oid appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple tup);
 extern void appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc);
 extern BlockNumber RelationGuessNumberOfBlocks(double totalbytes);
 

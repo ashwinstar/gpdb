@@ -39,7 +39,6 @@ static TupleTableSlot *AppendOnlyNext(AppendOnlyScanState *node);
 static TupleTableSlot *
 AppendOnlyNext(AppendOnlyScanState *node)
 {
-	HeapTuple	tuple;
 	AppendOnlyScanDesc scandesc;
 	Index		scanrelid;
 	EState	   *estate;
@@ -56,18 +55,9 @@ AppendOnlyNext(AppendOnlyScanState *node)
 	slot = node->ss.ss_ScanTupleSlot;
 
 	/*
-	 * get the next tuple from the access methods
+	 * put the next tuple from the access methods in our tuple slot
 	 */
-	tuple = appendonly_getnext(scandesc, direction);
-
-	/*
-	 * save the tuple and the buffer returned to us by the access methods 
-	 * in our scan tuple slot and return the slot. 
-	 */
-	if (tuple)
-		ExecStoreGenericTuple(tuple, slot, false);
-	else
-		ExecClearTuple(slot);
+	appendonly_getnext(scandesc, direction, slot);
 
 	return slot;
 }

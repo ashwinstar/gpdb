@@ -1319,7 +1319,6 @@ CopyTo(CopyState cstate)
 		char		relkind = cstate->rel->rd_rel->relkind;
 		HeapScanDesc scandesc = NULL;			/* used if heap table */
 		AppendOnlyScanDesc aoscandesc = NULL;	/* used if append only table */
-		HeapTuple	tuple;
 		
 		values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
 		nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
@@ -1327,6 +1326,8 @@ CopyTo(CopyState cstate)
 		
 		if(relkind == RELKIND_RELATION)
 		{
+			HeapTuple	tuple;
+			
 			scandesc = heap_beginscan(cstate->rel, ActiveSnapshot, 0, NULL);
 
 			while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
@@ -1344,18 +1345,25 @@ CopyTo(CopyState cstate)
 		}
 		else if(relkind == RELKIND_APPEND_ONLY)
 		{
+			MemTuple		tuple;
+			TupleTableSlot	*slot = MakeSingleTupleTableSlot(tupDesc);
+			
 			aoscandesc = appendonly_beginscan(cstate->rel, 0, NULL);
 			
-			while ((tuple = appendonly_getnext(aoscandesc, ForwardScanDirection)) != NULL)
+			while ((tuple = appendonly_getnext(aoscandesc, ForwardScanDirection, slot)) != NULL)
 			{
 				CHECK_FOR_INTERRUPTS();
 				
-				/* Deconstruct the tuple ... faster than repeated heap_getattr */
-				heap_deform_tuple(tuple, tupDesc, values, nulls);
-				
+				/* Extract all the values of the  tuple */
+				slot_getallattrs(slot);
+				values = slot_get_values(slot); 
+				nulls = slot_get_isnull(slot);
+								
 				/* Format and send the data */
-				CopyOneRowTo(cstate, HeapTupleGetOid(tuple), values, nulls);
+				CopyOneRowTo(cstate, MemTupleGetOid(tuple), values, nulls);
 			}
+			
+			ExecDropSingleTupleTableSlot(slot);
 			
 			appendonly_endscan(aoscandesc);			
 		}
@@ -2012,7 +2020,7 @@ CopyFromDispatch(CopyState cstate)
 	Oid			in_func_oid;
 	Oid			out_func_oid;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 	int		   *attr_offsets;
 	int			total_rejeted_from_qes = 0;
 	bool		isnull;
@@ -2442,7 +2450,7 @@ CopyFromDispatch(CopyState cstate)
 	file_has_oids = cstate->oids;	/* must rely on user to tell us this... */
 
 	values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
-	nulls = (char *) palloc(num_phys_attrs * sizeof(char));
+	nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
 	attr_offsets = (int *) palloc(num_phys_attrs * sizeof(int));
 
 	/* Initialize static variables */
@@ -2579,7 +2587,7 @@ CopyFromDispatch(CopyState cstate)
 
 				/* Initialize all values for row to NULL */
 				MemSet(values, 0, num_phys_attrs * sizeof(Datum));
-				MemSet(nulls, 'n', num_phys_attrs * sizeof(char));
+				MemSet(nulls, true, num_phys_attrs * sizeof(bool));
 				MemSet(attr_offsets, 0, num_phys_attrs * sizeof(int));
 
 				/* Get the line number of the first line of this data row */
@@ -2737,7 +2745,7 @@ CopyFromDispatch(CopyState cstate)
 						{
 							string = cstate->attribute_buf.data + attr_offsets[m];
 
-							if (nulls[m] == ' ')
+							if (nulls[m] == false)
 								isnull = false;
 							else
 								isnull = true;
@@ -2841,7 +2849,7 @@ CopyFromDispatch(CopyState cstate)
 						}
 						else
 						{
-							nulls[defmap[i]] = ' ';	
+							nulls[defmap[i]] = false;	
 							
 							appendStringInfo(&cstate->line_buf, "%c", cstate->delim[0]); /* write the delimiter */
 											
@@ -2891,7 +2899,7 @@ CopyFromDispatch(CopyState cstate)
 														 * cdb policy */
 					h_key = values[h_attnum - 1];		/* value of this attr			   */
 					
-					if (nulls[h_attnum - 1] != 'n')
+					if (nulls[h_attnum - 1] != true)
 						cdbhash(cdbHash, h_key, p_attr_types[i]);
 					else
 						cdbhashnull(cdbHash);
@@ -3072,8 +3080,9 @@ CopyFromDispatch(CopyState cstate)
 static void
 CopyFrom(CopyState cstate)
 {
-	HeapTuple	tuple;
+	void		*tuple;
 	TupleDesc	tupDesc;
+	char		relkind;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
 				attr_count,
@@ -3084,7 +3093,7 @@ CopyFrom(CopyState cstate)
 	int			i;
 	Oid			in_func_oid;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *nulls;
 	bool		isnull;
 	ResultRelInfo *resultRelInfo;
 	EState	   *estate = CreateExecutorState(); /* for ExecConstraints() */
@@ -3106,7 +3115,9 @@ CopyFrom(CopyState cstate)
 	/* append-only table stuff */
 	AppendOnlyInsertDesc aoInsertDesc = NULL;
 	
-	if(cstate->rel->rd_rel->relkind == RELKIND_APPEND_ONLY)
+	relkind = cstate->rel->rd_rel->relkind;
+	
+	if(relkind == RELKIND_APPEND_ONLY)
 		aoInsertDesc = appendonly_insert_init(cstate->rel);
 		
 	
@@ -3197,7 +3208,7 @@ CopyFrom(CopyState cstate)
 	file_has_oids = cstate->oids;	/* must rely on user to tell us this... */
 
 	values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
-	nulls = (char *) palloc(num_phys_attrs * sizeof(char));
+	nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
 	attr_offsets = (int *) palloc(num_phys_attrs * sizeof(int));
 
 	/* Initialize static variables */
@@ -3271,7 +3282,7 @@ CopyFrom(CopyState cstate)
 
 				/* Initialize all values for row to NULL */
 				MemSet(values, 0, num_phys_attrs * sizeof(Datum));
-				MemSet(nulls, 'n', num_phys_attrs * sizeof(char));
+				MemSet(nulls, true, num_phys_attrs * sizeof(bool));
 				/* reset attribute pointers */
 				MemSet(attr_offsets, 0, num_phys_attrs * sizeof(int));
 
@@ -3456,7 +3467,7 @@ CopyFrom(CopyState cstate)
 
 					string = cstate->attribute_buf.data + attr_offsets[m];
 
-					if (nulls[m] == ' ')
+					if (nulls[m] == false)
 						isnull = false;
 					else
 						isnull = true;
@@ -3488,7 +3499,7 @@ CopyFrom(CopyState cstate)
 						if(cur_row_rejected)
 							break; /* get out of loop, don't parse next attributes */
 													
-						nulls[m] = ' ';
+						nulls[m] = false;
 						cstate->cur_attname = NULL;
 						
 					}
@@ -3521,7 +3532,7 @@ CopyFrom(CopyState cstate)
 					PG_END_TRY();
 					
 					if (!isnull)
-						nulls[defmap[i]] = ' ';
+						nulls[defmap[i]] = false;
 				}
 
 				if(cur_row_rejected)
@@ -3533,10 +3544,25 @@ CopyFrom(CopyState cstate)
 				/*
 				 * And now we can form the input tuple.
 				 */
-				tuple = heap_formtuple(tupDesc, values, nulls);
+				if(relkind != RELKIND_APPEND_ONLY)
+				{
+					/* form a regular heap tuple */
+					tuple = (HeapTuple) heap_form_tuple(tupDesc, values, nulls);	
+					
+					if (cstate->oids && file_has_oids)
+						HeapTupleSetOid((HeapTuple)tuple, loaded_oid);
+				}
+				else
+				{
+					/* form a mem tuple */
+					tuple = (MemTuple) memtuple_form_to(aoInsertDesc->mt_bind, 
+														values, nulls, 
+														NULL, NULL);
+				
+					if (cstate->oids && file_has_oids)
+						MemTupleSetOid(tuple, loaded_oid);
+				}
 
-				if (cstate->oids && file_has_oids)
-					HeapTupleSetOid(tuple, loaded_oid);
 
 				/*
 				 * Triggers and stuff need to be invoked in query context.
@@ -3576,7 +3602,7 @@ CopyFrom(CopyState cstate)
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
-					if(cstate->rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
+					if(relkind != RELKIND_APPEND_ONLY)
 					{
 						if (heap_enableHeapInsertDesc)
 						{
@@ -3593,7 +3619,7 @@ CopyFrom(CopyState cstate)
 						}
 						
 						if (resultRelInfo->ri_NumIndices > 0)
-							ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
+							ExecInsertIndexTuples(slot, &(((HeapTuple)tuple)->t_self), estate, false);
 					}
 					else
 					{
@@ -3630,7 +3656,7 @@ CopyFrom(CopyState cstate)
 	/* 
 	 * if append-only table, finish up the last append 
 	 */
-	if(cstate->rel->rd_rel->relkind == RELKIND_APPEND_ONLY)
+	if(relkind == RELKIND_APPEND_ONLY)
 		appendonly_insert_finish(aoInsertDesc);
 
 	/*
@@ -4317,7 +4343,7 @@ int GetDecimalFromHex(char hex)
  * attribute buffer that indicates where the current attribute begins.
  */
 void
-CopyReadAttributesText(CopyState cstate, char *nulls,
+CopyReadAttributesText(CopyState cstate, bool *nulls,
 					   int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr)
 {
 	char		delimc = cstate->delim[0];		/* delimiter character */
@@ -4405,9 +4431,9 @@ CopyReadAttributesText(CopyState cstate, char *nulls,
 				&&
 				strncmp(cstate->line_buf.data + cstate->line_buf.len - attr_pre_len - 1, cstate->null_print, attr_pre_len)
 				== 0)
-				nulls[m] = 'n';
+				nulls[m] = true;
 			else
-				nulls[m] = ' ';
+				nulls[m] = false;
 
 			attr_offsets[m] = cstate->attribute_buf.cursor;
 
@@ -4445,9 +4471,9 @@ CopyReadAttributesText(CopyState cstate, char *nulls,
 				/* check if this is a null print or data (assumed NULL) */
 				if (attr_pre_len == cstate->null_print_len &&
 					strncmp(scan_end - attr_pre_len, cstate->null_print, attr_pre_len) == 0)
-					nulls[m] = 'n';
+					nulls[m] = true;
 				else
-					nulls[m] = ' ';
+					nulls[m] = false;
 
 				/* set the pointer to next attribute position */
 				attr_offsets[m] = cstate->attribute_buf.cursor;
@@ -4638,7 +4664,7 @@ CopyReadAttributesText(CopyState cstate, char *nulls,
  *----------
  */
 void
-CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
+CopyReadAttributesCSV(CopyState cstate, bool *nulls, int *attr_offsets,
 					  int num_phys_attrs, Form_pg_attribute *attr)
 {
 	char		delimc = cstate->delim[0];
@@ -4691,9 +4717,9 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 			{
 				if (!saw_quote && input_len == cstate->null_print_len &&
 					strncmp(&cstate->line_buf.data[start_cursor], cstate->null_print, input_len) == 0)
-					nulls[m] = 'n';
+					nulls[m] = true;
 				else
-					nulls[m] = ' ';				
+					nulls[m] = false;				
 			}
 
 			/* if zero column table and data is trying to get in */
@@ -4737,9 +4763,9 @@ CopyReadAttributesCSV(CopyState cstate, char *nulls, int *attr_offsets,
 			{
 				if (!saw_quote && input_len == cstate->null_print_len &&
 				strncmp(&cstate->line_buf.data[start_cursor], cstate->null_print, input_len) == 0)
-					nulls[m] = 'n';
+					nulls[m] = true;
 				else
-					nulls[m] = ' ';
+					nulls[m] = false;
 			}
 
 			/* terminate attr string with '\0' */

@@ -2037,17 +2037,11 @@ ExecInsert(TupleTableSlot *slot,
 		   DestReceiver *dest,
 		   EState *estate)
 {
-	HeapTuple	tuple;
+	void		*tuple;
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	Oid			newId;
 	char		relkind;
-
-	/*
-	 * get the heap tuple out of the tuple table slot, making sure we have a
-	 * writable copy
-	 */
-	tuple = ExecFetchSlotHeapTuple(slot); 
 
 	/*
 	 * get information on the (current) result relation
@@ -2056,6 +2050,16 @@ ExecInsert(TupleTableSlot *slot,
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 	relkind = resultRelationDesc->rd_rel->relkind;
 
+	/*
+	 * get the heap tuple out of the tuple table slot, making sure we have a
+	 * writable copy
+	 */
+	if(relkind != RELKIND_APPEND_ONLY)
+		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
+	else
+		tuple = (MemTuple) ExecFetchSlotMemTuple(slot);
+
+	
 	/* BEFORE ROW INSERT Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
@@ -2130,13 +2134,18 @@ ExecInsert(TupleTableSlot *slot,
 	IncrAppended();
 	(estate->es_processed)++;
 	estate->es_lastoid = newId;
-	setLastTid(&(tuple->t_self));
-
-	/*
-	 * insert index entries for tuple
-	 */
-	if (resultRelInfo->ri_NumIndices > 0)
-		ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
+	
+	if (relkind != RELKIND_APPEND_ONLY)
+	{
+		setLastTid(&(((HeapTuple)tuple)->t_self));
+		
+		/*
+		 * insert index entries for tuple
+		 */
+		if (resultRelInfo->ri_NumIndices > 0)
+			ExecInsertIndexTuples(slot, &(((HeapTuple)tuple)->t_self), estate, false);
+		
+	}
 
 	/* AFTER ROW INSERT Triggers */
 	ExecARInsertTriggers(estate, resultRelInfo, tuple);
@@ -3323,32 +3332,35 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 {
 	DR_intorel *myState = (DR_intorel *) self;
 	EState	   *estate = myState->estate;
-	HeapTuple	tuple;
 	Relation	into_rel = estate->es_into_relation_descriptor;
 	char		relkind = into_rel->rd_rel->relkind;
-	
-	tuple = ExecCopySlotHeapTuple(slot);
-
+		
 	if (relkind != RELKIND_APPEND_ONLY)
 	{
+		HeapTuple	tuple = ExecCopySlotHeapTuple(slot);
+		
 		heap_insert(into_rel,
 					tuple,
 					estate->es_snapshot->curcid,
 					estate->es_into_relation_use_wal,
 					false, /* never any point in using FSM */
-					GetCurrentTransactionId());								
+					GetCurrentTransactionId());	
+		
+		heap_freetuple(tuple);
 	}
 	else
 	{		
+		MemTuple	tuple = ExecCopySlotMemTuple(slot);
+		
 		if (estate->es_aoInsertDesc == NULL)
 			estate->es_aoInsertDesc = appendonly_insert_init(into_rel);
 
-		appendonly_insert(estate->es_aoInsertDesc, tuple);		
+		appendonly_insert(estate->es_aoInsertDesc, tuple);
+		
+		pfree(tuple);
 	}
 				
 	/* We know this is a newly created relation, so there are no indexes */
-
-	heap_freetuple(tuple);
 
 	IncrAppended();
 }
