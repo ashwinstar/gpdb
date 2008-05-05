@@ -55,7 +55,8 @@ class GPUpgrade:
     #   RESETXLOG - Syncronize xlogs
     #   REMAPOID  - Link newdb to old oids, run on every host
     #   DEEPLINK  - Recursive hardlink
-    commands = ['MKDIR', 'RMDIR', 'RESETXLOG', 'REMAPOID', 'DEEPLINK']
+    commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'RESETXLOG', 'REMAPOID', 
+                'DEEPLINK']
 
     #------------------------------------------------------------
     def __init__(self):
@@ -80,17 +81,19 @@ class GPUpgrade:
         self.host      = None     # master hostname
 
     # Upgrade information and state
-        self.debug     = False
-        self.root      = None     # directory: masterdir/..
-        self.backup    = None     # directory: root/backup
-        self.tmpdir    = None     # directory: root/upgrade
-        self.newmaster = None     # directory: upgrade/gp-1
-        self.state     = None     # file:      backup/state
-        self.config    = {}       # gp_init_config for new db
-        self.mappings  = None     # Mappings of old oid to new oids
-        self.hosts     = []       # list of hosts
-        self.segments  = []       # list of segments
-        self.mirrors   = None     # list of mirrors
+        self.debug      = False
+        self.oldversion = None
+        self.newversion = None
+        self.root       = None     # directory: masterdir/..
+        self.backup     = None     # directory: root/backup
+        self.tmpdir     = None     # directory: root/upgrade
+        self.newmaster  = None     # directory: upgrade/gp-1
+        self.state      = None     # file:      backup/state
+        self.config     = {}       # gp_init_config for new db
+        self.mappings   = None     # Mappings of old oid to new oids
+        self.hosts      = []       # list of hosts
+        self.segments   = []       # list of segments
+        self.mirrors    = None     # list of mirrors
 
     #------------------------------------------------------------
     def Setup(self):
@@ -200,10 +203,10 @@ class GPUpgrade:
                          % self.masterdir)
                 raise UpgradeError('Initialization failed')
             if not os.path.exists(self.oldhome):
-                self.Log('FATAL', ' directory not found: %s', self.oldhome)
+                self.Log('FATAL', ' directory not found: ' + self.oldhome)
                 raise UpgradeError('Initialization failed')
             if not os.path.exists(self.newhome):
-                self.Log('FATAL', ' directory not found: %s', self.newhome)
+                self.Log('FATAL', ' directory not found: ' + self.newhome)
                 raise UpgradeError('Initialization failed')            
 
     #------------------------------------------------------------
@@ -228,12 +231,21 @@ class GPUpgrade:
         Sets the state in the upgrader state file
         '''
 
-        # FIXME - should set state across all segments
-        try:
-            self.state.write(str(newstate) + "\n")
-            self.state.flush()
-        except Exception, e:
-            raise UpgradeError('Error writing to statefile: (%s)' % str(e))
+        # Set state across all hosts, if all hosts succeed then set the 
+        # master state
+        if self.cmd == 'MASTER':
+            self.CallSlaves('SETSTATE', newstate)
+            try:
+                self.state.write(str(newstate) + "\n")
+                self.state.flush()
+            except Exception, e:
+                raise UpgradeError('Error writing to statefile: (%s)' % str(e))
+        else:
+            for d in self.datadirs:
+                statefile = os.path.join(d, 'backup', 'hoststate')
+                file = open(statefile, 'a')
+                file.write(str(newstate) + "\n")
+                file.close()
 
     #------------------------------------------------------------
     def RunCmd(self, cmd, env=None, utility=False, supressDebug=False):
@@ -474,6 +486,62 @@ class GPUpgrade:
         self.Log('INFO', 'Revert Successful')
         sys.exit(0)
 
+    #------------------------------------------------------------
+    def CheckVersions(self):
+        '''
+        Validates that the upgrade/downgrade from old->new is okay
+        '''
+
+        self.Log('INFO', 'Checking version compatability')
+
+        # --gp-version added in 3.2, but that doesn't help us determine
+        # version information from old versions.
+        #
+        # Instead we take the hacky aproach of getting the version from
+        # pg_config.h
+        def getversion(home,env):
+            try:
+                return self.RunCmd('pg_ctl --gp-version', env=env)
+            except CmdError:
+                pass
+            try:
+                cmd = 'grep PG_VERSION_STR %s/include/pg_config.h' % home
+                return self.RunCmd(cmd, env=self.oldenv)
+            except:
+                raise UpgradeError('Unable to determine version of %s: %s'
+                                   % (home, str(e)))
+
+        oldversion = getversion(self.oldhome, self.oldenv)
+        newversion = getversion(self.newhome, self.newenv)
+
+        # If we got a version, but it doesn't match our regex then it's probably
+        # not a Greenplum database.
+        version_re = re.compile('\(Greenplum Database\)? ([^\)]+) build ([^\)]+)')
+        match = version_re.search(oldversion)
+        if match: 
+            oldversion = match.group(1)
+            oldbuild = match.group(2)
+            self.Log('INFO', 'Source Version: (Greenplum Database) %s build %s'
+                     % (oldversion, oldbuild))
+        else:
+            raise UpgradeError('Source not a Greenplum Database: ' + oldversion)
+        match = version_re.search(newversion)
+        if match: 
+            newversion = match.group(1)
+            newbuild = match.group(2)
+            self.Log('INFO', 'Target Version: (Greenplum Database) %s build %s'
+                     % (newversion, newbuild))
+        else:
+            raise UpgradeError('Target not a Greenplum Database: ' + newversion)    
+
+        self.oldversion = oldversion
+        self.newversion = newversion
+
+        # Versions supported by the upgrader
+
+        # For the moment everything goes!
+        # -- FIXME --
+        self.Log('INFO', 'Versions are compatabible')        
 
 
     #------------------------------------------------------------
@@ -672,24 +740,6 @@ class GPUpgrade:
         Get all the information we need from the old instance
         '''
 
-        # If we don't have a good connection give up now
-        version = str(self.Select('SELECT version()')[0])
-
-        # Determine the greenplum version, if the database we have connect to
-        # isn't actually greenplum this will fail.
-        
-        # -- FIXME -- not actually a valid check, since the actual version
-        # may not have been the version at initdb
-        try:
-            self.oldversion = str(self.Select(
-            '''
-               SELECT productversion from gp_version_at_initdb
-            ''')[0])
-            self.Log('INFO', 'Greenplum Database %s' % self.oldversion)
-        except:
-            raise UpgradeError('Version: %s is not supported for upgrade' % 
-                               version)
-
         # Determine if there are any invalid segments
         invalid = self.Select(
         '''
@@ -868,8 +918,9 @@ class GPUpgrade:
                 self.mappings[name][prefix+'index'] = o['toast_index']
 
         # Make a sanity check that everything makes a 1:1 mapping
-        if prefix == 'foo':
-            for (x, name) in enumerate(self.mappings):
+        if prefix == 'new':
+            for name in self.mappings:
+                x = self.mappings[name]
 
                 # every mapping must:
                 #   + have a valid newdb, olddb, newid, oldid
@@ -879,9 +930,9 @@ class GPUpgrade:
                     ('oldid' in x) and
                     ('newdb' in x) and 
                     ('olddb' in x) and
-                    (('oldtoast' in x) ^ ('newtoast' in x)) and
-                    (('oldindex' in x) ^ ('newindex' in x))):
-                    return True
+                    not (('oldtoast' in x) ^ ('newtoast' in x)) and
+                    not (('oldindex' in x) ^ ('newindex' in x))):
+                    continue
 
                 # There /must/ be an easier way of doing this...
                 olddb = oldid = oldtoast = oldindex = 0
@@ -900,7 +951,7 @@ class GPUpgrade:
                 self.Log('FATAL', 'New OID: %s %s %s %s %s' %
                          (name, newdb, newid, newtoast, newindex))
                 self.Log('FATAL', '-----------------------------------------------')
-                raise UpgradeException('OID Mappings must be 1:1')
+                raise UpgradeError('OID Mappings must be 1:1')
 
 
     #------------------------------------------------------------
@@ -1028,7 +1079,7 @@ class GPUpgrade:
     def ImportSchema(self):
         self.CheckUp()
         self.Log('INFO', 'Importing old schema')
-        subprocess.call('psql -f %s/pgdump.sql template1' % self.tmpdir,
+        subprocess.call('psql -e -f %s/pgdump.sql template1' % self.tmpdir,
                         env=self.newenv, shell=True)
 
     #------------------------------------------------------------
@@ -1048,6 +1099,8 @@ class GPUpgrade:
             # Write out a mapping file
             o = open(mapfilename, 'w')
             for name in self.mappings:
+                self.log('INFO', 'REMAP: ' + str(self.mappings[name]))
+                
                 o.write('%s/%s %s/%s\n' % (
                         self.mappings[name]['olddb'],
                         self.mappings[name]['oldid'],
@@ -1262,7 +1315,10 @@ try:
             u.CheckDown()
         except Exception, e:
             u.Log('FATAL', str(e))
-            sys.exit(1)        
+            sys.exit(1)
+
+        # Check that we can do the upgrade between the versions
+        u.CheckVersions()
 
         # Startup the old database in utility mode
         u.Startup(u.oldenv, True)
@@ -1379,6 +1435,8 @@ To complete the environment configuration
 
 #---------------------------------------------------------
 # The rest of the options are executed on a per-host basis
+    elif u.cmd == 'SETSTATE':
+        u.SetState(u.option)
     elif u.cmd == 'MKDIR':
         u.CreateDirectories()
     elif u.cmd == 'RMDIR':
