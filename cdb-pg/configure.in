@@ -348,6 +348,11 @@ AC_DEFINE_UNQUOTED(PG_VERSION_STR,
                    ["PostgreSQL $PACKAGE_VERSION (Greenplum Database $GP_VERSION) on $host, compiled by $cc_string"],
                    [A string containing the version number, platform, and C compiler])
 
+AC_DEFINE_UNQUOTED(GP_VERSION, 
+                   ["$GP_VERSION"],
+                   [A string containing the Greenplum version number])
+
+
 #
 # Set up TAS assembly code if needed; the template file has now had its
 # chance to request this.
