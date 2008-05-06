@@ -252,7 +252,7 @@ OBTAIN_PARAM () {
 			fi
 		fi
 		#Set up mirror directory array
-		MIRROR_DATA_DIRECTORY=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d: -f2|$SORT -u|$TR '\n' ' '`)
+		MIRROR_DATA_DIRECTORY=(`$CAT $MIRROR_MACHINE_LIST_FILE|$CUT -d: -f2|$TR '\n' ' '`)
 	fi	
 	CHK_MULTI_HOME
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
