@@ -203,7 +203,7 @@ START_SEG () {
 	if [ $? -ne 0 ];then
 		 LOG_MSG "[WARN][$INST_COUNT]:-Failed to obtain lc_collate value $QE_NAME $QE_DIR" 1
 	fi
-	if [ $QD_LC_COLLATE != $LC_COLLATE ];then
+	if [ x$QD_LC_COLLATE != x$LC_COLLATE ];then
 		QD_LINE="${QD_LINE}:LC_ERROR"
 		LOG_MSG "[WARN][$INST_COUNT]:-lc_collate mismatch on $QE_NAME $QE_DIR" 1
 	fi
@@ -211,7 +211,7 @@ START_SEG () {
 	if [ $? -ne 0 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Failed to obtain lc_monetary value $QE_NAME $QE_DIR" 1
 	fi
-	if [ $QD_LC_MONETARY != $LC_MONETARY ];then
+	if [ x$QD_LC_MONETARY != x$LC_MONETARY ];then
 		QD_LINE="${QD_LINE}:LC_ERROR"
 		LOG_MSG "[WARN][$INST_COUNT]:-lc_monetary mismatch on $QE_NAME $QE_DIR" 1
 	fi
@@ -219,7 +219,7 @@ START_SEG () {
 	if [ $? -ne 0 ];then
 		LOG_MSG "[WARN][$INST_COUNT]:-Failed to obtain lc_numeric value $QE_NAME $QE_DIR" 1
 	fi
-	if [ $QD_LC_NUMERIC != $LC_NUMERIC ];then
+	if [ x$QD_LC_NUMERIC != x$LC_NUMERIC ];then
 		QD_LINE="${QD_LINE}:LC_ERROR"
 		LOG_MSG "[WARN][$INST_COUNT]:-lc_numeric mismatch on $QE_NAME $QE_DIR" 1
 	fi
