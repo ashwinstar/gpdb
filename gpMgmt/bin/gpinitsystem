@@ -663,9 +663,9 @@ CREATE_QE_ARRAY () {
 	#Set up initial variables
 	. $CLUSTER_CONFIG
 	if [ x"" != x"$REQ_LOCALE_SETTING" ];then LOCALE_SETTING=$REQ_LOCALE_SETTING;fi
-	if [ `$ECHO ${M_HOST_ARRAY[@]}|$GREP -c "${MASTER_HOSTNAME}\$"` -eq 1 ]; then
-		MASTER_LIST=(`$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$GREP "${MASTER_HOSTNAME}\$"`)
-		M_HOST_ARRAY=(${MASTER_LIST[@]} `$ECHO ${M_HOST_ARRAY[@]}|$GREP -v "${MASTER_HOSTNAME}\$"`)
+	if [ `$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$GREP -c ":${MASTER_HOSTNAME}\$"` -gt 0 ]; then
+		MASTER_LIST=(`$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$GREP ":${MASTER_HOSTNAME}\$"`)
+		M_HOST_ARRAY=(${MASTER_LIST[@]} `$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$GREP -v ":${MASTER_HOSTNAME}\$"`)
 	fi
 	if [ $MIRRORING -eq 1 ] && [ $MIRROR_TYPE -eq 0 ];then
 		#Move first host to other end of the array
