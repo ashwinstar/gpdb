@@ -316,6 +316,19 @@ errstart(int elevel, const char *filename, int lineno,
 		{
 			error_context_stack = NULL;
 			debug_query_string = NULL;
+
+			/*
+			 * If we recurse too many times, this could mean that we have
+			 * serious out of memory problems. We bail out immediately here.
+			 * See MPP-2440.
+			 */
+			if (recursion_depth > 2 * ERRORDATA_STACK_SIZE)
+			{
+				ImmediateInterruptOK = false;
+				fflush(stdout);
+				fflush(stderr);
+				return false;
+			}
 		}
 	}
 	if (++errordata_stack_depth >= ERRORDATA_STACK_SIZE)
@@ -456,7 +469,7 @@ errfinish(int dummy,...)
         gp_debug_linger > 0)
         elog_debug_linger(edata);
 
-    /* Emit the message to the right places */
+    /* Emit the message to the right places. */
     else
 	    EmitErrorReport();
 
@@ -2240,13 +2253,16 @@ send_message_to_server_log(ErrorData *edata)
 		size_t		i;
 	
 		strings = backtrace_symbols(edata->stacktracearray, edata->stacktracesize);
-		for (i = 0; i < edata->stacktracesize; i++)
+		if (strings != NULL)
 		{
-			appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfo(&buf, "Traceback %d:  %.200s", (int)i, strings[i]);
-			appendStringInfoChar(&buf, '\n');
+			for (i = 0; i < edata->stacktracesize; i++)
+			{
+				appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+				appendStringInfo(&buf, "Traceback %d:  %.200s", (int)i, strings[i]);
+				appendStringInfoChar(&buf, '\n');
+			}
+			free(strings);
 		}
-		free(strings);
 	}
 #endif
 #endif
