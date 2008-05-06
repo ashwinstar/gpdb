@@ -2182,6 +2182,18 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 	 * like the output of the final stage. */
 	root->parse->rtable = context->subquery->rtable;
 	root->parse->jointree = context->subquery->jointree;
+
+	/*
+	 * Since rtable may be changed, reconstruct RelOptInfo nodes for all base relations
+	 * in the root query to match this change.
+	 */
+	if (root->simple_rel_array)
+		pfree(root->simple_rel_array);
+	root->simple_rel_array_size = list_length(root->parse->rtable) + 1;
+	root->simple_rel_array = (RelOptInfo **)
+		palloc0(root->simple_rel_array_size * sizeof(RelOptInfo *));
+	add_base_rels_to_query(root, (Node *)root->parse->jointree);
+
 	/* XXX I don't think the quals are used later so no need to translate. 
 	 *     They would either be empty or represent a join on the last
 	 *     partitioning key processed by plan_sequential_stage.
