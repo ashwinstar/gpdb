@@ -215,7 +215,7 @@ CHK_CATALOG_DATA () {
 			LOG_MSG "[WARN]:-Appears that there is an active postgres process on $MASTER_HOSTNAME port=$MASTER_PORT" 1
 			LOG_MSG "[INFO]:-This may have been caused by a kill -9 of the master postgres process" 1
 			LOG_MSG "[INFO]:-Traces of this process will need to be removed, please follow below instructions" 1
-			LOG_MSG "[INFO]:-1. Delete the /tmp/.s.PGSQL.$MASTER_PORT* files on $MASTER_HOSTNAME" 1
+			LOG_MSG "[INFO]:-1. Delete the /tmp/.s.PGSQL.$MASTER_PORT and /tmp/.s.PGSQL.$MASTER_PORT.* files on $MASTER_HOSTNAME" 1
 			LOG_MSG "[INFO]:-2. Remove the ${MASTER_DATA_DIRECTORY}/postmaster.pid file on $MASTER_HOSTNAME" 1
 			LOG_MSG "[INFO]:-3. Then call this utility again" 1
 			ADMIN_SHUTDOWN 1
