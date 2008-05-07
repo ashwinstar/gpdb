@@ -5,6 +5,8 @@
 
 #include <zookeeper.h>
 
-void zookeeperExtra_setMallocAndFree(void*(*m)(size_t),void(*f)(void*));
+ZOOAPI int zoo_set_stat(zhandle_t *zh, const char *path, const char *buffer, int buflen,int version,struct Stat*stat);
+
+ZOOAPI void zookeeperExtra_setMallocAndFree(void*(*m)(size_t),void(*f)(void*));
 
 #endif

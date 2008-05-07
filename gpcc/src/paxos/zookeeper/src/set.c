@@ -2,11 +2,11 @@
 
 #include "header.h"
 
-ZOOAPI int
-zoo_set(zhandle_t*thiz,const char*path,const char*buffer,int buflen,int version)
+ZOOAPI int zoo_set_stat(zhandle_t*thiz,const char*path,const char*buffer,int buflen,int version,struct Stat*stat)
 {
     int i,v;
     struct zframe z;
+    struct chubby_stat s;
     char mangled[PATH_MAX];
     zframe_init(&z,thiz);
     if (!thiz->c)
@@ -28,5 +28,19 @@ zoo_set(zhandle_t*thiz,const char*path,const char*buffer,int buflen,int version)
     if (i)
 	return zframe_returnE(&z,i);
     i = chubby_connection_putBigFile(z.l,mangled,z.string,ZOOKEEPER_LOCKTIME);
-    return zframe_returnE(&z,i);
+    if (i)
+	return zframe_returnE(&z,i);
+    if (stat){
+	i = chubby_connection_stat(z.l,&s,mangled);
+	memset(stat,0,sizeof*stat);
+	stat->czxid = stat->mzxid = s.decreeNumber;
+	stat->version = v;
+    }
+    return zframe_returnRc(&z,ZOK);
+}
+
+ZOOAPI int
+zoo_set(zhandle_t*thiz,const char*path,const char*buffer,int buflen,int version)
+{
+    return zoo_set_stat(thiz,path,buffer,buflen,version,NULL);
 }

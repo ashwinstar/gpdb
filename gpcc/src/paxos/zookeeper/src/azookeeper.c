@@ -126,8 +126,9 @@ zoo_aget(zhandle_t*thiz,const char*path,int watch,data_completion_t completion,c
 ZOOAPI int
 zoo_aset(zhandle_t*thiz,const char*path,const char*buffer,int buflen,int version,stat_completion_t completion,const void *data)
 {
-    int rc=zoo_set(thiz,path,buffer,buflen,version);
-    return complete_stat(completion,rc,NULL,data);
+    struct Stat stat;
+    int rc=zoo_set_stat(thiz,path,buffer,buflen,version,&stat);
+    return complete_stat(completion,rc,&stat,data);
 }
 
 ZOOAPI int

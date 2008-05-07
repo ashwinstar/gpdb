@@ -10,6 +10,7 @@ zframe_init(struct zframe*thiz,zhandle_t*zh)
 {
     memset(thiz,0,sizeof*thiz);
     thiz->zh = zh;
+    pthread_mutex_lock(&zh->mutex);
 }
 
 int
@@ -52,6 +53,7 @@ zframe_returnRc(struct zframe*thiz,int rc)
 	chubby_connection_close(thiz->zh->c);
 	thiz->zh->c = NULL;
     }
+    pthread_mutex_unlock(&thiz->zh->mutex);
     return rc;
 }
 

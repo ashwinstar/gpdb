@@ -5,7 +5,11 @@
 ZOOAPI int
 is_unrecoverable(zhandle_t*thiz)
 {
-    return thiz->c?ZOK:ZINVALIDSTATE;
+    int rc;
+    pthread_mutex_lock(&thiz->mutex);
+    rc = thiz->c?ZOK:ZINVALIDSTATE;
+    pthread_mutex_unlock(&thiz->mutex);
+    return rc;
 }
 
 ZOOAPI void
@@ -26,6 +30,7 @@ zoo_deterministic_conn_order(int yesOrNo)
 static int
 zookeeper_init1(zhandle_t*thiz,const char*host,watcher_fn fn,int recv_timeout,void*context)
 {
+    pthread_mutex_init(&thiz->mutex,NULL);
     thiz->fn = fn;
     thiz->recv_timeout = recv_timeout;
     thiz->context = context;
@@ -55,10 +60,13 @@ zookeeper_init(const char*host,watcher_fn fn,int recv_timeout,const clientid_t*c
 ZOOAPI int
 zookeeper_close(zhandle_t*thiz)
 {
+    pthread_mutex_lock(&thiz->mutex);
     if (thiz->chubby)
         chubby_close(thiz->chubby);
     if (thiz->c)
         chubby_connection_close(thiz->c);
+    pthread_mutex_unlock(&thiz->mutex);
+    pthread_mutex_destroy(&thiz->mutex);
     zookeeper_free(thiz);
     return ZOK;
 }
@@ -73,33 +81,50 @@ zoo_client_id(zhandle_t*thiz)
 ZOOAPI int
 zoo_recv_timeout(zhandle_t*thiz)
 {
-    return thiz->recv_timeout;
+    int i;
+    pthread_mutex_lock(&thiz->mutex);
+    i = thiz->recv_timeout;
+    pthread_mutex_unlock(&thiz->mutex);
+    return i;
 }
 
 ZOOAPI const void*
 zoo_get_context(zhandle_t*thiz)
 {
-    return thiz->context;
+    void*c;
+    pthread_mutex_lock(&thiz->mutex);
+    c = thiz->context;
+    pthread_mutex_unlock(&thiz->mutex);
+    return c;
 }
 
 ZOOAPI void
 zoo_set_context(zhandle_t*thiz,void*context)
 {
+    pthread_mutex_lock(&thiz->mutex);
     thiz->context = context;
+    pthread_mutex_unlock(&thiz->mutex);
 }
 
 ZOOAPI watcher_fn
 zoo_set_watcher(zhandle_t*thiz,watcher_fn newFn)
 {
-    watcher_fn old=thiz->fn;
+    watcher_fn old;
+    pthread_mutex_lock(&thiz->mutex);
+    old = thiz->fn;
     thiz->fn = newFn;
+    pthread_mutex_unlock(&thiz->mutex);
     return old;
 }
 
 ZOOAPI int
 zoo_state(zhandle_t*thiz)
 {
-    return thiz->c?CONNECTED_STATE:EXPIRED_SESSION_STATE;
+    int rc;
+    pthread_mutex_lock(&thiz->mutex);
+    rc = thiz->c?CONNECTED_STATE:EXPIRED_SESSION_STATE;
+    pthread_mutex_unlock(&thiz->mutex);
+    return rc;
 }
 
 ZOOAPI int

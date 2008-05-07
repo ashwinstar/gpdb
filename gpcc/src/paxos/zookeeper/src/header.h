@@ -6,13 +6,14 @@
 #include <apr.h>
 #include <assert.h>
 #include <limits.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 #include <chubby.h>
-#include <zookeeper.h>
+#include <zookeeper_extra.h>
 
 #include "mangle.h"
 #include "memory.h"
@@ -22,6 +23,7 @@
 #define ZOOKEEPER_LOCKTIME	10
 
 struct _zhandle{
+    pthread_mutex_t mutex;
     chubby_t*chubby;
     chubby_connection_t*c;
     watcher_fn fn;
