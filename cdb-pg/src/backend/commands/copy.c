@@ -1360,7 +1360,8 @@ CopyTo(CopyState cstate)
 				nulls = slot_get_isnull(slot);
 								
 				/* Format and send the data */
-				CopyOneRowTo(cstate, MemTupleGetOid(tuple), values, nulls);
+				/* XXX Alon: Where is the binding? */
+				CopyOneRowTo(cstate, MemTupleGetOid(tuple, NULL), values, nulls);
 			}
 			
 			ExecDropSingleTupleTableSlot(slot);
@@ -3560,7 +3561,7 @@ CopyFrom(CopyState cstate)
 														NULL, NULL);
 				
 					if (cstate->oids && file_has_oids)
-						MemTupleSetOid(tuple, loaded_oid);
+						MemTupleSetOid(tuple, aoInsertDesc->mt_bind, loaded_oid);
 				}
 
 

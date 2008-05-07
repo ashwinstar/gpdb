@@ -1122,7 +1122,22 @@ agg_retrieve_direct(AggState *aggstate)
 				 * Make a copy of the first tuple; we will use this for
 				 * comparison (in group mode) and for projection.
 				 */
+#if 0
+				/*
+				 * XXX BUG BUG:
+				 * Slot mismatch.  Here we create a mem tuple using outerSlot.
+				 * However, later we will store this baby in firstSlot.
+				 *
+				 * The two slot maybe different!
+				 */
 				aggstate->grp_firstTuple = ExecCopySlotMemTuple(outerslot);
+#else
+				slot_getallattrs(outerslot);
+				aggstate->grp_firstTuple = memtuple_form_to(firstSlot->tts_mt_bind,
+						slot_get_values(outerslot),
+						slot_get_isnull(outerslot),
+						NULL, NULL);
+#endif
 			}
 			else
 			{
@@ -1165,6 +1180,7 @@ agg_retrieve_direct(AggState *aggstate)
 				 * reserved for it. The tuple will be deleted when it is cleared
 				 * from the slot.
 				 */
+
 				ExecStoreMemTuple(aggstate->grp_firstTuple,
 							   firstSlot,
 							   true);

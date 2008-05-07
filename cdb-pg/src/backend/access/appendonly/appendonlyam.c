@@ -737,8 +737,8 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple tup)
 		 * users to set their own object ids in order to support a persistent
 		 * object store (objects need to contain pointers to one another).
 		 */
-		if (!OidIsValid(MemTupleGetOid(tup)))
-			MemTupleSetOid(tup, GetNewOid(relation));
+		if (!OidIsValid(MemTupleGetOid(tup, aoInsertDesc->mt_bind)))
+			MemTupleSetOid(tup, aoInsertDesc->mt_bind, GetNewOid(relation));
 	}
 	else
 	{
@@ -839,7 +839,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple tup)
 	aoInsertDesc->insertCount++;
 	pgstat_count_heap_insert(&relation->pgstat_info);
 
-	return MemTupleGetOid(tup);
+	return MemTupleGetOid(tup, aoInsertDesc->mt_bind);
 }
 
 /*

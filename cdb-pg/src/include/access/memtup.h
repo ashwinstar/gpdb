@@ -9,14 +9,6 @@
 #include "access/tupdesc.h"
 
 /* 
- * TODO: implement these 2 macros - equivalent
- * in functionality to the ones in htup.h
- */
-#define MemTupleGetOid(tuple) InvalidOid \
-
-#define MemTupleSetOid(tuple, oid) Assert(0) \
-
-/* 
  * TODO: implement this macro - equivalent
  * in functionality to the the following check
  * Assert(!(tup->t_data->t_infomask & HEAP_HASOID));
@@ -52,6 +44,7 @@ typedef struct MemTupleBindingCols
 typedef struct MemTupleBinding
 {
 	TupleDesc tupdesc;
+	int column_align;
 	int null_bitmap_extra_size;  /* extra bytes required by null bitmap */
 
 	MemTupleBindingCols bind;  	/* 2 bytes offsets */
@@ -73,6 +66,11 @@ typedef MemTupleData *MemTuple;
 #define MEMTUP_UNUSED 	 4
 #define MEMTUP_ALIGN(LEN) TYPEALIGN(8, (LEN)) 
 #define MEMTUPLE_LEN_FITSHORT 0xFFF0
+
+static inline bool mtbind_has_oid(MemTupleBinding *pbind)
+{
+	return pbind->tupdesc->tdhasoid;
+}
 
 static inline bool is_len_memtuplen(uint32 len)
 {
@@ -159,5 +157,8 @@ extern bool memtuple_attisnull(MemTuple mtup, MemTupleBinding *pbind, int attnum
 
 extern MemTuple memtuple_copy_to(MemTuple mtup, MemTupleBinding *pbind, MemTuple dest, uint32 *destlen);
 extern MemTuple memtuple_form_to(MemTupleBinding *pbind, Datum *values, bool *isnull, MemTuple dest, uint32 *destlen);
+
+extern Oid MemTupleGetOid(MemTuple mtup, MemTupleBinding *pbind);
+extern void MemTupleSetOid(MemTuple mtup, MemTupleBinding *pbind, Oid oid);
 
 #endif /* _MEM_TUP_H_ */
