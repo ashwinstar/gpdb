@@ -1,3 +1,21 @@
+/*-------------------------------------------------------------------------
+ * ic_tcp.c
+ *	   Interconnect code specific to TCP transport.
+ *
+ * Copyright (c) 2005-2008, Greenplum
+ *
+ * IDENTIFICATION:
+ *	   $Id$
+ *
+ *
+ * $File$
+ * $Change$
+ * $Author$
+ * $DateTime$
+ * Reviewers: jzhang, tkordas
+ *-------------------------------------------------------------------------
+ */
+
 #ifdef WIN32
 /*
  * Need this to get WSAPoll (poll). And it

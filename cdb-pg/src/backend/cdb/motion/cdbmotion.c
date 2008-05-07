@@ -9,7 +9,11 @@
  * IDENTIFICATION
  *		  $Id$
  *
- *
+ * $File$
+ * $Change$
+ * $Author$
+ * $DateTime$
+ * Reviewers: jzhang, tkordas
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"

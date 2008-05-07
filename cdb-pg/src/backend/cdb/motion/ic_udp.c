@@ -1,3 +1,21 @@
+/*-------------------------------------------------------------------------
+ * ic_udp.c
+ *	   Interconnect code specific to UDP transport.
+ *
+ * Copyright (c) 2005-2008, Greenplum
+ *
+ * IDENTIFICATION:
+ *	   $Id$
+ *
+ *
+ * $File$
+ * $Change$
+ * $Author$
+ * $DateTime$
+ * Reviewers: jzhang, tkordas
+ *-------------------------------------------------------------------------
+ */
+
 #ifdef WIN32
 /*
  * Need this to get WSAPoll (poll). And it
@@ -440,7 +458,7 @@ wait_on_receiver(int timeout_us)
 
 #define CONN_HASH_VALUE(icpkt) ((uint32)((((icpkt)->srcPid ^ (icpkt)->dstPid)) + (icpkt)->dstContentId))
 
-static void
+static bool
 conn_addhash(MotionConn *conn)
 {
 	uint32 hashcode;
@@ -462,19 +480,20 @@ conn_addhash(MotionConn *conn)
 			bin->conn->conn_info.dstPid == conn->conn_info.dstPid)
 		{
 			elog(DEBUG5, "conn_addhash(): duplicate ?! node %d route %d", conn->conn_info.motNodeId, conn->route);
-			return;
+			return true; /* false *only* indicates memory-alloc failure. */
 		}
 	}
 
 	newbin = (struct conn_htab_bin *)malloc(sizeof(struct conn_htab_bin));
 	if (newbin == NULL)
-		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."),
-						errdetail("%m%s", "malloc")));
+	{
+		return false;
+	}
 	newbin->conn = conn;
 	newbin->next = conn_htab[hashcode];
 	conn_htab[hashcode] = newbin;
 
+	return true;
 }
 
 static void
@@ -580,7 +599,7 @@ findConnByHeader(struct icpkthdr *hdr)
 /*
  * This must be called with the rx_thread mutex held (maybe these locks need to be restructured a bit).
  */
-static void
+static bool
 conn_rehash(void)
 {
 	int i;
@@ -595,6 +614,7 @@ conn_rehash(void)
 	{
 		elog(ERROR, "Could not resize connection hash table (old size %d, new size %d)",
 			 conn_htab_size, new_htab_size);
+		return false;
 	}
 
 	for (i=0; i < new_htab_size; i++)
@@ -626,6 +646,8 @@ conn_rehash(void)
 	free(conn_htab);
 	conn_htab_size = new_htab_size;
 	conn_htab = new_conn_htab;
+
+	return true;
 }
 
 static void
@@ -1011,7 +1033,13 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	conn->conn_info.sessionId = gp_session_id;
 	conn->conn_info.commandCount = gp_command_count;
 
-	conn_addhash(conn);
+	if (!conn_addhash(conn))
+	{
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."),
+						errdetail("%m%s", "malloc")));
+		/* not reached */
+	}
 
 #ifdef USE_ASSERT_CHECKING
 	if (testmode_drop(gp_udpic_dropxmit_percent))
@@ -1105,7 +1133,13 @@ SetupUDPInterconnect(EState *estate)
 	/* rearrange the connection hash table, if required */
 	if (conn_htab_size != DEFAULT_CONN_HTAB_SIZE)
 	{
-		conn_rehash();
+		if (!conn_rehash())
+		{
+			pthread_mutex_unlock(&rx_thread_mutex);
+
+			elog(ERROR, "Could not resize connection hash table allocation failed");
+			/* not reached */
+		}
 	}
 
 	/* now we'll do some setup for each of our Receiving Motion Nodes. */
@@ -1148,9 +1182,14 @@ SetupUDPInterconnect(EState *estate)
 			conn->pkt_q_tail = 0;
 			conn->pkt_q = (uint8 **)malloc(Gp_interconnect_queue_depth * sizeof(char *));
 
-			if(!conn->pkt_q)
+			if (!conn->pkt_q)
+			{
+				pthread_mutex_unlock(&rx_thread_mutex);
+
 				ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 					errmsg("Setup UDP interconnect failed: out of memory")));
+				/* not reached */
+			}
 
 			/* connection header info (defining characteristics of this connection) */
 			MemSet(&conn->conn_info, 0, sizeof(conn->conn_info));
@@ -1171,7 +1210,15 @@ SetupUDPInterconnect(EState *estate)
 
 			estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, conn);
 
-			conn_addhash(conn);
+			if (!conn_addhash(conn))
+			{
+				pthread_mutex_unlock(&rx_thread_mutex);
+
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect error: could not allocate UDP-IC hash, out of memory."),
+								errdetail("%m%s", "malloc")));
+				/* not reached */
+			}
 		}
 
 		expectedTotalIncoming += pEntry->numConns;
@@ -1530,7 +1577,6 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 			}
 		}
 	}
-	pthread_mutex_lock(&rx_thread_mutex);
 
 	/* if we have issued *any* stop requests, we may have peers which
 	 * we will mess up if we just start ignoring them (they depend on
@@ -1549,6 +1595,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 			getChunkTransportState(transportStates, aSlice->sliceIndex, &pEntry);
 			Assert(pEntry);
 
+			pthread_mutex_lock(&rx_thread_mutex);
 			for (i = 0; i < pEntry->numConns; i++)
 			{
 				conn = pEntry->conns + i;
@@ -1566,10 +1613,12 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 					pendingStop = lappend(pendingStop, conn);
 				}
 			}
+			pthread_mutex_unlock(&rx_thread_mutex);
 		}
 
 		elog(DEBUG3, "TeardownUDP: %d pending stops", list_length(pendingStop));
 
+		pthread_mutex_lock(&rx_thread_mutex);
 		while ((cell = list_head(pendingStop)) != NULL)
 		{
 			conn = (MotionConn *)lfirst(cell);
@@ -1616,6 +1665,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 				pthread_mutex_lock(&rx_thread_mutex);
 			}
 		}
+		pthread_mutex_unlock(&rx_thread_mutex);
 	}
 
 	/*
@@ -1637,6 +1687,7 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
             elog(DEBUG3, "Interconnect closing connections from slice%d",
                  aSlice->sliceIndex);
 
+		pthread_mutex_lock(&rx_thread_mutex);
 		/*
 		 * receivers know that they no longer care about data from
 		 * below ... so we can safely discard data queued in both
@@ -1663,10 +1714,13 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 		rx_buf_maxcount -= (pEntry->numConns * Gp_interconnect_queue_depth);
 		pfree(pEntry->conns);
 
+		pthread_mutex_unlock(&rx_thread_mutex);
+
 		/* remove it */
 		removeChunkTransportState(transportStates, aSlice->sliceIndex);
 	}
 
+	pthread_mutex_lock(&rx_thread_mutex);
 	/* now that we've moved active rx-buffers to the freelist, we can prune the freelist itself */
 	while (rx_buf_count > rx_buf_maxcount)
 	{

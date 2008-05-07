@@ -6,6 +6,13 @@
  *
  * IDENTIFICATION:
  *	   $Id$
+ *
+ * $File$
+ * $Change$
+ * $Author$
+ * $DateTime$
+ * Reviewers: jzhang, ftian, tkordas
+ *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"

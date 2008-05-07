@@ -1,13 +1,19 @@
 /*-------------------------------------------------------------------------
-* tupchunklist.c
-*	  The data-structures and functions for dealing with tuple chunk lists.
-*
-* Copyright (c) 2005, Greenplum
-*
-* IDENTIFICATION:
-*	  $Id$
-*-------------------------------------------------------------------------
-*/
+ * tupchunklist.c
+ *	  The data-structures and functions for dealing with tuple chunk lists.
+ *
+ * Copyright (c) 2005-2008, Greenplum
+ *
+ * IDENTIFICATION:
+ *	  $Id$
+ * 
+ * $File$
+ * $Change$
+ * $Author$
+ * $DateTime$
+ * Reviewers: jzhang, ftian, tkordas
+ *-------------------------------------------------------------------------
+ */
 #include "postgres.h"
 
 #include <arpa/inet.h>

@@ -1,13 +1,21 @@
 /*-------------------------------------------------------------------------
- * ml_ipc.c
- *	   Motion Layer IPC Layer.
+ * ic_common.c
+ *	   Interconnect code shared between UDP, and TCP IPC Layers.
  *
- * Copyright (c) 2005-2007, Greenplum
+ * Copyright (c) 2005-2008, Greenplum
  *
  * IDENTIFICATION:
  *	   $Id$
+ *
+ *
+ * $File$
+ * $Change$
+ * $Author$
+ * $DateTime$
+ * Reviewers: jzhang, tkordas
  *-------------------------------------------------------------------------
  */
+
 #ifdef WIN32
 /*
  * Need this to get WSAPoll (poll). And it
@@ -757,10 +765,16 @@ removeChunkTransportState(ChunkTransportState *transportStates,
 {
 	ChunkTransportStateEntry *pEntry = NULL;
 
-	if (motNodeID > transportStates->size || !transportStates->states[motNodeID - 1].valid)
+	if (motNodeID > transportStates->size)
 	{
 		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-						errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove.",
+						errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. (size %d)",
+							   motNodeID, transportStates->size)));
+	}
+	else if (!transportStates->states[motNodeID - 1].valid)
+	{
+		ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+						errmsg("Interconnect Error: Unexpected Motion Node Id: %d. During remove. State not valid",
 							   motNodeID)));
 	}
 	else

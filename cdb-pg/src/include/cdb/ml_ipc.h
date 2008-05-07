@@ -232,9 +232,9 @@ extern void  ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeI
 		else \
 		{ \
 			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR), \
-							errmsg("Interconnect Error: Unexpected Motion Node Id: %d.  This means" \
+							errmsg("Interconnect Error: Unexpected Motion Node Id: %d (size %d). This means" \
 								   " a motion node that wasn't setup is requesting interconnect" \
-								   " resources.", (motNodeID))));		\
+								   " resources.", (motNodeID), (transportState)->size))); \
 			/* not reached */ \
 		} \
 	} while (0)

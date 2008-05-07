@@ -7,6 +7,12 @@
  *
  * IDENTIFICATION
  *	   $Id$
+ *
+ * $File$
+ * $Change$
+ * $Author$
+ * $DateTime$
+ * Reviewers: tkordas
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
