@@ -5,7 +5,7 @@ OPT=-g -O3
 APR=apr-1.2.12
 APU=apr-util-1.2.12
 JSON=json-c-0.6
-LIBEVENT=libevent-1.3e
+LIBEVENT=libevent-1.4.3-stable
 INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
 CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags) -Wall
 APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
@@ -154,7 +154,7 @@ mkext: mkdir
 	@(cd ext/tpch; cp -f dists.dss ../../build/bin/)
 
 veryclean: clean
-	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.3b-1)
+	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.4.3-stable)
 
 clean: 
 	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent)
