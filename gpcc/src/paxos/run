@@ -7,6 +7,6 @@ mkdir Priest-0
 mkdir Priest-0/data
 >Priest-0/data/start
 
-echo -e 'exec python ../bin/main.pyc test 2>&1|tee -a log'>run
+echo -e 'exec python -u ../bin/main.pyc test 2>&1|tee -a log'>run
 
 . ./run

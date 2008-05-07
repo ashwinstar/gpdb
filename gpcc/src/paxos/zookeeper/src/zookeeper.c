@@ -102,33 +102,32 @@ zoo_state(zhandle_t*thiz)
     return thiz->c?CONNECTED_STATE:EXPIRED_SESSION_STATE;
 }
 
-#define ZERRORCASE(a)	case a:return #a;
 ZOOAPI const char*
 zerror(int c)
 {
     switch (c){
-	ZERRORCASE(ZOK)
-	ZERRORCASE(ZSYSTEMERROR)
-	ZERRORCASE(ZRUNTIMEINCONSISTENCY)
-	ZERRORCASE(ZDATAINCONSISTENCY)
-	ZERRORCASE(ZCONNECTIONLOSS)
-	ZERRORCASE(ZMARSHALLINGERROR)
-	ZERRORCASE(ZUNIMPLEMENTED)
-	ZERRORCASE(ZOPERATIONTIMEOUT)
-	ZERRORCASE(ZBADARGUMENTS)
-	ZERRORCASE(ZINVALIDSTATE)
-	ZERRORCASE(ZAPIERROR)
-	ZERRORCASE(ZNONODE)
-	ZERRORCASE(ZNOAUTH)
-	ZERRORCASE(ZBADVERSION)
-	ZERRORCASE(ZNOCHILDRENFOREPHEMERALS)
-	ZERRORCASE(ZNODEEXISTS)
-	ZERRORCASE(ZNOTEMPTY)
-	ZERRORCASE(ZSESSIONEXPIRED)
-	ZERRORCASE(ZINVALIDCALLBACK)
-	ZERRORCASE(ZINVALIDACL)
-	ZERRORCASE(ZAUTHFAILED)
-	ZERRORCASE(ZCLOSING)
+	case ZOK:return "ok";
+	case ZSYSTEMERROR:return "system error";
+	case ZRUNTIMEINCONSISTENCY:return "run time inconsistency";
+	case ZDATAINCONSISTENCY:return "data inconsistency";
+	case ZCONNECTIONLOSS:return "connection loss";
+	case ZMARSHALLINGERROR:return "marshalling error";
+	case ZUNIMPLEMENTED:return "unimplemented";
+	case ZOPERATIONTIMEOUT:return "operation timeout";
+	case ZBADARGUMENTS:return "bad arguments";
+	case ZINVALIDSTATE:return "invalid zhandle state";
+	case ZAPIERROR:return "api error";
+	case ZNONODE:return "no node";
+	case ZNOAUTH:return "not authenticated";
+	case ZBADVERSION:return "bad version";
+	case ZNOCHILDRENFOREPHEMERALS:return "no children for ephemerals";
+	case ZNODEEXISTS:return "node exists";
+	case ZNOTEMPTY:return "not empty";
+	case ZSESSIONEXPIRED:return "session expired";
+	case ZINVALIDCALLBACK:return "invalid callback";
+	case ZINVALIDACL:return "invalid acl";
+	case ZAUTHFAILED:return "authentication failed";
+	case ZCLOSING:return "ZCLOSING";
     }
-    return "Zerror does not know what that return code is.";
+    return "unknown error";
 }

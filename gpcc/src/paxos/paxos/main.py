@@ -20,7 +20,7 @@ N_PRIEST = 3
 def test():
     m = UdpMessenger()
 #    m = SimpleMessenger()
-    m.setDisableLog(False)
+#    m.setDisableLog(False)
     priests = []
     hostname = socket.gethostbyname(socket.gethostname())
     for i in xrange(N_PRIEST):

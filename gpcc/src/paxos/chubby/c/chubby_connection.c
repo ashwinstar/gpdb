@@ -402,7 +402,7 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
 	    return e;
 	now = time(NULL);
 	if (stat.decreeNumber > dn){
-	    expire = now+waitTime+1;
+	    expire = waitTime==0?0:now+waitTime+1;
 	    dn = stat.decreeNumber;
 	}
 	if (stat.decreeNumber==0 || expire<now){

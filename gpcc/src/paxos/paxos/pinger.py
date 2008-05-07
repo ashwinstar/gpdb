@@ -144,7 +144,8 @@ class Pinger(Role):
 	s = set(self.__configSet)
 	for d in self.__map.itervalues():
 	    s.add(d.fro)
-	    s.update(d.result.split(','))
+	    if d.result:
+		s.update(d.result.split(','))
 	return s
 
     def handleMessage(self,decreeNumber,m):

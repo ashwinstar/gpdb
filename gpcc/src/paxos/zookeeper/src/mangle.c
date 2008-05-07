@@ -21,34 +21,21 @@ format(char**s,int*len,const char*fmt,...)
 }
 
 int
-mangle_path(char*realpath,int max_realpath_len,const char*path,int isdir)
+mangle_path(char*realpath,int max_realpath_len,const char*path)
 {
-    *realpath = 0;
+    const char*a;
     format(&realpath,&max_realpath_len,"%s",PREFIX);
-    for (;;){
-        const char*a;
-	while (*path == '/')
-	    path++;
-	if (!*path){
-	    if (!isdir)
-	        return 1;
-	    break;
-	}
-	a = strchr(path,'/');
-	if (isdir && !a)
-	    a = path+strlen(path);
-	if (a){
-	    format(&realpath,&max_realpath_len,"d-");
-	    while (path < a)
-		format(&realpath,&max_realpath_len,"%c",*path++);
-	    format(&realpath,&max_realpath_len,"/");
-	}else{
-	    format(&realpath,&max_realpath_len,"f-");
-	    while (*path)
-		format(&realpath,&max_realpath_len,"%c",*path++);
-	    break;
-	}
+    if (*path++ != '/')
+        return 1;
+    while ((a=strchr(path,'/'))){
+	format(&realpath,&max_realpath_len,"d-");
+	while (path <= a)
+	    format(&realpath,&max_realpath_len,"%c",*path++);
     }
+    format(&realpath,&max_realpath_len,"f-");
+    while (*path)
+	format(&realpath,&max_realpath_len,"%c",*path++);
+    *realpath = 0;
     return !max_realpath_len;
 }
 
@@ -59,6 +46,7 @@ unmangle_path(char*path)
     if (strncmp(a,PREFIX,strlen(PREFIX)))
 	return 1;
     a += strlen(PREFIX);
+    *path++ = '/';
     while (*a){
 	if ((a[0]!='d' && a[0]!='f') || a[1]!='-')
 	   return 1;
