@@ -422,19 +422,22 @@ CheckAttributeType(const char *attname, Oid atttypid)
 	 *
 	 * Refuse any attempt to create a pseudo-type column.
 	 */
-	if (atttypid == UNKNOWNOID)
-		ereport(WARNING,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("column \"%s\" has type \"unknown\"", attname),
-				 errdetail("Proceeding with relation creation anyway.")));
-	else if (att_typtype == 'p')
+	if (Gp_role != GP_ROLE_EXECUTE)
 	{
-		/* Special hack for pg_statistic: allow ANYARRAY during initdb */
-		if (atttypid != ANYARRAYOID || IsUnderPostmaster)
-			ereport(ERROR,
+		if (atttypid == UNKNOWNOID)
+			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("column \"%s\" has pseudo-type %s",
-							attname, format_type_be(atttypid))));
+					 errmsg("column \"%s\" has type \"unknown\"", attname),
+					 errdetail("Proceeding with relation creation anyway.")));
+		else if (att_typtype == 'p')
+		{
+			/* Special hack for pg_statistic: allow ANYARRAY during initdb */
+			if (atttypid != ANYARRAYOID || IsUnderPostmaster)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("column \"%s\" has pseudo-type %s",
+								attname, format_type_be(atttypid))));
+		}
 	}
 }
 
