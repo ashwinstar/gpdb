@@ -43,9 +43,11 @@ zframe_unlock(struct zframe*thiz)
 int
 zframe_returnRc(struct zframe*thiz,int rc)
 {
-    if (thiz->a)
-        zookeeper_free(thiz->a);
     zframe_unlock(thiz);
+    if (thiz->string)
+        zookeeper_free(thiz->string);
+    if (thiz->list)
+        chubby_connection_listFree(thiz->zh->c,thiz->list);
     if (rc == ZCONNECTIONLOSS){
 	chubby_connection_close(thiz->zh->c);
 	thiz->zh->c = NULL;

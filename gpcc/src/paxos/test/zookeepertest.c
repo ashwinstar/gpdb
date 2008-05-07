@@ -63,8 +63,10 @@ main(int argc,char**argv)
     zhandle_t*zh;
     int rc;
     int passed=0,total=0;
+    int size;
     char s[100],t[350];
     struct Stat stat;
+    struct String_vector strings;
 #ifndef REALZOOKEEPER
     zookeeperExtra_setMallocAndFree(test_malloc,test_free);
     if (gethostname(s,sizeof s)){
@@ -85,10 +87,20 @@ main(int argc,char**argv)
     TEST(rc=zoo_delete(zh,s,0),("rc=%s",zerror(rc)),rc==ZOK)
     TEST(rc=zoo_delete(zh,"/test/file",-1),("rc=%s",zerror(rc)),rc==ZOK||rc==ZNONODE)
     TEST(rc=zoo_create(zh,"/test/file","contents",8,&OPEN_ACL_UNSAFE,0,s,sizeof s),("rc=%s s=%s",zerror(rc),s),rc==ZOK)
+    size = sizeof t;
+    memset(t,0,sizeof t);
+    TEST(rc=zoo_get(zh,"/test/file",0,t,&size,&stat),("rc=%s buf=%s size=%d %s",zerror(rc),t,size,statToString(&stat)),rc==ZOK&&!strcmp(t,"contents")&&size==8&&stat.version==0)
+    TEST(rc=zoo_set(zh,"/test/file","changed",7,0),("rc=%s",zerror(rc)),rc==ZOK)
+    size = sizeof t;
+    memset(t,0,sizeof t);
+    TEST(rc=zoo_get(zh,"/test/file",0,t,&size,&stat),("rc=%s buf=%s size=%d %s",zerror(rc),t,size,statToString(&stat)),rc==ZOK&&!strcmp(t,"changed")&&size==7&&stat.version==1)
     TEST(rc=zoo_exists(zh,"/test/file",0,&stat),("rc=%s %s",zerror(rc),statToString(&stat)),rc==ZOK)
-    TEST(rc=zoo_delete(zh,s,0),("rc=%s",zerror(rc)),rc==ZOK)
+    TEST(rc=zoo_delete(zh,s,1),("rc=%s",zerror(rc)),rc==ZOK)
     TEST(rc=zoo_create(zh,"/test/file","contents",8,&OPEN_ACL_UNSAFE,0,s,sizeof s),("rc=%s s=%s",zerror(rc),s),rc==ZOK)
     TEST(rc=zoo_exists(zh,"/test/file",0,&stat),("rc=%s %s",zerror(rc),statToString(&stat)),rc==ZOK)
+    memset(&strings,0,sizeof strings);
+    TEST(rc=zoo_get_children(zh,"/test",0,&strings),("rc=%s %d %s",zerror(rc),strings.count,rc==0&&strings.count==1?strings.data[0]:""),rc==ZOK&&strings.count==1&&!strcmp(strings.data[0],"file"))
+    deallocate_String_vector(&strings);
     TEST(rc=zoo_delete(zh,s,0),("rc=%s",zerror(rc)),rc==ZOK)
     memset(&stat,0,sizeof stat);
     TEST(rc=zoo_exists(zh,"/test/file",0,&stat),("rc=%s %s",zerror(rc),statToString(&stat)),rc==ZNONODE)

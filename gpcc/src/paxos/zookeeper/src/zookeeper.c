@@ -102,6 +102,22 @@ zoo_state(zhandle_t*thiz)
     return thiz->c?CONNECTED_STATE:EXPIRED_SESSION_STATE;
 }
 
+ZOOAPI int
+zoo_get_acl(zhandle_t*thiz,const char*path,struct ACL_vector*acl,struct Stat*stat)
+{
+    if (acl)
+	memset(acl,0,sizeof*acl);
+    if (stat)
+	memset(stat,0,sizeof*stat);
+    return ZOK;
+}
+
+ZOOAPI int
+zoo_set_acl(zhandle_t*thiz,const char*path,int version,const struct ACL_vector*acl)
+{
+    return ZOK;
+}
+
 ZOOAPI const char*
 zerror(int c)
 {

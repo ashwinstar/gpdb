@@ -6,7 +6,8 @@
 struct zframe{
     zhandle_t*zh;
     chubby_connection_t*l;
-    void*a;
+    chubby_string_t*string;
+    char**list;
 };
 
 void zframe_init(struct zframe*thiz,zhandle_t*zh);
