@@ -448,7 +448,15 @@ checkPolicyForUniqueIndex(Relation rel, AttrNumber *indattr, int nidxatts,
 	for (i = 0; i < pol->nattrs; i++)
 		polbm = bms_add_member(polbm, pol->attrs[i]);
 	for (i = 0; i < nidxatts; i++)
+	{
+		if (indattr[i] < 0)
+        	ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot create %s on system column",
+							isprimary ? "primary key" : "unique index")));
+
 		indbm = bms_add_member(indbm, indattr[i]);
+	}
 
 	Assert(bms_membership(polbm) != BMS_EMPTY_SET);
 	Assert(bms_membership(indbm) != BMS_EMPTY_SET);
