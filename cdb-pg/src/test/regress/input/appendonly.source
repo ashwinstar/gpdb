@@ -34,7 +34,7 @@ CREATE TABLE tenk_ao1 (
 	stringu1	name,
 	stringu2	name,
 	string4		name
-) with (appendonly=true);
+) with (appendonly=true,compression=false);
 
 CREATE TABLE tenk_ao2 (
 	unique1 	int4,
@@ -151,7 +151,7 @@ DROP TABLE tenk_ao2;
 DROP TABLE tenk_ao3;
 
 -- CTAS
-CREATE TABLE tenk_ao1 with(appendonly=true) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_ao1 with(appendonly=true, compression=false) AS SELECT * FROM tenk_heap;
 CREATE TABLE tenk_ao2 with(appendonly=true, compression=true) AS SELECT * FROM tenk_heap;
 CREATE TABLE tenk_ao3 with(appendonly=true, compression=true, compresslevel=6) AS SELECT * FROM tenk_heap;
 SELECT relkind, reloptions FROM pg_class WHERE relname LIKE 'tenk_ao%' ORDER BY relname;
@@ -176,7 +176,7 @@ SELECT count(*) FROM tenk_ao1 t1, tenk_ao2 t2 where t1.unique1 = t2.unique2;
 SELECT count(*) FROM tenk_ao1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
 
 -- TRUNCATE
-TRUNCATE tenk_ao1;
+TRUNCATE tenk_ao2;
 
 -------------------- 
 -- unsupported sql 
@@ -190,6 +190,14 @@ UPDATE tenk_ao2 SET unique2 = 1 WHERE unique2 = 2;
 
 -- CREATE INDEX (not supported)
 CREATE INDEX tenk_ao1_unique1 ON tenk_ao1 USING btree(unique1 int4_ops);
+
+-- ALTER
+ALTER TABLE tenk_ao1 RENAME TO tenk_renamed;
+ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;
+ALTER TABLE tenk_renamed ALTER COLUMN twothousand SET NOT NULL;
+ALTER TABLE tenk_renamed ADD COLUMN newcol2 int NOT NULL; -- should fail
+SELECT count(*) FROM tenk_renamed;
+ALTER TABLE tenk_renamed RENAME TO tenk_ao1;
 
 -------------------- 
 -- supported sql 

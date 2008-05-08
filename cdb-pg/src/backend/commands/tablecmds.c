@@ -15,6 +15,7 @@
  */
 #include "postgres.h"
 
+#include "access/appendonlyam.h"
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/reloptions.h"
@@ -3523,12 +3524,15 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		bool	   *isnull;
 		TupleTableSlot *oldslot;
 		TupleTableSlot *newslot;
-		HeapScanDesc scan;
-		HeapTuple	tuple;
+		HeapScanDesc heapscan = NULL;
+		AppendOnlyScanDesc aoscan = NULL;  
+		HeapTuple	htuple = NULL;
+		MemTuple	mtuple = NULL;
 		MemoryContext oldCxt;
 		List	   *dropped_attrs = NIL;
 		ListCell   *lc;
-
+		char		relkind = oldrel->rd_rel->relkind;
+			
 		econtext = GetPerTupleExprContext(estate);
 
 		/*
@@ -3557,110 +3561,231 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 				dropped_attrs = lappend_int(dropped_attrs, i);
 		}
 
+		
 		/*
 		 * Scan through the rows, generating a new row if needed and then
 		 * checking all the constraints.
 		 */
-		scan = heap_beginscan(oldrel, SnapshotNow, 0, NULL);
-
-		/*
-		 * Switch to per-tuple memory context and reset it for each tuple
-		 * produced, so we don't leak memory.
-		 */
-		oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-
-		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		if(relkind != RELKIND_APPEND_ONLY)
 		{
-			if (newrel)
+			heapscan = heap_beginscan(oldrel, SnapshotNow, 0, NULL);
+			
+			/*
+			 * Switch to per-tuple memory context and reset it for each tuple
+			 * produced, so we don't leak memory.
+			 */
+			oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+			
+			while ((htuple = heap_getnext(heapscan, ForwardScanDirection)) != NULL)
 			{
-				Oid			tupOid = InvalidOid;
-
-				/* Extract data from old tuple */
-				heap_deform_tuple(tuple, oldTupDesc, values, isnull);
-				if (oldTupDesc->tdhasoid)
-					tupOid = HeapTupleGetOid(tuple);
-
-				/* Set dropped attributes to null in new tuple */
-				foreach(lc, dropped_attrs)
-					isnull[lfirst_int(lc)] = true;
-
-				/*
-				 * Process supplied expressions to replace selected columns.
-				 * Expression inputs come from the old tuple.
-				 */
-				ExecStoreHeapTuple(tuple, oldslot, InvalidBuffer, false);
-				econtext->ecxt_scantuple = oldslot;
-
-				foreach(l, tab->newvals)
+				if (newrel)
 				{
-					NewColumnValue *ex = lfirst(l);
-
-					values[ex->attnum - 1] = ExecEvalExpr(ex->exprstate,
-														  econtext,
-													 &isnull[ex->attnum - 1],
-														  NULL);
+					Oid			tupOid = InvalidOid;
+					
+					/* Extract data from old tuple */
+					heap_deform_tuple(htuple, oldTupDesc, values, isnull);
+					if (oldTupDesc->tdhasoid)
+						tupOid = HeapTupleGetOid(htuple);
+					
+					/* Set dropped attributes to null in new tuple */
+					foreach(lc, dropped_attrs)
+						isnull[lfirst_int(lc)] = true;
+					
+					/*
+					 * Process supplied expressions to replace selected columns.
+					 * Expression inputs come from the old tuple.
+					 */
+					ExecStoreHeapTuple(htuple, oldslot, InvalidBuffer, false);
+					econtext->ecxt_scantuple = oldslot;
+					
+					foreach(l, tab->newvals)
+					{
+						NewColumnValue *ex = lfirst(l);
+						
+						values[ex->attnum - 1] = ExecEvalExpr(ex->exprstate,
+															  econtext,
+															  &isnull[ex->attnum - 1],
+															  NULL);
+					}
+					
+					/*
+					 * Form the new tuple. Note that we don't explicitly pfree it,
+					 * since the per-tuple memory context will be reset shortly.
+					 */
+					htuple = heap_form_tuple(newTupDesc, values, isnull);
+					
+					/* Preserve OID, if any */
+					if (newTupDesc->tdhasoid)
+						HeapTupleSetOid(htuple, tupOid);
 				}
-
-				/*
-				 * Form the new tuple. Note that we don't explicitly pfree it,
-				 * since the per-tuple memory context will be reset shortly.
-				 */
-				tuple = heap_form_tuple(newTupDesc, values, isnull);
-
-				/* Preserve OID, if any */
-				if (newTupDesc->tdhasoid)
-					HeapTupleSetOid(tuple, tupOid);
-			}
-
-			/* Now check any constraints on the possibly-changed tuple */
-			ExecStoreHeapTuple(tuple, newslot, InvalidBuffer, false);
-			econtext->ecxt_scantuple = newslot;
-
-			foreach(l, notnull_attrs)
-			{
-				int			attn = lfirst_int(l);
-
-				if (heap_attisnull(tuple, attn + 1))
-					ereport(ERROR,
-							(errcode(ERRCODE_NOT_NULL_VIOLATION),
-							 errmsg("column \"%s\" contains null values",
-								NameStr(newTupDesc->attrs[attn]->attname))));
-			}
-
-			foreach(l, tab->constraints)
-			{
-				NewConstraint *con = lfirst(l);
-
-				switch (con->contype)
+				
+				/* Now check any constraints on the possibly-changed tuple */
+				ExecStoreHeapTuple(htuple, newslot, InvalidBuffer, false);
+				econtext->ecxt_scantuple = newslot;
+				
+				foreach(l, notnull_attrs)
 				{
-					case CONSTR_CHECK:
-						if (!ExecQual(con->qualstate, econtext, true))
-							ereport(ERROR,
-									(errcode(ERRCODE_CHECK_VIOLATION),
-									 errmsg("check constraint \"%s\" is violated by some row",
-											con->name)));
-						break;
-					case CONSTR_FOREIGN:
-						/* Nothing to do here */
-						break;
-					default:
-						elog(ERROR, "unrecognized constraint type: %d",
-							 (int) con->contype);
+					int			attn = lfirst_int(l);
+					
+					if (heap_attisnull(htuple, attn + 1))
+						ereport(ERROR,
+								(errcode(ERRCODE_NOT_NULL_VIOLATION),
+								 errmsg("column \"%s\" contains null values",
+										NameStr(newTupDesc->attrs[attn]->attname))));
 				}
+				
+				foreach(l, tab->constraints)
+				{
+					NewConstraint *con = lfirst(l);
+					
+					switch (con->contype)
+					{
+						case CONSTR_CHECK:
+							if (!ExecQual(con->qualstate, econtext, true))
+								ereport(ERROR,
+										(errcode(ERRCODE_CHECK_VIOLATION),
+										 errmsg("check constraint \"%s\" is violated by some row",
+												con->name)));
+							break;
+						case CONSTR_FOREIGN:
+							/* Nothing to do here */
+							break;
+						default:
+							elog(ERROR, "unrecognized constraint type: %d",
+								 (int) con->contype);
+					}
+				}
+				
+				/* Write the tuple out to the new relation */
+				if (newrel)
+					simple_heap_insert(newrel, htuple);
+				
+				ResetExprContext(econtext);
+				
+				CHECK_FOR_INTERRUPTS();
 			}
-
-			/* Write the tuple out to the new relation */
-			if (newrel)
-				simple_heap_insert(newrel, tuple);
-
-			ResetExprContext(econtext);
-
-			CHECK_FOR_INTERRUPTS();
+			
+			MemoryContextSwitchTo(oldCxt);
+			heap_endscan(heapscan);
+			
 		}
-
-		MemoryContextSwitchTo(oldCxt);
-		heap_endscan(scan);
-
+		else
+		{
+			AppendOnlyInsertDesc aoInsertDesc = NULL;
+			
+			if(newrel)
+				aoInsertDesc = appendonly_insert_init(newrel);
+			
+			aoscan = appendonly_beginscan(oldrel, 0, NULL);
+			
+			/*
+			 * Switch to per-tuple memory context and reset it for each tuple
+			 * produced, so we don't leak memory.
+			 */
+			oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+			
+			while ((mtuple = appendonly_getnext(aoscan, ForwardScanDirection, NULL)) != NULL)
+			{
+				if (newrel)
+				{
+					Oid			tupOid = InvalidOid;
+					
+					ExecStoreMemTuple(mtuple, oldslot, false);
+					econtext->ecxt_scantuple = oldslot;
+					
+					/* Extract data from old tuple */
+					for(i = 0; i < oldslot->tts_tupleDescriptor->natts ; i++)
+						values[i] = slot_getattr(oldslot, i+1, &isnull[i]);
+										
+					if (oldTupDesc->tdhasoid)
+						tupOid = MemTupleGetOid(mtuple, aoInsertDesc->mt_bind);
+					
+					/* Set dropped attributes to null in new tuple */
+					foreach(lc, dropped_attrs)
+						isnull[lfirst_int(lc)] = true;
+					
+					/*
+					 * Process supplied expressions to replace selected columns.
+					 * Expression inputs come from the old tuple.
+					 */
+					foreach(l, tab->newvals)
+					{
+						NewColumnValue *ex = lfirst(l);
+						
+						values[ex->attnum - 1] = ExecEvalExpr(ex->exprstate,
+															  econtext,
+															  &isnull[ex->attnum - 1],
+															  NULL);
+					}
+					
+					/*
+					 * Form the new tuple. Note that we don't explicitly pfree it,
+					 * since the per-tuple memory context will be reset shortly.
+					 */
+					mtuple = memtuple_form_to(aoInsertDesc->mt_bind, 
+											  values, isnull, 
+											  NULL, NULL);
+					
+					
+					/* Preserve OID, if any */
+					if (newTupDesc->tdhasoid)
+						MemTupleSetOid(mtuple, aoInsertDesc->mt_bind, tupOid);
+				}
+				
+				/* Now check any constraints on the possibly-changed tuple */
+				ExecStoreMemTuple(mtuple, newslot, false);
+				econtext->ecxt_scantuple = newslot;
+				
+				foreach(l, notnull_attrs)
+				{
+					int			attn = lfirst_int(l);
+					
+					if (memtuple_attisnull(mtuple, oldslot->tts_mt_bind, attn + 1))
+						ereport(ERROR,
+								(errcode(ERRCODE_NOT_NULL_VIOLATION),
+								 errmsg("column \"%s\" contains null values",
+										NameStr(newTupDesc->attrs[attn]->attname))));
+				}
+				
+				foreach(l, tab->constraints)
+				{
+					NewConstraint *con = lfirst(l);
+					
+					switch (con->contype)
+					{
+						case CONSTR_CHECK:
+							if (!ExecQual(con->qualstate, econtext, true))
+								ereport(ERROR,
+										(errcode(ERRCODE_CHECK_VIOLATION),
+										 errmsg("check constraint \"%s\" is violated by some row",
+												con->name)));
+							break;
+						case CONSTR_FOREIGN:
+							/* Nothing to do here */
+							break;
+						default:
+							elog(ERROR, "unrecognized constraint type: %d",
+								 (int) con->contype);
+					}
+				}
+				
+				/* Write the tuple out to the new relation */
+				if (newrel)
+					appendonly_insert(aoInsertDesc, mtuple);
+				
+				ResetExprContext(econtext);
+				
+				CHECK_FOR_INTERRUPTS();
+				
+			}
+			
+			MemoryContextSwitchTo(oldCxt);
+			appendonly_endscan(aoscan);
+			
+			if(newrel)
+				appendonly_insert_finish(aoInsertDesc);
+		}
+		
 		ExecDropSingleTupleTableSlot(oldslot);
 		ExecDropSingleTupleTableSlot(newslot);
 	}
@@ -3713,7 +3838,8 @@ ATGetQueueEntry(List **wqueue, Relation rel)
 static void
 ATSimplePermissions(Relation rel, bool allowView)
 {
-	if (rel->rd_rel->relkind != RELKIND_RELATION)
+	if (rel->rd_rel->relkind != RELKIND_RELATION && 
+		rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
 	{
 		if (rel->rd_rel->relkind == RELKIND_EXTERNAL)
 		{
@@ -3723,13 +3849,6 @@ ATSimplePermissions(Relation rel, bool allowView)
 							RelationGetRelationName(rel)),
 					 errhint("drop the external relation and re-create it with your changes")));
 		}		
-		else if (rel->rd_rel->relkind == RELKIND_APPEND_ONLY)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-					 errmsg("altering an append-only relation (\"%s\") is not yet supported",
-							RelationGetRelationName(rel))));
-		}
 		else if (allowView)
 		{
 			if (rel->rd_rel->relkind != RELKIND_VIEW)

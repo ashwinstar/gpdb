@@ -677,17 +677,29 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 bool memtuple_attisnull(MemTuple mtup, MemTupleBinding *pbind, int attnum)
 {
 	MemTupleBindingCols *colbind = memtuple_get_islarge(mtup, pbind) ? &pbind->large_bind : &pbind->bind;
-	unsigned char *nullp = NULL;
 	Assert(mtup && pbind && pbind->tupdesc);
-	Assert(attnum > 0 && attnum <= pbind->tupdesc->natts);
-
+	Assert(attnum > 0);
+	
+	/*
+	 * This used to be an Assert. However, we follow the logic of
+	 * heap_attisnull() and treat attnums > lastatt as NULL. This
+	 * is currently used in ALTER ADD COLUMN NOT NULL.
+	 * 
+	 * Unfortunately this also means that the caller needs to be
+	 * extra careful passing in the correct attnum argument.
+	 */
+	if (attnum > (int) pbind->tupdesc->natts)
+		return true;
+	
+	/*
+	 * is there a NULL value in any of the attributes?
+	 */
 	if(!memtuple_get_hasnull(mtup, pbind))
 		return false;
-
-	nullp = memtuple_get_nullp(mtup, pbind);
-	return nullp[colbind->bindings[attnum-1].null_byte] & colbind->bindings[attnum-1].null_mask;
+	
+	return (mtup->PRIVATE_mt_bits[colbind->bindings[attnum-1].null_byte] & colbind->bindings[attnum-1].null_mask);
 }
-				
+
 Datum memtuple_getattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull)
 {
 	bool hasnull = memtuple_get_hasnull(mtup, pbind);
