@@ -661,9 +661,6 @@ heaptuple_form_to(TupleDesc tupleDescriptor, Datum *values, bool *isnull, HeapTu
 				 errmsg("number of columns (%d) exceeds limit (%d)",
 						numberOfAttributes, MaxTupleAttributeNumber)));
 
-	if(numberOfAttributes == 3 && DatumGetInt32(values[0]) == 123456)
-		debug_break();
-
 	/*
 	 * Check for nulls and embedded tuples; expand any toasted attributes in
 	 * embedded tuples.  This preserves the invariant that toasting can only

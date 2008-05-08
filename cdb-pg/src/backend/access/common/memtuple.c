@@ -442,9 +442,6 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 	uint32 null_save_len;
 	MemTupleBindingCols *colbind;
 
-	if(pbind->tupdesc->natts == 3 && DatumGetInt32(values[0]) == 123456)
-		debug_break();
-
 	/*
 	 * Check for nulls and embedded tuples; expand any toasted attributes in
 	 * embedded tuples.  This preserves the invariant that toasting can only
