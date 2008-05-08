@@ -12,6 +12,8 @@
 #include "access/tuptoaster.h"
 #include "catalog/pg_type.h" 
 
+#include "cdb/cdbvars.h"
+
 #include "utils/debugbreak.h"
 
 /* Memory tuple forat:
@@ -778,3 +780,43 @@ void MemTupleSetOid(MemTuple mtup, MemTupleBinding *pbind, Oid oid)
 }
 
 
+Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull)
+{
+	Assert(mtup && pbind);
+	Assert(isnull);
+	
+	switch(attnum)
+	{
+		/* XXX ? */
+		case SelfItemPointerAttributeNumber:
+		case MinTransactionIdAttributeNumber:
+		case MaxTransactionIdAttributeNumber:
+		case MinCommandIdAttributeNumber:
+		case MaxCommandIdAttributeNumber:
+		case TableOidAttributeNumber:
+			*isnull = true;
+			return 0;
+
+		case gpsegmentIdAttributeNumber:
+		 	*isnull = false;
+			return Int32GetDatum(Gp_segment);
+
+		case ObjectIdAttributeNumber:
+			if(!mtbind_has_oid(pbind))
+			{
+				*isnull = true;
+				return InvalidOid;
+			}
+
+			*isnull = false;
+			return ObjectIdGetDatum(MemTupleGetOid(mtup, pbind));
+		default:
+			Assert(!"Invalid attnum for memtuple_getsysattr");
+			elog(ERROR, "Invalid attnum: %d", attnum);
+	}
+
+	Assert(!"Should Never reach");
+	return 0;
+}
+			
+	

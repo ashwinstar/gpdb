@@ -241,6 +241,9 @@ static inline Datum slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	/* System attribute */
 	if(attnum <= 0)
 	{
+		if(slot->PRIVATE_tts_memtuple)
+			return memtuple_getsysattr(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind, attnum, isnull);
+
 		Assert(slot->PRIVATE_tts_heaptuple);
 		return heap_getsysattr(slot->PRIVATE_tts_heaptuple, attnum, slot->tts_tupleDescriptor, isnull);
 	}
