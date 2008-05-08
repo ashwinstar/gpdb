@@ -49,6 +49,7 @@
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() */
 #include "cdb/cdbpath.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbhash.h"        /* isGreenplumDbHashable() */
 
 #include "cdb/cdbsetop.h"
 #include "cdb/cdbgroup.h"
@@ -179,6 +180,7 @@ static List *fix_inter_tlist_header(List *tlist, two_stage_agg_context *ctx);
 static Oid lookup_agg_transtype(Aggref *aggref);
 static bool hash_safe_type(Oid type);
 static bool sorting_prefixes_grouping(PlannerInfo *root);
+static bool gp_hash_safe_grouping(PlannerInfo *root);
 
 /*
  * Function: cdb_grouping_planner
@@ -264,7 +266,7 @@ cdb_grouping_planner(PlannerInfo* root,
 		}
 		else
 		{
-			if (hash_safe_grouping(root))
+			if (gp_hash_safe_grouping(root))
 			{
 				group_prep = MPP_GRP_PREP_HASH_GROUPS;
 				CdbPathLocus_MakeHashed(&output_locus, root->group_pathkeys);
@@ -2595,13 +2597,11 @@ sorting_prefixes_grouping(PlannerInfo *root)
 }
 
 /*
- * hash_safe_grouping - are grouping operators hashable?
- *
- * We assume hashed aggregation will work if the datatype's equality operator
- * is marked hashjoinable.
+ * gp_hash_safe_grouping - are grouping operators GP hashable for
+ * redistribution motion nodes?
  */
-bool
-hash_safe_grouping(PlannerInfo *root)
+static bool
+gp_hash_safe_grouping(PlannerInfo *root)
 {
 	List *grouptles;
 	ListCell   *glc;
@@ -2611,10 +2611,9 @@ hash_safe_grouping(PlannerInfo *root)
 	foreach(glc, grouptles)
 	{
 		TargetEntry *tle = (TargetEntry *)lfirst(glc);
-		bool		oprcanhash;
-
-		oprcanhash = hash_safe_type(exprType((Node *) tle->expr));
-		if (!oprcanhash)
+		bool canhash;
+		canhash = isGreenplumDbHashable(exprType((Node *)tle->expr));
+		if (!canhash)
 			return false;
 	}
 	return true;

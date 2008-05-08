@@ -72,6 +72,5 @@ extern Plan *add_second_stage_agg(PlannerInfo *root,
 								  List **p_current_pathkeys,
 								  Plan *result_plan);
 extern List *generate_subquery_tlist(Index varno, List *input_tlist);
-extern bool hash_safe_grouping(PlannerInfo *root);
 
 #endif   /* CDBGROUP_H */

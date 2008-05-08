@@ -76,6 +76,7 @@ static bool is_dummy_plan(Plan *plan);
 static double preprocess_limit(PlannerInfo *root,
 				 double tuple_fraction,
 				 int64 *offset_est, int64 *count_est);
+static bool hash_safe_grouping(PlannerInfo *root);
 static List *make_subplanTargetList(PlannerInfo *root, List *tlist,
 					   AttrNumber **groupColIdx, bool *need_tlist_eval);
 static void locate_grouping_columns(PlannerInfo *root,
@@ -2096,6 +2097,37 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	agg_counts->canHashAgg = hash_ok; /* costing is wrong if there are DQAs */
 	
 	return hash_ok && !has_dqa && hash_cheaper;
+}
+
+/*
+ * hash_safe_grouping - are grouping operators hashable?
+ *
+ * We assume hashed aggregation will work if the datatype's equality operator
+ * is marked hashjoinable.
+ */
+static bool
+hash_safe_grouping(PlannerInfo *root)
+{
+	List *grouptles;
+	ListCell   *glc;
+
+	grouptles = get_sortgroupclauses_tles(root->parse->groupClause,
+										 root->parse->targetList);
+	foreach(glc, grouptles)
+	{
+		TargetEntry *tle = (TargetEntry *)lfirst(glc);
+		Operator  optup;
+		bool		oprcanhash;
+
+		optup = equality_oper(exprType((Node *)tle->expr), true);
+		if (!optup)
+			return false;
+		oprcanhash = ((Form_pg_operator) GETSTRUCT(optup))->oprcanhash;
+		ReleaseSysCache(optup);
+		if (!oprcanhash)
+			return false;
+	}
+	return true;
 }
 
 /*---------------
