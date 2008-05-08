@@ -6866,6 +6866,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 		 * table's toast table (if it has one)
 		 */
 		if (tuple_class->relkind == RELKIND_RELATION ||
+			tuple_class->relkind == RELKIND_APPEND_ONLY ||
 			tuple_class->relkind == RELKIND_TOASTVALUE)
 		{
 			List	   *index_oid_list;
@@ -6881,7 +6882,8 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 			list_free(index_oid_list);
 		}
 
-		if (tuple_class->relkind == RELKIND_RELATION)
+		if (tuple_class->relkind == RELKIND_RELATION ||
+			tuple_class->relkind == RELKIND_APPEND_ONLY)
 		{
 			/* If it has a toast table, recurse to change its ownership */
 			if (tuple_class->reltoastrelid != InvalidOid)
@@ -7078,6 +7080,12 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 			break;
 		case RELKIND_INDEX:
 			(void) index_reloptions(rel->rd_am->amoptions, newOptions, true);
+			break;
+		case RELKIND_APPEND_ONLY:
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("altering reloptions for append only tables is not "
+							"permitted")));			
 			break;
 		default:
 			ereport(ERROR,

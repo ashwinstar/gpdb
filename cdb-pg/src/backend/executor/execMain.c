@@ -3216,8 +3216,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 * AlterTableCreateToastTable ends with CommandCounterIncrement(), so that
 	 * the TOAST table will be visible for insertion.
 	 */
-	if(relkind != RELKIND_APPEND_ONLY)
-		AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid);
+	AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid);
 
 	/*
 	 * And open the constructed table for writing.
