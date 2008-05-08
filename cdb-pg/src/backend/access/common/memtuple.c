@@ -12,6 +12,8 @@
 #include "access/tuptoaster.h"
 #include "catalog/pg_type.h" 
 
+#include "utils/debugbreak.h"
+
 /* Memory tuple forat:
  * 4 byte _mt_len,
  * 	highest bit always 1.  (if 0, means it is a heaptuple).
@@ -165,13 +167,13 @@ static inline bool att_bind_as_varoffset(Form_pg_attribute attr)
 }
 
 /* Create columns binding, depends on islarge, using 2 or 4 bytes for offset_len */
-static void create_col_bind(MemTupleBindingCols *colbind, bool islarge, TupleDesc tupdesc)
+static void create_col_bind(MemTupleBindingCols *colbind, bool islarge, TupleDesc tupdesc, int col_align)
 {
 	int i = 0;
 	int physical_col = 0;
 	int pass = 0;
 
-	uint32 cur_offset = tupdesc->tdhasoid ? 8 : 4;
+	uint32 cur_offset = (tupdesc->tdhasoid || col_align == 8) ? 8 : 4;
 	uint32 null_save_entries = compute_null_save_entries(tupdesc->natts);
 
 	/* alloc null save entries.  Zero it */
@@ -318,8 +320,8 @@ MemTupleBinding *create_memtuple_binding(TupleDesc tupdesc)
 
 	pbind->null_bitmap_extra_size = compute_null_bitmap_extra_size(tupdesc, pbind->column_align); 
 
-	create_col_bind(&pbind->bind, false, tupdesc);
-	create_col_bind(&pbind->large_bind, true, tupdesc);
+	create_col_bind(&pbind->bind, false, tupdesc, pbind->column_align);
+	create_col_bind(&pbind->large_bind, true, tupdesc, pbind->column_align);
 
 	return pbind;
 }
@@ -439,6 +441,9 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 	char *varlen_start;
 	uint32 null_save_len;
 	MemTupleBindingCols *colbind;
+
+	if(pbind->tupdesc->natts == 3 && DatumGetInt32(values[0]) == 123456)
+		debug_break();
 
 	/*
 	 * Check for nulls and embedded tuples; expand any toasted attributes in

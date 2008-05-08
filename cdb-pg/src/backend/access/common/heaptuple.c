@@ -32,6 +32,8 @@
 #include "catalog/pg_type.h"
 #include "cdb/cdbvars.h"                /* Gp_segment */
 
+#include "utils/debugbreak.h"
+
 /* ----------------------------------------------------------------
  *						misc support routines
  * ----------------------------------------------------------------
@@ -658,6 +660,9 @@ heaptuple_form_to(TupleDesc tupleDescriptor, Datum *values, bool *isnull, HeapTu
 				(errcode(ERRCODE_TOO_MANY_COLUMNS),
 				 errmsg("number of columns (%d) exceeds limit (%d)",
 						numberOfAttributes, MaxTupleAttributeNumber)));
+
+	if(numberOfAttributes == 3 && DatumGetInt32(values[0]) == 123456)
+		debug_break();
 
 	/*
 	 * Check for nulls and embedded tuples; expand any toasted attributes in
