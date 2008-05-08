@@ -2746,10 +2746,10 @@ CopyFromDispatch(CopyState cstate)
 						{
 							string = cstate->attribute_buf.data + attr_offsets[m];
 
-							if (nulls[m] == false)
-								isnull = false;
-							else
+							if (nulls[m])
 								isnull = true;
+							else
+								isnull = false;
 
 							if (cstate->csv_mode && isnull && cstate->force_notnull_flags[m])
 							{
@@ -2900,7 +2900,7 @@ CopyFromDispatch(CopyState cstate)
 														 * cdb policy */
 					h_key = values[h_attnum - 1];		/* value of this attr			   */
 					
-					if (nulls[h_attnum - 1] != true)
+					if (!nulls[h_attnum - 1])
 						cdbhash(cdbHash, h_key, p_attr_types[i]);
 					else
 						cdbhashnull(cdbHash);
@@ -3468,10 +3468,10 @@ CopyFrom(CopyState cstate)
 
 					string = cstate->attribute_buf.data + attr_offsets[m];
 
-					if (nulls[m] == false)
-						isnull = false;
-					else
+					if (nulls[m])
 						isnull = true;
+					else
+						isnull = false;
 
 					if (cstate->csv_mode && isnull && cstate->force_notnull_flags[m])
 					{

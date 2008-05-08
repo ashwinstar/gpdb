@@ -592,7 +592,7 @@ filegettup(FileScanDesc scan,
 				
 				/* Initialize all values for row to NULL */
 				MemSet(scan->values, 0, scan->num_phys_attrs * sizeof(Datum));
-				MemSet(scan->nulls, true, scan->num_phys_attrs * sizeof(char));
+				MemSet(scan->nulls, true, scan->num_phys_attrs * sizeof(bool));
 
 				MemSet(pstate->attr_offsets, 0, scan->num_phys_attrs * sizeof(int));
 
@@ -667,10 +667,10 @@ filegettup(FileScanDesc scan,
 
 					string = pstate->attribute_buf.data + pstate->attr_offsets[m];
 
-					if (scan->nulls[m] == false)
-						isnull = false;
-					else
+					if (scan->nulls[m])
 						isnull = true;
+					else
+						isnull = false;
 
 					/* we read an SQL NULL, no need to do anything */
 					if (!isnull)
