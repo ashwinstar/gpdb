@@ -222,9 +222,20 @@ tlist_matches_tupdesc(PlanState *ps, List *tlist, Index varno, TupleDesc tupdesc
 	 * If the plan context requires a particular hasoid setting, then that has
 	 * to match, too.
 	 */
-	if (ExecContextForcesOids(ps, &hasoid) &&
-		hasoid != tupdesc->tdhasoid)
-		return false;
+ 	{
+		bool forceOids = ExecContextForcesOids(ps, &hasoid);
+
+		/* If Oid matters, and there are different requirement, then does not match */
+		if(forceOids && hasoid != tupdesc->tdhasoid)
+			return false;
+
+		/* If Oid does not matter, but old tupdesc has oids, does not match either. 
+		 * XXX: Memtuple: tupleformat is different depends on if has oid, so we cannot
+		 * mismatch.
+		 */
+		if(!forceOids && tupdesc->tdhasoid)
+			return false;
+	}
 
 	return true;
 }
