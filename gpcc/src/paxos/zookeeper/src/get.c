@@ -5,10 +5,10 @@
 ZOOAPI int
 zoo_get(zhandle_t*thiz,const char*path,int watch,char*buffer,int*buffer_len,struct Stat*stat)
 {
-    int i,v;
+    int i;
     struct zframe z;
     struct chubby_stat s;
-    chubby_string_t*answer;
+    struct zoostat*zs;
     char mangled[PATH_MAX];
     zframe_init(&z,thiz);
     if (!thiz->c)
@@ -19,18 +19,19 @@ zoo_get(zhandle_t*thiz,const char*path,int watch,char*buffer,int*buffer_len,stru
 	return zframe_returnRc(&z,ZBADARGUMENTS);
     if (zframe_lock(&z))
 	return zframe_returnRc(&z,ZMARSHALLINGERROR);
-    i = chubby_connection_get(z.l,&s,&answer,mangled,ZOOKEEPER_LOCKTIME);
+    i = chubby_connection_get(z.l,&s,&z.string,mangled,*buffer_len+sizeof(struct zoostat),ZOOKEEPER_LOCKTIME);
     if (i)
 	return zframe_returnE(&z,i);
-    memcpy(buffer,answer->a,answer->length<*buffer_len?answer->length:*buffer_len);
-    *buffer_len = answer->length;
-    zookeeper_free(answer);
+    assert(z.string->length>=sizeof(struct zoostat));
+    zs = (struct zoostat*)z.string->a;
+    memcpy(buffer,z.string->a+sizeof(struct zoostat),z.string->length-sizeof(struct zoostat)<*buffer_len?z.string->length-sizeof(struct zoostat):*buffer_len);
+    *buffer_len = s.size-sizeof(struct zoostat);
     if (stat){
-	if (getVersion(&z,mangled,&v))
-	    return zframe_returnRc(&z,ZMARSHALLINGERROR);
 	memset(stat,0,sizeof*stat);
 	stat->czxid = stat->mzxid = s.decreeNumber;
-	stat->version = v;
+	if (zs->create_dn)
+	    stat->czxid = zoo_ntohll(zs->create_dn);
+	stat->version = ntohl(zs->version);
     }
     return zframe_returnRc(&z,ZOK);
 }

@@ -17,8 +17,17 @@ int
 zframe_lock(struct zframe*thiz)
 {
     assert(!thiz->l);
-    if (chubby_connection_lock(thiz->zh->c,&thiz->l,ZOOKEEPER_LOCK,ZOOKEEPER_LOCK_TIMEOUT,ZOOKEEPER_LOCKTIME))
+    if (thiz->zh->l){
+	if (!chubby_connection_renew(thiz->zh->l,ZOOKEEPER_LOCKTIME)){
+	    thiz->l = thiz->zh->l;
+	    return 0;
+	}
+	chubby_connection_close(thiz->zh->l);
+	thiz->zh->l = NULL;
+    }
+    if (chubby_connection_lock(thiz->zh->c,&thiz->zh->l,ZOOKEEPER_LOCK,ZOOKEEPER_LOCK_TIMEOUT,ZOOKEEPER_LOCKTIME))
         return 1;
+    thiz->l = thiz->zh->l;
     return 0;
 }
 
@@ -36,7 +45,6 @@ zframe_unlock(struct zframe*thiz)
 {
     if (thiz->l){
 	chubby_connection_giveUpLock(thiz->l);
-	chubby_connection_close(thiz->l);
 	thiz->l = NULL;
     }
 }
@@ -50,6 +58,8 @@ zframe_returnRc(struct zframe*thiz,int rc)
     if (thiz->list)
         chubby_connection_listFree(thiz->zh->c,thiz->list);
     if (rc == ZCONNECTIONLOSS){
+	chubby_connection_close(thiz->zh->l);
+	thiz->zh->l = NULL;
 	chubby_connection_close(thiz->zh->c);
 	thiz->zh->c = NULL;
     }

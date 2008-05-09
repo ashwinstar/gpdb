@@ -154,7 +154,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
     chubby_connection_t*c2=NULL;
     int64_t dn;
     TEST(chubby_connection_put(c,"/test/file",make_string(&s,"contents")),t.ret==0);
-    TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/file",0),t.ret==0&&!strcmp(t.answer->a,"contents"));
+    TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/file",-1,0),t.ret==0&&!strcmp(t.answer->a,"contents"));
     TEST(chubby_connection_move(c,"/test/file","/test/tofile"),t.ret==0);
     TEST(chubby_connection_stat(c,&t.stat,"test/file"),t.ret==0&&t.stat.decreeNumber==0);
     TEST(chubby_connection_list(c,&t.list,"/",0),t.ret==0&&!strcmp(t.catlist,",paxos,test,"));
@@ -186,7 +186,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
 	}
 	big->length = a-big->a;
 	TEST(chubby_connection_putBigFile(c,"///test/bi g",big,0),t.ret==0);
-	TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test//bi g",0),t.ret==0&&!strcmp(t.answer->a,big->a));
+	TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test//bi g",-1,0),t.ret==0&&!strcmp(t.answer->a,big->a));
 	counted_free(big);
     }
     TEST(chubby_connection_list(c,&t.list,"/test",0),t.ret==0&&strstr(t.catlist,",bi g,"));
@@ -253,9 +253,9 @@ test0(int argc,char**argv,chubby_connection_t*c)
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/test1result",0),t.ret==0&&!strcmp(t.answer->a,"22/22"));
+    TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/test1result",-1,0),t.ret==0&&!strcmp(t.answer->a,"22/22"));
     sleep(20);
-    TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/test2result",0),t.ret==0&&!strcmp(t.answer->a,"3/3"));
+    TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/test2result",-1,0),t.ret==0&&!strcmp(t.answer->a,"3/3"));
 }
 
 int

@@ -47,12 +47,15 @@ class Connection:
 	if renewLockTime and self.__lockExpireTime<=time.time()+.75*renewLockTime:
 	    self.renew(renewLockTime)
 
-    def __get1(self,name,renewLockTime):
+    def __get1(self,name,maxsize,renewLockTime):
 	dn = 0
 	s = []
 	length = 0
 	while 1:
-	    a = self.__propose("Get %s %d %d"%(name,length,CHUNK_SIZE))
+	    i = CHUNK_SIZE
+	    if maxsize!=None and maxsize-length<i:
+	        i = maxsize-length
+	    a = self.__propose("Get %s %d %d"%(name,length,i))
 	    if a[0]!=0:
 		return a
 	    b = a[1]
@@ -73,7 +76,7 @@ class Connection:
 	    else:
 		s.append(b)
 		length += len(b)
-	    if length==size:
+	    if length==size or maxsize!=None and size>=maxsize:
 		break
 	    self.__checkRenew(renewLockTime)
 	return (0,dn,"".join(s))
@@ -156,9 +159,9 @@ class Connection:
 	toname = self.__fixFilename(toname)
 	return self.__move(name,toname)
 
-    def get(self,name,renewLockTime=0):
+    def get(self,name,maxsize=None,renewLockTime=0):
 	name = self.__fixFilename(name)
-	return self.__get1(name,renewLockTime)
+	return self.__get1(name,maxsize,renewLockTime)
 
     def stat(self,name):
 	name = self.__fixFilename(name)
@@ -178,7 +181,7 @@ class Connection:
 
     def list(self,name,renewLockTime=0):
 	name = self.__fixFilename(name)
-	a = self.__get1(name,renewLockTime)
+	a = self.__get1(name,None,renewLockTime)
 	if a[0]!=0:
 	    return a
 	return tuple([0,a[1]]+map(self.__unfixFilename,a[2].split(' ')))

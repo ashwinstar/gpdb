@@ -100,7 +100,7 @@ checkRenew(chubby_connection_t*thiz,int renewLockTime)
 }
 
 int
-chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int renewLockTime)
+chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize,int renewLockTime)
 {
     int64_t dn=0;
     struct chubby_string_linked_list*ll=NULL,*m;
@@ -109,11 +109,14 @@ chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_st
     for (;;){
 	chubby_udp_buffer_t b;
 	int64_t newdn=0;
-	int n=0,s=0;
+	int i,n=0,s=0;
 	b.length = 0;
 	chubby_udp_buffer_format(&b,"Get ");
 	fixFilename(&b,name);
-	chubby_udp_buffer_format(&b," %d %d",size,CHUBBY_CHUNK_SIZE);
+	i = CHUBBY_CHUNK_SIZE;
+	if (maxsize>=0 && maxsize-size<i)
+	    i = maxsize-size;
+	chubby_udp_buffer_format(&b," %d %d",size,i);
 	m = thiz->chubby->malloc(sizeof*m);
 	if (!m){
 	    e = CHUBBY_E_OOM;
@@ -137,7 +140,7 @@ chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_st
 		size = ll->s->length-n-1;
 	}else
 	    size += ll->s->length-n-1;
-	if (size == s){
+	if (size==s || (maxsize>=0 && size>=maxsize)){
 	    *answer = thiz->chubby->malloc(sizeof**answer+size);
 	    if (!*answer){
 		e = CHUBBY_E_OOM;
@@ -279,7 +282,7 @@ chubby_connection_remove(chubby_connection_t*thiz,const char*name)
 static int
 chubby_connection_list1(chubby_connection_t*thiz,chubby_string_t**a,char***answer,const char*name,int renewLockTime)
 {
-    int e=chubby_connection_get(thiz,NULL,a,name,renewLockTime);
+    int e=chubby_connection_get(thiz,NULL,a,name,-1,renewLockTime);
     if (!e){
 	int count=0,i;
 	if ((*a)->length != 0){
@@ -392,7 +395,7 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
     sprintf(info,"%s-info",name);
     chubby_getNewId(thiz->chubby,id);
     while (time(NULL) < timedout){
-	e = chubby_connection_get(thiz,&stat,&a,info,0);
+	e = chubby_connection_get(thiz,&stat,&a,info,-1,0);
 	if (!e){
 	    sscanf(a->a,"%d",&waitTime);
 	    thiz->chubby->free(a);
@@ -413,7 +416,7 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
 	    thiz->chubby->free(a);
 	    if (e)
 		return e;
-	    e = chubby_connection_get(thiz,&stat,&a,name,0);
+	    e = chubby_connection_get(thiz,&stat,&a,name,-1,0);
 	    if (e)
 		return e;
 	    if (a->length==strlen(id) && !memcmp(a->a,id,a->length)){
@@ -455,7 +458,7 @@ chubby_connection_renew(chubby_connection_t*thiz,int lockTime)
     sprintf(info,"%s-info",thiz->lockFilename);
     e = chubby_connection_put(thiz,info,a);
     if (!e){
-	e = chubby_connection_get(thiz,NULL,&b,info,0);
+	e = chubby_connection_get(thiz,NULL,&b,info,-1,0);
 	if (!e){
 	    if (a->length==b->length && !memcmp(a->a,b->a,a->length))
 		thiz->lockExpireTime = now+lockTime;

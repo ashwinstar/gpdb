@@ -5,9 +5,10 @@
 ZOOAPI int
 zoo_delete(zhandle_t*thiz,const char*path,int version)
 {
-    char mangled[PATH_MAX];
-    int e;
+    int i;
+    struct zoostat*zs;
     struct zframe z;
+    char mangled[PATH_MAX];
     zframe_init(&z,thiz);
     if (!thiz->c)
         return zframe_returnRc(&z,ZINVALIDSTATE);
@@ -16,15 +17,13 @@ zoo_delete(zhandle_t*thiz,const char*path,int version)
     if (zframe_lock(&z))
 	return zframe_returnRc(&z,ZMARSHALLINGERROR);
     if (version != -1){
-        int v;
-	if (getVersion(&z,mangled,&v))
-	    return zframe_returnRc(&z,ZMARSHALLINGERROR);
-	if (version != v)
+	i = chubby_connection_get(z.l,NULL,&z.string,mangled,sizeof(struct zoostat),0);
+	if (i)
+	    return zframe_returnE(&z,i);
+	zs = (struct zoostat*)z.string->a;
+	if (version != ntohl(zs->version))
 	    return zframe_returnRc(&z,ZBADVERSION);
     }
-    e = chubby_connection_remove(z.l,mangled);
-    if (e)
-	return zframe_returnE(&z,e);
-    deleteVersion(&z,mangled);
-    return zframe_returnRc(&z,ZOK);
+    i = chubby_connection_remove(z.l,mangled);
+    return zframe_returnE(&z,i);
 }

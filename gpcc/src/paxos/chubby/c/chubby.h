@@ -33,7 +33,7 @@ chubby_t*chubby_new(const char*addresses,void*(*malloc)(size_t),void(*free)(void
 void chubby_close(chubby_t*thiz);
 chubby_connection_t*chubby_makeConnection(chubby_t*thiz);
 
-int chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int renewLockTime);
+int chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize,int renewLockTime);
 int chubby_connection_move(chubby_connection_t*thiz,const char*fromname,const char*toname);
 int chubby_connection_stat(chubby_connection_t*thiz,struct chubby_stat*stat,const char*name);
 int chubby_connection_put(chubby_connection_t*thiz,const char*name,chubby_string_t*contents);

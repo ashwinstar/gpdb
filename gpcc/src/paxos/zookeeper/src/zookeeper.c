@@ -30,14 +30,16 @@ zoo_deterministic_conn_order(int yesOrNo)
 static int
 zookeeper_init1(zhandle_t*thiz,const char*host,watcher_fn fn,int recv_timeout,void*context)
 {
+    chubby_t*chubby;
     pthread_mutex_init(&thiz->mutex,NULL);
     thiz->fn = fn;
     thiz->recv_timeout = recv_timeout;
     thiz->context = context;
-    thiz->chubby = chubby_new(host,zookeeper_malloc,zookeeper_free);
-    if (!thiz->chubby)
+    chubby = chubby_new(host,zookeeper_malloc,zookeeper_free);
+    if (!chubby)
         return 1;
-    thiz->c = chubby_makeConnection(thiz->chubby);
+    thiz->c = chubby_makeConnection(chubby);
+    chubby_close(chubby);
     if (!thiz->c)
         return 1;
     return 0;
@@ -61,8 +63,8 @@ ZOOAPI int
 zookeeper_close(zhandle_t*thiz)
 {
     pthread_mutex_lock(&thiz->mutex);
-    if (thiz->chubby)
-        chubby_close(thiz->chubby);
+    if (thiz->l)
+        chubby_connection_close(thiz->l);
     if (thiz->c)
         chubby_connection_close(thiz->c);
     pthread_mutex_unlock(&thiz->mutex);

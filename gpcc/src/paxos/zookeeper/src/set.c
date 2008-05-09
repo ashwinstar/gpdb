@@ -2,45 +2,53 @@
 
 #include "header.h"
 
-ZOOAPI int zoo_set_stat(zhandle_t*thiz,const char*path,const char*buffer,int buflen,int version,struct Stat*stat)
+#define ZOOKEEPER_TMP_FILE	"zoo/temp"
+
+int
+zoochubby_set1(chubby_connection_t*l,const char*name,chubby_string_t*string)
 {
-    int i,v;
+    int i;
+    if (string->length <= CHUBBY_CHUNK_SIZE)
+	return chubby_connection_put(l,name,string);
+    i = chubby_connection_putBigFile(l,ZOOKEEPER_TMP_FILE,string,ZOOKEEPER_LOCKTIME);
+    if (i)
+	return i;
+    return chubby_connection_move(l,ZOOKEEPER_TMP_FILE,name);
+}
+
+ZOOAPI int
+zoo_set(zhandle_t*thiz,const char*path,const char*buffer,int buflen,int version)
+{
+    int i;
     struct zframe z;
-    struct chubby_stat s;
+    chubby_string_t*s;
+    struct zoostat*zs;
+    struct chubby_stat stat;
     char mangled[PATH_MAX];
     zframe_init(&z,thiz);
     if (!thiz->c)
         return zframe_returnRc(&z,ZINVALIDSTATE);
     if (mangle_path(mangled,sizeof mangled,path))
 	return zframe_returnRc(&z,ZBADARGUMENTS);
-    z.string = zookeeper_malloc(sizeof*z.string+buflen);
+    z.string = zookeeper_malloc(sizeof*z.string+buflen+sizeof(struct zoostat));
     if (!z.string)
 	return zframe_returnRc(&z,ZMARSHALLINGERROR);
-    z.string->length = buflen;
-    memcpy(z.string->a,buffer,buflen);
+    z.string->length = buflen+sizeof(struct zoostat);
+    memcpy(z.string->a+sizeof(struct zoostat),buffer,buflen);
     if (zframe_lock(&z))
 	return zframe_returnRc(&z,ZMARSHALLINGERROR);
-    if (getVersion(&z,mangled,&v))
-	return zframe_returnRc(&z,ZMARSHALLINGERROR);
-    if (version!=-1 && version!=v)
-	    return zframe_returnRc(&z,ZBADVERSION);
-    i = setVersion(&z,mangled,v+1);
+    i = chubby_connection_get(z.l,&stat,&s,mangled,sizeof(struct zoostat),0);
     if (i)
 	return zframe_returnE(&z,i);
-    i = chubby_connection_putBigFile(z.l,mangled,z.string,ZOOKEEPER_LOCKTIME);
-    if (i)
-	return zframe_returnE(&z,i);
-    if (stat){
-	i = chubby_connection_stat(z.l,&s,mangled);
-	memset(stat,0,sizeof*stat);
-	stat->czxid = stat->mzxid = s.decreeNumber;
-	stat->version = v;
-    }
-    return zframe_returnRc(&z,ZOK);
-}
-
-ZOOAPI int
-zoo_set(zhandle_t*thiz,const char*path,const char*buffer,int buflen,int version)
-{
-    return zoo_set_stat(thiz,path,buffer,buflen,version,NULL);
+    assert(s->length>=sizeof(struct zoostat));
+    memcpy(z.string->a,s->a,sizeof(struct zoostat));
+    zookeeper_free(s);
+    zs = (struct zoostat*)z.string->a;
+    if (version!=-1 && version!=ntohl(zs->version))
+	return zframe_returnRc(&z,ZBADVERSION);
+    if (zs->create_dn == 0)
+	zs->create_dn = zoo_htonll(stat.decreeNumber);
+    zs->version = htonl(ntohl(zs->version)+1);
+    i = zoochubby_set1(z.l,mangled,z.string);
+    return zframe_returnE(&z,i);
 }
