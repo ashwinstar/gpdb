@@ -231,7 +231,7 @@ potential erroneous comparison.
 
 Jeffrey I Cohen
 
-Copyright (c) 2007 GreenPlum.  All rights reserved.  
+Copyright (c) 2007, 2008 GreenPlum.  All rights reserved.  
 
 Address bug reports and comments to: jcohen@greenplum.com
 
@@ -306,6 +306,152 @@ BEGIN {
     $glob_compare_equiv = $compare_equiv;
     $glob_make_equiv_expected = $make_equiv_expected;
 
+}
+
+my $glob_m_then_s;
+
+# list of all the match/substitution expressions
+BEGIN
+{
+    my $here_matchsubs;
+
+
+# construct a "HERE" document of match expressions followed by
+# substitution expressions.  Embedded comments and blank lines are ok
+# (they get filtered out).
+
+    $here_matchsubs = << 'EOF_matchsubs';
+
+# some cleanup of greenplum-specific messages
+m/\s+\(seg.*pid.*\)/
+s/\s+\(seg.*pid.*\)//
+
+m/WARNING:\s+foreign key constraint \".*\" will require costly sequential scans/
+s/\".*\"/\"dummy key\"/
+
+m/CONTEXT:.*\s+of this segment db input data/
+s/\s+of this segment db input data//
+
+# distributed transactions
+m/(ERROR|WARNING|CONTEXT|NOTICE):.*gid\s+=\s+(\d+)/
+s/gid.*/gid DUMMY/
+
+m/(ERROR|WARNING|CONTEXT|NOTICE):.*DTM error.*gathered (\d+) results from cmd.*/
+s/gathered.*results/gathered SOME_NUMBER_OF results/
+
+# fix code locations eg "(xact.c:1458)" to "(xact.c:SOME_LINE)"
+m/(ERROR|WARNING|CONTEXT|NOTICE):\s+Raise an error as directed by/
+s/\.c\:\d+\)/\.c\:SOME_LINE\)/
+
+m/(DETAIL|ERROR|WARNING|CONTEXT|NOTICE):\s+Raise .* for debug_dtm_action\s*\=\s* \d+/
+s/\.c\:\d+\)/\.c\:SOME_LINE\)/
+
+m/(ERROR|WARNING|CONTEXT|NOTICE):\s+Could not .* savepoint/
+s/\.c\:\d+\)/\.c\:SOME_LINE\)/
+
+m/(ERROR|WARNING|CONTEXT|NOTICE):.*connection.*failed.*(http|gpfdist)/
+s/connection.*failed.*(http|gpfdist).*/connection failed dummy_protocol\:\/\/DUMMY_LOCATION/
+
+# the EOF ends the HERE document
+EOF_matchsubs
+
+     # filter out the comments and blank lines
+     $here_matchsubs =~ s/^\s*\#.*$//gm;
+     $here_matchsubs =~ s/^\s+$//gm;
+
+#    print $here_matchsubs;
+
+    # split up the document into separate lines
+    my @foo = split(/\n/, $here_matchsubs);
+
+    my $ii = 0;
+
+    my $glob_matchsubs_arr = [];
+    my $msa;
+
+    # build an array of arrays of match/subs pairs
+    while ($ii < scalar(@foo))
+    {
+        my $lin = $foo[$ii];
+
+        if ($lin =~ m/^\s*$/) # skip blanks
+        {
+            $ii++;
+            next;
+        }
+
+        if (defined($msa))
+        {
+            push @{$msa}, $lin;
+
+            push @{$glob_matchsubs_arr}, $msa;
+
+            undef $msa;
+        }
+        else
+        {
+            $msa = [$lin];
+        }
+        $ii++;
+        next;
+    } # end while
+
+#    print Data::Dumper->Dump($glob_matchsubs_arr);
+
+    my $bigdef;
+
+    my $fn1;
+
+    $glob_m_then_s = [];
+
+    # build a lambda function for each expression, and load it into an
+    # array
+    my $msc = 1;
+    for my $defi (@{$glob_matchsubs_arr})
+    {
+        die ("bad def")
+            unless (2 == scalar(@{$defi}));
+
+        $bigdef = '$fn1 = sub { my $ini = shift; '. "\n";
+        $bigdef .= 'if ($ini =~ ' . $defi->[0];
+        $bigdef .= ') { ' . "\n";
+#        $bigdef .= 'print "match\n";' . "\n";
+        $bigdef .= '$ini =~ ' . $defi->[1];
+        $bigdef .= '; }' . "\n";
+        $bigdef .= 'return $ini; }' . "\n";
+
+#        print $bigdef;
+
+        if (eval $bigdef)
+        {
+            my $cmt = "DEFAULT matchsubs \#" . $msc;
+            $msc++;
+
+            # store the function pointer and the text of the function
+            # definition
+            push @{$glob_m_then_s}, [$fn1, $bigdef, $cmt];
+        }
+        else
+        {
+            die "bad eval: $bigdef";
+        }
+
+    }
+
+#    print Data::Dumper->Dump($glob_m_then_s);
+   
+}
+
+sub match_then_subs
+{
+    my $ini = shift;
+
+    for my $ff (@{$glob_m_then_s})
+    {
+        my $fn1 = $ff->[0];
+        $ini = &$fn1($ini);
+    }
+    return $ini;
 }
 
 # convert a postgresql psql formatted table into an array of hashes
@@ -822,12 +968,26 @@ if (1)
 
     my $do_equiv = $glob_compare_equiv || $glob_make_equiv_expected;
 
-    $verzion =~ s/\,v//; # remove ,v
-    my @verza = split(/\s+/, $verzion);
-    if (scalar(@verza) > 3)
+    if ($verzion =~ m/\,v\s+\d+/) # rcs/cvs style
     {
-        $verzion = $verza[1] . " version " . $verza[2];
-        print "GP_IGNORE: formatted by $verzion\n";
+        $verzion =~ s/\,v//; # remove ,v
+        my @verza = split(/\s+/, $verzion);
+        if (scalar(@verza) > 3)
+        {
+            $verzion = $verza[1] . " version " . $verza[2];
+            print "GP_IGNORE: formatted by $verzion\n";
+        }
+    }
+    elsif  ($verzion =~ m/\.pl\#\d+\s+\$/)        
+    {
+        # perforce style
+        my @verza = ($verzion =~ m/\$Id\:\s+(.*)\#(\d+)\s+\$/);
+        if (scalar(@verza) > 1)
+        {
+            $verzion = $verza[0] . " version " . $verza[1];
+            print "GP_IGNORE: formatted by $verzion\n";
+        }
+
     }
 
   L_bigwhile:
@@ -1081,51 +1241,10 @@ if (1)
             } # end sort this region
         } # end finding SQL
 
-        # some cleanup of greenplum-specific messages
-        if ($ini =~ m/\s+\(seg.*pid.*\)/)
-        {
-            $ini =~ s/\s+\(seg.*pid.*\)//;
-        }
 
-        if ($ini =~ m/WARNING:\s+foreign key constraint \".*\" will require costly sequential scans/)
-        {
-            $ini =~ s/\".*\"/\"dummy key\"/;
-        }
+        # if MATCH then SUBSTITUTE
+        $ini = match_then_subs($ini);
 
-        if ($ini =~ m/CONTEXT:.*\s+of this segment db input data/)
-        {
-            $ini =~ s/\s+of this segment db input data//;
-        }
-
-        # distributed transactions
-        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*gid\s+=\s+(\d+)/)
-        {
-            $ini =~ s/gid.*/gid DUMMY/;
-        }
-        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*DTM error.*gathered (\d+) results from cmd.*/)
-        {
-            $ini =~ s/gathered.*results/gathered SOME_NUMBER_OF results/;
-        }
-
-        # fix code locations eg "(xact.c:1458)" to "(xact.c:SOME_LINE)"
-        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):\s+Raise an error as directed by/)
-        {
-            $ini =~ s/\.c\:\d+\)/\.c\:SOME_LINE\)/;
-        }
-        if ($ini =~ m/(DETAIL|ERROR|WARNING|CONTEXT|NOTICE):\s+Raise .* for debug_dtm_action\s*\=\s* \d+/)
-        {
-            $ini =~ s/\.c\:\d+\)/\.c\:SOME_LINE\)/;
-        }
-        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):\s+Could not .* savepoint/)
-        {
-            $ini =~ s/\.c\:\d+\)/\.c\:SOME_LINE\)/;
-        }
-
-
-        if ($ini =~ m/(ERROR|WARNING|CONTEXT|NOTICE):.*connection.*failed.*(http|gpfdist)/)
-        {
-            $ini =~ s/connection.*failed.*(http|gpfdist).*/connection failed dummy_protocol\:\/\/DUMMY_LOCATION/;
-        }
         if ($ini =~ m/External table .*line (\d)+/)
         {
             $ini =~ s/External table .*line (\d)+.*/External table DUMMY_EX, line DUMMY_LINE of DUMMY_LOCATION/;
