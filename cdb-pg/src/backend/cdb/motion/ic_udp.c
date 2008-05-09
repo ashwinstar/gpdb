@@ -961,8 +961,8 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	struct sockaddr_in  saddr;
 	int                 n;
 
-    Assert(conn->cdbProc);
     Assert(conn->state == mcsSetupOutgoingConnection);
+    Assert(conn->cdbProc);
 
     conn->wakeup_ms = 0;
     conn->remoteContentId = cdbProc->contentid;
@@ -1277,7 +1277,8 @@ SetupUDPInterconnect(EState *estate)
 				continue;
 
 			/* Time to (re)connect? */
-			if (conn->wakeup_ms <= elapsed_ms + 1)
+			if (conn->state == mcsSetupOutgoingConnection &&
+				conn->wakeup_ms <= elapsed_ms + 1)
 			{
 				setupOutgoingUDPConnection(estate->interconnect_context, sendingChunkTransportState, conn);
 				switch (conn->state)
