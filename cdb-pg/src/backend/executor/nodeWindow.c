@@ -2945,8 +2945,11 @@ resetInputBuffer(WindowState *wstate)
 		save_firsttuple = wstate->input_buffer->part_break;
 		if (save_firsttuple)
 		{
-			bool found = ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-														   wstate->spare);
+#ifdef USE_ASSERT_CHECKING
+			bool found =
+#endif
+				ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+												  wstate->spare);
 			Assert(found);
 			wstate->curslot = ExecCopySlot(wstate->curslot, wstate->spare);
 		}
