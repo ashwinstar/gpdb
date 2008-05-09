@@ -57,7 +57,6 @@ extern bool ntuplestore_acc_advance(NTupleStoreAccessor *tsa, int n);
 extern bool ntuplestore_acc_current_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slot);
 extern bool ntuplestore_acc_current_data(NTupleStoreAccessor *tsa, void **data, int *len);
 
-
 /* Tell/seek postion of accessor. */
 
 /* Tell fill in the pos, return false if accessor points to an invalid position.

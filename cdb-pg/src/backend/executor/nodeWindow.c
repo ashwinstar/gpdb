@@ -1864,8 +1864,6 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 
 			Assert(has_curr_entry);
 			
-			ntuplestore_acc_advance(level_state->trail_reader, 1);
-
 			foreach(lc, level_state->level_funcs)
 			{
 				WindowStatePerFunction funcstate = (WindowStatePerFunction)
@@ -1924,6 +1922,8 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 										  econtext->ecxt_per_tuple_memory);
 				funcstate->final_aggShouldFree = true;
 			}
+
+			ntuplestore_acc_advance(level_state->trail_reader, 1);
 		}
 		
 		/* 
@@ -2945,8 +2945,9 @@ resetInputBuffer(WindowState *wstate)
 		save_firsttuple = wstate->input_buffer->part_break;
 		if (save_firsttuple)
 		{
-			ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
-											  wstate->spare);
+			bool found = ntuplestore_acc_current_tupleslot(wstate->input_buffer->writer,
+														   wstate->spare);
+			Assert(found);
 			wstate->curslot = ExecCopySlot(wstate->curslot, wstate->spare);
 		}
 		ntuplestore_destroy_accessor(wstate->input_buffer->writer);

@@ -191,6 +191,8 @@ struct NTupleStoreAccessor
 	NTupleStore *store;
 	NTupleStorePage *page;
 	bool isWriter;
+	char *tmp_lob;
+	int tmp_len;
 
 	NTupleStorePos  pos;
 };
@@ -747,10 +749,10 @@ ntuplestore_reset(NTupleStore *ts)
 	if(ts->plobfile)
 	{
 #ifdef USE_ASSERT_CHECKING
-		bool fOK = 
+		int errorcode = 
 #endif /* USE_ASSERT_CHECKING */
 			BufFileSeekBlock(ts->plobfile, 0);
-		Assert(fOK);
+		Assert(errorcode == 0);
 	}
 
 	ts->lobbytes = 0;
@@ -790,6 +792,8 @@ ntuplestore_create_accessor(NTupleStore *ts, bool isWriter)
 
 	acc->store = ts;
 	acc->isWriter = isWriter;
+	acc->tmp_lob = NULL;
+	acc->tmp_len = 0;
 	acc->page = NULL;
 	acc->pos.blockn = -1;
 	acc->pos.slotn = -1;
@@ -825,7 +829,11 @@ void ntuplestore_destroy_accessor(NTupleStoreAccessor *acc)
 			nts_unpin_page(acc->store, acc->page);
 
 		acc->store->accessors = list_delete_ptr(acc->store->accessors, acc);
+		if (acc->tmp_lob)
+			pfree(acc->tmp_lob);
+		
 		pfree(acc);
+
 	}
 }
 
@@ -924,10 +932,13 @@ void ntuplestore_acc_put_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slo
 
 		lobref.size = dest_len;
 
+		mtup = ExecCopySlotMemTupleTo(slot, NULL, lob, &dest_len);
+		Assert(mtup != NULL && dest_len == lobref.size);
+
 		ntuplestore_put_lob(tsa->store, lob, &lobref);
 		ntuplestore_acc_put_data(tsa, &lobref, -(int)sizeof(NTupleStoreLobRef)); 
 		pfree(lob);
-		return;
+        return;
 	}
 
 	tsa->pos.blockn = nts_page_blockn(tsa->page); 
@@ -944,8 +955,18 @@ void ntuplestore_acc_put_data(NTupleStoreAccessor *tsa, void *data, int len)
 	Assert(tsa->store && tsa->store->first_page && tsa->store->last_page);
 	Assert(len > 0 || len == (-(int)sizeof(NTupleStoreLobRef)));
 
-	Assert(len <= (int) NTS_MAX_ENTRY_SIZE);
+	if (len > (int) NTS_MAX_ENTRY_SIZE)
+	{
+		NTupleStoreLobRef lobref;
 
+		lobref.size = len;
+
+		ntuplestore_put_lob(tsa->store, data, &lobref);
+		ntuplestore_acc_put_data(tsa, &lobref, -(int)sizeof(NTupleStoreLobRef)); 
+        return;
+	}
+
+	Assert(len <= (int) NTS_MAX_ENTRY_SIZE);
 
 	/* first move the page to last page */
 	if(!tsa->page || tsa->page != tsa->store->last_page)
@@ -1129,11 +1150,22 @@ bool ntuplestore_acc_advance(NTupleStoreAccessor *tsa, int n)
 	return true;
 }
 
+static bool ntuplestore_acc_current_data_internal(NTupleStoreAccessor *tsa, void **data, int *len)
+{
+	if(!tsa->page || tsa->pos.slotn == -1)
+		return false;
+
+	*data = (void *) nts_page_slot_data_ptr(tsa->page, tsa->pos.slotn); 
+	*len = nts_page_slot_data_len(tsa->page, tsa->pos.slotn); 
+
+	return true;
+}
+
 bool ntuplestore_acc_current_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot *slot)
 {
 	MemTuple tuple = NULL;
 	int len = 0;
-	bool fOK = ntuplestore_acc_current_data(tsa, (void **) &tuple, &len);
+	bool fOK = ntuplestore_acc_current_data_internal(tsa, (void **) &tuple, &len);
 
 	if(!fOK)
 	{
@@ -1161,11 +1193,33 @@ bool ntuplestore_acc_current_tupleslot(NTupleStoreAccessor *tsa, TupleTableSlot 
 
 bool ntuplestore_acc_current_data(NTupleStoreAccessor *tsa, void **data, int *len)
 {
-	if(!tsa->page || tsa->pos.slotn == -1)
-		return false;
+	bool fOK = ntuplestore_acc_current_data_internal(tsa, (void **) data, len);
 
-	*data = (void *) nts_page_slot_data_ptr(tsa->page, tsa->pos.slotn); 
-	*len = nts_page_slot_data_len(tsa->page, tsa->pos.slotn); 
+	if(!fOK)
+	{
+		return false;
+	}
+
+	if(*len < 0)
+	{
+		NTupleStoreLobRef *plobref = (NTupleStoreLobRef *) (*data);
+		Assert(*len == -(int)sizeof(NTupleStoreLobRef));
+
+		if (tsa->tmp_len < plobref->size)
+		{
+			if (tsa->tmp_lob)
+				pfree(tsa->tmp_lob);
+			tsa->tmp_lob = palloc(plobref->size);
+			tsa->tmp_len = plobref->size;
+		}
+
+		*data = tsa->tmp_lob;
+		*len = ntuplestore_get_lob(tsa->store, *data, plobref);
+
+		Assert(*len == plobref->size);
+
+		return true;
+	}
 
 	return true;
 }
