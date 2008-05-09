@@ -1,6 +1,7 @@
 /*
  * tuplestorenew.c
  *		A better tuplestore
+ * $Author$
  */
 
 #include "postgres.h"
