@@ -65,10 +65,10 @@ mkgp:
 	@mkdir -p build/bin
 	@cp -f src/gp/gp build/bin/
 
-mkgpma: mklibgpcc mklibzookeeper
+mkgpma: mklibgpcc mklibzookeeper mklibchubby
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -I../build/include \
-		-o gpma *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv -lzookeeper)
+		-o gpma *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv -lzookeeper -lchubby)
 	@mkdir -p build/bin
 	@cp -f src/gpma/gpma build/bin/
 
