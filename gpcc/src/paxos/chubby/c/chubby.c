@@ -158,6 +158,8 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 	struct sockaddr from;
 	socklen_t fromlen=sizeof from;
 	char signature[SIGNSTRING_LENGTH];
+	fd_set rset;
+	struct timeval timeout={TIMEOUT,0};
 	if (getLeaderTimeout < now){
 	    getLeaderTimeout = now+TIMEOUT;
 	    e = chubby_sendGetLeader(thiz,fd,name);
@@ -169,6 +171,13 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 	    chubby_sign(thiz,what->a,what->a,what->length,name,&thiz->leader);
 	    sendto(fd,what->a,what->length,0,&thiz->leader,sizeof thiz->leader);
 	}
+	FD_ZERO(&rset);
+	FD_SET(fd,&rset);
+	i = select(fd+1,&rset,NULL,NULL,&timeout);
+	if (i == -1)
+	    return CHUBBY_E_IO;
+	if (i == 0)
+	    continue;
 	b.length = recvfrom(fd,b.a,65535,0,&from,&fromlen);
 	if (b.length < SIGNSTRING_LENGTH)
 	    continue;
@@ -229,15 +238,12 @@ int
 chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
 {
     chubby_udp_buffer_t b;
-    static const struct timeval timeout={TIMEOUT,0};
     int e;
     int fd=socket(AF_INET,SOCK_DGRAM,0);
     char hostname[_POSIX_HOST_NAME_MAX];
     struct sockaddr name;
     socklen_t namelen=sizeof name;
     if (fd == -1)
-	return CHUBBY_E_IO;
-    if (setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof timeout))
 	return CHUBBY_E_IO;
     if (gethostname(hostname,_POSIX_HOST_NAME_MAX))
 	return CHUBBY_E_IO;
