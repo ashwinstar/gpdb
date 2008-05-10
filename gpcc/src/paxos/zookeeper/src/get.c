@@ -11,7 +11,7 @@ zoo_get(zhandle_t*thiz,const char*path,int watch,char*buffer,int*buffer_len,stru
     struct zoostat*zs;
     char mangled[PATH_MAX];
     zframe_init(&z,thiz);
-    if (!thiz->c)
+    if (!thiz->lease)
         return zframe_returnRc(&z,ZINVALIDSTATE);
     if (watch)
         return zframe_returnRc(&z,ZUNIMPLEMENTED);

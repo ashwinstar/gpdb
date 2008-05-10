@@ -7,7 +7,6 @@ struct chubby_connection{
     chubby_t*chubby;
     chubby_connection_t*parent;
     char lockFilename[PATH_MAX];
-    char lockString[PATH_MAX+NUMBER_STRING_LENGTH+1];
     int64_t lockDn;
     char lockId[CHUBBY_ID_SIZE];
     time_t lockExpireTime;
@@ -378,6 +377,21 @@ chubby_connection_checkLock(chubby_connection_t*thiz)
     struct chubby_stat stat;
     int e=chubby_connection_stat(thiz,&stat,thiz->lockFilename);
     return e==0&&stat.decreeNumber==thiz->lockDn?0:CHUBBY_E_LOCKEXPIRED;
+}
+
+int
+chubby_connection_clone(chubby_connection_t*thiz,chubby_connection_t**answer)
+{
+    chubby_connection_t*c=chubby_connection_new(thiz->chubby);
+    if (!c)
+	return CHUBBY_E_OOM;
+    chubby_counted_set(&c->parent,thiz->parent);
+    c->lockDn = thiz->lockDn;
+    strcpy(c->lockFilename,thiz->lockFilename);
+    strcpy(c->lockId,thiz->lockId);
+    c->lockExpireTime = thiz->lockExpireTime;
+    *answer = c;
+    return 0;
 }
 
 int

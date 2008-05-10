@@ -10,14 +10,14 @@ zoo_create(zhandle_t*thiz,const char*path,const char*value,int valuelen,const st
     struct chubby_stat stat;
     char mangled[PATH_MAX];
     zframe_init(&z,thiz);
-    if (!thiz->c)
+    if (!thiz->lease)
         return zframe_returnRc(&z,ZINVALIDSTATE);
     if (flags&EPHEMERAL)
         return zframe_returnRc(&z,ZUNIMPLEMENTED);
     if (mangle_path(mangled,sizeof mangled,path))
 	return zframe_returnRc(&z,ZBADARGUMENTS);
     if (flags&SEQUENCE){
-	if (chubby_connection_stat(thiz->c,&stat,"/paxos/decreeNumber"))
+	if (chubby_connection_stat(thiz->counted->c,&stat,"/paxos/decreeNumber"))
 	    return zframe_returnRc(&z,ZMARSHALLINGERROR);
 	i = strlen(mangled);
 	if (snprintf(mangled+i,sizeof mangled-i,"%"APR_INT64_T_FMT,stat.decreeNumber) >= sizeof mangled-i)

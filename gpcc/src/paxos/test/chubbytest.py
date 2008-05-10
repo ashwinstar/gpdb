@@ -85,6 +85,18 @@ def test0():
     check("global_l","global_l[0]==0")
     if global_l[0]==0:
 	global_l = global_l[1]
+	global_l = global_l.clone()
+	check("global_l","global_l[0]==0")
+	if global_l[0]==0:
+	    global_l = global_l[1]
+	    check("global_l.getLockString()","1")
+	    check("global_l.checkLock()","x==0")
+	    check("global_l.list('/')","x[0]==0")
+	    global_l.giveUpLock()
+    global_l = c.lock('/test//lock',20,10)
+    check("global_l","global_l[0]==0")
+    if global_l[0]==0:
+	global_l = global_l[1]
 	check("global_l.getLockString()","1")
 	check("global_l.checkLock()","x==0")
 	check("global_l.list('/')","x[0]==0")

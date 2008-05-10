@@ -10,13 +10,12 @@ zframe_init(struct zframe*thiz,zhandle_t*zh)
 {
     memset(thiz,0,sizeof*thiz);
     thiz->zh = zh;
-    pthread_mutex_lock(&zh->mutex);
+    pthread_mutex_lock(&zh->counted->mutex);
 }
 
 int
 zframe_lock(struct zframe*thiz)
 {
-    chubby_connection_t*c;
     assert(!thiz->l);
     if (thiz->zh->l){
 	if (!chubby_connection_renew(thiz->zh->l,ZOOKEEPER_LOCKTIME)){
@@ -26,8 +25,7 @@ zframe_lock(struct zframe*thiz)
 	chubby_connection_close(thiz->zh->l);
 	thiz->zh->l = NULL;
     }
-    c = thiz->zh->lease?thiz->zh->lease:thiz->zh->c;
-    if (chubby_connection_lock(c,&thiz->zh->l,ZOOKEEPER_LOCK,ZOOKEEPER_LOCK_TIMEOUT,ZOOKEEPER_LOCKTIME))
+    if (chubby_connection_lock(thiz->zh->lease,&thiz->zh->l,ZOOKEEPER_LOCK,ZOOKEEPER_LOCK_TIMEOUT,ZOOKEEPER_LOCKTIME))
         return 1;
     thiz->l = thiz->zh->l;
     return 0;
@@ -58,7 +56,7 @@ zframe_returnRc(struct zframe*thiz,int rc)
     if (thiz->string)
         zookeeper_free(thiz->string);
     if (thiz->list)
-        chubby_connection_listFree(thiz->zh->c,thiz->list);
+        chubby_connection_listFree(thiz->zh->counted->c,thiz->list);
     if (rc == ZCONNECTIONLOSS){
 	if (thiz->zh->l){
 	    chubby_connection_close(thiz->zh->l);
@@ -68,12 +66,8 @@ zframe_returnRc(struct zframe*thiz,int rc)
 	    chubby_connection_close(thiz->zh->lease);
 	    thiz->zh->lease = NULL;
 	}
-	if (thiz->zh->c){
-	    chubby_connection_close(thiz->zh->c);
-	    thiz->zh->c = NULL;
-	}
     }
-    pthread_mutex_unlock(&thiz->zh->mutex);
+    pthread_mutex_unlock(&thiz->zh->counted->mutex);
     return rc;
 }
 

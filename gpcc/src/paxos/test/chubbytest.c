@@ -152,6 +152,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
     struct test_declarations t;
     struct string s;
     chubby_connection_t*c2=NULL;
+    chubby_connection_t*c3=NULL;
     int64_t dn;
     TEST(chubby_connection_put(c,"/test/file",make_string(&s,"contents")),t.ret==0);
     TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/file",-1,0),t.ret==0&&!strcmp(t.answer->a,"contents"));
@@ -200,6 +201,20 @@ test0(int argc,char**argv,chubby_connection_t*c)
     TEST(chubby_connection_remove(c,"/test/lock3-info"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_put(c,"/test/test1result",make_string(&s,"no")),t.ret==0);
     TEST(chubby_connection_put(c,"/test/test2result",make_string(&s,"no")),t.ret==0);
+    TEST(chubby_connection_lock(c,&c2,"/test//lock",20,10),t.ret==0);
+    if (c2){
+	TEST(chubby_connection_clone(c2,&c3),t.ret==0);
+	chubby_connection_close(c2);
+	c2 = NULL;
+	if (c3){
+	    TEST(chubby_connection_getLockString(c3,&t.answer),t.ret==0);
+	    TEST(chubby_connection_checkLock(c3),t.ret==0);
+	    TEST(chubby_connection_list(c3,&t.list,"/",0),t.ret==0);
+	    chubby_connection_giveUpLock(c3);
+	    chubby_connection_close(c3);
+	    c3 = NULL;
+	}
+    }
     TEST(chubby_connection_lock(c,&c2,"/test//lock",20,10),t.ret==0);
     if (c2){
 	TEST(chubby_connection_getLockString(c2,&t.answer),t.ret==0);

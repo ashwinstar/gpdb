@@ -215,6 +215,15 @@ class Connection:
 	i = a[2].index(' ')
 	return (0,a[1],int(a[2][:i]),a[2][i+1:])
 
+    def clone(self):
+	c = Connection(self.__chubby)
+	c.__parent = self.__parent
+	c.__lockDn = self.__lockDn
+	c.__lockFilename = self.__lockFilename
+	c.__lockId = self.__lockId
+	c.__lockExpireTime = self.__lockExpireTime
+	return (0,c)
+
     def lock(self,name,timeout,lockTime=DEFAULT_LOCK_TIME):
 	timedout = time.time()+timeout
 	expire = 0

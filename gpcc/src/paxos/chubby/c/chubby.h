@@ -46,6 +46,7 @@ int chubby_connection_getLockStringConnection(chubby_connection_t*thiz,chubby_co
 int chubby_connection_getLockString(chubby_connection_t*thiz,chubby_string_t**answer);
 int chubby_connection_checkLock(chubby_connection_t*thiz);
 int chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int timeout,int lockTime);
+int chubby_connection_clone(chubby_connection_t*thiz,chubby_connection_t**answer);
 int chubby_connection_renew(chubby_connection_t*thiz,int lockTime);
 int chubby_connection_getLockExpireTime(chubby_connection_t*thiz,time_t*time);
 void chubby_connection_giveUpLock(chubby_connection_t*thiz);

@@ -26,7 +26,7 @@ zoo_set(zhandle_t*thiz,const char*path,const char*buffer,int buflen,int version)
     struct chubby_stat stat;
     char mangled[PATH_MAX];
     zframe_init(&z,thiz);
-    if (!thiz->c)
+    if (!thiz->lease)
         return zframe_returnRc(&z,ZINVALIDSTATE);
     if (mangle_path(mangled,sizeof mangled,path))
 	return zframe_returnRc(&z,ZBADARGUMENTS);

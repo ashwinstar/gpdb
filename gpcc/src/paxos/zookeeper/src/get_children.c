@@ -10,7 +10,7 @@ zoo_get_children(zhandle_t*thiz,const char*path,int watch,struct String_vector*s
     char**a;
     char mangled[PATH_MAX];
     zframe_init(&z,thiz);
-    if (!thiz->c)
+    if (!thiz->lease)
         return zframe_returnRc(&z,ZINVALIDSTATE);
     if (watch)
         return zframe_returnRc(&z,ZUNIMPLEMENTED);

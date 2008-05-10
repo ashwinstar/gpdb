@@ -22,9 +22,14 @@
 
 #define ZOOKEEPER_LOCKTIME	10
 
-struct _zhandle{
+struct zoo_counted{
+    int count;
     pthread_mutex_t mutex;
     chubby_connection_t*c;
+};
+
+struct _zhandle{
+    struct zoo_counted*counted;
     chubby_connection_t*lease;
     chubby_connection_t*l;
     watcher_fn fn;
@@ -37,6 +42,7 @@ struct zoostat{
     int32_t version;
 };
 
+zhandle_t*zookeeper_clone(zhandle_t*thiz);
 int zoochubby_set1(chubby_connection_t*l,const char*name,chubby_string_t*string);
 
 static inline int64_t
