@@ -65,6 +65,8 @@ zookeeper_close(zhandle_t*thiz)
     pthread_mutex_lock(&thiz->mutex);
     if (thiz->l)
         chubby_connection_close(thiz->l);
+    if (thiz->lease)
+        chubby_connection_close(thiz->l);
     if (thiz->c)
         chubby_connection_close(thiz->c);
     pthread_mutex_unlock(&thiz->mutex);

@@ -25,6 +25,7 @@
 struct _zhandle{
     pthread_mutex_t mutex;
     chubby_connection_t*c;
+    chubby_connection_t*lease;
     chubby_connection_t*l;
     watcher_fn fn;
     void*context;
