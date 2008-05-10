@@ -158,7 +158,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
     TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/file",-1,0),t.ret==0&&!strcmp(t.answer->a,"contents"));
     TEST(chubby_connection_move(c,"/test/file","/test/tofile"),t.ret==0);
     TEST(chubby_connection_stat(c,&t.stat,"test/file"),t.ret==0&&t.stat.decreeNumber==0);
-    TEST(chubby_connection_list(c,&t.list,"/",0),t.ret==0&&!strcmp(t.catlist,",paxos,test,"));
+    TEST(chubby_connection_list(c,&t.list,"/",0),t.ret==0&&strstr(t.catlist,",paxos,")&&strstr(t.catlist,",test,"));
     TEST(chubby_connection_list(c,&t.list,"noentfile",0),t.ret==1);
     TEST(chubby_connection_stat(c,&t.stat,"test/tofile"),t.ret==0);
     TEST(chubby_connection_remove(c,"//test//1/1"),t.ret==0||t.ret==CHUBBY_E_NOENT);
