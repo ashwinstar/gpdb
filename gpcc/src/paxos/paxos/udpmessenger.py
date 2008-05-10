@@ -1,4 +1,4 @@
-import hashlib
+import md5
 import os
 import random
 import socket
@@ -32,7 +32,7 @@ class Port:
 
     def send(self,to,messag):
 	self.log("from="+self.__address+" to="+to+" send "+messag)
-	m = hashlib.md5()
+	m = md5.new()
 	m.update(self.__key)
 	m.update(self.__address)
 	m.update(' ')
@@ -58,7 +58,7 @@ class Port:
 	    if i==-1:
 		continue
 	    fro = socketAddressToString(fro)
-	    m = hashlib.md5()
+	    m = md5.new()
 	    m.update(self.__key)
 	    m.update(fro)
 	    m.update(' ')
@@ -98,7 +98,7 @@ class UdpMessenger(Logger):
 	keyfile = os.environ["HOME"]+"/.paxos_key"
 	if not os.path.exists(keyfile):
 	    idrsa = os.environ["HOME"]+"/.ssh/id_rsa"
-	    m = hashlib.md5()
+	    m = md5.new()
 	    if os.path.exists(idrsa):
 	    	self.log("hashing %s into %s"%(idrsa,keyfile))
 		f = open(idrsa,"r")
