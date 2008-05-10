@@ -1,0 +1,30 @@
+#!/usr/bin/python
+import os
+import sys
+
+def usage(argv0):
+    sys.stderr.write("usage:\n")
+    sys.stderr.write("    python "+argv0+" -d data_directory\n")
+    sys.exit(1)
+
+
+def main(argv):
+    datadir = None
+    argv0 = argv.pop(0)
+    while argv:
+	a = argv.pop(0)
+	if a=='-d':
+	    datadir = argv.pop(0)
+	else:
+	    usage(argv0)
+    if datadir==None:
+	usage(argv0)
+    os.chdir(datadir)
+    try:
+	os.makedirs("Priest-0/data")
+    except OSError:
+	pass
+    open("Priest-0/data/start","wb").close()
+    os.execl("/bin/sh","/bin/sh","-c","python -u $GPHOME/bin/lib/paxos/main.pyc test")
+
+main(sys.argv)

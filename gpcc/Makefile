@@ -15,7 +15,14 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp mklibchubby mkchubbytest mklibzookeeper mkzookeepertest
+all: mkdir mkext mkgpfdist mklibgpcc mkgpma mkgpha mkgp mklibchubby mkchubbytest mklibzookeeper mkzookeepertest mkpaxos
+
+mkpaxos: mkdir
+	(cd src/paxos;sh build)
+	mkdir -p build/bin/lib/paxos
+	cp src/paxos/bin/*.pyc build/bin/lib/paxos
+	cp src/paxos/gppaxos build/bin
+	chmod 755 build/bin/gppaxos
 
 mkgpfdist: mkext
 	@echo --- gpfdist --------------------------------------------------
@@ -88,7 +95,7 @@ mkfts: mklibgpcc
 #		-c *.c)
 
 mkdir:
-	@mkdir -p src/build/lib src/build/include build/bin
+	@mkdir -p src/build/lib src/build/include build/bin build/bin/lib
 
 mklibgpcc: mkext
 	@echo --- libgpcc --------------------------------------------------

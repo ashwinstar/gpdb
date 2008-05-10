@@ -15,19 +15,18 @@ from tester import Tester
 
 BASE_PORT = 2000
 N_TESTER = 0
-N_PRIEST = 3
 
-def test():
+def test(npriest):
     m = UdpMessenger()
 #    m = SimpleMessenger()
 #    m.setDisableLog(False)
     priests = []
     hostname = socket.gethostbyname(socket.gethostname())
-    for i in xrange(N_PRIEST):
+    for i in xrange(npriest):
 	priests.append(hostname+":"+str(BASE_PORT+i))
     priests = ",".join(priests)
     t = []
-    for i in xrange(N_PRIEST):
+    for i in xrange(npriest):
 	sb = ["priests="+priests]
 	sb.append("\nhost=%s\n"%hostname)
 	sb.append("port=%d\n"%(BASE_PORT+i))
@@ -89,7 +88,7 @@ def main(argv):
     if len(argv)==0:
 	usage(argv0)
     if argv[0]=="test":
-	test()
+	test(len(argv)<2 and 1 or int(argv[1]))
     elif argv[0]=="Priest":
 	runPriest(argv)
     elif argv[0]=="Tester" and len(argv)>=2:
