@@ -373,8 +373,11 @@ NULL);
 create function infinite_recurse() returns int as
 'select infinite_recurse()' language sql;
 \set VERBOSITY terse
--- start_ignore
+-- start_matchsubs
+-- # mpp=2756
+-- m/(ERROR|WARNING|CONTEXT|NOTICE):.*stack depth limit exceeded\s+at\s+character/
+-- s/\s+at\s+character.*//
+-- end_matchsubs
 select infinite_recurse();
--- end_ignore
 
 select 1; -- test that this works

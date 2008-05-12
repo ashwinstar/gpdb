@@ -308,7 +308,109 @@ BEGIN {
 
 }
 
-my $glob_m_then_s;
+my $glob_match_then_sub_fnlist;
+
+sub _build_match_subs
+{
+    my ($here_matchsubs, $whomatch) = @_;
+
+    my $stat = [1];
+
+     # filter out the comments and blank lines
+     $here_matchsubs =~ s/^\s*\#.*$//gm;
+     $here_matchsubs =~ s/^\s+$//gm;
+
+#    print $here_matchsubs;
+
+    # split up the document into separate lines
+    my @foo = split(/\n/, $here_matchsubs);
+
+    my $ii = 0;
+
+    my $matchsubs_arr = [];
+    my $msa;
+
+    # build an array of arrays of match/subs pairs
+    while ($ii < scalar(@foo))
+    {
+        my $lin = $foo[$ii];
+
+        if ($lin =~ m/^\s*$/) # skip blanks
+        {
+            $ii++;
+            next;
+        }
+
+        if (defined($msa))
+        {
+            push @{$msa}, $lin;
+
+            push @{$matchsubs_arr}, $msa;
+
+            undef $msa;
+        }
+        else
+        {
+            $msa = [$lin];
+        }
+        $ii++;
+        next;
+    } # end while
+
+#    print Data::Dumper->Dump($matchsubs_arr);
+
+    my $bigdef;
+
+    my $fn1;
+
+    # build a lambda function for each expression, and load it into an
+    # array
+    my $mscount = 1;
+
+    for my $defi (@{$matchsubs_arr})
+    {
+        unless (2 == scalar(@{$defi}))
+        {
+            my $err1 = "bad definition: " . Data::Dumper->Dump([$defi]);
+            $stat->[0] = 1;
+            $stat->[1] = $err1;
+            return $stat;
+        }
+
+        $bigdef = '$fn1 = sub { my $ini = shift; '. "\n";
+        $bigdef .= 'if ($ini =~ ' . $defi->[0];
+        $bigdef .= ') { ' . "\n";
+#        $bigdef .= 'print "match\n";' . "\n";
+        $bigdef .= '$ini =~ ' . $defi->[1];
+        $bigdef .= '; }' . "\n";
+        $bigdef .= 'return $ini; }' . "\n";
+
+#        print $bigdef;
+
+        if (eval $bigdef)
+        {
+            my $cmt = $whomatch . " matchsubs \#" . $mscount;
+            $mscount++;
+
+            # store the function pointer and the text of the function
+            # definition
+            push @{$glob_match_then_sub_fnlist}, [$fn1, $bigdef, $cmt];
+        }
+        else
+        {
+            my $err1 = "bad eval: $bigdef";
+            $stat->[0] = 1;
+            $stat->[1] = $err1;
+            return $stat;
+        }
+
+    }
+
+#    print Data::Dumper->Dump($glob_match_then_sub_fnlist);
+   
+    return $stat;
+
+} # end _build_match_subs
 
 # list of all the match/substitution expressions
 BEGIN
@@ -355,103 +457,163 @@ s/connection.*failed.*(http|gpfdist).*/connection failed dummy_protocol\:\/\/DUM
 # the EOF ends the HERE document
 EOF_matchsubs
 
-     # filter out the comments and blank lines
-     $here_matchsubs =~ s/^\s*\#.*$//gm;
-     $here_matchsubs =~ s/^\s+$//gm;
+    $glob_match_then_sub_fnlist = [];
 
-#    print $here_matchsubs;
+    my $stat = _build_match_subs($here_matchsubs, "DEFAULT");
 
-    # split up the document into separate lines
-    my @foo = split(/\n/, $here_matchsubs);
-
-    my $ii = 0;
-
-    my $glob_matchsubs_arr = [];
-    my $msa;
-
-    # build an array of arrays of match/subs pairs
-    while ($ii < scalar(@foo))
+    if (scalar(@{$stat}) > 1)
     {
-        my $lin = $foo[$ii];
-
-        if ($lin =~ m/^\s*$/) # skip blanks
-        {
-            $ii++;
-            next;
-        }
-
-        if (defined($msa))
-        {
-            push @{$msa}, $lin;
-
-            push @{$glob_matchsubs_arr}, $msa;
-
-            undef $msa;
-        }
-        else
-        {
-            $msa = [$lin];
-        }
-        $ii++;
-        next;
-    } # end while
-
-#    print Data::Dumper->Dump($glob_matchsubs_arr);
-
-    my $bigdef;
-
-    my $fn1;
-
-    $glob_m_then_s = [];
-
-    # build a lambda function for each expression, and load it into an
-    # array
-    my $msc = 1;
-    for my $defi (@{$glob_matchsubs_arr})
-    {
-        die ("bad def")
-            unless (2 == scalar(@{$defi}));
-
-        $bigdef = '$fn1 = sub { my $ini = shift; '. "\n";
-        $bigdef .= 'if ($ini =~ ' . $defi->[0];
-        $bigdef .= ') { ' . "\n";
-#        $bigdef .= 'print "match\n";' . "\n";
-        $bigdef .= '$ini =~ ' . $defi->[1];
-        $bigdef .= '; }' . "\n";
-        $bigdef .= 'return $ini; }' . "\n";
-
-#        print $bigdef;
-
-        if (eval $bigdef)
-        {
-            my $cmt = "DEFAULT matchsubs \#" . $msc;
-            $msc++;
-
-            # store the function pointer and the text of the function
-            # definition
-            push @{$glob_m_then_s}, [$fn1, $bigdef, $cmt];
-        }
-        else
-        {
-            die "bad eval: $bigdef";
-        }
-
+        die $stat->[1];
     }
 
-#    print Data::Dumper->Dump($glob_m_then_s);
-   
 }
 
 sub match_then_subs
 {
     my $ini = shift;
 
-    for my $ff (@{$glob_m_then_s})
+    for my $ff (@{$glob_match_then_sub_fnlist})
     {
+        # get the function and execute it
         my $fn1 = $ff->[0];
         $ini = &$fn1($ini);
     }
     return $ini;
+}
+
+my $glob_match_then_ignore_fnlist;
+
+sub _build_match_ignores
+{
+    my ($here_matchignores, $whomatch) = @_;
+
+    my $stat = [1];
+
+     # filter out the comments and blank lines
+     $here_matchignores =~ s/^\s*\#.*$//gm;
+     $here_matchignores =~ s/^\s+$//gm;
+
+#    print $here_matchignores;
+
+    # split up the document into separate lines
+    my @foo = split(/\n/, $here_matchignores);
+
+    my $matchignores_arr = [];
+
+    # build an array of match expressions
+    for my $lin (@foo)
+    {
+        next
+            if ($lin =~ m/^\s*$/); # skip blanks
+        
+        push @{$matchignores_arr}, $lin;
+    }
+
+#    print Data::Dumper->Dump($matchignores_arr);
+
+    my $bigdef;
+
+    my $fn1;
+
+    # build a lambda function for each expression, and load it into an
+    # array
+    my $mscount = 1;
+
+    for my $defi (@{$matchignores_arr})
+    {
+        $bigdef = '$fn1 = sub { my $ini = shift; '. "\n";
+        $bigdef .= 'return ($ini =~ ' . $defi;
+        $bigdef .= ') ; } ' . "\n";
+#        print $bigdef;
+
+        if (eval $bigdef)
+        {
+            my $cmt = $whomatch . " matchignores \#" . $mscount;
+            $mscount++;
+
+            # store the function pointer and the text of the function
+            # definition
+            push @{$glob_match_then_ignore_fnlist}, [$fn1, $bigdef, $cmt];
+        }
+        else
+        {
+            my $err1 = "bad eval: $bigdef";
+            $stat->[0] = 1;
+            $stat->[1] = $err1;
+            return $stat;
+        }
+
+    }
+
+#    print Data::Dumper->Dump($glob_match_then_ignore_fnlist);
+   
+    return $stat;
+
+} # end _build_match_ignores
+
+# list of all the match/ignore expressions
+BEGIN
+{
+    my $here_matchignores;
+
+# construct a "HERE" document of match expressions to ignore in input.
+# Embedded comments and blank lines are ok (they get filtered out).
+
+    $here_matchignores = << 'EOF_matchignores';
+
+        # XXX XXX: note the discrepancy in the NOTICE messages
+        # 'distributed by' vs 'DISTRIBUTED BY'
+m/NOTICE:\s+Table doesn\'t have \'distributed by\' clause\, and no column type is suitable/i
+
+m/NOTICE:\s+Table doesn\'t have \'DISTRIBUTED BY\' clause/i
+
+m/NOTICE:\s+Dropping a column that is part of the distribution policy/
+
+m/NOTICE:\s+Table has parent\, setting distribution columns to match parent table/
+
+m/HINT:\s+The \'DISTRIBUTED BY\' clause determines the distribution of data/
+
+m/WARNING:\s+Referential integrity \(.*\) constraints are not supported in Greenplum Database/
+
+
+m/^\s*Distributed by:\s+\(.*\)\s*$/
+
+        # ignore notices for DROP sqlobject IF EXISTS "objectname"
+        # eg NOTICE:  table "foo" does not exist, skipping
+        #
+        # the NOTICE is different from the ERROR case, which does not
+        # end with "skipping"
+m/^NOTICE:\s+\w+\s+\".*\"\s+does not exist\,\s+skipping\s*$/
+
+
+# the EOF ends the HERE document
+EOF_matchignores
+
+    $glob_match_then_ignore_fnlist = [];
+
+    my $stat = _build_match_ignores($here_matchignores, "DEFAULT");
+
+    if (scalar(@{$stat}) > 1)
+    {
+        die $stat->[1];
+    }
+
+}
+
+# if the input matches, return 1 (ignore), else return 0 (keep)
+sub match_then_ignore
+{
+    my $ini = shift;
+
+    for my $ff (@{$glob_match_then_ignore_fnlist})
+    {
+        # get the function and execute it
+        my $fn1 = $ff->[0];
+
+        return 1 # matched
+            if (&$fn1($ini));
+    }
+    return 0; # no match
 }
 
 # convert a postgresql psql formatted table into an array of hashes
@@ -962,33 +1124,21 @@ if (1)
     my $copy_select = 0;
     my $directive = {};
     my $big_ignore = 0;
+    my $define_match_expression = undef;
     my $error_detail_exttab_trifecta_skip = 0; # don't ask!
 
-    my $verzion = '$Id$   ';
+    my $verzion = do { my @r = (q$Revision$ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
+
+    my $format_fix = << "EOF_formatfix";
+                                )}
+EOF_formatfix
+    # NOTE: define $format_fix with HERE document just to fix emacs
+    # indenting due to comment char in Q expression...
+
+    $verzion = $0 . " version " . $verzion;
+    print "GP_IGNORE: formatted by $verzion\n";
 
     my $do_equiv = $glob_compare_equiv || $glob_make_equiv_expected;
-
-    if ($verzion =~ m/\,v\s+\d+/) # rcs/cvs style
-    {
-        $verzion =~ s/\,v//; # remove ,v
-        my @verza = split(/\s+/, $verzion);
-        if (scalar(@verza) > 3)
-        {
-            $verzion = $verza[1] . " version " . $verza[2];
-            print "GP_IGNORE: formatted by $verzion\n";
-        }
-    }
-    elsif  ($verzion =~ m/\.pl\#\d+\s+\$/)        
-    {
-        # perforce style
-        my @verza = ($verzion =~ m/\$Id\:\s+(.*)\#(\d+)\s+\$/);
-        if (scalar(@verza) > 1)
-        {
-            $verzion = $verza[0] . " version " . $verza[1];
-            print "GP_IGNORE: formatted by $verzion\n";
-        }
-
-    }
 
   L_bigwhile:
     while (<>) # big while
@@ -1000,6 +1150,62 @@ if (1)
             $error_detail_exttab_trifecta_skip = 0;
             next;
         }
+
+        # look for match/substitution or match/ignore expressions
+        if (defined($define_match_expression))
+        {
+            unless (($ini =~ m/\-\-\s*end\_match(subs|ignore)\s*$/i))
+            {
+                $define_match_expression .= $ini;
+                next;
+            }
+
+            my @foo = split(/\n/, $define_match_expression, 2);
+
+            unless (2 == scalar(@foo))
+            {
+                print "GP_IGNORE: bad match definition\n";
+                my $outi = $define_match_expression;
+
+                $outi =~ s/^(.*)/GP_IGNORE: ($1)/gm;
+                print $outi;
+                print "GP_IGNORE: ", $ini;
+                undef $define_match_expression;
+                next;
+            }
+
+            my $stat;
+
+            my $doc1 = $foo[1];
+
+            # strip off leading comment characters
+            $doc1 =~ s/^\-\-//gm;
+
+            if ($foo[0] =~ m/subs/)
+            {
+                $stat = _build_match_subs($doc1, "USER");
+            }
+            else
+            {
+                $stat = _build_match_ignores($doc1, "USER");
+            }
+
+            if (scalar(@{$stat}) > 1)
+            {
+                my $outi = $stat->[1];
+
+                # 
+                $outi =~ s/^(.*)/GP_IGNORE: ($1)/gm;
+                print $outi;
+            }
+            else
+            {
+                print "GP_IGNORE: defined new match expression\n";
+            }
+
+            undef $define_match_expression;
+            next;
+        } # end defined match expression
 
         if ($big_ignore > 0)
         {
@@ -1053,6 +1259,11 @@ if (1)
         }
         else # finding SQL statement or start of SELECT output
         { 
+            if (($ini =~ m/\-\-\s*start\_match(subs|ignore)\s*$/i))
+            {
+                $define_match_expression = $ini;
+                next;
+            }
             if (($ini =~ m/\-\-\s*start\_ignore\s*$/i) ||
                 (($ini =~ m/\-\-\s*start\_equiv\s*$/i) && !($do_equiv)))
             { 
@@ -1243,6 +1454,7 @@ if (1)
 
 
         # if MATCH then SUBSTITUTE
+        # see HERE document for definitions
         $ini = match_then_subs($ini);
 
         if ($ini =~ m/External table .*line (\d)+/)
@@ -1270,47 +1482,12 @@ if (1)
 
         }
 
-        # XXX XXX: note the discrepancy in the NOTICE messages
-        # 'distributed by' vs 'DISTRIBUTED BY'
-        if ($ini =~ m/NOTICE:\s+Table doesn\'t have \'distributed by\' clause\, and no column type is suitable/i)
+        # if MATCH then IGNORE
+        # see HERE document for definitions
+        if ( match_then_ignore($ini))
         {
-            next;
+           next; # ignore matching lines
         }
-        if ($ini =~ m/NOTICE:\s+Table doesn\'t have \'DISTRIBUTED BY\' clause/i)
-        {
-            next;
-        }
-        if ($ini =~ m/NOTICE:\s+Dropping a column that is part of the distribution policy/)
-        {
-            next;
-        }
-        if ($ini =~ m/NOTICE:\s+Table has parent\, setting distribution columns to match parent table/)
-        {
-            next;
-        }
-        if ($ini =~ m/HINT:\s+The \'DISTRIBUTED BY\' clause determines the distribution of data/)
-        {
-            next;
-        }
-        if ($ini =~ m/WARNING:\s+Referential integrity \(.*\) constraints are not supported in Greenplum Database/)
-        {
-            next;
-        }
-
-        if ($ini =~ m/^\s*Distributed by:\s+\(.*\)\s*$/)
-        {
-            next;
-        }
-        # ignore notices for DROP sqlobject IF EXISTS "objectname"
-        # eg NOTICE:  table "foo" does not exist, skipping
-        #
-        # the NOTICE is different from the ERROR case, which does not
-        # end with "skipping"
-        if ($ini =~ m/^NOTICE:\s+\w+\s+\".*\"\s+does not exist\,\s+skipping\s*$/)
-        {
-            next;
-        }
-
 
         push @outarr, $ini;
 
