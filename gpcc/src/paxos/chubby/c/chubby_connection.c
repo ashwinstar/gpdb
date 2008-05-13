@@ -408,7 +408,7 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
     char info[PATH_MAX];
     sprintf(info,"%s-info",name);
     chubby_getNewId(thiz->chubby,id);
-    while (time(NULL) < timedout){
+    do{
 	e = chubby_connection_get(thiz,&stat,&a,info,-1,0);
 	if (!e){
 	    sscanf(a->a,"%d",&waitTime);
@@ -453,7 +453,7 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
 	    thiz->chubby->free(a);
 	}
 	sleep(1);
-    }
+    }while (time(NULL) < timedout);
     return CHUBBY_E_TIMEOUT;
 }
 
