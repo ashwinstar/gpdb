@@ -293,6 +293,23 @@ SELECT count(*) FROM tenk_ao1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
 
 -- TRUNCATE
 TRUNCATE tenk_ao2;
+-- OIDS
+CREATE TABLE aowithoids(a int, b int) WITH (appendonly=true,oids=true);
+COPY aowithoids FROM STDIN;
+SELECT * FROM aowithoids ORDER BY a; -- this should show a,b only
+ a | b 
+---+---
+ 1 | 1
+ 2 | 2
+(2 rows)
+
+SELECT oideq(oid,-1) FROM aowithoids; -- kind of stupid but checks that oid actually exists and is queriable. should always be 'f'
+ oideq 
+-------
+ f
+ f
+(2 rows)
+
 -------------------- 
 -- unsupported sql 
 --------------------
@@ -325,6 +342,7 @@ DROP TABLE tenk_heap;
 DROP TABLE tenk_ao1;
 DROP TABLE tenk_ao2;
 DROP TABLE tenk_ao3;
+DROP TABLE aowithoids;
 -------------------- 
 -- catalog check 
 --------------------
