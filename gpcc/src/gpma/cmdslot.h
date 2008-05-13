@@ -154,6 +154,7 @@ struct cmdslot_t {
 
 	struct {
 	    apr_uint32_t parent_cmdidx;
+	    apr_proc_t proc;
 	} array_init;
 
 	struct {

@@ -6,7 +6,6 @@ static apr_status_t a_array_sync_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     int i, e;
     int standby_qd_idx, master_qd_idx;
     char cmd[2048];
-    apr_proc_t proc;
 
     for (i = 0 ; i < nseginfo ; i++) {
 	const seginfo_t *info = &seginfo[i];
@@ -35,12 +34,59 @@ static apr_status_t a_array_sync_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 	    seginfo[standby_qd_idx].host,
 	    seginfo[standby_qd_idx].dir);
     
-    e = gpcc_proc_ssh(&proc, seginfo[master_qd_idx].host, cmd, 1, cmdslot->pool);
+    e = gpcc_proc_ssh(&cmdslot->u.array_init.proc, 
+		      seginfo[master_qd_idx].host, 
+		      cmd, 
+		      0, 
+		      cmdslot->pool);
     if (e) {
 	gpcc_log_error("copy data from master QD datadir to standby QD datadir failed");
     }
 
     return e;
+}
+
+static apr_status_t a_array_wait_sync_standby_qd(gpcc_event_t *ev, void *_cmdslot)
+{
+   cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    int ret = 0;
+    apr_exit_why_e exitwhy;
+    int e;
+    gpcc_event_t *evt;
+
+    e = apr_proc_wait(&cmdslot->u.array_init.proc, &ret, &exitwhy, APR_NOWAIT);
+    if (e == APR_CHILD_DONE) {
+	gpcc_net_packet_t *pkt;
+	struct json_object *obj;
+	char *objstr;
+
+	if (ret == 0) {
+	    obj = gpcc_json_http_reply(gpma.array_name, 0, "init", "ok", 0, "");
+	    objstr = json_object_to_json_string(obj);
+	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, sizeof(*pkt) + strlen(objstr)+1);
+	    gpcc_log_info("init array succeeded.");
+	} else {
+	    obj = gpcc_json_http_reply(gpma.array_name, 0, "init", "error", 0, "standby QD sync failure");
+	    objstr = json_object_to_json_string(obj);
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, sizeof(*pkt) + strlen(objstr)+1);
+	    gpcc_warning(FLINE, "[Error] init array failed: status='error', reason='standby QD sync failure'");
+	}
+	
+	pkt = (gpcc_net_packet_t *) evt->pdata;
+	pkt->mh.type = UNITS_REPLY_MSG_EVENT;
+	pkt->mh.len = strlen(objstr)+1;
+	pkt->mh.sndidx = cmdslot->cmdidx;
+	pkt->mh.rcvidx = cmdslot->cmdidx;
+	memcpy(pkt->payload, objstr, strlen(objstr) +1);
+	
+	json_object_put(obj);
+	gpcc_evqueue_put(gpma.evq, evt);
+    } else {
+	/* continue to wait */
+	cmdslot->countdown = 1;
+    }
+
+    return 0;
 }
 
 static apr_status_t a_array_init_units_init_reply(gpcc_event_t *ev, void *_cmdslot)
@@ -56,14 +102,23 @@ static apr_status_t a_array_init_units_init_reply(gpcc_event_t *ev, void *_cmdsl
     status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
 
     if (strcmp(status, OK_STATUS) == 0) {
-	if (a_array_sync_standby_qd(ev, _cmdslot)) {
-	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, pkt->mh.len);
-	    memcpy(evt->pdata, pkt->payload, pkt->mh.len);
-	    gpcc_warning(FLINE, "[Error] init array failed: status=%s, error=%s", status, pkt->payload);
-	} else {
+	seginfo_t *seginfo = gpma.fts_cmdslot->u.fts.seginfo;
+	int nseginfo = gpma.fts_cmdslot->u.fts.nseginfo;
+	int i;
+
+	for (i = 0 ; i < nseginfo ; i++) {
+	    const seginfo_t *info = &seginfo[i];
+	    if (strcmp(info->name, "seg.m.1") == 0)
+		break;
+	}
+	if (i >= nseginfo) {
 	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, pkt->mh.len);
 	    memcpy(evt->pdata, pkt->payload, pkt->mh.len);
+	} else {
+	    /* start sync master QD to standby QD */
+	    evt = gpcc_event_alloc(CONTINUE_EVENT, cmdslot->cmdidx, 0);
 	}
+
     } else {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, pkt->mh.len);
 	memcpy(evt->pdata, pkt->payload, pkt->mh.len);

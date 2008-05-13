@@ -458,6 +458,14 @@ APR_DECLARE(void) fsm_init(void)
 		 a_array_init_success, NULL);
     gpcc_fsm_put(FTS_ARRAY_INIT_WAIT_CMDSTATE, FAILURE_EVENT, NULL_EVENT,
 		 a_array_init_failure, NULL);
+    gpcc_fsm_put(FTS_ARRAY_INIT_WAIT_CMDSTATE, CONTINUE_EVENT, FTS_ARRAY_INIT_WAIT_SYNC_STANDBY_QD_CMDSTATE,
+		 a_array_sync_standby_qd, NULL);
+    gpcc_fsm_put(FTS_ARRAY_INIT_WAIT_SYNC_STANDBY_QD_CMDSTATE, TIMEUP_EVENT, FTS_ARRAY_INIT_WAIT_SYNC_STANDBY_QD_CMDSTATE,
+		 a_array_wait_sync_standby_qd, NULL);
+    gpcc_fsm_put(FTS_ARRAY_INIT_WAIT_SYNC_STANDBY_QD_CMDSTATE, SUCCESS_EVENT, NULL_EVENT,
+		 a_array_init_success, NULL);
+    gpcc_fsm_put(FTS_ARRAY_INIT_WAIT_SYNC_STANDBY_QD_CMDSTATE, FAILURE_EVENT, NULL_EVENT,
+		 a_array_init_failure, NULL);
 		 
 
     /* array start */
