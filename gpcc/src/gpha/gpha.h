@@ -53,7 +53,8 @@ struct cmdslot_t {
 	    int dbid;
 	    int content;
 	    int exitcode;
-	    int primary;
+	    int definedprimary;
+	    char *isprimary;
 	    int valid;
 	    int isqd;
 	    int idx;

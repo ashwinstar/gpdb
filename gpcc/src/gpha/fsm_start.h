@@ -19,11 +19,13 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     cmdslot->u.request.port = gpcc_json_object_get_int(obj, "port", 0);
     cmdslot->u.request.mode = gpcc_json_object_get_string(obj, "mode", 0);
     cmdslot->u.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
+    cmdslot->u.request.isprimary = gpcc_json_object_get_string(obj, "isprimary", 0);
     cmdslot->u.request.rotate_log = gpcc_json_object_get_string(obj, "rotate_log", 0);
 
     if (cmdslot->u.request.port == 0 ||
 	cmdslot->u.request.mode == 0 ||
-	cmdslot->u.request.data_dir == 0) {
+	cmdslot->u.request.data_dir == 0 ||
+	cmdslot->u.request.isprimary == 0) {
 	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, 1, "request error: parameter is missing");
 	json_object_put(obj);
 	return 0;
@@ -50,8 +52,20 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     } else {
 	/* this is QD */
 
-	if (seg_is_master_qd(cmdslot)) {
+	if (seg_is_qd(cmdslot) && strcmp(cmdslot->u.request.isprimary, "t") == 0) {
 	    int utility = 0;
+
+	    /* TODO: check if gpsycnmaster is running. if so, kill it before start postmaster */
+	    if (! seg_is_master_qd(cmdslot)) {
+		apr_proc_t proc;
+		char *argv[2];
+
+		gpcc_log_info("kill gpsyncmaster before starting master QD");
+		argv[0] = "killall gpsyncmaster || pkill gpsyncmaster";
+		argv[1] = 0;
+		gpcc_proc_run_shell(&proc, argv[0], (const char *const *)argv, 0, 1, cmdslot->pool);
+	    }
+
 	    /* start master in utility mode or production mode */
 	    gpcc_log_info("[%s] start master in mode = %s", 
 			  gpcc_json_object_get_string(obj, "seg", ""),

@@ -1,6 +1,6 @@
 
-#define seg_is_standby_qd(c) (c->u.request.isqd && ! c->u.request.primary)
-#define seg_is_master_qd(c) (c->u.request.isqd && c->u.request.primary)
+#define seg_is_standby_qd(c) (c->u.request.isqd && ! c->u.request.definedprimary)
+#define seg_is_master_qd(c) (c->u.request.isqd && c->u.request.definedprimary)
 #define seg_is_qd(c)  (c->u.request.isqd)
 
 static event_t segment_msg_get_event(struct json_object *obj) 
@@ -299,7 +299,7 @@ static apr_status_t seg_initialize(gpcc_event_t* ev, void *_cmdslot)
     if (0 != (e = seg_cmdname_parse(cmdslot->cmdname,
 				    &cmdslot->u.request.isqd,
 				    &cmdslot->u.request.idx,
-				    &cmdslot->u.request.primary))) {
+				    &cmdslot->u.request.definedprimary))) {
 
 	gpcc_warning(FLINE, "segment name invalid format error");
 	cmdslot->u.request.exitcode = APR_EINVAL;
