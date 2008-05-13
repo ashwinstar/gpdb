@@ -126,40 +126,6 @@ tuplesort_set_instrument(Tuplesortstate            *state,
                          struct StringInfoData     *explainbuf);
 
 /*
- * tuplesort_set_instrument
- *
- * May be called after tuplesort_begin_xxx() to enable reporting of
- * statistics and events for EXPLAIN ANALYZE.
- *
- * The 'instr' and 'explainbuf' ptrs are retained in the 'state' object for
- * possible use anytime during the sort, up to and including tuplesort_end().
- * The caller must ensure that the referenced objects remain allocated and
- * valid for the life of the Tuplesortstate object; or if they are to be
- * freed early, disconnect them by calling again with NULL pointers.
- */
-void 
-tuplesort_set_instrument(Tuplesortstate            *state,
-                         struct Instrumentation    *instrument,
-                         struct StringInfoData     *explainbuf);
-
-/*
- * tuplesort_set_instrument
- *
- * May be called after tuplesort_begin_xxx() to enable reporting of
- * statistics and events for EXPLAIN ANALYZE.
- *
- * The 'instr' and 'explainbuf' ptrs are retained in the 'state' object for
- * possible use anytime during the sort, up to and including tuplesort_end().
- * The caller must ensure that the referenced objects remain allocated and
- * valid for the life of the Tuplesortstate object; or if they are to be
- * freed early, disconnect them by calling again with NULL pointers.
- */
-void 
-tuplesort_set_instrument(Tuplesortstate            *state,
-                         struct Instrumentation    *instrument,
-                         struct StringInfoData     *explainbuf);
-
-/*
  * This routine selects an appropriate sorting function to implement
  * a sort operator as efficiently as possible.
  */
