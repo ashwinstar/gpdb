@@ -204,6 +204,48 @@ The supported commands are:
 
   Ends the equivalent region that started with "start_equiv"
 
+=item -- start_matchsubs
+
+  Starts a list of match/substitution expressions, where the match and
+  substitution are specified as perl "m" and "s" operators for a single
+  line of input.  atmsort will compile the expressions and use them to
+  process the current input file.  The format is:
+
+    -- start_matchsubs
+    --
+    -- # first, a match expression
+    -- m/match this/
+    -- # next, a substitute expression
+    -- s/match this/substitute this/
+    --
+    -- # and can have more matchsubs after this...
+    --
+    -- end_matchsubs
+
+  Blank lines are ignored, and comments may be used if they are
+  prefixed with "#", the perl comment character, eg:
+
+    -- # this is a comment
+
+  Multiple match and substitute pairs may be specified.  See "man
+  perlre" for more information on perl regular expressions.
+
+=item -- end_matchsubs
+  
+  Ends the match/substitution region that started with "start_matchsubs"
+
+=item -- start_matchignore
+
+  Similar to matchsubs, starts a list of match/ignore expressions as a
+  set of perl match operators.  Each line that matches one of the
+  specified expressions is elided from the atmsort output.  Note that
+  there isn't an "ignore" expression -- just a list of individual match
+  operators.  
+
+=item -- end_matchignore
+
+  Ends the match/ignore region that started with "start_matchignore"
+
 =item -- force_explain
 
   Normally, atmsort can detect that a SQL query is being EXPLAINed,
@@ -1157,21 +1199,16 @@ EOF_formatfix
             unless (($ini =~ m/\-\-\s*end\_match(subs|ignore)\s*$/i))
             {
                 $define_match_expression .= $ini;
-                next;
+                goto L_push_outarr;
             }
 
             my @foo = split(/\n/, $define_match_expression, 2);
 
             unless (2 == scalar(@foo))
             {
-                print "GP_IGNORE: bad match definition\n";
-                my $outi = $define_match_expression;
-
-                $outi =~ s/^(.*)/GP_IGNORE: ($1)/gm;
-                print $outi;
-                print "GP_IGNORE: ", $ini;
+                $ini .= "GP_IGNORE: bad match definition\n";
                 undef $define_match_expression;
-                next;
+                goto L_push_outarr;
             }
 
             my $stat;
@@ -1196,15 +1233,15 @@ EOF_formatfix
 
                 # 
                 $outi =~ s/^(.*)/GP_IGNORE: ($1)/gm;
-                print $outi;
+                $ini .= $outi;
             }
             else
             {
-                print "GP_IGNORE: defined new match expression\n";
+                $ini .=  "GP_IGNORE: defined new match expression\n";
             }
 
             undef $define_match_expression;
-            next;
+            goto L_push_outarr;
         } # end defined match expression
 
         if ($big_ignore > 0)
@@ -1262,7 +1299,7 @@ EOF_formatfix
             if (($ini =~ m/\-\-\s*start\_match(subs|ignore)\s*$/i))
             {
                 $define_match_expression = $ini;
-                next;
+                goto L_push_outarr;
             }
             if (($ini =~ m/\-\-\s*start\_ignore\s*$/i) ||
                 (($ini =~ m/\-\-\s*start\_equiv\s*$/i) && !($do_equiv)))
@@ -1488,6 +1525,8 @@ EOF_formatfix
         {
            next; # ignore matching lines
         }
+
+L_push_outarr:
 
         push @outarr, $ini;
 
