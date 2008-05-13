@@ -1170,7 +1170,8 @@ ReadTwoPhaseFile(TransactionId xid)
 	if (!EQ_CRC32(calc_crc, file_crc))
 	{
 		ereport(WARNING,
-			    (errmsg("CRC doesn't length (crc 0x%X, calculated 0x%X)", 
+			    (errmsg("two phase state file checksum failed: expected 0x%X "
+						"but calculated 0x%X", 
 			            file_crc, calc_crc)));
 		pfree(buf);
 		return NULL;
