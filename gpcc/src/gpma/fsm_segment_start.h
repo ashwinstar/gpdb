@@ -37,6 +37,7 @@ static apr_status_t a_segment_start_do(gpcc_event_t *ev, void *arg)
 	p->u.start.req[i].host = apr_pstrdup(p->pool, info->host);
     	p->u.start.req[i].port = info->port;
 	p->u.start.req[i].datadir = apr_pstrdup(p->pool, info->dir);
+	p->u.start.req[i].isprimary = info->isprimary;
 	p->u.start.req[i].reply = 0;
 
     }
