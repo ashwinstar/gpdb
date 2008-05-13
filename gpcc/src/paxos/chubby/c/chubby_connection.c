@@ -6,10 +6,10 @@ struct chubby_connection{
     struct chubby_counted super;
     chubby_t*chubby;
     chubby_connection_t*parent;
-    char lockFilename[PATH_MAX];
-    int64_t lockDn;
-    char lockId[CHUBBY_ID_SIZE];
-    time_t lockExpireTime;
+    char leaseFilename[PATH_MAX];
+    int64_t leaseDn;
+    char leaseId[CHUBBY_ID_SIZE];
+    time_t leaseExpireTime;
 };
 
 struct chubby_string_linked_list{
@@ -71,8 +71,8 @@ chubby_connection_propose(chubby_connection_t*thiz,chubby_string_t**answer,chubb
     if (!thiz->parent)
 	return chubby_propose(thiz->chubby,answer,(chubby_string_t*)b);
     chubby_udp_buffer_format(b,"If ");
-    fixFilename(b,thiz->lockFilename);
-    chubby_udp_buffer_format(b," %"APR_INT64_T_FMT" ",thiz->lockDn);
+    fixFilename(b,thiz->leaseFilename);
+    chubby_udp_buffer_format(b," %"APR_INT64_T_FMT" ",thiz->leaseDn);
     reverse(b->a,length);
     reverse(b->a+length,b->length-length);
     reverse(b->a,b->length);
@@ -91,20 +91,15 @@ chubby_connection_freeChubbyStringLinkedList(chubby_connection_t*thiz,struct chu
     }
 }
 
-static void
-checkRenew(chubby_connection_t*thiz,int renewLockTime)
-{
-    if (renewLockTime && thiz->lockExpireTime<=time(NULL)+renewLockTime*3/4)
-	chubby_connection_renew(thiz,renewLockTime);
-}
-
 int
-chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize,int renewLockTime)
+chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize)
 {
     int64_t dn=0;
     struct chubby_string_linked_list*ll=NULL,*m;
     int size=0;
     int e=0;
+    if (strlen(name) >= PATH_MAX)
+	return CHUBBY_E_INVAL;
     for (;;){
 	chubby_udp_buffer_t b;
 	int64_t newdn=0;
@@ -161,7 +156,6 @@ chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_st
 	    assert(size == 0);
 	    break;
 	}
-	checkRenew(thiz,renewLockTime);
     }
     chubby_connection_freeChubbyStringLinkedList(thiz,ll);
     return e;
@@ -173,6 +167,8 @@ chubby_connection_stat(chubby_connection_t*thiz,struct chubby_stat*stat,const ch
     chubby_udp_buffer_t b;
     chubby_string_t*answer;
     int e;
+    if (strlen(name) >= PATH_MAX)
+	return CHUBBY_E_INVAL;
     b.length = 0;
     chubby_udp_buffer_format(&b,"Stat ");
     fixFilename(&b,name);
@@ -225,16 +221,18 @@ chubby_connection_put(chubby_connection_t*thiz,const char*name,chubby_string_t*c
 	int64_t dn=stat.decreeNumber;
 	e = chubby_connection_chubbyStat(thiz,&stat,name);
 	if (e==0 && dn==stat.decreeNumber)
-	    return CHUBBY_E_LOCKEXPIRED;
+	    return CHUBBY_E_LEASEEXPIRED;
     }
     return e;
 }
 
 int
-chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_string_t*contents,int renewLockTime)
+chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_string_t*contents)
 {
     int offset=0,len,e;
     chubby_udp_buffer_t b;
+    if (strlen(name) >= PATH_MAX)
+	return CHUBBY_E_INVAL;
     do{
 	b.length = 0;
 	chubby_udp_buffer_format(&b,"Put ");
@@ -246,7 +244,6 @@ chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_str
 	for (; len&&b.length<sizeof b.a; --len)
 	    b.a[b.length++] = contents->a[offset++];
 	e = chubby_connection_propose(thiz,NULL,&b);
-	checkRenew(thiz,renewLockTime);
     }while (!e && offset<contents->length);
     return e;
 }
@@ -272,16 +269,16 @@ chubby_connection_remove(chubby_connection_t*thiz,const char*name)
 	    int64_t dn=stat.decreeNumber;
 	    e = chubby_connection_chubbyStat(thiz,&stat,name);
 	    if (e==0 && dn==stat.decreeNumber)
-		return CHUBBY_E_LOCKEXPIRED;
+		return CHUBBY_E_LEASEEXPIRED;
 	}
     }
     return e;
 }
 
 static int
-chubby_connection_list1(chubby_connection_t*thiz,chubby_string_t**a,char***answer,const char*name,int renewLockTime)
+chubby_connection_list1(chubby_connection_t*thiz,chubby_string_t**a,char***answer,const char*name)
 {
-    int e=chubby_connection_get(thiz,NULL,a,name,-1,renewLockTime);
+    int e=chubby_connection_get(thiz,NULL,a,name,-1);
     if (!e){
 	int count=0,i;
 	if ((*a)->length != 0){
@@ -312,11 +309,11 @@ chubby_connection_list1(chubby_connection_t*thiz,chubby_string_t**a,char***answe
 }
 
 int
-chubby_connection_list(chubby_connection_t*thiz,char***answer,const char*name,int renewLockTime)
+chubby_connection_list(chubby_connection_t*thiz,char***answer,const char*name)
 {
     chubby_string_t*a=NULL;
     char**aa=NULL;
-    int e=chubby_connection_list1(thiz,&a,&aa,name,renewLockTime);
+    int e=chubby_connection_list1(thiz,&a,&aa,name);
     if (a)
 	thiz->chubby->free(a);
     if (e)
@@ -336,47 +333,47 @@ chubby_connection_listFree(chubby_connection_t*thiz,char**answer)
     }
 }
 
-chubby_connection_t*
-chubby_connection_getLockFilenameDecreeNumberConnection(chubby_connection_t*thiz,const char*name,int64_t decreeNumber)
-{
-    chubby_connection_t*c=chubby_connection_new(thiz->chubby);
-    if (c){
-	chubby_counted_set(&c->parent,thiz);
-	c->lockDn = decreeNumber;
-	strcpy(c->lockFilename,name);
-    }
-    return c;
-}
-
 int
-chubby_connection_getLockStringConnection(chubby_connection_t*thiz,chubby_connection_t**answer,const char*lockString)
+chubby_connection_getLeaseFilenameDecreeNumberConnection(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int64_t decreeNumber)
 {
-    int n=0;
-    int64_t dn=0;
-    sscanf(lockString,"%"APR_INT64_T_FMT"-%n",&dn,&n);
-    *answer = chubby_connection_getLockFilenameDecreeNumberConnection(thiz,lockString+n,dn);
-    return 0;
-}
-
-int
-chubby_connection_getLockString(chubby_connection_t*thiz,chubby_string_t**answer)
-{
-    char ls[PATH_MAX+NUMBER_STRING_LENGTH+1];
-    sprintf(ls,"%"APR_INT64_T_FMT"-%s",thiz->lockDn,thiz->lockFilename);
-    *answer = thiz->chubby->malloc(sizeof(chubby_string_t)+strlen(ls));
-    if (!*answer)
+    chubby_connection_t*c;
+    if (strlen(name) >= PATH_MAX)
+	return CHUBBY_E_INVAL;
+    c = chubby_connection_new(thiz->chubby);
+    if (!c)
 	return CHUBBY_E_OOM;
-    (*answer)->length = strlen(ls);
-    strcpy((*answer)->a,ls);
+    chubby_counted_set(&c->parent,thiz);
+    c->leaseDn = decreeNumber;
+    strcpy(c->leaseFilename,name);
+    *answer = c;
     return 0;
 }
 
 int
-chubby_connection_checkLock(chubby_connection_t*thiz)
+chubby_connection_getLeaseFilenameAndDecreeNumber(chubby_connection_t*thiz,char**filename,int64_t*decreeNumber)
+{
+    if (!thiz->leaseDn)
+	return CHUBBY_E_INVAL;
+    if (filename){
+	*filename = thiz->chubby->malloc(1+strlen(thiz->leaseFilename));
+	if (!*filename)
+	    return CHUBBY_E_OOM;
+	strcpy(*filename,thiz->leaseFilename);
+    }
+    if (decreeNumber)
+	*decreeNumber = thiz->leaseDn;
+    return 0;
+}
+
+int
+chubby_connection_checkLease(chubby_connection_t*thiz)
 {
     struct chubby_stat stat;
-    int e=chubby_connection_stat(thiz,&stat,thiz->lockFilename);
-    return e==0&&stat.decreeNumber==thiz->lockDn?0:CHUBBY_E_LOCKEXPIRED;
+    int e;
+    if (!thiz->leaseDn)
+	return CHUBBY_E_INVAL;
+    e = chubby_connection_stat(thiz,&stat,thiz->leaseFilename);
+    return e==0&&stat.decreeNumber==thiz->leaseDn?0:CHUBBY_E_LEASEEXPIRED;
 }
 
 int
@@ -386,16 +383,16 @@ chubby_connection_clone(chubby_connection_t*thiz,chubby_connection_t**answer)
     if (!c)
 	return CHUBBY_E_OOM;
     chubby_counted_set(&c->parent,thiz->parent);
-    c->lockDn = thiz->lockDn;
-    strcpy(c->lockFilename,thiz->lockFilename);
-    strcpy(c->lockId,thiz->lockId);
-    c->lockExpireTime = thiz->lockExpireTime;
+    c->leaseDn = thiz->leaseDn;
+    strcpy(c->leaseFilename,thiz->leaseFilename);
+    strcpy(c->leaseId,thiz->leaseId);
+    c->leaseExpireTime = thiz->leaseExpireTime;
     *answer = c;
     return 0;
 }
 
 int
-chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int timeout,int lockTime)
+chubby_connection_getLease(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int timeout,int leaseTime)
 {
     int e;
     time_t timedout=time(NULL)+timeout;
@@ -406,10 +403,12 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
     chubby_string_t*a;
     char id[CHUBBY_ID_SIZE];
     char info[PATH_MAX];
+    if (strlen(name) >= PATH_MAX-5)
+	return CHUBBY_E_INVAL;
     sprintf(info,"%s-info",name);
     chubby_getNewId(thiz->chubby,id);
     do{
-	e = chubby_connection_get(thiz,&stat,&a,info,-1,0);
+	e = chubby_connection_get(thiz,&stat,&a,info,-1);
 	if (!e){
 	    sscanf(a->a,"%d",&waitTime);
 	    thiz->chubby->free(a);
@@ -430,7 +429,7 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
 	    thiz->chubby->free(a);
 	    if (e)
 		return e;
-	    e = chubby_connection_get(thiz,&stat,&a,name,-1,0);
+	    e = chubby_connection_get(thiz,&stat,&a,name,-1);
 	    if (e)
 		return e;
 	    if (a->length==strlen(id) && !memcmp(a->a,id,a->length)){
@@ -439,13 +438,13 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
 		if (!c)
 		    return CHUBBY_E_OOM;
 		chubby_counted_set(&c->parent,thiz);
-		c->lockDn = stat.decreeNumber;
-		strcpy(c->lockFilename,name);
-		strcpy(c->lockId,id);
-		e = chubby_connection_renew(c,lockTime);
+		c->leaseDn = stat.decreeNumber;
+		strcpy(c->leaseFilename,name);
+		strcpy(c->leaseId,id);
+		e = chubby_connection_renew(c,leaseTime);
 		if (e){
 		    chubby_connection_close(c);
-		    return CHUBBY_E_LOCKEXPIRED;
+		    return CHUBBY_E_LEASEEXPIRED;
 		}
 		*answer = c;
 		return 0;
@@ -458,26 +457,26 @@ chubby_connection_lock(chubby_connection_t*thiz,chubby_connection_t**answer,cons
 }
 
 int
-chubby_connection_renew(chubby_connection_t*thiz,int lockTime)
+chubby_connection_renew(chubby_connection_t*thiz,int leaseTime)
 {
     chubby_string_t*a,*b;
     char info[PATH_MAX];
     time_t now=time(NULL);
     int e;
-    if (!*thiz->lockId)
+    if (!*thiz->leaseId)
 	return CHUBBY_E_INVAL;
-    a = chubby_string_format(thiz->chubby,"%d %s",lockTime,thiz->lockId);
+    a = chubby_string_format(thiz->chubby,"%d %s",leaseTime,thiz->leaseId);
     if (!a)
 	return CHUBBY_E_OOM;
-    sprintf(info,"%s-info",thiz->lockFilename);
+    sprintf(info,"%s-info",thiz->leaseFilename);
     e = chubby_connection_put(thiz,info,a);
     if (!e){
-	e = chubby_connection_get(thiz,NULL,&b,info,-1,0);
+	e = chubby_connection_get(thiz,NULL,&b,info,-1);
 	if (!e){
 	    if (a->length==b->length && !memcmp(a->a,b->a,a->length))
-		thiz->lockExpireTime = now+lockTime;
+		thiz->leaseExpireTime = now+leaseTime;
 	    else
-		e = CHUBBY_E_LOCKEXPIRED;
+		e = CHUBBY_E_LEASEEXPIRED;
 	    thiz->chubby->free(b);
 	}
     }
@@ -486,14 +485,16 @@ chubby_connection_renew(chubby_connection_t*thiz,int lockTime)
 }
 
 int
-chubby_connection_getLockExpireTime(chubby_connection_t*thiz,time_t*t)
+chubby_connection_getLeaseExpireTime(chubby_connection_t*thiz,time_t*t)
 {
-    *t = thiz->lockExpireTime;
+    if (!thiz->leaseDn)
+	return CHUBBY_E_INVAL;
+    *t = thiz->leaseExpireTime;
     return 0;
 }
 
 void
-chubby_connection_giveUpLock(chubby_connection_t*thiz)
+chubby_connection_giveUpLease(chubby_connection_t*thiz)
 {
     chubby_connection_renew(thiz,0);
 }
@@ -524,7 +525,7 @@ chubby_connection_move(chubby_connection_t*thiz,const char*fromname,const char*t
     if (e == CHUBBY_E_IFFAILED){
 	e = chubby_connection_chubbyStat(thiz,&tstat,fromname);
 	if (e==0 && fstat.decreeNumber==tstat.decreeNumber)
-	    return CHUBBY_E_LOCKEXPIRED;
+	    return CHUBBY_E_LEASEEXPIRED;
     }
     return e;
 }

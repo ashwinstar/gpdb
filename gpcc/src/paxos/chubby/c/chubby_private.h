@@ -39,6 +39,7 @@ struct chubby{
     void(*free)(void*);
     char*addresses;
     char*paxosKey;
+    int timeout;
     char id[CHUBBY_ID_SIZE];
     int64_t count;
     int leaderValid;

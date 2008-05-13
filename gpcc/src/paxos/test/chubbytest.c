@@ -1,5 +1,6 @@
 /* chubbytest.c */
 
+#include <apr.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,15 +15,19 @@
 struct test_declarations{
     int ret;
     time_t time;
-    chubby_string_t*answer;
+    chubby_string_t*chubbystring;
+    char*charstar;
     char**list;
+    int64_t dn;
     char catlist[STRING_LENGTH];
     struct chubby_stat stat;
 };
 
 #define TEST(aa,bb)\
     do{\
-	t.answer=0;\
+	t.chubbystring=0;\
+	t.dn=0;\
+	t.charstar=0;\
 	t.list=0;\
 	t.stat.decreeNumber = 0;\
 	t.stat.size = 0;\
@@ -47,9 +52,15 @@ struct test_declarations{
 	printf("%d",t.ret);\
 	if (t.stat.decreeNumber || t.stat.size)\
 	    printf(" %d %d",(int)t.stat.decreeNumber,t.stat.size);\
-	if (t.answer){\
-	    printf(" %s",t.answer->a);\
-	    counted_free(t.answer);\
+	if (t.dn)\
+	    printf(" dn=%"APR_INT64_T_FMT,t.dn);\
+	if (t.chubbystring){\
+	    printf(" %s",t.chubbystring->a);\
+	    counted_free(t.chubbystring);\
+	}\
+	if (t.charstar){\
+	    printf(" %s",t.charstar);\
+	    counted_free(t.charstar);\
 	}\
 	if (t.list){\
 	    printf(" %s",t.catlist);\
@@ -102,20 +113,20 @@ test1(int argc,char**argv,chubby_connection_t*c)
     struct string s;
     chubby_connection_t*c2=NULL;
     int i;
-    TEST(chubby_connection_lock(c,&c2,"test/lock2",20,10),t.ret==0);
+    TEST(chubby_connection_getLease(c,&c2,"test/lock2",20,10),t.ret==0);
     if (c2){
 	for (i=0; i<10; i++){
 	    time_t now;
 	    TEST(chubby_connection_renew(c2,10),t.ret==0);
 	    now = time(NULL);
-	    TEST(chubby_connection_getLockExpireTime(c2,&t.time),t.ret==0&&now+6<t.time&&t.time<=now+10);
+	    TEST(chubby_connection_getLeaseExpireTime(c2,&t.time),t.ret==0&&now+6<t.time&&t.time<=now+10);
 	    sleep(6);
 	}
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
     sleep(14);
-    TEST(chubby_connection_lock(c,&c2,"test/lock3",20,10),1);
+    TEST(chubby_connection_getLease(c,&c2,"test/lock3",20,10),1);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
@@ -132,11 +143,11 @@ test2(int argc,char**argv,chubby_connection_t*c)
     struct test_declarations t;
     struct string s;
     chubby_connection_t*c2=NULL;
-    TEST(chubby_connection_getLockStringConnection(c,&c2,argv[2]),t.ret==0);
+    TEST(chubby_connection_getLeaseFilenameDecreeNumberConnection(c,&c2,argv[2],atoll(argv[3])),t.ret==0);
     if (c2){
-	TEST(chubby_connection_list(c2,&t.list,"/",0),t.ret==0);
+	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==0);
 	sleep(20);
-	TEST(chubby_connection_list(c2,&t.list,"/",0),t.ret==CHUBBY_E_LOCKEXPIRED);
+	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==CHUBBY_E_LEASEEXPIRED);
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
@@ -155,11 +166,11 @@ test0(int argc,char**argv,chubby_connection_t*c)
     chubby_connection_t*c3=NULL;
     int64_t dn;
     TEST(chubby_connection_put(c,"/test/file",make_string(&s,"contents")),t.ret==0);
-    TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/file",-1,0),t.ret==0&&!strcmp(t.answer->a,"contents"));
+    TEST(chubby_connection_get(c,&t.stat,&t.chubbystring,"/test/file",-1),t.ret==0&&!strcmp(t.chubbystring->a,"contents"));
     TEST(chubby_connection_move(c,"/test/file","/test/tofile"),t.ret==0);
     TEST(chubby_connection_stat(c,&t.stat,"test/file"),t.ret==0&&t.stat.decreeNumber==0);
-    TEST(chubby_connection_list(c,&t.list,"/",0),t.ret==0&&strstr(t.catlist,",paxos,")&&strstr(t.catlist,",test,"));
-    TEST(chubby_connection_list(c,&t.list,"noentfile",0),t.ret==1);
+    TEST(chubby_connection_list(c,&t.list,"/"),t.ret==0&&strstr(t.catlist,",paxos,")&&strstr(t.catlist,",test,"));
+    TEST(chubby_connection_list(c,&t.list,"noentfile"),t.ret==1);
     TEST(chubby_connection_stat(c,&t.stat,"test/tofile"),t.ret==0);
     TEST(chubby_connection_remove(c,"//test//1/1"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_put(c,"test///1/1",make_string(&s,"")),t.ret==0);
@@ -169,7 +180,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
     TEST(chubby_connection_stat(c,&t.stat,"test"),t.ret==0&&t.stat.decreeNumber==dn);
     TEST(chubby_connection_remove(c,"//test//1/1"),t.ret==0);
     TEST(chubby_connection_stat(c,&t.stat,"test"),t.ret==0&&t.stat.decreeNumber>dn);
-    TEST(chubby_connection_list(c,&t.list,"/test",0),t.ret==0&&!strstr(t.catlist,",1,"));
+    TEST(chubby_connection_list(c,&t.list,"/test"),t.ret==0&&!strstr(t.catlist,",1,"));
     {
 	int i;
 	char*a;
@@ -186,13 +197,13 @@ test0(int argc,char**argv,chubby_connection_t*c)
 	    a += strlen(a);
 	}
 	big->length = a-big->a;
-	TEST(chubby_connection_putBigFile(c,"///test/bi g",big,0),t.ret==0);
-	TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test//bi g",-1,0),t.ret==0&&!strcmp(t.answer->a,big->a));
+	TEST(chubby_connection_putBigFile(c,"///test/bi g",big),t.ret==0);
+	TEST(chubby_connection_get(c,&t.stat,&t.chubbystring,"/test//bi g",-1),t.ret==0&&!strcmp(t.chubbystring->a,big->a));
 	counted_free(big);
     }
-    TEST(chubby_connection_list(c,&t.list,"/test",0),t.ret==0&&strstr(t.catlist,",bi g,"));
+    TEST(chubby_connection_list(c,&t.list,"/test"),t.ret==0&&strstr(t.catlist,",bi g,"));
     TEST(chubby_connection_remove(c,"/test/bi g"),t.ret==0);
-    TEST(chubby_connection_list(c,&t.list,"/test",0),t.ret==0&&!strstr(t.catlist,",bi g,"));
+    TEST(chubby_connection_list(c,&t.list,"/test"),t.ret==0&&!strstr(t.catlist,",bi g,"));
     TEST(chubby_connection_remove(c,"/test/lock"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_remove(c,"/test/lock-info"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_remove(c,"/test/lock2"),t.ret==0||t.ret==CHUBBY_E_NOENT);
@@ -201,29 +212,30 @@ test0(int argc,char**argv,chubby_connection_t*c)
     TEST(chubby_connection_remove(c,"/test/lock3-info"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_put(c,"/test/test1result",make_string(&s,"no")),t.ret==0);
     TEST(chubby_connection_put(c,"/test/test2result",make_string(&s,"no")),t.ret==0);
-    TEST(chubby_connection_lock(c,&c2,"/test//lock",20,10),t.ret==0);
+    TEST(chubby_connection_getLease(c,&c2,"/test//lock",20,10),t.ret==0);
     if (c2){
 	TEST(chubby_connection_clone(c2,&c3),t.ret==0);
 	chubby_connection_close(c2);
 	c2 = NULL;
 	if (c3){
-	    TEST(chubby_connection_getLockString(c3,&t.answer),t.ret==0);
-	    TEST(chubby_connection_checkLock(c3),t.ret==0);
-	    TEST(chubby_connection_list(c3,&t.list,"/",0),t.ret==0);
-	    chubby_connection_giveUpLock(c3);
+	    int64_t dn;
+	    TEST(chubby_connection_getLeaseFilenameAndDecreeNumber(c3,&t.charstar,&dn),t.ret==0);
+	    TEST(chubby_connection_checkLease(c3),t.ret==0);
+	    TEST(chubby_connection_list(c3,&t.list,"/"),t.ret==0);
+	    chubby_connection_giveUpLease(c3);
 	    chubby_connection_close(c3);
 	    c3 = NULL;
 	}
     }
-    TEST(chubby_connection_lock(c,&c2,"/test//lock",20,10),t.ret==0);
+    TEST(chubby_connection_getLease(c,&c2,"/test//lock",20,10),t.ret==0);
     if (c2){
-	TEST(chubby_connection_getLockString(c2,&t.answer),t.ret==0);
-	TEST(chubby_connection_checkLock(c2),t.ret==0);
-	TEST(chubby_connection_list(c2,&t.list,"/",0),t.ret==0);
+	TEST(chubby_connection_getLeaseFilenameAndDecreeNumber(c2,&t.charstar,&dn),t.ret==0);
+	TEST(chubby_connection_checkLease(c2),t.ret==0);
+	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==0);
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock",2,10),t.ret==CHUBBY_E_TIMEOUT);
+    TEST(chubby_connection_getLease(c,&c2,"test/lock",2,10),t.ret==CHUBBY_E_TIMEOUT);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
@@ -231,46 +243,47 @@ test0(int argc,char**argv,chubby_connection_t*c)
     sprintf(s.a,"%s test1&",argv[0]);
     system(s.a);
     sleep(10);
-    TEST(chubby_connection_lock(c,&c2,"test/lock2",20,10),t.ret==CHUBBY_E_TIMEOUT);
+    TEST(chubby_connection_getLease(c,&c2,"test/lock2",20,10),t.ret==CHUBBY_E_TIMEOUT);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock2",60,10),t.ret==0);
+    TEST(chubby_connection_getLease(c,&c2,"test/lock2",60,10),t.ret==0);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock3",20,10),t.ret==0);
+    TEST(chubby_connection_getLease(c,&c2,"test/lock3",20,10),t.ret==0);
     if (c2){
-	TEST(chubby_connection_checkLock(c2),t.ret==0);
-	TEST(chubby_connection_list(c2,&t.list,"/",0),t.ret==0);
+	TEST(chubby_connection_checkLease(c2),t.ret==0);
+	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==0);
 	sleep(20);
-	TEST(chubby_connection_checkLock(c2),t.ret==CHUBBY_E_LOCKEXPIRED);
-	TEST(chubby_connection_list(c2,&t.list,"/",0),t.ret==CHUBBY_E_LOCKEXPIRED);
+	TEST(chubby_connection_checkLease(c2),t.ret==CHUBBY_E_LEASEEXPIRED);
+	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==CHUBBY_E_LEASEEXPIRED);
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock",20,10),t.ret==0);
+    TEST(chubby_connection_getLease(c,&c2,"test/lock",20,10),t.ret==0);
     if (c2){
-	chubby_string_t*a=NULL;
-	TEST(chubby_connection_getLockString(c2,&a),t.ret==0);
-	if (a){
-	    sprintf(s.a,"%s test2 %s&",argv[0],a->a);
-	    counted_free(a);
+	char*fn=NULL;
+	int64_t dn;
+	TEST(chubby_connection_getLeaseFilenameAndDecreeNumber(c2,&fn,&dn),t.ret==0);
+	if (fn){
+	    sprintf(s.a,"%s test2 %s %"APR_INT64_T_FMT"&",argv[0],fn,dn);
+	    counted_free(fn);
 	    system(s.a);
 	}
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_lock(c,&c2,"test/lock",20,10),t.ret==0);
+    TEST(chubby_connection_getLease(c,&c2,"test/lock",20,10),t.ret==0);
     if (c2){
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
-    TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/test1result",-1,0),t.ret==0&&!strcmp(t.answer->a,"22/22"));
+    TEST(chubby_connection_get(c,&t.stat,&t.chubbystring,"/test/test1result",-1),t.ret==0&&!strcmp(t.chubbystring->a,"22/22"));
     sleep(20);
-    TEST(chubby_connection_get(c,&t.stat,&t.answer,"/test/test2result",-1,0),t.ret==0&&!strcmp(t.answer->a,"3/3"));
+    TEST(chubby_connection_get(c,&t.stat,&t.chubbystring,"/test/test2result",-1),t.ret==0&&!strcmp(t.chubbystring->a,"3/3"));
 }
 
 int
@@ -285,7 +298,7 @@ main(int argc,char**argv)
 	exit(1);
     }
     sprintf(addresses,"%s:2000,%s:2001,%s:2002",hostname,hostname,hostname);
-    chubby = chubby_new(addresses,counted_malloc,counted_free);
+    chubby = chubby_new(addresses,-1,counted_malloc,counted_free);
     if (!chubby){
 	fprintf(stderr,"chubby_new failed\n");
 	exit(1);
@@ -298,7 +311,7 @@ main(int argc,char**argv)
     chubby_close(chubby);
     if (argc>1 && !strcmp(argv[1],"test1"))
 	test1(argc,argv,c);
-    else if (argc>1 && !strcmp(argv[1],"test2"))
+    else if (argc>3 && !strcmp(argv[1],"test2"))
 	test2(argc,argv,c);
     else
 	test0(argc,argv,c);

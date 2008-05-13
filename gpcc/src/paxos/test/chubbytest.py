@@ -28,24 +28,24 @@ def check(__a,__b):
 
 def test1():
     global global_l
-    global_l = c.lock("test/lock2",20,10)
+    global_l = c.getLease("test/lock2",20,10)
     check("global_l","global_l[0]==0")
     if global_l[0]==0:
 	global_l = global_l[1]
 	for i in xrange(10):
 	    check("global_l.renew(10)","True")
-	    check("global_l.getLockExpireTime()","x[0]==0 and time.time()+6<x[1]<time.time()+10")
+	    check("global_l.getLeaseExpireTime()","x[0]==0 and time.time()+6<x[1]<time.time()+10")
 	    time.sleep(6)
     time.sleep(10)
-    c.lock("test/lock3",20,10)
+    c.getLease("test/lock3",20,10)
     c.put("test/test1result","%d/%d"%(passed,ntest))
 
-def test2(lockString):
+def test2(fn,dn):
     global global_l
-    global_l = c.getLockStringConnection(lockString)
+    global_l = c.getLeaseFilenameDecreeNumberConnection(fn,dn)
     check("global_l.list('/')","x[0]==0")
     time.sleep(20)
-    check("global_l.list('/')","x[0]==chubby.E_LOCKEXPIRED")
+    check("global_l.list('/')","x[0]==chubby.E_LEASEEXPIRED")
     c.put("test/test2result","%d/%d"%(passed,ntest))
 
 def test0():
@@ -81,7 +81,7 @@ def test0():
     check("c.remove('/test/lock3-info')","x==0 or x==chubby.E_NOENT")
     check("c.put('/test/test1result','no')","x==0")
     check("c.put('/test/test2result','no')","x==0")
-    global_l = c.lock('/test//lock',20,10)
+    global_l = c.getLease('/test//lock',20,10)
     check("global_l","global_l[0]==0")
     if global_l[0]==0:
 	global_l = global_l[1]
@@ -89,37 +89,38 @@ def test0():
 	check("global_l","global_l[0]==0")
 	if global_l[0]==0:
 	    global_l = global_l[1]
-	    check("global_l.getLockString()","1")
-	    check("global_l.checkLock()","x==0")
+	    check("global_l.getLeaseFilenameAndDecreeNumber()","1")
+	    check("global_l.checkLease()","x==0")
 	    check("global_l.list('/')","x[0]==0")
-	    global_l.giveUpLock()
-    global_l = c.lock('/test//lock',20,10)
+	    global_l.giveUpLease()
+    global_l = c.getLease('/test//lock',20,10)
     check("global_l","global_l[0]==0")
     if global_l[0]==0:
 	global_l = global_l[1]
-	check("global_l.getLockString()","1")
-	check("global_l.checkLock()","x==0")
+	check("global_l.getLeaseFilenameAndDecreeNumber()","1")
+	check("global_l.checkLease()","x==0")
 	check("global_l.list('/')","x[0]==0")
-    check("c.lock('test/lock',2,10)","x==(chubby.E_TIMEOUT,)")
+    check("c.getLease('test/lock',2,10)","x==(chubby.E_TIMEOUT,)")
     os.system("python -u %s test1&"%sys.argv[0])
     time.sleep(10)
-    check("c.lock('test/lock2',20,10)","x==(chubby.E_TIMEOUT,)")
-    check("c.lock('test/lock2',60,10)","x[0]==0")
-    global_l = c.lock('test/lock3',20,10)
+    check("c.getLease('test/lock2',20,10)","x==(chubby.E_TIMEOUT,)")
+    check("c.getLease('test/lock2',60,10)","x[0]==0")
+    global_l = c.getLease('test/lock3',20,10)
     check("global_l","global_l[0]==0")
     if global_l[0]==0:
 	global_l = global_l[1]
-	check("global_l.checkLock()","x==0")
+	check("global_l.checkLease()","x==0")
 	check("global_l.list('/')","x[0]==0")
 	time.sleep(20)
-	check("global_l.checkLock()","x==chubby.E_LOCKEXPIRED")
-	check("global_l.list('/')","x==(chubby.E_LOCKEXPIRED,)")
-    global_l = c.lock('test/lock',20,10)
+	check("global_l.checkLease()","x==chubby.E_LEASEEXPIRED")
+	check("global_l.list('/')","x==(chubby.E_LEASEEXPIRED,)")
+    global_l = c.getLease('test/lock',20,10)
     check("global_l","global_l[0]==0")
     if global_l[0]==0:
 	global_l = global_l[1]
-	os.system("python -u %s test2 %s&"%(sys.argv[0],global_l.getLockString()))
-    check("c.lock('test/lock',20,10)","x[0]==0")
+	rc,fn,dn = global_l.getLeaseFilenameAndDecreeNumber()
+	os.system("python -u %s test2 %s %d&"%(sys.argv[0],fn,dn))
+    check("c.getLease('test/lock',20,10)","x[0]==0")
     check("c.get('/test/test1result')","x[0]==0 and x[2]=='21/21'")
     time.sleep(20)
     check("c.get('/test/test2result')","x[0]==0 and x[2]=='2/2'")
@@ -131,9 +132,9 @@ c = chu.makeConnection()
 if len(sys.argv)>1 and sys.argv[1]=="test1":
     prefix = "test1"
     test1()
-elif len(sys.argv)>2 and sys.argv[1]=="test2":
+elif len(sys.argv)>3 and sys.argv[1]=="test2":
     prefix = "test2"
-    test2(sys.argv[2])
+    test2(sys.argv[2],int(sys.argv[3]))
 else:
     prefix = ""
     test0()

@@ -62,7 +62,7 @@ chubby_init(chubby_t*thiz,const char*addresses)
 }
 
 chubby_t*
-chubby_new(const char*addresses,void*(*malloc)(size_t),void(*free)(void*))
+chubby_new(const char*addresses,int timeout,void*(*malloc)(size_t),void(*free)(void*))
 {
     chubby_t*thiz=malloc(sizeof*thiz);
     if (thiz){
@@ -70,6 +70,7 @@ chubby_new(const char*addresses,void*(*malloc)(size_t),void(*free)(void*))
 	thiz->super.delet = chubby_delete;
 	thiz->malloc = malloc;
 	thiz->free = free;
+	thiz->timeout = timeout;
 	if (chubby_init(thiz,addresses)){
 	    chubby_counted_close(thiz);
 	    return NULL;
@@ -143,6 +144,7 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
     int e;
     time_t getLeaderTimeout=0;
     time_t proposeTimeout=0;
+    time_t bigTimeout=time(NULL)+thiz->timeout;
     if (chubby_udp_buffer_isOverflowed(what))
 	return CHUBBY_E_INVAL;
     for (;;){
@@ -160,6 +162,8 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 	char signature[SIGNSTRING_LENGTH];
 	fd_set rset;
 	struct timeval timeout={TIMEOUT,0};
+	if (thiz->timeout>=0 && bigTimeout<now)
+	    return CHUBBY_E_TIMEOUT;
 	if (getLeaderTimeout < now){
 	    getLeaderTimeout = now+TIMEOUT;
 	    e = chubby_sendGetLeader(thiz,fd,name);

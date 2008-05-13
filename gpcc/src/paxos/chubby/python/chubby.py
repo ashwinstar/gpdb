@@ -7,7 +7,7 @@ from udpmessenger import UdpMessenger
 
 TIMEOUT = 1
 CHUNK_SIZE = 4000
-DEFAULT_LOCK_TIME = 12
+DEFAULT_LEASE_TIME = 12
 PAXOS_PROTOCOL_VERSION = 0
 
 TIME_RESOLUTION = .1
@@ -17,7 +17,7 @@ E_ISDIR = 2
 E_IFFAILED = 3
 E_INVAL = 4
 
-E_LOCKEXPIRED = E_IFFAILED
+E_LEASEEXPIRED = E_IFFAILED
 E_TIMEOUT = 101
 
 class Connection:
@@ -25,10 +25,10 @@ class Connection:
     def __init__(self,chubby):
 	self.__chubby = chubby
 	self.__parent = None
-	self.__lockFilename = None
-	self.__lockDn = 0
-	self.__lockId = None
-	self.__lockExpireTime = 0
+	self.__leaseFilename = None
+	self.__leaseDn = 0
+	self.__leaseId = None
+	self.__leaseExpireTime = 0
 
     @staticmethod
     def __fixFilename(s):
@@ -40,14 +40,10 @@ class Connection:
 
     def __propose(self,decree):
 	if self.__parent:
-	    return self.__parent.__propose("If %s %d "%(self.__fixFilename(self.__lockFilename),self.__lockDn)+decree)
+	    return self.__parent.__propose("If %s %d "%(self.__fixFilename(self.__leaseFilename),self.__leaseDn)+decree)
 	return self.__chubby.propose(decree)
 
-    def __checkRenew(self,renewLockTime):
-	if renewLockTime and self.__lockExpireTime<=time.time()+.75*renewLockTime:
-	    self.renew(renewLockTime)
-
-    def __get1(self,name,maxsize,renewLockTime):
+    def __get1(self,name,maxsize):
 	dn = 0
 	s = []
 	length = 0
@@ -78,7 +74,6 @@ class Connection:
 		length += len(b)
 	    if length==size or maxsize!=None and size>=maxsize:
 		break
-	    self.__checkRenew(renewLockTime)
 	return (0,dn,"".join(s))
 
     @staticmethod
@@ -110,7 +105,7 @@ class Connection:
 	    if a[0]==E_IFFAILED:
 		a = self.__chubbyStat(name)
 		if a[0]==0 and a[1]==dn:
-		    return E_LOCKEXPIRED
+		    return E_LEASEEXPIRED
 	return a[0]
 
     def __move(self,name,toname):
@@ -128,7 +123,7 @@ class Connection:
 	if a[0]==E_IFFAILED:
 	    a = self.__chubbyStat(name)
 	    if a[0]==0 and a[1]==dn:
-		return E_LOCKEXPIRED
+		return E_LEASEEXPIRED
 	return a[0]
 
     def __put(self,name,contents):
@@ -140,10 +135,10 @@ class Connection:
 	if a[0]==E_IFFAILED:
 	    a = self.__chubbyStat(name)
 	    if a[0]==0 and a[1]==dn:
-		return E_LOCKEXPIRED
+		return E_LEASEEXPIRED
 	return a[0]
 
-    def __putBigFile(self,name,contents,renewLockTime):
+    def __putBigFile(self,name,contents):
 	offset = 0
 	while 1:
 	    a = self.__propose("Put %s %d "%(name,offset)+contents[offset:offset+CHUNK_SIZE])
@@ -152,16 +147,15 @@ class Connection:
 	    offset += CHUNK_SIZE
 	    if offset>=len(contents):
 		return 0
-	    self.__checkRenew(renewLockTime)
 
     def move(self,name,toname):
 	name = self.__fixFilename(name)
 	toname = self.__fixFilename(toname)
 	return self.__move(name,toname)
 
-    def get(self,name,maxsize=None,renewLockTime=0):
+    def get(self,name,maxsize=None):
 	name = self.__fixFilename(name)
-	return self.__get1(name,maxsize,renewLockTime)
+	return self.__get1(name,maxsize)
 
     def stat(self,name):
 	name = self.__fixFilename(name)
@@ -171,42 +165,40 @@ class Connection:
 	name = self.__fixFilename(name)
 	return self.__put(name,contents)
 
-    def putBigFile(self,name,contents,renewLockTime=0):
+    def putBigFile(self,name,contents):
 	name = self.__fixFilename(name)
-	return self.__putBigFile(name,contents,renewLockTime)
+	return self.__putBigFile(name,contents)
 
     def remove(self,name):
 	name = self.__fixFilename(name)
 	return self.__remove(name)
 
-    def list(self,name,renewLockTime=0):
+    def list(self,name):
 	name = self.__fixFilename(name)
-	a = self.__get1(name,None,renewLockTime)
+	a = self.__get1(name,None)
 	if a[0]!=0:
 	    return a
 	return tuple([0,a[1]]+map(self.__unfixFilename,a[2].split(' ')))
 
-    def getLockFilenameDecreeNumberConnection(self,fn,dn):
+    def getLeaseFilenameDecreeNumberConnection(self,fn,dn):
 	c = Connection(self.__chubby)
 	c.__parent = self
-	c.__lockDn = dn
-	c.__lockFilename = fn
+	c.__leaseDn = dn
+	c.__leaseFilename = fn
 	return c
 
-    def getLockStringConnection(self,lockstring):
-	i = lockstring.find('-')
-	dn = int(lockstring[:i])
-	fn = lockstring[i+1:]
-	return self.getLockFilenameDecreeNumberConnection(fn,dn)
+    def getLeaseFilenameAndDecreeNumber(self):
+	if not self.__leaseDn:
+	    return (E_INVAL,)
+	return (0,self.__leaseFilename,self.__leaseDn)
 
-    def getLockString(self):
-	return "%d-%s"%(self.__lockDn,self.__lockFilename)
+    def checkLease(self):
+	if not self.__leaseDn:
+	    return (E_INVAL,)
+	a = self.stat(self.__leaseFilename)
+	return (a[0]!=0 or a[1]!=self.__leaseDn) and E_LEASEEXPIRED or 0
 
-    def checkLock(self):
-	a = self.stat(self.__lockFilename)
-	return (a[0]!=0 or a[1]!=self.__lockDn) and E_LOCKEXPIRED or 0
-
-    def __statLock(self,name):
+    def __statLease(self,name):
 	a = self.get(name+"-info")
 	if a[0]==E_NOENT:
 	    return (0,0,0,None)
@@ -218,19 +210,19 @@ class Connection:
     def clone(self):
 	c = Connection(self.__chubby)
 	c.__parent = self.__parent
-	c.__lockDn = self.__lockDn
-	c.__lockFilename = self.__lockFilename
-	c.__lockId = self.__lockId
-	c.__lockExpireTime = self.__lockExpireTime
+	c.__leaseDn = self.__leaseDn
+	c.__leaseFilename = self.__leaseFilename
+	c.__leaseId = self.__leaseId
+	c.__leaseExpireTime = self.__leaseExpireTime
 	return (0,c)
 
-    def lock(self,name,timeout,lockTime=DEFAULT_LOCK_TIME):
+    def getLease(self,name,timeout,leaseTime=DEFAULT_LEASE_TIME):
 	timedout = time.time()+timeout
 	expire = 0
 	dn = 0
 	di = self.__chubby.getNewId()
-	while time.time()<timedout:
-	    a = self.__statLock(name)
+	while 1:
+	    a = self.__statLease(name)
 	    if a[0]!=0:
 		return a
 	    now = time.time()
@@ -247,19 +239,20 @@ class Connection:
 		if b[2]==di:
 		    c = Connection(self.__chubby)
 		    c.__parent = self
-		    c.__lockDn = b[1]
-		    c.__lockFilename = name
-		    c.__lockId = di
-		    if c.renew(lockTime)==0:
+		    c.__leaseDn = b[1]
+		    c.__leaseFilename = name
+		    c.__leaseId = di
+		    if c.renew(leaseTime)==0:
 			return (0,c)
 	    time.sleep(1)
-	return (E_TIMEOUT,)
+	    if time.time()>=timedout:
+		return (E_TIMEOUT,)
 
-    def renew(self,lockTime=DEFAULT_LOCK_TIME):
-	if self.__lockId==None:
+    def renew(self,leaseTime=DEFAULT_LEASE_TIME):
+	if self.__leaseId==None:
 	    return E_INVAL
-	s = "%d %s"%(lockTime,self.__lockId)
-	info = self.__lockFilename+"-info"
+	s = "%d %s"%(leaseTime,self.__leaseId)
+	info = self.__leaseFilename+"-info"
 	now = time.time()
 	e = self.put(info,s)
 	if e==0:
@@ -267,25 +260,28 @@ class Connection:
 	    if a[0]:
 		e = a[0]
 	    elif a[2]==s:
-		self.__lockExpireTime = now+lockTime
+		self.__leaseExpireTime = now+leaseTime
 	    else:
-		e = E_LOCKEXPIRED
+		e = E_LEASEEXPIRED
 	return e
 
-    def getLockExpireTime(self):
-	return (0,self.__lockExpireTime)
+    def getLeaseExpireTime(self):
+	if not self.__leaseDn:
+	    return (E_INVAL,)
+	return (0,self.__leaseExpireTime)
 
-    def giveUpLock(self):
+    def giveUpLease(self):
 	self.renew(0)
 
 class Chubby:
 
-    def __init__(self,addresses):
+    def __init__(self,addresses,timeout=None):
 	self.__addresses = addresses.split(',')
 	self.__id = socket.gethostname()+"-%d-%f-%d"%(os.getpid(),time.time(),id(self))
 	self.__count = 0
 	self.__leader = None
 	self.__messenger = UdpMessenger()
+	self.__timeout = timeout
 
     def makeConnection(self):
 	return Connection(self)
@@ -299,9 +295,13 @@ class Chubby:
 	port = self.__messenger.makePort("")
 	getLeaderTimeout = 0
 	proposeTimeout = 0
+	if self.__timeout!=None:
+	    bigTimeout = time.time()+self.__timeout
 	try:
 	    while 1:
 		now = time.time()
+		if self.__timeout!=None and bigTimeout<now:
+		    return (E_TIMEOUT,)
 		if getLeaderTimeout<now:
 		    getLeaderTimeout = now+TIMEOUT
 		    message.Maker("GetLeader").send(port,self.__addresses)
