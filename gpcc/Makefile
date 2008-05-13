@@ -75,7 +75,7 @@ mkgp:
 mkgpma: mklibgpcc mklibzookeeper mklibchubby
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -I../build/include \
-		-o gpma *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv -lzookeeper -lchubby)
+		-o gpma *.c -L../build/lib -lgpcc -levent -ljson -lresolv -lzookeeper -lchubby $(APULIBS) $(APRLIBS))
 	@mkdir -p build/bin
 	@cp -f src/gpma/gpma build/bin/
 
