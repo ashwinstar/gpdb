@@ -1,5 +1,14 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <apr_strings.h>
 #include <apr_hash.h>
+#include <apr_time.h>
 #include <gpcc.h>
 #include <gpcc_fsm.h>
 #include <gpcc_net.h>
@@ -7,15 +16,13 @@
 #include <gpcc_strings.h>
 #include <gpcc_pg.h>
 #include <gpcc_proc.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <gpcc_file.h>
 #include "gpma.h"
 
 #include "fsm_node.h"
 #include "fsm_ma.h"
 #include "fsm_config.h"
 #include "fsm_fts.h"
-#include "fsm_maset.h"
 #include "fsm_haset.h"
 #include "fsm_initdb.h"
 #include "fsm_start.h"
@@ -29,6 +36,8 @@
 #include "fsm_unit.h"
 #include "fsm_segment_start.h"
 #include "fsm_segment_stop.h"
+
+#include "zookeeper.h"
 
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
 {
@@ -45,7 +54,7 @@ APR_DECLARE(void) fsm_init(void)
 
     /* configuration */
     gpcc_fsm_put(CFG_CMDSTATE, CFG_UPDATED_EVENT, CFG_CMDSTATE,
-		 a_config_updated, a_config_publish, NULL);
+		 a_config_updated, NULL);
     gpcc_fsm_put(CFG_CMDSTATE, ARRAY_CONFIG_EVENT, CFG_CMDSTATE,
 		 a_config_list, NULL);
 
@@ -83,120 +92,32 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(NODE_ON_CMDSTATE, SHUTDOWN_EVENT, NULL_CMDSTATE,
 		 a_node_shutdown, NULL);
 
-    
-
-    /* ma */
-    gpcc_fsm_put(MA_OFF_CMDSTATE, TIMEUP_EVENT, MA_CONNWAIT_CMDSTATE,
-		 a_ma_connect, NULL);
-    gpcc_fsm_put(MA_OFF_CMDSTATE, NET_ACCEPTED_EVENT, MA_ON_CMDSTATE,
-		 a_ma_ready, NULL);
-    gpcc_fsm_put(MA_CONNWAIT_CMDSTATE, NET_OPENED_EVENT, MA_ON_CMDSTATE, 
-		 a_ma_ready, NULL);
-    gpcc_fsm_put(MA_CONNWAIT_CMDSTATE, NET_ACCEPTED_EVENT, MA_ON_CMDSTATE,
-		 a_ma_ready, NULL);
-    gpcc_fsm_put(MA_CONNWAIT_CMDSTATE, NET_CLOSED_EVENT, MA_OFF_CMDSTATE,
-		 a_ma_teardown, NULL);
-    gpcc_fsm_put(MA_ON_CMDSTATE, NET_CLOSED_EVENT, MA_OFF_CMDSTATE,
-		 a_ma_teardown);
-    gpcc_fsm_put(MA_ON_CMDSTATE, NET_ACCEPTED_EVENT, MA_ON_CMDSTATE,
-		 a_ma_ready, NULL);
-    
-
-    /* ma set */
-    gpcc_fsm_put(MASET_OFF_CMDSTATE, INIT_EVENT, MASET_WAIT_CMDSTATE, 
-		 a_maset_init, NULL);
-    gpcc_fsm_put(MASET_WAIT_CMDSTATE, NET_OPENED_EVENT, MASET_WAIT_CMDSTATE, 
-		 a_maset_opened, NULL);
-    gpcc_fsm_put(MASET_WAIT_CMDSTATE, NET_CLOSED_EVENT, MASET_WAIT_CMDSTATE, 
-		 a_maset_wait_closed, NULL);
-    gpcc_fsm_put(MASET_WAIT_CMDSTATE, SUCCESS_EVENT, MASET_READY_CMDSTATE, 
-		 a_maset_ready, NULL);
-    gpcc_fsm_put(MASET_WAIT_CMDSTATE, FAILURE_EVENT, MASET_WAIT_CMDSTATE, NULL);
-    gpcc_fsm_put(MASET_READY_CMDSTATE, NET_OPENED_EVENT, MASET_READY_CMDSTATE, 
-		 a_maset_opened, NULL);
-    gpcc_fsm_put(MASET_READY_CMDSTATE, NET_CLOSED_EVENT, MASET_READY_CMDSTATE, 
-		 a_maset_ready_closed, NULL);
-    gpcc_fsm_put(MASET_READY_CMDSTATE, SUCCESS_EVENT, MASET_READY_CMDSTATE, NULL);
-    gpcc_fsm_put(MASET_READY_CMDSTATE, FAILURE_EVENT, MASET_WAIT_CMDSTATE, 
-		 a_maset_failure, NULL);
 
     /* lma */
-    gpcc_fsm_put(LMA_OFF_CMDSTATE, CONTINUE_EVENT, LMA_OFF_CMDSTATE,
-		 a_lma_maset_ready, NULL);
     gpcc_fsm_put(LMA_OFF_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_init, NULL);
-
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, CONTINUE_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_maset_ready, NULL);
-
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_LEAD_CMDSTATE, BREAK_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_leadless, NULL);
-
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_VOTED_CMDSTATE,
-		 a_lma_vote_requested, NULL); /* vote yes and goto voted state*/
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_ELECTING_CMDSTATE,
+		 a_lma_electself, NULL);
+    gpcc_fsm_put(LMA_ELECTING_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE,
+		 a_lma_leader, NULL);
+    gpcc_fsm_put(LMA_ELECTING_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_sleep, NULL);
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_ponder_elect, NULL); /* think about electing myself, if yes: gen ELECTSELF event */
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_VOTEME_CMDSTATE, 
-		 a_lma_vote_me, NULL);
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE, NULL);
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_LEADLESS_CMDSTATE, NULL);
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_LEADMA_MSG_EVENT, LMA_STANDBY_CMDSTATE, 
-		 a_lma_get_leadma, NULL);
+		 a_lma_init, NULL);
 
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, CONTINUE_EVENT, LMA_VOTED_CMDSTATE,
-		 a_lma_maset_ready, NULL);
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_VOTED_CMDSTATE,
-		 a_lma_reject, NULL); /* we voted for another ma, reject this. */
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_WIN_MSG_EVENT, LMA_VOTED_CMDSTATE,
-		 a_lma_check_win, NULL); /* check if this is who we voted for, if yes: gen SUCCESS event */
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_VOTED_CMDSTATE,
-		 a_lma_check_lost, NULL); /* check if this is who we voted for, if yes: gen FAILURE event */
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_VOTED_CMDSTATE, SUCCESS_EVENT, LMA_STANDBY_CMDSTATE, 
-		 a_lma_standby, NULL);
-    
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_STANDBY_CMDSTATE,
-		 a_lma_reject, NULL);
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_STANDBY_CMDSTATE, NULL);
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, LMA_CONFIG_MSG_EVENT, LMA_STANDBY_CMDSTATE, 
-		 a_lma_cfg_received, NULL);
+    gpcc_fsm_put(LMA_LEAD_CMDSTATE, TIMEUP_EVENT, LMA_LEAD_CMDSTATE,
+		 a_lma_renew, NULL);
+    gpcc_fsm_put(LMA_LEAD_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_leader_reset, NULL);
+    gpcc_fsm_put(LMA_LEAD_CMDSTATE, LMA_GIVEUP_EVENT, LMA_STANDBY_CMDSTATE,
+		 a_lma_leader_giveup, NULL);
 
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_YES_MSG_EVENT, LMA_VOTEME_CMDSTATE, 
-		 a_lma_ponder_vote, NULL);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_NO_MSG_EVENT, LMA_VOTEME_CMDSTATE, 
-		 a_lma_ponder_vote, NULL);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_VOTEME_CMDSTATE,
-		 a_lma_reject, NULL);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_VOTEME_CMDSTATE, NULL);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_lead_failure, a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_VOTEME_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE, 
-		 a_lma_lead, NULL);
-
-    gpcc_fsm_put(LMA_LEAD_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE, 
-		 a_lma_leadless, NULL);
-    gpcc_fsm_put(LMA_LEAD_CMDSTATE, LMA_VOTE_ME_MSG_EVENT, LMA_LEAD_CMDSTATE,
-		 a_lma_reject, NULL);
-    gpcc_fsm_put(LMA_LEAD_CMDSTATE, LMA_VOTE_LOST_MSG_EVENT, LMA_LEAD_CMDSTATE, 
-		 a_lma_leadma_broadcast, NULL);
-		 
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_STANDBY_EVENT, LMA_STANDBY_CMDSTATE,
+		 a_lma_sleep, NULL);
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, TIMEUP_EVENT, LMA_STANDBY_CMDSTATE,
+		 a_lma_standby_check_leader, NULL);
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_ELECTING_CMDSTATE,
+		 a_lma_electself, NULL);
 
     /* ha set */
     gpcc_fsm_put(HASET_OFF_CMDSTATE, INIT_EVENT, HASET_WAIT_CMDSTATE, 

@@ -36,6 +36,9 @@
 #define OK_STATUS                                    "ok"
 #define FAIL_STATUS                                  "error"
 
+
+
+
 static inline void setup_set_segment(cmdslot_t *cmdslot, int idx, char *name, int dbid, int content, int port,
 				     char *host, char *dir, char definedprimary, char isprimary, char valid, apr_pool_t *pool)
 {
@@ -289,17 +292,13 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t a_fts_http_redirect_leadma(gpcc_net_conn_t conn, const char *url)
 {
     char location[128], json[1024];
-    int ma_id = 0;
 
-    if (*gpma.lma_cmdslot->u.lma.leadma) {
-	if (sscanf(gpma.lma_cmdslot->u.lma.leadma, "ma.%d", &ma_id) != 1 || ma_id >= gpma.ma_max)
-	    gpcc_fatal(FLINE, "Invalid ma name %s", gpma.lma_cmdslot->u.lma.leadma);
-	sprintf(location, "http://%s%s", gpma.ma_addr[ma_id], url);
+    if (gpma.lma_cmdslot->u.lma.leader) {
+	sprintf(location, "http://%s%s", gpma.lma_cmdslot->u.lma.leader, url);
 	sprintf(json, "{ \"a\": \"%s\", \"status\": \"error\", \"location\" : \"%s\", \"errmsg\": \"this is not a lead MA\"}", 
 		gpma.array_name,
-		gpma.ma_addr[ma_id]);
+		gpma.lma_cmdslot->u.lma.leader);
 	gpcc_net_http_redirect_close(conn, location, json);
-	return 0;
     } 
     return 0;
 }
@@ -446,7 +445,9 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt;
     struct json_object *obj;
     gpcc_net_uri_t *uri;
+    char *y, *R, *r;
 
+    y = R = r = 0;
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
 
@@ -472,11 +473,22 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 	    }
 	    mode = m;
 	}
+
+	y = gpcc_net_uri_param(uri, "y");
+	R = gpcc_net_uri_param(uri, "R");
+	r = gpcc_net_uri_param(uri, "r");
     }
 
     p = cmdslot_alloc("ARRAY_START", FTS_ARRAY_START_CMDSTATE);
     p->u.array_start.parent_cmdidx = cmdslot->cmdidx;
     p->u.array_start.mode = apr_pstrdup(p->pool, mode);
+    if (y && *y == 't')
+	p->u.array_start.nostandbyqd = 1;
+    if (R && *R == 't')
+	p->u.array_start.rotate_qd_log = 1;
+    if (r && *r == 't')
+	p->u.array_start.rotate_qes_log = 1;
+
     cmdslot->u.fts.active_cmdidx = p->cmdidx;
     
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
@@ -891,16 +903,6 @@ static apr_status_t a_fts_array_init_start_nodes(gpcc_event_t *ev, void *_cmdslo
     len -= sizeof(gpcc_net_conn_t);
     config = ev->pdata + sizeof(gpcc_net_conn_t);
    
-    if (gpma.maset_cmdslot->u.maset.nopened < gpma.maset_cmdslot->u.maset.total) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
-				   "init", FAIL_STATUS, 0, "gp init can only be run when all MA's are active");
-	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-	json_object_put(obj);	
-	return 0;
-    }
-
     if (config_parse(gpma.cfg, config, len) || a_fts_array_config_verify()) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
@@ -1275,18 +1277,6 @@ static apr_status_t a_fts_array_delete(gpcc_event_t *ev, void *_cmdslot)
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
     
-    if (gpma.maset_cmdslot->u.maset.nopened < gpma.maset_cmdslot->u.maset.total) {
-	evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,
-				   "delete", FAIL_STATUS, 0,
-				   "gp delete can only be run when all MA's are active");
-	gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-	json_object_put(obj);	
-	return 0;
-    }
-
-
     uri = gpcc_net_uri_alloc(url);
 
     p = cmdslot_alloc("ARRAY_DELETE", FTS_ARRAY_DELETE_CMDSTATE);

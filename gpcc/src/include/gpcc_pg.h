@@ -200,4 +200,10 @@ APR_DECLARE(apr_status_t) gpcc_pg_get_addresses_by_hosts(const char *const *host
 							 int cnt,
 							 apr_pool_t *pool);
 
+
+APR_DECLARE(apr_status_t) gpcc_pg_get_master_port(const char *master_datadir, 
+						  int *master_port, 
+						  apr_pool_t *pool);
+
+
 #endif   /* GPCC_PG_H */

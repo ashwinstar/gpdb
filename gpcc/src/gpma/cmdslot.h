@@ -4,9 +4,12 @@
 #include <gpcc.h>
 #include <apr_hash.h>
 #include "enum.h"
+#include "config.h"
 #include <json/json.h>
 #include <apr_thread_proc.h>
 #include <gpcc_net.h>
+#include "zookeeper.h"
+#include "zookeeper_extra.h"
 
 #define CMDSLOT_TABLE_MAX  512
 
@@ -89,6 +92,7 @@ struct cmdslot_t {
 		char* datadir;	/* which dir for this segment */
 		char  isprimary;
 		char  valid;
+		int   rotate_log;  /* rotate log or not */
 		/* other stuff here */
 		char* reply;	/* reply from the start command */
 	    } *req;		/* one for each unit, total of ntotal units */
@@ -171,6 +175,9 @@ struct cmdslot_t {
 	    } *gpconf;
 	    int nvalid;
 	    char *mode;
+	    int nostandbyqd;
+	    int rotate_qd_log;
+	    int rotate_qes_log;
 	} array_start;
 
 	struct {
@@ -230,17 +237,9 @@ struct cmdslot_t {
 	} ma;
 
 	struct {
-	    char leadma[5];
-	    int maset_ready;
-	    struct {
-		int nvote;
-		int nreplied;
-		int nyes;
-		int nno;
-	    } voteme;
-	    struct {
-		char ma[5];
-	    } voted;
+	    char *leader;
+	    zhandle_t *zhandle;
+	    zhandle_t *leadma_lease;
 	} lma;
 
 	struct {

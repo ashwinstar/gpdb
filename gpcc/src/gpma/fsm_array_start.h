@@ -219,6 +219,7 @@ static apr_status_t a_array_start_qes(gpcc_event_t *ev, void *_cmdslot)
 		p->u.start.req[j].node = apr_pstrdup(p->pool, info->ha);
 		p->u.start.req[j].unit = apr_pstrdup(p->pool, info->name);
 		p->u.start.req[j].mode = "normal";
+		p->u.start.req[j].rotate_log = cmdslot->u.array_start.rotate_qes_log;
 		p->u.start.req[j].host = apr_pstrdup(p->pool, info->host);
 		p->u.start.req[j].port = info->port;
 		p->u.start.req[j].datadir = apr_pstrdup(p->pool, info->dir);
@@ -264,6 +265,7 @@ static apr_status_t a_array_start_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].node = apr_pstrdup(p->pool, seginfo->ha);
     p->u.start.req[0].unit = apr_pstrdup(p->pool, seginfo->name);
     p->u.start.req[0].mode = "normal";
+    p->u.start.req[0].rotate_log = cmdslot->u.array_start.rotate_qd_log;
     p->u.start.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.start.req[0].port = seginfo->port;
     p->u.start.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
@@ -284,7 +286,7 @@ static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     seginfo_t *seginfo = &gpma.fts_cmdslot->u.fts.seginfo[nseginfo-1];
     gpcc_event_t *evt;
 
-    if (strstr(seginfo->name, "seg.m.") == 0) {
+    if (strstr(seginfo->name, "seg.m.") == 0 || cmdslot->u.array_start.nostandbyqd) {
 	struct json_object *obj;
 	char *msg = 0;
 	obj = gpcc_json_http_reply(config_get(gpma.cfg, CONFIG_DBNAME_KEY), 0,

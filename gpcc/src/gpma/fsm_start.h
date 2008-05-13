@@ -32,6 +32,10 @@ static apr_status_t a_start_do(gpcc_event_t *ev, void *_cmdslot)
 					cmdslot->u.start.req[i].host,
 					cmdslot->u.start.req[i].port,
 					cmdslot->u.start.req[i].datadir);
+
+	if (cmdslot->u.start.req[i].rotate_log)
+	    json_object_object_add(obj, "rotate_log", json_object_new_string("t"));
+
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;	
 

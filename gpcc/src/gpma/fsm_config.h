@@ -60,43 +60,6 @@ apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
-
-/* publish config to standby MA */
-apr_status_t a_config_publish(gpcc_event_t *ev, void *arg)
-{
-    cmdslot_t *slot = arg;
-    int i, e;
-    char *buf;
-
-    if (!IS_LEADMA)
-	return 0;
-
-    gpcc_log_info("a_config_publish...");
-
-    buf = config_to_json(slot->pool);
-    if (!buf) {
-	gpcc_warning(FLINE, "convert from config to json string failed.  config is too big!");
-	return 0;
-    }
-    for (i = 0 ; i < gpma.ma_max ; i++) {
-	if (gpma.ma_cmdtab[i]) {
-	    gpcc_log_info("publish config %s", gpma.ma_cmdtab[i]->cmdname);
-	    if (0 != (e = gpcc_net_send_packetx(gpma.ma_cmdtab[i]->cmdname,
-						LMA_CONFIG_MSG,
-						slot->cmdidx,
-						0,
-						buf,
-						strlen(buf) + 1))) {
-		gpcc_warning(FLINE, "[%s] publish config failed.  Connection failed", gpma.ma_cmdtab[i]->cmdname);
-	    }
-	}
-    }
-
-    apr_pool_clear(slot->pool);
-    return 0;
-}
-
-
 apr_status_t a_config_list(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;

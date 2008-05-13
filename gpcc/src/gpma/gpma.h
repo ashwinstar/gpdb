@@ -29,11 +29,15 @@
 #define CONFIG_SHARED_BUFFERS_VALUE                "128MB"
 #define CONFIG_CHECKPOINT_SEGMENT_VALUE            31
 
+#define QD_NULL_STATUS                             0
+#define QD_STANDBY_STATUS                          1
+#define QD_MASTER_STATUS                           2
 
 /* Control block for GPMA */
 typedef struct gpma_t gpma_t;
 struct gpma_t {
     apr_pool_t*  pool;
+    const char*  hostname;    /* hostname */
     const char*  user;        /* login user name */
     const char*  progname;    /* argv[0] of cmdline  */
     const char*  guid; 	      /* Global unique ID (generated from gpdb_id) */
@@ -41,33 +45,33 @@ struct gpma_t {
     const char*  ma_unit;     /* MA ID - e.g. ma.0 */
     int          ma_port;     /* MA Port */
     const char*  ma_addr[5];  /* MA Address */
+    const char*  px_addr[5];  /* Paxos Address */
+    const char*  px_address;  /* Zookeeper Addresss based on px_addr */
     const char*  datadir;     /* dir for config file, log file, etc */
+    const char*  master_datadir; /* master_data_dir */
     const char*  ha_datadir;  /* dir for HA */
-    int          boot_force;  /* force the creation of boot_fname cfg file */
-    int          boot;        /* TRUE if booting, otherwise retrieve the existing config */
-    int          debug;	      /* TRUE if debug run, don't daemonize */
+    int          verbose;     /* TRUE if more verbose */
+    int          daemonize;   /* TRUE if daemonize */
     gpcc_evqueue_t* evq;      /* event queue */
     const char*  gphome;
     const char*  logfpath;    /* log file path */
     config_t*    cfg;	      /* config  */
     cmdslot_t*   gpma_cmdslot;
     cmdslot_t*   fts_cmdslot;
+    cmdslot_t*   haset_cmdslot;
 
     int          node_max;
     cmdslot_t**  node_cmdtab;
 
-    int          ma_max;
-    cmdslot_t**  ma_cmdtab;
-    
-    cmdslot_t *  lma_cmdslot;  /* Lead MA */
-
-    cmdslot_t *  maset_cmdslot;
-    cmdslot_t *  haset_cmdslot;
+    int          px_max;
+    cmdslot_t**  px_cmdtab;
 
     int          unit_max;
     cmdslot_t**  unit_cmdtab;
 
     cmdslot_t *  cfg_cmdslot;   /* configuration cmdslot */
+
+    cmdslot_t * lma_cmdslot;    /* Lead MA cmdslot */
 };
 
 extern gpma_t gpma;

@@ -774,3 +774,40 @@ APR_DECLARE(apr_status_t) gpcc_pg_get_addresses_by_hosts(const char *const *host
 
     return 0;
 }
+
+
+APR_DECLARE(apr_status_t) gpcc_pg_get_master_port(const char *master_datadir, int *master_port, apr_pool_t *pool)
+{
+    char fpath[512];
+    apr_proc_t proc;
+    char *argv[2];
+    char cmd[1024], buf[1024];
+    int e;
+    apr_size_t nbytes = 0;
+    apr_size_t nread = 0;
+
+    sprintf(fpath, "%s/%s", master_datadir, "postgresql.conf");
+    if (! gpcc_file_directory_exists(master_datadir))
+	return APR_EINVAL;
+
+    if (! gpcc_file_exists(fpath))
+	return APR_EINVAL;
+
+    sprintf(cmd, "awk \\\'split($0,a,\"#\")>0 && split(a[1],b,\"=\")>1 {print b[1] \" \" b[2]}\\\' %s | awk \\\'$1==\"port\" {print $2}\\\' | tail -1", fpath);
+    argv[0] = cmd;
+    argv[1] = 0;
+    if ((e = gpcc_proc_run_shell(&proc, argv[0], (const char *const *) argv, 0, 1, pool)) != 0) {
+	gpcc_log_error("get master port from postgresql.conf error");
+	return e;
+    }
+
+    if ((e = apr_file_read_full(proc.out, buf, nbytes, &nread)) != 0 && e != APR_EOF) {
+	gpcc_log_error("read from stdout to get master port error");
+	return e;
+    }
+
+    buf[nread] = 0;
+    *master_port = strtol(buf, 0, 0);
+
+    return 0;
+}
