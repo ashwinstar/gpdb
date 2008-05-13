@@ -397,8 +397,21 @@ toast_delete(Relation rel, HeapTuple oldtup)
  * from the pre-8.1 API of this routine.
  * ----------
  */
+
+static int compute_dest_tuplen(TupleDesc tupdesc, MemTupleBinding *pbind, bool hasnull, Datum *d, bool *isnull)
+{
+	if(pbind) 
+	{
+		uint32 nullsave_dummy;
+		return (int) compute_memtuple_size(pbind, d, isnull, hasnull, &nullsave_dummy);
+	}
+
+	return heap_compute_data_size(tupdesc, d, isnull);
+}
+
+
 HeapTuple
-toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
+toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup, MemTupleBinding *pbind)
 {
 	HeapTuple	result_tuple;
 	TupleDesc	tupleDesc;
@@ -422,6 +435,11 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 	bool		toast_free[MaxHeapAttributeNumber];
 	bool		toast_delold[MaxHeapAttributeNumber];
 
+	bool 		ismemtuple = is_heaptuple_memtuple(newtup);
+
+	AssertImply(ismemtuple, oldtup == NULL && pbind);
+	AssertImply(!ismemtuple, !pbind);
+
 	/*
 	 * Get the tuple descriptor and break down the tuple(s) into fields.
 	 */
@@ -430,7 +448,12 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 	numAttrs = tupleDesc->natts;
 
 	Assert(numAttrs <= MaxHeapAttributeNumber);
-	heap_deform_tuple(newtup, tupleDesc, toast_values, toast_isnull);
+
+	if(ismemtuple)
+		memtuple_deform((MemTuple) newtup, pbind, toast_values, toast_isnull);
+	else
+		heap_deform_tuple(newtup, tupleDesc, toast_values, toast_isnull);
+
 	if (oldtup != NULL)
 		heap_deform_tuple(oldtup, tupleDesc, toast_oldvalues, toast_oldisnull);
 
@@ -562,22 +585,26 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 	 * ----------
 	 */
 
-	/* compute header overhead --- this should match heap_form_tuple() */
-	maxDataLen = offsetof(HeapTupleHeaderData, t_bits);
-	if (has_nulls)
-		maxDataLen += BITMAPLEN(numAttrs);
-	if (newtup->t_data->t_infomask & HEAP_HASOID)
-		maxDataLen += sizeof(Oid);
-	maxDataLen = MAXALIGN(maxDataLen);
-	Assert(maxDataLen == newtup->t_data->t_hoff);
-	/* now convert to a limit on the tuple data size */
-	maxDataLen = TOAST_TUPLE_TARGET - maxDataLen;
+	if(!ismemtuple)
+	{
+		/* compute header overhead --- this should match heap_form_tuple() */
+		maxDataLen = offsetof(HeapTupleHeaderData, t_bits);
+		if (has_nulls)
+			maxDataLen += BITMAPLEN(numAttrs);
+		if (newtup->t_data->t_infomask & HEAP_HASOID)
+			maxDataLen += sizeof(Oid);
+		maxDataLen = MAXALIGN(maxDataLen);
+		Assert(maxDataLen == newtup->t_data->t_hoff);
+		/* now convert to a limit on the tuple data size */
+		maxDataLen = TOAST_TUPLE_TARGET - maxDataLen;
+	}
+	else
+		maxDataLen = TOAST_TUPLE_TARGET;
 
 	/*
 	 * Look for attributes with attstorage 'x' to compress
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen)
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls, toast_values, toast_isnull) > maxDataLen)
 	{
 		int			biggest_attno = -1;
 		int32		biggest_size = MAXALIGN(sizeof(varattrib));
@@ -639,8 +666,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 	 * Second we look for attributes of attstorage 'x' or 'e' that are still
 	 * inline.
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen &&
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls, toast_values, toast_isnull) > maxDataLen &&
 		   rel->rd_rel->reltoastrelid != InvalidOid)
 	{
 		int			biggest_attno = -1;
@@ -689,8 +715,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 	 * Round 3 - this time we take attributes with storage 'm' into
 	 * compression
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen)
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls, toast_values, toast_isnull) > maxDataLen)
 	{
 		int			biggest_attno = -1;
 		int32		biggest_size = MAXALIGN(sizeof(varattrib));
@@ -750,8 +775,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 	/*
 	 * Finally we store attributes of type 'm' external
 	 */
-	while (heap_compute_data_size(tupleDesc,
-								  toast_values, toast_isnull) > maxDataLen &&
+	while (compute_dest_tuplen(tupleDesc, pbind, has_nulls, toast_values, toast_isnull) > maxDataLen &&
 		   rel->rd_rel->reltoastrelid != InvalidOid)
 	{
 		int			biggest_attno = -1;
@@ -802,52 +826,56 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup)
 	 * more given alignment issues 
 	 */
 
-
 	/*
 	 * In the case we toasted any values, we need to build a new heap tuple
 	 * with the changed values.
 	 */
 	if (need_change)
 	{
-		HeapTupleHeader olddata = newtup->t_data;
-		HeapTupleHeader new_data;
-		int32		new_len;
+		if(ismemtuple)
+			result_tuple = (HeapTuple) memtuple_form_to(pbind, toast_values, toast_isnull, NULL, NULL);
+		else
+		{
+			HeapTupleHeader olddata = newtup->t_data;
+			HeapTupleHeader new_data;
+			int32		new_len;
 
-		/*
-		 * Calculate the new size of the tuple.  Header size should not
-		 * change, but data size might.
-		 */
-		new_len = offsetof(HeapTupleHeaderData, t_bits);
-		if (has_nulls)
-			new_len += BITMAPLEN(numAttrs);
-		if (olddata->t_infomask & HEAP_HASOID)
-			new_len += sizeof(Oid);
-		new_len = MAXALIGN(new_len);
-		Assert(new_len == olddata->t_hoff);
-		new_len += heap_compute_data_size(tupleDesc,
-										  toast_values, toast_isnull);
+			/*
+			 * Calculate the new size of the tuple.  Header size should not
+			 * change, but data size might.
+			 */
+			new_len = offsetof(HeapTupleHeaderData, t_bits);
+			if (has_nulls)
+				new_len += BITMAPLEN(numAttrs);
+			if (olddata->t_infomask & HEAP_HASOID)
+				new_len += sizeof(Oid);
+			new_len = MAXALIGN(new_len);
+			Assert(new_len == olddata->t_hoff);
+			new_len += heap_compute_data_size(tupleDesc,
+					toast_values, toast_isnull);
 
-		/*
-		 * Allocate and zero the space needed, and fill HeapTupleData fields.
-		 */
-		result_tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + new_len);
-		result_tuple->t_len = new_len;
-		result_tuple->t_self = newtup->t_self;
-		result_tuple->t_tableOid = newtup->t_tableOid;
-		new_data = (HeapTupleHeader) ((char *) result_tuple + HEAPTUPLESIZE);
-		result_tuple->t_data = new_data;
+			/*
+			 * Allocate and zero the space needed, and fill HeapTupleData fields.
+			 */
+			result_tuple = (HeapTuple) palloc0(HEAPTUPLESIZE + new_len);
+			result_tuple->t_len = new_len;
+			result_tuple->t_self = newtup->t_self;
+			result_tuple->t_tableOid = newtup->t_tableOid;
+			new_data = (HeapTupleHeader) ((char *) result_tuple + HEAPTUPLESIZE);
+			result_tuple->t_data = new_data;
 
-		/*
-		 * Put the existing tuple header and the changed values into place
-		 */
-		memcpy(new_data, olddata, olddata->t_hoff);
+			/*
+			 * Put the existing tuple header and the changed values into place
+			 */
+			memcpy(new_data, olddata, olddata->t_hoff);
 
-		heap_fill_tuple(tupleDesc,
-						toast_values,
-						toast_isnull,
-						(char *) new_data + olddata->t_hoff,
-						&(new_data->t_infomask),
-						has_nulls ? new_data->t_bits : NULL);
+			heap_fill_tuple(tupleDesc,
+					toast_values,
+					toast_isnull,
+					(char *) new_data + olddata->t_hoff,
+					&(new_data->t_infomask),
+					has_nulls ? new_data->t_bits : NULL);
+		}
 	}
 	else
 		result_tuple = newtup;

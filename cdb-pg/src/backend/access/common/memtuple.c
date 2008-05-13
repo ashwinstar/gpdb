@@ -384,7 +384,7 @@ static uint32 compute_memtuple_size_using_bind(Datum *values, bool *isnull, bool
 /* Compute the memtuple size. 
  * nullsave is an output param
  */
-static uint32 compute_memtuple_size(MemTupleBinding *pbind, Datum *values, bool *isnull, bool hasnull, uint32 *nullsaves) 
+uint32 compute_memtuple_size(MemTupleBinding *pbind, Datum *values, bool *isnull, bool hasnull, uint32 *nullsaves) 
 {
 	uint32 ret_len = 0;
 	ret_len = compute_memtuple_size_using_bind(values, isnull, hasnull, pbind->null_bitmap_extra_size, nullsaves, &pbind->bind, pbind->tupdesc);
@@ -756,6 +756,13 @@ MemTuple memtuple_copy_to(MemTuple mtup, MemTupleBinding *pbind, MemTuple dest, 
 	return dest;
 }
 
+void memtuple_deform(MemTuple mtup, MemTupleBinding *pbind, Datum *datum, bool *isnull)
+{
+	int i;
+	for(i=0; i<pbind->tupdesc->natts; ++i)
+		datum[i] = memtuple_getattr(mtup, pbind, i+1, &isnull[i]);
+}
+
 Oid MemTupleGetOid(MemTuple mtup, MemTupleBinding *pbind)
 {
 #if 0
@@ -819,4 +826,28 @@ Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, boo
 	return 0;
 }
 			
+bool MemTupleHasExternal(MemTuple mtup, MemTupleBinding *pbind)
+{
+	MemTupleBindingCols *colbind = memtuple_get_islarge(mtup, pbind) ? &pbind->large_bind : &pbind->bind;
+	int i;
+
+	for(i=0; i<pbind->tupdesc->natts; ++i)
+	{
+		MemTupleAttrBinding *attrbind = &(colbind->bindings[i]);
+		if(attrbind->flag == MTB_ByRef)
+		{
+			bool isnull;
+			Datum d = memtuple_getattr(mtup, pbind, i+1, &isnull);
+			if(!isnull)
+			{
+				if(VARATT_IS_EXTERNAL_D(d))
+					return true;
+			}
+		}
+	}
+
+	return false;
+}
+				
+
 	

@@ -719,12 +719,14 @@ appendonly_insert_init(Relation rel)
  * to match the stored tuple;  
  */
 Oid
-appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple tup)
+appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 {
 	Relation		 relation = aoInsertDesc->aoi_rel;
 	uint8			*buffer;
 	VarBlockByteLen	 itemLen;
 	uint8			*itemPtr;
+	MemTuple 		 tup;
+	Oid 			retOid;
 
 	if (relation->rd_rel->relhasoids)
 	{
@@ -746,7 +748,14 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple tup)
 		MemTupleNoOidSpace(tup);
 	}
 
-//	tup->t_tableOid = RelationGetRelid(relation);
+	//	tup->t_tableOid = RelationGetRelid(relation);
+
+	/* Toast */
+	if(MemTupleHasExternal(instup, aoInsertDesc->mt_bind) ||
+			memtuple_get_size(instup, aoInsertDesc->mt_bind) > TOAST_TUPLE_THRESHOLD)
+		tup = (MemTuple) toast_insert_or_update(relation, (HeapTuple) instup, NULL, aoInsertDesc->mt_bind);
+	else
+		tup = instup;
 
 	/* 
 	 * get space to insert our next item (tuple) 
@@ -839,7 +848,11 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple tup)
 	aoInsertDesc->insertCount++;
 	pgstat_count_heap_insert(&relation->pgstat_info);
 
-	return MemTupleGetOid(tup, aoInsertDesc->mt_bind);
+	retOid = MemTupleGetOid(tup, aoInsertDesc->mt_bind);
+	if(tup != instup)
+		pfree(tup);
+
+	return retOid;
 }
 
 /*

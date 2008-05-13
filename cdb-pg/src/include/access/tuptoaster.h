@@ -14,6 +14,7 @@
 #define TUPTOASTER_H
 
 #include "access/htup.h"
+#include "access/memtup.h"
 #include "storage/bufpage.h"
 
 /*
@@ -72,7 +73,7 @@
  * ----------
  */
 extern HeapTuple toast_insert_or_update(Relation rel,
-					   HeapTuple newtup, HeapTuple oldtup);
+					   HeapTuple newtup, HeapTuple oldtup, MemTupleBinding *pbind);
 
 /* ----------
  * toast_delete -
