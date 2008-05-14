@@ -398,9 +398,17 @@ class GPDetective():
         # Grab master log and postgresql.conf
         path_re = re.compile('/([^/]*)$')
         m = path_re.search(self.masterdir)
-        self.runCmd(['scp', '-q',
-                     '%s.log' % self.masterdir, 
-                     'master/%s.log' % m.group(1)])
+
+        myfile = open('master/%s.log' % m.group(1), 'w')
+
+        subprocess.Popen([libdir + '/gplogfilter.pl', 
+                          '%s.log' % self.masterdir], stdout=myfile)
+        myfile.close()
+
+#        self.runCmd(['scp', '-q',
+#                     '%s.log' % self.masterdir, 
+#                     'master/%s.log' % m.group(1)])
+
         self.runCmd(['scp', '%s/postgresql.conf' % self.masterdir, 
                      'master/postgresql.conf'])
         self.runCmd(['scp', '%s/global/pg_database' % self.masterdir, 
@@ -410,15 +418,21 @@ class GPDetective():
 
 
         # Grab segment logs and postgresql.conf        
-        host_rx = re.compile('(.*)\:.*/([^/]*)')
+        #                    host  : fullpath / filename
+        host_rx = re.compile('(.*)\:(.*)/([^/]*)')
         for seg in self.segments:
             m = host_rx.search(seg)
-            self.runCmd(['scp', '-q', 
-                         '%s.log' % seg, 
-                         '%s/%s.log' % m.group(1,2)])
+
+            myfile = open('%s/%s.log' % m.group(1,3), 'w')
+
+            subprocess.Popen(['gpssh', '-h', '%s' % m.group(1), 
+                              '-v', '-e', libdir + '/gplogfilter.pl', 
+                              '%s/%s.log' % m.group(2,3)], stdout=myfile)
+            myfile.close()
+
             self.runCmd(['scp', '-q', 
                          '%s/postgresql.conf' % seg,
-                         '%s/postgresql_%s.conf' % m.group(1,2)])
+                         '%s/postgresql_%s.conf' % m.group(1,3)])
 
 
     #------------------------------------------------------------
