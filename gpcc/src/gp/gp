@@ -27,6 +27,7 @@ sys.path.append(sys.path[0] + '/lib')
 try:
     import getopt, types, time, urllib, httplib, socket, StringIO
     import simplejson
+    from getpass import getpass
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
 
@@ -71,15 +72,29 @@ class Command():
         self.cmd = argv[0]
         self.gopt = gopt
         self.opt = {}
+        self.sid = None
         try:
             (self.options, self.args) = getopt.getopt(argv[1:], optstr)
         except Exception, e:
             print usagestr
             sys.exit('[ERROR]: %s: %s' % (self.cmd, str(e)))
 
+        self.__read_gpcc_file()
 
     def verbose(self, msg):
         if self.gopt['-v']: print '[INFO]', msg
+
+    def __read_gpcc_file(self):
+        self.sid = None
+        try:
+            gpcc_file = os.path.join(os.environ.get('HOME'), '.gpcc')
+            if os.path.exists(gpcc_file) and os.path.isfile(gpcc_file):
+                f = open(gpcc_file)
+                self.sid = f.read()
+                f.close()
+        except IOError, e:
+            print '[ERROR] failed to read file %s' % gpcc_file
+            sys.exit(2)
 
     def __makeError(self, param, errmsg):
         '''Make an error packet with msg'''
@@ -95,7 +110,9 @@ class Command():
         try:
             self.verbose('http://%s%s' % (addr, query))
             f = httplib.HTTPConnection(addr)
-            f.request('POST', query, data)
+            if self.sid:
+                f.putheader('X-GPCC-SID', self.sid)
+            f.request(method, query, data)
             response = f.getresponse()
             if response.status == 200 or response.status == 301:
                 str = response.read()
@@ -210,6 +227,10 @@ class StartCmd(Command):
             if switch == '-r': self.opt[switch] = True
             if switch == '-a': self.opt[switch] = True
 
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
+
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
@@ -261,6 +282,10 @@ class StopCmd(Command):
             print '[ERROR] flag -i and -f cannot appear at the same time'
             sys.exit(2)
 
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
+
     def run(self):
         param = {}
         if (self.opt['-s']): param['s'] = self.opt['-s']
@@ -307,6 +332,10 @@ class InitCmd(Command):
             print self.__doc__
             sys.exit('[ERROR] Please specify -c param')
         
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
+
     def run(self):
         fname = self.opt['-c']
         try:
@@ -373,7 +402,10 @@ class DeleteCmd(Command):
     '''Usage: gp delete '''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, '', self.__doc__)
-        
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)        
+
     def run(self):
         proceed = confirm('This will erase the array "%s"!' % self.gopt['-a'])
         if proceed:
@@ -410,6 +442,9 @@ class LsCfgCmd(Command):
     '''Usage: gp lscfg'''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, '', self.__doc__)
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
         
     def run(self):
         param = {}
@@ -436,6 +471,9 @@ class StatusCmd(Command):
         self.opt['-s'] = None
         for (switch, val) in self.options:
             if switch == '-s': self.opt[switch] = val
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
         
     def run(self):
         param = {}
@@ -453,6 +491,91 @@ class StatusCmd(Command):
             print '[INFO]', m
         print '[INFO] ok'
 
+####################
+class LoginCmd(Command):
+    '''Usage: gp login [-u username]'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        self.opt['-u'] = None
+        for (switch, val) in self.options:
+            if switch == '-u': self.opt[switch] = val
+
+        if self.opt['-u'] is None:
+            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+
+    def run(self):
+        if self.opt['-u'] is None:
+            sys.stdout.write('username: ')
+            user = sys.stdin.readline()
+            user = user.strip()
+            if user == '':
+                sys.exit('please specify username.')
+            self.opt['-u'] = user
+        for i in xrange(3):
+            passwd = getpass('password:')
+            param = {}
+            param['user'] = self.opt['-u']
+            param['password'] = passwd
+            packet = self._httpPost('/gpcc/login', param, None)
+            self.raw(packet)         
+            if 'ok' != packet.get('status'):
+                print '[ERROR] unable to login. details:'
+                printPacket(packet, '     ')
+                sys.exit(2)
+            else:
+                try:
+                    f = open('%s/.gpcc' % os.getenv('HOME'), 'w')
+                    f.write(self.opt['-u'])
+                    f.write(passwd)
+                    f.close()
+                except IOError, e:
+                    print '[ERROR] unable to write file to %s/.gpcc. (%s)' % (os.getenv('HOME'), e)
+                    sys.exit(2)
+                print '%s logged on' % self.opt['-u']
+                sys.exit(0)
+
+        print '[ERROR] login failed.'
+        sys.exit(2)
+
+####################
+class LogoutCmd(Command):
+    '''Usage: gp logout'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        self.opt['-u'] = None
+        for (switch, val) in self.options:
+            if switch == '-u': self.opt[switch] = val
+
+        if self.opt['-u'] is None:
+            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+
+    def run(self):
+        if self.opt['-u'] is None:
+            sys.stdout.write('username: ')
+            user = sys.stdin.readline()
+            user = user.strip()
+            if user == '':
+                sys.exit('please specify username.')
+            self.opt['-u'] = user
+        param = {}
+        param['user'] = self.opt['-u']
+        packet = self._httpGet('/gpcc/logout', param)
+        self.raw(packet)         
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to logout. details:'
+            printPacket(packet, '     ')
+            sys.exit(2)
+        else:
+            try:
+                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
+                if os.path.exists(gpcc_file):
+                    os.remove(gpcc_file)
+            except OSError, e:
+                print 'cannot remove %s. (%s)' % (gpcc_file, e)
+                sys.exit(2)
+            print '%s logged out' % self.opt['-u']
+            sys.exit(0)
+
 
 ####################
 class HelpCmd(Command):
@@ -467,6 +590,8 @@ class HelpCmd(Command):
     __helpCommands = '''Usage: gp [gp-options] command [command-options-and-arguments]
 
   gp commands are:
+        login    Login
+        logout   Logout
 	init     Initialize the array
 	delete	 Delete the array
 	start    Start the array and/or segments
@@ -506,6 +631,8 @@ class HelpCmd(Command):
                 c == 'start' or 
                 c == 'status' or
                 c == 'stop' or 
+                c == 'login' or
+                c == 'logout' or
                 True):
                 self.args = [c]
 
@@ -524,6 +651,8 @@ class HelpCmd(Command):
         elif c == 'start': 	print StartCmd.__doc__
         elif c == 'status': 	print StatusCmd.__doc__
         elif c == 'stop': 	print StopCmd.__doc__
+        elif c == 'login':      print LoginCmd.__doc__
+        elif c == 'logout':      print LogoutCmd.__doc__
         else:
             usage('Error: unknown command "%s"' % c)
 
@@ -565,6 +694,8 @@ class CmdLine():
         elif c == 'start':   self.cmd = StartCmd(self.gopt, args)
         elif c == 'status':  self.cmd = StatusCmd(self.gopt, args)
         elif c == 'stop':    self.cmd = StopCmd(self.gopt, args)
+        elif c == 'login':   self.cmd = LoginCmd(self.gopt, args)
+        elif c == 'logout':  self.cmd = LogoutCmd(self.gopt, args)
         else: usage('Error: unknown command "%s"' % c)
 
         # if help, we are done; don't need to check -m, -a param
