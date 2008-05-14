@@ -90,3 +90,39 @@ select c1 from gpd1 ;
 
 DROP TABLE  gpd1;
 
+-- start_matchsubs
+--
+-- # create a match/subs expression to handle a value which always changes
+--
+-- # use zero-width negative look-behind assertion to match "gpmatchsubs1"
+-- # that does not follow select
+--
+-- m/(?<!select..)gpmatchsubs1/
+-- s/gpmatchsubs1.*/happy sub1/
+--
+-- m/(?<!select..)gpmatchsubs2/
+-- s/gpmatchsubs2.*/happy sub2/
+--
+-- end_matchsubs
+
+-- substitute constant values for results
+
+select 'gpmatchsubs1' || now();
+select 'gpmatchsubs2' || now();
+
+-- start_matchignore
+--
+-- # create a match expression to handle a value which always changes
+--
+-- m/(?<!select..)gpmatchignore1/
+-- m/(?<!select..)gpmatchignore2/
+--
+-- end_matchsubs
+
+-- just ignore the results
+
+select 'gpmatchignore1' || now();
+select 'gpmatchignore2' || now();
+
+-- 
+
