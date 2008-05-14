@@ -739,18 +739,25 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 		 * users to set their own object ids in order to support a persistent
 		 * object store (objects need to contain pointers to one another).
 		 */
-		if (!OidIsValid(MemTupleGetOid(tup, aoInsertDesc->mt_bind)))
-			MemTupleSetOid(tup, aoInsertDesc->mt_bind, GetNewOid(relation));
+		if (!OidIsValid(MemTupleGetOid(instup, aoInsertDesc->mt_bind)))
+			MemTupleSetOid(instup, aoInsertDesc->mt_bind, GetNewOid(relation));
 	}
 	else
 	{
 		/* check there is not space for an OID */
-		MemTupleNoOidSpace(tup);
+		MemTupleNoOidSpace(instup);
 	}
 
-	//	tup->t_tableOid = RelationGetRelid(relation);
+	/* TODO: figure what we need this for and how to enable it if needed */
+	/*	tup->t_tableOid = RelationGetRelid(relation); */
 
-	/* Toast */
+	/*
+	 * If the new tuple is too big for storage or contains already toasted
+	 * out-of-line attributes from some other relation, invoke the toaster.
+	 *
+	 * Note: below this point, tup is the data we actually intend to store
+	 * into the relation; instup is the caller's original untoasted data.
+	 */	
 	if(MemTupleHasExternal(instup, aoInsertDesc->mt_bind) ||
 			memtuple_get_size(instup, aoInsertDesc->mt_bind) > TOAST_TUPLE_THRESHOLD)
 		tup = (MemTuple) toast_insert_or_update(relation, (HeapTuple) instup, NULL, aoInsertDesc->mt_bind);
