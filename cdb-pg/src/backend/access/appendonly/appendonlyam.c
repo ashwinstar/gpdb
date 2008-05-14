@@ -725,7 +725,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	uint8			*buffer;
 	VarBlockByteLen	 itemLen;
 	uint8			*itemPtr;
-	MemTuple 		 tup;
+	MemTuple 		 tup = NULL;
 	Oid 			retOid;
 
 	if (relation->rd_rel->relhasoids)

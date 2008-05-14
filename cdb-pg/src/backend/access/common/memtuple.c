@@ -763,20 +763,22 @@ void memtuple_deform(MemTuple mtup, MemTupleBinding *pbind, Datum *datum, bool *
 		datum[i] = memtuple_getattr(mtup, pbind, i+1, &isnull[i]);
 }
 
+/*
+ * Get the Oid assigned to this tuple (when WITH OIDS is used).
+ *
+ * Note that similarly to HeapTupleGetOid this function will 
+ * sometimes get called when no oid is assigned, in which case
+ * we return InvalidOid. It is possible to make the check earlier
+ * and avoid this call but for simplicity and compatibility with
+ * the HeapTuple interface we keep it the same. 
+ */
 Oid MemTupleGetOid(MemTuple mtup, MemTupleBinding *pbind)
 {
-#if 0
-	Assert(pbind && mtbind_has_oid(pbind));
-#else
-	/* XXX BUG BUG:
-	 * We should assert here, but some of the append only table does
-	 * pass down a invalid pbind.
-	 * 
-	 * Alon: Please fix append only code.
-	 */
-	if(!pbind || !mtbind_has_oid(pbind))
+	Assert(pbind);
+		
+	if(!mtbind_has_oid(pbind))
 		return InvalidOid;
-#endif
+
 	return ((Oid *) mtup)[1];
 }
 

@@ -1347,6 +1347,7 @@ CopyTo(CopyState cstate)
 		{
 			MemTuple		tuple;
 			TupleTableSlot	*slot = MakeSingleTupleTableSlot(tupDesc);
+			MemTupleBinding *mt_bind = create_memtuple_binding(tupDesc);
 			
 			aoscandesc = appendonly_beginscan(cstate->rel, 0, NULL);
 			
@@ -1360,8 +1361,7 @@ CopyTo(CopyState cstate)
 				nulls = slot_get_isnull(slot);
 								
 				/* Format and send the data */
-				/* XXX Alon: Where is the binding? */
-				CopyOneRowTo(cstate, MemTupleGetOid(tuple, NULL), values, nulls);
+				CopyOneRowTo(cstate, MemTupleGetOid(tuple, mt_bind), values, nulls);
 			}
 			
 			ExecDropSingleTupleTableSlot(slot);
