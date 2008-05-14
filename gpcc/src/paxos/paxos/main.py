@@ -1,9 +1,9 @@
-import atexit
 import fcntl
 import os
 import signal
 import socket
 import sys
+import time
 
 import utils
 
@@ -14,18 +14,32 @@ from udpmessenger import UdpMessenger
 from tester import Tester
 
 BASE_PORT = 2000
-N_TESTER = 0
 
-def test(npriest):
-    m = UdpMessenger()
-#    m = SimpleMessenger()
-#    m.setDisableLog(False)
+def test(argv):
+    npriest = 1
+    ntester = 0
+    simple_messenger = False
+    verbose = False
+    while argv:
+	opt = argv.pop(0)
+	if opt=="-npriest":
+	    npriest = int(argv.pop(0))
+	elif opt=="-ntester":
+	    ntester = int(argv.pop(0))
+	elif opt=="-simple-messenger":
+	    simple_messenger = True
+	elif opt=="-verbose":
+	    verbose = True
+	else:
+	    usage()
+    m = simple_messenger and SimpleMessenger() or UdpMessenger()
+    if verbose:
+	m.setDisableLog(False)
     priests = []
     hostname = socket.gethostbyname(socket.gethostname())
     for i in xrange(npriest):
 	priests.append(hostname+":"+str(BASE_PORT+i))
     priests = ",".join(priests)
-    t = []
     for i in xrange(npriest):
 	sb = ["priests="+priests]
 	sb.append("\nhost=%s\n"%hostname)
@@ -34,15 +48,13 @@ def test(npriest):
 	f = "Priest-%d/data"%i
 	try:
 	    os.makedirs(f)
-	except OSError,e:
-	    if e.errno!=17:
-		raise
-	t.append(Priest(config,m,f))
-    for i in xrange(N_TESTER):
-	t.append(Tester(utils.stringToAddresses(m,priests),m))
-    for i in t[0:]:
-	i.start()
-    t[0].run()
+	except OSError:
+	    pass
+	Priest(config,m,f).start()
+    for i in xrange(ntester):
+	Tester(utils.stringToAddresses(m,priests),m).start()
+    while 1:
+	time.sleep(1)
 
 def lock():
     global lockfile
@@ -78,32 +90,33 @@ def runPriest(argv):
     Priest(config,m,"data").run()
 
 def runTester(argv):
+    if len(argv)<1:
+	usage()
     lock()
     messenger = UdpMessenger()
-    priests = utils.stringToAddresses(messenger,argv[1])
+    priests = utils.stringToAddresses(messenger,argv[0])
     Tester(priests,messenger).run()
 
 def main(argv):
-    argv0 = argv.pop(0)
     if len(argv)==0:
-	usage(argv0)
+	usage()
     if argv[0]=="test":
-	test(len(argv)<2 and 1 or int(argv[1]))
+	test(argv[1:])
     elif argv[0]=="Priest":
-	runPriest(argv)
-    elif argv[0]=="Tester" and len(argv)>=2:
-	runTester(argv)
+	runPriest(argv[1:])
+    elif argv[0]=="Tester":
+	runTester(argv[1:])
     else:
-	usage(argv0)
+	usage()
 
-def usage(argv0):
+def usage():
     sys.stderr.write("usage:\n")
-    sys.stderr.write("    python "+argv0+" test\n")
-    sys.stderr.write("    python "+argv0+" Priest\n")
-    sys.stderr.write("    python "+argv0+" Tester addresses\n")
+    sys.stderr.write("    python "+sys.argv[0]+" test [-npriest n] [-ntester n] [-verbose] [-simple_messenger]\n")
+    sys.stderr.write("    python "+sys.argv[0]+" Priest\n")
+    sys.stderr.write("    python "+sys.argv[0]+" Tester addresses\n")
     sys.exit(1)
 
 try:
-    main(sys.argv)
+    main(sys.argv[1:])
 except KeyboardInterrupt:
     utils.killPython()

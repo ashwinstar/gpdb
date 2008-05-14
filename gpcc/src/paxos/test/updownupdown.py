@@ -1,4 +1,3 @@
-import atexit
 import fcntl
 import os
 import signal
