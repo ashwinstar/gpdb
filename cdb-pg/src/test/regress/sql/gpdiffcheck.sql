@@ -95,34 +95,34 @@ DROP TABLE  gpd1;
 -- # create a match/subs expression to handle a value which always changes
 --
 -- # use zero-width negative look-behind assertion to match "gpmatchsubs1"
--- # that does not follow select
+-- # that does not follow substring
 --
--- m/(?<!select..)gpmatchsubs1/
+-- m/(?<!substring..)gpmatchsubs1/
 -- s/gpmatchsubs1.*/happy sub1/
 --
--- m/(?<!select..)gpmatchsubs2/
+-- m/(?<!substring..)gpmatchsubs2/
 -- s/gpmatchsubs2.*/happy sub2/
 --
 -- end_matchsubs
 
 -- substitute constant values for results
-
-select 'gpmatchsubs1' || now();
-select 'gpmatchsubs2' || now();
+-- use substring because length of time string varies which changes output
+select substring('gpmatchsubs1' || now(), 1,  25);
+select substring('gpmatchsubs2' || now(), 1,  25);
 
 -- start_matchignore
 --
 -- # create a match expression to handle a value which always changes
 --
--- m/(?<!select..)gpmatchignore1/
--- m/(?<!select..)gpmatchignore2/
+-- m/(?<!substring..)gpmatchignore1/
+-- m/(?<!substring..)gpmatchignore2/
 --
 -- end_matchsubs
 
 -- just ignore the results
 
-select 'gpmatchignore1' || now();
-select 'gpmatchignore2' || now();
+select substring('gpmatchignore1' || now(), 1,  25);
+select substring('gpmatchignore2' || now(), 1,  25);
 
 -- 
 
