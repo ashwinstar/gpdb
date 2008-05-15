@@ -576,6 +576,165 @@ class LogoutCmd(Command):
             print '%s logged out' % self.opt['-u']
             sys.exit(0)
 
+####################
+class AdminAddCmd(Command):
+    '''Usage: gp admin add'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        self.opt['-u'] = None
+        for (switch, val) in self.options:
+            if switch == '-u': self.opt[switch] = val
+
+        if self.opt['-u'] is None:
+            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+
+    def run(self):
+        if self.opt['-u'] is None:
+            sys.stdout.write('username: ')
+            user = sys.stdin.readline()
+            user = user.strip()
+            if user == '':
+                sys.exit('please specify username.')
+            self.opt['-u'] = user
+        param = {}
+        param['user'] = self.opt['-u']
+        packet = self._httpGet('/gpcc/admin/add', param)
+        self.raw(packet)         
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to add user. details:'
+            printPacket(packet, '     ')
+            sys.exit(2)
+        else:
+            try:
+                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
+                if os.path.exists(gpcc_file):
+                    os.remove(gpcc_file)
+            except OSError, e:
+                print 'cannot remove %s. (%s)' % (gpcc_file, e)
+                sys.exit(2)
+            print '%s logged out' % self.opt['-u']
+            sys.exit(0)
+
+
+####################
+class AdminDeleteCmd(Command):
+    '''Usage: gp admin delete'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        self.opt['-u'] = None
+        for (switch, val) in self.options:
+            if switch == '-u': self.opt[switch] = val
+
+        if self.opt['-u'] is None:
+            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+
+    def run(self):
+        if self.opt['-u'] is None:
+            sys.stdout.write('username: ')
+            user = sys.stdin.readline()
+            user = user.strip()
+            if user == '':
+                sys.exit('please specify username.')
+            self.opt['-u'] = user
+        param = {}
+        param['user'] = self.opt['-u']
+        packet = self._httpGet('/gpcc/admin/delete', param)
+        self.raw(packet)         
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to delete user. details:'
+            printPacket(packet, '     ')
+            sys.exit(2)
+        else:
+            try:
+                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
+                if os.path.exists(gpcc_file):
+                    os.remove(gpcc_file)
+            except OSError, e:
+                print 'cannot remove %s. (%s)' % (gpcc_file, e)
+                sys.exit(2)
+            print '%s logged out' % self.opt['-u']
+            sys.exit(0)
+
+
+####################
+class AdminListCmd(Command):
+    '''Usage: gp admin list'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        self.opt['-u'] = None
+        for (switch, val) in self.options:
+            if switch == '-u': self.opt[switch] = val
+
+        if self.opt['-u'] is None:
+            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+
+    def run(self):
+        if self.opt['-u'] is None:
+            sys.stdout.write('username: ')
+            user = sys.stdin.readline()
+            user = user.strip()
+            if user == '':
+                sys.exit('please specify username.')
+            self.opt['-u'] = user
+        param = {}
+        param['user'] = self.opt['-u']
+        packet = self._httpGet('/gpcc/admin/list', param)
+        self.raw(packet)         
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to show list of users. details:'
+            printPacket(packet, '     ')
+            sys.exit(2)
+        else:
+            try:
+                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
+                if os.path.exists(gpcc_file):
+                    os.remove(gpcc_file)
+            except OSError, e:
+                print 'cannot remove %s. (%s)' % (gpcc_file, e)
+                sys.exit(2)
+            print '%s logged out' % self.opt['-u']
+            sys.exit(0)
+
+
+####################
+class AdminPasswordCmd(Command):
+    '''Usage: gp admin password'''
+    def __init__(self, gopt, argv):
+        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        self.opt['-u'] = None
+        for (switch, val) in self.options:
+            if switch == '-u': self.opt[switch] = val
+
+        if self.opt['-u'] is None:
+            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+
+    def run(self):
+        if self.opt['-u'] is None:
+            sys.stdout.write('username: ')
+            user = sys.stdin.readline()
+            user = user.strip()
+            if user == '':
+                sys.exit('please specify username.')
+            self.opt['-u'] = user
+        param = {}
+        param['user'] = self.opt['-u']
+        packet = self._httpGet('/gpcc/admin/password', param)
+        self.raw(packet)         
+        if 'ok' != packet.get('status'):
+            print '[ERROR] unable to change password. details:'
+            printPacket(packet, '     ')
+            sys.exit(2)
+        else:
+            try:
+                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
+                if os.path.exists(gpcc_file):
+                    os.remove(gpcc_file)
+            except OSError, e:
+                print 'cannot remove %s. (%s)' % (gpcc_file, e)
+                sys.exit(2)
+            print '%s logged out' % self.opt['-u']
+            sys.exit(0)
+
 
 ####################
 class HelpCmd(Command):
@@ -598,6 +757,7 @@ class HelpCmd(Command):
 	stop     Stop the array and/or segments
 	status   Get the current status of the array
 	lscfg    List the configuration
+        admin    Administrate user and password
 
   Specify 'gp help options' to see gp-options.
   Specify 'gp help' followed by a command name for command-specific help.
@@ -617,12 +777,22 @@ class HelpCmd(Command):
 
   Specify 'gp help commands' to see a list of commands.
 '''
-    
+    __adminCommands = '''Usage gp [gp-options] admin command [command-options-and-arguments]
+
+  gp admin commands are:
+         add          add user
+         delete       delete user
+         list         list user
+         password     change user password
+'''
+
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, '', self.__doc__)
         if len(self.args) > 0:
             c = self.args[0]
-            if (False or
+            if c == 'admin':
+                pass
+            elif (False or
                 c == 'commands' or
                 c == 'delete' or 
                 c == 'init' or
@@ -652,7 +822,18 @@ class HelpCmd(Command):
         elif c == 'status': 	print StatusCmd.__doc__
         elif c == 'stop': 	print StopCmd.__doc__
         elif c == 'login':      print LoginCmd.__doc__
-        elif c == 'logout':      print LogoutCmd.__doc__
+        elif c == 'logout':     print LogoutCmd.__doc__
+        elif c == 'admin':
+            if len(self.args) < 2:  print self.__adminCommands
+            else:
+                c = self.args[1]
+                if False:              pass
+                elif c == 'add':       print AdminAddCmd.__doc__
+                elif c == 'delete':    print AdminDeleteCmd.__doc__
+                elif c == 'list':      print AdminListCmd.__doc__
+                elif c == 'password':  print AdminPasswordCmd.__doc__
+                else:
+                    usage('Error: unknown command "admin %s"' % c)
         else:
             usage('Error: unknown command "%s"' % c)
 
@@ -696,6 +877,14 @@ class CmdLine():
         elif c == 'stop':    self.cmd = StopCmd(self.gopt, args)
         elif c == 'login':   self.cmd = LoginCmd(self.gopt, args)
         elif c == 'logout':  self.cmd = LogoutCmd(self.gopt, args)
+        elif c == 'admin':   
+            c = args[1]
+            if False:                pass
+            elif c == 'add':         self.cmd = AdminAddCmd(self.gopt, args[1:])
+            elif c == 'delete':      self.cmd = AdminDeleteCmd(self.gopt, args[1:])
+            elif c == 'list':        self.cmd = AdminListCmd(self.gopt, args[1:])
+            elif c == 'password':    self.cmd = AdminPasswordCmd(self.gopt, args[1:])
+            else: usage('Error: unknown command "admin %s"' % c)
         else: usage('Error: unknown command "%s"' % c)
 
         # if help, we are done; don't need to check -m, -a param
