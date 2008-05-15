@@ -509,7 +509,7 @@ class LoginCmd(Command):
             user = sys.stdin.readline()
             user = user.strip()
             if user == '':
-                sys.exit('please specify username.')
+                sys.exit('please specify user.')
             self.opt['-u'] = user
         for i in xrange(3):
             passwd = getpass('password:')
@@ -555,7 +555,7 @@ class LogoutCmd(Command):
             user = sys.stdin.readline()
             user = user.strip()
             if user == '':
-                sys.exit('please specify username.')
+                sys.exit('please specify user.')
             self.opt['-u'] = user
         param = {}
         param['user'] = self.opt['-u']
@@ -578,7 +578,7 @@ class LogoutCmd(Command):
 
 ####################
 class AdminAddCmd(Command):
-    '''Usage: gp admin add'''
+    '''Usage: gp admin add -u user'''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, 'u:', self.__doc__)
         self.opt['-u'] = None
@@ -594,10 +594,18 @@ class AdminAddCmd(Command):
             user = sys.stdin.readline()
             user = user.strip()
             if user == '':
-                sys.exit('please specify username.')
+                sys.exit('Please specify user.')
             self.opt['-u'] = user
+        print 'Adding user %s' % self.opt['-u']
+        new_passwd = getpass('New password:')
+        confirm_password = getpass('Retype new password:')
+        if new_passwd != confirm_password:
+            print '[ERROR] unable to add user. Password not match.'
+            sys.exit(2)
+
         param = {}
         param['user'] = self.opt['-u']
+        param['password'] = new_passwd
         packet = self._httpGet('/gpcc/admin/add', param)
         self.raw(packet)         
         if 'ok' != packet.get('status'):
@@ -605,20 +613,13 @@ class AdminAddCmd(Command):
             printPacket(packet, '     ')
             sys.exit(2)
         else:
-            try:
-                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
-                if os.path.exists(gpcc_file):
-                    os.remove(gpcc_file)
-            except OSError, e:
-                print 'cannot remove %s. (%s)' % (gpcc_file, e)
-                sys.exit(2)
-            print '%s logged out' % self.opt['-u']
-            sys.exit(0)
+            print 'user %s added' % self.opt['-u']
+        sys.exit(0)
 
 
 ####################
 class AdminDeleteCmd(Command):
-    '''Usage: gp admin delete'''
+    '''Usage: gp admin delete -u user'''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, 'u:', self.__doc__)
         self.opt['-u'] = None
@@ -634,8 +635,13 @@ class AdminDeleteCmd(Command):
             user = sys.stdin.readline()
             user = user.strip()
             if user == '':
-                sys.exit('please specify username.')
+                sys.exit('Please specify username.')
             self.opt['-u'] = user
+        yesorno = confirm('Are you sure to delete user %s?' % self.opt['-u'])
+        if yesorno == 'n':
+            print '[INFO] user aborted'
+            sys.exit(1)
+            
         param = {}
         param['user'] = self.opt['-u']
         packet = self._httpGet('/gpcc/admin/delete', param)
@@ -645,60 +651,32 @@ class AdminDeleteCmd(Command):
             printPacket(packet, '     ')
             sys.exit(2)
         else:
-            try:
-                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
-                if os.path.exists(gpcc_file):
-                    os.remove(gpcc_file)
-            except OSError, e:
-                print 'cannot remove %s. (%s)' % (gpcc_file, e)
-                sys.exit(2)
-            print '%s logged out' % self.opt['-u']
-            sys.exit(0)
+            print 'user %s deleted' % self.opt['-u']
+        sys.exit(0)
 
 
 ####################
 class AdminListCmd(Command):
     '''Usage: gp admin list'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
-        self.opt['-u'] = None
-        for (switch, val) in self.options:
-            if switch == '-u': self.opt[switch] = val
-
-        if self.opt['-u'] is None:
-            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+        Command.__init__(self, gopt, argv, '', self.__doc__)
 
     def run(self):
-        if self.opt['-u'] is None:
-            sys.stdout.write('username: ')
-            user = sys.stdin.readline()
-            user = user.strip()
-            if user == '':
-                sys.exit('please specify username.')
-            self.opt['-u'] = user
         param = {}
-        param['user'] = self.opt['-u']
         packet = self._httpGet('/gpcc/admin/list', param)
         self.raw(packet)         
         if 'ok' != packet.get('status'):
-            print '[ERROR] unable to show list of users. details:'
+            print '[ERROR] Unable to show list of users. Details:'
             printPacket(packet, '     ')
             sys.exit(2)
         else:
-            try:
-                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
-                if os.path.exists(gpcc_file):
-                    os.remove(gpcc_file)
-            except OSError, e:
-                print 'cannot remove %s. (%s)' % (gpcc_file, e)
-                sys.exit(2)
-            print '%s logged out' % self.opt['-u']
-            sys.exit(0)
+            print 'show user list:'
+        sys.exit(0)
 
 
 ####################
 class AdminPasswordCmd(Command):
-    '''Usage: gp admin password'''
+    '''Usage: gp admin password -u user'''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, 'u:', self.__doc__)
         self.opt['-u'] = None
@@ -714,26 +692,29 @@ class AdminPasswordCmd(Command):
             user = sys.stdin.readline()
             user = user.strip()
             if user == '':
-                sys.exit('please specify username.')
+                sys.exit('please specify user.')
             self.opt['-u'] = user
+        print 'Changing password for %s' % self.opt['-u']
+        old_password = getpass('Old password:')
+        new_password = getpass('New password:')
+        confirm_password = getpass('Retype new password:')
+        if new_password != confirm_password:
+            print '[ERROR] unable to change password. Password not match.'
+            sys.exit(2)
+
         param = {}
+        param['old_password'] = old_password
+        param['new_password'] = new_password
         param['user'] = self.opt['-u']
         packet = self._httpGet('/gpcc/admin/password', param)
         self.raw(packet)         
         if 'ok' != packet.get('status'):
-            print '[ERROR] unable to change password. details:'
+            print '[ERROR] Unable to change password. Details:'
             printPacket(packet, '     ')
             sys.exit(2)
         else:
-            try:
-                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
-                if os.path.exists(gpcc_file):
-                    os.remove(gpcc_file)
-            except OSError, e:
-                print 'cannot remove %s. (%s)' % (gpcc_file, e)
-                sys.exit(2)
-            print '%s logged out' % self.opt['-u']
-            sys.exit(0)
+            print 'Password for %s changed' % self.opt['-u']
+        sys.exit(0)
 
 
 ####################
