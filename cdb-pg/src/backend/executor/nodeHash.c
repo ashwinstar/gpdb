@@ -714,7 +714,7 @@ ExecHashTableInsert(HashJoinTable hashtable,
 					TupleTableSlot *slot,
 					uint32 hashvalue)
 {
-	MemTuple tuple = ExecFetchSlotMemTuple(slot);
+	MemTuple tuple = ExecFetchSlotMemTuple(slot, false);
 	HashJoinBatchData  *batch;
 	int			bucketno;
 	int			batchno;

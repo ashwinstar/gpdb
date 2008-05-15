@@ -722,7 +722,7 @@ agg_hash_reload(AggState *aggstate)
 		else
 		{			
 			/* Write the input tuple to the overflow. */
-			MemTuple mtup = ExecFetchSlotMemTuple(outerslot);
+			MemTuple mtup = ExecFetchSlotMemTuple(outerslot, false);
 			batch_put_tuple(ht, overflow, hkey, (char*) mtup, memtuple_get_size(mtup, NULL)); 
 			noverflow++;
 		}

@@ -2057,7 +2057,7 @@ ExecInsert(TupleTableSlot *slot,
 	if(relkind != RELKIND_APPEND_ONLY)
 		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
 	else
-		tuple = (MemTuple) ExecFetchSlotMemTuple(slot);
+		tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
 
 	
 	/* BEFORE ROW INSERT Triggers */

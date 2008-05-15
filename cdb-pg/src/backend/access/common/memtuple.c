@@ -432,10 +432,12 @@ static inline int memtuple_get_nullp_len(MemTuple mtup, MemTupleBinding *pbind)
 /* form a memtuple from values and isnull, to a prespecified buffer */
 MemTuple memtuple_form_to(MemTupleBinding *pbind,
 		Datum *values, bool *isnull,
-		MemTuple mtup, uint32 *destlen
+		MemTuple mtup, uint32 *destlen,
+		bool inline_toast
 		)
 {
 	bool hasnull = false;
+	bool hasext = false;
 	int i;
 	uint32 len;
 	unsigned char *nullp = NULL;
@@ -486,7 +488,12 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 		}
 
 		if (attr->attlen == -1 && VARATT_IS_EXTERNAL_D(values[i]))
-			values[i] = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(values[i])));
+		{
+			if(inline_toast)
+				values[i] = PointerGetDatum(heap_tuple_fetch_attr(DatumGetPointer(values[i])));
+			else
+				hasext = true;
+		}
 	}
 
 	/* compute needed length */
@@ -517,6 +524,9 @@ MemTuple memtuple_form_to(MemTupleBinding *pbind,
 
 	if(len > MEMTUPLE_LEN_FITSHORT)
 		memtuple_set_islarge(mtup, pbind);
+
+	if(hasext)
+		memtuple_set_hasext(mtup, pbind);
 
 	/* Clear Oid */ 
 	if(mtbind_has_oid(pbind))

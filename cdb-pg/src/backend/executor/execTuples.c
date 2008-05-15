@@ -699,7 +699,7 @@ MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot)
 	/*
 	 * Otherwise we need to build a tuple from the Datum array.
 	 */
-	return memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), NULL, 0);
+	return memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), NULL, 0, false);
 }
 
 extern Datum toast_flatten_tuple_attribute(Datum value, Oid typeId, int32 typeMod);
@@ -728,12 +728,12 @@ MemTuple ExecCopySlotMemTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char 
 	}
 
 	slot_getallattrs(slot);
-	mtup = memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), (MemTuple) dest, len);
+	mtup = memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), (MemTuple) dest, len, false);
 
 	if(mtup || !pctxt)
 		return mtup;
 	mtup = (MemTuple) ctxt_alloc(pctxt, *len);
-	mtup = memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), mtup, len);
+	mtup = memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), mtup, len, false);
 
 	Assert(mtup);
 	return mtup; 
@@ -853,22 +853,30 @@ ExecFetchSlotHeapTuple(TupleTableSlot *slot)
  * As above, the result must be treated as read-only.
  * --------------------------------
  */
-MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot)
+MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot, bool inline_toast)
 {
 	MemTuple newTuple;
+	MemTuple oldTuple = NULL;
 	uint32 tuplen;
 
 	Assert(!TupIsNull(slot));
 	Assert(slot->tts_mt_bind);
 
 	if(slot->PRIVATE_tts_memtuple)
-		return slot->PRIVATE_tts_memtuple; 
+	{
+		if(!inline_toast || !memtuple_get_hasext(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind))
+			return slot->PRIVATE_tts_memtuple; 
+
+		oldTuple = slot->PRIVATE_tts_mtup_buf;
+		slot->PRIVATE_tts_mtup_buf = NULL;
+		slot->PRIVATE_tts_mtup_buf_len = 0;
+	}
 
 	slot_getallattrs(slot);
 
 	tuplen = slot->PRIVATE_tts_mtup_buf_len;
 	newTuple = memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), 
-			(MemTuple) slot->PRIVATE_tts_mtup_buf, &tuplen); 
+			(MemTuple) slot->PRIVATE_tts_mtup_buf, &tuplen, inline_toast); 
 
 	if(!newTuple)
 	{
@@ -879,11 +887,15 @@ MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot)
 		slot->PRIVATE_tts_mtup_buf_len = tuplen;
 
 		newTuple = memtuple_form_to(slot->tts_mt_bind, slot_get_values(slot), slot_get_isnull(slot), 
-			(MemTuple) slot->PRIVATE_tts_mtup_buf, &tuplen); 
+			(MemTuple) slot->PRIVATE_tts_mtup_buf, &tuplen, inline_toast); 
 	}
 
 	Assert(newTuple);
 	slot->PRIVATE_tts_memtuple = newTuple;
+
+	if(oldTuple)
+		pfree(oldTuple);
+
 	return newTuple;
 }
 
@@ -977,14 +989,14 @@ void ExecModifyMemTuple(TupleTableSlot *slot, Datum *values, bool *isnull, bool 
 
 	tuplen = slot->PRIVATE_tts_htup_buf_len;
 	mtup = memtuple_form_to(slot->tts_mt_bind, slot->PRIVATE_tts_values, slot->PRIVATE_tts_isnull, 
-			slot->PRIVATE_tts_htup_buf, &tuplen);
+			slot->PRIVATE_tts_htup_buf, &tuplen, false);
 	if(!mtup)
 	{
 		slot->PRIVATE_tts_htup_buf = MemoryContextAlloc(slot->tts_mcxt, tuplen);
 		slot->PRIVATE_tts_htup_buf_len = tuplen;
 
 		mtup = memtuple_form_to(slot->tts_mt_bind, slot->PRIVATE_tts_values, slot->PRIVATE_tts_isnull, 
-			slot->PRIVATE_tts_htup_buf, &tuplen);
+			slot->PRIVATE_tts_htup_buf, &tuplen, false);
 
 		Assert(mtup);
 	}

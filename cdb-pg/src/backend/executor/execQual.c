@@ -1799,11 +1799,11 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 				tmptup.t_data = td;
 
 				heap_deform_tuple(&tmptup, tupdesc, pd, pn);
-				tuple = memtuple_form_to(mt_bind, pd, pn, NULL, NULL);
+				tuple = memtuple_form_to(mt_bind, pd, pn, NULL, NULL, false);
 			}
 			else
 			{
-				tuple = memtuple_form_to(mt_bind, &result, &fcinfo.isnull, NULL, NULL);
+				tuple = memtuple_form_to(mt_bind, &result, &fcinfo.isnull, NULL, NULL, false);
 			}
 
 			oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_query_memory);

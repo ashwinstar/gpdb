@@ -1295,7 +1295,7 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 		Assert(targetRoute != BROADCAST_SEGIDX);
 	}
 
-	tuple = ExecFetchSlotGenericTuple(outerTupleSlot);
+	tuple = ExecFetchSlotGenericTuple(outerTupleSlot, true);
 	
 	/* send the tuple out. */
 	sendRC = SendTuple(node->ps.state->motionlayer_context,

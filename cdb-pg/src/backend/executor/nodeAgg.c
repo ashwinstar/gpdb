@@ -1136,7 +1136,7 @@ agg_retrieve_direct(AggState *aggstate)
 				aggstate->grp_firstTuple = memtuple_form_to(firstSlot->tts_mt_bind,
 						slot_get_values(outerslot),
 						slot_get_isnull(outerslot),
-						NULL, NULL);
+						NULL, NULL, false);
 #endif
 			}
 			else

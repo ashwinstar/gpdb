@@ -3558,7 +3558,7 @@ CopyFrom(CopyState cstate)
 					/* form a mem tuple */
 					tuple = (MemTuple) memtuple_form_to(aoInsertDesc->mt_bind, 
 														values, nulls, 
-														NULL, NULL);
+														NULL, NULL, false);
 				
 					if (cstate->oids && file_has_oids)
 						MemTupleSetOid(tuple, aoInsertDesc->mt_bind, loaded_oid);

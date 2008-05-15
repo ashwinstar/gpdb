@@ -252,7 +252,7 @@ ExecHashJoin(HashJoinState *node)
 				 * in the corresponding outer-batch file.
 				 */
 				Assert(batchno > hashtable->curbatch);
-				ExecHashJoinSaveTuple(ExecFetchSlotMemTuple(outerTupleSlot),
+				ExecHashJoinSaveTuple(ExecFetchSlotMemTuple(outerTupleSlot, false),
 									  hashvalue,
                                       &hashtable->batches[batchno]->outerside,
 									  hashtable->bfCxt);

@@ -833,7 +833,7 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup, MemTupl
 	if (need_change)
 	{
 		if(ismemtuple)
-			result_tuple = (HeapTuple) memtuple_form_to(pbind, toast_values, toast_isnull, NULL, NULL);
+			result_tuple = (HeapTuple) memtuple_form_to(pbind, toast_values, toast_isnull, NULL, NULL, false);
 		else
 		{
 			HeapTupleHeader olddata = newtup->t_data;

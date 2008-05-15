@@ -2955,7 +2955,7 @@ copytup_heap(Tuplesortstate *state, SortTuple *stup, void *tup)
 	stup->tuple = memtuple_form_to(state->mt_bind, 
 			slot_get_values(slot),
 			slot_get_isnull(slot),
-			NULL, NULL
+			NULL, NULL, false
 			);
 #endif
 	USEMEM(state, GetMemoryChunkSpace(stup->tuple));

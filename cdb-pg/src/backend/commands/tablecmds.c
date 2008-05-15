@@ -3724,7 +3724,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 					 */
 					mtuple = memtuple_form_to(aoInsertDesc->mt_bind, 
 											  values, isnull, 
-											  NULL, NULL);
+											  NULL, NULL, false);
 					
 					
 					/* Preserve OID, if any */

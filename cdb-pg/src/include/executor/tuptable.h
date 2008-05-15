@@ -323,15 +323,15 @@ extern MemTuple ExecCopySlotMemTuple(TupleTableSlot *slot);
 extern MemTuple ExecCopySlotMemTupleTo(TupleTableSlot *slot, MemoryContext pctxt, char *dest, unsigned int *len);
 
 extern HeapTuple ExecFetchSlotHeapTuple(TupleTableSlot *slot);
-extern MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot);
+extern MemTuple ExecFetchSlotMemTuple(TupleTableSlot *slot, bool inline_toast);
 
-static inline void *ExecFetchSlotGenericTuple(TupleTableSlot *slot)
+static inline void *ExecFetchSlotGenericTuple(TupleTableSlot *slot, bool mtup_inline_toast)
 {
 	Assert(!TupIsNull(slot));
 	if (slot->PRIVATE_tts_memtuple == NULL && slot->PRIVATE_tts_heaptuple != NULL)
 		return (void *) slot->PRIVATE_tts_heaptuple;
 
-	return ExecFetchSlotMemTuple(slot);
+	return ExecFetchSlotMemTuple(slot, mtup_inline_toast);
 }
 
 static inline TupleTableSlot *ExecStoreGenericTuple(void *tup, TupleTableSlot *slot, bool shouldFree)
