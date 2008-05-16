@@ -1987,7 +1987,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 		 */
 		if (cheapest_path->parent)
 		{
-			cheapest_path_rows = cheapest_path->parent->rows;
+			cheapest_path_rows = cdbpath_rows(cheapest_path);
 			cheapest_path_width = cheapest_path->parent->width;
 		}
 		else
