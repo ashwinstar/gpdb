@@ -38,6 +38,16 @@ chubby_connection_t*chubby_makeConnection(chubby_t*thiz);
 void chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv);
 
 int chubby_connection_asynchrohous_get(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize);
+int chubby_connection_asynchronous_move(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,const char*fromname,const char*toname);
+int chubby_connection_asynchronous_stat(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,struct chubby_stat*stat,const char*name);
+int chubby_connection_asynchronous_put(chubby_connection_t*thiz,const char*name,chubby_string_t*contents);
+int chubby_connection_asynchronous_putBigFile(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,const char*name,chubby_string_t*contents);
+int chubby_connection_asynchronous_remove(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,const char*name);
+int chubby_connection_asynchronous_list(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,char***answer,const char*name);
+int chubby_connection_asynchronous_checkLease(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data);
+int chubby_connection_asynchronous_getLease(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,chubby_connection_t**answer,const char*name,int timeout,int leaseTime);
+int chubby_connection_asynchronous_renew(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,int leaseTime);
+void chubby_connection_asynchronous_giveUpLease(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data);
 
 int chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize);
 int chubby_connection_move(chubby_connection_t*thiz,const char*fromname,const char*toname);
