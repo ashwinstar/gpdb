@@ -25,6 +25,6 @@ def main(argv):
     except OSError:
 	pass
     open("Priest-0/data/start","wb").close()
-    os.execl("/bin/sh","/bin/sh","-c","python -u $GPHOME/bin/lib/paxos/main.pyc test")
+    os.execl("/bin/sh","/bin/sh","-c","exec python -u $GPHOME/bin/lib/paxos/main.pyc test")
 
 main(sys.argv)
