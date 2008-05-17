@@ -40,10 +40,22 @@ struct chubby{
     char*addresses;
     char*paxosKey;
     int timeout;
+    int fd;
+    struct sockaddr socketName;
     char id[CHUBBY_ID_SIZE];
     int64_t count;
     int leaderValid;
     struct sockaddr leader;
+};
+
+struct chubby_connection{
+    struct chubby_counted super;
+    chubby_t*chubby;
+    chubby_connection_t*parent;
+    char leaseFilename[PATH_MAX];
+    int64_t leaseDn;
+    char leaseId[CHUBBY_ID_SIZE];
+    time_t leaseExpireTime;
 };
 
 void chubby_counted_set(void*a,void*b);
@@ -51,6 +63,8 @@ void chubby_counted_close(void*a);
 
 chubby_connection_t*chubby_connection_new(chubby_t*chubby);
 void chubby_getNewId(chubby_t*thiz,char*a);
+
+int chubby_asynchronous_propose(chubby_t*thiz,chubby_asynchronous_callback callback,void*data,chubby_string_t**answer,chubby_string_t*what);
 int chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what);
 
 int chubby_udp_buffer_isOverflowed(chubby_udp_buffer_t*thiz);
@@ -64,5 +78,7 @@ chubby_string_t*chubby_string_format(chubby_t*chubby,const char*format,...);
 
 int chubby_readPaxosKey(chubby_t*thiz);
 void chubby_sign(chubby_t*thiz,char*a,const char*b,int len,const struct sockaddr*f,const struct sockaddr*t);
+void chubby_fixFilename(chubby_udp_buffer_t*b,const char*name);
+int chubby_connection_propose(chubby_connection_t*thiz,chubby_string_t**answer,chubby_udp_buffer_t*b);
 
 #endif

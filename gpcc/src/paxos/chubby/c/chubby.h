@@ -3,6 +3,7 @@
 #ifndef CHUBBY_H
 #define CHUBBY_H
 
+#include <sys/select.h>
 #include <sys/types.h>
 
 #define CHUBBY_CHUNK_SIZE	4000
@@ -18,6 +19,7 @@
 
 typedef struct chubby chubby_t;
 typedef struct chubby_connection chubby_connection_t;
+typedef void(*chubby_asynchronous_callback)(int e,void*data);
 
 typedef struct{
     int length;
@@ -32,6 +34,9 @@ struct chubby_stat{
 chubby_t*chubby_new(const char*addresses,int timeout,void*(*malloc)(size_t),void(*free)(void*));
 void chubby_close(chubby_t*thiz);
 chubby_connection_t*chubby_makeConnection(chubby_t*thiz);
+void chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv);
+
+int chubby_connection_asynchrohous_get(chubby_connection_t*thiz,chubby_asynchronous_callback callback,void*data,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize);
 
 int chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize);
 int chubby_connection_move(chubby_connection_t*thiz,const char*fromname,const char*toname);

@@ -2,23 +2,8 @@
 
 #include "chubby_private.h"
 
-struct chubby_connection{
-    struct chubby_counted super;
-    chubby_t*chubby;
-    chubby_connection_t*parent;
-    char leaseFilename[PATH_MAX];
-    int64_t leaseDn;
-    char leaseId[CHUBBY_ID_SIZE];
-    time_t leaseExpireTime;
-};
-
-struct chubby_string_linked_list{
-    struct chubby_string_linked_list*next;
-    chubby_string_t*s;
-};
-
-static void
-fixFilename(chubby_udp_buffer_t*b,const char*name)
+void
+chubby_fixFilename(chubby_udp_buffer_t*b,const char*name)
 {
     for (; *name; name++)
 	if (b->length < sizeof b->a)
@@ -64,101 +49,19 @@ reverse(char*a,int length)
     }
 }
 
-static int
+int
 chubby_connection_propose(chubby_connection_t*thiz,chubby_string_t**answer,chubby_udp_buffer_t*b)
 {
     int length=b->length;
     if (!thiz->parent)
 	return chubby_propose(thiz->chubby,answer,(chubby_string_t*)b);
     chubby_udp_buffer_format(b,"If ");
-    fixFilename(b,thiz->leaseFilename);
+    chubby_fixFilename(b,thiz->leaseFilename);
     chubby_udp_buffer_format(b," %"APR_INT64_T_FMT" ",thiz->leaseDn);
     reverse(b->a,length);
     reverse(b->a+length,b->length-length);
     reverse(b->a,b->length);
     return chubby_connection_propose(thiz->parent,answer,b);
-}
-
-static void
-chubby_connection_freeChubbyStringLinkedList(chubby_connection_t*thiz,struct chubby_string_linked_list*ll)
-{
-    while (ll){
-	struct chubby_string_linked_list*a=ll;
-	ll = a->next;
-	if (a->s)
-	    thiz->chubby->free(a->s);
-	thiz->chubby->free(a);
-    }
-}
-
-int
-chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize)
-{
-    int64_t dn=0;
-    struct chubby_string_linked_list*ll=NULL,*m;
-    int size=0;
-    int e=0;
-    if (strlen(name) >= PATH_MAX)
-	return CHUBBY_E_INVAL;
-    for (;;){
-	chubby_udp_buffer_t b;
-	int64_t newdn=0;
-	int i,n=0,s=0;
-	b.length = 0;
-	chubby_udp_buffer_format(&b,"Get ");
-	fixFilename(&b,name);
-	i = CHUBBY_CHUNK_SIZE;
-	if (maxsize>=0 && maxsize-size<i)
-	    i = maxsize-size;
-	chubby_udp_buffer_format(&b," %d %d",size,i);
-	m = thiz->chubby->malloc(sizeof*m);
-	if (!m){
-	    e = CHUBBY_E_OOM;
-	    break;
-	}
-	m->next = ll;
-	m->s = NULL;
-	ll = m;
-	e = chubby_connection_propose(thiz,&ll->s,&b);
-	if (e)
-	    break;
-	sscanf(ll->s->a,"%"APR_INT64_T_FMT" %d%n",&newdn,&s,&n);
-	assert(n);
-	if (dn != newdn){
-	    dn = newdn;
-	    if (size){
-		chubby_connection_freeChubbyStringLinkedList(thiz,ll);
-		ll = NULL;
-		size = 0;
-	    }else
-		size = ll->s->length-n-1;
-	}else
-	    size += ll->s->length-n-1;
-	if (size==s || (maxsize>=0 && size>=maxsize)){
-	    *answer = thiz->chubby->malloc(sizeof**answer+size);
-	    if (!*answer){
-		e = CHUBBY_E_OOM;
-		break;
-	    }
-	    (*answer)->length = size;
-	    (*answer)->a[size] = 0;
-	    if (stat){
-		stat->decreeNumber = dn;
-		stat->size = size;
-	    }
-	    for (m=ll; m; m=m->next){
-		sscanf(m->s->a,"%"APR_INT64_T_FMT" %d%n",&newdn,&s,&n);
-		s = m->s->length-n-1;
-		size -= s;
-		assert(size >= 0);
-		memcpy((*answer)->a+size,m->s->a+n+1,s);
-	    }
-	    assert(size == 0);
-	    break;
-	}
-    }
-    chubby_connection_freeChubbyStringLinkedList(thiz,ll);
-    return e;
 }
 
 int
@@ -171,7 +74,7 @@ chubby_connection_stat(chubby_connection_t*thiz,struct chubby_stat*stat,const ch
 	return CHUBBY_E_INVAL;
     b.length = 0;
     chubby_udp_buffer_format(&b,"Stat ");
-    fixFilename(&b,name);
+    chubby_fixFilename(&b,name);
     e = chubby_connection_propose(thiz,&answer,&b);
     if (e == CHUBBY_E_NOENT){
 	stat->decreeNumber = 0;
@@ -192,7 +95,7 @@ chubby_connection_chubbyStat(chubby_connection_t*thiz,struct chubby_stat*stat,co
     int e;
     b.length = 0;
     chubby_udp_buffer_format(&b,"Stat ");
-    fixFilename(&b,name);
+    chubby_fixFilename(&b,name);
     e = chubby_propose(thiz->chubby,&answer,(chubby_string_t*)&b);
     if (!e){
 	sscanf(answer->a,"%"APR_INT64_T_FMT" %d",&stat->decreeNumber,&stat->size);
@@ -211,9 +114,9 @@ chubby_connection_put(chubby_connection_t*thiz,const char*name,chubby_string_t*c
 	return e;
     b.length = 0;
     chubby_udp_buffer_format(&b,"If ");
-    fixFilename(&b,name);
+    chubby_fixFilename(&b,name);
     chubby_udp_buffer_format(&b," %"APR_INT64_T_FMT" Put ",stat.decreeNumber);
-    fixFilename(&b,name);
+    chubby_fixFilename(&b,name);
     chubby_udp_buffer_format(&b," 0 ");
     chubby_udp_buffer_cat(&b,contents);
     e = chubby_connection_propose(thiz,NULL,&b);
@@ -236,7 +139,7 @@ chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_str
     do{
 	b.length = 0;
 	chubby_udp_buffer_format(&b,"Put ");
-	fixFilename(&b,name);
+	chubby_fixFilename(&b,name);
 	chubby_udp_buffer_format(&b," %d ",offset);
 	len = contents->length-offset;
 	if (len > CHUBBY_CHUNK_SIZE)
@@ -259,9 +162,9 @@ chubby_connection_remove(chubby_connection_t*thiz,const char*name)
 	    return CHUBBY_E_NOENT;
 	b.length = 0;
 	chubby_udp_buffer_format(&b,"If ");
-	fixFilename(&b,name);
+	chubby_fixFilename(&b,name);
 	chubby_udp_buffer_format(&b," %"APR_INT64_T_FMT" Remove ",stat.decreeNumber);
-	fixFilename(&b,name);
+	chubby_fixFilename(&b,name);
 	e = chubby_connection_propose(thiz,NULL,&b);
 	if (e == CHUBBY_E_NOENT)
 	    return 0;
@@ -514,13 +417,13 @@ chubby_connection_move(chubby_connection_t*thiz,const char*fromname,const char*t
         return e;
     b.length = 0;
     chubby_udp_buffer_format(&b,"If ");
-    fixFilename(&b,fromname);
+    chubby_fixFilename(&b,fromname);
     chubby_udp_buffer_format(&b," %"APR_INT64_T_FMT" If ",fstat.decreeNumber);
-    fixFilename(&b,toname);
+    chubby_fixFilename(&b,toname);
     chubby_udp_buffer_format(&b," %"APR_INT64_T_FMT" Move ",tstat.decreeNumber);
-    fixFilename(&b,fromname);
+    chubby_fixFilename(&b,fromname);
     chubby_udp_buffer_format(&b," ");
-    fixFilename(&b,toname);
+    chubby_fixFilename(&b,toname);
     e = chubby_connection_propose(thiz,NULL,&b);
     if (e == CHUBBY_E_IFFAILED){
 	e = chubby_connection_chubbyStat(thiz,&tstat,fromname);

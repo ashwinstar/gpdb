@@ -35,6 +35,26 @@ unmangle(char*s,int size)
     return j;
 }
 
+static int
+getSocketAddressByName(struct sockaddr_in*sa,char*a)
+{
+    char*b=strchr(a,':');
+    struct hostent*h;
+    memset(sa,0,sizeof*sa);
+    sa->sin_family = AF_INET;
+    if (b){
+        *b++ = 0;
+	sa->sin_port = htons(atoi(b));
+    }
+    h = gethostbyname(a);
+    if (!h)
+	return 1;
+    if (h->h_length!=sizeof(struct in_addr) || !h->h_addr)
+	return 1;
+    sa->sin_addr = *(struct in_addr*)h->h_addr;
+    return 0;
+}
+
 static void
 chubby_delete(struct chubby_counted*_thiz)
 {
@@ -43,12 +63,19 @@ chubby_delete(struct chubby_counted*_thiz)
 	thiz->free(thiz->addresses);
     if (thiz->paxosKey)
 	thiz->free(thiz->paxosKey);
+    if (thiz->fd != -1)
+	close(thiz->fd);
     thiz->free(thiz);
 }
 
 static int
 chubby_init(chubby_t*thiz,const char*addresses)
 {
+    char hostname[_POSIX_HOST_NAME_MAX];
+    socklen_t namelen=sizeof(struct sockaddr);
+    thiz->fd = socket(AF_INET,SOCK_DGRAM,0);
+    if (thiz->fd == -1)
+	return 1;
     thiz->addresses = thiz->malloc(strlen(addresses)+1);
     if (!thiz->addresses)
 	return 1;
@@ -58,6 +85,12 @@ chubby_init(chubby_t*thiz,const char*addresses)
     if (chubby_readPaxosKey(thiz))
 	return 1;
     sprintf(thiz->id+strlen(thiz->id),"-%d-%d-%p",(int)getpid(),(int)time(NULL),thiz);
+    if (gethostname(hostname,_POSIX_HOST_NAME_MAX))
+	return 1;
+    if (getSocketAddressByName((struct sockaddr_in*)&thiz->socketName,hostname))
+	return 1;
+    bind(thiz->fd,&thiz->socketName,sizeof(struct sockaddr));
+    getsockname(thiz->fd,&thiz->socketName,&namelen);
     return 0;
 }
 
@@ -98,26 +131,6 @@ chubby_getNewId(chubby_t*thiz,char*a)
 }
 
 static int
-getSocketAddressByName(struct sockaddr_in*sa,char*a)
-{
-    char*b=strchr(a,':');
-    struct hostent*h;
-    memset(sa,0,sizeof*sa);
-    sa->sin_family = AF_INET;
-    if (b){
-        *b++ = 0;
-	sa->sin_port = htons(atoi(b));
-    }
-    h = gethostbyname(a);
-    if (!h)
-	return 1;
-    if (h->h_length!=sizeof(struct in_addr) || !h->h_addr)
-	return 1;
-    sa->sin_addr = *(struct in_addr*)h->h_addr;
-    return 0;
-}
-
-static int
 chubby_sendGetLeader(chubby_t*thiz,int fd,const struct sockaddr*name)
 {
     char a[_POSIX_HOST_NAME_MAX+NUMBER_STRING_LENGTH+1],*s;
@@ -138,17 +151,24 @@ chubby_sendGetLeader(chubby_t*thiz,int fd,const struct sockaddr*name)
     return 0;
 }
 
-static int
-chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t*what,const struct sockaddr*name)
+int
+chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
 {
     int e;
     time_t getLeaderTimeout=0;
     time_t proposeTimeout=0;
     time_t bigTimeout=time(NULL)+thiz->timeout;
-    if (chubby_udp_buffer_isOverflowed(what))
+    chubby_udp_buffer_t b;
+    b.length = 0;
+    chubby_udp_buffer_format(&b,SIGNSTRING"Propose version=%d decree=Tag!!",PAXOS_PROTOCOL_VERSION);
+    chubby_getNewId(thiz,b.a+b.length);
+    b.length += strlen(b.a+b.length);
+    chubby_udp_buffer_format(&b,"!!");
+    mangle(&b,what);
+    if (chubby_udp_buffer_isOverflowed(&b))
 	return CHUBBY_E_INVAL;
     for (;;){
-	chubby_udp_buffer_t b;
+	chubby_udp_buffer_t c;
 	int i,j;
 	int version=-1;
 	char*command=NULL;
@@ -166,44 +186,44 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 	    return CHUBBY_E_TIMEOUT;
 	if (getLeaderTimeout < now){
 	    getLeaderTimeout = now+TIMEOUT;
-	    e = chubby_sendGetLeader(thiz,fd,name);
+	    e = chubby_sendGetLeader(thiz,thiz->fd,&thiz->socketName);
 	    if (e)
 		return e;
 	}
 	if (thiz->leaderValid && proposeTimeout<now){
 	    proposeTimeout = now+TIMEOUT;
-	    chubby_sign(thiz,what->a,what->a,what->length,name,&thiz->leader);
-	    sendto(fd,what->a,what->length,0,&thiz->leader,sizeof thiz->leader);
+	    chubby_sign(thiz,b.a,b.a,b.length,&thiz->socketName,&thiz->leader);
+	    sendto(thiz->fd,b.a,b.length,0,&thiz->leader,sizeof thiz->leader);
 	}
 	FD_ZERO(&rset);
-	FD_SET(fd,&rset);
-	i = select(fd+1,&rset,NULL,NULL,&timeout);
+	FD_SET(thiz->fd,&rset);
+	i = select(thiz->fd+1,&rset,NULL,NULL,&timeout);
 	if (i == -1)
 	    return CHUBBY_E_IO;
 	if (i == 0)
 	    continue;
-	b.length = recvfrom(fd,b.a,65535,0,&from,&fromlen);
-	if (b.length < SIGNSTRING_LENGTH)
+	c.length = recvfrom(thiz->fd,c.a,65535,0,&from,&fromlen);
+	if (c.length < SIGNSTRING_LENGTH)
 	    continue;
-	chubby_sign(thiz,signature,b.a,b.length,&from,name);
-	if (memcmp(signature,b.a,SIGNSTRING_LENGTH)){
+	chubby_sign(thiz,signature,c.a,c.length,&from,&thiz->socketName);
+	if (memcmp(signature,c.a,SIGNSTRING_LENGTH)){
 	    signature[32] = 0;
-	    b.a[b.length] = 0;
+	    c.a[c.length] = 0;
 	    continue;
 	}
-	for (i=SIGNSTRING_LENGTH; i<b.length; i++){
-	    for (j=i; i<b.length&&b.a[i]!=' '; i++);
+	for (i=SIGNSTRING_LENGTH; i<c.length; i++){
+	    for (j=i; i<c.length&&c.a[i]!=' '; i++);
 	    if (command == NULL){
-		command = b.a+j;
-		b.a[i] = 0;
-	    }else if (!memcmp(b.a+j,"version=",8))
-		version = atoi(b.a+j+8);
-	    else if (!memcmp(b.a+j,"result=",7)){
-		result = b.a+j+7;
+		command = c.a+j;
+		c.a[i] = 0;
+	    }else if (!memcmp(c.a+j,"version=",8))
+		version = atoi(c.a+j+8);
+	    else if (!memcmp(c.a+j,"result=",7)){
+		result = c.a+j+7;
 		resultSize = unmangle(result,i-j-7);
 		result[resultSize] = 0;
-	    }else if (!memcmp(b.a+j,"decree=",7)){
-		decree = b.a+j;
+	    }else if (!memcmp(c.a+j,"decree=",7)){
+		decree = c.a+j;
 		decreeSize = i-j;
 		decree[decreeSize] = 0;
 	    }
@@ -218,9 +238,9 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
 		proposeTimeout = 0;
 	    }
 	}else if (!strcmp(command,"Result")){
-	    const char*a=strstr(what->a,"decree=");
+	    const char*a=strstr(b.a,"decree=");
 	    assert(a);
-	    if (what->a+what->length==a+decreeSize && !memcmp(a,decree,decreeSize)){
+	    if (b.a+b.length==a+decreeSize && !memcmp(a,decree,decreeSize)){
 		if (!memcmp(result,"error ",6))
 		    return atoi(result+6);
 		if (answer){
@@ -238,30 +258,7 @@ chubby_propose1(chubby_t*thiz,int fd,chubby_string_t**answer,chubby_udp_buffer_t
     }
 }
 
-int
-chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
+void
+chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv)
 {
-    chubby_udp_buffer_t b;
-    int e;
-    int fd=socket(AF_INET,SOCK_DGRAM,0);
-    char hostname[_POSIX_HOST_NAME_MAX];
-    struct sockaddr name;
-    socklen_t namelen=sizeof name;
-    if (fd == -1)
-	return CHUBBY_E_IO;
-    if (gethostname(hostname,_POSIX_HOST_NAME_MAX))
-	return CHUBBY_E_IO;
-    if (getSocketAddressByName((struct sockaddr_in*)&name,hostname))
-	return CHUBBY_E_IO;
-    bind(fd,&name,sizeof name);
-    getsockname(fd,&name,&namelen);
-    b.length = 0;
-    chubby_udp_buffer_format(&b,SIGNSTRING"Propose version=%d decree=Tag!!",PAXOS_PROTOCOL_VERSION);
-    chubby_getNewId(thiz,b.a+b.length);
-    b.length += strlen(b.a+b.length);
-    chubby_udp_buffer_format(&b,"!!");
-    mangle(&b,what);
-    e = chubby_propose1(thiz,fd,answer,&b,&name);
-    close(fd);
-    return e;
 }
