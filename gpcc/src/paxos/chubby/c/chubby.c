@@ -357,8 +357,8 @@ chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv)
     if (fd)
 	*fd = thiz->fd;
     if (tv){
-	tv->tv_sec = TIMEOUT;
-	tv->tv_usec = 0;
+	tv->tv_sec = apr_time_sec(TIMEOUT);
+	tv->tv_usec = apr_time_usec(TIMEOUT);
     }
 }
 
