@@ -122,23 +122,6 @@ class GPUpgrade:
             self.newenv = self.SetupEnv(self.newhome, None)
 
     #------------------------------------------------------------
-    def __del__(self):
-        '''
-        Final cleanup, remove temporory files
-        '''
-        if self.state:  self.state.close()
-
-        # We don't actually want to remove files if the upgrade failed, they
-        # contain our revert state.
-#        if self.tmpdir: 
-#            for root, dirs, files in os.walk(self.tmpdir, topdown=False):
-#                for name in files:
-#                    os.remove(os.path.join(root, name))
-#                for name in dirs:
-#                    os.rmdir(os.path.join(root, name))
-#            os.rmdir(root)
-
-    #------------------------------------------------------------
     def ParseInput(self):
         '''
         Parses and validates input to the script
@@ -901,7 +884,7 @@ class GPUpgrade:
                       left outer join pg_class c2 on c.reltoastrelid=c2.oid
                       left outer join pg_class c3 on c2.reltoastidxid=c3.oid
                    WHERE c.oid >= %s 
-                     AND c.relkind in ('r', 't', 'i')
+                     AND c.relkind in ('r', 't', 'i', 'S')
                      AND c.relnamespace = n.oid AND n.nspname != 'pg_toast'
                    ORDER BY c.relname, c.relkind;
                 ''' % db['max_sysoid'], 
@@ -991,6 +974,8 @@ class GPUpgrade:
         self.CheckDown()
         subprocess.call('gpinitsystem -a -c %s/gp_init_config' % self.tmpdir,
                         env=self.newenv, shell=True)
+        self.Update('vacuum freeze', db='postgres')
+        self.Update('vacuum freeze', db='template1')
         self.Shutdown(u.newenv, False)
 
     #------------------------------------------------------------
@@ -1058,13 +1043,6 @@ class GPUpgrade:
 
                     # Replace the new comit logs with the old ones
                     #   + Just copy these... it's safer
-                    # DISABLED:
-                    #  pg_migrator did this, but it doesn't seem necessary,
-                    #  and in fact is dangerous if the commit log format has
-                    #  changed.
-                    # REENABLES:
-                    #  Seems to be necessary for 'create table foo as select'
-                    # -- FIXME -- figure out what's up with this
                     self.RunCmd('rm -rf %s/pg_clog' % newdir)
                     self.RunCmd('cp -rf %s/pg_clog %s/pg_clog' 
                                 % (olddir, newdir))
@@ -1099,7 +1077,7 @@ class GPUpgrade:
             # Write out a mapping file
             o = open(mapfilename, 'w')
             for name in self.mappings:
-                self.log('INFO', 'REMAP: ' + str(self.mappings[name]))
+                self.Log('INFO', 'REMAP: ' + str(self.mappings[name]))
                 
                 o.write('%s/%s %s/%s\n' % (
                         self.mappings[name]['olddb'],
@@ -1270,7 +1248,7 @@ class GPUpgrade:
                             if os.path.exists(newfile):
                                 self.Log('WARN', 'File exists ' + newfile)
                                 os.remove(newfile)
-#                            if self.debug:
+                            if self.debug:
                                 self.Log('INFO', 'Linking file ' + newfile)
                             os.link(oldfile, newfile)
 
@@ -1322,6 +1300,7 @@ try:
 
         # Startup the old database in utility mode
         u.Startup(u.oldenv, True)
+        u.CheckCatalog(u.oldenv)
 
         # Get configuration and catalog information
         # + Requires running old db

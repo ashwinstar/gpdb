@@ -469,10 +469,19 @@ class GPDetective():
         if self.opt['-U']: checkcat.extend(['-U', str(self.opt['-U'])])
         if self.opt['-P']: checkcat.extend(['-P', str(self.opt['-P'])])
 
+        checkdb = ['gpcheckdb']
+        if self.opt['-h']: checkdb.extend(['-h', str(self.opt['-h'])])
+        if self.opt['-p']: checkdb.extend(['-p', str(self.opt['-p'])])
+        if self.opt['-U']: checkdb.extend(['-U', str(self.opt['-U'])])
+        checkdb.append('-d')
+
         for db in self.databases:
             checkcat.append(db)
+            checkdb.append(db)
             self.writeCmd('gpcheckcat_' + db + '.log', checkcat)
+            self.writeCmd('gpcheckdb_' + db + '.log', checkdb)
             checkcat.pop()
+            checkdb.pop()
 
         self.writeCmd('pg_dumpall.log', 
                       ['pg_dumpall', '--schema-only', '--gp-syntax']);
