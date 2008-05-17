@@ -155,7 +155,7 @@ appendonlygettup(AppendOnlyScanDesc scan,
 		char	   *path;
 		AppendOnlyEntry *aoentry;
 		int64		eof;
-							
+
 		/* cache the relfilenode value */
 		scan->aos_relfilenode = reln->rd_node.relNode;
 		Assert(scan->aos_relfilenode != InvalidOid);
@@ -173,8 +173,8 @@ appendonlygettup(AppendOnlyScanDesc scan,
 		if (eof < 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Invalid eof %d for relation %s\n", 
-							(int)eof, NameStr(scan->aos_rd->rd_rel->relname))));			
+					 errmsg("Invalid eof %lld for relation %s", 
+							eof, NameStr(scan->aos_rd->rd_rel->relname))));			
 		
 		/* Set the file to be read with its eof */
 		BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
