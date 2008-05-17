@@ -298,8 +298,8 @@ int
 chubby_connection_getLease(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int timeout,int leaseTime)
 {
     int e;
-    time_t timedout=time(NULL)+timeout;
-    time_t expire=0,now;
+    apr_time_t timedout=apr_time_now()+apr_time_from_sec(timeout);
+    apr_time_t expire=0,now;
     int waitTime;
     int64_t dn=0;
     struct chubby_stat stat;
@@ -319,9 +319,9 @@ chubby_connection_getLease(chubby_connection_t*thiz,chubby_connection_t**answer,
 	    stat.decreeNumber = 0;
 	else
 	    return e;
-	now = time(NULL);
+	now = apr_time_now();
 	if (stat.decreeNumber > dn){
-	    expire = waitTime==0?0:now+waitTime+1;
+	    expire = waitTime==0?0:now+apr_time_from_sec(waitTime)+1;
 	    dn = stat.decreeNumber;
 	}
 	if (stat.decreeNumber==0 || expire<now){
@@ -355,7 +355,7 @@ chubby_connection_getLease(chubby_connection_t*thiz,chubby_connection_t**answer,
 	    thiz->chubby->free(a);
 	}
 	sleep(1);
-    }while (time(NULL) < timedout);
+    }while (timeout>=0 && apr_time_now()<timedout);
     return CHUBBY_E_TIMEOUT;
 }
 
@@ -364,7 +364,7 @@ chubby_connection_renew(chubby_connection_t*thiz,int leaseTime)
 {
     chubby_string_t*a,*b;
     char info[PATH_MAX];
-    time_t now=time(NULL);
+    apr_time_t now=apr_time_now();
     int e;
     if (!*thiz->leaseId)
 	return CHUBBY_E_INVAL;
@@ -377,7 +377,7 @@ chubby_connection_renew(chubby_connection_t*thiz,int leaseTime)
 	e = chubby_connection_get(thiz,NULL,&b,info,-1);
 	if (!e){
 	    if (a->length==b->length && !memcmp(a->a,b->a,a->length))
-		thiz->leaseExpireTime = now+leaseTime;
+		thiz->leaseExpireTime = now+apr_time_from_sec(leaseTime);
 	    else
 		e = CHUBBY_E_LEASEEXPIRED;
 	    thiz->chubby->free(b);
@@ -392,7 +392,7 @@ chubby_connection_getLeaseExpireTime(chubby_connection_t*thiz,time_t*t)
 {
     if (!thiz->leaseDn)
 	return CHUBBY_E_INVAL;
-    *t = thiz->leaseExpireTime;
+    *t = apr_time_sec(thiz->leaseExpireTime);
     return 0;
 }
 

@@ -16,10 +16,11 @@
 #define CHUBBY_E_TIMEOUT	101
 #define CHUBBY_E_OOM		102
 #define CHUBBY_E_IO		103
+#define CHUBBY_E_CLOSED		104
 
 typedef struct chubby chubby_t;
 typedef struct chubby_connection chubby_connection_t;
-typedef void(*chubby_asynchronous_callback)(int e,void*data);
+typedef void(*chubby_asynchronous_callback_t)(int e,void*data);
 
 typedef struct{
     int length;
@@ -36,7 +37,7 @@ void chubby_close(chubby_t*thiz);
 chubby_connection_t*chubby_makeConnection(chubby_t*thiz);
 void chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv);
 
-int chubby_connection_asynchrohous_get(chubby_connection_t*thiz,chubby_asynchronous_callback callback,void*data,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize);
+int chubby_connection_asynchrohous_get(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize);
 
 int chubby_connection_get(chubby_connection_t*thiz,struct chubby_stat*stat,chubby_string_t**answer,const char*name,int maxsize);
 int chubby_connection_move(chubby_connection_t*thiz,const char*fromname,const char*toname);

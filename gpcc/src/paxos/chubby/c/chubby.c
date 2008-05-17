@@ -4,7 +4,17 @@
 
 #define PAXOS_PROTOCOL_VERSION	0
 
-#define TIMEOUT		1
+#define TIMEOUT		1000000
+
+struct chubby_proposal{
+    struct chubby_proposal*next;
+    chubby_asynchronous_callback_t callback;
+    void*data;
+    apr_time_t bigTimeout;
+    apr_time_t proposeTimeout;
+    chubby_string_t**answer;
+    chubby_udp_buffer_t b;
+};
 
 static void
 mangle(chubby_udp_buffer_t*b,chubby_string_t*s)
@@ -56,9 +66,21 @@ getSocketAddressByName(struct sockaddr_in*sa,char*a)
 }
 
 static void
+chubby_proposal_done(chubby_t*thiz,struct chubby_proposal*p,int e)
+{
+    p->callback(e,p->data);
+    thiz->free(p);
+}
+
+static void
 chubby_delete(struct chubby_counted*_thiz)
 {
     chubby_t*thiz=(chubby_t*)_thiz;
+    while (thiz->proposal){
+	struct chubby_proposal*p=thiz->proposal;
+	thiz->proposal = p->next;
+	chubby_proposal_done(thiz,p,CHUBBY_E_CLOSED);
+    }
     if (thiz->addresses)
 	thiz->free(thiz->addresses);
     if (thiz->paxosKey)
@@ -84,7 +106,7 @@ chubby_init(chubby_t*thiz,const char*addresses)
 	return 1;
     if (chubby_readPaxosKey(thiz))
 	return 1;
-    sprintf(thiz->id+strlen(thiz->id),"-%d-%d-%p",(int)getpid(),(int)time(NULL),thiz);
+    sprintf(thiz->id+strlen(thiz->id),"-%d-%"APR_TIME_T_FMT"-%p",(int)getpid(),apr_time_now(),thiz);
     if (gethostname(hostname,_POSIX_HOST_NAME_MAX))
 	return 1;
     if (getSocketAddressByName((struct sockaddr_in*)&thiz->socketName,hostname))
@@ -130,135 +152,215 @@ chubby_getNewId(chubby_t*thiz,char*a)
     sprintf(a,"%s-%"APR_INT64_T_FMT,thiz->id,++thiz->count);
 }
 
-static int
-chubby_sendGetLeader(chubby_t*thiz,int fd,const struct sockaddr*name)
+static void
+chubby_propose_callback(int e,void*data)
 {
-    char a[_POSIX_HOST_NAME_MAX+NUMBER_STRING_LENGTH+1],*s;
-    struct sockaddr sa;
-    for (s=thiz->addresses; *s; s++){
-	char*t=s;
-	s = strchr(t,',');
-	if (!s)
-	    s = t+strlen(t);
-	memcpy(a,t,s-t);
-	a[s-t] = 0;
-	if (getSocketAddressByName((struct sockaddr_in*)&sa,a))
-	    return CHUBBY_E_IO;
-	sprintf(a,SIGNSTRING"GetLeader version=%d",PAXOS_PROTOCOL_VERSION);
-	chubby_sign(thiz,a,a,strlen(a),name,&sa);
-	sendto(fd,a,strlen(a),0,&sa,sizeof sa);
-    }
-    return 0;
+    (0[(int*)data]=1)[(int*)data] = e;
 }
 
 int
 chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
 {
-    int e;
-    time_t getLeaderTimeout=0;
-    time_t proposeTimeout=0;
-    time_t bigTimeout=time(NULL)+thiz->timeout;
-    chubby_udp_buffer_t b;
-    b.length = 0;
-    chubby_udp_buffer_format(&b,SIGNSTRING"Propose version=%d decree=Tag!!",PAXOS_PROTOCOL_VERSION);
-    chubby_getNewId(thiz,b.a+b.length);
-    b.length += strlen(b.a+b.length);
-    chubby_udp_buffer_format(&b,"!!");
-    mangle(&b,what);
-    if (chubby_udp_buffer_isOverflowed(&b))
-	return CHUBBY_E_INVAL;
+    int a[2]={0};
+    int e=chubby_asynchronous_propose(thiz,chubby_propose_callback,a,answer,what);
+    if (e)
+	return e;
     for (;;){
-	chubby_udp_buffer_t c;
-	int i,j;
-	int version=-1;
-	char*command=NULL;
-	int resultSize=0;
-	char*result=NULL;
-	int decreeSize=0;
-	char*decree=NULL;
-	time_t now=time(NULL);
-	struct sockaddr from;
-	socklen_t fromlen=sizeof from;
-	char signature[SIGNSTRING_LENGTH];
 	fd_set rset;
-	struct timeval timeout={TIMEOUT,0};
-	if (thiz->timeout>=0 && bigTimeout<now)
-	    return CHUBBY_E_TIMEOUT;
-	if (getLeaderTimeout < now){
-	    getLeaderTimeout = now+TIMEOUT;
-	    e = chubby_sendGetLeader(thiz,thiz->fd,&thiz->socketName);
-	    if (e)
-		return e;
-	}
-	if (thiz->leaderValid && proposeTimeout<now){
-	    proposeTimeout = now+TIMEOUT;
-	    chubby_sign(thiz,b.a,b.a,b.length,&thiz->socketName,&thiz->leader);
-	    sendto(thiz->fd,b.a,b.length,0,&thiz->leader,sizeof thiz->leader);
-	}
+	int fd;
+	struct timeval tv;
+	chubby_asynchronous_think(thiz,&fd,&tv);
+	if (a[0])
+	    break;
 	FD_ZERO(&rset);
-	FD_SET(thiz->fd,&rset);
-	i = select(thiz->fd+1,&rset,NULL,NULL,&timeout);
-	if (i == -1)
-	    return CHUBBY_E_IO;
-	if (i == 0)
-	    continue;
-	c.length = recvfrom(thiz->fd,c.a,65535,0,&from,&fromlen);
-	if (c.length < SIGNSTRING_LENGTH)
-	    continue;
-	chubby_sign(thiz,signature,c.a,c.length,&from,&thiz->socketName);
-	if (memcmp(signature,c.a,SIGNSTRING_LENGTH)){
-	    signature[32] = 0;
-	    c.a[c.length] = 0;
-	    continue;
-	}
-	for (i=SIGNSTRING_LENGTH; i<c.length; i++){
-	    for (j=i; i<c.length&&c.a[i]!=' '; i++);
-	    if (command == NULL){
-		command = c.a+j;
-		c.a[i] = 0;
-	    }else if (!memcmp(c.a+j,"version=",8))
-		version = atoi(c.a+j+8);
-	    else if (!memcmp(c.a+j,"result=",7)){
-		result = c.a+j+7;
-		resultSize = unmangle(result,i-j-7);
-		result[resultSize] = 0;
-	    }else if (!memcmp(c.a+j,"decree=",7)){
-		decree = c.a+j;
-		decreeSize = i-j;
-		decree[decreeSize] = 0;
-	    }
-	}
-	if (version != PAXOS_PROTOCOL_VERSION)
-	    continue;
-	if (!strcmp(command,"Redirect")){
-	    struct sockaddr l;
-	    if (!getSocketAddressByName((struct sockaddr_in*)&l,result) && memcmp(&l,&thiz->leader,sizeof l)){
-		thiz->leaderValid = 1;
-		thiz->leader = l;
-		proposeTimeout = 0;
-	    }
-	}else if (!strcmp(command,"Result")){
-	    const char*a=strstr(b.a,"decree=");
-	    assert(a);
-	    if (b.a+b.length==a+decreeSize && !memcmp(a,decree,decreeSize)){
-		if (!memcmp(result,"error ",6))
-		    return atoi(result+6);
-		if (answer){
-		    *answer = thiz->malloc(sizeof**answer+resultSize);
-		    if (!*answer)
-			return CHUBBY_E_OOM;
-		    (*answer)->length = resultSize;
-		    memcpy((*answer)->a,result,resultSize);
-		    (*answer)->a[resultSize] = 0;
-		}
-		return 0;
-	    }
-	}else
-	    assert(0);
+	FD_SET(fd,&rset);
+	select(fd+1,&rset,NULL,NULL,&tv);
     }
+    return a[1];
+}
+
+int
+chubby_asynchronous_propose(chubby_t*thiz,chubby_asynchronous_callback_t callback,void*data,chubby_string_t**answer,chubby_string_t*what)
+{
+    struct chubby_proposal*p=thiz->malloc(sizeof*p);
+    if (!p)
+	return CHUBBY_E_OOM;
+    p->b.length = 0;
+    chubby_udp_buffer_format(&p->b,SIGNSTRING"Propose version=%d decree=Tag!!",PAXOS_PROTOCOL_VERSION);
+    chubby_getNewId(thiz,p->b.a+p->b.length);
+    p->b.length += strlen(p->b.a+p->b.length);
+    chubby_udp_buffer_format(&p->b,"!!");
+    mangle(&p->b,what);
+    if (chubby_udp_buffer_isOverflowed(&p->b)){
+	thiz->free(p);
+	return CHUBBY_E_INVAL;
+    }
+    p->callback = callback;
+    p->data = data;
+    p->bigTimeout = apr_time_now()+apr_time_from_sec(thiz->timeout);
+    p->proposeTimeout = 0;
+    p->answer = answer;
+    p->next = thiz->proposal;
+    thiz->proposal = p;
+    return 0;
+}
+
+static void
+chubby_asynchronous_checkTimeouts(chubby_t*thiz)
+{
+    apr_time_t now=apr_time_now();
+    struct chubby_proposal**p=&thiz->proposal;
+    while (*p){
+	struct chubby_proposal*q=*p;
+	if (now > q->bigTimeout){
+	    *p = q->next;
+	    chubby_proposal_done(thiz,q,CHUBBY_E_TIMEOUT);
+	}else
+	    p = &q->next;
+    }
+}
+
+static void
+chubby_asynchronous_sendGetLeader(chubby_t*thiz)
+{
+    apr_time_t now=apr_time_now();
+    if (now >= thiz->getLeaderTimeout){
+	char a[_POSIX_HOST_NAME_MAX+NUMBER_STRING_LENGTH+1],*s;
+	struct sockaddr sa;
+	thiz->getLeaderTimeout = now+TIMEOUT;
+	for (s=thiz->addresses; *s; s++){
+	    char*t=s;
+	    s = strchr(t,',');
+	    if (!s)
+		s = t+strlen(t);
+	    memcpy(a,t,s-t);
+	    a[s-t] = 0;
+	    if (!getSocketAddressByName((struct sockaddr_in*)&sa,a)){
+		sprintf(a,SIGNSTRING"GetLeader version=%d",PAXOS_PROTOCOL_VERSION);
+		chubby_sign(thiz,a,a,strlen(a),&thiz->socketName,&sa);
+		sendto(thiz->fd,a,strlen(a),0,&sa,sizeof sa);
+	    }
+	}
+    }
+}
+
+static void
+chubby_asynchronous_sendProposal(chubby_t*thiz)
+{
+    struct chubby_proposal*p;
+    apr_time_t now=apr_time_now();
+    for (p=thiz->proposal; p; p=p->next)
+	if (now >= p->proposeTimeout){
+	    p->proposeTimeout = now+TIMEOUT;
+	    chubby_sign(thiz,p->b.a,p->b.a,p->b.length,&thiz->socketName,&thiz->leader);
+	    sendto(thiz->fd,p->b.a,p->b.length,0,&thiz->leader,sizeof thiz->leader);
+	}
+}
+
+static void
+chubby_asynchronous_recv(chubby_t*thiz,chubby_udp_buffer_t*b)
+{
+    int i,j;
+    int version=-1;
+    char*command=NULL;
+    int resultSize=0;
+    char*result=NULL;
+    int decreeSize=0;
+    char*decree=NULL;
+    for (i=SIGNSTRING_LENGTH; i<b->length; i++){
+	for (j=i; i<b->length&&b->a[i]!=' '; i++);
+	if (command == NULL){
+	    command = b->a+j;
+	    b->a[i] = 0;
+	}else if (!memcmp(b->a+j,"version=",8))
+	    version = atoi(b->a+j+8);
+	else if (!memcmp(b->a+j,"result=",7)){
+	    result = b->a+j+7;
+	    resultSize = unmangle(result,i-j-7);
+	    result[resultSize] = 0;
+	}else if (!memcmp(b->a+j,"decree=",7)){
+	    decree = b->a+j;
+	    decreeSize = i-j;
+	    decree[decreeSize] = 0;
+	}
+    }
+    if (version != PAXOS_PROTOCOL_VERSION)
+	return;
+    if (!strcmp(command,"Redirect")){
+	struct sockaddr l;
+	if (!getSocketAddressByName((struct sockaddr_in*)&l,result) && memcmp(&l,&thiz->leader,sizeof l)){
+	    struct chubby_proposal*p;
+	    thiz->leaderValid = 1;
+	    thiz->leader = l;
+	    for (p=thiz->proposal; p; p=p->next)
+		p->proposeTimeout = 0;
+	}
+    }else if (!strcmp(command,"Result")){
+	struct chubby_proposal**p=&thiz->proposal;
+	while (*p){
+	    struct chubby_proposal*q=*p;
+	    const char*a=strstr(q->b.a,"decree=");
+	    assert(a);
+	    if (q->b.a+q->b.length==a+decreeSize && !memcmp(a,decree,decreeSize)){
+		if (!memcmp(result,"error ",6)){
+		    *p = q->next;
+		    chubby_proposal_done(thiz,q,atoi(result+6));
+		    continue;
+		}
+		if (q->answer){
+		    *q->answer = thiz->malloc(sizeof**q->answer+resultSize);
+		    if (!*q->answer){
+			*p = q->next;
+			chubby_proposal_done(thiz,q,CHUBBY_E_OOM);
+			continue;
+		    }
+		    (*q->answer)->length = resultSize;
+		    memcpy((*q->answer)->a,result,resultSize);
+		    (*q->answer)->a[resultSize] = 0;
+		}
+		*p = q->next;
+		chubby_proposal_done(thiz,q,0);
+		continue;
+	    }
+	    p = &q->next;
+	}
+    }else
+	assert(0);
 }
 
 void
 chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv)
 {
+    fd_set rset;
+    if (thiz->timeout > 0)
+	chubby_asynchronous_checkTimeouts(thiz);
+    for (;;){
+	int i;
+	struct timeval zero={0,0};
+	struct sockaddr from;
+	socklen_t fromlen=sizeof from;
+	char signature[SIGNSTRING_LENGTH];
+	chubby_udp_buffer_t b;
+	FD_ZERO(&rset);
+	FD_SET(thiz->fd,&rset);
+	i = select(thiz->fd+1,&rset,NULL,NULL,&zero);
+	if (i <= 0)
+	    break;
+	b.length = recvfrom(thiz->fd,b.a,65535,0,&from,&fromlen);
+	if (b.length < SIGNSTRING_LENGTH)
+	    continue;
+	chubby_sign(thiz,signature,b.a,b.length,&from,&thiz->socketName);
+	if (memcmp(signature,b.a,SIGNSTRING_LENGTH))
+	    continue;
+	chubby_asynchronous_recv(thiz,&b);
+    }
+    chubby_asynchronous_sendGetLeader(thiz);
+    if (thiz->leaderValid)
+	chubby_asynchronous_sendProposal(thiz);
+    if (fd)
+	*fd = thiz->fd;
+    if (tv){
+	tv->tv_sec = TIMEOUT;
+	tv->tv_usec = 0;
+    }
 }

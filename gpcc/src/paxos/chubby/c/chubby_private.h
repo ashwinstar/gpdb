@@ -5,6 +5,7 @@
 
 #include <apr.h>
 #include <apr_md5.h>
+#include <apr_time.h>
 #include <assert.h>
 #include <limits.h>
 #include <netdb.h>
@@ -41,6 +42,8 @@ struct chubby{
     char*paxosKey;
     int timeout;
     int fd;
+    struct chubby_proposal*proposal;
+    apr_time_t getLeaderTimeout;
     struct sockaddr socketName;
     char id[CHUBBY_ID_SIZE];
     int64_t count;
@@ -55,7 +58,7 @@ struct chubby_connection{
     char leaseFilename[PATH_MAX];
     int64_t leaseDn;
     char leaseId[CHUBBY_ID_SIZE];
-    time_t leaseExpireTime;
+    apr_time_t leaseExpireTime;
 };
 
 void chubby_counted_set(void*a,void*b);
@@ -64,7 +67,7 @@ void chubby_counted_close(void*a);
 chubby_connection_t*chubby_connection_new(chubby_t*chubby);
 void chubby_getNewId(chubby_t*thiz,char*a);
 
-int chubby_asynchronous_propose(chubby_t*thiz,chubby_asynchronous_callback callback,void*data,chubby_string_t**answer,chubby_string_t*what);
+int chubby_asynchronous_propose(chubby_t*thiz,chubby_asynchronous_callback_t callback,void*data,chubby_string_t**answer,chubby_string_t*what);
 int chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what);
 
 int chubby_udp_buffer_isOverflowed(chubby_udp_buffer_t*thiz);
