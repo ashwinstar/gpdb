@@ -152,17 +152,15 @@ chubby_getNewId(chubby_t*thiz,char*a)
     sprintf(a,"%s-%"APR_INT64_T_FMT,thiz->id,++thiz->count);
 }
 
-static void
-chubby_propose_callback(int e,void*data)
+void
+chubby_two_int_callback(int e,void*data)
 {
     (0[(int*)data]=1)[(int*)data] = e;
 }
 
 int
-chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
+chubby_two_int_finish(chubby_t*thiz,int a[2],int e)
 {
-    int a[2]={0};
-    int e=chubby_asynchronous_propose(thiz,chubby_propose_callback,a,answer,what);
     if (e)
 	return e;
     for (;;){
@@ -171,12 +169,11 @@ chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
 	struct timeval tv;
 	chubby_asynchronous_think(thiz,&fd,&tv);
 	if (a[0])
-	    break;
+	    return a[1];
 	FD_ZERO(&rset);
 	FD_SET(fd,&rset);
 	select(fd+1,&rset,NULL,NULL,&tv);
     }
-    return a[1];
 }
 
 int
@@ -363,4 +360,11 @@ chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv)
 	tv->tv_sec = TIMEOUT;
 	tv->tv_usec = 0;
     }
+}
+
+int
+chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
+{
+    int a[2]={0};
+    return chubby_two_int_finish(thiz,a,chubby_asynchronous_propose(thiz,chubby_two_int_callback,a,answer,what));
 }

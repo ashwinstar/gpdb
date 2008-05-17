@@ -50,18 +50,25 @@ reverse(char*a,int length)
 }
 
 int
-chubby_connection_propose(chubby_connection_t*thiz,chubby_string_t**answer,chubby_udp_buffer_t*b)
+chubby_connection_asynchronous_propose(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,chubby_string_t**answer,chubby_udp_buffer_t*b)
 {
     int length=b->length;
     if (!thiz->parent)
-	return chubby_propose(thiz->chubby,answer,(chubby_string_t*)b);
+	return chubby_asynchronous_propose(thiz->chubby,callback,data,answer,(chubby_string_t*)b);
     chubby_udp_buffer_format(b,"If ");
     chubby_fixFilename(b,thiz->leaseFilename);
     chubby_udp_buffer_format(b," %"APR_INT64_T_FMT" ",thiz->leaseDn);
     reverse(b->a,length);
     reverse(b->a+length,b->length-length);
     reverse(b->a,b->length);
-    return chubby_connection_propose(thiz->parent,answer,b);
+    return chubby_connection_asynchronous_propose(thiz->parent,callback,data,answer,b);
+}
+
+int
+chubby_connection_propose(chubby_connection_t*thiz,chubby_string_t**answer,chubby_udp_buffer_t*b)
+{
+    int a[2]={0};
+    return chubby_two_int_finish(thiz->chubby,a,chubby_connection_asynchronous_propose(thiz,chubby_two_int_callback,a,answer,b));
 }
 
 int

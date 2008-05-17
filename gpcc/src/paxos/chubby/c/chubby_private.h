@@ -82,6 +82,9 @@ chubby_string_t*chubby_string_format(chubby_t*chubby,const char*format,...);
 int chubby_readPaxosKey(chubby_t*thiz);
 void chubby_sign(chubby_t*thiz,char*a,const char*b,int len,const struct sockaddr*f,const struct sockaddr*t);
 void chubby_fixFilename(chubby_udp_buffer_t*b,const char*name);
+int chubby_connection_asynchronous_propose(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,chubby_string_t**answer,chubby_udp_buffer_t*b);
 int chubby_connection_propose(chubby_connection_t*thiz,chubby_string_t**answer,chubby_udp_buffer_t*b);
+void chubby_two_int_callback(int e,void*data);
+int chubby_two_int_finish(chubby_t*thiz,int a[2],int e);
 
 #endif
