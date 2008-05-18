@@ -242,30 +242,18 @@ bytea *
 default_reloptions(Datum reloptions, bool validate,
 				   int minFillfactor, int defaultFillfactor)
 {
-	static const char *const default_keywords[4] = {"fillfactor", "appendonly", "compression", "compresslevel"};
+	static const char *const default_keywords[4] = {"fillfactor", "appendonly", "blocksize", "compresslevel"};
 	char	   *values[4];
 	int32		fillfactor;
-	bool		compression;
+	int32		blocksize;
 	bool		appendonly;
 	int32		compresslevel;
-	int32		defaultCompressLevel = 3;
+	int32		defaultCompressLevel = 0;
+	int32		defaultBlockSize = 32 * 1024;
 	
 	StdRdOptions *result;
 
 	parseRelOptions(reloptions, 4, default_keywords, values, validate);
-
-	/* 
-	 * GP: Always return the options so we can later override the values for 
-	 * testing purposes.
-	 */
-//	/*
-//	 * If no options, we can just return NULL rather than doing anything.
-//	 */
-//	if (values[0] == NULL && 
-//		values[1] == NULL && 
-//		values[2] == NULL && 
-//		values[3] == NULL)
-//		return NULL;
 
 	/* fillfactor */
 	if(values[0] != NULL)
@@ -276,7 +264,8 @@ default_reloptions(Datum reloptions, bool validate,
 			if (validate)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("fillfactor=%d is out of range (should be between %d and 100)",
+						 errmsg("fillfactor=%d is out of range (should "
+								"be between %d and 100)",
 								fillfactor, minFillfactor)));
 			
 			fillfactor = defaultFillfactor;
@@ -293,22 +282,39 @@ default_reloptions(Datum reloptions, bool validate,
 	else
 		appendonly = false; /* default */
 		
-	/* compression */
+	/* blocksize */
 	if(values[2] != NULL)
-		compression = (pg_strcasecmp(values[2], "true") == 0 ? true : false);
+	{
+		blocksize = pg_atoi(values[2], sizeof(int32), 0);
+		
+		/* TODO: replace these with constants */
+		if (blocksize < 8*1024 || blocksize > 8*1024*1024 ||
+			blocksize % 8*1024 != 0)
+		{	
+			if (validate)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("block size must be between 8KB and 8MB and "
+								"be an 8KB multiple")));
+			
+			blocksize = defaultBlockSize;
+		}
+		
+	}
 	else
-		compression = appendonly; /* default */
+		blocksize = defaultBlockSize;
 		
 	/* compression level */
 	if(values[3] != NULL)
 	{
 		compresslevel = pg_atoi(values[3], sizeof(int32), 0);
-		if (compresslevel < 1 || compresslevel > 9)
+		if (compresslevel < 0 || compresslevel > 9)
 		{
 			if (validate)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("compresslevel=%d is out of range (should be between 1 and 9)",
+						 errmsg("compresslevel=%d is out of range (should be "
+								"between 0 and 9)",
 								compresslevel)));
 			
 			compresslevel = defaultCompressLevel;
@@ -317,21 +323,14 @@ default_reloptions(Datum reloptions, bool validate,
 	else
 	{
 		compresslevel = defaultCompressLevel;
-	}
-
-	/*
-	 * Make compresslevel 0 when not doing compression.
-	 */
-	if (!compression)
-		compresslevel = 0;
-	
+	}	
 	
 	result = (StdRdOptions *) palloc(sizeof(StdRdOptions));
 	SET_VARSIZE(result, sizeof(StdRdOptions));
 
 	result->fillfactor = fillfactor;
 	result->appendonly = appendonly;
-	result->compression = compression;
+	result->blocksize = blocksize;
 	result->compresslevel = compresslevel;
 
 	return (bytea *) result;
@@ -360,17 +359,10 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions)
 		return;
 	
 	/*
-	 * Normally, we compress appendonly tables by default.
-	 * If the override is on, do not compress.
+	 * Normally, appendonly tables are not compressed by default.
+	 * If the override is on, compress it with the override value.
 	 */
-
-	if (stdRdOptions->compression && Test_compression_override)
-	{
-		// Turn off.
-		stdRdOptions->compression = false;
-	}
-
-	if (stdRdOptions->compression && Test_compresslevel_override != 0)
+	if (Test_compresslevel_override != 0)
 	{
 		stdRdOptions->compresslevel = Test_compresslevel_override;
 	}
@@ -431,34 +423,24 @@ index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
  *
  *		Various checks for validity of appendonly relation rules.
  */
-void validateAppendOnlyRelOptions(bool ao, bool comp, int complevel, char relkind)
+void validateAppendOnlyRelOptions(bool ao, int blocksize, int complevel, char relkind)
 {
 	if(ao && relkind != RELKIND_APPEND_ONLY && relkind != RELKIND_RELATION)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 				 errmsg("appendonly may only be specified for base relations")));
 	
-	
-	if(comp && !ao)
+	/* this should have been caught in reloptions.c but just to be safe */
+	if(complevel < 0 || complevel > 9)
 		ereport(ERROR,
-				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-				 errmsg("compression may only be specified for append-only "
-						"relations")));
-		
-	if(complevel != 0)
-	{
-		/* this should have been caught in reloptions.c but just to be safe */
-		if(complevel < 1 || complevel > 9)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("compresslevel=%d is out of range (should be between 1 and 9)",
-							complevel)));
-		
-		if(!comp)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-					 errmsg("copmression level may only be specified when "
-							"compression=true is specified")));		
-	}
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("compresslevel=%d is out of range (should be between 0 and 9)",
+						complevel)));	
 	
+	if (blocksize < 8*1024 || blocksize > 8*1024*1024 ||
+		blocksize % 8*1024 != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("block size must be between 8KB and 8MB and "
+						"be an 8KB multiple")));
 }

@@ -27,9 +27,9 @@
 #include "cdb/cdbvarblock.h"
 #include "cdb/cdbbufferedappend.h"
 
-
-#define MAX_VARBLOCK_BUFFER_LEN		32*1024
-#define MAX_VARBLOCK_TEMPSPACE_LEN	 4*1024 
+#define DEFAULT_COMPRESS_LEVEL				  0
+#define DEFAULT_VARBLOCK_BUFFER_LEN		32*1024
+#define DEFAULT_VARBLOCK_TEMPSPACE_LEN   4*1024 
 
 /*
  * AppendOnlyInsertDescData is used for inserting data into append-only
@@ -48,9 +48,9 @@ typedef struct AppendOnlyInsertDescData
 	VarBlockMaker	varBlockMaker;
 	int32			bufferCount;
 	bool			shouldCompress;
-	int				compressLevel;  /* compression level 1-9 */
-	uint8			tempSpace[MAX_VARBLOCK_TEMPSPACE_LEN];
-	uint8			varBlockBuffer[MAX_VARBLOCK_BUFFER_LEN]; /* used for compression */
+	int				compressLevel;  /* compression level 0-9 */
+	uint8			*tempSpace;
+	uint8			*varBlockBuffer; /* used for compression */
 
 } AppendOnlyInsertDescData;
 

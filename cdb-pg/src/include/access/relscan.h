@@ -148,8 +148,7 @@ typedef struct AppendOnlyScanDescData
 	/* buffered read context */
 	BufferedRead    bufferedRead;
 	VarBlockReader  varBlockReader;
-#define MAX_VARBLOCK_BUF_LEN 50000
-	uint8			varBlockBuffer[MAX_VARBLOCK_BUF_LEN]; /* for decompression */
+	uint8			*varBlockBuffer; /* for decompression */
 
 	int32           bufferCount;
 	int				readerItemCount;

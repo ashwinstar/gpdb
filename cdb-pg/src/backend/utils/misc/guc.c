@@ -202,7 +202,6 @@ bool		Debug_print_control_checkpoints = false;
 bool 		Debug_appendonly_print_insert = false;
 bool 		Debug_appendonly_print_scan = false;
 bool 		Test_appendonly_override = false;
-bool 		Test_compression_override = false;
 int         Test_compresslevel_override = 0;
 bool        Master_mirroring_administrator_disable = false;
 
@@ -1644,16 +1643,6 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Master_mirroring_administrator_disable,
-		false, NULL, NULL
-	},
-
-	{
-		{"test_compression_override", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("For testing purposes, change the default of the create table option so compresssion is not performed for appendonly."),
-			NULL,
-			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&Test_compression_override,
 		false, NULL, NULL
 	},
 

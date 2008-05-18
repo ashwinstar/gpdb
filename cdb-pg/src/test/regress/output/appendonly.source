@@ -35,7 +35,7 @@ CREATE TABLE tenk_ao1 (
 	stringu1	name,
 	stringu2	name,
 	string4		name
-) with (appendonly=true,compression=false);
+) with (appendonly=true);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 CREATE TABLE tenk_ao2 (
@@ -55,7 +55,7 @@ CREATE TABLE tenk_ao2 (
 	stringu1	name,
 	stringu2	name,
 	string4		name
-) with (appendonly=true, compression=true);
+) with (appendonly=true, compresslevel=0, blocksize=262144);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 CREATE TABLE tenk_ao3 (
@@ -75,7 +75,7 @@ CREATE TABLE tenk_ao3 (
 	stringu1	name,
 	stringu2	name,
 	string4		name
-) with (appendonly=true, compression=true, compresslevel=6);
+) with (appendonly=true, compresslevel=6, blocksize=1048576);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 -------------------- 
@@ -84,10 +84,10 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 -- check reloptions
 SELECT relkind, reloptions FROM pg_class WHERE relname LIKE 'tenk_ao%' ORDER BY relname;
  relkind |                     reloptions                     
----------+----------------------------------------------------
- a       | {appendonly=true,compression=false}
- a       | {appendonly=true,compression=true}
- a       | {appendonly=true,compression=true,compresslevel=6}
+---------+-----------------------------------------------------
+ a       | {appendonly=true}
+ a       | {appendonly=true,compresslevel=0,blocksize=262144}
+ a       | {appendonly=true,compresslevel=6,blocksize=1048576}
 (3 rows)
 
 -- check pg_appendonly for correct number of entries
@@ -216,21 +216,21 @@ DROP TABLE tenk_ao1;
 DROP TABLE tenk_ao2;
 DROP TABLE tenk_ao3;
 -- CTAS
-CREATE TABLE tenk_ao1 with(appendonly=true, compression=false) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_ao1 with(appendonly=true) AS SELECT * FROM tenk_heap;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-CREATE TABLE tenk_ao2 with(appendonly=true, compression=true) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_ao2 with(appendonly=true, compresslevel=0, blocksize=262144) AS SELECT * FROM tenk_heap;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-CREATE TABLE tenk_ao3 with(appendonly=true, compression=true, compresslevel=6) AS SELECT * FROM tenk_heap;
+CREATE TABLE tenk_ao3 with(appendonly=true, compresslevel=6, blocksize=1048576) AS SELECT * FROM tenk_heap;
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column(s) named 'unique1' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 SELECT relkind, reloptions FROM pg_class WHERE relname LIKE 'tenk_ao%' ORDER BY relname;
  relkind |                     reloptions                     
----------+----------------------------------------------------
- a       | {appendonly=true,compression=false}
- a       | {appendonly=true,compression=true}
- a       | {appendonly=true,compression=true,compresslevel=6}
+---------+-----------------------------------------------------
+ a       | {appendonly=true}
+ a       | {appendonly=true,compresslevel=0,blocksize=262144}
+ a       | {appendonly=true,compresslevel=6,blocksize=1048576}
 (3 rows)
 
 SELECT count(*) FROM tenk_ao1;

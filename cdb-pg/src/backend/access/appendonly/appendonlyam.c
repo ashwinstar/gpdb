@@ -59,11 +59,12 @@ static int32 doCompressAppend(BufferedAppend	*bufferedAppend,
 							 uint8			*sourceData,
 							 int32			 sourceLen,
 							 int			 compressLevel);
+static void initProcessingSize(Relation rel);
 
-static int32	maxBufferLen = MAX_VARBLOCK_BUFFER_LEN;
-static int32    largeReadLen = 2 * MAX_VARBLOCK_BUFFER_LEN;
-static int32    largeWriteLen = 2 * MAX_VARBLOCK_BUFFER_LEN;
-static bool		compressed_by_default = true;
+static int32	maxBufferLen = 0;
+static int32	tempSpaceLen = 0;
+static int32    largeReadLen = 0;
+static int32    largeWriteLen = 0;
 
 /* ----------------
  *		initscan - scan code common to appendonly_beginscan and appendonly_rescan
@@ -78,9 +79,10 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 {
 	int32	memoryLen;
 	int32	actualMaxBufferLen;
-
 	uint8	*memory;
-		
+	
+	Assert(maxBufferLen > 0 && largeReadLen == maxBufferLen * 2);
+	
 	if (!scan->aos_compressed)
 	{
 		actualMaxBufferLen = maxBufferLen;
@@ -148,6 +150,7 @@ appendonlygettup(AppendOnlyScanDesc scan,
 	int32		roundUpLen;
 
 	Assert(ScanDirectionIsForward(dir));
+	Assert(maxBufferLen > 0 && largeReadLen == maxBufferLen * 2);
 	
 	if (!scan->aos_inited)
 	{
@@ -469,6 +472,9 @@ AppendOnlyScanDesc
 appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 {
 	AppendOnlyScanDesc scan;
+	int				   complevel;
+	
+	initProcessingSize(relation);
 
 	/*
 	 * increment relation ref count while scanning relation
@@ -487,8 +493,9 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	scan->aos_rd = relation;
 	scan->aos_nkeys = nkeys;
 	scan->aos_relfilenode = InvalidOid;
-	scan->aos_compressed = RelationUsesCopmression(relation, 
-												   compressed_by_default);
+	complevel = RelationGetCompressLevel(relation, DEFAULT_COMPRESS_LEVEL);
+	scan->aos_compressed = (complevel > 0 ? true : false);
+	scan->varBlockBuffer = (uint8 *) palloc(maxBufferLen * sizeof(uint8));
 
 	/* we only need to set this up once */
 	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
@@ -503,7 +510,6 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 		scan->aos_key = NULL;
 
 	pgstat_initstats(&scan->aos_pgstat_info, relation);
-
 	initscan(scan, key);
 
 	return scan;
@@ -606,16 +612,20 @@ appendonly_insert_init(Relation rel)
 	char					*path;
 	File					appendFile;
 	AppendOnlyEntry			*aoentry;
-	
+
+	/* must call this first thing, until we un-globalize these vars */
+	initProcessingSize(rel);
+
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc(sizeof(AppendOnlyInsertDescData));
 	aoInsertDesc->aoi_rel = rel;
 	aoInsertDesc->mt_bind = create_memtuple_binding(RelationGetDescr(rel));
 	aoInsertDesc->bufferCount = 0;
 	aoInsertDesc->insertCount = 0;
-	aoInsertDesc->shouldCompress = RelationUsesCopmression(rel, 
-														   compressed_by_default);
-	if(aoInsertDesc->shouldCompress)
-		aoInsertDesc->compressLevel = RelationGetCompressLevel(rel, 3 /* default */);
+	aoInsertDesc->varblockCount = 0;
+	aoInsertDesc->compressLevel = RelationGetCompressLevel(rel, DEFAULT_COMPRESS_LEVEL);
+	aoInsertDesc->shouldCompress = (aoInsertDesc->compressLevel > 0 ? true : false);
+	aoInsertDesc->varBlockBuffer = (uint8 *) palloc(maxBufferLen * sizeof(uint8));
+	aoInsertDesc->tempSpace = (uint8 *) palloc(tempSpaceLen * sizeof(uint8));
 	
 	if (!aoInsertDesc->shouldCompress)
 	{
@@ -676,16 +686,18 @@ appendonly_insert_init(Relation rel)
 	
 	BufferedAppendSetFile(&aoInsertDesc->bufferedAppend, appendFile, eof);
 	
+	Assert(tempSpaceLen > 0);
+	
 	if(!aoInsertDesc->shouldCompress)
 	{
 		buffer = BufferedAppendGetMaxBuffer(&aoInsertDesc->bufferedAppend);
-		
+	
 		/* prepare our first varblock for items */
 		VarBlockMakerInit(&aoInsertDesc->varBlockMaker, 
 						  buffer, 
 						  maxBufferLen, 
 						  aoInsertDesc->tempSpace, 
-						  MAX_VARBLOCK_TEMPSPACE_LEN);		
+						  tempSpaceLen);		
 	}
 	else
 	{
@@ -694,7 +706,7 @@ appendonly_insert_init(Relation rel)
 						  aoInsertDesc->varBlockBuffer, 
 						  maxBufferLen, 
 						  aoInsertDesc->tempSpace, 
-						  MAX_VARBLOCK_TEMPSPACE_LEN);				
+						  tempSpaceLen);				
 	}
 	aoInsertDesc->bufferCount++;
 	
@@ -727,6 +739,11 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	uint8			*itemPtr;
 	MemTuple 		 tup = NULL;
 	Oid 			retOid;
+
+	Assert(maxBufferLen > 0);
+	Assert(tempSpaceLen > 0);
+    Assert(largeWriteLen == maxBufferLen * 2);
+	
 
 	if (relation->rd_rel->relhasoids)
 	{
@@ -813,7 +830,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 							  buffer,
 							  maxBufferLen,
 							  aoInsertDesc->tempSpace,
-							  MAX_VARBLOCK_TEMPSPACE_LEN);
+							  tempSpaceLen);
 		}
 		else
 		{
@@ -828,7 +845,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 							  aoInsertDesc->varBlockBuffer,
 							  maxBufferLen,
 							  aoInsertDesc->tempSpace,
-							  MAX_VARBLOCK_TEMPSPACE_LEN);
+							  tempSpaceLen);
 			
 			if (Debug_appendonly_print_insert)
 				elog(LOG,"Append-only insert finished compressed VarBlock for table '%s' (length = %d, compressed length %d, item count %d, block count %d)",
@@ -943,6 +960,8 @@ doCompressAppend(BufferedAppend	*bufferedAppend,
 	int32	*lengthWord;
 	int32	 roundUpLen;
 		
+	Assert(maxBufferLen > 0 && largeWriteLen == maxBufferLen * 2);
+
 	buffer = BufferedAppendGetMaxBuffer(bufferedAppend);
 
 #ifndef HAVE_LIBZ
@@ -971,20 +990,33 @@ doCompressAppend(BufferedAppend	*bufferedAppend,
 }
 
 /*
- * AORelationGetNumberOfBlocks 
+ * RelationGuessNumberOfBlocks 
  *
  * Has the same meaning as RelationGetNumberOfBlocks for heap relations
  * however uses an estimation since AO relations use variable len blocks
  * which are meaningless to the optimizer. 
  *
- * This function is, in other words answers the following question - "If 
- * I were a heap relation, how many blocks would I have had?"
+ * This function, in other words, answers the following question - "If 
+ * I were a heap relation, about how many blocks would I have had?"
  */
 BlockNumber 
 RelationGuessNumberOfBlocks(double totalbytes)
 {
 	/* for now it's very simple */
 	return (BlockNumber)(totalbytes/BLCKSZ) + 1;
+}
+
+/*
+ * initProcessingSize
+ *
+ * Set the global buffer size parameters for this scan or insert.
+ */
+void initProcessingSize(Relation rel)
+{
+	maxBufferLen = RelationGetBlockSize(rel, DEFAULT_VARBLOCK_BUFFER_LEN);
+	largeReadLen = 2 * maxBufferLen;
+	largeWriteLen = largeReadLen;
+	tempSpaceLen = maxBufferLen / 8; /* TODO - is this always a good number? */
 }
 
 

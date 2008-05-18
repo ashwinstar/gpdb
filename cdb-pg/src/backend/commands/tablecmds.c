@@ -432,7 +432,7 @@ DefineRelation_int(CreateStmt *stmt,
 	 */
 	appendOnlyRel = stdRdOptions->appendonly;
 	validateAppendOnlyRelOptions(appendOnlyRel, 
-								 stdRdOptions->compression, 
+								 stdRdOptions->blocksize, 
 								 stdRdOptions->compresslevel, 
 								 relkind);
 	if(appendOnlyRel)

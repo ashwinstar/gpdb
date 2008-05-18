@@ -38,7 +38,7 @@ extern bytea *heap_reloptions(char relkind, Datum reloptions, bool validate);
 extern bytea *index_reloptions(RegProcedure amoptions, Datum reloptions,
 				 bool validate);
 
-extern void validateAppendOnlyRelOptions(bool ao, bool comp, int complevel, 
+extern void validateAppendOnlyRelOptions(bool ao, int blocksize, int complevel, 
 										 char relkind);
 
 #endif   /* RELOPTIONS_H */

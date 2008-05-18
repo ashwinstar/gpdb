@@ -226,7 +226,7 @@ typedef struct StdRdOptions
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	int			fillfactor;		/* page fill factor in percent (0..100) */
 	bool		appendonly;		/* is this an appendonly relation? */
-	bool		compression;	/* is the relation compressed? (AO rels only) */
+	int			blocksize;		/* max varblock size (AO rels only) */
 	int			compresslevel;  /* compression level (AO rels only) */
 } StdRdOptions;
 
@@ -250,12 +250,12 @@ typedef struct StdRdOptions
  ((StdRdOptions *) (relation)->rd_options)->compresslevel : (defaultcl))
 
 /*
- * RelationUsesCopmression
- *		Returns true if relation uses compression. Note multiple eval of argument!
+ * RelationGetBlockSize
+ *		Returns the relation's block size. Note multiple eval of argument!
  */
-#define RelationUsesCopmression(relation, defaultc) \
+#define RelationGetBlockSize(relation, defaultbs) \
 ((relation)->rd_options ? \
- ((StdRdOptions *) (relation)->rd_options)->compression : (defaultc))
+ ((StdRdOptions *) (relation)->rd_options)->blocksize : (defaultbs))
 
 /*
  * RelationGetTargetPageUsage
