@@ -322,7 +322,7 @@ uint8 *BufferedAppendMoveToNextBuffer(
 /*
  * Returns the current file’s length.
  */
-int32 BufferedAppendFileLen(
+int64 BufferedAppendFileLen(
     BufferedAppend *bufferedAppend)
 {
 	Assert(bufferedAppend != NULL);
@@ -337,7 +337,7 @@ int32 BufferedAppendFileLen(
  *
  * Returns the file length.
  */
-int32 BufferedAppendCompleteFile(
+int64 BufferedAppendCompleteFile(
     BufferedAppend       *bufferedAppend)
 {
 	int32 fileLen;

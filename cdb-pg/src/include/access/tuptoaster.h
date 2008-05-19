@@ -73,7 +73,8 @@
  * ----------
  */
 extern HeapTuple toast_insert_or_update(Relation rel,
-					   HeapTuple newtup, HeapTuple oldtup, MemTupleBinding *pbind);
+					   HeapTuple newtup, HeapTuple oldtup, 
+					   MemTupleBinding *pbind, int toast_tuple_target);
 
 /* ----------
  * toast_delete -

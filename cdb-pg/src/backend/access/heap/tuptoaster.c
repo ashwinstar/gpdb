@@ -411,7 +411,8 @@ static int compute_dest_tuplen(TupleDesc tupdesc, MemTupleBinding *pbind, bool h
 
 
 HeapTuple
-toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup, MemTupleBinding *pbind)
+toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup, 
+					   MemTupleBinding *pbind, int toast_tuple_target)
 {
 	HeapTuple	result_tuple;
 	TupleDesc	tupleDesc;
@@ -439,7 +440,8 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup, MemTupl
 
 	AssertImply(ismemtuple, oldtup == NULL && pbind);
 	AssertImply(!ismemtuple, !pbind);
-
+	Assert(toast_tuple_target > 0);
+	
 	/*
 	 * Get the tuple descriptor and break down the tuple(s) into fields.
 	 */
@@ -596,10 +598,10 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup, MemTupl
 		maxDataLen = MAXALIGN(maxDataLen);
 		Assert(maxDataLen == newtup->t_data->t_hoff);
 		/* now convert to a limit on the tuple data size */
-		maxDataLen = TOAST_TUPLE_TARGET - maxDataLen;
+		maxDataLen = toast_tuple_target - maxDataLen;
 	}
 	else
-		maxDataLen = TOAST_TUPLE_TARGET;
+		maxDataLen = toast_tuple_target;
 
 	/*
 	 * Look for attributes with attstorage 'x' to compress

@@ -137,8 +137,12 @@ UpdateAppendOnlyEntry(Oid relfilenode,
 	char				new_record_repl[Natts_pg_appendonly];
 	bool				isNull;
 	
-	elog(DEBUG3, "updateAppendOnlyEntry called. relfilenode = %d",
-		 relfilenode);
+	/* overflow sanity checks */
+	Assert(tuples_added >= 0);
+	Assert(varblocks_added >= 0);
+	Assert(eof >= 0);
+	
+	elog(DEBUG3, "updateAppendOnlyEntry called. relfilenode = %d", relfilenode);
 	
 	pg_appendonly = heap_open(AppendOnlyRelationId, RowExclusiveLock);
 	pg_appendonly_dsc = RelationGetDescr(pg_appendonly);

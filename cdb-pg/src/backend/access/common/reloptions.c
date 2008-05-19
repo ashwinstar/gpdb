@@ -16,6 +16,7 @@
 #include "postgres.h"
 
 #include "access/reloptions.h"
+#include "access/appendonlyam.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "utils/array.h"
@@ -242,14 +243,17 @@ bytea *
 default_reloptions(Datum reloptions, bool validate,
 				   int minFillfactor, int defaultFillfactor)
 {
-	static const char *const default_keywords[4] = {"fillfactor", "appendonly", "blocksize", "compresslevel"};
+	static const char *const default_keywords[4] = {"fillfactor", 
+													"appendonly", 
+												    "blocksize", 
+													"compresslevel"};
+	
 	char	   *values[4];
 	int32		fillfactor;
 	int32		blocksize;
 	bool		appendonly;
 	int32		compresslevel;
 	int32		defaultCompressLevel = 0;
-	int32		defaultBlockSize = 32 * 1024;
 	
 	StdRdOptions *result;
 
@@ -288,8 +292,8 @@ default_reloptions(Datum reloptions, bool validate,
 		blocksize = pg_atoi(values[2], sizeof(int32), 0);
 		
 		/* TODO: replace these with constants */
-		if (blocksize < 8*1024 || blocksize > 8*1024*1024 ||
-			blocksize % 8*1024 != 0)
+		if (blocksize < MIN_VARBLOCK_SIZE || blocksize > MAX_VARBLOCK_SIZE ||
+			blocksize % MIN_VARBLOCK_SIZE != 0)
 		{	
 			if (validate)
 				ereport(ERROR,
@@ -297,12 +301,12 @@ default_reloptions(Datum reloptions, bool validate,
 						 errmsg("block size must be between 8KB and 8MB and "
 								"be an 8KB multiple")));
 			
-			blocksize = defaultBlockSize;
+			blocksize = DEFAULT_VARBLOCK_SIZE;
 		}
 		
 	}
 	else
-		blocksize = defaultBlockSize;
+		blocksize = DEFAULT_VARBLOCK_SIZE;
 		
 	/* compression level */
 	if(values[3] != NULL)
@@ -362,9 +366,19 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions)
 	 * Normally, appendonly tables are not compressed by default.
 	 * If the override is on, compress it with the override value.
 	 */
-	if (Test_compresslevel_override != 0)
+	if (Test_compresslevel_override != DEFAULT_COMPRESS_LEVEL)
 	{
 		stdRdOptions->compresslevel = Test_compresslevel_override;
+	}
+	
+	/*
+	 * Normally, appendonly tables are created with the default 32KB block
+	 * size. If the override has a different value - use the override value.
+	 * TODO - this is a bit hacky. what if the default value changes?
+	 */
+	if (Test_blocksize_override != DEFAULT_VARBLOCK_SIZE)
+	{
+		stdRdOptions->blocksize = Test_blocksize_override;
 	}
 }
 

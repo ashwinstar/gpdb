@@ -1956,7 +1956,7 @@ heap_insertnext(HeapInsertDesc *ins, HeapTuple tup)
 	 */
 	if (HeapTupleHasExternal(tup) ||
 		(MAXALIGN(tup->t_len) > TOAST_TUPLE_THRESHOLD))
-		heaptup = toast_insert_or_update(ins->hi_rel, tup, NULL, NULL);
+		heaptup = toast_insert_or_update(ins->hi_rel, tup, NULL, NULL, TOAST_TUPLE_TARGET);
 	else
 		heaptup = tup;
 
@@ -2092,7 +2092,7 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	 */
 	if (HeapTupleHasExternal(tup) ||
 		(MAXALIGN(tup->t_len) > TOAST_TUPLE_THRESHOLD))
-		heaptup = toast_insert_or_update(relation, tup, NULL, NULL);
+		heaptup = toast_insert_or_update(relation, tup, NULL, NULL, TOAST_TUPLE_TARGET);
 	else
 		heaptup = tup;
 
@@ -2724,7 +2724,7 @@ l2:
 		 */
 		if (need_toast)
 		{
-			heaptup = toast_insert_or_update(relation, newtup, &oldtup, NULL);
+			heaptup = toast_insert_or_update(relation, newtup, &oldtup, NULL, TOAST_TUPLE_TARGET);
 			newtupsize = MAXALIGN(heaptup->t_len);
 		}
 		else

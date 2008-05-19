@@ -66,6 +66,13 @@ static int32	tempSpaceLen = 0;
 static int32    largeReadLen = 0;
 static int32    largeWriteLen = 0;
 
+/*
+ * These serve the equivalent purpose of the uppercase constants of the same
+ * name in tuptoaster.h but here we make these values dynamic.
+ */
+static int32	toast_tuple_threshold = 0;
+static int32	toast_tuple_target = 0;
+
 /* ----------------
  *		initscan - scan code common to appendonly_beginscan and appendonly_rescan
  *
@@ -739,11 +746,11 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	uint8			*itemPtr;
 	MemTuple 		 tup = NULL;
 	Oid 			retOid;
-
-	Assert(maxBufferLen > 0);
-	Assert(tempSpaceLen > 0);
-    Assert(largeWriteLen == maxBufferLen * 2);
+	bool			need_toast;
 	
+	Assert(maxBufferLen > 0 && tempSpaceLen > 0);
+    Assert(largeWriteLen == maxBufferLen * 2);
+	Assert(toast_tuple_threshold > 0 && toast_tuple_target > 0);
 
 	if (relation->rd_rel->relhasoids)
 	{
@@ -768,6 +775,10 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	/* TODO: figure what we need this for and how to enable it if needed */
 	/*	tup->t_tableOid = RelationGetRelid(relation); */
 
+	need_toast = (MemTupleHasExternal(instup, aoInsertDesc->mt_bind) ||
+				  memtuple_get_size(instup, aoInsertDesc->mt_bind) > 
+				  toast_tuple_threshold);
+	
 	/*
 	 * If the new tuple is too big for storage or contains already toasted
 	 * out-of-line attributes from some other relation, invoke the toaster.
@@ -775,9 +786,10 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	 * Note: below this point, tup is the data we actually intend to store
 	 * into the relation; instup is the caller's original untoasted data.
 	 */	
-	if(MemTupleHasExternal(instup, aoInsertDesc->mt_bind) ||
-			memtuple_get_size(instup, aoInsertDesc->mt_bind) > TOAST_TUPLE_THRESHOLD)
-		tup = (MemTuple) toast_insert_or_update(relation, (HeapTuple) instup, NULL, aoInsertDesc->mt_bind);
+	if (need_toast)
+		tup = (MemTuple) toast_insert_or_update(relation, (HeapTuple) instup, 
+												NULL, aoInsertDesc->mt_bind,
+												toast_tuple_target);
 	else
 		tup = instup;
 
@@ -1013,10 +1025,18 @@ RelationGuessNumberOfBlocks(double totalbytes)
  */
 void initProcessingSize(Relation rel)
 {
-	maxBufferLen = RelationGetBlockSize(rel, DEFAULT_VARBLOCK_BUFFER_LEN);
+	int maxtupsize;
+	
+	maxBufferLen = RelationGetBlockSize(rel, DEFAULT_VARBLOCK_SIZE);
 	largeReadLen = 2 * maxBufferLen;
 	largeWriteLen = largeReadLen;
 	tempSpaceLen = maxBufferLen / 8; /* TODO - is this always a good number? */
+	
+	/* see tuptoaster.h for more information */
+	maxtupsize = maxBufferLen - VARBLOCK_HEADER_LEN - 4;
+	toast_tuple_threshold = maxtupsize/4;
+	toast_tuple_target = maxtupsize/4;
+
 }
 
 

@@ -116,7 +116,7 @@ extern uint8 *BufferedAppendMoveToNextBuffer(
 /*
  * Returns the current file’s length.
  */
-extern int32 BufferedAppendFileLen(
+extern int64 BufferedAppendFileLen(
     BufferedAppend *bufferedAppend);
 
 /*
@@ -125,7 +125,7 @@ extern int32 BufferedAppendFileLen(
  *
  * Returns the file length.
  */
-extern int32 BufferedAppendCompleteFile(
+extern int64 BufferedAppendCompleteFile(
     BufferedAppend       *bufferedAppend);
 
 

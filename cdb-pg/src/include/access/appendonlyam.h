@@ -28,7 +28,9 @@
 #include "cdb/cdbbufferedappend.h"
 
 #define DEFAULT_COMPRESS_LEVEL				  0
-#define DEFAULT_VARBLOCK_BUFFER_LEN		32*1024
+#define MIN_VARBLOCK_SIZE				 8*1024
+#define DEFAULT_VARBLOCK_SIZE			32*1024
+#define MAX_VARBLOCK_SIZE			8*1024*1024
 #define DEFAULT_VARBLOCK_TEMPSPACE_LEN   4*1024 
 
 /*
