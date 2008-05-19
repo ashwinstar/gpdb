@@ -720,6 +720,9 @@ extern int gp_hashagg_compress_spill_files;
  */
 extern int  gp_debug_linger;
 
+/* Fault injection */
+extern int gp_fault_injection_flag1;
+extern int gp_fault_injection_flag2;
 
 /* --------------------------------------------------------------------------------------------------
  * Non-GUC globals

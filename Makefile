@@ -68,6 +68,18 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
+devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
+devel_faultinj : INSTLOC=$(DEVPATH)
+devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection
+devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
+	@rm -rf $(INSTLOC)
+	@cd $(GPPGDIR) && $(MAKE) install
+	@$(MAKE) groupSession
+	@$(MAKE) mkgpcc
+	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+
+
 forceplan : INSTCFLAGS=$(DEBUGFLAGS)
 forceplan : INSTLOC=$(DEVPATH)
 forceplan : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-forceplan --enable-debugbreak --enable-debugntuplestore
@@ -89,6 +101,19 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+
+dist_faultinj : INSTCFLAGS=$(OPTFLAGS)
+dist_faultinj : INSTLOC=$(DISTPATH)
+dist_faultinj : CONFIGFLAGS+= --enable-faultinjection
+dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
+	@rm -rf $(INSTLOC)
+	@cd $(GPPGDIR) && $(MAKE) install
+	@$(MAKE) groupSession
+	@$(MAKE) mkgpcc
+	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
+	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+
 
 #
 # Platform Verification Kit (PVK)

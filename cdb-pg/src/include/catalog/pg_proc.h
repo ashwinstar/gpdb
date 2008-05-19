@@ -4723,6 +4723,10 @@ DESCR("bitmap(internal)");
 DATA(insert OID = 3011 (  bmoptions		   PGNSP PGUID 12 f f t f s 2 17 f "1009 16" _null_ _null_ _null_  bmoptions - _null_ ));
 DESCR("btree(internal)");
 
+/* Fault injection */
+DATA(insert OID = 9999 (  gp_fault_inject		   PGNSP PGUID 12 f f t f i 2 23 f "23 23" _null_ _null_ _null_ gp_fault_inject - _null_ ));
+
+
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,

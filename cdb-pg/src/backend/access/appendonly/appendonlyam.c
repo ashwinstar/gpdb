@@ -177,7 +177,7 @@ appendonlygettup(AppendOnlyScanDesc scan,
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Invalid eof %lld for relation %s", 
-							eof, NameStr(scan->aos_rd->rd_rel->relname))));			
+							(long long int) eof, NameStr(scan->aos_rd->rd_rel->relname))));			
 		
 		/* Set the file to be read with its eof */
 		BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);

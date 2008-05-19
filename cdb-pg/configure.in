@@ -400,6 +400,12 @@ PGAC_ARG_BOOL(enable, debugntuplestore, no, [  --enable-ntuplestore      enable 
               [AC_DEFINE([USE_DEBUG_NTUPLESTORE], 1,
                          [Define to 1 to build with debug_ntuplestore. (--enable-ntuplestore)])])
 
+#
+# Enable fault injection
+#
+PGAC_ARG_BOOL(enable, faultinjection, no, [  --enable-faultinjection        enable fault injection for testing], 
+              [AC_DEFINE([USE_FAULT_INJECTION], 1,
+                         [Define to 1 to build with fault injection capabilities. (--enable-faultinjection)])])
 
 #
 # Include directories

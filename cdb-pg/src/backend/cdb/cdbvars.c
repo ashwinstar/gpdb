@@ -227,6 +227,10 @@ int 		gp_use_mpool = 0;
 bool		gp_disable_tuple_hints = true;
 int		gp_hashagg_compress_spill_files = 0;
 
+/* Fault injection flag */
+int gp_fault_injection_flag1 = 0;
+int gp_fault_injection_flag2 = 0;
+
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
  */
