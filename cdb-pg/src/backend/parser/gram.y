@@ -392,6 +392,8 @@ static void doNegateFloat(Value *v);
 %type <node> 	OptTabPartitionBoundarySpecEvery      /* PartitionRangeItem */
 %type <value>	OptNumericOnly 
 %type <node> 	TabPartitionNameDecl TabSubPartitionNameDecl      /* string */
+				TabPartitionDefaultNameDecl TabSubPartitionDefaultNameDecl 
+%type <node> 	OptTabPartitionStorageAttr
 
 /*
  * If you make any token changes, update the keyword table in
@@ -1718,6 +1720,17 @@ alter_table_partition_cmd:
 					n->subtype = AT_PartAdd;
 					$$ = (Node *)n;
 				}
+			| ALTER PARTITION 
+            alter_table_partition_id_spec 
+            alter_table_cmd
+				{
+                    /* NOTE: only allow a subset of valid ALTER TABLE
+                       cmds for partitions.
+                    */
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_PartAlter;
+					$$ = (Node *)n;
+				}
 			| COALESCE PARTITION 	 
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
@@ -2064,6 +2077,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $11;
 					n->tablespacename = $12;
 					n->distributedBy = $13;
+					n->partitionBy = $14;
 					n->oidInfo.relOid = 0;
 					n->oidInfo.comptypeOid = 0;
 					n->oidInfo.toastOid = 0;
@@ -2521,6 +2535,10 @@ OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
 
 /* START PARTITION RULES */
 
+OptTabPartitionStorageAttr: OptWith OptTableSpace
+{ $$ = NULL; }
+		;
+
 OptTabPartitionsNumber: PARTITIONS IntegerOnly 		{ $$ = makeAConst($2, @2); }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
@@ -2713,42 +2731,75 @@ part_values_clause:
 TabPartitionElem: 
             TabPartitionNameDecl 
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
+            OptTabPartitionStorageAttr
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
                         n->subSpec   = $3;
                         n->location  = @1;
+                        n->isDefault = 0;
+                        $$ = (Node *)n;
+				}
+/* allow boundary spec for default partition in parser, but complain later */
+			| TabPartitionDefaultNameDecl 
+              OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
+              OptTabPartitionStorageAttr
+				{
+                        PartitionElem *n = makeNode(PartitionElem); 
+                        n->partName  = $1;
+                        n->boundSpec = $2;
+                        n->subSpec   = $3;
+                        n->location  = @1;
+                        n->isDefault = 1;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpec 	OptTabSubPartitionSpec 
+              OptTabPartitionStorageAttr
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = NULL;
                         n->boundSpec = $1;
                         n->subSpec   = $2;
                         n->location  = @1;
+                        n->isDefault = 0;
                         $$ = (Node *)n;
 				}
             ;
 
 TabSubPartitionElem: 
             TabSubPartitionNameDecl OptTabPartitionBoundarySpec	
+            OptTabPartitionStorageAttr
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
                         n->subSpec   = NULL;
                         n->location  = @1;
+                        n->isDefault = 0;
+                        $$ = (Node *)n;
+				}
+/* allow boundary spec for default partition in parser, but complain later */
+			| TabSubPartitionDefaultNameDecl OptTabPartitionBoundarySpec	
+              OptTabPartitionStorageAttr
+				{
+                        PartitionElem *n = makeNode(PartitionElem); 
+                        n->partName  = $1;
+                        n->boundSpec = $2;
+                        n->subSpec   = NULL;
+                        n->location  = @1;
+                        n->isDefault = 1;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpec 	
+              OptTabPartitionStorageAttr
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = NULL;
                         n->boundSpec = $1;
                         n->subSpec   = NULL;
                         n->location  = @1;
+                        n->isDefault = 0;
                         $$ = (Node *)n;
 				}
             ;
@@ -2758,10 +2809,21 @@ TabPartitionNameDecl: PARTITION IDENT
 					$$ = (Node *) makeString($2);
 				}
 		;
+TabPartitionDefaultNameDecl: DEFAULT PARTITION IDENT			
+				{
+					$$ = (Node *) makeString($3);
+				}
+		;
 
 TabSubPartitionNameDecl: SUBPARTITION IDENT			
 				{
 					$$ = (Node *) makeString($2);
+				}
+		;
+
+TabSubPartitionDefaultNameDecl: DEFAULT SUBPARTITION IDENT			
+				{
+					$$ = (Node *) makeString($3);
 				}
 		;
 
@@ -2787,6 +2849,7 @@ OptTabPartitionBy:
                         n->partSpec = $9;
                         n->partDepth = 0;
                         n->location  = @3;
+                        n->partDefault = NULL;
                         $$ = (Node *)n;
 				}
 			| /*EMPTY*/								{ $$ = NULL; }
@@ -2831,6 +2894,7 @@ TabSubPartitionBy:
                         n->partSpec = $8;
                         n->partDepth = 0;
                         n->location  = @3;
+                        n->partDefault = NULL;
                         $$ = (Node *)n;
 				}
 
@@ -2865,6 +2929,7 @@ CreateAsStmt:
 					n->intoOnCommit = $7;
 					n->intoTableSpaceName = $8;
 					n->distributedBy = $11;
+/* XXX XXX					n->partitionBy = $12; */
 					$$ = $10;
 				}
 		;

@@ -3463,7 +3463,7 @@ make_partition_rules(ParseState *pstate,
 		ORBuf[0]   = '\0';
 
 		pRI = (PartitionRangeItem *)(pBSpec->partStart);
-		
+
 		if (pRI)
 			valElts = pRI->partRangeVal;
 		else
@@ -4552,6 +4552,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	ListCell		*lc = NULL;
 	List			*allPartNames = NIL;
 	partValidationState *vstate;
+	PartitionElem *pDefaultElem = NULL;
 
 	vstate = palloc0(sizeof(partValidationState));
 
@@ -4614,6 +4615,60 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 			pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
 			vstate->spec = (Node *)pBSpec;
 
+			/* handle all default partition cases:
+
+			   HASH partitioned tables cannot have DEFAULT partitions.
+			   Can only have a single DEFAULT partition.
+			   Default partitions cannot have a boundary specification.
+
+			*/
+
+			if (pElem->isDefault)
+			{
+				Assert(pElem->partName);  /* default partn must have a name */
+				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+						 strVal(pElem->partName));
+
+				if (pDefaultElem)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("More than one DEFAULT partition "
+									"for partition%s%s",
+									namBuf,
+									at_depth),
+							 parser_errposition(pstate, pElem->location)));
+
+				}
+
+				pDefaultElem = pElem; /* save the default */
+
+				if (PARTTYP_HASH == pBy->partType)	
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("invalid use of DEFAULT partition "
+									"for partition%s of type HASH%s",
+									namBuf,
+									at_depth),
+							 parser_errposition(pstate, pElem->location)));
+
+				}
+
+				if (pBSpec)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("invalid use of boundary specification "
+									"for DEFAULT partition%s%s",
+									namBuf,
+									at_depth),
+							 parser_errposition(pstate, pElem->location)));
+
+				}
+
+			} /* end if is default */
+
 			if (pElem->partName)
 			{
 				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
@@ -4643,6 +4698,10 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 			snprintf(namBuf, sizeof(namBuf), " number %d", 
 					 numElts);
 		}
+
+		/* don't have to validate default partition boundary specs */
+		if (pElem->isDefault)
+				continue;
 
 		vstate->namBuf = namBuf;
 
@@ -4832,9 +4891,12 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 
 	pSpec    = (PartitionSpec *)pBy->partSpec;
 
-	partElts = pSpec->partElem;
+	if (pSpec) /* no bound spec for default partition */
+	{
+		partElts = pSpec->partElem;
 
-	lc = list_head(partElts);
+		lc = list_head(partElts);
+	}
 
 	for ( ; lc; ) /* foreach */
 	{
@@ -5057,8 +5119,12 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 		} /* end loop until exceed end */
 
 	l_EveryLoopEnd:		
-			
-		pBSpec->everyGenList = allNewPartns;
+
+		if (allNewPartns)
+			Assert(pBSpec); /* check for default partitions... */
+
+		if (pBSpec)
+			pBSpec->everyGenList = allNewPartns;
 
 		lc_prev = lc;
 		lc = lnext(lc);
@@ -5569,6 +5635,9 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 										 depthstr, /* depth */
 										 prtstr, 	/* part spec */
 										 snamespaceid);
+
+			if (pElem && pElem->isDefault) /* XXX XXX */
+				makeRule = false; /* default partition - no rule for now */
 
 			/* XXX: temporarily add rule creation code for debugging */
 			/* now that we have the child table name, make the rule */

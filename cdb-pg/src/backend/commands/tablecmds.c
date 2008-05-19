@@ -2952,6 +2952,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartAdd:				/* Add */
+		case AT_PartAlter:				/* Alter */
 		case AT_PartCoalesce:			/* Coalesce */
 		case AT_PartDrop:				/* Drop */
 		case AT_PartExchange:			/* Exchange */
@@ -3215,6 +3216,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartAdd:				/* Add */
+		case AT_PartAlter:				/* Alter */
 		case AT_PartCoalesce:			/* Coalesce */
 		case AT_PartDrop:				/* Drop */
 		case AT_PartExchange:			/* Exchange */

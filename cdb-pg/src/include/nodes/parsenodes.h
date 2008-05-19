@@ -1027,6 +1027,7 @@ typedef enum AlterTableType
 	AT_DropInherit,				/* NO INHERIT parent */
 	/* CDB: Partitioned Tables */
 	AT_PartAdd,					/* Add */
+	AT_PartAlter,				/* Alter */
 	AT_PartCoalesce,			/* Coalesce */
 	AT_PartDrop,				/* Drop */
 	AT_PartExchange,			/* Exchange */
@@ -1362,6 +1363,7 @@ typedef struct PartitionBy			/* the Partition By clause */
 	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
 	List			   *partHierarchy;	/* partition hierarchy */
 	Node			   *partSpec;	/* specification or template */  
+	Node			   *partDefault;/* DEFAULT partition (if exists) */
 	int				    partDepth;	/* depth (starting at zero) */  
 	int					location;	/* token location, or -1 if unknown */
 } PartitionBy;
@@ -1374,6 +1376,7 @@ typedef struct PartitionElem		/* a Partition "Element" is the
 	Node			   *boundSpec;	/* boundary specification */  
 	Node			   *subSpec;	/* subpartition spec */
 	int					location;	/* token location, or -1 if unknown */
+	bool                isDefault;	/* TRUE if default partition declaration */
 } PartitionElem;
 
 /* a "Range Item" is the "values" portition of a LIST partition, or
