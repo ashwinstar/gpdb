@@ -358,4 +358,12 @@ APR_DECLARE(void)
 APR_DECLARE(void)
     gpcc_net_http_redirect_close(gpcc_net_conn_t conn, const char *location, const char *content);
 
+/**
+ *  Attach a Chubby event to libevent
+ */
+APR_DECLARE(apr_status_t) gpcc_net_chubby_event(int fd,
+						void (*cb)(int, short, void *), 
+						struct timeval *tv,
+						void *arg);
+
 #endif /* GPCC_NET_H */

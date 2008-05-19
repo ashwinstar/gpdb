@@ -13,7 +13,6 @@
 #include <apr_thread_cond.h>
 #include <apr_thread_mutex.h>
 
-
 static apr_status_t to_sockaddr_in(const char* addr_, struct sockaddr_in* sa)
 {
     char addr[100];
@@ -278,6 +277,11 @@ struct net_t {
     struct event ev_udpwait;	/* for events on the udp_sock */
     struct event ev_break;	/* for events on recv_break_fd */
     struct event ev_tick;	/* for events on timer tick */
+    struct event ev_chubby;     /* for events on chubby */
+    
+    /* chubby */
+    int chubby_fd;
+    struct timeval chubby_tv;
 
     /* use to block send that could not get enough bytes in the conncb.to_peer.buf */
     struct {
@@ -1170,6 +1174,20 @@ apr_status_t gpcc_net_init(int port,
     return 0;
 }
 
+APR_DECLARE(apr_status_t) gpcc_net_chubby_event(int fd,
+						void (*cb)(int, short, void *), 
+						struct timeval *tv,
+						void *arg)
+{
+    net.chubby_tv = *tv;
+    net.chubby_fd = fd;
+    event_set(&net.ev_chubby, net.chubby_fd, EV_READ | EV_TIMEOUT, cb, arg);
+    event_base_set(net.ev_base, &net.ev_chubby);
+    if (event_add(&net.ev_chubby, &net.chubby_tv))
+	gpcc_fatal(FLINE, "event_add: cannot set up event on chubby file descriptor");	
+
+    return 0;
+}
 
 apr_status_t gpcc_net_once(int blocking)
 {
