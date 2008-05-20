@@ -1222,7 +1222,7 @@ ServiceProcessRespond(ServiceCtrl *serviceCtrl, int sockfd, uint8 *response, int
 		CHECK_FOR_INTERRUPTS();
 					
 		n = write(sockfd, 
-			      ((uint8 *)&response) + bytesWritten,
+			      response + bytesWritten,
 			      responseLen - bytesWritten);
 		saved_err = errno;
 	
