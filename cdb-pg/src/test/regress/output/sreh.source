@@ -7,7 +7,7 @@ CREATE TABLE sreh_copy(a int, b int, c int) distributed by(a);
 -- ROW reject limit only
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' SEGMENT REJECT LIMIT 1000;
-NOTICE:  Rejected 10 badly formatted rows.
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Rejected related input data.
 SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
 ----+----+----
@@ -43,7 +43,7 @@ COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS 
 NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
 WARNING:  The error table was created in the same transaction as this operation. It will get dropped if transaction rolls back even if bad rows are present
 HINT:  To avoid this create the error table ahead of time using: CREATE TABLE <name> (cmdtime timestamp with time zone, relname text, filename text, linenum integer, bytenum integer, errmsg text, rawdata text, rawbytes bytea)
-NOTICE:  Rejected 10 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Errors logged into error table "sreh_copy_errtbl"
 SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
 ----+----+----
@@ -80,7 +80,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
 -- error table - do the same thing again. this time error table exists and should get reused and data appended
 --
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data1.data' DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
-NOTICE:  Rejected 10 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Errors logged into error table "sreh_copy_errtbl"
 SELECT * FROM sreh_copy ORDER BY a,b,c;
  a  | b  | c  
 ----+----+----
@@ -133,7 +133,7 @@ SELECT relname,linenum,errmsg,rawdata FROM sreh_copy_errtbl ORDER BY linenum,raw
 -- error table - do the same thing again. this time use data from STDIN (should show in errtable)
 --
 COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT REJECT LIMIT 1000;
-NOTICE:  Rejected 2 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
+NOTICE:  Found 2 data formatting errors (2 or more input rows). Errors logged into error table "sreh_copy_errtbl"
 SELECT * FROM sreh_copy ORDER BY a,b,c;
   a  |  b  |  c  
 -----+-----+-----
@@ -270,7 +270,7 @@ COPY sreh_copy FROM STDIN DELIMITER '|' LOG ERRORS INTO sreh_copy_errtbl SEGMENT
 NOTICE:  Error table "sreh_copy_errtbl" does not exist. Auto generating an error table with the same name
 WARNING:  The error table was created in the same transaction as this operation. It will get dropped if transaction rolls back even if bad rows are present
 HINT:  To avoid this create the error table ahead of time using: CREATE TABLE <name> (cmdtime timestamp with time zone, relname text, filename text, linenum integer, bytenum integer, errmsg text, rawdata text, rawbytes bytea)
-NOTICE:  Rejected 1 badly formatted rows. Errors logged into error table "sreh_copy_errtbl"
+NOTICE:  Found 1 data formatting errors (1 or more input rows). Errors logged into error table "sreh_copy_errtbl"
 SELECT rawdata FROM sreh_copy_errtbl; -- should exist and have 1 row
  rawdata 
 ---------
@@ -320,11 +320,16 @@ SELECT * FROM sreh_constr; -- should exist and be empty
 (0 rows)
 
 --
--- test PERCENT reject limit logic with default threshold (100)
+-- test PERCENT reject limit logic with threshold 100.
+-- (we don't test the default threshold (300) yet. we could if needed).
 -- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+-- this data file is made with errors that will occur only on the QD (with COPY)
+-- so the percent calculation should always be the same regardless of number of
+-- QE's in the system.
 --
+set gp_reject_percent_threshold = 100;
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 10 PERCENT; --pass
-NOTICE:  Rejected 9 badly formatted rows.
+NOTICE:  Found 9 data formatting errors (9 or more input rows). Rejected related input data.
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 2 PERCENT; --fail
 ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
 CONTEXT:  COPY sreh_copy, line 107: "BAD|1|1"
@@ -336,8 +341,7 @@ COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJ
 ERROR:  Segment reject limit reached. Aborting operation. Last error was: invalid input syntax for integer: "BAD", column a
 CONTEXT:  COPY sreh_copy, line 15: "BAD|1|1"
 COPY sreh_copy FROM '@abs_srcdir@/data/bad_data3.data' DELIMITER '|' SEGMENT REJECT LIMIT 20 PERCENT; --pass
-NOTICE:  Rejected 9 badly formatted rows.
-set gp_reject_percent_threshold = 100; -- reset
+NOTICE:  Found 9 data formatting errors (9 or more input rows). Rejected related input data.
 -- cleanup
 DROP TABLE sreh_copy;
 DROP TABLE sreh_constr;
@@ -375,7 +379,7 @@ LOCATION ('gpfdist://@hostname@:8080/bad_data1.data' )
 FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 10000;
 SELECT * FROM sreh_ext;
-NOTICE:  Rejected 10 badly formatted rows.
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Rejected related input data.
  a  | b  | c  
 ----+----+----
   1 |  1 |  1
@@ -387,7 +391,7 @@ NOTICE:  Rejected 10 badly formatted rows.
 (6 rows)
 
 INSERT INTO sreh_target SELECT * FROM sreh_ext;
-NOTICE:  Rejected 10 badly formatted rows.
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Rejected related input data.
 SELECT count(*) FROM sreh_target;
  count 
 -------
@@ -427,7 +431,7 @@ LOG ERRORS INTO sreh_ext_errtbl
 SEGMENT REJECT LIMIT 1000;
 NOTICE:  Error table "sreh_ext_errtbl" does not exist. Auto generating an error table with the same name
 SELECT * FROM sreh_ext ORDER BY a;
-NOTICE:  Rejected 10 badly formatted rows.
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Rejected related input data.
  a  | b  | c  
 ----+----+----
   1 |  1 |  1
@@ -455,7 +459,7 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
 
 TRUNCATE sreh_ext_errtbl;
 INSERT INTO sreh_target SELECT * FROM sreh_ext;
-NOTICE:  Rejected 10 badly formatted rows.
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Rejected related input data.
 SELECT count(*) FROM sreh_target;
  count 
 -------
@@ -489,7 +493,7 @@ FORMAT 'text' (delimiter '|')
 LOG ERRORS INTO sreh_ext_errtbl
 SEGMENT REJECT LIMIT 1000;
 SELECT * FROM sreh_ext ORDER BY a;
-NOTICE:  Rejected 10 badly formatted rows.
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Rejected related input data.
  a  | b  | c  
 ----+----+----
   1 |  1 |  1
@@ -517,7 +521,7 @@ SELECT relname,errmsg,rawdata FROM sreh_ext_errtbl ORDER BY errmsg,rawdata;
 
 TRUNCATE sreh_ext_errtbl;
 INSERT INTO sreh_target SELECT * FROM sreh_ext;
-NOTICE:  Rejected 10 badly formatted rows.
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Rejected related input data.
 SELECT count(*) FROM sreh_target;
  count 
 -------
@@ -554,7 +558,7 @@ FORMAT 'text' (delimiter '|')
 LOG ERRORS INTO sreh_ext_errtbl
 SEGMENT REJECT LIMIT 1000;
 INSERT INTO sreh_constr SELECT * FROM sreh_ext;
-NOTICE:  Rejected 10 badly formatted rows.
+NOTICE:  Found 10 data formatting errors (10 or more input rows). Rejected related input data.
 ERROR:  new row for relation "sreh_constr" violates check constraint "sreh_constr_c_check"  (seg1 @hostname@:11002 pid=14902)
 SELECT COUNT(*) FROM sreh_ext_errtbl; -- should be empty
  count 
@@ -569,15 +573,20 @@ SELECT COUNT(*) FROM sreh_constr; -- should be empty
 (1 row)
 
 --
--- test PERCENT reject limit logic with default threshold (100)
+-- test PERCENT reject limit logic with threshold 100.
+-- (we don't test the default threshold (300) yet. we could if needed).
 -- bad records in bad_data3.data (300 rows): 5,15,55,56,107,136,160,213,214,286
+-- in here we assume that gpfdist will distribute all the data to one QE (since
+-- it is much smaller than the data buffer it uses) so the percent calculation 
+-- should always be the same regardless of number of QE's in the system.
 --
+set gp_reject_percent_threshold = 100;
 CREATE EXTERNAL TABLE sreh_ext_10percent(a int, b int, c int)
 LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
 FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 10 PERCENT;
 SELECT count(*) FROM sreh_ext_10percent; -- pass
-NOTICE:  Rejected 9 badly formatted rows.
+NOTICE:  Found 9 data formatting errors (9 or more input rows). Rejected related input data.
  count 
 -------
    291
@@ -602,13 +611,13 @@ LOCATION ('gpfdist://@hostname@:8080/bad_data3.data' )
 FORMAT 'text' (delimiter '|')
 SEGMENT REJECT LIMIT 20 PERCENT;
 SELECT count(*) FROM sreh_ext_20percent; -- pass
-NOTICE:  Rejected 9 badly formatted rows.
+NOTICE:  Found 9 data formatting errors (9 or more input rows). Rejected related input data.
  count 
 -------
    291
 (1 row)
 
-set gp_reject_percent_threshold = 100; -- reset
+set gp_reject_percent_threshold = 300; -- reset
 -- cleanup
 select * from gpfdist_stop;
       x      

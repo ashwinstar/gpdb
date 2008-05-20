@@ -282,11 +282,11 @@ FtsReConfigureMPP(void)
 	allocatePrimaryWriterGang();
 	allocateMirrorWriterGang();
 
-	/* rollback current DTM transaction */
-	AbortCurrentTransaction();
-
 	InReConfigure = false;
 	LWLockRelease(ftsControlLock);
+
+	/* rollback current DTM transaction */
+	AbortCurrentTransaction();
 
 	return true;
 }

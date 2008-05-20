@@ -6649,16 +6649,31 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
                           fmtId(tbinfo->dobj.name));
         
         /* Now get required information from pg_exttable */
-        appendPQExpBuffer(query,
-                          "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
-						  "x.rejectlimit, x.rejectlimittype," 
-						  "(SELECT relname "
-						  "FROM pg_class "
-						  "WHERE Oid=x.fmterrtbl) AS errtblname, "
-						  "pg_catalog.pg_encoding_to_char(x.encoding) "
-                          "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
-                          "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
-                          tbinfo->dobj.catId.oid);
+		if (g_fout->remoteVersion >= 80205)
+		{
+			appendPQExpBuffer(query,
+							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
+							  "x.rejectlimit, x.rejectlimittype," 
+							  "(SELECT relname "
+							  "FROM pg_class "
+							  "WHERE Oid=x.fmterrtbl) AS errtblname, "
+							  "pg_catalog.pg_encoding_to_char(x.encoding) "
+							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
+							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
+							  tbinfo->dobj.catId.oid);			
+		}
+		else
+		{
+			/* no SREH and encoding colums yet */
+			appendPQExpBuffer(query,
+							  "SELECT x.location, x.fmttype, x.fmtopts, x.command, "
+							  "-1 as rejectlimit, null as rejectlimittype," 
+							  "null as errtblname, "
+							  "null as encoding "
+							  "FROM pg_catalog.pg_exttable x, pg_catalog.pg_class c "
+							  "WHERE x.reloid = c.oid AND c.oid = '%u'::oid",
+							  tbinfo->dobj.catId.oid);			
+		}
         
         res = PQexec(g_conn, query->data);
         check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
@@ -6732,7 +6747,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			on_clause++;
 
 			/* add EXECUTE clause */
-			appendPQExpBuffer(q, " EXECUTE '%s' ", command);
+			appendPQExpBuffer(q, " EXECUTE E'%s' ", escape_backslashes(command, true));
 			
 			/* add ON clause */
 			if(strncmp(on_clause, "HOST:", strlen("HOST:")) == 0)
@@ -6770,35 +6785,38 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         /* add FORMAT clause */
         appendPQExpBuffer(q, "FORMAT '%s' (%s)\n", 
                           fmttype[0] == 't' ? "text" : "csv",
-                          escape_backslashes((const char*)fmtopts));
+                          escape_backslashes((const char*)fmtopts, false));
 
-		/* add ENCODING clause */
-        appendPQExpBuffer(q, "ENCODING '%s'", extencoding);
-
-		/* add Single Row Error Handling clause (if any) */
-		if(rejlim && strlen(rejlim) > 0)
+		if (g_fout->remoteVersion >= 80205)
 		{
-			appendPQExpBuffer(q, "\n");
-
-			/*
-			 * NOTE: error tables get automatically generated if don't exist.
-			 * therefore we must be sure that this statment will be dumped after
-			 * the error relation CREATE is dumped, so that we won't try to
-			 * create it twice. For now we rely on the fact that we pick dumpable
-			 * objects sorted by OID, and error table oid *should* always be less
-			 * than its external table oid (could that not be true sometimes?)
-			 */
-			if(errtblname && strlen(errtblname) > 0)
-				appendPQExpBuffer(q, "LOG ERRORS INTO %s ", errtblname);
+			/* add ENCODING clause */
+			appendPQExpBuffer(q, "ENCODING '%s'", extencoding);			
 			
-			/* reject limit */
-			appendPQExpBuffer(q, "SEGMENT REJECT LIMIT %s", rejlim);
-			
-			/* reject limit type */
-			if(rejlimtype[0] == 'r')
-				appendPQExpBuffer(q, " ROWS");
-			else
-				appendPQExpBuffer(q, " PERCENT");			
+			/* add Single Row Error Handling clause (if any) */
+			if(rejlim && strlen(rejlim) > 0)
+			{
+				appendPQExpBuffer(q, "\n");
+				
+				/*
+				 * NOTE: error tables get automatically generated if don't exist.
+				 * therefore we must be sure that this statment will be dumped after
+				 * the error relation CREATE is dumped, so that we won't try to
+				 * create it twice. For now we rely on the fact that we pick dumpable
+				 * objects sorted by OID, and error table oid *should* always be less
+				 * than its external table oid (could that not be true sometimes?)
+				 */
+				if(errtblname && strlen(errtblname) > 0)
+					appendPQExpBuffer(q, "LOG ERRORS INTO %s ", errtblname);
+				
+				/* reject limit */
+				appendPQExpBuffer(q, "SEGMENT REJECT LIMIT %s", rejlim);
+				
+				/* reject limit type */
+				if(rejlimtype[0] == 'r')
+					appendPQExpBuffer(q, " ROWS");
+				else
+					appendPQExpBuffer(q, " PERCENT");
+			}
 		}
 		
 		appendPQExpBuffer(q, ";\n");

@@ -2653,7 +2653,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&gp_reject_percent_threshold,
-		100, 0, INT_MAX, NULL, NULL
+		300, 0, INT_MAX, NULL, NULL
 	},	
 
 	{
