@@ -79,8 +79,6 @@ class Connection:
     @staticmethod
     def __stat1(propose,name):
 	a = propose("Stat "+name)
-	if a[0]==E_NOENT:
-	    return (0,0,0)
 	if a[0]!=0:
 	    return a
 	b = a[1]
@@ -97,8 +95,6 @@ class Connection:
 	a = self.__stat(name)
 	if a[0]==0:
 	    dn = a[1]
-	    if dn==0:
-		return E_NOENT
 	    a = self.__propose("If %s %d Remove %s"%(name,dn,name))
 	    if a[0]==E_NOENT:
 		return 0
@@ -113,12 +109,13 @@ class Connection:
 	if a[0]!=0:
 	    return a[0]
 	dn = a[1]
-	if dn==0:
-	    return E_NOENT
 	a = self.__stat(toname)
-	if a[0]!=0:
+	if a[0]==E_NOENT:
+	    todn = 0
+	elif a[0]==0:
+	    todn = a[1]
+	else:
 	    return a[0]
-	todn = a[1]
 	a = self.__propose("If %s %d If %s %d Move %s %s"%(name,dn,toname,todn,name,toname))
 	if a[0]==E_IFFAILED:
 	    a = self.__chubbyStat(name)
@@ -128,9 +125,12 @@ class Connection:
 
     def __put(self,name,contents):
 	a = self.__stat(name)
-	if a[0]!=0:
+	if a[0]==E_NOENT:
+	    dn = 0
+	elif a[0]==0:
+	    dn = a[1]
+	else:
 	    return a[0]
-	dn = a[1]
 	a = self.__propose("If %s %d Put %s 0 "%(name,dn,name)+contents)
 	if a[0]==E_IFFAILED:
 	    a = self.__chubbyStat(name)

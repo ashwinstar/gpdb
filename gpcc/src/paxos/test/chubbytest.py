@@ -54,7 +54,7 @@ def test0():
     check("c.put('/test/file','contents')","x==0")
     check("c.get('/test/file')","x[0]==0 and x[2]=='contents'")
     check("c.move('/test/file','/test/tofile')","x==0")
-    check("c.stat('test/file')","x==(0,0,0)")
+    check("c.stat('test/file')","x[0]==chubby.E_NOENT")
     check("c.get('/test/tofile')","x[0]==0 and x[2]=='contents'")
     check("c.list('/')","x[0]==0 and 'paxos' in x[2:] and 'test' in x[2:]")
     check("c.list('noentfile')","x==(chubby.E_NOENT,)")

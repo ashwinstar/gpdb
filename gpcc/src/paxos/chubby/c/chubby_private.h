@@ -84,8 +84,7 @@ int chubby_readPaxosKey(chubby_t*thiz);
 void chubby_sign(chubby_t*thiz,char*a,const char*b,int len,const struct sockaddr*f,const struct sockaddr*t);
 void chubby_fixFilename(chubby_udp_buffer_t*b,const char*name);
 int chubby_connection_asynchronous_propose(chubby_connection_t*thiz,void(*callback)(void*data,int e,chubby_string_t*answer),void*data,chubby_udp_buffer_t*b);
-
-int chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what); // deprecated.
+int chubby_asynchronous_stat(chubby_t*thiz,void(*callback)(void*data,int e,struct chubby_stat*stat),void*data,const char*name);
 
 struct chubby_two_int{
     int done;
@@ -93,5 +92,9 @@ struct chubby_two_int{
 };
 
 int chubby_two_int_finish(chubby_t*thiz,struct chubby_two_int*data,int e);
+void chubby_two_int_callback(void*_data,int e);
+
+int chubby_connection_chubbyStat(chubby_connection_t*thiz,struct chubby_stat*stat,const char*name);// deprecated.
+int chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what); // deprecated.
 
 #endif

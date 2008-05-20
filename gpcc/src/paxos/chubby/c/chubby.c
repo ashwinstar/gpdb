@@ -151,12 +151,6 @@ chubby_getNewId(chubby_t*thiz,char*a)
     sprintf(a,"%s-%"APR_INT64_T_FMT,thiz->id,++thiz->count);
 }
 
-void
-chubby_two_int_callback(int e,void*data)
-{
-    (0[(int*)data]=1)[(int*)data] = e;
-}
-
 int
 chubby_two_int_finish(chubby_t*thiz,struct chubby_two_int*data,int e)
 {
@@ -392,4 +386,12 @@ chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
     data.c = thiz;
     data.answer = answer;
     return chubby_two_int_finish(thiz,&data.super,chubby_asynchronous_propose(thiz,chubby_propose_callback,&data,what));
+}
+
+void
+chubby_two_int_callback(void*_data,int e)
+{
+    struct chubby_two_int*data=_data;
+    data->done = 1;
+    data->e = e;
 }

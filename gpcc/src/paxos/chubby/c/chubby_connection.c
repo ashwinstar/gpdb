@@ -96,52 +96,14 @@ chubby_connection_propose(chubby_connection_t*thiz,chubby_string_t**answer,chubb
 }
 
 int
-chubby_connection_stat(chubby_connection_t*thiz,struct chubby_stat*stat,const char*name)
-{
-    chubby_udp_buffer_t b;
-    chubby_string_t*answer;
-    int e;
-    if (strlen(name) >= PATH_MAX)
-	return CHUBBY_E_INVAL;
-    b.length = 0;
-    chubby_udp_buffer_format(&b,"Stat ");
-    chubby_fixFilename(&b,name);
-    e = chubby_connection_propose(thiz,&answer,&b);
-    if (e == CHUBBY_E_NOENT){
-	stat->decreeNumber = 0;
-	stat->size = 0;
-	e = 0;
-    }else if (!e){
-	sscanf(answer->a,"%"APR_INT64_T_FMT" %d",&stat->decreeNumber,&stat->size);
-	thiz->chubby->free(answer);
-    }
-    return e;
-}
-
-static int
-chubby_connection_chubbyStat(chubby_connection_t*thiz,struct chubby_stat*stat,const char*name)
-{
-    chubby_udp_buffer_t b;
-    chubby_string_t*answer;
-    int e;
-    b.length = 0;
-    chubby_udp_buffer_format(&b,"Stat ");
-    chubby_fixFilename(&b,name);
-    e = chubby_propose(thiz->chubby,&answer,(chubby_string_t*)&b);
-    if (!e){
-	sscanf(answer->a,"%"APR_INT64_T_FMT" %d",&stat->decreeNumber,&stat->size);
-	thiz->chubby->free(answer);
-    }
-    return e;
-}
-
-int
 chubby_connection_put(chubby_connection_t*thiz,const char*name,chubby_string_t*contents)
 {
     chubby_udp_buffer_t b;
     struct chubby_stat stat;
     int e=chubby_connection_stat(thiz,&stat,name);
-    if (e)
+    if (e == CHUBBY_E_NOENT)
+	stat.decreeNumber = 0;
+    else if (e)
 	return e;
     b.length = 0;
     chubby_udp_buffer_format(&b,"If ");
@@ -189,8 +151,6 @@ chubby_connection_remove(chubby_connection_t*thiz,const char*name)
     chubby_udp_buffer_t b;
     int e=chubby_connection_stat(thiz,&stat,name);
     if (!e){
-	if (stat.decreeNumber == 0)
-	    return CHUBBY_E_NOENT;
 	b.length = 0;
 	chubby_udp_buffer_format(&b,"If ");
 	chubby_fixFilename(&b,name);
@@ -431,35 +391,4 @@ void
 chubby_connection_giveUpLease(chubby_connection_t*thiz)
 {
     chubby_connection_renew(thiz,0);
-}
-
-int
-chubby_connection_move(chubby_connection_t*thiz,const char*fromname,const char*toname)
-{
-    struct chubby_stat fstat,tstat;
-    int e=chubby_connection_stat(thiz,&fstat,fromname);
-    chubby_udp_buffer_t b;
-    if (e)
-        return e;
-    if (!fstat.decreeNumber)
-    	return CHUBBY_E_NOENT;
-    e = chubby_connection_stat(thiz,&tstat,toname);
-    if (e)
-        return e;
-    b.length = 0;
-    chubby_udp_buffer_format(&b,"If ");
-    chubby_fixFilename(&b,fromname);
-    chubby_udp_buffer_format(&b," %"APR_INT64_T_FMT" If ",fstat.decreeNumber);
-    chubby_fixFilename(&b,toname);
-    chubby_udp_buffer_format(&b," %"APR_INT64_T_FMT" Move ",tstat.decreeNumber);
-    chubby_fixFilename(&b,fromname);
-    chubby_udp_buffer_format(&b," ");
-    chubby_fixFilename(&b,toname);
-    e = chubby_connection_propose(thiz,NULL,&b);
-    if (e == CHUBBY_E_IFFAILED){
-	e = chubby_connection_chubbyStat(thiz,&tstat,fromname);
-	if (e==0 && fstat.decreeNumber==tstat.decreeNumber)
-	    return CHUBBY_E_LEASEEXPIRED;
-    }
-    return e;
 }

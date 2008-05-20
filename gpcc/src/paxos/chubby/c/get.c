@@ -32,21 +32,26 @@ freeLinkedList(struct data*data)
 }
 
 static void
-allDone(int e,void*_data,struct chubby_stat*stat,chubby_string_t*answer)
+freeData(struct data*data)
 {
-    struct data*data=_data;
     chubby_t*chubby=NULL;
     freeLinkedList(data);
     if (data->string)
 	data->c->chubby->free(data->string);
-    data->callback(data->data,e,stat,answer);
     chubby_counted_set(&chubby,data->c->chubby);
     chubby_counted_set(&data->c,NULL);
     chubby->free(data);
     chubby_counted_set(&chubby,NULL);
 }
 
-static void sendProposal(struct data*data);
+static void
+allDone(struct data*data,int e,struct chubby_stat*stat,chubby_string_t*answer)
+{
+    data->callback(data->data,e,stat,answer);
+    freeData(data);
+}
+
+static int sendProposal(struct data*data);
 
 static void
 proposeDone(void*_data,int e,chubby_string_t*answer)
@@ -57,14 +62,14 @@ proposeDone(void*_data,int e,chubby_string_t*answer)
     int n=0,s=0;
     data->string = answer;
     if (e){
-	allDone(e,data,NULL,NULL);
+	allDone(data,e,NULL,NULL);
 	return;
     }
     sscanf(answer->a,"%"APR_INT64_T_FMT" %d%n",&newdn,&s,&n);
     assert(n);
     m = data->c->chubby->malloc(sizeof*m);
     if (!m){
-	allDone(CHUBBY_E_OOM,data,NULL,NULL);
+	allDone(data,CHUBBY_E_OOM,NULL,NULL);
 	return;
     }
     m->next = data->ll;
@@ -84,7 +89,7 @@ proposeDone(void*_data,int e,chubby_string_t*answer)
 	struct chubby_stat stat;
 	answer = data->c->chubby->malloc(sizeof*answer+data->size);
 	if (!answer){
-	    allDone(CHUBBY_E_OOM,data,NULL,NULL);
+	    allDone(data,CHUBBY_E_OOM,NULL,NULL);
 	    return;
 	}
 	answer->length = data->size;
@@ -99,17 +104,19 @@ proposeDone(void*_data,int e,chubby_string_t*answer)
 	    memcpy(answer->a+data->size,m->s->a+n+1,s);
 	}
 	assert(data->size == 0);
-	allDone(0,data,&stat,answer);
+	allDone(data,0,&stat,answer);
 	return;
     }
-    sendProposal(data);
+    e = sendProposal(data);
+    if (e)
+	allDone(data,e,NULL,NULL);
 }
 
-static void
+static int
 sendProposal(struct data*data)
 {
     chubby_udp_buffer_t b;
-    int i,e;
+    int i;
     b.length = 0;
     chubby_udp_buffer_format(&b,"Get ");
     chubby_fixFilename(&b,data->name);
@@ -117,15 +124,14 @@ sendProposal(struct data*data)
     if (data->maxsize>=0 && data->maxsize-data->size<i)
 	i = data->maxsize-data->size;
     chubby_udp_buffer_format(&b," %d %d",data->size,i);
-    e = chubby_connection_asynchronous_propose(data->c,proposeDone,data,&b);
-    if (e)
-	allDone(e,data,NULL,NULL);
+    return chubby_connection_asynchronous_propose(data->c,proposeDone,data,&b);
 }
 
 int
 chubby_connection_asynchronous_get(chubby_connection_t*thiz,void(*callback)(void*data,int e,struct chubby_stat*stat,chubby_string_t*answer),void*dat,const char*name,int maxsize)
 {
     struct data*data;
+    int e;
     if (strlen(name) >= PATH_MAX)
 	return CHUBBY_E_INVAL;
     data = thiz->chubby->malloc(sizeof*data);
@@ -137,8 +143,10 @@ chubby_connection_asynchronous_get(chubby_connection_t*thiz,void(*callback)(void
     data->data = dat;
     strcpy(data->name,name);
     data->maxsize = maxsize;
-    sendProposal(data);
-    return 0;
+    e = sendProposal(data);
+    if (e)
+	freeData(data);
+    return e;
 }
 
 struct get_struct{
