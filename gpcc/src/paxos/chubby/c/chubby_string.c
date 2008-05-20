@@ -47,3 +47,14 @@ chubby_string_format(chubby_t*chubby,const char*format,...)
     }
     return s;
 }
+
+chubby_string_t*
+chubby_string_copy(chubby_t*chubby,chubby_string_t*s)
+{
+    chubby_string_t*a=chubby->malloc(sizeof*a+s->length);
+    if (a){
+	a->length = s->length;
+	memcpy(a->a,s->a,s->length);
+    }
+    return a;
+}

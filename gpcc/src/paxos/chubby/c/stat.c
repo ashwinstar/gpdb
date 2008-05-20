@@ -109,12 +109,3 @@ chubby_connection_stat(chubby_connection_t*thiz,struct chubby_stat*stat,const ch
     data.stat = stat;
     return chubby_two_int_finish(thiz->chubby,&data.super,chubby_connection_asynchronous_stat(thiz,stat_callback,&data,name));
 }
-
-int
-chubby_connection_chubbyStat(chubby_connection_t*thiz,struct chubby_stat*stat,const char*name)// deprecated.
-{
-    struct stat_struct data;
-    memset(&data,0,sizeof data);
-    data.stat = stat;
-    return chubby_two_int_finish(thiz->chubby,&data.super,chubby_asynchronous_stat(thiz->chubby,stat_callback,&data,name));
-}

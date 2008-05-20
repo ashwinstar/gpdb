@@ -76,6 +76,7 @@ void chubby_udp_buffer_format(chubby_udp_buffer_t*thiz,char*format,...);
 void chubby_udp_buffer_cat(chubby_udp_buffer_t*thiz,chubby_string_t*a);
 
 chubby_string_t*chubby_string_format(chubby_t*chubby,const char*format,...);
+chubby_string_t*chubby_string_copy(chubby_t*chubby,chubby_string_t*s);
 
 #define SIGNSTRING		"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx "
 #define SIGNSTRING_LENGTH	33
@@ -93,8 +94,5 @@ struct chubby_two_int{
 
 int chubby_two_int_finish(chubby_t*thiz,struct chubby_two_int*data,int e);
 void chubby_two_int_callback(void*_data,int e);
-
-int chubby_connection_chubbyStat(chubby_connection_t*thiz,struct chubby_stat*stat,const char*name);// deprecated.
-int chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what); // deprecated.
 
 #endif

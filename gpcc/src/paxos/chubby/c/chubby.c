@@ -357,37 +357,6 @@ chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv)
     }
 }
 
-// deprecated.
-struct chubby_propose_struct{
-    struct chubby_two_int super;
-    chubby_t*c;
-    chubby_string_t**answer;
-};
-
-// deprecated.
-static void
-chubby_propose_callback(void*_data,int e,chubby_string_t*answer)
-{
-    struct chubby_propose_struct*data=_data;
-    data->super.done = 1;
-    data->super.e = e;
-    if (data->answer)
-	*data->answer = answer;
-    else
-	data->c->free(answer);
-}
-
-// deprecated.
-int
-chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what)
-{
-    struct chubby_propose_struct data;
-    memset(&data,0,sizeof data);
-    data.c = thiz;
-    data.answer = answer;
-    return chubby_two_int_finish(thiz,&data.super,chubby_asynchronous_propose(thiz,chubby_propose_callback,&data,what));
-}
-
 void
 chubby_two_int_callback(void*_data,int e)
 {
