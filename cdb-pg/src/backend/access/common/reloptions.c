@@ -289,9 +289,15 @@ default_reloptions(Datum reloptions, bool validate,
 	/* blocksize */
 	if(values[2] != NULL)
 	{
+		
+		if(!appendonly)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("invalid option \'blocksize\' for base relation. "
+							"Only valid for Append Only relations")));
+		
 		blocksize = pg_atoi(values[2], sizeof(int32), 0);
 		
-		/* TODO: replace these with constants */
 		if (blocksize < MIN_VARBLOCK_SIZE || blocksize > MAX_VARBLOCK_SIZE ||
 			blocksize % MIN_VARBLOCK_SIZE != 0)
 		{	
@@ -311,6 +317,13 @@ default_reloptions(Datum reloptions, bool validate,
 	/* compression level */
 	if(values[3] != NULL)
 	{
+		
+		if(!appendonly)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("invalid option \'compresslevel\' for base relation. "
+							"Only valid for Append Only relations")));
+		
 		compresslevel = pg_atoi(values[3], sizeof(int32), 0);
 		if (compresslevel < 0 || compresslevel > 9)
 		{
@@ -443,16 +456,17 @@ void validateAppendOnlyRelOptions(bool ao, int blocksize, int complevel, char re
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 				 errmsg("appendonly may only be specified for base relations")));
+		
 	
-	/* this should have been caught in reloptions.c but just to be safe */
 	if(complevel < 0 || complevel > 9)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("compresslevel=%d is out of range (should be between 0 and 9)",
 						complevel)));	
 	
-	if (blocksize < 8*1024 || blocksize > 8*1024*1024 ||
-		blocksize % 8*1024 != 0)
+	
+	if (blocksize < MIN_VARBLOCK_SIZE || blocksize > MAX_VARBLOCK_SIZE ||
+	    blocksize % MIN_VARBLOCK_SIZE != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("block size must be between 8KB and 8MB and "
