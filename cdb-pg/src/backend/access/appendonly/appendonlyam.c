@@ -530,11 +530,6 @@ void
 appendonly_rescan(AppendOnlyScanDesc scan,
 				  ScanKey key)
 {
-
-	/* TODO... implement rescan */
-	ereport(ERROR,
-			(errcode(ERRCODE_GP_FEATURE_NOT_YET),
-			 errmsg("cannot rescan append only table yet")));						
 		
 	/*
 	 * reinitialize scan descriptor
