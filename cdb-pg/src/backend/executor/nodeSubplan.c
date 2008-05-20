@@ -984,10 +984,23 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	 */
 	if (shouldDispatch)
 	{
+		Query *parsetree=NULL;
+
 		/* Fake a Query node to hold the range table. */
 		query = makeNode(Query);
 		query->rtable = subplan->rtable;
 		query->commandType = CMD_SELECT;
+
+		/* MPP-2869 and MPP-2859, single-row parameter-subquery inside
+		 * CTAS: we don't want to create the the table during the
+		 * initPlan execution. */
+		if (gbl_queryDesc->parsetree->into)
+		{
+			parsetree = copyObject(gbl_queryDesc->parsetree);
+			parsetree->into = NULL;
+		}
+		else
+			parsetree = gbl_queryDesc->parsetree;
 
 		/*
 		 * Fake a QueryDesc stucture for CdbDispatchPlan call. It should
@@ -995,15 +1008,13 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 * global query, plan, parameters, and slice table, and specifies
 		 * the initplan root of interest.
 		 */
-		queryDesc = CreateQueryDesc(
-									gbl_queryDesc->parsetree,
+		queryDesc = CreateQueryDesc(parsetree,
 									gbl_queryDesc->plantree,
 									gbl_queryDesc->snapshot,
 									gbl_queryDesc->crosscheck_snapshot,
 									NULL,		/* Null destination for the QE */
 									gbl_queryDesc->params,
-									gbl_queryDesc->doInstrument
-			);
+									gbl_queryDesc->doInstrument);
 
         /* 
          * CDB TODO: Should this use CreateSubExecutorState()?  
@@ -1045,6 +1056,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
              * command to the appropriate segdbs.  It does not wait for them
              * to finish unless an error is detected before all are dispatched.
 			 */
+
 			cdbdisp_dispatchPlan(queryDesc, needDtxTwoPhase, true, &primaryResults, NULL, &dispatchThreads);
 
 
