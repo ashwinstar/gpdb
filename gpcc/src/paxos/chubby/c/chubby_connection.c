@@ -64,62 +64,19 @@ chubby_connection_asynchronous_propose(chubby_connection_t*thiz,void(*callback)(
     return chubby_connection_asynchronous_propose(thiz->parent,callback,data,b);
 }
 
-static int
-chubby_connection_list1(chubby_connection_t*thiz,chubby_string_t**a,char***answer,const char*name)
-{
-    int e=chubby_connection_get(thiz,NULL,a,name,-1);
-    if (!e){
-	int count=0,i;
-	if ((*a)->length != 0){
-	    count++;
-	    for (i=0; i<(*a)->length; i++)
-		if ((*a)->a[i] == ' ')
-		    count++;
-	}
-	*answer = thiz->chubby->malloc(sizeof*answer*(count+1));
-	if (!*answer)
-	    return CHUBBY_E_OOM;
-	**answer = NULL;
-	if (count){
-	    char*s=thiz->chubby->malloc((*a)->length+1);
-	    if (!s)
-		return CHUBBY_E_OOM;
-	    count = 0;
-	    for (i=0; i<(*a)->length; i++){
-		(*answer)[count++] = s;
-		for (; i<(*a)->length&&(*a)->a[i]!=' '; i++)
-		    *s++ = (*a)->a[i]==0?' ':(*a)->a[i];
-		*s++ = 0;
-	    }
-	    (*answer)[count] = NULL;
-	}
-    }
-    return e;
-}
-
 int
-chubby_connection_list(chubby_connection_t*thiz,char***answer,const char*name)
+chubby_connection_clone(chubby_connection_t*thiz,chubby_connection_t**answer)
 {
-    chubby_string_t*a=NULL;
-    char**aa=NULL;
-    int e=chubby_connection_list1(thiz,&a,&aa,name);
-    if (a)
-	thiz->chubby->free(a);
-    if (e)
-	chubby_connection_listFree(thiz,aa);
-    else
-	*answer = aa;
-    return e;
-}
-
-void
-chubby_connection_listFree(chubby_connection_t*thiz,char**answer)
-{
-    if (answer){
-	if (*answer)
-	    thiz->chubby->free(*answer);
-	thiz->chubby->free(answer);
-    }
+    chubby_connection_t*c=chubby_connection_new(thiz->chubby);
+    if (!c)
+	return CHUBBY_E_OOM;
+    chubby_counted_set(&c->parent,thiz->parent);
+    c->leaseDn = thiz->leaseDn;
+    strcpy(c->leaseFilename,thiz->leaseFilename);
+    strcpy(c->leaseId,thiz->leaseId);
+    c->leaseExpireTime = thiz->leaseExpireTime;
+    *answer = c;
+    return 0;
 }
 
 int
@@ -163,21 +120,6 @@ chubby_connection_checkLease(chubby_connection_t*thiz)
 	return CHUBBY_E_INVAL;
     e = chubby_connection_stat(thiz,&stat,thiz->leaseFilename);
     return e==0&&stat.decreeNumber==thiz->leaseDn?0:CHUBBY_E_LEASEEXPIRED;
-}
-
-int
-chubby_connection_clone(chubby_connection_t*thiz,chubby_connection_t**answer)
-{
-    chubby_connection_t*c=chubby_connection_new(thiz->chubby);
-    if (!c)
-	return CHUBBY_E_OOM;
-    chubby_counted_set(&c->parent,thiz->parent);
-    c->leaseDn = thiz->leaseDn;
-    strcpy(c->leaseFilename,thiz->leaseFilename);
-    strcpy(c->leaseId,thiz->leaseId);
-    c->leaseExpireTime = thiz->leaseExpireTime;
-    *answer = c;
-    return 0;
 }
 
 int
