@@ -342,6 +342,8 @@ typedef enum NodeTag
 	T_PartitionBoundSpec,
 	T_PartitionSpec,
 	T_PartitionValuesSpec,
+	T_AlterPartitionId,
+	T_AlterPartitionCmd,
 	/* XXX: careful, we're almost at 800 */
 	
 	T_A_Expr = 800,

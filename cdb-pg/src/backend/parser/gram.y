@@ -183,8 +183,6 @@ static void doNegateFloat(Value *v);
 %type <node>	alter_table_cmd alter_rel_cmd alter_table_partition_id_spec
 				alter_table_partition_cmd
 %type <list>	alter_table_cmds alter_rel_cmds 
-				opt_table_partition_merge_into 
-				opt_table_partition_split_into
 				part_values_clause multi_spec_value_list part_values_single
 %type <ival>	opt_table_partition_exchange_validate 
 
@@ -393,6 +391,8 @@ static void doNegateFloat(Value *v);
 %type <value>	OptNumericOnly 
 %type <node> 	TabPartitionNameDecl TabSubPartitionNameDecl      /* string */
 				TabPartitionDefaultNameDecl TabSubPartitionDefaultNameDecl 
+				opt_table_partition_merge_into 
+				opt_table_partition_split_into
 %type <node> 	OptTabPartitionStorageAttr
 
 /*
@@ -1681,13 +1681,32 @@ opt_table_partition_split_into:
 			INTO '(' PARTITION 
             alter_table_partition_id_spec ','
             PARTITION 
-            alter_table_partition_id_spec ')'	{ $$ = list_make1($4); }
+            alter_table_partition_id_spec ')'	
+				{
+                    /* re-use alterpartitioncmd struct here... */
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+                    pc->partid = (Node *)$4;
+                    pc->arg1 = (Node *)$6;
+                    pc->arg2 = NULL;
+                    pc->location = @6;
+					$$ = (Node *)pc;
+                }
 			| /* EMPTY */					{ $$ = NULL; /* default */ }
 		;
 
 opt_table_partition_merge_into: 
 			INTO PARTITION 
-            alter_table_partition_id_spec	{ $$ = list_make1($3); }
+            alter_table_partition_id_spec	
+				{
+                    /* re-use alterpartitioncmd struct here... */
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+                    pc->partid = (Node *)$3;
+                    pc->arg1 = NULL;
+                    pc->arg2 = NULL;
+                    pc->location = @3;
+					$$ = (Node *)pc;
+                }
+
 			| /* EMPTY */					{ $$ = NULL; /* default */ }
 		;
 
@@ -1698,26 +1717,73 @@ opt_table_partition_exchange_validate:
 		;
 
 alter_table_partition_id_spec: 
-            IDENT											{$$ = (Node *)$1; }
+            IDENT								
+				{
+					AlterPartitionId *n = makeNode(AlterPartitionId);
+					n->idtype = AT_AP_IDName;
+                    n->partiddef = (Node *)$1;
+                    n->location  = @1;
+					$$ = (Node *)n;
+				}
             | FOR 
-            '(' TabPartitionBoundarySpecValList ')'			{$$ = (Node *)$3; }
+            '(' TabPartitionBoundarySpecValList ')'	
+				{
+					AlterPartitionId *n = makeNode(AlterPartitionId);
+					n->idtype = AT_AP_IDValue;
+                    n->partiddef = (Node *)$3;
+                    n->location  = @3;
+					$$ = (Node *)n;
+				}
 /* XXX XXX: note that the POSITION function here is not the string operator */
-            | FOR '(' POSITION '(' NumericOnly ')' ')'		{$$ = (Node *)$5; }
+            | FOR '(' POSITION '(' NumericOnly ')' ')'	
+				{
+					AlterPartitionId *n = makeNode(AlterPartitionId);
+					n->idtype = AT_AP_IDPosition;
+                    n->partiddef = (Node *)$5;
+                    n->location  = @5;
+					$$ = (Node *)n;
+				}
 		;
 
 alter_table_partition_cmd:
 			ADD_P PARTITION 
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
 				{
+					AlterPartitionId  *pid = makeNode(AlterPartitionId);
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pid->idtype = AT_AP_IDNone;
+                    pid->location = @2;
+                    pid->partiddef = NULL;
+
+                    pc->partid = (Node *)pid;
+                    pc->arg1 = (Node *)$3;
+                    pc->arg2 = (Node *)$4;
+                    pc->location = @3;
+
 					n->subtype = AT_PartAdd;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| ADD_P PARTITION IDENT	
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
 				{
+					AlterPartitionId  *pid = makeNode(AlterPartitionId);
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pid->idtype = AT_AP_IDName;
+                    pid->partiddef = (Node *)$3;
+                    pid->location = @3;
+
+                    pc->partid = (Node *)pid;
+                    pc->arg1 = (Node *)$4;
+                    pc->arg2 = (Node *)$5;
+                    pc->location = @4;
+
 					n->subtype = AT_PartAdd;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| ALTER PARTITION 
@@ -1727,27 +1793,70 @@ alter_table_partition_cmd:
                     /* NOTE: only allow a subset of valid ALTER TABLE
                        cmds for partitions.
                     */
+
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pc->partid = (Node *)$3;
+                    pc->arg1 = (Node *)$4;
+                    pc->arg2 = NULL;
+                    pc->location = @4;
+
 					n->subtype = AT_PartAlter;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| COALESCE PARTITION 	 
 				{
+					AlterPartitionId  *pid = makeNode(AlterPartitionId);
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pid->idtype = AT_AP_IDNone;
+                    pid->location = @2;
+                    pid->partiddef = NULL;
+
+                    pc->partid = (Node *)pid;
+                    pc->arg1 = NULL;
+                    pc->arg2 = NULL;
+                    pc->location = @2;
+
 					n->subtype = AT_PartCoalesce;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| COALESCE PARTITION IDENT	 
 				{
+					AlterPartitionId  *pid = makeNode(AlterPartitionId);
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pid->idtype = AT_AP_IDName;
+                    pid->location = @3;
+                    pid->partiddef = (Node *)$3;
+
+                    pc->partid = (Node *)pid;
+                    pc->arg1 = NULL;
+                    pc->arg2 = NULL;
+                    pc->location = @3;
+
 					n->subtype = AT_PartCoalesce;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| DROP PARTITION 
             alter_table_partition_id_spec	 
 				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pc->partid = (Node *)$3;
+                    pc->arg1 = NULL;
+                    pc->arg2 = NULL;
+                    pc->location = @3;
+
 					n->subtype = AT_PartDrop;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| EXCHANGE PARTITION 
@@ -1755,8 +1864,16 @@ alter_table_partition_cmd:
             WITH TABLE relation_expr 
             opt_table_partition_exchange_validate	
 				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pc->partid = (Node *)$3;
+                    pc->arg1 = (Node *)$6;
+                    pc->arg2 = (Node *)$7;
+                    pc->location = @6;
+
 					n->subtype = AT_PartExchange;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| MERGE PARTITION 
@@ -1764,15 +1881,31 @@ alter_table_partition_cmd:
             PARTITION alter_table_partition_id_spec 
             opt_table_partition_merge_into	
 				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pc->partid = (Node *)$3;
+                    pc->arg1 = (Node *)$6;
+                    pc->arg2 = (Node *)$7;
+                    pc->location = @6;
+
 					n->subtype = AT_PartMerge;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| RENAME PARTITION 
             alter_table_partition_id_spec TO IDENT	
 				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pc->partid = (Node *)$3;
+                    pc->arg1 = (Node *)$5;
+                    pc->arg2 = NULL;
+                    pc->location = @5;
+
 					n->subtype = AT_PartRename;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| SPLIT PARTITION 
@@ -1780,15 +1913,31 @@ alter_table_partition_cmd:
             '(' TabPartitionBoundarySpecValList ')'	
             opt_table_partition_split_into	
 				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pc->partid = (Node *)$3;
+                    pc->arg1 = (Node *)$6;
+                    pc->arg2 = (Node *)$8;
+                    pc->location = @6;
+
 					n->subtype = AT_PartSplit;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 			| TRUNCATE PARTITION 
             alter_table_partition_id_spec	 
 				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+                    pc->partid = (Node *)$3;
+                    pc->arg1 = NULL;
+                    pc->arg2 = NULL;
+                    pc->location = @3;
+
 					n->subtype = AT_PartTruncate;
+					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
 		;
@@ -2536,7 +2685,15 @@ OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
 /* START PARTITION RULES */
 
 OptTabPartitionStorageAttr: OptWith OptTableSpace
-{ $$ = NULL; }
+				{
+                    /* re-use alterpartitioncmd struct here... */
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+                    pc->partid = NULL;
+                    pc->arg1 = (Node *)$1;
+                    pc->arg2 = (Node *)$2;
+                    pc->location = @1;
+					$$ = (Node *)pc;
+                }
 		;
 
 OptTabPartitionsNumber: PARTITIONS IntegerOnly 		{ $$ = makeAConst($2, @2); }
@@ -2739,6 +2896,7 @@ TabPartitionElem:
                         n->subSpec   = $3;
                         n->location  = @1;
                         n->isDefault = 0;
+                        n->storeAttr = $4;
                         $$ = (Node *)n;
 				}
 /* allow boundary spec for default partition in parser, but complain later */
@@ -2752,6 +2910,7 @@ TabPartitionElem:
                         n->subSpec   = $3;
                         n->location  = @1;
                         n->isDefault = 1;
+                        n->storeAttr = $4;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpec 	OptTabSubPartitionSpec 
@@ -2763,6 +2922,7 @@ TabPartitionElem:
                         n->subSpec   = $2;
                         n->location  = @1;
                         n->isDefault = 0;
+                        n->storeAttr = $3;
                         $$ = (Node *)n;
 				}
             ;
@@ -2777,6 +2937,7 @@ TabSubPartitionElem:
                         n->subSpec   = NULL;
                         n->location  = @1;
                         n->isDefault = 0;
+                        n->storeAttr = $3;
                         $$ = (Node *)n;
 				}
 /* allow boundary spec for default partition in parser, but complain later */
@@ -2789,6 +2950,7 @@ TabSubPartitionElem:
                         n->subSpec   = NULL;
                         n->location  = @1;
                         n->isDefault = 1;
+                        n->storeAttr = $3;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpec 	
@@ -2800,6 +2962,7 @@ TabSubPartitionElem:
                         n->subSpec   = NULL;
                         n->location  = @1;
                         n->isDefault = 0;
+                        n->storeAttr = $2;
                         $$ = (Node *)n;
 				}
             ;

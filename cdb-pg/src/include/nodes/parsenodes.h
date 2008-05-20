@@ -1050,6 +1050,31 @@ typedef struct AlterTableCmd	/* one subcommand of an ALTER TABLE */
 	DropBehavior behavior;		/* RESTRICT or CASCADE for DROP cases */
 } AlterTableCmd;
 
+typedef enum AlterPartitionIdType
+{
+	AT_AP_IDNone,				/* no ID */
+	AT_AP_IDName,				/* IDentify by Name */
+	AT_AP_IDValue,				/* IDentifier FOR Value */
+	AT_AP_IDPosition			/* IDentifier FOR Positition */
+} AlterPartitionIdType;
+
+typedef struct AlterPartitionId /* Identify a partition by name, val, pos */
+{
+	NodeTag		type;
+	AlterPartitionIdType idtype;/* Type of table alteration to apply */
+	Node	   *partiddef;		/* partition id definition */
+	int					location;	/* token location, or -1 if unknown */
+} AlterPartitionId;
+
+typedef struct AlterPartitionCmd/* one subcmd of an ALTER TABLE...PARTITION */
+{
+	NodeTag		type;
+	Node	   *partid;			/* partition id */
+	Node	   *arg1;			/* argument 1 */
+	Node	   *arg2;			/* argument 2 */
+	int					location;	/* token location, or -1 if unknown */
+} AlterPartitionCmd;
+
 
 /* ----------------------
  *	Alter Domain
@@ -1377,6 +1402,7 @@ typedef struct PartitionElem		/* a Partition "Element" is the
 	Node			   *subSpec;	/* subpartition spec */
 	int					location;	/* token location, or -1 if unknown */
 	bool                isDefault;	/* TRUE if default partition declaration */
+	Node			   *storeAttr;	/* storage clause attributes */		
 } PartitionElem;
 
 /* a "Range Item" is the "values" portition of a LIST partition, or

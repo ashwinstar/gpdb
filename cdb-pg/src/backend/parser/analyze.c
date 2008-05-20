@@ -5138,7 +5138,8 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 static void
 make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 			   	Node *newSub,
-				Node *pRuleCatalog, Node *pPostCreate, Node *pConstraint)
+				Node *pRuleCatalog, Node *pPostCreate, Node *pConstraint,
+				Node *pStoreAttr)
 {
 	RangeVar *parent_tab_name = makeNode(RangeVar);
 	RangeVar *child_tab_name = makeNode(RangeVar);
@@ -5185,6 +5186,14 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 
 	child_tab_stmt->constraints = list_copy(stmt->constraints);
 	child_tab_stmt->options = stmt->options;
+
+	/* allow WITH clause for appendonly tables */
+	if (pStoreAttr && ((AlterPartitionCmd *)pStoreAttr)->arg1)
+	{
+		child_tab_stmt->options = (List *)
+				(((AlterPartitionCmd *)pStoreAttr)->arg1);
+	}
+
 	child_tab_stmt->oncommit = stmt->oncommit;
 	child_tab_stmt->tablespacename = stmt->tablespacename;
 	child_tab_stmt->distributedBy = stmt->distributedBy;
@@ -5517,10 +5526,13 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			PartitionBy	*newSub = NULL;
 			PartitionElem *pElem = NULL;
 			bool makeRule = false;
-			Node		*pRuleCatalog  = NULL;
-			Node		*pPostCreate = NULL;
+			Node		*pRuleCatalog = NULL;
+			Node		*pPostCreate  = NULL;
 			Node		*pConstraint  = NULL;
+			Node		*pStoreAttr   = NULL;
 			char 		*relname;
+
+			pStoreAttr = NULL;
 
 			if (lc)
 			{
@@ -5528,6 +5540,9 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	
 				pElem = (PartitionElem *)lfirst(lc);
 	
+				if (pElem)
+					pStoreAttr = pElem->storeAttr;
+
 				if (pElem && pElem->boundSpec &&
 					IsA(pElem->boundSpec, PartitionBoundSpec))
 					pBSpec = (PartitionBoundSpec *)pElem->boundSpec;
@@ -5720,7 +5735,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 			make_child_node(stmt, cxt, relname,
 							newSub ? (Node *) newSub : (Node *) psubBy,
-							pRuleCatalog, pPostCreate, pConstraint);
+							pRuleCatalog, pPostCreate, pConstraint, 
+							pStoreAttr);
 		} /* end jj < maxEverynum */
 		if (lc)
 			lc = lnext(lc);
