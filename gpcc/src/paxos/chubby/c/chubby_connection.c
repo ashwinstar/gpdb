@@ -50,25 +50,49 @@ reverse(char*a,int length)
 }
 
 int
-chubby_connection_asynchronous_propose(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,chubby_string_t**answer,chubby_udp_buffer_t*b)
+chubby_connection_asynchronous_propose(chubby_connection_t*thiz,void(*callback)(void*data,int e,chubby_string_t*answer),void*data,chubby_udp_buffer_t*b)
 {
     int length=b->length;
     if (!thiz->parent)
-	return chubby_asynchronous_propose(thiz->chubby,callback,data,answer,(chubby_string_t*)b);
+	return chubby_asynchronous_propose(thiz->chubby,callback,data,(chubby_string_t*)b);
     chubby_udp_buffer_format(b,"If ");
     chubby_fixFilename(b,thiz->leaseFilename);
     chubby_udp_buffer_format(b," %"APR_INT64_T_FMT" ",thiz->leaseDn);
     reverse(b->a,length);
     reverse(b->a+length,b->length-length);
     reverse(b->a,b->length);
-    return chubby_connection_asynchronous_propose(thiz->parent,callback,data,answer,b);
+    return chubby_connection_asynchronous_propose(thiz->parent,callback,data,b);
 }
 
-int
+// deprecated.
+struct chubby_connection_propose_struct{
+    struct chubby_two_int super;
+    chubby_t*c;
+    chubby_string_t**answer;
+};
+
+// deprecated.
+static void
+chubby_connection_propose_callback(void*_data,int e,chubby_string_t*answer)
+{
+    struct chubby_connection_propose_struct*data=_data;
+    data->super.done = 1;
+    data->super.e = e;
+    if (data->answer)
+	*data->answer = answer;
+    else
+	data->c->free(answer);
+}
+
+// deprecated.
+static int
 chubby_connection_propose(chubby_connection_t*thiz,chubby_string_t**answer,chubby_udp_buffer_t*b)
 {
-    int a[2]={0};
-    return chubby_two_int_finish(thiz->chubby,a,chubby_connection_asynchronous_propose(thiz,chubby_two_int_callback,a,answer,b));
+    struct chubby_connection_propose_struct data;
+    memset(&data,0,sizeof data);
+    data.c = thiz->chubby;
+    data.answer = answer;
+    return chubby_two_int_finish(thiz->chubby,&data.super,chubby_connection_asynchronous_propose(thiz,chubby_connection_propose_callback,&data,b));
 }
 
 int

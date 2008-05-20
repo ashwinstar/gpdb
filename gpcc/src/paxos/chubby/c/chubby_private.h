@@ -49,6 +49,8 @@ struct chubby{
     int64_t count;
     int leaderValid;
     struct sockaddr leader;
+    apr_time_t now;
+    apr_time_t nextTime;
 };
 
 struct chubby_connection{
@@ -67,8 +69,7 @@ void chubby_counted_close(void*a);
 chubby_connection_t*chubby_connection_new(chubby_t*chubby);
 void chubby_getNewId(chubby_t*thiz,char*a);
 
-int chubby_asynchronous_propose(chubby_t*thiz,chubby_asynchronous_callback_t callback,void*data,chubby_string_t**answer,chubby_string_t*what);
-int chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what);
+int chubby_asynchronous_propose(chubby_t*thiz,void(*callback)(void*data,int e,chubby_string_t*answer),void*data,chubby_string_t*what);
 
 int chubby_udp_buffer_isOverflowed(chubby_udp_buffer_t*thiz);
 void chubby_udp_buffer_format(chubby_udp_buffer_t*thiz,char*format,...);
@@ -82,9 +83,15 @@ chubby_string_t*chubby_string_format(chubby_t*chubby,const char*format,...);
 int chubby_readPaxosKey(chubby_t*thiz);
 void chubby_sign(chubby_t*thiz,char*a,const char*b,int len,const struct sockaddr*f,const struct sockaddr*t);
 void chubby_fixFilename(chubby_udp_buffer_t*b,const char*name);
-int chubby_connection_asynchronous_propose(chubby_connection_t*thiz,chubby_asynchronous_callback_t callback,void*data,chubby_string_t**answer,chubby_udp_buffer_t*b);
-int chubby_connection_propose(chubby_connection_t*thiz,chubby_string_t**answer,chubby_udp_buffer_t*b);
-void chubby_two_int_callback(int e,void*data);
-int chubby_two_int_finish(chubby_t*thiz,int a[2],int e);
+int chubby_connection_asynchronous_propose(chubby_connection_t*thiz,void(*callback)(void*data,int e,chubby_string_t*answer),void*data,chubby_udp_buffer_t*b);
+
+int chubby_propose(chubby_t*thiz,chubby_string_t**answer,chubby_string_t*what); // deprecated.
+
+struct chubby_two_int{
+    int done;
+    int e;
+};
+
+int chubby_two_int_finish(chubby_t*thiz,struct chubby_two_int*data,int e);
 
 #endif
