@@ -123,3 +123,4 @@ test: gp_hashagg
 test: gpic
 test: gpic_bigtup
 test: filter
+test: gpctas
