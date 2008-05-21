@@ -2,12 +2,42 @@
 
 #include "chubby_private.h"
 
+static void
+chubby_normalizeFilename(char*name)
+{
+    char*n=name;
+    for (;*name=='/';name++);
+    for (; *name; name++){
+	if (*name=='/'){
+	    for (;*name=='/';name++);
+	    if (!*name)
+		break;
+	    --name;
+	}
+	*n++ = *name;
+    }
+    *n = 0;
+}
+
 void
 chubby_fixFilename(chubby_udp_buffer_t*b,const char*name)
 {
-    for (; *name; name++)
+    char n[PATH_MAX];
+    chubby_normalizeFilename(strcpy(n,name));
+    for (name=n; *name; name++)
 	if (b->length < sizeof b->a)
 	    b->a[b->length++] = *name==' '?0:*name;
+}
+
+void
+chubby_dirname(char*dirname,const char*name)
+{
+    char*a;
+    chubby_normalizeFilename(strcpy(dirname,name));
+    a = strrchr(dirname,'/');
+    if (!a)
+	a = dirname;
+    *a = 0;
 }
 
 static void
@@ -164,9 +194,9 @@ super_data_done_nothing(struct super_data*data,int e)
 }
 
 void
-super_data_done_charstarstar(struct super_data*data,int e,char**charstarstar)
+super_data_done_stat_charstarstar(struct super_data*data,int e,struct chubby_stat*stat,char**charstarstar)
 {
-    ((void(*)(void*,int,char**))data->callback)(data->data,e,charstarstar);
+    ((void(*)(void*,int,struct chubby_stat*,char**))data->callback)(data->data,e,stat,charstarstar);
     super_data_delete(data);
 }
 

@@ -45,14 +45,14 @@ proposeDone(void*_data,int e,chubby_string_t*answer)
 {
     struct data*data=_data;
     struct chubby_string_linked_list*m;
-    int64_t newdn=0;
+    int64_t newdn=0,parentDn;
     int n=0,s=0;
     data->string = answer;
     if (e){
 	super_data_done_stat_string(&data->super,e,NULL,NULL);
 	return;
     }
-    sscanf(answer->a,"%"APR_INT64_T_FMT" %d%n",&newdn,&s,&n);
+    sscanf(answer->a,"%"APR_INT64_T_FMT" %d %"APR_INT64_T_FMT"%n",&newdn,&s,&parentDn,&n);
     assert(n);
     m = data->super.c->chubby->malloc(sizeof*m);
     if (!m){
@@ -83,8 +83,9 @@ proposeDone(void*_data,int e,chubby_string_t*answer)
 	answer->a[data->size] = 0;
 	stat.decreeNumber = data->dn;
 	stat.size = data->size;
+	stat.parentDecreeNumber = parentDn;
 	for (m=data->ll; m; m=m->next){
-	    sscanf(m->s->a,"%"APR_INT64_T_FMT" %d%n",&newdn,&s,&n);
+	    sscanf(m->s->a,"%"APR_INT64_T_FMT" %d %"APR_INT64_T_FMT"%n",&newdn,&s,&parentDn,&n);
 	    s = m->s->length-n-1;
 	    data->size -= s;
 	    assert(data->size >= 0);

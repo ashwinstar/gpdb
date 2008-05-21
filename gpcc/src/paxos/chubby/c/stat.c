@@ -8,7 +8,7 @@ proposeDone(void*_data,int e,chubby_string_t*answer)
     struct super_data*data=_data;
     if (!e){
 	struct chubby_stat stat;
-	sscanf(answer->a,"%"APR_INT64_T_FMT" %d",&stat.decreeNumber,&stat.size);
+	sscanf(answer->a,"%"APR_INT64_T_FMT" %d %"APR_INT64_T_FMT,&stat.decreeNumber,&stat.size,&stat.parentDecreeNumber);
 	data->c->chubby->free(answer);
 	super_data_done_stat(data,0,&stat);
     }else

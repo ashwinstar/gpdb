@@ -22,9 +22,7 @@ proposeDone(void*_data,int e,chubby_string_t*answer)
 {
     struct data*data=_data;
     data->super.c->chubby->free(answer);
-    if (e == CHUBBY_E_NOENT)
-	e = 0;
-    else if (e == CHUBBY_E_IFFAILED){
+    if (e == CHUBBY_E_IFFAILED){
 	e = chubby_asynchronous_stat(data->super.c,statDone2,data,data->name);
 	if (!e)
 	    return;
@@ -39,6 +37,10 @@ statDone(void*_data,int e,struct chubby_stat*stat)
     chubby_udp_buffer_t b;
     if (e){
 	super_data_done_nothing(&data->super,e);
+	return;
+    }
+    if (!stat->decreeNumber){
+	super_data_done_nothing(&data->super,CHUBBY_E_NOENT);
 	return;
     }
     data->dn = stat->decreeNumber;

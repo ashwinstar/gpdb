@@ -22,7 +22,7 @@ getDone(void*_data,int e,struct chubby_stat*stat,chubby_string_t*a)
     char**answer;
     int count=0,i;
     if (e){
-	super_data_done_charstarstar(&data->super,e,NULL);
+	super_data_done_stat_charstarstar(&data->super,e,NULL,NULL);
 	return;
     }
     data->string = a;
@@ -34,7 +34,7 @@ getDone(void*_data,int e,struct chubby_stat*stat,chubby_string_t*a)
     }
     answer = data->super.c->chubby->malloc(sizeof*answer*(count+1));
     if (!answer){
-	super_data_done_charstarstar(&data->super,CHUBBY_E_OOM,NULL);
+	super_data_done_stat_charstarstar(&data->super,CHUBBY_E_OOM,NULL,NULL);
 	return;
     }
     *answer = NULL;
@@ -42,7 +42,7 @@ getDone(void*_data,int e,struct chubby_stat*stat,chubby_string_t*a)
 	char*s=data->super.c->chubby->malloc(a->length+1);
 	if (!s){
 	    data->super.c->chubby->free(answer);
-	    super_data_done_charstarstar(&data->super,CHUBBY_E_OOM,NULL);
+	    super_data_done_stat_charstarstar(&data->super,CHUBBY_E_OOM,NULL,NULL);
 	    return;
 	}
 	count = 0;
@@ -54,11 +54,11 @@ getDone(void*_data,int e,struct chubby_stat*stat,chubby_string_t*a)
 	}
 	answer[count] = NULL;
     }
-    super_data_done_charstarstar(&data->super,0,answer);
+    super_data_done_stat_charstarstar(&data->super,0,stat,answer);
 }
 
 int
-chubby_connection_asynchronous_list(chubby_connection_t*thiz,void(*callback)(void*data,int e,char**answer),void*dat,const char*name)
+chubby_connection_asynchronous_list(chubby_connection_t*thiz,void(*callback)(void*data,int e,struct chubby_stat*stat,char**answer),void*dat,const char*name)
 {
     int e;
     struct data*data;
@@ -76,23 +76,27 @@ chubby_connection_asynchronous_list(chubby_connection_t*thiz,void(*callback)(voi
 struct list_struct{
     struct chubby_two_int super;
     char***answer;
+    struct chubby_stat*stat;
 };
 
 static void
-list_callback(void*_data,int e,char**answer)
+list_callback(void*_data,int e,struct chubby_stat*stat,char**answer)
 {
     struct list_struct*data=_data;
     data->super.done = 1;
     data->super.e = e;
     *data->answer = answer;
+    if (data->stat)
+	*data->stat = *stat;
 }
 
 int
-chubby_connection_list(chubby_connection_t*thiz,char***answer,const char*name)
+chubby_connection_list(chubby_connection_t*thiz,struct chubby_stat*stat,char***answer,const char*name)
 {
     struct list_struct data;
     memset(&data,0,sizeof data);
     data.answer = answer;
+    data.stat = stat;
     return chubby_two_int_finish(thiz->chubby,&data.super,chubby_connection_asynchronous_list(thiz,list_callback,&data,name));
 }
 

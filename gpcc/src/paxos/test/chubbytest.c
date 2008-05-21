@@ -145,9 +145,9 @@ test2(int argc,char**argv,chubby_connection_t*c)
     chubby_connection_t*c2=NULL;
     TEST(chubby_connection_getLeaseFilenameDecreeNumberConnection(c,&c2,argv[2],atoll(argv[3])),t.ret==0);
     if (c2){
-	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==0);
+	TEST(chubby_connection_list(c2,NULL,&t.list,"/"),t.ret==0);
 	sleep(20);
-	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==CHUBBY_E_LEASEEXPIRED);
+	TEST(chubby_connection_list(c2,NULL,&t.list,"/"),t.ret==CHUBBY_E_LEASEEXPIRED);
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
@@ -176,9 +176,9 @@ test0(int argc,char**argv,chubby_connection_t*c)
     TEST(chubby_connection_move(c,"/test/file","/test/tofile"),t.ret==0);
     TEST(chubby_connection_stat(c,&t.stat,"test/file"),t.ret==0&&t.stat.decreeNumber==0);
     TEST(chubby_connection_get(c,&t.stat,&t.chubbystring,"/test/tofile",-1),t.ret==0&&!strcmp(t.chubbystring->a,"contents"));
-    TEST(chubby_connection_list(c,&t.list,"/"),t.ret==0&&strstr(t.catlist,",paxos,")&&strstr(t.catlist,",test,"));
-    TEST(chubby_connection_list(c,&t.list,"noentfile"),t.ret==CHUBBY_E_NOENT);
-    TEST(chubby_connection_stat(c,&t.stat,"test/tofile"),t.ret==0&&t.stat.decreeNumber==0);
+    TEST(chubby_connection_list(c,NULL,&t.list,"/"),t.ret==0&&strstr(t.catlist,",paxos,")&&strstr(t.catlist,",test,"));
+    TEST(chubby_connection_list(c,NULL,&t.list,"noentfile"),t.ret==CHUBBY_E_NOENT);
+    TEST(chubby_connection_stat(c,&t.stat,"test/tofile"),t.ret==0&&t.stat.decreeNumber!=0);
     TEST(chubby_connection_remove(c,"//test//subdir/1"),t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_put(c,"test///subdir/1",make_string(&s,"")),t.ret==0);
     TEST(chubby_connection_stat(c,&t.stat,"test/subdir//1"),t.ret==0&&t.stat.decreeNumber!=0);
@@ -190,8 +190,8 @@ test0(int argc,char**argv,chubby_connection_t*c)
     TEST(chubby_connection_remove(c,"//test//subdir1/1"),t.ret==0);
     TEST(chubby_connection_rmdir(c,"//test//subdir1"),t.ret==0);
     TEST(chubby_connection_stat(c,&t.stat,"test"),t.ret==0&&t.stat.decreeNumber>dn);
-    TEST(chubby_connection_list(c,&t.list,"/test"),t.ret==0&&!strstr(t.catlist,",subdir,"));
-    TEST(chubby_connection_list(c,&t.list,"/test"),t.ret==0&&!strstr(t.catlist,",subdir1,"));
+    TEST(chubby_connection_list(c,NULL,&t.list,"/test"),t.ret==0&&!strstr(t.catlist,",subdir,"));
+    TEST(chubby_connection_list(c,NULL,&t.list,"/test"),t.ret==0&&!strstr(t.catlist,",subdir1,"));
     {
 	int i;
 	char*a;
@@ -212,9 +212,9 @@ test0(int argc,char**argv,chubby_connection_t*c)
 	TEST(chubby_connection_get(c,&t.stat,&t.chubbystring,"/test//bi g",-1),t.ret==0&&!strcmp(t.chubbystring->a,big->a));
 	counted_free(big);
     }
-    TEST(chubby_connection_list(c,&t.list,"/test"),t.ret==0&&strstr(t.catlist,",bi g,"));
+    TEST(chubby_connection_list(c,NULL,&t.list,"/test"),t.ret==0&&strstr(t.catlist,",bi g,"));
     TEST(chubby_connection_remove(c,"/test/bi g"),t.ret==0);
-    TEST(chubby_connection_list(c,&t.list,"/test"),t.ret==0&&!strstr(t.catlist,",bi g,"));
+    TEST(chubby_connection_list(c,NULL,&t.list,"/test"),t.ret==0&&!strstr(t.catlist,",bi g,"));
     TEST(chubby_connection_remove(c,"/test/lock"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_remove(c,"/test/lock-info"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_remove(c,"/test/lock2"),t.ret==0||t.ret==CHUBBY_E_NOENT);
@@ -232,7 +232,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
 	    int64_t dn;
 	    TEST(chubby_connection_getLeaseFilenameAndDecreeNumber(c3,&t.charstar,&dn),t.ret==0);
 	    TEST(chubby_connection_checkLease(c3),t.ret==0);
-	    TEST(chubby_connection_list(c3,&t.list,"/"),t.ret==0);
+	    TEST(chubby_connection_list(c3,NULL,&t.list,"/"),t.ret==0);
 	    chubby_connection_giveUpLease(c3);
 	    chubby_connection_close(c3);
 	    c3 = NULL;
@@ -242,7 +242,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
     if (c2){
 	TEST(chubby_connection_getLeaseFilenameAndDecreeNumber(c2,&t.charstar,&dn),t.ret==0);
 	TEST(chubby_connection_checkLease(c2),t.ret==0);
-	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==0);
+	TEST(chubby_connection_list(c2,NULL,&t.list,"/"),t.ret==0);
 	chubby_connection_close(c2);
 	c2 = NULL;
     }
@@ -267,10 +267,10 @@ test0(int argc,char**argv,chubby_connection_t*c)
     TEST(chubby_connection_getLease(c,&c2,"test/lock3",20,10),t.ret==0);
     if (c2){
 	TEST(chubby_connection_checkLease(c2),t.ret==0);
-	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==0);
+	TEST(chubby_connection_list(c2,NULL,&t.list,"/"),t.ret==0);
 	sleep(20);
 	TEST(chubby_connection_checkLease(c2),t.ret==CHUBBY_E_LEASEEXPIRED);
-	TEST(chubby_connection_list(c2,&t.list,"/"),t.ret==CHUBBY_E_LEASEEXPIRED);
+	TEST(chubby_connection_list(c2,NULL,&t.list,"/"),t.ret==CHUBBY_E_LEASEEXPIRED);
 	chubby_connection_close(c2);
 	c2 = NULL;
     }

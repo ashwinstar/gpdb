@@ -70,6 +70,7 @@ class Connection:
 	    size = int(b[0:i])
 	    b = b[i+1:]
 	    i = b.index(' ')
+	    parentDn = int(b[0:i])
 	    b = b[i+1:]
 	    if dn!=newdn:
 		dn = newdn
@@ -84,7 +85,7 @@ class Connection:
 		length += len(b)
 	    if length==size or maxsize!=None and size>=maxsize:
 		break
-	return (0,dn,"".join(s))
+	return (0,dn,"".join(s),parentDn)
 
     def __stat(self,name):
 	return stat1(self.__propose,name)
@@ -123,6 +124,8 @@ class Connection:
 	if a[0]:
 	    return a[0]
 	dn = a[1]
+	if not dn:
+	    return E_NOENT
 	a = self.__propose("If %s %d Move %s %s"%(name,dn,name,toname))
 	if a[0]==E_IFFAILED:
 	    a = self.__chubbyStat(name)
@@ -157,7 +160,9 @@ class Connection:
 	    a = self.__propose("If %s %d Mkdir %s"%(ifname,dn,name))
 	    if a[0]==E_IFFAILED:
 		a = self.__chubbyStat(ifname)
-		if a[0]==0 and a[1]==dn:
+		if a[0]:
+		    return a[0]
+		if a[1]==dn:
 		    return E_LEASEEXPIRED
 		continue
 	    return a[0]
@@ -178,7 +183,9 @@ class Connection:
 	    a = self.__propose("If %s %d Put %s %d "%(ifname,dn,name,offset)+contents)
 	    if a[0]==E_IFFAILED:
 		a = self.__chubbyStat(ifname)
-		if a[0]==0 and a[1]==dn:
+		if a[0]:
+		    return a[0]
+		if a[1]==dn:
 		    return E_LEASEEXPIRED
 		if ifname!=name:
 		    continue

@@ -45,7 +45,7 @@ int chubby_connection_asynchronous_stat(chubby_connection_t*thiz,void(*callback)
 int chubby_connection_asynchronous_put(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*data,const char*name,chubby_string_t*contents);
 int chubby_connection_asynchronous_putBigFile(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*data,const char*name,chubby_string_t*contents);
 int chubby_connection_asynchronous_remove(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*data,const char*name);
-int chubby_connection_asynchronous_list(chubby_connection_t*thiz,void(*callback)(void*data,int e,char**answer),void*data,const char*name);
+int chubby_connection_asynchronous_list(chubby_connection_t*thiz,void(*callback)(void*data,int e,struct chubby_stat*stat,char**answer),void*data,const char*name);
 int chubby_connection_asynchronous_checkLease(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*data);
 int chubby_connection_asynchronous_getLease(chubby_connection_t*thiz,void(*callback)(void*data,int e,chubby_connection_t*answer),void*data,const char*name,int timeout,int leaseTime);
 int chubby_connection_asynchronous_renew(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*data,int leaseTime);
@@ -59,7 +59,7 @@ int chubby_connection_stat(chubby_connection_t*thiz,struct chubby_stat*stat,cons
 int chubby_connection_put(chubby_connection_t*thiz,const char*name,chubby_string_t*contents);
 int chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_string_t*contents);
 int chubby_connection_remove(chubby_connection_t*thiz,const char*name);
-int chubby_connection_list(chubby_connection_t*thiz,char***answer,const char*name);
+int chubby_connection_list(chubby_connection_t*thiz,struct chubby_stat*stat,char***answer,const char*name);
 void chubby_connection_listFree(chubby_connection_t*thiz,char**answer);
 int chubby_connection_getLeaseFilenameDecreeNumberConnection(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int64_t decreeNumber);
 int chubby_connection_getLeaseFilenameAndDecreeNumber(chubby_connection_t*thiz,char**filename,int64_t*decreeNumber);
