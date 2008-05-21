@@ -7,6 +7,11 @@ E_ISDIR = 2
 E_IFFAILED = 3
 E_INVAL = 4
 
+def normalizeFilename(filename):
+    return "/".join(filter(None,filename.split("/")))
+def dirname(filename):
+    return "/".join(filter(None,filename.split("/"))[:-1])
+
 class StateException(Exception):
 
     def __init__(self,s):
@@ -41,7 +46,6 @@ class Dir:
 
     def get(self,name):
 	try:
-	    name = name.lstrip('/')
 	    if not name:
 		return self
 	    i = name.find('/')
@@ -70,46 +74,59 @@ class Dir:
 		dir.__map[name] = value
 	return dir
 
-    def put(self,dn,cow,name,string):
-	name = name.lstrip('/')
+    def __put1(self,dn,cow,name,oo):
 	if not name:
 	    raise StateException(E_ISDIR)
 	i = name.find('/')
 	if i!=-1:
 	    n = name[i+1:]
 	    name = name[:i]
-	    o = self.__map.get(name,Dir(dn))
+	    o = self.__map.get(name,None)
 	    if not isinstance(o,Dir):
 		raise StateException(E_NOENT)
-	    o = o.put(dn,cow,n,string)
-	else:
-	    if isinstance(self.__map.get(name,None),Dir):
-		raise StateException(E_ISDIR)
-	    o = Value(dn,string)
-	return self.__set(dn,cow,name,o)
+	    oo = o.__put1(dn,cow,n,oo)
+	return self.__set(dn,cow,name,oo)
+
+    def move(self,dn,cow,fname,tname):
+	if not fname or not tname or fname==tname:
+	    raise StateException(E_INVAL)
+	if tname.startswith(fname+'/'):
+	    raise StateException(E_INVAL)
+	o = self.get(fname)
+	if not o:
+	    raise StateException(E_NOENT)
+	dir = self.__put1(dn,cow,tname,o)
+	if not fname.startswith(tname+'/'):
+	    dir = dir.__put1(dn,cow,fname,None)
+	return dir
+
+    def put(self,dn,cow,name,string):
+	o = self.get(name)
+	if isinstance(o,Dir):
+	    raise StateException(E_ISDIR)
+	return self.__put1(dn,cow,name,Value(dn,string))
 
     def remove(self,dn,cow,name):
-	try:
-	    name = name.lstrip('/')
-	    if not name:
-		raise StateException(E_ISDIR)
-	    i = name.find('/')
-	    if i!=-1:
-		n = name[i+1:]
-		name = name[:i]
-		o = self.__map[name]
-		if not isinstance(o,Dir):
-		    raise StateException(E_NOENT)
-		o = o.remove(dn,cow,n)
-		if not o.__map:
-		    o = None
-		return self.__set(dn,cow,name,o)
-	    o = self.__map[name]
-	    if isinstance(o,Dir):
-		raise StateException(E_ISDIR)
-	    return self.__set(dn,cow,name,None)
-	except KeyError:
+	o = self.get(name)
+	if o==None:
 	    raise StateException(E_NOENT)
+	if isinstance(o,Dir):
+	    raise StateException(E_ISDIR)
+	return self.__put1(dn,cow,name,None)
+
+    def mkdir(self,dn,cow,name):
+	o = self.get(name)
+	if o!=None:
+	    raise StateException(E_INVAL)
+	return self.__put1(dn,cow,name,Dir(dn))
+
+    def rmdir(self,dn,cow,name):
+	o = self.get(name)
+	if o==None:
+	    raise StateException(E_NOENT)
+	if not isinstance(o,Dir):
+	    raise StateException(E_INVAL)
+	return self.__put1(dn,cow,name,None)
 
     def write(self,out):
 	for name,o in sorted(self.__map.iteritems()):
@@ -151,10 +168,14 @@ class State:
 	self.__cow = dn
 	return self.__root
 
+    def __dirdn(self,name):
+	o = self.__root.get(dirname(name))
+	return o and o.dn or 0
+
     def __get1(self,name):
 	o = self.__root.get(name)
 	if o==None:
-	    raise StateException(E_NOENT)
+	    return
 	if isinstance(o,Dir):
 	    sb = " ".join(sorted(o.list()))
 	else:
@@ -166,16 +187,17 @@ class State:
 
     def __commandGet(self,name,offset,size):
 	o = self.__get1(name)
-	return "%d %d "%(o[0],len(o[1]))+o[1][offset:offset+size]
+	if o==None:
+	    raise StateException(E_NOENT)
+	return "%d %d %d "%(o[0],len(o[1]),self.__dirdn(name))+o[1][offset:offset+size]
 
     def __commandStat(self,name):
 	o = self.__get1(name)
-	return "%d %d"%(o[0],len(o[1]))
+	if o==None:
+	    o = (0,"")
+	return "%d %d %d"%(o[0],len(o[1]),self.__dirdn(name))
 
-    def __commandRemove(self,name,dn):
-	self.__root = self.__root.remove(dn,self.__cow,name)
-
-    def __commandPut(self,name,dn,offset,string):
+    def __commandPut(self,dn,name,offset,string):
 	if offset!=0:
 	    o = self.__root.get(name)
 	    if o==None:
@@ -189,6 +211,15 @@ class State:
 
     def get(self,name):
 	return self.__root.get(name)
+
+    def mkdir(self,dn,name):
+	self.__root = self.__root.mkdir(dn,self.__cow,name)
+
+    def rmdir(self,dn,name):
+	self.__root = self.__root.rmdir(dn,self.__cow,name)
+
+    def move(self,dn,fname,tname):
+	self.__root = self.__root.move(dn,self.__cow,fname,tname)
 
     def list(self,name):
 	a = self.__root.get(name)
@@ -214,7 +245,7 @@ class State:
 	    sc = StringChopper(decree)
 	    while 1:
 		command = sc.nextToken()
-		name = sc.nextToken()
+		name = normalizeFilename(sc.nextToken())
 		if command=="If":
 		    l = int(sc.nextToken())
 		    o = self.__root.get(name)
@@ -228,14 +259,19 @@ class State:
 		if command=="Tag":
 		    continue
 		if command=="Move":
-		    toname = sc.nextToken()
-		    self.__commandPut(toname,dn,0,self.__get1(name)[1])
-		    self.__commandRemove(name,dn)
+		    toname = normalizeFilename(sc.nextToken())
+		    self.move(dn,name,toname)
+		    return "0"
+		if command=="Mkdir":
+		    self.mkdir(dn,name)
+		    return "0"
+		if command=="Rmdir":
+		    self.rmdir(dn,name)
 		    return "0"
 		if command=="Put":
 		    offset = int(sc.nextToken())
 		    s = sc.remainingStuff()
-		    self.__commandPut(name,dn,offset,s)
+		    self.__commandPut(dn,name,offset,s)
 		    return "0"
 		if command=="Get":
 		    offset = int(sc.nextToken())
@@ -244,7 +280,7 @@ class State:
 		if command=="Stat":
 		    return self.__commandStat(name)
 		if command=="Remove":
-		    self.__commandRemove(name,dn)
+		    self.remove(dn,name)
 		    return "0"
 		if command=="GetPriestSet":
 		    return self.__commandGetPriestSet(priestSet)

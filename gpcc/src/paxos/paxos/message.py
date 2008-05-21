@@ -1,5 +1,27 @@
 PAXOS_PROTOCOL_VERSION = 0
 
+def mangle(s):
+    sb = []
+    for c in s:
+	if c==' ' or c=='!':
+	    sb.append('!')
+	    c = chr(ord(c)+1)
+	sb.append(c)
+    return "".join(sb)
+
+def unmangle(s):
+    sb = []
+    i = 0
+    j = len(s)
+    while i<j:
+	c = s[i]
+	i += 1
+	if c=='!':
+	    c = chr(ord(s[i])-1)
+	    i += 1
+	sb.append(c)
+    return "".join(sb)
+
 class Maker:
 
     def __init__(self,command):
@@ -27,20 +49,10 @@ class Maker:
 	self.__sb.append("bn="+str(bn))
 
     def addDecree(self,decree):
-	self.__sb.append("decree="+self.__mangle(decree))
+	self.__sb.append("decree="+mangle(decree))
 
     def addResult(self,result):
-	self.__sb.append("result="+self.__mangle(result))
-
-    @staticmethod
-    def __mangle(s):
-	sb = []
-	for c in s:
-	    if c==' ' or c=='!':
-		sb.append('!')
-		c = chr(ord(c)+1)
-	    sb.append(c)
-	return "".join(sb)
+	self.__sb.append("result="+mangle(result))
 
 class Message:
 
@@ -67,25 +79,11 @@ class Message:
 	    elif s=="bn":
 		self.bn = int(value)
 	    elif s=="decree":
-		self.decree = self.__unmangle(value)
+		self.decree = unmangle(value)
 	    elif s=="result":
-		self.result = self.__unmangle(value)
+		self.result = unmangle(value)
 	    else:
 		assert 0
-
-    @staticmethod
-    def __unmangle(s):
-	sb = []
-	i = 0
-	j = len(s)
-	while i<j:
-	    c = s[i]
-	    i += 1
-	    if c=='!':
-		c = chr(ord(s[i])-1)
-		i += 1
-	    sb.append(c)
-	return "".join(sb)
 
 def getMessage(messageAndFrom):
     if messageAndFrom[0]:

@@ -44,10 +44,12 @@ class Learner(Role):
 	self.__lastPriestSet = set()
 	self.highestLearnedDn = 0
 	best = State()
-	best.put(0,DECREE_NUMBER,"")
+	best.mkdir(1,PAXOS_DIR)
+	best.mkdir(1,priestset.PRIESTS_DIR)
+	best.put(1,DECREE_NUMBER,"")
 	if os.path.exists(priest.dataDir+"/start"):
 	    best.put(ACCEPTOR_HISTORY,DECREE_NUMBER,"")
-	    best.put(0,priestset.PRIESTS_DIR+"/initialPriest",'+'+priest.acceptor.id)
+	    best.put(1,priestset.PRIESTS_DIR+"/initialPriest",'+'+priest.acceptor.id)
 	bestDn = 0
 	for i in xrange(N_SAVE):
 	    f = priest.dataDir+"/learner-data%d.gz"%i

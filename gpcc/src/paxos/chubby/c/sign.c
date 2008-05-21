@@ -37,7 +37,7 @@ sockaddr_toString(char*a,const struct sockaddr*sa)
 }
 
 void
-chubby_sign(chubby_t*thiz,char*a,const char*b,int len,const struct sockaddr*f,const struct sockaddr*t)
+chubby_sign(chubby_t*thiz,char*a,const char*b,int len,const struct sockaddr*t)
 {
     char s[23]; /* "xxx.xxx.xxx.xxx:xxxxx " */
     unsigned char digest[APR_MD5_DIGESTSIZE];
@@ -45,8 +45,6 @@ chubby_sign(chubby_t*thiz,char*a,const char*b,int len,const struct sockaddr*f,co
     apr_md5_ctx_t m;
     apr_md5_init(&m);
     apr_md5_update(&m,thiz->paxosKey,strlen(thiz->paxosKey));
-    sockaddr_toString(s,f);
-    apr_md5_update(&m,s,strlen(s));
     sockaddr_toString(s,t);
     apr_md5_update(&m,s,strlen(s));
     apr_md5_update(&m,b+SIGNSTRING_LENGTH,len-SIGNSTRING_LENGTH);

@@ -227,7 +227,7 @@ chubby_asynchronous_sendGetLeader(chubby_t*thiz)
 	    a[s-t] = 0;
 	    if (!getSocketAddressByName((struct sockaddr_in*)&sa,a)){
 		sprintf(a,SIGNSTRING"GetLeader version=%d",PAXOS_PROTOCOL_VERSION);
-		chubby_sign(thiz,a,a,strlen(a),&thiz->socketName,&sa);
+		chubby_sign(thiz,a,a,strlen(a),&sa);
 		sendto(thiz->fd,a,strlen(a),0,&sa,sizeof sa);
 	    }
 	}
@@ -242,7 +242,7 @@ chubby_asynchronous_sendProposal(chubby_t*thiz)
     for (p=thiz->proposal; p; p=p->next)
 	if (thiz->now >= p->proposeTimeout){
 	    p->proposeTimeout = thiz->now+TIMEOUT;
-	    chubby_sign(thiz,p->b.a,p->b.a,p->b.length,&thiz->socketName,&thiz->leader);
+	    chubby_sign(thiz,p->b.a,p->b.a,p->b.length,&thiz->leader);
 	    sendto(thiz->fd,p->b.a,p->b.length,0,&thiz->leader,sizeof thiz->leader);
 	}else if (thiz->nextTime > p->proposeTimeout)
 	    thiz->nextTime = p->proposeTimeout;
@@ -329,8 +329,6 @@ chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv)
     for (;;){
 	int i;
 	struct timeval zero={0,0};
-	struct sockaddr from;
-	socklen_t fromlen=sizeof from;
 	char signature[SIGNSTRING_LENGTH];
 	chubby_udp_buffer_t b;
 	FD_ZERO(&rset);
@@ -338,10 +336,10 @@ chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv)
 	i = select(thiz->fd+1,&rset,NULL,NULL,&zero);
 	if (i <= 0)
 	    break;
-	b.length = recvfrom(thiz->fd,b.a,65535,0,&from,&fromlen);
+	b.length = recv(thiz->fd,b.a,65535,0);
 	if (b.length < SIGNSTRING_LENGTH)
 	    continue;
-	chubby_sign(thiz,signature,b.a,b.length,&from,&thiz->socketName);
+	chubby_sign(thiz,signature,b.a,b.length,&thiz->socketName);
 	if (memcmp(signature,b.a,SIGNSTRING_LENGTH))
 	    continue;
 	chubby_asynchronous_recv(thiz,&b);
