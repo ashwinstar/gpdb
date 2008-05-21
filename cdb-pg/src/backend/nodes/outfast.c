@@ -2936,6 +2936,7 @@ _outNode(StringInfo str, void *obj)
 	else if (IsA(obj, Integer) ||
 			 IsA(obj, Float) ||
 			 IsA(obj, String) ||
+			 IsA(obj, Null) ||
 			 IsA(obj, BitString))
 	{
 		_outValue(str, obj);

@@ -1622,8 +1622,12 @@ create_externalscan_plan(CreatePlanContext *ctx, Path *best_path,
 	    if(segdb_file_map[i] != NULL)
 	    	filenames = lappend(filenames, makeString(segdb_file_map[i]));
 	    else
+		{
 			/* no file for this segdb. add a null entry */
-	    	filenames = lappend(filenames, makeNullString()); 
+			Value *n = makeNode(Value);
+			n->type = T_Null;
+			filenames = lappend(filenames, n);
+		}	
 	}
 	
 	/* data format description */

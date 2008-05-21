@@ -3830,6 +3830,7 @@ expression_tree_mutator(Node *node,
 		case T_RangeTblRef:
 		case T_OuterJoinInfo:
 		case T_String:
+		case T_Null:
 			/* primitive node types with no expression subnodes */
 			return (Node *) copyObject(node);
 		case T_Aggref:

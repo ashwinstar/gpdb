@@ -2970,7 +2970,7 @@ _readValue(const char ** str, NodeTag nt)
 	{
 		Value *val = makeNode(Value);
 		val->type = T_Null;
-		result = (Node *)T_Null;
+		result = (Node *)val;
 	}
 	else
 	{
@@ -2978,11 +2978,21 @@ _readValue(const char ** str, NodeTag nt)
 		char * nn = NULL; 
 		memcpy(&slen, *str, sizeof(int)); 
 		(*str)+=sizeof(int);  
-		if (slen>0) 
+
+		/* 
+		 * For the String case we want to create an empty string if slen is
+		 * equal to zero, since otherwise we'll set the string to NULL, which
+		 * has a different meaning and the NULL case is handed above.
+		 */
+		if (slen > 0 || nt == T_String) 
 		{  
-		    nn = palloc(slen+1);  
-		    memcpy(nn,*str,slen);  
-		    (*str)+=(slen); nn[slen]='\0';  
+		    nn = palloc(slen + 1);
+
+			if (slen > 0)
+			    memcpy(nn, *str, slen);  
+
+		    (*str) += (slen);
+			nn[slen] = '\0';  
 		}  
  
 		if (nt == T_Float)
@@ -2992,7 +3002,7 @@ _readValue(const char ** str, NodeTag nt)
 		else if (nt == T_BitString)
 			result = (Node *) makeBitString(nn);
 		else
-			elog(ERROR,"Souldn't get here");
+			elog(ERROR, "unknown Value node type %i", nt);
 	}
 	
 	return result;
@@ -3058,7 +3068,8 @@ readNodeBinary(const char ** str)
 		return l;
 	}
 	
-	if (nt == T_Integer || nt == T_Float || nt == T_String || nt == T_BitString)
+	if (nt == T_Integer || nt == T_Float || nt == T_String ||
+	   	nt == T_BitString || nt == T_Null)
 	{
 		return _readValue(str, nt);
 	}

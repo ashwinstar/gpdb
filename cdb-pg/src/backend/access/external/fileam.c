@@ -161,13 +161,26 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	if(Gp_role == GP_ROLE_EXECUTE)
 	{
 		/* this is the normal path for most ext tables */
-		uri = (char *) strVal(list_nth(uriList, segindex));	
+		Value *v;
+
+		v = (Value *)list_nth(uriList, segindex);
+
+		if (v->type == T_Null)
+			uri = NULL;
+		else
+			uri = (char *) strVal(v);	
 	}
 	else if(Gp_role == GP_ROLE_DISPATCH && isMasterOnly)
 	{
 		/* this is a ON MASTER table. Only get uri if we are the master */
-		if(segindex == -1)
-			uri = (char *) strVal(list_nth(uriList, 0));
+		if (segindex == -1)
+		{
+			Value *v = list_nth(uriList, 0);
+			if (v->type == T_Null)
+				uri = NULL;
+			else
+				uri = (char *) strVal(v);
+		}
 	}
 	
 	/*
