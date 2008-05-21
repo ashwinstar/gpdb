@@ -327,7 +327,8 @@ ALTER TABLE tenk_ao1 RENAME TO tenk_renamed;
 ALTER TABLE tenk_renamed ADD COLUMN newcol int default 10;
 ALTER TABLE tenk_renamed ALTER COLUMN twothousand SET NOT NULL;
 ALTER TABLE tenk_renamed ADD COLUMN newcol2 int NOT NULL; -- should fail
-ERROR:  column "newcol2" contains null values
+ERROR:  ADD COLUMN with no default value in append-only tables is not yet supported.
+HINT:  Use a DEFAULT value, or use INSERT...SELECT to movedata to a newly created table with the new column.
 SELECT count(*) FROM tenk_renamed;
  count 
 -------

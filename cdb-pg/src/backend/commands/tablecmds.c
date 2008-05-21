@@ -4149,6 +4149,24 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	Form_pg_type tform;
 	Expr	   *defval;
 
+	/*
+	 * Append Only tables don't support ADD COLUMN when no default value is
+	 * specified. This is because this scenario makes a schema change that
+	 * memtuples can't deal with yet. If a default value is specified than it
+	 * it ok because the whole table will get re-written in phase 3. Let's
+	 * catch this now before doing any real work.
+	 */
+	if (rel->rd_rel->relkind == RELKIND_APPEND_ONLY && !colDef->raw_default)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
+				 errmsg("ADD COLUMN with no default value in append-only tables"
+						" is not yet supported."),
+				 errhint("Use a DEFAULT value, or use INSERT...SELECT to move "
+						 "data to a newly created table with the new column.")));
+		
+	}
+	
 	attrdesc = heap_open(AttributeRelationId, RowExclusiveLock);
 
 	/*
