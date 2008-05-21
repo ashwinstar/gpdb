@@ -17,8 +17,10 @@
 #include <gpcc_pg.h>
 #include <gpcc_proc.h>
 #include <gpcc_file.h>
+#include <chubby.h>
 #include "gpma.h"
 
+#include "fsm_chubby.h"
 #include "fsm_node.h"
 #include "fsm_ma.h"
 #include "fsm_config.h"
@@ -36,8 +38,9 @@
 #include "fsm_unit.h"
 #include "fsm_segment_start.h"
 #include "fsm_segment_stop.h"
+#include "fsm_login.h"
+#include "fsm_admin.h"
 
-#include "zookeeper.h"
 
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
 {
@@ -95,29 +98,41 @@ APR_DECLARE(void) fsm_init(void)
 
     /* lma */
     gpcc_fsm_put(LMA_OFF_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_init, NULL);
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_ELECTING_CMDSTATE,
-		 a_lma_electself, NULL);
-    gpcc_fsm_put(LMA_ELECTING_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE,
+		 a_lma_init, a_lma_get_lease, NULL);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, CHUBBY_GET_LEASE_REPLY_EVENT, LMA_LEADLESS_CMDSTATE,
+		 a_lma_get_lease_reply, NULL);
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE,
 		 a_lma_leader, NULL);
-    gpcc_fsm_put(LMA_ELECTING_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_sleep, NULL);
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, TIMEUP_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_init, NULL);
+		 a_lma_get_lease, NULL);
 
-    gpcc_fsm_put(LMA_LEAD_CMDSTATE, TIMEUP_EVENT, LMA_LEAD_CMDSTATE,
-		 a_lma_renew, NULL);
+
+    gpcc_fsm_put(LMA_LEAD_CMDSTATE, CHUBBY_PUT_REPLY_EVENT, LMA_LEAD_CMDSTATE,
+		 a_lma_leader_put_reply, NULL);
+    gpcc_fsm_put(LMA_LEAD_CMDSTATE, CHUBBY_GET_REPLY_EVENT, LMA_LEAD_CMDSTATE,
+		 a_lma_leader_get_master_reply, NULL);
+    gpcc_fsm_put(LMA_LEAD_CMDSTATE, CHUBBY_RENEW_REPLY_EVENT, LMA_LEAD_CMDSTATE,
+		 a_lma_leader_renew_reply, NULL);
     gpcc_fsm_put(LMA_LEAD_CMDSTATE, FAILURE_EVENT, LMA_LEADLESS_CMDSTATE,
-		 a_lma_leader_reset, NULL);
-    gpcc_fsm_put(LMA_LEAD_CMDSTATE, LMA_GIVEUP_EVENT, LMA_STANDBY_CMDSTATE,
-		 a_lma_leader_giveup, NULL);
+		 a_lma_leader_failure, NULL);
+    gpcc_fsm_put(LMA_LEAD_CMDSTATE, TIMEUP_EVENT, LMA_LEAD_CMDSTATE,
+		 a_lma_leader_renew, NULL);
 
-    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, LMA_STANDBY_EVENT, LMA_STANDBY_CMDSTATE,
-		 a_lma_sleep, NULL);
+
+    gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, FAILURE_EVENT, LMA_STANDBY_CMDSTATE,
+		 a_lma_standby, NULL);
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, CHUBBY_GET_REPLY_EVENT, LMA_STANDBY_CMDSTATE,
+		 a_lma_standby_get_reply, NULL);
+
     gpcc_fsm_put(LMA_STANDBY_CMDSTATE, TIMEUP_EVENT, LMA_STANDBY_CMDSTATE,
-		 a_lma_standby_check_leader, NULL);
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, LMA_ELECTSELF_EVENT, LMA_ELECTING_CMDSTATE,
-		 a_lma_electself, NULL);
+		 a_lma_standby_get_lease, NULL);
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, CHUBBY_GET_LEASE_REPLY_EVENT, LMA_STANDBY_CMDSTATE,
+		 a_lma_standby_get_lease_reply, NULL);
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE,
+		 a_lma_leader, NULL);
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, FAILURE_EVENT, LMA_STANDBY_CMDSTATE,
+		 a_lma_standby, NULL);
+
 
     /* ha set */
     gpcc_fsm_put(HASET_OFF_CMDSTATE, INIT_EVENT, HASET_WAIT_CMDSTATE, 
@@ -652,5 +667,105 @@ APR_DECLARE(void) fsm_init(void)
 		 a_unit_status, NULL);
     gpcc_fsm_put(UNIT_INVALID_CMDSTATE, UNIT_STATUS_EVENT, UNIT_INVALID_CMDSTATE,
 		 a_unit_status, NULL);
+
+    /* user manager */
+    gpcc_fsm_put(USER_CMDSTATE, USER_LOGIN_EVENT, USER_CMDSTATE,
+		 a_user_login, NULL);
+    gpcc_fsm_put(USER_CMDSTATE, USER_LOGOUT_EVENT, USER_CMDSTATE,
+		 a_user_logout, NULL);
+    gpcc_fsm_put(USER_CMDSTATE, TIMEUP_EVENT, USER_CMDSTATE,
+		 a_user_check_expire, NULL);
+
+
+    /* login */
+    gpcc_fsm_put(LOGIN_CMDSTATE, USER_LOGIN_EVENT, LOGIN_LOGGING_CMDSTATE,
+		 a_login_get_password_file, NULL);
+    gpcc_fsm_put(LOGIN_LOGGING_CMDSTATE, CHUBBY_GET_REPLY_EVENT, LOGIN_LOGGING_CMDSTATE,
+		 a_login_logging_on, NULL);
+    gpcc_fsm_put(LOGIN_LOGGING_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 a_login_failure, a_login_finish, NULL);
+    gpcc_fsm_put(LOGIN_LOGGING_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 a_login_logged_on, a_login_finish, NULL);
+    gpcc_fsm_put(LOGIN_LOGGING_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 a_login_failure, a_login_finish, NULL);
+
+    /* admin manager */
+    gpcc_fsm_put(ADMIN_CMDSTATE, ADMIN_ADD_EVENT, ADMIN_CMDSTATE,
+		 a_admin_forward, NULL);
+    gpcc_fsm_put(ADMIN_CMDSTATE, ADMIN_DELETE_EVENT, ADMIN_CMDSTATE,
+		 a_admin_forward, NULL);
+    gpcc_fsm_put(ADMIN_CMDSTATE, ADMIN_LIST_EVENT, ADMIN_CMDSTATE,
+		 a_admin_forward, NULL);
+    gpcc_fsm_put(ADMIN_CMDSTATE, ADMIN_PASSWORD_EVENT, ADMIN_CMDSTATE,
+		 a_admin_forward, NULL);
+    
+    /* admin add */    
+    gpcc_fsm_put(ADMIN_ADD_CMDSTATE, ADMIN_ADD_EVENT, ADMIN_ADDING_CMDSTATE,
+		 a_admin_add_init, NULL);
+    gpcc_fsm_put(ADMIN_ADDING_CMDSTATE, CONTINUE_EVENT, ADMIN_ADDING_CMDSTATE,
+		 a_admin_get_password_file_lease, NULL);
+    gpcc_fsm_put(ADMIN_ADDING_CMDSTATE, CHUBBY_GET_LEASE_REPLY_EVENT, ADMIN_ADDING_CMDSTATE,
+		 a_admin_get_password_file, NULL);
+    gpcc_fsm_put(ADMIN_ADDING_CMDSTATE, CHUBBY_GET_REPLY_EVENT, ADMIN_ADDING_CMDSTATE,
+		 a_admin_add_set_password_file, NULL);
+    gpcc_fsm_put(ADMIN_ADDING_CMDSTATE, CHUBBY_PUT_REPLY_EVENT, ADMIN_ADDING_CMDSTATE,
+		 a_admin_giveup_lease, NULL);
+    gpcc_fsm_put(ADMIN_ADDING_CMDSTATE, CHUBBY_GIVEUP_LEASE_REPLY_EVENT, ADMIN_ADDING_CMDSTATE,
+		 a_admin_add_done, NULL);
+    gpcc_fsm_put(ADMIN_ADDING_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 a_admin_add_success, NULL);
+    gpcc_fsm_put(ADMIN_ADDING_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 a_admin_add_failure, NULL);
+
+    /* admin delete */
+    gpcc_fsm_put(ADMIN_DELETE_CMDSTATE, ADMIN_DELETE_EVENT, ADMIN_DELETING_CMDSTATE,
+		 a_admin_delete_init, NULL);
+    gpcc_fsm_put(ADMIN_DELETING_CMDSTATE, CONTINUE_EVENT, ADMIN_DELETING_CMDSTATE,
+		 a_admin_get_password_file_lease, NULL);
+    gpcc_fsm_put(ADMIN_DELETING_CMDSTATE, CHUBBY_GET_LEASE_REPLY_EVENT, ADMIN_DELETING_CMDSTATE,
+		 a_admin_get_password_file, NULL);
+    gpcc_fsm_put(ADMIN_DELETING_CMDSTATE, CHUBBY_GET_REPLY_EVENT, ADMIN_DELETING_CMDSTATE,
+		 a_admin_delete_set_password_file, NULL);
+    gpcc_fsm_put(ADMIN_DELETING_CMDSTATE, CHUBBY_PUT_REPLY_EVENT, ADMIN_DELETING_CMDSTATE,
+		 a_admin_giveup_lease, NULL);
+    gpcc_fsm_put(ADMIN_DELETING_CMDSTATE, CHUBBY_GIVEUP_LEASE_REPLY_EVENT, ADMIN_DELETING_CMDSTATE,
+		 a_admin_delete_done, NULL);
+    gpcc_fsm_put(ADMIN_DELETING_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 a_admin_delete_success, NULL);
+    gpcc_fsm_put(ADMIN_DELETING_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 a_admin_delete_failure, NULL);
+
+
+    /* admin list */
+    gpcc_fsm_put(ADMIN_LIST_CMDSTATE, ADMIN_LIST_EVENT, ADMIN_LISTING_CMDSTATE,
+		 a_admin_get_password_file, NULL);
+    gpcc_fsm_put(ADMIN_LISTING_CMDSTATE, CHUBBY_GET_REPLY_EVENT, ADMIN_LISTING_CMDSTATE,
+		 a_admin_list_done, NULL);
+    gpcc_fsm_put(ADMIN_LISTING_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 a_admin_list_success, NULL);
+    gpcc_fsm_put(ADMIN_LISTING_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 a_admin_list_failure, NULL);
+
+
+    /* admin password */
+    gpcc_fsm_put(ADMIN_PASSWORD_CMDSTATE, ADMIN_PASSWORD_EVENT, ADMIN_PASSWORD_CHANGING_CMDSTATE,
+		 a_admin_password_init, NULL);
+    gpcc_fsm_put(ADMIN_PASSWORD_CHANGING_CMDSTATE, CONTINUE_EVENT, ADMIN_PASSWORD_CHANGING_CMDSTATE,
+		 a_admin_get_password_file_lease, NULL);
+    gpcc_fsm_put(ADMIN_PASSWORD_CHANGING_CMDSTATE, CHUBBY_GET_LEASE_REPLY_EVENT, ADMIN_PASSWORD_CHANGING_CMDSTATE,
+		 a_admin_get_password_file, NULL);
+    gpcc_fsm_put(ADMIN_PASSWORD_CHANGING_CMDSTATE, CHUBBY_GET_REPLY_EVENT, ADMIN_PASSWORD_CHANGING_CMDSTATE,
+		 a_admin_password_set_password_file, NULL);
+    gpcc_fsm_put(ADMIN_PASSWORD_CHANGING_CMDSTATE, CHUBBY_PUT_REPLY_EVENT, ADMIN_PASSWORD_CHANGING_CMDSTATE,
+		 a_admin_giveup_lease, NULL);
+    gpcc_fsm_put(ADMIN_PASSWORD_CHANGING_CMDSTATE, CHUBBY_GIVEUP_LEASE_REPLY_EVENT, ADMIN_PASSWORD_CHANGING_CMDSTATE,
+		 a_admin_password_done, NULL);
+    gpcc_fsm_put(ADMIN_PASSWORD_CHANGING_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 a_admin_password_success, NULL);
+    gpcc_fsm_put(ADMIN_PASSWORD_CHANGING_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 a_admin_password_failure, NULL);
+
+    
+
 
 }

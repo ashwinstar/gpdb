@@ -275,8 +275,28 @@ static void net_accepted(gpcc_net_conn_t conn,
 		ev = mkhttp_event(ARRAY_DELETE_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
 				  gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 	    }
-	    else 
-		is_bad_uri = 1;
+	    else if (0 == strcmp("/gpcc/login", uri->path)) {
+		ev = mkhttp_event(USER_LOGIN_EVENT, conn, gpma.user_cmdslot->cmdidx, 0, 
+				  gpma.user_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    } else if (0 == strcmp("/gpcc/logout", uri->path)) {
+		ev = mkhttp_event(USER_LOGOUT_EVENT, conn, gpma.user_cmdslot->cmdidx, 0, 
+				  gpma.user_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    } else if (0 == strcmp("/gpcc/admin/add", uri->path)) {
+		ev = mkhttp_event(ADMIN_ADD_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
+				  gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    } else if (0 == strcmp("/gpcc/admin/delete", uri->path)) {
+		ev = mkhttp_event(ADMIN_DELETE_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
+				  gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    } else if (0 == strcmp("/gpcc/admin/list", uri->path)) {
+		ev = mkhttp_event(ADMIN_LIST_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
+				  gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    } else if (0 == strcmp("/gpcc/admin/password", uri->path)) {
+		ev = mkhttp_event(ADMIN_PASSWORD_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
+				  gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+	    }
+	    else {
+		is_bad_uri = 1; 
+	    }
 	}
 
 	if (ev) {
@@ -357,6 +377,15 @@ static void net_tick(apr_time_t now)
     gpcc_evqueue_put(gpma.evq, ev);
 }
 
+/* chubby */
+static void do_chubby(int fd, short event, void* arg)
+{
+    int new_fd;
+    struct timeval tv;
+    chubby_asynchronous_think(gpma.chubby, &new_fd, &tv);
+    gpcc_net_chubby_event(new_fd, do_chubby, &tv, 0);
+}
+
 
 /* Main program for the daemon */
 void d_main(void)
@@ -398,6 +427,13 @@ void d_main(void)
     /* FTS slot */
     gpma.fts_cmdslot = cmdslot_alloc("FTS", FTS_CMDSTATE);
 
+    /* user slot */
+    gpma.user_cmdslot = cmdslot_alloc("USER", USER_CMDSTATE);
+    gpma.user_cmdslot->u.user.usertb = apr_hash_make(gpma.user_cmdslot->pool);
+
+    /* user slot */
+    gpma.admin_cmdslot = cmdslot_alloc("ADMIN", ADMIN_CMDSTATE);
+
     
     fsm_init();
 
@@ -416,6 +452,17 @@ void d_main(void)
 			       net_closed, net_tick));
 
     gpcc_log_info("gpma listening to port %d", gpma.ma_port);
+
+    
+    /* chubby */
+    {
+	int fd;
+	struct timeval tv;
+	
+	gpma.chubby = chubby_new(gpma.px_address, 120, 0, 0);
+	chubby_asynchronous_think(gpma.chubby, &fd, &tv);
+	gpcc_net_chubby_event(fd, do_chubby, &tv, 0);
+    }
 
     /* kick of FTS slot */
     /*

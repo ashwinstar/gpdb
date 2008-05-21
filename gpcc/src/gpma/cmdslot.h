@@ -3,13 +3,14 @@
 
 #include <gpcc.h>
 #include <apr_hash.h>
+#include <apr_md5.h>
+#include <apr_time.h>
 #include "enum.h"
 #include "config.h"
 #include <json/json.h>
 #include <apr_thread_proc.h>
 #include <gpcc_net.h>
-#include "zookeeper.h"
-#include "zookeeper_extra.h"
+#include <chubby.h>
 
 #define CMDSLOT_TABLE_MAX  512
 
@@ -28,6 +29,35 @@ struct seginfo_t {
     char valid;
     char isprimary;
     char definedprimary;
+};
+
+typedef struct user_t user_t;
+struct user_t {
+    apr_size_t datasz;
+    unsigned char sid[APR_MD5_DIGESTSIZE];
+    apr_time_t login_time;
+    apr_time_t expire_time;
+    char name[1];
+};
+    
+typedef struct chubby_result_t chubby_result_t;
+struct chubby_result_t {
+    int retval;
+    union {
+	struct {
+	    struct chubby_stat stat;
+	    chubby_string_t content;
+	} get;
+
+	struct {
+	    struct chubby_stat stat;
+	} stat;
+
+	struct {
+	    chubby_connection_t *conn;
+	} lease;
+
+    } u;
 };
 
 typedef struct cmdslot_t cmdslot_t;
@@ -239,8 +269,10 @@ struct cmdslot_t {
 
 	struct {
 	    char *leader;
-	    zhandle_t *zhandle;
-	    zhandle_t *leadma_lease;
+	    struct {
+		chubby_connection_t *conn;
+		chubby_connection_t *lease;
+	    } chubby;
 	} lma;
 
 	struct {
@@ -273,6 +305,36 @@ struct cmdslot_t {
 	    char *node;
 	    int parentidx;
 	} unit;
+
+	struct {
+	    apr_hash_t *usertb;
+	} user;
+
+	struct {
+	    char *sid;
+	    int expire;
+	    char *username;
+	    char *password;
+	    char *host;
+	    char *passwdfile;
+	    gpcc_net_conn_t conn;
+
+	    struct {
+		chubby_connection_t *conn;
+	    } chubby;
+	} login;
+
+	struct {
+	    char *username;
+	    char *password;
+	    char *new_password;
+	    gpcc_net_conn_t conn;
+
+	    struct {
+		chubby_connection_t *conn;
+		chubby_connection_t *lease;
+	    } chubby;
+	} admin;
     } u;
 };
 

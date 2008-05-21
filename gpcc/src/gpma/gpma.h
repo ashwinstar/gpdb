@@ -6,6 +6,7 @@
 #include "cmdslot.h"
 #include <gpcc_event.h>
 #include <gpcc_net.h>
+#include <chubby.h>
 
 #define CONFIG_DBNAME_KEY                        "array_name"
 #define CONFIG_USER_KEY                          "user"
@@ -71,7 +72,13 @@ struct gpma_t {
 
     cmdslot_t *  cfg_cmdslot;   /* configuration cmdslot */
 
-    cmdslot_t * lma_cmdslot;    /* Lead MA cmdslot */
+    cmdslot_t *  lma_cmdslot;    /* Lead MA cmdslot */
+
+    cmdslot_t *  user_cmdslot;   /* user management login or logout */
+    
+    cmdslot_t *  admin_cmdslot;  /* admin management add, delete, list or password */
+    
+    chubby_t *   chubby;
 };
 
 extern gpma_t gpma;
