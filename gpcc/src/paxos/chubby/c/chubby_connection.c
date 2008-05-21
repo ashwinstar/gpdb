@@ -80,49 +80,6 @@ chubby_connection_clone(chubby_connection_t*thiz,chubby_connection_t**answer)
 }
 
 int
-chubby_connection_getLeaseFilenameDecreeNumberConnection(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int64_t decreeNumber)
-{
-    chubby_connection_t*c;
-    if (strlen(name) >= PATH_MAX)
-	return CHUBBY_E_INVAL;
-    c = chubby_connection_new(thiz->chubby);
-    if (!c)
-	return CHUBBY_E_OOM;
-    chubby_counted_set(&c->parent,thiz);
-    c->leaseDn = decreeNumber;
-    strcpy(c->leaseFilename,name);
-    *answer = c;
-    return 0;
-}
-
-int
-chubby_connection_getLeaseFilenameAndDecreeNumber(chubby_connection_t*thiz,char**filename,int64_t*decreeNumber)
-{
-    if (!thiz->leaseDn)
-	return CHUBBY_E_INVAL;
-    if (filename){
-	*filename = thiz->chubby->malloc(1+strlen(thiz->leaseFilename));
-	if (!*filename)
-	    return CHUBBY_E_OOM;
-	strcpy(*filename,thiz->leaseFilename);
-    }
-    if (decreeNumber)
-	*decreeNumber = thiz->leaseDn;
-    return 0;
-}
-
-int
-chubby_connection_checkLease(chubby_connection_t*thiz)
-{
-    struct chubby_stat stat;
-    int e;
-    if (!thiz->leaseDn)
-	return CHUBBY_E_INVAL;
-    e = chubby_connection_stat(thiz,&stat,thiz->leaseFilename);
-    return e==0&&stat.decreeNumber==thiz->leaseDn?0:CHUBBY_E_LEASEEXPIRED;
-}
-
-int
 chubby_connection_getLease(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int timeout,int leaseTime)
 {
     int e;
@@ -187,45 +144,56 @@ chubby_connection_getLease(chubby_connection_t*thiz,chubby_connection_t**answer,
     return CHUBBY_E_TIMEOUT;
 }
 
-int
-chubby_connection_renew(chubby_connection_t*thiz,int leaseTime)
+void
+super_data_delete(struct super_data*data)
 {
-    chubby_string_t*a,*b;
-    char info[PATH_MAX];
-    apr_time_t now=apr_time_now();
-    int e;
-    if (!*thiz->leaseId)
-	return CHUBBY_E_INVAL;
-    a = chubby_string_format(thiz->chubby,"%d %s",leaseTime,thiz->leaseId);
-    if (!a)
-	return CHUBBY_E_OOM;
-    sprintf(info,"%s-info",thiz->leaseFilename);
-    e = chubby_connection_put(thiz,info,a);
-    if (!e){
-	e = chubby_connection_get(thiz,NULL,&b,info,-1);
-	if (!e){
-	    if (a->length==b->length && !memcmp(a->a,b->a,a->length))
-		thiz->leaseExpireTime = now+apr_time_from_sec(leaseTime);
-	    else
-		e = CHUBBY_E_LEASEEXPIRED;
-	    thiz->chubby->free(b);
-	}
-    }
-    thiz->chubby->free(a);
-    return e;
-}
-
-int
-chubby_connection_getLeaseExpireTime(chubby_connection_t*thiz,time_t*t)
-{
-    if (!thiz->leaseDn)
-	return CHUBBY_E_INVAL;
-    *t = apr_time_sec(thiz->leaseExpireTime);
-    return 0;
+    chubby_t*chubby=NULL;
+    if (data->free)
+	data->free(data);
+    chubby_counted_set(&chubby,data->c->chubby);
+    chubby_counted_set(&data->c,NULL);
+    chubby->free(data);
+    chubby_counted_set(&chubby,NULL);
 }
 
 void
-chubby_connection_giveUpLease(chubby_connection_t*thiz)
+super_data_done_nothing(struct super_data*data,int e)
 {
-    chubby_connection_renew(thiz,0);
+    ((void(*)(void*,int))data->callback)(data->data,e);
+    super_data_delete(data);
+}
+
+void
+super_data_done_charstarstar(struct super_data*data,int e,char**charstarstar)
+{
+    ((void(*)(void*,int,char**))data->callback)(data->data,e,charstarstar);
+    super_data_delete(data);
+}
+
+void
+super_data_done_stat_string(struct super_data*data,int e,struct chubby_stat*stat,chubby_string_t*string)
+{
+    ((void(*)(void*,int,struct chubby_stat*,chubby_string_t*))data->callback)(data->data,e,stat,string);
+    super_data_delete(data);
+}
+
+void
+super_data_done_stat(struct super_data*data,int e,struct chubby_stat*stat)
+{
+    ((void(*)(void*,int,struct chubby_stat*))data->callback)(data->data,e,stat);
+    super_data_delete(data);
+}
+
+void*
+super_data_new(int size,chubby_connection_t*c,void*callback,void*dat,void(*free)(void*data))
+{
+    struct super_data*data=c->chubby->malloc(size);
+    if (data){
+	memset(data,0,size);
+	chubby_counted_set(&data->c,c);
+	data->callback = callback;
+	data->data = dat;
+	data->free = free;
+    }
+    return data;
 }

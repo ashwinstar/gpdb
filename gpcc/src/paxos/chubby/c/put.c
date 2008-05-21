@@ -3,31 +3,18 @@
 #include "chubby_private.h"
 
 struct data{
-    chubby_connection_t*c;
-    void(*callback)(void*data,int e);
-    void*data;
+    struct super_data super;
     chubby_string_t*contents;
     char name[PATH_MAX];
     int64_t dn;
 };
 
 static void
-freeData(struct data*data)
+freeData(void*_data)
 {
-    chubby_t*chubby=NULL;
-    chubby_counted_set(&chubby,data->c->chubby);
-    chubby_counted_set(&data->c,NULL);
+    struct data*data=_data;
     if (data->contents)
-	chubby->free(data->contents);
-    chubby->free(data);
-    chubby_counted_set(&chubby,NULL);
-}
-
-static void
-allDone(struct data*data,int e)
-{
-    data->callback(data->data,e);
-    freeData(data);
+	data->super.c->chubby->free(data->contents);
 }
 
 static void
@@ -36,20 +23,20 @@ statDone2(void*_data,int e,struct chubby_stat*stat)
     struct data*data=_data;
     if ((e==CHUBBY_E_NOENT&&!data->dn) || (e==0&&data->dn==stat->decreeNumber))
 	e = CHUBBY_E_LEASEEXPIRED;
-    allDone(data,e);
+    super_data_done_nothing(&data->super,e);
 }
 
 static void
 proposeDone(void*_data,int e,chubby_string_t*answer)
 {
     struct data*data=_data;
-    data->c->chubby->free(answer);
+    data->super.c->chubby->free(answer);
     if (e == CHUBBY_E_IFFAILED){
-	e = chubby_asynchronous_stat(data->c->chubby,statDone2,data,data->name);
+	e = chubby_asynchronous_stat(data->super.c,statDone2,data,data->name);
 	if (!e)
 	    return;
     }
-    allDone(data,e);
+    super_data_done_nothing(&data->super,e);
 }
 
 static void
@@ -60,7 +47,7 @@ statDone1(void*_data,int e,struct chubby_stat*stat)
     if (e == 0)
 	data->dn = stat->decreeNumber;
     else if (e != CHUBBY_E_NOENT){
-	allDone(data,e);
+	super_data_done_nothing(&data->super,e);
 	return;
     }
     b.length = 0;
@@ -70,9 +57,9 @@ statDone1(void*_data,int e,struct chubby_stat*stat)
     chubby_fixFilename(&b,data->name);
     chubby_udp_buffer_format(&b," 0 ");
     chubby_udp_buffer_cat(&b,data->contents);
-    e = chubby_connection_asynchronous_propose(data->c,proposeDone,data,&b);
+    e = chubby_connection_asynchronous_propose(data->super.c,proposeDone,data,&b);
     if (e)
-	allDone(data,e);
+	super_data_done_nothing(&data->super,e);
 }
 
 int
@@ -82,22 +69,18 @@ chubby_connection_asynchronous_put(chubby_connection_t*thiz,void(*callback)(void
     struct data*data;
     if (strlen(name) >= PATH_MAX)
 	return CHUBBY_E_INVAL;
-    data = thiz->chubby->malloc(sizeof*data);
+    data = super_data_new(sizeof*data,thiz,callback,dat,freeData);
     if (!data)
 	return CHUBBY_E_OOM;
-    memset(data,0,sizeof*data);
-    chubby_counted_set(&data->c,thiz);
-    data->callback = callback;
-    data->data = dat;
-    data->contents = chubby_string_copy(data->c->chubby,contents);
+    data->contents = chubby_string_copy(data->super.c->chubby,contents);
     if (!data->contents){
-	freeData(data);
+	super_data_delete(&data->super);
 	return CHUBBY_E_OOM;
     }
     strcpy(data->name,name);
     e = chubby_connection_asynchronous_stat(thiz,statDone1,data,name);
     if (e)
-	freeData(data);
+	super_data_delete(&data->super);
     return e;
 }
 
