@@ -524,13 +524,35 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 
 /* ----------------
  *		appendonly_rescan		- restart a relation scan
+ *
+ *
+ * TODO: instead of freeing resources here and reallocating them in initscan
+ * over and over see which of them can be refactored into appendonly_beginscan
+ * and persist there until endscan is finally reached. For now this will do.
  * ----------------
  */
 void
 appendonly_rescan(AppendOnlyScanDesc scan,
 				  ScanKey key)
 {
-		
+	
+	/* 
+	 * close the relation file. Note that QD has no file to close and some
+	 * slices don't either, so check first. 
+	 */
+	if(Gp_role != GP_ROLE_DISPATCH && scan->aos_file > 0)
+		FileClose(scan->aos_file);
+	
+	/*
+	 * In some cases we didn't get around to call BufferedReadCompleteFile
+	 * because we didn't finish processing the buffer (e.g LIMIT). do it now
+	 * if that's the case.
+	 */
+	if((&scan->bufferedRead)->file >= 0)
+		BufferedReadCompleteFile(&scan->bufferedRead);
+	
+	BufferedReadFinish(&scan->bufferedRead);
+	
 	/*
 	 * reinitialize scan descriptor
 	 */
