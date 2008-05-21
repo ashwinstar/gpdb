@@ -94,17 +94,23 @@ matrix_transpose(PG_FUNCTION_ARGS)
 		for (j = 0; j < ARR_DIMS(m)[0]; j++)
 		{
 			int index_m = i + j * ARR_DIMS(m)[1];
-			char *seek = data_m + (typalign * index_m);
 			if (typlen > 0)
 			{
+				char *seek = data_m + (elsize * index_m);
 				memcpy(data_r, seek, elsize);
 				data_r = (char *) att_align(data_r+elsize, typalign);
 			}
 			else 
 			{
-				elsize = att_addlength(0, typlen, PointerGetDatum(seek));
-				memcpy(data_r, seek, elsize);
-				data_r = (char *) att_align(data_r+elsize, typalign);
+				char *seek = data_m;
+				int k;
+				for (k = 0; k < index_m; k++) 
+				{
+					seek += VARSIZE(seek);
+					seek = (char*) att_align(seek, typalign);
+				}
+				memcpy(data_r, seek, VARSIZE(seek));
+				data_r = (char *) att_align(data_r+VARSIZE(seek), typalign);
 			}
 		}
 	}
@@ -278,19 +284,46 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 	{
-		int size;
+		int       size;
+		int       elsize;
+		Oid       returntype;
+		TupleDesc tupdesc;
 
 		/* First time, we need to allocate our state */
 		Assert(transition_function);
 		
-		/* The two default types supported are int8 and float8 */
-		if (ntype == INT2OID || ntype == INT4OID || ntype == INT8OID)
-			mtype = INT8OID;
-		else
-			mtype = FLOAT8OID;	
+		/* Determine what our return type should be */
+		get_call_result_type(fcinfo, &returntype, &tupdesc); 
+		switch (returntype)
+		{
+			case INT2ARRAYOID:
+				mtype = INT2OID;
+				elsize = sizeof(int16);
+				break;
+			case INT4ARRAYOID:
+				mtype = INT4OID;
+				elsize = sizeof(int32);
+				break;
+			case INT8ARRAYOID:
+				mtype = INT8OID;
+				elsize = sizeof(int64);
+				break;
+			case FLOAT4ARRAYOID:
+				mtype = FLOAT4OID;
+				elsize = sizeof(float4);
+				break;
+			case FLOAT8ARRAYOID:
+				mtype = FLOAT8OID;
+				elsize = sizeof(float8);
+				break;
+			default:
+				ereport(ERROR, 
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("matrix_add: return datatype lookup failure")));
+		}
 
-		/* ALlocate the state matrix */
-		size = ARR_OVERHEAD_NONULLS(ndim) + len * 8;
+		/* Allocate the state matrix */
+		size  = ARR_OVERHEAD_NONULLS(ndim) + len * elsize;
 		m = (ArrayType *) palloc(size);
 		SET_VARSIZE(m, size);
 		m->ndim = ndim;
@@ -301,7 +334,7 @@ Datum matrix_add(PG_FUNCTION_ARGS)
 			ARR_DIMS(m)[i] = ARR_DIMS(n)[i];
 			ARR_LBOUND(m)[i] = 1;
 		}
-		memset(ARR_DATA_PTR(m), 0, len*8);
+		memset(ARR_DATA_PTR(m), 0, len * elsize);
 	}
 	else
 	{

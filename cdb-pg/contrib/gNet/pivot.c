@@ -10,10 +10,13 @@
 PG_FUNCTION_INFO_V1(int4_pivot_accum);    /* returns int4[] */
 PG_FUNCTION_INFO_V1(int8_pivot_accum);    /* returns int8[] */
 PG_FUNCTION_INFO_V1(float8_pivot_accum);  /* returns float8[] */
+PG_FUNCTION_INFO_V1(text_text_unpivot);   /* returns text,text */
+
 
 Datum int4_pivot_accum(PG_FUNCTION_ARGS);
 Datum int8_pivot_accum(PG_FUNCTION_ARGS);
 Datum float8_pivot_accum(PG_FUNCTION_ARGS);
+Datum text_text_unpivot(PG_FUNCTION_ARGS);
 
 /* Internal static helper functions */
 static Datum oid_pivot_accum(FunctionCallInfo fcinfo, Oid type);
@@ -122,13 +125,15 @@ static Datum oid_pivot_accum(FunctionCallInfo fcinfo, Oid type)
 	else
 	{
 		int elsize, size, nelem;
-		
+
 		switch (type) {
 			case INT4OID:
-				elsize = 4; break;
+				elsize = 4;
+				break;
 			case INT8OID:
 			case FLOAT8OID:
-				elsize = 8; break;
+				elsize = 8; 
+				break;
 			default:
 				Assert(false);
 		}
@@ -175,4 +180,86 @@ static Datum oid_pivot_accum(FunctionCallInfo fcinfo, Oid type)
 			Assert(false);
 	}
 	PG_RETURN_ARRAYTYPE_P(data);
+}
+
+typedef struct {
+	int32      index; 
+	int32      max;
+	char      *d1;
+	char      *d2;
+	ArrayType *labels;
+	ArrayType *data;
+} unpivot_fctx;
+
+Datum text_text_unpivot(PG_FUNCTION_ARGS)
+{
+	FuncCallContext      *funcctx;
+	unpivot_fctx         *fctx;
+	MemoryContext         oldcontext;
+
+	/* stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
+	{
+		TupleDesc tupdesc;
+
+		/* see if we were given an explicit step size */
+		if (PG_NARGS() != 2)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("number of parameters != 2")));
+
+		/* Strict function, return null on null input */
+		if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
+			PG_RETURN_NULL();
+		
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/* switch to memory context appropriate for multiple function calls */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+        /* Build a tuple descriptor for our result type */
+        if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+            ereport(ERROR,
+                    (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                     errmsg("function returning record called in context "
+                            "that cannot accept type record")));
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		/* allocate memory for user context */
+		fctx = (unpivot_fctx *) palloc(sizeof(unpivot_fctx));
+
+		/* Use fctx to keep state from call to call */
+		fctx->labels = PG_GETARG_ARRAYTYPE_P(0);
+		fctx->data   = PG_GETARG_ARRAYTYPE_P(1);
+		fctx->d1     = ARR_DATA_PTR(fctx->labels);
+		fctx->d2     = ARR_DATA_PTR(fctx->data);
+		fctx->index  = 0;
+		fctx->max    = ARR_DIMS(fctx->labels)[0];
+		funcctx->user_fctx = fctx;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/* stuff done on every call of the function */
+	funcctx = SRF_PERCALL_SETUP();
+
+	/* get the saved state and use current as the result for this iteration */
+	fctx = (unpivot_fctx*) funcctx->user_fctx;
+	if (fctx->index < fctx->max)
+	{
+		/* Construct the result tuple */
+		Datum     d[2]    = {PointerGetDatum(fctx->d1), PointerGetDatum(fctx->d2)};
+		bool      isna[2] = {false, false};
+		HeapTuple tuple   = heap_form_tuple(funcctx->tuple_desc, d, isna);
+
+		/* Increment pointers */
+		fctx->d1 = (char*) att_align(fctx->d1 + VARSIZE(fctx->d1), 'i');
+		fctx->d2 = (char*) att_align(fctx->d2 + VARSIZE(fctx->d2), 'i');
+		fctx->index++;
+
+		/* Return tuple */
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+	else
+		SRF_RETURN_DONE(funcctx);
 }
