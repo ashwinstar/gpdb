@@ -150,6 +150,7 @@ static apr_status_t a_login_logging_on(gpcc_event_t *ev, void *arg)
     chubby_result_t *result = (chubby_result_t *) ev->pdata;
     struct json_object *obj;
     gpcc_event_t *evt;
+    char *user, *encoded_passwd, *tok, *last, *lastlast;
 
     if (result->retval) {
 	/* fail to get password file */
@@ -162,11 +163,34 @@ static apr_status_t a_login_logging_on(gpcc_event_t *ev, void *arg)
     } 
 
     /* compare the login user and password */
+    for (tok = apr_strtok(result->u.get.content.a,  "\r\n", &last) ; 
+	 tok ; 
+	 tok = apr_strtok(0, "\r\n", &last)) {
+
+	if (*tok == 0)
+	    continue;
+	user = apr_strtok(tok, ":", &lastlast);
+	encoded_passwd = apr_strtok(0, "\r\n", &lastlast);
+	user = gpcc_string_trim(user);
+	encoded_passwd = gpcc_string_trim(encoded_passwd);
+	if (strcmp(user, slot->u.login.username) == 0) {
+	    if (apr_password_validate(slot->u.login.password, encoded_passwd) == 0) {
+		/* username and password correct */
+		evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+		gpcc_evqueue_put(gpma.evq, evt);
+		return 0;
+	    } else {
+		/* wrong password */
+		evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
+		gpcc_evqueue_put(gpma.evq, evt);
+		obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "wrong password");
+		gpcc_net_http_close(slot->u.login.conn, 200, "ok", json_object_to_json_string(obj));
+		json_object_put(obj);		
+		return 0;
+	    }
+	}
+    }
     
-    evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, evt);
-
-
     return 0;
 }
 
@@ -177,7 +201,8 @@ static apr_status_t a_login_logged_on(gpcc_event_t *ev, void *arg)
     int len;
     apr_md5_ctx_t context;
     struct json_object *obj;
-    char sid_md5[APR_MD5_DIGESTSIZE+1];
+    int *sid_int;
+    char sid_str[20];
 
     len = strlen(slot->u.login.username) + strlen(slot->u.login.host) + 2;
     user = (user_t *) malloc(sizeof(user_t) + len);
@@ -193,9 +218,9 @@ static apr_status_t a_login_logged_on(gpcc_event_t *ev, void *arg)
 
     apr_hash_set(gpma.user_cmdslot->u.user.usertb, user->name, APR_HASH_KEY_STRING, (const void *) user);
     
-    memcpy(sid_md5, user->sid, APR_MD5_DIGESTSIZE);
-    sid_md5[APR_MD5_DIGESTSIZE] = 0;
-    obj = gpcc_json_http_reply(gpma.array_name, 0, "login", OK_STATUS, sid_md5, 0);
+    sid_int = (int *) user->sid;
+    sprintf(sid_str, "%04x-%04x-%04x-%04x", sid_int[0], sid_int[1], sid_int[2], sid_int[3]);
+    obj = gpcc_json_http_reply(gpma.array_name, 0, "login", OK_STATUS, sid_str, 0);
     gpcc_net_http_close(slot->u.login.conn, 200, "ok", json_object_to_json_string(obj));    
 
     return 0;

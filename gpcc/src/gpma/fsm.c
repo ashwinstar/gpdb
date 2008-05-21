@@ -738,7 +738,9 @@ APR_DECLARE(void) fsm_init(void)
 
     /* admin list */
     gpcc_fsm_put(ADMIN_LIST_CMDSTATE, ADMIN_LIST_EVENT, ADMIN_LISTING_CMDSTATE,
-		 a_admin_get_password_file, NULL);
+		 a_admin_list_init, NULL);
+    gpcc_fsm_put(ADMIN_LISTING_CMDSTATE, CONTINUE_EVENT, ADMIN_LISTING_CMDSTATE,
+		 a_admin_get_password_file_direct, NULL);
     gpcc_fsm_put(ADMIN_LISTING_CMDSTATE, CHUBBY_GET_REPLY_EVENT, ADMIN_LISTING_CMDSTATE,
 		 a_admin_list_done, NULL);
     gpcc_fsm_put(ADMIN_LISTING_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,

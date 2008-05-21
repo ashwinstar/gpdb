@@ -25,17 +25,16 @@ static const char* verify_hostaddr(const char* addr);
 /* Print usage info */
 static void usage(const char* msg)
 {
-    fprintf(stderr, "\nUsage: %s [-vd?f] [-a array_name] [-D master_dir] [-l logdir] [-p ma_port] -P px1 [-P px2 -P px3]\n\n", gpma.progname);
+    fprintf(stderr, "\nUsage: %s [-vd?f] [-a array_name] [-l logdir] [-p ma_port] -P px1 [-P px2 -P px3]\n\n", gpma.progname);
     fprintf(stderr, "    -?                 : print this help screen\n");
     fprintf(stderr, "    -v                 : verbose\n");
     fprintf(stderr, "    -d                 : run as daemon\n");
     fprintf(stderr, "    -a                 : array name\n");
-    fprintf(stderr, "    -D master_dir      : the master QD data directory\n");
     fprintf(stderr, "    -l logdir          : the log directory\n");
     fprintf(stderr, "    -p ma_port         : the MA port number\n");
     fprintf(stderr, "    -P pxN             : paxos instance\n");
     fprintf(stderr, "\n");
-    fprintf(stderr, "e.g. %s -a gpdb -D /d1/master/gp-1 -l /db/ma -P localhost:11000\n", gpma.progname);
+    fprintf(stderr, "e.g. %s -a gpdb -l /db/ma -P localhost:11000\n", gpma.progname);
     fprintf(stderr, "\n");
     if (msg)
 	fprintf(stderr, "Error: %s\n\n", msg);
@@ -84,7 +83,7 @@ void parse_cmdline(int argc, const char* argv[])
 
     /* parse command line options */
     GPCC_DO(0 == apr_getopt_init(&handle, gpma.pool, argc, argv));
-    while (0 == (e = apr_getopt(handle, "?vdD:a:p:l:P:", &opt, &optarg))) {
+    while (0 == (e = apr_getopt(handle, "?vda:p:l:P:", &opt, &optarg))) {
 	switch (opt) {
 	case 'v':
 	    gpma.verbose = 1;
@@ -92,8 +91,6 @@ void parse_cmdline(int argc, const char* argv[])
 	case 'd':
 	    gpma.daemonize = 1;
 	    break;
-	case 'D':
-	    gpma.master_datadir = optarg;
 	case 'a':
 	    gpma.array_name = optarg;
 	    break;
@@ -131,10 +128,6 @@ void parse_cmdline(int argc, const char* argv[])
 	usage("Please specify array name");
     }
 
-    if (! gpma.master_datadir) {
-	usage("Please specify master data directory");
-    }
-
     if (! (0 < gpma.ma_port && gpma.ma_port < (1 << 16)))
 	gpcc_fatal(FLINE, "Illegal ma port specification: %s", gpma.ma_port);
     
@@ -146,7 +139,7 @@ void parse_cmdline(int argc, const char* argv[])
     /* set ha data directory to /tmp */
     gpma.ha_datadir = apr_pstrdup(gpma.pool, "/tmp");
 
-    /* set px_address for zookeeper */
+    /* set px_address for chubby */
     if (gpma.px_max == 0)
 	gpcc_fatal(FLINE, "at least one paxos instance");
 

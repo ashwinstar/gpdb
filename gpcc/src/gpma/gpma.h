@@ -49,7 +49,6 @@ struct gpma_t {
     const char*  px_addr[5];  /* Paxos Address */
     const char*  px_address;  /* Zookeeper Addresss based on px_addr */
     const char*  datadir;     /* dir for config file, log file, etc */
-    const char*  master_datadir; /* master_data_dir */
     const char*  ha_datadir;  /* dir for HA */
     int          verbose;     /* TRUE if more verbose */
     int          daemonize;   /* TRUE if daemonize */
