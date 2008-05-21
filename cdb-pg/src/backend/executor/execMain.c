@@ -406,6 +406,22 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 		 */
 		if (shouldDispatch)
 		{
+
+			/* MPP-2869: preprocess_initplans() may
+			 * dispatch. (interacted with MPP-2859, which caused an
+			 * initPlan to do a write which should have happened in
+			 * main body of query) We need to call ExecutorSaysTransactionDoesWrites()
+			 * before any dispatch work for this query. */
+			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
+			if (needDtxTwoPhase)
+			{
+				/*
+				 * Reconfigure the cluster if needed.
+				 */
+				cdbdisp_reconfigureFtsIfNecessary();
+
+				setCurrentDtxTwoPhase("ExecutorStart", "(none)");
+			}
 			
 			/*
 			 * First, see whether we need to pre-execute any initPlan subplans.
@@ -424,18 +440,7 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 																   queryDesc->estate->es_param_exec_vals,
 																   queryDesc->plantree->nParamExec);
 			}
-			
-			needDtxTwoPhase = ExecutorSaysTransactionDoesWrites();
-			if (needDtxTwoPhase)
-			{
-				/*
-				 * Reconfigure the cluster if needed.
-				 */
-				cdbdisp_reconfigureFtsIfNecessary();
-
-				setCurrentDtxTwoPhase("ExecutorStart", "(none)");
-			}
-						
+									
 			/*
 			 * This call returns after launching the threads that send the
              * plan to the appropriate segdbs.  It does not wait for them to
