@@ -17,7 +17,7 @@
   Run 'gp help' for details.
 
 """
-import os, sys
+import os, sys, socket
 
 if sys.version_info < (2, 5, 0):
     sys.exit("Error: gp is supported on Python versions 2.5.0 or greater\n"
@@ -515,6 +515,7 @@ class LoginCmd(Command):
             passwd = getpass('password:')
             param = {}
             param['user'] = self.opt['-u']
+            param['host'] = socket.gethostname()
             param['password'] = passwd
             packet = self._httpPost('/gpcc/login', param, None)
             self.raw(packet)         
@@ -559,6 +560,7 @@ class LogoutCmd(Command):
             self.opt['-u'] = user
         param = {}
         param['user'] = self.opt['-u']
+        param['host'] = socket.gethostname()
         packet = self._httpGet('/gpcc/logout', param)
         self.raw(packet)         
         if 'ok' != packet.get('status'):
