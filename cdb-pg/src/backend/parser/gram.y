@@ -1869,7 +1869,7 @@ alter_table_partition_cmd:
 
                     pc->partid = (Node *)$3;
                     pc->arg1 = (Node *)$6;
-                    pc->arg2 = (Node *)$7;
+                    pc->arg2 = (Node *)makeInteger($7);
                     pc->location = @6;
 
 					n->subtype = AT_PartExchange;
