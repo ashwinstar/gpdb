@@ -279,3 +279,17 @@ drop index distpol_uidx;
 insert into distpol values(1, 2, 3);
 create unique index distpol_uidx on distpol(i);
 alter table distpol add primary key (i);
+drop table distpol;
+
+-- MPP-2872: set ops with distributed by should work as advertised
+create table distpol1 (i int, j int);
+create table distpol2 (i int, j int);
+create table distpol3 as select i, j from distpol1 union 
+  select i, j from distpol2 distributed by (j);
+select attrnums from gp_distribution_policy where
+  localoid = 'distpol3'::regclass;
+drop table distpol3;
+create table distpol3 as (select i, j from distpol1 union
+  select i, j from distpol2) distributed by (j);
+select attrnums from gp_distribution_policy where
+  localoid = 'distpol3'::regclass;

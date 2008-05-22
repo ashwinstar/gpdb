@@ -6867,10 +6867,15 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 		qry->intoOptions = copyObject(stmt->intoOptions);
 		qry->intoOnCommit = stmt->intoOnCommit;
 		qry->intoTableSpaceName = stmt->intoTableSpaceName;
-
-		if (stmt->distributedBy && Gp_role == GP_ROLE_DISPATCH)
-			setQryDistributionPolicy(stmt, qry);
 	}
+
+	/* 
+	 * Generally, we'll only have a distributedBy clause if stmt->into is set,
+	 * with the exception of set op queries, since transformSetOperationStmt()
+	 * sets stmt->into to NULL to avoid complications elsewhere.
+	 */
+	if (stmt->distributedBy && Gp_role == GP_ROLE_DISPATCH)
+		setQryDistributionPolicy(stmt, qry);
 
 	qry->rtable = pstate->p_rtable;
 	qry->jointree = makeFromExpr(pstate->p_joinlist, qual);
@@ -7203,6 +7208,10 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	leftmostRTI = ((RangeTblRef *) node)->rtindex;
 	leftmostQuery = rt_fetch(leftmostRTI, pstate->p_rtable)->subquery;
 	Assert(leftmostQuery != NULL);
+
+	/* Copy transformed distribution policy to query */
+	if (qry->into)
+		qry->intoPolicy = leftmostQuery->intoPolicy;
 
 	/*
 	 * Generate dummy targetlist for outer query using column names of
@@ -8702,11 +8711,6 @@ setQryDistributionPolicy(SelectStmt *stmt, Query *qry)
 		 * Process it now and set the distribution policy.
 		 */
 		 
-		if (qry->into == NULL)
-		{
-			elog(ERROR,"DISTRIBUTED BY clause in SELECT statement only makes sense for SELECT INTO");
-		}
-		
 		policy = (GpPolicy *) palloc(sizeof(GpPolicy) + maxattrs * sizeof(policy->attrs[0]));
 		policy->ptype = POLICYTYPE_PARTITIONED;
 		policy->nattrs = 0;
