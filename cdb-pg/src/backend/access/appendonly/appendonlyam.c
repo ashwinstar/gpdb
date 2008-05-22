@@ -228,7 +228,7 @@ doSkipPadding(AppendOnlyScanDesc scan,
 		if (Debug_appendonly_print_scan)
 			elog(LOG,"Append-only scan skipping zero padded remainder for table '%s' (nextReadPosition = %lld, pageRemainder = %d)",
 			     NameStr(scan->aos_rd->rd_rel->relname),
-			     nextReadPosition,
+			     (long long int)nextReadPosition,
 			     pageRemainder);
 	}
 }
@@ -895,7 +895,7 @@ doPadOutPageRemainder(AppendOnlyInsertDesc aoInsertDesc,
 		if (Debug_appendonly_print_insert)
 			elog(LOG,"Append-only insert zero padded remainder for table '%s' (nextWritePosition = %lld, pageRemainder = %d)",
 			     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
-			     nextWritePosition,
+			     (long long int)nextWritePosition,
 			     pageRemainder);
 
 	}
