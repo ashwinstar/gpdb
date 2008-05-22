@@ -54,6 +54,17 @@ typedef struct AppendOnlyInsertDescData
 	uint8			*tempSpace;
 	uint8			*varBlockBuffer; /* used for compression */
 
+	int32			maxBufferLen;
+	int32			tempSpaceLen;
+	int32			largeWriteLen;
+	
+	/*
+	 * These serve the equivalent purpose of the uppercase constants of the same
+	 * name in tuptoaster.h but here we make these values dynamic.
+	 */	
+	int32			toast_tuple_threshold;
+	int32			toast_tuple_target;
+
 } AppendOnlyInsertDescData;
 
 typedef AppendOnlyInsertDescData *AppendOnlyInsertDesc;

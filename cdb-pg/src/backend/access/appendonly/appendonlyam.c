@@ -63,19 +63,6 @@ static void doDecompress(AppendOnlyScanDesc scan,
 							 uint8			*compressed,
 							 int32			compressedLen,
 							 int32			*uncompressedLen);
-static void initProcessingSize(Relation rel);
-
-static int32	maxBufferLen = 0;
-static int32	tempSpaceLen = 0;
-static int32    largeReadLen = 0;
-static int32    largeWriteLen = 0;
-
-/*
- * These serve the equivalent purpose of the uppercase constants of the same
- * name in tuptoaster.h but here we make these values dynamic.
- */
-static int32	toast_tuple_threshold = 0;
-static int32	toast_tuple_target = 0;
 
 /* ----------------
  *		initscan - scan code common to appendonly_beginscan and appendonly_rescan
@@ -92,19 +79,19 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 	int32	actualMaxBufferLen;
 	uint8	*memory;
 	
-	Assert(maxBufferLen > 0 && largeReadLen == maxBufferLen * 2);
+	Assert(scan->maxBufferLen > 0 && scan->largeReadLen == scan->maxBufferLen * 2);
 	
 	if (!scan->aos_compressed)
 	{
-		actualMaxBufferLen = maxBufferLen;
+		actualMaxBufferLen = scan->maxBufferLen;
 	}
 	else
 	{		
-		actualMaxBufferLen = maxBufferLen + sizeof(int32);
+		actualMaxBufferLen = scan->maxBufferLen + sizeof(int32);
 		actualMaxBufferLen = ((actualMaxBufferLen + sizeof(int32) - 1)/sizeof(int32))*sizeof(int32);
 	}
 	
-	memoryLen = BufferedReadMemoryLen(actualMaxBufferLen, largeReadLen);
+	memoryLen = BufferedReadMemoryLen(actualMaxBufferLen, scan->largeReadLen);
 	memory = (uint8*)palloc(memoryLen);
 
 	scan->bufferDone = true; /* so we read a new buffer right away */
@@ -121,7 +108,7 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 					 memory,
 					 memoryLen,
 					 actualMaxBufferLen,
-					 largeReadLen);
+					 scan->largeReadLen);
 
 	scan->aos_inited = false;
 
@@ -173,8 +160,8 @@ doScanInit(AppendOnlyScanDesc scan)
 		     NameStr(scan->aos_rd->rd_rel->relname),
 		     path,
 		     (scan->aos_compressed ? "true" : "false"),
-		     maxBufferLen,
-		     largeReadLen);
+		     scan->maxBufferLen,
+		     scan->largeReadLen);
 
 	pfree(path);
 	pfree(aoentry);
@@ -193,7 +180,7 @@ doSkipPadding(AppendOnlyScanDesc scan,
 	
 	nextReadPosition = BufferedReadNextBufferPosition(&scan->bufferedRead);
 	nextBoundaryPosition = 
-		((nextReadPosition + maxBufferLen - 1)/maxBufferLen)*maxBufferLen;
+		((nextReadPosition + scan->maxBufferLen - 1)/scan->maxBufferLen)*scan->maxBufferLen;
 	pageRemainder = (int32)(nextBoundaryPosition - nextReadPosition);
 
 	if (pageRemainder == 0)
@@ -506,7 +493,7 @@ appendonlygettup(AppendOnlyScanDesc scan,
 	MemTuple	tuple = &(scan->aos_ctup);
 
 	Assert(ScanDirectionIsForward(dir));
-	Assert(maxBufferLen > 0 && largeReadLen == maxBufferLen * 2);
+	Assert(scan->maxBufferLen > 0 && scan->largeReadLen == scan->maxBufferLen * 2);
 	
 	if (!scan->aos_inited)
 	{
@@ -593,8 +580,6 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 {
 	AppendOnlyScanDesc scan;
 	int				   complevel;
-	
-	initProcessingSize(relation);
 
 	/*
 	 * increment relation ref count while scanning relation
@@ -609,13 +594,17 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	 * allocate and initialize scan descriptor
 	 */
 	scan = (AppendOnlyScanDesc) palloc0(sizeof(AppendOnlyScanDescData));
-
+		
 	scan->aos_rd = relation;
 	scan->aos_nkeys = nkeys;
 	scan->aos_relfilenode = InvalidOid;
+		
+	scan->maxBufferLen = RelationGetBlockSize(relation, DEFAULT_VARBLOCK_SIZE);
+	scan->largeReadLen = 2 * scan->maxBufferLen;
+	
 	complevel = RelationGetCompressLevel(relation, DEFAULT_COMPRESS_LEVEL);
 	scan->aos_compressed = (complevel > 0 ? true : false);
-	scan->varBlockBuffer = (uint8 *) palloc(maxBufferLen * sizeof(uint8));
+	scan->varBlockBuffer = (uint8 *) palloc(scan->maxBufferLen * sizeof(uint8));
 
 	/* we only need to set this up once */
 	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
@@ -746,12 +735,10 @@ appendonly_insert_init(Relation rel)
 	int32					actualMaxBufferLen;
 	int32					memoryLen;
 	int64					eof;
+	int						maxtupsize;
 	char					*path;
 	File					appendFile;
 	AppendOnlyEntry			*aoentry;
-
-	/* must call this first thing, until we un-globalize these vars */
-	initProcessingSize(rel);
 
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc(sizeof(AppendOnlyInsertDescData));
 	aoInsertDesc->aoi_rel = rel;
@@ -759,23 +746,29 @@ appendonly_insert_init(Relation rel)
 	aoInsertDesc->bufferCount = 0;
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->varblockCount = 0;
+	aoInsertDesc->maxBufferLen = RelationGetBlockSize(rel, DEFAULT_VARBLOCK_SIZE);
 	aoInsertDesc->compressLevel = RelationGetCompressLevel(rel, DEFAULT_COMPRESS_LEVEL);
+	aoInsertDesc->largeWriteLen = 2 * aoInsertDesc->maxBufferLen;
 	aoInsertDesc->shouldCompress = (aoInsertDesc->compressLevel > 0 ? true : false);
-	aoInsertDesc->varBlockBuffer = (uint8 *) palloc(maxBufferLen * sizeof(uint8));
-	aoInsertDesc->tempSpace = (uint8 *) palloc(tempSpaceLen * sizeof(uint8));
+	aoInsertDesc->varBlockBuffer = (uint8 *) palloc(aoInsertDesc->maxBufferLen * sizeof(uint8));
+	aoInsertDesc->tempSpaceLen = aoInsertDesc->maxBufferLen / 8; /* TODO - come up with a more efficient calculation */
+	aoInsertDesc->tempSpace = (uint8 *) palloc(aoInsertDesc->tempSpaceLen * sizeof(uint8));
+	maxtupsize = aoInsertDesc->maxBufferLen - VARBLOCK_HEADER_LEN - 4;
+	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4; /* see tuptoaster.h for more information */
+	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
 	
 	if (!aoInsertDesc->shouldCompress)
 	{
-		actualMaxBufferLen = maxBufferLen;
+		actualMaxBufferLen = aoInsertDesc->maxBufferLen;
 	}
 	else
 	{		
-		actualMaxBufferLen = maxBufferLen + sizeof(int32);
+		actualMaxBufferLen = aoInsertDesc->maxBufferLen + sizeof(int32);
 		actualMaxBufferLen = ((actualMaxBufferLen + sizeof(int32) - 1)/sizeof(int32))*sizeof(int32);
 	}
 
 	
-	memoryLen = BufferedAppendMemoryLen(actualMaxBufferLen, largeWriteLen);
+	memoryLen = BufferedAppendMemoryLen(actualMaxBufferLen, aoInsertDesc->largeWriteLen);
 	memory = (uint8*)palloc(memoryLen);
 	
 	if (memory == NULL)
@@ -790,7 +783,7 @@ appendonly_insert_init(Relation rel)
 					   memory, 
 					   memoryLen, 
 					   actualMaxBufferLen, 
-					   largeWriteLen);
+					   aoInsertDesc->largeWriteLen);
 		
 	/* cache the relfilenode value for later use */
 	aoInsertDesc->relfilenode = rel->rd_node.relNode;
@@ -804,8 +797,8 @@ appendonly_insert_init(Relation rel)
 		     path,
 		     (aoInsertDesc->shouldCompress ? "true" : "false"),
 		     aoInsertDesc->compressLevel,
-		     maxBufferLen,
-		     largeWriteLen);
+		     aoInsertDesc->maxBufferLen,
+		     aoInsertDesc->largeWriteLen);
 	
 	/* Open the relation file */
 	/* TODO: this should really be done in a cleaner way via smgr */
@@ -823,7 +816,7 @@ appendonly_insert_init(Relation rel)
 	
 	BufferedAppendSetFile(&aoInsertDesc->bufferedAppend, appendFile, eof);
 	
-	Assert(tempSpaceLen > 0);
+	Assert(aoInsertDesc->tempSpaceLen > 0);
 	
 	if(!aoInsertDesc->shouldCompress)
 	{
@@ -832,18 +825,18 @@ appendonly_insert_init(Relation rel)
 		/* prepare our first varblock for items */
 		VarBlockMakerInit(&aoInsertDesc->varBlockMaker, 
 						  buffer, 
-						  maxBufferLen, 
+						  aoInsertDesc->maxBufferLen, 
 						  aoInsertDesc->tempSpace, 
-						  tempSpaceLen);		
+						  aoInsertDesc->tempSpaceLen);		
 	}
 	else
 	{
 		/* Block oriented compression */
 		VarBlockMakerInit(&aoInsertDesc->varBlockMaker, 
 						  aoInsertDesc->varBlockBuffer, 
-						  maxBufferLen, 
+						  aoInsertDesc->maxBufferLen, 
 						  aoInsertDesc->tempSpace, 
-						  tempSpaceLen);				
+						  aoInsertDesc->tempSpaceLen);				
 	}
 	aoInsertDesc->bufferCount++;
 	
@@ -859,12 +852,13 @@ doPadOutPageRemainder(AppendOnlyInsertDesc aoInsertDesc,
 	int64	nextWritePosition;
 	int64   nextBoundaryPosition;
 	int32	pageRemainder;
+	int32	bufsize = aoInsertDesc->maxBufferLen;
 	bool	doPad;
 	uint8   *buffer;
 	
 	nextWritePosition = BufferedAppendNextBufferPosition(&aoInsertDesc->bufferedAppend);
 	nextBoundaryPosition = 
-		((nextWritePosition + maxBufferLen - 1)/maxBufferLen)*maxBufferLen;
+		((nextWritePosition + bufsize - 1)/bufsize)*bufsize;
 	pageRemainder = (int32)(nextBoundaryPosition - nextWritePosition);
 
 	if (pageRemainder == 0)
@@ -932,9 +926,9 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	Oid 			retOid;
 	bool			need_toast;
 	
-	Assert(maxBufferLen > 0 && tempSpaceLen > 0);
-    Assert(largeWriteLen == maxBufferLen * 2);
-	Assert(toast_tuple_threshold > 0 && toast_tuple_target > 0);
+	Assert(aoInsertDesc->maxBufferLen > 0 && aoInsertDesc->tempSpaceLen > 0);
+    Assert(aoInsertDesc->largeWriteLen == aoInsertDesc->maxBufferLen * 2);
+	Assert(aoInsertDesc->toast_tuple_threshold > 0 && aoInsertDesc->toast_tuple_target > 0);
 
 	if (relation->rd_rel->relhasoids)
 	{
@@ -961,7 +955,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 
 	need_toast = (MemTupleHasExternal(instup, aoInsertDesc->mt_bind) ||
 				  memtuple_get_size(instup, aoInsertDesc->mt_bind) > 
-				  toast_tuple_threshold);
+				  aoInsertDesc->toast_tuple_threshold);
 	
 	/*
 	 * If the new tuple is too big for storage or contains already toasted
@@ -973,7 +967,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	if (need_toast)
 		tup = (MemTuple) toast_insert_or_update(relation, (HeapTuple) instup, 
 												NULL, aoInsertDesc->mt_bind,
-												toast_tuple_target);
+												aoInsertDesc->toast_tuple_target);
 	else
 		tup = instup;
 
@@ -1026,9 +1020,9 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 			
 			VarBlockMakerInit(&aoInsertDesc->varBlockMaker,
 							  buffer,
-							  maxBufferLen,
+							  aoInsertDesc->maxBufferLen,
 							  aoInsertDesc->tempSpace,
-							  tempSpaceLen);
+							  aoInsertDesc->tempSpaceLen);
 		}
 		else
 		{
@@ -1041,9 +1035,9 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 			
 			VarBlockMakerInit(&aoInsertDesc->varBlockMaker,
 							  aoInsertDesc->varBlockBuffer,
-							  maxBufferLen,
+							  aoInsertDesc->maxBufferLen,
 							  aoInsertDesc->tempSpace,
-							  tempSpaceLen);
+							  aoInsertDesc->tempSpaceLen);
 			
 			if (Debug_appendonly_print_insert)
 				elog(LOG,"Append-only insert finished compressed VarBlock for table '%s' (length = %d, compressed length %d, item count %d, block count %d)",
@@ -1164,7 +1158,8 @@ doCompressAppend(AppendOnlyInsertDesc aoInsertDesc,
 	int32	*lengthWord;
 	int32	 roundUpLen;
 		
-	Assert(maxBufferLen > 0 && largeWriteLen == maxBufferLen * 2);
+	Assert(aoInsertDesc->maxBufferLen > 0 && 
+		   aoInsertDesc->largeWriteLen == aoInsertDesc->maxBufferLen * 2);
 
 	doPadOutPageRemainder(aoInsertDesc, sizeof(int32));
 	
@@ -1283,27 +1278,6 @@ RelationGuessNumberOfBlocks(double totalbytes)
 {
 	/* for now it's very simple */
 	return (BlockNumber)(totalbytes/BLCKSZ) + 1;
-}
-
-/*
- * initProcessingSize
- *
- * Set the global buffer size parameters for this scan or insert.
- */
-void initProcessingSize(Relation rel)
-{
-	int maxtupsize;
-	
-	maxBufferLen = RelationGetBlockSize(rel, DEFAULT_VARBLOCK_SIZE);
-	largeReadLen = 2 * maxBufferLen;
-	largeWriteLen = largeReadLen;
-	tempSpaceLen = maxBufferLen / 8; /* TODO - is this always a good number? */
-	
-	/* see tuptoaster.h for more information */
-	maxtupsize = maxBufferLen - VARBLOCK_HEADER_LEN - 4;
-	toast_tuple_threshold = maxtupsize/4;
-	toast_tuple_target = maxtupsize/4;
-
 }
 
 

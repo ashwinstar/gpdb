@@ -149,6 +149,8 @@ typedef struct AppendOnlyScanDescData
 	BufferedRead    bufferedRead;
 	VarBlockReader  varBlockReader;
 	uint8			*varBlockBuffer; /* for decompression */
+	int32			maxBufferLen;
+	int32			largeReadLen;
 
 	int32           bufferCount;
 	int				readerItemCount;

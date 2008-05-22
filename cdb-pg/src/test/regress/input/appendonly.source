@@ -175,6 +175,10 @@ SELECT count(*) FROM tenk_ao3;
 SELECT count(*) FROM tenk_ao1 t1, tenk_ao2 t2 where t1.unique1 = t2.unique2;
 SELECT count(*) FROM tenk_ao1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
 
+-- EXCEPT
+SELECT unique1 FROM tenk_ao1 EXCEPT SELECT unique1 FROM tenk_ao1;
+SELECT unique1 FROM tenk_heap EXCEPT SELECT unique1 FROM tenk_ao3;
+
 -- TRUNCATE
 TRUNCATE tenk_ao2;
 

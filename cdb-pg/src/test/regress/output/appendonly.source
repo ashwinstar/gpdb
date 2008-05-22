@@ -291,6 +291,17 @@ SELECT count(*) FROM tenk_ao1 t1, tenk_heap t2 where t1.unique1 = t2.unique2;
  10000
 (1 row)
 
+-- EXCEPT
+SELECT unique1 FROM tenk_ao1 EXCEPT SELECT unique1 FROM tenk_ao1;
+ unique1 
+---------
+(0 rows)
+
+SELECT unique1 FROM tenk_heap EXCEPT SELECT unique1 FROM tenk_ao3;
+ unique1 
+---------
+(0 rows)
+
 -- TRUNCATE
 TRUNCATE tenk_ao2;
 -- OIDS
