@@ -9,6 +9,9 @@ Usage: gpdetective <option> [dbname]
 	-P passwd  : DB password
 	-U uname   : DB User Name
 
+        --start_date=number       : Log start date (number of days ago)
+        --start_date="YYYY-MM-DD" : Log start date (explicit date)
+
 '''
 #============================================================
 import sys, os, tempfile, subprocess, re, getopt, types, traceback
@@ -51,6 +54,7 @@ class GPDetective():
     errlog = None       # Error log
     tardir = None       # name of the produced tarball
     error  = None
+    start_date = None
 
     # Configuration information
     masterdir = None    # Master Directory, assumed on this host
@@ -84,13 +88,16 @@ class GPDetective():
         try:
             (options, args) = getopt.getopt(sys.argv[1:], 
                                             '?h:p:P:U:vV',
-                                            ['version'])
+                                            ['version', 'start_date='])
             for (switch, val) in options:
                 if   switch == '-?':	   usage(0)
                 if   switch[1] in 'vV' or switch == '--version':
                     print 'gpdetective ' + __version__
                     sys.exit(0)
-                elif switch[1] in 'hpPU':  self.opt[switch] = val
+                elif switch == '--start_date':
+                    self.start_date = val
+                elif switch[1] in 'hpPU':  
+                    self.opt[switch] = val
         except Exception, e:
             usage('Error: ' + str(e))
 
@@ -400,9 +407,11 @@ class GPDetective():
         m = path_re.search(self.masterdir)
 
         myfile = open('master/%s.log' % m.group(1), 'w')
-
-        subprocess.Popen([libdir + '/gplogfilter.pl', 
-                          '%s.log' % self.masterdir], stdout=myfile)
+        cmd = [ libdir + '/gplogfilter.pl' ]
+        if self.start_date:
+            cmd.extend(['-start_date', self.start_date])
+        cmd.append(self.masterdir + '.log')
+        subprocess.Popen(cmd, stdout=myfile)
         myfile.close()
 
 #        self.runCmd(['scp', '-q',
