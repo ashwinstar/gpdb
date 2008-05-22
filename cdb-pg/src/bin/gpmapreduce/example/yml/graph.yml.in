@@ -1,0 +1,81 @@
+%YAML 1.1
+---  
+VERSION:   1.0.0.1
+DATABASE:  postgres
+USER:      <USER>
+
+DEFINE:
+
+# A sample of www link data
+#      137,941 distinct source pages
+#      325,729 distinct linked pages
+#    1,497,135 total links
+  - INPUT:
+      NAME:      network
+      SOURCE:    file://<DATA_DIRECTORY>/www.small.dat
+      COLUMNS:   [key text, value text]
+      DELIMITER: '|'
+
+# One thing about the Greenplum MapReduce is that it allows you to
+# express calculations in whatever method is easiest.  Here we use
+# SQL to transform the above input from key, value pairs to sparse
+# matrix representation.
+#  - INPUT:
+#      NAME:    sparse_network
+#      QUERY: |
+#        SELECT key, 0.85 as pagerank, array_accum(value) as value
+#        FROM network
+#        GROUP BY key
+        
+# Reverse()
+#   Takes a (key, value) tuple and produces a new tuple of (value, key)
+#   taking the input graph and producing the reverse graph
+#   => It would be faster to have simply reversed the names in the input
+  - MAP:
+      NAME:     reverse
+      LANGUAGE: python
+#      COLUMNS:  [key integer, value integer]
+#      RETURNS:  [key integer, value integer]
+      BODY:     |
+        return {'key': value, 'value': key}
+        
+# pcount()
+#   Implements a count aggregator in python
+#   => native sql count is about 12x faster
+  - TRANSITION:
+      NAME:       pcount
+      LANGUAGE:   python
+      PARAMETERS: [state integer, value anyelement]
+      BODY:       return state + 1      
+  - REDUCER:
+      NAME:        traverse
+      INITIALIZE:  0
+      TRANSITION:  pcount
+
+# Same calculation, but implemented as a map function over the sparse
+# graph representation
+  - MAP:
+      NAME: sparse_pcount
+      LANGUAGE: python
+#      COLUMNS:  [key integer, value integer[]]
+#      RETURNS:  [key integer, value integer]      
+      BODY:   |
+        return {'key': key, 'value': len(value)}
+      
+EXECUTE:
+
+# This counts the number of links coming FROM a page
+#  - RUN:
+#      SOURCE:  network
+#      REDUCER: traverse
+#      TARGET:  STDOUT
+      
+# This counts the number of links going TO a page.  
+#  - RUN:
+#      SOURCE:  network
+#      MAPPER:  reverse
+#      REDUCER: traverse
+#      TARGET:  STDOUT
+
+  - RUN:
+      SOURCE:  network

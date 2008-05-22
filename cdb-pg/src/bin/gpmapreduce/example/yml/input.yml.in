@@ -1,0 +1,22 @@
+%YAML 1.1
+---
+VERSION:         1.0.0.1
+
+DEFINE:
+  - INPUT:
+      NAME:      network
+      SOURCE:    file://<DATA_DIRECTORY>/www.dat
+      COLUMNS:   [key text, value text]
+      DELIMITER: '|'
+
+  - INPUT:
+      NAME:    sparse_network
+      QUERY: |
+        SELECT key, 0.85 as pagerank, array_accum(value) as value
+        FROM network
+        GROUP BY key
+      
+EXECUTE:
+  - RUN:
+      SOURCE: sparse_network
+

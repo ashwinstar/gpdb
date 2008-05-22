@@ -1,0 +1,13 @@
+%YAML 1.1
+---
+VERSION:         1.0.0.1
+
+DEFINE:
+  - INPUT:
+      NAME:      access_log
+      SOURCE:    file://<DATA_DIRECTORY>/access_log
+
+EXECUTE:
+  - RUN:
+      SOURCE: access_log
+

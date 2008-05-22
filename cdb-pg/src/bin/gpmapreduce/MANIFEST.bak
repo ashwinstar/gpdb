@@ -1,0 +1,14 @@
+Changes
+MANIFEST
+Makefile.PL
+README
+docmap.pl
+mapred.pl
+t/GPMapReduce.t
+t/GPMapReduce-Mapper.t
+lib/GPMapReduce.pm
+lib/GPMapReduce/Document.pm
+lib/GPMapReduce/Function.pm
+lib/GPMapReduce/Mapper.pm
+lib/GPMapReduce/Parser.pm
+lib/GPMapReduce/Utils.pm

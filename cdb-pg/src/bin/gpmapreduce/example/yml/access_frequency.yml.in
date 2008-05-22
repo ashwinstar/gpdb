@@ -1,0 +1,35 @@
+%YAML 1.1
+---  
+VERSION:   1.0.0.1
+DATABASE:  postgres
+USER:      <USER>
+
+DEFINE:
+    - INPUT:
+        NAME:      weblog
+        SOURCE:    file://<DATA_DIRECTORY>/access_log
+
+    - MAP:
+         NAME:     myMap
+         LANGUAGE: perl
+         BODY:     |
+           return {} unless ($_[1] =~ m/GET ([^ ?,]+)/);
+           return {"key" => $1, "value" => 1}
+
+    - TRANSITION:
+         NAME:     myTransition
+         LANGUAGE: perl
+         BODY:     return $_[0] + $_[1];
+
+    - REDUCER:
+         NAME:       myReduce
+         INITIALIZE: '0'
+         TRANSITION: myTransition
+         COMBINE:    myTransition
+
+EXECUTE:
+  - RUN:
+     SOURCE:   weblog
+     MAPPER:   myMap
+     REDUCER:  myReduce
+     TARGET:   STDOUT

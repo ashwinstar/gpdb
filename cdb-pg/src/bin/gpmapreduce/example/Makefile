@@ -1,0 +1,44 @@
+YMLDIR = yml
+OUTDIR = output
+EXPECT = expected
+HOSTNAME = $(shell hostname)
+DATADIR = $(shell pwd)/data
+
+D       = /usr/bin/diff
+MAPRED  = ../bin/mapred.pl
+DOCMAP  = ../bin/docmap.pl
+PATHFIX = ../bin/fixup.pl
+MODDIR  = ../lib/GPMapReduce
+MODULES = Document.pm Parser.pm Function.pm Mapper.pm Utils.pm
+MAPMODS = $(addprefix $(MODDIR)/, $(MODULES))
+
+
+TEST   = access_frequency grep sort  # columns graph
+YML    = $(addsuffix .yml, $(addprefix $(YMLDIR)/, $(TEST)))
+OUT    = $(addsuffix .out, $(addprefix $(OUTDIR)/, $(TEST)))
+PLAN   = $(addsuffix .plan, $(addprefix $(OUTDIR)/, $(TEST)))
+PRINT  = $(addsuffix .print, $(addprefix $(OUTDIR)/, $(TEST)))
+
+OBJS   = $(addprefix $(SRCDIR), $(YML))
+
+.PHONY: clean all
+
+all: $(YML) $(OUT) $(PLAN) $(PRINT)
+	-$(D) -q $(OUTDIR) $(EXPECT)
+
+$(YMLDIR)/%.yml: $(YMLDIR)/%.yml.in
+	$(PATHFIX) $@.in
+
+$(OUTDIR)/%.out: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml
+	$(MAPRED) $(YMLDIR)/$*.yml admin > $@
+
+$(OUTDIR)/%.plan: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml
+	$(MAPRED) --explain $(YMLDIR)/$*.yml admin > $@
+
+$(OUTDIR)/%.print: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml
+	$(MAPRED) --print $(YMLDIR)/$*.yml admin > $@
+
+clean:
+	rm -f $(YML) 
+	rm -f $(OUTDIR)/*
+
