@@ -20,14 +20,15 @@ static apr_status_t a_lma_get_lease(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     char path[1024];
+    int e;
 
     sprintf(path, "/gp/%s/%s/gpma/lease", gpma.user, gpma.array_name);
-    chubby_connection_asynchronous_getLease(slot->u.lma.chubby.conn,
-					    chubby_get_lease_cb,
-					    (void *) &slot->cmdidx,
-					    path,
-					    LMA_EXPIRE_PERIOD, 
-					    LMA_EXPIRE_PERIOD);
+    e = chubby_connection_asynchronous_getLease(slot->u.lma.chubby.conn,
+						chubby_get_lease_cb,
+						(void *) &slot->cmdidx,
+						path,
+						LMA_EXPIRE_PERIOD, 
+						LMA_EXPIRE_PERIOD);
 
 					    
     return 0;
@@ -41,6 +42,7 @@ static apr_status_t a_lma_get_lease_reply(gpcc_event_t *ev, void *arg)
     gpcc_event_t *evt;
 
     if (result->retval) {
+	gpcc_log_info("MA failed to get the lease. ret=%d", result->retval);
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	return 0;
@@ -59,6 +61,7 @@ static apr_status_t a_lma_leader(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     char buf[1024], path[1024];
     chubby_string_t *c = (chubby_string_t *) buf;
+    int e;
 
     slot->countdown = LMA_RENEW_PERIOD;
     
@@ -66,11 +69,11 @@ static apr_status_t a_lma_leader(gpcc_event_t *ev, void *arg)
     sprintf(c->a, "%s:%d", gpma.hostname, gpma.ma_port);
     c->length = strlen(c->a) + 1;
     
-    chubby_connection_asynchronous_put(slot->u.lma.chubby.lease,
-				       chubby_put_cb,
-				       (void *) &slot->cmdidx,
-				       path,
-				       c);
+    e = chubby_connection_asynchronous_put(slot->u.lma.chubby.lease,
+					   chubby_put_cb,
+					   (void *) &slot->cmdidx,
+					   path,
+					   c);
 
     return 0;
 }
@@ -80,14 +83,15 @@ static apr_status_t a_lma_leader_get_master(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     char path[1024];
+    int e;
 
     /* get the leader file */
     sprintf(path, "/gp/%s/%s/gpma/master", gpma.user, gpma.array_name);
-    chubby_connection_asynchronous_get(slot->u.lma.chubby.lease,
-				       chubby_get_cb,
-				       (void *) &slot->cmdidx,
-				       path,
-				       -1);	
+    e = chubby_connection_asynchronous_get(slot->u.lma.chubby.lease,
+					   chubby_get_cb,
+					   (void *) &slot->cmdidx,
+					   path,
+					   -1);	
 
     return 0;
 }
@@ -101,6 +105,7 @@ static apr_status_t a_lma_leader_put_reply(gpcc_event_t *ev, void *arg)
     char buf[1024];
 
     if (result->retval) {
+	gpcc_log_error("Lead MA failed to put the leader file. ret=%d", result->retval);
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	return 0;	
@@ -127,6 +132,7 @@ static apr_status_t a_lma_leader_get_master_reply(gpcc_event_t *ev, void *arg)
     gpcc_event_t *evt;
 
     if (result->retval && result->retval != CHUBBY_E_NOENT) {
+	gpcc_log_error("Lead MA failed to get master file. ret=%d", result->retval);
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	return 0;	
@@ -143,9 +149,19 @@ static apr_status_t a_lma_leader_get_master_reply(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
-/* leader failed to do anything via chubby */
+/**
+ *  leader failed to do anything via chubby 
+ *
+ *  Lead MA should not give up the lease or fail to renew the lease.  If this happens,  
+ *  we will shutdown the Lead MA and let the standby MA take over.
+ *
+ **/
 static apr_status_t a_lma_leader_failure(gpcc_event_t *ev, void *arg)
 {
+
+    gpcc_fatal(FLINE, "Lead MA failed to connect to chubby.  Chubby probably crashed.  Lead MA shutdown immediately");
+    
+#if 0
     cmdslot_t *slot = arg;
 
     if (slot->u.lma.leader) {
@@ -156,6 +172,13 @@ static apr_status_t a_lma_leader_failure(gpcc_event_t *ev, void *arg)
 	chubby_connection_close(slot->u.lma.chubby.lease);
 	slot->u.lma.chubby.lease = 0;
     }
+
+    /* become leadless and schedule a retry */
+    slot->countdown = LMA_RETRY_PERIOD;
+
+    /* TODO: cleanup fts cmdslot */
+#endif
+
     return 0;
 }
 
@@ -163,11 +186,12 @@ static apr_status_t a_lma_leader_failure(gpcc_event_t *ev, void *arg)
 static apr_status_t a_lma_leader_renew(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    
-    chubby_connection_asynchronous_renew(slot->u.lma.chubby.lease,
-					 chubby_renew_cb,
-					 (void *) &slot->cmdidx,
-					 LMA_EXPIRE_PERIOD);
+    int e;
+
+    e = chubby_connection_asynchronous_renew(slot->u.lma.chubby.lease,
+					     chubby_renew_cb,
+					     (void *) &slot->cmdidx,
+					     LMA_EXPIRE_PERIOD);
     return 0;
 }
 
@@ -179,11 +203,13 @@ static apr_status_t a_lma_leader_renew_reply(gpcc_event_t *ev, void *arg)
     gpcc_event_t *evt;
 
     if (result->retval) {
+	gpcc_log_error("Lead MA failed to renew lease. ret=%d", result->retval);
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	return 0;
     }
 
+    slot->countdown = LMA_RENEW_PERIOD;
     return 0;
 }
 
@@ -198,12 +224,61 @@ static apr_status_t a_lma_standby(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
+
+
+/* standby get lease */
+static apr_status_t a_lma_standby_get_lease(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    char path[1024];
+    int e;
+
+    sprintf(path, "/gp/%s/%s/gpma/lease", gpma.user, gpma.array_name);
+    e = chubby_connection_asynchronous_getLease(slot->u.lma.chubby.conn,
+						chubby_get_lease_cb,
+						(void *) &slot->cmdidx,
+						path,
+						LMA_EXPIRE_PERIOD, 
+						LMA_EXPIRE_PERIOD);
+    
+    return 0;
+}
+
+/* standby get lease reply */
+static apr_status_t a_lma_standby_get_lease_reply(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    chubby_result_t *result = (chubby_result_t *) ev->pdata;
+    char path[1024];
+    gpcc_event_t *evt;
+    int e;
+
+    if (result->retval) {
+	/* get the leader file */
+	sprintf(path, "/gp/%s/%s/gpma/leader", gpma.user, gpma.array_name);
+	e = chubby_connection_asynchronous_get(slot->u.lma.chubby.conn,
+					       chubby_get_cb,
+					       (void *) &slot->cmdidx,
+					       path,
+					       -1);
+
+	return 0;
+    }
+
+    slot->u.lma.chubby.lease = result->u.lease.conn;
+    evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
+    return 0;
+}
+
 /* standby get reply from chubby */
 static apr_status_t a_lma_standby_get_reply(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     chubby_result_t *result = (chubby_result_t *) ev->pdata;
-
+    
+    slot->countdown = LMA_RETRY_PERIOD;
     if (result->retval) {
 	return 0;
     }
@@ -217,104 +292,6 @@ static apr_status_t a_lma_standby_get_reply(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
-/* standby get lease */
-static apr_status_t a_lma_standby_get_lease(gpcc_event_t *ev, void *arg)
-{
-    cmdslot_t *slot = arg;
-    char path[1024];
-
-    sprintf(path, "/gp/%s/%s/gpma/lease", gpma.user, gpma.array_name);
-    chubby_connection_asynchronous_getLease(slot->u.lma.chubby.conn,
-					    chubby_get_lease_cb,
-					    (void *) &slot->cmdidx,
-					    path,
-					    LMA_EXPIRE_PERIOD, 
-					    LMA_EXPIRE_PERIOD);
-    
-    return 0;
-}
-
-/* standby get lease reply */
-static apr_status_t a_lma_standby_get_lease_reply(gpcc_event_t *ev, void *arg)
-{
-    cmdslot_t *slot = arg;
-    chubby_result_t *result = (chubby_result_t *) ev->pdata;
-    char path[1024];
-    gpcc_event_t *evt;
-
-    if (result->retval) {
-	slot->countdown = LMA_RETRY_PERIOD;
-	/* get the leader file */
-	sprintf(path, "/gp/%s/%s/gpma/leader", gpma.user, gpma.array_name);
-	chubby_connection_asynchronous_get(slot->u.lma.chubby.conn,
-					   chubby_get_cb,
-					   (void *) &slot->cmdidx,
-					   path,
-					   -1);	
-
-	return 0;
-    }
-
-    slot->u.lma.chubby.lease = result->u.lease.conn;
-    evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, evt);
-
-    return 0;
-}
-
-
-#if 0
-static int a_lma_check_same_host(const char *addr, int ignore_port, apr_pool_t *pool)
-{
-    char host[256], hostname[256];
-    int port, len;
-    struct in_addr **addr_list;
-    struct hostent *he;
-    int i;
-    char *s;
-
-    s = strchr(addr, ':');
-    if (!s) {
-	gpcc_log_error("invalid addr format %s", addr);
-	return 0;
-    }
-
-    strncpy(host, addr, s - addr);
-    host[s-addr] = 0;
-
-    if (!ignore_port) {
-	port = strtol(s+1, 0, 0);
-
-	/* check port */
-	if (port != gpma.ma_port)
-	    return 0;
-    }
-
-    /* check hostname directly */
-    if (strcmp(gpma.hostname, host) == 0)
-	return 1;
-    
-    /* check IP addresses */
-    he = gethostbyname(gpma.hostname);
-    addr_list = (struct in_addr **) he->h_addr_list;
-    for (i = 0 ; addr_list[i] ; i++) {
-	if (strcmp(addr, inet_ntoa(*addr_list[i])) == 0)
-	    return 1;
-    }
-    
-    /* ssh remote host to get the hostname */
-    len = sizeof(hostname);
-    if (gpcc_pg_gethostname(host, hostname, &len, pool) != 0)  {
-	gpcc_log_error("invalid remote host %s", host);
-	return 0;
-    }
-
-    if (strcmp(hostname, gpma.hostname) == 0)
-	return 1;
-	
-    return 0;
-}
-#endif
 
 /* sync the gp_configuration and gpcc config */
 static apr_status_t a_lma_sync_config(gpcc_event_t *ev, void *arg, char *master)
@@ -416,3 +393,55 @@ static apr_status_t a_lma_sync_config(gpcc_event_t *ev, void *arg, char *master)
 
 
 
+#if 0
+static int a_lma_check_same_host(const char *addr, int ignore_port, apr_pool_t *pool)
+{
+    char host[256], hostname[256];
+    int port, len;
+    struct in_addr **addr_list;
+    struct hostent *he;
+    int i;
+    char *s;
+
+    s = strchr(addr, ':');
+    if (!s) {
+	gpcc_log_error("invalid addr format %s", addr);
+	return 0;
+    }
+
+    strncpy(host, addr, s - addr);
+    host[s-addr] = 0;
+
+    if (!ignore_port) {
+	port = strtol(s+1, 0, 0);
+
+	/* check port */
+	if (port != gpma.ma_port)
+	    return 0;
+    }
+
+    /* check hostname directly */
+    if (strcmp(gpma.hostname, host) == 0)
+	return 1;
+    
+    /* check IP addresses */
+    he = gethostbyname(gpma.hostname);
+    addr_list = (struct in_addr **) he->h_addr_list;
+    for (i = 0 ; addr_list[i] ; i++) {
+	if (strcmp(addr, inet_ntoa(*addr_list[i])) == 0)
+	    return 1;
+    }
+    
+    /* ssh remote host to get the hostname */
+    len = sizeof(hostname);
+    if (gpcc_pg_gethostname(host, hostname, &len, pool) != 0)  {
+	gpcc_log_error("invalid remote host %s", host);
+	return 0;
+    }
+
+    if (strcmp(hostname, gpma.hostname) == 0)
+	return 1;
+	
+    return 0;
+}
+#endif

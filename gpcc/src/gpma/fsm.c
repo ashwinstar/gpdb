@@ -121,13 +121,12 @@ APR_DECLARE(void) fsm_init(void)
 
     gpcc_fsm_put(LMA_LEADLESS_CMDSTATE, FAILURE_EVENT, LMA_STANDBY_CMDSTATE,
 		 a_lma_standby, NULL);
-    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, CHUBBY_GET_REPLY_EVENT, LMA_STANDBY_CMDSTATE,
-		 a_lma_standby_get_reply, NULL);
-
     gpcc_fsm_put(LMA_STANDBY_CMDSTATE, TIMEUP_EVENT, LMA_STANDBY_CMDSTATE,
 		 a_lma_standby_get_lease, NULL);
     gpcc_fsm_put(LMA_STANDBY_CMDSTATE, CHUBBY_GET_LEASE_REPLY_EVENT, LMA_STANDBY_CMDSTATE,
 		 a_lma_standby_get_lease_reply, NULL);
+    gpcc_fsm_put(LMA_STANDBY_CMDSTATE, CHUBBY_GET_REPLY_EVENT, LMA_STANDBY_CMDSTATE,
+		 a_lma_standby_get_reply, NULL);
     gpcc_fsm_put(LMA_STANDBY_CMDSTATE, SUCCESS_EVENT, LMA_LEAD_CMDSTATE,
 		 a_lma_leader, NULL);
     gpcc_fsm_put(LMA_STANDBY_CMDSTATE, FAILURE_EVENT, LMA_STANDBY_CMDSTATE,
@@ -169,7 +168,6 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_waiting, NULL);
     gpcc_fsm_put(FTS_CMDSTATE, ARRAY_DELETE_EVENT, FTS_CMDSTATE,
 		 a_fts_waiting, NULL);
-
 
     /* fts break event */
     gpcc_fsm_put(FTS_INITIALIZING_CMDSTATE, BREAK_EVENT, FTS_WAIT_CMDSTATE,
