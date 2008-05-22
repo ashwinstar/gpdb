@@ -76,6 +76,12 @@ extern void BufferedAppendSetFile(
     int64				 eof);
 
 /*
+ * Return the position of the next write buffer in bytes.
+ */
+extern int64 BufferedAppendNextBufferPosition(
+    BufferedAppend     *bufferedAppend);
+
+/*
  * Get the next buffer space for appending with a specified length.
  *
  * Returns NULL when the current file does not have enough

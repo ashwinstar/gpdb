@@ -78,6 +78,12 @@ extern void BufferedReadSetFile(
     int64               fileLen);
 
 /*
+ * Return the position of the next read buffer in bytes.
+ */
+extern int64 BufferedReadNextBufferPosition(
+    BufferedRead       *bufferedRead);
+
+/*
  * Get the next, maximum buffer space for reading.
  *
  * Returns NULL when the current file has been completely read.

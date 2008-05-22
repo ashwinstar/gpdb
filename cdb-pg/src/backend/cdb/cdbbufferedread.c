@@ -275,6 +275,26 @@ static uint8 *BufferedReadUseBeforeBuffer(
 }
 
 /*
+ * Return the position of the next read in bytes.
+ */
+int64 
+BufferedReadNextBufferPosition(
+    BufferedRead       *bufferedRead)
+{
+	Assert(bufferedRead != NULL);
+	Assert(bufferedRead->file >= 0);
+
+	/*
+	 * Note that the bufferOffset can be negative when we are using the
+	 * before buffer, but that is ok.  We should get an accurate
+	 * next position.
+	 */
+	return bufferedRead->position + 
+		   bufferedRead->bufferOffset + 
+		   bufferedRead->bufferLen;
+}
+
+/*
  * Get the next buffer space for reading with a specified max read-ahead
  * amount.
  *
@@ -288,8 +308,15 @@ uint8 *BufferedReadGetNextBuffer(
 	Assert(bufferedRead != NULL);
 	Assert(bufferedRead->file >= 0);
 	Assert(maxReadAheadLen > 0);
-	Assert(maxReadAheadLen <= bufferedRead->maxBufferLen);
 	Assert(nextBufferLen != NULL);
+	if (maxReadAheadLen > bufferedRead->maxBufferLen)
+	{
+		Assert(maxReadAheadLen <= bufferedRead->maxBufferLen);
+		
+		elog(ERROR, "Read ahead length %d is greater than maximum buffer length %d",
+		     maxReadAheadLen, bufferedRead->maxBufferLen);
+	}
+	
 
 	if (bufferedRead->position == bufferedRead->fileLen)
 	{

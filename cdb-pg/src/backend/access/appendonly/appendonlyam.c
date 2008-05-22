@@ -55,10 +55,14 @@
 #include <zlib.h>
 #endif
 
-static int32 doCompressAppend(BufferedAppend	*bufferedAppend,
+static int32 doCompressAppend(AppendOnlyInsertDesc aoInsertDesc,
 							 uint8			*sourceData,
 							 int32			 sourceLen,
 							 int			 compressLevel);
+static void doDecompress(AppendOnlyScanDesc scan,
+							 uint8			*compressed,
+							 int32			compressedLen,
+							 int32			*uncompressedLen);
 static void initProcessingSize(Relation rel);
 
 static int32	maxBufferLen = 0;
@@ -130,6 +134,355 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 	pgstat_count_heap_scan(&scan->aos_pgstat_info);
 }
 
+static void
+doScanInit(AppendOnlyScanDesc scan)
+{
+	Relation	reln = scan->aos_rd;
+	char	   *path;
+	AppendOnlyEntry *aoentry;
+	int64		eof;
+
+	/* cache the relfilenode value */
+	scan->aos_relfilenode = reln->rd_node.relNode;
+	Assert(scan->aos_relfilenode != InvalidOid);
+	
+	/* Get path for this relation file */
+	path = relpath(reln->rd_node);
+
+	/* Open the relation file */
+	scan->aos_file = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
+	
+	/* Get the eof of this relation file from the pg_appendonly catalog */
+	aoentry = GetAppendOnlyEntry(scan->aos_relfilenode);
+	eof = (int64)aoentry->eof;
+
+	if (eof < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Invalid eof %lld for relation %s", 
+						(long long int) eof, NameStr(scan->aos_rd->rd_rel->relname))));			
+	
+	/* Set the file to be read with its eof */
+	BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
+	
+	/* ready to go! */
+	scan->aos_inited = true;
+	
+	if (Debug_appendonly_print_scan)
+		elog(LOG,"Append-only scan initialize for table '%s' with path = '%s' (compression = %s, maximum buffer length %d, large read length %d)",
+		     NameStr(scan->aos_rd->rd_rel->relname),
+		     path,
+		     (scan->aos_compressed ? "true" : "false"),
+		     maxBufferLen,
+		     largeReadLen);
+
+	pfree(path);
+	pfree(aoentry);
+}
+
+static void
+doSkipPadding(AppendOnlyScanDesc scan,
+	int32 skipLen)
+{
+	int64   nextReadPosition;
+	int64   nextBoundaryPosition;
+	int32   pageRemainder;
+	bool	doSkip;
+	uint8  *buffer;
+	int32	availableLen;
+	
+	nextReadPosition = BufferedReadNextBufferPosition(&scan->bufferedRead);
+	nextBoundaryPosition = 
+		((nextReadPosition + maxBufferLen - 1)/maxBufferLen)*maxBufferLen;
+	pageRemainder = (int32)(nextBoundaryPosition - nextReadPosition);
+
+	if (pageRemainder == 0)
+		doSkip = false;
+	else if (skipLen == -1)
+	{
+		/*
+		 * Skip to end of page.
+		 */
+		doSkip = true;
+		skipLen = pageRemainder;
+	}
+	else
+		doSkip = (pageRemainder < skipLen);
+	
+	if (doSkip)
+	{
+		/*
+		 * Read through the remainder.
+		 */
+		buffer = BufferedReadGetNextBuffer(&scan->bufferedRead,
+										   pageRemainder,
+										   &availableLen);
+
+		/*
+		 * Since our file EOF should always be a multiple of the file-system
+		 * page, we do not expect a short read here.
+		 */
+		if (buffer == NULL)
+			availableLen = 0;
+		if (buffer == NULL || pageRemainder != availableLen)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Unexpected end of file.  Expected to read %d bytes after position %lld but found %d bytes (bufferCount %d)\n", 
+							pageRemainder, 
+							(long long int) nextReadPosition, 
+							availableLen,
+							scan->bufferCount)));			
+		}
+
+		// UNDONE: For verification purposes, we should verify the
+		// UNDONE: reminder is all zeroes.
+		
+		if (Debug_appendonly_print_scan)
+			elog(LOG,"Append-only scan skipping zero padded remainder for table '%s' (nextReadPosition = %lld, pageRemainder = %d)",
+			     NameStr(scan->aos_rd->rd_rel->relname),
+			     nextReadPosition,
+			     pageRemainder);
+	}
+}
+
+static bool
+getNextBlock(AppendOnlyScanDesc scan)
+{
+	int32	peekLen = (!scan->aos_compressed ? VARBLOCK_HEADER_LEN : sizeof(int32));
+	int32	availableLen;
+	int 	i;
+	int32	growLen;
+	uint8  *buffer;
+	int32	blockLen = 0;
+	int32	compressedLen = 0;
+	int32	uncompressedLen = 0;
+
+	VarBlockCheckError varBlockCheckError;
+
+	/*
+	 * Peek ahead just enough so we can determine the length of the 
+	 * uncompressed VarBlock or the length for compressed data.
+	 *
+	 * However, we need to honor the file-system page boundaries here
+	 * since we do not let the length information cross the boundary.
+	 */
+	doSkipPadding(scan, 
+	              peekLen);
+
+	buffer = BufferedReadGetNextBuffer(&scan->bufferedRead,
+									   peekLen,
+									   &availableLen);
+	
+	if (buffer == NULL)
+	{
+		/* done reading the file */
+		BufferedReadCompleteFile(&scan->bufferedRead);
+		scan->aos_inited = false;	
+		return false;			
+	}
+	
+	scan->bufferCount++;
+				
+	if (availableLen != peekLen)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Expected %d bytes and found %d bytes (bufferCount %d)\n", 
+						peekLen, availableLen, scan->bufferCount)));			
+
+	/*
+	 * First check for zero padded page remainder.
+	 */
+	i = 0;
+	while (true)
+	{
+		if (buffer[i] != 0)
+			break;
+
+		i++;
+		if (i >= peekLen)
+		{
+			/*
+			 * Skip over zero padding caused when the append command
+			 * left a partially full page.
+			 */
+			doSkipPadding(scan,
+				          /* indicated till end of page */ -1);
+
+			/*
+			 * Now try to get the peek data from the new page.
+			 */
+			buffer = BufferedReadGetNextBuffer(&scan->bufferedRead,
+											   peekLen,
+											   &availableLen);
+			
+			if (buffer == NULL)
+			{
+				/* done reading the file */
+				BufferedReadCompleteFile(&scan->bufferedRead);
+				scan->aos_inited = false;	
+				return false;			
+			}
+			
+			if (availableLen != peekLen)
+				ereport(ERROR,
+						(errcode(ERRCODE_GP_INTERNAL_ERROR),
+						 errmsg("Expected %d bytes and found %d bytes (bufferCount %d)\n", 
+								peekLen, availableLen, scan->bufferCount)));			
+			break;
+		}
+	}
+
+	/*
+	 * Now evaluate the peek ahead.
+	 */
+	if(!scan->aos_compressed)
+	{
+		varBlockCheckError = VarBlockHeaderIsValid(buffer, availableLen);
+		if (varBlockCheckError != VarBlockCheckOk)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("VarBlock header is not valid (bufferCount %d, detail '%s')\n", 
+							scan->bufferCount,
+							VarBlockGetCheckErrorStr())));			
+		
+		/*
+		 * Ask the VarBlock module to use the header to how large the whole
+		 * VarBlock is.
+		 */
+		blockLen = VarBlockLenFromHeader(buffer, availableLen);
+		
+		if (blockLen <= peekLen)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Expected %d byte VarBlock length to be larger than %d header bytes (bufferCount %d)", 
+							blockLen, peekLen, scan->bufferCount)));							
+		
+		growLen = blockLen;
+	}
+	else
+	{
+		int32	*lengthWord;
+		int32	roundUpLen;
+	
+		lengthWord = (int32*)buffer;
+		compressedLen = *lengthWord;
+		if (compressedLen == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Expected non-zero compessed data length (bufferCount %d)", 
+							scan->bufferCount)));							
+		roundUpLen = sizeof(int32) + ((compressedLen + sizeof(int32) - 1)/sizeof(int32))*sizeof(int32);
+		growLen = roundUpLen;
+	}
+	
+	/*
+	 * Grow the amount we can see just to the VarBlock length to avoid any
+	 * unnecessary copying by BufferedRead.
+	 *
+	 * Since the BufferedRead module may have to copy information around,
+	 * we do not save any pointers to the prior buffer call.
+	 */	
+	buffer = BufferedReadGrowBuffer(&scan->bufferedRead,
+									growLen,
+									&availableLen);
+
+	if (growLen != availableLen)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Wrong available length (expected %d byte length buffer and got %d (bufferCount %d)",
+						growLen, availableLen, scan->bufferCount)));			
+
+	
+	/* 
+	 * Actually do the decompression now.
+	 */
+	if(scan->aos_compressed)
+	{	
+		/*
+		 * Decompress into the varBlockBuffer.
+		 */
+		doDecompress(
+					scan,
+					buffer + sizeof(int32),
+					compressedLen,
+					&uncompressedLen);
+	}
+	
+	/*
+	 * Validate VarBlock.
+	 */
+	if(!scan->aos_compressed)
+	{
+		varBlockCheckError = VarBlockIsValid(buffer, availableLen);
+		if (varBlockCheckError != VarBlockCheckOk)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("VarBlock  is not valid (valid block check error %d, detail '%s', block count %d)\n", 
+							varBlockCheckError,
+							VarBlockGetCheckErrorStr(),
+							scan->bufferCount)));				
+	}
+	else
+	{
+		varBlockCheckError = VarBlockHeaderIsValid(
+											scan->varBlockBuffer, 
+											uncompressedLen);
+		if (varBlockCheckError != VarBlockCheckOk)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Uncompressed VarBlock is not valid (uncompressed length %d, valid block check error %d, detail '%s', block count %d)\n", 
+							uncompressedLen,
+							varBlockCheckError,
+							VarBlockGetCheckErrorStr(),
+							scan->bufferCount)));				
+		}
+
+		/*
+		 * Verify length from header matches the length from uncompress.
+		 */
+		blockLen = VarBlockLenFromHeader(scan->varBlockBuffer,
+										 uncompressedLen);
+		
+		if (blockLen != uncompressedLen)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Expected %d byte VarBlock length to equal %d bytes (block count %d)", 
+							blockLen, uncompressedLen, scan->bufferCount)));
+	}
+	
+	/*
+	 * Now use the VarBlock module to extract the items out.
+	 */
+	VarBlockReaderInit(&scan->varBlockReader, 
+					   (!scan->aos_compressed ? buffer : scan->varBlockBuffer), 
+					   blockLen);
+	
+	scan->currentItemCount = 0;
+	scan->readerItemCount = VarBlockReaderItemCount(&scan->varBlockReader);			
+
+	if (Debug_appendonly_print_scan)
+	{
+		if(scan->aos_compressed)
+			elog(LOG,"Append-only scan read uncompressed VarBlock for table '%s' (compressed length %d, length = %d, item count %d, block count %d)",
+			     NameStr(scan->aos_rd->rd_rel->relname),
+			     compressedLen,
+			     uncompressedLen,
+			     scan->readerItemCount,
+			     scan->bufferCount);
+		else
+		{
+			elog(LOG,"Append-only scan read VarBlock for table '%s' (length = %d, item count %d, block count %d)",
+			     NameStr(scan->aos_rd->rd_rel->relname),
+			     blockLen,
+			     scan->readerItemCount,
+			     scan->bufferCount);
+		}
+	}
+
+	return true;
+}
 
 /* ----------------
  *		appendonlygettup - fetch next heap tuple
@@ -151,267 +504,27 @@ appendonlygettup(AppendOnlyScanDesc scan,
 				 TupleTableSlot *slot)
 {
 	MemTuple	tuple = &(scan->aos_ctup);
-	int32		byteLen = (!scan->aos_compressed ? sizeof(VarBlockHeader) : sizeof(int32));
-	int32	   *lengthWord;
-	int32		bufferLen;
-	int32		roundUpLen;
 
 	Assert(ScanDirectionIsForward(dir));
 	Assert(maxBufferLen > 0 && largeReadLen == maxBufferLen * 2);
 	
 	if (!scan->aos_inited)
 	{
-		Relation	reln = scan->aos_rd;
-		char	   *path;
-		AppendOnlyEntry *aoentry;
-		int64		eof;
-
-		/* cache the relfilenode value */
-		scan->aos_relfilenode = reln->rd_node.relNode;
-		Assert(scan->aos_relfilenode != InvalidOid);
-		
-		/* Get path for this relation file */
-		path = relpath(reln->rd_node);
-
-		/* Open the relation file */
-		scan->aos_file = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
-		
-		/* Get the eof of this relation file from the pg_appendonly catalog */
-		aoentry = GetAppendOnlyEntry(scan->aos_relfilenode);
-		eof = (int64)aoentry->eof;
-
-		if (eof < 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Invalid eof %lld for relation %s", 
-							(long long int) eof, NameStr(scan->aos_rd->rd_rel->relname))));			
-		
-		/* Set the file to be read with its eof */
-		BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
-		
-		/* ready to go! */
-		scan->aos_inited = true;
-		
-		if (Debug_appendonly_print_scan)
-			elog(LOG,"Append-only scan initialize for table '%s' with path = '%s' (compression = %s, maximum buffer length %d, large read length %d)",
-			     NameStr(scan->aos_rd->rd_rel->relname),
-			     path,
-			     (scan->aos_compressed ? "true" : "false"),
-			     maxBufferLen,
-			     largeReadLen);
-	
-		pfree(path);
-		pfree(aoentry);
+		doScanInit(scan);
 	}
 
 	for(;;)
 	{
 		if(scan->bufferDone)
 		{
-			int32	availableLen;
-			int32	maxralen;
-			uint8  *buffer;
-			int32	compressedDataLen = 0;
-			int32	uncompressedDataLen = 0;
+			if (!getNextBlock(scan))
+			{
+				return NULL;			
+			}
 
-			VarBlockCheckError varBlockCheckError;
-
-			/*
-			 * Get a buffer of just the header in order to get the VarBlock length.
-			 */
-			buffer = BufferedReadGetNextBuffer(&scan->bufferedRead,
-											   byteLen,
-											   &availableLen);
-			
-			/* process the buffer until done */
 			scan->bufferDone = false;
-			
-			if (buffer == NULL)
-			{
-				/* done reading the file */
-				BufferedReadCompleteFile(&scan->bufferedRead);
-				scan->aos_inited = false;	
-				tuple = NULL;
-				return tuple;			
-			}
-			
-			scan->bufferCount++;
-						
-			if (availableLen != byteLen)
-				ereport(ERROR,
-						(errcode(ERRCODE_GP_INTERNAL_ERROR),
-						 errmsg("Expected %d byte length (bufferCount %d)\n", 
-								byteLen, scan->bufferCount)));			
-						
-			if(!scan->aos_compressed)
-			{
-				varBlockCheckError = VarBlockHeaderIsValid(buffer, availableLen);
-				if (varBlockCheckError != VarBlockCheckOk)
-					ereport(ERROR,
-							(errcode(ERRCODE_GP_INTERNAL_ERROR),
-							 errmsg("VarBlock header is not valid (bufferCount %d, detail '%s')\n", 
-									scan->bufferCount,
-									VarBlockGetCheckErrorStr())));			
-				
-				/*
-				 * Ask the VarBlock module to use the header to how large the whole
-				 * VarBlock is.
-				 */
-				bufferLen = VarBlockLenFromHeader(buffer, availableLen);
-				
-				if (bufferLen <= byteLen)
-					ereport(ERROR,
-							(errcode(ERRCODE_GP_INTERNAL_ERROR),
-							 errmsg("Expected %d byte VarBlock length to be larger than %d header bytes (bufferCount %d)", 
-									bufferLen, byteLen, scan->bufferCount)));							
-				
-				maxralen = bufferLen;
-			}
-			else
-			{
-				lengthWord = (int32*)buffer;
-				bufferLen = *lengthWord;
-				roundUpLen = sizeof(int32) + ((bufferLen + sizeof(int32) - 1)/sizeof(int32))*sizeof(int32);
-				maxralen = roundUpLen;
-			}
-			
-			/*
-			 * Grow the amount we can see just to the VarBlock length to avoid any
-			 * unnecessary copying by BufferedRead.
-			 */	
-			buffer = BufferedReadGrowBuffer(&scan->bufferedRead,
-											maxralen,
-											&availableLen);
+		}	
 
-			if (maxralen != availableLen)
-				ereport(ERROR,
-						(errcode(ERRCODE_GP_INTERNAL_ERROR),
-						 errmsg("Wrong available length (expected %d byte length buffer and got %d (bufferCount %d)",
-								maxralen, availableLen, scan->bufferCount)));			
-
-			
-			/* 
-			 * actually do the decompression now.
-			 */
-			if(scan->aos_compressed)
-			{	
-				int res;
-				unsigned long compressedSize;
-				unsigned long uncompressedSize;
-				
-				compressedSize = (unsigned long)bufferLen;
-				uncompressedSize = (unsigned long)(scan->bufferedRead).maxBufferLen;
-
-#ifndef HAVE_LIBZ
-				ereport(ERROR,
-						(errcode(ERRCODE_GP_INTERNAL_ERROR),
-						 errmsg("Don't have ZLIB on the system!")));			
-#else
-				res = uncompress(scan->varBlockBuffer, &uncompressedSize, (Bytef *)(buffer + sizeof(int32)), compressedSize);
-
-				if (res != Z_OK)
-				{
-					char *detail;
-					
-					switch(res)
-					{
-						case Z_MEM_ERROR:
-							detail = "not enough memory";
-							break;
-						case Z_BUF_ERROR:
-							detail = "not enough room in the output buffer";
-							break;
-						case Z_DATA_ERROR:
-							detail = "data was corrupted";
-							break;
-						default:
-							detail = "reason unknown";
-					}
-
-					elog(ERROR,"ZLIB uncompress failed (detail: '%s', output buffer length %d, compressed length %d)",
-						 detail, (scan->bufferedRead).maxBufferLen, bufferLen);
-				}
-
-				compressedDataLen = (int32)compressedSize;
-				uncompressedDataLen = (int32)uncompressedSize;
-#endif
-			}
-			
-			
-#ifdef DEBUG
-			/*
-			 * In DEBUG, check whole VarBlock.
-			 */
-			if(!scan->aos_compressed)
-			{
-				varBlockCheckError = VarBlockIsValid(buffer, availableLen);
-				if (varBlockCheckError != VarBlockCheckOk)
-					ereport(ERROR,
-							(errcode(ERRCODE_GP_INTERNAL_ERROR),
-							 errmsg("VarBlock  is not valid (bufferCount %d, detail '%s')\n", 
-									scan->bufferCount,
-									VarBlockGetCheckErrorStr())));				
-			}
-			else
-			{
-				varBlockCheckError = VarBlockIsValid(scan->varBlockBuffer,
-												     uncompressedDataLen);
-				if (varBlockCheckError != VarBlockCheckOk)
-					ereport(ERROR,
-							(errcode(ERRCODE_GP_INTERNAL_ERROR),
-							 errmsg("VarBlock  is not valid (bufferCount %d, detail '%s')\n", 
-									scan->bufferCount,
-									VarBlockGetCheckErrorStr())));				
-				
-			}
-#endif
-
-			if(scan->aos_compressed)
-			{
-				/*
-				 * Ask the VarBlock module to use the header to how large the whole
-				 * VarBlock is.
-				 */
-				bufferLen = VarBlockLenFromHeader(scan->varBlockBuffer,
-												  uncompressedDataLen);
-				
-				if (bufferLen != uncompressedDataLen)
-					ereport(ERROR,
-							(errcode(ERRCODE_GP_INTERNAL_ERROR),
-							 errmsg("Expected %d byte VarBlock length to equal %d bytes (bufferCount %d)", 
-									bufferLen, uncompressedDataLen, scan->bufferCount)));
-			}
-			
-			/*
-			 * Now use the VarBlock module to extract the lines out.
-			 */
-			VarBlockReaderInit(&scan->varBlockReader, 
-							   (!scan->aos_compressed ? buffer : scan->varBlockBuffer), 
-							   bufferLen);
-			
-			scan->currentItemCount = 0;
-			scan->readerItemCount = VarBlockReaderItemCount(&scan->varBlockReader);			
-
-			if (Debug_appendonly_print_scan)
-			{
-				if(scan->aos_compressed)
-					elog(LOG,"Append-only scan read compressed VarBlock for table '%s' (compressed length %d, length = %d, item count %d, block count %d)",
-					     NameStr(scan->aos_rd->rd_rel->relname),
-					     compressedDataLen,
-					     uncompressedDataLen,
-					     scan->readerItemCount,
-					     scan->bufferCount);
-				else
-				{
-					elog(LOG,"Append-only scan read uncompressed VarBlock for table '%s' (length = %d, item count %d, block count %d)",
-					     NameStr(scan->aos_rd->rd_rel->relname),
-					     bufferLen,
-					     scan->readerItemCount,
-					     scan->bufferCount);
-				}
-			}
-		}
-		
 		/*
 		 * get the next item (tuple) from the varblock
 		 */
@@ -739,6 +852,60 @@ appendonly_insert_init(Relation rel)
 	return aoInsertDesc;
 }
 
+static void
+doPadOutPageRemainder(AppendOnlyInsertDesc aoInsertDesc, 
+	int32	padLen)
+{
+	int64	nextWritePosition;
+	int64   nextBoundaryPosition;
+	int32	pageRemainder;
+	bool	doPad;
+	uint8   *buffer;
+	
+	nextWritePosition = BufferedAppendNextBufferPosition(&aoInsertDesc->bufferedAppend);
+	nextBoundaryPosition = 
+		((nextWritePosition + maxBufferLen - 1)/maxBufferLen)*maxBufferLen;
+	pageRemainder = (int32)(nextBoundaryPosition - nextWritePosition);
+
+	if (pageRemainder == 0)
+		doPad = false;
+	else if (padLen == -1)
+	{
+		/*
+		 * Pad to end of page.
+		 */
+		doPad = true;
+		padLen = pageRemainder;
+	}
+	else
+		doPad = (pageRemainder < padLen);
+
+	if (doPad)
+	{
+		/*
+		 * Get buffer of the remainder to pad.
+		 */
+		buffer = BufferedAppendGetBuffer(&aoInsertDesc->bufferedAppend,
+										 pageRemainder);
+
+		if (buffer == NULL)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("We do not expect files to be have a maximum length")));						
+		}
+
+		memset(buffer, 0, pageRemainder);
+		BufferedAppendFinishBuffer(&aoInsertDesc->bufferedAppend, pageRemainder);
+
+		if (Debug_appendonly_print_insert)
+			elog(LOG,"Append-only insert zero padded remainder for table '%s' (nextWritePosition = %lld, pageRemainder = %d)",
+			     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
+			     nextWritePosition,
+			     pageRemainder);
+
+	}
+}
 
 /*
  *	appendonly_insert		- insert tuple into a varblock
@@ -843,6 +1010,8 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 				     bufferLen,
 				     actualItemCount,
 				     aoInsertDesc->bufferCount);
+
+			doPadOutPageRemainder(aoInsertDesc, VARBLOCK_HEADER_LEN);
 	
 			buffer = BufferedAppendGetMaxBuffer(&aoInsertDesc->bufferedAppend);
 			
@@ -852,7 +1021,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 				
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
-						 errmsg("Item too long (#2)")));						
+						 errmsg("We do not expect files to be have a maximum length")));						
 			}
 			
 			VarBlockMakerInit(&aoInsertDesc->varBlockMaker,
@@ -865,7 +1034,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 		{
 			int32 compressedDataLen;
 			
-			compressedDataLen = doCompressAppend(&aoInsertDesc->bufferedAppend, 
+			compressedDataLen = doCompressAppend(aoInsertDesc, 
 												 aoInsertDesc->varBlockBuffer, 
 												 bufferLen,
 												 aoInsertDesc->compressLevel);
@@ -943,7 +1112,7 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 		{
 			int32 compressedDataLen;
 			
-			compressedDataLen = doCompressAppend(&aoInsertDesc->bufferedAppend, 
+			compressedDataLen = doCompressAppend(aoInsertDesc, 
 												 aoInsertDesc->varBlockBuffer, 
 												 bufferLen,
 												 aoInsertDesc->compressLevel);
@@ -957,6 +1126,12 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 				     aoInsertDesc->bufferCount);
 		}
 	}
+
+	/*
+	 * We pad out append commands to the page boundary.
+	 */
+	doPadOutPageRemainder(aoInsertDesc,
+		                  /* indicate till end of page */ -1);
 	
 	fileLen = BufferedAppendFileLen(&aoInsertDesc->bufferedAppend);
 	
@@ -973,25 +1148,27 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 }
 
 /*
- * doCompressAppend
- *
- * append data compressed with LIBZ.
+ * Append data compressed with LIBZ.
  */
 static int32
-doCompressAppend(BufferedAppend	*bufferedAppend,
+doCompressAppend(AppendOnlyInsertDesc aoInsertDesc,
 				 uint8			*sourceData,
 				 int32			 sourceLen,
 				 int			 compressLevel)
 {
+	BufferedAppend *bufferedAppend = &aoInsertDesc->bufferedAppend; 
 	uint8	*buffer;
 	unsigned long compressedSize;
+	int 	 res;
 	int32	 compressedDataLen;
 	int32	*lengthWord;
 	int32	 roundUpLen;
 		
 	Assert(maxBufferLen > 0 && largeWriteLen == maxBufferLen * 2);
 
-	buffer = BufferedAppendGetMaxBuffer(bufferedAppend);
+	doPadOutPageRemainder(aoInsertDesc, sizeof(int32));
+	
+	buffer = BufferedAppendGetMaxBuffer(&aoInsertDesc->bufferedAppend);
 
 #ifndef HAVE_LIBZ
 	ereport(ERROR,
@@ -999,12 +1176,34 @@ doCompressAppend(BufferedAppend	*bufferedAppend,
 			 errmsg("Don't have ZLIB on the system!")));			
 #else
 	
-	compressedSize = (unsigned long)bufferedAppend->maxBufferLen; /*Input to compress2. UNDONE: Create function to get this value. */
+	/*Input to compress2. UNDONE: Create function to get this value. */
+	compressedSize = (unsigned long)bufferedAppend->maxBufferLen; 
 	
-	if (compress2(buffer + sizeof(int32), &compressedSize, (Bytef *)sourceData, sourceLen, compressLevel) != Z_OK)
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Compression failed")));			
+	res = compress2(buffer + sizeof(int32), &compressedSize, (Bytef *)sourceData, sourceLen, compressLevel);
+	if (res != Z_OK)
+	{
+		char *detail = NULL;
+		
+		switch(res)
+		{
+			case Z_MEM_ERROR:
+				detail = "Insufficient memory";
+				break;
+			case Z_BUF_ERROR:
+				detail = "The buffer was not large enough to hold the compressed data";
+				break;
+			case Z_STREAM_ERROR:
+				detail = "The level was not Z_DEFAULT_LEVEL, or was not between 0 and 9";
+				break;
+			default:
+				elog(ERROR,"ZLIB compress2 failed -- reason %d unknown (output buffer length %d, uncompressed length %d)",
+					 res, bufferedAppend->maxBufferLen, sourceLen);
+				break;
+		}
+
+		elog(ERROR,"ZLIB compress2 failed (detail: '%s', output buffer length %d, uncompressed length %d)",
+			 detail, bufferedAppend->maxBufferLen, sourceLen);
+	}
 #endif
 
 	Assert(compressedSize > 0);
@@ -1016,6 +1215,57 @@ doCompressAppend(BufferedAppend	*bufferedAppend,
 	BufferedAppendFinishBuffer(bufferedAppend, roundUpLen);
 
 	return compressedDataLen;
+}
+
+static void
+doDecompress(AppendOnlyScanDesc scan,
+			uint8			*compressed,
+			int32			compressedLen,
+			int32			*uncompressedLen)
+{
+	int res;
+	unsigned long compressedSize;
+	unsigned long uncompressedSize;
+	
+	compressedSize = (unsigned long)compressedLen;
+	uncompressedSize = (unsigned long)(scan->bufferedRead).maxBufferLen;
+
+#ifndef HAVE_LIBZ
+	*uncompressedLen = 0;
+	
+	ereport(ERROR,
+			(errcode(ERRCODE_GP_INTERNAL_ERROR),
+			 errmsg("Don't have ZLIB on the system!")));			
+#else
+	res = uncompress(scan->varBlockBuffer, &uncompressedSize, (Bytef *)compressed, compressedSize);
+
+	if (res != Z_OK)
+	{
+		char *detail = NULL;
+		
+		switch(res)
+		{
+			case Z_MEM_ERROR:
+				detail = "Insufficient memory";
+				break;
+			case Z_BUF_ERROR:
+				detail = "The buffer was not large enough to hold the uncompressed data";
+				break;
+			case Z_DATA_ERROR:
+				detail = "The compressed data was corrupted";
+				break;
+			default:
+				elog(ERROR,"ZLIB uncompress failed -- reason %d unknown (output buffer length %d, compressed length %d)",
+					 res, (scan->bufferedRead).maxBufferLen, compressedLen);
+				break;
+		}
+
+		elog(ERROR,"ZLIB uncompress failed (detail: '%s', output buffer length %d, compressed length %d)",
+			 detail, (scan->bufferedRead).maxBufferLen, compressedLen);
+	}
+
+	*uncompressedLen = (int32)uncompressedSize;
+#endif
 }
 
 /*

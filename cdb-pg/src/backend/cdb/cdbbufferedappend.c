@@ -189,6 +189,19 @@ static void BufferedAppendWrite(
 }
 
 /*
+ * Return the position of the next write buffer in bytes.
+ */
+int64 BufferedAppendNextBufferPosition(
+    BufferedAppend     *bufferedAppend)
+{
+	Assert(bufferedAppend != NULL);
+	Assert(bufferedAppend->file >= 0);
+	
+	return bufferedAppend->position +
+		   bufferedAppend->len;
+}
+
+/*
  * Get the next buffer space for appending with a specified length.
  *
  * Returns NULL when the current file does not have enough
