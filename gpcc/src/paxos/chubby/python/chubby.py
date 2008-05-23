@@ -282,7 +282,8 @@ class Connection:
 	return (0,c)
 
     def getLease(self,name,timeout,leaseTime=DEFAULT_LEASE_TIME):
-	timedout = time.time()+timeout
+	if timeout!=None:
+	    timeout += time.time()
 	expire = 0
 	dn = 0
 	di = self.__chubby.getNewId()
@@ -310,7 +311,7 @@ class Connection:
 		    if c.renew(leaseTime)==0:
 			return (0,c)
 	    time.sleep(1)
-	    if time.time()>=timedout:
+	    if timeout!=None and time.time()>=timeout:
 		return (E_TIMEOUT,)
 
     def renew(self,leaseTime=DEFAULT_LEASE_TIME):

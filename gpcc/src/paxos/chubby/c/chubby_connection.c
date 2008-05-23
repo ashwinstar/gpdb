@@ -109,81 +109,16 @@ chubby_connection_clone(chubby_connection_t*thiz,chubby_connection_t**answer)
     return 0;
 }
 
-int
-chubby_connection_getLease(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int timeout,int leaseTime)
-{
-    int e;
-    apr_time_t timedout=apr_time_now()+apr_time_from_sec(timeout);
-    apr_time_t expire=0,now;
-    int waitTime;
-    int64_t dn=0;
-    struct chubby_stat stat;
-    chubby_string_t*a;
-    char id[CHUBBY_ID_SIZE];
-    char info[PATH_MAX];
-    if (strlen(name) >= PATH_MAX-5)
-	return CHUBBY_E_INVAL;
-    sprintf(info,"%s-info",name);
-    chubby_getNewId(thiz->chubby,id);
-    do{
-	e = chubby_connection_get(thiz,&stat,&a,info,-1);
-	if (!e){
-	    sscanf(a->a,"%d",&waitTime);
-	    thiz->chubby->free(a);
-	}else if (e == CHUBBY_E_NOENT)
-	    stat.decreeNumber = 0;
-	else
-	    return e;
-	now = apr_time_now();
-	if (stat.decreeNumber > dn){
-	    expire = waitTime==0?0:now+apr_time_from_sec(waitTime)+1;
-	    dn = stat.decreeNumber;
-	}
-	if (stat.decreeNumber==0 || expire<now){
-	    a = chubby_string_format(thiz->chubby,"%s",id);
-	    if (!a)
-		return CHUBBY_E_OOM;
-	    e = chubby_connection_put(thiz,name,a);
-	    thiz->chubby->free(a);
-	    if (e)
-		return e;
-	    e = chubby_connection_get(thiz,&stat,&a,name,-1);
-	    if (e)
-		return e;
-	    if (a->length==strlen(id) && !memcmp(a->a,id,a->length)){
-		chubby_connection_t*c=chubby_connection_new(thiz->chubby);
-		thiz->chubby->free(a);
-		if (!c)
-		    return CHUBBY_E_OOM;
-		chubby_counted_set(&c->parent,thiz);
-		c->leaseDn = stat.decreeNumber;
-		strcpy(c->leaseFilename,name);
-		strcpy(c->leaseId,id);
-		e = chubby_connection_renew(c,leaseTime);
-		if (e){
-		    chubby_connection_close(c);
-		    return CHUBBY_E_LEASEEXPIRED;
-		}
-		*answer = c;
-		return 0;
-	    }
-	    thiz->chubby->free(a);
-	}
-	sleep(1);
-    }while (timeout>=0 && apr_time_now()<timedout);
-    return CHUBBY_E_TIMEOUT;
-}
-
 void
 super_data_delete(struct super_data*data)
 {
-    chubby_t*chubby=NULL;
-    if (data->free)
-	data->free(data);
-    chubby_counted_set(&chubby,data->c->chubby);
-    chubby_counted_set(&data->c,NULL);
-    chubby->free(data);
-    chubby_counted_set(&chubby,NULL);
+     chubby_t*chubby=NULL;
+     if (data->free)
+ 	data->free(data);
+     chubby_counted_set(&chubby,data->c->chubby);
+     chubby_counted_set(&data->c,NULL);
+     chubby->free(data);
+     chubby_counted_set(&chubby,NULL);
 }
 
 void
@@ -214,16 +149,29 @@ super_data_done_stat(struct super_data*data,int e,struct chubby_stat*stat)
     super_data_delete(data);
 }
 
+void
+super_data_done_connection(struct super_data*data,int e,chubby_connection_t*c)
+{
+    ((void(*)(void*,int,chubby_connection_t*))data->callback)(data->data,e,c);
+    super_data_delete(data);
+}
+
 void*
 super_data_new(int size,chubby_connection_t*c,void*callback,void*dat,void(*free)(void*data))
 {
     struct super_data*data=c->chubby->malloc(size);
     if (data){
 	memset(data,0,size);
-	chubby_counted_set(&data->c,c);
+ 	chubby_counted_set(&data->c,c);
 	data->callback = callback;
 	data->data = dat;
 	data->free = free;
     }
     return data;
+}
+
+int
+chubby_connection_asynchronous_sleep(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*data,time_t time)
+{
+    return chubby_asynchronous_sleep(thiz->chubby,callback,data,apr_time_from_sec(time));
 }

@@ -70,6 +70,7 @@ chubby_connection_t*chubby_connection_new(chubby_t*chubby);
 void chubby_getNewId(chubby_t*thiz,char*a);
 
 int chubby_asynchronous_propose(chubby_t*thiz,void(*callback)(void*data,int e,chubby_string_t*answer),void*data,chubby_string_t*what);
+int chubby_asynchronous_sleep(chubby_t*thiz,void(*callback)(void*data,int e),void*data,apr_time_t time);
 
 int chubby_udp_buffer_isOverflowed(chubby_udp_buffer_t*thiz);
 void chubby_udp_buffer_format(chubby_udp_buffer_t*thiz,char*format,...);
@@ -109,4 +110,6 @@ void super_data_delete(struct super_data*data);
 void super_data_done_stat_string(struct super_data*data,int e,struct chubby_stat*stat,chubby_string_t*string);
 void super_data_done_stat_charstarstar(struct super_data*data,int e,struct chubby_stat*stat,char**charstarstar);
 void super_data_done_stat(struct super_data*data,int e,struct chubby_stat*stat);
+void super_data_done_connection(struct super_data*data,int e,chubby_connection_t*c);
+
 #endif

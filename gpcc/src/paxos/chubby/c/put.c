@@ -28,13 +28,11 @@ statDone2(void*_data,int e,struct chubby_stat*stat)
     if (!e){
 	if (data->dn == stat->decreeNumber)
 	    e = CHUBBY_E_LEASEEXPIRED;
-	else if (strcmp(data->name,data->ifname)){
+	else if (strcmp(data->name,data->ifname))
 	    e = startPutLoop(data);
-	    if (!e)
-		return;
-	}
     }
-    super_data_done_nothing(&data->super,e);
+    if (e)
+	super_data_done_nothing(&data->super,e);
 }
 
 static void

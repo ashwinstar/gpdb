@@ -37,11 +37,6 @@ chubby_connection_checkLease(chubby_connection_t*thiz)
     return chubby_two_int_finish(thiz->chubby,&data,chubby_connection_asynchronous_checkLease(thiz,chubby_two_int_callback,&data));
 }
 
-/*
-int
-chubby_connection_getLease(chubby_connection_t*thiz,chubby_connection_t**answer,const char*name,int timeout,int leaseTime)
-*/
-
 struct renew_data{
     struct super_data super;
     apr_time_t startTime;
@@ -79,10 +74,9 @@ renewPutDone(void*_data,int e)
     if (!e){
 	sprintf(info,"%s-info",data->super.c->leaseFilename);
 	e = chubby_connection_asynchronous_get(data->super.c,renewGetDone,data,info,-1);
-	if (!e)
-	    return;
     }
-    super_data_done_nothing(&data->super,e);
+    if (e)
+	super_data_done_nothing(&data->super,e);
 }
 
 int

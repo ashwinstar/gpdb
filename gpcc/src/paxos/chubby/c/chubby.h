@@ -37,6 +37,7 @@ void chubby_close(chubby_t*thiz);
 chubby_connection_t*chubby_makeConnection(chubby_t*thiz);
 void chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv);
 
+int chubby_connection_asynchronous_sleep(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*data,time_t time);
 int chubby_connection_asynchronous_get(chubby_connection_t*thiz,void(*callback)(void*data,int e,struct chubby_stat*stat,chubby_string_t*answer),void*data,const char*name,int maxsize);
 int chubby_connection_asynchronous_move(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*data,const char*fromname,const char*toname);
 int chubby_connection_asynchronous_mkdir(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*data,const char*name);

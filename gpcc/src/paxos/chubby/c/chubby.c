@@ -4,7 +4,7 @@
 
 #define PAXOS_PROTOCOL_VERSION	0
 
-#define TIMEOUT		1000000
+#define TIMEOUT		(apr_time_from_sec(1))
 
 struct chubby_proposal{
     struct chubby_proposal*next;
@@ -169,6 +169,44 @@ chubby_two_int_finish(chubby_t*thiz,struct chubby_two_int*data,int e)
     }
 }
 
+struct sleep_struct{
+    chubby_t*c;
+    void(*callback)(void*data,int e);
+    void*data;
+};
+
+static void
+sleep_callback(void*_data,int e,chubby_string_t*answer)
+{
+    struct sleep_struct*data=_data;
+    data->callback(data->data,0);
+    data->c->free(data);
+}
+
+int
+chubby_asynchronous_sleep(chubby_t*thiz,void(*callback)(void*data,int e),void*dat,apr_time_t time)
+{
+    struct sleep_struct*data;
+    struct chubby_proposal*p=thiz->malloc(sizeof*p);
+    if (!p)
+	return CHUBBY_E_OOM;
+    data = thiz->malloc(sizeof*data);
+    if (!data){
+	thiz->free(p);
+	return CHUBBY_E_OOM;
+    }
+    data->callback = callback;
+    data->data = dat;
+    data->c = thiz;
+    p->callback = sleep_callback;
+    p->data = data;
+    p->bigTimeout = apr_time_now()+time;
+    p->proposeTimeout = -1;
+    p->next = thiz->proposal;
+    thiz->proposal = p;
+    return 0;
+}
+
 int
 chubby_asynchronous_propose(chubby_t*thiz,void(*callback)(void*data,int e,chubby_string_t*answer),void*data,chubby_string_t*what)
 {
@@ -187,7 +225,10 @@ chubby_asynchronous_propose(chubby_t*thiz,void(*callback)(void*data,int e,chubby
     }
     p->callback = callback;
     p->data = data;
-    p->bigTimeout = apr_time_now()+apr_time_from_sec(thiz->timeout);
+    if (thiz->timeout >= 0)
+	p->bigTimeout = apr_time_now()+apr_time_from_sec(thiz->timeout);
+    else
+	p->bigTimeout = -1;
     p->proposeTimeout = 0;
     p->next = thiz->proposal;
     thiz->proposal = p;
@@ -200,14 +241,16 @@ chubby_asynchronous_checkTimeouts(chubby_t*thiz)
     struct chubby_proposal**p=&thiz->proposal;
     while (*p){
 	struct chubby_proposal*q=*p;
-	if (thiz->now >= q->bigTimeout){
-	    *p = q->next;
-	    chubby_proposal_done(thiz,q,CHUBBY_E_TIMEOUT,NULL);
-	}else{
+	if (q->bigTimeout >= 0){
+	    if (thiz->now >= q->bigTimeout){
+		*p = q->next;
+		chubby_proposal_done(thiz,q,CHUBBY_E_TIMEOUT,NULL);
+		continue;
+	    }
 	    if (thiz->nextTime > q->bigTimeout)
 		thiz->nextTime = q->bigTimeout;
-	    p = &q->next;
 	}
+	p = &q->next;
     }
 }
 
@@ -240,12 +283,14 @@ chubby_asynchronous_sendProposal(chubby_t*thiz)
 {
     struct chubby_proposal*p;
     for (p=thiz->proposal; p; p=p->next)
-	if (thiz->now >= p->proposeTimeout){
-	    p->proposeTimeout = thiz->now+TIMEOUT;
-	    chubby_sign(thiz,p->b.a,p->b.a,p->b.length,&thiz->leader);
-	    sendto(thiz->fd,p->b.a,p->b.length,0,&thiz->leader,sizeof thiz->leader);
-	}else if (thiz->nextTime > p->proposeTimeout)
-	    thiz->nextTime = p->proposeTimeout;
+	if (p->proposeTimeout >= 0){
+	    if (thiz->now >= p->proposeTimeout){
+		p->proposeTimeout = thiz->now+TIMEOUT;
+		chubby_sign(thiz,p->b.a,p->b.a,p->b.length,&thiz->leader);
+		sendto(thiz->fd,p->b.a,p->b.length,0,&thiz->leader,sizeof thiz->leader);
+	    }else if (thiz->nextTime > p->proposeTimeout)
+		thiz->nextTime = p->proposeTimeout;
+	}
 }
 
 static void
@@ -284,33 +329,36 @@ chubby_asynchronous_recv(chubby_t*thiz,chubby_udp_buffer_t*b)
 	    thiz->leaderValid = 1;
 	    thiz->leader = l;
 	    for (p=thiz->proposal; p; p=p->next)
-		p->proposeTimeout = 0;
+		if (p->proposeTimeout >= 0)
+		    p->proposeTimeout = 0;
 	}
     }else if (!strcmp(command,"Result")){
 	struct chubby_proposal**p=&thiz->proposal;
 	while (*p){
 	    struct chubby_proposal*q=*p;
-	    const char*a=strstr(q->b.a,"decree=");
-	    chubby_string_t*answer;
-	    assert(a);
-	    if (q->b.a+q->b.length==a+decreeSize && !memcmp(a,decree,decreeSize)){
-		if (!memcmp(result,"error ",6)){
+	    if (q->proposeTimeout >= 0){
+		const char*a=strstr(q->b.a,"decree=");
+		chubby_string_t*answer;
+		assert(a);
+		if (q->b.a+q->b.length==a+decreeSize && !memcmp(a,decree,decreeSize)){
+		    if (!memcmp(result,"error ",6)){
+			*p = q->next;
+			chubby_proposal_done(thiz,q,atoi(result+6),NULL);
+			continue;
+		    }
+		    answer = thiz->malloc(sizeof*answer+resultSize);
+		    if (!answer){
+			*p = q->next;
+			chubby_proposal_done(thiz,q,CHUBBY_E_OOM,NULL);
+			continue;
+		    }
+		    answer->length = resultSize;
+		    memcpy(answer->a,result,resultSize);
+		    answer->a[resultSize] = 0;
 		    *p = q->next;
-		    chubby_proposal_done(thiz,q,atoi(result+6),NULL);
+		    chubby_proposal_done(thiz,q,0,answer);
 		    continue;
 		}
-		answer = thiz->malloc(sizeof*answer+resultSize);
-		if (!answer){
-		    *p = q->next;
-		    chubby_proposal_done(thiz,q,CHUBBY_E_OOM,NULL);
-		    continue;
-		}
-		answer->length = resultSize;
-		memcpy(answer->a,result,resultSize);
-		answer->a[resultSize] = 0;
-		*p = q->next;
-		chubby_proposal_done(thiz,q,0,answer);
-		continue;
 	    }
 	    p = &q->next;
 	}
@@ -324,8 +372,7 @@ chubby_asynchronous_think(chubby_t*thiz,int*fd,struct timeval*tv)
     fd_set rset;
     thiz->now = apr_time_now();
     thiz->nextTime = thiz->now+TIMEOUT;
-    if (thiz->timeout > 0)
-	chubby_asynchronous_checkTimeouts(thiz);
+    chubby_asynchronous_checkTimeouts(thiz);
     for (;;){
 	int i;
 	struct timeval zero={0,0};
