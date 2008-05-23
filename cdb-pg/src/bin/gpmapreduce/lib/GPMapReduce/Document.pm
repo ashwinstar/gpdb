@@ -543,7 +543,8 @@ sub add_run($$$$$$$) {
 	}
 
 	@param = @{$self->{"PARAM"}};
-	if ($#param >= 0) 
+
+	if (scalar(@param) && (defined($param[0])))
 	{
 		$key = $param[0];
 		$key =~ s/'/''/g;         # escape quotes #'
@@ -634,8 +635,7 @@ sub add_run($$$$$$$) {
 sub _checkname($)
 {
     my $name = shift;
-    return 1 if ($name =~ /^[a-zA-Z]\w*$/);
-    return 0;
+    return ($name =~ /^[a-zA-Z]\w*$/);
 }
 
 ################################################################
@@ -647,7 +647,7 @@ GPMapReduce::Reducer, GPMapReduce::Driver.
 
 =head1 AUTHORS
 
-Caleb Welton, Jeffery I Cohen
+Caleb Welton, Jeffrey I Cohen
 
 Copyright (c) 2008 GreenPlum. All rights reserved.
 
