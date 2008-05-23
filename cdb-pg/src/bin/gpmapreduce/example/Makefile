@@ -25,7 +25,7 @@ OBJS   = $(addprefix $(SRCDIR), $(YML))
 .PHONY: clean all
 
 all: $(YML) $(OUT) $(PLAN) $(PRINT) $(EXPRNT)
-	-$(D) -q -B -x '*.in' -x '*.in~' $(OUTDIR) $(EXPECT)
+	-$(D) -q -B -x '*.in' -x '*.in~' -x README $(OUTDIR) $(EXPECT)
 
 $(YMLDIR)/%.yml: $(YMLDIR)/%.yml.in
 	$(PATHFIX) $@.in
