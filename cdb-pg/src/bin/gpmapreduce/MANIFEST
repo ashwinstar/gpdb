@@ -15,6 +15,8 @@ example/expected/grep.print.in
 example/expected/sort.out
 example/expected/sort.plan
 example/expected/sort.print.in
+example/Makefile
+example/output/README
 example/src/gpmapreduce.h
 example/src/mapred.c
 example/src/words.c
@@ -37,9 +39,9 @@ lib/GPMapReduce/Parser.pm
 lib/GPMapReduce/Reducer.pm
 lib/GPMapReduce/Transition.pm
 lib/GPMapReduce/Utils.pm
-lib/YAML/Tiny.pm
 Makefile.PL
 MANIFEST
+META.yml
 README
 t/GPMapReduce-Mapper.t
 t/GPMapReduce.t

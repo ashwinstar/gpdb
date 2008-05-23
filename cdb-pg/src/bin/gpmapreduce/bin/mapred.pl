@@ -92,23 +92,23 @@ if ($nparam eq 0)
 #   currently outputs some pretty useless errors if the parse fails
 #
 my $yaml;
+my $docs;
 {
-    if (eval(require YAML::Tiny))
+    if (eval " require YAML::Tiny " )
     {
         $yaml = YAML::Tiny->new;
+        $docs = $yaml->read($file);
     }
-    elsif (eval(require YAML))
+    elsif (eval " require YAML " )
     {
-        $yaml = YAML::new();
+        $yaml = YAML::Base->new();
+        $docs = YAML::LoadFile($file);
     }
     else
     {
         die("Fatal Error: The required package YAML is not installed -- please download it from www.cpan.org\n");
     }
 }
-
-
-my $docs = $yaml->read($file);
 
 # A parse of a single file could have resulted in multiple
 # yaml "documents" treat each document as a distinct entity.	

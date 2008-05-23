@@ -12,8 +12,13 @@ use Pod::Usage;
 use Getopt::Long;
 use Cwd;
 
+# let Makefile.pl update the connect string if necessary...
+my $gen_connect = "__CONNECT: postgres __";
 my $glob_id = "";
-my $glob_connect = " template1 "; #  = " -p 11000 template1 ";
+
+# find the connect string
+my $glob_connect = $gen_connect;
+$glob_connect =~ s/^\_\_CONNECT\:(.*)\_\_$/$1/;
 
 my $man  = 0;
 my $help = 0;
