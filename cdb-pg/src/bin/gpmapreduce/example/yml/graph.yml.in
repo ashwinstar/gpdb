@@ -2,7 +2,7 @@
 ---  
 VERSION:   1.0.0.1
 DATABASE:  postgres
-USER:      <USER>
+USER:      @db_user@
 
 DEFINE:
 
@@ -12,7 +12,7 @@ DEFINE:
 #    1,497,135 total links
   - INPUT:
       NAME:      network
-      SOURCE:    file://<DATA_DIRECTORY>/www.small.dat
+      SOURCE:    file://@hostname@@abs_srcdir@/data/www.small.dat
       COLUMNS:   [key text, value text]
       DELIMITER: '|'
 

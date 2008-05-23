@@ -1,9 +1,0 @@
-DROP EXTERNAL TABLE IF EXISTS access_log CASCADE;
-CREATE EXTERNAL TABLE access_log(value text)
-  LOCATION('file://maple/Users/cwelton/GPMapReduce/example/data/access_log')
-  FORMAT 'text';
-SELECT value
-FROM   access_log
-ORDER BY value;
-DROP EXTERNAL TABLE IF EXISTS access_log CASCADE;
-

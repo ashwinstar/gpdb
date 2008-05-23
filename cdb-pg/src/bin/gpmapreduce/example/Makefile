@@ -18,27 +18,32 @@ YML    = $(addsuffix .yml, $(addprefix $(YMLDIR)/, $(TEST)))
 OUT    = $(addsuffix .out, $(addprefix $(OUTDIR)/, $(TEST)))
 PLAN   = $(addsuffix .plan, $(addprefix $(OUTDIR)/, $(TEST)))
 PRINT  = $(addsuffix .print, $(addprefix $(OUTDIR)/, $(TEST)))
+EXPRNT  = $(addsuffix .print, $(addprefix $(EXPECT)/, $(TEST)))
 
 OBJS   = $(addprefix $(SRCDIR), $(YML))
 
 .PHONY: clean all
 
-all: $(YML) $(OUT) $(PLAN) $(PRINT)
-	-$(D) -q $(OUTDIR) $(EXPECT)
+all: $(YML) $(OUT) $(PLAN) $(PRINT) $(EXPRNT)
+	-$(D) -q -B -x '*.in' -x '*.in~' $(OUTDIR) $(EXPECT)
 
 $(YMLDIR)/%.yml: $(YMLDIR)/%.yml.in
 	$(PATHFIX) $@.in
 
-$(OUTDIR)/%.out: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml
+$(EXPECT)/%.print: $(EXPECT)/%.print.in
+	$(PATHFIX) $@.in
+
+$(OUTDIR)/%.out: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml 
 	$(MAPRED) $(YMLDIR)/$*.yml admin > $@
 
 $(OUTDIR)/%.plan: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml
 	$(MAPRED) --explain $(YMLDIR)/$*.yml admin > $@
 
-$(OUTDIR)/%.print: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml
+$(OUTDIR)/%.print: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml 
 	$(MAPRED) --print $(YMLDIR)/$*.yml admin > $@
 
 clean:
 	rm -f $(YML) 
+	rm -f $(EXPRNT) 
 	rm -f $(OUTDIR)/*
 

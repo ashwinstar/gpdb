@@ -8,13 +8,13 @@ example/data/access_log
 example/data/www.small.dat
 example/expected/access_frequency.out
 example/expected/access_frequency.plan
-example/expected/access_frequency.print
+example/expected/access_frequency.print.in
 example/expected/grep.out
 example/expected/grep.plan
-example/expected/grep.print
+example/expected/grep.print.in
 example/expected/sort.out
 example/expected/sort.plan
-example/expected/sort.print
+example/expected/sort.print.in
 example/src/gpmapreduce.h
 example/src/mapred.c
 example/src/words.c

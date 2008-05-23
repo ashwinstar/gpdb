@@ -1,0 +1,30 @@
+DROP AGGREGATE myReduce(text) CASCADE;
+DROP FUNCTION myMap(text, text) CASCADE;
+DROP FUNCTION myTransition(text, text) CASCADE;
+DROP EXTERNAL TABLE weblog CASCADE;
+CREATE EXTERNAL TABLE weblog(value text)
+  LOCATION('FILE://@hostname@@abs_srcdir@/data/access_log')
+  FORMAT 'text';
+CREATE FUNCTION myMap(IN text, IN text, OUT key text, OUT value text) AS $$
+{
+    return {} unless $_[1] =~ /GET ([^ ?,]+)/;
+    return {'key', $1, 'value', 1};
+}
+$$ LANGUAGE plperl;
+CREATE FUNCTION myTransition(IN text, IN text, OUT state text) AS $$
+{
+    return $_[0] + $_[1];
+}
+$$ LANGUAGE plperl;
+CREATE AGGREGATE myReduce(text) (
+  stype = text,
+  initcond = '0',
+  sfunc = myTransition,
+  prefunc = myTransition
+);
+SELECT key, myReduce(value) as value
+FROM (SELECT key(m), value(m) FROM (SELECT myMap('admin', value) as m FROM weblog) q1) q2
+WHERE key is not null
+GROUP BY key
+ORDER BY key
+;

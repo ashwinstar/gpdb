@@ -1,0 +1,16 @@
+DROP FUNCTION grep_map(text, text) CASCADE;
+DROP EXTERNAL TABLE inDirectory CASCADE;
+CREATE EXTERNAL TABLE inDirectory(value text)
+  LOCATION('FILE://@hostname@@abs_srcdir@/data/access_log')
+  FORMAT 'text';
+CREATE FUNCTION grep_map(IN text, IN text, OUT key text, OUT value text) AS $$
+{
+    return {'key', $_[0], 'value', $_[1]} if $_[1] =~ /$_[0]/;
+    return {};
+}
+$$ LANGUAGE plperl STRICT IMMUTABLE;
+SELECT key, value
+FROM (SELECT key(m), value(m) FROM (SELECT grep_map('admin', value) as m FROM inDirectory) q1) q2
+WHERE key is not null
+ORDER BY key, value
+;

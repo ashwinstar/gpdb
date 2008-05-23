@@ -1,0 +1,8 @@
+DROP EXTERNAL TABLE access_log CASCADE;
+CREATE EXTERNAL TABLE access_log(value text)
+  LOCATION('FILE://@hostname@@abs_srcdir@/data/access_log')
+  FORMAT 'text';
+SELECT value
+FROM access_log
+ORDER BY value
+;

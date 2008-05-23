@@ -2,7 +2,7 @@
 #
 # fixup.pl - Greenplum MapReduce fixup script
 #
-# copyright (c) 2007
+# copyright (c) 2008
 # Author: Jeffrey I Cohen, Caleb Welton
 #
 
@@ -13,15 +13,14 @@ use Getopt::Long;
 use Cwd;
 
 my $glob_id = "";
+my $glob_connect = " template1 "; #  = " -p 11000 template1 ";
+
 my $man  = 0;
 my $help = 0;
-my $print = 0;
-my $explain = 0;
 
 GetOptions('help|?' => \$help, 
 		   man => \$man,
-		   print => \$print,
-	       explain => \$explain,)
+           )
 	or pod2usage(2);
 pod2usage(-msg => $glob_id, -exitstatus => 1) if $help;
 pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
@@ -30,16 +29,119 @@ pod2usage(-msg => $glob_id, -exitstatus => 0, -verbose => 2) if $man;
 
 
 
+# convert a postgresql psql formatted table into an array of hashes
+sub tablelizer
+{
+    my ($ini, $got_line1) = @_;
+
+    # first, split into separate lines, the find all the column headings
+
+    my @lines = split(/\n/, $ini);
+
+    return undef
+        unless (scalar(@lines));
+
+    # if the first line is supplied, then it has the column headers,
+    # so don't try to find them (or the ---+---- separator) in
+    # "lines"
+    my $line1 = $got_line1;
+    $line1 = shift @lines
+        unless (defined($got_line1));
+
+    # look for <space>|<space>
+    my @colheads = split(/\s+\|\s+/, $line1);
+
+    # fixup first, last column head (remove leading,trailing spaces)
+
+    $colheads[0] =~ s/^\s+//;
+    $colheads[0] =~ s/\s+$//;
+    $colheads[-1] =~ s/^\s+//;
+    $colheads[-1] =~ s/\s+$//;
+
+    return undef
+        unless (scalar(@lines));
+    
+    shift @lines # skip dashed separator (unless it was skipped already)
+        unless (defined($got_line1));
+    
+    my @rows;
+
+    for my $lin (@lines)
+    {
+        my @cols = split(/\|/, $lin, scalar(@colheads));
+        last 
+            unless (scalar(@cols) == scalar(@colheads));
+
+        my $rowh = {};
+
+        for my $colhdcnt (0..(scalar(@colheads)-1))
+        {
+            my $rawcol = shift @cols;
+
+            $rawcol =~ s/^\s+//;
+            $rawcol =~ s/\s+$//;
+
+            my $colhd = $colheads[$colhdcnt];
+            $rowh->{($colhdcnt+1)} = $rawcol;
+        }
+        push @rows, $rowh;
+    }
+
+    return \@rows;
+}
+
+sub gethostname
+{
+    my $psql_str = "psql ";
+    
+    $psql_str .= $glob_connect
+        if (defined($glob_connect));
+
+    $psql_str .= " -c \'select * from gp_configuration \'";
+
+    my $tabdef = `$psql_str`;
+
+#    print $tabdef;
+
+    # do something reasonable on error...
+    if (($tabdef =~ m/database.*does not exist/) 
+        || ($tabdef =~ m/could not connect/) )
+    {
+        return `hostname`;
+    }
+
+    my $mpp_config_table = tablelizer($tabdef);
+
+#    print Data::Dumper->Dump([$mpp_config_table]);
+
+    my $hostname= "localhost";
+
+    for my $rowh (@{$mpp_config_table})
+    {
+        if (($rowh->{1} == 0) && # content (seg 0)
+            ($rowh->{2} =~ m/t/) && # defined primary
+            ($rowh->{4} =~ m/t/) && # isprimary
+            ($rowh->{5} =~ m/t/)) # valid
+        {
+            $hostname = $rowh->{6};
+            last;
+        }
+        
+    }
+
+    return $hostname;
+}
+
 if (1)
 {
 	my $curdir   = getcwd();
-    my $whoam    = `whoami`;
-	my $hostname = `hostname`;
-	chomp $whoam;
+    my $db_user    = `whoami`;
+	my $hostname = gethostname(); # `hostname`
+	chomp $db_user;
 	chomp $hostname;
 
-	# We assume that this script is run by the make file in example
-	my $datadir = "$curdir/data";
+	# We assume that this script is run by the make file in example directory
+	my $abs_srcdir = "$curdir";
 
     for my $file (@ARGV)
     {
@@ -50,13 +152,16 @@ if (1)
         (-r $file) or  die "ERROR: No read permissions for '$file'\n";
 
         my $outfile = $file;
+
+        # remove the ".in" (input) suffix for the outfile name
         $outfile =~ s/\.in$//g;
 
 		open(INPUT, "<$file");
 		open(OUTPUT, ">$outfile");
 		while (<INPUT>) {
-			s/\<USER\>/$whoam/gm; 
-			s/\<DATA_DIRECTORY\>/$hostname$datadir/gm;
+			s/\@db_user\@/$db_user/gm; 
+			s/\@abs_srcdir\@/$abs_srcdir/gm;
+			s/\@hostname\@/$hostname/gm;
 			print OUTPUT
 		}
 		close(INPUT);

@@ -3,7 +3,6 @@
    ->  Sort  (cost=206007.98..208505.48 rows=999000 width=32)
          Sort Key: "key", value
          ->  External Scan on indirectory  (cost=0.00..18495.00 rows=999000 width=32)
-               Filter: grep_map('admin'::text, value) IS NOT NULL
+               Filter: (grep_map('admin'::text, value))."key" IS NOT NULL
  Settings:  enable_mergejoin=off; enable_nestloop=off; gp_enable_agg_distinct=on; gp_selectivity_damping_for_joins=on; gp_selectivity_damping_for_scans=on
-
 
