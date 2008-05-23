@@ -1,3 +1,4 @@
+
  Gather Motion 2:1  (slice1)  (cost=198671.34..201171.34 rows=1000000 width=32)
    Merge Key: value
    ->  Sort  (cost=198671.34..201171.34 rows=1000000 width=32)
