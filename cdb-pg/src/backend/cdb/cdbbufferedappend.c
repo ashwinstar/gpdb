@@ -121,9 +121,9 @@ static void BufferedAppendWrite(
 	Assert(bufferedAppend->len > 0);
 	largeWriteMemory = bufferedAppend->largeWriteMemory;
 	
+	currentWritePosition = (int64) lseek(bufferedAppend->file, 0, SEEK_CUR);
 	
 #ifdef BUFFEREDTEST_APPEND
-	currentWritePosition = lseek(bufferedAppend->file, 0, SEEK_CUR);
 	if (currentWritePosition < 0)
 	{
 		fprintf(stderr,"unable to get current position (errcode %d)", 
@@ -139,7 +139,6 @@ static void BufferedAppendWrite(
 		exit(1);
 	}
 #else
-	currentWritePosition = FileSeek(bufferedAppend->file, 0, SEEK_CUR);
 	if (currentWritePosition < 0)
 		ereport(ERROR, (errcode_for_file_access(),
 						errmsg("unable to get current position (errcode %d)", 
@@ -154,8 +153,9 @@ static void BufferedAppendWrite(
 		
 	while (writeLen > 0) 
 	{
-#ifdef BUFFEREDTEST_APPEND
 		int len = write(bufferedAppend->file, (char*)largeWriteMemory, writeLen);
+
+#ifdef BUFFEREDTEST_APPEND
 		if (len == 0) 
 		{
 			fprintf(stderr,"write beyond eof\n");
@@ -168,7 +168,6 @@ static void BufferedAppendWrite(
 			exit(1);
 		}
 #else
-		int len = FileWrite(bufferedAppend->file, (char*)largeWriteMemory, writeLen);
 		if (len == 0) 
 			ereport(ERROR, (errcode_for_file_access(),
 							errmsg("write beyond eof")));
@@ -363,13 +362,12 @@ int64 BufferedAppendCompleteFile(
 
 	fileLen = bufferedAppend->fileLen;
 
-#ifdef BUFFEREDTEST_APPEND
-	close(bufferedAppend->file);
-#else
-	/* done with the file */
-	FileSync(bufferedAppend->file);
-	FileClose(bufferedAppend->file);
+#ifndef BUFFEREDTEST_APPEND
+	pg_fsync(bufferedAppend->file);
 #endif
+	
+	/* done with the file */
+	close(bufferedAppend->file);
 	
 	bufferedAppend->position = 0;
 	bufferedAppend->len = 0;

@@ -136,18 +136,34 @@ doScanInit(AppendOnlyScanDesc scan)
 	/* Get path for this relation file */
 	path = relpath(reln->rd_node);
 
-	/* Open the relation file */
-	scan->aos_file = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
+	/*
+	 * Open the relation file
+	 *
+	 * Note: because we use BasicOpenFile(), we are responsible for ensuring
+	 * the FD gets closed in any error exit path.  
+	 */
+	scan->aos_file = BasicOpenFile(path, O_RDWR | PG_BINARY, 0600);
 	
+	if(scan->aos_file < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\"", path)));
+	
+	   
 	/* Get the eof of this relation file from the pg_appendonly catalog */
 	aoentry = GetAppendOnlyEntry(scan->aos_relfilenode);
 	eof = (int64)aoentry->eof;
 
 	if (eof < 0)
+	{
+		close(scan->aos_file);
+
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
 						eof, NameStr(scan->aos_rd->rd_rel->relname))));			
+		
+	}
 	
 	/* Set the file to be read with its eof */
 	BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
@@ -643,7 +659,12 @@ appendonly_rescan(AppendOnlyScanDesc scan,
 	 * slices don't either, so check first. 
 	 */
 	if(Gp_role != GP_ROLE_DISPATCH && scan->aos_file > 0)
-		FileClose(scan->aos_file);
+	{
+		if(close(scan->aos_file))
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not close append only file")));
+	}
 	
 	/*
 	 * In some cases we didn't get around to call BufferedReadCompleteFile
@@ -679,7 +700,12 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 	 * slices don't either, so check first. 
 	 */
 	if(Gp_role != GP_ROLE_DISPATCH && scan->aos_file > 0)
-		FileClose(scan->aos_file);
+	{
+		if(close(scan->aos_file))
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not close append only file")));
+	}
 			
 	/*
 	 * In some cases we didn't get around to call BufferedReadCompleteFile
@@ -800,15 +826,24 @@ appendonly_insert_init(Relation rel)
 		     aoInsertDesc->maxBufferLen,
 		     aoInsertDesc->largeWriteLen);
 	
-	/* Open the relation file */
-	/* TODO: this should really be done in a cleaner way via smgr */
-	appendFile = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
-
+	/* 
+	 * Open the relation file
+	 *
+	 * Note: because we use BasicOpenFile(), we are responsible for ensuring
+	 * the FD gets closed in any error exit path.  
+	 */
+	appendFile = BasicOpenFile(path, O_RDWR | PG_BINARY, 0600);
+	
+	if(appendFile < 0)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\"", path)));
+	
 	/* get the catalog entry with information for this table */
 	aoentry = GetAppendOnlyEntry(aoInsertDesc->relfilenode);
 
 	/* Seek to the starting point (current eof from catalog) */
-	eof = FileSeek(appendFile, (off_t) aoentry->eof, SEEK_SET);
+	eof = (int64) lseek(appendFile, (off_t) aoentry->eof, SEEK_SET);
 		
 	if (eof < 0)
 		ereport(ERROR, (errcode_for_file_access(),
@@ -987,9 +1022,14 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 		int		actualItemCount = VarBlockMakerItemCount(&aoInsertDesc->varBlockMaker);
 		
 		if (actualItemCount == 0)
+		{
+			/* used BasicOpenFile - prevent leaking fd's. must close it */
+			close((&aoInsertDesc->bufferedAppend)->file);
+			
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Item too long (#1)")));
+					 errmsg("Item too long (#1)")));			
+		}
 		
 		bufferLen = VarBlockMakerFinish(&aoInsertDesc->varBlockMaker);	
 		aoInsertDesc->varblockCount++;
@@ -1013,6 +1053,9 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 			{
 				/* TODO: need to clean up before aborting! */
 				
+				/* used BasicOpenFile - prevent leaking fd's. must close it */
+				close((&aoInsertDesc->bufferedAppend)->file);
+
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
 						 errmsg("We do not expect files to be have a maximum length")));						
@@ -1051,9 +1094,14 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 
 		itemPtr = VarBlockMakerGetNextItemPtr(&aoInsertDesc->varBlockMaker, itemLen);
 		if (itemPtr == NULL)
+		{
+			/* used BasicOpenFile - prevent leaking fd's. must close it */
+			close((&aoInsertDesc->bufferedAppend)->file);
+
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Item too long (#2)")));
+					 errmsg("Item too long (#2)")));			
+		}
 	}
 		
 	Assert(itemPtr != NULL);

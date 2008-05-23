@@ -140,9 +140,10 @@ static void BufferedReadIo(
 	readLen = bufferedRead->readLen;
 	Assert(readLen > 0);
 	largeReadMemory = bufferedRead->largeReadMemory;
-	
+
+	currentReadPosition = (int64) lseek(bufferedRead->file, 0, SEEK_CUR);
+
 #ifdef BUFFEREDTEST_READ
-	currentReadPosition = lseek(bufferedRead->file, 0, SEEK_CUR);
 	if (currentReadPosition < 0)
 	{
 		fprintf(stderr,"unable to get current position (errcode %d)", errno);
@@ -156,7 +157,6 @@ static void BufferedReadIo(
 		exit(1);
 	}
 #else
-	currentReadPosition = FileSeek(bufferedRead->file, 0, SEEK_CUR);
 	if (currentReadPosition < 0)
 	{
 		elog(ERROR, "unable to get current position (errcode %d)", errno);
@@ -171,8 +171,9 @@ static void BufferedReadIo(
 
 	while (readLen > 0) 
 	{
-#ifdef BUFFEREDTEST_READ
 		int actualLen = read(bufferedRead->file, (char*)largeReadMemory, readLen);
+
+#ifdef BUFFEREDTEST_READ
 		if (actualLen == 0) 
 		{
 			fprintf(stderr,"read beyond eof\n");
@@ -184,7 +185,6 @@ static void BufferedReadIo(
 			exit(1);
 		}
 #else
-		int actualLen = FileRead(bufferedRead->file, (char*)largeReadMemory, readLen);
 		if (actualLen == 0) 
 		{
 			elog(ERROR, "read beyond eof\n");
