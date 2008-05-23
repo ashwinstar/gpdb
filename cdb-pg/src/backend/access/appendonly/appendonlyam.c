@@ -146,8 +146,8 @@ doScanInit(AppendOnlyScanDesc scan)
 	if (eof < 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Invalid eof %lld for relation %s", 
-						(long long int) eof, NameStr(scan->aos_rd->rd_rel->relname))));			
+				 errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
+						eof, NameStr(scan->aos_rd->rd_rel->relname))));			
 	
 	/* Set the file to be read with its eof */
 	BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
@@ -215,9 +215,9 @@ doSkipPadding(AppendOnlyScanDesc scan,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Unexpected end of file.  Expected to read %d bytes after position %lld but found %d bytes (bufferCount %d)\n", 
+					 errmsg("Unexpected end of file.  Expected to read %d bytes after position " INT64_FORMAT  " but found %d bytes (bufferCount %d)\n", 
 							pageRemainder, 
-							(long long int) nextReadPosition, 
+							nextReadPosition, 
 							availableLen,
 							scan->bufferCount)));			
 		}
@@ -226,9 +226,9 @@ doSkipPadding(AppendOnlyScanDesc scan,
 		// UNDONE: reminder is all zeroes.
 		
 		if (Debug_appendonly_print_scan)
-			elog(LOG,"Append-only scan skipping zero padded remainder for table '%s' (nextReadPosition = %lld, pageRemainder = %d)",
+			elog(LOG,"Append-only scan skipping zero padded remainder for table '%s' (nextReadPosition = " INT64_FORMAT  ", pageRemainder = %d)",
 			     NameStr(scan->aos_rd->rd_rel->relname),
-			     (long long int)nextReadPosition,
+			     nextReadPosition,
 			     pageRemainder);
 	}
 }
@@ -893,9 +893,9 @@ doPadOutPageRemainder(AppendOnlyInsertDesc aoInsertDesc,
 		BufferedAppendFinishBuffer(&aoInsertDesc->bufferedAppend, pageRemainder);
 
 		if (Debug_appendonly_print_insert)
-			elog(LOG,"Append-only insert zero padded remainder for table '%s' (nextWritePosition = %lld, pageRemainder = %d)",
+			elog(LOG,"Append-only insert zero padded remainder for table '%s' (nextWritePosition = " INT64_FORMAT ", pageRemainder = %d)",
 			     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
-			     (long long int)nextWritePosition,
+			     nextWritePosition,
 			     pageRemainder);
 
 	}
