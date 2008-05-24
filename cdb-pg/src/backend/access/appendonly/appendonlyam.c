@@ -614,6 +614,7 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	scan->aos_relfilenode = InvalidOid;
 	scan->maxBufferLen = RelationGetBlockSize(relation, DEFAULT_VARBLOCK_SIZE);
 	scan->largeReadLen = 2 * scan->maxBufferLen;
+	scan->aos_file = 0;
 	
 	complevel = RelationGetCompressLevel(relation, DEFAULT_COMPRESS_LEVEL);
 	scan->aos_compressed = (complevel > 0 ? true : false);
@@ -655,7 +656,7 @@ appendonly_rescan(AppendOnlyScanDesc scan,
 	 * close the relation file. Note that QD has no file to close and some
 	 * slices don't either, so check first. 
 	 */
-	if(Gp_role != GP_ROLE_DISPATCH && scan->aos_file > 0)
+	if(scan->aos_file > 0)
 	{
 		if(close(scan->aos_file))
 			ereport(ERROR,
@@ -698,7 +699,7 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 	 * close the relation file. Note that QD has no file to close and some
 	 * slices don't either, so check first. 
 	 */
-	if(Gp_role != GP_ROLE_DISPATCH && scan->aos_file > 0)
+	if(scan->aos_file > 0)
 	{
 		if(close(scan->aos_file))
 			ereport(ERROR,
