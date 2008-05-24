@@ -69,8 +69,7 @@ static void doDecompress(AppendOnlyScanDesc scan,
  *
  * In here we initialize our bufferedReader and varBlock modules and allocate
  * memory to be used for scanning our data from the relation file. We also set
- * up the scan keys and misc scan options, and finally open the relation file
- * for scanning while setting the current eof as the last valid data byte.
+ * up the scan keys and misc scan options.
  * ----------------
  */
 static void
@@ -79,10 +78,6 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 	int32	memoryLen;
 	int32	actualMaxBufferLen;
 	uint8	*memory;
-	Relation	reln = scan->aos_rd;
-	char	   *path;
-	AppendOnlyEntry *aoentry;
-	int64		eof;	
 	
 	Assert(scan->maxBufferLen > 0 && scan->largeReadLen == scan->maxBufferLen * 2);
 	
@@ -115,6 +110,8 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 					 actualMaxBufferLen,
 					 scan->largeReadLen);
 
+	scan->aos_inited = false;
+
 	/*
 	 * copy the scan key, if appropriate
 	 */
@@ -122,6 +119,15 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 		memcpy(scan->aos_key, key, scan->aos_nkeys * sizeof(ScanKeyData));
 
 	pgstat_count_heap_scan(&scan->aos_pgstat_info);
+}
+
+static void
+doScanInit(AppendOnlyScanDesc scan)
+{
+	Relation	reln = scan->aos_rd;
+	char	   *path;
+	AppendOnlyEntry *aoentry;
+	int64		eof;
 	
 	/* cache the relfilenode value */
 	scan->aos_relfilenode = reln->rd_node.relNode;
@@ -143,7 +149,7 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 				(errcode_for_file_access(),
 				 errmsg("could not open file \"%s\"", path)));
 	
-	   
+	
 	/* Get the eof of this relation file from the pg_appendonly catalog */
 	aoentry = GetAppendOnlyEntry(scan->aos_relfilenode);
 	eof = (int64)aoentry->eof;
@@ -156,24 +162,25 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
 						eof, NameStr(scan->aos_rd->rd_rel->relname))));			
+		
 	}
 	
 	/* Set the file to be read with its eof */
 	BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
-		
+	
+	/* ready to go! */
+	scan->aos_inited = true;
+	
 	if (Debug_appendonly_print_scan)
 		elog(LOG,"Append-only scan initialize for table '%s' with path = '%s' (compression = %s, maximum buffer length %d, large read length %d)",
-		     NameStr(scan->aos_rd->rd_rel->relname),
-		     path,
-		     (scan->aos_compressed ? "true" : "false"),
+			 NameStr(scan->aos_rd->rd_rel->relname),
+			 path,
+			 (scan->aos_compressed ? "true" : "false"),
 		     scan->maxBufferLen,
 		     scan->largeReadLen);
 	
 	pfree(path);
 	pfree(aoentry);
-		
-	/* ready to go! */
-	scan->aos_inited = true;
 }
 
 /*
@@ -512,8 +519,12 @@ appendonlygettup(AppendOnlyScanDesc scan,
 
 	Assert(ScanDirectionIsForward(dir));
 	Assert(scan->maxBufferLen > 0 && scan->largeReadLen == scan->maxBufferLen * 2);
-	Assert(scan->aos_inited);
 
+	if (!scan->aos_inited)
+	{
+		doScanInit(scan);
+	}
+	
 	for(;;)
 	{
 		if(scan->bufferDone)
