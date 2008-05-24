@@ -40,7 +40,7 @@
 #include "fsm_segment_stop.h"
 #include "fsm_login.h"
 #include "fsm_admin.h"
-
+#include "fsm_ssh.h"
 
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)
 {
@@ -156,8 +156,20 @@ APR_DECLARE(void) fsm_init(void)
 
 
     /* fts */
-    gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_WAIT_CMDSTATE,
+    gpcc_fsm_put(FTS_CMDSTATE, INIT_EVENT, FTS_CMDSTATE,
 		 a_fts_init, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_ABSENT_EVENT, FTS_EMPTY_CMDSTATE, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, ARRAY_PRESENT_EVENT, FTS_CMDSTATE,
+		 a_fts_setup_and_gethostname, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, SSH_HOSTNAME_REPLY_EVENT, FTS_CMDSTATE,
+		 a_fts_gethostname_reply, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, SSH_ADDRESS_REPLY_EVENT, FTS_CMDSTATE,    
+		 a_fts_getaddress_reply, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, CONTINUE_EVENT, FTS_WAIT_CMDSTATE,
+		 a_fts_kick_off, NULL);
+    gpcc_fsm_put(FTS_CMDSTATE, FAILURE_EVENT, FTS_CMDSTATE,
+		 a_fts_init_failure, NULL);
+
     gpcc_fsm_put(FTS_CMDSTATE, ARRAY_STATUS_EVENT, FTS_CMDSTATE,
 		 a_fts_array_status_reply, NULL);
     gpcc_fsm_put(FTS_CMDSTATE, ARRAY_STOP_EVENT, FTS_CMDSTATE,
@@ -201,6 +213,14 @@ APR_DECLARE(void) fsm_init(void)
 
     gpcc_fsm_put(FTS_EMPTY_CMDSTATE, ARRAY_INIT_EVENT, FTS_INITIALIZING0_CMDSTATE,
 		 a_fts_array_init_start_nodes, NULL);
+    gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, ARRAY_PRESENT_EVENT, FTS_INITIALIZING0_CMDSTATE,
+		 a_fts_setup_and_gethostname, NULL);
+    gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, SSH_HOSTNAME_REPLY_EVENT, FTS_INITIALIZING0_CMDSTATE,
+		 a_fts_gethostname_reply, NULL);
+    gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, SSH_ADDRESS_REPLY_EVENT, FTS_INITIALIZING0_CMDSTATE,
+		 a_fts_getaddress_reply, NULL);
+    gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, CONTINUE_EVENT, FTS_INITIALIZING0_CMDSTATE,
+		 a_fts_kick_off, NULL);
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, FAILURE_EVENT, FTS_EMPTY_CMDSTATE, 0,
 		 a_fts_array_init_failure, NULL);
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, TIMEUP_EVENT, FTS_EMPTY_CMDSTATE,
@@ -766,6 +786,29 @@ APR_DECLARE(void) fsm_init(void)
 		 a_admin_password_failure, NULL);
 
     
+    /* ssh gethostname */
+    gpcc_fsm_put(SSH_HOSTNAME_CMDSTATE, INIT_EVENT, SSH_HOSTNAME_WAIT_CMDSTATE,
+		 a_ssh_gethostname, NULL);
+    gpcc_fsm_put(SSH_HOSTNAME_WAIT_CMDSTATE, TIMEUP_EVENT, SSH_HOSTNAME_WAIT_CMDSTATE,
+		 a_ssh_gethostname_wait, NULL);
+    gpcc_fsm_put(SSH_HOSTNAME_WAIT_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 a_ssh_gethostname_success, NULL);
+    gpcc_fsm_put(SSH_HOSTNAME_WAIT_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 a_ssh_gethostname_failure, NULL);
+    gpcc_fsm_put(SSH_HOSTNAME_WAIT_CMDSTATE, CONTINUE_EVENT, SSH_HOSTNAME_CMDSTATE,
+		 a_ssh_gethostname, NULL);
 
+
+    /* ssh getaddress */
+    gpcc_fsm_put(SSH_ADDRESS_CMDSTATE, INIT_EVENT, SSH_ADDRESS_WAIT_CMDSTATE,
+		 a_ssh_getaddress, NULL);
+    gpcc_fsm_put(SSH_ADDRESS_WAIT_CMDSTATE, TIMEUP_EVENT, SSH_ADDRESS_WAIT_CMDSTATE,
+		 a_ssh_getaddress_wait, NULL);
+    gpcc_fsm_put(SSH_ADDRESS_WAIT_CMDSTATE, SUCCESS_EVENT, NULL_CMDSTATE,
+		 a_ssh_getaddress_success, NULL);
+    gpcc_fsm_put(SSH_ADDRESS_WAIT_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
+		 a_ssh_getaddress_failure, NULL);
+    gpcc_fsm_put(SSH_ADDRESS_WAIT_CMDSTATE, CONTINUE_EVENT, SSH_ADDRESS_CMDSTATE,
+		 a_ssh_getaddress, NULL);
 
 }
