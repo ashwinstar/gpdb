@@ -335,6 +335,31 @@ struct cmdslot_t {
 		chubby_connection_t *lease;
 	    } chubby;
 	} admin;
+
+
+	struct {
+	    apr_uint32_t parent_cmdidx;
+	    int timeout;
+	    char **hosts;
+	    char **hostname;
+	    int nhost;
+	    int nthread;
+	    int start;
+	    int offset;
+	    apr_proc_t *proc;
+	} gethostname;
+
+	struct {
+	    apr_uint32_t parent_cmdidx;
+	    int timeout;
+	    char **hosts;
+	    char **address;
+	    int nhost;
+	    int nthread;
+	    int start;
+	    int offset;
+	    apr_proc_t *proc;
+	} getaddress;
     } u;
 };
 
