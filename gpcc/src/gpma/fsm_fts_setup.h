@@ -277,8 +277,6 @@ apr_status_t a_fts_getaddress_reply(gpcc_event_t *ev, void *arg)
     evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
     
-    a_fts_getaddress(ev, arg);
-
     if (obj) 
 	json_object_put(obj);
     return 0;
