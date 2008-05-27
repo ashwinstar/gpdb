@@ -12,7 +12,7 @@ bfz_threaded_close_ex(bfz_t*thiz)
 	while (pipe_read(&fs->pipe,fs->super.buffer,sizeof fs->super.buffer) != 0);
     pthread_join(fs->thread,NULL);
     pipe_close(&fs->pipe);
-    free(fs);
+    pfree(fs);
     thiz->freeable_stuff = NULL;
 }
 
@@ -33,9 +33,9 @@ bfz_threaded_read_ex(bfz_t*thiz,char*buffer,int size)
 void
 bfz_threaded_init(bfz_t*thiz,void*(*compress)(void*),void*(*uncompress)(void*))
 {
-    struct bfz_threaded_freeable_stuff*fs=malloc(sizeof*fs);
+    struct bfz_threaded_freeable_stuff*fs=palloc(sizeof*fs);
     if (!fs)
-	elog(ERROR,"bfz: bfz_threaded_init malloc failed");
+	elog(ERROR,"bfz: bfz_threaded_init palloc failed");
     thiz->freeable_stuff = &fs->super;
     fs->super.read_ex = bfz_threaded_read_ex;
     fs->super.write_ex = bfz_threaded_write_ex;

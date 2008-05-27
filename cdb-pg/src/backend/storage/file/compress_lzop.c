@@ -12,7 +12,7 @@
 static void
 bfz_lzop_close_ex(bfz_t*thiz)
 {
-    free(thiz->freeable_stuff);
+    pfree(thiz->freeable_stuff);
     thiz->freeable_stuff = NULL;
 }
 
@@ -66,9 +66,9 @@ bfz_lzop_read_ex(bfz_t*thiz,char*buffer,int size)
 void
 bfz_lzop_init(bfz_t*thiz)
 {
-    struct bfz_freeable_stuff*fs=malloc(sizeof*fs);
+    struct bfz_freeable_stuff*fs=palloc(sizeof*fs);
     if (!fs)
-	elog(ERROR,"bfz: bfz_lzop_init malloc failed");
+	elog(ERROR,"bfz: bfz_lzop_init palloc failed");
     lzo_init();
     thiz->freeable_stuff = fs;
     fs->read_ex = bfz_lzop_read_ex;

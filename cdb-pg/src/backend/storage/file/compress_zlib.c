@@ -18,7 +18,7 @@ bfz_zlib_close_ex(bfz_t*thiz)
 	thiz->fd = dup(thiz->fd);
 	gzclose(fs->f);
     }
-    free(fs);
+    pfree(fs);
     thiz->freeable_stuff = NULL;
 }
 
@@ -67,9 +67,9 @@ bfz_zlib_read_ex(bfz_t*thiz,char*buffer,int size)
 void
 bfz_zlib_init(bfz_t*thiz)
 {
-    struct bfz_zlib_freeable_stuff*fs=malloc(sizeof*fs);
+    struct bfz_zlib_freeable_stuff*fs=palloc(sizeof*fs);
     if (!fs)
-	elog(ERROR,"bfz: bfz_zlib_init malloc failed");
+	elog(ERROR,"bfz: bfz_zlib_init palloc failed");
     thiz->freeable_stuff = &fs->super;
     fs->super.read_ex = bfz_zlib_read_ex;
     fs->super.write_ex = bfz_zlib_write_ex;

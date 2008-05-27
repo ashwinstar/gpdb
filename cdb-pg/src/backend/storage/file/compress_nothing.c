@@ -9,7 +9,7 @@ We don't compress at all. */
 static void
 bfz_nothing_close_ex(bfz_t*thiz)
 {
-    free(thiz->freeable_stuff);
+    pfree(thiz->freeable_stuff);
     thiz->freeable_stuff = NULL;
 }
 
@@ -44,9 +44,9 @@ bfz_nothing_write_ex(bfz_t*bfz,const char*buffer,int size)
 void
 bfz_nothing_init(bfz_t*thiz)
 {
-    struct bfz_freeable_stuff*fs=malloc(sizeof*fs);
+    struct bfz_freeable_stuff*fs=palloc(sizeof*fs);
     if (!fs)
-	elog(ERROR,"bfz: bfz_nothing_init malloc failed");
+	elog(ERROR,"bfz: bfz_nothing_init palloc failed");
     thiz->freeable_stuff = fs;
     fs->read_ex = bfz_nothing_read_ex;
     fs->write_ex = bfz_nothing_write_ex;
