@@ -13,13 +13,12 @@ from simplemessenger import SimpleMessenger
 from udpmessenger import UdpMessenger
 from tester import Tester
 
-BASE_PORT = 2000
-
 def test(argv):
     npriest = 1
     ntester = 0
     simple_messenger = False
     verbose = False
+    port = 2000
     while argv:
 	opt = argv.pop(0)
 	if opt=="-npriest":
@@ -30,6 +29,8 @@ def test(argv):
 	    simple_messenger = True
 	elif opt=="-verbose":
 	    verbose = True
+	elif opt=="-port":
+	    port = int(argv.pop(0))
 	else:
 	    usage()
     m = simple_messenger and SimpleMessenger() or UdpMessenger()
@@ -38,12 +39,12 @@ def test(argv):
     priests = []
     hostname = socket.gethostbyname(socket.gethostname())
     for i in xrange(npriest):
-	priests.append(hostname+":"+str(BASE_PORT+i))
+	priests.append(hostname+":"+str(port+i))
     priests = ",".join(priests)
     for i in xrange(npriest):
 	sb = ["priests="+priests]
 	sb.append("\nhost=%s\n"%hostname)
-	sb.append("port=%d\n"%(BASE_PORT+i))
+	sb.append("port=%d\n"%(port+i))
 	config = Configuration("".join(sb))
 	f = "Priest-%d/data"%i
 	try:
