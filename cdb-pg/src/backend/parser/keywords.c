@@ -240,6 +240,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"minvalue", MINVALUE},
 	{"mirror", MIRROR},
 	{"mode", MODE},
+	{"modify", MODIFY},
 	{"month", MONTH_P},
 	{"move", MOVE},
 	{"names", NAMES},

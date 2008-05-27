@@ -2957,7 +2957,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartDrop:				/* Drop */
 		case AT_PartExchange:			/* Exchange */
 		case AT_PartMerge:				/* Merge */
+		case AT_PartModify:				/* Modify */
 		case AT_PartRename:				/* Rename */
+		case AT_PartSetTemplate:		/* Set Subpartition Template */
 		case AT_PartSplit:				/* Split */
 		case AT_PartTruncate:			/* Truncate */
 		case AT_PartAddInternal:		/* internal partition creation */
@@ -3221,7 +3223,9 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 		case AT_PartDrop:				/* Drop */
 		case AT_PartExchange:			/* Exchange */
 		case AT_PartMerge:				/* Merge */
+		case AT_PartModify:				/* Modify */
 		case AT_PartRename:				/* Rename */
+		case AT_PartSetTemplate:		/* Set Subpartition Template */
 		case AT_PartSplit:				/* Split */
 		case AT_PartTruncate:			/* Truncate */
 			break;

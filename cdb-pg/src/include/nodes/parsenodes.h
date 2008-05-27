@@ -1032,7 +1032,9 @@ typedef enum AlterTableType
 	AT_PartDrop,				/* Drop */
 	AT_PartExchange,			/* Exchange */
 	AT_PartMerge,				/* Merge */
+	AT_PartModify,				/* Modify */
 	AT_PartRename,				/* Rename */
+	AT_PartSetTemplate,			/* Set Subpartition Template */
 	AT_PartSplit,				/* Split */
 	AT_PartTruncate,			/* Truncate */
 	AT_PartAddInternal			/* CREATE TABLE time partition addition */
