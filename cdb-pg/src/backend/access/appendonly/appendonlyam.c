@@ -75,42 +75,6 @@ static void doDecompress(AppendOnlyScanDesc scan,
 static void
 initscan(AppendOnlyScanDesc scan, ScanKey key)
 {
-	int32	memoryLen;
-	int32	actualMaxBufferLen;
-	uint8	*memory;
-	
-	Assert(scan->maxBufferLen > 0 && scan->largeReadLen == scan->maxBufferLen * 2);
-	
-	if (!scan->aos_compressed)
-	{
-		actualMaxBufferLen = scan->maxBufferLen;
-	}
-	else
-	{		
-		actualMaxBufferLen = scan->maxBufferLen + sizeof(int32);
-		actualMaxBufferLen = ((actualMaxBufferLen + sizeof(int32) - 1)/sizeof(int32))*sizeof(int32);
-	}
-	
-	memoryLen = BufferedReadMemoryLen(actualMaxBufferLen, scan->largeReadLen);
-	memory = (uint8*)palloc(memoryLen);
-
-	scan->bufferDone = true; /* so we read a new buffer right away */
-	
-	if (memory == NULL)
-		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("Cannot allocate memory %d bytes",
-							   memoryLen)));
-	
-	/*
-	 * Initialize the BufferedRead module with a large amount of memory.
-	 */
-	BufferedReadInit(&scan->bufferedRead,
-					 memory,
-					 memoryLen,
-					 actualMaxBufferLen,
-					 scan->largeReadLen);
-
-	scan->aos_inited = false;
 
 	/*
 	 * copy the scan key, if appropriate
@@ -129,13 +93,19 @@ doScanInit(AppendOnlyScanDesc scan)
 	AppendOnlyEntry *aoentry;
 	int64		eof;
 	
+	/*
+	 * first, allocate varblock buffer space. This used to be done in initscan
+	 * but moved here so that memory will be allocated only when really needed.
+	 */
+	scan->varBlockBuffer = (uint8 *) palloc(scan->maxBufferLen * sizeof(uint8));
+	
 	/* cache the relfilenode value */
 	scan->aos_relfilenode = reln->rd_node.relNode;
 	Assert(scan->aos_relfilenode != InvalidOid);
 	
 	/* Get path for this relation file */
 	path = relpath(reln->rd_node);
-	
+
 	/*
 	 * Open the relation file
 	 *
@@ -605,7 +575,10 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 {
 	AppendOnlyScanDesc scan;
 	int				   complevel;
-
+	int32	memoryLen;
+	int32	actualMaxBufferLen;
+	uint8	*memory;
+	
 	/*
 	 * increment relation ref count while scanning relation
 	 *
@@ -629,8 +602,37 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	
 	complevel = RelationGetCompressLevel(relation, DEFAULT_COMPRESS_LEVEL);
 	scan->aos_compressed = (complevel > 0 ? true : false);
-	scan->varBlockBuffer = (uint8 *) palloc(scan->maxBufferLen * sizeof(uint8));
-
+	scan->varBlockBuffer = NULL;
+	
+	if (!scan->aos_compressed)
+	{
+		actualMaxBufferLen = scan->maxBufferLen;
+	}
+	else
+	{		
+		actualMaxBufferLen = scan->maxBufferLen + sizeof(int32);
+		actualMaxBufferLen = ((actualMaxBufferLen + sizeof(int32) - 1)/sizeof(int32))*sizeof(int32);
+	}
+	
+	memoryLen = BufferedReadMemoryLen(actualMaxBufferLen, scan->largeReadLen);
+	memory = (uint8*)palloc(memoryLen);
+	
+	scan->bufferDone = true; /* so we read a new buffer right away */
+	
+	if (memory == NULL)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Cannot allocate memory %d bytes",
+							   memoryLen)));
+	
+	/*
+	 * Initialize the BufferedRead module with a large amount of memory.
+	 */
+	BufferedReadInit(&scan->bufferedRead,
+					 memory,
+					 memoryLen,
+					 actualMaxBufferLen,
+					 scan->largeReadLen);
+		
 	/* we only need to set this up once */
 	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
 
@@ -684,6 +686,9 @@ appendonly_rescan(AppendOnlyScanDesc scan,
 		BufferedReadCompleteFile(&scan->bufferedRead);
 	
 	BufferedReadFinish(&scan->bufferedRead);
+	
+	if(scan->varBlockBuffer)
+		pfree(scan->varBlockBuffer);
 	
 	scan->aos_inited = false;
 

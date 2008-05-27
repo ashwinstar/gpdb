@@ -482,7 +482,8 @@ void BufferedReadCompleteFile(
 	
     bufferedRead->bufferOffset = 0;
     bufferedRead->bufferLen = 0;
-
+	
+	bufferedRead->position = 0;
 }
 
 
@@ -498,15 +499,5 @@ void BufferedReadFinish(
 	Assert(bufferedRead->fileLen == 0);
 	
     Assert(bufferedRead->bufferOffset == 0);
-    Assert(bufferedRead->bufferLen == 0);
-	
-	/*
-	 * The memory will normally get free'd up when the Executor
-	 * context is reset, however when a rescan operator is invoked
-	 * (repeated calls to appendonly_(rescan+initscan)) we must free
-	 * it each time to not leak memory. So we explicitly do it here.
-	 * There's a future optimization for this. see TODO in appendonly_rescan.
-	 */
-	if(bufferedRead->memory)
-		pfree(bufferedRead->memory);
+    Assert(bufferedRead->bufferLen == 0);	
 }
