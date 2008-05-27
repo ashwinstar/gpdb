@@ -27,6 +27,11 @@ DROP EXTERNAL TABLE EXT_REGION;
 -- --------------------------------------
 -- 'gpfdist' protocol
 -- --------------------------------------
+CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
+execute E'(ps -ef|grep -v grep|grep gpfdist > /dev/null 2>&1 && echo "gpfdist is running" || echo "gpfdist is not running") '
+on SEGMENT 0
+FORMAT 'text' (delimiter '|');
+
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
 execute E'((@gpwhich_gpfdist@ -p 8080 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 7; echo "starting...") '
 on SEGMENT 0
@@ -37,8 +42,11 @@ execute E'(/bin/pkill gpfdist || killall gpfdist) > /dev/null 2>&1; echo "stoppi
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
+select * from gpfdist_status;
 select * from gpfdist_stop;
+select * from gpfdist_status;
 select * from gpfdist_start;
+select * from gpfdist_status;
 
 CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
                             N_NAME       CHAR(25) ,
@@ -56,7 +64,9 @@ SELECT * FROM EXT_NATION;
 SELECT * FROM EXT_REGION;
 SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONKEY;
 
+select * from gpfdist_status;
 select * from gpfdist_stop;
+select * from gpfdist_status;
 
 -- drop tables
 DROP EXTERNAL TABLE EXT_NATION;
@@ -73,8 +83,11 @@ FORMAT 'text' (delimiter '|');
 -- "
 -- (end the double quote so emacs highlighting works correctly)
 --
+select * from gpfdist_status;
 select * from gpfdist_stop;
+select * from gpfdist_status;
 select * from gpfdist_csv_start;
+select * from gpfdist_status;
 
 create external table ext_whois (
 source_lineno			int,
@@ -189,7 +202,9 @@ format 'csv' ( header quote as 'ggg');
 select count(*) from bad_whois;
 drop external table bad_whois;
 
+select * from gpfdist_status;
 select * from gpfdist_stop;
+select * from gpfdist_status;
 
 --
 -- try a bad location
@@ -214,6 +229,7 @@ select count(*) from ext_whois;
 
 drop external table ext_whois;
 
+drop external table gpfdist_status;
 drop external table gpfdist_start;
 drop external table gpfdist_csv_start;
 drop external table gpfdist_stop;
