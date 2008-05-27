@@ -2944,7 +2944,7 @@ connection_error:
 	msg = PQerrorMessage(segdbDesc->conn);
 
 	if (msg)
-		write_log("Dispatcher encountered connection error: %s on %s\n", msg, segdbDesc->whoami);
+		write_log("Dispatcher encountered connection error on %s: %s\n", segdbDesc->whoami, msg);
 
 	/* Save error info for later. */
 	cdbdisp_appendMessage(dispatchResult, LOG,
