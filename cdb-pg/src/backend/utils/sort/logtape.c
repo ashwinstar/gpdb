@@ -114,9 +114,14 @@ static void ltsReleaseBlock(LogicalTapeSet *lts, long blocknum);
 
 static void DumpLogicalTapeSetState(BufFile *pfile, LogicalTapeSet *lts, LogicalTape *lt)
 {
+	Size wlen;
+
 	Assert(lts && lt && lt->frozen);
-	BufFileWrite(pfile, &(lts->nFileBlocks), sizeof(lts->nFileBlocks));
-	BufFileWrite(pfile, &(lt->firstBlkNum), sizeof(lt->firstBlkNum));
+	wlen = BufFileWrite(pfile, &(lts->nFileBlocks), sizeof(lts->nFileBlocks));
+	Assert(wlen == sizeof(lts->nFileBlocks));
+
+	wlen = BufFileWrite(pfile, &(lt->firstBlkNum), sizeof(lt->firstBlkNum));
+	Assert(wlen == sizeof(lt->firstBlkNum));
 }
 
 LogicalTapeSet *LoadLogicalTapeSetState(BufFile *pfile, const char* rwfile_prefix)

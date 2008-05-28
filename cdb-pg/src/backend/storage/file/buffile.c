@@ -668,11 +668,13 @@ BufFileWrite(BufFile *file, const void *ptr, Size size)
                 nthistime -= nthistime % file->bufsize;
 
             BufFileDumpBuffer(file, ptr, nthistime);
-            if (nthistime == size)
-                return size;
+
             ptr = (void *) ((char *) ptr + nthistime);
             size -= nthistime;
     		nwritten += nthistime;
+			
+			if(size == 0)
+				return nwritten;
         }
 
         /* Allocate buffer */
