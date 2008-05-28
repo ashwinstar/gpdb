@@ -50,7 +50,7 @@ class Client:
 	    else:
 		assert 0
 
-    def interactive(self):
+    def __interactive(self):
 	while 1:
 	    s = raw_input("decree: ")
 	    if not s:

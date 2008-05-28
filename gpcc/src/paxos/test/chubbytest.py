@@ -53,6 +53,7 @@ def test0():
     global global_l
     check("c.mkdir('/test/')","x==0 or x==chubby.E_INVAL")
     check("c.mkdir('/test/')","x==chubby.E_INVAL")
+    check("c.nonAtomicMakeManyDirs('/test/a/b/c')","x==0")
     check("c.move('test/subdir','test/junk')","x==0 or x==chubby.E_NOENT")
     check("c.move('test/subdir','test/junk')","x==chubby.E_NOENT")
     check("c.rmdir('test/subdir/')","x==chubby.E_NOENT")
@@ -79,7 +80,7 @@ def test0():
     check("c.list('/test')","x[0]==0 and 'subdir' not in x")
     check("c.list('/test')","x[0]==0 and 'subdir1' not in x")
     global_a = CHUNK_SIZE*'!'+"".join(map(str,xrange(0,CHUNK_SIZE)))
-    check("c.putBigFile('///test/bi g',global_a)","x==0")
+    check("c.nonAtomicPutBigFile('///test/bi g',global_a)","x==0")
     check("c.get('/test//bi g')","x[0]==0 and x[2]==global_a")
     check("c.remove('/test/bi g')","x==0")
     check("c.list('/test')","'bi g' not in x")

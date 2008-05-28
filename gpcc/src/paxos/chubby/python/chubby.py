@@ -194,7 +194,7 @@ class Connection:
     def __put(self,name,contents):
 	return self.__put1(name,0,contents)
 
-    def __putBigFile(self,name,contents):
+    def __nonAtomicPutBigFile(self,name,contents):
 	offset = 0
 	while 1:
 	    a = self.__put1(name,offset,contents[offset:offset+CHUNK_SIZE])
@@ -222,9 +222,18 @@ class Connection:
 	name = fixFilename(name)
 	return self.__put(name,contents)
 
-    def putBigFile(self,name,contents):
+    def nonAtomicPutBigFile(self,name,contents):
 	name = fixFilename(name)
-	return self.__putBigFile(name,contents)
+	return self.__nonAtomicPutBigFile(name,contents)
+
+    def nonAtomicMakeManyDirs(self,name):
+	name = fixFilename(name).split('/')
+	e = 0
+	for i in xrange(len(name)):
+	    e = self.__mkdir('/'.join(name[:i]))
+	    if e!=0 and e!=E_INVAL:
+		break
+	return e
 
     def mkdir(self,name):
 	name = fixFilename(name)

@@ -79,16 +79,14 @@ statDone1(void*_data,int e,struct chubby_stat*stat)
 static int
 startPutLoop(struct data*data)
 {
-    int e=chubby_connection_asynchronous_stat(data->super.c,statDone1,data,data->name);
-    if (e)
-	super_data_delete(&data->super);
-    return e;
+    return chubby_connection_asynchronous_stat(data->super.c,statDone1,data,data->name);
 }
 
 static int
 chubby_connection_asynchronous_putWithOffset(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*dat,const char*name,int offset,chubby_string_t*contents)
 {
     struct data*data;
+    int e;
     if (strlen(name) >= PATH_MAX)
 	return CHUBBY_E_INVAL;
     data = super_data_new(sizeof*data,thiz,callback,dat,freeData);
@@ -101,7 +99,10 @@ chubby_connection_asynchronous_putWithOffset(chubby_connection_t*thiz,void(*call
 	return CHUBBY_E_OOM;
     }
     strcpy(data->name,name);
-    return startPutLoop(data);
+    e = startPutLoop(data);
+    if (e)
+	super_data_delete(&data->super);
+    return e;
 }
 
 int
@@ -161,7 +162,7 @@ sendPut(struct big_file_data*data)
 }
 
 int
-chubby_connection_asynchronous_putBigFile(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*dat,const char*name,chubby_string_t*contents)
+chubby_connection_asynchronous_nonAtomicPutBigFile(chubby_connection_t*thiz,void(*callback)(void*data,int e),void*dat,const char*name,chubby_string_t*contents)
 {
     int e;
     struct big_file_data*data;
@@ -181,9 +182,9 @@ chubby_connection_asynchronous_putBigFile(chubby_connection_t*thiz,void(*callbac
 }
 
 int
-chubby_connection_putBigFile(chubby_connection_t*thiz,const char*name,chubby_string_t*contents)
+chubby_connection_nonAtomicPutBigFile(chubby_connection_t*thiz,const char*name,chubby_string_t*contents)
 {
     struct chubby_two_int data;
     memset(&data,0,sizeof data);
-    return chubby_two_int_finish(thiz->chubby,&data,chubby_connection_asynchronous_putBigFile(thiz,chubby_two_int_callback,&data,name,contents));
+    return chubby_two_int_finish(thiz->chubby,&data,chubby_connection_asynchronous_nonAtomicPutBigFile(thiz,chubby_two_int_callback,&data,name,contents));
 }

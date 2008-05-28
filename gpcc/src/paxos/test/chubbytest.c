@@ -167,6 +167,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
     int64_t dn;
     TEST(chubby_connection_mkdir(c,"/test/"),t.ret==0||t.ret==CHUBBY_E_INVAL);
     TEST(chubby_connection_mkdir(c,"/test/"),t.ret==CHUBBY_E_INVAL);
+    TEST(chubby_connection_nonAtomicMakeManyDirs(c,"/test/a/b/c"),t.ret==0);
     TEST(chubby_connection_move(c,"test/subdir","test/junk"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_move(c,"test/subdir","test/junk"),t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_rmdir(c,"test/subdir/"),t.ret==CHUBBY_E_NOENT);
@@ -208,7 +209,7 @@ test0(int argc,char**argv,chubby_connection_t*c)
 	    a += strlen(a);
 	}
 	big->length = a-big->a;
-	TEST(chubby_connection_putBigFile(c,"///test/bi g",big),t.ret==0);
+	TEST(chubby_connection_nonAtomicPutBigFile(c,"///test/bi g",big),t.ret==0);
 	TEST(chubby_connection_get(c,&t.stat,&t.chubbystring,"/test//bi g",-1),t.ret==0&&!strcmp(t.chubbystring->a,big->a));
 	counted_free(big);
     }
