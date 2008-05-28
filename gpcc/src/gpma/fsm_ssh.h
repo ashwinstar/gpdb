@@ -65,6 +65,8 @@ static apr_status_t a_ssh_gethostname_wait(gpcc_event_t *ev, void *arg)
 	}
     }
 
+    gpcc_log_info("gethostname:  success = %d, failure = %d, total = %d", nsuccess, nfailure, slot->u.gethostname.nthread);
+
     if (nsuccess + nfailure == slot->u.gethostname.nthread) {
 
 	if (nfailure > 0) {
@@ -182,8 +184,21 @@ static apr_status_t a_ssh_getaddress(gpcc_event_t *ev, void *arg)
 #define MAX_THREAD_NUM 20
 
     cmdslot_t *slot = arg;
-    int i,e, nthread;
+    int i,e, n, nthread;
     char *argv[MAX_THREAD_NUM+1];
+    char out[1024], cmd[1024];
+
+#ifdef SOLARIS2
+    char *ifconfig_txt = "-a inet";
+#else
+    char *ifconfig_txt = "";
+#endif
+    
+    n = sizeof(out);
+    if (gpcc_proc_findCmdInPath("ifconfig", out, &n)) {
+	gpcc_fatal(FLINE, "ifconfig command not found");
+    }
+    sprintf(cmd, "%s %s | grep inet | grep -v 127.0.0 | grep -v inet6", out, ifconfig_txt);  
 
     nthread = 0;
 
@@ -202,7 +217,7 @@ static apr_status_t a_ssh_getaddress(gpcc_event_t *ev, void *arg)
     slot->u.getaddress.nthread = nthread;
     if ((e = gpcc_proc_gpssh(&slot->u.getaddress.proc,
 			     (const char *const *) argv,
-			     "hostname",
+			     cmd,
 			     0,
 			     slot->pool)) != 0) {
 	gpcc_log_error("gpcc_pg_getaddress_by_hosts: gpssh failed.");
@@ -240,6 +255,8 @@ static apr_status_t a_ssh_getaddress_wait(gpcc_event_t *ev, void *arg)
 	    }
 	}
     }
+
+    gpcc_log_info("gethostname:  success = %d, failure = %d, total = %d", nsuccess, nfailure, slot->u.getaddress.nthread);
 
     if (nsuccess + nfailure == slot->u.getaddress.nthread) {
 

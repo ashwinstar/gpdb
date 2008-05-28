@@ -58,6 +58,12 @@ APR_DECLARE(void) fsm_init(void)
     /* configuration */
     gpcc_fsm_put(CFG_CMDSTATE, CFG_UPDATED_EVENT, CFG_CMDSTATE,
 		 a_config_updated, NULL);
+    gpcc_fsm_put(CFG_CMDSTATE, TIMEUP_EVENT, CFG_CMDSTATE,
+		 a_config_updated, NULL);
+    gpcc_fsm_put(CFG_CMDSTATE, CHUBBY_PUT_REPLY_EVENT, CFG_CMDSTATE,
+		 a_config_put_reply, NULL);
+    gpcc_fsm_put(CFG_CMDSTATE, CHUBBY_REMOVE_REPLY_EVENT, CFG_CMDSTATE,
+		 a_config_remove_reply, NULL);
     gpcc_fsm_put(CFG_CMDSTATE, ARRAY_CONFIG_EVENT, CFG_CMDSTATE,
 		 a_config_list, NULL);
 
@@ -172,7 +178,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_gethostname_reply, NULL);
     gpcc_fsm_put(FTS_CMDSTATE, SSH_ADDRESS_REPLY_EVENT, FTS_CMDSTATE,    
 		 a_fts_getaddress_reply, NULL);
-    gpcc_fsm_put(FTS_CMDSTATE, CONTINUE_EVENT, FTS_WAIT_CMDSTATE,
+    gpcc_fsm_put(FTS_CMDSTATE, NODE_START_EVENT, FTS_WAIT_CMDSTATE,
 		 a_fts_kick_off, NULL);
     gpcc_fsm_put(FTS_CMDSTATE, FAILURE_EVENT, FTS_CMDSTATE,
 		 a_fts_init_failure, NULL);
@@ -226,7 +232,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_gethostname_reply, NULL);
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, SSH_ADDRESS_REPLY_EVENT, FTS_INITIALIZING0_CMDSTATE,
 		 a_fts_getaddress_reply, NULL);
-    gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, CONTINUE_EVENT, FTS_INITIALIZING0_CMDSTATE,
+    gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, NODE_START_EVENT, FTS_INITIALIZING0_CMDSTATE,
 		 a_fts_kick_off, NULL);
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, FAILURE_EVENT, FTS_EMPTY_CMDSTATE, 0,
 		 a_fts_array_init_failure, NULL);

@@ -49,18 +49,76 @@ static char *config_to_json(apr_pool_t *pool)
     return buf;
 }
 
-
 /* config is updated in memory and we should save it on disk */
-apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
+static apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
 {
+    cmdslot_t *slot = arg;
+    const char *master;
+    char buf[1024];
+    char path[1024];
+    chubby_string_t *s = (chubby_string_t *) buf;
+    int e;
+
     gpcc_log_info("a_config_updated...");
+    sprintf(path, "/gp/%s/%s/gpma/master", gpma.user, gpma.array_name);
+
+    if (config_get(gpma.cfg, CONFIG_DBNAME_KEY)) {
+	/* put master file */
+	master = config_get(gpma.cfg, "seg.m.0");
+
+	gpcc_log_info("config: put file %s to chubby. content = '%s'", path, master);
+	s->length = strlen(master)+1;
+	strcpy(s->a, master);
+	e = chubby_connection_asynchronous_put(gpma.lma_cmdslot->u.lma.chubby.lease,
+					       chubby_put_cb,
+					       (void *) &slot->cmdidx,
+					       path,
+					       s);
+    } else {
+	/* delete master file */
+	gpcc_log_info("config: remove file %s from chubby", path);
+	e = chubby_connection_asynchronous_remove(gpma.lma_cmdslot->u.lma.chubby.lease,
+						  chubby_remove_cb,
+						  (void *) &slot->cmdidx,
+						  path);
+    }
+
     config_gc(gpma.cfg);
-    config_write(gpma.datadir, gpma.guid, gpma.cfg);
 
     return 0;
 }
 
-apr_status_t a_config_list(gpcc_event_t *ev, void *arg)
+static apr_status_t a_config_put_reply(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    chubby_result_t *result = (chubby_result_t *) ev->pdata;
+
+    if (result->retval) {
+	slot->countdown = 5;
+	gpcc_log_error("config: put file failed. retry in 5 seconds");
+	return 0;
+    }
+    
+    gpcc_log_info("config: put file successfully.");
+    return 0;
+}
+
+static apr_status_t a_config_remove_reply(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    chubby_result_t *result = (chubby_result_t *) ev->pdata;
+
+    if (result->retval && result->retval != CHUBBY_E_NOENT) {
+	gpcc_log_error("config: remove file failed. retry in 5 seconds");
+	slot->countdown = 5;
+	return 0;
+    }
+
+    gpcc_log_info("config: file removed successfully.");
+    return 0;
+}
+
+static apr_status_t a_config_list(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     char* buf;

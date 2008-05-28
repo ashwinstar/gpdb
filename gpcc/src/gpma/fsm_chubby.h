@@ -11,7 +11,7 @@ void chubby_get_cb(void *data, int e, struct chubby_stat *stat, chubby_string_t 
 	result = (chubby_result_t *) evt->pdata;
 	result->retval = e;	
     } else {
-	gpcc_log_info("chubby_get: answer = %s", answer);
+	gpcc_log_info("chubby_get: answer = %s", answer->a);
 	evt = gpcc_event_alloc(CHUBBY_GET_REPLY_EVENT, cmdidx, sizeof(*result) + answer->length);
 	result = (chubby_result_t *) evt->pdata;
 	result->retval = e;
@@ -117,3 +117,16 @@ void chubby_mkdir_cb(void *data, int e)
     gpcc_evqueue_put(gpma.evq, evt);
 
 }    
+
+void chubby_remove_cb(void *data, int e)
+{
+    apr_uint32_t cmdidx = *((apr_uint32_t *) data);
+    chubby_result_t *result;
+    gpcc_event_t *evt;
+    gpcc_log_info("chubby_remove: ret=%d", e);
+    evt = gpcc_event_alloc(CHUBBY_REMOVE_REPLY_EVENT, cmdidx, sizeof(*result));
+    result = (chubby_result_t *) evt->pdata;
+    result->retval = e;
+    gpcc_evqueue_put(gpma.evq, evt);
+
+}   

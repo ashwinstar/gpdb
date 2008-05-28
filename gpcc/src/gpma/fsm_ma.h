@@ -353,16 +353,18 @@ static apr_status_t a_lma_sync_config(gpcc_event_t *ev, void *arg, char *master)
     apr_pool_t *p = 0;
     apr_proc_t proc;
     char key[128], line[1024];
-    char *master_host;
+    char master_host[1024];
     char *master_port_str;
-    char *master_datadir;
+    char master_datadir[1024];
     int master_port;
-    char *last;
+    char *last, *s;
 
     strcpy(line, master);
-    master_host = apr_strtok(line, ":", &last);
+    s = apr_strtok(line, ":", &last);
+    strcpy(master_host, s);
     master_port_str = apr_strtok(0, ":", &last);
-    master_datadir = apr_strtok(0, ":", &last);
+    s = apr_strtok(0, ":", &last);
+    strcpy(master_datadir, s);
     master_port = strtol(master_port_str, 0, 0);
 
     if (apr_pool_create(&p, 0))

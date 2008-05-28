@@ -226,9 +226,10 @@ static apr_status_t a_fts_getaddress(gpcc_event_t *ev, void *arg)
 	apr_hash_this(hi, &key, 0, &val);
 
 	s->u.getaddress.hosts[i] = apr_pstrdup(s->pool, (char *) key);
+	gpcc_log_info("GETADDRESS === %s", s->u.getaddress.hosts[i]);
     }
     s->u.getaddress.nhost = cnt;
-    s->u.getaddress.timeout = 30;
+    s->u.getaddress.timeout = 120;
 
     evt = gpcc_event_alloc(INIT_EVENT, s->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -254,15 +255,12 @@ apr_status_t a_fts_getaddress_reply(gpcc_event_t *ev, void *arg)
     /* fill up hostname */
     rset = json_object_object_get(obj, "rset");
     len = json_object_array_length(rset);
-    if (len != slot->u.fts.nseginfo) {
-	goto bail;
-    }
     
-    for (i = 0 ; i < slot->u.fts.nseginfo ; i++) {
+    for (i = 0 ; i < len ; i++) {
 	char node[20];
 	struct json_object *o = json_object_array_get_idx(rset, i);
-	char *host = json_object_to_json_string(json_object_array_get_idx(o, 0));
-	char *ip = json_object_to_json_string(json_object_array_get_idx(o, 1));
+	char *host = json_object_get_string(json_object_array_get_idx(o, 0));
+	char *ip = json_object_get_string(json_object_array_get_idx(o, 1));
 	sprintf(node, "node.%d", i);
 	config_set(gpma.cfg, node, (const char *) ip);
 
@@ -274,7 +272,20 @@ apr_status_t a_fts_getaddress_reply(gpcc_event_t *ev, void *arg)
 	}
     }
     
-    evt = gpcc_event_alloc(CONTINUE_EVENT, slot->cmdidx, 0);
+    for (i = 0 ; i < slot->u.fts.nseginfo ; i++) {
+	gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
+		      slot->u.fts.seginfo[i].name,
+		      slot->u.fts.seginfo[i].host,
+		      slot->u.fts.seginfo[i].dbid,
+		      slot->u.fts.seginfo[i].content,
+		      slot->u.fts.seginfo[i].port,
+		      slot->u.fts.seginfo[i].dir,
+		      slot->u.fts.seginfo[i].haidx,
+		      slot->u.fts.seginfo[i].ha);
+    }    
+
+
+    evt = gpcc_event_alloc(NODE_START_EVENT, slot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
     
     if (obj) 
@@ -306,7 +317,7 @@ apr_status_t a_fts_gethostname(gpcc_event_t *ev, void *arg)
 	s->u.gethostname.hosts[i] = apr_pstrdup(s->pool, slot->u.fts.seginfo[i].host);
     }
     s->u.gethostname.nhost = slot->u.fts.nseginfo;
-    s->u.gethostname.timeout = 30;
+    s->u.gethostname.timeout = 120;
 
     evt = gpcc_event_alloc(INIT_EVENT, s->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -337,8 +348,9 @@ apr_status_t a_fts_gethostname_reply(gpcc_event_t *ev, void *arg)
     
     for (i = 0 ; i < slot->u.fts.nseginfo ; i++) {
 	struct json_object *o = json_object_array_get_idx(rset, i);
-	char *s = json_object_to_json_string(json_object_array_get_idx(o, 1));
+	char *s = json_object_get_string(json_object_array_get_idx(o, 1));
 	slot->u.fts.seginfo[i].hostname = apr_pstrdup(slot->pool, s);
+	gpcc_log_info("HOSTNAME == %s", slot->u.fts.seginfo[i].hostname);
     }
     
     slot->u.fts.ht = apr_hash_make(slot->pool);
@@ -426,23 +438,9 @@ void a_fts_node_init(void)
 
 static apr_status_t a_fts_setup_and_gethostname(gpcc_event_t *ev, void *_cmdslot)
 {
-    cmdslot_t *cmdslot = _cmdslot;
-    int i;
-
     if (setup_init_seginfo(ev, _cmdslot))
 	gpcc_fatal(FLINE, "seginfo setup error.");
 
-    for (i = 0 ; i < cmdslot->u.fts.nseginfo ; i++) {
-	gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
-		      cmdslot->u.fts.seginfo[i].name,
-		      cmdslot->u.fts.seginfo[i].host,
-		      cmdslot->u.fts.seginfo[i].dbid,
-		      cmdslot->u.fts.seginfo[i].content,
-		      cmdslot->u.fts.seginfo[i].port,
-		      cmdslot->u.fts.seginfo[i].dir,
-		      cmdslot->u.fts.seginfo[i].haidx,
-		      cmdslot->u.fts.seginfo[i].ha);
-    }    
     /* get hostname */
     a_fts_gethostname(ev, _cmdslot);
     
