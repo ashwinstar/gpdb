@@ -11,8 +11,6 @@ static apr_status_t a_ssh_gethostname(gpcc_event_t *ev, void *arg)
 
     nthread = 0;
 
-    gpcc_log_info("gethostname for %d hosts", slot->u.gethostname.nhost);
-
     slot->u.gethostname.start = slot->u.gethostname.offset;
     if (slot->u.gethostname.start + MAX_THREAD_NUM > slot->u.gethostname.nhost ) {
 	slot->u.gethostname.offset = slot->u.gethostname.nhost;
@@ -103,6 +101,10 @@ static apr_status_t a_ssh_gethostname_wait(gpcc_event_t *ev, void *arg)
 	    buf[nread] = 0;
 	    ptr = gpcc_string_trim(buf);
 	    slot->u.gethostname.hostname[slot->u.gethostname.start+i] = apr_pstrdup(slot->pool, ptr);
+	    gpcc_log_info("hostname of %s -> %s", 
+			  slot->u.gethostname.hosts[slot->u.gethostname.start+i],
+			  slot->u.gethostname.hostname[slot->u.gethostname.start+i]);
+			  
 	}
 
 	if (slot->u.gethostname.offset < slot->u.gethostname.nhost) {
@@ -149,6 +151,7 @@ static apr_status_t a_ssh_gethostname_success(gpcc_event_t *ev, void *arg)
     json_object_object_add(obj, "rset", rset);
 
     objstr = json_object_to_json_string(obj);
+    gpcc_log_info("gethosname succeeded.  JSON reply= %s", objstr);
     evt = gpcc_event_alloc(SSH_HOSTNAME_REPLY_EVENT, slot->u.gethostname.parent_cmdidx, strlen(objstr)+1);
     strcpy(evt->pdata, objstr);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -165,6 +168,7 @@ static apr_status_t a_ssh_gethostname_failure(gpcc_event_t *ev, void *arg)
 
     obj = gpcc_json_http_reply(gpma.array_name, 0, "gethostname", "error", 0, "ssh hostname failed");
     objstr = json_object_to_json_string(obj);
+    gpcc_log_info("gethostname failed. JSON reply = %s", objstr);
     evt = gpcc_event_alloc(SSH_HOSTNAME_REPLY_EVENT, slot->u.gethostname.parent_cmdidx, strlen(objstr)+1);
     strcpy(evt->pdata, objstr);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -182,8 +186,6 @@ static apr_status_t a_ssh_getaddress(gpcc_event_t *ev, void *arg)
     char *argv[MAX_THREAD_NUM+1];
 
     nthread = 0;
-
-    gpcc_log_info("getaddress for %d hosts", slot->u.getaddress.nhost);
 
     slot->u.getaddress.start = slot->u.getaddress.offset;
     if (slot->u.getaddress.start + MAX_THREAD_NUM > slot->u.getaddress.nhost ) {
@@ -296,7 +298,11 @@ static apr_status_t a_ssh_getaddress_wait(gpcc_event_t *ev, void *arg)
 		}
 	    }	
 
+	    apr_collapse_spaces(addr, addr);
 	    slot->u.getaddress.address[slot->u.getaddress.start+i] = apr_pstrdup(slot->pool, addr);
+	    gpcc_log_info("address of %s -> %s", 
+			  slot->u.getaddress.hosts[slot->u.getaddress.start+i],
+			  slot->u.getaddress.address[slot->u.getaddress.start+i]);
 	}
 
 	if (slot->u.getaddress.offset < slot->u.getaddress.nhost) {
@@ -342,6 +348,7 @@ static apr_status_t a_ssh_getaddress_success(gpcc_event_t *ev, void *arg)
     json_object_object_add(obj, "rset", rset);
 
     objstr = json_object_to_json_string(obj);
+    gpcc_log_info("getaddress succeeded. JSON reply = %s", objstr);
     evt = gpcc_event_alloc(SSH_ADDRESS_REPLY_EVENT, slot->u.getaddress.parent_cmdidx, strlen(objstr)+1);
     strcpy(evt->pdata, objstr);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -358,6 +365,7 @@ static apr_status_t a_ssh_getaddress_failure(gpcc_event_t *ev, void *arg)
 
     obj = gpcc_json_http_reply(gpma.array_name, 0, "getaddress", "error", 0, "get IP address failed");
     objstr = json_object_to_json_string(obj);
+    gpcc_log_info("getaddress failed. JSON reply = %s", objstr);
     evt = gpcc_event_alloc(SSH_ADDRESS_REPLY_EVENT, slot->u.getaddress.parent_cmdidx, strlen(objstr)+1);
     strcpy(evt->pdata, objstr);
     gpcc_evqueue_put(gpma.evq, evt);

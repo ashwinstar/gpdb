@@ -387,8 +387,8 @@ void d_main(void)
     gpcc_evqueue_t* evq = 0;
     gpcc_event_t* ev = 0;
 
-    gpma.logfpath = apr_psprintf(gpma.pool, "%s/%s.log", 
-				 gpma.datadir, gpma.ma_unit);
+    gpma.logfpath = apr_psprintf(gpma.pool, "%s/gpma.log", 
+				 gpma.datadir);
 
     /* redirect cerr to log */
     if (! freopen(gpma.logfpath, "a", stderr)) {
@@ -435,7 +435,7 @@ void d_main(void)
 
     /* greetings */
     apr_rfc822_date(date, apr_time_now());
-    gpcc_log_info("[%s] started gpma %s %s %s", date, gpma.guid, gpma.ma_unit, gpma.datadir);
+    gpcc_log_info("[%s] started gpma %s %s", date, gpma.guid,gpma.datadir);
 
     /* network up */
     GPCC_DO(0 == gpcc_net_init(gpma.ma_port,
@@ -452,7 +452,7 @@ void d_main(void)
 	int fd;
 	struct timeval tv;
 	
-	gpma.chubby = chubby_new(gpma.px_address, 120, 0, 0);
+	gpma.chubby = chubby_new(gpma.px_address, 45, malloc, free);
 	chubby_asynchronous_think(gpma.chubby, &fd, &tv);
 	gpcc_net_chubby_event(fd, do_chubby, &tv, 0);
     }
@@ -655,6 +655,7 @@ int main(int argc, const char* argv[])
     printf("GPHOME=%s\n", gpma.gphome);
 
     check_user();
+    check_hostname();
     check_gphome();
     load_config();
 

@@ -5,11 +5,13 @@ void chubby_get_cb(void *data, int e, struct chubby_stat *stat, chubby_string_t 
     chubby_result_t *result;
     gpcc_event_t *evt;
 
+    gpcc_log_info("chubby_get: ret=%d", e);
     if (e) {
 	evt = gpcc_event_alloc(CHUBBY_GET_REPLY_EVENT, cmdidx, sizeof(*result));	
 	result = (chubby_result_t *) evt->pdata;
 	result->retval = e;	
     } else {
+	gpcc_log_info("chubby_get: answer = %s", answer);
 	evt = gpcc_event_alloc(CHUBBY_GET_REPLY_EVENT, cmdidx, sizeof(*result) + answer->length);
 	result = (chubby_result_t *) evt->pdata;
 	result->retval = e;
@@ -27,6 +29,7 @@ void chubby_put_cb(void *data, int e)
     chubby_result_t *result;
     gpcc_event_t *evt;
 
+    gpcc_log_info("chubby_put: ret=%d", e);
     evt = gpcc_event_alloc(CHUBBY_PUT_REPLY_EVENT, cmdidx, sizeof(*result));
     result = (chubby_result_t *) evt->pdata;
     result->retval = e;
@@ -39,7 +42,7 @@ void chubby_renew_cb(void *data, int e)
     apr_uint32_t cmdidx = *((apr_uint32_t *) data);
     chubby_result_t *result;
     gpcc_event_t *evt;
-
+    gpcc_log_info("chubby_renew: ret=%d", e);
     evt = gpcc_event_alloc(CHUBBY_RENEW_REPLY_EVENT, cmdidx, sizeof(*result));
     result = (chubby_result_t *) evt->pdata;
     result->retval = e;
@@ -87,6 +90,7 @@ void chubby_get_lease_cb(void *data, int e, chubby_connection_t *conn)
     chubby_result_t *result;
     gpcc_event_t *evt;
 
+    gpcc_log_info("chubby_get_lease: ret=%d", e);
     if (e) {
 	evt = gpcc_event_alloc(CHUBBY_GET_LEASE_REPLY_EVENT, cmdidx, sizeof(*result));	
 	result = (chubby_result_t *) evt->pdata;
@@ -100,3 +104,16 @@ void chubby_get_lease_cb(void *data, int e, chubby_connection_t *conn)
     gpcc_evqueue_put(gpma.evq, evt);
 
 }
+
+void chubby_mkdir_cb(void *data, int e)
+{
+    apr_uint32_t cmdidx = *((apr_uint32_t *) data);
+    chubby_result_t *result;
+    gpcc_event_t *evt;
+    gpcc_log_info("chubby_mkdir: ret=%d", e);
+    evt = gpcc_event_alloc(CHUBBY_MKDIR_REPLY_EVENT, cmdidx, sizeof(*result));
+    result = (chubby_result_t *) evt->pdata;
+    result->retval = e;
+    gpcc_evqueue_put(gpma.evq, evt);
+
+}    
