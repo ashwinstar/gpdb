@@ -32,3 +32,14 @@ create table foo as select *, 'Lorem ipsum dolor sit amet, consectetur adipisici
 select * from foo, spread where foo.a = spread.b order by foo.a, spread.a desc, c limit 20;
 
 select * from skewed, spread where skewed.a = spread.b order by 3 asc limit 20;
+
+drop table if exists foo;
+create table foo (a int, b text);
+
+begin;
+set gp_interconnect_type=nil;
+insert into foo values (1, 'test');
+select * from foo;
+abort;
+
+drop table if exists foo;

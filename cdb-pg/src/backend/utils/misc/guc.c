@@ -3449,7 +3449,7 @@ static struct config_string ConfigureNamesString[] =
 		 gettext_noop("Valid values are \"tcp\" and \"udp\".")
 		},
 		&gp_interconnect_type_str,
-		INTERCONNECT_TYPE_TCP, gpvars_assign_gp_interconnect_type, gpvars_show_gp_interconnect_type
+		"tcp", gpvars_assign_gp_interconnect_type, gpvars_show_gp_interconnect_type
 	},
 	
 	{
