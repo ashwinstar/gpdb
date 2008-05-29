@@ -94,12 +94,58 @@ doScanInit(AppendOnlyScanDesc scan)
 	char	   *path;
 	AppendOnlyEntry *aoentry;
 	int64		eof;
+	MemoryContext oldcontext;
 	
 	/*
 	 * first, allocate varblock buffer space. This used to be done in initscan
 	 * but moved here so that memory will be allocated only when really needed.
+	 * we allocate it in the query context, not per-tuple context we're in
+	 * so that is won't go away on us later.
 	 */
+	oldcontext = MemoryContextSwitchTo(scan->aoScanInitContext);
 	scan->varBlockBuffer = (uint8 *) palloc(scan->maxBufferLen * sizeof(uint8));
+	MemoryContextSwitchTo(oldcontext);
+	
+	/*
+	 * Initialize the buffered read module if not done yet. We allocate it in 
+	 * the query-wide context.
+	 */
+	if(!scan->aos_bufread_inited)
+	{
+		int32	memoryLen;
+		int32	actualMaxBufferLen;
+		uint8	*memory;
+		
+		actualMaxBufferLen = getActualMaxBufferLen(scan->maxBufferLen, 
+												   scan->aos_compressed);
+				
+		memoryLen = BufferedReadMemoryLen(actualMaxBufferLen, scan->largeReadLen);
+
+		/* step away from per tuple context */
+		oldcontext = MemoryContextSwitchTo(scan->aoScanInitContext);
+
+		memory = (uint8*)palloc(memoryLen);
+				
+		if (memory == NULL)
+			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("Cannot allocate memory %d bytes",
+								   memoryLen)));
+		
+		/*
+		 * Initialize the BufferedRead module with a large amount of memory.
+		 */
+		BufferedReadInit(&scan->bufferedRead,
+						 memory,
+						 memoryLen,
+						 actualMaxBufferLen,
+						 scan->largeReadLen);
+		
+		/* return to per tuple context */
+		MemoryContextSwitchTo(oldcontext);
+		
+		scan->bufferDone = true; /* so we read a new buffer right away */
+		scan->aos_bufread_inited = true;
+	}
 	
 	/* cache the relfilenode value */
 	scan->aos_relfilenode = reln->rd_node.relNode;
@@ -577,9 +623,6 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 {
 	AppendOnlyScanDesc scan;
 	int				   complevel;
-	int32	memoryLen;
-	int32	actualMaxBufferLen;
-	uint8	*memory;
 	
 	/*
 	 * increment relation ref count while scanning relation
@@ -595,39 +638,21 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	 */
 	scan = (AppendOnlyScanDesc) palloc0(sizeof(AppendOnlyScanDescData));
 	scan->aos_inited = false;
+	scan->aos_bufread_inited = false;
 	scan->aos_rd = relation;
 	scan->aos_nkeys = nkeys;
 	scan->aos_relfilenode = InvalidOid;
+	scan->aos_file = 0;
+	
 	scan->maxBufferLen = RelationGetBlockSize(relation, DEFAULT_VARBLOCK_SIZE);
 	scan->largeReadLen = 2 * scan->maxBufferLen;
-	scan->aos_file = 0;
+	scan->aoScanInitContext = CurrentMemoryContext;
+
 	
 	complevel = RelationGetCompressLevel(relation, DEFAULT_COMPRESS_LEVEL);
 	scan->aos_compressed = (complevel > 0 ? true : false);
 	scan->varBlockBuffer = NULL;
-	
-	actualMaxBufferLen = getActualMaxBufferLen(scan->maxBufferLen, 
-											   scan->aos_compressed);
-
-	memoryLen = BufferedReadMemoryLen(actualMaxBufferLen, scan->largeReadLen);
-	memory = (uint8*)palloc(memoryLen);
-	
-	scan->bufferDone = true; /* so we read a new buffer right away */
-	
-	if (memory == NULL)
-		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("Cannot allocate memory %d bytes",
-							   memoryLen)));
-	
-	/*
-	 * Initialize the BufferedRead module with a large amount of memory.
-	 */
-	BufferedReadInit(&scan->bufferedRead,
-					 memory,
-					 memoryLen,
-					 actualMaxBufferLen,
-					 scan->largeReadLen);
-		
+			
 	/* we only need to set this up once */
 	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
 

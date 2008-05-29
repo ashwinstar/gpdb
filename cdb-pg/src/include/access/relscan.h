@@ -148,6 +148,8 @@ typedef struct AppendOnlyScanDescData
 	/* buffered read context */
 	BufferedRead    bufferedRead;
 	VarBlockReader  varBlockReader;
+	MemoryContext	aoScanInitContext; /* mem context at init time */
+
 	uint8			*varBlockBuffer; /* for decompression */
 	int32			maxBufferLen;
 	int32			largeReadLen;
@@ -159,6 +161,7 @@ typedef struct AppendOnlyScanDescData
 	/* current scan state */
 	bool		bufferDone;
 	bool		aos_inited;		/* false = scan not init'd yet */
+	bool		aos_bufread_inited;
 	TupleDesc	aos_tupDesc;
 	MemTupleData aos_ctup;		/* current tuple in scan, if any */
 	
