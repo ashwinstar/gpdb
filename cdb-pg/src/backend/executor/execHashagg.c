@@ -1396,7 +1396,6 @@ batch_rewind(HashAggTable *hashtable, unsigned int batch)
 		return;
 	}
 	
-	bfz_append_end(info->file);
 	bfz_scan_begin(info->file);
 }
 

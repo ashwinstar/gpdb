@@ -748,7 +748,6 @@ start_over:
 
     if (batch->innerside.bfz != NULL)
     {
-	    bfz_append_end(batch->innerside.bfz); 
 	    bfz_scan_begin(batch->innerside.bfz); 
 
 	    for (;;)
@@ -784,7 +783,6 @@ start_over:
     /*
      * Rewind outer batch file, so that we can start reading it.
      */
-    bfz_append_end(batch->outerside.bfz);
     bfz_scan_begin(batch->outerside.bfz);
     return curbatch;
 }
