@@ -497,15 +497,14 @@ class StatusCmd(Command):
 
 ####################
 class LoginCmd(Command):
-    '''Usage: gp login [-u username]'''
+    '''Usage: gp login [username]'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        Command.__init__(self, gopt, argv, '', self.__doc__)
         self.opt['-u'] = None
-        for (switch, val) in self.options:
-            if switch == '-u': self.opt[switch] = val
-
+        if len(self.args) == 1:
+            self.opt['-u'] = self.args[0]
         if self.opt['-u'] is None:
-            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+            self.opt['-u'] = os.getenv('USER') or os.getenv('LOGNAME')
 
     def run(self):
         if self.opt['-u'] is None:
@@ -544,15 +543,14 @@ class LoginCmd(Command):
 
 ####################
 class LogoutCmd(Command):
-    '''Usage: gp logout'''
+    '''Usage: gp logout [username]'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        Command.__init__(self, gopt, argv, '', self.__doc__)
         self.opt['-u'] = None
-        for (switch, val) in self.options:
-            if switch == '-u': self.opt[switch] = val
-
+        if len(self.args) == 1:
+            self.opt['-u'] = self.args[0]
         if self.opt['-u'] is None:
-            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+            self.opt['-u'] = os.getenv('USER') or os.getenv('LOGNAME')
 
     def run(self):
         if self.opt['-u'] is None:
@@ -584,15 +582,15 @@ class LogoutCmd(Command):
 
 ####################
 class AdminAddCmd(Command):
-    '''Usage: gp admin add -u user'''
+    '''Usage: gp admin add user'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        Command.__init__(self, gopt, argv, '', self.__doc__)
         self.opt['-u'] = None
-        for (switch, val) in self.options:
-            if switch == '-u': self.opt[switch] = val
+        if len(self.args) != 1:
+            print self.__doc__
+            sys.exit(2)
 
-        if self.opt['-u'] is None:
-            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+        self.opt['-u'] = self.args[0]
 
     def run(self):
         if self.opt['-u'] is None:
@@ -625,15 +623,15 @@ class AdminAddCmd(Command):
 
 ####################
 class AdminDeleteCmd(Command):
-    '''Usage: gp admin delete -u user'''
+    '''Usage: gp admin delete user'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        Command.__init__(self, gopt, argv, '', self.__doc__)
         self.opt['-u'] = None
-        for (switch, val) in self.options:
-            if switch == '-u': self.opt[switch] = val
+        if len(self.args) != 1:
+            print self.__doc__
+            sys.exit(2)
 
-        if self.opt['-u'] is None:
-            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+        self.opt['-u'] = self.args[0]
 
     def run(self):
         if self.opt['-u'] is None:
@@ -682,15 +680,15 @@ class AdminListCmd(Command):
 
 ####################
 class AdminPasswordCmd(Command):
-    '''Usage: gp admin password -u user'''
+    '''Usage: gp admin passwd [user]'''
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, 'u:', self.__doc__)
+        Command.__init__(self, gopt, argv, '', self.__doc__)
         self.opt['-u'] = None
-        for (switch, val) in self.options:
-            if switch == '-u': self.opt[switch] = val
+        if len(self.args) == 1:
+            self.opt['-u'] = self.args[0]
 
         if self.opt['-u'] is None:
-            self.opt['-u'] = os.getenv('USER') and os.getenv('USER') or os.getenv('LOGNAME')
+            self.opt['-u'] = os.getenv('USER') or os.getenv('LOGNAME')
 
     def run(self):
         if self.opt['-u'] is None:
@@ -770,7 +768,7 @@ class HelpCmd(Command):
          add          add user
          delete       delete user
          list         list user
-         password     change user password
+         passwd     change user password
 '''
 
     def __init__(self, gopt, argv):
@@ -818,7 +816,7 @@ class HelpCmd(Command):
                 elif c == 'add':       print AdminAddCmd.__doc__
                 elif c == 'delete':    print AdminDeleteCmd.__doc__
                 elif c == 'list':      print AdminListCmd.__doc__
-                elif c == 'password':  print AdminPasswordCmd.__doc__
+                elif c == 'passwd':  print AdminPasswordCmd.__doc__
                 else:
                     usage('Error: unknown command "admin %s"' % c)
         else:
@@ -870,7 +868,7 @@ class CmdLine():
             elif c == 'add':         self.cmd = AdminAddCmd(self.gopt, args[1:])
             elif c == 'delete':      self.cmd = AdminDeleteCmd(self.gopt, args[1:])
             elif c == 'list':        self.cmd = AdminListCmd(self.gopt, args[1:])
-            elif c == 'password':    self.cmd = AdminPasswordCmd(self.gopt, args[1:])
+            elif c == 'passwd':    self.cmd = AdminPasswordCmd(self.gopt, args[1:])
             else: usage('Error: unknown command "admin %s"' % c)
         else: usage('Error: unknown command "%s"' % c)
 
@@ -903,6 +901,9 @@ def main():
 
 ####################
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit('\nUser Interrupted...')
     
         
