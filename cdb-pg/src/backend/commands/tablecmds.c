@@ -8446,7 +8446,6 @@ static PartitionNode *
 selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					 TupleDesc tupdesc, Oid *found)
 {
-	Partition *part = partnode->part;
 	List *rules = partnode->rules;
 	int high = list_length(rules) - 1;
 	int low = 0;
@@ -8459,7 +8458,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	Datum d = values[attno - 1];
 
 	Assert(!isnull[attno - 1]); /* XXX: not handled */
-	Assert(part->parkind == 'r');
+	Assert(partnode->part->parkind == 'r');
 
 #define RANGE_OP_LT 0
 #define RANGE_OP_LE 1

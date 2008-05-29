@@ -4730,7 +4730,7 @@ validate_list_partition(partValidationState *vstate)
 		ListCell *llc2;
 		char *colname = strVal(lfirst(lc));
 		bool found = false;
-		TypeName *typname;
+		TypeName *typname = NULL;
 
 		foreach(llc2, vstate->cxt->columns)
 		{

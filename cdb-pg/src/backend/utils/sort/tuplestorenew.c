@@ -771,7 +771,10 @@ ntuplestore_flush(NTupleStore *ts)
 	{
 		if(nts_page_is_dirty(p) && nts_page_slot_cnt(p) > 0)
 		{
-			bool ok = ntsWriteBlock(ts, p);
+#ifdef USE_ASSERT_CHECKING
+			bool ok = 
+#endif
+				ntsWriteBlock(ts, p);
 			Assert(ok);
 		}
 		p = nts_page_next(p);
