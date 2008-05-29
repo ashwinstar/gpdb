@@ -293,6 +293,11 @@ if (1)
     my $hostexp = '\\@hostname\\@';
     my $psexp   = '\\@ps_pidfirst\\@';
     my $locps   = 'ps axww';
+    if ($^O !~ /darwin|mac|osx/i)
+    {
+        $locps   = 'ps elf';
+    }
+
 
     # get the perl osname
     my $perlosexp = '\\@perl_osname\\@';
