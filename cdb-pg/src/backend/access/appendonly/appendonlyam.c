@@ -63,6 +63,8 @@ static void doDecompress(AppendOnlyScanDesc scan,
 							 uint8			*compressed,
 							 int32			compressedLen,
 							 int32			*uncompressedLen);
+static int32 getActualMaxBufferLen(int32 maxBufferLen, 
+								   bool compressed);
 
 /* ----------------
  *		initscan - scan code common to appendonly_beginscan and appendonly_rescan
@@ -604,16 +606,9 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	scan->aos_compressed = (complevel > 0 ? true : false);
 	scan->varBlockBuffer = NULL;
 	
-	if (!scan->aos_compressed)
-	{
-		actualMaxBufferLen = scan->maxBufferLen;
-	}
-	else
-	{		
-		actualMaxBufferLen = scan->maxBufferLen + sizeof(int32);
-		actualMaxBufferLen = ((actualMaxBufferLen + sizeof(int32) - 1)/sizeof(int32))*sizeof(int32);
-	}
-	
+	actualMaxBufferLen = getActualMaxBufferLen(scan->maxBufferLen, 
+											   scan->aos_compressed);
+
 	memoryLen = BufferedReadMemoryLen(actualMaxBufferLen, scan->largeReadLen);
 	memory = (uint8*)palloc(memoryLen);
 	
@@ -799,16 +794,8 @@ appendonly_insert_init(Relation rel)
 	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4; /* see tuptoaster.h for more information */
 	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
 	
-	if (!aoInsertDesc->shouldCompress)
-	{
-		actualMaxBufferLen = aoInsertDesc->maxBufferLen;
-	}
-	else
-	{		
-		actualMaxBufferLen = aoInsertDesc->maxBufferLen + sizeof(int32);
-		actualMaxBufferLen = ((actualMaxBufferLen + sizeof(int32) - 1)/sizeof(int32))*sizeof(int32);
-	}
-
+	actualMaxBufferLen = getActualMaxBufferLen(aoInsertDesc->maxBufferLen, 
+											   aoInsertDesc->shouldCompress);
 	
 	memoryLen = BufferedAppendMemoryLen(actualMaxBufferLen, aoInsertDesc->largeWriteLen);
 	memory = (uint8*)palloc(memoryLen);
@@ -1352,4 +1339,21 @@ RelationGuessNumberOfBlocks(double totalbytes)
 	return (BlockNumber)(totalbytes/BLCKSZ) + 1;
 }
 
+int32 
+getActualMaxBufferLen(int32 maxBufferLen, bool compressed)
+{
+	int32 result;
+	
+	if (!compressed)
+	{
+		result = maxBufferLen;
+	}
+	else
+	{		
+		result = maxBufferLen + sizeof(int32);
+		result = ((result + sizeof(int32) - 1)/sizeof(int32))*sizeof(int32);
+	}
+	
+	return result;
+}
 
