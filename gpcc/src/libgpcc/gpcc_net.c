@@ -617,8 +617,8 @@ static void conn_fire_read(gpcc_net_conn_t conn)
 	    in->bot = in->top = 0;
     }
 
-
-    gpcc_spin_release(spin);
+    if (spin)
+	gpcc_spin_release(spin);
     return;
 }
 
