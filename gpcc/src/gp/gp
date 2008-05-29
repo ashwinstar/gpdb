@@ -91,6 +91,7 @@ class Command():
             if os.path.exists(gpcc_file) and os.path.isfile(gpcc_file):
                 f = open(gpcc_file)
                 self.sid = f.read()
+                self.sid = self.sid.strip()
                 f.close()
         except IOError, e:
             print '[ERROR] failed to read file %s' % gpcc_file
@@ -107,12 +108,15 @@ class Command():
         p = params and urllib.urlencode(params) or ''
         query = '%s?%s' % (path, p)
         f = None
+        header = None
+        if self.sid:
+            header = {}
+            header['X-GPCC-SID'] = self.sid
+
         try:
             self.verbose('http://%s%s' % (addr, query))
             f = httplib.HTTPConnection(addr)
-            if self.sid:
-                f.putheader('X-GPCC-SID', self.sid)
-            f.request(method, query, data)
+            f.request(method, query, data, header)
             response = f.getresponse()
             if response.status == 200 or response.status == 301:
                 str = response.read()
