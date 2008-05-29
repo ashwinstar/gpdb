@@ -70,7 +70,7 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 
 devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
 devel_faultinj : INSTLOC=$(DEVPATH)
-devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection
+devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak
 devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
