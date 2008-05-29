@@ -104,7 +104,7 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 
 dist_faultinj : INSTCFLAGS=$(OPTFLAGS)
 dist_faultinj : INSTLOC=$(DISTPATH)
-dist_faultinj : CONFIGFLAGS+= --enable-faultinjection
+dist_faultinj : CONFIGFLAGS+= --enable-faultinjection --enable-debugbreak
 dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
