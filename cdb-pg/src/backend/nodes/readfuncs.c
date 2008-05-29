@@ -269,6 +269,7 @@ _readQuery(void)
 	READ_NODE_FIELD(rowMarks);
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
+	READ_NODE_FIELD(result_partitions);
 	READ_NODE_FIELD(returningLists);
 	
 	/*
@@ -1818,6 +1819,56 @@ _readCreateStmt(void)
 	READ_DONE();
 }
 
+static Partition *
+_readPartition(const char **str)
+{
+	READ_LOCALS(Partition);
+
+	READ_OID_FIELD(partid);
+	READ_OID_FIELD(relid);
+	READ_CHAR_FIELD(parkind);
+	READ_INT_FIELD(parlevel);
+	READ_BOOL_FIELD(paristemplate);
+	READ_INT_FIELD(parnatts);
+	READ_INT_ARRAY(paratts, parnatts, int2);
+	READ_OID_ARRAY(parclass, parnatts);
+
+	READ_DONE();
+}
+
+static PartitionRule *
+_readPartitionRule(const char **str)
+{
+	READ_LOCALS(PartitionRule);
+
+	READ_OID_FIELD(parruleid);
+	READ_OID_FIELD(paroid);
+	READ_OID_FIELD(parrelid);
+	READ_OID_FIELD(parparentoid);
+	READ_STRING_FIELD(parname);
+	READ_NODE_FIELD(parrangestart);
+	READ_BOOL_FIELD(parrangestartincl);
+	READ_NODE_FIELD(parrangeend);
+	READ_BOOL_FIELD(parrangeendincl);
+	READ_NODE_FIELD(parrangeevery);
+	READ_NODE_FIELD(parlistvalues);
+	READ_INT_FIELD(parruleord);
+	READ_NODE_FIELD(children);
+
+	READ_DONE();
+}
+
+static PartitionNode *
+_readPartitionNode(const char **str)
+{
+	READ_LOCALS(PartitionNode);
+
+	READ_NODE_FIELD(part);
+	READ_NODE_FIELD(rules);
+
+	READ_DONE();
+}
+
 static ExtTableTypeDesc *
 _readExtTableTypeDesc(void)
 {
@@ -3148,6 +3199,9 @@ static ParseNodeInfo infoAr[] =
 	{"NULLTEST", (ReadFn)_readNullTest},
 	{"OPEXPR", (ReadFn)_readOpExpr},
 	{"PARAM", (ReadFn)_readParam},
+	{"PARTITION", (ReadFn)_readPartition},
+	{"PARTITIONNODE", (ReadFn)_readPartitionNode},
+	{"PARTITIONRULE", (ReadFn)_readPartitionRule},
 	{"PLAN", (ReadFn)_readPlan},
 	{"PRIVGRANTEE", (ReadFn)_readPrivGrantee},
 	{"QUERY", (ReadFn)_readQuery},

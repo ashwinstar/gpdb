@@ -43,12 +43,14 @@
 #include "catalog/toasting.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_type.h"
+#include "commands/tablecmds.h" /* XXX: temp for get_parts() */
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
 #include "executor/execdebug.h"
 #include "executor/instrument.h"
 #include "executor/nodeSubplan.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h" /* temporary */
 #include "optimizer/clauses.h"
 #include "parser/parse_clause.h"
 #include "parser/parsetree.h"
@@ -75,6 +77,7 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdboidsync.h"
 
+bool enable_partition_fast_insert = false;
 extern bool isFtsReadOnlySet(void);
 extern void FtsEvaluateTransientState(void);
 
@@ -1199,6 +1202,19 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		estate->es_num_result_relations = numResultRelations;
 		/* Initialize to first or only result rel */
 		estate->es_result_relation_info = resultRelInfos;
+
+		if (Gp_role == GP_ROLE_EXECUTE)
+			estate->es_result_partitions = parseTree->result_partitions;
+		else
+		{
+			Relation tmp = heap_open(getrelid(parseTree->resultRelation,
+											  rangeTable),
+									 NoLock);
+			estate->es_result_partitions =
+				RelationBuildPartitionDesc(tmp);
+			parseTree->result_partitions = estate->es_result_partitions;
+			heap_close(tmp, NoLock);
+		}
 	}
 	else
 	{
@@ -1208,6 +1224,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		estate->es_result_relations = NULL;
 		estate->es_num_result_relations = 0;
 		estate->es_result_relation_info = NULL;
+		estate->es_result_partitions = NULL;
 	}
 
 	/*
@@ -1682,8 +1699,8 @@ ExecEndPlan(PlanState *planstate, EState *estate)
 		/* end (flush) the INSERT operation in the access layer */
 		if (estate->es_HeapInsertDesc)
 			heap_endinsert(estate->es_HeapInsertDesc);
-		if (estate->es_aoInsertDesc)
-			appendonly_insert_finish(estate->es_aoInsertDesc);
+		if (resultRelInfo->ri_aoInsertDesc)
+			appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
 
 		/* Close indices and then the relation itself */
 		ExecCloseIndices(resultRelInfo);
@@ -2051,7 +2068,19 @@ ExecInsert(TupleTableSlot *slot,
 	/*
 	 * get information on the (current) result relation
 	 */
-	resultRelInfo = estate->es_result_relation_info;
+	if (estate->es_result_partitions)
+	{
+		/* 
+		 * XXX: heap_enableHeapInsertDesc is not currently enabled. If it ever
+		 * is, the handling of the insert descriptor must be improved: namely,
+		 * we need one per resultRelInfo.
+		 */
+		Assert(!heap_enableHeapInsertDesc);
+		resultRelInfo = slot_get_partition(slot, estate);
+	}
+	else
+		resultRelInfo = estate->es_result_relation_info;
+
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 	relkind = resultRelationDesc->rd_rel->relkind;
 
@@ -2059,7 +2088,7 @@ ExecInsert(TupleTableSlot *slot,
 	 * get the heap tuple out of the tuple table slot, making sure we have a
 	 * writable copy
 	 */
-	if(relkind != RELKIND_APPEND_ONLY)
+	if (relkind != RELKIND_APPEND_ONLY)
 		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
 	else
 		tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
@@ -2130,10 +2159,11 @@ ExecInsert(TupleTableSlot *slot,
 	}
 	else
 	{
-		if (estate->es_aoInsertDesc == NULL)
-			estate->es_aoInsertDesc = appendonly_insert_init(resultRelationDesc);
+		if (resultRelInfo->ri_aoInsertDesc == NULL)
+			resultRelInfo->ri_aoInsertDesc = 
+				appendonly_insert_init(resultRelationDesc);
 		
-		newId = appendonly_insert(estate->es_aoInsertDesc, tuple);				
+		newId = appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple);				
 	}
 	
 	IncrAppended();
@@ -3081,6 +3111,7 @@ typedef struct
 {
 	DestReceiver pub;			/* publicly-known function pointers */
 	EState	   *estate;			/* EState we are working with */
+	AppendOnlyInsertDescData *ao_insertDesc; /* descriptor to AO tables */
 } DR_intorel;
 
 /*
@@ -3262,18 +3293,22 @@ CloseIntoRel(QueryDesc *queryDesc)
 	EState	   *estate = queryDesc->estate;
 	Relation	rel = estate->es_into_relation_descriptor;
 	
+	/* Partition with SELECT INTO is not supported */
+	Assert(!PointerIsValid(estate->es_result_partitions));
+
 	/* OpenIntoRel might never have gotten called */
 	if (rel)
 	{
 		char		relkind = rel->rd_rel->relkind;
 
-		if(relkind != RELKIND_APPEND_ONLY)
+		/* APPEND_ONLY is closed in the intorel_shutdown */
+		if (relkind != RELKIND_APPEND_ONLY)
 		{
 			/*
 			 * If we skipped using WAL, and it's not a temp relation, we must
 			 * force the relation down to disk before it's safe to commit the
-			 * transaction.  This requires forcing out any dirty buffers and then
-			 * doing a forced fsync.
+			 * transaction.  This requires forcing out any dirty buffers and
+			 * then doing a forced fsync.
 			 */
 			if (!estate->es_into_relation_use_wal &&
 				!rel->rd_istemp)
@@ -3282,11 +3317,6 @@ CloseIntoRel(QueryDesc *queryDesc)
 				/* FlushRelationBuffers will have opened rd_smgr */
 				smgrimmedsync(rel->rd_smgr);
 			}			
-		}
-		else
-		{
-			if(estate->es_aoInsertDesc)
-				appendonly_insert_finish(estate->es_aoInsertDesc);	
 		}
 
 		/* close rel, but keep lock until commit */
@@ -3315,6 +3345,7 @@ CreateIntoRelDestReceiver(void)
 	self->pub.mydest = DestIntoRel;
 
 	self->estate = NULL;
+	self->ao_insertDesc = NULL;
 
 	return (DestReceiver *) self;
 }
@@ -3339,6 +3370,8 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	Relation	into_rel = estate->es_into_relation_descriptor;
 	char		relkind = into_rel->rd_rel->relkind;
 		
+	Assert(estate->es_result_partitions == NULL);
+
 	if (relkind != RELKIND_APPEND_ONLY)
 	{
 		HeapTuple	tuple = ExecCopySlotHeapTuple(slot);
@@ -3356,11 +3389,10 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	{		
 		MemTuple	tuple = ExecCopySlotMemTuple(slot);
 		
-		if (estate->es_aoInsertDesc == NULL)
-			estate->es_aoInsertDesc = appendonly_insert_init(into_rel);
+		if (myState->ao_insertDesc == NULL)
+			myState->ao_insertDesc = appendonly_insert_init(into_rel);
 
-		appendonly_insert(estate->es_aoInsertDesc, tuple);
-		
+		appendonly_insert(myState->ao_insertDesc, tuple);		
 		pfree(tuple);
 	}
 				
@@ -3375,7 +3407,15 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 static void
 intorel_shutdown(DestReceiver *self)
 {
-	/* no-op */
+	/* If target was append only, finalise */
+	DR_intorel *myState = (DR_intorel *) self;
+	EState	   *estate = myState->estate;
+	Relation	into_rel = estate->es_into_relation_descriptor;
+	char		relkind = into_rel->rd_rel->relkind;
+
+
+	if (relkind == RELKIND_APPEND_ONLY && myState->ao_insertDesc)
+		appendonly_insert_finish(myState->ao_insertDesc);	
 }
 
 /*
@@ -3385,4 +3425,98 @@ static void
 intorel_destroy(DestReceiver *self)
 {
 	pfree(self);
+}
+
+static ResultRelInfo *
+get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
+{
+	ResultRelInfo *resultRelInfo;
+	Oid targetid;
+	int i;
+	bool found = false;
+
+	targetid = selectPartition(estate->es_result_partitions, values,
+							   isnull, tupdesc);
+
+	if (!OidIsValid(targetid))
+		elog(ERROR, "no partition for partitioning key");
+
+	resultRelInfo = estate->es_result_relations;
+	/* XXX: improve, provide lookup */
+	for (i = 0; i < estate->es_num_result_relations; i++)
+	{
+		Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
+
+		if (RelationGetRelid(resultRelationDesc) == targetid)
+		{
+			found = true;
+			break;
+		}
+		resultRelInfo++;
+	}
+
+	if (!found)
+	{
+		RangeTblEntry *rte = makeNode(RangeTblEntry);
+		List *rangeTable;
+
+		/* 
+		 * XXX: updating es_result_relation_info /should/ be okay since it
+		 * is only changed by Append... but it's still ugly. Find a better way
+		 */
+		estate->es_result_relation_info = estate->es_result_relations = 
+			(ResultRelInfo *)repalloc(estate->es_result_relations,
+									  (estate->es_num_result_relations + 1)
+								 	  * sizeof(ResultRelInfo));
+		resultRelInfo = estate->es_result_relations;
+		resultRelInfo += estate->es_num_result_relations;
+		estate->es_num_result_relations++;
+
+		rte->relid = targetid; /* all we need */
+		rangeTable = list_make1(rte);
+		initResultRelInfo(resultRelInfo, 1,
+						  rangeTable,
+						  CMD_INSERT,
+						  estate->es_instrument,
+						  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
+		ExecOpenIndices(resultRelInfo);
+	}
+	return resultRelInfo;
+}
+
+ResultRelInfo *
+values_get_partition(Datum *values, bool *nulls, TupleDesc tupdesc,
+					 EState *estate)
+{
+	ResultRelInfo *relinfo;
+
+	Assert(PointerIsValid(estate->es_result_partitions));
+
+	relinfo = get_part(estate, values, nulls, tupdesc);
+
+	return relinfo;
+}
+
+/* 
+ * Find the partition we want and get the ResultRelInfo for the
+ * partition.
+ */
+ResultRelInfo *
+slot_get_partition(TupleTableSlot *slot, EState *estate)
+{
+	ResultRelInfo *resultRelInfo;
+	AttrNumber max_attr;
+	Datum *values;
+	bool *nulls;
+
+	Assert(PointerIsValid(estate->es_result_partitions));
+
+	max_attr = max_partition_attr(estate->es_result_partitions);
+	slot_getsomeattrs(slot, max_attr);
+	values = slot_get_values(slot);
+	nulls = slot_get_isnull(slot);
+
+	resultRelInfo = get_part(estate, values, nulls, slot->tts_tupleDescriptor);
+
+	return resultRelInfo;
 }

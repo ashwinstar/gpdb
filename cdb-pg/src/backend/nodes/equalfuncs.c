@@ -959,6 +959,17 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 }
 
 static bool
+_equalPartitionRangeItem(PartitionRangeItem *a, PartitionRangeItem *b)
+{
+	COMPARE_NODE_FIELD(partEveryNum);
+	COMPARE_NODE_FIELD(partRangeVal);
+	COMPARE_SCALAR_FIELD(partedge);
+	COMPARE_SCALAR_FIELD(everycount);
+
+	return true;
+}
+
+static bool
 _equalExtTableTypeDesc(ExtTableTypeDesc *a, ExtTableTypeDesc *b)
 {
 	COMPARE_SCALAR_FIELD(exttabletype);
@@ -2295,6 +2306,9 @@ equal(void *a, void *b)
 			break;
 		case T_CreateStmt:
 			retval = _equalCreateStmt(a, b);
+			break;
+		case T_PartitionRangeItem:
+			retval = _equalPartitionRangeItem(a, b);
 			break;
 		case T_ExtTableTypeDesc:
 			retval = _equalExtTableTypeDesc(a, b);

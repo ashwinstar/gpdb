@@ -14,9 +14,9 @@
 #ifndef TABLECMDS_H
 #define TABLECMDS_H
 
+#include "executor/tuptable.h"
 #include "nodes/parsenodes.h"
-#include "utils/rel.h"
-
+#include "nodes/relation.h"
 
 extern Oid	DefineRelation(CreateStmt *stmt, char relkind);
 
@@ -68,5 +68,9 @@ extern void AtEOXact_on_commit_actions(bool isCommit);
 extern void AtEOSubXact_on_commit_actions(bool isCommit,
 							  SubTransactionId mySubid,
 							  SubTransactionId parentSubid);
-
+extern Oid selectPartition(PartitionNode *partnode, Datum *values,
+						   bool *isnull, TupleDesc tupdesc);
+extern PartitionNode *RelationBuildPartitionDesc(Relation rel);
+extern AttrNumber max_partition_attr(PartitionNode *pn);
+extern List *get_partition_attrs(PartitionNode *pn);
 #endif   /* TABLECMDS_H */

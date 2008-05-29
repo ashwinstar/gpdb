@@ -1200,4 +1200,46 @@ typedef struct AppendRelInfo
 	Oid			parent_reloid;	/* OID of parent relation */
 } AppendRelInfo;
 
+/* Partitioning meta data */
+typedef struct Partition
+{
+	NodeTag type;
+	Oid partid;
+	Oid relid; /* partitioned relation */
+	char parkind;
+	int2 parlevel;
+	bool paristemplate;
+	int2 parnatts;
+	AttrNumber *paratts;
+	Oid *parclass;
+} Partition;
+
+struct PartitionNode
+{
+	NodeTag type;
+	Partition *part;
+	struct PartitionRule *default_part;
+	List *rules; /* rules for this level */
+};
+
+/* Individual partitioning rule */
+typedef struct PartitionRule
+{
+	NodeTag type;
+	Oid parruleid;
+	Oid paroid;
+	Oid parrelid;
+	Oid parparentoid;
+	bool parisdefault;
+	char *parname;
+	Node *parrangestart;
+	bool parrangestartincl;
+	Node *parrangeend;
+	bool parrangeendincl;
+	Node *parrangeevery;
+	List *parlistvalues;
+	int2 parruleord;
+	PartitionNode *children; /* sub partition */
+} PartitionRule;
+
 #endif   /* RELATION_H */

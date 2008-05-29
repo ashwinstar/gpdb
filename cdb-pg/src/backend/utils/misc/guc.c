@@ -110,6 +110,9 @@ extern int	CommitSiblings;
 extern char *default_tablespace;
 extern bool fullPageWrites;
 
+extern bool enable_partition_rules;
+extern bool enable_partition_fast_insert;
+
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
 List       *gp_guc_list_for_explain;
 List       *gp_guc_list_for_no_plan;
@@ -1686,6 +1689,25 @@ static struct config_bool ConfigureNamesBool[] =
  		false, NULL, NULL
  	},
 
+	{
+		{"enable_partition_rules", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable creation of RULEs to implement partitioning"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&enable_partition_rules,
+		true, NULL, NULL
+	},
+
+	{
+		{"enable_partition_fast_insert", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Enable fast-insert code for partitions"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&enable_partition_fast_insert,
+		false, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{

@@ -280,7 +280,6 @@ InternalCreateExecutorState(MemoryContext qcontext, bool is_subquery)
 	estate->primaryResults = NULL;
 	estate->mirrorResults = NULL;
 	estate->dispatchThreads = NULL;
-	estate->es_aoInsertDesc = NULL;
 	
 	/*
 	 * Return the executor state structure

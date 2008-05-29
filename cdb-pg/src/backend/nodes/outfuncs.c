@@ -2096,10 +2096,9 @@ _outPartitionBy(StringInfo str, PartitionBy *node)
 	WRITE_NODE_TYPE("PARTITIONBY");
 	WRITE_ENUM_FIELD(partType, PartitionByType);
 	WRITE_NODE_FIELD(keys);
-	WRITE_INT_FIELD(keyCount);
+	WRITE_NODE_FIELD(keyopclass);
 	WRITE_NODE_FIELD(partNum);
 	WRITE_NODE_FIELD(subPart);
-	WRITE_NODE_FIELD(partHierarchy);
 	WRITE_NODE_FIELD(partSpec);
 	WRITE_INT_FIELD(partDepth);
 	WRITE_INT_FIELD(location);
@@ -2130,7 +2129,7 @@ _outPartitionRangeItem(StringInfo str, PartitionRangeItem *node)
 	WRITE_NODE_TYPE("PARTITIONRANGEITEM");
 	WRITE_NODE_FIELD(partEveryNum);
 	WRITE_NODE_FIELD(partRangeVal);
-	WRITE_INT_FIELD(partInclusive);
+	WRITE_ENUM_FIELD(partedge, PartitionEdgeBounding);
 	WRITE_INT_FIELD(location);
 }
 
@@ -2152,6 +2151,58 @@ _outPartitionValuesSpec(StringInfo str, PartitionValuesSpec *node)
 	WRITE_NODE_FIELD(partValues);
 	WRITE_INT_FIELD(location);
 }
+
+static void
+_outPartition(StringInfo str, Partition *node)
+{
+	int i;
+
+	WRITE_NODE_TYPE("PARTITION");
+
+	WRITE_OID_FIELD(partid);
+	WRITE_OID_FIELD(relid);
+	WRITE_CHAR_FIELD(parkind);
+	WRITE_INT_FIELD(parlevel);
+	WRITE_BOOL_FIELD(paristemplate);
+	WRITE_INT_FIELD(parnatts);
+	appendStringInfoLiteral(str, " :paratts");
+	for (i = 0; i < node->parnatts; i++)
+		appendStringInfo(str, " %i", node->paratts[i]);
+
+	appendStringInfoLiteral(str, " :parclass");
+	for (i = 0; i < node->parnatts; i++)
+		appendStringInfo(str, " %d", node->parclass[i]);
+}
+
+static void
+_outPartitionRule(StringInfo str, PartitionRule *node)
+{
+	WRITE_NODE_TYPE("PARTITIONRULE");
+
+	WRITE_OID_FIELD(parruleid);
+	WRITE_OID_FIELD(paroid);
+	WRITE_OID_FIELD(parrelid);
+	WRITE_OID_FIELD(parparentoid);
+	WRITE_STRING_FIELD(parname);
+	WRITE_NODE_FIELD(parrangestart);
+	WRITE_BOOL_FIELD(parrangestartincl);
+	WRITE_NODE_FIELD(parrangeend);
+	WRITE_BOOL_FIELD(parrangeendincl);
+	WRITE_NODE_FIELD(parrangeevery);
+	WRITE_NODE_FIELD(parlistvalues);
+	WRITE_INT_FIELD(parruleord);
+	WRITE_NODE_FIELD(children);
+}
+
+static void
+_outPartitionNode(StringInfo str, PartitionNode *node)
+{
+	WRITE_NODE_TYPE("PARTITIONNODE");
+
+	WRITE_NODE_FIELD(part);
+	WRITE_NODE_FIELD(rules);
+}
+	
 static void
 _outDefineStmt(StringInfo str, DefineStmt *node)
 {
@@ -2582,6 +2633,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(rowMarks);
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(resultRelations);
+	WRITE_NODE_FIELD(result_partitions);
 	WRITE_NODE_FIELD(returningLists); /* TODO Merge issue */
 	
 	WRITE_OID_FIELD(intoOidInfo.relOid);
@@ -3426,6 +3478,15 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_PartitionSpec:
 				_outPartitionSpec(str, obj);
+				break;
+			case T_Partition:
+				_outPartition(str, obj);
+				break;
+			case T_PartitionRule:
+				_outPartitionRule(str, obj);
+				break;
+			case T_PartitionNode:
+				_outPartitionNode(str, obj);
 				break;
 			case T_PartitionValuesSpec:
 				_outPartitionValuesSpec(str, obj);

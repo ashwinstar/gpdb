@@ -1,3 +1,5 @@
+set enable_partition_fast_insert = true;
+set enable_partition_rules = false;
 -- missing subpartition by
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -353,12 +355,13 @@ subpartition by hash(e) subpartitions 3
 partition aa 
 start  (date '2007-01-01') 
 end (date '2008-01-01') 
-       (subpartition dd values (1,2,3), subpartition ee values (4,5,6)),
+       (subpartition dd values ('1', '2', '3'), 
+	    subpartition ee values ('4', '5', '6')),
 partition bb
 start  (date '2008-01-01') 
 end (date '2009-01-01') 
-       (subpartition dd values (1,2,3), subpartition ee values (4,5,6))
-
+       (subpartition dd values ('1', '2', '3'),
+	    subpartition ee values ('4', '5', '6'))
 );
 
 drop table ggg cascade;
@@ -519,8 +522,8 @@ insert into rank values (10, 1, date '2005-05-15', 'F');
 select * from rank order by 1, 2, 3, 4;
 select * from rank_1_prt_boys order by 1, 2, 3, 4;
 select * from rank_1_prt_girls order by 1, 2, 3, 4;
-select * from rank_1_prt_girls_2_prt_1_0 order by 1, 2, 3, 4;
-select * from rank_1_prt_girls_2_prt_1_1 order by 1, 2, 3, 4;
+select * from rank_1_prt_girls_2_prt_1 order by 1, 2, 3, 4;
+select * from rank_1_prt_girls_2_prt_2 order by 1, 2, 3, 4;
 
 drop table rank cascade;
 
@@ -543,10 +546,10 @@ insert into ggg values (10, 10);
 
 select * from ggg order by 1, 2;
 
-select * from ggg_1_prt_1_0 order by 1, 2;
-select * from ggg_1_prt_1_1 order by 1, 2;
-select * from ggg_1_prt_1_2 order by 1, 2;
-select * from ggg_1_prt_1_3 order by 1, 2;
+select * from ggg_1_prt_1 order by 1, 2;
+select * from ggg_1_prt_2 order by 1, 2;
+select * from ggg_1_prt_3 order by 1, 2;
+select * from ggg_1_prt_4 order by 1, 2;
 
 drop table ggg cascade;
 
@@ -555,7 +558,8 @@ drop table ggg cascade;
 create table ggg (a char(1), b varchar(2), d varchar(2))
 distributed by (a)
 partition by hash(b)
-partitions 3;
+partitions 3
+(partition a, partition b, partition c);
 
 insert into ggg values (1,1,1);
 insert into ggg values (2,2,1);
@@ -570,9 +574,9 @@ insert into ggg values (2,'c','c');
 
 select * from ggg order by 1, 2, 3;
 
-select * from ggg_1_prt_1 order by 1, 2, 3;
-select * from ggg_1_prt_2 order by 1, 2, 3;
-select * from ggg_1_prt_3 order by 1, 2, 3;
+select * from ggg_1_prt_a order by 1, 2, 3;
+select * from ggg_1_prt_b order by 1, 2, 3;
+select * from ggg_1_prt_c order by 1, 2, 3;
 
 drop table ggg cascade;
 
@@ -580,7 +584,8 @@ drop table ggg cascade;
 create table ggg (a char(1), b varchar(2), d varchar(2))
 distributed by (a)
 partition by hash(b,d)
-partitions 3;
+partitions 3
+(partition a, partition b, partition c);
 
 insert into ggg values (1,1,1);
 insert into ggg values (2,2,1);
@@ -595,13 +600,13 @@ insert into ggg values (2,'c','c');
 
 select * from ggg order by 1, 2, 3;
 
-select * from ggg_1_prt_1 order by 1, 2, 3;
-select * from ggg_1_prt_2 order by 1, 2, 3;
-select * from ggg_1_prt_3 order by 1, 2, 3;
+select * from ggg_1_prt_a order by 1, 2, 3;
+select * from ggg_1_prt_b order by 1, 2, 3;
+select * from ggg_1_prt_c order by 1, 2, 3;
 
 drop table ggg cascade;
 
--- use multiple cols of different types
+-- use multiple cols of different types and without a partition spec
 create table ggg (a char(1), b varchar(2), d integer, e date)
 distributed by (a)
 partition by hash(b,d,e)
@@ -626,3 +631,55 @@ select * from ggg_1_prt_3 order by 1, 2, 3, 4;
 
 drop table ggg cascade;
 
+-- append only tests
+create table foz (i int, d date) with (appendonly = true) distributed by (i)
+partition by range (d) (start (date '2001-01-01') end (date '2005-01-01')
+every(interval '1 year'));
+insert into foz select i, '2001-01-01'::date + ('1 day'::interval * i) from
+generate_series(1, 1000) i;
+select count(*) from foz;
+select count(*) from foz_1_prt_1;
+drop table foz cascade;
+
+-- copy test
+create table foz (i int, d date) distributed by (i)
+partition by range (d) (start (date '2001-01-01') end (date '2005-01-01')
+every(interval '1 year'));
+COPY foz FROM stdin DELIMITER '|';
+1|2001-01-2
+2|2001-10-10
+3|2002-10-30
+4|2003-01-01
+5|2004-05-05
+\.
+select * from foz_1_prt_1;
+select * from foz_1_prt_2;
+select * from foz_1_prt_3;
+select * from foz_1_prt_4;
+
+-- Check behaviour of key for which there is no partition
+COPY foz FROM stdin DELIMITER '|';
+6|2010-01-01
+\.
+drop table foz cascade;
+-- Same test with append only
+create table foz (i int, d date) with (appendonly = true) distributed by (i)
+partition by range (d) (start (date '2001-01-01') end (date '2005-01-01')
+every(interval '1 year'));
+COPY foz FROM stdin DELIMITER '|';
+1|2001-01-2
+2|2001-10-10
+3|2002-10-30
+4|2003-01-01
+5|2004-05-05
+\.
+select * from foz_1_prt_1;
+select * from foz_1_prt_2;
+select * from foz_1_prt_3;
+select * from foz_1_prt_4;
+
+-- Check behaviour of key for which there is no partition
+COPY foz FROM stdin DELIMITER '|';
+6|2010-01-01
+\.
+drop table foz cascade;

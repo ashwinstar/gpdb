@@ -29,6 +29,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/catalog.h"
 #include "commands/copy.h"
+#include "commands/tablecmds.h"
 #include "commands/trigger.h"
 #include "executor/executor.h"
 #include "libpq/libpq.h"
@@ -57,6 +58,7 @@
 #include "cdb/cdbvarblock.h"
 #include "cdb/cdbbufferedappend.h"
 
+extern bool enable_partition_fast_insert;
 
 /* DestReceiver for COPY (SELECT) TO */
 typedef struct
@@ -654,6 +656,10 @@ DoCopy(const CopyStmt *stmt)
 		cstate->cdbsreh = NULL; /* default - no SREH */
 		cstate->errMode = ALL_OR_NOTHING; /* default */
 	}
+
+	/* We must be a QE and have received the partitioning config */
+	if (stmt->partitions)
+		cstate->partitions = stmt->partitions;
 	
 	/*
 	 * Only single-character delimiter strings are supported.
@@ -1123,7 +1129,7 @@ DoCopy(const CopyStmt *stmt)
 		heap_endinsert(cstate->heapInsertDesc);
 	if (cstate->rel)
 		heap_close(cstate->rel, (is_from ? NoLock : AccessShareLock));
-	else
+	if (cstate->queryDesc)
 	{
 		/* Close down the query and free resources. */
 		ExecutorEnd(cstate->queryDesc);
@@ -1999,6 +2005,82 @@ if(IsRejectLimitReached(cstate->cdbsreh)) \
 			  ))); \
 }
 
+static bool
+attr_get_key(CopyState cstate, CdbCopy *cdbCopy, int original_lineno_for_qe,
+			 unsigned int target_seg,
+			 AttrNumber p_nattrs, AttrNumber *attrs,
+			 Form_pg_attribute *attr_descs, int *attr_offsets, bool *attr_nulls,
+			 FmgrInfo *in_functions, Oid *typioparams, Datum *values)
+{
+	AttrNumber p_index;
+	bool cur_row_rejected = false;
+
+	/*
+	 * Since we only need the internal format of values that
+	 * we want to hash on (partitioning keys only), we want to
+	 * skip converting the other values so we can run faster.
+	 */
+	for (p_index = 0; p_index < p_nattrs; p_index++)
+	{
+		ListCell *cur;
+
+		/*
+		 * For this partitioning key, search for its location in the attr list.
+		 * (note that fields may be out of order, so this is necessary).
+		 */
+		foreach(cur, cstate->attnumlist)
+		{
+			int			attnum = lfirst_int(cur);
+			int			m = attnum - 1;
+			char	   *string;
+			bool		isnull;
+
+			if (attnum == attrs[p_index])
+			{
+				string = cstate->attribute_buf.data + attr_offsets[m];
+
+				if (attr_nulls[m])
+					isnull = true;
+				else
+					isnull = false;
+
+				if (cstate->csv_mode && isnull && 
+					cstate->force_notnull_flags[m])
+				{
+					string = cstate->null_print;		/* set to NULL string */
+					isnull = false;
+				}
+
+				/* we read an SQL NULL, no need to do anything */
+				if (!isnull)
+				{
+					cstate->cur_attname = NameStr(attr_descs[m]->attname);
+
+					PG_TRY();
+					{
+						values[m] = InputFunctionCall(&in_functions[m],
+										  string,
+										  typioparams[m],
+										  attr_descs[m]->atttypmod);
+					}
+					PG_CATCH();
+					{
+						/* Got here? datum conversion error */
+						COPY_HANDLE_ERROR;
+					}
+					PG_END_TRY();
+
+					cstate->cur_attname = NULL;
+				}		/* end if (!isnull) */
+
+				break;	/* go to next partitioning key
+						 * attribute */
+			}
+		}		/* end foreach */
+	}			/* end for partitioning indexes */
+	return cur_row_rejected;
+}
+
 /*
  * Copy FROM file to relation.
  */
@@ -2028,7 +2110,6 @@ CopyFromDispatch(CopyState cstate)
 	bool	   *isvarlena;
 	ResultRelInfo *resultRelInfo;
 	EState	   *estate = CreateExecutorState(); /* for ExecConstraints() */
-	TupleTableSlot *slot;
 	bool		file_has_oids = false;
 	int		   *defmap;
 	ExprState **defexprs;		/* array of default att expressions */
@@ -2067,9 +2148,15 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * Variables for cdbpolicy
 	 */
-	GpPolicy  *policy;			/* the partitioning policy for this table			 */
-	int			p_nattrs;		/* num of partitioning keys in the policy			 */
-	Oid       *p_attr_types;	/* types for each partition key attribute. */
+	GpPolicy  *policy;			/* the partitioning policy for this table */
+	AttrNumber	p_nattrs; /* num of attributes in the distribution policy */
+	Oid       *p_attr_types;	/* types for each policy attribute */
+
+	/* variables for partitioning */
+	Datum     *part_values = NULL;
+	Oid		  *part_attr_types = NULL; /* types for partitioning */
+	Oid		  *part_typio = NULL;
+	FmgrInfo  *part_infuncs = NULL;
 
 	/*
 	 * Variables for original row number tracking
@@ -2116,9 +2203,6 @@ CopyFromDispatch(CopyState cstate)
 	estate->es_result_relations = resultRelInfo;
 	estate->es_num_result_relations = 1;
 	estate->es_result_relation_info = resultRelInfo;
-
-	/* Set up a tuple slot too */
-	slot = MakeSingleTupleTableSlot(tupDesc);
 
 	econtext = GetPerTupleExprContext(estate);
 
@@ -2185,6 +2269,10 @@ CopyFromDispatch(CopyState cstate)
 	 * 5 - prepare cdbhash for hashing on row values.
 	 */
 	cdbCopy = makeCdbCopy(true);
+
+	if (enable_partition_fast_insert)
+		estate->es_result_partitions = cdbCopy->partitions = 
+			RelationBuildPartitionDesc(cstate->rel);
 	
 	/* add cdbCopy reference to cdbSreh (if needed) */
 	if(cstate->errMode != ALL_OR_NOTHING)
@@ -2397,6 +2485,32 @@ CopyFromDispatch(CopyState cstate)
 		}
 	}
 
+	if (estate->es_result_partitions)
+	{
+		PartitionNode *n = estate->es_result_partitions;
+
+		part_values = palloc(num_phys_attrs * sizeof(Datum));
+		part_attr_types = palloc(num_phys_attrs * sizeof(Oid));
+		part_typio = palloc(num_phys_attrs * sizeof(Oid));
+		part_infuncs = palloc(num_phys_attrs * sizeof(FmgrInfo));
+
+		/* XXX: do for all partition levels */
+		for (i = 0; i < n->part->parnatts; i++)
+		{
+			Oid in_func_oid;
+
+			attnum = n->part->paratts[i];
+
+			getTypeInputInfo(attr[attnum - 1]->atttypid,
+							 &in_func_oid,
+							 &part_typio[attnum - 1]);
+			fmgr_info(in_func_oid, &part_infuncs[attnum - 1]);
+
+			/* make sure we parse up to the last partitioning key */
+			cstate->last_hash_field = Max(cstate->last_hash_field, attnum);
+		}
+	}
+	
 
 	/*
 	 * Start a COPY command in every db of every segment in MPP.
@@ -2725,65 +2839,13 @@ CopyFromDispatch(CopyState cstate)
 					QD_GOTO_NEXT_ROW;						
 				}
 
-				/*
-				 * Since we only need the internal format of values that
-				 * we want to hash on (partitioning keys only), we want to
-				 * skip converting the other values so we can run faster.
-				 */
-				for (p_index = 0; p_index < p_nattrs; p_index++)
-				{
-					/*
-					 * for this partitioning key, search for its location in the attr list.
-					 * (note that fields may be out of order, so this is necessary).
-					 */
-					foreach(cur, cstate->attnumlist)
-					{
-						int			attnum = lfirst_int(cur);
-						int			m = attnum - 1;
-						char	   *string;
-
-						if (attnum == policy->attrs[p_index])
-						{
-							string = cstate->attribute_buf.data + attr_offsets[m];
-
-							if (nulls[m])
-								isnull = true;
-							else
-								isnull = false;
-
-							if (cstate->csv_mode && isnull && cstate->force_notnull_flags[m])
-							{
-								string = cstate->null_print;		/* set to NULL string */
-								isnull = false;
-							}
-
-							/* we read an SQL NULL, no need to do anything */
-							if (!isnull)
-							{
-								cstate->cur_attname = NameStr(attr[m]->attname);
-
-								PG_TRY();
-								{
-									values[m] = InputFunctionCall(&in_functions[m],
-													  string,
-													  typioparams[m],
-													  attr[m]->atttypmod);
-								}
-								PG_CATCH();
-								{
-									/* Got here? datum conversion error */
-									COPY_HANDLE_ERROR;
-								}
-								PG_END_TRY();
-
-								cstate->cur_attname = NULL;
-							}		/* end if (!isnull) */
-
-							break;	/* go to next partitioning key
-									 * attribute */
-						}
-					}		/* end foreach */
-				}			/* end for partitioning indexes */
+				cur_row_rejected = attr_get_key(cstate, cdbCopy,
+												original_lineno_for_qe,
+												target_seg,
+												p_nattrs, policy->attrs,
+												attr, attr_offsets, nulls,
+											   	in_functions, typioparams,
+												values);
 
 				if(cur_row_rejected)
 				{
@@ -2795,8 +2857,9 @@ CopyFromDispatch(CopyState cstate)
 				/*
 				 * Now compute defaults for only:
 				 * 1 - the distribution column,
-				 * 2 - any other column with a non-constant default expression (such as a function)
-				 * that is, of course, if these columns not provided by the input data.	
+				 * 2 - any other column with a non-constant default expression
+				 * (such as a function) that is, of course, if these columns 
+				 * not provided by the input data.	
 				 * Anything not processed here or above will remain NULL.
 				 */
 				for (i = 0; i < num_defaults; i++)
@@ -2882,6 +2945,69 @@ CopyFromDispatch(CopyState cstate)
 				}
 
 
+				/* lock partition */
+				if (estate->es_result_partitions)
+				{
+					PartitionNode *n = estate->es_result_partitions;
+					/* lazily initialised */
+					if (part_values == NULL)
+					{
+						int tmp;
+
+						part_values = palloc(num_phys_attrs * sizeof(Datum));
+						part_attr_types = palloc(num_phys_attrs * sizeof(Oid));
+						part_typio = palloc(num_phys_attrs * sizeof(Oid));
+						part_infuncs = palloc(num_phys_attrs * sizeof(FmgrInfo));
+
+						/* XXX: do for all partition levels */
+						for (tmp = 0; tmp < n->part->parnatts; tmp++)
+						{
+							Oid in_func_oid;
+
+							attnum = n->part->paratts[tmp];
+
+							getTypeInputInfo(attr[attnum - 1]->atttypid,
+											 &in_func_oid,
+											 &part_typio[attnum - 1]);
+							fmgr_info(in_func_oid, &part_infuncs[attnum - 1]);
+						}
+					}
+					cur_row_rejected = attr_get_key(cstate, cdbCopy,
+													original_lineno_for_qe,
+													target_seg,
+													n->part->parnatts,
+													n->part->paratts,
+													attr, attr_offsets, nulls,
+												   	part_infuncs, part_typio,
+													part_values);
+
+					if(cur_row_rejected)
+					{
+						IF_REJECT_LIMIT_REACHED_ABORT;
+						QD_GOTO_NEXT_ROW;	
+					}
+
+					/* partition might not exist */
+					PG_TRY();
+					{
+						/* parse the copy data into the partitioning key */
+						resultRelInfo = values_get_partition(part_values,
+															 nulls, 
+														 	 tupDesc, estate);
+					}
+					PG_CATCH();
+					{
+						COPY_HANDLE_ERROR;
+					}
+					PG_END_TRY();
+						
+					if (cur_row_rejected)
+					{
+						IF_REJECT_LIMIT_REACHED_ABORT;
+						QD_GOTO_NEXT_ROW;							
+					}
+				}
+
 				/*
 				 * At this point in the code, values[x] is final for this
 				 * data row -- either the input data, a null or a default
@@ -2932,6 +3058,8 @@ CopyFromDispatch(CopyState cstate)
 								 ORIGINAL_LINENO_DELIM,
 								 cstate->line_buf.data);
 				
+				/* XXX: find partition, lock table */
+
 				/* send modified data */
 				cdbCopySendData(cdbCopy, 
 								target_seg, 
@@ -3068,10 +3196,15 @@ CopyFromDispatch(CopyState cstate)
 	if(policy)
 		pfree(policy);
 	
-	ExecDropSingleTupleTableSlot(slot);
-	
-	ExecCloseIndices(resultRelInfo);
-
+	resultRelInfo = estate->es_result_relations;
+    for (i = estate->es_num_result_relations; i > 0; i--)
+    {
+        /* Close indices and then the relation itself */
+        ExecCloseIndices(resultRelInfo);
+        heap_close(resultRelInfo->ri_RelationDesc, NoLock);
+        resultRelInfo++;
+    }
+	cstate->rel = NULL; /* closed above */
 	FreeExecutorState(estate);
 }
 
@@ -3083,7 +3216,6 @@ CopyFrom(CopyState cstate)
 {
 	void		*tuple;
 	TupleDesc	tupDesc;
-	char		relkind;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
 				attr_count,
@@ -3113,15 +3245,6 @@ CopyFrom(CopyState cstate)
 	CdbCopy    *cdbCopy = NULL; /* never used... for compiling COPY_HANDLE_ERROR */
 	int			target_seg = -1; /* not used in utility mode */
 
-	/* append-only table stuff */
-	AppendOnlyInsertDesc aoInsertDesc = NULL;
-	
-	relkind = cstate->rel->rd_rel->relkind;
-	
-	if(relkind == RELKIND_APPEND_ONLY)
-		aoInsertDesc = appendonly_insert_init(cstate->rel);
-		
-	
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
@@ -3147,6 +3270,7 @@ CopyFrom(CopyState cstate)
 	estate->es_result_relations = resultRelInfo;
 	estate->es_num_result_relations = 1;
 	estate->es_result_relation_info = resultRelInfo;
+	estate->es_result_partitions = cstate->partitions; 
 
 	/* Set up a tuple slot too */
 	slot = MakeSingleTupleTableSlot(tupDesc);
@@ -3541,11 +3665,28 @@ CopyFrom(CopyState cstate)
 					IF_REJECT_LIMIT_REACHED_ABORT;
 					QE_GOTO_NEXT_ROW;							
 				}
-				
+
+				/* 
+				 * We might create a ResultRelInfo which needs to persist
+				 * the per tuple context.
+				 */
+				MemoryContextSwitchTo(oldcontext);
+				if (estate->es_result_partitions)
+					resultRelInfo = values_get_partition(values, nulls, 
+														 tupDesc, estate);
+				if (resultRelInfo->ri_RelationDesc->rd_rel->relkind ==
+					RELKIND_APPEND_ONLY &&
+					resultRelInfo->ri_aoInsertDesc == NULL)
+					resultRelInfo->ri_aoInsertDesc = 
+						appendonly_insert_init(resultRelInfo->ri_RelationDesc);
+			
+				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+
 				/*
 				 * And now we can form the input tuple.
 				 */
-				if(relkind != RELKIND_APPEND_ONLY)
+				if (resultRelInfo->ri_RelationDesc->rd_rel->relkind !=
+					RELKIND_APPEND_ONLY)
 				{
 					/* form a regular heap tuple */
 					tuple = (HeapTuple) heap_form_tuple(tupDesc, values, nulls);	
@@ -3556,19 +3697,23 @@ CopyFrom(CopyState cstate)
 				else
 				{
 					/* form a mem tuple */
-					tuple = (MemTuple) memtuple_form_to(aoInsertDesc->mt_bind, 
+					tuple = (MemTuple)
+						memtuple_form_to(resultRelInfo->ri_aoInsertDesc->mt_bind, 
 														values, nulls, 
 														NULL, NULL, false);
 				
 					if (cstate->oids && file_has_oids)
-						MemTupleSetOid(tuple, aoInsertDesc->mt_bind, loaded_oid);
+						MemTupleSetOid(tuple, resultRelInfo->ri_aoInsertDesc->mt_bind, loaded_oid);
 				}
-
 
 				/*
 				 * Triggers and stuff need to be invoked in query context.
 				 */
 				MemoryContextSwitchTo(oldcontext);
+
+				/* Partitions don't support triggers yet */
+				Assert(!(estate->es_result_partitions &&
+						 resultRelInfo->ri_TrigDesc));
 
 				skip_tuple = false;
 
@@ -3591,19 +3736,21 @@ CopyFrom(CopyState cstate)
 
 				if (!skip_tuple)
 				{
+
 					/* Place tuple in tuple slot */
 					ExecStoreGenericTuple(tuple, slot, false);
 
 					/*
 					 * Check the constraints of the tuple
 					 */
-					if (cstate->rel->rd_att->constr)
+					if (resultRelInfo->ri_RelationDesc->rd_att->constr)
 						ExecConstraints(resultRelInfo, slot, estate);
 
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
-					if(relkind != RELKIND_APPEND_ONLY)
+					if (resultRelInfo->ri_RelationDesc->rd_rel->relkind != 
+						RELKIND_APPEND_ONLY)
 					{
 						if (heap_enableHeapInsertDesc)
 						{
@@ -3616,7 +3763,8 @@ CopyFrom(CopyState cstate)
 						}
 						else 
 						{
-							simple_heap_insert(cstate->rel, tuple);
+							simple_heap_insert(resultRelInfo->ri_RelationDesc,
+											   tuple);
 						}
 						
 						if (resultRelInfo->ri_NumIndices > 0)
@@ -3625,9 +3773,9 @@ CopyFrom(CopyState cstate)
 					else
 					{
 						/* inserting into an append only relation */
-						appendonly_insert(aoInsertDesc, tuple);
+						appendonly_insert(resultRelInfo->ri_aoInsertDesc,
+										  tuple);
 					}
-
 
 					/* AFTER ROW INSERT Triggers */
 					ExecARInsertTriggers(estate, resultRelInfo, tuple);
@@ -3654,11 +3802,6 @@ CopyFrom(CopyState cstate)
 		}
 	} while (!no_more_data);
 
-	/* 
-	 * if append-only table, finish up the last append 
-	 */
-	if(relkind == RELKIND_APPEND_ONLY)
-		appendonly_insert_finish(aoInsertDesc);
 
 	/*
 	 * Done, clean up
@@ -3697,8 +3840,21 @@ CopyFrom(CopyState cstate)
 
 	ExecDropSingleTupleTableSlot(slot);
 	
-	ExecCloseIndices(resultRelInfo);
+	/* 
+	 * Finalise appends and close relations we opened. 
+	 */
+	resultRelInfo = estate->es_result_relations;
+    for (i = estate->es_num_result_relations; i > 0; i--)
+    {
+        if (resultRelInfo->ri_aoInsertDesc)
+            appendonly_insert_finish(resultRelInfo->ri_aoInsertDesc);
 
+        /* Close indices and then the relation itself */
+        ExecCloseIndices(resultRelInfo);
+        heap_close(resultRelInfo->ri_RelationDesc, NoLock);
+        resultRelInfo++;
+    }
+	cstate->rel = NULL; /* closed above */
 	FreeExecutorState(estate);
 }
 

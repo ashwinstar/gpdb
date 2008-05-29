@@ -1872,7 +1872,7 @@ alter_table_partition_cmd:
 			| COALESCE PARTITION 
             alter_table_partition_id_spec 
 				{
-					AlterPartitionId  *pid = (AlterPartitionId *)$3;
+					AlterPartitionId *pid = (AlterPartitionId *)$3;
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
@@ -2851,9 +2851,9 @@ OptTabPartitionBoundarySpecValList:
 		;
 
 OptTabPartitionRangeInclusive:
-			INCLUSIVE			{ $$ = 1; }
-			| EXCLUSIVE			{ $$ = 2; }
-			| /*EMPTY*/			{ $$ = 0; }
+			INCLUSIVE			{ $$ = PART_EDGE_INCLUSIVE; }
+			| EXCLUSIVE			{ $$ = PART_EDGE_EXCLUSIVE; }
+			| /*EMPTY*/			{ $$ = PART_EDGE_UNSPECIFIED; }
 		;
 
 TabPartitionBoundarySpecStart:
@@ -2865,9 +2865,9 @@ TabPartitionBoundarySpecStart:
                         n->partEveryNum  = NULL; 
                         n->partRangeVal  = $4;
                         if (!($6))
-                            n->partInclusive = 1; /* INclusive */
+                            n->partedge = PART_EDGE_INCLUSIVE;
                         else
-                            n->partInclusive = $6;
+                            n->partedge = $6;
                         n->location  = @1;
                         $$ = (Node *)n;
 				}
@@ -2882,9 +2882,9 @@ TabPartitionBoundarySpecEnd:
                         n->partEveryNum  = NULL; 
                         n->partRangeVal  = $4;
                         if (!($6))
-                            n->partInclusive = 2; /* EXclusive */
+                            n->partedge = PART_EDGE_EXCLUSIVE;
                         else
-                            n->partInclusive = $6;
+                            n->partedge = $6;
                         n->location  = @1;
                         $$ = (Node *)n;
 				}
@@ -2905,7 +2905,6 @@ OptTabPartitionBoundarySpecEvery:
                         else
                             n->partEveryNum  = NULL; 
                         n->partRangeVal  = $4;
-                        n->partInclusive = false;
                         n->location  = @1;
 
                         $$ = (Node *)n;
@@ -3002,7 +3001,6 @@ TabPartitionElem:
                         n->boundSpec = $2;
                         n->subSpec   = $3;
                         n->location  = @1;
-                        n->isDefault = 0;
                         n->storeAttr = $4;
                         $$ = (Node *)n;
 				}
@@ -3016,7 +3014,7 @@ TabPartitionElem:
                         n->boundSpec = $2;
                         n->subSpec   = $3;
                         n->location  = @1;
-                        n->isDefault = 1;
+                        n->isDefault = true;
                         n->storeAttr = $4;
                         $$ = (Node *)n;
 				}
@@ -3028,7 +3026,6 @@ TabPartitionElem:
                         n->boundSpec = $1;
                         n->subSpec   = $2;
                         n->location  = @1;
-                        n->isDefault = 0;
                         n->storeAttr = $3;
                         $$ = (Node *)n;
 				}
@@ -3041,9 +3038,7 @@ TabSubPartitionElem:
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
-                        n->subSpec   = NULL;
                         n->location  = @1;
-                        n->isDefault = 0;
                         n->storeAttr = $3;
                         $$ = (Node *)n;
 				}
@@ -3054,9 +3049,8 @@ TabSubPartitionElem:
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
-                        n->subSpec   = NULL;
                         n->location  = @1;
-                        n->isDefault = 1;
+                        n->isDefault = true;
                         n->storeAttr = $3;
                         $$ = (Node *)n;
 				}
@@ -3064,11 +3058,8 @@ TabSubPartitionElem:
               OptTabPartitionStorageAttr
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
-                        n->partName  = NULL;
                         n->boundSpec = $1;
-                        n->subSpec   = NULL;
                         n->location  = @1;
-                        n->isDefault = 0;
                         n->storeAttr = $2;
                         $$ = (Node *)n;
 				}

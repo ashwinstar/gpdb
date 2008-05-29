@@ -350,5 +350,8 @@ extern uint64 get_grouping_groupid(TupleTableSlot *slot,
 
 /* prototypes defined in nodeBitmapAnd.c */
 extern void tbm_reset_bitmaps(PlanState *pstate);
+extern ResultRelInfo *slot_get_partition(TupleTableSlot *slot, EState *estate);
+extern ResultRelInfo *values_get_partition(Datum *values, bool *nulls,
+										   TupleDesc desc, EState *estate);
 
 #endif   /* EXECUTOR_H  */

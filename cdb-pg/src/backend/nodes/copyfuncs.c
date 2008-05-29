@@ -2371,12 +2371,12 @@ _copyPartitionBy(PartitionBy *from)
 	
 	COPY_SCALAR_FIELD(partType);
 	COPY_NODE_FIELD(keys);
-	COPY_SCALAR_FIELD(keyCount);
+	COPY_NODE_FIELD(keyopclass);
 	COPY_NODE_FIELD(partNum);
 	COPY_NODE_FIELD(subPart);
-	COPY_NODE_FIELD(partHierarchy);
 	COPY_NODE_FIELD(partSpec);
 	COPY_SCALAR_FIELD(partDepth);
+	COPY_NODE_FIELD(parentRel);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;
@@ -2413,6 +2413,7 @@ _copyPartitionElem(PartitionElem *from)
 	COPY_NODE_FIELD(partName);
 	COPY_NODE_FIELD(boundSpec);
 	COPY_NODE_FIELD(subSpec);
+	COPY_SCALAR_FIELD(isDefault);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;
@@ -2425,7 +2426,7 @@ _copyPartitionRangeItem(PartitionRangeItem *from)
 	
 	COPY_NODE_FIELD(partEveryNum);
 	COPY_NODE_FIELD(partRangeVal);
-	COPY_SCALAR_FIELD(partInclusive);
+	COPY_SCALAR_FIELD(partedge);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;
@@ -2439,7 +2440,7 @@ _copyPartitionBoundSpec(PartitionBoundSpec *from)
 	COPY_NODE_FIELD(partStart);
 	COPY_NODE_FIELD(partEnd);
 	COPY_NODE_FIELD(partEvery);
-	COPY_NODE_FIELD(everyGenList);
+//	COPY_NODE_FIELD(everyGenList);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;

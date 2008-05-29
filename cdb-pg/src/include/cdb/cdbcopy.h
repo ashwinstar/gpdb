@@ -52,6 +52,7 @@ typedef struct CdbCopy
 	List			*outseglist;    /* segs that currently take part in copy out. 
 									 * Once a segment gave away all it's data rows
 									 * it is taken out of the list */
+	PartitionNode *partitions;
 } CdbCopy;
 
 

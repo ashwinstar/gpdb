@@ -19,12 +19,14 @@
 #include <sys/time.h>
 #endif
 
+#include "access/appendonlyam.h"
 #include "access/relscan.h"
 #include "cdb/cdbhash.h"
 #include "fmgr.h"                       /* ExprDoneCond, SetFunctionReturnMode */
 #include "lib/dllist.h"
 #include "nodes/params.h"
 #include "nodes/plannodes.h"
+#include "nodes/relation.h"
 #include "nodes/tidbitmap.h"
 #include "utils/hsearch.h"
 #include "utils/tuplesort.h"
@@ -249,6 +251,7 @@ typedef struct ResultRelInfo
 	List	  **ri_ConstraintExprs;
 	JunkFilter *ri_junkFilter;
 	ProjectionInfo *ri_projectReturning;
+	AppendOnlyInsertDescData *ri_aoInsertDesc;
 } ResultRelInfo;
 
 /* ----------------
@@ -429,6 +432,9 @@ typedef struct EState
 	ResultRelInfo *es_result_relation_info;		/* currently active array elt */
 	JunkFilter *es_junkFilter;	/* currently active junk filter */
 
+	/* partitioning info for target relation */
+	PartitionNode *es_result_partitions;
+
 	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 
 	Relation	es_into_relation_descriptor;	/* for SELECT INTO */
@@ -501,7 +507,6 @@ typedef struct EState
     struct CdbExplain_ShowStatCtx  *showstatctx;
 	
 	/* CDB: INSERT state */
-	struct AppendOnlyInsertDescData *es_aoInsertDesc;
 	struct HeapInsertDesc *es_HeapInsertDesc;
 
 } EState;

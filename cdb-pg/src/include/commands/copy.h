@@ -228,6 +228,7 @@ typedef struct CopyStateData
 	int			num_consec_csv_err; /* # of consecutive csv invalid format errs */
 
 	struct HeapInsertDesc *heapInsertDesc;
+	PartitionNode *partitions; /* partitioning meta data from dispatcher */
 
 	/* end Greenplum Database specific variables */
 

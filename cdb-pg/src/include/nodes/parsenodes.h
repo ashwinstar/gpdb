@@ -20,6 +20,8 @@
 
 #include "cdb/cdbcat.h"
 
+typedef struct PartitionNode PartitionNode;
+
 /* Possible sources of a Query */
 typedef enum QuerySource
 {
@@ -164,6 +166,8 @@ typedef struct Query
 	 * some sort of TopPlan plan node, not in the Query.
 	 */
 	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
+	PartitionNode *result_partitions;
+
 	/*
 	 * If the query has a returningList then the planner will store a list of
 	 * processed targetlists (one per result relation) here.  We must have a
@@ -1209,7 +1213,8 @@ typedef struct CopyStmt
 	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
 	List	   *options;		/* List of DefElem nodes */
 	Node	   *sreh;			/* Single row error handling info */
-	
+	/* Convenient location for dispatch of partitioning meta data */
+	PartitionNode *partitions;
 } CopyStmt;
 
 /* ----------------------
@@ -1385,13 +1390,13 @@ typedef struct PartitionBy			/* the Partition By clause */
 	NodeTag				type;
 	PartitionByType		partType;
 	List			   *keys;		/* key columns (Partition By ...) */
-	int				    keyCount;	/* number of key columns */
+	List			   *keyopclass;	/* opclass for each key */
 	Node			   *partNum;	/* partitionS (constant number)*/
 	Node			   *subPart;	/* optional subpartn (PartitionBy ptr) */
-	List			   *partHierarchy;	/* partition hierarchy */
 	Node			   *partSpec;	/* specification or template */  
 	Node			   *partDefault;/* DEFAULT partition (if exists) */
 	int				    partDepth;	/* depth (starting at zero) */  
+	RangeVar		   *parentRel;	/* parent relation */
 	int					location;	/* token location, or -1 if unknown */
 } PartitionBy;
 
@@ -1402,10 +1407,17 @@ typedef struct PartitionElem		/* a Partition "Element" is the
 	Node			   *partName;	/* partition name (optional) */
 	Node			   *boundSpec;	/* boundary specification */  
 	Node			   *subSpec;	/* subpartition spec */
-	int					location;	/* token location, or -1 if unknown */
 	bool                isDefault;	/* TRUE if default partition declaration */
 	Node			   *storeAttr;	/* storage clause attributes */		
+	int					location;	/* token location, or -1 if unknown */
 } PartitionElem;
+
+typedef enum PartitionEdgeBounding
+{
+	PART_EDGE_UNSPECIFIED,
+	PART_EDGE_INCLUSIVE,
+	PART_EDGE_EXCLUSIVE
+} PartitionEdgeBounding;
 
 /* a "Range Item" is the "values" portition of a LIST partition, or
  * the "values" of a START, END, or EVERY spec in a RANGE partition */
@@ -1414,11 +1426,9 @@ typedef struct PartitionRangeItem
 	NodeTag				type;
 	Node			   *partEveryNum;	/*  (constant number) (EVERY only) */
 	List			   *partRangeVal;	/*  value */
-	int					partInclusive;	/* 0 if unspecified, 
-										   1 if inclusive, 
-										   2 if exclusive
-										   (START/END only) */
-	int					location;	/* token location, or -1 if unknown */
+	PartitionEdgeBounding partedge;		/* inclusive/exclusive ? */
+	int					everycount;		/* if EVERY, how many in the set */
+	int					location;		/* token location, or -1 if unknown */
 } PartitionRangeItem;
 
 /* partition boundary specification */

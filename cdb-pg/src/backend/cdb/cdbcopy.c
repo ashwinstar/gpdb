@@ -57,6 +57,7 @@ makeCdbCopy(bool is_copy_in)
 	initStringInfo(&(c->err_msg));
 	initStringInfo(&(c->err_context));
 	initStringInfo(&(c->copy_out_buf));	
+	c->partitions = NULL;
 	
 	/* init total_segs */
 	c->total_segs = getgpsegmentCount();
@@ -224,6 +225,9 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	q->querySource = QSRC_ORIGINAL;
 
 	q->canSetTag = true;
+
+	/* add in partitions for dispatch */
+	((CopyStmt *)q->utilityStmt)->partitions = c->partitions;
 	
 	MemoryContextSwitchTo(oldcontext);
 
