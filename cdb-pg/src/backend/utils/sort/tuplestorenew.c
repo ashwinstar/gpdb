@@ -43,8 +43,8 @@ typedef struct NTupleStorePage
 
 typedef struct NTupleStoreLobRef
 {
-	long start;
-	long size;
+	int64 start;
+	int64 size;
 } NTupleStoreLobRef;
 
 /* some convinient macro/inline functions */
@@ -162,7 +162,7 @@ struct NTupleStore
 
 	BufFile *pfile; 	/* underlying backed file */
 	BufFile *plobfile;  /* underlying backed file for lobs (entries does not fit one page) */
-	long     lobbytes;  /* number of bytes written to lob file */
+	int64     lobbytes;  /* number of bytes written to lob file */
 
 	List *accessors;    /* all current accessors of the store */
 	bool fwacc; 		/* if I had already has a write acc */
@@ -770,7 +770,10 @@ ntuplestore_flush(NTupleStore *ts)
 	while(p)
 	{
 		if(nts_page_is_dirty(p) && nts_page_slot_cnt(p) > 0)
-			ntsWriteBlock(ts, p);
+		{
+			bool ok = ntsWriteBlock(ts, p);
+			Assert(ok);
+		}
 		p = nts_page_next(p);
 	}
 	
@@ -865,8 +868,11 @@ static long ntuplestore_get_lob(NTupleStore *nts, void *data, NTupleStoreLobRef 
 {
 	long fileno = lobref->start / (RELSEG_SIZE * BLCKSZ);
 	long offset = lobref->start % (RELSEG_SIZE * BLCKSZ);
-
-	long ret = BufFileSeek(nts->plobfile, fileno, offset, SEEK_SET);
+	long ret;
+	
+	Assert(fileno >= 0);
+	Assert(offset >= 0 && offset < (RELSEG_SIZE * BLCKSZ));
+	ret = BufFileSeek(nts->plobfile, fileno, offset, SEEK_SET);
 	Assert(ret == 0);
 
 	ret = BufFileRead(nts->plobfile, data, lobref->size);
