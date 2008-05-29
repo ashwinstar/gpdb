@@ -1239,7 +1239,7 @@ typedef struct PartitionRule
 	Node *parrangeevery;
 	List *parlistvalues;
 	int2 parruleord;
-	PartitionNode *children; /* sub partition */
+	struct PartitionNode *children; /* sub partition */
 } PartitionRule;
 
 #endif   /* RELATION_H */
