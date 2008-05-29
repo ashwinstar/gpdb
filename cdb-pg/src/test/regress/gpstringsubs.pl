@@ -295,7 +295,7 @@ if (1)
     my $locps   = 'ps axww';
     if ($^O !~ /darwin|mac|osx/i)
     {
-        $locps   = 'ps elf';
+        $locps   = 'ps -elf';
     }
 
 
