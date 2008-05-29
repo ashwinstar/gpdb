@@ -35,6 +35,7 @@ BEGIN
     use Carp;
     use GPMapReduce::Document;
     use GPMapReduce::Mapper;
+	use GPMapReduce::Utils;
     require Exporter;
 
     use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
@@ -56,20 +57,20 @@ my $name = '\w+';
 my $fname = '.*';
 
 my $RUN = 
-{"SOURCE"       => "$url",
+{
+ "SOURCE"       => "$url",
  "TARGET"       => "$url",
  "MAPPER"       => "$name",
  "REDUCER"      => "$name",
  "MODE"         => '\w+'           #   'append|replace'
 };
 
-my $JOB = 
+my $TASK = 
 {"NAME"        => "$name", 
  "SOURCE"      => "$url",
  "MAPPER"      => "$name", 
  "REDUCER"     => "$name", 
- "GROUPER"     => "$name", 
- "OPTIMIZE"    => '\w+'            #   'unordered'
+ "OUTPUT"      => "$name"
 };
 
 my $AGG = 
@@ -83,45 +84,53 @@ my $AGG =
 my $FUNC = 
 {"NAME"        => "$fname",
  "LANGUAGE"    => '\w+', 
- "BODY"        => '.*',
+ "FUNCTION"    => '.*',
  "OPTIMIZE"    => '.*',
- "MODE"        => '\w+'
+ "PARAMETERS"  => [],
+ "RETURNS"     => [],
 };
 
 my $SPLIT = 
 {"NAME"        => "$fname",
  "LANGUAGE"    => '\w+',
- "BODY"        => '.*',
+ "FUNCTION"    => '.*',
 };
 
 my $INPUTS = 
 {"NAME"        => "$name",
- "SOURCE"      => "$url", 
- "COLUMNS"     => ".*", 
+ "FILE"        => [], 
+ "GPFDIST"     => [], 
+ "TABLE"       => "$url",
+ "QUERY"       => ".*", 
+# "EXEC"        => ".*",
+ "COLUMNS"     => [], 
  "FORMAT"      => ".*", 
  "DELIMITER"   => ".*",
  "SPLITTER"    => "$name"
 };
 
 my $EXEC = 
-{"RUN"         => $RUN
+{
+ "RUN"         => $RUN 
 };
 
 my $DEFINES = 
 {
  "INPUT"       => $INPUTS, 
- "SPLIT"        => $SPLIT,
+ "SPLIT"       => $SPLIT,
  "MAP"         => $FUNC,
  "TRANSITION"  => $FUNC,
  "COMBINER"    => $FUNC,
  "FINALIZER"   => $FUNC,
  "REDUCER"     => $AGG, 
- "JOB"         => $JOB
+ "TASK"        => $TASK
 };
 
 my $TOP = 
 {"DATABASE"    => "$name",
  "USER"        => "$name",
+ "HOST"        => "$name",
+ "PORT"        => "\\d+",
  "VERSION"     => ".*",
  "DEFINE"      => $DEFINES,
  "EXECUTE"     => $EXEC
@@ -144,37 +153,29 @@ sub Parse($$@)
     my $self = shift;
     my $ydoc = shift;
     my @param = @_;
-    
+
     $self->{"ERROR"} = undef;
     $self->{"PARSE"} = $ydoc;
     $self->{"DOCUMENT"} = GPMapReduce::Document->new(@param);
 
-    if (ref($ydoc) ne "HASH") 
-    {
-		$self->_error("Badly formed document\n");
-    } 
-    elsif (!defined($ydoc->{"VERSION"})) 
-    {
-		$self->_error("required VERSION field is missing\n");
-    } 
-    else 
-    {
-		my $version = $ydoc->{"VERSION"};
-		if ($version ne "1.0.0.1") 
-		{
-			$self->_error("Unknown VERSION: $version\n");
-		}
-		else
-		{
-			$self->_do_parse($DOCUMENT, "TOP", $ydoc);
-			$self->_add_to_document("USER", $ydoc->{"USER"});
-			$self->_add_to_document("DATABASE", $ydoc->{"DATABASE"});
-		}
-    }
-	
+    if (ref($ydoc) ne "HASH") {
+		Error("Parse Error: Badly formed document\n");
+	}
+    if (!defined($ydoc->{"VERSION"})) {
+		Error("Parse Error: required VERSION field is missing\n");
+	}
+
+	my $version = $ydoc->{"VERSION"};
+	if ($version ne "1.0.0.1") {
+		Error("Parse Error: Unknown VERSION: $version\n");
+	}
+	$self->_do_parse($DOCUMENT, "TOP", $ydoc);
+	$self->_add_to_document("USER", $ydoc->{"USER"});
+	$self->_add_to_document("DATABASE", $ydoc->{"DATABASE"});
+
     # for now we will die on error
-    die $self->{"ERROR"} if (defined($self->{"ERROR"}));
-    
+    die $self->{"ERROR"} if (defined($self->{"ERROR"}));    
+
     return $self->{"DOCUMENT"};
 }
 
@@ -241,13 +242,21 @@ sub _do_parse($$$$)
 			#  b) $value is an array of hashes
 			#     We recurse on the key/value pairs for each value in the array
 			
-			foreach my $elem (@$value) 
+			if (ref($match) eq "ARRAY") 
 			{
-				foreach my $child (keys(%$elem)) 
+				# accept it, assume contents are good for now
+			}
+			else
+			{
+
+				foreach my $elem (@$value) 
 				{
-					chomp($elem->{$child});
-					$self->_do_parse($match, $child, $elem->{$child});
-					return 0 if (defined $self->{"ERROR"});
+					foreach my $child (keys(%$elem)) 
+					{
+						chomp($elem->{$child});
+						$self->_do_parse($match, $child, $elem->{$child});
+						return 0 if (defined $self->{"ERROR"});
+					}
 				}
 			}
 		}
@@ -258,10 +267,23 @@ sub _do_parse($$$$)
 								 "$key->(" . ref($value) . ")");
 		}
     }
-    else
+
+	#   3. It is okay to get a scalar when we wanted an array 
+	#      We'll just convert it to an array with one value later.
+    elsif (ref($match) eq 'ARRAY')
     {
-		#   3. we have a mismatch of scalar / pointer
-		#      Error: The input file was malformed.
+
+	}
+
+	#   4. Run list can take a name (scalar) or job description (hash)
+	elsif (not(ref($value)) and $match == $RUN)
+	{
+		$self->_add_to_document($key, $value);
+	}
+
+	#   5. Otherwise who knows what's gone wrong
+	else
+	{
 		return $self->_error("scalar/pointer mismatch <$value, $match>\n");
     }
     
@@ -288,10 +310,20 @@ sub _add_to_document($$$)
     {
 		$err = $doc->SetDatabase($value);
     }
+    elsif ($key eq "HOST")
+    {
+		$err = $doc->SetHost($value);
+    }
+    elsif ($key eq "PORT")
+    {
+		$err = $doc->SetPort($value);
+    }
     elsif ($key eq "INPUT") 
     {
 		$doc->AddInput(Name      => $value->{NAME},
-					   Source    => $value->{SOURCE},
+					   File      => $value->{FILE},
+					   Table     => $value->{TABLE},
+					   Query     => $value->{QUERY},
 					   Columns   => $value->{COLUMNS},
 					   Format    => $value->{FORMAT},
 					   Delimiter => $value->{DELIMITER});
@@ -300,30 +332,38 @@ sub _add_to_document($$$)
     {
 	    $doc->AddMapper(Name => $value->{NAME},
 						Language => $value->{LANGUAGE},
-						Body => $value->{BODY},
+						Body => $value->{FUNCTION},
 						Optimize => $value->{OPTIMIZE},
-						Mode => $value->{MODE});
+						Mode => $value->{MODE},
+                        Input => $value->{PARAMETERS},
+                        Output => $value->{RETURNS});
     }
     elsif ($key eq "TRANSITION") 
     {
 		$doc->AddTransition(Name => $value->{NAME},
 							Language => $value->{LANGUAGE},
-							Body => $value->{BODY},
-							Optimize => $value->{OPTIMIZE});
+							Body => $value->{FUNCTION},
+							Optimize => $value->{OPTIMIZE},
+                            Input => $value->{PARAMETERS},
+                            Output => $value->{RETURNS});
     }
     elsif ($key eq "COMBINER") 
     {
 		$doc->AddCombiner(Name => $value->{NAME},
 						  Language => $value->{LANGUAGE},
-						  Body => $value->{BODY},
-						  Optimize => $value->{OPTIMIZE});
+						  Body => $value->{FUNCTION},
+						  Optimize => $value->{OPTIMIZE},
+                          Input => $value->{PARAMETERS},
+                          Output => $value->{RETURNS});
     }
     elsif ($key eq "FINALIZER")
     {
 		$doc->AddFinalizer(Name => $value->{NAME},
 						   Language => $value->{LANGUAGE},
-						   Body => $value->{BODY},
-						   Optimize => $value->{OPTIMIZE});
+						   Body => $value->{FUNCTION},
+						   Optimize => $value->{OPTIMIZE},
+                           Input => $value->{PARAMETERS},
+                           Output => $value->{RETURNS});
     }
     elsif ($key eq "REDUCER") 
     {
@@ -333,22 +373,24 @@ sub _add_to_document($$$)
 						 Combiner   => $value->{COMBINE},
 						 Finalizer  => $value->{FINALIZE});
     }
-    elsif ($key eq "JOB") 
+    elsif ($key eq "TASK") 
     {
-		$err = $doc->add_job($value->{NAME},
-							 $value->{SOURCE},
-							 $value->{MAPPER},
-							 $value->{REDUCER},
-							 $value->{GROUPER},
-							 $value->{OPTIMIZE});
+        $doc->AddTask(Name    => $value->{NAME},
+                      Source  => $value->{SOURCE},
+					  Mapper  => $value->{MAPPER},
+					  Reducer => $value->{REDUCER},
+					  Output  => $value->{OUTPUT});
     }
     elsif ($key eq "RUN") 
     {
-		$err = $doc->add_run($value->{SOURCE},
-							 $value->{TARGET},
-							 $value->{MAPPER},
-							 $value->{REDUCER},
-							 $value->{MODE});
+        if (!ref($value)) {
+          $doc->AddRun(Source  => $value);
+        } else {
+          $doc->AddRun(Source  => $value->{SOURCE},
+	  				   Mapper  => $value->{MAPPER},
+					   Reducer => $value->{REDUCER},
+                       Output  => $value->{TARGET});
+        }
     }
     else 
     {
@@ -363,7 +405,10 @@ sub _add_to_document($$$)
 
 1;
 
-
+################################################################
+# The GPMapReduce package itself is just a dummy package, use
+# GPMapReduce::Document or GPMapReduce::Parser instead.
+################################################################
 package GPMapReduce;
 
 =head1 NAME
@@ -371,6 +416,11 @@ package GPMapReduce;
 GPMapReduce - The Greenplum Map/Reduce Driver package
 
 =cut
+
+require 5.00503;
+use vars qw($VERSION @ISA );
+$VERSION = '1.00';
+@ISA = qw();
 
 1;
 __END__

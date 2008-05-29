@@ -168,7 +168,9 @@ class Input(MRObject):
 
     def __init__(self, parse):
         MRObject.__init__(self, parse)
-        self.Required('SOURCE')
+        self.Optional('FILE', kind=[]);
+        self.Optional('QUERY');
+        self.Optional('TABLE');
         self.Optional('SPLITTER', depend='Splitter')
         self.Optional('DELIMITER')
         self.Optional('COLUMNS', default=['value text'])
@@ -177,18 +179,52 @@ class Input(MRObject):
     def TypeCheck(self, typename):
         return typename == 'Input' or MRObject.TypeCheck(self, typename)
 
+    def CheckInput(self, objects):
+        MRObject.CheckInput(self, objects)
+
+        file  = Lookup(self.value, 'FILE')
+        query = Lookup(self.value, 'QUERY')
+        table = Lookup(self.value, 'TABLE')
+
+        if ((file and (query or table)) or (query and table)):
+            raise ParseError('Input %s may only specify one of FILE/TABLE/QUERY'
+                             % self.name)
+
+        if ((query or table) and Lookup(self.value, 'COLUMNS')):
+            raise ParseError('Only inputs of type FILE may specify COLUMNS')
+        if ((query or table) and Lookup(self.value, 'FORMAT')):
+            raise ParseError('Only inputs of type FILE may specify FORMAT')
+        if ((query or table) and Lookup(self.value, 'DELIMITER')):
+            raise ParseError('Only inputs of type FILE may specify DELIMITER')
+
+        # Check valid file URIs
+        if file:
+            for f in file:
+                m = re.compile('(\w+):(.*)').match(f)
+                if not m:
+                    raise ParseError('Invalid file specification: ' + f)
+
+
     def SQLDrop(self):
-        return 'DROP EXTERNAL TABLE IF EXISTS %(NAME)s CASCADE;\n' % self.value
+        if Lookup(self.value, 'FILE'):
+            return 'DROP EXTERNAL TABLE IF EXISTS %(NAME)s CASCADE;\n' % self.value
 
     def SQLCreate(self):
-        sql  = 'CREATE EXTERNAL TABLE %(NAME)s(' % self.value
-        sql += ', '.join(self.value['COLUMNS'])
-        sql += ")\n  LOCATION('%(SOURCE)s')\n" % self.value
-        sql += "  FORMAT '%(FORMAT)s'" % self.value
-        if self.value['DELIMITER'] != None:
-            sql += " (DELIMITER '%s')" % self.value['DELIMITER']
-        sql += ';\n'
-        return sql
+        files = Lookup(self.value, 'FILE')
+        if files:
+            sql  = 'CREATE EXTERNAL TABLE %(NAME)s(' % self.value
+            sql += ', '.join(self.value['COLUMNS'])
+            sql += ")\n  LOCATION(";
+            for i in range(0,len(files)):
+                if (i > 0):
+                    sql += ",\n           "
+                m = re.compile('(\w+):(.*)').match(files[i])
+                sql += "'file://%s%s'" % (m.group(1), m.group(2))
+            sql += ")\n  FORMAT '%(FORMAT)s'" % self.value
+            if self.value['DELIMITER'] != None:
+                sql += " (DELIMITER '%s')" % self.value['DELIMITER']
+            sql += ';\n'
+            return sql
 
     def QueryAppend(self, qry):
         if qry.sql or qry.columns:
@@ -240,7 +276,7 @@ class Splitter(MRObject):
 
     def __init__(self, parse):
         MRObject.__init__(self, parse)
-        self.Required('BODY')
+        self.Required('FUNCTION')
         self.Optional('LANGUAGE', default='perl')
 
     def TypeCheck(self, typename):
@@ -252,7 +288,7 @@ class Function(MRObject):
 
     def __init__(self, parse):
         MRObject.__init__(self, parse)
-        self.Required('BODY')
+        self.Required('FUNCTION')
         self.Optional('LANGUAGE', default='perl')
         self.Optional('OPTIMIZE', default='')
 
@@ -308,7 +344,7 @@ class Function(MRObject):
         params = ', '.join(self.value['PARAMETERS'])
         sql += 'CREATE FUNCTION %s(%s)\n' % (self.name, params)
         sql += 'RETURNS %s AS $$\n' % self.value['RTYPE']
-        sql += self.value['BODY']
+        sql += self.value['FUNCTION']
         sql += '\n$$ LANGUAGE %s' % self.value['LANGUAGE']
         sql += ' %s;\n' % self.value['OPTIMIZE']
         return sql
@@ -527,7 +563,7 @@ class Finalizer(Function):
         return typename == 'Finalizer' or Function.TypeCheck(self, typename)
 
 #============================================================
-class Task(MRObject): 
+class Task(Input): 
     type = 'Task'
 
     def __init__(self, parse):
@@ -538,7 +574,7 @@ class Task(MRObject):
         self.Optional('TARGET',  default='STDOUT', depend='Output')
 
     def TypeCheck(self, typename):
-        return typename == 'Task' or MRObject.TypeCheck(self, typename)
+        return typename == 'Task' or Input.TypeCheck(self, typename)
         
     def GenerateQuery(self, keys=[], explain=False):
         q = MRQuery(keys, explain)
@@ -637,10 +673,10 @@ class Document:
         for elem in defines:
             if len(elem) > 1:
                 raise SyntaxError('Too many elements at:\n' + str(elem))
-            type = elem.keys()[0].upper()
-            if type not in self.parseobjects:
-                raise SyntaxError('Unknown type: ' + type)
-            self.AddObject(self.parseobjects[type](elem[type]))
+            rtype = elem.keys()[0].upper()
+            if rtype not in self.parseobjects:
+                raise SyntaxError('Unknown type: ' + rtype)
+            self.AddObject(self.parseobjects[rtype](elem[rtype]))
 
         # Get the list of tasks to run
         tasks = Lookup(self.parsetree, 'EXECUTE', [])
@@ -648,9 +684,11 @@ class Document:
         for task in tasks:
             if len(task) > 1:
                 raise SyntaxError('Too many Elements at:\n' + str(elem))
-            type = task.keys()[0].upper()
-            if type != 'RUN':
-                raise SyntaxError('Unknown execution type: ' + type)
+            rtype = task.keys()[0].upper()
+            if rtype != 'RUN':
+                raise SyntaxError('Unknown execution type: ' + rtype)
+            if type(task['RUN']) == type('string'):
+                task['RUN'] = {'SOURCE': task['RUN']};
             task['RUN']['NAME'] = 'Anonymous_' + str(count)
             self.tasks.append(Task(task['RUN']))
         
@@ -729,15 +767,19 @@ class Document:
         '''
         '''
         
-        self.create = ''
+        self.create = '--- CREATING OBJECTS ---\n'
         self.drop = ''
         def sqlgen(x):
-            self.create += x.SQLCreate()
-            self.drop    = x.SQLDrop() + self.drop
+            c = x.SQLCreate()
+            d = x.SQLDrop()
+            if c: self.create += c + "\n"
+            if d: self.drop    = d + self.drop
         self.WalkDependencyGraph(sqlgen)
-        sql = self.drop + self.create
+        sql  = self.create 
+        sql += "--- RUN QUERIES\n"
         for t in self.tasks:
-            sql += t.GenerateQuery(keys=self.keys, explain=explain)
+            sql += t.GenerateQuery(keys=self.keys, explain=explain) + '\n'
+        sql += '--- CLEANUP OBJECTS ---\n'
         sql += self.drop
 
         return sql

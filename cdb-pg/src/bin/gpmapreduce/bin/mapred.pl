@@ -55,6 +55,7 @@ use warnings;
 use Pod::Usage;
 use Getopt::Long;
 use GPMapReduce::Parser;
+use DBI;
 
 my $glob_id = "";
 my $man  = 0;
@@ -94,15 +95,15 @@ if ($nparam eq 0)
 my $yaml;
 my $docs;
 {
-    if (eval " require YAML::Tiny " )
+    if (eval(require YAML::Tiny))
     {
         $yaml = YAML::Tiny->new;
         $docs = $yaml->read($file);
     }
-    elsif (eval " require YAML " )
+    elsif (eval(require YAML))
     {
         $yaml = YAML::Base->new();
-        $docs = YAML::LoadFile($file);
+		$docs = $yaml->LoadFile($file);
     }
     else
     {
@@ -110,23 +111,53 @@ my $docs;
     }
 }
 
+if (not defined $docs) {
+	die("Parse of $file failed - possibly needs final linefeed?");
+}
+
+my $default_user = $ENV{PGUSER};
+$default_user = `whoami` if (!$default_user);
+chomp($default_user);
+
+
 # A parse of a single file could have resulted in multiple
 # yaml "documents" treat each document as a distinct entity.	
 my $parser = GPMapReduce::Parser->new;
 foreach my $ydoc (@$docs)
 {
-    my $doc = $parser->Parse($ydoc, @param);
-    my $sql = $doc->GenerateSQL($explain);
-
+    my $doc  = $parser->Parse($ydoc, @param);
     if ($print == 0)
     {
-	open(TMP, " | psql postgres -qtX") || die "can't open pipe";
-	print TMP $sql;
-	close TMP;
+		my $connection;
+		my $user = $doc->GetUser();
+		my $auth = '';   # FIXME
+		my $host = $doc->GetHost();
+		my $port = $doc->GetPort();
+		my $db   = $doc->GetDatabase();
+
+		# Connect to the database, this must be done per document since 
+		# each document could specify a different connect string.
+		$user = $default_user unless ($user);
+		$db   = $user unless($db);
+		$host = $host ? ";host=$host" : '';
+		$port = $port ? ";port=$port" : '';
+		my $conn_str = "dbi:Pg:db=$db";		
+		$connection = DBI->connect($conn_str, $user, $auth, 
+								   {AutoCommit => 1, PrintError => 0});
+		if (!$connection) {
+			print STDERR "Error:  Failed to connect to the database\n";
+			print STDERR "DBI->connect($conn_str, $user, $auth, {})\n";
+			print STDERR "$DBI::errstr\n";
+			exit(2);
+		}
+
+		$doc->Execute($connection, Explain => $explain);
+
+		$connection->disconnect;
     }
     else
     {
-	print $sql;
+		print $doc->GenerateSQL($explain);
     }
 }
 exit(0);

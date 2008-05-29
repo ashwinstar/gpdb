@@ -1,16 +1,27 @@
-DROP FUNCTION grep_map(text, text) CASCADE;
-DROP EXTERNAL TABLE inDirectory CASCADE;
+--- CREATING OBJECTS --- 
 CREATE EXTERNAL TABLE inDirectory(value text)
-  LOCATION('FILE://@hostname@@abs_srcdir@/data/access_log')
+  LOCATION('file://@hostname@@abs_srcdir@/data/access_log',
+           'file://@hostname@@abs_srcdir@/data/access_log2')
   FORMAT 'text';
-CREATE FUNCTION grep_map(IN text, IN text, OUT key text, OUT value text) AS $$
+
+CREATE FUNCTION grep_map(IN key text, IN value text, OUT key text, OUT value text) AS $$
 {
     return {'key', $_[0], 'value', $_[1]} if $_[1] =~ /$_[0]/;
     return {};
 }
 $$ LANGUAGE plperl STRICT IMMUTABLE;
+
+CREATE VIEW grep_task AS
+SELECT key(m), value(m) FROM (SELECT grep_map('admin'::text, value) as m FROM inDirectory) q1
+WHERE m is not null
+ORDER BY key, value;
+
+--- RUN QUERIES --- 
 SELECT key, value
-FROM (SELECT key(m), value(m) FROM (SELECT grep_map('admin', value) as m FROM inDirectory) q1) q2
-WHERE key is not null
-ORDER BY key, value
-;
+FROM grep_task
+ORDER BY key, value;
+
+--- CLEANUP OBJECTS --- 
+DROP VIEW IF EXISTS grep_task CASCADE;
+DROP FUNCTION IF EXISTS grep_map(text, text) CASCADE;
+DROP EXTERNAL TABLE IF EXISTS inDirectory CASCADE;

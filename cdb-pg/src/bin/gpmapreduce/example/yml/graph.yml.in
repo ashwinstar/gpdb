@@ -12,8 +12,10 @@ DEFINE:
 #    1,497,135 total links
   - INPUT:
       NAME:      network
-      SOURCE:    file://@hostname@@abs_srcdir@/data/www.small.dat
-      COLUMNS:   [key text, value text]
+      FILE:      @hostname@:@abs_srcdir@/data/www.small.dat
+      COLUMNS:
+        - key text
+        - value text
       DELIMITER: '|'
 
 # One thing about the Greenplum MapReduce is that it allows you to
@@ -34,9 +36,13 @@ DEFINE:
   - MAP:
       NAME:     reverse
       LANGUAGE: python
-#      COLUMNS:  [key integer, value integer]
-#      RETURNS:  [key integer, value integer]
-      BODY:     |
+      PARAMETERS:
+        - key integer
+        - value integer
+      RETURNS:
+        - key integer
+        - value integer
+      FUNCTION:     |
         return {'key': value, 'value': key}
         
 # pcount()
@@ -45,37 +51,32 @@ DEFINE:
   - TRANSITION:
       NAME:       pcount
       LANGUAGE:   python
-      PARAMETERS: [state integer, value anyelement]
-      BODY:       return state + 1      
+      PARAMETERS:
+        - state integer
+        - value integer
+      RETURNS:
+        - state integer
+      FUNCTION:       return state + 1      
   - REDUCER:
       NAME:        traverse
       INITIALIZE:  0
       TRANSITION:  pcount
 
-# Same calculation, but implemented as a map function over the sparse
-# graph representation
-  - MAP:
-      NAME: sparse_pcount
-      LANGUAGE: python
-#      COLUMNS:  [key integer, value integer[]]
-#      RETURNS:  [key integer, value integer]      
-      BODY:   |
-        return {'key': key, 'value': len(value)}
       
 EXECUTE:
 
 # This counts the number of links coming FROM a page
-#  - RUN:
-#      SOURCE:  network
+  - RUN:
+      SOURCE:  network
 #      REDUCER: traverse
 #      TARGET:  STDOUT
       
 # This counts the number of links going TO a page.  
-#  - RUN:
-#      SOURCE:  network
-#      MAPPER:  reverse
-#      REDUCER: traverse
-#      TARGET:  STDOUT
+  - RUN:
+      SOURCE:  network
+      MAPPER:  reverse
+      REDUCER: traverse
+      TARGET:  STDOUT
 
   - RUN:
       SOURCE:  network

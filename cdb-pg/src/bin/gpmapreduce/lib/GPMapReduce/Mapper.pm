@@ -89,25 +89,23 @@ languages.
 =over 4
 
 =item new(Name => 'name', ...)
-  Creates a new GPMapReduce::Mapper object, all parameters
-  are passed directly into Initialize.
 
-=item Initialize(parameter-list)
-  Performs the default initialization of the object.
+  Creates a new GPMapReduce::Mapper object
 
   Parameters:
     Name     =>    # The name of the object, REQUIRED
-    Language =>    # The implementation language 
+    Language =>    # The implementation language
     Body     =>    # Text describing the body of the function
+    Function =>    # Function pointer for the function 
     Optimize =>    # Optimization flags for the function
     Mode     =>    #   separate from optimize why?
     Input    =>    # Describes input parameters
     Output   =>    # Describes input parameters
-    Function =>    # Function pointer for the function
 
   Input defaults to 'text, text'
   Output defaluts to 'key text, value text'
   Language defaults to 'perl'
+  Body and Function are mutually exclusive
 
 =back
 
@@ -117,54 +115,90 @@ languages.
 
 sub new {
     my ($class) = shift;
-    my $self = bless {}, $class;   
-    $self->Initialize(@_);
+	my $self = new GPMapReduce::Function(@_);
+	bless $self, $class;   
+
+	# Override Function Input/Output with Mapper defaults
+	$self->Parameter('Input', Default => ['key text', 'value text']);
+	$self->Parameter('Output', Default => ['key text', 'value text']);
+	$self->Parameter('Mode');        # can we get rid of this?
+	
     return $self;
 }
 
-sub Initialize {
-    my $self  = shift;
-    my %param = Params([qw(?Name  ?Language ?Optimize  ?Body ?Mode 
-                           ?Input ?Output   ?Function)], @_);
-    my $mode = $param{Mode};
-
-    TypeCheck($self, "GPMapReduce::Mapper", "\$self", 0);
-    TypeCheck($mode, "SCALAR", "Mode", 1);
-
-    # FIXME: switch to default MULTI, move SINGLE to optimize
-    $mode = "SINGLE" unless(defined $mode);
-    $self->SetMode('Mode' => $mode);
-    delete $param{Mode};
-
-    # Set defaults for Mapper functions
-    $param{Input} = "text, text" unless (defined $param{Input});
-    $param{Output} = "key text, value text" unless (defined $param{Output});
-
-    # call our parent class Initialize
-    GPMapReduce::Function::Initialize($self, %param);
-    
-    return undef;
-}
 
 
-# Mode is just a big mess and should be abolished
-sub SetMode()
+################################################################
+
+=head2 Query Generation
+
+=over 4
+
+=item SQLDrop()
+=item SQLCreate()
+=item GenerateQuery()
+
+=back
+
+=cut
+
+################################################################
+
+sub GenerateQuery($$$)
 {
-    my $self = shift;
-    my %param = Params([qw(Mode)], @_);
-    my $mode = $param{Mode};
+	my ($self, $input, $params) = @_;
+	my ($key, $sql, $i, $j, @in, @out, @intype, @columns);
 
-# FIXME: Remove legacy DOCMAP support
-    if ($mode eq 'DOCMAP') {
-		$self->{DOCMAP} = 1;
-		$mode = 'SINGLE';
-    }
+	if ($#{$params} >= 0 and defined(${$params}[0])) {
+		$key = "'${$params}[0]'";
+	} else {
+		$key = undef;
+	}
 
-    unless ($mode =~ /^(single|multi)$/i) {
-		Error("(Mode => $mode) not allowed");
-    }
+   	# FIXME - adjust input/output parameters
+	@columns = @{$input->{Columns}};
+	@in = @{$self->{Input_name}};
+	@intype = @{$self->{Input_type}};
+	@out = @{$self->{Output_name}};
 
-    $self->{Mode} = uc($mode);
+	# Generate the query 
+	for ($i = 0; $i <= $#out; $i++) {
+		if ($i == 0) {
+			$sql = "SELECT $out[$i](m)";
+		} else {
+			$sql .= ", $out[$i](m)";
+		}
+	}
+	$sql .= " FROM (SELECT $self->{Name}("; 
+	for ($i = 0; $i <= $#in; $i++) {
+		$sql .= ", " if ($i > 0);
+
+		# For a column named key we use the key column of the source
+		# it it exists, otherwise we use the passed in parameter
+		if (uc($in[$i]) eq 'KEY') {
+			for ($j = 0; $j <= $#columns; $j++) {
+				last if (uc($columns[$j]) eq 'KEY');
+			}
+			if ($j > $#columns) {
+				if (defined($key)) {
+					$sql .= "$key\::$intype[$i]";
+				} else {
+					$sql .= "NULL::$intype[$i]";
+				}
+			} else {
+				$sql .= "$in[$i]";
+			}
+		} else {
+			$sql .= "$in[$i]";
+		}
+	}
+	$sql .= ") as m ";
+	$sql .= "FROM <SOURCE>) <LEVEL>\n";
+	$sql .= "WHERE m is not null";
+
+	$input->ExtendQuery($sql, [@out]);
+
+	return $sql;
 }
 
 
@@ -174,16 +208,15 @@ sub SetMode()
 
 =over 4
 
+=item CheckInput()
 =item SetFunction()
-=item GenerateSQL_Drop()
-=item GenerateSQL_Create()
 =item GenerateYAML()
 
 =back
 
 =head1 SEE ALSO
 
-GPMapReduce::Function, GPMapReduce::Document
+GPMapReduce::Object, GPMapReduce::Function, GPMapReduce::Document
 
 =head1 AUTHORS
 
@@ -191,7 +224,7 @@ Caleb Welton
 
 Copyright (c) 2008 GreenPlum. All rights reserved.
 
-Address bug reports and comments to: cwelton@greenplum.com
+Address bug reports and comments to: support@greenplum.com
 
 =cut
 

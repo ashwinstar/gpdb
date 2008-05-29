@@ -7,19 +7,21 @@ USER:      @db_user@
 DEFINE:
     - INPUT:
         NAME:      weblog
-        SOURCE:    file://@hostname@@abs_srcdir@/data/access_log
-
+        FILE:
+          - @hostname@:@abs_srcdir@/data/access_log
+          - @hostname@:@abs_srcdir@/data/access_log2
+        
     - MAP:
          NAME:     myMap
          LANGUAGE: perl
-         BODY:     |
+         FUNCTION:     |
            return {} unless ($_[1] =~ m/GET ([^ ?,]+)/);
            return {"key" => $1, "value" => 1}
 
     - TRANSITION:
          NAME:     myTransition
          LANGUAGE: perl
-         BODY:     return $_[0] + $_[1];
+         FUNCTION:     return $_[0] + $_[1];
 
     - REDUCER:
          NAME:       myReduce

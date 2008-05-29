@@ -7,7 +7,7 @@ USER:      @db_user@
 DEFINE:
     - INPUT:
         NAME:      network
-        SOURCE:    file://@hostname@@abs_srcdir@/data/www.small.dat
+        FILE:      @hostname@:@abs_srcdir@/data/www.small.dat
         COLUMNS:   [key text, value text]
         DELIMITER: '|'
 
@@ -28,7 +28,7 @@ DEFINE:
         NAME:       pagerank_transition
         PARAMETERS: [state float, rank float, outfactor integer]
         LANGUAGE: plperl
-        BODY: |
+        FUNCTION: |
           return .85*$rank/$outfactor
         
         

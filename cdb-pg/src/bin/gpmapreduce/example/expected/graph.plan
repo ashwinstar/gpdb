@@ -1,0 +1,12 @@
+Gather Motion 2:1  (slice1)  (cost=248986.84..251486.84 rows=1000000 width=64)
+  Merge Key: "key", value
+  ->  Sort  (cost=248986.84..251486.84 rows=1000000 width=64)
+        Sort Key: "key", value
+        ->  External Scan on network  (cost=0.00..11000.00 rows=1000000 width=64)
+Settings:  enable_mergejoin=off; enable_nestloop=off; gp_enable_agg_distinct=on; gp_selectivity_damping_for_joins=on; gp_selectivity_damping_for_scans=on
+Gather Motion 2:1  (slice1)  (cost=248986.84..251486.84 rows=1000000 width=64)
+  Merge Key: "key", value
+  ->  Sort  (cost=248986.84..251486.84 rows=1000000 width=64)
+        Sort Key: "key", value
+        ->  External Scan on network  (cost=0.00..11000.00 rows=1000000 width=64)
+Settings:  enable_mergejoin=off; enable_nestloop=off; gp_enable_agg_distinct=on; gp_selectivity_damping_for_joins=on; gp_selectivity_damping_for_scans=on

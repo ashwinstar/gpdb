@@ -5,11 +5,12 @@ use strict;
 use warnings;
 use Safe;
 use B::Deparse;
+use GPMapReduce::Object;
 use GPMapReduce::Utils;
 
 require Exporter;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS @LANGUAGES);
-@ISA = qw(Exporter);
+@ISA = qw(Exporter GPMapReduce::Object);
 
 # This allows declaration use GPMapReduce::Function ':all';
 %EXPORT_TAGS = ( 'all' => [ qw() ] );
@@ -28,35 +29,78 @@ my %LANGUAGES = ( c      => 'C',
 my $LANGUAGES = join('|', keys %LANGUAGES);
 
 sub new {
-	Error("GPMapReduceFunction is an abstract class");
+	my $class = shift;
+	my $self  = new GPMapReduce::Object(@_);
+
+	$self->Parameter('Input', Required => 1, Kind => 'ARRAY');
+	$self->Parameter('Output', Required => 1, Kind => 'ARRAY');
+	$self->Parameter('Language', Default => 'perl');
+	$self->Parameter('Optimize');
+	$self->Parameter('Body');
+	$self->Parameter('Function');
+
+	return bless $self, $class;
 }
 
-sub Initialize {
-    my $self = shift;
-    my %param = Params([qw(?Name  ?Input    ?Output  ?Language
-			               ?Body  ?Optimize ?Function)], @_);
+sub CheckInput($$) 
+{
+	my ($self, $objects) = (shift, shift);
+	my ($i, $param, $name, $type);
+	
+	# Call superclass
+	GPMapReduce::Object::CheckInput($self, $objects);
 
-    TypeCheck($self, "GPMapReduce::Function", "\$self", 0);
+	# Function specific extensions
+	$self->SetFunction( Body => $self->{Body},
+						Language => $self->{Language},
+						Function => $self->{Function} );
+	
+	# Break input into name/type pairs
+	$name = [];
+	$type = [];
+	foreach $param (@{$self->{Input}}) {
+		my @p = split(' ', $param);
+		if ($#p == 0) {
+			push @$name, $p[0];
+			push @$type, 'text';
+		} elsif ($#p == 1) {
+			push @$name, $p[0];
+			push @$type, $p[1];
+		} else {
+			Error("Bad Input Parameter: $param");
+		}
+	}
+	$self->{Input_name} = $name;
+	$self->{Input_type} = $type;
 
-    # Maybe consider allowing anonymous functions later?
-    TypeCheck($param{Name}, "SCALAR", "Name", 0);
-    TypeCheck($param{Input}, "SCALAR", "Input", 0);
-    TypeCheck($param{Output}, "SCALAR", "Output", 0);
-    TypeCheck($param{Optimize}, "SCALAR", "Optimize", 1);
-    $self->SetFunction( Body => $param{Body},
-					    Language => $param{Language},
-					    Function => $param{Function});    
+	# Break output into name/type pairs
+	$name = [];
+	$type = [];
+	foreach $param (@{$self->{Output}}) {
+		my @p = split(' ', $param);
+		if ($#p == 0) {
+			push @$name, $p[0];
+			push @$type, 'text';
+		} elsif ($#p == 1) {
+			push @$name, $p[0];
+			push @$type, $p[1];
+		} else {
+			Error("Bad Output Parameter: $param");
+		}
+	}
+	$self->{Output_name} = $name;
+	$self->{Output_type} = $type;
 
-    # FIXME: typecheck Input and Output
+	# reconstruct input/output with default types
+	for ($i = 0; $i <= $#{$self->{Input}}; $i++) {
+		${$self->{Input}}[$i] = 
+			"${$self->{Input_name}}[$i] ${$self->{Input_type}}[$i]";
+	}
+	for ($i = 0; $i <= $#{$self->{Output}}; $i++) {
+		${$self->{Output}}[$i] = 
+			"${$self->{Output_name}}[$i] ${$self->{Output_type}}[$i]";
+	}
 
-
-    # For better or worse we allow anonymous functions
-    $self->{Name}     = $param{Name};
-    $self->{Input}    = $param{Input};
-    $self->{Output}   = $param{Output};
-    $self->{Optimize} = $param{Optimize};
-
-    return undef;
 }
 
 
@@ -74,11 +118,15 @@ sub Summary
 	}
     
     print STDERR "Function {\n" .
-	"  name => $self->{Name},\n" .
-	"  in   => $self->{Input},\n" .
-	"  out  => $self->{Output},\n" .
-	"  lang => $self->{Lang}\n" .
-	"  body => $self->{Body}\n" .
+	"  name     => $self->{Name},\n" .
+	"  in       => [" . join(', ', @{$self->{Input}}) . "],\n" .
+	"  in_name  => [" . join(', ', @{$self->{Input_name}}) . "],\n" .
+	"  in_type  => [" . join(', ', @{$self->{Input_type}}) . "],\n" .
+	"  out      => [" . join(', ', @{$self->{Output}}) . "],\n" .
+	"  out_name => [" . join(', ', @{$self->{Output_name}}) . "],\n" .
+	"  out_type => [" . join(', ', @{$self->{Output_type}}) . "],\n" .
+	"  lang     => $self->{Lang}\n" .
+	"  body     => $self->{Body}\n" .
 	"}\n";
 
     return undef;
@@ -132,44 +180,49 @@ sub SetFunction
 
     if ($function)
     {
-	my $dp = B::Deparse->new("-P", "-sC");
-	$dp->ambient_pragmas(strict => 'all', warnings => 'all');
-	$body = $dp->coderef2text($function);
+		my $dp = B::Deparse->new("-P", "-sC");
+		$dp->ambient_pragmas(strict => 'all', warnings => 'all');
+		$body = $dp->coderef2text($function);
 
 	# If the function is inside of a package the unparse will have
 	# the package name, it's better if we remove it.
-	$body =~ s/\n *package [^;]+;//gms;
-	$body =~ s/\n *no strict [^;]+;//gms;
+		$body =~ s/\n *package [^;]+;//gms;
+		$body =~ s/\n *no strict [^;]+;//gms;
     }
     
     $self->{"Body"} = $body;
     $self->{"Lang"} = $language;
 }
 
-sub GenerateSQL_Drop
+sub SQLDrop
 {
     my $self = shift;
-    return "DROP FUNCTION $self->{Name}($self->{Input}) CASCADE;\n";
+	my $drop = "DROP FUNCTION IF EXISTS $self->{Name}(";
+	$drop .= join(', ', @{$self->{Input_type}}); 
+	$drop .= ") CASCADE;\n";
+    return $drop;
 }
 
-sub GenerateSQL_Create
+sub SQLCreate
 {
     my $self = shift;
     my $in = $self->{Input};
     my $out = $self->{Output};
     my $lang = $LANGUAGES{lc($self->{Lang})};
     my $opt = defined($self->{Optimize}) ? " $self->{Optimize}" : "";
+	my $create;
 
     # Identity functions can be skipped
     return undef unless($self->{Body});
 
     # FIXME - this is only apropriate for non-set returning functions
-    $in =~ s/, ?/, IN /g;
-    $out =~ s/, ?/, OUT /g;
-
-    return 
-	"CREATE FUNCTION $self->{Name}(IN $in, OUT $out) AS \$\$\n" .
-	"$self->{Body}\n\$\$ LANGUAGE $lang$opt;\n";
+	$create  = "CREATE FUNCTION $self->{Name}(IN ";
+	$create .= join(', IN ', @{$self->{Input}});
+	$create .= ", OUT ";
+	$create .= join(', OUT ', @{$self->{Output}});
+	$create .= ") AS \$\$\n";
+	$create .= "$self->{Body}\n\$\$ LANGUAGE $lang$opt;\n";
+	return $create;
 }
 
 
@@ -186,7 +239,7 @@ Caleb Welton
 
 Copyright (c) 2008 GreenPlum. All rights reserved.
 
-Address bug reports and comments to: cwelton@greenplum.com
+Address bug reports and comments to: support@greenplum.com
 
 =cut
 

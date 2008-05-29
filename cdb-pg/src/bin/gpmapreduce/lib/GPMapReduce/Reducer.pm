@@ -15,14 +15,14 @@ GPMapReduce::Reducer - Map/Reduce Reducer object
     my $doc = new GPMapReduceDocument();
     my $reducer = new
        GPMapReduce::Reducer(Name => 'MyName',
-			    Transition => 'myTransition',
-			    Combiner => 'myCombiner',
-			    Finalizer => 'myFinalizer');
+                            Transition => 'myTransition',
+                            Combiner => 'myCombiner',
+                            Finalizer => 'myFinalizer');
     $doc->AddReducer($reducer);
 
 =head1 REQUIRES
 
-Perl5.5.3, Exporter, GPMapReduce::Utils
+Perl5.5.3, Exporter, GPMapReduce::Object, GPMapReduce::Utils
 
 =cut
 
@@ -31,12 +31,13 @@ Perl5.5.3, Exporter, GPMapReduce::Utils
 BEGIN
 {
     use 5.00503;
+    use GPMapReduce::Object;
     use GPMapReduce::Utils;
     require Exporter;
 
     use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
     $VERSION   = '1.00';
-    @ISA = qw(Exporter);
+    @ISA = qw(Exporter GPMapReduce::Object);
     %EXPORT_TAGS = ( 'all' => [ qw() ] );
     @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
     @EXPORT    = qw();
@@ -72,19 +73,14 @@ Currently the State can only be a simple type (not a tuple).
 =over 4
 
 =item new(Name => 'name', ...)
-  Creates a new GPMapReduce::Reducer object, all parameters
-  are passed directly into Initialize.
-
-=item Initialize(parameter-list)
-  Performs the default initialization of the object.
+  Creates a new GPMapReduce::Reducer object
 
   Parameters:
      Name        =>    # The name of the object, REQUIRED
      Transition  =>    # Transition function to use, REQUIRED
-     Init        =>    # The initial value for the state
      Combiner    =>    # Combine function
-     Datatype    =>    # The datatype of the state
-     Prototype   =>    # Input parameters
+     Finalizer   =>    # Finalize function
+     Initialize  =>    # The initial value for the state
 
   The datatype and prototype can usually be derived from the transition 
   function if an object is passed, otherwise they will default to
@@ -98,83 +94,17 @@ Currently the State can only be a simple type (not a tuple).
 
 sub new {
     my ($class) = shift;
-    my $self = bless {}, $class;   
-    $self->Initialize(@_);
-    return $self;
-}
+    my $self  = new GPMapReduce::Object(@_);
 
-sub Initialize {
-    my $self  = shift;
-    my %param = Params([qw(?Name ?Transition ?Initialize ?Combiner 
-                           ?Finalizer ?Datatype ?Prototype)], @_);
-    my $name      = $param{Name};
-    my $trans     = $param{Transition};
-    my $init      = $param{Initialize};
-    my $combine   = $param{Combiner};
-    my $final     = $param{Finalizer};
+    $self->Parameter('Transition', Required => 1, 
+					 Depend => 'GPMapReduce::Function');
+    $self->Parameter('Combiner',
+					 Depend => 'GPMapReduce::Function');
+    $self->Parameter('Finalizer',
+					 Depend => 'GPMapReduce::Function');
+    $self->Parameter('Initialize'); # Default depends on transition state
 
-    # FIXME: validate reasonable datatype/prototype
-    my $datatype  = lc($param{Datatype});
-    my $prototype = lc($param{Prototype});
-
-    TypeCheck($self, "GPMapReduce::Reducer", "\$self", 0);
-    TypeCheck($init, "SCALAR", "Initialize", 1);
-    TypeCheck($datatype, "SCALAR", "Datatype", 1);
-    TypeCheck($prototype, "SCALAR", "Prototype", 1);
-
-    # Reducers, Combiners and Finalizers can be given by name or by object.
-    if (ref($trans)) {
-	TypeCheck($trans, "GPMapReduce::Transition", "Transition", 0);
-	
-	# check datatype/transition return
-	if (!defined($datatype)) {
-	    $datatype = lc($trans->{Output});
-	} elsif ($datatype ne lc($trans->{Output})) {
-		Error("(Datatype => $datatype)\n" .
-			  "  Supplied datatype for $name does not match the return\n" .
-			  "  value of the supplied transition function $trans->{Name}\n");
-	}
-
-	# check prototype vs datatype and transition function
-	if (!defined($prototype)) {
-	    $prototype = lc("$datatype, $trans->{Input}");
-	} elsif ($prototype ne lc("$datatype, $trans->{Input}")) {
-		Error("(Prototype => $prototype)\n" .
-			  "  Supplied prototype for $name does not match the input\n" .
-			  "  types of the supplied transition function $trans->{Name}\n");
-	}
-
-	# Save the transition object and change $trans to just the name.
-	$self->{TransObj} = $trans;
-	$trans = $trans->{Name};
-    } else {
-		TypeCheck($trans, "SCALAR", "Transition", 0);
-    }
-
-    if (ref($combine)) {
-		TypeCheck($combine, "GPMapReduce::Combiner", "Combiner", 1);
-		$self->{CombineObj} = $combine;
-		$combine = $combine->{Name};
-    } else {
-		TypeCheck($combine, "SCALAR", "Combiner", 1);
-    }
-
-    if (ref($final)) {
-		TypeCheck($final, "GPMapReduce::Finalizer", "Finalizer", 0);
-	$self->{FinalObj} = $final;
-	$final = $final->{Name};
-    } else {
-		TypeCheck($final, "SCALAR", "Finalizer", 1);
-    }
-    
-    $self->{Name}       = $name;
-    $self->{Transition} = $trans;
-    $self->{Initial}    = $init;
-    $self->{Combiner}   = $combine;
-    $self->{Finalizer}  = $final;
-    $self->{Datatype}   = $datatype;
-    $self->{Prototype}  = $prototype;
-
+    return bless $self, $class;
     return $self;
 }
 
@@ -185,10 +115,10 @@ sub Initialize {
 
 =over 4
 
-=item GenerateSQL_Create
+=item SQLCreate
   Produces the SQL output to create the Reducer
 
-=item GenerateSQL_Drop
+=item SQLDrop
   Produces the SQL output to delete the Reducer
 
 =item GenerateYAML
@@ -200,33 +130,86 @@ sub Initialize {
 
 ################################################################
 
-sub GenerateSQL_Create
+sub SQLCreate
 {
     my $self = shift;
-    my $input = 'text';   # FIXME
-    my $state = 'text';   # FIXME
+	my $transition = $self->{_Depend}->{uc($self->{Transition})};
+	my @in = @{$transition->{Input_type}};
+	my $state = shift @in;
+    my $input = join(', ', @in);
 
     my $sql;
     $sql  = "CREATE AGGREGATE $self->{Name}($input) (\n";
     $sql .= "  stype = $state,\n";
-    $sql .= "  initcond = '$self->{Initial}',\n";
+    $sql .= "  initcond = '$self->{Initialize}',\n" if (defined($self->{Initialize}));
     $sql .= "  sfunc = $self->{Transition}";
     $sql .= ",\n  prefunc = $self->{Combiner}" if (defined($self->{Combiner}));
     $sql .= "\n);\n";
     return $sql
 }
 
-sub GenerateSQL_Drop
+sub SQLDrop
 {
     my $self = shift;
-    my $input = 'text';   # FIXME
+	my $transition = $self->{_Depend}->{uc($self->{Transition})};
+	my @in = @{$transition->{Input_type}};
+	my $state = shift @in;
+    my $input = join(', ', @in);
 
-    return "DROP AGGREGATE $self->{Name}($input) CASCADE;\n";
+    return "DROP AGGREGATE IF EXISTS $self->{Name}($input) CASCADE;\n";
+}
+
+sub GenerateQuery
+{
+	my ($self, $input, $params) = @_;
+	my ($sql, $i, $j, @out, @in, @columns, @reduceover);
+	my $transition = $self->{_Depend}->{uc($self->{Transition})};
+
+	@columns = @{$input->{Columns}};
+	@in = @{$transition->{Input_name}};
+	@out = ('value');    # FIXME - adjust output parameters
+
+	# Note that the FIRST parameter in the transition input list is the
+	# 'state' and isn't passed as a parameter to the reducer.
+	shift @in;
+
+
+	# Unless otherwise specified we group over all columns we didn't
+    # take as input. 
+	@reduceover = ();
+	for ($i = 0; $i <= $#columns; $i++) {
+		for ($j = 0; $j <= $#in; $j++) {
+			last if (uc($columns[$i]) eq uc($in[$j]));
+		}
+		push @reduceover, $columns[$i] if ($j > $#in);
+	}
+
+	# FIXME: validate that there is at least one field in reduceover
+
+	$sql  = "SELECT " . join(', ', @reduceover) . ", $self->{Name}(";
+	$sql .= join(', ', @in) . ") as value\n";
+	$sql .= "FROM <SOURCE>\n";
+	$sql .= "GROUP BY " . join(', ', @reduceover);
+	$input->ExtendQuery($sql, [@reduceover, @out]);
+
+	# FIXME: handle returning multiple columns
+
+	return undef;
 }
 
 sub GenerateYAML
 {
-	Error("NOT IMPLEMENTED");
+    my $self = shift;
+    my $yml;
+
+    $yml  = "REDUCER: {";
+    $yml .= "TRANSITION: $self->{Transition}";
+    $yml .= ", COMBINER: $self->{Combiner}" if $self->{Combiner};
+    $yml .= ", FINALIZER: $self->{Finalizer}" if $self->{Finalizer};
+    $yml .= ", INITIALIZE: $self->{Initialize}" if $self->{Initialize};
+    $yml .= "}\n";
+    
+    return $yml;
 }
 
 
@@ -243,7 +226,7 @@ Caleb Welton
 
 Copyright (c) 2008 GreenPlum. All rights reserved.
 
-Address bug reports and comments to: cwelton@greenplum.com
+Address bug reports and comments to: support@greenplum.com
 
 =cut
 

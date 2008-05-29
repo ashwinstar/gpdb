@@ -11,15 +11,18 @@ GPMapReduce::Input - Map/Reduce Input object
 =head1 SYNOPSIS
 
     use GPMapReduce::Input;
-    my $map = new GPMapReduce::Input(Name => 'MyMap');
-    $map->SetFunction(
-       q[ return {key=> $1, value => $_[1]} if ($_[1] =~ /$_[0]/) ]);
+    my $input = new GPMapReduce::Input(
+	     Name => 'MyInput',
+         File => ['localhost:/path/to/file'],
     );
+    ...
+	$input->CheckInput($objecthash);
+
 
 =head1 REQUIRES
 
-Perl5.5.3, Exporter, Carp, GPMapReduce::Utils,
-GPMapReduce::Function
+Perl5.5.3, Exporter, Carp, GPMapReduce::Object, GPMapReduce::Utils
+GPMapReduce::Query
 
 =cut
 
@@ -29,13 +32,14 @@ BEGIN
 {
     use 5.00503;
     use Carp;
+    use GPMapReduce::Object;
+	use GPMapReduce::Query;
     use GPMapReduce::Utils;
-    use GPMapReduce::Function;
     require Exporter;
 
     use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
     $VERSION   = '1.00';
-    @ISA = qw(Exporter);
+    @ISA = qw(Exporter GPMapReduce::Object);
     %EXPORT_TAGS = ( 'all' => [ qw() ] );
     @EXPORT_OK = ( @{ $EXPORT_TAGS{'all'} } );
     @EXPORT    = qw();
@@ -43,9 +47,7 @@ BEGIN
 
 ################################################################
 
-=head2 @ISA()
-
-See GPMapReduce::Function for full details of inherited methods
+=head2 @ISA( GPMapReduce::Object )
 
 =head1 DESCRIPTION
 
@@ -61,15 +63,12 @@ data files.
 =over 4
 
 =item new(Name => 'name', ...)
-  Creates a new GPMapReduce::Input object, all parameters
-  are passed directly into Initialize.
-
-=item Initialize(parameter-list)
-  Performs the default initialization of the object.
 
   Parameters:
     Name     =>    # The name of the object, REQUIRED
-    Source   =>    # Where the data comes from
+    File     =>    # Where the data comes from (exlusive with table/query)
+    Table    =>    # Where the data comes from (exlusive with file/query)
+    Query    =>    # Where the data comes from (exlusive with file/table)
     Columns  =>    # description of columns in an external file
     Format   =>    # format of an external file
     Delimiter =>   # delimiter for an external file
@@ -82,89 +81,106 @@ data files.
 
 sub new {
     my ($class) = shift;
-    my $self = bless {}, $class;   
-    $self->Initialize(@_);
+	my $self    = new GPMapReduce::Object(@_);
+    bless $self, $class;   
+
+	$self->Parameter('File', Kind => 'ARRAY');
+	$self->Parameter('Table', Kind => 'SCALAR');
+	$self->Parameter('Query', Kind => 'SCALAR');
+	$self->Parameter('Columns', Default => ['value text']);
+	$self->Parameter('Format', Default => 'text');
+	$self->Parameter('Delimiter', Kind => 'SCALAR');
+
     return $self;
 }
 
-sub Initialize {
-    my $self  = shift;
-    my %param = Params([qw(?Name ?Source ?Format ?Columns ?Delimiter)], @_);
-    my $mode = $param{Mode};
+sub CheckInput($$) {
+	my ($self, $objects) = (shift, shift);
 
-    TypeCheck($self, "GPMapReduce::Input", "\$self", 0);
-    TypeCheck($param{Name}, "SCALAR", "Name", 0);
-    TypeCheck($param{Source}, "SCALAR", "Source", 0);
-    TypeCheck($param{Columns}, "SCALAR", "Columns", 1);
-    TypeCheck($param{Format}, "SCALAR", "Format", 1);
-    TypeCheck($param{Delimiter}, "SCALAR", "Delimiter", 1);
+	# Call superclass
+	GPMapReduce::Object::CheckInput($self, $objects);
 
-    $self->{Name}      = $param{Name};
-    $self->{Source}    = $param{Source};
-    $self->{Columns}   = $param{Columns};
-    $self->{Format}    = $param{Format};
-    $self->{Delimiter} = $param{Delimiter};
+	# Perform GPMapReduce::Input specific verification
+	if (($self->{File} and ($self->{Table} or $self->{Query})) or
+		($self->{Table} and $self->{Query})) {
+		Error("Input can only specify one of: FILE/TABLE/QUERY");
+	}
 
-    if ($self->{Source} =~ /^(file|gpfdist):\/\/([a-zA-Z:]+)(.*)$/i) {
-		$self->{Type}    = uc($1);
-		$self->{Host}    = $2;
-		$self->{Source}  = $3;
-		$self->{Columns} = "value text" if (!defined($self->{Columns}));
-		$self->{Format}  = "text" if (!defined($self->{Format}));
-    } 
-    elsif ($self->{Source} =~ /^exec:(.*)$/i)
-    {
-		$self->{Type} = "EXEC";
-		$self->{Source}  = $1;
-		$self->{Columns} = "value text" if (!defined($self->{Columns}));
-		$self->{Format}  = "text" if (!defined($self->{Format}));
-    }
-    elsif ($self->{Source} =~ /^(table|query):(.*)$/i) 
-    {
-		$self->{Type}    = uc($1);
-		$self->{Source}  = $2;
+	if ($self->{File}) {
+		$self->{Type} = "FILE";
+		$self->{Source} = '';
+		foreach my $file (@{$self->{File}}) {
+			if ($file =~ /^([a-zA-Z]+):(.*)$/) {
+				my ($host, $path) = ($1, $2);
+				if (not $self->{Source} eq '') {
+					$self->{Source} .= ",\n           ";
+				}
+				$self->{Source} .= "'file://$host$path'";
+			} else {
+				Error("Invalid FILE specification: '$file'");
+			}
+		}
+	} elsif ($self->{Table}) {
+		if ($self->{Table} =~ /^[a-zA-Z]\w+$/) {
+			$self->{Type} = "TABLE";
+			$self->{Source} = $self->{Table};
+		} else {
+			Error("Invalid TABLE specification: $self->{Table}");			
+		}
 		if (defined($self->{Columns})) {
-			Error("$1 does not support support columns");
+			Error("INPUT.TABLE does not support support columns");
 		}
 		if (defined($self->{Format})) {
-			Error("$1 does not support support format");
+			Error("INPUT.TABLE does not support support format");
 		}
 		if (defined($self->{Delimiter})) {
-			Error("$1 does not support support delimiter");
+			Error("INPUT.TABLE does not support support delimiter");
 		}
-    } 
-    else
-    {
-		Error("INPUT <$self->{Name}> has unknown UID $self->{Source}");
-    }
-
+	} elsif ($self->{Query}) {
+		$self->{Type} = "QUERY";
+		$self->{Source} = $self->{Query};
+		if (defined($self->{Columns})) {
+			Error("INPUT.QUERY does not support support columns");
+		}
+		if (defined($self->{Format})) {
+			Error("INPUT.QUERY does not support support format");
+		}
+		if (defined($self->{Delimiter})) {
+			Error("INPUT.QUERY does not support support delimiter");
+		}
+	} else {
+		Error("INPUT <$self->{Name}> requires FILE, QUERY or TABLE");
+	}
     return undef;
 }
 
-sub GenerateSQL_Drop
+
+sub SQLDrop
 {
     my $self = shift;
     if ($self->{Type} =~ /^(FILE|GPFDIST)/) {
-		return "DROP EXTERNAL TABLE $self->{Name} CASCADE;\n";
+		return "DROP EXTERNAL TABLE IF EXISTS $self->{Name} CASCADE;\n";
     } 
-    elsif ($self->{Type} == 'EXEC') {
-		return "DROP EXTERNAL WEB TABLE $self->{Name} CASCADE;\n";
+    elsif ($self->{Type} eq 'EXEC') {
+		return "DROP EXTERNAL WEB TABLE IF EXISTS $self->{Name} CASCADE;\n";
     }
 }
 
-sub GenerateSQL_Create
+sub SQLCreate
 {
     my $self = shift;
     my $sql;
 
     if ($self->{Type} =~ /^(FILE|GPFDIST)/) {
-		$sql  = "CREATE EXTERNAL TABLE $self->{Name}($self->{Columns})\n";
-		$sql .= "  LOCATION('$self->{Type}://$self->{Host}$self->{Source}')\n";
+		$sql  = "CREATE EXTERNAL TABLE $self->{Name}(";
+		$sql .= join(', ', @{$self->{Columns}});
+		$sql .= ")\n";
+		$sql .= "  LOCATION($self->{Source})\n";
 		$sql .= "  FORMAT '$self->{Format}'";
-		$sql .= " (DELIMITER $self->{Delimiter})" if (defined($self->{Delimiter}));
+		$sql .= " (DELIMITER '$self->{Delimiter}')" if (defined($self->{Delimiter}));
 		$sql .= ";\n";
     }
-    elsif ($self->{Type} == 'EXEC') {
+    elsif ($self->{Type} eq 'EXEC') {
 		$sql  = "CREATE EXTERNAL WEB TABLE $self->{Name}($self->{Columns})\n";
 		$sql .= "  EXECUTE \$\$ $self->{Source} \$\$\n";
 		$sql .= "  FORMAT '$self->{Format}'";
@@ -173,6 +189,25 @@ sub GenerateSQL_Create
     }
 
     return $sql;
+}
+
+sub GenerateQuery($$)
+{
+	my ($self, $params) = @_;
+	my $columns = [];
+
+	# our stored columns are in <name type> pairs, extract just the names
+	foreach my $name (@{$self->{Columns}}) {
+		my @pair = split(' ', $name);
+		push @$columns, $pair[0];
+	}
+
+	# Produce and return the initial query.
+	if ($self->{Type} =~ /^(FILE|GPFDIST)/) {
+		return new GPMapReduce::Query($self->{Name}, $columns);
+	} else {
+		return new GPMapReduce::Query($self->{Source}, $columns);
+	}
 }
 
 
@@ -189,7 +224,7 @@ Caleb Welton
 
 Copyright (c) 2008 GreenPlum. All rights reserved.
 
-Address bug reports and comments to: cwelton@greenplum.com
+Address bug reports and comments to: support@greenplum.com
 
 =cut
 

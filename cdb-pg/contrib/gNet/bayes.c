@@ -51,6 +51,7 @@ Datum nb_classify_accum(PG_FUNCTION_ARGS)
 	HeapTuple          result;
 	Datum              resultDatum[3];
 	bool               resultNull[3];
+	bool               skip;
 	int64             *class_data;
 	int64             *total_data;
 	float8            *prior_data;
@@ -99,6 +100,53 @@ Datum nb_classify_accum(PG_FUNCTION_ARGS)
 	class_data = (int64*) ARR_DATA_PTR(class_count);
 	total_data = (int64*) ARR_DATA_PTR(class_total);
 
+	/* It is an error for class_data, total_data, or attr_count to be a 
+	   negative number */
+	if (attr_count < 0) 
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("nb_classify: attr_count value must be >= 0")));
+
+	}
+	skip = false;
+	for (i = 0; i < nclasses; i++) 
+	{
+		if (class_data[i] < 0) 
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("nb_classify: class_data values must be >= 0")));
+		}
+		if (total_data[i] < 0) 
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("nb_classify: total_data values must be >= 0")));
+		}
+		if (class_data[i] > total_data[i]) 
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("nb_classify: class_data values must be <= total_data")));
+		}
+
+		/* 
+		 * If we do not have an adjustment value and any class has a zero value
+		 * then we must skip this row, otherwise we will try to calculate ln(0)
+		 */
+		if (attr_count == 0 && class_data[i] == 0) 
+		{
+			skip = true;
+		}
+	}
+	if (skip)
+	{
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));			
+	}
+
+
+
 	/* Get/create the accumulation state */
 	if (!PG_ARGISNULL(0))
 	{
@@ -126,7 +174,7 @@ Datum nb_classify_accum(PG_FUNCTION_ARGS)
 		ARR_LBOUND(state.accum)[0] = 1;
 		prior_data = (float8*) ARR_DATA_PTR(state.accum);
 		for (i = 0; i < nclasses; i++)
-			prior_data[i] = 1;
+			prior_data[i] = 0;
 
 		/* allocate memory and construct the total array */
 		size = ARR_OVERHEAD_NONULLS(1) + nclasses * sizeof(int64);
@@ -148,8 +196,19 @@ Datum nb_classify_accum(PG_FUNCTION_ARGS)
 	for (i = 0; i < nclasses; i++)
 	{
 		/*
-		 * Naive Bayes doesn't like 0-probability, so we want to increment
-		 * the count for all classes. 
+		 * Calculate the accumulation value for the classifier
+		 *
+		 * The logical calculation is: 
+		 *     product((class[i]+1)/(total_data[i]+attr_count))
+		 *
+		 * Instead of this calculation we calculate:
+		 *     sum(ln((class[i]+1)/(total_data[i]+attr_count)))
+		 *
+		 * The reason for this is to increase the numerical stability of
+		 * the algorithm.
+		 *
+		 * Since the ln(0) is undefined we want to increment the count 
+		 * for all classes. 
 		 *
 		 * This get's a bit more complicated for the denominator which
 		 * needs to know how many values there are for this attribute
@@ -158,12 +217,14 @@ Datum nb_classify_accum(PG_FUNCTION_ARGS)
 		 * number of distinct values for the aggregate it is computing.
 		 *
 		 * If for some reason this value is not present, or < 1 then we
-		 * just switch to non-adjusted calculations.
+		 * just switch to non-adjusted calculations.  In this case we 
+		 * will simply skip over any row that has a 0 count on any 
+		 * class_data index. (handled above)
 		 */
 		if (attr_count > 1)
-			prior_data[i] *= (class_data[i]+1) / (float8)(total_data[i] + attr_count);
+			prior_data[i] += log((class_data[i]+1)/(float8)(total_data[i] + attr_count));
 		else
-			prior_data[i] *= class_data[i]/(float8)total_data[i];
+			prior_data[i] += log(class_data[i]/(float8)total_data[i]);
 
 		/* 
 		 * The total array should be constant throughout, but if not it should
@@ -226,7 +287,7 @@ Datum nb_classify_combine(PG_FUNCTION_ARGS)
 	prior_data2 = (float8*) ARR_DATA_PTR(state[1].accum);
 	nclasses = ARR_DIMS(state[0].classes)[0];
 	for (i = 0; i < nclasses; i++)
-		prior_data1[i] *= prior_data2[i];
+		prior_data1[i] += prior_data2[i];
 
 	/* Construct the return tuple */
 	funcClass = get_call_result_type(fcinfo, &resultType, &resultDesc);
@@ -247,6 +308,7 @@ Datum nb_classify_final(PG_FUNCTION_ARGS)
 {
 	nb_classify_state  state;
 	int64             *total_data;
+	float8             total;
 	float8            *prior_data;
 	char              *class_data;
 	int                i, maxi, nclasses;
@@ -265,8 +327,12 @@ Datum nb_classify_final(PG_FUNCTION_ARGS)
 	
 	/* The the prior with maximum likelyhood */
 	prior_data = (float8*) ARR_DATA_PTR(state.accum);
-	total_data = (int64*) ARR_DATA_PTR(state.total);   /* FIXME */
+	total_data = (int64*) ARR_DATA_PTR(state.total);
 	nclasses = ARR_DIMS(state.classes)[0];
+	for (total = i = 0; i < nclasses; i++)
+		total += total_data[i];
+	for (i = 0; i < nclasses; i++)
+		prior_data[i] += log(total_data[i]/total);
 	for (maxi = 0, i = 1; i < nclasses; i++)
 		if (prior_data[i] > prior_data[maxi])
 			maxi = i;

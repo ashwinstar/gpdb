@@ -87,36 +87,15 @@ tuple.
 
 sub new {
     my ($class) = shift;
-    my $self = bless {}, $class;   
-    $self->Initialize(@_);
+	my $self = new GPMapReduce::Function(@_);
+	bless $self, $class;   
+
+	# Override Function Input/Output with Mapper defaults
+	$self->Parameter('Input', Default => 'text');
+	$self->Parameter('Output', Default => 'value text');
+
     return $self;
 }
-
-sub Initialize {
-    my $self  = shift;
-    my %param = Params([qw(?Name  ?Language  ?Optimize  ?Body  
-			               ?Input ?Output    ?Function)], @_);
-
-    TypeCheck($self, "GPMapReduce::Finalizer", "\$self", 0);
-
-    # Set defaults for Finalizer functions
-    $param{Input} = "text" unless (defined $param{Input});
-    $param{Output} = "state text" unless (defined $param{Output});
-
-    # Currently we only support simple data type results
-    unless ($param{Input} =~ /^\w+(\[\d*\])*$/) {
-		Error("Bad Output format: $param{Output}");
-    }
-    unless ($param{Output} =~ /^\w+\s+\w+(\[\d*\])*$/) {
-		Error("Bad Output format: $param{Output}\n");
-    }
-
-    # call our parent class Initialize
-    GPMapReduce::Function::Initialize($self, %param);
-    
-    return undef;
-}
-
 
 ################################################################
 
@@ -124,9 +103,10 @@ sub Initialize {
 
 =over 4
 
+=item CheckInput()
 =item SetFunction()
-=item GenerateSQL_Drop()
-=item GenerateSQL_Create()
+=item SQLDrop()
+=item SQLCreate()
 =item GenerateYAML()
 
 =back
@@ -141,7 +121,7 @@ Caleb Welton
 
 Copyright (c) 2008 GreenPlum. All rights reserved.
 
-Address bug reports and comments to: cwelton@greenplum.com
+Address bug reports and comments to: support@greenplum.com
 
 =cut
 

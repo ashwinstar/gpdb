@@ -1,8 +1,13 @@
-DROP EXTERNAL TABLE access_log CASCADE;
+--- CREATING OBJECTS --- 
 CREATE EXTERNAL TABLE access_log(value text)
-  LOCATION('FILE://@hostname@@abs_srcdir@/data/access_log')
+  LOCATION('file://@hostname@@abs_srcdir@/data/access_log',
+           'file://@hostname@@abs_srcdir@/data/access_log2')
   FORMAT 'text';
+
+--- RUN QUERIES --- 
 SELECT value
 FROM access_log
-ORDER BY value
-;
+ORDER BY value;
+
+--- CLEANUP OBJECTS --- 
+DROP EXTERNAL TABLE IF EXISTS access_log CASCADE;

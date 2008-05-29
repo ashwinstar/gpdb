@@ -7,7 +7,7 @@ USER:      @db_user@
 DEFINE:
     - INPUT:
         NAME:      weblog
-        SOURCE:    file://@hostname@@abs_srcdir@/data/access_log_fake
+        FILE:      @hostname@:@abs_srcdir@/data/access_log_fake
         COLUMNS:
           - ip       text
           - rfc      text
@@ -24,9 +24,14 @@ DEFINE:
     - MAP:
          NAME:     myMap
          LANGUAGE: perl
-         PARAMETERS: [key text, ip text, url text]
-         RETURNS:    [ip text, count integer]
-         BODY:     |
+         PARAMETERS:
+           - key text
+           - ip text
+           - url text
+         RETURNS:
+           - ip text
+           - count integer
+         FUNCTION:     |
            return {} unless ($_[2] =~ m/$_[0]/);
            return {"ip" => $_[1], "count" => 1}
 
@@ -36,7 +41,9 @@ DEFINE:
          PARAMETERS:
            - state integer
            - count integer
-         BODY:     return $_[0] + $_[1];
+         RETURNS:
+           - state integer
+         FUNCTION:     return $_[0] + $_[1];
 
     - REDUCER:
          NAME:       myReduce

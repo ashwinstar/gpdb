@@ -15,6 +15,12 @@ example/expected/grep.print.in
 example/expected/sort.out
 example/expected/sort.plan
 example/expected/sort.print.in
+example/experted/columns.out
+example/experted/columns.plan
+example/experted/columns.print.in
+example/experted/graph.out
+example/experted/graph.plan
+example/experted/graph.print.in
 example/Makefile
 example/output/README
 example/src/gpmapreduce.h
@@ -34,9 +40,14 @@ lib/GPMapReduce/Document.pm
 lib/GPMapReduce/Finalizer.pm
 lib/GPMapReduce/Function.pm
 lib/GPMapReduce/Input.pm
+lib/GPMapReduce/Idenity.pm
 lib/GPMapReduce/Mapper.pm
+lib/GPMapReduce/Object.pm
+lib/GPMapReduce/Output.pm
 lib/GPMapReduce/Parser.pm
+lib/GPMapReduce/Query.pm
 lib/GPMapReduce/Reducer.pm
+lib/GPMapReduce/Task.pm
 lib/GPMapReduce/Transition.pm
 lib/GPMapReduce/Utils.pm
 Makefile.PL

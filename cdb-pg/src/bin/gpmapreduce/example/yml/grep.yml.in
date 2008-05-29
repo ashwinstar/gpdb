@@ -7,18 +7,24 @@ USER:            @db_user@
 DEFINE:
   - INPUT:
       NAME:      inDirectory
-      SOURCE:    file://@hostname@@abs_srcdir@/data/access_log
+      FILE:
+        - @hostname@:@abs_srcdir@/data/access_log
+        - @hostname@:@abs_srcdir@/data/access_log2
+
   - MAP:
       NAME:      grep_map
-      BODY:  |
+      FUNCTION:  |
         return {"key" => $_[0], "value" => $_[1]} if ($_[1] =~/$_[0]/);
         return {};
       LANGUAGE:  perl
       OPTIMIZE:  STRICT IMMUTABLE
 
-EXECUTE:
-  - RUN:
+  - TASK:
+      NAME:      grep_task
       SOURCE:    inDirectory
       MAPPER:    grep_map
       REDUCER:   IDENTITY
-      TARGET:    STDOUT
+      
+EXECUTE:
+  - RUN:         grep_task
+
