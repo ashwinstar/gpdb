@@ -16,6 +16,7 @@ GPMapReduce::Document - Map/Reduce Document Container Class
     $doc->AddMapper($map);                       
     $doc->AddReducer($reduce); 
 
+    $doc->Execute(Explain => $explain);
     print $doc->GenerateSQL();
     print $doc->GenerateYAML();
 
@@ -34,11 +35,14 @@ BEGIN
     use 5.00503;
     use GPMapReduce::Utils;
     use GPMapReduce::Input;
+	use GPMapReduce::Output;
     use GPMapReduce::Mapper;
     use GPMapReduce::Transition;
     use GPMapReduce::Combiner;
     use GPMapReduce::Finalizer;
     use GPMapReduce::Reducer;
+	use GPMapReduce::Task;
+	use GPMapReduce::Identity;
     use UNIVERSAL qw(isa);
     require Exporter;
 
@@ -91,11 +95,15 @@ sub initialize()
 
     $self->{DATABASE} = undef;
     $self->{USER}     = undef;
+	$self->{OBJECTS}  = { 
+		IDENTITY => new GPMapReduce::Identity(),
+		STDOUT   => new GPMapReduce::STDOUT(),
+	};
     $self->{INPUTS}   = [];
     $self->{FUNCS}    = [];
     $self->{MAPS}     = [];
     $self->{REDUCES}  = [];
-    $self->{JOBS}     = [];
+    $self->{TASKS}     = [];
     $self->{RUN}      = [];
     $self->{PARAM}    = [@param];    ## Fixme, this isn't the cleanest
 
@@ -116,6 +124,14 @@ sub initialize()
 
   Sets the user to connect as
 
+=item SetHost(hostname)
+
+  Sets the host to connect to
+
+=item SetPort(uname)
+
+  Sets the port to connect on
+
 =item SetVersion(version)
 
   Sets the version for YAML generation
@@ -127,20 +143,57 @@ sub initialize()
 ################################################################
 
 sub SetDatabase() {
-    my $self = shift;
-    $self->{"DATABASE"} = shift;
+    my ($self, $value) = @_;
+	if ($value) {
+		chomp($value);
+		$self->{"DATABASE"} = $value;
+	} else {
+		$self->{"DATABASE"} = undef;
+	}
     return undef;
 }
 
 sub SetUser() {
-    my $self = shift;
-    $self->{"USER"} = shift;
+    my ($self, $value) = @_;
+	if ($value) {
+		chomp($value);
+		$self->{"USER"} = $value;
+	} else {
+		$self->{"USER"} = undef;
+	}
+    return undef;
+}
+
+sub SetHost() {
+    my ($self, $value) = @_;
+	if ($value) {
+		chomp($value);
+		$self->{"HOST"} = $value;
+	} else {
+		$self->{"HOST"} = undef;
+	}
+    return undef;
+}
+
+sub SetPort() {
+    my ($self, $value) = @_;
+	if ($value) {
+		chomp($value);
+		$self->{"PORT"} = $value;
+	} else {
+		$self->{"PORT"} = undef;
+	}
     return undef;
 }
 
 sub SetVersion() {
-    my $self = shift;
-    $self->{"VERSION"} = shift;
+    my ($self, $value) = @_;
+	if ($value) {
+		chomp($value);
+		$self->{"VERSION"} = $value;
+	} else {
+		$self->{"VERSION"} = undef;
+	}
     return undef;
 }
 
@@ -179,6 +232,11 @@ sub SetVersion() {
 
   Adds a GPMapReduce::Finalizer to the Document.
 
+=item AddTask(Finalizer)
+
+  Adds a GPMapReduce::Task to the Document.
+
+
 =back
 
 =cut
@@ -188,14 +246,17 @@ sub SetVersion() {
 sub AddInput
 {
     my $self   = shift;
-    my %param  = Params([qw(?Input ?Name ?Source ?Format ?Columns 
-                            ?Delimiter)], @_);
+    my %param  = Params([qw(?Input ?Name ?File ?Table ?Query 
+                            ?Format ?Columns ?Delimiter)], @_);
     my $input  = $param{"Input"};
     TypeCheck($self, "GPMapReduce::Document", "\$self", 0);
     TypeCheck($input, "GPMapReduce::Input", "Input", 1);
 
-	# We should have either recieved a real mapper and nothing else,
-    # OR enough parameters to make one.
+	# Remove parameters with undef values
+	delete $param{File}  if (!defined $param{File});
+	delete $param{Table} if (!defined $param{Table});
+	delete $param{Query} if (!defined $param{Query});
+
     if (!defined $input) {
 		delete $param{"Input"};
 		$input = new GPMapReduce::Input(%param);
@@ -204,6 +265,7 @@ sub AddInput
 		Error("Can not specify an Input and other arguments");
     }
 
+	$self->{OBJECTS}->{uc($input->{Name})} = $input;
     push @{$self->{INPUTS}}, $input;
     return undef;
 }
@@ -227,6 +289,7 @@ sub AddMapper
 		Error("Can not specify a Mapper and other arguments");
     }
 
+	$self->{OBJECTS}->{uc($mapper->{Name})} = $mapper;
     push @{$self->{FUNCS}}, $mapper;
     return undef;
 }
@@ -250,6 +313,7 @@ sub AddReducer
 		Error("Can not specify a Reducer and other arguments");
     }
 
+	$self->{OBJECTS}->{uc($reducer->{Name})} = $reducer;
     push @{$self->{REDUCES}}, $reducer;
     return undef;
 }
@@ -277,6 +341,9 @@ sub AddTransition
     TypeCheck($self,   "GPMapReduce::Document", "\$self", 0);
     TypeCheck($transition, "GPMapReduce::Transition", "Transition", 0);
 
+	$transition->CheckInput(undef);   # FIXME, this doesn't belong here
+
+	$self->{OBJECTS}->{uc($transition->{Name})} = $transition;
     push @{$self->{FUNCS}}, $transition;
     return undef;
 }
@@ -303,6 +370,7 @@ sub AddCombiner
     TypeCheck($self,   "GPMapReduce::Document", "\$self", 0);
     TypeCheck($combiner, "GPMapReduce::Combiner", "Combiner", 0);
 
+	$self->{OBJECTS}->{uc($combiner->{Name})} = $combiner;
     push @{$self->{FUNCS}}, $combiner;
     return undef;
 }
@@ -327,7 +395,57 @@ sub AddFinalizer
 		Error("Can not specify a Finalizer and other arguments")
     }
 
+	$self->{OBJECTS}->{uc($finalizer->{Name})} = $finalizer;
     push @{$self->{FUNCS}}, $finalizer;
+    return undef;
+}
+
+sub AddTask
+{
+	my $self  = shift;
+    my %param = Params([qw(?Task ?Name ?Source ?Mapper ?Reducer ?Output)], @_);
+    my $task  = $param{"Task"};
+
+    TypeCheck($self, "GPMapReduce::Document", "\$self", 0);
+    TypeCheck($task, "GPMapReduce::Task", "Task", 1);
+    
+    # We should have either recieved a real task and nothing else,
+    # OR enough parameters to make one.
+    if (!defined $task) {
+		delete $param{"Task"};
+		$task = new GPMapReduce::Task(%param);
+    } elsif (scalar keys %param > 1) {
+		my @k = keys %param;
+		Error("Can not specify a Task and other arguments")
+    }
+
+	$self->{OBJECTS}->{uc($task->{Name})} = $task;
+    push @{$self->{TASKS}}, $task;
+    return undef;
+
+}
+
+sub AddRun
+{
+	my $self  = shift;
+    my %param = Params([qw(?Task ?Source ?Mapper ?Reducer ?Output)], @_);
+    my $task  = $param{"Task"};
+
+    TypeCheck($self, "GPMapReduce::Document", "\$self", 0);
+    TypeCheck($task, "GPMapReduce::Task", "Task", 1);
+    
+    # We should have either recieved a real task and nothing else,
+    # OR enough parameters to make one.
+    if (!defined $task) {
+		delete $param{"Task"};
+		$param{Name} = 'Run_Task';
+		$task = new GPMapReduce::Task(%param);
+    } elsif (scalar keys %param > 1) {
+		my @k = keys %param;
+		Error("Can not specify a Task and other arguments")
+    }
+
+    push @{$self->{RUN}}, $task;
     return undef;
 }
 
@@ -352,72 +470,132 @@ sub AddFinalizer
 
 ################################################################
 
+sub Execute($$@)
+{
+	my ($self, $conn) = (shift, shift);
+    my %param = Params([qw(?Explain)], @_);
+	my $error = undef;
+	my (@objects, $o);
+
+
+    ############################################
+	# Before we can use the objects we need to call CheckInput
+	# This will validate that the parse was successful and that all
+	# the objects link together correctly
+	$self->_CheckInputs();
+
+    #############################################
+    # 1) Create objects
+    # We'll create them inputs/funcs/aggs/job order
+    # Theoretically functions may depend on each other if some of them
+    # are sql or pgsql functions -- so we may need more infastructure here.
+    @objects = (@{$self->{INPUTS}},
+				@{$self->{FUNCS}},
+				@{$self->{REDUCES}},
+				@{$self->{TASKS}});
+    foreach $o (@objects) {
+#		print STDERR "Creating $o->{Name} : ";
+		if (!$conn->do($o->SQLCreate($self->{PARAM}))) {
+			$error = $conn->errstr;
+			print STDERR "$error\n";
+			last;
+		}
+#		print STDERR "SUCESS\n";
+    }
+	
+	#############################################
+	# 2) Prepare the tasks
+	if (!$error) {
+		my @runlist = @{$self->{RUN}};
+		foreach my $r (@runlist) {
+			my $sql = '';
+
+			# Explain is currently a bit buggy
+			# It only works correctly for target = STDOUT
+			$sql = "explain " if ($param{Explain});
+			$sql .= $r->BuildQuery($self->{PARAM});
+			
+			
+			# FIXME - needs work for non STDOUT outputs
+ 			#       - stdout could probably use better formating
+#			print STDERR "$sql\n";
+			my $stmt = $conn->prepare($sql);
+			$stmt->execute();
+			while (my @row = $stmt->fetchrow_array()) {
+				print join('|', @row) . "\n";
+			}
+		}
+	}
+
+	############################################
+    # 3) Drop objects
+    @objects = (@{$self->{TASKS}}, 
+				@{$self->{REDUCES}},
+				@{$self->{FUNCS}},
+				@{$self->{INPUTS}});
+    foreach $o (@objects) { 
+#		print STDERR "Dropping $o->{Name} : ";
+		if (!$conn->do($o->SQLDrop())) {
+			print STDERR $conn->errstr . "\n";
+			$error = $conn->errstr unless ($error);
+		} else {
+#			print STDERR "SUCESS\n";
+		}
+	}
+
+	return $error;
+}
+
+
 sub GenerateSQL 
 {
-    my $self    = shift;
-    my $explain = shift;
-    my $sql     = "";
-    my @objects;
-	my $o;
-	
-    ############################################
-    # 1) Drop objects, just in case
-    # First drop any objects that we are defining; this is just in case
-    # we had prior definitions that have changed.  It would, of course,
-    # be better if we could check them first.  
-    # Delete the objects job/aggs/funcs/inputs order
+    my ($self, $explain) = (shift, shift);
+    my ($sql, @objects, $o);
 
-    @objects = (@{$self->{JOBS}}, 
+    ############################################
+	# Before we can use the objects we need to call CheckInput
+	# This will validate that the parse was successful and that all
+	# the objects link together correctly
+	$self->_CheckInputs();
+
+    #############################################
+    # 1) Create objects
+    # We'll create them inputs/funcs/aggs/job order
+    # Theoretically functions may depend on each other if some of them
+    # are sql or pgsql functions -- so we may need more infastructure here.
+	$sql = "--- CREATING OBJECTS --- \n";
+    @objects = (@{$self->{INPUTS}},
+				@{$self->{FUNCS}},
+				@{$self->{REDUCES}},
+				@{$self->{TASKS}});
+    foreach $o (@objects) {
+		my $create = $o->SQLCreate($self->{PARAM});
+		$sql .= "$create\n" if (defined $create);
+    }
+    
+    #############################################
+    # 2) Prepare the tasks
+    $sql .= "--- RUN QUERIES --- \n";
+    my @runlist = @{$self->{RUN}};
+    foreach my $r (@runlist) {
+
+		# Explain is currently a bit buggy
+		# It only works correctly for target = STDOUT
+		$sql .= "explain " if ($explain);
+		$sql .= $r->BuildQuery($self->{PARAM});
+		$sql .= "\n";
+    }
+
+    ############################################
+    # 3) Drop objects
+	$sql .= "--- CLEANUP OBJECTS --- \n";
+    @objects = (@{$self->{TASKS}}, 
 				@{$self->{REDUCES}},
 				@{$self->{FUNCS}},
 				@{$self->{INPUTS}});
     foreach $o (@objects) {
-		my $drop;
-		if (isa($o, "GPMapReduce::Function") or
-			isa($o, "GPMapReduce::Input") or
-			isa($o, "GPMapReduce::Reducer"))
-		{
-			$drop = $o->GenerateSQL_Drop();
-		} else {
-			print "[WARN] needs update";
-			$drop = $o->{DROP};
-		}
+		my $drop = $o->SQLDrop();
 		$sql .= $drop if (defined $drop);
-    }
-
-    #############################################
-    # 2) Create objects
-    # We'll create them inputs/funcs/aggs/job order
-    # Theoretically functions may depend on each other if some of them
-    # are sql or pgsql functions -- so we may need more infastructure here.
-
-    @objects = (@{$self->{INPUTS}},
-				@{$self->{FUNCS}},
-				@{$self->{REDUCES}},
-				@{$self->{JOBS}});
-    foreach $o (@objects) {
-		my $create;
-		if (isa($o, "GPMapReduce::Function") or
-			isa($o, "GPMapReduce::Input") or
-			isa($o, "GPMapReduce::Reducer"))
-		{
-			$create = $o->GenerateSQL_Create();
-		} else {
-			$create = $o->{CREATE};
-		}
-		$sql .= $create if (defined $create);
-    }
-    
-    #############################################
-    # 3) Prepare the jobs
-
-    my @runlist = @{$self->{RUN}};
-    foreach my $r (@runlist) {
-
-	# Explain is currently a bit buggy
-	# It only works correctly for target = STDOUT
-	$sql .= "explain " if ($explain);
-	$sql .= $r->{RUN};
     }
 
     ######################### 
@@ -460,183 +638,37 @@ sub GetUser($) {
     return $self->{"USER"};
 }
 
-
-sub add_split {
-
+sub GetHost($) {
+	my $self = shift;
+	return $self->{"HOST"};
 }
 
-sub add_job($$$$$$$) {
-	my $self    = shift;
-	my $name    = shift;
-	my $source  = shift;
-	my $map     = shift;
-	my $reduce  = shift;
-	my $group   = shift;
-	my $opt     = shift;
-	my $drop;
-	my $create;
-
-	return "UNNAMED JOB"                     if (!defined($name));
-	return "JOB <$name> is not a valid name" unless _checkname($name);
-	return "JOB <$name> must have a valid source"
-		unless (defined($source) and _checkname($source));
-	return "JOB <$name> cannot have grouper and reducer"
-		if (defined($group) and defined($reduce));
-	$group = "IDENTITY" unless (defined($group) or defined($reduce));
-	return "JOB <$name> must have a valid grouper"
-		unless(!defined($group) or _checkname($group));
-	return "JOB <$name> must have a valid reducer"
-		unless(!defined($reduce) or _checkname($reduce));
-
-	$drop    = "DROP VIEW $name CASCADE;\n";
-	$create  = "CREATE VIEW $name as \n";
-	$create .= " FIXME - needs implementation\n";
-
-	push @{$self->{"JOBS"}}, {
-		"NAME"       => $name,
-		"SOURCE"     => $source,
-		"MAPPER"     => $map,
-		"REDUCER"    => $reduce,
-		"GROUPER"    => $group,
-		"OPTIMIZE"   => $opt,
-		"DROP"       => $drop,
-		"CREATE"     => $create,
-	};
-	undef;
+sub GetPort($) {
+	my $self = shift;
+	return $self->{"PORT"};
 }
 
-sub add_run($$$$$$$) {
-	my $self    = shift;
-	my $source  = shift;
-	my $target  = shift;
-	my $map     = shift;
-	my $reduce  = shift;
-	my $mode    = shift;
-	my @param;
-	my $key;
-	my $type;
-	my $path;
-	my $run;
-	my $map_item;
-	my $source_item;
-	
-	$map    = "IDENTITY" unless(defined($map));
-	$reduce = "IDENTITY" unless(defined($reduce));
-	$target = "STDOUT"   unless(defined($target));
 
-	return "EXECUTION has invalid map name <$map>"
-		unless (_checkname($map));
-	return "EXECUTION has invalid reduce name <$reduce>"
-		unless (_checkname($reduce));
-
-	if (uc($target) eq "STDOUT") 
-	{
-		$type = "PIPE";
-		$path = "";
-	}
-	else 
-	{
-		return "EXECUTION has invalid target name <$target>"
-			unless ($target =~ /^(table|file):\/\/(.*)/i);
-		$type = uc($1);
-		$path = $2;
-	}
-
-	@param = @{$self->{"PARAM"}};
-
-	if (scalar(@param) && (defined($param[0])))
-	{
-		$key = $param[0];
-		$key =~ s/'/''/g;         # escape quotes #'
-		$key = "'$key'";          # wrap in quotes
-	}
-	else
-	{
-		$key = "NULL";
-	}
-
-
-	# Look for the MAP in our list of functions
-	if (uc($map) ne "IDENTITY")
-	{
-		my @funcs = @{$self->{FUNCS}};
-		foreach my $f (@funcs) {
-			if (isa($f, "GPMapReduce::Mapper") and
-				uc($f->{Name}) eq uc($map)) {
-				$map_item = $f;
-				last;
-			}
-		}
-		# if no mapfunc we will assume it is a pre-defined function
-		# WARNING: this may cause problems in the future
-	}
-
-	$run = "";
-	$run .= "CREATE TABLE $path AS\n" if ($type eq "TABLE");
-	$run .= "COPY (\n" if ($type eq "FILE");
-	$run .= "SELECT ";
-
-	$run .= "key, " unless (uc($map) eq "IDENTITY");
-
-	if (uc($reduce) eq "IDENTITY")
-	{
-		$run .= "value\n";
-	}
-	else
-	{
-		$run .= "$reduce(value) as value\n";
-	}
-
-	if (uc($map) eq "IDENTITY")
-	{
-		$run .= "FROM $source\n";
-	}
-	else
-	{
-		$run .= "FROM (SELECT key(m), value(m) FROM (";
-		$run .= "SELECT $map($key, value) as m FROM $source) q1) q2\n";
-	}
-
-	if (uc($reduce) eq "IDENTITY")
-	{
-		if (uc($map) eq "IDENTITY")
-		{
-			$run .= "ORDER BY value\n";
-		}
-		else
-		{
-			$run .= "WHERE key is not null\n";
-			$run .= "ORDER BY key, value\n";
-		}
-	}
-	else
-	{
-		if (uc($map) ne "IDENTITY")
-		{
-			$run .= "WHERE key is not null\n";
-			$run .= "GROUP BY key\n";
-			$run .= "ORDER BY key\n";
-		}
-	}
-	$run .= ") to '/$path'" if ($type eq "FILE");
-	$run .= ";\n";
-
-	push @{$self->{"RUN"}}, {
-		"SOURCE"     => $source,
-		"TARGET"     => $target,
-		"MAPPER"     => $map,
-		"REDUCER"    => $reduce,
-		"MODE"       => $mode,
-		"RUN"        => $run,
-	};
-	undef;
-}
-
-sub _checkname($)
+################################################################
+# Internal functions
+################################################################
+sub _CheckInputs()
 {
-    my $name = shift;
-    return ($name =~ /^[a-zA-Z]\w*$/);
+	my $self = shift;
+	my $o;
+	return undef if $self->{CHECKED};
+	
+	# Check that the input for all objects is valid
+	foreach $o (keys %{$self->{OBJECTS}}) {
+		$self->{OBJECTS}->{$o}->CheckInput($self->{OBJECTS});
+	}
+	foreach $o (@{$self->{RUN}}) {
+		$o->CheckInput($self->{OBJECTS});
+	}
+
+	$self->{CHECKED} = 1;
 }
+
 
 ################################################################
 
@@ -651,7 +683,7 @@ Caleb Welton, Jeffrey I Cohen
 
 Copyright (c) 2008 GreenPlum. All rights reserved.
 
-Address bug reports and comments to: cwelton@greenplum.com
+Address bug reports and comments to: support@greenplum.com
 
 =cut
 
