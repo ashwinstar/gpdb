@@ -3001,6 +3001,7 @@ TabPartitionElem:
                         n->boundSpec = $2;
                         n->subSpec   = $3;
                         n->location  = @1;
+                        n->isDefault = 0;
                         n->storeAttr = $4;
                         $$ = (Node *)n;
 				}
@@ -3026,6 +3027,7 @@ TabPartitionElem:
                         n->boundSpec = $1;
                         n->subSpec   = $2;
                         n->location  = @1;
+                        n->isDefault = 0;
                         n->storeAttr = $3;
                         $$ = (Node *)n;
 				}
@@ -3038,7 +3040,9 @@ TabSubPartitionElem:
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
+                        n->subSpec   = NULL;
                         n->location  = @1;
+                        n->isDefault = 0;
                         n->storeAttr = $3;
                         $$ = (Node *)n;
 				}
@@ -3049,6 +3053,7 @@ TabSubPartitionElem:
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
+                        n->subSpec   = NULL;
                         n->location  = @1;
                         n->isDefault = true;
                         n->storeAttr = $3;
@@ -3058,8 +3063,11 @@ TabSubPartitionElem:
               OptTabPartitionStorageAttr
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
+                        n->partName  = NULL;
                         n->boundSpec = $1;
+                        n->subSpec   = NULL;
                         n->location  = @1;
+                        n->isDefault = 0;
                         n->storeAttr = $2;
                         $$ = (Node *)n;
 				}

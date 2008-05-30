@@ -278,6 +278,31 @@ static void ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system);
 static void ATExecAddInherit(Relation rel, RangeVar *parent);
 static void ATExecDropInherit(Relation rel, RangeVar *parent);
+/* ALTER TABLE ... PARTITION */
+static void ATPExecPartAdd(Relation rel,
+                           AlterPartitionCmd *pc);			/* Add */
+static void ATPExecPartAlter(Relation rel,
+                             AlterPartitionCmd *pc);		/* Alter */
+static void ATPExecPartCoalesce(Relation rel,
+                                AlterPartitionCmd *pc);		/* Coalesce */
+static void ATPExecPartDrop(Relation rel,
+                            AlterPartitionCmd *pc);			/* Drop */
+static void ATPExecPartExchange(Relation rel,
+                                AlterPartitionCmd *pc);		/* Exchange */
+static void ATPExecPartMerge(Relation rel,
+                             AlterPartitionCmd *pc);		/* Merge */
+static void ATPExecPartModify(Relation rel,
+                              AlterPartitionCmd *pc);		/* Modify */
+static void ATPExecPartRename(Relation rel,
+                              AlterPartitionCmd *pc);		/* Rename */
+static void ATPExecPartSetTemplate(Relation rel,
+                                   AlterPartitionCmd *pc);	/* Set 
+                                                               Subpartition
+                                                               Template */
+static void ATPExecPartSplit(Relation rel,
+                             AlterPartitionCmd *pc);		/* Split */
+static void ATPExecPartTruncate(Relation rel,
+                                AlterPartitionCmd *pc);		/* Truncate */
 static void copy_relation_data(Relation rel, SMgrRelation dst);
 static void update_ri_trigger_args(Oid relid,
 					   const char *oldname,
@@ -3222,17 +3247,38 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartAdd:				/* Add */
+            ATPExecPartAdd(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartAlter:				/* Alter */
+            ATPExecPartAlter(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartCoalesce:			/* Coalesce */
+            ATPExecPartCoalesce(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartDrop:				/* Drop */
+            ATPExecPartDrop(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartExchange:			/* Exchange */
+            ATPExecPartExchange(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartMerge:				/* Merge */
+            ATPExecPartMerge(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartModify:				/* Modify */
+            ATPExecPartModify(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartRename:				/* Rename */
+            ATPExecPartRename(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartSetTemplate:		/* Set Subpartition Template */
+            ATPExecPartSetTemplate(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartSplit:				/* Split */
+            ATPExecPartSplit(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartTruncate:			/* Truncate */
-			break;
+			ATPExecPartTruncate(rel, (AlterPartitionCmd *) cmd->def);
+            break;
 		case AT_PartAddInternal:
 			ATExecPartAddInternal(rel, cmd->def);
 			break;
@@ -8667,6 +8713,132 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		return selectPartition(pn, values, isnull, tupdesc);
 	else
 		return relid;
+}
+
+
+/*
+ * ALTER TABLE ... ADD PARTITION 
+ *
+ */
+static void
+ATPExecPartAdd(Relation rel,
+               AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot ADD PARTITION to relation \"%s\"",
+                    RelationGetRelationName(rel))));
+}
+
+/* ALTER TABLE ... ALTER PARTITION */
+static void 
+ATPExecPartAlter(Relation rel,
+                 AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot ALTER PARTITION for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+}
+/* ALTER TABLE ... COALESCE PARTITION */
+static void 
+ATPExecPartCoalesce(Relation rel,
+                    AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot COALESCE PARTITION for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+}
+/* ALTER TABLE ... DROP PARTITION */
+static void 
+ATPExecPartDrop(Relation rel,
+                AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot DROP PARTITION for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+}
+/* ALTER TABLE ... EXCHANGE PARTITION */
+static void 
+ATPExecPartExchange(Relation rel,
+                    AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot EXCHANGE PARTITION for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+}
+/* ALTER TABLE ... MERGE PARTITION */
+static void 
+ATPExecPartMerge(Relation rel,
+                 AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot MERGE PARTITION for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+}
+/* ALTER TABLE ... MODIFY PARTITION */
+static void 
+ATPExecPartModify(Relation rel,
+                  AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot MODIFY PARTITION for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+}
+/* ALTER TABLE ... RENAME PARTITION */
+static void 
+ATPExecPartRename(Relation rel,
+                  AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot RENAME PARTITION for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+}
+/* ALTER TABLE ... SET SUBPARTITION TEMPLATE  */
+static void 
+ATPExecPartSetTemplate(Relation rel,
+                       AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot SET SUBPARTITION TEMPLATE for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+}
+/* ALTER TABLE ... SPLIT PARTITION */
+static void 
+ATPExecPartSplit(Relation rel,
+                 AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot SPLIT PARTITION for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+}
+/* ALTER TABLE ... TRUNCATE PARTITION */
+static void 
+ATPExecPartTruncate(Relation rel,
+                    AlterPartitionCmd *pc)
+{
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+             errmsg("cannot TRUNCATE PARTITION for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
 }
 
 /*

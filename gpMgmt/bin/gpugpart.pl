@@ -48,6 +48,7 @@ Options:
 
 =head1 DESCRIPTION
 
+Upgrade rule-based partition tables to 3.2 catalog tables.
 
 =head1 AUTHORS
 
