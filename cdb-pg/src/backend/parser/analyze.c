@@ -5160,7 +5160,7 @@ arg_get_val(Node *node)
 			{
 				/* must have been cast to the operator. */
 				FuncExpr *fe = (FuncExpr *)node;
-				Datum d;
+				Datum d = PointerGetDatum(NULL);
 
 				switch (list_length(fe->args))
 				{
