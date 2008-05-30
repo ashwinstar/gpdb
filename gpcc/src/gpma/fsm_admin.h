@@ -1,5 +1,5 @@
 #define ADMIN_MD5_SALT "Greenplum Database -- gpcc password abcdabcd salt"
-#define ADMIN_PASSWORD_ENCODED_LENGTH 32
+#define ADMIN_PASSWORD_ENCODED_LENGTH 120
 
 static apr_status_t a_admin_forward(gpcc_event_t *ev, void *arg)
 {
@@ -42,7 +42,7 @@ static apr_status_t a_admin_get_password_file_lease(gpcc_event_t *ev, void *arg)
 					    chubby_get_lease_cb,
 					    (void *) &slot->cmdidx,
 					    gpma.chubby_passwd_lease,
-					    15, 10);
+					    35, 30);
 
     return 0; 
 }
@@ -643,7 +643,7 @@ static apr_status_t a_admin_password_set_password_file(gpcc_event_t *ev, void *a
 		apr_md5_encode(slot->u.admin.new_password, 
 			       ADMIN_MD5_SALT, 
 			       encoded,
-			       sizeof(encoded)-1);
+			       sizeof(encoded));
 		
 		strcat(content->a, user);
 		strcat(content->a, ":");

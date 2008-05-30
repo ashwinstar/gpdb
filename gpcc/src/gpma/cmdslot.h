@@ -34,10 +34,9 @@ struct seginfo_t {
 typedef struct user_t user_t;
 struct user_t {
     apr_size_t datasz;
-    unsigned char sid[APR_MD5_DIGESTSIZE];
     apr_time_t login_time;
     apr_time_t expire_time;
-    char name[1];
+    char key[1];
 };
     
 typedef struct chubby_result_t chubby_result_t;

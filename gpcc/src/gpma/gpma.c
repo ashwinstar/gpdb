@@ -185,10 +185,32 @@ static gpcc_event_t *mkhttp_event(event_t event, gpcc_net_conn_t conn,
 				  const char *msg, int len)
 {
     gpcc_event_t *ev;
-
     ev = gpcc_event_alloc(event, cmdidx, sizeof(gpcc_net_conn_t) + len);
     memcpy(ev->pdata, &conn, sizeof(conn));
     memcpy(ev->pdata+sizeof(conn), msg, len);
+    return ev;
+}
+
+static gpcc_event_t *mkhttp_event_more(event_t event, gpcc_net_conn_t conn, 
+				       apr_uint32_t cmdidx, apr_uint32_t sndidx, apr_uint32_t rcvidx,
+				       const char *datastr, const char *msg, int len)
+{
+    gpcc_event_t *ev;
+    char *p;
+    int slen = strlen(datastr)+1;
+    ev = gpcc_event_alloc(event, cmdidx, sizeof(gpcc_net_conn_t) + sizeof(int) * 2 + slen + len);
+    p = ev->pdata;
+    memcpy(p, &conn, sizeof(conn));
+    p += sizeof(conn);
+    memcpy(p, &len, sizeof(int));
+    p += sizeof(int);
+    memcpy(p, msg, len);
+    p += len;
+    memcpy(p, &slen, sizeof(int));
+    p += sizeof(int);
+    memcpy(p, datastr, slen);
+    
+
     return ev;
 }
 
@@ -209,11 +231,14 @@ static void net_accepted(gpcc_net_conn_t conn,
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
 	int is_bad_uri = 0;
 	int is_bad_array_name = 0;
-
+	int is_bad_session_id = 0;
+	const char *session_id = 0;
+	
 	{
 	    int i;
 	    for (i = 0 ; i < from_peer->hc ; i++) {
 		if (apr_strnatcasecmp(from_peer->hname[i], "X-GPCC-SID") == 0) {
+		    session_id = from_peer->hvalue[i];
 		    gpcc_log_info("X-GPCC-SID : %s", from_peer->hvalue[i]);
 		}
 	    }
@@ -221,86 +246,102 @@ static void net_accepted(gpcc_net_conn_t conn,
 
 	is_bad_array_name = ! (gpma.array_name && a && 0 == strcmp(a, gpma.array_name));
 	if (! is_bad_array_name) {
-
-	    if (0 == strcmp("/gpcc/lscfg", uri->path)) {
-		ev = mkhttp_event(ARRAY_CONFIG_EVENT, conn, gpma.cfg_cmdslot->cmdidx, 0,
-				  gpma.cfg_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    }
-	    else if (0 == strcmp("/gpcc/status", uri->path)) {
-		char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
-
-		if (! seg) {
-		    ev = mkhttp_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		if (!session_id) {
+		    is_bad_session_id = 1;
+		    
 		} else {
-		    int i;
-		    if (gpma.unit_cmdtab) {
-			for (i = 0 ; i < gpma.unit_max && strcmp(seg, gpma.unit_cmdtab[i]->cmdname) != 0 ; i++) {;}
-			if (i < gpma.unit_max) {
-			    ev = mkhttp_event(UNIT_STATUS_EVENT, conn, gpma.unit_cmdtab[i]->cmdidx, 0,
-					      gpma.unit_cmdtab[i]->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-			} else {
-			    gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"error\", 'errmsg': 'no segment found' }");
-			}
+		    /* check the sessionid is valid */
+		    
+		    is_bad_session_id = 0;
+		}
+
+
+	    if (0 == strcmp("/gpcc/login", uri->path)) {
+		ev = mkhttp_event_more(USER_LOGIN_EVENT, conn, gpma.user_cmdslot->cmdidx, 0, 
+				       gpma.user_cmdslot->cmdidx, peer_addr, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		is_bad_session_id = 0;
+	    } else if (0 == strcmp("/gpcc/logout", uri->path)) {
+		if (session_id) {
+		    ev = mkhttp_event_more(USER_LOGOUT_EVENT, conn, gpma.user_cmdslot->cmdidx, 0, 
+					   gpma.user_cmdslot->cmdidx, session_id, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		    is_bad_session_id = 0;
+		}
+	    } else if (! is_bad_session_id) {
+		/* execute the command */
+
+		if (0 == strcmp("/gpcc/lscfg", uri->path)) {
+		    ev = mkhttp_event(ARRAY_CONFIG_EVENT, conn, gpma.cfg_cmdslot->cmdidx, 0,
+				      gpma.cfg_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else if (0 == strcmp("/gpcc/status", uri->path)) {
+		    char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
+		    
+		    if (! seg) {
+			ev = mkhttp_event(ARRAY_STATUS_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+					  gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		    } else {
-			gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"error\", 'errmsg' : 'no segment found' }");
+			int i;
+			if (gpma.unit_cmdtab) {
+			    for (i = 0 ; i < gpma.unit_max && strcmp(seg, gpma.unit_cmdtab[i]->cmdname) != 0 ; i++) {;}
+			    if (i < gpma.unit_max) {
+				ev = mkhttp_event(UNIT_STATUS_EVENT, conn, gpma.unit_cmdtab[i]->cmdidx, 0,
+						  gpma.unit_cmdtab[i]->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+			    } else {
+				gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"error\", 'errmsg': 'no segment found' }");
+			    }
+			} else {
+			    gpcc_net_http_close(conn, 200, "ok", "{\"status\":\"error\", 'errmsg' : 'no segment found' }");
+			}
 		    }
 		}
-	    }
-	    else if (0 == strcmp("/gpcc/init", uri->path)) {
-		ev = mkhttp_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				  gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
-	    }
-	    else if (0 == strcmp("/gpcc/start", uri->path)) {
-		char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
-
-		if (! seg) {
-		    /* send startcmd_event to FTS cmdslot ? */
-		    ev = mkhttp_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-		} else {
-		    ev = mkhttp_event(SEGMENT_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
-				     gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		else if (0 == strcmp("/gpcc/init", uri->path)) {
+		    ev = mkhttp_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				      gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
 		}
-	    }
-	    else if (0 == strcmp("/gpcc/stop", uri->path)) {
-		char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
-		if (! seg) {
-		    ev = mkhttp_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-		} else {
-		    ev = mkhttp_event(SEGMENT_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
-				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		else if (0 == strcmp("/gpcc/start", uri->path)) {
+		    char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
+		    
+		    if (! seg) {
+			/* send startcmd_event to FTS cmdslot ? */
+			ev = mkhttp_event(ARRAY_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+					  gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		    } else {
+			ev = mkhttp_event(SEGMENT_START_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
+					  gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		    }
 		}
-	    }
-	    else if (0 == strcmp("/gpcc/delete", uri->path)) {
-		ev = mkhttp_event(ARRAY_DELETE_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				  gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    }
-	    else if (0 == strcmp("/gpcc/login", uri->path)) {
-		ev = mkhttp_event(USER_LOGIN_EVENT, conn, gpma.user_cmdslot->cmdidx, 0, 
-				  gpma.user_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    } else if (0 == strcmp("/gpcc/logout", uri->path)) {
-		ev = mkhttp_event(USER_LOGOUT_EVENT, conn, gpma.user_cmdslot->cmdidx, 0, 
-				  gpma.user_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    } else if (0 == strcmp("/gpcc/admin/add", uri->path)) {
-		ev = mkhttp_event(ADMIN_ADD_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
-				  gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    } else if (0 == strcmp("/gpcc/admin/delete", uri->path)) {
-		ev = mkhttp_event(ADMIN_DELETE_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
-				  gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    } else if (0 == strcmp("/gpcc/admin/list", uri->path)) {
-		ev = mkhttp_event(ADMIN_LIST_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
-				  gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    } else if (0 == strcmp("/gpcc/admin/password", uri->path)) {
-		ev = mkhttp_event(ADMIN_PASSWORD_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
-				  gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
-	    }
-	    else {
-		is_bad_uri = 1; 
+		else if (0 == strcmp("/gpcc/stop", uri->path)) {
+		    char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
+		    if (! seg) {
+			ev = mkhttp_event(ARRAY_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+					  gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		    } else {
+			ev = mkhttp_event(SEGMENT_STOP_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0,
+					  gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		    }
+		}
+		else if (0 == strcmp("/gpcc/delete", uri->path)) {
+		    ev = mkhttp_event(ARRAY_DELETE_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
+				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		} else if (0 == strcmp("/gpcc/admin/add", uri->path)) {
+		    ev = mkhttp_event(ADMIN_ADD_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
+				      gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		} else if (0 == strcmp("/gpcc/admin/delete", uri->path)) {
+		    ev = mkhttp_event(ADMIN_DELETE_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
+				      gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		} else if (0 == strcmp("/gpcc/admin/list", uri->path)) {
+		    ev = mkhttp_event(ADMIN_LIST_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
+				      gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		} else if (0 == strcmp("/gpcc/admin/password", uri->path)) {
+		    ev = mkhttp_event(ADMIN_PASSWORD_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
+				      gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+		}
+		else {
+		    is_bad_uri = 1; 
+		}
 	    }
 	}
-
+	
 	if (ev) {
 	    gpcc_evqueue_put(gpma.evq, ev);
 	}
@@ -313,6 +354,11 @@ static void net_accepted(gpcc_net_conn_t conn,
 	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
 	    gpcc_net_http_close(conn, 200, "OK",
 				"{ \"status\": \"error\", \"errmsg\": \"bad array name\" }");
+	}
+	else if (is_bad_session_id) {
+	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
+	    gpcc_net_http_close(conn, 200, "OK",
+				"{ \"status\": \"error\", \"errmsg\": \"bad session id\" }");
 	}
 
 	if (uri) 
