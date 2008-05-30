@@ -530,8 +530,9 @@ class LoginCmd(Command):
             else:
                 try:
                     f = open('%s/.gpcc' % os.getenv('HOME'), 'w')
-                    f.write(self.opt['-u'])
-                    f.write(passwd)
+                    rset = packet['rset']
+                    if len(rset) > 0:
+                        f.write(rset[0])
                     f.close()
                 except IOError, e:
                     print '[ERROR] unable to write file to %s/.gpcc. (%s)' % (os.getenv('HOME'), e)
