@@ -1828,6 +1828,8 @@ static APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len
 
     /* for first line */
     line = apr_strtok(line, "\n", &last);
+    if (!line) 
+	line = apr_pstrdup(pool, "");
     line = gstring_trim(line);
     if (0 != apr_tokenize_to_argv(line, &req->argv, pool))
 	return req;
