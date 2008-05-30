@@ -28,7 +28,7 @@ DROP EXTERNAL TABLE EXT_REGION;
 -- 'gpfdist' protocol
 -- --------------------------------------
 CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
-execute E'(@ps_pidfirst@ |grep -v grep|grep gpfdist > /dev/null 2>&1 && echo "gpfdist is running" || echo "gpfdist is not running") '
+execute E'( (ps -e -u $LOGNAME |grep -v grep|grep gpfdist) 2>&1 > /dev/null&& echo "gpfdist is running" || echo "gpfdist is not running") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
@@ -42,7 +42,6 @@ execute E'(/bin/pkill gpfdist || killall gpfdist) > /dev/null 2>&1; echo "stoppi
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
-select * from gpfdist_status;
 select * from gpfdist_stop;
 select * from gpfdist_status;
 select * from gpfdist_start;
