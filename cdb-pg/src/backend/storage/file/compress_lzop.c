@@ -1,9 +1,10 @@
 /* compress_lzop.c */
 
-#include "storage/bfz.h"
+#include <storage/bfz.h>
 
 #ifdef WITH_LZO
 
+#include <unistd.h>
 #include <lzo/lzo1x.h>
 
 /* This file implements bfz compression algorithm "lzop". */
@@ -11,6 +12,8 @@
 static void
 bfz_lzop_close_ex(bfz_t*thiz)
 {
+    free(thiz->freeable_stuff);
+    thiz->freeable_stuff = NULL;
 }
 
 static int
@@ -19,7 +22,12 @@ read_fully(int fd,char*buffer,int size)
     char*old=buffer;
     while (size){
 	int i=read(fd,buffer,size);
-	if (i <= 0)
+	if (i < 0){
+	    if (errno == EINTR)
+		continue;
+	    elog(ERROR,"bfz_nothing_read_ex read failed");
+	}
+	if (i == 0)
 	    break;
 	buffer += i;
 	size -= i;
@@ -32,8 +40,11 @@ write_fully(int fd,char const*buffer,int size)
 {
     while (size){
 	int i=write(fd,buffer,size);
-	if (i <= 0)
-	    break;
+	if (i < 0){
+	    if (errno == EINTR)
+		continue;
+	    elog(ERROR,"bfz_nothing_write_ex write failed");
+	}
 	buffer += i;
 	size -= i;
     }
@@ -60,31 +71,28 @@ bfz_lzop_read_ex(bfz_t*thiz,char*buffer,int size)
     return u;
 }
 
-static void
-bfz_lzop_scan_begin_ex(bfz_t*thiz)
-{
-    thiz->tot_compressed = lseek(thiz->fd,0,2);
-    lseek(thiz->fd,0,0);
-}
-
 void
 bfz_lzop_init(bfz_t*thiz)
 {
+    struct bfz_freeable_stuff*fs=malloc(sizeof*fs);
+    if (!fs)
+	elog(ERROR,"bfz: bfz_lzop_init malloc failed");
     lzo_init();
-    thiz->read_ex = bfz_lzop_read_ex;
-    thiz->write_ex = bfz_lzop_write_ex;
-    thiz->close_ex = bfz_lzop_close_ex;
-    thiz->scan_begin_ex = bfz_lzop_scan_begin_ex;
+    thiz->freeable_stuff = fs;
+    fs->read_ex = bfz_lzop_read_ex;
+    fs->write_ex = bfz_lzop_write_ex;
+    fs->close_ex = bfz_lzop_close_ex;
 }
 
 static void*
 bfz_threaded_lzop_compress(void*arg)
 {
     bfz_t*thiz=(bfz_t*)arg;
+    struct bfz_threaded_freeable_stuff*fs=(void*)thiz->freeable_stuff;
     int size;
     char buf[BFZ_BUFFER_SIZE];
     lzo_init();
-    while ((size=pipe_read(&thiz->u.threaded.pipe,buf,sizeof buf)) != 0)
+    while ((size=pipe_read(&fs->pipe,buf,sizeof buf)) != 0)
 	bfz_lzop_write_ex(thiz,buf,size);
     return NULL;
 }
@@ -93,11 +101,12 @@ static void*
 bfz_threaded_lzop_uncompress(void*arg)
 {
     bfz_t*thiz=(bfz_t*)arg;
+    struct bfz_threaded_freeable_stuff*fs=(void*)thiz->freeable_stuff;
     int size;
     char buf[BFZ_BUFFER_SIZE];
     while ((size=bfz_lzop_read_ex(thiz,buf,sizeof buf)) != 0)
-	pipe_write(&thiz->u.threaded.pipe,buf,size);
-    pipe_done_writing(&thiz->u.threaded.pipe);
+	pipe_write(&fs->pipe,buf,size);
+    pipe_done_writing(&fs->pipe);
     return NULL;
 }
 
