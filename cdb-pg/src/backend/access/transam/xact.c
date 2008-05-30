@@ -3419,11 +3419,11 @@ CallXactCallbacksOnce(XactEvent event)
 	while(Xact_callbacks_once)
 	{
 		XactCallbackItem *next = Xact_callbacks_once->next;
-
-		(*Xact_callbacks_once->callback)(event, Xact_callbacks_once->arg);
+		XactCallback callback=Xact_callbacks_once->callback;
+		void*arg=Xact_callbacks_once->arg;
 		pfree(Xact_callbacks_once);
-
 		Xact_callbacks_once = next;
+		callback(event,arg);
 	}
 }
 
