@@ -251,6 +251,7 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 		);
 
 static A_Const *make_a_const(A_Const *pValConst, char *val_str);
+static Datum arg_get_val(Node *node);
 
 /*
  * parse_analyze
@@ -4816,10 +4817,35 @@ validate_list_partition(partValidationState *vstate)
 										   (Node *)lfirst(lc_val));
 				TypeName *type = lfirst(llc2);
 
-				node = coerce_type(NULL, node, exprType(node), 
+				/*
+				 * We want to cast things directly to the table type. We do
+				 * not want to have to store a node which coerces this, it's
+				 * unnecessarily expensive to do it every time.
+				 */
+				node = coerce_to_target_type(NULL, node, exprType(node), 
 								   type->typid, type->typmod,
-								   COERCION_IMPLICIT,
+								   COERCION_EXPLICIT,
 								   COERCE_IMPLICIT_CAST);
+
+				if (!node)
+					elog(ERROR, "cannot coerce VALUES field to table type");
+
+				/* explicit coerce */
+				if (IsA(node, FuncExpr))
+				{
+					Datum d = arg_get_val(node);
+					Const *c;
+					Type typ = typeidType(type->typid);
+
+					pfree(node);
+
+					c = makeConst(type->typid, typeLen(typ), d, false,
+								  typeByVal(typ));
+					ReleaseSysCache(typ);
+					node = (Node *)c;
+				}
+				else
+					Assert(IsA(node, Const));
 
 				tvals = lappend(tvals, node);
 
@@ -5135,13 +5161,38 @@ arg_get_val(Node *node)
 				/* must have been cast to the operator. */
 				FuncExpr *fe = (FuncExpr *)node;
 				Datum d;
-				Const *c;
-				
-				Assert(list_length(fe->args) == 1);
-				Assert(IsA(linitial(fe->args), Const));
-				
-				c = (Const *)linitial(fe->args);
-				d = OidFunctionCall1(fe->funcid, c->constvalue);
+
+				switch (list_length(fe->args))
+				{
+					case 1:
+						{
+							Datum d1 = arg_get_val(linitial(fe->args));
+
+							d = OidFunctionCall1(fe->funcid, d1);
+						}
+						break;
+					case 2:
+						{
+							Datum d1 = arg_get_val(linitial(fe->args));
+							Datum d2 = arg_get_val(lsecond(fe->args));
+
+							d = OidFunctionCall2(fe->funcid, d1, d2);
+						}
+						break;
+					case 3:
+						{
+							Datum d1 = arg_get_val(linitial(fe->args));
+							Datum d2 = arg_get_val(lsecond(fe->args));
+							Datum d3 = arg_get_val(lthird(fe->args));
+
+							d = OidFunctionCall3(fe->funcid, d1, d2, d3);
+						}
+						break;
+					default:
+						elog(ERROR, "unexpected number of coercion function "
+							 "arguments: %d", list_length(fe->args));
+						break;
+				}
 				return d;
 			}
 			break;

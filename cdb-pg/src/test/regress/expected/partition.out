@@ -1321,6 +1321,25 @@ LINE 6: partition aa start (date '2007-01-01')
                      ^
 drop table ggg cascade;
 ERROR:  table "ggg" does not exist
+-- test cross type coercion
+-- int -> char(N)
+create table ggg (i int, a char(1))
+distributed by (i)
+partition by list(a)
+(partition aa values(1, 2));
+NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa" for table "ggg"
+drop table ggg cascade;
+NOTICE:  drop cascades to table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa
+-- int -> numeric
+create table ggg (i int, n numeric(20, 2))
+distributed by (i)
+partition by list(n)
+(partition aa values(1.22, 4.1));
+NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa" for table "ggg"
+drop table ggg cascade;
+NOTICE:  drop cascades to table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa
 -- EVERY
 --  the documentation example, rewritten with EVERY in a template
 CREATE TABLE rank (id int,

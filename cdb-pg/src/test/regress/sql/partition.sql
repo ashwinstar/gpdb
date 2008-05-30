@@ -491,6 +491,22 @@ partition aa start (date '2007-01-01')
 
 drop table ggg cascade;
 
+-- test cross type coercion
+-- int -> char(N)
+create table ggg (i int, a char(1))
+distributed by (i)
+partition by list(a)
+(partition aa values(1, 2));
+
+drop table ggg cascade;
+
+-- int -> numeric
+create table ggg (i int, n numeric(20, 2))
+distributed by (i)
+partition by list(n)
+(partition aa values(1.22, 4.1));
+drop table ggg cascade;
+
 -- EVERY
 
 --  the documentation example, rewritten with EVERY in a template
