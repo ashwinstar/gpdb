@@ -56,6 +56,7 @@ void chubby_giveup_lease_cb(void *data, int e)
     chubby_result_t *result;
     gpcc_event_t *evt;
 
+    gpcc_log_info("chubby_giveup_lease: ret=%d", e);
     evt = gpcc_event_alloc(CHUBBY_GIVEUP_LEASE_REPLY_EVENT, cmdidx, sizeof(*result));
     result = (chubby_result_t *) evt->pdata;
     result->retval = e;

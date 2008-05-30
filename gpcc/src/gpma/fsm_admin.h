@@ -1,12 +1,29 @@
-#define LMA_MD5_SALT "Greenplum Database -- gpcc password abcdabcd salt"
-#define LMA_PASSWORD_ENCODED_LENGTH 31
+#define ADMIN_MD5_SALT "Greenplum Database -- gpcc password abcdabcd salt"
+#define ADMIN_PASSWORD_ENCODED_LENGTH 32
 
 static apr_status_t a_admin_forward(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *admin_slot;
     gpcc_event_t *evt;
-
-    admin_slot = cmdslot_alloc("ADMIN_CMD", ADMIN_CMDSTATE);
+    
+    switch (ev->etype) {
+    case ADMIN_ADD_EVENT:
+	admin_slot = cmdslot_alloc("ADMIN_ADD_CMD", ADMIN_ADD_CMDSTATE);
+	break;
+    case ADMIN_DELETE_EVENT:
+	admin_slot = cmdslot_alloc("ADMIN_DELETE_CMD", ADMIN_DELETE_CMDSTATE);
+	break;
+    case ADMIN_LIST_EVENT:
+	admin_slot = cmdslot_alloc("ADMIN_LIST_CMD", ADMIN_LIST_CMDSTATE);
+	break;
+    case ADMIN_PASSWORD_EVENT:
+	admin_slot = cmdslot_alloc("ADMIN_PASSWORD_CMD", ADMIN_PASSWORD_CMDSTATE);
+	break;
+    default:
+	gpcc_log_error("invalid admin event type = %d", ev->etype);
+	return 0;
+    }
+	
     evt = gpcc_event_alloc(ev->etype, admin_slot->cmdidx, ev->edatasz);
     memcpy(evt->pdata, ev->pdata, ev->edatasz);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -18,15 +35,14 @@ static apr_status_t a_admin_forward(gpcc_event_t *ev, void *arg)
 static apr_status_t a_admin_get_password_file_lease(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    char path[1024];
 
-    sprintf(path, "/gp/%s/%s/gpma/passwd.lease", gpma.user, gpma.array_name);    
+    gpcc_log_info("get password lease %s", gpma.chubby_passwd_lease);
     slot->u.admin.chubby.conn = chubby_makeConnection(gpma.chubby);
     chubby_connection_asynchronous_getLease(slot->u.admin.chubby.conn,
 					    chubby_get_lease_cb,
 					    (void *) &slot->cmdidx,
-					    path,
-					    30, 30);
+					    gpma.chubby_passwd_lease,
+					    15, 10);
 
     return 0; 
 }
@@ -37,7 +53,6 @@ static apr_status_t a_admin_get_password_file(gpcc_event_t *ev, void *arg)
     chubby_result_t *result = (chubby_result_t *) ev->pdata;
     struct json_object *obj;
     gpcc_event_t *evt;
-    char path[1024];
 
     if (result->retval) {
 	/* fail to get password file lease */
@@ -50,11 +65,10 @@ static apr_status_t a_admin_get_password_file(gpcc_event_t *ev, void *arg)
     } 
 
     slot->u.admin.chubby.lease = result->u.lease.conn;
-    sprintf(path, "/gp/%s/%s/gpma/passwd", gpma.user, gpma.array_name);
     chubby_connection_asynchronous_get(slot->u.admin.chubby.lease,
 				       chubby_get_cb,
 				       (void *) &slot->cmdidx,
-				       path,
+				       gpma.chubby_passwd_file,
 				       -1);
 				       
     return 0; 
@@ -66,10 +80,10 @@ static apr_status_t a_admin_giveup_lease(gpcc_event_t *ev, void *arg)
     chubby_result_t *result = (chubby_result_t *) ev->pdata;
     struct json_object *obj;
     gpcc_event_t *evt;
-    char path[1024];
     
     if (result->retval) {
 	/* fail to set password file */
+	gpcc_log_error("put password file %s failed", gpma.chubby_passwd_file);
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin", FAIL_STATUS, 0, "failed to save password file");
@@ -79,8 +93,7 @@ static apr_status_t a_admin_giveup_lease(gpcc_event_t *ev, void *arg)
     } 
 
     /* give up lease anyway */
-    slot->u.admin.chubby.lease = result->u.lease.conn;
-    sprintf(path, "/gp/%s/%s/gpma/passwd.lease", gpma.user, gpma.array_name);
+    gpcc_log_info("give up the password lease %s", gpma.chubby_passwd_lease);
     chubby_connection_asynchronous_giveUpLease(slot->u.admin.chubby.lease,
 					       chubby_giveup_lease_cb,
 					       (void *) &slot->cmdidx);
@@ -148,10 +161,9 @@ static apr_status_t a_admin_add_set_password_file(gpcc_event_t *ev, void *arg)
     chubby_result_t *result = (chubby_result_t *) ev->pdata;
     struct json_object *obj;
     gpcc_event_t *evt;
-    char path[1024];
     chubby_string_t *content = 0;
     char line[256];
-    char encoded[LMA_PASSWORD_ENCODED_LENGTH];
+    char encoded[ADMIN_PASSWORD_ENCODED_LENGTH];
     int len;
 
     if (result->retval && result->retval != CHUBBY_E_NOENT) {
@@ -165,12 +177,16 @@ static apr_status_t a_admin_add_set_password_file(gpcc_event_t *ev, void *arg)
     } 
 
     apr_md5_encode(slot->u.admin.password,
-		   LMA_MD5_SALT,
+		   ADMIN_MD5_SALT,
 		   encoded,
-		   sizeof(encoded)-1);
+		   sizeof(encoded));
 
     sprintf(line, "%s:%s\n", slot->u.admin.username, encoded);
-    
+    gpcc_log_info("add user '%s', password = '%s', encoded = '%s'", 
+		  slot->u.admin.username,
+		  slot->u.admin.password,
+		  encoded);
+
     if (result->retval == CHUBBY_E_NOENT) {
 	/* file not exists */
 	len = strlen(line) + 1;
@@ -189,12 +205,14 @@ static apr_status_t a_admin_add_set_password_file(gpcc_event_t *ev, void *arg)
     }
 
     /* save the password file */
-    sprintf(path, "/gp/%s/%s/gpma/passwd", gpma.user, gpma.array_name);
     chubby_connection_asynchronous_put(slot->u.admin.chubby.lease,
 				       chubby_put_cb,
 				       (void *) &slot->cmdidx,
-				       path,
+				       gpma.chubby_passwd_file,
 				       content);
+
+    if (content) 
+	free(content);
 
     return 0;
 }
@@ -208,6 +226,7 @@ static apr_status_t a_admin_add_done(gpcc_event_t *ev, void *arg)
 
     if (result->retval) {
 	/* fail to give up the lease */
+	gpcc_log_error("admin add: failed to give up password lease %s. ret=%d", gpma.chubby_passwd_lease, result->retval);
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin add", FAIL_STATUS, 0, "Failed to give up lease");
@@ -216,6 +235,7 @@ static apr_status_t a_admin_add_done(gpcc_event_t *ev, void *arg)
 	return 0;	
     }
 
+    gpcc_log_info("admin add: password lease gave up successfully.");
     evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);    
     obj = gpcc_json_http_reply(gpma.array_name, 0, "admin add", OK_STATUS, 0, "");
@@ -303,7 +323,6 @@ static apr_status_t a_admin_delete_set_password_file(gpcc_event_t *ev, void *arg
     chubby_result_t *result = (chubby_result_t *) ev->pdata;
     struct json_object *obj;
     gpcc_event_t *evt;
-    char path[1024];
     chubby_string_t *content = 0;
     char *buf, *tok, *last, *lastlast;
     char *user, *passwd;
@@ -357,15 +376,13 @@ static apr_status_t a_admin_delete_set_password_file(gpcc_event_t *ev, void *arg
     content->length = strlen(content->a) + 1;
 
     /* save the password file */
-    sprintf(path, "/gp/%s/%s/gpma/passwd", gpma.user, gpma.array_name);
     chubby_connection_asynchronous_put(slot->u.admin.chubby.lease,
 				       chubby_put_cb,
 				       (void *) &slot->cmdidx,
-				       path,
+				       gpma.chubby_passwd_file,
 				       content);
 
-    if (buf) 
-	free(buf);
+    if (buf) free(buf);
 
     return 0; 
 }
@@ -428,14 +445,12 @@ static apr_status_t a_admin_list_init(gpcc_event_t *ev, void *arg)
 static apr_status_t a_admin_get_password_file_direct(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    char path[1024];
     
     slot->u.admin.chubby.conn = chubby_makeConnection(gpma.chubby);
-    sprintf(path, "/gp/%s/%s/gpma/passwd", gpma.user, gpma.array_name);
     chubby_connection_asynchronous_get(slot->u.admin.chubby.conn,
 				       chubby_get_cb,
 				       (void *) &slot->cmdidx,
-				       path,
+				       gpma.chubby_passwd_file,
 				       -1);
     return 0;
 }
@@ -523,7 +538,7 @@ static apr_status_t a_admin_password_init(gpcc_event_t *ev, void *arg)
     }
 
     user = gpcc_net_uri_param(uri, "user");
-    password = gpcc_net_uri_param(uri, "password");
+    password = gpcc_net_uri_param(uri, "old_password");
     new_password = gpcc_net_uri_param(uri, "new_password");
     
     
@@ -565,7 +580,6 @@ static apr_status_t a_admin_password_set_password_file(gpcc_event_t *ev, void *a
     chubby_result_t *result = (chubby_result_t *) ev->pdata;
     struct json_object *obj;
     gpcc_event_t *evt;
-    char path[1024];
     chubby_string_t *content = 0;
     char *buf, *tok, *last, *lastlast;
     char *user, *passwd;
@@ -619,14 +633,15 @@ static apr_status_t a_admin_password_set_password_file(gpcc_event_t *ev, void *a
 		gpcc_evqueue_put(gpma.evq, evt);
 		obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "wrong password");
 		gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
-		json_object_put(obj);		
+		json_object_put(obj);	
+		if (buf) free(buf);
 		return 0;
 	    }
 
 	    {
-		char encoded[LMA_PASSWORD_ENCODED_LENGTH];
+		char encoded[ADMIN_PASSWORD_ENCODED_LENGTH];
 		apr_md5_encode(slot->u.admin.new_password, 
-			       LMA_MD5_SALT, 
+			       ADMIN_MD5_SALT, 
 			       encoded,
 			       sizeof(encoded)-1);
 		
@@ -642,17 +657,13 @@ static apr_status_t a_admin_password_set_password_file(gpcc_event_t *ev, void *a
     content->length = strlen(content->a) + 1;
 
     /* save the password file */
-    sprintf(path, "/gp/%s/%s/gpma/passwd", gpma.user, gpma.array_name);
     chubby_connection_asynchronous_put(slot->u.admin.chubby.lease,
 				       chubby_put_cb,
 				       (void *) &slot->cmdidx,
-				       path,
+				       gpma.chubby_passwd_file,
 				       content);
 
-    if (buf) 
-	free(buf);
-
-
+    if (buf) free(buf);
     return 0; 
 }
 

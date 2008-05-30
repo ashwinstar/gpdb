@@ -77,6 +77,13 @@ struct gpma_t {
     cmdslot_t *  admin_cmdslot;  /* admin management add, delete, list or password */
     
     chubby_t *   chubby;
+    const char*  chubby_etc_dir;
+    const char*  chubby_array_dir;
+    const char*  chubby_passwd_file;
+    const char*  chubby_passwd_lease;
+    const char*  chubby_leader_file;
+    const char*  chubby_leader_lease;
+    const char*  chubby_master_file;
 };
 
 extern gpma_t gpma;

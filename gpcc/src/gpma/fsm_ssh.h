@@ -33,7 +33,7 @@ static apr_status_t a_ssh_gethostname(gpcc_event_t *ev, void *arg)
 	return APR_EINVAL;
     }
 
-    slot->countdown = 1;
+    slot->countdown = 3;
     return 0;
 }
 
@@ -119,7 +119,7 @@ static apr_status_t a_ssh_gethostname_wait(gpcc_event_t *ev, void *arg)
 	    gpcc_evqueue_put(gpma.evq, evt);	    
 	}
     } else {
-	slot->countdown = 1;
+	slot->countdown = 3;
     }
 
     slot->u.gethostname.timeout--;
@@ -224,7 +224,7 @@ static apr_status_t a_ssh_getaddress(gpcc_event_t *ev, void *arg)
 	return APR_EINVAL;
     }
 
-    slot->countdown = 1;
+    slot->countdown = 3;
     
     return 0;
 
@@ -332,7 +332,7 @@ static apr_status_t a_ssh_getaddress_wait(gpcc_event_t *ev, void *arg)
 	    gpcc_evqueue_put(gpma.evq, evt);	    
 	}
     } else {
-	slot->countdown = 1;
+	slot->countdown = 3;
     }
 
     slot->u.getaddress.timeout--;

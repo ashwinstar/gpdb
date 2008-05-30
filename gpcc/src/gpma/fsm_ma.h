@@ -20,22 +20,40 @@ static apr_status_t a_lma_init(gpcc_event_t *ev, void *arg)
 static apr_status_t a_lma_mkdir(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    char path[1024];
     int e;
+    gpcc_event_t *evt;
 
-    sprintf(path, "/gp/%s/%s/gpma", gpma.user, gpma.array_name);
-    gpcc_log_info("mkdir %s", path);
-    e = chubby_connection_asynchronous_nonAtomicMakeManyDirs(slot->u.lma.chubby.conn,
-							   chubby_mkdir_cb,
-							   (void *) &slot->cmdidx,
-							   path);
-    if (e) {
-	gpcc_log_error("chubby_connection_asynchronous_nonAtomMakeManyDirs %s failed", path);
+    gpcc_log_info("mkdir %s", gpma.chubby_array_dir);
+    e = chubby_connection_nonAtomicMakeManyDirs(slot->u.lma.chubby.conn,
+						gpma.chubby_array_dir);
+    if (e && e != CHUBBY_E_INVAL) {
+	gpcc_log_error("chubby_connection_asynchronous_nonAtomMakeManyDirs %s failed", gpma.chubby_array_dir);
+	slot->countdown = 5;
+	return 0;
     }
+
+    gpcc_log_info("mkdir %s", gpma.chubby_etc_dir);
+    e = chubby_connection_nonAtomicMakeManyDirs(slot->u.lma.chubby.conn,
+						gpma.chubby_etc_dir);
+    if (e && e != CHUBBY_E_INVAL) {
+	gpcc_log_error("chubby_connection_asynchronous_nonAtomMakeManyDirs %s failed", gpma.chubby_etc_dir);
+	slot->countdown = 5;
+	return 0;
+    }
+
+    if (!e) {
+	/* empty /gpcc/etc/ directory.  create default password file */
+
+    }
+
+    evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+
     return 0;
 
 }
 
+/*
 static apr_status_t a_lma_mkdir_reply(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
@@ -51,20 +69,19 @@ static apr_status_t a_lma_mkdir_reply(gpcc_event_t *ev, void *arg)
     gpcc_evqueue_put(gpma.evq, evt);    
     return 0;
 }
+*/
 
 /* get the lease */
 static apr_status_t a_lma_get_lease(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    char path[1024];
     int e;
 
-    sprintf(path, "/gp/%s/%s/gpma/lease", gpma.user, gpma.array_name);
-    gpcc_log_info("get lease %s", path);
+    gpcc_log_info("get lease %s", gpma.chubby_leader_lease);
     e = chubby_connection_asynchronous_getLease(slot->u.lma.chubby.conn,
 						chubby_get_lease_cb,
 						(void *) &slot->cmdidx,
-						path,
+						gpma.chubby_leader_lease,
 						LMA_EXPIRE_PERIOD+5, 
 						LMA_EXPIRE_PERIOD);
 
@@ -101,21 +118,20 @@ static apr_status_t a_lma_get_lease_reply(gpcc_event_t *ev, void *arg)
 static apr_status_t a_lma_leader(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    char buf[1024], path[1024];
+    char buf[1024];
     chubby_string_t *c = (chubby_string_t *) buf;
     int e;
 
     slot->countdown = LMA_RENEW_PERIOD;
     
-    sprintf(path, "/gp/%s/%s/gpma/leader", gpma.user, gpma.array_name);
     sprintf(c->a, "%s:%d", gpma.hostname, gpma.ma_port);
     c->length = strlen(c->a) + 1;
     
-    gpcc_log_info("MA is putting %s file to paxos. content =%s", path, c->a);
+    gpcc_log_info("MA is putting %s file to paxos. content =%s", gpma.chubby_leader_file, c->a);
     e = chubby_connection_asynchronous_put(slot->u.lma.chubby.lease,
 					   chubby_put_cb,
 					   (void *) &slot->cmdidx,
-					   path,
+					   gpma.chubby_leader_file,
 					   c);
 
     return 0;
@@ -125,16 +141,14 @@ static apr_status_t a_lma_leader(gpcc_event_t *ev, void *arg)
 static apr_status_t a_lma_leader_get_master(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    char path[1024];
     int e;
 
     /* get the leader file */
-    sprintf(path, "/gp/%s/%s/gpma/master", gpma.user, gpma.array_name);
-    gpcc_log_info("MA is getting %s file", path);
+    gpcc_log_info("MA is getting %s file", gpma.chubby_master_file);
     e = chubby_connection_asynchronous_get(slot->u.lma.chubby.lease,
 					   chubby_get_cb,
 					   (void *) &slot->cmdidx,
-					   path,
+					   gpma.chubby_master_file,
 					   -1);	
 
     return 0;
@@ -278,14 +292,12 @@ static apr_status_t a_lma_standby(gpcc_event_t *ev, void *arg)
 static apr_status_t a_lma_standby_get_lease(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    char path[1024];
     int e;
 
-    sprintf(path, "/gp/%s/%s/gpma/lease", gpma.user, gpma.array_name);
     e = chubby_connection_asynchronous_getLease(slot->u.lma.chubby.conn,
 						chubby_get_lease_cb,
 						(void *) &slot->cmdidx,
-						path,
+						gpma.chubby_leader_lease,
 						LMA_EXPIRE_PERIOD+5, 
 						LMA_EXPIRE_PERIOD);
     
@@ -297,18 +309,16 @@ static apr_status_t a_lma_standby_get_lease_reply(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     chubby_result_t *result = (chubby_result_t *) ev->pdata;
-    char path[1024];
     gpcc_event_t *evt;
     int e;
 
     if (result->retval) {
 	/* get the leader file */
 	gpcc_log_info("standby MA failed to get lease");
-	sprintf(path, "/gp/%s/%s/gpma/leader", gpma.user, gpma.array_name);
 	e = chubby_connection_asynchronous_get(slot->u.lma.chubby.conn,
 					       chubby_get_cb,
 					       (void *) &slot->cmdidx,
-					       path,
+					       gpma.chubby_leader_file,
 					       -1);
 
 	return 0;

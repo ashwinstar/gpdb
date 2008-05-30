@@ -60,8 +60,6 @@ static apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
     int e;
 
     gpcc_log_info("a_config_updated...");
-    sprintf(path, "/gp/%s/%s/gpma/master", gpma.user, gpma.array_name);
-
     if (config_get(gpma.cfg, CONFIG_DBNAME_KEY)) {
 	/* put master file */
 	master = config_get(gpma.cfg, "seg.m.0");
@@ -72,7 +70,7 @@ static apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
 	e = chubby_connection_asynchronous_put(gpma.lma_cmdslot->u.lma.chubby.lease,
 					       chubby_put_cb,
 					       (void *) &slot->cmdidx,
-					       path,
+					       gpma.chubby_master_file,
 					       s);
     } else {
 	/* delete master file */
@@ -80,7 +78,7 @@ static apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
 	e = chubby_connection_asynchronous_remove(gpma.lma_cmdslot->u.lma.chubby.lease,
 						  chubby_remove_cb,
 						  (void *) &slot->cmdidx,
-						  path);
+						  gpma.chubby_master_file);
     }
 
     config_gc(gpma.cfg);

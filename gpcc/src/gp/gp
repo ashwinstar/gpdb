@@ -517,6 +517,7 @@ class LoginCmd(Command):
         for i in xrange(3):
             passwd = getpass('password:')
             param = {}
+            if (self.gopt['-a']): param['a'] = self.gopt['-a']
             param['user'] = self.opt['-u']
             param['host'] = socket.gethostname()
             param['password'] = passwd
@@ -561,6 +562,7 @@ class LogoutCmd(Command):
                 sys.exit('please specify user.')
             self.opt['-u'] = user
         param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
         param['user'] = self.opt['-u']
         param['host'] = socket.gethostname()
         packet = self._httpGet('/gpcc/logout', param)
@@ -608,6 +610,7 @@ class AdminAddCmd(Command):
             sys.exit(2)
 
         param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
         param['user'] = self.opt['-u']
         param['password'] = new_passwd
         packet = self._httpGet('/gpcc/admin/add', param)
@@ -647,6 +650,7 @@ class AdminDeleteCmd(Command):
             sys.exit(1)
             
         param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
         param['user'] = self.opt['-u']
         packet = self._httpGet('/gpcc/admin/delete', param)
         self.raw(packet)         
@@ -667,6 +671,7 @@ class AdminListCmd(Command):
 
     def run(self):
         param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
         packet = self._httpGet('/gpcc/admin/list', param)
         self.raw(packet)         
         if 'ok' != packet.get('status'):
@@ -707,6 +712,7 @@ class AdminPasswordCmd(Command):
             sys.exit(2)
 
         param = {}
+        if (self.gopt['-a']): param['a'] = self.gopt['-a']
         param['old_password'] = old_password
         param['new_password'] = new_password
         param['user'] = self.opt['-u']

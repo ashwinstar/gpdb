@@ -42,6 +42,7 @@ cmdslot_t* cmdslot_alloc(const char* name, cmdstate_t state)
 	    return p;
 	}
     }
+    gpcc_log_error("cmdslot is fully occupied");
     return 0;
 }
 

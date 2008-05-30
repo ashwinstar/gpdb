@@ -210,6 +210,15 @@ static void net_accepted(gpcc_net_conn_t conn,
 	int is_bad_uri = 0;
 	int is_bad_array_name = 0;
 
+	{
+	    int i;
+	    for (i = 0 ; i < from_peer->hc ; i++) {
+		if (apr_strnatcasecmp(from_peer->hname[i], "X-GPCC-SID") == 0) {
+		    gpcc_log_info("X-GPCC-SID : %s", from_peer->hvalue[i]);
+		}
+	    }
+	}
+
 	is_bad_array_name = ! (gpma.array_name && a && 0 == strcmp(a, gpma.array_name));
 	if (! is_bad_array_name) {
 
@@ -333,7 +342,9 @@ static int net_received(gpcc_net_conn_t conn,
 			apr_uint64_t arg)
 {
     /* should not invoke, yet */
-    gpcc_warning(FLINE, "net_received should not get called");
+    ((char *)buf)[buflen]=0;
+    gpcc_warning(FLINE, "net_received should not get called. len=%d, c= %s", buflen, buf);
+    
     return -1;
 }
 
@@ -634,6 +645,17 @@ void check_hostname(void)
 
 }
 
+void chubby_path_setup(void)
+{
+    gpma.chubby_etc_dir = apr_pstrdup(gpma.pool, "/gpcc/etc/");
+    gpma.chubby_passwd_file = apr_pstrdup(gpma.pool, "/gpcc/etc/passwd");
+    gpma.chubby_passwd_lease = apr_pstrdup(gpma.pool, "/gpcc/etc/passwd.lease");
+    gpma.chubby_array_dir = apr_psprintf(gpma.pool, "/gpcc/%s/gpma", gpma.array_name);
+    gpma.chubby_leader_file = apr_psprintf(gpma.pool, "%s/leader", gpma.chubby_array_dir);
+    gpma.chubby_leader_lease = apr_psprintf(gpma.pool, "%s/lease", gpma.chubby_array_dir);
+    gpma.chubby_master_file = apr_psprintf(gpma.pool, "%s/master", gpma.chubby_array_dir);
+}
+
 int main(int argc, const char* argv[])
 {
 #ifdef SIGPIPE
@@ -658,6 +680,7 @@ int main(int argc, const char* argv[])
     check_hostname();
     check_gphome();
     load_config();
+    chubby_path_setup();
 
     if (gpma.daemonize) {
 	GPCC_DO(0 == apr_proc_detach(1));

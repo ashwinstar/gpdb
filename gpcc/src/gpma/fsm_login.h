@@ -91,7 +91,6 @@ static apr_status_t a_login_get_password_file(gpcc_event_t *ev, void *arg)
     struct json_object *obj;
     gpcc_event_t *evt;
     const char *user, * password, *host;
-    char path[1024];
 
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
@@ -116,12 +115,11 @@ static apr_status_t a_login_get_password_file(gpcc_event_t *ev, void *arg)
 
 
     /* get password file from chubby */				       
-    sprintf(path, "/gp/%s/%s/gpma/passwd", gpma.user, gpma.array_name);
     slot->u.login.chubby.conn = chubby_makeConnection(gpma.chubby);
     chubby_connection_asynchronous_get(slot->u.login.chubby.conn, 
 				       chubby_get_cb, 
 				       (void *) &slot->cmdidx, 
-				       path, 
+				       gpma.chubby_passwd_file, 
 				       -1);
 
     if (uri) 

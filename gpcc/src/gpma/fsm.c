@@ -105,8 +105,6 @@ APR_DECLARE(void) fsm_init(void)
     /* lma */
     gpcc_fsm_put(LMA_OFF_CMDSTATE, TIMEUP_EVENT, LMA_MKDIR_CMDSTATE,
 		 a_lma_init, a_lma_mkdir, NULL);
-    gpcc_fsm_put(LMA_MKDIR_CMDSTATE, CHUBBY_MKDIR_REPLY_EVENT, LMA_MKDIR_CMDSTATE,
-		 a_lma_mkdir_reply, NULL);
     gpcc_fsm_put(LMA_MKDIR_CMDSTATE, SUCCESS_EVENT, LMA_LEADLESS_CMDSTATE,
 		 a_lma_get_lease, NULL);
     gpcc_fsm_put(LMA_MKDIR_CMDSTATE, TIMEUP_EVENT, LMA_MKDIR_CMDSTATE,
