@@ -15,7 +15,7 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpfdist mklibgpcc mkgpha mkgp mklibchubby mkchubbytest mkpaxos
+all: mkdir mkext mkgpfdist mklibgpcc mkgpha mkgp mklibchubby mkchubbytest mkpaxos mkgpma
 
 mkpaxos: mkdir
 	(cd src/paxos;sh build)
@@ -54,10 +54,10 @@ mkgp:
 	@mkdir -p build/bin
 	@cp -f src/gp/gp build/bin/
 
-mkgpma: mklibgpcc mklibzookeeper mklibchubby
+mkgpma: mklibgpcc mklibchubby
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -I../build/include \
-		-o gpma *.c -L../build/lib -lgpcc -levent -ljson -lresolv -lzookeeper -lchubby $(APULIBS) $(APRLIBS))
+		-o gpma *.c -L../build/lib -lgpcc -levent -ljson -lresolv -lchubby $(APULIBS) $(APRLIBS))
 	@mkdir -p build/bin
 	@cp -f src/gpma/gpma build/bin/
 
@@ -68,13 +68,6 @@ mkgpha: mklibgpcc
 		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
 	@mkdir -p build/bin
 	@cp -f src/gpha/gpha build/bin/
-
-mkfts: mklibgpcc
-	@echo --- fts -----------------------------------------------------
-	@(cd src/fts; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o fts *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
-#	@(cd src/fts; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-#		-c *.c)
 
 mkdir:
 	@mkdir -p src/build/lib src/build/include build/bin build/bin/lib

@@ -196,6 +196,7 @@ static apr_status_t a_login_logging_on(gpcc_event_t *ev, void *arg)
 	 tok ; 
 	 tok = apr_strtok(0, "\r\n", &last)) {
 
+	tok = gpcc_string_trim(tok);
 	if (*tok == 0)
 	    continue;
 	user = apr_strtok(tok, ":", &lastlast);
@@ -221,7 +222,13 @@ static apr_status_t a_login_logging_on(gpcc_event_t *ev, void *arg)
 	    }
 	}
     }
+
     
+    evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
+    obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "No such user found");
+    gpcc_net_http_close(slot->u.login.conn, 200, "ok", json_object_to_json_string(obj));
+    json_object_put(obj);
     return 0;
 }
 

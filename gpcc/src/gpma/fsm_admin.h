@@ -42,7 +42,7 @@ static apr_status_t a_admin_get_password_file_lease(gpcc_event_t *ev, void *arg)
 					    chubby_get_lease_cb,
 					    (void *) &slot->cmdidx,
 					    gpma.chubby_passwd_lease,
-					    35, 30);
+					    15, 10);
 
     return 0; 
 }

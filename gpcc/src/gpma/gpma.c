@@ -251,8 +251,10 @@ static void net_accepted(gpcc_net_conn_t conn,
 		    
 		} else {
 		    /* check the sessionid is valid */
-		    
-		    is_bad_session_id = 0;
+		    if (apr_hash_get(gpma.user_cmdslot->u.user.usertb, session_id, APR_HASH_KEY_STRING) == 0) {
+			gpcc_log_error("invalid session_id = %s", session_id);
+			is_bad_session_id = 1;
+		    }
 		}
 
 
@@ -358,7 +360,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 	else if (is_bad_session_id) {
 	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
 	    gpcc_net_http_close(conn, 200, "OK",
-				"{ \"status\": \"error\", \"errmsg\": \"bad session id\" }");
+				"{ \"status\": \"error\", \"errmsg\": \"please do 'gp login' to log on\" }");
 	}
 
 	if (uri) 
