@@ -93,6 +93,7 @@ sub initialize()
     my $self = shift;
     my @param = @_;
 
+	$self->{Debug}    = 0;         # Fixme, should be configurable
     $self->{DATABASE} = undef;
     $self->{USER}     = undef;
 	$self->{OBJECTS}  = { 
@@ -103,7 +104,7 @@ sub initialize()
     $self->{FUNCS}    = [];
     $self->{MAPS}     = [];
     $self->{REDUCES}  = [];
-    $self->{TASKS}     = [];
+    $self->{TASKS}    = [];
     $self->{RUN}      = [];
     $self->{PARAM}    = [@param];    ## Fixme, this isn't the cleanest
 
@@ -246,7 +247,7 @@ sub SetVersion() {
 sub AddInput
 {
     my $self   = shift;
-    my %param  = Params([qw(?Input ?Name ?File ?Table ?Query 
+    my %param  = Params([qw(?Input ?Name ?File ?Table ?Query ?GPFDist
                             ?Format ?Columns ?Delimiter)], @_);
     my $input  = $param{"Input"};
     TypeCheck($self, "GPMapReduce::Document", "\$self", 0);
@@ -254,6 +255,7 @@ sub AddInput
 
 	# Remove parameters with undef values
 	delete $param{File}  if (!defined $param{File});
+	delete $param{GPFDist} if (!defined $param{GPFDist});
 	delete $param{Table} if (!defined $param{Table});
 	delete $param{Query} if (!defined $param{Query});
 
@@ -494,13 +496,13 @@ sub Execute($$@)
 				@{$self->{REDUCES}},
 				@{$self->{TASKS}});
     foreach $o (@objects) {
-#		print STDERR "Creating $o->{Name} : ";
+		print STDERR "Creating $o->{Name} : " if $self->{Debug};
 		if (!$conn->do($o->SQLCreate($self->{PARAM}))) {
 			$error = $conn->errstr;
 			print STDERR "$error\n";
 			last;
 		}
-#		print STDERR "SUCESS\n";
+		print STDERR "SUCCESS\n"  if $self->{Debug};
     }
 	
 	#############################################
@@ -514,13 +516,17 @@ sub Execute($$@)
 			# It only works correctly for target = STDOUT
 			$sql = "explain " if ($param{Explain});
 			$sql .= $r->BuildQuery($self->{PARAM});
+			print STDERR "$sql\n"  if $self->{Debug};
 			
 			
 			# FIXME - needs work for non STDOUT outputs
  			#       - stdout could probably use better formating
-#			print STDERR "$sql\n";
 			my $stmt = $conn->prepare($sql);
-			$stmt->execute();
+			if (!$stmt->execute()) {
+				$error = $conn->errstr;
+				print STDERR "$error\n";
+				last;
+			}
 			while (my @row = $stmt->fetchrow_array()) {
 				print join('|', @row) . "\n";
 			}
@@ -534,12 +540,12 @@ sub Execute($$@)
 				@{$self->{FUNCS}},
 				@{$self->{INPUTS}});
     foreach $o (@objects) { 
-#		print STDERR "Dropping $o->{Name} : ";
+		print STDERR "Dropping $o->{Name} : " if ($self->{Debug});
 		if (!$conn->do($o->SQLDrop())) {
 			print STDERR $conn->errstr . "\n";
 			$error = $conn->errstr unless ($error);
 		} else {
-#			print STDERR "SUCESS\n";
+			print STDERR "SUCCESS\n" if ($self->{Debug});
 		}
 	}
 

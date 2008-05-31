@@ -66,9 +66,10 @@ data files.
 
   Parameters:
     Name     =>    # The name of the object, REQUIRED
-    File     =>    # Where the data comes from (exlusive with table/query)
-    Table    =>    # Where the data comes from (exlusive with file/query)
-    Query    =>    # Where the data comes from (exlusive with file/table)
+    File     =>    # Where the data comes from (exlusive with gpfdist/table/query)
+    Table    =>    # Where the data comes from (exlusive with gpfdist/file/query)
+	GPFDist  =>    # Where the data comes from (exlusive with file/table/query)
+    Query    =>    # Where the data comes from (exlusive with gpfdist/file/table)
     Columns  =>    # description of columns in an external file
     Format   =>    # format of an external file
     Delimiter =>   # delimiter for an external file
@@ -84,11 +85,12 @@ sub new {
 	my $self    = new GPMapReduce::Object(@_);
     bless $self, $class;   
 
+	$self->Parameter('GPFDist', Kind => 'ARRAY');
 	$self->Parameter('File', Kind => 'ARRAY');
 	$self->Parameter('Table', Kind => 'SCALAR');
 	$self->Parameter('Query', Kind => 'SCALAR');
-	$self->Parameter('Columns', Default => ['value text']);
-	$self->Parameter('Format', Default => 'text');
+	$self->Parameter('Columns', Kind => 'ARRAY');
+	$self->Parameter('Format', Kind => 'SCALAR');
 	$self->Parameter('Delimiter', Kind => 'SCALAR');
 
     return $self;
@@ -96,14 +98,20 @@ sub new {
 
 sub CheckInput($$) {
 	my ($self, $objects) = (shift, shift);
+	my $count = 0;
 
 	# Call superclass
 	GPMapReduce::Object::CheckInput($self, $objects);
 
 	# Perform GPMapReduce::Input specific verification
-	if (($self->{File} and ($self->{Table} or $self->{Query})) or
-		($self->{Table} and $self->{Query})) {
-		Error("Input can only specify one of: FILE/TABLE/QUERY");
+	$count++ if ($self->{GPFDist});
+	$count++ if ($self->{File});
+	$count++ if ($self->{Table});
+	$count++ if ($self->{Query});
+	if ($count == 0) { 
+		Error("Input <$self->{Name}> requires FILE, TABLE, GPFDIST, or QUERY");
+	} elsif ($count > 1) {
+		Error("Input <$self->{Name}> may only specify one (FILE|TABLE|GPFDIST|QUERY)");
 	}
 
 	if ($self->{File}) {
@@ -120,6 +128,37 @@ sub CheckInput($$) {
 				Error("Invalid FILE specification: '$file'");
 			}
 		}
+
+		# Add default column spec if not listed
+		if (not $self->{Columns}) {
+			$self->{Columns} = ['value text'];
+		}
+		if (not $self->{Format}) {
+			$self->{Format} = 'text';
+		}
+	} elsif ($self->{GPFDist}) {
+		$self->{Type} = "GPFDIST";
+		$self->{Source} = '';
+		foreach my $file (@{$self->{GPFDist}}) {
+			if ($file =~ /^([a-zA-Z]+):(.*)$/) {
+				my ($host, $path) = ($1, $2);
+				if (not $self->{Source} eq '') {
+					$self->{Source} .= ",\n           ";
+				}
+				$self->{Source} .= "'gpfdist://$host$path'";
+			} else {
+				Error("Invalid GPFDIST specification: '$file'");
+			}
+		}
+
+		# Add default column spec if not listed
+		if (not $self->{Columns}) {
+			$self->{Columns} = ['value text'];
+		}
+		if (not $self->{Format}) {
+			$self->{Format} = 'text';
+		}
+
 	} elsif ($self->{Table}) {
 		if ($self->{Table} =~ /^[a-zA-Z]\w+$/) {
 			$self->{Type} = "TABLE";

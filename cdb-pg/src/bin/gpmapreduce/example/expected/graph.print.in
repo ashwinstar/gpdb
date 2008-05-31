@@ -1,13 +1,14 @@
 --- CREATING OBJECTS --- 
-CREATE EXTERNAL TABLE network(key text, value text)
+CREATE EXTERNAL TABLE network(key integer, value integer)
   LOCATION('file://@hostname@@abs_srcdir@/data/www.small.dat')
   FORMAT 'text' (DELIMITER '|');
 
-CREATE FUNCTION reverse(IN key integer, IN value integer, OUT key integer, OUT value integer) AS $$
+CREATE TYPE reverse_Return as (key integer, value integer);
+CREATE FUNCTION reverse(key integer, value integer) RETURNS reverse_Return AS $$
 return {'key': value, 'value': key}
 $$ LANGUAGE plpythonu;
 
-CREATE FUNCTION pcount(IN state integer, IN value integer, OUT state integer) AS $$
+CREATE FUNCTION pcount(state integer, value integer) RETURNS integer AS $$
 return state + 1
 $$ LANGUAGE plpythonu;
 
@@ -18,8 +19,9 @@ CREATE AGGREGATE traverse(integer) (
 );
 
 --- RUN QUERIES --- 
-SELECT key, value
+SELECT key, traverse(value) as value
 FROM network
+GROUP BY key
 ORDER BY key, value;
 
 SELECT key, traverse(value) as value
@@ -35,5 +37,6 @@ ORDER BY key, value;
 --- CLEANUP OBJECTS --- 
 DROP AGGREGATE IF EXISTS traverse(integer) CASCADE;
 DROP FUNCTION IF EXISTS reverse(integer, integer) CASCADE;
+DROP TYPE IF EXISTS reverse_Return CASCADE;
 DROP FUNCTION IF EXISTS pcount(integer, integer) CASCADE;
 DROP EXTERNAL TABLE IF EXISTS network CASCADE;

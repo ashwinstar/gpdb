@@ -88,6 +88,7 @@ my $FUNC =
  "OPTIMIZE"    => '.*',
  "PARAMETERS"  => [],
  "RETURNS"     => [],
+ "MODE"         => '\w+'           #   'SINGLE|MULTI'
 };
 
 my $SPLIT = 
@@ -323,6 +324,7 @@ sub _add_to_document($$$)
 		$doc->AddInput(Name      => $value->{NAME},
 					   File      => $value->{FILE},
 					   Table     => $value->{TABLE},
+					   GPFDist   => $value->{GPFDIST},
 					   Query     => $value->{QUERY},
 					   Columns   => $value->{COLUMNS},
 					   Format    => $value->{FORMAT},

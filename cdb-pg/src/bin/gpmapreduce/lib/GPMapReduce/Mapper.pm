@@ -98,7 +98,6 @@ languages.
     Body     =>    # Text describing the body of the function
     Function =>    # Function pointer for the function 
     Optimize =>    # Optimization flags for the function
-    Mode     =>    #   separate from optimize why?
     Input    =>    # Describes input parameters
     Output   =>    # Describes input parameters
 
@@ -121,7 +120,6 @@ sub new {
 	# Override Function Input/Output with Mapper defaults
 	$self->Parameter('Input', Default => ['key text', 'value text']);
 	$self->Parameter('Output', Default => ['key text', 'value text']);
-	$self->Parameter('Mode');        # can we get rid of this?
 	
     return $self;
 }
@@ -161,40 +159,42 @@ sub GenerateQuery($$$)
 	@intype = @{$self->{Input_type}};
 	@out = @{$self->{Output_name}};
 
-	# Generate the query 
-	for ($i = 0; $i <= $#out; $i++) {
-		if ($i == 0) {
-			$sql = "SELECT $out[$i](m)";
-		} else {
-			$sql .= ", $out[$i](m)";
-		}
-	}
-	$sql .= " FROM (SELECT $self->{Name}("; 
-	for ($i = 0; $i <= $#in; $i++) {
-		$sql .= ", " if ($i > 0);
-
-		# For a column named key we use the key column of the source
-		# it it exists, otherwise we use the passed in parameter
-		if (uc($in[$i]) eq 'KEY') {
-			for ($j = 0; $j <= $#columns; $j++) {
+	# Special case input column named 'key':
+	#   1) If there is a column in the source called key, use it
+	#   2) Otherwise use a parameter from the command line
+	#   3) If no parameters use NULL
+	for ($i = 0; $i <= $#in; $i++) 
+	{
+		if (uc($in[$i]) eq 'KEY') 
+		{
+			for ($j = 0; $j <= $#columns; $j++) 
+			{
 				last if (uc($columns[$j]) eq 'KEY');
 			}
-			if ($j > $#columns) {
-				if (defined($key)) {
-					$sql .= "$key\::$intype[$i]";
-				} else {
-					$sql .= "NULL::$intype[$i]";
+			if ($j > $#columns) 
+			{
+				if (defined($key)) { 
+					$in[$i] = "$key\::$intype[$i]";
+				} else { 
+					$in[$i] .= "NULL::$intype[$i]"; 
 				}
-			} else {
-				$sql .= "$in[$i]";
 			}
-		} else {
-			$sql .= "$in[$i]";
 		}
 	}
-	$sql .= ") as m ";
-	$sql .= "FROM <SOURCE>) <LEVEL>\n";
-	$sql .= "WHERE m is not null";
+
+	# Generate the query 
+	if ($#out == 0) {
+		$sql = "SELECT $self->{Name}(";
+		$sql .= join(', ', @in);		
+		$sql .= ") as $out[0] FROM <SOURCE>\n";
+	} else {
+		$sql = "SELECT ";
+		$sql .= join('(m), ', @out);
+		$sql .= "(m) FROM (SELECT $self->{Name}(";
+		$sql .= join(', ', @in);
+		$sql .= ") as m FROM <SOURCE>) <LEVEL>\n";
+		$sql .= "WHERE m is not null"
+	}
 
 	$input->ExtendQuery($sql, [@out]);
 

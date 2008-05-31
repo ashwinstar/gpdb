@@ -29,7 +29,7 @@ DEFINE:
          TRANSITION: myTransition
          COMBINE:    myTransition
 
-    - JOB:
+    - TASK:
         NAME:     access_count
         SOURCE:   weblog
         MAPPER:   myMap
@@ -39,8 +39,10 @@ DEFINE:
 
     - INPUT:
         NAME:      network
-        SOURCE:    file://@hostname@@abs_srcdir@/data/www.dat
-        COLUMNS:   [key text, value text]
+        FILE:      @hostname@:@abs_srcdir@/data/www.dat
+        COLUMNS:
+          - key text
+          - value text
         DELIMITER: '|'
 
     - MAP:
@@ -49,7 +51,7 @@ DEFINE:
         FUNCTION:     |
           return {'key': value, 'value': key}
 
-    - JOB:
+    - TASK:
         NAME:     reverse_network
         SOURCE:   network
         MAPPER:   reverse
@@ -67,4 +69,4 @@ DEFINE:
          
 EXECUTE:
   - RUN:
-      INPUT: reverse_access_count
+      SOURCE: reverse_access_count

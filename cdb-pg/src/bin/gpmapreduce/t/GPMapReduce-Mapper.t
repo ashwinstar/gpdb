@@ -14,8 +14,10 @@ use GPMapReduce::Mapper;
 ok(1);
 
 ## Test 2 - Create a Mapper
-my $map = new GPMapReduce::Mapper(Name => 'Test');
+my $map = new GPMapReduce::Mapper(Name => 'Test', Body => 'return undef;');
+$map->CheckInput([]);
 ok(defined $map, 1); 
+
 
 ## Test 3-6 - Setting perl body
 my $f = q[ my ($key, $value) = @_; return (key=>$key,value=>$value) ];
@@ -56,12 +58,22 @@ eval{$map->SetFunction(Function => \&f, Language => 'perl')};
 ok($@ =~ /Error: Incompatable Parameters/gms, 1);
 
 ## Test 18-19 - Generating output
-my $drop = $map->GenerateSQL_Drop();
-ok($drop eq "DROP FUNCTION Test(text, text) CASCADE;\n", 1);
-my $create = $map->GenerateSQL_Create();
-ok($create eq "CREATE FUNCTION Test(IN text, IN text, OUT key text, OUT value text) AS \$\$\n" .
-              "{\n    my(\$key, \$value) = \@_;\n    return {'key', \$key, 'value', \$value};\n}" .
-              "\n\$\$ LANGUAGE plperl;\n", 1);
+my $drop = $map->SQLDrop();
+ok($drop eq <<END, 1);
+DROP FUNCTION IF EXISTS Test(text, text) CASCADE;
+DROP TYPE IF EXISTS Test_Return CASCADE;
+END
+
+my $create = $map->SQLCreate();
+ok($create eq <<END, 1);
+CREATE TYPE Test_Return as (key text, value text);
+CREATE FUNCTION Test(key text, value text) RETURNS Test_Return AS \$\$
+{
+    my(\$key, \$value) = \@_;
+    return {'key', \$key, 'value', \$value};
+}
+\$\$ LANGUAGE plperl;
+END
 
 ## Test 20-21 - Clearing the function Body
 $map->SetFunction();

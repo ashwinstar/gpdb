@@ -13,7 +13,7 @@ MODULES = Document.pm Parser.pm Function.pm Mapper.pm Utils.pm
 MAPMODS = $(addprefix $(MODDIR)/, $(MODULES))
 
 
-TEST   = access_frequency grep sort columns graph
+TEST   = access_frequency grep sort columns graph wordcount
 YML    = $(addsuffix .yml, $(addprefix $(YMLDIR)/, $(TEST)))
 OUT    = $(addsuffix .out, $(addprefix $(OUTDIR)/, $(TEST)))
 PLAN   = $(addsuffix .plan, $(addprefix $(OUTDIR)/, $(TEST)))

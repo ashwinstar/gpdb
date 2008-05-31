@@ -35,6 +35,7 @@ sub new {
 	$self->Parameter('Input', Required => 1, Kind => 'ARRAY');
 	$self->Parameter('Output', Required => 1, Kind => 'ARRAY');
 	$self->Parameter('Language', Default => 'perl');
+	$self->Parameter('Mode', Default => 'SINGLE');
 	$self->Parameter('Optimize');
 	$self->Parameter('Body');
 	$self->Parameter('Function');
@@ -49,6 +50,18 @@ sub CheckInput($$)
 	
 	# Call superclass
 	GPMapReduce::Object::CheckInput($self, $objects);
+
+	# Mode can only be SINGLE or MULTI, and defines whether the
+	# function should return a set.
+	$self->{Mode} = uc($self->{Mode});
+	if (not ($self->{Mode} =~ m/^(SINGLE|MULTI)$/)) {
+		Error("Unknown MODE: $self->{Name}: {MODE: $self->{Mode}} ");
+	} 
+#
+#elsif ($self->{Mode} eq 'MULTI' and $self->{Language} ne 'C') {
+#		Error("$self->{Name}: {MODE: MULTI} not supported for $self->{Language} functions");
+#	}
+	
 
 	# Function specific extensions
 	$self->SetFunction( Body => $self->{Body},
@@ -100,7 +113,6 @@ sub CheckInput($$)
 		${$self->{Output}}[$i] = 
 			"${$self->{Output_name}}[$i] ${$self->{Output_type}}[$i]";
 	}
-
 }
 
 
@@ -200,6 +212,11 @@ sub SQLDrop
 	my $drop = "DROP FUNCTION IF EXISTS $self->{Name}(";
 	$drop .= join(', ', @{$self->{Input_type}}); 
 	$drop .= ") CASCADE;\n";
+
+	# If we created a return type, drop that too
+	if ($#{$self->{Output}} > 0) {
+		$drop .= "DROP TYPE IF EXISTS $self->{Name}_Return CASCADE;\n";
+	}
     return $drop;
 }
 
@@ -210,18 +227,33 @@ sub SQLCreate
     my $out = $self->{Output};
     my $lang = $LANGUAGES{lc($self->{Lang})};
     my $opt = defined($self->{Optimize}) ? " $self->{Optimize}" : "";
-	my $create;
+	my $create = '';
+	my $outtype;
 
     # Identity functions can be skipped
     return undef unless($self->{Body});
 
-    # FIXME - this is only apropriate for non-set returning functions
-	$create  = "CREATE FUNCTION $self->{Name}(IN ";
-	$create .= join(', IN ', @{$self->{Input}});
-	$create .= ", OUT ";
-	$create .= join(', OUT ', @{$self->{Output}});
-	$create .= ") AS \$\$\n";
+	# If we are returning multiple columns then we need to create a Type
+	# for the return value.  (While it is possible to create functions
+	# using anonymous records there are too many things that don't work
+	# if you do.)
+	if ($#{$self->{Output}} == 0) {
+		$outtype = ${$self->{Output_type}}[0];
+	} else {
+		$outtype = "$self->{Name}_Return";
+		$create .= "CREATE TYPE $outtype as (";
+		$create .= join(', ', @{$self->{Output}});
+		$create .= ");\n";
+	}
+	$create .= "CREATE FUNCTION $self->{Name}(";
+	$create .= join(', ', @{$self->{Input}});
+	if ($self->{Mode} eq 'MULTI') {
+		$create .= ") RETURNS SETOF $outtype AS \$\$\n";
+	} else {
+		$create .= ") RETURNS $outtype AS \$\$\n";
+	}
 	$create .= "$self->{Body}\n\$\$ LANGUAGE $lang$opt;\n";
+
 	return $create;
 }
 

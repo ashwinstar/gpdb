@@ -3,14 +3,15 @@ CREATE EXTERNAL TABLE weblog(ip       text, rfc      text, uname    text, date  
   LOCATION('file://@hostname@@abs_srcdir@/data/access_log_fake')
   FORMAT 'text' (DELIMITER '|');
 
-CREATE FUNCTION myMap(IN key text, IN ip text, IN url text, OUT ip text, OUT count integer) AS $$
+CREATE TYPE myMap_Return as (ip text, count integer);
+CREATE FUNCTION myMap(key text, ip text, url text) RETURNS myMap_Return AS $$
 {
     return {} unless $_[2] =~ /$_[0]/;
     return {'ip', $_[1], 'count', 1};
 }
 $$ LANGUAGE plperl;
 
-CREATE FUNCTION myTransition(IN state integer, IN count integer, OUT state integer) AS $$
+CREATE FUNCTION myTransition(state integer, count integer) RETURNS integer AS $$
 {
     return $_[0] + $_[1];
 }
@@ -33,5 +34,6 @@ ORDER BY ip, value;
 --- CLEANUP OBJECTS --- 
 DROP AGGREGATE IF EXISTS myReduce(integer) CASCADE;
 DROP FUNCTION IF EXISTS myMap(text, text, text) CASCADE;
+DROP TYPE IF EXISTS myMap_Return CASCADE;
 DROP FUNCTION IF EXISTS myTransition(integer, integer) CASCADE;
 DROP EXTERNAL TABLE IF EXISTS weblog CASCADE;

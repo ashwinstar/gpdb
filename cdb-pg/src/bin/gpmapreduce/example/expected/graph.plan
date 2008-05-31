@@ -1,12 +1,28 @@
-Gather Motion 2:1  (slice1)  (cost=248986.84..251486.84 rows=1000000 width=64)
+Gather Motion 2:1  (slice2)  (cost=36062.33..36064.83 rows=1000 width=8)
   Merge Key: "key", value
-  ->  Sort  (cost=248986.84..251486.84 rows=1000000 width=64)
+  ->  Sort  (cost=36062.33..36064.83 rows=1000 width=8)
         Sort Key: "key", value
-        ->  External Scan on network  (cost=0.00..11000.00 rows=1000000 width=64)
+        ->  HashAggregate  (cost=36000.00..36012.50 rows=1000 width=8)
+              Group By: "key"
+              ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..31000.00 rows=1000000 width=8)
+                    Hash Key: "key"
+                    ->  External Scan on network  (cost=0.00..11000.00 rows=1000000 width=8)
 Settings:  enable_mergejoin=off; enable_nestloop=off; gp_enable_agg_distinct=on; gp_selectivity_damping_for_joins=on; gp_selectivity_damping_for_scans=on
-Gather Motion 2:1  (slice1)  (cost=248986.84..251486.84 rows=1000000 width=64)
+Gather Motion 2:1  (slice2)  (cost=48537.26..48539.76 rows=999 width=32)
   Merge Key: "key", value
-  ->  Sort  (cost=248986.84..251486.84 rows=1000000 width=64)
+  ->  Sort  (cost=48537.26..48539.76 rows=999 width=32)
         Sort Key: "key", value
-        ->  External Scan on network  (cost=0.00..11000.00 rows=1000000 width=64)
+        ->  HashAggregate  (cost=48475.00..48487.49 rows=999 width=32)
+              Group By: "?column2?"
+              ->  Redistribute Motion 2:2  (slice1)  (cost=0.00..43480.00 rows=999000 width=32)
+                    Hash Key: "?column2?"
+                    ->  Subquery Scan q1  (cost=0.00..23500.00 rows=999000 width=32)
+                          Filter: m IS NOT NULL
+                          ->  External Scan on network  (cost=0.00..13500.00 rows=1000000 width=8)
+Settings:  enable_mergejoin=off; enable_nestloop=off; gp_enable_agg_distinct=on; gp_selectivity_damping_for_joins=on; gp_selectivity_damping_for_scans=on
+Gather Motion 2:1  (slice1)  (cost=110657.84..113157.84 rows=1000000 width=8)
+  Merge Key: "key", value
+  ->  Sort  (cost=110657.84..113157.84 rows=1000000 width=8)
+        Sort Key: "key", value
+        ->  External Scan on network  (cost=0.00..11000.00 rows=1000000 width=8)
 Settings:  enable_mergejoin=off; enable_nestloop=off; gp_enable_agg_distinct=on; gp_selectivity_damping_for_joins=on; gp_selectivity_damping_for_scans=on

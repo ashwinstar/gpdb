@@ -14,8 +14,8 @@ DEFINE:
       NAME:      network
       FILE:      @hostname@:@abs_srcdir@/data/www.small.dat
       COLUMNS:
-        - key text
-        - value text
+        - key integer
+        - value integer
       DELIMITER: '|'
 
 # One thing about the Greenplum MapReduce is that it allows you to
@@ -56,7 +56,7 @@ DEFINE:
         - value integer
       RETURNS:
         - state integer
-      FUNCTION:       return state + 1      
+      FUNCTION:    return state + 1      
   - REDUCER:
       NAME:        traverse
       INITIALIZE:  0
@@ -68,8 +68,8 @@ EXECUTE:
 # This counts the number of links coming FROM a page
   - RUN:
       SOURCE:  network
-#      REDUCER: traverse
-#      TARGET:  STDOUT
+      REDUCER: traverse
+      TARGET:  STDOUT
       
 # This counts the number of links going TO a page.  
   - RUN:

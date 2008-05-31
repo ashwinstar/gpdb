@@ -4,7 +4,8 @@ CREATE EXTERNAL TABLE inDirectory(value text)
            'file://@hostname@@abs_srcdir@/data/access_log2')
   FORMAT 'text';
 
-CREATE FUNCTION grep_map(IN key text, IN value text, OUT key text, OUT value text) AS $$
+CREATE TYPE grep_map_Return as (key text, value text);
+CREATE FUNCTION grep_map(key text, value text) RETURNS grep_map_Return AS $$
 {
     return {'key', $_[0], 'value', $_[1]} if $_[1] =~ /$_[0]/;
     return {};
@@ -24,4 +25,5 @@ ORDER BY key, value;
 --- CLEANUP OBJECTS --- 
 DROP VIEW IF EXISTS grep_task CASCADE;
 DROP FUNCTION IF EXISTS grep_map(text, text) CASCADE;
+DROP TYPE IF EXISTS grep_map_Return CASCADE;
 DROP EXTERNAL TABLE IF EXISTS inDirectory CASCADE;
