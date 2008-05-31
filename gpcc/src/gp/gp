@@ -108,9 +108,8 @@ class Command():
         p = params and urllib.urlencode(params) or ''
         query = '%s?%s' % (path, p)
         f = None
-        header = None
+        header = {}
         if self.sid:
-            header = {}
             header['X-GPCC-SID'] = self.sid
 
         try:
@@ -126,10 +125,13 @@ class Command():
                 str = response.read()
                 return (response.status, self.__makeError(params, str))
         except socket.error, msg:
+            print msg
             return (-1, self.__makeError(params, msg))
         except httplib.HTTPException, msg:
+            print msg
             return (-1, self.__makeError(params, msg))
         except Exception, msg:
+            print msg
             return (-1, self.__makeError(params, msg))
         finally:
             if f: f.close()
@@ -574,7 +576,7 @@ class LogoutCmd(Command):
             sys.exit(2)
         else:
             try:
-                gpcc_file = os.path.append(os.environ.get('HOME'), '.gpcc')
+                gpcc_file = os.path.join(os.environ.get('HOME'), '.gpcc')
                 if os.path.exists(gpcc_file):
                     os.remove(gpcc_file)
             except OSError, e:
