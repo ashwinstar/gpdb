@@ -28,7 +28,7 @@ DROP EXTERNAL TABLE EXT_REGION;
 -- 'gpfdist' protocol
 -- --------------------------------------
 CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
-execute E'( (ps -e -u $LOGNAME |grep -v grep|grep gpfdist) 2>&1 > /dev/null&& echo "gpfdist is running" || echo "gpfdist is not running") '
+execute E'( python $GPHOME/bin/lib/gppinggpfdist.py -q localhost:8080 && echo "gpfdist is running" || echo "gpfdist is not running") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 

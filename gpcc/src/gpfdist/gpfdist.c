@@ -728,6 +728,7 @@ static void http_error(request_t* r, int code, const char* msg)
     n = apr_snprintf(buf, sizeof(buf), "HTTP/1.0 %d %s\r\n"
 		     "Content-length: 0\r\n"
 		     "Expires: 0\r\n"
+		     "X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
 		     "Cache-Control: no-cache\r\n"
 		     "Connection: close\r\n\r\n",
 		     code, msg);
@@ -743,6 +744,7 @@ static void http_empty(request_t* r)
 	"Content-type: text/plain\r\n"
 	"Content-length: 0\r\n"
 	"Expires: 0\r\n"
+	"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
 	"Cache-Control: no-cache\r\n"
 	"Connection: close\r\n\r\n";
 
@@ -765,6 +767,7 @@ static apr_status_t http_ok(request_t* r)
     const char* fmt = "HTTP/1.0 200 ok\r\n"
 	"Content-type: text/plain\r\n"
 	"Expires: 0\r\n"
+	"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
 	"X-GP-PROTO: %d\r\n"
 	"Cache-Control: no-cache\r\n"
 	"Connection: close\r\n\r\n";
