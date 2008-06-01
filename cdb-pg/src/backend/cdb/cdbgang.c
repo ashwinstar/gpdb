@@ -68,6 +68,7 @@ static bool isTargetPortal(const char *p1, const char *p2);
 
 static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser);
 
+static void resetSessionForPrimaryGangLoss(void);
 
 /*
  * Points to the result of getCdbComponentDatabases()
@@ -3556,6 +3557,8 @@ disconnectAndDestroyGang(Gang * gp)
 			disconnectAndDestroyGang(mirrorWriterGang);
 			mirrorWriterGang = NULL;
 		}
+		
+		resetSessionForPrimaryGangLoss();
 	}
 
 
@@ -3937,6 +3940,91 @@ disconnectAndDestroyDispatchAgents(struct DispatchAgentSet * das)
         elog(DEBUG5, "disconnectAndDestroyDispatchAgents done");
 }
 
+static bool NeedResetSession = false;
+static Oid	OldTempNamespace = InvalidOid;
+
+/*
+ * Drop any temporary tables associated with the current session and
+ * use a new session id since we have effectively reset the session.
+ *
+ * Call this procedure outside of a transaction.
+ */
+void
+CheckForResetSession(void)
+{
+	int 	oldSessionId = 0;
+	int 	newSessionId = 0;
+	Oid		dropTempNamespaceOid;
+	
+	if (!NeedResetSession)
+		return;
+
+	NeedResetSession = false;
+	dropTempNamespaceOid = OldTempNamespace;
+	OldTempNamespace = InvalidOid;	
+	
+	oldSessionId = gp_session_id;
+	ProcNewMppSessionId(&newSessionId);
+	
+	gp_session_id = newSessionId;
+    gp_command_count = 0;
+	
+	elog(WARNING,"The previous session was reset because its gang was disconnected (session id = %d). "
+		 "The new session id = %d",
+		 oldSessionId, newSessionId);
+	
+	PG_TRY();
+	{
+		DropTempTableNamespaceForResetSession(dropTempNamespaceOid);
+	}
+	PG_CATCH();
+	{
+		/* 
+		 * But first demote the error to something much less
+		 * scary.
+		 */
+	    if (!elog_demote(WARNING))
+    	{
+    		elog(LOG,"unable to demote error");
+        	PG_RE_THROW();
+    	}
+		
+		EmitErrorReport();
+		FlushErrorState();
+	}
+	PG_END_TRY();
+
+}
+
+static void
+resetSessionForPrimaryGangLoss(void)
+{
+	if (ProcCanSetMppSessionId())
+	{
+		/*
+		 * Not too early.
+		 */
+		if (ExistsTempNamespace())
+		{
+			/*
+			 * Here we indicate we don't have a temporary table namespace
+			 * anymore so all temporary tables of the previous session will
+			 * be inaccessible.  Later, when we can start a new transaction, 
+			 * we will attempt to actually drop the old session tables to
+			 * release the disk space.
+			 */
+			NeedResetSession = true;
+
+			OldTempNamespace = ResetTempNamespace();
+			
+			elog(WARNING,"Any temporary tables for this session have been dropped because the gang was disconnected (session id = %d)",
+				 gp_session_id);
+		}
+
+	}
+	
+}
+
 void
 disconnectAndDestroyAllGangs(void)
 {
@@ -3961,6 +4049,7 @@ disconnectAndDestroyAllGangs(void)
 	
     if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
 		elog(DEBUG3, "disconnectAndDestroyAllGangs done");
+
 }
 
 bool

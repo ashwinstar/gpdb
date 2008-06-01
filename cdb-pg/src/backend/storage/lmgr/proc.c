@@ -1548,3 +1548,23 @@ bool ProcGetMppLocalProcessCounter(int *mppLocalProcessCounter)
 
 	return true;
 }
+
+bool ProcCanSetMppSessionId(void)
+{
+	if (ProcGlobal == NULL || MyProc == NULL)
+		return false;
+
+	return true;
+}
+
+void ProcNewMppSessionId(int *newSessionId)
+{
+	Assert(newSessionId != NULL);
+
+	SpinLockAcquire(ProcStructLock);
+
+    *newSessionId = MyProc->mppSessionId = ++ProcGlobal->mppLocalProcessCounter;
+
+	SpinLockRelease(ProcStructLock);
+}
+

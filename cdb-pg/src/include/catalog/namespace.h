@@ -59,6 +59,10 @@ extern void DeconstructQualifiedName(List *names,
 						 char **objname_p);
 extern Oid	LookupExplicitNamespace(const char *nspname);
 
+extern bool ExistsTempNamespace(void);
+extern void DropTempTableNamespaceForResetSession(Oid namespaceOid);
+extern Oid  ResetTempNamespace(void);
+
 extern Oid	LookupCreationNamespace(const char *nspname);
 extern Oid	QualifiedNameGetCreationNamespace(List *names, char **objname_p);
 extern RangeVar *makeRangeVarFromNameList(List *names);

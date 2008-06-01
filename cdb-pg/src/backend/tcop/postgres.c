@@ -184,6 +184,8 @@ static DtxContextInfo TempDtxContextInfo;
 
 extern void CheckForQDMirroringWork(void);
 
+extern void CheckForResetSession(void);
+
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
  * ----------------------------------------------------------------
@@ -4992,6 +4994,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 		if (Gp_role == GP_ROLE_DISPATCH)
 			CheckForQDMirroringWork();
 
+		/*
+		 * (2c) Check for temp table delete reset session work.
+		 */
+		if (Gp_role == GP_ROLE_DISPATCH)
+			CheckForResetSession();
+		
 		/*
 		 * (3) read a command (loop blocks here)
 		 */

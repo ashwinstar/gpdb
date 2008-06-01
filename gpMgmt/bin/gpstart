@@ -501,7 +501,12 @@ PROCESS_STARTUP () {
 	LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY" 1
 	export PGPORT=${MASTER_PORT}
 	export PGPATH=${APP_PATH}
-	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
+	if [ x"" == x"$START_SYNC" ];then
+	    MASTER_MIRRORING_ADMINISTRATOR_DISABLE="-y" 
+	else 
+	    MASTER_MIRRORING_ADMINISTRATOR_DISABLE=""
+	fi
+	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "$MASTER_MIRRORING_ADMINISTRATOR_DISABLE -i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
 	ERROR_CHK $? "startup Master instance" 2
 	RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 	RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`

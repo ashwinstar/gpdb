@@ -181,5 +181,7 @@ extern void handle_sig_alarm(SIGNAL_ARGS);
 extern int	ResProcSleep(LOCKMODE lockmode, LOCALLOCK *locallock);
 extern void ResLockWaitCancel(void);
 extern bool ProcGetMppLocalProcessCounter(int *mppLocalProcessCounter);
+extern bool ProcCanSetMppSessionId(void);
+extern void ProcNewMppSessionId(int *newSessionId);
 
 #endif   /* PROC_H */

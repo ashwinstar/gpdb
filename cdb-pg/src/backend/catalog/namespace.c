@@ -1870,6 +1870,50 @@ InitTempTableNamespace(void)
 }
 
 /*
+ * Does the temporary namespace exist for this session?
+ */
+bool
+ExistsTempNamespace(void)
+{
+	return OidIsValid(myTempNamespace);
+}
+
+/*
+ * Drop temp relations for session reset.
+ */
+void
+DropTempTableNamespaceForResetSession(Oid namespaceOid)
+{
+	if (IsTransactionOrTransactionBlock())
+		elog(ERROR, "Called within a transation");
+	
+	StartTransactionCommand();
+
+	RemoveTempRelations(namespaceOid);
+
+	CommitTransactionCommand();
+}
+
+/*
+ * Remove the temporary namespace from the search path.
+ *
+ * Return the removed namespace OID.
+ */
+Oid
+ResetTempNamespace(void)
+{
+	Oid result;
+
+	result = myTempNamespace;
+	
+	myTempNamespace = InvalidOid;
+	myTempNamespaceSubID = InvalidSubTransactionId;
+	namespaceSearchPathValid = false;	/* need to rebuild list */
+
+	return result;
+}
+
+/*
  * End-of-transaction cleanup for namespaces.
  */
 void

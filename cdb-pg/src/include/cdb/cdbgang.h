@@ -87,6 +87,8 @@ extern void freeGangsForPortal(char *portal_name);
 
 extern void disconnectAndDestroyAllGangs(void);
 
+extern void CheckForResetSession(void);
+
 extern List * getAllReaderGangs(void);
 
 extern void detectFailedConnections(void);
