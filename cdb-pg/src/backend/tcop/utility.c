@@ -325,6 +325,18 @@ check_xact_readonly(Node *parsetree)
 
 	switch (nodeTag(parsetree))
 	{
+		case T_CreateStmt:
+		{
+			CreateStmt *stmt;
+			
+			stmt = (CreateStmt *) parsetree;
+
+			if (stmt->relation->istemp)
+				return;		// Permit creation of TEMPORARY tables in read-only mode.
+				
+			// Fall through...
+		}
+
 		case T_AlterDatabaseStmt:
 		case T_AlterDatabaseSetStmt:
 		case T_AlterDomainStmt:
@@ -352,7 +364,6 @@ check_xact_readonly(Node *parsetree)
 		case T_RuleStmt:
 		case T_CreateSchemaStmt:
 		case T_CreateSeqStmt:
-		case T_CreateStmt:
 		case T_CreateExternalStmt:
 		case T_CreateTableSpaceStmt:
 		case T_CreateTrigStmt:
