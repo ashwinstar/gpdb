@@ -48,7 +48,7 @@ statDone1(void*_data,int e,struct chubby_stat*stat)
 	return;
     }
     if (stat->decreeNumber){
-	super_data_done_nothing(&data->super,CHUBBY_E_INVAL);
+	super_data_done_nothing(&data->super,CHUBBY_E_EXIST);
 	return;
     }
     if (!stat->parentDecreeNumber){
@@ -110,7 +110,7 @@ static void
 startMakeManyDirsMkdirDone(void*_data,int e)
 {
     struct makeManyDirsData*data=_data;
-    if ((e==0 || e==CHUBBY_E_INVAL) && data->i!=-1){
+    if ((e==0 || e==CHUBBY_E_EXIST) && data->i!=-1){
 	e = startMakeManyDirsLoop(data);
 	if (!e)
 	    return;

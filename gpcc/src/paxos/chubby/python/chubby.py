@@ -16,6 +16,7 @@ E_NOENT = 1
 E_ISDIR = 2
 E_IFFAILED = 3
 E_INVAL = 4
+E_EXIST = 5
 
 E_LEASEEXPIRED = E_IFFAILED
 E_TIMEOUT = 101
@@ -152,7 +153,7 @@ class Connection:
 	    if a[0]:
 		return a[0]
 	    if a[1]:
-		return E_INVAL
+		return E_EXIST
 	    ifname = dirname(name)
 	    dn = a[3]
 	    if not dn:
@@ -231,7 +232,7 @@ class Connection:
 	e = 0
 	for i in xrange(len(name)):
 	    e = self.__mkdir('/'.join(name[:i]))
-	    if e!=0 and e!=E_INVAL:
+	    if e!=0 and e!=E_EXIST:
 		break
 	return e
 

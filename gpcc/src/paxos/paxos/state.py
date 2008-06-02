@@ -6,6 +6,7 @@ E_NOENT = 1
 E_ISDIR = 2
 E_IFFAILED = 3
 E_INVAL = 4
+E_EXIST = 5
 
 def normalizeFilename(filename):
     return "/".join(filter(None,filename.split("/")))
@@ -24,6 +25,8 @@ class StateException(Exception):
 	    a = "If failed"
 	elif s==E_INVAL:
 	    a = "Invalid"
+	elif s==E_EXIST:
+	    a = "File Exists"
 	else:
 	    a = ""
 	Exception.__init__(self,a)
@@ -117,7 +120,7 @@ class Dir:
     def mkdir(self,dn,cow,name):
 	o = self.get(name)
 	if o!=None:
-	    raise StateException(E_INVAL)
+	    raise StateException(E_EXIST)
 	return self.__put1(dn,cow,name,Dir(dn))
 
     def rmdir(self,dn,cow,name):

@@ -165,8 +165,8 @@ test0(int argc,char**argv,chubby_connection_t*c)
     chubby_connection_t*c2=NULL;
     chubby_connection_t*c3=NULL;
     int64_t dn;
-    TEST(chubby_connection_mkdir(c,"/test/"),t.ret==0||t.ret==CHUBBY_E_INVAL);
-    TEST(chubby_connection_mkdir(c,"/test/"),t.ret==CHUBBY_E_INVAL);
+    TEST(chubby_connection_mkdir(c,"/test/"),t.ret==0||t.ret==CHUBBY_E_EXIST);
+    TEST(chubby_connection_mkdir(c,"/test/"),t.ret==CHUBBY_E_EXIST);
     TEST(chubby_connection_nonAtomicMakeManyDirs(c,"/test/a/b/c"),t.ret==0);
     TEST(chubby_connection_move(c,"test/subdir","test/junk"),t.ret==0||t.ret==CHUBBY_E_NOENT);
     TEST(chubby_connection_move(c,"test/subdir","test/junk"),t.ret==CHUBBY_E_NOENT);

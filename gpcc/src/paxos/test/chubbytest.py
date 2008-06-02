@@ -51,8 +51,8 @@ def test2(fn,dn):
 def test0():
     global global_a
     global global_l
-    check("c.mkdir('/test/')","x==0 or x==chubby.E_INVAL")
-    check("c.mkdir('/test/')","x==chubby.E_INVAL")
+    check("c.mkdir('/test/')","x==0 or x==chubby.E_EXIST")
+    check("c.mkdir('/test/')","x==chubby.E_EXIST")
     check("c.nonAtomicMakeManyDirs('/test/a/b/c')","x==0")
     check("c.move('test/subdir','test/junk')","x==0 or x==chubby.E_NOENT")
     check("c.move('test/subdir','test/junk')","x==chubby.E_NOENT")
