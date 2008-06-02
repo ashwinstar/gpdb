@@ -3952,8 +3952,8 @@ static Oid	OldTempNamespace = InvalidOid;
 void
 CheckForResetSession(void)
 {
-	int 	oldSessionId = 0;
-	int 	newSessionId = 0;
+//	int 	oldSessionId = 0;
+//	int 	newSessionId = 0;
 	Oid		dropTempNamespaceOid;
 	
 	if (!NeedResetSession)
@@ -3962,37 +3962,44 @@ CheckForResetSession(void)
 	NeedResetSession = false;
 	dropTempNamespaceOid = OldTempNamespace;
 	OldTempNamespace = InvalidOid;	
+
+	/*
+	 * Until the looping call to findConnByHeader is diagnosed, ...
+	 * don't reset the session for now.
+	 */
+//	oldSessionId = gp_session_id;
+//	ProcNewMppSessionId(&newSessionId);
 	
-	oldSessionId = gp_session_id;
-	ProcNewMppSessionId(&newSessionId);
+//	gp_session_id = newSessionId;
+//  gp_command_count = 0;
 	
-	gp_session_id = newSessionId;
-    gp_command_count = 0;
-	
-	elog(WARNING,"The previous session was reset because its gang was disconnected (session id = %d). "
-		 "The new session id = %d",
-		 oldSessionId, newSessionId);
-	
-	PG_TRY();
+//	elog(WARNING,"The previous session was reset because its gang was disconnected (session id = %d). "
+//		 "The new session id = %d",
+//		 oldSessionId, newSessionId);
+
+	if (dropTempNamespaceOid != InvalidOid)
 	{
-		DropTempTableNamespaceForResetSession(dropTempNamespaceOid);
+		PG_TRY();
+		{
+			DropTempTableNamespaceForResetSession(dropTempNamespaceOid);
+		}
+		PG_CATCH();
+		{
+			/* 
+			 * But first demote the error to something much less
+			 * scary.
+			 */
+		    if (!elog_demote(WARNING))
+	    	{
+	    		elog(LOG,"unable to demote error");
+	        	PG_RE_THROW();
+	    	}
+			
+			EmitErrorReport();
+			FlushErrorState();
+		}
+		PG_END_TRY();
 	}
-	PG_CATCH();
-	{
-		/* 
-		 * But first demote the error to something much less
-		 * scary.
-		 */
-	    if (!elog_demote(WARNING))
-    	{
-    		elog(LOG,"unable to demote error");
-        	PG_RE_THROW();
-    	}
-		
-		EmitErrorReport();
-		FlushErrorState();
-	}
-	PG_END_TRY();
 
 }
 
@@ -4004,6 +4011,8 @@ resetSessionForPrimaryGangLoss(void)
 		/*
 		 * Not too early.
 		 */
+		NeedResetSession = true;
+		
 		if (ExistsTempNamespace())
 		{
 			/*
@@ -4013,7 +4022,6 @@ resetSessionForPrimaryGangLoss(void)
 			 * we will attempt to actually drop the old session tables to
 			 * release the disk space.
 			 */
-			NeedResetSession = true;
 
 			OldTempNamespace = ResetTempNamespace();
 			
