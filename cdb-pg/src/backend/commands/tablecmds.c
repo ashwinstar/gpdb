@@ -8720,10 +8720,159 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  * ALTER TABLE ... ADD PARTITION 
  *
  */
+
+/*
+ * get_part_rule_oid
+ *
+ * find the oid for the pg_partition_rule row for the specified
+ * partition if it exists.
+ *
+ * If bExistError is not set, just return the oid or InvalidOid.
+ * If bExistError is set, return an error message based upon
+ * bMustExist.  That is, if the table does not exist and
+ * bMustExist=true then return an error.  Conversely, if the table
+ * *does* exist and bMustExist=false then return an error.
+ * 
+ */
+static Oid
+get_part_rule_oid(Relation rel, AlterPartitionId *pid, 
+				  bool bExistError, bool bMustExist)
+{
+	char			 namBuf[NAMEDATALEN];
+	int ret;
+	StringInfoData buf;
+	Oid rootrelid = InvalidOid;
+	Oid prule_oid = InvalidOid;
+
+	if (!pid)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("No partition id specified for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+
+	/* XXX XXX fix later */
+	if (pid->idtype != AT_AP_IDName)
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("Need partition name for relation \"%s\"",
+                    RelationGetRelationName(rel))));
+		
+	snprintf(namBuf, sizeof(namBuf), "%s", 
+			 strVal(pid->partiddef));
+
+	/* Temporarily use SPI to get data into catalogs */
+
+	/* Connect to SPI manager */
+	if ((ret = SPI_connect()) < 0)
+		/* internal error */
+		elog(ERROR, "SPI_connect returned %d", ret);
+
+	initStringInfo(&buf);
+
+	/*
+	 * Get the partitioned table relid.
+	 */
+	rootrelid = RelationGetRelid(rel);
+
+	/* now see if the rule for our level exists */
+	initStringInfo(&buf);
+	appendStringInfo(&buf, 
+					 "select pr.oid as pr_oid from  "
+					 "pg_partition pp, pg_partition_rule pr  "
+					 "where pp.relid = '%u' and pr.parname = '%s'  "
+					 "and pr.paroid = pp.oid",
+				 	 rootrelid, namBuf);
+	ret = SPI_execute(buf.data, true, 1);
+
+	if (ret > 0 && SPI_tuptable != NULL && SPI_processed)
+	{
+		prule_oid = (Oid)atoi(SPI_getvalue(SPI_tuptable->vals[0],
+										   SPI_tuptable->tupdesc, 1));
+	}
+
+	if (!bExistError)
+		return prule_oid;
+
+	if (bMustExist && (InvalidOid == prule_oid))
+	{
+		switch (pid->idtype)
+		{
+			case AT_AP_IDNone:				/* no ID */
+				/* should never happen */
+				Assert(false);
+				break;
+			case AT_AP_IDName:				/* IDentify by Name */
+				ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("partition \"%s\" of relation \"%s\" does not exist",
+							namBuf,
+							RelationGetRelationName(rel))));
+
+				break;
+			case AT_AP_IDValue:				/* IDentifier FOR Value */
+				ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("partition for specified value of relation \"%s\" does not exist",
+							RelationGetRelationName(rel))));
+
+				break;
+			case AT_AP_IDPosition:			/* IDentifier FOR Positition */
+				ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("partition for specified position of relation \"%s\" does not exist",
+							RelationGetRelationName(rel))));
+
+				break;
+		}
+	}
+	else if (!bMustExist && (InvalidOid != prule_oid))
+	{
+		switch (pid->idtype)
+		{
+			case AT_AP_IDNone:				/* no ID */
+				/* should never happen */
+				Assert(false);
+				break;
+			case AT_AP_IDName:				/* IDentify by Name */
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("partition \"%s\" of relation \"%s\" already exists",
+								namBuf,
+								RelationGetRelationName(rel))));
+
+				break;
+			case AT_AP_IDValue:				/* IDentifier FOR Value */
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("partition for specified value of relation \"%s\" already exists",
+								RelationGetRelationName(rel))));
+
+				break;
+			case AT_AP_IDPosition:			/* IDentifier FOR Positition */
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("partition for specified position of relation \"%s\" already exists",
+								RelationGetRelationName(rel))));
+
+				break;
+		}
+
+	}
+
+	return prule_oid;
+}
+
 static void
 ATPExecPartAdd(Relation rel,
                AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, false);
+
+	if (prule_id != InvalidOid)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot ADD PARTITION to relation \"%s\"",
@@ -8735,6 +8884,13 @@ static void
 ATPExecPartAlter(Relation rel,
                  AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot ALTER PARTITION for relation \"%s\"",
@@ -8746,6 +8902,13 @@ static void
 ATPExecPartCoalesce(Relation rel,
                     AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot COALESCE PARTITION for relation \"%s\"",
@@ -8757,6 +8920,13 @@ static void
 ATPExecPartDrop(Relation rel,
                 AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot DROP PARTITION for relation \"%s\"",
@@ -8768,6 +8938,13 @@ static void
 ATPExecPartExchange(Relation rel,
                     AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot EXCHANGE PARTITION for relation \"%s\"",
@@ -8779,6 +8956,13 @@ static void
 ATPExecPartMerge(Relation rel,
                  AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot MERGE PARTITION for relation \"%s\"",
@@ -8790,6 +8974,13 @@ static void
 ATPExecPartModify(Relation rel,
                   AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot MODIFY PARTITION for relation \"%s\"",
@@ -8801,6 +8992,13 @@ static void
 ATPExecPartRename(Relation rel,
                   AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot RENAME PARTITION for relation \"%s\"",
@@ -8812,6 +9010,16 @@ static void
 ATPExecPartSetTemplate(Relation rel,
                        AlterPartitionCmd *pc)
 {
+/*	AlterPartitionId *pid = (AlterPartitionId *)pc->partid; 
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+    {
+    }
+
+
+*/
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot SET SUBPARTITION TEMPLATE for relation \"%s\"",
@@ -8823,6 +9031,13 @@ static void
 ATPExecPartSplit(Relation rel,
                  AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot SPLIT PARTITION for relation \"%s\"",
@@ -8834,6 +9049,13 @@ static void
 ATPExecPartTruncate(Relation rel,
                     AlterPartitionCmd *pc)
 {
+	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+
+	if (InvalidOid == prule_id)
+	{
+	}
+
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot TRUNCATE PARTITION for relation \"%s\"",

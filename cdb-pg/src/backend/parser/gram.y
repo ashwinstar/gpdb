@@ -1760,7 +1760,7 @@ alter_table_partition_id_spec:
 				{
 					AlterPartitionId *n = makeNode(AlterPartitionId);
 					n->idtype = AT_AP_IDName;
-                    n->partiddef = (Node *)$1;
+                    n->partiddef = (Node *)makeString($1);
                     n->location  = @1;
 					$$ = (Node *)n;
 				}
@@ -1817,9 +1817,6 @@ alter_table_partition_cmd:
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
 								 errmsg("Can only ADD a partition by name")));
-
-                    pid->partiddef = (Node *)$3;
-                    pid->location = @3;
 
                     pc->partid = (Node *)pid;
                     pc->arg1 = (Node *)$4;
@@ -1962,7 +1959,7 @@ alter_table_partition_cmd:
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
                     pc->partid = (Node *)$3;
-                    pc->arg1 = (Node *)$5;
+                    pc->arg1 = (Node *)makeString($5);
                     pc->arg2 = NULL;
                     pc->location = @5;
 
