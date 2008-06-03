@@ -359,6 +359,7 @@ CleanupMotionUDP(void)
 
 	rx_thread_shutdown = true;
 
+	pthread_mutex_unlock(&rx_thread_mutex);
 	pthread_join(ic_rx_thread, NULL);
 
 	elog(DEBUG2, "udp-ic: receiver thread shutdown.");
@@ -2069,35 +2070,52 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				continue;
 			}
 
-			if (pkt.flags & UDPIC_FLAGS_STOP)
+			if (pkt.seq != ackConn->conn_info.seq)
 			{
 				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-					elog(DEBUG2, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x seq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq);
-
-				ackConn->stopRequested = true;
-				ackConn->conn_info.flags |= UDPIC_FLAGS_STOP;
-
-				if (pkt.seq == ackConn->conn_info.seq)
-				{
-					ackConn->conn_info.seq++;
-					if (ackConn->activeXmit)
-						ackConn->activeXmit = NULL;
-
-					ret = true;
-				}
+					elog(DEBUG2, "ack with bad seq?! expected %d got %d flags 0x%x", ackConn->conn_info.seq, pkt.seq, pkt.flags);
 
 				continue;
 			}
 
+			/* Has this connection already received a stop request ?
+			 * once we processed the first stop request, we are
+			 * waiting for the ack of our ack (which will have EOS
+			 * set). Ignore anything else. */
+			if (ackConn->stopRequested)
+			{
+				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+					elog(DEBUG2, "got ack-stop ack; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq, ackConn->conn_info.seq);
+
+				if (pkt.flags & UDPIC_FLAGS_EOS)
+				{
+					ackConn->conn_info.seq++;
+					if (ackConn->activeXmit)
+						ackConn->activeXmit = NULL;
+				}
+				continue;
+			}
+
+			/* haven't gotten a stop request, maybe this is one ? */
+			if (pkt.flags & UDPIC_FLAGS_STOP)
+			{
+				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
+					elog(DEBUG2, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq, ackConn->conn_info.seq);
+
+				ackConn->stopRequested = true;
+				ackConn->conn_info.flags |= UDPIC_FLAGS_STOP;
+				ret = true;
+
+				ackConn->conn_info.seq++;
+				if (ackConn->activeXmit)
+					ackConn->activeXmit = NULL;
+
+				continue;
+			}
+
+			/* this isn't a stop request. it must be a regular ack. */
 			if (pkt.flags & UDPIC_FLAGS_ACK)
 			{
-				if (pkt.seq != ackConn->conn_info.seq)
-				{
-					if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-						elog(DEBUG2, "ack with bad seq?! expected %d got %d", ackConn->conn_info.seq, pkt.seq);
-
-					continue;
-				}
 				ackConn->conn_info.seq++;
 
 				if (ackConn->activeXmit)
@@ -2192,6 +2210,16 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 		if (timeout <= elapsed_ms)
 		{
 			sendOnce(transportStates, pEntry, conn);
+
+			if (timeout)
+			{
+				conn->activeXmitTime.tv_usec += timeout * 1000;
+				if (conn->activeXmitTime.tv_usec > 1000000)
+				{
+					conn->activeXmitTime.tv_usec -= 1000000;
+					conn->activeXmitTime.tv_sec += 1;
+				}
+			}
 
 			if (retry)
 				ic_stats_retrans++;
@@ -2802,6 +2830,10 @@ ic_rx_thread_func(void *arg)
 								!(pkt->flags & UDPIC_FLAGS_EOS))
 								write_log("stop requested but no stop flag on return packet ?!");
 
+						if (pkt->flags & UDPIC_FLAGS_EOS)
+							conn->conn_info.flags |= UDPIC_FLAGS_EOS;
+
+						conn->conn_info.seq = pkt->seq;
 						sendAck(conn, true);
 
 						/* we only update stillActive if eos has been sent by peer. */
@@ -2848,7 +2880,6 @@ ic_rx_thread_func(void *arg)
 					}
 
 					/* sequence number is correct */
-
 					if (!conn->stillActive)
 					{
 						/* peer may have dropped ack */
