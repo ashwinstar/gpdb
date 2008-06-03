@@ -4,6 +4,17 @@
 SET debug_print_full_dtm=true;
 
 --
+-- start_matchsubs
+--
+-- # create a match/subs expression
+--
+-- m/(ERROR|WARNING|CONTEXT|NOTICE):.*The previous session was reset because its gang was disconnected/
+-- s/session id \=\s*\d+/session id \= DUMMY/gm
+--
+-- end_matchsubs
+--
+
+--
 -- We want to have an error between the point where all segments are prepared and our decision 
 -- to write the Distributed Commit record.
 --
@@ -233,13 +244,3 @@ CREATE TABLE distxact3_3 (a int);
 DROP TABLE distxact3_3;
 
 RESET debug_print_full_dtm;
---
--- start_matchsubs
---
--- # create a match/subs expression
---
--- m/(ERROR|WARNING|CONTEXT|NOTICE):.*The previous session was reset because its gang was disconnected/
--- s/session id \= \s*\d+/session id \= DUMMY/gm
---
--- end_matchsubs
---

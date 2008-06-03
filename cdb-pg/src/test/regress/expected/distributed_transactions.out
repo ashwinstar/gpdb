@@ -3,6 +3,16 @@
 --
 SET debug_print_full_dtm=true;
 --
+-- start_matchsubs
+--
+-- # create a match/subs expression
+--
+-- m/(ERROR|WARNING|CONTEXT|NOTICE):.*The previous session was reset because its gang was disconnected/
+-- s/session id \=\s*\d+/session id \= DUMMY/gm
+--
+-- end_matchsubs
+--
+--
 -- We want to have an error between the point where all segments are prepared and our decision 
 -- to write the Distributed Commit record.
 --
@@ -20,7 +30,7 @@ INSERT INTO distxact1_1 VALUES (7);
 INSERT INTO distxact1_1 VALUES (8);
 SET debug_abort_after_distributed_prepared = true;
 COMMIT;
-ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2081)
+ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2118)
 RESET debug_abort_after_distributed_prepared;
 SELECT * FROM distxact1_1;
  a 
@@ -48,7 +58,7 @@ SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "protocol";
 SET debug_dtm_action_protocol = "prepare";
 COMMIT;
-ERROR:  The distributed transaction 'Prepare' broadcast failed to one or more segments for gid = 1182817508-0000003257. (cdbtm.c:551)
+ERROR:  The distributed transaction 'Prepare' broadcast failed to one or more segments for gid = 1212520593-0000006850. (cdbtm.c:553)
 RESET debug_dtm_action;
 RESET debug_dtm_action_target;
 RESET debug_dtm_action_protocol;
@@ -78,9 +88,10 @@ SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "protocol";
 SET debug_dtm_action_protocol = "commit_prepared";
 COMMIT;
-WARNING:  The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = 1182817509-0000003264.
+WARNING:  The distributed transaction 'Commit Prepared' broadcast failed to one or more segments for gid = 1212520594-0000006857.
 NOTICE:  Releasing gangs for retry broadcast.
-NOTICE:  Retry of the distributed transaction 'Commit Prepared' broadcast succeeded to the segments for gid = 1182817509-0000003264.
+WARNING:  The previous session was reset because its gang was disconnected (session id = 279). The new session id = 280
+NOTICE:  Retry of the distributed transaction 'Commit Prepared' broadcast succeeded to the segments for gid = 1212520594-0000006857.
 SELECT * FROM distxact1_3;
  a  
 ----
@@ -119,10 +130,11 @@ SET debug_dtm_action = "fail_begin_command";
 SET debug_dtm_action_target = "protocol";
 SET debug_dtm_action_protocol = "abort_prepared";
 COMMIT;
-WARNING:  The distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = 1182817511-0000003271.
+WARNING:  The distributed transaction 'Abort Prepared' broadcast failed to one or more segments for gid = 1212520594-0000006864.
 NOTICE:  Releasing gangs for retry broadcast.
-NOTICE:  Retry of the distributed transaction 'Abort Prepared' broadcast succeeded to the segments for gid = 1182817511-0000003271.
-ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2081)
+WARNING:  The previous session was reset because its gang was disconnected (session id = 280). The new session id = 281
+NOTICE:  Retry of the distributed transaction 'Abort Prepared' broadcast succeeded to the segments for gid = 1212520594-0000006864.
+ERROR:  Raise an error as directed by Debug_abort_after_distributed_prepared (xact.c:2118)
 SELECT * FROM distxact1_4;
  a 
 ---
@@ -146,7 +158,7 @@ SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
 CREATE TABLE distxact2_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  Raise ERROR for debug_dtm_action = 2, commandTag = MPPEXEC UTILITY (postgres.c:1071)  (seg1 10.37.129.2:20003 pid=15600)
+ERROR:  Raise ERROR for debug_dtm_action = 2, commandTag = MPPEXEC UTILITY (postgres.c:1083)  (seg1 localhost:11003 pid=27451)
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;
 RESET debug_dtm_action_target;
@@ -169,7 +181,7 @@ SET debug_dtm_action_sql_command_tag = "MPPEXEC UTILITY";
 CREATE TABLE distxact2_2 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  Raise ERROR for debug_dtm_action = 3, commandTag = MPPEXEC UTILITY (postgres.c:1215)  (seg1 10.37.129.2:20003 pid=15600)
+ERROR:  Raise ERROR for debug_dtm_action = 3, commandTag = MPPEXEC UTILITY (postgres.c:1227)  (seg1 localhost:11003 pid=27451)
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;
 RESET debug_dtm_action_target;
@@ -197,9 +209,9 @@ CREATE TABLE distxact3_1 (a int);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 SAVEPOINT s;
-WARNING:  DTM error (gathered 4 results from cmd 'SAVEPOINT s')
-DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = SAVEPOINT (postgres.c:1458)  (seg1 10.37.129.2:20003 pid=15600)
-ERROR:  Could not create a new savepoint (SAVEPOINT s) (xact.c:3750)
+WARNING:  DTM error (gathered 2 results from cmd 'SAVEPOINT s')
+DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = SAVEPOINT (postgres.c:1470)  (seg1 localhost:11003 pid=27451)
+ERROR:  Could not create a new savepoint (SAVEPOINT s) (xact.c:3861)
 ROLLBACK;
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;
@@ -234,9 +246,9 @@ INSERT INTO distxact3_2 VALUES (26);
 INSERT INTO distxact3_2 VALUES (27);
 INSERT INTO distxact3_2 VALUES (28);
 RELEASE SAVEPOINT s;
-WARNING:  DTM error (gathered 4 results from cmd 'RELEASE SAVEPOINT s')
-DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = RELEASE (postgres.c:1458)  (seg1 10.37.129.2:20003 pid=15600)
-ERROR:  Could not release savepoint (RELEASE SAVEPOINT s) (xact.c:3882)
+WARNING:  DTM error (gathered 2 results from cmd 'RELEASE SAVEPOINT s')
+DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = RELEASE (postgres.c:1470)  (seg1 localhost:11003 pid=27451)
+ERROR:  Could not release savepoint (RELEASE SAVEPOINT s) (xact.c:3993)
 ROLLBACK;
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;
@@ -271,9 +283,9 @@ INSERT INTO distxact3_3 VALUES (36);
 INSERT INTO distxact3_3 VALUES (37);
 INSERT INTO distxact3_3 VALUES (38);
 ROLLBACK TO SAVEPOINT s;
-WARNING:  DTM error (gathered 4 results from cmd 'ROLLBACK TO SAVEPOINT s')
-DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = ROLLBACK (postgres.c:1458)  (seg1 10.37.129.2:20003 pid=15600)
-ERROR:  Could not rollback to savepoint (ROLLBACK TO SAVEPOINT s) (xact.c:4062)
+WARNING:  DTM error (gathered 2 results from cmd 'ROLLBACK TO SAVEPOINT s')
+DETAIL:  Raise ERROR for debug_dtm_action = 2, commandTag = ROLLBACK (postgres.c:1470)  (seg1 localhost:11003 pid=27451)
+ERROR:  Could not rollback to savepoint (ROLLBACK TO SAVEPOINT s) (xact.c:4173)
 ROLLBACK;
 RESET debug_dtm_action_sql_command_tag;
 RESET debug_dtm_action;
@@ -288,13 +300,3 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DROP TABLE distxact3_3;
 RESET debug_print_full_dtm;
---
--- start_matchsubs
---
--- # create a match/subs expression
---
--- m/(ERROR|WARNING|CONTEXT|NOTICE):.*The previous session was reset because its gang was disconnected/
--- s/session id \= \s*\d+/session id \= DUMMY/gm
---
--- end_matchsubs
---
