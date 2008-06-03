@@ -357,7 +357,7 @@ check_xact_readonly(Node *parsetree)
 					rel = makeRangeVarFromNameList(names);
 					
 					if (dropStmt->removeType != OBJECT_TABLE ||
-					    !RelationToRemoveIsTemp(rel))
+					    !RelationToRemoveIsTemp(rel, dropStmt->missing_ok))
 						ereport(ERROR,
 								(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 								 errmsg("transaction is read-only")));
