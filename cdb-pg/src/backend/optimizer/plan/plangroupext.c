@@ -156,10 +156,6 @@ static void append_colIdx(AttrNumber *colIdx, int numcols, int colno,
 static Plan *plan_list_rollup_plans(PlannerInfo *root,
 									GroupExtContext *context,
 									Plan *lefttree);
-static List *make_pathkeys_for_rollup(List *groupclause,
-									  List *tlist,
-									  AttrNumber *grpColIdx,
-									  CanonicalRollup *rollup);
 
 /*
  * Create the plan for grouping extensions
@@ -603,6 +599,20 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		context->tlist = current_tlist;
 		input_grouping = grouping;
 	}
+	
+	/* Remove the trailing grouping columns from the equivalence key list. */
+	if (last_group_no > 0)
+	{
+		int tmp_group_no;
+		for (tmp_group_no = 0; tmp_group_no < last_group_no; tmp_group_no++)
+		{
+			TargetEntry *tle = get_tle_by_resno(agg_node->targetlist,
+												groupColIdx[context->numGroupCols - 3 - tmp_group_no]);
+			root->equi_key_list = remove_pathkey_item(root->equi_key_list,
+													  (Node *)tle->expr);
+		}
+	}
+
 
 	/*
 	 * If we need to bring back aggregate results from different segments,
@@ -1386,13 +1396,9 @@ plan_list_rollup_plans(PlannerInfo *root,
 	for (rollup_no=0; rollup_no<list_length(context->canonical_rollups); rollup_no++)
 	{
 		List *pathkeys = NIL;
-		/* Make pathkeys for each rollup */
-		pathkeys = make_pathkeys_for_rollup(root->parse->groupClause,
-											context->tlist,
-											context->grpColIdx,
-											(CanonicalRollup *)list_nth(
-												context->canonical_rollups, rollup_no));
-		
+
+		pathkeys = copyObject(context->current_pathkeys);
+		pathkeys = canonicalize_pathkeys(root, pathkeys);
 		context->pathkeys =	lappend(context->pathkeys, pathkeys);
 	}
 
@@ -1435,6 +1441,7 @@ plan_list_rollup_plans(PlannerInfo *root,
 			RangeTblEntry *newrte;
 			List *subquery_tlist = NIL;
 			ListCell *lc;
+			int *resno_map;
 
 			/* addRangeTableEntryForSubquery requires the resnames in 
 			 * the targetlist to be not NULL.
@@ -1459,12 +1466,13 @@ plan_list_rollup_plans(PlannerInfo *root,
 												   TRUE);
 			final_query->rtable = lappend(final_query->rtable, newrte);
 			subquery_tlist = generate_subquery_tlist(list_length(final_query->rtable),
-													 rollup_plan->targetlist);
+													 rollup_plan->targetlist, &resno_map);
 			rollup_plan = (Plan *)make_subqueryscan(subquery_tlist,
 													NIL,
 													list_length(final_query->rtable),
 													rollup_plan);
 			mark_passthru_locus(rollup_plan, true, true);
+			pfree(resno_map);
 		}
 
 		else
@@ -1510,35 +1518,3 @@ plan_list_rollup_plans(PlannerInfo *root,
 
 	return result_plan;
 }
-
-/*
- * Construct a new pathkeys for a given rollup.
- */
-static List *
-make_pathkeys_for_rollup(List *groupclause,
-						 List *tlist,
-						 AttrNumber *grpColIdx,
-						 CanonicalRollup *rollup)
-{
-	int pos;
-	int colno;
-	List *pathkeys = NIL;
-	List *current_pathkeys;
-	current_pathkeys = make_pathkeys_for_groupclause(groupclause, tlist);
-	
-	for (colno=0; colno<rollup->numcols; colno++)
-	{
-		/* Find the position of rollup->colIdx[colno] in grpColIdx */
-	    for (pos=0; pos<rollup->numcols; pos++)
-		{
-			if (rollup->colIdx[colno] == grpColIdx[pos])
-				break;
-		}
-
-		Assert (pos < rollup->numcols);
-		pathkeys = lappend(pathkeys, list_nth(current_pathkeys, pos));
-	}
-
-	return pathkeys;
-}
-

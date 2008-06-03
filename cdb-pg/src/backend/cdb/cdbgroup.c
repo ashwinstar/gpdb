@@ -1654,9 +1654,15 @@ List *augment_subplan_tlist(List *tlist, List *exprs, int *pnum, AttrNumber **pc
  *
  * Result is a "flat" (all simple Var node) targetlist in which
  * varattno and resno match and are sequential.
+ *
+ * This function also returns a map between the original targetlist
+ * entry to new target list entry using resno values. The index
+ * positions for resno_map represent the original resnos, while the
+ * array elements represent the new resnos. The array is allocated
+ * by the caller, which should have length of list_length(input_tlist).
  */
 List *
-generate_subquery_tlist(Index varno, List *input_tlist)
+generate_subquery_tlist(Index varno, List *input_tlist, int **p_resno_map)
 {
 	List	   *tlist = NIL;
 	int			resno = 1;
@@ -1664,11 +1670,13 @@ generate_subquery_tlist(Index varno, List *input_tlist)
 	TargetEntry *tle;
 	Node	   *expr;
 
+	*p_resno_map = (int *)palloc0(list_length(input_tlist) * sizeof(int));
+
 	foreach(j, input_tlist)
 	{
 		TargetEntry *inputtle = (TargetEntry *) lfirst(j);
 
-		Assert(inputtle->resno == resno);
+		Assert(inputtle->resno == resno && inputtle->resno >= 1);
 
 		/* Don't pull up constants, always use a Var to reference the input. */
 		expr = (Node *) makeVar(varno,
@@ -1676,6 +1684,9 @@ generate_subquery_tlist(Index varno, List *input_tlist)
 								exprType((Node *) inputtle->expr),
 								exprTypmod((Node *) inputtle->expr),
 								0);
+
+		(*p_resno_map)[inputtle->resno - 1] = resno;
+
 		/* We don't have to mark resjunk here, the second stage handles it. */
 		tle = makeTargetEntry((Expr *) expr,
 							  (AttrNumber) resno++,
@@ -2379,6 +2390,7 @@ add_second_stage_agg(PlannerInfo *root,
 	RangeTblEntry *newrte;
 	RangeTblRef *newrtref;
 	Plan         *agg_node;
+	int          *resno_map;
 
 	/*
 	 * Add a SubqueryScan node to renumber the range of the query.
@@ -2447,7 +2459,7 @@ add_second_stage_agg(PlannerInfo *root,
 
 	/*  parse->targetList -- used by EXECUTE s to derive portal's tupDesc */
 	
-	subquery_tlist = generate_subquery_tlist(1, prelim_tlist); /* Query varno is 1 */
+	subquery_tlist = generate_subquery_tlist(1, prelim_tlist, &resno_map); /* Query varno is 1 */
 	/* Do we need to fill in more?  I don't think so. */
 	
 	result_plan = (Plan*)make_subqueryscan(subquery_tlist,
@@ -2455,50 +2467,21 @@ add_second_stage_agg(PlannerInfo *root,
 										   1, /* scanrelid (= varno) */
 										   result_plan);
 	mark_passthru_locus(result_plan, true, true);
-	
+
+	/* Reconstruct equi_key_list since the rtable has changed.
+	 * XXX we leak the old one.
+	 */
+	root->equi_key_list = construct_equivalencekey_list(root->equi_key_list,
+														resno_map,
+														subquery->targetList,
+														subquery_tlist);
 	if ( *p_current_pathkeys != NULL )
 	{
-		/* Generate current_pathkeys with new var numbering.  The added
-		 * SubqueryScan scrambled them.
-		 */
-		List *new_keys = NIL;
-		ListCell *c;
-		int i = 1;
-
-		/*
-		 * There may be duplicate keys in the GroupClause, but
-		 * the pathkeys contain non-duplicate keys. So,
-		 * numGroupCols is not necessarily equal to the number
-		 * of keys in *p_current_pathkeys. But we want to make
-		 * sure that numGroupCols is not less than this number.
-		 */
-		Assert( numGroupCols >= list_length(*p_current_pathkeys) );
-
-		foreach ( c, *p_current_pathkeys )
-		{
-			List *k;
-			PathKeyItem *pki;
-			TargetEntry *tle;
-			Oid sortop;
-			
-			k = (List *)lfirst(c);
-			
-			/* Need the pathkey sortop, use the first on the list. */
-			Assert( IsA(k,List) && list_length(k) > 0 );
-			pki = (PathKeyItem*)linitial(k);
-			sortop = pki->sortop;
-			
-			tle = get_tle_by_resno(subquery_tlist, i);
-			pki = makeNode(PathKeyItem);
-			pki->key = copyObject((Node*)tle->expr);
-			pki->sortop = sortop;
-			
-			new_keys = lappend(new_keys, list_make1(pki));
-			i++;
-		}
-		
-		*p_current_pathkeys = new_keys;
+		*p_current_pathkeys = reconstruct_pathkeys(root, *p_current_pathkeys, resno_map,
+												   subquery->targetList, subquery_tlist);
 	}
+
+	pfree(resno_map);
 
 	/* Add an Agg/Group node */
 	if (is_agg ||
@@ -2545,7 +2528,7 @@ add_second_stage_agg(PlannerInfo *root,
 	agg_node->flow = pull_up_Flow(agg_node, 
 								  agg_node->lefttree, 
 								  (*p_current_pathkeys != NIL));
-
+	
 	/* 
 	 * Since the rtable has changed, we had better recreate a RelOptInfo entry for it.
 	 */
@@ -2617,4 +2600,55 @@ gp_hash_safe_grouping(PlannerInfo *root)
 			return false;
 	}
 	return true;
+}
+
+/*
+ * reconstruct_pathkeys
+ *
+ * Reconstruct the given pathkeys based on the given mapping from the original
+ * targetlist to a new targetlist.
+ */
+List *
+reconstruct_pathkeys(PlannerInfo *root, List *pathkeys, int *resno_map,
+					 List *orig_tlist, List *new_tlist)
+{
+	List *new_pathkeys;
+	
+	ListCell *lc;
+	foreach (lc, pathkeys)
+	{
+		List *keys = (List *)lfirst(lc);
+		ListCell *key_lc;
+		TargetEntry *new_tle;
+			
+		Assert(IsA(keys, List));
+		foreach(key_lc, keys)
+		{
+			PathKeyItem *item = (PathKeyItem *)lfirst(key_lc);
+			int resno = 0;
+			ListCell *tle_lc;
+			Assert(IsA(item, PathKeyItem));
+				
+			foreach(tle_lc, orig_tlist)
+			{
+				TargetEntry *tle = (TargetEntry *)lfirst(tle_lc);
+				Assert(IsA(tle, TargetEntry));
+				if (equal(tle->expr, item->key))
+				{
+					resno = tle->resno;
+					break;
+				}
+			}
+			if (resno > 0)
+			{
+				new_tle = get_tle_by_resno(new_tlist, resno_map[resno-1]);
+				Assert(new_tle != NULL);
+				item->key = (Node *)new_tle->expr;
+			}
+		}
+	}
+
+	new_pathkeys = canonicalize_pathkeys(root, pathkeys);
+
+	return new_pathkeys;
 }

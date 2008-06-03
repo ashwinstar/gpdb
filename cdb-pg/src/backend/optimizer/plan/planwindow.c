@@ -288,7 +288,7 @@ static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrn
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
 static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys);
 
-static Plan *wrap_plan(Plan *plan, Query *query, List *pathkeys, 
+static Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query, List **p_pathkeys, 
        const char *alias_name, List *col_names, Query **query_p);
 static Plan *add_join_to_wrapper(Plan *plan, Query *query, List *join_tlist,
 								 unsigned partkey_len, 
@@ -2080,7 +2080,6 @@ static Plan *plan_trivial_window_query(PlannerInfo *root, WindowContext *context
 static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *context, List **pathkeys_ptr)
 {
 	Plan *result_plan;
-	List *result_pathkeys = NIL;
 	CdbPathLocus locus;
 	List *pathkeys = NIL;
 	List *targetlist;
@@ -2217,7 +2216,7 @@ static Plan *plan_sequential_window_query(PlannerInfo *root, WindowContext *cont
 
 	Assert( result_plan->flow != NULL );
 
-	*pathkeys_ptr = result_pathkeys;
+	*pathkeys_ptr = pathkeys;
 	return result_plan;
 }
 
@@ -2643,16 +2642,14 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		 */
 		{
 			Query *wquery;
-			List *win_pathkeys = NIL;
 			
-			window_plan = wrap_plan(window_plan, 
-									context->subquery, win_pathkeys, 
+			window_plan = wrap_plan(root, window_plan, 
+									context->subquery, &pathkeys, 
 									"coplan", win_names, 
 									&wquery);
 			
 			context->subquery = wquery; /* the "input query" for the next time through */
 			context->original_range = false; /* range is now our introduced range */
-			local_root = NULL; /* root is no longer universally correct. */
 		}
 	}
 	
@@ -2722,6 +2719,8 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		join_plan->flow = pull_up_Flow(join_plan, join_plan->lefttree, true);
 		window_plan = join_plan;
 	}	
+
+	*pathkeys_ptr = pathkeys;
 
 	/* elog(NOTICE, "End of plan_sequential_stage()."); */
 	return window_plan;
@@ -3985,8 +3984,8 @@ Value *get_tle_name(TargetEntry *tle, List *rtable, const char *default_name)
  * XXX Is it necessary to adjust varlevelsup in the plan and query trees?
  *     I don't think so.
  */
-Plan *wrap_plan(Plan *plan, Query *query, 
-				List *pathkeys, 
+Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query, 
+				List **p_pathkeys, 
 				const char *alias_name, List *col_names, 
 				Query **query_p)	
 {
@@ -3997,6 +3996,7 @@ Plan *wrap_plan(Plan *plan, Query *query,
 	FromExpr *jointree;
 	List *subq_tlist = NIL;
 	Index varno = 1;
+	int *resno_map;
 	
 	Assert( query_p != NULL );
 	
@@ -4007,12 +4007,12 @@ Plan *wrap_plan(Plan *plan, Query *query,
 	eref->aliasname = pstrdup(alias_name);
 	eref->colnames = col_names;
 
-	rte = package_plan_as_rte(query, plan, eref, pathkeys);
+	rte = package_plan_as_rte(query, plan, eref, *p_pathkeys);
 	
 	/* Make the target list for the plan and for the wrapper Query
 	 * that will correspond to it.
 	 */
-	subq_tlist = generate_subquery_tlist(varno, plan->targetlist);
+	subq_tlist = generate_subquery_tlist(varno, plan->targetlist, &resno_map);
 	
 	/* Make the plan. 
 	 */
@@ -4061,8 +4061,24 @@ Plan *wrap_plan(Plan *plan, Query *query,
 	subquery->intoPolicy = NULL;
 	
 	... */
-		
-	*query_p = subquery;	
+
+	/* Reconstruct equi_key_list since the rtable has changed.
+	 * XXX we leak the old one.
+	 */
+	root->equi_key_list =
+		construct_equivalencekey_list(root->equi_key_list,
+									  resno_map,
+									  ((SubqueryScan *)plan)->subplan->targetlist,
+									  subq_tlist);
+
+	/* Construct the new pathkeys */
+	if (*p_pathkeys != NULL)
+		*p_pathkeys = reconstruct_pathkeys(root, *p_pathkeys, resno_map,
+										   ((SubqueryScan *)plan)->subplan->targetlist,
+										   subq_tlist);
+	pfree(resno_map);
+	
+	*query_p = subquery;
 	return plan;
 }
 
@@ -4085,6 +4101,7 @@ Plan *add_join_to_wrapper(
 	List *subq_tlist = NIL;
 	Index varno = 2; /* Always */
 	List *pathkeys = NIL;
+	int *resno_map;
 	
 	Insist( list_length(wrapper_query->rtable) == 1 );
 	Insist( wrapper_query->jointree->quals == NULL );
@@ -4101,7 +4118,7 @@ Plan *add_join_to_wrapper(
 	/* Make the target list for the plan and for the wrapper Query
 	 * that will correspond to it.
 	 */
-	subq_tlist = generate_subquery_tlist(varno, plan->targetlist);
+	subq_tlist = generate_subquery_tlist(varno, plan->targetlist, &resno_map);
 	
 	/* Make the plan. 
 	 */

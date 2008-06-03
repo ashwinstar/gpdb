@@ -957,7 +957,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * match the current_pathkeys resulting from the window plan.  
 		 */
 		sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
-													  tlist);
+													  result_plan->targetlist);
 		sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 	}
 	else
@@ -1135,6 +1135,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
  				 */
  				sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
 															  result_plan->targetlist);
+				sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 			}
 		}
 		else /* Not GP_ROLE_DISPATCH */
@@ -1353,6 +1354,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						 */
 						sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
 																	  result_plan->targetlist);
+						sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 						CdbPathLocus_MakeNull(&current_locus);
 					}
 				}
@@ -1442,6 +1444,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 						 */
 						sort_pathkeys = make_pathkeys_for_sortclauses(parse->sortClause,
 																	  result_plan->targetlist);
+						sort_pathkeys = canonicalize_pathkeys(root, sort_pathkeys);
 					}
 				}
 				/* The Group node won't change sort ordering, but may disrupt locus. */

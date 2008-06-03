@@ -1874,3 +1874,89 @@ truncate_useless_pathkeys(PlannerInfo *root,
 	else
 		return list_truncate(list_copy(pathkeys), nuseful);
 }
+
+/*
+ * remove_pathkey_item
+ *
+ * Remove a PathKeyItem for a given key from the given equivalence key list.
+ * If such a key is not in the list, nothing is done to the given equivalence
+ * key list.
+ */
+List *
+remove_pathkey_item(List *equi_key_list,
+					Node *key)
+{
+	ListCell *lc;
+	List *new_list = NIL;
+	
+	foreach (lc, equi_key_list)
+	{
+		List *keys = (List *) lfirst(lc);
+		ListCell *key_lc;
+		List *new_keys = NIL;
+
+		Assert(IsA(keys, List));
+		
+		foreach (key_lc, keys)
+		{
+			PathKeyItem *item = (PathKeyItem *)lfirst(key_lc);
+			Assert(IsA(item, PathKeyItem));
+			
+			if (!equal(item->key, key))
+				new_keys = lappend(new_keys, item);
+		}
+		if (list_length(new_keys) > 0)
+			new_list = lappend(new_list, new_keys);
+	}
+
+	return new_list;
+}
+
+/*
+ * construct_equivalencekey_list
+ *    Construct a new equivalence key list from a given list based on
+ *    the old and new target list correspondence.
+ */
+List *
+construct_equivalencekey_list(List *equi_key_list,
+							  int *resno_map,
+							  List *orig_tlist,
+							  List *new_tlist)
+{
+	List *new_equi_key_list = NIL;
+	ListCell *lc;
+	
+	foreach (lc, equi_key_list)
+	{
+		List *keys = (List *) lfirst(lc);
+		ListCell *key_lc;
+		List *new_keys = NIL;
+		
+		Assert(IsA(keys, List));
+
+		foreach (key_lc, keys)
+		{
+			PathKeyItem *item = (PathKeyItem *) lfirst(key_lc);
+			TargetEntry *tle;
+			PathKeyItem *new_item;
+			TargetEntry *new_tle;
+			
+			Assert(IsA(item, PathKeyItem));
+
+			tle = tlist_member(item->key, orig_tlist);
+			if (tle != NULL)
+			{
+				Assert(resno_map[tle->resno - 1] > 0);
+				new_tle = list_nth(new_tlist, resno_map[tle->resno - 1] - 1);
+				Assert(new_tle != NULL);
+				new_item = makePathKeyItem((Node *)new_tle->expr, item->sortop, true);
+				new_keys = lappend(new_keys, new_item);
+			}
+		}
+		
+		if (list_length(new_keys) > 1)
+			new_equi_key_list = lappend(new_equi_key_list, new_keys);
+	}
+
+	return new_equi_key_list;
+}
