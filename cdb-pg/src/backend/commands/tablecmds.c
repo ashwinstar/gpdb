@@ -1149,6 +1149,76 @@ RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior)
 }
 
 /*
+ * RelationToRemoveIsTemp
+ *		Checks if an object being targeted for drop is a temporary table.
+ */
+bool
+RelationToRemoveIsTemp(const RangeVar *relation, DropBehavior behavior)
+{
+	Oid			relOid;
+	ObjectAddress object;
+	HeapTuple	relTup;
+	Form_pg_class relForm;
+	char	   *nspname;
+	char	   *relname;
+	bool		isTemp;
+
+	elog(DEBUG5, "Relation to remove catalogname %s, schemaname %s, relname %s",
+		 (relation->catalogname == NULL ? "<empty>" : relation->catalogname),
+		 (relation->schemaname == NULL ? "<empty>" : relation->schemaname),
+		 (relation->relname == NULL ? "<empty>" : relation->relname));
+
+	// UNDONE: Not sure how to interpret 'behavior'...
+	
+	relOid = RangeVarGetRelid(relation, false);
+
+	object.classId = RelationRelationId;
+	object.objectId = relOid;
+	object.objectSubId = 0;
+
+	/*
+	 * Lock down the object to stablize it before we examine its
+	 * charactistics.
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		LockRelationOid(RelationRelationId, RowExclusiveLock);
+		LockRelationOid(TypeRelationId, RowExclusiveLock);
+		LockRelationOid(DependRelationId, RowExclusiveLock);
+	}
+
+	/* Lock the relation to be dropped */
+	LockRelationOid(relOid, AccessExclusiveLock);
+
+	relTup = SearchSysCache(RELOID,
+							ObjectIdGetDatum(relOid),
+							0, 0, 0);
+	if (!HeapTupleIsValid(relTup))
+		elog(ERROR, "cache lookup failed for relation %u", relOid);
+	relForm = (Form_pg_class) GETSTRUCT(relTup);
+
+	/* Qualify the name if not visible in search path */
+	if (RelationIsVisible(relOid))
+		nspname = NULL;
+	else
+		nspname = get_namespace_name(relForm->relnamespace);
+
+	relname = quote_qualified_identifier(nspname, NameStr(relForm->relname));
+
+	isTemp = isTempNamespace(relForm->relnamespace);
+	
+	elog(DEBUG5, "Relation name is %s, namespace %s, isTemp = %s",
+	     relname,
+	     (nspname == NULL ? "<null>" : nspname),
+	     (isTemp ? "true" : "false"));
+	
+	ReleaseSysCache(relTup);
+	
+	return isTemp;
+}
+
+
+/*
  * ExecuteTruncate
  *		Executes a TRUNCATE command.
  *

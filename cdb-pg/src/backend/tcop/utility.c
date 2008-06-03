@@ -326,16 +326,45 @@ check_xact_readonly(Node *parsetree)
 	switch (nodeTag(parsetree))
 	{
 		case T_CreateStmt:
-		{
-			CreateStmt *stmt;
-			
-			stmt = (CreateStmt *) parsetree;
-
-			if (stmt->relation->istemp)
-				return;		// Permit creation of TEMPORARY tables in read-only mode.
+			{
+				CreateStmt *createStmt;
 				
-			// Fall through...
-		}
+				createStmt = (CreateStmt *) parsetree;
+
+				if (createStmt->relation->istemp)
+					return;		// Permit creation of TEMPORARY tables in read-only mode.
+					
+				ereport(ERROR,
+						(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+						 errmsg("transaction is read-only")));
+			}
+			break;
+
+		case T_DropStmt:
+			{
+				DropStmt   *dropStmt = (DropStmt *) parsetree;
+				ListCell   *arg;
+
+				/*
+				 * So, if DROP TABLE is used, all objects must be
+				 * temporary tables.
+				 */
+				foreach(arg, dropStmt->objects)
+				{
+					List	   *names = (List *) lfirst(arg);
+					RangeVar   *rel;
+
+					rel = makeRangeVarFromNameList(names);
+					
+					if (dropStmt->removeType != OBJECT_TABLE ||
+					    !RelationToRemoveIsTemp(rel))
+						ereport(ERROR,
+								(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+								 errmsg("transaction is read-only")));
+						
+				}
+			}
+			return;		// All objects are TEMPORARY tables.
 
 		case T_AlterDatabaseStmt:
 		case T_AlterDatabaseSetStmt:
@@ -370,7 +399,6 @@ check_xact_readonly(Node *parsetree)
 		case T_CompositeTypeStmt:
 		case T_ViewStmt:
 		case T_DropCastStmt:
-		case T_DropStmt:
 		case T_DropdbStmt:
 		case T_DropTableSpaceStmt:
 		case T_RemoveFuncStmt:

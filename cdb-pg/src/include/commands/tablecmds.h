@@ -28,6 +28,8 @@ extern void RemoveRelation(const RangeVar *relation, DropBehavior behavior);
 
 extern void RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior);
 
+extern bool RelationToRemoveIsTemp(const RangeVar *relation, DropBehavior behavior);
+
 extern void AlterTable(AlterTableStmt *stmt);
 
 extern void ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing);
