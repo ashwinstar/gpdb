@@ -117,7 +117,7 @@ select substring('gpmatchsubs2' || now(), 1,  25);
 -- m/(?<!substring..)gpmatchignore1/
 -- m/(?<!substring..)gpmatchignore2/
 --
--- end_matchsubs
+-- end_matchignore
 
 -- just ignore the results
 

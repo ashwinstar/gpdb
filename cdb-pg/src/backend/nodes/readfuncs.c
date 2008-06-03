@@ -803,6 +803,28 @@ _readAlterTableCmd(void)
 	READ_DONE();
 }
 
+static AlterPartitionCmd *
+_readAlterPartitionCmd(void)
+{
+	READ_LOCALS(AlterPartitionCmd);
+
+	READ_NODE_FIELD(partid);
+	READ_NODE_FIELD(arg1);
+	READ_NODE_FIELD(arg2);
+	
+	READ_DONE();
+}
+
+static AlterPartitionId *
+_readAlterPartitionId(void)
+{
+	READ_LOCALS(AlterPartitionId);
+
+	READ_ENUM_FIELD(idtype, AlterPartitionIdType);
+	READ_NODE_FIELD(partiddef);
+	
+	READ_DONE();
+}
 
 static CreateRoleStmt *
 _readCreateRoleStmt(void)
@@ -3106,6 +3128,8 @@ static ParseNodeInfo infoAr[] =
 	{"ALTERFUNCTIONSTMT", (ReadFn)_readAlterFunctionStmt},
 	{"ALTEROBJECTSCHEMASTMT", (ReadFn)_readAlterObjectSchemaStmt},
 	{"ALTEROWNERSTMT", (ReadFn)_readAlterOwnerStmt},
+	{"ALTERPARTITIONCMD", (ReadFn)_readAlterPartitionCmd},
+	{"ALTERPARTITIONID", (ReadFn)_readAlterPartitionId},
 	{"ALTERROLESETSTMT", (ReadFn)_readAlterRoleSetStmt},
 	{"ALTERROLESTMT", (ReadFn)_readAlterRoleStmt},
 	{"ALTERSEQSTMT", (ReadFn)_readAlterSeqStmt},

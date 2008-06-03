@@ -181,6 +181,22 @@ typedef struct NewColumnValue
 	ExprState  *exprstate;		/* execution state */
 } NewColumnValue;
 
+typedef struct pg_part_rule
+{
+	Oid			 pr_oid; /* the rule oid */
+	Oid			 paroid;
+	Oid			 parrelid;
+	Oid			 parparentrule;
+	char		*parname;
+	bool		 parisdefault;
+	int			 parruleord;
+	bool		 parrangestartincl;
+	bool		 parrangeendincl;
+	Node		*parrangestart;
+	Node		*parrangeend;
+	Node		*parrangeevery;
+	Node		*parlistvalues;
+} pg_part_rule;
 
 static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, bool istemp,
@@ -8792,7 +8808,7 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  */
 
 /*
- * get_part_rule_oid
+ * get_part_rule
  *
  * find the oid for the pg_partition_rule row for the specified
  * partition if it exists.
@@ -8804,15 +8820,18 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  * *does* exist and bMustExist=false then return an error.
  * 
  */
-static Oid
-get_part_rule_oid(Relation rel, AlterPartitionId *pid, 
-				  bool bExistError, bool bMustExist)
+static pg_part_rule*
+get_part_rule(Relation rel, AlterPartitionId *pid, 
+			  bool bExistError, bool bMustExist, 
+			  MemoryContext mcxt)
 {
 	char			 namBuf[NAMEDATALEN];
 	int ret;
 	StringInfoData buf;
 	Oid rootrelid = InvalidOid;
 	Oid prule_oid = InvalidOid;
+	pg_part_rule *prule = NULL;
+	MemoryContext oldcxt;
 
 	if (!pid)
 		ereport(ERROR,
@@ -8844,10 +8863,23 @@ get_part_rule_oid(Relation rel, AlterPartitionId *pid,
 	 */
 	rootrelid = RelationGetRelid(rel);
 
+/*
+					 " pr.parname, "
+					 " pr.parisdefault, "
+					 " pr.parruleord, pr.parrangestartincl, "
+					 " pr.parrangeendincl, "
+					 " pr.parrangestart, pr.parrangeend, "
+					 " pr.parrangeevery, pr.parlistvalues "
+*/
+
 	/* now see if the rule for our level exists */
 	initStringInfo(&buf);
 	appendStringInfo(&buf, 
-					 "select pr.oid as pr_oid from  "
+					 "select pr.oid as pr_oid,  "
+					 " pr.paroid, "
+					 " pr.parrelid, pr.parparentrule, "
+					 " pr.parname "
+					 " from  "
 					 "pg_partition pp, pg_partition_rule pr  "
 					 "where pp.relid = '%u' and pr.parname = '%s'  "
 					 "and pr.paroid = pp.oid",
@@ -8856,12 +8888,32 @@ get_part_rule_oid(Relation rel, AlterPartitionId *pid,
 
 	if (ret > 0 && SPI_tuptable != NULL && SPI_processed)
 	{
-		prule_oid = (Oid)atoi(SPI_getvalue(SPI_tuptable->vals[0],
-										   SPI_tuptable->tupdesc, 1));
+		TupleDesc tupdesc = SPI_tuptable->tupdesc;
+		SPITupleTable *tuptable = SPI_tuptable;
+		HeapTuple tuple = tuptable->vals[0];
+		char* tmp;
+		int ii = 1;
+
+		oldcxt = MemoryContextSwitchTo(mcxt);
+		prule = (pg_part_rule *) palloc0(sizeof(pg_part_rule));
+		MemoryContextSwitchTo(oldcxt);
+
+		prule->pr_oid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, ii++));
+
+		prule_oid = prule->pr_oid;
+
+		prule->paroid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, ii++));
+		prule->parrelid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, ii++));
+		prule->parparentrule = (Oid)atoi(SPI_getvalue(tuple, tupdesc, ii++));
+		tmp = (SPI_getvalue(tuple, tupdesc, ii++));
+
+		oldcxt = MemoryContextSwitchTo(mcxt);
+		prule->parname = pstrdup(tmp);
+		MemoryContextSwitchTo(oldcxt);
 	}
 
 	if (!bExistError)
-		return prule_oid;
+		return prule;
 
 	if (bMustExist && (InvalidOid == prule_oid))
 	{
@@ -8928,8 +8980,11 @@ get_part_rule_oid(Relation rel, AlterPartitionId *pid,
 		}
 
 	}
+	/* If we're the top level partition, adjust all parents for this path */
+	SPI_finish();
+	CommandCounterIncrement();
 
-	return prule_oid;
+	return prule;
 }
 
 static void
@@ -8937,9 +8992,14 @@ ATPExecPartAdd(Relation rel,
                AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, false);
+	pg_part_rule   *prule = NULL;
 
-	if (prule_id != InvalidOid)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, false, CurrentMemoryContext);
+
+	if (!prule)
 	{
 	}
 
@@ -8955,9 +9015,14 @@ ATPExecPartAlter(Relation rel,
                  AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+	if (prule)
 	{
 	}
 
@@ -8973,9 +9038,15 @@ ATPExecPartCoalesce(Relation rel,
                     AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+
+	if (prule)
 	{
 	}
 
@@ -8991,9 +9062,15 @@ ATPExecPartDrop(Relation rel,
                 AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+
+	if (prule)
 	{
 	}
 
@@ -9009,9 +9086,15 @@ ATPExecPartExchange(Relation rel,
                     AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+
+	if (prule)
 	{
 	}
 
@@ -9027,9 +9110,15 @@ ATPExecPartMerge(Relation rel,
                  AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+
+	if (prule)
 	{
 	}
 
@@ -9045,9 +9134,15 @@ ATPExecPartModify(Relation rel,
                   AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+
+	if (prule)
 	{
 	}
 
@@ -9063,9 +9158,15 @@ ATPExecPartRename(Relation rel,
                   AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+
+	if (prule)
 	{
 	}
 
@@ -9081,9 +9182,15 @@ ATPExecPartSetTemplate(Relation rel,
                        AlterPartitionCmd *pc)
 {
 /*	AlterPartitionId *pid = (AlterPartitionId *)pc->partid; 
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+
+	if (prule)
     {
     }
 
@@ -9102,9 +9209,15 @@ ATPExecPartSplit(Relation rel,
                  AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+
+	if (prule)
 	{
 	}
 
@@ -9120,16 +9233,30 @@ ATPExecPartTruncate(Relation rel,
                     AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	Oid          prule_id = get_part_rule_oid(rel, pid, true, true);
+	pg_part_rule   *prule = NULL;
 
-	if (InvalidOid == prule_id)
+	if (Gp_role != GP_ROLE_DISPATCH)
+		return;
+
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+
+	if (prule)
 	{
-	}
+		RangeVar *rv = makeNode(RangeVar);
+		TruncateStmt *ts = (TruncateStmt *)pc->arg1;
+		Relation	rel;
 
-    ereport(ERROR,
-            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-             errmsg("cannot TRUNCATE PARTITION for relation \"%s\"",
-                    RelationGetRelationName(rel))));
+		rel = heap_open(prule->parrelid, AccessShareLock);
+
+		rv->catalogname = NULL;
+		rv->schemaname = NULL;
+		rv->relname = RelationGetRelationName(rel);
+		rv->location = pc->location;
+		ts->relations = list_make1(rv);
+		heap_close(rel, NoLock);
+
+		ExecuteTruncate(ts);
+	}
 
 }
 

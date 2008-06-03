@@ -2016,12 +2016,22 @@ alter_table_partition_cmd:
 				}
 			| TRUNCATE PARTITION 
             alter_table_partition_id_spec	 
+            opt_drop_behavior
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+					TruncateStmt *ts = makeNode(TruncateStmt);
+
+                    /* 
+                       build an (incomplete) truncate statement for arg1: 
+                       fill in the rest after the partition id spec is
+                       validated
+                    */
+					ts->relations = NULL;
+					ts->behavior = $4;
 
                     pc->partid = (Node *)$3;
-                    pc->arg1 = NULL;
+                    pc->arg1 = (Node *)ts;
                     pc->arg2 = NULL;
                     pc->location = @3;
 

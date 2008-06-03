@@ -700,10 +700,31 @@ _readAlterTableCmd(const char ** str)
 	READ_NODE_FIELD(def);
 	READ_NODE_FIELD(transform);
 	READ_ENUM_FIELD(behavior, DropBehavior); Assert(local_node->behavior <= DROP_CASCADE);
+	READ_DONE();
+}
+
+static AlterPartitionCmd *
+_readAlterPartitionCmd(const char ** str)
+{
+	READ_LOCALS(AlterPartitionCmd);
+
+	READ_NODE_FIELD(partid);
+	READ_NODE_FIELD(arg1);
+	READ_NODE_FIELD(arg2);
 	
 	READ_DONE();
 }
 
+static AlterPartitionId *
+_readAlterPartitionId(const char ** str)
+{
+	READ_LOCALS(AlterPartitionId);
+
+	READ_ENUM_FIELD(idtype, AlterPartitionIdType);
+	READ_NODE_FIELD(partiddef);
+	
+	READ_DONE();
+}
 
 static CreateRoleStmt *
 _readCreateRoleStmt(const char ** str)
@@ -3549,6 +3570,12 @@ readNodeBinary(const char ** str)
 				break;
 			case T_AlterTableCmd:
 				return_value = _readAlterTableCmd(str);
+				break;
+			case T_AlterPartitionCmd:
+				return_value = _readAlterPartitionCmd(str);
+				break;
+			case T_AlterPartitionId:
+				return_value = _readAlterPartitionId(str);
 				break;
 
 			case T_CreateRoleStmt:

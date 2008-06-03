@@ -2200,6 +2200,30 @@ _copyAlterTableCmd(AlterTableCmd *from)
 	return newnode;
 }
 
+static AlterPartitionCmd *
+_copyAlterPartitionCmd(AlterPartitionCmd *from)
+{
+	AlterPartitionCmd *newnode = makeNode(AlterPartitionCmd);
+
+	COPY_NODE_FIELD(partid);
+	COPY_NODE_FIELD(arg1);
+	COPY_NODE_FIELD(arg2);
+
+	return newnode;
+}
+
+static AlterPartitionId *
+_copyAlterPartitionId(AlterPartitionId *from)
+{
+	AlterPartitionId *newnode = makeNode(AlterPartitionId);
+
+	COPY_SCALAR_FIELD(idtype);
+	COPY_NODE_FIELD(partiddef);
+
+	return newnode;
+}
+
+
 static AlterDomainStmt *
 _copyAlterDomainStmt(AlterDomainStmt *from)
 {
@@ -3709,6 +3733,12 @@ copyObject(void *from)
 			break;
 		case T_AlterTableCmd:
 			retval = _copyAlterTableCmd(from);
+			break;
+		case T_AlterPartitionCmd:
+			retval = _copyAlterPartitionCmd(from);
+			break;
+		case T_AlterPartitionId:
+			retval = _copyAlterPartitionId(from);
 			break;
 		case T_AlterDomainStmt:
 			retval = _copyAlterDomainStmt(from);

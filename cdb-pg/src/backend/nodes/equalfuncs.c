@@ -824,6 +824,25 @@ _equalAlterTableCmd(AlterTableCmd *a, AlterTableCmd *b)
 }
 
 static bool
+_equalAlterPartitionCmd(AlterPartitionCmd *a, AlterPartitionCmd *b)
+{
+	COMPARE_NODE_FIELD(partid);
+	COMPARE_NODE_FIELD(arg1);
+	COMPARE_NODE_FIELD(arg2);
+
+	return true;
+}
+
+static bool
+_equalAlterPartitionId(AlterPartitionId *a, AlterPartitionId *b)
+{
+	COMPARE_SCALAR_FIELD(idtype);
+	COMPARE_NODE_FIELD(partiddef);
+
+	return true;
+}
+
+static bool
 _equalAlterDomainStmt(AlterDomainStmt *a, AlterDomainStmt *b)
 {
 	COMPARE_SCALAR_FIELD(subtype);
@@ -2279,6 +2298,12 @@ equal(void *a, void *b)
 			break;
 		case T_AlterTableCmd:
 			retval = _equalAlterTableCmd(a, b);
+			break;
+		case T_AlterPartitionCmd:
+			retval = _equalAlterPartitionCmd(a, b);
+			break;
+		case T_AlterPartitionId:
+			retval = _equalAlterPartitionId(a, b);
 			break;
 		case T_AlterDomainStmt:
 			retval = _equalAlterDomainStmt(a, b);

@@ -1890,6 +1890,24 @@ _outAlterTableCmd(StringInfo str, AlterTableCmd *node)
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
 }
 
+static void
+_outAlterPartitionCmd(StringInfo str, AlterPartitionCmd *node)
+{
+	WRITE_NODE_TYPE("ALTERPARTITIONCMD");
+
+	WRITE_NODE_FIELD(partid);
+	WRITE_NODE_FIELD(arg1);
+	WRITE_NODE_FIELD(arg2);
+}
+
+static void
+_outAlterPartitionId(StringInfo str, AlterPartitionId *node)
+{
+	WRITE_NODE_TYPE("ALTERPARTITIONID");
+
+	WRITE_ENUM_FIELD(idtype, AlterPartitionIdType);
+	WRITE_NODE_FIELD(partiddef);
+}
 
 static void
 _outCreateRoleStmt(StringInfo str, CreateRoleStmt *node)
@@ -3573,6 +3591,14 @@ _outNode(StringInfo str, void *obj)
 			case T_AlterTableCmd:
 				_outAlterTableCmd(str, obj);
 				break;
+
+			case T_AlterPartitionCmd:
+				_outAlterPartitionCmd(str, obj);
+				break;
+			case T_AlterPartitionId:
+				_outAlterPartitionId(str, obj);
+				break;
+
 
 			case T_CreateRoleStmt:
 				_outCreateRoleStmt(str, obj);
