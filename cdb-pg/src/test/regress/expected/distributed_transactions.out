@@ -288,3 +288,13 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'a' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 DROP TABLE distxact3_3;
 RESET debug_print_full_dtm;
+--
+-- start_matchsubs
+--
+-- # create a match/subs expression
+--
+-- m/(ERROR|WARNING|CONTEXT|NOTICE):.*The previous session was reset because its gang was disconnected/
+-- s/session id \= \s*\d+/session id \= DUMMY/gm
+--
+-- end_matchsubs
+--

@@ -3941,6 +3941,7 @@ disconnectAndDestroyDispatchAgents(struct DispatchAgentSet * das)
 }
 
 static bool NeedResetSession = false;
+static bool NeedSessionIdChange = false;
 static Oid	OldTempNamespace = InvalidOid;
 
 /*
@@ -3952,31 +3953,38 @@ static Oid	OldTempNamespace = InvalidOid;
 void
 CheckForResetSession(void)
 {
-//	int 	oldSessionId = 0;
-//	int 	newSessionId = 0;
+	int 	oldSessionId = 0;
+	int 	newSessionId = 0;
 	Oid		dropTempNamespaceOid;
 	
 	if (!NeedResetSession)
 		return;
 
-	NeedResetSession = false;
+	/*
+	 * Do the session id change early.
+	 */
+	if (NeedSessionIdChange)
+	{
+		oldSessionId = gp_session_id;
+		ProcNewMppSessionId(&newSessionId);
+		
+		gp_session_id = newSessionId;
+	    gp_command_count = 0;
+		
+		elog(WARNING,"The previous session was reset because its gang was disconnected (session id = %d). "
+			 "The new session id = %d",
+			 oldSessionId, newSessionId);
+		
+		NeedSessionIdChange = false;
+	}
+
+	if (IsTransactionOrTransactionBlock())
+		return;
+	
 	dropTempNamespaceOid = OldTempNamespace;
 	OldTempNamespace = InvalidOid;	
-
-	/*
-	 * Until the looping call to findConnByHeader is diagnosed, ...
-	 * don't reset the session for now.
-	 */
-//	oldSessionId = gp_session_id;
-//	ProcNewMppSessionId(&newSessionId);
+	NeedResetSession = false;
 	
-//	gp_session_id = newSessionId;
-//  gp_command_count = 0;
-	
-//	elog(WARNING,"The previous session was reset because its gang was disconnected (session id = %d). "
-//		 "The new session id = %d",
-//		 oldSessionId, newSessionId);
-
 	if (dropTempNamespaceOid != InvalidOid)
 	{
 		PG_TRY();
@@ -4012,6 +4020,7 @@ resetSessionForPrimaryGangLoss(void)
 		 * Not too early.
 		 */
 		NeedResetSession = true;
+		NeedSessionIdChange = true;
 		
 		if (ExistsTempNamespace())
 		{
@@ -4028,6 +4037,8 @@ resetSessionForPrimaryGangLoss(void)
 			elog(WARNING,"Any temporary tables for this session have been dropped because the gang was disconnected (session id = %d)",
 				 gp_session_id);
 		}
+		else
+			OldTempNamespace = InvalidOid;
 
 	}
 	
