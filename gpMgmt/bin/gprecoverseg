@@ -109,7 +109,7 @@ USAGE () {
 		$ECHO "      -d, <Master database directory> name of alternative Master database to start up [optional]"
 		$ECHO
 		$ECHO "      Copy options:"
-		$ECHO "      -c rsync, use rsync to copy data to failed segment"
+		$ECHO "      -c {rsync|ssh}, use rsync or ssh to copy data to failed segment [default:- ssh]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -1167,6 +1167,13 @@ while getopts ":v'?'qfal:d:z:p:s:DB:c:" opt;do
         * ) USAGE ;;
     esac
 done
+if [ x"" == x"$RSYNCOPT" ]; then
+        RSYNCOPT=ssh
+fi
+if [ x"ssh" != x"$RSYNCOPT" ] && [ x"rsync" != x"$RSYNCOPT" ] ;then
+        ERROR_EXIT "[FATAL]:- Only support ssh or rsync to copy data to remote host.  Please specify -c rsync or -c ssh." 1
+fi
+
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
 	if [ $EXISTS -eq 1 ]; then
