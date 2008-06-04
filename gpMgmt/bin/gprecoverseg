@@ -394,7 +394,7 @@ TEST_ACCESS () {
 		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$ECHO test >/tmp/remote_test2.$$" 
 		LOG_MSG "[INFO]:-Test 3, copy file from ${MIR_QE_HOST} to ${FAIL_QE_HOST}"
 		#RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$SCP -pr /tmp/remote_test2.$$ ${FAIL_QE_HOST}:/tmp"
-		$TRUSTED_SHELL ${MIR_QE_HOST} "cd /tmp;$TAR cf - /remote_test2.$$|$TRUSTED_SHELL ${FAIL_QE_HOST} \"cd /tmp;$TAR xf - \"" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL ${MIR_QE_HOST} "cd /tmp;$TAR cf - remote_test2.$$|$TRUSTED_SHELL ${FAIL_QE_HOST} \"cd /tmp;$TAR xf - \"" >> $LOG_FILE 2>&1
 		LOG_MSG "[INFO]:-Clearing temporary files"
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f /tmp/remote_test1.$$" 
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f /tmp/remote_test2.$$" 
