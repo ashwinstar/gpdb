@@ -221,17 +221,9 @@ Datum pseudoinverse(PG_FUNCTION_ARGS)
 		for ( j = 0; j < rows; j++ ) {
 			Splus_times_Ut[i+j*columns] = 0.0;
 			for ( k = 0; k < rows; k++ ) {
-				
-				/* 
-				 * This calculation uses transpose of U, but the fortran routine 
-				 * returned transpose of U already because of it'S row-first 
-				 * ordering so let'S take advantage of it here - in other words 
-				 * U is actually Ut because of our use of a FORTRAN based 
-				 * dgesdd_...
-				 */
 				Splus_times_Ut[i+j*columns] = 
 					Splus_times_Ut[i+j*columns] + 
-					Splus[i+k*columns] * U[k+j*rows];
+					Splus[i+k*columns] * U[j+k*rows];
 			} 
 		} 
 	}
