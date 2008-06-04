@@ -141,10 +141,10 @@ RECOVER_SEGMENT () {
 	LOG_MSG "[INFO][$INST_COUNT]:-Commencing data transfer, please wait..." 1
 	#Make the remote directory
 	$TRUSTED_SHELL ${FAIL_QE_HOST} "if [ ! -d ${FAIL_QE_DIR} ]; then mkdir ${FAIL_QE_DIR} && chmod 700 ${FAIL_QE_DIR}; fi"
-	ERROR_CHK "make segment directory on ${FAIL_QE_HOST}" 2
+	ERROR_CHK $? "make segment directory on ${FAIL_QE_HOST}" 2
 	#Get list of files and directories to tar and exclude db_dumps directory
 	OBJECT_LIST=(`$TRUSTED_SHELL ${MIR_QE_HOST} "ls ${MIR_QE_DIR}|$GREP -v db_dumps|$TR '\n' ' '"`)
-	ERROR_CHK "obtain object transfer list" 2
+	ERROR_CHK $? "obtain object transfer list" 2
 
 	if [ x"rsync" != x"$RSYNCOPT" ]; then
 	    LOG_MSG "[INFO][$INST_COUNT]:- Start TAR COPY"
