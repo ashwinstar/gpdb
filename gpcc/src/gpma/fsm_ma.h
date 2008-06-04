@@ -26,7 +26,7 @@ static apr_status_t a_lma_mkdir(gpcc_event_t *ev, void *arg)
     gpcc_log_info("mkdir %s", gpma.chubby_array_dir);
     e = chubby_connection_nonAtomicMakeManyDirs(slot->u.lma.chubby.conn,
 						gpma.chubby_array_dir);
-    if (e && e != CHUBBY_E_INVAL) {
+    if (e && e != CHUBBY_E_EXIST) {
 	gpcc_log_error("chubby_connection_asynchronous_nonAtomMakeManyDirs %s failed", gpma.chubby_array_dir);
 	slot->countdown = 5;
 	return 0;
@@ -35,7 +35,7 @@ static apr_status_t a_lma_mkdir(gpcc_event_t *ev, void *arg)
     gpcc_log_info("mkdir %s", gpma.chubby_etc_dir);
     e = chubby_connection_nonAtomicMakeManyDirs(slot->u.lma.chubby.conn,
 						gpma.chubby_etc_dir);
-    if (e && e != CHUBBY_E_INVAL) {
+    if (e && e != CHUBBY_E_EXIST) {
 	gpcc_log_error("chubby_connection_asynchronous_nonAtomMakeManyDirs %s failed", gpma.chubby_etc_dir);
 	slot->countdown = 5;
 	return 0;
@@ -52,24 +52,6 @@ static apr_status_t a_lma_mkdir(gpcc_event_t *ev, void *arg)
     return 0;
 
 }
-
-/*
-static apr_status_t a_lma_mkdir_reply(gpcc_event_t *ev, void *arg)
-{
-    cmdslot_t *slot = arg;
-    chubby_result_t *result = (chubby_result_t *) ev->pdata;
-    gpcc_event_t *evt;
-    
-    if (result->retval && result->retval != CHUBBY_E_INVAL) {
-	gpcc_log_info("MA failed to make directory. ret=%d", result->retval);
-	slot->countdown = 5;
-	return 0;
-    }
-    evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, evt);    
-    return 0;
-}
-*/
 
 /* get the lease */
 static apr_status_t a_lma_get_lease(gpcc_event_t *ev, void *arg)
