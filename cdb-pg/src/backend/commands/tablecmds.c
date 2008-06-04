@@ -8130,25 +8130,25 @@ add_part_to_catalog(Oid relid, PartitionBy *pby)
 				case PARTTYP_HASH: break;
 				case PARTTYP_LIST:
 					{
-						PartitionValuesSpec *spec = 
+						PartitionValuesSpec *vspec = 
 							(PartitionValuesSpec *)el->boundSpec;
 	
-						Assert(IsA(spec, PartitionValuesSpec));
-	
-						listvalues = (Node *)spec->partValues;
+						/* might be NULL if this is a default spec */
+						if (vspec)
+							listvalues = (Node *)vspec->partValues;
 					}
 					break;
 				case PARTTYP_RANGE:
 					{
-						PartitionBoundSpec *spec = 
+						PartitionBoundSpec *bspec = 
 							(PartitionBoundSpec *)el->boundSpec;
 						PartitionRangeItem *ri;
 	
 						/* remember, could be a default clause */
-						if (spec)
+						if (bspec)
 						{
-							Assert(IsA(spec, PartitionBoundSpec));
-							ri = (PartitionRangeItem *)spec->partStart;
+							Assert(IsA(bspec, PartitionBoundSpec));
+							ri = (PartitionRangeItem *)bspec->partStart;
 							if (ri)
 							{
 								Assert(ri->partedge == PART_EDGE_INCLUSIVE ||
@@ -8158,7 +8158,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby)
 								rangestart = (Node *)ri->partRangeVal;
 							}
 		
-							ri = (PartitionRangeItem *)spec->partEnd;
+							ri = (PartitionRangeItem *)bspec->partEnd;
 							if (ri)
 							{
 								Assert(ri->partedge == PART_EDGE_INCLUSIVE ||
@@ -8168,9 +8168,9 @@ add_part_to_catalog(Oid relid, PartitionBy *pby)
 								rangeend = (Node *)ri->partRangeVal;
 							}
 
-							if (spec->partEvery)
+							if (bspec->partEvery)
 							{
-								ri = (PartitionRangeItem *)spec->partEvery;
+								ri = (PartitionRangeItem *)bspec->partEvery;
 								rangeevery = (Node *)ri->partRangeVal;
 							}
 							else
