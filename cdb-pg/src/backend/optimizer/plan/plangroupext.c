@@ -327,7 +327,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	int last_group_no = 0;
 
 	AttrNumber *orig_grpColIdx;
-	AttrNumber *groupColIdx;
+	AttrNumber *groupColIdx = NULL;
 	List *current_tlist;
 	List *current_qual;
 	double current_numGroups;
