@@ -4022,7 +4022,7 @@ resetSessionForPrimaryGangLoss(void)
 		NeedResetSession = true;
 		NeedSessionIdChange = true;
 		
-		if (ExistsTempNamespace())
+		if (ExistsCommittedTempNamespace())
 		{
 			/*
 			 * Here we indicate we don't have a temporary table namespace

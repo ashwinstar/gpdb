@@ -1870,12 +1870,13 @@ InitTempTableNamespace(void)
 }
 
 /*
- * Does the temporary namespace exist for this session?
+ * Does the temporary namespace exist for this session (and committed)?
  */
 bool
-ExistsTempNamespace(void)
+ExistsCommittedTempNamespace(void)
 {
-	return OidIsValid(myTempNamespace);
+	return OidIsValid(myTempNamespace) &&
+		   (myTempNamespaceSubID == InvalidSubTransactionId);
 }
 
 /*
