@@ -1124,44 +1124,19 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
  * RemoveExternalRelation
  *		Deletes an external relation.
  *
- * Since we don't record catalog table dependencies in greenplum DB
- * do the DROP is 2 distincts steps: first delete the pg_class entry
- * along with its dependencies, and then remove the pg_exttable entry.
+ * The only difference between external relations and normal heap relations
+ * as far as DROP is concerned, is that we have an extra permissions check.
  */
 void
 RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior)
 {
-	Oid			relOid;
-	ObjectAddress object;
-	
 	/* Permission check - only superuser can drop external tables. */
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 	 			errmsg("must be superuser to drop external table")));
-	
-	/*
-	 * this part corresponds to RemoveRelation()
-	 */
-	relOid = RangeVarGetRelid(relation, false);
-	
-	object.classId = RelationRelationId;
-	object.objectId = relOid;
-	object.objectSubId = 0;
-	
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		LockRelationOid(RelationRelationId, RowExclusiveLock);
-		LockRelationOid(TypeRelationId, RowExclusiveLock);
-		LockRelationOid(DependRelationId, RowExclusiveLock);
-	}
 
-	/* Lock the relation to be dropped */
-	LockRelationOid(relOid, AccessExclusiveLock);
-
-	performDeletion(&object, behavior);
-	
-	
+	RemoveRelation(relation, behavior);
 }
 
 /*
