@@ -33,9 +33,6 @@
 #define UNIT_CONNECTING_STATUS                      "connecting"
 #define UNIT_SETUP_STATUS                           "setting up"
 
-#define OK_STATUS                                    "ok"
-#define FAIL_STATUS                                  "error"
-
 #include "fsm_fts_setup.h"
 #include "fsm_fts_array_init.h"
 #include "fsm_fts_array_status.h"

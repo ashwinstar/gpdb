@@ -20,8 +20,13 @@
 #include <chubby.h>
 #include "gpma.h"
 
+#define OK_STATUS                                    "ok"
+#define FAIL_STATUS                                  "error"
+
 #include "fsm_chubby.h"
 #include "fsm_node.h"
+#include "fsm_admin.h"
+#include "fsm_login.h"
 #include "fsm_ma.h"
 #include "fsm_config.h"
 #include "fsm_fts.h"
@@ -38,8 +43,6 @@
 #include "fsm_unit.h"
 #include "fsm_segment_start.h"
 #include "fsm_segment_stop.h"
-#include "fsm_admin.h"
-#include "fsm_login.h"
 #include "fsm_ssh.h"
 
 apr_status_t a_system_tick(gpcc_event_t* ev, void* arg)

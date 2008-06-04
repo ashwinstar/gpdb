@@ -22,28 +22,55 @@ static apr_status_t a_lma_mkdir(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     int e;
     gpcc_event_t *evt;
+    struct chubby_stat stat;
 
     gpcc_log_info("mkdir %s", gpma.chubby_array_dir);
     e = chubby_connection_nonAtomicMakeManyDirs(slot->u.lma.chubby.conn,
 						gpma.chubby_array_dir);
     if (e && e != CHUBBY_E_EXIST) {
-	gpcc_log_error("chubby_connection_asynchronous_nonAtomMakeManyDirs %s failed", gpma.chubby_array_dir);
+	gpcc_log_error("chubby_connection_nonAtomMakeManyDirs %s failed", gpma.chubby_array_dir);
 	slot->countdown = 5;
 	return 0;
     }
+    gpcc_log_info("mkdir %s. ret=%d", gpma.chubby_array_dir, e);
 
     gpcc_log_info("mkdir %s", gpma.chubby_etc_dir);
-    e = chubby_connection_nonAtomicMakeManyDirs(slot->u.lma.chubby.conn,
-						gpma.chubby_etc_dir);
+
+    e = chubby_connection_mkdir(slot->u.lma.chubby.conn,
+				gpma.chubby_etc_dir);
     if (e && e != CHUBBY_E_EXIST) {
-	gpcc_log_error("chubby_connection_asynchronous_nonAtomMakeManyDirs %s failed", gpma.chubby_etc_dir);
+	gpcc_log_error("chubby_connection_nonAtomMakeManyDirs %s failed", gpma.chubby_etc_dir);
 	slot->countdown = 5;
 	return 0;
     }
+    gpcc_log_info("mkdir %s. ret=%d", gpma.chubby_etc_dir, e);
 
-    if (!e) {
+    e = chubby_connection_stat(slot->u.lma.chubby.conn,
+			       &stat,
+			       gpma.chubby_passwd_file);
+
+    gpcc_log_info("stat %s %d. ret =%d", gpma.chubby_passwd_file, stat.decreeNumber, e);
+    if (e == CHUBBY_E_NOENT || (!e && stat.decreeNumber == 0)) {
 	/* empty /gpcc/etc/ directory.  create default password file */
+	const char *user = "gpadmin";
+	char encoded[ADMIN_PASSWORD_ENCODED_LENGTH];
+	char buf[1024];
+	chubby_string_t *content = (chubby_string_t *) buf;
 
+	apr_md5_encode(user, user, encoded, sizeof(encoded));
+	sprintf(content->a, "%s:%s\n", user, encoded);
+	content->length = strlen(content->a) + 1;
+	
+	gpcc_log_info("create default password file %s. content = '%s'", gpma.chubby_passwd_file, content->a);
+	e = chubby_connection_put(slot->u.lma.chubby.conn,
+				  gpma.chubby_passwd_file,
+				  content);
+	
+	if (e) {
+	    gpcc_log_error("chubby_connection_put %s failed", gpma.chubby_passwd_file);
+	    slot->countdown = 5;
+	    return 0;
+	}
     }
 
     evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);

@@ -683,6 +683,8 @@ class AdminListCmd(Command):
             sys.exit(2)
         else:
             print 'show user list:'
+            for u in packet['rset']:
+                print '    %s' % u
         sys.exit(0)
 
 

@@ -177,7 +177,7 @@ static apr_status_t a_admin_add_set_password_file(gpcc_event_t *ev, void *arg)
     } 
 
     apr_md5_encode(slot->u.admin.password,
-		   ADMIN_MD5_SALT,
+		   slot->u.admin.username,
 		   encoded,
 		   sizeof(encoded));
 
