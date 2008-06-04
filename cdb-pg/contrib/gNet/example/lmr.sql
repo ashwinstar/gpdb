@@ -11,33 +11,27 @@ insert into mydata values(7,6,10);
 \timing
 
 -- built in
-select regr_intercept(y,x1), regr_slope(y,x1) FROM mydata;
+select regr_intercept(y,x1), regr_slope(y,x1), regr_r2(y,x1)
+FROM mydata;
+
 
 -- using gNet features
-select regr_R(sum(matrix_multiply(matrix_transpose(x),x)),
-              sum(matrix_multiply(x,y)))
-FROM (SELECT ARRAY[[1, x1]] as x, y from mydata) s1;
-
-select mregr_coef(y, ARRAY[1, x1]) FROM mydata;
+select mregr_coef(y, ARRAY[1, x1]), mregr_r2(y, ARRAY[1, x1])
+FROM mydata;
 
 -- built in
-select regr_intercept(y,x2), regr_slope(y,x2) FROM mydata;
+select regr_intercept(y,x2), regr_slope(y,x2), regr_r2(y, x2)
+FROM mydata;
 
 -- using gNet features
-select regr_R(sum(matrix_multiply(matrix_transpose(x),x)),
-              sum(matrix_multiply(x,y)))
-FROM (SELECT ARRAY[[1, x2]] as x, y from mydata) s1;
-
-select mregr_coef(y, ARRAY[1, x2]) FROM mydata;
+select mregr_coef(y, ARRAY[1, x2]), mregr_r2(y, ARRAY[1, x2])
+FROM mydata;
 
 
 -- using gNet features we can also do multiple linear regression
 --   * just add extra parameters to the X array
-select regr_R(sum(matrix_multiply(matrix_transpose(x),x)),
-              sum(matrix_multiply(x,y)))
-FROM (SELECT ARRAY[[1, x1, x2]] as x, y from mydata) s1;
-
-select mregr_coef(y, ARRAY[1, x1, x2]) FROM mydata;
+select mregr_coef(y, ARRAY[1, x1, x2]), mregr_r2(y, ARRAY[1, x1, x2])
+FROM mydata;
 
 
 -- example including UNPIVOT

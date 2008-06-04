@@ -1,0 +1,81 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+
+# netlib-utk master Sat Feb 23 03:24:34 EST 2008
++UZpjNk7xEXqmfJE8CQJzw	Makefile
+0IsdUf67yGtJdrT/Z8SIDA	blaswrap.h
+vWPRY6MP2nJmEEZKFa22uw	clagge.c
+V3ni+WplTDOZFX5F7Rfmbg	claghe.c
+XRYSYCwVwO9DMi8jdB/0+w	clagsy.c
+dcsga1igWd7BLrx2iuxIcw	clakf2.c
+1eI1fDLh0Vl9cQrTLU3s4g	clarge.c
+4Ck3bOctJP6IrQDrwpNszg	clarnd.c
+farrXfyBk5vYJRXGEINQJg	claror.c
+yySwvji9KRYgY0IsrgL6cA	clarot.c
+M9oTH8jx8Qdcw7mMl11kOw	clatm1.c
+n+8dCvEKPiuJO1ALSXtuKw	clatm2.c
+++P5wSVwrQFP6lX2h8xhSA	clatm3.c
+O/cpE8geQClknjhqYo/wfA	clatm5.c
+LkmcpXFWXZ6ReT3fCY/QEQ	clatm6.c
+3xcMBiEO8VsdmTALFvW5Gg	clatme.c
+qCNVr80MvlhF3O3mx9Mvnw	clatmr.c
+qK1m/ZHvXplKu3QtT2HuQg	clatms.c
+/BqRBA/h6NLcDqDnYJcFZA	dlagge.c
+14c/8KrTv9Uv5y14C+j3yg	dlagsy.c
+V5Ysg5XiyYLh5ARSR+7kUg	dlakf2.c
+XcJJtcSU+k5w1ofUp1fvlQ	dlaran.c
+zqelgxBQ1wh0cCVw6hPxmg	dlarge.c
+rsmJhccnA1vJAHLLOmrNWQ	dlarnd.c
+xNUjkc1BQehNoxqbtOJ8Sg	dlaror.c
+Rx4D27YKEtfbolxtE7BrRw	dlarot.c
+knHKujF7rckL48tjc1QqiQ	dlatm1.c
+ZMIEOBtaf0lqClx+o0wJWQ	dlatm2.c
+CNZY3BbSiq4CSiGGbSmfEg	dlatm3.c
+wNrdN6U+zX1dYm7sKWpTLg	dlatm5.c
+P0Z/1vzZewl0JOGwKbsD8g	dlatm6.c
+ZS4jXMXV/cjEWfD7/J4rgg	dlatme.c
+qlo11oNbnAvVMO9zPLMeaQ	dlatmr.c
+OUKdIUNUlrUa05A20y23ow	dlatms.c
+uCBnCwhHF1lHUnE0rGdjLg	f2c.h
+/Wyn+cHAVe2Big8uyhqYnQ	sdrvgb.c
+28QRdcFYB/nHmK1Fn780Dw	slagge.c
+tNS8nO0h3QHKLvuXMQ/AAA	slagsy.c
+j8n3BL3qO283kKElhmVcxA	slakf2.c
+E051APYByXhhWlhasVAMKw	slaran.c
+LeRMWeJx+qPw4/RV1DI+2A	slarge.c
+O561656EkwNeRTLqLMKquQ	slarnd.c
+t6aAaS1tEsInlQpEuFYs5A	slaror.c
+2Z5N3Ib05rMxvZq9zXHoeA	slarot.c
+u+M+BsRyWyA1k34MjPZUWg	slatm1.c
+QoEgECs5K0j4ii3OaARH+Q	slatm2.c
+P76ukU75wJjud3WJejyBvw	slatm3.c
+D3952zK0ILaq1iPRbOpWzg	slatm5.c
+oeqXr8qhZJW745IIIynHRA	slatm6.c
+ZlOhS1KHTA684muxXrRc2Q	slatme.c
+UgNcVjDI8UWmdG7bP6LtZw	slatmr.c
+ZHQVdWGi+x41cMii0RVWVQ	slatms.c
+Ch++BlNa7n5zKaE131i2+A	zlagge.c
+W40wyarts+eGAB1EdpGsMg	zlaghe.c
+UoPYkjo1OI0wC4YaN+6/sw	zlagsy.c
+gyj5TJH1Ua3gItW2MwHd4Q	zlakf2.c
+hqrSFRCqCslmAsz+RIM3Mw	zlarge.c
+unNZmziEswlp3Rlt4yY8nQ	zlarnd.c
+MhkOD3qoHNptvAWceXBY6w	zlaror.c
+LbT1fqZAHz7FwpFwIYLDxA	zlarot.c
+VNY+RcHmQ2tKbjXKcGm0HA	zlatm1.c
+Qdjuq34vrMtly7zs9WyQZw	zlatm2.c
+w+f1UIsvbLfCnUM1oIEpuA	zlatm3.c
+wle0OegDAnqxYNvmaXz1MQ	zlatm5.c
+ooh7H3gyCkOd+gXhiF5gog	zlatm6.c
+zQ7dixDqM+zq0zasrgTy8g	zlatme.c
+ZLpz5sK0M14BYB7BE3tWaA	zlatmr.c
+GpkezflpDsSCmssT5I3VEA	zlatms.c
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.6.2
+
+iQCVAwUBR7/YVuFlxDEfrjtlAQE3AgQAjiEdePxZ6PmYCqUCCEfQc9WofzI3jFKf
++JkiYozfOc61EA2bz811kTKJWAQXyQZB19V3yFduh32mw2y9R2mrmU7Z8moo7xBR
+9E7vhv52GnkLeTsbYqLFDxMYtGqoVh2Y/0pOFx0mBiPGYnUP0f8g6KUTyKn2eJTi
+Azy9/tKuMcs=
+=jU9p
+-----END PGP SIGNATURE-----

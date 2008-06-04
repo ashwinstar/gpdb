@@ -1,21 +1,13 @@
-#include "postgres.h"
-#include "fmgr.h"
-#include "funcapi.h"
+#include "gnet.h"
 
 #include "catalog/pg_type.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 
-/* Exported symbols */
 PG_FUNCTION_INFO_V1(float8_mregr_accum);     /* returns float8[] */
 PG_FUNCTION_INFO_V1(float8_mregr_combine);   /* returns float8[] */
-//PG_FUNCTION_INFO_V1(float8_mregr_coef);      /* returns float8[] */
-//PG_FUNCTION_INFO_V1(float8_mregr_r2);        /* returns float8   */
-
-Datum float8_mregr_accum(PG_FUNCTION_ARGS);
-Datum float8_mregr_combine(PG_FUNCTION_ARGS);
-//Datum float8_mregr_coef(PG_FUNCTION_ARGS);
-//Datum float8_mregr_r2(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(float8_mregr_coef);      /* returns float8[] */
+PG_FUNCTION_INFO_V1(float8_mregr_r2);        /* returns float8   */
 
 Datum
 float8_mregr_accum(PG_FUNCTION_ARGS)
@@ -216,4 +208,177 @@ float8_mregr_combine(PG_FUNCTION_ARGS)
 	PG_RETURN_ARRAYTYPE_P(result);
 }
 
+
+Datum float8_mregr_coef(PG_FUNCTION_ARGS)
+{
+	Datum out;
+	ArrayType *in, *b, *XtX, *XtXinv, *answer, *result;
+	float8 *data, *b_in, *XtX_in;
+	float8 count, sumy, sumy2;
+	int    len;
+	int    dims[2], lbs[2];
+
+	if (PG_NARGS() != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("float8_mregr_coef called with %d arguments", 
+						PG_NARGS())));
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+	in = PG_GETARG_ARRAYTYPE_P(0);
+	if (ARR_ELEMTYPE(in) != FLOAT8OID || ARR_NDIM(in) != 1 || ARR_NULLBITMAP(in))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("float8_mregr_coef called on invalid input array")));
+
+	/* Validate the correct size input */
+	data = (float8*) ARR_DATA_PTR(in);
+	if (ARR_DIMS(in)[0] < 2)
+		PG_RETURN_NULL();  /* no input */
+	len   = (int) data[0]; /* scalar:           len(X[]) */
+	if (ARR_DIMS(in)[0] != 4 + len + len*len) 
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("float8_mregr_coef called on invalid input array")));
+
+	count  = data[1];       /* scalar:           count(*) */
+	sumy   = data[2];       /* scalar:           sum(y)   */
+	sumy2  = data[3];       /* scalar:           sum(y*y) */
+	b_in   = &data[4];      /* vector[len]:      sum(y * X[]) */
+	XtX_in = &data[4+len];  /* matrix[len][len]: sum(X[] * X'[]) */
+	
+	/* 
+	 * The various matrix routines all take ArrayTypes as input, so we need to add the
+	 * various array headers to our vector and matrix 
+	 */
+	lbs[0] = 1;
+	lbs[1] = 1;
+	dims[0] = len;
+	dims[1] = 1;
+	b = construct_md_array((Datum *) b_in, NULL, 2, dims, lbs, FLOAT8OID, 
+						   sizeof(float8), true, 'd');
+	dims[1] = len;
+	XtX = construct_md_array((Datum *) XtX_in, NULL, 2, dims, lbs, FLOAT8OID, 
+							 sizeof(float8), true, 'd');
+
+	/* 
+	 * Coeficients are found via the formula:  
+	 *      coef = (X'X)^-1 * b
+	 */
+	out = DirectFunctionCall1(pseudoinverse, PointerGetDatum(XtX));
+	XtXinv = DatumGetArrayTypeP(out);
+	out = DirectFunctionCall2(matrix_multiply, out, PointerGetDatum(b));
+	answer = DatumGetArrayTypeP(out);
+
+	/* Free our intermediate results */
+	pfree(XtXinv);
+	pfree(XtX);
+	pfree(b);
+
+	/* 
+	 * We have the result, but we want to return it as a vector not as a matrix with
+	 * a single column
+	 */
+	data = (float8 *) ARR_DATA_PTR(answer);
+	result = construct_md_array((Datum *) data, NULL, 1, dims, lbs, FLOAT8OID, 
+							 sizeof(float8), true, 'd');
+	pfree(answer);
+
+	PG_RETURN_ARRAYTYPE_P(result);
+}
+
+
+Datum float8_mregr_r2(PG_FUNCTION_ARGS)
+{
+	Datum out;
+	ArrayType *in, *b, *bt, *XtX, *XtXinv, *coef, *cb;
+	float8 *data, *b_in, *XtX_in;
+	float8 count, sumy, sumy2;
+	float8 ssr, tss, r2;
+	int    len;
+	int    dims[2], lbs[2];
+
+	/* Begin unfortunate duplication of code */
+	if (PG_NARGS() != 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("float8_mregr_r2 called with %d arguments", 
+						PG_NARGS())));
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+	in = PG_GETARG_ARRAYTYPE_P(0);
+	if (ARR_ELEMTYPE(in) != FLOAT8OID || ARR_NDIM(in) != 1 || ARR_NULLBITMAP(in))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("float8_mregr_r2 called on invalid input array")));
+
+	/* Validate the correct size input */
+	data = (float8*) ARR_DATA_PTR(in);
+	if (ARR_DIMS(in)[0] < 2)
+		PG_RETURN_NULL();  /* no input */
+	len   = (int) data[0]; /* scalar:           len(X[]) */
+	if (ARR_DIMS(in)[0] != 4 + len + len*len) 
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("float8_mregr_r2 called on invalid input array")));
+
+	count  = data[1];       /* scalar:           count(*) */
+	sumy   = data[2];       /* scalar:           sum(y)   */
+	sumy2  = data[3];       /* scalar:           sum(y*y) */
+	b_in   = &data[4];      /* vector[len]:      sum(y * X[]) */
+	XtX_in = &data[4+len];  /* matrix[len][len]: sum(X[] * X'[]) */
+	
+	/* 
+	 * The various matrix routines all take ArrayTypes as input, so we need to add the
+	 * various array headers to our vector and matrix 
+	 */
+	lbs[0] = 1;
+	lbs[1] = 1;
+
+	dims[0] = len;
+	dims[1] = 1;
+	b = construct_md_array((Datum *) b_in, NULL, 2, dims, lbs, FLOAT8OID, 
+						   sizeof(float8), true, 'd');
+
+	dims[0] = 1;
+	dims[1] = len;
+	bt = construct_md_array((Datum *) b_in, NULL, 2, dims, lbs, FLOAT8OID, 
+							sizeof(float8), true, 'd');
+
+	dims[0] = len;
+	dims[1] = len;
+	XtX = construct_md_array((Datum *) XtX_in, NULL, 2, dims, lbs, FLOAT8OID, 
+							 sizeof(float8), true, 'd');
+
+	/* 
+	 * Coeficients are found via the formula:  
+	 *      coef = (X'X)^-1 * b
+	 */
+	out = DirectFunctionCall1(pseudoinverse, PointerGetDatum(XtX));
+	XtXinv = DatumGetArrayTypeP(out);
+	out = DirectFunctionCall2(matrix_multiply, out, PointerGetDatum(b));
+	coef = DatumGetArrayTypeP(out);
+
+	/* 
+	 *  Here we actually diverge from what mregr_coefs did:
+	 *     ssr = b' * coef - sum(y)^2/c
+	 *     tss = sum(y^2) - sum(y)^2/c
+     *     R^2 = ssr/tss
+	 */
+	out = DirectFunctionCall2(matrix_multiply, PointerGetDatum(bt), out); 
+	cb  = DatumGetArrayTypeP(out);
+	ssr = ((float8 *)ARR_DATA_PTR(cb))[0] - sumy*sumy/count;
+	tss = sumy2 - sumy*sumy/count;
+	r2  = ssr/tss;
+
+	/* Free our intermediate results */
+	pfree(XtXinv);
+	pfree(XtX);
+	pfree(b);
+	pfree(bt);
+	pfree(coef);
+	pfree(cb);
+
+	PG_RETURN_FLOAT8(r2);
+}
 

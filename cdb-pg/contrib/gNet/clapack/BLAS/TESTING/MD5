@@ -1,0 +1,30 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+
+# netlib-utk master Sat Feb 23 03:13:02 EST 2008
+rsWpoc/CVZQKiq9RszV47g	Makeblat1
+Zmh2/Z095K57glng4pZ6gg	Makeblat2
+T6OnT/ulUu+fYrE2ZBriDA	Makeblat3
+0IsdUf67yGtJdrT/Z8SIDA	blaswrap.h
+1PqCg1rq/cHWtdwcxOtf2w	cblat1.c
+7xGUJ7FKJOv23+wxpqexcQ	cblat2.c
+Xr6/Ekz7MeNmdySKY1Zsqw	cblat3.c
+4jzavHh2rb0lvlw1Ts7ZxQ	dblat1.c
+5V7PLvPA92Dnux14lsyQyA	dblat2.c
+bInOl4H33l97ZKh7w0Xy6Q	dblat3.c
+uCBnCwhHF1lHUnE0rGdjLg	f2c.h
+IVDZOb38jYrPZocKwbUs/Q	sblat1.c
+2Wa0swRssrK++8vqdHErJw	sblat2.c
+Rq0r7tSORZiBUZO0Hi6kpA	sblat3.c
+0nCJ2y4P7rUG6U0nsUfqrw	zblat1.c
+ZGAuOSA55OVCCvFn293haA	zblat2.c
+bTm1/pFpC7awCc2j42rmag	zblat3.c
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.6.2
+
+iQCVAwUBR7/VkuFlxDEfrjtlAQEnSwP/V6GYrUDVd8hSZzUcUKePB4477RVNKOWW
+GS5CNNhw/7hobLxQUCoYEjtgz7cDW7C1mLw3Ivgp3Bh/x9aBLGVJcmN3djCOV7wi
+x94ZrBntX7jM9kH/mWu48xw2ThdJ0hXaXXV+DNnV9MPThJi88f9go82cJorcLDsP
+DQiVaqmyLpU=
+=HMv0
+-----END PGP SIGNATURE-----

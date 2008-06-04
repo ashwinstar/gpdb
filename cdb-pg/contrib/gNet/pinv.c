@@ -10,14 +10,14 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include <clapack.h>
-
+#include "clapack/INCLUDE/f2c.h"
+#include "clapack/INCLUDE/clapack.h"
 
 PG_FUNCTION_INFO_V1(pseudoinverse);
 Datum pseudoinverse(PG_FUNCTION_ARGS);
 
-#define max(a,b) (a > b ? a : b)
-#define min(a,b) (a < b ? a : b)
+// #define max(a,b) (a > b ? a : b)
+// #define min(a,b) (a < b ? a : b)
 
 /*
 
@@ -151,11 +151,8 @@ Datum pseudoinverse(PG_FUNCTION_ARGS)
 	 * need to make this copy anyway.
 	 */
 	Atemp = (float8 *) palloc(sizeof(float8)*columns*rows);
-	for ( j = 0; j < rows; j++ ) {
-		for ( i = 0; i < columns; i++ ) {
-			Atemp[j+i*rows] = A[i+j*columns];
-		} 
-	}
+	memcpy(Atemp, A, sizeof(float8)*columns*rows);
+	i = columns;
 
 	/* 
 	 * First call of dgesdd is with lwork=-1 to calculate an optimal value of 
@@ -176,7 +173,7 @@ Datum pseudoinverse(PG_FUNCTION_ARGS)
 			);
 	} else {
 		lwork = (int) work[0];
-		free(work);
+		pfree(work);
 	}
 
     /*

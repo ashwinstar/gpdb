@@ -1,20 +1,15 @@
-#include "postgres.h"
-#include "fmgr.h"
-#include "funcapi.h"
+#include "gnet.h"
 
 #include "catalog/pg_type.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 #include "executor/executor.h"  /* for GetAttributeByNum() */
 
-/* Exported symbols */
+
 PG_FUNCTION_INFO_V1(nb_classify_accum);
 PG_FUNCTION_INFO_V1(nb_classify_combine);
 PG_FUNCTION_INFO_V1(nb_classify_final);
 
-Datum nb_classify_accum(PG_FUNCTION_ARGS);
-Datum nb_classify_combine(PG_FUNCTION_ARGS);
-Datum nb_classify_final(PG_FUNCTION_ARGS);
 
 /* What a nb_classify_type looks like */
 typedef struct {

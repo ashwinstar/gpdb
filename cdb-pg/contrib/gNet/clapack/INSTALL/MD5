@@ -1,0 +1,30 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+
+# netlib-utk master Sat Feb 23 03:13:59 EST 2008
+QIj/cXnNLMX6racVLp6pUg	LAPACK_version.c
+JFM+TVKDaO4ikUlp4uBryA	Makefile
+0IsdUf67yGtJdrT/Z8SIDA	blaswrap.h
+ZZedhhQeUtaGvudjMO72Uw	dlamch.c
+A85BS1tYczJ/Jed3Lj7o9Q	dlamchtst.c
+aXBKjI11W94KZ1Zr5XHLnQ	dsecnd.c
+o72nPs+kOD5ysL6V8IfsvQ	dsecndtst.c
+uCBnCwhHF1lHUnE0rGdjLg	f2c.h
+ZKi9d8FsLO3LF3yyb1lcsw	ilaver.c
+Rzlkekfnya+ASZIxcs8B/g	lawn81.pdf
+XD0w/fBltd3mnyUURJTZyw	lsame.c
+O/g2fyc8OZeH+v0Sv9lXqA	lsametst.c
+PGS+4oU+tWbyCddedeOibA	second.c
+bMV3x1iLp6FC8cSBzAoBaQ	secondtst.c
+jSvKw1uYPCPOAmDhg/mYrw	slamch.c
+D/JqyKluzSVo8bbL2m0cKQ	slamchtst.c
+SERQoenBDN6b9Tz17Eafew	tstiee.c
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.6.2
+
+iQCVAwUBR7/Vy+FlxDEfrjtlAQHRCgP8DcMOKBPAJ0aUpp9/BfWrqQe4CH7oUq/n
+XtIMwVGr9vbZnMM0HIzOppyAW9ECnKyXUK1YdrnxDHcpcLP3ZWDMLTJ9D+R2t1vC
+yXldvGH15twf5tBQPfW3abdNOzQgB7NcOa4nPbjx+aidMJFxjDU8jtJv912buPmt
+eSIVB+wYtv8=
+=VuM/
+-----END PGP SIGNATURE-----

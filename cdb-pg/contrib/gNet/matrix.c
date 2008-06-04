@@ -1,29 +1,20 @@
-#include "postgres.h"
-#include "fmgr.h"
-#include "funcapi.h"
+#include "gnet.h"
 
 #include "catalog/pg_type.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 
+
+/* One file in the module needs to declare the module magic */
 #ifdef PG_MODULE_MAGIC
-PG_MODULE_MAGIC;
+  PG_MODULE_MAGIC;
 #endif
 
-/* External functions */
 PG_FUNCTION_INFO_V1(matrix_transpose);
 PG_FUNCTION_INFO_V1(matrix_multiply);
 PG_FUNCTION_INFO_V1(matrix_add);
-
 PG_FUNCTION_INFO_V1(int8_matrix_smultiply);
 PG_FUNCTION_INFO_V1(float8_matrix_smultiply);
-
-Datum matrix_transpose(PG_FUNCTION_ARGS);
-Datum matrix_multiply(PG_FUNCTION_ARGS);
-Datum matrix_add(PG_FUNCTION_ARGS);
-
-Datum int8_matrix_smultiply(PG_FUNCTION_ARGS);
-Datum float8_matrix_smultiply(PG_FUNCTION_ARGS);
 
 /*
  * matrix_transpose - transpose an array[x][y] into an array[y][x].

@@ -138,8 +138,6 @@ create aggregate pivot_sum(text[], text, float8) (
 --
 --  Multiple Linear Regression, finalizers handled in PL/R
 --
-CREATE LANGUAGE plr;
-
 create or replace function float8_mregr_accum(float8[], float8, float8[]) returns float8[] as
 'MODULE_PATHNAME', 'float8_mregr_accum' language C
 STRICT IMMUTABLE;
@@ -148,34 +146,12 @@ create or replace function float8_mregr_combine(float8[], float8[]) returns floa
 'MODULE_PATHNAME', 'float8_mregr_combine' language C
 STRICT IMMUTABLE;
 
-create or replace function float8_mregr_coef(float8[]) returns float8[] as '
-  library(corpcor)               # get pseudoinverse
-  if (length(arg1) < 6)
-	return(NULL)
-  len = arg1[1]
-  b = arg1[5:(4+len)]
-  X = arg1[(5+len):length(arg1)]
-  dim(X) = c(len,len)
-  return(as.vector(pseudoinverse(X) %*% b))
-' language 'plr'
+create or replace function float8_mregr_coef(m float8[]) returns float8[] as 
+'MODULE_PATHNAME', 'float8_mregr_coef' language C
 STRICT IMMUTABLE;
 
-create or replace function float8_mregr_r2(float8[]) returns float8 as '
-  library(corpcor)    # get pseudoinverse
-  if (length(arg1) < 6)
-	return(NULL)
-  len = arg1[1]
-  c   = arg1[2]
-  sy  = arg1[3]
-  syy = arg1[4]
-  b   = arg1[5:(4+len)]
-  X   = arg1[(5+len):length(arg1)]
-  dim(X) = c(len,len)
-  coef = as.vector(pseudoinverse(X) %*% b)
-  ssr  = (coef %*% b) - sy*sy/c
-  tss  = syy - sy*sy/c
-  return(ssr/tss)
-' language 'plr'
+create or replace function float8_mregr_r2(m float8[]) returns float8 as 
+'MODULE_PATHNAME', 'float8_mregr_r2' language C
 STRICT IMMUTABLE;
 
 create aggregate mregr_coef(float8, float8[]) (
