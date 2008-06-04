@@ -473,8 +473,12 @@ InitializeSessionUserId(const char *rolename)
 		 * ideally one should succeed and one fail.  Getting that to work
 		 * exactly seems more trouble than it is worth, however; instead we
 		 * just document that the connection limit is approximate.
+		 *
+		 * We do not want to do this for QEs since a single QD might initialise
+		 * many connections to each segment to execute a non-trivial plan and
+		 * the user connection limit does not map, semantically, to that idea.
 		 */
-		if (rform->rolconnlimit >= 0 &&
+		if (Gp_role != GP_ROLE_EXECUTE && rform->rolconnlimit >= 0 &&
 			!AuthenticatedUserIsSuperuser &&
 			CountUserBackends(roleid) > rform->rolconnlimit)
 			ereport(FATAL,
