@@ -24,7 +24,6 @@ Datum pinv_test(PG_FUNCTION_ARGS);
 
 ArrayType *pinv(int rows, int columns, float8 *A, float8 *Aplus);
 
-ArrayType *pinv_test_alloc_2darray(int rows, int columns, char *copyfrom, int elemtype);
 void printmat(int m, int n, float8 *matrix, char *name);
 float8 *pinv_matmult(int rowsA, int columnsA_rowsB, int columnsB, float8 *A, float8 *B);
 float8 *pinv_transpose(int rows, int columns, float8 *A);
@@ -33,59 +32,6 @@ int pinv_testmatiszero(int rows, int columns, float8 *Z, char *test);
 int pinv_test_internal(int m, int n, float8 *A);
 int pinv_tests(void);
 int pinv_coverage_pinv_tests(int maxrows, int maxcolumns);
-
-/* If copyfrom is non-null, copy the data from it into a newly allocated data area
- * Otherwise, initialize the data area to zero
- */
-ArrayType *pinv_test_alloc_2darray(int rows, int columns, char *copyfrom, int elemtype) {
-	int size,elemsize=0;
-	ArrayType *result;
-	char *data_r;
-
-    size = ARR_OVERHEAD_NONULLS(2);  /* overhead for two dimensional array */
-    switch (elemtype) {
-        case INT2OID:
-			elemsize = sizeof(int16);
-            break;
-        case INT4OID:
-            elemsize = sizeof(int32);
-            break;
-        case INT8OID:
-            elemsize = sizeof(int64);
-            break;
-        case FLOAT4OID:
-            elemsize = sizeof(float4);
-            break;
-        case FLOAT8OID:
-            elemsize = sizeof(float8);
-            break;
-        default:
-            Assert(false);
-    }
-	size += rows * columns * elemsize;
-
-    result = (ArrayType *) palloc(size);
-    SET_VARSIZE(result, size);
-    result->ndim = 2;
-    result->dataoffset = 0;          /* We dissallowed arrays with NULLS */
-    ARR_DIMS(result)[0] = rows;
-    ARR_DIMS(result)[1] = columns;
-    ARR_LBOUND(result)[0] = 1;       /* may need better lbound handling? */
-    ARR_LBOUND(result)[1] = 1;
-
-    result->elemtype = elemtype;
-
-	elog(NOTICE,"Element size = %d, Rows = %d, Columns = %d",elemsize,rows,columns);
-    data_r = ARR_DATA_PTR(result);
-	if (copyfrom == NULL) {
-      memset(data_r, 0, rows * columns * elemsize);
-	} else {
-	  memcpy(data_r,copyfrom,rows * columns * elemsize);
-	}
-
-	return (result);
-}
-
 
 void printmat(int m, int n, float8 *matrix, char *name) {
   int i,j;
