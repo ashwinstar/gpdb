@@ -260,7 +260,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 
 	    if (0 == strcmp("/gpcc/login", uri->path)) {
 		ev = mkhttp_event_more(USER_LOGIN_EVENT, conn, gpma.user_cmdslot->cmdidx, 0, 
-				       gpma.user_cmdslot->cmdidx, peer_addr, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+				       gpma.user_cmdslot->cmdidx, peer_addr, from_peer->post, from_peer->postlen);
 		is_bad_session_id = 0;
 	    } else if (0 == strcmp("/gpcc/logout", uri->path)) {
 		if (session_id) {

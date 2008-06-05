@@ -103,7 +103,7 @@ class Command():
         r.update(param)
         return r
 
-    def __httpRequest(self, addr, method, path, params, data=None):
+    def __httpRequest(self, addr, method, path, params, data=None, content_type = None):
         '''Make a http request to the first MA.'''
         p = params and urllib.urlencode(params) or ''
         query = '%s?%s' % (path, p)
@@ -111,6 +111,8 @@ class Command():
         header = {}
         if self.sid:
             header['X-GPCC-SID'] = self.sid
+        if content_type:
+            header['Content-Type'] = content_type
 
         try:
             self.verbose('http://%s%s' % (addr, query))
@@ -153,13 +155,13 @@ class Command():
             return False
         return True
 
-    def _httpGetOrPost(self, method, path, params, data = None):
+    def _httpGetOrPost(self, method, path, params, data = None, content_type = None):
         failedList = []
         for i in xrange(len(self.gopt['-m']) + 1):
             addr = self.gopt['-m'][0]
             if addr in failedList: continue
             failedList.append(addr)
-            (rc, packet) = self.__httpRequest(addr, method, path, params, data)
+            (rc, packet) = self.__httpRequest(addr, method, path, params, data, content_type)
             if not self.__checkMA(rc, packet):
                 continue
             return packet
@@ -170,9 +172,9 @@ class Command():
         '''Locate the Lead MA and do a GET'''
         return self._httpGetOrPost('GET', path, params)
 
-    def _httpPost(self, path, params, data):
+    def _httpPost(self, path, params, data, content_type = None):
         '''Locate the Lead MA and do a POST'''
-        return self._httpGetOrPost('POST', path, params, data)
+        return self._httpGetOrPost('POST', path, params, data, content_type)
 
     def _getStatus(self, params):
         '''GET the status of GPDB'''
@@ -519,11 +521,12 @@ class LoginCmd(Command):
         for i in xrange(3):
             passwd = getpass('password:')
             param = {}
+            content = {}
             if (self.gopt['-a']): param['a'] = self.gopt['-a']
-            param['user'] = self.opt['-u']
-            param['host'] = socket.gethostname()
-            param['password'] = passwd
-            packet = self._httpPost('/gpcc/login', param, None)
+            content['user'] = self.opt['-u']
+            content['password'] = passwd
+            data = urllib.urlencode(content)
+            packet = self._httpPost('/gpcc/login', param, data, 'application/x-www-form-urlencoded')
             self.raw(packet)         
             if 'ok' != packet.get('status'):
                 print '[ERROR] unable to login. details:'
@@ -567,7 +570,6 @@ class LogoutCmd(Command):
         param = {}
         if (self.gopt['-a']): param['a'] = self.gopt['-a']
         param['user'] = self.opt['-u']
-        param['host'] = socket.gethostname()
         packet = self._httpGet('/gpcc/logout', param)
         self.raw(packet)         
         if 'ok' != packet.get('status'):

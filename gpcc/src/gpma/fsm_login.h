@@ -105,27 +105,35 @@ static apr_status_t a_login_get_password_file(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     char *url, *p;
     gpcc_net_conn_t conn;
-    gpcc_net_uri_t *uri;
+    gpcc_net_uri_t *uri = 0;
     struct json_object *obj;
     gpcc_event_t *evt;
     const char *user, * password, *host;
-    int len;
+    int datalen, len;
+    char data[1024];
 
     p = ev->pdata;
     memcpy(&conn, p, sizeof(gpcc_net_conn_t));
     p += sizeof(gpcc_net_conn_t);
-    memcpy(&len, p, sizeof(int));
+    memcpy(&datalen, p, sizeof(int));
     p += sizeof(int);
     url = p;
-    p += len;
+    p += datalen;
     memcpy(&len, p, sizeof(int));
     p += sizeof(int);
     host = p;
     
-    gpcc_log_info("host = %s", host);
-    gpcc_log_info("url = %s", url);
+    if (datalen >= sizeof(data)) {
+	gpcc_log_error("data length exceed limit %d >= %d", datalen, sizeof(data));
+	goto bail;
+    }
 
-    uri = gpcc_net_uri_alloc(url);
+    memcpy(data, url, datalen);
+    data[datalen] = 0;
+    gpcc_log_info("host = %s", host);
+    gpcc_log_info("data = %s", data);
+
+    uri = gpcc_net_uri_param_alloc(data);
     if (!uri) {
 	goto bail;
     }
@@ -137,7 +145,7 @@ static apr_status_t a_login_get_password_file(gpcc_event_t *ev, void *arg)
 	goto bail;
     }
 
-    gpcc_log_info("gp login:  user = %s, host = %s, password = %s", user, host, password);
+    gpcc_log_info("gp login:  user = '%s', host = '%s', password = '%s'", user, host, password);
 
     slot->u.login.conn = conn;
     slot->u.login.username = apr_pstrdup(slot->pool, user);
