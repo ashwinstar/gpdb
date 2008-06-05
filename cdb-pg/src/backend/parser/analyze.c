@@ -5755,7 +5755,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	Oid			snamespaceid;
 	char	   *snamespace;
 	int		  	partDepth;	/* depth (starting at zero, but display at 1) */  
-	char	  	depthstr[4];
+	char	  	depthstr[NAMEDATALEN];
 	char	   *at_depth = "";
 	char	  	at_buf[NAMEDATALEN];
 	int		  	partNumber = -1;	

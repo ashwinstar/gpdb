@@ -1887,14 +1887,51 @@ alter_table_partition_cmd:
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| DROP PARTITION 
+			| DROP PARTITION IF_P EXISTS 
             alter_table_partition_id_spec	 
+            opt_drop_behavior
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+					DropStmt *ds = makeNode(DropStmt);
+
+					ds->missing_ok = TRUE;
+					ds->behavior = $6;
+
+                    /* 
+                       build an (incomplete) drop statement for arg1: 
+                       fill in the rest after the partition id spec is
+                       validated
+                    */
+
+                    pc->partid = (Node *)$5;
+                    pc->arg1 = (Node *)ds;
+                    pc->arg2 = NULL;
+                    pc->location = @5;
+
+					n->subtype = AT_PartDrop;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| DROP PARTITION 
+            alter_table_partition_id_spec	 
+            opt_drop_behavior
+				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					DropStmt *ds = makeNode(DropStmt);
+
+					ds->missing_ok = FALSE;
+					ds->behavior = $4;
+
+                    /* 
+                       build an (incomplete) drop statement for arg1: 
+                       fill in the rest after the partition id spec is
+                       validated
+                    */
 
                     pc->partid = (Node *)$3;
-                    pc->arg1 = NULL;
+                    pc->arg1 = (Node *)ds;
                     pc->arg2 = NULL;
                     pc->location = @3;
 
