@@ -645,7 +645,7 @@ ProcessUtility(Node *parsetree,
 
 				elog(DEBUG2,"CreateStmt: rel Oid %d toast Oid %d",relOid, ((CreateStmt *) parsetree)->oidInfo.toastOid);
 		
-				if (relKind != RELKIND_COMPOSITE_TYPE)
+				if (relKind != RELKIND_COMPOSITE_TYPE && relKind != RELKIND_EXTERNAL)
 					AlterTableCreateToastTableWithOid(relOid, ((CreateStmt *) parsetree)->oidInfo.toastOid, ((CreateStmt *) parsetree)->oidInfo.toastIndexOid, &(((CreateStmt *) parsetree)->oidInfo.toastComptypeOid));
 			}
 			break;
