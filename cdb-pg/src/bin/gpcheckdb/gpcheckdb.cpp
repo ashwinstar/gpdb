@@ -747,7 +747,8 @@ void get_expected_row_counts(size_t& expected_namespace_size, size_t & expected_
 	size_t total_type_size = 0;
 	size_t vsegs = 0;
 	
-	for (seg = 0; seg < segdbcount; seg++)
+	// Due to bug in CREATE EXTERNAL TABLE, master has less toast tables than the others.  So, don't look at him
+	for (seg = 1; seg < segdbcount; seg++)
 	{
 		if (config[seg].valid || seg==0) // always count the master
 		{
