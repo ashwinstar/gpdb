@@ -287,6 +287,43 @@ public:
 
 };
 
+class pg_exttable_row
+{
+public:
+	Oid reloid;
+	string location;
+	char fmtype;
+	string fmopts;
+	string command;
+	int rejectlimit;
+	char rejectlimittype;
+	Oid fmterrtbl;
+	int encoding;
+
+	bool operator==(const pg_exttable_row & pgt) const
+	{
+		if (reloid != pgt.reloid)
+			return false;
+		if (location != pgt.location)
+			return false;
+		if (fmtype != pgt.fmtype)
+			return false;
+		if (command != pgt.command)
+			return false;
+		return true;
+	}
+	bool operator!=(const pg_exttable_row & pgt) const
+	{
+		return !operator==(pgt);
+	}
+	friend ostream & operator<< (ostream & os, pg_exttable_row pgt) 
+	{
+		os << pgt.reloid << " " << pgt.location << " " << pgt.command;
+		return os;
+	}
+
+};
+
 
 //  associative containers to hold the catalog rows
  
@@ -344,6 +381,8 @@ pg_class_map * reference_class_map;
 pg_attribute_map * reference_attribute_map;
 pg_type_map * reference_type_map;
 
+pg_class_map * current_class_map;
+
 bool corrupted = false;
 
 void print_pg_namespace(pair<const std::string,pg_namespace_row> & p)
@@ -400,8 +439,12 @@ void operator()(pg_class_map * ref, pair<const Oid,pg_class_row> & p) const
 	pg_class_map::const_iterator r = ref->find(p.first);
 	if (r == ref->end())
 	{
-		cout <<  segname << " pg_class has extra row:  Oid " << p.second << endl;
-		corrupted = true;
+		// Hack workaround to bug in CREATE EXTERNAL TABLE.  It was creating TOAST tables for ext tables, but only on the segDBs, not the master.
+		if (p.second.relname.substr(0,9) != "pg_toast_")
+		{
+			cout <<  segname << " pg_class has extra row:  Oid " << p.second << endl;
+			corrupted = true;
+		}
 	}
 	else if (r->second != p.second)
 	{
@@ -418,8 +461,13 @@ void operator()(pg_class_map * ref, pair<const Oid,pg_class_row> & p) const
 	pg_class_map::const_iterator r = ref->find(p.first);
 	if (r == ref->end())
 	{
-		cout <<  segname << " pg_class is missing row:  Oid " << p.second << endl;
-		corrupted = true;
+		// Hack workaround to bug in CREATE EXTERNAL TABLE.  It was creating TOAST tables for ext tables, but only on the segDBs, not the master.
+		if (p.second.relname.substr(0,9) != "pg_toast_")
+		{
+			cout <<  segname << " pg_class is missing row:  Oid " << p.second << endl;
+			corrupted = true;
+	
+		}
 	}
 }
 };
@@ -462,8 +510,13 @@ void operator()(pg_attribute_map * ref, pair<const pg_attribute_key,pg_attribute
 	pg_attribute_map::const_iterator r = ref->find(p.first);
 	if (r == ref->end())
 	{
+		// Hack workaround to bug in CREATE EXTERNAL TABLE.  It was creating TOAST tables for ext tables, but only on the segDBs, not the master.
+		pg_class_map::const_iterator r2= current_class_map->find(p.first.attrelid);
+		if (r2 == current_class_map->end() || r2->second.relname.substr(0,9) != "pg_toast_")
+		{
 		cout <<  segname << " pg_attribute has extra row:   attrelid " << p.second << endl;
 		corrupted = true;
+		}
 	}
 	else if (r->second != p.second)
 	{
@@ -509,8 +562,12 @@ void operator()(pg_type_map * ref, pair<const Oid,pg_type_row> & p) const
 	pg_type_map::const_iterator r = ref->find(p.first);
 	if (r == ref->end())
 	{
-		cout <<  segname << " pg_type has extra row:   oid " << p.second << endl;
-		corrupted = true;
+		// Hack workaround to bug in CREATE EXTERNAL TABLE.  It was creating TOAST tables for ext tables, but only on the segDBs, not the master.
+		if (p.second.typname.substr(0,9) != "pg_toast_")
+		{
+			cout <<  segname << " pg_type has extra row:   oid " << p.second << endl;
+			corrupted = true;
+		}
 	}
 	else if (r->second != p.second)
 	{
@@ -546,7 +603,20 @@ void read_catalog_info(vector<gp_config_info> & config, dbresult::size_type segd
 		segdbconninfo << conninfo << " host=" << config[seg].hostname
 				<< " port=" << config[seg].port;
 
-		config[seg].conn.connect(segdbconninfo.str(), true);
+		try
+		{
+			config[seg].conn.connect(segdbconninfo.str(), true);
+		}
+		catch(connection_exception & ce)
+		{
+			cerr << "Could not connect to segDB " << segdbconninfo << ":  " << ce.what() << endl;
+			vector<gp_config_info>::iterator c =  config.begin() + seg;
+			config.erase(c);
+			segdbcount--;
+			seg--;
+			continue;
+		}
+			
 
 		dbresult r2 = config[seg].conn.exec("select version()");
 		if (r2[0][0].as_string() != masterversion)
@@ -949,6 +1019,8 @@ int main(int argc, char **argv)
 		segname = config[seg].segname();
 		if (verbose)
 			cout << "Checking " << segname << endl;
+		
+		current_class_map = &config[seg].pg_class;
 
 		// Each loop does basically a "left outer join" type operation to compare to the reference.
 		for_each(config[seg].pg_namespace_by_name.begin(), config[seg].pg_namespace_by_name.end(), bind1st(verify_pg_namespace_against_reference(),&config[reference_host].pg_namespace_by_name)); 
