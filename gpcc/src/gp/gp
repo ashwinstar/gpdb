@@ -554,8 +554,8 @@ class LogoutCmd(Command):
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, '', self.__doc__)
         if self.sid is None:
-            print '[ERROR] please do "gp login" to log on'
-            sys.exit(2)
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
 
     def run(self):
         param = {}
@@ -583,6 +583,10 @@ class AdminAddCmd(Command):
     '''Usage: gp admin add user'''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, '', self.__doc__)
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
+
         self.opt['-u'] = None
         if len(self.args) != 1:
             print self.__doc__
@@ -625,6 +629,10 @@ class AdminDeleteCmd(Command):
     '''Usage: gp admin delete user'''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, '', self.__doc__)
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
+
         self.opt['-u'] = None
         if len(self.args) != 1:
             print self.__doc__
@@ -664,6 +672,9 @@ class AdminListCmd(Command):
     '''Usage: gp admin list'''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, '', self.__doc__)
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
 
     def run(self):
         param = {}
@@ -686,6 +697,10 @@ class AdminPasswordCmd(Command):
     '''Usage: gp admin passwd [user]'''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, '', self.__doc__)
+        if self.sid is None:
+            print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
+            sys.exit(1)
+
         self.opt['-u'] = None
         if len(self.args) == 1:
             self.opt['-u'] = self.args[0]
