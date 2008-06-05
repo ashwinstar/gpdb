@@ -495,8 +495,14 @@ class StatusCmd(Command):
             printPacket(packet, '      ')
             sys.exit(2)
 
-        for m in packet['rset']:
-            print '[INFO]', m
+        rset = packet['rset']
+        if len(rset) > 0:
+            array_status = rset[0]
+            print '[INFO] %s' % array_status
+            if len(rset) == 2:
+                seg_status = rset[1]
+                for m in seg_status:
+                    print '[INFO] %s: %s' % (m[0], m[1])
         print '[INFO] ok'
 
 ####################

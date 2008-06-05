@@ -45,13 +45,14 @@ static apr_status_t a_fts_waiting(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t a_fts_array_units_status(gpcc_event_t *ev, void *_cmdslot, struct json_object *obj)
 {
     char *status;
-    struct json_object *array;
+    struct json_object *array, *rset;
     int i;
 
     if (!gpma.unit_cmdtab)
 	return 0;
 
-    array = json_object_object_get(obj, "rset");
+    rset = json_object_object_get(obj, "rset");
+    array = json_object_new_array();
     for (i = 0 ; i < gpma.unit_max ; i++) {
 	cmdslot_t *slot = gpma.unit_cmdtab[i];
 	struct json_object *tuple;
@@ -82,6 +83,7 @@ static apr_status_t a_fts_array_units_status(gpcc_event_t *ev, void *_cmdslot, s
 	json_object_array_add(tuple, json_object_new_string(status));
 	json_object_array_add(array, tuple);
     }
+    json_object_array_add(rset, array);
 
     return 0;
 }

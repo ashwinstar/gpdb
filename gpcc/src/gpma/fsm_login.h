@@ -44,7 +44,7 @@ static apr_status_t a_user_logout(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     char *url, *p;
     gpcc_net_conn_t conn;
-    const char *user, *key;
+    const char *key;
     int len;
     struct json_object *obj;
     user_t *userinfo;
@@ -78,14 +78,6 @@ static apr_status_t a_user_logout(gpcc_event_t *ev, void *arg)
     json_object_put(obj);
     
     return 0;
-
-    bail:
-
-    obj = gpcc_json_http_reply(gpma.array_name, 0, "logout", FAIL_STATUS, 0, "missing parameter");
-    gpcc_net_http_close(conn, 200, "ok", json_object_to_json_string(obj));
-    json_object_put(obj);
-    return 0;
-
 }
 
 static apr_status_t a_login_get_password_file(gpcc_event_t *ev, void *arg)
