@@ -246,9 +246,11 @@ DECLARE_UNIQUE_INDEX(pg_appendonly_relfilenode_index, 5007, on pg_appendonly usi
 #define AppendOnlyRelfilenodeIndexId  5007
 
 DECLARE_UNIQUE_INDEX(pg_partition_oid_index, 5012, on pg_partition using btree(oid oid_ops));
+#define PartitionOidIndexId 5012
 DECLARE_INDEX(pg_partition_relid_index, 5013, on pg_partition using btree(relid oid_ops));
-
+#define PartitionRelidIndexId 5013
 DECLARE_UNIQUE_INDEX(pg_partition_rule_oid_index, 5014, on pg_partition_rule using btree(oid oid_ops));
+#define PartitionRuleOidIndex 5014
 /*DECLARE_UNIQUE_INDEX(pg_pgartition_rule_paroid_parruleord, 5015, on pg_partition_rule using btree(paroid oid_ops, parruleord int2_ops)); */
 
 /* last step of initialization script: build the indexes declared above */
