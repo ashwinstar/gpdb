@@ -1753,6 +1753,63 @@ static void uri_unquote(char* s)
 	*p = 0;
 }
 
+gpcc_net_uri_t* gpcc_net_uri_param_alloc(const char* uristr)
+{
+    gpcc_net_uri_t* uri = 0;
+    char* buf = malloc(sizeof(*uri) + 2 * (strlen(uristr) + 1));
+    if (!buf) 
+	gpcc_fatal(FLINE, "out of memory");
+    char* p;
+    char* q;
+    int i;
+
+    uri = (gpcc_net_uri_t*) buf;
+    memset(uri, 0, sizeof(*uri));
+
+    /* make a copy of uristr in buf */
+    p = buf + sizeof(*uri);
+    strcpy(p, uristr);
+    uri->uri = p;
+    p += strlen(p) + 1;
+    
+    /* make another copy of uristr for parsing */
+    strcpy(p, uristr);
+
+    q = p + strlen(p);
+
+    /* parse param */
+    for (  ; p && p < q && uri->pc < gpcc_lengthof(uri->pname); uri->pc++) {
+	uri->pname[uri->pc] = p;
+	p = strpbrk(p, "&=");
+	if (p && *p == '=') {
+	    *p++ = 0;
+	    uri->pvalue[uri->pc] = p;
+	    p = strchr(p, '&');
+	}
+	else {
+	    uri->pvalue[uri->pc] = "";
+	}
+	if (p) 
+	    *p++ = 0;		/* this must be '&' */
+    }
+
+    /* if overflow, return NULL */
+    if (uri->pc >= gpcc_lengthof(uri->pname)) {
+	free(uri);
+	return 0;
+    }
+
+    /* perform uri unquote on all components of the uri */
+    for (i = 0; i < uri->pc; i++) {
+	if (uri->pname[i])
+	    uri_unquote(uri->pname[i]);
+	if (uri->pvalue[i])
+	    uri_unquote(uri->pvalue[i]);
+    }
+
+    return uri;
+}
+
 
 gpcc_net_uri_t* gpcc_net_uri_alloc(const char* uristr)
 {

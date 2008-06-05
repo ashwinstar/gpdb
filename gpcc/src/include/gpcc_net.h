@@ -321,6 +321,16 @@ APR_DECLARE(apr_status_t)
 APR_DECLARE(gpcc_net_uri_t*) 
     gpcc_net_uri_alloc(const char* uristr);
 
+
+/**
+ *  Allocate a URI by parsing uristr. Must call gpcc_net_uri_free() when done.
+ *  @param paramstr The Parameters in string form, e.g. a=x&b=y
+ *  @return A newly allocated URI if successful, 0 if bad URI.
+ */
+APR_DECLARE(gpcc_net_uri_t*) 
+    gpcc_net_uri_param_alloc(const char* paramstr);
+
+
 /**
  *  Free a URI structure returned by gpcc_net_uri_alloc.
  *  @param uri The uri to free.
