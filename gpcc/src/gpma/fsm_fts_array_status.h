@@ -45,15 +45,16 @@ static apr_status_t a_fts_waiting(gpcc_event_t *ev, void *_cmdslot)
 static apr_status_t a_fts_array_units_status(gpcc_event_t *ev, void *_cmdslot, struct json_object *obj)
 {
     char *status;
-    struct json_object *new_obj, *array;
+    struct json_object *array;
     int i;
 
     if (!gpma.unit_cmdtab)
 	return 0;
 
-    new_obj = json_object_new_object();
+    array = json_object_object_get(obj, "rset");
     for (i = 0 ; i < gpma.unit_max ; i++) {
 	cmdslot_t *slot = gpma.unit_cmdtab[i];
+	struct json_object *tuple;
 
 	switch (slot->cmdstate) {
 	case UNIT_CMDSTATE:
@@ -75,12 +76,12 @@ static apr_status_t a_fts_array_units_status(gpcc_event_t *ev, void *_cmdslot, s
 	    status = UNIT_INVALID_STATUS;
 	    break;
 	}
-	
-	json_object_object_add(new_obj, slot->cmdname, json_object_new_string(status));
-    }
 
-    array = json_object_object_get(obj, "rset");
-    json_object_array_add(array, new_obj);
+	tuple = json_object_new_array();
+	json_object_array_add(tuple, json_object_new_string(slot->cmdname));
+	json_object_array_add(tuple, json_object_new_string(status));
+	json_object_array_add(array, tuple);
+    }
 
     return 0;
 }
