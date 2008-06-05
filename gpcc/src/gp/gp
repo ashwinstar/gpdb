@@ -550,26 +550,16 @@ class LoginCmd(Command):
 
 ####################
 class LogoutCmd(Command):
-    '''Usage: gp logout [username]'''
+    '''Usage: gp logout'''
     def __init__(self, gopt, argv):
         Command.__init__(self, gopt, argv, '', self.__doc__)
-        self.opt['-u'] = None
-        if len(self.args) == 1:
-            self.opt['-u'] = self.args[0]
-        if self.opt['-u'] is None:
-            self.opt['-u'] = os.getenv('USER') or os.getenv('LOGNAME')
+        if self.sid is None:
+            print '[ERROR] please do "gp login" to log on'
+            sys.exit(2)
 
     def run(self):
-        if self.opt['-u'] is None:
-            sys.stdout.write('username: ')
-            user = sys.stdin.readline()
-            user = user.strip()
-            if user == '':
-                sys.exit('please specify user.')
-            self.opt['-u'] = user
         param = {}
         if (self.gopt['-a']): param['a'] = self.gopt['-a']
-        param['user'] = self.opt['-u']
         packet = self._httpGet('/gpcc/logout', param)
         self.raw(packet)         
         if 'ok' != packet.get('status'):
@@ -584,7 +574,8 @@ class LogoutCmd(Command):
             except OSError, e:
                 print 'cannot remove %s. (%s)' % (gpcc_file, e)
                 sys.exit(2)
-            print '%s logged out' % self.opt['-u']
+            user = self.sid.split('@')[0]
+            print '%s logged out' % user
             sys.exit(0)
 
 ####################
