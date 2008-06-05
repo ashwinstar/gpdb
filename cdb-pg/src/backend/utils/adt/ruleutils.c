@@ -19,6 +19,7 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_trigger.h"
+#include "commands/tablecmds.h"
 #include "commands/tablespace.h"
 #include "executor/spi.h"
 #include "funcapi.h"
@@ -94,7 +95,6 @@ typedef struct
 	int			inner_varno;	/* varno for inner_rte */
 	RangeTblEntry *inner_rte;	/* special RangeTblEntry, or NULL */
 } deparse_namespace;
-
 
 /* ----------
  * Global data
@@ -1715,7 +1715,7 @@ make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 	if (strlen(ev_qual) > 0 && strcmp(ev_qual, "<>") != 0)
 	{
 		Node	   *qual;
-		Query	   *query;
+			Query	   *query;
 		deparse_context context;
 		deparse_namespace dpns;
 
@@ -5814,4 +5814,215 @@ flatten_reloptions(Oid relid)
 	ReleaseSysCache(tuple);
 
 	return result;
+}
+
+static char *
+partition_rule_def(PartitionRule *rule, Partition *part, int prettyFlags)
+{
+	StringInfoData str;
+	deparse_context c;
+
+	initStringInfo(&str);
+
+	c.buf = &str;
+	c.prettyFlags = prettyFlags;
+	c.indentLevel = PRETTYINDENT_STD;
+
+	if (rule->parisdefault)
+	{
+		appendStringInfo(&str, "default partition %s",
+						 rule->parname);
+		return str.data;
+	}
+
+	if (rule->parname && rule->parname[0] != '\0')
+			appendStringInfo(&str, "partition %s ",
+							 rule->parname);
+			
+	switch (part->parkind)
+	{
+		case 'h':
+			return str.data;
+		case 'r':
+			{
+				List *l1;
+
+
+				l1 = (List *)rule->parrangestart;
+				if (l1)
+				{
+					appendStringInfoString(&str, "start (");
+					get_const_expr((Const *)linitial(l1), &c, 0);
+					appendStringInfoString(&str, ") ");
+				}
+
+				l1 = (List *)rule->parrangeend;
+				if (l1)
+				{
+					appendStringInfoString(&str, "end (");
+					get_const_expr((Const *)linitial(l1), &c, 0);
+					appendStringInfoString(&str, ") ");
+				}
+
+				if (rule->parrangeevery)
+				{
+					appendStringInfoString(&str, "every (");
+
+					l1 = (List *)rule->parrangeevery;
+					get_const_expr((Const *)linitial(l1), &c, 0);
+					appendStringInfoString(&str, ") ");
+				}
+			}
+			break;
+		case 'l':
+			{
+				ListCell *lc;
+				List *l1;
+
+				appendStringInfo(&str, "values(");
+
+				l1 = (List *)rule->parlistvalues;
+				foreach(lc, l1)
+				{
+					Const *con = linitial(lfirst(lc));
+
+					if (lc != list_head(l1))
+						appendStringInfoString(&str, ", ");
+
+					get_const_expr(con, &c, -1);
+				}
+				appendStringInfoString(&str, ") ");
+			}
+			break;
+	}
+	return str.data;
+}
+
+static char *
+pg_get_partition_def_worker(Oid relid, int prettyFlags)
+{
+	Relation rel = heap_open(relid, AccessShareLock);
+	PartitionNode *pn = RelationBuildPartitionDesc(rel);
+	StringInfoData head;
+	StringInfoData body;
+	bool seenpart = false;
+
+	if (!pn)
+		return NULL;
+
+	initStringInfo(&head);
+	initStringInfo(&body);
+
+	while (pn != NULL)
+	{
+		PartitionRule *rule;
+		ListCell *lc;
+		int i;
+		Node *prevevery = NULL;
+		bool needcomma = false;
+
+		if (seenpart)
+			appendStringInfoString(&head, "SUB");
+		else
+			seenpart = true;
+
+		appendStringInfoString(&head, "PARTITION BY ");
+
+		switch (pn->part->parkind)
+		{
+			case 'h': appendStringInfoString(&head, "HASH"); break;
+			case 'l': appendStringInfoString(&head, "LIST"); break;
+			case 'r': appendStringInfoString(&head, "RANGE"); break;
+			default: 
+					  elog(ERROR, "unknown partitioning kind '%c'", 
+						  pn->part->parkind);
+					  break;
+		}
+
+		appendStringInfoChar(&head, '(');
+		for (i = 0; i < pn->part->parnatts; i++)
+		{
+			char *attname = get_relid_attribute_name(pn->part->relid,
+													 pn->part->paratts[i]);
+
+			if (i)
+				appendStringInfo(&head, ", ");
+
+			appendStringInfoString(&head, quote_identifier(attname));
+			pfree(attname);
+		}
+		appendStringInfoChar(&head, ')');
+
+		if (pn->part->parkind == 'h')
+			appendStringInfo(&head, " %sPARTITIONS %i ",
+							 seenpart ? "SUB" : "",
+							 list_length(pn->rules));
+
+		foreach(lc, pn->rules)
+		{
+			char *str;
+			rule = lfirst(lc);
+
+			if (pn->part->parkind == 'r')
+			{
+				if (rule->parrangeevery)
+				{
+					if (equal(prevevery, rule->parrangeevery))
+						continue;
+					else
+						prevevery = rule->parrangeevery;
+				}
+			}
+
+
+			if (needcomma)
+			{
+				appendStringInfoChar(&body, ',');
+				needcomma = false;
+			}
+
+		   	str = partition_rule_def(rule, pn->part, prettyFlags);
+			if (str && strlen(str))
+			{
+				appendStringInfoString(&body, " ");
+				appendStringInfoString(&body, str);
+				needcomma = true;
+			}
+			pfree(str);
+		}
+
+		if (pn->default_part)
+		{
+			char *str;
+
+			if (pn->rules && strlen(body.data))
+				appendStringInfoChar(&body, ',');
+
+			str = partition_rule_def(pn->default_part, pn->part, prettyFlags);
+
+			appendStringInfoString(&body, " ");
+			appendStringInfoString(&body, str);
+			pfree(str);
+		}
+
+		pn = rule->children;
+	}
+
+	heap_close(rel, NoLock);
+	if (strlen(body.data))
+		appendStringInfo(&head, "(%s)", body.data);
+	pfree(body.data);
+	return head.data;
+}
+
+Datum
+pg_get_partition_def(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	bool		pretty = PG_GETARG_BOOL(1);
+	int			prettyFlags;
+
+	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
+	PG_RETURN_TEXT_P(string_to_text(pg_get_partition_def_worker(relid, prettyFlags)));
+
 }

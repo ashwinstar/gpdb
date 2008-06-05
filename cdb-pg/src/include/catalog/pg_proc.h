@@ -2294,6 +2294,8 @@ DATA(insert OID = 1716 (  pg_get_expr		   PGNSP PGUID 12 f f t f s 2 25 f "25 26
 DESCR("deparse an encoded expression");
 DATA(insert OID = 1665 (  pg_get_serial_sequence	PGNSP PGUID 12 f f t f s 2 25 f "25 25" _null_ _null_ _null_	pg_get_serial_sequence - _null_ ));
 DESCR("name of sequence for a serial column");
+DATA(insert OID = 5009 (  pg_get_partition_def	PGNSP PGUID 12 f f t f s 1 25 f "26" _null_ _null_ _null_	pg_get_partition_def - _null_ ));
+DESCR("partition configuration for a given relation");
 
 
 /* Generic referential integrity constraint triggers */
