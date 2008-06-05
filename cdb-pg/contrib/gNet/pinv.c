@@ -16,8 +16,63 @@
 PG_FUNCTION_INFO_V1(pseudoinverse);
 Datum pseudoinverse(PG_FUNCTION_ARGS);
 
-// #define max(a,b) (a > b ? a : b)
-// #define min(a,b) (a < b ? a : b)
+void pinv(long int rows,long int columns,float8 *A,float8 *Aplus);
+
+Datum pseudoinverse(PG_FUNCTION_ARGS)
+{
+	long int    rows, columns;
+	float8     *A, *Aplus;
+	ArrayType  *A_PG, *Aplus_PG;
+
+	/* 
+	 * Perform all the error checking needed to ensure that no one is
+	 * trying to call this in some sort of crazy way. 
+	 */
+	if (PG_NARGS() != 1)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("pseudoinverse called with %d arguments", 
+						PG_NARGS())));
+	}
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();	
+	A_PG = PG_GETARG_ARRAYTYPE_P(0);
+	if (ARR_ELEMTYPE(A_PG) != FLOAT8OID) 
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("pseudoinverse only defined over float8[]")));
+	if (ARR_NDIM(A_PG) != 2)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("pseudoinverse only defined over 2 dimensional arrays"))
+			);
+	if (ARR_NULLBITMAP(A_PG)) 
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("null array element not allowed in this context")));
+
+	/* Extract rows, columns, and data */
+	rows = ARR_DIMS(A_PG)[0];
+	columns = ARR_DIMS(A_PG)[1];
+	A = (float8 *) ARR_DATA_PTR(A_PG);
+
+	/*  Allocate a PG array for the result, "Aplus" is A+, the pseudo inverse of A */
+	Aplus_PG = (ArrayType *) palloc(ARR_SIZE(A_PG));
+	SET_VARSIZE(A_PG, ARR_SIZE(A_PG));
+	Aplus_PG->elemtype = FLOAT8OID;
+	Aplus_PG->dataoffset = 0;
+	Aplus_PG->ndim = 2;
+	ARR_LBOUND(Aplus_PG)[0] = ARR_LBOUND(A_PG)[1];
+	ARR_LBOUND(Aplus_PG)[1] = ARR_LBOUND(A_PG)[0];
+	ARR_DIMS(Aplus_PG)[0] = ARR_DIMS(A_PG)[1];
+	ARR_DIMS(Aplus_PG)[1] = ARR_DIMS(A_PG)[0];
+	Aplus = (float8 *) ARR_DATA_PTR(Aplus_PG);
+
+	pinv(rows,columns,A,Aplus);
+
+	PG_RETURN_ARRAYTYPE_P(Aplus_PG);
+}
 
 /*
 
@@ -27,7 +82,7 @@ Datum pseudoinverse(PG_FUNCTION_ARGS);
 
     Author:  Luke Lonergan
     Date:    5/31/08
-    License: Use freely
+    License: Use pfreely
 
     We use the approach from here:
        http://en.wikipedia.org/wiki/Moore-Penrose_pseudoinverse#Finding_the_\
@@ -62,51 +117,16 @@ pseudoinverse_of_a_matrix
     Note that there is some fancy index rework in this implementation to deal 
 	with the row values consecutive order used by the FORTRAN dgesdd_ routine.
 */
-Datum pseudoinverse(PG_FUNCTION_ARGS)
+void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 {
-	long int    rows, columns, minmn;
+	long int    minmn;
 	long int    i, j, k, ii;
 	long int    lwork, *iwork;
 	float8     *work, *Atemp;
 	float8      epsilon, tolerance, maxeigen;
 	float8     *S, *U, *Vt;
-	float8     *Splus, *Splus_times_Ut, *Aplus;
-	ArrayType  *m, *result;
-	float8     *A;
+	float8     *Splus, *Splus_times_Ut;
 	char        achar='A';   /* ? */
-
-	/* 
-	 * Perform all the error checking needed to ensure that no one is
-	 * trying to call this in some sort of crazy way. 
-	 */
-	if (PG_NARGS() != 1)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("pseudoinverse called with %d arguments", 
-						PG_NARGS())));
-	}
-	if (PG_ARGISNULL(0))
-		PG_RETURN_NULL();	
-	m = PG_GETARG_ARRAYTYPE_P(0);
-	if (ARR_ELEMTYPE(m) != FLOAT8OID) 
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("pseudoinverse only defined over float8[]")));
-	if (ARR_NDIM(m) != 2)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("pseudoinverse only defined over 2 dimensional arrays"))
-			);
-	if (ARR_NULLBITMAP(m)) 
-		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-				 errmsg("null array element not allowed in this context")));
-
-	/* Extract rows, columns, and data */
-	rows = ARR_DIMS(m)[0];
-	columns = ARR_DIMS(m)[1];
-	A = (float8 *) ARR_DATA_PTR(m);
 
 	/* 
 	 * Calculate the tolerance for "zero" values in the SVD 
@@ -133,26 +153,17 @@ Datum pseudoinverse(PG_FUNCTION_ARGS)
 	/*  2) An intermediate result: S+ Ut */
 	Splus_times_Ut = (float8 *) palloc(sizeof(float8)*columns*rows);
 
-	/*  3) The result, "Aplus" is A+, the pseudo inverse of A */
-	result = (ArrayType *) palloc(ARR_SIZE(m));
-	SET_VARSIZE(result, ARR_SIZE(m));
-	result->elemtype = FLOAT8OID;
-	result->dataoffset = 0;
-	result->ndim = 2;
-	ARR_LBOUND(result)[0] = ARR_LBOUND(m)[1];
-	ARR_LBOUND(result)[1] = ARR_LBOUND(m)[0];
-	ARR_DIMS(result)[0] = ARR_DIMS(m)[1];
-	ARR_DIMS(result)[1] = ARR_DIMS(m)[0];
-	Aplus = (float8 *) ARR_DATA_PTR(result);
-
 	/*
 	 * Here we transpose A for entry into the FORTRAN dgesdd_ routine in row 
 	 * order. Note that dgesdd_ is destructive to the entry array, so we'd 
 	 * need to make this copy anyway.
 	 */
 	Atemp = (float8 *) palloc(sizeof(float8)*columns*rows);
-	memcpy(Atemp, A, sizeof(float8)*columns*rows);
-	i = columns;
+	for ( j = 0; j < rows; j++ ) {
+			for ( i = 0; i < columns; i++ ) {
+					Atemp[j+i*rows] = A[i+j*columns];
+			} 
+	}
 
 	/* 
 	 * First call of dgesdd is with lwork=-1 to calculate an optimal value of 
@@ -242,5 +253,5 @@ Datum pseudoinverse(PG_FUNCTION_ARGS)
 	pfree(Vt);
 	pfree(S);
 
-	PG_RETURN_ARRAYTYPE_P(result);
+	return;
 }

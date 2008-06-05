@@ -35,6 +35,7 @@ drop function if exists matrix_add(int8[],int8[]) cascade;
 drop function if exists matrix_add(float8[],float8[]) cascade;
 
 drop function if exists pinv(float8[]) cascade;
+drop function if exists pinv_test() cascade;
 
 drop function if exists unpivot(float8[], text[]) cascade;
 drop function if exists unpivot(int4[], text[]) cascade;

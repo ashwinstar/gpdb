@@ -4,7 +4,7 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
 MODULE_big = gNet
-OBJS       = bayes.o matrix.o pivot.o regress.o pinv.o
+OBJS       = bayes.o matrix.o pivot.o regress.o pinv.o pinv_test.o
 DATA_built = gNet.sql gNet_remove.sql
 SHLIB_LINK += lapack.a blas.a libf2c.a
 

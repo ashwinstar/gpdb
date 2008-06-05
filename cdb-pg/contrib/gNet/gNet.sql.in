@@ -83,6 +83,9 @@ create aggregate sum(float8[]) (
 create or replace function pinv(float8[]) returns float8[] as
 'MODULE_PATHNAME', 'pseudoinverse' LANGUAGE C STRICT IMMUTABLE;
 
+create or replace function pinv_test() returns boolean as
+'MODULE_PATHNAME', 'pinv_test' LANGUAGE C STRICT IMMUTABLE;
+
 --
 --  UNPIVOT (values[], labels[])
 --
