@@ -5915,7 +5915,7 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 
 	while (pn != NULL)
 	{
-		PartitionRule *rule;
+		PartitionRule *rule = NULL;
 		ListCell *lc;
 		int i;
 		Node *prevevery = NULL;
@@ -6005,6 +6005,7 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 			pfree(str);
 		}
 
+		Assert(PointerIsValid(rule));
 		pn = rule->children;
 	}
 
