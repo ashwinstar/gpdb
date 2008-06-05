@@ -44,7 +44,6 @@ static apr_status_t a_user_logout(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     char *url, *p;
     gpcc_net_conn_t conn;
-    gpcc_net_uri_t *uri;
     const char *user, *key;
     int len;
     struct json_object *obj;
@@ -61,18 +60,7 @@ static apr_status_t a_user_logout(gpcc_event_t *ev, void *arg)
     p += sizeof(int);
     key = p;
 
-    uri = gpcc_net_uri_alloc(url);
-    if (!uri) {
-	goto bail;
-    }
-
-    user = gpcc_net_uri_param(uri, "user");
-    
-    if (! user) {
-	goto bail;
-    }
-
-    gpcc_log_info("user %s logout: sessionid = '%s'", user, key);
+    gpcc_log_info("logout: sessionid = '%s'", key);
 
     userinfo = (user_t *) apr_hash_get(slot->u.user.usertb, key, APR_HASH_KEY_STRING);
     if (userinfo) {
