@@ -2716,7 +2716,7 @@ static Plan *plan_sequential_stage(PlannerInfo *root,
 		join_plan->total_cost = agg_plan->total_cost + window_plan->total_cost;
 		join_plan->total_cost += cpu_tuple_cost * join_plan->plan_rows;
 		
-		join_plan->flow = pull_up_Flow(join_plan, join_plan->lefttree, true);
+		join_plan->flow = pull_up_Flow(join_plan, join_plan->righttree, true);
 		window_plan = join_plan;
 	}	
 
