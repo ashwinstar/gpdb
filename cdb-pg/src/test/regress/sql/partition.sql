@@ -699,3 +699,74 @@ COPY foz FROM stdin DELIMITER '|';
 6|2010-01-01
 \.
 drop table foz cascade;
+
+
+-- alter table testing
+
+create table hhh (a char(1), b date, d char(3))
+distributed by (a)
+partition by range (b)
+(
+partition aa start (date '2007-01-01') end (date '2008-01-01') 
+    with (appendonly=true),
+partition bb start (date '2008-01-01') end (date '2009-01-01')
+    with (appendonly=false)
+);
+
+alter table hhh add partition aa;
+
+alter table hhh add partition cc;
+
+alter table hhh alter partition cc set tablespace foo;
+
+alter table hhh alter partition aa set tablespace foo;
+
+alter table hhh coalesce partition cc;
+
+alter table hhh coalesce partition aa;
+
+alter table hhh drop partition cc;
+
+alter table hhh drop partition cc cascade;
+
+alter table hhh drop partition cc restrict;
+
+alter table hhh drop partition if exists cc;
+
+alter table hhh exchange partition cc with table nosuchtable with validation;
+
+alter table hhh exchange partition cc with table nosuchtable without validation;
+
+alter table hhh exchange partition aa with table nosuchtable with validation;
+
+alter table hhh exchange partition aa with table nosuchtable without validation;
+
+alter table hhh merge partition cc, partition dd;
+
+alter table hhh merge partition cc, partition dd into partition ee;
+
+alter table hhh merge partition aa, partition dd into partition ee;
+
+alter table hhh modify partition cc add values ('a');
+alter table hhh modify partition cc drop values ('a');
+alter table hhh modify partition aa add values ('a');
+alter table hhh modify partition aa drop values ('a');
+
+alter table hhh rename partition cc to aa;
+alter table hhh rename partition aa to aa;
+alter table hhh rename partition aa to "funky fresh";
+alter table hhh rename partition "funky fresh" to aa;
+
+alter table hhh set subpartition template ();
+
+alter table hhh split partition cc at ('a');
+alter table hhh split partition cc at ('a') into (partition gg, partition hh);
+alter table hhh split partition aa at ('a');
+
+alter table hhh truncate partition cc;
+
+alter table hhh truncate partition aa;
+
+
+
+

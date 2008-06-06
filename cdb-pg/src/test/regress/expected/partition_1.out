@@ -1852,3 +1852,74 @@ NOTICE:  drop cascades to append only table foz_1_prt_2
 NOTICE:  drop cascades to constraint foz_1_prt_2_check on append only table foz_1_prt_2
 NOTICE:  drop cascades to append only table foz_1_prt_1
 NOTICE:  drop cascades to constraint foz_1_prt_1_check on append only table foz_1_prt_1
+-- alter table testing
+create table hhh (a char(1), b date, d char(3))
+distributed by (a)
+partition by range (b)
+(
+partition aa start (date '2007-01-01') end (date '2008-01-01') 
+    with (appendonly=true),
+partition bb start (date '2008-01-01') end (date '2009-01-01')
+    with (appendonly=false)
+);
+NOTICE:  CREATE TABLE will create partition "hhh_1_prt_aa" for table "hhh"
+NOTICE:  CREATE TABLE will create partition "hhh_1_prt_bb" for table "hhh"
+alter table hhh add partition aa;
+ERROR:  partition "aa" of relation "hhh" already exists
+alter table hhh add partition cc;
+ERROR:  cannot ADD PARTITION to relation "hhh"
+alter table hhh alter partition cc set tablespace foo;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh alter partition aa set tablespace foo;
+ERROR:  cannot ALTER PARTITION for relation "hhh"
+alter table hhh coalesce partition cc;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh coalesce partition aa;
+ERROR:  cannot COALESCE PARTITION for relation "hhh"
+alter table hhh drop partition cc;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh drop partition cc cascade;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh drop partition cc restrict;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh drop partition if exists cc;
+NOTICE:  partition "cc" of relation "hhh" does not exist, skipping
+alter table hhh exchange partition cc with table nosuchtable with validation;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh exchange partition cc with table nosuchtable without validation;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh exchange partition aa with table nosuchtable with validation;
+ERROR:  cannot EXCHANGE PARTITION for relation "hhh"
+alter table hhh exchange partition aa with table nosuchtable without validation;
+ERROR:  cannot EXCHANGE PARTITION for relation "hhh"
+alter table hhh merge partition cc, partition dd;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh merge partition cc, partition dd into partition ee;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh merge partition aa, partition dd into partition ee;
+ERROR:  cannot MERGE PARTITION for relation "hhh"
+alter table hhh modify partition cc add values ('a');
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh modify partition cc drop values ('a');
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh modify partition aa add values ('a');
+ERROR:  cannot MODIFY PARTITION for relation "hhh"
+alter table hhh modify partition aa drop values ('a');
+ERROR:  cannot MODIFY PARTITION for relation "hhh"
+alter table hhh rename partition cc to aa;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh rename partition aa to aa;
+ERROR:  partition "aa" of relation "hhh" already exists
+alter table hhh rename partition aa to "funky fresh";
+alter table hhh rename partition "funky fresh" to aa;
+alter table hhh set subpartition template ();
+ERROR:  cannot SET SUBPARTITION TEMPLATE for relation "hhh"
+alter table hhh split partition cc at ('a');
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh split partition cc at ('a') into (partition gg, partition hh);
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh split partition aa at ('a');
+ERROR:  cannot SPLIT PARTITION for relation "hhh"
+alter table hhh truncate partition cc;
+ERROR:  partition "cc" of relation "hhh" does not exist
+alter table hhh truncate partition aa;
