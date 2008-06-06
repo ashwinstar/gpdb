@@ -17,6 +17,7 @@
 #endif
 
 #include <signal.h>
+#include <apr_signal.h>
 #include <apr_getopt.h>
 #include <apr_strings.h>
 #include <apr_hash.h>
@@ -1744,6 +1745,17 @@ static void http_setup(void)
 }
 
 
+void process_signal(int sig)
+{
+    if (sig == SIGINT || sig == SIGTERM) {
+	if (gcb.listen_sock > 0) {
+	    closesocket(gcb.listen_sock);
+	}
+	exit(1);
+    }
+}
+
+
 int main(int argc, const char* const argv[])
 {
     if (0 != apr_app_initialize(&argc, &argv, 0)) 
@@ -1753,6 +1765,8 @@ int main(int argc, const char* const argv[])
     if (0 != apr_pool_create(&gcb.pool, 0))
 	gfatal(FLINE, "apr_app_initialize failed");
 
+    apr_signal_init(gcb.pool);
+
     gcb.session.tab = apr_hash_make(gcb.pool);
 
     parse_command_line(argc, argv, gcb.pool);
@@ -1760,6 +1774,8 @@ int main(int argc, const char* const argv[])
 #ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
 #endif
+    apr_signal(SIGINT, process_signal);
+    apr_signal(SIGTERM, process_signal);
 
     /* kqueue not so stable in libevent */
     setenv("EVENT_NOKQUEUE", "1", 1);
