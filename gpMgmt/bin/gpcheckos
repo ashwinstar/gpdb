@@ -346,7 +346,7 @@ solaris.patch                       str   contains 125205-07
 solaris.patch                       str   contains 121431-20
 solaris.patch                       str   contains 125417-04
 solaris.patch                       str   contains 127729-07
-solaris.patch                       str   contains IDR136658-01
+solaris.patch                       str   contains IDR137889-02
 
 '''
 
