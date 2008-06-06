@@ -94,8 +94,9 @@ bfz_append_end(bfz_t*thiz)
     fs->write_ex(thiz,fs->buffer,fs->buffer_pointer-fs->buffer);
     tot_bytes = fs->tot_bytes;
     fs->close_ex(thiz);
-    tot_compressed = lseek(thiz->fd,0,SEEK_END);
-    elog(DEBUG5,"bfz file size uncompressed %lld, compressed %lld, savings %d%%", (long long)tot_bytes, (long long)tot_compressed, tot_bytes == 0 ? 0 : (int) ((tot_bytes-tot_compressed)*100/tot_bytes));
+    if ((tot_compressed=lseek(thiz->fd,0,SEEK_END)) == -1)
+	elog(ERROR,"bfz: lseek failed");
+    elog(DEBUG5,"bfz file size uncompressed %lld, compressed %lld, savings %d%%",(long long)tot_bytes,(long long)tot_compressed,tot_bytes==0?0:(int)((tot_bytes-tot_compressed)*100/tot_bytes));
     thiz->mode = BFZ_MODE_FREED;
 }
 
@@ -104,7 +105,8 @@ bfz_scan_begin(bfz_t*thiz)
 {
     struct bfz_freeable_stuff*fs;
     Assert(thiz->mode == BFZ_MODE_FREED);
-    lseek(thiz->fd,0,SEEK_SET);
+    if (lseek(thiz->fd,0,SEEK_SET) == -1)
+	elog(ERROR,"bfz: lseek failed");
     thiz->mode = BFZ_MODE_SCAN;
     compression_algorithms[thiz->compression_index].init(thiz);
     fs = thiz->freeable_stuff;
