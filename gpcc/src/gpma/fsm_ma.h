@@ -442,7 +442,7 @@ static apr_status_t a_lma_sync_config(gpcc_event_t *ev, void *arg, char *master)
 	    strcat(key, "1");
 
 	/* value */
-	sprintf(v, "%s:%s:%s", hostname, port, datadir);
+	sprintf(v, "%s:%s:%s:%s:%s", hostname, port, datadir, isprimary, valid);
 
 	config_set(gpma.cfg, key, v);
     }

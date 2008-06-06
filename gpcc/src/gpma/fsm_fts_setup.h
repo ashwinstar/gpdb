@@ -37,9 +37,9 @@ static apr_status_t setup_cleanup_seginfo(gpcc_event_t *ev, void *_cmdslot)
 }
 
 
-static apr_status_t setup_parse_segment(const char *key, const char *value, char *host, char *dir, int *port)
+static apr_status_t setup_parse_segment(const char *key, const char *value, char *host, char *dir, int *port, char *isprimary, char *valid)
 {
-    char *s1, *s2;
+    char *s1, *s2, *s3, *s4;
     char portstr[256];
 
     if (!value)
@@ -55,17 +55,42 @@ static apr_status_t setup_parse_segment(const char *key, const char *value, char
 	gpcc_log_error("value format error. %s = %s", key, value);
 	return APR_EINVAL;
     }
+    s3 = strchr(s2+1, ':');
+    if (!s3 || !isprimary || !valid) {
+	/* just parse host, dir and port */
+	strncpy(host, value, s1-value);
+	host[s1-value] = 0;
+	strncpy(portstr, s1+1, s2-s1);
+	portstr[s2-s1-1] = 0;
+	*port = atoi(portstr);
+	strcpy(dir, s2+1);
+    } else {
+	s4 = strchr(s3+1, ':');
+	if (!s4) {
+	    gpcc_log_error("value format error. %s = %s", key, value);
+	    return APR_EINVAL;
+	}
 
-    strncpy(host, value, s1-value);
-    host[s1-value] = 0;
-    strncpy(portstr, s1+1, s2-s1);
-    portstr[s2-s1-1] = 0;
-    *port = atoi(portstr);
-    strcpy(dir, s2+1);
-    
+	strncpy(host, value, s1-value);
+	host[s1-value] = 0;
+	strncpy(portstr, s1+1, s2-s1);
+	portstr[s2-s1-1] = 0;
+	*port = atoi(portstr);
+	strncpy(dir, s2+1, s3-s2);
+	dir[s3-s2-1] = 0;
+	*isprimary = *(s3+1);
+	*valid = *(s4+1);
+    }
+
     if (dir[0] != '/') {
 	gpcc_warning(FLINE, "segment %s data directory %s must be in full path", key, dir);
 	return APR_EINVAL;
+    }
+
+    if (!isprimary || !valid) {
+	gpcc_log_info("INIT CONF: %s|%d|%s", host, *port, dir);
+    } else {
+	gpcc_log_info("CONF: %s|%d|%s|%c|%c", host, *port, dir, *isprimary, *valid);
     }
 
     return APR_SUCCESS;
@@ -75,7 +100,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *)_cmdslot;
     int i, n, dbid, content, port;
-    char key[128], dir[256], host[256];
+    char key[128], dir[256], host[256], isprimary, valid;
     const char *value;
 
     /* build the segments */
@@ -119,7 +144,9 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     if (!value)
 	return APR_EINVAL;
 
-    if (setup_parse_segment(key, value, host, dir, &port)) {
+    isprimary = 't';
+    valid = 't';
+    if (setup_parse_segment(key, value, host, dir, &port, &isprimary, &valid)) {
 	return APR_EINVAL;
     }
 
@@ -127,7 +154,7 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     content = -1;
 
     setup_set_segment(cmdslot, dbid-1, key, dbid, content, port, 
-		      host, dir, 't', 't', 't', cmdslot->pool);
+		      host, dir, 't', isprimary, valid, cmdslot->pool);
 
     
     for (i = 0 ; ; i++) {
@@ -138,26 +165,30 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    break;
-	if (setup_parse_segment(key, value, host, dir, &port)) {
+	isprimary = 't';
+	valid = 't';
+	if (setup_parse_segment(key, value, host, dir, &port, &isprimary, &valid)) {
 	    return APR_EINVAL;
 	}
 
 	dbid++;
 	setup_set_segment(cmdslot, dbid-1, key, dbid, content, port, 
-			  host, dir, 't', 't', 't', cmdslot->pool);
+			  host, dir, 't', isprimary, valid, cmdslot->pool);
 
 	/* mirror QE */
 	sprintf(key, "seg.%d.1", content);
 	value = config_get(gpma.cfg, key);
 	if (!value)
 	    continue;
-	if (setup_parse_segment(key, value, host, dir, &port)) {
+	isprimary = 'f';
+	valid = 't';
+	if (setup_parse_segment(key, value, host, dir, &port, &isprimary, &valid)) {
 	    return APR_EINVAL;
 	}
 
 	dbid++;
 	setup_set_segment(cmdslot, dbid-1, key, dbid, content, port, 
-			  host, dir, 'f', 'f', 't', cmdslot->pool);
+			  host, dir, 'f', isprimary, valid, cmdslot->pool);
     }
 
 
@@ -165,13 +196,15 @@ static apr_status_t setup_init_seginfo(gpcc_event_t *ev, void *_cmdslot)
     strcpy(key, "seg.m.1");
     value = config_get(gpma.cfg, key);
     if (value) {
-	if (setup_parse_segment(key, value, host, dir, &port)) {
+	isprimary = 'f';
+	valid = 't';
+	if (setup_parse_segment(key, value, host, dir, &port, &isprimary, &valid)) {
 	    return APR_EINVAL;
 	}
 	dbid++;
 	content = -1;
 	setup_set_segment(cmdslot, dbid-1, key, dbid, content, port, 
-			  host, dir, 'f', 'f', 't', cmdslot->pool);
+			  host, dir, 'f', isprimary, valid, cmdslot->pool);
     }
 
     cmdslot->u.fts.nnode = 0;

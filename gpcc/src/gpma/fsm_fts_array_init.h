@@ -6,7 +6,7 @@ static apr_status_t a_fts_array_config_verify() {
     char buf[1024];
     char host[1024];
     char dir[1024];
-    int port;
+    int port, nprimary, nmirror;
 
     /* name must exist */
     if (! config_get(gpma.cfg, CONFIG_DBNAME_KEY)) {
@@ -20,7 +20,7 @@ static apr_status_t a_fts_array_config_verify() {
 	gpcc_log_error("\t- seg.m.0 not set");
 	errcnt++;
     } else {
-	if (setup_parse_segment("seg.m.0", v, host, dir, &port)) {
+	if (setup_parse_segment("seg.m.0", v, host, dir, &port, 0, 0)) {
 	    gpcc_log_error("\t- %s value syntax error.", v);
 	    errcnt++;
 	}
@@ -38,14 +38,41 @@ static apr_status_t a_fts_array_config_verify() {
 	    break;
 	} else {
 
-	    if (setup_parse_segment(buf, v, host, dir, &port)) {
+	    if (setup_parse_segment(buf, v, host, dir, &port, 0, 0)) {
 		gpcc_log_error("\t- %s value syntax error.", v);
 		errcnt++;
 	    }
 	}
     }
+    nprimary = i;
+
+    /* minimum 2 QEs, max 512 QEs */
+    for (i = 0; i < 512; i++) {
+	sprintf(buf, "seg.%d.1", i);
+	v = config_get(gpma.cfg, buf);
+	if (!v) {
+	    if (i < 2) {
+		gpcc_log_error("\t- %s not set", buf);
+		errcnt++;
+	    }
+	    break;
+	} else {
+
+	    if (setup_parse_segment(buf, v, host, dir, &port, 0, 0)) {
+		gpcc_log_error("\t- %s value syntax error.", v);
+		errcnt++;
+	    }
+	}
+    }    
+    nmirror = i;
+
     if (! (2 <= i && i < 512)) {
 	gpcc_log_error("\t- too many segments (max 512)");
+	errcnt++;
+    }
+
+    if (nprimary != nmirror) {
+	gpcc_log_error("\t- number of primary != number of mirror");
 	errcnt++;
     }
     
