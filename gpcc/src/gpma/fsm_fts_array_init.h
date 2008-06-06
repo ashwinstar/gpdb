@@ -195,6 +195,7 @@ static apr_status_t a_fts_array_present(gpcc_event_t *ev, void *_cmdslot)
     cmdslot_t *cmdslot = _cmdslot;
     gpcc_event_t *evt;
 
+    cmdslot->countdown = 0;
     if (config_get(gpma.cfg, CONFIG_DBNAME_KEY) == 0) {
 	evt = gpcc_event_alloc(ARRAY_ABSENT_EVENT, cmdslot->cmdidx, 0);
     } else {

@@ -234,7 +234,7 @@ APR_DECLARE(void) fsm_init(void)
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, SSH_ADDRESS_REPLY_EVENT, FTS_INITIALIZING0_CMDSTATE,
 		 a_fts_getaddress_reply, NULL);
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, NODE_START_EVENT, FTS_INITIALIZING0_CMDSTATE,
-		 a_fts_kick_off, NULL);
+		 a_fts_kick_off_timeout, NULL);
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, FAILURE_EVENT, FTS_EMPTY_CMDSTATE, 0,
 		 a_fts_array_init_failure, NULL);
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, TIMEUP_EVENT, FTS_EMPTY_CMDSTATE,

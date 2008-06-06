@@ -646,6 +646,11 @@ class AdminDeleteCmd(Command):
 
         self.opt['-u'] = self.args[0]
 
+        current_user = self.sid.split('@')[0]
+        if current_user == self.opt['-u']:
+            print '[ERROR] gp admin delete cannot delete current user %s' % current_user
+            sys.exit(2)
+
     def run(self):
         if self.opt['-u'] is None:
             sys.stdout.write('username: ')
@@ -712,7 +717,7 @@ class AdminPasswordCmd(Command):
             self.opt['-u'] = self.args[0]
 
         if self.opt['-u'] is None:
-            self.opt['-u'] = os.getenv('USER') or os.getenv('LOGNAME')
+            self.opt['-u'] = self.sid.split('@')[0]
 
     def run(self):
         if self.opt['-u'] is None:

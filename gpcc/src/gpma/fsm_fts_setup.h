@@ -449,13 +449,18 @@ static apr_status_t a_fts_setup_and_gethostname(gpcc_event_t *ev, void *_cmdslot
 
 static apr_status_t a_fts_kick_off(gpcc_event_t *ev, void *_cmdslot)
 {
-    cmdslot_t *cmdslot = _cmdslot;
-
     /* kick off the node */
     a_fts_node_init();
+    return 0;
+}
 
+static apr_status_t a_fts_kick_off_timeout(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+
+    a_fts_kick_off(ev, _cmdslot);
     /* check for connection timeout */
-    cmdslot->countdown = 30;    
+    cmdslot->countdown = 30;
     return 0;
 }
 
