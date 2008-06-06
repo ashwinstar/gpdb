@@ -195,7 +195,6 @@ class Command():
                 sys.exit(2)
             msg = (packet['rset'])[0]
             if msg == contMsg:
-                time.sleep(1)
                 continue
             print
             return packet
