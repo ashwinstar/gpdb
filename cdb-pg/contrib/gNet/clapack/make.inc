@@ -3,16 +3,34 @@
 #  CLAPACK, Version 3.1.1                                           #
 #  February 2008                                                    #
 ####################################################################
-CC        = gcc
 
+PLATFORM = $(shell uname -s)
+
+CC        = gcc
 # if no wrapping of the blas library is needed, uncomment next line
 #CC        = gcc -DNO_BLAS_WRAP
-CFLAGS    = -O3
+
+CFLAGS    = -O3 -fPIC
 LOADER    = gcc
 LOADOPTS  = 
 NOOPT     = -O0 
 DRVCFLAGS = $(CFLAGS)
 F2CCFLAGS = $(CFLAGS)
+
+# Add -m64 for 64 bit builds
+ifeq ($(BLD_ARCH_HOST), sol10_x86_64)
+CFLAGS += -m64
+else 
+ifeq ($(BLD_ARCH_HOST), relh4_x86_64)
+CFLAGS += -m64
+else 
+ifeq ($(BLD_ARCH_HOST), relh5_x86_64)
+CFLAGS += -m64
+endif
+endif
+endif
+
+
 
 #######################################################################
 #

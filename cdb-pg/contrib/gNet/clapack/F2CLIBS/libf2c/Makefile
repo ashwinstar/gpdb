@@ -14,13 +14,25 @@ include ../../make.inc
 #	-fPIC
 # to the CFLAGS = line below.
 
+ifeq ($(PLATFORM), SunOS)
+	LDFLAGS += -r
+	CFLAGS  += -DUSE_STRLEN 
+else 
+ifeq ($(PLATFORM), Linux)
+	CFLAGS  += -DNON_UNIX_STDIO
+	LDFLAGS += -r -x
+else
+	LDFLAGS += -r -x
+endif
+endif
+
 .SUFFIXES: .c .o
 
 # compile, then strip unnecessary symbols
 .c.o:
+	@echo $(BLD_ARCH_HOST)
 	$(CC) -c -DSkip_f2c_Undefs $(CFLAGS) $*.c
-	ld -r -x -o $*.xxx $*.o
-	mv $*.xxx $*.o
+
 ## Under Solaris (and other systems that do not understand ld -x),
 ## omit -x in the ld line above.
 ## If your system does not have the ld command, comment out

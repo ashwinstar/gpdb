@@ -77,10 +77,17 @@ cleanall: clean
 
 blaswrap_copy:
 	cp BLAS/WRAP/blaswrap.h SRC
+	chmod a+w SRC/blaswrap.h
 	cp BLAS/WRAP/blaswrap.h BLAS/SRC
+	chmod a+w BLAS/SRC/blaswrap.h
 	cp BLAS/WRAP/blaswrap.h BLAS/TESTING
+	chmod a+w BLAS/TESTING/blaswrap.h
 	cp BLAS/WRAP/blaswrap.h INSTALL
+	chmod a+w INSTALL/blaswrap.h
 	cp BLAS/WRAP/blaswrap.h TESTING/LIN
+	chmod a+w TESTING/LIN/blaswrap.h
 	cp BLAS/WRAP/blaswrap.h TESTING/EIG
+	chmod a+w TESTING/EIG/blaswrap.h
 	cp BLAS/WRAP/blaswrap.h TESTING/MATGEN
+	chmod a+w TESTING/MATGEN/blaswrap.h
 
