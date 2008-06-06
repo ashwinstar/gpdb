@@ -55,7 +55,6 @@ static apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     const char *master;
     char buf[1024];
-    char path[1024];
     chubby_string_t *s = (chubby_string_t *) buf;
     int e;
 
@@ -64,7 +63,7 @@ static apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
 	/* put master file */
 	master = config_get(gpma.cfg, "seg.m.0");
 
-	gpcc_log_info("config: put file %s to chubby. content = '%s'", path, master);
+	gpcc_log_info("config: put file %s to chubby. content = '%s'", gpma.chubby_master_file, master);
 	s->length = strlen(master)+1;
 	strcpy(s->a, master);
 	e = chubby_connection_asynchronous_put(gpma.lma_cmdslot->u.lma.chubby.lease,
@@ -74,7 +73,7 @@ static apr_status_t a_config_updated(gpcc_event_t *ev, void *arg)
 					       s);
     } else {
 	/* delete master file */
-	gpcc_log_info("config: remove file %s from chubby", path);
+	gpcc_log_info("config: remove file %s from chubby", gpma.chubby_master_file);
 	e = chubby_connection_asynchronous_remove(gpma.lma_cmdslot->u.lma.chubby.lease,
 						  chubby_remove_cb,
 						  (void *) &slot->cmdidx,

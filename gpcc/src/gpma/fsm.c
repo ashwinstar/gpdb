@@ -809,7 +809,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_ssh_gethostname_success, NULL);
     gpcc_fsm_put(SSH_HOSTNAME_WAIT_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
 		 a_ssh_gethostname_failure, NULL);
-    gpcc_fsm_put(SSH_HOSTNAME_WAIT_CMDSTATE, CONTINUE_EVENT, SSH_HOSTNAME_CMDSTATE,
+    gpcc_fsm_put(SSH_HOSTNAME_WAIT_CMDSTATE, CONTINUE_EVENT, SSH_HOSTNAME_WAIT_CMDSTATE,
 		 a_ssh_gethostname, NULL);
 
 
@@ -822,7 +822,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_ssh_getaddress_success, NULL);
     gpcc_fsm_put(SSH_ADDRESS_WAIT_CMDSTATE, FAILURE_EVENT, NULL_CMDSTATE,
 		 a_ssh_getaddress_failure, NULL);
-    gpcc_fsm_put(SSH_ADDRESS_WAIT_CMDSTATE, CONTINUE_EVENT, SSH_ADDRESS_CMDSTATE,
+    gpcc_fsm_put(SSH_ADDRESS_WAIT_CMDSTATE, CONTINUE_EVENT, SSH_ADDRESS_WAIT_CMDSTATE,
 		 a_ssh_getaddress, NULL);
 
 }
