@@ -167,7 +167,19 @@ static apr_status_t a_ssh_gethostname_failure(gpcc_event_t *ev, void *arg)
     gpcc_event_t *evt;
     struct json_object *obj;
     char *objstr;
+    int i;
+    apr_proc_t *p;
 
+    for (i = 0, p = slot->u.gethostname.proc ; i < slot->u.gethostname.nthread ; i++, p++) {
+	int e, ret;
+	apr_exit_why_e exitwhy;
+	e = apr_proc_wait(p, &ret, &exitwhy, APR_NOWAIT);
+	if (e != APR_CHILD_DONE) {
+	    apr_proc_kill(p, SIGTERM);
+	}
+    }
+
+	
     obj = gpcc_json_http_reply(gpma.array_name, 0, "gethostname", "error", 0, "ssh hostname failed");
     objstr = json_object_to_json_string(obj);
     gpcc_log_info("gethostname failed. JSON reply = %s", objstr);
@@ -379,6 +391,17 @@ static apr_status_t a_ssh_getaddress_failure(gpcc_event_t *ev, void *arg)
     gpcc_event_t *evt;
     struct json_object *obj;
     char *objstr;
+    int i;
+    apr_proc_t *p;
+
+    for (i = 0, p = slot->u.getaddress.proc ; i < slot->u.getaddress.nthread ; i++, p++) {
+	int e, ret;
+	apr_exit_why_e exitwhy;
+	e = apr_proc_wait(p, &ret, &exitwhy, APR_NOWAIT);
+	if (e != APR_CHILD_DONE) {
+	    apr_proc_kill(p, SIGTERM);
+	}
+    }
 
     obj = gpcc_json_http_reply(gpma.array_name, 0, "getaddress", "error", 0, "get IP address failed");
     objstr = json_object_to_json_string(obj);
