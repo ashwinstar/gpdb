@@ -2827,7 +2827,6 @@ construct_md_array(Datum *elems,
 
 	/* compute required space */
 	nbytes = 0;
-	hasnulls = false;
 
 	/*   fast path for fixed width types */
 	switch (elmtype) {
@@ -2842,16 +2841,11 @@ construct_md_array(Datum *elems,
 					fixedwidthtype=false;
 	}
 	if (fixedwidthtype) {
-			nbytes = nelems * elmlen;
-		    nbytes = att_align(nbytes, elmalign);
+		nbytes = nelems * elmlen;
+		nbytes = att_align(nbytes, elmalign);
 	} else {
 			for (i = 0; i < nelems; i++)
 			{
-					if (nulls && nulls[i])
-					{
-							hasnulls = true;
-							continue;
-					}
 					/* make sure data is not toasted */
 					if (elmlen == -1)
 							elems[i] = PointerGetDatum(PG_DETOAST_DATUM(elems[i]));
@@ -2867,6 +2861,17 @@ construct_md_array(Datum *elems,
 	}
 
 	/* Allocate and initialize result array */
+
+	/*   determine if there are nulls in this array */
+	hasnulls = false;
+	if (nulls) {
+			for (i = 0; i < nelems; i++) {
+					if (nulls[i]) {
+							hasnulls = true;
+							continue;
+					}
+			}
+	}
 	if (hasnulls)
 	{
 		dataoffset = ARR_OVERHEAD_WITHNULLS(ndims, nelems);
