@@ -25,6 +25,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/typcache.h"
+#include "catalog/pg_type.h"
 
 
 /*
@@ -2782,6 +2783,11 @@ construct_array(Datum *elems, int nelems,
  * A palloc'd ndims-D array object is constructed and returned.  Note that
  * elem values will be copied into the object even if pass-by-ref type.
  *
+ * If the "elems" array is NULL and an array of fixed width type is requested,
+ * a newly allocated array will be used.  This removes the O(array_size) behavior
+ * of this routine in the cases where a fixed length datum is being used.  In this
+ * case, this path will result in O(1) behavior.
+ *
  * NOTE: it would be cleaner to look up the elmlen/elmbval/elmalign info
  * from the system catalogs, given the elmtype.  However, the caller is
  * in a better position to cache this info across multiple uses, or even
@@ -2801,6 +2807,7 @@ construct_md_array(Datum *elems,
 	int32		dataoffset;
 	int			i;
 	int			nelems;
+	bool		fixedwidthtype;
 
 	if (ndims < 0)				/* we do allow zero-dimension arrays */
 		ereport(ERROR,
@@ -2821,24 +2828,42 @@ construct_md_array(Datum *elems,
 	/* compute required space */
 	nbytes = 0;
 	hasnulls = false;
-	for (i = 0; i < nelems; i++)
-	{
-		if (nulls && nulls[i])
-		{
-			hasnulls = true;
-			continue;
-		}
-		/* make sure data is not toasted */
-		if (elmlen == -1)
-			elems[i] = PointerGetDatum(PG_DETOAST_DATUM(elems[i]));
-		nbytes = att_addlength(nbytes, elmlen, elems[i]);
-		nbytes = att_align(nbytes, elmalign);
-		/* check for overflow of total request */
-		if (!AllocSizeIsValid(nbytes))
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("array size exceeds the maximum allowed (%d)",
-							(int) MaxAllocSize)));
+
+	/*   fast path for fixed width types */
+	switch (elmtype) {
+			case INT2OID:
+			case INT4OID:
+			case INT8OID:
+			case FLOAT4OID:
+			case FLOAT8OID:
+					fixedwidthtype=true;
+					break;
+			default:
+					fixedwidthtype=false;
+	}
+	if (fixedwidthtype) {
+			nbytes = nelems * elmlen;
+		    nbytes = att_align(nbytes, elmalign);
+	} else {
+			for (i = 0; i < nelems; i++)
+			{
+					if (nulls && nulls[i])
+					{
+							hasnulls = true;
+							continue;
+					}
+					/* make sure data is not toasted */
+					if (elmlen == -1)
+							elems[i] = PointerGetDatum(PG_DETOAST_DATUM(elems[i]));
+					nbytes = att_addlength(nbytes, elmlen, elems[i]);
+					nbytes = att_align(nbytes, elmalign);
+					/* check for overflow of total request */
+					if (!AllocSizeIsValid(nbytes))
+							ereport(ERROR,
+											(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+											 errmsg("array size exceeds the maximum allowed (%d)",
+													 (int) MaxAllocSize)));
+			}
 	}
 
 	/* Allocate and initialize result array */
@@ -2860,10 +2885,14 @@ construct_md_array(Datum *elems,
 	memcpy(ARR_DIMS(result), dims, ndims * sizeof(int));
 	memcpy(ARR_LBOUND(result), lbs, ndims * sizeof(int));
 
-	CopyArrayEls(result,
-				 elems, nulls, nelems,
-				 elmlen, elmbyval, elmalign,
-				 false);
+	if (elems==NULL && fixedwidthtype) {
+			/* do nothing */
+	} else {
+			CopyArrayEls(result,
+							elems, nulls, nelems,
+							elmlen, elmbyval, elmalign,
+							false);
+	}
 
 	return result;
 }

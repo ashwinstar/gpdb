@@ -24,6 +24,7 @@ Datum pseudoinverse(PG_FUNCTION_ARGS)
 	long int    rows, columns;
 	float8     *A, *Aplus;
 	ArrayType  *A_PG, *Aplus_PG;
+	int lbs[2], dims[2];
 
 	/* 
 	 * Perform all the error checking needed to ensure that no one is
@@ -60,8 +61,14 @@ Datum pseudoinverse(PG_FUNCTION_ARGS)
 	columns = ARR_DIMS(A_PG)[1];
 	A = (float8 *) ARR_DATA_PTR(A_PG);
 
+
 	/*  Allocate a PG array for the result, "Aplus" is A+, the pseudo inverse of A */
-    Aplus_PG = pinv_alloc_2darray(columns, rows, NULL, FLOAT8OID);
+//    Aplus_PG = pinv_alloc_2darray(columns, rows, NULL, FLOAT8OID);
+	lbs[0] = 1; lbs[1] = 1;
+	dims[0] = columns; dims[1] = rows;
+	Aplus_PG = construct_md_array(NULL, NULL, 2, dims, lbs, FLOAT8OID, 
+						   sizeof(float8), true, 'd');
+
 	Aplus = (float8 *) ARR_DATA_PTR(Aplus_PG);
 
 	pinv(rows,columns,A,Aplus);
@@ -250,58 +257,3 @@ void pinv(long int rows, long int columns, float8 *A, float8 *Aplus)
 
 	return;
 }
-
-/* If copyfrom is non-null, copy the data from it into a newly allocated data area
- * Otherwise, initialize the data area to zero
- */
-ArrayType *pinv_alloc_2darray(int rows, int columns, char *copyfrom, int elemtype) {
-	int size,elemsize=0;
-	ArrayType *result;
-	char *data_r;
-
-    size = ARR_OVERHEAD_NONULLS(2);  /* overhead for two dimensional array */
-    switch (elemtype) {
-        case INT2OID:
-			elemsize = sizeof(int16);
-            break;
-        case INT4OID:
-            elemsize = sizeof(int32);
-            break;
-        case INT8OID:
-            elemsize = sizeof(int64);
-            break;
-        case FLOAT4OID:
-            elemsize = sizeof(float4);
-            break;
-        case FLOAT8OID:
-            elemsize = sizeof(float8);
-            break;
-        default:
-            Assert(false);
-    }
-	size += rows * columns * elemsize;
-
-    result = (ArrayType *) palloc(size);
-    SET_VARSIZE(result, size);
-    result->ndim = 2;
-    result->dataoffset = 0;          /* We dissallowed arrays with NULLS */
-    ARR_DIMS(result)[0] = rows;
-    ARR_DIMS(result)[1] = columns;
-    ARR_LBOUND(result)[0] = 1;       /* may need better lbound handling? */
-    ARR_LBOUND(result)[1] = 1;
-
-    result->elemtype = elemtype;
-
-//	elog(NOTICE,"Element size = %d, Rows = %d, Columns = %d",elemsize,rows,columns);
-    data_r = ARR_DATA_PTR(result);
-	if (copyfrom == NULL) {
-      memset(data_r, 0, rows * columns * elemsize);
-	} else {
-	  memcpy(data_r,copyfrom,rows * columns * elemsize);
-	}
-
-	return (result);
-}
-
-
-

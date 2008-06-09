@@ -1,6 +1,7 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "funcapi.h"
+#include "gnet.h"
 
 #include "catalog/pg_type.h"
 #include "utils/array.h"
@@ -114,16 +115,23 @@ int pinv_testmatiszero(int rows, int columns, float8 *Z, char *test) {
 int pinv_test_internal(int m, int n, float8 *A) {
   int success[4]={1,1,1,1};
   int i;
+  Datum out;
   float8 *Aplus, *Aplus_A, *A_Aplus_A, *Aplus_A_Aplus, *A_Aplus, *A_Aplus_t, *Aplus_A_t;
   float8 *zero;
+  int lbs[2],dims[2];
+  ArrayType *A_PG, *Aplus_PG;
+
 
   //Convert the incoming float8 * array to a PG array
-//  A_PG = pinv_test_alloc_2darray(m,n,(char *)A,FLOAT8OID);
-//  printmat(m,n,(float8 *)ARR_DATA_PTR(A_PG),"A_PG");
+    lbs[0] = 1; lbs[1] = 1;
+    dims[0] = m; dims[1] = n;
+    A_PG = construct_md_array((Datum *)A, NULL, 2, dims, lbs, FLOAT8OID,
+                           sizeof(float8), true, 'd');
 
   //Calculate the pseudo inverse of A, returns a PG array
-  Aplus = (float8 *)palloc(sizeof(float8)*m*n);
-  pinv(m,n,A,Aplus);
+    out = DirectFunctionCall1(pseudoinverse, PointerGetDatum(A_PG));
+	Aplus_PG = DatumGetArrayTypeP(out);
+    Aplus = (float8 *) ARR_DATA_PTR(Aplus_PG);
 
 //* Test #1 of the pseudo inverse: A x ( A+ x A ) = A
   Aplus_A = pinv_matmult(n,m,n,Aplus,A);
@@ -153,7 +161,7 @@ int pinv_test_internal(int m, int n, float8 *A) {
 
   pfree(Aplus_A); pfree(A_Aplus_A); pfree(Aplus_A_Aplus); pfree(A_Aplus); pfree(A_Aplus_t);
   pfree(Aplus_A_t);
-  pfree(Aplus);
+  pfree(Aplus_PG); pfree(A_PG);
 
   for (i=1;i<4;i++) success[0] = min(success[0],success[i]);
 
