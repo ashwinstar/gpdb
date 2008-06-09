@@ -6,8 +6,13 @@ include $(top_builddir)/src/Makefile.global
 MODULE_big = gNet
 OBJS       = bayes.o matrix.o pivot.o regress.o pinv.o pinv_test.o
 DATA_built = gNet.sql gNet_remove.sql
-#SHLIB_LINK += liblapack.a libblas.a libf2c.a
-SHLIB_LINK += -llapack -lblas -lf2c
+
+# directives to static link are slightly different depending on platform
+ifeq ($(PORTNAME), darwin)
+	SHLIB_LINK += liblapack.a libblas.a libf2c.a
+else
+	SHLIB_LINK += -llapack -lblas -lf2c
+endif
 
 all: libf2c.a libblas.a liblapack.a
 
