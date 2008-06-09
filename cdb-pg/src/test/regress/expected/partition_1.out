@@ -1923,3 +1923,8 @@ ERROR:  cannot SPLIT PARTITION for relation "hhh"
 alter table hhh truncate partition cc;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh truncate partition aa;
+drop table hhh cascade;
+NOTICE:  drop cascades to table hhh_1_prt_bb
+NOTICE:  drop cascades to constraint hhh_1_prt_bb_check on table hhh_1_prt_bb
+NOTICE:  drop cascades to append only table hhh_1_prt_aa
+NOTICE:  drop cascades to constraint hhh_1_prt_aa_check on append only table hhh_1_prt_aa

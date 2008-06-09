@@ -767,6 +767,4 @@ alter table hhh truncate partition cc;
 
 alter table hhh truncate partition aa;
 
-
-
-
+drop table hhh cascade;
