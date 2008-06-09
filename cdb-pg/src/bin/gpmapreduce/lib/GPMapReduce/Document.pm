@@ -101,6 +101,7 @@ sub initialize()
 		STDOUT   => new GPMapReduce::STDOUT(),
 	};
     $self->{INPUTS}   = [];
+    $self->{OUTPUTS}  = [];
     $self->{FUNCS}    = [];
     $self->{MAPS}     = [];
     $self->{REDUCES}  = [];
@@ -209,6 +210,10 @@ sub SetVersion() {
 
   Adds a GPMapReduce::Input to the Document.
 
+=item AddOutput(Output)
+
+  Adds a GPMapReduce::Output to the Document.
+
 =item AddSplitter(Split)
 
   Adds a GPMapReduce::Splitter to the Document.
@@ -269,6 +274,32 @@ sub AddInput
 
 	$self->{OBJECTS}->{uc($input->{Name})} = $input;
     push @{$self->{INPUTS}}, $input;
+    return undef;
+}
+
+sub AddOutput
+{
+    my $self   = shift;
+    my %param  = Params([qw(?Output ?Name ?File ?Table ?Mode)], @_);
+    my $output  = $param{"Output"};
+    TypeCheck($self, "GPMapReduce::Document", "\$self", 0);
+    TypeCheck($output, "GPMapReduce::Output", "Output", 1);
+
+	# Remove parameters with undef values
+	delete $param{File}  if (!defined $param{File});
+	delete $param{Table} if (!defined $param{Table});
+	delete $param{Mode}  if (!defined $param{Mode});
+
+    if (!defined $output) {
+		delete $param{"Output"};
+		$output = new GPMapReduce::Output(%param);
+    } elsif (scalar keys %param > 1) {
+		my @k = keys %param;
+		Error("Can not specify an Input and other arguments");
+    }
+
+	$self->{OBJECTS}->{uc($output->{Name})} = $output;
+    push @{$self->{OUTPUTS}}, $output;
     return undef;
 }
 

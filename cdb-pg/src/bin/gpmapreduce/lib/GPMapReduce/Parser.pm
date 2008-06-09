@@ -110,6 +110,14 @@ my $INPUTS =
  "SPLITTER"    => "$name"
 };
 
+my $OUTPUT =
+{
+	"NAME"     => "$name",
+	"FILE"     => "$url",
+	"TABLE"    => '\w+',
+	"MODE"     => '\w+',
+};
+
 my $EXEC = 
 {
  "RUN"         => $RUN 
@@ -118,6 +126,7 @@ my $EXEC =
 my $DEFINES = 
 {
  "INPUT"       => $INPUTS, 
+ "OUTPUT"      => $OUTPUT,
  "SPLIT"       => $SPLIT,
  "MAP"         => $FUNC,
  "TRANSITION"  => $FUNC,
@@ -330,6 +339,13 @@ sub _add_to_document($$$)
 					   Format    => $value->{FORMAT},
 					   Delimiter => $value->{DELIMITER});
     } 
+    elsif ($key eq "OUTPUT")
+    {
+		$doc->AddOutput(Name      => $value->{NAME},
+					    File      => $value->{FILE},
+					    Table     => $value->{TABLE},
+                        Mode      => $value->{MODE});
+    }
     elsif ($key eq "MAP") 
     {
 	    $doc->AddMapper(Name => $value->{NAME},

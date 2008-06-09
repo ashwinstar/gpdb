@@ -1,0 +1,54 @@
+%YAML 1.1
+---
+VERSION:         1.0.0.1
+DATABASE:        postgres
+USER:            @db_user@
+
+DEFINE:
+  - INPUT:
+      NAME:      email
+      GPFDIST:   @hostname@:/email/*
+
+  - OUTPUT:
+      NAME:      words_out
+#      FILE:      @hostname@:@abs_srcdir@/output/words
+      TABLE:     wordcount
+      
+  - MAP:
+      NAME:      wordsplit_python
+      FUNCTION:  |
+        from string import maketrans
+        trans = maketrans(
+           '''ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()_+-=[]{}\|;:'",<.>/?~`''',
+           '''abcdefghijklmnopqrstuvwxyz                                ''')
+        return map(lambda(x): [x, 1], value.translate(trans).split())
+      LANGUAGE:   python
+      OPTIMIZE:   STRICT IMMUTABLE
+      MODE:       MULTI
+      PARAMETERS: value text
+      RETURNS:
+        - key text
+        - value integer
+
+  - TRANSITION:
+      NAME:       myAdd
+      LANGUAGE:   perl
+      FUNCTION:   return $_[0] + $_[1];
+      PARAMETERS:
+        - state integer
+        - value integer
+      RETURNS:    state integer
+         
+  - REDUCER:
+      NAME:       mySum
+      INITIALIZE: '0'
+      TRANSITION: myAdd
+      COMBINE:    myAdd
+        
+EXECUTE:
+  - RUN:
+      SOURCE:    email
+      MAPPER:    wordsplit_python
+#      REDUCER:   SUM
+      REDUCER:   mySum
+      TARGET:    words_out
