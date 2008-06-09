@@ -8101,6 +8101,8 @@ add_part_to_catalog(Oid relid, PartitionBy *pby)
 			PartitionElem *el = lfirst(lc);
 			char *parname = NULL;
 
+			parruleord = el->partno;
+
 			if (el->partName)
 				parname = strVal(el->partName);
 		

@@ -1401,8 +1401,11 @@ typedef struct PartitionBy			/* the Partition By clause */
 	int					location;	/* token location, or -1 if unknown */
 } PartitionBy;
 
-typedef struct PartitionElem		/* a Partition "Element" is the
-									 * start of a partition	declaration */
+/*
+ * An element in a partition configuration. This represents a single clause --
+ * or perhaps an expansion of a single clause.
+ */
+typedef struct PartitionElem
 {
 	NodeTag				type;
 	Node			   *partName;	/* partition name (optional) */
@@ -1410,6 +1413,7 @@ typedef struct PartitionElem		/* a Partition "Element" is the
 	Node			   *subSpec;	/* subpartition spec */
 	bool                isDefault;	/* TRUE if default partition declaration */
 	Node			   *storeAttr;	/* storage clause attributes */		
+	int					partno;		/* number of the partition element */
 	int					location;	/* token location, or -1 if unknown */
 } PartitionElem;
 

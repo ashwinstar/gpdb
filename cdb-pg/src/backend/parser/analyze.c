@@ -4899,12 +4899,12 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 {
 	PartitionSpec	*pSpec;
 	char			 namBuf[NAMEDATALEN];
-	int				 numElts = 0;
 	List			*partElts;
 	ListCell		*lc = NULL;
 	List			*allPartNames = NIL;
 	partValidationState *vstate;
 	PartitionElem *pDefaultElem = NULL;
+	int partno = 0;
 
 	vstate = palloc0(sizeof(partValidationState));
 
@@ -4958,15 +4958,21 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	}
 
 	partElts = pSpec->partElem;
-
 	foreach(lc, partElts)
 	{
 		PartitionElem *pElem = (PartitionElem *)lfirst(lc);
 		PartitionBoundSpec *pBSpec = NULL;
-
-		vstate->pElem = pElem;
 		
-		numElts++;
+		vstate->pElem = pElem;
+
+		/* 
+		 * We've done all possible expansions so no number the partition
+		 * elements so that we can set the position when adding the
+		 * configuration to the catalog.
+		 */
+		pElem->partno = ++partno;
+
+		
 
 		if (pElem)
 		{
@@ -5066,17 +5072,10 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 				}
 			}
 			else
-			{
-				snprintf(namBuf, sizeof(namBuf), " number %d", 
-						 numElts);
-			}
-			
+				snprintf(namBuf, sizeof(namBuf), " number %d", partno);
 		}
 		else
-		{
-			snprintf(namBuf, sizeof(namBuf), " number %d", 
-					 numElts);
-		}
+			snprintf(namBuf, sizeof(namBuf), " number %d", partno);
 
 		/* don't have to validate default partition boundary specs */
 		if (pElem->isDefault)
@@ -5124,27 +5123,21 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 		}
 	} /* end foreach(lc, partElts) */
 
-	if ((partNumber > -1) && (numElts != partNumber))
-	{
+	if (partNumber > -1 && partno != partNumber)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("PARTITIONS \"%d\" must match \"%d\" elements "
 						"in specification%s",
-						 partNumber, numElts, vstate->at_depth),
+						 partNumber, partno, vstate->at_depth),
 				 parser_errposition(pstate, pBy->location)));
-	}
 
 	if (vstate->allRangeVals)
-	{
 		list_free(vstate->allRangeVals);
-	}
 
 	if (allPartNames)
-	{
 		list_free(allPartNames);
-	}
 
-	return numElts;
+	return partno;
 } /* end validate_partition_spec */
 
 /* 
@@ -5778,14 +5771,6 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	partDepth = pBy->partDepth;
 	partDepth++;					/* increment depth for subpartition */
 
-	if (partDepth > 99)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("too many subpartitions: partition depth > 99"
-						 ),
-				 parser_errposition(pstate, pBy->location)));
-	}
 	snprintf(depthstr, sizeof(depthstr), "%d", partDepth);
 
 	if (pBy->partDepth != 0)
@@ -5811,8 +5796,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	}
 
 	/* 
-	 * Derive the number of partitions from the PARTITIONS 
-	 * clause (if it exists ) 
+	 * Derive the number of partitions from the PARTITIONS clause.
 	 */
 	if (pBy->partNum)
 	{
@@ -6027,8 +6011,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		if (pElem)
 		{
 			pStoreAttr = pElem->storeAttr;
-			if (pElem->boundSpec &&
-				IsA(pElem->boundSpec, PartitionBoundSpec))
+			if (pElem->boundSpec && IsA(pElem->boundSpec, PartitionBoundSpec))
 
 			{
 				pBSpec = (PartitionBoundSpec *)pElem->boundSpec;

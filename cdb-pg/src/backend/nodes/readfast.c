@@ -1708,6 +1708,9 @@ _readPartitionElem(const char **str)
 	READ_NODE_FIELD(partName);
 	READ_NODE_FIELD(boundSpec);
 	READ_NODE_FIELD(subSpec);
+	READ_BOOL_FIELD(isDefault);
+	READ_NODE_FIELD(storeAttr);
+	READ_INT_FIELD(partno);
 	READ_INT_FIELD(location);
 
 	READ_DONE();

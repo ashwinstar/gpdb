@@ -2438,6 +2438,8 @@ _copyPartitionElem(PartitionElem *from)
 	COPY_NODE_FIELD(boundSpec);
 	COPY_NODE_FIELD(subSpec);
 	COPY_SCALAR_FIELD(isDefault);
+	COPY_NODE_FIELD(storeAttr);
+	COPY_SCALAR_FIELD(partno);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;
