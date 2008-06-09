@@ -1168,11 +1168,14 @@ if (1)
     my $big_ignore = 0;
     my $define_match_expression = undef;
     my $error_detail_exttab_trifecta_skip = 0; # don't ask!
+    my $verzion = "unknown";
 
-    my $verzion = do { my @r = (q$Revision$ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
-
-    my $format_fix = << "EOF_formatfix";
-                                )}
+    if (q$Revision$ =~ /\d+/)
+    {
+        $verzion = do { my @r = (q$Revision$ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r }; # must be all one line, for MakeMaker
+    }
+        my $format_fix = << "EOF_formatfix";
+                                ))}
 EOF_formatfix
     # NOTE: define $format_fix with HERE document just to fix emacs
     # indenting due to comment char in Q expression...
