@@ -12,7 +12,7 @@ static apr_status_t a_lma_init(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
     slot->u.lma.chubby.conn = chubby_makeConnection(gpma.chubby);
-    gpcc_log_info("MA make a chubby connection =%x", (int) slot->u.lma.chubby.conn);
+    gpcc_log_info("MA make a chubby connection.");
     return 0;
 }
 
