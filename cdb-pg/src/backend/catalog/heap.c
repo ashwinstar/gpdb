@@ -39,7 +39,6 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
-#include "catalog/pg_appendonly.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_exttable.h"
@@ -230,8 +229,8 @@ heap_create(const char *relname,
 	 * sanity checks
 	 */
 	if (!allow_system_table_mods &&
-		(IsSystemNamespace(relnamespace) || IsToastNamespace(relnamespace)) &&
-		IsNormalProcessingMode())
+		(IsSystemNamespace(relnamespace) || IsToastNamespace(relnamespace) || 
+		 IsAoSegmentNamespace(relnamespace)) && IsNormalProcessingMode())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to create \"%s.%s\"",
@@ -600,6 +599,8 @@ InsertPgClassTuple(Relation pg_class_desc,
 	values[Anum_pg_class_reltuples - 1] = Float4GetDatum(rd_rel->reltuples);
 	values[Anum_pg_class_reltoastrelid - 1] = ObjectIdGetDatum(rd_rel->reltoastrelid);
 	values[Anum_pg_class_reltoastidxid - 1] = ObjectIdGetDatum(rd_rel->reltoastidxid);
+	values[Anum_pg_class_relaosegrelid - 1] = ObjectIdGetDatum(rd_rel->relaosegrelid);
+	values[Anum_pg_class_relaosegidxid - 1] = ObjectIdGetDatum(rd_rel->relaosegidxid);
 	values[Anum_pg_class_relhasindex - 1] = BoolGetDatum(rd_rel->relhasindex);
 	values[Anum_pg_class_relisshared - 1] = BoolGetDatum(rd_rel->relisshared);
 	values[Anum_pg_class_relkind - 1] = CharGetDatum(rd_rel->relkind);
@@ -637,49 +638,6 @@ InsertPgClassTuple(Relation pg_class_desc,
 	heap_freetuple(tup);
 }
 
-/*
- * Adds an entry into the pg_appendonly catalog table. The entry
- * includes the new relfilenode of the appendonly relation that 
- * was just created and an initial eof and reltuples values of 0
- */
-void
-InsertPgAppendOnlyTuple(Oid relfilenode)
-{
-	Relation	pg_appendonly_rel;
-	HeapTuple	pg_appendonly_tuple = NULL;
-	char		nulls[Natts_pg_appendonly];
-	Datum		values[Natts_pg_appendonly];
-		
- 	MemSet(values, 0, sizeof(values));
-	MemSet(nulls, ' ', sizeof(nulls));
-	
-    /*
-     * Open and lock the pg_appendonly catalog.
-     */
-	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
-	
-	values[Anum_pg_appendonly_relfilenode - 1] = ObjectIdGetDatum(relfilenode);
-	values[Anum_pg_appendonly_eof - 1] = Float8GetDatum(0);
-	values[Anum_pg_appendonly_tupcount - 1] = Float8GetDatum(0);
-	values[Anum_pg_appendonly_varblockcount - 1] = Float8GetDatum(0);
-	
-	/*
-	 * form the tuple and insert it
-	 */
-	pg_appendonly_tuple = heap_formtuple(RelationGetDescr(pg_appendonly_rel), 
-										 values, nulls);
-	simple_heap_insert(pg_appendonly_rel, pg_appendonly_tuple);
-	CatalogUpdateIndexes(pg_appendonly_rel, pg_appendonly_tuple);
-	
-	/*
-     * Close the pg_exttable_rel relcache entry without unlocking.
-     * We have updated the catalog: consequently the lock must be 
-	 * held until end of transaction.
-     */
-    heap_close(pg_appendonly_rel, NoLock);
-	
-}
-
 /* --------------------------------
  *		AddNewRelationTuple
  *
@@ -710,6 +668,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 		case RELKIND_APPEND_ONLY:
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
+		case RELKIND_AOSEGMENTS:
 			/* The relation is real, but as yet empty */
 			new_rel_reltup->relpages = 0;
 			new_rel_reltup->reltuples = 0;
@@ -735,7 +694,8 @@ AddNewRelationTuple(Relation pg_class_desc,
 	/* Initialize relfrozenxid */
 	if (relkind == RELKIND_RELATION ||
 		relkind == RELKIND_APPEND_ONLY ||
-		relkind == RELKIND_TOASTVALUE)
+		relkind == RELKIND_TOASTVALUE ||
+		relkind == RELKIND_AOSEGMENTS)
 	{
 		/*
 		 * Initialize to the minimum XID that could put tuples in the table.
@@ -936,12 +896,7 @@ heap_create_with_catalog(const char *relname,
 						ownerid,
 						relkind,
 						reloptions);
-
-	/*
-	 * if this is an append-only relation, add an entry in pg_appendonly
-	 */
-	if(relkind == RELKIND_APPEND_ONLY)
-		InsertPgAppendOnlyTuple(new_rel_desc->rd_rel->relfilenode);
+	
 	
 	/*
 	 * now add tuples to pg_attribute for the attributes in our new relation.
@@ -1434,12 +1389,6 @@ heap_drop_with_catalog(Oid relid)
 	 * delete relation tuple
 	 */
 	DeleteRelationTuple(relid);
-
-	/*
-	 * append-only table? delete the corresponding pg_appendonly tuples
-	 */
-	if(is_appendonly_table)
-		RemoveAppendonlyEntries(relfilenode);
 		
 	/*
 	 * External table? If so, delete the pg_exttable tuple.
@@ -2200,6 +2149,7 @@ heap_truncate(List *relids)
 		Oid			rid = lfirst_oid(cell);
 		Relation	rel;
 		Oid			toastrelid;
+		Oid			aosegrelid;
 
 		rel = heap_open(rid, AccessExclusiveLock);
 		relations = lappend(relations, rel);
@@ -2211,6 +2161,15 @@ heap_truncate(List *relids)
 			rel = heap_open(toastrelid, AccessExclusiveLock);
 			relations = lappend(relations, rel);
 		}
+		
+		/* If there is an aoseg table, add it to the list too */
+		aosegrelid = rel->rd_rel->relaosegrelid;
+		if (OidIsValid(aosegrelid))
+		{
+			rel = heap_open(aosegrelid, AccessExclusiveLock);
+			relations = lappend(relations, rel);
+		}
+		
 	}
 
 	/* Don't allow truncate on tables that are referenced by foreign keys */

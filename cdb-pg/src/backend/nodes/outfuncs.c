@@ -1727,6 +1727,9 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_OID_FIELD(oidInfo.toastOid);
 	WRITE_OID_FIELD(oidInfo.toastIndexOid);
 	WRITE_OID_FIELD(oidInfo.toastComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aosegOid);
+	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
+	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
 	WRITE_CHAR_FIELD(relKind);
 }
 
@@ -1855,6 +1858,7 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_FIELD(relids);
 	WRITE_NODE_FIELD(new_heap_oids);
 	WRITE_NODE_FIELD(new_toast_oids);	
+	WRITE_NODE_FIELD(new_aoseg_oids);	
 	WRITE_NODE_FIELD(new_ind_oids);
 }
 
@@ -1875,6 +1879,9 @@ _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 		WRITE_OID_FIELD(oidInfo[m].toastOid);
 		WRITE_OID_FIELD(oidInfo[m].toastIndexOid);
 		WRITE_OID_FIELD(oidInfo[m].toastComptypeOid);
+		WRITE_OID_FIELD(oidInfo[m].aosegOid);
+		WRITE_OID_FIELD(oidInfo[m].aosegIndexOid);
+		WRITE_OID_FIELD(oidInfo[m].aosegComptypeOid);
 	}
 }
 
@@ -2024,6 +2031,9 @@ _outClusterStmt(StringInfo str, ClusterStmt *node)
 	WRITE_OID_FIELD(oidInfo.toastOid);
 	WRITE_OID_FIELD(oidInfo.toastIndexOid);
 	WRITE_OID_FIELD(oidInfo.toastComptypeOid);
+	WRITE_OID_FIELD(oidInfo.aosegOid);
+	WRITE_OID_FIELD(oidInfo.aosegIndexOid);
+	WRITE_OID_FIELD(oidInfo.aosegComptypeOid);
 	WRITE_NODE_FIELD(new_ind_oids);
 }
 
@@ -2659,6 +2669,9 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_OID_FIELD(intoOidInfo.toastOid);
 	WRITE_OID_FIELD(intoOidInfo.toastIndexOid);
 	WRITE_OID_FIELD(intoOidInfo.toastComptypeOid);
+	WRITE_OID_FIELD(intoOidInfo.aosegOid);
+	WRITE_OID_FIELD(intoOidInfo.aosegIndexOid);
+	WRITE_OID_FIELD(intoOidInfo.aosegComptypeOid);
 }
 
 static void

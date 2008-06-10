@@ -37,9 +37,9 @@
 #include "access/tuptoaster.h"
 #include "access/valid.h"
 #include "access/xact.h"
+#include "access/aosegfiles.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_appendonly.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -91,8 +91,8 @@ static void
 doScanInit(AppendOnlyScanDesc scan)
 {
 	Relation	reln = scan->aos_rd;
-	char	   *path;
-	AppendOnlyEntry *aoentry;
+	char		*path;
+	FileSegInfo *fsinfo;
 	int64		eof;
 	MemoryContext oldcontext;
 	
@@ -168,9 +168,9 @@ doScanInit(AppendOnlyScanDesc scan)
 				 errmsg("could not open file \"%s\"", path)));
 	
 	
-	/* Get the eof of this relation file from the pg_appendonly catalog */
-	aoentry = GetAppendOnlyEntry(scan->aos_relfilenode);
-	eof = (int64)aoentry->eof;
+	/* Get the eof of this relation file from the pg_aoseg_* table */
+	fsinfo = GetFileSegInfo(reln, /* for now */ 1);
+	eof = (int64)fsinfo->eof;
 	
 	if (eof < 0)
 	{
@@ -198,7 +198,7 @@ doScanInit(AppendOnlyScanDesc scan)
 		     scan->largeReadLen);
 	
 	pfree(path);
-	pfree(aoentry);
+	pfree(fsinfo);
 }
 
 /*
@@ -800,7 +800,7 @@ appendonly_insert_init(Relation rel)
 	int						maxtupsize;
 	char					*path;
 	File					appendFile;
-	AppendOnlyEntry			*aoentry;
+	FileSegInfo				*fsinfo;
 
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc(sizeof(AppendOnlyInsertDescData));
 	aoInsertDesc->aoi_rel = rel;
@@ -867,11 +867,11 @@ appendonly_insert_init(Relation rel)
 				(errcode_for_file_access(),
 				 errmsg("could not open file \"%s\"", path)));
 	
-	/* get the catalog entry with information for this table */
-	aoentry = GetAppendOnlyEntry(aoInsertDesc->relfilenode);
+	/* get the information for the file segment we insert into */
+	fsinfo = GetFileSegInfo(rel, /* for now */ 1);
 
 	/* Seek to the starting point (current eof from catalog) */
-	eof = (int64) lseek(appendFile, (off_t) aoentry->eof, SEEK_SET);
+	eof = (int64) lseek(appendFile, (off_t) fsinfo->eof, SEEK_SET);
 		
 	if (eof < 0)
 		ereport(ERROR, (errcode_for_file_access(),
@@ -903,7 +903,7 @@ appendonly_insert_init(Relation rel)
 	}
 	aoInsertDesc->bufferCount++;
 	
-	pfree(aoentry);
+	pfree(fsinfo);
 	
 	return aoInsertDesc;
 }
@@ -1213,11 +1213,12 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 	
 	fileLen = BufferedAppendFileLen(&aoInsertDesc->bufferedAppend);
 	
-	/* update pg_appendonly with our new eof */
-	UpdateAppendOnlyEntry(aoInsertDesc->relfilenode, 
-						  fileLen, 
-						  aoInsertDesc->insertCount,
-						  aoInsertDesc->varblockCount);
+	/* update pg_aoseg_* with our new eof */
+	UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
+					  1 /* for now */,
+					  fileLen, 
+					  aoInsertDesc->insertCount,
+					  aoInsertDesc->varblockCount);
 	
 	/* done with the rel file, close it */
 	BufferedAppendCompleteFile(&aoInsertDesc->bufferedAppend);

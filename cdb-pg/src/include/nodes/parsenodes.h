@@ -39,8 +39,12 @@ typedef struct TableOidInfo
 	Oid         relOid;			/* If the heap is (re-)created, create  with this relOid */
 	Oid         comptypeOid;	
 	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
-	Oid		    toastIndexOid;		/* if toast table needed, use this for the relOid of the index */
+	Oid		    toastIndexOid;	/* if toast table needed, use this for the relOid of the index */
 	Oid			toastComptypeOid;
+	Oid		    aosegOid;		/* if ao segment table needed, use this for the relOid of the aoseg table */
+	Oid		    aosegIndexOid;	/* if ao segment table needed, use this for the relOid of the aoseg index */
+	Oid			aosegComptypeOid;
+	
 } TableOidInfo;
 
 /* What to do at commit time for temporary relations */
@@ -1729,6 +1733,7 @@ typedef struct TruncateStmt
 	List	   *relids;
 	List	   *new_heap_oids;
 	List	   *new_toast_oids;
+	List	   *new_aoseg_oids;
 	List	   *new_ind_oids;
 } TruncateStmt;
 

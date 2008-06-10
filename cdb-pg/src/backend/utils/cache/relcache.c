@@ -352,6 +352,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 		case RELKIND_RELATION:
 		case RELKIND_APPEND_ONLY:
 		case RELKIND_TOASTVALUE:
+		case RELKIND_AOSEGMENTS:
 		case RELKIND_UNCATALOGED:
 		case RELKIND_INDEX:
 			break;
@@ -377,6 +378,7 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 		case RELKIND_RELATION:
 		case RELKIND_APPEND_ONLY:
 		case RELKIND_TOASTVALUE:
+		case RELKIND_AOSEGMENTS:
 		case RELKIND_UNCATALOGED:
 			options = heap_reloptions(relation->rd_rel->relkind, datum,
 									  false);

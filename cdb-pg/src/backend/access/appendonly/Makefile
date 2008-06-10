@@ -9,7 +9,7 @@ subdir = src/backend/access/appendonly
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = appendonlyam.o
+OBJS = appendonlyam.o aosegfiles.o
 
 all: SUBSYS.o
 

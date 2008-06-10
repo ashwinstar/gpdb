@@ -29,6 +29,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "catalog/toasting.h"
+#include "catalog/aoseg.h"
 #include "commands/cluster.h"
 #include "miscadmin.h"
 #include "utils/acl.h"
@@ -626,7 +627,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, ClusterStmt *stmt)
 	 * all-new at this point).	We do not need CommandCounterIncrement()
 	 * because reindex_relation does it.
 	 */
-	reindex_relation(tableOid, false, &stmt->new_ind_oids,
+	reindex_relation(tableOid, false, false, &stmt->new_ind_oids,
 					 Gp_role == GP_ROLE_DISPATCH);
 }
 
@@ -643,8 +644,11 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	Relation	OldHeap;
 	Oid 		tOid = InvalidOid;
 	Oid			tiOid = InvalidOid;
+	Oid			aOid = InvalidOid;
+	Oid			aiOid = InvalidOid;
 	Oid			*comptypeOid = NULL;
 	Oid			*toastComptypeOid = NULL;
+	Oid			*aosegComptypeOid = NULL;
 	HeapTuple	tuple;
 	Datum		reloptions;
 	bool		isNull;
@@ -664,7 +668,8 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 	
 		/*
-		 * Pre-Allocate an OID for the relfilenode, and one for the toast table (just in case).
+		 * Pre-Allocate an OID for the relfilenode, plus one for the toast table
+		 * and another for an aoseg table (just in case).
 		 *
 		 * The OID will be the relfilenode as well, so make sure it doesn't collide
 		 * with either pg_class OIDs or existing physical files.
@@ -674,29 +679,36 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		OIDNewHeap = oidInfo->relOid;
 		
 		oidInfo->comptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
-									
 		oidInfo->toastOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-		
 		oidInfo->toastIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
-									
+		oidInfo->aosegOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		oidInfo->aosegIndexOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		
 		heap_close(pg_class_desc, NoLock);  /* gonna update, so don't unlock */
 		
 		oidInfo->toastComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_type_desc);
-
+		oidInfo->aosegComptypeOid = GetNewRelFileNode(NewTableSpace, false,  pg_class_desc);
+		
 		heap_close(pg_type_desc, RowExclusiveLock);
 		
 		tOid = oidInfo->toastOid;
 		tiOid = oidInfo->toastIndexOid;
 		toastComptypeOid = &oidInfo->toastComptypeOid;
+		aOid = oidInfo->toastOid;
+		aiOid = oidInfo->aosegIndexOid;
+		aosegComptypeOid = &oidInfo->aosegComptypeOid;
 		comptypeOid = &oidInfo->comptypeOid;
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE && oidInfo != NULL)
 	{
 		toastComptypeOid = &oidInfo->toastComptypeOid;
+		aosegComptypeOid = &oidInfo->aosegComptypeOid;
 		comptypeOid = &oidInfo->comptypeOid;
 	    OIDNewHeap = oidInfo->relOid;
 	    tOid = oidInfo->toastOid;
 		tiOid = oidInfo->toastIndexOid;
+		aOid = oidInfo->aosegOid;
+		aiOid = oidInfo->aosegIndexOid;
 	}
 
 	/*
@@ -746,12 +758,14 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 	CommandCounterIncrement();
 
 	/*
-	 * If necessary, create a TOAST table for the new relation. Note that
-	 * AlterTableCreateToastTable ends with CommandCounterIncrement(), so that
-	 * the TOAST table will be visible for insertion.
+	 * If necessary, create a TOAST table for the new relation, or an Append
+	 * Only segment table. Note that AlterTableCreateXXXTable ends with 
+	 * CommandCounterIncrement(), so that the new tables will be visible for 
+	 * insertion.
 	 */
 	AlterTableCreateToastTableWithOid(OIDNewHeap, tOid, tiOid, toastComptypeOid);
-
+	AlterTableCreateAoSegTableWithOid(OIDNewHeap, aOid, aiOid, aosegComptypeOid);
+		
 	heap_close(OldHeap, NoLock);
 
 	return OIDNewHeap;
@@ -866,7 +880,7 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex)
  * keeping the same logical identities of the two relations.
  *
  * Also swap any TOAST links, so that the toast data moves along with
- * the main-table data.
+ * the main-table data. GPDB: also swap aoseg links.
  */
 void
 swap_relation_files(Oid r1, Oid r2)
@@ -910,8 +924,12 @@ swap_relation_files(Oid r1, Oid r2)
 	swaptemp = relform1->reltoastrelid;
 	relform1->reltoastrelid = relform2->reltoastrelid;
 	relform2->reltoastrelid = swaptemp;
+	
+	swaptemp = relform1->relaosegrelid;
+	relform1->relaosegrelid = relform2->relaosegrelid;
+	relform2->relaosegrelid = swaptemp;	
 
-	/* we should not swap reltoastidxid */
+	/* we should not swap reltoastidxid nor relaosegidxid */
 
 	/* swap size statistics too, since new rel has freshly-updated stats */
 	{
@@ -996,6 +1014,56 @@ swap_relation_files(Oid r1, Oid r2)
 		}
 	}
 
+	/*
+	 * If we have ao segment tables associated with the relations being swapped,
+	 * change their dependency links to re-associate them with their new
+	 * owning relations.  Otherwise the wrong one will get dropped ...
+	 */
+	if (relform1->relaosegrelid || relform2->relaosegrelid)
+	{
+		ObjectAddress baseobject,
+					  aosegobject;
+		long		count;
+		
+		/* Delete old dependencies */
+		if (relform1->relaosegrelid)
+		{
+			count = deleteDependencyRecordsFor(RelationRelationId,
+											   relform1->relaosegrelid);
+			if (count != 1)
+				elog(ERROR, "expected one dependency record for aoseg table, found %ld",
+					 count);
+		}
+		if (relform2->relaosegrelid)
+		{
+			count = deleteDependencyRecordsFor(RelationRelationId,
+											   relform2->relaosegrelid);
+			if (count != 1)
+				elog(ERROR, "expected one dependency record for aoseg table, found %ld",
+					 count);
+		}
+		
+		/* Register new dependencies */
+		baseobject.classId = RelationRelationId;
+		baseobject.objectSubId = 0;
+		aosegobject.classId = RelationRelationId;
+		aosegobject.objectSubId = 0;
+		
+		if (relform1->relaosegrelid)
+		{
+			baseobject.objectId = r1;
+			aosegobject.objectId = relform1->relaosegrelid;
+			recordDependencyOn(&aosegobject, &baseobject, DEPENDENCY_INTERNAL);
+		}
+		
+		if (relform2->relaosegrelid)
+		{
+			baseobject.objectId = r2;
+			aosegobject.objectId = relform2->relaosegrelid;
+			recordDependencyOn(&aosegobject, &baseobject, DEPENDENCY_INTERNAL);
+		}
+	}
+	
 	/*
 	 * Blow away the old relcache entries now.	We need this kluge because
 	 * relcache.c keeps a link to the smgr relation for the physical file, and

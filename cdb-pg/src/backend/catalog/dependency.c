@@ -2095,6 +2095,10 @@ getRelationDescription(StringInfo buffer, Oid relid)
 			appendStringInfo(buffer, _("toast table %s"),
 							 relname);
 			break;
+		case RELKIND_AOSEGMENTS:
+			appendStringInfo(buffer, _("append only file segment listing %s"),
+							 relname);
+			break;			
 		case RELKIND_VIEW:
 			appendStringInfo(buffer, _("view %s"),
 							 relname);

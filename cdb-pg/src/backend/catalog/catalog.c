@@ -146,7 +146,8 @@ bool
 IsSystemRelation(Relation relation)
 {
 	return IsSystemNamespace(RelationGetNamespace(relation)) ||
-		IsToastNamespace(RelationGetNamespace(relation));
+		   IsToastNamespace(RelationGetNamespace(relation)) ||
+		   IsAoSegmentNamespace(RelationGetNamespace(relation));
 }
 
 /*
@@ -161,7 +162,8 @@ IsSystemClass(Form_pg_class reltuple)
 	Oid			relnamespace = reltuple->relnamespace;
 
 	return IsSystemNamespace(relnamespace) ||
-		IsToastNamespace(relnamespace);
+		IsToastNamespace(relnamespace) ||
+		IsAoSegmentNamespace(relnamespace);
 }
 
 /*
@@ -186,6 +188,30 @@ IsToastClass(Form_pg_class reltuple)
 	Oid			relnamespace = reltuple->relnamespace;
 
 	return IsToastNamespace(relnamespace);
+}
+
+/*
+ * IsAoSegmentRelation
+ *		True iff relation is an AO segment support relation (or index).
+ */
+bool
+IsAoSegmentRelation(Relation relation)
+{
+	return IsAoSegmentNamespace(RelationGetNamespace(relation));
+}
+
+/*
+ * IsAoSegmentClass
+ *		Like the above, but takes a Form_pg_class as argument.
+ *		Used when we do not want to open the relation and have to
+ *		search pg_class directly.
+ */
+bool
+IsAoSegmentClass(Form_pg_class reltuple)
+{
+	Oid			relnamespace = reltuple->relnamespace;
+	
+	return IsAoSegmentNamespace(relnamespace);
 }
 
 /*
@@ -214,6 +240,18 @@ IsToastNamespace(Oid namespaceId)
 	return namespaceId == PG_TOAST_NAMESPACE;
 }
 
+/*
+ * IsAoSegmentNamespace
+ *		True iff namespace is pg_aoseg.
+ *
+ * NOTE: the reason this isn't a macro is to avoid having to include
+ * catalog/pg_namespace.h in a lot of places.
+ */
+bool
+IsAoSegmentNamespace(Oid namespaceId)
+{
+	return namespaceId == PG_AOSEGMENT_NAMESPACE;
+}
 
 /*
  * IsReservedName

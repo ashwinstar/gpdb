@@ -34,7 +34,6 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
-#include "catalog/pg_appendonly.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_opclass.h"
@@ -81,7 +80,7 @@ static void UpdateIndexRelation(Oid indexoid, Oid heapoid,
 					bool primary,
 					bool isvalid);
 static void index_update_stats(Relation rel, bool hasindex, bool isprimary,
-				   Oid reltoastidxid, double reltuples);
+				   Oid reltoastidxid, Oid relaosegidxid, double reltuples);
 static bool validate_index_callback(ItemPointer itemptr, void *opaque);
 static void validate_index_heapscan(Relation heapRelation,
 						Relation indexRelation,
@@ -89,8 +88,6 @@ static void validate_index_heapscan(Relation heapRelation,
 						Snapshot snapshot,
 						v_i_state *state);
 static Oid	IndexGetRelation(Oid indexId);
-static void setNewRelfilenodePgAo(Oid oldrelfilenode, Oid newrelfilenode);
-
 
 /*
  *		ConstructTupleDescriptor
@@ -830,6 +827,7 @@ index_create(Oid heapRelationId,
 						   true,
 						   isprimary,
 						   InvalidOid,
+						   InvalidOid,
 						   heapRelation->rd_rel->reltuples);
 		/* Make the above update visible */
 		CommandCounterIncrement();
@@ -1098,7 +1096,7 @@ FormIndexDatum(struct IndexInfo *indexInfo,
  */
 static void
 index_update_stats(Relation rel, bool hasindex, bool isprimary,
-				   Oid reltoastidxid, double reltuples)
+				   Oid reltoastidxid, Oid relaosegidxid, double reltuples)
 {
 	BlockNumber relpages = RelationGetNumberOfBlocks(rel);
 	Oid			relid = RelationGetRelid(rel);
@@ -1205,6 +1203,15 @@ index_update_stats(Relation rel, bool hasindex, bool isprimary,
 			dirty = true;
 		}
 	}
+	if (OidIsValid(relaosegidxid))
+	{
+		Assert(rd_rel->relkind == RELKIND_AOSEGMENTS);
+		if (rd_rel->relaosegidxid != relaosegidxid)
+		{
+			rd_rel->relaosegidxid = relaosegidxid;
+			dirty = true;
+		}
+	}	
 	if (rd_rel->reltuples != (float4) reltuples)
 	{
 		rd_rel->reltuples = (float4) reltuples;
@@ -1308,10 +1315,6 @@ setNewRelfilenode(Relation relation)
 	heap_freetuple(tuple);
 
 	heap_close(pg_class, RowExclusiveLock);
-
-	/* if append-only relation, update pg_appendonly with new relfilenode */
-	if(relation->rd_rel->relkind == RELKIND_APPEND_ONLY)
-		setNewRelfilenodePgAo(oldrelfilenode, newrelfilenode);
 	
 	/* Make sure the relfilenode change is visible */
 	CommandCounterIncrement();
@@ -1388,10 +1391,6 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 	heap_freetuple(tuple);
 
 	heap_close(pg_class, RowExclusiveLock);
-
-	/* if append-only relation, update pg_appendonly with new relfilenode */
-	if(relation->rd_rel->relkind == RELKIND_APPEND_ONLY)
-		setNewRelfilenodePgAo(oldrelfilenode, newrelfilenode);
 		   
 	/* Make sure the relfilenode change is visible */
 	CommandCounterIncrement();
@@ -1399,89 +1398,6 @@ setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
 	return newrelfilenode;
 }
 
-/*
- * Update all rows in pg_appendonly that have 'oldrelfilenode' with
- * 'newrelfilenode', and set eof and reltuples to zero for these entries.
- */
-static void
-setNewRelfilenodePgAo(Oid oldrelfilenode, Oid newrelfilenode)
-{
-	Relation			pg_appendonly;
-	TupleDesc			pg_appendonly_dsc;
-	ScanKeyData			key;
-	SysScanDesc			aoscan;
-	HeapTuple			tuple, new_tuple;
-	Datum				new_record[Natts_pg_appendonly];
-	char				new_record_nulls[Natts_pg_appendonly];
-	char				new_record_repl[Natts_pg_appendonly];
-		
-	elog(DEBUG3, "setNewRelfilenodePgAo called.  newrelfilenode = %d",
-		 newrelfilenode);
-	
-	pg_appendonly = heap_open(AppendOnlyRelationId, RowExclusiveLock);
-	pg_appendonly_dsc = RelationGetDescr(pg_appendonly);
-
-	ScanKeyInit(&key,
-				Anum_pg_appendonly_relfilenode,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(oldrelfilenode));
-
-	aoscan = systable_beginscan(pg_appendonly, 
-								AppendOnlyRelfilenodeIndexId, 
-								true,
-								SnapshotNow, 
-								1, 
-								&key);
-
-	/*
-	 * get the tuple to update
-	 */
-	tuple = systable_getnext(aoscan);
-	
-	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("appendonly relfilenode \"%d\" does not exist",
-						oldrelfilenode)));
-
-	/* TODO: get more tuples that qualify when enabling multiple inserters */
-	
-	/* 
-	 * Build a tuple to update 
-	 */
-	MemSet(new_record, 0, sizeof(new_record));
-	MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
-	MemSet(new_record_repl, ' ', sizeof(new_record_repl));
-
-	new_record[Anum_pg_appendonly_relfilenode - 1] = ObjectIdGetDatum(newrelfilenode);
-	new_record_repl[Anum_pg_appendonly_relfilenode - 1] = 'r';
-	
-	new_record[Anum_pg_appendonly_eof - 1] = Float8GetDatum(0);
-	new_record_repl[Anum_pg_appendonly_eof - 1] = 'r';
-
-	new_record[Anum_pg_appendonly_tupcount - 1] = Float8GetDatum(0);
-	new_record_repl[Anum_pg_appendonly_tupcount - 1] = 'r';
-
-	new_record[Anum_pg_appendonly_varblockcount - 1] = Float8GetDatum(0);
-	new_record_repl[Anum_pg_appendonly_varblockcount - 1] = 'r';
-
-	/*
-	 * update the tuple in the pg_appendonly table
-	 */
-	new_tuple = heap_modifytuple(tuple, pg_appendonly_dsc, new_record, 
-								 new_record_nulls, new_record_repl);
-
-	simple_heap_update(pg_appendonly, &tuple->t_self, new_tuple);
-	CatalogUpdateIndexes(pg_appendonly, new_tuple);
-
-	heap_freetuple(new_tuple);
-
-	/* Finish up scan and close append-only catalog. */
-	systable_endscan(aoscan);
-		
-	heap_close(pg_appendonly, RowExclusiveLock);	
-}
 
 /*
  * index_build - invoke access-method-specific index build procedure
@@ -1547,11 +1463,14 @@ index_build(Relation heapRelation,
 					   isprimary,
 					   (heapRelation->rd_rel->relkind == RELKIND_TOASTVALUE) ?
 					   RelationGetRelid(indexRelation) : InvalidOid,
+					   (heapRelation->rd_rel->relkind == RELKIND_AOSEGMENTS) ?
+					   RelationGetRelid(indexRelation) : InvalidOid,
 					   stats->heap_tuples);
 
 	index_update_stats(indexRelation,
 					   false,
 					   false,
+					   InvalidOid,
 					   InvalidOid,
 					   stats->index_tuples);
 
@@ -2277,10 +2196,12 @@ reindex_index(Oid indexId, Oid newrelfilenode)
  * new relfilenode specified in the map.
  */
 bool
-reindex_relation(Oid relid, bool toast_too, List **oidmap, bool build_map)
+reindex_relation(Oid relid, bool toast_too, bool aoseg_too,
+				 List **oidmap, bool build_map)
 {
 	Relation	rel;
 	Oid			toast_relid;
+	Oid			aoseg_relid;
 	bool		is_pg_class;
 	bool		result;
 	List	   *indexIds,
@@ -2294,7 +2215,8 @@ reindex_relation(Oid relid, bool toast_too, List **oidmap, bool build_map)
 	rel = heap_open(relid, ShareLock);
 
 	toast_relid = rel->rd_rel->reltoastrelid;
-
+	aoseg_relid = rel->rd_rel->relaosegrelid;
+	
 	/*
 	 * Get the list of index OIDs for this relation.  (We trust to the
 	 * relcache to get this with a sequential scan if ignoring system
@@ -2392,7 +2314,18 @@ reindex_relation(Oid relid, bool toast_too, List **oidmap, bool build_map)
 	 * still hold the lock on the master table.
 	 */
 	if (toast_too && OidIsValid(toast_relid))
-		result |= reindex_relation(toast_relid, false, oidmap, build_map);
+		result |= reindex_relation(toast_relid, false, false, oidmap, build_map);
 
+	/*
+	 * If an AO rel has a secondary segment list rel, reindex that too while we
+	 * still hold the lock on the master table.
+	 */
+	if (aoseg_too && OidIsValid(aoseg_relid))
+	{
+		Assert(rel->rd_rel->relkind == RELKIND_APPEND_ONLY);
+		result |= reindex_relation(aoseg_relid, false, false, oidmap, build_map);
+	}
+		
+	
 	return result;
 }

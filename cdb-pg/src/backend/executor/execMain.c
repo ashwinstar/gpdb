@@ -41,6 +41,7 @@
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/toasting.h"
+#include "catalog/aoseg.h"
 #include "catalog/catalog.h"
 #include "catalog/pg_type.h"
 #include "commands/tablecmds.h" /* XXX: temp for get_parts() */
@@ -247,12 +248,12 @@ ExecutorStart(QueryDesc *queryDesc, int eflags)
 			elog(DEBUG3,"ExecutorStart assigned new intoOidInfo.relOid = %d",queryDesc->parsetree->intoOidInfo.relOid);
 			
 			queryDesc->parsetree->intoOidInfo.comptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
-			
 			queryDesc->parsetree->intoOidInfo.toastOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			
 			queryDesc->parsetree->intoOidInfo.toastIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
-			
 			queryDesc->parsetree->intoOidInfo.toastComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
+			queryDesc->parsetree->intoOidInfo.aosegOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->parsetree->intoOidInfo.aosegIndexOid = GetNewRelFileNode(reltablespace, false, pg_class_desc);
+			queryDesc->parsetree->intoOidInfo.aosegComptypeOid = GetNewRelFileNode(reltablespace, false, pg_type_desc);
 			
 			heap_close(pg_class_desc, RowExclusiveLock);
 			heap_close(pg_type_desc, RowExclusiveLock);
@@ -1545,6 +1546,12 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("cannot change TOAST relation \"%s\"",
+							RelationGetRelationName(resultRelationDesc))));
+			break;
+		case RELKIND_AOSEGMENTS:
+			ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+					 errmsg("cannot change AO segment listing relation \"%s\"",
 							RelationGetRelationName(resultRelationDesc))));
 			break;
 		case RELKIND_VIEW:
@@ -3248,11 +3255,13 @@ OpenIntoRel(QueryDesc *queryDesc)
 	CommandCounterIncrement();
 
 	/*
-	 * If necessary, create a TOAST table for the INTO relation. Note that
-	 * AlterTableCreateToastTable ends with CommandCounterIncrement(), so that
-	 * the TOAST table will be visible for insertion.
+	 * If necessary, create a TOAST table for the new relation, or an Append
+	 * Only segment table. Note that AlterTableCreateXXXTable ends with 
+	 * CommandCounterIncrement(), so that the new tables will be visible for 
+	 * insertion.
 	 */
 	AlterTableCreateToastTableWithOid(intoRelationId, parseTree->intoOidInfo.toastOid, parseTree->intoOidInfo.toastIndexOid, &parseTree->intoOidInfo.toastComptypeOid);
+	AlterTableCreateAoSegTableWithOid(intoRelationId, parseTree->intoOidInfo.aosegOid, parseTree->intoOidInfo.aosegIndexOid, &parseTree->intoOidInfo.aosegComptypeOid);
 
 	/*
 	 * And open the constructed table for writing.

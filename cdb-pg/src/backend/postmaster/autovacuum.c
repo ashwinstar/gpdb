@@ -580,10 +580,11 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 		ScanKeyData entry[1];
 		Oid			relid;
 
-		/* Consider only regular and toast tables. */
+		/* Consider only regular, append-only and toast tables. */
 		if (classForm->relkind != RELKIND_RELATION &&
 			classForm->relkind != RELKIND_TOASTVALUE &&
-			classForm->relkind != RELKIND_APPEND_ONLY)
+			classForm->relkind != RELKIND_APPEND_ONLY &&
+			classForm->relkind != RELKIND_AOSEGMENTS)
 			continue;
 
 		/*
@@ -836,7 +837,8 @@ test_rel_for_autovac(Oid relid, PgStat_StatTabEntry *tabentry,
 
 	Assert(CurrentMemoryContext == AutovacMemCxt);
 
-	if (classForm->relkind == RELKIND_RELATION)
+	if (classForm->relkind == RELKIND_RELATION || 
+		classForm->relkind == RELKIND_APPEND_ONLY)
 	{
 		if (dovacuum || doanalyze)
 			elog(DEBUG2, "autovac: will%s%s %s",

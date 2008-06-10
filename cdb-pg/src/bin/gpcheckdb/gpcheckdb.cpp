@@ -104,6 +104,8 @@ public:
 	double reltuples;
 	Oid reltoastrelid;
 	Oid reltoastidxid;
+	Oid relaosegrelid;
+	Oid relaosegidxid;
 	bool relhasindex;
 	bool relisshared;
 	char relkind;
@@ -674,10 +676,12 @@ void read_catalog_info(vector<gp_config_info> & config, dbresult::size_type segd
 			pgc.reltuples = rp[9].as_double();
 			pgc.reltoastrelid = rp[10].as_oid();
 			pgc.reltoastidxid = rp[11].as_oid();
-			pgc.relhasindex = rp[12].as_bool();
-			pgc.relisshared = rp[13].as_bool();
-			pgc.relkind = rp[14].c_str()[0];
-			pgc.relnatts = rp[15].as_int();
+			pgc.relaosegrelid = rp[12].as_oid();
+			pgc.relaosegidxid = rp[13].as_oid();
+			pgc.relhasindex = rp[14].as_bool();
+			pgc.relisshared = rp[15].as_bool();
+			pgc.relkind = rp[16].c_str()[0];
+			pgc.relnatts = rp[17].as_int();
 			config[seg].pg_class[pgc.oid] = pgc;
 		}
 	}

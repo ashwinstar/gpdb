@@ -478,19 +478,21 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 
 /*
  *	Compute the on-disk size of files for the relation according to the
- *	stat function, including heap data, index data, and toast data.
+ *	stat function, including heap data, index data, toast data, and aoseg data.
  */
 static int64
 calculate_total_relation_size(Oid Relid)
 {
 	Relation	heapRel;
 	Oid			toastOid;
+	Oid			aosegOid;
 	int64		size;
 	ListCell   *cell;
 
 	heapRel = relation_open(Relid, AccessShareLock);
 	toastOid = heapRel->rd_rel->reltoastrelid;
-
+	aosegOid = heapRel->rd_rel->relaosegrelid;
+	
 	/* Get the heap size */
 	if (Relid == 0 || heapRel->rd_node.relNode == 0)
 		size = 0;
@@ -520,6 +522,9 @@ calculate_total_relation_size(Oid Relid)
 	/* Recursively include toast table (and index) size */
 	if (OidIsValid(toastOid))
 		size += calculate_total_relation_size(toastOid);
+
+	if (OidIsValid(aosegOid))
+		size += calculate_total_relation_size(aosegOid);
 
 	relation_close(heapRel, AccessShareLock);
 

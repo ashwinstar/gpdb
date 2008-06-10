@@ -20,10 +20,10 @@
 #include "access/appendonlyam.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
+#include "access/aosegfiles.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_appendonly.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -1011,17 +1011,17 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	double				rowstoskip = -1;	/* -1 means not set yet */
 	double				rstate;
 	BlockNumber			totalvarblocks;
-	AppendOnlyEntry		*aoentry;
+	FileSegInfo			*fsinfo;
 	AppendOnlyScanDesc	aoscandesc = NULL;
 	TupleTableSlot		*slot;
 	
 	Assert(targrows > 1);
 	
 	/* get the catalog entry with information for this table */
-	aoentry = GetAppendOnlyEntry(onerel->rd_node.relNode);
+	fsinfo = GetFileSegInfo(onerel, /* for now */ 1);
 
-	totalvarblocks = (BlockNumber)aoentry->varblockcount;
-	*totalbytes = (double)aoentry->eof;
+	totalvarblocks = (BlockNumber)fsinfo->varblockcount;
+	*totalbytes = (double)fsinfo->eof;
 	
 	/* Prepare for sampling rows */
 	rstate = init_selection_state(targrows);
@@ -1102,7 +1102,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	/*
 	 * Set total numbers of rows in relation.
 	 */
-	*totalrows = (double)aoentry->tupcount;
+	*totalrows = (double)fsinfo->tupcount;
 	*totaldeadrows = 0;
 
 	/*
@@ -1117,7 +1117,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 					liverows, deadrows,
 					numrows, *totalrows)));
 	
-	pfree(aoentry);
+	pfree(fsinfo);
 	
 	return numrows;
 }

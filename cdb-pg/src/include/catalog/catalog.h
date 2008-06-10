@@ -22,12 +22,15 @@ extern char *GetDatabasePath(Oid dbNode, Oid spcNode);
 
 extern bool IsSystemRelation(Relation relation);
 extern bool IsToastRelation(Relation relation);
+extern bool IsAoSegmentRelation(Relation relation);
 
 extern bool IsSystemClass(Form_pg_class reltuple);
 extern bool IsToastClass(Form_pg_class reltuple);
+extern bool IsAoSegmentClass(Form_pg_class reltuple);
 
 extern bool IsSystemNamespace(Oid namespaceId);
 extern bool IsToastNamespace(Oid namespaceId);
+extern bool IsAoSegmentNamespace(Oid namespaceId);
 
 extern bool IsReservedName(const char *name);
 

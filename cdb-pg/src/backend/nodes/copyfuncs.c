@@ -2078,6 +2078,9 @@ _copyQuery(Query *from)
 	COPY_SCALAR_FIELD(intoOidInfo.toastOid);
 	COPY_SCALAR_FIELD(intoOidInfo.toastIndexOid);
 	COPY_SCALAR_FIELD(intoOidInfo.toastComptypeOid);
+	COPY_SCALAR_FIELD(intoOidInfo.aosegOid);
+	COPY_SCALAR_FIELD(intoOidInfo.aosegIndexOid);
+	COPY_SCALAR_FIELD(intoOidInfo.aosegComptypeOid);
 	if (from->intoPolicy)
 	{
 		COPY_POINTER_FIELD(intoPolicy,sizeof(GpPolicy) + from->intoPolicy->nattrs*sizeof(from->intoPolicy->attrs[0]));

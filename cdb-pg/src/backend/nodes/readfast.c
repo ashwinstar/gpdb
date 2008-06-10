@@ -189,6 +189,9 @@ _readQuery(const char ** str)
     READ_OID_FIELD(intoOidInfo.toastOid);                  
     READ_OID_FIELD(intoOidInfo.toastIndexOid);                 
     READ_OID_FIELD(intoOidInfo.toastComptypeOid);
+    READ_OID_FIELD(intoOidInfo.aosegOid);                  
+    READ_OID_FIELD(intoOidInfo.aosegIndexOid);                 
+    READ_OID_FIELD(intoOidInfo.aosegComptypeOid);
     
 	local_node->intoPolicy = NULL;
 	
@@ -658,6 +661,7 @@ _readTruncateStmt(const char ** str)
 	READ_NODE_FIELD(relids);
 	READ_NODE_FIELD(new_heap_oids);
 	READ_NODE_FIELD(new_toast_oids);
+	READ_NODE_FIELD(new_aoseg_oids);
 	READ_NODE_FIELD(new_ind_oids);
 
 	READ_DONE();
@@ -684,6 +688,9 @@ _readAlterTableStmt(const char ** str)
 			READ_OID_FIELD(oidInfo[m].toastOid);
 			READ_OID_FIELD(oidInfo[m].toastIndexOid);
 			READ_OID_FIELD(oidInfo[m].toastComptypeOid);
+			READ_OID_FIELD(oidInfo[m].aosegOid);
+			READ_OID_FIELD(oidInfo[m].aosegIndexOid);
+			READ_OID_FIELD(oidInfo[m].aosegComptypeOid);
 		}
 	}
 	
@@ -1650,6 +1657,9 @@ _readCreateStmt(const char ** str)
 	READ_OID_FIELD(oidInfo.toastOid);
 	READ_OID_FIELD(oidInfo.toastIndexOid);
 	READ_OID_FIELD(oidInfo.toastComptypeOid);
+	READ_OID_FIELD(oidInfo.aosegOid);
+	READ_OID_FIELD(oidInfo.aosegIndexOid);
+	READ_OID_FIELD(oidInfo.aosegComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	local_node->policy = NULL;
 	
@@ -1665,7 +1675,8 @@ _readCreateStmt(const char ** str)
 			local_node->relKind == RELKIND_VIEW ||
 			local_node->relKind == RELKIND_EXTERNAL || 
 			local_node->relKind == RELKIND_APPEND_ONLY ||
-			local_node->relKind == RELKIND_COMPOSITE_TYPE); 
+			local_node->relKind == RELKIND_COMPOSITE_TYPE ||
+		    local_node->relKind == RELKIND_AOSEGMENTS); 
 	Assert(local_node->oncommit <= ONCOMMIT_DROP);
 
 	READ_DONE();
@@ -1934,6 +1945,9 @@ _readClusterStmt(const char ** str)
 	READ_OID_FIELD(oidInfo.toastOid);
 	READ_OID_FIELD(oidInfo.toastIndexOid);
 	READ_OID_FIELD(oidInfo.toastComptypeOid);
+	READ_OID_FIELD(oidInfo.aosegOid);
+	READ_OID_FIELD(oidInfo.aosegIndexOid);
+	READ_OID_FIELD(oidInfo.aosegComptypeOid);
 	READ_NODE_FIELD(new_ind_oids);
 	
 	READ_DONE();

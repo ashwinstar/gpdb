@@ -52,9 +52,9 @@
 #include "access/heapam.h"
 #include "access/transam.h"
 #include "access/appendonlyam.h"
+#include "access/aosegfiles.h"
 #include "commands/vacuum.h"
 #include "catalog/catalog.h"
-#include "catalog/pg_appendonly.h"
 #include "catalog/indexing.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -848,11 +848,11 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
  *		needs the pg_class stats updated).
  *
  *		In here we don't really vacuum nor scan anything per-se. We 
- *		already have the information that we need in pg_appendonly
- *		catalog on each segment. We are interested in reltuples and
- *		relpages. reltuples is the same as "pg_appendonly:tupcount"
+ *		already have the information that we need in pg_aoseg_<oid>
+ *		relation on each segment. We are interested in reltuples and
+ *		relpages. reltuples is the same as "pg_aoseg_<oid>:tupcount"
  *		column and we simulate relpages by subdividing the eof value
- *		("pg_appendonly:eof") over the defined page size.
+ *		("pg_aoseg_<oid>:eof") over the defined page size.
  *
  *		If FULL, we also truncate any leftover bytes that come after eof
  *		and are not a valid part of the relation (for example invalid rows
@@ -865,19 +865,12 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 void
 vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 {
-	Relation	pg_appendonly_rel;
-	TupleDesc	pg_appendonly_dsc;
-	HeapTuple	tuple;
-	ScanKeyData	key;
-	SysScanDesc	aoscan;
-	Datum		eof,
-				tupcount;
-	bool		isNull;
+	FileSegInfo	*fsinfo;
 	BlockNumber nblocks;
 	char	   *relname;
 	double		num_tuples;
 	double		totalbytes;
-	Oid			relfilenode;
+	double		eof;
 	char	   *path;
 	File		relfile;
 	PGRUsage	ru0;
@@ -890,63 +883,12 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					get_namespace_name(RelationGetNamespace(aorel)),
 					relname)));
 	
-	pg_appendonly_rel = heap_open(AppendOnlyRelationId, RowExclusiveLock);
-	pg_appendonly_dsc = RelationGetDescr(pg_appendonly_rel);
+	fsinfo = GetFileSegInfo(aorel, /* for now */ 1);
 	
-	relfilenode = aorel->rd_node.relNode;
-	Assert(relfilenode != InvalidOid);
-	
-	
-	ScanKeyInit(&key,
-				Anum_pg_appendonly_relfilenode,
-				BTEqualStrategyNumber,
-				F_OIDEQ,
-				ObjectIdGetDatum(relfilenode));
-	
-    aoscan = systable_beginscan(pg_appendonly_rel, 
-								AppendOnlyRelfilenodeIndexId, 
-								true,
-								SnapshotNow, 
-								1, 
-								&key);
-	
-    tuple = systable_getnext(aoscan);
-	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("append-only table entry with relfilenode \"%d\" does not exist",
-						relfilenode)));
-	
-	/* get eof */
-	eof = heap_getattr(tuple, 
-					   Anum_pg_appendonly_eof, 
-					   pg_appendonly_rel->rd_att, 
-					   &isNull);
-
-	if(isNull)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("got invalid eof value: NULL")));	
-	
-	/* get tupcount */
-	tupcount = heap_getattr(tuple, 
-							Anum_pg_appendonly_tupcount, 
-							pg_appendonly_rel->rd_att, 
-							&isNull);
-	
-	if(isNull)
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("got invalid tupcount value: NULL")));	
-	
-	/* Finish up scan */
-	systable_endscan(aoscan);
-	
-	heap_close(pg_appendonly_rel, RowExclusiveLock);
-
 	/* calculate the values we care about */
-	num_tuples = (double)DatumGetFloat8(tupcount);
-	totalbytes = (double)DatumGetFloat8(eof);
+	eof = (double)fsinfo->eof;
+	num_tuples = (double)fsinfo->tupcount;
+	totalbytes = (double)fsinfo->eof;
 	nblocks = (uint32)RelationGuessNumberOfBlocks(totalbytes);
 	
 	/* 
@@ -963,7 +905,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 		path = relpath(aorel->rd_node);	
 		relfile = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
 				
-		if (FileTruncate(relfile, (long)DatumGetFloat8(eof)) < 0)
+		if (FileTruncate(relfile, (long)eof) < 0)
 			ereport(elevel,
 					(errmsg("\"%s\": failed to remove data after eof", relname)));
 		

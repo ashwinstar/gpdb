@@ -148,6 +148,8 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->oidInfo.comptypeOid = 0;
 	stmt->oidInfo.toastOid = 0;
 	stmt->oidInfo.toastIndexOid = 0;
+	stmt->oidInfo.aosegOid = 0;
+	stmt->oidInfo.aosegIndexOid = 0;
 	
 	if (shouldDispatch)
 	{

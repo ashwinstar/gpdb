@@ -1564,6 +1564,12 @@ AlterFunctionNamespace(List *name, List *argtypes, bool isagg,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot move objects into or out of TOAST schema")));
 
+	/* same for AO segment list schema */
+	if (nspOid == PG_AOSEGMENT_NAMESPACE || oldNspOid == PG_AOSEGMENT_NAMESPACE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot move objects into or out of AO SEGMENT schema")));
+	
 	/* check for duplicate name (more friendly than unique-index failure) */
 	if (SearchSysCacheExists(PROCNAMEARGSNSP,
 							 CStringGetDatum(NameStr(proc->proname)),

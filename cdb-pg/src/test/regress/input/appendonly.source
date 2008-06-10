@@ -81,13 +81,6 @@ CREATE TABLE tenk_ao3 (
 -- check reloptions
 SELECT relkind, reloptions FROM pg_class WHERE relname LIKE 'tenk_ao%' ORDER BY relname;
 
--- make sure relfilenode is the same in pg_class and pg_appendonly for all tables
-SELECT count(*) FROM pg_class c, pg_appendonly a WHERE c.relkind='a' AND  c.relfilenode=a.relfilenode AND c.relname LIKE 'tenk_ao%';
-
--- TRUNCATE and make sure new relfilenode is updated in pg_appendonly
-TRUNCATE tenk_ao1;
-SELECT count(*) FROM pg_class c, pg_appendonly a WHERE c.relkind='a' AND  c.relfilenode=a.relfilenode AND c.relname LIKE 'tenk_ao%';
-
 -------------------- 
 -- supported sql
 --------------------

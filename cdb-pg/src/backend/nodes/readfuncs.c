@@ -289,7 +289,13 @@ _readQuery(void)
         READ_OID_FIELD(intoOidInfo.toastIndexOid);
                             
         READ_OID_FIELD(intoOidInfo.toastComptypeOid);
- 
+
+        READ_OID_FIELD(intoOidInfo.aosegOid);
+		
+        READ_OID_FIELD(intoOidInfo.aosegIndexOid);
+		
+        READ_OID_FIELD(intoOidInfo.aosegComptypeOid);
+		
     }
 	local_node->intoPolicy = NULL;
 	
@@ -305,7 +311,10 @@ _readQuery(void)
 	local_node->intoOidInfo.toastOid = InvalidOid;
 	local_node->intoOidInfo.toastIndexOid = InvalidOid;
 	local_node->intoOidInfo.toastComptypeOid = InvalidOid;
-
+	local_node->intoOidInfo.aosegOid = InvalidOid;
+	local_node->intoOidInfo.aosegIndexOid = InvalidOid;
+	local_node->intoOidInfo.aosegComptypeOid = InvalidOid;
+	
 
 	READ_DONE();
 }
@@ -783,6 +792,9 @@ _readAlterTableStmt(void)
 			READ_OID_FIELD(oidInfo[m].toastOid);
 			READ_OID_FIELD(oidInfo[m].toastIndexOid);
 			READ_OID_FIELD(oidInfo[m].toastComptypeOid);
+			READ_OID_FIELD(oidInfo[m].aosegOid);
+			READ_OID_FIELD(oidInfo[m].aosegIndexOid);
+			READ_OID_FIELD(oidInfo[m].aosegComptypeOid);
 		}
 	}
 	
@@ -1834,6 +1846,9 @@ _readCreateStmt(void)
 	READ_OID_FIELD(oidInfo.toastOid);
 	READ_OID_FIELD(oidInfo.toastIndexOid);
 	READ_OID_FIELD(oidInfo.toastComptypeOid);
+	READ_OID_FIELD(oidInfo.aosegOid);
+	READ_OID_FIELD(oidInfo.aosegIndexOid);
+	READ_OID_FIELD(oidInfo.aosegComptypeOid);
 	READ_CHAR_FIELD(relKind);
 	local_node->policy = NULL;
 	Assert(local_node->oidInfo.relOid == InvalidOid);
@@ -2020,6 +2035,9 @@ _readClusterStmt(void)
 	READ_OID_FIELD(oidInfo.toastOid);
 	READ_OID_FIELD(oidInfo.toastIndexOid);
 	READ_OID_FIELD(oidInfo.toastComptypeOid);
+	READ_OID_FIELD(oidInfo.aosegOid);
+	READ_OID_FIELD(oidInfo.aosegIndexOid);
+	READ_OID_FIELD(oidInfo.aosegComptypeOid);
 	READ_NODE_FIELD(new_ind_oids);
 	
 	READ_DONE();

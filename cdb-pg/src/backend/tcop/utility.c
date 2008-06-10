@@ -21,6 +21,7 @@
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/toasting.h"
+#include "catalog/aoseg.h"
 #include "commands/alter.h"
 #include "commands/async.h"
 #include "commands/cluster.h"
@@ -643,10 +644,16 @@ ProcessUtility(Node *parsetree,
 				
 				DefinePartitionedRelation((CreateStmt *) parsetree, relOid);
 
-				elog(DEBUG2,"CreateStmt: rel Oid %d toast Oid %d",relOid, ((CreateStmt *) parsetree)->oidInfo.toastOid);
+				elog(DEBUG2,"CreateStmt: rel Oid %d toast Oid %d AoSeg Oid %d",
+							relOid, 
+							((CreateStmt *) parsetree)->oidInfo.toastOid,
+							((CreateStmt *) parsetree)->oidInfo.aosegOid);
 		
 				if (relKind != RELKIND_COMPOSITE_TYPE && relKind != RELKIND_EXTERNAL)
+				{
 					AlterTableCreateToastTableWithOid(relOid, ((CreateStmt *) parsetree)->oidInfo.toastOid, ((CreateStmt *) parsetree)->oidInfo.toastIndexOid, &(((CreateStmt *) parsetree)->oidInfo.toastComptypeOid));
+					AlterTableCreateAoSegTableWithOid(relOid, ((CreateStmt *) parsetree)->oidInfo.aosegOid, ((CreateStmt *) parsetree)->oidInfo.aosegIndexOid, &(((CreateStmt *) parsetree)->oidInfo.aosegComptypeOid));					
+				}
 			}
 			break;
 

@@ -956,7 +956,8 @@ vac_update_datfrozenxid(void)
 		 * InvalidTransactionId in relfrozenxid anyway.)
 		 */
 		if (classForm->relkind != RELKIND_RELATION &&
-			classForm->relkind != RELKIND_TOASTVALUE)
+			classForm->relkind != RELKIND_TOASTVALUE &&
+			classForm->relkind != RELKIND_AOSEGMENTS)
 			continue;
 
 		Assert(TransactionIdIsNormal(classForm->relfrozenxid));
@@ -1124,6 +1125,7 @@ vacuum_rel(Oid relid, VacuumStmt *vacstmt, char expected_relkind)
 	Relation	onerel;
 	LockRelId	onerelid;
 	Oid			toast_relid;
+	Oid			aoseg_relid;
 	Oid			save_userid;
 	bool		save_secdefcxt;
 
@@ -1254,9 +1256,10 @@ vacuum_rel(Oid relid, VacuumStmt *vacstmt, char expected_relkind)
 	LockRelationIdForSession(&onerelid, lmode);
 
 	/*
-	 * Remember the relation's TOAST relation for later
+	 * Remember the relation's TOAST and AO segments relations for later
 	 */
 	toast_relid = onerel->rd_rel->reltoastrelid;
+	aoseg_relid = onerel->rd_rel->relaosegrelid;
 
 	/*
 	 * Switch to the table owner's userid, so that any index functions are
@@ -1303,6 +1306,11 @@ vacuum_rel(Oid relid, VacuumStmt *vacstmt, char expected_relkind)
 	if (toast_relid != InvalidOid)
 		vacuum_rel(toast_relid, vacstmt, RELKIND_TOASTVALUE);
 
+	/* do the same for an AO segments table, if any */
+	if (aoseg_relid != InvalidOid)
+		vacuum_rel(aoseg_relid, vacstmt, RELKIND_AOSEGMENTS);
+	
+	
 	/*
 	 * Now release the session-level lock on the master table.
 	 */

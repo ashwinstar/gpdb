@@ -1159,6 +1159,9 @@ DefineCompositeType(const RangeVar *typevar, List *coldeflist, Oid relOid, Oid c
 	createStmt->oidInfo.comptypeOid = comptypeOid;
 	createStmt->oidInfo.toastOid = 0;
 	createStmt->oidInfo.toastIndexOid = 0;
+	createStmt->oidInfo.aosegOid = 0;
+	createStmt->oidInfo.aosegIndexOid = 0;
+	
 
 	if (coldeflist == NIL)
 		ereport(ERROR,
@@ -2312,6 +2315,12 @@ AlterTypeNamespaceInternal(Oid typeOid, Oid nspOid,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot move objects into or out of TOAST schema")));
 
+	/* same for AO SEGMENT schema */
+	if (nspOid == PG_AOSEGMENT_NAMESPACE || oldNspOid == PG_AOSEGMENT_NAMESPACE)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot move objects into or out of AO SEGMENT schema")));
+	
 	/* check for duplicate name (more friendly than unique-index failure) */
 	if (SearchSysCacheExists(TYPENAMENSP,
 							 CStringGetDatum(NameStr(typform->typname)),
