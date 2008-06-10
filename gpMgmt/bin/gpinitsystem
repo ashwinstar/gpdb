@@ -426,12 +426,27 @@ CHK_MULTI_HOME () {
 		#Now make sure that we have same number of unique hostnames as there are data directories declared
 		HOST1=`$ECHO ${M_HOST_ARRAY[0]}|$AWK -F":" '{print $2}'`
 		NUM_MHOST_NODE=`$ECHO ${M_HOST_ARRAY[@]}|$TR ' ' '\n'|$GREP ":${HOST1}"|$WC -l`
-		if [ $NUM_DATADIR -ne $NUM_MHOST_NODE ];then
-			LOG_MSG "[FATAL]:-Inconsistency between number of multi-home hostnames and number of segments per host" 1
-			LOG_MSG "[INFO]:-Have $NUM_DATADIR data directories and $NUM_MHOST_NODE multi-home hostnames for each host" 1
-			LOG_MSG "[INFO]:-For multi-home configuration, number of multi-home hostnames must equal number of" 1
-			LOG_MSG "[INFO]:-segment instance data directories per host within the GPDB array" 1
-			ERROR_EXIT "[FATAL]:-Unable to continue" 2
+
+                ((REMAINDER=$NUM_DATADIR % $NUM_MHOST_NODE))                
+                ((MULTIPLE=$NUM_DATADIR / $NUM_MHOST_NODE))
+                if [ $REMAINDER != 0 ] || [ $MULTIPLE == 0 ] ;then                        
+		    LOG_MSG "[FATAL]:-Inconsistency between number of multi-home hostnames and number of segments per host" 1
+		    LOG_MSG "[INFO]:-Have $NUM_DATADIR data directories and $NUM_MHOST_NODE multi-home hostnames for each host" 1
+		    LOG_MSG "[INFO]:-For multi-home configuration, number of segment instance data directories per host must be multiple of" 1
+                    LOG_MSG "[INFO]:-the number of multi-home hostnames within the GPDB array" 1
+                    ERROR_EXIT "[FATAL]:-Unable to continue" 2
+                fi
+
+		if [ $MULTIPLE > 1 ] ; then
+                    #Now need to increase the size of M_HOME_ARRAY to fake a multi-home array
+                    HOME_COUNT=1
+                    FAKE_M_HOST_ARRAY=(${M_HOST_ARRAY[@]})                
+		    while [ $HOME_COUNT -lt $QUOTE ]
+                    do
+                        FAKE_M_HOST_ARRAY=(${FAKE_M_HOST_ARRAY[@]} ${M_HOST_ARRAY[@]})
+                        ((HOME_COUNT=$HOME_COUNT+1))
+                    done
+                    M_HOST_ARRAY=(`$ECHO ${FAKE_M_HOST_ARRAY[@]}|$TR ' ' '\n'|$SORT |$TR '\n' ' '`)
 		fi
 	else
 		LOG_MSG "[INFO]:-Configuring build for standard array" 1
