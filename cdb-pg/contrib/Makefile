@@ -8,6 +8,7 @@ WANTED_DIRS = \
 		adminpack	\
 		dblink		\
 		tsearch2	\
+		gp_filedump \
 		xlogdump
 
 ifeq ($(with_openssl),yes)
