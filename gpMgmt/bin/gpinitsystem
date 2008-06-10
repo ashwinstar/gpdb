@@ -441,7 +441,7 @@ CHK_MULTI_HOME () {
                     #Now need to increase the size of M_HOME_ARRAY to fake a multi-home array
                     HOME_COUNT=1
                     FAKE_M_HOST_ARRAY=(${M_HOST_ARRAY[@]})                
-		    while [ $HOME_COUNT -lt $QUOTE ]
+		    while [ $HOME_COUNT -lt $MULTIPLE ]
                     do
                         FAKE_M_HOST_ARRAY=(${FAKE_M_HOST_ARRAY[@]} ${M_HOST_ARRAY[@]})
                         ((HOME_COUNT=$HOME_COUNT+1))
