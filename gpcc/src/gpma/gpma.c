@@ -512,6 +512,9 @@ void d_main(void)
 	struct timeval tv;
 	
 	gpma.chubby = chubby_new(gpma.px_address, 45, malloc, free);
+	if (! gpma.chubby) {
+	    gpcc_fatal(FLINE, "error in initializing chubby");
+	}
 	chubby_asynchronous_think(gpma.chubby, &fd, &tv);
 	gpcc_net_chubby_event(fd, do_chubby, &tv, 0);
     }
