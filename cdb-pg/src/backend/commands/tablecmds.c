@@ -183,23 +183,11 @@ typedef struct NewColumnValue
 
 typedef struct pg_part_rule
 {
-	Oid			 pr_oid; /* the rule oid */
-	Oid			 paroid; /* the pg_partition oid */
-	Oid			 parrelid; /* relid of the relation for this partition */
-	Oid			 parparentrule;
-	char		*parname;
-	bool		 parisdefault;
-	int			 parruleord;
-	bool		 parrangestartincl;
-	bool		 parrangeendincl;
-	Node		*parrangestart;
-	Node		*parrangeend;
-	Node		*parrangeevery;
-	Node		*parlistvalues;
-	/* pp = pg_partition */
-	Oid			 pp_relid; /* the relid for the top-level table */
-	char		 pp_parkind;  /* the partition kind */
-	int			 pp_parlevel; /* partition level (0 based) */
+	PartitionNode *pNode;	
+	PartitionRule *topRule;	/* the rule for the specified partition */
+
+	/* a textual representation of the partition id (for error msgs) */
+	char		   partIdStr[(NAMEDATALEN * 2)];
 } pg_part_rule;
 
 static void truncate_check_rel(Relation rel);
@@ -298,7 +286,11 @@ static void ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system);
 static void ATExecAddInherit(Relation rel, RangeVar *parent);
 static void ATExecDropInherit(Relation rel, RangeVar *parent);
+
 /* ALTER TABLE ... PARTITION */
+static void
+delete_part_from_catalog(Oid relid);
+
 static void ATPExecPartAdd(Relation rel,
                            AlterPartitionCmd *pc);			/* Add */
 static void ATPExecPartAlter(Relation rel,
@@ -321,6 +313,8 @@ static void ATPExecPartSetTemplate(Relation rel,
                                                                Template */
 static void ATPExecPartSplit(Relation rel,
                              AlterPartitionCmd *pc);		/* Split */
+static List *
+atpxTruncateList(Relation rel, PartitionNode *pNode);
 static void ATPExecPartTruncate(Relation rel,
                                 AlterPartitionCmd *pc);		/* Truncate */
 static void copy_relation_data(Relation rel, SMgrRelation dst);
@@ -1128,6 +1122,8 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
 	/* Lock the relation to be dropped */
 	LockRelationOid(relOid, AccessExclusiveLock);
 
+	delete_part_from_catalog(relOid); /* fix up partitions */
+
 	performDeletion(&object, behavior);
 }
 
@@ -1242,6 +1238,57 @@ ExecuteTruncate(TruncateStmt *stmt)
 	List	   *new_aoseg_oids = NIL;
 	List	   *new_ind_oids = NIL;
 	ListCell   *cell;
+    int partcheck = 2;
+	List *partList = NIL;
+
+	/*
+	 * Open, exclusive-lock, and check all the explicitly-specified relations
+	 *
+	 * Check if table has partitions and add them too
+	 */
+	while (partcheck)
+	{
+		foreach(cell, stmt->relations)
+		{
+			RangeVar   *rv = lfirst(cell);
+			Relation	rel;
+			PartitionNode *pNode;			
+
+			rel = heap_openrv(rv, AccessExclusiveLock);
+			truncate_check_rel(rel);
+
+			if (partcheck == 2)
+			{
+				pNode = RelationBuildPartitionDesc(rel);
+
+				if (pNode)
+				{
+					List *plist = atpxTruncateList(rel, pNode);
+
+					if (plist)
+					{
+						if (partList)
+							partList = list_concat(partList, plist);
+						else
+							partList = plist;
+					}
+				}
+			}
+			heap_close(rel, NoLock);
+		}
+
+		partcheck--;
+
+		if (partList)
+		{
+			/* add the partitions to the relation list and try again */
+			if (partcheck == 1) 
+				stmt->relations = list_concat(partList, stmt->relations);
+		}
+		else
+			/* no partitions - no need to try again */
+			partcheck = 0;
+	} /* end while partcheck */
 
 	/*
 	 * Open, exclusive-lock, and check all the explicitly-specified relations
@@ -8303,7 +8350,50 @@ add_part_to_catalog(Oid relid, PartitionBy *pby)
 	/* If we're the top level partition, adjust all parents for this path */
 	SPI_finish();
 	CommandCounterIncrement();
-}
+} /* end add_part_to_catalog */
+
+static void
+delete_part_from_catalog(Oid relid)
+{
+	int ret;
+	StringInfoData buf;
+
+	/* XXX: bail out early for now. ATM, we use SPI which doesn't run on QEs */
+	if (Gp_role == GP_ROLE_EXECUTE) 
+		return;
+
+	/* Temporarily use SPI to get data into catalogs */
+
+	/* Connect to SPI manager */
+	if ((ret = SPI_connect()) < 0)
+		/* internal error */
+		elog(ERROR, "SPI_connect returned %d", ret);
+
+	/* now see if the rule for our level exists */
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "delete from pg_partition_rule "
+					 " where paroid in "
+                     " ( select oid from pg_partition "
+                     "    where relid = '%u' ) or "
+                     " parrelid = '%u' ",
+				 	 relid, relid);
+
+	if (SPI_execute(buf.data, false, 0) != SPI_OK_DELETE)
+			elog(ERROR, "spi error executing \"%s\"", buf.data);
+
+    initStringInfo(&buf);
+		
+	appendStringInfo(&buf, "delete from pg_partition "
+                     "    where relid = '%u' ",
+				 	 relid);
+
+	if (SPI_execute(buf.data, false, 0) != SPI_OK_DELETE)
+			elog(ERROR, "spi error executing \"%s\"", buf.data);
+		
+	pfree(buf.data);
+	SPI_finish();
+	CommandCounterIncrement();
+} /* end delete part from catalog */
 
 /*
  * Add partition hierarchy to catalogs.
@@ -8383,7 +8473,6 @@ get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 		SPI_finish();
 		return NULL;
 	}
-
 
 	/* now for pg_partition_rule */
 	initStringInfo(&buf);
@@ -8860,10 +8949,10 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 /*
  * get_part_rule
  *
- * find the oid for the pg_partition_rule row for the specified
- * partition if it exists.
+ * find PartitionNode and the PartitionRule for a partition if it
+ * exists.
  *
- * If bExistError is not set, just return the oid or InvalidOid.
+ * If bExistError is not set, just return the pg_part_rule.
  * If bExistError is set, return an error message based upon
  * bMustExist.  That is, if the table does not exist and
  * bMustExist=true then return an error.  Conversely, if the table
@@ -8875,13 +8964,11 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			  bool bExistError, bool bMustExist, 
 			  MemoryContext mcxt)
 {
-	char			 namBuf[NAMEDATALEN];
-	int ret;
-	StringInfoData buf;
-	Oid rootrelid = InvalidOid;
-	Oid prule_oid = InvalidOid;
-	pg_part_rule *prule = NULL;
-	MemoryContext oldcxt;
+	char		   namBuf[NAMEDATALEN];
+	/* a textual representation of the partition id (for error msgs) */
+	char		   partIdStr[(NAMEDATALEN * 2)];
+	pg_part_rule  *prule = NULL;
+	PartitionNode *pNode = NULL;
 
 	if (!pid)
 		ereport(ERROR,
@@ -8895,104 +8982,79 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("Need partition name for relation \"%s\"",
                     RelationGetRelationName(rel))));
+
+	switch (pid->idtype)
+	{
+		case AT_AP_IDNone:				/* no ID */
+			/* should never happen */
+			partIdStr[0] = 0;
+
+			break;
+		case AT_AP_IDName:				/* IDentify by Name */
+			snprintf(partIdStr, sizeof(partIdStr), " \"%s\"", 
+					 strVal(pid->partiddef));
+			break;
+		case AT_AP_IDValue:				/* IDentifier FOR Value */
+			snprintf(partIdStr, sizeof(partIdStr), " for specified value");
+			break;
+		case AT_AP_IDPosition:			/* IDentifier FOR Positition */
+			snprintf(partIdStr, sizeof(partIdStr), " for specified position");
+			break;
+		case AT_AP_ID_oid:				/* IDentifier by oid */
+			snprintf(partIdStr, sizeof(partIdStr), " for specified oid");
+			break;
+	}
 		
 	snprintf(namBuf, sizeof(namBuf), "%s", 
 			 strVal(pid->partiddef));
 
-	/* Temporarily use SPI to get data into catalogs */
+	pNode = RelationBuildPartitionDesc(rel);
 
-	/* Connect to SPI manager */
-	if ((ret = SPI_connect()) < 0)
-		/* internal error */
-		elog(ERROR, "SPI_connect returned %d", ret);
+	if (bExistError && !pNode)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("relation \"%s\" is not partitioned",
+						RelationGetRelationName(rel))));
 
-	initStringInfo(&buf);
-
-	/*
-	 * Get the partitioned table relid.
-	 */
-	rootrelid = RelationGetRelid(rel);
-
-	/* now see if the rule for our level exists */
-	initStringInfo(&buf);
-	appendStringInfo(&buf, 
-					 "select pr.oid as pr_oid,  "
-					 " pr.paroid, "
-					 " pr.parrelid, pr.parparentrule, "
-					 " pr.parname, "
-					 " pr.parisdefault, "
-					 " pr.parruleord, pr.parrangestartincl, "
-					 " pr.parrangeendincl, "
-					 " pr.parrangestart, pr.parrangeend, "
-					 " pr.parrangeevery, pr.parlistvalues, "
-					 " pp.relid, pp.parkind, "
-					 " pp.parlevel "
-					 " from  "
-					 "pg_partition pp, pg_partition_rule pr  "
-					 "where pp.relid = '%u' and pr.parname = '%s'  "
-					 "and pr.paroid = pp.oid",
-				 	 rootrelid, namBuf);
-	ret = SPI_execute(buf.data, true, 1);
-
-	pfree(buf.data);
-
-	if (ret > 0 && SPI_tuptable != NULL && SPI_processed)
+	if (pNode)
 	{
-		TupleDesc tupdesc = SPI_tuptable->tupdesc;
-		SPITupleTable *tuptable = SPI_tuptable;
-		HeapTuple tuple = tuptable->vals[0];
-		int ii = 1;
-		char *tmp_parname;
-		char *tmp_start;
-		char *tmp_end;
-		char *tmp_every;
-		char *tmp_listvalues;
+		ListCell *lc;			
 
-		oldcxt = MemoryContextSwitchTo(mcxt);
-		prule = (pg_part_rule *) palloc0(sizeof(pg_part_rule));
-		MemoryContextSwitchTo(oldcxt);
+		foreach(lc, pNode->rules)
+		{
+			PartitionRule *rule = lfirst(lc);
 
-		prule->pr_oid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, ii++));
+			if (0 == strcmp(rule->parname, namBuf))
+			{
+				prule = (pg_part_rule *) palloc0(sizeof(pg_part_rule));
 
-		prule_oid = prule->pr_oid;
+				prule->pNode = pNode;
+				prule->topRule = rule;
+				break;
+			}
+		}
 
-		prule->paroid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, ii++));
-		prule->parrelid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, ii++));
-		prule->parparentrule = (Oid)atoi(SPI_getvalue(tuple, tupdesc, ii++));
-		tmp_parname = (SPI_getvalue(tuple, tupdesc, ii++)); 
-		prule->parisdefault = (SPI_getvalue(tuple, tupdesc, ii++))[0] == 'f' ?
-				false : true;
-		prule->parruleord = (int)atoi(SPI_getvalue(tuple, tupdesc, ii++));
-		prule->parrangestartincl = (SPI_getvalue(tuple, tupdesc, ii++))[0] 
-				== 'f' ? false : true;
-		prule->parrangeendincl = (SPI_getvalue(tuple, tupdesc, ii++))[0] 
-				== 'f' ? false : true;
+		/* if cannot find, check default partition */
+		if (!prule)
+		{
+			if (pNode->default_part && 
+				(0 == strcmp(pNode->default_part->parname, namBuf)))
+			{
+				prule = (pg_part_rule *) palloc0(sizeof(pg_part_rule));
 
-		tmp_start = (SPI_getvalue(tuple, tupdesc, ii++)); 
-		tmp_end = (SPI_getvalue(tuple, tupdesc, ii++)); 
-		tmp_every = (SPI_getvalue(tuple, tupdesc, ii++)); 
-		tmp_listvalues = (SPI_getvalue(tuple, tupdesc, ii++)); 
+				prule->pNode = pNode;
+				prule->topRule = pNode->default_part;
+			}
+		}
+	} /* end if pnode */
 
-		prule->pp_relid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, ii++));
-		prule->pp_parkind = (SPI_getvalue(tuple, tupdesc, ii++))[0];
-		prule->pp_parlevel = (int)atoi(SPI_getvalue(tuple, tupdesc, ii++));
-
-		oldcxt = MemoryContextSwitchTo(mcxt);
-		prule->parname = pstrdup(tmp_parname);
-
-		prule->parrangestart = tmp_start ? stringToNode(tmp_start) : NULL;
-		prule->parrangeend = tmp_end ? stringToNode(tmp_end) : NULL;
-		prule->parrangeevery = tmp_every ? stringToNode(tmp_every) : NULL;
-		prule->parlistvalues = tmp_listvalues ? stringToNode(tmp_listvalues)
-				: NULL;
-
-		MemoryContextSwitchTo(oldcxt);
-	}
+	if (prule)
+		StrNCpy(prule->partIdStr, partIdStr, sizeof(partIdStr));
 
 	if (!bExistError)
 		goto L_fin_partrule;
 
-	if (bMustExist && (InvalidOid == prule_oid))
+	if (bMustExist && !prule)
 	{
 		switch (pid->idtype)
 		{
@@ -9001,37 +9063,18 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				Assert(false);
 				break;
 			case AT_AP_IDName:				/* IDentify by Name */
-				ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition \"%s\" of relation \"%s\" does not exist",
-							namBuf,
-							RelationGetRelationName(rel))));
-
-				break;
 			case AT_AP_IDValue:				/* IDentifier FOR Value */
-				ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition for specified value of relation \"%s\" does not exist",
-							RelationGetRelationName(rel))));
-
-				break;
 			case AT_AP_IDPosition:			/* IDentifier FOR Positition */
+			case AT_AP_ID_oid:				/* IDentifier by oid */
 				ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition for specified position of relation \"%s\" does not exist",
+					 errmsg("partition%s of relation \"%s\" does not exist",
+							partIdStr,
 							RelationGetRelationName(rel))));
-
-				break;
-			case AT_AP_ID_oid:			/* IDentifier by oid */
-				ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition for specified oid of relation \"%s\" does not exist",
-							RelationGetRelationName(rel))));
-
 				break;
 		}
 	}
-	else if (!bMustExist && (InvalidOid != prule_oid))
+	else if (!bMustExist && prule)
 	{
 		switch (pid->idtype)
 		{
@@ -9040,42 +9083,20 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				Assert(false);
 				break;
 			case AT_AP_IDName:				/* IDentify by Name */
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("partition \"%s\" of relation \"%s\" already exists",
-								namBuf,
-								RelationGetRelationName(rel))));
-
-				break;
 			case AT_AP_IDValue:				/* IDentifier FOR Value */
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("partition for specified value of relation \"%s\" already exists",
-								RelationGetRelationName(rel))));
-
-				break;
 			case AT_AP_IDPosition:			/* IDentifier FOR Positition */
-				ereport(ERROR,
-						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("partition for specified position of relation \"%s\" already exists",
-								RelationGetRelationName(rel))));
-
-				break;
-			case AT_AP_ID_oid:			/* IDentifier by oid */
+			case AT_AP_ID_oid:				/* IDentifier by oid */
 				ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition for specified oid of relation \"%s\" already exists",
+					 errmsg("partition%s of relation \"%s\" already exists",
+							partIdStr,
 							RelationGetRelationName(rel))));
-
 				break;
 		}
 
 	}
 
  L_fin_partrule:
-	/* If we're the top level partition, adjust all parents for this path */
-	SPI_finish();
-	CommandCounterIncrement();
 
 	return prule;
 }
@@ -9086,21 +9107,119 @@ ATPExecPartAdd(Relation rel,
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
 	pg_part_rule   *prule = NULL;
+	PartitionNode  *pNode = NULL;
+	char           *parTypName = NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
+	pNode = RelationBuildPartitionDesc(rel);
+
+	if (!pNode)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("relation \"%s\" is not partitioned",
+						RelationGetRelationName(rel))));
+
+	switch (pNode->part->parkind)
+	{
+		case 'h': /* hash */
+			parTypName = "HASH";
+			break;
+		case 'r': /* range */
+			parTypName = "RANGE";
+			break;
+		case 'l': /* list */
+			parTypName = "LIST";
+			break;
+		default:
+			elog(ERROR, "unrecognized partitioning kind '%c'",
+				 pNode->part->parkind);
+			Assert(1);
+			break;
+	} /* end switch */
+
+	if ('h' == pNode->part->parkind)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot add HASH partition to relation \"%s\"",
+						RelationGetRelationName(rel)),
+				 errhint("recreate the table to increase the number of partitions")));
+
+	if (pid->idtype == AT_AP_IDNone)				/* no ID */
+	{
+		/* special case for adding partition with no name */
+
+		/* XXX XXX XXX FIX THIS */
+		if (parTypName)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot ADD anonymous %s partition to relation \"%s\"",
+							parTypName,
+							RelationGetRelationName(rel)),
+					 errhint("use a named partition")));
+
+	} /* end NO ID */
+
+	/* partition must have a valid name */
+	if (pid->idtype != AT_AP_IDName)	
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot ADD partition to relation \"%s\" by position or value",
+							RelationGetRelationName(rel)),
+					 errhint("use a named partition")));
+
+	/* NOTE: complain if partition already exists, so prule should be NULL */
 	prule = get_part_rule(rel, pid, true, false, CurrentMemoryContext);
 
 	if (!prule)
 	{
+		AlterPartitionCmd *pc2 = (AlterPartitionCmd *)pc->arg2;
+		bool isDefault = intVal(pc->arg1);
+
+		/* DEFAULT checks */
+		if (!isDefault && (pNode->default_part))
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot ADD %s partition \"%s\" to relation \"%s\" with DEFAULT partition \"%s\"", 
+						parTypName,
+						strVal(pid->partiddef),
+						RelationGetRelationName(rel),
+						pNode->default_part->parname),
+				 errhint("need to SPLIT partition \"%s\"", 
+						 pNode->default_part->parname)));
+
+		if (isDefault)
+		{
+			if ('h' == pNode->part->parkind)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("cannot add a DEFAULT partition to relation \"%s\" of type HASH",
+								RelationGetRelationName(rel))));
+
+			if (pNode->default_part)
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("DEFAULT partition \"%s\" for relation \"%s\" already exists",
+								pNode->default_part->parname,
+								RelationGetRelationName(rel))));
+
+			if (pc2->arg1 || pc2->arg2)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("invalid use of boundary specification "
+								"for DEFAULT partition \"%s\" of relation \"%s\"",
+								strVal(pid->partiddef),
+								RelationGetRelationName(rel))));
+		}
+		/* XXX XXX DO REAL ADD HERE */
 	}
 
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot ADD PARTITION to relation \"%s\"",
                     RelationGetRelationName(rel))));
-}
+} /* end ATPExecPartAdd */
 
 /* ALTER TABLE ... ALTER PARTITION */
 static void 
@@ -9150,6 +9269,92 @@ ATPExecPartCoalesce(Relation rel,
 
 }
 /* ALTER TABLE ... DROP PARTITION */
+static List *
+atpxDropList(Relation rel, PartitionNode *pNode)
+{
+	List *l1 = NIL;
+	ListCell *lc;			
+
+	if (!pNode)
+		return l1;
+
+	/* add the child lists first */
+	foreach(lc, pNode->rules)
+	{
+		PartitionRule *rule = lfirst(lc);
+		List *l2 = NIL;
+
+		if (rule->children)
+			l2 = atpxDropList(rel, rule->children);
+		else
+			l2 = NIL;
+
+		if (l2)
+		{
+			if (l1)
+				l1 = list_concat(l1, l2);
+			else
+				l1 = l2;	
+		}
+	}
+
+	/* and the default partition */
+	if (pNode->default_part)
+	{
+		PartitionRule *rule = pNode->default_part;
+		List *l2 = NIL;
+
+		if (rule->children)
+			l2 = atpxDropList(rel, rule->children);
+		else
+			l2 = NIL;
+
+		if (l2)
+		{
+			if (l1)
+				l1 = list_concat(l1, l2);
+			else
+				l1 = l2;	
+		}
+	}
+
+	/* add entries for rules at current level */
+	foreach(lc, pNode->rules)
+	{
+		PartitionRule *rule = lfirst(lc);
+		char* prelname;
+		Relation	rel;
+
+		rel = heap_open(rule->parrelid, AccessShareLock);
+		prelname = pstrdup(RelationGetRelationName(rel));
+		heap_close(rel, NoLock);
+
+		if (l1)
+			l1 = lappend(l1, list_make1(makeString(prelname)));
+		else
+			l1 = list_make1(list_make1(makeString(prelname)));
+	}
+
+	/* and the default partition */
+	if (pNode->default_part)
+	{
+		PartitionRule *rule = pNode->default_part;
+		char* prelname;
+		Relation	rel;
+
+		rel = heap_open(rule->parrelid, AccessShareLock);
+		prelname = pstrdup(RelationGetRelationName(rel));
+		heap_close(rel, NoLock);
+
+		if (l1)
+			l1 = lappend(l1, list_make1(makeString(prelname)));
+		else
+			l1 = list_make1(list_make1(makeString(prelname)));
+	}
+
+	return l1;
+} /* end atpxDropList */
+
 static void 
 ATPExecPartDrop(Relation rel,
                 AlterPartitionCmd *pc)
@@ -9207,18 +9412,52 @@ ATPExecPartDrop(Relation rel,
 	}
 	else
 	{
-		Relation	rel;
 		DestReceiver *dest = None_Receiver;
 		char* prelname;
+		int   numParts = list_length(prule->pNode->rules);
 
-		rel = heap_open(prule->parrelid, AccessShareLock);
+		/* add the default partition to the count of partitions */
+		if (prule->pNode->default_part) 
+			numParts++;
+
+		/* maybe ERRCODE_INVALID_TABLE_DEFINITION ? */
+
+		/* cannot drop a hash partition */
+		if ('h' == prule->pNode->part->parkind)
+			ereport(ERROR,
+					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+					 errmsg("cannot drop HASH partition%s of relation \"%s\"",
+							prule->partIdStr,
+							RelationGetRelationName(rel)),
+					 errhint("recreate the table to reduce the number of partitions")));
+
+
+		/* cannot drop last partition of table */
+		if (numParts <= 1)
+			ereport(ERROR,
+					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+					 errmsg("cannot drop partition%s of relation \"%s\"-- only one remains",
+							prule->partIdStr,
+							RelationGetRelationName(rel)),
+					 errhint("Use DROP TABLE \"%s\" to remove the table and the final partition ", 
+							 RelationGetRelationName(rel))));
+		
+		rel = heap_open(prule->topRule->parrelid, AccessShareLock);
 
 		prelname = pstrdup(RelationGetRelationName(rel));
 
-		ds->removeType = OBJECT_TABLE;
-		ds->objects = list_make1(list_make1(makeString(prelname)));
-
 		heap_close(rel, NoLock);
+
+		ds->removeType = OBJECT_TABLE;
+
+		if (prule->topRule->children)
+		{
+			List *l1 = atpxDropList(rel, prule->topRule->children);
+
+			ds->objects = lappend(l1, list_make1(makeString(prelname)));
+		}
+		else
+			ds->objects = list_make1(list_make1(makeString(prelname)));
 
 		ProcessUtility(
 				(Node *) ds,
@@ -9323,7 +9562,7 @@ ATPExecPartRename(Relation rel,
 		char	   *relname;
 		char	  	depthstr[NAMEDATALEN];
 		char	  	parentname[NAMEDATALEN];
-		int partDepth = 1 + prule->pp_parlevel;
+		int partDepth = 1 + prule->pNode->part->parlevel;
 
 		newpid.idtype = AT_AP_IDName;
 		newpid.partiddef = pc->arg1;
@@ -9333,11 +9572,11 @@ ATPExecPartRename(Relation rel,
 		prule2 = get_part_rule(rel, &newpid, true, false, 
 							   CurrentMemoryContext);
 
-		targetrelation = relation_open(prule->parrelid, AccessExclusiveLock);
+		targetrelation = relation_open(prule->topRule->parrelid, AccessExclusiveLock);
 		namespaceId = RelationGetNamespace(targetrelation);
 		relation_close(targetrelation, AccessExclusiveLock);
 
-		if (0 == prule->parparentrule)
+		if (0 == prule->topRule->parparentoid)
 		{
 			StrNCpy(parentname, 
 					RelationGetRelationName(rel), NAMEDATALEN);
@@ -9347,18 +9586,19 @@ ATPExecPartRename(Relation rel,
 			AlterPartitionId parent_pid;
 			pg_part_rule   *prule3 = NULL;
 			parent_pid.idtype = AT_AP_ID_oid;
-			parent_pid.partiddef = (Node *)&(prule->parparentrule);
+			parent_pid.partiddef = (Node *)&(prule->topRule->parparentoid);
 			parent_pid.location = -1;
 
 			prule3 = get_part_rule(rel, &parent_pid, true, true, 
 								   CurrentMemoryContext);
 
-			parentrelation = RelationIdGetRelation(prule3->parrelid);
+			parentrelation = RelationIdGetRelation(prule3->topRule->parrelid);
 			StrNCpy(parentname, 
 					RelationGetRelationName(parentrelation), NAMEDATALEN);
 			RelationClose(parentrelation);
 		}
 
+		/* build a relation name (see transformPartitionBy */
 		snprintf(depthstr, sizeof(depthstr), "%d", partDepth);
 		snprintf(prtstr, sizeof(prtstr), "prt_%s", newpartname);
 
@@ -9368,7 +9608,7 @@ ATPExecPartRename(Relation rel,
 									 namespaceId);
 		CommandCounterIncrement();
 
-		renamerel(prule->parrelid, relname, NULL);
+		renamerel(prule->topRule->parrelid, relname, NULL);
 
 		{
 			int ret;
@@ -9383,7 +9623,7 @@ ATPExecPartRename(Relation rel,
 			appendStringInfo(&buf, 
 							 "update pg_partition_rule set parname = '%s' "
 							 "where oid = '%u' ",
-							 newpartname, prule->pr_oid);
+							 newpartname, prule->topRule->parruleid);
 
 			if (SPI_execute(buf.data, false, 0) != SPI_OK_UPDATE)
 					elog(ERROR, "spi error executing \"%s\"", buf.data);
@@ -9449,7 +9689,100 @@ ATPExecPartSplit(Relation rel,
                     RelationGetRelationName(rel))));
 
 }
+
 /* ALTER TABLE ... TRUNCATE PARTITION */
+static List *
+atpxTruncateList(Relation rel, PartitionNode *pNode)
+{
+	List *l1 = NIL;
+	ListCell *lc;			
+
+	if (!pNode)
+		return l1;
+
+	/* add the child lists first */
+	foreach(lc, pNode->rules)
+	{
+		PartitionRule *rule = lfirst(lc);
+		List *l2 = NIL;
+
+		if (rule->children)
+			l2 = atpxTruncateList(rel, rule->children);
+		else
+			l2 = NIL;
+
+		if (l2)
+		{
+			if (l1)
+				l1 = list_concat(l1, l2);
+			else
+				l1 = l2;	
+		}
+	}
+
+	/* and the default partition */
+	if (pNode->default_part)
+	{
+		PartitionRule *rule = pNode->default_part;
+		List *l2 = NIL;
+
+		if (rule->children)
+			l2 = atpxTruncateList(rel, rule->children);
+		else
+			l2 = NIL;
+
+		if (l2)
+		{
+			if (l1)
+				l1 = list_concat(l1, l2);
+			else
+				l1 = l2;	
+		}
+	}
+
+	/* add entries for rules at current level */
+	foreach(lc, pNode->rules)
+	{
+		PartitionRule *rule = lfirst(lc);
+		RangeVar *rv = makeNode(RangeVar);
+		Relation	rel;
+
+		rel = heap_open(rule->parrelid, AccessShareLock);
+		rv->catalogname = NULL;
+		rv->schemaname = NULL;
+		rv->relname = RelationGetRelationName(rel);
+		rv->location = -1;
+		heap_close(rel, NoLock);
+
+		if (l1)
+			l1 = lappend(l1, rv);				
+		else
+			l1 = list_make1(rv);				
+	}
+
+	/* and the default partition */
+	if (pNode->default_part)
+	{
+		PartitionRule *rule = pNode->default_part;
+		RangeVar *rv = makeNode(RangeVar);
+		Relation	rel;
+
+		rel = heap_open(rule->parrelid, AccessShareLock);
+		rv->catalogname = NULL;
+		rv->schemaname = NULL;
+		rv->relname = RelationGetRelationName(rel);
+		rv->location = -1;
+		heap_close(rel, NoLock);
+
+		if (l1)
+			l1 = lappend(l1, rv);				
+		else
+			l1 = list_make1(rv);				
+	}
+
+	return l1;
+} /* end atpxTruncateList */
+
 static void 
 ATPExecPartTruncate(Relation rel,
                     AlterPartitionCmd *pc)
@@ -9468,13 +9801,21 @@ ATPExecPartTruncate(Relation rel,
 		TruncateStmt *ts = (TruncateStmt *)pc->arg1;
 		Relation	rel;
 
-		rel = heap_open(prule->parrelid, AccessShareLock);
-
+		rel = heap_open(prule->topRule->parrelid, AccessShareLock);
 		rv->catalogname = NULL;
 		rv->schemaname = NULL;
 		rv->relname = RelationGetRelationName(rel);
 		rv->location = pc->location;
-		ts->relations = list_make1(rv);
+
+		if (prule->topRule->children)
+		{
+			List *l1 = atpxTruncateList(rel, prule->topRule->children);
+
+			ts->relations = lappend(l1, rv);				
+		}
+		else
+			ts->relations = list_make1(rv);
+
 		heap_close(rel, NoLock);
 
 		ExecuteTruncate(ts);

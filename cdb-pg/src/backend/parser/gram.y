@@ -1785,32 +1785,44 @@ alter_table_partition_id_spec:
 		;
 
 alter_table_partition_cmd:
-			ADD_P PARTITION 
+			ADD_P opt_default PARTITION 
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
 				{
 					AlterPartitionId  *pid = makeNode(AlterPartitionId);
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+					AlterPartitionCmd *pc2 = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
+                    if ($2)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Can only ADD a DEFAULT partition by name")));
+
                     pid->idtype = AT_AP_IDNone;
-                    pid->location = @2;
+                    pid->location = @3;
                     pid->partiddef = NULL;
 
                     pc->partid = (Node *)pid;
-                    pc->arg1 = (Node *)$3;
-                    pc->arg2 = (Node *)$4;
-                    pc->location = @3;
+
+                    pc2->arg1 = (Node *)$4;
+                    pc2->arg2 = (Node *)$5;
+                    pc2->location = @4;
+
+                    pc->arg1 = (Node *)makeInteger(FALSE);
+                    pc->arg2 = (Node *)pc2;
+                    pc->location = @4;
 
 					n->subtype = AT_PartAdd;
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| ADD_P PARTITION 
+			| ADD_P opt_default PARTITION 
             alter_table_partition_id_spec 
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
 				{
-					AlterPartitionId  *pid = (AlterPartitionId *)$3;
+					AlterPartitionId  *pid = (AlterPartitionId *)$4;
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+					AlterPartitionCmd *pc2 = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
                     if (pid->idtype != AT_AP_IDName)
@@ -1819,9 +1831,14 @@ alter_table_partition_cmd:
 								 errmsg("Can only ADD a partition by name")));
 
                     pc->partid = (Node *)pid;
-                    pc->arg1 = (Node *)$4;
-                    pc->arg2 = (Node *)$5;
-                    pc->location = @4;
+
+                    pc2->arg1 = (Node *)$5;
+                    pc2->arg2 = (Node *)$6;
+                    pc2->location = @5;
+
+                    pc->arg1 = (Node *)makeInteger($2);
+                    pc->arg2 = (Node *)pc2;
+                    pc->location = @5;
 
 					n->subtype = AT_PartAdd;
 					n->def = (Node *)pc;

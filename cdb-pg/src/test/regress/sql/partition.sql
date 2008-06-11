@@ -717,6 +717,44 @@ alter table hhh add partition aa;
 
 alter table hhh add partition cc;
 
+-- hash partitions cannot have default partitions
+create table jjj (aa int, bb int) 
+partition by hash(bb) 
+(partition j1, partition j2);
+
+alter table jjj add default partition;
+
+drop table jjj cascade;
+
+-- default partitions cannot have boundary specifications
+create table jjj (aa int, bb date) 
+partition by range(bb) 
+(partition j1 end (date '2008-01-01'), 
+partition j2 end (date '2009-01-01'));
+
+-- must have a name
+alter table jjj add default partition;
+alter table jjj add default partition for (position(1));
+-- cannot have boundary spec
+alter table jjj add default partition j3 end (date '2010-01-01');
+
+drop table jjj cascade;
+
+-- only one default partition
+create table jjj (aa int, bb date) 
+partition by range(bb) 
+(partition j1 end (date '2008-01-01'), 
+partition j2 end (date '2009-01-01'),
+default partition j3);
+
+alter table jjj add default partition j3 ;
+alter table jjj add default partition j4 ;
+
+-- cannot add if have default, must split
+alter table jjj add partition j5 end (date '2010-01-01');
+
+drop table jjj cascade;
+
 alter table hhh alter partition cc set tablespace foo;
 
 alter table hhh alter partition aa set tablespace foo;
@@ -732,6 +770,44 @@ alter table hhh drop partition cc cascade;
 alter table hhh drop partition cc restrict;
 
 alter table hhh drop partition if exists cc;
+
+--  the documentation example, rewritten with EVERY in a template
+CREATE TABLE rank (id int,
+rank int, year date, gender char(1))
+DISTRIBUTED BY (id, gender, year)
+partition by list (gender)
+subpartition by range (year)
+subpartition template (
+start (date '2001-01-01')
+end (date '2006-01-01') every (interval '1 year')) (
+partition boys values ('M'),
+partition girls values ('F'),
+default partition neuter
+);
+
+insert into rank values (1, 1, date '2001-01-15', 'M');
+insert into rank values (2, 1, date '2002-02-15', 'M');
+insert into rank values (3, 1, date '2003-03-15', 'M');
+insert into rank values (4, 1, date '2004-04-15', 'M');
+insert into rank values (5, 1, date '2005-05-15', 'M');
+insert into rank values (6, 1, date '2001-01-15', 'F');
+insert into rank values (7, 1, date '2002-02-15', 'F');
+insert into rank values (8, 1, date '2003-03-15', 'F');
+insert into rank values (9, 1, date '2004-04-15', 'F');
+insert into rank values (10, 1, date '2005-05-15', 'F');
+
+
+select * from rank ;
+
+alter table rank DROP partition boys restrict;
+
+select * from rank ;
+
+alter table rank DROP partition if exists neuter;
+
+alter table rank DROP partition girls;
+
+drop table rank cascade;
 
 alter table hhh exchange partition cc with table nosuchtable with validation;
 
@@ -767,4 +843,96 @@ alter table hhh truncate partition cc;
 
 alter table hhh truncate partition aa;
 
+insert into hhh values('a', date '2007-01-02', 'b');
+insert into hhh values('a', date '2007-02-01', 'b');
+insert into hhh values('a', date '2007-03-01', 'b');
+insert into hhh values('a', date '2007-04-01', 'b');
+insert into hhh values('a', date '2007-05-01', 'b');
+insert into hhh values('a', date '2007-06-01', 'b');
+insert into hhh values('a', date '2007-07-01', 'b');
+insert into hhh values('a', date '2007-08-01', 'b');
+insert into hhh values('a', date '2007-09-01', 'b');
+insert into hhh values('a', date '2007-10-01', 'b');
+insert into hhh values('a', date '2007-11-01', 'b');
+insert into hhh values('a', date '2007-12-01', 'b');
+insert into hhh values('a', date '2008-01-02', 'b');
+insert into hhh values('a', date '2008-02-01', 'b');
+insert into hhh values('a', date '2008-03-01', 'b');
+insert into hhh values('a', date '2008-04-01', 'b');
+insert into hhh values('a', date '2008-05-01', 'b');
+insert into hhh values('a', date '2008-06-01', 'b');
+insert into hhh values('a', date '2008-07-01', 'b');
+insert into hhh values('a', date '2008-08-01', 'b');
+insert into hhh values('a', date '2008-09-01', 'b');
+insert into hhh values('a', date '2008-10-01', 'b');
+insert into hhh values('a', date '2008-11-01', 'b');
+insert into hhh values('a', date '2008-12-01', 'b');
+
+select * from hhh;
+
+alter table hhh truncate partition aa;
+
+select * from hhh;
+
+alter table hhh truncate partition bb;
+
+select * from hhh;
+
+insert into hhh values('a', date '2007-01-02', 'b');
+insert into hhh values('a', date '2007-02-01', 'b');
+insert into hhh values('a', date '2007-03-01', 'b');
+insert into hhh values('a', date '2007-04-01', 'b');
+insert into hhh values('a', date '2007-05-01', 'b');
+insert into hhh values('a', date '2007-06-01', 'b');
+insert into hhh values('a', date '2007-07-01', 'b');
+insert into hhh values('a', date '2007-08-01', 'b');
+insert into hhh values('a', date '2007-09-01', 'b');
+insert into hhh values('a', date '2007-10-01', 'b');
+insert into hhh values('a', date '2007-11-01', 'b');
+insert into hhh values('a', date '2007-12-01', 'b');
+insert into hhh values('a', date '2008-01-02', 'b');
+insert into hhh values('a', date '2008-02-01', 'b');
+insert into hhh values('a', date '2008-03-01', 'b');
+insert into hhh values('a', date '2008-04-01', 'b');
+insert into hhh values('a', date '2008-05-01', 'b');
+insert into hhh values('a', date '2008-06-01', 'b');
+insert into hhh values('a', date '2008-07-01', 'b');
+insert into hhh values('a', date '2008-08-01', 'b');
+insert into hhh values('a', date '2008-09-01', 'b');
+insert into hhh values('a', date '2008-10-01', 'b');
+insert into hhh values('a', date '2008-11-01', 'b');
+insert into hhh values('a', date '2008-12-01', 'b');
+
+select * from hhh;
+
+-- truncate child partitions recursively
+truncate table hhh;
+
+select * from hhh;
+
+
 drop table hhh cascade;
+
+-- default partitions
+
+-- hash partitions cannot have default partitions
+create table jjj (aa int, bb int) 
+partition by hash(bb) 
+(partition j1, partition j2, default partition j3);
+
+-- default partitions cannot have boundary specifications
+create table jjj (aa int, bb date) 
+partition by range(bb) 
+(partition j1 end (date '2008-01-01'), 
+partition j2 end (date '2009-01-01'), 
+default partition j3 end (date '2010-01-01'));
+
+-- more than one default partition
+create table jjj (aa int, bb date) 
+partition by range(bb) 
+(partition j1 end (date '2008-01-01'), 
+partition j2 end (date '2009-01-01'), 
+default partition j3,
+default partition j4);
+
+

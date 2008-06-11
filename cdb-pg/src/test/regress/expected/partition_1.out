@@ -1923,6 +1923,143 @@ ERROR:  cannot SPLIT PARTITION for relation "hhh"
 alter table hhh truncate partition cc;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh truncate partition aa;
+insert into hhh values('a', date '2007-01-02', 'b');
+insert into hhh values('a', date '2007-02-01', 'b');
+insert into hhh values('a', date '2007-03-01', 'b');
+insert into hhh values('a', date '2007-04-01', 'b');
+insert into hhh values('a', date '2007-05-01', 'b');
+insert into hhh values('a', date '2007-06-01', 'b');
+insert into hhh values('a', date '2007-07-01', 'b');
+insert into hhh values('a', date '2007-08-01', 'b');
+insert into hhh values('a', date '2007-09-01', 'b');
+insert into hhh values('a', date '2007-10-01', 'b');
+insert into hhh values('a', date '2007-11-01', 'b');
+insert into hhh values('a', date '2007-12-01', 'b');
+insert into hhh values('a', date '2008-01-02', 'b');
+insert into hhh values('a', date '2008-02-01', 'b');
+insert into hhh values('a', date '2008-03-01', 'b');
+insert into hhh values('a', date '2008-04-01', 'b');
+insert into hhh values('a', date '2008-05-01', 'b');
+insert into hhh values('a', date '2008-06-01', 'b');
+insert into hhh values('a', date '2008-07-01', 'b');
+insert into hhh values('a', date '2008-08-01', 'b');
+insert into hhh values('a', date '2008-09-01', 'b');
+insert into hhh values('a', date '2008-10-01', 'b');
+insert into hhh values('a', date '2008-11-01', 'b');
+insert into hhh values('a', date '2008-12-01', 'b');
+select * from hhh;
+ a |     b      |  d  
+---+------------+-----
+ a | 01-02-2007 | b  
+ a | 02-01-2007 | b  
+ a | 03-01-2007 | b  
+ a | 04-01-2007 | b  
+ a | 05-01-2007 | b  
+ a | 06-01-2007 | b  
+ a | 07-01-2007 | b  
+ a | 08-01-2007 | b  
+ a | 09-01-2007 | b  
+ a | 10-01-2007 | b  
+ a | 11-01-2007 | b  
+ a | 12-01-2007 | b  
+ a | 01-02-2008 | b  
+ a | 02-01-2008 | b  
+ a | 03-01-2008 | b  
+ a | 04-01-2008 | b  
+ a | 05-01-2008 | b  
+ a | 06-01-2008 | b  
+ a | 07-01-2008 | b  
+ a | 08-01-2008 | b  
+ a | 09-01-2008 | b  
+ a | 10-01-2008 | b  
+ a | 11-01-2008 | b  
+ a | 12-01-2008 | b  
+(24 rows)
+
+alter table hhh truncate partition aa;
+select * from hhh;
+ a |     b      |  d  
+---+------------+-----
+ a | 01-02-2008 | b  
+ a | 02-01-2008 | b  
+ a | 03-01-2008 | b  
+ a | 04-01-2008 | b  
+ a | 05-01-2008 | b  
+ a | 06-01-2008 | b  
+ a | 07-01-2008 | b  
+ a | 08-01-2008 | b  
+ a | 09-01-2008 | b  
+ a | 10-01-2008 | b  
+ a | 11-01-2008 | b  
+ a | 12-01-2008 | b  
+(12 rows)
+
+alter table hhh truncate partition bb;
+select * from hhh;
+ a | b | d 
+---+---+---
+(0 rows)
+
+insert into hhh values('a', date '2007-01-02', 'b');
+insert into hhh values('a', date '2007-02-01', 'b');
+insert into hhh values('a', date '2007-03-01', 'b');
+insert into hhh values('a', date '2007-04-01', 'b');
+insert into hhh values('a', date '2007-05-01', 'b');
+insert into hhh values('a', date '2007-06-01', 'b');
+insert into hhh values('a', date '2007-07-01', 'b');
+insert into hhh values('a', date '2007-08-01', 'b');
+insert into hhh values('a', date '2007-09-01', 'b');
+insert into hhh values('a', date '2007-10-01', 'b');
+insert into hhh values('a', date '2007-11-01', 'b');
+insert into hhh values('a', date '2007-12-01', 'b');
+insert into hhh values('a', date '2008-01-02', 'b');
+insert into hhh values('a', date '2008-02-01', 'b');
+insert into hhh values('a', date '2008-03-01', 'b');
+insert into hhh values('a', date '2008-04-01', 'b');
+insert into hhh values('a', date '2008-05-01', 'b');
+insert into hhh values('a', date '2008-06-01', 'b');
+insert into hhh values('a', date '2008-07-01', 'b');
+insert into hhh values('a', date '2008-08-01', 'b');
+insert into hhh values('a', date '2008-09-01', 'b');
+insert into hhh values('a', date '2008-10-01', 'b');
+insert into hhh values('a', date '2008-11-01', 'b');
+insert into hhh values('a', date '2008-12-01', 'b');
+select * from hhh;
+ a |     b      |  d  
+---+------------+-----
+ a | 01-02-2007 | b  
+ a | 02-01-2007 | b  
+ a | 03-01-2007 | b  
+ a | 04-01-2007 | b  
+ a | 05-01-2007 | b  
+ a | 06-01-2007 | b  
+ a | 07-01-2007 | b  
+ a | 08-01-2007 | b  
+ a | 09-01-2007 | b  
+ a | 10-01-2007 | b  
+ a | 11-01-2007 | b  
+ a | 12-01-2007 | b  
+ a | 01-02-2008 | b  
+ a | 02-01-2008 | b  
+ a | 03-01-2008 | b  
+ a | 04-01-2008 | b  
+ a | 05-01-2008 | b  
+ a | 06-01-2008 | b  
+ a | 07-01-2008 | b  
+ a | 08-01-2008 | b  
+ a | 09-01-2008 | b  
+ a | 10-01-2008 | b  
+ a | 11-01-2008 | b  
+ a | 12-01-2008 | b  
+(24 rows)
+
+-- truncate child partitions recursively
+truncate table hhh;
+select * from hhh;
+ a | b | d 
+---+---+---
+(0 rows)
+
 drop table hhh cascade;
 NOTICE:  drop cascades to table hhh_1_prt_bb
 NOTICE:  drop cascades to constraint hhh_1_prt_bb_check on table hhh_1_prt_bb

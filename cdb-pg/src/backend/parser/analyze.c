@@ -8433,6 +8433,30 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 				newcmds = lappend(newcmds, cmd);
 				break;
 
+			/* CDB: Partitioned Tables */
+            case AT_PartAdd:				/* Add */
+            case AT_PartAlter:				/* Alter */
+            case AT_PartCoalesce:			/* Coalesce */
+            case AT_PartDrop:				/* Drop */
+            case AT_PartExchange:			/* Exchange */
+            case AT_PartMerge:				/* Merge */
+            case AT_PartModify:				/* Modify */
+            case AT_PartRename:				/* Rename */
+            case AT_PartSetTemplate:		/* Set Subpartition Template */
+            case AT_PartSplit:				/* Split */
+            case AT_PartTruncate:			/* Truncate */
+			{
+				AlterPartitionCmd *pc  = (AlterPartitionCmd *) cmd->def;
+				AlterPartitionId  *pid = (AlterPartitionId *)pc->partid;
+
+				if (pid && (pid->idtype == AT_AP_IDValue))
+				{
+					List *vallist = (List *)pid->partiddef;
+					pid->partiddef = 
+							(Node *)transformExpressionList(pstate, vallist);
+				}
+				
+			}
 			default:
 				newcmds = lappend(newcmds, cmd);
 				break;

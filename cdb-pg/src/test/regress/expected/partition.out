@@ -1481,7 +1481,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3442)  (seg1 localhost:11003 pid=15319)
+ERROR:  no partition for partitioning key (execMain.c:3442)  (seg1 localhost:11003 pid=13067)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1868,6 +1868,80 @@ alter table hhh add partition aa;
 ERROR:  partition "aa" of relation "hhh" already exists
 alter table hhh add partition cc;
 ERROR:  cannot ADD PARTITION to relation "hhh"
+-- hash partitions cannot have default partitions
+create table jjj (aa int, bb int) 
+partition by hash(bb) 
+(partition j1, partition j2);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j1" for table "jjj"
+NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j2" for table "jjj"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+alter table jjj add default partition;
+ERROR:  Can only ADD a DEFAULT partition by name
+drop table jjj cascade;
+NOTICE:  drop cascades to table jjj_1_prt_j2
+NOTICE:  drop cascades to table jjj_1_prt_j1
+-- default partitions cannot have boundary specifications
+create table jjj (aa int, bb date) 
+partition by range(bb) 
+(partition j1 end (date '2008-01-01'), 
+partition j2 end (date '2009-01-01'));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j1" for table "jjj"
+NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j2" for table "jjj"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+-- must have a name
+alter table jjj add default partition;
+ERROR:  Can only ADD a DEFAULT partition by name
+alter table jjj add default partition for (position(1));
+ERROR:  Can only ADD a partition by name
+-- cannot have boundary spec
+alter table jjj add default partition j3 end (date '2010-01-01');
+ERROR:  invalid use of boundary specification for DEFAULT partition "j3" of relation "jjj"
+drop table jjj cascade;
+NOTICE:  drop cascades to table jjj_1_prt_j2
+NOTICE:  drop cascades to constraint jjj_1_prt_j2_check on table jjj_1_prt_j2
+NOTICE:  drop cascades to table jjj_1_prt_j1
+NOTICE:  drop cascades to constraint jjj_1_prt_j1_check on table jjj_1_prt_j1
+-- only one default partition
+create table jjj (aa int, bb date) 
+partition by range(bb) 
+(partition j1 end (date '2008-01-01'), 
+partition j2 end (date '2009-01-01'),
+default partition j3);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j1" for table "jjj"
+NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j2" for table "jjj"
+NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j3" for table "jjj"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+alter table jjj add default partition j3 ;
+ERROR:  partition "j3" of relation "jjj" already exists
+alter table jjj add default partition j4 ;
+ERROR:  DEFAULT partition "j3" for relation "jjj" already exists
+-- cannot add if have default, must split
+alter table jjj add partition j5 end (date '2010-01-01');
+ERROR:  cannot ADD RANGE partition "j5" to relation "jjj" with DEFAULT partition "j3"
+HINT:  need to SPLIT partition "j3"
+drop table jjj cascade;
+NOTICE:  drop cascades to table jjj_1_prt_j3
+NOTICE:  drop cascades to table jjj_1_prt_j2
+NOTICE:  drop cascades to constraint jjj_1_prt_j2_check on table jjj_1_prt_j2
+NOTICE:  drop cascades to table jjj_1_prt_j1
+NOTICE:  drop cascades to constraint jjj_1_prt_j1_check on table jjj_1_prt_j1
 alter table hhh alter partition cc set tablespace foo;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh alter partition aa set tablespace foo;
@@ -1884,6 +1958,95 @@ alter table hhh drop partition cc restrict;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh drop partition if exists cc;
 NOTICE:  partition "cc" of relation "hhh" does not exist, skipping
+--  the documentation example, rewritten with EVERY in a template
+CREATE TABLE rank (id int,
+rank int, year date, gender char(1))
+DISTRIBUTED BY (id, gender, year)
+partition by list (gender)
+subpartition by range (year)
+subpartition template (
+start (date '2001-01-01')
+end (date '2006-01-01') every (interval '1 year')) (
+partition boys values ('M'),
+partition girls values ('F'),
+default partition neuter
+);
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_neuter" for table "rank"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_1" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_2" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_3" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_4" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_boys_2_prt_5" for table "rank_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_1" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_2" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_3" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_4" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_girls_2_prt_5" for table "rank_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_neuter_2_prt_1" for table "rank_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_neuter_2_prt_2" for table "rank_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_neuter_2_prt_3" for table "rank_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_neuter_2_prt_4" for table "rank_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank_1_prt_neuter_2_prt_5" for table "rank_1_prt_neuter"
+insert into rank values (1, 1, date '2001-01-15', 'M');
+insert into rank values (2, 1, date '2002-02-15', 'M');
+insert into rank values (3, 1, date '2003-03-15', 'M');
+insert into rank values (4, 1, date '2004-04-15', 'M');
+insert into rank values (5, 1, date '2005-05-15', 'M');
+insert into rank values (6, 1, date '2001-01-15', 'F');
+insert into rank values (7, 1, date '2002-02-15', 'F');
+insert into rank values (8, 1, date '2003-03-15', 'F');
+insert into rank values (9, 1, date '2004-04-15', 'F');
+insert into rank values (10, 1, date '2005-05-15', 'F');
+select * from rank ;
+ id | rank |    year    | gender 
+----+------+------------+--------
+  1 |    1 | 01-15-2001 | M
+  3 |    1 | 03-15-2003 | M
+  4 |    1 | 04-15-2004 | M
+  6 |    1 | 01-15-2001 | F
+  8 |    1 | 03-15-2003 | F
+  9 |    1 | 04-15-2004 | F
+  2 |    1 | 02-15-2002 | M
+  5 |    1 | 05-15-2005 | M
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
+(10 rows)
+
+alter table rank DROP partition boys restrict;
+select * from rank ;
+ id | rank |    year    | gender 
+----+------+------------+--------
+  6 |    1 | 01-15-2001 | F
+  8 |    1 | 03-15-2003 | F
+  9 |    1 | 04-15-2004 | F
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
+(5 rows)
+
+alter table rank DROP partition if exists neuter;
+alter table rank DROP partition girls;
+ERROR:  cannot drop partition "girls" of relation "rank"-- only one remains
+HINT:  Use DROP TABLE "rank" to remove the table and the final partition
+drop table rank cascade;
+NOTICE:  drop cascades to table rank_1_prt_girls
+NOTICE:  drop cascades to table rank_1_prt_girls_2_prt_5
+NOTICE:  drop cascades to constraint rank_1_prt_girls_2_prt_5_check on table rank_1_prt_girls_2_prt_5
+NOTICE:  drop cascades to constraint rank_1_prt_girls_check on table rank_1_prt_girls_2_prt_5
+NOTICE:  drop cascades to table rank_1_prt_girls_2_prt_4
+NOTICE:  drop cascades to constraint rank_1_prt_girls_2_prt_4_check on table rank_1_prt_girls_2_prt_4
+NOTICE:  drop cascades to constraint rank_1_prt_girls_check on table rank_1_prt_girls_2_prt_4
+NOTICE:  drop cascades to table rank_1_prt_girls_2_prt_3
+NOTICE:  drop cascades to constraint rank_1_prt_girls_2_prt_3_check on table rank_1_prt_girls_2_prt_3
+NOTICE:  drop cascades to constraint rank_1_prt_girls_check on table rank_1_prt_girls_2_prt_3
+NOTICE:  drop cascades to table rank_1_prt_girls_2_prt_2
+NOTICE:  drop cascades to constraint rank_1_prt_girls_2_prt_2_check on table rank_1_prt_girls_2_prt_2
+NOTICE:  drop cascades to constraint rank_1_prt_girls_check on table rank_1_prt_girls_2_prt_2
+NOTICE:  drop cascades to table rank_1_prt_girls_2_prt_1
+NOTICE:  drop cascades to constraint rank_1_prt_girls_2_prt_1_check on table rank_1_prt_girls_2_prt_1
+NOTICE:  drop cascades to constraint rank_1_prt_girls_check on table rank_1_prt_girls_2_prt_1
+NOTICE:  drop cascades to constraint rank_1_prt_girls_check on table rank_1_prt_girls
 alter table hhh exchange partition cc with table nosuchtable with validation;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh exchange partition cc with table nosuchtable without validation;
@@ -1923,8 +2086,178 @@ ERROR:  cannot SPLIT PARTITION for relation "hhh"
 alter table hhh truncate partition cc;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh truncate partition aa;
+insert into hhh values('a', date '2007-01-02', 'b');
+insert into hhh values('a', date '2007-02-01', 'b');
+insert into hhh values('a', date '2007-03-01', 'b');
+insert into hhh values('a', date '2007-04-01', 'b');
+insert into hhh values('a', date '2007-05-01', 'b');
+insert into hhh values('a', date '2007-06-01', 'b');
+insert into hhh values('a', date '2007-07-01', 'b');
+insert into hhh values('a', date '2007-08-01', 'b');
+insert into hhh values('a', date '2007-09-01', 'b');
+insert into hhh values('a', date '2007-10-01', 'b');
+insert into hhh values('a', date '2007-11-01', 'b');
+insert into hhh values('a', date '2007-12-01', 'b');
+insert into hhh values('a', date '2008-01-02', 'b');
+insert into hhh values('a', date '2008-02-01', 'b');
+insert into hhh values('a', date '2008-03-01', 'b');
+insert into hhh values('a', date '2008-04-01', 'b');
+insert into hhh values('a', date '2008-05-01', 'b');
+insert into hhh values('a', date '2008-06-01', 'b');
+insert into hhh values('a', date '2008-07-01', 'b');
+insert into hhh values('a', date '2008-08-01', 'b');
+insert into hhh values('a', date '2008-09-01', 'b');
+insert into hhh values('a', date '2008-10-01', 'b');
+insert into hhh values('a', date '2008-11-01', 'b');
+insert into hhh values('a', date '2008-12-01', 'b');
+select * from hhh;
+ a |     b      |  d  
+---+------------+-----
+ a | 01-02-2007 | b  
+ a | 02-01-2007 | b  
+ a | 03-01-2007 | b  
+ a | 04-01-2007 | b  
+ a | 05-01-2007 | b  
+ a | 06-01-2007 | b  
+ a | 07-01-2007 | b  
+ a | 08-01-2007 | b  
+ a | 09-01-2007 | b  
+ a | 10-01-2007 | b  
+ a | 11-01-2007 | b  
+ a | 12-01-2007 | b  
+ a | 01-02-2008 | b  
+ a | 02-01-2008 | b  
+ a | 03-01-2008 | b  
+ a | 04-01-2008 | b  
+ a | 05-01-2008 | b  
+ a | 06-01-2008 | b  
+ a | 07-01-2008 | b  
+ a | 08-01-2008 | b  
+ a | 09-01-2008 | b  
+ a | 10-01-2008 | b  
+ a | 11-01-2008 | b  
+ a | 12-01-2008 | b  
+(24 rows)
+
+alter table hhh truncate partition aa;
+select * from hhh;
+ a |     b      |  d  
+---+------------+-----
+ a | 01-02-2008 | b  
+ a | 02-01-2008 | b  
+ a | 03-01-2008 | b  
+ a | 04-01-2008 | b  
+ a | 05-01-2008 | b  
+ a | 06-01-2008 | b  
+ a | 07-01-2008 | b  
+ a | 08-01-2008 | b  
+ a | 09-01-2008 | b  
+ a | 10-01-2008 | b  
+ a | 11-01-2008 | b  
+ a | 12-01-2008 | b  
+(12 rows)
+
+alter table hhh truncate partition bb;
+select * from hhh;
+ a | b | d 
+---+---+---
+(0 rows)
+
+insert into hhh values('a', date '2007-01-02', 'b');
+insert into hhh values('a', date '2007-02-01', 'b');
+insert into hhh values('a', date '2007-03-01', 'b');
+insert into hhh values('a', date '2007-04-01', 'b');
+insert into hhh values('a', date '2007-05-01', 'b');
+insert into hhh values('a', date '2007-06-01', 'b');
+insert into hhh values('a', date '2007-07-01', 'b');
+insert into hhh values('a', date '2007-08-01', 'b');
+insert into hhh values('a', date '2007-09-01', 'b');
+insert into hhh values('a', date '2007-10-01', 'b');
+insert into hhh values('a', date '2007-11-01', 'b');
+insert into hhh values('a', date '2007-12-01', 'b');
+insert into hhh values('a', date '2008-01-02', 'b');
+insert into hhh values('a', date '2008-02-01', 'b');
+insert into hhh values('a', date '2008-03-01', 'b');
+insert into hhh values('a', date '2008-04-01', 'b');
+insert into hhh values('a', date '2008-05-01', 'b');
+insert into hhh values('a', date '2008-06-01', 'b');
+insert into hhh values('a', date '2008-07-01', 'b');
+insert into hhh values('a', date '2008-08-01', 'b');
+insert into hhh values('a', date '2008-09-01', 'b');
+insert into hhh values('a', date '2008-10-01', 'b');
+insert into hhh values('a', date '2008-11-01', 'b');
+insert into hhh values('a', date '2008-12-01', 'b');
+select * from hhh;
+ a |     b      |  d  
+---+------------+-----
+ a | 01-02-2007 | b  
+ a | 02-01-2007 | b  
+ a | 03-01-2007 | b  
+ a | 04-01-2007 | b  
+ a | 05-01-2007 | b  
+ a | 06-01-2007 | b  
+ a | 07-01-2007 | b  
+ a | 08-01-2007 | b  
+ a | 09-01-2007 | b  
+ a | 10-01-2007 | b  
+ a | 11-01-2007 | b  
+ a | 12-01-2007 | b  
+ a | 01-02-2008 | b  
+ a | 02-01-2008 | b  
+ a | 03-01-2008 | b  
+ a | 04-01-2008 | b  
+ a | 05-01-2008 | b  
+ a | 06-01-2008 | b  
+ a | 07-01-2008 | b  
+ a | 08-01-2008 | b  
+ a | 09-01-2008 | b  
+ a | 10-01-2008 | b  
+ a | 11-01-2008 | b  
+ a | 12-01-2008 | b  
+(24 rows)
+
+-- truncate child partitions recursively
+truncate table hhh;
+select * from hhh;
+ a | b | d 
+---+---+---
+(0 rows)
+
 drop table hhh cascade;
 NOTICE:  drop cascades to table hhh_1_prt_bb
 NOTICE:  drop cascades to constraint hhh_1_prt_bb_check on table hhh_1_prt_bb
 NOTICE:  drop cascades to append only table hhh_1_prt_aa
 NOTICE:  drop cascades to constraint hhh_1_prt_aa_check on append only table hhh_1_prt_aa
+-- default partitions
+-- hash partitions cannot have default partitions
+create table jjj (aa int, bb int) 
+partition by hash(bb) 
+(partition j1, partition j2, default partition j3);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ERROR:  invalid use of DEFAULT partition for partition "j3" of type HASH
+LINE 3: (partition j1, partition j2, default partition j3);
+                                     ^
+-- default partitions cannot have boundary specifications
+create table jjj (aa int, bb date) 
+partition by range(bb) 
+(partition j1 end (date '2008-01-01'), 
+partition j2 end (date '2009-01-01'), 
+default partition j3 end (date '2010-01-01'));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ERROR:  invalid use of boundary specification for DEFAULT partition "j3"
+LINE 5: default partition j3 end (date '2010-01-01'));
+        ^
+-- more than one default partition
+create table jjj (aa int, bb date) 
+partition by range(bb) 
+(partition j1 end (date '2008-01-01'), 
+partition j2 end (date '2009-01-01'), 
+default partition j3,
+default partition j4);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ERROR:  More than one DEFAULT partition for partition "j4"
+LINE 6: default partition j4);
+        ^
