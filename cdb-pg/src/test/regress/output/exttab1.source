@@ -19,6 +19,12 @@ FORMAT 'text' (delimiter '|');
 -- drop tables
 DROP EXTERNAL TABLE EXT_NATION;
 DROP EXTERNAL TABLE EXT_REGION;
+-- start_ignore
+-- --------------------------------------
+-- check platform
+-- --------------------------------------
+bla bla bla
+-- end_ignore
 -- --------------------------------------
 -- 'gpfdist' protocol
 -- --------------------------------------
@@ -365,6 +371,8 @@ drop external table gpfdist_status;
 drop external table gpfdist_start;
 drop external table gpfdist_csv_start;
 drop external table gpfdist_stop;
+drop external table check_ps;
+drop external table check_env;
 -- Tests for MPP-2513: dropping an external table must result in the deletion
 -- of the relation pg_exttable row. This was done when using drop external
 -- table but not drop schema cascade;

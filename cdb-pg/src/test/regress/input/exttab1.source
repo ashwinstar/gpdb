@@ -24,9 +24,33 @@ FORMAT 'text' (delimiter '|');
 DROP EXTERNAL TABLE EXT_NATION;
 DROP EXTERNAL TABLE EXT_REGION;
 
+
+-- start_ignore
+-- --------------------------------------
+-- check platform
+-- --------------------------------------
+drop external web table if exists check_ps;
+CREATE EXTERNAL WEB TABLE check_ps (x text)
+execute E'( (ps -ef || ps -aux) | grep gpfdist )'
+on SEGMENT 0
+format 'text';
+
+drop external web table if exists check_env;
+CREATE EXTERNAL WEB TABLE check_env (x text)
+execute E'( env | sort)'
+on SEGMENT 0
+format 'text';
+
+select * from check_ps;
+select * from check_env;
+
+-- end_ignore
+
+
 -- --------------------------------------
 -- 'gpfdist' protocol
 -- --------------------------------------
+
 CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
 execute E'( python $GPHOME/bin/lib/gppinggpfdist.py -q localhost:7070 && echo "gpfdist is running" || echo "gpfdist is not running") '
 on SEGMENT 0
@@ -232,7 +256,8 @@ drop external table gpfdist_status;
 drop external table gpfdist_start;
 drop external table gpfdist_csv_start;
 drop external table gpfdist_stop;
-
+drop external table check_ps;
+drop external table check_env;
 -- Tests for MPP-2513: dropping an external table must result in the deletion
 -- of the relation pg_exttable row. This was done when using drop external
 -- table but not drop schema cascade;
