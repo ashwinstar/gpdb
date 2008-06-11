@@ -258,6 +258,7 @@ static apr_status_t a_lma_leader_renew(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     int e;
 
+    gpcc_log_info("start renewing the lease");
     e = chubby_connection_asynchronous_renew(slot->u.lma.chubby.lease,
 					     chubby_renew_cb,
 					     (void *) &slot->cmdidx,
