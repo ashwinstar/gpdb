@@ -223,6 +223,18 @@ def do_solaris(res):
         if i.startswith('Solaris 10'):
             res['solaris.release'] = i
 
+def do_zfs(res):
+    (ok, out) = run('/sbin/zpool list -H')
+    if ok and len(out) == 1:
+        r = out[0].split()
+        if len(r) == 7:
+            res['zfs.health'] = r[5].strip()
+            (ok, out) = run('/sbin/zfs get -H checksum %s' % r[0])
+            if ok and len(out) == 1:
+                r = out[0].split()
+                if len(r) == 4:
+                    res['zfs.checksum'] = r[2].strip()
+
 
 parseCommandLine()
 res = {}
@@ -235,6 +247,7 @@ do_platform(res)
 do_sync(res)
 system = res['platform.system']
 if system == 'sunos':
+    do_zfs(res)
     do_system(res)
     do_ndd(res)
     do_solaris(res)
