@@ -3062,7 +3062,6 @@ static Node *
 pre_dispatch_function_evaluation_mutator(Node *node,
 						  pre_dispatch_function_evaluation_context * context)
 {
-	List * savetargets = NIL;
 	Node * new_node = 0;
 	
 	if (node == NULL)
@@ -3297,29 +3296,9 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 	 * plan_tree_mutator, which will copy the node unchanged but try to
 	 * simplify its arguments (if any) using this routine.
 	 */
-	
-	savetargets = NIL;
-		
-	if (is_plan_node(node) &&
-		!is_projection_capable_plan((Plan *)node))
-	{
-		/*
-		 * don't do targetlists in nodes where the targetlist isn't used.  Hide them from the mutator
-		 */
-		savetargets = ((Plan *)node)->targetlist;
-		((Plan *)node)->targetlist = NIL;
-	}
-
 	new_node =  plan_tree_mutator(node, pre_dispatch_function_evaluation_mutator,
 													 (void *) context);
 
-	if (savetargets != NIL)
-	{
-		((Plan *)node)->targetlist = savetargets;
-		((Plan *)new_node)->targetlist = savetargets;
-	}
-			
-		
 	return new_node;
 }
 
@@ -3782,26 +3761,11 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	{
 
 		MemoryContext oldContext;
-		List * savetargets = NIL;
-		Plan * oldplan = NULL;
+
 		/*
 		 * The Query tree doesn't have to be mutated here, since it isn't used during
 		 * the execution.
 		 */
-		
-		savetargets = NIL;
-		
-		if (is_plan_node((Node *)queryDesc->plantree) &&
-			!is_projection_capable_plan((Plan *)queryDesc->plantree))
-		{
-			/*
-			 * don't do targetlists in nodes where the targetlist isn't used.  Hide them from the mutator
-			 */
-			savetargets = queryDesc->plantree->targetlist;
-			queryDesc->plantree->targetlist = NIL;
-			oldplan = queryDesc->plantree;
-		}
-
 		oldContext = CurrentMemoryContext;
 		if (CurrentMemoryContext == TopMemoryContext || CurrentMemoryContext == DispatchContext)
 		{
@@ -3819,14 +3783,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 									pre_dispatch_function_evaluation_mutator,
 														 &pcontext);
 														
-		if (savetargets != NIL)
-		{
-			queryDesc->plantree->targetlist = savetargets;
-			oldplan->targetlist = savetargets;
-		}
-		
 		MemoryContextSwitchTo(oldContext);
-
 	}
 
 
