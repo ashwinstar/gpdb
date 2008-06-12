@@ -1,16 +1,29 @@
 #!/usr/bin/env python
 import os
+import socket
 import sys
 
 def usage():
     sys.stderr.write("usage:\n")
-    sys.stderr.write("    python "+sys.argv[0]+" -d data_directory [-p port]\n")
+    sys.stderr.write("    python "+sys.argv[0]+" -d data_directory [-p port] [-computers host1:port1,...\n")
     sys.exit(1)
 
+def normalize(address):
+    hostandport = address.split(':')
+    if len(hostandport)!=2:
+	sys.stderr.write("You must specify computer as host:port.\n")
+	sys.exit(1)
+    try:
+	a = socket.gethostbyname(hostandport[0])
+    except:
+	sys.stderr.write("gethostbyname(%s) failed.\n"%hostandport[0])
+	sys.exit(1)
+    return "%s:%d"%(a,int(hostandport[1]))
 
 def main():
     datadir = None
     argv = sys.argv[1:]
+    computers = None
     port = 2000
     while argv:
 	a = argv.pop(0)
@@ -18,6 +31,8 @@ def main():
 	    datadir = argv.pop(0)
 	elif a=='-p':
 	    port = int(argv.pop(0))
+	elif a=='-computers':
+	    computers = argv.pop(0).split(',')
 	else:
 	    usage()
     if datadir==None:
@@ -27,7 +42,11 @@ def main():
 	os.makedirs("Priest-0/data")
     except OSError:
 	pass
-    open("Priest-0/data/start","wb").close()
-    os.execl("/bin/sh","/bin/sh","-c","exec python -u $GPHOME/bin/lib/paxos/main.pyc test -port %d"%port)
+    if not computers:
+	computers = ["%s:%d"%(socket.gethostname(),port)]
+    computers = sorted(map(normalize,computers))
+    if normalize("%s:%d"%(socket.gethostname(),port))==computers[0]:
+	open("Priest-0/data/start","wb").close()
+    os.execl("/bin/sh","/bin/sh","-c","exec python -u $GPHOME/bin/lib/paxos/main.pyc test -port %d -computers '%s'"%(port,','.join(computers)))
 
 main()

@@ -19,6 +19,7 @@ def test(argv):
     simple_messenger = False
     verbose = False
     port = 2000
+    computers = None
     while argv:
 	opt = argv.pop(0)
 	if opt=="-npriest":
@@ -27,6 +28,8 @@ def test(argv):
 	    ntester = int(argv.pop(0))
 	elif opt=="-simple-messenger":
 	    simple_messenger = True
+	elif opt=="-computers":
+	    computers = argv.pop(0).split(',')
 	elif opt=="-verbose":
 	    verbose = True
 	elif opt=="-port":
@@ -36,10 +39,14 @@ def test(argv):
     m = simple_messenger and SimpleMessenger() or UdpMessenger()
     if verbose:
 	m.setDisableLog(False)
-    priests = []
     hostname = socket.gethostbyname(socket.gethostname())
-    for i in xrange(npriest):
-	priests.append(hostname+":"+str(port+i))
+    if not computers:
+	computers = ["%s:%p"%(hostname,port)]
+    priests = []
+    for a in computers:
+	hostandport = a.split(':')
+	for i in xrange(npriest):
+	    priests.append("%s:%d"%(hostandport[0],int(hostandport[1])+i))
     priests = ",".join(priests)
     for i in xrange(npriest):
 	sb = ["priests="+priests]
