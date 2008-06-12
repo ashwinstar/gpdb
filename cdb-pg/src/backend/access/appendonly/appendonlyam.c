@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 #include "access/appendonlyam.h"
+#include "access/aomd.h"
 #include "access/heapam.h"
 #include "access/hio.h"
 #include "access/multixact.h"
@@ -91,9 +92,9 @@ static void
 doScanInit(AppendOnlyScanDesc scan)
 {
 	Relation	reln = scan->aos_rd;
-	char		*path;
 	FileSegInfo *fsinfo;
 	int64		eof;
+	BlockNumber segno = 0; /* for now we only have one file segment... */
 	MemoryContext oldcontext;
 	
 	/*
@@ -147,29 +148,11 @@ doScanInit(AppendOnlyScanDesc scan)
 		scan->aos_bufread_inited = true;
 	}
 	
-	/* cache the relfilenode value */
-	scan->aos_relfilenode = reln->rd_node.relNode;
-	Assert(scan->aos_relfilenode != InvalidOid);
-	
-	/* Get path for this relation file */
-	path = relpath(reln->rd_node);
-
-	/*
-	 * Open the relation file
-	 *
-	 * Note: because we use BasicOpenFile(), we are responsible for ensuring
-	 * the FD gets closed in any error exit path.  
-	 */
-	scan->aos_file = BasicOpenFile(path, O_RDWR | PG_BINARY, 0600);
-	
-	if(scan->aos_file < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not open file \"%s\"", path)));
-	
+	/* Open this file 'segment' */
+	scan->aos_file = OpenAOSegmentFile(reln, segno);	
 	
 	/* Get the eof of this relation file from the pg_aoseg_* table */
-	fsinfo = GetFileSegInfo(reln, /* for now */ 1);
+	fsinfo = GetFileSegInfo(reln, segno);
 	eof = (int64)fsinfo->eof;
 	
 	if (eof < 0)
@@ -179,8 +162,7 @@ doScanInit(AppendOnlyScanDesc scan)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
-						eof, NameStr(scan->aos_rd->rd_rel->relname))));			
-		
+						eof, NameStr(scan->aos_rd->rd_rel->relname))));
 	}
 	
 	/* Set the file to be read with its eof */
@@ -190,14 +172,13 @@ doScanInit(AppendOnlyScanDesc scan)
 	scan->aos_inited = true;
 	
 	if (Debug_appendonly_print_scan)
-		elog(LOG,"Append-only scan initialize for table '%s' with path = '%s' (compression = %s, maximum buffer length %d, large read length %d)",
+		elog(LOG,"Append-only scan initialize for table '%s' segment file %u (compression = %s, maximum buffer length %d, large read length %d)",
 			 NameStr(scan->aos_rd->rd_rel->relname),
-			 path,
+			 segno,
 			 (scan->aos_compressed ? "true" : "false"),
 		     scan->maxBufferLen,
 		     scan->largeReadLen);
 	
-	pfree(path);
 	pfree(fsinfo);
 }
 
@@ -641,7 +622,6 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	scan->aos_bufread_inited = false;
 	scan->aos_rd = relation;
 	scan->aos_nkeys = nkeys;
-	scan->aos_relfilenode = InvalidOid;
 	scan->aos_file = 0;
 	
 	scan->maxBufferLen = RelationGetBlockSize(relation, DEFAULT_VARBLOCK_SIZE);
@@ -798,9 +778,9 @@ appendonly_insert_init(Relation rel)
 	int32					memoryLen;
 	int64					eof;
 	int						maxtupsize;
-	char					*path;
 	File					appendFile;
 	FileSegInfo				*fsinfo;
+	BlockNumber				segno = 0; /* for now only 1 segment... */
 
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc(sizeof(AppendOnlyInsertDescData));
 	aoInsertDesc->aoi_rel = rel;
@@ -838,44 +818,31 @@ appendonly_insert_init(Relation rel)
 					   memoryLen, 
 					   actualMaxBufferLen, 
 					   aoInsertDesc->largeWriteLen);
-		
-	/* cache the relfilenode value for later use */
-	aoInsertDesc->relfilenode = rel->rd_node.relNode;
-	
-	/* Get path for this relation file */
-	path = relpath(rel->rd_node);
-	
+				
 	if (Debug_appendonly_print_insert)
-		elog(LOG,"Append-only insert initialize for table '%s' with path = '%s' (compression = %s, compression level %d, maximum buffer length %d, large write length %d)",
+		elog(LOG,"Append-only insert initialize for table '%s' segment file %u (compression = %s, compression level %d, maximum buffer length %d, large write length %d)",
 		     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
-		     path,
+		     segno,
 		     (aoInsertDesc->shouldCompress ? "true" : "false"),
 		     aoInsertDesc->compressLevel,
 		     aoInsertDesc->maxBufferLen,
 		     aoInsertDesc->largeWriteLen);
 	
-	/* 
-	 * Open the relation file
-	 *
-	 * Note: because we use BasicOpenFile(), we are responsible for ensuring
-	 * the FD gets closed in any error exit path.  
-	 */
-	appendFile = BasicOpenFile(path, O_RDWR | PG_BINARY, 0600);
-	
-	if(appendFile < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not open file \"%s\"", path)));
+	/* Open the 'segment' file */
+	appendFile = OpenAOSegmentFile(rel, segno);
 	
 	/* get the information for the file segment we insert into */
-	fsinfo = GetFileSegInfo(rel, /* for now */ 1);
+	fsinfo = GetFileSegInfo(rel, segno);
 
 	/* Seek to the starting point (current eof from catalog) */
 	eof = (int64) lseek(appendFile, (off_t) fsinfo->eof, SEEK_SET);
 		
 	if (eof < 0)
+	{
+		close(appendFile); /* cleanup before ereport */
 		ereport(ERROR, (errcode_for_file_access(),
 						errmsg("Cannot seek to end (error %d)", errno)));
+	}
 	
 	BufferedAppendSetFile(&aoInsertDesc->bufferedAppend, appendFile, eof);
 	
@@ -1215,7 +1182,7 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 	
 	/* update pg_aoseg_* with our new eof */
 	UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
-					  1 /* for now */,
+					  0 /* for now */,
 					  fileLen, 
 					  aoInsertDesc->insertCount,
 					  aoInsertDesc->varblockCount);

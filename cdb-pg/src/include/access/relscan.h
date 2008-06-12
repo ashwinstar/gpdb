@@ -140,7 +140,6 @@ typedef struct AppendOnlyScanDescData
 	Relation	aos_rd;				/* target relation descriptor */
 	Index       aos_scanrelid;
 	File	    aos_file;			/* the relation file */
-	Oid			aos_relfilenode;	/* relation file id */
 	int			aos_nkeys;			/* number of scan keys */
 	ScanKey		aos_key;			/* array of scan key descriptors */
 	bool		aos_compressed;		/* is relation stored compressed? */

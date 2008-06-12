@@ -883,7 +883,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					get_namespace_name(RelationGetNamespace(aorel)),
 					relname)));
 	
-	fsinfo = GetFileSegInfo(aorel, /* for now */ 1);
+	fsinfo = GetFileSegInfo(aorel, /* for now */ 0);
 	
 	/* calculate the values we care about */
 	eof = (double)fsinfo->eof;

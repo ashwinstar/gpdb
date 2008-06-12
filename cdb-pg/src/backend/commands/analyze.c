@@ -1018,7 +1018,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	Assert(targrows > 1);
 	
 	/* get the catalog entry with information for this table */
-	fsinfo = GetFileSegInfo(onerel, /* for now */ 1);
+	fsinfo = GetFileSegInfo(onerel, /* for now */ 0);
 
 	totalvarblocks = (BlockNumber)fsinfo->varblockcount;
 	*totalbytes = (double)fsinfo->eof;

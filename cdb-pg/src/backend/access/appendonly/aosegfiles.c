@@ -33,7 +33,7 @@ void
 InsertInitialFileSegInfo(Relation parentrel)
 {	
 	/* initial file segment */
-	int segno = 1;
+	int segno = 0;
 	float8 eof = 0;
 	float8 tupcount = 0;
 	float8 varblockcount = 0;
@@ -119,7 +119,7 @@ GetFileSegInfo(Relation parentrel, int segno)
 	FileSegInfo *fsinfo;
 	
 	/* remove when we enable multiple segment files */
-	Assert(segno == 1);
+	Assert(segno == 0);
 	
 	/*
 	 * Check the pg_aoseg relation to be certain the ao table 
@@ -157,7 +157,7 @@ GetFileSegInfo(Relation parentrel, int segno)
 		heap_close(pg_aoseg_rel, AccessShareLock);		
 		InsertInitialFileSegInfo(parentrel);		
 		CommandCounterIncrement();
-		return GetFileSegInfo(parentrel, 1); /* recursive call should not get here */
+		return GetFileSegInfo(parentrel, 0); /* recursive call should not get here */
 		
 		/* ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -230,7 +230,7 @@ UpdateFileSegInfo(Relation parentrel,
 	bool				isNull;
 	
 	/* remove when we enable multiple segment files */
-	Assert(segno == 1);
+	Assert(segno == 0);
 
 	/* overflow sanity checks */
 	Assert(tuples_added >= 0);
