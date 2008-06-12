@@ -776,14 +776,33 @@ if(!val)\
 			(errcode(ERRCODE_SYNTAX_ERROR),\
 			 errmsg("internal parse error for %s clause value", clause)));\
 }\
-if(strlen(val) != 3)\
+if(strlen(val) == 3)\
+{\
+	val[2] = '\0';\
+	val++;\
+}\
+else if(strlen(val) > 3)\
 {\
 	ereport(ERROR,\
 			(errcode(ERRCODE_SYNTAX_ERROR),\
 			 errmsg("internal parse error. %s value %s too long", clause, val)));\
 }\
-val[2] = '\0';\
-val++;
+else if(strlen(val) == 2)\
+{\
+	ereport(ERROR,\
+			(errcode(ERRCODE_SYNTAX_ERROR),\
+			 errmsg("internal parse error. %s value %s is not a single character", clause, val)));\
+}\
+else if(strlen(val) == 1)\
+{\
+	/* we must have a ' '. consume the second quote and set value to 'space' */\
+	val = strtok(NULL, " ");\
+	if(strcmp(val,"\'") != 0)\
+		ereport(ERROR,\
+				(errcode(ERRCODE_SYNTAX_ERROR),\
+				 errmsg("internal parse error in %s value - expected single quote", clause)));\
+	*val = ' ';\
+}\
 
 #define FILEAM_GET_STRING(val, clause) \
 len = strlen(val);\
