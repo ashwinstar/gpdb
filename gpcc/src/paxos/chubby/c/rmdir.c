@@ -21,7 +21,8 @@ static void
 proposeDone(void*_data,int e,chubby_string_t*answer)
 {
     struct data*data=_data;
-    data->super.c->chubby->free(answer);
+    if (!e)
+	data->super.c->chubby->free(answer);
     if (e == CHUBBY_E_IFFAILED){
 	e = chubby_asynchronous_stat(data->super.c,statDone2,data,data->name);
 	if (!e)
