@@ -8651,65 +8651,12 @@ get_opfuncid_by_opname(List *opname, Oid lhsid, Oid rhsid)
 	return opfuncid;
 }
 
-static PartitionNode *
-selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, Oid *found)
-{
-	ListCell *lc;
-	Partition *part = partnode->part;
-	List *opname = list_make2(makeString("pg_catalog"), makeString("="));
-
-	*found = InvalidOid;
-	
-	/* With LIST, we have no choice at the moment except to be exhaustive */
-	foreach(lc, partnode->rules)
-	{
-		PartitionRule *rule = lfirst(lc);
-		List *vals = rule->parlistvalues;
-		ListCell *lc2;
-		bool matched = false;
-
-		/* individual values */
-		foreach(lc2, vals)
-		{
-			Const *c = linitial(lfirst(lc2)); /* list of lists */
-			/* XXX: do for all attributes */
-			AttrNumber attno = part->paratts[0];
-			Oid lhsid = tupdesc->attrs[attno - 1]->atttypid;
-			Oid rhsid = lhsid;
-			Oid opfuncid;
-			Datum res;
-			Datum d;
-
-			opfuncid = get_opfuncid_by_opname(opname, lhsid, rhsid);
-			
-			/* XXX: cache */
-			d = values[attno - 1];
-			Assert(!isnull[attno - 1]); /* XXX: not handled yet */
-			res = OidFunctionCall2(opfuncid, d, c->constvalue);
-
-			if (DatumGetBool(res))
-			{
-				/* found it */
-				*found = rule->parrelid;
-				matched = true;
-				break;
-			}
-		}
-
-		if (matched)
-		{
-			if (!OidIsValid(*found) || rule->children)
-				*found = InvalidOid;
-
-			/* go to the next level */
-			return rule->children;
-		}
-	}
-	return NULL;
-
-}
-
+/* 
+ * Given a constant expression, build a datum according to
+ * part->paratts and the relation tupledesc.  Needs work for
+ * type_coercion, multicol, etc.  The returned Datum * is suitable for
+ * use in SelectPartition
+ */
 static Datum *
 magic_expr_to_datum(Relation rel, PartitionNode *partnode, Node *expr, bool **ppisnull)
 {
@@ -8779,6 +8726,95 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode, Node *expr, bool **pp
 
 	return values;
 } /* end magic_expr_to_datum */
+
+/*
+ * Assume the partition rules are in the "correct" order and return
+ * the nth rule (1-based).  If posn is negative start from the end, ie
+ * -1 is the last rule.
+ */
+static Oid
+selectPartitionByPosition(PartitionNode *partnode, int posn)
+{
+	Oid   relid = InvalidOid;
+	List *rules = partnode->rules;
+	PartitionRule *rule;
+
+	Assert(partnode->part->parkind == 'r');
+
+	if (posn > list_length(rules))
+		return relid;
+
+	if (posn == 0)
+		return relid;
+
+	if (posn > 0)
+		posn--; /* list_nth is zero-based, not one-based */
+	else if (posn < 0)
+		posn = list_length(rules) + posn; /* if negative go from end */
+
+	rule = (PartitionRule *)list_nth(rules, posn);
+
+	return relid = rule->parrelid;
+} /* end selectPartitionByPosition */
+
+static PartitionNode *
+selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
+					TupleDesc tupdesc, Oid *found)
+{
+	ListCell *lc;
+	Partition *part = partnode->part;
+	List *opname = list_make2(makeString("pg_catalog"), makeString("="));
+
+	*found = InvalidOid;
+	
+	/* With LIST, we have no choice at the moment except to be exhaustive */
+	foreach(lc, partnode->rules)
+	{
+		PartitionRule *rule = lfirst(lc);
+		List *vals = rule->parlistvalues;
+		ListCell *lc2;
+		bool matched = false;
+
+		/* individual values */
+		foreach(lc2, vals)
+		{
+			Const *c = linitial(lfirst(lc2)); /* list of lists */
+			/* XXX: do for all attributes */
+			AttrNumber attno = part->paratts[0];
+			Oid lhsid = tupdesc->attrs[attno - 1]->atttypid;
+			Oid rhsid = lhsid;
+			Oid opfuncid;
+			Datum res;
+			Datum d;
+
+			opfuncid = get_opfuncid_by_opname(opname, lhsid, rhsid);
+			
+			/* XXX: cache */
+			d = values[attno - 1];
+			Assert(!isnull[attno - 1]); /* XXX: not handled yet */
+			res = OidFunctionCall2(opfuncid, d, c->constvalue);
+
+			if (DatumGetBool(res))
+			{
+				/* found it */
+				*found = rule->parrelid;
+				matched = true;
+				break;
+			}
+		}
+
+		if (matched)
+		{
+			if (!OidIsValid(*found) || rule->children)
+				*found = InvalidOid;
+
+			/* go to the next level */
+			return rule->children;
+		}
+	}
+	return NULL;
+
+}
 
 /* 
  * Given a partition specific part, a tuple as represented by d and isnull and
@@ -9035,12 +9071,15 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			  bool bExistError, bool bMustExist, 
 			  MemoryContext mcxt)
 {
-	char		   namBuf[NAMEDATALEN];
+	char		   namBuf[NAMEDATALEN]; /* the real partition name */
+
 	/* a textual representation of the partition id (for error msgs) */
 	char		   partIdStr[(NAMEDATALEN * 2)];
+
 	pg_part_rule  *prule = NULL;
 	PartitionNode *pNode = NULL;
 	Oid partrelid = InvalidOid;
+	int idposn = 0; /* only set for range partitions by position */
 
 	if (!pid)
 		ereport(ERROR,
@@ -9050,6 +9089,14 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 
 	namBuf[0] = 0;
 
+	/* build the partition "id string" for error messages as a
+	 * partition name, value, or position.  
+	 *
+	 * Later on, if we discover
+	 *   the partition exists and 
+	 *   it has a name 
+	 * then we update the partIdStr to the name
+	 */
 	switch (pid->idtype)
 	{
 		case AT_AP_IDNone:				/* no ID */
@@ -9067,10 +9114,24 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			snprintf(partIdStr, sizeof(partIdStr), " for specified value");
 			break;
 		case AT_AP_IDPosition:			/* IDentifier FOR Positition */
+		{
 			snprintf(partIdStr, sizeof(partIdStr), " for specified position");
+
+			if (IsA(pid->partiddef, Integer))
+				idposn = intVal(pid->partiddef);
+			else if (IsA(pid->partiddef, Float))
+				idposn = round(floatVal(pid->partiddef));
+			else
+				Assert(false);
+
+			snprintf(partIdStr, sizeof(partIdStr), 
+					 " for position %d",
+					 idposn); 
+		}
 			break;
 		case AT_AP_ID_oid:				/* IDentifier by oid */
-			snprintf(partIdStr, sizeof(partIdStr), " for specified oid");
+			snprintf(partIdStr, sizeof(partIdStr), " for oid %u",
+					 *((Oid *)(pid->partiddef)));
 			break;
 	}
 
@@ -9083,17 +9144,51 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 						RelationGetRelationName(rel))));
 
 	/* XXX XXX fix later */
-	if (pNode && (pid->idtype == AT_AP_IDValue))
+
+	/* if id is a value or position, get the relid of the partition if
+	 * it exists */
+	if (pNode)
 	{
-		bool *isnull;
-		TupleDesc tupledesc = RelationGetDescr(rel);
+		if (pid->idtype == AT_AP_IDValue)
+		{
+			bool *isnull;
+			TupleDesc tupledesc = RelationGetDescr(rel);
 
-		Datum *d = magic_expr_to_datum(rel, pNode, pid->partiddef, &isnull);
+			Datum *d = magic_expr_to_datum(rel, pNode, 
+										   pid->partiddef, &isnull);
 
-		partrelid = selectPartition(pNode, d, isnull, tupledesc);
+			partrelid = selectPartition(pNode, d, isnull, tupledesc);
+			
+		}
+		else if (pid->idtype == AT_AP_IDPosition)
+		{
+			char *parTypName = "UNKNOWN";
+			
+			if (pNode->part->parkind != 'r')
+			{
+				switch (pNode->part->parkind)
+				{
+					case 'h': /* hash */
+						parTypName = "HASH";
+						break;
+					case 'l': /* list */
+						parTypName = "LIST";
+						break;
+				} /* end switch */
 
+				ereport(ERROR,
+					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("cannot find partition by POSITION -- relation \"%s\" is %s partitioned",
+								RelationGetRelationName(rel),
+								parTypName)));
+
+			}
+			
+			partrelid =	selectPartitionByPosition(pNode,  idposn);
+		}
 	}
 
+	/* check thru the list of partition rules to match by relid or name */
 	if (pNode)
 	{
 		ListCell *lc;			
@@ -9103,7 +9198,8 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			PartitionRule *rule = lfirst(lc);
 			bool foundit = false;
 
-			if (pid->idtype == AT_AP_IDValue)
+			if ((pid->idtype == AT_AP_IDValue)
+				|| (pid->idtype == AT_AP_IDPosition))
 			{
 				if ((partrelid != InvalidOid)
 					&& (partrelid == rule->parrelid))
@@ -9141,7 +9237,8 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			PartitionRule *rule = pNode->default_part;
 			bool foundit = false;
 
-			if (pid->idtype == AT_AP_IDValue)
+			if ((pid->idtype == AT_AP_IDValue)
+				|| (pid->idtype == AT_AP_IDPosition))
 			{
 				if ((partrelid != InvalidOid)
 					&& (partrelid == rule->parrelid))
@@ -9173,6 +9270,11 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 		}
 	} /* end if pnode */
 
+	/* if the partition exists, set the "id string" in prule and
+	 * indicate whether it is the partition name.  The ATPExec
+	 * commands will notify users of the "real" name if the original
+	 * specification was by value or position
+	 */
 	if (prule)
 	{
 		StrNCpy(prule->partIdStr, partIdStr, sizeof(partIdStr));
@@ -9263,7 +9365,7 @@ ATPExecPartAdd(Relation rel,
 		default:
 			elog(ERROR, "unrecognized partitioning kind '%c'",
 				 pNode->part->parkind);
-			Assert(1);
+			Assert(false);
 			break;
 	} /* end switch */
 
@@ -9697,6 +9799,7 @@ ATPExecPartRename(Relation rel,
 		AlterPartitionId newpid;
 		pg_part_rule   *prule2 = NULL;
 		Relation	targetrelation;
+		char        targetrelname[NAMEDATALEN];
 		Relation	parentrelation;
 		Oid			namespaceId;
 		char	   *newpartname = strVal(pc->arg1);
@@ -9705,6 +9808,8 @@ ATPExecPartRename(Relation rel,
 		char	  	depthstr[NAMEDATALEN];
 		char	  	parentname[NAMEDATALEN];
 		int partDepth = 1 + prule->pNode->part->parlevel;
+		RenameStmt *renStmt = makeNode(RenameStmt);
+		DestReceiver *dest = None_Receiver;
 
 		newpid.idtype = AT_AP_IDName;
 		newpid.partiddef = pc->arg1;
@@ -9714,8 +9819,14 @@ ATPExecPartRename(Relation rel,
 		prule2 = get_part_rule(rel, &newpid, true, false, 
 							   CurrentMemoryContext);
 
-		targetrelation = relation_open(prule->topRule->parrelid, AccessExclusiveLock);
+		targetrelation = relation_open(prule->topRule->parrelid, 
+									   AccessExclusiveLock);
+
+		StrNCpy(targetrelname, RelationGetRelationName(targetrelation), 
+				NAMEDATALEN);
+
 		namespaceId = RelationGetNamespace(targetrelation);
+
 		relation_close(targetrelation, AccessExclusiveLock);
 
 		StrNCpy(realrelname, RelationGetRelationName(rel), NAMEDATALEN);
@@ -9754,7 +9865,19 @@ ATPExecPartRename(Relation rel,
 									 namespaceId);
 		CommandCounterIncrement();
 
-		renamerel(prule->topRule->parrelid, relname, NULL);
+		renStmt->renameType = OBJECT_TABLE;
+		renStmt->relation = makeNode(RangeVar);
+		renStmt->relation->catalogname = NULL;
+		renStmt->relation->schemaname = NULL;
+		renStmt->relation->relname = targetrelname;
+		renStmt->relation->location = -1;
+
+		renStmt->subname = NULL;
+		renStmt->newname = relname;
+
+		ProcessUtility(
+				(Node *) renStmt,
+				NULL, dest, NULL);		
 
 		{
 			int ret;
@@ -9956,7 +10079,8 @@ ATPExecPartTruncate(Relation rel,
 	{
 		RangeVar *rv = makeNode(RangeVar);
 		TruncateStmt *ts = (TruncateStmt *)pc->arg1;
-		Relation	rel2;
+		DestReceiver *dest = None_Receiver;
+		Relation	  rel2;
 
 		rel2 = heap_open(prule->topRule->parrelid, AccessShareLock);
 
@@ -9978,7 +10102,9 @@ ATPExecPartTruncate(Relation rel,
 
 		heap_close(rel2, NoLock);
 
-		ExecuteTruncate(ts);
+		ProcessUtility(
+				(Node *) ts,
+				NULL, dest, NULL);		
 
 		/* Notify of name if did not use name for partition id spec */
 		if ((pid->idtype != AT_AP_IDName)
