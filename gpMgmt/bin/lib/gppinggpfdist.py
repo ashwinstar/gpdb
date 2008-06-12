@@ -3,7 +3,7 @@
 import sys, httplib, getopt
 
 def usage(exitarg):
-    print 'usage: %s [-q] uri' % sys.argv[0]
+    print 'usage: %s [-q] host:port' % sys.argv[0]
     print 
     print '   -q: quiet mode'
     print
@@ -26,19 +26,25 @@ for (switch, val) in options:
 if len(args) != 1:
     usage('Error: please specify uri.')
 
-uri = args[0]
+host_port = args[0]
 
 try:
-    conn = httplib.HTTPConnection(uri)
+    conn = httplib.HTTPConnection(host_port)
     conn.request('GET', '/')
     r = conn.getresponse()
     gpfdist = r.getheader('X-GPFDIST-VERSION', '')
-except:
-    sys.exit(quiet and 1 or 'failed: gpfdist is not running (reason 1).')
-
+except socket.error:
+    if not quiet:
+	print 'Error: gpfdist is not running (reason: socket error)'
+	print 'Exit: 1'
+    sys.exit(1)
+     
 if not gpfdist:
-    sys.exit(quiet and 2 or 'failed: gpfdist is not running (reason 2).')
+    if not quiet:
+	print 'Error: gpfdist port is taken by some other programs'
+	print 'Exit: 2'
+    sys.exit(2)
 
 if not quiet:
-    print 'Okay, gpfdist version "%s" is running on %s.' % (gpfdist, uri)
+    print 'Okay, gpfdist version "%s" is running on %s.' % (gpfdist, host_port)
 sys.exit(0)
