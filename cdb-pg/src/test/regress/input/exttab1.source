@@ -31,7 +31,7 @@ DROP EXTERNAL TABLE EXT_REGION;
 -- --------------------------------------
 drop external web table if exists check_ps;
 CREATE EXTERNAL WEB TABLE check_ps (x text)
-execute E'( (ps -ef || ps -aux) | grep gpfdist )'
+execute E'( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)'
 on SEGMENT 0
 format 'text';
 
@@ -52,7 +52,7 @@ select * from check_env;
 -- --------------------------------------
 
 CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
-execute E'( python $GPHOME/bin/lib/gppinggpfdist.py -q localhost:7070 && echo "gpfdist is running" || echo "gpfdist is not running") '
+execute E'( python $GPHOME/bin/lib/gppinggpfdist.py localhost:7070 || echo) '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
@@ -66,10 +66,12 @@ execute E'(/bin/pkill gpfdist || killall gpfdist) > /dev/null 2>&1; echo "stoppi
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
+-- start_ignore
 select * from gpfdist_stop;
 select * from gpfdist_status;
 select * from gpfdist_start;
 select * from gpfdist_status;
+-- end_ignore
 
 CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
                             N_NAME       CHAR(25) ,
@@ -87,9 +89,11 @@ SELECT * FROM EXT_NATION;
 SELECT * FROM EXT_REGION;
 SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONKEY;
 
+-- start_ignore
 select * from gpfdist_status;
 select * from gpfdist_stop;
 select * from gpfdist_status;
+-- end_ignore
 
 -- drop tables
 DROP EXTERNAL TABLE EXT_NATION;
@@ -106,11 +110,13 @@ FORMAT 'text' (delimiter '|');
 -- "
 -- (end the double quote so emacs highlighting works correctly)
 --
+-- start_ignore
 select * from gpfdist_status;
 select * from gpfdist_stop;
 select * from gpfdist_status;
 select * from gpfdist_csv_start;
 select * from gpfdist_status;
+-- end_ignore
 
 create external table ext_whois (
 source_lineno			int,
@@ -225,9 +231,11 @@ format 'csv' ( header quote as 'ggg');
 select count(*) from bad_whois;
 drop external table bad_whois;
 
+-- start_ignore
 select * from gpfdist_status;
 select * from gpfdist_stop;
 select * from gpfdist_status;
+-- end_ignore
 
 --
 -- try a bad location

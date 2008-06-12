@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys, httplib, getopt
+import sys, httplib, getopt, socket
 
 def usage(exitarg):
     print 'usage: %s [-q] host:port' % sys.argv[0]
