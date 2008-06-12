@@ -10565,7 +10565,7 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 			encoding = intVal(dencoding->arg);
 			encoding_name = pg_encoding_to_char(encoding);
 			if (strcmp(encoding_name, "") == 0 ||
-				pg_valid_server_encoding(encoding_name) < 0)
+				pg_valid_client_encoding(encoding_name) < 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("%d is not a valid encoding code",
@@ -10574,7 +10574,7 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 		else if (IsA(dencoding->arg, String))
 		{
 			encoding_name = strVal(dencoding->arg);
-			if (pg_valid_server_encoding(encoding_name) < 0)
+			if (pg_valid_client_encoding(encoding_name) < 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("%s is not a valid encoding name",
