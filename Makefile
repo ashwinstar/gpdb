@@ -197,7 +197,6 @@ mgmtcopy :
 		$(INSTLOC)/bin/gpdeletesystem \
 		$(INSTLOC)/bin/gpinitstandby \
 		$(INSTLOC)/bin/gpinitsystem \
-		$(INSTLOC)/bin/gprebuildseg \
 		$(INSTLOC)/bin/gprebuildsystem \
 		$(INSTLOC)/bin/gprecoverseg \
 		$(INSTLOC)/bin/gpscp \
