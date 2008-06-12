@@ -5,7 +5,7 @@ import sys
 
 def usage():
     sys.stderr.write("usage:\n")
-    sys.stderr.write("    python "+sys.argv[0]+" -d data_directory [-p port] [-computers host1:port1,...\n")
+    sys.stderr.write("    python "+sys.argv[0]+" -d data_directory [-v] [-p port] [-P host1:port1] [-P host2:port2] ...\n")
     sys.exit(1)
 
 def normalize(address):
@@ -23,16 +23,19 @@ def normalize(address):
 def main():
     datadir = None
     argv = sys.argv[1:]
-    computers = None
+    minusP = []
     port = 2000
+    extraStuff = ""
     while argv:
 	a = argv.pop(0)
 	if a=='-d':
 	    datadir = argv.pop(0)
+	elif a=='-v':
+	    extraStuff += " -verbose"
 	elif a=='-p':
 	    port = int(argv.pop(0))
-	elif a=='-computers':
-	    computers = argv.pop(0).split(',')
+	elif a=='-P':
+	    minusP.append(argv.pop(0))
 	else:
 	    usage()
     if datadir==None:
@@ -42,11 +45,11 @@ def main():
 	os.makedirs("Priest-0/data")
     except OSError:
 	pass
-    if not computers:
-	computers = ["%s:%d"%(socket.gethostname(),port)]
-    computers = sorted(map(normalize,computers))
-    if normalize("%s:%d"%(socket.gethostname(),port))==computers[0]:
+    if not minusP:
+	minusP = ["%s:%d"%(socket.gethostname(),port)]
+    minusP = sorted(map(normalize,minusP))
+    if normalize("%s:%d"%(socket.gethostname(),port))==minusP[0]:
 	open("Priest-0/data/start","wb").close()
-    os.execl("/bin/sh","/bin/sh","-c","exec python -u $GPHOME/bin/lib/paxos/main.pyc test -port %d -computers '%s'"%(port,','.join(computers)))
+    os.execl("/bin/sh","/bin/sh","-c","exec python -u $GPHOME/bin/lib/paxos/main.pyc test -port %d -computers '%s' %s"%(port,','.join(minusP),extraStuff))
 
 main()
