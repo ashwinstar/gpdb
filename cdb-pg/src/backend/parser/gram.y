@@ -3161,6 +3161,15 @@ TabPartitionByType:
 			RANGE 				{ $$ = PARTTYP_RANGE; }
 			| HASH				{ $$ = PARTTYP_HASH; }
 			| LIST				{ $$ = PARTTYP_LIST; }
+			| /* EMPTY */ 
+				{
+					$$ = PARTTYP_RANGE; 
+                    ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("PARTITION BY must specify RANGE, HASH, or LIST")));
+
+                    
+				}
 		;
 
 OptTabPartitionBy:
