@@ -23,23 +23,86 @@ DROP EXTERNAL TABLE EXT_REGION;
 -- --------------------------------------
 -- check platform
 -- --------------------------------------
-bla bla bla
+drop external web table if exists check_ps;
+NOTICE:  external table "check_ps" does not exist, skipping
+CREATE EXTERNAL WEB TABLE check_ps (x text)
+execute E'( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)'
+on SEGMENT 0
+format 'text';
+drop external web table if exists check_env;
+NOTICE:  external table "check_env" does not exist, skipping
+CREATE EXTERNAL WEB TABLE check_env (x text)
+execute E'( env | sort)'
+on SEGMENT 0
+format 'text';
+select * from check_ps;
+ERROR:  error closing file or executing program "execute:( (ps -ef || ps -aux) | grep gpfdist | grep -v grep)": Illegal seek (fileam.c:1171)  (seg0 slice1 @hostname@:12002 pid=16995)
+select * from check_env;
+                                                                                                             x                                                                                                              
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CVSROOT=:ext:cktan@cvs:/home/cvsroot
+ CVS_RSH=ssh
+ GP_ARRAY_NAME=gpdb
+ GP_CID=0
+ GP_DATABASE=regression
+ GP_DATE=20080612
+ GPHOME=/Users/cktan/greenplum-db
+ GP_MA_ADDR=localhost:11000
+ GP_MASTER_HOST=10.0.0.225
+ GP_MASTER_PORT=12000
+ GP_SEG_DATADIR=/datapool/data_p2/cktan/testdb0
+ GP_SEGMENT_COUNT=2
+ GP_SEGMENT_ID=0
+ GP_SEG_PG_CONF=/datapool/data_p2/cktan/testdb0/postgresql.conf
+ GP_SEG_PORT=12002
+ GP_SESSION_ID=809
+ GP_SN=1
+ GP_TIME=142401
+ GP_XID=1213305841-0000030228
+ HOME=/home/cktan
+ LC_COLLATE=en_US.UTF-8
+ LC_CTYPE=en_US.UTF-8
+ LC_MESSAGES=C
+ LC_MONETARY=C
+ LC_NUMERIC=C
+ LC_TIME=C
+ LD_LIBRARY_PATH=/Users/cktan/greenplum-db/lib:/Users/cktan/greenplum-db/lib:/opt/python-2.5.1/lib:/opt/sfw/lib:/usr/sfw/lib/amd64:/usr/local/lib/:/opt/sfw/lib:/usr/sfw/lib/gcc:/usr/sfw/lib:/opt/sfw/lib:/usr/sfw/lib/gcc
+ LOGNAME=cktan
+ MAIL=/var/mail//cktan
+ MASTER_DATA_DIRECTORY=/datapool/data_p1/cktan/testdb-1
+ P4CONFIG=/home/cktan/dev/.p4config
+ PATH=.:/Users/cktan/greenplum-db/bin:/opt/python-2.5.1/bin:/opt/gdb-6.6/bin:/opt/gcc-4.1.1/bin:/usr/sfw/i386-sun-solaris2.10/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/local/bin:/usr/sfw/bin:/opt/sfw/bin
+ PGDATA=/datapool/data_p2/cktan/testdb0
+ PGPATH=/Users/cktan/greenplum-db/bin
+ PGPORT=12002
+ PGSYSCONFDIR=/home/cktan/greenplum-db-devel/etc/postgresql
+ PWD=/home/cktan
+ SHELL=/bin/bash
+ SHLVL=1
+ SSH_CLIENT=10.0.0.225 34583 22
+ SSH_CONNECTION=10.0.0.225 34583 10.0.0.225 22
+ TZ=US/Pacific
+ USER=cktan
+ _=/Users/cktan/greenplum-db/bin/pg_ctl
+(44 rows)
+
 -- end_ignore
 -- --------------------------------------
 -- 'gpfdist' protocol
 -- --------------------------------------
 CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
-execute E'( python $GPHOME/bin/lib/gppinggpfdist.py -q localhost:7070 && echo "gpfdist is running" || echo "gpfdist is not running") '
+execute E'( python $GPHOME/bin/lib/gppinggpfdist.py localhost:7070 || echo) '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 7; echo "starting...") '
+execute E'((/Users/cktan/greenplum-db/bin/gpfdist -p 7070 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 CREATE EXTERNAL WEB TABLE gpfdist_stop (x text)
 execute E'(/bin/pkill gpfdist || killall gpfdist) > /dev/null 2>&1; echo "stopping..."'
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
+-- start_ignore
 select * from gpfdist_stop;
       x      
 -------------
@@ -47,10 +110,12 @@ select * from gpfdist_stop;
 (1 row)
 
 select * from gpfdist_status;
-           x            
-------------------------
- gpfdist is not running
-(1 row)
+                          x                           
+------------------------------------------------------
+ Error: gpfdist is not running (reason: socket error)
+ Exit: 1
+ 
+(3 rows)
 
 select * from gpfdist_start;
       x      
@@ -59,11 +124,12 @@ select * from gpfdist_start;
 (1 row)
 
 select * from gpfdist_status;
-         x          
---------------------
- gpfdist is running
+                                  x                                   
+----------------------------------------------------------------------
+ Okay, gpfdist version "main build dev" is running on localhost:7070.
 (1 row)
 
+-- end_ignore
 CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
                             N_NAME       CHAR(25) ,
                             N_REGIONKEY  INTEGER ,
@@ -118,37 +184,38 @@ SELECT * FROM EXT_REGION;
 SELECT * FROM EXT_REGION as r, EXT_NATION as n WHERE n.N_REGIONKEY = r.R_REGIONKEY;
  r_regionkey |          r_name           |                                                      r_comment                                                      | n_nationkey |          n_name           | n_regionkey |                                                     n_comment                                                      
 -------------+---------------------------+---------------------------------------------------------------------------------------------------------------------+-------------+---------------------------+-------------+--------------------------------------------------------------------------------------------------------------------
-           0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |           0 | ALGERIA                   |           0 |  haggle. carefully final deposits detect slyly agai
-           0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |           5 | ETHIOPIA                  |           0 | ven packages wake quickly. regu
-           0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |          14 | KENYA                     |           0 |  pending excuses haggle furiously deposits. pending, express pinto beans wake fluffily past t
-           0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |          15 | MOROCCO                   |           0 | rns. blithely bold courts among the closely regular packages use furiously bold platelets?
            0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |          16 | MOZAMBIQUE                |           0 | s. ironic, unusual asymptotes wake blithely r
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           1 | ARGENTINA                 |           1 | al foxes promise slyly according to the regular accounts. bold requests alon
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           2 | BRAZIL                    |           1 | y alongside of the pending deposits. carefully special packages are about the ironic forges. slyly special 
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           3 | CANADA                    |           1 | eas hang ironic, silent packages. slyly regular packages are furiously over the tithes. fluffily bold
-           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          17 | PERU                      |           1 | platelets. blithely pending dependencies use fluffily across the even pinto beans. carefully silent accoun
+           0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |          15 | MOROCCO                   |           0 | rns. blithely bold courts among the closely regular packages use furiously bold platelets?
+           0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |          14 | KENYA                     |           0 |  pending excuses haggle furiously deposits. pending, express pinto beans wake fluffily past t
+           0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |           5 | ETHIOPIA                  |           0 | ven packages wake quickly. regu
+           0 | AFRICA                    | lar deposits. blithely final packages cajole. regular waters are final requests. regular accounts are according to  |           0 | ALGERIA                   |           0 |  haggle. carefully final deposits detect slyly agai
            1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          24 | UNITED STATES             |           1 | y final packages. slow foxes cajole quickly. quickly silent platelets breach ironic accounts. unusual pinto be
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           8 | INDIA                     |           2 | ss excuses cajole slyly across the packages. deposits print aroun
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           9 | INDONESIA                 |           2 |  slyly express asymptotes. regular deposits haggle slyly. carefully ironic hockey players sleep blithely. carefull
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          12 | JAPAN                     |           2 | ously. final, express gifts cajole a
-           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          18 | CHINA                     |           2 | c dependencies. furiously express notornis sleep slyly regular accounts. ideas sleep. depos
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |          17 | PERU                      |           1 | platelets. blithely pending dependencies use fluffily across the even pinto beans. carefully silent accoun
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           3 | CANADA                    |           1 | eas hang ironic, silent packages. slyly regular packages are furiously over the tithes. fluffily bold
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           2 | BRAZIL                    |           1 | y alongside of the pending deposits. carefully special packages are about the ironic forges. slyly special 
+           1 | AMERICA                   | hs use ironic, even requests. s                                                                                     |           1 | ARGENTINA                 |           1 | al foxes promise slyly according to the regular accounts. bold requests alon
            2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          21 | VIETNAM                   |           2 | hely enticingly express accounts. even, final 
-           3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |           6 | FRANCE                    |           3 | refully final requests. regular, ironi
-           3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |           7 | GERMANY                   |           3 | l platelets. regular accounts x-ray: unusual, regular acco
-           3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          19 | ROMANIA                   |           3 | ular asymptotes are about the furious multipliers. express dependencies nag above the ironically ironic account
-           3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          22 | RUSSIA                    |           3 |  requests against the platelets use never according to the quickly regular pint
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          18 | CHINA                     |           2 | c dependencies. furiously express notornis sleep slyly regular accounts. ideas sleep. depos
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |          12 | JAPAN                     |           2 | ously. final, express gifts cajole a
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           9 | INDONESIA                 |           2 |  slyly express asymptotes. regular deposits haggle slyly. carefully ironic hockey players sleep blithely. carefull
+           2 | ASIA                      | ges. thinly even pinto beans ca                                                                                     |           8 | INDIA                     |           2 | ss excuses cajole slyly across the packages. deposits print aroun
            3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          23 | UNITED KINGDOM            |           3 | eans boost carefully special requests. accounts are. carefull
-           4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |           4 | EGYPT                     |           4 | y above the carefully unusual theodolites. final dugouts are quickly across the furiously regular d
-           4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          10 | IRAN                      |           4 | efully alongside of the slyly final dependencies. 
-           4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          11 | IRAQ                      |           4 | nic deposits boost atop the quickly final requests? quickly regula
-           4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          13 | JORDAN                    |           4 | ic deposits are blithely about the carefully regular pa
+           3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          22 | RUSSIA                    |           3 |  requests against the platelets use never according to the quickly regular pint
+           3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |          19 | ROMANIA                   |           3 | ular asymptotes are about the furious multipliers. express dependencies nag above the ironically ironic account
+           3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |           7 | GERMANY                   |           3 | l platelets. regular accounts x-ray: unusual, regular acco
+           3 | EUROPE                    | ly final courts cajole furiously final excuse                                                                       |           6 | FRANCE                    |           3 | refully final requests. regular, ironi
            4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          20 | SAUDI ARABIA              |           4 | ts. silent requests haggle. closely express packages sleep across the blithely
+           4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          13 | JORDAN                    |           4 | ic deposits are blithely about the carefully regular pa
+           4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          11 | IRAQ                      |           4 | nic deposits boost atop the quickly final requests? quickly regula
+           4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |          10 | IRAN                      |           4 | efully alongside of the slyly final dependencies. 
+           4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close requests. carefully final asymptotes haggle furiousl        |           4 | EGYPT                     |           4 | y above the carefully unusual theodolites. final dugouts are quickly across the furiously regular d
 (25 rows)
 
+-- start_ignore
 select * from gpfdist_status;
-         x          
---------------------
- gpfdist is running
+                                  x                                   
+----------------------------------------------------------------------
+ Okay, gpfdist version "main build dev" is running on localhost:7070.
 (1 row)
 
 select * from gpfdist_stop;
@@ -158,11 +225,14 @@ select * from gpfdist_stop;
 (1 row)
 
 select * from gpfdist_status;
-           x            
-------------------------
- gpfdist is not running
-(1 row)
+                          x                           
+------------------------------------------------------
+ Error: gpfdist is not running (reason: socket error)
+ Exit: 1
+ 
+(3 rows)
 
+-- end_ignore
 -- drop tables
 DROP EXTERNAL TABLE EXT_NATION;
 DROP EXTERNAL TABLE EXT_REGION;
@@ -170,18 +240,21 @@ DROP EXTERNAL TABLE EXT_REGION;
 -- gpfdist in csv (mpp-1519, etc)
 --
 CREATE EXTERNAL WEB TABLE gpfdist_csv_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data  -q \'"\' -h  </dev/null >/dev/null 2>&1 &); sleep 7; echo "starting...") '
+execute E'((/Users/cktan/greenplum-db/bin/gpfdist -p 7070 -d @abs_srcdir@/data  -q \'"\' -h  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 -- 
 -- "
 -- (end the double quote so emacs highlighting works correctly)
 --
+-- start_ignore
 select * from gpfdist_status;
-           x            
-------------------------
- gpfdist is not running
-(1 row)
+                          x                           
+------------------------------------------------------
+ Error: gpfdist is not running (reason: socket error)
+ Exit: 1
+ 
+(3 rows)
 
 select * from gpfdist_stop;
       x      
@@ -190,10 +263,12 @@ select * from gpfdist_stop;
 (1 row)
 
 select * from gpfdist_status;
-           x            
-------------------------
- gpfdist is not running
-(1 row)
+                          x                           
+------------------------------------------------------
+ Error: gpfdist is not running (reason: socket error)
+ Exit: 1
+ 
+(3 rows)
 
 select * from gpfdist_csv_start;
       x      
@@ -202,11 +277,12 @@ select * from gpfdist_csv_start;
 (1 row)
 
 select * from gpfdist_status;
-         x          
---------------------
- gpfdist is running
+                                  x                                   
+----------------------------------------------------------------------
+ Okay, gpfdist version "main build dev" is running on localhost:7070.
 (1 row)
 
+-- end_ignore
 create external table ext_whois (
 source_lineno			int,
 domain_name			varchar(350),
@@ -327,10 +403,11 @@ LINE 1: select count(*) from bad_whois;
                              ^
 drop external table bad_whois;
 ERROR:  external table "bad_whois" does not exist
+-- start_ignore
 select * from gpfdist_status;
-         x          
---------------------
- gpfdist is running
+                                  x                                   
+----------------------------------------------------------------------
+ Okay, gpfdist version "main build dev" is running on localhost:7070.
 (1 row)
 
 select * from gpfdist_stop;
@@ -340,11 +417,14 @@ select * from gpfdist_stop;
 (1 row)
 
 select * from gpfdist_status;
-           x            
-------------------------
- gpfdist is not running
-(1 row)
+                          x                           
+------------------------------------------------------
+ Error: gpfdist is not running (reason: socket error)
+ Exit: 1
+ 
+(3 rows)
 
+-- end_ignore
 --
 -- try a bad location
 --
@@ -352,7 +432,7 @@ create external table badt1 (x text)
 location ('file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl' )
 format 'text' (delimiter '|');
 select * from badt1;
-ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: No such file or directory
+ERROR:  could not open "file://@hostname@@abs_srcdir@/data/no/such/place/badt1.tbl" for reading: No such file or directory  (seg0 slice1 @hostname@:12002 pid=16995)
 drop external table badt1;
 --
 -- try a bad protocol
@@ -365,7 +445,7 @@ ERROR:  invalid URI 'bad_protocol://@hostname@@abs_srcdir@/data/no/such/place/ba
 -- get an error for missing gpfdist
 --
 select count(*) from ext_whois;
-ERROR:  connection failed dummy_protocol://DUMMY_LOCATION
+ERROR:  connection failed while gpfdist://@hostname@:7070/whois.csv (url.i:175)  (seg0 slice1 @hostname@:12002 pid=16995)
 drop external table ext_whois;
 drop external table gpfdist_status;
 drop external table gpfdist_start;
