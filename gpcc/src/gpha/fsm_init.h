@@ -597,7 +597,7 @@ static apr_status_t seg_initdb_backout1(gpcc_event_t *ev, void *_cmdslot)
 
     gpcc_log_info("[%s] initdb backout level 1 start", cmdslot->cmdname);
     gpcc_log_info("[%s] remove data directory %s", cmdslot->cmdname, cmdslot->u.request.data_dir);
-    sprintf(cmd, "rm -r %s", cmdslot->u.request.data_dir);
+    sprintf(cmd, "rm -rf %s", cmdslot->u.request.data_dir);
     argv[0] = cmd;
     argv[1] = 0;
 
