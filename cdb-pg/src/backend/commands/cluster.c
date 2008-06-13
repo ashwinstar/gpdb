@@ -694,7 +694,7 @@ make_new_heap(Oid OIDOldHeap, const char *NewName, Oid NewTableSpace,
 		tOid = oidInfo->toastOid;
 		tiOid = oidInfo->toastIndexOid;
 		toastComptypeOid = &oidInfo->toastComptypeOid;
-		aOid = oidInfo->toastOid;
+		aOid = oidInfo->aosegOid;
 		aiOid = oidInfo->aosegIndexOid;
 		aosegComptypeOid = &oidInfo->aosegComptypeOid;
 		comptypeOid = &oidInfo->comptypeOid;
