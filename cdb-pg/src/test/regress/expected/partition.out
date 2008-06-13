@@ -1481,7 +1481,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3442)  (seg1 localhost:11003 pid=13067)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg1 localhost:11003 pid=12812)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1770,8 +1770,8 @@ COPY foz FROM stdin DELIMITER '|';
 select * from foz_1_prt_1;
  i |     d      
 ---+------------
- 1 | 01-02-2001
  2 | 10-10-2001
+ 1 | 01-02-2001
 (2 rows)
 
 select * from foz_1_prt_2;
@@ -1794,7 +1794,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3442)
+ERROR:  no partition for partitioning key (execMain.c:3451)
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 NOTICE:  drop cascades to table foz_1_prt_4
@@ -1841,7 +1841,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3442)
+ERROR:  no partition for partitioning key (execMain.c:3451)
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 NOTICE:  drop cascades to append only table foz_1_prt_4
@@ -2052,9 +2052,9 @@ ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh exchange partition cc with table nosuchtable without validation;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh exchange partition aa with table nosuchtable with validation;
-ERROR:  cannot EXCHANGE PARTITION for relation "hhh"
+ERROR:  relation "nosuchtable" does not exist
 alter table hhh exchange partition aa with table nosuchtable without validation;
-ERROR:  cannot EXCHANGE PARTITION for relation "hhh"
+ERROR:  relation "nosuchtable" does not exist
 alter table hhh merge partition cc, partition dd;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh merge partition cc, partition dd into partition ee;

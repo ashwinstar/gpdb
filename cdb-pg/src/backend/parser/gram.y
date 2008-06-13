@@ -1958,7 +1958,7 @@ alter_table_partition_cmd:
 				}
 			| EXCHANGE PARTITION 
             alter_table_partition_id_spec 
-            WITH TABLE relation_expr 
+            WITH TABLE qualified_name
             opt_table_partition_exchange_validate	
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);

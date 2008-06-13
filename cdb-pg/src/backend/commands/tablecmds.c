@@ -9721,11 +9721,75 @@ ATPExecPartExchange(Relation rel,
 
 	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
 
-
 	if (prule)
 	{
+		AlterTableStmt 	*ats   	  = makeNode(AlterTableStmt);
+		AlterTableCmd 	*atc   	  = makeNode(AlterTableCmd);
+		RangeVar       	*rv    	  = (RangeVar *)pc->arg1;
+		RangeVar       	*rvparent;
+		Oid     	  	 relId 	  = RangeVarGetRelid(rv, false);
+		DestReceiver 	*dest 	  = None_Receiver;
+		TupleDesc		 oldtupleDesc, newtupleDesc;
+		TupleConstr 	*constr;
+		Relation 		 oldRel;
+		Relation 		 newRel;
+
+		oldRel = heap_open(prule->topRule->parrelid, AccessShareLock);
+		oldtupleDesc = RelationGetDescr(oldRel);
+		constr = oldtupleDesc->constr;
+
+		newRel = heap_open(relId, AccessShareLock);
+		newtupleDesc = RelationGetDescr(newRel);
+
+		ats->relation = rv;
+		ats->cmds = list_make1(atc);
+		ats->relkind = OBJECT_TABLE;
+		
+		atc->subtype = AT_AddInherit;
+		atc->def = (Node *) rvparent;
+
+		rvparent = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+								pstrdup(RelationGetRelationName(rel)));
+
+		/* adapted from transformInhRelation */
+		if (constr)
+		{
+			AttrNumber *attmap = varattnos_map(oldtupleDesc, newtupleDesc);
+			int			ccnum;
+
+			for (ccnum = 0; ccnum < constr->num_check; ccnum++)
+			{
+				char	   *ccname = constr->check[ccnum].ccname;
+				char	   *ccbin = constr->check[ccnum].ccbin;
+				Node	   *ccbin_node = stringToNode(ccbin);
+				Constraint *n = makeNode(Constraint);
+
+				change_varattnos_of_a_node(ccbin_node, attmap);
+
+				n->contype = CONSTR_CHECK;
+				n->name = pstrdup(ccname);
+				n->raw_expr = NULL;
+				n->cooked_expr = nodeToString(ccbin_node);
+				n->indexspace = NULL;
+
+				atc = makeNode(AlterTableCmd);
+				
+				atc->subtype = AT_AddConstraint;
+				atc->def = (Node *) n;
+
+				ats->cmds = lappend(ats->cmds, atc);
+			}
+		}
+
+		heap_close(oldRel, NoLock);
+		heap_close(newRel, NoLock);
+
+		ProcessUtility(
+				(Node *) ats,
+				NULL, dest, NULL);		
 	}
 
+	if (0)
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot EXCHANGE PARTITION for relation \"%s\"",
@@ -9769,7 +9833,6 @@ ATPExecPartModify(Relation rel,
 
 	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
 
-
 	if (prule)
 	{
 	}
@@ -9796,20 +9859,20 @@ ATPExecPartRename(Relation rel,
 
 	if (prule)
 	{
-		AlterPartitionId newpid;
-		pg_part_rule   *prule2 = NULL;
-		Relation	targetrelation;
-		char        targetrelname[NAMEDATALEN];
-		Relation	parentrelation;
-		Oid			namespaceId;
-		char	   *newpartname = strVal(pc->arg1);
-		char        prtstr[NAMEDATALEN];
-		char	   *relname;
-		char	  	depthstr[NAMEDATALEN];
-		char	  	parentname[NAMEDATALEN];
-		int partDepth = 1 + prule->pNode->part->parlevel;
-		RenameStmt *renStmt = makeNode(RenameStmt);
-		DestReceiver *dest = None_Receiver;
+		AlterPartitionId 	 newpid;
+		pg_part_rule   		*prule2 	 = NULL;
+		Relation			 targetrelation;
+		char        		 targetrelname[NAMEDATALEN];
+		Relation			 parentrelation;
+		Oid					 namespaceId;
+		char	   			*newpartname = strVal(pc->arg1);
+		char        		 prtstr[NAMEDATALEN];
+		char	   			*relname;
+		char	  			 depthstr[NAMEDATALEN];
+		char	  			 parentname[NAMEDATALEN];
+		int 				 partDepth 	 = 1 + prule->pNode->part->parlevel;
+		RenameStmt 			*renStmt 	 = makeNode(RenameStmt);
+		DestReceiver 		*dest 		 = None_Receiver;
 
 		newpid.idtype = AT_AP_IDName;
 		newpid.partiddef = pc->arg1;
@@ -9866,11 +9929,8 @@ ATPExecPartRename(Relation rel,
 		CommandCounterIncrement();
 
 		renStmt->renameType = OBJECT_TABLE;
-		renStmt->relation = makeNode(RangeVar);
-		renStmt->relation->catalogname = NULL;
-		renStmt->relation->schemaname = NULL;
-		renStmt->relation->relname = targetrelname;
-		renStmt->relation->location = -1;
+		renStmt->relation = makeRangeVar(get_namespace_name(namespaceId),
+										 pstrdup(targetrelname));
 
 		renStmt->subname = NULL;
 		renStmt->newname = relname;
@@ -10022,15 +10082,15 @@ atpxTruncateList(Relation rel, PartitionNode *pNode)
 	/* add entries for rules at current level */
 	foreach(lc, pNode->rules)
 	{
-		PartitionRule *rule = lfirst(lc);
-		RangeVar *rv = makeNode(RangeVar);
-		Relation	rel;
+		PartitionRule 	*rule = lfirst(lc);
+		RangeVar 		*rv;
+		Relation		 rel;
 
 		rel = heap_open(rule->parrelid, AccessShareLock);
-		rv->catalogname = NULL;
-		rv->schemaname = NULL;
-		rv->relname = RelationGetRelationName(rel);
-		rv->location = -1;
+
+		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+						  pstrdup(RelationGetRelationName(rel)));
+
 		heap_close(rel, NoLock);
 
 		if (l1)
@@ -10042,15 +10102,14 @@ atpxTruncateList(Relation rel, PartitionNode *pNode)
 	/* and the default partition */
 	if (pNode->default_part)
 	{
-		PartitionRule *rule = pNode->default_part;
-		RangeVar *rv = makeNode(RangeVar);
-		Relation	rel;
+		PartitionRule 	*rule = pNode->default_part;
+		RangeVar 		*rv;
+		Relation		 rel;
 
 		rel = heap_open(rule->parrelid, AccessShareLock);
-		rv->catalogname = NULL;
-		rv->schemaname = NULL;
-		rv->relname = RelationGetRelationName(rel);
-		rv->location = -1;
+		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+						  pstrdup(RelationGetRelationName(rel)));
+
 		heap_close(rel, NoLock);
 
 		if (l1)
@@ -10077,16 +10136,15 @@ ATPExecPartTruncate(Relation rel,
 
 	if (prule)
 	{
-		RangeVar *rv = makeNode(RangeVar);
-		TruncateStmt *ts = (TruncateStmt *)pc->arg1;
-		DestReceiver *dest = None_Receiver;
-		Relation	  rel2;
+		RangeVar 		*rv;
+		TruncateStmt 	*ts   = (TruncateStmt *)pc->arg1;
+		DestReceiver 	*dest = None_Receiver;
+		Relation	  	 rel2;
 
 		rel2 = heap_open(prule->topRule->parrelid, AccessShareLock);
+		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel2)),
+						  pstrdup(RelationGetRelationName(rel2)));
 
-		rv->catalogname = NULL;
-		rv->schemaname = NULL;
-		rv->relname = RelationGetRelationName(rel2);
 		rv->location = pc->location;
 
 		StrNCpy(realrelname, RelationGetRelationName(rel), NAMEDATALEN);
