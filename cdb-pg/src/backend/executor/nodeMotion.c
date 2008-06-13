@@ -370,7 +370,7 @@ execMotionUnsortedReceiver(MotionState * node)
     node->numTuplesToParent++;
 
     /* store it in our result slot and return this. */
-    slot = node->ps.ps_ResultTupleSlot;
+    slot = outerPlanState(node)->ps_ResultTupleSlot;
     slot = ExecStoreGenericTuple(tuple, slot, true /* shouldFree */);
 
 #ifdef CDB_MOTION_DEBUG
@@ -540,7 +540,7 @@ execMotionSortedReceiver(MotionState * node)
     node->numTuplesToParent++;
 
     /* Store tuple in our result slot. */
-    slot = node->ps.ps_ResultTupleSlot;
+    slot = outerPlanState(node)->ps_ResultTupleSlot;
     slot = ExecStoreGenericTuple(tuple, slot, true /* shouldFree */);
 
 #ifdef CDB_MOTION_DEBUG
@@ -797,15 +797,9 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	ExecInitResultTupleSlot(estate, &motionstate->ps);
 
 	/*
-	 * initializes child nodes; but this is only required if this
-	 * slice is going to execute anything in the child.
-	 *
-	 * Dispatcher needs to descend regardless (to support explain).
+	 * initializes child nodes.
 	 */
-	if (Gp_role == GP_ROLE_DISPATCH || !thisSlice || motionstate->mstype == MOTIONSTATE_SEND)
-	{
-		outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate, eflags);
-	}
+	outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate, eflags);
 
 	/*
 	 * restore state that might have changed in recursion for our caller
@@ -820,7 +814,7 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
 	 */
 	ExecAssignResultTypeFromTL(&motionstate->ps);
 	motionstate->ps.ps_ProjInfo = NULL;
-	tupDesc = ExecGetResultType(&motionstate->ps);
+	tupDesc = ExecGetResultType(outerPlanState(motionstate));
 
 	/* Set up motion send data structures */
 	if (motionstate->mstype == MOTIONSTATE_SEND && node->motionType == MOTIONTYPE_HASH) 
