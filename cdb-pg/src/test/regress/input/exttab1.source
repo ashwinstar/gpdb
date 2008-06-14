@@ -52,7 +52,7 @@ select * from check_env;
 -- --------------------------------------
 
 CREATE EXTERNAL WEB TABLE gpfdist_status (x text)
-execute E'( python $GPHOME/bin/lib/gppinggpfdist.py localhost:7070 || echo) '
+execute E'( python $GPHOME/bin/lib/gppinggpfdist.py localhost:7070 2>&1 || echo) '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 
