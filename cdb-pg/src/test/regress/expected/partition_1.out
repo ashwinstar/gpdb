@@ -2065,3 +2065,41 @@ NOTICE:  drop cascades to table hhh_1_prt_bb
 NOTICE:  drop cascades to constraint hhh_1_prt_bb_check on table hhh_1_prt_bb
 NOTICE:  drop cascades to append only table hhh_1_prt_aa
 NOTICE:  drop cascades to constraint hhh_1_prt_aa_check on append only table hhh_1_prt_aa
+-- check default
+create table foz (i int, d date) distributed by (i)
+partition by range (d) 
+(
+ default partition dsf,
+ partition foo start (date '2001-01-01') end (date '2005-01-01')
+               every(interval '1 year')
+);
+NOTICE:  CREATE TABLE will create partition "foz_1_prt_dsf" for table "foz"
+NOTICE:  CREATE TABLE will create partition "foz_1_prt_foo1" for table "foz"
+NOTICE:  CREATE TABLE will create partition "foz_1_prt_foo2" for table "foz"
+NOTICE:  CREATE TABLE will create partition "foz_1_prt_foo3" for table "foz"
+NOTICE:  CREATE TABLE will create partition "foz_1_prt_foo4" for table "foz"
+insert into foz values(1, '2003-04-01');
+insert into foz values(2, '2010-04-01');
+select * from foz;
+ i |     d      
+---+------------
+ 1 | 04-01-2003
+ 2 | 04-01-2010
+(2 rows)
+
+select * from foz_1_prt_dsf;
+ i |     d      
+---+------------
+ 2 | 04-01-2010
+(1 row)
+
+drop table foz cascade;
+NOTICE:  drop cascades to table foz_1_prt_foo4
+NOTICE:  drop cascades to constraint foz_1_prt_foo4_check on table foz_1_prt_foo4
+NOTICE:  drop cascades to table foz_1_prt_foo3
+NOTICE:  drop cascades to constraint foz_1_prt_foo3_check on table foz_1_prt_foo3
+NOTICE:  drop cascades to table foz_1_prt_foo2
+NOTICE:  drop cascades to constraint foz_1_prt_foo2_check on table foz_1_prt_foo2
+NOTICE:  drop cascades to table foz_1_prt_foo1
+NOTICE:  drop cascades to constraint foz_1_prt_foo1_check on table foz_1_prt_foo1
+NOTICE:  drop cascades to table foz_1_prt_dsf

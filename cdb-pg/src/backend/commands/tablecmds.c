@@ -9044,7 +9044,19 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	if (pn)
 		return selectPartition(pn, values, isnull, tupdesc);
 	else
-		return relid;
+	{
+		/* retry a default */
+		if (partnode->default_part && !OidIsValid(relid))
+		{
+			if (partnode->default_part->children)
+				return selectPartition(partnode->default_part->children, values,
+									   isnull, tupdesc);
+			else
+				return partnode->default_part->parrelid;
+		}
+		else
+			return relid;
+	}
 }
 
 

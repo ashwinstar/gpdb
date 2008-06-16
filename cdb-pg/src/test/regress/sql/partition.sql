@@ -936,3 +936,16 @@ default partition j3,
 default partition j4);
 
 
+-- check default
+create table foz (i int, d date) distributed by (i)
+partition by range (d) 
+(
+ default partition dsf,
+ partition foo start (date '2001-01-01') end (date '2005-01-01')
+               every(interval '1 year')
+);
+insert into foz values(1, '2003-04-01');
+insert into foz values(2, '2010-04-01');
+select * from foz;
+select * from foz_1_prt_dsf;
+drop table foz cascade;
