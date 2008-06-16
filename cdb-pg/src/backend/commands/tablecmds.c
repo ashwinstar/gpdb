@@ -9738,7 +9738,7 @@ ATPExecPartExchange(Relation rel,
 		AlterTableStmt 	*ats   	  = makeNode(AlterTableStmt);
 		AlterTableCmd 	*atc   	  = makeNode(AlterTableCmd);
 		RangeVar       	*rv    	  = (RangeVar *)pc->arg1;
-		RangeVar       	*rvparent;
+		RangeVar       	*rvparent = NULL;
 		Oid     	  	 relId 	  = RangeVarGetRelid(rv, false);
 		DestReceiver 	*dest 	  = None_Receiver;
 		TupleDesc		 oldtupleDesc, newtupleDesc;
@@ -9757,11 +9757,11 @@ ATPExecPartExchange(Relation rel,
 		ats->cmds = list_make1(atc);
 		ats->relkind = OBJECT_TABLE;
 		
-		atc->subtype = AT_AddInherit;
-		atc->def = (Node *) rvparent;
-
 		rvparent = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 								pstrdup(RelationGetRelationName(rel)));
+
+		atc->subtype = AT_AddInherit;
+		atc->def = (Node *) rvparent;
 
 		/* adapted from transformInhRelation */
 		if (constr)
