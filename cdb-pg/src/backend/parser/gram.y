@@ -1962,11 +1962,13 @@ alter_table_partition_cmd:
             opt_table_partition_exchange_validate	
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+					AlterPartitionCmd *pc2 = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
                     pc->partid = (Node *)$3;
                     pc->arg1 = (Node *)$6;
-                    pc->arg2 = (Node *)makeInteger($7);
+                    pc->arg2 = (Node *)pc2;
+                    pc2->arg1 = (Node *)makeInteger($7);
                     pc->location = @6;
 
 					n->subtype = AT_PartExchange;

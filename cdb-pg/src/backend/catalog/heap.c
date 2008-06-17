@@ -1725,6 +1725,15 @@ AddRelationRawConstraints(Relation rel,
 
 		if (cdef->contype != CONSTR_CHECK || cdef->raw_expr == NULL)
 			continue;
+
+		if (IsA(cdef->raw_expr, AlterTableCmd)) /* HUGE HACK */
+		{
+			AlterTableCmd *atc = (AlterTableCmd *)cdef->raw_expr;
+			cdef->raw_expr = NULL;
+			expr = (Node *)atc->def;
+			goto L_precooked;
+		}
+
 		Assert(cdef->cooked_expr == NULL);
 
 		/*
@@ -1762,6 +1771,7 @@ AddRelationRawConstraints(Relation rel,
 					(errcode(ERRCODE_SYNTAX_ERROR),
 			   errmsg("cannot use window function in check constraint")));
 
+	L_precooked:
 		/*
 		 * Check name uniqueness, or generate a name if none was given.
 		 */
