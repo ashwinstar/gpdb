@@ -293,6 +293,14 @@ static void create_col_bind(MemTupleBindingCols *colbind, bool islarge, TupleDes
 		}
 	}
 
+#ifdef USE_DEBUG_ASSERT
+	for(i=0; i<tupdesc->natts; ++i)
+	{
+		MemTupleAttrBinding *bind = &colbind->bindings[i];
+		Assert(bind->offset[i] != 0);
+	}
+#endif
+
 	if(tupdesc->natts != 0)
 		colbind->var_start = cur_offset;
 	else
