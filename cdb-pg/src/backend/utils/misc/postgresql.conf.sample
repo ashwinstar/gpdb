@@ -520,6 +520,7 @@ gp_selectivity_damping_for_joins = on
 # EXTERNAL TABLES
 #---------------------------------------------------------------------------
 #gp_external_enable_exec = on   # enable external tables with EXECUTE.
+#gp_external_grant_privileges = off #enable create http/gpfdist for non su's
 
 #---------------------------------------------------------------------------
 # VERSION/PLATFORM COMPATIBILITY

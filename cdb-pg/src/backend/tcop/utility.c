@@ -692,7 +692,7 @@ ProcessUtility(Node *parsetree,
 							rel = makeRangeVarFromNameList(names);
 							if (CheckDropPermissions(rel, RELKIND_EXTERNAL,
 													 stmt->missing_ok))
-								RemoveExternalRelation(rel, stmt->behavior);
+								RemoveRelation(rel, stmt->behavior);
 							break;
 							
 

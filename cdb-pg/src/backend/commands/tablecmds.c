@@ -779,15 +779,7 @@ DefineExternalRelation(CreateExternalStmt *createExtStmt)
 	Oid						  reloid = 0;
 	bool					  shouldDispatch = (Gp_role == GP_ROLE_DISPATCH && 
 												IsNormalProcessingMode());
-	
-	/*
-	 * Only superusers allowed to create an external table
-	 */
-	if(!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create an external table")));
-	
+		
 	/*
 	 * now set the parameters for keys/inheritance etc. Most of these are
 	 * uninteresting for external relations...
@@ -1101,9 +1093,6 @@ DefinePartitionedRelation(CreateStmt *stmt, Oid relOid)
 /*
  * RemoveRelation
  *		Deletes a relation.
- *
- * NOTE: if you change this code make sure to reflect the
- * change in RemoveExternalRelation() as well!
  */
 void
 RemoveRelation(const RangeVar *relation, DropBehavior behavior)
@@ -1130,25 +1119,6 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
 	delete_part_from_catalog(relOid); /* fix up partitions */
 
 	performDeletion(&object, behavior);
-}
-
-/*
- * RemoveExternalRelation
- *		Deletes an external relation.
- *
- * The only difference between external relations and normal heap relations
- * as far as DROP is concerned, is that we have an extra permissions check.
- */
-void
-RemoveExternalRelation(const RangeVar *relation, DropBehavior behavior)
-{
-	/* Permission check - only superuser can drop external tables. */
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-	 			errmsg("must be superuser to drop external table")));
-
-	RemoveRelation(relation, behavior);
 }
 
 /*
@@ -10880,6 +10850,54 @@ StoreExternalRelation(CreateExternalStmt *stmt, Oid tbloid)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Internal error: unknown external table type")));
+	}
+	
+	/*
+	 * check permissions to create this external table.
+	 *
+	 * - Always allow if superuser.
+	 * - Never allow EXECUTE or 'file' exttables if not superuser.
+	 * - Allow http or gpfdist tables if gp_external_grant_privileges is on.
+	 *
+	 * NOTE: This check used to be done in DefineExternalRelation, which sounds
+	 * like a better place for it actually, however moved here since the
+	 * permission now depends on examining the 'location' list for the type
+	 * of external table created, and this function is a better place for it
+	 * after the location string transformation.
+	 */
+	if(!superuser() && Gp_role == GP_ROLE_DISPATCH)
+	{
+		if(exttypeDesc->exttabletype == EXTTBL_TYPE_EXECUTE)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to create an EXECUTE external web table")));			
+		}
+		else
+		{
+			ListCell   *first_uri = list_head(exttypeDesc->location_list);
+			Value		*v = lfirst(first_uri);
+			char		*uri_str = pstrdup(v->val.str);
+			Uri			*uri = ParseUriString(uri_str);
+			
+			Assert(exttypeDesc->exttabletype == EXTTBL_TYPE_LOCATION);
+			
+			if(uri->protocol == URI_FILE)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("must be superuser to create an external table with a file protocol")));			
+			}
+			else if(!gp_external_grant_privileges)
+			{
+				Assert(uri->protocol == URI_GPFDIST || uri->protocol == URI_HTTP);
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						errmsg("must be superuser to create an external table")));			
+			}
+			pfree(uri);
+			pfree(uri_str);
+		}
 	}
 	
 	/*

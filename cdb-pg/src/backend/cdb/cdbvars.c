@@ -73,6 +73,8 @@ bool		Debug_print_slice_table;	/* Shall we log the slice table? */
 
 bool		gp_external_enable_exec = true; /* allow ext tables with EXECUTE */
 
+bool		gp_external_grant_privileges = false; /* allow creating http/gpfdist for non-su */
+
 int			gp_external_max_segs;      /* max segdbs per gpfdist URI */
 
 int			gp_connections_per_thread; /* How many libpq connections are

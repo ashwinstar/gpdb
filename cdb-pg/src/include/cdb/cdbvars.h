@@ -240,6 +240,15 @@ extern bool Debug_print_slice_table;
  */
 extern bool gp_external_enable_exec;
 
+/*
+ * gp_external_grant_privileges
+ *
+ * when set to 'false' only superusers can create external tables.
+ * when set to 'true' http and gpfdist external tables are also allowed to be
+ * created by non superusers. Default is 'false'
+ */
+extern bool gp_external_grant_privileges;
+
 /* gp_external_max_segs
  *
  * The maximum number of segment databases that will get assigned to  
