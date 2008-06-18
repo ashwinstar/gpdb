@@ -543,7 +543,7 @@ SELECT sale.cn,sale.pn,
 FIRST_VALUE(sale.pn+sale.pn) OVER(order by ord,sale.cn rows unbounded preceding) as fv from sale_ord as sale;
 
 SELECT sale.cn,sale.pn, 
-FIRST_VALUE(((cn*100 + (sale.pn+sale.pn)/100)%100)) OVER(order by sale.cn range unbounded preceding) as fv from sale; --mvd 1->3
+FIRST_VALUE(((cn*100 + (sale.pn+sale.pn)%100)/100)) OVER(order by sale.cn range unbounded preceding) as fv from sale; --mvd 1->3
 
 -- MPP-1812
 SELECT sale.cn,sale.prc,sale.vn,
