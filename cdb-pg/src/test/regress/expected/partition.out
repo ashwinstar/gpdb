@@ -269,9 +269,18 @@ partition by range (b)
 partition aa start ('2007'), end ('2008'),
 partition bb start ('2008'), end ('2009')
 );
+ERROR:  invalid input syntax for type date: "2007"
+create table ggg (a char(1), b int)
+distributed by (a)
+partition by range(b)
+(
+partition aa start ('2007'), end ('2008')
+);
 ERROR:  invalid use of mixed named and unnamed RANGE boundary specifications
-LINE 5: partition aa start ('2007'), end ('2008'),
-                                     ^
+LINE 5: partition aa start ('2007'), end ('2008')
+                     ^
+drop table ggg cascade;
+ERROR:  table "ggg" does not exist
 create table ggg (a char(1), b date, d char(3))
 distributed by (a)
 partition by range (b)
@@ -1275,8 +1284,8 @@ partition by range (b)
 partition bb start (date '2008-01-01') end (date '2009-01-01'),
 partition aa start (date '2007-01-01') end (date '2008-01-01') inclusive
 );
-ERROR:  Ending value of partition "aa" overlaps next range
-LINE 6: partition aa start (date '2007-01-01') end (date '2008-01-01...
+ERROR:  starting value of partition "bb" overlaps previous range
+LINE 5: partition bb start (date '2008-01-01') end (date '2009-01-01...
                      ^
 drop table ggg cascade;
 ERROR:  table "ggg" does not exist
@@ -1316,11 +1325,13 @@ partition by range (b)
 partition bb start (date '2008-01-01') ,
 partition aa start (date '2007-01-01') 
 );
-ERROR:  START of partition "aa" less than START of previous
-LINE 6: partition aa start (date '2007-01-01') 
-                     ^
+NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa" for table "ggg"
+NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb" for table "ggg"
 drop table ggg cascade;
-ERROR:  table "ggg" does not exist
+NOTICE:  drop cascades to table ggg_1_prt_bb
+NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
+NOTICE:  drop cascades to table ggg_1_prt_aa
+NOTICE:  drop cascades to constraint ggg_1_prt_aa_check on table ggg_1_prt_aa
 -- test cross type coercion
 -- int -> char(N)
 create table ggg (i int, a char(1))
@@ -2299,3 +2310,44 @@ NOTICE:  drop cascades to constraint foz_1_prt_foo2_check on table foz_1_prt_foo
 NOTICE:  drop cascades to table foz_1_prt_foo1
 NOTICE:  drop cascades to constraint foz_1_prt_foo1_check on table foz_1_prt_foo1
 NOTICE:  drop cascades to table foz_1_prt_dsf
+-- check for out of order partition definitions. We should order these correctly
+-- and determine the appropriate boundaries.
+create table d (i int, j int) distributed by (i) partition by range(j)                 
+( start (10), start(5), start(50) end(60));
+NOTICE:  CREATE TABLE will create partition "d_1_prt_1" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_2" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_3" for table "d"
+insert into d values(1, 5);
+insert into d values(1, 10);
+insert into d values(1, 11);
+insert into d values(1, 55);
+insert into d values(1, 70);
+ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+select * from d;
+ i | j  
+---+----
+ 1 |  5
+ 1 | 10
+ 1 | 11
+ 1 | 55
+(4 rows)
+
+select * from d_1_prt_1;
+ i | j 
+---+---
+ 1 | 5
+(1 row)
+
+select * from d_1_prt_2;
+ i | j  
+---+----
+ 1 | 10
+ 1 | 11
+(2 rows)
+
+select * from d_1_prt_3;
+ i | j  
+---+----
+ 1 | 55
+(1 row)
+

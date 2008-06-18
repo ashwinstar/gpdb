@@ -252,6 +252,8 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 
 static A_Const *make_a_const(A_Const *pValConst, char *val_str);
 static Datum arg_get_val(Node *node);
+static Node *coerce_partition_value(Node *node, TypeName *type,
+									 PartitionByType partype);
 
 /*
  * parse_analyze
@@ -3948,14 +3950,134 @@ L_redoLoop:
 	return rc;
 } /* end partition_range_compare */
 
-static void
-preprocess_range_spec(ParseState *pstate, PartitionSpec *spec)
+static int
+part_el_cmp(void *a, void *b, void *arg)
 {
+	RegProcedure *sortfuncs = (RegProcedure *)arg;
+	PartitionElem *el1 = (PartitionElem *)a;
+	PartitionElem *el2 = (PartitionElem *)b;
+	PartitionBoundSpec *bs1;
+	PartitionBoundSpec *bs2;
+	int i;
+	List *start1, *start2;
+	ListCell *lc1, *lc2;
+
+	if (el1->isDefault)
+		return -1;
+
+	if (el2->isDefault)
+		return 1;
+
+	bs1 = (PartitionBoundSpec *)el1->boundSpec;
+	bs2 = (PartitionBoundSpec *)el2->boundSpec;
+
+	/* XXX: should also do inc/excl */
+
+	/* First case would be a syntax error, but it's handled later */
+	if (!bs1->partStart && !bs2->partStart)
+		return 0;
+	else if (!bs1->partStart)
+		return -1;
+	else if (!bs2->partStart)
+		return 1;
+
+	start1 = ((PartitionRangeItem *)bs1->partStart)->partRangeVal;
+	start2 = ((PartitionRangeItem *)bs2->partStart)->partRangeVal;
+
+	if (!bs1->partStart && !bs2->partStart)
+	{
+		if (!bs1->partEnd && !bs2->partEnd)
+			return 0;
+		else if (!bs1->partEnd)
+			return 1;
+		else if (!bs2->partEnd)
+			return -1;
+		else
+		{
+			List *end1 = ((PartitionRangeItem *)bs1->partEnd)->partRangeVal;
+			List *end2 = ((PartitionRangeItem *)bs2->partEnd)->partRangeVal;
+
+			i = 0;
+			forboth(lc1, end1, lc2, end2)
+			{
+				Const *c1 = lfirst(lc1);
+				Const *c2 = lfirst(lc2);
+
+				RegProcedure sortFunction = sortfuncs[i++];
+
+				if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue, 
+												  c2->constvalue)))
+					return -1; /* a < b */
+				if (DatumGetBool(OidFunctionCall2(sortFunction, c2->constvalue,
+												  c1->constvalue)))
+					return 1;
+			}
+		}
+	}
+
+	i = 0;
+	forboth(lc1, start1, lc2, start2)
+	{
+		Const *c1 = lfirst(lc1);
+		Const *c2 = lfirst(lc2);
+
+		RegProcedure sortFunction = sortfuncs[i++];
+
+		if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue, 
+										  c2->constvalue)))
+			return -1; /* a < b */
+		if (DatumGetBool(OidFunctionCall2(sortFunction, c2->constvalue,
+										  c1->constvalue)))
+			return 1;
+	}
+
+	/* all equal */
+	return 0;
+}
+
+
+static void
+preprocess_range_spec(partValidationState *vstate)
+{
+	PartitionSpec *spec = (PartitionSpec *)vstate->pBy->partSpec;
+	ParseState *pstate = vstate->pstate;
 	ListCell *lc;
 	List *newelts = NIL;
 	List *plusop = list_make2(makeString("pg_catalog"), makeString("+"));
 	List *leop = list_make2(makeString("pg_catalog"), makeString("<"));
-	
+	PartitionElem *clauses;
+	RegProcedure *sortfuncs;
+	int i;
+	List *coltypes = NIL;
+
+	foreach(lc, vstate->pBy->keys)
+	{
+		char *colname = strVal(lfirst(lc));
+		bool found = false;
+		ListCell *lc2;
+		TypeName *typname = NULL;
+
+		foreach(lc2, vstate->cxt->columns)
+		{
+			ColumnDef *column = lfirst(lc2);
+
+			if (strcmp(column->colname, colname) == 0)
+			{
+				found = true;
+				if (!OidIsValid(column->typname->typid))
+				{
+					Type type = typenameType(vstate->pstate, column->typname);
+					column->typname->typid = typeTypeId(type);
+					ReleaseSysCache(type);
+				}
+				typname = column->typname;
+				break;
+			}
+		}
+		Assert(found);
+		coltypes = lappend(coltypes, typname);
+	}
+
 	/* 
 	 * Iterate over the elements in a given partition specification and
 	 * expand any EVERY clauses into raw elements.
@@ -3984,13 +4106,6 @@ preprocess_range_spec(ParseState *pstate, PartitionSpec *spec)
 			List *every = 
 				(List *)((PartitionRangeItem *)pbs->partEvery)->partRangeVal;
 			bool lessthan = true;
-			List *col_types = NIL;
-			typedef struct 
-			{
-				Oid typid;
-				int2 typlen;
-				bool typbyval;
-			} typ_data;
 			int everycount = 0;
 			List *everyelts = NIL;
 			
@@ -4016,25 +4131,18 @@ preprocess_range_spec(ParseState *pstate, PartitionSpec *spec)
 
 				if (start == NIL)
 				{
-					start = 
-						((PartitionRangeItem *)pbs->partStart)->partRangeVal;
-
-					foreach(lcstart, start)
+					start = ((PartitionRangeItem *)pbs->partStart)->partRangeVal;
+					/* coerce to target type */
+					forboth(lcstart, start, lccol, coltypes)
 					{
-						Type typ;
-						typ_data dat;
 						Node *mystart = lfirst(lcstart);
-						
-						dat.typid = exprType(mystart);
-				
-						typ = typeidType(dat.typid);
+						TypeName *typ = lfirst(lccol);
+						Node *newnode;
 
-						dat.typlen = typeLen(typ);
-						dat.typbyval = typeByVal(typ);
+						newnode = coerce_partition_value(mystart, typ,
+														 PARTTYP_RANGE);
 
-						ReleaseSysCache(typ);
-
-						col_types = lappend(col_types, &dat);
+						lfirst(lcstart) = newnode;
 					}
 				}
 				else
@@ -4046,26 +4154,29 @@ preprocess_range_spec(ParseState *pstate, PartitionSpec *spec)
 				lcevery = list_head(every);
 				lcend = list_head(end);
 				
-				forboth(lcstart, start, lccol, col_types)
+				forboth(lcstart, start, lccol, coltypes)
 				{
 					Const *mystart = lfirst(lcstart);
-					typ_data *dat = lfirst(lccol);
+					TypeName *type = lfirst(lccol);
 					Const *myend;
 					Const *clauseend;
 					Const *clauseevery;
+					Oid typid = type->typid;
+					int16 len = get_typlen(typid);
+					bool typbyval = get_typbyval(typid);
 
 					Assert(lcevery);
 					Assert(lcend);
 
 					clauseevery = lfirst(lcevery);
 					clauseend = lfirst(lcend);
-					
+				
 					res = eval_basic_opexpr(pstate, plusop, (Node *)mystart,
-										(Node *)clauseevery,
-										&(dat->typid));
+											(Node *)clauseevery,
+											&typid);
 
-					myend = makeConst(dat->typid, dat->typlen, res, 
-									  false, dat->typbyval);
+					myend = makeConst(type->typid, len, res, 
+									  false, typbyval);
 					/* XXX: typmod ? */
 
 					restypid = InvalidOid;
@@ -4131,9 +4242,78 @@ preprocess_range_spec(ParseState *pstate, PartitionSpec *spec)
 			newelts = list_concat(newelts, everyelts);
 		}
 		else
+		{
+			if (pbs->partStart)
+			{
+				ListCell *lccol;
+				ListCell *lcstart;
+				List *start =
+					((PartitionRangeItem *)pbs->partStart)->partRangeVal;
+
+				/* coerce to target type */
+				forboth(lcstart, start, lccol, coltypes)
+				{
+					Node *mystart = lfirst(lcstart);
+					TypeName *typ = lfirst(lccol);
+					Node *newnode;
+
+					newnode = coerce_partition_value(mystart, typ,
+													 PARTTYP_RANGE);
+
+					lfirst(lcstart) = newnode;
+				}
+			}
+
+			if (pbs->partEnd)
+			{
+				List *end = ((PartitionRangeItem *)pbs->partEnd)->partRangeVal;
+				ListCell *lccol;
+				ListCell *lcend;
+
+				/* coerce to target type */
+				forboth(lcend, end, lccol, coltypes)
+				{
+					Node *myend = lfirst(lcend);
+					TypeName *typ = lfirst(lccol);
+					Node *newnode;
+
+					newnode = coerce_partition_value(myend, typ,
+													 PARTTYP_RANGE);
+
+					lfirst(lcend) = newnode;
+				}
+			}
 			newelts = lappend(newelts, el);
+		}
 	}
-	spec->partElem = newelts;
+
+	sortfuncs = palloc(list_length(vstate->pBy->keyopclass) *
+					   sizeof(RegProcedure));
+	i = 0;
+
+	foreach(lc, vstate->pBy->keyopclass)
+	{
+		Oid opclass = lfirst_oid(lc);
+		Oid opoid = get_opclass_member(opclass, InvalidOid,
+									   BTLessStrategyNumber);
+
+		sortfuncs[i++] = get_opcode(opoid); 
+	}
+
+	i = 0;
+	clauses = palloc(sizeof(PartitionElem) * list_length(newelts));
+
+	foreach(lc, newelts)
+		clauses[i++] = *(PartitionElem *)lfirst(lc);
+
+	qsort_arg(clauses, list_length(newelts), sizeof(PartitionElem),
+			  (qsort_arg_comparator) part_el_cmp, (void *)sortfuncs);
+
+	pfree(spec->partElem);
+	spec->partElem = NIL;
+
+	for (i = 0; i < list_length(newelts); i++)
+		spec->partElem = lappend(spec->partElem, &clauses[i]);
 }
 
 /* 
@@ -4196,7 +4376,8 @@ validate_range_partition(partValidationState *vstate)
 		/* Note: for first loop, prevStartEnd = 0, so
 		 * this test is ok */
 
-		if ((vstate->prevHadName && !(vstate->pElem->partName))
+		if (((vstate->prevHadName && !(vstate->pElem->partName))
+			 || (!vstate->prevHadName && vstate->pElem->partName))
 			&&
 			(((vstate->prevStartEnd == 1)
 			  && (currStartEnd == 2))
@@ -4717,6 +4898,43 @@ L_setprevElem:
 	vstate->prevElem = vstate->pElem;
 }
 
+static Node *
+coerce_partition_value(Node *node, TypeName *type, PartitionByType partype)
+{
+	Node *out;
+	/*
+	 * We want to cast things directly to the table type. We do
+	 * not want to have to store a node which coerces this, it's
+	 * unnecessarily expensive to do it every time.
+	 */
+	out = coerce_to_target_type(NULL, node, exprType(node), 
+								 type->typid, type->typmod,
+								 COERCION_EXPLICIT,
+								 COERCE_IMPLICIT_CAST);
+
+	if (!out)
+		elog(ERROR, "cannot coerce VALUES field to table type");
+
+	/* explicit coerce */
+	if (IsA(out, FuncExpr))
+	{
+		Datum d = arg_get_val(out);
+		Const *c;
+		Type typ = typeidType(type->typid);
+
+		pfree(out);
+
+		c = makeConst(type->typid, typeLen(typ), d, false,
+					  typeByVal(typ));
+		ReleaseSysCache(typ);
+		out = (Node *)c;
+	}
+	else
+		Assert(IsA(out, Const));
+
+	return out;
+}
+
 static void
 validate_list_partition(partValidationState *vstate)
 {
@@ -4817,35 +5035,7 @@ validate_list_partition(partValidationState *vstate)
 										   (Node *)lfirst(lc_val));
 				TypeName *type = lfirst(llc2);
 
-				/*
-				 * We want to cast things directly to the table type. We do
-				 * not want to have to store a node which coerces this, it's
-				 * unnecessarily expensive to do it every time.
-				 */
-				node = coerce_to_target_type(NULL, node, exprType(node), 
-								   type->typid, type->typmod,
-								   COERCION_EXPLICIT,
-								   COERCE_IMPLICIT_CAST);
-
-				if (!node)
-					elog(ERROR, "cannot coerce VALUES field to table type");
-
-				/* explicit coerce */
-				if (IsA(node, FuncExpr))
-				{
-					Datum d = arg_get_val(node);
-					Const *c;
-					Type typ = typeidType(type->typid);
-
-					pfree(node);
-
-					c = makeConst(type->typid, typeLen(typ), d, false,
-								  typeByVal(typ));
-					ReleaseSysCache(typ);
-					node = (Node *)c;
-				}
-				else
-					Assert(IsA(node, Const));
+				node = coerce_partition_value(node, type, PARTTYP_LIST);
 
 				tvals = lappend(tvals, node);
 
@@ -4954,7 +5144,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	if (pBy->partType == PARTTYP_RANGE)	
 	{
 		partition_range_every(pstate, cxt, stmt, pBy, at_depth);
-		preprocess_range_spec(pstate, pSpec);
+		preprocess_range_spec(vstate);
 	}
 
 	partElts = pSpec->partElem;
@@ -4971,8 +5161,6 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 		 * configuration to the catalog.
 		 */
 		pElem->partno = ++partno;
-
-		
 
 		if (pElem)
 		{

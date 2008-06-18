@@ -168,6 +168,15 @@ partition aa start ('2007'), end ('2008'),
 partition bb start ('2008'), end ('2009')
 );
 
+create table ggg (a char(1), b int)
+distributed by (a)
+partition by range(b)
+(
+partition aa start ('2007'), end ('2008')
+);
+
+drop table ggg cascade;
+
 create table ggg (a char(1), b date, d char(3))
 distributed by (a)
 partition by range (b)
@@ -949,3 +958,17 @@ insert into foz values(2, '2010-04-01');
 select * from foz;
 select * from foz_1_prt_dsf;
 drop table foz cascade;
+
+-- check for out of order partition definitions. We should order these correctly
+-- and determine the appropriate boundaries.
+create table d (i int, j int) distributed by (i) partition by range(j)                 
+( start (10), start(5), start(50) end(60));
+insert into d values(1, 5);
+insert into d values(1, 10);
+insert into d values(1, 11);
+insert into d values(1, 55);
+insert into d values(1, 70);
+select * from d;
+select * from d_1_prt_1;
+select * from d_1_prt_2;
+select * from d_1_prt_3;
