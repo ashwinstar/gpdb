@@ -23,23 +23,24 @@
 #include "utils/fmgroids.h"
 
 /*
- * InsertInitialFileSegInfo
+ * GetBlankFileSegInfo
  *
- * Adds the first file segment information into the pg_aoseg_*
- * table for this Append Only relation. This function basically
- * just calls InsertFileSegInfo with an initial entry data
+ * get a blank file segment entry. usually called as a workaround for non
+ * existing entry (this is a temporary workaround, this function will probably
+ * be removed in the near future).
  */
-void
-InsertInitialFileSegInfo(Relation parentrel)
+FileSegInfo *
+GetBlankFileSegInfo(void)
 {	
+	FileSegInfo *fsinfo = (FileSegInfo *) palloc(sizeof(FileSegInfo));
+
 	/* initial file segment */
-	int segno = 0;
-	float8 eof = 0;
-	float8 tupcount = 0;
-	float8 varblockcount = 0;
+	fsinfo->segno = 0;
+	fsinfo->eof = 0;
+	fsinfo->tupcount = 0;
+	fsinfo->varblockcount = 0;
 	
-	/* store in pg_aoseg_* table */
-	InsertFileSegInfo(parentrel, segno, eof, tupcount, varblockcount);
+	return fsinfo;
 }
 
 /*
@@ -149,16 +150,13 @@ GetFileSegInfo(Relation parentrel, int segno)
 		 * TEMP HACK: we should really show an error here (the one commented out 
 		 * below) - however, until we have the fileseg manager process that
 		 * knows which fileseg entries exists for a given relation we just
-		 * create an initial entry in the case that none exists yet - as a
-		 * temporary workaround.
+		 * return NULL and let the caller deal with it gracefully.
 		 */
 		index_endscan(aoscan);
 		index_close(pg_aoseg_idx, AccessShareLock);
-		heap_close(pg_aoseg_rel, AccessShareLock);		
-		InsertInitialFileSegInfo(parentrel);		
-		CommandCounterIncrement();
-		return GetFileSegInfo(parentrel, 0); /* recursive call should not get here */
-		
+		heap_close(pg_aoseg_rel, AccessShareLock);
+		return NULL;
+				
 		/* ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("append-only table \"%s\" file segment \"%d\" entry " 

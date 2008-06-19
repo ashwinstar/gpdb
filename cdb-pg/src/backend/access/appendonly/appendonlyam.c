@@ -153,6 +153,11 @@ doScanInit(AppendOnlyScanDesc scan)
 	
 	/* Get the eof of this relation file from the pg_aoseg_* table */
 	fsinfo = GetFileSegInfo(reln, segno);
+	
+	/* TEMPORARY: If no entry exists yet, use a blank one */
+	if(!fsinfo)
+		fsinfo = GetBlankFileSegInfo();
+	
 	eof = (int64)fsinfo->eof;
 	
 	if (eof < 0)
@@ -780,7 +785,6 @@ appendonly_insert_init(Relation rel)
 	int						maxtupsize;
 	File					appendFile;
 	FileSegInfo				*fsinfo;
-	BlockNumber				segno = 0; /* for now only 1 segment... */
 
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc(sizeof(AppendOnlyInsertDescData));
 	aoInsertDesc->aoi_rel = rel;
@@ -798,7 +802,9 @@ appendonly_insert_init(Relation rel)
 	maxtupsize = aoInsertDesc->maxBufferLen - VARBLOCK_HEADER_LEN - 4;
 	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4; /* see tuptoaster.h for more information */
 	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
-	
+	aoInsertDesc->cur_segno = 0;
+	aoInsertDesc->is_new_segno = false;
+		
 	actualMaxBufferLen = getActualMaxBufferLen(aoInsertDesc->maxBufferLen, 
 											   aoInsertDesc->shouldCompress);
 	
@@ -822,18 +828,25 @@ appendonly_insert_init(Relation rel)
 	if (Debug_appendonly_print_insert)
 		elog(LOG,"Append-only insert initialize for table '%s' segment file %u (compression = %s, compression level %d, maximum buffer length %d, large write length %d)",
 		     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
-		     segno,
+		     aoInsertDesc->cur_segno,
 		     (aoInsertDesc->shouldCompress ? "true" : "false"),
 		     aoInsertDesc->compressLevel,
 		     aoInsertDesc->maxBufferLen,
 		     aoInsertDesc->largeWriteLen);
 	
 	/* Open the 'segment' file */
-	appendFile = OpenAOSegmentFile(rel, segno);
+	appendFile = OpenAOSegmentFile(rel, aoInsertDesc->cur_segno);
 	
 	/* get the information for the file segment we insert into */
-	fsinfo = GetFileSegInfo(rel, segno);
+	fsinfo = GetFileSegInfo(rel, aoInsertDesc->cur_segno);
 
+	/* TEMPORARY: If no entry exists yet, use a blank one */
+	if(!fsinfo)
+	{
+		fsinfo = GetBlankFileSegInfo();
+		aoInsertDesc->is_new_segno = true;
+	}
+		
 	/* Seek to the starting point (current eof from catalog) */
 	eof = (int64) lseek(appendFile, (off_t) fsinfo->eof, SEEK_SET);
 		
@@ -1132,7 +1145,7 @@ void
 appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 {
 	int		actualItemCount = VarBlockMakerItemCount(&aoInsertDesc->varBlockMaker);
-	int64	fileLen; 
+	int64			fileLen;
 		
 	/* 
 	 * finish up that last varblock 
@@ -1180,12 +1193,27 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 	
 	fileLen = BufferedAppendFileLen(&aoInsertDesc->bufferedAppend);
 	
-	/* update pg_aoseg_* with our new eof */
-	UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
-					  0 /* for now */,
-					  fileLen, 
-					  aoInsertDesc->insertCount,
-					  aoInsertDesc->varblockCount);
+	/* 
+	 * Update the AO segment info table 
+	 */
+	if(aoInsertDesc->is_new_segno)
+	{
+		/* insert the first entry into pg_aoseg_* with our new eof */
+		InsertFileSegInfo(aoInsertDesc->aoi_rel, 
+						  aoInsertDesc->cur_segno,
+						  fileLen, 
+						  aoInsertDesc->insertCount,
+						  aoInsertDesc->varblockCount);
+	}
+	else
+	{
+		/* update the existing pg_aoseg_* with our new eof */
+		UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
+						  aoInsertDesc->cur_segno,
+						  fileLen, 
+						  aoInsertDesc->insertCount,
+						  aoInsertDesc->varblockCount);
+	}
 	
 	/* done with the rel file, close it */
 	BufferedAppendCompleteFile(&aoInsertDesc->bufferedAppend);

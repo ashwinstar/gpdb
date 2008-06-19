@@ -27,8 +27,8 @@ typedef struct FileSegInfo
 	float8		varblockcount;	/* total number of varblocks in this fileseg */	
 } FileSegInfo;
 
-extern void 
-InsertInitialFileSegInfo(Relation parentrel);
+extern FileSegInfo *
+GetBlankFileSegInfo(void);
 
 extern void 
 InsertFileSegInfo(Relation parentrel, 

@@ -885,12 +885,16 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	
 	fsinfo = GetFileSegInfo(aorel, /* for now */ 0);
 	
+	/* TEMPORARY: If no entry exists yet, use a blank one */
+	if(!fsinfo)
+		fsinfo = GetBlankFileSegInfo();
+	
 	/* calculate the values we care about */
 	eof = (double)fsinfo->eof;
 	num_tuples = (double)fsinfo->tupcount;
 	totalbytes = (double)fsinfo->eof;
 	nblocks = (uint32)RelationGuessNumberOfBlocks(totalbytes);
-	
+		
 	/* 
 	 * if VACUUM FULL we want to also truncate the relation after eof.
 	 * This must only be done when the relation is exclusively locked
@@ -944,6 +948,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			(errmsg("\"%s\": found %.0f rows in %u pages. %s",
 					relname, num_tuples, nblocks,
 					(isVacFull ? "truncated unused data after eof." : ""))));
+	pfree(fsinfo);
 }
 
 /*
