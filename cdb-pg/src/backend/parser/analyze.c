@@ -362,13 +362,11 @@ alter_cmp(const void *a, const void *b)
 
 	if (len1 < len2)
 		return -1;
-	else if (len2 > len1)
+	else if (len1 > len2)
 		return 1;
 	else
 		/* same size */
-		return memcmp(stmta->relation->relname, stmtb->relation->relname,
-					  len1);
-
+		return strcmp(stmta->relation->relname, stmtb->relation->relname);
 }
 
 /*
