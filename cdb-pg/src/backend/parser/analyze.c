@@ -8619,6 +8619,43 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 
 			/* CDB: Partitioned Tables */
             case AT_PartAdd:				/* Add */
+			{
+				AlterPartitionCmd 		*pc  = (AlterPartitionCmd *) cmd->def;
+				AlterPartitionCmd 		*pc2 = (AlterPartitionCmd *) pc->arg2;
+				AlterPartitionId  		*pid = (AlterPartitionId *)pc->partid;
+				CreateStmt 				*ct  = (CreateStmt *) pc2->arg2;
+				InhRelation 			*inh = makeNode(InhRelation);
+	
+				inh->relation = copyObject(stmt->relation);
+				inh->options = list_make2_int(
+						CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
+						CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
+				/* NOTE: 
+				 * CREATE_TABLE_LIKE_INCLUDING_INDEXES is not
+				 * implemented...  :-( 
+				 */
+
+				/* 
+				 * fill in remaining fields from parse time (gram.y):
+				 * the new partition is LIKE the parent and it
+				 * inherits from it 
+				 */
+				ct->tableElts = list_make1(inh);
+				ct->inhRelations = list_make1(copyObject(stmt->relation));
+
+				pc2->arg2 = (Node *)transformCreateStmt(pstate, ct,
+														extras_before, 
+														extras_after);
+
+				if (pid && (pid->idtype == AT_AP_IDValue))
+				{
+					List *vallist = (List *)pid->partiddef;
+					pid->partiddef = 
+							(Node *)transformExpressionList(pstate, vallist);
+				}
+				newcmds = lappend(newcmds, cmd);
+				break;
+			}
             case AT_PartAlter:				/* Alter */
             case AT_PartCoalesce:			/* Coalesce */
             case AT_PartDrop:				/* Drop */

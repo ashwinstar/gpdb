@@ -150,8 +150,8 @@ NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
-NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ff
@@ -193,8 +193,8 @@ NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
-NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ff
@@ -482,13 +482,6 @@ NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1
-NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1
-NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
-NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
-NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
-NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
-NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
-NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_prt_2
@@ -496,6 +489,13 @@ NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_2_6_pr
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_2_5_prt_1_6_prt_1
+NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1
+NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2
+NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_2
+NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1
+NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_2_3_prt_1_4_prt_1_5_prt_1_6_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_2_2_prt_1_3_prt_2_4_prt_2
@@ -538,12 +538,12 @@ NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_2_5_prt_1_6_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1
-NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
-NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
-NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_2_6_prt_1
+NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1
+NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_2
+NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_2_4_prt_1_5_prt_1_6_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2
 NOTICE:  drop cascades to table ggg_1_prt_1_2_prt_2_3_prt_1_4_prt_2_5_prt_2
@@ -650,8 +650,8 @@ NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
-NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ff
@@ -693,8 +693,8 @@ NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ff
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_dd_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc
-NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ff
+NOTICE:  drop cascades to table ggg_1_prt_bb_2_prt_cc_3_prt_ee
 NOTICE:  drop cascades to table ggg_1_prt_aa
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd
 NOTICE:  drop cascades to table ggg_1_prt_aa_2_prt_dd_3_prt_ff
@@ -1269,8 +1269,8 @@ partition by range (b)
 partition bb start (date '2008-01-01') end (date '2009-01-01'),
 partition aa start (date '2007-01-01') end (date '2008-01-01')
 );
-NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb" for table "ggg"
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa" for table "ggg"
+NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb" for table "ggg"
 drop table ggg cascade;
 NOTICE:  drop cascades to table ggg_1_prt_bb
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
@@ -1297,8 +1297,8 @@ partition by range (b)
 partition bb start (date '2008-01-01') exclusive end (date '2009-01-01'),
 partition aa start (date '2007-01-01') end (date '2008-01-01') inclusive
 );
-NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb" for table "ggg"
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa" for table "ggg"
+NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb" for table "ggg"
 drop table ggg cascade;
 NOTICE:  drop cascades to table ggg_1_prt_bb
 NOTICE:  drop cascades to constraint ggg_1_prt_bb_check on table ggg_1_prt_bb
@@ -1492,7 +1492,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3451)  (seg1 localhost:11003 pid=12812)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg1 localhost:11003 pid=22553)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1876,9 +1876,11 @@ partition bb start (date '2008-01-01') end (date '2009-01-01')
 NOTICE:  CREATE TABLE will create partition "hhh_1_prt_aa" for table "hhh"
 NOTICE:  CREATE TABLE will create partition "hhh_1_prt_bb" for table "hhh"
 alter table hhh add partition aa;
+NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  partition "aa" of relation "hhh" already exists
 alter table hhh add partition cc;
-ERROR:  cannot ADD PARTITION to relation "hhh"
+NOTICE:  Table has parent, setting distribution columns to match parent table
+ERROR:  cannot add a partition to relation "hhh" of type RANGE
 -- hash partitions cannot have default partitions
 create table jjj (aa int, bb int) 
 partition by hash(bb) 
@@ -1916,6 +1918,7 @@ alter table jjj add default partition for (position(1));
 ERROR:  Can only ADD a partition by name
 -- cannot have boundary spec
 alter table jjj add default partition j3 end (date '2010-01-01');
+NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  invalid use of boundary specification for DEFAULT partition "j3" of relation "jjj"
 drop table jjj cascade;
 NOTICE:  drop cascades to table jjj_1_prt_j2
@@ -1930,9 +1933,9 @@ partition j2 end (date '2009-01-01'),
 default partition j3);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j3" for table "jjj"
 NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j1" for table "jjj"
 NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j2" for table "jjj"
-NOTICE:  CREATE TABLE will create partition "jjj_1_prt_j3" for table "jjj"
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
@@ -1940,11 +1943,14 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 alter table jjj add default partition j3 ;
+NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  partition "j3" of relation "jjj" already exists
 alter table jjj add default partition j4 ;
+NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  DEFAULT partition "j3" for relation "jjj" already exists
 -- cannot add if have default, must split
 alter table jjj add partition j5 end (date '2010-01-01');
+NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  cannot ADD RANGE partition "j5" to relation "jjj" with DEFAULT partition "j3"
 HINT:  need to SPLIT partition "j3"
 drop table jjj cascade;
@@ -2013,16 +2019,16 @@ insert into rank values (10, 1, date '2005-05-15', 'F');
 select * from rank ;
  id | rank |    year    | gender 
 ----+------+------------+--------
+  2 |    1 | 02-15-2002 | M
+  5 |    1 | 05-15-2005 | M
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
   1 |    1 | 01-15-2001 | M
   3 |    1 | 03-15-2003 | M
   4 |    1 | 04-15-2004 | M
   6 |    1 | 01-15-2001 | F
   8 |    1 | 03-15-2003 | F
   9 |    1 | 04-15-2004 | F
-  2 |    1 | 02-15-2002 | M
-  5 |    1 | 05-15-2005 | M
-  7 |    1 | 02-15-2002 | F
- 10 |    1 | 05-15-2005 | F
 (10 rows)
 
 alter table rank DROP partition boys restrict;
@@ -2322,7 +2328,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=22552)
 select * from d;
  i | j  
 ---+----

@@ -90,6 +90,7 @@ static bool QueryIsRule = FALSE;
  */
 /*#define __YYSCLASS*/
 
+static Node *makeAddPartitionCreateStmt(Node *n);
 static Node *makeColumnRef(char *relname, List *indirection, int location);
 static Node *makeTypeCast(Node *arg, TypeName *typname);
 static Node *makeStringConst(char *str, TypeName *typname, int location);
@@ -1786,12 +1787,14 @@ alter_table_partition_id_spec:
 
 alter_table_partition_cmd:
 			ADD_P opt_default PARTITION 
-            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
+            OptTabPartitionBoundarySpec	OptTabSubPartitionSpec
+            OptTabPartitionStorageAttr
 				{
 					AlterPartitionId  *pid = makeNode(AlterPartitionId);
-					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+					AlterPartitionCmd *pc  = makeNode(AlterPartitionCmd);
 					AlterPartitionCmd *pc2 = makeNode(AlterPartitionCmd);
-					AlterTableCmd *n = makeNode(AlterTableCmd);
+					AlterTableCmd     *n   = makeNode(AlterTableCmd);
+                    Node              *ct  = makeAddPartitionCreateStmt($6);
 
                     if ($2)
 						ereport(ERROR,
@@ -1804,8 +1807,8 @@ alter_table_partition_cmd:
 
                     pc->partid = (Node *)pid;
 
-                    pc2->arg1 = (Node *)$4;
-                    pc2->arg2 = (Node *)$5;
+                    pc2->arg1 = (Node *)list_make2($4, $5);
+                    pc2->arg2 = ct;
                     pc2->location = @4;
 
                     pc->arg1 = (Node *)makeInteger(FALSE);
@@ -1819,11 +1822,13 @@ alter_table_partition_cmd:
 			| ADD_P opt_default PARTITION 
             alter_table_partition_id_spec 
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
+            OptTabPartitionStorageAttr
 				{
 					AlterPartitionId  *pid = (AlterPartitionId *)$4;
-					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+					AlterPartitionCmd *pc  = makeNode(AlterPartitionCmd);
 					AlterPartitionCmd *pc2 = makeNode(AlterPartitionCmd);
-					AlterTableCmd *n = makeNode(AlterTableCmd);
+					AlterTableCmd     *n   = makeNode(AlterTableCmd);
+                    Node              *ct  = makeAddPartitionCreateStmt($7);
 
                     if (pid->idtype != AT_AP_IDName)
 						ereport(ERROR,
@@ -1832,8 +1837,8 @@ alter_table_partition_cmd:
 
                     pc->partid = (Node *)pid;
 
-                    pc2->arg1 = (Node *)$5;
-                    pc2->arg2 = (Node *)$6;
+                    pc2->arg1 = (Node *)list_make2($5, $6);
+                    pc2->arg2 = ct;
                     pc2->location = @5;
 
                     pc->arg1 = (Node *)makeInteger($2);
@@ -10574,6 +10579,49 @@ SpecialRuleRelation:
 		;
 
 %%
+
+static Node *
+makeAddPartitionCreateStmt(Node *n)
+{
+    AlterPartitionCmd *pc_StAttr = (AlterPartitionCmd *)n;
+	CreateStmt        *ct        = makeNode(CreateStmt);
+
+    ct->relation = makeRangeVar(NULL, "fake_partition_name");
+
+    /* in analyze.c, fill in tableelts with a list of inhrelation of
+       the partition parent table, and fill in inhrelations with copy
+       of rangevar for parent table */
+
+    ct->tableElts    = NIL; /* fill in later */
+    ct->inhRelations = NIL; /* fill in later */
+
+    ct->constraints = NIL;
+
+    if (pc_StAttr)
+        ct->options = (List *)pc_StAttr->arg1;
+    else
+        ct->options = NIL;
+
+    ct->oncommit = ONCOMMIT_NOOP;
+        
+    if (pc_StAttr)
+        ct->tablespacename = (char *)pc_StAttr->arg2;
+    else
+        ct->tablespacename = NULL;
+
+    ct->distributedBy = NULL;
+    ct->partitionBy = NULL;
+    ct->oidInfo.relOid = 0;
+    ct->oidInfo.comptypeOid = 0;
+    ct->oidInfo.toastOid = 0;
+    ct->oidInfo.toastIndexOid = 0;
+    ct->oidInfo.toastComptypeOid = 0;
+    ct->relKind = RELKIND_RELATION;
+    ct->policy = 0;
+    ct->postCreate = NULL;
+
+    return (Node *)ct;
+}
 
 static Node *
 makeColumnRef(char *relname, List *indirection, int location)
