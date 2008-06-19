@@ -2269,7 +2269,7 @@ default partition j3,
 default partition j4);
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'aa' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  More than one DEFAULT partition for partition "j4"
+ERROR:  multiple default partitions are not allowed
 LINE 6: default partition j4);
         ^
 -- check default

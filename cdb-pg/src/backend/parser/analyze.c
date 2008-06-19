@@ -5185,10 +5185,8 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("More than one DEFAULT partition "
-									"for partition%s%s",
-									namBuf,
-									at_depth),
+							 errmsg("multiple default partitions are not "
+									"allowed"),
 							 parser_errposition(pstate, pElem->location)));
 
 				}
