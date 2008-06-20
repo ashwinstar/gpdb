@@ -216,6 +216,14 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 
 	while (bytesProcessed != conn->msgSize)
 	{
+		if (conn->msgSize - bytesProcessed < TUPLE_CHUNK_HEADER_SIZE)
+		{
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error parsing message: insufficient data received."),
+							errdetail("conn->msgSize %d bytesProcessed %d < chunk-header %d",
+									  conn->msgSize, bytesProcessed, TUPLE_CHUNK_HEADER_SIZE)));
+		}
+
 		tcSize = TUPLE_CHUNK_HEADER_SIZE + (*(uint16 *) (conn->msgPos + bytesProcessed));
 
 		/* sanity check */
@@ -247,7 +255,7 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 		 */
 		tcItem = (TupleChunkListItem) palloc0(sizeof(TupleChunkListItemData));
 
-        tcItem->chunk_length = tcSize;
+		tcItem->chunk_length = tcSize;
 		tcItem->inplace = (char *) (conn->msgPos + bytesProcessed);
 
 		bytesProcessed += TYPEALIGN(TUPLE_CHUNK_ALIGN,tcSize);

@@ -402,7 +402,6 @@ extern int	Gp_segment;		/* GUC var */
 
 extern int	getgpsegmentCount(void);
 
-
 /*
  * Parameter interconnect_setup_timeout
  *
@@ -411,7 +410,6 @@ extern int	getgpsegmentCount(void);
  * seconds.  Setting it to zero effectively disables the timeout.
  */
 extern int	interconnect_setup_timeout;
-
 
 #ifdef USE_ASSERT_CHECKING
 /*
@@ -424,6 +422,13 @@ extern int gp_udpic_dropseg; /* specifies which segments to apply the
 extern int gp_udpic_dropxmit_percent;
 extern int gp_udpic_dropacks_percent;
 #endif
+
+/*
+ * Each slice table has a unique ID (certain commands like "vacuum
+ * analyze" run many many slice-tables for each gp_command_id). This
+ * gets passed around as part of the slice-table (not used as a guc!).
+ */
+extern uint32 gp_interconnect_id;
 
 /* --------------------------------------------------------------------------------------------------
  * Logging

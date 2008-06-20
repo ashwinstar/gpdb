@@ -565,7 +565,9 @@ findConnByHeader(struct icpkthdr *hdr)
 			bin->conn->conn_info.sendSliceIndex == hdr->sendSliceIndex &&
 
 			bin->conn->conn_info.srcPid == hdr->srcPid &&
-			bin->conn->conn_info.dstPid == hdr->dstPid)
+			bin->conn->conn_info.dstPid == hdr->dstPid &&
+
+			bin->conn->conn_info.icId == hdr->icId)
 		{
 			ret = bin->conn;
 
@@ -573,28 +575,17 @@ findConnByHeader(struct icpkthdr *hdr)
 				write_log("findConnByHeader: found. route %d state %d hashcode %d conn %p\n",
 						  ret->route, ret->state, hashcode, ret);
 
-			if (hdr->sessionId != gp_session_id)
-				write_log("findConnByHeader: session mismatch %d/%d\n", hdr->sessionId, gp_session_id);
-
-			if (DEBUG3 >= log_min_messages)
-				if (hdr->commandCount != gp_command_count)
-					write_log("findConnByHeader: command mismatch %d/%d\n",
-							  hdr->commandCount, gp_command_count);
-
-			break;
+			return ret;
 		}
 	}
 
-	if (ret == NULL)
-	{
-		if (DEBUG5 >= log_min_messages)
-			write_log("findConnByHeader: not found! (hdr->srcPid %d "
-					  "hdr->srcContentId %d hdr->dstContentId %d hdr->dstPid %d sess(%d:%d) cmd(%d:%d)) hashcode %d\n",
-					  hdr->srcPid, hdr->srcContentId, hdr->dstContentId, hdr->dstPid, hdr->sessionId,
-					  gp_session_id, hdr->commandCount, gp_command_count, hashcode);
-	}
+	if (DEBUG5 >= log_min_messages)
+		write_log("findConnByHeader: not found! (hdr->srcPid %d "
+				  "hdr->srcContentId %d hdr->dstContentId %d hdr->dstPid %d sess(%d:%d) cmd(%d:%d)) hashcode %d\n",
+				  hdr->srcPid, hdr->srcContentId, hdr->dstContentId, hdr->dstPid, hdr->sessionId,
+				  gp_session_id, hdr->icId, gp_interconnect_id, hashcode);
 
-	return ret;
+	return NULL;
 }
 
 /*
@@ -1032,7 +1023,7 @@ setupOutgoingUDPConnection(ChunkTransportState *transportStates, ChunkTransportS
 	conn->conn_info.dstListenerPort = conn->cdbProc->listenerPort;
 
 	conn->conn_info.sessionId = gp_session_id;
-	conn->conn_info.commandCount = gp_command_count;
+	conn->conn_info.icId = gp_interconnect_id;
 
 	if (!conn_addhash(conn))
 	{
@@ -1129,6 +1120,8 @@ SetupUDPInterconnect(EState *estate)
 		udp_testmode = false;
 #endif
 
+	gp_interconnect_id = estate->interconnect_context->sliceTable->ic_instance_id;
+
 	pthread_mutex_lock(&rx_thread_mutex);
 
 	/* rearrange the connection hash table, if required */
@@ -1207,7 +1200,7 @@ SetupUDPInterconnect(EState *estate)
 			conn->conn_info.dstPid = MyProcPid;
 			conn->conn_info.dstListenerPort = (Gp_listener_port>>16) & 0x0ffff;
 			conn->conn_info.sessionId = gp_session_id;
-			conn->conn_info.commandCount = gp_command_count;
+			conn->conn_info.icId = gp_interconnect_id;
 
 			estate->interconnect_context->incompleteConns = lappend(estate->interconnect_context->incompleteConns, conn);
 
@@ -1370,7 +1363,7 @@ SetupUDPInterconnect(EState *estate)
 						elog(DEBUG1, "state not waiting for setup node %d route %d state %d conn %p pktflags %d", pkt.motNodeId, conn->route, conn->state, conn, pkt.flags);
 				}
 				else
-					elog(DEBUG3, "Got ack for unknown connection node %d command %d dstpid %d", pkt.motNodeId, pkt.commandCount, pkt.dstPid);
+					elog(DEBUG3, "Got ack for unknown connection node %d command %d dstpid %d", pkt.motNodeId, pkt.icId, pkt.dstPid);
 				/* if we have more available, don't wait at all --
 				 * we'll wait once we run out of acks */
 			} /* for (;;) */
@@ -2058,7 +2051,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			pkt.srcPid == MyProcPid &&
 			pkt.srcListenerPort == ((Gp_listener_port>>16) & 0x0ffff) &&
 			pkt.sessionId == gp_session_id &&
-			pkt.commandCount == gp_command_count)
+			pkt.icId == gp_interconnect_id)
 		{
 			/* packet is for me */
 
@@ -2085,7 +2078,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			if (ackConn->stopRequested)
 			{
 				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-					elog(DEBUG2, "got ack-stop ack; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq, ackConn->conn_info.seq);
+					elog(DEBUG2, "got ack-stop ack; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt.srcPid, pkt.dstPid, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq);
 
 				if (pkt.flags & UDPIC_FLAGS_EOS)
 				{
@@ -2100,7 +2093,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 			if (pkt.flags & UDPIC_FLAGS_STOP)
 			{
 				if (gp_log_interconnect >= GPVARS_VERBOSITY_DEBUG)
-					elog(DEBUG2, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt.srcPid, pkt.dstPid, pkt.commandCount, pkt.flags, pkt.seq, ackConn->conn_info.seq);
+					elog(DEBUG2, "got ack with stop; srcpid %d dstpid %d cmd %d flags 0x%x pktseq %d connseq %d", pkt.srcPid, pkt.dstPid, pkt.icId, pkt.flags, pkt.seq, ackConn->conn_info.seq);
 
 				ackConn->stopRequested = true;
 				ackConn->conn_info.flags |= UDPIC_FLAGS_STOP;
@@ -2135,7 +2128,7 @@ handleAcks(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				 pkt.srcListenerPort, ((Gp_listener_port>>16) & 0x0ffff),
 				 pkt.dstListenerPort,
 				 pkt.sessionId, gp_session_id,
-				 pkt.commandCount, gp_command_count);
+				 pkt.icId, gp_interconnect_id);
 	}
 
 	return ret;
@@ -2802,7 +2795,14 @@ ic_rx_thread_func(void *arg)
 				}
 				else /* pkt->seq > 0 */
 				{
-					if (pkt->len == 0) /* stop message ? */
+					if (pkt->len != read_count)
+					{
+						write_log("received inbound packet, short: read %d bytes, pkt->len %d\n", read_count, pkt->len);
+						pthread_mutex_unlock(&rx_thread_mutex);
+						continue;
+					}
+
+					if (pkt->len == 0) /* no data ? */
 					{
 						if (DEBUG1 >= log_min_messages)
 							write_log("data packet with length of ZERO, seq %d (ignoring, stop ?)\n",
@@ -2866,8 +2866,8 @@ ic_rx_thread_func(void *arg)
 						ic_stats_dropped_acks++;
 
 						if (DEBUG3 >= log_min_messages)
-							write_log("dropped ack ? ignored data packet w/ cmd %d node %d route %d seq %d expected %d flags 0x%x\n",
-									  pkt->commandCount, pkt->motNodeId,
+							write_log("dropped ack ? ignored data packet w/ cmd %d conn->cmd %d node %d route %d seq %d expected %d flags 0x%x\n",
+									  pkt->icId, conn->conn_info.icId, pkt->motNodeId,
 									  conn->route, pkt->seq, conn->conn_info.seq, pkt->flags);
 
 						seq = conn->conn_info.seq;
@@ -2977,10 +2977,11 @@ ic_rx_thread_func(void *arg)
 				ic_stats_mismatch++;
 
 				if (DEBUG4 >= log_min_messages)
-					write_log("dropping packet from command-id %d seq %d (my cmd %d)\n", pkt->commandCount, pkt->seq, gp_command_count);
+					write_log("dropping packet from command-id %d seq %d (my cmd %d)\n", pkt->icId, pkt->seq, gp_interconnect_id);
+
 				/* we want to ack old packets; but *must* avoid acking connection requests */
 				if (pkt->seq > 0 && pkt->sessionId == gp_session_id && 
-					(gp_command_count == 0 || gp_command_count >= pkt->commandCount))
+					(gp_interconnect_id == 0 || gp_interconnect_id >= pkt->icId))
 				{
 					MotionConn dummyconn;
 

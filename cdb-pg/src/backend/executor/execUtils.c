@@ -1395,6 +1395,9 @@ InitSliceTable(EState *estate, int nMotions, int nSubplans)
 	table->seqServerPort = -1;
     table->doInstrument = false;
 
+	/* Each slice table has a unique-id. */
+	table->ic_instance_id = ++gp_interconnect_id;
+
 	n = 1 + nMotions + nSubplans;
 	for (i = 0; i < n; i++)
 	{

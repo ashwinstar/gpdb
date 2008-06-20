@@ -2982,6 +2982,7 @@ _readSliceTable(void)
 	READ_STRING_FIELD(seqServerHost);
 	READ_INT_FIELD(seqServerPort);
     READ_BOOL_FIELD(doInstrument);
+	READ_INT_FIELD(ic_instance_id);
 	
 	READ_DONE();
 }

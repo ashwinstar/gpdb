@@ -399,7 +399,8 @@ typedef struct SliceTable
 	char *seqServerHost;	/* If non-null, sequence server host name. */
 	int seqServerPort;		/* If seqServerHost non-null, sequence server port. */
     bool    doInstrument;   /* true => collect stats for EXPLAIN ANALYZE */
-	
+
+	uint32 ic_instance_id;
 } SliceTable;
 
 typedef struct ShareNodeEntry

@@ -3143,6 +3143,7 @@ _outSliceTable(StringInfo str, SliceTable *node)
 	WRITE_STRING_FIELD(seqServerHost);
 	WRITE_INT_FIELD(seqServerPort);
     WRITE_BOOL_FIELD(doInstrument);
+	WRITE_INT_FIELD(ic_instance_id);
 }
 
 

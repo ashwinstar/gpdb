@@ -823,7 +823,7 @@ sendRegisterMessage(ChunkTransportState *transportStates, ChunkTransportStateEnt
         regMsg->srcListenerPort = Gp_listener_port&0x0ffff;
         regMsg->srcPid = MyProcPid;
         regMsg->srcSessionId = gp_session_id;
-        regMsg->srcCommandCount = gp_command_count;
+        regMsg->srcCommandCount = gp_interconnect_id;
 
 
         conn->state = mcsSendRegMsg;
@@ -963,7 +963,7 @@ readRegisterMessage(ChunkTransportState *transportStates,
 
 	/* get rid of old connections first */
 	if (msg.srcSessionId != gp_session_id ||
-		msg.srcCommandCount < gp_command_count)
+		msg.srcCommandCount < gp_interconnect_id)
 	{
 		/* This is an old connection, which can be safely
 		 * ignored. We get this kind of stuff for cases in which
@@ -971,9 +971,9 @@ readRegisterMessage(ChunkTransportState *transportStates,
 		 * query before calling SetupInterconnect(). Later queries
 		 * wind up receiving their registration messages. */
 		elog(LOG, "Received invalid, old registration message: "
-			 "will ignore ('expected:received' session %d:%d command-id %d:%d)",
+			 "will ignore ('expected:received' session %d:%d ic-id %d:%d)",
 			 gp_session_id, msg.srcSessionId,
-			 gp_command_count, msg.srcCommandCount);
+			 gp_interconnect_id, msg.srcCommandCount);
 
 		goto old_conn;
 	}
@@ -1290,6 +1290,8 @@ SetupTCPInterconnect(EState *estate)
     Assert(estate->es_sliceTable &&
            IsA(mySlice, Slice) &&
            mySlice->sliceIndex == estate->es_cur_slice_idx);
+
+	gp_interconnect_id = estate->interconnect_context->sliceTable->ic_instance_id;
 
   	gettimeofday(&startTime, NULL);
 

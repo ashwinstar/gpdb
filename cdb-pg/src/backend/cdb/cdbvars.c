@@ -128,6 +128,12 @@ int gp_udpic_dropxmit_percent = 0;
 int gp_udpic_dropacks_percent = 0;
 #endif
 
+/*
+ * Each slice table has a unique ID (certain commands like "vacuum analyze"
+ * run many many slice-tables for each gp_command_id).
+ */
+uint32 gp_interconnect_id=0;
+
 /* --------------------------------------------------------------------------------------------------
  * Resource management
  */

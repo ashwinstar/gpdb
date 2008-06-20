@@ -3315,6 +3315,7 @@ _copySliceTable(SliceTable *from)
 	COPY_STRING_FIELD(seqServerHost);
 	COPY_SCALAR_FIELD(seqServerPort);
     COPY_SCALAR_FIELD(doInstrument);
+    COPY_SCALAR_FIELD(ic_instance_id);
 		
 	return newnode;
 }

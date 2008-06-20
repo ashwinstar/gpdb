@@ -33,7 +33,7 @@ struct icpkthdr
 	int32		dstListenerPort;
 	
     int32       sessionId;
-    int32       commandCount;
+    uint32      icId;
 
 	/* are these really useful ? YES THEY ARE! they're guaranteed to specify a connection */
     int32       recvSliceIndex;
