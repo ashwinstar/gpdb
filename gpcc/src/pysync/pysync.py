@@ -12,11 +12,14 @@ exec(sys.stdin.read(int(sys.stdin.readline())))
 pysyncSource="""
 
 import cPickle
+import md5
 import os
 import socket
 import stat
 import sys
 import time
+
+CHUNK_SIZE=4000000
 
 def statToTuple(s,name):
     if stat.S_ISDIR(s.st_mode):
@@ -35,7 +38,23 @@ def statToTuple(s,name):
 	return ('s',s.st_mode)
     raise Exception('Pysync can not handle %s.'%name)
 
+def socketRead(s,size):
+    o = 0
+    sb = []
+    while o<size:
+	a = s.recv(min(size-o,65536))
+	if len(a)==0:
+	    raise IOError('EOF')
+	sb.append(a)
+	o += len(a)
+    return "".join(sb)
+
 class RemotePysync:
+
+    def log(self,what):
+	if self.options.get('verbose',False):
+	    sys.stderr.write(what+'\\n')
+	    sys.stderr.flush()
 
     def doCommand(self,*args):
 	a = cPickle.dumps(args)
@@ -43,7 +62,7 @@ class RemotePysync:
 	sys.stdout.flush()
 	size = int(sys.stdin.readline())
 	data = sys.stdin.read(size)
-	assert(size==len(data))
+	assert size==len(data)
 	return cPickle.loads(data)
 
     def removeJunk(self,list):
@@ -52,19 +71,19 @@ class RemotePysync:
 	    for i in dirs:
 		name = os.path.join(root,i)
 		if name not in list or list[name][0]!='d':
-		    self.doCommand('log','rmdir '+name)
+		    self.log('rmdir '+name)
 		    os.rmdir(name)
 	    for i in files:
 		name = os.path.join(root,i)
 		if name not in list or list[name][0]=='d':
-		    self.doCommand('log','remove '+name)
+		    self.log('remove '+name)
 		    os.remove(name)
 
     def createDirs(self,list):
 	for name in sorted(list.keys()):
 	    value = list[name]
 	    if value[0]=='d' and not os.path.exists(name):
-		self.doCommand('log','mkdir '+name)
+		self.log('mkdir '+name)
 		os.mkdir(name,0700)
 
     def createFiles(self,list):
@@ -78,32 +97,32 @@ class RemotePysync:
 			os.chmod(name,0700)
 		    if value[0]=='-':
 			if t[2]>value[2]:
-			    self.doCommand('log','truncate '+name)
+			    self.log('truncate '+name)
 			    f = open(name,'r+b')
 			    f.truncate(value[2])
 			    f.close()
 			continue
 		    if value[2:]==t[2:]:
 			continue
-		self.doCommand('log','remove '+name)
+		self.log('remove '+name)
 		os.remove(name)
 	    if value[0]=='-':
-		self.doCommand('log','create '+name)
+		self.log('create '+name)
 		open(name,'w+b').close()
 	    elif value[0]=='l':
-		self.doCommand('log','ln -s '+value[2]+' '+name)
+		self.log('ln -s '+value[2]+' '+name)
 		os.symlink(value[2],name)
 	    elif value[0]=='c':
-		self.doCommand('log','mknod '+name+' c '+value[2])
+		self.log('mknod '+name+' c '+value[2])
 		os.mknod(name,0700|stat.S_IFCHR,value[2])
 	    elif value[0]=='b':
-		self.doCommand('log','mknod '+name+' b '+value[2])
+		self.log('mknod '+name+' b '+value[2])
 		os.mknod(name,0700|stat.S_IFBLK,value[2])
 	    elif value[0]=='p':
-		self.doCommand('log','mkfifo '+name)
+		self.log('mkfifo '+name)
 		os.mkfifo(name,0700)
 	    elif value[0]=='s':
-		self.doCommand('log','bind '+name)
+		self.log('bind '+name)
 		f = socket.socket(socket.AF_UNIX)
 		f.bind(name)
 		f.close()
@@ -113,39 +132,73 @@ class RemotePysync:
     def linkLinks(self,list):
 	for name,value in list.iteritems():
 	    if value[0]=='L':
-		self.doCommand('log','ln '+value[1]+' to '+name)
+		self.log('ln '+value[1]+' to '+name)
 		if os.path.lexists(name):
 		    os.remove(name)
 		os.link(value[1],name)
 
+    def getData(self,name,offset,size):
+	self.socket.sendall("%d\\n%s%d\\n%d\\n"%(len(name),name,offset,size))
+	return socketRead(self.socket,size)
+
     def copyData(self,list):
-	pass
+	for name,value in list.iteritems():
+	    if value[0]=='-':
+		f = open(name,'r+b')
+		f.seek(0,2)
+		localSize = f.tell()
+		offset = 0
+		while offset<value[2]:
+		    size = min(value[2]-offset,CHUNK_SIZE)
+		    self.log('digesting %s at %d'%(name,offset))
+		    digest = self.doCommand('getDigest',name,offset,size)
+		    if offset+size<=localSize:
+			f.seek(offset)
+			b = f.read(size)
+			assert len(b)==size
+			if md5.new(b).digest()==digest:
+			    offset += size
+			    continue
+		    self.log('copying %s at %d'%(name,offset))
+		    data = self.getData(name,offset,size)
+		    if md5.new(data).digest()!=digest:
+			raise Exception('Digest did not match.')
+		    f.seek(offset)
+		    f.write(data)
+		    offset += size
 
     def fixPermissions(self,list):
 	for name,value in list.iteritems():
 	    if value[0]!='L' and value[0]!='l':
-		self.doCommand('log','chmod '+name)
+		self.log('chmod '+name)
 		os.chmod(name,value[1]&01777)
 
     def run(self):
 	try:
-	    os.chdir(self.doCommand('getdestdir'))
-	    self.sockname = self.doCommand('getsockname')
-	    list = self.doCommand('getlist')
-	    self.doCommand('log','list=%s'%str(list))
-	    self.doCommand('log','removeJunk')
+	    self.options = self.doCommand('getOptions')
+	    ss = socket.socket()
+	    ss.bind((socket.gethostname(),0))
+	    ss.listen(1)
+	    self.log('connect '+str(ss.getsockname()))
+	    self.doCommand('connect',ss.getsockname())
+	    self.socket = ss.accept()[0]
+	    ss.close()
+	    os.chdir(self.doCommand('getDestDir'))
+	    list = self.doCommand('getList')
+	    self.log('list=%s'%str(list))
+	    self.log('removeJunk')
 	    self.removeJunk(list)
-	    self.doCommand('log','createDirs')
+	    self.log('createDirs')
 	    self.createDirs(list)
-	    self.doCommand('log','createFiles')
+	    self.log('createFiles')
 	    self.createFiles(list)
-	    self.doCommand('log','linkLinks')
+	    self.log('linkLinks')
 	    self.linkLinks(list)
-	    self.doCommand('log','copyData')
+	    self.log('copyData')
 	    self.copyData(list)
-	    self.doCommand('log','fixPermissions')
+	    self.log('fixPermissions')
 	    self.fixPermissions(list)
-	    self.doCommand('log','quit')
+	    self.log('quit')
 	    self.doCommand('quit',0)
 	except Exception,e:
 	    self.doCommand('raise',e)
@@ -156,36 +209,58 @@ if 'pysyncSource' not in globals():
 
 exec(pysyncSource)
 
+def socketReadline(s):
+    sb = []
+    while 1:
+	a = s.recv(1)
+	if a=='' or a=='\n':
+	    return "".join(sb)
+	sb.append(a)
+
 class LocalPysync:
 
     def __init__(self,argv):
-	self.verbose = False
+	self.options = dict()
+	self.cache = []
 	a = argv[1:]
 	while a:
 	    if a[0]=='-verbose':
 		a.pop(0)
-		self.verbose = True
+		self.options['verbose'] = True
 	    else:
 		break
 	if len(a)!=2:
 	    self.usage(argv)
-	sourcedir = a[0]
+	sourceDir = a[0]
 	dest = a[1]
 	i = dest.find(':')
 	if i==-1:
 	    self.usage(argv)
-	os.chdir(sourcedir)
+	os.chdir(sourceDir)
 	self.userAndHost = dest[:i]
-	self.destdir = dest[i+1:]
-	self.socket = socket.socket()
-	self.socket.bind((socket.gethostname(),0))
+	self.destDir = dest[i+1:]
+	self.socket = None
+	self.connectAddress = None
 
     def usage(self,argv):
 	sys.stderr.write("usage:\n")
 	sys.stderr.write("    python "+argv[0]+" [-verbose] sourcedir [user@]host:destdir\n")
 	sys.exit(1)
 
-    def getlist(self):
+    def readFile(self,filename,offset,size):
+	key = (filename,offset,size)
+	for a in self.cache:
+	    if a[0]==key:
+		return a[1]
+	f = open(filename,'rb')
+	f.seek(offset)
+	a = f.read(size)
+	f.close()
+	assert len(a)==size
+	self.cache = [(key,a)]+self.cache[:3]
+	return a
+
+    def getList(self):
 	list = dict()
 	inomap = dict()
 	for root,dirs,files in os.walk('.'):
@@ -199,35 +274,40 @@ class LocalPysync:
 		list[name] = statToTuple(s,name)
 	return list
 
+    def getDigest(self,filename,offset,size):
+	return md5.new(self.readFile(filename,offset,size)).digest()
+
     def doCommand(self,what):
-	if what[0]=='getsockname':
-	    return self.socket.getsockname()
-	if what[0]=='getdestdir':
-	    return self.destdir
-	if what[0]=='getlist':
-	    return self.getlist()
+	if what[0]=='connect':
+	    self.connectAddress = what[1]
+	    return
+	if what[0]=='getOptions':
+	    return self.options
+	if what[0]=='getDestDir':
+	    return self.destDir
+	if what[0]=='getList':
+	    return self.getList()
+	if what[0]=='getDigest':
+	    return self.getDigest(what[1],what[2],what[3])
 	if what[0]=='raise':
 	    raise what[1]
-	if what[0]=='log':
-	    if self.verbose:
-		print what[1]
-	    return
 	if what[0]=='quit':
 	    sys.exit(what[1])
 	assert 0
 
+    def handleSocket(self):
+	name = socketRead(self.socket,int(socketReadline(self.socket)))
+	offset = int(socketReadline(self.socket))
+	size = int(socketReadline(self.socket))
+	self.socket.sendall(self.readFile(name,offset,size))
+
     def work(self):
-	rset = [self.p.stdout,self.p.stderr]
-	while rset:
-	    ready = select.select(list(rset),[],[self.p.stdout,self.p.stderr,self.p.stdin])
+	rset = [self.p.stdout]
+	eset = [self.p.stdout,self.p.stdin]
+	while self.p.stdout in rset:
+	    ready = select.select(list(rset),[],list(eset))
 	    if ready[2]:
 		raise IOError()
-	    if self.p.stderr in ready[0]:
-		a = self.p.stderr.read(1)
-		if len(a)==0:
-		    rset.remove(self.p.stderr)
-		else:
-		    sys.stderr.write(a)
 	    if self.p.stdout in ready[0]:
 		a = self.p.stdout.readline()
 		if len(a)==0:
@@ -239,9 +319,17 @@ class LocalPysync:
 		    answer = cPickle.dumps(self.doCommand(cPickle.loads(data)))
 		    self.p.stdin.write("%d\n%s"%(len(answer),answer))
 		    self.p.stdin.flush()
+		    if self.connectAddress:
+			self.socket = socket.socket()
+			self.socket.connect(self.connectAddress)
+			self.connectAddress = None
+			rset.append(self.socket)
+			eset.append(self.socket)
+	    if self.socket in ready[0]:
+		self.handleSocket()
 
     def run(self):
-	self.p = subprocess.Popen(["ssh",self.userAndHost,"python -u -c '%s'"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+	self.p = subprocess.Popen(["ssh",self.userAndHost,"python -u -c '%s'"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
 	try:
 	    self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
 	    self.work()
