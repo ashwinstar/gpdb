@@ -221,7 +221,7 @@ class LocalPysync:
 
     def __init__(self,argv):
 	self.options = dict()
-	self.cache = []
+	self.cache = [None]
 	a = argv[1:]
 	while a:
 	    if a[0]=='-verbose':
@@ -249,15 +249,14 @@ class LocalPysync:
 
     def readFile(self,filename,offset,size):
 	key = (filename,offset,size)
-	for a in self.cache:
-	    if a[0]==key:
-		return a[1]
+	if self.cache[0]==key:
+	    return self.cache[1]
 	f = open(filename,'rb')
 	f.seek(offset)
 	a = f.read(size)
 	f.close()
 	assert len(a)==size
-	self.cache = [(key,a)]+self.cache[:3]
+	self.cache = (key,a)
 	return a
 
     def getList(self):
