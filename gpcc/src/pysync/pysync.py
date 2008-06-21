@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-import fcntl
-import select
 import subprocess
 
 bootstrapSource="""
@@ -17,7 +15,7 @@ import os
 import socket
 import stat
 import sys
-import time
+import zlib
 
 CHUNK_SIZE=4000000
 
@@ -37,17 +35,6 @@ def statToTuple(s,name):
     if stat.S_ISSOCK(s.st_mode):
 	return ('s',s.st_mode)
     raise Exception('Pysync can not handle %s.'%name)
-
-def socketRead(s,size):
-    o = 0
-    sb = []
-    while o<size:
-	a = s.recv(min(size-o,65536))
-	if len(a)==0:
-	    raise IOError('EOF')
-	sb.append(a)
-	o += len(a)
-    return "".join(sb)
 
 class RemotePysync:
 
@@ -138,8 +125,28 @@ class RemotePysync:
 		os.link(value[1],name)
 
     def getData(self,name,offset,size):
-	self.socket.sendall("%d\\n%s%d\\n%d\\n"%(len(name),name,offset,size))
-	return socketRead(self.socket,size)
+	if not self.socket:
+	    ss = socket.socket()
+	    ss.bind((socket.gethostname(),0))
+	    ss.listen(1)
+	    self.log('connect '+str(ss.getsockname()))
+	    self.doCommand('connect',ss.getsockname())
+	    self.socket = ss.accept()[0]
+	    ss.close()
+	s = self.doCommand('getData',name,offset,size)
+	o = 0
+	sb = []
+	while o<s:
+	    a = self.socket.recv(min(s-o,65536))
+	    if len(a)==0:
+		raise IOError('EOF')
+	    sb.append(a)
+	    o += len(a)
+	data = "".join(sb)
+	if self.options.get('compress',False):
+	    data = zlib.decompress(data)
+	assert len(data)==size
+	return data
 
     def copyData(self,list):
 	for name,value in list.iteritems():
@@ -175,14 +182,8 @@ class RemotePysync:
 
     def run(self):
 	try:
+	    self.socket = None
 	    self.options = self.doCommand('getOptions')
-	    ss = socket.socket()
-	    ss.bind((socket.gethostname(),0))
-	    ss.listen(1)
-	    self.log('connect '+str(ss.getsockname()))
-	    self.doCommand('connect',ss.getsockname())
-	    self.socket = ss.accept()[0]
-	    ss.close()
 	    os.chdir(self.doCommand('getDestDir'))
 	    list = self.doCommand('getList')
 	    self.log('list=%s'%str(list))
@@ -209,14 +210,6 @@ if 'pysyncSource' not in globals():
 
 exec(pysyncSource)
 
-def socketReadline(s):
-    sb = []
-    while 1:
-	a = s.recv(1)
-	if a=='' or a=='\n':
-	    return "".join(sb)
-	sb.append(a)
-
 class LocalPysync:
 
     def __init__(self,argv):
@@ -224,9 +217,8 @@ class LocalPysync:
 	self.cache = [None]
 	a = argv[1:]
 	while a:
-	    if a[0]=='-verbose':
-		a.pop(0)
-		self.options['verbose'] = True
+	    if a[0]=='-verbose' or a[0]=='-compress':
+		self.options[a.pop(0)[1:]] = True
 	    else:
 		break
 	if len(a)!=2:
@@ -239,12 +231,12 @@ class LocalPysync:
 	os.chdir(sourceDir)
 	self.userAndHost = dest[:i]
 	self.destDir = dest[i+1:]
-	self.socket = None
 	self.connectAddress = None
+	self.sendData = None
 
     def usage(self,argv):
 	sys.stderr.write("usage:\n")
-	sys.stderr.write("    python "+argv[0]+" [-verbose] sourcedir [user@]host:destdir\n")
+	sys.stderr.write("    python "+argv[0]+" [-verbose] [-compress] sourcedir [user@]host:destdir\n")
 	sys.exit(1)
 
     def readFile(self,filename,offset,size):
@@ -273,59 +265,47 @@ class LocalPysync:
 		list[name] = statToTuple(s,name)
 	return list
 
-    def getDigest(self,filename,offset,size):
-	return md5.new(self.readFile(filename,offset,size)).digest()
-
     def doCommand(self,what):
 	if what[0]=='connect':
 	    self.connectAddress = what[1]
-	    return
-	if what[0]=='getOptions':
+	elif what[0]=='getOptions':
 	    return self.options
-	if what[0]=='getDestDir':
+	elif what[0]=='getDestDir':
 	    return self.destDir
-	if what[0]=='getList':
+	elif what[0]=='getList':
 	    return self.getList()
-	if what[0]=='getDigest':
-	    return self.getDigest(what[1],what[2],what[3])
-	if what[0]=='raise':
+	elif what[0]=='getDigest':
+	    return md5.new(self.readFile(what[1],what[2],what[3])).digest()
+	elif what[0]=='getData':
+	    self.sendData = self.readFile(what[1],what[2],what[3])
+	    if self.options.get('compress',False):
+		self.sendData = zlib.compress(self.sendData,1)
+	    return len(self.sendData)
+	elif what[0]=='raise':
 	    raise what[1]
-	if what[0]=='quit':
+	elif what[0]=='quit':
 	    sys.exit(what[1])
-	assert 0
-
-    def handleSocket(self):
-	name = socketRead(self.socket,int(socketReadline(self.socket)))
-	offset = int(socketReadline(self.socket))
-	size = int(socketReadline(self.socket))
-	self.socket.sendall(self.readFile(name,offset,size))
+	else:
+	    assert 0
 
     def work(self):
-	rset = [self.p.stdout]
-	eset = [self.p.stdout,self.p.stdin]
-	while self.p.stdout in rset:
-	    ready = select.select(list(rset),[],list(eset))
-	    if ready[2]:
-		raise IOError()
-	    if self.p.stdout in ready[0]:
-		a = self.p.stdout.readline()
-		if len(a)==0:
-		    rset.remove(self.p.stdout)
-		else:
-		    size = int(a)
-		    data = self.p.stdout.read(size)
-		    assert len(data)==size
-		    answer = cPickle.dumps(self.doCommand(cPickle.loads(data)))
-		    self.p.stdin.write("%d\n%s"%(len(answer),answer))
-		    self.p.stdin.flush()
-		    if self.connectAddress:
-			self.socket = socket.socket()
-			self.socket.connect(self.connectAddress)
-			self.connectAddress = None
-			rset.append(self.socket)
-			eset.append(self.socket)
-	    if self.socket in ready[0]:
-		self.handleSocket()
+	while 1:
+	    a = self.p.stdout.readline()
+	    if len(a)==0:
+		break
+	    size = int(a)
+	    data = self.p.stdout.read(size)
+	    assert len(data)==size
+	    answer = cPickle.dumps(self.doCommand(cPickle.loads(data)))
+	    self.p.stdin.write("%d\n%s"%(len(answer),answer))
+	    self.p.stdin.flush()
+	    if self.connectAddress!=None:
+		self.socket = socket.socket()
+		self.socket.connect(self.connectAddress)
+		self.connectAddress = None
+	    if self.sendData!=None:
+		self.socket.sendall(self.sendData)
+		self.sendData = None
 
     def run(self):
 	self.p = subprocess.Popen(["ssh",self.userAndHost,"python -u -c '%s'"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
