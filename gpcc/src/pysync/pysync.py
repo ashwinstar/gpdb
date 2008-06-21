@@ -19,6 +19,9 @@ import zlib
 
 CHUNK_SIZE=4000000
 
+class Options:
+    pass
+
 def statToTuple(s,name):
     if stat.S_ISDIR(s.st_mode):
 	return ('d',s.st_mode)
@@ -39,7 +42,7 @@ def statToTuple(s,name):
 class RemotePysync:
 
     def log(self,what):
-	if self.options.get('verbose',False):
+	if self.options.verbose:
 	    sys.stderr.write(what+'\\n')
 	    sys.stderr.flush()
 
@@ -143,7 +146,7 @@ class RemotePysync:
 	    sb.append(a)
 	    o += len(a)
 	data = "".join(sb)
-	if self.options.get('compress',False):
+	if self.options.compress:
 	    data = zlib.decompress(data)
 	assert len(data)==size
 	return data
@@ -168,8 +171,9 @@ class RemotePysync:
 			    continue
 		    self.log('copying %s at %d'%(name,offset))
 		    data = self.getData(name,offset,size)
-		    if md5.new(data).digest()!=digest:
-			raise Exception('Digest did not match.')
+		    if not self.options.insecure:
+			if md5.new(data).digest()!=digest:
+			    raise Exception('Digest did not match.')
 		    f.seek(offset)
 		    f.write(data)
 		    offset += size
@@ -213,14 +217,22 @@ exec(pysyncSource)
 class LocalPysync:
 
     def __init__(self,argv):
-	self.options = dict()
+	self.options = Options()
+	self.options.compress = False
+	self.options.verbose = False
+	self.options.insecure = False
 	self.cache = [None]
 	a = argv[1:]
 	while a:
-	    if a[0]=='-verbose' or a[0]=='-compress':
-		self.options[a.pop(0)[1:]] = True
+	    if a[0]=='-verbose':
+		self.options.verbose = True
+	    elif a[0]=='-compress':
+		self.options.compress = True
+	    elif a[0]=='-insecure':
+		self.options.insecure = True
 	    else:
 		break
+	    a.pop(0)
 	if len(a)!=2:
 	    self.usage(argv)
 	sourceDir = a[0]
@@ -236,7 +248,7 @@ class LocalPysync:
 
     def usage(self,argv):
 	sys.stderr.write("usage:\n")
-	sys.stderr.write("    python "+argv[0]+" [-verbose] [-compress] sourcedir [user@]host:destdir\n")
+	sys.stderr.write("    python "+argv[0]+" [-verbose] [-compress] [-insecure] sourcedir [user@]host:destdir\n")
 	sys.exit(1)
 
     def readFile(self,filename,offset,size):
@@ -278,7 +290,7 @@ class LocalPysync:
 	    return md5.new(self.readFile(what[1],what[2],what[3])).digest()
 	elif what[0]=='getData':
 	    self.sendData = self.readFile(what[1],what[2],what[3])
-	    if self.options.get('compress',False):
+	    if self.options.compress:
 		self.sendData = zlib.compress(self.sendData,1)
 	    return len(self.sendData)
 	elif what[0]=='raise':
