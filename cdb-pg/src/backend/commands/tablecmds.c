@@ -8990,15 +8990,20 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	/* XXX: all attributes!! */
 	Datum d = values[attno - 1];
 
-	Assert(!isnull[attno - 1]); /* XXX: not handled */
 	Assert(partnode->part->parkind == 'r');
+
+	*found = InvalidOid;
+
+	/* 
+	 * If there's a NULL, we're not going to find a match.
+	 */
+	if (isnull[attno - 1])
+		return NULL;
 
 #define RANGE_OP_LT 0
 #define RANGE_OP_LE 1
 	
 	MemSet(ops, 0, sizeof(ops));
-
-	*found = InvalidOid;
 
 	while (low <= high)
 	{

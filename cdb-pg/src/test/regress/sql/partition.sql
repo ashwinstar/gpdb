@@ -993,3 +993,20 @@ insert into d values(1, 4);
 select * from d_1_prt_a;
 select * from d_1_prt_b;
 drop table d cascade;
+--range
+-- Reject NULL values
+create table d (i int,  j int) partition by range(j)
+(partition a start (1) end(10), partition b start(11) end(20));
+insert into d values (1, 1);
+insert into d values (1, 2);
+insert into d values (1, NULL);
+drop table  d cascade;
+-- allow NULLs into the default partition
+create table d (i int,  j int) partition by range(j)
+(partition a start (1) end(10), partition b start(11) end(20),
+default partition abc);
+insert into d values (1, 1);
+insert into d values (1, 2);
+insert into d values (1, NULL);
+select * from d_1_prt_abc;
+drop table  d cascade;

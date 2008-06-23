@@ -2410,3 +2410,40 @@ NOTICE:  drop cascades to table d_1_prt_b
 NOTICE:  drop cascades to constraint d_1_prt_b_check on table d_1_prt_b
 NOTICE:  drop cascades to table d_1_prt_a
 NOTICE:  drop cascades to constraint d_1_prt_a_check on table d_1_prt_a
+--range
+-- Reject NULL values
+create table d (i int,  j int) partition by range(j)
+(partition a start (1) end(10), partition b start(11) end(20));
+NOTICE:  CREATE TABLE will create partition "d_1_prt_a" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_b" for table "d"
+insert into d values (1, 1);
+insert into d values (1, 2);
+insert into d values (1, NULL);
+ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+drop table  d cascade;
+NOTICE:  drop cascades to table d_1_prt_b
+NOTICE:  drop cascades to constraint d_1_prt_b_check on table d_1_prt_b
+NOTICE:  drop cascades to table d_1_prt_a
+NOTICE:  drop cascades to constraint d_1_prt_a_check on table d_1_prt_a
+-- allow NULLs into the default partition
+create table d (i int,  j int) partition by range(j)
+(partition a start (1) end(10), partition b start(11) end(20),
+default partition abc);
+NOTICE:  CREATE TABLE will create partition "d_1_prt_abc" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_a" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_b" for table "d"
+insert into d values (1, 1);
+insert into d values (1, 2);
+insert into d values (1, NULL);
+select * from d_1_prt_abc;
+ i | j 
+---+---
+ 1 |  
+(1 row)
+
+drop table  d cascade;
+NOTICE:  drop cascades to table d_1_prt_abc
+NOTICE:  drop cascades to table d_1_prt_b
+NOTICE:  drop cascades to constraint d_1_prt_b_check on table d_1_prt_b
+NOTICE:  drop cascades to table d_1_prt_a
+NOTICE:  drop cascades to constraint d_1_prt_a_check on table d_1_prt_a
