@@ -8921,42 +8921,65 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		PartitionRule *rule = lfirst(lc);
 		List *vals = rule->parlistvalues;
 		ListCell *lc2;
-		bool matched = false;
+		bool matched;
 
-		/* individual values */
+		/* 
+		 * list values are stored in a list of lists to support multi column
+		 * partitions.
+		 *
+		 * At this level, we're processing the list of possible values for the
+		 * given rule, for example:
+		 *     values(1, 2, 3)
+		 *     values((1, '2005-01-01'), (2, '2006-01-01'))
+		 *
+		 * Each iteraction is one element of the values list. In the first
+		 * example, we iterate '1', '2' then '3'. For the second, we iterate
+		 * through '(1, '2005-01-01')' then '(2, '2006-01-01')'. It's for that
+		 * reason that we need the inner loop.
+		 */
 		foreach(lc2, vals)
 		{
-			Const *c = linitial(lfirst(lc2)); /* list of lists */
-			/* XXX: do for all attributes */
-			AttrNumber attno = part->paratts[0];
+			ListCell *lc3;
+			List *colvals = (List *)lfirst(lc2);
+			int i = 0;
 
-			
-			if (isnull[attno - 1])
+		   	matched = true; /* prove untrue */
+
+			foreach(lc3, colvals)
 			{
-				if (c->constisnull)
-				{
-					matched = true;
-					break;
-				}
-			}
-			else
-			{
-				Oid lhsid = tupdesc->attrs[attno - 1]->atttypid;
-				Oid rhsid = lhsid;
-				Oid opfuncid;
-				Datum res;
-				Datum d = values[attno - 1];
+				Const *c = lfirst(lc3);
+				AttrNumber attno = part->paratts[i];
 
-				opfuncid = get_opfuncid_by_opname(opname, lhsid, rhsid);
-				res = OidFunctionCall2(opfuncid, d, c->constvalue);
-
-				if (DatumGetBool(res))
+				if (isnull[attno - 1])
 				{
-					/* found it */
-					matched = true;
-					break;
+					if (!c->constisnull)
+					{
+						matched = false;
+						break;
+					}
 				}
+				else
+				{
+					Oid lhsid = tupdesc->attrs[attno - 1]->atttypid;
+					Oid rhsid = lhsid;
+					Oid opfuncid;
+					Datum res;
+					Datum d = values[attno - 1];
+
+					opfuncid = get_opfuncid_by_opname(opname, lhsid, rhsid);
+					res = OidFunctionCall2(opfuncid, d, c->constvalue);
+
+					if (!DatumGetBool(res))
+					{
+						/* found it */
+						matched = false;
+						break;
+					}
+				}
+				i++;
 			}
+			if (matched)
+				break;
 		}
 
 		if (matched)

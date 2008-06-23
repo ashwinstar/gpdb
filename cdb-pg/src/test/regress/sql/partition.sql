@@ -1010,3 +1010,21 @@ insert into d values (1, 2);
 insert into d values (1, NULL);
 select * from d_1_prt_abc;
 drop table  d cascade;
+
+-- multicolumn list support
+create table d (a int, b int, c int) distributed by (a) 
+partition by list(b, c)
+(partition a values(('1', '2'), ('3', '4')),
+ partition b values(('100', '20')),
+ partition c values(('1000', '1001'), ('1001', '1002'), ('1003', '1004')));
+
+insert into d values(1, 1, 2);
+insert into d values(1, 3, 4);
+insert into d values(1, 100, 20);
+insert into d values(1, 100, 2000);
+insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
+insert into d values(1, 100, NULL);
+select * from d_1_prt_a;
+select * from d_1_prt_b;
+select * from d_1_prt_c;
+drop table d cascade;

@@ -2447,3 +2447,48 @@ NOTICE:  drop cascades to table d_1_prt_b
 NOTICE:  drop cascades to constraint d_1_prt_b_check on table d_1_prt_b
 NOTICE:  drop cascades to table d_1_prt_a
 NOTICE:  drop cascades to constraint d_1_prt_a_check on table d_1_prt_a
+-- multicolumn list support
+create table d (a int, b int, c int) distributed by (a) 
+partition by list(b, c)
+(partition a values(('1', '2'), ('3', '4')),
+ partition b values(('100', '20')),
+ partition c values(('1000', '1001'), ('1001', '1002'), ('1003', '1004')));
+NOTICE:  CREATE TABLE will create partition "d_1_prt_a" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_b" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_c" for table "d"
+insert into d values(1, 1, 2);
+insert into d values(1, 3, 4);
+insert into d values(1, 100, 20);
+insert into d values(1, 100, 2000);
+ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
+insert into d values(1, 100, NULL);
+ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+select * from d_1_prt_a;
+ a | b | c 
+---+---+---
+ 1 | 1 | 2
+ 1 | 3 | 4
+(2 rows)
+
+select * from d_1_prt_b;
+ a |  b  | c  
+---+-----+----
+ 1 | 100 | 20
+(1 row)
+
+select * from d_1_prt_c;
+ a |  b   |  c   
+---+------+------
+ 1 | 1000 | 1001
+ 1 | 1001 | 1002
+ 1 | 1003 | 1004
+(3 rows)
+
+drop table d cascade;
+NOTICE:  drop cascades to table d_1_prt_c
+NOTICE:  drop cascades to constraint d_1_prt_c_check on table d_1_prt_c
+NOTICE:  drop cascades to table d_1_prt_b
+NOTICE:  drop cascades to constraint d_1_prt_b_check on table d_1_prt_b
+NOTICE:  drop cascades to table d_1_prt_a
+NOTICE:  drop cascades to constraint d_1_prt_a_check on table d_1_prt_a
