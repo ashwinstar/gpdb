@@ -314,7 +314,7 @@ ExecScanSubPlan(SubPlanState *node,
 			node->curTuple = ExecCopySlotMemTuple(slot);
 			MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
 
-			result = slot_getattr(slot, 1, isNull);
+			result = memtuple_getattr(node->curTuple, slot->tts_mt_bind, 1, isNull);
 			/* keep scanning subplan to make sure there's only one tuple */
 			continue;
 		}
