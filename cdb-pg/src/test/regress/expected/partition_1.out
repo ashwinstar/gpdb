@@ -260,16 +260,20 @@ ERROR:  invalid use of RANGE boundary specification in partition "cc" of type HA
 LINE 5: (subpartition cc start with ('a') , subpartition dd) );
                          ^
 -- this is subtly wrong -- it defines 4 partitions
--- the problem is the comma before end, which causes us to
--- generate 2 anonymous partitions
-create table ggg (a char(1), b date, d char(3))
+-- the problem is the comma before "end", which causes us to
+-- generate 2 anonymous partitions.
+-- This is an error: 
+-- ERROR:  invalid use of mixed named and unnamed RANGE boundary specifications
+create table ggg (a char(1), b int, d char(3))
 distributed by (a)
 partition by range (b)
 (
 partition aa start ('2007'), end ('2008'),
 partition bb start ('2008'), end ('2009')
 );
-ERROR:  invalid input syntax for type date: "2007"
+ERROR:  invalid use of mixed named and unnamed RANGE boundary specifications
+LINE 5: partition aa start ('2007'), end ('2008'),
+                     ^
 create table ggg (a char(1), b int)
 distributed by (a)
 partition by range(b)
@@ -1318,6 +1322,7 @@ LINE 6: partition aa start (date '2007-01-01') end (date '2006-01-01...
 drop table ggg cascade;
 ERROR:  table "ggg" does not exist
 -- cannot set end of first partition because next is before
+-- XXX XXX : legal now?
 create table ggg (a char(1), b date, d char(3)) 
 distributed by (a)
 partition by range (b)
@@ -1492,7 +1497,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3451)  (seg1 localhost:11003 pid=22553)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg1 localhost:11003 pid=14653)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1760,6 +1765,36 @@ select count(*) from foz_1_prt_1;
    364
 (1 row)
 
+select min(d), max(d) from foz;
+    min     |    max     
+------------+------------
+ 01-02-2001 | 09-28-2003
+(1 row)
+
+select min(d), max(d) from foz_1_prt_1;
+    min     |    max     
+------------+------------
+ 01-02-2001 | 12-31-2001
+(1 row)
+
+select min(d), max(d) from foz_1_prt_2;
+    min     |    max     
+------------+------------
+ 01-01-2002 | 12-31-2002
+(1 row)
+
+select min(d), max(d) from foz_1_prt_3;
+    min     |    max     
+------------+------------
+ 01-01-2003 | 09-28-2003
+(1 row)
+
+select min(d), max(d) from foz_1_prt_4;
+ min | max 
+-----+-----
+     | 
+(1 row)
+
 drop table foz cascade;
 NOTICE:  drop cascades to append only table foz_1_prt_4
 NOTICE:  drop cascades to constraint foz_1_prt_4_check on append only table foz_1_prt_4
@@ -1976,6 +2011,7 @@ ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh drop partition if exists cc;
 NOTICE:  partition "cc" of relation "hhh" does not exist, skipping
 --  the documentation example, rewritten with EVERY in a template
+--  and also with a default partition
 CREATE TABLE rank (id int,
 rank int, year date, gender char(1))
 DISTRIBUTED BY (id, gender, year)
@@ -2043,6 +2079,7 @@ select * from rank ;
 (5 rows)
 
 alter table rank DROP partition if exists neuter;
+-- can't drop the final partition - must drop the table
 alter table rank DROP partition girls;
 ERROR:  cannot drop partition "girls" of relation "rank"-- only one remains
 HINT:  Use DROP TABLE "rank" to remove the table and the final partition
@@ -2318,7 +2355,7 @@ NOTICE:  drop cascades to constraint foz_1_prt_foo1_check on table foz_1_prt_foo
 NOTICE:  drop cascades to table foz_1_prt_dsf
 -- check for out of order partition definitions. We should order these correctly
 -- and determine the appropriate boundaries.
-create table d (i int, j int) distributed by (i) partition by range(j)                 
+create table d (i int, j int) distributed by (i) partition by range(j)
 ( start (10), start(5), start(50) end(60));
 NOTICE:  CREATE TABLE will create partition "d_1_prt_1" for table "d"
 NOTICE:  CREATE TABLE will create partition "d_1_prt_2" for table "d"
@@ -2328,7 +2365,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=22552)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=14652)
 select * from d;
  i | j  
 ---+----
@@ -2367,10 +2404,20 @@ NOTICE:  drop cascades to constraint d_1_prt_1_check on table d_1_prt_1
 -- check for NULL support
 -- hash
 create table d (i int, j int) partition by hash(j) partitions 4;
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "d_1_prt_1" for table "d"
 NOTICE:  CREATE TABLE will create partition "d_1_prt_2" for table "d"
 NOTICE:  CREATE TABLE will create partition "d_1_prt_3" for table "d"
 NOTICE:  CREATE TABLE will create partition "d_1_prt_4" for table "d"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into d values(1, NULL);
 insert into d values(NULL, NULL);
 drop table d cascade;
@@ -2383,8 +2430,14 @@ create table d (i int, j int) partition by list(j)
 (partition a values(1, 2, NULL),
  partition b values(3, 4)
 );
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "d_1_prt_a" for table "d"
 NOTICE:  CREATE TABLE will create partition "d_1_prt_b" for table "d"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into d values(1, 1);
 insert into d values(1, 2);
 insert into d values(1, NULL);
@@ -2414,12 +2467,18 @@ NOTICE:  drop cascades to constraint d_1_prt_a_check on table d_1_prt_a
 -- Reject NULL values
 create table d (i int,  j int) partition by range(j)
 (partition a start (1) end(10), partition b start(11) end(20));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "d_1_prt_a" for table "d"
 NOTICE:  CREATE TABLE will create partition "d_1_prt_b" for table "d"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=14652)
 drop table  d cascade;
 NOTICE:  drop cascades to table d_1_prt_b
 NOTICE:  drop cascades to constraint d_1_prt_b_check on table d_1_prt_b
@@ -2429,9 +2488,17 @@ NOTICE:  drop cascades to constraint d_1_prt_a_check on table d_1_prt_a
 create table d (i int,  j int) partition by range(j)
 (partition a start (1) end(10), partition b start(11) end(20),
 default partition abc);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "d_1_prt_abc" for table "d"
 NOTICE:  CREATE TABLE will create partition "d_1_prt_a" for table "d"
 NOTICE:  CREATE TABLE will create partition "d_1_prt_b" for table "d"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
@@ -2460,10 +2527,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=14652)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=14652)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---

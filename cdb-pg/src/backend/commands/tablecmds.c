@@ -9249,12 +9249,6 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	}
 }
 
-
-/*
- * ALTER TABLE ... ADD PARTITION 
- *
- */
-
 /*
  * get_part_rule
  *
@@ -9532,6 +9526,11 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 
 	return prule;
 }
+
+/*
+ * ALTER TABLE ... ADD PARTITION 
+ *
+ */
 
 static void
 ATPExecPartAdd(Relation rel,

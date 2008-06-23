@@ -10263,6 +10263,7 @@ unreserved_keyword:
 			| MINVALUE
 			| MIRROR
 			| MODE
+			| MODIFY
 			| MONTH_P
 			| MOVE
 			| NAMES

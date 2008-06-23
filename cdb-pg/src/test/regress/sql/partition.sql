@@ -158,9 +158,11 @@ partition aa (subpartition cc, subpartition dd), partition bb
 (subpartition cc start with ('a') , subpartition dd) );
 
 -- this is subtly wrong -- it defines 4 partitions
--- the problem is the comma before end, which causes us to
--- generate 2 anonymous partitions
-create table ggg (a char(1), b date, d char(3))
+-- the problem is the comma before "end", which causes us to
+-- generate 2 anonymous partitions.
+-- This is an error: 
+-- ERROR:  invalid use of mixed named and unnamed RANGE boundary specifications
+create table ggg (a char(1), b int, d char(3))
 distributed by (a)
 partition by range (b)
 (
@@ -490,6 +492,7 @@ partition aa start (date '2007-01-01') end (date '2006-01-01')
 drop table ggg cascade;
 
 -- cannot set end of first partition because next is before
+-- XXX XXX : legal now?
 create table ggg (a char(1), b date, d char(3)) 
 distributed by (a)
 partition by range (b)
@@ -664,6 +667,14 @@ insert into foz select i, '2001-01-01'::date + ('1 day'::interval * i) from
 generate_series(1, 1000) i;
 select count(*) from foz;
 select count(*) from foz_1_prt_1;
+
+select min(d), max(d) from foz;
+select min(d), max(d) from foz_1_prt_1;
+select min(d), max(d) from foz_1_prt_2;
+select min(d), max(d) from foz_1_prt_3;
+select min(d), max(d) from foz_1_prt_4;
+
+
 drop table foz cascade;
 
 -- copy test
@@ -781,6 +792,7 @@ alter table hhh drop partition cc restrict;
 alter table hhh drop partition if exists cc;
 
 --  the documentation example, rewritten with EVERY in a template
+--  and also with a default partition
 CREATE TABLE rank (id int,
 rank int, year date, gender char(1))
 DISTRIBUTED BY (id, gender, year)
@@ -814,6 +826,7 @@ select * from rank ;
 
 alter table rank DROP partition if exists neuter;
 
+-- can't drop the final partition - must drop the table
 alter table rank DROP partition girls;
 
 drop table rank cascade;
@@ -961,7 +974,7 @@ drop table foz cascade;
 
 -- check for out of order partition definitions. We should order these correctly
 -- and determine the appropriate boundaries.
-create table d (i int, j int) distributed by (i) partition by range(j)                 
+create table d (i int, j int) distributed by (i) partition by range(j)
 ( start (10), start(5), start(50) end(60));
 insert into d values(1, 5);
 insert into d values(1, 10);
