@@ -104,7 +104,7 @@ static apr_status_t seg_delete_rmdir(gpcc_event_t *ev, void *_cmdslot)
     int e;
 
     gpcc_log_info("[%s] removing data directory '%s'", cmdslot->cmdname, cmdslot->u.request.data_dir);
-    sprintf(cmd, "rm -rf %s", cmdslot->u.request.data_dir);
+    sprintf(cmd, "rm -rf %s && rm -rf %s.log", cmdslot->u.request.data_dir, cmdslot->u.request.data_dir);
     argv[0] = cmd;
     argv[1] = 0;
     if ((e = gpcc_proc_run_shell(&proc, argv[0], argv, 0, 1, cmdslot->pool)) != 0) {

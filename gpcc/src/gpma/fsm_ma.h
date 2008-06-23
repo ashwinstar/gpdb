@@ -1,9 +1,6 @@
 #define LMA_EXPIRE_PERIOD 30 /* 30 seconds */
 #define LMA_RENEW_PERIOD  20 /* 20 seconds */
 #define LMA_RETRY_PERIOD  10 /* 10 seconds */
-#define IS_LEADMA (gpma.lma_cmdslot->u.lma.chubby.lease != NULL)
-#define IS_NO_LEADMA (gpma.lma_cmdslot->u.lma.chubby.lease == NULL && gpma.lma_cmdslot->u.lma.leader == NULL)
-
 
 static apr_status_t a_lma_sync_config(gpcc_event_t *ev, void *arg, char *master);
 

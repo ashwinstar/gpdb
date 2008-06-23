@@ -14,7 +14,7 @@ static apr_status_t a_user_check_expire(gpcc_event_t *ev, void *arg)
 
 	apr_hash_this(hi, &key, &klen, &val);
 	user = (user_t *) val;
-	if (user->expire_time > now) {
+	if (user->expire_time < now) {
 	    /* expired */
 	    apr_hash_set(slot->u.user.usertb, key, klen, NULL);
 	    gpcc_log_info("user %s login expired", (const char *) key);
@@ -22,7 +22,7 @@ static apr_status_t a_user_check_expire(gpcc_event_t *ev, void *arg)
 	}
     }
     
-
+    slot->countdown  = 30;
     return 0;
 }
 

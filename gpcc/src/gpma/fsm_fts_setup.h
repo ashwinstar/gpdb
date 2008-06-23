@@ -420,13 +420,14 @@ apr_status_t a_fts_gethostname_reply(gpcc_event_t *ev, void *arg)
 
 
 
-void a_fts_node_init(void)
+void a_fts_node_init(gpcc_event_t *ev, void *arg)
 {
+    cmdslot_t *slot = arg;
     char node_name[100];
     const char* node;
-    int cnt, i;
+    int cnt, i, j;
     cmdslot_t* cp;
-    gpcc_event_t *ev;
+    gpcc_event_t *evt;
 
     for (cnt = 0; ; cnt++) {
 	sprintf(node_name, "node.%d", cnt);
@@ -446,6 +447,15 @@ void a_fts_node_init(void)
 	    if (apr_tokenize_to_argv(node, &cp->u.node.hosttab, cp->pool)) {
 		gpcc_fatal(FLINE, "Illegal format for entry '%s' in configuration", node_name);
 	    }
+
+	    gpcc_log_info("checking node.%d", i);
+	    cp->u.node.valid = 0;
+	    for (j = 0 ; j < slot->u.fts.nseginfo ; j++) {
+		if (slot->u.fts.seginfo[j].haidx == i) {
+		    cp->u.node.valid |= (slot->u.fts.seginfo[j].valid == 't');
+		}
+	    }
+	    gpcc_log_info("node.%d valid = %d", i, cp->u.node.valid);
 	    for (cp->u.node.hosttab_max = 0 ; 
 		 cp->u.node.hosttab[cp->u.node.hosttab_max] ; 
 		 cp->u.node.hosttab_max++) ;
@@ -458,14 +468,14 @@ void a_fts_node_init(void)
     gpma.haset_cmdslot = cmdslot_alloc("HASET", HASET_OFF_CMDSTATE);
     gpma.haset_cmdslot->u.haset.total = cnt;
 
-    ev = gpcc_event_alloc(INIT_EVENT, gpma.haset_cmdslot->cmdidx, 0);
-    gpcc_evqueue_put(gpma.evq, ev);
+    evt = gpcc_event_alloc(INIT_EVENT, gpma.haset_cmdslot->cmdidx, 0);
+    gpcc_evqueue_put(gpma.evq, evt);
 
 
     /* kick off node */
     for (i = 0 ; i < gpma.node_max ; i++) {
-	ev = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
-	gpcc_evqueue_put(gpma.evq, ev);
+	evt = gpcc_event_alloc(INIT_EVENT, gpma.node_cmdtab[i]->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
     }
 }
 
@@ -483,7 +493,7 @@ static apr_status_t a_fts_setup_and_gethostname(gpcc_event_t *ev, void *_cmdslot
 static apr_status_t a_fts_kick_off(gpcc_event_t *ev, void *_cmdslot)
 {
     /* kick off the node */
-    a_fts_node_init();
+    a_fts_node_init(ev, _cmdslot);
     return 0;
 }
 

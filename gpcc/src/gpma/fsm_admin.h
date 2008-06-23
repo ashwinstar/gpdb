@@ -1,11 +1,9 @@
-#define ADMIN_MD5_SALT "Greenplum Database -- gpcc password abcdabcd salt"
-#define ADMIN_PASSWORD_ENCODED_LENGTH 120
 
 static apr_status_t a_admin_forward(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *admin_slot;
     gpcc_event_t *evt;
-    
+
     switch (ev->etype) {
     case ADMIN_ADD_EVENT:
 	admin_slot = cmdslot_alloc("ADMIN_ADD_CMD", ADMIN_ADD_CMDSTATE);
@@ -641,7 +639,7 @@ static apr_status_t a_admin_password_set_password_file(gpcc_event_t *ev, void *a
 	    {
 		char encoded[ADMIN_PASSWORD_ENCODED_LENGTH];
 		apr_md5_encode(slot->u.admin.new_password, 
-			       ADMIN_MD5_SALT, 
+			       slot->u.admin.username, 
 			       encoded,
 			       sizeof(encoded));
 		

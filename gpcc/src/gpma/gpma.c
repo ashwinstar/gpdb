@@ -232,6 +232,8 @@ static void net_accepted(gpcc_net_conn_t conn,
 	int is_bad_uri = 0;
 	int is_bad_array_name = 0;
 	int is_bad_session_id = 0;
+	int is_lead_ma = 0;
+	int is_no_lead_ma = 0;
 	const char *session_id = 0;
 	
 	{
@@ -244,8 +246,12 @@ static void net_accepted(gpcc_net_conn_t conn,
 	    }
 	}
 
+	/* is Lead MA */
+	is_no_lead_ma = (gpma.lma_cmdslot->u.lma.chubby.lease == NULL && gpma.lma_cmdslot->u.lma.leader == NULL);
+	is_lead_ma = (gpma.lma_cmdslot->u.lma.chubby.lease != NULL);
+
 	is_bad_array_name = ! (gpma.array_name && a && 0 == strcmp(a, gpma.array_name));
-	if (! is_bad_array_name) {
+	if (is_lead_ma && ! is_bad_array_name) {
 		if (!session_id) {
 		    is_bad_session_id = 1;
 		    
@@ -346,6 +352,23 @@ static void net_accepted(gpcc_net_conn_t conn,
 	
 	if (ev) {
 	    gpcc_evqueue_put(gpma.evq, ev);
+	}
+	else if (! is_lead_ma) {
+	    if (is_no_lead_ma) {
+		gpcc_warning(FLINE, "invalid URI: %s. Lead MA is not determined", from_peer->argv[1]);
+		gpcc_net_http_close(conn, 200, "OK", 
+				    "{ \"status\": \"error\", \"errmsg\": \"Lead MA is not determined\" }");
+	    } else {
+		char location[128];
+		char json[1024];
+
+		gpcc_warning(FLINE, "invalid URI: %s. Redirect request to %s", from_peer->argv[1], gpma.lma_cmdslot->u.lma.leader);
+		sprintf(location, "http://%s%s", gpma.lma_cmdslot->u.lma.leader, from_peer->argv[1]);
+		sprintf(json, "{ \"a\": \"%s\", \"status\": \"error\", \"location\" : \"%s\", \"errmsg\": \"this is not a lead MA\"}", 
+			gpma.array_name,
+			gpma.lma_cmdslot->u.lma.leader);
+		gpcc_net_http_redirect_close(conn, location, json);
+	    }
 	}
 	else if (is_bad_uri) {
 	    gpcc_warning(FLINE, "invalid URI: %s", from_peer->argv[1]);
@@ -482,6 +505,7 @@ void d_main(void)
     /* user slot */
     gpma.user_cmdslot = cmdslot_alloc("USER", USER_CMDSTATE);
     gpma.user_cmdslot->u.user.usertb = apr_hash_make(gpma.user_cmdslot->pool);
+    gpma.user_cmdslot->countdown = 30;
 
     /* user slot */
     gpma.admin_cmdslot = cmdslot_alloc("ADMIN", ADMIN_CMDSTATE);

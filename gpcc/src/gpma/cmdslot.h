@@ -255,6 +255,7 @@ struct cmdslot_t {
 	    int    hostidx;
 	    char** hosttab;	/* array of IP */
 	    int opened;
+	    int valid;  /* valid if at least one segment is valid */
 	} node;
 
 	struct {

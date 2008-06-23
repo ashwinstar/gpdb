@@ -22,14 +22,17 @@
 
 #define OK_STATUS                                    "ok"
 #define FAIL_STATUS                                  "error"
+#define ADMIN_PASSWORD_ENCODED_LENGTH 120
+#define IS_LEADMA (gpma.lma_cmdslot->u.lma.chubby.lease != NULL)
+#define IS_NO_LEADMA (gpma.lma_cmdslot->u.lma.chubby.lease == NULL && gpma.lma_cmdslot->u.lma.leader == NULL)
 
 #include "fsm_chubby.h"
 #include "fsm_node.h"
-#include "fsm_admin.h"
-#include "fsm_login.h"
-#include "fsm_ma.h"
 #include "fsm_config.h"
 #include "fsm_fts.h"
+#include "fsm_ma.h"
+#include "fsm_admin.h"
+#include "fsm_login.h"
 #include "fsm_haset.h"
 #include "fsm_initdb.h"
 #include "fsm_start.h"
