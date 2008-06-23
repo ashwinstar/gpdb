@@ -487,6 +487,7 @@ DoCopy(const CopyStmt *stmt)
 	TupleDesc   tupDesc;
 	int         num_phys_attrs;
 	uint64      processed;
+	bool		qe_copy_from = (is_from && (Gp_role == GP_ROLE_EXECUTE));
 
 	/* Allocate workspace and zero all fields */
 	cstate = (CopyStateData *) palloc0(sizeof(CopyStateData));
@@ -1015,16 +1016,16 @@ DoCopy(const CopyStmt *stmt)
 	 * validate data in multibyte encodings. However, transcoding must
 	 * be skipped for COPY FROM in executor mode since data already arrived 
 	 * in server encoding (was validated and trancoded by dispatcher mode 
-	 * COPY).
+	 * COPY). For this same reason encoding_embeds_ascii can never be true
+	 * for COPY FROM in executor mode.
 	 */
 	cstate->client_encoding = pg_get_client_encoding();
 	cstate->need_transcoding =
 		((cstate->client_encoding != GetDatabaseEncoding() ||
-		  pg_database_encoding_max_length() > 1) &&
-		 (!is_from || (Gp_role != GP_ROLE_EXECUTE)) );
+		  pg_database_encoding_max_length() > 1) && !qe_copy_from);
 	if (Gp_role == GP_ROLE_DISPATCHAGENT)
 		cstate->need_transcoding = false;
-	cstate->encoding_embeds_ascii = PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding);
+	cstate->encoding_embeds_ascii = (qe_copy_from ? false : PG_ENCODING_IS_CLIENT_ONLY(cstate->client_encoding));
 	cstate->line_buf_converted = (Gp_role == GP_ROLE_EXECUTE ? true : false);
 	cstate->to_server_enc_proc = NULL; /* only used in external tables */
 	setEncodingConversionProc(cstate, pg_get_client_encoding());
