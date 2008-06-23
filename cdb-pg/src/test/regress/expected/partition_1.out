@@ -2357,3 +2357,56 @@ select * from d_1_prt_3;
  1 | 55
 (1 row)
 
+drop table d cascade;
+NOTICE:  drop cascades to table d_1_prt_3
+NOTICE:  drop cascades to constraint d_1_prt_3_check on table d_1_prt_3
+NOTICE:  drop cascades to table d_1_prt_2
+NOTICE:  drop cascades to constraint d_1_prt_2_check on table d_1_prt_2
+NOTICE:  drop cascades to table d_1_prt_1
+NOTICE:  drop cascades to constraint d_1_prt_1_check on table d_1_prt_1
+-- check for NULL support
+-- hash
+create table d (i int, j int) partition by hash(j) partitions 4;
+NOTICE:  CREATE TABLE will create partition "d_1_prt_1" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_2" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_3" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_4" for table "d"
+insert into d values(1, NULL);
+insert into d values(NULL, NULL);
+drop table d cascade;
+NOTICE:  drop cascades to table d_1_prt_4
+NOTICE:  drop cascades to table d_1_prt_3
+NOTICE:  drop cascades to table d_1_prt_2
+NOTICE:  drop cascades to table d_1_prt_1
+-- list
+create table d (i int, j int) partition by list(j)
+(partition a values(1, 2, NULL),
+ partition b values(3, 4)
+);
+NOTICE:  CREATE TABLE will create partition "d_1_prt_a" for table "d"
+NOTICE:  CREATE TABLE will create partition "d_1_prt_b" for table "d"
+insert into d values(1, 1);
+insert into d values(1, 2);
+insert into d values(1, NULL);
+insert into d values(1, 3);
+insert into d values(1, 4);
+select * from d_1_prt_a;
+ i | j 
+---+---
+ 1 |  
+ 1 | 1
+ 1 | 2
+(3 rows)
+
+select * from d_1_prt_b;
+ i | j 
+---+---
+ 1 | 3
+ 1 | 4
+(2 rows)
+
+drop table d cascade;
+NOTICE:  drop cascades to table d_1_prt_b
+NOTICE:  drop cascades to constraint d_1_prt_b_check on table d_1_prt_b
+NOTICE:  drop cascades to table d_1_prt_a
+NOTICE:  drop cascades to constraint d_1_prt_a_check on table d_1_prt_a

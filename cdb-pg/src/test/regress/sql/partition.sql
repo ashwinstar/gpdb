@@ -972,3 +972,24 @@ select * from d;
 select * from d_1_prt_1;
 select * from d_1_prt_2;
 select * from d_1_prt_3;
+drop table d cascade;
+
+-- check for NULL support
+-- hash
+create table d (i int, j int) partition by hash(j) partitions 4;
+insert into d values(1, NULL);
+insert into d values(NULL, NULL);
+drop table d cascade;
+-- list
+create table d (i int, j int) partition by list(j)
+(partition a values(1, 2, NULL),
+ partition b values(3, 4)
+);
+insert into d values(1, 1);
+insert into d values(1, 2);
+insert into d values(1, NULL);
+insert into d values(1, 3);
+insert into d values(1, 4);
+select * from d_1_prt_a;
+select * from d_1_prt_b;
+drop table d cascade;

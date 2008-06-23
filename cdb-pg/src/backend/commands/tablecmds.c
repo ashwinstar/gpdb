@@ -8929,32 +8929,39 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			Const *c = linitial(lfirst(lc2)); /* list of lists */
 			/* XXX: do for all attributes */
 			AttrNumber attno = part->paratts[0];
-			Oid lhsid = tupdesc->attrs[attno - 1]->atttypid;
-			Oid rhsid = lhsid;
-			Oid opfuncid;
-			Datum res;
-			Datum d;
 
-			opfuncid = get_opfuncid_by_opname(opname, lhsid, rhsid);
 			
-			/* XXX: cache */
-			d = values[attno - 1];
-			Assert(!isnull[attno - 1]); /* XXX: not handled yet */
-			res = OidFunctionCall2(opfuncid, d, c->constvalue);
-
-			if (DatumGetBool(res))
+			if (isnull[attno - 1])
 			{
-				/* found it */
-				*found = rule->parrelid;
-				matched = true;
-				break;
+				if (c->constisnull)
+				{
+					matched = true;
+					break;
+				}
+			}
+			else
+			{
+				Oid lhsid = tupdesc->attrs[attno - 1]->atttypid;
+				Oid rhsid = lhsid;
+				Oid opfuncid;
+				Datum res;
+				Datum d = values[attno - 1];
+
+				opfuncid = get_opfuncid_by_opname(opname, lhsid, rhsid);
+				res = OidFunctionCall2(opfuncid, d, c->constvalue);
+
+				if (DatumGetBool(res))
+				{
+					/* found it */
+					matched = true;
+					break;
+				}
 			}
 		}
 
 		if (matched)
 		{
-			if (!OidIsValid(*found) || rule->children)
-				*found = InvalidOid;
+			*found = rule->parrelid;
 
 			/* go to the next level */
 			return rule->children;
@@ -9129,20 +9136,27 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	int i;
 	int part;
 	PartitionRule *rule;
-
+	
 	for (i = 0; i < partnode->part->parnatts; i++)
 	{
-		Oid opclass = partnode->part->parclass[i];
 		AttrNumber attnum = partnode->part->paratts[i];
-		Oid hashfunc = get_opclass_proc(opclass, 0, HASHPROC);
-		Datum d;
 	   
-		d = values[attnum - 1];
-		Assert(!isnull[attnum - 1]); /* not handled */
-
 		/* rotate hash left 1 bit at each step */
 		hash = (hash << 1) | ((hash & 0x80000000) ? 1 : 0);
-		hash ^= DatumGetUInt32(OidFunctionCall1(hashfunc, d));
+
+		/* 
+		 * If we found a NULL, just pretend it has a hashcode of 0 (like the
+		 * hash join code does.
+		 */
+		if (isnull[attnum - 1])
+			continue;
+		else
+		{
+			Oid opclass = partnode->part->parclass[i];
+			Oid hashfunc = get_opclass_proc(opclass, 0, HASHPROC);
+			Datum d = values[attnum - 1];
+			hash ^= DatumGetUInt32(OidFunctionCall1(hashfunc, d));
+		}
 	}
 
 	part = hash % list_length(partnode->rules);
