@@ -10202,6 +10202,7 @@ unreserved_keyword:
 			| ENABLE_P
 			| ENCODING
 			| ENCRYPTED
+			| ERRORS
 			| ESCAPE
 			| EVERY
 			| EXCHANGE
