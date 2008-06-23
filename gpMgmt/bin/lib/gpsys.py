@@ -222,6 +222,20 @@ def do_solaris(res):
 	i = i.strip()
         if i.startswith('Solaris 10'):
             res['solaris.release'] = i
+    f = os.popen("ls -1 /var/sadm/patch ", "r")
+    files = f.readlines()
+    f.close()
+    res['solaris.patch_file'] = ' '.join(files)
+    f = os.popen("/bin/showrev -p", "r")
+    lines = f.readlines();
+    f.close()
+    patch = []
+    for i in lines:
+	i = i.strip() 
+	i = i.split()
+	if len(i) > 2:
+	    patch.append(i[1]);
+    res['solaris.patch'] = ' '.join(patch)
 
 def do_zfs(res):
     (ok, out) = run('/sbin/zpool list -H')
