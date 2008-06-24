@@ -35,14 +35,6 @@ cdb_grouping_planner(PlannerInfo* root,
 extern bool cdbpathlocus_collocates(CdbPathLocus locus, List *pathkeys);
 extern CdbPathLocus cdbpathlocus_from_flow(Flow *flow);
 extern void adapt_flow_to_targetlist(Plan *plan);
-extern void generate_two_stage_tlists(List *tlist, List *sub_tlist,
-									  Node *havingQual,
-									  int numGroupCols, AttrNumber *groupColIdx,
-									  int numDistinctCols, AttrNumber *distinctColIdx,
-									  List **p_prelim_tlist,
-									  List **p_inter_tlist,
-									  List **p_final_tlist,
-									  List **p_final_qual);
 extern void generate_three_tlists(List *tlist,
 								  bool twostage,
 								  List *sub_tlist,
@@ -70,7 +62,8 @@ extern Plan *add_second_stage_agg(PlannerInfo *root,
 								  int transSpace,
 								  const char *alias,
 								  List **p_current_pathkeys,
-								  Plan *result_plan);
+								  Plan *result_plan,
+								  bool use_root);
 extern List *generate_subquery_tlist(Index varno, List *input_tlist, int **p_resno_map);
 extern List *reconstruct_pathkeys(PlannerInfo *root, List *pathkeys, int *resno_map,
 								  List *orig_tlist, List *new_tlist);

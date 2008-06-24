@@ -1235,7 +1235,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_enable_agg_distinct", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Experimental feature: 2-phase aggregation with single distinct-qualified aggregate."),
+			gettext_noop("Enable 2-phase aggregation to compute a single distinct-qualified aggregate."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
@@ -1244,12 +1244,24 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_enable_dqa_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Experimental feature: 2-phase aggregation with single distinct-qualified aggregate."),
+		{"gp_enable_agg_distinct_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable 3-phase aggregation and join to compute distinct-qualified aggregates."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_dqa_pruning,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_eager_agg_distinct_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Prefer 3-phase aggregation and join to compute distinct-qualified aggregates."),
+			gettext_noop("The planner will use 3-phase aggregation and join to compute "
+						 "distinct-qualified aggregates whenever enables and possible"
+						 "regardless of cost estimates."),
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_eager_dqa_pruning,
 		false, NULL, NULL
 	},
 

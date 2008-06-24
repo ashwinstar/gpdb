@@ -585,7 +585,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 										context->agg_counts->transitionSpace,
 										"rollup",
 										&context->current_pathkeys,
-										agg_node);
+										agg_node, false);
 
 		/* Set inputHasGrouping */
 		if (context->is_agg)
@@ -710,7 +710,7 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 										lNumGroups, context->agg_counts->numAggs,
 										context->agg_counts->transitionSpace,
 										"rollup", &context->current_pathkeys,
-										agg_node);
+										agg_node, false);
 
 		if (context->is_agg || context->aggstrategy == AGG_HASHED)
 			((Agg *)agg_node)->inputHasGrouping = true;

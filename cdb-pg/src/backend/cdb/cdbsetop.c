@@ -480,7 +480,8 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
 		ListCell *c;
 		TargetEntry *tle;
 		List *hash = NIL;
-		Index i = 0;
+		AttrNumber i = 0;
+		Index varno = ((Scan*)plan)->scanrelid;
 		Flow *subplanflow = subplan->flow; 
 		
 		/* Make sure all the expressions the flow thinks we're hashed on
@@ -498,7 +499,7 @@ void mark_passthru_locus(Plan *plan, bool with_hash, bool with_sort)
                        || (IsA(x, RelabelType)
                            && equal(((RelabelType *)x)->arg, tle->expr) )));
 
-            hash = lappend(hash, makeVar(1, i,
+            hash = lappend(hash, makeVar(varno, i,
 										exprType((Node*)tle->expr),
 										exprTypmod((Node*)tle->expr), 0));
 		}

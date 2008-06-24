@@ -610,6 +610,16 @@ extern bool gp_enable_agg_distinct;
  */
 extern bool gp_enable_dqa_pruning;
 
+/* Should Greenplum use grouping in the first phase of 2-phase aggregation to 
+ * prune values from DISTINCT-qualified aggregate function arguments without
+ * regard to cost estimates?
+ *
+ * The code does not currently use planner estimates for this, however, when
+ * it does, if enabled,  the tactic is used whenever possible.  Note that
+ * this has effect only when gp_enable_dqa_pruning it true.
+ */
+extern bool gp_eager_dqa_pruning;
+
 /* May Greenplum apply Unique operator (and possibly a Sort) in parallel prior
  * to the collocation motion for a Unique operator?  The idea is to reduce
  * the number of rows moving over the interconnect.

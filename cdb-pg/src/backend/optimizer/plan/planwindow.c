@@ -286,8 +286,6 @@ static Node *translate_upper_vars_sequential(Node *node, WindowContext *context)
 static FromExpr *plan_window_jointree(PlannerInfo *root, WindowContext *context);
 static Expr *make_window_join_term(Oid type, Index lftvarno, AttrNumber lftattrno, Index rgtvarno, AttrNumber rgtattrno, bool no_nulls);
 static Oid *get_window_attr_types(List *targetlist, int nattrs, AttrNumber *attrs);
-static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys);
-
 static Plan *wrap_plan(PlannerInfo *root, Plan *plan, Query *query, List **p_pathkeys, 
        const char *alias_name, List *col_names, Query **query_p);
 static Plan *add_join_to_wrapper(Plan *plan, Query *query, List *join_tlist,
@@ -296,7 +294,6 @@ static Plan *add_join_to_wrapper(Plan *plan, Query *query, List *join_tlist,
 								 Query *wrapper_query);
 static Query *copy_common_subquery(Query *original, List *targetList);
 static char *get_function_name(Oid proid, const char *dflt);
-static Value *get_tle_name(TargetEntry *tle, List* rtable, const char *default_name);
 
 
 Plan *
@@ -3318,9 +3315,10 @@ static RangeTblEntry *rte_for_coplan(
 
 /* Package a plan as a pre-planned subquery RTE.
  *
- * Note that the input query is usually root->parse (since that is the
- * query from which this invocation of the planner takes its context),
- * but may be a derived query in the case of sequential window plans.
+ * Note that the input query is often root->parse (since that is the
+ * query from which this invocation of the planner usually takes its 
+ * context), but may be a derived query, e.g., in the case of sequential 
+ * window plans or multiple-DQA pruning (in cdbgroup.c).
  * 
  * Note also that the supplied plan's target list must be congruent with
  * the supplied query: its Var nodes must refer to RTEs in the range 
@@ -3336,7 +3334,7 @@ static RangeTblEntry *rte_for_coplan(
  * and the corresponding plan should reference its results through a 
  * SubqueryScan node.
  */
-static RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys)
+RangeTblEntry *package_plan_as_rte(Query *query, Plan *plan, Alias *eref, List *pathkeys)
 {
 	Query *subquery;
 	RangeTblEntry *rte;
