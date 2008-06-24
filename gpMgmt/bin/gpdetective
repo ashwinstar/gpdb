@@ -42,7 +42,7 @@ def usage(exitarg = None):
 
 
 #============================================================
-class GPDetective():
+class GPDetective:
     '''
     GPDetecive main class
     '''
@@ -121,7 +121,13 @@ class GPDetective():
         except ValueError: exit('Error: Could not determine PORT')
 
         # Connect to master
-        self.master = self.connect(db=self.db)
+	try:
+            self.master = self.connect(db=self.db, utility=True)
+        except:
+            print "Error: Could not connect to the master database:",
+            print " %s@%s:%s" % (self.opt['-U'], self.opt['-h'], self.opt['-p'])
+            print "Please specify the correct host or start the master in admin mode"
+            exit(1)
 
         # Setup the log directory
         self.mklogdir()
@@ -174,7 +180,7 @@ class GPDetective():
         
 
     #------------------------------------------------------------
-    def connect(self, user=None, password=None,host=None, port=None, db=None):
+    def connect(self, user=None, password=None, host=None, port=None, db=None, utility=False):
         '''
         Establish a connection to the Greenplum database
         '''
@@ -182,8 +188,13 @@ class GPDetective():
         host = host or self.opt['-h']
         port = port or self.opt['-p']
         db   = db   or self.opt['-U']
+        if utility:
+            options = '-c gp_session_role=utility'
+        else:
+            options = ''
         return pg8000.Connection(user=user, password=password, 
-                                 host=host, port=port, database=db)
+                                 host=host, port=port, database=db,
+                                 options=options)
         
 
     #------------------------------------------------------------
@@ -569,8 +580,10 @@ class GPDetective():
                                 'kernel.core_uses_pid'], host):
                     core_pattern = core_pattern + '*'
 
-#            elif system == 'SunOS':
-#                pass
+            elif system == 'SunOS':
+                init_pattern = self.runCmd(['grep', 'COREADM_INIT_PATTERN',
+                                            '/etc/coreadm.conf'], host)
+                core_pattern = init_pattern.split('=')[1]
 
             else:
                 self.log('Crash Report - Unknown System: ' + system)
@@ -699,14 +712,21 @@ class GPDetective():
         Creates a tar archive from the files in the temporary logdir
         '''
         self.log('makeTar')
-
         self.errlog.close();
         self.errlog = None
         os.chdir(self.logdir)
-        tarfile = self.tardir + '.tar.bz2'
-        tarcmd = ['tar', '-cjf', tarfile];
+
+        # because solaris tar can't gzip we do the tar and gzip as 
+        # separate steps.
+        tarfile = self.tardir + '.tar'
+        tarcmd = ['tar', '-cf', tarfile];
         tarcmd.extend(os.listdir('.'))
         self.runCmd(tarcmd)
+	try:
+          self.runCmd(['bzip2', tarfile])
+          tarfile = tarfile + '.bz2';
+        except:
+          pass
         self.runCmd(['cp', tarfile, self.olddir])
         os.chdir(self.tardir)
 
