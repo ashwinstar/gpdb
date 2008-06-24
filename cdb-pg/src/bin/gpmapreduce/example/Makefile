@@ -42,6 +42,11 @@ $(OUTDIR)/%.plan: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml
 $(OUTDIR)/%.print: $(MAPRED) $(MAPMODS) $(DOCMAP) $(YMLDIR)/%.yml 
 	$(MAPRED) --print $(YMLDIR)/$*.yml admin > $@
 
+$(YMLDIR)/wordcount.yml: $(DATADIR)/email/mailfiles
+
+$(DATADIR)/email/mailfiles:
+	ls -1 $(DATADIR)/email/*.txt > $@
+
 clean:
 	rm -f $(YML) 
 	rm -f $(EXPRNT) 

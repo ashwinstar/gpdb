@@ -99,6 +99,7 @@ sub initialize()
 	$self->{OBJECTS}  = { 
 		IDENTITY => new GPMapReduce::Identity(),
 		STDOUT   => new GPMapReduce::STDOUT(),
+		SUM      => new GPMapReduce::SUM(),
 	};
     $self->{INPUTS}   = [];
     $self->{OUTPUTS}  = [];

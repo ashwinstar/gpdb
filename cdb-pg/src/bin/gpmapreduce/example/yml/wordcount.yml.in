@@ -7,21 +7,21 @@ USER:            @db_user@
 DEFINE:
   - INPUT:
       NAME:      email
-      GPFDIST:   @hostname@:/email/*
+      FILE:
+        - @hostname@:@abs_srcdir@/data/email/mailfiles
 
-  - OUTPUT:
-      NAME:      words_out
-#      FILE:      @hostname@:@abs_srcdir@/output/words
-      TABLE:     wordcount
-      
   - MAP:
       NAME:      wordsplit_python
       FUNCTION:  |
-        from string import maketrans
-        trans = maketrans(
-           '''ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()_+-=[]{}\|;:'",<.>/?~`''',
-           '''abcdefghijklmnopqrstuvwxyz                                ''')
-        return map(lambda(x): [x, 1], value.translate(trans).split())
+        from email import message_from_file
+        import nltk
+        tokenizer = nltk.WordTokenizer()
+        stemmer   = nltk.PorterStemmer()
+        stopwords = nltk.corpus.stopwords.words()
+        text      = message_from_file(open(value)).get_payload()
+        stems     = map(lambda(x): stemmer.stem(x.lower()), tokenizer.tokenize(text))
+        words     = filter(lambda(x): x not in stopwords and not x.isdigit(), stems)
+        return map(lambda(x): [x, 1], words)
       LANGUAGE:   python
       OPTIMIZE:   STRICT IMMUTABLE
       MODE:       MULTI
@@ -30,25 +30,23 @@ DEFINE:
         - key text
         - value integer
 
-  - TRANSITION:
-      NAME:       myAdd
-      LANGUAGE:   perl
-      FUNCTION:   return $_[0] + $_[1];
-      PARAMETERS:
-        - state integer
-        - value integer
-      RETURNS:    state integer
-         
-  - REDUCER:
-      NAME:       mySum
-      INITIALIZE: '0'
-      TRANSITION: myAdd
-      COMBINE:    myAdd
+  - MAP:
+      NAME:      reverse_python
+      FUNCTION:  |
+        return (value, key)
+      LANGUAGE:  python
+      OPTIMIZE:   STRICT IMMUTABLE      
+      RETURNS:
+        - key integer
+        - value text
+      
+  - TASK:
+      NAME:      email_histogram
+      SOURCE:    email
+      MAPPER:    wordsplit_python
+      REDUCER:   SUM
         
 EXECUTE:
   - RUN:
-      SOURCE:    email
-      MAPPER:    wordsplit_python
-#      REDUCER:   SUM
-      REDUCER:   mySum
-      TARGET:    words_out
+      SOURCE:    email_histogram
+      MAPPER:    reverse_python

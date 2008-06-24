@@ -212,6 +212,58 @@ sub GenerateYAML
     return $yml;
 }
 
+package GPMapReduce::SUM;
+
+use vars qw(@ISA);
+@ISA = qw(GPMapReduce::Reducer);
+
+sub new {
+    my ($class) = shift;
+    my $self  = new GPMapReduce::Object(Name => 'sum');
+    return bless $self, $class;
+}
+
+sub SQLCreate()    {}
+sub SQLDrop()      {}
+sub GenerateYAML() {}
+
+
+#
+# This is exactly the same as for Reducer, except we the input is not
+# based on the transition function - since we don't have one declared
+#
+sub GenerateQuery
+{
+	my ($self, $input, $params) = @_;
+	my ($sql, $i, $j, @out, @in, @columns, @reduceover);
+	my $transition = $self->{_Depend}->{uc($self->{Transition})};
+
+	@columns = @{$input->{Columns}};
+	@in = ('value');
+	@out = ('value');    # FIXME - adjust output parameters
+
+	# Unless otherwise specified we group over all columns we didn't
+    # take as input. 
+	@reduceover = ();
+	for ($i = 0; $i <= $#columns; $i++) {
+		for ($j = 0; $j <= $#in; $j++) {
+			last if (uc($columns[$i]) eq uc($in[$j]));
+		}
+		push @reduceover, $columns[$i] if ($j > $#in);
+	}
+
+	# FIXME: validate that there is at least one field in reduceover
+
+	$sql  = "SELECT " . join(', ', @reduceover) . ", $self->{Name}(";
+	$sql .= join(', ', @in) . ") as value\n";
+	$sql .= "FROM <SOURCE>\n";
+	$sql .= "GROUP BY " . join(', ', @reduceover);
+	$input->ExtendQuery($sql, [@reduceover, @out]);
+
+	# FIXME: handle returning multiple columns
+
+	return undef;
+}
 
 ################################################################
 
