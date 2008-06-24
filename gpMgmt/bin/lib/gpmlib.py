@@ -572,7 +572,7 @@ def edit_file(host, file, search_txt, sub_txt, append=False):
 
 
 #############
-def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
+def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True, copy='ssh'):
     # make mirror data directory
     log_info('make directory %s' % dst_cfg['datadir'])
     (ok, out) = run('%s "%s %s && chmod 700 %s"' % 
@@ -599,20 +599,19 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     # cd datadir ; gprsync.py -p dst_cfg['port'] -o '-cav' file1 file2 ... fileN host:datadir
     # use the same port as the destination segment port
 
-    gprsync = os.path.join(os.environ.get('GPHOME'), 'bin/lib/gprsync.py')
-    gprsync_port = dst_cfg['port'] + random.randint(500, 1000)
-    (ok, out) = run('%s "%s -p %d -d %s -o \'-av\' %s %s:%s" >> %s' % 
-                    (gplib.ssh_prefix(host=src_host),
-                     gprsync,
-                     gprsync_port,  
-                     src_dir,
-                     files,
-                     dst_cfg['hostname'],
-                     dst_cfg['datadir'],
-                     logfile))
-
-    if not ok:
-        log_warn('gprsync.py failed. scp will be used instead.')
+    if copy == 'rsync':
+        gprsync = os.path.join(os.environ.get('GPHOME'), 'bin/lib/gprsync.py')
+        gprsync_port = dst_cfg['port'] + random.randint(500, 1000)
+        (ok, out) = run('%s "%s -p %d -d %s -o \'-av\' %s %s:%s" >> %s' % 
+                        (gplib.ssh_prefix(host=src_host),
+                         gprsync,
+                         gprsync_port,  
+                         src_dir,
+                         files,
+                         dst_cfg['hostname'],
+                         dst_cfg['datadir'],
+                         logfile))
+    elif copy == 'ssh':
         (ok, out) = run('%s "cd %s ; %s cf - %s | %s %s \\"cd %s ; %s xf -\\"" >> %s' % 
                         (gplib.ssh_prefix(host=src_host),
                          src_dir,
@@ -623,8 +622,11 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
                          dst_cfg['datadir'],
                          ENV.TAR,
                          logfile))
-        if not ok:
-            sys.exit('failed to synchronize data from primary segment to mirror segment')
+    else:
+        sys.exit('copy mode %s not support.' % copy)
+
+    if not ok:
+        sys.exit('failed to synchronize data from primary segment to mirror segment')
 
     # delete postmaster.pid in case active segment is still running
     postmaster_pid = os.path.join(dst_cfg['datadir'], 'postmaster.pid')
@@ -721,8 +723,8 @@ def group_mirror(pri_qes, mir_datadirs, mir_port_offset, multihome):
     pri_host_count = len(hosts_uniq)
     max_array = len(pri_qes) - 1
 
-    if multihome and remote_host_count == 1:
-        pri_host_count = 1
+#    if multihome and remote_host_count == 1:
+#        pri_host_count = 1
 
     if multihome and pri_host_count == len(mir_datadirs):
         host_idx = len(mir_datadirs)-1

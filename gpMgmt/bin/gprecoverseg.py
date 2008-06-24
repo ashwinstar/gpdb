@@ -5,16 +5,22 @@
 Recovers Greenplum segment instances that are marked as invalid, if 
 mirroring is configured and operational
 
-Usage: gprecoverseg.py [--version] [-?qaf] [-D] [-c input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
+Usage: gprecoverseg.py [--version] [-?qaf] [-D] [-c {rsync|ssh}] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
            
+          General options:
           --version : print version information
           -?        : print this help screen
+
+          Logging options:
           -D        : set logging output to debug level
           -q        : quiet mode, do not log progress to screen [default: verbose output to screen]
           -a        : non-interactive mode [default: interactive mode]
-          -c        : <input_config> input configuration file which is generated from -o option
+
+          Config options:
+          -i        : <input_config> input configuration file which is generated from -o option
           -o        : <output_config> output configuration file
-          -d        : master data directory
+
+          Recovery options:
           -l        : <log directory> alternative log file directory [optional]
           -p        : <hostname> recover to spare pool node
                           the pool host must have the following characteristics:
@@ -34,6 +40,11 @@ Usage: gprecoverseg.py [--version] [-?qaf] [-D] [-c input_config] [-o output_con
                           example gprecoverseg.py -z /dbfast1/segment1:localhost
           -B        : <number> run this batch of recovery segment processes in parallel [default: 4]
 
+          Connection options:
+          -d        : <master data directory> name of alternative Master database to start up [optional]
+
+          Copy options:
+          -c        : {rsync|ssh}  use rsync or ssh to copy data to failed segment [default: ssh]
 
           Format of configuration file:
           failed_host:failed_port:failed_datadir [new_host:new_port:new_datadir]
@@ -70,9 +81,10 @@ opt['-p'] = None
 opt['-f'] = False
 opt['-q'] = False
 opt['-l'] = None
-opt['-c'] = None
+opt['-i'] = None
 opt['-o'] = None
 opt['-D'] = False
+opt['-c'] = None
 
 arg = {}
 arg['exit'] = 0
@@ -91,7 +103,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?Dqafs:d:z:B:p:l:c:o:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?Dqafs:d:z:B:p:l:c:i:o:', ['version'])
     except Exception, e:
         usage('[ERROR]:-' + str(e))
 
@@ -107,6 +119,7 @@ def parseCommandLine():
         elif (switch == '-q'):        opt[switch] = True
         elif (switch == '-l'):        opt[switch] = val
         elif (switch == '-c'):        opt[switch] = val
+        elif (switch == '-i'):        opt[switch] = val
         elif (switch == '-o'):        opt[switch] = val
         elif (switch == '-D'):        opt[switch] = True
 
@@ -140,6 +153,15 @@ def parseCommandLine():
     if not os.path.isdir(opt['-d']):
         gpmlib.error('MASTER_DATA_DIRECTORY %s not exists or not a directory' % opt['-d'])
 
+    if not opt['-c']:
+        opt['-c'] = 'ssh'
+    if opt['-c'] != 'rsync' and opt['-c'] != 'ssh':
+        gpmlib.error('Only support ssh or rsync to copy data to remote host.  Please specify -c rsync or -c ssh.')
+
+    if opt['-c'] == 'rsync':
+        gpmlib.findCmdInPath('rsync')
+
+    
 ################
 def yesorno(msg, abortmsg):
     print msg
@@ -578,7 +600,8 @@ class SyncDataThread(Thread):
                                            self.active_qe['datadir'],
                                            self.pool_array,
                                            self.logfile,
-                                           force_stop = opt['-f']):
+                                           force_stop = opt['-f'],
+                                           copy = opt['-c']):
             gpmlib.log_error(' failed to copy data from (%s:%s) to (%s:%s)' % 
                              (self.active_qe['hostname'], self.active_qe['datadir'], 
                               self.pool_array['hostname'], self.pool_array['datadir']))
@@ -725,8 +748,8 @@ def display_param(fault_action, failed_array, active_array, multi_home):
     gpmlib.log_info('Greenplum instance recovery parameters')
     gpmlib.log_info('---------------------------------------------------------')
     gpmlib.log_info('Fault tolerance setting       = %s' % fault_action)
-    if opt['-c']:
-        gpmlib.log_info('Recovery from configuration -c option supplied')
+    if opt['-i']:
+        gpmlib.log_info('Recovery from configuration -i option supplied')
 
     if opt['-z']:
         gpmlib.log_info('Forced Recovery -z option supplied')
@@ -1330,7 +1353,7 @@ def parse_config(db):
     active_instance_array = []
     pool_failed_instance_array = []
     
-    with open(opt['-c']) as f:
+    with open(opt['-i']) as f:
         for line in f:
             line = line.strip()
             if line == '':
@@ -1466,7 +1489,7 @@ try:
             opt['-f'] = True
 
         # generate list of failed instances, active instances and failed dbids
-        if opt['-c']:
+        if opt['-i']:
             (failed_dbids, failed_instance_array, active_instance_array, pool_failed_instance_array, update_sql) = parse_config(db)
         else:
 
