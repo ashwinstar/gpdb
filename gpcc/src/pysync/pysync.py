@@ -161,8 +161,9 @@ class RemotePysync:
 		while offset<value[2]:
 		    size = min(value[2]-offset,CHUNK_SIZE)
 		    self.log('digesting %s at %d'%(name,offset))
-		    digest = self.doCommand('getDigest',name,offset,size)
+		    digest = None
 		    if offset+size<=localSize:
+			digest = self.doCommand('getDigest',name,offset,size)
 			f.seek(offset)
 			b = f.read(size)
 			assert len(b)==size
@@ -172,6 +173,8 @@ class RemotePysync:
 		    self.log('copying %s at %d'%(name,offset))
 		    data = self.getData(name,offset,size)
 		    if not self.options.insecure:
+			if digest==None:
+			    digest = self.doCommand('getDigest',name,offset,size)
 			if md5.new(data).digest()!=digest:
 			    raise Exception('Digest did not match.')
 		    f.seek(offset)
