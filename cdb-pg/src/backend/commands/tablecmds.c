@@ -8921,7 +8921,7 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		PartitionRule *rule = lfirst(lc);
 		List *vals = rule->parlistvalues;
 		ListCell *lc2;
-		bool matched;
+		bool matched=false;
 
 		/* 
 		 * list values are stored in a list of lists to support multi column
