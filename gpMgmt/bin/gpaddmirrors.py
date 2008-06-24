@@ -6,9 +6,9 @@ Configures mirror segments for Greenplum Database instance which has primary
 segment instances only.  Process will stop the Greenplum Database Instance to 
 be able to generate mirror copies of primary segments.
 
-gpaddmirror -- add mirror segment
+gpaddmirrors -- add mirror segment
 
-Usage: gpaddmirror [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p port] [-o outfile] [-s] [-m mirror_config] [-B number]
+Usage: gpaddmirrors [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p port] [-o outfile] [-s] [-i mirror_config] [-m mirror_datadir_config] [-B number]
            
           --version : print version information
           -?        : print this help screen
@@ -18,19 +18,28 @@ Usage: gpaddmirror [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-p
           -d        : master data directory
           -l        : <log directory> alternative log file directory [optional]
           -o        : file to output configuration
-          -m        : mirror configuration file
+          -i        : mirror configuration file
           -s        : spread mirror mode
           -p        : mirror offset, if not supplied, script will calculate a suitable
                       port offset for the mirror segment instances, range 7000 - 61000
                       current offset value is 1000
+          -m        : mirror data directory config file
           -B        : number of parallel process to spawn to process mirror creation
 
 
-          Format of the configuration file:
+          Format of the input configuration file:
           mirror[N]=host:port:data_dir
           where N is content in gp_configuration table
+
+          Format of the mirror data directory config file:
+          data_dir1
+          data_dir2
+          ...
+          data_dirN
+          where N is the number of segment data directory per host
 '''
 
+from __future__ import with_statement
 import os, sys, getopt, socket
 from threading import Thread
 from datetime import date, datetime, timedelta
@@ -54,6 +63,7 @@ opt['-m'] = None
 opt['-B'] = 4
 opt['-a'] = False
 opt['-s'] = False
+opt['-i'] = None
 opt['-o'] = None
 opt['-p'] = 1000
 opt['-l'] = None
@@ -76,7 +86,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?qaso:d:m:B:p:l:D', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?qasi:o:d:m:B:p:l:D', ['version'])
     except Exception, e:
         usage(str(e))
 
@@ -87,6 +97,7 @@ def parseCommandLine():
         elif (switch == '-B'):        opt[switch] = int(val)
         elif (switch == '-a'):        opt[switch] = True
         elif (switch == '-s'):        opt[switch] = True
+        elif (switch == '-i'):        opt[switch] = val
         elif (switch == '-o'):        opt[switch] = val
         elif (switch == '-p'):        opt[switch] = int(val)
         elif (switch == '-d'):        opt[switch] = val
@@ -115,8 +126,8 @@ def parseCommandLine():
         opt['-l'] = os.path.join(logdir, '%s_%s.log' % (script_name, date.today().strftime('%Y%m%d')))
         gpmlib.log_set_file(opt['-l'])
 
-    if opt['-m'] and not os.path.isfile(opt['-m']):
-        usage('mirror configuration file %s not exist' % opt['-m'])
+    if opt['-i'] and not os.path.isfile(opt['-i']):
+        usage('input configuration file %s not exist' % opt['-i'])
 
     if not opt['-d']:
         opt['-d'] = os.getenv('MASTER_DATA_DIRECTORY')
@@ -145,10 +156,10 @@ def parseMirrorConfig():
     file = None
     lines = []
     try:
-        file = open(opt['-m'], 'r')
+        file = open(opt['-i'], 'r')
         lines = file.readlines()
     except Exception, e:
-        gpmlib.error('read file %s error' % opt['-m'])
+        gpmlib.error('read file %s error' % opt['-i'])
     finally:
         if file:
             file.close()
@@ -439,13 +450,23 @@ def display_param(master_datadir, master_port, qes, mirrors, multi_home):
 def get_datadirs(ndatadir):
     
     datadirs = []
-    for i in range(ndatadir):
-        print 'Enter mirror segment data directory location %d of %d >' % (i+1, ndatadir)
-        line = sys.stdin.readline() 
-        line = line.strip()
-        if line == '':
-            gpmlib.error('Null value entered for mirror data directory')
-        datadirs.append(line)
+    if opt['-m']:
+        with open(opt['-m']) as f:
+            for line in f:
+                line = line.strip()
+                if line == '':
+                    continue
+                datadirs.append(line.strip())
+            if ndatadir != len(datadirs):
+                sys.exit('Number of data directory must be equal to %d' % ndatadir)
+    else:
+        for i in range(ndatadir):
+            print 'Enter mirror segment data directory location %d of %d >' % (i+1, ndatadir)
+            line = sys.stdin.readline() 
+            line = line.strip()
+            if line == '':
+                gpmlib.error('Null value entered for mirror data directory')
+            datadirs.append(line)
 
     return datadirs
 
@@ -538,7 +559,7 @@ try:
         multi_home = gpmlib.chk_multi_home(hosts)
 
         # parse mirror config or generate spread or group mirror config
-        if opt['-m']:
+        if opt['-i']:
             mirrors = parseMirrorConfig()
         else:
             mirrors = generate_mirrors(db, qes, multi_home)
