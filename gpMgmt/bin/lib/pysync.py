@@ -23,12 +23,12 @@ class Options:
     pass
 
 def statToTuple(s,name):
-    if stat.S_ISDIR(s.st_mode):
-	return ('d',s.st_mode)
     if stat.S_ISREG(s.st_mode):
 	return ('-',s.st_mode,s.st_size)
     if stat.S_ISLNK(s.st_mode):
 	return ('l',0,os.readlink(name))
+    if stat.S_ISDIR(s.st_mode):
+	return ('d',s.st_mode)
     if stat.S_ISCHR(s.st_mode):
 	return ('c',s.st_mode,s.st_rdev)
     if stat.S_ISBLK(s.st_mode):
@@ -58,16 +58,16 @@ class RemotePysync:
     def removeJunk(self,list):
 	for root,dirs,files in os.walk('.',False):
 	    os.chmod(root,0700)
-	    for i in dirs:
+	    for i in dirs+files:
 		name = os.path.join(root,i)
-		if name not in list or list[name][0]!='d':
-		    self.log('rmdir '+name)
-		    os.rmdir(name)
-	    for i in files:
-		name = os.path.join(root,i)
-		if name not in list or list[name][0]=='d':
-		    self.log('remove '+name)
-		    os.remove(name)
+		t = statToTuple(os.lstat(name),name)
+		if name not in list and not self.options.minusn or name in list and list[name][0]!=t[0]:
+		    if t[0]=='d':
+			self.log('rmdir '+name)
+			os.rmdir(name)
+		    else:
+			self.log('remove '+name)
+			os.remove(name)
 
     def createDirs(self,list):
 	for name in sorted(list.keys()):
@@ -188,28 +188,25 @@ class RemotePysync:
 		os.chmod(name,value[1]&01777)
 
     def run(self):
-	try:
-	    self.socket = None
-	    self.options = self.doCommand('getOptions')
-	    os.chdir(self.doCommand('getDestDir'))
-	    list = self.doCommand('getList')
-	    self.log('list=%s'%str(list))
-	    self.log('removeJunk')
-	    self.removeJunk(list)
-	    self.log('createDirs')
-	    self.createDirs(list)
-	    self.log('createFiles')
-	    self.createFiles(list)
-	    self.log('linkLinks')
-	    self.linkLinks(list)
-	    self.log('copyData')
-	    self.copyData(list)
-	    self.log('fixPermissions')
-	    self.fixPermissions(list)
-	    self.log('quit')
-	    self.doCommand('quit',0)
-	except Exception,e:
-	    self.doCommand('raise',e)
+	self.socket = None
+	self.options = self.doCommand('getOptions')
+	os.chdir(self.doCommand('getDestDir'))
+	list = self.doCommand('getList')
+	self.log('list=%s'%str(list))
+	self.log('removeJunk')
+	self.removeJunk(list)
+	self.log('createDirs')
+	self.createDirs(list)
+	self.log('createFiles')
+	self.createFiles(list)
+	self.log('linkLinks')
+	self.linkLinks(list)
+	self.log('copyData')
+	self.copyData(list)
+	self.log('fixPermissions')
+	self.fixPermissions(list)
+	self.log('quit')
+	self.doCommand('quit',0)
 
 if 'pysyncSource' not in globals():
     RemotePysync().run()
@@ -224,6 +221,7 @@ class LocalPysync:
 	self.options.compress = False
 	self.options.verbose = False
 	self.options.insecure = False
+	self.options.minusn = False
 	self.cache = [None]
 	self.exclude = set()
 	a = argv[1:]
@@ -234,6 +232,8 @@ class LocalPysync:
 		self.options.compress = True
 	    elif a[0]=='-insecure':
 		self.options.insecure = True
+	    elif a[0]=='-n':
+		self.options.minusn = True
 	    elif a[0]=='-x':
 		a.pop(0)
 		name = a[0]
@@ -260,7 +260,7 @@ class LocalPysync:
 
     def usage(self,argv):
 	sys.stderr.write("usage:\n")
-	sys.stderr.write("    python "+argv[0]+" [-verbose] [-compress] [-insecure] [-x exclude_file] sourcedir [user@]host:destdir\n")
+	sys.stderr.write("    python "+argv[0]+" [-verbose] [-compress] [-insecure] [-n] [-x exclude_file] sourcedir [user@]host:destdir\n")
 	sys.exit(1)
 
     def readFile(self,filename,offset,size):
@@ -282,6 +282,8 @@ class LocalPysync:
 	    for i in dirs+files:
 		name = os.path.join(root,i)
 		if name in self.exclude:
+		    if i in dirs:
+			dirs.remove(i)
 		    continue
 		s = os.lstat(name)
 		if s.st_ino in inomap:
@@ -307,8 +309,6 @@ class LocalPysync:
 	    if self.options.compress:
 		self.sendData = zlib.compress(self.sendData,1)
 	    return len(self.sendData)
-	elif what[0]=='raise':
-	    raise what[1]
 	elif what[0]=='quit':
 	    sys.exit(what[1])
 	else:
