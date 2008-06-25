@@ -225,6 +225,7 @@ class LocalPysync:
 	self.options.verbose = False
 	self.options.insecure = False
 	self.cache = [None]
+	self.exclude = set()
 	a = argv[1:]
 	while a:
 	    if a[0]=='-verbose':
@@ -233,6 +234,14 @@ class LocalPysync:
 		self.options.compress = True
 	    elif a[0]=='-insecure':
 		self.options.insecure = True
+	    elif a[0]=='-x':
+		a.pop(0)
+		name = a[0]
+		if name[0]=='/':
+		    raise Exception('Please do not use absolute path with -x.')
+		if name[0:2]!='./':
+		    name = os.path.join('.',name)
+		self.exclude.add(name)
 	    else:
 		break
 	    a.pop(0)
@@ -251,7 +260,7 @@ class LocalPysync:
 
     def usage(self,argv):
 	sys.stderr.write("usage:\n")
-	sys.stderr.write("    python "+argv[0]+" [-verbose] [-compress] [-insecure] sourcedir [user@]host:destdir\n")
+	sys.stderr.write("    python "+argv[0]+" [-verbose] [-compress] [-insecure] [-x exclude_file] sourcedir [user@]host:destdir\n")
 	sys.exit(1)
 
     def readFile(self,filename,offset,size):
@@ -272,6 +281,8 @@ class LocalPysync:
 	for root,dirs,files in os.walk('.'):
 	    for i in dirs+files:
 		name = os.path.join(root,i)
+		if name in self.exclude:
+		    continue
 		s = os.lstat(name)
 		if s.st_ino in inomap:
 		    list[name] = ('L',inomap[s.st_ino])
