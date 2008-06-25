@@ -5,7 +5,7 @@
 Recovers Greenplum segment instances that are marked as invalid, if 
 mirroring is configured and operational
 
-Usage: gprecoverseg.py [--version] [-?qaf] [-D] [-c {rsync|ssh}] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
+Usage: gprecoverseg [--version] [-?qaf] [-D] [-c {rsync|ssh}] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
            
           General options:
           --version : print version information
@@ -37,7 +37,7 @@ Usage: gprecoverseg.py [--version] [-?qaf] [-D] [-c {rsync|ssh}] [-i input_confi
           -z        : <failed_segment_instance_directory_name:failed_hostname> 
                           force a recovery, even though no instance segments are marked as invalid on the master
                           CAUTION:-USE THIS OPTION WITH CARE!
-                          example gprecoverseg.py -z /dbfast1/segment1:localhost
+                          example gprecoverseg -z /dbfast1/segment1:localhost
           -B        : <number> run this batch of recovery segment processes in parallel [default: 4]
 
           Connection options:
