@@ -55,8 +55,8 @@ class GPUpgrade:
     #   RESETXLOG - Syncronize xlogs
     #   REMAPOID  - Link newdb to old oids, run on every host
     #   DEEPLINK  - Recursive hardlink
-    commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'RESETXLOG', 'REMAPOID', 
-                'DEEPLINK']
+    commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'RESETXLOG', 'MAPPINGS',
+                'REMAPOID', 'DEEPLINK']
 
     #------------------------------------------------------------
     def __init__(self):
@@ -73,8 +73,8 @@ class GPUpgrade:
     # Enviornment and system info
         self.masterdir = None     # Master Data Directory
         self.datadirs  = None     # Set of all data and mirror directories
-        self.oldhome    = None     # Old gphome/bin directory
-        self.newhome    = None     # New gphome/bin directory
+        self.oldhome   = None     # Old gphome/bin directory
+        self.newhome   = None     # New gphome/bin directory
         self.oldenv    = None     # enviornment: old gp env
         self.newenv    = None     # enviornment: new gp env
         self.user      = None     # db admin user
@@ -196,7 +196,8 @@ class GPUpgrade:
     def Cleanup(self):
         '''
         Cleanup open connections.
-        Separate from __del__ because that caused weird issues with exit() behavior.
+        Separate from __del__ because that caused weird issues with exit() 
+        behavior.
         '''
         if self.cmd == 'MASTER':
             olddir = self.oldenv['MASTER_DATA_DIRECTORY']
@@ -260,7 +261,8 @@ class GPUpgrade:
     #------------------------------------------------------------
     def CallSlaves(self, cmd, option='', option2=''):
         '''
-        Calls every host to execute the given command with the given option value
+        Calls every host to execute the given command with the given option 
+        value
         '''
 
 
@@ -344,7 +346,7 @@ class GPUpgrade:
                 sys.stdout.write('%s%s\n' % (prefix, m))
 
     #------------------------------------------------------------
-    def Select(self, qry, db='template1', utility=True):
+    def Select(self, qry, db='template1', utility=True, port=5432):
         '''
         Execute a SQL query and return an array of result rows
            + Single columns will be returned as an array of values
@@ -355,26 +357,29 @@ class GPUpgrade:
             options = '-c gp_session_role=utility'
         else:
             options = ''
+
+        conn = None
         try:
-            db = pg8000.Connection(user=self.user, host=self.host,
-                                   database=db, options=options)
-            db.execute(qry)
+            conn = pg8000.Connection(user=self.user, host=self.host,
+                                   database=db, options=options,
+                                   port=port)
+            conn.execute(qry)
         except Exception, e:
-            if db: db.close()
+            if conn: conn.close()
             raise ConnectionError("Error (%s) executing sql: %s", 
                                   (str(e), qry))
 
         rows = []
-        for tuple in db.iterate_dict():
+        for tuple in conn.iterate_dict():
             if len(tuple) == 1: 
                 rows.append(tuple.values()[0])
             else: 
                 rows.append(tuple)
-        db.close()
+        conn.close()
         return rows
 
     #------------------------------------------------------------
-    def Update(self, qry, db='template1', utility=True):
+    def Update(self, qry, db='template1', utility=True, port=5432):
         '''
         Execute a SQL query expecting no output
         '''
@@ -384,7 +389,8 @@ class GPUpgrade:
 
         try:
             db = pg8000.Connection(user=self.user, host=self.host,
-                                   database=db, options=options)
+                                   database=db, options=options,
+                                   port=port)
             db.execute(qry)
         except Exception, e:
             raise ConnectionError("Error (%s) executing sql: %s", 
@@ -521,6 +527,7 @@ class GPUpgrade:
         self.newversion = newversion
 
         # Versions supported by the upgrader
+        
 
         # For the moment everything goes!
         # -- FIXME --
@@ -848,93 +855,87 @@ class GPUpgrade:
         extracts mappings from the olddb, the second time it extracts mappings
         from the new db and joins the two mappings together.
         '''
-
-        if self.mappings == None:
-            self.Log('INFO', 'Building original oid Mappings')
-            self.mappings = {}
-            prefix = 'old'
+        if self.cmd == 'MASTER':
+            prefix = self.config['SEG_PREFIX'] + '-'
+            datadirs = [self.root]
+            if self.mappings == None:
+                self.Log('INFO', 'Building original oid Mappings')
+            else:
+                self.Log('INFO', 'Building upgraded oid Mappings')
+            self.CallSlaves('MAPPINGS', self.config['SEG_PREFIX'])
         else:
-            self.Log('INFO', 'Building upgraded oid Mappings')
-            prefix = 'new'
+            prefix = self.option
+            datadirs = self.datadirs
 
-        # Get a list of databases
-        databases = self.Select(
-        '''
-           SELECT  
-             datname        as dbname,
-             oid            as oid,
-             datlastsysoid  as max_sysoid
-           FROM pg_database 
-           WHERE datname != 'template0'
-           ORDER BY dbname
-        ''')
+        port_re = re.compile('^\s*port=(\d+)')
+        for d in datadirs:
+            for file in os.listdir(d):
+                if re.compile('^%s\d+$' % prefix).match(file):
 
-        # Build up the list of mapping objects
-        for db in databases:
-            oids = self.Select(
-                '''
-                   SELECT
-                      c.relname || '_' || c.relkind as name,
-                      c.relfilenode as filenode,
-                      c2.relfilenode as toast,
-                      c3.relfilenode as toast_index
-                   FROM 
-                      pg_namespace n,
-                      pg_class c 
-                      left outer join pg_class c2 on c.reltoastrelid=c2.oid
-                      left outer join pg_class c3 on c2.reltoastidxid=c3.oid
-                   WHERE c.oid >= %s 
-                     AND c.relkind in ('r', 't', 'i', 'S')
-                     AND c.relnamespace = n.oid AND n.nspname != 'pg_toast'
-                   ORDER BY c.relname, c.relkind;
-                ''' % db['max_sysoid'], 
-                db=db['dbname'])
-            for o in oids:
-                # Prefix each name with the database it's in
-                name = '%s.%s' % (db['dbname'], o['name'])
+                    dir = os.path.join(d, file)
 
-                if name not in self.mappings:
-                    self.mappings[name] = {}
-                self.mappings[name][prefix+'db']    = db['oid']
-                self.mappings[name][prefix+'id']    = o['filenode']
-                self.mappings[name][prefix+'toast'] = o['toast']
-                self.mappings[name][prefix+'index'] = o['toast_index']
+                    # Find the port for this segment:
+                    port_str = self.RunCmd('grep port= %s/postgresql.conf' % dir)
+                    match = port_re.search(port_str)
+                    if match:
+                        port = int(match.group(1))
+                    else:
+                        raise UpgradeError(
+                            'Could not determine port from %s/postgresql.conf' % dir)
 
-        # Make a sanity check that everything makes a 1:1 mapping
-        if prefix == 'new':
-            for name in self.mappings:
-                x = self.mappings[name]
+                    # Move over to the upgrade directory
+                    dir = os.path.join(d, 'upgrade', file)
+                    if not os.path.exists('%s_source_mapping' % dir):
+                        type = 'source'
+                    else:
+                        type = 'target'
+                
+                    mapfilename = '%s_%s_mapping' % (dir, type)
+                    mapfile = open(mapfilename, 'w')
 
-                # every mapping must:
-                #   + have a valid newdb, olddb, newid, oldid
-                #   + If it has 'oldtoast' it must have 'newtoast' and vice versa
-                #   + If it has 'oldindex' it must have 'newindex' and vice versa
-                if (('newid' in x) and 
-                    ('oldid' in x) and
-                    ('newdb' in x) and 
-                    ('olddb' in x) and
-                    not (('oldtoast' in x) ^ ('newtoast' in x)) and
-                    not (('oldindex' in x) ^ ('newindex' in x))):
-                    continue
+                    # Get a list of databases
+                    databases = self.Select(
+                    '''
+                       SELECT
+                          datname        as dbname,
+                          oid            as oid,
+                          datlastsysoid  as max_sysoid
+                       FROM pg_database 
+                       WHERE datname != 'template0'
+                       ORDER BY dbname
+                    ''', port=port)
 
-                # There /must/ be an easier way of doing this...
-                olddb = oldid = oldtoast = oldindex = 0
-                newdb = newid = newtoast = newindex = 0
-                if 'olddb' in x: olddb = x['olddb']
-                if 'oldid' in x: oldid = x['oldid']
-                if 'oldtoast' in x: oldtoast = x['oldtoast']
-                if 'oldindex' in x: oldindex = x['oldindex']
-                if 'newdb' in x: newdb = x['newdb']
-                if 'newid' in x: newid = x['newid']
-                if 'newtoast' in x: newtoast = x['newtoast']
-                if 'newindex' in x: newindex = x['newindex']
-                self.Log('FATAL', '-----------------------------------------------')
-                self.Log('FATAL', 'Old OID: %s %s %s %s %s' %
-                         (name, olddb, oldid, oldtoast, oldindex))
-                self.Log('FATAL', 'New OID: %s %s %s %s %s' %
-                         (name, newdb, newid, newtoast, newindex))
-                self.Log('FATAL', '-----------------------------------------------')
-                raise UpgradeError('OID Mappings must be 1:1')
+                    # Build up the list of mapping objects
+                    for db in databases:
+                        oids = self.Select(
+                        '''
+                           SELECT
+                              c.relname || '_' || c.relkind as name,
+                              c.relfilenode as filenode,
+                              c2.relfilenode as toast,
+                              c3.relfilenode as toast_index
+                           FROM 
+                              pg_namespace n,
+                              pg_class c 
+                              left outer join pg_class c2 on c.reltoastrelid=c2.oid
+                              left outer join pg_class c3 on c2.reltoastidxid=c3.oid
+                           WHERE c.oid >= %s 
+                             AND c.relkind in ('r', 't', 'i', 'S')
+                             AND c.relnamespace = n.oid AND n.nspname != 'pg_toast'
+                           ORDER BY c.relname, c.relkind;
+                        ''' % db['max_sysoid'], 
+                        db=db['dbname'],
+                        port=port)
+                        
+                        for o in oids:
+                            # Prefix each name with the database it's in
+                            mapfile.write('%s.%s,%s,%s,%s,%s\n' %
+                                          (db['dbname'], o['name'],
+                                           db['oid'], 
+                                           o['filenode'], 
+                                           o['toast'], 
+                                           o['toast_index']))
+                    mapfile.close()
 
 
     #------------------------------------------------------------
@@ -1003,8 +1004,8 @@ class GPUpgrade:
             # the naming convention of the segments.
             for file in os.listdir('%s/upgrade' % d):
                 if re.compile('^%s\d+$' % seg_prefix).match(file):
-                    olddir  = d + '/' + file
-                    newdir  = d + '/upgrade/' + file
+                    olddir  = os.path.join(d, file)
+                    newdir  = os.path.join(d, 'upgrade', file)
 
                     # Links are in place, but data will not be visible until 
                     # we sync the pg_control info
@@ -1057,8 +1058,16 @@ class GPUpgrade:
     def ImportSchema(self):
         self.CheckUp()
         self.Log('INFO', 'Importing old schema')
-        subprocess.call('psql -e -f %s/pgdump.sql template1' % self.tmpdir,
+        subprocess.call('psql -f %s/pgdump.sql template1' % self.tmpdir,
                         env=self.newenv, shell=True)
+        databases = self.Select(
+            '''
+            SELECT datname FROM pg_database 
+            WHERE datname != 'template0'
+            ''')
+        for db in databases:
+            subprocess.call('psql -c "vacuum freeze" %s' % db,
+                            env=self.newenv, shell=True)
 
     #------------------------------------------------------------
     def RemapOID(self):
@@ -1074,40 +1083,8 @@ class GPUpgrade:
             mapfilename = '%s/mapping' % self.backup
             seg_prefix  = self.config['SEG_PREFIX'] + '-'
 
-            # Write out a mapping file
-            o = open(mapfilename, 'w')
-            for name in self.mappings:
-                self.Log('INFO', 'REMAP: ' + str(self.mappings[name]))
-                
-                o.write('%s/%s %s/%s\n' % (
-                        self.mappings[name]['olddb'],
-                        self.mappings[name]['oldid'],
-                        self.mappings[name]['newdb'],
-                        self.mappings[name]['newid']
-                        ))
-                if self.mappings[name]['oldtoast']:
-                    o.write('%s/%s %s/%s\n' % (
-                            self.mappings[name]['olddb'],
-                            self.mappings[name]['oldtoast'],
-                            self.mappings[name]['newdb'],
-                            self.mappings[name]['newtoast']
-                            ))
-                    o.write('%s/%s %s/%s\n' % (
-                            self.mappings[name]['olddb'],
-                            self.mappings[name]['oldindex'],
-                            self.mappings[name]['newdb'],
-                            self.mappings[name]['newindex']
-                            ))
-            o.close()
-
-            # Done with self.mappings, release the memory
-            self.mappings = None
-            
-
             # they believe the mapping is valid.
-            self.CallSlaves('REMAPOID', 
-                            '%s:%s' % (self.host, mapfilename),
-                            self.config['SEG_PREFIX'])
+            self.CallSlaves('REMAPOID', self.config['SEG_PREFIX'])
 
 
         else:
@@ -1115,19 +1092,12 @@ class GPUpgrade:
                 raise Exception(self.cmd + ' != REMAPOID]')
 
             datadirs       = self.datadirs
-            master_mapping = self.option
-            seg_prefix     = self.option2
+            seg_prefix     = self.option
 
 
             # We should always have at least on data directory...
             if len(self.datadirs) < 1:
                 return
-
-            # Slave process, first pull the mapping file from the master,
-            #   + Place it in the 'first' data dir
-            mapfilename = self.datadirs[0] + '/mapping'
-            self.RunCmd('scp %s %s' % (master_mapping, mapfilename))
-            
 
         # Both master and slave processes need to do mappings.
         #   + On master this is just MASTER_DATA_DIR
@@ -1140,38 +1110,64 @@ class GPUpgrade:
             # the naming convention of the segments.
             for file in os.listdir('%s/upgrade' % d):
                 if re.compile('^%s\d+$' % seg_prefix).match(file):
-                    olddir  = d + '/' + file
-                    newdir  = d + '/upgrade/' + file
+                    olddir  = os.path.join(d, file)
+                    newdir  = os.path.join(d, 'upgrade', file)
                     
-                    # Read the mapping file
-                    mapfile = open(mapfilename, 'r')
-                    for line in mapfile:
-                        (oldoid, newoid) = line.strip().split(' ')
-                        oldfile = '%s/base/%s' % (olddir, oldoid)
-                        newfile = '%s/base/%s' % (newdir, newoid)
+                    # Read the mapping files to produce oid->oid pairs
+                    oldmapfile = open(newdir+'_source_mapping', 'r')
+                    newmapfile = open(newdir+'_target_mapping', 'r')
+                    mapping = {}
+                    for oldline in oldmapfile:
+                        newline = newmapfile.next()
 
-                        # Both old and new file should exist
-                        if not os.path.exists(oldfile):
-                            raise UpgradeError(oldfile + ' not found')
-                        if not os.path.exists(newfile):
-                            raise UpgradeError(newfile + ' not found')
+                        # trim off the newlines
+                        oldline = oldline[0:-1]
+                        newline = newline[0:-1]
 
-                        # Remove the new file, hard link to the old file
-                        if self.debug:
-                            self.Log('INFO', 'Linking %s => %s' % (oldfile, newfile))
+                        (oldname, olddb, oldoid, oldtoast, oldtidx) = \
+                            oldline.split(',')
+                        (newname, newdb, newoid, newtoast, newtidx) = \
+                            newline.split(',')                        
 
-                        os.remove(newfile)
-                        os.link(oldfile, newfile)
+                        if oldname != newname:
+                            raise UpgradeError("Mapping failure on %s" % oldname)
 
-                        # Large tables will have additional extensions, these
-                        # are named 'relfilenode.extension#'.
-                        ext = 1
-                        while (os.path.exists(oldfile + '.' + str(ext))):
-                            os.link('%s.%s' % (oldfile, str(ext)),
-                                    '%s.%s' % (newfile, str(ext)))
-                            ext = ext + 1
+                        def makemapping(name,olddb,oldoid,newdb,newoid,msg):
+                            if oldoid == 'None' and newoid == 'None':
+                                return
+                            if oldoid == 'None' or newoid == 'None':
+                                raise UpgradeError("Mapping failure on %s %s" % (name, msg))
+                            mapping[os.path.join(olddb,oldoid)] = os.path.join(newdb, newoid)
 
-                    mapfile.close()
+                        makemapping(oldname, olddb, oldoid, newdb, newoid, '')
+                        makemapping(oldname, olddb, oldtoast, newdb, newtoast, 'toast')
+                        makemapping(oldname, olddb, oldtidx, newdb, newtidx, 'toast index')
+
+                        for oldoid in mapping:
+                            newoid = mapping[oldoid]
+                            oldfile = os.path.join(olddir, 'base', oldoid)
+                            newfile = os.path.join(newdir, 'base', newoid)
+
+                            # Both old and new file should exist
+                            if not os.path.exists(oldfile):
+                                raise UpgradeError(oldfile + ' not found')
+                            if not os.path.exists(newfile):
+                                raise UpgradeError(newfile + ' not found')
+
+                            # Remove the new file, hard link to the old file
+                            if self.debug:
+                                self.Log('INFO', 'Linking %s => %s' % (oldfile, newfile))
+
+                            os.remove(newfile)
+                            os.link(oldfile, newfile)
+
+                            # Large tables will have additional extensions, these
+                            # are named 'relfilenode.extension#'.
+                            ext = 1
+                            while (os.path.exists(oldfile + '.' + str(ext))):
+                                os.link('%s.%s' % (oldfile, str(ext)),
+                                        '%s.%s' % (newfile, str(ext)))
+                                ext = ext + 1
 
 
 
@@ -1299,19 +1295,28 @@ try:
         u.CheckVersions()
 
         # Startup the old database in utility mode
-        u.Startup(u.oldenv, True)
-        u.CheckCatalog(u.oldenv)
+        u.Startup(u.oldenv, False)
 
         # Get configuration and catalog information
-        # + Requires running old db
+        # + Requires running old db on master host
         u.ExtractInfo()
-        u.BuildMappings()
+
+        # Check the catalog
+        # + Requires running db on all hosts
+        # + Requires configuration info collected in ExtractInfo
+        u.CheckCatalog(u.oldenv)
 
         # Create working directories on all hosts
         # + Requires configuration info collected in ExtractInfo
         # + Requires Execution on all hosts
         u.CreateDirectories()
         u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
+
+        # Build up Source database OID/relfile mappings
+        # + Requires running old db on all hosts
+        # + Requires created directories so we can store the mapping file
+        # + Requires execution on all hosts
+        u.BuildMappings()
 
         # Write configuration files for new db
         # + Requires configuration info collected in ExtractInfo
@@ -1324,24 +1329,20 @@ try:
         u.DumpSchema()
 
         # All information collected, shutdown old database
-        u.Shutdown(u.oldenv, True)
+        u.Shutdown(u.oldenv, False)
 
         # Initalize the new database
         # + Requires working directories on all nodes
         # + Requires generated configuration file
         u.InitNewDB()
-        u.ResetXLogs()
         try:
             u.Startup(u.newenv, False)
             u.ImportSchema()
-            u.BuildMappings()
-            # -- FIXME -- Move CheckCatalog after we have finally installed
-            # the new DB and brought the database up, it's a little silly to
-            # check before we remap the OIDs, but we don't want to do that
-            # while the database is up.
             u.CheckCatalog(u.newenv)
+            u.BuildMappings()
         finally:
             u.Shutdown(u.newenv, False)
+        u.ResetXLogs()
 
         # Remap oids for the new database
         # + Requires working directories on all hosts
@@ -1425,6 +1426,8 @@ To complete the environment configuration
             u.RemoveDirectories(True)
     elif u.cmd == 'RESETXLOG':
         u.ResetXLogs()
+    elif u.cmd == 'MAPPINGS':
+        u.BuildMappings()
     elif u.cmd == 'REMAPOID':
         u.RemapOID()
     elif u.cmd == 'DEEPLINK':
