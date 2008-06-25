@@ -457,7 +457,7 @@ DefineIndex(RangeVar *heapRelation,
 				stmt->idxOids = lappend_oid(stmt->idxOids, indexRelationId);
 		}
 
-		if (primary || unique)
+		if ((primary || unique) && rel->rd_cdbpolicy)
 			checkPolicyForUniqueIndex(rel, 
 									 indexInfo->ii_KeyAttrNumbers,
 									 indexInfo->ii_NumIndexAttrs,
