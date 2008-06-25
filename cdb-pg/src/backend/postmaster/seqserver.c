@@ -82,11 +82,10 @@ static void sendInt64(uint8 *buff, int64 i);
  * GLOBAL STATE VARIABLES
  */
 /* Socket file descriptor for the listener. */
-int			listenerFd;
+static int	listenerFd;
 
 /* our timeout value for select() and other socket operations. */
-struct timeval tval;
-
+static struct timeval tval;
 
 static bool am_seqserver = false;
 uint8 *inputBuff;

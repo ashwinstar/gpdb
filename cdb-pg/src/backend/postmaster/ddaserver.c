@@ -93,12 +93,12 @@ setupDdaServerConnection(char *ddaServerHost, int ddaServerPort );
  * GLOBAL STATE VARIABLES
  */
 /* Socket file descriptor for the listener. */
-int			listenerFd;
-int         global_listenerPort;
-int         ddaserverFd;
+static int	listenerFd;
+static int	global_listenerPort;
+static int	ddaserverFd;
 
 /* our timeout value for select() and other socket operations. */
-struct timeval tval;
+static struct timeval tval;
 
 
 static bool am_ddaserver = false;
