@@ -15,6 +15,7 @@ import os
 import socket
 import stat
 import sys
+import time
 import zlib
 
 CHUNK_SIZE=4000000
@@ -63,17 +64,14 @@ class RemotePysync:
 		t = statToTuple(os.lstat(name),name)
 		if name not in list and not self.options.minusn or name in list and list[name][0]!=t[0]:
 		    if t[0]=='d':
-			self.log('rmdir '+name)
 			os.rmdir(name)
 		    else:
-			self.log('remove '+name)
 			os.remove(name)
 
     def createDirs(self,list):
 	for name in sorted(list.keys()):
 	    value = list[name]
 	    if value[0]=='d' and not os.path.exists(name):
-		self.log('mkdir '+name)
 		os.mkdir(name,0700)
 
     def createFiles(self,list):
@@ -87,32 +85,24 @@ class RemotePysync:
 			os.chmod(name,0700)
 		    if value[0]=='-':
 			if t[2]>value[2]:
-			    self.log('truncate '+name)
 			    f = open(name,'r+b')
 			    f.truncate(value[2])
 			    f.close()
 			continue
 		    if value[2:]==t[2:]:
 			continue
-		self.log('remove '+name)
 		os.remove(name)
 	    if value[0]=='-':
-		self.log('create '+name)
 		open(name,'w+b').close()
 	    elif value[0]=='l':
-		self.log('ln -s '+value[2]+' '+name)
 		os.symlink(value[2],name)
 	    elif value[0]=='c':
-		self.log('mknod '+name+' c '+value[2])
 		os.mknod(name,0700|stat.S_IFCHR,value[2])
 	    elif value[0]=='b':
-		self.log('mknod '+name+' b '+value[2])
 		os.mknod(name,0700|stat.S_IFBLK,value[2])
 	    elif value[0]=='p':
-		self.log('mkfifo '+name)
 		os.mkfifo(name,0700)
 	    elif value[0]=='s':
-		self.log('bind '+name)
 		f = socket.socket(socket.AF_UNIX)
 		f.bind(name)
 		f.close()
@@ -122,7 +112,6 @@ class RemotePysync:
     def linkLinks(self,list):
 	for name,value in list.iteritems():
 	    if value[0]=='L':
-		self.log('ln '+value[1]+' to '+name)
 		if os.path.lexists(name):
 		    os.remove(name)
 		os.link(value[1],name)
@@ -132,7 +121,6 @@ class RemotePysync:
 	    ss = socket.socket()
 	    ss.bind((socket.gethostname(),0))
 	    ss.listen(1)
-	    self.log('connect '+str(ss.getsockname()))
 	    self.doCommand('connect',ss.getsockname())
 	    self.socket = ss.accept()[0]
 	    ss.close()
@@ -152,15 +140,21 @@ class RemotePysync:
 	return data
 
     def copyData(self,list):
+	total = 0
 	for name,value in list.iteritems():
 	    if value[0]=='-':
+		total += 1
+	count = 0
+	for name,value in list.iteritems():
+	    if value[0]=='-':
+		self.log(name)
 		f = open(name,'r+b')
 		f.seek(0,2)
 		localSize = f.tell()
 		offset = 0
+		t = time.time()
 		while offset<value[2]:
 		    size = min(value[2]-offset,CHUNK_SIZE)
-		    self.log('digesting %s at %d'%(name,offset))
 		    digest = None
 		    if offset+size<=localSize:
 			digest = self.doCommand('getDigest',name,offset,size)
@@ -170,7 +164,6 @@ class RemotePysync:
 			if md5.new(b).digest()==digest:
 			    offset += size
 			    continue
-		    self.log('copying %s at %d'%(name,offset))
 		    data = self.getData(name,offset,size)
 		    if not self.options.insecure:
 			if digest==None:
@@ -180,11 +173,13 @@ class RemotePysync:
 		    f.seek(offset)
 		    f.write(data)
 		    offset += size
+		t = time.time()-t
+		count += 1
+		self.log('%d 100%% %fkB/s %d:%02d:%02f (%d %f%% of %d)'%(offset,offset/(1024.0*t),int(t)/3600,int(t)/60%60,t%60,count,count*100.0/total,total))
 
     def fixPermissions(self,list):
 	for name,value in list.iteritems():
 	    if value[0]!='L' and value[0]!='l':
-		self.log('chmod '+name)
 		os.chmod(name,value[1]&01777)
 
     def run(self):
@@ -192,20 +187,12 @@ class RemotePysync:
 	self.options = self.doCommand('getOptions')
 	os.chdir(self.doCommand('getDestDir'))
 	list = self.doCommand('getList')
-	self.log('list=%s'%str(list))
-	self.log('removeJunk')
 	self.removeJunk(list)
-	self.log('createDirs')
 	self.createDirs(list)
-	self.log('createFiles')
 	self.createFiles(list)
-	self.log('linkLinks')
 	self.linkLinks(list)
-	self.log('copyData')
 	self.copyData(list)
-	self.log('fixPermissions')
 	self.fixPermissions(list)
-	self.log('quit')
 	self.doCommand('quit',0)
 
 if 'pysyncSource' not in globals():
