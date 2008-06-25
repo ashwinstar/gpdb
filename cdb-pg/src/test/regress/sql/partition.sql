@@ -491,8 +491,8 @@ partition aa start (date '2007-01-01') end (date '2006-01-01')
 
 drop table ggg cascade;
 
--- cannot set end of first partition because next is before
--- XXX XXX : legal now?
+-- formerly we could not set end of first partition because next is before
+-- but we can sort them now so this is legal.
 create table ggg (a char(1), b date, d char(3)) 
 distributed by (a)
 partition by range (b)
