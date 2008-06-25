@@ -1346,6 +1346,10 @@ CheckStatementTimeout(void)
 	if (!statement_timeout_active)
 		return true;			/* do nothing if not active */
 
+	/* QD takes care of timeouts for QE. */
+	if (Gp_role == GP_ROLE_EXECUTE)
+		return true;
+
 	now = GetCurrentTimestamp();
 
 	if (now >= statement_fin_time)
