@@ -152,8 +152,12 @@ class RemotePysync:
 		f.seek(0,2)
 		localSize = f.tell()
 		offset = 0
-		t = time.time()
+		start = time.time()
 		while offset<value[2]:
+		    if offset:
+			t = time.time()-start
+			r = (value[2]-offset)*t/offset
+			self.log('%d %f%% %fkB/s %d:%02d:%02d.%s'%(offset,offset*100.0/value[2],offset/(1024.0*t),int(r)/3600,int(r)/60%60,int(r)%60,('%f'%(r%1))[2:]))
 		    size = min(value[2]-offset,CHUNK_SIZE)
 		    digest = None
 		    if offset+size<=localSize:
@@ -173,7 +177,7 @@ class RemotePysync:
 		    f.seek(offset)
 		    f.write(data)
 		    offset += size
-		t = time.time()-t
+		t = time.time()-start
 		count += 1
 		self.log('%d 100%% %fkB/s %d:%02d:%02d.%s (%d %f%% of %d)'%(offset,offset/(1024.0*t),int(t)/3600,int(t)/60%60,int(t)%60,('%f'%(t%1))[2:],count,count*100.0/total,total))
 
