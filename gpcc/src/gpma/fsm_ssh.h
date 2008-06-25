@@ -250,7 +250,7 @@ static apr_status_t a_ssh_getaddress_wait(gpcc_event_t *ev, void *arg)
     int ret;
     apr_exit_why_e exitwhy;
     gpcc_event_t* evt;
-    char out[1024], addr[1024];
+    char out[1024], addr[1024], *s;
     char *ptr, *tok, *last;
 
     nsuccess = nfailure = 0;
@@ -327,8 +327,8 @@ static apr_status_t a_ssh_getaddress_wait(gpcc_event_t *ev, void *arg)
 		}
 	    }	
 
-	    apr_collapse_spaces(addr, addr);
-	    slot->u.getaddress.address[slot->u.getaddress.start+i] = apr_pstrdup(slot->pool, addr);
+	    s = gpcc_string_trim(addr);
+	    slot->u.getaddress.address[slot->u.getaddress.start+i] = apr_pstrdup(slot->pool, s);
 	    gpcc_log_info("address of %s -> %s", 
 			  slot->u.getaddress.hosts[slot->u.getaddress.start+i],
 			  slot->u.getaddress.address[slot->u.getaddress.start+i]);
