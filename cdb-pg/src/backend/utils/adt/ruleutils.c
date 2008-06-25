@@ -5942,7 +5942,7 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 		appendStringInfoChar(&head, '(');
 		for (i = 0; i < pn->part->parnatts; i++)
 		{
-			char *attname = get_relid_attribute_name(pn->part->relid,
+			char *attname = get_relid_attribute_name(pn->part->parrelid,
 													 pn->part->paratts[i]);
 
 			if (i)

@@ -18,9 +18,9 @@
 CATALOG(pg_partition_rule,5011)
 {
 	Oid paroid;
-	Oid parrelid;
+	Oid parchildrelid;
 	Oid parparentrule;
-	name parname;
+	NameData parname;
 	bool parisdefault;
 	int2 parruleord;
 	bool parrangestartincl;
@@ -38,5 +38,19 @@ CATALOG(pg_partition_rule,5011)
  * ----------------
  */
 typedef FormData_pg_partition_rule *Form_pg_partition_rule;
+
+#define Natts_pg_partition_rule						12
+#define Anum_pg_partition_rule_paroid				1
+#define Anum_pg_partition_rule_parchildrelid		2
+#define Anum_pg_partition_rule_parparentrule		3
+#define Anum_pg_partition_rule_parname				4
+#define Anum_pg_partition_rule_parisdefault			5
+#define Anum_pg_partition_rule_parruleord			6
+#define Anum_pg_partition_rule_parrangestartincl	7
+#define Anum_pg_partition_rule_parrangeendincl		8
+#define Anum_pg_partition_rule_parrangestart		9
+#define Anum_pg_partition_rule_parrangeend			10
+#define Anum_pg_partition_rule_parrangeevery		11
+#define Anum_pg_partition_rule_parlistvalues		12
 
 #endif   /* PG_PARTITION_RULE_H */

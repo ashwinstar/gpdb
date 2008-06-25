@@ -1862,7 +1862,7 @@ _readPartition(const char **str)
 	READ_LOCALS(Partition);
 
 	READ_OID_FIELD(partid);
-	READ_OID_FIELD(relid);
+	READ_OID_FIELD(parrelid);
 	READ_CHAR_FIELD(parkind);
 	READ_INT_FIELD(parlevel);
 	READ_BOOL_FIELD(paristemplate);
@@ -1880,7 +1880,7 @@ _readPartitionRule(const char **str)
 
 	READ_OID_FIELD(parruleid);
 	READ_OID_FIELD(paroid);
-	READ_OID_FIELD(parrelid);
+	READ_OID_FIELD(parchildrelid);
 	READ_OID_FIELD(parparentoid);
 	READ_STRING_FIELD(parname);
 	READ_NODE_FIELD(parrangestart);

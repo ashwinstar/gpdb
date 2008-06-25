@@ -1205,7 +1205,7 @@ typedef struct Partition
 {
 	NodeTag type;
 	Oid partid;
-	Oid relid; /* partitioned relation */
+	Oid parrelid; /* partitioned relation */
 	char parkind;
 	int2 parlevel;
 	bool paristemplate;
@@ -1228,7 +1228,7 @@ typedef struct PartitionRule
 	NodeTag type;
 	Oid parruleid;
 	Oid paroid;
-	Oid parrelid;
+	Oid parchildrelid;
 	Oid parparentoid;
 	bool parisdefault;
 	char *parname;

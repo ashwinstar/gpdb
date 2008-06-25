@@ -2188,7 +2188,7 @@ _outPartition(StringInfo str, Partition *node)
 	WRITE_NODE_TYPE("PARTITION");
 
 	WRITE_OID_FIELD(partid);
-	WRITE_OID_FIELD(relid);
+	WRITE_OID_FIELD(parrelid);
 	WRITE_CHAR_FIELD(parkind);
 	WRITE_INT_FIELD(parlevel);
 	WRITE_BOOL_FIELD(paristemplate);
@@ -2209,7 +2209,7 @@ _outPartitionRule(StringInfo str, PartitionRule *node)
 
 	WRITE_OID_FIELD(parruleid);
 	WRITE_OID_FIELD(paroid);
-	WRITE_OID_FIELD(parrelid);
+	WRITE_OID_FIELD(parchildrelid);
 	WRITE_OID_FIELD(parparentoid);
 	WRITE_STRING_FIELD(parname);
 	WRITE_NODE_FIELD(parrangestart);

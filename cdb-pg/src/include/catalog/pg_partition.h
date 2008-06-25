@@ -16,7 +16,7 @@
 
 CATALOG(pg_partition,5010)
 {
-	Oid relid;
+	Oid parrelid;
 	char parkind;
 	int2 parlevel;
 	bool paristemplate;
@@ -34,7 +34,7 @@ CATALOG(pg_partition,5010)
 typedef FormData_pg_partition *Form_pg_partition;
 
 #define Natts_pg_partition					7
-#define Anum_pg_partition_relid				1
+#define Anum_pg_partition_parrelid			1
 #define Anum_pg_partition_parkind			2
 #define Anum_pg_partition_parlevel			3
 #define Anum_pg_partition_paristemplate		4

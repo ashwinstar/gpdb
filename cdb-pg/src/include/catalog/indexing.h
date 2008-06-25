@@ -244,11 +244,16 @@ DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfn
 
 DECLARE_UNIQUE_INDEX(pg_partition_oid_index, 5012, on pg_partition using btree(oid oid_ops));
 #define PartitionOidIndexId 5012
-DECLARE_INDEX(pg_partition_relid_index, 5013, on pg_partition using btree(relid oid_ops));
-#define PartitionRelidIndexId 5013
+DECLARE_UNIQUE_INDEX(pg_partition_parrelid_parlevel_index, 5017, on pg_partition using btree(parrelid oid_ops, parlevel int2_ops));
+#define PartitionParrelidParlevel 5017
+DECLARE_INDEX(pg_partition_parrelid_index, 5013, on pg_partition using btree(parrelid oid_ops));
+#define PartitionParrelidIndexId 5013
 DECLARE_UNIQUE_INDEX(pg_partition_rule_oid_index, 5014, on pg_partition_rule using btree(oid oid_ops));
 #define PartitionRuleOidIndex 5014
-/*DECLARE_UNIQUE_INDEX(pg_pgartition_rule_paroid_parruleord, 5015, on pg_partition_rule using btree(paroid oid_ops, parruleord int2_ops)); */
+DECLARE_UNIQUE_INDEX(pg_partition_rule_parchildrelid_parparentrule_parruleord_index, 5015, on pg_partition_rule using btree(parchildrelid oid_ops, parparentrule oid_ops, parruleord int2_ops));
+#define PartitionRuleParchildParentRuleord 5015
+DECLARE_INDEX(pg_partition_rule_parrelid_index, 5016, on pg_partition_rule using btree(parchildrelid oid_ops));
+#define PartitionRuleParrelid 5016
 
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES

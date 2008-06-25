@@ -38,6 +38,8 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_resqueue.h"
 #include "catalog/pg_authid.h"
+#include "catalog/pg_partition.h"
+#include "catalog/pg_partition_rule.h"
 #include "catalog/toasting.h"
 #include "catalog/pg_exttable.h"
 #include "commands/cluster.h"
@@ -3152,7 +3154,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 				pc2->arg2 = (Node *)list_make1((Node *)ats);
 
-				oldRel = heap_open(prule->topRule->parrelid, AccessShareLock);
+				oldRel = heap_open(prule->topRule->parchildrelid, AccessShareLock);
 				oldtupleDesc = RelationGetDescr(oldRel);
 				constr = oldtupleDesc->constr;
 
@@ -8204,271 +8206,335 @@ parttype_to_char(PartitionByType type)
 		case PARTTYP_RANGE: c = 'r'; break;
 		case PARTTYP_LIST: c = 'l'; break;
 		default:
-			c = 0;
+			c = 0; /* quieten compiler */
 			elog(ERROR, "unknown partitioning type %i", type);
 
 	}
 	return c;
 }
 
+static void
+add_partition(Partition *part)
+{
+	Datum values[Natts_pg_partition];
+	bool isnull[Natts_pg_partition];
+	Relation partrel;
+	HeapTuple tup;
+	oidvector *opclass;
+	int2vector *attnums;
+
+	MemSet(isnull, 0, sizeof(bool) * Natts_pg_partition_rule);
+
+	values[Anum_pg_partition_parrelid - 1] = ObjectIdGetDatum(part->parrelid);
+	values[Anum_pg_partition_parkind - 1] = CharGetDatum(part->parkind);
+	values[Anum_pg_partition_parlevel - 1] = Int16GetDatum(part->parlevel);
+	values[Anum_pg_partition_paristemplate - 1] = 
+		BoolGetDatum(part->paristemplate);
+	values[Anum_pg_partition_parnatts - 1] = Int16GetDatum(part->parnatts);
+
+	attnums = buildint2vector(part->paratts, part->parnatts);
+	values[Anum_pg_partition_paratts - 1] = PointerGetDatum(attnums);
+
+	opclass = buildoidvector(part->parclass, part->parnatts);
+	values[Anum_pg_partition_parclass - 1] = PointerGetDatum(opclass);
+
+	partrel = heap_open(PartitionRelationId, RowExclusiveLock);
+
+	tup = heap_form_tuple(RelationGetDescr(partrel), values, isnull);
+						 
+	part->partid = simple_heap_insert(partrel, tup);
+	
+	/* Update indexes */
+	CatalogUpdateIndexes(partrel, tup);
+
+	/* XXX: dependencies */
+	
+	heap_close(partrel, NoLock);
+}
+
+static void
+add_partition_rule(PartitionRule *rule)
+{
+	Datum values[Natts_pg_partition_rule];
+	bool isnull[Natts_pg_partition_rule];
+	Relation rulerel;
+	HeapTuple tup;
+	NameData name;
+
+	MemSet(isnull, 0, sizeof(bool) * Natts_pg_partition_rule);
+
+	values[Anum_pg_partition_rule_paroid - 1] = ObjectIdGetDatum(rule->paroid);
+	values[Anum_pg_partition_rule_parchildrelid - 1] = 
+		ObjectIdGetDatum(rule->parchildrelid);
+	values[Anum_pg_partition_rule_parparentrule - 1] = 
+		ObjectIdGetDatum(rule->parparentoid);
+
+	namestrcpy(&name, rule->parname);
+	values[Anum_pg_partition_rule_parname - 1] = NameGetDatum(&name);
+
+	values[Anum_pg_partition_rule_parisdefault - 1] = 
+		BoolGetDatum(rule->parisdefault);
+	values[Anum_pg_partition_rule_parruleord - 1] = 
+		Int16GetDatum(rule->parruleord);
+	values[Anum_pg_partition_rule_parrangestartincl - 1] = 
+		BoolGetDatum(rule->parrangestartincl);
+	values[Anum_pg_partition_rule_parrangeendincl - 1] = 
+		BoolGetDatum(rule->parrangeendincl);
+
+	values[Anum_pg_partition_rule_parrangestart - 1] =
+		DirectFunctionCall1(textin,
+							CStringGetDatum(nodeToString(rule->parrangestart)));
+	values[Anum_pg_partition_rule_parrangeend - 1] =
+		DirectFunctionCall1(textin,
+							CStringGetDatum(nodeToString(rule->parrangeend)));
+	values[Anum_pg_partition_rule_parrangeevery - 1] =
+		DirectFunctionCall1(textin,
+							CStringGetDatum(nodeToString(rule->parrangeevery)));
+	values[Anum_pg_partition_rule_parlistvalues - 1] =
+		DirectFunctionCall1(textin,
+							CStringGetDatum(nodeToString(rule->parlistvalues)));
+
+	rulerel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
+
+	tup = heap_form_tuple(RelationGetDescr(rulerel), values, isnull);
+						 
+	rule->parruleid = simple_heap_insert(rulerel, tup);
+	
+	/* Update indexes */
+	CatalogUpdateIndexes(rulerel, tup);
+
+	/* XXX: dependencies */
+	
+	heap_close(rulerel, NoLock);
+}
 
 static void
 add_part_to_catalog(Oid relid, PartitionBy *pby)
 {
 	char pt = parttype_to_char(pby->partType);
-	int partnums = 0;
-	char *attnums;
-	A_Const *con = (A_Const *)pby->partNum;
 	ListCell *lc;
-	int len;
-	int totlen;
 	PartitionSpec *spec;
-	Node *listvalues = NULL;
-	Node *rangestart = NULL;
-	Node *rangeend = NULL;
-	Node *rangeevery = NULL;
-	bool rangestartinc = false;
-	bool rangeendinc = false;
-	char *parclass;
-	bool istemplate = false;
 	Oid paroid = InvalidOid;
-	int2 parruleord = 0;
-	int ret;
-	StringInfoData buf;
 	Oid rootrelid = InvalidOid;
 	Oid parentoid = InvalidOid;
+	ScanKeyData key[2];
+	HeapTuple tuple;
+	Relation rel;
+	SysScanDesc scan;
+	bool istemplate = false;
 
-	/* XXX: bail out early for now. ATM, we use SPI which doesn't run on QEs */
+	/* only create partition catalog entries on the master */
 	if (Gp_role == GP_ROLE_EXECUTE) 
 		return;
-
-	/* Temporarily use SPI to get data into catalogs */
-
-	/* Connect to SPI manager */
-	if ((ret = SPI_connect()) < 0)
-		/* internal error */
-		elog(ERROR, "SPI_connect returned %d", ret);
-
-	initStringInfo(&buf);
 
 	/*
 	 * Get the partitioned table relid.
 	 */
 	rootrelid = RangeVarGetRelid(pby->parentRel, false);
 
-	/* now see if the rule for our level exists */
-	initStringInfo(&buf);
-	appendStringInfo(&buf, "select oid from pg_partition "
-					 "where relid = '%u' and parlevel = '%i'",
-				 	 rootrelid, pby->partDepth);
-	ret = SPI_execute(buf.data, true, 1);
+	rel = heap_open(PartitionRelationId, AccessShareLock);
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(rootrelid));
+	ScanKeyInit(&key[1],
+				Anum_pg_partition_parlevel,
+				BTEqualStrategyNumber, F_INT2EQ,
+				Int16GetDatum(pby->partDepth));
 
-	if (ret > 0 && SPI_tuptable != NULL && SPI_processed)
-	{
-		paroid = (Oid)atoi(SPI_getvalue(SPI_tuptable->vals[0],
-						   SPI_tuptable->tupdesc, 1));
-	}
+	scan = systable_beginscan(rel, PartitionParrelidParlevel,
+							  true, SnapshotAny, 2, key);
+
+	tuple = systable_getnext(scan);
+	if (HeapTupleIsValid(tuple))
+		paroid = HeapTupleGetOid(tuple);
+
+	systable_endscan(scan);
+	heap_close(rel, NoLock);
 
 	/* create a partition for this level, if one doesn't exist */ 
 	if (!OidIsValid(paroid))
 	{
-		if (con)
-		{
-			Assert(IsA(&con->val, Integer));
-			partnums = intVal(&con->val);
-		}
-		else
-			partnums = 0;
+		AttrNumber *attnums;
+		Oid *parclass;
+		Partition *part = makeNode(Partition);
+		int i = 0;
 
-		totlen = list_length(pby->keys) * 6; /* keys * 'NNNNN ' */
-		attnums = palloc(totlen);
-		len = 0;
-	
+		part->parrelid = rootrelid;
+		part->parkind = pt;
+		part->parlevel = pby->partDepth;
+		part->paristemplate = istemplate;
+		part->parnatts = list_length(pby->keys);
+
+		attnums = palloc(list_length(pby->keys) * sizeof(AttrNumber));
+
 		foreach(lc, pby->keys)
 		{
 			int colnum = lfirst_int(lc);
 		
-			len += snprintf(attnums + len, totlen - len, "%s%i",
-							len != 0 ? " " : "",
-							colnum);
+			attnums[i++] = colnum;
 		}
-	
-		Assert(list_length(pby->keyopclass) == list_length(pby->keys));
-	
-		totlen = list_length(pby->keyopclass) * 6; /* keys * 'NNNNNNNNNN ' */
-		parclass = palloc(totlen);
-		len = 0;
-	
+
+		part->paratts = attnums;
+
+		parclass = palloc(list_length(pby->keys) * sizeof(Oid));
+
+		i = 0;
 		foreach(lc, pby->keyopclass)
 		{
 			Oid opclass = lfirst_oid(lc);
 
-			len += snprintf(parclass + len, totlen - len, "%s%u",
-							len != 0 ? " " : "", opclass);
+			parclass[i++] = opclass;
 		}
+		part->parclass = parclass;
 
-			initStringInfo(&buf);
-		
-		appendStringInfo(&buf, "insert into pg_partition (relid, parkind, "
-						 "parlevel, paristemplate, "
-						 "parnatts, paratts, parclass) "
-						"VALUES(%u, '%c', "
-						 "'%i', '%s', '%i', '%s', '%s');",
-						rootrelid, pt, pby->partDepth, istemplate ? "true" : "false",
-					list_length(pby->keys), attnums, parclass);
-
-		if (SPI_execute(buf.data, false, 0) != SPI_OK_INSERT)
-				elog(ERROR, "spi error executing \"%s\"", buf.data);
-		
-		paroid = SPI_lastoid;
-		pfree(buf.data);
+		add_partition(part);
+		paroid = part->partid;
 	}
 	
 	/* create partition rule */
 	spec = (PartitionSpec *)pby->partSpec;
 	if (spec)
 	{
+		Node *listvalues = NULL;
+		Node *rangestart = NULL;
+		Node *rangeend = NULL;
+		Node *rangeevery = NULL;
+		bool rangestartinc = false;
+		bool rangeendinc = false;
+		int2 parruleord = 0;
+		PartitionRule *rule = makeNode(PartitionRule);
+		PartitionElem *el;
+		char *parname = NULL;
+
 		Assert(list_length(spec->partElem) == 1);
 
-		foreach(lc, spec->partElem)
+		el = linitial(spec->partElem);
+
+		parruleord = el->partno;
+
+		if (el->partName)
+			parname = strVal(el->partName);
+	
+		switch (pby->partType)
 		{
-			PartitionElem *el = lfirst(lc);
-			char *parname = NULL;
+			case PARTTYP_HASH: break;
+			case PARTTYP_LIST:
+				{
+					PartitionValuesSpec *vspec = 
+						(PartitionValuesSpec *)el->boundSpec;
 
-			parruleord = el->partno;
+					/* might be NULL if this is a default spec */
+					if (vspec)
+						listvalues = (Node *)vspec->partValues;
+				}
+				break;
+			case PARTTYP_RANGE:
+				{
+					PartitionBoundSpec *bspec = 
+						(PartitionBoundSpec *)el->boundSpec;
+					PartitionRangeItem *ri;
 
-			if (el->partName)
-				parname = strVal(el->partName);
-		
-			switch (pby->partType)
-			{
-				case PARTTYP_HASH: break;
-				case PARTTYP_LIST:
+					/* remember, could be a default clause */
+					if (bspec)
 					{
-						PartitionValuesSpec *vspec = 
-							(PartitionValuesSpec *)el->boundSpec;
-	
-						/* might be NULL if this is a default spec */
-						if (vspec)
-							listvalues = (Node *)vspec->partValues;
-					}
-					break;
-				case PARTTYP_RANGE:
-					{
-						PartitionBoundSpec *bspec = 
-							(PartitionBoundSpec *)el->boundSpec;
-						PartitionRangeItem *ri;
-	
-						/* remember, could be a default clause */
-						if (bspec)
+						Assert(IsA(bspec, PartitionBoundSpec));
+						ri = (PartitionRangeItem *)bspec->partStart;
+						if (ri)
 						{
-							Assert(IsA(bspec, PartitionBoundSpec));
-							ri = (PartitionRangeItem *)bspec->partStart;
-							if (ri)
-							{
-								Assert(ri->partedge == PART_EDGE_INCLUSIVE ||
-									   ri->partedge == PART_EDGE_EXCLUSIVE);
-		
-								rangestartinc = ri->partedge == PART_EDGE_INCLUSIVE;
-								rangestart = (Node *)ri->partRangeVal;
-							}
-		
-							ri = (PartitionRangeItem *)bspec->partEnd;
-							if (ri)
-							{
-								Assert(ri->partedge == PART_EDGE_INCLUSIVE ||
+							Assert(ri->partedge == PART_EDGE_INCLUSIVE ||
 								   ri->partedge == PART_EDGE_EXCLUSIVE);
 	
-								rangeendinc = ri->partedge == PART_EDGE_INCLUSIVE;
-								rangeend = (Node *)ri->partRangeVal;
-							}
-
-							if (bspec->partEvery)
-							{
-								ri = (PartitionRangeItem *)bspec->partEvery;
-								rangeevery = (Node *)ri->partRangeVal;
-							}
-							else
-								rangeevery = NULL;
+							rangestartinc = ri->partedge == PART_EDGE_INCLUSIVE;
+							rangestart = (Node *)ri->partRangeVal;
 						}
-					}
-					break;
-				default:
-					elog(ERROR, "unknown partitioning type %i", pby->partType);
-					break;
-			}
-
-			/* Find our parent */
-			if (pby->partDepth == 0)
-				parentoid = InvalidOid;
-			else
-			{
-				Relation pginh;
-				ScanKeyData key;
-				SysScanDesc scan;
-				HeapTuple inheritsTuple;
-				Form_pg_inherits inh;
-				Oid inhoid;
 	
-				pginh = heap_open(InheritsRelationId, AccessShareLock);
-				ScanKeyInit(&key,
-							Anum_pg_inherits_inhrelid,
-							BTEqualStrategyNumber, F_OIDEQ,
-							ObjectIdGetDatum(relid));
-				scan = systable_beginscan(pginh, InheritsRelidSeqnoIndexId,
-										  true, SnapshotAny, 1, &key);
+						ri = (PartitionRangeItem *)bspec->partEnd;
+						if (ri)
+						{
+							Assert(ri->partedge == PART_EDGE_INCLUSIVE ||
+							   ri->partedge == PART_EDGE_EXCLUSIVE);
 
-				inheritsTuple = systable_getnext(scan);
-				Assert(HeapTupleIsValid(inheritsTuple));
-				inh = (Form_pg_inherits) GETSTRUCT(inheritsTuple);
+							rangeendinc = ri->partedge == PART_EDGE_INCLUSIVE;
+							rangeend = (Node *)ri->partRangeVal;
+						}
 
-				inhoid = inh->inhparent;
-				systable_endscan(scan);
-				heap_close(pginh, NoLock);
-
-				initStringInfo(&buf);
-				appendStringInfo(&buf, "select oid from pg_partition_rule "
-								 "where parrelid = '%u'", inhoid);
-
-				ret = SPI_execute(buf.data, true, 1);
-
-				if (ret > 0 && SPI_tuptable != NULL && SPI_processed)
-				{
-					parentoid = (Oid)atoi(SPI_getvalue(SPI_tuptable->vals[0],
-													   SPI_tuptable->tupdesc, 1));
-				}	
-				else
-					Assert(false);
-				pfree(buf.data);
-			}
-
-			initStringInfo(&buf);
-
-			appendStringInfo(&buf, "INSERT INTO pg_partition_rule "
-					 "(paroid, parrelid, parparentrule, parisdefault, parname, "
-					 "parrangestart, parrangestartincl, parrangeend, "
-					 "parrangeendincl, parrangeevery, parlistvalues, parruleord) "
-					 " VALUES ("
-					 "%u, %u, %u, '%s', '%s',"
-					 "'%s', '%s', '%s',"
-					 "'%s', '%s', '%s', %u);",
-					 paroid, relid, parentoid, 
-					 el->isDefault ? "true" : "false",
-					 parname ? parname : "", 
-					 nodeToString(rangestart), rangestartinc ? "true" : "false",
-					 nodeToString(rangeend),
-					 rangeendinc ? "true" : "false",
-					 nodeToString(rangeevery), nodeToString(listvalues),
-					 parruleord);
-			if (SPI_execute(buf.data, false, 0) != SPI_OK_INSERT)
-				elog(ERROR, "spi error executing \"%s\"", buf.data);
-			pfree(buf.data);
+						if (bspec->partEvery)
+						{
+							ri = (PartitionRangeItem *)bspec->partEvery;
+							rangeevery = (Node *)ri->partRangeVal;
+						}
+						else
+							rangeevery = NULL;
+					}
+				}
+				break;
+			default:
+				elog(ERROR, "unknown partitioning type %i", pby->partType);
+				break;
 		}
+
+		/* Find our parent */
+		if (pby->partDepth == 0)
+			parentoid = InvalidOid;
+		else
+		{
+			Form_pg_inherits inh;
+			Oid inhoid;
+
+			rel = heap_open(InheritsRelationId, AccessShareLock);
+			ScanKeyInit(&key[0],
+						Anum_pg_inherits_inhrelid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(relid));
+			scan = systable_beginscan(rel, InheritsRelidSeqnoIndexId,
+									  true, SnapshotAny, 1, key);
+
+			tuple = systable_getnext(scan);
+			Assert(HeapTupleIsValid(tuple));
+			inh = (Form_pg_inherits) GETSTRUCT(tuple);
+
+			inhoid = inh->inhparent;
+			systable_endscan(scan);
+			heap_close(rel, NoLock);
+
+			rel = heap_open(PartitionRuleRelationId, AccessShareLock);
+
+			ScanKeyInit(&key[0],
+						Anum_pg_partition_rule_parchildrelid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(inhoid));
+			scan = systable_beginscan(rel, PartitionRuleParrelid,
+									  true, SnapshotAny, 1, key);
+
+			tuple = systable_getnext(scan);
+
+			Assert(HeapTupleIsValid(tuple));
+
+			parentoid = HeapTupleGetOid(tuple);
+			systable_endscan(scan);
+			heap_close(rel, NoLock);
+		}
+
+		rule->paroid = paroid;
+		rule->parchildrelid = relid;
+		rule->parparentoid = parentoid;
+		rule->parisdefault = el->isDefault;
+		rule->parname = parname;
+		rule->parruleord = parruleord;
+		rule->parrangestartincl = rangestartinc;
+		rule->parrangestart = rangestart;
+		rule->parrangeendincl = rangeendinc;
+		rule->parrangeend = rangeend;
+		rule->parrangeevery = rangeevery;
+		rule->parlistvalues = (List *)listvalues;
+
+		add_partition_rule(rule);
 	}
-	/* If we're the top level partition, adjust all parents for this path */
-	SPI_finish();
+
+	/* allow subsequent callers to see our work */
 	CommandCounterIncrement();
-} /* end add_part_to_catalog */
+}
 
 static void
 delete_part_from_catalog(Oid relid)
@@ -8492,8 +8558,8 @@ delete_part_from_catalog(Oid relid)
 	appendStringInfo(&buf, "delete from pg_partition_rule "
 					 " where paroid in "
                      " ( select oid from pg_partition "
-                     "    where relid = '%u' ) or "
-                     " parrelid = '%u' ",
+                     "    where parrelid = '%u' ) or "
+                     " parchildrelid = '%u' ",
 				 	 relid, relid);
 
 	if (SPI_execute(buf.data, false, 0) != SPI_OK_DELETE)
@@ -8502,7 +8568,7 @@ delete_part_from_catalog(Oid relid)
     initStringInfo(&buf);
 		
 	appendStringInfo(&buf, "delete from pg_partition "
-                     "    where relid = '%u' ",
+                     "    where parrelid = '%u' ",
 				 	 relid);
 
 	if (SPI_execute(buf.data, false, 0) != SPI_OK_DELETE)
@@ -8541,10 +8607,10 @@ get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 		elog(ERROR, "SPI_connect returned %d", ret);
 
 	initStringInfo(&buf);
-	appendStringInfo(&buf, "select oid, relid, parkind, "
+	appendStringInfo(&buf, "select oid, parrelid, parkind, "
 					"parlevel, paristemplate, parnatts, paratts, parclass "
 					"from pg_catalog.pg_partition where "
-					"relid = '%u' AND parlevel = '%u';",
+					"parrelid = '%u' AND parlevel = '%u';",
 					relid, level);
 
 	ret = SPI_execute(buf.data, true, 1);
@@ -8566,7 +8632,7 @@ get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 		MemoryContextSwitchTo(oldcxt);
 
 		p->partid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, i++));
-		p->relid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, i++));
+		p->parrelid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, i++));
 		p->parkind = SPI_getvalue(tuple, tupdesc, i++)[0];
 		p->parlevel = (int2)atoi(SPI_getvalue(tuple, tupdesc, i++));
 		p->paristemplate = SPI_getvalue(tuple, tupdesc, i++)[0] == 'f' ?
@@ -8594,7 +8660,7 @@ get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 
 	/* now for pg_partition_rule */
 	initStringInfo(&buf);
-	appendStringInfo(&buf, "select oid, paroid, parrelid, parparentrule, "
+	appendStringInfo(&buf, "select oid, paroid, parchildrelid, parparentrule, "
 					 "parisdefault, parname, parrangestart, parrangestartincl, "
 					 "parrangeend, parrangeendincl, "
 					 "parrangeevery, parlistvalues, parruleord "
@@ -8626,7 +8692,7 @@ get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 
 			rule->parruleid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, j++));
 			rule->paroid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, j++));
-			rule->parrelid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, j++));
+			rule->parchildrelid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, j++));
 			rule->parparentoid = (Oid)atoi(SPI_getvalue(tuple, tupdesc, j++));
 			rule->parisdefault = SPI_getvalue(tuple, tupdesc, j++)[0] == 'f' ?
 				false : true;
@@ -8902,7 +8968,7 @@ selectPartitionByPosition(PartitionNode *partnode, int posn)
 
 	rule = (PartitionRule *)list_nth(rules, posn);
 
-	return relid = rule->parrelid;
+	return relid = rule->parchildrelid;
 } /* end selectPartitionByPosition */
 
 static PartitionNode *
@@ -8984,7 +9050,7 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 
 		if (matched)
 		{
-			*found = rule->parrelid;
+			*found = rule->parchildrelid;
 
 			/* go to the next level */
 			return rule->children;
@@ -9094,7 +9160,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			Assert(mid == 0);
 
 			/* accept the value as a match */
-			*found = rule->parrelid;
+			*found = rule->parchildrelid;
 			return rule->children;
 		}
 		
@@ -9149,7 +9215,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			/* fall through to match below */
 		}
 		/* matched */
-		*found = rule->parrelid;
+		*found = rule->parchildrelid;
 		return rule->children;
 	}
 	return NULL;
@@ -9191,7 +9257,7 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 
 	rule = (PartitionRule *)list_nth(partnode->rules, part);
 
-	*found = rule->parrelid;
+	*found = rule->parchildrelid;
 	return rule->children;
 }
 
@@ -9242,7 +9308,7 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				return selectPartition(partnode->default_part->children, values,
 									   isnull, tupdesc);
 			else
-				return partnode->default_part->parrelid;
+				return partnode->default_part->parchildrelid;
 		}
 		else
 			return relid;
@@ -9398,7 +9464,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				|| (pid->idtype == AT_AP_IDPosition))
 			{
 				if ((partrelid != InvalidOid)
-					&& (partrelid == rule->parrelid))
+					&& (partrelid == rule->parchildrelid))
 				{
 					foundit = true;
 
@@ -9437,7 +9503,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				|| (pid->idtype == AT_AP_IDPosition))
 			{
 				if ((partrelid != InvalidOid)
-					&& (partrelid == rule->parrelid))
+					&& (partrelid == rule->parchildrelid))
 				{
 					foundit = true;
 
@@ -9844,7 +9910,7 @@ atpxDropList(Relation rel, PartitionNode *pNode)
 		char* prelname;
 		Relation	rel;
 
-		rel = heap_open(rule->parrelid, AccessShareLock);
+		rel = heap_open(rule->parchildrelid, AccessShareLock);
 		prelname = pstrdup(RelationGetRelationName(rel));
 		heap_close(rel, NoLock);
 
@@ -9861,7 +9927,7 @@ atpxDropList(Relation rel, PartitionNode *pNode)
 		char* prelname;
 		Relation	rel;
 
-		rel = heap_open(rule->parrelid, AccessShareLock);
+		rel = heap_open(rule->parchildrelid, AccessShareLock);
 		prelname = pstrdup(RelationGetRelationName(rel));
 		heap_close(rel, NoLock);
 
@@ -9963,7 +10029,7 @@ ATPExecPartDrop(Relation rel,
 					 errhint("Use DROP TABLE \"%s\" to remove the table and the final partition ", 
 							 RelationGetRelationName(rel))));
 		
-		rel2 = heap_open(prule->topRule->parrelid, AccessShareLock);
+		rel2 = heap_open(prule->topRule->parchildrelid, AccessShareLock);
 
 		prelname = pstrdup(RelationGetRelationName(rel2));
 
@@ -10050,7 +10116,7 @@ ATPExecPartExchange(Relation rel,
 		 * problems with the TEMP status of temp tables.
 		 */
 		snprintf(NewTempName, sizeof(NewTempName),
-				 "pg_temp_%u", prule->topRule->parrelid);
+				 "pg_temp_%u", prule->topRule->parchildrelid);
 
 		/* get the name of the table for the "top" rule partition
 		 * and rename it to a temp table (using ProcessUtility,
@@ -10060,9 +10126,9 @@ ATPExecPartExchange(Relation rel,
 		 * exchange 
 		 */
 
-		oldRel = heap_open(prule->topRule->parrelid, AccessShareLock);
+		oldRel = heap_open(prule->topRule->parchildrelid, AccessShareLock);
 
-		oldpartnid = prule->topRule->parrelid; /* save the relid */
+		oldpartnid = prule->topRule->parchildrelid; /* save the relid */
 
 		StrNCpy(OldPartnName, RelationGetRelationName(oldRel), NAMEDATALEN);
 
@@ -10101,7 +10167,7 @@ ATPExecPartExchange(Relation rel,
 
 		initStringInfo(&buf);
 		appendStringInfo(&buf, 
-						 "update pg_partition_rule set parrelid = '%u' "
+						 "update pg_partition_rule set parchildrelid = '%u' "
 						 "where oid = '%u' ",
 						 relId, prule->topRule->parruleid);
 
@@ -10250,7 +10316,7 @@ ATPExecPartRename(Relation rel,
 		prule2 = get_part_rule(rel, &newpid, true, false, 
 							   CurrentMemoryContext);
 
-		targetrelation = relation_open(prule->topRule->parrelid, 
+		targetrelation = relation_open(prule->topRule->parchildrelid, 
 									   AccessExclusiveLock);
 
 		StrNCpy(targetrelname, RelationGetRelationName(targetrelation), 
@@ -10280,7 +10346,7 @@ ATPExecPartRename(Relation rel,
 			prule3 = get_part_rule(rel, &parent_pid, true, true, 
 								   CurrentMemoryContext);
 
-			parentrelation = RelationIdGetRelation(prule3->topRule->parrelid);
+			parentrelation = RelationIdGetRelation(prule3->topRule->parchildrelid);
 			StrNCpy(parentname, 
 					RelationGetRelationName(parentrelation), NAMEDATALEN);
 			RelationClose(parentrelation);
@@ -10450,7 +10516,7 @@ atpxTruncateList(Relation rel, PartitionNode *pNode)
 		RangeVar 		*rv;
 		Relation		 rel;
 
-		rel = heap_open(rule->parrelid, AccessShareLock);
+		rel = heap_open(rule->parchildrelid, AccessShareLock);
 
 		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 						  pstrdup(RelationGetRelationName(rel)));
@@ -10470,7 +10536,7 @@ atpxTruncateList(Relation rel, PartitionNode *pNode)
 		RangeVar 		*rv;
 		Relation		 rel;
 
-		rel = heap_open(rule->parrelid, AccessShareLock);
+		rel = heap_open(rule->parchildrelid, AccessShareLock);
 		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 						  pstrdup(RelationGetRelationName(rel)));
 
@@ -10505,7 +10571,7 @@ ATPExecPartTruncate(Relation rel,
 		DestReceiver 	*dest = None_Receiver;
 		Relation	  	 rel2;
 
-		rel2 = heap_open(prule->topRule->parrelid, AccessShareLock);
+		rel2 = heap_open(prule->topRule->parchildrelid, AccessShareLock);
 		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel2)),
 						  pstrdup(RelationGetRelationName(rel2)));
 
