@@ -1203,11 +1203,18 @@ AddStr(char *str, int strlength, int mderef)
 		len = NAMEDATALEN;
 
 	strtable[strtable_end] = malloc((unsigned) len);
+	if (strtable[strtable_end] == NULL)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Bootstrap failed: out of memory in AddStr")));
+
 	strcpy(strtable[strtable_end], str);
 
 	/* Now put a node in the hash table */
-
 	newnode = (hashnode *) malloc(sizeof(hashnode) * 1);
+	if (newnode == NULL)
+		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Bootstrap failed: out of memory in AddStr")));
+
 	newnode->strnum = strtable_end;
 	newnode->next = NULL;
 
