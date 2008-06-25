@@ -399,6 +399,7 @@ get_current_username(const char *progname)
 {
 #ifndef WIN32
 	struct passwd *pw;
+	char	   *name;
 
 	pw = getpwuid(geteuid());
 	if (pw == NULL)
@@ -408,14 +409,22 @@ get_current_username(const char *progname)
 		exit(1);
 	}
 	/* Allocate new memory because later getpwuid() calls can overwrite it. */
-	return strdup(pw->pw_name);
+	name = strdup(pw->pw_name);
+	if (name == NULL)
+	{
+		write_stderr("%s: could not allocate memory for user name\n",
+					 progname);
+		exit(1);
+	}
+
+	return name;
 #else
 	long		namesize = 256 /* UNLEN */ + 1;
 	char	   *name;
 
 	name = malloc(namesize);
 
-	if(!name)
+	if (!name)
 		return NULL;
 
 	if (!GetUserName(name, &namesize))
