@@ -175,7 +175,7 @@ class RemotePysync:
 		    offset += size
 		t = time.time()-t
 		count += 1
-		self.log('%d 100%% %fkB/s %d:%02d:%02f (%d %f%% of %d)'%(offset,offset/(1024.0*t),int(t)/3600,int(t)/60%60,t%60,count,count*100.0/total,total))
+		self.log('%d 100%% %fkB/s %d:%02d:%02d.%s (%d %f%% of %d)'%(offset,offset/(1024.0*t),int(t)/3600,int(t)/60%60,int(t)%60,('%f'%(t%1))[2:],count,count*100.0/total,total))
 
     def fixPermissions(self,list):
 	for name,value in list.iteritems():
