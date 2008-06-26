@@ -572,7 +572,7 @@ def edit_file(host, file, search_txt, sub_txt, append=False):
 
 
 #############
-def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True, copy='ssh'):
+def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     # make mirror data directory
     log_info('make directory %s' % dst_cfg['datadir'])
     (ok, out) = run('%s "%s %s && chmod 700 %s"' % 
@@ -583,47 +583,13 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True, c
     if not ok:
         sys.exit('mkdir directory %s host %s failed' % (dst_cfg['datadir'], dst_cfg['hostname']))
 
-    # get a list of files in primary data directory
-    (ok, out) = run('%s "ls -1 %s  | %s -v db_dumps"' % 
+    (ok, out) = run('%s "%s -verbose -n -x db_dumps %s %s:%s >> %s 2>&1"' % 
                     (gplib.ssh_prefix(host=src_host),
+                     os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
                      src_dir,
-                     ENV.GREP))
-    if not ok:
-        sys.exit('failed to get a list of files in primary data directory for synchronization')
-
-    # copy data from src to dst
-    files = ''
-    for f in out:
-        files = '%s %s' % (files, f.strip())
-
-    # cd datadir ; gprsync.py -p dst_cfg['port'] -o '-cav' file1 file2 ... fileN host:datadir
-    # use the same port as the destination segment port
-
-    if copy == 'rsync':
-        gprsync = os.path.join(os.environ.get('GPHOME'), 'bin/lib/gprsync.py')
-        gprsync_port = dst_cfg['port'] + random.randint(500, 1000)
-        (ok, out) = run('%s "%s -p %d -d %s -o \'-av\' %s %s:%s" >> %s' % 
-                        (gplib.ssh_prefix(host=src_host),
-                         gprsync,
-                         gprsync_port,  
-                         src_dir,
-                         files,
-                         dst_cfg['hostname'],
-                         dst_cfg['datadir'],
-                         logfile))
-    elif copy == 'ssh':
-        (ok, out) = run('%s "cd %s ; %s cf - %s | %s %s \\"cd %s ; %s xf -\\"" >> %s' % 
-                        (gplib.ssh_prefix(host=src_host),
-                         src_dir,
-                         ENV.TAR,
-                         files,
-                         ENV.SSH,
-                         dst_cfg['hostname'],
-                         dst_cfg['datadir'],
-                         ENV.TAR,
-                         logfile))
-    else:
-        sys.exit('copy mode %s not support.' % copy)
+                     dst_cfg['hostname'],
+                     dst_cfg['datadir'],
+                     logfile))
 
     if not ok:
         sys.exit('failed to synchronize data from primary segment to mirror segment')
