@@ -1530,21 +1530,15 @@ TeardownUDPInterconnect(ChunkTransportState *transportStates,
 				 Gp_segment, mySlice->sliceIndex, mySlice->parentIndex,
 				 list_length(parentSlice->primaryProcesses) + list_length(parentSlice->mirrorProcesses));
 
-		/* Our dispatcher doesn't notice certain kinds of errors. If a
-		 * QE-detected error occurs, the QD doesn't complete the query
-		 * -- even when all of the QEs get correctly cancelled. 
-		 * 
-		 * The dispatcher doesn't set 'pleaseCancel' for some cases --
-		 * the top "target" may not complete.  This problem also
-		 * occurs with INSERT-SELECTs on clusters with mirrors.
+		/* in the olden days, we required that the error case
+		 * successfully transmit and end-of-stream message here. But
+		 * the introduction of cdbdisp_check_estate_for_cancel()
+		 * alleviates for the QD case, and the cross-connection of
+		 * primary/mirror writer gangs in the dispatcher (propagation
+		 * of cancel between them) fixes the I-S case.
+		 *
+		 * So the call to forceEosToPeers() is no longer required.
 		 */
-		if (forceEOS)
-		{
-			if (parentSlice->parentIndex == -1)
-			{
-				forceEosToPeers(mlStates, transportStates, mySlice->sliceIndex);
-			}
-		}
 
 		/* now it is safe to remove. */
 		pEntry = removeChunkTransportState(transportStates, mySlice->sliceIndex);
