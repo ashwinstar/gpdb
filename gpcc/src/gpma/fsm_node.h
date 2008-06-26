@@ -1,7 +1,17 @@
 apr_status_t a_node_init(gpcc_event_t *ev, void *arg)
 {
     cmdslot_t *slot = arg;
-    slot->countdown = 1;
+    gpcc_event_t *evt;
+
+    if (slot->u.node.valid) {
+	slot->countdown = 1;
+    } else {
+	/* skip the connection and return INVALID immediately */
+	evt = gpcc_event_alloc(NET_INVALID_EVENT, gpma.haset_cmdslot->cmdidx, strlen(slot->cmdname)+1);
+	memcpy(evt->pdata, slot->cmdname, strlen(slot->cmdname)+1);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+
     return 0;
 }
 

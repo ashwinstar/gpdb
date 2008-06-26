@@ -286,6 +286,7 @@ struct cmdslot_t {
 	struct {
 	    int total;
 	    int nopened;
+	    int ninvalid;
 	    struct {
 		int opened;
 	    } *nodetab;

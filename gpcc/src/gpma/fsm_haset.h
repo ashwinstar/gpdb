@@ -9,6 +9,26 @@ apr_status_t a_haset_init(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
+apr_status_t a_haset_invalid(gpcc_event_t *ev, void *arg)
+{
+    cmdslot_t *slot = arg;
+    gpcc_event_t *evt;
+    int id;
+
+    if (sscanf(ev->pdata, "node.%d", &id) != 1 || id >= slot->u.haset.total)
+	gpcc_fatal(FLINE, "invalid node name %s", ev->pdata);
+
+    gpcc_log_info("NODESET ID=%d INVALID", id);
+    slot->u.haset.nodetab[id].opened = 0;
+    slot->u.haset.ninvalid++;
+
+    if (slot->u.haset.ninvalid + slot->u.haset.nopened == gpma.node_max) {
+	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
+	gpcc_evqueue_put(gpma.evq, evt);
+    }
+    
+    return 0;
+}
 
 apr_status_t a_haset_opened(gpcc_event_t *ev, void *arg)
 {
@@ -23,7 +43,7 @@ apr_status_t a_haset_opened(gpcc_event_t *ev, void *arg)
     slot->u.haset.nodetab[id].opened = 1;
     slot->u.haset.nopened++;
     
-    if (slot->u.haset.nopened == gpma.node_max) {
+    if (slot->u.haset.nopened + slot->u.haset.ninvalid == gpma.node_max) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
     }

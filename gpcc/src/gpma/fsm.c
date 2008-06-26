@@ -157,6 +157,8 @@ APR_DECLARE(void) fsm_init(void)
 		 a_haset_opened, NULL);
     gpcc_fsm_put(HASET_WAIT_CMDSTATE, NET_CLOSED_EVENT, HASET_WAIT_CMDSTATE, 
 		 a_haset_closed, NULL);
+    gpcc_fsm_put(HASET_WAIT_CMDSTATE, NET_INVALID_EVENT, HASET_WAIT_CMDSTATE,
+		 a_haset_invalid, NULL);
     gpcc_fsm_put(HASET_WAIT_CMDSTATE, FAILURE_EVENT, HASET_WAIT_CMDSTATE, NULL);
     gpcc_fsm_put(HASET_WAIT_CMDSTATE, SUCCESS_EVENT, HASET_READY_CMDSTATE, 
 		 a_haset_ready, NULL);

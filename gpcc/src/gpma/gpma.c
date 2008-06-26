@@ -256,10 +256,15 @@ static void net_accepted(gpcc_net_conn_t conn,
 		    is_bad_session_id = 1;
 		    
 		} else {
+		    user_t *user;
 		    /* check the sessionid is valid */
-		    if (apr_hash_get(gpma.user_cmdslot->u.user.usertb, session_id, APR_HASH_KEY_STRING) == 0) {
+		    user = apr_hash_get(gpma.user_cmdslot->u.user.usertb, session_id, APR_HASH_KEY_STRING);
+		    if (!user) {
 			gpcc_log_error("invalid session_id = %s", session_id);
 			is_bad_session_id = 1;
+		    } else {
+			/* extend the expire time */
+			user->expire_time = apr_time_now() + 2 * 3600 * APR_USEC_PER_SEC;
 		    }
 		}
 
