@@ -2983,8 +2983,7 @@ quickdie(SIGNAL_ARGS)
 			 errmsg("terminating connection because of crash of another server process"),
 	errdetail("The postmaster has commanded this server process to roll back"
 			  " the current transaction and exit, because another"
-			  " server process exited abnormally and possibly corrupted"
-			  " shared memory."),
+			  " server process exited abnormally."),
 			 errhint("In a moment you should be able to reconnect to the"
 					 " database and repeat your command.")));
 
