@@ -147,7 +147,7 @@ class RemotePysync:
 	count = 0
 	for name,value in list.iteritems():
 	    if value[0]=='-':
-		self.log(name)
+		self.log('[%s] %s' % (time.strftime('%Y-%m-%d %H:%M:%S'), name))
 		f = open(name,'r+b')
 		f.seek(0,2)
 		localSize = f.tell()
