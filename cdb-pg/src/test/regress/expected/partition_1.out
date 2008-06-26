@@ -2083,6 +2083,9 @@ alter table rank DROP partition if exists neuter;
 alter table rank DROP partition girls;
 ERROR:  cannot drop partition "girls" of relation "rank"-- only one remains
 HINT:  Use DROP TABLE "rank" to remove the table and the final partition
+-- XXX XXX: should work but doesn't
+alter table rank truncate partition for ('F');
+ERROR:  partition for specified value of relation "rank" does not exist
 drop table rank cascade;
 NOTICE:  drop cascades to table rank_1_prt_girls
 NOTICE:  drop cascades to table rank_1_prt_girls_2_prt_5
@@ -2129,6 +2132,11 @@ alter table hhh rename partition aa to aa;
 ERROR:  partition "aa" of relation "hhh" already exists
 alter table hhh rename partition aa to "funky fresh";
 alter table hhh rename partition "funky fresh" to aa;
+-- use FOR PARTITION VALUE (with implicate date conversion)
+alter table hhh rename partition for ('2007-01-01') to "funky fresh";
+NOTICE:  renamed partition "aa" to "funky fresh" for relation "hhh"
+alter table hhh rename partition for ('2007-01-01') to aa;
+NOTICE:  renamed partition "funky fresh" to "aa" for relation "hhh"
 alter table hhh set subpartition template ();
 ERROR:  cannot SET SUBPARTITION TEMPLATE for relation "hhh"
 alter table hhh split partition cc at ('a');

@@ -1790,11 +1790,12 @@ alter_table_partition_cmd:
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec
             OptTabPartitionStorageAttr
 				{
-					AlterPartitionId  *pid = makeNode(AlterPartitionId);
-					AlterPartitionCmd *pc  = makeNode(AlterPartitionCmd);
-					AlterPartitionCmd *pc2 = makeNode(AlterPartitionCmd);
-					AlterTableCmd     *n   = makeNode(AlterTableCmd);
-                    Node              *ct  = makeAddPartitionCreateStmt($6);
+					AlterPartitionId  *pid   = makeNode(AlterPartitionId);
+					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
+					AlterPartitionCmd *pc2   = makeNode(AlterPartitionCmd);
+					AlterTableCmd     *n     = makeNode(AlterTableCmd);
+                    Node              *ct    = makeAddPartitionCreateStmt($6);
+                    PartitionElem     *pelem = makeNode(PartitionElem); 
 
                     if ($2)
 						ereport(ERROR,
@@ -1807,11 +1808,18 @@ alter_table_partition_cmd:
 
                     pc->partid = (Node *)pid;
 
-                    pc2->arg1 = (Node *)list_make2($4, $5);
+                    pelem->partName  = NULL;
+                    pelem->boundSpec = $4;
+                    pelem->subSpec   = $5;
+                    pelem->location  = @4;
+                    pelem->isDefault = 0;
+                    pelem->storeAttr = $6;
+
+                    pc2->arg1 = (Node *)pelem;
                     pc2->arg2 = ct;
                     pc2->location = @4;
 
-                    pc->arg1 = (Node *)makeInteger(FALSE);
+                    pc->arg1 = (Node *)makeInteger(FALSE); /* not default */
                     pc->arg2 = (Node *)pc2;
                     pc->location = @4;
 
@@ -1824,11 +1832,12 @@ alter_table_partition_cmd:
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec 
             OptTabPartitionStorageAttr
 				{
-					AlterPartitionId  *pid = (AlterPartitionId *)$4;
-					AlterPartitionCmd *pc  = makeNode(AlterPartitionCmd);
-					AlterPartitionCmd *pc2 = makeNode(AlterPartitionCmd);
-					AlterTableCmd     *n   = makeNode(AlterTableCmd);
-                    Node              *ct  = makeAddPartitionCreateStmt($7);
+					AlterPartitionId  *pid   = (AlterPartitionId *)$4;
+					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
+					AlterPartitionCmd *pc2   = makeNode(AlterPartitionCmd);
+					AlterTableCmd     *n     = makeNode(AlterTableCmd);
+                    Node              *ct    = makeAddPartitionCreateStmt($7);
+                    PartitionElem     *pelem = makeNode(PartitionElem); 
 
                     if (pid->idtype != AT_AP_IDName)
 						ereport(ERROR,
@@ -1837,7 +1846,14 @@ alter_table_partition_cmd:
 
                     pc->partid = (Node *)pid;
 
-                    pc2->arg1 = (Node *)list_make2($5, $6);
+                    pelem->partName  = NULL;
+                    pelem->boundSpec = $5;
+                    pelem->subSpec   = $6;
+                    pelem->location  = @5;
+                    pelem->isDefault = $2;
+                    pelem->storeAttr = $7;
+
+                    pc2->arg1 = (Node *)pelem;
                     pc2->arg2 = ct;
                     pc2->location = @5;
 

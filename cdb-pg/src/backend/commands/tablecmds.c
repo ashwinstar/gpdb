@@ -296,10 +296,16 @@ ChoosePartitionName(const char *tablename, int partDepth,
 					const char *partname, Oid namespace);
 static void
 delete_part_from_catalog(Oid relid);
+
 static pg_part_rule*
 get_part_rule(Relation rel, AlterPartitionId *pid, 
 			  bool bExistError, bool bMustExist, 
 			  MemoryContext mcxt);
+
+static void atpxPartAddList(Relation rel, AlterPartitionCmd *pc,
+							PartitionNode *pNode, Node *pUtl, 
+							Node *partName, bool isDefault,
+							PartitionElem *pelem);
 
 static void ATPExecPartAdd(Relation rel,
                            AlterPartitionCmd *pc);			/* Add */
@@ -8534,7 +8540,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby)
 
 	/* allow subsequent callers to see our work */
 	CommandCounterIncrement();
-}
+} /* end add_part_to_catalog */
 
 static void
 delete_part_from_catalog(Oid relid)
@@ -8872,7 +8878,8 @@ ChoosePartitionName(const char *tablename, int partDepth,
  * use in SelectPartition
  */
 static Datum *
-magic_expr_to_datum(Relation rel, PartitionNode *partnode, Node *expr, bool **ppisnull)
+magic_expr_to_datum(Relation rel, PartitionNode *partnode, 
+					Node *expr, bool **ppisnull)
 {
 	Partition  *part = partnode->part;
 	TupleDesc	tupleDesc;
@@ -8912,7 +8919,8 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode, Node *expr, bool **pp
 			Const *c1;
 			/* XXX: do for all attributes */
 			AttrNumber attno = part->paratts[0];
-			Oid lhsid = tupleDesc->attrs[attno - 1]->atttypid;
+			Form_pg_attribute attribute = tupleDesc->attrs[attno - 1];
+			Oid lhsid = attribute->atttypid;
 
 			if (!IsA(n1, Const))
 				ereport(ERROR,
@@ -8922,10 +8930,41 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode, Node *expr, bool **pp
 			c1 = (Const *)n1;
 
 			if (lhsid != c1->consttype)
-				ereport(ERROR,
+			{
+				/* see coerce_partition_value */
+				Node *out;
+
+				out = coerce_to_target_type(NULL, n1, exprType(n1), 
+											lhsid, attribute->atttypmod,
+											COERCION_EXPLICIT,
+											COERCE_IMPLICIT_CAST);
+
+				if (!out)
+					ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
-						 errmsg("wrong type (%u vs %u)",
-								c1->consttype, lhsid)));
+						 errmsg("cannot coerce column type (%s versus %s)",
+								format_type_be(c1->consttype), 
+								format_type_be(lhsid))));
+
+				/* explicit coerce */
+				if (IsA(out, FuncExpr))
+				{
+					Datum d = partition_arg_get_val(out);
+					Type typ = typeidType(lhsid);
+
+					/* pfree(out); */
+
+					c1 = makeConst(lhsid, typeLen(typ), d, false,
+								  typeByVal(typ));
+					ReleaseSysCache(typ);
+				}
+				else
+				{
+					Assert(IsA(out, Const));
+
+					c1 = (Const *)out;
+				}
+			}
 
 			if (c1->constisnull)
 				ereport(ERROR,
@@ -8968,7 +9007,7 @@ selectPartitionByPosition(PartitionNode *partnode, int posn)
 
 	rule = (PartitionRule *)list_nth(rules, posn);
 
-	return relid = rule->parchildrelid;
+	return rule->parchildrelid;
 } /* end selectPartitionByPosition */
 
 static PartitionNode *
@@ -9701,23 +9740,19 @@ ATPExecPartAdd(Relation rel,
 								pNode->default_part->parname,
 								RelationGetRelationName(rel))));
 
+
+			/* XXX XXX: move this check to gram.y ? */
 			if (pc2->arg1)
 			{
-				List			*argones = (List *)pc2->arg1;
-				ListCell 		*lc;
+				PartitionElem *pelem = (PartitionElem *) pc2->arg1;
 
-				/* iterate over list */
-
-				foreach(lc, argones)
-				{
-					if (lfirst(lc))
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("invalid use of boundary specification "
-										"for DEFAULT partition \"%s\" of relation \"%s\"",
-										strVal(pid->partiddef),
-										RelationGetRelationName(rel))));
-				}
+				if (pelem->boundSpec || pelem->subSpec)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("invalid use of boundary specification "
+									"for DEFAULT partition \"%s\" of relation \"%s\"",
+									strVal(pid->partiddef),
+									RelationGetRelationName(rel))));
 			}
 		}
 		/* XXX XXX DO REAL ADD HERE */
@@ -9738,63 +9773,10 @@ ATPExecPartAdd(Relation rel,
 		}
 		else if ('l' == pNode->part->parkind)
 		{
-			PartitionBy 		*pBy   = makeNode(PartitionBy); 
-			PartitionSpec 		*spec  = makeNode(PartitionSpec); 
-			PartitionElem 		*pelem = makeNode(PartitionElem); 			
-			CreateStmt 			*ct    = NULL;
-			Node *pUtl = pc2->arg2;
-			DestReceiver 	*dest 	 = None_Receiver; 
-			char *newpartname;
-
-			spec->partElem = list_make1(pelem);
-
-			pelem->partName = copyObject(pid->partiddef);
-			pelem->isDefault = 1;
-
-			pBy->partType = PARTTYP_LIST;
-			pBy->keys     = NULL; 
-			pBy->partNum  = 0;
-			pBy->subPart  = NULL;
-			pBy->partSpec = (Node *)spec;
-			pBy->partDepth = 0;
-			pBy->parentRel =
-					makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-								 pstrdup(RelationGetRelationName(rel)));
-			pBy->location  = -1;
-			pBy->partDefault = NULL;
-
-			if (!isDefault)
-				ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot ADD PARTITION to relation \"%s\"",
-							RelationGetRelationName(rel))));
-
-			
-			/* create the partition */
-
-			Assert(IsA(pUtl, Query));
-			Assert(((Query *)pUtl)->commandType == CMD_UTILITY);
-
-			ct = (CreateStmt *)((Query *)pUtl)->utilityStmt;
-			Assert(IsA(ct, CreateStmt));
-
-			newpartname = 
-					ChoosePartitionName(
-										RelationGetRelationName(rel),
-										pNode->part->parlevel,
-										strVal(pelem->partName),
-										RelationGetNamespace(rel));
-
-			ct->relation = makeRangeVar(
-					get_namespace_name(RelationGetNamespace(rel)),
-					newpartname);
-
-			ProcessUtility(
-					(((Query *)pUtl)->utilityStmt),
-					NULL, dest, NULL);		
-
-			add_part_to_catalog(ct->oidInfo.relOid, pBy); 
-
+			atpxPartAddList(rel, pc, pNode,
+							pc2->arg2, /* utl statement */
+							pid->partiddef, /* partition name */
+							isDefault, (PartitionElem *) pc2->arg1);
 		}
 
 	}
@@ -9805,6 +9787,166 @@ ATPExecPartAdd(Relation rel,
              errmsg("cannot ADD PARTITION to relation \"%s\"",
                     RelationGetRelationName(rel))));
 } /* end ATPExecPartAdd */
+
+static void 
+atpxPartAddList(Relation rel,
+				AlterPartitionCmd *pc,
+				PartitionNode  *pNode,
+				Node *pUtl,     /* pc2->arg2 */
+				Node *partName, /* pid->partiddef */
+				bool isDefault,
+				PartitionElem *pelem) 
+{
+	PartitionBy 		*pBy   	= makeNode(PartitionBy); 
+	PartitionSpec 		*spec  	= makeNode(PartitionSpec); 
+	CreateStmt 			*ct    	= NULL;
+	DestReceiver 		*dest  	= None_Receiver; 
+	char 				*newpartname;
+	ParseState 			*pstate = make_parsestate(NULL);
+	int 				 partno = 0;
+	CreateStmtContext    cxt;
+	List	   			*schema = NIL;
+	List	   			*inheritOids;
+	List	   			*old_constraints;
+	int					 parentOidCount;
+
+	MemSet(&cxt, 0, sizeof(cxt));
+	MemSet(spec, 0, sizeof(PartitionSpec));
+
+	/* get the table column defs */
+	schema = 
+			MergeAttributes(schema, 
+							list_make1(
+									makeRangeVar(
+											get_namespace_name(
+													RelationGetNamespace(rel)),
+									pstrdup(RelationGetRelationName(rel)))),
+							false,
+							&inheritOids, &old_constraints, &parentOidCount);
+
+	cxt.columns = schema;
+
+	spec->partElem = list_make1(pelem);
+	
+	pelem->partName = copyObject(partName);
+	pelem->isDefault = isDefault;
+	
+	pBy->partType = PARTTYP_LIST;
+	pBy->keys     = NULL; 
+	pBy->partNum  = 0;
+	pBy->subPart  = NULL;
+	pBy->partSpec = (Node *)spec;
+	pBy->partDepth = 0;
+	pBy->parentRel =
+			makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+						 pstrdup(RelationGetRelationName(rel)));
+	pBy->location  = -1;
+	pBy->partDefault = NULL;
+
+	{ /* find the partitioning keys (for this level, not recursively) */
+		int 			 ii;
+		TupleDesc		 tupleDesc 		= RelationGetDescr(rel);
+		List 			*pbykeys   		= NIL;
+		List 			*pbyopclass 	= NIL;
+		Oid 			 accessMethodId = BTREE_AM_OID; 
+
+		for (ii = 0; ii < pNode->part->parnatts; ii++)
+		{
+			AttrNumber 			 attno 		   = pNode->part->paratts[ii];
+			Form_pg_attribute 	 attribute 	   = tupleDesc->attrs[attno - 1];
+			char	   			*attributeName = NameStr(attribute->attname);
+			Oid 				 opclass 	   = InvalidOid;
+
+			opclass = GetDefaultOpClass(attribute->atttypid, accessMethodId);
+
+			if (pbykeys)
+			{
+				pbykeys = lappend(pbykeys, makeString(attributeName));
+				pbyopclass = lappend_oid(pbyopclass, opclass);
+			}
+			else
+			{
+				pbykeys = list_make1(makeString(attributeName));
+				pbyopclass = list_make1_oid(opclass);
+			}
+		}
+
+		pBy->keys = pbykeys;
+		pBy->keyopclass = pbyopclass;
+	}
+
+	Assert(IsA(pUtl, Query));
+	Assert(((Query *)pUtl)->commandType == CMD_UTILITY);
+	
+	ct = (CreateStmt *)((Query *)pUtl)->utilityStmt;
+	Assert(IsA(ct, CreateStmt));
+	
+	partno = validate_partition_spec(pstate, &cxt, ct, pBy, "", -1);
+
+	if (pelem && pelem->boundSpec)
+	{
+		ListCell *lc;
+		PartitionValuesSpec *spec;
+		AlterPartitionId 	pid;
+
+		Assert (IsA(pelem->boundSpec, PartitionValuesSpec));
+
+		MemSet(&pid, 0, sizeof(AlterPartitionId));
+
+		spec = (PartitionValuesSpec *)pelem->boundSpec;
+
+		foreach(lc, spec->partValues)
+		{
+			List		*vals 	   = lfirst(lc);
+			pg_part_rule   		*prule = NULL;
+
+			pid.idtype = AT_AP_IDValue;
+			pid.partiddef = (Node *)vals;
+			pid.location  = -1;
+
+			prule = get_part_rule(rel, &pid, false, false, 
+								  CurrentMemoryContext);
+
+			if (prule)
+			{
+				ereport(ERROR,
+						 (errcode(ERRCODE_UNDEFINED_OBJECT),
+						  errmsg("new partition definition overlaps existing partition%s of relation \"%s\" ",
+								 prule->partIdStr,
+								 RelationGetRelationName(rel))));
+	
+
+			}
+
+		}
+	}
+
+	if (!isDefault)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot ADD PARTITION to relation \"%s\"",
+							RelationGetRelationName(rel))));
+	
+	/* create the partition */
+	
+	newpartname = 
+			ChoosePartitionName(
+					RelationGetRelationName(rel),
+					pNode->part->parlevel,
+					strVal(pelem->partName),
+					RelationGetNamespace(rel));
+	
+	ct->relation = makeRangeVar(
+			get_namespace_name(RelationGetNamespace(rel)),
+			newpartname);
+
+	ProcessUtility(
+			(((Query *)pUtl)->utilityStmt),
+			NULL, dest, NULL);		
+
+	add_part_to_catalog(ct->oidInfo.relOid, pBy); 
+
+} /* end atpxPartAddList */
 
 /* ALTER TABLE ... ALTER PARTITION */
 static void 

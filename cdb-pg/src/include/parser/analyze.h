@@ -26,4 +26,31 @@ extern void CheckSelectLocking(Query *qry);
 extern void applyLockingClause(Query *qry, Index rtindex,
 				   bool forUpdate, bool noWait);
 
+Datum partition_arg_get_val(Node *node);
+
+/* State shared by transformCreateStmt and its subroutines */
+typedef struct
+{
+	const char *stmtType;		/* "CREATE TABLE" or "ALTER TABLE" */
+	RangeVar   *relation;		/* relation to create */
+	List	   *inhRelations;	/* relations to inherit from */
+	bool		hasoids;		/* does relation have an OID column? */
+	bool		isalter;		/* true if altering existing table */
+	List	   *columns;		/* ColumnDef items */
+	List	   *ckconstraints;	/* CHECK constraints */
+	List	   *fkconstraints;	/* FOREIGN KEY constraints */
+	List	   *ixconstraints;	/* index-creating constraints */
+	List	   *blist;			/* "before list" of things to do before
+								 * creating the table */
+	List	   *alist;			/* "after list" of things to do after creating
+								 * the table */
+	IndexStmt  *pkey;			/* PRIMARY KEY index, if any */
+} CreateStmtContext;
+
+int validate_partition_spec(ParseState *pstate,
+							CreateStmtContext *cxt, CreateStmt *stmt, 
+							PartitionBy *partitionBy, 	
+							char	   *at_depth,
+							int		partNumber);
+
 #endif   /* ANALYZE_H */

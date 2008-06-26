@@ -829,6 +829,9 @@ alter table rank DROP partition if exists neuter;
 -- can't drop the final partition - must drop the table
 alter table rank DROP partition girls;
 
+-- XXX XXX: should work but doesn't
+alter table rank truncate partition for ('F');
+
 drop table rank cascade;
 
 alter table hhh exchange partition cc with table nosuchtable with validation;
@@ -854,6 +857,11 @@ alter table hhh rename partition cc to aa;
 alter table hhh rename partition aa to aa;
 alter table hhh rename partition aa to "funky fresh";
 alter table hhh rename partition "funky fresh" to aa;
+
+-- use FOR PARTITION VALUE (with implicate date conversion)
+alter table hhh rename partition for ('2007-01-01') to "funky fresh";
+alter table hhh rename partition for ('2007-01-01') to aa;
+
 
 alter table hhh set subpartition template ();
 

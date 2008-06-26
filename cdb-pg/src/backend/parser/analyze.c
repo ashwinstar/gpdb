@@ -75,25 +75,6 @@ typedef struct
 								 * the schema */
 } CreateSchemaStmtContext;
 
-/* State shared by transformCreateStmt and its subroutines */
-typedef struct
-{
-	const char *stmtType;		/* "CREATE TABLE" or "ALTER TABLE" */
-	RangeVar   *relation;		/* relation to create */
-	List	   *inhRelations;	/* relations to inherit from */
-	bool		hasoids;		/* does relation have an OID column? */
-	bool		isalter;		/* true if altering existing table */
-	List	   *columns;		/* ColumnDef items */
-	List	   *ckconstraints;	/* CHECK constraints */
-	List	   *fkconstraints;	/* FOREIGN KEY constraints */
-	List	   *ixconstraints;	/* index-creating constraints */
-	List	   *blist;			/* "before list" of things to do before
-								 * creating the table */
-	List	   *alist;			/* "after list" of things to do after creating
-								 * the table */
-	IndexStmt  *pkey;			/* PRIMARY KEY index, if any */
-} CreateStmtContext;
-
 typedef struct
 {
 	Oid		   *paramTypes;
@@ -213,12 +194,6 @@ static int partition_range_compare(ParseState *pstate,
 								   PartitionRangeItem *pRI1,
 								   PartitionRangeItem *pRI2);
 
-static int validate_partition_spec(ParseState *pstate,
-								   CreateStmtContext *cxt, CreateStmt *stmt, 
-								   PartitionBy *partitionBy, 	
-								   char	   *at_depth,
-								   int		partNumber);
-
 static int partition_range_every(ParseState *pstate,
 								 CreateStmtContext *cxt, CreateStmt *stmt, 
 								 PartitionBy *partitionBy, 	
@@ -251,7 +226,6 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 		);
 
 static A_Const *make_a_const(A_Const *pValConst, char *val_str);
-static Datum arg_get_val(Node *node);
 static Node *coerce_partition_value(Node *node, TypeName *type,
 									 PartitionByType partype);
 
@@ -4916,7 +4890,7 @@ coerce_partition_value(Node *node, TypeName *type, PartitionByType partype)
 	/* explicit coerce */
 	if (IsA(out, FuncExpr))
 	{
-		Datum d = arg_get_val(out);
+		Datum d = partition_arg_get_val(out);
 		Const *c;
 		Type typ = typeidType(type->typid);
 
@@ -5000,12 +4974,12 @@ validate_list_partition(partValidationState *vstate)
 
 		foreach(lc, spec->partValues)
 		{
-			ListCell		*lc_val  = NULL;
-			List		   *vals = lfirst(lc);
-			List		   *tvals = NIL; /* transformed clause */
-			int				nvals;
-			int				nparts = list_length(vstate->pBy->keys);
-			ListCell	   *llc2;
+			ListCell	*lc_val = NULL;
+			List		*vals 	= lfirst(lc);
+			List		*tvals 	= NIL;	/* transformed clause */
+			int			 nvals;
+			int			 nparts = list_length(vstate->pBy->keys);
+			ListCell	*llc2;
 
 			nvals = list_length(vals);
 
@@ -5046,7 +5020,7 @@ validate_list_partition(partValidationState *vstate)
 			/*
 			 * Check for duplicate keys
 			 */
-			foreach(lc_val, vstate->allListVals)
+			foreach(lc_val, vstate->allListVals) /* dups across all specs */
 			{
 				List *already = lfirst(lc_val);
 				ListCell *lc2;
@@ -5077,10 +5051,44 @@ validate_list_partition(partValidationState *vstate)
 		}
 		vstate->allListVals = lappend(vstate->allListVals, newvals);
 		spec->partValues = newvals;
-	}
-}
 
-static int
+		{ /* check for dups in same spec */
+			ListCell		*lc_val  = NULL;
+			foreach(lc_val, newvals) 
+			{
+				List *already = lfirst(lc_val);
+				ListCell *rest;
+
+				for_each_cell(rest, lnext(lc_val))
+				{
+					List  *restdef = lfirst(rest);
+					List *diff;
+
+					/* 
+					 * See the difference between the two lists -- yes, this is
+					 * starting to look like Lisp.
+					 */
+					diff = list_difference(already, restdef);
+
+					if (list_length(diff) == 0)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("duplicate VALUES "
+										"in partition%s%s",
+										vstate->namBuf,
+										vstate->at_depth),
+							 parser_errposition(vstate->pstate, spec->location)));
+					}
+				}
+			}
+
+		}
+
+	} /* end if spec partvalues */
+} /* end validate_list_partition */
+
+int
 validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt, 
 						CreateStmt *stmt, PartitionBy *pBy,
 						char *at_depth, int	partNumber)
@@ -5154,9 +5162,9 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 		vstate->pElem = pElem;
 
 		/* 
-		 * We've done all possible expansions so no number the partition
-		 * elements so that we can set the position when adding the
-		 * configuration to the catalog.
+		 * We've done all possible expansions so now number the
+		 * partition elements so that we can set the position when
+		 * adding the configuration to the catalog.
 		 */
 		pElem->partno = ++partno;
 
@@ -5263,7 +5271,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 
 		/* don't have to validate default partition boundary specs */
 		if (pElem->isDefault)
-				continue;
+			continue;
 
 		vstate->namBuf = namBuf;
 
@@ -5328,8 +5336,8 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
  * Get the actual value from the expression. There are only a limited range
  * of cases we must cover because the parser guarantees constant input.
  */
-static Datum
-arg_get_val(Node *node)
+Datum
+partition_arg_get_val(Node *node)
 {
 	switch (nodeTag(node))
 	{
@@ -5343,24 +5351,24 @@ arg_get_val(Node *node)
 				{
 					case 1:
 						{
-							Datum d1 = arg_get_val(linitial(fe->args));
+							Datum d1 = partition_arg_get_val(linitial(fe->args));
 
 							d = OidFunctionCall1(fe->funcid, d1);
 						}
 						break;
 					case 2:
 						{
-							Datum d1 = arg_get_val(linitial(fe->args));
-							Datum d2 = arg_get_val(lsecond(fe->args));
+							Datum d1 = partition_arg_get_val(linitial(fe->args));
+							Datum d2 = partition_arg_get_val(lsecond(fe->args));
 
 							d = OidFunctionCall2(fe->funcid, d1, d2);
 						}
 						break;
 					case 3:
 						{
-							Datum d1 = arg_get_val(linitial(fe->args));
-							Datum d2 = arg_get_val(lsecond(fe->args));
-							Datum d3 = arg_get_val(lthird(fe->args));
+							Datum d1 = partition_arg_get_val(linitial(fe->args));
+							Datum d2 = partition_arg_get_val(lsecond(fe->args));
+							Datum d3 = partition_arg_get_val(lthird(fe->args));
 
 							d = OidFunctionCall3(fe->funcid, d1, d2, d3);
 						}
@@ -5416,8 +5424,8 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 	ReleaseSysCache(optup);
 
 	/* args to the function must be Const */
-	lhs = arg_get_val((Node *)linitial(opexpr->args));
-	rhs = arg_get_val((Node *)lsecond(opexpr->args));
+	lhs = partition_arg_get_val((Node *)linitial(opexpr->args));
+	rhs = partition_arg_get_val((Node *)lsecond(opexpr->args));
 	res = OidFunctionCall2(opexpr->opfuncid, lhs, rhs);
 
 	/* If the caller supplied a target result type, coerce if necesssary */
@@ -5446,7 +5454,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 												  COERCION_EXPLICIT,
 												  COERCE_IMPLICIT_CAST);
 				Assert(PointerIsValid(e));
-				res = arg_get_val((Node *)e);
+				res = partition_arg_get_val((Node *)e);
 			}
 		}
 		else
@@ -8520,6 +8528,7 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 	 * The only subtypes that currently require parse transformation handling
 	 * are ADD COLUMN and ADD CONSTRAINT.  These largely re-use code from
 	 * CREATE TABLE.
+	 * And ALTER TABLE ... <operator> PARTITION ...
 	 */
 	foreach(lcmd, stmt->cmds)
 	{
@@ -8653,6 +8662,9 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 					pid->partiddef = 
 							(Node *)transformExpressionList(pstate, vallist);
 				}
+
+				/* transform boundary specifications at execute time */
+
 				newcmds = lappend(newcmds, cmd);
 				break;
 			}
