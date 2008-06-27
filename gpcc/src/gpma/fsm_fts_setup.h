@@ -306,15 +306,27 @@ apr_status_t a_fts_getaddress_reply(gpcc_event_t *ev, void *arg)
     }
     
     for (i = 0 ; i < slot->u.fts.nseginfo ; i++) {
-	gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
-		      slot->u.fts.seginfo[i].name,
-		      slot->u.fts.seginfo[i].host,
-		      slot->u.fts.seginfo[i].dbid,
-		      slot->u.fts.seginfo[i].content,
-		      slot->u.fts.seginfo[i].port,
-		      slot->u.fts.seginfo[i].dir,
-		      slot->u.fts.seginfo[i].haidx,
-		      slot->u.fts.seginfo[i].ha);
+	if (slot->u.fts.seginfo[i].ha) {
+	    gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
+			  slot->u.fts.seginfo[i].name,
+			  slot->u.fts.seginfo[i].host,
+			  slot->u.fts.seginfo[i].dbid,
+			  slot->u.fts.seginfo[i].content,
+			  slot->u.fts.seginfo[i].port,
+			  slot->u.fts.seginfo[i].dir,
+			  slot->u.fts.seginfo[i].haidx,
+			  slot->u.fts.seginfo[i].ha);
+	} else {
+	    gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=unknown",
+			  slot->u.fts.seginfo[i].name,
+			  slot->u.fts.seginfo[i].host,
+			  slot->u.fts.seginfo[i].dbid,
+			  slot->u.fts.seginfo[i].content,
+			  slot->u.fts.seginfo[i].port,
+			  slot->u.fts.seginfo[i].dir,
+			  slot->u.fts.seginfo[i].haidx);
+	}
+
     }    
 
 
