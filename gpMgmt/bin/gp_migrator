@@ -79,6 +79,7 @@ class GPUpgrade:
         self.newenv    = None     # enviornment: new gp env
         self.user      = None     # db admin user
         self.host      = None     # master hostname
+        self.upgrade   = None     # True for upgrade, False for downgrade
 
     # Upgrade information and state
         self.debug      = False
@@ -264,8 +265,7 @@ class GPUpgrade:
         Calls every host to execute the given command with the given option 
         value
         '''
-
-
+                    
         # Check for things that should never happen
         if self.cmd != 'MASTER':
             raise UpgradeError("Recursive communication error")
@@ -275,7 +275,12 @@ class GPUpgrade:
         # Construct a string of '-h hostname' for all hosts
         exec_cmd = 'gpssh'
         for h in self.hosts: exec_cmd += ' -h %s' % h
-        exec_cmd += ' %s/bin/%s ' % (self.newhome, EXECNAME)
+        
+        if self.upgrade:
+            exec_cmd += ' %s/bin/%s ' % (self.newhome, EXECNAME)
+        else:
+            exec_cmd += ' %s/bin/%s ' % (self.oldhome, EXECNAME)
+
         exec_cmd += self.oldhome + ' ' + self.newhome
         exec_cmd += ' --internal-command=' + str(cmd)
         exec_cmd += ' --internal-pid=' + str(self.pid)
@@ -526,8 +531,24 @@ class GPUpgrade:
         self.oldversion = oldversion
         self.newversion = newversion
 
-        # Versions supported by the upgrader
-        
+        # Versions supported by this version of the upgrader
+        #  [3.0.0.0 - 3.2.0.0] + (main) by default
+        def checkversion(v):
+            if v == 'main': return
+            if v < '3.0.0.0':
+                raise UpgradeError(
+"Greenplum Version '%s' not supported for upgrade/downgrade" % v)
+            if v > '3.2.0.0':
+                raise UpgradeError(
+'''To upgrade/downgrade from Greenplum Version '%s' use the upgrade/downgrade
+tool shipped with that release''')
+
+        checkversion(oldversion)
+        checkversion(newversion)
+        if newversion == 'main' or newversion > oldversion:
+            self.upgrade = True
+        else:
+            self.upgrade = False    # Downgrade
 
         # For the moment everything goes!
         # -- FIXME --
@@ -590,7 +611,7 @@ class GPUpgrade:
         # We hold off throwing the error until the end, because we want to make
         # sure we removed all of our own directories.
         if doerror:
-            raise UpgradeError('Failed to remove old upgrade directories')            
+            raise UpgradeError('Failed to remove old upgrade directories')
 
     #------------------------------------------------------------
     def CreateDirectories(self):
@@ -741,6 +762,38 @@ class GPUpgrade:
                 self.Log('FATAL', 'INVALID SEGMENT: %s:/%s' % item)
             raise UpgradeError('Cannot upgrade database with invalid segments')
         self.Log('INFO', 'All segments valid')
+
+        # If this is a downgrade, verify that we have no objects that can not
+        # be downgraded:
+        #    - append only tables
+        #    - new style partitions
+        if (not self.upgrade and self.newversion < '3.2.0.0' and 
+            (self.oldversion >= '3.2.0.0' or self.oldversion == 'main')):
+            databases = self.Select(
+                '''
+                   SELECT datname from pg_database
+                   WHERE datname != 'template0'
+                ''')
+            c = 0            
+            for db in databases:
+                c = self.Select('SELECT COUNT(*) FROM pg_partition', db=db)
+                if c[0] > 0:
+                    raise UpgradeError(
+'''
+-------------------------------------------------------
+Cannot downgrade a database with 3.2 style partitioning     <<<<<
+-------------------------------------------------------
+''')
+                c = self.Select(
+                    "SELECT COUNT(*) FROM pg_class WHERE relkind = 'a'", db=db)
+                if c[0] > 0:
+                    raise UpgradeError(
+'''
+---------------------------------------------------
+Cannot downgrade a database with append only tables     <<<<<
+---------------------------------------------------
+''')
+
 
         # Extract the information needed to construct a gp_init_config file
         gp_config = self.Select(
@@ -920,7 +973,7 @@ class GPUpgrade:
                               left outer join pg_class c2 on c.reltoastrelid=c2.oid
                               left outer join pg_class c3 on c2.reltoastidxid=c3.oid
                            WHERE c.oid >= %s 
-                             AND c.relkind in ('r', 't', 'i', 'S')
+                             AND c.relkind in ('a', 'r', 't', 'i', 'S')
                              AND c.relnamespace = n.oid AND n.nspname != 'pg_toast'
                            ORDER BY c.relname, c.relkind;
                         ''' % db['max_sysoid'], 
@@ -1259,15 +1312,15 @@ class GPUpgrade:
         # We can do this in utility mode since the master host is the only
         # host that contains gp_configuration information
         self.Log('INFO', 'Adjusting gp_configuration')
-        self.Startup(self.oldenv, True)
+        self.Startup(self.newenv, True)
         self.Update(
          '''
             UPDATE gp_configuration 
               SET datadir=regexp_replace(datadir, 'upgrade/([^/]*)$', E'\\\\1')
          ''')
-        self.Shutdown(self.oldenv, True)
-            
-
+        self.Shutdown(self.newenv, True)
+        self.newenv['MASTER_DATA_DIRECTORY'] = \
+            self.oldenv['MASTER_DATA_DIRECTORY']
 
 #============================================================
 
@@ -1366,7 +1419,7 @@ try:
         # The current state of the world is as follows
         #    DATA_DIR/         = untouched original db
         #    DATA_DIR/upgrade  = fully upgraded new db
-        #    DATA_DIR/backup   = empty except for the state and flag files.        
+        #    DATA_DIR/backup   = empty except for the state and flag files.
         # => Make a deep hardlink copy of DATA_DIR -> DATA_DIR/backup
         u.DeepLink('BACKUP')
         u.SetState('BACKUP VALID')
