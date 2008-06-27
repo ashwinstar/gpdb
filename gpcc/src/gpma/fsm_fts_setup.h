@@ -425,11 +425,10 @@ apr_status_t a_fts_gethostname_reply(gpcc_event_t *ev, void *arg)
     
     for (i = 0 ; i < slot->u.fts.nseginfo ; i++) {
 	if (slot->u.fts.seginfo[i].hostname && apr_hash_get(slot->u.fts.ht, slot->u.fts.seginfo[i].hostname, APR_HASH_KEY_STRING) == 0) {
-		apr_hash_set(slot->u.fts.ht,
-			     slot->u.fts.seginfo[i].hostname,
-			     APR_HASH_KEY_STRING,
-			     "0");
-	    }
+	    apr_hash_set(slot->u.fts.ht,
+			 slot->u.fts.seginfo[i].hostname,
+			 APR_HASH_KEY_STRING,
+			 "0");
 	}
     }    
     
