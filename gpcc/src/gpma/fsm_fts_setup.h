@@ -335,21 +335,41 @@ apr_status_t a_fts_getaddress_reply(gpcc_event_t *ev, void *arg)
     return 0;
 }
 
+static int stringcmp(const void *a, const void *b) {
+    return strcmp(*(char **)a, *(char **)b);
+}
+
 apr_status_t a_fts_gethostname(gpcc_event_t *ev, void *arg) 
 {
     cmdslot_t *slot = arg;
     cmdslot_t *s;
     gpcc_event_t *evt;
-    int i;
+    int i, j, n;
+    char **hosts;
+    char *h;
+    hosts = malloc(sizeof(char *) * slot->u.fts.nseginfo);
+    for (i = 0, n = 0 ; i < slot->u.fts.nseginfo ; i++) {
+	if (slot->u.fts.seginfo[i].valid == 't')
+	    hosts[n++] = slot->u.fts.seginfo[i].host;
+    }
 
+    qsort(hosts, n, sizeof(char *), stringcmp);
+    
     s = cmdslot_alloc("GETHOSTNAME", SSH_HOSTNAME_CMDSTATE);
     s->u.gethostname.parent_cmdidx = slot->cmdidx;
     s->u.gethostname.hosts = apr_palloc(s->pool, sizeof(char *) * slot->u.fts.nseginfo);
     s->u.gethostname.hostname = apr_palloc(s->pool, sizeof(char *) * slot->u.fts.nseginfo);
-    for (i = 0 ; i < slot->u.fts.nseginfo ; i++) {
-	s->u.gethostname.hosts[i] = apr_pstrdup(s->pool, slot->u.fts.seginfo[i].host);
+
+    for (i = 0, h = 0, j = 0 ; i < n ; i++) {
+	if (!h || strcmp(h, hosts[i]) != 0) {
+	    s->u.gethostname.hosts[j++] = apr_pstrdup(s->pool, hosts[i]);
+	    h = hosts[i];
+	}
     }
-    s->u.gethostname.nhost = slot->u.fts.nseginfo;
+
+    if (hosts) free(hosts);
+
+    s->u.gethostname.nhost = j;
     s->u.gethostname.timeout = 120;
 
     evt = gpcc_event_alloc(INIT_EVENT, s->cmdidx, 0);
@@ -365,7 +385,7 @@ apr_status_t a_fts_gethostname_reply(gpcc_event_t *ev, void *arg)
     struct json_object *obj = json_tokener_parse(ev->pdata);
     struct json_object *rset;
     char *status;
-    int i, len;
+    int i, j, len;
 
     status = gpcc_json_object_get_string(obj, "status", FAIL_STATUS);
     if (strcmp(status, OK_STATUS) != 0) {
@@ -375,15 +395,18 @@ apr_status_t a_fts_gethostname_reply(gpcc_event_t *ev, void *arg)
     /* fill up hostname */
     rset = json_object_object_get(obj, "rset");
     len = json_object_array_length(rset);
-    if (len != slot->u.fts.nseginfo) {
-	goto bail;
-    }
     
-    for (i = 0 ; i < slot->u.fts.nseginfo ; i++) {
+    for (i = 0 ; i < len ; i++) {
 	struct json_object *o = json_object_array_get_idx(rset, i);
+	char *h = json_object_get_string(json_object_array_get_idx(o, 0));
 	char *s = json_object_get_string(json_object_array_get_idx(o, 1));
-	slot->u.fts.seginfo[i].hostname = apr_pstrdup(slot->pool, s);
-	gpcc_log_info("HOSTNAME == %s", slot->u.fts.seginfo[i].hostname);
+
+	for (j = 0 ; j < slot->u.fts.nseginfo ; j++) {
+	    if (strcmp(h, slot->u.fts.seginfo[j].host)  == 0) {
+		slot->u.fts.seginfo[j].hostname = apr_pstrdup(slot->pool, s);
+		gpcc_log_info("HOSTNAME == %s", slot->u.fts.seginfo[j].hostname);
+	    }
+	}
     }
     
     slot->u.fts.ht = apr_hash_make(slot->pool);
