@@ -9921,12 +9921,6 @@ atpxPartAddList(Relation rel,
 		}
 	}
 
-	if (!isDefault)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot ADD PARTITION to relation \"%s\"",
-							RelationGetRelationName(rel))));
-	
 	/* create the partition */
 	
 	newpartname = 
