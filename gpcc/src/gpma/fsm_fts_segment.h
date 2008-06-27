@@ -21,7 +21,8 @@ static apr_status_t a_fts_create_segment_slot(gpcc_event_t *ev, void *_cmdslot)
 	gpma.unit_cmdtab[i]->u.unit.dbid = slot->u.fts.seginfo[i].dbid;
 	gpma.unit_cmdtab[i]->u.unit.port = slot->u.fts.seginfo[i].port;
 	gpma.unit_cmdtab[i]->u.unit.nodeid = slot->u.fts.seginfo[i].haidx;
-	gpma.unit_cmdtab[i]->u.unit.node = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].ha);
+	if (slot->u.fts.seginfo[i].ha)
+	    gpma.unit_cmdtab[i]->u.unit.node = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].ha);
 	gpma.unit_cmdtab[i]->u.unit.datadir = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].dir);
 	gpma.unit_cmdtab[i]->u.unit.host = apr_pstrdup(gpma.unit_cmdtab[i]->pool, slot->u.fts.seginfo[i].host);
     }

@@ -12,12 +12,12 @@ static apr_status_t a_unit_stop(gpcc_event_t *ev, void *arg)
 
     slot->u.unit.parentidx = pkt->mh.sndidx;
 
-    if (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
-					SEGMENT_REQUEST_MSG,
-					slot->cmdidx,
-					0,
-					pkt->payload,
-					pkt->mh.len))) {
+    if (!slot->u.unit.node || (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
+							       SEGMENT_REQUEST_MSG,
+							       slot->cmdidx,
+							       0,
+							       pkt->payload,
+							       pkt->mh.len)))) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	slot->u.unit.parentidx = 0;
@@ -141,12 +141,12 @@ static apr_status_t a_unit_start(gpcc_event_t *ev, void *arg)
 
     slot->u.unit.parentidx = pkt->mh.sndidx;
 
-    if (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
-					SEGMENT_REQUEST_MSG,
-					slot->cmdidx,
-					0,
-					pkt->payload,
-					pkt->mh.len))) {
+    if (! slot->u.unit.node || (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
+								SEGMENT_REQUEST_MSG,
+								slot->cmdidx,
+								0,
+								pkt->payload,
+								pkt->mh.len)))) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	slot->u.unit.parentidx = 0;
@@ -357,12 +357,12 @@ static apr_status_t a_unit_delete(gpcc_event_t *ev, void *arg)
 
     slot->u.unit.parentidx = pkt->mh.sndidx;
 
-    if (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
-					SEGMENT_REQUEST_MSG,
-					slot->cmdidx,
-					0,
-					pkt->payload,
-					pkt->mh.len))) {
+    if (! slot->u.unit.node || (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
+								SEGMENT_REQUEST_MSG,
+								slot->cmdidx,
+								0,
+								pkt->payload,
+								pkt->mh.len)))) {
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	slot->u.unit.parentidx = 0;
@@ -400,12 +400,12 @@ static apr_status_t a_unit_delete_invalid(gpcc_event_t *ev, void *arg)
 
     slot->u.unit.parentidx = pkt->mh.sndidx;
 
-    if (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
-					SEGMENT_REQUEST_MSG,
-					slot->cmdidx,
-					0,
-					pkt->payload,
-					pkt->mh.len))) {
+    if (!slot->u.unit.node || (0 != (e = gpcc_net_send_packetx(slot->u.unit.node,
+							       SEGMENT_REQUEST_MSG,
+							       slot->cmdidx,
+							       0,
+							       pkt->payload,
+							       pkt->mh.len)))) {
 	evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
 	slot->u.unit.parentidx = 0;
@@ -594,7 +594,7 @@ static apr_status_t a_unit_failover(gpcc_event_t *ev, void *arg)
 		      seginfo[i].port,
 		      seginfo[i].dir,
 		      seginfo[i].haidx,
-		      seginfo[i].ha,
+		      (seginfo[i].ha ? seginfo[i].ha : "unknown"),
 		      seginfo[i].definedprimary,
 		      seginfo[i].isprimary,
 		      seginfo[i].valid);
