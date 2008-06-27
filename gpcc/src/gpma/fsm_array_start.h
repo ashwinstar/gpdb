@@ -159,7 +159,7 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 		      seginfo[i].port,
 		      seginfo[i].dir,
 		      seginfo[i].haidx,
-		      seginfo[i].ha,
+		      (seginfo[i].ha ? seginfo[i].ha : "unknown"),
 		      seginfo[i].definedprimary,
 		      seginfo[i].isprimary,
 		      seginfo[i].valid);
