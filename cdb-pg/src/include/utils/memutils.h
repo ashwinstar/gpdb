@@ -88,7 +88,6 @@ extern DLLIMPORT MemoryContext CurTransactionContext;
 extern DLLIMPORT MemoryContext QueryContext;
 extern DLLIMPORT MemoryContext PortalContext;
 
-
 /*
  * Memory-context-type-independent functions in mcxt.c
  */

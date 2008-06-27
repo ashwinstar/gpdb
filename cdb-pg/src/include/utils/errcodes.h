@@ -315,6 +315,7 @@
 #define ERRCODE_DISK_FULL					MAKE_SQLSTATE('5','3', '1','0','0')
 #define ERRCODE_OUT_OF_MEMORY				MAKE_SQLSTATE('5','3', '2','0','0')
 #define ERRCODE_TOO_MANY_CONNECTIONS		MAKE_SQLSTATE('5','3', '3','0','0')
+#define ERRCODE_GP_MEMPROT_KILL 			MAKE_SQLSTATE('5','3', '4','0','0')
 
 /* Class 54 - Program Limit Exceeded (class borrowed from DB2) */
 /* (this is for wired-in limits, not resource exhaustion problems) */

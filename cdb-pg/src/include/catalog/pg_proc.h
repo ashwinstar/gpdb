@@ -4726,7 +4726,7 @@ DATA(insert OID = 3011 (  bmoptions		   PGNSP PGUID 12 f f t f s 2 17 f "1009 16
 DESCR("btree(internal)");
 
 /* Fault injection */
-DATA(insert OID = 9999 (  gp_fault_inject		   PGNSP PGUID 12 f f t f i 2 23 f "23 23" _null_ _null_ _null_ gp_fault_inject - _null_ ));
+DATA(insert OID = 9999 (  gp_fault_inject		   PGNSP PGUID 12 f f t f v 2 20 f "23 20" _null_ _null_ _null_ gp_fault_inject - _null_ ));
 
 
 /*

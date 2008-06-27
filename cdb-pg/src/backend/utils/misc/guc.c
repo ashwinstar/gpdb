@@ -2752,27 +2752,23 @@ static struct config_int ConfigureNamesInt[] =
 		30000, 100, INT_MAX/1000, NULL, NULL
 	},
 
-#ifdef USE_FAULT_INJECTION
 	{
-		{"gp_fault_injection_flag1", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Greenplum fault injection test flag 1"), 
-		 NULL,
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		{"gp_vmem_protect_limit", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Virtual memory limit (in MB) of greenplum memory protection."),
+			NULL,
 		},
-		&gp_fault_injection_flag1,
-		0, 0, INT_MAX, NULL, NULL
+		&gp_vmem_protect_limit,
+		0, 0, INT_MAX / 2, NULL, NULL
 	},
 
 	{
-		{"gp_fault_injection_flag2", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Greenplum fault injection test flag 2"), 
-		 NULL,
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		{"gp_pmem_protect_limit", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Physical memory limit (in MB) of greenplum memory protection."),
+			NULL,
 		},
-		&gp_fault_injection_flag2,
-		0, 0, INT_MAX, NULL, NULL
+		&gp_pmem_protect_limit,
+		0, 0, INT_MAX / 2, NULL, NULL
 	},
-#endif
 
 	/* End-of-list marker */
 	{

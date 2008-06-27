@@ -445,7 +445,7 @@ AllocSetContextCreate(MemoryContext parent,
 		Size		blksize = MAXALIGN(minContextSize);
 		AllocBlock	block;
 
-		block = (AllocBlock) malloc(blksize);
+		block = (AllocBlock) gp_malloc(blksize);
 		if (block == NULL)
             MemoryContextError(ERRCODE_OUT_OF_MEMORY,
                                &context->header, CDB_MCXT_WHERE(&context->header),
@@ -544,13 +544,15 @@ AllocSetReset(MemoryContext context)
 		}
 		else
 		{
+			size_t freesz = block->endptr - (char *) block;
+
 			/* Normal case, release the block */
-            MemoryContextNoteFree(&set->header, block->endptr - (char *)block);
+            MemoryContextNoteFree(&set->header, freesz); 
 #ifdef CLOBBER_FREED_MEMORY
 			/* Wipe freed memory for debugging purposes */
 			memset(block, 0x7F, block->freeptr - ((char *) block));
 #endif
-			free(block);
+			gp_free(block, freesz);
 		}
 		block = next;
 	}
@@ -590,13 +592,14 @@ AllocSetDelete(MemoryContext context)
 	while (block != NULL)
 	{
 		AllocBlock	next = block->next;
+		size_t freesz = block->endptr - (char *) block;
 
-        MemoryContextNoteFree(&set->header, block->endptr - (char *)block);
+        MemoryContextNoteFree(&set->header, freesz); 
 #ifdef CLOBBER_FREED_MEMORY
 		/* Wipe freed memory for debugging purposes */
 		memset(block, 0x7F, block->freeptr - ((char *) block));
 #endif
-		free(block);
+		gp_free(block, freesz);
 		block = next;
 	}
 }
@@ -632,7 +635,7 @@ AllocSetAlloc(MemoryContext context, Size size)
 	{
 		chunk_size = MAXALIGN(size);
 		blksize = chunk_size + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
-		block = (AllocBlock) malloc(blksize);
+		block = (AllocBlock) gp_malloc(blksize);
 		if (block == NULL)
             MemoryContextError(ERRCODE_OUT_OF_MEMORY,
                                &set->header, CDB_MCXT_WHERE(&set->header),
@@ -791,7 +794,7 @@ AllocSetAlloc(MemoryContext context, Size size)
 			blksize <<= 1;
 
 		/* Try to allocate it */
-		block = (AllocBlock) malloc(blksize);
+		block = (AllocBlock) gp_malloc(blksize);
 
 		/*
 		 * We could be asking for pretty big blocks here, so cope if malloc
@@ -802,7 +805,7 @@ AllocSetAlloc(MemoryContext context, Size size)
 			blksize >>= 1;
 			if (blksize < required_size)
 				break;
-			block = (AllocBlock) malloc(blksize);
+			block = (AllocBlock) gp_malloc(blksize);
 		}
 
 		if (block == NULL)
@@ -897,6 +900,8 @@ AllocSetFree(MemoryContext context, void *pointer)
 		AllocBlock	block = set->blocks;
 		AllocBlock	prevblock = NULL;
 
+		size_t freesz;
+
 		while (block != NULL)
 		{
 			if (chunk == (AllocChunk) (((char *) block) + ALLOC_BLOCKHDRSZ))
@@ -917,12 +922,14 @@ AllocSetFree(MemoryContext context, void *pointer)
 			set->blocks = block->next;
 		else
 			prevblock->next = block->next;
-        MemoryContextNoteFree(&set->header, block->endptr - (char *)block);
+
+		freesz = block->endptr - (char *) block;
+        MemoryContextNoteFree(&set->header, freesz); 
 #ifdef CLOBBER_FREED_MEMORY
 		/* Wipe freed memory for debugging purposes */
 		memset(block, 0x7F, block->freeptr - ((char *) block));
 #endif
-		free(block);
+		gp_free(block, freesz);
 	}
 	else
 	{
@@ -1026,7 +1033,7 @@ AllocSetRealloc(MemoryContext context, void *pointer, Size size)
         oldblksize = block->endptr - (char *)block;
 		chksize = MAXALIGN(size);
 		blksize = chksize + ALLOC_BLOCKHDRSZ + ALLOC_CHUNKHDRSZ;
-		block = (AllocBlock) realloc(block, blksize);
+		block = (AllocBlock) gp_realloc(block, oldblksize, blksize);
 		if (block == NULL)
             MemoryContextError(ERRCODE_OUT_OF_MEMORY,
                                &set->header, CDB_MCXT_WHERE(&set->header),

@@ -480,7 +480,7 @@ static void shareinput_clean_lk_ctxt(ShareInput_Lk_Context *lk_ctxt)
 		lk_ctxt->del_done = false;
 	}
 
-	free (lk_ctxt);
+	gp_free (lk_ctxt, sizeof(ShareInput_Lk_Context));
 }
 
 static void XCallBack_ShareInput_FIFO(XactEvent ev, void* vp)
@@ -519,7 +519,7 @@ void *shareinput_reader_waitready(int share_id)
 	char a;
 	int asize;
 
-	ShareInput_Lk_Context *pctxt = malloc(sizeof(ShareInput_Lk_Context));
+	ShareInput_Lk_Context *pctxt = gp_malloc(sizeof(ShareInput_Lk_Context));
 
 	if(!pctxt)
 		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
@@ -590,7 +590,7 @@ void *shareinput_writer_notifyready(int share_id, int xslice)
 	char b;
 	int bsize;
 
-	ShareInput_Lk_Context *pctxt = malloc(sizeof(ShareInput_Lk_Context));
+	ShareInput_Lk_Context *pctxt = gp_malloc(sizeof(ShareInput_Lk_Context));
 
 	if(!pctxt)
 		ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),

@@ -217,6 +217,8 @@ extern int	VacuumCostDelay;
 extern int	VacuumCostBalance;
 extern bool VacuumCostActive;
 
+extern int gp_vmem_protect_limit;
+extern int gp_pmem_protect_limit;
 
 /* in tcop/postgres.c */
 extern void check_stack_depth(void);

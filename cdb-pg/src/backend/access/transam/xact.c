@@ -2654,6 +2654,12 @@ AbortTransaction(void)
 		QueryCancelCleanup = false;
 		cleanupIdleReaderGangs();
 	}
+
+	/* If memprot decides to kill process, make sure we destroy all processes
+	 * so that all mem/resource will be freed
+	 */
+	 if(elog_geterrcode() == ERRCODE_GP_MEMPROT_KILL)
+		 disconnectAndDestroyAllGangs();
 }
 
 /*

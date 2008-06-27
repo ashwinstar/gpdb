@@ -1641,14 +1641,6 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 	}
 #endif
 
-#ifdef USE_FAULT_INJECTION
-	if (gp_fault_injection_flag1 != 0)
-		appendPQExpBuffer(buffer, " -c gp_fault_injection_flag1=%d", gp_fault_injection_flag1); 
-
-	if (gp_fault_injection_flag2 != 0)
-		appendPQExpBuffer(buffer, " -c gp_fault_injection_flag2=%d", gp_fault_injection_flag2); 
-#endif
-
 	appendPQExpBuffer(buffer, " -c DateStyle=");
 	switch (DateStyle)
 	{

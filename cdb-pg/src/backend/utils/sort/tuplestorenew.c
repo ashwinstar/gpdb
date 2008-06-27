@@ -353,7 +353,7 @@ static void nts_return_free_page(NTupleStore *nts, NTupleStorePage *page)
 
 static inline void *check_malloc(int size)
 {
-	void *ptr = malloc(size);
+	void *ptr = gp_malloc(size);
 	if(!ptr)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -588,7 +588,7 @@ static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
 	while(p)
 	{
 		NTupleStorePage *pnext = nts_page_next(p); 
-		free(p);
+		gp_free(p, sizeof(NTupleStorePage));
 		p = pnext;
 	}
 
@@ -596,7 +596,7 @@ static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
 	while(p)
 	{
 		NTupleStorePage *pnext = nts_page_next(p); 
-		free(p);
+		gp_free(p, sizeof(NTupleStorePage));
 		p = pnext;
 	}
 
@@ -608,7 +608,7 @@ static void ntuplestore_cleanup(NTupleStore *ts, bool fNormal)
 			BufFileClose(ts->plobfile);
 	}
 
-	free(ts);
+	gp_free(ts, sizeof(NTupleStore));
 }
 
 static void XCallBack_NTS(XactEvent event, void *nts)

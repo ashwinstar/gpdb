@@ -110,3 +110,8 @@ int			VacuumCostBalance = 0;		/* working state for vacuum */
 bool		VacuumCostActive = false;
 
 int			GinFuzzySearchLimit = 0;
+
+/* Memory protection GUCs*/
+int gp_vmem_protect_limit = 0;
+int gp_pmem_protect_limit = 0;
+
