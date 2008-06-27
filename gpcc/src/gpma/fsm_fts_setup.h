@@ -298,7 +298,7 @@ apr_status_t a_fts_getaddress_reply(gpcc_event_t *ev, void *arg)
 	config_set(gpma.cfg, node, (const char *) ip);
 
 	for (j = 0 ; j < slot->u.fts.nseginfo ; j++) {
-	    if (strcmp(host, slot->u.fts.seginfo[j].hostname) == 0) { 
+	    if (slot->u.fts.seginfo[j].hostname && strcmp(host, slot->u.fts.seginfo[j].hostname) == 0) { 
 		slot->u.fts.seginfo[j].haidx = i;
 		slot->u.fts.seginfo[j].ha = apr_psprintf(slot->pool, "node.%d", i);
 	    }
