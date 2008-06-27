@@ -16,6 +16,7 @@
  *
  *-------------------------------------------------------------------------
  */
+#ifdef OLD_HASHAGG
 #include "postgres.h"
 
 #include "fmgr.h"
@@ -190,11 +191,11 @@ create_agg_hash_table(AggState *aggstate)
 	
 	ht = (HashAggTable*)palloc0(sizeof(HashAggTable));
 
-	ht->entry_cxt = mpool_create(aggstate->transcontext, 
-								 "HashAggTableContext",
-								 ALLOCSET_DEFAULT_MINSIZE,
-								 ALLOCSET_DEFAULT_INITSIZE,
-								 ALLOCSET_DEFAULT_MAXSIZE);
+	ht->entry_cxt = AllocSetContextCreate(aggstate->transcontext, 
+										  "HashAggTableContext",
+										  ALLOCSET_DEFAULT_MINSIZE,
+										  ALLOCSET_DEFAULT_INITSIZE,
+										  ALLOCSET_DEFAULT_MAXSIZE);
 	ht->nbucket = hats.nbuckets;
 	ht->buckets = (HashAggEntry**)palloc0(ht->nbucket * sizeof(HashAggEntry*));
 	ht->bloom = (uint64*)palloc0(ht->nbucket * sizeof(uint64));
@@ -1446,3 +1447,5 @@ agg_hash_table_stat_upd(HashAggTable *ht)
         }
     }
 }                               /* agg_hash_table_stat_upd */
+
+#endif

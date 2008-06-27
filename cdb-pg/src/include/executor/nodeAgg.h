@@ -15,6 +15,7 @@
 #define NODEAGG_H
 
 #include "nodes/execnodes.h"
+#include "cdb/cdbchunkbuf.h"
 
 extern int	ExecCountSlotsAgg(Agg *node);
 extern AggState *ExecInitAgg(Agg *node, EState *estate, int eflags);
@@ -26,7 +27,83 @@ extern Size hash_agg_entry_size(int numAggs);
 
 extern Datum aggregate_dummy(PG_FUNCTION_ARGS);
 
-/* MPP needs to see these in execHashAgg.c */
+/* MPP needs to see these in execHHashAgg.c */
+
+/*
+ * AggStatePerAggData - per-aggregate working state for the Agg scan
+ */
+typedef struct AggStatePerAggData
+{
+	/*
+	 * These values are set up during ExecInitAgg() and do not change
+	 * thereafter:
+	 */
+
+	/* Links to Aggref expr and state nodes this working state is for */
+	AggrefExprState *aggrefstate;
+	Aggref	   *aggref;
+
+	/* number of input arguments for aggregate */
+	int			numArguments;
+
+	/* Oids of transfer functions */
+	Oid			transfn_oid;
+	Oid         prelimfn_oid;
+	Oid			finalfn_oid;	/* may be InvalidOid */
+
+	/*
+	 * fmgr lookup data for transfer functions --- only valid when
+	 * corresponding oid is not InvalidOid.  Note in particular that fn_strict
+	 * flags are kept here.
+	 */
+	FmgrInfo	transfn;
+	FmgrInfo    prelimfn;
+	FmgrInfo	finalfn;
+
+	/*
+	 * Type of input data and Oid of sort operator to use for it; only
+	 * set/used when aggregate has DISTINCT flag.  (These are not used
+	 * directly by nodeAgg, but must be passed to the Tuplesort object.)
+	 */
+	Oid			inputType;
+	Oid			sortOperator;
+
+	/*
+	 * fmgr lookup data for input type's equality operator --- only set/used
+	 * when aggregate has DISTINCT flag.
+	 */
+	FmgrInfo	equalfn;
+
+	/*
+	 * initial value from pg_aggregate entry
+	 */
+	Datum		initValue;
+	bool		initValueIsNull;
+
+	/*
+	 * We need the len and byval info for the agg's input, result, and
+	 * transition data types in order to know how to copy/delete values.
+	 */
+	int16		inputtypeLen,
+				resulttypeLen,
+				transtypeLen;
+	bool		inputtypeByVal,
+				resulttypeByVal,
+				transtypeByVal;
+
+	/*
+	 * These values are working state that is initialized at the start of an
+	 * input tuple group and updated for each input tuple.
+	 *
+	 * For a simple (non DISTINCT) aggregate, we just feed the input values
+	 * straight to the transition function.  If it's DISTINCT, we pass the
+	 * input values into a Tuplesort object; then at completion of the input
+	 * tuple group, we scan the sorted values, eliminate duplicates, and run
+	 * the transition function on the rest.
+	 */
+
+	Tuplesortstate *sortstate;	/* sort object, if a DISTINCT agg */
+} AggStatePerAggData;
 
 /*
  * AggStatePerGroupData - per-aggregate-per-group working state
@@ -63,9 +140,11 @@ typedef struct AggStatePerGroupData
 extern void 
 initialize_aggregates(AggState *aggstate,
 					  AggStatePerAgg peragg,
-					  AggStatePerGroup pergroup);
+					  AggStatePerGroup pergroup,
+					  MemoryManagerContainer *mem_manager);
 extern void 
-advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup);
+advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup,
+				   MemoryManagerContainer *mem_manager);
 
 extern List *
 get_agg_hash_collist(AggState *aggstate);
@@ -80,6 +159,6 @@ extern Datum invoke_agg_trans_func(FmgrInfo transfn, int numargs,
 								   bool *transValueIsNull, bool transtypeByVal,
 								   int16 transtypeLen,
 								   FunctionCallInfoData *fcinfo, void *funcctx,
-								   MemoryContext transcontext, 
-								   MemoryContext tuplecontext);
+								   MemoryContext tuplecontext,
+								   MemoryManagerContainer *mem_manager);
 #endif   /* NODEAGG_H */

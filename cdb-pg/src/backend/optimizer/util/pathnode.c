@@ -1815,7 +1815,7 @@ create_unique_path(PlannerInfo *root,
 					 numCols, pathnode->rows,
 					 subpath->startup_cost,
 					 subpath->total_cost,
-					 rel->rows, 0.0, 0.0);
+					 rel->rows, 0.0, 0.0, hashentrysize, false);
 			if (agg_path.total_cost < sort_path.total_cost || 
                 (!enable_sort && !mpp_trying_fallback_plan))
             {

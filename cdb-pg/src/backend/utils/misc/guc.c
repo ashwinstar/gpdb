@@ -1225,7 +1225,7 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_hashagg_recalc_density", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Executor can recalculate grouping density based on pre-spill real density."),
+			gettext_noop("(Obsolete) Executor can recalculate grouping density based on pre-spill real density."),
 			NULL,
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
@@ -2651,8 +2651,18 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"gp_hashagg_default_nbatches", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Default number of batches for hashagg's (re-)spilling phrases"),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_hashagg_default_nbatches,
+		32, 4, 1000000, NULL, NULL
+	},
+
+	{
 		{"gp_hashagg_spillbatch_min", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Minimum number of spill batches of HashAgg"), 
+		 gettext_noop("(Obsolete) Minimum number of spill batches of HashAgg"), 
 		 gettext_noop("Controlling number of spill batches, if too small, hashagg may respill"),
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
@@ -2662,7 +2672,7 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"gp_hashagg_spillbatch_max", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Maximum number of spill batches of HashAgg"), 
+		 gettext_noop("(Obsolete) Maximum number of spill batches of HashAgg"), 
 		 gettext_noop("Controlling number of spill batches, if too big, hashagg spill I/O will be slow"), 
 		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
 		},
@@ -2698,16 +2708,6 @@ static struct config_int ConfigureNamesInt[] =
 		&gp_reject_percent_threshold,
 		300, 0, INT_MAX, NULL, NULL
 	},	
-
-	{
-		{"gp_use_mpool", PGC_USERSET, GP_ARRAY_TUNING,
-		 gettext_noop("Use mpool memory context"), 
-		 gettext_noop("Mpool is a faster memory allocator"), 
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
-		},
-		&gp_use_mpool,
-		0, 0, 1, NULL, NULL
-	},
 
 	{
 		{"gin_fuzzy_search_limit", PGC_USERSET, CLIENT_CONN_OTHER,
@@ -2908,7 +2908,7 @@ static struct config_real ConfigureNamesReal[] =
 
 	{
 		{"gp_hashagg_rewrite_limit", PGC_USERSET, QUERY_TUNING_OTHER,
-            gettext_noop("Planner will not choose hashed aggregation if "
+            gettext_noop("(Obsolete) Planner will not choose hashed aggregation if "
                          "expected number of extra passes exceeds limit.")
 		},
 		&gp_hashagg_rewrite_limit,

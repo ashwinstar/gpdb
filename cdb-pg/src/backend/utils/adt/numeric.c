@@ -3027,9 +3027,12 @@ numeric_avg_accum(PG_FUNCTION_ARGS)
 {
 	NumericAvgTransData *tr = (NumericAvgTransData *) PG_GETARG_BYTEA_P(0); 
 	Numeric newval = PG_GETARG_NUMERIC(1);
+	Datum result;
 
 	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
-	return numeric_avg_accum_decum(tr, newval, true);
+	result = numeric_avg_accum_decum(tr, newval, true);
+	pfree(newval);
+	return result;
 }
 
 Datum
@@ -3037,9 +3040,12 @@ numeric_avg_decum(PG_FUNCTION_ARGS)
 {
 	NumericAvgTransData *tr = (NumericAvgTransData *) PG_GETARG_BYTEA_P(0); 
 	Numeric newval = PG_GETARG_NUMERIC(1);
+	Datum result;
 
 	Assert(fcinfo->context && IS_AGG_EXECUTION_NODE(fcinfo->context));
-	return numeric_avg_accum_decum(tr, newval, false);
+	result = numeric_avg_accum_decum(tr, newval, false);
+	pfree(newval);
+	return result;
 }
 
 static Datum numeric_avg_amalg_demalg(NumericAvgTransData* tr0, NumericAvgTransData* tr1, bool amalg)

@@ -10,13 +10,14 @@
 #include "access/tupmacs.h"
 #include "access/transam.h"
 #include "access/tuptoaster.h"
-#include "catalog/pg_type.h" 
+#include "catalog/pg_type.h"
+#include "cdb/cdbchunkbuf.h"
 
 #include "cdb/cdbvars.h"
 
 #include "utils/debugbreak.h"
 
-/* Memory tuple forat:
+/* Memory tuple format:
  * 4 byte _mt_len,
  * 	highest bit always 1.  (if 0, means it is a heaptuple).
  * 	bit 2-29th is memtuple length, in bytes.  It is always 8

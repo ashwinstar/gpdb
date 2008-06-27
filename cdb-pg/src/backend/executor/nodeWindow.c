@@ -1909,6 +1909,7 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 					fmgr_info = &(funcstate->transfn);
 				}
 				
+				wstate->mem_manager.manager = wstate->transcontext;
 				funcstate->final_aggTransValue =
 					invoke_agg_trans_func(*fmgr_info,
 										  fmgr_info->fn_nargs - 1,
@@ -1918,8 +1919,8 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 										  funcstate->aggTranstypeByVal,
 										  funcstate->aggTranstypeLen,
 										  &fcinfo, (void *)wstate,
-										  wstate->transcontext,
-										  econtext->ecxt_per_tuple_memory);
+										  econtext->ecxt_per_tuple_memory,
+										  &(wstate->mem_manager));
 				funcstate->final_aggShouldFree = true;
 			}
 
@@ -1960,6 +1961,7 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 					fcinfo.arg[1] = funcstate->aggTransValue;
 					fcinfo.argnull[1] = funcstate->aggTransValueIsNull;
 
+					wstate->mem_manager.manager = wstate->transcontext;
 					funcstate->final_aggTransValue =
 						invoke_agg_trans_func(funcstate->prelimfn,
 											  funcstate->prelimfn.fn_nargs - 1,
@@ -1969,8 +1971,8 @@ computeTransValuesThroughScan(WindowStatePerLevel level_state,
 											  funcstate->aggTranstypeByVal,
 											  funcstate->aggTranstypeLen,
 											  &fcinfo, (void *)wstate,
-											  wstate->transcontext,
-											  econtext->ecxt_per_tuple_memory);
+											  econtext->ecxt_per_tuple_memory,
+											  &(wstate->mem_manager));
 					funcstate->final_aggShouldFree = true;
 				}
 				else
@@ -2200,6 +2202,8 @@ computeFrameValue(WindowStatePerLevel level_state,
 			
 				if (has_tuples &&
 					(lead_num_not_nulls - trail_num_not_nulls > 0))
+				{
+					wstate->mem_manager.manager = wstate->transcontext;
 					funcstate->final_aggTransValue =
 						invoke_agg_trans_func(funcstate->invprelimfn,
 											  funcstate->invprelimfn.fn_nargs - 1,
@@ -2209,8 +2213,10 @@ computeFrameValue(WindowStatePerLevel level_state,
 											  funcstate->aggTranstypeByVal,
 											  funcstate->aggTranstypeLen,
 											  &fcinfo, (void *)wstate,
-											  wstate->transcontext,
-											  econtext->ecxt_per_tuple_memory);
+											  econtext->ecxt_per_tuple_memory,
+											  &(wstate->mem_manager));
+				}
+				
 				else
 				{
 					funcstate->final_aggTransValue = funcstate->aggInitValue;
@@ -3129,6 +3135,7 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 
 	if (funcstate->isAgg)
 	{
+		wstate->mem_manager.manager = wstate->transcontext;
 		funcstate->aggTransValue =
 			invoke_agg_trans_func(funcstate->transfn,
 								  funcstate->numargs,
@@ -3138,8 +3145,8 @@ add_tuple_to_trans(WindowStatePerFunction funcstate, WindowState *wstate,
 								  funcstate->aggTranstypeByVal,
 								  funcstate->aggTranstypeLen,
 								  &fcinfo, (void *)wstate,
-								  wstate->transcontext,
-								  econtext->ecxt_per_tuple_memory);
+								  econtext->ecxt_per_tuple_memory,
+								  &(wstate->mem_manager));
 	}
 	else /* ordinary window function */
 	{
@@ -5655,6 +5662,10 @@ ExecInitWindow(Window *node, EState *estate, int eflags)
 
 	/* Frame initialisation can take place now */	
 	init_frames(wstate);
+
+	wstate->mem_manager.alloc = cxt_alloc;
+	wstate->mem_manager.free = cxt_free;
+	wstate->mem_manager.manager = NULL;
 
 	return wstate;
 }

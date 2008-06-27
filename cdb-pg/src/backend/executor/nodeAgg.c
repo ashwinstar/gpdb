@@ -80,7 +80,11 @@
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
+#ifdef OLD_HASHAGG
 #include "executor/execHashagg.h"
+#else
+#include "executor/execHHashagg.h"
+#endif
 #include "executor/nodeAgg.h"
 #include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
@@ -105,85 +109,11 @@
 #endif
 
 /*
- * AggStatePerAggData - per-aggregate working state for the Agg scan
- */
-typedef struct AggStatePerAggData
-{
-	/*
-	 * These values are set up during ExecInitAgg() and do not change
-	 * thereafter:
-	 */
-
-	/* Links to Aggref expr and state nodes this working state is for */
-	AggrefExprState *aggrefstate;
-	Aggref	   *aggref;
-
-	/* number of input arguments for aggregate */
-	int			numArguments;
-
-	/* Oids of transfer functions */
-	Oid			transfn_oid;
-	Oid			finalfn_oid;	/* may be InvalidOid */
-
-	/*
-	 * fmgr lookup data for transfer functions --- only valid when
-	 * corresponding oid is not InvalidOid.  Note in particular that fn_strict
-	 * flags are kept here.
-	 */
-	FmgrInfo	transfn;
-	FmgrInfo	finalfn;
-
-	/*
-	 * Type of input data and Oid of sort operator to use for it; only
-	 * set/used when aggregate has DISTINCT flag.  (These are not used
-	 * directly by nodeAgg, but must be passed to the Tuplesort object.)
-	 */
-	Oid			inputType;
-	Oid			sortOperator;
-
-	/*
-	 * fmgr lookup data for input type's equality operator --- only set/used
-	 * when aggregate has DISTINCT flag.
-	 */
-	FmgrInfo	equalfn;
-
-	/*
-	 * initial value from pg_aggregate entry
-	 */
-	Datum		initValue;
-	bool		initValueIsNull;
-
-	/*
-	 * We need the len and byval info for the agg's input, result, and
-	 * transition data types in order to know how to copy/delete values.
-	 */
-	int16		inputtypeLen,
-				resulttypeLen,
-				transtypeLen;
-	bool		inputtypeByVal,
-				resulttypeByVal,
-				transtypeByVal;
-
-	/*
-	 * These values are working state that is initialized at the start of an
-	 * input tuple group and updated for each input tuple.
-	 *
-	 * For a simple (non DISTINCT) aggregate, we just feed the input values
-	 * straight to the transition function.  If it's DISTINCT, we pass the
-	 * input values into a Tuplesort object; then at completion of the input
-	 * tuple group, we scan the sorted values, eliminate duplicates, and run
-	 * the transition function on the rest.
-	 */
-
-	Tuplesortstate *sortstate;	/* sort object, if a DISTINCT agg */
-} AggStatePerAggData;
-
-/*
+ * AggStatePerAggData -- per-aggregate working state
  * AggStatePerGroupData - per-aggregate-per-group working state
  *
- * Definition moved to nodeAgg.c to provide visibility to execHashagg.c
+ * Definition moved to nodeAgg.c to provide visibility to execHHashagg.c
  */
-
 
 
 /*
@@ -202,9 +132,10 @@ typedef struct AggHashEntryData
 } AggHashEntryData;				/* VARIABLE LENGTH STRUCT */
 
 static void advance_transition_function(AggState *aggstate,
-							AggStatePerAgg peraggstate,
-							AggStatePerGroup pergroupstate,
-							FunctionCallInfoData *fcinfo);
+										AggStatePerAgg peraggstate,
+										AggStatePerGroup pergroupstate,
+										FunctionCallInfoData *fcinfo,
+										MemoryManagerContainer *mem_manager);
 static void process_sorted_aggregate(AggState *aggstate,
 						 AggStatePerAgg peraggstate,
 						 AggStatePerGroup pergroupstate);
@@ -218,15 +149,63 @@ static TupleTableSlot *agg_retrieve_direct(AggState *aggstate);
 static TupleTableSlot *agg_retrieve_hash_table(AggState *aggstate);
 static void ExecAggExplainEnd(PlanState *planstate, struct StringInfoData *buf);
 
+static Datum
+datumCopyWithMemManager(Datum oldvalue, Datum value, bool typByVal, int typLen,
+						MemoryManagerContainer *mem_manager)
+{
+	Datum		res;
+
+	if (typByVal)
+		res = value;
+	else
+	{
+		Size realSize;
+		Size old_realSize = 0;
+		char *s;
+
+		if (DatumGetPointer(value) == NULL)
+			return PointerGetDatum(NULL);
+
+		if (DatumGetPointer(oldvalue) != NULL)
+			old_realSize = datumGetSize(oldvalue, typByVal, typLen);
+		
+		realSize = datumGetSize(value, typByVal, typLen);
+
+		if (old_realSize == 0 || old_realSize < realSize)
+		{
+			int alloc_size = mem_manager->realloc_ratio * old_realSize;
+			if (alloc_size < realSize)
+				alloc_size = realSize;
+			
+			if (mem_manager->free)
+			{
+				(*mem_manager->free)(mem_manager->manager, DatumGetPointer(oldvalue));
+			}
+			
+			s = (char *) (*mem_manager->alloc)(mem_manager->manager, alloc_size);
+		}
+			   
+		else
+			s = (char *) DatumGetPointer(oldvalue);
+		
+		memcpy(s, DatumGetPointer(value), realSize);
+		res = PointerGetDatum(s);
+	}
+	return res;
+}
+
 /*
  * Initialize all aggregates for a new group of input values.
  *
  * When called, CurrentMemoryContext should be the per-query context.
+ *
+ * Note that the memory allocation is done through provided memory manager.
  */
 void
 initialize_aggregates(AggState *aggstate,
 					  AggStatePerAgg peragg,
-					  AggStatePerGroup pergroup)
+					  AggStatePerGroup pergroup,
+					  MemoryManagerContainer *mem_manager)
 {
 	int			aggno;
 
@@ -277,18 +256,6 @@ initialize_aggregates(AggState *aggstate,
 		}
 
 		/*
-		 * If we are reinitializing after a group boundary, we have to free
-		 * any prior transValue to avoid memory leakage.  We must check not
-		 * only the isnull flag but whether the pointer is NULL; since
-		 * pergroupstate is initialized with palloc0, the initial condition
-		 * has isnull = 0 and null pointer.
-		 */
-		if (!peraggstate->transtypeByVal &&
-			!pergroupstate->transValueIsNull &&
-			DatumGetPointer(pergroupstate->transValue) != NULL)
-			pfree(DatumGetPointer(pergroupstate->transValue));
-
-		/*
 		 * (Re)set transValue to the initial value.
 		 *
 		 * Note that when the initial value is pass-by-ref, we must copy it
@@ -298,13 +265,12 @@ initialize_aggregates(AggState *aggstate,
 			pergroupstate->transValue = peraggstate->initValue;
 		else
 		{
-			MemoryContext oldContext;
-
-			oldContext = MemoryContextSwitchTo(aggstate->transcontext);
-			pergroupstate->transValue = datumCopy(peraggstate->initValue,
-												  peraggstate->transtypeByVal,
-												  peraggstate->transtypeLen);
-			MemoryContextSwitchTo(oldContext);
+			pergroupstate->transValue =
+				datumCopyWithMemManager(0,
+										peraggstate->initValue,
+										peraggstate->transtypeByVal,
+										peraggstate->transtypeLen,
+										mem_manager);
 		}
 		pergroupstate->transValueIsNull = peraggstate->initValueIsNull;
 
@@ -332,7 +298,8 @@ static void
 advance_transition_function(AggState *aggstate,
 							AggStatePerAgg peraggstate,
 							AggStatePerGroup pergroupstate,
-							FunctionCallInfoData *fcinfo)
+							FunctionCallInfoData *fcinfo,
+							MemoryManagerContainer *mem_manager)
 {
 	pergroupstate->transValue = 
 		invoke_agg_trans_func(peraggstate->transfn, 
@@ -342,8 +309,9 @@ advance_transition_function(AggState *aggstate,
 							  &(pergroupstate->transValueIsNull),
 							  peraggstate->transtypeByVal,
 							  peraggstate->transtypeLen,
-							  fcinfo, (void *)aggstate, aggstate->transcontext, 
-							  aggstate->tmpcontext->ecxt_per_tuple_memory);
+							  fcinfo, (void *)aggstate,
+							  aggstate->tmpcontext->ecxt_per_tuple_memory,
+							  mem_manager);
 }
 
 Datum
@@ -351,7 +319,8 @@ invoke_agg_trans_func(FmgrInfo transfn, int numargs, Datum transValue,
 					  bool *noTransvalue, bool *transValueIsNull,
 					  bool transtypeByVal, int16 transtypeLen, 
 					  FunctionCallInfoData *fcinfo, void *funcctx,
-					  MemoryContext transcontext, MemoryContext tuplecontext)
+					  MemoryContext tuplecontext,
+					  MemoryManagerContainer *mem_manager)
 {
 	MemoryContext oldContext;
 	Datum		newVal;
@@ -379,13 +348,12 @@ invoke_agg_trans_func(FmgrInfo transfn, int numargs, Datum transValue,
 			 * We must copy the datum into transcontext if it is pass-by-ref.
 			 * We do not need to pfree the old transValue, since it's NULL.
 			 */
-			oldContext = MemoryContextSwitchTo(transcontext);
-			newVal = datumCopy(fcinfo->arg[1], transtypeByVal,
-							   transtypeLen);
+			newVal = datumCopyWithMemManager(transValue, fcinfo->arg[1], transtypeByVal,
+											 transtypeLen, mem_manager);
 			*transValueIsNull = false;
 			*noTransvalue = false;
 			fcinfo->isnull = false;
-			MemoryContextSwitchTo(oldContext);
+
 			return newVal;
 		}
 		if (*transValueIsNull)
@@ -425,11 +393,9 @@ invoke_agg_trans_func(FmgrInfo transfn, int numargs, Datum transValue,
 	{
 		if (!fcinfo->isnull)
 		{
-			MemoryContextSwitchTo(transcontext);
-			newVal = datumCopy(newVal, transtypeByVal, transtypeLen);
+			newVal = datumCopyWithMemManager(transValue, newVal, transtypeByVal,
+											 transtypeLen, mem_manager);
 		}
-		if (!(*transValueIsNull))
-			pfree(DatumGetPointer(transValue));
 	}
 
 	*transValueIsNull = fcinfo->isnull;
@@ -447,7 +413,8 @@ invoke_agg_trans_func(FmgrInfo transfn, int numargs, Datum transValue,
  * When called, CurrentMemoryContext should be the per-query context.
  */
 void
-advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup)
+advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup,
+				   MemoryManagerContainer *mem_manager)
 {
 	ExprContext *econtext = aggstate->tmpcontext;
 	int			aggno;
@@ -474,7 +441,7 @@ advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup)
 			ExprState  *argstate = (ExprState *) lfirst(arg);
 
 			fcinfo.arg[i] = ExecEvalExpr(argstate, econtext,
-										 fcinfo.argnull + i, NULL);
+										 &fcinfo.argnull[i], NULL);
 			i++;
 		}
 
@@ -493,7 +460,7 @@ advance_aggregates(AggState *aggstate, AggStatePerGroup pergroup)
 		else
 		{
 			advance_transition_function(aggstate, peraggstate, pergroupstate,
-										&fcinfo);
+										&fcinfo, mem_manager);
 		}
 	}
 }
@@ -558,7 +525,7 @@ process_sorted_aggregate(AggState *aggstate,
 		else
 		{
 			advance_transition_function(aggstate, peraggstate, pergroupstate,
-										&fcinfo);
+										&fcinfo, &(aggstate->mem_manager));
 			/* forget the old value, if any */
 			if (haveOldVal && !peraggstate->inputtypeByVal)
 				pfree(DatumGetPointer(oldVal));
@@ -738,53 +705,6 @@ hash_agg_entry_size(int numAggs)
 	entrysize += 3 * sizeof(void *);
 	return entrysize;
 }
-#if 0 /* Not used by MPP */
-/*
- * Find or create a hashtable entry for the tuple group containing the
- * given tuple.
- *
- * When called, CurrentMemoryContext should be the per-query context.
- */
-static AggHashEntry
-lookup_hash_entry(AggState *aggstate, TupleTableSlot *inputslot)
-{
-	TupleTableSlot *hashslot = aggstate->hashslot;
-	ListCell   *l;
-	AggHashEntry entry;
-	bool		isnew;
-
-	/* if first time through, initialize hashslot by cloning input slot */
-	if (hashslot->tts_tupleDescriptor == NULL)
-	{
-		ExecSetSlotDescriptor(hashslot, inputslot->tts_tupleDescriptor);
-		/* Make sure all unused columns are NULLs */
-		ExecStoreAllNullTuple(hashslot);
-	}
-
-	/* transfer just the needed columns into hashslot */
-	slot_getsomeattrs(inputslot, linitial_int(aggstate->hash_needed));
-	foreach(l, aggstate->hash_needed)
-	{
-		int			varNumber = lfirst_int(l) - 1;
-
-		hashslot->tts_values[varNumber] = inputslot->tts_values[varNumber];
-		hashslot->tts_isnull[varNumber] = inputslot->tts_isnull[varNumber];
-	}
-
-	/* find or create the hashtable entry using the filtered tuple */
-	entry = (AggHashEntry) LookupTupleHashEntry(aggstate->hashtable,
-												hashslot,
-												&isnew);
-
-	if (isnew)
-	{
-		/* initialize aggregates for new tuple group */
-		initialize_aggregates(aggstate, aggstate->peragg, entry->pergroup);
-	}
-
-	return entry;
-}
-#endif /* Not used by MPP */
 
 /*
  * ExecAgg -
@@ -852,14 +772,31 @@ ExecAgg(AggState *node)
 		 */
 		for (;;)
 		{
-			tuple = agg_retrieve_hash_table(node);
-			node->agg_done = false; /* Not done 'til batches used up. */
-		
-			if (tuple != NULL)
-				return tuple;
+			if (!node->hhashtable->is_spilling)
+			{
+				tuple = agg_retrieve_hash_table(node);
+				node->agg_done = false; /* Not done 'til batches used up. */
+				
+				if (tuple != NULL)
+					return tuple;
+			}
 		
 			switch (node->hhashtable->state)
 			{
+#ifndef OLD_HASHAGG
+				case HASHAGG_BETWEEN_PASSES:
+					Assert(!streaming);
+					if (agg_hash_next_pass(node))
+					{
+						node->hhashtable->state = HASHAGG_BETWEEN_PASSES;
+						continue;
+					}
+					node->hhashtable->state = HASHAGG_END_OF_PASSES;
+					/*
+					 * pass through. Be sure that the next case statment
+					 * is HASHAGG_END_OF_PASSES.
+					 */
+#else
 				case HASHAGG_BETWEEN_PASSES:
 					Assert(!streaming);
 					if (!agg_hash_next_pass(node))
@@ -876,17 +813,20 @@ ExecAgg(AggState *node)
 						node->hhashtable->state = HASHAGG_BETWEEN_PASSES;
 					continue;
 				
+#endif
+
+				case HASHAGG_END_OF_PASSES:
+					node->agg_done = true;
+					return NULL;
+
 				case HASHAGG_STREAMING:
 					Assert(streaming);
 					if ( !agg_hash_stream(node) )
 						node->hhashtable->state = HASHAGG_END_OF_PASSES;
 					continue;
 
-				case HASHAGG_END_OF_PASSES:
-					node->agg_done = true;
-					return NULL;
-			
 				case HASHAGG_BEFORE_FIRST_PASS:
+				default:
 					elog(ERROR,"hybrid hash aggregation sequencing error");
 			}
 		}
@@ -1165,7 +1105,7 @@ agg_retrieve_direct(AggState *aggstate)
 			/*
 			 * Initialize working state for a new input tuple group
 			 */
-			initialize_aggregates(aggstate, peragg, pergroup);
+			initialize_aggregates(aggstate, peragg, pergroup, &(aggstate->mem_manager));
 		}
 
 		/* Process the remaining tuples in the new group. */
@@ -1225,7 +1165,7 @@ agg_retrieve_direct(AggState *aggstate)
 					if (!aggstate->has_partial_agg)
 					{
 						has_partial_agg = true;
-						advance_aggregates(aggstate, pergroup);
+						advance_aggregates(aggstate, pergroup, &(aggstate->mem_manager));
 					}
 
 					/* Reset per-input-tuple context after each tuple */
@@ -1303,7 +1243,7 @@ agg_retrieve_direct(AggState *aggstate)
 							{
 								has_partial_agg = true;
 								tmpcontext->ecxt_scantuple = outerslot;
-								advance_aggregates(aggstate, pergroup);
+								advance_aggregates(aggstate, pergroup, &(aggstate->mem_manager));
 							}
 							
 							passthru_ready = true;
@@ -1337,13 +1277,13 @@ agg_retrieve_direct(AggState *aggstate)
 			 * and prepare the aggregate value.
 			 */
 			ResetExprContext(econtext);
-			initialize_aggregates(aggstate, peragg, perpassthru);
+			initialize_aggregates(aggstate, peragg, perpassthru, &(aggstate->mem_manager));
 
 			/* finalize the pass-through tuple */
 			ResetExprContext(tmpcontext);
 			tmpcontext->ecxt_scantuple = outerslot;
 
-			advance_aggregates(aggstate, perpassthru);
+			advance_aggregates(aggstate, perpassthru, &(aggstate->mem_manager));
 		}
 		
 
@@ -1542,7 +1482,11 @@ agg_retrieve_hash_table(AggState *aggstate)
 	 */
 	while (!aggstate->agg_done)
 	{
+#ifndef OLD_HASHAGG
+		HashAggEntry *entry = agg_hash_iter(aggstate);
+#else
 		HashAggEntry *entry = agg_hash_iter(aggstate->hhashtable);
+#endif
 			
 		if (entry == NULL)
 		{
@@ -1556,9 +1500,16 @@ agg_retrieve_hash_table(AggState *aggstate)
 		 * Store the copied first input tuple in the tuple table slot reserved
 		 * for it, so that it can be used in ExecProject.
 		 */
+#ifndef OLD_HASHAGG
+		ExecStoreMemTuple((MemTuple)entry->tuple_and_aggs, firstSlot, false);
+		pergroup = (AggStatePerGroup)((char *)entry->tuple_and_aggs + 
+					      MAXALIGN(memtuple_get_size((MemTuple)entry->tuple_and_aggs,
+									 aggstate->hashslot->tts_mt_bind)));
+#else
 		ExecStoreMemTuple(entry->memtuple, firstSlot, false);
 
 		pergroup = entry->pergroup;
+#endif
 
 		/*
 		 * Finalize each aggregate calculation, and stash results in the
@@ -1846,7 +1797,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		Oid			transfn_oid = InvalidOid,
 					finalfn_oid = InvalidOid;
 		Expr	   *transfnexpr,
-				   *finalfnexpr;
+				   *finalfnexpr,
+				   *prelimfnexpr;
 		Datum		textInitVal;
 		int			i;
 		ListCell   *lc;
@@ -1930,6 +1882,8 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 			break;
 		}
 
+		peraggstate->prelimfn_oid = aggform->aggprelimfn;
+
 		/* Check that aggregate owner has permission to call component fns */
 		{
 			HeapTuple	procTuple;
@@ -1957,6 +1911,14 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 					aclcheck_error(aclresult, ACL_KIND_PROC,
 								   get_func_name(finalfn_oid));
 			}
+			if (OidIsValid(peraggstate->prelimfn_oid))
+			{
+				aclresult = pg_proc_aclcheck(peraggstate->prelimfn_oid, aggOwner,
+											 ACL_EXECUTE);
+				if (aclresult != ACLCHECK_OK)
+					aclcheck_error(aclresult, ACL_KIND_PROC,
+								   get_func_name(peraggstate->prelimfn_oid));
+			}
 		}
 
 		/* check if the transition type is polymorphic and if so resolve it */
@@ -1976,7 +1938,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 								InvalidOid /* invprelim */,
 								&transfnexpr,
 								&finalfnexpr,
-								NULL,
+								&prelimfnexpr,
 								NULL,
 								NULL);
 
@@ -1987,6 +1949,12 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		{
 			fmgr_info(finalfn_oid, &peraggstate->finalfn);
 			peraggstate->finalfn.fn_expr = (Node *) finalfnexpr;
+		}
+
+		if (OidIsValid(peraggstate->prelimfn_oid))
+		{
+			fmgr_info(peraggstate->prelimfn_oid, &peraggstate->prelimfn);
+			peraggstate->prelimfn.fn_expr = (Node *) prelimfnexpr;
 		}
 
 		get_typlenbyval(aggref->aggtype,
@@ -2080,6 +2048,12 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->num_attrs = 0;
 	aggstate->prev_aggslot = NULL;
 	aggstate->num_repeats = 0;
+
+	/* Set the default memory manager */
+	aggstate->mem_manager.alloc = cxt_alloc;
+	aggstate->mem_manager.free = cxt_free;
+	aggstate->mem_manager.manager = aggstate->transcontext;
+	aggstate->mem_manager.realloc_ratio = 1;
 
 	return aggstate;
 }

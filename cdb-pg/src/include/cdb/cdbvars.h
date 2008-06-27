@@ -712,6 +712,11 @@ extern bool gp_hashagg_recalc_density;
 /* If we use two stage hashagg, we can stream the bottom half */
 extern bool gp_hashagg_streambottom; 
 
+/* The default number of batches to use when the hybrid hashed aggregation
+ * algorithm (re-)spills in-memory groups to disk.
+ */
+extern int gp_hashagg_default_nbatches;
+
 /* Hashagg spill: minimum number of spill batches */
 extern int gp_hashagg_spillbatch_min;
 /* Hashagg spill: max number of spill batches */
@@ -722,9 +727,6 @@ extern int gp_hashjoin_bloomfilter;
 
 /* Analyze tools */
 extern int gp_motion_slice_noop;
-
-/* Memory context mpool */
-extern int gp_use_mpool;
 
 /* Disable setting of hint-bits while reading db pages */
 extern bool gp_disable_tuple_hints;

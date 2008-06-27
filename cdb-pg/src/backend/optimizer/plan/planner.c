@@ -21,7 +21,7 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
-#include "executor/execHashagg.h"
+#include "executor/execHHashagg.h"
 #include "executor/nodeAgg.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -1975,7 +1975,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 	 * don't choose hashed grouping here, we make note in agg_counts to 
 	 * indicate whether DQAs are the only reason.
 	 */
-	hash_ok = enable_hashagg && hash_safe_grouping(root);
+	hash_ok = enable_hashagg && hash_safe_grouping(root) && !agg_counts->missing_prelimfunc;
 	
 	has_dqa = agg_counts->numDistinctAggs != 0;
 
@@ -2042,7 +2042,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 				 numGroupCols, dNumGroups,
 				 cheapest_path->startup_cost, cheapest_path->total_cost,
 				 cheapest_path_rows, hash_info.workmem_per_entry,
-				 hash_info.spill ? hash_info.nbatches : 1.0);
+				 hash_info.nbatches, hash_info.hashentry_width, false);
 		/* Result of hashed agg is always unsorted */
 		if (root->sort_pathkeys)
 			cost_sort(&hashed_p, root, root->sort_pathkeys, hashed_p.total_cost,
@@ -2071,7 +2071,7 @@ choose_hashed_grouping(PlannerInfo *root, double tuple_fraction,
 			cost_agg(&sorted_p, root, AGG_SORTED, agg_counts->numAggs,
 					 numGroupCols, dNumGroups,
 					 sorted_p.startup_cost, sorted_p.total_cost,
-					 cheapest_path_rows, 0.0, 0.0);
+					 cheapest_path_rows, 0.0, 0.0, 0.0, false);
 		else
 			cost_group(&sorted_p, root, numGroupCols, dNumGroups,
 					   sorted_p.startup_cost, sorted_p.total_cost,

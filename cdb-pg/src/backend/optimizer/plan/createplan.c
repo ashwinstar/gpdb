@@ -23,7 +23,7 @@
 
 #include "catalog/pg_type.h"    /* INT8OID */
 #include "nodes/makefuncs.h"
-#include "executor/execHashagg.h"
+#include "executor/execHHashagg.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo_random.h"
@@ -3965,7 +3965,7 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 				 lefttree->startup_cost,
 				 lefttree->total_cost,
 				 lefttree->plan_rows, hash_info.workmem_per_entry,
-				 hash_info.spill ? hash_info.nbatches : 1.0);
+				 hash_info.nbatches, hash_info.hashentry_width, streaming);
 	}
 	else
 		cost_agg(&agg_path, root,
@@ -3973,7 +3973,7 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 				 numGroupCols, numGroups,
 				 lefttree->startup_cost,
 				 lefttree->total_cost,
-				 lefttree->plan_rows, 0.0, 0.0);
+				 lefttree->plan_rows, 0.0, 0.0, 0.0, false);
 
 	plan->startup_cost = agg_path.startup_cost;
 	plan->total_cost = agg_path.total_cost;

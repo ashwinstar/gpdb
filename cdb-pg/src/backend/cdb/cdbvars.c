@@ -193,6 +193,7 @@ bool		gp_enable_sequential_window_plans = FALSE;
 double		gp_hashagg_rewrite_limit = 1;
 bool		gp_hashagg_recalc_density = true;
 bool 		gp_hashagg_streambottom = true;
+int         gp_hashagg_default_nbatches = 32;
 
 bool		gp_enable_motion_deadlock_sanity = FALSE; /* planning time sanity check */
 bool		gp_adjust_selectivity_for_outerjoins = TRUE;
@@ -228,9 +229,6 @@ bool		gp_enable_partitioned_table_catalog = FALSE;
 
 bool		gp_enable_tablespaces = FALSE;
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
-
-/* Greenplum memory context use mpool */
-int 		gp_use_mpool = 0;
 
 /* Disable setting of tuple hints while reading */
 bool		gp_disable_tuple_hints = true;

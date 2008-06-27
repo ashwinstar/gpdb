@@ -22,6 +22,8 @@
 #include "access/appendonlyam.h"
 #include "access/relscan.h"
 #include "cdb/cdbhash.h"
+#include "cdb/cdbchunkbuf.h"
+#include "utils/memutils.h"
 #include "fmgr.h"                       /* ExprDoneCond, SetFunctionReturnMode */
 #include "lib/dllist.h"
 #include "nodes/params.h"
@@ -572,6 +574,45 @@ typedef HASH_SEQ_STATUS TupleHashIterator;
 	} while (0)
 #define ScanTupleHashTable(iter) \
 	((TupleHashEntry) hash_seq_search(iter))
+
+/* Abstraction of different memory management calls */
+typedef struct MemoryManagerContainer
+{
+	void *manager; /* memory manager instance */
+	void *(*alloc)(void *manager, Size len);
+	void (*free)(void *manager, void *pointer);
+	/*
+	 * If existing space is too small, the realloced space is how many
+	 * times of the existing one.
+	 */
+	int realloc_ratio;
+} MemoryManagerContainer;
+
+static inline void *cxt_alloc(void *manager, Size len)
+{
+	return MemoryContextAlloc((MemoryContext)manager, len);
+}
+
+static inline void cxt_free(void *manager, void *pointer)
+{
+	if (pointer != NULL)
+		pfree(pointer);
+}
+
+static inline void *chunkbuf_alloc(void *manager, Size len)
+{
+	return CdbChunkBuf_Alloc((CdbChunkBuf *)manager, len);
+}
+
+static inline void chunkbuf_free(void *manager, void *pointer)
+{
+	/* no op */
+}
+
+static inline void *mpool_cxt_alloc(void *manager, Size len)
+{
+	return mpool_alloc((MPool *)manager, len);
+}
 
 
 /* ----------------------------------------------------------------
@@ -1662,6 +1703,7 @@ typedef struct AggState
 	/* MPP */
 	MemoryContext transcontext;	/* memory context for less long-lived data */
 	struct HashAggTable *hhashtable;
+	MemoryManagerContainer mem_manager;
 
 	/* ROLLUP */
 	AggStatePerGroup perpassthru; /* per-Aggref-per-pass-through-tuple working state */
@@ -1726,6 +1768,7 @@ typedef struct WindowState
 	 * reset it when there's a key change at that level
 	 */
 	MemoryContext transcontext;
+	MemoryManagerContainer mem_manager;
 
 	/* framed window functions need access to their frames */
 	WindowStatePerFunction cur_funcstate;

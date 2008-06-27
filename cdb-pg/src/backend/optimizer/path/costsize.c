@@ -1095,7 +1095,9 @@ cost_agg(Path *path, PlannerInfo *root,
 		 AggStrategy aggstrategy, int numAggs,
 		 int numGroupCols, double numGroups,
 		 Cost input_startup_cost, Cost input_total_cost,
-		 double input_tuples, double input_width, double hash_batches)
+		 double input_tuples, double input_width,
+		 double hash_batches, double hashentry_width,
+		 bool hash_streaming)
 {
 	Cost		startup_cost;
 	Cost		total_cost;
@@ -1140,6 +1142,7 @@ cost_agg(Path *path, PlannerInfo *root,
 	else
 	{
 		double spilled_bytes = 0.0;
+		double spilled_groups = 0.0;
 
 		/* must be AGG_HASHED */
 		startup_cost = input_total_cost;
@@ -1147,17 +1150,44 @@ cost_agg(Path *path, PlannerInfo *root,
 		startup_cost += cpu_operator_cost * input_tuples * numAggs;
 
 		/* account for some disk I/O if we expect to spill */
-		if (hash_batches > 2)
+		if (hash_batches > 0)
 		{
-			spilled_bytes = ((hash_batches - 1) / hash_batches) * input_tuples * input_width;
+			/*
+			 * Estimate the number of spilled groups. We know that it is between
+			 * numGroups and input_tuples. However, we do not have a good measure
+			 * to know the exact number. Currently, we choose 0.5 of 
+			 * (input_tuples - numGroups) as additional groups to be spilled.
+			 */
+			spilled_groups = numGroups + (input_tuples - numGroups) * 0.5;
 
-			/* startup gets charged the write-cost */
-			startup_cost += seq_page_cost * (spilled_bytes / BLCKSZ);
+			if (!hash_streaming)
+			{
+				double spilled_bytes_for_batch =
+					(spilled_groups * hashentry_width) / hash_batches;
+				double partitions = spilled_bytes_for_batch / (work_mem * 1024L);
+				double tree_depth = 1;
+				if (partitions != 0)
+					tree_depth += ceil(log(partitions) / log(gp_hashagg_default_nbatches));
+
+				spilled_bytes = tree_depth * spilled_groups * hashentry_width;
+
+				/* startup gets charged the write-cost */
+				startup_cost += seq_page_cost * (spilled_bytes / BLCKSZ);
+			}
 		}
 
-		total_cost = startup_cost;
-		total_cost += cpu_operator_cost * numGroups * numAggs;
-		total_cost += cpu_tuple_cost * numGroups;
+		if (!hash_streaming)
+		{
+			total_cost = startup_cost;
+			total_cost += cpu_operator_cost * numGroups * numAggs;
+			total_cost += cpu_tuple_cost * numGroups;
+		}
+		else
+		{
+			total_cost = startup_cost;
+			total_cost += cpu_operator_cost * spilled_groups * numAggs;
+			total_cost += cpu_tuple_cost * spilled_groups;
+		}
 
 		if (hash_batches > 2)
 		{
