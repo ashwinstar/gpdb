@@ -306,6 +306,12 @@ apr_status_t a_fts_getaddress_reply(gpcc_event_t *ev, void *arg)
     }
     
     for (i = 0 ; i < slot->u.fts.nseginfo ; i++) {
+	if (! slot->u.fts.seginfo[i].ha) {
+	    slot->u.fts.seginfo[i].haidx = -1;
+	}
+    }
+
+    for (i = 0 ; i < slot->u.fts.nseginfo ; i++) {
 	if (slot->u.fts.seginfo[i].ha) {
 	    gpcc_log_info("name=%s, host =%s, dbid = %d, content =%d, port = %d, dir = %s, haidx = %d, ha=%s",
 			  slot->u.fts.seginfo[i].name,
