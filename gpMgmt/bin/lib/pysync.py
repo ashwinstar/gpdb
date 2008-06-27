@@ -10,6 +10,7 @@ exec(sys.stdin.read(int(sys.stdin.readline())))
 pysyncSource="""
 
 import cPickle
+import datetime
 import md5
 import os
 import socket
@@ -19,6 +20,38 @@ import time
 import zlib
 
 CHUNK_SIZE=4000000
+
+class Progress: 
+    def __init__(self, byteMax, fileMax):
+        self.status = '';
+        self.fname = '';
+        self.byteMax = byteMax;
+        self.byteNow = 0;
+        self.fileMax = fileMax;
+        self.fileNow = 0;
+        self.tstamp = 0;
+
+    def _printStatus(self):
+        pct = 0
+        if self.byteMax > 0: pct = int(self.byteNow * 100 / self.byteMax);
+        print '[%s %d%%] %s %s byte:%d/%d file:%d/%d' % (
+            datetime.isoformat(' '), pct,
+            self.status, self.fname,
+            self.byteNow, self.byteMax, 
+            self.fileNow, self.fileMax)
+
+    def update(self, status, fname, byteNow, fileNow):
+        changed = (status != self.status 
+                   or fname != self.fname
+                   or fileNow != self.fileNow
+                   or (time.time() - self.tstamp > 5))
+        self.status = status
+        self.fname = fname
+        self.byteNow = byteNow
+        self.fileNow = fileNow
+        if changed: 
+            self.tstamp = time.time()
+            self.printStatus()
 
 class Options:
     pass
@@ -41,11 +74,6 @@ def statToTuple(s,name):
     raise Exception('Pysync can not handle %s.'%name)
 
 class RemotePysync:
-
-    def log(self,what):
-	if self.options.verbose:
-	    sys.stderr.write(what+'\\n')
-	    sys.stderr.flush()
 
     def doCommand(self,*args):
 	a = cPickle.dumps(args)
@@ -140,24 +168,23 @@ class RemotePysync:
 	return data
 
     def copyData(self,list):
-	total = 0
+	fileMax = 0
+	byteMax = 0
 	for name,value in list.iteritems():
 	    if value[0]=='-':
-		total += 1
-	count = 0
+		fileMax += 1
+		byteMax += value[2]
+	progress = Progress(byteMax,fileMax)
+	fileNow = 0
+	byteNow = 0
 	for name,value in list.iteritems():
 	    if value[0]=='-':
-		self.log('[%s] %s' % (time.strftime('%Y-%m-%d %H:%M:%S'), name))
 		f = open(name,'r+b')
 		f.seek(0,2)
 		localSize = f.tell()
 		offset = 0
-		start = time.time()
 		while offset<value[2]:
-		    if offset:
-			t = time.time()-start
-			r = (value[2]-offset)*t/offset
-			self.log('[%s] %d %f%% %fkB/s %d:%02d:%02d.%s'%(time.strftime('%Y-%m-%d %H:%M:%S'), offset,offset*100.0/value[2],offset/(1024.0*t),int(r)/3600,int(r)/60%60,int(r)%60,('%f'%(r%1))[2:]))
+		    progress.update('',name,byteNow,fileNow)
 		    size = min(value[2]-offset,CHUNK_SIZE)
 		    digest = None
 		    if offset+size<=localSize:
@@ -167,6 +194,7 @@ class RemotePysync:
 			assert len(b)==size
 			if md5.new(b).digest()==digest:
 			    offset += size
+			    byteNow += size
 			    continue
 		    data = self.getData(name,offset,size)
 		    if not self.options.insecure:
@@ -177,9 +205,8 @@ class RemotePysync:
 		    f.seek(offset)
 		    f.write(data)
 		    offset += size
-		t = time.time()-start
-		count += 1
-		self.log('[%s] %d 100%% %fkB/s %d:%02d:%02d.%s (%d %f%% of %d)'%(time.strftime('%Y-%m-%d %H:%M:%S'), offset,offset/(1024.0*t),int(t)/3600,int(t)/60%60,int(t)%60,('%f'%(t%1))[2:],count,count*100.0/total,total))
+		    byteNow += size
+		fileNow += 1
 
     def fixPermissions(self,list):
 	for name,value in list.iteritems():
