@@ -10,7 +10,7 @@ exec(sys.stdin.read(int(sys.stdin.readline())))
 pysyncSource="""
 
 import cPickle
-import datetime
+from datetime import datetime
 import md5
 import os
 import socket
@@ -35,7 +35,7 @@ class Progress:
         pct = 0
         if self.byteMax > 0: pct = int(self.byteNow * 100 / self.byteMax);
         print '[%s %d%%] %s %s byte:%d/%d file:%d/%d' % (
-            datetime.isoformat(' '), pct,
+            datetime.now().isoformat(' '), pct,
             self.status, self.fname,
             self.byteNow, self.byteMax, 
             self.fileNow, self.fileMax)
@@ -51,7 +51,7 @@ class Progress:
         self.fileNow = fileNow
         if changed: 
             self.tstamp = time.time()
-            self.printStatus()
+            self._printStatus()
 
 class Options:
     pass
