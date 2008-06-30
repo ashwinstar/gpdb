@@ -305,7 +305,7 @@ default_reloptions(Datum reloptions, bool validate,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("block size must be between 8KB and 8MB and "
-								"be an 8KB multiple")));
+								"be an 8KB multiple. Got %d", blocksize)));
 			
 			blocksize = DEFAULT_VARBLOCK_SIZE;
 		}
@@ -470,5 +470,5 @@ void validateAppendOnlyRelOptions(bool ao, int blocksize, int complevel, char re
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("block size must be between 8KB and 8MB and "
-						"be an 8KB multiple")));
+						"be an 8KB multiple, Got %d", blocksize)));
 }
