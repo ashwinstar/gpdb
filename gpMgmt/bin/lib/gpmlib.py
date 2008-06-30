@@ -583,7 +583,7 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     if not ok:
         sys.exit('mkdir directory %s host %s failed' % (dst_cfg['datadir'], dst_cfg['hostname']))
 
-    (ok, out) = run('%s "%s -verbose -n -x db_dumps %s %s:%s >> %s 2>&1"' % 
+    (ok, out) = run('%s "%s -verbose -n -x db_dumps %s %s:%s" >> %s 2>&1' % 
                     (gplib.ssh_prefix(host=src_host),
                      os.path.join(ENV.GPHOME, 'bin/lib/pysync.py'),
                      src_dir,
