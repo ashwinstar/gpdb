@@ -34,11 +34,11 @@ class Progress:
     def _printStatus(self):
         pct = 0
         if self.byteMax > 0: pct = int(self.byteNow * 100 / self.byteMax);
-        print '[%s %d%%] %s %s byte:%d/%d file:%d/%d' % (
-            datetime.now().isoformat(' '), pct,
-            self.status, self.fname,
-            self.byteNow, self.byteMax, 
-            self.fileNow, self.fileMax)
+        sys.stderr.write('[%s %d%%] %s %s byte:%d/%d file:%d/%d' % (
+                          datetime.now().isoformat(' '), 
+                          pct, self.status, self.fname, self.byteNow, 
+                          self.byteMax, self.fileNow, self.fileMax))
+        sys.stderr.write('\\n')
 
     def update(self, status, fname, byteNow, fileNow):
         changed = (status != self.status 
