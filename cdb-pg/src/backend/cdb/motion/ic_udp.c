@@ -218,6 +218,8 @@ static TupleChunkListItem receiveChunksUDP(ChunkTransportState *pTransportStates
 
 static void doSendStopMessageUDP(ChunkTransportState *transportStates, int16 motNodeID);
 
+static bool dispatcherAYT(void);
+
 static void *ic_rx_thread_func(void *arg);
 
 static void
@@ -1858,6 +1860,19 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 
 		ML_CHECK_FOR_INTERRUPTS(inTeardown);
 
+		if ((retries & 0x3f) == 0)
+		{
+			if (!dispatcherAYT())
+			{
+				if (Gp_role == GP_ROLE_EXECUTE)
+					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									errmsg("Interconnect error QE lost contact with QD (recv)")));
+				else
+					ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+									errmsg("Interconnect error QD lost contact with client (recv)")));
+			}
+		}
+
 		if (rx_thread_waiting)
 		{
 			/* deadlock, out of memory! */
@@ -2212,6 +2227,14 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 				ic_stats_retrans++;
 
 			retry++;
+		}
+
+		if (Gp_role == GP_ROLE_EXECUTE &&
+			(retry & 0x3f) == 0)
+		{
+			if (!dispatcherAYT())
+				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+								errmsg("Interconnect error QE lost contact with QD (xmit)")));
 		}
 
 		timeout = Max(1, timeout);
@@ -2593,6 +2616,43 @@ format_sockaddr(struct sockaddr *sa, char* buf, int bufsize)
 
     return buf;
 }                               /* format_sockaddr */
+
+/*
+ * Check the connection from the dispatcher to verify that it is still
+ * there.
+ *
+ * The connection is a struct Port, stored in the global MyProcPort.
+ *
+ * Return true if the dispatcher connection is still alive.
+ */
+static bool
+dispatcherAYT(void)
+{
+	ssize_t		ret;
+	char		buf;
+
+	if (MyProcPort->sock < 0)
+		return false;
+
+	ret = recv(MyProcPort->sock, &buf, 1, MSG_PEEK|MSG_DONTWAIT);
+
+	if (ret == 0) /* socket has been closed. EOF */
+		return false;
+
+	if (ret > 0) /* data waiting on socket, it must be OK. */
+		return true;
+
+	if (ret == -1) /* error, or would be block. */
+	{
+		if (errno == EAGAIN || errno == EINPROGRESS)
+			return true; /* connection intact, no data available */
+		else
+			return false;
+	}
+	/* not reached */
+
+	return true;
+}
 
 static void *
 ic_rx_thread_func(void *arg)
