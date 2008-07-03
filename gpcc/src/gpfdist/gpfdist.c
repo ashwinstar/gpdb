@@ -1748,13 +1748,13 @@ static void http_setup(void)
 void process_signal(int sig)
 {
     if (sig == SIGINT || sig == SIGTERM) {
+	gwarning(FLINE, "signal %d received. gpfdist exits", sig);
 	if (gcb.listen_sock > 0) {
 	    closesocket(gcb.listen_sock);
 	}
 	exit(1);
     }
 }
-
 
 int main(int argc, const char* const argv[])
 {
@@ -1774,7 +1774,9 @@ int main(int argc, const char* const argv[])
 #ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
 #endif
+    /*
     apr_signal(SIGINT, process_signal);
+    */
     apr_signal(SIGTERM, process_signal);
 
     /* kqueue not so stable in libevent */
