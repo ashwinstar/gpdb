@@ -25,6 +25,50 @@ static apr_status_t a_array_stop_units_stop_reply(gpcc_event_t *ev, void *_cmdsl
     return 0;
 }
 
+static apr_status_t a_array_stop_display_param(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;
+    int i, totseg, nvalid, ninvalid;
+
+    gpcc_log_info("---------------- Array Stop Parameters -------------------");
+    gpcc_log_info("----------------------------------------");    
+    gpcc_log_info("Input Parameters:");
+    gpcc_log_info("----------------------------------------");
+    gpcc_log_info("Stop Mode       = %s", cmdslot->u.array_stop.mode);
+    gpcc_log_info("");
+    gpcc_log_info("----------------------------------------");
+    gpcc_log_info("Segment instances will be stopped:");
+    gpcc_log_info("----------------------------------------");    
+    totseg = gpma.fts_cmdslot->u.fts.nseginfo;
+    ninvalid = nvalid = 0;
+    for (i = 0 ; i < totseg ; i++) {
+	if (gpma.fts_cmdslot->u.fts.seginfo[i].valid == 't') {
+	    gpcc_log_info("host = '%s', datadir = '%s' [Valid]", 
+			  gpma.fts_cmdslot->u.fts.seginfo[i].host,
+			  gpma.fts_cmdslot->u.fts.seginfo[i].dir);
+	    nvalid++;
+	}
+	else {
+	    gpcc_warning("host = '%s', datadir = '%s' [Invalid and will not stop]", 
+			 gpma.fts_cmdslot->u.fts.seginfo[i].host,
+			 gpma.fts_cmdslot->u.fts.seginfo[i].dir);
+	    ninvalid++;
+	}
+    }
+
+    gpcc_log_info("");
+    gpcc_log_info("----------------------------------------");
+    gpcc_log_info("Total number of segments                       =  %d", totseg);
+    gpcc_log_info("Number of valid segments will be stopped       =  %d", nvalid);
+    gpcc_log_info("Number of invalid segments will NOT be stopped =  %d", ninvalid);
+    gpcc_log_info("----------------------------------------");
+    gpcc_log_info("");
+    gpcc_log_info("------------- End of Array Stop Parameters ---------------");		      
+    
+
+    return 0;
+}
+
 static apr_status_t a_array_stop_do(gpcc_event_t *ev, void *_cmdslot)
 {
     cmdslot_t *cmdslot = (cmdslot_t *) _cmdslot;

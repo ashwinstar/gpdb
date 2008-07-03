@@ -1,3 +1,49 @@
+static apr_status_t a_array_start_display_param(gpcc_event_t *ev, void *_cmdslot)
+{
+    cmdslot_t *cmdslot = _cmdslot;
+    int i, totseg, nvalid, ninvalid;
+
+    gpcc_log_info("--------------------- Array Start Parameters ----------------------");
+    gpcc_log_info("----------------------------------------");
+    gpcc_log_info("Input parameters:");
+    gpcc_log_info("----------------------------------------");
+    gpcc_log_info("Start mode               =    %s", cmdslot->u.array_start.mode);
+    gpcc_log_info("Master standby start     =    %s", (cmdslot->u.array_start.nostandbyqd ? "False" : "True"));
+    gpcc_log_info("Master switch log file   =    %s", (cmdslot->u.array_start.rotate_qd_log ? "True" : "False"));
+    gpcc_log_info("Segment switch log file  =    %s", (cmdslot->u.array_start.rotate_qes_log ? "True": "False"));
+    gpcc_log_info("");
+
+    gpcc_log_info("----------------------------------------");
+    gpcc_log_info("Segment instances that will be started:");
+    gpcc_log_info("----------------------------------------");
+    totseg = gpma.fts_cmdslot->u.fts.nseginfo;
+    ninvalid = nvalid = 0;
+    for (i = 0 ; i < totseg ; i++) {
+	if (gpma.fts_cmdslot->u.fts.seginfo[i].valid == 't') {
+	    gpcc_log_info("host = '%s', datadir = '%s' [Valid]", 
+			  gpma.fts_cmdslot->u.fts.seginfo[i].host,
+			  gpma.fts_cmdslot->u.fts.seginfo[i].dir);
+	    nvalid++;
+	}
+	else {
+	    gpcc_warning("host = '%s', datadir = '%s' [Invalid and will not start]", 
+			 gpma.fts_cmdslot->u.fts.seginfo[i].host,
+			 gpma.fts_cmdslot->u.fts.seginfo[i].dir);
+	    ninvalid++;
+	}
+    }
+
+    gpcc_log_info("");
+    gpcc_log_info("----------------------------------------");
+    gpcc_log_info("Total number of segments                       =  %d", totseg);
+    gpcc_log_info("Number of valid segments will be started       =  %d", nvalid);
+    gpcc_log_info("Number of invalid segments will NOT be started =  %d", ninvalid);
+    gpcc_log_info("----------------------------------------");
+    gpcc_log_info("");
+    gpcc_log_info("-------------- End of Array Start Parameters --------------------");		      
+
+    return 0;
+}
 
 
 static apr_status_t a_array_start_units_start_reply(gpcc_event_t *ev, void *_cmdslot)

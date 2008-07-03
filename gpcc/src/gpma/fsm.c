@@ -483,7 +483,7 @@ APR_DECLARE(void) fsm_init(void)
 
     /* array stop */
     gpcc_fsm_put(FTS_ARRAY_STOP_CMDSTATE, INIT_EVENT, FTS_ARRAY_STOP_WAIT_CMDSTATE,
-		 a_array_stop_do, NULL);
+		 a_array_stop_display_param, a_array_stop_do, NULL);
     gpcc_fsm_put(FTS_ARRAY_STOP_WAIT_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_ARRAY_STOP_WAIT_CMDSTATE,
 		 a_array_stop_units_stop_reply, NULL);
     gpcc_fsm_put(FTS_ARRAY_STOP_WAIT_CMDSTATE, SUCCESS_EVENT, NULL_EVENT,
@@ -523,7 +523,7 @@ APR_DECLARE(void) fsm_init(void)
     /* array start */
     /* start qd in utility mode */
     gpcc_fsm_put(FTS_ARRAY_START_CMDSTATE, INIT_EVENT, FTS_START_UTILITY_QD_CMDSTATE,
-		 a_array_start_utility_qd, NULL);
+		 a_array_start_display_param, a_array_start_utility_qd, NULL);
     gpcc_fsm_put(FTS_START_UTILITY_QD_CMDSTATE, UNITS_REPLY_MSG_EVENT, FTS_START_UTILITY_QD_CMDSTATE,
 		 a_array_start_units_start_reply, NULL);
     gpcc_fsm_put(FTS_START_UTILITY_QD_CMDSTATE, SUCCESS_EVENT, FTS_START_GPCONF_CMDSTATE,
