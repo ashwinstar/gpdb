@@ -34,11 +34,10 @@ class Progress:
     def _printStatus(self):
         pct = 0
         if self.byteMax > 0: pct = int(self.byteNow * 100 / self.byteMax);
-        sys.stderr.write('[%s %d%%] %s %s byte:%d/%d file:%d/%d' % (
+        sys.stderr.write('[%s %d%%] %s %s byte:%d/%d file:%d/%d\\n' % (
                           datetime.now().isoformat(' '), 
                           pct, self.status, self.fname, self.byteNow, 
                           self.byteMax, self.fileNow, self.fileMax))
-        sys.stderr.write('\\n')
 
     def update(self, status, fname, byteNow, fileNow):
         changed = (status != self.status 
@@ -90,7 +89,7 @@ class RemotePysync:
 	    for i in dirs+files:
 		name = os.path.join(root,i)
 		t = statToTuple(os.lstat(name),name)
-		if name not in list and not self.options.minusn or name in list and list[name][0]!=t[0]:
+		if name not in list and self.options.delete or name in list and list[name][0]!=t[0]:
 		    if t[0]=='d':
 			os.rmdir(name)
 		    else:
@@ -177,14 +176,24 @@ class RemotePysync:
 	progress = Progress(byteMax,fileMax)
 	fileNow = 0
 	byteNow = 0
+	bytesTotal = 0
 	for name,value in list.iteritems():
 	    if value[0]=='-':
-		f = open(name,'r+b')
-		f.seek(0,2)
-		localSize = f.tell()
+		f = None
+		if self.options.minusn:
+		    if os.path.lexists(name) and stat.S_ISREG(os.lstat(name).st_mode):
+			f = open(name,'rb')
+		else:
+		    f = open(name,'r+b')
+		localSize = 0
+		if f:
+		    f.seek(0,2)
+		    localSize = f.tell()
 		offset = 0
+		bytesFile = 0
 		while offset<value[2]:
-		    progress.update('',name,byteNow,fileNow)
+		    if self.options.verbose:
+			progress.update('',name,byteNow,fileNow)
 		    size = min(value[2]-offset,CHUNK_SIZE)
 		    digest = None
 		    if offset+size<=localSize:
@@ -196,17 +205,26 @@ class RemotePysync:
 			    offset += size
 			    byteNow += size
 			    continue
-		    data = self.getData(name,offset,size)
-		    if not self.options.insecure:
-			if digest==None:
-			    digest = self.doCommand('getDigest',name,offset,size)
-			if md5.new(data).digest()!=digest:
-			    raise Exception('Digest did not match.')
-		    f.seek(offset)
-		    f.write(data)
+		    if not self.options.minusn:
+			data = self.getData(name,offset,size)
+			if not self.options.insecure:
+			    if digest==None:
+				digest = self.doCommand('getDigest',name,offset,size)
+			    if md5.new(data).digest()!=digest:
+				raise Exception('Digest did not match.')
+			f.seek(offset)
+			f.write(data)
+		    bytesFile += size
+		    bytesTotal += size
 		    offset += size
 		    byteNow += size
+		if f:
+		    f.close()
+		if self.options.minusn and self.options.verbose:
+		    sys.stderr.write('%s %d\\n'%(name,bytesFile))
 		fileNow += 1
+	if self.options.minusn:
+	    sys.stderr.write('Total--%d bytes\\n'%bytesTotal)
 
     def fixPermissions(self,list):
 	for name,value in list.iteritems():
@@ -218,12 +236,15 @@ class RemotePysync:
 	self.options = self.doCommand('getOptions')
 	os.chdir(self.doCommand('getDestDir'))
 	list = self.doCommand('getList')
-	self.removeJunk(list)
-	self.createDirs(list)
-	self.createFiles(list)
-	self.linkLinks(list)
-	self.copyData(list)
-	self.fixPermissions(list)
+	if self.options.minusn:
+	    self.copyData(list)
+	else:
+	    self.removeJunk(list)
+	    self.createDirs(list)
+	    self.createFiles(list)
+	    self.linkLinks(list)
+	    self.copyData(list)
+	    self.fixPermissions(list)
 	self.doCommand('quit',0)
 
 if 'pysyncSource' not in globals():
@@ -239,19 +260,24 @@ class LocalPysync:
 	self.options.compress = False
 	self.options.verbose = False
 	self.options.insecure = False
+	self.options.delete = False
 	self.options.minusn = False
 	self.cache = [None]
 	self.exclude = set()
 	a = argv[1:]
 	while a:
-	    if a[0]=='-verbose':
+	    if a[0]=='-v':
 		self.options.verbose = True
+	    elif a[0]=='-?':
+		self.usage(argv)
 	    elif a[0]=='-compress':
 		self.options.compress = True
-	    elif a[0]=='-insecure':
-		self.options.insecure = True
 	    elif a[0]=='-n':
 		self.options.minusn = True
+	    elif a[0]=='--insecure':
+		self.options.insecure = True
+	    elif a[0]=='--delete':
+		self.options.delete = True
 	    elif a[0]=='-x':
 		a.pop(0)
 		name = a[0]
@@ -277,8 +303,20 @@ class LocalPysync:
 	self.sendData = None
 
     def usage(self,argv):
-	sys.stderr.write("usage:\n")
-	sys.stderr.write("    python "+argv[0]+" [-verbose] [-compress] [-insecure] [-n] [-x exclude_file] sourcedir [user@]host:destdir\n")
+	sys.stderr.write("""usage:
+    python """+argv[0]+""" [-v] [-?] [-n] [-x exclude_file] [--insecure] [--delete] sourcedir [user@]host:destdir
+	-v: Print progress
+	-?: Print this message.
+	-n: Do not do any work. Just print how many bytes will need to be
+	    transferred over the network per file and a total.
+	-x name: Do not transfer named file or directory.  Don't be too
+	    creative with the name.  For example, "directory/./file" will not
+	    work--use "directory/file".  Name is relative to sourcedir.
+	--insecure: Do not check MD5 digest after transfering data.
+	    This makes pysync.py run faster, but a bad guy can forge TCP
+	    packets and put junk of his choice into your files.
+	--delete: Delete things in dst that do not exist in src.
+""")
 	sys.exit(1)
 
     def readFile(self,filename,offset,size):
