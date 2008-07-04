@@ -832,8 +832,12 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
 		/* need 5 bytes, 1 byte type + 4 bytes length */
 		fill_buffer(file, 5);
 		n = curl->buf.top - curl->buf.bot;
+		if (n == 0) {
+			elog(ERROR, "gpfdist error: server closed connection.\n");
+			return -1;
+		}
 		if (n < 5) {
-			elog(ERROR, "gpfdist protocol error - packet len %d\n", n);
+			elog(ERROR, "gpfdist error: incomplete packet - packet len %d\n", n);
 			return -1;
 		}
 
@@ -845,7 +849,7 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
 		len = ntohl(len);		/* change order */
 		curl->buf.bot += 4;
 		if (len < 0) {
-			elog(ERROR, "gpfdist protocol error (bad packet) - type %d len %d", 
+			elog(ERROR, "gpfdist error: bad packet type %d len %d", 
 				 type, len);
 			return -1;
 		}
@@ -867,17 +871,17 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
 				elog(ERROR, "gpfdist error - %s%c", &curl->buf.ptr[curl->buf.bot], x);
 				return -1;
 			}
-			elog(ERROR, "gpfdist error - please check gpfdist log messages.");
+			elog(ERROR, "gpfdist error: please check gpfdist log messages.");
 			return -1;
 		}
 
 		if (type == 'F') {
 			if (len > 256) {
-				elog(ERROR, "gpfdist protocol error - filename too long (%d)", len);
+				elog(ERROR, "gpfdist error: filename too long (%d)", len);
 				return -1;
 			}
 			if (-1 == fill_buffer(file, len)) {
-				elog(ERROR, "gpfdist protocol error - stream ends suddenly");
+				elog(ERROR, "gpfdist error: stream ends suddenly");
 				return -1;
 			}
 			if (curl->block.fname) 
@@ -898,11 +902,11 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
 
 		if (type == 'O') {
 			if (len != 8) {
-				elog(ERROR, "gpfdist protocol error - offset not of length 8 (%d)", len);
+				elog(ERROR, "gpfdist error: offset not of length 8 (%d)", len);
 				return -1;
 			}
 			if (-1 == fill_buffer(file, len)) {
-				elog(ERROR, "gpfdist protocol error -- stream ends suddenly");
+				elog(ERROR, "gpfdist error: stream ends suddenly");
 				return -1;
 			}
 			memcpy(&curl->block.foff, curl->buf.ptr + curl->buf.bot, len);
@@ -920,7 +924,7 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
 			break;
 		}
 
-		elog(ERROR, "gpfdist protocol error - unknown meta type");
+		elog(ERROR, "gpfdist error: unknown meta type %d", type);
 		return -1;
 	}
 
