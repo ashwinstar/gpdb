@@ -536,6 +536,9 @@ bmbuildCallback(Relation index, HeapTuple htup, Datum *attdata,
 
 	_bitmap_buildinsert(index, htup->t_self, attdata, nulls, bstate);
 	bstate->ituples += 1;
+
+	if (((int)bstate->ituples) % 1000 == 0)
+		CHECK_FOR_INTERRUPTS();
 }
 
 /*
