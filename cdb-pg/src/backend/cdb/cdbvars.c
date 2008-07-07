@@ -183,7 +183,6 @@ cdbvars_assign_gp_process_memory_cutoff(double value, bool doit, GucSource sourc
  */
 
 bool        enable_adaptive_nestloop = true;
-bool		gp_propagate_broadcast_cost = true;
 double      gp_motion_cost_per_row = 0;
 int         gp_segments_for_planner = 0;
 bool		enable_agg_restruct = true;

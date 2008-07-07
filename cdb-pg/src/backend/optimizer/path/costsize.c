@@ -78,8 +78,6 @@
 
 #define LOG2(x)  (log(x) / 0.693147180559945)
 
-static double calculate_rows_for_join(JoinType jointype, double outer_rows, double inner_rows, double jselec, double pselec);
-
 /*
  * Some Paths return less than the nominal number of rows of their parent
  * relations; join nodes need to do this to get the correct input count:
@@ -1373,12 +1371,6 @@ cost_nestloop(NestPath *path, PlannerInfo *root)
 	 */
 	ntuples = outer_path_rows * inner_path_rows * joininfactor;
 
-	/* recalculate number emitted (motion operators in our subtrees
-	 * have been created; so our result-set's cardinality may be
-	 * different from that in parent->rows) */
-	path->jpath.rows = calculate_rows_for_join(path->jpath.jointype, outer_path_rows, inner_path_rows,
-											   path->jpath.path.parent->jselec, path->jpath.path.parent->pselec);
-
 	/* CPU costs */
 	cost_qual_eval(&restrict_qual_cost, path->jpath.joinrestrictinfo);
 	startup_cost += restrict_qual_cost.startup;
@@ -1614,12 +1606,6 @@ cost_mergejoin(MergePath *path, PlannerInfo *root)
 
 	path->jpath.path.startup_cost = startup_cost;
 	path->jpath.path.total_cost = startup_cost + run_cost;
-
-	/* recalculate number emitted (motion operators in our subtrees
-	 * have been created; so our result-set's cardinality may be
-	 * different from that in parent->rows) */
-	path->jpath.rows = calculate_rows_for_join(path->jpath.jointype, outer_path_rows, inner_path_rows,
-											   path->jpath.path.parent->jselec, path->jpath.path.parent->pselec);
 }
 
 /*
@@ -1833,12 +1819,6 @@ cost_hashjoin(HashPath *path, PlannerInfo *root)
 
 	path->jpath.path.startup_cost = startup_cost;
 	path->jpath.path.total_cost = startup_cost + run_cost;
-
-	/* recalculate number emitted (motion operators in our subtrees
-	 * have been created; so our result-set's cardinality may be
-	 * different from that in parent->rows) */
-	path->jpath.rows = calculate_rows_for_join(path->jpath.jointype, outer_path_rows, inner_path_rows,
-											   path->jpath.path.parent->jselec, path->jpath.path.parent->pselec);
 }
 
 
@@ -2194,71 +2174,6 @@ adjust_selectivity_for_nulltest(Selectivity selec,
 }
 
 
-static double
-calculate_rows_for_join(JoinType jointype, double outer_rows, double inner_rows, double jselec, double pselec)
-{
-	double		nrows;
-    double      adjnrows;
-
-	/*
-	 * Basically, we multiply size of Cartesian product by selectivity.
-	 *
-	 * If we are doing an outer join, take that into account: the joinqual
-	 * selectivity has to be clamped using the knowledge that the output must
-	 * be at least as large as the non-nullable input.  However, any
-	 * pushed-down quals are applied after the outer join, so their
-	 * selectivity applies fully.
-	 */
-	switch (jointype)
-	{
-		case JOIN_IN:
-		case JOIN_INNER:
-			nrows = outer_rows * inner_rows * jselec;
-			break;
-		case JOIN_LEFT:
-			nrows = outer_rows * inner_rows * jselec;
-			if (nrows < outer_rows)
-				nrows = outer_rows;
-			nrows *= pselec;
-			break;
-		case JOIN_RIGHT:
-			nrows = outer_rows * inner_rows * jselec;
-			if (nrows < inner_rows)
-				nrows = inner_rows;
-			nrows *= pselec;
-			break;
-		case JOIN_FULL:
-			nrows = outer_rows * inner_rows * jselec;
-			if (nrows < outer_rows)
-				nrows = outer_rows;
-			if (nrows < inner_rows)
-				nrows = inner_rows;
-			nrows *= pselec;
-			break;
-		default:
-			elog(ERROR, "unrecognized join type: %d", (int) jointype);
-			nrows = 0;			/* keep compiler quiet */
-			break;
-	}
-
-    /*
-     * CDB: Force estimated number of join output rows to be at least 2.
-     * Otherwise a later nested join could take this join as its outer input,
-     * thinking that there will be only one pass over its inner table,
-     * which could be very slow if the actual number of rows is > 1.
-     * Someday we should improve the join selectivity estimates.
-     */
-    adjnrows = Max(10, outer_rows);
-    adjnrows = Max(adjnrows, inner_rows);
-    adjnrows = LOG2(adjnrows);
-    if (nrows < adjnrows)
-        nrows = adjnrows;
-
-	return nrows;
-}
-
-
-
 /*
  * set_joinrel_size_estimates
  *		Set the size estimates for the given join relation.
@@ -2292,6 +2207,8 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 {
 	Selectivity jselec;
 	Selectivity pselec;
+	double		nrows;
+	double		adjnrows;
 
 	/*
 	 * Compute joinclause selectivity.	Note that we are only considering
@@ -2339,11 +2256,11 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 		 */
 		if (gp_adjust_selectivity_for_outerjoins)
 			pselec = adjust_selectivity_for_nulltest(jselec,
-													pselec,
-													pushedquals, 
-													jointype, 
-													outer_rel, 
-													inner_rel);
+													 pselec,
+													 pushedquals, 
+													 jointype, 
+													 outer_rel, 
+													 inner_rel);
 
 		/* Avoid leaking a lot of ListCells */
 		list_free(joinquals);
@@ -2359,10 +2276,61 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 		pselec = 0.0;			/* not used, keep compiler quiet */
 	}
 
-	rel->jselec = jselec;
-	rel->pselec = pselec;
+	/*
+	 * Basically, we multiply size of Cartesian product by selectivity.
+	 *
+	 * If we are doing an outer join, take that into account: the joinqual
+	 * selectivity has to be clamped using the knowledge that the output must
+	 * be at least as large as the non-nullable input.  However, any
+	 * pushed-down quals are applied after the outer join, so their
+	 * selectivity applies fully.
+	 */
+	switch (jointype)
+	{
+		case JOIN_INNER:
+			nrows = outer_rel->rows * inner_rel->rows * jselec;
+			break;
+		case JOIN_LEFT:
+			nrows = outer_rel->rows * inner_rel->rows * jselec;
+			if (nrows < outer_rel->rows)
+				nrows = outer_rel->rows;
+			nrows *= pselec;
+			break;
+		case JOIN_RIGHT:
+			nrows = outer_rel->rows * inner_rel->rows * jselec;
+			if (nrows < inner_rel->rows)
+				nrows = inner_rel->rows;
+			nrows *= pselec;
+			break;
+		case JOIN_FULL:
+			nrows = outer_rel->rows * inner_rel->rows * jselec;
+			if (nrows < outer_rel->rows)
+				nrows = outer_rel->rows;
+			if (nrows < inner_rel->rows)
+				nrows = inner_rel->rows;
+			nrows *= pselec;
+			break;
+		default:
+			elog(ERROR, "unrecognized join type: %d", (int) jointype);
+			nrows = 0;			/* keep compiler quiet */
+			break;
+	}
 
-	rel->rows = calculate_rows_for_join(jointype, outer_rel->rows, inner_rel->rows, jselec, pselec);
+    /*
+     * CDB: Force estimated number of join output rows to be at least 2.
+     * Otherwise a later nested join could take this join as its outer input,
+     * thinking that there will be only one pass over its inner table,
+     * which could be very slow if the actual number of rows is > 1.
+     * Someday we should improve the join selectivity estimates.
+     */
+    adjnrows = Max(10, outer_rel->rows);
+    adjnrows = Max(adjnrows, inner_rel->rows);
+    adjnrows = LOG2(adjnrows);
+    if (nrows < adjnrows)
+        nrows = adjnrows;
+
+    rel->rows = nrows;
+
 }
 
 /*

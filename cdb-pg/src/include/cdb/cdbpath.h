@@ -53,34 +53,16 @@ cdbpath_rows(Path *path)
     double rows;
     Path  *p;
 
-	if (gp_propagate_broadcast_cost)
-	{
-		p = (IsA(path, CdbMotionPath)) ? ((CdbMotionPath *)path)->subpath
-			: (IsA(path, MaterialPath)) ? ((MaterialPath *)path)->subpath
-			: path;
+	p = (IsA(path, CdbMotionPath))  ? ((CdbMotionPath *)path)->subpath
+		: path;
 
-		if (IsA(path, CdbMotionPath) || IsA(path, MaterialPath))
-			return cdbpath_rows(p);
-
-		rows = IsA(p, BitmapHeapPath)	? ((BitmapHeapPath *)p)->rows
-			: IsA(p, IndexPath)		? ((IndexPath *)p)->rows
-			: IsA(p, UniquePath)		? ((UniquePath *)p)->rows
-			: IsJoinPath(p)			? ((JoinPath *)p)->rows
-			: p->parent->rows;
-	}
-	else
-	{
-		p = (IsA(path, CdbMotionPath))  ? ((CdbMotionPath *)path)->subpath
-			: path;
-
-		rows = IsA(p, BitmapHeapPath)   ? ((BitmapHeapPath *)p)->rows
-			: IsA(p, IndexPath)        ? ((IndexPath *)p)->rows
-			: IsA(p, UniquePath)       ? ((UniquePath *)p)->rows
-			: (CdbPathLocus_IsBottleneck(path->locus) ||
-			   CdbPathLocus_IsReplicated(path->locus)) 
-			? path->parent->rows * cdbpath_segments
-			: path->parent->rows;
-	}
+	rows = IsA(p, BitmapHeapPath)   ? ((BitmapHeapPath *)p)->rows
+		: IsA(p, IndexPath)        ? ((IndexPath *)p)->rows
+		: IsA(p, UniquePath)       ? ((UniquePath *)p)->rows
+		: (CdbPathLocus_IsBottleneck(path->locus) ||
+		   CdbPathLocus_IsReplicated(path->locus)) 
+		? path->parent->rows * cdbpath_segments
+		: path->parent->rows;
 
     return rows;
 }                               /* cdbpath_rows */
