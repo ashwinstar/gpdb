@@ -3109,6 +3109,13 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 										
 		funcid = expr->funcid;
 
+		newexpr = makeNode(FuncExpr);
+		newexpr->funcid = expr->funcid;
+		newexpr->funcresulttype = expr->funcresulttype;
+		newexpr->funcretset = expr->funcretset;
+		newexpr->funcformat = expr->funcformat;
+		newexpr->args = args;
+
 		/*
 		 * Check for constant inputs
 		 */
@@ -3117,12 +3124,16 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		foreach(arg, args)
 		{
 			if (!IsA(lfirst(arg), Const))
+			{
 				has_nonconst_input = true;
+				break;
+			}
 		}
 		
 		if (!has_nonconst_input)
 		{
-			Oid sequenceoid = 0;
+			bool is_seq_func = false;
+			bool tup_or_set;
 
 			func_tuple = SearchSysCache(PROCOID,
 										ObjectIdGetDatum(funcid),
@@ -3132,69 +3143,53 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 
 			funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
 
-			/* if it returns a set, it's not a function we can handle */
-			/* if it returns a record, it's not a function we can handle */
-			if (funcform->proretset || funcform->prorettype == RECORDOID)
+			/* can't handle set returning or row returning functions */
+			tup_or_set = (funcform->proretset || 
+						  type_is_rowtype(funcform->prorettype));
+			ReleaseSysCache(func_tuple);
+			
+			/* can't handle it */
+			if (tup_or_set)
 			{
-				ReleaseSysCache(func_tuple);
-				return node;
+				/* 
+				 * We haven't mutated this node, but we still return the
+				 * mutated arguments.
+				 *
+				 * If we don't do this, we'll miss out on transforming function
+				 * arguments which are themselves functions we need to mutated.
+				 * For example, select foo(now()).
+				 *
+				 * See MPP-3022 for what happened when we didn't do this.
+				 */
+				return (Node *)newexpr;
 			}
 
-			/* Related to MPP-1429.  Here we want to mark any statement that is going to 
-			 * use a sequence as dirty.  Doing this means that the QD will flush the xlog which will
-			 * also flush any xlog writes that the sequence server might do. 
+			/* 
+			 * Related to MPP-1429.  Here we want to mark any statement that is
+			 * going to use a sequence as dirty.  Doing this means that the
+			 * QD will flush the xlog which will also flush any xlog writes that
+			 * the sequence server might do. 
 			 */
-			if (funcid == 1574 || funcid == 1576 || funcid == 1577) /* nextval, setval, setval */
+			if (funcid == NEXTVAL_FUNC_OID || funcid == CURRVAL_FUNC_OID ||
+				funcid == SETVAL_FUNC_OID)
 			{
 				ExecutorMarkTransactionUsesSequences();
+				is_seq_func = true;
 			}
 
 			if (funcform->provolatile == PROVOLATILE_IMMUTABLE)
 				 /* okay */ ;
 			else if (funcform->provolatile == PROVOLATILE_STABLE)
 				 /* okay */ ;
-			else if (context->single_row_insert && (funcid >= 1574 && funcid <= 1576))	/* nextval, currval,
-																						 * setval */
+			else if (context->single_row_insert && is_seq_func)
 				;				/* Volatile, but special sequence function */
 			else
-			{
-				ReleaseSysCache(func_tuple);
-				return node;
-			}
-
-			ReleaseSysCache(func_tuple);
+				return (Node *)newexpr;
 
 			/*
-			 * Ok, we have a function that is STABLE (or IMMUTABLE), with constant args.
-			 * Let's try to evaluate it.
+			 * Ok, we have a function that is STABLE (or IMMUTABLE), with
+			 * constant args. Let's try to evaluate it.
 			 */
-				
-				
-			if (funcid == 1574)  /* nextval */
-			{
-				Const * arg1 = lfirst(list_head(args));
-				sequenceoid = 0;
-				if (arg1->consttype == REGCLASSOID)
-					sequenceoid = DatumGetObjectId(arg1->constvalue);
-			}
-
-			/*
-			 * The targetlist happens in multiple places in the plan tree, but we don't
-			 * want to execute nextval() every time we see it.	Rather than figure out
-			 * which one matters, and somehow passing that in to here, I cache the first time
-			 * we run nextval(), and just re-use that value.
-			 *
-			 * This does have a bug, if we really wanted nextval() to be evaluated more than
-			 * once in this single row insert.
-			 */
-
-
-			newexpr = makeNode(FuncExpr);
-			newexpr->funcid = funcid;
-			newexpr->funcresulttype = expr->funcresulttype;
-			newexpr->funcretset = false;
-			newexpr->funcformat = COERCE_DONTCARE;		/* doesn't matter */
-			newexpr->args = args;
 
 			/*
 			 * To use the executor, we need an EState.
@@ -3212,14 +3207,16 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			/*
 			 * And evaluate it.
 			 *
-			 * It is OK to use a default econtext because none of the ExecEvalExpr()
-			 * code used in this situation will use econtext.  That might seem
-			 * fortuitous, but it's not so unreasonable --- a constant expression does
-			 * not depend on context, by definition, n'est ce pas?
+			 * It is OK to use a default econtext because none of the
+			 * ExecEvalExpr() code used in this situation will use econtext.
+			 * That might seem fortuitous, but it's not so unreasonable --- a
+			 * constant expression does not depend on context, by definition,
+			 * n'est-ce pas?
 			 */
-			const_val = ExecEvalExprSwitchContext(exprstate,
-											  GetPerTupleExprContext(estate),
-												  &const_is_null, NULL);
+			const_val =
+				ExecEvalExprSwitchContext(exprstate,
+										  GetPerTupleExprContext(estate),
+										  &const_is_null, NULL);
 
 			/* Get info needed about result datatype */
 			get_typlenbyval(expr->funcresulttype, &resultTypLen, &resultTypByVal);
@@ -3252,15 +3249,9 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		 * return a replacement FuncExpr node using the possibly-simplified
 		 * arguments.
 		 */
-		newexpr = makeNode(FuncExpr);
-		newexpr->funcid = expr->funcid;
-		newexpr->funcresulttype = expr->funcresulttype;
-		newexpr->funcretset = expr->funcretset;
-		newexpr->funcformat = expr->funcformat;
-		newexpr->args = args;
 		return (Node *) newexpr;
 	}
-	if (IsA(node, OpExpr))
+	else if (IsA(node, OpExpr))
 	{
 		OpExpr	   *expr = (OpExpr *) node;
 		List	   *args;
@@ -3816,7 +3807,17 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		queryDesc->plantree = (Plan *) plan_tree_mutator((Node *) queryDesc->plantree,
 									pre_dispatch_function_evaluation_mutator,
 														 &pcontext);
-														
+
+
+		/* 
+		 * It's fine to use plan_tree_mutator() because it calls
+		 * expression_tree_mutator recursively
+		 */
+		queryDesc->parsetree =
+			(Query *)plan_tree_mutator((Node *)queryDesc->parsetree,
+									   pre_dispatch_function_evaluation_mutator,
+									   &pcontext);
+
 		if (savetargets != NIL)
 		{
 			queryDesc->plantree->targetlist = savetargets;

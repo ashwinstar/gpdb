@@ -2924,6 +2924,12 @@ _outValue(StringInfo str, Value *value)
 }
 
 static void
+_outNull(StringInfo str, Node *n)
+{
+	WRITE_NODE_TYPE("NULL");
+}
+
+static void
 _outColumnRef(StringInfo str, ColumnRef *node)
 {
 	WRITE_NODE_TYPE("COLUMNREF");
@@ -3679,6 +3685,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SelectStmt:
 				_outSelectStmt(str, obj);
+				break;
+			case T_Null:
+				_outNull(str, obj);
 				break;
 			case T_ColumnDef:
 				_outColumnDef(str, obj);

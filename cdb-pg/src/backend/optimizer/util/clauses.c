@@ -3900,6 +3900,29 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+		case T_WindowSpec:
+			{
+				WindowSpec *winspec = (WindowSpec *) node;
+				WindowSpec *newnode;
+
+				FLATCOPY(newnode, winspec, WindowSpec);
+
+				MUTATE(newnode->partition, winspec->partition, List *);
+				MUTATE(newnode->order, winspec->order, List *);
+				MUTATE(newnode->frame, winspec->frame, WindowFrame *);
+
+				return (Node *) newnode;
+
+			}
+		case T_SortClause:
+			{
+				SortClause *sortcl = (SortClause *) node;
+				SortClause *newnode;
+
+				FLATCOPY(newnode, sortcl, SortClause);
+
+				return (Node *) newnode;
+			}
 		case T_ArrayRef:
 			{
 				ArrayRef   *arrayref = (ArrayRef *) node;

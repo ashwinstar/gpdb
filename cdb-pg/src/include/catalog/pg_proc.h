@@ -2087,10 +2087,13 @@ DESCR("does not match LIKE expression");
 
 /* SEQUENCE functions */
 DATA(insert OID = 1574 (  nextval			PGNSP PGUID 12 f f t f v 1 20 f "2205" _null_ _null_ _null_	nextval_oid - _null_ ));
+#define NEXTVAL_FUNC_OID 1574
 DESCR("sequence next value");
 DATA(insert OID = 1575 (  currval			PGNSP PGUID 12 f f t f v 1 20 f "2205" _null_ _null_ _null_	currval_oid - _null_ ));
+#define CURRVAL_FUNC_OID 1575
 DESCR("sequence current value");
 DATA(insert OID = 1576 (  setval			PGNSP PGUID 12 f f t f v 2 20 f "2205 20" _null_ _null_ _null_  setval_oid - _null_ ));
+#define SETVAL_FUNC_OID 1576
 DESCR("set sequence value");
 DATA(insert OID = 1765 (  setval			PGNSP PGUID 12 f f t f v 3 20 f "2205 20 16" _null_ _null_ _null_ setval3_oid - _null_ ));
 DESCR("set sequence value and iscalled status");
