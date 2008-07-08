@@ -163,7 +163,7 @@ static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf,
     for (i = 0; i < src->hc; i++)
 	len += strlen(src->hname[i]) + 1 + strlen(src->hvalue[i]) + 1;
 
-    len += src->postlen;
+    len += src->postlen+1;
     if (len > buflen)
 	return 0;
 
@@ -195,6 +195,7 @@ static gpcc_net_header_t* gpcc_net_header_dup(gpcc_net_header_t* src, char* buf,
 	memcpy(buf, src->post, src->postlen);
 	hp->post = buf;
 	hp->postlen = src->postlen;
+	((char *)hp->post)[hp->postlen] = 0;
     }
 
     return hp;
