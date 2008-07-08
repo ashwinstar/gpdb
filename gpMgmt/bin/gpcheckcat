@@ -3,11 +3,12 @@
 Usage: gpcheckcat <option> [dbname]
 
 	-? 
+	-g dir     : generate SQL to rectify catalog corruption, put it in dir
 	-h host	   : DB host name
 	-p port    : DB port number
 	-P passwd  : DB password
 	-U uname   : DB User Name
-	-v         : verbose 
+	-v         : verbose
 
 '''
 import sys, os
@@ -35,11 +36,14 @@ class Global():
     opt['-U'] = None
     opt['-v'] = False
     opt['-V'] = False
+    opt['-g'] = None
     cfg = None
     dbname = None
     db = {}
 
 GV = Global()
+# array of SQL statements. Key is dbid
+Remove = {}
 
 ###############################
 def usage(exitarg = None):
@@ -59,13 +63,13 @@ def veryverbose(x):
 ###############################
 def parseCommandLine():
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vV')
+        (options, args) = getopt.getopt(sys.argv[1:], '?h:p:P:U:B:vVg:')
     except Exception, e:
         usage('Error: ' + str(e))
 
     for (switch, val) in options:
         if switch == '-?':	  usage(0)
-        elif switch[1] in 'hpBPU': GV.opt[switch] = val
+        elif switch[1] in 'hpBPUg': GV.opt[switch] = val
         elif switch[1] in 'vV':    GV.opt[switch] = True
 
     def setdef(x, v):
@@ -153,16 +157,18 @@ def connect2run(qry, col):
     for db in batch:
         for row in db.iterate_dict():
             c = db.x_cfgrec
-            s = ('%s:%s:%s, content %s, dbid %s' % 
-                 (c['hostname'], c['port'], c['datadir'],
-                  c['content'], c['dbid']))
-            for i in col:
-                s = '%s, %s %s' % (s, i, row[i])
-            err.append(s)
+            err.append([c, col, row])
         db.commit()
 
     return err
 
+def formatErr(c, col, row):
+    s = ('%s:%s:%s, content %s, dbid %s' % 
+        (c['hostname'], c['port'], c['datadir'],
+         c['content'], c['dbid']))
+    for i in col:
+        s = '%s, %s %s' % (s, i, row[i])
+    return s
 
 #############
 def getGPConfiguration():
@@ -182,7 +188,8 @@ def getGPConfiguration():
 def checkPGClass():
     print '-----------------------------------'
     print 'Checking pg_class ...'
-    qry = '''SELECT relname, relkind, tc.oid as oid 
+    qry = '''SELECT relname, relkind, tc.oid as oid,
+              reltoastrelid, reltoastidxid 
          FROM pg_class tc left outer join 
               pg_attribute ta on (tc.oid = ta.attrelid)
         WHERE ta.attrelid is NULL'''
@@ -192,7 +199,21 @@ def checkPGClass():
     else:
         print '[ERROR] pg_class has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', e
+        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        relids = {}
+        for e in err:
+            seg = e[0]['dbid'] 
+            if not relids.has_key(seg):
+                relids[seg] = []
+            
+            relids[seg].append(e[2]['oid'])    
+
+        for seg in relids:
+            rels = relids[seg] 
+            for relid in rels:
+                c = GV.cfg[seg]
+                removeTable(seg, connect2(c), relid)
+
 
 #############
 def checkPGAttribute():
@@ -208,7 +229,21 @@ def checkPGAttribute():
     else:
         print '[ERROR] pg_attribute has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', e
+        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+
+        relids = {}
+        for e in err:
+            seg = e[0]['dbid'] 
+            if not relids.has_key(seg):
+                relids[seg] = []
+            
+            relids[seg].append(e[2]['attrelid'])    
+        for seg in relids:
+        	# unique
+            rels = set(relids[seg])
+            for relid in rels:
+                c = GV.cfg[seg]
+                removeRelType(seg, connect2(c), relid)
 
 
 
@@ -216,7 +251,7 @@ def checkPGAttribute():
 def checkPGType():
     print '-----------------------------------'
     print 'Checking pg_type ...'
-    qry = '''SELECT typname, typtype 
+    qry = '''SELECT typname, typtype, typrelid
          FROM pg_type tt left outer join 
               pg_class tc on (tt.typname = tc.relname) 
         WHERE tt.typtype = 'c' and tc.relname is NULL'''
@@ -226,7 +261,20 @@ def checkPGType():
     else:
         print '[ERROR] pg_type has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', e
+        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        relids = {}
+        for e in err:
+            seg = e[0]['dbid'] 
+            if not relids.has_key(seg):
+                relids[seg] = []
+            
+            relids[seg].append(e[2]['typrelid'])    
+        # unique
+        for seg in relids:
+            rels = set(relids[seg])
+            for relid in rels:
+                c = GV.cfg[seg]
+                removeTable(seg, connect2(c), relid)
 
 
 #############
@@ -243,7 +291,20 @@ def checkPGExtTable():
     else:
         print '[ERROR] pg_exttable has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', e
+        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        relids = {}
+        for e in err:
+            seg = e[0]['dbid'] 
+            if not relids.has_key(seg):
+                relids[seg] = []
+            
+            relids[seg].append(e[2]['reloid'])    
+        for seg in relids:
+        	# unique
+            rels = set(relids[seg])
+            for relid in rels:
+                c = GV.cfg[seg]
+                removeExtTable(seg, connect2(c), relid)
 
 
 
@@ -261,8 +322,148 @@ def checkPGClassToast():
     else:
         print '[ERROR] pg_class.reltoastrelid has %d issue(s)' % len(err)
         print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', e
+        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
 
+#############
+def checkPGNamespace():
+    print '-----------------------------------'
+    print 'Checking missing schema definitions ...'
+    qry = '''SELECT o.nsp
+         FROM pg_namespace n right outer join 
+              (select relnamespace as nsp from pg_class union
+               select typnamespace as nsp from pg_type union
+               select oprnamespace as nsp from pg_operator union
+               select pronamespace as nsp from pg_proc) o on
+               (n.oid = o.nsp)
+        WHERE n.oid is NULL'''
+    err = connect2run(qry, ('nsp',))
+    if not err:
+        print '[OK] schema'
+    else:
+        print '[ERROR] pg_namespace has %d issue(s)' % len(err)
+        print '[ERROR] %s' % qry
+        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+        schemaids = {}
+        for e in err:
+            seg = e[0]['dbid'] 
+            if not schemaids.has_key(seg):
+                schemaids[seg] = []
+            
+            schemaids[seg].append(e[2]['nsp'])    
+        for seg in schemaids:
+        	# unique
+            schemas = set(schemaids[seg])
+            for schemaid in schemas:
+                c = GV.cfg[seg]
+                removeSchema(seg, connect2(c), schemaid)
+
+#############
+# remove all remnants of a schema
+def removeSchema(seg, db, schemaid):
+    # see if table has a toast table and if so, remove that
+    # must do it like this so we can get toast tables
+    for row in db.iterate_dict():
+        removeTable(seg, db, row['oid'])
+
+    buildRemove(seg, 'schema operators', 'pg_operator',
+                dict([('oprnamespace', schemaid)]))
+
+    buildRemove(seg, 'schema types', 'pg_type',
+                dict([('typnamespace', schemaid)]))
+
+    buildRemove(seg, 'schema procedures', 'pg_proc',
+                dict([('pronamespace', schemaid)]))
+
+    removeDepend(seg, db, schemaid)
+    
+
+#############
+def removeTable(seg, db, reloid):
+    # see if table has a toast table and if so, remove that
+    db.execute('select oid, reltoastrelid, reltoastidxid from pg_class ' + 
+			   'where oid = %i' % reloid)
+    for row in db.iterate_dict():
+        addRemove(seg, '-- Checking for toast relation for %i' % reloid) 
+        if row['reltoastrelid'] != 0:
+            removeTable(seg, db, row['reltoastrelid'])
+        addRemove(seg, '-- Checking for toast relation index for %i' % reloid) 
+        if row['reltoastidxid'] != 0:
+            removeIndex(seg, db, row['reltoastidxid'])
+    
+    removeInheritance(seg, db, reloid)
+    removeStats(seg, db, reloid)
+    removeAttributes(seg, db, reloid)
+    removeRelTuple(seg, db, reloid)
+    removeIndexes(seg, db, reloid)
+    removeRelType(seg, db, reloid)
+    removeExtTable(seg, db, reloid)
+    if seg == -1:
+        removePolicy(seg, db, reloid)
+
+def removeInheritance(seg, db, reloid):
+    buildRemove(seg, 'inheritance', 'pg_inherits',
+                dict([('inhrelid', reloid),('inhparent', reloid)]))
+
+def removeStats(seg, db, reloid):
+    buildRemove(seg, 'statistics', 'pg_statistic',
+                dict([('starelid', reloid)]))
+
+def removeRelTuple(seg, db, reloid):
+    buildRemove(seg, 'relation tuple', 'pg_class',
+                dict([('oid', reloid)]))
+
+def removeExtTable(seg, db, reloid):
+    buildRemove(seg, 'external table definition', 'pg_exttable',
+                dict([('reloid', reloid)]))
+
+def removePolicy(seg, db, reloid):
+    buildRemove(seg, 'Distribution policy', 'gp_distribution_policy',
+                dict([('localoid', reloid)]))
+
+def removeAttributes(seg, db, reloid):
+    buildRemove(seg, 'attributes', 'pg_attribute',
+                dict([('attrelid', reloid)]))
+    removeAttrDefs(seg, db, reloid)
+    removeConstraints(seg, db, reloid)
+
+def removeAttrDefs(seg, db, reloid):
+    buildRemove(seg, 'attribute defaults', 'pg_attrdef',
+                dict([('adrelid', reloid)]))
+
+def removeConstraints(seg, db, reloid):
+    buildRemove(seg, 'constraints', 'pg_constraint',
+                dict([('conrelid', reloid)]))
+
+def removeRelType(seg, db, reloid):
+    buildRemove(seg, 'relation type tuple', 'pg_type',
+                dict([('typrelid', reloid)]))
+
+def removeIndexes(seg, db, reloid):
+    buildRemove(seg, 'indexes', 'pg_index', dict([('indrelid', reloid)]))
+
+def removeDepend(seg, db, reloid):
+    buildRemove(seg, 'dependencies', 'pg_depend',
+                dict([('objid', reloid), ('refobjid', reloid)]))
+    buildRemove(seg, 'shared dependencies', 'pg_shdepend',
+                dict([('objid', reloid), ('refobjid', reloid)]))
+
+def buildRemove(seg, name, table, cols):
+    first = False
+    fullstr = ''
+    str = ''
+    for col in cols:
+        if not first:
+            fullstr = '--Remove %s for %i\n' % (name, cols[col])
+        if len(str) > 0:
+            str += ' or '
+        str += '%s = \'%s\'' % (col, cols[col])
+    fullstr += 'DELETE FROM %s WHERE %s;' % (table, str)
+    addRemove(seg, fullstr)
+
+def addRemove(seg, line):
+    if not Remove.has_key(seg):
+        Remove[seg] = []
+    Remove[seg].append(line)
 
 
 #############
@@ -274,5 +475,31 @@ if __name__ == '__main__':
     checkPGType()
     checkPGExtTable()
     checkPGClassToast()
+    checkPGNamespace()
     
+    if GV.opt['-g'] != None:
+        try:
+            if not os.path.exists(GV.opt['-g']):
+                os.mkdir(GV.opt['-g'])
+        except Exception, e:
+            print '[FATAL] unable to create directory "%s": %s' % (GV.opt['-g'],
+                  str(e))
+            sys.exit(1)
+                        
+        for seg in Remove:
+            # dbid.host.port.dbname.sql
+            c = GV.cfg[seg]
+            filename = '%s/%i.%s.%i.%s.sql' % (GV.opt['-g'], seg, c['hostname'],
+                        c['port'], GV.dbname)
+            try:
+                file = open(filename, 'w')
+            except Exception, e:
+                print '[FATAL] unable to create file "%s": %s' % (filename, str(e))
+                sys.exit(1)
+
+            lines = set(Remove[seg])
+            for line in lines:
+                file.write(line + '\n')
+
+            file.close()
 
