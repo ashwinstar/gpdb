@@ -114,7 +114,7 @@ static apr_status_t a_admin_add_init(gpcc_event_t *ev, void *arg)
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
 
-    uri = gpcc_net_uri_alloc(url);
+    uri = gpcc_net_uri_param_alloc(url);
     if (!uri) {
 	goto bail;
     }

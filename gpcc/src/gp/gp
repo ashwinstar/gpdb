@@ -105,14 +105,16 @@ class Command():
 
     def __httpRequest(self, addr, method, path, params, data=None, content_type = None):
         '''Make a http request to the first MA.'''
-        p = params and urllib.urlencode(params) or ''
-        query = '%s?%s' % (path, p)
         f = None
         header = {}
-        if self.sid:
-            header['X-GPCC-SID'] = self.sid
         if content_type:
             header['Content-Type'] = content_type
+        if self.sid:
+            if params is None:
+                params = {}
+            params['sid'] = self.sid
+        p = params and urllib.urlencode(params) or ''
+        query = '%s?%s' % (path, p)
 
         try:
             self.verbose('http://%s%s' % (addr, query))
@@ -616,10 +618,12 @@ class AdminAddCmd(Command):
             sys.exit(2)
 
         param = {}
+        content = {}
         if (self.gopt['-a']): param['a'] = self.gopt['-a']
-        param['user'] = self.opt['-u']
-        param['password'] = new_passwd
-        packet = self._httpGet('/gpcc/admin/add', param)
+        content['user'] = self.opt['-u']
+        content['password'] = new_passwd
+        data = urllib.urlencode(content)
+        packet = self._httpPost('/gpcc/admin/add', param, data, 'application/x-www-form-urlencoded')
         self.raw(packet)         
         if 'ok' != packet.get('status'):
             print '[ERROR] unable to add user. details:'

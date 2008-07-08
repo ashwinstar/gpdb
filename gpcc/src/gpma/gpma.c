@@ -229,22 +229,12 @@ static void net_accepted(gpcc_net_conn_t conn,
 
 	gpcc_net_uri_t* uri = gpcc_net_uri_alloc(from_peer->argv[1]);
 	char* a = (uri ? gpcc_net_uri_param(uri, "a") : 0);
+	const char* session_id = (uri ? gpcc_net_uri_param(uri, "sid") : 0);
 	int is_bad_uri = 0;
 	int is_bad_array_name = 0;
 	int is_bad_session_id = 0;
 	int is_lead_ma = 0;
 	int is_no_lead_ma = 0;
-	const char *session_id = 0;
-	
-	{
-	    int i;
-	    for (i = 0 ; i < from_peer->hc ; i++) {
-		if (apr_strnatcasecmp(from_peer->hname[i], "X-GPCC-SID") == 0) {
-		    session_id = from_peer->hvalue[i];
-		    gpcc_log_info("X-GPCC-SID : %s", from_peer->hvalue[i]);
-		}
-	    }
-	}
 
 	/* is Lead MA */
 	is_no_lead_ma = (gpma.lma_cmdslot->u.lma.chubby.lease == NULL && gpma.lma_cmdslot->u.lma.leader == NULL);
@@ -338,7 +328,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 				      gpma.fts_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		} else if (0 == strcmp("/gpcc/admin/add", uri->path)) {
 		    ev = mkhttp_event(ADMIN_ADD_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
-				      gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+				      gpma.admin_cmdslot->cmdidx, from_peer->post, from_peer->postlen+1);
 		} else if (0 == strcmp("/gpcc/admin/delete", uri->path)) {
 		    ev = mkhttp_event(ADMIN_DELETE_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
 				      gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
