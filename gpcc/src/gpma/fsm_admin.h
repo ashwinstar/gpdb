@@ -168,7 +168,7 @@ static apr_status_t a_admin_add_set_password_file(gpcc_event_t *ev, void *arg)
 	/* fail to get password file */
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "No password file found");
+	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin add", FAIL_STATUS, 0, "No password file found");
 	gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
 	return 0;
@@ -329,7 +329,7 @@ static apr_status_t a_admin_delete_set_password_file(gpcc_event_t *ev, void *arg
 	/* fail to get password file */
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "Failed to get password file");
+	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin delete", FAIL_STATUS, 0, "Failed to get password file");
 	gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
 	return 0;
@@ -339,7 +339,7 @@ static apr_status_t a_admin_delete_set_password_file(gpcc_event_t *ev, void *arg
 	/* file not exists */
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "Error: no such user.");
+	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin delete", FAIL_STATUS, 0, "Error: no such user.");
 	gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
 	return 0;
@@ -466,7 +466,7 @@ static apr_status_t a_admin_list_done(gpcc_event_t *ev, void *arg)
 	/* fail to get password file */
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "Failed to get password file");
+	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin list", FAIL_STATUS, 0, "Failed to get password file");
 	gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
 	return 0;
@@ -476,14 +476,14 @@ static apr_status_t a_admin_list_done(gpcc_event_t *ev, void *arg)
 	/* file not exists */
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(gpma.array_name, 0, "login", OK_STATUS, 0, "");
+	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin list", OK_STATUS, 0, "");
 	gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
 	return 0;
     } 
 
     /* add new entry to the file */
-    obj = gpcc_json_http_reply(gpma.array_name, 0, "login", OK_STATUS, 0, "");
+    obj = gpcc_json_http_reply(gpma.array_name, 0, "admin list", OK_STATUS, 0, "");
     arrobj = json_object_new_array();
 
     for (tok = apr_strtok(result->u.get.content.a, "\r\n", &last) ; 
@@ -586,7 +586,7 @@ static apr_status_t a_admin_password_set_password_file(gpcc_event_t *ev, void *a
 	/* fail to get password file */
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "Failed to get password file");
+	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin passwd", FAIL_STATUS, 0, "Failed to get password file");
 	gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
 	return 0;
@@ -596,7 +596,7 @@ static apr_status_t a_admin_password_set_password_file(gpcc_event_t *ev, void *a
 	/* file not exists */
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "Error: no such user.");
+	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin passwd", FAIL_STATUS, 0, "Error: no such user.");
 	gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
 	return 0;
@@ -629,7 +629,7 @@ static apr_status_t a_admin_password_set_password_file(gpcc_event_t *ev, void *a
 	    if (apr_password_validate(slot->u.admin.password, passwd) != 0) {
 		evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 		gpcc_evqueue_put(gpma.evq, evt);
-		obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "wrong password");
+		obj = gpcc_json_http_reply(gpma.array_name, 0, "admin passwd", FAIL_STATUS, 0, "wrong password");
 		gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
 		json_object_put(obj);	
 		if (buf) free(buf);
@@ -677,7 +677,7 @@ static apr_status_t a_admin_password_done(gpcc_event_t *ev, void *arg)
 	/* fail to give up the lease */
 	evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 	gpcc_evqueue_put(gpma.evq, evt);
-	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin delete", FAIL_STATUS, 0, "Failed to give up lease");
+	obj = gpcc_json_http_reply(gpma.array_name, 0, "admin passwd", FAIL_STATUS, 0, "Failed to give up lease");
 	gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
 	json_object_put(obj);
 	return 0;	
@@ -685,7 +685,7 @@ static apr_status_t a_admin_password_done(gpcc_event_t *ev, void *arg)
 
     evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);    
-    obj = gpcc_json_http_reply(gpma.array_name, 0, "admin delete", OK_STATUS, 0, "");
+    obj = gpcc_json_http_reply(gpma.array_name, 0, "admin passwd", OK_STATUS, 0, "");
     gpcc_net_http_close(slot->u.admin.conn, 200, "ok", json_object_to_json_string(obj));
     json_object_put(obj);
     return 0; 
