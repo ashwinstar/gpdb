@@ -736,11 +736,13 @@ class AdminPasswordCmd(Command):
             sys.exit(2)
 
         param = {}
+        content = {}
         if (self.gopt['-a']): param['a'] = self.gopt['-a']
-        param['old_password'] = old_password
-        param['new_password'] = new_password
-        param['user'] = self.opt['-u']
-        packet = self._httpGet('/gpcc/admin/password', param)
+        content['old_password'] = old_password
+        content['new_password'] = new_password
+        content['user'] = self.opt['-u']
+        data = urllib.urlencode(content)
+        packet = self._httpPost('/gpcc/admin/password', param, data, 'application/x-www-form-urlencoded')
         self.raw(packet)         
         if 'ok' != packet.get('status'):
             print '[ERROR] Unable to change password. Details:'

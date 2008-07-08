@@ -309,7 +309,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 		}
 		else if (0 == strcmp("/gpcc/init", uri->path)) {
 		    ev = mkhttp_event(ARRAY_INIT_EVENT, conn, gpma.fts_cmdslot->cmdidx, 0, 
-				      gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen);
+				      gpma.fts_cmdslot->cmdidx, from_peer->post, from_peer->postlen+1);
 		}
 		else if (0 == strcmp("/gpcc/start", uri->path)) {
 		    char *seg = (uri ? gpcc_net_uri_param(uri, "s") : 0);
@@ -347,7 +347,7 @@ static void net_accepted(gpcc_net_conn_t conn,
 				      gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
 		} else if (0 == strcmp("/gpcc/admin/password", uri->path)) {
 		    ev = mkhttp_event(ADMIN_PASSWORD_EVENT, conn, gpma.admin_cmdslot->cmdidx, 0, 
-				      gpma.admin_cmdslot->cmdidx, from_peer->argv[1], strlen(from_peer->argv[1])+1);
+				      gpma.admin_cmdslot->cmdidx, from_peer->post, from_peer->postlen+1);
 		}
 		else {
 		    is_bad_uri = 1; 
