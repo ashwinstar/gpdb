@@ -289,6 +289,10 @@ installcheck-good :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(GPPGDIR)/src/test/regress && $(MAKE) installcheck-good
 
+installcheck-parallel :
+	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
+	@cd $(GPPGDIR)/src/test/regress && $(MAKE) installcheck-parallel
+
 installcheck-olaptest :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, cannot check"; exit 1; fi
 	@cd $(GPPGDIR)/src/test/regress && $(MAKE) installcheck-olaptest
