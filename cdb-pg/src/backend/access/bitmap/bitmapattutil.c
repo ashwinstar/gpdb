@@ -60,71 +60,40 @@ _bitmap_create_lov_heapandindex(Relation rel,
 	int			i;
  	GpPolicy   policy;
 
+	Assert(rel != NULL);
+
+	/*
+	 * If there are no given lovHeapOid and lovIndexOid, then this is
+	 * happening during re-indexing. We allocate new lovHeapOid and new
+	 * lovIndexOid for the new index.
+	 *
+	 * XXX Each segment db may have different lovHeapOid and lovIndexOid,
+	 * which should not be an issue now. Ideally, we would like each segment
+	 * db use the same oids.
+	 */
+	if (!OidIsValid(*lovHeapOid))
+	{
+		Relation pg_type;
+		
+		Assert(!OidIsValid(*lovIndexOid) && !OidIsValid(lovComptypeOid));
+		*lovHeapOid = GetNewRelFileNode(rel->rd_rel->reltablespace,
+										rel->rd_rel->relisshared,
+										NULL);
+		*lovIndexOid = GetNewRelFileNode(rel->rd_rel->reltablespace,
+										rel->rd_rel->relisshared,
+										NULL);
+		pg_type = heap_open(TypeRelationId, RowExclusiveLock);
+		lovComptypeOid = GetNewOid(pg_type);
+		heap_close(pg_type, NoLock);		
+
+		Assert(OidIsValid(*lovHeapOid) && OidIsValid(*lovIndexOid) && OidIsValid(lovComptypeOid));
+	}
+
 	/* create the new names for the new lov heap and index */
 	snprintf(lovHeapName, sizeof(lovHeapName), 
-			 "pg_bm_%u", RelationGetRelid(rel)); 
+			 "pg_bm_%u_%u", RelationGetRelid(rel), *lovHeapOid); 
 	snprintf(lovIndexName, sizeof(lovIndexName), 
-			 "pg_bm_%u_index", RelationGetRelid(rel)); 
-
-	/*
-	 * If this is happening during re-indexing, then such a heap should
-	 * have existed already. Here, we delete this heap and its btree
-	 * index first.
-	 */
-	heapid = get_relname_relid(lovHeapName, PG_BITMAPINDEX_NAMESPACE);
-
-	/*
-	 * If this heap name is taken, it means that this is called during
-	 * reindexing. We will re-use the previous oids for the lov heap,
-	 * the complex type for the lov heap, and the lov index.
-	 */
-	if (OidIsValid(heapid))
-	{
-		Relation lovHeap, lovIndex;
-		Buffer btree_metabuf;
-		Page   btree_metapage;
-
-		*lovHeapOid = heapid;
-
-		idxid = get_relname_relid(lovIndexName, PG_BITMAPINDEX_NAMESPACE);
-		Assert(OidIsValid(idxid));
-		*lovIndexOid = idxid;
-
-		lovComptypeOid = get_rel_type_id(heapid);
-		Assert(OidIsValid(lovComptypeOid));
-
-		/*
-		 * Truncate both the lov heap and lov index to get rid of
-		 * previous data.
-		 */
-		lovHeap = heap_open(heapid, AccessExclusiveLock);
-		lovIndex = index_open(idxid, AccessExclusiveLock);
-		RelationTruncate(lovIndex, 0);
-
-		/*
-		 * After truncating a btee index, this is not a btree anymore.
-		 * We create the new metapage for this btree.
-		 */
-		btree_metabuf = _bt_getbuf(lovIndex, P_NEW, BT_WRITE);
-		Assert (BTREE_METAPAGE == BufferGetBlockNumber(btree_metabuf));
-		btree_metapage = BufferGetPage(btree_metabuf);
-		_bt_initmetapage(btree_metapage, P_NONE, 0);
-
-		/* This cache value is not valid anymore. */
-		if (lovIndex->rd_amcache)
-		{
-			pfree(lovIndex->rd_amcache);
-			lovIndex->rd_amcache = NULL;
-		}
-		MarkBufferDirty(btree_metabuf);
-		_bt_relbuf(lovIndex, btree_metabuf);
-
-		index_close(lovIndex, NoLock);
-		RelationTruncate(lovHeap, 0);
-		heap_close(lovHeap, NoLock);
-
-		return;
-	}
+			 "pg_bm_%u_%u_index", RelationGetRelid(rel), *lovHeapOid); 
 
 	/*
 	 * create a new empty heap to store all attribute values with their
@@ -135,6 +104,8 @@ _bitmap_create_lov_heapandindex(Relation rel,
  	MemSet(&policy, 0, sizeof(policy));
  	policy.ptype = POLICYTYPE_PARTITIONED;
  
+	Assert(rel->rd_rel != NULL);
+	
   	heapid =
 		heap_create_with_catalog(lovHeapName, PG_BITMAPINDEX_NAMESPACE,
 								 rel->rd_rel->reltablespace, 
