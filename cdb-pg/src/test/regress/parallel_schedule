@@ -26,7 +26,10 @@ test: create_index create_view
 
 ignore: sanity_check
 
-test: errors select select_into select_distinct select_distinct_on select_having subselect union case join aggregates random update delete namespace
+test: errors
+test: select
+
+test: select_into select_distinct select_distinct_on select_having subselect union case join aggregates random update delete namespace
 
 ignore: select_implicit
 ignore: transactions
