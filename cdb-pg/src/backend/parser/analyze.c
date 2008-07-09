@@ -155,7 +155,7 @@ static void transformTableConstraint(ParseState *pstate,
 						 CreateStmtContext *cxt,
 						 Constraint *constraint);
 static void transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
-					 InhRelation *inhrelation);
+					 InhRelation *inhrelation, bool forceBareCol);
 static void transformIndexConstraints(ParseState *pstate,
 						  CreateStmtContext *cxt);
 static void transformDistributedBy(ParseState *pstate,
@@ -1237,7 +1237,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 					bool		isBeginning = (cxt.columns == NIL);
 
 					transformInhRelation(pstate, &cxt,
-										 (InhRelation *) element);
+										 (InhRelation *) element, false);
 
 					/*
 					 * For Greenplum Database distributed tables, default to 
@@ -1369,10 +1369,15 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 				
 			case T_Constraint:
 			case T_FkConstraint:
-			case T_InhRelation:
 				/* should never happen. If it does fix gram.y */
-				elog(ERROR, "node type %d not allowed for external table definition",
+				elog(ERROR, "node type %d not supported for external tables",
 					 (int) nodeTag(element));
+				break;
+				
+			case T_InhRelation:
+				/* LIKE */
+				transformInhRelation(pstate, &cxt,
+									 (InhRelation *) element, true);
 				break;
 				
 			default:
@@ -1667,10 +1672,12 @@ transformTableConstraint(ParseState *pstate, CreateStmtContext *cxt,
  *
  * Change the LIKE <subtable> portion of a CREATE TABLE statement into the
  * column definitions which recreate the user defined column portions of <subtable>.
+ *
+ * if forceBareCol is true we disallow inheriting any indexes/constr/defaults.
  */
 static void
 transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
-					 InhRelation *inhRelation)
+					 InhRelation *inhRelation, bool forceBareCol)
 {
 	AttrNumber	parent_attno;
 	Relation	relation;
@@ -1737,6 +1744,11 @@ transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("LIKE INCLUDING INDEXES is not implemented")));
 
+	if (forceBareCol && (including_indexes || including_constraints || including_defaults))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("LIKE INCLUDING may not be used with this kind of relation")));
+		
 	/*
 	 * Insert the copied attributes into the cxt for the new table
 	 * definition.
@@ -1766,7 +1778,7 @@ transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 											attribute->atttypmod);
 		def->inhcount = 0;
 		def->is_local = true;
-		def->is_not_null = attribute->attnotnull;
+		def->is_not_null = (forceBareCol ? false : attribute->attnotnull);
 		def->raw_default = NULL;
 		def->cooked_default = NULL;
 		def->constraints = NIL;

@@ -3481,6 +3481,7 @@ ExtTableElementList:
 
 ExtTableElement:
 			ExtcolumnDef					{ $$ = $1; }
+			| TableLikeClause				{ $$ = $1; }
 			;
 
 /* column def for ext table - doesn't have room for constraints */
