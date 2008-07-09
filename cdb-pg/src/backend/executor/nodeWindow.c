@@ -5942,7 +5942,7 @@ do_ntile_prelim(WindowRefExprState *ref_state, int64 num_tiles)
 
 	WindowState *window_state = ref_state->windowstate;
 	
-	if ( num_tiles < 0 )
+	if ( num_tiles <= 0 )
 		ereport(ERROR,
 			(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
 			 errmsg("argument value out of range"),
