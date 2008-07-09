@@ -235,7 +235,7 @@ UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Standby Master: $MASTER_STANDBY_HOSTNAME"
 	MASTER_DBID=`env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"select dbid from $CONFIG_TABLE where content=-1 and definedprimary='t' and isprimary='t';"`
-	LOG_MSG "[INFO}:-Obtained MASTER_DBID as $MASTER_DBID"
+	LOG_MSG "[INFO]:-Obtained MASTER_DBID as $MASTER_DBID"
 	env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT "$DEFAULTDB" -A -t -c"update $CONFIG_TABLE set hostname='$MASTER_STANDBY_HOSTNAME' where dbid=$MASTER_DBID ;"
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then

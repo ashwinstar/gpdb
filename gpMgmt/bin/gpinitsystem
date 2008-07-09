@@ -1381,7 +1381,7 @@ else
 LOG_MSG "[INFO]:-To initialize a Standby Master Segment for this Greenplum instance" 1
 LOG_MSG "[INFO]:-Review options for gpinitstandby" 1
 fi
-LOG_MSG "[INFO}:-------------------------------------------------------" 1
+LOG_MSG "[INFO]:-------------------------------------------------------" 1
 LOG_MSG "[INFO]:-The Master ${MASTER_DATA_DIRECTORY}/$PG_HBA post gpinitsystem" 1
 LOG_MSG "[INFO]:-has been configured to allow all hosts within this new" 1
 LOG_MSG "[INFO]:-array to intercommunicate. Any hosts external to this" 1
