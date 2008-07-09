@@ -1086,6 +1086,11 @@ typedef struct AlterPartitionCmd/* one subcmd of an ALTER TABLE...PARTITION */
 	int					location;	/* token location, or -1 if unknown */
 } AlterPartitionCmd;
 
+typedef struct InheritPartitionCmd
+{
+	NodeTag		type;
+	RangeVar   *parent;
+} InheritPartitionCmd;
 
 /* ----------------------
  *	Alter Domain

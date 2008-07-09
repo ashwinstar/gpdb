@@ -815,6 +815,16 @@ _readAlterTableCmd(void)
 	READ_DONE();
 }
 
+static InheritPartitionCmd *
+_readInheritPartitionCmd(void)
+{
+	READ_LOCALS(InheritPartitionCmd);
+
+	READ_NODE_FIELD(parent);
+
+	READ_DONE();
+}
+
 static AlterPartitionCmd *
 _readAlterPartitionCmd(void)
 {
@@ -3228,6 +3238,7 @@ static ParseNodeInfo infoAr[] =
 	{"INDEXELEM", (ReadFn)_readIndexElem},
 	{"INDEXSCAN", (ReadFn)_readIndexScan},
 	{"INDEXSTMT", (ReadFn)_readIndexStmt},
+	{"INHERITPARTITION", (ReadFn)_readInheritPartitionCmd},
 	{"JOIN", (ReadFn)_readJoin},
 	{"JOINEXPR", (ReadFn)_readJoinExpr},
 	{"LIMIT", (ReadFn)_readLimit},

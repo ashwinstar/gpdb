@@ -1898,6 +1898,14 @@ _outAlterTableCmd(StringInfo str, AlterTableCmd *node)
 }
 
 static void
+_outInheritPartitionCmd(StringInfo str, InheritPartitionCmd *node)
+{
+	WRITE_NODE_TYPE("INHERITPARTITION");
+
+	WRITE_NODE_FIELD(parent);
+}
+
+static void
 _outAlterPartitionCmd(StringInfo str, AlterPartitionCmd *node)
 {
 	WRITE_NODE_TYPE("ALTERPARTITIONCMD");
@@ -3610,6 +3618,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_AlterTableCmd:
 				_outAlterTableCmd(str, obj);
+				break;
+			case T_InheritPartitionCmd:
+				_outInheritPartitionCmd(str, obj);
 				break;
 
 			case T_AlterPartitionCmd:

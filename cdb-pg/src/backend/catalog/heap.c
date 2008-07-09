@@ -44,6 +44,8 @@
 #include "catalog/pg_exttable.h"
 #include "catalog/pg_inherits.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_partition.h"
+#include "catalog/pg_partition_rule.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
 #include "commands/tablecmds.h"
@@ -1006,6 +1008,60 @@ RelationRemoveInheritance(Oid relid)
 	heap_close(catalogRelation, RowExclusiveLock);
 }
 
+static void
+RemovePartitioning(Oid relid)
+{
+	ScanKeyData key;
+	Relation rel;
+	HeapTuple tuple;
+	bool is_rule = false;
+	SysScanDesc scan;
+
+	if (Gp_role == GP_ROLE_EXECUTE) 
+		return;
+
+	/* delete any records from child partitions */
+	rel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
+	ScanKeyInit(&key,
+				Anum_pg_partition_rule_parchildrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(rel, PartitionRuleParchildrelidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+	if (HeapTupleIsValid(tuple))
+	{
+		simple_heap_delete(rel, &tuple->t_self);
+		is_rule = true;
+	}
+
+	systable_endscan(scan);
+	heap_close(rel, NoLock);
+
+	/* We wont be a partition leaf and the target of partitioning... */
+	if (is_rule)
+		return;
+	
+	rel = heap_open(PartitionRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key,
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(rel, PartitionParrelidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
+		  simple_heap_delete(rel, &tuple->t_self);
+
+	systable_endscan(scan);
+	heap_close(rel, NoLock);
+	CommandCounterIncrement();
+}
+
 /*
  *		DeleteRelationTuple
  *
@@ -1374,6 +1430,11 @@ heap_drop_with_catalog(Oid relid)
 	 * remove inheritance information
 	 */
 	RelationRemoveInheritance(relid);
+
+	/*
+	 * remove partitioning configuration
+	 */
+	RemovePartitioning(relid);
 
 	/*
 	 * delete statistics

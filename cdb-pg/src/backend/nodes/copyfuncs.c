@@ -2203,6 +2203,16 @@ _copyAlterTableCmd(AlterTableCmd *from)
 	return newnode;
 }
 
+static InheritPartitionCmd *
+_copyInheritPartitionCmd(InheritPartitionCmd *from)
+{
+	InheritPartitionCmd *newnode = makeNode(InheritPartitionCmd);
+
+	COPY_NODE_FIELD(parent);
+
+	return newnode;
+}
+
 static AlterPartitionCmd *
 _copyAlterPartitionCmd(AlterPartitionCmd *from)
 {
@@ -3739,6 +3749,9 @@ copyObject(void *from)
 			break;
 		case T_AlterTableCmd:
 			retval = _copyAlterTableCmd(from);
+			break;
+		case T_InheritPartitionCmd:
+			retval = _copyInheritPartitionCmd(from);
 			break;
 		case T_AlterPartitionCmd:
 			retval = _copyAlterPartitionCmd(from);

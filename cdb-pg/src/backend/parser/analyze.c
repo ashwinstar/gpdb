@@ -5838,10 +5838,12 @@ make_child_node(CreateStmt *stmt, CreateStmtContext *cxt, char *relname,
 	{
 		AlterTableCmd  *atc = makeNode(AlterTableCmd);
 		AlterTableStmt *ats = makeNode(AlterTableStmt);
+		InheritPartitionCmd *ipc = makeNode(InheritPartitionCmd);
 
 		/* alter table child inherits parent */
 		atc->subtype = AT_AddInherit;
-		atc->def = (Node *) parent_tab_name; 
+		ipc->parent = parent_tab_name;
+		atc->def = (Node *)ipc; 
 		ats->relation = child_tab_name;
 		ats->cmds 	  = list_make1((Node *)atc);
 		ats->relkind  = OBJECT_TABLE;

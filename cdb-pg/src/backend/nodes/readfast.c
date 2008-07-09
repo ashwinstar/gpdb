@@ -710,6 +710,16 @@ _readAlterTableCmd(const char ** str)
 	READ_DONE();
 }
 
+static InheritPartitionCmd *
+_readInheritPartitionCmd(const char **str)
+{
+	READ_LOCALS(InheritPartitionCmd);
+
+	READ_NODE_FIELD(parent);
+
+	READ_DONE();
+}
+
 static AlterPartitionCmd *
 _readAlterPartitionCmd(const char ** str)
 {
@@ -3588,6 +3598,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_AlterTableCmd:
 				return_value = _readAlterTableCmd(str);
+				break;
+			case T_InheritPartitionCmd:
+				return_value = _readInheritPartitionCmd(str);
 				break;
 			case T_AlterPartitionCmd:
 				return_value = _readAlterPartitionCmd(str);

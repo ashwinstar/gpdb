@@ -824,6 +824,14 @@ _equalAlterTableCmd(AlterTableCmd *a, AlterTableCmd *b)
 }
 
 static bool
+_equalInheritPartitionCmd(InheritPartitionCmd *a, InheritPartitionCmd *b)
+{
+	COMPARE_NODE_FIELD(parent);
+
+	return true;
+}
+
+static bool
 _equalAlterPartitionCmd(AlterPartitionCmd *a, AlterPartitionCmd *b)
 {
 	COMPARE_NODE_FIELD(partid);
@@ -2301,6 +2309,9 @@ equal(void *a, void *b)
 			break;
 		case T_AlterTableCmd:
 			retval = _equalAlterTableCmd(a, b);
+			break;
+		case T_InheritPartitionCmd:
+			retval = _equalInheritPartitionCmd(a, b);
 			break;
 		case T_AlterPartitionCmd:
 			retval = _equalAlterPartitionCmd(a, b);
