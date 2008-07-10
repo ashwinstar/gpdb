@@ -72,6 +72,7 @@ PARALLEL_STATUS_FILE=/tmp/gpcrondump_parallel_status_file.$$
 GPSEGCRON=$WORKDIR/lib/gpsegcron.sh
 PG_DUMPALL_PREFIX="gp_global_1_1_"
 HISTORY_TABLE=public.gpcrondump_history
+USERDIR=""
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -140,6 +141,7 @@ USAGE () {
 		$ECHO "      -R, <program name> run named program after successful dump completed, include full path name"
 		$ECHO "          if program name not in path. Note, program will only be called once if multi database"
 		$ECHO "          dump requested"
+		$ECHO "      -u, <user_dump_dir> dump to the full path of user specified directory [default:- segment data directory]"
 		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default:- $BATCH_DEFAULT]"
 		$ECHO
 		$ECHO "      Crontab entry (example):"
@@ -206,6 +208,17 @@ GET_DUMP_LIST () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_DUMP_DIR () {
+        LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ x"" != x"$USERDIR" ]; then
+	    #DIR="$USERDIR/`$BASENAME $1`"
+	    DIR=$USERDIR
+	else
+	    DIR=$1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 CHK_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		CHK_DIR_TARGET=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select hostname, datadir, port from $CONFIG_TABLE where dbid=${DBID};"`
@@ -213,6 +226,7 @@ CHK_DATA () {
 		DIR_HOST=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f1`
 		DIR=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f2`
 		DIR_PORT=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f3`
+		GET_DUMP_DIR $DIR
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -265,20 +279,21 @@ CHK_DUMP_DIR () {
 	$RM -f $PARALLEL_STATUS_FILE
 	LOG_MSG "[INFO]:-Completed dump directory checks"
 	LOG_MSG "[INFO]:-Checking for $DUMP_SUB_DIR on Master segment"
-	CHK_DIR $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR
+	GET_DUMP_DIR $MASTER_DATA_DIRECTORY
+	CHK_DIR $DIR/$DUMP_SUB_DIR
 	if [ $EXISTS -ne 0 ];then
-		LOG_MSG "[INFO]:-$MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR does not exist, will try to create" 1
-		$MKDIR $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR
-		ERROR_CHK $? "make dump directory $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR on Master segment" 2
+		LOG_MSG "[INFO]:-$DIR/$DUMP_SUB_DIR does not exist, will try to create" 1
+		$MKDIR $DIR/$DUMP_SUB_DIR
+		ERROR_CHK $? "make dump directory $DIR/$DUMP_SUB_DIR on Master segment" 2
 	else
-		LOG_MSG "[INFO]:-Directory $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR exists on Master segment"
-		$TOUCH $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/tmp_file_test
+		LOG_MSG "[INFO]:-Directory $DIR/$DUMP_SUB_DIR exists on Master segment"
+		$TOUCH $DIR/$DUMP_SUB_DIR/tmp_file_test
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Cannot write to $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR" 2
+			ERROR_EXIT "[FATAL]:-Cannot write to $DIR/$DUMP_SUB_DIR" 2
 		else
-			$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/tmp_file_test
-			LOG_MSG "[INFO]:-Write test passed on $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR"
+			$RM -f $DIR/$DUMP_SUB_DIR/tmp_file_test
+			LOG_MSG "[INFO]:-Write test passed on $DIR/$DUMP_SUB_DIR"
 		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -527,6 +542,9 @@ PROMPT_CONTINUE () {
 		if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
 		LOG_MSG "[INFO]:-Schema to dump                   = $DUMP_SCHEMA_NAME" 1
 		fi
+		if [ x"" != x"$USERDIR" ] ; then
+		LOG_MSG "[INFO]:-Dump Directory                   = $USERDIR" 1
+		fi
 		LOG_MSG "[INFO]:-Master Port                      = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Master directory                 = $MASTER_DATA_DIRECTORY" 1
 		SET_DUMP_TYPE_TEXT
@@ -653,8 +671,9 @@ CHK_EXC_DUMP_TABLE_LIST () {
 PROCESS_DUMP_CONFIG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Securing master configuration files" 1
+	GET_DUMP_DIR $MASTER_DATA_DIRECTORY
 	CONFIG_BACKUP_FILE=gp_master_config_files_${TIMESTAMP_KEY}.tar
-	$TAR cf ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${MASTER_DATA_DIRECTORY}/*.conf  >> $LOG_FILE 2>&1
+	$TAR cf ${DIR}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${MASTER_DATA_DIRECTORY}/*.conf  >> $LOG_FILE 2>&1
 	ERROR_CHK $? "dump config files" 1
 	DUMP_CONFIG=0
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -663,7 +682,8 @@ PROCESS_DUMP_CONFIG () {
 PROCESS_DUMP_GLOBAL () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing pg_catalog dump for database $DUMP_DATABASE" 1
-	$PG_DUMPALL -g --gp-syntax > ${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/${DUMP_DATE}/${PG_DUMPALL_PREFIX}$TIMESTAMP_KEY
+	GET_DUMP_DIR $MASTER_DATA_DIRECTORY
+	$PG_DUMPALL -g --gp-syntax > ${DIR}/${DUMP_SUB_DIR}/${DUMP_DATE}/${PG_DUMPALL_PREFIX}$TIMESTAMP_KEY
 	ERROR_CHK $? "dump global objects" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -671,9 +691,15 @@ PROCESS_DUMP_GLOBAL () {
 PROCESS_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Setting dump running flag" 1
+	GET_DUMP_DIR $MASTER_DATA_DIRECTORY
 	$TOUCH $IS_RUNNING_FLAG
 	LOG_MSG "[INFO]:-Building dump command line" 1
-	DUMP_TEXT="$GP_DUMP -p $MASTER_PORT -U $LOGNAME --gp-d=${DUMP_SUB_DIR}/$DUMP_DATE --gp-r=${MASTER_DATA_DIRECTORY}/${DUMP_SUB_DIR}/$DUMP_DATE --gp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`] $ADD_DUMP_OPTIONS"		
+	if [ x"" != x"$USERDIR" ] ; then
+	    DUMP_DATA_DIR=${USERDIR}/${DUMP_SUB_DIR}/$DUMP_DATE
+	else
+	    DUMP_DATA_DIR=${DUMP_SUB_DIR}/$DUMP_DATE
+	fi
+	DUMP_TEXT="$GP_DUMP -p $MASTER_PORT -U $LOGNAME --gp-d=${DUMP_DATA_DIR} --gp-r=${DIR}/${DUMP_SUB_DIR}/$DUMP_DATE --gp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`] $ADD_DUMP_OPTIONS"		
 	if [ $COMPRESSION ];then
 		LOG_MSG "[INFO]:-Adding compression parameter" 1
 		DUMP_TEXT=$DUMP_TEXT" --gp-c"
@@ -710,7 +736,8 @@ PROCESS_DUMP () {
 CHK_POST_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Get the latest report file name on Master segment instance
-	MASTER_DUMP_RPT=`$LS -altr ${MASTER_DATA_DIRECTORY}/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
+	GET_DUMP_DIR $MASTER_DATA_DIRECTORY
+	MASTER_DUMP_RPT=`$LS -altr ${DIR}/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
 	if [ x"" == x"$MASTER_DUMP_RPT" ];then
 		LOG_MSG "[WARN]:-Could not locate a report file on Master segment dump directory" 1
 		EXIT_STATUS=1
@@ -797,8 +824,9 @@ DELETE_CURRENT_DUMP () {
 		$TRUSTED_SHELL $DIR_HOST "$RM -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump*$TIMESTAMP_KEY*"
 	done
 	LOG_MSG "[INFO]:-Deleting Master segment dump files" 1
-	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_1*$TIMESTAMP_KEY*
-	$RM -f $MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DUMP_DATE/mpp_c*$TIMESTAMP_KEY
+	GET_DUMP_DIR $MASTER_DATA_DIRECTORY
+	$RM -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_1*$TIMESTAMP_KEY*
+	$RM -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/mpp_c*$TIMESTAMP_KEY
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -828,7 +856,8 @@ DELETE_OLD_DUMPS () {
 			ERROR_CHK $? "delete $DEL_SET on $DIR_HOST segment directory $DIR" 1
 		done
 		LOG_MSG "[INFO]:-Processing Master segment instance" 1
-		DEL_DIR=$MASTER_DATA_DIRECTORY/$DUMP_SUB_DIR/$DEL_SET
+		GET_DUMP_DIR $MASTER_DATA_DIRECTORY
+		DEL_DIR=$DIR/$DUMP_SUB_DIR/$DEL_SET
 		LOG_MSG "[INFO]:-Preparing to remove $DEL_DIR on Master segment instance"	 1
 		$RM -Rf $DEL_DIR
 		ERROR_CHK $? "delete $DEL_DIR on Master segment instance" 1
@@ -926,7 +955,7 @@ distributed by (rec_date);" >> $LOG_FILE 2>&1
 #******************************************************************************
 trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:t:T:hl:" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:t:T:hl:u:" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -965,6 +994,7 @@ if [ $# -ne 0 ]; then
 				t ) DUMP_TABLE_NAME=$OPTARG ;;
 				T ) EXC_DUMP_TABLE_LIST=$OPTARG ;;
 				h ) HISTORY=1 ;;
+			        u ) USERDIR=$OPTARG ;;
 				* ) USAGE ;;
 				esac
 		done	
@@ -984,6 +1014,9 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+if [ x"" != x"$USERDIR" ] && ! [ -d $USERDIR ] ; then
+    ERROR_EXIT "[FATAL]:-$USERDIR is not a directory" 2
+fi
 CHK_GPDB_ID
 OPTIONS_LIST="$*"
 CHK_DB_QD_SET
