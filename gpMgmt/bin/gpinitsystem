@@ -359,6 +359,16 @@ CHK_PARAMS () {
 				if [ $NUM_MIRROR_DIRECTORY -ne $QE_PRIMARY_COUNT ]; then
 						ERROR_EXIT "[FATAL]:-Number of primary directories does not match number of mirror directories" 2
 				fi
+
+				for dir in "${DATA_DIRECTORY[@]}"
+				do
+				    for mirrordir in "${MIRROR_DATA_DIRECTORY[@]}"
+				    do
+					if [ $dir == $mirrordir ] ; then
+					    ERROR_EXIT "[FATAL]:-Conflict between data directory and mirror data directory ($dir)." 2
+					fi
+				    done
+				done
 		fi
 
 		#Check open files value
