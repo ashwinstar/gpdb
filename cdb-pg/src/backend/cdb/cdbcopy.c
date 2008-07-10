@@ -135,9 +135,10 @@ cdbCopyGetDbCount(int total_segs, int seg)
 
 /*
  * starts a copy command on a specific segment database.
- * Returns 0 for success, -1 for error and an error message.
+ * 
+ * may pg_throw via elog/ereport.
  */
-int
+void
 cdbCopyStart(CdbCopy *c, char *copyCmd)
 {
 	int			seg;
@@ -255,6 +256,12 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 								true 		/* dispatchToPrimaries */,
 								&primaryResults, &mirrorResults, &dispatchThreads);
 
+	/*  MPP-3017: insert a call like this to expand the timing, and
+	 *  then play with cancellation during a COPY command:
+	 *
+	 *  pg_usleep(10000000);
+	 */
+
 	/*
 	 * Wait for all QEs to finish. If not all of our QEs were successful,
 	 * report the error and throw up.
@@ -271,7 +278,7 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 		}
 	}
 
-	return 0;
+	return;
 }
 
 /*
@@ -807,6 +814,12 @@ cdbCopyEnd(CdbCopy *c)
 				if (PQresultStatus(res) == PGRES_COPY_IN)
 				{
 					elog(LOG,"Bug, still in copy in, retrying the putCopyEnd");
+					result = PQputCopyEnd(q->conn, NULL);
+				}
+
+				if (PQresultStatus(res) == PGRES_COPY_OUT)
+				{
+					elog(LOG,"QE still in copy out, cleaning retrying the putCopyEnd");
 					result = PQputCopyEnd(q->conn, NULL);
 				}
 

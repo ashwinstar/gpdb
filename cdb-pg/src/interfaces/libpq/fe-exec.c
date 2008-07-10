@@ -2133,7 +2133,8 @@ PQputCopyEnd(PGconn *conn, const char *errormsg)
 {
 	if (!conn)
 		return -1;
-	if (conn->asyncStatus != PGASYNC_COPY_IN)
+	if (conn->asyncStatus != PGASYNC_COPY_IN &&
+		conn->asyncStatus != PGASYNC_COPY_OUT)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 						  libpq_gettext("no COPY in progress\n"));

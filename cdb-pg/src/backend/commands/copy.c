@@ -1590,18 +1590,25 @@ CopyToDispatch(CopyState cstate)
 	if (Gp_role != GP_ROLE_DISPATCHAGENT)
 	{
 		elog(DEBUG5, "COPY command sent to segdbs: %s", cdbcopy_cmd.data);
-		if (cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
+
+		PG_TRY();
+		{
+			cdbCopyStart(cdbCopy, cdbcopy_cmd.data);
+		}
+		PG_CATCH();
 		{
 			/* get error message from CopyStart */
 			appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 			
 			/* TODO: end COPY in all the segdbs in progress */
-			//cdbCopyEnd(cdbCopy);
+			cdbCopyEnd(cdbCopy);
 			
-			ereport(ERROR,
+			ereport(LOG,
 					(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 					 errmsg("%s", cdbcopy_err.data)));
+			PG_RE_THROW();
 		}
+		PG_END_TRY();
 	}
 	
 	/* if a header has been requested send the line */
@@ -2532,7 +2539,11 @@ CopyFromDispatch(CopyState cstate)
 	 * session there, so we are fine there.
 	 */
 	elog(DEBUG5, "COPY command sent to segdbs: %s", cdbcopy_cmd.data);
-	if (cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
+	PG_TRY();
+	{
+		cdbCopyStart(cdbCopy, cdbcopy_cmd.data);
+	}
+	PG_CATCH();
 	{
 		/* get error message from CopyStart */
 		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
@@ -2543,11 +2554,12 @@ CopyFromDispatch(CopyState cstate)
 		/* get error message from CopyEnd */
 		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 
-		ereport(ERROR,
+		ereport(LOG,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
+		PG_RE_THROW();
 	}
-
+	PG_END_TRY();
 
 	/*
 	 * Prepare to catch AFTER triggers.
