@@ -2,6 +2,7 @@
 -- external tables 1 - short and simple functional tests. The full set of tests
 -- exists in cdbunit.
 --
+CREATE TABLE REG_REGION (R_REGIONKEY INT, R_NAME CHAR(25), R_COMMENT VARCHAR(152)) DISTRIBUTED BY (R_REGIONKEY);
 -- --------------------------------------
 -- 'file' protocol - (only CREATE, don't SELECT - won't work on distributed installation)
 -- --------------------------------------
@@ -11,9 +12,7 @@ CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
                             N_COMMENT    VARCHAR(152))
 location ('file://@hostname@@abs_srcdir@/data/nation.tbl' )
 FORMAT 'text' (delimiter '|');
-CREATE EXTERNAL TABLE EXT_REGION  ( R_REGIONKEY  INTEGER ,
-                            R_NAME       CHAR(25) ,
-                            R_COMMENT    VARCHAR(152))
+CREATE EXTERNAL TABLE EXT_REGION  (LIKE REG_REGION)
 location ('file://@hostname@@abs_srcdir@/data/region.tbl' )
 FORMAT 'text' (delimiter '|');
 -- drop tables
@@ -136,9 +135,7 @@ CREATE EXTERNAL TABLE EXT_NATION  ( N_NATIONKEY  INTEGER ,
                             N_COMMENT    VARCHAR(152))
 location ('gpfdist://@hostname@:7070/nation.tbl' )
 FORMAT 'text' (delimiter '|');
-CREATE EXTERNAL TABLE EXT_REGION  ( R_REGIONKEY  INTEGER ,
-                            R_NAME       CHAR(25) ,
-                            R_COMMENT    VARCHAR(152))
+CREATE EXTERNAL TABLE EXT_REGION  (LIKE REG_REGION)
 location ('gpfdist://@hostname@:7070/region.tbl' )
 FORMAT 'text' (delimiter '|');
 SELECT * FROM EXT_NATION;
@@ -453,6 +450,7 @@ drop external table gpfdist_csv_start;
 drop external table gpfdist_stop;
 drop external table check_ps;
 drop external table check_env;
+drop table reg_region;
 -- Tests for MPP-2513: dropping an external table must result in the deletion
 -- of the relation pg_exttable row. This was done when using drop external
 -- table but not drop schema cascade;
