@@ -6,6 +6,7 @@ APR=apr-1.2.12
 APU=apr-util-1.2.12
 JSON=json-c-0.6
 LIBEVENT=libevent-1.4.3-stable
+OPENSSL=openssl-0.9.8h
 INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
 CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags) -Wall
 APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
@@ -110,6 +111,13 @@ mkext: mkdir
 			--prefix=$(GPCC)/ext) ;\
 	fi
 	@(cd ext/json; $(MAKE) all; $(MAKE) install >> out)
+	@echo     -- openssl
+	@(cd ext; rm -f openssl; ln -s $(OPENSSL) openssl)
+	@if ! [ -a ext/openssl/Makefile ]; then \
+		(cd ext; gzip -d -c $(OPENSSL).tar.gz | tar xvf -) ;\
+		(cd ext/openssl; ./config no-shared threads --prefix=$(GPCC)/ext) ;\
+	fi
+	@(cd ext/openssl; $(MAKE)  all install >> out)
 	@echo     -- apr
 	@(cd ext; rm -f apr; ln -s $(APR) apr)
 	@if ! [ -a ext/apr/Makefile ]; then \
@@ -136,13 +144,14 @@ mkext: mkdir
 	@(cd ext/tpch; cp -f dists.dss ../../build/bin/)
 
 veryclean: clean
-	(cd ext; rm -rf apr apr-1.2.8 apu apr-util-1.2.8 json json-c-0.6 libevent libevent-1.4.3-stable)
+	(cd ext; rm -rf apr $(APR) apu $(APU) json $(JSON) libevent $(LIBEVENT) openssl $(OPENSSL))
 
 clean: 
-	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent)
+	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent openssl)
 	@if [ -a ext/apr/Makefile ]; then $(MAKE) clean; fi
 	@if [ -a ext/apu/Makefile ]; then $(MAKE) clean; fi
 	@if [ -a ext/json/Makefile ]; then $(MAKE) clean; fi
 	@if [ -a ext/libevent/Makefile ]; then $(MAKE) clean; fi 
+	@if [ -a ext/openssl/Makefile ]; then $(MAKE) clean; fi
 	rm -rf src/build
 	find src -name '*.o' -exec rm -f {} \;
