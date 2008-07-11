@@ -1363,12 +1363,32 @@ partition bb start (date '2008-01-01') end (date '2009-01-01')
 );
 NOTICE:  CREATE TABLE will create partition "hhh_1_prt_aa" for table "hhh"
 NOTICE:  CREATE TABLE will create partition "hhh_1_prt_bb" for table "hhh"
+-- already exists
 alter table hhh add partition aa;
 NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  partition "aa" of relation "hhh" already exists
+-- no partition spec
 alter table hhh add partition cc;
 NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  missing boundary specification
+-- overlaps
+alter table hhh add partition cc start ('2008-01-01') end ('2010-01-01');
+NOTICE:  Table has parent, setting distribution columns to match parent table
+ERROR:  cannot add a partition to relation "hhh" of type RANGE
+alter table hhh add partition cc end ('2008-01-01');
+NOTICE:  Table has parent, setting distribution columns to match parent table
+ERROR:  START greater than END for partition "cc"
+-- reversed (start > end)
+alter table hhh add partition cc start ('2010-01-01') end ('2009-01-01');
+NOTICE:  Table has parent, setting distribution columns to match parent table
+ERROR:  cannot add a partition to relation "hhh" of type RANGE
+-- works
+--alter table hhh add partition cc start ('2009-01-01') end ('2010-01-01');
+alter table hhh add partition cc end ('2010-01-01');
+NOTICE:  Table has parent, setting distribution columns to match parent table
+NOTICE:  merging column "a" with inherited definition
+NOTICE:  merging column "b" with inherited definition
+NOTICE:  merging column "d" with inherited definition
 -- hash partitions cannot have default partitions
 create table jjj (aa int, bb int) 
 partition by hash(bb) 
@@ -1437,15 +1457,14 @@ ERROR:  cannot ADD RANGE partition "j5" to relation "jjj" with DEFAULT partition
 HINT:  need to SPLIT partition "j3"
 drop table jjj cascade;
 alter table hhh alter partition cc set tablespace foo;
-ERROR:  partition "cc" of relation "hhh" does not exist
+ERROR:  cannot ALTER PARTITION for relation "hhh"
 alter table hhh alter partition aa set tablespace foo;
 ERROR:  cannot ALTER PARTITION for relation "hhh"
 alter table hhh coalesce partition cc;
-ERROR:  partition "cc" of relation "hhh" does not exist
+ERROR:  cannot COALESCE PARTITION for relation "hhh"
 alter table hhh coalesce partition aa;
 ERROR:  cannot COALESCE PARTITION for relation "hhh"
 alter table hhh drop partition cc;
-ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh drop partition cc cascade;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh drop partition cc restrict;
