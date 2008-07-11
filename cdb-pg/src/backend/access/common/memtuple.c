@@ -822,6 +822,10 @@ Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, boo
 		case MinCommandIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
 		case TableOidAttributeNumber:
+		case GpInfoMaskAttributeNumber:
+		case GpInfoMask2AttributeNumber:
+		case GpXminStatusAttributeNumber:
+		case GpXmaxStatusAttributeNumber:
 			*isnull = true;
 			return 0;
 
@@ -829,6 +833,9 @@ Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, boo
 		 	*isnull = false;
 			return Int32GetDatum(Gp_segment);
 
+		case gpDbIdAttributeNumber:
+			return Int32GetDatum(GpIdentity.dbid);
+			
 		case ObjectIdAttributeNumber:
 			if(!mtbind_has_oid(pbind))
 			{

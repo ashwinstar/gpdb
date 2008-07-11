@@ -154,8 +154,47 @@ static FormData_pg_attribute a8 = {
 	true, 'p', 'i', true, false, false, true, 0
 };
 
+static FormData_pg_attribute a9 = {
+	0, {"gp_dbid"}, INT4OID, 0, sizeof(int4),
+	gpDbIdAttributeNumber, 0, -1, -1,
+	true, 'p', 'i', true, false, false, true, 0
+};
 
-static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8};
+/*
+ * Add infomask attributes from heap tuple.
+ */
+static FormData_pg_attribute a10 = {
+	0, {"gp_infomask"}, INT2OID, 0, sizeof(int2),
+	GpInfoMaskAttributeNumber, 0, -1, -1,
+	true, 'p', 'i', true, false, false, true, 0
+};
+
+static FormData_pg_attribute a11 = {
+	0, {"gp_infomask2"}, INT2OID, 0, sizeof(int2),
+	GpInfoMask2AttributeNumber, 0, -1, -1,
+	true, 'p', 'i', true, false, false, true, 0
+};
+
+/*
+ * Add xmin/xmax status attributes from heap tuple.
+ */
+static FormData_pg_attribute a12 = {
+	0, {"gp_xmin_status"}, TEXTOID, 0, -1,
+	GpXminStatusAttributeNumber, 0, -1, -1,
+	false, 'x', 'i', true, false, false, true, 0
+};
+
+static FormData_pg_attribute a13 = {
+	0, {"gp_xmax_status"}, TEXTOID, 0, -1,
+	GpXmaxStatusAttributeNumber, 0, -1, -1,
+	false, 'x', 'i', true, false, false, true, 0
+};
+
+
+
+
+
+static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8, &a9, &a10, &a11, &a12, &a13};
 
 /*
  * This function returns a Form_pg_attribute pointer for a system attribute.
