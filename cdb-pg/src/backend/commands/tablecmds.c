@@ -300,12 +300,15 @@ static pg_part_rule *get_part_rule(Relation rel, AlterPartitionId *pid,
 								   bool bExistError, bool bMustExist, 
 								   MemoryContext mcxt);
 
-static void atpxPartAddList(Relation rel, AlterPartitionCmd *pc,
+static void atpxPartAddList(AlteredTableInfo *tab,
+							Relation rel, AlterPartitionCmd *pc,
 							PartitionNode *pNode, Node *pUtl, 
 							Node *partName, bool isDefault,
-							PartitionElem *pelem);
+							PartitionElem *pelem,
+							PartitionByType part_type);
 
-static void ATPExecPartAdd(Relation rel,
+static void ATPExecPartAdd(AlteredTableInfo *tab,
+						   Relation rel,
                            AlterPartitionCmd *pc);			/* Add */
 static void ATPExecPartAlter(Relation rel,
                              AlterPartitionCmd *pc);		/* Alter */
@@ -3554,7 +3557,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartAdd:				/* Add */
-            ATPExecPartAdd(rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartAdd(tab, rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartAlter:				/* Alter */
             ATPExecPartAlter(rel, (AlterPartitionCmd *) cmd->def);
@@ -8347,7 +8350,7 @@ add_partition_rule(PartitionRule *rule)
 }
 
 static void
-add_part_to_catalog(Oid relid, PartitionBy *pby)
+add_part_to_catalog(Oid relid, PartitionBy *pby, int maxpartno)
 {
 	char pt = parttype_to_char(pby->partType);
 	ListCell *lc;
@@ -8449,7 +8452,8 @@ add_part_to_catalog(Oid relid, PartitionBy *pby)
 
 		el = linitial(spec->partElem);
 
-		parruleord = el->partno;
+		/* fix the order if called from atpxPartAddList */ 
+		parruleord = (el->partno > maxpartno) ? el->partno : maxpartno;
 
 		if (el->partName)
 			parname = strVal(el->partName);
@@ -8584,7 +8588,7 @@ static void
 ATExecPartAddInternal(Relation rel, Node *def)
 {
 	PartitionBy *part = (PartitionBy *)def;
-	add_part_to_catalog(RelationGetRelid(rel), part);
+	add_part_to_catalog(RelationGetRelid(rel), part, 0);
 }
 
 /* XXX: just here for now */
@@ -9739,7 +9743,8 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
  */
 
 static void
-ATPExecPartAdd(Relation rel,
+ATPExecPartAdd(AlteredTableInfo *tab,
+			   Relation rel,
                AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
@@ -9861,23 +9866,20 @@ ATPExecPartAdd(Relation rel,
 
 		if ('r' == pNode->part->parkind)
 		{
-
-			/* XXX XXX FIX RANGE PARTITIONS */				
-			if (1)
-				ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("cannot add a partition to relation \"%s\" of type RANGE",
-								RelationGetRelationName(rel))));
-
-			
+			atpxPartAddList(tab, rel, pc, pNode,
+							pc2->arg2, /* utl statement */
+							pid->partiddef, /* partition name */
+							isDefault, (PartitionElem *) pc2->arg1,
+							PARTTYP_RANGE);
 
 		}
 		else if ('l' == pNode->part->parkind)
 		{
-			atpxPartAddList(rel, pc, pNode,
+			atpxPartAddList(tab, rel, pc, pNode,
 							pc2->arg2, /* utl statement */
 							pid->partiddef, /* partition name */
-							isDefault, (PartitionElem *) pc2->arg1);
+							isDefault, (PartitionElem *) pc2->arg1,
+							PARTTYP_LIST);
 		}
 
 	}
@@ -9890,13 +9892,15 @@ ATPExecPartAdd(Relation rel,
 } /* end ATPExecPartAdd */
 
 static void 
-atpxPartAddList(Relation rel,
+atpxPartAddList(AlteredTableInfo *tab,
+				Relation rel,
 				AlterPartitionCmd *pc,
 				PartitionNode  *pNode,
 				Node *pUtl,     /* pc2->arg2 */
 				Node *partName, /* pid->partiddef */
 				bool isDefault,
-				PartitionElem *pelem) 
+				PartitionElem *pelem,
+				PartitionByType part_type) 
 {
 	PartitionBy 		*pBy   	= makeNode(PartitionBy); 
 	PartitionSpec 		*spec  	= makeNode(PartitionSpec); 
@@ -9905,6 +9909,7 @@ atpxPartAddList(Relation rel,
 	char 				*newpartname;
 	ParseState 			*pstate = make_parsestate(NULL);
 	int 				 partno = 0;
+	int 				 maxpartno = 0;
 	CreateStmtContext    cxt;
 	List	   			*schema = NIL;
 	List	   			*inheritOids;
@@ -9913,6 +9918,8 @@ atpxPartAddList(Relation rel,
 
 	MemSet(&cxt, 0, sizeof(cxt));
 	MemSet(spec, 0, sizeof(PartitionSpec));
+
+	Assert( (PARTTYP_LIST == part_type) || (PARTTYP_RANGE == part_type) );
 
 	/* get the table column defs */
 	schema = 
@@ -9932,12 +9939,12 @@ atpxPartAddList(Relation rel,
 	pelem->partName = copyObject(partName);
 	pelem->isDefault = isDefault;
 	
-	pBy->partType = PARTTYP_LIST;
+	pBy->partType = part_type;
 	pBy->keys     = NULL; 
 	pBy->partNum  = 0;
 	pBy->subPart  = NULL;
 	pBy->partSpec = (Node *)spec;
-	pBy->partDepth = 0;
+	pBy->partDepth = 0; /* XXX XXX: change if recursive ... */
 	pBy->parentRel =
 			makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 						 pstrdup(RelationGetRelationName(rel)));
@@ -9945,6 +9952,11 @@ atpxPartAddList(Relation rel,
 	pBy->partDefault = NULL;
 
 	{ /* find the partitioning keys (for this level, not recursively) */
+
+		/* XXX XXX: should be recursive to get pieces for
+		 * subpartitions, eh? Need to thing about this... 
+		 */
+
 		int 			 ii;
 		TupleDesc		 tupleDesc 		= RelationGetDescr(rel);
 		List 			*pbykeys   		= NIL;
@@ -9981,45 +9993,150 @@ atpxPartAddList(Relation rel,
 	
 	ct = (CreateStmt *)((Query *)pUtl)->utilityStmt;
 	Assert(IsA(ct, CreateStmt));
+
+	if (pelem && pelem->boundSpec)
+	{
+		if (PARTTYP_RANGE == part_type) 
+		{
+			PartitionBoundSpec *pbs = NULL;
+			pg_part_rule   	*prule = NULL;
+			AlterPartitionId 	 pid;
+
+			MemSet(&pid, 0, sizeof(AlterPartitionId));
+
+			pid.idtype = AT_AP_IDPosition;
+			pid.location  = -1;
+
+			Assert (IsA(pelem->boundSpec, PartitionBoundSpec));
+
+			pbs = (PartitionBoundSpec *)pelem->boundSpec;
+
+			/* no EVERY */
+			if (pbs->partEvery)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("cannot specify EVERY when adding RANGE partition to relation \"%s\" ",
+									RelationGetRelationName(rel))));
+
+			if (!(pbs->partStart || pbs->partEnd ))
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("Need START or END when adding RANGE partition to relation \"%s\" ",
+									RelationGetRelationName(rel))));
+	
+			/* if no START, then START after last partition */
+
+			if (!(pbs->partStart))
+			{
+				pid.partiddef = (Node *)makeInteger(-1);
+
+				prule = get_part_rule(rel, &pid, false, false, 
+									  CurrentMemoryContext);
+
+				/* ok if no prior -- just means this is first
+				 * partition (XXX XXX though should always have 1 partition in
+				 * the table...)  
+				 */
+
+				if (prule && prule->topRule && prule->topRule->parrangeend)
+				{
+					PartitionRangeItem *ri = makeNode(PartitionRangeItem);
+
+					ri->partEveryNum  = NULL;
+					ri->location = -1;
+
+					ri->partRangeVal = copyObject(prule->topRule->parrangeend);
+
+					/* invert the inclusive/exclusive */
+					ri->partedge = prule->topRule->parrangeendincl ? 
+							PART_EDGE_EXCLUSIVE :
+							PART_EDGE_INCLUSIVE; 
+
+					/* should be final partition */
+					maxpartno = prule->topRule->parruleord + 1;
+
+					pbs->partStart = (Node *)ri;
+				}
+
+			}
+			else if (!(pbs->partEnd))
+			{ /* if no END, then END before first partition 
+			     **ONLY IF** 
+				 * START of this partition is before first partition ... */
+				pid.partiddef = (Node *)makeInteger(1);
+
+				prule = get_part_rule(rel, &pid, false, false, 
+									  CurrentMemoryContext);
+
+			/* XXX XXX FIX RANGE PARTITIONS */				
+			if (1)
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot add a partition to relation \"%s\" of type RANGE",
+								RelationGetRelationName(rel))));
+
+			}
+			else
+			{
+			/* XXX XXX FIX RANGE PARTITIONS */				
+			if (1)
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot add a partition to relation \"%s\" of type RANGE",
+								RelationGetRelationName(rel))));
+
+			
+
+			}
+
+		}
+
+
+	}
 	
 	partno = validate_partition_spec(pstate, &cxt, ct, pBy, "", -1);
 
 	if (pelem && pelem->boundSpec)
 	{
-		ListCell *lc;
-		PartitionValuesSpec *spec;
-		AlterPartitionId 	pid;
-
-		Assert (IsA(pelem->boundSpec, PartitionValuesSpec));
-
-		MemSet(&pid, 0, sizeof(AlterPartitionId));
-
-		spec = (PartitionValuesSpec *)pelem->boundSpec;
-
-		foreach(lc, spec->partValues)
+		if (PARTTYP_LIST == part_type) 
 		{
-			List		*vals 	   = lfirst(lc);
-			pg_part_rule   		*prule = NULL;
+			ListCell 			*lc;
+			PartitionValuesSpec *spec;
+			AlterPartitionId 	 pid;
 
-			pid.idtype = AT_AP_IDValue;
-			pid.partiddef = (Node *)vals;
-			pid.location  = -1;
+			Assert (IsA(pelem->boundSpec, PartitionValuesSpec));
 
-			prule = get_part_rule(rel, &pid, false, false, 
-								  CurrentMemoryContext);
+			MemSet(&pid, 0, sizeof(AlterPartitionId));
+			
+			spec = (PartitionValuesSpec *)pelem->boundSpec;
 
-			if (prule)
+			foreach(lc, spec->partValues)
 			{
-				ereport(ERROR,
-						 (errcode(ERRCODE_UNDEFINED_OBJECT),
-						  errmsg("new partition definition overlaps existing partition%s of relation \"%s\" ",
-								 prule->partIdStr,
-								 RelationGetRelationName(rel))));
+				List			*vals  = lfirst(lc);
+				pg_part_rule   	*prule = NULL;
+
+				pid.idtype = AT_AP_IDValue;
+				pid.partiddef = (Node *)vals;
+				pid.location  = -1;
+
+				prule = get_part_rule(rel, &pid, false, false, 
+									  CurrentMemoryContext);
+
+				if (prule)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_UNDEFINED_OBJECT),
+							 errmsg("new partition definition overlaps existing partition%s of relation \"%s\" ",
+									prule->partIdStr,
+									RelationGetRelationName(rel))));
 	
 
-			}
+				}
 
+			}
 		}
+
+
 	}
 
 	/* create the partition */
@@ -10038,8 +10155,65 @@ atpxPartAddList(Relation rel,
 	ProcessUtility(
 			(((Query *)pUtl)->utilityStmt),
 			NULL, dest, NULL);		
+	{
+		ListCell 		*lc_anp   	  = NULL;
+		char  			*at_depth 	  = NULL;
+		ListCell 		*lc_rule  	  = NULL;
+		Node			*pConstraint  = NULL;
 
-	add_part_to_catalog(ct->oidInfo.relOid, pBy); 
+		/* get the check constraint */
+
+		List *allRules =
+				make_partition_rules(pstate,
+									 &cxt, ct,
+									 (Node *)pBy, pelem, at_depth,
+									 newpartname, 
+									 1, 1,
+									 0, 0,
+									 &lc_anp, false);
+
+		if (allRules)
+			lc_rule = list_head(allRules);
+
+		if (lc_rule)
+			pConstraint = lfirst(lc_rule);
+
+		if (pConstraint)
+		{
+			StringInfoData   sid;
+			Constraint *pCon = makeNode(Constraint);
+			AlterTableStmt *ats = makeNode(AlterTableStmt);
+			AlterTableCmd *atc = makeNode(AlterTableCmd);
+
+			initStringInfo(&sid);
+
+			appendStringInfo(&sid, "%s_%s", newpartname, "check");
+			
+			pCon->contype = CONSTR_CHECK;
+			pCon->name = sid.data;
+			pCon->raw_expr = pConstraint;
+			pCon->cooked_expr = NULL;
+			pCon->indexspace = NULL;
+
+			pConstraint = (Node *)pCon;
+
+			atc->subtype = AT_AddConstraint;
+			atc->def = pConstraint;
+
+			ats->relation = makeRangeVar(
+					get_namespace_name(RelationGetNamespace(rel)),
+					newpartname);
+			ats->relkind = OBJECT_TABLE;
+			ats->cmds = list_make1(atc);
+
+			ProcessUtility(
+					(Node *)ats,
+					NULL, dest, NULL);		
+		}
+
+	}
+
+	add_part_to_catalog(ct->oidInfo.relOid, pBy, maxpartno); 
 
 } /* end atpxPartAddList */
 

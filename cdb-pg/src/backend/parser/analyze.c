@@ -201,14 +201,6 @@ static int partition_range_every(ParseState *pstate,
 static Datum eval_basic_opexpr(ParseState *pstate, List *oprname, 
 							   Node *leftarg, Node *rightarg, Oid *restypid);
 
-static List *make_partition_rules(ParseState *pstate,
-		 CreateStmtContext *cxt, CreateStmt *stmt,
-		 Node *partitionBy, PartitionElem *pElem,
- 		 char *at_depth, char *child_name_str,
-		 int partNumId, int maxPartNum,
-		 int everyOffset, int maxEveryOffset,
-		 ListCell	**pp_lc_anp);
-
 static Node *make_prule_catalog(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt,
 		 Node *partitionBy, PartitionElem *pElem,
@@ -3139,16 +3131,15 @@ make_prule_rulestmt(ParseState *pstate,
 	return (pResult);
 } /* end make_prule_rulestmt */
 
-
-
-static List *
+List *
 make_partition_rules(ParseState *pstate,
-		 CreateStmtContext *cxt, CreateStmt *stmt,
-		 Node *partitionBy, PartitionElem *pElem,
-		 char  *at_depth, char *child_name_str,
-		 int partNumId, int maxPartNum,
-		 int everyOffset, int maxEveryOffset,
-		 ListCell	**pp_lc_anp
+					 CreateStmtContext *cxt, CreateStmt *stmt,
+					 Node *partitionBy, PartitionElem *pElem,
+					 char  *at_depth, char *child_name_str,
+					 int partNumId, int maxPartNum,
+					 int everyOffset, int maxEveryOffset,
+					 ListCell	**pp_lc_anp,
+					 bool doRuleStmt
 		)
 {
 	PartitionBy			*pBy    = (PartitionBy *)partitionBy;
@@ -3290,26 +3281,31 @@ make_partition_rules(ParseState *pstate,
 
 		}
 
-		pRule = make_prule_catalog(pstate,
-								   cxt, stmt,
-								   partitionBy, pElem,
-								   at_depth, child_name_str,
-								   exprBuf,
-								   pExpr);
-
-		/* first the INSERT statement, then the CHECK constraint, then
+		/* first the CHECK constraint, then the INSERT statement, then
 		 * the RULE statement
 		 */
-		allRules = list_make1(pRule);
-		allRules = lappend(allRules, pExpr);
+		allRules = list_make1(pExpr);
 
-		pRule = make_prule_rulestmt(pstate,
-									cxt, stmt,
-									partitionBy, pElem,
-									at_depth, child_name_str,
-									exprBuf,
-									pExpr);
-		allRules = lappend(allRules, pRule);
+		if (doRuleStmt)
+		{
+			pRule = make_prule_catalog(pstate,
+									   cxt, stmt,
+									   partitionBy, pElem,
+									   at_depth, child_name_str,
+									   exprBuf,
+									   pExpr);
+
+			allRules = lappend(allRules, pRule);
+
+			pRule = make_prule_rulestmt(pstate,
+										cxt, stmt,
+										partitionBy, pElem,
+										at_depth, child_name_str,
+										exprBuf,
+										pExpr);
+
+			allRules = lappend(allRules, pRule);
+		}
 
 
 	} /* end if HASH */
@@ -3482,27 +3478,31 @@ make_partition_rules(ParseState *pstate,
 
 		} /* end for all vals */
 
-		pRule = make_prule_catalog(pstate,
-								   cxt, stmt,
-								   partitionBy, pElem,
-								   at_depth, child_name_str,
-								   ORBuf,
-								   pIndOR);
-
-		/* first the INSERT statement, then the CHECK constraint, then
+		/* first the CHECK constraint, then the INSERT statement, then
 		 * the RULE statement
 		 */
-		allRules = list_make1(pRule);
-		allRules = lappend(allRules, pIndOR);
+		allRules = list_make1(pIndOR);
 
-		pRule = make_prule_rulestmt(pstate,
-									cxt, stmt,
-									partitionBy, pElem,
-									at_depth, child_name_str,
-									ORBuf,
-									pIndOR);
-		allRules = lappend(allRules, pRule);
+		if (doRuleStmt)
+		{
+			pRule = make_prule_catalog(pstate,
+									   cxt, stmt,
+									   partitionBy, pElem,
+									   at_depth, child_name_str,
+									   ORBuf,
+									   pIndOR);
 
+			allRules = lappend(allRules, pRule);
+
+			pRule = make_prule_rulestmt(pstate,
+										cxt, stmt,
+										partitionBy, pElem,
+										at_depth, child_name_str,
+										ORBuf,
+										pIndOR);
+
+			allRules = lappend(allRules, pRule);
+		}
 	} /* end if LIST */
 
 	/*
@@ -3818,28 +3818,29 @@ make_partition_rules(ParseState *pstate,
 
 		} /* end for range_idx */
 
-		pRule = make_prule_catalog(pstate,
-								   cxt, stmt,
-								   partitionBy, pElem,
-								   at_depth, child_name_str,
-								   ORBuf,
-								   pIndOR);
-
-		/* first the INSERT statement, then the CHECK constraint, then
+		/* first the CHECK constraint, then the INSERT statement, then
 		 * the RULE statement
 		 */
+		allRules = list_make1(pIndOR);
 
-		allRules = list_make1(pRule);
-		allRules = lappend(allRules, pIndOR);
+		if (doRuleStmt)
+		{
+			pRule = make_prule_catalog(pstate,
+									   cxt, stmt,
+									   partitionBy, pElem,
+									   at_depth, child_name_str,
+									   ORBuf,
+									   pIndOR);
+			allRules = lappend(allRules, pRule);
 
-		pRule = make_prule_rulestmt(pstate,
-									cxt, stmt,
-									partitionBy, pElem,
-									at_depth, child_name_str,
-									ORBuf,
-									pIndOR);
-		allRules = lappend(allRules, pRule);
-
+			pRule = make_prule_rulestmt(pstate,
+										cxt, stmt,
+										partitionBy, pElem,
+										at_depth, child_name_str,
+										ORBuf,
+										pIndOR);
+			allRules = lappend(allRules, pRule);
+		}
 	} /* end if RANGE */
 
 	return allRules;
@@ -6349,13 +6350,10 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 										 partitionBy, pElem, at_depth,
 										 relname, partno + 1, partNumber,
 										 everyno, everycount,
-										 &lc_anp);
+										 &lc_anp, true);
 
-			lc_rule = list_head(allRules);
-
-			pRuleCatalog = lfirst(lc_rule);
-
-			lc_rule = lnext(lc_rule);
+			if (allRules)
+				lc_rule = list_head(allRules);
 
 			if (lc_rule)
 			{
@@ -6379,11 +6377,19 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 					pConstraint = (Node *)pCon;
 				}
 
-				/* look for a Rule statement to run after the
-				 * relation is created
-				 * (see DefinePartitionedRelation in tablecmds.c)
-				 */
 				lc_rule = lnext(lc_rule);
+
+				if (lc_rule)
+				{
+					pRuleCatalog = lfirst(lc_rule);
+
+					/* look for a Rule statement to run after the
+					 * relation is created
+					 * (see DefinePartitionedRelation in tablecmds.c)
+					 */
+					lc_rule = lnext(lc_rule);
+				}
+
 				if (lc_rule)
 				{
 					List *pL1 = NULL;

@@ -733,9 +733,22 @@ partition bb start (date '2008-01-01') end (date '2009-01-01')
     with (appendonly=false)
 );
 
+-- already exists
 alter table hhh add partition aa;
 
+-- no partition spec
 alter table hhh add partition cc;
+
+-- overlaps
+alter table hhh add partition cc start ('2008-01-01') end ('2010-01-01');
+alter table hhh add partition cc end ('2008-01-01');
+
+-- reversed (start > end)
+alter table hhh add partition cc start ('2010-01-01') end ('2009-01-01');
+
+-- works
+--alter table hhh add partition cc start ('2009-01-01') end ('2010-01-01');
+alter table hhh add partition cc end ('2010-01-01');
 
 -- hash partitions cannot have default partitions
 create table jjj (aa int, bb int) 

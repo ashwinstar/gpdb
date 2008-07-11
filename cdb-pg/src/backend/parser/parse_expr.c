@@ -263,27 +263,41 @@ transformExpr(ParseState *pstate, Node *expr)
 				if (in->partStart)
 				{
 					ri = (PartitionRangeItem *)in->partStart;
-					Assert(IsA(in->partStart, PartitionRangeItem));
 
-					foreach(lc, ri->partRangeVal)
+					/* ALTER TABLE ... ADD PARTITION might feed
+					 * "pre-cooked" expressions into the boundspec for
+					 * range items (which are Lists) 
+					 */
 					{
-						Node *n = lfirst(lc);
-						out = lappend(out, transformExpr(pstate, n));
+						Assert(IsA(in->partStart, PartitionRangeItem));
+
+						foreach(lc, ri->partRangeVal)
+						{
+							Node *n = lfirst(lc);
+							out = lappend(out, transformExpr(pstate, n));
+						}
+						ri->partRangeVal = out;
+						out = NIL;
 					}
-					ri->partRangeVal = out;
-					out = NIL;
 				}
 				if (in->partEnd)
 				{
 					ri = (PartitionRangeItem *)in->partEnd;
-					Assert(IsA(in->partEnd, PartitionRangeItem));
-					foreach(lc, ri->partRangeVal)
+
+					/* ALTER TABLE ... ADD PARTITION might feed
+					 * "pre-cooked" expressions into the boundspec for
+					 * range items (which are Lists) 
+					 */
 					{
-						Node *n = lfirst(lc);
-						out = lappend(out, transformExpr(pstate, n));
+						Assert(IsA(in->partEnd, PartitionRangeItem));
+						foreach(lc, ri->partRangeVal)
+						{
+							Node *n = lfirst(lc);
+							out = lappend(out, transformExpr(pstate, n));
+						}
+						ri->partRangeVal = out;
+						out = NIL;
 					}
-					ri->partRangeVal = out;
-					out = NIL;
 				}
 				if (in->partEvery)
 				{

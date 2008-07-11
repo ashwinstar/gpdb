@@ -47,10 +47,20 @@ typedef struct
 	IndexStmt  *pkey;			/* PRIMARY KEY index, if any */
 } CreateStmtContext;
 
-int validate_partition_spec(ParseState *pstate,
-							CreateStmtContext *cxt, CreateStmt *stmt, 
-							PartitionBy *partitionBy, 	
-							char	   *at_depth,
-							int		partNumber);
+int validate_partition_spec(ParseState 			*pstate,
+							CreateStmtContext 	*cxt, 
+							CreateStmt 			*stmt, 
+							PartitionBy 		*partitionBy, 	
+							char	   			*at_depth,
+							int					 partNumber);
+
+List *make_partition_rules(ParseState *pstate,
+						   CreateStmtContext *cxt, CreateStmt *stmt,
+						   Node *partitionBy, PartitionElem *pElem,
+						   char *at_depth, char *child_name_str,
+						   int partNumId, int maxPartNum,
+						   int everyOffset, int maxEveryOffset,
+						   ListCell	**pp_lc_anp,
+						   bool doRuleStmt);
 
 #endif   /* ANALYZE_H */
