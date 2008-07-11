@@ -73,6 +73,7 @@ GPSEGCRON=$WORKDIR/lib/gpsegcron.sh
 PG_DUMPALL_PREFIX="gp_global_1_1_"
 HISTORY_TABLE=public.gpcrondump_history
 USERDIR=""
+DUMP_TABLE_LIST=()
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -133,7 +134,8 @@ USAGE () {
 		$ECHO "      -g, secure master configuration files postgresql.conf pg_ident.conf and pg_hba.conf"
 		$ECHO "          Data will be written in tar format to "
 		$ECHO "          ${DUMP_SUB_DIR}/$DUMP_DATE/$CONFIG_BACKUP_FILE directory on this host"  
-		$ECHO "      -t, <schema.table1> dump the named table only for the database" 
+		$ECHO "      -t, <schema.table1> dump the named table only for the database."
+		$ECHO "          Multiple tables can be specified with multiple -t option." 
 		$ECHO "      -T, <schema.table1,schema.table2...> exclude the named tables from the database dump"
 		$ECHO "      -G, use pg_dumpall to dump global objects, i.e. user accounts"
 		$ECHO "          Data will be dumped to ${DUMP_SUB_DIR}/$DUMP_DATE/${PG_DUMPALL_PREFIX}<timestamp>"
@@ -420,12 +422,17 @@ CHK_DUMP_SPACE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Commencing free disk space checks, please wait..." 1
 	#Check to see if we have sufficient space to be able to dump data to disks
-	if [ x"" == x"$DUMP_TABLE_NAME" ];then
+	if [ ${#DUMP_TABLE_LIST[@]} -eq 0 ];then
 		LOG_MSG "[INFO]:-Obtaining $DUMP_DATABASE disk allocation" 1
 		ACTUAL_DB_SIZE=(`$GPSIZECALC -x "$DUMP_DATABASE" -fq|$GREP "|"`)
 	else
 		LOG_MSG "[INFO]:-Obtaining specific table disk allocations, please wait..." 1
-		ACTUAL_DB_SIZE=(`$GPSIZECALC -x "$DUMP_DATABASE" -t $DUMP_TABLE_NAME -fq|$GREP "|"`)
+		ACTUAL_DB_SIZE=0
+		for DUMP_TABLE_NAME in "${DUMP_TABLE_LIST[@]}"
+		do
+		    SZ=(`$GPSIZECALC -x "$DUMP_DATABASE" -t $DUMP_TABLE_NAME -fq|$GREP "|"`)
+		    ACTUAL_DB_SIZE=$ACTUAL_DB_SIZE+$SZ
+		done
 	fi
 	LOG_MSG "[INFO]:-Checking free space on segment instances"	
 	BATCH_LIMIT=${#DBID_LIST[@]}
@@ -517,14 +524,17 @@ PROMPT_CONTINUE () {
 		if [ $MULTIDB -eq 1 ];then
 		LOG_MSG "[INFO]:-Dump type                        = Multiple database" 1
 		else
-		if [ x"" == x"$DUMP_TABLE_NAME" ];then
+		if [ ${#DUMP_TABLE_LIST[@]} -eq 0 ];then
 		LOG_MSG "[INFO]:-Dump type                        = Single database" 1
 		else
 		LOG_MSG "[INFO]:-Dump type                        = Single database specifc table" 1
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		LOG_MSG "[INFO]:-Table to be dumped" 1
 		LOG_MSG "[INFO]:------------------------------------------------" 1
-		LOG_MSG "[INFO]:-Table name                       = $DUMP_TABLE_NAME" 1
+		for DUMP_TABLE_NAME in "${DUMP_TABLE_LIST[@]}"
+		do
+		    LOG_MSG "[INFO]:-Table name                       = $DUMP_TABLE_NAME" 1
+		done
 		LOG_MSG "[INFO]:------------------------------------------------" 1
 		fi
 		fi
@@ -613,9 +623,11 @@ PROMPT_CONTINUE () {
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }	
 
-CHK_DUMP_TABLE_NAME () {
+CHK_DUMP_TABLE_LIST () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]:-Commencing checks of table $DUMP_TABLE_NAME"
+	LOG_MSG "[INFO]:-Commencing checks of table"
+	for DUMP_TABLE_NAME in "${DUMP_TABLE_LIST[@]}"
+	do
 	if [ `$ECHO $DUMP_TABLE_NAME|$GREP -c "\."` -ne 1 ];then
 		ERROR_EXIT "[FATAL]:-No schema name supplied for table $DUMP_TABLE_NAME" 2
 	fi
@@ -630,6 +642,7 @@ CHK_DUMP_TABLE_NAME () {
 			ERROR_EXIT "[FATAL]:-Schema name $DUMP_SCHEMA_NAME not same as schema on $DUMP_TABLE_NAME" 2
 		fi
 	fi
+	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 	
@@ -709,9 +722,10 @@ PROCESS_DUMP () {
 		DUMP_TEXT=$DUMP_TEXT" -n $DUMP_SCHEMA_NAME"
 	fi
 	DUMP_TEXT=$DUMP_TEXT" $DUMP_DATABASE"
-	if [ x"" != x"$DUMP_TABLE_NAME" ];then
+	for DUMP_TABLE_NAME in "${DUMP_TABLE_LIST[@]}"
+	do
 		DUMP_TEXT=$DUMP_TEXT" --table=${DUMP_TABLE_NAME}"
-	fi
+	done
 	if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
 		EXCLUDE_LIST=`$ECHO $EXC_DUMP_TABLE_LIST|$TR ',' ' '`
 		DUMP_TEXT=$DUMP_TEXT" --exclude-table=${EXCLUDE_LIST}"
@@ -991,7 +1005,7 @@ if [ $# -ne 0 ]; then
 				D ) DEBUG_LEVEL=1 ;;
 				R ) RUN_PROG=$OPTARG ;;
 				B ) BATCH_DEFAULT=$OPTARG ;;
-				t ) DUMP_TABLE_NAME=$OPTARG ;;
+				t ) DUMP_TABLE_LIST=(${DUMP_TABLE_LIST[@]} $OPTARG) ;;
 				T ) EXC_DUMP_TABLE_LIST=$OPTARG ;;
 				h ) HISTORY=1 ;;
 			        u ) USERDIR=$OPTARG ;;
@@ -1040,7 +1054,7 @@ if [ `$ECHO $DUMP_DATABASE|$GREP -c ","` -ne 0 ];then
 	if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
 		ERROR_EXIT "[FATAL]:-Cannot supply schema name if multiple database dump requested" 2
 	fi
-	if [ x"" != x"$DUMP_TABLE_NAME" ];then
+	if [ ${#DUMP_TABLE_LIST[@]} -gt 0 ];then
 		ERROR_EXIT "[FATAL]:-Cannot supply a table dump list if multiple database dump requested" 2
 	fi
 	if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
@@ -1051,12 +1065,12 @@ if [ `$ECHO $DUMP_DATABASE|$GREP -c ","` -ne 0 ];then
 else
 	MULTIDB=0
 	DUMP_DATABASE_LIST=($DUMP_DATABASE)
-	if [ x"" != x"$DUMP_TABLE_NAME" ] && [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
+	if [ ${#DUMP_TABLE_LIST[@]} -gt 0 ] && [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
 		ERROR_EXIT "[FATAL]:-Cannot use -t and -T options at same time" 2
 	fi
-	if [ x"" != x"$DUMP_TABLE_NAME" ];then
+	if [ ${#DUMP_TABLE_LIST[@]} -gt 0 ];then
 		LOG_MSG "[INFO]:-Configuring for single database specific table dump" 1
-		CHK_DUMP_TABLE_NAME
+		CHK_DUMP_TABLE_LIST
 	else
 		if [ x"" != x"$EXC_DUMP_TABLE_LIST" ];then
 			LOG_MSG "[INFO]:-Configuring for single database with table exclusion(s) dump" 1
