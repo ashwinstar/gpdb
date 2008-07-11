@@ -260,7 +260,18 @@ VALIDATE_PARAMS () {
 		LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME does not have any child tables defined."  1
 		ERROR_EXIT "[FATAL]:-Use gpcreatepart to create initial set of child tables" 2
 	else
-		CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from $INHERIT_TABLE where inhparent in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}'));"`
+		#CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from $INHERIT_TABLE where inhparent in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}'));"`
+
+
+                 #### TO Get the table name ####
+                 TABLENAM=`$ECHO $PARENT_TABLE_NAME|$AWK -F'.' '{print $2}'`
+                 #### To Get the schema name ######
+                 SCHEMANAM=`$ECHO $PARENT_TABLE_NAME|$AWK -F'.' '{print $1}'`
+                 ### To Get the oid of schema name specified #####
+                 SCHEMAOID=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select oid from pg_namespace where nspname='$SCHEMANAM'"`
+                 CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select conname  from pg_constraint where conname like '$TABLENAM%' and connamespace = '${SCHEMAOID}'" | $GREP $TABLENAM | $SED "s,$TABLENAM,,g" |$AWK -F'_' '{print $6}' |$SORT -n| $TAIL -1`
+
+
 		ERROR_CHK $? "obtain child table count" 2
 		((SEQ_NUM=$CHILD_COUNT+1))
 	fi

@@ -406,9 +406,17 @@ VALIDATE_PARAM () {
 	if [ $HAS_CHILD_TABLES == 't' ];then
 		LOG_MSG "[WARN]:-Table $PARENT_TABLE_NAME appears to have child tables" 1
 		LOG_MSG "[INFO]:-Checking for child tables" 1
-		CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from $INHERIT_TABLE where inhparent in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}'));"`
+		#CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c"select count(*) from $INHERIT_TABLE where inhparent in (select oid from $CLASS_TABLE where relname='${TABLE_NAME}' and relnamespace in (select oid from $SCHEMA_TABLE where nspname='${SCHEMA_NAME}'));"`
+
+#### TO Get the table name ####
+                TABLENAM=`$ECHO $PARENT_TABLE_NAME|$AWK -F'.' '{print $2}'`
+                #### To Get the schema name ######
+                SCHEMANAM=`$ECHO $PARENT_TABLE_NAME|$AWK -F'.' '{print $1}'`
+                ### To Get the oid of schema name specified #####
+                SCHEMAOID=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select oid from pg_namespace where nspname='$SCHEMANAM'"`
+                CHILD_COUNT=`$EXPORT_LIB_PATH;env PGOPTIONS="-c gp_session_role=utility" $PSQL -p $MASTER_PORT -A -t "$QD_DBNAME" -c "select conname  from pg_constraint where conname like '$TABLENAM%' and connamespace = '${SCHEMAOID}'" | $GREP $TABLENAM | $SED "s,$TABLENAM,,g" |$AWK -F'_' '{print $6}' |$SORT -n| $TAIL -1`
 		ERROR_CHK $? "obtain child table count" 2
-		if [ $CHILD_COUNT -ne 0 ] && [ x"" == x"$FORCE_CREATE" ];then
+                if [ $CHILD_COUNT ] && [ x"" == x"$FORCE_CREATE" ];then
 			LOG_MSG "[FATAL]:-Table $PARENT_TABLE_NAME has $CHILD_COUNT child tables defined." 1
 			LOG_MSG "[INFO]:-Either use -F option to force child table creation, or" 1
 			ERROR_EXIT "[FATAL]:-Use gpaddpart to increase number of child tables" 2
