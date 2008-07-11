@@ -161,6 +161,10 @@ BitmapHeapNext(BitmapHeapScanState *node)
 				continue;
 			}
 
+			/* If tbmres contains no tuples, continue. */
+			if (tbmres->ntuples == 0)
+				continue;
+
 			/*
 			 * Fetch the current heap page and identify candidate tuples.
 			 */

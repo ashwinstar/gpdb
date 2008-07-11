@@ -803,8 +803,8 @@ words_get_match(BMBatchWords *words, BMIterateResult *result,
 
 restart:
 	/* compute the first and last tid location for 'blockno' */
-	start = blockno * BM_MAX_HTUP_PER_PAGE + 1;
-	end = (blockno + 1) * BM_MAX_HTUP_PER_PAGE;
+	start = ((uint64)blockno) * BM_MAX_HTUP_PER_PAGE + 1;
+	end = ((uint64)(blockno + 1)) * BM_MAX_HTUP_PER_PAGE;
 	newwordno = 0;
 	hrlwordno = 0;
 
