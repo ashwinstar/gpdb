@@ -28,6 +28,7 @@
 #include "access/transam.h"
 #include "access/tuptoaster.h"
 #include "executor/tuptable.h"
+#include "access/clog.h"
 
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
@@ -261,6 +262,12 @@ heap_attisnull(HeapTuple tup, int attnum)
 			/* these are never null */
 			break;
 
+        case GpXminClogStatusAttributeNumber:   /*GP*/
+			return (HeapTupleHeaderGetXmin(tup->t_data) == InvalidTransactionId);
+			
+        case GpXmaxClogStatusAttributeNumber:   /*GP*/
+			return (HeapTupleHeaderGetXmax(tup->t_data) == InvalidTransactionId);
+			
 		default:
 			elog(ERROR, "invalid attnum: %d", attnum);
 	}
@@ -511,6 +518,31 @@ nocachegetattr(HeapTuple tuple,
 	}
 }
 
+static char*
+heap_getClogStatus(TransactionId xid)
+{
+	XidStatus xidStatus;
+	
+	if (xid == InvalidTransactionId)
+		return "None";
+	else if (xid == BootstrapTransactionId)
+		return "Bootstrap";
+	else if (xid == FrozenTransactionId)
+		return "Frozen";
+
+	xidStatus = TransactionIdGetStatus(xid);
+	if (xidStatus == TRANSACTION_STATUS_IN_PROGRESS)
+		return "In-Progress";
+	else if (xidStatus == TRANSACTION_STATUS_COMMITTED)
+		return "Committed";
+	else if (xidStatus == TRANSACTION_STATUS_ABORTED)
+		return "Aborted";
+	else if (xidStatus == TRANSACTION_STATUS_SUB_COMMITTED)
+		return "Subxact-committed";
+	else
+		return "Error";
+}
+
 /* ----------------
  *		heap_getsysattr
  *
@@ -523,9 +555,10 @@ nocachegetattr(HeapTuple tuple,
 Datum
 heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 {
-	Datum		result;
-	int16		infomask;
-	char		*statusStr;
+	Datum			result;
+	int16			infomask;
+	TransactionId 	xid;
+	char			*statusStr;
 
 	Assert(tup);
 	Assert(!is_heaptuple_memtuple(tup));
@@ -599,6 +632,22 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 				statusStr = "MultiXactId";
 			else
 				statusStr = "Unknown";
+			result = DirectFunctionCall1(textin,
+				                CStringGetDatum(statusStr));
+			break;
+		case GpXminClogStatusAttributeNumber:				  /*GP*/
+			xid = HeapTupleHeaderGetXmin(tup->t_data);
+			if (isnull)
+				*isnull = (xid == InvalidTransactionId);
+			statusStr = heap_getClogStatus(xid);
+			result = DirectFunctionCall1(textin,
+				                CStringGetDatum(statusStr));
+			break;
+		case GpXmaxClogStatusAttributeNumber:				  /*GP*/
+			xid = HeapTupleHeaderGetXmax(tup->t_data);
+			if (isnull)
+				*isnull = (xid == InvalidTransactionId);
+			statusStr = heap_getClogStatus(xid);
 			result = DirectFunctionCall1(textin,
 				                CStringGetDatum(statusStr));
 			break;

@@ -826,6 +826,8 @@ Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, boo
 		case GpInfoMask2AttributeNumber:
 		case GpXminStatusAttributeNumber:
 		case GpXmaxStatusAttributeNumber:
+		case GpXminClogStatusAttributeNumber:
+		case GpXmaxClogStatusAttributeNumber:
 			*isnull = true;
 			return 0;
 

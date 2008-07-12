@@ -190,11 +190,26 @@ static FormData_pg_attribute a13 = {
 	false, 'x', 'i', true, false, false, true, 0
 };
 
+/*
+ * Add status of xmin/xmax transactions by examining what the clog thinks.
+ */
+static FormData_pg_attribute a14 = {
+	0, {"gp_xmin_clog_status"}, TEXTOID, 0, -1,
+	GpXminClogStatusAttributeNumber, 0, -1, -1,
+	false, 'x', 'i', true, false, false, true, 0
+};
+
+static FormData_pg_attribute a15 = {
+	0, {"gp_xmax_clog_status"}, TEXTOID, 0, -1,
+	GpXmaxClogStatusAttributeNumber, 0, -1, -1,
+	false, 'x', 'i', true, false, false, true, 0
+};
 
 
 
 
-static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8, &a9, &a10, &a11, &a12, &a13};
+
+static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8, &a9, &a10, &a11, &a12, &a13, &a14, &a15};
 
 /*
  * This function returns a Form_pg_attribute pointer for a system attribute.
