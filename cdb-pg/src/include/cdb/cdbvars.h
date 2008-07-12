@@ -211,6 +211,12 @@ extern int			gp_cached_gang_threshold;
  */
 extern int			gp_reject_percent_threshold;
 
+/*
+ * For use while debugging DTM issues: alter MVCC semantics such that
+ * "invisible" rows are returned. 
+ */
+extern bool           gp_select_invisible;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter

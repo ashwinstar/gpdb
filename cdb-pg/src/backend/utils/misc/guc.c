@@ -1364,6 +1364,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_select_invisible", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Use dummy snapshot for MVCC visibility calculation."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_select_invisible,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_cost_hashjoin_chainwalk", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Enable the cost for walking the chain in the hash join"),
 			NULL,

@@ -94,6 +94,9 @@ bool		gp_set_proc_affinity=false; /* set processor affinity (if platform support
 
 int			gp_reject_percent_threshold; /* SREH reject % kicks off only after *
 										  * <num> records have been processed  */
+
+bool          gp_select_invisible=false; /* debug mode to allow select to see "invisible" rows */
+
 /*
  * TCP port the Interconnect listens on for incoming connections from other
  * backends.  Assigned by initMotionLayerIPC() at process startup.  This port

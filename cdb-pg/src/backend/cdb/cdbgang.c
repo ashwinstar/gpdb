@@ -1514,6 +1514,7 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 	/*
      * user-settable GUC variables
      */
+	appendPQExpBuffer(buffer, " -c gp_select_invisible=%s", gp_select_invisible ? "on" : "off");
 
 	appendPQExpBuffer(buffer, " -c gp_debug_linger=%d", gp_debug_linger);
 

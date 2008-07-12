@@ -152,9 +152,14 @@ ProcessQuery(Portal portal,
 	/*
 	 * Create the QueryDesc object
 	 */
-	queryDesc = CreateQueryDesc(parsetree, plan,
-								ActiveSnapshot, InvalidSnapshot,
-								dest, params, false);
+	if (portal && portal->sourceTag == T_SelectStmt && gp_select_invisible)
+		queryDesc = CreateQueryDesc(parsetree, plan,
+									SnapshotAny, InvalidSnapshot,
+									dest, params, false);
+	else
+		queryDesc = CreateQueryDesc(parsetree, plan,
+									ActiveSnapshot, InvalidSnapshot,
+									dest, params, false);
 
 	/*
 	 * If resource scheduling is enabled and we are locking non SELECT queries,
@@ -430,7 +435,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 */
 				queryDesc = CreateQueryDesc((Query *) linitial(portal->parseTrees),
 										(Plan *) linitial(portal->planTrees),
-											ActiveSnapshot,
+											(gp_select_invisible ? SnapshotAny : ActiveSnapshot),
 											InvalidSnapshot,
 											None_Receiver,
 											params,
@@ -440,7 +445,7 @@ PortalStart(Portal portal, ParamListInfo params, Snapshot snapshot)
 				 * let queryDesc know that it is servicing a cursor so that
 				 * it could do the right cleanup in ExecutorEnd.
 				 */
-				if(portal->is_cursor)
+				if (portal->is_cursor)
 				{
 					queryDesc->cursor_query = true;
 					queryDesc->portal_name = (portal->name ? pstrdup(portal->name) : (char *) NULL);
