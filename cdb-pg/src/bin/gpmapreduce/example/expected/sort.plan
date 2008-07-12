@@ -1,6 +1,0 @@
-Gather Motion 2:1  (slice1)  (cost=198671.34..201171.34 rows=1000000 width=32)
-  Merge Key: value
-  ->  Sort  (cost=198671.34..201171.34 rows=1000000 width=32)
-        Sort Key: value
-        ->  External Scan on access_log  (cost=0.00..11000.00 rows=1000000 width=32)
-Settings:  enable_mergejoin=off; enable_nestloop=off; gp_enable_agg_distinct=on; gp_selectivity_damping_for_joins=on; gp_selectivity_damping_for_scans=on

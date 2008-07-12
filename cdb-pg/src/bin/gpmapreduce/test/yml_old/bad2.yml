@@ -1,0 +1,67 @@
+%YAML 1.1
+---
+
+# No source specification for input
+version:  1.0.0.1
+user:     doc1
+define:
+  - INPUT:
+      name:    myInput
+      columns: [key text, value integer]
+
+---
+# No NAME or LANGUAGE for map
+version:  1.0.0.1
+user:     doc2
+define:
+  - MAP:
+      function: |
+        return 1
+      parameters: [key text, value integer]
+      returns:    value integer
+
+---
+# No LANGUAGE for TRANSITION
+version:  1.0.0.1
+user:     doc3
+define:
+  - TRANSITION:
+      name:      myTransition
+      function: |
+        return ['key-value', 'perl code']
+      mode:      SINGLE
+      optimize:  UNORDERED STRICT
+
+---
+# No FUNCTION for COMBINER
+version:  1.0.0.1
+user:     doc4
+define:
+  - COMBINER:
+      name:      myCombiner
+      language:  perl
+
+
+---
+# Not a valid object keyword
+version:  1.0.0.1
+user:     doc5
+define:
+  - COMBINEZ:
+      name:      myCombinez
+      language:  perl
+
+---
+# Not a valid object attribute
+version:  1.0.0.1
+user:     doc6
+define:      
+  - COMBINER:
+      nameZ:     myCombiner
+      name:      myCombiner
+      language:  perl
+
+---
+# A valid document, but the user doesn't exist
+version:  1.0.0.1
+user:     doc7

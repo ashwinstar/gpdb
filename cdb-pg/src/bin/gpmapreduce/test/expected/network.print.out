@@ -1,0 +1,39 @@
+-- start_matchsubs
+-- m/mapreduce_\d+_run/
+-- s/mapreduce_\d+/mapreduce_DUMMY/
+-- m/'file:[^']'/
+-- s/'file:[^']'/'file:DUMMY'/
+-- end_matchsubs
+CREATE TYPE msg_from_to_rtype as (source text, target text, value integer);
+
+-- INPUT email
+CREATE EXTERNAL TABLE email(value text)
+  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/email/mailfiles')
+  FORMAT 'TEXT';
+
+-- MAPPER msg_from_to
+CREATE FUNCTION msg_from_to(value text)
+RETURNS SETOF msg_from_to_rtype LANGUAGE plpythonu AS
+$$
+from email import message_from_file
+msg = message_from_file(open(value))
+if 'From' in msg and 'To' in msg:
+  me   = msg['From'].strip()
+  yall = msg['To'].split(',')
+  for you in yall:
+    yield([me, you.strip(), 1])
+$$;
+
+-- EXECUTION
+CREATE VIEW mapreduce_46208_run_1 AS
+SELECT source, target, SUM(value) as value
+FROM (SELECT source(m), target(m), value(m) FROM (SELECT msg_from_to(value) as m FROM email) mapxq
+WHERE m is not null) mapsubq
+GROUP BY source, target;
+
+
+DROP TYPE IF EXISTS msg_from_to_rtype CASCADE;
+DROP EXTERNAL TABLE IF EXISTS email CASCADE;
+DROP FUNCTION IF EXISTS msg_from_to(text) CASCADE;
+DROP VIEW IF EXISTS mapreduce_46208_run_1 CASCADE;
+

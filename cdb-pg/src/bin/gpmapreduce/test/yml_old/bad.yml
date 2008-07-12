@@ -1,0 +1,12 @@
+%YAML 1.1
+---
+VERSION:         1.0.0.1
+DATABASE:        postgres
+USER:            cwelton
+
+DEFINE:
+  # DEFINE SHOULD BE A LIST
+  INPUT:
+    GPFDIST:   maple:/email/*
+
+      

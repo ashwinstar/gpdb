@@ -1,0 +1,80 @@
+VERSION:          1.0.0.0
+DATABASE:         scalar
+USER:             scalar
+HOST:             scalar
+PORT:             5432
+DEFINE:
+  - INPUT:
+      NAME:       scalar
+      FILE:       [scalar]
+      COLUMNS:    [scalar]
+      FORMAT:     text
+      DELIMITER:  scalar
+      ENCODING:   scalar
+  - INPUT:
+      NAME:       scalar
+      TABLE:      scalar
+  - INPUT:
+      NAME:       scalar
+      GPFDIST:    scalar
+  - INPUT:
+      NAME:       scalar
+      QUERY:      scalar
+  - INPUT:
+      NAME:       scalar
+      EXEC:       scalar
+  - OUTPUT:
+      NAME:       scalar
+      FILE:       scalar
+      TABLE:      scalar
+      MODE:       replace
+  - MAP:
+      NAME:       scalar
+      FUNCTION:   scalar
+      LANGUAGE:   scalar
+      PARAMETERS: [scalar]
+      RETURNS:    [scalar]
+      OPTIMIZE:   scalar
+      MODE:       single
+  - TRANSITION:
+      NAME:       scalar
+      FUNCTION:   scalar
+      LANGUAGE:   scalar
+      PARAMETERS: [scalar]
+      RETURNS:    [scalar]
+      OPTIMIZE:   scalar
+      MODE:       multi
+  - COMBINER:
+      NAME:       scalar
+      FUNCTION:   scalar
+      LANGUAGE:   scalar
+      PARAMETERS: [scalar]
+      RETURNS:    [scalar]
+      OPTIMIZE:   scalar
+      MODE:       accumulated
+  - FINALIZER:
+      NAME:       scalar
+      FUNCTION:   scalar
+      LANGUAGE:   scalar
+      PARAMETERS: [scalar]
+      RETURNS:    [scalar]
+      OPTIMIZE:   scalar
+      MODE:       windowed
+  - REDUCER:
+      NAME:       scalar
+      TRANSITION: scalar
+      COMBINER:   scalar
+      FINALIZER:  scalar
+      INITIALIZE: scalar
+  - TASK:
+      NAME:       scalar
+      SOURCE:     scalar
+      MAPPER:     scalar
+      REDUCER:    scalar
+      
+EXECUTE:
+  - RUN:
+      SOURCE:  scalar
+      MAPPER:  scalar
+      REDUCER: scalar
+      TARGET:  scalar

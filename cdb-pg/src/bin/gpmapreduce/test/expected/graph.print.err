@@ -1,0 +1,7 @@
+-- start_matchsubs
+-- m/mapreduce_\d+_run/
+-- s/mapreduce_\d+/mapreduce_DUMMY/
+-- end_matchsubs
+SELECT * FROM mapreduce_33068_run_1 ORDER BY key, state;
+SELECT * FROM mapreduce_33068_run_2 ORDER BY key, state;
+SELECT * FROM mapreduce_33068_run_3 ORDER BY key, value;

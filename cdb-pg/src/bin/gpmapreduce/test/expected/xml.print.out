@@ -1,0 +1,37 @@
+-- start_matchsubs
+-- m/mapreduce_\d+_run/
+-- s/mapreduce_\d+/mapreduce_DUMMY/
+-- m/'file:[^']'/
+-- s/'file:[^']'/'file:DUMMY'/
+-- end_matchsubs
+CREATE TYPE xml_extract_rtype as (key integer, value integer, pos integer);
+
+-- INPUT xml
+CREATE EXTERNAL TABLE xml(key integer, value text)
+  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/xml.dat')
+  FORMAT 'TEXT' (DELIMITER '|');
+
+-- MAPPER xml_extract
+CREATE FUNCTION xml_extract(key integer, value text)
+RETURNS SETOF xml_extract_rtype LANGUAGE plpythonu AS
+$$
+import re
+myre  = re.compile('([0-9]*)</item>')
+vlist = filter(lambda(x): myre.search(x), value.split('<item>'))
+rval = []
+for pos in range(0,len(vlist)):
+  rval.append([key, myre.search(vlist[pos]).group(1), pos])
+return rval
+$$;
+
+-- EXECUTION
+CREATE VIEW mapreduce_64976_run_1 AS
+SELECT key(m), value(m), pos(m) FROM (SELECT xml_extract(key, value) as m FROM xml) mapxq
+WHERE m is not null;
+
+
+DROP TYPE IF EXISTS xml_extract_rtype CASCADE;
+DROP EXTERNAL TABLE IF EXISTS xml CASCADE;
+DROP FUNCTION IF EXISTS xml_extract(integer, text) CASCADE;
+DROP VIEW IF EXISTS mapreduce_64976_run_1 CASCADE;
+

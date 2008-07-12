@@ -1,0 +1,46 @@
+-- start_matchsubs
+-- m/mapreduce_\d+_run/
+-- s/mapreduce_\d+/mapreduce_DUMMY/
+-- m/'file:[^']'/
+-- s/'file:[^']'/'file:DUMMY'/
+-- end_matchsubs
+-- INPUT network1
+CREATE EXTERNAL TABLE network1(key text, value text)
+  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/www.small.dat')
+  FORMAT 'TEXT' (DELIMITER '|');
+
+-- INPUT network2
+CREATE VIEW network2 AS
+SELECT key, value FROM network1 GROUP BY key, value;
+
+-- INPUT network3
+-- INPUT network4
+CREATE EXTERNAL WEB TABLE network4(key text, value text)
+EXECUTE 'cat /Users/cwelton/Desktop/mapred3/test/data/www.small.dat'
+  FORMAT 'TEXT' (DELIMITER '|');
+
+-- EXECUTION
+CREATE VIEW mapreduce_46056_run_1 AS
+SELECT * FROM network1;
+
+-- EXECUTION
+CREATE VIEW mapreduce_46056_run_2 AS
+SELECT * FROM network2;
+
+-- EXECUTION
+CREATE VIEW mapreduce_46056_run_3 AS
+SELECT * FROM network2;
+
+-- EXECUTION
+CREATE VIEW mapreduce_46056_run_4 AS
+SELECT * FROM network4;
+
+
+DROP EXTERNAL TABLE IF EXISTS network1 CASCADE;
+DROP VIEW IF EXISTS network2 CASCADE;
+DROP EXTERNAL TABLE IF EXISTS network4 CASCADE;
+DROP VIEW IF EXISTS mapreduce_46056_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_46056_run_2 CASCADE;
+DROP VIEW IF EXISTS mapreduce_46056_run_3 CASCADE;
+DROP VIEW IF EXISTS mapreduce_46056_run_4 CASCADE;
+

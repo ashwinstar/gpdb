@@ -1,0 +1,42 @@
+-- start_matchsubs
+-- m/mapreduce_\d+_run/
+-- s/mapreduce_\d+/mapreduce_DUMMY/
+-- m/'file:[^']'/
+-- s/'file:[^']'/'file:DUMMY'/
+-- end_matchsubs
+-- INPUT network
+CREATE EXTERNAL TABLE network(key text, value text)
+  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/www.small.dat')
+  FORMAT 'TEXT' (DELIMITER '|');
+
+-- INPUT network_graph
+CREATE VIEW network_graph AS
+SELECT key, value, count(*) over (partition by key) as outfactor
+FROM   network
+;
+
+-- INPUT network_rank
+CREATE VIEW network_rank AS
+SELECT key, .85 as value
+FROM   network
+GROUP BY key
+;
+
+-- TRANSITION pagerank_transition
+CREATE FUNCTION pagerank_transition(state float, rank float, outfactor integer)
+RETURNS text LANGUAGE plperl AS
+$$
+return .85*$rank/$outfactor
+$$;
+
+-- EXECUTION
+CREATE VIEW mapreduce_46270_run_1 AS
+SELECT * FROM network_rank;
+
+
+DROP EXTERNAL TABLE IF EXISTS network CASCADE;
+DROP VIEW IF EXISTS network_graph CASCADE;
+DROP VIEW IF EXISTS network_rank CASCADE;
+DROP FUNCTION IF EXISTS pagerank_transition(float, float, integer) CASCADE;
+DROP VIEW IF EXISTS mapreduce_46270_run_1 CASCADE;
+

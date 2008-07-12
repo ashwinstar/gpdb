@@ -1,0 +1,88 @@
+-- start_matchsubs
+-- m/mapreduce_\d+_run/
+-- s/mapreduce_\d+/mapreduce_DUMMY/
+-- m/'file:[^']'/
+-- s/'file:[^']'/'file:DUMMY'/
+-- end_matchsubs
+CREATE TYPE reverse_rtype as (key text, value text);
+
+CREATE TYPE myMap_rtype as (key text, value text);
+
+-- INPUT weblog
+CREATE EXTERNAL TABLE weblog(value text)
+  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/access_log')
+  FORMAT 'TEXT';
+
+-- MAPPER myMap
+CREATE FUNCTION myMap(key text, value text)
+RETURNS myMap_rtype LANGUAGE plperl AS
+$$
+return {} unless ($_[1] =~ m/GET ([^ ?,]+)/);
+return {"key" => $1, "value" => 1}
+$$;
+
+-- TRANSITION myTransition
+CREATE FUNCTION myTransition(state text, value text)
+RETURNS text LANGUAGE plperl AS
+$$
+return $_[0] + $_[1];
+$$;
+
+-- REDUCER myReduce
+CREATE AGGREGATE myReduce (text) (
+  stype = text,
+  initcond = '0',
+  sfunc = myTransition,
+  prefunc = myTransition
+);
+
+-- TASK access_count
+CREATE VIEW access_count AS
+SELECT key, myReduce(value) as value
+FROM (SELECT key(m), value(m) FROM (SELECT myMap('clar'::text, value) as m FROM weblog) mapxq
+WHERE m is not null) mapsubq
+GROUP BY key;
+
+-- INPUT network
+CREATE EXTERNAL TABLE network(key text, value text)
+  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/www.small.dat')
+  FORMAT 'TEXT' (DELIMITER '|');
+
+-- MAPPER reverse
+CREATE FUNCTION reverse(key text, value text)
+RETURNS reverse_rtype LANGUAGE plpythonu AS
+$$
+return {'key': value, 'value': key}
+$$;
+
+-- TASK reverse_network
+CREATE VIEW reverse_network AS
+SELECT key(m), value(m) FROM (SELECT reverse(key, value) as m FROM network) mapxq
+WHERE m is not null;
+
+-- INPUT reverse_access_count
+CREATE VIEW reverse_access_count AS
+SELECT a.key, sum(b.value::integer) as value
+FROM   reverse_network a, access_count b
+WHERE  a.key = b.key
+GROUP BY a.key
+;
+
+-- EXECUTION
+CREATE VIEW mapreduce_46146_run_1 AS
+SELECT * FROM reverse_access_count;
+
+
+DROP TYPE IF EXISTS reverse_rtype CASCADE;
+DROP TYPE IF EXISTS myMap_rtype CASCADE;
+DROP EXTERNAL TABLE IF EXISTS weblog CASCADE;
+DROP FUNCTION IF EXISTS myMap(text, text) CASCADE;
+DROP FUNCTION IF EXISTS myTransition(text, text) CASCADE;
+DROP AGGREGATE IF EXISTS myReduce(text) CASCADE;
+DROP VIEW IF EXISTS access_count CASCADE;
+DROP EXTERNAL TABLE IF EXISTS network CASCADE;
+DROP FUNCTION IF EXISTS reverse(text, text) CASCADE;
+DROP VIEW IF EXISTS reverse_network CASCADE;
+DROP VIEW IF EXISTS reverse_access_count CASCADE;
+DROP VIEW IF EXISTS mapreduce_46146_run_1 CASCADE;
+
