@@ -117,7 +117,7 @@ mkext: mkdir
 		(cd ext; gzip -d -c $(OPENSSL).tar.gz | tar xvf -) ;\
 		(cd ext/openssl; ./config no-shared threads --prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/openssl; $(MAKE)  all install >> out)
+	@(cd ext/openssl; $(MAKE)  all install >> out 2>&1)
 	@echo     -- apr
 	@(cd ext; rm -f apr; ln -s $(APR) apr)
 	@if ! [ -a ext/apr/Makefile ]; then \
@@ -126,7 +126,7 @@ mkext: mkdir
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apr; $(MAKE) all install >> out)
+	@(cd ext/apr; $(MAKE) all install >> out 2>&1)
 	@echo     -- apu
 	@(cd ext; rm -f apu; ln -s $(APU) apu)
 	@if ! [ -a ext/apu/Makefile ]; then \
@@ -136,7 +136,7 @@ mkext: mkdir
 			--with-apr=../apr \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd ext/apu; $(MAKE) all install >> out)
+	@(cd ext/apu; $(MAKE) all install >> out 2>&1)
 
 	@echo     -- dbgen
 	@(cd ext/tpch; $(MAKE) >> out)
