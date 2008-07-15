@@ -231,8 +231,11 @@ gtsq_same(PG_FUNCTION_ARGS)
 {
 	TPQTGist   *a = (TPQTGist *) PG_GETARG_POINTER(0);
 	TPQTGist   *b = (TPQTGist *) PG_GETARG_POINTER(1);
-
-	PG_RETURN_BOOL(*a == *b);
+ 	bool	   *result = (bool *) PG_GETARG_POINTER(2);
+  
+ 	*result = (*a == *b) ? true : false;
+ 
+ 	PG_RETURN_POINTER(result);
 }
 
 static int

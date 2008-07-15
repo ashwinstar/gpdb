@@ -135,8 +135,8 @@ msgstr "Chronométrage désactivé."
 #: command.c:1352
 #: command.c:1385
 #: common.c:160
-#: copy.c:553
-#: copy.c:605
+#: copy.c:549
+#: copy.c:613
 #, c-format
 msgid "%s: %s\n"
 msgstr "%s : %s\n"
@@ -153,9 +153,9 @@ msgstr "Mot de passe : "
 #: common.c:834
 #: common.c:859
 #: common.c:932
-#: copy.c:676
-#: copy.c:721
-#: copy.c:850
+#: copy.c:684
+#: copy.c:729
+#: copy.c:858
 #, c-format
 msgid "%s"
 msgstr "%s"
@@ -336,7 +336,7 @@ msgstr "La connexion au serveur a été perdue. Tentative de réinitialisation : "
 
 #: common.c:375
 msgid "Failed.\n"
-msgstr "Echec.\n"
+msgstr "Ã‰chec.\n"
 
 #: common.c:382
 msgid "Succeeded.\n"
@@ -454,7 +454,7 @@ msgstr "désactivé"
 #: help.c:66
 #, c-format
 msgid "could not get current user name: %s\n"
-msgstr "n'a pas pu obtenir le nom d'utilisateur actuel : %s\n"
+msgstr "n'a pas pu obtenir le nom d'utilisateur courant : %s\n"
 
 #: help.c:79
 #, c-format
@@ -465,7 +465,7 @@ msgstr "Bienvenue dans psql %s, l'interface interactive de PostgreSQL.\n"
 
 #: help.c:81
 msgid "Usage:"
-msgstr "Utilisation :"
+msgstr "Usage :"
 
 #: help.c:82
 msgid "  psql [OPTIONS]... [DBNAME [USERNAME]]\n"
@@ -510,7 +510,7 @@ msgstr "  --help          affiche cette aide, puis quitte"
 
 #: help.c:97
 msgid "  --version       output version information, then exit"
-msgstr "  -V              affiche la version du programme, puis quitte"
+msgstr "  --version       affiche la version, puis quitte"
 
 #: help.c:99
 msgid ""
@@ -1026,15 +1026,15 @@ msgstr "%s : état de la transaction inconnu\n"
 #: describe.c:397
 #: describe.c:499
 #: describe.c:798
-#: describe.c:1459
-#: describe.c:1535
-#: describe.c:1778
+#: describe.c:1466
+#: describe.c:1542
+#: describe.c:1785
 msgid "Description"
 msgstr "Description"
 
 #: large_obj.c:260
 msgid "Large objects"
-msgstr "Objets volumineux"
+msgstr "Â« Large Objects Â»"
 
 #: mainloop.c:150
 #, c-format
@@ -1070,8 +1070,7 @@ msgstr "(%lu lignes)"
 msgid "User name: "
 msgstr "Nom d'utilisateur : "
 
-#: startup.c:196
-#: startup.c:198
+#: startup.c:196 startup.c:198
 #, c-format
 msgid "Password for user %s: "
 msgstr "Mot de passe pour l'utilisateur %s : "
@@ -1191,9 +1190,9 @@ msgstr ""
 #: describe.c:344
 #: describe.c:445
 #: describe.c:499
-#: describe.c:1523
-#: describe.c:1629
-#: describe.c:1678
+#: describe.c:1530
+#: describe.c:1636
+#: describe.c:1685
 msgid "Schema"
 msgstr "Schéma"
 
@@ -1205,10 +1204,10 @@ msgstr "Schéma"
 #: describe.c:386
 #: describe.c:445
 #: describe.c:499
-#: describe.c:1523
-#: describe.c:1630
-#: describe.c:1679
-#: describe.c:1772
+#: describe.c:1530
+#: describe.c:1637
+#: describe.c:1686
+#: describe.c:1779
 msgid "Name"
 msgstr "Nom"
 
@@ -1226,11 +1225,8 @@ msgstr "Liste des fonctions d'agrégation"
 msgid "The server version (%d) does not support tablespaces.\n"
 msgstr "Cette version du serveur (%d) ne supporte pas les tablespaces.\n"
 
-#: describe.c:125
-#: describe.c:211
-#: describe.c:386
-#: describe.c:1525
-#: describe.c:1772
+#: describe.c:125 describe.c:211 describe.c:386 describe.c:1532
+#: describe.c:1779
 msgid "Owner"
 msgstr "Propriétaire"
 
@@ -1254,7 +1250,7 @@ msgstr "Type de données du résultat"
 
 #: describe.c:211
 msgid "Language"
-msgstr "Langue"
+msgstr "Langage"
 
 #: describe.c:212
 msgid "Source code"
@@ -1354,8 +1350,7 @@ msgstr "opérateur"
 msgid "data type"
 msgstr "type de données"
 
-#: describe.c:575
-#: describe.c:1524
+#: describe.c:575 describe.c:1531
 msgid "index"
 msgstr "index"
 
@@ -1646,8 +1641,7 @@ msgstr "Liste des conversions explicites"
 msgid "List of schemas"
 msgstr "Liste des schémas"
 
-#: sql_help.h:25
-#: sql_help.h:401
+#: sql_help.h:25 sql_help.h:401
 msgid "abort the current transaction"
 msgstr "abandonner la transaction en cours"
 
@@ -1841,8 +1835,7 @@ msgstr "modifier la définition d'un opérateur"
 msgid "ALTER OPERATOR name ( { lefttype | NONE } , { righttype | NONE } ) OWNER TO newowner"
 msgstr "ALTER OPERATOR nom ( { lefttype | NONE } , { righttype | NONE } ) OWNER TO nouveau_propriétaire"
 
-#: sql_help.h:69
-#: sql_help.h:97
+#: sql_help.h:69 sql_help.h:97
 msgid "change a database role"
 msgstr "modifier un rôle"
 
@@ -2068,8 +2061,7 @@ msgstr "acquérir des statistiques concernant la base de données"
 msgid "ANALYZE [ VERBOSE ] [ table [ (column [, ...] ) ] ]"
 msgstr "ANALYZE [ VERBOSE ] [ table [ (colonne [, ...] ) ] ]"
 
-#: sql_help.h:105
-#: sql_help.h:449
+#: sql_help.h:105 sql_help.h:449
 msgid "start a transaction block"
 msgstr "débuter un bloc de transaction"
 
@@ -2086,7 +2078,8 @@ msgstr ""
 "\n"
 "où transaction_mode peut être :\n"
 "\n"
-"    ISOLATION LEVEL { SERIALIZABLE | REPEATABLE READ | READ COMMITTED | READ UNCOMMITTED }\n"
+"    ISOLATION LEVEL { SERIALIZABLE | REPEATABLE READ |\n"
+"                      READ COMMITTED | READ UNCOMMITTED }\n"
 "    READ WRITE | READ ONLY"
 
 #: sql_help.h:109
@@ -2177,8 +2170,7 @@ msgstr ""
 "  VIEW nom_objet\n"
 "} IS 'texte'"
 
-#: sql_help.h:125
-#: sql_help.h:329
+#: sql_help.h:125 sql_help.h:329
 msgid "commit the current transaction"
 msgstr "valider la transaction en cours"
 
@@ -2424,9 +2416,7 @@ msgstr ""
 "  } ...\n"
 "    [ WITH ( attribut [, ...] ) ]"
 
-#: sql_help.h:165
-#: sql_help.h:185
-#: sql_help.h:221
+#: sql_help.h:165 sql_help.h:185 sql_help.h:221
 msgid "define a new database role"
 msgstr "définir un nouveau rôle"
 
@@ -2611,7 +2601,8 @@ msgid ""
 "CREATE SCHEMA schemaname [ AUTHORIZATION username ] [ schema_element [ ... ] ]\n"
 "CREATE SCHEMA AUTHORIZATION username [ schema_element [ ... ] ]"
 msgstr ""
-"CREATE SCHEMA nom_schema [ AUTHORIZATION nom_utilisateur ] [ element_schema [ ... ] ]\n"
+"CREATE SCHEMA nom_schema [ AUTHORIZATION nom_utilisateur ]\n"
+"  [ element_schema [ ... ] ]\n"
 "CREATE SCHEMA AUTHORIZATION nom_utilisateur [ element_schema [ ... ] ]"
 
 #: sql_help.h:197
@@ -2712,8 +2703,7 @@ msgstr ""
 "[ WITH ( paramètre_stockage [= valeur] [, ... ] ) ]\n"
 "[ USING INDEX TABLESPACE espace_logique ]"
 
-#: sql_help.h:205
-#: sql_help.h:421
+#: sql_help.h:205 sql_help.h:421
 msgid "define a new table from the results of a query"
 msgstr "définir une nouvelle table à partir des résultats d'une requête"
 
@@ -2790,7 +2780,7 @@ msgstr ""
 "    [ , RECEIVE = fonction_réception ]\n"
 "    [ , SEND = fonction_émission ]\n"
 "    [ , ANALYZE = fonction_analyze ]\n"
-"    [ , INTERNALLENGTH = { longueur_intervalle | VARIABLE } ]\n"
+"    [ , INTERNALLENGTH = { longueur_interne | VARIABLE } ]\n"
 "    [ , PASSEDBYVALUE ]\n"
 "    [ , ALIGNMENT = alignement ]\n"
 "    [ , STORAGE = stockage ]\n"
@@ -2942,12 +2932,11 @@ msgid ""
 "DROP FUNCTION [ IF EXISTS ] name ( [ [ argmode ] [ argname ] argtype [, ...] ] )\n"
 "    [ CASCADE | RESTRICT ]"
 msgstr ""
-"DROP FUNCTION [IF EXISTS ] nom ( [ [ mode_arg ] [ nom_arg ] type_arg [, ...] ] )\n"
+"DROP FUNCTION [IF EXISTS ] nom\n"
+"    ( [ [ mode_arg ] [ nom_arg ] type_arg [, ...] ] )\n"
 "    [ CASCADE | RESTRICT ]"
 
-#: sql_help.h:265
-#: sql_help.h:289
-#: sql_help.h:321
+#: sql_help.h:265 sql_help.h:289 sql_help.h:321
 msgid "remove a database role"
 msgstr "supprimer un rôle de la base de données"
 
@@ -3395,7 +3384,8 @@ msgstr ""
 "\n"
 "REVOKE [ GRANT OPTION FOR ]\n"
 "    { EXECUTE | ALL [ PRIVILEGES ] }\n"
-"    ON FUNCTION nom_fonction ( [ [ mode_arg ] [ nom_arg ] type_arg [, ...] ] ) [, ...]\n"
+"    ON FUNCTION nom_fonction\n"
+"      ( [ [ mode_arg ] [ nom_arg ] type_arg [, ...] ] ) [, ...]\n"
 "    FROM { nom_utilisateur | GROUP nom_groupe | PUBLIC } [, ...]\n"
 "    [ CASCADE | RESTRICT ]\n"
 "\n"
@@ -3590,7 +3580,8 @@ msgstr ""
 "\n"
 "où mode_transaction peut être :\n"
 "\n"
-"    ISOLATION LEVEL { SERIALIZABLE | REPEATABLE READ | READ COMMITTED | READ UNCOMMITTED }\n"
+"    ISOLATION LEVEL { SERIALIZABLE | REPEATABLE READ |\n"
+"                      READ COMMITTED | READ UNCOMMITTED }\n"
 "    READ WRITE | READ ONLY"
 
 #: sql_help.h:445
@@ -3618,7 +3609,8 @@ msgstr ""
 "\n"
 "où mode_transaction peut être :\n"
 "\n"
-"    ISOLATION LEVEL { SERIALIZABLE | REPEATABLE READ | READ COMMITTED | READ UNCOMMITTED }\n"
+"    ISOLATION LEVEL { SERIALIZABLE | REPEATABLE READ |\n"
+"                      READ COMMITTED | READ UNCOMMITTED }\n"
 "    READ WRITE | READ ONLY"
 
 #: sql_help.h:453

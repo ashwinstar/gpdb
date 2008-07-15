@@ -24,7 +24,7 @@ msgstr ""
 #: createdb.c:121
 #: createlang.c:85
 #: createlang.c:106
-#: createlang.c:152
+#: createlang.c:154
 #: createuser.c:157
 #: createuser.c:172
 #: dropdb.c:84
@@ -32,7 +32,7 @@ msgstr ""
 #: dropdb.c:101
 #: droplang.c:96
 #: droplang.c:117
-#: droplang.c:164
+#: droplang.c:166
 #: dropuser.c:84
 #: dropuser.c:99
 #: clusterdb.c:95
@@ -82,14 +82,8 @@ msgstr ""
 "%s crée une base de données PostgreSQL.\n"
 "\n"
 
-#: createdb.c:221
-#: createlang.c:204
-#: createuser.c:313
-#: dropdb.c:146
-#: droplang.c:321
-#: dropuser.c:145
-#: clusterdb.c:234
-#: vacuumdb.c:260
+#: createdb.c:221 createlang.c:206 createuser.c:313 dropdb.c:146
+#: droplang.c:323 dropuser.c:145 clusterdb.c:234 vacuumdb.c:260
 #: reindexdb.c:332
 #, c-format
 msgid "Usage:\n"
@@ -100,14 +94,8 @@ msgstr "Usage :\n"
 msgid "  %s [OPTION]... [DBNAME] [DESCRIPTION]\n"
 msgstr "  %s [OPTION]... [NOMBASE] [DESCRIPTION]\n"
 
-#: createdb.c:223
-#: createlang.c:206
-#: createuser.c:315
-#: dropdb.c:148
-#: droplang.c:323
-#: dropuser.c:147
-#: clusterdb.c:236
-#: vacuumdb.c:262
+#: createdb.c:223 createlang.c:208 createuser.c:315 dropdb.c:148
+#: droplang.c:325 dropuser.c:147 clusterdb.c:236 vacuumdb.c:262
 #: reindexdb.c:334
 #, c-format
 msgid ""
@@ -201,14 +189,8 @@ msgstr ""
 "\n"
 "Par défaut, la base de donnée créée porte le nom de l'utilisateur courant.\n"
 
-#: createdb.c:238
-#: createlang.c:216
-#: createuser.c:342
-#: dropdb.c:158
-#: droplang.c:333
-#: dropuser.c:157
-#: clusterdb.c:250
-#: vacuumdb.c:279
+#: createdb.c:238 createlang.c:218 createuser.c:342 dropdb.c:158
+#: droplang.c:335 dropuser.c:157 clusterdb.c:250 vacuumdb.c:279
 #: reindexdb.c:350
 #, c-format
 msgid ""
@@ -657,7 +639,7 @@ msgstr ""
 #: reindexdb.c:333
 #, c-format
 msgid "  %s [OPTION]... [DBNAME]\n"
-msgstr "  %s [OPTION]... [NOMBASE]\n"
+msgstr "  %s [OPTION]... [BASE]\n"
 
 #: clusterdb.c:237
 #, c-format
@@ -886,8 +868,7 @@ msgstr "%s : n'a pas pu obtenir les informations concernant l'utilisateur actuel
 msgid "%s: could not get current user name: %s\n"
 msgstr "%s: n'a pas pu récupérer le nom de l'utilisateur actuel : %s\n"
 
-#: common.c:97
-#: common.c:123
+#: common.c:97 common.c:123
 msgid "Password: "
 msgstr "Mot de passe : "
 

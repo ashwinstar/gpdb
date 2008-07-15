@@ -7,9 +7,9 @@ msgid ""
 msgstr ""
 "Project-Id-Version: postgres-tr\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2006-11-28 13:01-0400\n"
-"PO-Revision-Date: 2007-05-02 09:26+0200\n"
-"Last-Translator: Nicolai Tufar <ntufar@gmail.com>\n"
+"POT-Creation-Date: 2008-01-30 13:03-0400\n"
+"PO-Revision-Date: 2008-01-30 11:55-0800\n"
+"Last-Translator: Devrim GÃNDÃZ <devrim@commandprompt.com>\n"
 "Language-Team: Turkish <ceviri@postgresql.org.tr>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -70,6 +70,32 @@ msgstr "\"%s\" tanınmayan parametre"
 msgid "fillfactor=%d is out of range (should be between %d and 100)"
 msgstr "fillfactor=%d kapsam dışıdır (%d ile 100 arasında olmalıdır)"
 
+#: access/common/printtup.c:266
+#: tcop/fastpath.c:179
+#: tcop/fastpath.c:551
+#: tcop/postgres.c:1514
+#, c-format
+msgid "unsupported format code: %d"
+msgstr "desteklenmeyen biÃ§im kodu: %d"
+
+#: access/common/tupdesc.c:542
+#: parser/parse_relation.c:902
+#, c-format
+msgid "column \"%s\" cannot be declared SETOF"
+msgstr "\"%s\" kolonu SETOF olarak bildirilemez"
+
+#: access/gin/ginarrayproc.c:30
+msgid "array must not contain null values"
+msgstr "array null kayÄ±tlarÄ± iÃ§eremez"
+
+#: access/gin/ginscan.c:146
+msgid "GIN indexes do not support whole-index scans"
+msgstr "GIN dizinler tÃ¼m dizin taramasÄ±nÄ± desteklememektedir"
+
+#: access/gin/ginscan.c:179
+msgid "GIN index does not support search with void query"
+msgstr "GIN dizini boÅ bir sorguyla aramayÄ± desteklemiyor"
+
 #: access/gist/gistvacuum.c:570
 #, c-format
 msgid "index \"%s\" needs VACUUM FULL or REINDEX to finish crash recovery"
@@ -124,7 +150,7 @@ msgstr "index satır boyutu %lu, %lu olan en yüksek hash boyutunu aşmaktadır"
 msgid "Values larger than a buffer page cannot be indexed."
 msgstr "Bir buffer sayfası boyutundan yüksek değerler indekslenemz."
 
-#: access/hash/hashsearch.c:145
+#: access/hash/hashsearch.c:144
 msgid "hash indexes do not support whole-index scans"
 msgstr "hash indexler tüm index taramasını desteklememektedir"
 
@@ -2079,9 +2105,9 @@ msgid "System catalog modifications are currently disallowed."
 msgstr "System catalog değişikliklerine şu anda izin verilmiyor."
 
 #: catalog/heap.c:343
-#: commands/tablecmds.c:774
-#: commands/tablecmds.c:1088
-#: commands/tablecmds.c:3026
+#: commands/tablecmds.c:773
+#: commands/tablecmds.c:1077
+#: commands/tablecmds.c:3213
 #, c-format
 msgid "tables can have at most %d columns"
 msgstr "bir tablo en fazla %d sütun içerebilir"
@@ -2274,7 +2300,7 @@ msgid "cannot remove dependency on %s because it is a system object"
 msgstr "sistem nesnesi tarafından kullanıldığı için %s kaldırılamıyor"
 
 #: catalog/pg_largeobject.c:105
-#: commands/comment.c:1401
+#: commands/comment.c:1310
 #: storage/large_object/inv_api.c:253
 #: storage/large_object/inv_api.c:353
 #, c-format
@@ -6067,7 +6093,7 @@ msgid "missing field in file \"%s\" at end of line %d"
 msgstr "\"%s\" dosyasında %d satırın sonunda eksik alan"
 
 #: libpq/hba.c:991
-#: guc-file.l:375
+#: guc-file.l:233
 #, c-format
 msgid "could not open configuration file \"%s\": %m"
 msgstr "yapılandırma dosyası \"%s\" açılamadı: %m"
@@ -6134,7 +6160,7 @@ msgstr "yerel kullanıcı ID %d mevcut değildir"
 msgid "Ident authentication is not supported on local connections on this platform"
 msgstr "bu platformda yerel bağlantılarda Ident kimlik doğrulaması desteklenmemektedir"
 
-#: libpq/hba.c:1617
+#: libpq/hba.c:1614
 #, c-format
 msgid "Ident protocol identifies remote user as \"%s\""
 msgstr "Ident protokolü uzak kullanıcısını \"%s\" olarak tanıtıyor"
@@ -7346,8 +7372,9 @@ msgid "operator does not exist: %s"
 msgstr "operator mevcut değil: %s"
 
 #: parser/parse_oper.c:178
-#: utils/adt/arrayfuncs.c:3027
-#: utils/adt/arrayfuncs.c:3428
+#: utils/adt/arrayfuncs.c:3031
+#: utils/adt/arrayfuncs.c:3432
+#: utils/adt/ri_triggers.c:3648
 #, c-format
 msgid "could not identify an equality operator for type %s"
 msgstr "%s tipi için eşitleme işlemi bulunamadı "
@@ -8776,13 +8803,12 @@ msgstr "\"max_fsm_pages\" yapılandırma parametresini %.0f değerine kadar yük
 
 #: storage/ipc/shmem.c:190
 #: storage/ipc/shmem.c:359
-#: storage/lmgr/proc.c:180
-#: storage/lmgr/proc.c:193
 #: storage/lmgr/lock.c:583
 #: storage/lmgr/lock.c:649
 #: storage/lmgr/lock.c:1992
 #: storage/lmgr/lock.c:2274
 #: storage/lmgr/lock.c:2339
+#: storage/lmgr/proc.c:174
 #: utils/hash/dynahash.c:924
 msgid "out of shared memory"
 msgstr "shared memory yetersiz"
@@ -9106,10 +9132,10 @@ msgid "fastpath function call: \"%s\" (OID %u)"
 msgstr "fastpath function çağırımı: \"%s\" OID %u"
 
 #: tcop/fastpath.c:405
-#: tcop/postgres.c:1027
-#: tcop/postgres.c:1296
-#: tcop/postgres.c:1668
-#: tcop/postgres.c:1883
+#: tcop/postgres.c:1009
+#: tcop/postgres.c:1263
+#: tcop/postgres.c:1619
+#: tcop/postgres.c:1830
 #, c-format
 msgid "duration: %s ms"
 msgstr "süre: %s milisaniye"
@@ -9120,7 +9146,7 @@ msgid "duration: %s ms  fastpath function call: \"%s\" (OID %u)"
 msgstr "süre: %s milisaniye  fastpath function call: \"%s\" OID %u"
 
 #: tcop/fastpath.c:447
-#: tcop/fastpath.c:574
+#: tcop/fastpath.c:577
 #, c-format
 msgid "function call message contains %d arguments but function requires %d"
 msgstr "fonksiyon çağırısına %d argüman bulunmakta ancak fonkiyon %d argüman istemektedir"
@@ -9342,10 +9368,8 @@ msgstr "giriş tiplerinin hiçbiri array değildir"
 
 #: utils/adt/array_userfuncs.c:103
 #: utils/adt/array_userfuncs.c:113
-#: utils/adt/float.c:1093
-#: utils/adt/float.c:1152
-#: utils/adt/float.c:2798
-#: utils/adt/float.c:2814
+#: utils/adt/float.c:1163
+#: utils/adt/float.c:1229
 #: utils/adt/int.c:677
 #: utils/adt/int.c:706
 #: utils/adt/int.c:727
@@ -9361,11 +9385,11 @@ msgstr "giriş tiplerinin hiçbiri array değildir"
 #: utils/adt/int.c:1060
 #: utils/adt/int.c:1087
 #: utils/adt/int.c:1113
-#: utils/adt/int.c:1197
+#: utils/adt/int.c:1192
 #: utils/adt/int8.c:1008
-#: utils/adt/numeric.c:1850
-#: utils/adt/numeric.c:1859
-#: utils/adt/varbit.c:1372
+#: utils/adt/numeric.c:1791
+#: utils/adt/numeric.c:1800
+#: utils/adt/varbit.c:1292
 msgid "integer out of range"
 msgstr "integer sıra dışıdır"
 
@@ -9401,8 +9425,8 @@ msgid "Arrays with differing dimensions are not compatible for concatenation."
 msgstr "Bitiştirmede farklı boyutlu dizileri kullanılamaz."
 
 #: utils/adt/array_userfuncs.c:424
-#: utils/adt/arrayfuncs.c:1187
-#: utils/adt/arrayfuncs.c:2804
+#: utils/adt/arrayfuncs.c:1191
+#: utils/adt/arrayfuncs.c:2808
 #, c-format
 msgid "invalid number of dimensions: %d"
 msgstr "boyut sayısı geçersiz: %d"
@@ -10276,13 +10300,15 @@ msgid "could not seek in file \"%s\": %m"
 msgstr "\"%s\" dosyası ilerleme hatası: %m"
 
 #: utils/adt/genfile.c:121
-msgid "requested length cannot be negative"
+#, fuzzy
+msgid "requested length may not be negative"
 msgstr "istenilen uzunluk negatif olamaz"
 
 #: utils/adt/genfile.c:127
 #: utils/adt/oracle_compat.c:610
 #: utils/adt/oracle_compat.c:707
-#: utils/adt/oracle_compat.c:1330
+#: utils/adt/oracle_compat.c:1181
+#: utils/adt/oracle_compat.c:1337
 msgid "requested length too large"
 msgstr "istenen uzunluk çok büyük"
 
@@ -10449,8 +10475,8 @@ msgstr "bigint tipi için \"%s\" değeri kapsam dışıdır"
 #: utils/adt/int8.c:903
 #: utils/adt/int8.c:1071
 #: utils/adt/int8.c:1110
-#: utils/adt/numeric.c:1903
-#: utils/adt/varbit.c:1451
+#: utils/adt/numeric.c:1844
+#: utils/adt/varbit.c:1371
 msgid "bigint out of range"
 msgstr "biginit değeri sıra dışıdır"
 
@@ -10846,6 +10872,13 @@ msgstr "birden fazla \"%s\" adlı fonksiyon var"
 #, c-format
 msgid "more than one operator named %s"
 msgstr "birden fazla \"%s\" adlı operatör var"
+
+#: utils/adt/regproc.c:639
+#: utils/adt/regproc.c:1271
+#: utils/adt/ruleutils.c:4122
+#: utils/adt/ruleutils.c:4150
+msgid "too many arguments"
+msgstr "Ã§ok fazla argÃ¼man"
 
 #: utils/adt/regproc.c:640
 msgid "Provide two argument types for operator."
@@ -11545,7 +11578,7 @@ msgstr "dinamik kütüphane yolunda geçersiz makro adı: %s"
 msgid "zero-length component in parameter \"dynamic_library_path\""
 msgstr "\"dynamic_library_path\" parametresinde sıfır uzunluklu bileşen"
 
-#: utils/fmgr/dfmgr.c:553
+#: utils/fmgr/dfmgr.c:554
 msgid "component in parameter \"dynamic_library_path\" is not an absolute path"
 msgstr "\"dynamic_library_path\" parametresine bileşen kesin bir yol değildir"
 
@@ -11560,7 +11593,7 @@ msgid "unrecognized API version %d reported by info function \"%s\""
 msgstr "\"%2$s\" bilgi fonksiyonu tarafından bildirilen API versioynu %1$d tanımlı değildir"
 
 #: utils/fmgr/fmgr.c:752
-#: utils/fmgr/fmgr.c:1885
+#: utils/fmgr/fmgr.c:1893
 #, c-format
 msgid "function %u has too many arguments (%d, maximum is %d)"
 msgstr "%u fonksiyonu çok fazla argümana sahip (%d, en yüksek ise %d)"
@@ -12999,7 +13032,7 @@ msgstr ""
 "%s, greken veritabanı dosyaları bulamamaktadır.\n"
 "Dizinin yeri \"%s\" dosyasında \"data_directory\" değişkeninde, -D başlatma parametresi veya PGDATA enviroment değişkeni ile belirtilebilir.\n"
 
-#: utils/misc/guc.c:3112
+#: utils/misc/guc.c:2995
 #, c-format
 msgid ""
 "%s does not know where to find the \"hba\" configuration file.\n"
@@ -13008,7 +13041,7 @@ msgstr ""
 "%s, greken \"hba\" konfigurasyon dosyasını bulamamaktadır.\n"
 "Bu dosyanın yeri \"%s\" dosyasında \"hba_file\" değişkeninde, -D başlatma parametresi veya PGDATA enviroment değişkeni ile belirtilebilir.\n"
 
-#: utils/misc/guc.c:3135
+#: utils/misc/guc.c:3018
 #, c-format
 msgid ""
 "%s does not know where to find the \"ident\" configuration file.\n"
@@ -13402,4 +13435,330 @@ msgstr "%lu win32 hata kodu %d koduna adreslendi"
 #, c-format
 msgid "unrecognized win32 error code: %lu"
 msgstr "bilinmeyen win32 hata kodu: %lu"
+
+#~ msgid ""
+#~ "The database cluster was initialized with TOAST_MAX_CHUNK_SIZE %d, but "
+#~ "the server was compiled with TOAST_MAX_CHUNK_SIZE %d."
+#~ msgstr ""
+#~ "VeritabanÄ± clusteri TOAST_MAX_CHUNK_SIZE %d ile ilklendirilmiÅtir, ancak "
+#~ "sunucu  TOAST_MAX_CHUNK_SIZE %d ile derlenmiÅtir."
+#~ msgid "operator %d %s of "
+#~ msgstr "%d %s operatoru "
+#~ msgid "function %d %s of "
+#~ msgstr "%d %s fonksiyonu "
+#~ msgid "operator family %s for access method %s"
+#~ msgstr "%2$s eriÅim yÃ¶ntemi iÃ§in %1$s operatÃ¶rÃ¼ "
+#~ msgid "permission denied for operator family %s"
+#~ msgstr "%s operator ailesine eriÅim engellendi"
+#~ msgid "must be owner of operator family %s"
+#~ msgstr "%s operator ailesinin sahibi olmalÄ±sÄ±nÄ±z"
+#~ msgid "operator family with OID %u does not exist"
+#~ msgstr "OID'i %u olan operatÃ¶r mevcut deÄil"
+#~ msgid ""
+#~ "A function returning a polymorphic type must have at least one "
+#~ "polymorphic argument."
+#~ msgstr ""
+#~ "Polymorphic tipini dÃ¶ndÃ¼ren fonksiyonlar en az bir polymorphic argÃ¼man "
+#~ "iÃ§ermelidir."
+#~ msgid "invalid enum label \"%s\", must be %d characters or less"
+#~ msgstr "\"%s\" geÃ§ersiz enum etiketi, %d karakterden kÃ¼Ã§Ã¼k olmalÄ±dÄ±r"
+#~ msgid "automatic analyze of table \"%s.%s.%s\" system usage: %s"
+#~ msgstr "\"%s.%s.%s\" tablosunun automatic analyze; system kullanÄ±mÄ±: %s"
+#~ msgid "operator family \"%s\" does not exist for access method \"%s\""
+#~ msgstr "\"%s\" eriÅim yÃ¶ntemi iÃ§in \"%s\" operatÃ¶r sÄ±nÄ±fÄ± mevcut deÄil"
+#~ msgid "unquoted carriage return found in data"
+#~ msgstr "veri iÃ§erisinde tÄ±rnak iÃ§inde olmayan satÄ±r sonu karakteri bulundu"
+#~ msgid "Use quoted CSV field to represent carriage return."
+#~ msgstr "SatÄ±r sonunu gÃ¶stermek iÃ§in tÄ±rnak iÃ§inde CSV deÄerini kullanÄ±n."
+#~ msgid "unquoted newline found in data"
+#~ msgstr "veri iÃ§erisinde tÄ±rnak iÃ§inde olmayan yeni satÄ±r karakteri bulundu"
+#~ msgid "Use quoted CSV field to represent newline."
+#~ msgstr "Yeni satÄ±rÄ± gÃ¶stermek iÃ§in tÄ±rnak iÃ§inde CSV deÄerini kullanÄ±n."
+#~ msgid "COST must be positive"
+#~ msgstr "COST pozitif olmalÄ±dÄ±r"
+#~ msgid "ROWS must be positive"
+#~ msgstr "ROWS pozitif olmalÄ±dÄ±r"
+#~ msgid "ROWS is not applicable when function does not return a set"
+#~ msgstr "fonksiyonu bir set dÃ¶ndÃ¼rmediÄinde ROWS kullanÄ±lamaz"
+#~ msgid "access method \"%s\" does not support ASC/DESC options"
+#~ msgstr "\"%s\" eriÅim yÃ¶ntemi ASC/DESC desteklemiyor"
+#~ msgid "access method \"%s\" does not support NULLS FIRST/LAST options"
+#~ msgstr "\"%s\" eriÅim yÃ¶ntemi NULLS FIRST/LAST desteklemiyor"
+#~ msgid "operator family \"%s\" for access method \"%s\" already exists"
+#~ msgstr "\"%2$s\" eriÅim metodu iÃ§in \"%1$s\" operatÃ¶r sÄ±nÄ±fÄ± zaten mevcut"
+#~ msgid "must be superuser to create an operator family"
+#~ msgstr "operator sÄ±nÄ±fÄ± oluÅturmak iÃ§in superuser olmalÄ±sÄ±nÄ±z"
+#~ msgid "must be superuser to alter an operator family"
+#~ msgstr "operator sÄ±nÄ±fÄ± deÄiÅtirmek iÃ§in superuser olmalÄ±sÄ±nÄ±z"
+#~ msgid "operator argument types must be specified in ALTER OPERATOR FAMILY"
+#~ msgstr ""
+#~ "operator argument tipleri ALTER OPERATOR FAMILY iÅleminde belirtilmelidir"
+#~ msgid "STORAGE cannot be specified in ALTER OPERATOR FAMILY"
+#~ msgstr "ALTER OPERATOR FAMILY iÅleminde STORAGE kullanÄ±lamaz"
+#~ msgid "one or two argument types must be specified"
+#~ msgstr "bir veya iki argÃ¼man tÃ¼rÃ¼ belirtilmelidir"
+#~ msgid "hash procedures must have one argument"
+#~ msgstr "hash yordamÄ± bir tek argÃ¼man almalÄ±dÄ±r"
+#~ msgid "hash procedures must return integer"
+#~ msgstr "hash yordamÄ± tamsayÄ± dÃ¶nmelidir"
+#~ msgid "associated data types must be specified for index support procedure"
+#~ msgstr "index destekleyen yordamlarÄ±nÄ±n baÄlÄ± veri tiplerini belirtmelidir"
+#~ msgid "operator %d(%s,%s) already exists in operator family \"%s\""
+#~ msgstr ""
+#~ "\"%4$s\" operator ailesinde %1$d(%2$s,%3$s) operatoru zaten mevcuttur"
+#~ msgid "function %d(%s,%s) already exists in operator family \"%s\""
+#~ msgstr ""
+#~ "\"%4$s\" operator ailesinde %1$d(%2$s,%3$s) fonksiyonu zaten mevcuttur"
+#~ msgid "operator %d(%s,%s) does not exist in operator family \"%s\""
+#~ msgstr "\"%4$s\" operator ailesinde %1$d(%2$s,%3$s) operatoru mevcut deÄil"
+#~ msgid "function %d(%s,%s) does not exist in operator family \"%s\""
+#~ msgstr "\"%4$s\" operator ailesinde %1$d(%2$s,%3$s) fonksiyonu mevcut deÄil"
+#~ msgid ""
+#~ "operator family \"%s\" for access method \"%s\" already exists in schema "
+#~ "\"%s\""
+#~ msgstr ""
+#~ "\"%2$s\" eriÅim yÃ¶ntemi iÃ§in kullanÄ±lacak \"%1$s\" operator ailesi zaten "
+#~ "\"%3$s\" ÅemasÄ±nda mevcuttur"
+#~ msgid "must be superuser to create custom procedural language"
+#~ msgstr "Ã¶zel yordamsal dil oluÅturmak iÃ§in superuser olmalÄ±sÄ±nÄ±z"
+#~ msgid ""
+#~ "type modifier output function is useless without a type modifier input "
+#~ "function"
+#~ msgstr ""
+#~ "type modifier input function olmadan type modifier output function "
+#~ "kullanmak anlamsÄ±zdÄ±r"
+#~ msgid "typmod_in function %s must return type \"integer\""
+#~ msgstr "%s typmod_in fonksiyonu \"trigger\" tipini dÃ¶ndÃ¼rmelidir"
+#~ msgid "typmod_out function %s must return type \"cstring\""
+#~ msgstr "%s typmod_out fonksiyonu  \"cstring\" dÃ¶ndÃ¼rmelidir"
+#~ msgid ""
+#~ "automatic vacuum of table \"%s.%s.%s\": index scans: %d\n"
+#~ "pages: %d removed, %d remain\n"
+#~ "tuples: %.0f removed, %.0f remain\n"
+#~ "system usage: %s"
+#~ msgstr ""
+#~ "\"%s.%s.%s\" tablosunun automatic vacuumu: index scans: %d\n"
+#~ "pages: %d removed, %d remain\n"
+#~ "tuples: %.0f removed, %.0f remain\n"
+#~ "system kullanÄ±mÄ±: %s"
+#~ msgid "SSL SYSCALL error: %m"
+#~ msgstr "SSL SYSCALL hatasÄ±: %m"
+#~ msgid "SSL SYSCALL error: EOF detected"
+#~ msgstr "SSL SYSCALL hatasÄ±: EOF (dosyasonu)"
+#~ msgid "operator %s is not a valid ordering operator"
+#~ msgstr "%s geÃ§erli bir sÄ±ralama operatÃ¶r adÄ± deÄildir"
+#~ msgid ""
+#~ "Ordering operators must be \"<\" or \">\" members of btree operator "
+#~ "families."
+#~ msgstr ""
+#~ "Ordering operators must be \"<\" or \">\" members of btree operator "
+#~ "families."
+#~ msgid "invalid UNION/INTERSECT/EXCEPT ORDER BY clause"
+#~ msgstr "geÃ§ersiz UNION/INTERSECT/EXCEPT ORDER BY ifadesi"
+#~ msgid "Only result column names can be used, not expressions or functions."
+#~ msgstr ""
+#~ "Sadece sonuÃ§ sÃ¼tun aldarÄ± kullanÄ±labilir, ifade veya fonksiyon "
+#~ "kullanÄ±lamaz."
+#~ msgid ""
+#~ "Add the expression/function to every SELECT, or move the UNION into a "
+#~ "FROM clause."
+#~ msgstr ""
+#~ "Bu ifade/fonksiyonu ger SELECT iÃ§ine yerleÅtirin ya da FROM ifadesine "
+#~ "UNION ekleyin."
+#~ msgid "type matched to anyenum is not an enum type: %s"
+#~ msgstr "enyenum ile eÅleÅtirilen tip bir enum tipi deÄildir: %s"
+#~ msgid "unnamed XML attribute value must be a column reference"
+#~ msgstr "isimsiz XML attribute deÄeri bir sÃ¼tun referansÄ± olmalÄ±dÄ±r"
+#~ msgid "unnamed XML element value must be a column reference"
+#~ msgstr "isimsiz XML Ã¶Äesi bir sÃ¼tun referansÄ± olmalÄ±dÄ±r"
+#~ msgid "XML attribute name \"%s\" appears more than once"
+#~ msgstr "\"%s\" XML attrÄ±bute adÄ± birden fazla kez belirtilmiÅtir"
+#~ msgid "type modifier is not allowed for type \"%s\""
+#~ msgstr "\"%s\" veri tipi iÃ§in tip niteliyicisi kullanÄ±lamaz"
+#~ msgid "type modifiers must be integer constants"
+#~ msgstr "tip belirteÃ§leri birer tamsayÄ± sabiti olmalÄ±dÄ±r"
+#~ msgid "could not create shared memory segment: %lu"
+#~ msgstr "shared memory segment oluÅturulamÄ±yor: %lu"
+#~ msgid "Failed system call was CreateFileMapping(size=%lu, name=%s)"
+#~ msgstr "BaÅarÄ±sÄ±z sistem Ã§aÄrÄ±sÄ±: CreateFileMapping(size=%lu, name=%s)"
+#~ msgid "pre-existing shared memory block is still in use"
+#~ msgstr "daha Ã¶nce tanÄ±mlanmÄ±Å shared memory bloÄu hala kullanÄ±lmaktadÄ±r"
+#~ msgid ""
+#~ "Check if there are any old server processes still running, and terminate "
+#~ "them."
+#~ msgstr "Hala Ã§alÄ±Åan sunucu sÃ¼reÃ§leri bulun ve varsa sonlandÄ±rÄ±n."
+#~ msgid "Failed system call was DuplicateHandle"
+#~ msgstr "BaÅarÄ±sÄ±z Ã§aÄrÄ±: DuplicateHandle"
+#~ msgid "Failed system call was MapViewOfFileEx"
+#~ msgstr "BaÅarÄ±sÄ±z Ã§aÄrÄ±: MapViewOfFileEx"
+#~ msgid "autovacuum launcher started"
+#~ msgstr "otomatik vacuum baÅlatma sÃ¼reci Ã§alÄ±ÅtÄ±rÄ±ldÄ±"
+#~ msgid "autovacuum launcher shutting down"
+#~ msgstr "otomatik vacuum baÅlatma sÃ¼reci kapatÄ±lÄ±yor"
+#~ msgid "not enough shared memory for autovacuum"
+#~ msgstr "otomatik vacuum iÃ§in shared memory yeterli deÄildir"
+#~ msgid "database system is ready to accept connections"
+#~ msgstr "veritabanÄ± baÄlantÄ± kabul etmeye hazÄ±rdÄ±r"
+#~ msgid "%s (PID %d) was terminated by exception 0x%X"
+#~ msgstr "%s (PID %d) 0x%X exception tarafÄ±ndan sonlandÄ±rÄ±ldÄ±"
+#~ msgid ""
+#~ "See C include file \"ntstatus.h\" for a description of the hex value."
+#~ msgstr "Bu hex deÄerin tanÄ±mlamasÄ± iÃ§in \"ntstatus.h\" dosyasÄ±na bakÄ±n."
+#~ msgid "%s (PID %d) was terminated by signal %d: %s"
+#~ msgstr "%s (PID %d) %d sinyali tarafÄ±ndan sonlandÄ±rÄ±ldÄ±: %s"
+#~ msgid "could not fork new process for autovacuum: %m"
+#~ msgstr "Autovacuum iÃ§in yeni sÃ¼reÃ§ baÅlatÄ±lamadÄ±: %m"
+#~ msgid "temp file: path \"%s\" size %lu"
+#~ msgstr "geÃ§ici dosya: yol \"%s\" boyut %lu"
+#~ msgid "deadlock avoided by rearranging lock order"
+#~ msgstr "lock sÄ±rasÄ±nÄ± deÄiÅtirilerek deadlockitan kaÃ§Ä±nÄ±ldÄ±"
+#~ msgid "statement waiting for lock for at least %d ms"
+#~ msgstr "lock almak iÃ§in en az %d milisaniye bekleyen sorgu"
+#~ msgid "could not remove segment %u of relation %u/%u/%u: %m"
+#~ msgstr "segment %u, nesne %u/%u/%u kaldÄ±rÄ±lamÄ±yor: %m"
+#~ msgid "cannot extend relation %u/%u/%u beyond %u blocks"
+#~ msgstr "%u/%u/%u nesnesi %u bloÄuna kadar geniÅletilemiyor"
+#~ msgid "could not seek to block %u of relation %u/%u/%u: %m"
+#~ msgstr "%2$u/%3$u/%4$u nesnesinin %1$u bloÄuna arama hatasÄ±: %5$m"
+#~ msgid ""
+#~ "could not extend relation %u/%u/%u: wrote only %d of %d bytes at block %u"
+#~ msgstr ""
+#~ "%1$u/%2$u/%3$u nesnesi bÃ¼yÃ¼tme hatasÄ±: %6$u bloÄunda %4$d bayttan sadece %"
+#~ "5$d bayt yazÄ±ldÄ±"
+#~ msgid ""
+#~ "could not read block %u of relation %u/%u/%u: read only %d of %d bytes"
+#~ msgstr ""
+#~ "%2$u/%3$u/%4$u nesnesinin %1$u bloku okunamÄ±yor: %6$d bayttan sadece %5$d "
+#~ "bayt okundu"
+#~ msgid ""
+#~ "could not write block %u of relation %u/%u/%u: wrote only %d of %d bytes"
+#~ msgstr ""
+#~ "%2$u/%3$u/%4$u nesnesinin %1$u bloku yazÄ±lamÄ±yor: %6$d bayttan sadece %5"
+#~ "$d bayt yazÄ±ldÄ±"
+#~ msgid "could not open segment %u of relation %u/%u/%u: %m"
+#~ msgstr "segment %u, nesne %u/%u/%u aÃ§ma yapÄ±lamÄ±yor: %m"
+#~ msgid ""
+#~ "could not truncate relation %u/%u/%u to %u blocks: it's only %u blocks now"
+#~ msgstr ""
+#~ "%u/%u/%u nesnesi %u blokuna kadar kesilemiyor: nesnenin boyutu %u blok "
+#~ "olarak ayarlandÄ±"
+#~ msgid "could not seek to end of segment %u of relation %u/%u/%u: %m"
+#~ msgstr "segment %u, nesne %u/%u/%u arama yapÄ±lamÄ±yor: %m"
+#~ msgid "typmod array must be type integer[]"
+#~ msgstr "typmod array tamsyÄ± tipinde olmalÄ±dÄ±r"
+#~ msgid "typmod array must be one-dimensional"
+#~ msgstr "typmod array tek boyutlu olmalÄ±dÄ±r"
+#~ msgid "typmod array must not contain nulls"
+#~ msgstr "typmod array null kayÄ±tlarÄ± iÃ§eremez"
+#~ msgid "invalid type modifier"
+#~ msgstr "tip belirteci geÃ§ersiz"
+#~ msgid "operand, lower bound and upper bound cannot be NaN"
+#~ msgstr "iÅlenenin alt ve Ã¼st sÄ±nÄ±rÄ± NaN olamaz"
+#~ msgid "lower and upper bounds must be finite"
+#~ msgstr "alt ve Ã¼st sÄ±nÄ±rlarÄ± sonsuz olamaz"
+#~ msgid "invalid NUMERIC type modifier"
+#~ msgstr "geÃ§ersiz NUMERIC tipi niteleyicisi"
+#~ msgid "cannot accept a value of type anyenum"
+#~ msgstr "anyenum tipinde deÄer alÄ±namaz"
+#~ msgid "regexp_split does not support the global option"
+#~ msgstr "regexp_split, global seÃ§eneÄi desteklemez"
+#~ msgid "invalid INTERVAL type modifier"
+#~ msgstr "geÃ§ersiz INTERVAL tipi niteleyicisi"
+#~ msgid "unsupported XML feature"
+#~ msgstr "desteklenmeyen XML Ã¶zelliÄi"
+#~ msgid "This functionality requires libxml support."
+#~ msgstr "Bu Ã¶zellik libxml desteÄi gerektirmektedir."
+#~ msgid "You need to re-compile PostgreSQL using --with-libxml."
+#~ msgstr ""
+#~ "PostgreSQL'i --with-libxml seÃ§eneÄi ile yeniden derlemeniz gerekiyor."
+#~ msgid "invalid XML comment"
+#~ msgstr "XML aÃ§Ä±klamasÄ± geÃ§ersiz"
+#~ msgid "not an XML document"
+#~ msgstr "XML dokÃ¼manÄ± deÄildir"
+#~ msgid "invalid XML processing instruction"
+#~ msgstr "geÃ§ersiz XML iÅleme komutu"
+#~ msgid "XML processing instruction target name cannot start with \"xml\"."
+#~ msgstr "XML iÅleme komut hedefi \"xml\" ile baÅlayamaz."
+#~ msgid "XML processing instruction cannot contain \"?>\"."
+#~ msgstr "XML iÅleme komutu \"?>\" iÃ§eremez."
+#~ msgid "could not initialize XML library"
+#~ msgstr "XML kÃ¼tÃ¼hanesi ilklendirilemedi"
+#~ msgid ""
+#~ "libxml2 has incompatible char type: sizeof(char)=%u, sizeof(xmlChar)=%u."
+#~ msgstr ""
+#~ "libxml2 kÃ¼tÃ¼phanesi uyumsuz karakter veri tipine sahiptir: sizeof(char)=%"
+#~ "u, sizeof(xmlChar)=%u."
+#~ msgid "only supported for one-dimensional array"
+#~ msgstr "bu argÃ¼man sadece tek boyutlu dizi iÃ§in geÃ§erlidir"
+#~ msgid "invalid query"
+#~ msgstr "geÃ§ersiz sorgu"
+#~ msgid "invalid array passed for namespace mappings"
+#~ msgstr "namespace eÅlemi iÃ§in geÃ§ersiz dizi verilmiÅtir"
+#~ msgid "Only 2-dimensional array may be used for namespace mappings."
+#~ msgstr "Namespace eÅlemleri iÃ§in sadece 2-boyutlu dizi kullanÄ±labilir."
+#~ msgid "neither namespace nor URI may be NULL"
+#~ msgstr "ne isim ne de URI, NULL olamaz"
+#~ msgid "empty XPath expression"
+#~ msgstr "boÅ XPath ifadesi"
+#~ msgid "could not register XML namespace with prefix=\"%s\" and href=\"%s\""
+#~ msgstr "prefix=\"%s\" ve href=\"%s\" olan ad XML namespace oluÅtutulamaz"
+#~ msgid "could not create XPath object"
+#~ msgstr "XPath nesnesi oluÅturulamadÄ±"
+#~ msgid "invalid input syntax for uuid: \"%s\""
+#~ msgstr "uuid tipi iÃ§in geÃ§ersiz sÃ¶z dizimi: \"%s\""
+#~ msgid "invalid input value for enum %s: \"%s\""
+#~ msgstr "%s enum tipi iÃ§in geÃ§ersiz deÄer: \"%s\""
+#~ msgid "invalid internal value for enum: %u"
+#~ msgstr "enum iÃ§in geÃ§ersiz iÃ§ deÄer: %u"
+#~ msgid "could not determine actual enum type"
+#~ msgstr "gerÃ§ek enum veri tipli belirlenemiyor"
+#~ msgid "cached plan must not change result type"
+#~ msgstr "Ã¶nbelleÄe alÄ±nmÄ±Å plan sonuÃ§ tipini deÄiÅtiremez"
+#~ msgid "database %u does not exist"
+#~ msgstr "%u veritabanÄ± mevcut deÄil"
+#~ msgid "Logs long lock wait events."
+#~ msgstr "Lock wait durumlari logluyor."
+#~ msgid "Waits N seconds on connection startup before authentication."
+#~ msgstr "Ä°stemci kimlik doÄrulamasÄ±ndan Ã¶nce N saniye bekiyor."
+#~ msgid ""
+#~ "Sets the minimum execution time above which autovacuum actions will be "
+#~ "logged."
+#~ msgstr "Autovacuum bu sÃ¼reden Ã§ok zaman alÄ±rsa, eylemleri ayda alÄ±nacaktÄ±r."
+#~ msgid ""
+#~ "Zero prints all actions.  The default is -1 (turning this feature off)."
+#~ msgstr ""
+#~ "Sifir ise tÃ¼m eylemleri yazÄ±lacak. VarsayÄ±lan deÄer -1 (bu Ã¶zellik "
+#~ "kapalÄ±dÄ±r)."
+#~ msgid ""
+#~ "Sets the maximum number of simultaneously running autovacuum worker "
+#~ "processes."
+#~ msgstr "AynÄ± anda Ã§alÄ±Åacak autovacuum sÃ¼reÃ§ sayÄ±sÄ±nÄ± ayarlÄ±yor."
+#~ msgid "Log the use of temporary files larger than this number of kilobytes."
+#~ msgstr ""
+#~ "Bu kadar kilobayttan bÃ¼yÃ¼k geÃ§ici dosya kullanÄ±ldÄ±ÄÄ±nda log tutuyor."
+#~ msgid "Zero logs all files. The default is -1 (turning this feature off)."
+#~ msgstr ""
+#~ "Sifir, tÃ¼m dosyalarÄ± logluyor. VarsayÄ±lan deÄer -1 (bu Ã¶zellik kapalÄ±dÄ±r)."
+#~ msgid "Sets the sessions behaviour for triggers and rewrite rules."
+#~ msgstr "Oturumun trigger ve rewrite rule davranÄ±ÅÄ±nÄ± belirtityor."
+#~ msgid "Each session can be either \"origin\", \"replica\" or \"local\"."
+#~ msgstr "Bir oturum \"origin\", \"replica\" veya \"local\" olabilir."
+#~ msgid "Sets how binary values are to be encoded in XML."
+#~ msgstr "Ä°kili deÄerlerin XML iÃ§inde nasÄ±l kodlanacaÄÄ±nÄ± belirtiyor."
+#~ msgid "Valid values are BASE64 and HEX."
+#~ msgstr "GeÃ§erli deÄerler: BASE64 ve HEX."
+#~ msgid ""
+#~ "Sets whether XML data in implicit parsing and serialization operations is "
+#~ "to be considered as documents or content fragments."
+#~ msgstr ""
+#~ "AyrÄ±ÅtÄ±rma ve serialization iÅlemlerde XML veri birer document mi yoksa "
+#~ "conten fragment olarak mÄ± sayÄ±lacaÄÄ±nÄ± belirtiyor."
+#~ msgid "Valid values are DOCUMENT and CONTENT."
+#~ msgstr "GeÃ§erli deÄerler: DOCUMENT ve CONTENT."
+#~ msgid "Sets the list of allowed SSL ciphers."
+#~ msgstr "Ä°zin verilen SSL Åifreleme algoritmalarÄ±n listesini ayarlÄ±yor."
+#~ msgid "child process was terminated by exception 0x%X"
+#~ msgstr "alt sÃ¼reÃ§ 0x%X exception tarafÄ±ndan sonlandÄ±rÄ±ldÄ±"
+#~ msgid "child process was terminated by signal %s"
+#~ msgstr "alt sÃ¼reÃ§ %s sinyali tarafÄ±ndan sonlandÄ±rÄ±ldÄ±"
 

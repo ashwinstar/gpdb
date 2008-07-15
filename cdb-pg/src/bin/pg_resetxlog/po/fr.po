@@ -82,9 +82,7 @@ msgstr "%s : argument invalide pour l'option -O\n"
 msgid "%s: multitransaction offset (-O) must not be -1\n"
 msgstr "%s : le décalage de la multi-transaction (-O) ne doit pas être -1\n"
 
-#: pg_resetxlog.c:199
-#: pg_resetxlog.c:206
-#: pg_resetxlog.c:213
+#: pg_resetxlog.c:199 pg_resetxlog.c:206 pg_resetxlog.c:213
 #, c-format
 msgid "%s: invalid argument for option -l\n"
 msgstr "%s : argument invalide pour l'option -l\n"
@@ -102,7 +100,7 @@ msgstr "%s : ne peut pas être exécuté par « root »\n"
 #: pg_resetxlog.c:243
 #, c-format
 msgid "You must run %s as the PostgreSQL superuser.\n"
-msgstr "Vous devez lancer %s en tant que super-utilisateur PostgreSQL.\n"
+msgstr "Vous devez exÃ©cuter %s en tant que super-utilisateur PostgreSQL.\n"
 
 #: pg_resetxlog.c:253
 #, c-format
@@ -221,12 +219,12 @@ msgstr "Identifiant du système de base de données :       %s\n"
 #: pg_resetxlog.c:542
 #, c-format
 msgid "Current log file ID:                  %u\n"
-msgstr "Identifiant du fichier de transaction courant :   %u\n"
+msgstr "Identifiant du journal de transaction courant :   %u\n"
 
 #: pg_resetxlog.c:544
 #, c-format
 msgid "Next log file segment:                %u\n"
-msgstr "Prochain segment du journal :                     %u\n"
+msgstr "Prochain segment du journal de transaction :      %u\n"
 
 #: pg_resetxlog.c:546
 #, c-format
@@ -271,12 +269,12 @@ msgstr "Blocs par segment d'une relation volumineuse :    %u\n"
 #: pg_resetxlog.c:564
 #, c-format
 msgid "WAL block size:                       %u\n"
-msgstr "Taille du bloc des WAL :                          %u\n"
+msgstr "Taille du bloc des journaux de transaction :      %u\n"
 
 #: pg_resetxlog.c:566
 #, c-format
 msgid "Bytes per WAL segment:                %u\n"
-msgstr "Octets par segment :                              %u\n"
+msgstr "Octets par segment de journaux de transaction :   %u\n"
 
 #: pg_resetxlog.c:568
 #, c-format
@@ -304,22 +302,24 @@ msgstr "nombres à virgule flottante"
 #: pg_resetxlog.c:574
 #, c-format
 msgid "Maximum length of locale name:        %u\n"
-msgstr "Longueur maximale du nom de la locale : %u\n"
+msgstr "Longueur maximale du nom de la locale :                 %u\n"
 
 #: pg_resetxlog.c:576
 #, c-format
 msgid "LC_COLLATE:                           %s\n"
-msgstr "LC_COLLATE :                                      %s\n"
+msgstr "LC_COLLATE :                                            %s\n"
 
 #: pg_resetxlog.c:578
 #, c-format
 msgid "LC_CTYPE:                             %s\n"
-msgstr "LC_CTYPE :                                        %s\n"
+msgstr "LC_CTYPE :                                              %s\n"
 
 #: pg_resetxlog.c:642
 #, c-format
 msgid "%s: internal error -- sizeof(ControlFileData) is too large ... fix PG_CONTROL_SIZE\n"
-msgstr "%s : erreur interne -- sizeof(ControlFileData) est trop important ... corrigez PG_CONTROL_SIZE\n"
+msgstr ""
+"%s : erreur interne -- sizeof(ControlFileData) est trop important...\n"
+"corrigez PG_CONTROL_SIZE\n"
 
 #: pg_resetxlog.c:657
 #, c-format
@@ -331,8 +331,7 @@ msgstr "%s : n'a pas pu créer le fichier pg_control : %s\n"
 msgid "%s: could not write pg_control file: %s\n"
 msgstr "%s : n'a pas pu écrire le fichier pg_control : %s\n"
 
-#: pg_resetxlog.c:675
-#: pg_resetxlog.c:833
+#: pg_resetxlog.c:675 pg_resetxlog.c:833
 #, c-format
 msgid "%s: fsync error: %s\n"
 msgstr "%s : erreur fsync : %s\n"

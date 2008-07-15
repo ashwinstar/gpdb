@@ -336,11 +336,8 @@ msgstr "l'état COPY IN doit d'abord être terminé\n"
 msgid "COPY OUT state must be terminated first\n"
 msgstr "l'état COPY OUT doit d'abord être terminé\n"
 
-#: fe-exec.c:1658
-#: fe-exec.c:1723
-#: fe-exec.c:1808
-#: fe-protocol2.c:1172
-#: fe-protocol3.c:1486
+#: fe-exec.c:1658 fe-exec.c:1723 fe-exec.c:1808 fe-protocol2.c:1172
+#: fe-protocol3.c:1535
 msgid "no COPY in progress\n"
 msgstr "aucun COPY en cours\n"
 
@@ -350,10 +347,9 @@ msgstr "connexion dans un état erroné\n"
 
 #: fe-exec.c:2031
 msgid "invalid ExecStatusType code"
-msgstr "code invalide ExecStatusType"
+msgstr "code ExecStatusType invalide"
 
-#: fe-exec.c:2095
-#: fe-exec.c:2118
+#: fe-exec.c:2095 fe-exec.c:2118
 #, c-format
 msgid "column number %d is out of range 0..%d"
 msgstr "le numéro de colonne %d est en dehors des limites 0..%d"
@@ -560,8 +556,7 @@ msgid "unexpected field count in \"D\" message\n"
 msgstr "nombre de champs inattendus dans le message « D »\n"
 
 #. translator: %s represents a digit string
-#: fe-protocol3.c:782
-#: fe-protocol3.c:801
+#: fe-protocol3.c:782 fe-protocol3.c:801
 #, c-format
 msgid " at character %s"
 msgstr " au caractère %s"
@@ -741,5 +736,4 @@ msgstr "aucune erreur SSL reportée"
 #: fe-secure.c:1026
 #, c-format
 msgid "SSL error code %lu"
-msgstr "erreur SSL : %lu"
-
+msgstr "erreur SSL %lu"

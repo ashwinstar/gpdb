@@ -4,9 +4,10 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: pg_resetxlog-tr\n"
-"POT-Creation-Date: 2005-04-02 07:13+0100\n"
-"PO-Revision-Date: 2007-04-12 14:07+0200\n"
-"Last-Translator: Nicolai Tufar <ntufar@gmail.com>\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2008-01-30 13:14-0400\n"
+"PO-Revision-Date: 2008-01-30 11:36-0800\n"
+"Last-Translator: Devrim GÃNDÃZ <devrim@commandprompt.com>\n"
 "Language-Team: Turkish <ceviri@postgresql.org.tr>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -122,7 +123,7 @@ msgstr ""
 "%s: \"%s\" lock dosyası mevcut\n"
 "Bir sunucu çalışıyor mu? Eğer çalışmıyorsa, lock dosyasını silin ve yeniden deneyin.\n"
 
-#: pg_resetxlog.c:332
+#: pg_resetxlog.c:325
 #, c-format
 msgid ""
 "\n"
@@ -192,7 +193,7 @@ msgstr ""
 "Tahmin edilen pg_control değerleri:\n"
 "\n"
 
-#: pg_resetxlog.c:532
+#: pg_resetxlog.c:527
 #, c-format
 msgid ""
 "pg_control values:\n"
@@ -377,7 +378,7 @@ msgstr ""
 "%s PostgreSQL transaction kayıt dosyasını sıfırlar.\n"
 "\n"
 
-#: pg_resetxlog.c:930
+#: pg_resetxlog.c:845
 #, c-format
 msgid ""
 "Usage:\n"
@@ -451,4 +452,11 @@ msgid ""
 msgstr ""
 "\n"
 "Hataları <pgsql-bugs@postgresql.org> adresine bildiriniz.\n"
+
+#~ msgid "First log file ID for new XLOG:       %u\n"
+#~ msgstr "Yeni XLOG iÃ§in ilk log dosyasÄ± ID:       %u\n"
+#~ msgid "First log file segment for new XLOG:  %u\n"
+#~ msgstr "Yeni XLOG iÃ§in ilk log segmenti:  %u\n"
+#~ msgid "Maximum size of a TOAST chunk:        %u\n"
+#~ msgstr "TOAST parÃ§asÄ±nÄ±n en bÃ¼yÃ¼k uzunluÄu:        %u\n"
 

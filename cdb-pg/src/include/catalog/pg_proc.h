@@ -2241,6 +2241,18 @@ DATA(insert OID =  2284 ( regexp_replace	   PGNSP PGUID 12 f f t f i 3 25 f "25 
 DESCR("replace text using regexp");
 DATA(insert OID =  2285 ( regexp_replace	   PGNSP PGUID 12 f f t f i 4 25 f "25 25 25 25" _null_ _null_ _null_ textregexreplace - _null_ ));
 DESCR("replace text using regexp");
+DATA(insert OID =  5018 ( regexp_matches   PGNSP PGUID 12 f f t t i 2 1009 f "25 25" _null_ _null_ _null_	regexp_matches_no_flags - _null_ ));
+DESCR("return all match groups for regexp");
+DATA(insert OID =  5019 ( regexp_matches   PGNSP PGUID 12 f f t t i 3 1009 f "25 25 25" _null_ _null_ _null_	regexp_matches - _null_ ));
+DESCR("return all match groups for regexp");
+DATA(insert OID =  5020 ( regexp_split_to_table PGNSP PGUID 12 f f t t i 2 25 f "25 25" _null_ _null_ _null_	regexp_split_to_table_no_flags - _null_ ));
+DESCR("split string by pattern");
+DATA(insert OID =  5021 ( regexp_split_to_table PGNSP PGUID 12 f f t t i 3 25 f "25 25 25" _null_ _null_ _null_	regexp_split_to_table - _null_ ));
+DESCR("split string by pattern");
+DATA(insert OID =  5022 ( regexp_split_to_array PGNSP PGUID 12 f f t f i 2 1009 f "25 25" _null_ _null_ _null_	regexp_split_to_array_no_flags - _null_ ));
+DESCR("split string by pattern");
+DATA(insert OID =  5023 ( regexp_split_to_array PGNSP PGUID 12 f f t f i 3 1009 f "25 25 25" _null_ _null_ _null_	regexp_split_to_array - _null_ ));
+DESCR("split string by pattern");
 DATA(insert OID =  2088 ( split_part   PGNSP PGUID 12 f f t f i 3 25 f "25 25 23" _null_ _null_ _null_	split_text - _null_ ));
 DESCR("split string by field_sep and return field_num");
 DATA(insert OID =  2089 ( to_hex	   PGNSP PGUID 12 f f t f i 1 25 f "23" _null_ _null_ _null_	to_hex32 - _null_ ));
@@ -2297,7 +2309,7 @@ DATA(insert OID = 1716 (  pg_get_expr		   PGNSP PGUID 12 f f t f s 2 25 f "25 26
 DESCR("deparse an encoded expression");
 DATA(insert OID = 1665 (  pg_get_serial_sequence	PGNSP PGUID 12 f f t f s 2 25 f "25 25" _null_ _null_ _null_	pg_get_serial_sequence - _null_ ));
 DESCR("name of sequence for a serial column");
-DATA(insert OID = 5009 (  pg_get_partition_def	PGNSP PGUID 12 f f t f s 1 25 f "26" _null_ _null_ _null_	pg_get_partition_def - _null_ ));
+DATA(insert OID = 5024 (  pg_get_partition_def	PGNSP PGUID 12 f f t f s 1 25 f "26" _null_ _null_ _null_	pg_get_partition_def - _null_ ));
 DESCR("partition configuration for a given relation");
 
 

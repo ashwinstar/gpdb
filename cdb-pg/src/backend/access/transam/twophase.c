@@ -58,6 +58,7 @@
 #include "storage/smgr.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/memutils.h"
 
 
 /*
@@ -891,6 +892,15 @@ EndPrepare(GlobalTransaction gxact)
 	hdr->total_len = records.total_len + sizeof(pg_crc32);
 
 	/*
+	 * If the file size exceeds MaxAllocSize, we won't be able to read it in
+	 * ReadTwoPhaseFile. Check for that now, rather than fail at commit time.
+	 */
+	if (hdr->total_len > MaxAllocSize)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("two-phase state file maximum length exceeded")));
+
+	/*
 	 * Create the 2PC state file.
 	 *
 	 * Note: because we use BasicOpenFile(), we are responsible for ensuring
@@ -1072,7 +1082,9 @@ ReadTwoPhaseFile(TransactionId xid)
 
 	/*
 	 * Check file length.  We can determine a lower bound pretty easily. We
-	 * set an upper bound mainly to avoid palloc() failure on a corrupt file.
+	 * set an upper bound to avoid palloc() failure on a corrupt file, though
+	 * we can't guarantee that we won't get an out of memory error anyway,
+	 * even on a valid file.
 	 */
 	if (fstat(fd, &stat))
 	{
@@ -1095,23 +1107,14 @@ ReadTwoPhaseFile(TransactionId xid)
 		return NULL;
 	}
 
-	/*
-	 * For GP, we are eliminating the arbitrary limit because it causes
-	 * COMMIT PREPARED and system restart to fail when a very large
-	 * prepare record is written.  Example: a partitioned table drop with
-	 * 25,000 children using DROP TABLE ... CASCADE.  The 10,000,000 byte limit
-	 * is not enforced when the prepare record is written, so this ends up not
-	 * aborting the transaction but putting the transaction in limbo in 
-	 * prepared state...
-	 */
-//	if (stat.st_size > 10000000)
-//	{
-//		ereport(WARNING,
-//			    (errmsg("file size greater than maximum 10,000,000 bytes")));
-//		close(fd);
-//		return NULL;
-//	}
-
+	if (stat.st_size > MaxAllocSize)
+	{
+		ereport(WARNING,
+			    (errmsg("two phase commit file larger than memory limit %lu",
+						MaxAllocSize)));
+		close(fd);
+		return NULL;
+	}
 
 	crc_offset = stat.st_size - sizeof(pg_crc32);
 	alignedOffset = MAXALIGN(crc_offset);

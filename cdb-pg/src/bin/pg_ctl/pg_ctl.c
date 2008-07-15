@@ -2,9 +2,9 @@
  *
  * pg_ctl --- start/stops/restarts the PostgreSQL server
  *
- * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2006, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/pg_ctl/pg_ctl.c,v 1.74.2.1 2007/07/02 21:58:38 mha Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_ctl/pg_ctl.c,v 1.74.2.3 2008/02/29 15:31:37 mha Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -43,8 +43,6 @@ int			optreset;
 /* PID can be negative for standalone backend */
 typedef long pgpid_t;
 
-
-#define WHITESPACE " \f\n\r\t\v" /* as defined by isspace() */
 
 /* postgres version ident string */
 #define PM_VERSIONSTR "postgres (Greenplum Database) " PG_VERSION "\n"
@@ -392,7 +390,8 @@ start_postmaster(void)
 
 
 
-/* Find the pgport and try a connection
+/*
+ * Find the pgport and try a connection
  * Note that the checkpoint parameter enables a Windows service control
  * manager checkpoint, it's got nothing to do with database checkpoints!!
  */
@@ -404,34 +403,53 @@ test_postmaster_connection(bool do_checkpoint)
 	int			i;
 	char		portstr[32];
 	char	   *p;
-	char	    connstr[128]; /* Should be way more than enough! */
+	char	   *q;
+	char		connstr[128]; /* Should be way more than enough! */
 	static const char *backend_options = "'-c gp_session_role=utility'";
 
 	*portstr = '\0';
 
-	/* post_opts */
+	/*
+	 * Look in post_opts for a -p switch.
+	 *
+	 * This parsing code is not amazingly bright; it could for instance
+	 * get fooled if ' -p' occurs within a quoted argument value.  Given
+	 * that few people pass complicated settings in post_opts, it's
+	 * probably good enough.
+	 */
 	for (p = post_opts; *p;)
 	{
-		/* advance past whitespace/quoting */
-		while (isspace((unsigned char) *p) || *p == '\'' || *p == '"')
+		/* advance past whitespace */
+		while (isspace((unsigned char) *p))
 			p++;
 
-		if (strncmp(p, "-p", strlen("-p")) == 0)
+		if (strncmp(p, "-p", 2) == 0)
 		{
-			p += strlen("-p");
-			/* advance past whitespace/quoting */
+			p += 2;
+			/* advance past any whitespace/quoting */
 			while (isspace((unsigned char) *p) || *p == '\'' || *p == '"')
 				p++;
-			StrNCpy(portstr, p, Min(strcspn(p, "\"'" WHITESPACE) + 1,
-									sizeof(portstr)));
+			/* find end of value (not including any ending quote!) */
+			q = p;
+			while (*q &&
+				   !(isspace((unsigned char) *q) || *q == '\'' || *q == '"'))
+				q++;
+			/* and save the argument value */
+			StrNCpy(portstr, p, Min((q - p) + 1, sizeof(portstr)));
 			/* keep looking, maybe there is another -p */
+			p = q;
 		}
 		/* Advance to next whitespace */
 		while (*p && !isspace((unsigned char) *p))
 			p++;
 	}
 
-	/* config file */
+	/*
+	 * Search config file for a 'port' option.
+	 *
+	 * This parsing code isn't amazingly bright either, but it should be
+	 * okay for valid port settings.
+	 */
 	if (!*portstr)
 	{
 		char	  **optlines;
@@ -445,28 +463,35 @@ test_postmaster_connection(bool do_checkpoint)
 
 				while (isspace((unsigned char) *p))
 					p++;
-				if (strncmp(p, "port", strlen("port")) != 0)
+				if (strncmp(p, "port", 4) != 0)
 					continue;
-				p += strlen("port");
+				p += 4;
 				while (isspace((unsigned char) *p))
 					p++;
 				if (*p != '=')
 					continue;
 				p++;
-				while (isspace((unsigned char) *p))
+				/* advance past any whitespace/quoting */
+				while (isspace((unsigned char) *p) || *p == '\'' || *p == '"')
 					p++;
-				StrNCpy(portstr, p, Min(strcspn(p, "#" WHITESPACE) + 1,
-										sizeof(portstr)));
+				/* find end of value (not including any ending quote/comment!) */
+				q = p;
+				while (*q &&
+					   !(isspace((unsigned char) *q) ||
+						 *q == '\'' || *q == '"' || *q == '#'))
+					q++;
+				/* and save the argument value */
+				StrNCpy(portstr, p, Min((q - p) + 1, sizeof(portstr)));
 				/* keep looking, maybe there is another */
 			}
 		}
 	}
 
-	/* environment */
+	/* Check environment */
 	if (!*portstr && getenv("PGPORT") != NULL)
 		StrNCpy(portstr, getenv("PGPORT"), sizeof(portstr));
 
-	/* default */
+	/* Else use compiled-in default */
 	if (!*portstr)
 		snprintf(portstr, sizeof(portstr), "%d", DEF_PGPORT);
 
@@ -1400,6 +1425,10 @@ CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION * processInfo)
 		}
 	}
 
+#ifndef __CYGWIN__
+    AddUserToDacl(processInfo->hProcess);
+#endif
+    
 	CloseHandle(restrictedToken);
 
 	ResumeThread(processInfo->hThread);

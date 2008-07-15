@@ -116,9 +116,15 @@ def connect(user=None, password=None, host=None, port=None,
     if not host: host = GV.opt['-h']
     if not port: port = GV.opt['-p']
     if not database: database = GV.dbname
-    db = pg8000.Connection(user=user, password=password, host=host, port=port,
-			   database=database,
-                           options=options)
+    try:
+        db = pg8000.Connection(user=user, password=password, host=host,
+                                port=port, database=database, options=options)
+    except pg8000.errors.ProgrammingError, p:
+        print "Exception: ", p[0]
+        print "SQL code: ", p[1]
+        print p[2]
+        sys.exit(1)
+         
     return db
 
 #############
@@ -243,7 +249,7 @@ def checkPGAttribute():
             rels = set(relids[seg])
             for relid in rels:
                 c = GV.cfg[seg]
-                removeRelType(seg, connect2(c), relid)
+                removeTable(seg, connect2(c), relid)
 
 
 
@@ -328,42 +334,77 @@ def checkPGClassToast():
 def checkPGNamespace():
     print '-----------------------------------'
     print 'Checking missing schema definitions ...'
-    qry = '''SELECT o.nsp
-         FROM pg_namespace n right outer join 
-              (select relnamespace as nsp from pg_class union
-               select typnamespace as nsp from pg_type union
-               select oprnamespace as nsp from pg_operator union
-               select pronamespace as nsp from pg_proc) o on
-               (n.oid = o.nsp)
-        WHERE n.oid is NULL'''
-    err = connect2run(qry, ('nsp',))
-    if not err:
-        print '[OK] schema'
-    else:
-        print '[ERROR] pg_namespace has %d issue(s)' % len(err)
-        print '[ERROR] %s' % qry
-        for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
-        schemaids = {}
-        for e in err:
-            seg = e[0]['dbid'] 
-            if not schemaids.has_key(seg):
-                schemaids[seg] = []
-            
-            schemaids[seg].append(e[2]['nsp'])    
-        for seg in schemaids:
-        	# unique
-            schemas = set(schemaids[seg])
-            for schemaid in schemas:
-                c = GV.cfg[seg]
-                removeSchema(seg, connect2(c), schemaid)
+# doesn't work in 3.1.1.* -- we get an Abort()
+#    qry = '''SELECT o.nsp
+#         FROM pg_namespace n right outer join 
+#              (select relnamespace as nsp from pg_class union
+#               select typnamespace as nsp from pg_type union
+#               select oprnamespace as nsp from pg_operator union
+#               select pronamespace as nsp from pg_proc) o on
+#               (n.oid = o.nsp)
+#        WHERE n.oid is NULL'''
+
+# SIGH! Seems anything in 3.1.1.* with outer joins and unions is just 
+# not on. So, do it step by step
+
+    qry1 = '''select c.relnamespace as nsp from pg_namespace n right outer join
+             pg_class c on (n.oid = c.relnamespace)
+             WHERE n.oid IS NULL;'''
+    err1 = connect2run(qry1, ('nsp',))
+
+    qry2 = '''select c.typnamespace as nsp from pg_namespace n right outer join
+             pg_type c on (n.oid = c.typnamespace)
+             WHERE n.oid IS NULL;'''
+    err2 = connect2run(qry2, ('nsp',))
+
+    qry3 = '''select c.oprnamespace as nsp from pg_namespace n right outer join
+             pg_operator c on (n.oid = c.oprnamespace)
+             WHERE n.oid IS NULL;'''
+    err3 = connect2run(qry3, ('nsp',))
+    
+    qry4 = '''select c.pronamespace as nsp from pg_namespace n right outer join
+             pg_proc c on (n.oid = c.pronamespace)
+             WHERE n.oid IS NULL;'''
+    err4 = connect2run(qry4, ('nsp',))
+
+    err = err1 + err2 + err3 + err4
+    errs = [[err1, qry1], [err2, qry2], [err3, qry3], [err4, qry4]]
+
+    count = 0
+    for errrow in errs:
+        err = errrow[0]
+        qry = errrow[1]
+        count += 1
+        if not err:
+            print '[OK] schema test %i' % count
+        else:
+            print '[ERROR] schema test %i has %d issue(s)' % (count, len(err))
+            print '[ERROR] %s' % qry
+            for e in err: print '[ERROR]', formatErr(e[0], e[1], e[2])
+            schemaids = {}
+            for e in err:
+                seg = e[0]['dbid'] 
+                if not schemaids.has_key(seg):
+                    schemaids[seg] = []
+                
+                schemaids[seg].append(e[2]['nsp'])    
+            for seg in schemaids:
+                # unique
+                schemas = set(schemaids[seg])
+                for schemaid in schemas:
+                    c = GV.cfg[seg]
+                    removeSchema(seg, connect2(c), schemaid)
 
 #############
 # remove all remnants of a schema
 def removeSchema(seg, db, schemaid):
     # see if table has a toast table and if so, remove that
     # must do it like this so we can get toast tables
+    qry = 'select oid from pg_class where relnamespace = %i' % schemaid
+    db.execute(qry)
     for row in db.iterate_dict():
         removeTable(seg, db, row['oid'])
+
 
     buildRemove(seg, 'schema operators', 'pg_operator',
                 dict([('oprnamespace', schemaid)]))
@@ -387,8 +428,6 @@ def removeTable(seg, db, reloid):
         if row['reltoastrelid'] != 0:
             removeTable(seg, db, row['reltoastrelid'])
         addRemove(seg, '-- Checking for toast relation index for %i' % reloid) 
-        if row['reltoastidxid'] != 0:
-            removeIndex(seg, db, row['reltoastidxid'])
     
     removeInheritance(seg, db, reloid)
     removeStats(seg, db, reloid)
@@ -470,6 +509,7 @@ def addRemove(seg, line):
 if __name__ == '__main__':
     parseCommandLine()
     GV.cfg = getGPConfiguration()
+
     checkPGClass()
     checkPGAttribute()
     checkPGType()

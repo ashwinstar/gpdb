@@ -10,8 +10,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pg_ctl\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2007-08-09 17:19+0200\n"
-"PO-Revision-Date: 2007-09-08 15:30+0100\n"
+"POT-Creation-Date: 2008-01-31 22:16-0400\n"
+"PO-Revision-Date: 2008-02-08 18:20+0100\n"
 "Last-Translator: Guillaume Lelarge <guillaume@lelarge.info>\n"
 "Language-Team:  <fr@li.org>\n"
 "MIME-Version: 1.0\n"
@@ -332,12 +332,12 @@ msgstr ""
 "  %s register   [-N NOM_SERVICE] [-U NOM_UTILISATEUR] [-P MOTDEPASSE] [-D RÉP_DONNÉES]\n"
 "                    [-w] [-o \"OPTIONS\"]\n"
 
-#: pg_ctl.c:1440
+#: pg_ctl.c:1468
 #, c-format
 msgid "  %s unregister [-N SERVICENAME]\n"
 msgstr "  %s unregister [-N NOM_SERVICE]\n"
 
-#: pg_ctl.c:1443
+#: pg_ctl.c:1471
 #, c-format
 msgid ""
 "\n"
@@ -465,7 +465,7 @@ msgstr ""
 "\n"
 "Signaux autorisés pour kill :\n"
 
-#: pg_ctl.c:1471
+#: pg_ctl.c:1499
 #, c-format
 msgid ""
 "\n"

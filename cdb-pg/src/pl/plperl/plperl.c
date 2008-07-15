@@ -1,7 +1,7 @@
 /**********************************************************************
  * plperl.c - perl as a procedural language for PostgreSQL
  *
- *	  $PostgreSQL: pgsql/src/pl/plperl/plperl.c,v 1.123.2.1 2007/06/28 17:50:12 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plperl/plperl.c,v 1.123.2.3 2007/12/01 17:58:48 tgl Exp $
  *
  **********************************************************************/
 
@@ -42,7 +42,7 @@ typedef struct plperl_proc_desc
 {
 	char	   *proname;
 	TransactionId fn_xmin;
-	ItemPointerData fn_tid;
+	CommandId	fn_cmin;
 	bool		fn_readonly;
 	bool		lanpltrusted;
 	bool		fn_retistuple;	/* true, if function returns tuple */
@@ -271,8 +271,8 @@ _PG_init(void)
 	"sub ::mksafefunc {" \
 	"      my $ret = $PLContainer->reval(qq[sub { $_[0] $_[1] }]); " \
 	"      $@ =~ s/\\(eval \\d+\\) //g if $@; return $ret; }" \
-	"$PLContainer->permit('require'); $PLContainer->reval('use strict;');" \
-	"$PLContainer->deny('require');" \
+	"$PLContainer->permit(qw[require caller]); $PLContainer->reval('use strict;');" \
+	"$PLContainer->deny(qw[require caller]); " \
 	"sub ::mk_strict_safefunc {" \
 	"      my $ret = $PLContainer->reval(qq[sub { BEGIN { strict->import(); } $_[0] $_[1] }]); " \
 	"      $@ =~ s/\\(eval \\d+\\) //g if $@; return $ret; }"
@@ -299,7 +299,7 @@ _PG_init(void)
  *
  * We start out by creating a "held" interpreter that we can use in
  * trusted or untrusted mode (but not both) as the need arises. Later, we
- * assign that interpreter if it is available to either the trusted or
+ * assign that interpreter if it is available to either the trusted or 
  * untrusted interpreter. If it has already been assigned, and we need to
  * create the other interpreter, we do that if we can, or error out.
  * We detect if it is safe to run two interpreters during the setup of the
@@ -307,7 +307,7 @@ _PG_init(void)
  */
 
 
-static void
+static void 
 check_interp(bool trusted)
 {
 	if (interp_state == INTERP_HELD)
@@ -325,7 +325,7 @@ check_interp(bool trusted)
 		plperl_held_interp = NULL;
 		trusted_context = trusted;
 	}
-	else if (interp_state == INTERP_BOTH ||
+	else if (interp_state == INTERP_BOTH || 
 			 (trusted && interp_state == INTERP_TRUSTED) ||
 			 (!trusted && interp_state == INTERP_UNTRUSTED))
 	{
@@ -428,7 +428,7 @@ plperl_init_interp(void)
 		elog(ERROR, "could not allocate Perl interpreter");
 
 	perl_construct(plperl_held_interp);
-	perl_parse(plperl_held_interp, plperl_init_shared_libs,
+	perl_parse(plperl_held_interp, plperl_init_shared_libs, 
 			   3, embedding, NULL);
 	perl_run(plperl_held_interp);
 
@@ -437,7 +437,7 @@ plperl_init_interp(void)
 		SV *res;
 
 		res = eval_pv(TEST_FOR_MULTI,TRUE);
-		can_run_two = SvIV(res);
+		can_run_two = SvIV(res); 
 		interp_state = INTERP_HELD;
 	}
 
@@ -1468,7 +1468,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 	/************************************************************
 	 * Lookup the internal proc name in the hashtable
 	 ************************************************************/
-	hash_entry = hash_search(plperl_proc_hash, internal_proname,
+	hash_entry = hash_search(plperl_proc_hash, internal_proname, 
 							 HASH_FIND, NULL);
 
 	if (hash_entry)
@@ -1483,7 +1483,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		 * function's pg_proc entry without changing its OID.
 		 ************************************************************/
 		uptodate = (prodesc->fn_xmin == HeapTupleHeaderGetXmin(procTup->t_data) &&
-				ItemPointerEquals(&prodesc->fn_tid, &procTup->t_self));
+				prodesc->fn_cmin == HeapTupleHeaderGetCmin(procTup->t_data));
 
 		if (!uptodate)
 		{
@@ -1523,7 +1523,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		MemSet(prodesc, 0, sizeof(plperl_proc_desc));
 		prodesc->proname = strdup(internal_proname);
 		prodesc->fn_xmin = HeapTupleHeaderGetXmin(procTup->t_data);
-		prodesc->fn_tid = procTup->t_self;
+		prodesc->fn_cmin = HeapTupleHeaderGetCmin(procTup->t_data);
 
 		/* Remember if function is STABLE/IMMUTABLE */
 		prodesc->fn_readonly =
@@ -2562,8 +2562,8 @@ plperl_spi_freeplan(char *query)
 	 * free all memory before SPI_freeplan, so if it dies, nothing will be
 	 * left over
 	 */
-	hash_search(plperl_query_hash, query,
-				HASH_REMOVE, NULL);
+	hash_search(plperl_query_hash, query, 
+				HASH_REMOVE,NULL);
 
 	plan = qdesc->plan;
 	free(qdesc->argtypes);

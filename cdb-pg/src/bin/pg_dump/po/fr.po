@@ -11,8 +11,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pg_dump\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2007-08-09 17:19+0200\n"
-"PO-Revision-Date: 2007-08-16 18:39+0100\n"
+"POT-Creation-Date: 2008-02-08 17:22-0400\n"
+"PO-Revision-Date: 2008-02-12 16:54+0100\n"
 "Last-Translator: Guillaume Lelarge <guillaume@lelarge.info>\n"
 "Language-Team:  <fr@li.org>\n"
 "MIME-Version: 1.0\n"
@@ -122,9 +122,7 @@ msgstr "Usage :\n"
 msgid "  %s [OPTION]... [DBNAME]\n"
 msgstr "  %s [OPTION]... [NOMBASE]\n"
 
-#: pg_dump.c:731
-#: pg_restore.c:375
-#: pg_dumpall.c:374
+#: pg_dump.c:731 pg_restore.c:375 pg_dumpall.c:374
 #, c-format
 msgid ""
 "\n"
@@ -297,12 +295,11 @@ msgid ""
 "                              ALTER OWNER commands to set ownership\n"
 msgstr ""
 "  --use-set-session-authorization\n"
-"                               utilise les commandes SESSION AUTHORIZATION au lieu\n"
-"                               des commandes ALTER OWNER pour les possessions\n"
+"                               utilise les commandes SESSION AUTHORIZATION\n"
+"                               au lieu des commandes ALTER OWNER pour les\n"
+"                               modifier les propriÃ©taires\n"
 
-#: pg_dump.c:766
-#: pg_restore.c:412
-#: pg_dumpall.c:397
+#: pg_dump.c:766 pg_restore.c:412 pg_dumpall.c:397
 #, c-format
 msgid ""
 "\n"
@@ -378,14 +375,12 @@ msgstr "sauvegarde du contenu de la table %s\n"
 msgid "Dumping the contents of table \"%s\" failed: PQgetCopyData() failed.\n"
 msgstr "La sauvegarde du contenu de la table « %s » a échoué : échec de PQgetCopyData().\n"
 
-#: pg_dump.c:1110
-#: pg_dump.c:8835
+#: pg_dump.c:1110 pg_dump.c:8835
 #, c-format
 msgid "Error message from server: %s"
 msgstr "Message d'erreur du serveur : %s"
 
-#: pg_dump.c:1111
-#: pg_dump.c:8836
+#: pg_dump.c:1111 pg_dump.c:8836
 #, c-format
 msgid "The command was: %s\n"
 msgstr "La commande était : %s\n"
@@ -536,13 +531,8 @@ msgstr "%d contraintes de vérification attendues pour la table « %s » mais %d tr
 msgid "(The system catalogs might be corrupted.)\n"
 msgstr "(Les catalogues système sont peut-être corrompus.)\n"
 
-#: pg_dump.c:5140
-#: pg_dump.c:5317
-#: pg_dump.c:5893
-#: pg_dump.c:6316
-#: pg_dump.c:6626
-#: pg_dump.c:6827
-#: pg_dump.c:7021
+#: pg_dump.c:5140 pg_dump.c:5317 pg_dump.c:5893 pg_dump.c:6316 pg_dump.c:6626
+#: pg_dump.c:6827 pg_dump.c:7021
 #, c-format
 msgid "Got %d rows instead of one from: %s"
 msgstr "%d lignes reçues au lieu d'une seule depuis : %s"
@@ -914,16 +904,12 @@ msgstr "ATTENTION : ligne ignorée : %s\n"
 msgid "could not find entry for ID %d\n"
 msgstr "n'a pas pu trouver l'entrée pour l'ID %d\n"
 
-#: pg_backup_archiver.c:839
-#: pg_backup_files.c:155
-#: pg_backup_files.c:439
+#: pg_backup_archiver.c:839 pg_backup_files.c:155 pg_backup_files.c:439
 #, c-format
 msgid "could not close TOC file: %s\n"
 msgstr "n'a pas pu fermer le fichier TOC : %s\n"
 
-#: pg_backup_archiver.c:951
-#: pg_backup_files.c:129
-#: pg_backup_files.c:245
+#: pg_backup_archiver.c:951 pg_backup_files.c:129 pg_backup_files.c:245
 #, c-format
 msgid "could not open output file: %s\n"
 msgstr "n'a pas pu ouvrir le fichier de sauvegarde : %s\n"
@@ -946,7 +932,7 @@ msgstr "n'a pas pu écrire l'objet volumineux (résultat : %lu, attendu : %lu)\n"
 #: pg_backup_files.c:414
 #: pg_backup_tar.c:576
 #: pg_backup_tar.c:1078
-#: pg_backup_tar.c:1369
+#: pg_backup_tar.c:1371
 #, c-format
 msgid "could not write to output file: %s\n"
 msgstr "n'a pas pu écrire dans le fichier de sortie : %s\n"
@@ -1371,7 +1357,7 @@ msgstr "programme tar"
 #: pg_backup_tar.c:183
 #, c-format
 msgid "could not open TOC file for output: %s\n"
-msgstr "n'a pas pu ouvrir le fichier TOC en lecture : %s\n"
+msgstr "n'a pas pu ouvrir le fichier TOC en sortie : %s\n"
 
 #: pg_backup_tar.c:208
 msgid "compression not supported by tar output format\n"
@@ -1394,7 +1380,7 @@ msgstr "le support de la compression est désactivé avec ce format\n"
 #: pg_backup_tar.c:395
 #, c-format
 msgid "could not generate temporary file name: %s\n"
-msgstr "impossible d'engendrer le nom du fichier temporaire : %s\n"
+msgstr "impossible de crÃ©er le nom du fichier temporaire : %s\n"
 
 #: pg_backup_tar.c:404
 msgid "could not open temporary file\n"

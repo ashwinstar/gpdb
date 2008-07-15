@@ -78,6 +78,12 @@ extern int	find_my_exec(const char *argv0, char *retpath);
 extern int find_other_exec(const char *argv0, const char *target,
 				const char *versionstr, char *retpath);
 
+/* Windows security token manipulation (in exec.c) */
+#ifdef WIN32
+extern BOOL AddUserToDacl(HANDLE hProcess);
+#endif
+
+
 #if defined(WIN32) || defined(__CYGWIN__)
 #define EXE ".exe"
 #else
@@ -272,9 +278,26 @@ extern void copydir(char *fromdir, char *todir, bool recurse);
 
 extern bool rmtree(char *path, bool rmtopdir);
 
+/* 
+ * stat() is not guaranteed to set the st_size field on win32, so we
+ * redefine it to our own implementation that is.
+ *
+ * We must pull in sys/stat.h here so the system header definition
+ * goes in first, and we redefine that, and not the other way around.
+ *
+ * Some frontends don't need the size from stat, so if UNSAFE_STAT_OK
+ * is defined we don't bother with this.
+ */
+#if defined(WIN32) && !defined(__CYGWIN__) && !defined(UNSAFE_STAT_OK)
+#include <sys/stat.h>
+extern int	pgwin32_safestat(const char *path, struct stat *buf);
+#define stat(a,b) pgwin32_safestat(a,b)
+#endif
+
 #if defined(WIN32) && !defined(__CYGWIN__)
 
-/* open() and fopen() replacements to allow deletion of open files and
+/*
+ * open() and fopen() replacements to allow deletion of open files and
  * passing of other special options.
  */
 extern int	pgwin32_open(const char *, int,...);

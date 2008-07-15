@@ -195,11 +195,12 @@ static int partition_range_compare(ParseState *pstate,
 								   PartitionRangeItem *pRI2);
 
 static int partition_range_every(ParseState *pstate,
-								 CreateStmtContext *cxt, CreateStmt *stmt, 
 								 PartitionBy *partitionBy, 	
+								 List *coltypes,
 								 char	   *at_depth);
 static Datum eval_basic_opexpr(ParseState *pstate, List *oprname, 
-							   Node *leftarg, Node *rightarg, Oid *restypid);
+							   Node *leftarg, Node *rightarg, Oid *restypid,
+							   int location);
 
 static Node *make_prule_catalog(ParseState *pstate,
 		 CreateStmtContext *cxt, CreateStmt *stmt,
@@ -3895,7 +3896,7 @@ L_redoLoop:
 		 * types (because it compares things like "location") so do a
 		 * real compare using eval .
 		 */
-		res = eval_basic_opexpr(pstate, cop, n1, n2, NULL);
+		res = eval_basic_opexpr(pstate, cop, n1, n2, NULL, -1);
 		
 		if (DatumGetBool(res) && strcmp("=", compare_op) == 0)
 		{
@@ -4063,6 +4064,8 @@ preprocess_range_spec(partValidationState *vstate)
 		coltypes = lappend(coltypes, typname);
 	}
 
+	partition_range_every(pstate, vstate->pBy, coltypes, vstate->at_depth);
+
 	/* 
 	 * Iterate over the elements in a given partition specification and
 	 * expand any EVERY clauses into raw elements.
@@ -4158,7 +4161,7 @@ preprocess_range_spec(partValidationState *vstate)
 				
 					res = eval_basic_opexpr(pstate, plusop, (Node *)mystart,
 											(Node *)clauseevery,
-											&typid);
+											&typid, -1);
 
 					myend = makeConst(type->typid, len, res, 
 									  false, typbyval);
@@ -4166,7 +4169,7 @@ preprocess_range_spec(partValidationState *vstate)
 
 					restypid = InvalidOid;
 					res = eval_basic_opexpr(pstate, leop, (Node *)myend,
-										(Node *)clauseend, &restypid);
+										(Node *)clauseend, &restypid, -1);
 					if (!DatumGetBool(res))
 					{
 						newend = end;
@@ -5161,10 +5164,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	*/
 
 	if (pBy->partType == PARTTYP_RANGE)	
-	{
-		partition_range_every(pstate, cxt, stmt, pBy, at_depth);
 		preprocess_range_spec(vstate);
-	}
 
 	partElts = pSpec->partElem;
 	foreach(lc, partElts)
@@ -5418,7 +5418,7 @@ partition_arg_get_val(Node *node)
  */
 static Datum
 eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg, 
-				  Node *rightarg, Oid *restypid)
+				  Node *rightarg, Oid *restypid, int location)
 {
 	Datum res;
 	Datum lhs;
@@ -5426,7 +5426,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 	OpExpr *opexpr;
 	HeapTuple optup;
 	
-	opexpr = (OpExpr *)make_op(pstate, oprname, leftarg, rightarg, 0);
+	opexpr = (OpExpr *)make_op(pstate, oprname, leftarg, rightarg, location);
 	optup = SearchSysCache(OPEROID, ObjectIdGetDatum(opexpr->opno),
 						   0, 0, 0);
 
@@ -5461,12 +5461,11 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 				typmod = ((Form_pg_type)typ)->typtypmod;
 				ReleaseSysCache(typ);
 
-				e = (Expr *)coerce_to_target_type(NULL, (Node *)c, 
-												  opexpr->opresulttype,
-												  *restypid, typmod,
-												  COERCION_EXPLICIT,
-												  COERCE_IMPLICIT_CAST);
-				Assert(PointerIsValid(e));
+				e = (Expr *)coerce_type(NULL, (Node *)c, opexpr->opresulttype,
+										*restypid, typmod,
+										COERCION_EXPLICIT,
+										COERCE_IMPLICIT_CAST);
+			
 				res = partition_arg_get_val((Node *)e);
 			}
 		}
@@ -5478,8 +5477,8 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 }
 
 static int 
-partition_range_every(ParseState *pstate, CreateStmtContext *cxt, 
-					  CreateStmt *stmt, PartitionBy *pBy, char *at_depth)
+partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
+					  char *at_depth)
 {
 	PartitionSpec	*pSpec;
 	char			 namBuf[NAMEDATALEN];
@@ -5584,6 +5583,8 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 
 		for ( ; ; ) /* loop until exceed end */
 		{
+			ListCell *coltype = list_head(coltypes);
+
 			int sqlRc = 0;
 			lc_Start = list_head(pRI_Start->partRangeVal);
 			lc_End   = list_head(pRI_End->partRangeVal);
@@ -5596,6 +5597,7 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				Node *n1 = lfirst(lc_Start);
 				Node *n2 = lfirst(lc_End);
 				Node *n3 = lfirst(lc_Every);
+				TypeName *type = lfirst(coltype);
 				char *compare_op = (1 == colCnt) ? "<" : "<=";
 				Node *n1t, *n2t, *n3t;
 				Datum res;
@@ -5604,13 +5606,29 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				Oid restypid;
 				Type typ;
 				char *outputstr;
+				Oid coltypid = type->typid;
+
+				if (!OidIsValid(coltypid))
+				{
+					Type t = typenameType(pstate, type);
+					coltypid = type->typid = typeTypeId(t);
+					ReleaseSysCache(t);
+				}
 
 				oprmul = lappend(NIL, makeString("*"));
 				oprplus = lappend(NIL, makeString("+"));
 				oprcompare = lappend(NIL, makeString(compare_op));
 				
 				n1t = transformExpr(pstate, n1);
+				n1t = coerce_type(NULL, n1t, exprType(n1t), coltypid,
+								  type->typmod,
+								  COERCION_IMPLICIT, COERCE_IMPLICIT_CAST);
+
 				n2t = transformExpr(pstate, n2);
+				n2t = coerce_type(NULL, n2t, exprType(n2t), coltypid,
+								  type->typmod,
+								  COERCION_IMPLICIT, COERCE_IMPLICIT_CAST);
+
 				n3t = transformExpr(pstate, n3);
 
 				Assert(IsA(n3t, Const));
@@ -5622,7 +5640,7 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				/* every_cnt * n3t */
 				restypid = InvalidOid;
 				res = eval_basic_opexpr(pstate, oprmul, (Node *)everyCnt, n3t,
-										&restypid);
+										&restypid, ((A_Const *)n3)->location);
 				typ = typeidType(restypid);
 				c = makeConst(restypid, typeLen(typ), res, false,
 							  typeByVal(typ));
@@ -5635,7 +5653,8 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 					
 					restypid = InvalidOid;
 					res = eval_basic_opexpr(pstate, oprmul, (Node *)c,
-											et, &restypid);
+											et, &restypid,
+											((A_Const *)pRI_Every->partEveryNum)->location);
 					pfree(c);
 					typ = typeidType(restypid);
 					c = makeConst(restypid, typeLen(typ), res, false,
@@ -5652,7 +5671,7 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				 */
 				restypid = exprType(n1t);
 				res = eval_basic_opexpr(pstate, oprplus, n1t, (Node *)c, 
-										&restypid);
+										&restypid, ((A_Const *)n1)->location);
 				typ = typeidType(restypid);
 				c = makeConst(restypid, typeLen(typ), res, false,
 							  typeByVal(typ));
@@ -5678,7 +5697,7 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				/* the comparison */
 				restypid = InvalidOid;
 				res = eval_basic_opexpr(pstate, oprcompare, (Node *)c, n2t,
-										&restypid);
+										&restypid, ((A_Const *)n2)->location);
 				
 				if (!DatumGetBool(res))
 				{
@@ -5700,6 +5719,7 @@ partition_range_every(ParseState *pstate, CreateStmtContext *cxt,
 				lc_Start = lnext(lc_Start);
 				lc_End   = lnext(lc_End);
 				lc_Every = lnext(lc_Every);
+				coltype = lnext(coltype);
 				colCnt--;
 			} /* end for all cols */
 

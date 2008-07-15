@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2008, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/xlog.c,v 1.258.2.1 2007/08/04 01:42:24 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/xlog.c,v 1.258.2.3 2008/04/17 00:00:00 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -45,6 +45,7 @@
 #include "storage/proc.h"
 #include "storage/bufpage.h"
 #include "storage/fd.h"
+#include "storage/ipc.h"
 #include "storage/pmsignal.h"
 #include "storage/procarray.h"
 #include "storage/spin.h"
@@ -550,9 +551,9 @@ static bool XLogGetWriteAndFlushedLoc(XLogRecPtr *writeLoc, XLogRecPtr *flushedL
 static void WriteControlFile(void);
 static void ReadControlFile(void);
 static char *str_time(time_t tnow);
-static void issue_xlog_fsync(void);
-
 static void xlog_outrec(StringInfo buf, XLogRecord *record);
+static void issue_xlog_fsync(void);
+static void pg_start_backup_callback(int code, Datum arg);
 static bool read_backup_label(XLogRecPtr *checkPointLoc,
 				  XLogRecPtr *minRecoveryLoc);
 static void rm_redo_error_callback(void *arg);
@@ -3909,8 +3910,11 @@ got_record:;
 	return (XLogRecord *) buffer;
 
 next_record_is_invalid:;
-	close(readFile);
-	readFile = -1;
+	if (readFile >= 0)
+	{
+		close(readFile);
+		readFile = -1;
+	}
 	nextRecord = NULL;
 	return NULL;
 }
@@ -7630,8 +7634,8 @@ pg_start_backup(PG_FUNCTION_ARGS)
 	XLogCtl->Insert.forcePageWrites = true;
 	LWLockRelease(WALInsertLock);
 
-	/* Use a TRY block to ensure we release forcePageWrites if fail below */
-	PG_TRY();
+	/* Ensure we release forcePageWrites if fail below */
+	PG_ENSURE_ERROR_CLEANUP(pg_start_backup_callback, (Datum) 0);
 	{
 		/*
 		 * Force a CHECKPOINT.	Aside from being necessary to prevent torn
@@ -7706,16 +7710,7 @@ pg_start_backup(PG_FUNCTION_ARGS)
 					 errmsg("could not write file \"%s\": %m",
 							BACKUP_LABEL_FILE)));
 	}
-	PG_CATCH();
-	{
-		/* Turn off forcePageWrites on failure */
-		LWLockAcquire(WALInsertLock, LW_EXCLUSIVE);
-		XLogCtl->Insert.forcePageWrites = false;
-		LWLockRelease(WALInsertLock);
-
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+	PG_END_ENSURE_ERROR_CLEANUP(pg_start_backup_callback, (Datum) 0);
 
 	/*
 	 * We're done.  As a convenience, return the starting WAL location.
@@ -7725,6 +7720,16 @@ pg_start_backup(PG_FUNCTION_ARGS)
 	result = DatumGetTextP(DirectFunctionCall1(textin,
 											 CStringGetDatum(xlogfilename)));
 	PG_RETURN_TEXT_P(result);
+}
+
+/* Error cleanup callback for pg_start_backup */
+static void
+pg_start_backup_callback(int code, Datum arg)
+{
+	/* Turn off forcePageWrites on failure */
+	LWLockAcquire(WALInsertLock, LW_EXCLUSIVE);
+	XLogCtl->Insert.forcePageWrites = false;
+	LWLockRelease(WALInsertLock);
 }
 
 /*

@@ -2840,6 +2840,7 @@ construct_md_array(Datum *elems,
 			default:
 					fixedwidthtype=false;
 	}
+	hasnulls = false;
 	if (fixedwidthtype) {
 		nbytes = nelems * elmlen;
 		nbytes = att_align(nbytes, elmalign);
@@ -2847,7 +2848,12 @@ construct_md_array(Datum *elems,
 			for (i = 0; i < nelems; i++)
 			{
 					/* make sure data is not toasted */
-					if (elmlen == -1)
+					if (nulls && nulls[i])
+					{
+						hasnulls = true;
+						continue;
+					}
+					else if (elmlen == -1)
 							elems[i] = PointerGetDatum(PG_DETOAST_DATUM(elems[i]));
 					nbytes = att_addlength(nbytes, elmlen, elems[i]);
 					nbytes = att_align(nbytes, elmalign);
@@ -2861,17 +2867,6 @@ construct_md_array(Datum *elems,
 	}
 
 	/* Allocate and initialize result array */
-
-	/*   determine if there are nulls in this array */
-	hasnulls = false;
-	if (nulls) {
-			for (i = 0; i < nelems; i++) {
-					if (nulls[i]) {
-							hasnulls = true;
-							continue;
-					}
-			}
-	}
 	if (hasnulls)
 	{
 		dataoffset = ARR_OVERHEAD_WITHNULLS(ndims, nelems);

@@ -93,12 +93,16 @@ msgstr "  --libdir              affiche l'emplacement des bibliothèques\n"
 #: pg_config.c:409
 #, c-format
 msgid "  --pkglibdir           show location of dynamically loadable modules\n"
-msgstr "  --pkglibdir           affiche l'emplacement des modules chargeables dynamiquement\n"
+msgstr ""
+"  --pkglibdir           affiche l'emplacement des modules chargeables\n"
+"                        dynamiquement\n"
 
 #: pg_config.c:410
 #, c-format
 msgid "  --localedir           show location of locale support files\n"
-msgstr "  --localedir           affiche l'emplacement des fichiers de support de la locale\n"
+msgstr ""
+"  --localedir           affiche l'emplacement des fichiers de support de la\n"
+"                        locale\n"
 
 #: pg_config.c:411
 #, c-format
@@ -229,7 +233,8 @@ msgstr "n'a pas pu lire le binaire « %s »"
 msgid "could not find a \"%s\" to execute"
 msgstr "n'a pas pu trouver un « %s » à exécuter"
 
-#: ../../port/exec.c:321 ../../port/exec.c:357
+#: ../../port/exec.c:321
+#: ../../port/exec.c:357
 #, c-format
 msgid "could not change directory to \"%s\""
 msgstr "n'a pas pu accéder au répertoire « %s »"
@@ -253,5 +258,4 @@ msgstr "le processus fils a été terminé avec le signal %d"
 #, c-format
 msgid "child process exited with unrecognized status %d"
 msgstr "le processus fils a quitté avec un statut %d non reconnu"
-
 

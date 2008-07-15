@@ -4,9 +4,10 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: pg_ctl-tr\n"
-"POT-Creation-Date: 2005-01-04 19:05+0000\n"
-"PO-Revision-Date: 2007-02-14 13:20+0200\n"
-"Last-Translator: Nicolai Tufar <ntufar@gmail.com>\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2008-01-30 13:14-0400\n"
+"PO-Revision-Date: 2008-01-30 11:34-0800\n"
+"Last-Translator: Devrim GÃNDÃZ <devrim@commandprompt.com>\n"
 "Language-Team: Turkish <ceviri@postgresql.org.tr>\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -63,7 +64,7 @@ msgstr ""
 "\"%s\" ile aynı dizinde bulunamadı.\n"
 "Kurulumunuzu kontrol ediniz.\n"
 
-#: pg_ctl.c:606
+#: pg_ctl.c:618
 #, c-format
 msgid ""
 "The program \"postgres\" was found by \"%s\"\n"
@@ -462,7 +463,7 @@ msgstr ""
 "\n"
 "kill için izin verilen sinyal adları:\n"
 
-#: pg_ctl.c:1457
+#: pg_ctl.c:1471
 #, c-format
 msgid ""
 "\n"
