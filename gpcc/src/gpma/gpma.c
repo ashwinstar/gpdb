@@ -25,7 +25,7 @@ static const char* verify_hostaddr(const char* addr);
 /* Print usage info */
 static void usage(const char* msg)
 {
-    fprintf(stderr, "\nUsage: %s [-vd?f] [-a array_name] [-l logdir] [-p ma_port] -P px1 [-P px2 -P px3]\n\n", gpma.progname);
+    fprintf(stderr, "\nUsage: %s [-vd?f] [-a array_name] [-s] [-c server_cert_path] [-k server_key_path] [-l logdir] [-p ma_port] -P px1 [-P px2 -P px3]\n\n", gpma.progname);
     fprintf(stderr, "    -?                 : print this help screen\n");
     fprintf(stderr, "    -v                 : verbose\n");
     fprintf(stderr, "    -d                 : run as daemon\n");
@@ -33,6 +33,9 @@ static void usage(const char* msg)
     fprintf(stderr, "    -l logdir          : the log directory\n");
     fprintf(stderr, "    -p ma_port         : the MA port number\n");
     fprintf(stderr, "    -P pxN             : paxos instance\n");
+    fprintf(stderr, "    -s                 : SSL support\n");
+    fprintf(stderr, "    -c server_cert_path: server certificate file path\n");
+    fprintf(stderr, "    -k server_key_path : server private key file path\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "e.g. %s -a gpdb -l /db/ma -P localhost:11000\n", gpma.progname);
     fprintf(stderr, "\n");
@@ -83,7 +86,7 @@ void parse_cmdline(int argc, const char* argv[])
 
     /* parse command line options */
     GPCC_DO(0 == apr_getopt_init(&handle, gpma.pool, argc, argv));
-    while (0 == (e = apr_getopt(handle, "?vda:p:l:P:", &opt, &optarg))) {
+    while (0 == (e = apr_getopt(handle, "?vda:p:l:P:sc:k:", &opt, &optarg))) {
 	switch (opt) {
 	case 'v':
 	    gpma.verbose = 1;
@@ -109,6 +112,15 @@ void parse_cmdline(int argc, const char* argv[])
 		usage("paxos instance format error");
 	    }
 	    gpma.px_max++;
+	    break;
+	case 's':
+	    gpma.ssl_enabled = 1;
+	    break;
+	case 'c':
+	    gpma.server_cert_path = optarg;
+	    break;
+	case 'k':
+	    gpma.server_key_path = optarg;
 	    break;
 	case '?':
 	    usage(0);
@@ -138,6 +150,14 @@ void parse_cmdline(int argc, const char* argv[])
     
     /* set ha data directory to /tmp */
     gpma.ha_datadir = apr_pstrdup(gpma.pool, "/tmp");
+
+    /* set SSL */
+    if (gpma.ssl_enabled) {
+	if (!gpma.server_cert_path)
+	    gpcc_fatal(FLINE, "please specify server certificate file path");
+	if (!gpma.server_key_path)
+	    gpcc_fatal(FLINE, "please specify server private key file path");
+    }
 
     /* set px_address for chubby */
     if (gpma.px_max == 0)
@@ -517,12 +537,15 @@ void d_main(void)
 
     /* network up */
     GPCC_DO(0 == gpcc_net_init(gpma.ma_port,
+			       gpma.ssl_enabled,
+			       gpma.server_cert_path,
+			       gpma.server_key_path,
 			       NULL,
 			       net_opened, net_accepted, 
 			       net_received, net_received_packet,
 			       net_closed, net_tick));
 
-    gpcc_log_info("gpma listening to port %d", gpma.ma_port);
+    gpcc_log_info("gpma listening to port %d %s", gpma.ma_port, (gpma.ssl_enabled? "(SSL)" : ""));
 
     
     /* chubby */

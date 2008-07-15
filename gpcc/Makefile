@@ -58,7 +58,7 @@ mkgp:
 mkgpma: mklibgpcc mklibchubby
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -I../build/include \
-		-o gpma *.c -L../build/lib -lgpcc -levent -ljson -lresolv -lchubby $(APULIBS) $(APRLIBS))
+		-o gpma *.c -L../build/lib -lgpcc -levent -ljson -lresolv -lchubby -lcrypto -lssl $(APULIBS) $(APRLIBS))
 	@mkdir -p build/bin
 	@cp -f src/gpma/gpma build/bin/
 
@@ -66,7 +66,7 @@ mkgpma: mklibgpcc mklibchubby
 mkgpha: mklibgpcc
 	@echo --- gpha -----------------------------------------------------
 	@(cd src/gpha; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv)
+		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv -lcrypto -lssl)
 	@mkdir -p build/bin
 	@cp -f src/gpha/gpha build/bin/
 

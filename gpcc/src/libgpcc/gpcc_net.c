@@ -12,6 +12,7 @@
 #include <arpa/inet.h>
 #include <apr_thread_cond.h>
 #include <apr_thread_mutex.h>
+#include <openssl/ssl.h>
 
 static apr_status_t to_sockaddr_in(const char* addr_, struct sockaddr_in* sa)
 {
@@ -248,6 +249,9 @@ struct conncb_t {
     int             do_read_header_attempts;
     int             packet_mode; /* true if in packet mode (from_peer HDR == GPCC_NET_PACKET_PROTO)*/
     apr_uint64_t    arg;	 /* argument from gpcc_net_open */
+
+    SSL*            session;
+    SSL_CTX*        ssl_ctx;     /* Only client socket */
 };
 
 
@@ -260,6 +264,7 @@ struct net_t {
     struct event_base *ev_base;
     SOCKET listen_sock;
     SOCKET udp_sock;
+    int ssl_enabled;
     apr_uint16_t unique;	/* use to generate (almost) unique connection ID */
     /* callback functions */
     gpcc_net_datagram_t* dgram;
@@ -298,6 +303,9 @@ struct net_t {
     apr_uint32_t tagtab_spin;	/* protects tagtab */
     int tagmax;
     conncb_t* tagtab[CONN_MAX];
+
+    SSL_CTX* ssl_context;
+
 };
 static net_t net = {0};
 
@@ -384,6 +392,18 @@ static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
 
 	pconn->conn = 0;
 	event_del(&pconn->ev);
+
+	if (pconn->session) {
+	    SSL_shutdown(pconn->session);
+	    SSL_free(pconn->session);
+	    pconn->session = NULL;
+	}
+	
+	if (pconn->ssl_ctx) {
+	    SSL_CTX_free(pconn->ssl_ctx);
+	    pconn->ssl_ctx = NULL;
+	}
+
 	if (pconn->sock) {
 	    shutdown(pconn->sock, SHUT_WR | SHUT_RD);
 	    closesocket(pconn->sock);
@@ -405,6 +425,131 @@ static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
 
 static void do_ready(int fd, short event, void* arg);
 
+static int ssl_session_init(conncb_t *pconn, int fd) 
+{
+    int e;
+
+    if (pconn->session == NULL) {
+	pconn->session = SSL_new(net.ssl_context);
+	if (pconn->session == NULL) {
+	    gpcc_warning(FLINE, "openssl: unable to create a new SSL connection from SSL context");
+	    return -1;
+	}
+    }
+    if (1 != (e = SSL_set_fd(pconn->session, fd))) {
+	gpcc_warning(FLINE, "openssl: cannot set fd(%d)", fd);
+	return -1;
+    }
+
+    if (1 != (e = SSL_CTX_set_session_id_context(net.ssl_context, (const unsigned char *) "SSL", 3))) {
+	gpcc_warning(FLINE, "openssl: unable to set SSL session-id context");
+	return -1;
+    }
+    
+    return 0;
+}
+
+static ssize_t socket_recv(conncb_t *pconn, int fd, void *buffer, size_t length, int flags, int *err)
+{
+    int e, n;
+
+    if (! pconn->session) {
+	n = recv(fd, buffer, length, flags);
+	if (n > 0) {
+	    return n;
+	} else if (n == 0) {
+	    *err = APR_EOF;
+	    return n;
+	} else {
+	    switch (errno) {
+	    case EAGAIN:
+		*err = APR_EAGAIN;
+		break;
+	    case EINTR:
+		*err = APR_EINTR;
+		break;
+	    default:
+		*err = APR_ECONNABORTED;
+		break;
+	    }
+	    return n;
+	}
+
+    } else {
+	n = SSL_read(pconn->session, buffer, length);
+	if (n > 0) {
+	    return n;
+	} else if (n == 0) {
+	    *err = APR_EOF;
+	    return n;
+	} else {
+	    e = SSL_get_error(pconn->session, n);
+	    switch (e) {
+	    case SSL_ERROR_WANT_READ:
+	    case SSL_ERROR_WANT_WRITE:
+		*err = APR_EAGAIN;
+		break;
+	    case SSL_ERROR_ZERO_RETURN:
+		*err = APR_EOF;
+		break;
+	    case SSL_ERROR_SSL:
+		*err = APR_ECONNABORTED;
+		break;
+	    }
+	    return n;
+	}
+    }
+    return 0;
+}
+
+static ssize_t socket_send(conncb_t *pconn, int fd, const void *buffer, size_t length, int flags, int *err)
+{
+    int e, n;
+
+    if (! pconn->session) {
+	n = send(fd, buffer, length, flags);
+	if (n > 0) {
+	    return n;
+	} else if (n == 0) {
+	    *err = APR_EOF;
+	    return n;
+	} else {
+	    switch (errno) {
+	    case EAGAIN:
+		*err = APR_EAGAIN;
+		break;
+	    case EINTR:
+		*err = APR_EINTR;
+		break;
+	    default:
+		*err = APR_ECONNABORTED;
+		break;
+	    }
+	    return n;
+	}
+    } else {
+	n = SSL_write(pconn->session, buffer, length);
+	if (n > 0) {
+	    return n;
+	} else if (n == 0) {
+	    *err = APR_EOF;
+	    return n;
+	} else {
+	    e = SSL_get_error(pconn->session, n);
+	    switch (e) {
+	    case SSL_ERROR_WANT_READ:
+	    case SSL_ERROR_WANT_WRITE:
+		*err = APR_EAGAIN;
+		break;
+	    case SSL_ERROR_SSL:
+		*err = APR_ECONNABORTED;
+		break;
+	    }
+	    return n;
+	}
+    }
+    return 0;
+}
 
 static void conn_setup_event(gpcc_net_conn_t conn)
 {
@@ -623,13 +768,13 @@ static void conn_fire_read(gpcc_net_conn_t conn)
     return;
 }
 
-
 static void do_ready(int fd, short event, void* arg)
 {
     gpcc_net_conn_t conn = CONN_FROM_PTR(arg);
     apr_uint32_t* spin = 0;
     conncb_t* pconn;
     int do_zap = 0;
+    int err = 0;
 
     if (! (spin = conn_secure(conn, &pconn)))
 	return;
@@ -648,13 +793,13 @@ static void do_ready(int fd, short event, void* arg)
 	}
 	if (in->top != sizeof(in->byte)) {
 	    int n = sizeof(in->byte) - in->top;
-	    n = recv(fd, in->byte + in->top, n, 0);
+	    n = socket_recv(pconn, fd, in->byte + in->top, n, 0, &err);
 	    if (n == 0) {
 		gpcc_warning(FLINE, "recv: socket closed by remote peer");
 		goto failure;	/* closed by remote peer */
 	    }
 	    if (n < 0) {
-		if (errno != EAGAIN && errno != EINTR) {
+		if (err != APR_EAGAIN && err != APR_EINTR) {
 		    gpcc_warning(FLINE, "read failed");
 		    goto failure;
 		}
@@ -670,14 +815,14 @@ static void do_ready(int fd, short event, void* arg)
 	int    nb  = out->top - out->bot;
 	TPR(("do_ready EV_WRITE\n"));
 	if (nb > 0) {
-	    const int n = send(fd, out->byte + out->bot, nb, 0);
+	    const int n = socket_send(pconn, fd, out->byte + out->bot, nb, 0, &err);
 	    if (n == 0) {
 		gpcc_warning(FLINE, "send: socket closed by remote peer");
 		goto failure;	/* closed by remote peer */
 	    }
 	    if (n < 0) {
-		if (errno != EAGAIN && errno != EINTR) {
-		    gpcc_warning(FLINE, "write failed, errno = %d", errno);
+		if (err != APR_EAGAIN && err != APR_EINTR) {
+		    gpcc_warning(FLINE, "write failed, errno = %d", err);
 		    goto failure;
 		}
 	    }
@@ -816,7 +961,6 @@ static void do_recvfrom(int fd, short event, void* arg)
 }
 
 
-
 static void do_accept(int fd, short event, void* arg)
 {
     struct sockaddr_in sockaddr;
@@ -901,6 +1045,18 @@ static void do_accept(int fd, short event, void* arg)
     pconn->do_read_header_attempts = 0;
     pconn->packet_mode = 0;
     pconn->arg = 0;
+
+    /* ssl */
+    pconn->session = 0;
+    pconn->ssl_ctx = 0;
+    if (net.ssl_enabled) {
+	if (ssl_session_init(pconn, pconn->sock) != 0) {
+	    gpcc_warning(FLINE, "create SSL session failed");
+	    goto failure;
+	}
+	SSL_set_accept_state(pconn->session);
+    }
+
     conn = pconn->conn;
     spin = gpcc_spin_release(spin);
 
@@ -1019,6 +1175,9 @@ apr_status_t gpcc_net_sendv(gpcc_net_conn_t conn,
 
 
 apr_status_t gpcc_net_init(int port,
+			   int ssl_support,
+			   const char *server_cert_path,
+			   const char *server_key_path,
 			   gpcc_net_datagram_t* dgram,
 			   gpcc_net_opened_t* opened,
 			   gpcc_net_accepted_t* accepted,
@@ -1171,6 +1330,48 @@ apr_status_t gpcc_net_init(int port,
     event_base_set(net.ev_base, &net.ev_tick);
     if (evtimer_add(&net.ev_tick, &tm))
 	gpcc_fatal(FLINE, "event_add: cannot set up timer event");
+
+
+    /* setup ssl support */
+    net.ssl_enabled = ssl_support;
+    if (net.ssl_enabled) {
+	if (!server_cert_path) {
+	    gpcc_log_error("server certificate file must be specified");
+	    return APR_EINVAL;
+	}
+	
+	if (!server_key_path) {
+	    gpcc_log_error("private key file must be specified");
+	    return APR_EINVAL;
+	}
+
+	if (1 != (e = SSL_library_init())) {
+	    gpcc_fatal(FLINE, "openssl: cannot init openssl library");
+	}
+
+	net.ssl_context = SSL_CTX_new(SSLv23_server_method());
+	if (net.ssl_context == NULL) {
+	    gpcc_fatal(FLINE, "openssl: cannot allocate openssl context");
+	}
+	
+	if (1 != (e = SSL_CTX_use_certificate_file(net.ssl_context,
+						   server_cert_path,
+						   SSL_FILETYPE_PEM))) {
+	    gpcc_fatal(FLINE, "openssl: cannot use certificate file '%s'",
+		       server_cert_path);
+	}
+	
+	if (1 != (e = SSL_CTX_use_PrivateKey_file(net.ssl_context,
+						  server_key_path,
+						  SSL_FILETYPE_PEM))) {
+	    gpcc_fatal(FLINE, "openssl: cannot use private key file '%s'",
+		       server_key_path);
+	}
+	
+	if (1 != (e = SSL_CTX_check_private_key(net.ssl_context))) {
+	    gpcc_fatal(FLINE, "openssl: Private key does not match the certificate public key");
+	}
+    }
 
     return 0;
 }
@@ -1409,6 +1610,18 @@ failure:
 	gpcc_spin_release(spin);
     if (pool) 
 	apr_pool_destroy(pool);
+
+    if (pconn->session) {
+	SSL_shutdown(pconn->session);
+	SSL_free(pconn->session);
+	pconn->session = NULL;
+    }
+    
+    if (pconn->ssl_ctx) {
+	SSL_CTX_free(pconn->ssl_ctx);
+	pconn->ssl_ctx = NULL;
+    }
+
     if (sock >= 0) {
 	shutdown(sock, SHUT_WR | SHUT_RD);
 	closesocket(sock);

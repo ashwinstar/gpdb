@@ -44,6 +44,9 @@ struct gpma_t {
     const char*  guid; 	      /* Global unique ID (generated from gpdb_id) */
     const char*  array_name;  /* array name */
     int          ma_port;     /* MA Port */
+    int          ssl_enabled; /* SSL support */
+    const char*  server_cert_path; /* server certificate file path */
+    const char*  server_key_path;  /* server private key file path */
     const char*  ma_addr[5];  /* MA Address */
     const char*  px_addr[5];  /* Paxos Address */
     const char*  px_address;  /* Zookeeper Addresss based on px_addr */

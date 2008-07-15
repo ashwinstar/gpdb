@@ -151,6 +151,9 @@ typedef void gpcc_net_tick_t(apr_time_t now);
 /**
  *  Initialize the gpcc_net module.
  *  @param listen_port Which port to listen for incoming connection. 0 if not active.
+ *  @param ssl_support flag to indicate the server support SSL connection. 0 if not support SSL.
+ *  @param server_cert_path is server certificate file path if SSL enabled
+ *  @param private_key_path is server private key file path if SSL enabled
  *  @param opened Callback routine when connection opened.
  *  @param accepted Callback routine when connection accepted.
  *  @param received Callback routine when bytes arrived.
@@ -160,6 +163,9 @@ typedef void gpcc_net_tick_t(apr_time_t now);
  */
 APR_DECLARE(apr_status_t) 
     gpcc_net_init(int listen_port,
+		  int ssl_support,
+		  const char *server_cert_path,
+		  const char *private_key_path,
 		  gpcc_net_datagram_t* dgram,
 		  gpcc_net_opened_t* opened,
 		  gpcc_net_accepted_t* accepted,

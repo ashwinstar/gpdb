@@ -117,8 +117,12 @@ class Command():
         query = '%s?%s' % (path, p)
 
         try:
-            self.verbose('http://%s%s' % (addr, query))
-            f = httplib.HTTPConnection(addr)
+            if self.gopt['-s']:
+                self.verbose('https://%s%s' % (addr, query))
+                f = httplib.HTTPSConnection(addr)
+            else:
+                self.verbose('http://%s%s' % (addr, query))
+                f = httplib.HTTPConnection(addr)                
             f.request(method, query, data, header)
             response = f.getresponse()
             if response.status == 200 or response.status == 301:
@@ -795,6 +799,7 @@ class HelpCmd(Command):
                         GP_MA_ADDR environment variable, assuming the format 
                         'host1:port host2:port'.
         -R            : raw mode. 
+        -s            : connect server via SSL connection.
 
   Specify 'gp help commands' to see a list of commands.
 '''
@@ -869,11 +874,12 @@ class CmdLine():
         if self.gopt['-m']: self.gopt['-m'] = self.gopt['-m'].split()
         self.gopt['-v'] = False
         self.gopt['-R'] = False
+        self.gopt['-s'] = False
         self.cmd = None
 
     def parse(self):
         try:
-            (options, args) = getopt.getopt(sys.argv[1:], 'va:m:R')
+            (options, args) = getopt.getopt(sys.argv[1:], 'va:m:Rs')
         except Exception, e:
             usage('Error: ' + str(e))
 
@@ -883,6 +889,7 @@ class CmdLine():
             elif switch == '-R': self.gopt[switch] = True
             elif switch == '-a': self.gopt[switch] = val
             elif switch == '-m': m.append(val)
+            elif switch == '-s': self.gopt[switch] = True
         if (m): self.gopt['-m'] = m
 
         # map command text to command class
