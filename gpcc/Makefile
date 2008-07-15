@@ -16,7 +16,7 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos
+all: mkdir mkext mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos mkgpha mkgpma
 
 mkpaxos: mkdir
 	(cd src/paxos;sh build)
@@ -58,7 +58,7 @@ mkgp:
 mkgpma: mklibgpcc mklibchubby
 	@echo --- gpma -----------------------------------------------------
 	@(cd src/gpma; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -I../build/include \
-		-o gpma *.c -L../build/lib -lgpcc -levent -ljson -lresolv -lchubby -lcrypto -lssl $(APULIBS) $(APRLIBS))
+		-o gpma *.c -L../build/lib -lgpcc -levent -ljson -lresolv -lchubby -lssl -lcrypto $(APULIBS) $(APRLIBS))
 	@mkdir -p build/bin
 	@cp -f src/gpma/gpma build/bin/
 
@@ -66,7 +66,7 @@ mkgpma: mklibgpcc mklibchubby
 mkgpha: mklibgpcc
 	@echo --- gpha -----------------------------------------------------
 	@(cd src/gpha; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv -lcrypto -lssl)
+		-o gpha *.c -L../build/lib -lgpcc $(APULIBS) $(APRLIBS) -levent -ljson -lresolv -lssl -lcrypto)
 	@mkdir -p build/bin
 	@cp -f src/gpha/gpha build/bin/
 
