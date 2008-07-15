@@ -16,7 +16,7 @@ CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)
 
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpfdist mklibgpcc mkgpha mkgp mklibchubby mkchubbytest mkpaxos mkgpma
+all: mkdir mkext mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos
 
 mkpaxos: mkdir
 	(cd src/paxos;sh build)
