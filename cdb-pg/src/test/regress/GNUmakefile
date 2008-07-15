@@ -146,12 +146,13 @@ installcheck-parallel: all
 installcheck-good: all $(srcdir)/current_good_schedule
 	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/current_good_schedule --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
-partcheck: all $(srcdir)/part_sched
-	./pg_regress --psqldir=$(PSQLDIR) --schedule=$(srcdir)/part_sched --srcdir=$(abs_srcdir) --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
-
 .PHONY: $(srcdir)/current_good_schedule
 $(srcdir)/current_good_schedule: $(srcdir)/known_good_schedule
+ifneq ($(origin TT), undefined)
+	echo "test: $(TT)" > $(srcdir)/current_good_schedule
+else
 	./makeschedule $< $@
+endif
 
 # old interfaces follow...
 
