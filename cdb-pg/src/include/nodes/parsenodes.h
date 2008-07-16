@@ -870,6 +870,7 @@ typedef struct SelectStmt
 	/* Eventually add fields for CORRESPONDING spec here */
 	
 	List       *distributedBy;   /* MPP. what columns we distribute the data by for SELECT INTO or CTAS */
+/*	XXX XXX: Node       *partitionBy; */    /* MPP. what columns we partition the data by */
 } SelectStmt;
 
 typedef struct WindowSpec

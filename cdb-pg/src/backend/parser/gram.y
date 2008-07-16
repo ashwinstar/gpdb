@@ -1977,6 +1977,35 @@ alter_table_partition_cmd:
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
+			| DROP PARTITION 
+				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					DropStmt *ds = makeNode(DropStmt);
+					AlterPartitionId *pid = makeNode(AlterPartitionId);
+
+					ds->missing_ok = FALSE;
+					ds->behavior = DROP_RESTRICT; /* default */ 
+
+                    /* 
+                       build an (incomplete) drop statement for arg1: 
+                       fill in the rest after the partition id spec is
+                       validated
+                    */
+
+                    /* just try to drop the first partition if not specified */
+					pid->idtype = AT_AP_IDNone;
+                    pid->location  = @2;
+
+                    pc->partid = (Node *)pid;
+                    pc->arg1 = (Node *)ds;
+                    pc->arg2 = NULL;
+                    pc->location = @2;
+
+					n->subtype = AT_PartDrop;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
 			| EXCHANGE PARTITION 
             alter_table_partition_id_spec 
             WITH TABLE qualified_name
@@ -3291,7 +3320,13 @@ CreateAsStmt:
 					n->intoOnCommit = $7;
 					n->intoTableSpaceName = $8;
 					n->distributedBy = $11;
-/* XXX XXX					n->partitionBy = $12; */
+                    /*					n->partitionBy = $12;  */
+                    if ($12)
+						ereport(ERROR,
+                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("Cannot create a partitioned table using CREATE TABLE AS SELECT"),
+                                 errhint("Use CREATE TABLE...LIKE (followed by INSERT...SELECT) instead")));
+
 					$$ = $10;
 				}
 		;

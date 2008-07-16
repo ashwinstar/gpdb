@@ -1001,7 +1001,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3451)  (seg1 localhost:11003 pid=29038)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg1 localhost:11003 pid=18352)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1324,8 +1324,8 @@ COPY foz FROM stdin DELIMITER '|';
 select * from foz_1_prt_1;
  i |     d      
 ---+------------
- 1 | 01-02-2001
  2 | 10-10-2001
+ 1 | 01-02-2001
 (2 rows)
 
 select * from foz_1_prt_2;
@@ -1374,14 +1374,14 @@ ERROR:  missing boundary specification
 -- overlaps
 alter table hhh add partition cc start ('2008-01-01') end ('2010-01-01');
 NOTICE:  Table has parent, setting distribution columns to match parent table
-ERROR:  cannot add a partition to relation "hhh" of type RANGE
+ERROR:  new partition overlaps existing partition "bb"
 alter table hhh add partition cc end ('2008-01-01');
 NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  START greater than END for partition "cc"
 -- reversed (start > end)
 alter table hhh add partition cc start ('2010-01-01') end ('2009-01-01');
 NOTICE:  Table has parent, setting distribution columns to match parent table
-ERROR:  cannot add a partition to relation "hhh" of type RANGE
+ERROR:  START greater than END for partition "cc"
 -- works
 --alter table hhh add partition cc start ('2009-01-01') end ('2010-01-01');
 alter table hhh add partition cc end ('2010-01-01');
@@ -1804,7 +1804,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=29037)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=18351)
 select * from d;
  i | j  
 ---+----
@@ -1903,7 +1903,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=29037)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=18351)
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -1943,10 +1943,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=29037)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=18351)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=29037)
+ERROR:  no partition for partitioning key (execMain.c:3451)  (seg0 localhost:11002 pid=18351)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---

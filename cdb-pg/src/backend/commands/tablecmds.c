@@ -64,6 +64,7 @@
 #include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
 #include "parser/parse_relation.h"
+#include "parser/parse_target.h"
 #include "parser/parse_type.h"
 #include "parser/parser.h"
 #include "rewrite/rewriteHandler.h"
@@ -8819,7 +8820,7 @@ get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
-	Assert(list_length(rules));
+	Assert(list_length(rules) || n->default_part); 
 	n->rules = rules;
 
 	systable_endscan(scan);
@@ -10012,7 +10013,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 				pbykeys = list_make1(makeString(attributeName));
 				pbyopclass = list_make1_oid(opclass);
 			}
-		}
+		} /* end for */
 
 		pBy->keys = pbykeys;
 		pBy->keyopclass = pbyopclass;
@@ -10023,6 +10024,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 	
 	ct = (CreateStmt *)((Query *)pUtl)->utilityStmt;
 	Assert(IsA(ct, CreateStmt));
+
+	/* XXX XXX: handle case of missing boundary spec for range with EVERY */
 
 	if (pelem && pelem->boundSpec)
 	{
@@ -10098,24 +10101,78 @@ atpxPartAddList(AlteredTableInfo *tab,
 				prule = get_part_rule(rel, &pid, false, false, 
 									  CurrentMemoryContext);
 
-			/* XXX XXX FIX RANGE PARTITIONS */				
-			if (1)
-				ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("cannot add a partition to relation \"%s\" of type RANGE",
-								RelationGetRelationName(rel))));
+				/* NOTE: invert all the logic of case of missing partStart */
+
+				/* ok if no successor [?] -- just means this is first
+				 * partition (XXX XXX though should always have 1 partition in
+				 * the table...)  
+				 */
+
+				if (prule && prule->topRule && prule->topRule->parrangestart)
+				{
+					PartitionRangeItem *ri = makeNode(PartitionRangeItem);
+
+					ri->partEveryNum  = NULL;
+					ri->location = -1;
+
+					ri->partRangeVal = 
+							copyObject(prule->topRule->parrangestart);
+
+					/* invert the inclusive/exclusive */
+					ri->partedge = prule->topRule->parrangestartincl ? 
+							PART_EDGE_EXCLUSIVE :
+							PART_EDGE_INCLUSIVE; 
+
+					/* should be first partition */
+					maxpartno = prule->topRule->parruleord - 1;
+
+					pbs->partEnd = (Node *)ri;
+				}
 
 			}
 			else
-			{
-			/* XXX XXX FIX RANGE PARTITIONS */				
-			if (1)
-				ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("cannot add a partition to relation \"%s\" of type RANGE",
-								RelationGetRelationName(rel))));
+			{ /* both start and end are specified */
+				PartitionRangeItem *ri;
+				bool bOverlap = false;
+				ParseState *pstate = make_parsestate(NULL);
 
+				/* see if start or end overlaps */
+				pid.idtype = AT_AP_IDValue;					
+
+				ri = (PartitionRangeItem *)pbs->partStart;
+
+				pid.partiddef = (Node *)copyObject(ri->partRangeVal);
+				pid.partiddef = (Node *)transformExpressionList(pstate, (List *)pid.partiddef);
+
+				prule = get_part_rule(rel, &pid, false, false, 
+									  CurrentMemoryContext);
+
+				if (prule)
+				{
+					bOverlap = true;
+					goto L_overlap;
+				}
+
+				ri = (PartitionRangeItem *)pbs->partEnd;
+
+				pid.partiddef = (Node *)copyObject(ri->partRangeVal);
+				pid.partiddef = (Node *)transformExpressionList(pstate, (List *)pid.partiddef);
+
+				prule = get_part_rule(rel, &pid, false, false, 
+									  CurrentMemoryContext);
+
+				if (prule)
+				{
+					bOverlap = true;
+					goto L_overlap;
+				}
 			
+			L_overlap:
+				if (bOverlap)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("new partition overlaps existing partition%s",
+									prule->isName ? prule->partIdStr : "")));
 
 			}
 
@@ -10185,13 +10242,15 @@ atpxPartAddList(AlteredTableInfo *tab,
 	ProcessUtility(
 			(((Query *)pUtl)->utilityStmt),
 			NULL, dest, NULL);		
+
+	if (!(pelem && pelem->isDefault))
 	{
 		ListCell 		*lc_anp   	  = NULL;
 		char  			*at_depth 	  = NULL;
 		ListCell 		*lc_rule  	  = NULL;
 		Node			*pConstraint  = NULL;
 
-		/* get the check constraint */
+		/* get the check constraint (if not default) */
 
 		List *allRules =
 				make_partition_rules(pstate,
@@ -10392,6 +10451,22 @@ ATPExecPartDrop(Relation rel,
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
+
+	/* missing partition id only ok for range partitions -- just get
+	 * first one */
+	if (AT_AP_IDNone == pid->idtype)
+	{
+		PartitionNode *pNode = RelationBuildPartitionDesc(rel); 
+
+		if (pNode && pNode->part && (pNode->part->parkind != 'r'))
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("missing name or value for DROP")));
+		
+		/* if a range partition, and not specified, just get the first one */
+		pid->idtype = AT_AP_IDPosition;
+		pid->partiddef = (Node *)makeInteger(1);
+	}
 
 	prule = get_part_rule(rel, pid, bCheckMaybe, true, CurrentMemoryContext);
 

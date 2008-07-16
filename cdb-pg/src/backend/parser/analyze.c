@@ -5581,6 +5581,10 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 
 		}
 
+		/* XXX XXX: need to save prev value of 
+		   every_num * (every_cnt * n3t) for first column only
+		*/
+
 		for ( ; ; ) /* loop until exceed end */
 		{
 			ListCell *coltype = list_head(coltypes);
@@ -5661,6 +5665,16 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 								  typeByVal(typ));
 					ReleaseSysCache(typ);
 				}
+
+				/* XXX XXX: compare  prev value of 
+				   every_num * (every_cnt * n3t) with current.
+				   Set stop flag if current <= prev
+				   handle MPP-3047.
+
+				   save current as prev
+
+				*/
+
 				
 				/* 
 				 * n1t + (...) 
@@ -5698,6 +5712,10 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				restypid = InvalidOid;
 				res = eval_basic_opexpr(pstate, oprcompare, (Node *)c, n2t,
 										&restypid, ((A_Const *)n2)->location);
+
+				/* XXX XXX: also check stop flag.  
+				   and free up prev if stop is true or current > end.
+				 */
 				
 				if (!DatumGetBool(res))
 				{
@@ -7617,6 +7635,7 @@ transformSelectStmt(ParseState *pstate, SelectStmt *stmt)
 		qry->intoOptions = copyObject(stmt->intoOptions);
 		qry->intoOnCommit = stmt->intoOnCommit;
 		qry->intoTableSpaceName = stmt->intoTableSpaceName;
+/* XXX XXX:		qry->partitionBy = stmt->partitionBy; */
 	}
 
 	/* 
