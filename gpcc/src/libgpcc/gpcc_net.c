@@ -465,9 +465,8 @@ static int ssl_client_session_init(conncb_t *pconn, int fd)
     SSL_CTX_load_verify_locations(pconn->ssl_ctx, NULL, NULL);
 
     SSL_CTX_set_verify(pconn->ssl_ctx, SSL_VERIFY_NONE, NULL);
-    /*
     SSL_CTX_set_mode(pconn->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
-    */
+
     pconn->session = SSL_new(pconn->ssl_ctx);
     if (pconn->session == NULL) {
 	gpcc_log_error("openssl: unable to create a new SSL connection");
