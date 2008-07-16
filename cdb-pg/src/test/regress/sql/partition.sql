@@ -721,6 +721,39 @@ COPY foz FROM stdin DELIMITER '|';
 drop table foz cascade;
 
 
+-- complain if create table as select (CTAS)
+
+CREATE TABLE rank1 (id int,
+rank int, year date, gender char(1));
+
+create table rank2 as select * from rank1
+DISTRIBUTED BY (id, gender, year)
+partition by list (gender)
+subpartition by range (year)
+subpartition template (
+start (date '2001-01-01')
+end (date '2006-01-01') every (interval '1 year')) (
+partition boys values ('M'),
+partition girls values ('F')
+);
+
+-- like is ok
+
+create table rank2 (like rank1)
+DISTRIBUTED BY (id, gender, year)
+partition by list (gender)
+subpartition by range (year)
+subpartition template (
+start (date '2001-01-01')
+end (date '2006-01-01') every (interval '1 year')) (
+partition boys values ('M'),
+partition girls values ('F')
+);
+
+drop table rank1 cascade;
+drop table rank2 cascade;
+
+
 -- alter table testing
 
 create table hhh (a char(1), b date, d char(3))
@@ -803,6 +836,39 @@ alter table hhh drop partition cc cascade;
 alter table hhh drop partition cc restrict;
 
 alter table hhh drop partition if exists cc;
+
+create table hhh_r1 (a char(1), b date, d char(3))
+distributed by (a)
+partition by range (b)
+(
+partition aa start (date '2007-01-01') end (date '2008-01-01') every (interval '1 month')
+);
+
+create table hhh_l1 (a char(1), b date, d char(3))
+distributed by (a)
+partition by list (b)
+(
+partition aa values ('2007-01-01'),
+partition bb values ('2008-01-01'),
+partition cc values ('2009-01-01') 
+);
+
+-- must have name or value for list partition
+alter table hhh_l1 drop partition;
+alter table hhh_l1 drop partition aa;
+alter table hhh_l1 drop partition for ('2008-01-01');
+
+-- if not specified, drop first range partition...
+alter table hhh_r1 drop partition for ('2007-04-01');
+alter table hhh_r1 drop partition;
+alter table hhh_r1 drop partition;
+alter table hhh_r1 drop partition;
+alter table hhh_r1 drop partition;
+alter table hhh_r1 drop partition;
+
+drop table hhh_r1 cascade;
+drop table hhh_l1 cascade;
+
 
 --  the documentation example, rewritten with EVERY in a template
 --  and also with a default partition
