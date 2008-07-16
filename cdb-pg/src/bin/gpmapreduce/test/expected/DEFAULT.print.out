@@ -1,6 +1,8 @@
 -- start_matchsubs
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
--- m/'file:[^']'/
--- s/'file:[^']'/'file:DUMMY'/
+-- m/'file:[^']*'/
+-- s/'file:[^']*'/'file:DUMMY'/
+-- m/'EXECUTE '[^']*'/
+-- s/'EXECUTE '[^']*'/EXECUTE 'DUMMY'/
 -- end_matchsubs

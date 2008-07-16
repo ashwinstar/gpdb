@@ -479,6 +479,31 @@ void parser_set_delimiter(mapred_parser_t *parser, char *value)
 	}
 }
 
+void parser_set_null(mapred_parser_t *parser, char *value)
+{
+	XASSERT(parser->current_doc);
+	XASSERT(parser->current_obj);
+	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
+
+	if (parser->current_obj->u.input.null)
+		XRAISE(MAPRED_PARSE_ERROR, 
+			   "Duplicate NULL for INPUT");
+	parser->current_obj->u.input.null = copyscalar(value);
+}
+
+void parser_set_quote(mapred_parser_t *parser, char *value)
+{
+	XASSERT(parser->current_doc);
+	XASSERT(parser->current_obj);
+	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
+
+	if (parser->current_obj->u.input.quote)
+		XRAISE(MAPRED_PARSE_ERROR, 
+			   "Duplicate QUOTE for INPUT");
+	parser->current_obj->u.input.quote = copyscalar(value);
+}
+
+
 void parser_set_encoding(mapred_parser_t *parser, char *value)
 {
 	XASSERT(parser->current_doc);
@@ -490,6 +515,24 @@ void parser_set_encoding(mapred_parser_t *parser, char *value)
 			   "Duplicate ENCODING for INPUT");
 	parser->current_obj->u.input.encoding = copyscalar(value);
 }
+
+void parser_set_error_limit(mapred_parser_t *parser, char *value)
+{
+	XASSERT(parser->current_doc);
+	XASSERT(parser->current_obj);
+	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
+
+	if (parser->current_obj->u.input.error_limit > 0)
+		XRAISE(MAPRED_PARSE_ERROR, 
+			   "Duplicate ERROR_LIMIT for INPUT");		
+
+	/* 
+	 * The parse has already assured that the value consists of a sequence
+	 * of digits, so strtol should convert successfully. 
+	 */
+	parser->current_obj->u.input.error_limit = (int) strtol(value, NULL, 10);
+}
+
 
 void parser_set_mode(mapred_parser_t *parser, char *value)
 {
@@ -1394,8 +1437,6 @@ int mapred_verify_object(mapred_object_t *obj)
 
 			/* FIXME: Check version contents */
 
-			/* FIXME: Build the inter-object dependencies */
-			
 			break;
 
 		case MAPRED_INPUT:
@@ -1439,6 +1480,14 @@ int mapred_verify_object(mapred_object_t *obj)
 				error = error_missing(type, name, "LANGUAGE");
 			if (!obj->u.function.body)
 				error = error_missing(type, name, "FUNCTION");
+
+			/*
+			 * Good idea, but perl doesn't support it (yet)
+			 */
+			/*
+			if (obj->u.function.mode == MAPRED_NO_MODE)
+				obj->u.function.mode = MAPRED_MULTI_MODE;
+			*/
 
 			/* set default values */
 			if (error == NO_ERROR)

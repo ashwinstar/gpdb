@@ -1,14 +1,16 @@
 -- start_matchsubs
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
--- m/'file:[^']'/
--- s/'file:[^']'/'file:DUMMY'/
+-- m/'file:[^']*'/
+-- s/'file:[^']*'/'file:DUMMY'/
+-- m/'EXECUTE '[^']*'/
+-- s/'EXECUTE '[^']*'/EXECUTE 'DUMMY'/
 -- end_matchsubs
 CREATE TYPE msg_from_to_rtype as (source text, target text, value integer);
 
 -- INPUT email
 CREATE EXTERNAL TABLE email(value text)
-  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/email/mailfiles')
+  LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/email/mailfiles')
   FORMAT 'TEXT';
 
 -- MAPPER msg_from_to
@@ -25,15 +27,15 @@ if 'From' in msg and 'To' in msg:
 $$;
 
 -- EXECUTION
-CREATE VIEW mapreduce_46208_run_1 AS
+CREATE VIEW mapreduce_304_run_1 AS
 SELECT source, target, SUM(value) as value
 FROM (SELECT source(m), target(m), value(m) FROM (SELECT msg_from_to(value) as m FROM email) mapxq
-WHERE m is not null) mapsubq
+) mapsubq
 GROUP BY source, target;
 
 
 DROP TYPE IF EXISTS msg_from_to_rtype CASCADE;
 DROP EXTERNAL TABLE IF EXISTS email CASCADE;
 DROP FUNCTION IF EXISTS msg_from_to(text) CASCADE;
-DROP VIEW IF EXISTS mapreduce_46208_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_304_run_1 CASCADE;
 

@@ -132,6 +132,9 @@ typedef struct {
 	mapred_format_t        format;
 	char                  *delimiter;
 	char                  *encoding;
+	char                  *null;
+	char                  *quote;
+	int                    error_limit;
 } mapred_input_t;
 
 typedef struct {

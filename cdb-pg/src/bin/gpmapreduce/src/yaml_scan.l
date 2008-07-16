@@ -52,6 +52,7 @@ int yaml_scalar_yylex (yyscan_t yyscanner, mapred_parser_t *parser)
 <kw>define       return _DEFINE_;
 <kw>delimiter    return _DELIMITER_;
 <kw>encoding     return _ENCODING_;
+<kw>error_limit  return _ERROR_LIMIT_;
 <kw>exec         return _EXEC_;
 <kw>execute      return _EXECUTE_;
 <kw>file         return _FILE_;
@@ -67,11 +68,13 @@ int yaml_scalar_yylex (yyscan_t yyscanner, mapred_parser_t *parser)
 <kw>mapper       return _MAPPER_;
 <kw>mode         return _MODE_;
 <kw>name         return _NAME_;
+<kw>null         return _NULL_;
 <kw>optimize     return _OPTIMIZE_;
 <kw>output       return _OUTPUT_;
 <kw>parameters   return _PARAMETERS_;
 <kw>port         return _PORT_;
 <kw>query        return _QUERY_;
+<kw>quote        return _QUOTE_;
 <kw>reducer      return _REDUCER_;
 <kw>returns      return _RETURNS_;
 <kw>run          return _RUN_;

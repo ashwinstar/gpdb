@@ -1,8 +1,10 @@
 -- start_matchsubs
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
--- m/'file:[^']'/
--- s/'file:[^']'/'file:DUMMY'/
+-- m/'file:[^']*'/
+-- s/'file:[^']*'/'file:DUMMY'/
+-- m/'EXECUTE '[^']*'/
+-- s/'EXECUTE '[^']*'/EXECUTE 'DUMMY'/
 -- end_matchsubs
 CREATE TYPE reverse_python_rtype as (key integer, value text);
 
@@ -10,7 +12,7 @@ CREATE TYPE wordsplit_python_rtype as (key text, value integer);
 
 -- INPUT email
 CREATE EXTERNAL TABLE email(value text)
-  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/email/mailfiles')
+  LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/email/mailfiles')
   FORMAT 'TEXT';
 
 -- MAPPER wordsplit_python
@@ -39,11 +41,11 @@ $$;
 CREATE VIEW email_histogram AS
 SELECT key, SUM(value) as value
 FROM (SELECT key(m), value(m) FROM (SELECT wordsplit_python(value) as m FROM email) mapxq
-WHERE m is not null) mapsubq
+) mapsubq
 GROUP BY key;
 
 -- EXECUTION
-CREATE VIEW mapreduce_46392_run_1 AS
+CREATE VIEW mapreduce_491_run_1 AS
 SELECT key(m), value(m) FROM (SELECT reverse_python(key, value) as m FROM email_histogram) mapxq
 WHERE m is not null;
 
@@ -54,5 +56,5 @@ DROP EXTERNAL TABLE IF EXISTS email CASCADE;
 DROP FUNCTION IF EXISTS wordsplit_python(text) CASCADE;
 DROP FUNCTION IF EXISTS reverse_python(text, text) CASCADE;
 DROP VIEW IF EXISTS email_histogram CASCADE;
-DROP VIEW IF EXISTS mapreduce_46392_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_491_run_1 CASCADE;
 

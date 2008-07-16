@@ -1,0 +1,109 @@
+-- start_matchsubs
+-- m/mapreduce_\d+_run/
+-- s/mapreduce_\d+/mapreduce_DUMMY/
+-- m/'file:[^']*'/
+-- s/'file:[^']*'/'file:DUMMY'/
+-- m/'EXECUTE '[^']*'/
+-- s/'EXECUTE '[^']*'/EXECUTE 'DUMMY'/
+-- end_matchsubs
+CREATE TYPE extractFields_rtype as (id integer, date_posted date, date_posted_timestamp integer, refind_key text, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text);
+
+CREATE TYPE Uniquify_finalize_rtype as (id integer, date_posted date, date_posted_timestamp integer, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text, refind_key text);
+
+-- TRANSITION Uniquify_transition
+CREATE FUNCTION Uniquify_transition(state text, id integer, date_posted date, date_posted_timestamp integer, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text)
+RETURNS text LANGUAGE plpythonu AS
+$$
+import pickle;
+
+# newrecord = (id, date_posted, date_posted_timestamp, refind_key,
+newrecord = (id, date_posted, date_posted_timestamp,
+             first_extract_date, last_extract_date, inter_source_hash)
+
+# Add the new record to the existing state, if any
+if state == None:
+  oldlist = [newrecord]
+else:
+  oldlist = pickle.loads(state)
+  oldlist.append(newrecord)
+
+# repickle and return
+return pickle.dumps(oldlist)
+$$;
+
+-- MAPPER Uniquify_finalize
+CREATE FUNCTION Uniquify_finalize(value text, refind_key text, gap integer)
+RETURNS SETOF Uniquify_finalize_rtype LANGUAGE plpythonu AS
+$$
+import pickle
+import datetime
+
+def date_conv(date, fmt):
+  return datetime.datetime.strptime(date, fmt)
+date_fmt = '%Y-%m-%d'
+
+# setup a default gap if none was specified
+#        if gap == None:
+#          gap = 60
+
+# Get the accumulated data for this refind_key
+mydata = pickle.loads(value)
+mydata.sort(key=lambda(x): x[1])    # date_posted is 2nd element in each tuple
+
+# Determine which ones are 'new' values
+seq = 0
+prev = mydata[0]
+prev_date = date_conv(prev[1], date_fmt)
+for t in mydata[1:]:
+  date_gap = date_conv(t[1], date_fmt) - prev_date;
+  if (date_gap.days > gap):
+    yield(prev[0], prev[1], prev[2], prev[3], prev[4], prev[5], '%s_%s' % (refind_key, str(seq)))
+    seq += 1
+  prev = t
+yield(prev[0], prev[1], prev[2], prev[3], prev[4], prev[5], '%s_%s' % (refind_key, str(seq)))
+$$;
+
+-- MAPPER extractFields
+CREATE FUNCTION extractFields(id integer, date_posted date, date_posted_timestamp integer, refind_key text, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text)
+RETURNS SETOF extractFields_rtype LANGUAGE plpythonu AS
+$$
+if date_posted:
+  yield [id, date_posted, date_posted_timestamp, refind_key,
+         first_extract_date, last_extract_date, inter_source_hash]
+$$;
+
+-- INPUT ProductionJobs
+CREATE EXTERNAL TABLE ProductionJobs(id integer, dummy1 text, dummy2 text, dummy3 text, dummy4 text, dummy5 text, dummy6 text, dummy7 text, dummy8 text, dummy9 text, dummy10 text, dummy11 text, dummy12 text, dummy13 text, dummy14 text, dummy15 text, dummy16 text, dummy17 text, dummy18 text, dummy19 text, dummy20 text, dummy21 text, dummy22 text, dummy23 text, dummy24 text, dummy25 text, dummy26 text, dummy27 text, dummy28 text, dummy29 text, dummy30 text, dummy31 text, dummy32 text, dummy33 text, dummy34 text, dummy35 text, dummy36 text, dummy37 text, dummy38 text, date_posted date, dummy40 text, date_posted_timestamp integer, dummy42 text, dummy43 text, dummy44 text, dummy45 text, dummy46 text, dummy47 text, dummy48 text, dummy49 text, dummy50 text, dummy51 text, dummy52 text, dummy53 text, dummy54 text, dummy55 text, dummy56 text, dummy57 text, dummy58 text, dummy59 text, dummy60 text, dummy61 text, dummy62 text, dummy63 text, dummy64 text, dummy65 text, dummy66 text, dummy67 text, dummy68 text, dummy69 text, dummy70 text, dummy71 text, dummy72 text, dummy73 text, refind_key text, first_extract_date timestamp, last_extract_date timestamp, dummy77 text, dummy78 text, dummy79 text, dummy80 text, dummy81 text, dummy82 text, dummy83 text, dummy84 text, dummy85 text, dummy86 text, dummy87 text, dummy88 text, dummy89 text, dummy90 text, dummy91 text, inter_source_hash text, dummy93 text)
+  LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/ProductionJobs.txt')
+  FORMAT 'CSV' ( QUOTE '"' NULL '\\N' )
+  SEGMENT REJECT LIMIT 1000;
+
+-- REDUCER Uniquify
+CREATE AGGREGATE Uniquify (integer, date, integer, timestamp, timestamp, text) (
+  stype = text,
+  sfunc = Uniquify_transition
+);
+
+-- TASK Production_reduce
+CREATE VIEW Production_reduce AS
+SELECT refind_key, Uniquify(id, date_posted, date_posted_timestamp, first_extract_date, last_extract_date, inter_source_hash) as value
+FROM (SELECT id(m), date_posted(m), date_posted_timestamp(m), refind_key(m), first_extract_date(m), last_extract_date(m), inter_source_hash(m) FROM (SELECT extractFields(id, date_posted, date_posted_timestamp, refind_key, first_extract_date, last_extract_date, inter_source_hash) as m FROM ProductionJobs) mapxq
+) mapsubq
+GROUP BY refind_key;
+
+-- EXECUTION
+CREATE VIEW mapreduce_2402_run_1 AS
+SELECT id(m), date_posted(m), date_posted_timestamp(m), first_extract_date(m), last_extract_date(m), inter_source_hash(m), refind_key(m) FROM (SELECT Uniquify_finalize(value, refind_key, NULL::integer) as m FROM Production_reduce) mapxq
+;
+
+
+DROP TYPE IF EXISTS extractFields_rtype CASCADE;
+DROP TYPE IF EXISTS Uniquify_finalize_rtype CASCADE;
+DROP VIEW IF EXISTS mapreduce_2402_run_1 CASCADE;
+DROP VIEW IF EXISTS Production_reduce CASCADE;
+DROP AGGREGATE IF EXISTS Uniquify(integer, date, integer, timestamp, timestamp, text) CASCADE;
+DROP FUNCTION IF EXISTS Uniquify_transition(text, integer, date, integer, timestamp, timestamp, text) CASCADE;
+DROP FUNCTION IF EXISTS Uniquify_finalize(text, text, integer) CASCADE;
+DROP FUNCTION IF EXISTS extractFields(integer, date, integer, text, timestamp, timestamp, text) CASCADE;
+DROP EXTERNAL TABLE IF EXISTS ProductionJobs CASCADE;
+

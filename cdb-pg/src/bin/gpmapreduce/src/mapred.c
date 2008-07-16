@@ -37,6 +37,12 @@ const char *mapred_kind_name[MAPRED_MAXKIND+1] =
 	"INTERNAL"
 };
 
+/* 
+ * Errors that we handle
+ * (would be better to add <errcodes.h> to the include path)
+ */
+const char *IN_FAILED_SQL_TRANSACTION = "25P02";
+
 
 /*
  * Currently we just ignore all warnings, may eventually do something
@@ -898,6 +904,21 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 
 
 
+int bufncpy(char *buffer, char *str, int len, int position)
+{
+
+/* This doesn't work because 'str' may contain sprintf escapes */
+//	position += snprintf(buffer+position, bufsize - position, str)
+
+	/* 
+	 * unlike snprintf, strncpy does not guarantee null termination,
+	 * so a little more work is needed.
+	 */
+	strncpy(buffer+position, str, len - position);
+	buffer[len-1] = '\0';
+	return strlen(buffer);
+}
+
 
 boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 {
@@ -908,8 +929,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 	int             position = 0;
 	size_t          bufsize;
 
-#define writebuffer(str)						\
-	position += snprintf(buffer+position, bufsize - position, str)
+#define writebuffer(str)								\
+	position = bufncpy(buffer, str, bufsize, position)
 
 	/* If the object was created in a prior pass, then do nothing */
 	if (obj->created)
@@ -917,7 +938,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 
 	/*
 	 * Initial buffersize is large enough for:
-	 *   "CREATE EXTERNAL TABLE . (.) LOCATION (.) FORMAT TEXT (DELIMITER '.')"
+	 *   "CREATE EXTERNAL TABLE . (.) LOCATION (.) FORMAT TEXT ( )"
 	 * with a little wiggle room to spare.  We will extend this size below
 	 * to allow for the variable length fields.
 	 *
@@ -933,6 +954,41 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 			XASSERT(obj->name);
 			bufsize += strlen(obj->name);
 
+			/* Add room for column specification */
+			for (plist = obj->u.input.columns; plist; plist = plist->next)
+			{
+				bufsize += strlen(plist->name) + 1 + strlen(plist->type);
+				if (plist->next)
+					bufsize += 2;    /* ", " */
+			}
+			
+			/* add room for file specifications */
+			for (clist = obj->u.input.files; clist; clist = clist->next)
+			{
+				bufsize += 12;        /* "'gpfdist://'" */
+				bufsize += strlen(clist->value);
+				if (clist->next)
+					bufsize += 13;    /* ",\n           " */
+			}
+
+			/* add room for delimiter, null, and quote fields */
+			if (obj->u.input.delimiter)
+				bufsize += 13 +  /* "DELIMITER '.' " */
+					strlen(obj->u.input.delimiter);
+			if (obj->u.input.quote)
+				bufsize += 9 +  /* "QUOTE '.' " */
+					strlen(obj->u.input.quote);
+			if (obj->u.input.null)
+				bufsize += 8 +  /* "NULL '.' " */
+					strlen(obj->u.input.null);
+			
+			/* Handling the error rows */
+			if (obj->u.input.error_limit > 0)
+			{
+				bufsize += 25; /* "\n  SEGMENT REJECT LIMIT " */
+				bufsize += 10;  /* max int digits */
+			}
+
 			switch (obj->u.input.type)
 			{
 				case MAPRED_INPUT_TABLE:
@@ -942,22 +998,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				case MAPRED_INPUT_GPFDIST:
 					XASSERT(obj->u.input.files);
 
-					for (plist = obj->u.input.columns; plist; plist = plist->next)
-					{
-						bufsize += strlen(plist->name) + 1 + strlen(plist->type);
-						if (plist->next)
-							bufsize += 2;    /* ", " */
-					}
-
-					/* add room for file specifications */
-					for (clist = obj->u.input.files; clist; clist = clist->next)
-					{
-						bufsize += 12;        /* "'gpfdist://'" */
-						bufsize += strlen(clist->value);
-						if (clist->next)
-							bufsize += 13;    /* ",\n           " */
-					}
-
+					/* Allocate and produce buffer */
 					buffer = malloc(bufsize);
 					writebuffer("CREATE EXTERNAL TABLE ");
 					writebuffer(obj->name);
@@ -998,12 +1039,37 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						writebuffer("  FORMAT 'CSV'");
 					else
 						writebuffer("  FORMAT 'TEXT'");
-					if (obj->u.input.delimiter)
+					if (obj->u.input.delimiter || obj->u.input.quote || obj->u.input.null)
 					{
-						writebuffer(" (DELIMITER '");
-						writebuffer(obj->u.input.delimiter);
-						writebuffer("')");
+						writebuffer(" ( ");
+						if (obj->u.input.delimiter)
+						{
+							writebuffer("DELIMITER '");
+							writebuffer(obj->u.input.delimiter);
+							writebuffer("' ");
+						}
+						if (obj->u.input.quote)
+						{
+							writebuffer("QUOTE '");
+							writebuffer(obj->u.input.quote);
+							writebuffer("' ");
+						}
+						if (obj->u.input.null)
+						{
+							writebuffer("NULL '");
+							writebuffer(obj->u.input.null);
+							writebuffer("' ");
+						}
+						writebuffer(")");
 					}
+
+					if (obj->u.input.error_limit > 0)
+					{
+						writebuffer("\n  SEGMENT REJECT LIMIT ");
+						position += snprintf(buffer + position, bufsize - position, "%d",
+											 obj->u.input.error_limit);
+					}
+
 					writebuffer(";\n\n");
 					break;
 
@@ -1031,11 +1097,35 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						writebuffer("  FORMAT 'CSV'");
 					else
 						writebuffer("  FORMAT 'TEXT'");
-					if (obj->u.input.delimiter)
+					if (obj->u.input.delimiter || obj->u.input.quote || obj->u.input.null)
 					{
-						writebuffer(" (DELIMITER '");
-						writebuffer(obj->u.input.delimiter);
-						writebuffer("')");
+						writebuffer(" ( ");
+						if (obj->u.input.delimiter)
+						{
+							writebuffer("DELIMITER '");
+							writebuffer(obj->u.input.delimiter);
+							writebuffer("' ");
+						}
+						if (obj->u.input.quote)
+						{
+							writebuffer("QUOTE '");
+							writebuffer(obj->u.input.quote);
+							writebuffer("' ");
+						}
+						if (obj->u.input.null)
+						{
+							writebuffer("NULL '");
+							writebuffer(obj->u.input.null);
+							writebuffer("' ");
+						}
+						writebuffer(")");
+					}
+
+					if (obj->u.input.error_limit > 0)
+					{
+						writebuffer("\n  SEGMENT REJECT LIMIT ");
+						position += snprintf(buffer + position, bufsize - position, "%d",
+											 obj->u.input.error_limit);
 					}
 					writebuffer(";\n\n");
 					break;
@@ -1277,11 +1367,20 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				writebuffer(",\n  prefunc = ");
 				writebuffer(obj->u.reducer.combiner.name);
 			}
+
+			/*
+			 * To handle set returning finalizers the finalizer is pushed
+			 * into the task definition rather than being placed in the
+			 * uda where it belongs.
+			 */
+			/*
 			if (obj->u.reducer.finalizer.name)
 			{
 				writebuffer(",\n  finalfunc = ");
 				writebuffer(obj->u.reducer.finalizer.name);
 			}
+			*/
+
 			writebuffer("\n);\n\n");
 			break;
 		}
@@ -1560,7 +1659,19 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					writebuffer("m FROM ");
 					writebuffer(qbuffer);
 					writebuffer(") mapxq\n");
-					writebuffer("WHERE m is not null");
+					/*
+					 * Need to work this through, it seems that m is true whenever a 
+					 * column is null, which is not the desired behavior.
+					 *
+					 * Look more closely at "grep" code for why we want it, and
+					 * "oreilly" code for why we don't.
+					 *
+					 * For the moment the compromise is that we do it only for
+					 * SINGLE mode functions, since MULTI mode can control it's
+					 * own filtering without this.
+					 */
+					if (mapper->u.function.mode != MAPRED_MULTI_MODE)
+						writebuffer("WHERE m is not null");   
 				}
 				else
 				{
@@ -1632,34 +1743,17 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				} 
 				else
 				{
-					for (plist = columns; plist; plist = plist->next)
-					{
-						scan = reducer->u.reducer.parameters;
-						for (; scan; scan = scan->next)
-						{
-							if (!strcasecmp(plist->name, scan->name))
-								break;
-						}
+					/* The reducer exists in the YAML */
+					
+					/* 
+					 * If the reducer has a finalizer we push the finalizer out
+					 * to the task so that we can handle set returning aggregates.
+					 */
 
-						/* not a parameter, add it to the list */
-						if (!scan)
-						{
-							/* allocate new entry on the end */
-							if (grouping)
-							{
-								last->next = malloc(sizeof(mapred_plist_t));
-								last = last->next;
-							}
-							else
-							{
-								grouping = malloc(sizeof(mapred_plist_t));
-								last = grouping;
-							}
-							last->name = plist->name;
-							last->type = plist->type;
-							last->next = NULL;
-						}
-					}
+					/* FIXME */
+
+					/* We precalculated the grouping columns */
+					grouping = obj->u.task.grouping;
 				}
 				
 				/* SELECT ., .(.) as . FROM . GROUP BY . */
@@ -1690,6 +1784,13 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 							bufsize += 2;  /* ", " */
 					}
 
+					/* 
+					 * Since "finalfunc" can't return a set we instead push the finalizer
+					 * outside the scope of the reducer!
+					 */
+					if (reducer->u.reducer.finalizer.name)
+						bufsize += 2 + strlen(reducer->u.reducer.finalizer.name);
+
 					plist = reducer->u.reducer.returns;
 					if (!plist || plist->next)
 						XASSERT(false); /* FIXME: multi-column returning reducers? */
@@ -1717,6 +1818,18 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					writebuffer(plist->name);
 					writebuffer(", ");
 				}
+				
+				/* 
+				 * Since "finalfunc" can't return a set we instead push the finalizer
+				 * outside the scope of the reducer!
+				 */
+				if (reducer && reducer->u.reducer.finalizer.name)
+				{
+					writebuffer(reducer->u.reducer.finalizer.name);
+					writebuffer("(");
+				}
+
+				/* Call the aggregation function */
 				writebuffer(obj->u.task.reducer.name);
 				writebuffer("(");
 
@@ -1776,6 +1889,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						if (plist->next)
 							writebuffer(", ");
 					}
+					if (reducer->u.reducer.finalizer.name)
+						writebuffer(")");
 				}
 				else
 				{
@@ -1886,26 +2001,26 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				 * Note that unlike the columns set by the mapper or the
 				 * input this is a list that must be de-allocated.
 				 */
-				if (grouping)
-				{
-					last->next = malloc(sizeof(mapred_plist_t));
-					last = last->next;
-				}
-				else
-				{
-					grouping = malloc(sizeof(mapred_plist_t));
-					last = grouping;
-				}
-				last->name = "value";  /* FIXME */
-				last->type = "text";   /* FIXME */
-				last->next = NULL;
-				columns = grouping;
+				columns = malloc(sizeof(mapred_plist_t));
+				columns->name = "value";  /* FIXME */
+				columns->type = "text";   /* FIXME */
+				columns->next = grouping;
+				columns = last;
+
+				/* 
+				 * If the reducer had a finalizer we push it into another nested
+				 * subquery since user defined aggregates aren't allowed to return
+				 * sets.
+				 *
+				 * FIXME: this code is a duplicate of the MAP code above
+				 */
+
 			}
 
 
 			/*
 			 * 4) Handle the final transform into the view definition:
-			 *        "CREATE VIEW . AS . ORDER BY .;"
+			 *        "CREATE VIEW . AS .;"
 			 */
 			bufsize = 50 + strlen(obj->name) + strlen(qbuffer);
 			for (plist = columns; plist; plist = plist->next)
@@ -2229,8 +2344,32 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 			result = PQexec(conn, buffer);
 			free(buffer);
 
+			/* Don't throw an exception because we want to clean up the rest */
 			if (PQresultStatus(result) != PGRES_COMMAND_OK)
-				XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
+			{
+				char *error = PQresultErrorField(result, PG_DIAG_SQLSTATE);
+				
+				/* 
+				 * Errors that we can expect/ignore:
+				 *
+				 *     IN_FAILED_SQL_TRANSACTION -
+				 *        another error has occured and the transaction was 
+				 *        aborted
+				 *
+				 */
+				if (strcmp(error, IN_FAILED_SQL_TRANSACTION))
+				{
+					if (obj->name)
+						fprintf(stderr, 
+								"[WARNING] Error dropping '%s'\n", obj->name);
+					else
+						fprintf(stderr, 
+								"[WARNING] Error dropping unnamed object\n");
+					fprintf(stderr, PQerrorMessage(conn));
+				}
+			}
+			
+			PQclear(result);
 		}
 	}
 

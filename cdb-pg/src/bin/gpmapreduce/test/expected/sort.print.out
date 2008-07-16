@@ -1,20 +1,22 @@
 -- start_matchsubs
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
--- m/'file:[^']'/
--- s/'file:[^']'/'file:DUMMY'/
+-- m/'file:[^']*'/
+-- s/'file:[^']*'/'file:DUMMY'/
+-- m/'EXECUTE '[^']*'/
+-- s/'EXECUTE '[^']*'/EXECUTE 'DUMMY'/
 -- end_matchsubs
 -- INPUT access_log
 CREATE EXTERNAL TABLE access_log(value text)
-  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/access_log',
-           'file://maple/Users/cwelton/Desktop/mapred3/test/data/access_log2')
+  LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log',
+           'file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log2')
   FORMAT 'TEXT';
 
 -- EXECUTION
-CREATE VIEW mapreduce_46330_run_1 AS
+CREATE VIEW mapreduce_428_run_1 AS
 SELECT * FROM access_log;
 
 
 DROP EXTERNAL TABLE IF EXISTS access_log CASCADE;
-DROP VIEW IF EXISTS mapreduce_46330_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_428_run_1 CASCADE;
 

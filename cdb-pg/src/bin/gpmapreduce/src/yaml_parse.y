@@ -37,17 +37,17 @@ int yaml_scalar_yylex (yyscan_t yyscanner, mapred_parser_t *parser)
 %token <keyword>
   _COLUMNS_     _COMBINER_
   _DATABASE_    _DEFINE_      _DELIMITER_
-  _ENCODING_    _EXEC_        _EXECUTE_
+  _ENCODING_    _ERROR_LIMIT_ _EXEC_        _EXECUTE_
   _FILE_        _FINALIZER_   _FORMAT_      _FUNCTION_
   _GPFDIST_
   _HOST_
   _INITIALIZE_  _INPUT_
   _LANGUAGE_
   _MAP_         _MAPPER_      _MODE_
-  _NAME_
+  _NAME_        _NULL_
   _OPTIMIZE_    _OUTPUT_
   _PARAMETERS_  _PORT_ 
-  _QUERY_
+  _QUERY_       _QUOTE_
   _REDUCER_     _RETURNS_     _RUN_
   _SOURCE_
   _TABLE_       _TARGET_      _TASK_        _TRANSITION_ 
@@ -174,7 +174,10 @@ input_item:
            column_list
       | _FORMAT_ scalar       { parser_set_format(parser, $2); }
       | _DELIMITER_ scalar    { parser_set_delimiter(parser, $2); }
+      | _NULL_ scalar         { parser_set_null(parser, $2); }
+      | _QUOTE_ scalar        { parser_set_quote(parser, $2); }
       | _ENCODING_ scalar     { parser_set_encoding(parser, $2); }
+      | _ERROR_LIMIT_ _INTEGER_ { parser_set_error_limit(parser, $2); }
 	  | _STRING_     {
                          char buffer[128];
 			             snprintf(buffer, 128, "%s is not a valid INPUT attribute", $1);

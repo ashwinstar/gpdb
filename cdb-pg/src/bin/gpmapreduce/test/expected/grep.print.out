@@ -1,15 +1,17 @@
 -- start_matchsubs
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
--- m/'file:[^']'/
--- s/'file:[^']'/'file:DUMMY'/
+-- m/'file:[^']*'/
+-- s/'file:[^']*'/'file:DUMMY'/
+-- m/'EXECUTE '[^']*'/
+-- s/'EXECUTE '[^']*'/EXECUTE 'DUMMY'/
 -- end_matchsubs
 CREATE TYPE grep_map_rtype as (key text, value text);
 
 -- INPUT inDirectory
 CREATE EXTERNAL TABLE inDirectory(value text)
-  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/access_log',
-           'file://maple/Users/cwelton/Desktop/mapred3/test/data/access_log2')
+  LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log',
+           'file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log2')
   FORMAT 'TEXT';
 
 -- MAPPER grep_map
@@ -26,7 +28,7 @@ SELECT key(m), value(m) FROM (SELECT grep_map('clar'::text, value) as m FROM inD
 WHERE m is not null;
 
 -- EXECUTION
-CREATE VIEW mapreduce_45990_run_1 AS
+CREATE VIEW mapreduce_99967_run_1 AS
 SELECT * FROM grep_task;
 
 
@@ -34,5 +36,5 @@ DROP TYPE IF EXISTS grep_map_rtype CASCADE;
 DROP EXTERNAL TABLE IF EXISTS inDirectory CASCADE;
 DROP FUNCTION IF EXISTS grep_map(text, text) CASCADE;
 DROP VIEW IF EXISTS grep_task CASCADE;
-DROP VIEW IF EXISTS mapreduce_45990_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_99967_run_1 CASCADE;
 

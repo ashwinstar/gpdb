@@ -1,8 +1,10 @@
 -- start_matchsubs
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
--- m/'file:[^']'/
--- s/'file:[^']'/'file:DUMMY'/
+-- m/'file:[^']*'/
+-- s/'file:[^']*'/'file:DUMMY'/
+-- m/'EXECUTE '[^']*'/
+-- s/'EXECUTE '[^']*'/EXECUTE 'DUMMY'/
 -- end_matchsubs
 CREATE TYPE reverse_rtype as (key text, value text);
 
@@ -10,7 +12,7 @@ CREATE TYPE myMap_rtype as (key text, value text);
 
 -- INPUT weblog
 CREATE EXTERNAL TABLE weblog(value text)
-  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/access_log')
+  LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log')
   FORMAT 'TEXT';
 
 -- MAPPER myMap
@@ -45,8 +47,8 @@ GROUP BY key;
 
 -- INPUT network
 CREATE EXTERNAL TABLE network(key text, value text)
-  LOCATION('file://maple/Users/cwelton/Desktop/mapred3/test/data/www.small.dat')
-  FORMAT 'TEXT' (DELIMITER '|');
+  LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/www.small.dat')
+  FORMAT 'TEXT' ( DELIMITER '|' );
 
 -- MAPPER reverse
 CREATE FUNCTION reverse(key text, value text)
@@ -69,7 +71,7 @@ GROUP BY a.key
 ;
 
 -- EXECUTION
-CREATE VIEW mapreduce_46146_run_1 AS
+CREATE VIEW mapreduce_241_run_1 AS
 SELECT * FROM reverse_access_count;
 
 
@@ -84,5 +86,5 @@ DROP EXTERNAL TABLE IF EXISTS network CASCADE;
 DROP FUNCTION IF EXISTS reverse(text, text) CASCADE;
 DROP VIEW IF EXISTS reverse_network CASCADE;
 DROP VIEW IF EXISTS reverse_access_count CASCADE;
-DROP VIEW IF EXISTS mapreduce_46146_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_241_run_1 CASCADE;
 
