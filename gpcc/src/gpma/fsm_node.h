@@ -124,6 +124,7 @@ apr_status_t a_node_connect(gpcc_event_t* ev, void* arg)
     /* use gpcc_net to connect to gpha here */
     if (0 != (e = gpcc_net_open(&slot->u.node.conn, 
 				addr,
+				0,
 				argc, argv,
 				hc, hname, hvalue, slot->cmdidx))) {
 	nev = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);

@@ -34,8 +34,8 @@ static void usage(const char* msg)
     fprintf(stderr, "    -p ma_port         : the MA port number\n");
     fprintf(stderr, "    -P pxN             : paxos instance\n");
     fprintf(stderr, "    -s                 : SSL support\n");
-    fprintf(stderr, "    -c server_cert_path: server certificate file path\n");
-    fprintf(stderr, "    -k server_key_path : server private key file path\n");
+    fprintf(stderr, "    -c server_cert_path: server certificate in PEM format\n");
+    fprintf(stderr, "    -k server_key_path : server private key in PEM format\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "e.g. %s -a gpdb -l /db/ma -P localhost:11000\n", gpma.progname);
     fprintf(stderr, "\n");

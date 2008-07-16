@@ -425,7 +425,7 @@ static void zap(conncb_t* pconn, gpcc_net_conn_t conn)
 
 static void do_ready(int fd, short event, void* arg);
 
-static int ssl_session_init(conncb_t *pconn, int fd) 
+static int ssl_server_session_init(conncb_t *pconn, int fd) 
 {
     int e;
 
@@ -433,21 +433,62 @@ static int ssl_session_init(conncb_t *pconn, int fd)
 	pconn->session = SSL_new(net.ssl_context);
 	if (pconn->session == NULL) {
 	    gpcc_warning(FLINE, "openssl: unable to create a new SSL connection from SSL context");
-	    return -1;
+	    return APR_EINVAL;
 	}
     }
     if (1 != (e = SSL_set_fd(pconn->session, fd))) {
 	gpcc_warning(FLINE, "openssl: cannot set fd(%d)", fd);
-	return -1;
+	return APR_EINVAL;
     }
 
     if (1 != (e = SSL_CTX_set_session_id_context(net.ssl_context, (const unsigned char *) "SSL", 3))) {
 	gpcc_warning(FLINE, "openssl: unable to set SSL session-id context");
-	return -1;
+	return APR_EINVAL;
     }
     
+    SSL_set_accept_state(pconn->session);
+
     return 0;
 }
+
+static int ssl_client_session_init(conncb_t *pconn, int fd)
+{
+    int e;
+
+    pconn->ssl_ctx = SSL_CTX_new(SSLv23_client_method());
+    if (pconn->ssl_ctx == NULL) {
+	gpcc_log_error("openssl: unable to create a new SSL context");
+	return APR_EINVAL;
+    }
+
+    SSL_CTX_set_default_verify_paths(pconn->ssl_ctx);
+    SSL_CTX_load_verify_locations(pconn->ssl_ctx, NULL, NULL);
+
+    SSL_CTX_set_verify(pconn->ssl_ctx, SSL_VERIFY_NONE, NULL);
+    /*
+    SSL_CTX_set_mode(pconn->ssl_ctx, SSL_MODE_ENABLE_PARTIAL_WRITE);
+    */
+    pconn->session = SSL_new(pconn->ssl_ctx);
+    if (pconn->session == NULL) {
+	gpcc_log_error("openssl: unable to create a new SSL connection");
+	return APR_EINVAL;
+    }
+
+    if (1 != (e = SSL_set_fd(pconn->session, fd))) {
+	gpcc_log_error("openssl: cannot set fd(%d)", fd);
+	return APR_EINVAL;
+    }
+
+    SSL_set_connect_state(pconn->session);
+    
+    if (1 != (e = SSL_connect(pconn->session))) {
+	gpcc_log_error("openssl: cannot connect to server host");
+	return APR_EINVAL;
+    }
+
+    return 0;
+}
+
 
 static ssize_t socket_recv(conncb_t *pconn, int fd, void *buffer, size_t length, int flags, int *err)
 {
@@ -1050,11 +1091,10 @@ static void do_accept(int fd, short event, void* arg)
     pconn->session = 0;
     pconn->ssl_ctx = 0;
     if (net.ssl_enabled) {
-	if (ssl_session_init(pconn, pconn->sock) != 0) {
+	if (ssl_server_session_init(pconn, pconn->sock) != 0) {
 	    gpcc_warning(FLINE, "create SSL session failed");
 	    goto failure;
 	}
-	SSL_set_accept_state(pconn->session);
     }
 
     conn = pconn->conn;
@@ -1484,6 +1524,7 @@ apr_status_t gpcc_net_tag(gpcc_net_conn_t conn,
 
 apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
 			   const char* peer_addr_str,
+			   int is_ssl,
 			   int argc, const char** argv,
 			   int hc, const char** hname, const char** hvalue,
 			   apr_uint64_t arg)
@@ -1573,6 +1614,17 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
     pconn->do_read_header_attempts = 0;
     pconn->packet_mode = 0;
     pconn->arg = arg;
+    
+    /* SSL */
+    pconn->session = 0;
+    pconn->ssl_ctx = 0;
+
+    if (is_ssl) {
+	if (0 != ssl_client_session_init(pconn, sock)) {
+	    e = APR_EINVAL;
+	    goto failure;
+	}
+    }
 
     /* serialize the header into output buffer */
     if (0 == gpcc_net_header_serialize(hdr, pconn->to_peer.buf->byte, 

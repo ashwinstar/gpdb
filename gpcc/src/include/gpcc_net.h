@@ -185,6 +185,7 @@ APR_DECLARE(apr_status_t)
  *  Open a connection.
  *  @param conn return the new connection.
  *  @param peer_addr Where to connect to, in format IP:port.
+ *  @param is_ssl flag to indicate the client connection to be a SSL connection.
  *  @param argc argv[0..argc).
  *  @param argv strings for the first line of header (e.g. "GET" "/uri" "HTTP/1.0").
  *  @param hc hname[0..hc).
@@ -195,6 +196,7 @@ APR_DECLARE(apr_status_t)
 APR_DECLARE(apr_status_t) 
     gpcc_net_open(gpcc_net_conn_t* conn,
 		  const char* peer_addr,
+		  int is_ssl,
 		  int argc, const char** argv,
 		  int hc, const char** hname, const char** hvalue,
 		  apr_uint64_t arg);
