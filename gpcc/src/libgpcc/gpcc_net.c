@@ -478,13 +478,7 @@ static int ssl_client_session_init(conncb_t *pconn, int fd)
 	return APR_EINVAL;
     }
 
-    SSL_set_connect_state(pconn->session);
-    
-    if (1 != (e = SSL_connect(pconn->session))) {
-	gpcc_log_error("openssl: cannot connect to server host");
-	return APR_EINVAL;
-    }
-
+    SSL_set_connect_state(pconn->session);    
     return 0;
 }
 
@@ -1613,17 +1607,8 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
     pconn->do_read_header_attempts = 0;
     pconn->packet_mode = 0;
     pconn->arg = arg;
-    
-    /* SSL */
     pconn->session = 0;
     pconn->ssl_ctx = 0;
-
-    if (is_ssl) {
-	if (0 != ssl_client_session_init(pconn, sock)) {
-	    e = APR_EINVAL;
-	    goto failure;
-	}
-    }
 
     /* serialize the header into output buffer */
     if (0 == gpcc_net_header_serialize(hdr, pconn->to_peer.buf->byte, 
@@ -1643,6 +1628,14 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
 	    goto failure;
 	}
     }
+    
+    /* SSL */
+    if (is_ssl) {
+	if (0 != ssl_client_session_init(pconn, sock)) {
+	    e = APR_EINVAL;
+	    goto failure;
+	}
+    }
 
     *conn = pconn->conn;
     if (sizeof(*conn) != write(net.send_break_fd, conn, sizeof(*conn)))  {
@@ -1657,22 +1650,19 @@ apr_status_t gpcc_net_open(gpcc_net_conn_t* conn,
 failure:
     if (pconn)
 	pconn->conn = 0;
-    if (spin)
-	gpcc_spin_release(spin);
-    if (pool) 
-	apr_pool_destroy(pool);
-
     if (pconn->session) {
 	SSL_shutdown(pconn->session);
 	SSL_free(pconn->session);
 	pconn->session = NULL;
     }
-    
     if (pconn->ssl_ctx) {
 	SSL_CTX_free(pconn->ssl_ctx);
 	pconn->ssl_ctx = NULL;
     }
-
+    if (spin)
+	gpcc_spin_release(spin);
+    if (pool) 
+	apr_pool_destroy(pool);
     if (sock >= 0) {
 	shutdown(sock, SHUT_WR | SHUT_RD);
 	closesocket(sock);
