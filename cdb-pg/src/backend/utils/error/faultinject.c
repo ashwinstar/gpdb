@@ -11,7 +11,6 @@
 
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
-#include "postmaster/memprotserver.h"
 
 /* exposed in pg_proc.h */
 extern Datum gp_fault_inject(PG_FUNCTION_ARGS) ;
@@ -61,31 +60,13 @@ int64 gp_fault_inject_impl(int32 reason, int64 arg)
 		case GP_FAULT_USER_ABORT:
 			abort();
 
-
-		case GP_FAULT_USER_CONFIG_MP:
-		case GP_FAULT_USER_MP_SEGV:
-		case GP_FAULT_USER_MP_ERROR:
-		case GP_FAULT_USER_MP_FATAL:
-		case GP_FAULT_USER_MP_PANIC:
-			{
-				bool fOK;
-				MemProtectRequest req;
-				MemProtectResponse res;
-
-				req.command = MemProt_ConfigFault;
-				req.pid = MyProcPid;
-				req.reason = reason; 
-				req.req_size = arg;
-
-				fOK = MemProtect_Do(&req, &res);
-				if(!fOK)
-					elog(ERROR, "Config MemProt Server request failed");
-
-				if(res.command == MemProt_Deny)
-					elog(ERROR, "Config MemProt Server Denied");
-
-				return res.grant_size;
-			}
+		case GP_FAULT_USER_MP_CONFIG:
+		case GP_FAULT_USER_MP_ALLOC:
+		case GP_FAULT_USER_MP_HIGHWM:
+		case GP_FAULT_SEG_AVAILABLE:
+		case GP_FAULT_SEG_SET_VMEMMAX:
+		case GP_FAULT_SEG_GET_VMEMMAX:
+			return gp_mp_fault(reason, arg); 
 
 		default:
 			elog(ERROR, "Invalid user fault injection code");

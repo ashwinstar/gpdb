@@ -121,7 +121,6 @@
 #include "postmaster/walsendserver.h"
 #include "postmaster/walredoserver.h"
 #include "postmaster/ddaserver.h"
-#include "postmaster/memprotserver.h"
 #include "postmaster/syslogger.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
@@ -169,7 +168,6 @@ typedef enum pmsub_type
 	SeqServerProc = 0,
 	WalSendServerProc,  
 	WalRedoServerProc,
-	MemProtServerProc,
 #ifdef DO_DDA_SERV
 	DdaServerProc, 
 #endif
@@ -277,9 +275,6 @@ static PMSubProc PMSubProcList[MaxPMSubType] =
 	{0, WalRedoServerProc, 
 	 (PMSubStartCallback*)&walredoserver_start, 
 	 "walredoserver process", PMSUBPROC_FLAG_STANDBY},
-	{0, MemProtServerProc, 
-	 (PMSubStartCallback*)&memprotect_start, 
-	 "memprotserver process", PMSUBPROC_FLAG_QD_AND_QE}, 
 #ifdef DO_DDA_SERV
 	{0, DdaServerProc, 
 	 (PMSubStartCallback*)&ddaserver_start, 

@@ -352,7 +352,7 @@ ReleaseSemaphores(int status, Datum arg)
  * Initialize a PGSemaphore structure to represent a sema with count 1
  */
 void
-PGSemaphoreCreate(PGSemaphore sema)
+PGSemaphoreCreateInitVal(PGSemaphore sema, int initval)
 {
 	/* Can't do this in a backend, because static state is postmaster's */
 	Assert(!IsUnderPostmaster);
@@ -369,8 +369,9 @@ PGSemaphoreCreate(PGSemaphore sema)
 	/* Assign the next free semaphore in the current set */
 	sema->semId = mySemaSets[numSemaSets - 1];
 	sema->semNum = nextSemaNumber++;
-	/* Initialize it to count 1 */
-	IpcSemaphoreInitialize(sema->semId, sema->semNum, 1);
+
+	/* Initialize it to count initval */
+	IpcSemaphoreInitialize(sema->semId, sema->semNum, initval);
 	
 	elog((Debug_print_semaphore_detail ? LOG : DEBUG5),
 		 "created SYSV semaphore semId %d, semNum %d",

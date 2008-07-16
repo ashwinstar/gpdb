@@ -144,26 +144,19 @@ extern char *pgport_pstrdup(const char *str);
 extern void pgport_pfree(void *pointer);
 #endif
 
-/* Mark mem protection active */
-extern void MarkMemProtActive(void);
-extern bool IsMemProtActive(void);
-extern void MemProtCleanup(void);
+/* Mem Protection */
+extern void GPMemoryProtectInit(void);
 
-#ifdef DEBUG_PRINT_GP_MALLOC
-/* Memory protection use the following wrap-up of malloc family */
-extern void *gp_malloc_impl(size_t sz, const char *fn, int line);
-extern void *gp_calloc_impl(size_t nmemb, size_t sz, const char *fn, int line);
-extern void *gp_realloc_impl(void *ptr, size_t sz, size_t newsz, const char *fn, int line);
-extern void gp_free_impl(void *ptr, size_t sz, const char *fn, int line);
-
-#define gp_malloc(sz) gp_malloc_impl((sz), __FILE__, __LINE__);
-#define gp_calloc(sz1, sz2) gp_calloc_impl((sz1), (sz2), __FILE__, __LINE__);
-#define gp_realloc(ptr, sz1, sz2) gp_realloc_impl((ptr), (sz1), (sz2), __FILE__, __LINE__);
-#define gp_free(ptr, sz) gp_free_impl((ptr), (sz), __FILE__, __LINE__);
-#else
+#ifdef USE_SYSV_SEMAPHORES
 extern void *gp_malloc(size_t sz); 
 extern void *gp_calloc(size_t nmemb, size_t sz); 
 extern void *gp_realloc(void *ptr, size_t sz, size_t newsz); 
 extern void gp_free(void *ptr, size_t sz); 
+#else
+#define gp_malloc(sz) malloc(sz)
+#define gp_calloc(sz1, sz2) calloc((sz1), (sz2))
+#define gp_realloc(ptr, sz1, sz2) realloc((ptr), (sz2))
+#define gp_free(ptr, sz) free(ptr)
 #endif
+
 #endif   /* PALLOC_H */

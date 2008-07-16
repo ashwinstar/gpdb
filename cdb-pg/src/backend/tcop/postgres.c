@@ -4779,7 +4779,6 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 * MessageContext is reset once per iteration of the main loop, ie, upon
 	 * completion of processing of each command message from the client.
 	 */
-	MarkMemProtActive();
 	MessageContext = AllocSetContextCreate(TopMemoryContext,
 										   "MessageContext",
 										   ALLOCSET_DEFAULT_MINSIZE,

@@ -12,30 +12,21 @@ subdir = src/backend/postmaster
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-SUBDIRS := memprot
-SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
-
 OBJS = bgwriter.o autovacuum.o service.o seqserver.o ddaserver.o walsendserver.o walredoserver.o pgarch.o pgstat.o postmaster.o syslogger.o \
-	fork_process.o
+	fork_process.o 
 
-ALLOBJS = $(OBJS) $(SUBDIROBJS)
+ALLOBJS = $(OBJS) 
 all: SUBSYS.o
 
 SUBSYS.o: $(ALLOBJS)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS)
 
-$(SUBDIROBJS): $(SUBDIRS:%=%-recursive) ;
-
 .PHONY: $(SUBDIRS:%=%-recursive)
-$(SUBDIRS:%=%-recursive):
-	$(MAKE) -C $(subst -recursive,,$@) SUBSYS.o
 
 depend dep:
-	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
 	$(CC) -MM $(CFLAGS) *.c >depend
 
 clean: 
-	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
 	rm -f SUBSYS.o $(OBJS) 
 
 

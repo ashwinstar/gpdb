@@ -2762,15 +2762,6 @@ static struct config_int ConfigureNamesInt[] =
 		0, 0, INT_MAX / 2, NULL, NULL
 	},
 
-	{
-		{"gp_pmem_protect_limit", PGC_POSTMASTER, RESOURCES_MEM,
-			gettext_noop("Physical memory limit (in MB) of greenplum memory protection."),
-			NULL,
-		},
-		&gp_pmem_protect_limit,
-		0, 0, INT_MAX / 2, NULL, NULL
-	},
-
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL

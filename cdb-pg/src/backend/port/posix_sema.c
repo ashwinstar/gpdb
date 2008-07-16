@@ -68,7 +68,7 @@ static void ReleaseSemaphores(int status, Datum arg);
  * problems.
  */
 static sem_t *
-PosixSemaphoreCreate(void)
+PosixSemaphoreCreateInitVal(int initval)
 {
 	int			semKey;
 	char		semname[64];
@@ -81,7 +81,7 @@ PosixSemaphoreCreate(void)
 		snprintf(semname, sizeof(semname), "/pgsql-%d", semKey);
 
 		mySem = sem_open(semname, O_CREAT | O_EXCL,
-						 (mode_t) IPCProtection, (unsigned) 1);
+						 (mode_t) IPCProtection, (unsigned) initval);
 
 #ifdef SEM_FAILED
 		if (mySem != (sem_t *) SEM_FAILED)
@@ -117,9 +117,9 @@ PosixSemaphoreCreate(void)
  * Attempt to create a new unnamed semaphore.
  */
 static void
-PosixSemaphoreCreate(sem_t * sem)
+PosixSemaphoreCreateInitVal(sem_t * sem, int initval)
 {
-	if (sem_init(sem, 1, 1) < 0)
+	if (sem_init(sem, 1, initval) < 0)
 		elog(FATAL, "sem_init failed: %m");
 }
 #endif   /* USE_NAMED_POSIX_SEMAPHORES */
@@ -197,10 +197,10 @@ ReleaseSemaphores(int status, Datum arg)
 /*
  * PGSemaphoreCreate
  *
- * Initialize a PGSemaphore structure to represent a sema with count 1
+ * Initialize a PGSemaphore structure to represent a sema with count
  */
 void
-PGSemaphoreCreate(PGSemaphore sema)
+PGSemaphoreCreateInitVal(PGSemaphore sema, int initval)
 {
 	sem_t	   *newsem;
 
@@ -211,9 +211,9 @@ PGSemaphoreCreate(PGSemaphore sema)
 		elog(PANIC, "too many semaphores created");
 
 #ifdef USE_NAMED_POSIX_SEMAPHORES
-	*sema = newsem = PosixSemaphoreCreate();
+	*sema = newsem = PosixSemaphoreCreateInitVal(initval);
 #else
-	PosixSemaphoreCreate(sema);
+	PosixSemaphoreCreateInitVal(sema, initval);
 	newsem = sema;
 #endif
 

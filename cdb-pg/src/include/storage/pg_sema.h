@@ -65,8 +65,13 @@ typedef PGSemaphoreData *PGSemaphore;
 /* Module initialization (called during postmaster start or shmem reinit) */
 extern void PGReserveSemaphores(int maxSemas, int port);
 
+/* Initialize a PGSemaphore structure to represent a sema with count */
+extern void PGSemaphoreCreateInitVal(PGSemaphore sema, int initval);
 /* Initialize a PGSemaphore structure to represent a sema with count 1 */
-extern void PGSemaphoreCreate(PGSemaphore sema);
+static inline void PGSemaphoreCreate(PGSemaphore sema)
+{
+	PGSemaphoreCreateInitVal(sema, 1);
+}
 
 /* Reset a previously-initialized PGSemaphore to have count 0 */
 extern void PGSemaphoreReset(PGSemaphore sema);

@@ -27,7 +27,6 @@
 #include "postmaster/postmaster.h"
 #include "postmaster/seqserver.h"
 #include "postmaster/walredoserver.h"
-#include "postmaster/memprotserver.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
@@ -141,7 +140,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, SeqServerShmemSize());
 		size = add_size(size, WalSendServerShmemSize());
 		size = add_size(size, WalRedoServerShmemSize());
-		size = add_size(size, MemProtectServerShmemSize());
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
 #endif
@@ -232,11 +230,15 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		InitResPortalIncrementHash();
 	}
 
-	/*
-	 * Set up process table
-	 */
 	if (!IsUnderPostmaster)
+	{
+		/* Set up process table */
 		InitProcGlobal(PostmasterGetMppLocalProcessCounter());
+
+		/* Setup Mem Protection */
+		GPMemoryProtectInit();
+	}
+
 	CreateSharedProcArray();
 	CreateSharedBackendStatus();
 	
@@ -268,7 +270,6 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	SeqServerShmemInit();
 	WalSendServerShmemInit();
 	WalRedoServerShmemInit();
-	MemProtectServerShmemInit();
 
 	/*
 	 * Set up other modules that need some shared memory space

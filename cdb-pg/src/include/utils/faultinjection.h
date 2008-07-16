@@ -19,15 +19,16 @@
 #define GP_FAULT_USER_ABORT             8   /* Simply call abort */
 
 /* Fault group 2: From User, cause some fault in MP */
-#define GP_FAULT_USER_CONFIG_MP 		100	/* Config mprot server */
-#define GP_FAULT_USER_MP_SEGV 			101 /* Cause MP Segv  */
-#define GP_FAULT_USER_MP_ERROR 			102 /* Cause MP Error */
-#define GP_FAULT_USER_MP_FATAL 			103 /* Cause MP Fatal */
-#define GP_FAULT_USER_MP_PANIC 			104 /* Cause MP Panic */
-
+#define GP_FAULT_USER_MP_CONFIG 		100	/* Show vmem_max guc */
+#define GP_FAULT_USER_MP_ALLOC 	 		101 /* Show allocation */
+#define GP_FAULT_USER_MP_HIGHWM 		102 /* Show high water mark */
+#define GP_FAULT_SEG_AVAILABLE 			103 /* Show segment available */
+#define GP_FAULT_SEG_SET_VMEMMAX 		104 /* Set new vmem max */
+#define GP_FAULT_SEG_GET_VMEMMAX 		105 /* Get current vmem max */
 
 #ifdef USE_FAULT_INJECTION
 extern int64 gp_fault_inject_impl(int32 reason, int64 arg); 
+extern int64 gp_mp_fault(int32 reason, int64 arg);
 #endif
 
 #endif

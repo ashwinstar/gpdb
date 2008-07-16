@@ -93,10 +93,6 @@ proc_exit(int code)
 
 	elog(DEBUG3, "proc_exit(%d)", code);
 
-	/* release all requested mem fro mprot, normal exits only */
-	if(code==0)
-		MemProtCleanup();
-
 	/* do our shared memory exits first */
 	shmem_exit(code);
 
