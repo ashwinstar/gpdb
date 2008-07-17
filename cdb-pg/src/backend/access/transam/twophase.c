@@ -1111,7 +1111,7 @@ ReadTwoPhaseFile(TransactionId xid)
 	{
 		ereport(WARNING,
 			    (errmsg("two phase commit file larger than memory limit %lu",
-						MaxAllocSize)));
+						(long unsigned int)MaxAllocSize)));
 		close(fd);
 		return NULL;
 	}
