@@ -358,7 +358,7 @@ int64 gp_mp_fault(int32 reason, int64 arg)
 		case GP_FAULT_USER_MP_CONFIG:
 			return (int64) gp_vmem_protect_limit;
 		case GP_FAULT_USER_MP_ALLOC:
-			return (int64) gpproc_total_malloc;
+			return (int64) (gpproc_total_malloc >> 20);
 		case GP_FAULT_USER_MP_HIGHWM:
 			return chunk_to_mb(gpproc_total_malloc_chunk); 
 		case GP_FAULT_SEG_AVAILABLE:
