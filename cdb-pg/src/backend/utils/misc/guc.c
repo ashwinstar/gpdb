@@ -1501,6 +1501,15 @@ static struct config_bool ConfigureNamesBool[] =
     },
 
 	{
+		{"gp_enable_fast_sri", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("Enable single-slice single-row inserts."),
+			NULL
+		},
+		&gp_enable_fast_sri,
+		true, NULL, NULL
+    },
+
+	{
 		{"gp_external_grant_privileges", PGC_POSTMASTER, EXTERNAL_TABLES,
 			gettext_noop("Enable non superusers to create http or gpfdist external tables."),
 			NULL

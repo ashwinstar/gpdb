@@ -2284,6 +2284,9 @@ _readResult(const char ** str)
 
 	READ_NODE_FIELD(resconstantqual);
 
+	READ_BOOL_FIELD(hashFilter);
+	READ_NODE_FIELD(hashList);
+
 	READ_DONE();
 }
 

@@ -150,7 +150,9 @@ typedef struct Plan
 typedef struct Result
 {
 	Plan		plan;
-	Node	   *resconstantqual;
+	Node		*resconstantqual;
+	bool		hashFilter;
+	List		*hashList;
 } Result;
 
 /* ----------------

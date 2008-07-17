@@ -50,6 +50,10 @@
 #include "executor/nodeResult.h"
 #include "utils/memutils.h"
 
+#include "catalog/pg_type.h"
+
+#include "cdb/cdbhash.h"
+#include "cdb/cdbvars.h"
 
 /* ----------------------------------------------------------------
  *		ExecResult(node)
@@ -164,7 +168,67 @@ ExecResult(ResultState *node)
 
 		if (isDone != ExprEndResult)
 		{
+			Result *result = (Result *)node->ps.plan;
+
 			node->rs_TupFromTlist = (isDone == ExprMultipleResult);
+
+			/* We've got a tuple, and we want to hashFilter it. */
+			if (!TupIsNull(resultSlot) && result->hashFilter)
+			{
+				List		*hashList = result->hashList;
+				ListCell	*cell;
+				CdbHash		*hash;
+				int			attnum;
+				int			targetSeg;
+
+				Assert(list_length(hashList) <= resultSlot->tts_tupleDescriptor->natts);
+
+				hash = makeCdbHash(GpIdentity.numsegments, HASH_FNV_1);
+				cdbhashinit(hash);
+				foreach(cell, hashList)
+				{
+					Datum		hAttr;
+					bool		isnull;
+					Oid			att_type;
+
+					attnum = lfirst_int(cell);
+
+					Assert(attnum > 0);
+					hAttr = slot_getattr(resultSlot, attnum, &isnull);
+					if (!isnull)
+					{
+						att_type = resultSlot->tts_tupleDescriptor->attrs[attnum - 1]->atttypid;
+
+						/* CdbHash treats all array-types as ANYARRAYOID, it doesn't know how to hash
+						 * the individual types (why is this ?) */
+						switch (att_type)
+						{
+							case INT2ARRAYOID:
+							case INT4ARRAYOID:
+							case INT8ARRAYOID:
+							case FLOAT4ARRAYOID:
+							case FLOAT8ARRAYOID:
+							case REGTYPEARRAYOID:
+								att_type = ANYARRAYOID;
+								/* fall through */
+							default:
+								break;
+						}
+						cdbhash(hash, hAttr, att_type);
+					}
+					else
+						cdbhashnull(hash);
+				}
+				targetSeg = cdbhashreduce(hash);
+
+				pfree(hash);
+
+				if (targetSeg == GpIdentity.segindex)
+					return resultSlot;
+				else
+					return NULL;
+			}
+
 			return resultSlot;
 		}
 	}

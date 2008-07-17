@@ -329,6 +329,9 @@ _outResult(StringInfo str, Result *node)
 	_outPlanInfo(str, (Plan *) node);
 
 	WRITE_NODE_FIELD(resconstantqual);
+
+	WRITE_BOOL_FIELD(hashFilter);
+	WRITE_NODE_FIELD(hashList);
 }
 
 static void

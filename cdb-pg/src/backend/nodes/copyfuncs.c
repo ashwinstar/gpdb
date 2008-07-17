@@ -135,6 +135,9 @@ _copyResult(Result *from)
 	 */
 	COPY_NODE_FIELD(resconstantqual);
 
+	COPY_SCALAR_FIELD(hashFilter);
+	COPY_NODE_FIELD(hashList);
+
 	return newnode;
 }
 

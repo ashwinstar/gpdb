@@ -4381,6 +4381,9 @@ make_result(List *tlist,
 	plan->righttree = NULL;
 	node->resconstantqual = resconstantqual;
 
+	node->hashFilter = false;
+	node->hashList = NIL;
+
 	return node;
 }
 

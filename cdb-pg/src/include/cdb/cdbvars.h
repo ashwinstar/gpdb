@@ -454,6 +454,9 @@ gpvars_string_to_verbosity(const char *s);
 const char *
 gpvars_verbosity_to_string(GpVars_Verbosity verbosity);
 
+/* Enable single-slice single-row inserts. */
+extern bool gp_enable_fast_sri;
+
 /*
  * gp_log_gang (string)
  *

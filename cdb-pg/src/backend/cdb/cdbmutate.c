@@ -28,6 +28,9 @@
 #include "catalog/catalog.h"
 #include "catalog/pg_type.h"
 
+#include "catalog/pg_proc.h"
+#include "utils/syscache.h"
+
 #include "cdb/cdbfts.h"         /* isFTSEnabled() */
 #include "cdb/cdbhash.h"        /* isGreenplumDbHashable() */
 #include "cdb/cdbllize.h"
@@ -86,6 +89,92 @@ static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
 static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
 #endif
 
+/*
+ * Given an expression, return true if it is a constant.
+ *
+ * an expression is considered "constant" if they consist of constant
+ * expressions and non-volatile functions with constant arguments.
+ */
+static bool
+constantExpression(Expr *e)
+{
+	if (IsA(e, Const))
+	{
+		/* constants are constant */
+		return true;
+	}	
+	else if (IsA(e, FuncExpr))
+	{
+		/* A FuncExpr is constant if it has constant args, and is non-volatile */
+		List	   *args = ((FuncExpr *)e)->args;
+		ListCell   *arg;
+		Form_pg_proc funcform;
+		Oid			funcid;
+		HeapTuple	func_tuple;
+		bool		nonVolatileFunc=true;
+
+		foreach(arg, args)
+		{
+			if (!constantExpression(lfirst(arg)))
+				return false;
+		}
+
+		funcid = ((FuncExpr *)e)->funcid;
+
+		/* OK, we have all constant arguments. Is the function "legal" ? */
+		func_tuple = SearchSysCache(PROCOID,
+									ObjectIdGetDatum(funcid),
+									0, 0, 0);
+		if (!HeapTupleIsValid(func_tuple))
+			elog(ERROR, "cache lookup failed for function %u", funcid);
+
+		funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
+
+		if (funcform->provolatile == PROVOLATILE_IMMUTABLE)
+			/* okay */ ;
+		else if (funcform->provolatile == PROVOLATILE_STABLE)
+			/* okay */ ;
+		else
+			nonVolatileFunc=false;
+
+		ReleaseSysCache(func_tuple);
+
+		return nonVolatileFunc;
+	}
+	else
+		return false;
+}
+
+/*
+ * Is target list all-constant ?
+ *
+ * That means that there is no subplan and the elements of the
+ * targetlist are either constant or guaranteed to produce constants
+ * (non-volatile functions with all constant arguments).
+ */
+static bool
+allConstantValuesClause(Plan *node)
+{
+	ListCell	*cell;
+	TargetEntry	*tle;
+
+	Assert(IsA(node, Result));
+
+	if (node->lefttree != NULL)
+		return false;
+
+	foreach(cell, node->targetlist)
+	{
+		tle = (TargetEntry *)lfirst(cell);
+
+		Assert(tle->expr);
+		if (!constantExpression(tle->expr))
+			return false;
+	}
+
+	return true;
+}
+
 /* ------------------------------------------------------------------------- *
  * Function apply_motion() and apply_motion_mutator() add motion nodes to
  * a top-level Plan tree as directed by the Flow nodes in the plan.
@@ -104,11 +193,11 @@ static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
 Plan *
 apply_motion(Plan *plan, Query *query)
 {
-	Plan	           *result;
-    ListCell           *cell;
-    GpPolicy          *targetPolicy = NULL;
-    GpPolicyType       targetPolicyType = POLICYTYPE_ENTRY;
-	ApplyMotionState    state;
+	Plan				*result;
+    ListCell			*cell;
+    GpPolicy			*targetPolicy = NULL;
+    GpPolicyType		targetPolicyType = POLICYTYPE_ENTRY;
+	ApplyMotionState	state;
 
     /* Initialize mutator context. */
     state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
@@ -127,8 +216,8 @@ apply_motion(Plan *plan, Query *query)
 	 */
     if (query->resultRelation > 0)
     {
-	    RangeTblEntry  *rte;
-        Relation        relation;
+	    RangeTblEntry	*rte;
+        Relation		relation;
 		
         rte = rt_fetch(query->resultRelation, query->rtable);
 	    Assert(rte->rtekind == RTE_RELATION);
@@ -351,31 +440,61 @@ apply_motion(Plan *plan, Query *query)
                     {
                         List   *hashExpr;
 
-                        /*
-                         * If mirroring is enabled, force Redistribute Motion
-                         * even if the query result is already partitioned on the
-                         * same key as the target.  Need this to make sure any
-                         * function calls in the SELECT targetlist are executed
-                         * on primaries only, and the result is then sent to
-                         * primaries and mirrors to be inserted.
-                         */
-                        if (isFTSEnabled())
-                            plan->flow->hashExpr = NIL;
-
 			            /*
 			             * Make sure the top level flow is partitioned on the
                          * partitioning key of the target relation.	Since this
                          * is an INSERT command, the target list will correspond
                          * to the attributes of the target relation in order.
 			             */
-                        hashExpr = getExprListFromTargetList(plan->targetlist,
-                                                             targetPolicy->nattrs,
-                                                             targetPolicy->attrs,
-                                                             true);
+						hashExpr = getExprListFromTargetList(plan->targetlist,
+															 targetPolicy->nattrs,
+															 targetPolicy->attrs,
+															 true);
+
+						/* Is this plan an all-const insert ? */
+						if (gp_enable_fast_sri && IsA(plan, Result))
+						{
+							/* all constants in values clause -- no need to repartition. */
+							if (allConstantValuesClause(plan))
+							{
+								Result	*rNode = (Result *)plan;
+								List	*hList = NIL;
+								int		i;
+
+								for (i = 0; i < targetPolicy->nattrs; i++)
+								{
+									Assert(targetPolicy->attrs[i] > 0);
+									hList = lappend_int(hList, targetPolicy->attrs[i]);
+								}
+								rNode->hashFilter = true;
+								rNode->hashList = hList;
+
+								/* Build a partitioned flow */
+								plan->flow->flotype = FLOW_PARTITIONED;
+								plan->flow->locustype = CdbLocusType_Hashed;
+								plan->flow->hashExpr = hashExpr;
+							}
+						}
+
+						/*
+						 * If mirroring is enabled, force Redistribute Motion
+						 * even if the query result is already partitioned on the
+						 * same key as the target.  Need this to make sure any
+						 * function calls in the SELECT targetlist are executed
+						 * on primaries only, and the result is then sent to
+						 * primaries and mirrors to be inserted.
+						 *
+						 * If we have a hashFilter in place, the
+						 * motion-node isn't required to preserve
+						 * mirroring.
+						 */
+						if (isFTSEnabled())
+							if (!IsA(plan, Result) || !((Result *)plan)->hashFilter)
+								plan->flow->hashExpr = NIL;
+
                         if (!repartitionPlan(plan, true, false, false, hashExpr))
                             ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-                                            errmsg("Cannot parallelize that INSERT yet")
-                                    ));
+                                            errmsg("Cannot parallelize that INSERT yet")));
                         break;
                     }
 
@@ -392,8 +511,7 @@ apply_motion(Plan *plan, Query *query)
                          */
                         if (!focusPlan(plan, true, false, false))
 							ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								            errmsg("Cannot parallelize that INSERT yet")
-									));
+								            errmsg("Cannot parallelize that INSERT yet")));
 						break;
 
 					default:
