@@ -8,6 +8,7 @@
 #include "postgres.h"
 
 #include "access/clog.h"
+#include "access/distributedlog.h"
 #include "access/gin.h"
 #include "access/gist_private.h"
 #include "access/hash.h"
@@ -40,5 +41,6 @@ const RmgrData RmgrTable[RM_MAX_ID + 1] = {
 	{"Gin", gin_redo, gin_desc, gin_xlog_startup, gin_xlog_cleanup, gin_safe_restartpoint},
 	{"Gist", gist_redo, gist_desc, gist_xlog_startup, gist_xlog_cleanup, gist_safe_restartpoint},
 	{"Sequence", seq_redo, seq_desc, NULL, NULL, NULL},
-	{"Bitmap", bitmap_redo, bitmap_desc, bitmap_xlog_startup, bitmap_xlog_cleanup, bitmap_safe_restartpoint}
+	{"Bitmap", bitmap_redo, bitmap_desc, bitmap_xlog_startup, bitmap_xlog_cleanup, bitmap_safe_restartpoint},
+	{"DistributedLog", DistributedLog_redo, DistributedLog_desc, NULL, NULL, NULL},
 };

@@ -39,7 +39,7 @@
 #include "rusagestub.h"
 #endif
 
-#include "access/cdbdistributedxidmap.h"
+#include "access/distributedlog.h"
 #include "access/printtup.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
@@ -74,8 +74,11 @@
 #include "cdb/cdblogsync.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbdtxcontextinfo.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
+#include "utils/guc.h"
+#include "access/twophase.h"
 
 #include <pthread.h>
 
@@ -180,7 +183,7 @@ static int	UseNewLine = 0;		/* Use EOF as query delimiters */
 #endif   /* TCOP_DONTUSENEWLINE */
 
 
-static DtxContextInfo TempDtxContextInfo;
+static DtxContextInfo TempDtxContextInfo = DtxContextInfo_StaticInit;
 
 extern void CheckForQDMirroringWork(void);
 
@@ -3698,7 +3701,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 			/*
 			 * This is for debugging.  Otherwise we don't need to deserialize this
 			 */
-			deserializeDtxContextInfo(
+			DtxContextInfo_Deserialize(
 					serializedSnapshot, serializedSnapshotlen,
 					&TempDtxContextInfo);
 
@@ -4069,21 +4072,7 @@ static bool dispatchAgent(int firstchar, StringInfo input_message)
 				/*
 				 * Clear these out so we don't get confused on future transactions
 				 */
-				QEDtxContextInfo.distributedXid = InvalidDistributedTransactionId;
-				QEDtxContextInfo.distributedSnapshotData.curcid = 0;
-				QEDtxContextInfo.distributedXid = InvalidDistributedTransactionId;
-				MemSet(QEDtxContextInfo.distributedId, 0, TMGIDSIZE);
-				QEDtxContextInfo.xminAllDistributedSnapshots = InvalidDistributedTransactionId;
-				
-				QEDtxContextInfo.distributedSnapshotData.xmin = InvalidDistributedTransactionId;		
-				QEDtxContextInfo.distributedSnapshotData.xmax = InvalidDistributedTransactionId;		
-				QEDtxContextInfo.distributedSnapshotData.xcnt = 0;		
-				MemSet(QEDtxContextInfo.distributedSnapshotData.xip, 0, sizeof(DistributedTransactionId)*MaxGpDistributedInProgress);
-			    MemSet(QEDtxContextInfo.distributedSnapshotData.debugLocalXip, 0, sizeof(TransactionId)*MaxGpDistributedInProgress);	
-			    QEDtxContextInfo.distributedSnapshotData.curcid = 0;
-			    QEDtxContextInfo.distributedSnapshotData.snapshotId = 0;
-
-				QEDtxContextInfo.distributedTxnOptions = 0;
+				DtxContextInfo_Reset(&QEDtxContextInfo);
 				
 				switch (check_log_duration(msec_str, was_logged))
 				{
@@ -4738,21 +4727,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	/*
 	 * DA requires these be cleared at start
 	 */
-	QEDtxContextInfo.distributedXid = InvalidDistributedTransactionId;
-	QEDtxContextInfo.distributedSnapshotData.curcid = 0;
-	QEDtxContextInfo.distributedXid = InvalidDistributedTransactionId;
-	MemSet(QEDtxContextInfo.distributedId, 0, TMGIDSIZE);
-	QEDtxContextInfo.xminAllDistributedSnapshots = InvalidDistributedTransactionId;
-	
-	QEDtxContextInfo.distributedSnapshotData.xmin = InvalidDistributedTransactionId;		
-	QEDtxContextInfo.distributedSnapshotData.xmax = InvalidDistributedTransactionId;		
-	QEDtxContextInfo.distributedSnapshotData.xcnt = 0;		
-	MemSet(QEDtxContextInfo.distributedSnapshotData.xip, 0, sizeof(DistributedTransactionId)*MaxGpDistributedInProgress);
-    MemSet(QEDtxContextInfo.distributedSnapshotData.debugLocalXip, 0, sizeof(TransactionId)*MaxGpDistributedInProgress);	
-    QEDtxContextInfo.distributedSnapshotData.curcid = 0;
-    QEDtxContextInfo.distributedSnapshotData.snapshotId = 0;
-
-	QEDtxContextInfo.distributedTxnOptions = 0;
+	DtxContextInfo_Reset(&QEDtxContextInfo);
 
 	/*
 	 * Send this backend's cancellation info to the frontend.
@@ -5149,7 +5124,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					else
 						serializedSnapshot = pq_getmsgbytes(&input_message,serializedSnapshotlen);
 
-					deserializeDtxContextInfo(
+					DtxContextInfo_Deserialize(
 						serializedSnapshot, serializedSnapshotlen,
 						&TempDtxContextInfo);
 
@@ -5191,7 +5166,12 @@ PostgresMain(int argc, char *argv[], const char *username)
 	
 					if (ouid > 0 && ouid != GetSessionUserId()) 
 						SetCurrentRoleId(ouid, ouid_is_super);		/* Set the outer UserId */
-						
+
+
+					// UNDONE: Make this more official...
+					if (TempDtxContextInfo.distributedSnapshot.header.maxCount == 0)
+						TempDtxContextInfo.distributedSnapshot.header.maxCount = max_prepared_xacts;
+					
 					setupQEDtxContext(&TempDtxContextInfo);
 					
 					//PG_TRY();

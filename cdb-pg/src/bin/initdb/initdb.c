@@ -2731,7 +2731,8 @@ main(int argc, char *argv[])
 		"pg_twophase",
 		"pg_multixact/members",
 		"pg_multixact/offsets",
-		"pg_distributedxidmap",
+		"pg_distributedxidmap",		// Old directory.
+		"pg_distributedlog",		// New directory.
 		"pg_utilitymodedtmredo",
 		"base",
 		"base/1",

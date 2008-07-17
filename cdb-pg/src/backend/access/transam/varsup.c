@@ -22,6 +22,7 @@
 #include "storage/proc.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "access/distributedlog.h"
 
 
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
@@ -103,6 +104,7 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 	 */
 	ExtendCLOG(xid);
 	ExtendSUBTRANS(xid);
+	DistributedLog_Extend(xid);
 
 	/*
 	 * Now advance the nextXid counter.  This must not happen until after we
@@ -157,7 +159,6 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 		if (!isSubXact)
 		{
 			myproc->xid = xid;
-			myproc->mppDistributedTransactionId = InvalidDistributedTransactionId;
 		}
 		else
 		{
@@ -176,25 +177,6 @@ GetNewTransactionId(bool isSubXact, bool setProcXid)
 	LWLockRelease(XidGenLock);
 
 	return xid;
-}
-
-void
-SetProcXid(TransactionId xid, DistributedTransactionId mppDistributedTransactionId)
-{
-	volatile PGPROC *myproc;
-	
-	Assert (MyProc != NULL);
-	
-	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
-	
-	myproc = MyProc;
-	myproc->xid = xid;
-	myproc->mppDistributedTransactionId = mppDistributedTransactionId;
-
-	LWLockRelease(XidGenLock);
-
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"SetProcId pid = %d, xid = %u, distributed xid = %u",
-		 MyProcPid, xid, mppDistributedTransactionId);
 }
 
 /*

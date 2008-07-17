@@ -1148,10 +1148,10 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 		 */
 		
 		QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
-		QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
+		QEDtxContextInfo.curcid = p->QEWriter_CommandId;
 		if (p->QEWriter_Dirty)
 		{
-			if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.distributedSnapshotData.curcid == 0)
+			if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.curcid == 0)
 				elog(NOTICE,"First QE reported it is dirty, but QE DtxContextInfo doesn't have a distributed xid");
 			
 			/*
@@ -1315,17 +1315,17 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 				if (p->QEWriter_HaveInfo)
 				{
 					if (QEDtxContextInfo.distributedXid != p->QEWriter_DistributedTransactionId ||
-							QEDtxContextInfo.distributedSnapshotData.curcid != p->QEWriter_CommandId)
+							QEDtxContextInfo.curcid != p->QEWriter_CommandId)
 					{
 						elog(DEBUG3,"other result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
 								p->QEWriter_CommandId,p->QEWriter_Dirty);
 						QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
-						QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
+						QEDtxContextInfo.curcid = p->QEWriter_CommandId;
 						
 					}
 					if (p->QEWriter_Dirty)
 					{
-						if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.distributedSnapshotData.curcid == 0)
+						if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.curcid == 0)
 										elog(NOTICE,"a Primary QE reported it is dirty, but QE DtxContextInfo doesn't have a distributed xid");
 
 						/*
@@ -1393,17 +1393,17 @@ cdbdisp_relayresults(CdbDispatchResults *pPrimaryResults,
 				if (p->QEWriter_HaveInfo)
 				{
 					if (QEDtxContextInfo.distributedXid != p->QEWriter_DistributedTransactionId ||
-							QEDtxContextInfo.distributedSnapshotData.curcid != p->QEWriter_CommandId)
+							QEDtxContextInfo.curcid != p->QEWriter_CommandId)
 					{
 						elog(DEBUG2,"mirror result: distributedXid %d, curcid %d, is dirty %d",p->QEWriter_DistributedTransactionId,
 								p->QEWriter_CommandId,p->QEWriter_Dirty);
 						QEDtxContextInfo.distributedXid = p->QEWriter_DistributedTransactionId;
-						QEDtxContextInfo.distributedSnapshotData.curcid = p->QEWriter_CommandId;
+						QEDtxContextInfo.curcid = p->QEWriter_CommandId;
 						
 					}
 					if (p->QEWriter_Dirty)
 					{
-						if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.distributedSnapshotData.curcid == 0)
+						if (QEDtxContextInfo.distributedXid == 0 && QEDtxContextInfo.curcid == 0)
 							elog(NOTICE,"Mirror QE reported it is dirty, but QE DtxContextInfo doesn't have a distributed xid");
 
 						/*

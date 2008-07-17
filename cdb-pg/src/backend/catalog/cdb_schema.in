@@ -29,4 +29,17 @@ CREATE VIEW gp_distributed_xacts AS
 
 GRANT SELECT ON gp_distributed_xacts TO PUBLIC;
 
+
+CREATE VIEW gp_transaction_log AS 
+    SELECT *
+      FROM gp_transaction_log() AS L(transaction xid, status text);
+
+GRANT SELECT ON gp_transaction_log TO PUBLIC;
+
+CREATE VIEW gp_distributed_log AS 
+    SELECT *
+      FROM gp_distributed_log() AS L(distributed_xid xid, distributed_id text, status text, local_transaction xid);
+
+GRANT SELECT ON gp_distributed_log TO PUBLIC;
+
 RESET log_min_messages;

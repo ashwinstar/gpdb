@@ -59,6 +59,7 @@
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
+#include "access/distributedlog.h"
 
 
 /*
@@ -139,6 +140,7 @@ static TwoPhaseStateData *TwoPhaseState;
 
 
 static void RecordTransactionCommitPrepared(TransactionId xid,
+								const char *gid,
 								int nchildren,
 								TransactionId *children,
 								int nrels,
@@ -215,7 +217,9 @@ TwoPhaseShmemInit(void)
  * assuming that we can use very much backend context.
  */
 GlobalTransaction
-MarkAsPreparing(TransactionId xid, const char *gid,
+MarkAsPreparing(TransactionId xid, 
+				LocalDistribXactRef *localDistribXactRef,
+				const char *gid,
 				TimestampTz prepared_at, Oid owner, Oid databaseid)
 {
 	GlobalTransaction gxact;
@@ -290,7 +294,10 @@ MarkAsPreparing(TransactionId xid, const char *gid,
 	gxact->proc.waitLock = NULL;
 	gxact->proc.waitProcLock = NULL;
 
-	gxact->proc.mppDistributedTransactionId = MyProc->mppDistributedTransactionId;
+	LocalDistribXactRef_Init(&gxact->proc.localDistribXactRef);
+	LocalDistribXactRef_Clone(
+						&gxact->proc.localDistribXactRef,
+						localDistribXactRef);
 
 	for (i = 0; i < NUM_LOCK_PARTITIONS; i++)
 		SHMQueueInit(&(gxact->proc.myProcLocks[i]));
@@ -1018,6 +1025,11 @@ EndPrepare(GlobalTransaction gxact)
 	 */
 	MarkAsPrepared(gxact);
 
+	LocalDistribXact_ChangeState(
+								gxact->proc.xid,
+								&gxact->proc.localDistribXactRef,
+								LOCALDISTRIBXACT_STATE_PREPARED);
+
 	/*
 	 * Now we can release the checkpoint start lock: a checkpoint starting
 	 * after this will certainly see the gxact as a candidate for fsyncing.
@@ -1247,7 +1259,8 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 	 * callbacks will release the locks the transaction held.
 	 */
 	if (isCommit)
-		RecordTransactionCommitPrepared(xid,
+		RecordTransactionCommitPrepared(xid, 
+										gid,
 										hdr->nsubxacts, children,
 										hdr->ncommitrels, commitrels);
 	else
@@ -1255,7 +1268,7 @@ FinishPreparedTransaction(const char *gid, bool isCommit, bool raiseErrorIfNotFo
 									   hdr->nsubxacts, children,
 									   hdr->nabortrels, abortrels);
 
-	ProcArrayRemove(&gxact->proc);
+	ProcArrayRemove(&gxact->proc, /* forPrepare */ true, isCommit);
 
 	/*
 	 * In case we fail while running the callbacks, mark the gxact invalid so
@@ -1640,6 +1653,8 @@ RecoverPreparedTransactions(void)
 	DIR		   *cldir;
 	struct dirent *clde;
 
+	LocalDistribXactRef localDistribXactRef;
+
 	snprintf(dir, MAXPGPATH, "%s", TWOPHASE_DIR);
 
 	cldir = AllocateDir(dir);
@@ -1655,6 +1670,9 @@ RecoverPreparedTransactions(void)
 			TransactionId *subxids;
 			GlobalTransaction gxact;
 			int			i;
+
+			DistributedTransactionTimeStamp	distribTimeStamp;
+			DistributedTransactionId 		distribXid;
 
 			xid = (TransactionId) strtoul(clde->d_name, NULL, 16);
 
@@ -1702,6 +1720,15 @@ RecoverPreparedTransactions(void)
 				SubTransSetParent(subxids[i], xid);
 
 			/*
+			 * Crack open the gid to get the DTM start time and distributed
+			 * transaction id.
+			 */
+			dtxCrackOpenGid(
+					hdr->gid,
+					&distribTimeStamp,
+					&distribXid);
+
+			/*
 			 * Recreate its GXACT and dummy PGPROC
 			 *
 			 * Note: since we don't have the PREPARE record's WAL location at
@@ -1711,11 +1738,26 @@ RecoverPreparedTransactions(void)
 			 * negligible (especially since we know the state file has already
 			 * been fsynced).
 			 */
-			gxact = MarkAsPreparing(xid, hdr->gid,
+			elog(LOG, 
+			     "RecoverPreparedTransactions: Calling MarkAsPreparing on id = %s with distribTimeStamp %u and distribXid %u",
+			     hdr->gid,
+			     distribTimeStamp,
+			     distribXid);
+
+			LocalDistribXact_CreateRedoPrepared(
+										distribTimeStamp,
+										distribXid,
+										xid,
+										&localDistribXactRef);
+			gxact = MarkAsPreparing(xid,
+									&localDistribXactRef,
+									hdr->gid,
 									hdr->prepared_at,
 									hdr->owner, hdr->database);
 			GXactLoadSubxactData(gxact, hdr->nsubxacts, subxids);
 			MarkAsPrepared(gxact);
+
+			LocalDistribXactRef_Release(&localDistribXactRef);
 
 			/*
 			 * Recover other state (notably locks) using resource managers
@@ -1739,6 +1781,7 @@ RecoverPreparedTransactions(void)
  */
 static void
 RecordTransactionCommitPrepared(TransactionId xid,
+								const char *gid,
 								int nchildren,
 								TransactionId *children,
 								int nrels,
@@ -1749,6 +1792,9 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	xl_xact_commit_prepared xlrec;
 	XLogRecPtr	recptr;
 
+	DistributedTransactionTimeStamp	distribTimeStamp;
+	DistributedTransactionId 		distribXid;
+	
 	START_CRIT_SECTION();
 
 	/* See notes in RecordTransactionCommit */
@@ -1791,8 +1837,28 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	/* Flush XLOG to disk */
 	XLogFlush(recptr);
 
+	/*
+	 * Crack open the gid to get the DTM start time and distributed
+	 * transaction id.
+	 */
+	dtxCrackOpenGid(
+			gid,
+			&distribTimeStamp,
+			&distribXid);
+	
+	/* UNDONE: What are the locking issues here? */
+	/* 
+	 * Mark the distributed transaction committed.
+	 */
+	DistributedLog_SetCommitted(
+							xid,
+							distribTimeStamp,
+							distribXid,
+							/* isRedo */ false);
+
 	/* Mark the transaction committed in pg_clog */
 	TransactionIdCommit(xid);
+	
 	/* to avoid race conditions, the parent must commit first */
 	TransactionIdCommitTree(nchildren, children);
 

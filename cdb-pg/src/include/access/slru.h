@@ -117,5 +117,6 @@ extern void SimpleLruWritePage(SlruCtl ctl, int slotno, SlruFlush fdata);
 extern void SimpleLruFlush(SlruCtl ctl, bool checkpoint);
 extern void SimpleLruTruncate(SlruCtl ctl, int cutoffPage);
 extern bool SlruScanDirectory(SlruCtl ctl, int cutoffPage, bool doDeletions);
+extern bool SimpleLruPageExists(SlruCtl ctl, int pageno);
 
 #endif   /* SLRU_H */

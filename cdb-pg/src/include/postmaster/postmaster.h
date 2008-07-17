@@ -52,5 +52,6 @@ typedef int (PMSubStartCallback)(void);
 bool GPPostmaster(void);
 bool GPStandby(void);
 extern int PostmasterGetMppLocalProcessCounter(void);
+extern DistributedTransactionTimeStamp PostmasterGetDtxStartTime(void);
 
 #endif   /* _POSTMASTER_H */

@@ -11,7 +11,7 @@
 
 #include "funcapi.h"
 #include "access/heapam.h"
-#include "access/cdbdistributedxidmap.h"
+#include "cdb/cdblocaldistribxact.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
 #include "cdb/cdbutil.h"
@@ -22,7 +22,7 @@ Datum		gp_max_distributed_xid(PG_FUNCTION_ARGS);
 Datum
 gp_max_distributed_xid(PG_FUNCTION_ARGS __attribute__((unused)) )
 {
-	DistributedTransactionId max = GetMaxDistributedXid();
+	DistributedTransactionId max = LocalDistribXact_GetMaxDistributedXid();
 
 	elog(LOG,"gp_max_distributed_xid returning %u",max);
 	

@@ -80,23 +80,6 @@ Snapshot	LatestSnapshot = NULL;
  */
 Snapshot	ActiveSnapshot = NULL;
 
-/* 
- * NEW
- *
- */
- 
-/*
- * These DistributedSnapshotData structs are static to simplify memory allocation
- * (see the hack in GetSnapshotData to avoid repeated malloc/free).
- */
-static DistributedSnapshotData SerializableDistributedSnapshotData;
-static DistributedSnapshotData LatestDistributedSnapshotData;
-
-/* Externally visible pointers to valid snapshots: */
-DistributedSnapshot	SerializableDistributedSnapshot = NULL;
-DistributedSnapshot	LatestDistributedSnapshot = NULL;
-
-
 /* These are updated by GetSnapshotData: */
 TransactionId TransactionXmin = InvalidTransactionId;
 TransactionId RecentXmin = InvalidTransactionId;
@@ -110,7 +93,7 @@ static bool XidInSnapshot(TransactionId xid, Snapshot snapshot);
  */
 DtxContext DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
 
-DtxContextInfo QEDtxContextInfo;
+DtxContextInfo QEDtxContextInfo = DtxContextInfo_StaticInit;
 
 
 /* MPP Shared Snapshot. */
@@ -1610,36 +1593,6 @@ HeapTupleSatisfiesVacuum(HeapTupleHeader tuple, TransactionId OldestXmin,
 	return HEAPTUPLE_DEAD;
 }
 
-char* DebugGetDistributedSnapshotString(DistributedSnapshot snapshot)
-{
-	static char buffer[200];
-
-	int index;
-	int len;
-
-	sprintf(buffer, "Distributed snapshot xmin %u, xmax %u, xcnt %d (", 
-		    snapshot->xmin, snapshot->xmax, snapshot->xcnt);
-	for (index = 0; index < snapshot->xcnt; index++)
-	{
-		if (index > 0)
-			strcat(buffer, ", ");
-		len = strlen(buffer);
-		sprintf(&buffer[len], 
-			    "%u => %u",
-			    snapshot->xip[index], 
-			    snapshot->debugLocalXip[index]);
-
-		if (len > sizeof(buffer) - 25)
-		{
-			strcat(buffer, " ... ");
-			break;
-		}
-	}
-	strcat(buffer, ")");
-
-	return buffer;
-}
-
 /*
  * GetTransactionSnapshot
  *		Get the appropriate snapshot for a new query in a transaction.
@@ -1655,58 +1608,17 @@ char* DebugGetDistributedSnapshotString(DistributedSnapshot snapshot)
 Snapshot
 GetTransactionSnapshot(void)
 {
- 	if (SerializableSnapshot == NULL)
+	/* First call in transaction? */
+	if (SerializableSnapshot == NULL)
 	{
-		/*
-		 * Verify SerializableSnapshot and LatestSnapshot are a bound pair.
-		 */
-		Assert(LatestSnapshot == NULL);
-
-		SerializableSnapshot = GetSnapshotData(&SerializableSnapshotData, true,
-			                                   &SerializableDistributedSnapshot,
-			                                   &SerializableDistributedSnapshotData);
-		if (SerializableDistributedSnapshot != NULL)
-	 	{
-			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Set Serializable* currcid = %d (gxid = %u, %s)", 
-			 	  SerializableDistributedSnapshot->snapshotId,
-			 	  SerializableDistributedSnapshot->curcid,
-			 	  getDistributedTransactionId(),
-			 	  DtxContextToString(DistributedTransactionContext));
-			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Dump Mapping* %s)", 
-			 	  SerializableDistributedSnapshot->snapshotId,
-			 	  DebugGetDistributedSnapshotString(SerializableDistributedSnapshot));
-	 	}
-
+		SerializableSnapshot = GetSnapshotData(&SerializableSnapshotData, true);
 		return SerializableSnapshot;
 	}
 
 	if (IsXactIsoLevelSerializable)
-	{
-		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Serializable Skip* (gxid = %u, '%s')", 
-		 	  (SerializableDistributedSnapshot == NULL ? 0 : SerializableDistributedSnapshot->snapshotId),
-		 	  getDistributedTransactionId(),
-			  DtxContextToString(DistributedTransactionContext));
-		
-		UpdateSerializableCommandId();
-		
 		return SerializableSnapshot;
-	}
 
-	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false,
-		                             &LatestDistributedSnapshot,
-		                             &LatestDistributedSnapshotData);
-
-	if (LatestDistributedSnapshot != NULL)
- 	{
-		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Set Latest* currcid = %d (GetTransactionSnapshot, gxid = %u, '%s')", 
-		 	  LatestDistributedSnapshot->snapshotId,
-		 	  LatestDistributedSnapshot->curcid,
-		 	  getDistributedTransactionId(),
-			  DtxContextToString(DistributedTransactionContext));
-		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Dump Mapping* %s)", 
-		 	  LatestDistributedSnapshot->snapshotId,
-		 	  DebugGetDistributedSnapshotString(LatestDistributedSnapshot));
- 	}
+	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false);
 
 	return LatestSnapshot;
 }
@@ -1723,19 +1635,8 @@ GetLatestSnapshot(void)
 	if (SerializableSnapshot == NULL)
 		elog(ERROR, "no snapshot has been set");
 
-	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false,
-		                             &LatestDistributedSnapshot,
-		                             &LatestDistributedSnapshotData);
+	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false);
 
-	if (LatestDistributedSnapshot != NULL)
- 	{
-		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Set Latest* currcid = %d (GetLatestSnapshot, gxid = %u, '%s')", 
-		 	  LatestDistributedSnapshot->snapshotId,
-		 	  LatestDistributedSnapshot->curcid,
-		 	  getDistributedTransactionId(),
-			  DtxContextToString(DistributedTransactionContext));
- 	}
-	
 	return LatestSnapshot;
 }
 
@@ -1752,6 +1653,7 @@ CopySnapshot(Snapshot snapshot)
 {
 	Snapshot	newsnap;
 	Size		subxipoff;
+	Size		dsoff = 0;
 	Size		size;
 
 	/* We allocate any XID arrays needed in the same palloc block. */
@@ -1760,6 +1662,14 @@ CopySnapshot(Snapshot snapshot)
 	if (snapshot->subxcnt > 0)
 		size += snapshot->subxcnt * sizeof(TransactionId);
 
+	if (snapshot->haveDistribSnapshot && 
+		snapshot->distribSnapshotWithLocalMapping.header.count > 0)
+	{
+		dsoff = size;
+		size += snapshot->distribSnapshotWithLocalMapping.header.count *
+			    sizeof(DistributedSnapshotMapEntry);
+	}
+	
 	newsnap = (Snapshot) palloc(size);
 	memcpy(newsnap, snapshot, sizeof(SnapshotData));
 
@@ -1783,6 +1693,18 @@ CopySnapshot(Snapshot snapshot)
 	else
 		newsnap->subxip = NULL;
 
+	if (snapshot->haveDistribSnapshot && 
+		snapshot->distribSnapshotWithLocalMapping.header.count > 0)
+	{
+		newsnap->distribSnapshotWithLocalMapping.inProgressEntryArray = 
+			(DistributedSnapshotMapEntry *) ((char *) newsnap + dsoff);
+		memcpy(newsnap->distribSnapshotWithLocalMapping.inProgressEntryArray,
+			   snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray,
+			   snapshot->distribSnapshotWithLocalMapping.header.count *
+			    	sizeof(DistributedSnapshotMapEntry));
+	}
+	else
+		snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray = NULL;
 	return newsnap;
 }
 
@@ -1815,9 +1737,6 @@ FreeXactSnapshot(void)
 	 */
 	SerializableSnapshot = NULL;
 	LatestSnapshot = NULL;
-	
-	SerializableDistributedSnapshot = NULL;
-	LatestDistributedSnapshot = NULL;
 	
 	ActiveSnapshot = NULL;		/* just for cleanliness */
 }
@@ -1944,6 +1863,45 @@ XidInSnapshot(TransactionId xid, Snapshot snapshot)
 {
 	uint32		i;
 
+	/*
+	 * If we have a distributed snapshot, it takes precedence over the local
+	 * snapshot since it covers the correct past view of in-progress distributed
+	 * transactions and also the correct future view of in-progress distributed
+	 * transactions that may yet arrive.
+	 */
+	if (snapshot->haveDistribSnapshot)
+	{
+		DistributedSnapshotCommitted	distributedSnapshotCommitted;
+		
+		/*
+		 * First, check if this committed transaction is a distributed committed
+		 * transaction and should be evaluated against the distributed snapshot
+		 * instead.
+		 */
+		distributedSnapshotCommitted = 
+				DistributedSnapshotWithLocalMapping_CommittedTest(
+								&snapshot->distribSnapshotWithLocalMapping,
+								xid);
+
+		switch (distributedSnapshotCommitted)
+		{
+		case DISTRIBUTEDSNAPSHOT_COMMITTED_INPROGRESS:
+			return true;
+
+		case DISTRIBUTEDSNAPSHOT_COMMITTED_VISIBLE:
+			return false;
+
+		case DISTRIBUTEDSNAPSHOT_COMMITTED_LOCAL:
+		case DISTRIBUTEDSNAPSHOT_COMMITTED_DIFFERENTSTART:
+			break;
+		
+		default:
+			elog(FATAL, "Unrecognized distributed committed test result: %d",
+				(int) distributedSnapshotCommitted);
+			break;
+		}
+	}
+				
 	/*
 	 * Make a quick range check to eliminate most XIDs without looking at the
 	 * xip arrays.	Note that this is OK even if we convert a subxact XID to

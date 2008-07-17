@@ -128,6 +128,9 @@ extern bool Test_appendonly_override;
 extern int  Test_compresslevel_override;
 extern int	Test_blocksize_override;
 extern bool Master_mirroring_administrator_disable;
+extern int  gp_max_local_distributed_cache;
+extern bool gp_local_distributed_cache_stats;
+
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;
 extern bool Debug_print_control_checkpoints;

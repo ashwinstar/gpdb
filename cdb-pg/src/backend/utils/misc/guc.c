@@ -209,6 +209,8 @@ bool 		Test_appendonly_override = false;
 int         Test_compresslevel_override = 0;
 int			Test_blocksize_override = 0;
 bool        Master_mirroring_administrator_disable = false;
+int			gp_max_local_distributed_cache = 1024;
+bool 		gp_local_distributed_cache_stats = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
 bool		Debug_dtm_action_primary = DEBUG_DTM_ACTION_PRIMARY_DEFAULT;
@@ -1712,6 +1714,17 @@ static struct config_bool ConfigureNamesBool[] =
  	},
 
 	{
+		{"gp_local_distributed_cache_stats", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Prints local-distributed cache statistics at end of commit / prepare."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_local_distributed_cache_stats,
+		false, NULL, NULL
+	},
+
+
+	{
 		{"enable_partition_rules", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable creation of RULEs to implement partitioning"),
 			NULL,
@@ -1884,6 +1897,15 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&num_temp_buffers,
 		1024, 100, INT_MAX / 2, NULL, show_num_temp_buffers
+	},
+
+	{
+		{"gp_max_local_distributed_cache", PGC_POSTMASTER, RESOURCES_MEM,
+			gettext_noop("Sets the number of local-distributed transactions to cache for optimizing visibility processing by backends."),
+			NULL
+		},
+		&gp_max_local_distributed_cache,
+		1024, 0, INT_MAX, NULL, NULL
 	},
 
 	{
@@ -3023,7 +3045,8 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("if blank no prefix is used")
 		},
 		&Log_line_prefix,
-		"%m|%u|%d|%p|%I|:-", NULL, NULL
+//		"%m|%u|%d|%p|%I|:-", NULL, NULL
+		"%m|%u|%d|%p|%I|%X|:-", NULL, NULL
 	},
 
 

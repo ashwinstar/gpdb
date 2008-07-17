@@ -273,6 +273,7 @@ InitProcess(void)
 	SHMQueueElemInit(&(MyProc->links));
 	MyProc->waitStatus = STATUS_OK;
 	MyProc->xid = InvalidTransactionId;
+	LocalDistribXactRef_Init(&MyProc->localDistribXactRef);
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->pid = MyProcPid;
 	/* databaseId and roleId will be filled in later */
@@ -440,6 +441,7 @@ InitDummyProcess(void)
 	SHMQueueElemInit(&(MyProc->links));
 	MyProc->waitStatus = STATUS_OK;
 	MyProc->xid = InvalidTransactionId;
+	LocalDistribXactRef_Init(&MyProc->localDistribXactRef);
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
@@ -601,7 +603,7 @@ static void
 RemoveProcFromArray(int code, Datum arg)
 {
 	Assert(MyProc != NULL);
-	ProcArrayRemove(MyProc);
+	ProcArrayRemove(MyProc, /* forPrepare */ false, /* (not used) isCommit */ false);
 }
 
 /*
@@ -655,6 +657,7 @@ ProcKill(int code, Datum arg)
 
 	SpinLockAcquire(ProcStructLock);
 
+	LocalDistribXactRef_Release(&MyProc->localDistribXactRef);
     MyProc->mppLocalProcessSerial = 0;
     MyProc->mppSessionId = 0;
     MyProc->mppIsWriter = false;

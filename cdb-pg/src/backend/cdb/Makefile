@@ -22,17 +22,20 @@ OBJS = cdbanalyze.o \
 	   cdbbackup.o cdbbufferedappend.o cdbbufferedread.o \
 	   cdbcat.o cdbcellbuf.o cdbchunkbuf.o cdbchunkpool.o cdbconn.o cdbcopy.o \
 	   cdbdisp.o cdbdispatchresult.o \
-	   cdbdistributedxid.o cdbdistributedxidmap.o cdbdistributedxacts.o \
+	   cdbdistributedsnapshot.o \
+	   cdbdistributedxid.o cdbdistributedxacts.o \
+	   cdbdtxcontextinfo.o \
 	   cdbexplain.o \
 	   cdbfts.o \
 	   cdbgang.o cdbgroup.o \
 	   cdbhash.o cdbheap.o \
-	   cdblink.o cdbllize.o cdblogsync.o \
+	   cdblink.o cdbllize.o cdblocaldistribxact.o cdblogsync.o \
 	   cdbmaxdistributedxid.o cdbmutate.o \
 	   cdboidsync.o \
 	   cdbpath.o cdbpathlocus.o cdbpathtoplan.o cdbpgdatabase.o \
 	   cdbplan.o cdbpullup.o \
 	   cdbrelsize.o \
+	   cdbshareddoublylinked.o \
 	   cdbsetop.o cdbsreh.o cdbsrlz.o cdbsubplan.o cdbsubselect.o \
 	   cdbthreadwork.o \
 	   cdbtm.o \

@@ -32,7 +32,9 @@ extern void TwoPhaseShmemInit(void);
 
 extern PGPROC *TwoPhaseGetDummyProc(TransactionId xid);
 
-extern GlobalTransaction MarkAsPreparing(TransactionId xid, const char *gid,
+extern GlobalTransaction MarkAsPreparing(TransactionId xid, 
+				LocalDistribXactRef *distribToLocalXactRef,
+				const char *gid,
 				TimestampTz prepared_at,
 				Oid owner, Oid databaseid);
 

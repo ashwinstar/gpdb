@@ -155,6 +155,10 @@ extern void SetXactSeqXlog(void);
 extern bool IsTransactionState(void);
 extern bool IsAbortInProgress(void);
 extern bool IsAbortedTransactionBlockState(void);
+extern void GetAllTransactionXids(
+	DistributedTransactionId	*distribXid,
+	TransactionId				*localXid,
+	TransactionId				*subXid);
 extern TransactionId GetTopTransactionId(void);
 extern TransactionId GetCurrentTransactionId(void);
 extern TransactionId GetCurrentTransactionIdIfAny(void);

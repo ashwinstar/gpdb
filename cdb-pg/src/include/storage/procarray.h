@@ -15,12 +15,13 @@
 #define PROCARRAY_H
 
 #include "storage/lock.h"
-
+#include "utils/tqual.h"
+#include "cdb/cdbdistributedsnapshot.h"
 
 extern Size ProcArrayShmemSize(void);
 extern void CreateSharedProcArray(void);
 extern void ProcArrayAdd(PGPROC *proc);
-extern void ProcArrayRemove(PGPROC *proc);
+extern void ProcArrayRemove(PGPROC *proc, bool forPrepare, bool isCommit);
 
 extern bool TransactionIdIsInProgress(TransactionId xid);
 extern bool TransactionIdIsActive(TransactionId xid);

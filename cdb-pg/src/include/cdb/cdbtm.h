@@ -11,10 +11,9 @@
 #include "utils/hsearch.h"
 #include "lib/stringinfo.h"
 #include "access/xlogdefs.h"
-
-
-#define TMGIDSIZE 22
-
+#include "cdb/cdbdistributedsnapshot.h"
+#include "cdb/cdblocaldistribxact.h"
+#include "cdb/cdbdtxcontextinfo.h"
 
 /* DTX states */
 typedef enum
@@ -122,6 +121,10 @@ typedef struct TMGXACT
 
 	int							sessionId;
 	
+	TransactionId				localXid;
+
+	LocalDistribXactRef			localDistribXactRef;
+	
 	bool						explicitBeginRemembered;
 
 	DistributedTransactionId	xminDistributedSnapshot;
@@ -160,11 +163,11 @@ typedef struct TmControlBlock
 {
 	LWLockId					ControlLock;
 	bool						recoverred;
-	uint32						seqno;
+	DistributedTransactionTimeStamp	distribTimeStamp;
+	DistributedTransactionId	seqno;
 	bool						DtmStarted;
 	int							SegmentCount;
 	int							SegmentsStatesByteLen;
-	DistributedTransactionId	XminAllDistributedSnapshots;
 	uint32						NextSnapshotId;
 	int							num_active_xacts;
 	int							currentPhase1Count;
@@ -181,68 +184,29 @@ typedef struct TmControlBlock
             (SIZEOF_VARSTRUCT(num_gxacts, TmControlBlock, gxact_array))
 
 
-/*
- * Maximum number of distributed transactions in progress under MPP until
- * we can move away from a static length SharedSnaphot structure.
- */
-#define MaxGpDistributedInProgress 100
-
-
-typedef struct DistributedSnapshotData
-{
-	DistributedTransactionId 	xmin;	/* XID < xmin are visible to me */
-	DistributedTransactionId 	xmax;	/* XID >= xmax are invisible to me */
-	uint32						xcnt;	/* # of xact ids in xip[] */
-	
-	DistributedTransactionId 	xip[MaxGpDistributedInProgress];
-										/* array of xact IDs in progress */
-
-	CommandId					curcid;	/* in my xact, CID < curcid are visible */
-
-	uint32						snapshotId;
-										/* Unique number identifying this
-										   particular snapshot */
-										
-	TransactionId 				debugLocalXip[MaxGpDistributedInProgress];
-										/* array of local xact IDs in progress
-										   that coorespond to the distributed IDs
-										   inthe xip array. */
-
-} DistributedSnapshotData;
-
-typedef DistributedSnapshotData *DistributedSnapshot;
-
-typedef struct DtxContextInfo
-{
-	DistributedTransactionId distributedXid;
-	
-	char					 distributedId[TMGIDSIZE];
-
-	DistributedTransactionId xminAllDistributedSnapshots;
-
-	DistributedSnapshotData distributedSnapshotData;
-
-	int distributedTxnOptions;
-
-} DtxContextInfo;
-	
-
 
 /* state variables for how much of the log file has been flushed */
 extern bool *shmDtmStarted;
 extern int *shmSegmentCount;
 extern int *shmSegmentsStatesByteLen;
-extern DistributedTransactionId *shmXminAllDistributedSnapshots;
 
 extern char* DtxStateToString(DtxState state);
 extern char* DtxParticipationSummaryToString(DtxParticipationSummary summary);
 extern char* DtxProtocolCommandToString(DtxProtocolCommand command);
 extern char* DtxContextToString(DtxContext context);
+extern DistributedTransactionTimeStamp getDtxStartTime(void);
+extern void dtxCrackOpenGid(
+	const char 						*gid,
+	DistributedTransactionTimeStamp	*distribTimeStamp,
+	DistributedTransactionId		*distribXid);
 extern DistributedTransactionId getDistributedTransactionId(void);
 extern bool getDistributedTransactionIdentifier(char *id);
 
-extern void createDtx(TransactionId *pLocalXid);
-extern bool createDtxSnapshot(DistributedSnapshot distributedSnapshot);
+extern void createDtx(
+	DistributedTransactionId	*distribXid,
+	TransactionId 				*localXid);
+extern bool createDtxSnapshot(
+	DistributedSnapshotWithLocalMapping *distribSnapshotWithLocalMapping);
 extern void	prepareDtxTransaction(void);
 extern bool isPreparedDtxTransaction(void);
 extern void getDtxLogInfo(TMGXACT_LOG *gxact_log);
@@ -293,15 +257,6 @@ bool		isMppTxOptions_ExplicitBegin(int txnOptions);
 
 extern void getAllDistributedXactStatus(TMGALLXACTSTATUS **allDistributedXactStatus);
 extern bool getNextDistributedXactStatus(TMGALLXACTSTATUS *allDistributedXactStatus, TMGXACTSTATUS **distributedXactStatus);
-
-extern void qdCreateDtxContextInfo(DtxContextInfo *dtxContextInfo, DistributedSnapshot distributedSnapshot, int txnOptions);
-extern int dtxContextInfoSerializeSize(DtxContextInfo *dtxContextInfo);
-
-extern void createDtxContextInfo(DtxContextInfo *dtxContextInfo);
-extern int dtxContextInfoSize(DtxContextInfo *dtxContextInfo);
-extern void serializeDtxContextInfo(char *buffer, DtxContextInfo *dtxContextInfo);
-extern void deserializeDtxContextInfo(const char *serializedSnapshot, int serializedSnapshotlen,
-							 DtxContextInfo *dtxContextInfo);
 extern void setupRegularDtxContext (void);
 extern void setupQEDtxContext (DtxContextInfo *dtxContextInfo);
 extern void finishDistributedTransactionContext (char* debugCaller, bool aborted);

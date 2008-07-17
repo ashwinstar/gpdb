@@ -513,7 +513,7 @@ if(IsRejectLimitReached(pstate->cdbsreh)) \
 
 
 /* ----------------
-*		filegettup � form another tuple from the data file.
+*		filegettup  form another tuple from the data file.
 *		This is the workhorse - make sure it's fast!
 *
 *		Initialize the scan if not already done.
@@ -1123,7 +1123,7 @@ open_external_file(FileScanDesc scan)
 				 errmsg("cannot get distributed transaction identifier while %s", 
 						scan->fs_uri)));
 
-	sprintf(extvar.GP_CID, "%x", QEDtxContextInfo.distributedSnapshotData.curcid);
+	sprintf(extvar.GP_CID, "%x", QEDtxContextInfo.curcid);
 	sprintf(extvar.GP_SN, "%x", scan->fs_scancounter);
 	sprintf(extvar.GP_SEGMENT_ID, "%d", Gp_segment);
     sprintf(extvar.GP_SEG_PORT, "%d", PostPortNumber);

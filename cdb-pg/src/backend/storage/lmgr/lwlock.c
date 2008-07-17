@@ -23,7 +23,7 @@
 
 #include "access/clog.h"
 #include "access/multixact.h"
-#include "access/cdbdistributedxidmap.h"
+#include "access/distributedlog.h"
 #include "access/subtrans.h"
 #include "miscadmin.h"
 #include "storage/ipc.h"
@@ -41,6 +41,9 @@ typedef struct LWLock
 	bool		releaseOK;		/* T if ok to release waiters */
 	char		exclusive;		/* # of exclusive holders (0 or 1) */
 	int			shared;			/* # of shared holders (0..MaxBackends) */
+#ifdef LOCK_DEBUG
+	int			exclusivePid;	/* PID of the exclusive holder. */
+#endif
 	PGPROC	   *head;			/* head of list of waiting PGPROCs */
 	PGPROC	   *tail;			/* tail of list of waiting PGPROCs */
 	/* tail is undefined when head is NULL */
@@ -102,9 +105,9 @@ inline static void
 PRINT_LWDEBUG(const char *where, LWLockId lockid, const volatile LWLock *lock)
 {
 	if (Trace_lwlocks)
-		elog(LOG, "%s(%d): excl %d shared %d head %p rOK %d",
+		elog(LOG, "%s(%d): excl %d excl pid %d shared %d head %p rOK %d",
 			 where, (int) lockid,
-			 (int) lock->exclusive, lock->shared, lock->head,
+			 (int) lock->exclusive, lock->exclusivePid, lock->shared, lock->head,
 			 (int) lock->releaseOK);
 }
 
@@ -180,8 +183,8 @@ NumLWLocks(void)
 	/* multixact.c needs two SLRU areas */
 	numLocks += NUM_MXACTOFFSET_BUFFERS + NUM_MXACTMEMBER_BUFFERS;
 
-	/* cdbdistributedxidmap.c needs one per GlobalXidMap buffer */
-	numLocks += NUM_DISTRIBUTEDXIDMAP_BUFFERS;
+	/* cdbdistributedlog.c needs one per DistributedLog buffer */
+	numLocks += NUM_DISTRIBUTEDLOG_BUFFERS;
     
 	/*
 	 * Add any requested by loadable modules; for backwards-compatibility
@@ -309,6 +312,68 @@ LWLockAssign(void)
 	return result;
 }
 
+#ifdef LOCK_DEBUG
+
+static void
+LWLockTryLockWaiting(
+		PGPROC	   *proc, 
+		LWLockId lockid, 
+		LWLockMode mode)
+{
+	volatile LWLock *lock = &(LWLockArray[lockid].lock);
+	int 			milliseconds = 0;
+	int				exclusivePid;
+	
+	while(true)
+	{
+		pg_usleep(5000L);
+		if (PGSemaphoreTryLock(&proc->sem))
+		{
+			if (milliseconds >= 750)
+				elog(LOG, "Done waiting on lockid %d", lockid);
+			return;
+		}
+
+		milliseconds += 5;
+		if (milliseconds == 750)
+		{
+			int l;
+			int count = 0;
+			char buffer[200];
+
+			SpinLockAcquire(&lock->mutex);
+			
+			if (lock->exclusive > 0)
+				exclusivePid = lock->exclusivePid;
+			else
+				exclusivePid = 0;
+			
+			SpinLockRelease(&lock->mutex);
+
+			memcpy(buffer, "none", 5);
+			
+			for (l = 0; l < num_held_lwlocks; l++)
+			{
+				if (l == 0)
+					count += sprintf(&buffer[count],"(");
+				else
+					count += sprintf(&buffer[count],", ");
+				
+				count += sprintf(&buffer[count],
+							    "lockid %d",
+							    held_lwlocks[l]);
+			}
+			if (num_held_lwlocks > 0)
+				count += sprintf(&buffer[count],")");
+				
+			elog(LOG, "Waited .75 seconds on lockid %d with no success. Exclusive pid %d. Already held: %s", 
+				 lockid, exclusivePid, buffer);
+
+		}
+	}
+}
+
+#endif
 
 /*
  * LWLockAcquire - acquire a lightweight lock in the specified mode
@@ -389,6 +454,9 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 	for (;;)
 	{
 		bool		mustwait;
+#ifdef LOCK_DEBUG
+		int			c;
+#endif
 
 		/* Acquire mutex.  Time spent holding mutex should be short! */
 		SpinLockAcquire(&lock->mutex);
@@ -403,6 +471,9 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 			if (lock->exclusive == 0 && lock->shared == 0)
 			{
 				lock->exclusive++;
+#ifdef LOCK_DEBUG
+				lock->exclusivePid = MyProcPid;
+#endif
 				mustwait = false;
 			}
 			else
@@ -420,7 +491,10 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 		}
 
 		if (!mustwait)
+		{
+			LOG_LWDEBUG("LWLockAcquire", lockid, "acquired!");
 			break;				/* got the lock */
+		}
 
 		/*
 		 * Add myself to wait queue.
@@ -440,7 +514,7 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 		else
 			lock->tail->lwWaitLink = proc;
 		lock->tail = proc;
-
+		
 		/* Can release the mutex now */
 		SpinLockRelease(&lock->mutex);
 
@@ -462,12 +536,24 @@ LWLockAcquire(LWLockId lockid, LWLockMode mode)
 		block_counts[lockid]++;
 #endif
 
+#ifdef LOCK_DEBUG
+		for (c = 0; c < num_held_lwlocks; c++)
+		{
+			if (held_lwlocks[c] == lockid)
+				elog(PANIC, "Waiting on lock already held!");
+		}
+#endif
+
 		PG_TRACE2(lwlock__startwait, lockid, mode);
 
 		for (;;)
 		{
 			/* "false" means cannot accept cancel/die interrupt here. */
+#ifndef LOCK_DEBUG
 			PGSemaphoreLock(&proc->sem, false);
+#else
+			LWLockTryLockWaiting(proc, lockid, mode);
+#endif
 			if (!proc->lwWaiting)
 				break;
 			extraWaits++;
@@ -531,6 +617,9 @@ LWLockConditionalAcquire(LWLockId lockid, LWLockMode mode)
 		if (lock->exclusive == 0 && lock->shared == 0)
 		{
 			lock->exclusive++;
+#ifdef LOCK_DEBUG
+			lock->exclusivePid = MyProcPid;
+#endif
 			mustwait = false;
 		}
 		else
@@ -600,7 +689,12 @@ LWLockRelease(LWLockId lockid)
 
 	/* Release my hold on lock */
 	if (lock->exclusive > 0)
+	{
 		lock->exclusive--;
+#ifdef LOCK_DEBUG
+		lock->exclusivePid = 0;
+#endif
+	}
 	else
 	{
 		Assert(lock->shared > 0);

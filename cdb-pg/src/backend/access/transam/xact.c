@@ -24,6 +24,9 @@
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "access/twophase.h"
+#include "cdb/cdblocaldistribxact.h"
+#include "cdb/cdbdistributedsnapshot.h"
+#include "cdb/cdbtm.h"
 #include "access/xact.h"
 #include "access/xlogutils.h"
 #include "access/fileam.h"
@@ -46,10 +49,9 @@
 #include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/resscheduler.h"
-#include "access/cdbdistributedxidmap.h"
+#include "access/distributedlog.h"
 
 #include "cdb/cdbgang.h"
-#include "cdb/cdbtm.h"
 #include "cdb/cdbvars.h"		/* Gp_role, Gp_is_writer,
 					   interconnect_setup_timeout */
 
@@ -127,6 +129,7 @@ typedef enum TBlockState
  */
 typedef struct TransactionStateData
 {
+	DistributedTransactionId distribXid;	/* My distributed transaction id, or Invalid if none. */
 	TransactionId transactionId;	/* my XID, or Invalid if none */
 	SubTransactionId subTransactionId;	/* my subxact ID */
 	char	   *name;			/* savepoint name, if any */
@@ -152,6 +155,7 @@ typedef TransactionStateData *TransactionState;
  * transaction at all, or when in a top-level transaction.
  */
 static TransactionStateData TopTransactionStateData = {
+	0,							/* distributed transaction id */
 	0,							/* transaction id */
 	0,							/* subtransaction id */
 	NULL,						/* savepoint name */
@@ -340,6 +344,18 @@ IsAbortedTransactionBlockState(void)
 	return false;
 }
 
+void 
+GetAllTransactionXids(
+	DistributedTransactionId	*distribXid,
+	TransactionId				*localXid,
+	TransactionId				*subXid)
+{
+	TransactionState s = CurrentTransactionState;
+
+	*distribXid = s->distribXid;
+	*localXid = s->transactionId;
+	*subXid = s->subTransactionId;
+}
 
 /*
  *	GetTopTransactionId
@@ -610,12 +626,6 @@ CommandCounterIncrement(void)
 	if (LatestSnapshot)
 		LatestSnapshot->curcid = currentCommandId;
 	
-	/* Also propagate to our distributed ones, too. */
-	if (SerializableDistributedSnapshot)
-		SerializableDistributedSnapshot->curcid = currentCommandId;
-	if (LatestDistributedSnapshot)
-		LatestDistributedSnapshot->curcid = currentCommandId;
-
 	/*
 	 * make cache changes visible to me.
 	 */
@@ -991,6 +1001,17 @@ RecordTransactionCommit(void)
 		 */
 		if (madeTCentries || MyXactMadeTempRelUpdate)
 		{
+			if (isDtxPrepared)
+			{
+				/* Mark the distributed transaction committed. */
+				/* UNDONE: What are the locking issues here? */
+				DistributedLog_SetCommitted(
+										xid,
+										getDtxStartTime(),
+										getDistributedTransactionId(),
+										/* isRedo */ false);
+			}
+
 			TransactionIdCommit(xid);
 			/* to avoid race conditions, the parent must commit first */
 			TransactionIdCommitTree(nchildren, children);
@@ -1583,14 +1604,15 @@ SetSharedTransactionId(void)
 		     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
 		break;
 
+	case DTX_CONTEXT_LOCAL_ONLY:
 	case DTX_CONTEXT_QD_RETRY_PHASE_2:
 	case DTX_CONTEXT_QE_PREPARED:
 	case DTX_CONTEXT_QE_FINISH_PREPARED:
-		elog(FATAL, "Unexpected distribute transaction context: '%s'",
+		elog(FATAL, "Unexpected distributed transaction context: '%s'",
 			DtxContextToString(DistributedTransactionContext));
 
 	default:
-		elog(FATAL, "Unrecognized DTX transaction context: %d",
+		elog(PANIC, "Unrecognized DTX transaction context: %d",
 			(int) DistributedTransactionContext);
 	}
 }
@@ -1748,8 +1770,6 @@ StartTransaction(void)
 	 * a purely-local transaction.
 	 *
 	 */
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"StartTransaction DTX Context = '%s'", DtxContextToString(DistributedTransactionContext));
-	
 	switch (DistributedTransactionContext)
 	{
 	case DTX_CONTEXT_LOCAL_ONLY:
@@ -1791,7 +1811,9 @@ StartTransaction(void)
 			 * distributed transaction to a local transaction id for the
 			 * master database.
 			 */
-			createDtx(&s->transactionId);
+			createDtx(
+				&s->distribXid,
+				&s->transactionId);
 
 			XactLockTableInsert(s->transactionId);
 			
@@ -1822,7 +1844,17 @@ StartTransaction(void)
 					/*
 					 * Use local xid that is mapped to distributed xid.
 					 */
-					AllocOrGetLocalXidForStartDistributedTransaction(QEDtxContextInfo.distributedXid,&s->transactionId);
+					LocalDistribXact_StartOnSegment(
+											QEDtxContextInfo.distributedTimeStamp,
+											QEDtxContextInfo.distributedXid,
+											&s->transactionId);
+					
+					s->distribXid = QEDtxContextInfo.distributedXid;
+
+					elog((Debug_print_full_dtm ? LOG : DEBUG5),
+						 "LocalDistribXact_StartOnSegment returned %s",
+				 	     LocalDistribXact_DisplayString(&MyProc->localDistribXactRef));
+
 				}
 				else
 				{
@@ -1843,7 +1875,9 @@ StartTransaction(void)
 			  	 */
 			  	xactStartTimestamp = stmtStartTimestamp;
 
-				elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec writer setting distributedXid: %d ready: false", QEDtxContextInfo.distributedXid);
+				elog((Debug_print_full_dtm ? LOG : DEBUG5),
+					 "qExec writer setting distributedXid: %d ready: false", 
+					 QEDtxContextInfo.distributedXid);
 
 				if (SharedLocalSnapshotSlot != NULL)
 				{
@@ -1865,6 +1899,11 @@ StartTransaction(void)
 				 * Generate a new transaction id
 				 */
 				s->transactionId = GetNewTransactionId(false, true);
+				
+				elog((Debug_print_full_dtm ? LOG : DEBUG5),
+					 "Not tied to distributed transaction id, but still coordinated "
+				     "as a distributed transaction with the 2 phase protocol... local xid %u", 
+					 s->transactionId);
 			}
 
 			/*
@@ -1911,10 +1950,10 @@ StartTransaction(void)
 				Assert(SharedLocalSnapshotSlot != NULL);
 
 				elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Reader Match?* gxid %u == %u allow currcid %d ~~ %d (StartTransaction, gxid = %u, slot #%d, '%s')", 
-					QEDtxContextInfo.distributedSnapshotData.snapshotId,
+					QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
 					QEDtxContextInfo.distributedXid,
 					SharedLocalSnapshotSlot->QDxid,
-					QEDtxContextInfo.distributedSnapshotData.curcid,
+					QEDtxContextInfo.curcid,
 					SharedLocalSnapshotSlot->QDcid,
 					getDistributedTransactionId(),
 					SharedLocalSnapshotSlot->slotid,
@@ -1981,6 +2020,8 @@ StartTransaction(void)
 					// UNDONE: Back-off from checking every millisecond...
 				}
 			}
+			
+			s->distribXid = QEDtxContextInfo.distributedXid;
 		}
 		break;
 	
@@ -1990,13 +2031,14 @@ StartTransaction(void)
 		break;
 	
 	default:
-		elog(FATAL, "Unrecognized DTX transaction context: %d",
+		elog(PANIC, "Unrecognized DTX transaction context: %d",
 			(int) DistributedTransactionContext);
 		break;
 	}
 
 	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *StartTransaction* (gxid = %u, xid = %u, '%s')", 
-	 	  (SerializableDistributedSnapshot == NULL ? 0 : SerializableDistributedSnapshot->snapshotId),
+	 	  (SerializableSnapshot == NULL ? 0 :
+	 	  						SerializableSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId),
 	 	  getDistributedTransactionId(),
 	 	  s->transactionId,
 		  DtxContextToString(DistributedTransactionContext));
@@ -2026,6 +2068,12 @@ StartTransaction(void)
 	s->state = TRANS_INPROGRESS;
 
 	ShowTransactionState("StartTransaction");
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "StartTransaction in DTX Context = '%s', %s",
+		 DtxContextToString(DistributedTransactionContext),
+ 	     LocalDistribXact_DisplayString(&MyProc->localDistribXactRef));
+	
 }
 
 
@@ -2038,6 +2086,12 @@ static void
 CommitTransaction(void)
 {
 	TransactionState s = CurrentTransactionState;
+
+	TransactionId localXid = InvalidTransactionId;
+	LocalDistribXactRef localDistribXactRef;
+	bool needDistribCommitted = false;
+
+	LocalDistribXactRef_Init(&localDistribXactRef);
 
 	ShowTransactionState("CommitTransaction");
 
@@ -2152,9 +2206,59 @@ CommitTransaction(void)
 	if (MyProc != NULL)
 	{
 		/* Lock ProcArrayLock because that's what GetSnapshotData uses. */
+
+		// UNDONE: Move lock up over RecordTransactionCommit ??
+		
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+		if (!LocalDistribXactRef_IsNil(&MyProc->localDistribXactRef))
+		{
+			switch (DistributedTransactionContext)
+			{
+			case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+				LocalDistribXact_ChangeStateUnderLock(
+									MyProc->xid,
+									&MyProc->localDistribXactRef,
+									LOCALDISTRIBXACT_STATE_COMMITDELIVERY);
+				needDistribCommitted = true;
+			    break;
+				
+			case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+			case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+			case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+				LocalDistribXact_ChangeStateUnderLock(
+									MyProc->xid,
+									&MyProc->localDistribXactRef,
+									LOCALDISTRIBXACT_STATE_COMMITTED);
+				break;
+				
+			case DTX_CONTEXT_QE_READER:
+			case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+				// QD or QE Writer will handle it.
+				break;
+
+			case DTX_CONTEXT_QD_RETRY_PHASE_2:
+			case DTX_CONTEXT_QE_PREPARED:
+			case DTX_CONTEXT_QE_FINISH_PREPARED:
+				elog(PANIC, "Unexpected distribute transaction context: '%s'",
+					DtxContextToString(DistributedTransactionContext));
+
+			default:
+				elog(PANIC, "Unrecognized DTX transaction context: %d",
+					(int) DistributedTransactionContext);
+			}
+
+			/*
+			 * We need to transfer the xid and disributed ref
+			 * for processing below.
+			 */
+			localXid = MyProc->xid;
+			LocalDistribXactRef_Transfer(
+							&localDistribXactRef,
+							&MyProc->localDistribXactRef);
+		}
+
 		MyProc->xid = InvalidTransactionId;
-		MyProc->mppDistributedTransactionId = InvalidDistributedTransactionId;
 		MyProc->xmin = InvalidTransactionId;
 		MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
 
@@ -2254,6 +2358,29 @@ CommitTransaction(void)
 
 	AtCommit_Memory();
 
+	finishDistributedTransactionContext("CommitTransaction", false);
+
+	if (!LocalDistribXactRef_IsNil(&localDistribXactRef))
+	{
+		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+		if (needDistribCommitted)
+			LocalDistribXact_ChangeStateUnderLock(
+										localXid,
+										&localDistribXactRef,
+										LOCALDISTRIBXACT_STATE_COMMITTED);
+		
+		LocalDistribXactRef_ReleaseUnderLock(&localDistribXactRef);
+
+		LWLockRelease(ProcArrayLock);
+	}
+
+	if (gp_local_distributed_cache_stats)
+	{
+		LocalDistribXactCache_ShowStats("CommitTransaction");
+	}
+
+	s->distribXid = InvalidDistributedTransactionId;
 	s->transactionId = InvalidTransactionId;
 	s->subTransactionId = InvalidSubTransactionId;
 	s->nestingLevel = 0;
@@ -2266,14 +2393,13 @@ CommitTransaction(void)
 	 */
 	s->state = TRANS_DEFAULT;
 
-
-
-	finishDistributedTransactionContext("CommitTransaction", false);
-
 	/* we're now in a consistent state to handle an interrupt. */
 	RESUME_INTERRUPTS();
 
+	Assert(LocalDistribXactRef_IsNil(&localDistribXactRef));
+
 	freeGangsForPortal(NULL);
+
 }
 
 
@@ -2359,7 +2485,9 @@ PrepareTransaction(void)
 	 * Reserve the GID for this transaction. This could fail if the requested
 	 * GID is invalid or already in use.
 	 */
-	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
+	gxact = MarkAsPreparing(xid, 
+							&MyProc->localDistribXactRef,
+							prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId);
 	prepareGID = NULL;
 
@@ -2413,7 +2541,9 @@ PrepareTransaction(void)
 	/* Lock ProcArrayLock because that's what GetSnapshotData uses. */
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 	MyProc->xid = InvalidTransactionId;
-	MyProc->mppDistributedTransactionId = InvalidDistributedTransactionId;
+
+	LocalDistribXactRef_ReleaseUnderLock(&MyProc->localDistribXactRef);
+	
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->inVacuum = false;	/* must be cleared with xid/xmin */
 
@@ -2480,6 +2610,12 @@ PrepareTransaction(void)
 
 	AtCommit_Memory();
 
+	if (gp_local_distributed_cache_stats)
+	{
+		LocalDistribXactCache_ShowStats("PrepareTransaction");
+	}
+
+	s->distribXid = InvalidDistributedTransactionId;
 	s->transactionId = InvalidTransactionId;
 	s->subTransactionId = InvalidSubTransactionId;
 	s->nestingLevel = 0;
@@ -2493,6 +2629,7 @@ PrepareTransaction(void)
 	s->state = TRANS_DEFAULT;
 
 	RESUME_INTERRUPTS();
+
 }
 
 
@@ -2503,6 +2640,12 @@ static void
 AbortTransaction(void)
 {
 	TransactionState s = CurrentTransactionState;
+
+	TransactionId localXid = InvalidTransactionId;
+	LocalDistribXactRef localDistribXactRef;
+	bool needDistribAborted = false;
+
+	LocalDistribXactRef_Init(&localDistribXactRef);
 
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
@@ -2586,9 +2729,59 @@ AbortTransaction(void)
 	if (MyProc != NULL)
 	{
 		/* Lock ProcArrayLock because that's what GetSnapshotData uses. */
+
+		// UNDONE: Move lock up over RecordTransactionAbort ??
+		
 		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+		if (!LocalDistribXactRef_IsNil(&MyProc->localDistribXactRef))
+		{
+			switch (DistributedTransactionContext)
+			{
+			case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
+				LocalDistribXact_ChangeStateUnderLock(
+									MyProc->xid,
+									&MyProc->localDistribXactRef,
+									LOCALDISTRIBXACT_STATE_ABORTDELIVERY);
+				needDistribAborted = true;
+			    break;
+				
+			case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
+			case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
+			case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
+				LocalDistribXact_ChangeStateUnderLock(
+									MyProc->xid,
+									&MyProc->localDistribXactRef,
+									LOCALDISTRIBXACT_STATE_ABORTED);
+				break;
+				
+			case DTX_CONTEXT_QE_READER:
+			case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
+				// QD or QE Writer will handle it.
+				break;
+
+			case DTX_CONTEXT_QD_RETRY_PHASE_2:
+			case DTX_CONTEXT_QE_PREPARED:
+			case DTX_CONTEXT_QE_FINISH_PREPARED:
+				elog(PANIC, "Unexpected distribute transaction context: '%s'",
+					DtxContextToString(DistributedTransactionContext));
+
+			default:
+				elog(PANIC, "Unrecognized DTX transaction context: %d",
+					(int) DistributedTransactionContext);
+			}
+			
+			/*
+			 * We need to transfer the xid and disributed ref
+			 * for processing below.
+			 */
+			localXid = MyProc->xid;
+			LocalDistribXactRef_Transfer(
+							&localDistribXactRef,
+							&MyProc->localDistribXactRef);
+		}
+
 		MyProc->xid = InvalidTransactionId;
-		MyProc->mppDistributedTransactionId = InvalidDistributedTransactionId;
 		MyProc->xmin = InvalidTransactionId;
 		MyProc->inVacuum = false;		/* must be cleared with xid/xmin */
 
@@ -2641,10 +2834,27 @@ AbortTransaction(void)
 	 */
 	rollbackDtxTransaction();
 
+	if (!LocalDistribXactRef_IsNil(&localDistribXactRef))
+	{
+		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+		if (needDistribAborted)
+			LocalDistribXact_ChangeStateUnderLock(
+										localXid,
+										&localDistribXactRef,
+										LOCALDISTRIBXACT_STATE_ABORTED);
+		
+		LocalDistribXactRef_ReleaseUnderLock(&localDistribXactRef);
+
+		LWLockRelease(ProcArrayLock);
+	}
+
 	/*
 	 * State remains TRANS_ABORT until CleanupTransaction().
 	 */
 	RESUME_INTERRUPTS();
+
+	Assert(LocalDistribXactRef_IsNil(&localDistribXactRef));
 
 	freeGangsForPortal(NULL);
 
@@ -2691,6 +2901,7 @@ CleanupTransaction(void)
 
 	AtCleanup_Memory();			/* and transaction memory */
 
+	s->distribXid = InvalidDistributedTransactionId;
 	s->transactionId = InvalidTransactionId;
 	s->subTransactionId = InvalidSubTransactionId;
 	s->nestingLevel = 0;
@@ -4499,7 +4710,7 @@ void
 TransactionInformationQEWriter(DistributedTransactionId *QEDistributedTransactionId, CommandId *QECommandId, bool *QEDirty)
 {
 	*QEDistributedTransactionId = QEDtxContextInfo.distributedXid;
-	*QECommandId = QEDtxContextInfo.distributedSnapshotData.curcid;
+	*QECommandId = QEDtxContextInfo.curcid;
 	if (Gp_role == GP_ROLE_DISPATCHAGENT)
 	{
 		/*
@@ -4507,7 +4718,7 @@ TransactionInformationQEWriter(DistributedTransactionId *QEDistributedTransactio
 		 * really part of the transaction
 		 */
 		if (QEDtxContextInfo.distributedXid != 0 || 
-			QEDtxContextInfo.distributedSnapshotData.curcid != 0)
+			QEDtxContextInfo.curcid != 0)
 			*QEDirty = true;
 		else
 			*QEDirty = false;
@@ -4857,6 +5068,7 @@ PushTransaction(void)
 	 * We can now stack a minimally valid subtransaction without fear of
 	 * failure.
 	 */
+	s->distribXid = p->distribXid;
 	s->transactionId = InvalidTransactionId;	/* until assigned */
 	s->subTransactionId = currentSubTransactionId;
 	s->parent = p;
@@ -5085,8 +5297,19 @@ xactGetCommittedChildren(TransactionId **ptr)
 /*
  *	XLOG support routines
  */
+static TMGXACT_LOG*
+xact_get_distributed_info_from_commit(xl_xact_commit *xlrec)
+{
+	TransactionId *sub_xids;
 
-static char*
+	/* Mark committed subtransactions as committed */
+	sub_xids = (TransactionId *) &(xlrec->xnodes[xlrec->nrels]);
+
+	return (TMGXACT_LOG*) &sub_xids[xlrec->nsubxacts];
+}
+
+
+static void
 xact_redo_commit(xl_xact_commit *xlrec, TransactionId xid)
 {
 	TransactionId *sub_xids;
@@ -5119,23 +5342,60 @@ xact_redo_commit(xl_xact_commit *xlrec, TransactionId xid)
 		XLogDropRelation(xlrec->xnodes[i]);
 		smgrdounlink(smgropen(xlrec->xnodes[i]), false, true);
 	}
-
-	/*
-	 * MPP: Return end of regular commit information.
-	 */
-	return (char*) &sub_xids[xlrec->nsubxacts];
 }
 
 static void
 xact_redo_distributed_commit(xl_xact_commit *xlrec, TransactionId xid)
 {
 	TMGXACT_LOG *gxact_log;
+	
+	DistributedTransactionTimeStamp	distribTimeStamp;
+	DistributedTransactionId 		distribXid;
+
+	/*
+	 * Make room in the DistributedLog, if necessary.
+	 */
+	if (TransactionIdFollowsOrEquals(xid,
+									 ShmemVariableCache->nextXid))
+	{
+		ShmemVariableCache->nextXid = xid;
+		TransactionIdAdvance(ShmemVariableCache->nextXid);
+	}
 
 	/* 
-	 * We put the global transaction information last, so call the regular xact
-	 * commit routine.
+	 * Get the global transaction information first.
 	 */
-	gxact_log = (TMGXACT_LOG *) xact_redo_commit(xlrec, xid);
+	gxact_log = xact_get_distributed_info_from_commit(xlrec);
+
+	/*
+	 * Crack open the gid to get the timestamp.
+	 */
+	dtxCrackOpenGid(
+			gxact_log->gid,
+			&distribTimeStamp,
+			&distribXid);
+
+	if (gxact_log->gxid != distribXid)
+		elog(ERROR, 
+		     "Distributed xid %u does not match %u in distributed commit redo record",
+		     gxact_log->gxid, distribXid);
+	/* 
+	 * Mark the distributed transaction committed before we
+	 * update the CLOG in xact_redo_commit. 
+	 */
+	 
+	/* UNDONE: What are the locking issues here? */
+
+	DistributedLog_SetCommitted(
+							xid,
+							distribTimeStamp,
+							gxact_log->gxid,
+							/* isRedo */ true);
+
+	/*
+	 * Now update the CLOG and do local commit actions.
+	 */
+	xact_redo_commit(xlrec, xid);
 
 	redoDistributedCommitRecord(gxact_log);
 }

@@ -26,7 +26,7 @@
 #include "access/clog.h"
 #include "access/heapam.h"
 #include "access/multixact.h"
-#include "access/cdbdistributedxidmap.h"
+#include "access/distributedlog.h"
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "access/twophase.h"
@@ -5021,7 +5021,7 @@ BootStrapXLOG(void)
 	BootStrapCLOG();
 	BootStrapSUBTRANS();
 	BootStrapMultiXact();
-	BootStrapDistributedXidMap();
+	DistributedLog_BootStrap();
 
 	pfree(buffer);
 }
@@ -5772,6 +5772,16 @@ StartupXLOG(void)
 		InRecovery = true;
 	}
 
+	/*
+	 * We need to create the pg_distributedlog directory if we are
+	 * upgrading from before 3.1.1.4 patch.
+	 *
+	 * Force a recovery to replay into the distributed log the
+	 * recent distributed transaction commits.
+	 */
+	if (DistributedLog_UpgradeCheck(InRecovery))
+		InRecovery = true;
+
 	/* REDO */
 	if (InRecovery)
 	{
@@ -6151,7 +6161,9 @@ StartupXLOG(void)
 	StartupCLOG();
 	StartupSUBTRANS(oldestActiveXID);
 	StartupMultiXact();
-	StartupDistributedXidMap();
+	DistributedLog_Startup(
+						oldestActiveXID, 
+						ShmemVariableCache->nextXid);
 
 	/* Reload shared-memory state for prepared transactions */
 	RecoverPreparedTransactions();
@@ -6835,7 +6847,7 @@ ShutdownXLOG(int code __attribute__((unused)) , Datum arg __attribute__((unused)
 		ShutdownCLOG();
 		ShutdownSUBTRANS();
 		ShutdownMultiXact();
-		ShutdownDistributedXidMap();
+		DistributedLog_Shutdown();
 	}
 	else
 		elog((Debug_print_qd_mirroring ? LOG : DEBUG5),"skipping shutdown steps for standby");
@@ -7164,7 +7176,7 @@ CheckPointGuts(XLogRecPtr checkPointRedo)
 	CheckPointCLOG();
 	CheckPointSUBTRANS();
 	CheckPointMultiXact();
-	CheckPointDistributedXidMap();
+	DistributedLog_CheckPoint();
 	FlushBufferPool();			/* performs all required fsyncs */
 	/* We deliberately delay 2PC checkpointing as long as possible */
 	CheckPointTwoPhase(checkPointRedo);

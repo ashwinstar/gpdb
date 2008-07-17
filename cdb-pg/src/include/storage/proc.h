@@ -15,6 +15,7 @@
 #ifndef _PROC_H_
 #define _PROC_H_
 
+#include "cdb/cdblocaldistribxact.h"
 #include "postmaster/walsendserver.h"
 #include "storage/lock.h"
 #include "storage/spin.h"
@@ -69,9 +70,9 @@ struct PGPROC
 	TransactionId xid;			/* transaction currently being executed by
 								 * this proc */
 
-	DistributedTransactionId mppDistributedTransactionId;
-								/* the current distributed MPP
-								 * transction id. */
+	LocalDistribXactRef	localDistribXactRef;
+								/* Reference to the LocalDistribXact 
+								 * element. */
 	TransactionId xmin;			/* minimal running XID as it was when we were
 								 * starting our xact, excluding LAZY VACUUM:
 								 * vacuum must not remove tuples deleted by

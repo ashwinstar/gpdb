@@ -30,6 +30,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbdtxcontextinfo.h"
 #include "cdb/cdbdisp.h"
 #include "miscadmin.h"
 #include "commands/dbcommands.h"	/* get_database_name() */
@@ -2333,12 +2334,12 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				 * moved forward?
 				 */
 
-				serializedSnapshotlen = dtxContextInfoSerializeSize(&QEDtxContextInfo);
+				serializedSnapshotlen = DtxContextInfo_SerializeSize(&QEDtxContextInfo);
 				Assert (serializedSnapshotlen > 0);
 				
 				serializedSnapshot = palloc(serializedSnapshotlen);
 
-				serializeDtxContextInfo(serializedSnapshot, &QEDtxContextInfo); 
+				DtxContextInfo_Serialize(serializedSnapshot, &QEDtxContextInfo); 
 
 			}
 			else

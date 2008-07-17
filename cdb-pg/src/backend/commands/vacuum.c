@@ -57,6 +57,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "pgstat.h"
+#include "access/distributedlog.h"
 
 
 /*
@@ -1090,6 +1091,7 @@ vac_truncate_clog(TransactionId frozenXID)
 
 	/* Truncate CLOG to the oldest frozenxid */
 	TruncateCLOG(frozenXID);
+	DistributedLog_Truncate(frozenXID);
 
 	/*
 	 * Update the wrap limit for GetNewTransactionId.  Note: this function

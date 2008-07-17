@@ -48,6 +48,7 @@
 #include "cdb/cdbsubplan.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbdtxcontextinfo.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbsreh.h"
 #include "cdb/cdbrelsize.h"
@@ -165,7 +166,7 @@ CdbDispatchUtilityStatement_Internal(struct Node *stmt, bool needTwoPhase, char*
 
 static volatile bool pleaseCancel = false; /* (transaction granularity) */
 
-static DtxContextInfo TempQDDtxContextInfo;
+static DtxContextInfo TempQDDtxContextInfo = DtxContextInfo_StaticInit;
 
 static MemoryContext DispatchContext = NULL;
 
@@ -4203,7 +4204,6 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 {
 	char *serializedDtxContextInfo;
 
-	DistributedSnapshot distributedSnapshot;
 	Snapshot snapshot;
 	int serializedLen;
 	DtxContextInfo *pDtxContextInfo = NULL;
@@ -4241,14 +4241,13 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 	 */
 	 
 	*size = 0;
-	distributedSnapshot = NULL;
 	snapshot = NULL;
 
 	if (wantSnapshot)
 	{
 	
-		if (LatestDistributedSnapshot == NULL &&
-			SerializableDistributedSnapshot == NULL &&
+		if (LatestSnapshot == NULL &&
+			SerializableSnapshot == NULL &&
 			!IsAbortInProgress() )  		
 		{
 			/* unfortunately, the dtm issues a select for prepared xacts at the
@@ -4264,35 +4263,28 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 			GetTransactionSnapshot();
 		}
 		
-		if (LatestDistributedSnapshot != NULL)
+		if (LatestSnapshot != NULL)
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo using LatestDistributedSnapshot");
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo using LatestSnapshot");
 			
-			distributedSnapshot = LatestDistributedSnapshot;
-
-			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *QD Use Latest* currcid = %d (gxid = %u, '%s')", 
-			 	  LatestDistributedSnapshot->snapshotId,
-			 	  LatestDistributedSnapshot->curcid,
-			 	  getDistributedTransactionId(),
-			 	  DtxContextToString(DistributedTransactionContext));
-
-			Assert(LatestSnapshot != NULL);
 			snapshot = LatestSnapshot;
+			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *QD Use Latest* currcid = %d (gxid = %u, '%s')", 
+			 	  LatestSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId,
+			 	  LatestSnapshot->curcid,
+			 	  getDistributedTransactionId(),
+			 	  DtxContextToString(DistributedTransactionContext));
 		}
-		else if (SerializableDistributedSnapshot != NULL)
+		else if (SerializableSnapshot != NULL)
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo using SerializableDistributedSnapshot");
+			elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo using SerializableSnapshot");
 			
-			distributedSnapshot = SerializableDistributedSnapshot;
-			
+			snapshot = SerializableSnapshot;
 			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *QD Use Serializable* currcid = %d (gxid = %u, '%s')", 
-			 	  SerializableDistributedSnapshot->snapshotId,
-			 	  SerializableDistributedSnapshot->curcid,
+			 	  SerializableSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId,
+			 	  SerializableSnapshot->curcid,
 			 	  getDistributedTransactionId(),
 			 	  DtxContextToString(DistributedTransactionContext));
 
-			Assert(SerializableSnapshot != NULL);
-			snapshot = SerializableSnapshot;
 		}
 	}
 
@@ -4301,9 +4293,21 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 	{
 	case DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE:
 	case DTX_CONTEXT_LOCAL_ONLY:
-		qdCreateDtxContextInfo(&TempQDDtxContextInfo, distributedSnapshot, txnOptions);
-
 		if (snapshot != NULL)
+			DtxContextInfo_CreateOnMaster(
+				&TempQDDtxContextInfo, 
+				&snapshot->distribSnapshotWithLocalMapping, 
+				snapshot->curcid, 
+				txnOptions);
+		else
+			DtxContextInfo_CreateOnMaster(
+				&TempQDDtxContextInfo, 
+				NULL, 
+				0, 
+				txnOptions);
+
+		if (DistributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
+			snapshot != NULL)
 		{
 			updateSharedLocalSnapshot(&TempQDDtxContextInfo, snapshot, "qdSerializeDtxContextInfo");
 		}
@@ -4327,13 +4331,13 @@ qdSerializeDtxContextInfo(int * size, bool wantSnapshot, int txnOptions, char* d
 			(int) DistributedTransactionContext);
 	}
 	
-	serializedLen = dtxContextInfoSerializeSize(pDtxContextInfo);
+	serializedLen = DtxContextInfo_SerializeSize(pDtxContextInfo);
 	Assert (serializedLen > 0);
 	
 	*size = serializedLen;
 	serializedDtxContextInfo = palloc(*size);
 
-	serializeDtxContextInfo(serializedDtxContextInfo, pDtxContextInfo); 
+	DtxContextInfo_Serialize(serializedDtxContextInfo, pDtxContextInfo); 
 
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),"qdSerializeDtxContextInfo (called by %s) returning a snapshot of %d bytes (ptr is %s)",
 	     debugCaller, *size, (serializedDtxContextInfo != NULL ? "Non-NULL" : "NULL"));

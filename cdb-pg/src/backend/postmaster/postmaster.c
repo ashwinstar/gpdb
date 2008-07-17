@@ -455,6 +455,7 @@ static bool SyncMaster = false;
 static bool Gp_entry_postmaster = false;
 
 static int Save_MppLocalProcessCounter = 0;
+static DistributedTransactionTimeStamp Save_DtxStartTime = 0;
 
 bool GPPostmaster()
 {
@@ -480,6 +481,12 @@ int
 PostmasterGetMppLocalProcessCounter(void)
 {
 	return Save_MppLocalProcessCounter;
+}
+
+DistributedTransactionTimeStamp
+PostmasterGetDtxStartTime(void)
+{
+	return Save_DtxStartTime;
 }
 
 /*
@@ -2694,6 +2701,10 @@ reaper(SIGNAL_ARGS)
 					(errmsg("gp_session_id high-water mark is %d", 
 					        Save_MppLocalProcessCounter)));
 
+		/*
+		 * And, save the DTM start time, too.
+		 */
+		Save_DtxStartTime = getDtxStartTime();
 		
 		shmem_exit(0);
 		reset_shared(PostPortNumber);

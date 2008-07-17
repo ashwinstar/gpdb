@@ -62,7 +62,7 @@ typedef enum LWLockId
 	BtreeVacuumLock,
 	AddinShmemInitLock,
 	SharedSnapshotLock,
-	DistributedXidMapControlLock,
+	DistributedLogControlLock,
 	TemporarySerializePreparesLock,
 	SeqServerControlLock,
 	FirstBufMappingLock,

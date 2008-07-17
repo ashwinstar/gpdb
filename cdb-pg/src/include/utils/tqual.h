@@ -20,7 +20,7 @@
 #include "utils/timestamp.h"  /* TimestampTz */
 #include "access/xact.h"   /* MaxGpSavePoints */
 #include "utils/combocid.h" /*MaxComboCids*/
-#include "cdb/cdbtm.h"
+#include "cdb/cdbdistributedsnapshot.h"
 
 
 /*
@@ -52,6 +52,16 @@ typedef struct SnapshotData
 	 * out any that are >= xmax
 	 */
 	CommandId	curcid;			/* in my xact, CID < curcid are visible */
+
+	bool haveDistribSnapshot;
+								/* True if this snapshot is distributed. */
+								
+	DistributedSnapshotWithLocalMapping	distribSnapshotWithLocalMapping;
+								/*
+								 * GP: Global information about which
+								 * transactions are visible for a distributed
+								 * transaction, with cached local xids
+								 */
 } SnapshotData;
 
 typedef SnapshotData *Snapshot;
@@ -77,9 +87,6 @@ extern DLLIMPORT Snapshot SnapshotDirty;
 extern DLLIMPORT Snapshot SerializableSnapshot;
 extern DLLIMPORT Snapshot LatestSnapshot;
 extern DLLIMPORT Snapshot ActiveSnapshot;
-
-extern DLLIMPORT DistributedSnapshot SerializableDistributedSnapshot;
-extern DLLIMPORT DistributedSnapshot LatestDistributedSnapshot;
 
 extern TransactionId TransactionXmin;
 extern TransactionId RecentXmin;
@@ -195,11 +202,8 @@ extern void FreeSnapshot(Snapshot snapshot);
 extern void FreeXactSnapshot(void);
 
 /* in procarray.c; declared here to avoid including tqual.h in procarray.h: */
-extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable,
- 			                    DistributedSnapshot *distributedSnapshot,
- 			                    DistributedSnapshotData *distributedSnapshotData);
+extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable);
 extern void updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller);
-extern char* DebugGetDistributedSnapshotString(DistributedSnapshot snapshot);
 extern char* DebugGetSnapshotString(const Snapshot snapshot);
 
 extern void GetSlotTableDebugInfo(void **snapshotArray, int *maxSlots);

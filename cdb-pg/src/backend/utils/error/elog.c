@@ -2083,6 +2083,29 @@ log_line_prefix(StringInfo buf)
                         appendStringInfo(buf, "da");
                 }
 				break;	
+			case 'X':
+				{
+					DistributedTransactionId distribXid;
+					TransactionId localXid;
+					TransactionId subXid;
+
+					GetAllTransactionXids(
+									&distribXid,
+									&localXid,
+									&subXid);
+
+					if (localXid != InvalidTransactionId)
+					{
+						if (distribXid >= FirstDistributedTransactionId)
+						    appendStringInfo(buf, "dxid %u, ", distribXid);
+						
+					    appendStringInfo(buf, "xid %u", localXid);
+						
+						if (subXid >= FirstNormalTransactionId)
+						    appendStringInfo(buf, ", subxid %u, ", subXid);
+					}
+				}
+				break;	
 			case '%':
 				appendStringInfoChar(buf, '%');
 				break;

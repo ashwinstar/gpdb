@@ -4366,6 +4366,10 @@ DATA(insert OID = 6036 (  gp_max_distributed_xid		   PGNSP PGUID 12 f f t f v 0 
 DESCR("Highest distributed transaction id used so far");
 DATA(insert OID = 6037 (  gp_distributed_xid		   PGNSP PGUID 12 f f t f v 0 28 f "" _null_ _null_ _null_ gp_distributed_xid - _null_ ));
 DESCR("Current distributed transaction id");
+DATA(insert OID = 6043 (  gp_transaction_log   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_transaction_log - _null_ ));
+DESCR("view logged local transaction status");
+DATA(insert OID = 6044 (  gp_distributed_log   PGNSP PGUID 12 f f f t v 0 2249 f "" _null_ _null_ _null_ gp_distributed_log - _null_ ));
+DESCR("view logged distributed transaction status");
 
 /* Greenplum MPP window function implementation */
 DATA(insert OID = 7100 (  row_number_immed   PGNSP PGUID 12 f f t f i 1 20 f "2281" _null_ _null_ _null_ row_number_immed - _null_ ));

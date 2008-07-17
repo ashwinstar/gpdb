@@ -19,7 +19,8 @@
 #include "access/nbtree.h"
 #include "access/subtrans.h"
 #include "access/twophase.h"
-#include "access/cdbdistributedxidmap.h"
+#include "access/distributedlog.h"
+#include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -110,7 +111,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		 * request doesn't overflow size_t.  If this gets through, we don't
 		 * need to be so careful during the actual allocation phase.
 		 */
-		size = 100000;
+		size = 150000;
 		size = add_size(size, hash_estimate_size(SHMEM_INDEX_SIZE,
 												 sizeof(ShmemIndexEnt)));
 		size = add_size(size, BufferShmemSize());
@@ -121,13 +122,13 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 			size = add_size(size, ResPortalIncrementShmemSize());
 		}
 		size = add_size(size, ProcGlobalShmemSize());
+		size = add_size(size, LocalDistribXact_ShmemSize());
 		size = add_size(size, XLOGShmemSize());
+		size = add_size(size, DistributedLog_ShmemSize());
 		size = add_size(size, CLOGShmemSize());
 		size = add_size(size, SUBTRANSShmemSize());
 		size = add_size(size, TwoPhaseShmemSize());
 		size = add_size(size, MultiXactShmemSize());
-		size = add_size(size, DistributedXidMapShmemSize_SLru());
-		size = add_size(size, DistributedXidMapShmemSize());
 		size = add_size(size, LWLockShmemSize());
 		size = add_size(size, ProcArrayShmemSize());
 		size = add_size(size, BackendStatusShmemSize());
@@ -149,7 +150,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, total_addin_request);
 
 		/* might as well round it off to a multiple of a typical page size */
-		size = add_size(size, 8192 - (size % 8192));
+		size = add_size(size, BLCKSZ - (size % BLCKSZ));
 
 		elog(DEBUG3, "invoking IpcMemoryCreate(size=%lu)",
 			 (unsigned long) size);
@@ -207,11 +208,10 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 */
 	XLOGShmemInit();
 	CLOGShmemInit();
+	DistributedLog_ShmemInit();
 	SUBTRANSShmemInit();
 	TwoPhaseShmemInit();
 	MultiXactShmemInit();
-	DistributedXidMapShmemInit_SLru();
-	DistributedXidMapShmemInit();
     FtsShmemInit();
     tmShmemInit();
 	InitBufferPool();
@@ -240,6 +240,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	}
 
 	CreateSharedProcArray();
+	LocalDistribXact_ShmemCreate();
 	CreateSharedBackendStatus();
 	
 	/*
