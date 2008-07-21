@@ -9244,6 +9244,106 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 
 }
 
+static int
+range_test(Datum tupval, Oid typid, Oid *ltopr, Oid *leopr, int level,
+		   PartitionRule *rule)
+{
+	Const *c = NULL;
+	Oid funcid;
+	Datum res;
+
+	Assert(PointerIsValid(rule->parrangestart) ||
+		   PointerIsValid(rule->parrangeend));
+	
+	/* might be a rule with no START value */
+	if (PointerIsValid(rule->parrangestart))
+	{
+		Assert(IsA(rule->parrangestart, List));
+		c = (Const *)list_nth((List *)rule->parrangestart, level);
+
+		/* is the value in the range? */
+		if (rule->parrangestartincl)
+		{
+			if (!OidIsValid(*leopr))
+			{
+				Value *str = makeString("<=");
+				Value *pub = makeString("pg_catalog");
+				List *opname = list_make2(pub, str);
+
+				*leopr = get_opfuncid_by_opname(opname, typid, typid);
+				pfree(str);
+				pfree(pub);
+				list_free(opname);
+			}
+			funcid = *leopr;
+		}
+		else
+		{
+			if (!OidIsValid(*ltopr))
+			{
+				Value *str = makeString("<");
+				Value *pub = makeString("pg_catalog");
+
+				List *opname = list_make2(pub, str);
+
+				*ltopr = get_opfuncid_by_opname(opname, typid, typid);
+				pfree(str);
+				pfree(pub);
+				list_free(opname);
+			}
+			funcid = *ltopr;
+		}
+
+		res = OidFunctionCall2(funcid, c->constvalue, tupval);
+		if (!DatumGetBool(res))
+			return -1;
+	}
+
+	/* There might be no END value */
+	if (PointerIsValid(rule->parrangeend))
+	{
+		c = (Const *)list_nth((List *)rule->parrangeend, level);
+
+		/* might be in the range, lets see */
+		if (rule->parrangeendincl)
+		{
+			if (!OidIsValid(*leopr))
+			{
+				Value *str = makeString("<=");
+				Value *pub = makeString("pg_catalog");
+
+				List *opname = list_make2(pub, str);
+
+				*leopr = get_opfuncid_by_opname(opname, typid, typid);
+				pfree(str);
+				pfree(pub);
+				list_free(opname);
+			}
+			funcid = *leopr;
+		}
+		else
+		{
+			if (!OidIsValid(*ltopr))
+			{
+				Value *str = makeString("<");
+				Value *pub = makeString("pg_catalog");
+				List *opname = list_make2(pub, str);
+
+				*ltopr = get_opfuncid_by_opname(opname, typid, typid);
+				pfree(str);
+				pfree(pub);
+				list_free(opname);
+			}
+			funcid = *ltopr;
+		}
+
+		res = OidFunctionCall2(funcid, tupval, c->constvalue);
+		if (!DatumGetBool(res))
+			return 1; 
+	}
+	return 0;
+}
+
 /* 
  * Given a partition specific part, a tuple as represented by d and isnull and
  * a list of rules, return an Oid in *found or the next set of rules.
@@ -9255,13 +9355,10 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	List *rules = partnode->rules;
 	int high = list_length(rules) - 1;
 	int low = 0;
-	Oid ops[2];
-	Value *pub = makeString("pg_catalog");
-	Oid lhsid = InvalidOid;
-	Oid rhsid = InvalidOid;
-	AttrNumber attno = partnode->part->paratts[0];
-	/* XXX: all attributes!! */
-	Datum d = values[attno - 1];
+	Oid *ops[2];
+	int mid = 0;
+	bool matched = false;
+	PartitionRule *rule;
 
 	Assert(partnode->part->parkind == 'r');
 
@@ -9270,128 +9367,181 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	/* 
 	 * If there's a NULL, we're not going to find a match.
 	 */
-	if (isnull[attno - 1])
-		return NULL;
 
 #define RANGE_OP_LT 0
 #define RANGE_OP_LE 1
 	
-	MemSet(ops, 0, sizeof(ops));
+	ops[RANGE_OP_LT] = palloc0(sizeof(Oid) * partnode->part->parnatts);
+	ops[RANGE_OP_LE] = palloc0(sizeof(Oid) * partnode->part->parnatts);
 
+	/* 
+	 * Use a binary search to try and pin point the region within the set of 
+	 * rules where the rule is. If the partition is across a single column, 
+	 * the rule located by the binary search is the only possible candidate. 
+	 * If the partition is across more than one column, we need to search
+	 * sequentially to either side of the rule to see if the match is there.
+	 * The reason for this complexity is the nature of find a point within an
+	 * interval.
+	 *
+	 * Consider the following intervals:
+	 *
+	 * 1. start( 1, 8)   end( 10,  9)
+	 * 2. start( 1, 9)   end( 15, 10)
+	 * 3. start( 1, 11)  end(100, 12)
+	 * 4. start(15, 10)  end( 30, 11)
+	 *
+	 * If we were to try and find the partition for a tuple (25, 10), using the
+	 * binary search for the first element, we'd select partition 3 but
+	 * partition 4 is also a candidate. It is only when we look at the second
+	 * element that we find the single definitive rule.
+	 */
 	while (low <= high)
 	{
-		int mid = low + (high - low)/2;
-		Const *c = NULL;
-		PartitionRule *rule;
-		Datum res;
-		Oid funcid;
+		AttrNumber attno = partnode->part->paratts[0];
+		Datum d = values[attno - 1];
+		int ret;
 
+		mid = low + (high - low)/2;
 		rule = (PartitionRule *)list_nth(rules, mid);
 
-		if (!OidIsValid(lhsid))
-			rhsid = lhsid = tupdesc->attrs[attno - 1]->atttypid;
+		if (isnull[attno - 1])
+			return NULL;
 
-		Assert(PointerIsValid(rule->parrangestart) ||
-			   PointerIsValid(rule->parrangeend));
-		
-		/* might be a rule with no START value */
-		if (PointerIsValid(rule->parrangestart))
+		ret = range_test(d, tupdesc->attrs[attno - 1]->atttypid,
+						 &(ops[RANGE_OP_LT][0]), &(ops[RANGE_OP_LE][0]),
+						 0, rule);
+	
+		if (ret > 0)
 		{
-			Assert(IsA(rule->parrangestart, List));
-			c = linitial((List *)rule->parrangestart);
-
-			/* is the value in the range? */
-			if (rule->parrangestartincl)
-			{
-				if (!OidIsValid(ops[RANGE_OP_LE]))
-				{
-					Value *str = makeString("<=");
-					List *opname = list_make2(pub, str);
-
-					ops[RANGE_OP_LE] = 
-						get_opfuncid_by_opname(opname, lhsid, rhsid);
-					pfree(str);
-					list_free(opname);
-				}
-				funcid = ops[RANGE_OP_LE];
-			}
-			else
-			{
-				if (!OidIsValid(ops[RANGE_OP_LT]))
-				{
-					Value *str = makeString("<");
-					List *opname = list_make2(pub, str);
-
-					ops[RANGE_OP_LT] = 
-						get_opfuncid_by_opname(opname, lhsid, rhsid);
-					pfree(str);
-					list_free(opname);
-				}
-				funcid = ops[RANGE_OP_LT];
-			}
-		
-			res = OidFunctionCall2(funcid, c->constvalue, d);
-			if (!DatumGetBool(res))
-			{
-				/* Go left */
-				high = mid - 1;
-				continue;
-			}
+			low = mid + 1;
+			continue;
 		}
-		
-		/* There might be no END value */
-		if (PointerIsValid(rule->parrangeend))
+		else if(ret < 0)
 		{
-			c = linitial((List *)rule->parrangeend);
-		
-			/* might be in the range, lets see */
-			if (rule->parrangeendincl)
-			{
-				if (!OidIsValid(ops[RANGE_OP_LE]))
-				{
-					Value *str = makeString("<=");
-					List *opname = list_make2(pub, str);
-
-					ops[RANGE_OP_LE] = 
-						get_opfuncid_by_opname(opname, rhsid, lhsid);
-					pfree(str);
-					list_free(opname);
-				}
-				funcid = ops[RANGE_OP_LE];
-			}
-			else
-			{
-				if (!OidIsValid(ops[RANGE_OP_LT]))
-				{
-					Value *str = makeString("<");
-					List *opname = list_make2(pub, str);
-
-					ops[RANGE_OP_LT] = 
-						get_opfuncid_by_opname(opname, rhsid, lhsid);
-					pfree(str);
-					list_free(opname);
-				}
-				funcid = ops[RANGE_OP_LT];
-			}
-		
-			res = OidFunctionCall2(funcid, d, c->constvalue);
-			if (!DatumGetBool(res))
-			{
-				/* Go right */
-				low = mid + 1;
-				continue;
-			}
+			high = mid - 1;
+			continue;
 		}
 		else
 		{
-			/* no end value, so value must fall in this range */
-			Assert(mid + 1 == list_length(rules));
-
-			/* fall through to match below */
+			matched = true;
+			break;
 		}
-		/* matched */
-		*found = rule->parchildrelid;
-		return rule->children;
+	}
+
+	if (matched)
+	{
+		int j;
+
+		/* special case, we matched */
+		if (partnode->part->parnatts == 1)
+		{
+			pfree(ops[RANGE_OP_LT]);
+			pfree(ops[RANGE_OP_LE]);
+
+			*found = rule->parchildrelid;
+			return rule->children;
+		}
+
+		j = mid;
+		do
+		{
+			int i;
+			bool matched = true;
+			bool first_fail = false;
+
+			for (i = 0; i < partnode->part->parnatts; i++)
+			{
+				AttrNumber attno = partnode->part->paratts[i];
+				Datum d = values[attno - 1];
+				int ret;
+
+				if (j != mid)
+					rule = (PartitionRule *)list_nth(rules, j);
+
+				if (isnull[attno - 1])
+					return NULL;
+
+				ret = range_test(d, tupdesc->attrs[attno - 1]->atttypid,
+								 &(ops[RANGE_OP_LT][i]), &(ops[RANGE_OP_LE][i]),
+								 i, rule);
+				if (ret != 0)
+				{
+					matched = false;
+
+					/* 
+					 * If we've gone beyond the boundary of rules which match
+					 * the first tuple, no use looking further
+					 */
+					if (i == 0)
+						first_fail = true;
+
+					break;
+				}
+			}
+
+			if (first_fail)
+				break;
+			if (matched)
+			{
+				pfree(ops[RANGE_OP_LT]);
+				pfree(ops[RANGE_OP_LE]);
+
+				*found = rule->parchildrelid;
+				return rule->children;
+			}
+	
+		}
+		while (--j >= 0);
+
+		j = mid;
+		do
+		{
+			int i;
+			bool matched = true;
+			bool first_fail = false;
+
+			for (i = 0; i < partnode->part->parnatts; i++)
+			{
+				AttrNumber attno = partnode->part->paratts[i];
+				Datum d = values[attno - 1];
+				int ret;
+
+				rule = (PartitionRule *)list_nth(rules, j);
+
+				if (isnull[attno - 1])
+					return NULL;
+
+				ret = range_test(d, tupdesc->attrs[attno - 1]->atttypid,
+								 &(ops[RANGE_OP_LT][i]), &(ops[RANGE_OP_LE][i]),
+								 i, rule);
+				if (ret != 0)
+				{
+					matched = false;
+
+					/* 
+					 * If we've gone beyond the boundary of rules which match
+					 * the first tuple, no use looking further
+					 */
+					if (i == 0)
+						first_fail = true;
+
+					break;
+				}
+			}
+
+			if (first_fail)
+				break;
+			if (matched)
+			{
+				pfree(ops[RANGE_OP_LT]);
+				pfree(ops[RANGE_OP_LE]);
+
+				*found = rule->parchildrelid;
+				return rule->children;
+			}
+	
+		}
+		while (++j < list_length(rules));
 	}
 	return NULL;
 }

@@ -52,7 +52,7 @@
 #include "executor/spi.h"
 
 /* temporary rule to control whether we generate RULEs or not -- for testing */
-bool        enable_partition_rules = true;
+bool        enable_partition_rules = false;
 
 /* State shared by transformCreateSchemaStmt and its subroutines */
 typedef struct

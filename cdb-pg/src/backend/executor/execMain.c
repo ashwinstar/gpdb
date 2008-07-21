@@ -78,7 +78,7 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdboidsync.h"
 
-bool enable_partition_fast_insert = false;
+bool enable_partition_fast_insert = true;
 extern bool isFtsReadOnlySet(void);
 extern void FtsEvaluateTransientState(void);
 
@@ -1211,8 +1211,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			Relation tmp = heap_open(getrelid(parseTree->resultRelation,
 											  rangeTable),
 									 NoLock);
-			estate->es_result_partitions =
-				RelationBuildPartitionDesc(tmp);
+			if (enable_partition_fast_insert)
+				estate->es_result_partitions =
+					RelationBuildPartitionDesc(tmp);
 			parseTree->result_partitions = estate->es_result_partitions;
 			heap_close(tmp, NoLock);
 		}

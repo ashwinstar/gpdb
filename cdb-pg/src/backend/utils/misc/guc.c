@@ -1740,7 +1740,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&enable_partition_rules,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 
 	{
@@ -1750,7 +1750,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&enable_partition_fast_insert,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	/* End-of-list marker */

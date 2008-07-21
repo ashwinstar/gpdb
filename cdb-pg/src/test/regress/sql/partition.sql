@@ -1128,3 +1128,64 @@ select * from d_1_prt_a;
 select * from d_1_prt_b;
 select * from d_1_prt_c;
 drop table d cascade;
+
+-- test multi value range partitioning
+create table b (i int, j date) distributed by (i)
+partition by range (i, j)
+(start(1, '2008-01-01') end (10, '2009-01-01'),
+ start(1, '2009-01-01') end(15, '2010-01-01'),
+ start(15, '2010-01-01') end (30, '2011-01-01'),
+ start(1, '2011-01-01') end (100, '2012-01-01')
+);
+-- should work
+insert into b values(1, '2008-06-11');
+insert into b values(11, '2009-08-24');
+insert into b values(25, '2010-01-22');
+insert into b values(90, '2011-05-04');
+-- shouldn't work
+insert into b values(1, '2019-01-01');
+insert into b values(91, '2008-05-05');
+ 
+select * from b_1_prt_1;
+select * from b_1_prt_2;
+select * from b_1_prt_3;
+select * from b_1_prt_4;
+drop table b;
+
+-- try some different combinations
+create table b (i int, n numeric(20, 2), t timestamp, s text)
+distributed by (i)
+partition by range(n, t, s)
+(
+start(2000.99, '2007-01-01 00:00:00', 'AAA')
+  end (4000.95, '2007-02-02 15:00:00', 'BBB'),
+
+start(2000.99, '2007-01-01 00:00:00', 'BBB')
+  end (4000.95, '2007-02-02 16:00:00', 'CCC'),
+
+start(4000.95, '2007-01-01 00:00:00', 'AAA')
+  end (7000.95, '2007-02-02 15:00:00', 'BBB')
+);
+
+-- should work
+insert into b values(1, 2000.99, '2007-01-01 00:00:00', 'AAA');
+insert into b values(2, 2000.99, '2007-01-01 00:00:00', 'BBB');
+insert into b values(3, 4000.95, '2007-01-01 00:00:00', 'AAA');
+insert into b values(6, 3000, '2007-02-02 15:30:00', 'BBC');
+insert into b values(6, 3000, '2007-02-02 15:30:00', 'CC');
+insert into b values(6, 3000, '2007-02-02 16:00:00'::timestamp - 
+					'1 second'::interval, 'BBZZZZZZZZZZ');
+
+-- should fail
+insert into b values(6, 3000, '2007-02-02 15:30:00', 'CCCCCCC');
+insert into b values(4, 5000, '2007-01-01 12:00:00', 'BCC');
+insert into b values(5, 8000, '2007-01-01 12:00:00', 'ZZZ');
+insert into b values(6, 3000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
+insert into b values(6, 1000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
+insert into b values(6, 3000, '2006-02-02 16:00:00', 'ABZZZZZZZZZZ');
+insert into b values(6, 3000, '2007-02-02 00:00:00', 'A');
+
+-- NULL tests
+insert into b default values;
+insert into b values(6, 3000, '2007-01-01 12:00:00', NULL);
+drop table b;
