@@ -362,7 +362,8 @@ createDispatchAgents(Portal portal)
  * 
  * Reader gang ids start at 3
  */
-
+#define PRIMARY_WRITER_GANG_ID 1
+#define MIRROR_WRITER_GANG_ID 2
 static int gang_id_counter = 3;
 /*
  * creates a new gang by logging on a session to each segDB involved
@@ -442,7 +443,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 	 */
 	elog(DEBUG1,"createGang type = %d, gang_id %d, size %d",type,gang_id,size);
 	if (type == GANGTYPE_PRIMARY_WRITER)
-		Assert(gang_id == 1);
+		Assert(gang_id == PRIMARY_WRITER_GANG_ID);
 
 	segdb_count = newGangDefinition->size;
 
@@ -2482,10 +2483,8 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 
 	Insist(Gp_role == GP_ROLE_DISPATCH);
 	
-    if (type == GANGTYPE_PRIMARY_WRITER)
-    	return allocatePrimaryWriterGang();
-    else if (type == GANGTYPE_MIRROR_WRITER)
-    	return allocateMirrorWriterGang();
+    if (type == GANGTYPE_PRIMARY_WRITER || type == GANGTYPE_MIRROR_WRITER)
+    	return allocateWriterGang(type);
 
 	if (!IsTransactionOrTransactionBlock())
 	{
@@ -2666,29 +2665,37 @@ allocateGang(GangType type, int size, int content, char *portal_name)
 	return gp;
 }
 
-
 Gang *
-allocatePrimaryWriterGang(void)
+allocateWriterGang(GangType type)
 {
+	Gang *writer_gang;
+	MemoryContext oldContext;
+
+	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
+
+	Assert(type == GANGTYPE_PRIMARY_WRITER ||
+		   type == GANGTYPE_MIRROR_WRITER);
+
+	if (type == GANGTYPE_PRIMARY_WRITER)
+		writer_gang = primaryWriterGang;
+	else
+		writer_gang = mirrorWriterGang;
+
 	/*
 	 * First, we look for an unallocated but created gang of the right type
 	 * if it exists, we return it.
 	 * Else, we create a new gang
 	 */
 
-	MemoryContext oldContext;
-
-	Gang	   *gp = NULL;
-
-	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
-
-	if (primaryWriterGang == NULL)
+	if ((type == GANGTYPE_PRIMARY_WRITER && writer_gang == NULL) ||
+		(type == GANGTYPE_MIRROR_WRITER && writer_gang == NULL && !mirroringNotConfigured))
 	{
 		int		nsegdb;
+		int attempts;
 		
 		if (!IsTransactionOrTransactionBlock())
 		{
-			elog(ERROR, "allocatePrimaryWriterGang must be called inside of transaction");
+			elog(ERROR, "allocateWriterGang must be called inside of transaction");
 		}
 		
 		if (GangContext == NULL)
@@ -2707,116 +2714,50 @@ allocatePrimaryWriterGang(void)
 		/*
 		 * try twice for creating gang
 		 */
-		gp = primaryWriterGang = createGang(GANGTYPE_PRIMARY_WRITER, 1, nsegdb, -1, NULL);
-		if (gp == NULL)
-			gp = primaryWriterGang = createGang(GANGTYPE_PRIMARY_WRITER, 1, nsegdb, -1, NULL);
-		
-		MemoryContextSwitchTo(oldContext);
-	}
-	else
-	{
-        if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-		    elog(DEBUG4, "Reusing an existing primary writer gang");
-		gp = primaryWriterGang;
-	}
-	
-	/*
-	 * now we enroll the gang in the current global transaction?
-	 */
-
-	
-	if (gp == NULL)
-	{
-		elog(ERROR, "No primary gang allocated");
-	}
-
-	if (gp != NULL)
-	{
-		gp->allocated = true;
-
-		/* sanity check the gang */
-		if (!gangOK(gp))
-			elog(ERROR, "Segment connection failed: allocatePrimaryWriterGang attempted to return a bad gang.");
-	}
-
-	return gp;
-}
-
-Gang *
-allocateMirrorWriterGang(void)
-{
-	/*
-	 * First, we look for an unallocated but created gang of the right type
-	 * if it exists, we return it.
-	 * Else, we create a new gang
-	 */
-
-	MemoryContext oldContext;
-
-	Gang	   *gp = NULL;
-
-	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT);
-
-	if (mirrorWriterGang == NULL && !mirroringNotConfigured)
-	{
-		int		nsegdb;
-		
-		if (!IsTransactionOrTransactionBlock())
+#define CREATE_GANG_RETRIES 2
+		for (attempts = 0; (attempts < CREATE_GANG_RETRIES && writer_gang == NULL); attempts++)
 		{
-			elog(ERROR, "allocateMirrorWriterGang must be called inside of transaction");
+			writer_gang =
+				createGang(type,
+						   (type == GANGTYPE_PRIMARY_WRITER) ? PRIMARY_WRITER_GANG_ID : MIRROR_WRITER_GANG_ID,
+						   nsegdb, -1, NULL);
 		}
-		
-		if (GangContext == NULL)
-		{ 
-			GangContext = AllocSetContextCreate(TopMemoryContext,
-												 "Gang Context",
-												 ALLOCSET_DEFAULT_MINSIZE,
-												 ALLOCSET_DEFAULT_INITSIZE,
-												 ALLOCSET_DEFAULT_MAXSIZE);
-		}
-		Assert(GangContext != NULL);
-
-		oldContext = MemoryContextSwitchTo(GangContext);
-		
-		nsegdb = getgpsegmentCount();
-		/*
-		 * try twice for creating gang
-		 */
-		gp = mirrorWriterGang = createGang(GANGTYPE_MIRROR_WRITER, 2, nsegdb, -1, NULL);
-		if (gp == NULL && !mirroringNotConfigured)
-			gp = mirrorWriterGang = createGang(GANGTYPE_MIRROR_WRITER, 2, nsegdb, -1, NULL);
 		
 		MemoryContextSwitchTo(oldContext);
 	}
 	else
 	{
         if (gp_log_gang >= GPVARS_VERBOSITY_DEBUG)
-		    elog(DEBUG4, "Reusing an existing mirror writer gang");
-		gp = mirrorWriterGang;
+		    elog(DEBUG4, "Reusing an existing %s writer gang",
+				 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
 	}
 	
-	/*
-	 * now we enroll the gang in the current global transaction?
-	 */
-
-	
-	if (gp == NULL)
+	if (writer_gang == NULL)
 	{
-		if (!mirroringNotConfigured)
-			elog(ERROR, "No mirror gang allocated");
-		
-		return NULL;
+		if (type == GANGTYPE_PRIMARY_WRITER ||
+			(type == GANGTYPE_MIRROR_WRITER && !mirroringNotConfigured))
+			elog(ERROR, "No %s gang allocated",
+				 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
+		else
+			return NULL;
 	}
 
+	Assert( writer_gang != NULL);
 
-	gp->allocated = true;
+	writer_gang->allocated = true;
 
 	/* sanity check the gang */
-	if (!gangOK(gp))
-		elog(ERROR, "Segment connection failed: allocateMirrorWriterGang attempted to return a bad gang.");
+	if (!gangOK(writer_gang))
+		elog(ERROR, "Segment connection failed: allocateWriterGang attempted to return a bad gang.");
 
-	return gp;
+	if (type == GANGTYPE_PRIMARY_WRITER)
+		primaryWriterGang = writer_gang;
+	else
+		mirrorWriterGang = writer_gang;
+
+	return writer_gang;
 }
+
 /*
  * When we are the dispatch agent, we get told which gang to use by its "gang_id"
  * We need to find the gang in our lists.
@@ -2839,12 +2780,12 @@ Gang * findGangById(int gang_id)
 	if (gang_id == 1)
 	{
 		elog(LOG,"findGangById: primary writer didn't exist when we expected it to");
-		return allocatePrimaryWriterGang();
+		return allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
 	}
 	else if (gang_id == 2)
 	{
 		elog(LOG,"findGangById: mirror writer didn't exist when we expected it to");
-		return allocateMirrorWriterGang();
+		return allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 	}
 	
 	/*

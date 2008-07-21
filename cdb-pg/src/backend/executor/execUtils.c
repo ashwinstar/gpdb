@@ -1580,11 +1580,11 @@ AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		{
 			if (i == 0 && !queryDesc->cursor_query)
 			{
-				inv.vecNgangs[i] = allocatePrimaryWriterGang();
+				inv.vecNgangs[i] = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
 				Assert(inv.vecNgangs[i] != NULL);
 				if (inv.writer)
 				{
-					inv.mirrorWriterGang = allocateMirrorWriterGang();
+					inv.mirrorWriterGang = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 				}
 			}
 			else

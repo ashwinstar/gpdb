@@ -279,8 +279,8 @@ FtsReConfigureMPP(void)
 	elog(LOG, "FTS: reconfiguration is in progress");
 	disconnectAndDestroyAllGangs();
 
-	allocatePrimaryWriterGang();
-	allocateMirrorWriterGang();
+	allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
+	allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 
 	InReConfigure = false;
 	LWLockRelease(ftsControlLock);

@@ -96,8 +96,8 @@ makeCdbCopy(bool is_copy_in)
 	}
 
 	/* init gangs */
-	c->primary_writer = allocatePrimaryWriterGang();
-	c->mirror_writer = allocateMirrorWriterGang();
+	c->primary_writer = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
+	c->mirror_writer = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 	
 	/* init seg list for copy out */
 	if(!c->copy_in)
@@ -118,7 +118,7 @@ cdbCopyGetDbCount(int total_segs, int seg)
 {
 	int			i;
 
-	Gang	   *gp = allocateMirrorWriterGang();
+	Gang	   *gp = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 
 	if (gp == NULL)
 		return 1;

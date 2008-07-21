@@ -1200,13 +1200,13 @@ cdbdisp_dispatchDtxProtocolCommand(DtxProtocolCommand dtxProtocolCommand,
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
-	primaryGang = allocatePrimaryWriterGang();
+	primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
 
 	Assert(primaryGang);
 	
 	dtxProtocolParms.primary_gang_id = primaryGang->gang_id;
 
-	mirrorGang = allocateMirrorWriterGang();
+	mirrorGang = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 
 	if (mirrorGang &&
 		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
@@ -1348,11 +1348,11 @@ cdbdisp_dispatchCommand(const char                 *strCommand,
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
-	primaryGang = allocatePrimaryWriterGang();
+	primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
 
 	Assert(primaryGang);
 
-	mirrorGang = allocateMirrorWriterGang();
+	mirrorGang = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 	
 	Assert(dispatchToPrimaries || dispatchToMirrors);
 	
@@ -1660,13 +1660,13 @@ cdbdisp_dispatchCommandToAllGangs(const char                 *strCommand,
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
-	primaryGang = allocatePrimaryWriterGang();
+	primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
 
 	Assert(primaryGang);
 	
 	queryParms.primary_gang_id = primaryGang->gang_id;
 
-	mirrorGang = allocateMirrorWriterGang();
+	mirrorGang = allocateWriterGang(GANGTYPE_MIRROR_WRITER);
 	
 	if (mirrorGang)
 		queryParms.mirror_gang_id = mirrorGang->gang_id;
@@ -3514,7 +3514,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 			if (Gp_role == GP_ROLE_DISPATCHAGENT)
 			{
 				elog(WARNING,"*DA* Using default writer gang");
-				primaryGang = allocatePrimaryWriterGang();  /* we could use findGangById(1) here */
+				primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);  /* we could use findGangById(1) here */
 			}
 			else
 			{
@@ -3523,7 +3523,7 @@ cdbdisp_dispatchX(DispatchCommandQueryParms *pQueryParms,
 				 * we just get the primary gang to know where the dispatch agents live.
 				 */
 				elog(DEBUG5,"QD Using default writer gang");
-				primaryGang = allocatePrimaryWriterGang();
+				primaryGang = allocateWriterGang(GANGTYPE_PRIMARY_WRITER);
 			}
 
 			mirrorGang = NULL;
