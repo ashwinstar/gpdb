@@ -39,6 +39,8 @@
 #include "cdb/cdbpullup.h"
 #include "cdb/cdbvars.h"
 
+#include "nodes/print.h"
+
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
  * It is externalized here to make it shareable by helper code in other
@@ -90,61 +92,20 @@ static bool DoesDistributionHaveDependencies(Oid relOid, GpPolicy * policy);
 #endif
 
 /*
- * Given an expression, return true if it is a constant.
+ * Given an expression, return true if it contains anything non-constant.
  *
  * an expression is considered "constant" if they consist of constant
  * expressions and non-volatile functions with constant arguments.
  */
 static bool
-constantExpression(Expr *e)
+contains_nonconstant_walker(Node *node, void *context)
 {
-	if (IsA(e, Const))
-	{
-		/* constants are constant */
-		return true;
-	}	
-	else if (IsA(e, FuncExpr))
-	{
-		/* A FuncExpr is constant if it has constant args, and is non-volatile */
-		List	   *args = ((FuncExpr *)e)->args;
-		ListCell   *arg;
-		Form_pg_proc funcform;
-		Oid			funcid;
-		HeapTuple	func_tuple;
-		bool		nonVolatileFunc=true;
-
-		foreach(arg, args)
-		{
-			if (!constantExpression(lfirst(arg)))
-				return false;
-		}
-
-		funcid = ((FuncExpr *)e)->funcid;
-
-		/* OK, we have all constant arguments. Is the function "legal" ? */
-		func_tuple = SearchSysCache(PROCOID,
-									ObjectIdGetDatum(funcid),
-									0, 0, 0);
-		if (!HeapTupleIsValid(func_tuple))
-			elog(ERROR, "cache lookup failed for function %u", funcid);
-
-		funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
-
-		if (funcform->provolatile == PROVOLATILE_IMMUTABLE)
-			/* okay */ ;
-		else if (funcform->provolatile == PROVOLATILE_STABLE)
-			/* okay */ ;
-		else
-			nonVolatileFunc=false;
-
-		ReleaseSysCache(func_tuple);
-
-		return nonVolatileFunc;
-	}
-	else
-		return false;
+    if (IsA(node, Const))
+        return false;
+    if (contain_volatile_functions(node))
+        return true;
+    return expression_tree_walker(node, contains_nonconstant_walker, context);
 }
-
 /*
  * Is target list all-constant ?
  *
@@ -168,7 +129,8 @@ allConstantValuesClause(Plan *node)
 		tle = (TargetEntry *)lfirst(cell);
 
 		Assert(tle->expr);
-		if (!constantExpression(tle->expr))
+
+		if (contains_nonconstant_walker((Node *)tle->expr, NULL))
 			return false;
 	}
 
