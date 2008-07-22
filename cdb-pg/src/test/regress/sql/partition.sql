@@ -856,6 +856,37 @@ alter table hhh_r1 drop partition;
 alter table hhh_r1 drop partition;
 alter table hhh_r1 drop partition;
 
+-- more add partition tests
+
+-- start before first partition (fail because start equal end)
+alter table hhh_r1 add partition zaa start ('2007-07-01');
+-- start before first partition (ok)
+alter table hhh_r1 add partition zaa start ('2007-06-01');
+-- start > last (fail because start equal end)
+alter table hhh_r1 add partition bb start ('2008-01-01') end ('2008-01-01') ;
+-- start > last (ok)
+alter table hhh_r1 add partition bb start ('2008-01-01') 
+end ('2008-02-01') inclusive;
+-- start > last (fail because start == last end inclusive)
+alter table hhh_r1 add partition cc start ('2008-02-01') end ('2008-03-01') ;
+-- start > last (ok [and leave a gap])
+alter table hhh_r1 add partition cc start ('2008-04-01') end ('2008-05-01') ;
+-- overlap (fail)
+alter table hhh_r1 add partition dd start ('2008-01-01') end ('2008-05-01') ;
+-- new partition in "gap" (fail)
+alter table hhh_r1 add partition dd start ('2008-03-01') end ('2008-04-01') ;
+-- overlap all partitions (fail)
+alter table hhh_r1 add partition dd start ('2006-01-01') end ('2009-01-01') ;
+-- start before first partition (fail because end in "gap" [and overlaps])
+alter table hhh_r1 add partition yaa start ('2007-05-01') end ('2007-07-01');
+-- start before first partition (fail )
+alter table hhh_r1 add partition yaa start ('2007-05-01') 
+end ('2007-10-01') inclusive;
+-- start before first partition (fail because end overlaps)
+alter table hhh_r1 add partition yaa start ('2007-05-01') 
+end ('2007-10-01') exclusive;
+
+
 drop table hhh_r1 cascade;
 drop table hhh_l1 cascade;
 

@@ -10547,7 +10547,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 							default:
 								/* new end is less than first
 								 * partition start but new start isn't
-								 * -- must be end > start 
+								 * -- must be end < start 
 								 */
 								break;
 						}
@@ -10593,7 +10593,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 							default:
 								/* new end is less than first
 								 * partition start but new start isn't
-								 * -- must be end > start 
+								 * -- must be end < start 
 								 */
 								break;
 						}
@@ -10659,14 +10659,34 @@ atpxPartAddList(AlteredTableInfo *tab,
 								default:
 									/* new end is less than last
 									 * partition end but new start isn't
-									 * -- must be end > start 
+									 * -- must be end < start 
 									 */
 									break;
 							}
 						}
 						else
 						{
-							isMiddle = 0;
+							switch (isMiddle)
+							{
+								case -1:
+									/* since new start < first start
+									 * and new end in middle we overlap
+									 */
+									bOverlap = true;
+									goto L_end_overlap;
+
+									break;
+								case 0:
+									/* both start and end in middle */
+									break;
+								case 1:
+								default:
+									/* since new start > last end and
+									 * new end in middle 
+									 * -- must be end < start 
+									 */
+									break;
+							}
 						}
 					}
 				}	
@@ -10683,7 +10703,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 				}
 
 
-
 				/* if the individual start and end values don't
 				 * intersect an existing partition, make sure they
 				 * don't define a range which contains an existing
@@ -10692,11 +10711,10 @@ atpxPartAddList(AlteredTableInfo *tab,
 				 */
 
 				/* XXX XXX XXX */
-				if (0 == isMiddle)
+				if (!bOverlap && (0 == isMiddle))
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("cannot add new partition in middle")));
-
+							 errmsg("cannot add new partition between two existing partitions")));
 
 
 			
@@ -10705,7 +10723,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 							 errmsg("new partition overlaps existing partition%s",
-									prule->isName ? prule->partIdStr : "")));
+									(prule && prule->isName) ? prule->partIdStr : "")));
 
 			}
 
