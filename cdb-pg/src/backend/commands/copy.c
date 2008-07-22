@@ -2161,10 +2161,12 @@ CopyFromDispatch(CopyState cstate)
 	Oid       *p_attr_types;	/* types for each policy attribute */
 
 	/* variables for partitioning */
-	Datum     *part_values = NULL;
-	Oid		  *part_attr_types = NULL; /* types for partitioning */
-	Oid		  *part_typio = NULL;
-	FmgrInfo  *part_infuncs = NULL;
+	Datum      *part_values = NULL;
+	Oid		   *part_attr_types = NULL; /* types for partitioning */
+	Oid		   *part_typio = NULL;
+	FmgrInfo   *part_infuncs = NULL;
+	AttrNumber *part_attnum = NULL;
+	int			part_attnums = 0;
 
 	/*
 	 * Variables for original row number tracking
@@ -2497,26 +2499,9 @@ CopyFromDispatch(CopyState cstate)
 	{
 		PartitionNode *n = estate->es_result_partitions;
 
-		part_values = palloc(num_phys_attrs * sizeof(Datum));
-		part_attr_types = palloc(num_phys_attrs * sizeof(Oid));
-		part_typio = palloc(num_phys_attrs * sizeof(Oid));
-		part_infuncs = palloc(num_phys_attrs * sizeof(FmgrInfo));
-
-		/* XXX: do for all partition levels */
-		for (i = 0; i < n->part->parnatts; i++)
-		{
-			Oid in_func_oid;
-
-			attnum = n->part->paratts[i];
-
-			getTypeInputInfo(attr[attnum - 1]->atttypid,
-							 &in_func_oid,
-							 &part_typio[attnum - 1]);
-			fmgr_info(in_func_oid, &part_infuncs[attnum - 1]);
-
-			/* make sure we parse up to the last partitioning key */
-			cstate->last_hash_field = Max(cstate->last_hash_field, attnum);
-		}
+		/* make sure we parse up to the last partitioning key */
+		cstate->last_hash_field = Max(cstate->last_hash_field,
+										  max_partition_attr(n));
 	}
 	
 
@@ -2962,34 +2947,44 @@ CopyFromDispatch(CopyState cstate)
 				if (estate->es_result_partitions)
 				{
 					PartitionNode *n = estate->es_result_partitions;
+					MemoryContext cxt_save;
 					/* lazily initialised */
 					if (part_values == NULL)
 					{
-						int tmp;
+						List *pattnums = get_partition_attrs(n);
+						ListCell *lc;
+						int ii = 0;
 
-						part_values = palloc(num_phys_attrs * sizeof(Datum));
+						cxt_save = MemoryContextSwitchTo(oldcontext);
+
+						part_values = palloc0(num_phys_attrs * sizeof(Datum));
 						part_attr_types = palloc(num_phys_attrs * sizeof(Oid));
 						part_typio = palloc(num_phys_attrs * sizeof(Oid));
-						part_infuncs = palloc(num_phys_attrs * sizeof(FmgrInfo));
+						part_infuncs = 
+							palloc(num_phys_attrs * sizeof(FmgrInfo));
+						part_attnum = palloc(num_phys_attrs * 
+											 sizeof(AttrNumber));
+						part_attnums = list_length(pattnums);
+						MemoryContextSwitchTo(cxt_save);
 
-						/* XXX: do for all partition levels */
-						for (tmp = 0; tmp < n->part->parnatts; tmp++)
+						foreach(lc, pattnums)
 						{
+							AttrNumber attnum = (AttrNumber)lfirst_int(lc);
 							Oid in_func_oid;
-
-							attnum = n->part->paratts[tmp];
 
 							getTypeInputInfo(attr[attnum - 1]->atttypid,
 											 &in_func_oid,
 											 &part_typio[attnum - 1]);
 							fmgr_info(in_func_oid, &part_infuncs[attnum - 1]);
+							part_attnum[ii++] = attnum;
 						}
 					}
+					MemSet(part_values, 0, num_phys_attrs * sizeof(Datum));
 					cur_row_rejected = attr_get_key(cstate, cdbCopy,
 													original_lineno_for_qe,
 													target_seg,
-													n->part->parnatts,
-													n->part->paratts,
+													part_attnums,
+													part_attnum,
 													attr, attr_offsets, nulls,
 												   	part_infuncs, part_typio,
 													part_values);
@@ -3000,10 +2995,13 @@ CopyFromDispatch(CopyState cstate)
 						QD_GOTO_NEXT_ROW;	
 					}
 
+
+					/* values_get_partition() calls palloc() */
+					cxt_save = MemoryContextSwitchTo(oldcontext);
+
 					/* partition might not exist */
 					PG_TRY();
 					{
-						/* parse the copy data into the partitioning key */
 						resultRelInfo = values_get_partition(part_values,
 															 nulls, 
 														 	 tupDesc, estate);
@@ -3013,6 +3011,7 @@ CopyFromDispatch(CopyState cstate)
 						COPY_HANDLE_ERROR;
 					}
 					PG_END_TRY();
+					MemoryContextSwitchTo(cxt_save);
 						
 					if (cur_row_rejected)
 					{
@@ -3071,8 +3070,6 @@ CopyFromDispatch(CopyState cstate)
 								 ORIGINAL_LINENO_DELIM,
 								 cstate->line_buf.data);
 				
-				/* XXX: find partition, lock table */
-
 				/* send modified data */
 				cdbCopySendData(cdbCopy, 
 								target_seg, 
@@ -3685,8 +3682,11 @@ CopyFrom(CopyState cstate)
 				 */
 				MemoryContextSwitchTo(oldcontext);
 				if (estate->es_result_partitions)
+				{
 					resultRelInfo = values_get_partition(values, nulls, 
 														 tupDesc, estate);
+					estate->es_result_relation_info = resultRelInfo;
+				}
 				if (resultRelInfo->ri_RelationDesc->rd_rel->relkind ==
 					RELKIND_APPEND_ONLY &&
 					resultRelInfo->ri_aoInsertDesc == NULL)

@@ -51,23 +51,6 @@ NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb" for table "ggg"
 ERROR:  missing SUBPARTITION BY clause for subpartition specification (at depth 2)
 LINE 6: partition aa (subpartition cc, subpartition dd (subpartition...
                       ^
--- missing subpartition spec
-create table ggg (a char(1), b char(2), d char(3))
-distributed by (a)
-partition by hash (b)
-subpartition by hash (d) ,
-subpartition by hash (d) 
-(
-partition aa (subpartition cc, subpartition dd),
-partition bb (subpartition cc, subpartition dd)
-);
-NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa" for table "ggg"
-NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb" for table "ggg"
-NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_cc" for table "ggg_1_prt_aa"
-NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_dd" for table "ggg_1_prt_aa"
-ERROR:  hash partition requires PARTITIONS clause or partition specification
-LINE 5: subpartition by hash (d) 
-                        ^
 -- Test column lookup works
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -107,7 +90,7 @@ NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb_2_prt_cc" for table "g
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb_2_prt_dd" for table "ggg_1_prt_bb"
 drop table ggg cascade;
 -- should work
-create table ggg (a char(1), b char(2), d char(3))
+create table ggg (a char(1), b char(2), d char(3), e int)
 distributed by (a)
 partition by hash (b)
 subpartition by hash (d) 
@@ -115,7 +98,7 @@ subpartition template (
 subpartition cc,
 subpartition dd
 ), 
-subpartition by hash (d) 
+subpartition by hash (e) 
 subpartition template ( 
 subpartition ee,
 subpartition ff
@@ -140,11 +123,11 @@ NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb_2_prt_dd_3_prt_ee" for
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb_2_prt_dd_3_prt_ff" for table "ggg_1_prt_bb_2_prt_dd"
 drop table ggg cascade;
 -- should work
-create table ggg (a char(1), b char(2), d char(3))
+create table ggg (a char(1), b char(2), d char(3), e int)
 distributed by (a)
 partition by hash (b)
 subpartition by hash (d) , 
-subpartition by hash (d) 
+subpartition by hash (e)
 subpartition template ( 
 subpartition ee,
 subpartition ff
@@ -169,7 +152,7 @@ NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb_2_prt_dd_3_prt_ee" for
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb_2_prt_dd_3_prt_ff" for table "ggg_1_prt_bb_2_prt_dd"
 drop table ggg cascade;
 -- doesn't work because cannot have nested declaration in template
-create table ggg (a char(1), b char(2), d char(3))
+create table ggg (a char(1), b char(2), d char(3), e int)
 distributed by (a)
 partition by hash (b)
 subpartition by hash (d) 
@@ -177,7 +160,7 @@ subpartition template (
 subpartition cc (subpartition ee, subpartition ff),
 subpartition dd (subpartition ee, subpartition ff)
 ), 
-subpartition by hash (d) 
+subpartition by hash (e) 
 (
 partition aa,
 partition bb
@@ -207,9 +190,10 @@ NOTICE:  CREATE TABLE will create partition "fff_1_prt_aa" for table "fff"
 drop table fff cascade;
 -- Invalid use of RANGE boundary specification in partition "cc" of 
 -- type HASH (at depth 2)
-create table ggg (a char(1), b char(2), d char(3)) distributed by (a)
-partition by hash (b) subpartition by hash (d) , subpartition by hash
-(d) subpartition template ( subpartition ee, subpartition ff ) (
+create table ggg (a char(1), b char(2), d char(3), e int) distributed by (a)
+partition by hash (b) subpartition by hash (d),
+subpartition by hash (e) 
+subpartition template ( subpartition ee, subpartition ff ) (
 partition aa (subpartition cc, subpartition dd), partition bb
 (subpartition cc start with ('a') , subpartition dd) );
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa" for table "ggg"
@@ -221,7 +205,7 @@ NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_cc_3_prt_ff" for
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_dd_3_prt_ee" for table "ggg_1_prt_aa_2_prt_dd"
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_dd_3_prt_ff" for table "ggg_1_prt_aa_2_prt_dd"
 ERROR:  invalid use of RANGE boundary specification in partition "cc" of type HASH (at depth 2)
-LINE 5: (subpartition cc start with ('a') , subpartition dd) );
+LINE 6: (subpartition cc start with ('a') , subpartition dd) );
                          ^
 -- this is subtly wrong -- it defines 4 partitions
 -- the problem is the comma before "end", which causes us to
@@ -2153,3 +2137,103 @@ ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
 insert into b values(6, 3000, '2007-01-01 12:00:00', NULL);
 ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
 drop table b;
+-- check that we detect subpartitions partitioning a column that is already
+-- a partitioning target
+create table a (i int, b int)
+distributed by (i)
+partition by range (i)
+subpartition by hash(b) subpartitions 3,
+subpartition by hash(b) subpartitions 2
+(start(1) end(100),
+ start(100) end(1000)
+);
+ERROR:  column "b" specified in multiple partitioning keys
+LINE 5: subpartition by hash(b) subpartitions 2
+                        ^
+-- Check multi level partition COPY
+CREATE TABLE REGION (
+                    R_REGIONKEY INTEGER,
+                    R_NAME CHAR(25),
+                    R_COMMENT VARCHAR(152),
+                    primary key (r_regionkey)
+                    )
+partition by hash (r_regionkey) partitions 1
+subpartition by hash (r_name) subpartitions 3
+,subpartition by hash (r_comment) subpartitions 2
+(
+partition p1(subpartition sp1,subpartition sp2,subpartition sp3)
+);
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1" for table "region"
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1_2_prt_sp1" for table "region_1_prt_p1"
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1_2_prt_sp2" for table "region_1_prt_p1"
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1_2_prt_sp3" for table "region_1_prt_p1"
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1_2_prt_sp1_3_prt_1" for table "region_1_prt_p1_2_prt_sp1"
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1_2_prt_sp1_3_prt_2" for table "region_1_prt_p1_2_prt_sp1"
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1_2_prt_sp2_3_prt_1" for table "region_1_prt_p1_2_prt_sp2"
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1_2_prt_sp2_3_prt_2" for table "region_1_prt_p1_2_prt_sp2"
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1_2_prt_sp3_3_prt_1" for table "region_1_prt_p1_2_prt_sp3"
+NOTICE:  CREATE TABLE will create partition "region_1_prt_p1_2_prt_sp3_3_prt_2" for table "region_1_prt_p1_2_prt_sp3"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_pkey" for table "region"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_pkey" for table "region_1_prt_p1"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_2_prt_sp1_pkey" for table "region_1_prt_p1_2_prt_sp1"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey" for table "region_1_prt_p1_2_prt_sp1_3_prt_1"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_2_prt_sp1_3_prt_2_pkey" for table "region_1_prt_p1_2_prt_sp1_3_prt_2"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_2_prt_sp2_pkey" for table "region_1_prt_p1_2_prt_sp2"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_2_prt_sp2_3_prt_1_pkey" for table "region_1_prt_p1_2_prt_sp2_3_prt_1"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_2_prt_sp2_3_prt_2_pkey" for table "region_1_prt_p1_2_prt_sp2_3_prt_2"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_2_prt_sp3_pkey" for table "region_1_prt_p1_2_prt_sp3"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_2_prt_sp3_3_prt_1_pkey" for table "region_1_prt_p1_2_prt_sp3_3_prt_1"
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "region_1_prt_p1_2_prt_sp3_3_prt_2_pkey" for table "region_1_prt_p1_2_prt_sp3_3_prt_2"
+copy region from stdin with delimiter '|';
+-- Test indexes
+set enable_seqscan to off;
+select * from region where r_regionkey = 1;
+ r_regionkey |          r_name           |            r_comment            
+-------------+---------------------------+---------------------------------
+           1 | AMERICA                   | hs use ironic, even requests. s
+(1 row)
+
+select * from region where r_regionkey = 2;
+ r_regionkey |          r_name           |            r_comment            
+-------------+---------------------------+---------------------------------
+           2 | ASIA                      | ges. thinly even pinto beans ca
+(1 row)
+
+select * from region where r_regionkey = 3;
+ r_regionkey |          r_name           |                   r_comment                   
+-------------+---------------------------+-----------------------------------------------
+           3 | EUROPE                    | ly final courts cajole furiously final excuse
+(1 row)
+
+select * from region where r_regionkey = 4;
+ r_regionkey |          r_name           |                        r_comment                         
+-------------+---------------------------+----------------------------------------------------------
+           4 | MIDDLE EAST               | uickly special accounts cajole carefully blithely close 
+(1 row)
+
+select * from region where r_regionkey = 5;
+ r_regionkey |          r_name           | r_comment 
+-------------+---------------------------+-----------
+           5 | AUSTRALIA                 | sdf
+(1 row)
+
+select * from region where r_regionkey = 6;
+ r_regionkey |          r_name           | r_comment 
+-------------+---------------------------+-----------
+           6 | ANTARCTICA                | dsfdfg
+(1 row)
+
+-- Test indexes with insert
+insert into region values(7, 'abc', 'def');
+select * from region where r_regionkey = '7';
+ r_regionkey |          r_name           | r_comment 
+-------------+---------------------------+-----------
+           7 | abc                       | def
+(1 row)
+
+-- test duplicate key. We shouldn't really allow primary keys on partitioned
+-- tables since we cannot enfoce them. But since this insert maps to a 
+-- single definitive partition, we can detect it.
+insert into region values(7, 'abc', 'def');
+ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"
+drop table region;

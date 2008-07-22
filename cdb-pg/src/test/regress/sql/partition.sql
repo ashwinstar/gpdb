@@ -39,17 +39,6 @@ partition aa (subpartition cc, subpartition dd (subpartition iii)),
 partition bb (subpartition cc, subpartition dd)
 );
 
--- missing subpartition spec
-create table ggg (a char(1), b char(2), d char(3))
-distributed by (a)
-partition by hash (b)
-subpartition by hash (d) ,
-subpartition by hash (d) 
-(
-partition aa (subpartition cc, subpartition dd),
-partition bb (subpartition cc, subpartition dd)
-);
-
 -- Test column lookup works
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -78,7 +67,7 @@ partition bb (subpartition cc, subpartition dd)
 drop table ggg cascade;
 
 -- should work
-create table ggg (a char(1), b char(2), d char(3))
+create table ggg (a char(1), b char(2), d char(3), e int)
 distributed by (a)
 partition by hash (b)
 subpartition by hash (d) 
@@ -86,7 +75,7 @@ subpartition template (
 subpartition cc,
 subpartition dd
 ), 
-subpartition by hash (d) 
+subpartition by hash (e) 
 subpartition template ( 
 subpartition ee,
 subpartition ff
@@ -99,11 +88,11 @@ partition bb
 drop table ggg cascade;
 
 -- should work
-create table ggg (a char(1), b char(2), d char(3))
+create table ggg (a char(1), b char(2), d char(3), e int)
 distributed by (a)
 partition by hash (b)
-subpartition by hash (d) , 
-subpartition by hash (d) 
+subpartition by hash (d),
+subpartition by hash (e)
 subpartition template ( 
 subpartition ee,
 subpartition ff
@@ -116,7 +105,7 @@ partition bb (subpartition cc, subpartition dd)
 drop table ggg cascade;
 
 -- doesn't work because cannot have nested declaration in template
-create table ggg (a char(1), b char(2), d char(3))
+create table ggg (a char(1), b char(2), d char(3), e int)
 distributed by (a)
 partition by hash (b)
 subpartition by hash (d) 
@@ -124,7 +113,7 @@ subpartition template (
 subpartition cc (subpartition ee, subpartition ff),
 subpartition dd (subpartition ee, subpartition ff)
 ), 
-subpartition by hash (d) 
+subpartition by hash (e) 
 (
 partition aa,
 partition bb
@@ -151,9 +140,10 @@ drop table fff cascade;
 
 -- Invalid use of RANGE boundary specification in partition "cc" of 
 -- type HASH (at depth 2)
-create table ggg (a char(1), b char(2), d char(3)) distributed by (a)
-partition by hash (b) subpartition by hash (d) , subpartition by hash
-(d) subpartition template ( subpartition ee, subpartition ff ) (
+create table ggg (a char(1), b char(2), d char(3), e int) distributed by (a)
+partition by hash (b) subpartition by hash (d),
+subpartition by hash (e) 
+subpartition template ( subpartition ee, subpartition ff ) (
 partition aa (subpartition cc, subpartition dd), partition bb
 (subpartition cc start with ('a') , subpartition dd) );
 
@@ -1189,3 +1179,56 @@ insert into b values(6, 3000, '2007-02-02 00:00:00', 'A');
 insert into b default values;
 insert into b values(6, 3000, '2007-01-01 12:00:00', NULL);
 drop table b;
+
+-- check that we detect subpartitions partitioning a column that is already
+-- a partitioning target
+create table a (i int, b int)
+distributed by (i)
+partition by range (i)
+subpartition by hash(b) subpartitions 3,
+subpartition by hash(b) subpartitions 2
+(start(1) end(100),
+ start(100) end(1000)
+);
+
+-- Check multi level partition COPY
+CREATE TABLE REGION (
+                    R_REGIONKEY INTEGER,
+                    R_NAME CHAR(25),
+                    R_COMMENT VARCHAR(152),
+                    primary key (r_regionkey)
+                    )
+partition by hash (r_regionkey) partitions 1
+subpartition by hash (r_name) subpartitions 3
+,subpartition by hash (r_comment) subpartitions 2
+(
+partition p1(subpartition sp1,subpartition sp2,subpartition sp3)
+);
+copy region from stdin with delimiter '|';
+0|AFRICA|lar deposits. blithely final packages cajole. regular waters are 
+1|AMERICA|hs use ironic, even requests. s
+2|ASIA|ges. thinly even pinto beans ca
+3|EUROPE|ly final courts cajole furiously final excuse
+4|MIDDLE EAST|uickly special accounts cajole carefully blithely close 
+5|AUSTRALIA|sdf
+6|ANTARCTICA|dsfdfg
+\.
+
+-- Test indexes
+set enable_seqscan to off;
+select * from region where r_regionkey = 1;
+select * from region where r_regionkey = 2;
+select * from region where r_regionkey = 3;
+select * from region where r_regionkey = 4;
+select * from region where r_regionkey = 5;
+select * from region where r_regionkey = 6;
+
+-- Test indexes with insert
+insert into region values(7, 'abc', 'def');
+select * from region where r_regionkey = '7';
+-- test duplicate key. We shouldn't really allow primary keys on partitioned
+-- tables since we cannot enfoce them. But since this insert maps to a 
+-- single definitive partition, we can detect it.
+insert into region values(7, 'abc', 'def');
+
+drop table region;

@@ -99,6 +99,12 @@ typedef struct
 	int levelsup;
 } sortref_ctx;
 
+typedef struct
+{
+	ParseState *pstate;
+	List *cols;
+} part_col_cxt;
+
 /* state structures for validing parsed partition specifications */
 typedef struct
 {
@@ -1344,7 +1350,7 @@ transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 	
 	cxt.blist = NIL;
 	cxt.alist = NIL;
-	
+
 	/*
 	 * Run through each primary element in the table creation clause. Separate
 	 * column defs from constraints, and do preliminary analysis.
@@ -5941,6 +5947,62 @@ expand_hash_partition_spec(PartitionBy *pBy)
 	pBy->partSpec = (Node *)spec;
 }
 
+static bool
+partition_col_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, PartitionSpec))
+	{
+		PartitionSpec *s = (PartitionSpec *)node;
+
+		if (partition_col_walker(s->subSpec, context))
+			return true;
+
+		return partition_col_walker((Node *)s->partElem, context);
+	}
+	else if(IsA(node, PartitionElem))
+	{
+		PartitionElem *el = (PartitionElem *)node;
+
+		return partition_col_walker(el->subSpec, context);
+
+	}
+	else if (IsA(node, PartitionBy))
+	{
+		PartitionBy *p = (PartitionBy *)node;
+		ListCell *lc;
+		part_col_cxt *cxt = (part_col_cxt *)context;
+
+		foreach(lc, p->keys)
+		{
+			char *colname = strVal(lfirst(lc));
+			ListCell *llc;
+
+			foreach(llc, cxt->cols)
+			{
+				char *col = lfirst(llc);
+
+				if (strcmp(col, colname) == 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("column \"%s\" specified in multiple "
+									"partitioning keys",
+									colname),
+					 parser_errposition(cxt->pstate, p->location)));
+			}
+			cxt->cols = lappend(cxt->cols, colname);
+		}
+
+		if (partition_col_walker(p->subPart, context))
+			return true;
+		return partition_col_walker(p->partSpec, context);
+	}
+
+	return expression_tree_walker(node, partition_col_walker, context);
+}
+
 /*
  * transformPartitionBy() - transform a partitioning clause attached to a CREATE
  * TABLE statement.
@@ -6008,6 +6070,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	bool		lookup_opclass;
 	Node	   *prevEvery;
 	ListCell   *lc_anp = NULL;
+	List	   *key_attnums = NIL;
+	part_col_cxt pcolcxt;
 
 	if (NULL == partitionBy)
 		return;
@@ -6055,18 +6119,17 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("PARTITIONS clause requires a HASH partition%s",
-							at_depth),
+					 errmsg("%sPARTITIONS clause requires a HASH partition%s",
+							pBy->partDepth != 1 ? "SUB" : "", at_depth),
 					 parser_errposition(pstate, pBy->location)));
 		}
 
 		if (partNumber < 1)
 		{
-			/* XXX: need to distinguish PARTITIONS/SUBPARTITIONs? */
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("PARTITIONS cannot be less than one%s",
-							at_depth),
+					 errmsg("%sPARTITIONS cannot be less than one%s",
+							pBy->partDepth != 1 ? "SUB" : "", at_depth),
 					 parser_errposition(pstate, pBy->location)));
 		}
 	}
@@ -6086,15 +6149,28 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		bool found = false;
 		Oid typeid = InvalidOid;
 		Oid opclass = InvalidOid;
+		int i = 0;
 		
 		foreach(columns, cxt->columns)
 		{
 			ColumnDef *column = (ColumnDef *) lfirst(columns);
 			Assert(IsA(column, ColumnDef));
 
+			i++;
 			if (strcmp(column->colname, colname) == 0)
 			{
 				found = true;
+
+				if (list_member_int(key_attnums, i))
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("column \"%s\" specified more than once "
+									"in partitioning key",
+									colname),
+					 parser_errposition(pstate, pBy->location)));
+
+	
+				key_attnums = lappend_int(key_attnums, i);
 
 				if (lookup_opclass)
 				{
@@ -6146,6 +6222,11 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		}
 	}
 
+	pcolcxt.cols = NIL;
+	pcolcxt.pstate = pstate;
+	/* see if there are any duplicate column references */
+	partition_col_walker((Node *)pBy, &pcolcxt);
+	
 	lc = NULL;
 
 	if (pBy->partType == PARTTYP_HASH)
@@ -6467,35 +6548,12 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		curPby = makeNode(PartitionBy);
 
 		{
-			ListCell *llc;
 			PartitionSpec *tmppspec = copyObject(pBy->partSpec);
 				
 			/* selectively copy pBy */
 			curPby->partType = pBy->partType;
 
-			/* just recreate attnum references */
-			foreach(llc, pBy->keys)
-			{
-				ListCell *llc2;
-				int i = 1;
-				char *colname = strVal(lfirst(llc));
-				bool found = false;
-
-				foreach(llc2, cxt->columns)
-				{
-					ColumnDef *column = lfirst(llc2);
-
-					if (strcmp(column->colname, colname) == 0)
-					{
-						found = true;
-						break;
-					}
-					i++;	
-				}
-				Assert(!(i > list_length(cxt->columns)));
-				Assert(found);
-				curPby->keys = lappend_int(curPby->keys, i);
-			}
+			curPby->keys = key_attnums;
 
 			curPby->keyopclass = copyObject(pBy->keyopclass);
 			curPby->partNum = copyObject(pBy->partNum);

@@ -2085,6 +2085,7 @@ ExecInsert(TupleTableSlot *slot,
 		 */
 		Assert(!heap_enableHeapInsertDesc);
 		resultRelInfo = slot_get_partition(slot, estate);
+		estate->es_result_relation_info = resultRelInfo;
 	}
 	else
 		resultRelInfo = estate->es_result_relation_info;
@@ -3489,7 +3490,6 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 						  CMD_INSERT,
 						  estate->es_instrument,
 						  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
-		ExecOpenIndices(resultRelInfo);
 	}
 	return resultRelInfo;
 }
