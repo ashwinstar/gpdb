@@ -224,7 +224,6 @@ addRemoteExecParamsToParamList(Plan *plan, List *rtable, ParamListInfo extPrm, P
 
 	if (context.params == NIL)
 	{
-		debug_break();
 		/* We apparently have an initplan with no corresponding parameter.
 		 * This shouldn't happen, but we had a bug once (MPP-239) because
 		 * we weren't looking for parameters in Function RTEs.  So we still 

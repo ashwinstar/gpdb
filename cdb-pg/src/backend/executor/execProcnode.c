@@ -727,7 +727,6 @@ ExecCountSlotsNode(Plan *node)
 			return ExecCountSlotsMotion((Motion *) node);
 
 		default:
-			debug_break();
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
 	}

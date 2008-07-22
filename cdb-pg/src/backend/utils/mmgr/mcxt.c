@@ -390,9 +390,6 @@ MemoryContextNoteAlloc(MemoryContext context, Size nbytes)
         context = context->parent;
     }
 
-    if (context->maxBytesHeld > 1024 * 1024 * 1024)
-	    debug_break();
-
     /* Limit total memory held by top memory context plus all descendants. */
     if (context->maxBytesHeld > gp_process_memory_warning_bytes &&
         gp_process_memory_warning_bytes > 0)

@@ -83,8 +83,6 @@ ExceptionalCondition(const char *conditionName,
 	sleep(1000000);
 #endif
 
-	debug_break_n(DEBUG_BREAK_POINT_ASSERT);
-
 #if 0
     /* Assert should always be painful.  Force a segment fault.
      * For reasons, cdb2 does not dump a core without the following

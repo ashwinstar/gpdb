@@ -335,7 +335,6 @@ prescan(Plan *plan, PlanProfile * context)
 {
 	if ( prescan_walker((Node *) plan, context) )
 	{
-		debug_break();
 		Insist(0);
 	}
 }
