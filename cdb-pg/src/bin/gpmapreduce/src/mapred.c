@@ -2225,9 +2225,6 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 			{
 				char *error = PQresultErrorField(result, PG_DIAG_SQLSTATE);
 				
-				if (global_verbose_flag)
-					fprintf(stderr, "       %s", PQerrorMessage(conn));
-
 				/* rollback to savepoint */
 				PQexec(conn, "ROLLBACK TO SAVEPOINT mapreduce_save");
 				PQexec(conn, "RELEASE SAVEPOINT mapreduce_save");
@@ -2238,11 +2235,17 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				 * right away.
 				 */
 				if (obj->kind != MAPRED_INPUT || 
-					obj->u.input.type != MAPRED_INPUT_QUERY ||
-					strcmp(error, OBJ_DOES_NOT_EXIST))
+				    obj->u.input.type != MAPRED_INPUT_QUERY ||
+				    strcmp(error, OBJ_DOES_NOT_EXIST))
 				{
+
+					fprintf(stderr, "       %s", PQresultErrorMessage(result));
 					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
+
 				}
+				if (global_verbose_flag)
+					fprintf(stderr, "       %s", PQresultErrorMessage(result));
+
 			}
 		}
 

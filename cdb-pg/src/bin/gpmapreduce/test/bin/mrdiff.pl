@@ -57,6 +57,7 @@ use warnings;
 use strict;
 use Pod::Usage;
 use Getopt::Long;
+use Cwd;
 
 my $man  = 0;
 my $help = 0;
@@ -73,6 +74,12 @@ my ($output, $expected, $testname) = @ARGV;
 
 my @outfiles = sort(glob("$output/$testname.*"));
 my @expfiles = sort(glob("$expected/$testname.*"));
+
+# We find gpdiff in the source tree assuming that this is being run
+# from the source tree as well.
+my $GPDIFF = getcwd();
+$GPDIFF =~ s|(.*/cdb-pg/src)(/bin/gpmapreduce/.*)|$1/test/regress/gpdiff.pl|;
+die "unable to find gpdiff.pl" unless (-e $GPDIFF);
 
 
 sub printheader($$)
@@ -101,7 +108,7 @@ while ($#outfiles >= 0 && $#expfiles >= 0)
 	
 		if ($ofile eq $efile)
 		{
-			my $diff = `gpdiff.pl $out $exp`;
+			my $diff = `$GPDIFF $out $exp`;
 			if (length($diff) > 0)
 			{
 				printheader($out,$exp);

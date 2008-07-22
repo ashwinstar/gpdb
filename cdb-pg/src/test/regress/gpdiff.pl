@@ -89,28 +89,17 @@ Address bug reports and comments to: jcohen@greenplum.com
 
 =cut
 
-our $ATMSORT = "atmsort.pl";
+our $ATMSORT;
 our $ATMDIFF = "diff";
 
 # assume atmsort.pl in same directory
-BEGIN
+BEGIN 
 {
     my $plname = $0;
-
-    my @foo = File::Spec->rel2abs(File::Spec->splitpath($plname));
-
-    return 0
-        unless (scalar(@foo));
-
+    my @foo = File::Spec->splitpath(File::Spec->rel2abs($plname));
+    return 0 unless (scalar(@foo));
     pop @foo;
-
-    $ATMSORT =
-        File::Spec->rel2abs(
-                            File::Spec->catfile(
-                                                @foo,
-                                                "atmsort.pl"
-                                                ));
-
+    $ATMSORT = File::Spec->catfile( @foo, "atmsort.pl"); 
 }
 
 sub gpdiff_files
