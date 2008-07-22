@@ -72,7 +72,9 @@ PARALLEL_STATUS_FILE=/tmp/gpcrondump_parallel_status_file.$$
 GPSEGCRON=$WORKDIR/lib/gpsegcron.sh
 PG_DUMPALL_PREFIX="gp_global_1_1_"
 HISTORY_TABLE=public.gpcrondump_history
-USERDIR=""
+BACKUPFILEDIR=""
+REPORTFILEDIR=""
+BACKUPSET=()
 DUMP_TABLE_LIST=()
 #******************************************************************************
 # Functions
@@ -112,8 +114,6 @@ USAGE () {
 		fi
 		$ECHO "          For multiple databases, use a comma separated list to -x option"
 		$ECHO "          Example -x template1,userdb1,userdb2"
-		$ECHO "      -p, dump primary segment instances only [default:- dump primary and mirror]"
-		$ECHO "      -m, dump mirror segment instances only [default:- dump primary and mirror]"
 		$ECHO "      -h, Record details of database dump in database table $HISTORY_TABLE in database name"
 		$ECHO "          supplied via -x option. Utility will create table if does not exist in database"
 		$ECHO "      -c, clear old dump directories [default:- do not clear]"
@@ -122,7 +122,6 @@ USAGE () {
 		$ECHO "      -o, clear dump files only, do not run a dump"
 		$ECHO "          will remove the oldest dump directory except the current dump directory"
 		$ECHO "          named $DUMP_DATE if it exists, NOTE:-deletes all dump sets within that directory"
-		$ECHO "      -z, do not use compression [default:- use compression]"
 		$ECHO "      -r, rollback dump files if dump failure detected [default:- no rollback]"
 		$ECHO "      -f, % free disk value to reserve when calculating available free space for dump"
 		$ECHO "          files [default:- $FREE_SPACE_PERCENT %]"
@@ -143,8 +142,17 @@ USAGE () {
 		$ECHO "      -R, <program name> run named program after successful dump completed, include full path name"
 		$ECHO "          if program name not in path. Note, program will only be called once if multi database"
 		$ECHO "          dump requested"
-		$ECHO "      -u, <user_dump_dir> dump to the full path of user specified directory [default:- segment data directory]"
 		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default:- $BATCH_DEFAULT]"
+		$ECHO
+		$ECHO "      Greenplum Database specific options:"
+		$ECHO "      -z, do not use compression [default:- use compression]"
+		$ECHO "      -u, <BACKUPFILEDIR> directory where backup files are placed [default:- segment data directory]"
+		$ECHO "      -y, <REPORTFILEDIR> directory where report file is placed"
+		$ECHO "      -p, dump primary segment instances only [default:- dump primary and mirror]"
+		$ECHO "      -m, dump mirror segment instances only [default:- dump primary and mirror]"
+		$ECHO "      -w, <BACKUPSET>, backup set indicator. Individual segdb (must be followed with a list of dbid's"
+                $ECHO "          to dump). Master segment is added to the list automatically."
+		$ECHO "          For example, script with option -w 2,3,4 will dump segment 1, 2, 3 and 4."
 		$ECHO
 		$ECHO "      Crontab entry (example):"
 		$ECHO "      SHELL=/bin/bash"
@@ -206,15 +214,21 @@ GET_DUMP_LIST () {
 		   DBID_LIST=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1 and definedprimary='f';"`)  ;;
 		3) LOG_MSG "[WARN]:-Gathering dbid data for dump type available active"  1
 		   DBID_LIST=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1 and isprimary='t';"`) ;;
+	        4) LOG_MSG "[INFO]:-Gathering dbid data for dump type selected segments" 1
+		   DBID_LIST=()
+		   for seg in ${BACKUPSET[@]}
+		   do
+		       DBID_LIST=(${DBID_LIST[@]} $seg)
+	           done ;;
 	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_DUMP_DIR () {
         LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	if [ x"" != x"$USERDIR" ]; then
-	    #DIR="$USERDIR/`$BASENAME $1`"
-	    DIR=$USERDIR
+	if [ x"" != x"$BACKUPFILEDIR" ]; then
+	    #DIR="$BACKUPFILEDIR/`$BASENAME $1`"
+	    DIR=$BACKUPFILEDIR
 	else
 	    DIR=$1
 	fi
@@ -298,6 +312,39 @@ CHK_DUMP_DIR () {
 			LOG_MSG "[INFO]:-Write test passed on $DIR/$DUMP_SUB_DIR"
 		fi
 	fi
+	if [ x"$REPORTFILEDIR" != x"" ] ; then
+	    CHK_DIR $REPORTFILEDIR/$DUMP_SUB_DIR
+	    if [ $EXISTS -ne 0 ]; then
+		LOG_MSG "[INFO]:-$REPORTFILEDIR/$DUMP_SUB_DIR does not exist, will try to create" 1
+		$MKDIR $REPORTFILEDIR/$DUMP_SUB_DIR
+		ERROR_CHK $? "make dump directory $REPORTFILEDIR/$DUMP_SUB_DIR on Master segment" 2
+	    else
+		LOG_MSG "[INFO]:-Directory $REPORTFILEDIR/$DUMP_SUB_DIR exists on Master segment"
+		$TOUCH $REPORTFILEDIR/$DUMP_SUB_DIR/tmp_file_test
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Cannot write to $REPORTFILEDIR/$DUMP_SUB_DIR" 2
+		else
+			$RM -f $REPORTFILEDIR/$DUMP_SUB_DIR/tmp_file_test
+			LOG_MSG "[INFO]:-Write test passed on $REPORTFILEDIR/$DUMP_SUB_DIR"
+		fi
+	    fi
+	fi
+	CHK_DIR $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE
+	if [ $EXISTS -ne 0 ]; then
+	    $MKDIR $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE
+	    ERROR_CHK $? "make dump directory $REPORTFILEDIR/$DUMP_SUB_DIR on Master segment" 2
+	else
+		LOG_MSG "[INFO]:-Directory $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE exists on Master segment"
+		$TOUCH $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE/tmp_file_test
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Cannot write to $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE" 2
+		else
+			$RM -f $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE/tmp_file_test
+			LOG_MSG "[INFO]:-Write test passed on $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE"
+		fi	    
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -379,6 +426,16 @@ CHK_PARAM () {
 			LOG_MSG "[WARN]:-Detected failed primary count of $FAILED_PRIMARY_COUNT, will dump active segments" 1
 			EXIT_STATUS=1
 			DUMP_TYPE=3
+		fi
+		if [ $DUMP_TYPE -eq 4 ]; then
+		    for dbid in ${BACKUPSET[@]}
+		    do
+			VALID=`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select valid from $GP_PG_VIEW as _gp_pg_view where dbid=$dbid;"`
+			ERROR_CHK $? "obtained failed segment valid with dbid=$dbid" 2
+			if [ x$VALID == x"f" ] ; then
+			    ERROR_EXIT "[FATAL]:-Detected failed segment with dbid=$dbid." 1
+			fi
+		    done
 		fi
 	fi
 		GET_DUMP_LIST	
@@ -502,6 +559,7 @@ SET_DUMP_TYPE_TEXT () {
 		1 ) TYPE="Primary segments only" ;;
 		2 ) TYPE="Mirror segments only" ;;
 		3 ) TYPE="Available active segments" ;;
+	        4 ) TYPE="Selected segments only" ;;
 	esac
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -552,13 +610,22 @@ PROMPT_CONTINUE () {
 		if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
 		LOG_MSG "[INFO]:-Schema to dump                   = $DUMP_SCHEMA_NAME" 1
 		fi
-		if [ x"" != x"$USERDIR" ] ; then
-		LOG_MSG "[INFO]:-Dump Directory                   = $USERDIR" 1
+		if [ x"" != x"$BACKUPFILEDIR" ] ; then
+		LOG_MSG "[INFO]:-Dump Directory                   = $BACKUPFILEDIR" 1
 		fi
+		if [ x"" != x"$REPORTFILEDIR" ] ; then
+		LOG_MSG "[INFO]:-Dump Report Directory            = $REPORTFILEDIR" 1
+		fi		
 		LOG_MSG "[INFO]:-Master Port                      = $MASTER_PORT" 1
 		LOG_MSG "[INFO]:-Master directory                 = $MASTER_DATA_DIRECTORY" 1
 		SET_DUMP_TYPE_TEXT
 		LOG_MSG "[INFO]:-Greenplum Instance dump type     = $TYPE" 1
+		if [ $DUMP_TYPE -eq 4 ]; then
+		    for seg in ${DBID_LIST[@]}
+		    do 
+			LOG_MSG "[INFO]:-Selected segment to dump = $seg" 1
+		    done
+		fi
 		if [ $RUN_PROG != "0" ];then
 		LOG_MSG "[INFO]:-Run post dump program            = $RUN_PROG" 1
 		else
@@ -707,12 +774,19 @@ PROCESS_DUMP () {
 	GET_DUMP_DIR $MASTER_DATA_DIRECTORY
 	$TOUCH $IS_RUNNING_FLAG
 	LOG_MSG "[INFO]:-Building dump command line" 1
-	if [ x"" != x"$USERDIR" ] ; then
-	    DUMP_DATA_DIR=${USERDIR}/${DUMP_SUB_DIR}/$DUMP_DATE
+	if [ x"" != x"$BACKUPFILEDIR" ] ; then
+	    DUMP_DATA_DIR=${BACKUPFILEDIR}/${DUMP_SUB_DIR}/$DUMP_DATE
 	else
 	    DUMP_DATA_DIR=${DUMP_SUB_DIR}/$DUMP_DATE
 	fi
-	DUMP_TEXT="$GP_DUMP -p $MASTER_PORT -U $LOGNAME --gp-d=${DUMP_DATA_DIR} --gp-r=${DIR}/${DUMP_SUB_DIR}/$DUMP_DATE --gp-s=i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`] $ADD_DUMP_OPTIONS"		
+	if [ x"" != x"$REPORTFILEDIR" ] ; then
+	    DUMP_REPORT_DIR=${REPORTFILEDIR}/${DUMP_SUB_DIR}/${DUMP_DATE}
+	else
+	    DUMP_REPORT_DIR=${DIR}/${DUMP_SUB_DIR}/$DUMP_DATE
+        fi
+	DUMP_BACKUPSET="i[1,`$ECHO ${DBID_LIST[@]}|$TR ' ' ','`]"
+	    
+	DUMP_TEXT="$GP_DUMP -p $MASTER_PORT -U $LOGNAME --gp-d=${DUMP_DATA_DIR} --gp-r=${DUMP_REPORT_DIR} --gp-s=${DUMP_BACKUPSET} $ADD_DUMP_OPTIONS"		
 	if [ $COMPRESSION ];then
 		LOG_MSG "[INFO]:-Adding compression parameter" 1
 		DUMP_TEXT=$DUMP_TEXT" --gp-c"
@@ -751,14 +825,18 @@ CHK_POST_DUMP () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Get the latest report file name on Master segment instance
 	GET_DUMP_DIR $MASTER_DATA_DIRECTORY
-	MASTER_DUMP_RPT=`$LS -altr ${DIR}/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
+	if [ x"" != x"$REPORTFILEDIR" ]; then
+	    MASTER_DUMP_RPT=`$LS -altr ${REPORTFILEDIR}/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
+	else
+	    MASTER_DUMP_RPT=`$LS -altr ${DIR}/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_*.rpt|$TAIL -1 |$AWK '{print \$NF}'`
+	fi
 	if [ x"" == x"$MASTER_DUMP_RPT" ];then
 		LOG_MSG "[WARN]:-Could not locate a report file on Master segment dump directory" 1
 		EXIT_STATUS=1
 		LOG_MSG "[INFO]:-Checking to see if can locate a status file on dbid ${DBID_LIST[1]}" 1
 		DBID=${DBID_LIST[1]}
 		CHK_DATA
-		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -f $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$DUMP_DATE* ];then $ECHO 0;else $ECHO 1;fi"`
+		EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ \`$LS -1 $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$DUMP_DATE* | $WC -l\` -gt 0 ] ;then $ECHO 0;else $ECHO 1;fi"`
 		if [ $EXISTS -eq 0 ];then
 			LOG_MSG "[INFO]:-Located dump status file on $DIR_HOST" 1
 			TIMESTAMP_KEY=`$TRUSTED_SHELL $DIR_HOST "$LS $DIR/$DUMP_SUB_DIR/$DUMP_DATE/gp_dump_status_?_${DBID}_$DUMP_DATE*|$CUT -d'_' -f7"`
@@ -969,7 +1047,7 @@ distributed by (rec_date);" >> $LOG_FILE 2>&1
 #******************************************************************************
 trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:t:T:hl:u:" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:t:T:hl:u:y:w:" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -1008,11 +1086,15 @@ if [ $# -ne 0 ]; then
 				t ) DUMP_TABLE_LIST=(${DUMP_TABLE_LIST[@]} $OPTARG) ;;
 				T ) EXC_DUMP_TABLE_LIST=$OPTARG ;;
 				h ) HISTORY=1 ;;
-			        u ) USERDIR=$OPTARG ;;
+			        u ) BACKUPFILEDIR=$OPTARG ;;
+			        y ) REPORTFILEDIR=$OPTARG ;;
+			        w ) BACKUPSET=(`$ECHO $OPTARG|$TR ',' ' '`) 
+				    DUMP_TYPE=4 ;;
 				* ) USAGE ;;
 				esac
 		done	
 fi
+
 #Check to see if we have another dump running
 if [ -f $IS_RUNNING_FLAG ];then
 	LOG_MSG "[FATAL]:-Located $IS_RUNNING_FLAG file, which indicates another dump in progress" 1
@@ -1028,8 +1110,11 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
-if [ x"" != x"$USERDIR" ] && ! [ -d $USERDIR ] ; then
-    ERROR_EXIT "[FATAL]:-$USERDIR is not a directory" 2
+if [ x"" != x"$BACKUPFILEDIR" ] && ! [ -d $BACKUPFILEDIR ] ; then
+    ERROR_EXIT "[FATAL]:-$BACKUPFILEDIR is not a directory" 2
+fi
+if [ x"" != x"$REPORTFILEDIR" ] && ! [ -d $REPORTFILEDIR ] ; then
+    ERROR_EXIT "[FATAL]:-$REPORTFILEDIR is not a directory" 2
 fi
 CHK_GPDB_ID
 OPTIONS_LIST="$*"
