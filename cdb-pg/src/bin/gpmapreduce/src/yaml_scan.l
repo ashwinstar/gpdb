@@ -1,16 +1,21 @@
-%option outfile="yaml_scan.c" header-file="yaml_scan.h"
+%option outfile="yaml_scan.c"
 %option 8bit never-interactive nodefault nounput noyywrap
 %option prefix="yaml_scalar_yy"
-%option reentrant 
+
+
+/* 
+ * This would be nice, but it isn't necessary and isn't supported by
+ * the old version of flex we have on the build machines.
+ *
+ * If this ever changes make sure to edit parser.h to #define the
+ * relevant items.
+*/
+/* %option header-file="yaml_scan.h" */
+/* %option reentrant */
 
 %{
 #include <yaml_parse.h>       /* Get the token types */
 #include <parser.h>
-
-/* Due to flex issues this is also defined in yaml_parse.y */
-#define YY_DECL \
-int yaml_scalar_yylex (yyscan_t yyscanner, mapred_parser_t *parser)
-
 %}
 
    /* 

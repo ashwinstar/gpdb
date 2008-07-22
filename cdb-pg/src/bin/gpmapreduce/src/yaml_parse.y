@@ -4,21 +4,17 @@
 %error-verbose                           /* A little extra debugging info */
 
 %{
-
-/*
- * somehow YY_DECL isn't properly propogated when the flex .h files is
- * created, so we find this prototype declaration both here and in
- * yaml_scan.h.  
- *
- * We must define this before we include yaml_scan.h
- */
-#define YY_DECL \
-int yaml_scalar_yylex (yyscan_t yyscanner, mapred_parser_t *parser)
-
   #include <yaml_parse.h>
-  #include <yaml_scan.h>
   #include <yaml.h>
   #include <parser.h>
+
+/*
+ * Ancient flex versions, like the ones on our build machines don't support
+ * flex .h file generation.
+ */
+#if USE_FLEX_HFILE
+# include <yaml_scan.h>
+#endif
 
   #include <stdio.h>
 
@@ -408,7 +404,12 @@ yaml_yylex (YYSTYPE *lvalp, mapred_parser_t *parser)
 
 	if (parser->state == STATE_SCALAR_LEX)
 	{
-		int token = yaml_scalar_yylex(parser->yscanner, parser);
+		int token;
+#if USE_FLEX_REENTRANT
+		token = yaml_scalar_yylex(parser->yscanner, parser);
+#else
+		token = yaml_scalar_yylex(parser);
+#endif
 		if (token)
 		{
 			DEBUG_YYTOKEN(token);
@@ -416,8 +417,10 @@ yaml_yylex (YYSTYPE *lvalp, mapred_parser_t *parser)
 		}
 		else
 		{
+#if USE_FLEX_REENTRANT
 			yaml_scalar_yy_delete_buffer(parser->yscan_buffer, parser->yscanner);
 			parser->yscan_buffer = NULL;
+#endif
 			parser->state = STATE_YAML_PARSE;
 		}
 	}
@@ -513,8 +516,13 @@ yaml_yylex (YYSTYPE *lvalp, mapred_parser_t *parser)
 
 				/* Switch to the scalar scanner and continue */
 				parser->state = STATE_SCALAR_LEX;
+
+#if USE_FLEX_REENTRANT
 				parser->yscan_buffer = 
 					yaml_scalar_yy_scan_string(value, parser->yscanner);
+#else
+				yaml_scalar_yy_scan_string(value);
+#endif
 				token = yaml_yylex(lvalp, parser);
 
 				/* 

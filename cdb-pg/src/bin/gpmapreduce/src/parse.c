@@ -68,7 +68,9 @@ mapred_olist_t* mapred_parse_yaml(yaml_parser_t *yparser)
 	memset(&parser, 0, sizeof(parser));
 
 	/* Initialize what must be initialized */
+#if USE_FLEX_REENTRANT
 	yaml_scalar_yylex_init (&parser.yscanner);
+#endif
 	parser.yparser = yparser;
 	parser.state   = STATE_YAML_PARSE;
 	parser.frame   = -1;
@@ -94,7 +96,9 @@ mapred_olist_t* mapred_parse_yaml(yaml_parser_t *yparser)
 	}
 
 	/* Cleanup and return */
+#if USE_FLEX_REENTRANT
 	yaml_scalar_yylex_destroy(parser.yscanner);
+#endif
 		
 	return parser.doclist;
 }

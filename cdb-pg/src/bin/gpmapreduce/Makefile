@@ -47,7 +47,10 @@ $(TARGET): $(LIBDIR)/$(LIBYAML) $(GENOBJS) $(OBJECTS)
 	@$(LD) $(OBJECTS) $(LDFLAGS) -o $(TARGET)
 	@echo 
 
-$(LIBDIR)/$(LIBYAML):
+$(LIBDIR):
+	mkdir $(LIBDIR)
+
+$(LIBDIR)/$(LIBYAML):  $(LIBDIR)
 	@cp $(LIBYAMLDIR)/include/yaml.h $(INCDIR)/.
 	@chmod u+w $(INCDIR)/yaml.h
 	@cd $(LIBYAMLDIR); configure

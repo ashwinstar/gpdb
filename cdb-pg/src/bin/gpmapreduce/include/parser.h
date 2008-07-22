@@ -38,13 +38,32 @@ typedef struct mapred_parser_ {
 	mapred_parser_context_t   context[MAX_CONTEXT_DEPTH];
 	int                       frame;
 	yaml_parser_t            *yparser;
-	void                     *yscanner;
-	void                     *yscan_buffer;
 	mapred_olist_t           *doclist;
 	mapred_object_t          *current_doc;
 	mapred_object_t          *current_obj;
 	int                       doc_number;
+
+#if USE_FLEX_REENTRANT
+	void                     *yscanner;
+	void                     *yscan_buffer;
+#endif
 } mapred_parser_t;
+
+/*
+ * A couple flex options that would be nice, but aren't supported by the
+ * ancient flex on the build machines.
+ */
+#define USE_FLEX_HFILE     0
+#define USE_FLEX_REENTRANT 0
+
+#if USE_FLEX_REENTRANT
+# define YY_DECL \
+	int yaml_scalar_yylex (yyscan_t yyscanner, mapred_parser_t *parser)
+#else
+# define YY_DECL \
+	int yaml_scalar_yylex (mapred_parser_t *parser)
+#endif
+
 
 /* Given a yaml parser return a list of parsed documents */
 mapred_olist_t* mapred_parse_yaml(yaml_parser_t *parser);

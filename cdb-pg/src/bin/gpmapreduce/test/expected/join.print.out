@@ -10,6 +10,14 @@ CREATE TYPE reverse_rtype as (key integer, value integer);
 
 CREATE TYPE myMap_rtype as (key text, value integer);
 
+-- INPUT reverse_access_count
+CREATE VIEW reverse_access_count AS
+SELECT a.key as akey, b.key as bkey, sum(b.value::integer) as value
+FROM   reverse_network a, access_count b
+WHERE  a.key != b.key
+GROUP BY a.key, b.key
+;
+
 -- INPUT weblog
 CREATE EXTERNAL TABLE weblog(value text)
   LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log')
@@ -71,12 +79,13 @@ GROUP BY a.key, b.key
 ;
 
 -- EXECUTION
-CREATE VIEW mapreduce_54089_run_1 AS
+CREATE VIEW mapreduce_56367_run_1 AS
 SELECT * FROM reverse_access_count;
 
 
 DROP TYPE IF EXISTS reverse_rtype CASCADE;
 DROP TYPE IF EXISTS myMap_rtype CASCADE;
+DROP VIEW IF EXISTS reverse_access_count CASCADE;
 DROP EXTERNAL TABLE IF EXISTS weblog CASCADE;
 DROP FUNCTION IF EXISTS myMap(text) CASCADE;
 DROP FUNCTION IF EXISTS myTransition(integer, integer) CASCADE;
@@ -85,6 +94,5 @@ DROP VIEW IF EXISTS access_count CASCADE;
 DROP EXTERNAL TABLE IF EXISTS network CASCADE;
 DROP FUNCTION IF EXISTS reverse(integer, integer) CASCADE;
 DROP VIEW IF EXISTS reverse_network CASCADE;
-DROP VIEW IF EXISTS reverse_access_count CASCADE;
-DROP VIEW IF EXISTS mapreduce_54089_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_56367_run_1 CASCADE;
 
