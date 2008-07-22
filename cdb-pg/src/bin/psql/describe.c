@@ -1179,15 +1179,18 @@ describeOneTableDetails(const char *schemaname,
 				   *result5 = NULL,
 				   *result6 = NULL,
 				   *result7 = NULL,
-				   *result8 = NULL;
+				   *result8 = NULL,
+				   *result9 = NULL;
 		int			check_count = 0,
 					index_count = 0,
 					foreignkey_count = 0,
 					rule_count = 0,
 					trigger_count = 0,
-					inherits_count = 0;
+					inherits_count = 0,
+					aoinfo_count = 0;
 		int			count_footers = 0;
 
+		
 		/* count indexes */
 		if (tableinfo.hasindex)
 		{
@@ -1306,10 +1309,42 @@ describeOneTableDetails(const char *schemaname,
 		}
 		else
 			inherits_count = PQntuples(result6);
-
-		footers = pg_malloc_zero((index_count + check_count + rule_count + trigger_count + foreignkey_count + inherits_count + 7 + 1)
+		
+		/* count and get Append Only footers */
+		if (tableinfo.relkind == 'a')
+		{
+			aoinfo_count = 2; /* always have 2 footers: blocksize and compresslevel */
+			
+			printfPQExpBuffer(&buf,
+							  "SELECT a.compresslevel, a.blocksize\n"
+							  "FROM pg_catalog.pg_appendonly a, pg_catalog.pg_class c\n"
+							  "WHERE c.oid = a.relid AND c.oid = '%s'", oid);
+			
+			result9 = PSQLexec(buf.data, false);
+			if (!result9)
+			{
+				PQclear(result1);
+				PQclear(result2);
+				PQclear(result3);
+				PQclear(result4);
+				PQclear(result5);
+				PQclear(result6);
+				goto error_return;
+			}
+		}
+		
+		footers = pg_malloc_zero((index_count + check_count + rule_count + trigger_count + foreignkey_count + inherits_count + aoinfo_count + 7 + 1)
 								 * sizeof(*footers));
 
+		/* print append only information */
+		if (aoinfo_count > 0)
+		{
+			printfPQExpBuffer(&buf, _("Compression Level: %s"), PQgetvalue(result9, 0, 0));
+			footers[count_footers++] = pg_strdup(buf.data);
+			printfPQExpBuffer(&buf, _("Block Size: %s"), PQgetvalue(result9, 0, 1));
+			footers[count_footers++] = pg_strdup(buf.data);			
+		}
+		
 		/* print indexes */
 		if (index_count > 0)
 		{
@@ -1556,6 +1591,8 @@ describeOneTableDetails(const char *schemaname,
 		PQclear(result5);
 		PQclear(result6);
 		PQclear(result7);
+		PQclear(result9);
+		
 	}
 
 	printTable(title.data, headers,

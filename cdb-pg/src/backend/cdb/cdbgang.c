@@ -1493,7 +1493,9 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 	
 	appendPQExpBuffer(buffer, " -c gp_is_callback=%d",gp_is_callback);
 	appendPQExpBuffer(buffer, " -c gp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));		
-	
+
+	appendPQExpBuffer(buffer, " -c gp_safefswritesize=%d",gp_safefswritesize);
+
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbComponentDatabaseInfo  *qdinfo;

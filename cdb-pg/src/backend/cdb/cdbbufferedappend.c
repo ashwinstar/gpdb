@@ -352,7 +352,7 @@ int64 BufferedAppendFileLen(
 int64 BufferedAppendCompleteFile(
     BufferedAppend       *bufferedAppend)
 {
-	int32 fileLen;
+	int64 fileLen;
 	
 	Assert(bufferedAppend != NULL);
 	Assert(bufferedAppend->file >= 0);

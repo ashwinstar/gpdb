@@ -139,10 +139,15 @@ typedef struct AppendOnlyScanDescData
 	/* scan parameters */
 	Relation	aos_rd;				/* target relation descriptor */
 	Index       aos_scanrelid;
-	File	    aos_file;			/* the relation file */
 	int			aos_nkeys;			/* number of scan keys */
 	ScanKey		aos_key;			/* array of scan key descriptors */
 	bool		aos_compressed;		/* is relation stored compressed? */
+	
+	/* file segment scan state */
+	File	    aos_file;			/* the relation file */
+	BlockNumber aos_cur_segno;		/* the relation file segment number */
+	bool		aos_need_new_segfile;
+	bool		aos_done_all_segfiles;
 	
 	/* buffered read context */
 	BufferedRead    bufferedRead;
@@ -152,6 +157,7 @@ typedef struct AppendOnlyScanDescData
 	uint8			*varBlockBuffer; /* for decompression */
 	int32			maxBufferLen;
 	int32			largeReadLen;
+	int32			safefswritesize;
 
 	int32           bufferCount;
 	int				readerItemCount;
@@ -159,7 +165,6 @@ typedef struct AppendOnlyScanDescData
 	
 	/* current scan state */
 	bool		bufferDone;
-	bool		aos_inited;		/* false = scan not init'd yet */
 	bool		aos_bufread_inited;
 	TupleDesc	aos_tupDesc;
 	MemTupleData aos_ctup;		/* current tuple in scan, if any */

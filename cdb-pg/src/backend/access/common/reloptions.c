@@ -18,6 +18,7 @@
 #include "access/reloptions.h"
 #include "access/appendonlyam.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "commands/defrem.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -354,7 +355,7 @@ default_reloptions(Datum reloptions, bool validate,
 }
 
 void
-heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions)
+heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *safewrite)
 {
 	if (IsBootstrapProcessingMode())
 		return;
@@ -393,6 +394,16 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions)
 	{
 		stdRdOptions->blocksize = Test_blocksize_override;
 	}
+
+	/*
+	 * Same for safefswritesize.
+	 */
+	if (Test_safefswritesize_override != DEFAULT_FS_SAFE_WRITE_SIZE)
+	{
+		*safewrite = Test_safefswritesize_override;
+	}
+	
+	
 }
 
 /*
@@ -450,7 +461,7 @@ index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
  *
  *		Various checks for validity of appendonly relation rules.
  */
-void validateAppendOnlyRelOptions(bool ao, int blocksize, int complevel, char relkind)
+void validateAppendOnlyRelOptions(bool ao, int blocksize, int safewrite, int complevel, char relkind)
 {
 	if(ao && relkind != RELKIND_APPEND_ONLY && relkind != RELKIND_RELATION)
 		ereport(ERROR,
@@ -471,4 +482,18 @@ void validateAppendOnlyRelOptions(bool ao, int blocksize, int complevel, char re
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("block size must be between 8KB and 8MB and "
 						"be an 8KB multiple, Got %d", blocksize)));
+
+	if (safewrite > MAX_VARBLOCK_SIZE || safewrite % 8 != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("safefswrite size must be less than 8MB and "
+						"be a multiple of 8")));
+	
+	if (gp_safefswritesize > blocksize)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("block size (%d) is smaller gp_safefswritesize (%d). "
+						"increase blocksize or decrease gp_safefswritesize if it "
+						"is safe to do so on this file system",
+						blocksize, gp_safefswritesize)));	
 }

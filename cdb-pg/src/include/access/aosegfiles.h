@@ -27,6 +27,21 @@ typedef struct FileSegInfo
 	float8		varblockcount;	/* total number of varblocks in this fileseg */	
 } FileSegInfo;
 
+/*
+ * Structure that sums up the field total of all file 'segments'.
+ * Note that even though we could actually use FileSegInfo for 
+ * this purpose we choose not too since it's likely that FileSegInfo
+ * will go back to using int instead of float8 now that each segment
+ * has a size limit.
+ */
+typedef struct FileSegTotals
+{
+	int			totalfilesegs;  /* total number of file segments */
+	float8		totalbytes;		/* the sum of all 'eof' values  */
+	float8		totaltuples;	/* the sum of all 'tupcount' values */
+	float8		totalvarblocks;	/* the sum of all 'varblockcount' values */	
+} FileSegTotals;
+
 extern FileSegInfo *
 GetBlankFileSegInfo(void);
 
@@ -46,5 +61,11 @@ UpdateFileSegInfo(Relation parentrel,
 				  int64 eof, 
 				  float8 tuples_added, 
 				  float8 varblocks_added);
+
+extern int 
+GetNumOfSegFiles(Relation parentrel);
+
+extern FileSegTotals *
+GetSegFilesTotals(Relation parentrel);
 
 #endif   /* AOSEGFILES_H */

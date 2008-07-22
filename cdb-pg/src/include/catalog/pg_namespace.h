@@ -80,9 +80,9 @@ DESCR("Reserved schema for internal relations of bitmap indexes");
 DATA(insert OID = 2200 ( "public" PGUID _null_ ));
 DESCR("Standard public schema");
 #define PG_PUBLIC_NAMESPACE 2200
-DATA(insert OID = 5009 ( "pg_aoseg" PGUID _null_ ));
+DATA(insert OID = 6104 ( "pg_aoseg" PGUID _null_ ));
 DESCR("Reserved schema for Append Only segment list and eof tables");
-#define PG_AOSEGMENT_NAMESPACE 5009
+#define PG_AOSEGMENT_NAMESPACE 6104
 
 
 /*

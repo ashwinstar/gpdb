@@ -40,6 +40,7 @@
 #include "access/xact.h"
 #include "access/aosegfiles.h"
 #include "catalog/catalog.h"
+#include "catalog/pg_appendonly.h"
 #include "catalog/namespace.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
@@ -56,6 +57,12 @@
 #include <zlib.h>
 #endif
 
+/* 
+ * for now max file segment is 1GB. This is temporary. We will have a different
+ * scheme for determining a max later on.
+ */
+#define MAX_FILE_SEG_SIZE 1 * 1024 * 1024 * 1024
+
 static int32 doCompressAppend(AppendOnlyInsertDesc aoInsertDesc,
 							 uint8			*sourceData,
 							 int32			 sourceLen,
@@ -69,10 +76,6 @@ static int32 getActualMaxBufferLen(int32 maxBufferLen,
 
 /* ----------------
  *		initscan - scan code common to appendonly_beginscan and appendonly_rescan
- *
- * In here we initialize our bufferedReader and varBlock modules and allocate
- * memory to be used for scanning our data from the relation file. We also set
- * up the scan keys and misc scan options.
  * ----------------
  */
 static void
@@ -85,17 +88,175 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 	if (key != NULL)
 		memcpy(scan->aos_key, key, scan->aos_nkeys * sizeof(ScanKeyData));
 
+	scan->aos_file = 0;
+	scan->aos_cur_segno = -1; /* must start with -1, so first segment will be 0 */
+	scan->aos_need_new_segfile = true; /* need to assign a file to be scanned */
+	scan->aos_done_all_segfiles = false;
+	scan->bufferDone = true;
+	
 	pgstat_count_heap_scan(&scan->aos_pgstat_info);
 }
 
+/*
+ * doPadOutRemainder
+ *
+ * Since we do not do typical recovery processing of append-only file-system 
+ * pages, we pad out the last file-system byte with zeroes. The number of bytes
+ * that are padded with zero's is determined by safefswritesize.
+ * This function pads with 0's of length padLen or pads the whole remainder 
+ * of the safefswritesize size with 0's if padLen is -1. 
+ */
 static void
-doScanInit(AppendOnlyScanDesc scan)
+doPadOutRemainder(AppendOnlyInsertDesc aoInsertDesc, 
+				  int32	padLen)
 {
-	Relation	reln = scan->aos_rd;
-	FileSegInfo *fsinfo;
-	int64		eof;
-	BlockNumber segno = 0; /* for now we only have one file segment... */
-	MemoryContext oldcontext;
+	int64	nextWritePosition;
+	int64   nextBoundaryPosition;
+	int32	safeWrite = aoInsertDesc->safefswritesize; 
+	int32	safeWriteRemainder;
+	bool	doPad;
+	uint8   *buffer;
+	
+	/* early exit if no pad needed */
+	if(safeWrite == 0)
+		return;
+	
+	nextWritePosition = BufferedAppendNextBufferPosition(&aoInsertDesc->bufferedAppend);
+	nextBoundaryPosition = 
+		((nextWritePosition + safeWrite - 1)/safeWrite)*safeWrite;
+	safeWriteRemainder = (int32)(nextBoundaryPosition - nextWritePosition);
+	
+	if (safeWriteRemainder <= 0)
+		doPad = false;
+	else if (padLen == -1)
+	{
+		/*
+		 * Pad to end of page.
+		 */
+		doPad = true;
+		padLen = safeWriteRemainder;
+	}
+	else
+		doPad = (safeWriteRemainder < padLen);
+	
+	if (doPad)
+	{
+		/*
+		 * Get buffer of the remainder to pad.
+		 */
+		buffer = BufferedAppendGetBuffer(&aoInsertDesc->bufferedAppend,
+										 safeWriteRemainder);
+		
+		if (buffer == NULL)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("We do not expect files to be have a maximum length")));						
+		}
+		
+		memset(buffer, 0, safeWriteRemainder);
+		BufferedAppendFinishBuffer(&aoInsertDesc->bufferedAppend, safeWriteRemainder);
+		
+		if (Debug_appendonly_print_insert)
+			elog(LOG,"Append-only insert zero padded safeWriteRemainder for table '%s' (nextWritePosition = " INT64_FORMAT ", safeWriteRemainder = %d)",
+			     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
+			     nextWritePosition,
+			     safeWriteRemainder);
+		
+	}
+}
+
+/*
+ * doSkipPadding
+ *
+ * This function is called when the file system block we are scanning has
+ * no more valid data but instead is padded with zero's from the position
+ * we are currently in until the end of the block. The function will skip
+ * to the end of block if skipLen is -1 or skip skipLen bytes otherwise.
+ */
+static void
+doSkipPadding(AppendOnlyScanDesc scan,
+			  int32 skipLen)
+{
+	int64   nextReadPosition;
+	int64   nextBoundaryPosition;
+	int32   safeWriteRemainder;
+	bool	doSkip;
+	uint8  *buffer;
+	int32	availableLen;
+	int32   safewrite = scan->safefswritesize;
+	
+	/* early exit if no pad used */
+	if(safewrite == 0)
+		return;
+	
+	nextReadPosition = BufferedReadNextBufferPosition(&scan->bufferedRead);
+	nextBoundaryPosition = 
+		((nextReadPosition + safewrite - 1)/safewrite)*safewrite;
+	safeWriteRemainder = (int32)(nextBoundaryPosition - nextReadPosition);
+	
+	if (safeWriteRemainder <= 0)
+		doSkip = false;
+	else if (skipLen == -1)
+	{
+		/*
+		 * Skip to end of page.
+		 */
+		doSkip = true;
+		skipLen = safeWriteRemainder;
+	}
+	else
+		doSkip = (safeWriteRemainder < skipLen);
+	
+	if (doSkip)
+	{
+		/*
+		 * Read through the remainder.
+		 */
+		buffer = BufferedReadGetNextBuffer(&scan->bufferedRead,
+										   safeWriteRemainder,
+										   &availableLen);
+		
+		/*
+		 * Since our file EOF should always be a multiple of the file-system
+		 * page, we do not expect a short read here.
+		 */
+		if (buffer == NULL)
+			availableLen = 0;
+		if (buffer == NULL || safeWriteRemainder != availableLen)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Unexpected end of file.  Expected to read %d bytes after position " INT64_FORMAT  " but found %d bytes (bufferCount %d)\n", 
+							safeWriteRemainder, 
+							nextReadPosition, 
+							availableLen,
+							scan->bufferCount)));			
+		}
+		
+		// UNDONE: For verification purposes, we should verify the
+		// UNDONE: reminder is all zeroes.
+		
+		if (Debug_appendonly_print_scan)
+			elog(LOG,"Append-only scan skipping zero padded remainder for table '%s' (nextReadPosition = " INT64_FORMAT  ", safeWriteRemainder = %d)",
+			     NameStr(scan->aos_rd->rd_rel->relname),
+			     nextReadPosition,
+			     safeWriteRemainder);
+	}
+}
+
+/*
+ * Open the next file segment to scan and allocate all resources needed for it.
+ */
+static bool
+SetNextFileSegForRead(AppendOnlyScanDesc scan)
+{
+	Relation		reln = scan->aos_rd;
+	FileSegInfo		*fsinfo;
+	MemoryContext	oldcontext;
+	
+	Assert(scan->aos_need_new_segfile);   /* only call me when last segfile completed */
+	Assert(!scan->aos_done_all_segfiles); /* don't call me if I told you to stop */
 	
 	/*
 	 * first, allocate varblock buffer space. This used to be done in initscan
@@ -148,118 +309,168 @@ doScanInit(AppendOnlyScanDesc scan)
 		scan->aos_bufread_inited = true;
 	}
 	
-	/* Open this file 'segment' */
-	scan->aos_file = OpenAOSegmentFile(reln, segno);	
+	/* for now it's a primitive sequential increment of segment numbers */
+	scan->aos_cur_segno++;
 	
 	/* Get the eof of this relation file from the pg_aoseg_* table */
-	fsinfo = GetFileSegInfo(reln, segno);
-	
-	/* TEMPORARY: If no entry exists yet, use a blank one */
+	fsinfo = GetFileSegInfo(reln, scan->aos_cur_segno);
+
+	/* If no file segment, we are done */
 	if(!fsinfo)
-		fsinfo = GetBlankFileSegInfo();
-	
-	eof = (int64)fsinfo->eof;
-	
-	if (eof < 0)
 	{
-		close(scan->aos_file);
-		
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_INTERNAL_ERROR),
-				 errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
-						eof, NameStr(scan->aos_rd->rd_rel->relname))));
+		scan->aos_need_new_segfile = false;
+		scan->aos_done_all_segfiles = true;
+		return false;
 	}
-	
+		
+	/* Open this file 'segment' */
+	scan->aos_file = OpenAOSegmentFile(reln, scan->aos_cur_segno, false);		
+		
 	/* Set the file to be read with its eof */
-	BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
+	BufferedReadSetFile(&scan->bufferedRead, 
+						scan->aos_file, 
+						(int64)fsinfo->eof);
 	
 	/* ready to go! */
-	scan->aos_inited = true;
+	scan->aos_need_new_segfile = false;
 	
 	if (Debug_appendonly_print_scan)
 		elog(LOG,"Append-only scan initialize for table '%s' segment file %u (compression = %s, maximum buffer length %d, large read length %d)",
 			 NameStr(scan->aos_rd->rd_rel->relname),
-			 segno,
+			 scan->aos_cur_segno,
 			 (scan->aos_compressed ? "true" : "false"),
 		     scan->maxBufferLen,
 		     scan->largeReadLen);
 	
 	pfree(fsinfo);
+	
+	return true;
 }
 
 /*
- * doSkipPadding
- *
- * This function is called when the file system block we are scanning has
- * no more valid data but instead is padded with zero's from the position
- * we are currently in until the end of the block. The function will skip
- * to the end of block if skipLen is -1 or skip skipLen bytes otherwise.
+ * Open the next file segment for write.
  */
 static void
-doSkipPadding(AppendOnlyScanDesc scan,
-	int32 skipLen)
+SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 {
-	int64   nextReadPosition;
-	int64   nextBoundaryPosition;
-	int32   pageRemainder;
-	bool	doSkip;
-	uint8  *buffer;
-	int32	availableLen;
-	
-	nextReadPosition = BufferedReadNextBufferPosition(&scan->bufferedRead);
-	nextBoundaryPosition = 
-		((nextReadPosition + scan->maxBufferLen - 1)/scan->maxBufferLen)*scan->maxBufferLen;
-	pageRemainder = (int32)(nextBoundaryPosition - nextReadPosition);
+	File			appendFile;
+	FileSegInfo		*fsinfo;
+	int64			eof;
 
-	if (pageRemainder == 0)
-		doSkip = false;
-	else if (skipLen == -1)
+	/* Open the 'segment' file */
+	appendFile = OpenAOSegmentFile(aoInsertDesc->aoi_rel, 
+								   aoInsertDesc->cur_segno,
+								   true);
+	
+	/* get the information for the file segment we insert into */
+	fsinfo = GetFileSegInfo(aoInsertDesc->aoi_rel, 
+							aoInsertDesc->cur_segno);
+	
+	/* If no entry exists yet, use a blank one */
+	if(!fsinfo)
 	{
-		/*
-		 * Skip to end of page.
-		 */
-		doSkip = true;
-		skipLen = pageRemainder;
+		fsinfo = GetBlankFileSegInfo();
+		aoInsertDesc->is_new_segno = true;
 	}
 	else
-		doSkip = (pageRemainder < skipLen);
-	
-	if (doSkip)
 	{
-		/*
-		 * Read through the remainder.
-		 */
-		buffer = BufferedReadGetNextBuffer(&scan->bufferedRead,
-										   pageRemainder,
-										   &availableLen);
-
-		/*
-		 * Since our file EOF should always be a multiple of the file-system
-		 * page, we do not expect a short read here.
-		 */
-		if (buffer == NULL)
-			availableLen = 0;
-		if (buffer == NULL || pageRemainder != availableLen)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Unexpected end of file.  Expected to read %d bytes after position " INT64_FORMAT  " but found %d bytes (bufferCount %d)\n", 
-							pageRemainder, 
-							nextReadPosition, 
-							availableLen,
-							scan->bufferCount)));			
-		}
-
-		// UNDONE: For verification purposes, we should verify the
-		// UNDONE: reminder is all zeroes.
-		
-		if (Debug_appendonly_print_scan)
-			elog(LOG,"Append-only scan skipping zero padded remainder for table '%s' (nextReadPosition = " INT64_FORMAT  ", pageRemainder = %d)",
-			     NameStr(scan->aos_rd->rd_rel->relname),
-			     nextReadPosition,
-			     pageRemainder);
+		aoInsertDesc->is_new_segno = false;
 	}
+		
+	/* Seek to the starting point (current eof from catalog) */
+	eof = (int64) lseek(appendFile, (off_t) fsinfo->eof, SEEK_SET);
+	
+	if (eof < 0)
+	{
+		CloseAOSegmentFile(appendFile, 
+						   aoInsertDesc->aoi_rel, 
+						   aoInsertDesc->cur_segno); /* cleanup before ereport */
+						   
+						   ereport(ERROR, (errcode_for_file_access(),
+										   errmsg("Cannot seek to end (error %d)", errno)));
+	}
+
+	BufferedAppendSetFile(&aoInsertDesc->bufferedAppend, appendFile, eof);
+
+	/* reset counts */
+	aoInsertDesc->insertCount = 0;
+	aoInsertDesc->varblockCount = 0;
+
+	pfree(fsinfo);
 }
+
+static void
+SetNextFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
+{
+	aoInsertDesc->cur_segno++;
+	SetCurrentFileSegForWrite(aoInsertDesc);
+}
+
+/*
+ * Finished scanning this file segment. Close it.
+ */
+static void
+CloseScannedFileSeg(AppendOnlyScanDesc scan)
+{
+	/* 
+	 * close the relation file segment. Note that QD has no file to close and some
+	 * slices don't either, so check first. 
+	 */
+	if(scan->aos_file > 0)
+	{
+		CloseAOSegmentFile(scan->aos_file, scan->aos_rd, scan->aos_cur_segno);
+		scan->aos_file = 0;
+	}
+	
+	/*
+	 * call BufferedReadCompleteFile if not already done
+	 */
+	if((&scan->bufferedRead)->file >= 0)
+		BufferedReadCompleteFile(&scan->bufferedRead);
+	
+	scan->aos_need_new_segfile = true;
+}
+
+static void
+CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
+{
+	int64	fileLen;
+	
+	/*
+	 * We pad out append commands to the page boundary.
+	 */
+	doPadOutRemainder(aoInsertDesc, /* indicate till end of page */ -1);
+	
+	fileLen = BufferedAppendFileLen(&aoInsertDesc->bufferedAppend);
+	
+	/* 
+	 * Update the AO segment info table 
+	 */
+	if(aoInsertDesc->is_new_segno)
+	{
+		/* insert the first entry into pg_aoseg_* with our new eof */
+		InsertFileSegInfo(aoInsertDesc->aoi_rel, 
+						  aoInsertDesc->cur_segno,
+						  fileLen, 
+						  aoInsertDesc->insertCount,
+						  aoInsertDesc->varblockCount);
+	}
+	else
+	{
+		/* update the existing pg_aoseg_* with our new eof */
+		UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
+						  aoInsertDesc->cur_segno,
+						  fileLen, 
+						  aoInsertDesc->insertCount,
+						  aoInsertDesc->varblockCount);
+	}
+	
+	/* done with the rel file, close it */
+	BufferedAppendCompleteFile(&aoInsertDesc->bufferedAppend);
+
+}
+
+
 
 
 static bool
@@ -276,6 +487,14 @@ getNextBlock(AppendOnlyScanDesc scan)
 
 	VarBlockCheckError varBlockCheckError;
 
+	
+	if (scan->aos_need_new_segfile)
+	{
+		/* need to open a new segment file */
+		if(!SetNextFileSegForRead(scan))
+			return false; 
+	}
+	
 	/*
 	 * Peek ahead just enough so we can determine the length of the 
 	 * uncompressed VarBlock or the length for compressed data.
@@ -283,8 +502,7 @@ getNextBlock(AppendOnlyScanDesc scan)
 	 * However, we need to honor the file-system page boundaries here
 	 * since we do not let the length information cross the boundary.
 	 */
-	doSkipPadding(scan, 
-	              peekLen);
+	doSkipPadding(scan, peekLen);
 
 	buffer = BufferedReadGetNextBuffer(&scan->bufferedRead,
 									   peekLen,
@@ -293,8 +511,7 @@ getNextBlock(AppendOnlyScanDesc scan)
 	if (buffer == NULL)
 	{
 		/* done reading the file */
-		BufferedReadCompleteFile(&scan->bufferedRead);
-		scan->aos_inited = false;	
+		CloseScannedFileSeg(scan);
 		return false;			
 	}
 	
@@ -322,8 +539,7 @@ getNextBlock(AppendOnlyScanDesc scan)
 			 * Skip over zero padding caused when the append command
 			 * left a partially full page.
 			 */
-			doSkipPadding(scan,
-				          /* indicated till end of page */ -1);
+			doSkipPadding(scan, /* indicated till end of page */ -1);
 
 			/*
 			 * Now try to get the peek data from the new page.
@@ -335,8 +551,7 @@ getNextBlock(AppendOnlyScanDesc scan)
 			if (buffer == NULL)
 			{
 				/* done reading the file */
-				BufferedReadCompleteFile(&scan->bufferedRead);
-				scan->aos_inited = false;	
+				CloseScannedFileSeg(scan);
 				return false;			
 			}
 			
@@ -523,24 +738,26 @@ appendonlygettup(AppendOnlyScanDesc scan,
 
 	Assert(ScanDirectionIsForward(dir));
 	Assert(scan->maxBufferLen > 0 && scan->largeReadLen == scan->maxBufferLen * 2);
-
-	if (!scan->aos_inited)
-	{
-		doScanInit(scan);
-	}
 	
 	for(;;)
 	{
 		if(scan->bufferDone)
 		{
-			if (!getNextBlock(scan))
+			/*
+			 * Get the next varblock. We call this function until we
+			 * successfully get a block to process, or finished reading
+			 * all the data (all 'segment' files) for this relation.
+			 */
+			while(!getNextBlock(scan))
 			{
-				return NULL;			
+				/* have we read all this relation's data. done! */
+				if(scan->aos_done_all_segfiles)
+					return NULL;					
 			}
-
+			
 			scan->bufferDone = false;
 		}	
-
+		
 		/*
 		 * get the next item (tuple) from the varblock
 		 */
@@ -607,8 +824,9 @@ appendonlygettup(AppendOnlyScanDesc scan,
 AppendOnlyScanDesc
 appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 {
-	AppendOnlyScanDesc scan;
-	int				   complevel;
+	AppendOnlyScanDesc	scan;
+	AppendOnlyEntry		*aoentry;
+	int					complevel;
 	
 	/*
 	 * increment relation ref count while scanning relation
@@ -620,21 +838,27 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	RelationIncrementReferenceCount(relation);
 
 	/*
-	 * allocate and initialize scan descriptor
+	 * allocate scan descriptor
 	 */
 	scan = (AppendOnlyScanDesc) palloc0(sizeof(AppendOnlyScanDescData));
-	scan->aos_inited = false;
+	
+	/*
+	 * Get the pg_appendonly information for this table
+	 */
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(relation));
+	complevel = aoentry->compresslevel;
+	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
+	
+	/*
+	 * initialize the scan descriptor
+	 */
+	scan->maxBufferLen = aoentry->blocksize;
+	scan->safefswritesize = aoentry->safefswritesize;
 	scan->aos_bufread_inited = false;
 	scan->aos_rd = relation;
 	scan->aos_nkeys = nkeys;
-	scan->aos_file = 0;
-	
-	scan->maxBufferLen = RelationGetBlockSize(relation, DEFAULT_VARBLOCK_SIZE);
 	scan->largeReadLen = 2 * scan->maxBufferLen;
 	scan->aoScanInitContext = CurrentMemoryContext;
-
-	
-	complevel = RelationGetCompressLevel(relation, DEFAULT_COMPRESS_LEVEL);
 	scan->aos_compressed = (complevel > 0 ? true : false);
 	scan->varBlockBuffer = NULL;
 			
@@ -653,6 +877,8 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	pgstat_initstats(&scan->aos_pgstat_info, relation);
 	initscan(scan, key);
 
+	pfree(aoentry);
+	
 	return scan;
 }
 
@@ -670,32 +896,13 @@ appendonly_rescan(AppendOnlyScanDesc scan,
 				  ScanKey key)
 {
 	
-	/* 
-	 * close the relation file. Note that QD has no file to close and some
-	 * slices don't either, so check first. 
-	 */
-	if(scan->aos_file > 0)
-	{
-		if(close(scan->aos_file))
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not close append only file")));
-	}
-	
-	/*
-	 * In some cases we didn't get around to call BufferedReadCompleteFile
-	 * because we didn't finish processing the buffer (e.g LIMIT). do it now
-	 * if that's the case.
-	 */
-	if((&scan->bufferedRead)->file >= 0)
-		BufferedReadCompleteFile(&scan->bufferedRead);
-	
+	CloseScannedFileSeg(scan);
 	BufferedReadFinish(&scan->bufferedRead);
 	
 	if(scan->varBlockBuffer)
 		pfree(scan->varBlockBuffer);
 	
-	scan->aos_inited = false;
+	scan->aos_need_new_segfile = true;
 
 	/*
 	 * reinitialize scan descriptor
@@ -716,26 +923,7 @@ appendonly_endscan(AppendOnlyScanDesc scan)
 	if (scan->aos_key)
 		pfree(scan->aos_key);
 	
-	/* 
-	 * close the relation file. Note that QD has no file to close and some
-	 * slices don't either, so check first. 
-	 */
-	if(scan->aos_file > 0)
-	{
-		if(close(scan->aos_file))
-			ereport(ERROR,
-					(errcode_for_file_access(),
-					 errmsg("could not close append only file")));
-	}
-			
-	/*
-	 * In some cases we didn't get around to call BufferedReadCompleteFile
-	 * because we didn't finish processing the buffer (e.g LIMIT). do it now
-	 * if that's the case.
-	 */
-	if((&scan->bufferedRead)->file >= 0)
-		BufferedReadCompleteFile(&scan->bufferedRead);
-	
+	CloseScannedFileSeg(scan);	
 	BufferedReadFinish(&scan->bufferedRead);
 		
 	pfree(scan);
@@ -777,23 +965,33 @@ AppendOnlyInsertDesc
 appendonly_insert_init(Relation rel)
 {
 	AppendOnlyInsertDesc	aoInsertDesc;
+	AppendOnlyEntry			*aoentry;
+	FileSegInfo				*fsinfo;
 	uint8					*memory;
 	uint8					*buffer;
 	int32					actualMaxBufferLen;
 	int32					memoryLen;
-	int64					eof;
 	int						maxtupsize;
-	File					appendFile;
-	FileSegInfo				*fsinfo;
+	int 					total_segfiles;
 
+	/*
+	 * Get the pg_appendonly information for this table
+	 */
+	aoentry = GetAppendOnlyEntry(RelationGetRelid(rel));
+	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
+	
+	/*
+	 * allocate and initialize the insert descriptor
+	 */	
 	aoInsertDesc  = (AppendOnlyInsertDesc) palloc(sizeof(AppendOnlyInsertDescData));
 	aoInsertDesc->aoi_rel = rel;
 	aoInsertDesc->mt_bind = create_memtuple_binding(RelationGetDescr(rel));
 	aoInsertDesc->bufferCount = 0;
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->varblockCount = 0;
-	aoInsertDesc->maxBufferLen = RelationGetBlockSize(rel, DEFAULT_VARBLOCK_SIZE);
-	aoInsertDesc->compressLevel = RelationGetCompressLevel(rel, DEFAULT_COMPRESS_LEVEL);
+	aoInsertDesc->maxBufferLen = aoentry->blocksize;
+	aoInsertDesc->safefswritesize = aoentry->safefswritesize;
+	aoInsertDesc->compressLevel = aoentry->compresslevel;
 	aoInsertDesc->largeWriteLen = 2 * aoInsertDesc->maxBufferLen;
 	aoInsertDesc->shouldCompress = (aoInsertDesc->compressLevel > 0 ? true : false);
 	aoInsertDesc->varBlockBuffer = (uint8 *) palloc(aoInsertDesc->maxBufferLen * sizeof(uint8));
@@ -802,9 +1000,23 @@ appendonly_insert_init(Relation rel)
 	maxtupsize = aoInsertDesc->maxBufferLen - VARBLOCK_HEADER_LEN - 4;
 	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4; /* see tuptoaster.h for more information */
 	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
-	aoInsertDesc->cur_segno = 0;
-	aoInsertDesc->is_new_segno = false;
-		
+	
+	/* 
+	 * Choose a file 'segment' to start inserting into.
+	 * generally we start inserting into the last existing segment,
+	 * but if it's full we pick the next one.
+	 */
+	total_segfiles = GetNumOfSegFiles(rel);
+	aoInsertDesc->cur_segno = (total_segfiles > 0 ? total_segfiles - 1 : 0);
+	fsinfo = GetFileSegInfo(rel, aoInsertDesc->cur_segno);
+	if(fsinfo)
+	{
+		/* if full or almost full, pick the next segment number to start with */
+		if(fsinfo->eof > MAX_FILE_SEG_SIZE - aoInsertDesc->maxBufferLen)
+			aoInsertDesc->cur_segno++; 
+		pfree(fsinfo);
+	}
+	
 	actualMaxBufferLen = getActualMaxBufferLen(aoInsertDesc->maxBufferLen, 
 											   aoInsertDesc->shouldCompress);
 	
@@ -820,7 +1032,7 @@ appendonly_insert_init(Relation rel)
 	 * set up the the buffered appender for this data load 
 	 */
 	BufferedAppendInit(&aoInsertDesc->bufferedAppend, 
-					   memory, 
+					   memory,
 					   memoryLen, 
 					   actualMaxBufferLen, 
 					   aoInsertDesc->largeWriteLen);
@@ -834,30 +1046,8 @@ appendonly_insert_init(Relation rel)
 		     aoInsertDesc->maxBufferLen,
 		     aoInsertDesc->largeWriteLen);
 	
-	/* Open the 'segment' file */
-	appendFile = OpenAOSegmentFile(rel, aoInsertDesc->cur_segno);
-	
-	/* get the information for the file segment we insert into */
-	fsinfo = GetFileSegInfo(rel, aoInsertDesc->cur_segno);
-
-	/* TEMPORARY: If no entry exists yet, use a blank one */
-	if(!fsinfo)
-	{
-		fsinfo = GetBlankFileSegInfo();
-		aoInsertDesc->is_new_segno = true;
-	}
-		
-	/* Seek to the starting point (current eof from catalog) */
-	eof = (int64) lseek(appendFile, (off_t) fsinfo->eof, SEEK_SET);
-		
-	if (eof < 0)
-	{
-		close(appendFile); /* cleanup before ereport */
-		ereport(ERROR, (errcode_for_file_access(),
-						errmsg("Cannot seek to end (error %d)", errno)));
-	}
-	
-	BufferedAppendSetFile(&aoInsertDesc->bufferedAppend, appendFile, eof);
+	/* open our current relation file segment for write */
+	SetCurrentFileSegForWrite(aoInsertDesc);
 	
 	Assert(aoInsertDesc->tempSpaceLen > 0);
 	
@@ -882,75 +1072,12 @@ appendonly_insert_init(Relation rel)
 						  aoInsertDesc->tempSpaceLen);				
 	}
 	aoInsertDesc->bufferCount++;
-	
-	pfree(fsinfo);
-	
+
+	pfree(aoentry);
+
 	return aoInsertDesc;
 }
 
-/*
- * doPadOutPageRemainder
- *
- * Since we do not do typical recovery processing of append-only file-system 
- * pages, we pad out the last file-system page with zeroes. This function pads
- * the page with 0's of length padLen or pads the whole remainder of the page
- * with 0's if padLen is -1. 
- */
-static void
-doPadOutPageRemainder(AppendOnlyInsertDesc aoInsertDesc, 
-	int32	padLen)
-{
-	int64	nextWritePosition;
-	int64   nextBoundaryPosition;
-	int32	pageRemainder;
-	int32	bufsize = aoInsertDesc->maxBufferLen;
-	bool	doPad;
-	uint8   *buffer;
-	
-	nextWritePosition = BufferedAppendNextBufferPosition(&aoInsertDesc->bufferedAppend);
-	nextBoundaryPosition = 
-		((nextWritePosition + bufsize - 1)/bufsize)*bufsize;
-	pageRemainder = (int32)(nextBoundaryPosition - nextWritePosition);
-
-	if (pageRemainder == 0)
-		doPad = false;
-	else if (padLen == -1)
-	{
-		/*
-		 * Pad to end of page.
-		 */
-		doPad = true;
-		padLen = pageRemainder;
-	}
-	else
-		doPad = (pageRemainder < padLen);
-
-	if (doPad)
-	{
-		/*
-		 * Get buffer of the remainder to pad.
-		 */
-		buffer = BufferedAppendGetBuffer(&aoInsertDesc->bufferedAppend,
-										 pageRemainder);
-
-		if (buffer == NULL)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("We do not expect files to be have a maximum length")));						
-		}
-
-		memset(buffer, 0, pageRemainder);
-		BufferedAppendFinishBuffer(&aoInsertDesc->bufferedAppend, pageRemainder);
-
-		if (Debug_appendonly_print_insert)
-			elog(LOG,"Append-only insert zero padded remainder for table '%s' (nextWritePosition = " INT64_FORMAT ", pageRemainder = %d)",
-			     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
-			     nextWritePosition,
-			     pageRemainder);
-
-	}
-}
 
 /*
  *	appendonly_insert		- insert tuple into a varblock
@@ -976,6 +1103,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	MemTuple 		 tup = NULL;
 	Oid 			retOid;
 	bool			need_toast;
+	int64			fileLen;
 	
 	Assert(aoInsertDesc->maxBufferLen > 0 && aoInsertDesc->tempSpaceLen > 0);
     Assert(aoInsertDesc->largeWriteLen == aoInsertDesc->maxBufferLen * 2);
@@ -1036,20 +1164,19 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	{		
 		int32	bufferLen;
 		int		actualItemCount = VarBlockMakerItemCount(&aoInsertDesc->varBlockMaker);
+		int32	compressedDataLen = 0;
 		
 		if (actualItemCount == 0)
-		{
-			/* used BasicOpenFile - prevent leaking fd's. must close it */
-			close((&aoInsertDesc->bufferedAppend)->file);
-			
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Item too long (#1)")));			
-		}
 		
 		bufferLen = VarBlockMakerFinish(&aoInsertDesc->varBlockMaker);	
 		aoInsertDesc->varblockCount++;
 		
+		/*
+		 * Insert the data (and padding if necessary)
+		 */
 		if(!aoInsertDesc->shouldCompress)
 		{
 			BufferedAppendFinishBuffer(&aoInsertDesc->bufferedAppend, bufferLen);
@@ -1060,23 +1187,52 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 				     bufferLen,
 				     actualItemCount,
 				     aoInsertDesc->bufferCount);
-
-			doPadOutPageRemainder(aoInsertDesc, VARBLOCK_HEADER_LEN);
-	
-			buffer = BufferedAppendGetMaxBuffer(&aoInsertDesc->bufferedAppend);
 			
-			if (buffer == NULL)
-			{
-				/* TODO: need to clean up before aborting! */
-				
-				/* used BasicOpenFile - prevent leaking fd's. must close it */
-				close((&aoInsertDesc->bufferedAppend)->file);
+			doPadOutRemainder(aoInsertDesc, VARBLOCK_HEADER_LEN);
+		}
+		else
+		{
+			compressedDataLen = doCompressAppend(aoInsertDesc, 
+												 aoInsertDesc->varBlockBuffer, 
+												 bufferLen,
+												 aoInsertDesc->compressLevel);
+			
+			if (Debug_appendonly_print_insert)
+				elog(LOG,"Append-only insert finished compressed VarBlock for table '%s' (length = %d, compressed length %d, item count %d, block count %d)",
+					 NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
+					 bufferLen,
+					 compressedDataLen,
+					 actualItemCount,
+					 aoInsertDesc->bufferCount);
+			
+		}
 
+		/*
+		 * If this file segment if full (or full enough that another varblock
+		 * may not fit in) close it and prepare the next one for writing.
+		 */
+		fileLen = BufferedAppendFileLen(&aoInsertDesc->bufferedAppend);
+
+		if(fileLen > MAX_FILE_SEG_SIZE - aoInsertDesc->maxBufferLen)
+		{
+			CloseWritableFileSeg(aoInsertDesc);		   
+			
+			/* get the next file segment and continue*/
+			SetNextFileSegForWrite(aoInsertDesc);
+		}
+
+		/*
+		 * Init the next varblock.
+		 */
+		if(!aoInsertDesc->shouldCompress)
+		{
+			buffer = BufferedAppendGetMaxBuffer(&aoInsertDesc->bufferedAppend);
+	
+			if (buffer == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
 						 errmsg("We do not expect files to be have a maximum length")));						
-			}
-			
+	
 			VarBlockMakerInit(&aoInsertDesc->varBlockMaker,
 							  buffer,
 							  aoInsertDesc->maxBufferLen,
@@ -1085,43 +1241,27 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 		}
 		else
 		{
-			int32 compressedDataLen;
-			
-			compressedDataLen = doCompressAppend(aoInsertDesc, 
-												 aoInsertDesc->varBlockBuffer, 
-												 bufferLen,
-												 aoInsertDesc->compressLevel);
-			
 			VarBlockMakerInit(&aoInsertDesc->varBlockMaker,
 							  aoInsertDesc->varBlockBuffer,
 							  aoInsertDesc->maxBufferLen,
 							  aoInsertDesc->tempSpace,
 							  aoInsertDesc->tempSpaceLen);
 			
-			if (Debug_appendonly_print_insert)
-				elog(LOG,"Append-only insert finished compressed VarBlock for table '%s' (length = %d, compressed length %d, item count %d, block count %d)",
-				     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
-				     bufferLen,
-				     compressedDataLen,
-				     actualItemCount,
-				     aoInsertDesc->bufferCount);
 		}
+
 		aoInsertDesc->bufferCount++;
 
 		itemPtr = VarBlockMakerGetNextItemPtr(&aoInsertDesc->varBlockMaker, itemLen);
-		if (itemPtr == NULL)
-		{
-			/* used BasicOpenFile - prevent leaking fd's. must close it */
-			close((&aoInsertDesc->bufferedAppend)->file);
 
+		if (itemPtr == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("Item too long (#2)")));			
-		}
+
 	}
 		
 	Assert(itemPtr != NULL);
-	
+
 	if (itemLen > 0)
 		memcpy(itemPtr, tup, itemLen);
 	
@@ -1145,7 +1285,6 @@ void
 appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 {
 	int		actualItemCount = VarBlockMakerItemCount(&aoInsertDesc->varBlockMaker);
-	int64			fileLen;
 		
 	/* 
 	 * finish up that last varblock 
@@ -1185,39 +1324,8 @@ appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc)
 		}
 	}
 
-	/*
-	 * We pad out append commands to the page boundary.
-	 */
-	doPadOutPageRemainder(aoInsertDesc,
-		                  /* indicate till end of page */ -1);
+	CloseWritableFileSeg(aoInsertDesc);
 	
-	fileLen = BufferedAppendFileLen(&aoInsertDesc->bufferedAppend);
-	
-	/* 
-	 * Update the AO segment info table 
-	 */
-	if(aoInsertDesc->is_new_segno)
-	{
-		/* insert the first entry into pg_aoseg_* with our new eof */
-		InsertFileSegInfo(aoInsertDesc->aoi_rel, 
-						  aoInsertDesc->cur_segno,
-						  fileLen, 
-						  aoInsertDesc->insertCount,
-						  aoInsertDesc->varblockCount);
-	}
-	else
-	{
-		/* update the existing pg_aoseg_* with our new eof */
-		UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
-						  aoInsertDesc->cur_segno,
-						  fileLen, 
-						  aoInsertDesc->insertCount,
-						  aoInsertDesc->varblockCount);
-	}
-	
-	/* done with the rel file, close it */
-	BufferedAppendCompleteFile(&aoInsertDesc->bufferedAppend);
-		
 	pfree(aoInsertDesc);
 }
 
@@ -1241,7 +1349,7 @@ doCompressAppend(AppendOnlyInsertDesc aoInsertDesc,
 	Assert(aoInsertDesc->maxBufferLen > 0 && 
 		   aoInsertDesc->largeWriteLen == aoInsertDesc->maxBufferLen * 2);
 
-	doPadOutPageRemainder(aoInsertDesc, sizeof(int32));
+	doPadOutRemainder(aoInsertDesc, sizeof(int32));
 	
 	buffer = BufferedAppendGetMaxBuffer(&aoInsertDesc->bufferedAppend);
 

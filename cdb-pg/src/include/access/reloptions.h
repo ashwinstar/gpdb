@@ -31,14 +31,14 @@ extern void parseRelOptions(Datum options, int numkeywords,
 extern bytea *default_reloptions(Datum reloptions, bool validate,
 				   int minFillfactor, int defaultFillfactor);
 
-extern void heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions);
+extern void heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *safewrite);
 
 extern bytea *heap_reloptions(char relkind, Datum reloptions, bool validate);
 
 extern bytea *index_reloptions(RegProcedure amoptions, Datum reloptions,
 				 bool validate);
 
-extern void validateAppendOnlyRelOptions(bool ao, int blocksize, int complevel, 
-										 char relkind);
+extern void validateAppendOnlyRelOptions(bool ao, int blocksize, int writesize,
+										 int complevel, char relkind);
 
 #endif   /* RELOPTIONS_H */

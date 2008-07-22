@@ -12,6 +12,7 @@
 */
 #include "postgres.h"
 
+#include "miscadmin.h"
 #include "access/heapam.h"
 #include "access/aosegfiles.h"
 #include "catalog/pg_type.h"
@@ -118,10 +119,7 @@ GetFileSegInfo(Relation parentrel, int segno)
 	Datum		eof, tupcount, varbcount;
 	bool		isNull;
 	FileSegInfo *fsinfo;
-	
-	/* remove when we enable multiple segment files */
-	Assert(segno == 0);
-	
+		
 	/*
 	 * Check the pg_aoseg relation to be certain the ao table 
 	 * is there. 
@@ -190,9 +188,16 @@ GetFileSegInfo(Relation parentrel, int segno)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("got invalid varblockcount value: NULL")));	
 	
+	fsinfo->segno = segno;
 	fsinfo->eof = DatumGetFloat8(eof);
 	fsinfo->tupcount = DatumGetFloat8(tupcount);
 	fsinfo->varblockcount = DatumGetFloat8(varbcount);
+	
+	if (fsinfo->eof < 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_GP_INTERNAL_ERROR),
+				 errmsg("Invalid eof " INT64_FORMAT " for relation %s", 
+						(int64)fsinfo->eof, NameStr(parentrel->rd_rel->relname))));
 	
 	/* Finish up scan and close appendonly catalog. */
 	index_endscan(aoscan);
@@ -227,9 +232,6 @@ UpdateFileSegInfo(Relation parentrel,
 	char				new_record_repl[Natts_pg_aoseg];
 	bool				isNull;
 	
-	/* remove when we enable multiple segment files */
-	Assert(segno == 0);
-
 	/* overflow sanity checks */
 	Assert(tuples_added >= 0);
 	Assert(varblocks_added >= 0);
@@ -331,3 +333,78 @@ UpdateFileSegInfo(Relation parentrel,
 	heap_close(pg_aoseg_rel, RowExclusiveLock);
 	
 }
+
+/*
+ * TEMPORARY FUNCTION: until we have a process that manages the 'segment'
+ * concurrency we just call this guy to find the total number of segnos on
+ * this local segdb.
+ */
+int GetNumOfSegFiles(Relation parentrel)
+{
+	
+	Relation		pg_aoseg_rel;
+	HeapTuple		tuple;
+	HeapScanDesc	aoscan;
+	int32			numsegs = 0;
+	
+	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+	aoscan = heap_beginscan(pg_aoseg_rel, SnapshotNow, 0, NULL);
+				
+	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
+	{
+		numsegs++; /* as long as numbers are consecutive we're ok */
+		CHECK_FOR_INTERRUPTS();
+	}
+	
+	heap_endscan(aoscan);			
+	heap_close(pg_aoseg_rel, AccessShareLock);
+	
+	return numsegs;
+}
+
+/*
+ * GetSegFilesTotals
+ *
+ * Get the total bytes, tuples, and varblocks for a specific AO table
+ * from the pg_aoseg table on this local segdb.
+ */
+FileSegTotals *GetSegFilesTotals(Relation parentrel)
+{
+	
+	Relation		pg_aoseg_rel;
+	TupleDesc		pg_aoseg_dsc;
+	HeapTuple		tuple;
+	HeapScanDesc	aoscan;
+	FileSegTotals  *result;
+	Datum			eof,
+					tupcount,
+					varblockcount;
+	bool			isNull;
+	
+	result = (FileSegTotals *) palloc0(sizeof(FileSegTotals));
+
+	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
+	
+	aoscan = heap_beginscan(pg_aoseg_rel, SnapshotNow, 0, NULL);
+				
+	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
+	{
+		eof = fastgetattr(tuple, Anum_pg_aoseg_eof, pg_aoseg_dsc, &isNull);
+		tupcount = fastgetattr(tuple, Anum_pg_aoseg_tupcount, pg_aoseg_dsc, &isNull);
+		varblockcount = fastgetattr(tuple, Anum_pg_aoseg_varblockcount, pg_aoseg_dsc, &isNull);
+		
+		result->totalbytes += DatumGetFloat8(eof);
+		result->totaltuples += DatumGetFloat8(tupcount);
+		result->totalvarblocks += DatumGetFloat8(varblockcount);
+		result->totalfilesegs++;
+		
+		CHECK_FOR_INTERRUPTS();
+	}
+	
+	heap_endscan(aoscan);			
+	heap_close(pg_aoseg_rel, AccessShareLock);
+	
+	return result;
+}
+

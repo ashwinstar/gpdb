@@ -13,7 +13,12 @@
 #include "utils/rel.h"
 
 extern File
-OpenAOSegmentFile(Relation rel, BlockNumber segno);
+OpenAOSegmentFile(Relation rel, BlockNumber segno, bool create);
 
+extern void
+CloseAOSegmentFile(File file, Relation rel, BlockNumber segno);
+
+extern void
+TruncateAOSegmentFile(File aosegfile, Relation rel, long offset, int elevel);
 
 #endif   /* AOMD_H */

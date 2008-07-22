@@ -523,6 +523,11 @@ gp_selectivity_damping_for_joins = on
 #gp_external_grant_privileges = off #enable create http/gpfdist for non su's
 
 #---------------------------------------------------------------------------
+# APPEND ONLY TABLES
+#---------------------------------------------------------------------------
+#gp_safefswritesize = 0   # minimum size for safe AO writes in a non-mature fs
+
+#---------------------------------------------------------------------------
 # VERSION/PLATFORM COMPATIBILITY
 #---------------------------------------------------------------------------
 

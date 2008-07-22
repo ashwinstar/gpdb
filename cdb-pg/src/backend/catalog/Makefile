@@ -11,7 +11,7 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
-       pg_aggregate.o pg_constraint.o pg_conversion.o pg_depend.o \
+       pg_aggregate.o pg_appendonly.o pg_constraint.o pg_conversion.o pg_depend.o \
        pg_largeobject.o pg_namespace.o pg_operator.o pg_proc.o pg_shdepend.o \
        pg_type.o toasting.o aoseg.o
 
@@ -42,7 +42,7 @@ POSTGRES_BKI_SRCS := $(addprefix $(top_srcdir)/src/include/catalog/,\
 	pg_authid.h pg_auth_members.h pg_shdepend.h pg_shdescription.h pg_resqueue.h \
 	gp_configuration.h gp_id.h gp_policy.h gp_version.h \
 	pg_window.h \
-	pg_exttable.h gp_master_mirroring.h aoseg.h \
+	pg_exttable.h pg_appendonly.h gp_master_mirroring.h aoseg.h \
 	pg_partition.h pg_partition_rule.h toasting.h indexing.h \
     )
 

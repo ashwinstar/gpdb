@@ -416,11 +416,9 @@ DefineRelation_int(CreateStmt *stmt,
 	List	   *inheritOids;
 	List	   *old_constraints;
 	bool		localHasOids;
-	bool		appendOnlyRel; /* was appendonly relation requested? */
 	int			parentOidCount;
 	List	   *rawDefaults;
 	Datum		reloptions;
-	StdRdOptions *stdRdOptions;
 	ListCell   *listptr;
 	AttrNumber	attnum;
 	bool		shared_relation = false;
@@ -485,21 +483,6 @@ DefineRelation_int(CreateStmt *stmt,
 	 * Parse and validate reloptions, if any.
 	 */
 	reloptions = transformRelOptions((Datum) 0, stmt->options, true, false);
-
-	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
-
-	heap_test_override_reloptions(relkind, stdRdOptions);
-
-	/*
-	 * Was "appendonly" specified in the relopts? If yes, fix our relkind.
-	 */
-	appendOnlyRel = stdRdOptions->appendonly;
-	validateAppendOnlyRelOptions(appendOnlyRel, 
-								 stdRdOptions->blocksize, 
-								 stdRdOptions->compresslevel, 
-								 relkind);
-	if(appendOnlyRel)
-		relkind = RELKIND_APPEND_ONLY;
 
 	/* Check permissions except when using database's default */
 	if (OidIsValid(tablespaceId))

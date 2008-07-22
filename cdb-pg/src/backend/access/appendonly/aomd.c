@@ -31,12 +31,13 @@
  * the FD gets closed in any error exit path.  
  */
 File
-OpenAOSegmentFile(Relation rel, BlockNumber segno)
+OpenAOSegmentFile(Relation rel, BlockNumber segno, bool create)
 {
 	File		aosegfile;
 	char		*path,
 				*fullpath;
-
+	int			fileflags = O_RDWR | PG_BINARY;
+		
 	/* Get base path for this relation file */
 	path = relpath(rel->rd_node);
 
@@ -48,19 +49,81 @@ OpenAOSegmentFile(Relation rel, BlockNumber segno)
 		/* be sure we have enough space for the '.segno' */
 		fullpath = (char *) palloc(strlen(path) + 12);
 		sprintf(fullpath, "%s.%u", path, segno);
-		pfree(path);
 	}
 	else
 		fullpath = path;
 	
+	//elog(NOTICE, "requested to open getting new file, seg number %d", aoInsertDesc->cur_segno);
 	
-	aosegfile = BasicOpenFile(path, O_RDWR | PG_BINARY, 0600);
+	aosegfile = BasicOpenFile(fullpath, fileflags, 0600);
 	
 	if(aosegfile < 0)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not open append only file \"%s\"", fullpath)));
+	{
+		if(!create)
+		{
+			/* we expected to find this file */
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not open append only file \"%s\"", fullpath)));
+		}
+		else
+		{
+			/* file doesn't exist. create a new one. */
+			fileflags |= O_CREAT;
+			aosegfile = BasicOpenFile(fullpath, fileflags, 0600);
+
+			if(aosegfile < 0)
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("failed to create a new file segment: \"%s\"", fullpath)));
+		}
+	}
+	
+	pfree(fullpath);
 	
 	return aosegfile;
+}
+
+/*
+ * Close an Append Only relation file segment
+ */
+void
+CloseAOSegmentFile(File aosegfile, Relation rel, BlockNumber segno)
+{
+	Assert(aosegfile > 0);
+	Assert(segno >= 0);
+	
+	if(close(aosegfile))
+	{
+		/* get file path for error report file (no need for absolute path) */
+		char *path = relpath(rel->rd_node);
+		
+		if(segno > 0)
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not close append only file segment " 
+							"%s.%u", path, segno)));
+		else
+			ereport(ERROR,
+					(errcode_for_file_access(),
+					 errmsg("could not close append only file %s", path)));
+	}
+}
+
+/*
+ * Truncate all bytes from offset to end of file.
+ */
+void
+TruncateAOSegmentFile(File aosegfile, Relation rel, long offset, int elevel)
+{
+	char *relname = RelationGetRelationName(rel);
+	
+	Assert(aosegfile > 0);
+	Assert(offset >= 0);
+	
+	if (ftruncate(aosegfile, offset) < 0)
+		ereport(elevel,
+				(errmsg("\"%s\": failed to truncate data after eof", relname)));
+	
 }
 

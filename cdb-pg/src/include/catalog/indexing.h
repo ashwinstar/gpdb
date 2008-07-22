@@ -242,6 +242,9 @@ DECLARE_UNIQUE_INDEX(gp_policy_localoid_index, 6103, on gp_distribution_policy u
 DECLARE_UNIQUE_INDEX(pg_window_fnoid_index, 5005, on pg_window using btree(winfnoid oid_ops));
 #define WindowFnoidIndexId  5005
 
+DECLARE_UNIQUE_INDEX(pg_appendonly_relid_index, 5007, on pg_appendonly using btree(relid oid_ops));
+#define AppendOnlyRelidIndexId  5007
+
 DECLARE_UNIQUE_INDEX(pg_partition_oid_index, 5012, on pg_partition using btree(oid oid_ops));
 #define PartitionOidIndexId 5012
 DECLARE_UNIQUE_INDEX(pg_partition_parrelid_parlevel_index, 5017, on pg_partition using btree(parrelid oid_ops, parlevel int2_ops));

@@ -3149,7 +3149,7 @@ OpenIntoRel(QueryDesc *queryDesc)
     Oid         intoOid;
     Oid         intoComptypeOid;
     GpPolicy   *targetPolicy = parseTree->intoPolicy;
-	bool		appendOnlyRel; /* was appendonly relation requested? */
+	int			safefswritesize = gp_safefswritesize;
 
 	/*
 	 * Check consistency of arguments
@@ -3209,25 +3209,8 @@ OpenIntoRel(QueryDesc *queryDesc)
 	}
 
 	/* Parse and validate any reloptions */
-	reloptions = transformRelOptions((Datum) 0,
-									 parseTree->intoOptions,
-									 true,
-									 false);
-	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
-
-	heap_test_override_reloptions(relkind, stdRdOptions);
-
-	/*
-	 * Was "appendonly" specified in the relopts? If yes, fix our relkind.
-	 */
-	appendOnlyRel = stdRdOptions->appendonly;
-	validateAppendOnlyRelOptions(appendOnlyRel, 
-								 stdRdOptions->blocksize, 
-								 stdRdOptions->compresslevel, 
-								 relkind);
-	if(appendOnlyRel)
-		relkind = RELKIND_APPEND_ONLY;
-	
+	reloptions = transformRelOptions((Datum) 0, parseTree->intoOptions, true, false);
+		
 	/* have to copy the actual tupdesc to get rid of any constraints */
 	tupdesc = CreateTupleDescCopy(queryDesc->tupDesc);
 
@@ -3273,6 +3256,13 @@ OpenIntoRel(QueryDesc *queryDesc)
 	/* use_wal off requires rd_targblock be initially invalid */
 	Assert(intoRelationDesc->rd_targblock == InvalidBlockNumber);
 
+	/* 
+	 * This is a bit hacky. change relkind if needed for WAL skipping below 
+	 */
+	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
+	heap_test_override_reloptions(relkind, stdRdOptions, &safefswritesize);
+	relkind = (stdRdOptions->appendonly ? RELKIND_APPEND_ONLY : relkind);
+	
 	/*
 	 * We can skip WAL-logging the insertions, unless PITR is in use.
 	 *

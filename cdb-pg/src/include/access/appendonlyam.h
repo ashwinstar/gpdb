@@ -32,6 +32,7 @@
 #define DEFAULT_VARBLOCK_SIZE			32*1024
 #define MAX_VARBLOCK_SIZE			8*1024*1024
 #define DEFAULT_VARBLOCK_TEMPSPACE_LEN   4*1024 
+#define DEFAULT_FS_SAFE_WRITE_SIZE			  0
 
 /*
  * AppendOnlyInsertDescData is used for inserting data into append-only
@@ -43,7 +44,6 @@ typedef struct AppendOnlyInsertDescData
 {
 	Relation		aoi_rel;
 	MemTupleBinding *mt_bind;
-	Oid				relfilenode;
 	float8			insertCount;
 	float8			varblockCount;
 	BlockNumber		cur_segno;
@@ -59,6 +59,7 @@ typedef struct AppendOnlyInsertDescData
 	int32			maxBufferLen;
 	int32			tempSpaceLen;
 	int32			largeWriteLen;
+	int32			safefswritesize;
 	
 	/*
 	 * These serve the equivalent purpose of the uppercase constants of the same

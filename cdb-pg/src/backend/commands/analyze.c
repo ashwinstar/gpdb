@@ -1011,21 +1011,17 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	double				rowstoskip = -1;	/* -1 means not set yet */
 	double				rstate;
 	BlockNumber			totalvarblocks;
-	FileSegInfo			*fsinfo;
+	FileSegTotals		*fstotal;
 	AppendOnlyScanDesc	aoscandesc = NULL;
 	TupleTableSlot		*slot;
 	
 	Assert(targrows > 1);
 	
-	/* get the catalog entry with information for this table */
-	fsinfo = GetFileSegInfo(onerel, /* for now */ 0);
-
-	/* TEMPORARY: If no entry exists yet, use a blank one */
-	if(!fsinfo)
-		fsinfo = GetBlankFileSegInfo();
+	/* get table level statistics from the pg_aoseg table */
+	fstotal = GetSegFilesTotals(onerel);
 	
-	totalvarblocks = (BlockNumber)fsinfo->varblockcount;
-	*totalbytes = (double)fsinfo->eof;
+	totalvarblocks = (BlockNumber)fstotal->totalvarblocks;
+	*totalbytes = (double)fstotal->totalbytes;
 	
 	/* Prepare for sampling rows */
 	rstate = init_selection_state(targrows);
@@ -1106,7 +1102,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	/*
 	 * Set total numbers of rows in relation.
 	 */
-	*totalrows = (double)fsinfo->tupcount;
+	*totalrows = (double)fstotal->totaltuples;
 	*totaldeadrows = 0;
 
 	/*
@@ -1121,7 +1117,7 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 					liverows, deadrows,
 					numrows, *totalrows)));
 	
-	pfree(fsinfo);
+	pfree(fstotal);
 	
 	return numrows;
 }

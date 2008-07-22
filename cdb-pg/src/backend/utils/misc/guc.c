@@ -208,6 +208,7 @@ bool 		Debug_appendonly_print_scan = false;
 bool 		Test_appendonly_override = false;
 int         Test_compresslevel_override = 0;
 int			Test_blocksize_override = 0;
+int			Test_safefswritesize_override = 0;
 bool        Master_mirroring_administrator_disable = false;
 int			gp_max_local_distributed_cache = 1024;
 bool 		gp_local_distributed_cache_stats = false;
@@ -1517,7 +1518,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_external_grant_privileges,
 		false, NULL, NULL
     },
-	
+		
 	{
 		{"resource_scheduler", PGC_POSTMASTER, RESOURCES_MGM,
 			gettext_noop("Enable resource scheduling."),
@@ -1956,7 +1957,26 @@ static struct config_int ConfigureNamesInt[] =
 		&Test_blocksize_override,
 		DEFAULT_VARBLOCK_SIZE, MIN_VARBLOCK_SIZE, MAX_VARBLOCK_SIZE, NULL, NULL
 	},
-
+	
+	{		
+		{"test_safefswritesize_override", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("For testing purposes, the override value for append only safefswritesize when non-default."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Test_safefswritesize_override,
+		DEFAULT_FS_SAFE_WRITE_SIZE, 0, INT_MAX, NULL, NULL
+	},
+	
+	{
+		{"gp_safefswritesize", PGC_BACKEND, RESOURCES,
+			gettext_noop("Minimum FS safe write size."),
+			NULL
+		},
+		&gp_safefswritesize,
+		DEFAULT_FS_SAFE_WRITE_SIZE, 0, INT_MAX, NULL, NULL
+    },
+		
 	{
 		{"port", PGC_POSTMASTER, CONN_AUTH_SETTINGS,
 			gettext_noop("Sets the TCP port the server listens on."),

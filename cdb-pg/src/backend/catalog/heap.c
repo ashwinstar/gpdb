@@ -33,12 +33,14 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/transam.h"
+#include "access/reloptions.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_appendonly.h"
 #include "catalog/pg_attrdef.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_exttable.h"
@@ -848,6 +850,9 @@ heap_create_with_catalog(const char *relname,
 	Relation	pg_class_desc;
 	Relation	new_rel_desc;
 	Oid			new_type_oid;
+	bool		appendOnlyRel;
+	StdRdOptions *stdRdOptions;
+	int			safefswritesize = gp_safefswritesize;
 
 	pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 
@@ -856,6 +861,21 @@ heap_create_with_catalog(const char *relname,
 	 */
 	Assert(IsNormalProcessingMode() || IsBootstrapProcessingMode());
 
+	/*
+	 * Was "appendonly" specified in the relopts? If yes, fix our relkind.
+	 * Also, check for override GUCs.
+	 */	
+	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
+	heap_test_override_reloptions(relkind, stdRdOptions, &safefswritesize);
+	appendOnlyRel = stdRdOptions->appendonly;
+	validateAppendOnlyRelOptions(appendOnlyRel, 
+								 stdRdOptions->blocksize, 
+								 safefswritesize,
+								 stdRdOptions->compresslevel, 
+								 relkind);
+	if(appendOnlyRel)
+		relkind = RELKIND_APPEND_ONLY;
+	
 	CheckAttributeNamesTypes(tupdesc, relkind);
 
 	if (get_relname_relid(relname, relnamespace))
@@ -953,6 +973,17 @@ heap_create_with_catalog(const char *relname,
 						relkind,
 						reloptions);
 	
+	/*
+	 * if this is an append-only relation, add an entry in pg_appendonly.
+	 */
+	if(appendOnlyRel)
+	{
+		InsertAppendOnlyEntry(relid, 
+							  stdRdOptions->blocksize, 
+							  safefswritesize,
+							  stdRdOptions->compresslevel);
+	}
+			
 	
 	/*
 	 * now add tuples to pg_attribute for the attributes in our new relation.
@@ -1421,7 +1452,6 @@ heap_drop_with_catalog(Oid relid)
 	const struct GpPolicy *policy;
 	bool		removePolicy = false;
 	bool		is_appendonly_table = false;
-	Oid			relfilenode = InvalidOid;
 	bool 		is_ext_table;
 
 	/*
@@ -1430,8 +1460,8 @@ heap_drop_with_catalog(Oid relid)
 	rel = relation_open(relid, AccessExclusiveLock);
 
 	is_appendonly_table = rel->rd_rel->relkind == RELKIND_APPEND_ONLY;
-		
 	is_ext_table = rel->rd_rel->relkind == RELKIND_EXTERNAL;
+	
 	/*
  	 * Get the distribution policy and figure out if it is to be removed.
  	 */
@@ -1451,11 +1481,7 @@ heap_drop_with_catalog(Oid relid)
 		rel->rd_rel->relkind != RELKIND_COMPOSITE_TYPE &&
 		rel->rd_rel->relkind != RELKIND_EXTERNAL)
 	{
-		RelationOpenSmgr(rel);
-		
-		if(is_appendonly_table)
-			relfilenode = rel->rd_smgr->smgr_rnode.relNode; 
-		
+		RelationOpenSmgr(rel);		
 		smgrscheduleunlink(rel->rd_smgr, rel->rd_isLocalBuf);
 	}
 
@@ -1505,6 +1531,12 @@ heap_drop_with_catalog(Oid relid)
 	 */
 	DeleteRelationTuple(relid);
 		
+	/*
+	 * append-only table? delete the corresponding pg_appendonly tuple
+	 */
+	if(is_appendonly_table)
+		RemoveAppendonlyEntry(relid);
+	
 	/*
 	 * External table? If so, delete the pg_exttable tuple.
 	 */

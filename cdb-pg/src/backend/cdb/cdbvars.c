@@ -77,6 +77,8 @@ bool		gp_external_grant_privileges = false; /* allow creating http/gpfdist for n
 
 int			gp_external_max_segs;      /* max segdbs per gpfdist URI */
 
+int			gp_safefswritesize;  /* set for safe AO writes in non-mature fs */
+
 int			gp_connections_per_thread; /* How many libpq connections are
 										 * handled in each thread */
 

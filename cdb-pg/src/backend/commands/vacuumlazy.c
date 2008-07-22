@@ -53,6 +53,7 @@
 #include "access/transam.h"
 #include "access/appendonlyam.h"
 #include "access/aosegfiles.h"
+#include "access/aomd.h"
 #include "commands/vacuum.h"
 #include "catalog/catalog.h"
 #include "catalog/indexing.h"
@@ -865,13 +866,12 @@ lazy_truncate_heap(Relation onerel, LVRelStats *vacrelstats)
 void
 vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 {
-	FileSegInfo	*fsinfo;
+	FileSegTotals *fstotal;
 	BlockNumber nblocks;
 	char	   *relname;
 	double		num_tuples;
 	double		totalbytes;
 	double		eof;
-	char	   *path;
 	File		relfile;
 	PGRUsage	ru0;
 		
@@ -883,16 +883,13 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 					get_namespace_name(RelationGetNamespace(aorel)),
 					relname)));
 	
-	fsinfo = GetFileSegInfo(aorel, /* for now */ 0);
-	
-	/* TEMPORARY: If no entry exists yet, use a blank one */
-	if(!fsinfo)
-		fsinfo = GetBlankFileSegInfo();
-	
+	/* get statistics from the pg_aoseg table */
+	fstotal = GetSegFilesTotals(aorel);
+		
 	/* calculate the values we care about */
-	eof = (double)fsinfo->eof;
-	num_tuples = (double)fsinfo->tupcount;
-	totalbytes = (double)fsinfo->eof;
+	eof = (double)fstotal->totalbytes;
+	num_tuples = (double)fstotal->totaltuples;
+	totalbytes = eof;
 	nblocks = (uint32)RelationGuessNumberOfBlocks(totalbytes);
 		
 	/* 
@@ -905,16 +902,15 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 	{
 		/* FULL */
 		
-		/* Open the relation file */
-		path = relpath(aorel->rd_node);	
-		relfile = PathNameOpenFile(path, O_RDWR | PG_BINARY, 0600);
-				
-		if (FileTruncate(relfile, (long)eof) < 0)
-			ereport(elevel,
-					(errmsg("\"%s\": failed to remove data after eof", relname)));
+		int segno = 0;
 		
-		if(relfile > 0)
-			FileClose(relfile);	
+		for(segno = 0 ; segno < fstotal->totalfilesegs ; segno++)
+		{
+			/* Open and truncate the relation segfile beyond its eof */
+			relfile = OpenAOSegmentFile(aorel, segno, false);
+			TruncateAOSegmentFile(relfile, aorel, (long)eof, elevel);			
+			CloseAOSegmentFile(relfile, aorel, segno);	
+		}
 
 		/* fill in remaining VRelStats values */
 		((VRelStats *)vacrelstats)->rel_pages = nblocks;
@@ -948,7 +944,7 @@ vacuum_appendonly_rel(Relation aorel, void *vacrelstats, bool isVacFull)
 			(errmsg("\"%s\": found %.0f rows in %u pages. %s",
 					relname, num_tuples, nblocks,
 					(isVacFull ? "truncated unused data after eof." : ""))));
-	pfree(fsinfo);
+	pfree(fstotal);
 }
 
 /*

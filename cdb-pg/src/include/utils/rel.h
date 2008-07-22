@@ -242,22 +242,6 @@ typedef struct StdRdOptions
 	 ((StdRdOptions *) (relation)->rd_options)->fillfactor : (defaultff))
 
 /*
- * RelationGetCompressLevel
- *		Returns the relation's compression level.  Note multiple eval of argument!
- */
-#define RelationGetCompressLevel(relation, defaultcl) \
-((relation)->rd_options ? \
- ((StdRdOptions *) (relation)->rd_options)->compresslevel : (defaultcl))
-
-/*
- * RelationGetBlockSize
- *		Returns the relation's block size. Note multiple eval of argument!
- */
-#define RelationGetBlockSize(relation, defaultbs) \
-((relation)->rd_options ? \
- ((StdRdOptions *) (relation)->rd_options)->blocksize : (defaultbs))
-
-/*
  * RelationGetTargetPageUsage
  *		Returns the relation's desired space usage per page in bytes.
  */
