@@ -120,9 +120,6 @@ WSAPoll(
 static bool udp_testmode = false;
 #endif
 
-/* retry fallback definitions */
-#define UDP_CONNECT_RETRY_MS	(100)
-
 #define MAX_TRY (11)
 int
 timeouts[] =
@@ -537,7 +534,7 @@ conn_delhash(MotionConn *conn)
 	}
 
 	/* found the connection, remove from the chain. */
-	trash = c;	
+	trash = c;
 
 	if (p == NULL)
 		conn_htab[hashcode] = c->next;
@@ -1282,7 +1279,7 @@ SetupUDPInterconnect(EState *estate)
 					case mcsSetupOutgoingConnection:
 					case mcsConnecting:
 						/* Set time limit for connect() to complete. */
-						conn->wakeup_ms = UDP_CONNECT_RETRY_MS + elapsed_ms;
+						conn->wakeup_ms = TIMEOUT(iteration) + elapsed_ms;
 						break;
 					default:
 						conn->wakeup_ms = 0;
@@ -1404,6 +1401,31 @@ SetupUDPInterconnect(EState *estate)
 
 				cell = lnext(cell);
 
+				if (conn->state != mcsStarted)
+				{
+					pthread_mutex_lock(&rx_thread_mutex);
+
+					main_thread_waiting_node = conn->conn_info.motNodeId;
+					main_thread_waiting = true;
+					main_thread_waiting_route = conn->route;
+
+					if (conn->state == mcsStarted ||
+						wait_on_receiver(MAIN_THREAD_COND_TIMEOUT))
+					{
+						/* Got what we wanted. */
+					}
+					else
+					{
+						/* timed out waiting. */
+					}
+					main_thread_waiting_route = ANY_ROUTE;
+					main_thread_waiting_node = -1;
+					main_thread_waiting = false;
+
+					pthread_mutex_unlock(&rx_thread_mutex);
+				}
+
+				/* we check again, since it may have changed. */
 				if (conn->state == mcsStarted)
 				{
 					incoming_count++;
@@ -1437,8 +1459,6 @@ SetupUDPInterconnect(EState *estate)
 										  outgoing_count, expectedTotalOutgoing,
 										  interconnect_setup_timeout)));
 		}
-
-		pg_usleep(100);
 
 		/* Back to top of loop and look again. */
 		elapsed_ms = gettime_elapsed_ms(startTime);
@@ -1777,7 +1797,9 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 	MotionConn	*rxconn = NULL;
 	TupleChunkListItem	tcItem=NULL;
 
+#ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "receivechunksUDP: motnodeid %d", motNodeID);
+#endif
 
 	/* directed receive ? */
 	if (conn != NULL)
@@ -2195,9 +2217,9 @@ xmit_retry:
 static bool
 waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, MotionConn *conn)
 {
-	int		retry = 1;
+	int		retry = 0;
 	int		timeout;
-	int		elapsed_ms;
+	int		elapsed_ms = 0;
 	bool	got_stops=false;
 	int		n;
 	struct pollfd nfd;
@@ -2205,7 +2227,9 @@ waitOnXmit(ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntr
 	/* send this packet */
 	for (;;)
 	{
-		elapsed_ms = gettime_elapsed_ms(conn->activeXmitTime);
+		/* MPP-3088: don't get elapsed time on first call */
+		if (retry)
+			elapsed_ms = gettime_elapsed_ms(conn->activeXmitTime);
 
 		timeout = TIMEOUT(retry);
 
@@ -2810,6 +2834,22 @@ ic_rx_thread_func(void *arg)
 						conn->conn_info.seq++;
 						if (DEBUG4 >= log_min_messages)
 							write_log("successful conn request.\n");
+
+						/* MPP-3088: if the main thread is waiting on
+						 * inbound connections, wake it if appropriate.
+						 *
+						 * All such waiters will have a specific
+						 * conn->route set (that is, ANY_ROUTE isn't
+						 * allowed).
+						 */
+						if (main_thread_waiting && main_thread_waiting_node == pkt->motNodeId)
+						{
+							if (main_thread_waiting_route == conn->route)
+							{
+								/* WAKE MAIN THREAD HERE */
+								pthread_cond_signal(&rx_thread_cond);
+							}
+						}
 					}
 					else 
 					{
