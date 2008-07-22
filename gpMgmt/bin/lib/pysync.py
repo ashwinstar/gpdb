@@ -262,6 +262,7 @@ class LocalPysync:
 	self.options.insecure = False
 	self.options.delete = False
 	self.options.minusn = False
+	self.options.sshargs = []
 	self.cache = [None]
 	self.exclude = set()
 	a = argv[1:]
@@ -276,6 +277,9 @@ class LocalPysync:
 		self.options.minusn = True
 	    elif a[0]=='--insecure':
 		self.options.insecure = True
+	    elif a[0]=='--ssharg':
+		a.pop(0)
+		self.options.sshargs.append(a[0])
 	    elif a[0]=='--delete':
 		self.options.delete = True
 	    elif a[0]=='-x':
@@ -304,9 +308,10 @@ class LocalPysync:
 
     def usage(self,argv):
 	sys.stderr.write("""usage:
-    python """+argv[0]+""" [-v] [-?] [-n] [-x exclude_file] [--insecure] [--delete] sourcedir [user@]host:destdir
+    python """+argv[0]+""" [-v] [-?] [-n] [--ssharg arg] [-x exclude_file] [--insecure] [--delete] sourcedir [user@]host:destdir
 	-v: Print progress
 	-?: Print this message.
+	--ssharg arg: pass arg to ssh.  Use many times to pass many args.
 	-n: Do not do any work. Just print how many bytes will need to be
 	    transferred over the network per file and a total.
 	-x name: Do not transfer named file or directory.  Don't be too
@@ -390,7 +395,7 @@ class LocalPysync:
 		self.sendData = None
 
     def run(self):
-	self.p = subprocess.Popen(["ssh",self.userAndHost,"python -u -c '%s'"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+	self.p = subprocess.Popen(["ssh"]+self.options.sshargs+[self.userAndHost,"python -u -c '%s'"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
 	try:
 	    self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
 	    self.work()
