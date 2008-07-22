@@ -2218,6 +2218,13 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
  		bool res = false;
 		Snapshot old_snapshot = scanDesc->xs_snapshot;
 		bool dirty_find = false;
+		
+		/*
+		 * Search through the lov heap and index to find the LOV item which
+		 * has the same value as the inserting tuple. If such an item is
+		 * not found, then we create a new LOV item, and insert it into the
+		 * lov heap and index.
+		 */
 
 		/*
 		 * XXX: We lock the meta page to guarantee that only one writer
@@ -2256,19 +2263,21 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 					(TransactionIdIsValid(SnapshotDirty->xmin)) ?
 					SnapshotDirty->xmin : SnapshotDirty->xmax;
 
-				LockBuffer(metabuf, BUFFER_LOCK_UNLOCK);
-
 				elog(DEBUG1, "Transaction %d waiting for transaction %d", GetCurrentTransactionId(),
 					 xwait);
 
 				if (TransactionIdIsValid(xwait))
+				{
+					LockBuffer(metabuf, BUFFER_LOCK_UNLOCK);
+
 					XactLockTableWait(xwait);
 
-				/* restart the scan */
-				index_rescan(scanDesc, NULL);
+					/* restart the scan */
+					index_rescan(scanDesc, NULL);
 
-				scanDesc->xs_snapshot = old_snapshot;
-				goto top;
+					scanDesc->xs_snapshot = old_snapshot;
+					goto top;
+				}
 			}
 
 			scanDesc->xs_snapshot = old_snapshot;
@@ -2276,12 +2285,6 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 
 		if(!res)
 		{
-			/*
-			 * Search through the lov heap and index to find the LOV item which
-			 * has the same value as the inserting tuple. If such an item is
-			 * not found, then we create a new LOV item, and insert it into the
-			 * lov heap and index.
-			 */
 			create_lovitem(rel, metabuf, tidnum, tupDesc,
 						   attdata, nulls, lovHeap, lovIndex,
 						   &lovBlock, &lovOffset, use_wal);
