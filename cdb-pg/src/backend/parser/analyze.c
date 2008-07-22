@@ -2752,6 +2752,20 @@ deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 
 	switch (nodeTag(pNode))
 	{
+		case T_NullTest:
+			{
+				NullTest *nt = (NullTest *)pNode;
+				char leftbuf[1000];
+				if (!deparse_partition_rule((Node *)nt->arg, leftbuf,
+										   sizeof(leftbuf)))
+					return 0;
+
+				snprintf(outbuf, outsize, "%s %s",
+						 leftbuf, nt->nulltesttype == IS_NULL ?
+						 "ISNULL" : "IS NOT NULL");
+			}
+
+			break;
 		case T_Value:
 
 				/* XXX XXX XXX ??? */
@@ -3353,7 +3367,7 @@ make_partition_rules(ParseState *pstate,
 				Value *pColConst;
 				A_Const *pValConst;
 				ColumnRef *pCRef;
-
+				bool isnull = false;
 
 				pCRef = makeNode(ColumnRef); /* need columnref for WHERE */
 
@@ -3380,28 +3394,46 @@ make_partition_rules(ParseState *pstate,
 					Type typ;
 					Form_pg_type pgtype;
 					Datum dat;
-					A_Const *aconst = makeNode(A_Const);
+					A_Const *aconst;
 					Value *val;
 
 					Assert(IsA(c, Const));
 
-					typ = typeidType(c->consttype);
-					pgtype = (Form_pg_type)GETSTRUCT(typ);
-					dat = OidFunctionCall1(pgtype->typoutput,c->constvalue);
+					if (c->constisnull)
+					{
+						isnull = true;
+						aconst = NULL;
+					}
+					else
+					{
+						aconst = makeNode(A_Const);
+						typ = typeidType(c->consttype);
+						pgtype = (Form_pg_type)GETSTRUCT(typ);
+						dat = OidFunctionCall1(pgtype->typoutput,c->constvalue);
 
-					val= makeString(DatumGetCString(dat));
-					aconst->val = *val;
-                    aconst->location = -1;
-					ReleaseSysCache(typ);
+						ReleaseSysCache(typ);
+						val = makeString(DatumGetCString(dat));
+						aconst->val = *val;
+                    	aconst->location = -1;
+					}
 
 					pValConst = aconst;
 				}
 
-				/* equality expression: column = value */
-				pEq = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
-												(Node *)pCRef,
-												(Node *)pValConst,
-												-1 /* position */);
+				if (isnull)
+				{
+					NullTest *nt = makeNode(NullTest);
+					nt->arg = (Expr *)pCRef;
+					nt->nulltesttype = IS_NULL;
+					pEq = (Node *)nt;
+				}
+				else
+					/* equality expression: column = value */
+					pEq = (Node *) makeSimpleA_Expr(AEXPR_OP, 
+													"=",
+													(Node *)pCRef,
+													(Node *)pValConst,
+													-1 /* position */);
 
 
 				if (!deparse_partition_rule((Node *)pEq,
@@ -4896,6 +4928,19 @@ static Node *
 coerce_partition_value(Node *node, TypeName *type, PartitionByType partype)
 {
 	Node *out;
+
+	/* If it's a NULL, just directly coerce the value */
+	if (IsA(node, Const))
+	{
+		Const *c = (Const *)node;
+
+		if (c->constisnull)
+		{
+			c->consttype = type->typid;
+			return node;
+		}
+	}
+	
 	/*
 	 * We want to cast things directly to the table type. We do
 	 * not want to have to store a node which coerces this, it's
