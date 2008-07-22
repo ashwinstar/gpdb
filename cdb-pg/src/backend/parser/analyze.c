@@ -4597,6 +4597,27 @@ L_setprevElem:
 										spec->location)));
 
 		}
+		compareRc = 
+				partition_range_compare(vstate->pstate,
+										vstate->cxt, vstate->stmt, 
+										vstate->pBy,
+										vstate->at_depth,
+										vstate->partNumber,
+										"=",
+										pRI1,
+										pRI2);
+
+		if (0 != compareRc)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("START equal to END for partition%s%s",
+							vstate->namBuf,
+							vstate->at_depth),
+					 parser_errposition(vstate->pstate, 
+										spec->location)));
+
+		}
 
 	}
 	
