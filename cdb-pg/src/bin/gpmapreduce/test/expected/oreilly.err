@@ -3,4 +3,5 @@
 -- s/mapreduce_\d+/mapreduce_DUMMY/
 -- end_matchsubs
 WARNING: unset parameter - Uniquify_finalize(gap => NULL)
-mapreduce_2395_run_1
+mapreduce_39146_run_1
+NOTICE:  Found 1 data formatting errors (1 or more input rows). Rejected related input data.

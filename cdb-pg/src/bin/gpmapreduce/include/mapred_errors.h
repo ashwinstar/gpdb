@@ -10,6 +10,8 @@
 
 /* Internal errors */
 #define MAPRED_PARSE_INTERNAL      1    
+#define MEMORY_ERROR               2
+#define VERSION_ERROR              3
 
 /* User errors */
 #define MAPRED_PARSE_ERROR       100

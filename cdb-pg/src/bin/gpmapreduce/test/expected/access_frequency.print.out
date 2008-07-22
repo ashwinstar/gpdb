@@ -14,7 +14,7 @@ CREATE EXTERNAL TABLE weblog(value text)
            'file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log2')
   FORMAT 'TEXT';
 
--- MAPPER myMap
+-- MAP myMap
 CREATE FUNCTION myMap(key text, value text)
 RETURNS myMap_rtype LANGUAGE plperl AS
 $$
@@ -38,7 +38,7 @@ CREATE AGGREGATE myReduce (text) (
 );
 
 -- EXECUTION
-CREATE VIEW mapreduce_99763_run_1 AS
+CREATE VIEW mapreduce_9962_run_1 AS
 SELECT key, myReduce(value) as value
 FROM (SELECT key(m), value(m) FROM (SELECT myMap('clar'::text, value) as m FROM weblog) mapxq
 WHERE m is not null) mapsubq
@@ -50,5 +50,5 @@ DROP EXTERNAL TABLE IF EXISTS weblog CASCADE;
 DROP FUNCTION IF EXISTS myMap(text, text) CASCADE;
 DROP FUNCTION IF EXISTS myTransition(text, text) CASCADE;
 DROP AGGREGATE IF EXISTS myReduce(text) CASCADE;
-DROP VIEW IF EXISTS mapreduce_99763_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_9962_run_1 CASCADE;
 

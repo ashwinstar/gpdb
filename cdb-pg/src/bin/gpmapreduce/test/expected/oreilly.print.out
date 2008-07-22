@@ -31,7 +31,7 @@ else:
 return pickle.dumps(oldlist)
 $$;
 
--- MAPPER Uniquify_finalize
+-- MAP Uniquify_finalize
 CREATE FUNCTION Uniquify_finalize(value text, refind_key text, gap integer)
 RETURNS SETOF Uniquify_finalize_rtype LANGUAGE plpythonu AS
 $$
@@ -63,7 +63,7 @@ for t in mydata[1:]:
 yield(prev[0], prev[1], prev[2], prev[3], prev[4], prev[5], '%s_%s' % (refind_key, str(seq)))
 $$;
 
--- MAPPER extractFields
+-- MAP extractFields
 CREATE FUNCTION extractFields(id integer, date_posted date, date_posted_timestamp integer, refind_key text, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text)
 RETURNS SETOF extractFields_rtype LANGUAGE plpythonu AS
 $$
@@ -92,14 +92,14 @@ FROM (SELECT id(m), date_posted(m), date_posted_timestamp(m), refind_key(m), fir
 GROUP BY refind_key;
 
 -- EXECUTION
-CREATE VIEW mapreduce_2402_run_1 AS
+CREATE VIEW mapreduce_10448_run_1 AS
 SELECT id(m), date_posted(m), date_posted_timestamp(m), first_extract_date(m), last_extract_date(m), inter_source_hash(m), refind_key(m) FROM (SELECT Uniquify_finalize(value, refind_key, NULL::integer) as m FROM Production_reduce) mapxq
 ;
 
 
 DROP TYPE IF EXISTS extractFields_rtype CASCADE;
 DROP TYPE IF EXISTS Uniquify_finalize_rtype CASCADE;
-DROP VIEW IF EXISTS mapreduce_2402_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_10448_run_1 CASCADE;
 DROP VIEW IF EXISTS Production_reduce CASCADE;
 DROP AGGREGATE IF EXISTS Uniquify(integer, date, integer, timestamp, timestamp, text) CASCADE;
 DROP FUNCTION IF EXISTS Uniquify_transition(text, integer, date, integer, timestamp, timestamp, text) CASCADE;

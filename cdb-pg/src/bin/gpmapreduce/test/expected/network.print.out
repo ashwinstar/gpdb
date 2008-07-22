@@ -13,7 +13,7 @@ CREATE EXTERNAL TABLE email(value text)
   LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/email/mailfiles')
   FORMAT 'TEXT';
 
--- MAPPER msg_from_to
+-- MAP msg_from_to
 CREATE FUNCTION msg_from_to(value text)
 RETURNS SETOF msg_from_to_rtype LANGUAGE plpythonu AS
 $$
@@ -27,7 +27,7 @@ if 'From' in msg and 'To' in msg:
 $$;
 
 -- EXECUTION
-CREATE VIEW mapreduce_304_run_1 AS
+CREATE VIEW mapreduce_10385_run_1 AS
 SELECT source, target, SUM(value) as value
 FROM (SELECT source(m), target(m), value(m) FROM (SELECT msg_from_to(value) as m FROM email) mapxq
 ) mapsubq
@@ -37,5 +37,5 @@ GROUP BY source, target;
 DROP TYPE IF EXISTS msg_from_to_rtype CASCADE;
 DROP EXTERNAL TABLE IF EXISTS email CASCADE;
 DROP FUNCTION IF EXISTS msg_from_to(text) CASCADE;
-DROP VIEW IF EXISTS mapreduce_304_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_10385_run_1 CASCADE;
 

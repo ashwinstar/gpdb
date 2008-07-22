@@ -23,7 +23,7 @@
 /* instantiate the extern from mapred.h */
 const char *mapred_kind_name[MAPRED_MAXKIND+1] =
 {
-	"",
+	"<NULL>",
 	"DOCUMENT",
 	"INPUT",
 	"OUTPUT",
@@ -38,20 +38,171 @@ const char *mapred_kind_name[MAPRED_MAXKIND+1] =
 };
 
 /* 
- * Errors that we handle
+ * libpq Errors that we care about
  * (would be better to add <errcodes.h> to the include path)
  */
 const char *IN_FAILED_SQL_TRANSACTION = "25P02";
+const char *OBJ_DOES_NOT_EXIST        = "42P01";
 
+
+/* Wrappers around malloc/free to handle error conditions more cleanly */
+void *mapred_malloc(int size)
+{
+	void *m;
+	XASSERT(size > 0);
+
+	if (global_debug_flag && global_verbose_flag)
+		fprintf(stderr, "Allocating %d bytes: ", size);
+
+	m = malloc(size);
+	if (!m)
+		XRAISE(MEMORY_ERROR, "Memory allocation failure");
+
+	if (global_debug_flag && global_verbose_flag)
+		fprintf(stderr, "%x\n", m);
+
+	return m;
+}
+
+void mapred_free(void *ptr)
+{
+	XASSERT(ptr);
+	if (global_debug_flag && global_verbose_flag)
+		fprintf(stderr, "Freeing memory: %x\n", ptr);
+	free(ptr);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Functions that play with buffers
+/* -------------------------------------------------------------------------- */
+typedef struct 
+{
+	char   *buffer;
+	size_t  bufsize;
+	size_t  position;
+	size_t  grow;
+} buffer_t;
+
+buffer_t *makebuffer(size_t bufsize, size_t grow)
+{
+	buffer_t *b;
+
+	XASSERT(bufsize > 0 && grow > 0);
+
+	b = mapred_malloc(sizeof(buffer_t) + bufsize);
+	b->buffer   = (char*)(b+1);
+	b->bufsize  = bufsize;
+	b->grow     = grow;
+	b->position = 0;
+	b->buffer[0] = '\0';
+	return b;
+}
+
+/* to re-use a buffer just "reset" it */
+void bufreset(buffer_t *b)
+{
+	XASSERT(b && b->bufsize > 0 && b->grow > 0);
+	b->position = 0;
+	b->buffer[0] = '\0';
+}
+
+/* 
+ * A simple wrapper around a strncpy that handles resizing an input buffer
+ * when needed.
+ */
+void bufcat(buffer_t **bufp, char* str)
+{
+	buffer_t  *b;
+	size_t     len;
+
+	XASSERT(bufp && *bufp);
+	XASSERT(str);
+
+	b = *bufp;
+	len = strlen(str);
+	
+	/* If the buffer is too small, grow it */
+	if (b->bufsize <= b->position + len)
+	{
+		buffer_t *newbuf;
+
+		/* use the minumum of "grow" and the new length for the grow amount */
+		if (b->grow <= len)
+			b->grow = len+1;
+
+		newbuf = makebuffer(b->bufsize + b->grow, b->grow);
+		memcpy(newbuf->buffer, b->buffer, b->position+1);
+		newbuf->position = b->position;
+		*bufp = newbuf;
+		mapred_free(b);
+		b = newbuf;
+	}
+
+	/* We are now guaranteed that we have enough space in the buffer */
+	XASSERT( b->bufsize - b->position > len );
+	strcpy(b->buffer+b->position, str);
+	b->position += len;
+	b->buffer[b->position] = '\0';
+}
+
+
+void mapred_setup_columns(PGconn *conn, mapred_object_t *obj);
 
 /*
  * Currently we just ignore all warnings, may eventually do something
  * smarter, but this is preferable to dumping them to libpq's default
  * of dumping them to stderr.
  */
-void notice_handler(void *arg, const PGresult *res) 
+void ignore_notice_handler(void *arg, const PGresult *res) 
 {
 }
+
+void print_notice_handler(void *arg, const PGresult *res) 
+{
+	fprintf(stderr, PQresultErrorMessage(res));
+}
+
+
+void check_version(PGconn *conn)
+{
+	PGresult *result;
+
+	result = PQexec(conn, "select (regexp_matches(version(), "
+					"E'\\\\(Greenplum Database ([^)]+)\\\\)'))[1]");
+
+	if (PQresultStatus(result) == PGRES_TUPLES_OK && PQntuples(result) == 1)
+	{
+		char *version = PQgetvalue(result, 0, 0);
+
+		if (global_verbose_flag)
+			fprintf(stderr, "    VERSION: %s\n", version);
+
+		/* Determine if this version is approved for mapreduce usage */
+		if (strncmp(version, "main", 4) != 0)
+		{
+			/* Get major and minor release, patch level is ignored */
+			char *dot   = NULL;
+			int   major = strtol(version, &dot, 10);
+			int   minor = strtol(dot+1, NULL, 10);
+			if (major < 3 || (major == 3 && minor < 2))
+			{
+				char buf[100];
+				snprintf(buf, sizeof(buf), 
+						 "Unsupported backend version: %s", version);
+				XRAISE(VERSION_ERROR, buf);	
+			}
+		}
+	}
+	else
+	{
+		fprintf(stderr, PQerrorMessage(conn));
+		XRAISE(MAPRED_SQL_ERROR, "Unable to determine Greenplum version\n");
+	}
+
+	PQclear(result);
+}
+
+
 
 void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 {
@@ -67,9 +218,11 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 		fprintf(stderr, "    PORT: %s\n", PQport(conn));
 		fprintf(stderr, "    USER: %s/%s\n", PQuser(conn), PQdb(conn));
 	}
+	check_version(conn);
+
 
 	/* Ignore NOTICE messages from database */
-	PQsetNoticeReceiver(conn, notice_handler, NULL);
+	PQsetNoticeReceiver(conn, ignore_notice_handler, NULL);
 
 	/*
 	 * Resolution of dependecies was defered until now so that
@@ -96,8 +249,12 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 		PQclear(result);
 
 		/* With dependencies resolved we can now try creating objects */
+		if (global_verbose_flag)
+			fprintf(stderr, "  - Creating Objects\n");
 		do
 		{
+			boolean progress = false;
+
 			/* 
 			 * Loop through the objects, creating each in turn.
 			 * If an object has dependencies that have not been created yet
@@ -106,8 +263,35 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 			 */  
 			done  = true;
 			for (olist = doc->objects; olist; olist = olist->next)
-				if (!mapred_create_object(conn, olist->object))
-					done = false;
+			{
+				mapred_object_t *obj = olist->object;
+				if (!obj->created)
+				{
+					if (global_verbose_flag)
+					{
+						fprintf(stderr, "    - %s:\n", 
+								mapred_kind_name[obj->kind]);
+						fprintf(stderr, "       NAME: %s\n", obj->name);
+					}
+
+					if (!mapred_create_object(conn, obj))
+						done = false;
+					else
+						progress = true;
+				}
+			}
+			
+			/* 
+			 * If we looped through the list, we are not done, and no progress
+			 * was made then we have an infinite cycle and should probably stop.
+			 */
+			if (!progress)
+			{
+				/* FIXME - produce better error message */
+				XRAISE(MAPRED_PARSE_ERROR, 
+					   "Unable to make forward progress creating objects\n");
+			}
+
 		} while (!done);
 
 		/* objects created, execute queries */
@@ -161,13 +345,6 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 	{
 		/* Objects with no dependencies */
 		case MAPRED_INPUT:
-			/* 
-			 * We need to construct the returned column list for TABLE/QUERY
-			 * inputs.  
-			 *
-			 * This is defered until mapred_create_object so that we have the
-			 * view created and can interogate the catalog.
-			 */
 		case MAPRED_OUTPUT:
 			break;
 
@@ -187,11 +364,11 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				mapred_object_t *rtype;
 				size_t           len;
 
-				rtype = malloc(sizeof(mapred_object_t));
+				rtype = mapred_malloc(sizeof(mapred_object_t));
 				memset(rtype, 0, sizeof(mapred_object_t));
 				rtype->kind = MAPRED_ADT;
 				len = strlen(obj->name) + 7;
-				rtype->name = malloc(len);
+				rtype->name = mapred_malloc(len);
 				snprintf(rtype->name, len, "%s_rtype", obj->name);
 				rtype->u.adt.returns = obj->u.function.returns;
 				
@@ -199,7 +376,7 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				obj->u.function.rtype.object = rtype;
 
 				/* Add the ADT to the list of document objects */
-				newlist = malloc(sizeof(mapred_olist_t));
+				newlist = mapred_malloc(sizeof(mapred_olist_t));
 				newlist->object = rtype;
 				newlist->next = doc->objects;
 				doc->objects = newlist;
@@ -218,49 +395,6 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 			mapred_resolve_ref(doc->objects, &obj->u.reducer.combiner);
 			mapred_resolve_ref(doc->objects, &obj->u.reducer.finalizer);
 			/* FIXME: validate dependencies */
-				
-			mapred_object_t *transition = obj->u.reducer.transition.object;
-			if (transition && transition->u.function.parameters)
-			{
-				obj->u.reducer.parameters = 
-					transition->u.function.parameters->next;
-			}
-			else
-			{
-				fprintf(stderr, "FIXME - bad reducer parameters\n");
-			}
-
-			/* 
-			 * Use the return result of:
-			 *   1) The finalizer
-			 *   2) The combiner, or
-			 *   3) The transition
-			 *
-			 * in that order, if the return is not derivable then
-			 * fall into the default value of a single text column
-			 * named "value"
-			 */
-			if (obj->u.reducer.finalizer.name)
-				sub = obj->u.reducer.finalizer.object;
-			else if (obj->u.reducer.combiner.name)
-				sub = obj->u.reducer.combiner.object;
-			else
-				sub = obj->u.reducer.transition.object;					 
-					
-			if (sub)
-				obj->u.reducer.returns = sub->u.function.returns;
-			else
-			{
-				/* 
-				 * If unable to determine the returns based on the reducer 
-				 * components (generally due to use of SQL functions) then 
-				 * use the default of a single text column named "value".
-				 */
-				obj->u.reducer.returns = malloc(sizeof(mapred_plist_t));
-				obj->u.reducer.returns->name = "value";
-				obj->u.reducer.returns->type = "text";
-				obj->u.reducer.returns->next = NULL;
-			}
 			break;
 		}
 
@@ -287,7 +421,7 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 
 				/* 10 characters for max int digits */
 				len = 10 + 10 + strlen("mapreduce__run_") + 1;
-				obj->name = malloc(len);
+				obj->name = mapred_malloc(len);
 				snprintf(obj->name, len, "mapreduce_%d_run_%d",
 						 pid, ++(*exec_count));
 			}
@@ -327,13 +461,11 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				switch (sub->kind)
 				{
 					case MAPRED_INPUT:
-						obj->u.task.parameters = sub->u.input.columns;
 						break;
 
 					case MAPRED_TASK:
 						/* This objects input is the sub objects output */
 						mapred_resolve_object(conn, doc, sub, exec_count);
-						obj->u.task.parameters = sub->u.task.returns;
 						break;
 							
 						/* Otherwise generate an error */
@@ -386,91 +518,19 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 
 			if (obj->u.task.reducer.name)
 			{
-				mapred_plist_t *source;
-				mapred_plist_t *scan;
-				mapred_plist_t *last = NULL;
-
-				/* 
-				 * The grouping columns for a task are the columns produced
-				 * by the input/mapper that are not consumed by the reducer.
-				 * 
-				 * A special exception is made for a column named "key" which
-				 * is always a grouping column. 
-				 *
-				 * FIXME: deal with non-yaml map functions
-				 */
-				if (obj->u.task.mapper.object)
-					source = obj->u.task.mapper.object->u.function.returns;
-				else
-					source = obj->u.task.parameters;
-
-
 				mapred_resolve_ref(doc->objects, &obj->u.task.reducer);
 				sub = obj->u.task.reducer.object;
 				
 				if (!sub)
 				{
-					/*
-					 * The output of a built in function is defined to be 
-					 * "value", with an input of "value", everything else
-					 * is defined to be a grouping column.
-					 */
-					for (scan = source; scan; scan = scan->next)
-					{
-						if (strcasecmp(scan->name, "value"))
-						{
-							if (!last)
-							{
-								obj->u.task.grouping = malloc(sizeof(mapred_plist_t));
-								last = obj->u.task.grouping;
-							}
-							else
-							{
-								last->next = malloc(sizeof(mapred_plist_t));
-								last = last->next;
-							}
-							last->name = scan->name;
-							last->type = scan->type;
-							last->next = NULL;
-							break;
-						}
-					}
-
+					/* FIXME: non-yaml reducers */
 				}
 				else if (sub->kind == MAPRED_REDUCER)
-				{
-					/* Validate Reducer */
-					mapred_resolve_object(conn, doc, sub, exec_count);
-					
-					while (source)
-					{
-						for (scan = sub->u.reducer.parameters; scan; scan = scan->next)
-						{
-							if (!strcasecmp(source->name, scan->name))
-								break;
-						}
-						if (!scan || !strcasecmp(source->name, "key"))
-						{
-							if (!last)
-							{
-								obj->u.task.grouping = malloc(sizeof(mapred_plist_t));
-								last = obj->u.task.grouping;
-							}
-							else
-							{
-								last->next = malloc(sizeof(mapred_plist_t));
-								last = last->next;
-							}
-							last->name = source->name;
-							last->type = source->type;
-							last->next = NULL;
-						}
-						source = source->next;
-					}
+				{   /* Validate Reducer */
+					mapred_resolve_object(conn, doc, sub, exec_count);					
 				}
 				else 
-				{ 
-					/* It's an object, but not a REDUCER */
+				{   /* It's an object, but not a REDUCER */
 					if (obj->u.task.execute)
 						fprintf(stderr, "Error: RUN '%s' ", obj->name);
 					else
@@ -511,7 +571,311 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 					XRAISE(MAPRED_PARSE_ERROR, NULL);
 				}
 			}
+	
+			/* clear resolving bit and set resolved bit */
+			obj->u.task.flags &= !mapred_task_resolving;
+			obj->u.task.flags |= mapred_task_resolved;
+			break;
+		}
 
+		default:
+			XASSERT(false);
+	}
+}
+
+/* 
+ * mapred_setup_columns -
+ *   setup column lists (input, output, grouping, etc)
+ *
+ *   This is usually able to be determined directly from the YAML,
+ *   but for some things (defined in the database rather than in
+ *   the YAML, eg QUERY INPUTS) we can not determine the columns
+ *   until the object has been created.  Which can trickle down to
+ *   any object that depends on it.  
+ *
+ *   For this reason we don't setup the columns during the parse phase,
+ *   but rather just before or just after we actually create the object
+ *   once we know that all the dependencies have already been created.
+ */
+void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
+{
+	mapred_object_t *sub;
+	PGresult        *result;
+
+	/* switch based on object type */
+	switch (obj->kind)
+	{
+		case MAPRED_ADT:
+			break;
+
+		case MAPRED_INPUT:
+
+			/* Should be called after creation, otherwise catalog queries could fail */
+			XASSERT(obj->created);
+
+			/* setup the column list for database defined inputs */
+			if (obj->u.input.type == MAPRED_INPUT_TABLE ||
+				obj->u.input.type == MAPRED_INPUT_QUERY)
+			{
+				/* 
+				 * This gets the ordered list of columns for the first
+				 * input of the given name in the user's search path.
+				 */
+				buffer_t *buffer = makebuffer(1024, 1024);
+				bufcat(&buffer, "SELECT      attname, format_type \n");
+				bufcat(&buffer, "FROM \n");
+				bufcat(&buffer, "  (SELECT   rank() over (order by i),\n");
+				bufcat(&buffer, "            a.attnum, a.attname, \n");
+				bufcat(&buffer, "            pg_catalog.format_type(a.atttypid, a.atttypmod)\n");
+				bufcat(&buffer, "   FROM     pg_catalog.pg_attribute a, \n");
+				bufcat(&buffer, "            pg_catalog.pg_class c, \n");
+				bufcat(&buffer, "            pg_catalog.pg_namespace n, \n");
+				bufcat(&buffer, "            generate_series(1, array_upper(current_schemas(true), 1)) x(i) \n");
+				bufcat(&buffer, "   WHERE    a.attrelid = c.oid \n");
+				bufcat(&buffer, "     AND    a.attnum > 0 \n");
+				bufcat(&buffer, "     AND    c.relkind in ('t', 'v', 'a') \n");
+				bufcat(&buffer, "     AND    c.relnamespace = n.oid \n");
+				bufcat(&buffer, "     AND    c.relname = '");
+
+				if (obj->u.input.type == MAPRED_INPUT_TABLE)
+					bufcat(&buffer, obj->u.input.desc);
+				else
+					bufcat(&buffer, obj->name);
+
+				bufcat(&buffer, "' \n");
+				bufcat(&buffer, "     AND    n.nspname = (current_schemas(true))[i]) subq \n");
+				bufcat(&buffer, "WHERE rank = 1 \n");
+				bufcat(&buffer, "ORDER BY -attnum;\n\n");
+			
+				if (global_debug_flag)
+					printf("%s", buffer->buffer);			
+						
+				result = PQexec(conn, buffer->buffer);
+				mapred_free(buffer);
+				if (PQresultStatus(result) == PGRES_TUPLES_OK &&
+					PQntuples(result) > 0)
+				{
+					mapred_plist_t *newitem;
+					int i, ntup;
+
+					/* Destroy any previous default values we setup */
+					mapred_destroy_plist(&obj->u.input.columns);
+
+					/* 
+					 * The columns were sorted reverse order above so
+					 * the list can be generated back -> front
+					 */
+					for (i = 0; i < PQntuples(result); i++)
+					{
+						char *name = PQgetvalue(result, i, 0);
+						char *type = PQgetvalue(result, i, 1);
+					
+						/* Add the column to the list */
+						newitem = mapred_malloc(sizeof(mapred_plist_t));
+						newitem->name = mapred_malloc(strlen(name)+1);
+						strncpy(newitem->name, name, strlen(name)+1);
+						newitem->type = mapred_malloc(strlen(type)+1);
+						strncpy(newitem->type, type, strlen(type)+1);
+						newitem->next = obj->u.input.columns;
+						obj->u.input.columns = newitem;
+					}
+				}
+				else
+				{
+					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
+				}
+			}
+			break;
+
+
+		case MAPRED_OUTPUT:
+			break;
+
+		case MAPRED_MAPPER:
+		case MAPRED_TRANSITION:
+		case MAPRED_COMBINER:
+		case MAPRED_FINALIZER:
+			XASSERT(obj->u.function.parameters);
+			XASSERT(obj->u.function.returns);
+			break;
+
+
+		case MAPRED_REDUCER:
+		{
+			mapred_object_t *transition = obj->u.reducer.transition.object;
+
+			if (transition && transition->u.function.parameters)
+			{
+				obj->u.reducer.parameters = 
+					transition->u.function.parameters->next;
+			}
+			else
+			{
+				fprintf(stderr, "FIXME - bad reducer parameters\n");
+			}
+
+			/* 
+			 * Use the return result of:
+			 *   1) The finalizer
+			 *   2) The combiner, or
+			 *   3) The transition
+			 *
+			 * in that order, if the return is not derivable then
+			 * fall into the default value of a single text column
+			 * named "value"
+			 */
+			if (obj->u.reducer.finalizer.name)
+				sub = obj->u.reducer.finalizer.object;
+			else if (obj->u.reducer.combiner.name)
+				sub = obj->u.reducer.combiner.object;
+			else
+				sub = obj->u.reducer.transition.object;					 
+					
+			if (sub)
+				obj->u.reducer.returns = sub->u.function.returns;
+			else
+			{
+				/* 
+				 * If unable to determine the returns based on the reducer 
+				 * components (generally due to use of SQL functions) then 
+				 * use the default of a single text column named "value".
+				 */
+				obj->u.reducer.returns = mapred_malloc(sizeof(mapred_plist_t));
+				obj->u.reducer.returns->name = "value";
+				obj->u.reducer.returns->type = "text";
+				obj->u.reducer.returns->next = NULL;
+			}
+			break;
+		}
+
+
+		case MAPRED_TASK:
+		case MAPRED_EXECUTION:
+		{
+			/* 
+			 * The input must either be an INPUT or a TASK 
+			 */
+			sub = obj->u.task.input.object;
+			switch (sub->kind)
+			{
+				case MAPRED_INPUT:
+					obj->u.task.parameters = sub->u.input.columns;
+					break;
+
+				case MAPRED_TASK:
+					obj->u.task.parameters = sub->u.task.returns;
+					break;
+							
+				default:
+					XASSERT(false);  /* Should have already been validated */
+			}
+			
+			if (obj->u.task.mapper.name)
+			{
+				sub = obj->u.task.mapper.object;				
+				if (!sub)
+				{
+					/* FIXME: Lookup function in database */
+					/* for now... do nothing */
+				}
+				else
+				{
+					/* Allow any function type */
+					switch (sub->kind)
+					{
+						case MAPRED_MAPPER:
+						case MAPRED_TRANSITION:
+						case MAPRED_COMBINER:
+						case MAPRED_FINALIZER:
+							break;
+
+						default:
+							XASSERT(false); /* Should have already been validated */
+					}
+				}
+			}
+
+			if (obj->u.task.reducer.name)
+			{
+				mapred_plist_t *source;
+				mapred_plist_t *scan;
+				mapred_plist_t *last = NULL;
+
+				/* 
+				 * The grouping columns for a task are the columns produced
+				 * by the input/mapper that are not consumed by the reducer.
+				 * 
+				 * A special exception is made for a column named "key" which
+				 * is always a grouping column. 
+				 *
+				 * FIXME: deal with non-yaml map functions
+				 *
+				 * FIXME: deal with KEY specifications
+				 */
+				if (obj->u.task.mapper.object)
+					source = obj->u.task.mapper.object->u.function.returns;
+				else
+					source = obj->u.task.parameters;
+
+				sub = obj->u.task.reducer.object;				
+				if (!sub)
+				{
+					/*
+					 * The output of a built in function is defined to be 
+					 * "value", with an input of "value", everything else
+					 * is defined to be a grouping column.
+					 */
+					for (scan = source; scan; scan = scan->next)
+					{
+						if (strcasecmp(scan->name, "value"))
+						{
+							if (!last)
+							{
+								obj->u.task.grouping = mapred_malloc(sizeof(mapred_plist_t));
+								last = obj->u.task.grouping;
+							}
+							else
+							{
+								last->next = mapred_malloc(sizeof(mapred_plist_t));
+								last = last->next;
+							}
+							last->name = scan->name;
+							last->type = scan->type;
+							last->next = NULL;
+						}
+					}
+				}
+				else
+				{
+					/* Validate Reducer */					
+					XASSERT(sub->kind == MAPRED_REDUCER);
+					while (source)
+					{
+						for (scan = sub->u.reducer.parameters; scan; scan = scan->next)
+						{
+							if (!strcasecmp(source->name, scan->name))
+								break;
+						}
+						if (!scan || !strcasecmp(source->name, "key"))
+						{
+							if (!last)
+							{
+								obj->u.task.grouping = mapred_malloc(sizeof(mapred_plist_t));
+								last = obj->u.task.grouping;
+							}
+							else
+							{
+								last->next = mapred_malloc(sizeof(mapred_plist_t));
+								last = last->next;
+							}
+							last->name = source->name;
+							last->type = source->type;
+							last->next = NULL;
+						}
+						source = source->next;
+					}
+				}
+			}
 			
 			/*
 			 * If there is a reducer then the "returns" columns are the 
@@ -550,15 +914,11 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				 * components (generally due to use of SQL functions) then 
 				 * use the default of a single text column named "value".
 				 */
-				obj->u.task.returns = malloc(sizeof(mapred_plist_t));
+				obj->u.task.returns = mapred_malloc(sizeof(mapred_plist_t));
 				obj->u.task.returns->name = "value";
 				obj->u.task.returns->type = "text";
 				obj->u.task.returns->next = NULL;
 			}
-	
-			/* clear resolving bit and set resolved bit */
-			obj->u.task.flags &= !mapred_task_resolving;
-			obj->u.task.flags |= mapred_task_resolved;
 			break;
 		}
 
@@ -682,7 +1042,7 @@ void mapred_destroy_olist(mapred_olist_t **olisth)
 	{
 		mapred_destroy_object(&olist->object);
 		next = olist->next;
-		free(olist);
+		mapred_free(olist);
 		olist = next;
 	}
 }
@@ -707,7 +1067,7 @@ void mapred_destroy_clist(mapred_clist_t **clisth)
 	{
 		scalarfree(clist->value);
 		next = clist->next;
-		free(clist);
+		mapred_free(clist);
 		clist = next;
 	}
 }
@@ -732,1117 +1092,712 @@ void mapred_destroy_plist(mapred_plist_t **plisth)
 		scalarfree(plist->name);
 		scalarfree(plist->type);
 		next = plist->next;
-		free(plist);
+		mapred_free(plist);
 		plist = next;
 	}
 }
 
 
+
+
+/* -------------------------------------------------------------------------- */
+/* Functions that get things done
+/* -------------------------------------------------------------------------- */
 void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 {
 	PGresult        *result;
 	mapred_olist_t  *olist;
 	mapred_plist_t  *columns;
 	mapred_object_t *output;
-	char            *buffer;
-	int              position = 0;
-	size_t           bufsize;
+	buffer_t        *buffer = NULL;
 
-#define writebuffer(str)						\
-	position += snprintf(buffer+position, bufsize - position, str)
-	
-	for (olist = doc->objects; olist; olist = olist->next)
+	XTRY 
 	{
-		if (olist->object->kind == MAPRED_EXECUTION)
+		/* allocates 512 bytes, extending by 512 bytes if we run out. */
+		buffer = makebuffer(512, 512);
+		
+		/* Loop through all objects */
+		for (olist = doc->objects; olist; olist = olist->next)
 		{
-			XASSERT(olist->object->name);
-
-			output = olist->object->u.task.output.object;
-
-			/* "SELECT * FROM . ;\n" */
-			bufsize = 18 + strlen(olist->object->name);
-			if (output && output->u.output.type == MAPRED_OUTPUT_TABLE)
+			if (olist->object->kind == MAPRED_EXECUTION)
 			{
-				/* "CREATE TABLE . AS\n" */
-				bufsize += 20 + strlen(output->u.output.desc);
-			}
-			else
-			{
-				/* "\nORDER BY ..." */
-				bufsize += 10;
-				columns = olist->object->u.task.grouping;
-				while (columns)
+				XASSERT(olist->object->name);
+
+				/* Reset the buffer from any previous executions */
+				bufreset(buffer);
+				
+				output = olist->object->u.task.output.object;
+
+				/*
+				 *  [CREATE TABLE <name> AS ]
+				 *    SELECT * FROM <name>
+				 *    ORDER BY <column-list>
+				 */
+				if (output && output->u.output.type == MAPRED_OUTPUT_TABLE)
 				{
-					bufsize += strlen(columns->name);
-					if (columns->next || olist->object->u.task.returns)
-						bufsize += 2;  /* ", " */
-					columns = columns->next;				   
+					bufcat(&buffer, "CREATE TABLE");
+					bufcat(&buffer, output->u.output.desc);
+					bufcat(&buffer, " AS ");
 				}
-				columns = olist->object->u.task.returns;
-				while (columns)
-				{
-					bufsize += strlen(columns->name);
-					if (columns->next)
-						bufsize += 2;  /* ", " */
-					columns = columns->next;				   
-				}
-			}
+				bufcat(&buffer, "SELECT * FROM ");
+				bufcat(&buffer, olist->object->name);
 
-			buffer = malloc(bufsize);
-			position = 0;
-			if (output && output->u.output.type == MAPRED_OUTPUT_TABLE)
-			{
-				writebuffer("CREATE TABLE ");
-				writebuffer(output->u.output.desc);
-				writebuffer(" AS ");
-			}
-			writebuffer("SELECT * FROM ");
-			writebuffer(olist->object->name);
-
-			/* Add the ORDER BY CLAUSE */
-			if (!output || output->u.output.type != MAPRED_OUTPUT_TABLE)
-			{
-				if (olist->object->u.task.returns ||
-					olist->object->u.task.grouping)
+				/* Add the ORDER BY CLAUSE */
+				if (!output || output->u.output.type != MAPRED_OUTPUT_TABLE)
 				{
-					writebuffer(" ORDER BY ");
-					columns = olist->object->u.task.grouping;
-					while (columns)
+					if (olist->object->u.task.returns ||
+						olist->object->u.task.grouping)
 					{
-						writebuffer(columns->name);
-						if (columns->next || olist->object->u.task.returns)
-							writebuffer(", ");
-						columns = columns->next;				   
-					}
-					columns = olist->object->u.task.returns;
-					while (columns)
-					{
-						writebuffer(columns->name);
-						if (columns->next)
-							writebuffer(", ");
-						columns = columns->next;				   
+						bufcat(&buffer, " ORDER BY ");
+						columns = olist->object->u.task.grouping;
+						while (columns)
+						{
+							bufcat(&buffer, columns->name);
+							if (columns->next || olist->object->u.task.returns)
+								bufcat(&buffer, ", ");
+							columns = columns->next;				   
+						}
+						columns = olist->object->u.task.returns;
+						while (columns)
+						{
+							bufcat(&buffer, columns->name);
+							if (columns->next)
+								bufcat(&buffer, ", ");
+							columns = columns->next;				   
+						}
 					}
 				}
-			}
-			writebuffer(";\n");
+				bufcat(&buffer, ";\n");
 
-			/* Tell the user what job we are running */
-			if (global_verbose_flag)
-				fprintf(stderr, "  - RUN: ");
-			if (global_print_flag)
-				fprintf(stderr, buffer);
-			else
-				fprintf(stderr, "%s\n", olist->object->name);
-
-			XASSERT(position < bufsize);
-
-			/* But we only execute it if we are not in "print-only" mode */
-			if (!global_print_flag)
-			{
-				FILE *outfile;
-
-				/* If we have an output file, open it for write now */
-				if (output && output->u.output.type == MAPRED_OUTPUT_FILE)
-				{
-					outfile = fopen(output->u.output.desc, "wb");
-					if (!outfile)
-					{
-						fprintf(stderr, "Error (%d): could not open file '%s' for write.\n", 
-								errno, output->u.output.desc);
-						continue;
-					}
-				}
+				/* Tell the user what job we are running */
+				if (global_verbose_flag)
+					fprintf(stderr, "  - RUN: ");
+				if (global_print_flag || global_debug_flag)
+					fprintf(stderr, buffer->buffer);
 				else
-					outfile = stdout;
+					fprintf(stderr, "%s\n", olist->object->name);
 
-				result = PQexec(conn, buffer);
-				switch (PQresultStatus(result))
+				/* But we only execute it if we are not in "print-only" mode */
+				if (!global_print_flag)
 				{
-					case  PGRES_TUPLES_OK:
-					{
-						PQprintOpt options;
-						memset(&options, 0, sizeof(options));
+					FILE *outfile;
 
-						/* Fancy formating for stdout, plain for flat file */
-						if (outfile == stdout)
+					/* If we have an output file, open it for write now */
+					if (output && output->u.output.type == MAPRED_OUTPUT_FILE)
+					{
+						outfile = fopen(output->u.output.desc, "wb");
+						if (!outfile)
 						{
-							options.header = true;
-							options.align  = true;
-							options.fieldSep  = "|";
+							fprintf(stderr, "Error (%d): could not open file '%s' for write.\n", 
+									errno, output->u.output.desc);
+							continue;
 						}
-						else if (output->u.output.delimiter)
+					}
+					else
+					{
+						outfile = stdout;
+					}
+
+					/* 
+					 * Enable notices for user queries since they may contain 
+					 * debugging info. 
+					 */
+					PQsetNoticeReceiver(conn, print_notice_handler, NULL);
+					result = PQexec(conn, buffer->buffer);
+					PQsetNoticeReceiver(conn, ignore_notice_handler, NULL);
+					switch (PQresultStatus(result))
+					{
+						/* Output is STDOUT or FILE */
+						case  PGRES_TUPLES_OK:
 						{
-							options.fieldSep  = output->u.output.delimiter;
-						}
-						else
-						{
-							/* is "|" the best default delimiter? */
-							options.fieldSep  = "|";
+							PQprintOpt options;
+							memset(&options, 0, sizeof(options));
+
+							/* Fancy formating for stdout, plain for flat file */
+							if (outfile == stdout)
+							{
+								options.header = true;
+								options.align  = true;
+								options.fieldSep  = "|";
+							}
+							else if (output->u.output.delimiter)
+							{
+								options.fieldSep = output->u.output.delimiter;
+							}
+							else
+							{
+								/* is "|" the best default delimiter? */
+								options.fieldSep  = "|";
+							}
+						
+							PQprint(outfile, result, &options);
+							break;
 						}
 						
-						PQprint(outfile, result, &options);
-						break;
+						/* OUTPUT is a table */
+						case PGRES_COMMAND_OK:
+							fprintf(stderr, "CREATED\n");
+							break;
+
+						/* An error of some kind */
+						default:
+							fprintf(stderr, PQerrorMessage(conn));
 					}
-					case PGRES_COMMAND_OK:
-						fprintf(stderr, "CREATED\n");
-						break;
-
-					default:
-						fprintf(stderr, PQerrorMessage(conn));
+					PQclear(result);
+					
+					if (outfile != stdout)
+						fclose(outfile);
 				}
-				PQclear(result);
-
-				if (outfile != stdout)
-					fclose(outfile);
-				
 			}
 		}
 	}
-
-#undef writebuffer
+	XFINALLY
+	{
+		if (buffer)
+			mapred_free(buffer);
+	}
+	XTRY_END;
 }
 
 
-
-int bufncpy(char *buffer, char *str, int len, int position)
-{
-
-/* This doesn't work because 'str' may contain sprintf escapes */
-//	position += snprintf(buffer+position, bufsize - position, str)
-
-	/* 
-	 * unlike snprintf, strncpy does not guarantee null termination,
-	 * so a little more work is needed.
-	 */
-	strncpy(buffer+position, str, len - position);
-	buffer[len-1] = '\0';
-	return strlen(buffer);
-}
 
 
 boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 {
 	mapred_clist_t *clist    = NULL;
 	mapred_plist_t *plist    = NULL;
-	char           *ckind    = NULL;
-	char           *buffer   = NULL;
-	int             position = 0;
-	size_t          bufsize;
-
-#define writebuffer(str)								\
-	position = bufncpy(buffer, str, bufsize, position)
+	const char     *ckind    = NULL;
+	buffer_t       *buffer   = NULL;
+	buffer_t       *qbuffer  = NULL;
+	PGresult       *result   = NULL;
 
 	/* If the object was created in a prior pass, then do nothing */
 	if (obj->created)
 		return true;
 
-	/*
-	 * Initial buffersize is large enough for:
-	 *   "CREATE EXTERNAL TABLE . (.) LOCATION (.) FORMAT TEXT ( )"
-	 * with a little wiggle room to spare.  We will extend this size below
-	 * to allow for the variable length fields.
-	 *
-	 * TODO: it would be preferable to share a buffer between objects rather
-	 * than allocating and releasing the buffer repeatedly.
-	 */
-	bufsize = 100;
-
 	/* Otherwise attempt to create the object */
-	switch (obj->kind)
+	XTRY
 	{
-		case MAPRED_INPUT:
-			XASSERT(obj->name);
-			bufsize += strlen(obj->name);
+		/* allocates 1024 bytes, extending by 1024 bytes if we run out */
+		buffer = makebuffer(1024, 1024);
 
-			/* Add room for column specification */
-			for (plist = obj->u.input.columns; plist; plist = plist->next)
-			{
-				bufsize += strlen(plist->name) + 1 + strlen(plist->type);
-				if (plist->next)
-					bufsize += 2;    /* ", " */
-			}
-			
-			/* add room for file specifications */
-			for (clist = obj->u.input.files; clist; clist = clist->next)
-			{
-				bufsize += 12;        /* "'gpfdist://'" */
-				bufsize += strlen(clist->value);
-				if (clist->next)
-					bufsize += 13;    /* ",\n           " */
-			}
-
-			/* add room for delimiter, null, and quote fields */
-			if (obj->u.input.delimiter)
-				bufsize += 13 +  /* "DELIMITER '.' " */
-					strlen(obj->u.input.delimiter);
-			if (obj->u.input.quote)
-				bufsize += 9 +  /* "QUOTE '.' " */
-					strlen(obj->u.input.quote);
-			if (obj->u.input.null)
-				bufsize += 8 +  /* "NULL '.' " */
-					strlen(obj->u.input.null);
-			
-			/* Handling the error rows */
-			if (obj->u.input.error_limit > 0)
-			{
-				bufsize += 25; /* "\n  SEGMENT REJECT LIMIT " */
-				bufsize += 10;  /* max int digits */
-			}
-
-			switch (obj->u.input.type)
-			{
-				case MAPRED_INPUT_TABLE:
-					break;  /* do nothing */
-
-				case MAPRED_INPUT_FILE:
-				case MAPRED_INPUT_GPFDIST:
-					XASSERT(obj->u.input.files);
-
-					/* Allocate and produce buffer */
-					buffer = malloc(bufsize);
-					writebuffer("CREATE EXTERNAL TABLE ");
-					writebuffer(obj->name);
-					writebuffer("(");
-					for (plist = obj->u.input.columns; plist; plist = plist->next)
-					{
-						writebuffer(plist->name);
-						writebuffer(" ");
-						writebuffer(plist->type);
-						if (plist->next)
-							writebuffer(", ");
-					}
-					writebuffer(")\n");
-					writebuffer("  LOCATION(");
-					for (clist = obj->u.input.files; clist; clist = clist->next)
-					{
-						char *host, *path, *tokenizer;
-
-						if (obj->u.input.type == MAPRED_INPUT_GPFDIST)
-							writebuffer("'gpfdist://");
-						else
-							writebuffer("'file://");
-
-						/* should be split by ':' */
-						host = strtok_r(clist->value, ":", &tokenizer);
-						path = strtok_r(NULL, ":", &tokenizer);
-						if (!path)
-							XRAISE(MAPRED_PARSE_ERROR,
-								   "Invalid INPUT source specification");
-
-						writebuffer(host);
-						writebuffer(path);
-						if (clist->next)
-							writebuffer("',\n           ");
-					}
-					writebuffer("')\n");
-					if (obj->u.input.format == MAPRED_FORMAT_CSV)
-						writebuffer("  FORMAT 'CSV'");
-					else
-						writebuffer("  FORMAT 'TEXT'");
-					if (obj->u.input.delimiter || obj->u.input.quote || obj->u.input.null)
-					{
-						writebuffer(" ( ");
-						if (obj->u.input.delimiter)
-						{
-							writebuffer("DELIMITER '");
-							writebuffer(obj->u.input.delimiter);
-							writebuffer("' ");
-						}
-						if (obj->u.input.quote)
-						{
-							writebuffer("QUOTE '");
-							writebuffer(obj->u.input.quote);
-							writebuffer("' ");
-						}
-						if (obj->u.input.null)
-						{
-							writebuffer("NULL '");
-							writebuffer(obj->u.input.null);
-							writebuffer("' ");
-						}
-						writebuffer(")");
-					}
-
-					if (obj->u.input.error_limit > 0)
-					{
-						writebuffer("\n  SEGMENT REJECT LIMIT ");
-						position += snprintf(buffer + position, bufsize - position, "%d",
-											 obj->u.input.error_limit);
-					}
-
-					writebuffer(";\n\n");
-					break;
-
-				case MAPRED_INPUT_EXEC:
-					XASSERT(obj->u.input.desc);
-
-					bufsize += strlen(obj->u.input.desc);
-					buffer = malloc(bufsize);
-					writebuffer("CREATE EXTERNAL WEB TABLE ");
-					writebuffer(obj->name);
-					writebuffer("(");
-					for (plist = obj->u.input.columns; plist; plist = plist->next)
-					{
-						writebuffer(plist->name);
-						writebuffer(" ");
-						writebuffer(plist->type);
-						if (plist->next)
-							writebuffer(", ");
-					}
-					writebuffer(")\n");
-					writebuffer("EXECUTE '");
-					writebuffer(obj->u.input.desc);
-					writebuffer("'\n");
-					if (obj->u.input.format == MAPRED_FORMAT_CSV)
-						writebuffer("  FORMAT 'CSV'");
-					else
-						writebuffer("  FORMAT 'TEXT'");
-					if (obj->u.input.delimiter || obj->u.input.quote || obj->u.input.null)
-					{
-						writebuffer(" ( ");
-						if (obj->u.input.delimiter)
-						{
-							writebuffer("DELIMITER '");
-							writebuffer(obj->u.input.delimiter);
-							writebuffer("' ");
-						}
-						if (obj->u.input.quote)
-						{
-							writebuffer("QUOTE '");
-							writebuffer(obj->u.input.quote);
-							writebuffer("' ");
-						}
-						if (obj->u.input.null)
-						{
-							writebuffer("NULL '");
-							writebuffer(obj->u.input.null);
-							writebuffer("' ");
-						}
-						writebuffer(")");
-					}
-
-					if (obj->u.input.error_limit > 0)
-					{
-						writebuffer("\n  SEGMENT REJECT LIMIT ");
-						position += snprintf(buffer + position, bufsize - position, "%d",
-											 obj->u.input.error_limit);
-					}
-					writebuffer(";\n\n");
-					break;
-
-				case MAPRED_INPUT_QUERY:
-					XASSERT(obj->u.input.desc);
-
-					bufsize += strlen(obj->u.input.desc);
-					buffer = malloc(bufsize);
-					writebuffer("CREATE VIEW ");
-					writebuffer(obj->name);
-					writebuffer(" AS\n");
-					writebuffer(obj->u.input.desc);
-					writebuffer(";\n\n");
-					
-					break;
-
-				case MAPRED_INPUT_NONE:
-				default:
-					XASSERT(false);
-			}
-			if (global_print_flag || global_debug_flag)
-				printf("-- INPUT %s\n", obj->name);
-			break;
-
-		case MAPRED_OUTPUT:
-			/* 
-			 * Outputs have no backend objects created directly.
-			 * For output tables we may issue a create table as
-			 * select, but that occurs at run-time.
-			 */
-			break;
-
-		/*
-		 * The function types have different defaults and generate
-		 * slightly different error messages, but basically do the
-		 * same thing.  
-		 */
-		case MAPRED_MAPPER:
-			ckind = "MAPPER";
-			/* fallthrough */
-
-		case MAPRED_TRANSITION:
-			if (!ckind)
-				ckind = "TRANSITION";
-			/* fallthrough */
-
-		case MAPRED_COMBINER:
-			if (!ckind)
-				ckind = "COMBINER";
-			/* fallthrough */
-
-		case MAPRED_FINALIZER:
-			if (!ckind)
-				ckind = "FINALIZER";
-
-			/*
-			 * 'kind' specific initialization accomplished above, now handle
-			 * the generic function creation.
-			 */
-			if (global_print_flag || global_debug_flag)
-				printf("-- %s %s\n", ckind, obj->name);
-			
-			/* We should have already been verified */
-			XASSERT(obj->name);
-			XASSERT(obj->u.function.body);
-			XASSERT(obj->u.function.language);
-			XASSERT(obj->u.function.parameters);
-			XASSERT(obj->u.function.rtype.name);
-
-			/* How large does our buffer need to be? */
-			bufsize +=
-				strlen(obj->name) + 
-				strlen(obj->u.function.body) +
-				strlen(obj->u.function.language);
-
-			/* Allocate space for function parameters */
-			for (plist = obj->u.function.parameters; plist; plist = plist->next)
-			{
-				bufsize += strlen(plist->name) + 1 + strlen(plist->type);
-				if (plist->next)
-					bufsize += 2;    /* " ," */
-			}
-
-			/* allocate space for the "returns clause" */
-			bufsize += strlen(obj->u.function.rtype.name);
-		   
-
-			/* 
-			 * fill in the buffer:
-			 *
-			 *   [CREATE TYPE <name>_rtype as (<returns>);]
-			 *
-			 *    CREATE FUNCTION <name>(<parameters>)
-			 *    RETURNS [SETOF] <rtype> LANGUAGE <lang> AS
-			 *    $$
-			 *    <body>
-			 *    $$ [STRICT] [IMMUTABLE];
-			 *     
-			 */
-			buffer = malloc(bufsize);
-			writebuffer("CREATE FUNCTION ");
-			writebuffer(obj->name);
-			writebuffer("(");
-
-			/* Handle parameter list */
-			for (plist = obj->u.function.parameters; plist; plist = plist->next)
-			{
-				writebuffer(plist->name);
-				writebuffer(" ");
-				writebuffer(plist->type);
-				if (plist->next)
-					writebuffer(", ");
-			}
-
-			/* Handle Return clause */
-			writebuffer(")\nRETURNS ");
-			if (obj->u.function.mode == MAPRED_MULTI_MODE)
-				writebuffer("SETOF ");
-			writebuffer(obj->u.function.rtype.name);
-
-			/* 
-			 * Handle LANGUAGE clause, every langauge but 'C' and 'SQL'
-			 * has 'pl' prefixing it
-			 */
-			if (!strcasecmp("C", obj->u.function.language) ||
-				!strcasecmp("SQL", obj->u.function.language) ||
-				!strncasecmp("PL", obj->u.function.language, 2))
-			{
-				writebuffer(" LANGUAGE ");
-				writebuffer(obj->u.function.language);
-			}
-			else
-			{
-				writebuffer(" LANGUAGE pl");
-				writebuffer(obj->u.function.language);
-			}
-			
-			/* python only has an untrusted form */
-			if (!strcasecmp("python", obj->u.function.language))
-				writebuffer("u");
-
-
-			/* Handle the body of the function */
-			writebuffer(" AS\n$$\n");
-			writebuffer(obj->u.function.body);
-			if (buffer[position-1] != '\n')
-				writebuffer("\n$$");
-			else
-				writebuffer("$$");
-
-			/* Handle options */
-			if (obj->u.function.flags & mapred_function_strict)
-				writebuffer(" STRICT");
-			if (obj->u.function.flags & mapred_function_immutable)
-				writebuffer(" IMMUTABLE");
-			
-			/* All done */
-			writebuffer(";\n\n");
-			break;
-			
-
-		case MAPRED_REDUCER:
+		switch (obj->kind)
 		{
-			mapred_object_t *transition = obj->u.reducer.transition.object;
-			char *state;
-
-			XASSERT(obj->name);
-			XASSERT(transition);
-			XASSERT(transition->name);
-			plist = transition->u.function.parameters;
-			XASSERT(plist);          /* state */
-			XASSERT(plist->next);    /* parameters */
-			
-			/* 
-			 * If the reducer depends on an object that hasn't be created then
-			 * return false, it will be resolved during a second pass
-			 */
-			if ((obj->u.reducer.transition.object && 
-				 !obj->u.reducer.transition.object->created) ||
-				(obj->u.reducer.combiner.object && 
-				 !obj->u.reducer.combiner.object->created) ||
-				(obj->u.reducer.finalizer.object && 
-				 !obj->u.reducer.finalizer.object->created))
-			{
-				if (global_print_flag && global_debug_flag)
-					printf("-- defering REDUCER %s\n", obj->name);
-				return false;
-			}
-			if (global_print_flag || global_debug_flag)
-				printf("-- REDUCER %s\n", obj->name);
-
-			bufsize += 
-				strlen(obj->name) + 
-				strlen(transition->name);
-			for (plist = transition->u.function.parameters; plist; plist = plist->next)
-			{
-				bufsize += strlen(plist->type);
-				if (plist->next)
-					bufsize += 2;  /* ", " */
-			}
-			if (obj->u.reducer.initialize)
-				bufsize += strlen(obj->u.reducer.initialize);
-			if (obj->u.reducer.combiner.name)
-				bufsize += strlen(obj->u.reducer.combiner.name);
-			if (obj->u.reducer.finalizer.name)
-				bufsize += strlen(obj->u.reducer.finalizer.name);
-
-			buffer = malloc(bufsize);
-			writebuffer("CREATE AGGREGATE ");
-			writebuffer(obj->name);
-			writebuffer(" (");
-
-			/* 
-			 * Get the state type, and write out the aggregate parameters based
-			 * on the parameter list of the transition function.
-			 */
-			plist = transition->u.function.parameters;
-			state = plist->type;
-			for (plist = plist->next; plist; plist = plist->next)
-			{
-				writebuffer(plist->type);
-				if (plist->next)
-					writebuffer(", ");
-			}
-			writebuffer(") (\n");
-			writebuffer("  stype = ");
-			writebuffer(state);
-			if (obj->u.reducer.initialize)
-			{
-				writebuffer(",\n  initcond = '");
-				writebuffer(obj->u.reducer.initialize);
-				writebuffer("'");
-			}
-			writebuffer(",\n  sfunc = ");
-			writebuffer(transition->name);
-			if (obj->u.reducer.combiner.name)
-			{
-				writebuffer(",\n  prefunc = ");
-				writebuffer(obj->u.reducer.combiner.name);
-			}
-
-			/*
-			 * To handle set returning finalizers the finalizer is pushed
-			 * into the task definition rather than being placed in the
-			 * uda where it belongs.
-			 */
-			/*
-			if (obj->u.reducer.finalizer.name)
-			{
-				writebuffer(",\n  finalfunc = ");
-				writebuffer(obj->u.reducer.finalizer.name);
-			}
-			*/
-
-			writebuffer("\n);\n\n");
-			break;
-		}
-
-		case MAPRED_TASK:
-		case MAPRED_EXECUTION:
-		{
-			mapred_object_t *input    = obj->u.task.input.object;
-			mapred_object_t *mapper   = obj->u.task.mapper.object;
-			mapred_object_t *reducer  = obj->u.task.reducer.object;
-			mapred_object_t *output   = obj->u.task.output.object;
-			mapred_plist_t  *columns  = NULL;
-			mapred_plist_t  *ingrouping = NULL;
-			mapred_plist_t  *newitem  = NULL;
-			mapred_plist_t  *grouping = NULL;
-			mapred_plist_t  *last     = NULL;
-			mapred_plist_t  *scan     = NULL;
-			char            *qbuffer  = NULL;
-			size_t           qlen     = 0;
-			size_t           qneed    = 0;
-			size_t           paramlen = 0;
-
-			if (!obj->u.task.execute)
+			case MAPRED_INPUT:
 				XASSERT(obj->name);
-			XASSERT(obj->u.task.input.name);
 
-			/* 
-			 * If the task depends on an object that hasn't be created then
-			 * return false, it will be resolved during a second pass
-			 */
-			if ((obj->u.task.input.object && 
-				 !obj->u.task.input.object->created) ||
-				(obj->u.task.mapper.object && 
-				 !obj->u.task.mapper.object->created) ||
-				(obj->u.task.reducer.object && 
-				 !obj->u.task.reducer.object->created))
+				switch (obj->u.input.type)
+				{
+					case MAPRED_INPUT_TABLE:
+						/* Nothing to actually create */
+						obj->created = true;
+						break;  
+
+					case MAPRED_INPUT_FILE:
+					case MAPRED_INPUT_GPFDIST:
+						XASSERT(obj->u.input.files);
+
+						/* Allocate and produce buffer */
+						bufcat(&buffer, "CREATE EXTERNAL TABLE ");
+						bufcat(&buffer, obj->name);
+						bufcat(&buffer, "(");
+						for (plist = obj->u.input.columns; plist; plist = plist->next)
+						{
+							bufcat(&buffer, plist->name);
+							bufcat(&buffer, " ");
+							bufcat(&buffer, plist->type);
+							if (plist->next)
+								bufcat(&buffer, ", ");
+						}
+						bufcat(&buffer, ")\n");
+						bufcat(&buffer, "  LOCATION(");
+						for (clist = obj->u.input.files; clist; clist = clist->next)
+						{
+							char *host, *path, *tokenizer;
+
+							if (obj->u.input.type == MAPRED_INPUT_GPFDIST)
+								bufcat(&buffer, "'gpfdist://");
+							else
+								bufcat(&buffer, "'file://");
+
+							/* should be split by ':' */
+							host = strtok_r(clist->value, ":", &tokenizer);
+							path = strtok_r(NULL, ":", &tokenizer);
+							if (!path)
+								XRAISE(MAPRED_PARSE_ERROR,
+									   "Invalid INPUT source specification");
+
+							bufcat(&buffer, host);
+							bufcat(&buffer, path);
+							if (clist->next)
+								bufcat(&buffer, "',\n           ");
+						}
+						bufcat(&buffer, "')\n");
+						if (obj->u.input.format == MAPRED_FORMAT_CSV)
+							bufcat(&buffer, "  FORMAT 'CSV'");
+						else
+							bufcat(&buffer, "  FORMAT 'TEXT'");
+						if (obj->u.input.delimiter || obj->u.input.quote || obj->u.input.null)
+						{
+							bufcat(&buffer, " ( ");
+							if (obj->u.input.delimiter)
+							{
+								bufcat(&buffer, "DELIMITER '");
+								bufcat(&buffer, obj->u.input.delimiter);
+								bufcat(&buffer, "' ");
+							}
+							if (obj->u.input.quote)
+							{
+								bufcat(&buffer, "QUOTE '");
+								bufcat(&buffer, obj->u.input.quote);
+								bufcat(&buffer, "' ");
+							}
+							if (obj->u.input.null)
+							{
+								bufcat(&buffer, "NULL '");
+								bufcat(&buffer, obj->u.input.null);
+								bufcat(&buffer, "' ");
+							}
+							bufcat(&buffer, ")");
+						}
+						
+						if (obj->u.input.error_limit > 0)
+						{
+							char intbuf[11];
+							snprintf(intbuf, 11, "%d", obj->u.input.error_limit);
+
+							bufcat(&buffer, "\n  SEGMENT REJECT LIMIT ");
+							bufcat(&buffer, intbuf);
+						}
+
+						bufcat(&buffer, ";\n\n");
+						break;
+
+					case MAPRED_INPUT_EXEC:
+						XASSERT(obj->u.input.desc);
+
+						bufcat(&buffer, "CREATE EXTERNAL WEB TABLE ");
+						bufcat(&buffer, obj->name);
+						bufcat(&buffer, "(");
+						for (plist = obj->u.input.columns; plist; plist = plist->next)
+						{
+							bufcat(&buffer, plist->name);
+							bufcat(&buffer, " ");
+							bufcat(&buffer, plist->type);
+							if (plist->next)
+								bufcat(&buffer, ", ");
+						}
+						bufcat(&buffer, ")\n");
+						bufcat(&buffer, "EXECUTE '");
+						bufcat(&buffer, obj->u.input.desc);
+						bufcat(&buffer, "'\n");
+						if (obj->u.input.format == MAPRED_FORMAT_CSV)
+							bufcat(&buffer, "  FORMAT 'CSV'");
+						else
+							bufcat(&buffer, "  FORMAT 'TEXT'");
+						if (obj->u.input.delimiter || obj->u.input.quote || obj->u.input.null)
+						{
+							bufcat(&buffer, " ( ");
+							if (obj->u.input.delimiter)
+							{
+								bufcat(&buffer, "DELIMITER '");
+								bufcat(&buffer, obj->u.input.delimiter);
+								bufcat(&buffer, "' ");
+							}
+							if (obj->u.input.quote)
+							{
+								bufcat(&buffer, "QUOTE '");
+								bufcat(&buffer, obj->u.input.quote);
+								bufcat(&buffer, "' ");
+							}
+							if (obj->u.input.null)
+							{
+								bufcat(&buffer, "NULL '");
+								bufcat(&buffer, obj->u.input.null);
+								bufcat(&buffer, "' ");
+							}
+							bufcat(&buffer, ")");
+						}
+
+						if (obj->u.input.error_limit > 0)
+						{
+							char intbuf[11];
+							snprintf(intbuf, 11, "%d", obj->u.input.error_limit);
+
+							bufcat(&buffer, "\n  SEGMENT REJECT LIMIT ");
+							bufcat(&buffer, intbuf);
+						}
+						bufcat(&buffer, ";\n\n");
+						break;
+
+					case MAPRED_INPUT_QUERY:
+						XASSERT(obj->u.input.desc);
+
+						/* 
+						 *  CREATE VIEW <name> AS 
+						 *  <desc>;
+						 */
+						bufcat(&buffer, "CREATE VIEW ");
+						bufcat(&buffer, obj->name);
+						bufcat(&buffer, " AS\n");
+						bufcat(&buffer, obj->u.input.desc);
+						bufcat(&buffer, ";\n\n");
+						break;
+
+					case MAPRED_INPUT_NONE:
+					default:
+						XASSERT(false);
+				}
+				if (global_print_flag || global_debug_flag)
+					printf("-- INPUT %s\n", obj->name);
+				break;
+
+			case MAPRED_OUTPUT:
+				/* 
+				 * Outputs have no backend objects created directly.
+				 * For output tables we may issue a create table as
+				 * select, but that occurs at run-time.
+				 */
+				obj->created = true;
+				mapred_setup_columns(conn, obj);
+				break;
+
+				/*
+				 * The function types have different defaults and generate
+				 * slightly different error messages, but basically do the
+				 * same thing.  
+				 */
+			case MAPRED_MAPPER:
+			case MAPRED_TRANSITION:
+			case MAPRED_COMBINER:
+			case MAPRED_FINALIZER:
+				ckind = mapred_kind_name[obj->kind];
+
+				/*
+				 * 'kind' specific initialization accomplished above, now handle
+				 * the generic function creation.
+				 */
+				if (global_print_flag || global_debug_flag)
+					printf("-- %s %s\n", ckind, obj->name);
+			
+				/* We should have already been verified */
+				XASSERT(obj->name);
+				XASSERT(obj->u.function.body);
+				XASSERT(obj->u.function.language);
+
+				mapred_setup_columns(conn, obj);
+				XASSERT(obj->u.function.parameters);
+				XASSERT(obj->u.function.rtype.name);
+
+				/* 
+				 * fill in the buffer:
+				 *
+				 *    CREATE FUNCTION <name>(<parameters>)
+				 *    RETURNS [SETOF] <rtype> LANGUAGE <lang> AS
+				 *    $$
+				 *    <body>
+				 *    $$ [STRICT] [IMMUTABLE];
+				 *     
+				 */
+				bufcat(&buffer, "CREATE FUNCTION ");
+				bufcat(&buffer, obj->name);
+				bufcat(&buffer, "(");
+
+				/* Handle parameter list */
+				for (plist = obj->u.function.parameters; plist; plist = plist->next)
+				{
+					bufcat(&buffer, plist->name);
+					bufcat(&buffer, " ");
+					bufcat(&buffer, plist->type);
+					if (plist->next)
+						bufcat(&buffer, ", ");
+				}
+
+				/* Handle Return clause */
+				bufcat(&buffer, ")\nRETURNS ");
+				if (obj->u.function.mode == MAPRED_MULTI_MODE)
+					bufcat(&buffer, "SETOF ");
+				bufcat(&buffer, obj->u.function.rtype.name);
+
+				/* 
+				 * Handle LANGUAGE clause, every langauge but 'C' and 'SQL'
+				 * has 'pl' prefixing it
+				 */
+				if (!strcasecmp("C", obj->u.function.language) ||
+					!strcasecmp("SQL", obj->u.function.language) ||
+					!strncasecmp("PL", obj->u.function.language, 2))
+				{
+					bufcat(&buffer, " LANGUAGE ");
+					bufcat(&buffer, obj->u.function.language);
+				}
+				else
+				{
+					bufcat(&buffer, " LANGUAGE pl");
+					bufcat(&buffer, obj->u.function.language);
+				}
+			
+				/* python only has an untrusted form */
+				if (!strcasecmp("python", obj->u.function.language))
+					bufcat(&buffer, "u");
+
+
+				/* Handle the body of the function */
+				bufcat(&buffer, " AS\n$$\n");
+				bufcat(&buffer, obj->u.function.body);
+				if (buffer->buffer[buffer->position-1] != '\n')
+					bufcat(&buffer, "\n$$");
+				else
+					bufcat(&buffer, "$$");
+
+				/* Handle options */
+				if (obj->u.function.flags & mapred_function_strict)
+					bufcat(&buffer, " STRICT");
+				if (obj->u.function.flags & mapred_function_immutable)
+					bufcat(&buffer, " IMMUTABLE");
+				
+				/* All done */
+				bufcat(&buffer, ";\n\n");
+				break;
+			
+
+			case MAPRED_REDUCER:
 			{
+				mapred_object_t *transition = obj->u.reducer.transition.object;
+				char *state;
 
-				if (global_print_flag && global_debug_flag)
+				XASSERT(obj->name);
+				XASSERT(transition);
+				XASSERT(transition->name);
+			
+				/* 
+				 * If the reducer depends on an object that hasn't be created then
+				 * return false, it will be resolved during a second pass
+				 */
+				if ((obj->u.reducer.transition.object && 
+					 !obj->u.reducer.transition.object->created) ||
+					(obj->u.reducer.combiner.object && 
+					 !obj->u.reducer.combiner.object->created) ||
+					(obj->u.reducer.finalizer.object && 
+					 !obj->u.reducer.finalizer.object->created))
+				{
+					if (global_print_flag && global_debug_flag)
+						printf("-- defering REDUCER %s\n", obj->name);
+					break;
+				}
+				if (global_print_flag || global_debug_flag)
+					printf("-- REDUCER %s\n", obj->name);
+
+				/* Now, set things up to create the thing */
+				mapred_setup_columns(conn, obj);
+				plist = transition->u.function.parameters;
+				XASSERT(plist);          /* state */
+				XASSERT(plist->next);    /* parameters */
+
+
+				bufcat(&buffer, "CREATE AGGREGATE ");
+				bufcat(&buffer, obj->name);
+				bufcat(&buffer, " (");
+
+				/* 
+				 * Get the state type, and write out the aggregate parameters based
+				 * on the parameter list of the transition function.
+				 */
+				plist = transition->u.function.parameters;
+				state = plist->type;
+				for (plist = plist->next; plist; plist = plist->next)
+				{
+					bufcat(&buffer, plist->type);
+					if (plist->next)
+						bufcat(&buffer, ", ");
+				}
+				bufcat(&buffer, ") (\n");
+				bufcat(&buffer, "  stype = ");
+				bufcat(&buffer, state);
+				if (obj->u.reducer.initialize)
+				{
+					bufcat(&buffer, ",\n  initcond = '");
+					bufcat(&buffer, obj->u.reducer.initialize);
+					bufcat(&buffer, "'");
+				}
+				bufcat(&buffer, ",\n  sfunc = ");
+				bufcat(&buffer, transition->name);
+				if (obj->u.reducer.combiner.name)
+				{
+					bufcat(&buffer, ",\n  prefunc = ");
+					bufcat(&buffer, obj->u.reducer.combiner.name);
+				}
+
+				/*
+				 * To handle set returning finalizers the finalizer is pushed
+				 * into the task definition rather than being placed in the
+				 * uda where it belongs.
+				 */
+				/*
+				 if (obj->u.reducer.finalizer.name)
+				 {
+				    bufcat(&buffer, ",\n  finalfunc = ");
+				    bufcat(&buffer, obj->u.reducer.finalizer.name);
+				 }
+				*/
+
+				bufcat(&buffer, "\n);\n\n");
+				break;
+			}
+
+			case MAPRED_TASK:
+			case MAPRED_EXECUTION:
+			{
+				mapred_object_t *input    = obj->u.task.input.object;
+				mapred_object_t *mapper   = obj->u.task.mapper.object;
+				mapred_object_t *reducer  = obj->u.task.reducer.object;
+				mapred_object_t *output   = obj->u.task.output.object;
+				mapred_plist_t  *columns  = NULL;
+				mapred_plist_t  *ingrouping = NULL;
+				mapred_plist_t  *newitem  = NULL;
+				mapred_plist_t  *grouping = NULL;
+				mapred_plist_t  *last     = NULL;
+				mapred_plist_t  *scan     = NULL;
+				buffer_t        *swap;
+
+				if (!obj->u.task.execute)
+					XASSERT(obj->name);
+				XASSERT(obj->u.task.input.name);
+
+				if (!qbuffer)
+					qbuffer = makebuffer(1024, 1024);
+				else
+					bufreset(qbuffer);
+				
+				/* 
+				 * If the task depends on an object that hasn't be created then
+				 * return false, it will be resolved during a second pass
+				 */
+				if ((obj->u.task.input.object && 
+					 !obj->u.task.input.object->created) ||
+					(obj->u.task.mapper.object && 
+					 !obj->u.task.mapper.object->created) ||
+					(obj->u.task.reducer.object && 
+					 !obj->u.task.reducer.object->created))
+				{
+					if (global_print_flag && global_debug_flag)
+					{
+						if (obj->u.task.execute)
+							printf("-- defering EXECUTION\n");
+						else
+							printf("-- defering TASK %s\n", obj->name);
+					}
+					break;
+				}
+
+				if (global_print_flag || global_debug_flag)
 				{
 					if (obj->u.task.execute)
-						printf("-- defering EXECUTION\n");
+						printf("-- EXECUTION\n");
 					else
-						printf("-- defering TASK %s\n", obj->name);
+						printf("-- TASK %s\n", obj->name);
 				}
-				return false;
-			}
 
-			if (global_print_flag || global_debug_flag)
-			{
-				if (obj->u.task.execute)
-					printf("-- EXECUTION\n");
-				else
-					printf("-- TASK %s\n", obj->name);
-			}
-
-
-			/* 
-			 * If there are map functions or reduce functions which make
-			 * use of the command line arguments then we need to make
-			 * sure that we have enough space in the buffers for them.
-			 *
-			 * The easiest method is just to add up all their lengths and
-			 * leave enough space for all of them if needed.
-			 *
-			 * (*HACK*)
-			 * Note that the global_plist overloaded the "plist" structure
-			 * and used the "type" field for "value". 
-			 * (*HACK*)
-			 */
-			for (plist = global_plist; plist; plist = plist->next)
-				paramlen += 2 + strlen(plist->type);
-
-			/* 
-			 * It is easiest to build the query starting from the
-			 * input and working back towards the output.  This requires
-			 * multiple buffers and several memcpys back and forth to 
-			 * build the query, but results in more maintainable code.
-			 */
-			
-			/* 
-			 * 1) Handle the INPUT, two cases:
-			 *   1a) There is no MAPPER/REDUCER:  "SELECT * FROM <input>"
-			 *   1b) There is a MAPPER and/or REDUCER:  "<input>"
-			 */
-			if (!obj->u.task.mapper.name && !obj->u.task.reducer.name)
-			{
-				/* Allocate the buffer for the input. */
-				if (input->u.input.type == MAPRED_INPUT_TABLE)
-				{
-					qlen = 15 + strlen(input->u.input.desc);
-					qbuffer = malloc(qlen);
-					snprintf(qbuffer, qlen, "SELECT * FROM %s", input->u.input.desc);
-				}
-				else
-				{
-					qlen = 15 + strlen(input->name);
-					qbuffer = malloc(qlen);
-					snprintf(qbuffer, qlen, "SELECT * FROM %s", input->name);
-				}
-			}
-			else
-			{
 				/* 
-				 * Point directly into input name - no actual buffer allocation
-				 * qneed and qlen both remain == 0
+				 * 1) Handle the INPUT, two cases:
+				 *   1a) There is no MAPPER/REDUCER:  "SELECT * FROM <input>"
+				 *   1b) There is a MAPPER and/or REDUCER:  "<input>"
 				 */
-				if (input->u.input.type == MAPRED_INPUT_TABLE)
-					qbuffer = input->u.input.desc;
+				mapred_setup_columns(conn, obj);
+				if (!obj->u.task.mapper.name && !obj->u.task.reducer.name)
+				{
+					/* Allocate the buffer for the input. */
+					if (input->u.input.type == MAPRED_INPUT_TABLE)
+					{
+						bufcat(&qbuffer, "SELECT * FROM ");
+						bufcat(&qbuffer, input->u.input.desc);
+					}
+					else
+					{
+						bufcat(&qbuffer, "SELECT * FROM ");
+						bufcat(&qbuffer, input->name);
+					}
+				}
 				else
-					qbuffer = input->name;
+				{
+					/* Input is just the name or description of the input */
+					if (input->u.input.type == MAPRED_INPUT_TABLE)
+						bufcat(&qbuffer, input->u.input.desc);
+					else
+						bufcat(&qbuffer, input->name);
+				}
 
-			}
+				/* 
+				 * How we get the columns depends a bit on the input.
+				 * Is the input actually an "MAPRED_INPUT" object, or is it
+				 * a "MAPRED_TASK" object?
+				 */
+				switch (input->kind)
+				{
+					case MAPRED_INPUT:
+						columns = input->u.input.columns;
+						break;
 
-			/* 
-			 * How we get the columns depends a bit on the input.
-			 * Is the input actually an "MAPRED_INPUT" object, or is it
-			 * a "MAPRED_TASK" object?
-			 */
-			switch (input->kind)
-			{
-				case MAPRED_INPUT:
-					columns = input->u.input.columns;
-					break;
-
-				case MAPRED_TASK:
-					columns    = input->u.task.returns;
-					ingrouping = input->u.task.grouping;
+					case MAPRED_TASK:
+						columns    = input->u.task.returns;
+						ingrouping = input->u.task.grouping;
 					
-				    if (!columns)
-					{
-						fprintf(stderr, 
-								"Error: Unable to determine return columns for TASK '%s'\n",
-								obj->u.task.input.name);
-						XRAISE(MAPRED_PARSE_INTERNAL, NULL);
-					}
-					break;
-
-				default:
-					XRAISE(MAPRED_PARSE_ERROR,
-						   "Bad SOURCE object, not an INPUT");
-					break;
-			}
-			XASSERT(columns);   /* FIXME: this can fail! */
-
-			/*
-			 * 2) Handle the MAPPER, two cases
-			 *  2a) The Mapper returns an generated ADT that needs extraction
-			 *           "SELECT key(m), ... 
-			 *            FROM (SELECT <map(...) as m FROM <input>) mapsubq
-			 *  2b) The Mapper returns a single column:
-			 *           "SELECT <map>(...) FROM <input>"
-			 */
-			if (obj->u.task.mapper.name)
-			{
-				XASSERT(mapper);  /* FIXME */
-				XASSERT(!buffer);
-
-				/*
-				 * Input was written into qbuffer
-				 * Mapper is written into buffer
-				 *    buffer has not yet been allocated.
-				 */
-				bufsize = 25 +    /* SELECT .() as . FROM . */
-					paramlen + 
-					strlen(qbuffer) + 
-					strlen(mapper->name);
-
-				plist = mapper->u.function.parameters;
-				for (plist = columns; plist; plist = plist->next)
-				{
-					bufsize += strlen(plist->name);
-					if (plist->next)
-						bufsize += 2;  /* ", " */
-				}
-
-				plist = mapper->u.function.returns;
-				XASSERT(plist);
-				if (plist->next)
-				{  /* 2a */
-					/*  "SELECT . FROM (.) mapxq WHERE m is not null" */
-					bufsize += 50;
-					for (; plist; plist = plist->next)
-					{
-						bufsize += 3 + strlen(plist->name);  /* ".(m)" */
-						if (plist->next)
-							bufsize += 2;  /* ", " */
-					}
-					buffer = malloc(bufsize);
-					position = 0;
-
-					writebuffer("SELECT ");
-					plist = mapper->u.function.returns;
-					for (; plist; plist = plist->next)
-					{
-						writebuffer(plist->name);
-						writebuffer("(m)");
-						if (plist->next)
-							writebuffer(", ");
-
-					}
-					writebuffer(" FROM (");
-				}
-				else
-				{  /* 2b */
-					/* "SELECT .(.) as . FROM ." */
-					bufsize += strlen(plist->name);
-					buffer = malloc(bufsize);
-					position = 0;
-				}
-
-				/* shared code */
-				writebuffer("SELECT ");
-				writebuffer(mapper->name);
-				writebuffer("(");
-				plist = mapper->u.function.parameters;
-				for (; plist; plist = plist->next)
-				{
-					/* Check if this parameter is one of the input columns */
-					for (scan = columns; scan; scan = scan->next)
-						if (!strcasecmp(plist->name, scan->name))
+						if (!columns)
 						{
-							writebuffer(plist->name);
-							break;
+							fprintf(stderr, 
+									"Error: Unable to determine return columns for TASK '%s'\n",
+									obj->u.task.input.name);
+							XRAISE(MAPRED_PARSE_INTERNAL, NULL);
 						}
+						break;
 
-					/* Task inputs also need to scan the grouping columns */
-					if (!scan)
-						for (scan = ingrouping; scan; scan = scan->next)
-							if (!strcasecmp(plist->name, scan->name))
-							{
-								writebuffer(plist->name);
-								break;
-							}
-					
-					/* Check if this parameter is in global_plist */
-					if (!scan)
-						for (scan = global_plist; scan; scan = scan->next)
-							if (!strcasecmp(plist->name, scan->name))
-							{
-								/*
-								 * (HACK)
-								 * Note that global_plist overloads the plist 
-								 * structure using the "type" field to store 
-								 * "value".
-								 * (HACK)
-								 */
-								writebuffer("'");
-								writebuffer(scan->type);
-								writebuffer("'::");
-								writebuffer(plist->type);
-								break;
-							}
-
-
-					/* If we couldn't find it issue a warning and set to NULL */
-					if (!scan)
-					{
-						fprintf(stderr, 
-								"WARNING: unset parameter - %s(%s => NULL)\n",
-								mapper->name, plist->name);
-						writebuffer("NULL::");
-						writebuffer(plist->type);
-					}
-
-					/* Add a comma if there is another parameter */
-					if (plist->next)
-						writebuffer(", ");
+					default:
+						XRAISE(MAPRED_PARSE_ERROR,
+							   "Bad SOURCE object, not an INPUT");
+						break;
 				}
-				writebuffer(") as ");
-
-				/* break into cases again */
-				plist = mapper->u.function.returns;
-				if (plist->next)
-				{  /* 2a */
-					writebuffer("m FROM ");
-					writebuffer(qbuffer);
-					writebuffer(") mapxq\n");
-					/*
-					 * Need to work this through, it seems that m is true whenever a 
-					 * column is null, which is not the desired behavior.
-					 *
-					 * Look more closely at "grep" code for why we want it, and
-					 * "oreilly" code for why we don't.
-					 *
-					 * For the moment the compromise is that we do it only for
-					 * SINGLE mode functions, since MULTI mode can control it's
-					 * own filtering without this.
-					 */
-					if (mapper->u.function.mode != MAPRED_MULTI_MODE)
-						writebuffer("WHERE m is not null");   
-				}
-				else
-				{
-					writebuffer(plist->name);
-					writebuffer(" FROM ");
-					writebuffer(qbuffer);
-				}
-
-				/* If an allocation was made for the qbuffer, release it */
-				if (qlen)
-				{
-					free(qbuffer);
-					qlen = 0;
-				}
-
-				/* 
-				 * Swap the buffer into the qbuffer for input as the next stage
-				 * of the query pipeline. 
-				 */
-				qbuffer = buffer;
-				qlen = bufsize;
-				buffer = NULL;
-				bufsize = 0;
-
-				/* Columns are now the output of the mapper */
-				columns  = mapper->u.function.returns;
-				ingrouping = NULL;
-			}
-
-			/*
-			 * 3) Handle the Reducer, several sub-cases:
-			 */
-			if (obj->u.task.reducer.name)
-			{
+				XASSERT(columns);
+				
 				/*
-				 * Step 1:   Determine grouping columns
-				 *    Find which columns are returned from the previous
-				 *    stage that are NOT parameters to the reducer.  
-				 */
-				grouping = last = NULL;
-				if (!reducer)
-				{
-					/* 
-					 * We have a reducer, but it isn't listed in the YAML.
-					 * How to work out parameter handling still needs to
-					 * be worked out.  For now we just assume that this 
-					 * sort of function always takes a single "value" column
-					 * and returns a "value" column.
-					 */
-					for (plist = columns; plist; plist = plist->next)
-					{
-						if (strcasecmp(plist->name, "value"))
-						{
-							if (grouping)
-							{
-								last->next = malloc(sizeof(mapred_plist_t));
-								last = last->next;
-							}
-							else
-							{
-								grouping = malloc(sizeof(mapred_plist_t));
-								last = grouping;
-							}
-							last->name = plist->name;
-							last->type = plist->type;
-							last->next = NULL;
-						}
-					}
-				} 
-				else
-				{
-					/* The reducer exists in the YAML */
-					
-					/* 
-					 * If the reducer has a finalizer we push the finalizer out
-					 * to the task so that we can handle set returning aggregates.
-					 */
-
-					/* FIXME */
-
-					/* We precalculated the grouping columns */
-					grouping = obj->u.task.grouping;
-				}
-				
-				/* SELECT ., .(.) as . FROM . GROUP BY . */
-				bufsize = 50 + 
-					paramlen + 
-					strlen(obj->u.task.reducer.name) +
-					strlen(qbuffer);
-				
-				/* 
-				 * The grouping columns occur both in the select list and in
-				 * the GROUP BY clause, so we double count the size 
-				 */
-				for (plist = grouping; plist; plist = plist->next)
-				{
-					bufsize += 2 * strlen(plist->name);
-					if (plist->next)
-						bufsize += 2 * 2;  /* ", " */
-				}
-
-				/* Parameters to the reducer */
-				if (reducer)
-				{
-					plist = reducer->u.reducer.parameters;
-					for (; plist; plist = plist->next)
-					{
-						bufsize += strlen(plist->name);
-						if (plist->next)
-							bufsize += 2;  /* ", " */
-					}
-
-					/* 
-					 * Since "finalfunc" can't return a set we instead push the finalizer
-					 * outside the scope of the reducer!
-					 */
-					if (reducer->u.reducer.finalizer.name)
-						bufsize += 2 + strlen(reducer->u.reducer.finalizer.name);
-
-					plist = reducer->u.reducer.returns;
-					if (!plist || plist->next)
-						XASSERT(false); /* FIXME: multi-column returning reducers? */
-					bufsize += strlen(plist->name);
-				}
-				else
-				{
-					/* non-yaml reducers always take "value" column as input */
-					bufsize += 5;  /* value */
-				}
-								
-				/* 
-				 * How we handle the from clause depends on if there was a
-				 * map function.
+				 * 2) Handle the MAPPER, two cases
+				 *  2a) The Mapper returns an generated ADT that needs extraction
+				 *           "SELECT key(m), ... 
+				 *            FROM (SELECT <map(...) as m FROM <input>) mapsubq
+				 *  2b) The Mapper returns a single column:
+				 *           "SELECT <map>(...) FROM <input>"
 				 */
 				if (obj->u.task.mapper.name)
-					bufsize += 10;  /* "FROM (.) mapsubq" */
-
-				/* Write it out */
-				buffer = malloc(bufsize);
-				position = 0;
-				writebuffer("SELECT ");
-				for (plist = grouping; plist; plist = plist->next)
 				{
-					writebuffer(plist->name);
-					writebuffer(", ");
-				}
-				
-				/* 
-				 * Since "finalfunc" can't return a set we instead push the finalizer
-				 * outside the scope of the reducer!
-				 */
-				if (reducer && reducer->u.reducer.finalizer.name)
-				{
-					writebuffer(reducer->u.reducer.finalizer.name);
-					writebuffer("(");
-				}
+					XASSERT(mapper);  /* FIXME */
 
-				/* Call the aggregation function */
-				writebuffer(obj->u.task.reducer.name);
-				writebuffer("(");
 
-				if (reducer)
-				{
-					plist = reducer->u.reducer.parameters;
+					plist = mapper->u.function.returns;
+					XASSERT(plist);
+
+					if (plist->next)
+					{ /* 2a */
+						bufcat(&buffer, "SELECT ");
+						for (; plist; plist = plist->next)
+						{
+							bufcat(&buffer, plist->name);
+							bufcat(&buffer, "(m)");
+							if (plist->next)
+								bufcat(&buffer, ", ");
+						}
+						bufcat(&buffer, " FROM (");
+					}
+
+					/* shared code */
+					bufcat(&buffer, "SELECT ");
+					bufcat(&buffer, mapper->name);
+					bufcat(&buffer, "(");
+					plist = mapper->u.function.parameters;
 					for (; plist; plist = plist->next)
 					{
 						/* Check if this parameter is one of the input columns */
 						for (scan = columns; scan; scan = scan->next)
 							if (!strcasecmp(plist->name, scan->name))
 							{
-								writebuffer(plist->name);
+								bufcat(&buffer, plist->name);
 								break;
 							}
 
@@ -1851,7 +1806,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 							for (scan = ingrouping; scan; scan = scan->next)
 								if (!strcasecmp(plist->name, scan->name))
 								{
-									writebuffer(plist->name);
+									bufcat(&buffer, plist->name);
 									break;
 								}
 					
@@ -1867,10 +1822,10 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 									 * "value".
 									 * (HACK)
 									 */
-									writebuffer("'");
-									writebuffer(scan->type);
-									writebuffer("'::");
-									writebuffer(plist->type);
+									bufcat(&buffer, "'");
+									bufcat(&buffer, scan->type);
+									bufcat(&buffer, "'::");
+									bufcat(&buffer, plist->type);
 									break;
 								}
 
@@ -1878,251 +1833,436 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						/* If we couldn't find it issue a warning and set to NULL */
 						if (!scan)
 						{
+							if (global_verbose_flag)
+								fprintf(stderr, "       ");
 							fprintf(stderr, 
 									"WARNING: unset parameter - %s(%s => NULL)\n",
-									reducer->name, plist->name);
-							writebuffer("NULL::");
-							writebuffer(plist->type);
+									mapper->name, plist->name);
+							bufcat(&buffer, "NULL::");
+							bufcat(&buffer, plist->type);
 						}
 
-						/* Write out the comma if there is another input parameter */
+						/* Add a comma if there is another parameter */
 						if (plist->next)
-							writebuffer(", ");
+							bufcat(&buffer, ", ");
 					}
-					if (reducer->u.reducer.finalizer.name)
-						writebuffer(")");
-				}
-				else
-				{
-					/* non-yaml reducer always takes "value" as it's input column */
+					bufcat(&buffer, ") as ");
 
-					/* Check if "value" is one of the input columns */
-					for (scan = columns; scan; scan = scan->next)
-						if (!strcasecmp(scan->name, "value"))
-						{
-							writebuffer("value");
-							break;
-						}
-
-					/* Task inputs also need to scan the grouping columns */
-					if (!scan)
-						for (scan = ingrouping; scan; scan = scan->next)
-							if (!strcasecmp(plist->name, scan->name))
-							{
-								writebuffer("value");
-								break;
-							}
-					
-					/* Check if this parameter is in global_plist */
-					if (!scan)
-						for (scan = global_plist; scan; scan = scan->next)
-							if (!strcasecmp(scan->name, "value"))
-							{
-								/*
-								 * (HACK)
-								 * Note that global_plist overloads the plist 
-								 * structure using the "type" field to store 
-								 * "value".
-								 * (HACK)
-								 */
-								writebuffer("'");
-								writebuffer(scan->type);
-								writebuffer("'::");
-								writebuffer(plist->type);
-								break;
-							}
-
-					if (!scan)
+					/* break into cases again */
+					plist = mapper->u.function.returns;
+					if (plist->next)
+					{  /* 2a */
+						bufcat(&buffer, "m FROM ");
+						bufcat(&buffer, qbuffer->buffer);
+						bufcat(&buffer, ") mapxq\n");
+						/*
+						 * Need to work this through, it seems that m is true whenever a 
+						 * column is null, which is not the desired behavior.
+						 *
+						 * Look more closely at "grep" code for why we want it, and
+						 * "oreilly" code for why we don't.
+						 *
+						 * For the moment the compromise is that we do it only for
+						 * SINGLE mode functions, since MULTI mode can control it's
+						 * own filtering without this.
+						 */
+						if (mapper->u.function.mode != MAPRED_MULTI_MODE)
+							bufcat(&buffer, "WHERE m is not null");   
+					}
+					else
 					{
-						fprintf(stderr, 
-								"WARNING: unset parameter - %s(value => NULL)\n",
-								obj->u.task.reducer.name);
-						writebuffer("NULL");
+						bufcat(&buffer, plist->name);
+						bufcat(&buffer, " FROM ");
+						bufcat(&buffer, qbuffer->buffer);
 					}
-				}
 
-				writebuffer(") as ");
+					/* 
+					 * Swap the buffer into the qbuffer for input as the next stage
+					 * of the query pipeline. 
+					 */
+					swap = qbuffer;
+					qbuffer = buffer;
+					buffer = swap;
+					bufreset(buffer);
 
-				if (reducer)
-				{
-					plist = reducer->u.reducer.returns;
-					if (!plist || plist->next)
-						XASSERT(false); /* FIXME: multi-column returning reducers? */
-					writebuffer(plist->name);
-				}
-				else
-				{
-					/* non-yaml reducer always returns a single column named "value" */
-					writebuffer("value");
-				}
-				writebuffer("\nFROM ");
-				if (obj->u.task.mapper.name)
-				{
-					writebuffer("(");
-					writebuffer(qbuffer);
-					writebuffer(") mapsubq");
-				}
-				else
-				{
-					writebuffer(qbuffer);
-				}
-				if (grouping)
-				{
-					writebuffer("\nGROUP BY ");
-					for (plist = grouping; plist; plist = plist->next)
-					{
-						writebuffer(plist->name);
-						if (plist->next)
-							writebuffer(", ");
-					}
-				}
-
-
-				/* If an allocation was made for the qbuffer, release it */
-				if (qlen)
-				{
-					free(qbuffer);
-					qlen = 0;
+					/* Columns are now the output of the mapper */
+					columns  = mapper->u.function.returns;
+					ingrouping = NULL;
 				}
 				
-				/* 
-				 * Swap the buffer into the qbuffer for input as the next stage
-				 * of the query pipeline. 
+				/*
+				 * 3) Handle the Reducer, several sub-cases:
 				 */
-				qbuffer = buffer;
-				qlen = bufsize;
-				buffer = NULL;
-				bufsize = 0;
+				if (obj->u.task.reducer.name)
+				{
+					/*
+					 * Step 1:   Determine grouping columns
+					 *    Find which columns are returned from the previous
+					 *    stage that are NOT parameters to the reducer.  
+					 */
+					grouping = last = NULL;
+					if (!reducer)
+					{
+						/* 
+						 * We have a reducer, but it isn't listed in the YAML.
+						 * How to work out parameter handling still needs to
+						 * be worked out.  For now we just assume that this 
+						 * sort of function always takes a single "value" column
+						 * and returns a "value" column.
+						 */
+						for (plist = columns; plist; plist = plist->next)
+						{
+							if (strcasecmp(plist->name, "value"))
+							{
+								if (grouping)
+								{
+									last->next = mapred_malloc(sizeof(mapred_plist_t));
+									last = last->next;
+								}
+								else
+								{
+									grouping = mapred_malloc(sizeof(mapred_plist_t));
+									last = grouping;
+								}
+								last->name = plist->name;
+								last->type = plist->type;
+								last->next = NULL;
+							}
+						}
+					} 
+					else
+					{
+						/* The reducer exists in the YAML */
+					
+						/* 
+						 * If the reducer has a finalizer we push the finalizer out
+						 * to the task so that we can handle set returning aggregates.
+						 */
+
+						/* FIXME */
+
+						/* We precalculated the grouping columns */
+						grouping = obj->u.task.grouping;
+					}
+				
+					/* Fill in the buffer */
+					bufcat(&buffer, "SELECT ");
+					for (plist = grouping; plist; plist = plist->next)
+					{
+						bufcat(&buffer, plist->name);
+						bufcat(&buffer, ", ");
+					}
+				
+					/* 
+					 * Since "finalfunc" can't return a set we instead push the finalizer
+					 * outside the scope of the reducer!
+					 */
+					if (reducer && reducer->u.reducer.finalizer.name)
+					{
+						bufcat(&buffer, reducer->u.reducer.finalizer.name);
+						bufcat(&buffer, "(");
+					}
+
+					/* Call the aggregation function */
+					bufcat(&buffer, obj->u.task.reducer.name);
+					bufcat(&buffer, "(");
+
+					if (reducer)
+					{
+						plist = reducer->u.reducer.parameters;
+						for (; plist; plist = plist->next)
+						{
+							/* Check if this parameter is one of the input columns */
+							for (scan = columns; scan; scan = scan->next)
+								if (!strcasecmp(plist->name, scan->name))
+								{
+									bufcat(&buffer, plist->name);
+									break;
+								}
+
+							/* Task inputs also need to scan the grouping columns */
+							if (!scan)
+								for (scan = ingrouping; scan; scan = scan->next)
+									if (!strcasecmp(plist->name, scan->name))
+									{
+										bufcat(&buffer, plist->name);
+										break;
+									}
+					
+							/* Check if this parameter is in global_plist */
+							if (!scan)
+								for (scan = global_plist; scan; scan = scan->next)
+									if (!strcasecmp(plist->name, scan->name))
+									{
+										/*
+										 * (HACK)
+										 * Note that global_plist overloads the plist 
+										 * structure using the "type" field to store 
+										 * "value".
+										 * (HACK)
+										 */
+										bufcat(&buffer, "'");
+										bufcat(&buffer, scan->type);
+										bufcat(&buffer, "'::");
+										bufcat(&buffer, plist->type);
+										break;
+									}
+
+
+							/* If we couldn't find it issue a warning and set to NULL */
+							if (!scan)
+							{
+								if (global_verbose_flag)
+									fprintf(stderr, "       ");
+								fprintf(stderr, 
+										"WARNING: unset parameter - %s(%s => NULL)\n",
+										reducer->name, plist->name);
+								bufcat(&buffer, "NULL::");
+								bufcat(&buffer, plist->type);
+							}
+
+							/* Write out the comma if there is another input parameter */
+							if (plist->next)
+								bufcat(&buffer, ", ");
+						}
+						if (reducer->u.reducer.finalizer.name)
+							bufcat(&buffer, ")");
+					}
+					else
+					{
+						/* non-yaml reducer always takes "value" as it's input column */
+
+						/* Check if "value" is one of the input columns */
+						for (scan = columns; scan; scan = scan->next)
+							if (!strcasecmp(scan->name, "value"))
+							{
+								bufcat(&buffer, "value");
+								break;
+							}
+
+						/* Task inputs also need to scan the grouping columns */
+						if (!scan)
+							for (scan = ingrouping; scan; scan = scan->next)
+								if (!strcasecmp(plist->name, scan->name))
+								{
+									bufcat(&buffer, "value");
+									break;
+								}
+					
+						/* Check if this parameter is in global_plist */
+						if (!scan)
+							for (scan = global_plist; scan; scan = scan->next)
+								if (!strcasecmp(scan->name, "value"))
+								{
+									/*
+									 * (HACK)
+									 * Note that global_plist overloads the plist 
+									 * structure using the "type" field to store 
+									 * "value".
+									 * (HACK)
+									 */
+									bufcat(&buffer, "'");
+									bufcat(&buffer, scan->type);
+									bufcat(&buffer, "'::");
+									bufcat(&buffer, plist->type);
+									break;
+								}
+						
+						if (!scan)
+						{
+							if (global_verbose_flag)
+								fprintf(stderr, "       ");
+							fprintf(stderr, 
+									"WARNING: unset parameter - %s(value => NULL)\n",
+									obj->u.task.reducer.name);
+							bufcat(&buffer, "NULL");
+						}
+					}
+
+					bufcat(&buffer, ") as ");
+
+					if (reducer)
+					{
+						plist = reducer->u.reducer.returns;
+						if (!plist || plist->next)
+							XASSERT(false); /* FIXME: multi-column returning reducers? */
+						bufcat(&buffer, plist->name);
+					}
+					else
+					{
+						/* non-yaml reducer always returns a single column named "value" */
+						bufcat(&buffer, "value");
+					}
+					bufcat(&buffer, "\nFROM ");
+					if (obj->u.task.mapper.name)
+					{
+						bufcat(&buffer, "(");
+						bufcat(&buffer, qbuffer->buffer);
+						bufcat(&buffer, ") mapsubq");
+					}
+					else
+					{
+						bufcat(&buffer, qbuffer->buffer);
+					}
+					if (grouping)
+					{
+						bufcat(&buffer, "\nGROUP BY ");
+						for (plist = grouping; plist; plist = plist->next)
+						{
+							bufcat(&buffer, plist->name);
+							if (plist->next)
+								bufcat(&buffer, ", ");
+						}
+					}
+
+
+					/* 
+					 * Swap the buffer into the qbuffer for input as the next stage
+					 * of the query pipeline. 
+					 */
+					swap = qbuffer;
+					qbuffer = buffer;
+					buffer = swap;
+					bufreset(buffer);
+
+
+					/* 
+					 * Add the return columns to the grouping columns and set
+					 * it to the current columns.  
+					 *
+					 * Note that unlike the columns set by the mapper or the
+					 * input this is a list that must be de-allocated.
+					 */
+					columns = mapred_malloc(sizeof(mapred_plist_t));
+					columns->name = "value";  /* FIXME */
+					columns->type = "text";   /* FIXME */
+					columns->next = grouping;
+					columns = last;
+
+					/* 
+					 * If the reducer had a finalizer we push it into another nested
+					 * subquery since user defined aggregates aren't allowed to return
+					 * sets.
+					 *
+					 * FIXME: this code is a duplicate of the MAP code above
+					 */
+
+				}
+
+
+				/*
+				 * 4) Handle the final transform into the view definition:
+				 *        "CREATE VIEW . AS .;"
+				 */
+				bufcat(&buffer, "CREATE VIEW ");
+				bufcat(&buffer, obj->name);
+				bufcat(&buffer, " AS\n");
+				bufcat(&buffer, qbuffer->buffer);
+				bufcat(&buffer, ";\n\n");
 
 				/* 
-				 * Add the return columns to the grouping columns and set
-				 * it to the current columns.  
-				 *
-				 * Note that unlike the columns set by the mapper or the
-				 * input this is a list that must be de-allocated.
+				 * If there was a reducer then we have to release the columns
+				 * list, otherwise it is a pointer to an existing list and can
+				 * be ignored.
 				 */
-				columns = malloc(sizeof(mapred_plist_t));
-				columns->name = "value";  /* FIXME */
-				columns->type = "text";   /* FIXME */
-				columns->next = grouping;
-				columns = last;
-
-				/* 
-				 * If the reducer had a finalizer we push it into another nested
-				 * subquery since user defined aggregates aren't allowed to return
-				 * sets.
-				 *
-				 * FIXME: this code is a duplicate of the MAP code above
-				 */
-
+				if (obj->u.task.reducer.name)
+				{
+					plist = columns;
+					while (plist && plist != grouping)
+					{
+						newitem = plist;
+						plist = plist->next;
+						mapred_free(newitem);
+					}
+				}
+				break;
 			}
 
+			case MAPRED_ADT:
+				XASSERT(obj->name);
+				mapred_setup_columns(conn, obj);
 
-			/*
-			 * 4) Handle the final transform into the view definition:
-			 *        "CREATE VIEW . AS .;"
-			 */
-			bufsize = 50 + strlen(obj->name) + strlen(qbuffer);
-			for (plist = columns; plist; plist = plist->next)
-			{
-				bufsize += strlen(plist->name);
-				if (plist->next)
-					bufsize += 2;  /* ", " */
-			}
-			
-			buffer = malloc(bufsize);
-			position = 0;
-			writebuffer("CREATE VIEW ");
-			writebuffer(obj->name);
-			writebuffer(" AS\n");
-			writebuffer(qbuffer);
-			writebuffer(";\n\n");
+				bufcat(&buffer, "CREATE TYPE ");
+				bufcat(&buffer, obj->name);
+				bufcat(&buffer, " as (");
+				for (plist = obj->u.adt.returns; plist; plist = plist->next)
+				{
+					bufcat(&buffer, plist->name);
+					bufcat(&buffer, " ");
+					bufcat(&buffer, plist->type);
+					if (plist->next)
+						bufcat(&buffer, ", ");
+				}
+				bufcat(&buffer, ");\n\n");
+				break;
+
+			default:
+				XASSERT(false);
+		}
+
+		if (buffer->position > 0)
+		{
 
 			/* 
-			 * If there was a reducer then we have to release the columns
-			 * list, otherwise it is a pointer to an existing list and can
-			 * be ignored.
+			 * In print-only mode we do everything but run the queries
+			 * ie, we still create and destroy objects.
 			 */
-			if (obj->u.task.reducer.name)
+			if (global_print_flag || global_debug_flag)
+				printf("%s", buffer->buffer);			
+
+			/*
+			 * Try to create the object, but failure should not terminate
+			 * the transaction, so wrap it in a savepoint.
+			 */
+			PQexec(conn, "SAVEPOINT mapreduce_save");
+			result = PQexec(conn, buffer->buffer);
+			if (PQresultStatus(result) == PGRES_COMMAND_OK)
 			{
-				plist = columns;
-				while (plist)
+				obj->created = true;
+				PQexec(conn, "RELEASE SAVEPOINT mapreduce_save");
+			}
+			else
+			{
+				char *error = PQresultErrorField(result, PG_DIAG_SQLSTATE);
+				
+				if (global_verbose_flag)
+					fprintf(stderr, "       %s", PQerrorMessage(conn));
+
+				/* rollback to savepoint */
+				PQexec(conn, "ROLLBACK TO SAVEPOINT mapreduce_save");
+				PQexec(conn, "RELEASE SAVEPOINT mapreduce_save");
+
+				/* 
+				 * If we have an "object does not exist" error from a SQL input
+				 * then it may just be a dependency issue, so we don't error
+				 * right away.
+				 */
+				if (obj->kind != MAPRED_INPUT || 
+					obj->u.input.type != MAPRED_INPUT_QUERY ||
+					strcmp(error, OBJ_DOES_NOT_EXIST))
 				{
-					newitem = plist;
-					plist = plist->next;
-					free(newitem);
+					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
 				}
 			}
-			break;
 		}
 
-		case MAPRED_ADT:
-			XASSERT(obj->name);
-
-			bufsize += strlen(obj->name);
-			for (plist = obj->u.adt.returns; plist; plist = plist->next)
-			{
-				bufsize += strlen(plist->name) + 1 + strlen(plist->type);
-				if (plist->next)
-					bufsize += 2;  /* ", " */
-			}
-			
-			buffer = malloc(bufsize);
-			writebuffer("CREATE TYPE ");
-			writebuffer(obj->name);
-			writebuffer(" as (");
-			for (plist = obj->u.adt.returns; plist; plist = plist->next)
-			{
-				writebuffer(plist->name);
-				writebuffer(" ");
-				writebuffer(plist->type);
-				if (plist->next)
-					writebuffer(", ");
-			}
-			writebuffer(");\n\n");
-			break;
-
-		default:
-			XASSERT(false);
-
+		/* 
+		 * INPUTS setup columns AFTER creation.
+		 * All other objects handle it above prior to creation.
+		 */
+		if (obj->kind == MAPRED_INPUT && obj->created)
+			mapred_setup_columns(conn, obj);
 	}
-
-	if (buffer)
+	XFINALLY
 	{
-		PGresult   *result;
-
-		if (global_print_flag)
-		{
-			printf("%s", buffer);
-			free(buffer);
-			XASSERT(position < bufsize);
-		}
-		else
-		{
-			if (global_debug_flag)
-				printf("%s", buffer);				
-
-			/* There should be room to spare, but if not - spill the beans */
-			if (position >= bufsize)
-			{
-				free(buffer);
-				XASSERT(false);
-			}
-
-			/* Try to create the object */
-			result = PQexec(conn, buffer);
-			free(buffer);
-
-			if (PQresultStatus(result) != PGRES_COMMAND_OK)
-				XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
-		}
+		if (buffer)
+			mapred_free(buffer);
+		if (qbuffer)
+			mapred_free(qbuffer);
 	}
+	XTRY_END;
 
-	/* set the created flag on the object and return true */
-	obj->created = true;
-	return true;
-
-#undef writebuffer
+	return obj->created;
 }
 
 
@@ -2130,222 +2270,145 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 {
 	mapred_clist_t *clist    = NULL;
 	mapred_plist_t *plist    = NULL;
-	char           *ckind    = NULL;
-	char           *buffer   = NULL;
-	int             position = 0;
-	size_t          bufsize;
+	const char     *ckind    = NULL;
+	buffer_t       *buffer   = NULL;
 
-#define writebuffer(str)						\
-	position += snprintf(buffer+position, bufsize - position, str)
 
 	/* If the object wasn't created, then do nothing */
 //	if (!obj->created)
 //		return;
 
-	/*
-	 * Initial buffersize is large enough for:
-	 *   "CREATE EXTERNAL TABLE . (.) LOCATION (.) FORMAT TEXT (DELIMITER .)"
-	 * with a little wiggle room to spare.  We will extend this size below
-	 * to allow for the variable length fields.
-	 *
-	 * TODO: it would be preferable to share a buffer between objects rather
-	 * than allocating and releasing the buffer repeatedly.
-	 */
-	bufsize = 100;
-
-	if (obj->name)
-		bufsize += strlen(obj->name);
-
-	/* Otherwise attempt to create the object */
-	switch (obj->kind)
+	XTRY
 	{
-		case MAPRED_INPUT:
-			XASSERT(obj->name);
+		buffer = makebuffer(100, 100);
 
-			switch (obj->u.input.type)
-			{
-				case MAPRED_INPUT_TABLE:
-					break;  /* do nothing */
+		/* Otherwise attempt to create the object */
+		switch (obj->kind)
+		{
+			case MAPRED_INPUT:
+				XASSERT(obj->name);
 
-				case MAPRED_INPUT_FILE:
-				case MAPRED_INPUT_GPFDIST:
-				case MAPRED_INPUT_EXEC:
-					buffer = malloc(bufsize);
-					writebuffer("DROP EXTERNAL TABLE IF EXISTS ");
-					writebuffer(obj->name);
-					writebuffer(" CASCADE;\n");
-					break;
+				switch (obj->u.input.type)
+				{
+					case MAPRED_INPUT_TABLE:
+						obj->created = false;
+						break;  /* do nothing */
 
-				case MAPRED_INPUT_QUERY:
-					buffer = malloc(bufsize);
-					writebuffer("DROP VIEW IF EXISTS ");
-					writebuffer(obj->name);
-					writebuffer(" CASCADE;\n");					
-					break;
+					case MAPRED_INPUT_FILE:
+					case MAPRED_INPUT_GPFDIST:
+					case MAPRED_INPUT_EXEC:
+						bufcat(&buffer, "DROP EXTERNAL TABLE IF EXISTS ");
+						bufcat(&buffer, obj->name);
+						bufcat(&buffer, " CASCADE;\n");
+						break;
 
-				case MAPRED_INPUT_NONE:
-				default:
-					XASSERT(false);
-			}
-			break;
+					case MAPRED_INPUT_QUERY:
+						bufcat(&buffer, "DROP VIEW IF EXISTS ");
+						bufcat(&buffer, obj->name);
+						bufcat(&buffer, " CASCADE;\n");					
+						break;
 
-		case MAPRED_OUTPUT:
-			/* nothing to do for outputs */
-			break;
+					case MAPRED_INPUT_NONE:
+					default:
+						XASSERT(false);
+				}
+				break;
 
-		/*
-		 * The function types have different defaults and generate
-		 * slightly different error messages, but basically do the
-		 * same thing.  
-		 */
-		case MAPRED_MAPPER:
-			ckind = "MAPPER";
-			/* fallthrough */
+			case MAPRED_OUTPUT:
+				/* nothing to do for outputs */
+				obj->created = false;
+				break;
 
-		case MAPRED_TRANSITION:
-			if (!ckind)
-				ckind = "TRANSITION";
-			/* fallthrough */
+				/*
+				 * The function types have different defaults and generate
+				 * slightly different error messages, but basically do the
+				 * same thing.  
+				 */
+			case MAPRED_MAPPER:
+			case MAPRED_TRANSITION:
+			case MAPRED_COMBINER:
+			case MAPRED_FINALIZER:
+				ckind = mapred_kind_name[obj->kind];
 
-		case MAPRED_COMBINER:
-			if (!ckind)
-				ckind = "COMBINER";
-			/* fallthrough */
-
-		case MAPRED_FINALIZER:
-			if (!ckind)
-				ckind = "FINALIZER";
-
-			/*
-			 * 'kind' specific initialization accomplished above, now handle
-			 * the generic function creation.
-			 */
-			
-			/* It should have already been verified */
-			XASSERT(obj->name);
-			for (plist = obj->u.function.parameters; plist; plist = plist->next)
-			{
-				bufsize += strlen(plist->type);
-				if (plist->next)
-					bufsize += 2;  /* ', ' */
-			}
-
-			/* 
-			 * Allocate space for dropping the return type, if present:
-			 *     "DROP TYPE <name>_rtype CASCADE;\n"
-			 */
-			plist = obj->u.function.returns;
-			if (plist->next)
-				bufsize += 30 + strlen(obj->name);
-
-			/* Fill in the buffer */
-			buffer = malloc(bufsize);
-			writebuffer("DROP FUNCTION IF EXISTS ");
-			writebuffer(obj->name);
-			writebuffer("(");
-
-			/* Handle parameter list */
-			for (plist = obj->u.function.parameters; plist; plist = plist->next)
-			{
-				writebuffer(plist->type);
-				if (plist->next)
-					writebuffer(", ");
-			}
-
-			/* All done */
-			writebuffer(") CASCADE;\n");
-			break;
+				bufcat(&buffer, "DROP FUNCTION IF EXISTS ");
+				bufcat(&buffer, obj->name);
+				bufcat(&buffer, "(");
+				for (plist = obj->u.function.parameters; plist; plist = plist->next)
+				{  /* Handle parameter list */
+					bufcat(&buffer, plist->type);
+					if (plist->next)
+						bufcat(&buffer, ", ");
+				}
+				bufcat(&buffer, ") CASCADE;\n");
+				break;
 			
 
-		case MAPRED_REDUCER:
-		{
-			mapred_object_t  *transition = obj->u.reducer.transition.object;
-
-			XASSERT(obj->name);
-			XASSERT(transition);   /* is this a good assumption? */
-
-			if (!transition->u.function.parameters)
-				break;  /* FIXME */
-			XASSERT(transition->u.function.parameters);
-
-			/* 
-			 * The first parameter of the transition function is the 'state' and is
-			 * not listed as a parameter of the reducer, but all the rest of the
-			 * parameters are 
-			 */
-			plist = transition->u.function.parameters;
-			for (plist = plist->next; plist; plist = plist->next)
+			case MAPRED_REDUCER:
 			{
-				bufsize += strlen(plist->type);
-				if (plist->next)
-					bufsize += 2;  /* ', ' */
+				mapred_object_t  *transition = obj->u.reducer.transition.object;
+
+				XASSERT(obj->name);
+				XASSERT(transition);   /* is this a good assumption? */
+
+				if (!transition->u.function.parameters)
+					break;  /* FIXME */
+				XASSERT(transition->u.function.parameters);
+
+				bufcat(&buffer, "DROP AGGREGATE IF EXISTS ");
+				bufcat(&buffer, obj->name);
+				bufcat(&buffer, "(");
+
+				/* 
+				 * The first parameter of the transition function is the 'state' and is
+				 * not listed as a parameter of the reducer, but all the rest of the
+				 * parameters are 
+				 */
+				plist = transition->u.function.parameters;
+				for (plist = plist->next; plist; plist = plist->next)
+				{
+					bufcat(&buffer, plist->type);
+					if (plist->next)
+						bufcat(&buffer, ", ");
+				}
+				bufcat(&buffer, ") CASCADE;\n");
+				break;
 			}
 
-			buffer = malloc(bufsize);
-			writebuffer("DROP AGGREGATE IF EXISTS ");
-			writebuffer(obj->name);
-			writebuffer("(");
-			plist = transition->u.function.parameters;
-			for (plist = plist->next; plist; plist = plist->next)
-			{
-				writebuffer(plist->type);
-				if (plist->next)
-					writebuffer(", ");
-			}
-			writebuffer(") CASCADE;\n");
-			break;
-		}
+			case MAPRED_TASK:
+			case MAPRED_EXECUTION:
+				XASSERT(obj->name);
 
-		case MAPRED_TASK:
-		case MAPRED_EXECUTION:
-			XASSERT(obj->name);
+				bufcat(&buffer, "DROP VIEW IF EXISTS ");
+				bufcat(&buffer, obj->name);
+				bufcat(&buffer, " CASCADE;\n");
+				break;
 
-			buffer = malloc(bufsize);
-			writebuffer("DROP VIEW IF EXISTS ");
-			writebuffer(obj->name);
-			writebuffer(" CASCADE;\n");
-			break;
+			case MAPRED_ADT:
+				bufcat(&buffer, "DROP TYPE IF EXISTS ");
+				bufcat(&buffer, obj->name);
+				bufcat(&buffer, " CASCADE;\n");
+				break;
 
-		case MAPRED_ADT:
-			buffer = malloc(bufsize);
-			writebuffer("DROP TYPE IF EXISTS ");
-			writebuffer(obj->name);
-			writebuffer(" CASCADE;\n");
-			break;
-
-		default:
-			XASSERT(false);
-
-	}
-
-	if (buffer)
-	{
-		PGresult   *result;
-
-		if (global_print_flag)
-		{
-			printf("%s", buffer);
-			free(buffer);
-			XASSERT(position < bufsize);
-		}
-		else
-		{
-			if (global_debug_flag)
-				printf("%s", buffer);
-
-			/* There should be room to spare, but if not - spill the beans */
-			if (position >= bufsize)
-			{
-				free(buffer);
+			default:
 				XASSERT(false);
-			}
+		}
 
-			/* Try to create the object */
-			result = PQexec(conn, buffer);
-			free(buffer);
+		if (buffer->position > 0)
+		{
+			PGresult   *result;
 
-			/* Don't throw an exception because we want to clean up the rest */
-			if (PQresultStatus(result) != PGRES_COMMAND_OK)
+			/* 
+			 * In print-only mode we do everything but run the queries
+			 * ie, we still create and destroy objects.
+			 */
+			if (global_print_flag || global_debug_flag)
+				printf("%s", buffer->buffer);
+
+			/* Try to delete the object, but don't raise exception on error */
+			result = PQexec(conn, buffer->buffer);
+			if (PQresultStatus(result) == PGRES_COMMAND_OK)
+				obj->created = false;
+			else
 			{
 				char *error = PQresultErrorField(result, PG_DIAG_SQLSTATE);
 				
@@ -2368,13 +2431,13 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 					fprintf(stderr, PQerrorMessage(conn));
 				}
 			}
-			
 			PQclear(result);
 		}
 	}
-
-	/* clear the created flag */
-	obj->created = false;
-
-#undef writebuffer
+	XFINALLY
+	{
+		if (buffer)
+			mapred_free(buffer);
+	}
+	XTRY_END;
 }

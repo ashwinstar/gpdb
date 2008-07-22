@@ -15,7 +15,7 @@ CREATE EXTERNAL TABLE email(value text)
   LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/email/mailfiles')
   FORMAT 'TEXT';
 
--- MAPPER wordsplit_python
+-- MAP wordsplit_python
 CREATE FUNCTION wordsplit_python(value text)
 RETURNS SETOF wordsplit_python_rtype LANGUAGE plpythonu AS
 $$
@@ -30,7 +30,7 @@ words     = filter(lambda(x): x not in stopwords and not x.isdigit(), stems)
 return map(lambda(x): [x, 1], words)
 $$;
 
--- MAPPER reverse_python
+-- MAP reverse_python
 CREATE FUNCTION reverse_python(key text, value text)
 RETURNS reverse_python_rtype LANGUAGE plpythonu AS
 $$
@@ -45,7 +45,7 @@ FROM (SELECT key(m), value(m) FROM (SELECT wordsplit_python(value) as m FROM ema
 GROUP BY key;
 
 -- EXECUTION
-CREATE VIEW mapreduce_491_run_1 AS
+CREATE VIEW mapreduce_10633_run_1 AS
 SELECT key(m), value(m) FROM (SELECT reverse_python(key, value) as m FROM email_histogram) mapxq
 WHERE m is not null;
 
@@ -56,5 +56,5 @@ DROP EXTERNAL TABLE IF EXISTS email CASCADE;
 DROP FUNCTION IF EXISTS wordsplit_python(text) CASCADE;
 DROP FUNCTION IF EXISTS reverse_python(text, text) CASCADE;
 DROP VIEW IF EXISTS email_histogram CASCADE;
-DROP VIEW IF EXISTS mapreduce_491_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_10633_run_1 CASCADE;
 

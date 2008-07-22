@@ -6,33 +6,33 @@
 -- m/'EXECUTE '[^']*'/
 -- s/'EXECUTE '[^']*'/EXECUTE 'DUMMY'/
 -- end_matchsubs
-CREATE TYPE reverse_rtype as (key text, value text);
+CREATE TYPE reverse_rtype as (key integer, value integer);
 
-CREATE TYPE myMap_rtype as (key text, value text);
+CREATE TYPE myMap_rtype as (key text, value integer);
 
 -- INPUT weblog
 CREATE EXTERNAL TABLE weblog(value text)
   LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log')
   FORMAT 'TEXT';
 
--- MAPPER myMap
-CREATE FUNCTION myMap(key text, value text)
+-- MAP myMap
+CREATE FUNCTION myMap(value text)
 RETURNS myMap_rtype LANGUAGE plperl AS
 $$
-return {} unless ($_[1] =~ m/GET ([^ ?,]+)/);
+return {} unless ($_[0] =~ m/GET ([^ ?,]+)/);
 return {"key" => $1, "value" => 1}
 $$;
 
 -- TRANSITION myTransition
-CREATE FUNCTION myTransition(state text, value text)
-RETURNS text LANGUAGE plperl AS
+CREATE FUNCTION myTransition(state integer, value integer)
+RETURNS integer LANGUAGE plperl AS
 $$
 return $_[0] + $_[1];
 $$;
 
 -- REDUCER myReduce
-CREATE AGGREGATE myReduce (text) (
-  stype = text,
+CREATE AGGREGATE myReduce (integer) (
+  stype = integer,
   initcond = '0',
   sfunc = myTransition,
   prefunc = myTransition
@@ -41,17 +41,17 @@ CREATE AGGREGATE myReduce (text) (
 -- TASK access_count
 CREATE VIEW access_count AS
 SELECT key, myReduce(value) as value
-FROM (SELECT key(m), value(m) FROM (SELECT myMap('clar'::text, value) as m FROM weblog) mapxq
+FROM (SELECT key(m), value(m) FROM (SELECT myMap(value) as m FROM weblog) mapxq
 WHERE m is not null) mapsubq
 GROUP BY key;
 
 -- INPUT network
-CREATE EXTERNAL TABLE network(key text, value text)
+CREATE EXTERNAL TABLE network(key integer, value integer)
   LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/www.small.dat')
   FORMAT 'TEXT' ( DELIMITER '|' );
 
--- MAPPER reverse
-CREATE FUNCTION reverse(key text, value text)
+-- MAP reverse
+CREATE FUNCTION reverse(key integer, value integer)
 RETURNS reverse_rtype LANGUAGE plpythonu AS
 $$
 return {'key': value, 'value': key}
@@ -64,27 +64,27 @@ WHERE m is not null;
 
 -- INPUT reverse_access_count
 CREATE VIEW reverse_access_count AS
-SELECT a.key, sum(b.value::integer) as value
+SELECT a.key as akey, b.key as bkey, sum(b.value::integer) as value
 FROM   reverse_network a, access_count b
-WHERE  a.key = b.key
-GROUP BY a.key
+WHERE  a.key != b.key
+GROUP BY a.key, b.key
 ;
 
 -- EXECUTION
-CREATE VIEW mapreduce_241_run_1 AS
+CREATE VIEW mapreduce_54089_run_1 AS
 SELECT * FROM reverse_access_count;
 
 
 DROP TYPE IF EXISTS reverse_rtype CASCADE;
 DROP TYPE IF EXISTS myMap_rtype CASCADE;
 DROP EXTERNAL TABLE IF EXISTS weblog CASCADE;
-DROP FUNCTION IF EXISTS myMap(text, text) CASCADE;
-DROP FUNCTION IF EXISTS myTransition(text, text) CASCADE;
-DROP AGGREGATE IF EXISTS myReduce(text) CASCADE;
+DROP FUNCTION IF EXISTS myMap(text) CASCADE;
+DROP FUNCTION IF EXISTS myTransition(integer, integer) CASCADE;
+DROP AGGREGATE IF EXISTS myReduce(integer) CASCADE;
 DROP VIEW IF EXISTS access_count CASCADE;
 DROP EXTERNAL TABLE IF EXISTS network CASCADE;
-DROP FUNCTION IF EXISTS reverse(text, text) CASCADE;
+DROP FUNCTION IF EXISTS reverse(integer, integer) CASCADE;
 DROP VIEW IF EXISTS reverse_network CASCADE;
 DROP VIEW IF EXISTS reverse_access_count CASCADE;
-DROP VIEW IF EXISTS mapreduce_241_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_54089_run_1 CASCADE;
 

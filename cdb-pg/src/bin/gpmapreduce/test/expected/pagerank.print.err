@@ -2,4 +2,4 @@
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
 -- end_matchsubs
-SELECT * FROM mapreduce_33374_run_1 ORDER BY value;
+SELECT * FROM mapreduce_49914_run_1 ORDER BY key, value;

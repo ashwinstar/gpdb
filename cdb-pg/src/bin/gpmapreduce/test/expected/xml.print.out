@@ -13,7 +13,7 @@ CREATE EXTERNAL TABLE xml(key integer, value text)
   LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/xml.dat')
   FORMAT 'TEXT' ( DELIMITER '|' );
 
--- MAPPER xml_extract
+-- MAP xml_extract
 CREATE FUNCTION xml_extract(key integer, value text)
 RETURNS SETOF xml_extract_rtype LANGUAGE plpythonu AS
 $$
@@ -27,7 +27,7 @@ return rval
 $$;
 
 -- EXECUTION
-CREATE VIEW mapreduce_552_run_1 AS
+CREATE VIEW mapreduce_10694_run_1 AS
 SELECT key(m), value(m), pos(m) FROM (SELECT xml_extract(key, value) as m FROM xml) mapxq
 ;
 
@@ -35,5 +35,5 @@ SELECT key(m), value(m), pos(m) FROM (SELECT xml_extract(key, value) as m FROM x
 DROP TYPE IF EXISTS xml_extract_rtype CASCADE;
 DROP EXTERNAL TABLE IF EXISTS xml CASCADE;
 DROP FUNCTION IF EXISTS xml_extract(integer, text) CASCADE;
-DROP VIEW IF EXISTS mapreduce_552_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_10694_run_1 CASCADE;
 

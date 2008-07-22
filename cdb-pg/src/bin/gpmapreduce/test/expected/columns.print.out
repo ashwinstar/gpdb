@@ -13,7 +13,7 @@ CREATE EXTERNAL TABLE weblog(ip text, rfc text, uname text, date text, timezone 
   LOCATION('file://maple/Users/cwelton/dev/cdb2/main/cdb-pg/src/bin/gpmapreduce/test/data/access_log_fake')
   FORMAT 'TEXT' ( DELIMITER '|' );
 
--- MAPPER myMap
+-- MAP myMap
 CREATE FUNCTION myMap(key text, ip text, url text)
 RETURNS myMap_rtype LANGUAGE plperl AS
 $$
@@ -37,7 +37,7 @@ CREATE AGGREGATE myReduce (integer) (
 );
 
 -- EXECUTION
-CREATE VIEW mapreduce_99826_run_1 AS
+CREATE VIEW mapreduce_10025_run_1 AS
 SELECT ip, myReduce(count) as state
 FROM (SELECT ip(m), count(m) FROM (SELECT myMap('clar'::text, ip, url) as m FROM weblog) mapxq
 WHERE m is not null) mapsubq
@@ -49,5 +49,5 @@ DROP EXTERNAL TABLE IF EXISTS weblog CASCADE;
 DROP FUNCTION IF EXISTS myMap(text, text, text) CASCADE;
 DROP FUNCTION IF EXISTS myTransition(integer, integer) CASCADE;
 DROP AGGREGATE IF EXISTS myReduce(integer) CASCADE;
-DROP VIEW IF EXISTS mapreduce_99826_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_10025_run_1 CASCADE;
 

@@ -2,11 +2,12 @@
 #include <libpq-fe.h>
 
 #include <mapred.h>
+#include <mapred_errors.h>
 #include <except.h>
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <getopt.h>
+#include <termios.h>
 
 ALLOW_EXCEPTIONS;
 
@@ -24,6 +25,8 @@ void usage(char *procname)
 	fprintf(stderr, "Usage: %s [options] file.yml\n", procname);
 	exit(0);
 }
+
+void read_password(char *p, size_t len);
 
 int
 main (int argc, char *argv[])
@@ -170,23 +173,44 @@ main (int argc, char *argv[])
 	for (doc_item = documents; doc_item; doc_item = doc_item->next)
 	{
 		PGconn   *conn;
+		char      pwdbuf[100];
+		char      portbuf[11];  /* max int size should be 10 digits */
 		char     *pwd, *port, *options, *tty;
+		boolean   needpass;
 
 		XTRY
 		{
 			mapred_document_t *doc = &doc_item->object->u.document;
 
-			port = NULL; //doc->port;  /* fixme */
 
-			/* FIXME: get password */
-			pwd     = (char *) NULL;
-			options = (char *) NULL;
-			tty     = (char *) NULL;
+			if (doc->port > 0)
+			{
+				snprintf(portbuf, sizeof(portbuf), "%d", doc->port);
+				port = portbuf;
+			}
+			else
+				port = NULL;
 
-			conn = PQsetdbLogin(doc->host, port, options,tty, 
-								doc->database, doc->user, pwd);
+			options = NULL;
+			tty     = NULL;
+			pwd     = NULL;
+
+			do {
+				needpass = false;			
+				conn = PQsetdbLogin(doc->host, port, options,tty, 
+									doc->database, doc->user, pwd);
+				if (PQstatus(conn) == CONNECTION_BAD &&
+					!strcmp(PQerrorMessage(conn), PQnoPasswordSupplied))
+				{
+					PQfinish(conn);
+					needpass = true;
+					read_password(pwdbuf, sizeof(pwdbuf));
+					pwd = pwdbuf;
+				}
+			} while (needpass);
+
 			if (PQstatus(conn) == CONNECTION_BAD)
-				fprintf(stderr, "%s: %s", argv[0], PQerrorMessage(conn));
+				fprintf(stderr, PQerrorMessage(conn));
 			else
 				mapred_run_document(conn, doc);
 		}
@@ -218,3 +242,61 @@ main (int argc, char *argv[])
 	return 0;
 }
 
+
+
+
+void read_password(char *p, size_t len)
+{
+    struct termios t_orig, t;
+    FILE *termin, *termout;
+
+    termin  = fopen("/dev/tty", "r");
+    termout = fopen("/dev/tty", "w");
+    if (!termin || !termout) 
+    {
+        if (termin)
+			fclose(termin);
+        if (termout)
+            fclose(termout);
+        termin = stdin;
+        termout = stdout;
+    }
+
+    tcgetattr(fileno(termin), &t);
+    t_orig = t;
+    t.c_lflag &= ~ECHO;
+    tcsetattr(fileno(termin), TCSAFLUSH, &t);
+	
+    fputs("Password> ", termout);
+    fflush(termout);
+
+    if (fgets(p, len, termin) == NULL)
+        p[0] = '\0';
+    
+    /* If that didn't get the whole input suck the rest off */
+    len = strlen(p);
+    if (len > 0)
+    {
+        if (p[len-1] == '\n')
+            p[len-1] = '\0';
+        else
+        {
+            char c[25];
+            do {
+                if (fgets(c, sizeof(c), termin) == NULL)
+                    break;
+                len = strlen(c);
+            } while (len > 0 && c[len-1] != '\n');
+        }
+    }
+
+    tcsetattr(fileno(termin), TCSAFLUSH, &t_orig);
+    fputs("\n", termout);
+    fflush(termout);
+
+    if (termin != stdin)
+    {
+        fclose(termin);
+        fclose(termout);
+    }
+}
