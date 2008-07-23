@@ -605,8 +605,13 @@ APR_DECLARE(void) fsm_init(void)
 		 a_unit_start_reply, NULL);
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, TIMEUP_EVENT, UNIT_INVALID_CMDSTATE,
 		 a_unit_timeout, NULL);
+    /** disable periodic check */
+    /*
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, SUCCESS_EVENT, UNIT_RUNNING_CMDSTATE,
 		 a_unit_running, a_unit_schedule_check, NULL);
+    */
+    gpcc_fsm_put(UNIT_STARTING_CMDSTATE, SUCCESS_EVENT, UNIT_RUNNING_CMDSTATE,
+		 a_unit_running, NULL);
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, FAILURE_EVENT, UNIT_INVALID_CMDSTATE,
 		 a_unit_invalid, NULL);
     gpcc_fsm_put(UNIT_STARTING_CMDSTATE, UNIT_START_EVENT, UNIT_STARTING_CMDSTATE,
