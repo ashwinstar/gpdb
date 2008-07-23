@@ -60,16 +60,16 @@ static apr_status_t a_user_logout(gpcc_event_t *ev, void *arg)
     p += sizeof(int);
     key = p;
 
-    gpcc_log_info("logout: sessionid = '%s'", key);
+    gpcc_log_info("logout: try logout the session with sessionid = '%s'", key);
 
     userinfo = (user_t *) apr_hash_get(slot->u.user.usertb, key, APR_HASH_KEY_STRING);
     if (userinfo) {
-	gpcc_log_info("remove the session with sessionid %s", key);
+	gpcc_log_info("logout: remove the session with sessionid %s", key);
 	apr_hash_set(slot->u.user.usertb, key, APR_HASH_KEY_STRING, NULL);
 	free(userinfo);
 	userinfo = 0;
     } else {
-	gpcc_log_info("session %s is not there.", key);
+	gpcc_log_info("logout: session %s is not there.", key);
     }
 
 
@@ -104,14 +104,12 @@ static apr_status_t a_login_get_password_file(gpcc_event_t *ev, void *arg)
     host = p;
     
     if (datalen >= sizeof(data)) {
-	gpcc_log_error("data length exceed limit %d >= %d", datalen, sizeof(data));
+	gpcc_log_error("login: data length exceed limit %d >= %d", datalen, sizeof(data));
 	goto bail;
     }
 
     memcpy(data, url, datalen);
     data[datalen] = 0;
-    gpcc_log_info("host = %s", host);
-    gpcc_log_info("data = %s", data);
 
     uri = gpcc_net_uri_param_alloc(data);
     if (!uri) {
@@ -125,7 +123,7 @@ static apr_status_t a_login_get_password_file(gpcc_event_t *ev, void *arg)
 	goto bail;
     }
 
-    gpcc_log_info("gp login:  user = '%s', host = '%s', password = '%s'", user, host, password);
+    gpcc_log_info("login: %s@%s is logging on", user, host);
 
     slot->u.login.conn = conn;
     slot->u.login.username = apr_pstrdup(slot->pool, user);
@@ -194,13 +192,13 @@ static apr_status_t a_login_logging_on(gpcc_event_t *ev, void *arg)
 	if (strcmp(user, slot->u.login.username) == 0) {
 	    if (apr_password_validate(slot->u.login.password, encoded_passwd) == 0) {
 		/* username and password correct */
-		gpcc_log_info("correct password for user %s", slot->u.login.username);
+		gpcc_log_info("login: correct password for user %s", slot->u.login.username);
 		evt = gpcc_event_alloc(SUCCESS_EVENT, slot->cmdidx, 0);
 		gpcc_evqueue_put(gpma.evq, evt);
 		return 0;
 	    } else {
 		/* wrong password */
-		gpcc_log_info("wrong password for user %s", slot->u.login.username);
+		gpcc_log_info("login: wrong password for user %s", slot->u.login.username);
 		evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
 		gpcc_evqueue_put(gpma.evq, evt);
 		obj = gpcc_json_http_reply(gpma.array_name, 0, "login", FAIL_STATUS, 0, "wrong password");
@@ -256,7 +254,7 @@ static apr_status_t a_login_logged_on(gpcc_event_t *ev, void *arg)
     strcat(user->key, ":");
     strcat(user->key, sid_str);
 
-    gpcc_log_info("new login session with id = '%s'", user->key);
+    gpcc_log_info("login: %s logged on with sessionid = '%s'", slot->u.login.username, user->key);
     apr_hash_set(gpma.user_cmdslot->u.user.usertb, user->key, APR_HASH_KEY_STRING, (const void *) user);
 
     obj = gpcc_json_http_reply(gpma.array_name, 0, "login", OK_STATUS, user->key, 0);

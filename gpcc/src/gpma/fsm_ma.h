@@ -29,7 +29,7 @@ static apr_status_t a_lma_mkdir(gpcc_event_t *ev, void *arg)
 	slot->countdown = 5;
 	return 0;
     }
-    gpcc_log_info("mkdir %s. ret=%d", gpma.chubby_array_dir, e);
+    gpcc_log_info("mkdir %s finished. ret=%d", gpma.chubby_array_dir, e);
 
     gpcc_log_info("mkdir %s", gpma.chubby_etc_dir);
 
@@ -40,7 +40,7 @@ static apr_status_t a_lma_mkdir(gpcc_event_t *ev, void *arg)
 	slot->countdown = 5;
 	return 0;
     }
-    gpcc_log_info("mkdir %s. ret=%d", gpma.chubby_etc_dir, e);
+    gpcc_log_info("mkdir %s finished. ret=%d", gpma.chubby_etc_dir, e);
 
     e = chubby_connection_stat(slot->u.lma.chubby.conn,
 			       &stat,
@@ -261,7 +261,7 @@ static apr_status_t a_lma_leader_renew(gpcc_event_t *ev, void *arg)
     cmdslot_t *slot = arg;
     int e;
 
-    gpcc_log_info("start renewing the lease");
+    gpcc_log_info("Lead MA is renewing the lease");
     e = chubby_connection_asynchronous_renew(slot->u.lma.chubby.lease,
 					     chubby_renew_cb,
 					     (void *) &slot->cmdidx,

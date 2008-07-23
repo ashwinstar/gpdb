@@ -180,10 +180,6 @@ static apr_status_t a_admin_add_set_password_file(gpcc_event_t *ev, void *arg)
 		   sizeof(encoded));
 
     sprintf(line, "%s:%s\n", slot->u.admin.username, encoded);
-    gpcc_log_info("add user '%s', password = '%s', encoded = '%s'", 
-		  slot->u.admin.username,
-		  slot->u.admin.password,
-		  encoded);
 
     if (result->retval == CHUBBY_E_NOENT) {
 	/* file not exists */
