@@ -33,9 +33,9 @@ static void usage(const char* msg)
     fprintf(stderr, "    -l logdir          : the log directory\n");
     fprintf(stderr, "    -p ma_port         : the MA port number\n");
     fprintf(stderr, "    -P pxN             : paxos instance\n");
-    fprintf(stderr, "    -s                 : SSL support\n");
-    fprintf(stderr, "    -c server_cert_path: server certificate in PEM format\n");
-    fprintf(stderr, "    -k server_key_path : server private key in PEM format\n");
+    fprintf(stderr, "    -s                 : run HTTPS server interface.  gpma runs HTTP server interface if flag -s is not specified.\n");
+    fprintf(stderr, "    -c server_cert_path: full path of server certificate.  Certificate must be in PEM format\n");
+    fprintf(stderr, "    -k server_key_path : full path of server private key.  Private key must be in PEM format\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "e.g. %s -a gpdb -l /db/ma -P localhost:11000\n", gpma.progname);
     fprintf(stderr, "\n");
