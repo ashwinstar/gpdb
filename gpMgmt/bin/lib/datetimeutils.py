@@ -153,7 +153,7 @@ def str_to_datetime(string, pos=0, endpos=None):
         raise DatetimeValueError(datetime_syntax_msg, string, pos, endpos)
     elif nextpos < endpos and not string[nextpos:endpos].isspace():
         # got valid date or datetime, but there is something more after it
-        if isinstance(value, datetime):
+        if hasattr(value, 'hour'):
             msg = 'date and time are followed by unrecognized "%s"'
         else:
             msg = 'date is followed by unrecognized "%s"'
@@ -204,6 +204,9 @@ def scan_datetime(string, pos=0, endpos=None):
     >>> scan_datetime('2008-06-31')
     Traceback (most recent call last):
     DatetimeValueError: "2008-06-31" ... day is out of range for month
+    >>> scan_datetime('2008-07-13 24:00')
+    Traceback (most recent call last):
+    DatetimeValueError: "2008-07-13 24:00" ... hour must be in 0..23
     >>> scan_datetime('2008-07-13 14:15:1  ')
     Traceback (most recent call last):
     DatetimeValueError: "2008-07-13 14:15:1  " ... second should have 2 digits
