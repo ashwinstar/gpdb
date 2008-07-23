@@ -201,10 +201,7 @@ def calc_mirror_port_base(db):
 
     mirror_offset = opt['-p']
     (min_port, max_port) = get_minmax_port(db)
-    if max_port > 40000:
-        port_base = min_port - mirror_offset-1
-    else:
-        port_base = min_port + mirror_offset-1
+    port_base = min_port + mirror_offset-1
 
     if port_base >= max_mir_port or port_base <= min_mir_port:
         gpmlog.log_fatal('Value of MIRROR_OFFSET supplied via -a option is out of valid')
