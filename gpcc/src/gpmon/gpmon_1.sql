@@ -1,0 +1,712 @@
+
+\c template1;
+drop database if exists gpmon_1;
+create database gpmon_1;
+\c gpmon_1;
+
+
+--  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--  metrics 
+--
+
+create table metrics_history (
+       ctime timestamp(0) not null,
+       hostname varchar(64) not null,
+       mem_total bigint not null, mem_used bigint not null,
+       mem_actual_used bigint not null, mem_actual_free bigint not null,
+       swap_total bigint not null, swap_used bigint not null, 
+       swap_page_in bigint not null, swap_page_out bigint not null,
+       cpu_user float not null, cpu_sys float not null, cpu_idle float not null,
+       load0 float not null, load1 float not null, load2 float not null,
+       disk_ro bigint not null, disk_wo bigint not null, disk_rb bigint not null, disk_wb bigint not null, 
+       net_rp bigint not null, net_wp bigint not null, net_rb bigint not null, net_wb bigint not null
+) 
+with (fillfactor=100)
+distributed by (ctime);
+
+
+create external web table metrics_now (
+       ctime timestamp(0),
+       hostname varchar(64),
+       mem_total bigint, mem_used bigint,
+       mem_actual_used bigint, mem_actual_free bigint,
+       swap_total bigint, swap_used bigint, 
+       swap_page_in bigint, swap_page_out bigint,
+       cpu_user float, cpu_sys float, cpu_idle float,
+       load0 float, load1 float, load2 float,
+       disk_ro bigint, disk_wo bigint, disk_rb bigint, disk_wb bigint, 
+       net_rp bigint, net_wp bigint, net_rb bigint, net_wb bigint
+) execute 'cat gpmon.1/metrics_now.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+create external web table metrics_tail (
+       ctime timestamp(0),
+       hostname varchar(64),
+       mem_total bigint, mem_used bigint,
+       mem_actual_used bigint, mem_actual_free bigint,
+       swap_total bigint, swap_used bigint, 
+       swap_page_in bigint, swap_page_out bigint,
+       cpu_user float, cpu_sys float, cpu_idle float,
+       load0 float, load1 float, load2 float,
+       disk_ro bigint, disk_wo bigint, disk_rb bigint, disk_wb bigint, 
+       net_rp bigint, net_wp bigint, net_rb bigint, net_wb bigint
+) execute 'cat gpmon.1/metrics_tail.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+create external web table _metrics_tail (
+       ctime timestamp(0),
+       hostname varchar(64),
+       mem_total bigint, mem_used bigint,
+       mem_actual_used bigint, mem_actual_free bigint,
+       swap_total bigint, swap_used bigint, 
+       swap_page_in bigint, swap_page_out bigint,
+       cpu_user float, cpu_sys float, cpu_idle float,
+       load0 float, load1 float, load2 float,
+       disk_ro bigint, disk_wo bigint, disk_rb bigint, disk_wb bigint, 
+       net_rp bigint, net_wp bigint, net_rb bigint, net_wb bigint
+) execute 'cat gpmon.1/_metrics_tail.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+--  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--  queries
+--
+
+create table queries_history (
+       ctime timestamp(0),
+       tmid int not null,
+       xid int not null,
+       cid int not null,
+       -- ssid int not null,    -- for 3.2, add gp_session_id
+       -- ccnt int not null,    -- for 3.2, add gp_command_count
+       uname varchar(64) not null,
+       db varchar(64) not null,
+       cost int not null,
+       tsubmit timestamp(0) not null, 
+       tstart timestamp(0) not null, 
+       tfin timestamp(0) not null,
+       status varchar(64) not null,
+       rows_out bigint not null,
+       cpu_elapsed bigint not null,
+       cpu_currpct float not null,
+       skew_cpu float not null,
+       skew_rows float not null,
+       query_text text not null default '',
+       query_plan text not null default ''
+)
+with (fillfactor=100)
+distributed by (ctime);
+
+
+
+create external web table queries_now (
+       ctime timestamp(0),
+       tmid int,
+       xid int,
+       cid int,
+       -- ssid int,    -- for 3.2, add gp_session_id
+       -- ccnt int,    -- for 3.2, add gp_command_count
+       uname varchar(64),
+       db varchar(64),
+       cost int,
+       tsubmit timestamp(0), 
+       tstart timestamp(0), 
+       tfin timestamp(0),
+       status varchar(64),
+       rows_out bigint,
+       cpu_elapsed bigint,
+       cpu_currpct float,
+       skew_cpu float,		-- always 0
+       skew_rows float,		-- always 0
+       query_text text,
+       query_plan text
+) execute 'python $GPHOME/bin/lib/gpmon_catqrynow.py' on master format 'csv' (delimiter '|' NULL as 'null');
+
+create external web table queries_now_fast (
+       ctime timestamp(0),
+       tmid int,
+       xid int,
+       cid int,
+       -- ssid int,    -- for 3.2, add gp_session_id
+       -- ccnt int,    -- for 3.2, add gp_command_count
+       uname varchar(64),
+       db varchar(64),
+       cost int,
+       tsubmit timestamp(0), 
+       tstart timestamp(0), 
+       tfin timestamp(0),
+       status varchar(64),
+       rows_out bigint,
+       cpu_elapsed bigint,
+       cpu_currpct float,
+       skew_cpu float,		-- always 0
+       skew_rows float
+       -- excluded: query_text text
+       -- excluded: query_plan text
+) execute 'cat gpmon.1/queries_now.dat' on master format 'csv' (delimiter '|' NULL as 'null');
+
+create external web table queries_tail (
+       ctime timestamp(0),
+       tmid int,
+       xid int,
+       cid int,
+       -- ssid int,    -- for 3.2, add gp_session_id
+       -- ccnt int,    -- for 3.2, add gp_command_count
+       uname varchar(64),
+       db varchar(64),
+       cost int,
+       tsubmit timestamp(0), 
+       tstart timestamp(0), 
+       tfin timestamp(0),
+       status varchar(64),
+       rows_out bigint,
+       cpu_elapsed bigint,
+       cpu_currpct float,
+       skew_cpu float,
+       skew_rows float,
+       query_text text,
+       query_plan text
+) execute 'cat gpmon.1/queries_tail.dat 2> /dev/null' on master format 'csv' (delimiter '|' NULL as 'null');
+
+
+create external web table _queries_tail (
+       ctime timestamp(0),
+       tmid int,
+       xid int,
+       cid int,
+       -- ssid int,    -- for 3.2, add gp_session_id
+       -- ccnt int,    -- for 3.2, add gp_command_count
+       uname varchar(64),
+       db varchar(64),
+       cost int,
+       tsubmit timestamp(0), 
+       tstart timestamp(0), 
+       tfin timestamp(0),
+       status varchar(64),
+       rows_out bigint,
+       cpu_elapsed bigint,
+       cpu_currpct float,
+       skew_cpu float,
+       skew_rows float,
+       query_text text,
+       query_plan text
+) execute 'cat gpmon.1/_queries_tail.dat 2> /dev/null' on master format 'csv' (delimiter '|' NULL as 'null');
+
+
+--  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+--  query iterators
+--
+
+create table iterators_history (
+       ctime timestamp(0),
+       tmid int not null,
+       xid int not null,
+       cid int not null,
+       -- ssid int not null,    -- for 3.2, add gp_session_id
+       -- ccnt int not null,    -- for 3.2, add gp_command_count
+       segid int not null,
+       pid int not null,
+       nid int not null,
+       pnid int not null,
+       hostname varchar(64) not null,
+       ntype varchar(64) not null,
+       nstatus varchar(64) not null,
+       tstart timestamp(0) not null,
+       tduration int not null,
+       pmemsize bigint not null,
+       pmemmax bigint not null,
+       memsize bigint not null,
+       memresid bigint not null,
+       memshare bigint not null,
+       pfaults bigint not null,
+       pfaults_elapsed bigint not null,
+       cpu_elapsed bigint not null,
+       cpu_currpct float not null,
+       phase varchar(64) not null,
+       m0_name varchar(64) not null default '',
+       m0_unit varchar(64) not null default '',
+       m0_in bigint not null default 0,
+       m0_out bigint not null default 0,
+       m1_name varchar(64) not null default '',
+       m1_unit varchar(64) not null default '',
+       m1_in bigint not null default 0,
+       m1_out bigint not null default 0,
+       m2_name varchar(64) not null default '',
+       m2_unit varchar(64) not null default '',
+       m2_in bigint not null default 0,
+       m2_out bigint not null default 0,
+       m3_name varchar(64) not null default '',
+       m3_unit varchar(64) not null default '',
+       m3_in bigint not null default 0,
+       m3_out bigint not null default 0,
+       m4_name varchar(64) not null default '',
+       m4_unit varchar(64) not null default '',
+       m4_in bigint not null default 0,
+       m4_out bigint not null default 0,
+       m5_name varchar(64) not null default '',
+       m5_unit varchar(64) not null default '',
+       m5_in bigint not null default 0,
+       m5_out bigint not null default 0,
+       m6_name varchar(64) not null default '',
+       m6_unit varchar(64) not null default '',
+       m6_in bigint not null default 0,
+       m6_out bigint not null default 0,
+       m7_name varchar(64) not null default '',
+       m7_unit varchar(64) not null default '',
+       m7_in bigint not null default 0,
+       m7_out bigint not null default 0,
+       m8_name varchar(64) not null default '',
+       m8_unit varchar(64) not null default '',
+       m8_in bigint not null default 0,
+       m8_out bigint not null default 0,
+       m9_name varchar(64) not null default '',
+       m9_unit varchar(64) not null default '',
+       m9_in bigint not null default 0,
+       m9_out bigint not null default 0
+)
+with (fillfactor=100)
+distributed by (ctime);
+
+
+
+create external web table iterators_now (
+       ctime timestamp(0),
+       tmid int,
+       xid int,
+       cid int,
+       -- ssid int,    -- for 3.2, add gp_session_id
+       -- ccnt int,    -- for 3.2, add gp_command_count
+       segid int,
+       pid int,
+       nid int,
+       pnid int,
+       hostname varchar(64),
+       ntype varchar(64),
+       nstatus varchar(64),
+       tstart timestamp(0),
+       tduration int,
+       pmemsize bigint,
+       pmemmax bigint,
+       memsize bigint,
+       memresid bigint,
+       memshare bigint,
+       pfaults bigint,
+       pfaults_elapsed bigint,
+       cpu_elapsed bigint,
+       cpu_currpct float,
+       phase varchar(64),
+       m0_name varchar(64),
+       m0_unit varchar(64),
+       m0_in bigint,
+       m0_out bigint,
+       m1_name varchar(64),
+       m1_unit varchar(64),
+       m1_in bigint,
+       m1_out bigint,
+       m2_name varchar(64),
+       m2_unit varchar(64),
+       m2_in bigint,
+       m2_out bigint,
+       m3_name varchar(64),
+       m3_unit varchar(64),
+       m3_in bigint,
+       m3_out bigint,
+       m4_name varchar(64),
+       m4_unit varchar(64),
+       m4_in bigint,
+       m4_out bigint,
+       m5_name varchar(64),
+       m5_unit varchar(64),
+       m5_in bigint,
+       m5_out bigint,
+       m6_name varchar(64),
+       m6_unit varchar(64),
+       m6_in bigint,
+       m6_out bigint,
+       m7_name varchar(64),
+       m7_unit varchar(64),
+       m7_in bigint,
+       m7_out bigint,
+       m8_name varchar(64),
+       m8_unit varchar(64),
+       m8_in bigint,
+       m8_out bigint,
+       m9_name varchar(64),
+       m9_unit varchar(64),
+       m9_in bigint,
+       m9_out bigint
+) execute 'cat gpmon.1/iterators_now.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+create external web table iterators_tail (
+       ctime timestamp(0),
+       tmid int,
+       xid int,
+       cid int,
+       -- ssid int,    -- for 3.2, add gp_session_id
+       -- ccnt int,    -- for 3.2, add gp_command_count
+       segid int,
+       pid int,
+       nid int,
+       pnid int,
+       hostname varchar(64),
+       ntype varchar(64),
+       nstatus varchar(64),
+       tstart timestamp(0),
+       tduration int,
+       pmemsize bigint,
+       pmemmax bigint,
+       memsize bigint,
+       memresid bigint,
+       memshare bigint,
+       pfaults bigint,
+       pfaults_elapsed bigint,
+       cpu_elapsed bigint,
+       cpu_currpct float,
+       phase varchar(64),
+       m0_name varchar(64),
+       m0_unit varchar(64),
+       m0_in bigint,
+       m0_out bigint,
+       m1_name varchar(64),
+       m1_unit varchar(64),
+       m1_in bigint,
+       m1_out bigint,
+       m2_name varchar(64),
+       m2_unit varchar(64),
+       m2_in bigint,
+       m2_out bigint,
+       m3_name varchar(64),
+       m3_unit varchar(64),
+       m3_in bigint,
+       m3_out bigint,
+       m4_name varchar(64),
+       m4_unit varchar(64),
+       m4_in bigint,
+       m4_out bigint,
+       m5_name varchar(64),
+       m5_unit varchar(64),
+       m5_in bigint,
+       m5_out bigint,
+       m6_name varchar(64),
+       m6_unit varchar(64),
+       m6_in bigint,
+       m6_out bigint,
+       m7_name varchar(64),
+       m7_unit varchar(64),
+       m7_in bigint,
+       m7_out bigint,
+       m8_name varchar(64),
+       m8_unit varchar(64),
+       m8_in bigint,
+       m8_out bigint,
+       m9_name varchar(64),
+       m9_unit varchar(64),
+       m9_in bigint,
+       m9_out bigint
+) execute 'cat gpmon.1/iterators_tail.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+create external web table _iterators_tail (
+       ctime timestamp(0),
+       tmid int,
+       xid int,
+       cid int,
+       -- ssid int,    -- for 3.2, add gp_session_id
+       -- ccnt int,    -- for 3.2, add gp_command_count
+       segid int,
+       pid int,
+       nid int,
+       pnid int,
+       hostname varchar(64),
+       ntype varchar(64),
+       nstatus varchar(64),
+       tstart timestamp(0),
+       tduration int,
+       pmemsize bigint,
+       pmemmax bigint,
+       memsize bigint,
+       memresid bigint,
+       memshare bigint,
+       pfaults bigint,
+       pfaults_elapsed bigint,
+       cpu_elapsed bigint,
+       cpu_currpct float,
+       phase varchar(64),
+       m0_name varchar(64),
+       m0_unit varchar(64),
+       m0_in bigint,
+       m0_out bigint,
+       m1_name varchar(64),
+       m1_unit varchar(64),
+       m1_in bigint,
+       m1_out bigint,
+       m2_name varchar(64),
+       m2_unit varchar(64),
+       m2_in bigint,
+       m2_out bigint,
+       m3_name varchar(64),
+       m3_unit varchar(64),
+       m3_in bigint,
+       m3_out bigint,
+       m4_name varchar(64),
+       m4_unit varchar(64),
+       m4_in bigint,
+       m4_out bigint,
+       m5_name varchar(64),
+       m5_unit varchar(64),
+       m5_in bigint,
+       m5_out bigint,
+       m6_name varchar(64),
+       m6_unit varchar(64),
+       m6_in bigint,
+       m6_out bigint,
+       m7_name varchar(64),
+       m7_unit varchar(64),
+       m7_in bigint,
+       m7_out bigint,
+       m8_name varchar(64),
+       m8_unit varchar(64),
+       m8_in bigint,
+       m8_out bigint,
+       m9_name varchar(64),
+       m9_unit varchar(64),
+       m9_in bigint,
+       m9_out bigint
+) execute 'cat gpmon.1/_iterators_tail.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+
+
+
+create external web table master_data_dir (hostname text, dir text)
+execute E'python -c "import socket, os; print socket.gethostname() + \\"|\\" + os.getcwd()"' on master
+format 'csv' (delimiter '|');
+
+
+CREATE TABLE metrics_history_200806
+	    (CHECK (ctime >= '2008-06-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-07-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200807
+	    (CHECK (ctime >= '2008-07-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-08-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200808
+	    (CHECK (ctime >= '2008-08-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-09-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200809
+	    (CHECK (ctime >= '2008-09-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-10-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200810
+	    (CHECK (ctime >= '2008-10-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-11-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200811
+	    (CHECK (ctime >= '2008-11-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-12-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200812
+	    (CHECK (ctime >= '2008-12-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-01-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200901
+	    (CHECK (ctime >= '2009-01-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-02-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200902
+	    (CHECK (ctime >= '2009-02-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-03-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200903
+	    (CHECK (ctime >= '2009-03-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-04-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200904
+	    (CHECK (ctime >= '2009-04-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-05-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200905
+	    (CHECK (ctime >= '2009-05-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-06-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200906
+	    (CHECK (ctime >= '2009-06-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-07-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200907
+	    (CHECK (ctime >= '2009-07-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-08-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200908
+	    (CHECK (ctime >= '2009-08-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-09-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200909
+	    (CHECK (ctime >= '2009-09-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-10-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200910
+	    (CHECK (ctime >= '2009-10-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-11-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200911
+	    (CHECK (ctime >= '2009-11-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-12-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE metrics_history_200912
+	    (CHECK (ctime >= '2009-12-01:00:00:00'::timestamp without time zone and
+                    ctime < '2010-01-01:00:00:00'::timestamp without time zone))
+            INHERITS (metrics_history);
+CREATE TABLE queries_history_200806
+	    (CHECK (ctime >= '2008-06-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-07-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200807
+	    (CHECK (ctime >= '2008-07-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-08-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200808
+	    (CHECK (ctime >= '2008-08-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-09-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200809
+	    (CHECK (ctime >= '2008-09-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-10-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200810
+	    (CHECK (ctime >= '2008-10-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-11-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200811
+	    (CHECK (ctime >= '2008-11-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-12-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200812
+	    (CHECK (ctime >= '2008-12-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-01-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200901
+	    (CHECK (ctime >= '2009-01-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-02-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200902
+	    (CHECK (ctime >= '2009-02-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-03-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200903
+	    (CHECK (ctime >= '2009-03-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-04-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200904
+	    (CHECK (ctime >= '2009-04-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-05-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200905
+	    (CHECK (ctime >= '2009-05-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-06-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200906
+	    (CHECK (ctime >= '2009-06-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-07-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200907
+	    (CHECK (ctime >= '2009-07-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-08-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200908
+	    (CHECK (ctime >= '2009-08-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-09-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200909
+	    (CHECK (ctime >= '2009-09-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-10-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200910
+	    (CHECK (ctime >= '2009-10-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-11-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200911
+	    (CHECK (ctime >= '2009-11-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-12-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE queries_history_200912
+	    (CHECK (ctime >= '2009-12-01:00:00:00'::timestamp without time zone and
+                    ctime < '2010-01-01:00:00:00'::timestamp without time zone))
+            INHERITS (queries_history);
+CREATE TABLE iterators_history_200806
+	    (CHECK (ctime >= '2008-06-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-07-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200807
+	    (CHECK (ctime >= '2008-07-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-08-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200808
+	    (CHECK (ctime >= '2008-08-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-09-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200809
+	    (CHECK (ctime >= '2008-09-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-10-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200810
+	    (CHECK (ctime >= '2008-10-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-11-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200811
+	    (CHECK (ctime >= '2008-11-01:00:00:00'::timestamp without time zone and
+                    ctime < '2008-12-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200812
+	    (CHECK (ctime >= '2008-12-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-01-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200901
+	    (CHECK (ctime >= '2009-01-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-02-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200902
+	    (CHECK (ctime >= '2009-02-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-03-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200903
+	    (CHECK (ctime >= '2009-03-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-04-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200904
+	    (CHECK (ctime >= '2009-04-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-05-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200905
+	    (CHECK (ctime >= '2009-05-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-06-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200906
+	    (CHECK (ctime >= '2009-06-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-07-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200907
+	    (CHECK (ctime >= '2009-07-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-08-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200908
+	    (CHECK (ctime >= '2009-08-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-09-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200909
+	    (CHECK (ctime >= '2009-09-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-10-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200910
+	    (CHECK (ctime >= '2009-10-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-11-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200911
+	    (CHECK (ctime >= '2009-11-01:00:00:00'::timestamp without time zone and
+                    ctime < '2009-12-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+CREATE TABLE iterators_history_200912
+	    (CHECK (ctime >= '2009-12-01:00:00:00'::timestamp without time zone and
+                    ctime < '2010-01-01:00:00:00'::timestamp without time zone))
+            INHERITS (iterators_history);
+revoke all on database gpmon_1 from public;

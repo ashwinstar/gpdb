@@ -282,6 +282,12 @@ LOG_MSG () {
 		CUR_DATE=`$DATE +%Y%m%d`
 		DISPLAY_TXT=0
 		#Check to see if we need to update value of EXIT_STATUS
+		if [ `$ECHO $1|$AWK -F"]" '{print $1}'|$TR -d '\133'|$GREP -c "WARN"` -eq 1 ];then
+			EXIT_STATUS=1
+		fi
+		if [ `$ECHO $1|$AWK -F"]" '{print $1}'|$TR -d '\133'|$GREP -c "FATAL"` -eq 1 ];then
+			EXIT_STATUS=2
+		fi
 		WARN=`$ECHO $1|$AWK -F"]" '{print $1}'|$TR -d '\133'|$GREP -c "WARN"`
 		if [ x"$WARN" == x"" ]; then
 		    WARN=0
@@ -1649,11 +1655,12 @@ case $OS_TYPE in
 esac
 #Set up GP_LIBRARY_PATH
 GP_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib
-export LD_LIBRARY_PATH=$GP_LIBRARY_PATH:$LD_LIBRARY_PATH
+PY_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/ext/python/lib
+export LD_LIBRARY_PATH=$GP_LIBRARY_PATH:$PY_LIBRARY_PATH:$LD_LIBRARY_PATH
 SHARE_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/share
 SCRIPTS_DIR=`$DIRNAME \` $DIRNAME $INITDB\``/bin
 
 export $LIB_TYPE=$GP_LIBRARY_PATH:\$$LIB_TYPE
-EXPORT_LIB_PATH='export '${LIB_TYPE}'='$GP_LIBRARY_PATH':$'$LIB_TYPE
+EXPORT_LIB_PATH='export '${LIB_TYPE}'='$GP_LIBRARY_PATH':'$PY_LIBRARY_PATH':$'$LIB_TYPE
 EXPORT_GPHOME='export GPHOME='$GPHOME
-
+EXPORT_PYBIN='export PATH='${GPHOME}'/ext/python/bin:$PATH'

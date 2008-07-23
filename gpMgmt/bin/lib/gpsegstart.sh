@@ -131,7 +131,9 @@ START_SEG () {
 		fi
 	fi
 	LOG_MSG "[INFO][$INST_COUNT]:-Starting Segment instance $QE_NAME directory $QE_DIR"
-	$TRUSTED_SHELL $QE_NAME "${EXPORT_LIB_PATH};${EXPORT_GPHOME};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start >/dev/null 2>&1"
+  CMD="${EXPORT_LIB_PATH};${EXPORT_PYBIN};${EXPORT_GPHOME};export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start >/dev/null 2>&1"
+  LOG_MSG "[INFO][$INST_COUNT]:-CMD is $CMD"
+	$TRUSTED_SHELL $QE_NAME $CMD
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ] && [ $START_INVALID -eq 1 ];then
 	#Have attempted to start an invalid segment which did not start

@@ -1,10 +1,8 @@
 SHELL=bash
 CC=gcc
 GPCC=$(CURDIR)
+CDBINCL=-I$(GPCC)/../cdb-pg/src/include
 OPT=-g -O3
-APR=apr-1.2.12
-APU=apr-util-1.2.12
-JSON=json-c-0.6
 LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8h
 INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
@@ -13,10 +11,34 @@ APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs)
 APULIBS= $$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
 GP_VERSION=$$(< $(GPCC)/../VERSION)
 CPPFLAGS=$$($(GPCC)/ext/bin/apr-1-config --cppflags) -DGP_VERSION="$(GP_VERSION)"
+OSNAME=$(shell uname -s)
+PLATFORM=$(shell uname -i)
+LIBPQLIBS=-L$(GPCC)/../cdb-pg/src/interfaces/libpq/
+LIBPQINCL=-I$(GPCC)/../cdb-pg/src/interfaces/libpq/
 
+ifeq (Darwin, $(OSNAME))
+	GPSMON_LDFLAGS=-framework CoreServices -framework IOKit
+else
+	ifeq (SunOS, $(OSNAME))
+		GPSMON_LDFLAGS=-lkstat
+	endif	
+endif
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos mkgpha mkgpma
+all: mkdir mkext mkgpmon mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos mkgpha mkgpma
+
+#mkgpma mkgp 
+mkgpmon: 
+	@echo --- gpmon --------------------------------------------------
+	(cd src/gpmon; $(CC) $(INCLUDES) $(CDBINCL) $(LIBPQINCL) $(CPPFLAGS) \
+	  $(CFLAGS) -o gpmmon gpmmon.c gpmondb.c gpmonlib.c gpmon_agg.c $(APULIBS) $(APRLIBS) \
+    $(LIBPQLIBS) -lpq -levent -lm)
+	(cd src/gpmon; $(CC) $(INCLUDES) $(CDBINCL) $(CPPFLAGS) $(CFLAGS) \
+		-o gpsmon gpsmon.c gpmonlib.c $(APULIBS) $(APRLIBS) -levent \
+		$(GPSMON_LDFLAGS) -lsigar  )
+	@mkdir -p build/bin
+	@mkdir -p build/lib
+	@cp -f src/gpmon/gpmmon src/gpmon/gpsmon build/bin/
 
 mkpaxos: mkdir
 	(cd src/paxos;sh build)
@@ -90,68 +112,13 @@ mktest: mklibgpcc
 	(cd test; $(CC) $(INCLUDES) $(CPPFLAS) $(CFLAGS) \
 			-o net1 net1.c -L../src/build/lib -lgpcc $(APULIBS) $(APRLIBS) -ljson -levent -lresolv)
 
-mkext: mkdir
-	@echo --- ext ------------------------------------------------------
-	@mkdir -p ext/lib ext/include
-	@echo     -- libevent
-	@(cd ext; rm -f libevent; ln -s $(LIBEVENT) libevent)
-	@if ! [ -a ext/libevent/Makefile ]; then \
-		(cd ext; gzip -d -c $(LIBEVENT).tar.gz | tar xvf -) ;\
-		(cd ext/libevent; ./configure --enable-shared=no \
-			--enable-static=yes --enable-threads \
-			--prefix=$(GPCC)/ext) ;\
-	fi
-	@(cd ext/libevent; $(MAKE) install >> out)
-	@echo     -- json
-	@(cd ext; rm -f json; ln -s $(JSON) json)
-	@if ! [ -a ext/json/Makefile ]; then \
-		(cd ext; gzip -d -c $(JSON).tar.gz | tar xvf -) ;\
-		(cd ext/json; ./configure --enable-shared=no \
-			--enable-static=yes --enable-threads \
-			--prefix=$(GPCC)/ext) ;\
-	fi
-	@(cd ext/json; $(MAKE) all; $(MAKE) install >> out)
-	@echo     -- openssl
-	@(cd ext; rm -f openssl; ln -s $(OPENSSL) openssl)
-	@if ! [ -a ext/openssl/Makefile ]; then \
-		(cd ext; gzip -d -c $(OPENSSL).tar.gz | tar xvf -) ;\
-		(cd ext/openssl; ./config no-shared threads --prefix=$(GPCC)/ext) ;\
-	fi
-	@(cd ext/openssl; $(MAKE)  all install >> out 2>&1)
-	@echo     -- apr
-	@(cd ext; rm -f apr; ln -s $(APR) apr)
-	@if ! [ -a ext/apr/Makefile ]; then \
-		(cd ext; gzip -d -c $(APR).tar.gz | tar xvf -) ;\
-		(cd ext/apr; ./configure --enable-shared=no \
-			--enable-static=yes --enable-threads \
-			--prefix=$(GPCC)/ext) ;\
-	fi
-	@(cd ext/apr; $(MAKE) all install >> out 2>&1)
-	@echo     -- apu
-	@(cd ext; rm -f apu; ln -s $(APU) apu)
-	@if ! [ -a ext/apu/Makefile ]; then \
-		(cd ext; gzip -d -c $(APU).tar.gz | tar xvf -) ;\
-		(cd ext/apu; ./configure --enable-shared=no \
-			--enable-static=yes --enable-threads \
-			--with-apr=../apr \
-			--prefix=$(GPCC)/ext) ;\
-	fi
-	@(cd ext/apu; $(MAKE) all install >> out 2>&1)
-
-	@echo     -- dbgen
-	@(cd ext/tpch; $(MAKE) >> out)
-	@(cd ext/tpch; cp -f dbgen ../../build/bin/)
-	@(cd ext/tpch; cp -f dists.dss ../../build/bin/)
+mkext: 
+	$(MAKE) -C ext
 
 veryclean: clean
-	(cd ext; rm -rf apr $(APR) apu $(APU) json $(JSON) libevent $(LIBEVENT) openssl $(OPENSSL))
+	$(MAKE) -C ext veryclean
 
 clean: 
-	(cd ext; rm -rf lib bin include build-1 share apr apu json libevent openssl)
-	@if [ -a ext/apr/Makefile ]; then $(MAKE) clean; fi
-	@if [ -a ext/apu/Makefile ]; then $(MAKE) clean; fi
-	@if [ -a ext/json/Makefile ]; then $(MAKE) clean; fi
-	@if [ -a ext/libevent/Makefile ]; then $(MAKE) clean; fi 
-	@if [ -a ext/openssl/Makefile ]; then $(MAKE) clean; fi
+	$(MAKE) -C ext clean
 	rm -rf src/build
 	find src -name '*.o' -exec rm -f {} \;
