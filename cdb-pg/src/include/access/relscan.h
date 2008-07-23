@@ -169,6 +169,10 @@ typedef struct AppendOnlyScanDescData
 	TupleDesc	aos_tupDesc;
 	MemTupleData aos_ctup;		/* current tuple in scan, if any */
 	
+	/* synthetic system attributes */
+	ItemPointerData cdb_fake_ctid;
+    Oid				cdb_fake_tableoid;
+
 	PgStat_Info aos_pgstat_info; /* statistics collector hook */
 	
 }	AppendOnlyScanDescData;

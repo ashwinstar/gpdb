@@ -808,20 +808,22 @@ void MemTupleSetOid(MemTuple mtup, MemTupleBinding *pbind, Oid oid)
 }
 
 
-Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull)
+Datum memtuple_getsysattr(void *ttslot, int attnum, bool *isnull)
 {
+	TupleTableSlot *slot = (TupleTableSlot *) ttslot; 
+	MemTuple mtup = slot->PRIVATE_tts_memtuple;
+	MemTupleBinding *pbind = slot->tts_mt_bind;
+	
 	Assert(mtup && pbind);
 	Assert(isnull);
 	
 	switch(attnum)
 	{
 		/* XXX ? */
-		case SelfItemPointerAttributeNumber:
 		case MinTransactionIdAttributeNumber:
 		case MaxTransactionIdAttributeNumber:
 		case MinCommandIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
-		case TableOidAttributeNumber:
 		case GpInfoMaskAttributeNumber:
 		case GpInfoMask2AttributeNumber:
 		case GpXminStatusAttributeNumber:
@@ -831,6 +833,14 @@ Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, boo
 			*isnull = true;
 			return 0;
 
+		case TableOidAttributeNumber:
+			*isnull = false;
+			return ObjectIdGetDatum(slot->tts_tableOid);
+			
+		case SelfItemPointerAttributeNumber:
+			*isnull = false;
+			return PointerGetDatum(&(slot->tts_synthetic_ctid));
+			
 		case gpsegmentIdAttributeNumber:
 		 	*isnull = false;
 			return Int32GetDatum(Gp_segment);

@@ -94,6 +94,12 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 	scan->aos_done_all_segfiles = false;
 	scan->bufferDone = true;
 	
+	/*
+	 * We may need to reference ctid and tableoid later. create them here.
+	 */
+	ItemPointerSet(&scan->cdb_fake_ctid, 0, 0);
+    scan->cdb_fake_tableoid = RelationGetRelid(scan->aos_rd);
+	
 	pgstat_count_heap_scan(&scan->aos_pgstat_info);
 }
 
@@ -789,8 +795,24 @@ appendonlygettup(AppendOnlyScanDesc scan,
 				tuple = (MemTuple) itemPtr;
 				
 				if(slot)
+				{
+					/* store tuple in the slot */
 					ExecStoreMemTuple(tuple, slot, false);
-				
+					
+					/* Create a synthetic ctid. Some queries will need it */
+					scan->cdb_fake_ctid.ip_posid++;
+					if (scan->cdb_fake_ctid.ip_posid == 0) /* posid overflowed */
+					{
+						scan->cdb_fake_ctid.ip_posid++;
+						ItemPointerSetBlockNumber(&scan->cdb_fake_ctid,
+												  1 + ItemPointerGetBlockNumber(&scan->cdb_fake_ctid));
+					}
+					
+					slot->tts_synthetic_ctid = scan->cdb_fake_ctid;
+					
+					slot->tts_tableOid = scan->cdb_fake_tableoid;
+				}
+
 				/* skip visibility test, all tuples are visible */
 				
 				if (key != NULL)
@@ -861,9 +883,6 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	scan->aoScanInitContext = CurrentMemoryContext;
 	scan->aos_compressed = (complevel > 0 ? true : false);
 	scan->varBlockBuffer = NULL;
-			
-	/* we only need to set this up once */
-	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
 
 	/*
 	 * we do this here instead of in initscan() because appendonly_rescan also calls
@@ -1128,9 +1147,6 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 		/* check there is not space for an OID */
 		MemTupleNoOidSpace(instup);
 	}
-
-	/* TODO: figure what we need this for and how to enable it if needed */
-	/*	tup->t_tableOid = RelationGetRelid(relation); */
 
 	need_toast = (MemTupleHasExternal(instup, aoInsertDesc->mt_bind) ||
 				  memtuple_get_size(instup, aoInsertDesc->mt_bind) > 

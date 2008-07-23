@@ -124,7 +124,9 @@ typedef struct TupleTableSlot
 	MemTuple PRIVATE_tts_memtuple;
 	void 	*PRIVATE_tts_mtup_buf;
 	uint32  PRIVATE_tts_mtup_buf_len;
-
+	ItemPointerData tts_synthetic_ctid;	/* needed if memtuple is stored on disk */
+	Oid				tts_tableOid;		/* needed if memtuple is stored on disk */
+	
 	/* Virtual tuple stuff */
 	int 	PRIVATE_tts_nvalid;		/* number of valid virtual tup entries */
 	long    PRIVATE_tts_off; 		/* hack to remember state of last decoding. */
@@ -242,7 +244,7 @@ static inline Datum slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	if(attnum <= 0)
 	{
 		if(slot->PRIVATE_tts_memtuple)
-			return memtuple_getsysattr(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind, attnum, isnull);
+			return memtuple_getsysattr(slot, attnum, isnull);
 
 		Assert(slot->PRIVATE_tts_heaptuple);
 		return heap_getsysattr(slot->PRIVATE_tts_heaptuple, attnum, slot->tts_tupleDescriptor, isnull);
