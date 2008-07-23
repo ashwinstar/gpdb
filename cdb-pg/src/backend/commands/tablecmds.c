@@ -9230,7 +9230,7 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		PartitionRule *rule = lfirst(lc);
 		List *vals = rule->parlistvalues;
 		ListCell *lc2;
-		bool matched=false;
+		bool matched = false;
 
 		/* 
 		 * list values are stored in a list of lists to support multi column
@@ -9296,9 +9296,11 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			*found = rule->parchildrelid;
 
 			/* go to the next level */
+			list_free_deep(opname);
 			return rule->children;
 		}
 	}
+	list_free_deep(opname);
 	return NULL;
 
 }

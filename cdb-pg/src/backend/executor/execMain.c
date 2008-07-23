@@ -3435,9 +3435,14 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 	Oid targetid;
 	int i;
 	bool found = false;
+	MemoryContext mcxt;
+
+	mcxt = 
+		MemoryContextSwitchTo(GetPerTupleExprContext(estate)->ecxt_per_tuple_memory);
 
 	targetid = selectPartition(estate->es_result_partitions, values,
 							   isnull, tupdesc);
+	MemoryContextSwitchTo(mcxt);
 
 	if (!OidIsValid(targetid))
 		elog(ERROR, "no partition for partitioning key");
