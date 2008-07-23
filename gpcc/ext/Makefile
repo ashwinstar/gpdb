@@ -7,7 +7,7 @@ APR=apr-1.2.12
 APU=apr-util-1.2.12
 JSON=json-c-0.6
 LIBEVENT=libevent-1.4.4-stable
-
+OPENSSL=openssl-0.9.8h
 
 all: 
 	@echo --- ext ------------------------------------------------------
@@ -31,6 +31,13 @@ all:
 			--prefix=$(GPCC)/ext) ;\
 	fi
 	@(cd json; $(MAKE) all; $(MAKE) install >> out)
+	@echo     -- openssl
+	@rm -f openssl; ln -s $(OPENSSL) openssl
+	@if ! [ -a openssl/Makefile ]; then \
+		gzip -d -c $(OPENSSL).tar.gz | tar xvf - ;\
+		(cd openssl; ./config no-shared threads --prefix=$(GPCC)/ext) ;\
+	fi
+	@(cd openssl; $(MAKE)  all install >> out 2>&1)
 	@echo     -- apr
 	@rm -f apr; ln -s $(APR) apr
 	@if ! [ -a apr/Makefile ]; then \
@@ -62,7 +69,7 @@ all:
 
 
 veryclean: clean
-	rm -rf apr $(APR) apu $(APU) json $(JSON) libevent $(LIBEVENT)
+	rm -rf apr $(APR) apu $(APU) json $(JSON) libevent $(LIBEVENT) openssl $(OPENSSL)
 	(cd libsigar; $(MAKE) veryclean)
 
 clean:
@@ -71,4 +78,6 @@ clean:
 	@(cd apu; $(MAKE) clean)
 	@(cd json; $(MAKE) clean)
 	@(cd libevent; $(MAKE) clean)
+	@(cd openssl; $(MAKE) clean)
 	@(cd libsigar; $(MAKE) clean)
+
