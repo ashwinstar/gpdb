@@ -69,12 +69,12 @@ all:
 
 
 veryclean:
-	rm -rf lib bin include build1 share ssl
+	rm -rf lib bin include build1 share ssl build-1
 	rm -rf apr $(APR) apu $(APU) json $(JSON) libevent $(LIBEVENT) openssl $(OPENSSL)
 	(cd libsigar; $(MAKE) veryclean)
 
 clean:
-	rm -rf lib bin include build1 share ssl
+	rm -rf lib bin include build1 share ssl build-1
 	@(cd apr; $(MAKE) clean)
 	@(cd apu; $(MAKE) clean)
 	@(cd json; $(MAKE) clean)
