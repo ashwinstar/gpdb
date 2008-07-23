@@ -207,7 +207,13 @@ static apr_status_t a_lma_leader_get_master_reply(gpcc_event_t *ev, void *arg)
 	/* array found  and sync the gp_configuration */	
 	gpcc_log_info("Lead MA get leader file successfully.");
 	gpcc_log_info("len = %d, content = %s", result->u.get.content.length, result->u.get.content.a);
-	a_lma_sync_config(ev, arg, result->u.get.content.a);
+	if (a_lma_sync_config(ev, arg, result->u.get.content.a)) {
+	    /* TODO: failed to get gp_configuration from master QD.  Try standby QD or system failure */
+	    gpcc_log_error("failed to get gp_configuration from master QD");
+	    evt = gpcc_event_alloc(FAILURE_EVENT, slot->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);
+	    return 0;
+	}
     }
 
     /* kick-off fts cmdslot */
