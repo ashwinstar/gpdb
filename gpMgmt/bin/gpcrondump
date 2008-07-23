@@ -76,6 +76,8 @@ BACKUPFILEDIR=""
 REPORTFILEDIR=""
 BACKUPSET=()
 DUMP_TABLE_LIST=()
+ENCODING=""
+OUTPUT_OPTIONS=()
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -144,10 +146,22 @@ USAGE () {
 		$ECHO "          dump requested"
 		$ECHO "      -B, <number> run this batch of state segment processes in parallel [default:- $BATCH_DEFAULT]"
 		$ECHO
+		$ECHO "      Options controlling the output content:"
+		$ECHO "      -E, <encoding> dump the data in encoding"
+		$ECHO "      --clean, clean (drop) schema prior to create"
+		$ECHO "      --inserts, dump data as INSERT, rather than COPY, commands"
+		$ECHO "      --column-inserts, dump data as INSERT, commands with column names"
+		$ECHO "      --oids, include OIDS in dump"
+		$ECHO "      --no-owner, do not output commands to set object ownership"
+		$ECHO "                  in plain text format"
+		$ECHO "      --no-privileges, do not dump privileges (grant/revoke)"
+		$ECHO "      --use-set-session-authorization"
+		$ECHO "                                  use SESSION AUTHORIZATION commands instead of"
+		$ECHO "                                  ALTER OWNER commands to set ownsership"
 		$ECHO "      Greenplum Database specific options:"
 		$ECHO "      -z, do not use compression [default:- use compression]"
 		$ECHO "      -u, <BACKUPFILEDIR> directory where backup files are placed [default:- segment data directory]"
-		$ECHO "      -y, <REPORTFILEDIR> directory where report file is placed"
+		$ECHO "      -y, <REPORTFILEDIR> directory where report file is placed [default:- master segment data directory]"
 		$ECHO "      -p, dump primary segment instances only [default:- dump primary and mirror]"
 		$ECHO "      -m, dump mirror segment instances only [default:- dump primary and mirror]"
 		$ECHO "      -w, <BACKUPSET>, backup set indicator. Individual segdb (must be followed with a list of dbid's"
@@ -791,6 +805,10 @@ PROCESS_DUMP () {
 		LOG_MSG "[INFO]:-Adding compression parameter" 1
 		DUMP_TEXT=$DUMP_TEXT" --gp-c"
 	fi
+	if [ x"" != x"$ENCODING" ]; then
+	    LOG_MSG "[INFO]:-Adding encoding $ENCODING" 1
+	    DUMP_TEXT=$DUMP_TEXT" --encoding=$ENCODING"
+	fi
 	if [ x"" != x"$DUMP_SCHEMA_NAME" ];then
 		LOG_MSG "[INFO]:-Adding schema name $DUMP_SCHEMA_NAME" 1
 		DUMP_TEXT=$DUMP_TEXT" -n $DUMP_SCHEMA_NAME"
@@ -804,6 +822,10 @@ PROCESS_DUMP () {
 		EXCLUDE_LIST=`$ECHO $EXC_DUMP_TABLE_LIST|$TR ',' ' '`
 		DUMP_TEXT=$DUMP_TEXT" --exclude-table=${EXCLUDE_LIST}"
 	fi
+	for opt in ${OUTPUT_OPTIONS[@]}
+	do
+	    DUMP_TEXT=$DUMP_TEXT" $opt"
+	done
 	LOG_MSG "[INFO]:-Dump command line $DUMP_TEXT" 1
 	LOG_MSG "[INFO]:-Starting dump process" 1
 	TIME_START=`$DATE +%H":"%M":"%S`
@@ -1047,7 +1069,7 @@ distributed by (rec_date);" >> $LOG_FILE 2>&1
 #******************************************************************************
 trap '$RM -f ${IS_RUNNING_FLAG};ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:t:T:hl:u:y:w:" opt;do
+		while getopts ":v'?'ajkbiorqd:x:f:s:pmbczgGC!DR:B:t:T:hl:u:y:w:E:-:" opt;do
 			case $opt in
 				v ) VERSION_INFO ;;
 				'?' ) USAGE ;;
@@ -1090,10 +1112,28 @@ if [ $# -ne 0 ]; then
 			        y ) REPORTFILEDIR=$OPTARG ;;
 			        w ) BACKUPSET=(`$ECHO $OPTARG|$TR ',' ' '`) 
 				    DUMP_TYPE=4 ;;
+			        E ) ENCODING=$OPTARG ;;
+			        - ) OUTPUT_OPTIONS=(${OUTPUT_OPTIONS[@]} --$OPTARG);;
 				* ) USAGE ;;
 				esac
 		done	
 fi
+
+for opt in ${OUTPUT_OPTIONS[@]}
+do
+    case $opt in
+#	--data-only ) ;;
+	--clean ) ;;
+	--inserts ) ;;
+	--column-inserts ) ;;
+	--oids ) ;;
+	--no-owner ) ;;
+#	--schema-only ) ;;
+	--no-privileges ) ;;
+	--use-set-session-authorization ) ;;
+	*) USAGE ;;
+    esac
+done
 
 #Check to see if we have another dump running
 if [ -f $IS_RUNNING_FLAG ];then
