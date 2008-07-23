@@ -871,6 +871,7 @@ LIST_MPP_LOGS () {
 STANDBY_HOST_DETAILS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_STANDBY_DETAILS
+
 	if [ ${#STANDBY_ARRAY[@]} -eq 0 ];then
 		LOG_MSG "[INFO]:-Standby master instance not configured" 1
 	else
@@ -894,7 +895,25 @@ STANDBY_HOST_DETAILS () {
 		LOG_MSG "[INFO]:-Standby PID             = $PID $WARN_MARK" 1
 		LOG_MSG "[INFO]:-Standby status          = Standby process not running $WARN_MARK" 1
 		fi
+
+		LOG_MSG "[INFO]:-------------------------------------------------------------" 1
 	fi
+	GP_MASTER_MIRRORING=`${EXPORT_LIB_PATH};env PGOPTIOINS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c "select * from gp_master_mirroring;"` > /dev/null 2>&1
+	
+	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
+	LOG_MSG "[INFO]:-gp_master_mirroring table" 1
+	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
+	summary_state=`$ECHO $GP_MASTER_MIRRORING|$CUT -d"|" -f1`
+	detail_state=`$ECHO $GP_MASTER_MIRRORING|$CUT -d"|" -f2`
+	log_time=`$ECHO $GP_MASTER_MIRRORING|$CUT -d"|" -f3`
+	error_message=`$ECHO $GP_MASTER_MIRRORING|$CUT -d"|" -f4`
+
+	LOG_MSG "[INFO]:-Summary state: $summary_state" 1
+	LOG_MSG "[INFO]:-Detail state: $detail_state" 1
+	LOG_MSG "[INFO]:-Log time: $log_time" 1
+	LOG_MSG "[INFO]:-Error message: $error_message" 1
+	LOG_MSG "[INFO]:-------------------------------------------------------------" 1
+	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
