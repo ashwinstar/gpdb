@@ -27,13 +27,14 @@ return rval
 $$;
 
 -- EXECUTION
-CREATE VIEW mapreduce_10694_run_1 AS
-SELECT key(m), value(m), pos(m) FROM (SELECT xml_extract(key, value) as m FROM xml) mapxq
+CREATE VIEW mapreduce_63600_run_1 AS
+SELECT key(m), value(m), pos(m)
+FROM (SELECT xml_extract(key, value) as m FROM xml) mapxq
 ;
 
 
 DROP TYPE IF EXISTS xml_extract_rtype CASCADE;
 DROP EXTERNAL TABLE IF EXISTS xml CASCADE;
 DROP FUNCTION IF EXISTS xml_extract(integer, text) CASCADE;
-DROP VIEW IF EXISTS mapreduce_10694_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_63600_run_1 CASCADE;
 

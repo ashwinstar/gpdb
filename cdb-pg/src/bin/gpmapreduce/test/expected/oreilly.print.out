@@ -8,10 +8,10 @@
 -- end_matchsubs
 CREATE TYPE extractFields_rtype as (id integer, date_posted date, date_posted_timestamp integer, refind_key text, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text);
 
-CREATE TYPE Uniquify_finalize_rtype as (id integer, date_posted date, date_posted_timestamp integer, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text, refind_key text);
+CREATE TYPE Uniquify_finalize_rtype as (id integer, date_posted date, date_posted_timestamp integer, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text, refind_index integer);
 
 -- TRANSITION Uniquify_transition
-CREATE FUNCTION Uniquify_transition(state text, id integer, date_posted date, date_posted_timestamp integer, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text)
+CREATE FUNCTION Uniquify_transition(state text, id integer, date_posted date, date_posted_timestamp integer, first_extract_date timestamp, last_extract_date timestamp, inter_source_hash text, gap integer)
 RETURNS text LANGUAGE plpythonu AS
 $$
 import pickle;
@@ -22,7 +22,7 @@ newrecord = (id, date_posted, date_posted_timestamp,
 
 # Add the new record to the existing state, if any
 if state == None:
-  oldlist = [newrecord]
+  oldlist = [gap, newrecord]
 else:
   oldlist = pickle.loads(state)
   oldlist.append(newrecord)
@@ -31,8 +31,8 @@ else:
 return pickle.dumps(oldlist)
 $$;
 
--- MAP Uniquify_finalize
-CREATE FUNCTION Uniquify_finalize(value text, refind_key text, gap integer)
+-- FINALIZER Uniquify_finalize
+CREATE FUNCTION Uniquify_finalize(state text)
 RETURNS SETOF Uniquify_finalize_rtype LANGUAGE plpythonu AS
 $$
 import pickle
@@ -42,12 +42,16 @@ def date_conv(date, fmt):
   return datetime.datetime.strptime(date, fmt)
 date_fmt = '%Y-%m-%d'
 
-# setup a default gap if none was specified
-#        if gap == None:
-#          gap = 60
-
 # Get the accumulated data for this refind_key
-mydata = pickle.loads(value)
+mydata = pickle.loads(state)
+
+# The first value in the list is the 'gap' as it was
+# passed to the transition function.
+gap = mydata.pop(0)
+if gap == None:
+  gap = 60
+
+# derive the sequence
 mydata.sort(key=lambda(x): x[1])    # date_posted is 2nd element in each tuple
 
 # Determine which ones are 'new' values
@@ -57,10 +61,10 @@ prev_date = date_conv(prev[1], date_fmt)
 for t in mydata[1:]:
   date_gap = date_conv(t[1], date_fmt) - prev_date;
   if (date_gap.days > gap):
-    yield(prev[0], prev[1], prev[2], prev[3], prev[4], prev[5], '%s_%s' % (refind_key, str(seq)))
+    yield(prev[0], prev[1], prev[2], prev[3], prev[4], prev[5], seq)
     seq += 1
   prev = t
-yield(prev[0], prev[1], prev[2], prev[3], prev[4], prev[5], '%s_%s' % (refind_key, str(seq)))
+yield(prev[0], prev[1], prev[2], prev[3], prev[4], prev[5], seq)
 $$;
 
 -- MAP extractFields
@@ -79,31 +83,29 @@ CREATE EXTERNAL TABLE ProductionJobs(id integer, dummy1 text, dummy2 text, dummy
   SEGMENT REJECT LIMIT 1000;
 
 -- REDUCER Uniquify
-CREATE AGGREGATE Uniquify (integer, date, integer, timestamp, timestamp, text) (
+CREATE AGGREGATE Uniquify (integer, date, integer, timestamp, timestamp, text, integer) (
   stype = text,
   sfunc = Uniquify_transition
 );
 
--- TASK Production_reduce
-CREATE VIEW Production_reduce AS
-SELECT refind_key, Uniquify(id, date_posted, date_posted_timestamp, first_extract_date, last_extract_date, inter_source_hash) as value
-FROM (SELECT id(m), date_posted(m), date_posted_timestamp(m), refind_key(m), first_extract_date(m), last_extract_date(m), inter_source_hash(m) FROM (SELECT extractFields(id, date_posted, date_posted_timestamp, refind_key, first_extract_date, last_extract_date, inter_source_hash) as m FROM ProductionJobs) mapxq
-) mapsubq
-GROUP BY refind_key;
-
 -- EXECUTION
-CREATE VIEW mapreduce_10448_run_1 AS
-SELECT id(m), date_posted(m), date_posted_timestamp(m), first_extract_date(m), last_extract_date(m), inter_source_hash(m), refind_key(m) FROM (SELECT Uniquify_finalize(value, refind_key, NULL::integer) as m FROM Production_reduce) mapxq
+CREATE VIEW mapreduce_64201_run_1 AS
+SELECT refind_key, id(r), date_posted(r), date_posted_timestamp(r), first_extract_date(r), last_extract_date(r), inter_source_hash(r), refind_index(r)
+FROM (SELECT refind_key, Uniquify_finalize(r) as r FROM (SELECT refind_key, Uniquify(id, date_posted, date_posted_timestamp, first_extract_date, last_extract_date, inter_source_hash, NULL::integer) as r
+FROM (SELECT id(m), date_posted(m), date_posted_timestamp(m), refind_key(m), first_extract_date(m), last_extract_date(m), inter_source_hash(m)
+FROM (SELECT extractFields(id, date_posted, date_posted_timestamp, refind_key, first_extract_date, last_extract_date, inter_source_hash) as m FROM ProductionJobs) mapxq
+) mapsubq
+GROUP BY refind_key) redxq
+) redsubq
 ;
 
 
 DROP TYPE IF EXISTS extractFields_rtype CASCADE;
 DROP TYPE IF EXISTS Uniquify_finalize_rtype CASCADE;
-DROP VIEW IF EXISTS mapreduce_10448_run_1 CASCADE;
-DROP VIEW IF EXISTS Production_reduce CASCADE;
-DROP AGGREGATE IF EXISTS Uniquify(integer, date, integer, timestamp, timestamp, text) CASCADE;
-DROP FUNCTION IF EXISTS Uniquify_transition(text, integer, date, integer, timestamp, timestamp, text) CASCADE;
-DROP FUNCTION IF EXISTS Uniquify_finalize(text, text, integer) CASCADE;
+DROP VIEW IF EXISTS mapreduce_64201_run_1 CASCADE;
+DROP AGGREGATE IF EXISTS Uniquify(integer, date, integer, timestamp, timestamp, text, integer) CASCADE;
+DROP FUNCTION IF EXISTS Uniquify_transition(text, integer, date, integer, timestamp, timestamp, text, integer) CASCADE;
+DROP FUNCTION IF EXISTS Uniquify_finalize(text) CASCADE;
 DROP FUNCTION IF EXISTS extractFields(integer, date, integer, text, timestamp, timestamp, text) CASCADE;
 DROP EXTERNAL TABLE IF EXISTS ProductionJobs CASCADE;
 

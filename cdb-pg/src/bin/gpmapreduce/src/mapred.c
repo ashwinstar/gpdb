@@ -430,7 +430,8 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 			if (obj->u.task.flags & mapred_task_resolving)
 			{
 				fprintf(stderr, 
-						"Error: Infinite recursion detected trying to resolve TASK '%s'.\n",
+						"Error: Infinite recursion detected trying to "
+						"resolve TASK '%s'.\n", 
 						obj->name);
 				XRAISE(MAPRED_PARSE_ERROR, NULL);
 			}
@@ -527,7 +528,7 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				}
 				else if (sub->kind == MAPRED_REDUCER)
 				{   /* Validate Reducer */
-					mapred_resolve_object(conn, doc, sub, exec_count);					
+					mapred_resolve_object(conn, doc, sub, exec_count);
 				}
 				else 
 				{   /* It's an object, but not a REDUCER */
@@ -610,7 +611,10 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 
 		case MAPRED_INPUT:
 
-			/* Should be called after creation, otherwise catalog queries could fail */
+			/* 
+			 * Should be called after creation, otherwise catalog queries 
+			 * could fail.
+			 */
 			XASSERT(obj->created);
 
 			/* setup the column list for database defined inputs */
@@ -622,30 +626,36 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 				 * input of the given name in the user's search path.
 				 */
 				buffer_t *buffer = makebuffer(1024, 1024);
-				bufcat(&buffer, "SELECT      attname, format_type \n");
-				bufcat(&buffer, "FROM \n");
-				bufcat(&buffer, "  (SELECT   rank() over (order by i),\n");
-				bufcat(&buffer, "            a.attnum, a.attname, \n");
-				bufcat(&buffer, "            pg_catalog.format_type(a.atttypid, a.atttypmod)\n");
-				bufcat(&buffer, "   FROM     pg_catalog.pg_attribute a, \n");
-				bufcat(&buffer, "            pg_catalog.pg_class c, \n");
-				bufcat(&buffer, "            pg_catalog.pg_namespace n, \n");
-				bufcat(&buffer, "            generate_series(1, array_upper(current_schemas(true), 1)) x(i) \n");
-				bufcat(&buffer, "   WHERE    a.attrelid = c.oid \n");
-				bufcat(&buffer, "     AND    a.attnum > 0 \n");
-				bufcat(&buffer, "     AND    c.relkind in ('t', 'v', 'a') \n");
-				bufcat(&buffer, "     AND    c.relnamespace = n.oid \n");
-				bufcat(&buffer, "     AND    c.relname = '");
+				bufcat(&buffer, 
+					   "SELECT      attname, format_type \n"
+					   "FROM \n"
+					   "  (SELECT   rank() over (order by i),\n"
+				       "            a.attnum, a.attname, \n"
+				       "            pg_catalog.format_type(a.atttypid, \n"
+					   "                                   a.atttypmod)\n"
+				       "   FROM     pg_catalog.pg_attribute a, \n"
+				       "            pg_catalog.pg_class c, \n"
+				       "            pg_catalog.pg_namespace n, \n"
+				       "            generate_series( \n"
+					   "              1, array_upper(current_schemas(true), 1)"
+					   "\n            ) x(i) \n"
+				       "   WHERE    a.attrelid = c.oid \n"
+				       "     AND    a.attnum > 0 \n"
+				       "     AND    c.relkind in ('t', 'v', 'a') \n"
+				       "     AND    c.relnamespace = n.oid \n"
+				       "     AND    c.relname = '");
 
 				if (obj->u.input.type == MAPRED_INPUT_TABLE)
 					bufcat(&buffer, obj->u.input.desc);
 				else
 					bufcat(&buffer, obj->name);
 
-				bufcat(&buffer, "' \n");
-				bufcat(&buffer, "     AND    n.nspname = (current_schemas(true))[i]) subq \n");
-				bufcat(&buffer, "WHERE rank = 1 \n");
-				bufcat(&buffer, "ORDER BY -attnum;\n\n");
+				bufcat(&buffer, 
+					   "' \n"
+					   "     AND    n.nspname = (current_schemas(true))[i] \n"
+					   "  ) subq \n"
+					   "WHERE rank = 1 \n"
+					   "ORDER BY -attnum;\n\n");
 			
 				if (global_debug_flag)
 					printf("%s", buffer->buffer);			
@@ -752,6 +762,9 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 		case MAPRED_TASK:
 		case MAPRED_EXECUTION:
 		{
+			mapred_plist_t *scan;
+			mapred_plist_t *last = NULL;
+
 			/* 
 			 * The input must either be an INPUT or a TASK 
 			 */
@@ -763,11 +776,52 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					break;
 
 				case MAPRED_TASK:
-					obj->u.task.parameters = sub->u.task.returns;
+					/* union the input tasks returns and grouping */					
+					for (scan = sub->u.task.grouping;
+						 scan; 
+						 scan = scan->next)
+					{
+						if (!last)
+						{
+							obj->u.task.parameters = 
+								mapred_malloc(sizeof(mapred_plist_t));
+							last = obj->u.task.parameters;
+						}
+						else
+						{
+							last->next = 
+								mapred_malloc(sizeof(mapred_plist_t));
+							last = last->next;
+						}
+						last->name = scan->name;
+						last->type = scan->type;
+						last->next = NULL;
+					}
+					for (scan = sub->u.task.returns;
+						 scan;
+						 scan = scan->next)
+					{
+						if (!last)
+						{
+							obj->u.task.parameters = 
+								mapred_malloc(sizeof(mapred_plist_t));
+							last = obj->u.task.parameters;
+						}
+						else
+						{
+							last->next = 
+								mapred_malloc(sizeof(mapred_plist_t));
+							last = last->next;
+						}
+						last->name = scan->name;
+						last->type = scan->type;
+						last->next = NULL;
+					}
 					break;
 							
 				default:
-					XASSERT(false);  /* Should have already been validated */
+					/* Should have already been validated */
+					XASSERT(false);
 			}
 			
 			if (obj->u.task.mapper.name)
@@ -790,7 +844,8 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 							break;
 
 						default:
-							XASSERT(false); /* Should have already been validated */
+							/* Should have already been validated */
+							XASSERT(false); 
 					}
 				}
 			}
@@ -798,8 +853,6 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 			if (obj->u.task.reducer.name)
 			{
 				mapred_plist_t *source;
-				mapred_plist_t *scan;
-				mapred_plist_t *last = NULL;
 
 				/* 
 				 * The grouping columns for a task are the columns produced
@@ -825,18 +878,21 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					 * "value", with an input of "value", everything else
 					 * is defined to be a grouping column.
 					 */
+					last = NULL;
 					for (scan = source; scan; scan = scan->next)
 					{
 						if (strcasecmp(scan->name, "value"))
 						{
 							if (!last)
 							{
-								obj->u.task.grouping = mapred_malloc(sizeof(mapred_plist_t));
+								obj->u.task.grouping = 
+									mapred_malloc(sizeof(mapred_plist_t));
 								last = obj->u.task.grouping;
 							}
 							else
 							{
-								last->next = mapred_malloc(sizeof(mapred_plist_t));
+								last->next = 
+									mapred_malloc(sizeof(mapred_plist_t));
 								last = last->next;
 							}
 							last->name = scan->name;
@@ -851,7 +907,9 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					XASSERT(sub->kind == MAPRED_REDUCER);
 					while (source)
 					{
-						for (scan = sub->u.reducer.parameters; scan; scan = scan->next)
+						for (scan = sub->u.reducer.parameters; 
+							 scan; 
+							 scan = scan->next)
 						{
 							if (!strcasecmp(source->name, scan->name))
 								break;
@@ -860,12 +918,14 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 						{
 							if (!last)
 							{
-								obj->u.task.grouping = mapred_malloc(sizeof(mapred_plist_t));
+								obj->u.task.grouping = 
+									mapred_malloc(sizeof(mapred_plist_t));
 								last = obj->u.task.grouping;
 							}
 							else
 							{
-								last->next = mapred_malloc(sizeof(mapred_plist_t));
+								last->next = 
+									mapred_malloc(sizeof(mapred_plist_t));
 								last = last->next;
 							}
 							last->name = source->name;
@@ -1188,7 +1248,9 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						outfile = fopen(output->u.output.desc, "wb");
 						if (!outfile)
 						{
-							fprintf(stderr, "Error (%d): could not open file '%s' for write.\n", 
+							fprintf(stderr, 
+									"Error (%d): could not open file '%s' "
+									"for write.\n", 
 									errno, output->u.output.desc);
 							continue;
 						}
@@ -1213,7 +1275,11 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 							PQprintOpt options;
 							memset(&options, 0, sizeof(options));
 
-							/* Fancy formating for stdout, plain for flat file */
+							/* 
+							 * Formating:
+							 *   STDOUT = fancy formating
+							 *   FILE   = plain formating
+							 */
 							if (outfile == stdout)
 							{
 								options.header = true;
@@ -1301,7 +1367,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						bufcat(&buffer, "CREATE EXTERNAL TABLE ");
 						bufcat(&buffer, obj->name);
 						bufcat(&buffer, "(");
-						for (plist = obj->u.input.columns; plist; plist = plist->next)
+						for (plist = obj->u.input.columns; 
+							 plist; 
+							 plist = plist->next)
 						{
 							bufcat(&buffer, plist->name);
 							bufcat(&buffer, " ");
@@ -1311,7 +1379,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						}
 						bufcat(&buffer, ")\n");
 						bufcat(&buffer, "  LOCATION(");
-						for (clist = obj->u.input.files; clist; clist = clist->next)
+						for (clist = obj->u.input.files; 
+							 clist; 
+							 clist = clist->next)
 						{
 							char *host, *path, *tokenizer;
 
@@ -1337,7 +1407,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 							bufcat(&buffer, "  FORMAT 'CSV'");
 						else
 							bufcat(&buffer, "  FORMAT 'TEXT'");
-						if (obj->u.input.delimiter || obj->u.input.quote || obj->u.input.null)
+						if (obj->u.input.delimiter || 
+							obj->u.input.quote     || 
+							obj->u.input.null)
 						{
 							bufcat(&buffer, " ( ");
 							if (obj->u.input.delimiter)
@@ -1364,7 +1436,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						if (obj->u.input.error_limit > 0)
 						{
 							char intbuf[11];
-							snprintf(intbuf, 11, "%d", obj->u.input.error_limit);
+							snprintf(intbuf, 11, "%d", 
+									 obj->u.input.error_limit);
 
 							bufcat(&buffer, "\n  SEGMENT REJECT LIMIT ");
 							bufcat(&buffer, intbuf);
@@ -1379,7 +1452,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						bufcat(&buffer, "CREATE EXTERNAL WEB TABLE ");
 						bufcat(&buffer, obj->name);
 						bufcat(&buffer, "(");
-						for (plist = obj->u.input.columns; plist; plist = plist->next)
+						for (plist = obj->u.input.columns; 
+							 plist; 
+							 plist = plist->next)
 						{
 							bufcat(&buffer, plist->name);
 							bufcat(&buffer, " ");
@@ -1395,7 +1470,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 							bufcat(&buffer, "  FORMAT 'CSV'");
 						else
 							bufcat(&buffer, "  FORMAT 'TEXT'");
-						if (obj->u.input.delimiter || obj->u.input.quote || obj->u.input.null)
+						if (obj->u.input.delimiter || 
+							obj->u.input.quote     || 
+							obj->u.input.null)
 						{
 							bufcat(&buffer, " ( ");
 							if (obj->u.input.delimiter)
@@ -1422,7 +1499,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						if (obj->u.input.error_limit > 0)
 						{
 							char intbuf[11];
-							snprintf(intbuf, 11, "%d", obj->u.input.error_limit);
+							snprintf(intbuf, 11, "%d", 
+									 obj->u.input.error_limit);
 
 							bufcat(&buffer, "\n  SEGMENT REJECT LIMIT ");
 							bufcat(&buffer, intbuf);
@@ -1504,7 +1582,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				bufcat(&buffer, "(");
 
 				/* Handle parameter list */
-				for (plist = obj->u.function.parameters; plist; plist = plist->next)
+				for (plist = obj->u.function.parameters; 
+					 plist; 
+					 plist = plist->next)
 				{
 					bufcat(&buffer, plist->name);
 					bufcat(&buffer, " ");
@@ -1570,8 +1650,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				XASSERT(transition->name);
 			
 				/* 
-				 * If the reducer depends on an object that hasn't be created then
-				 * return false, it will be resolved during a second pass
+				 * If the reducer depends on an object that hasn't be created
+				 * then return false, it will be resolved during a second pass
 				 */
 				if ((obj->u.reducer.transition.object && 
 					 !obj->u.reducer.transition.object->created) ||
@@ -1599,8 +1679,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				bufcat(&buffer, " (");
 
 				/* 
-				 * Get the state type, and write out the aggregate parameters based
-				 * on the parameter list of the transition function.
+				 * Get the state type, and write out the aggregate parameters 
+				 * based on the parameter list of the transition function.
 				 */
 				plist = transition->u.function.parameters;
 				state = plist->type;
@@ -1744,7 +1824,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						if (!columns)
 						{
 							fprintf(stderr, 
-									"Error: Unable to determine return columns for TASK '%s'\n",
+									"Error: Unable to determine return columns "
+									"for TASK '%s'\n",
 									obj->u.task.input.name);
 							XRAISE(MAPRED_PARSE_INTERNAL, NULL);
 						}
@@ -1769,7 +1850,6 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				{
 					XASSERT(mapper);  /* FIXME */
 
-
 					plist = mapper->u.function.returns;
 					XASSERT(plist);
 
@@ -1783,7 +1863,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 							if (plist->next)
 								bufcat(&buffer, ", ");
 						}
-						bufcat(&buffer, " FROM (");
+						bufcat(&buffer, "\nFROM (");
 					}
 
 					/* shared code */
@@ -1817,9 +1897,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 								{
 									/*
 									 * (HACK)
-									 * Note that global_plist overloads the plist 
-									 * structure using the "type" field to store 
-									 * "value".
+									 * Note that global_plist overloads the 
+									 * plist structure using the "type" field 
+									 * to store "value".
 									 * (HACK)
 									 */
 									bufcat(&buffer, "'");
@@ -1830,13 +1910,17 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 								}
 
 
-						/* If we couldn't find it issue a warning and set to NULL */
+						/* 
+						 * If we couldn't find it issue a warning and 
+						 * set to NULL 
+						 */
 						if (!scan)
 						{
 							if (global_verbose_flag)
 								fprintf(stderr, "       ");
 							fprintf(stderr, 
-									"WARNING: unset parameter - %s(%s => NULL)\n",
+									"WARNING: unset parameter - "
+									"%s(%s => NULL)\n",
 									mapper->name, plist->name);
 							bufcat(&buffer, "NULL::");
 							bufcat(&buffer, plist->type);
@@ -1856,15 +1940,16 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						bufcat(&buffer, qbuffer->buffer);
 						bufcat(&buffer, ") mapxq\n");
 						/*
-						 * Need to work this through, it seems that m is true whenever a 
-						 * column is null, which is not the desired behavior.
+						 * Need to work this through, it seems that m is true
+						 * whenever a column is null, which is not the desired 
+						 * behavior.
 						 *
-						 * Look more closely at "grep" code for why we want it, and
-						 * "oreilly" code for why we don't.
+						 * Look more closely at "grep" code for why we want it, 
+						 * and "oreilly" code for why we don't.
 						 *
-						 * For the moment the compromise is that we do it only for
-						 * SINGLE mode functions, since MULTI mode can control it's
-						 * own filtering without this.
+						 * For the moment the compromise is that we do it only 
+						 * for SINGLE mode functions, since MULTI mode can 
+						 * control it's own filtering without this.
 						 */
 						if (mapper->u.function.mode != MAPRED_MULTI_MODE)
 							bufcat(&buffer, "WHERE m is not null");   
@@ -1877,8 +1962,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					}
 
 					/* 
-					 * Swap the buffer into the qbuffer for input as the next stage
-					 * of the query pipeline. 
+					 * Swap the buffer into the qbuffer for input as the next 
+					 * stage of the query pipeline. 
 					 */
 					swap = qbuffer;
 					qbuffer = buffer;
@@ -1916,12 +2001,14 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 							{
 								if (grouping)
 								{
-									last->next = mapred_malloc(sizeof(mapred_plist_t));
+									last->next = 
+										mapred_malloc(sizeof(mapred_plist_t));
 									last = last->next;
 								}
 								else
 								{
-									grouping = mapred_malloc(sizeof(mapred_plist_t));
+									grouping = 
+										mapred_malloc(sizeof(mapred_plist_t));
 									last = grouping;
 								}
 								last->name = plist->name;
@@ -1931,16 +2018,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						}
 					} 
 					else
-					{
-						/* The reducer exists in the YAML */
+					{   /* The reducer exists in the YAML */
 					
-						/* 
-						 * If the reducer has a finalizer we push the finalizer out
-						 * to the task so that we can handle set returning aggregates.
-						 */
-
-						/* FIXME */
-
 						/* We precalculated the grouping columns */
 						grouping = obj->u.task.grouping;
 					}
@@ -1953,16 +2032,6 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						bufcat(&buffer, ", ");
 					}
 				
-					/* 
-					 * Since "finalfunc" can't return a set we instead push the finalizer
-					 * outside the scope of the reducer!
-					 */
-					if (reducer && reducer->u.reducer.finalizer.name)
-					{
-						bufcat(&buffer, reducer->u.reducer.finalizer.name);
-						bufcat(&buffer, "(");
-					}
-
 					/* Call the aggregation function */
 					bufcat(&buffer, obj->u.task.reducer.name);
 					bufcat(&buffer, "(");
@@ -1972,7 +2041,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						plist = reducer->u.reducer.parameters;
 						for (; plist; plist = plist->next)
 						{
-							/* Check if this parameter is one of the input columns */
+							/* Check if parameter is one of the input columns */
 							for (scan = columns; scan; scan = scan->next)
 								if (!strcasecmp(plist->name, scan->name))
 								{
@@ -1980,7 +2049,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 									break;
 								}
 
-							/* Task inputs also need to scan the grouping columns */
+							/* Task inputs need to scan the grouping columns */
 							if (!scan)
 								for (scan = ingrouping; scan; scan = scan->next)
 									if (!strcasecmp(plist->name, scan->name))
@@ -1991,14 +2060,18 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					
 							/* Check if this parameter is in global_plist */
 							if (!scan)
-								for (scan = global_plist; scan; scan = scan->next)
+							{
+								for (scan = global_plist; 
+									 scan; 
+									 scan = scan->next)
+								{
 									if (!strcasecmp(plist->name, scan->name))
 									{
 										/*
 										 * (HACK)
-										 * Note that global_plist overloads the plist 
-										 * structure using the "type" field to store 
-										 * "value".
+										 * Note that global_plist overloads the 
+										 * plist structure using the "type" 
+										 * field to store "value".
 										 * (HACK)
 										 */
 										bufcat(&buffer, "'");
@@ -2007,30 +2080,34 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 										bufcat(&buffer, plist->type);
 										break;
 									}
+								}
+							}
 
-
-							/* If we couldn't find it issue a warning and set to NULL */
+							/* 
+							 * If we couldn't find it issue a warning 
+							 * and set to NULL 
+							 */
 							if (!scan)
 							{
 								if (global_verbose_flag)
 									fprintf(stderr, "       ");
 								fprintf(stderr, 
-										"WARNING: unset parameter - %s(%s => NULL)\n",
+										"WARNING: unset parameter - "
+										"%s(%s => NULL)\n",
 										reducer->name, plist->name);
 								bufcat(&buffer, "NULL::");
 								bufcat(&buffer, plist->type);
 							}
-
-							/* Write out the comma if there is another input parameter */
 							if (plist->next)
 								bufcat(&buffer, ", ");
 						}
-						if (reducer->u.reducer.finalizer.name)
-							bufcat(&buffer, ")");
 					}
 					else
 					{
-						/* non-yaml reducer always takes "value" as it's input column */
+						/* 
+						 * non-yaml reducer always takes "value" as the 
+						 * input column 
+						 */
 
 						/* Check if "value" is one of the input columns */
 						for (scan = columns; scan; scan = scan->next)
@@ -2056,9 +2133,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 								{
 									/*
 									 * (HACK)
-									 * Note that global_plist overloads the plist 
-									 * structure using the "type" field to store 
-									 * "value".
+									 * Note that global_plist overloads the 
+									 * plist structure using the "type" field 
+									 * to store "value".
 									 * (HACK)
 									 */
 									bufcat(&buffer, "'");
@@ -2073,7 +2150,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 							if (global_verbose_flag)
 								fprintf(stderr, "       ");
 							fprintf(stderr, 
-									"WARNING: unset parameter - %s(value => NULL)\n",
+									"WARNING: unset parameter - "
+									"%s(value => NULL)\n",
 									obj->u.task.reducer.name);
 							bufcat(&buffer, "NULL");
 						}
@@ -2084,13 +2162,24 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					if (reducer)
 					{
 						plist = reducer->u.reducer.returns;
-						if (!plist || plist->next)
-							XASSERT(false); /* FIXME: multi-column returning reducers? */
-						bufcat(&buffer, plist->name);
+						XASSERT(plist);  /* Need to have a return! */
+
+						/* 
+						 * If the reducer has a finalizer we push it outside of
+						 * the context of the UDA so that we can properly handle
+						 * set returning/column returning functions.
+						 */						   
+						if (reducer->u.reducer.finalizer.name)
+							bufcat(&buffer, "r");
+						else
+							bufcat(&buffer, plist->name);
 					}
 					else
 					{
-						/* non-yaml reducer always returns a single column named "value" */
+						/* 
+						 * non-yaml reducer always return a single column 
+						 * named "value" 
+						 */
 						bufcat(&buffer, "value");
 					}
 					bufcat(&buffer, "\nFROM ");
@@ -2117,8 +2206,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 
 
 					/* 
-					 * Swap the buffer into the qbuffer for input as the next stage
-					 * of the query pipeline. 
+					 * Swap the buffer into the qbuffer for input as the next 
+					 * stage of the query pipeline. 
 					 */
 					swap = qbuffer;
 					qbuffer = buffer;
@@ -2140,13 +2229,93 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					columns = last;
 
 					/* 
-					 * If the reducer had a finalizer we push it into another nested
-					 * subquery since user defined aggregates aren't allowed to return
-					 * sets.
+					 * If the reducer had a finalizer we push it into another 
+					 * nested subquery since user defined aggregates aren't 
+					 * allowed to return sets.
 					 *
-					 * FIXME: this code is a duplicate of the MAP code above
+					 * NOTE: this code mostly duplicates the MAP code above
 					 */
+					if (reducer && reducer->u.reducer.finalizer.name)
+					{
+						mapred_object_t *finalizer;
 
+						finalizer = reducer->u.reducer.finalizer.object;
+						XASSERT(finalizer);  /* FIXME */
+						XASSERT(finalizer->u.function.returns);
+
+						/*
+						 * If the finalizer returns multiple columns then we
+						 * need an extra layer of wrapping to extract them.
+						 */
+						plist = finalizer->u.function.returns;
+						if (plist->next)
+						{
+							bufcat(&buffer, "SELECT ");
+
+							/* the grouping columns */
+							for (plist = grouping; 
+								 plist; 
+								 plist = plist->next)
+							{
+								bufcat(&buffer, plist->name);
+								bufcat(&buffer, ", ");
+							}
+							for (plist = finalizer->u.function.returns; 
+								 plist; 
+								 plist = plist->next)
+							{
+								bufcat(&buffer, plist->name);
+								bufcat(&buffer, "(r)");
+								if (plist->next)
+									bufcat(&buffer, ", ");
+							}
+							bufcat(&buffer, "\nFROM (");
+						}
+
+						/* 
+						 * Call the function on the returned state from 
+						 * the reducer.
+						 */
+						bufcat(&buffer, "SELECT ");
+						
+						/* grouping columns */
+						for (plist = grouping; 
+							 plist; 
+							 plist = plist->next)
+						{
+							bufcat(&buffer, plist->name);
+							bufcat(&buffer, ", ");
+						}
+
+						bufcat(&buffer, finalizer->name);
+						bufcat(&buffer, "(r) as ");
+
+						/* break into cases again */
+						plist = finalizer->u.function.returns;
+						if (plist->next)
+							bufcat(&buffer, "r");
+						else
+							bufcat(&buffer, plist->name);
+						bufcat(&buffer, " FROM (");
+						bufcat(&buffer, qbuffer->buffer);
+						bufcat(&buffer, ") redxq\n");
+
+						/* 
+						 * If we have that extra layer of wrapping 
+						 * then close it off
+						 */
+						if (finalizer->u.function.returns->next)
+							bufcat(&buffer, ") redsubq\n");
+
+						/* 
+						 * Swap the buffer into the qbuffer for input as the next 
+						 * stage of the query pipeline. 
+						 */
+						swap = qbuffer;
+						qbuffer = buffer;
+						buffer = swap;
+						bufreset(buffer);
+					}
 				}
 
 
@@ -2235,17 +2404,16 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				 * right away.
 				 */
 				if (obj->kind != MAPRED_INPUT || 
-				    obj->u.input.type != MAPRED_INPUT_QUERY ||
-				    strcmp(error, OBJ_DOES_NOT_EXIST))
+					obj->u.input.type != MAPRED_INPUT_QUERY ||
+					strcmp(error, OBJ_DOES_NOT_EXIST))
 				{
-
-					fprintf(stderr, "       %s", PQresultErrorMessage(result));
+					if (global_verbose_flag)
+						fprintf(stderr, "       ");
+					fprintf(stderr, PQresultErrorMessage(result));
 					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
-
 				}
 				if (global_verbose_flag)
 					fprintf(stderr, "       %s", PQresultErrorMessage(result));
-
 			}
 		}
 
@@ -2336,7 +2504,9 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 				bufcat(&buffer, "DROP FUNCTION IF EXISTS ");
 				bufcat(&buffer, obj->name);
 				bufcat(&buffer, "(");
-				for (plist = obj->u.function.parameters; plist; plist = plist->next)
+				for (plist = obj->u.function.parameters; 
+					 plist; 
+					 plist = plist->next)
 				{  /* Handle parameter list */
 					bufcat(&buffer, plist->type);
 					if (plist->next)
@@ -2362,9 +2532,9 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 				bufcat(&buffer, "(");
 
 				/* 
-				 * The first parameter of the transition function is the 'state' and is
-				 * not listed as a parameter of the reducer, but all the rest of the
-				 * parameters are 
+				 * The first parameter of the transition function is the 'state'
+				 * and is not listed as a parameter of the reducer, but all the 
+				 * rest of the parameters are 
 				 */
 				plist = transition->u.function.parameters;
 				for (plist = plist->next; plist; plist = plist->next)

@@ -27,9 +27,10 @@ if 'From' in msg and 'To' in msg:
 $$;
 
 -- EXECUTION
-CREATE VIEW mapreduce_10385_run_1 AS
+CREATE VIEW mapreduce_63291_run_1 AS
 SELECT source, target, SUM(value) as value
-FROM (SELECT source(m), target(m), value(m) FROM (SELECT msg_from_to(value) as m FROM email) mapxq
+FROM (SELECT source(m), target(m), value(m)
+FROM (SELECT msg_from_to(value) as m FROM email) mapxq
 ) mapsubq
 GROUP BY source, target;
 
@@ -37,5 +38,5 @@ GROUP BY source, target;
 DROP TYPE IF EXISTS msg_from_to_rtype CASCADE;
 DROP EXTERNAL TABLE IF EXISTS email CASCADE;
 DROP FUNCTION IF EXISTS msg_from_to(text) CASCADE;
-DROP VIEW IF EXISTS mapreduce_10385_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_63291_run_1 CASCADE;
 

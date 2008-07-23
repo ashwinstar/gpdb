@@ -37,9 +37,10 @@ CREATE AGGREGATE myReduce (integer) (
 );
 
 -- EXECUTION
-CREATE VIEW mapreduce_10025_run_1 AS
+CREATE VIEW mapreduce_62931_run_1 AS
 SELECT ip, myReduce(count) as state
-FROM (SELECT ip(m), count(m) FROM (SELECT myMap('clar'::text, ip, url) as m FROM weblog) mapxq
+FROM (SELECT ip(m), count(m)
+FROM (SELECT myMap('clar'::text, ip, url) as m FROM weblog) mapxq
 WHERE m is not null) mapsubq
 GROUP BY ip;
 
@@ -49,5 +50,5 @@ DROP EXTERNAL TABLE IF EXISTS weblog CASCADE;
 DROP FUNCTION IF EXISTS myMap(text, text, text) CASCADE;
 DROP FUNCTION IF EXISTS myTransition(integer, integer) CASCADE;
 DROP AGGREGATE IF EXISTS myReduce(integer) CASCADE;
-DROP VIEW IF EXISTS mapreduce_10025_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_62931_run_1 CASCADE;
 

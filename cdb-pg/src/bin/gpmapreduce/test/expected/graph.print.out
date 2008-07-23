@@ -35,20 +35,21 @@ CREATE AGGREGATE traverse (integer) (
 );
 
 -- EXECUTION
-CREATE VIEW mapreduce_10088_run_1 AS
+CREATE VIEW mapreduce_62994_run_1 AS
 SELECT key, traverse(value) as state
 FROM network
 GROUP BY key;
 
 -- EXECUTION
-CREATE VIEW mapreduce_10088_run_2 AS
+CREATE VIEW mapreduce_62994_run_2 AS
 SELECT key, traverse(value) as state
-FROM (SELECT key(m), value(m) FROM (SELECT reverse(key, value) as m FROM network) mapxq
+FROM (SELECT key(m), value(m)
+FROM (SELECT reverse(key, value) as m FROM network) mapxq
 WHERE m is not null) mapsubq
 GROUP BY key;
 
 -- EXECUTION
-CREATE VIEW mapreduce_10088_run_3 AS
+CREATE VIEW mapreduce_62994_run_3 AS
 SELECT * FROM network;
 
 
@@ -57,7 +58,7 @@ DROP EXTERNAL TABLE IF EXISTS network CASCADE;
 DROP FUNCTION IF EXISTS reverse(integer, integer) CASCADE;
 DROP FUNCTION IF EXISTS pcount(integer, integer) CASCADE;
 DROP AGGREGATE IF EXISTS traverse(integer) CASCADE;
-DROP VIEW IF EXISTS mapreduce_10088_run_1 CASCADE;
-DROP VIEW IF EXISTS mapreduce_10088_run_2 CASCADE;
-DROP VIEW IF EXISTS mapreduce_10088_run_3 CASCADE;
+DROP VIEW IF EXISTS mapreduce_62994_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_62994_run_2 CASCADE;
+DROP VIEW IF EXISTS mapreduce_62994_run_3 CASCADE;
 

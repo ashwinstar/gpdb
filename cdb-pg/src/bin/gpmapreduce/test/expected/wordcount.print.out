@@ -40,13 +40,15 @@ $$;
 -- TASK email_histogram
 CREATE VIEW email_histogram AS
 SELECT key, SUM(value) as value
-FROM (SELECT key(m), value(m) FROM (SELECT wordsplit_python(value) as m FROM email) mapxq
+FROM (SELECT key(m), value(m)
+FROM (SELECT wordsplit_python(value) as m FROM email) mapxq
 ) mapsubq
 GROUP BY key;
 
 -- EXECUTION
-CREATE VIEW mapreduce_10633_run_1 AS
-SELECT key(m), value(m) FROM (SELECT reverse_python(key, value) as m FROM email_histogram) mapxq
+CREATE VIEW mapreduce_63539_run_1 AS
+SELECT key(m), value(m)
+FROM (SELECT reverse_python(key, value) as m FROM email_histogram) mapxq
 WHERE m is not null;
 
 
@@ -56,5 +58,5 @@ DROP EXTERNAL TABLE IF EXISTS email CASCADE;
 DROP FUNCTION IF EXISTS wordsplit_python(text) CASCADE;
 DROP FUNCTION IF EXISTS reverse_python(text, text) CASCADE;
 DROP VIEW IF EXISTS email_histogram CASCADE;
-DROP VIEW IF EXISTS mapreduce_10633_run_1 CASCADE;
+DROP VIEW IF EXISTS mapreduce_63539_run_1 CASCADE;
 
