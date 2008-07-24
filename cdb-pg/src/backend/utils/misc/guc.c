@@ -1323,7 +1323,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&gp_adjust_selectivity_for_outerjoins,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 	
 	{
@@ -1333,7 +1333,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
   		},
 		&gp_selectivity_damping_for_scans,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	
 	{
@@ -1343,7 +1343,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
   		},
 		&gp_selectivity_damping_for_joins,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	
 	{

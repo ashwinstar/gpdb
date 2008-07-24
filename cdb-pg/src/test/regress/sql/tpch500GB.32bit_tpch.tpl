@@ -1,3 +1,13 @@
+-- ensure legacy default settings;
+-- new installations have different settings due to modified conf files;
+
+set enable_mergejoin = on;
+set enable_nestloop = on;
+set gp_enable_agg_distinct = off;
+set gp_selectivity_damping_for_scans = off;
+set gp_selectivity_damping_for_joins = off;
+
+
 -- 
 -- Greenplum Database Statistics Dump
 -- Copyright (C) 2007  Greenplum Inc.
