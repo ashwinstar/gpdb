@@ -21,10 +21,12 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     cmdslot->u.request.port = gpcc_json_object_get_int(obj, "port", 0);
     cmdslot->u.request.mode = gpcc_json_object_get_string(obj, "mode", 0);
     cmdslot->u.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
+    cmdslot->u.request.isprimary = gpcc_json_object_get_string(obj, "isprimary", 0);
 
     if (cmdslot->u.request.port == 0 ||
 	cmdslot->u.request.mode == 0 ||
-	cmdslot->u.request.data_dir == 0) {
+	cmdslot->u.request.data_dir == 0 ||
+        cmdslot->u.request.isprimary == 0) {
 	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, 1, "request error: parameter is missing");
 	json_object_put(obj);
 	return 0;
@@ -48,19 +50,36 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
 	return 0;
     }
 
-    if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.request.proc,
-					0,
-					cmdslot->u.request.port,
-					cmdslot->u.request.data_dir,
-					cmdslot->u.request.mode,
-					1, 0, 
-					cmdslot->pool))) {
+    if (seg_is_qd(cmdslot) && strcmp(cmdslot->u.request.isprimary, "f") == 0) {
+	apr_proc_t proc;
+	char *argv[2];
 
-	seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "pg_ctl stop failure");
-	json_object_put(obj);
-	return 0;
+	gpcc_log_info("[%s] kill gpsyncmaster", cmdslot->cmdname);
+	argv[0] = "killall -9 gpsyncmaster || pkill -9 gpsyncmaster || true";
+	argv[1] = 0;
+	if (0 != (e = gpcc_proc_run_shell(&cmdslot->u.request.proc,
+					  argv[0],
+					  (const char *const *) argv, 0, 0, cmdslot->pool))) {
+		seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "killall gpsyncmaster failure");
+		json_object_put(obj);
+		return 0;
+	}
+    } else {
+
+	if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.request.proc,
+					    0,
+					    cmdslot->u.request.port,
+					    cmdslot->u.request.data_dir,
+					    cmdslot->u.request.mode,
+					    1, 0, 
+					    cmdslot->pool))) {
+	    
+	    seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "pg_ctl stop failure");
+	    json_object_put(obj);
+	    return 0;
+	}
     }
-
+    
     cmdslot->u.request.msg = obj;
     cmdslot->countdown = 1;
     return 0;
