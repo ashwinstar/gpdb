@@ -8261,7 +8261,7 @@ add_partition_rule(PartitionRule *rule)
 }
 
 static void
-add_part_to_catalog(Oid relid, PartitionBy *pby, int maxpartno)
+add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 {
 	char pt = parttype_to_char(pby->partType);
 	ListCell *lc;
@@ -8364,7 +8364,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int maxpartno)
 		el = linitial(spec->partElem);
 
 		/* fix the order if called from atpxPartAddList */ 
-		parruleord = (el->partno > maxpartno) ? el->partno : maxpartno;
+		parruleord = (pMaxpartno) ? *pMaxpartno : el->partno;
 
 		if (el->partName)
 			parname = strVal(el->partName);
@@ -8499,8 +8499,129 @@ static void
 ATExecPartAddInternal(Relation rel, Node *def)
 {
 	PartitionBy *part = (PartitionBy *)def;
-	add_part_to_catalog(RelationGetRelid(rel), part, 0);
+	add_part_to_catalog(RelationGetRelid(rel), part, NULL);
 }
+
+/*
+ * parruleord_reset_rank
+ *
+ * iterate over the specified set of range partitions (in ascending
+ * order) in pg_partition_rule and reset the parruleord to start at 1
+ * and continue in an ascending sequence.
+ */
+static void
+parruleord_reset_rank(Oid partid, int2 level, Oid parent, int2 ruleord, 
+					  MemoryContext mcxt)
+{
+	ScanKeyData key[3];
+	HeapTuple tuple;
+	Relation rel;
+	SysScanDesc scan;
+	int ii = 1;
+
+	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_rule_paroid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(partid));
+	ScanKeyInit(&key[1],
+				Anum_pg_partition_rule_parparentrule,
+				BTEqualStrategyNumber, F_INT2EQ,
+				ObjectIdGetDatum(parent));
+	ScanKeyInit(&key[2],
+                Anum_pg_partition_rule_parruleord,			
+				BTGreaterEqualStrategyNumber, F_INT2GE,
+				Int16GetDatum(ruleord));
+
+	scan = systable_beginscan(rel, PartitionRuleParoidParentRuleOrdIndexId,
+							  true, SnapshotNow, 3, key);
+
+	while ((tuple = systable_getnext(scan)))
+	{
+		Form_pg_partition_rule rule_desc;
+
+		Insist(HeapTupleIsValid(tuple));
+
+		tuple = heap_copytuple(tuple);
+
+		rule_desc =
+			(Form_pg_partition_rule)GETSTRUCT(tuple);
+
+		rule_desc->parruleord = ii;
+		ii++;
+
+		simple_heap_update(rel, &tuple->t_self, tuple);
+	    CatalogUpdateIndexes(rel, tuple);
+			
+	}
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+} /* end parruleord_reset_rank */
+
+/*
+ * parruleord_open_gap
+ *
+ * iterate over the specified set of range partitions (in *DESCENDING*
+ * order) in pg_partition_rule and increment the parruleord in order
+ * to open a "gap" for a new partition.  The stopkey is inclusive: to
+ * insert a new partition at parruleord=5, set the stopkey to 5.  The
+ * current partition at parruleord=5 (and all subsequent partitions)
+ * are incremented by 1 to allow the insertion of the new partition.
+ *
+ */
+static void
+parruleord_open_gap(Oid partid, int2 level, Oid parent, int2 ruleord, 
+					int stopkey,
+					MemoryContext mcxt)
+{
+	ScanKeyData key[3];
+	HeapTuple tuple;
+	Relation rel;
+	SysScanDesc scan;
+
+	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_partition_rule_paroid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(partid));
+	ScanKeyInit(&key[1],
+				Anum_pg_partition_rule_parparentrule,
+				BTEqualStrategyNumber, F_INT2EQ,
+				ObjectIdGetDatum(parent));
+	ScanKeyInit(&key[2],
+                Anum_pg_partition_rule_parruleord,			
+				BTLessEqualStrategyNumber, F_INT2LE,
+				Int16GetDatum(ruleord));
+
+	scan = systable_beginscan(rel, PartitionRuleParoidParentRuleOrdIndexId,
+							  true, SnapshotNow, 3, key);
+
+	while ((tuple = systable_getprev(scan)))
+	{
+		int old_ruleord;
+		Form_pg_partition_rule rule_desc;
+
+		Insist(HeapTupleIsValid(tuple));
+
+		tuple = heap_copytuple(tuple);
+
+		rule_desc =
+			(Form_pg_partition_rule)GETSTRUCT(tuple);
+
+		old_ruleord = rule_desc->parruleord;
+		rule_desc->parruleord++;
+
+		simple_heap_update(rel, &tuple->t_self, tuple);
+	    CatalogUpdateIndexes(rel, tuple);
+
+		if (old_ruleord <= stopkey)
+			break;
+	}
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+} /* end parruleord_open_gap */
 
 /* XXX: just here for now */
 static PartitionNode *
@@ -10038,19 +10159,20 @@ atpxPartAddList(AlteredTableInfo *tab,
 				PartitionElem *pelem,
 				PartitionByType part_type) 
 {
-	PartitionBy 		*pBy   	= makeNode(PartitionBy); 
-	PartitionSpec 		*spec  	= makeNode(PartitionSpec); 
-	CreateStmt 			*ct    	= NULL;
-	DestReceiver 		*dest  	= None_Receiver; 
+	PartitionBy 		*pBy   	   = makeNode(PartitionBy); 
+	PartitionSpec 		*spec  	   = makeNode(PartitionSpec); 
+	CreateStmt 			*ct    	   = NULL;
+	DestReceiver 		*dest  	   = None_Receiver; 
 	char 				*newpartname;
-	ParseState 			*pstate = make_parsestate(NULL);
-	int 				 partno = 0;
+	ParseState 			*pstate    = make_parsestate(NULL);
+	int 				 partno    = 0;
 	int 				 maxpartno = 0;
 	CreateStmtContext    cxt;
-	List	   			*schema = NIL;
+	List	   			*schema    = NIL;
 	List	   			*inheritOids;
 	List	   			*old_constraints;
 	int					 parentOidCount;
+	bool 				 bOpenGap  = false;
 
 	MemSet(&cxt, 0, sizeof(cxt));
 	MemSet(spec, 0, sizeof(PartitionSpec));
@@ -10230,6 +10352,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 					/* should be first partition */
 					maxpartno = prule->topRule->parruleord - 1;
+					if (0 == maxpartno)
+					{
+						maxpartno = 1;
+						bOpenGap = true;
+					}
 
 					pbs->partEnd = (Node *)ri;
 				}
@@ -10361,6 +10488,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 							/* should be first partition */
 							maxpartno = a_rule->parruleord - 1;
+							if (0 == maxpartno)
+							{
+								maxpartno = 1;
+								bOpenGap = true;
+							}
 							
 						}
 						else
@@ -10432,6 +10564,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 								/* should be first partition */
 								maxpartno = a_rule->parruleord - 1;
+								if (0 == maxpartno)
+								{
+									maxpartno = 1;
+									bOpenGap = true;
+								}
 
 								break;
 							case 0:
@@ -10478,6 +10615,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 								/* should be first partition */
 								maxpartno = a_rule->parruleord - 1;
+								if (0 == maxpartno)
+								{
+									maxpartno = 1;
+									bOpenGap = true;
+								}
 
 								break;
 							case 0:
@@ -10663,9 +10805,25 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 				}
 
-			}
-		}
+			} /* end foreach */
 
+			/* give a new maxpartno for the list partition */
+			if (pNode && pNode->rules && list_length(pNode->rules))
+			{
+				ListCell *lc;			
+
+				foreach(lc, pNode->rules)
+				{
+					PartitionRule *rule = lfirst(lc);
+
+					/* find the highest parruleord */
+					if (rule->parruleord > maxpartno)
+						maxpartno = rule->parruleord;
+				}
+				maxpartno++;
+			}
+
+		}
 
 	}
 
@@ -10745,7 +10903,35 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	}
 
-	add_part_to_catalog(ct->oidInfo.relOid, pBy, maxpartno); 
+	if (bOpenGap) /* might need a gap to insert the new partition */
+	{
+		AlterPartitionId 	 pid;
+		pg_part_rule   	*prule = NULL;
+
+		pid.idtype = AT_AP_IDPosition;
+		pid.partiddef = (Node *)makeInteger(-1);
+		pid.location  = -1;
+
+		/* get the last rule, and increment each parruleord until
+		 * reach parruleord == maxpartno 
+		 */
+		prule = get_part_rule(rel, &pid, false, false, 
+							  CurrentMemoryContext);
+
+		Assert(prule && prule->topRule && prule->pNode && prule->pNode->part);
+
+		if (prule && prule->topRule && prule->pNode && prule->pNode->part)
+			parruleord_open_gap(
+					prule->pNode->part->partid,
+					prule->pNode->part->parlevel,
+					prule->topRule->parparentoid,
+					prule->topRule->parruleord,
+					maxpartno,
+					CurrentMemoryContext);	
+	}
+
+
+	add_part_to_catalog(ct->oidInfo.relOid, pBy, &maxpartno); 
 
 } /* end atpxPartAddList */
 
@@ -10785,9 +10971,28 @@ ATPExecPartCoalesce(Relation rel,
 
 	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
 
-
-	if (prule)
+	if (0)
 	{
+		parruleord_reset_rank(
+				prule->pNode->part->partid,
+				prule->pNode->part->parlevel,
+				prule->topRule->parparentoid,
+				prule->topRule->parruleord,
+				CurrentMemoryContext);	
+	}
+
+
+	if (0)
+	{
+
+		parruleord_open_gap(
+				prule->pNode->part->partid,
+				prule->pNode->part->parlevel,
+				prule->topRule->parparentoid,
+				prule->topRule->parruleord,
+				0,
+				CurrentMemoryContext);	
+
 	}
 
     ereport(ERROR,
