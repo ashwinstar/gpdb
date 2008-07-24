@@ -8824,6 +8824,7 @@ RelationBuildPartitionDesc(Relation rel)
 
 /*
  * Return a list of partition attributes. Order is not guaranteed.
+ * Caller must free the result.
  */
 List *
 get_partition_attrs(PartitionNode *pn)
@@ -8865,6 +8866,7 @@ max_partition_attr(PartitionNode *pn)
 			n = Max(att, n);
 		}
 	}
+	pfree(l);
 	return n;
 }
 
