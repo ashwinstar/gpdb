@@ -155,12 +155,12 @@ void GPMemoryProtectInit()
  *
  * FIX ERROR HANDLER!
  */
-static void gp_failed_to_alloc()
+static void gp_failed_to_alloc(int ec) 
 {
 	/* Give an extra chunk for error handling. */
 	gpproc_total_malloc_chunk += 1;
 	ereport(ERROR, (errcode(ERRCODE_GP_MEMPROT_KILL),
-				errmsg("Memory allocation denied, kill all gangs")
+				errmsg("Memory allocation denied, error code %d, kill all gangs", ec)
 				));
 }
 
@@ -191,7 +191,7 @@ static void *gp_malloc_internal(size_t sz1, size_t sz2, bool ismalloc)
 			err_code = gpmemprot_down_sem(&gpsema_vmem_prot, need_chunk, true);
 
 		if(err_code != 0)
-			gp_failed_to_alloc();
+			gp_failed_to_alloc(err_code);
 	}
 
 	if(ismalloc)
@@ -266,7 +266,7 @@ void *gp_realloc(void *ptr, size_t sz, size_t newsz)
 					err_code = gpmemprot_down_sem(&gpsema_vmem_prot, need_chunk, true);
 
 				if(err_code != 0)
-					gp_failed_to_alloc();
+					gp_failed_to_alloc(err_code);
 			}
 		}
 
