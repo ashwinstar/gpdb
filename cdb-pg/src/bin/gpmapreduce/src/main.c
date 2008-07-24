@@ -192,7 +192,7 @@ main (int argc, char *argv[])
 	/* Do something interesting with documents */
 	for (doc_item = documents; doc_item; doc_item = doc_item->next)
 	{
-		PGconn   *conn;
+		PGconn   *conn = NULL;
 		char      pwdbuf[100];
 		char      portbuf[11];  /* max int size should be 10 digits */
 		char     *pwd, *port, *options, *tty;
