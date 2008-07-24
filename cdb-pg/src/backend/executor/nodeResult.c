@@ -51,6 +51,7 @@
 #include "utils/memutils.h"
 
 #include "catalog/pg_type.h"
+#include "utils/lsyscache.h"
 
 #include "cdb/cdbhash.h"
 #include "cdb/cdbvars.h"
@@ -198,6 +199,9 @@ ExecResult(ResultState *node)
 					if (!isnull)
 					{
 						att_type = resultSlot->tts_tupleDescriptor->attrs[attnum - 1]->atttypid;
+
+						if (get_typtype(att_type) == 'd')
+							att_type = getBaseType(att_type);
 
 						/* CdbHash treats all array-types as ANYARRAYOID, it doesn't know how to hash
 						 * the individual types (why is this ?) */

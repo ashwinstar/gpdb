@@ -416,13 +416,48 @@ apply_motion(Plan *plan, Query *query)
 						/* Is this plan an all-const insert ? */
 						if (gp_enable_fast_sri && IsA(plan, Result))
 						{
+							ListCell *cell;
+							bool	typesOK=true;
+							Var		*elem;
+							Oid		att_type;
+
+							/* check the types. */
+							foreach(cell, hashExpr)
+							{
+								Assert(IsA(lfirst(cell), Var));
+
+								elem = (Var *)lfirst(cell);
+								att_type = elem->vartype;
+								/* These are all hashable, but isGreenplumHashable() doesn't know it */
+								switch (att_type)
+								{
+									case INT2ARRAYOID:
+									case INT4ARRAYOID:
+									case INT8ARRAYOID:
+									case FLOAT4ARRAYOID:
+									case FLOAT8ARRAYOID:
+									case REGTYPEARRAYOID:
+										att_type = ANYARRAYOID;
+										/* fall through */
+									default:
+										break;
+								}
+
+								if (!isGreenplumDbHashable(att_type))
+								{
+									typesOK=false;
+									break;
+								}
+							}
+
 							/* all constants in values clause -- no need to repartition. */
-							if (allConstantValuesClause(plan))
+							if (typesOK && allConstantValuesClause(plan))
 							{
 								Result	*rNode = (Result *)plan;
 								List	*hList = NIL;
 								int		i;
 
+								/* build our list */
 								for (i = 0; i < targetPolicy->nattrs; i++)
 								{
 									Assert(targetPolicy->attrs[i] > 0);
