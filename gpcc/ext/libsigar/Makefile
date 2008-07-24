@@ -26,7 +26,7 @@ else
 		TEST_LDFLAGS=-lkstat -lnsl -lsocket
 	else
 		ifeq (Darwin, $(OSNAME))
-			CFLAGS+=-DDARWIN -DDARWIN_HAS_LIBPROC_H
+			CFLAGS+=-DDARWIN
 			INCLUDES+=-I$(BASEDIR)/src/os/darwin -I/Developer/Headers/FlatCarbon
 			SOURCES+=os/darwin/darwin_sigar.c
 			OBJS+=darwin_sigar.o
