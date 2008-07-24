@@ -14,9 +14,9 @@ INCDIR    = include
 LIBDIR    = lib
 TESTDIR   = test
 
-PQINCDIR  = $(shell pg_config --includedir)
-PGINCDIR  = $(shell pg_config --includedir-server)
-PGLIBDIR  = $(shell pg_config --libdir)
+PQINCDIR  = ../../interfaces/libpq
+PGINCDIR  = ../../include 
+PGLIBDIR  = ../../interfaces/libpq 
 
 CFLAGS_DEBUG = -g -D INTERNAL_BUILD
 CFLAGS_DIST  = -O3
@@ -66,8 +66,7 @@ $(LIBDIR):
 $(LIBDIR)/$(LIBYAML):  $(LIBDIR)
 	@cp $(LIBYAMLDIR)/include/yaml.h $(INCDIR)/.
 	@chmod u+w $(INCDIR)/yaml.h
-	@cd $(LIBYAMLDIR); configure
-	@cd $(LIBYAMLDIR); make
+	@cd $(LIBYAMLDIR); $(MAKE) 
 	@cp $(LIBYAMLDIR)/src/.libs/$(LIBYAML) $(LIBDIR)/$(LIBYAML)
 	@chmod u+w $(LIBDIR)/$(LIBYAML)
 
