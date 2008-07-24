@@ -93,6 +93,7 @@ static apr_status_t a_array_stop_do(gpcc_event_t *ev, void *_cmdslot)
 	    p->u.stop.req[j].host = apr_pstrdup(p->pool, info->host);
 	    p->u.stop.req[j].port = info->port;
 	    p->u.stop.req[j].datadir = apr_pstrdup(p->pool, info->dir);
+	    p->u.stop.req[j].isprimary = info->isprimary;
 	    p->u.stop.req[j].reply = 0;
 	    j++;
 	} else {

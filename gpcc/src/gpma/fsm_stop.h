@@ -31,6 +31,10 @@ static apr_status_t a_stop_do(gpcc_event_t *ev, void *_cmdslot)
 					cmdslot->u.stop.req[i].host,
 					cmdslot->u.stop.req[i].port,
 					cmdslot->u.stop.req[i].datadir);
+	json_object_object_add(obj, "isprimary", 
+			       (cmdslot->u.stop.req[i].isprimary == 't' ?
+				json_object_new_string("t") :
+				json_object_new_string("f")));
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;
 
