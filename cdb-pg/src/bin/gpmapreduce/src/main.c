@@ -11,14 +11,17 @@
 
 ALLOW_EXCEPTIONS;
 
+static char  VERSION[] = 
+	"Greenplum Map/Reduce Driver 1.00b1";
+
+static char *wordchars = 
+	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
+
 int             global_print_flag   = 0;
 int             global_explain_flag = 0;
 int             global_verbose_flag = 0;
 int             global_debug_flag   = 0;
 mapred_plist_t *global_plist        = NULL;
-
-
-static char *wordchars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
 
 void usage(char *procname)
 {
@@ -27,6 +30,7 @@ void usage(char *procname)
 }
 
 void read_password(char *p, size_t len);
+void check_version(PGconn *conn);
 
 int
 main (int argc, char *argv[])
@@ -69,17 +73,28 @@ main (int argc, char *argv[])
 			{
 				switch (argv[i][j])
 				{
+#if INTERNAL_BUILD
 					case 'p':
 						global_print_flag = 1;
 						break;
 					case 'e':
 						global_explain_flag = 1;
 						break;
-					case 'v':
-						global_verbose_flag = 1;
-						break;
 					case 'd':
 						global_debug_flag = 1;
+						break;
+#endif
+					case 'V':  /* Version */
+#ifdef PRERELEASE
+						fprintf(stderr, "%s (%s Pre-release)\n",
+								VERSION, PRERELEASE);
+#else
+						fprintf(stderr, "%s\n",VERSION);
+#endif
+						exit(0);
+					
+					case 'v':  /* verbose */
+						global_verbose_flag = 1;
 						break;
 					default:
 						fprintf(stderr, "bad parameter -%c\n", argv[i][j]);
@@ -134,6 +149,11 @@ main (int argc, char *argv[])
 			}
 		}
 	}
+
+#ifdef PRERELEASE
+	/* PRE-RELEASE always prints version */
+	fprintf(stderr, "%s (%s Pre-release)\n", VERSION, PRERELEASE);
+#endif
 
 	/* open the file */
 	if (!filename)
@@ -212,7 +232,20 @@ main (int argc, char *argv[])
 			if (PQstatus(conn) == CONNECTION_BAD)
 				fprintf(stderr, PQerrorMessage(conn));
 			else
+			{
+				if (global_verbose_flag)
+				{
+					fprintf(stderr, "  - Connected Established:\n");
+					fprintf(stderr, "    HOST: %s\n", 
+							PQhost(conn) ? PQhost(conn) : "localhost");
+					fprintf(stderr, "    PORT: %s\n", PQport(conn));
+					fprintf(stderr, "    USER: %s/%s\n", PQuser(conn), PQdb(conn));
+				}
+#ifndef PRERELEASE
+				check_version(conn);
+#endif
 				mapred_run_document(conn, doc);
+			}
 		}
 		XCATCH(ASSERTION_FAILURE)
 		{
@@ -300,3 +333,45 @@ void read_password(char *p, size_t len)
         fclose(termout);
     }
 }
+
+
+void check_version(PGconn *conn)
+{
+	PGresult *result;
+
+	result = PQexec(conn, "select (regexp_matches(version(), "
+					"E'\\\\(Greenplum Database ([^)]+)\\\\)'))[1]");
+
+	if (PQresultStatus(result) == PGRES_TUPLES_OK && PQntuples(result) == 1)
+	{
+		char *version = PQgetvalue(result, 0, 0);
+
+		if (global_verbose_flag)
+			fprintf(stderr, "    VERSION: %s\n", version);
+
+		/* Determine if this version is approved for mapreduce usage */
+		if (strncmp(version, "main", 4) != 0)
+		{
+			/* Get major and minor release, patch level is ignored */
+			char *dot   = NULL;
+			int   major = strtol(version, &dot, 10);
+			int   minor = strtol(dot+1, NULL, 10);
+			if (major < 3 || (major == 3 && minor < 2))
+			{
+				char buf[100];
+				snprintf(buf, sizeof(buf), 
+						 "Unsupported backend version: %s", version);
+				XRAISE(VERSION_ERROR, buf);	
+			}
+		}
+	}
+	else
+	{
+		fprintf(stderr, PQerrorMessage(conn));
+		XRAISE(MAPRED_SQL_ERROR, "Unable to determine Greenplum version\n");
+	}
+
+	PQclear(result);
+}
+
+

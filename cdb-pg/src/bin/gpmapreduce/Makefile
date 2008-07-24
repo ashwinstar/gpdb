@@ -18,10 +18,18 @@ PQINCDIR  = $(shell pg_config --includedir)
 PGINCDIR  = $(shell pg_config --includedir-server)
 PGLIBDIR  = $(shell pg_config --libdir)
 
-CFLAGS    = -I$(PQINCDIR) -I$(PGINCDIR) -I$(INCDIR) -I$(SRCDIR) -g
+CFLAGS_DEBUG = -g -D INTERNAL_BUILD
+CFLAGS_DIST  = -O3
+
+CFLAGS    = -I$(PQINCDIR) -I$(PGINCDIR) -I$(INCDIR) -I$(SRCDIR)
 LDFLAGS   = -L$(LIBDIR) -lyaml -L$(PGLIBDIR) -lpq
 YACCFLAGS = -d
 FLEXFLAGS = -i
+
+# If a prerelease was given on the make command then adjust the CFLAGS
+ifdef PRERELEASE
+CFLAGS      += -DPRERELEASE="\"$(PRERELEASE)\""
+endif
 
 FILES     = main.o mapred.o parse.o yaml_scan.o yaml_parse.o 
 GENFILES  = yaml_parse.h yaml_parse.c yaml_scan.c yaml_scan.h
@@ -29,13 +37,18 @@ GENFILES  = yaml_parse.h yaml_parse.c yaml_scan.c yaml_scan.h
 OBJECTS   = $(addprefix $(SRCDIR)/, $(FILES))
 GENOBJS   = $(addprefix $(SRCDIR)/, $(GENFILES))
 
-all: $(TARGET)
+all: 
+	$(MAKE) $(TARGET) CFLAGS='$(CFLAGS) $(CFLAGS_DEBUG)'
+
+dist:
+	$(MAKE) clean
+	$(MAKE) $(TARGET) CFLAGS='$(CFLAGS) $(CFLAGS_DIST)'
 
 check: $(TARGET)
 	@cd $(TESTDIR); make
 
 clean:
-	make test_clean
+	$(MAKE) test_clean
 	rm -rf $(GENOBJS)
 	rm -rf $(TARGET) $(SRCDIR)/*.o
 
@@ -60,7 +73,7 @@ $(LIBDIR)/$(LIBYAML):  $(LIBDIR)
 
 %.o: %.c 
 	@echo "[Building] $@"
-	@$(CC) $(CFLAGS) -c $*.c -o $@
+	$(CC) $(CFLAGS) -c $*.c -o $@
 
 # This is a bit redundant, but it works well enough
 $(SRCDIR)/yaml_scan.c : $(SRCDIR)/yaml_scan.l

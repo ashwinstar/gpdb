@@ -163,63 +163,11 @@ void print_notice_handler(void *arg, const PGresult *res)
 }
 
 
-void check_version(PGconn *conn)
-{
-	PGresult *result;
-
-	result = PQexec(conn, "select (regexp_matches(version(), "
-					"E'\\\\(Greenplum Database ([^)]+)\\\\)'))[1]");
-
-	if (PQresultStatus(result) == PGRES_TUPLES_OK && PQntuples(result) == 1)
-	{
-		char *version = PQgetvalue(result, 0, 0);
-
-		if (global_verbose_flag)
-			fprintf(stderr, "    VERSION: %s\n", version);
-
-		/* Determine if this version is approved for mapreduce usage */
-		if (strncmp(version, "main", 4) != 0)
-		{
-			/* Get major and minor release, patch level is ignored */
-			char *dot   = NULL;
-			int   major = strtol(version, &dot, 10);
-			int   minor = strtol(dot+1, NULL, 10);
-			if (major < 3 || (major == 3 && minor < 2))
-			{
-				char buf[100];
-				snprintf(buf, sizeof(buf), 
-						 "Unsupported backend version: %s", version);
-				XRAISE(VERSION_ERROR, buf);	
-			}
-		}
-	}
-	else
-	{
-		fprintf(stderr, PQerrorMessage(conn));
-		XRAISE(MAPRED_SQL_ERROR, "Unable to determine Greenplum version\n");
-	}
-
-	PQclear(result);
-}
-
-
-
 void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 {
 	PGresult       *result;
 	mapred_olist_t *olist;
 	boolean         done;
-
-	if (global_verbose_flag)
-	{
-		fprintf(stderr, "  - Connected Established:\n");
-		fprintf(stderr, "    HOST: %s\n", 
-				PQhost(conn) ? PQhost(conn) : "localhost");
-		fprintf(stderr, "    PORT: %s\n", PQport(conn));
-		fprintf(stderr, "    USER: %s/%s\n", PQuser(conn), PQdb(conn));
-	}
-	check_version(conn);
-
 
 	/* Ignore NOTICE messages from database */
 	PQsetNoticeReceiver(conn, ignore_notice_handler, NULL);
