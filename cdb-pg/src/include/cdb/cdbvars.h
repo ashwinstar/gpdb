@@ -701,9 +701,9 @@ extern int gp_sort_max_distinct;
 
 extern bool	gp_enable_partitioned_tables;
 
-/* turn the partitioned tables catalog on */
+/* turn the hash partitioned tables on */
 
-extern bool	gp_enable_partitioned_table_catalog;
+extern bool	gp_enable_hash_partitioned_tables;
 
 /* turn tablespace on */
 

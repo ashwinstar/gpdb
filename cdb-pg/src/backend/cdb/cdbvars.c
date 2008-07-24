@@ -229,7 +229,7 @@ bool		gp_enable_sort_distinct = FALSE;
 int			gp_sort_flags = 0;
 int 		gp_sort_max_distinct = 20000;
 
-bool		gp_enable_partitioned_table_catalog = FALSE;
+bool		gp_enable_hash_partitioned_tables = TRUE;
 
 bool		gp_enable_tablespaces = FALSE;
 bool		gp_enable_tablespace_auto_mkdir = FALSE;

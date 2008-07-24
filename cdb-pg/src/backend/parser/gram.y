@@ -185,7 +185,8 @@ static void doNegateFloat(Value *v);
 				alter_table_partition_cmd
 %type <list>	alter_table_cmds alter_rel_cmds 
 				part_values_clause multi_spec_value_list part_values_single
-%type <ival>	opt_table_partition_exchange_validate 
+%type <ival>	opt_table_partition_exchange_validate partition_hash_keyword
+				partition_coalesce_keyword
 
 %type <dbehavior>	opt_drop_behavior
 
@@ -1885,7 +1886,7 @@ alter_table_partition_cmd:
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| COALESCE PARTITION 	 
+			| partition_coalesce_keyword PARTITION 	 
 				{
 					AlterPartitionId  *pid = makeNode(AlterPartitionId);
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
@@ -1904,7 +1905,7 @@ alter_table_partition_cmd:
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| COALESCE PARTITION 
+			| partition_coalesce_keyword PARTITION 
             alter_table_partition_id_spec 
 				{
 					AlterPartitionId *pid = (AlterPartitionId *)$3;
@@ -3209,14 +3210,56 @@ TabSubPartitionDefaultNameDecl: DEFAULT SUBPARTITION IDENT
 				}
 		;
 
+partition_hash_keyword: 			HASH
+				{
+                    /* special rule to disable the use of HASH partitioned
+                       tables with nice syntax error.  
+
+                       XXX XXX REMOVE when HASH partitions are in
+                       production 
+                    */
+
+                    if (!gp_enable_hash_partitioned_tables)
+                    {
+                        yyerror("syntax error");
+                    }
+
+                    $$ = 1;
+                }
+		;
+
+partition_coalesce_keyword: 			COALESCE
+				{
+                    /* special rule to disable the use of HASH partitioned
+                       tables with nice syntax error.  
+
+                       XXX XXX REMOVE when HASH partitions are in
+                       production 
+                    */
+
+                    if (!gp_enable_hash_partitioned_tables)
+                    {
+                        yyerror("syntax error");
+                    }
+
+                    $$ = 1;
+                }
+		;
+
 TabPartitionByType:
 			RANGE 				{ $$ = PARTTYP_RANGE; }
-			| HASH				{ $$ = PARTTYP_HASH; }
+			| partition_hash_keyword { $$ = PARTTYP_HASH; }
 			| LIST				{ $$ = PARTTYP_LIST; }
 			| /* EMPTY */ 
 				{
 					$$ = PARTTYP_RANGE; 
-                    ereport(ERROR,
+
+                    if (!gp_enable_hash_partitioned_tables)
+                        ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("PARTITION BY must specify RANGE or LIST")));
+                    else
+                        ereport(ERROR,
                             (errcode(ERRCODE_SYNTAX_ERROR),
                              errmsg("PARTITION BY must specify RANGE, HASH, or LIST")));
 
