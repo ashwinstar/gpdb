@@ -57,12 +57,6 @@
 #include <zlib.h>
 #endif
 
-/* 
- * for now max file segment is 1GB. This is temporary. We will have a different
- * scheme for determining a max later on.
- */
-#define MAX_FILE_SEG_SIZE 1 * 1024 * 1024 * 1024
-
 static int32 doCompressAppend(AppendOnlyInsertDesc aoInsertDesc,
 							 uint8			*sourceData,
 							 int32			 sourceLen,
@@ -95,7 +89,7 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 	scan->bufferDone = true;
 	
 	/*
-	 * We may need to reference ctid and tableoid later. create them here.
+	 * We may need to reference ctid and tableoid later. init them here.
 	 */
 	ItemPointerSet(&scan->cdb_fake_ctid, 0, 0);
     scan->cdb_fake_tableoid = RelationGetRelid(scan->aos_rd);
@@ -392,8 +386,8 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 						   aoInsertDesc->aoi_rel, 
 						   aoInsertDesc->cur_segno); /* cleanup before ereport */
 						   
-						   ereport(ERROR, (errcode_for_file_access(),
-										   errmsg("Cannot seek to end (error %d)", errno)));
+		ereport(ERROR, (errcode_for_file_access(),
+		 	    errmsg("Cannot seek to end (error %d)", errno)));
 	}
 
 	BufferedAppendSetFile(&aoInsertDesc->bufferedAppend, appendFile, eof);
@@ -403,13 +397,6 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	aoInsertDesc->varblockCount = 0;
 
 	pfree(fsinfo);
-}
-
-static void
-SetNextFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
-{
-	aoInsertDesc->cur_segno++;
-	SetCurrentFileSegForWrite(aoInsertDesc);
 }
 
 /*
@@ -437,6 +424,9 @@ CloseScannedFileSeg(AppendOnlyScanDesc scan)
 	scan->aos_need_new_segfile = true;
 }
 
+/*
+ * Finished writing to this file segment. Update catalog and close file.
+ */
 static void
 CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 {
@@ -985,13 +975,11 @@ appendonly_insert_init(Relation rel)
 {
 	AppendOnlyInsertDesc	aoInsertDesc;
 	AppendOnlyEntry			*aoentry;
-	FileSegInfo				*fsinfo;
 	uint8					*memory;
 	uint8					*buffer;
 	int32					actualMaxBufferLen;
 	int32					memoryLen;
 	int						maxtupsize;
-	int 					total_segfiles;
 
 	/*
 	 * Get the pg_appendonly information for this table
@@ -1021,21 +1009,10 @@ appendonly_insert_init(Relation rel)
 	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
 	
 	/* 
-	 * Choose a file 'segment' to start inserting into.
-	 * generally we start inserting into the last existing segment,
-	 * but if it's full we pick the next one.
+	 * TEMP: for now always choose segno 0 to insert into.
 	 */
-	total_segfiles = GetNumOfSegFiles(rel);
-	aoInsertDesc->cur_segno = (total_segfiles > 0 ? total_segfiles - 1 : 0);
-	fsinfo = GetFileSegInfo(rel, aoInsertDesc->cur_segno);
-	if(fsinfo)
-	{
-		/* if full or almost full, pick the next segment number to start with */
-		if(fsinfo->eof > MAX_FILE_SEG_SIZE - aoInsertDesc->maxBufferLen)
-			aoInsertDesc->cur_segno++; 
-		pfree(fsinfo);
-	}
-	
+	aoInsertDesc->cur_segno = 0;
+
 	actualMaxBufferLen = getActualMaxBufferLen(aoInsertDesc->maxBufferLen, 
 											   aoInsertDesc->shouldCompress);
 	
@@ -1122,8 +1099,7 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	MemTuple 		 tup = NULL;
 	Oid 			retOid;
 	bool			need_toast;
-	int64			fileLen;
-	
+
 	Assert(aoInsertDesc->maxBufferLen > 0 && aoInsertDesc->tempSpaceLen > 0);
     Assert(aoInsertDesc->largeWriteLen == aoInsertDesc->maxBufferLen * 2);
 	Assert(aoInsertDesc->toast_tuple_threshold > 0 && aoInsertDesc->toast_tuple_target > 0);
@@ -1221,20 +1197,6 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 					 actualItemCount,
 					 aoInsertDesc->bufferCount);
 			
-		}
-
-		/*
-		 * If this file segment if full (or full enough that another varblock
-		 * may not fit in) close it and prepare the next one for writing.
-		 */
-		fileLen = BufferedAppendFileLen(&aoInsertDesc->bufferedAppend);
-
-		if(fileLen > MAX_FILE_SEG_SIZE - aoInsertDesc->maxBufferLen)
-		{
-			CloseWritableFileSeg(aoInsertDesc);		   
-			
-			/* get the next file segment and continue*/
-			SetNextFileSegForWrite(aoInsertDesc);
 		}
 
 		/*
