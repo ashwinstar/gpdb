@@ -41,9 +41,11 @@ static apr_status_t a_array_sync_standby_qd(gpcc_event_t *ev, void *_cmdslot)
 		      cmdslot->pool);
     if (e) {
 	gpcc_log_error("copy data from master QD datadir to standby QD datadir failed");
+	return e;
     }
 
-    return e;
+    cmdslot->countdown = 1;
+    return 0;
 }
 
 static apr_status_t a_array_wait_sync_standby_qd(gpcc_event_t *ev, void *_cmdslot)
