@@ -3179,10 +3179,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartExchange:			/* Exchange */
 		{
 			AlterPartitionCmd 	*pc    = (AlterPartitionCmd *) cmd->def;
-			AlterPartitionCmd 	*pc2   = (AlterPartitionCmd *) pc->arg1;
 			AlterPartitionId 	*pid   = (AlterPartitionId *) pc->partid;
 			pg_part_rule   		*prule = NULL;
-			AlterTableStmt 		*ats   = NULL;
 
 			ATSimplePermissions(rel, false);
 
@@ -3191,16 +3189,6 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 
 			if (prule)
 			{
-				AlterTableCmd 	*atc   	  = makeNode(AlterTableCmd);
-				RangeVar       	*rv    	  = (RangeVar *)pc->arg1;
-				RangeVar       	*rvparent;
-				/* complain if table does not exist */
-				Oid     	  	 relId 	  = RangeVarGetRelid(rv, false);
-				TupleDesc		 oldtupleDesc, newtupleDesc;
-				TupleConstr 	*constr;
-				Relation 		 oldRel;
-				Relation 		 newRel;
-
 				/* cannot exchange a hash partition */
 				if ('h' == prule->pNode->part->parkind)
 					ereport(ERROR,
@@ -3208,108 +3196,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 							 errmsg("cannot exchange HASH partition%s of relation \"%s\"",
 							prule->partIdStr,
 									RelationGetRelationName(rel))));
-
-				ats = makeNode(AlterTableStmt);
-
-				pc2->arg2 = (Node *)list_make1((Node *)ats);
-
-				oldRel = heap_open(prule->topRule->parchildrelid, AccessShareLock);
-				oldtupleDesc = RelationGetDescr(oldRel);
-				constr = oldtupleDesc->constr;
-
-				newRel = heap_open(relId, AccessShareLock);
-				newtupleDesc = RelationGetDescr(newRel);
-
-				ats->relation = makeRangeVar(get_namespace_name(RelationGetNamespace(newRel)),
-										pstrdup(RelationGetRelationName(newRel)));
-
-				/* XXX XXX: ok, this is weird.  it looks like
-				   RangeVarGetRelid invalidates the rangevar, so we
-				   need to build a copy of rangevar from pc->arg1 to
-				   use later in ATPExecPartExchange.  So now pc->arg2
-				   is a list starting with the new ALTER TABLE
-				   command, and we append the rangevar for the
-				   EXCHANGE tablename.
-				*/
-
-				pc2->arg2 = (Node *)
-						lappend(
-								(List *)pc2->arg2,
-								makeRangeVar(get_namespace_name(RelationGetNamespace(newRel)),
-											 pstrdup(RelationGetRelationName(newRel))));
-
-				ats->cmds = list_make1(atc);
-				ats->relkind = OBJECT_TABLE;
-		
-				atc->subtype = AT_AddInherit;
-
-				rvparent = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
-										pstrdup(RelationGetRelationName(rel)));
-
-				atc->def = (Node *) rvparent;
-
-				/* adapted from transformInhRelation */
-				if (constr)
-				{
-					AttrNumber *attmap = varattnos_map(oldtupleDesc, newtupleDesc);
-					int			ccnum;
-					
-					for (ccnum = 0; ccnum < constr->num_check; ccnum++)
-					{
-						char	   *ccname = constr->check[ccnum].ccname;
-						char	   *ccbin = constr->check[ccnum].ccbin;
-						Node	   *ccbin_node = stringToNode(ccbin);
-						Constraint *n = makeNode(Constraint);
-						AlterTableCmd *HugeHack = makeNode(AlterTableCmd);
-
-						change_varattnos_of_a_node(ccbin_node, attmap);
-
-						n->contype = CONSTR_CHECK;
-						n->name = pstrdup(ccname);
-						n->raw_expr = (Node *)HugeHack; /* HUGE HACK */
-						HugeHack->def = (Node *)ccbin_node;
-						n->cooked_expr = NULL;
-						n->indexspace = NULL;
-
-						atc = makeNode(AlterTableCmd);
-				
-						atc->subtype = AT_AddConstraint;
-						atc->def = (Node *) n;
-
-						ats->cmds = lappend(ats->cmds, atc);
-					}
-				}
-
-				heap_close(oldRel, NoLock);
-				heap_close(newRel, NoLock);
-
 			}
-
-			if (ats && ats->cmds)
-			{
-				List	   *subcmds = ats->cmds;
-				Relation	trel;
-				ListCell   *lcmd;
-
-				trel = relation_openrv(ats->relation, AccessExclusiveLock);
-
-				/* 
-				   Add the new ALTER TABLE commands to the work queue.
-				   Should execute the ADD CONSTRAINT first, followed
-				   by the INHERIT, followed by EXCHANGE PARTITION.
-				 */
-
-				foreach(lcmd, subcmds)
-					ATPrepCmd(wqueue, trel,  
-							  (AlterTableCmd *) lfirst(lcmd),
-							  recurse, false);
-
-				relation_close(trel, NoLock);
-
-				/* No command-specific prep needed */
-/*				pass = AT_PASS_ADD_CONSTR; */
-			}
-
 			pass = AT_PASS_MISC;
 			break;
 		}
@@ -3328,6 +3215,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartSplit:				/* Split */
 		case AT_PartTruncate:			/* Truncate */
 		case AT_PartAddInternal:		/* internal partition creation */
+			ATSimplePermissions(rel, false);
 				/* XXX XXX XXX */
 			/* This command never recurses */
 			/* No command-specific prep needed */
@@ -11122,210 +11010,54 @@ ATPExecPartDrop(Relation rel,
 
 /* ALTER TABLE ... EXCHANGE PARTITION */
 static void 
-ATPExecPartExchange(Relation rel,
-                    AlterPartitionCmd *pc)
+ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 {
-	AlterPartitionId 	*pid   = (AlterPartitionId *)pc->partid;
-	pg_part_rule   		*prule = NULL;
-	AlterPartitionCmd 	*pc2   = (AlterPartitionCmd *) pc->arg1;
-	AlterTableCmd 		*a2atc = NULL;
-	RangeVar       		*a2rv  = NULL;
-	char			 	 OldPartnName[NAMEDATALEN];
-	char			 	 NewTempName[NAMEDATALEN];
-	char			 	 OldTableName[NAMEDATALEN];
-	Oid 				 oldpartnid;
+	Oid	oldrelid = InvalidOid;
+	Oid	newrelid = InvalidOid;
 
-	if (Gp_role != GP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_UTILITY)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
-
-	if (!prule)
-		return;
-
-	if (pc2 && pc2->arg2)
+	if (Gp_role == GP_ROLE_DISPATCH)
 	{
-		DestReceiver 	*dest 	 = None_Receiver; 
-		RenameStmt 		*renStmt = makeNode(RenameStmt);
-		Relation 		 oldRel;
+		AlterPartitionId   *pid   = (AlterPartitionId *)pc->partid;
+		pg_part_rule   	   *prule = NULL;
+		RangeVar       	   *newrel  = (RangeVar *)pc->arg1;
+		RangeVar		   *oldrel;
 
-		List	   		*argtwos = (List *)pc2->arg2;
-		ListCell   		*argtwocell;
+		prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
 
-		argtwocell = list_head(argtwos);
-		a2atc = (AlterTableCmd *)lfirst(argtwocell);
-		argtwocell = lnext(argtwocell);
-		a2rv  = (RangeVar *)lfirst(argtwocell);
+		if (!prule)
+			return;
 
-		/* XXX XXX: process utility does not work for the "prepared"
-		 * alter table commands, so we prep them separately in
-		 * ATPrepCmd (and execute them in Phase 3), but we explicitly
-		 * dispatch them now to the segments. */
-		
-		CdbDispatchUtilityStatement((Node *) a2atc, "ATPExecPartExchange");
+		oldrelid = prule->topRule->parchildrelid;
+		newrelid = RangeVarGetRelid(newrel, false);
 
-		/*
-		 * Create the new heap, using a temporary name in the same
-		 * namespace as the existing table.  NOTE: there is some risk of
-		 * collision with user relnames.  Working around this seems more
-		 * trouble than it's worth; in particular, we can't create the new
-		 * heap in a different namespace from the old, or we will have
-		 * problems with the TEMP status of temp tables.
-		 */
-		snprintf(NewTempName, sizeof(NewTempName),
-				 "pg_temp_%u", prule->topRule->parchildrelid);
+		pfree(pc->partid);
 
-		/* get the name of the table for the "top" rule partition
-		 * and rename it to a temp table (using ProcessUtility,
-		 * which works for rename).  We'll rename the exchange
-		 * table to the old partition table name, then rename the
-		 * temp table to the exchange table name to complete the
-		 * exchange 
-		 */
-
-		oldRel = heap_open(prule->topRule->parchildrelid, AccessShareLock);
-
-		oldpartnid = prule->topRule->parchildrelid; /* save the relid */
-
-		StrNCpy(OldPartnName, RelationGetRelationName(oldRel), NAMEDATALEN);
-
-		/* Rename from OldPartnName to NewTempName */
-
-		renStmt->renameType = OBJECT_TABLE;
-
-		renStmt->relation = makeRangeVar(get_namespace_name(RelationGetNamespace(oldRel)),
-										 pstrdup(RelationGetRelationName(oldRel)));
-
-		renStmt->subname = NULL;
-		renStmt->newname = NewTempName;
-
-		heap_close(oldRel, NoLock);
-
-		ProcessUtility(
-				(Node *) renStmt,
-				NULL, dest, NULL);		
+		oldrel = makeRangeVar(get_namespace_name(oldrelid), 
+							  get_rel_name(oldrelid));
+		pc->partid = (Node *)oldrel;
 	}
-
-	if (prule)
+	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		DestReceiver   *dest 	 = None_Receiver; 
-		RenameStmt	   *renStmt = makeNode(RenameStmt);
-		int 			ret;
-		RangeVar 	   *rv    	 = a2rv;
-		Oid 			relId 	 = RangeVarGetRelid(rv, false);
-		Relation 		oldRel;
-		Relation 		exchange_rel;
-		StringInfoData	buf;
-#if 0
-		/* 
-		 * XXX: this is the correct way to update the catalog. However.
-		 * why aren't we just swapping relfilenodes here?
-		 */
-		Relation		part_rel;
-		SysScanDesc		scan;
-		ScanKeyData		key;
-		HeapTuple		tuple;
-		Form_pg_partition_rule pgrule;
+		RangeVar *oldrel;
+		RangeVar *newrel;
 
-		part_rel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
-
-		ScanKeyInit(&key,
-					ObjectIdAttributeNumber,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(prule->topRule->parruleid));
-
-		scan = systable_beginscan(rel, PartitionRuleOidIndex, true,
-								  SnapshotNow, 1, &key);
-
-		tuple = systable_getnext(scan);
-
-		pgrule = (Form_pg_partition_rule)GETSTRUCT(tuple);
-		pgrule->parchildrelid = relId;
-
-		simple_heap_update(part_rel, &tuple->t_self, tuple);
-	    CatalogUpdateIndexes(part_rel, tuple);
-
-		heap_close(part_rel, NoLock);
-#else
-		/* Connect to SPI manager */
-		if ((ret = SPI_connect()) < 0)
-		    /* internal error */
-		    elog(ERROR, "SPI_connect returned %d", ret);
-
-		initStringInfo(&buf);
-		appendStringInfo(&buf, 
-						     "update pg_partition_rule set parchildrelid = '%u' "
-						     "where oid = '%u' ",
-						     relId, prule->topRule->parruleid);
-
-		if (SPI_execute(buf.data, false, 0) != SPI_OK_UPDATE)
-		    elog(ERROR, "spi error executing \"%s\"", buf.data);
-		
-		pfree(buf.data);
-
-		SPI_finish();
-#endif
-		CommandCounterIncrement();
-
-		exchange_rel = heap_open(relId, AccessShareLock);
-
-		StrNCpy(OldTableName, RelationGetRelationName(exchange_rel), NAMEDATALEN);
-
-		/* Rename from OldTableName to OldPartnName */
-
-		renStmt->renameType = OBJECT_TABLE;
-
-		renStmt->relation = makeRangeVar(get_namespace_name(RelationGetNamespace(exchange_rel)),
-										 pstrdup(RelationGetRelationName(exchange_rel)));
-
-		renStmt->subname = NULL;
-		renStmt->newname = OldPartnName ;
-
-		heap_close(exchange_rel, NoLock);
-
-		ProcessUtility(
-				(Node *) renStmt,
-				NULL, dest, NULL);		
-
-#if 0 /* XXX: UPDATE DEPENDENCIES */
-		/* Update dependency on schema if caller said so */
-		if (changeDependencyFor(RelationRelationId, relOid,
-							NamespaceRelationId, oldNspOid, newNspOid) != 1)
-		elog(ERROR, "failed to change schema dependency for relation \"%s\"",
-			 NameStr(classForm->relname));
-#endif
-		/* Rename from NewTempName to OldTableName */
-		if (0)
-		{
-		renStmt = makeNode(RenameStmt);
-
-		oldRel = heap_open(oldpartnid, AccessShareLock);
-
-		renStmt->renameType = OBJECT_TABLE;
-
-		renStmt->relation = makeRangeVar(get_namespace_name(RelationGetNamespace(oldRel)),
-										 pstrdup(RelationGetRelationName(oldRel)));
-
-		renStmt->subname = NULL;
-		renStmt->newname = OldTableName ;
-
-		heap_close(oldRel, NoLock);
-
-		ProcessUtility(
-				(Node *) renStmt,
-				NULL, dest, NULL);		
-		}
-
+		Assert(IsA(pc->partid, RangeVar));
+		Assert(IsA(pc->arg1, RangeVar));
+		oldrel = (RangeVar *)pc->partid;
+		newrel = (RangeVar *)pc->arg1;
+		oldrelid = RangeVarGetRelid(oldrel, false);
+		newrelid = RangeVarGetRelid(newrel, false);
 	}
+	
+	Assert(OidIsValid(oldrelid));
+	Assert(OidIsValid(newrelid));
 
-
-	if (0)
-    ereport(ERROR,
-            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-             errmsg("cannot EXCHANGE PARTITION for relation \"%s\"",
-                    RelationGetRelationName(rel))));
-
-} /* end ATPExecPartExchange */
+	swap_relation_files(oldrelid, newrelid);
+	CommandCounterIncrement();
+}
 
 /* ALTER TABLE ... MERGE PARTITION */
 static void 
