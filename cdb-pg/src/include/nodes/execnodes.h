@@ -33,6 +33,8 @@
 #include "utils/hsearch.h"
 #include "utils/tuplesort.h"
 
+#include "gpmon/gpmon.h"		/* gpmon_packet_t */
+
 struct CdbDispatchResults;              /* in cdbdispatchresult.h */
 struct CdbExplain_ShowStatCtx;          /* private, in "cdb/cdbexplain.c" */
 struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
@@ -1056,15 +1058,53 @@ typedef struct PlanState
 	ExprContext *ps_ExprContext;	/* node's expression-evaluation context */
 	ProjectionInfo *ps_ProjInfo;	/* info for doing tuple projection */
 
-    /* 
-     * EXPLAIN ANALYZE statistics collection 
-     */
-    struct Instrumentation *instrument;     /* runtime stats for this node */
-    struct StringInfoData  *cdbexplainbuf;  /* EXPLAIN ANALYZE report buf */
-    void      (*cdbexplainfun)(struct PlanState *planstate, struct StringInfoData *buf);
-                                            /* callback before ExecutorEnd */
+	/* 
+	 * EXPLAIN ANALYZE statistics collection 
+	 */
+	struct Instrumentation *instrument;     /* runtime stats for this node */
+	struct StringInfoData  *cdbexplainbuf;  /* EXPLAIN ANALYZE report buf */
+	void      (*cdbexplainfun)(struct PlanState *planstate, struct StringInfoData *buf);
+	/* callback before ExecutorEnd */
 
+	/*
+	 * GpMon packet 
+	 */
+	int gpmon_plan_tick;
+	gpmon_packet_t gpmon_pkt;
 } PlanState;
+
+typedef struct Gpmon_NameUnit_MaxVal
+{
+	char *name;
+	char *unit;
+	int64 maxval;
+} Gpmon_NameUnit_MaxVal;
+
+extern void InitPlanStateGpmonPkt(PlanState *ps, const char *name, Gpmon_NameUnit_MaxVal *m); 
+extern void CheckSendPlanStateGpmonPkt(PlanState *ps);
+extern void EndPlanStateGpmonPkt(PlanState *ps);
+
+static inline void Gpmon_M_Incr(gpmon_packet_t *pkt, int nth) 
+{
+	++pkt->u.qexec.m[nth].value;
+}
+static inline void Gpmon_M_Add(gpmon_packet_t *pkt, int nth, int val)
+{
+	pkt->u.qexec.m[nth].value += val;
+}
+static inline void Gpmon_M_Set(gpmon_packet_t *pkt, int nth, int64 val)
+{
+	pkt->u.qexec.m[nth].value = val;
+}
+static inline int64 Gpmon_M_Get(gpmon_packet_t *pkt, int nth)
+{
+	return pkt->u.qexec.m[nth].value;
+}
+static inline void Gpmon_M_Reset(gpmon_packet_t *pkt, int nth, int64 maxval)
+{
+	pkt->u.qexec.m[nth].value = 0;
+	pkt->u.qexec.m[nth].valuemax = maxval;
+}
 
 /* ----------------
  *	these are are defined to avoid confusion problems with "left"

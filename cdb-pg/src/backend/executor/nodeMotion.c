@@ -218,6 +218,9 @@ ExecMotion(MotionState * node)
 			node->motionTime.tv_sec++;
 		}
 #endif
+
+		Gpmon_M_Incr(GpmonPktFromMotionState(node), GPMON_MOTION_TUPLE);
+		CheckSendPlanStateGpmonPkt(&node->ps);
 		return tuple;
 	}
 	else if(node->mstype == MOTIONSTATE_SEND)
@@ -292,6 +295,9 @@ execMotionSender(MotionState * node)
 		{
 			doSendTuple(motion, node, outerTupleSlot);
 			/* doSendTuple() may have set node->stopRequested as a side-effect */
+
+			Gpmon_M_Incr(GpmonPktFromMotionState(node), GPMON_MOTION_TUPLE);
+			CheckSendPlanStateGpmonPkt(&node->ps);
 
 			if (node->stopRequested)
 			{
@@ -882,6 +888,17 @@ ExecInitMotion(Motion * node, EState *estate, int eflags)
     }
 #endif
 
+	/* Set up gpmon */
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_MOTION_TOTAL+1] = {
+			{ "Motion Tuple", "Tuples", (int64) motionstate->ps.plan->plan_rows}, 
+			{ NULL, NULL, 0 } 
+		};
+
+		InitPlanStateGpmonPkt(&motionstate->ps, "Motion", m); 
+	}
+
+
 	return motionstate;
 }
 
@@ -1007,6 +1024,8 @@ ExecEndMotion(MotionState * node)
     if (node->outputFunArray)
         pfree(node->outputFunArray);
 #endif
+
+	EndPlanStateGpmonPkt(&node->ps);
 }
 
 

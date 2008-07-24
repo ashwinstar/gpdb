@@ -139,6 +139,8 @@ FunctionNext(FunctionScanState *node)
             tuple->t_tableOid = node->cdb_fake_tableoid;
         }
     }
+
+	Gpmon_M_Incr(GpmonPktFromFuncScanState(node), GPMON_FUNCSCAN_OUTTUPLE);
 	return slot;
 }
 
@@ -292,6 +294,16 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
 	ExecAssignScanProjectionInfo(&scanstate->ss);
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_FUNCSCAN_TOTAL + 1] = {
+			{ "FunctionScan Tuples", "Tuples", scanstate->ss.ps.plan->plan_rows },
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_FUNCSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&scanstate->ss.ps, "FunctionScan", m);
+	}
+
 	return scanstate;
 }
 
@@ -345,6 +357,8 @@ ExecEndFunctionScan(FunctionScanState *node)
 	if (node->tuplestorestate != NULL)
 		tuplestore_end(node->tuplestorestate); 
 	node->tuplestorestate = NULL;
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------

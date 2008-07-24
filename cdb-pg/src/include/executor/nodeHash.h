@@ -28,7 +28,7 @@ extern void ExecReScanHash(HashState *node, ExprContext *exprCtxt);
 
 extern HashJoinTable ExecHashTableCreate(Hash *node, List *hashOperators);
 extern void ExecHashTableDestroy(HashJoinTable hashtable);
-extern void ExecHashTableInsert(HashJoinTable hashtable,
+extern void ExecHashTableInsert(PlanState *ps, HashJoinTable hashtable,
 					TupleTableSlot *slot,
 					uint32 hashvalue);
 extern bool ExecHashGetHashValue(HashJoinTable hashtable,
@@ -51,4 +51,18 @@ extern void ExecHashTableExplainInit(HashJoinState *hjstate,
                                      HashJoinTable  hashtable);
 extern void ExecHashTableExplainBatchEnd(HashJoinTable hashtable);
 
+enum 
+{
+	GPMON_HASH_INTUPLE = 0,
+	GPMON_HASH_OUTTUPLE,
+	GPMON_HASH_SPILLBATCH,
+	GPMON_HASH_SPILLTUPLE,
+	GPMON_HASH_SPILLBYTE,
+	GPMON_HASH_TOTAL,
+};
+
+static inline gpmon_packet_t * GpmonPktFromHashState(HashState *node)
+{
+	return &node->ps.gpmon_pkt;
+}
 #endif   /* NODEHASH_H */

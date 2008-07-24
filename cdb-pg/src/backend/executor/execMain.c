@@ -32,6 +32,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "gpmon/gpmon.h"
 
 #include "access/heapam.h"
 #include "access/appendonlyam.h"
@@ -573,7 +574,6 @@ ExecutorRun(QueryDesc *queryDesc,
 	Slice              *currentSlice;
 	GpExecIdentity		exec_identity;
 
-	
 	/* sanity checks */
 	Assert(queryDesc != NULL);
 

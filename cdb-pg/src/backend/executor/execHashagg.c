@@ -58,11 +58,11 @@ static bool agg_hash_reload(AggState *aggstate);
 
 static void create_batches(HashAggTable *hashtable, unsigned int nbatch);
 static void destroy_batches(HashAggTable *hashtable);
-static void batch_put_tuple(HashAggTable *hashtable, unsigned int batch, uint32 hkey, char* buf, int buflen);
+static void batch_put_tuple(AggState *state, HashAggTable *hashtable, unsigned int batch, uint32 hkey, char* buf, int buflen);
 static void batch_rewind(HashAggTable *hashtable, unsigned int batch);
 static void batch_close(HashAggTable *hashtable, unsigned int batch);
 
-static TupleTableSlot *batch_get_tuple(HashAggTable *hashtable, unsigned int batch,  TupleTableSlot *tupleSlot, uint32* hkey);
+static TupleTableSlot *batch_get_tuple(AggState *state, HashAggTable *hashtable, unsigned int batch,  TupleTableSlot *tupleSlot, uint32* hkey);
 static void init_agg_hash_iter(HashAggTable* ht);
 static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, TupleTableSlot *inputslot, uint32 hashkey, bool* isNew);
 static uint32 calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot);
@@ -246,6 +246,22 @@ void reset_agg_hash_table(AggState *aggstate)
 	memset(&ht->entrybuf, 0, sizeof(ht->entrybuf));
 	memset(&ht->tuplebuf, 0, sizeof(ht->tuplebuf));
 	init_agg_hash_iter(ht);
+
+	Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLPASS);
+	/* Reset current pass read tuples much be before currentpass spill tuples */
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate),
+			GPMON_AGG_CURRSPILLPASS_READTUPLE, 
+			Gpmon_M_Get(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_TUPLE));
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate),
+			GPMON_AGG_CURRSPILLPASS_READBYTE, 
+			Gpmon_M_Get(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BYTE));
+
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), 
+			GPMON_AGG_CURRSPILLPASS_TUPLE, 0);
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), 
+			GPMON_AGG_CURRSPILLPASS_BYTE, 0);
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), 
+			GPMON_AGG_CURRSPILLPASS_BATCH, 0);
 }
 
 /* Function: destroy_agg_hash_table
@@ -338,6 +354,9 @@ agg_hash_initial_pass(AggState *aggstate)
 			tupRemaining = false;
 			break;
 		}
+
+		/* gpmon */
+		Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_INTUPLE); 
 
 		if (hashslot == NULL)
 		{
@@ -433,7 +452,7 @@ agg_hash_initial_pass(AggState *aggstate)
 								 errmsg("hybrid hash aggregation faillure")));
 					MemoryContextSwitchTo(oldContext);
 				}
-				batch_put_tuple(ht, batch, hashkey, spillbuf, len);
+				batch_put_tuple(aggstate, ht, batch, hashkey, spillbuf, len);
 			}
 		}
 	}
@@ -697,7 +716,7 @@ agg_hash_reload(AggState *aggstate)
 		uint32 hkey = 0;
 		bool isNew = false;
 		
-		outerslot = batch_get_tuple(ht, source, tmpcontext->ecxt_scantuple, &hkey);
+		outerslot = batch_get_tuple(aggstate, ht, source, tmpcontext->ecxt_scantuple, &hkey);
 		if (TupIsNull(outerslot))
 			break;
 
@@ -1273,7 +1292,8 @@ destroy_batches(HashAggTable * hashtable)
  * will get messed up.
  */
 static void
-batch_put_tuple(HashAggTable *hashtable,
+batch_put_tuple(AggState *aggstate, 
+				HashAggTable *hashtable,
 				unsigned int batch,
 				uint32 hkey,
 				char* buf, int buflen)
@@ -1297,11 +1317,21 @@ batch_put_tuple(HashAggTable *hashtable,
 		file = bfz_create(&info->bfz, tmpprefix, compress);
 		info->file = file;
 		info->ntuples = 0L;
+
+		Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLBATCH);
+		Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BATCH);
 	}
 
 	bfz_append(file, (void*) &hth, sizeof(hth));
 	bfz_append(file, buf, buflen);
 	info->ntuples++;
+
+	Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLTUPLE);
+	Gpmon_M_Add(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLBYTE, sizeof(hth)+hth.tuplen);
+	Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_TUPLE);
+	Gpmon_M_Add(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BYTE, sizeof(hth)+hth.tuplen);
+
+	CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 }
 
 /*
@@ -1311,7 +1341,8 @@ batch_put_tuple(HashAggTable *hashtable,
  * On success the tuple is stored in the given slot.
  */
 static TupleTableSlot *
-batch_get_tuple(HashAggTable *hashtable,
+batch_get_tuple(AggState *aggstate,
+                HashAggTable *hashtable,
 				unsigned int batch,
 				TupleTableSlot *tupleSlot,
 				uint32 *hkey)
@@ -1374,6 +1405,10 @@ batch_get_tuple(HashAggTable *hashtable,
 		elog(ERROR, "unable to read from batch file");
 	info->ntuples--;
 	
+	Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_READTUPLE);
+	Gpmon_M_Add(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_READBYTE, sizeof(BatchTupleHeader) + tuplen);
+
+	CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 	return ExecStoreMemTuple(memTuple, tupleSlot, true);
 #endif
 }

@@ -22,4 +22,15 @@ extern TupleTableSlot *ExecGroup(GroupState *node);
 extern void ExecEndGroup(GroupState *node);
 extern void ExecReScanGroup(GroupState *node, ExprContext *exprCtxt);
 
+enum {
+	GPMON_GROUP_INTUPLE = 0,
+	GPMON_GROUP_OUTTUPLE,
+	GPMON_GROUP_TOTAL
+};
+
+static inline gpmon_packet_t * GpmonPktFromGroupState(GroupState *node)
+{
+	return &node->ss.ps.gpmon_pkt;
+}
+
 #endif   /* NODEGROUP_H */

@@ -50,6 +50,8 @@
 #include "utils/resowner.h"
 #include "utils/timestamp.h"
 
+#include "gpmon/gpmon.h"
+
 struct Tuplestorestate;                 /* #include "utils/tuplestore.h" */
 
 /*
@@ -96,11 +98,13 @@ typedef enum PortalStrategy
  */
 typedef enum PortalStatus
 {
-	PORTAL_NEW,					/* in process of creation */
+	PORTAL_NEW = 0,				/* in process of creation */
 	PORTAL_READY,				/* PortalStart complete, can run it */
+	PORTAL_QUEUE, 				/* portal is queued (cannot delete it) */
 	PORTAL_ACTIVE,				/* portal is running (can't delete it) */
 	PORTAL_DONE,				/* portal is finished (don't re-run it) */
-	PORTAL_FAILED				/* portal got error (can't re-run it) */
+	PORTAL_FAILED,				/* portal got error (can't re-run it) */
+	PORTAL_STATUSMAX
 } PortalStatus;
 
 /*
@@ -154,7 +158,7 @@ typedef struct PortalData
 	int			cursorOptions;	/* DECLARE CURSOR option bits */
 
 	/* Status data */
-	PortalStatus status;		/* see above */
+	PortalStatus portal_status;		/* see above */
 	bool	releaseResLock;	/* true => resscheduler lock must be released */
 
 	/* If not NULL, Executor is active; call ExecutorEnd eventually: */
@@ -196,7 +200,13 @@ typedef struct PortalData
 	
 	/* DispatchAgents are per Portal */
 	struct DispatchAgentSet * dispatchagents;
+
+	/* Gpmon */
+	gpmon_packet_t gpmon_pkt;
 } PortalData;
+
+extern PortalStatus PortalGetStatus(PortalData *p);
+extern void PortalSetStatus(PortalData *p, PortalStatus s);
 
 /*
  * PortalIsValid

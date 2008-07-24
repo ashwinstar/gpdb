@@ -230,6 +230,18 @@ ExecInitAppend(Append *node, EState *estate, int eflags)
 	appendstate->as_whichplan = appendstate->as_firstplan;
 	exec_append_initialize_next(appendstate);
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_APPEND_TOTAL + 1] = {
+			{ "Append Output Tuples", "Tuples", appendstate->ps.plan->plan_rows},
+			{ "Append Current Input Source", "Inputs", appendstate->as_lastplan},
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_APPEND_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&appendstate->ps, "Append", m);
+	}
+
+		
 	return appendstate;
 }
 
@@ -277,8 +289,10 @@ ExecAppend(AppendState *node)
 			 * because it may have the wrong tuple descriptor in
 			 * inherited-UPDATE cases.
 			 */
+			Gpmon_M_Incr(GpmonPktFromAppendState(node), GPMON_APPEND_OUTTUPLE);
 			return result;
 		}
+
 
 		/*
 		 * Go on to the "next" subplan in the appropriate direction. If no
@@ -289,6 +303,10 @@ ExecAppend(AppendState *node)
 			node->as_whichplan++;
 		else
 			node->as_whichplan--;
+
+		Gpmon_M_Incr(GpmonPktFromAppendState(node), GPMON_APPEND_CURRTABLE); 
+		CheckSendPlanStateGpmonPkt(&node->ps);
+
 		if (!exec_append_initialize_next(node))
 			return ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
@@ -325,6 +343,8 @@ ExecEndAppend(AppendState *node)
 		if (appendplans[i])
 			ExecEndNode(appendplans[i]);
 	}
+
+	EndPlanStateGpmonPkt(&node->ps);
 }
 
 void

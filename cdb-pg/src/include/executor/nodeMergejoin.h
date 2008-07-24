@@ -22,4 +22,15 @@ extern TupleTableSlot *ExecMergeJoin(MergeJoinState *node);
 extern void ExecEndMergeJoin(MergeJoinState *node);
 extern void ExecReScanMergeJoin(MergeJoinState *node, ExprContext *exprCtxt);
 
+enum {
+	GPMON_MERGEJOIN_INNERTUPLE = 0,
+	GPMON_MERGEJOIN_OUTERTUPLE,
+	GPMON_MERGEJOIN_OUTTUPLE,
+	GPMON_MERGEJOIN_TOTAL,
+};
+
+static inline gpmon_packet_t *GpmonPktFromMergeJoinState(MergeJoinState *node)
+{
+	return &node->js.ps.gpmon_pkt;
+}
 #endif   /* NODEMERGEJOIN_H */

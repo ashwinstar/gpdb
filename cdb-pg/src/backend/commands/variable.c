@@ -701,6 +701,9 @@ show_session_authorization(void)
 	Oid			savedoid;
 	char	   *endptr;
 
+	if(!value)
+		return NULL;
+
 	Assert(strspn(value, "x") == NAMEDATALEN &&
 		   (value[NAMEDATALEN] == 'T' || value[NAMEDATALEN] == 'F'));
 

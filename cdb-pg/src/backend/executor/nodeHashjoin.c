@@ -227,6 +227,8 @@ ExecHashJoin(HashJoinState *node)
 				return NULL;
 			}
 
+			Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_HASHJOIN_INTUPLE);
+
 			node->js.ps.ps_OuterTupleSlot = outerTupleSlot;
 			econtext->ecxt_outertuple = outerTupleSlot;
 			node->hj_NeedNewOuter = false;
@@ -252,7 +254,7 @@ ExecHashJoin(HashJoinState *node)
 				 * in the corresponding outer-batch file.
 				 */
 				Assert(batchno > hashtable->curbatch);
-				ExecHashJoinSaveTuple(ExecFetchSlotMemTuple(outerTupleSlot, false),
+				ExecHashJoinSaveTuple(&node->js.ps, ExecFetchSlotMemTuple(outerTupleSlot, false),
 									  hashvalue,
                                       &hashtable->batches[batchno]->outerside,
 									  hashtable->bfCxt);
@@ -294,7 +296,10 @@ ExecHashJoin(HashJoinState *node)
 				node->hj_MatchedOuter = true;
 
 				if (otherqual == NIL || ExecQual(otherqual, econtext, false))
+				{
+					Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_HASHJOIN_OUTTUPLE);
 					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
+				}
 
 				/*
 				 * If we didn't return a tuple, may need to set NeedNewOuter
@@ -325,7 +330,11 @@ ExecHashJoin(HashJoinState *node)
 			econtext->ecxt_innertuple = node->hj_NullInnerTupleSlot;
 
 			if (ExecQual(otherqual, econtext, false))
+			{
+				Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_HASHJOIN_OUTTUPLE);
+
 				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
+			}
 		}
 	}
 }
@@ -492,6 +501,27 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	hjstate->hj_MatchedOuter = false;
 	hjstate->hj_OuterNotEmpty = false;
 
+	/* Set up gpmon */
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_HASHJOIN_TOTAL + 1] = {
+			/* INTUPLE */
+			{ "Hashjoin Input Tuples", "Tuples", 0},
+			/* OUTTUPLE */
+			{ "Hashjoin Output Tuples", "Tuples", (int64) hjstate->js.ps.plan->plan_rows}, 
+			/* SPILLBATCH */
+			{ "Hashjoin Spill Batches", "Batches", 0 }, 
+			/* SPILLTUPLE */
+			{ "Hashjoin Spill Tuples", "Tuples", 0 }, 
+			/* SPILLBYTE */
+			{ "Hashjoin Spill Bytes", "Bytes", 0 }, 
+			/* TOTAL */
+			{ NULL, NULL, 0},
+		};
+
+		Assert(GPMON_HASHJOIN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&hjstate->js.ps, "HashJoin", m); 
+	}
+
 	return hjstate;
 }
 
@@ -538,6 +568,8 @@ ExecEndHashJoin(HashJoinState *node)
 	 */
 	ExecEndNode(outerPlanState(node));
 	ExecEndNode(innerPlanState(node));
+
+	EndPlanStateGpmonPkt(&node->js.ps);
 }
 
 /*
@@ -553,45 +585,45 @@ ExecEndHashJoin(HashJoinState *node)
  */
 static TupleTableSlot *
 ExecHashJoinOuterGetTuple(PlanState *outerNode,
-						  HashJoinState *hjstate,
-						  uint32 *hashvalue)
+		HashJoinState *hjstate,
+		uint32 *hashvalue)
 {
 	HashJoinTable hashtable = hjstate->hj_HashTable;
 	int			curbatch = hashtable->curbatch;
 	TupleTableSlot *slot;
-    ExprContext    *econtext;
+	ExprContext    *econtext;
 
 	if (curbatch == 0)			/* if it is the first pass */
 	{
 		for (;;)
 		{
-		/*
-		 * Check to see if first outer tuple was already fetched by
-		 * ExecHashJoin() and not used yet.
-		 */
-		slot = hjstate->hj_FirstOuterTupleSlot;
-		if (!TupIsNull(slot))
-			hjstate->hj_FirstOuterTupleSlot = NULL;
-		else
-		{
-			if (hjstate->outer_q != NULL)
-			{
-				slot = dequeueTQ(hjstate->outer_q);
-				if (slot == NULL)
-				{
-					/* exhausted queued tuples */
-					pfree(hjstate->outer_q);
-					hjstate->outer_q = NULL;
-
-					slot = ExecProcNode(outerNode);
-				}
-			}
+			/*
+			 * Check to see if first outer tuple was already fetched by
+			 * ExecHashJoin() and not used yet.
+			 */
+			slot = hjstate->hj_FirstOuterTupleSlot;
+			if (!TupIsNull(slot))
+				hjstate->hj_FirstOuterTupleSlot = NULL;
 			else
-				slot = ExecProcNode(outerNode);
-		}
+			{
+				if (hjstate->outer_q != NULL)
+				{
+					slot = dequeueTQ(hjstate->outer_q);
+					if (slot == NULL)
+					{
+						/* exhausted queued tuples */
+						pfree(hjstate->outer_q);
+						hjstate->outer_q = NULL;
 
-            if (TupIsNull(slot))
-                break;
+						slot = ExecProcNode(outerNode);
+					}
+				}
+				else
+					slot = ExecProcNode(outerNode);
+			}
+
+			if (TupIsNull(slot))
+				break;
 
 			/*
 			 * We have to compute the tuple's hash value.
@@ -599,15 +631,15 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 			econtext = hjstate->js.ps.ps_ExprContext;
 			econtext->ecxt_outertuple = slot;
 			if (ExecHashGetHashValue(hashtable, econtext,
-									 hjstate->hj_OuterHashKeys,
-									 (hjstate->js.jointype == JOIN_LEFT),
-									 hashvalue))
+						hjstate->hj_OuterHashKeys,
+						(hjstate->js.jointype == JOIN_LEFT),
+						hashvalue))
 			{
-			/* remember outer relation is not empty for possible rescan */
-			hjstate->hj_OuterNotEmpty = true;
+				/* remember outer relation is not empty for possible rescan */
+				hjstate->hj_OuterNotEmpty = true;
 
-			return slot;
-		}
+				return slot;
+			}
 			/*
 			 * That tuple couldn't match because of a NULL, so discard it
 			 * and continue with the next one.
@@ -619,6 +651,9 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 		 * saved batch.
 		 */
 		curbatch = ExecHashJoinNewBatch(hjstate);
+
+		Gpmon_M_Incr(GpmonPktFromHashJoinState(hjstate), GPMON_HASHJOIN_OUTTUPLE);
+		CheckSendPlanStateGpmonPkt(&hjstate->js.ps);
 	}
 
 	/*
@@ -634,6 +669,8 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 		if (!TupIsNull(slot))
 			return slot;
 		curbatch = ExecHashJoinNewBatch(hjstate);
+		Gpmon_M_Incr(GpmonPktFromHashJoinState(hjstate), GPMON_HASHJOIN_SPILLBATCH);
+		CheckSendPlanStateGpmonPkt(&hjstate->js.ps);
 	}
 
 	/* Out of batches... */
@@ -763,7 +800,7 @@ start_over:
 		     * NOTE: some tuples may be sent to future batches.  Also, it is
 		     * possible for hashtable->nbatch to be increased here!
 		     */
-		    ExecHashTableInsert(hashtable, slot, hashvalue);
+		    ExecHashTableInsert(NULL, hashtable, slot, hashvalue);
 	    }
 
 	    /*
@@ -801,7 +838,7 @@ start_over:
  * will get messed up.
  */
 void
-ExecHashJoinSaveTuple(MemTuple tuple, uint32 hashvalue,
+ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalue,
 					  struct HashJoinBatchSide *batchside,
 					  MemoryContext bfCxt)
 {
@@ -823,6 +860,13 @@ ExecHashJoinSaveTuple(MemTuple tuple, uint32 hashvalue,
 
 	bfz_append(batchside->bfz, (void *) &hashvalue, sizeof(uint32));
 	bfz_append(batchside->bfz, (void *) tuple, memtuple_get_size(tuple, NULL)); 
+
+	if(ps)
+	{
+		Gpmon_M_Incr(&ps->gpmon_pkt, GPMON_HASHJOIN_SPILLTUPLE);
+		Gpmon_M_Add(&ps->gpmon_pkt, GPMON_HASHJOIN_SPILLBYTE, memtuple_get_size(tuple, NULL));
+		CheckSendPlanStateGpmonPkt(ps);
+	}
 }
 
 /*

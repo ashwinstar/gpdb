@@ -150,6 +150,10 @@ ShareInputNext(ShareInputScanState *node)
 
 		if(!gotOK)
 			return NULL;
+
+		Gpmon_M_Incr(GpmonPktFromShareInputState(node), GPMON_SHAREINPUT_OUTTUPLE);
+		CheckSendPlanStateGpmonPkt(&node->ss.ps);
+
 		return slot;
 	}
 
@@ -221,6 +225,18 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 
 	sisstate->ss.ps.ps_ProjInfo = NULL;
 	
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_SHAREINPUT_TOTAL + 1] = {
+			{ "ShareInputScan output tuples", "Tuples", sisstate->ss.ps.plan->plan_rows },
+			{ "ShareInputScan restore pos", "Restores", 0},
+			{ "ShareInputScan rescan", "Rescans", 0},
+			{ NULL, NULL, 0 }
+		};
+
+		Assert(GPMON_SHAREINPUT_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&sisstate->ss.ps, "ShareInputScan", m);
+	}
+
 	return sisstate;
 }
 
@@ -297,6 +313,8 @@ void ExecEndShareInputScan(ShareInputScanState *node)
 	 * is NULL
 	 */
 	ExecEndNode(outerPlanState(node));
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ------------------------------------------------------------------
@@ -353,6 +371,9 @@ void ExecShareInputScanRestrPos(ShareInputScanState *node)
 				(TuplesortPos *) node->ts_pos);
 	else
 		Assert(!"ExecShareInputScanRestrPos: invalid share type");
+
+	Gpmon_M_Incr(GpmonPktFromShareInputState(node), GPMON_SHAREINPUT_RESTOREPOS); 
+	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ------------------------------------------------------------------
@@ -380,6 +401,9 @@ void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exprCtxt)
 				(TuplesortPos *) node->ts_pos);
 	else
 		Assert(!"ExecShareInputScanReScan: invalid share type ");
+
+	Gpmon_M_Incr(GpmonPktFromShareInputState(node), GPMON_SHAREINPUT_RESCAN); 
+	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /*************************************************************************

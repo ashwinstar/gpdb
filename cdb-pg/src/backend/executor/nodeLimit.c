@@ -355,6 +355,14 @@ ExecInitLimit(Limit *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&limitstate->ps);
 	limitstate->ps.ps_ProjInfo = NULL;
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_LIMIT_TOTAL + 1] = {
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_LIMIT_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&limitstate->ps, "Limit", m);
+	}
 	return limitstate;
 }
 
@@ -378,6 +386,8 @@ ExecEndLimit(LimitState *node)
 {
 	ExecFreeExprContext(&node->ps);
 	ExecEndNode(outerPlanState(node));
+
+	EndPlanStateGpmonPkt(&node->ps);
 }
 
 

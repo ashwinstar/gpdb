@@ -24,4 +24,21 @@ extern void ExecSortMarkPos(SortState *node);
 extern void ExecSortRestrPos(SortState *node);
 extern void ExecReScanSort(SortState *node, ExprContext *exprCtxt);
 
+enum
+{
+	GPMON_SORT_INTUPLE = 0,
+	GPMON_SORT_MEMORY_BYTE,
+	GPMON_SORT_SPILLTUPLE,
+	GPMON_SORT_SPILLBYTE,
+	GPMON_SORT_SPILLPASS,
+	GPMON_SORT_CURRSPILLPASS_TUPLE,
+	GPMON_SORT_CURRSPILLPASS_BYTE,
+	GPMON_SORT_TOTAL,
+};
+
+static inline gpmon_packet_t * GpmonPktFromSortState(SortState *node)
+{
+	return &node->ss.ps.gpmon_pkt;
+}
+
 #endif   /* NODESORT_H */

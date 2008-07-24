@@ -115,7 +115,7 @@ struct gpmon_qexeckey_t {
     apr_int16_t zero;		/* unused */
 };
 
-#define GPMON_QEXEC_M_COUNT 10 
+#define GPMON_QEXEC_M_COUNT 16 
 
 /* process metrics ... filled in by gpsmon */
 typedef struct gpmon_proc_metrics_t gpmon_proc_metrics_t;

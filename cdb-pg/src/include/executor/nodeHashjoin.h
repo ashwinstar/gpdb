@@ -26,7 +26,7 @@ extern TupleTableSlot *ExecHashJoin(HashJoinState *node);
 extern void ExecEndHashJoin(HashJoinState *node);
 extern void ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt);
 
-extern void ExecHashJoinSaveTuple(MemTuple tuple, uint32 hashvalue,
+extern void ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalue,
 					              struct HashJoinBatchSide *batchside,
 								  MemoryContext bfCxt);
 
@@ -34,5 +34,20 @@ extern executorTupleQueue *makeTQ(int size, struct Instrumentation *instr);
 extern void enqueueTQ(executorTupleQueue *tq, TupleTableSlot *slot);
 extern TupleTableSlot *dequeueTQ(executorTupleQueue *tq);
 extern void releaseTQ(executorTupleQueue *tq);
+
+enum 
+{
+	GPMON_HASHJOIN_INTUPLE = 0,
+	GPMON_HASHJOIN_OUTTUPLE,
+	GPMON_HASHJOIN_SPILLBATCH,
+	GPMON_HASHJOIN_SPILLTUPLE,
+	GPMON_HASHJOIN_SPILLBYTE,
+	GPMON_HASHJOIN_TOTAL,
+};
+
+static inline gpmon_packet_t * GpmonPktFromHashJoinState(HashJoinState *s)
+{
+	return &s->js.ps.gpmon_pkt;
+}
 
 #endif   /* NODEHASHJOIN_H */

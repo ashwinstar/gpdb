@@ -27,5 +27,14 @@ enum {
 	NL_STRATEGY_LOOP,
 	NL_STRATEGY_HASH
 };
+ 
+enum {
+	GPMON_ADAPTIVENL_TOTAL = 0,
+};
 
-#endif   /* NODENESTLOOP_H */
+static inline gpmon_packet_t * GpmonPktFromANLState(AdaptiveNestLoopState *node)
+{
+	return &node->ps.gpmon_pkt;
+}
+
+#endif   /* NODEADAPTIVENESTLOOP_H */

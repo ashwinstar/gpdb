@@ -258,6 +258,9 @@ _outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 static void
 _outPlanInfo(StringInfo str, Plan *node)
 {
+	WRITE_INT_FIELD(plan_node_id);
+	WRITE_INT_FIELD(plan_parent_node_id);
+
 	WRITE_FLOAT_FIELD(startup_cost, "%.2f");
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
 	WRITE_FLOAT_FIELD(plan_rows, "%.0f");

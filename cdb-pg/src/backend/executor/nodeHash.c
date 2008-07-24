@@ -105,12 +105,15 @@ MultiExecHash(HashState *node)
 		slot = ExecProcNode(outerNode);
 		if (TupIsNull(slot))
 			break;
+
+		Gpmon_M_Incr(GpmonPktFromHashState(node), GPMON_HASH_INTUPLE);
+
 		/* We have to compute the hash value */
 		econtext->ecxt_innertuple = slot;
 		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, false,
 								 &hashvalue))
 		{
-			ExecHashTableInsert(hashtable, slot, hashvalue);
+			ExecHashTableInsert(&node->ps, hashtable, slot, hashvalue);
 			hashtable->totalTuples += 1;
 		}
 	}
@@ -191,6 +194,27 @@ ExecInitHash(Hash *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&hashstate->ps);
 	hashstate->ps.ps_ProjInfo = NULL;
 
+	/* Set up gpmon */
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_HASH_TOTAL + 1] = {
+			/* GPMON_HASH_INTUPLE */
+			{ "Hash Input Tuples", "Tuples", 0 },
+			/* GPMON_HASH_OUTTUPLE */
+			{ "Hash Output Tuples", "Tuples", (int64) hashstate->ps.plan->plan_rows}, 
+			/* GPMON_HASH_SPILLBATCH */
+			{ "Hash Spill Batches", "Batches", 0},
+			/* GPMON_HASH_SPILLTUPLE */
+			{ "Hash Spill Tuples", "Tuples", 0},
+			/* GPMON_HASH_SPILLBYTE */
+			{ "Hash Spill Bytes", "Bytes", 0},
+			/* GPMON_HASH_TOTAL */
+			{ NULL, NULL, 0 } 
+		};
+
+		Assert(GPMON_HASH_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&hashstate->ps, "Hash", m); 
+	}
+
 	return hashstate;
 }
 
@@ -223,6 +247,8 @@ ExecEndHash(HashState *node)
 	 */
 	outerPlan = outerPlanState(node);
 	ExecEndNode(outerPlan);
+
+	EndPlanStateGpmonPkt(&node->ps);
 }
 
 
@@ -632,7 +658,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
 
 				/* dump it out */
 				Assert(batchno > curbatch);
-				ExecHashJoinSaveTuple(HJTUPLE_MINTUPLE(tuple),
+				ExecHashJoinSaveTuple(NULL, HJTUPLE_MINTUPLE(tuple),
 									  tuple->hashvalue,
                                       &hashtable->batches[batchno]->innerside,
 									  hashtable->bfCxt);
@@ -696,6 +722,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
         elog(DEBUG3, "HJ: Disabling further increase of nbatch");
 #endif
 	}
+
 }
 
 /*
@@ -710,7 +737,7 @@ ExecHashIncreaseNumBatches(HashJoinTable hashtable)
  * worth the messiness required.
  */
 void
-ExecHashTableInsert(HashJoinTable hashtable,
+ExecHashTableInsert(PlanState *ps, HashJoinTable hashtable,
 					TupleTableSlot *slot,
 					uint32 hashvalue)
 {
@@ -753,7 +780,16 @@ ExecHashTableInsert(HashJoinTable hashtable,
 		/* Double the number of batches when too much data in hash table. */
 		if (batch->innerspace > hashtable->spaceAllowed ||
 			batch->innertuples > UINT_MAX/2)
+		{
 			ExecHashIncreaseNumBatches(hashtable);
+
+			/* Gpmon stuff */
+			if(ps)
+			{
+				Gpmon_M_Set(&ps->gpmon_pkt, GPMON_HASH_SPILLBATCH, hashtable->nbatch);
+				CheckSendPlanStateGpmonPkt(ps);
+			}
+		}
 	}
 	else
 	{
@@ -761,7 +797,7 @@ ExecHashTableInsert(HashJoinTable hashtable,
 		 * put the tuple into a temp file for later batches
 		 */
 		Assert(batchno > hashtable->curbatch);
-		ExecHashJoinSaveTuple(tuple, hashvalue, &batch->innerside, hashtable->bfCxt);
+		ExecHashJoinSaveTuple(ps, tuple, hashvalue, &batch->innerside, hashtable->bfCxt);
 	}
 }
 

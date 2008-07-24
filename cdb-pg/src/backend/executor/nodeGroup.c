@@ -159,6 +159,8 @@ ExecGroup(GroupState *node)
 			
 			
 			outerslot = ExecProcNode(outerPlanState(node));
+			Gpmon_M_Incr(GpmonPktFromGroupState(node), GPMON_GROUP_INTUPLE);
+
 			if (TupIsNull(outerslot))
 			{
 				node->grp_done = TRUE;
@@ -170,6 +172,7 @@ ExecGroup(GroupState *node)
 				/* This is the last tuple. */
 				break;
 			}
+
 
 #if 0
 			elog(LOG, "nodeGroup: numNullCols=%d, inputHasGrouping=%d, INPUT tuple: %s",
@@ -235,6 +238,7 @@ ExecGroup(GroupState *node)
 				 group_node->numNullCols, group_node->inputHasGrouping, tup2str(outerslot));
 #endif
 
+			Gpmon_M_Incr(GpmonPktFromGroupState(node), GPMON_GROUP_OUTTUPLE);
 			return outerslot;
 		}
 
@@ -326,13 +330,16 @@ ExecGroup(GroupState *node)
 				 * and the representative input tuple.	Note we do not support
 				 * aggregates returning sets ...
 				 */
+				Gpmon_M_Incr(GpmonPktFromGroupState(node), GPMON_GROUP_OUTTUPLE);
+				CheckSendPlanStateGpmonPkt(&node->ss.ps);
+
 				return ExecProject(node->ss.ps.ps_ProjInfo, NULL);
 #else
 				TupleTableSlot *out = ExecProject(node->ss.ps.ps_ProjInfo, NULL);
 				if (out != NULL)
 					elog(LOG, "nodeGroup: numNullCols=%d, inputHasGrouping=%d, output tuple: %s",
-						 group_node->numNullCols, group_node->inputHasGrouping, tup2str(out));
-		return out;
+							group_node->numNullCols, group_node->inputHasGrouping, tup2str(out));
+				return out;
 #endif
 			}
 		} while (econtext->group_id > 0);
@@ -420,6 +427,18 @@ ExecInitGroup(Group *node, EState *estate, int eflags)
 	grpstate->grp_firstTuple = NULL;
 	grpstate->is_passthru = false;
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_GROUP_TOTAL + 1] = 
+		{
+			{ "Group Input Tuples", "Tuples", 0},
+			{ "Group Output Tuples", "Tuples", grpstate->ss.ps.plan->plan_rows },
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_GROUP_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&grpstate->ss.ps, "Group", m);
+	}
+	
 	return grpstate;
 }
 
@@ -459,6 +478,8 @@ ExecEndGroup(GroupState *node)
 
 	outerPlan = outerPlanState(node);
 	ExecEndNode(outerPlan);
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 void

@@ -24,6 +24,8 @@
 #include "access/itup.h"
 #include "executor/tuptable.h"
 
+#include "gpmon/gpmon.h"
+
 struct Instrumentation;                 /* #include "executor/instrument.h" */
 struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 
@@ -125,10 +127,6 @@ tuplesort_set_instrument(Tuplesortstate            *state,
                          struct Instrumentation    *instrument,
                          struct StringInfoData     *explainbuf);
 
-/*
- * This routine selects an appropriate sorting function to implement
- * a sort operator as efficiently as possible.
- */
 typedef enum
 {
 	SORTFUNC_LT,				/* raw "<" operator */
@@ -149,5 +147,11 @@ extern void SelectSortFunction(Oid sortOperator,
 extern int32 ApplySortFunction(FmgrInfo *sortFunction, SortFunctionKind kind,
 				  Datum datum1, bool isNull1,
 				  Datum datum2, bool isNull2);
+
+/* Gpmon */
+void 
+tuplesort_set_gpmon(Tuplesortstate *state,
+					gpmon_packet_t *gpmon_pkt,
+					int *gpmon_tick);
 
 #endif   /* TUPLESORT_H */

@@ -22,4 +22,12 @@ extern Node *MultiExecBitmapOr(BitmapOrState *node);
 extern void ExecEndBitmapOr(BitmapOrState *node);
 extern void ExecReScanBitmapOr(BitmapOrState *node, ExprContext *exprCtxt);
 
+enum {
+	GPMON_BITMAPOR_TOTAL = 0,
+};
+
+static inline gpmon_packet_t * GpmonPktFromBitmapOrState(BitmapOrState *node)
+{
+	return &node->ps.gpmon_pkt;
+}
 #endif   /* NODEBITMAPOR_H */

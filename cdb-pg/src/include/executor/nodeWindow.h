@@ -43,4 +43,16 @@ extern Datum lead_generic(PG_FUNCTION_ARGS);
 extern Datum last_value_generic(PG_FUNCTION_ARGS);
 extern Datum first_value_generic(PG_FUNCTION_ARGS);
 extern Datum lag_generic(PG_FUNCTION_ARGS);
+
+enum {
+	GPMON_WINDOW_INTUPLE = 0,
+	GPMON_WINDOW_OUTTUPLE,
+	GPMON_WINDOW_TOTAL,
+};
+
+static inline gpmon_packet_t * GpmonPktFromWindowState(WindowState *node)
+{
+	return &node->ps.gpmon_pkt;
+}
+
 #endif   /* NODEWINDOW_H */

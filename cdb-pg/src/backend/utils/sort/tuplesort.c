@@ -104,6 +104,7 @@
 #include "catalog/pg_amop.h"
 #include "catalog/pg_operator.h"
 #include "executor/instrument.h"        /* Instrumentation */
+#include "executor/nodeSort.h"  		/* Gpmon */ 
 #include "lib/stringinfo.h"             /* StringInfo */
 #include "miscadmin.h"
 #include "utils/datum.h"
@@ -115,6 +116,7 @@
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
+#include "cdb/cdbvars.h"
 
 /* GUC variable */
 #ifdef TRACE_SORT
@@ -385,6 +387,10 @@ struct Tuplesortstate
 	 */
 	char       *pfile_rwfile_prefix;
 	BufFile *pfile_rwfile_state;
+
+	/* gpmon */
+	gpmon_packet_t *gpmon_pkt;
+	int *gpmon_sort_tick;
 };
 
 static bool is_sortstate_rwfile(Tuplesortstate *state)
@@ -397,7 +403,13 @@ static bool is_sortstate_rwfile(Tuplesortstate *state)
 #define WRITETUP(state,tape,stup)	((*(state)->writetup) (state, tape, stup))
 #define READTUP(state,pos,stup,tape,len) ((*(state)->readtup) (state, pos, stup, tape, len))
 #define LACKMEM(state)		((state)->availMem < 0)
-#define USEMEM(state,amt)	((state)->availMem -= (amt))
+
+static inline void USEMEM(Tuplesortstate *state, int amt)
+{
+	state->availMem -= amt;
+	if(state->gpmon_pkt)
+		Gpmon_M_Add(state->gpmon_pkt, GPMON_SORT_MEMORY_BYTE, amt);
+}
 
 static inline void
 FREEMEM(Tuplesortstate *state, int amt)
@@ -405,6 +417,8 @@ FREEMEM(Tuplesortstate *state, int amt)
     if (state->availMemMin > state->availMem)
         state->availMemMin = state->availMem;
     state->availMem += amt;
+	if(state->gpmon_pkt)
+		Gpmon_M_Add(state->gpmon_pkt, GPMON_SORT_MEMORY_BYTE, -amt);
 }
 
 /*
@@ -448,7 +462,6 @@ FREEMEM(Tuplesortstate *state, int amt)
  * a lot better than what we were doing before 7.3.
  */
 
-
 static Tuplesortstate *tuplesort_begin_common(int workMem, bool randomAccess, bool allocmemtuple);
 static void puttuple_common(Tuplesortstate *state, SortTuple *tuple);
 static void inittapes(Tuplesortstate *state, const char* rwfile_prefix);
@@ -487,6 +500,7 @@ static void readtup_datum(Tuplesortstate *state, TuplesortPos *pos, SortTuple *s
 			  LogicalTape *lt, unsigned int len);
 
 
+static void checksend_gpmonpkt(gpmon_packet_t *pkt, int *tick);
 /*
  *		tuplesort_begin_xxx
  *
@@ -933,6 +947,12 @@ tuplesort_set_instrument(Tuplesortstate            *state,
     state->explainbuf = explainbuf;
 }                               /* tuplesort_set_instrument */
 
+void 
+tuplesort_set_gpmon(Tuplesortstate *state, gpmon_packet_t *pkt, int *tick)
+{
+	state->gpmon_pkt = pkt;
+	state->gpmon_sort_tick = tick;
+}
 
 /*
  * Grow the memtuples[] array, if possible within our memory constraint.
@@ -1063,6 +1083,10 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 	int do_standardsort = (state->memtupcount == 0) || state->standardsort;
 
 	state->alltupcount++;
+
+	/* gpmon */
+	if(state->gpmon_pkt)
+		Gpmon_M_Incr(state->gpmon_pkt, GPMON_SORT_INTUPLE);
 
 	switch (state->status)
 	{
@@ -1772,6 +1796,14 @@ mergeruns(Tuplesortstate *state)
 		LogicalTapeRewind(state->tapeset, lt, false);
 	}
 
+	/* Clear gpmon for repilling data */
+	if(state->gpmon_pkt)
+	{
+		Gpmon_M_Incr(state->gpmon_pkt, GPMON_SORT_SPILLPASS);
+		Gpmon_M_Reset(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_TUPLE, 0);
+		Gpmon_M_Reset(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_BYTE, 0);
+	}
+
 	for (;;)
 	{
 		/*
@@ -2230,6 +2262,9 @@ dumptuples(Tuplesortstate *state, bool alltuples)
 	spilledBytes = state->availMem - spilledBytes;
 	if (spilledBytes > 0)
 		state->spilledBytes += spilledBytes;
+
+	if(state->gpmon_pkt)
+		checksend_gpmonpkt(state->gpmon_pkt, state->gpmon_sort_tick);
 }
 
 /*
@@ -2978,6 +3013,14 @@ writetup_heap(Tuplesortstate *state, LogicalTape *lt, SortTuple *stup)
 	if (state->randomAccess)	/* need trailing length word? */
 		LogicalTapeWrite(state->tapeset, lt, (void *) &tuplen, sizeof(tuplen));
 
+	if (state->gpmon_pkt)
+	{
+		Gpmon_M_Incr(state->gpmon_pkt, GPMON_SORT_SPILLTUPLE);
+		Gpmon_M_Add(state->gpmon_pkt, GPMON_SORT_SPILLBYTE, tuplen);
+		Gpmon_M_Incr(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_TUPLE);
+		Gpmon_M_Add(state->gpmon_pkt, GPMON_SORT_CURRSPILLPASS_BYTE, tuplen);
+	}
+
 	FREEMEM(state, GetMemoryChunkSpace(stup->tuple));
 	pfree(stup->tuple);
 }
@@ -3315,3 +3358,18 @@ readtup_datum(Tuplesortstate *state, TuplesortPos *pos, SortTuple *stup,
 			elog(ERROR, "unexpected end of data");
 	}
 }
+
+static void checksend_gpmonpkt(gpmon_packet_t *pkt, int *tick)
+{
+	if(!pkt)
+		return;
+
+	if(gp_enable_gpmon)
+	{
+		if(*tick != gpmon_tick)
+			gpmon_send(pkt);
+
+		*tick = gpmon_tick;
+	}
+}
+	

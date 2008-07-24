@@ -749,6 +749,8 @@ extern int gp_motion_slice_noop;
 /* Disable setting of hint-bits while reading db pages */
 extern bool gp_disable_tuple_hints;
 
+/* Enable gpmon */
+extern bool gp_enable_gpmon;
 extern int gp_hashagg_compress_spill_files;
 
 /* --------------------------------------------------------------------------------------------------

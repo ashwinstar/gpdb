@@ -145,6 +145,15 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	/* no projection is done */
 	anlstate->ps.ps_ProjInfo = NULL;
 
+	/* Gpmon */
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_ADAPTIVENL_TOTAL + 1] = {
+			{ NULL, NULL, 0 }
+		};
+
+		InitPlanStateGpmonPkt(&anlstate->ps, "AdaptiveNestLoop Join", m);
+	}
+
     return anlstate;
 }
 
@@ -172,6 +181,8 @@ ExecEndAdaptiveNestLoop(AdaptiveNestLoopState *node)
     node->main->shared_outer = false;
 
 	ExecEndNode((PlanState *)node->alternate);
+
+	EndPlanStateGpmonPkt(&node->ps);
 }
 
 /* ----------------------------------------------------------------

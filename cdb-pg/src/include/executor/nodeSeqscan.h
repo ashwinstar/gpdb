@@ -24,4 +24,19 @@ extern void ExecSeqMarkPos(SeqScanState *node);
 extern void ExecSeqRestrPos(SeqScanState *node);
 extern void ExecSeqReScan(SeqScanState *node, ExprContext *exprCtxt);
 
+/* Gpmon stuff */
+enum 
+{
+	GPMON_SEQSCAN_OUTTUPLE = 0,
+	GPMON_SEQSCAN_PAGE,
+	GPMON_SEQSCAN_RESTOREPOS,
+	GPMON_SEQSCAN_RESCAN,
+	GPMON_SEQSCAN_TOTAL,
+};
+
+static inline gpmon_packet_t * GpmonPktFromSeqScanState(SeqScanState *node)
+{
+	return &node->ps.gpmon_pkt;
+}
+
 #endif   /* NODESEQSCAN_H */

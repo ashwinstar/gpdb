@@ -22,4 +22,15 @@ extern void ExecReScanMotion(MotionState *node, ExprContext *exprCtxt);
 
 extern void ExecStopMotion(MotionState *node);
 
+enum 
+{
+	GPMON_MOTION_TUPLE = 0,
+	GPMON_MOTION_TOTAL,
+};
+
+static inline gpmon_packet_t * GpmonPktFromMotionState(MotionState *node)
+{
+	return &node->ps.gpmon_pkt;
+}
+
 #endif   /* NODEMOTION_H */

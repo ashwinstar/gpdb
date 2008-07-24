@@ -1608,6 +1608,10 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
     else
     	appendPQExpBuffer(buffer, " -c gp_use_snapshop_during_callback=false");
 
+	/* gpmon stuff */
+	if(gp_enable_gpmon)
+		appendPQExpBuffer(buffer, " -c gp_enable_gpmon=true");
+
 	if (StatementTimeout != 0)
 		appendPQExpBuffer(buffer, " -c statement_timeout=%d", StatementTimeout);
 	if (CommitDelay != 0)

@@ -253,6 +253,18 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&subquerystate->ss.ps);
 	ExecAssignScanProjectionInfo(&subquerystate->ss);
 
+	/* Set up gpmon */
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_SUBQUERYSCAN_TOTAL+1] = 
+		{
+			{ "SubqueryScan Tuple", "Tuples", (int64) subquerystate->ss.ps.plan->plan_rows },
+			{ "SubqueryScan Rescan", "Rescans", 0},
+			{ NULL, NULL, 0},
+		};
+
+		InitPlanStateGpmonPkt(&subquerystate->ss.ps, "Subquery Scan", m); 
+	}
+
 	return subquerystate;
 }
 
@@ -286,6 +298,9 @@ ExecEndSubqueryScan(SubqueryScanState *node)
 	 */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	node->ss.ss_ScanTupleSlot = NULL;	/* not ours to clear */
+
+	/* gpmon */
+	EndPlanStateGpmonPkt(&node->ss.ps);
 
 	/*
 	 * close down subquery
@@ -325,4 +340,7 @@ ExecSubqueryReScan(SubqueryScanState *node, ExprContext *exprCtxt)
 
 	node->ss.ss_ScanTupleSlot = NULL;
 	/*node->ss.ps.ps_TupFromTlist = false;*/
+
+	Gpmon_M_Incr(GpmonPktFromSubqueryScanState(node), GPMON_SUBQUERYSCAN_RESCAN);
+	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 }

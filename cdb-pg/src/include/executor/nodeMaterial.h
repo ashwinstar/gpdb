@@ -24,4 +24,15 @@ extern void ExecMaterialMarkPos(MaterialState *node);
 extern void ExecMaterialRestrPos(MaterialState *node);
 extern void ExecMaterialReScan(MaterialState *node, ExprContext *exprCtxt);
 
+enum {
+	GPMON_MATERIAL_INTUPLE = 0,
+	GPMON_MATERIAL_OUTTUPLE,
+	GPMON_MATERIAL_TOTAL,
+};
+
+static inline gpmon_packet_t * GpmonPktFromMaterialState(MaterialState *node)
+{
+	return &node->ss.ps.gpmon_pkt;
+}
+
 #endif   /* NODEMATERIAL_H */

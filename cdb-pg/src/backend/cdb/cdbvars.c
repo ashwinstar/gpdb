@@ -238,6 +238,8 @@ bool		gp_enable_tablespace_auto_mkdir = FALSE;
 bool		gp_disable_tuple_hints = true;
 int		gp_hashagg_compress_spill_files = 0;
 
+/* Gpmon */
+bool gp_enable_gpmon = false;
 /* Enable single-slice single-row inserts ?*/
 bool		gp_enable_fast_sri=true;
 

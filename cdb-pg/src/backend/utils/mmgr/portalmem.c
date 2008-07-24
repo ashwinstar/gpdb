@@ -21,6 +21,8 @@
 #include "access/heapam.h"
 #include "access/xact.h"
 #include "catalog/pg_type.h"
+#include "commands/variable.h"			/* show_session_authorization */
+#include "commands/dbcommands.h" 		/* get_database_name */
 #include "commands/portalcmds.h"
 #include "miscadmin.h"
 #include "nodes/execnodes.h"            /* EState */
@@ -222,7 +224,7 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 										   "Portal");
 
 	/* initialize portal fields that don't start off zero */
-	portal->status = PORTAL_NEW;
+	PortalSetStatus(portal, PORTAL_NEW); 
 	portal->cleanup = PortalCleanup;
 	portal->createSubid = GetCurrentSubTransactionId();
 	portal->strategy = PORTAL_MULTI_QUERY;
@@ -250,6 +252,46 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);
+
+	/* Setup gpmon */
+	gpmon_init();
+
+	memset(&portal->gpmon_pkt, 0, sizeof(portal->gpmon_pkt));
+
+	portal->gpmon_pkt.magic = GPMON_MAGIC;
+	portal->gpmon_pkt.version = GPMON_PACKET_VERSION;
+	portal->gpmon_pkt.pkttype = GPMON_PKTTYPE_QLOG;
+
+	/* XXX: Need to setup the following fields of the gpmon_pkt.  
+	 * These info should be ready here.  Need to verify.
+	 * Some of them like UserId, DbId should have a better way to display.
+	 */
+
+	/* Gid */
+	gpmon_getgid(&portal->gpmon_pkt.u.qlog.key.tmid, &portal->gpmon_pkt.u.qlog.key.xid);
+
+	/* Command id is not setup yet */
+	if(gp_enable_gpmon)
+	{
+		const char *username;
+		char *dbname;
+
+		username = show_session_authorization();
+
+		/* User Id.  We use session authorization (so to make sense with session id) */
+		snprintf(portal->gpmon_pkt.u.qlog.user, sizeof(portal->gpmon_pkt.u.qlog.user), "%s",
+				username ? username : ""
+				);
+
+		/* DB Id */
+		dbname = get_database_name(MyDatabaseId);
+
+		snprintf(portal->gpmon_pkt.u.qlog.db, sizeof(portal->gpmon_pkt.u.qlog.db), "%s", dbname ? dbname : ""); 
+		if(dbname)
+			pfree(dbname);
+	}
+
+	/* End Gpmon */
 
 	return portal;
 }
@@ -358,8 +400,8 @@ PortalDrop(Portal portal, bool isTopCommit)
 	AssertArg(PortalIsValid(portal));
 
 	/* Not sure if this case can validly happen or not... */
-	if (portal->status == PORTAL_ACTIVE)
-		elog(ERROR, "cannot drop active portal");
+	if (PortalGetStatus(portal) == PORTAL_ACTIVE) 
+		elog(ERROR, "cannot drop active or queued portal");
 
 	/*
 	 * If resource scheduling is enabled, release the resource lock here.
@@ -406,9 +448,9 @@ PortalDrop(Portal portal, bool isTopCommit)
 	 * eventually ends.
 	 */
 	if (portal->resowner &&
-		(!isTopCommit || portal->status == PORTAL_FAILED))
+		(!isTopCommit || PortalGetStatus(portal) == PORTAL_FAILED))
 	{
-		bool		isCommit = (portal->status != PORTAL_FAILED);
+		bool		isCommit = (PortalGetStatus(portal) != PORTAL_FAILED);
 
 		ResourceOwnerRelease(portal->resowner,
 							 RESOURCE_RELEASE_BEFORE_LOCKS,
@@ -501,7 +543,7 @@ CommitHoldablePortals(void)
 		/* Is it a holdable portal created in the current xact? */
 		if ((portal->cursorOptions & CURSOR_OPT_HOLD) &&
 			portal->createSubid != InvalidSubTransactionId &&
-			portal->status == PORTAL_READY)
+			PortalGetStatus(portal) == PORTAL_READY)
 		{
 			/*
 			 * We are exiting the transaction that created a holdable cursor.
@@ -561,7 +603,7 @@ PrepareHoldablePortals(void)
 		/* Is it a holdable portal created in the current xact? */
 		if ((portal->cursorOptions & CURSOR_OPT_HOLD) &&
 			portal->createSubid != InvalidSubTransactionId &&
-			portal->status == PORTAL_READY)
+			PortalGetStatus(portal) == PORTAL_READY)
 		{
 			/*
 			 * We are exiting the transaction that created a holdable cursor.
@@ -601,7 +643,7 @@ AtCommit_Portals(void)
 		 * Note however that any resource owner attached to such a portal is
 		 * still going to go away, so don't leave a dangling pointer.
 		 */
-		if (portal->status == PORTAL_ACTIVE)
+		if (PortalGetStatus(portal) == PORTAL_ACTIVE)
 		{
 			portal->resowner = NULL;
 			continue;
@@ -645,8 +687,8 @@ AtAbort_Portals(void)
 	{
 		Portal		portal = hentry->portal;
 
-		if (portal->status == PORTAL_ACTIVE)
-			portal->status = PORTAL_FAILED;
+		if (PortalGetStatus(portal) == PORTAL_ACTIVE)
+			PortalSetStatus(portal, PORTAL_FAILED);
 
 		/*
 		 * Do nothing else to cursors held over from a previous transaction.
@@ -704,7 +746,7 @@ AtCleanup_Portals(void)
 		/* Do nothing to cursors held over from a previous transaction */
 		if (portal->createSubid == InvalidSubTransactionId)
 		{
-			Assert(portal->status != PORTAL_ACTIVE);
+			Assert(PortalGetStatus(portal) != PORTAL_ACTIVE);
 			Assert(portal->resowner == NULL);
 			continue;
 		}
@@ -777,8 +819,8 @@ AtSubAbort_Portals(SubTransactionId mySubid,
 		 *
 		 * This is only needed to dodge the sanity check in PortalDrop.
 		 */
-		if (portal->status == PORTAL_ACTIVE)
-			portal->status = PORTAL_FAILED;
+		if (PortalGetStatus(portal) == PORTAL_ACTIVE)
+			PortalSetStatus(portal, PORTAL_FAILED);
 
 		/*
 		 * If the portal is READY then allow it to survive into the parent
@@ -1057,3 +1099,66 @@ CdbShutdownPortals(void)
 			CdbCheckDispatchResult(es->dispatchThreads, true);   /* cancel any QEs still running */
 	}
 }
+
+#define GPM_INVALID GPMON_QLOG_STATUS_INVALID
+#define GPM_SILENT  GPMON_QLOG_STATUS_SILENT
+#define GPM_SUBMIT  GPMON_QLOG_STATUS_SUBMIT
+#define GPM_START   GPMON_QLOG_STATUS_START
+#define GPM_DONE    GPMON_QLOG_STATUS_DONE
+#define GPM_ERROR   GPMON_QLOG_STATUS_ERROR
+
+static apr_int32_t gpmon_portal_status_change [PORTAL_STATUSMAX][PORTAL_STATUSMAX] = 
+{
+        /*                 NEW,       READY,       QUEUE,        ACTIVE,         DONE,         FAILED     */
+        /* -----------------------------------------------------------------------------------------------*/
+        /* NEW */   { GPM_SILENT,    GPM_SILENT,   GPM_SUBMIT,   GPM_START ,   GPM_INVALID,   GPM_ERROR},            
+        /* READY */ { GPM_INVALID,   GPM_SILENT,   GPM_SUBMIT,   GPM_START,    GPM_INVALID,   GPM_ERROR},            
+        /* QUEUE */ { GPM_INVALID,   GPM_SILENT,   GPM_SILENT,   GPM_START,    GPM_DONE,   	  GPM_ERROR},            
+        /* ACTIVE */{ GPM_INVALID,   GPM_DONE,     GPM_SUBMIT,   GPM_SILENT,   GPM_DONE,      GPM_ERROR},            
+        /* DONE */  { GPM_INVALID,   GPM_SILENT,   GPM_INVALID,  GPM_INVALID,  GPM_SILENT,    GPM_INVALID},
+        /* FAILED */{ GPM_INVALID,   GPM_SILENT,   GPM_INVALID,  GPM_INVALID,  GPM_INVALID,   GPM_SILENT}
+};
+
+void PortalSetStatus(Portal p, PortalStatus s)
+{
+	apr_int32_t gpmon_qlog_status = gpmon_portal_status_change[p->portal_status][s];
+
+	Assert(gpmon_qlog_status >= GPMON_QLOG_STATUS_SILENT && gpmon_qlog_status <= GPMON_QLOG_STATUS_ERROR);
+
+	if(Gp_role == GP_ROLE_DISPATCH && gpmon_qlog_status != GPMON_QLOG_STATUS_SILENT)
+	{
+		if(gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT
+				||
+				gpmon_qlog_status == GPMON_QLOG_STATUS_START
+				|| 
+				gpmon_qlog_status == GPMON_QLOG_STATUS_DONE)
+		{
+			struct timeval tv;
+			gettimeofday(&tv, 0);
+
+			if(gpmon_qlog_status == GPMON_QLOG_STATUS_SUBMIT)
+				p->gpmon_pkt.u.qlog.tsubmit = tv.tv_sec;
+			else if(gpmon_qlog_status == GPMON_QLOG_STATUS_START)
+			{
+				if(p->gpmon_pkt.u.qlog.tsubmit == 0)
+					p->gpmon_pkt.u.qlog.tsubmit = tv.tv_sec;
+
+				p->gpmon_pkt.u.qlog.tstart = tv.tv_sec;
+			}
+			else
+				p->gpmon_pkt.u.qlog.tfin = tv.tv_sec;
+		}
+
+		p->gpmon_pkt.u.qlog.key.cid = gp_command_count;
+		p->gpmon_pkt.u.qlog.status = gpmon_qlog_status;
+		gpmon_send(&p->gpmon_pkt);
+	}
+
+	p->portal_status = s;
+}
+
+PortalStatus PortalGetStatus(Portal p)
+{
+	return p->portal_status;
+}
+

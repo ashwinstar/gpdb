@@ -1754,6 +1754,15 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 
+	{
+		{"gp_enable_gpmon", PGC_SUSET, LOGGING_WHAT,
+			gettext_noop("Enable gpmon logging."), 
+			NULL,
+		},
+		&gp_enable_gpmon, 
+		false, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -2802,6 +2811,15 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&WalSendClientTimeout,
 		30000, 100, INT_MAX/1000, NULL, NULL
+	},
+
+	{
+		{"gpmon_port", PGC_POSTMASTER, LOGGING, 
+			gettext_noop("Sets the port number of pgmon."), 
+			NULL,
+		},
+		&gpmon_port, 
+		8888, 1024, 65535, NULL, NULL
 	},
 
 	{

@@ -22,4 +22,16 @@ extern TupleTableSlot *ExecSubqueryScan(SubqueryScanState *node);
 extern void ExecEndSubqueryScan(SubqueryScanState *node);
 extern void ExecSubqueryReScan(SubqueryScanState *node, ExprContext *exprCtxt);
 
+enum {
+	GPMON_SUBQUERYSCAN_TUPLE = 0,
+	GPMON_SUBQUERYSCAN_RESCAN, 
+	GPMON_SUBQUERYSCAN_TOTAL
+};
+
+static inline gpmon_packet_t * GpmonPktFromSubqueryScanState(SubqueryScanState *node)
+{
+	return &node->ss.ps.gpmon_pkt;
+}
+
+
 #endif   /* NODESUBQUERYSCAN_H */

@@ -1949,6 +1949,43 @@ static bool shareinput_mutator_xslice_3(Node *node, ApplyShareInputContext *ctxt
 	return true;
 }
 
+static void gpmon_pushplannode(ApplyShareInputContext *ctxt, Plan *plan)
+{
+	ctxt->planNodes = lcons(plan, ctxt->planNodes);
+}
+static void gpmon_popplannode(ApplyShareInputContext *ctxt)
+{
+	list_delete_first(ctxt->planNodes);
+}
+static Plan *gpmon_peekplannode(ApplyShareInputContext *ctxt)
+{
+	return ctxt->planNodes == NULL ? NULL : linitial(ctxt->planNodes);
+}
+
+static bool shareinput_mutator_gpmon(Node *node, ApplyShareInputContext *ctxt, bool fPop)
+{
+	Plan *p = (Plan *) node;
+	Plan *parent;
+
+	if(fPop)
+	{
+		gpmon_popplannode(ctxt);
+		return false;
+	}
+
+	p->plan_node_id = ++ctxt->nextPlanId;
+
+	parent = gpmon_peekplannode(ctxt);
+
+	if(!parent)
+		p->plan_parent_node_id = -1;
+	else
+		p->plan_parent_node_id = parent->plan_node_id;
+
+	gpmon_pushplannode(ctxt, p);
+	return true;
+}
+
 Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt) 
 {
 	ctxt->sharedNodes = NULL;
@@ -1956,6 +1993,8 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 	ctxt->motStack = NULL;
 	ctxt->qdShares = NULL;
 	ctxt->qdSlices = NULL;
+	ctxt->planNodes = NULL;
+	ctxt->nextPlanId = 0;
 
 	shareinput_pushmot(ctxt, 0);
 	
@@ -1967,6 +2006,11 @@ Plan *apply_shareinput_xslice(Plan *plan, ApplyShareInputContext *ctxt)
 	shareinput_walker(shareinput_mutator_xslice_1, (Node *) plan, ctxt); 
 	shareinput_walker(shareinput_mutator_xslice_2, (Node *) plan, ctxt); 
 	shareinput_walker(shareinput_mutator_xslice_3, (Node *) plan, ctxt); 
+
+	/* 
+	 * Generate a plan node id for each node.  Used by gpmon. 
+	 */
+	shareinput_walker(shareinput_mutator_gpmon, (Node *) plan, ctxt);
 	
 	return plan;
 }

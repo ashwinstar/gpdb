@@ -1062,6 +1062,8 @@ agg_retrieve_direct(AggState *aggstate)
 				 * Make a copy of the first tuple; we will use this for
 				 * comparison (in group mode) and for projection.
 				 */
+
+				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_INTUPLE);
 #if 0
 				/*
 				 * XXX BUG BUG:
@@ -1417,6 +1419,9 @@ agg_retrieve_direct(AggState *aggstate)
 				 * and the representative input tuple.	Note we do not support
 				 * aggregates returning sets ...
 				 */
+				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_OUTTUPLE);
+				CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
+
 				return ExecProject(projInfo, NULL);
 			}
 		} while (econtext->group_id > 0);
@@ -1571,6 +1576,8 @@ agg_retrieve_hash_table(AggState *aggstate)
 				 * and the representative input tuple.	Note we do not support
 				 * aggregates returning sets ...
 				 */
+				 Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_OUTTUPLE);
+				 CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 				return ExecProject(projInfo, NULL);
 			}
 		} while (econtext->group_id > 0);
@@ -2049,12 +2056,46 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 	aggstate->prev_aggslot = NULL;
 	aggstate->num_repeats = 0;
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_AGG_TOTAL+1] = {
+			/* GPMON_AGG_INTUPLE */
+			{ "Agg Input Tuples", "Tuples", 0 }, 
+			/* GPMON_AGG_OUTTUPLE */
+			{ "Agg Output Tuples", "Tuples", (int64) aggstate->ss.ps.plan->plan_rows}, 
+			/* GPMON_AGG_SPILLTUPLE */
+			{ "Agg Total Spill Tuples", "Tuples", 0 },
+			/* GPMON_AGG_SPILLBYTE */
+			{ "Agg Total Spill Bytes", "Bytes", 0},
+			/* GPMON_AGG_SPILLBATCH */
+			{ "Agg Total Spill Batches", "Batches", 0 },
+			/* GPMON_AGG_SPILLPASS */
+			{ "Agg Total Spill Pass", "Passes", 0},
+			/* GPMON_AGG_CURRSPILLPASS_READTUPLE */
+			{ "Agg Current Spill Pass Read Tuples", "Tuples", 0},
+			/* GPMON_AGG_CURRSPILLPASS_READBYTE */
+			{ "Agg Current Spill Pass Read Bytes", "Bytes", 0},
+			/* GPMON_AGG_CURRSPILLPASS_TUPLE */
+			{ "Agg Current Spill Pass Tuples", "Tuples", 0},
+			/* GPMON_AGG_CURRSPILLPASS_BYTE */
+			{ "Agg Current Spill Pass Bytes", "Bytes", 0},
+			/* GPMON_AGG_CURRSPILLPASS_BATCH */
+			{ "Agg Current Spill Pass Batches", "Batches", 0},
+			/* GPMON_AGG_TOTAL */
+			{ NULL, NULL, 0 },
+		};
+
 	/* Set the default memory manager */
 	aggstate->mem_manager.alloc = cxt_alloc;
 	aggstate->mem_manager.free = cxt_free;
 	aggstate->mem_manager.manager = aggstate->transcontext;
 	aggstate->mem_manager.realloc_ratio = 1;
 
+		Assert(GPMON_AGG_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&aggstate->ss.ps, 
+			node->aggstrategy == AGG_HASHED ? "Hash Agg" : "Agg", 
+			m);
+	}
+	
 	return aggstate;
 }
 
@@ -2132,6 +2173,8 @@ ExecEndAgg(AggState *node)
 
 	outerPlan = outerPlanState(node);
 	ExecEndNode(outerPlan);
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 void

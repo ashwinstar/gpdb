@@ -230,6 +230,8 @@ ExecEndBitmapIndexScan(BitmapIndexScanState *node)
 		}
 	}
 #endif
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------
@@ -343,6 +345,16 @@ ExecInitBitmapIndexScan(BitmapIndexScan *node, EState *estate, int eflags)
 	/*
 	 * all done.
 	 */
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPINDEXSCAN_TOTAL + 1] = {
+			{ NULL, NULL, 0 }
+		};
+
+		Assert(GPMON_BITMAPINDEXSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&indexstate->ss.ps, "BitmapIndexScan", m);
+	}
+
 	return indexstate;
 }
 

@@ -89,6 +89,14 @@ ExecInitBitmapOr(BitmapOr *node, EState *estate, int eflags)
 		i++;
 	}
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_BITMAPOR_TOTAL +1] = {
+			{ NULL, NULL, 0}
+		};
+
+		InitPlanStateGpmonPkt(&bitmaporstate->ps, "BitmapOr", m);
+	}
+
 	return bitmaporstate;
 }
 
@@ -222,6 +230,8 @@ ExecEndBitmapOr(BitmapOrState *node)
 		if (bitmapplans[i])
 			ExecEndNode(bitmapplans[i]);
 	}
+
+	EndPlanStateGpmonPkt(&node->ps);
 }
 
 void

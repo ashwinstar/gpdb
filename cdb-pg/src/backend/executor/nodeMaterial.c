@@ -159,6 +159,8 @@ ExecMaterial(MaterialState *node)
 		{
 			TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
 
+			Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_MATERIAL_INTUPLE);
+
 			if (TupIsNull(outerslot))
 			{
 				node->eof_underlying = true;
@@ -177,6 +179,7 @@ ExecMaterial(MaterialState *node)
 #endif
 		}
 	
+		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 #ifndef USE_OLD_TUPLESTORE
 		if(forward)
 			ntuplestore_acc_seek_bof(tsa);
@@ -257,6 +260,7 @@ ExecMaterial(MaterialState *node)
 	if(tsa!=NULL && ntuplestore_acc_tell(tsa, NULL))
 	{
 		ntuplestore_acc_current_tupleslot(tsa, slot);
+		Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_MATERIAL_OUTTUPLE);
 		return slot;
 	}
 #endif
@@ -286,6 +290,7 @@ ExecMaterial(MaterialState *node)
 			return NULL;
 		}
 
+		Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_MATERIAL_INTUPLE);
 #ifdef USE_OLD_TUPLESTORE
 		/*
 		 * Append returned tuple to tuplestore.  NOTE: because the tuplestore
@@ -303,6 +308,7 @@ ExecMaterial(MaterialState *node)
 		 * And return a copy of the tuple.	(XXX couldn't we just return the
 		 * outerslot?)
 		 */
+		Gpmon_M_Incr(GpmonPktFromMaterialState(node), GPMON_MATERIAL_OUTTUPLE);
 		return ExecCopySlot(slot, outerslot); 
 	}
 
@@ -391,6 +397,17 @@ ExecInitMaterial(Material *node, EState *estate, int eflags)
 		snEntry->shareState = (Node *) matstate;
 	}
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_MATERIAL_TOTAL + 1] = {
+			{ "Material Input Tuples", "Tuples", 0},
+			{ "Material Output Tuples", "Tuples", 0},
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_MATERIAL_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&matstate->ss.ps, "Material", m);
+	}
+
 	return matstate;
 }
 
@@ -463,6 +480,7 @@ ExecEndMaterial(MaterialState *node)
 	 * shut down the subplan
 	 */
 	ExecEndNode(outerPlanState(node));
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------

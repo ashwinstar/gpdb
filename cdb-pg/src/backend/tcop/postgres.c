@@ -19,6 +19,7 @@
  */
 
 #include "postgres.h"
+#include "gpmon/gpmon.h"
 
 #include <unistd.h>
 #include <signal.h>
@@ -829,10 +830,10 @@ exec_mpp_query(const char *query_string,
 	SliceTable *sliceTable = NULL;
     Slice      *slice = NULL;
 	ParamListInfo paramLI = NULL;
+	apr_int32_t tmid = 0, xid = 0;
 
 	Assert(Gp_role == GP_ROLE_EXECUTE);
-	
-	
+
 	
 	/* 
 	 * If we didn't get passed a query string, dummy something up for ps display and pg_stat_activity
@@ -901,6 +902,12 @@ exec_mpp_query(const char *query_string,
     querytree_list = list_make1(query);
     
     /* Log immediately if dictated by log_statement */
+	if(gp_enable_gpmon)
+	{
+		gpmon_getgid(&tmid, &xid);
+		gpmon_record(tmid, xid, gp_command_count, 
+				"qtext", query_string);
+	}
 
 	if (log_statement != LOGSTMT_NONE)
 	{
@@ -1377,7 +1384,7 @@ exec_simple_query(const char *query_string)
 	bool		save_log_statement_stats = log_statement_stats;
 	bool		was_logged = false;
 	char		msec_str[32];
-
+	apr_int32_t	tmid = 0, xid = 0;
 	/*
 	 * Report query to various monitoring facilities.
 	 */
@@ -1427,6 +1434,13 @@ exec_simple_query(const char *query_string)
 	 * we are in aborted transaction state!)
 	 */
 	parsetree_list = pg_parse_query(query_string);
+
+	if(gp_enable_gpmon)
+	{
+		gpmon_getgid(&tmid, &xid);
+		gpmon_record(tmid, xid, gp_command_count, 
+				"qtext", query_string);
+	}
 
 	/* Log immediately if dictated by log_statement */
 	if (check_log_statement_raw(parsetree_list))

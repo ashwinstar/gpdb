@@ -22,4 +22,16 @@ extern TupleTableSlot *ExecBitmapHeapScan(BitmapHeapScanState *node);
 extern void ExecEndBitmapHeapScan(BitmapHeapScanState *node);
 extern void ExecBitmapHeapReScan(BitmapHeapScanState *node, ExprContext *exprCtxt);
 
+enum
+{
+	GPMON_BITMAPHEAPSCAN_OUTTUPLE = 0,
+	GPMON_BITMAPHEAPSCAN_PAGE, 
+	GPMON_BITMAPHEAPSCAN_TOTAL
+};
+
+static inline gpmon_packet_t * GpmonPktFromBitmapHeapScanState(BitmapHeapScanState *node)
+{
+	return &node->ss.ps.gpmon_pkt;
+}
+
 #endif   /* NODEBITMAPHEAPSCAN_H */

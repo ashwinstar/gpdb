@@ -284,6 +284,14 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
 	ExecAssignScanProjectionInfo(&scanstate->ss);
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_NODEVALUESCAN_TOTAL +1] = {
+			{ NULL, NULL, 0}
+		};
+
+		InitPlanStateGpmonPkt(&scanstate->ss.ps, "ValuesScan", m);
+	}
+
 	return scanstate;
 }
 
@@ -316,6 +324,8 @@ ExecEndValuesScan(ValuesScanState *node)
 	 */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
 	ExecClearTuple(node->ss.ss_ScanTupleSlot);
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------

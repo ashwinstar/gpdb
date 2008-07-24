@@ -107,6 +107,8 @@ ExecNestLoop(NestLoopState *node)
 	if (node->prefetch_inner)
 	{
 		innerTupleSlot = ExecProcNode(innerPlan);
+		Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_INNERTUPLE);
+
 		node->reset_inner = true;
 		econtext->ecxt_innertuple = innerTupleSlot;
 
@@ -149,6 +151,7 @@ ExecNestLoop(NestLoopState *node)
 			{
 				ENL1_printf("getting new outer tuple");
 				outerTupleSlot = ExecProcNode(outerPlan);
+				Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_OUTERTUPLE);
 			}
 			else
 			{
@@ -214,6 +217,8 @@ ExecNestLoop(NestLoopState *node)
 		ENL1_printf("getting new inner tuple");
 
 		innerTupleSlot = ExecProcNode(innerPlan);
+		Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_INNERTUPLE);
+
 		node->reset_inner = true;
 		econtext->ecxt_innertuple = innerTupleSlot;
 
@@ -245,6 +250,7 @@ ExecNestLoop(NestLoopState *node)
 					 */
 					ENL1_printf("qualification succeeded, projecting tuple");
 
+					Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_OUTTUPLE);
 					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 				}
 			}
@@ -286,6 +292,7 @@ ExecNestLoop(NestLoopState *node)
 				 */
 				ENL1_printf("qualification succeeded, projecting tuple");
 
+				Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_OUTTUPLE);
 				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 			}
 
@@ -441,6 +448,18 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 	NL1_printf("ExecInitNestLoop: %s\n",
 			   "node initialized");
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_NLJ_TOTAL + 1] = {
+			{ "NestloopJoin inner tuples", "Tuples", 0},
+			{ "NestloopJoin outer tuples", "Tuples", 0},
+			{ "NestloopJoni output tuples", "Tuples", nlstate->js.ps.plan->plan_rows },
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_NLJ_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&nlstate->js.ps, "NestloopJoin", m);
+	}
+
 	return nlstate;
 }
 
@@ -487,6 +506,8 @@ ExecEndNestLoop(NestLoopState *node)
 
 	NL1_printf("ExecEndNestLoop: %s\n",
 			   "node processing ended");
+
+	EndPlanStateGpmonPkt(&node->js.ps);
 }
 
 /* ----------------------------------------------------------------

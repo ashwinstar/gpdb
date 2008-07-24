@@ -36,4 +36,15 @@ extern bool ExecIndexEvalArrayKeys(ExprContext *econtext,
 					   IndexArrayKeyInfo *arrayKeys, int numArrayKeys);
 extern bool ExecIndexAdvanceArrayKeys(IndexArrayKeyInfo *arrayKeys, int numArrayKeys);
 
+enum {
+	GPMON_INDEXSCAN_OUTTUPLE = 0,
+	GPMON_INDEXSCAN_RESTOREPOS,
+	GPMON_INDEXSCAN_RESCAN,
+	GPMON_INDEXSCAN_TOTAL,
+};
+
+static inline gpmon_packet_t * GpmonPktFromIndexScanState(IndexScanState *node)
+{
+	return &node->ss.ps.gpmon_pkt;
+}
 #endif   /* NODEINDEXSCAN_H */

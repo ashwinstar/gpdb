@@ -40,6 +40,10 @@ typedef struct Plan
 {
 	NodeTag		type;
 
+	/* Plan node id and parenet node id */
+	int 	plan_node_id;
+	int 	plan_parent_node_id;
+
 	/*
 	 * estimated execution costs for plan (see costsize.c for more info)
 	 */
@@ -103,26 +107,27 @@ typedef struct Plan
 	 * above.
 	 */
 	DispatchMethod dispatch;
-	
+
 	/*
 	 * CDB: Now many motion nodes are there in the Plan.  How many init plans?
 	 * Additional plan tree global significant only in the root node.
 	 */
-	 int nMotionNodes;
-	 int nInitPlans;
-	
-	 /*
-	  * CDB: This allows the slice table to accompany the plan as it
-	  * moves around the executor. This is anoter plan tree global that
-	  * should be non-NULL only in the top node of a dispatchable tree.
-	  * It could (and should) move to a TopPlan node if we ever do that.
-	  *
-	  * Currently, the slice table should not be installed on the QD.
-	  * Rather is it shipped to QEs as a separate parameter to MPPEXEC.
-	  * The implementation of MPPEXEC, which runs on the QEs, installs
-	  * the slice table in the plan as required there.
-	  */
+	int nMotionNodes;
+	int nInitPlans;
+
+	/*
+	 * CDB: This allows the slice table to accompany the plan as it
+	 * moves around the executor. This is anoter plan tree global that
+	 * should be non-NULL only in the top node of a dispatchable tree.
+	 * It could (and should) move to a TopPlan node if we ever do that.
+	 *
+	 * Currently, the slice table should not be installed on the QD.
+	 * Rather is it shipped to QEs as a separate parameter to MPPEXEC.
+	 * The implementation of MPPEXEC, which runs on the QEs, installs
+	 * the slice table in the plan as required there.
+	 */
 	Node *sliceTable;
+
 } Plan;
 
 /* ----------------
@@ -835,3 +840,4 @@ typedef struct Motion
 } Motion;
 
 #endif   /* PLANNODES_H */
+

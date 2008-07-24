@@ -422,6 +422,8 @@ ExecEndTidScan(TidScanState *node)
 	 * close the heap relation.
 	 */
 	ExecCloseScanRelation(node->ss.ss_currentRelation);
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------
@@ -532,6 +534,15 @@ ExecInitTidScan(TidScan *node, EState *estate, int eflags)
 	 */
 	ExecAssignResultTypeFromTL(&tidstate->ss.ps);
 	ExecAssignScanProjectionInfo(&tidstate->ss);
+
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_TIDSCAN_TOTAL + 1] = {
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_TIDSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&tidstate->ss.ps, "Tidscan", m);
+	}
 
 	/*
 	 * all done.

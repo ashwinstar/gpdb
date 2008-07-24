@@ -24,4 +24,12 @@ extern void ExecResultMarkPos(ResultState *node);
 extern void ExecResultRestrPos(ResultState *node);
 extern void ExecReScanResult(ResultState *node, ExprContext *exprCtxt);
 
+enum {
+	GPMON_RESULT_TOTAL = 0,
+};
+
+static inline gpmon_packet_t * GpmonPktFromResultState(ResultState *node)
+{
+	return &node->ps.gpmon_pkt;
+}
 #endif   /* NODERESULT_H */

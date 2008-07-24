@@ -1,0 +1,132 @@
+#include <signal.h>
+#include <fcntl.h>
+#include <sys/time.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include "postgres.h"
+#include "libpq/pqsignal.h"
+#include "gpmon/gpmon.h"
+
+#include "utils/memutils.h"
+
+#include "cdb/cdbtm.h"
+#include "miscadmin.h"
+
+struct  {
+    int    gxsock;
+	pid_t  pid;
+	struct sockaddr_in gxaddr;
+} gpmon = {0};
+
+int64 gpmon_tick = 0;
+
+void gpmon_sig_handler(int sig);
+
+void gpmon_sig_handler(int sig) 
+{
+	gpmon_tick++;
+}
+
+
+void gpmon_init(void)
+{
+	struct itimerval tv;
+	pqsigfunc sfunc;
+	pid_t pid = getpid();
+	int sock;
+
+	elog(LOG, "gpmon_init");
+
+	if (pid == gpmon.pid)
+		return;
+
+	sfunc = pqsignal(SIGVTALRM, gpmon_sig_handler);
+	if (sfunc == SIG_ERR) {
+		elog(WARNING, "gpmon: unable to set signal handler for SIGVTALRM (%m)");
+	}
+	else if (sfunc == gpmon_sig_handler) {
+		close(gpmon.gxsock); 
+		gpmon.gxsock = -1;
+	}
+	else {
+		Assert(sfunc == 0);
+	}
+
+	tv.it_interval.tv_sec = 1;
+	tv.it_interval.tv_usec = 0;
+	tv.it_value = tv.it_interval;
+	if (-1 == setitimer(ITIMER_VIRTUAL, &tv, 0)) {
+		elog(WARNING, "gpmon: unable to start timer (%m)");
+	}
+
+	sock = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sock == -1) {
+		elog(WARNING, "gpmon: cannot create socket (%m)");
+	}
+    if (fcntl(sock, F_SETFL, O_NONBLOCK) == -1) {
+        elog(WARNING, "fcntl(F_SETFL, O_NONBLOCK) failed");
+    }
+    if (fcntl(sock, F_SETFD, 1) == -1) {
+        elog(WARNING, "fcntl(F_SETFD) failed");
+    }
+	gpmon.gxsock = sock;
+	memset(&gpmon.gxaddr, 0, sizeof(gpmon.gxaddr));
+	gpmon.gxaddr.sin_family = AF_INET;
+	gpmon.gxaddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+	gpmon.gxaddr.sin_port = htons(gpmon_port);
+	gpmon.pid = pid;
+}
+
+void gpmon_record(apr_int32_t tmid, apr_int32_t xid, apr_int32_t cid,
+				  const char* type,
+				  const char* content)
+{
+	char fname[100];
+	FILE* fp;
+	int len = strlen(content);
+
+	sprintf(fname, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, xid, cid);
+	elog(LOG, "gpmon_record: %s", fname);
+
+	fp = fopen(fname, "a");
+	if (!fp)
+		return;
+
+	fprintf(fp, "%d %s\n", len + 1, type);
+	fwrite(content, 1, len, fp);
+	fwrite("\n", 1, 1, fp);
+	fclose(fp);
+}
+
+
+void gpmon_getgid(apr_int32_t* tmid, apr_int32_t* xid)
+{
+    char buff[TMGIDSIZE] = {0};
+    getDistributedTransactionIdentifier(buff);
+    sscanf(buff, "%d-%d", tmid, xid);
+} 
+
+
+void gpmon_send(gpmon_packet_t* p)
+{
+	if (p->magic != GPMON_MAGIC)  {
+		elog(WARNING, "gpmon - bad magic %x", p->magic);
+		return;
+	}
+
+	if (p->pkttype == GPMON_PKTTYPE_QEXEC) {
+		p->u.qexec.p_mem = TopMemoryContext->allBytesAlloc - TopMemoryContext->allBytesFreed;
+		p->u.qexec.p_memmax = TopMemoryContext->maxBytesHeld;
+	}
+	
+	if (gpmon.gxsock > 0) {
+		int n = sizeof(*p);
+		if (n != sendto(gpmon.gxsock, p, n, 0, 
+						(struct sockaddr*) &gpmon.gxaddr, 
+						sizeof(gpmon.gxaddr))) {
+			elog(WARNING, "gpmon: cannot send (%m socket %d)", gpmon.gxsock);
+		}
+	}
+}

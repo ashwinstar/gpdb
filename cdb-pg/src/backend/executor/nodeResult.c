@@ -337,6 +337,15 @@ ExecInitResult(Result *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&resstate->ps);
 	ExecAssignProjectionInfo(&resstate->ps, NULL);
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_RESULT_TOTAL + 1] = {
+			{ NULL, NULL, 0}
+		};
+
+		Assert(GPMON_RESULT_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&resstate->ps, "ResultNode", m);
+	}
+
 	return resstate;
 }
 
@@ -369,6 +378,8 @@ ExecEndResult(ResultState *node)
 	 * shut down subplans
 	 */
 	ExecEndNode(outerPlanState(node));
+
+	EndPlanStateGpmonPkt(&node->ps);
 }
 
 void

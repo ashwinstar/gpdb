@@ -29,6 +29,9 @@
 #include "executor/execdebug.h"
 #include "executor/nodeSeqscan.h"
 
+#include "cdb/cdbvars.h"
+#include "miscadmin.h"
+
 static void InitScanRelation(SeqScanState *node, EState *estate);
 static TupleTableSlot *SeqNext(SeqScanState *node);
 
@@ -99,7 +102,14 @@ SeqNext(SeqScanState *node)
 		heap_getnextx(scandesc, direction, node->ss_heapTupleData.item,
 					  &node->ss_heapTupleData.top, 
 					  &node->ss_heapTupleData.seen_EOS);
+
+		/* Gpmon */
+		if(scandesc->rs_pageatatime)
+			Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_PAGE);
+
+		CheckSendPlanStateGpmonPkt(&node->ps);
 	}
+
 	node->ss_heapTupleData.last = 
 		((node->ss_heapTupleData.bot < node->ss_heapTupleData.top) 
 		 ? &node->ss_heapTupleData.item[node->ss_heapTupleData.bot++]
@@ -142,7 +152,10 @@ ExecSeqScan(SeqScanState *node)
 	/*
 	 * use SeqNext as access method
 	 */
-	return ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
+	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
+	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_OUTTUPLE);
+
+	return slot;
 }
 
 /* ----------------------------------------------------------------
@@ -240,6 +253,20 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&scanstate->ps);
 	ExecAssignScanProjectionInfo(scanstate);
 
+	/* Set up gpmon */
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_SEQSCAN_TOTAL + 1] = {
+			{ "SeqScan Tuple Stats", "Tuples", (int64) scanstate->ps.plan->plan_rows}, 
+			{ "SeqScan Page Stats", "Pages", 0 }, 
+			{ "SeqScan Restore Pos", "Restores", 0},
+			{ "SeqScan Rescan", "Rescans", 0},
+			{ NULL, NULL, 0 } 
+		};
+
+		Assert(GPMON_SEQSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&scanstate->ps, "Sequential Scan", m); 
+	}
+
 	return scanstate;
 }
 
@@ -293,6 +320,9 @@ ExecEndSeqScan(SeqScanState *node)
 	 * close the heap relation.
 	 */
 	ExecCloseScanRelation(relation);
+
+	/* gpmon */
+	EndPlanStateGpmonPkt(&node->ps);
 }
 
 /* ----------------------------------------------------------------
@@ -334,6 +364,9 @@ ExecSeqReScan(SeqScanState *node, ExprContext *exprCtxt)
 	node->ss_heapTupleData.bot = node->ss_heapTupleData.top 
 		= node->ss_heapTupleData.seen_EOS = 0;
 	node->ss_heapTupleData.last = NULL;
+
+	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_RESCAN);
+	CheckSendPlanStateGpmonPkt(&node->ps);
 }
 
 /* ----------------------------------------------------------------
@@ -373,4 +406,88 @@ ExecSeqRestrPos(SeqScanState *node)
 	ExecClearTuple(node->ss_ScanTupleSlot);
 
 	heap_restrpos(scan);
+	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_RESTOREPOS);
+	CheckSendPlanStateGpmonPkt(&node->ps);
 }
+
+/* Gpmon helpers. */
+void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename, Gpmon_NameUnit_MaxVal *m) 
+{
+
+	if(!ps)
+		return;
+
+	memset(&ps->gpmon_pkt, 0, sizeof(ps->gpmon_pkt));
+
+	ps->gpmon_plan_tick = 0;
+
+	ps->gpmon_pkt.magic = GPMON_MAGIC;
+	ps->gpmon_pkt.version = GPMON_PACKET_VERSION;
+	ps->gpmon_pkt.pkttype = GPMON_PKTTYPE_QEXEC;
+
+	gpmon_getgid(&ps->gpmon_pkt.u.qexec.key.tmid, &ps->gpmon_pkt.u.qexec.key.xid);
+	ps->gpmon_pkt.u.qexec.key.cid = gp_command_count;
+	ps->gpmon_pkt.u.qexec.key.segid = Gp_segment;
+	ps->gpmon_pkt.u.qexec.key.pid = MyProcPid;
+	ps->gpmon_pkt.u.qexec.key.nid = ps->plan->plan_node_id;
+
+	ps->gpmon_pkt.u.qexec.pnid = ps->plan->plan_parent_node_id;
+
+
+	snprintf(ps->gpmon_pkt.u.qexec.ntype, sizeof(ps->gpmon_pkt.u.qexec.ntype), nodename);
+
+	if(m)
+	{
+		int i=0;
+		for(i=0; i<GPMON_QEXEC_M_COUNT; ++i)
+		{
+			AssertImply(m[i].name, m[i].unit);
+			if(m[i].name)
+			{
+				Assert(m[i].unit);
+				snprintf(ps->gpmon_pkt.u.qexec.m[i].name, 
+						sizeof(ps->gpmon_pkt.u.qexec.m[i].name), 
+						m[i].name);
+				snprintf(ps->gpmon_pkt.u.qexec.m[i].unit, 
+						sizeof(ps->gpmon_pkt.u.qexec.m[i].unit), 
+						m[i].unit);
+				ps->gpmon_pkt.u.qexec.m[i].valuemax = m[i].maxval;
+			}
+			else
+				break;
+		}
+	}
+
+	snprintf(ps->gpmon_pkt.u.qexec.nstatus, sizeof(ps->gpmon_pkt.u.qexec.nstatus), "Initalize");
+
+	if(gp_enable_gpmon)
+		gpmon_send(&ps->gpmon_pkt);
+
+	snprintf(ps->gpmon_pkt.u.qexec.nstatus, sizeof(ps->gpmon_pkt.u.qexec.nstatus), "Executing");
+}
+
+void CheckSendPlanStateGpmonPkt(PlanState *ps)
+{
+	if(!ps)
+		return;
+
+	if(gp_enable_gpmon)
+	{
+		if(ps->gpmon_plan_tick != gpmon_tick)
+			gpmon_send(&ps->gpmon_pkt);
+
+		ps->gpmon_plan_tick = gpmon_tick;
+	}
+}
+
+void EndPlanStateGpmonPkt(PlanState *ps)
+{
+	if(!ps)
+		return;
+
+	snprintf(ps->gpmon_pkt.u.qexec.nstatus, sizeof(ps->gpmon_pkt.u.qexec.nstatus), "Finished");
+
+	if(gp_enable_gpmon)
+		gpmon_send(&ps->gpmon_pkt);
+}
+

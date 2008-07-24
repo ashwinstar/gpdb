@@ -161,4 +161,25 @@ extern Datum invoke_agg_trans_func(FmgrInfo transfn, int numargs,
 								   FunctionCallInfoData *fcinfo, void *funcctx,
 								   MemoryContext tuplecontext,
 								   MemoryManagerContainer *mem_manager);
+
+enum {
+	GPMON_AGG_INTUPLE = 0,
+	GPMON_AGG_OUTTUPLE,
+	GPMON_AGG_SPILLTUPLE,
+	GPMON_AGG_SPILLBYTE,
+	GPMON_AGG_SPILLBATCH,
+	GPMON_AGG_SPILLPASS, 
+	GPMON_AGG_CURRSPILLPASS_READTUPLE,
+	GPMON_AGG_CURRSPILLPASS_READBYTE,
+	GPMON_AGG_CURRSPILLPASS_TUPLE,
+	GPMON_AGG_CURRSPILLPASS_BYTE,
+	GPMON_AGG_CURRSPILLPASS_BATCH,
+	GPMON_AGG_TOTAL
+};
+
+static inline gpmon_packet_t * GpmonPktFromAggState(AggState *node)
+{
+	return &node->ss.ps.gpmon_pkt;
+}
+
 #endif   /* NODEAGG_H */

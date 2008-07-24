@@ -175,6 +175,8 @@ ExecSort(SortState *node)
                                      node->ss.ps.instrument,
                                      node->ss.ps.cdbexplainbuf);
 
+		tuplesort_set_gpmon(tuplesortstate, &node->ss.ps.gpmon_pkt, &node->ss.ps.gpmon_plan_tick);
+
 		/*
 		 * Scan the subplan and feed all the tuples to tuplesort.
 		 */
@@ -354,6 +356,24 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	SO1_printf("ExecInitSort: %s\n",
 			   "sort node initialized");
 
+	/* Gpmon */
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_SORT_TOTAL + 1] = {
+			{ "Sort Input Tuple", "Tuples", (int64) sortstate->ss.ps.plan->plan_rows}, 
+			{ "Sort Memory Usage", "Bytes", 0 }, 
+			{ "Sort Spill Tuples", "Tuples", 0 },
+			{ "Sort Spill Bytes", "Bytes", 0 },
+			{ "Sort Spill Pass", "Passes", 0 },
+			{ "Sort Current Spill Pass Tuples", "Tuples", 0},
+			{ "Sort Current Spill Pass Bytes", "Bytes", 0},
+			{ NULL, NULL, 0 },
+		};
+
+		Assert(GPMON_SORT_TOTAL <= GPMON_QEXEC_M_COUNT);
+
+		InitPlanStateGpmonPkt(&sortstate->ss.ps, "Sort", m); 
+	}
+
 	return sortstate;
 }
 
@@ -413,6 +433,8 @@ ExecEndSort(SortState *node)
 
 	SO1_printf("ExecEndSort: %s\n",
 			   "sort node shutdown");
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------

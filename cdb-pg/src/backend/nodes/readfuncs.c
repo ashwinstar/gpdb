@@ -3023,6 +3023,9 @@ void readPlanInfo(Plan *local_node)
 {
 	READ_TEMP_LOCALS();
 
+	READ_INT_FIELD(plan_node_id);
+	READ_INT_FIELD(plan_parent_node_id);
+
 	READ_FLOAT_FIELD(startup_cost);
 	READ_FLOAT_FIELD(total_cost);
 	READ_FLOAT_FIELD(plan_rows);
