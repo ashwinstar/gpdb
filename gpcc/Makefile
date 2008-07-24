@@ -25,7 +25,7 @@ else
 endif
 
 #all: mkext mkgpfdist mklibgpcc mkgpha mkfts
-all: mkdir mkext mkgpmon mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos mkgpha mkgpma
+all: mkdir mkext mkgpfdist mklibgpcc mkgp mklibchubby mkchubbytest mkpaxos mkgpha mkgpma
 
 #mkgpma mkgp 
 mkgpmon: 
