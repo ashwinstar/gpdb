@@ -808,18 +808,17 @@ void MemTupleSetOid(MemTuple mtup, MemTupleBinding *pbind, Oid oid)
 }
 
 
-Datum memtuple_getsysattr(void *ttslot, int attnum, bool *isnull)
-{
-	TupleTableSlot *slot = (TupleTableSlot *) ttslot; 
-	MemTuple mtup = slot->PRIVATE_tts_memtuple;
-	MemTupleBinding *pbind = slot->tts_mt_bind;
-	
+Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull)
+{	
 	Assert(mtup && pbind);
 	Assert(isnull);
-	
+
 	switch(attnum)
 	{
-		/* XXX ? */
+		/* 
+		 * Memtuple knows nothing about these system attributes. see 
+		 * slot_getattr() for how some of these get pre-handled 
+		 */
 		case MinTransactionIdAttributeNumber:
 		case MaxTransactionIdAttributeNumber:
 		case MinCommandIdAttributeNumber:
@@ -830,16 +829,10 @@ Datum memtuple_getsysattr(void *ttslot, int attnum, bool *isnull)
 		case GpXmaxStatusAttributeNumber:
 		case GpXminClogStatusAttributeNumber:
 		case GpXmaxClogStatusAttributeNumber:
-			*isnull = true;
-			return 0;
-
-		case TableOidAttributeNumber:
-			*isnull = false;
-			return ObjectIdGetDatum(slot->tts_tableOid);
-			
 		case SelfItemPointerAttributeNumber:
-			*isnull = false;
-			return PointerGetDatum(&(slot->tts_synthetic_ctid));
+		case TableOidAttributeNumber:
+			Assert(!"Caller can't ask for these system attributes from memtuple"); 
+			elog(ERROR, "Unsupported attnum: %d", attnum);
 			
 		case gpsegmentIdAttributeNumber:
 		 	*isnull = false;
@@ -857,6 +850,7 @@ Datum memtuple_getsysattr(void *ttslot, int attnum, bool *isnull)
 
 			*isnull = false;
 			return ObjectIdGetDatum(MemTupleGetOid(mtup, pbind));
+							   
 		default:
 			Assert(!"Invalid attnum for memtuple_getsysattr");
 			elog(ERROR, "Invalid attnum: %d", attnum);

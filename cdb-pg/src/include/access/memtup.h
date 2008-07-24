@@ -164,7 +164,7 @@ extern void destroy_memtuple_binding(MemTupleBinding *pbind);
 extern MemTupleBinding* create_memtuple_binding(TupleDesc tupdesc);
 
 extern Datum memtuple_getattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull);
-extern Datum memtuple_getsysattr(void *slot, int attnum, bool *isnull);
+extern Datum memtuple_getsysattr(MemTuple mtup, MemTupleBinding *pbind, int attnum, bool *isnull);
 extern bool memtuple_attisnull(MemTuple mtup, MemTupleBinding *pbind, int attnum);
 
 extern uint32 compute_memtuple_size(MemTupleBinding *pbind, Datum *values, bool *isnull, bool hasnull, uint32 *nullsaves);

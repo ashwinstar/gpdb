@@ -244,7 +244,19 @@ static inline Datum slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 	if(attnum <= 0)
 	{
 		if(slot->PRIVATE_tts_memtuple)
-			return memtuple_getsysattr(slot, attnum, isnull);
+		{
+			switch(attnum)
+			{
+				case SelfItemPointerAttributeNumber:
+					*isnull = false;
+					return PointerGetDatum(&(slot->tts_synthetic_ctid));
+				case TableOidAttributeNumber:
+					*isnull = false;
+					return ObjectIdGetDatum(slot->tts_tableOid);
+				default:
+					return memtuple_getsysattr(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind, attnum, isnull);
+			}
+		}			
 
 		Assert(slot->PRIVATE_tts_heaptuple);
 		return heap_getsysattr(slot->PRIVATE_tts_heaptuple, attnum, slot->tts_tupleDescriptor, isnull);
