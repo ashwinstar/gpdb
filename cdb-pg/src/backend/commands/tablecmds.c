@@ -3103,12 +3103,12 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		{
 			AlterPartitionCmd  *pc    = (AlterPartitionCmd *) cmd->def;
 			pg_part_rule   	   *prule = NULL;
-			Relation			oldrel;
-			Relation			newrel;
+			Relation			oldrel = NULL;
+			Relation			newrel = NULL;
 			int					i;
 
 			if (Gp_role == GP_ROLE_UTILITY)
-				;
+				elog(ERROR, "EXCHANGE is not supported in utility mode");
 			else if (Gp_role == GP_ROLE_DISPATCH)
 			{
 				AlterPartitionId   *pid   = (AlterPartitionId *) pc->partid;
