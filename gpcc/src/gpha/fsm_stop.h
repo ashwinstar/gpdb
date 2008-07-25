@@ -51,7 +51,6 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     }
 
     if (seg_is_qd(cmdslot) && strcmp(cmdslot->u.request.isprimary, "f") == 0) {
-	apr_proc_t proc;
 	char *argv[2];
 
 	gpcc_log_info("[%s] kill gpsyncmaster", cmdslot->cmdname);
