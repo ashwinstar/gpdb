@@ -351,6 +351,8 @@ static Oid DefineRelation_int(CreateStmt *stmt, char relkind,
 							  struct CdbDispatchResults **pMirrorResults,
 							  struct CdbDispatchCmdThreads **pDispatchThreads);
 static void ATExecPartAddInternal(Relation rel, Node *def);
+static void exchange_part_rule(Oid oldrelid, Oid newrelid);
+static void exchange_part_constraints(Relation oldrel, Relation newrel);
 #if 0
 static bool rel_is_child_partition(Oid relid);
 static bool rel_partition_get_master(Oid relid);
@@ -2897,6 +2899,30 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	ATAddToastIfNeeded(&wqueue, ocount, oids);
 }
 
+static bool
+relation_has_supers(Oid relid)
+{
+	ScanKeyData key;
+	SysScanDesc scan;
+	bool found = false;
+
+	Relation catalogRelation = heap_open(InheritsRelationId, AccessShareLock);
+	ScanKeyInit(&key,
+				Anum_pg_inherits_inhrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+	scan = systable_beginscan(catalogRelation, InheritsRelidSeqnoIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	if (HeapTupleIsValid(systable_getnext(scan)))
+		found = true;
+
+	systable_endscan(scan);
+	heap_close(catalogRelation, AccessShareLock);
+
+	return found;
+}
+
 /*
  * ATPrepCmd
  *
@@ -3075,25 +3101,140 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			/* CDB: Partitioned Table commands */
 		case AT_PartExchange:			/* Exchange */
 		{
-			AlterPartitionCmd 	*pc    = (AlterPartitionCmd *) cmd->def;
-			AlterPartitionId 	*pid   = (AlterPartitionId *) pc->partid;
-			pg_part_rule   		*prule = NULL;
+			AlterPartitionCmd  *pc    = (AlterPartitionCmd *) cmd->def;
+			pg_part_rule   	   *prule = NULL;
+			Relation			oldrel;
+			Relation			newrel;
+			int					i;
 
-			ATSimplePermissions(rel, false);
-
-			if (Gp_role == GP_ROLE_DISPATCH)
-				prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
-
-			if (prule)
+			if (Gp_role == GP_ROLE_UTILITY)
+				;
+			else if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				/* cannot exchange a hash partition */
-				if ('h' == prule->pNode->part->parkind)
-					ereport(ERROR,
-							(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-							 errmsg("cannot exchange HASH partition%s of relation \"%s\"",
-							prule->partIdStr,
-									RelationGetRelationName(rel))));
+				AlterPartitionId   *pid   = (AlterPartitionId *) pc->partid;
+				prule = get_part_rule(rel, pid, true, true,
+									  CurrentMemoryContext);
+				if (prule)
+				{
+					/* cannot exchange a hash partition */
+					if ('h' == prule->pNode->part->parkind)
+						ereport(ERROR,
+								(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+								 errmsg("cannot exchange HASH partition%s "
+									    "of relation \"%s\"", prule->partIdStr,
+										RelationGetRelationName(rel))));
+				}
+				oldrel = heap_open(prule->topRule->parchildrelid,
+								   AccessExclusiveLock);
+				newrel = heap_openrv((RangeVar *)pc->arg1,
+									 AccessExclusiveLock);
 			}
+			else
+			{
+				oldrel = heap_openrv((RangeVar *)pc->partid,
+								   AccessExclusiveLock);
+				newrel = heap_openrv((RangeVar *)pc->arg1,
+									 AccessExclusiveLock);
+				
+			}
+			ATSimplePermissions(rel, false);
+			ATSimplePermissions(oldrel, false);
+			ATSimplePermissions(newrel, false);
+
+			/* check that things all look the same */
+			if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				GpPolicy *oldpol = oldrel->rd_cdbpolicy;
+				GpPolicy *newpol = newrel->rd_cdbpolicy;
+
+				if (oldpol->ptype != oldpol->ptype ||
+					oldpol->nattrs != newpol->nattrs ||
+					memcmp(oldpol->attrs, newpol->attrs,
+						   sizeof(AttrNumber) * oldpol->nattrs))
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("distribution policy for \"%s\" "
+									"is differnet to that of \"%s\"",
+								RelationGetRelationName(rel),
+								RelationGetRelationName(newrel))));
+				}
+			}
+
+			/* Same columns, being careful about dropped columns! */
+			if (oldrel->rd_rel->relnatts != newrel->rd_rel->relnatts)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("relation \"%s\" must have the same number "
+								"columns as relation \"%s\"",
+						 		RelationGetRelationName(newrel),
+						 		RelationGetRelationName(rel))));
+
+			for (i = 0; i < oldrel->rd_rel->relnatts; i++)
+			{
+				/* Same columns in the same order */
+				Form_pg_attribute oldatt = oldrel->rd_att->attrs[i];
+				Form_pg_attribute newatt = newrel->rd_att->attrs[i];
+
+				if (oldatt->attisdropped || newatt->attisdropped)
+					ereport(ERROR,
+							(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+							 errmsg("cannot exchange tables which contain "
+								   	"dropped columns")));
+
+				/* attribute name */
+				if (memcmp(NameStr(oldatt->attname),
+						   NameStr(newatt->attname),
+						   NAMEDATALEN) != 0)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("relation \"%s\" must have the same column "
+									"names and order as \"%s\"",
+									RelationGetRelationName(newrel),
+									RelationGetRelationName(rel))));
+
+				/* attribute type */
+				if (oldatt->atttypid != newatt->atttypid ||
+					oldatt->atttypmod != newatt->atttypmod)
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("type mismatch for attribute \"%s\"",
+									NameStr((oldatt->attname)))));
+			}
+
+			/* owner */
+			if (oldrel->rd_rel->relowner != newrel->rd_rel->relowner)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("owner must be the same for exchange tables")));
+
+
+			/* both tables must have the same OIDs setting */
+			if (oldrel->rd_rel->relhasoids != newrel->rd_rel->relhasoids)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("\"%s\" and \"%s\" must have same OIDs setting",
+								RelationGetRelationName(rel),
+								RelationGetRelationName(newrel))));
+
+			/* new relation between not be involved in inheritance */
+			if (has_subclass(RelationGetRelid(newrel)))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot EXCHANGE table \"%s\" as it has "
+								"child tables",
+								RelationGetRelationName(newrel))));
+
+			if (relation_has_supers(RelationGetRelid(newrel)))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot EXCHANGE table \"%s\" as it has "
+								"inherits parent table(s)",
+								RelationGetRelationName(newrel))));
+
+			heap_close(oldrel, NoLock);
+			heap_close(newrel, NoLock);
+
 			pass = AT_PASS_MISC;
 			break;
 		}
@@ -7539,57 +7680,15 @@ ATExecEnableDisableTrigger(Relation rel, char *trigname,
 	EnableDisableTrigger(rel, trigname, enable, skip_system);
 }
 
-/*
- * ALTER TABLE INHERIT
- *
- * Add a parent to the child's parents. This verifies that all the columns and
- * check constraints of the parent appear in the child and that they have the
- * same data types and expressions.
- */
 static void
-ATExecAddInherit(Relation child_rel, Node *node)
+inherit_parent(Relation parent_rel, Relation child_rel, bool is_partition)
 {
-	Relation	parent_rel,
-				catalogRelation;
 	SysScanDesc scan;
 	ScanKeyData key;
 	HeapTuple	inheritsTuple;
 	int32		inhseqno;
 	List	   *children;
-	RangeVar   *parent;
-	bool		is_partition;
-	
-	if (IsA(node, InheritPartitionCmd))
-	{
-		parent = ((InheritPartitionCmd *)node)->parent;
-		is_partition = true;
-	}
-	else
-	{
-		Assert(IsA(node, RangeVar));
-		parent = (RangeVar *)node;
-		is_partition = false;
-	}
-
-	/*
-	 * AccessShareLock on the parent is what's obtained during normal CREATE
-	 * TABLE ... INHERITS ..., so should be enough here.
-	 */
-	parent_rel = heap_openrv(parent, AccessShareLock);
-
-	/*
-	 * Must be owner of both parent and child -- child was checked by
-	 * ATSimplePermissions call in ATPrepCmd
-	 */
-	ATSimplePermissions(parent_rel, false);
-
-	/* Permanent rels cannot inherit from temporary ones */
-	if (!isTempNamespace(RelationGetNamespace(child_rel)) &&
-		isTempNamespace(RelationGetNamespace(parent_rel)))
-		ereport(ERROR,
-				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("cannot inherit from temporary relation \"%s\"",
-						RelationGetRelationName(parent_rel))));
+	Relation	catalogRelation;
 
 	/*
 	 * Check for duplicates in the list of parents, and determine the highest
@@ -7642,7 +7741,7 @@ ATExecAddInherit(Relation child_rel, Node *node)
 				(errcode(ERRCODE_DUPLICATE_TABLE),
 				 errmsg("circular inheritance not allowed"),
 				 errdetail("\"%s\" is already a child of \"%s\".",
-						   parent->relname,
+						   RelationGetRelationName(parent_rel),
 						   RelationGetRelationName(child_rel))));
 
 	/* If parent has OIDs then child must have OIDs */
@@ -7669,6 +7768,56 @@ ATExecAddInherit(Relation child_rel, Node *node)
 
 	/* Now we're done with pg_inherits */
 	heap_close(catalogRelation, RowExclusiveLock);
+
+}
+
+/*
+ * ALTER TABLE INHERIT
+ *
+ * Add a parent to the child's parents. This verifies that all the columns and
+ * check constraints of the parent appear in the child and that they have the
+ * same data types and expressions.
+ */
+static void
+ATExecAddInherit(Relation child_rel, Node *node)
+{
+	Relation	parent_rel;
+	bool		is_partition;
+	RangeVar   *parent;
+	
+	if (IsA(node, InheritPartitionCmd))
+	{
+		parent = ((InheritPartitionCmd *)node)->parent;
+		is_partition = true;
+	}
+	else
+	{
+		Assert(IsA(node, RangeVar));
+		parent = (RangeVar *)node;
+		is_partition = false;
+	}
+
+	/*
+	 * AccessShareLock on the parent is what's obtained during normal CREATE
+	 * TABLE ... INHERITS ..., so should be enough here.
+	 */
+	parent_rel = heap_openrv(parent, AccessShareLock);
+
+	/*
+	 * Must be owner of both parent and child -- child was checked by
+	 * ATSimplePermissions call in ATPrepCmd
+	 */
+	ATSimplePermissions(parent_rel, false);
+
+	/* Permanent rels cannot inherit from temporary ones */
+	if (!isTempNamespace(RelationGetNamespace(child_rel)) &&
+		isTempNamespace(RelationGetNamespace(parent_rel)))
+		ereport(ERROR,
+				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+				 errmsg("cannot inherit from temporary relation \"%s\"",
+						RelationGetRelationName(parent_rel))));
+
+	inherit_parent(parent_rel, child_rel, is_partition);
 
 	/* keep our lock on the parent relation until commit */
 	heap_close(parent_rel, NoLock);
@@ -11110,6 +11259,89 @@ ATPExecPartDrop(Relation rel,
 
 } /* end ATPExecPartDrop */
 
+static void
+exchange_part_inheritance(Oid oldrelid, Oid newrelid)
+{
+	ScanKeyData key;
+	SysScanDesc scan;
+	HeapTuple tuple;
+	Oid parentid;
+	Relation oldrel;
+	Relation newrel;
+	Relation parent;
+	Relation catalogRelation = heap_open(InheritsRelationId, AccessShareLock);
+
+	oldrel = heap_open(oldrelid, AccessExclusiveLock);
+	newrel = heap_open(newrelid, AccessExclusiveLock);
+
+	ScanKeyInit(&key,
+				Anum_pg_inherits_inhrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(oldrelid));
+	scan = systable_beginscan(catalogRelation, InheritsRelidSeqnoIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+	Assert(HeapTupleIsValid(tuple));
+
+	parentid = ((Form_pg_inherits)GETSTRUCT(tuple))->inhparent;
+
+	/* should only be one parent when it comes to inheritance */
+	Assert(!HeapTupleIsValid(systable_getnext(scan)));
+	systable_endscan(scan);
+	heap_close(catalogRelation, AccessShareLock);
+
+	parent = heap_open(parentid, AccessShareLock); /* should be enough */
+	ATExecDropInherit(oldrel,
+			makeRangeVar(get_namespace_name(parent->rd_rel->relnamespace),
+					     RelationGetRelationName(parent)));
+
+	inherit_parent(parent, newrel, true /* it's a partition */);
+	heap_close(parent, NoLock);
+	heap_close(oldrel, NoLock);
+	heap_close(newrel, NoLock);
+}
+
+static void
+exchange_part_constraints(Relation oldrel, Relation newrel)
+{
+
+}
+
+static void
+exchange_part_rule(Oid oldrelid, Oid newrelid)
+{
+	ScanKeyData key;
+	SysScanDesc scan;
+	HeapTuple tuple;
+	Relation catalogRelation;
+
+	catalogRelation = heap_open(PartitionRuleRelationId, RowExclusiveLock);
+	ScanKeyInit(&key,
+				Anum_pg_partition_rule_parchildrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(oldrelid));
+	scan = systable_beginscan(catalogRelation,
+							  PartitionRuleParchildrelidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+
+	if (HeapTupleIsValid(tuple))
+	{
+		tuple = heap_copytuple(tuple);
+
+		((Form_pg_partition_rule)GETSTRUCT(tuple))->parchildrelid = newrelid;
+
+		simple_heap_update(catalogRelation, &tuple->t_self, tuple);
+		CatalogUpdateIndexes(catalogRelation, tuple);
+		heap_freetuple(tuple);
+	}
+
+	systable_endscan(scan);
+	heap_close(catalogRelation, NoLock);
+}
+
 /* ALTER TABLE ... EXCHANGE PARTITION */
 static void 
 ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
@@ -11124,8 +11356,8 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 	{
 		AlterPartitionId   *pid   = (AlterPartitionId *)pc->partid;
 		pg_part_rule   	   *prule = NULL;
-		RangeVar       	   *newrel  = (RangeVar *)pc->arg1;
-		RangeVar		   *oldrel;
+		RangeVar       	   *newrelrv  = (RangeVar *)pc->arg1;
+		RangeVar		   *oldrelrv;
 
 		prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
 
@@ -11133,32 +11365,93 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 			return;
 
 		oldrelid = prule->topRule->parchildrelid;
-		newrelid = RangeVarGetRelid(newrel, false);
+		newrelid = RangeVarGetRelid(newrelrv, false);
 
 		pfree(pc->partid);
 
-		oldrel = makeRangeVar(get_namespace_name(oldrelid), 
+		oldrelrv = makeRangeVar(get_namespace_name(oldrelid), 
 							  get_rel_name(oldrelid));
-		pc->partid = (Node *)oldrel;
+		pc->partid = (Node *)oldrelrv;
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
-		RangeVar *oldrel;
-		RangeVar *newrel;
+		RangeVar *oldrelrv;
+		RangeVar *newrelrv;
 
 		Assert(IsA(pc->partid, RangeVar));
 		Assert(IsA(pc->arg1, RangeVar));
-		oldrel = (RangeVar *)pc->partid;
-		newrel = (RangeVar *)pc->arg1;
-		oldrelid = RangeVarGetRelid(oldrel, false);
-		newrelid = RangeVarGetRelid(newrel, false);
+		oldrelrv = (RangeVar *)pc->partid;
+		newrelrv = (RangeVar *)pc->arg1;
+		oldrelid = RangeVarGetRelid(oldrelrv, false);
+		newrelid = RangeVarGetRelid(newrelrv, false);
+
 	}
 	
 	Assert(OidIsValid(oldrelid));
 	Assert(OidIsValid(newrelid));
 
+#if IF_ONLY_IT_WAS_THAT_SIMPLE
 	swap_relation_files(oldrelid, newrelid);
 	CommandCounterIncrement();
+#else
+	/*
+	 * It would be nice to just swap the relfilenodes. In fact, we could
+	 * do that in most cases, the exceptions being tables with dropped columns
+	 * and append only tables.
+	 *
+	 * Instead, we swap the names of the tables, the type names, 
+	 * the constraints, inheritance. We do not swap indexes, ao information
+	 * or statistics.
+	 */
+
+	{
+		char tmpname[NAMEDATALEN];
+		char *newname;
+		char *oldname;
+		Relation newrel;
+		Relation oldrel;
+
+		newrel = heap_open(newrelid, AccessExclusiveLock);
+		oldrel = heap_open(oldrelid, AccessExclusiveLock);
+
+		newname = pstrdup(RelationGetRelationName(newrel));
+		oldname = pstrdup(RelationGetRelationName(oldrel));
+
+		exchange_part_inheritance(RelationGetRelid(oldrel), RelationGetRelid(newrel));
+
+		snprintf(tmpname, sizeof(tmpname), "pg_temp_%u", oldrelid);
+
+		heap_close(newrel, NoLock);
+		heap_close(oldrel, NoLock);
+
+		/* rename rel renames the type too */
+		renamerel(oldrelid, tmpname, NULL);
+		CommandCounterIncrement();
+		RelationForgetRelation(oldrelid);
+
+		renamerel(newrelid, oldname, NULL);
+		CommandCounterIncrement();
+		RelationForgetRelation(newrelid);
+
+		renamerel(oldrelid, newname, NULL);
+		CommandCounterIncrement();
+		RelationForgetRelation(oldrelid);
+
+		CommandCounterIncrement();
+
+		exchange_part_constraints(oldrel, newrel);
+		CommandCounterIncrement();
+
+		/* fix up partitioning rule if we're on the QD*/
+		if (Gp_role == GP_ROLE_DISPATCH)
+		{
+			exchange_part_rule(oldrelid, newrelid);
+			CommandCounterIncrement();
+		}
+	}
+
+
+#endif
 }
 
 /* ALTER TABLE ... MERGE PARTITION */
