@@ -13,7 +13,9 @@
                         GP_MA_ADDR environment variable, assuming the format 
                         'host1:port host2:port'.
         -R            : raw mode. 
-
+        -s            : connection uses SSL for communication with secure servers
+        -c            : cert_file is the name of a PEM formatted certificate chain file
+        -k            : key_file is the name of a PEM formatted file that contains your private key file
   Run 'gp help' for details.
 
 """
@@ -119,7 +121,10 @@ class Command():
         try:
             if self.gopt['-s']:
                 self.verbose('https://%s%s' % (addr, query))
-                f = httplib.HTTPSConnection(addr)
+                if self.gopt['-c'] is not None and self.gopt['-k'] is not None:
+                    f = httplib.HTTPSConnection(addr, key_file=self.gopt['-k'], cert_file=self.gopt['-c'])
+                else:
+                    f = httplib.HTTPSConnection(addr)
             else:
                 self.verbose('http://%s%s' % (addr, query))
                 f = httplib.HTTPConnection(addr)                
@@ -800,6 +805,8 @@ class HelpCmd(Command):
                         'host1:port host2:port'.
         -R            : raw mode. 
         -s            : connect server via SSL connection.
+        -c            : cert_file is the name of a PEM formatted certificate chain file
+        -k            : key_file is the name of a PEM formatted file that contains your private key file
 
   Specify 'gp help commands' to see a list of commands.
 '''
@@ -875,6 +882,8 @@ class CmdLine():
         self.gopt['-v'] = False
         self.gopt['-R'] = False
         self.gopt['-s'] = False
+        self.gopt['-c'] = None
+        self.gopt['-k'] = None
         self.cmd = None
 
     def parse(self):
@@ -890,6 +899,8 @@ class CmdLine():
             elif switch == '-a': self.gopt[switch] = val
             elif switch == '-m': m.append(val)
             elif switch == '-s': self.gopt[switch] = True
+            elif switch == '-c': self.gopt[switch] = val
+            elif switch == '-k': self.gopt[switch] = val
         if (m): self.gopt['-m'] = m
 
         # map command text to command class
