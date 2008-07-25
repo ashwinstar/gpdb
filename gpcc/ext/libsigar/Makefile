@@ -42,7 +42,6 @@ endif
 all: libsigar
 
 libsigar:
-	@echo $(FOO) -
 	@echo --- libsigar \($(OSNAME)\)----------------------------------
 	(cd src; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -c $(LIBS) $(LDFLAGS) $(SOURCES); \
 	 ar -cvr libsigar.a $(OBJS);)
