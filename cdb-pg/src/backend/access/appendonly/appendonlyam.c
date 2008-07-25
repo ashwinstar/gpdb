@@ -1677,7 +1677,7 @@ doCompressAppend(
 	uint8 			*dataBuffer;
 	int 	 		res;
 	int32			compressedLen;
-	int32 			dataRoundedUpLen;
+	int32 			dataRoundedUpLen = 0;	// Shutup compiler.
 		
 	Assert(aoInsertDesc->maxBufferLen > 0 && 
 		   aoInsertDesc->largeWriteLen == aoInsertDesc->maxBufferLen * 2);
