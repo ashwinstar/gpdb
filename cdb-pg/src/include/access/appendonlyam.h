@@ -50,13 +50,18 @@ typedef struct AppendOnlyInsertDescData
 	bool			is_new_segno;
 	BufferedAppend	bufferedAppend;
 	VarBlockMaker	varBlockMaker;
-	int32			bufferCount;
+	int64			bufferCount;
 	bool			shouldCompress;
+	bool			wantChecksum;
+	bool			tryingLargeHeader;
+	int32			headerLenNeeded;
+	uint8			*nonCompressedHeader;
 	int				compressLevel;  /* compression level 0-9 */
 	uint8			*tempSpace;
-	uint8			*varBlockBuffer; /* used for compression */
+	uint8			*uncompressedBuffer; /* used for compression */
 
 	int32			maxBufferLen;
+	int32			maxDataLen;
 	int32			tempSpaceLen;
 	int32			largeWriteLen;
 	int32			safefswritesize;

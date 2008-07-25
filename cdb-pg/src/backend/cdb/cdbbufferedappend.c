@@ -188,6 +188,18 @@ static void BufferedAppendWrite(
 }
 
 /*
+ * Return the position of the current write buffer in bytes.
+ */
+int64 BufferedAppendCurrentBufferPosition(
+    BufferedAppend     *bufferedAppend)
+{
+	Assert(bufferedAppend != NULL);
+	Assert(bufferedAppend->file >= 0);
+	
+	return bufferedAppend->position;
+}
+
+/*
  * Return the position of the next write buffer in bytes.
  */
 int64 BufferedAppendNextBufferPosition(
@@ -214,7 +226,10 @@ uint8 *BufferedAppendGetBuffer(
 	
 	Assert(bufferedAppend != NULL);
 	Assert(bufferedAppend->file >= 0);
-	Assert(bufferLen <= bufferedAppend->maxBufferLen);
+	if (bufferLen > bufferedAppend->maxBufferLen)
+		elog(ERROR,
+		     "bufferLen %d greater than maxBufferLen %d at position " INT64_FORMAT,
+		     bufferLen, bufferedAppend->maxBufferLen, bufferedAppend->position);
 
 	/*
 	 * Let next buffer carry-over into the extra buffer space after
@@ -247,6 +262,14 @@ uint8 *BufferedAppendGetMaxBuffer(
 						bufferedAppend->maxBufferLen);
 }
 
+void BufferedAppendCancelLastBuffer(
+    BufferedAppend       *bufferedAppend)
+{
+	Assert(bufferedAppend != NULL);
+	Assert(bufferedAppend->file >= 0);
+
+	bufferedAppend->bufferLen = 0;
+}
 
 /*
  * Indicate the current buffer is finished.
@@ -259,7 +282,11 @@ void BufferedAppendFinishBuffer(
 	
 	Assert(bufferedAppend != NULL);
 	Assert(bufferedAppend->file >= 0);
-	Assert(usedLen <= bufferedAppend->bufferLen);
+	if (usedLen > bufferedAppend->bufferLen)
+		elog(ERROR,
+		     "Used length %d greater than bufferLen %d at position " INT64_FORMAT,
+		     usedLen, bufferedAppend->bufferLen, bufferedAppend->position);
+		     
 
 	newLen = bufferedAppend->len + usedLen;
 	Assert (newLen <= bufferedAppend->largeWriteLen +

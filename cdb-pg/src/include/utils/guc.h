@@ -124,6 +124,8 @@ extern bool Debug_disable_distributed_snapshot;
 extern bool Debug_abort_after_distributed_prepared;
 extern bool Debug_appendonly_print_insert;
 extern bool Debug_appendonly_print_scan;
+extern bool Debug_appendonly_print_storage_headers;
+extern bool Debug_appendonly_use_new_tid;
 extern bool Test_appendonly_override;
 extern int  Test_compresslevel_override;
 extern int	Test_blocksize_override;

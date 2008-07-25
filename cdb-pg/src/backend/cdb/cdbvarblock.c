@@ -918,4 +918,38 @@ uint8* VarBlockReaderGetItemPtr(
 	return nextItemPtr;
 }
 
+VarBlockByteLen VarBlockCollapseToSingleItem(
+	uint8			*target,
+	uint8			*source,
+	int32			sourceLen)
+{
+	VarBlockReader	varBlockReader;
+	uint8			*itemPtr;
+	VarBlockByteLen	itemLen;
+	
+	VarBlockReaderInit(
+			    &varBlockReader,
+			    source,
+			    sourceLen);
+
+	Assert(VarBlockReaderItemCount(&varBlockReader) == 1);
+
+	/*
+	 * Copy out item, even if it destroys the VarBlock.
+	 */
+	itemPtr = VarBlockReaderGetItemPtr(
+							&varBlockReader,
+							/* itemIndex */ 0,
+							&itemLen);
+	/* 
+	 * Slide data back. Since we have overlapping data,
+	 * we use memmove which knows how to do that instead of
+	 * memcpy which isn't guaranteed to do that right.
+	 */
+	memmove(target, 
+	        itemPtr,
+	        itemLen);
+
+	return itemLen;
+}
 

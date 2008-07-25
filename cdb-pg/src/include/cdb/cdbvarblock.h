@@ -164,11 +164,21 @@ typedef struct VarBlockHeader
 #define VarBlockGet_moreReserved(h) 	(((h)->bytes_4_7&0xFF000000)>>24)
 #define VarBlockGet_itemCount(h) 		((h)->bytes_4_7&0x00FFFFFF)
 
+// For single bits, set or clear directly.  Otherwise, use AND to clear field then OR to set.
 #define VarBlockSet_offsetsAreSmall(h,e) 	{if(e)(h)->bytes_0_3|=0x80000000;else(h)->bytes_0_3&=0x7FFFFFFF;} 
 #define VarBlockSet_version(h,e) 	        {(h)->bytes_0_3&=0xFCFFFFFF;(h)->bytes_0_3|=(0x03000000&((e)<<24));} 
 #define VarBlockSet_itemLenSum(h,e) 	    {(h)->bytes_0_3&=0xFF000000;(h)->bytes_0_3|=(0x00FFFFFF&(e));}
 
 #define VarBlockSet_itemCount(h,e) 	        {(h)->bytes_4_7&=0xFF000000;(h)->bytes_4_7|=(0x00FFFFFF&(e));}
+
+// Assume field is initially zero.
+#define VarBlock_Init(h)          {(h)->bytes_0_3=0;(h)->bytes_4_7=0;} 
+
+#define VarBlockInit_offsetsAreSmall(h,e) 	{if(e)(h)->bytes_0_3|=0x80000000;} 
+#define VarBlockInit_version(h,e) 	        {(h)->bytes_0_3|=(0x03000000&((e)<<24));} 
+#define VarBlockInit_itemLenSum(h,e) 	    {(h)->bytes_0_3|=(0x00FFFFFF&(e));}
+
+#define VarBlockInit_itemCount(h,e) 	    {(h)->bytes_4_7|=(0x00FFFFFF&(e));}
 
 #define VARBLOCK_HEADER_LEN sizeof(VarBlockHeader)
 
@@ -378,6 +388,10 @@ extern uint8* VarBlockReaderGetItemPtr(
     int                 itemIndex,
     VarBlockByteLen     *itemLen);
 
+extern VarBlockByteLen VarBlockCollapseToSingleItem(
+	uint8			*target,
+	uint8			*source,
+	int32			sourceLen);
 
 #endif   /* CDBVARBLOCK_H */
 

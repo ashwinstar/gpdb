@@ -154,14 +154,18 @@ typedef struct AppendOnlyScanDescData
 	VarBlockReader  varBlockReader;
 	MemoryContext	aoScanInitContext; /* mem context at init time */
 
-	uint8			*varBlockBuffer; /* for decompression */
+	uint8			*uncompressedBuffer; /* for decompression */
 	int32			maxBufferLen;
 	int32			largeReadLen;
 	int32			safefswritesize;
 
-	int32           bufferCount;
+	int64           bufferCount;
 	int				readerItemCount;
 	int				currentItemCount;
+	int64			rowNumber;
+
+	uint8			*singleRow;
+	int32			singleRowLen;
 	
 	/* current scan state */
 	bool		bufferDone;

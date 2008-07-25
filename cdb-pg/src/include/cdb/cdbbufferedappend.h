@@ -76,6 +76,12 @@ extern void BufferedAppendSetFile(
     int64				 eof);
 
 /*
+ * Return the position of the current write buffer in bytes.
+ */
+extern int64 BufferedAppendCurrentBufferPosition(
+    BufferedAppend     *bufferedAppend);
+
+/*
  * Return the position of the next write buffer in bytes.
  */
 extern int64 BufferedAppendNextBufferPosition(
@@ -98,6 +104,12 @@ extern uint8 *BufferedAppendGetBuffer(
  * room for another buffer.
  */
 extern uint8 *BufferedAppendGetMaxBuffer(
+    BufferedAppend       *bufferedAppend);
+
+/*
+ * Cancel the last GetBuffer or GetMaxBuffer.
+ */
+extern void BufferedAppendCancelLastBuffer(
     BufferedAppend       *bufferedAppend);
 
 /*
