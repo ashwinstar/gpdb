@@ -345,6 +345,8 @@ struct cmdslot_t {
 	    char **hostname;
 	    int nhost;
 	    int nthread;
+	    int nsuccess;
+	    int nfailure;
 	    int start;
 	    int offset;
 	    apr_proc_t *proc;
@@ -357,6 +359,8 @@ struct cmdslot_t {
 	    char **address;
 	    int nhost;
 	    int nthread;
+	    int nsuccess;
+	    int nfailure;
 	    int start;
 	    int offset;
 	    apr_proc_t *proc;

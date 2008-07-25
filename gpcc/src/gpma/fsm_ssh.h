@@ -24,6 +24,8 @@ static apr_status_t a_ssh_gethostname(gpcc_event_t *ev, void *arg)
     }
     argv[nthread] = 0;
     slot->u.gethostname.nthread = nthread;
+    slot->u.gethostname.nsuccess = 0;
+    slot->u.gethostname.nfailure = 0;
     if ((e = gpcc_proc_gpssh(&slot->u.gethostname.proc,
 			     (const char *const *) argv,
 			     "hostname",
@@ -59,17 +61,24 @@ static apr_status_t a_ssh_gethostname_wait(gpcc_event_t *ev, void *arg)
 	if (e == APR_CHILD_DONE) {
 	    if (ret == 0) {
 		nsuccess++;
+		gpcc_log_info("gethostname[%d] succeeded", i);
 	    } else {
 		nfailure++;
+		gpcc_log_info("gethostname[%d] failed", i);
 	    }
 	}
     }
+    
+    slot->u.gethostname.nsuccess += nsuccess;
+    slot->u.gethostname.nfailure += nfailure;
+    gpcc_log_info("gethostname:  success = %d, failure = %d, total = %d", 
+		  slot->u.gethostname.nsuccess, 
+		  slot->u.gethostname.nfailure, 
+		  slot->u.gethostname.nthread);
 
-    gpcc_log_info("gethostname:  success = %d, failure = %d, total = %d", nsuccess, nfailure, slot->u.gethostname.nthread);
+    if (slot->u.gethostname.nsuccess + slot->u.gethostname.nfailure == slot->u.gethostname.nthread) {
 
-    if (nsuccess + nfailure == slot->u.gethostname.nthread) {
-
-	if (nfailure > 0) {
+	if (slot->u.gethostname.nfailure > 0) {
 	    /* failure */
 
 	    for (i = 0, p = slot->u.gethostname.proc ; 
@@ -227,6 +236,8 @@ static apr_status_t a_ssh_getaddress(gpcc_event_t *ev, void *arg)
     }
     argv[nthread] = 0;
     slot->u.getaddress.nthread = nthread;
+    slot->u.getaddress.nsuccess = 0;
+    slot->u.getaddress.nfailure = 0;
     if ((e = gpcc_proc_gpssh(&slot->u.getaddress.proc,
 			     (const char *const *) argv,
 			     cmd,
@@ -268,11 +279,16 @@ static apr_status_t a_ssh_getaddress_wait(gpcc_event_t *ev, void *arg)
 	}
     }
 
-    gpcc_log_info("gethostname:  success = %d, failure = %d, total = %d", nsuccess, nfailure, slot->u.getaddress.nthread);
+    slot->u.getaddress.nsuccess += nsuccess;
+    slot->u.getaddress.nfailure += nfailure;
+    gpcc_log_info("getaddress:  success = %d, failure = %d, total = %d", 
+		  slot->u.getaddress.nsuccess, 
+		  slot->u.getaddress.nfailure, 
+		  slot->u.getaddress.nthread);
 
-    if (nsuccess + nfailure == slot->u.getaddress.nthread) {
+    if (slot->u.getaddress.nsuccess + slot->u.getaddress.nfailure == slot->u.getaddress.nthread) {
 
-	if (nfailure > 0) {
+	if (slot->u.getaddress.nfailure > 0) {
 	    /* failure */
 	    for (i = 0, p = slot->u.getaddress.proc ; 
 		 i < slot->u.getaddress.nthread ; 
