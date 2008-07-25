@@ -22,6 +22,7 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     cmdslot->u.request.mode = gpcc_json_object_get_string(obj, "mode", 0);
     cmdslot->u.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
     cmdslot->u.request.isprimary = gpcc_json_object_get_string(obj, "isprimary", 0);
+    cmdslot->u.request.retry = 0;
 
     if (cmdslot->u.request.port == 0 ||
 	cmdslot->u.request.mode == 0 ||
@@ -51,17 +52,18 @@ static apr_status_t seg_stop(gpcc_event_t* ev, void *_cmdslot)
     }
 
     if (seg_is_qd(cmdslot) && strcmp(cmdslot->u.request.isprimary, "f") == 0) {
-	char *argv[2];
-
-	gpcc_log_info("[%s] kill gpsyncmaster", cmdslot->cmdname);
-	argv[0] = "killall -9 gpsyncmaster || pkill -9 gpsyncmaster || true";
-	argv[1] = 0;
-	if (0 != (e = gpcc_proc_run_shell(&cmdslot->u.request.proc,
-					  argv[0],
-					  (const char *const *) argv, 0, 0, cmdslot->pool))) {
-		seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "killall gpsyncmaster failure");
-		json_object_put(obj);
-		return 0;
+	/* shutdown gpsyncmaster in fast,wait mode */
+	if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.request.proc,
+					    0,
+					    cmdslot->u.request.port,
+					    cmdslot->u.request.data_dir,
+					    "fast",
+					    1, 0, 
+					    cmdslot->pool))) {
+	    
+	    seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "pg_ctl stop gpsyncmaster fast failure");
+	    json_object_put(obj);
+	    return 0;
 	}
     } else {
 
@@ -97,6 +99,25 @@ static apr_status_t seg_stop_wait(gpcc_event_t* ev, void *_cmdslot)
 	if (ret == 0) {
 	    evt = gpcc_event_alloc(SUCCESS_EVENT, cmdslot->cmdidx, 0);
 	} else {
+	    if (seg_is_qd(cmdslot) && strcmp(cmdslot->u.request.isprimary, "f") == 0) {
+		if (cmdslot->u.request.retry < 1) {
+		    /* gpsyncmaster fast shutdown failed.  try shutdown immediate */
+		    if (0 != (e = gpcc_proc_pg_ctl_stop(&cmdslot->u.request.proc,
+							0,
+							cmdslot->u.request.port,
+							cmdslot->u.request.data_dir,
+							"immediate",
+							1, 0, 
+							cmdslot->pool))) {
+			
+			seg_request_error(FLINE, ev, _cmdslot, FAILURE_EVENT, e, "pg_ctl stop gpsyncmaster immediate failure");
+			return 0;
+		    }
+		    cmdslot->u.request.retry++;
+		    cmdslot->countdown = 1;
+		    return 0;
+		}
+	    }	    
 	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
 	}
 
@@ -113,7 +134,6 @@ static apr_status_t seg_stop_wait(gpcc_event_t* ev, void *_cmdslot)
 
     return 0;
 }
-
 
 static apr_status_t seg_stop_reply(gpcc_event_t* ev, void *_cmdslot)
 {

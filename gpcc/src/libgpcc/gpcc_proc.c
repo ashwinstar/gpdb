@@ -290,11 +290,11 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, const char *h
 	return e;
 
     if (!host) {
-	sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s > /dev/null 2>&1", 
-		LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, data_dir, option, waitflag);
+	sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s >> %s.log 2>&1", 
+		LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, data_dir, option, waitflag, data_dir);
     } else {
-	sprintf(cmd, "ssh %s 'LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s > /dev/null 2>&1'", 
-		host, LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, data_dir, option, waitflag);	
+	sprintf(cmd, "ssh %s 'LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl start -D %s -l %s.log -o \"%s\" %s >> %s.log 2>&1'", 
+		host, LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, data_dir, option, waitflag, data_dir);	
     }
     
     argv[0] = cmd;
@@ -372,11 +372,11 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_stop(apr_proc_t *proc, const char *ho
 	return e;
 
     if (!host) {
-	sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl stop -D %s -o \"%s\" -m %s %s > /dev/null 2>&1", 
-		LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, option, mode, waitflag);
+	sprintf(cmd, "LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl stop -D %s -o \"%s\" -m %s %s >> %s.log 2>&1", 
+		LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, option, mode, waitflag, data_dir);
     } else {
-	sprintf(cmd, "ssh %s 'LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl stop -D %s -o \"%s\" -m %s %s > /dev/null 2>&1'", 
-		host, LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, option, mode, waitflag);
+	sprintf(cmd, "ssh %s 'LD_LIBRARY_PATH=%s && PATH=%s && PGPORT=%d && export LD_LIBRARY_PATH PATH PGPORT && %s/bin/pg_ctl stop -D %s -o \"%s\" -m %s %s >> %s.log 2>&1'", 
+		host, LD_LIBRARY_PATH, PATH, port, GPHOME, data_dir, option, mode, waitflag, data_dir);
     }    
     argv[0] = cmd;
     argv[1] = 0;
