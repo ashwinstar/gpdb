@@ -202,6 +202,14 @@ ALTER TABLE tenk_renamed ADD COLUMN newcol2 int NOT NULL; -- should fail
 SELECT count(*) FROM tenk_renamed;
 ALTER TABLE tenk_renamed RENAME TO tenk_ao1;
 
+--------------------
+-- system columns
+--------------------
+CREATE TABLE syscoltest(a int) WITH (appendonly=true);
+INSERT INTO syscoltest VALUES(1);
+SELECT ctid FROM syscoltest;
+DROP TABLE syscoltest;
+
 -------------------- 
 -- supported sql 
 --------------------
