@@ -1403,3 +1403,28 @@ end_tup_output(TupOutputState *tstate)
 	/* XXX worth cleaning up the attinmetadata? */
 	pfree(tstate);
 }
+
+/*
+ * Get a system attribute from the tuple table slot.
+ */
+Datum slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
+{
+	if(slot->PRIVATE_tts_memtuple)
+	{
+		switch(attnum)
+		{
+			case SelfItemPointerAttributeNumber:
+				*isnull = false;
+				return PointerGetDatum(&(slot->tts_synthetic_ctid));
+			case TableOidAttributeNumber:
+				*isnull = false;
+				return ObjectIdGetDatum(slot->tts_tableOid);
+			default:
+				return memtuple_getsysattr(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind, attnum, isnull);
+		}
+	}
+				
+	Assert(slot->PRIVATE_tts_heaptuple);
+	return heap_getsysattr(slot->PRIVATE_tts_heaptuple, attnum, slot->tts_tupleDescriptor, isnull);
+}
+

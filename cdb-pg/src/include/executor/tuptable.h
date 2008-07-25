@@ -235,29 +235,7 @@ static inline void slot_getallattrs(TupleTableSlot *slot)
 
 extern Datum heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull);
 
-/*
- * Get a system attribute from the tuple table slot.
- */
-static Datum slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull)
-{
-	if(slot->PRIVATE_tts_memtuple)
-	{
-		switch(attnum)
-		{
-			case SelfItemPointerAttributeNumber:
-				*isnull = false;
-				return PointerGetDatum(&(slot->tts_synthetic_ctid));
-			case TableOidAttributeNumber:
-				*isnull = false;
-				return ObjectIdGetDatum(slot->tts_tableOid);
-			default:
-				return memtuple_getsysattr(slot->PRIVATE_tts_memtuple, slot->tts_mt_bind, attnum, isnull);
-		}
-	}
-				
-	Assert(slot->PRIVATE_tts_heaptuple);
-	return heap_getsysattr(slot->PRIVATE_tts_heaptuple, attnum, slot->tts_tupleDescriptor, isnull);
-}
+extern Datum slot_getsysattr(TupleTableSlot *slot, int attnum, bool *isnull);
 
 /*
  * Get an attribute from the tuple table slot.
