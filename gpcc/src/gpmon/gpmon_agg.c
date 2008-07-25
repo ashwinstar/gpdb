@@ -133,7 +133,7 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
     /* if found, replace it */
     if (ep && diff == 0) {
 	ep->qexec = *qexec;
-	ep->cpu_elapsed += qexec->m[9].value; /* HACK: borrowed 10th measure for cpu usasge */
+	ep->cpu_elapsed += qexec->_cpu_elapsed;
 	ep->pfaults_elapsed += qexec->_p_metrics.mem.page_faults;
     }
     else {

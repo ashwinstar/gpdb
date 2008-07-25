@@ -12,7 +12,6 @@ OBJS=sigar.o sigar_cache.o sigar_fileinfo.o sigar_format.o sigar_getline.o \
 	sigar_ptql.o sigar_signal.o sigar_util.o
 
 # OS Dependent setup
-# TODO: No 32-bit/64-bit work done yet
 ifeq (Linux, $(OSNAME))
 	INCLUDES+=-I$(BASEDIR)/src/os/linux
 	SOURCES+=os/linux/linux_sigar.c
@@ -26,7 +25,11 @@ else
 		TEST_LDFLAGS=-lkstat -lnsl -lsocket
 	else
 		ifeq (Darwin, $(OSNAME))
-			CFLAGS+=-DDARWIN
+			ifeq (9, $(shell uname -r | grep -o -e '^9'))
+				CFLAGS+=-DDARWIN -DDARWIN_HAS_LIBPROC_H
+			else
+				CFLAGS+=-DDARWIN
+			endif
 			INCLUDES+=-I$(BASEDIR)/src/os/darwin -I/Developer/Headers/FlatCarbon
 			SOURCES+=os/darwin/darwin_sigar.c
 			OBJS+=darwin_sigar.o
@@ -39,6 +42,7 @@ endif
 all: libsigar
 
 libsigar:
+	@echo $(FOO) -
 	@echo --- libsigar \($(OSNAME)\)----------------------------------
 	(cd src; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -c $(LIBS) $(LDFLAGS) $(SOURCES); \
 	 ar -cvr libsigar.a $(OBJS);)

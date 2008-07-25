@@ -370,10 +370,7 @@ static void gx_gettcpcmd(SOCKET sock, short event, void* arg)
 				  sizeof(ppkt->u.qexec.key.pid));
 	    if (pidrec) {
 		ppkt->u.qexec._p_metrics = pidrec->p_metrics;
-		strcpy(ppkt->u.qexec.m[GPMON_QEXEC_M_COUNT - 1].name , "cpu_elapsed");
-		strcpy(ppkt->u.qexec.m[GPMON_QEXEC_M_COUNT - 1].unit , "msec");
-		ppkt->u.qexec.m[GPMON_QEXEC_M_COUNT - 1].value = pidrec->cpu_elapsed;
-		ppkt->u.qexec.m[GPMON_QEXEC_M_COUNT - 1].valuemax = pidrec->cpu_elapsed;
+                ppkt->u.qexec._cpu_elapsed = pidrec->cpu_elapsed;
 	    }
 	    else {
 		memset(&ppkt->u.qexec._p_metrics, 0, 
