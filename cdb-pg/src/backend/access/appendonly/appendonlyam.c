@@ -740,8 +740,8 @@ getNextBlock(
 	int					*applicationSpecific)
 {
 	int64	headerOffsetInFile;
-	uint8  	*buffer;
-	int32	bufferLen;
+	uint8  	*buffer = NULL;
+	int32	bufferLen = 0;
 	int		rowCount;
 
 	VarBlockCheckError varBlockCheckError;
