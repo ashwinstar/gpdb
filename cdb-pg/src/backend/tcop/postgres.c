@@ -4483,7 +4483,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 	{
 		ereport(FATAL,
 				(errcode(ERRCODE_CANNOT_CONNECT_NOW),
-				 errmsg("the database system is starting up")));
+				 errmsg("System was started in master-only utility mode - only utility mode connections are allowed")));
 	}
 	
 	/*
