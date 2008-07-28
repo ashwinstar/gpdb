@@ -99,7 +99,6 @@ HeapTupleHeaderGetCmin(HeapTupleHeader tup)
 	CommandId cid = HeapTupleHeaderGetRawCommandId(tup);
 
 	Assert(!(tup->t_infomask & HEAP_MOVED));
-	Assert(TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetXmin(tup)));
 
 	if (tup->t_infomask & HEAP_COMBOCID)
 		return GetRealCmin(cid);
