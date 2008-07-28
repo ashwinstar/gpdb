@@ -676,7 +676,7 @@ do_start(void)
 
 		if (test_postmaster_connection(false) == false)
 		{
-			printf(_("could not start server\n"));
+			printf(_("could not start server: Failed to test postmaster connection\n"));
 			exit(1);
 		}
 		else
