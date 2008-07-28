@@ -149,15 +149,17 @@ class GPUpgrade:
             parser.add_option('--internal-option2', dest='option2',
                               help=optparse.SUPPRESS_HELP)
             (options, args) = parser.parse_args()
+            
+            if options.version:
+                print EXECNAME + ' ' + __version__
+                sys.exit(0)
+
             if len(args) != 2:
                 parser.error("incorrect number of arguments")
 
         except Exception, e:
             raise UpgradeError('Error parsing input: ' + str(e))
 
-        if options.version:
-            print EXECNAME + ' ' + __version__
-            sys.exit(0)
         if options.directory:
             self.masterdir = options.directory
         if options.command:
@@ -274,7 +276,11 @@ class GPUpgrade:
 
         # Construct a string of '-h hostname' for all hosts
         exec_cmd = 'gpssh'
-        for h in self.hosts: exec_cmd += ' -h %s' % h
+        for h in self.hosts: 
+            exec_cmd += ' -h %s' % h
+
+        # set the path to be the same so that we find the right python
+        exec_cmd += ' PATH=' + os.environ.get('PATH')
         
         if self.upgrade:
             exec_cmd += ' %s/bin/%s ' % (self.newhome, EXECNAME)
