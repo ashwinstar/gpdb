@@ -85,7 +85,8 @@ struct gpha_t {
     const char*  dir;		/* HA data & log directory */
     int          port;          /* HA port number */
     int          boot_flag;	/* TRUE if booting */
-    int          debug;		/* TRUE if debug mode */
+    int          daemonize;	/* TRUE if daemonize */
+    int          verbose;       /* TRUE if verbose */
     const char*  logfpath;	/* path to log file */
     gpcc_evqueue_t* evq;	/* the event queue */
     int          system_cmdidx; /* cmdidx of system FSM */

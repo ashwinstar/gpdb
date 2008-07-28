@@ -252,7 +252,7 @@ static void d_main(void)
 
 	/* effect the state transition */
 	if (*action == 0) {
-	    if (gpha.debug) {
+	    if (gpha.verbose) {
 		gpcc_log_info("FSM[%d]: %s + %s = %s", cp->cmdidx,
 			      cmdstate_str(cp->cmdstate), 
 			      event_str(ev->etype), 
@@ -287,10 +287,11 @@ static void d_main(void)
 /* Print usage info */
 static void usage(const char* program, int status)
 {
-    fprintf(stderr, "\nUsage: %s [-?bD] [-p port] [-l dir]\n\n", program);
+    fprintf(stderr, "\nUsage: %s [-?bvd] [-p port] [-l dir]\n\n", program);
     fprintf(stderr, "    -?   : print this help screen\n");
+    fprintf(stderr, "    -v   : in verbose mode\n");
     fprintf(stderr, "    -b   : boot the Host Agent\n");
-    fprintf(stderr, "    -D   : debug mode and do not run as daemon\n");
+    fprintf(stderr, "    -d   : run as daemon\n");
     fprintf(stderr, "    -p   : port number\n");
     fprintf(stderr, "    -l   : agent log directory\n");
     fprintf(stderr, "\n");
@@ -311,13 +312,16 @@ static apr_status_t parse_cmdline(int argc, const char* argv[])
     char guid[64];
 
     GPCC_DO(0 == apr_getopt_init(&handle, gpha.pool, argc, argv));
-    while (0 == (e = apr_getopt(handle, "?bDp:l:", &opt, &optarg))) {
+    while (0 == (e = apr_getopt(handle, "?bvdp:l:", &opt, &optarg))) {
 	switch (opt) {
 	case 'b': 
 	    gpha.boot_flag = 1;
 	    break;
-	case 'D':
-	    gpha.debug = 1;
+	case 'v':
+	    gpha.verbose = 1;
+	    break;
+	case 'd':
+	    gpha.daemonize = 1;
 	    break;
 	case 'p':
 	    gpha.port = strtol(optarg, 0, 0);
@@ -419,12 +423,10 @@ int main(int argc, const char* argv[])
 
     check_user();
 
-    if (! gpha.debug) {
+    if (gpha.daemonize) {
 	GPCC_DO(0 == apr_proc_detach(1));
 	/* At this point, we are now a daemon */
     }
-
-    gpha.debug = 0;
 
     d_main();
     return 0;
