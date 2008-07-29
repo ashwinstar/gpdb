@@ -1781,6 +1781,9 @@ int main(int argc, const char* const argv[])
 
     /* kqueue not so stable in libevent */
     setenv("EVENT_NOKQUEUE", "1", 1);
+    setenv("EVENT_NOEVPORT", "1", 1);
+    setenv("EVENT_SHOW_METHOD", "1",1);
+
     
     event_init();
 
