@@ -5466,6 +5466,12 @@ partition_arg_get_val(Node *node)
 				return d;
 			}
 			break;
+		case T_RelabelType:
+			{
+				RelabelType *n = (RelabelType *)node;
+				return partition_arg_get_val((Node *)n->arg);
+			}
+			break;
 		case T_Const:
 			return ((Const *)node)->constvalue;
 			break;
