@@ -754,6 +754,12 @@ int main(int argc, const char* argv[])
 #ifdef SIGPIPE
     signal(SIGPIPE, SIG_IGN);
 #endif
+#ifdef SIGUSR1
+    signal(SIGUSR1, SIG_IGN);
+#endif
+#ifdef SIGUSR2
+    signal(SIGUSR2, SIG_IGN);
+#endif
 
     GPCC_DO(0 == apr_app_initialize(&argc, (char const* const **) &argv, NULL));
     atexit(apr_terminate);
