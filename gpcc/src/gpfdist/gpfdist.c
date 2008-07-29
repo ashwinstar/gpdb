@@ -1781,6 +1781,8 @@ int main(int argc, const char* const argv[])
 
     /* kqueue not so stable in libevent */
     setenv("EVENT_NOKQUEUE", "1", 1);
+    /* /dev/poll doesn't seem to work for one version of Solaris. */
+    setenv("EVENT_NODEVPOLL", "1", 1);
     setenv("EVENT_NOEVPORT", "1", 1);
     setenv("EVENT_SHOW_METHOD", "1",1);
 
