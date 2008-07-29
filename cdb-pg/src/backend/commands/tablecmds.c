@@ -11303,86 +11303,8 @@ exchange_part_inheritance(Oid oldrelid, Oid newrelid)
 }
 
 static void
-exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
+exchange_part_constraints(Relation oldrel, Relation newrel)
 {
-	Relation catalogRelation;
-	SysScanDesc scan;
-	ScanKeyData key;
-	HeapTuple	constraintTuple;
-	List *constraints;
-	ListCell *lc;
-
-	/* First gather up the child's constraint definitions */
-	catalogRelation = heap_open(ConstraintRelationId, AccessShareLock);
-
-	ScanKeyInit(&key,
-				Anum_pg_constraint_conrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(child_rel)));
-	scan = systable_beginscan(catalogRelation, ConstraintRelidIndexId,
-							  true, SnapshotNow, 1, &key);
-
-	constraints = NIL;
-	while (HeapTupleIsValid(constraintTuple = systable_getnext(scan)))
-	{
-		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(constraintTuple);
-		bool isnull;
-		Datum val;
-		int i;
-		Datum *keys;
-		int nkeys;
-		bool matched = true;
-
-
-
-
-		if (con->contype != CONSTRAINT_CHECK)
-			continue;
-
-		/* only copy constraints which range across our partitioning columns */
-		val = heap_getattr(constraintTuple, Anum_pg_constraint_conkey,
-						   RelationGetDescr(catalogRelation), &isnull);
-		if (isnull)
-			continue;
-
-		deconstruct_array(DatumGetArrayTypeP(val),
-						  INT2OID, 2, true, 's',
-					      &keys, NULL, &nkeys);
-
-		if (nkeys != part->parnatts)
-		{
-			pfree(keys);
-			continue;
-		}
-
-		/* use naive search since number of columns is presmed small */
-		for (i = 0; i < part->parnatts; i++)
-		{
-			int j;
-			found = false;
-
-			for (j = 0; j < nkeys; j++)
-			{
-				if (DatumGetInt16(keys[j]) == part->paratts[i])
-				{
-					found = true;
-					break;
-				}
-			}
-
-			if (!found)
-			{
-				matched = false;
-				break;
-			}
-		}
-		if (!matched)
-			continue;
-
-		constraints = lappend(constraints, heap_copytuple(constraintTuple));
-	}
-	systable_endscan(scan);
-
 
 }
 
@@ -11426,7 +11348,6 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 {
 	Oid	oldrelid = InvalidOid;
 	Oid	newrelid = InvalidOid;
-	Partition *part = NULL;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
@@ -11451,8 +11372,6 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 		oldrelrv = makeRangeVar(get_namespace_name(oldrelid), 
 							  get_rel_name(oldrelid));
 		pc->partid = (Node *)oldrelrv;
-		part = prule->pNode->part;
-		pc->arg2 = (Node *)part; /* for execute nodes */
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
@@ -11465,7 +11384,7 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 		newrelrv = (RangeVar *)pc->arg1;
 		oldrelid = RangeVarGetRelid(oldrelrv, false);
 		newrelid = RangeVarGetRelid(newrelrv, false);
-		part = (Partition *)pc->arg2;
+
 	}
 	
 	Assert(OidIsValid(oldrelid));
@@ -11520,7 +11439,7 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 
 		CommandCounterIncrement();
 
-		exchange_part_constraints(part, oldrel, newrel);
+		exchange_part_constraints(oldrel, newrel);
 		CommandCounterIncrement();
 
 		/* fix up partitioning rule if we're on the QD*/
