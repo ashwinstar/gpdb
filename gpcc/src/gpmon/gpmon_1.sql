@@ -36,7 +36,7 @@ create external web table metrics_now (
        load0 float, load1 float, load2 float,
        disk_ro bigint, disk_wo bigint, disk_rb bigint, disk_wb bigint, 
        net_rp bigint, net_wp bigint, net_rb bigint, net_wb bigint
-) execute 'cat gpmon.1/metrics_now.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpmon.1/metrics_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 create external web table metrics_tail (
@@ -50,7 +50,7 @@ create external web table metrics_tail (
        load0 float, load1 float, load2 float,
        disk_ro bigint, disk_wo bigint, disk_rb bigint, disk_wb bigint, 
        net_rp bigint, net_wp bigint, net_rb bigint, net_wb bigint
-) execute 'cat gpmon.1/metrics_tail.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpmon.1/metrics_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 create external web table _metrics_tail (
@@ -64,7 +64,7 @@ create external web table _metrics_tail (
        load0 float, load1 float, load2 float,
        disk_ro bigint, disk_wo bigint, disk_rb bigint, disk_wb bigint, 
        net_rp bigint, net_wp bigint, net_rb bigint, net_wb bigint
-) execute 'cat gpmon.1/_metrics_tail.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpmon.1/_metrics_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 --  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -119,7 +119,7 @@ create external web table queries_now (
        skew_rows float,		-- always 0
        query_text text,
        query_plan text
-) execute 'python $GPHOME/bin/lib/gpmon_catqrynow.py' on master format 'csv' (delimiter '|' NULL as 'null');
+) execute 'python $GPHOME/bin/lib/gpmon_catqrynow.py 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 create external web table queries_now_fast (
        ctime timestamp(0),
@@ -142,7 +142,7 @@ create external web table queries_now_fast (
        skew_rows float
        -- excluded: query_text text
        -- excluded: query_plan text
-) execute 'cat gpmon.1/queries_now.dat' on master format 'csv' (delimiter '|' NULL as 'null');
+) execute 'cat gpmon.1/queries_now.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 create external web table queries_tail (
        ctime timestamp(0),
@@ -165,7 +165,7 @@ create external web table queries_tail (
        skew_rows float,
        query_text text,
        query_plan text
-) execute 'cat gpmon.1/queries_tail.dat 2> /dev/null' on master format 'csv' (delimiter '|' NULL as 'null');
+) execute 'cat gpmon.1/queries_tail.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 
 create external web table _queries_tail (
@@ -189,7 +189,7 @@ create external web table _queries_tail (
        skew_rows float,
        query_text text,
        query_plan text
-) execute 'cat gpmon.1/_queries_tail.dat 2> /dev/null' on master format 'csv' (delimiter '|' NULL as 'null');
+) execute 'cat gpmon.1/_queries_tail.dat 2> /dev/null || true' on master format 'csv' (delimiter '|' NULL as 'null');
 
 
 --  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -382,7 +382,7 @@ create external web table iterators_now (
        m15_unit varchar(64),
        m15_in bigint,
        m15_out bigint
-) execute 'cat gpmon.1/iterators_now.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpmon.1/iterators_now.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 create external web table iterators_tail (
@@ -475,7 +475,7 @@ create external web table iterators_tail (
        m15_unit varchar(64),
        m15_in bigint,
        m15_out bigint
-) execute 'cat gpmon.1/iterators_tail.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpmon.1/iterators_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 create external web table _iterators_tail (
@@ -568,7 +568,7 @@ create external web table _iterators_tail (
        m15_unit varchar(64),
        m15_in bigint,
        m15_out bigint
-) execute 'cat gpmon.1/_iterators_tail.dat 2> /dev/null' on master format 'text' (delimiter '|' NULL as 'null');
+) execute 'cat gpmon.1/_iterators_tail.dat 2> /dev/null || true' on master format 'text' (delimiter '|' NULL as 'null');
 
 
 
