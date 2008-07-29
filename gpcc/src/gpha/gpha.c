@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <gpcc_strings.h>
 #include <apr_getopt.h>
 #include <apr_strings.h>
@@ -413,6 +414,13 @@ int main(int argc, const char* argv[])
 {
     GPCC_DO(0 == apr_app_initialize(&argc, (char const* const **) &argv, NULL));
     atexit(apr_terminate);
+
+#ifdef SIGUSR1
+    signal(SIGUSR1, SIG_IGN);
+#endif
+#ifdef SIGUSR2
+    signal(SIGUSR2, SIG_IGN);
+#endif
 
     GPCC_DO(0 == apr_pool_create(&gpha.pool, 0));
 
