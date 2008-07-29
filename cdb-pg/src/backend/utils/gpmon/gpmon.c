@@ -37,8 +37,6 @@ void gpmon_init(void)
 	pid_t pid = getpid();
 	int sock;
 
-	elog(LOG, "gpmon_init");
-
 	if (pid == gpmon.pid)
 		return;
 
@@ -88,7 +86,6 @@ void gpmon_record(apr_int32_t tmid, apr_int32_t xid, apr_int32_t cid,
 	int len = strlen(content);
 
 	sprintf(fname, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, xid, cid);
-	elog(LOG, "gpmon_record: %s", fname);
 
 	fp = fopen(fname, "a");
 	if (!fp)
