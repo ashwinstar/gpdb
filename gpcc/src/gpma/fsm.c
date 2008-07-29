@@ -240,7 +240,7 @@ APR_DECLARE(void) fsm_init(void)
 		 a_fts_getaddress_reply, NULL);
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, NODE_START_EVENT, FTS_INITIALIZING0_CMDSTATE,
 		 a_fts_kick_off_timeout, NULL);
-    gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, FAILURE_EVENT, FTS_EMPTY_CMDSTATE, 0,
+    gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, FAILURE_EVENT, FTS_EMPTY_CMDSTATE,
 		 a_fts_array_init_failure, NULL);
     gpcc_fsm_put(FTS_INITIALIZING0_CMDSTATE, TIMEUP_EVENT, FTS_EMPTY_CMDSTATE,
 		 a_fts_array_init_start_nodes_failure, a_fts_array_init_failure, NULL);
