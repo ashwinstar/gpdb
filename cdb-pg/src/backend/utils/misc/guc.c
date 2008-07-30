@@ -1799,7 +1799,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_enable_gpmon", PGC_SUSET, LOGGING_WHAT,
+		{"gp_enable_gpmon", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Enable gpmon logging."), 
 			NULL,
 		},
