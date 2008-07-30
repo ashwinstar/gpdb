@@ -139,6 +139,8 @@ def parseCommandLine():
     if not os.path.isdir(opt['-d']):
         gpmlib.error('MASTER_DATA_DIRECTORY %s not exists or not a directory' % opt['-d'])
 
+
+
 ################
 def yesorno(msg, abortmsg):
     print msg
@@ -587,7 +589,7 @@ try:
 
     # stop Greenplum database
     gpmlib.log_info('Stop Greenplum database array')
-    (ok, out) = gpmlib.run('gpstop -qaf > /dev/null 2>&1')
+    (ok, out) = gpmlib.run('gpstop -qaf -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
     if not ok:
         gpmlib.error('gpstop failed')
 
@@ -603,7 +605,7 @@ try:
         gpmlib.error('copy data from primary segments to mirror segments failed')
 
     # start master in admin mode
-    (ok, out) = gpmlib.run('gpstart -qam > /dev/null 2>&1')
+    (ok, out) = gpmlib.run('gpstart -qam -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
     if not ok:
         gpmlib.error('start master in admin mode failed')
 
@@ -635,13 +637,13 @@ try:
         db = None
 
     # stop master
-    (ok, out) = gpmlib.run('gpstop -qma > /dev/null 2>&1')
+    (ok, out) = gpmlib.run('gpstop -qma -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
     if not ok:
         gpmlib.error('stop master in admin mode failed')
 
     # start Greenplum Database
     gpmlib.log_info('Start Greenplum database')
-    (ok, out) = gpmlib.run('gpstart -qa > /dev/null 2>&1')
+    (ok, out) = gpmlib.run('gpstart -qa -d %s > /dev/null 2>&1' % os.environ.get('MASTER_DATA_DIRECTORY'))
     if not ok:
         gpmlib.error('start gpdb array failed')
 
