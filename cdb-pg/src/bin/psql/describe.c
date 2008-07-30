@@ -1313,10 +1313,10 @@ describeOneTableDetails(const char *schemaname,
 		/* count and get Append Only footers */
 		if (tableinfo.relkind == 'a')
 		{
-			aoinfo_count = 2; /* always have 2 footers: blocksize and compresslevel */
+			aoinfo_count = 3; /* always have 3 footers: blocksize, compresslevel and checksum */
 			
 			printfPQExpBuffer(&buf,
-							  "SELECT a.compresslevel, a.blocksize\n"
+							  "SELECT a.compresslevel, a.blocksize, a.checksum\n"
 							  "FROM pg_catalog.pg_appendonly a, pg_catalog.pg_class c\n"
 							  "WHERE c.oid = a.relid AND c.oid = '%s'", oid);
 			
@@ -1342,6 +1342,8 @@ describeOneTableDetails(const char *schemaname,
 			printfPQExpBuffer(&buf, _("Compression Level: %s"), PQgetvalue(result9, 0, 0));
 			footers[count_footers++] = pg_strdup(buf.data);
 			printfPQExpBuffer(&buf, _("Block Size: %s"), PQgetvalue(result9, 0, 1));
+			footers[count_footers++] = pg_strdup(buf.data);			
+			printfPQExpBuffer(&buf, _("Checksum: %s"), PQgetvalue(result9, 0, 2));
 			footers[count_footers++] = pg_strdup(buf.data);			
 		}
 		

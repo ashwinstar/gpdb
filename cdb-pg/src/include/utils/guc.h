@@ -127,12 +127,14 @@ extern bool Debug_appendonly_print_scan;
 extern bool Debug_appendonly_print_storage_headers;
 extern bool Debug_appendonly_use_new_tid;
 extern bool Test_appendonly_override;
+extern bool Test_checksum_override;
 extern int  Test_compresslevel_override;
 extern int	Test_blocksize_override;
 extern int  Test_safefswritesize_override;
 extern bool Master_mirroring_administrator_disable;
 extern int  gp_max_local_distributed_cache;
 extern bool gp_local_distributed_cache_stats;
+extern bool gp_appendonly_verify_block_checksums;
 
 extern bool Debug_print_tablespace;
 extern bool	Debug_print_server_processes;

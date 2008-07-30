@@ -244,21 +244,23 @@ bytea *
 default_reloptions(Datum reloptions, bool validate,
 				   int minFillfactor, int defaultFillfactor)
 {
-	static const char *const default_keywords[4] = {"fillfactor", 
+	static const char *const default_keywords[5] = {"fillfactor", 
 													"appendonly", 
 												    "blocksize", 
-													"compresslevel"};
+													"compresslevel",
+													"checksum"};
 	
-	char	   *values[4];
+	char	   *values[5];
 	int32		fillfactor;
 	int32		blocksize;
 	bool		appendonly;
+	bool		checksum;
 	int32		compresslevel;
 	int32		defaultCompressLevel = 0;
 	
 	StdRdOptions *result;
 
-	parseRelOptions(reloptions, 4, default_keywords, values, validate);
+	parseRelOptions(reloptions, 5, default_keywords, values, validate);
 
 	/* fillfactor */
 	if(values[0] != NULL)
@@ -341,7 +343,24 @@ default_reloptions(Datum reloptions, bool validate,
 	else
 	{
 		compresslevel = defaultCompressLevel;
-	}	
+	}
+	
+	/* checksum */
+	if(values[4] != NULL)
+	{
+		if(!appendonly)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("invalid option \'checksum\' for base relation. "
+							"Only valid for Append Only relations")));
+		
+		checksum = (pg_strcasecmp(values[4], "true") == 0 ? true : false);
+	}
+	else
+	{
+		checksum = false; /* default */		
+	}
+	
 	
 	result = (StdRdOptions *) palloc(sizeof(StdRdOptions));
 	SET_VARSIZE(result, sizeof(StdRdOptions));
@@ -350,6 +369,7 @@ default_reloptions(Datum reloptions, bool validate,
 	result->appendonly = appendonly;
 	result->blocksize = blocksize;
 	result->compresslevel = compresslevel;
+	result->checksum = checksum;
 
 	return (bytea *) result;
 }
@@ -388,13 +408,21 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
 	/*
 	 * Normally, appendonly tables are created with the default 32KB block
 	 * size. If the override has a different value - use the override value.
-	 * TODO - this is a bit hacky. what if the default value changes?
 	 */
 	if (Test_blocksize_override != DEFAULT_VARBLOCK_SIZE)
 	{
 		stdRdOptions->blocksize = Test_blocksize_override;
 	}
 
+	/*
+	 * Normally, appendonly tables don't use checksum on the data.
+	 * If the override is specified - use the override value.
+	 */
+	if (Test_checksum_override)
+	{
+		stdRdOptions->checksum = Test_checksum_override;
+	}
+	
 	/*
 	 * Same for safefswritesize.
 	 */
@@ -461,13 +489,20 @@ index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
  *
  *		Various checks for validity of appendonly relation rules.
  */
-void validateAppendOnlyRelOptions(bool ao, int blocksize, int safewrite, int complevel, char relkind)
+void validateAppendOnlyRelOptions(bool ao, int blocksize, int safewrite, int complevel, bool checksum, char relkind)
 {
-	if(ao && relkind != RELKIND_APPEND_ONLY && relkind != RELKIND_RELATION)
-		ereport(ERROR,
-				(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-				 errmsg("appendonly may only be specified for base relations")));
-		
+	if(relkind != RELKIND_APPEND_ONLY && relkind != RELKIND_RELATION)
+	{
+		if(ao)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("appendonly may only be specified for base relations")));
+
+		if(checksum)
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
+					 errmsg("checksum may only be specified for base relations")));
+	}
 	
 	if(complevel < 0 || complevel > 9)
 		ereport(ERROR,

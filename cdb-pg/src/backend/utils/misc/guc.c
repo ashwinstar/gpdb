@@ -208,11 +208,13 @@ bool 		Debug_appendonly_print_scan = false;
 bool 		Debug_appendonly_print_storage_headers = false;
 bool 		Debug_appendonly_use_new_tid = false;
 bool 		Test_appendonly_override = false;
+bool 		Test_checksum_override = false;
 int         Test_compresslevel_override = 0;
 int			Test_blocksize_override = 0;
 int			Test_safefswritesize_override = 0;
 bool        Master_mirroring_administrator_disable = false;
 int			gp_max_local_distributed_cache = 1024;
+bool		gp_appendonly_verify_block_checksums = false;
 bool 		gp_local_distributed_cache_stats = false;
 
 #define DEBUG_DTM_ACTION_PRIMARY_DEFAULT true
@@ -1379,6 +1381,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_appendonly_verify_block_checksums", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Verify the append-only block checksum when reading."),
+		 NULL,
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_appendonly_verify_block_checksums,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_cost_hashjoin_chainwalk", PGC_USERSET, QUERY_TUNING_COST,
 			gettext_noop("Enable the cost for walking the chain in the hash join"),
 			NULL,
@@ -1697,6 +1709,16 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
+	{
+		{"test_checksum_override", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("For testing purposes, change the default of the checksum create table option."),
+			NULL,
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&Test_appendonly_override,
+		false, NULL, NULL
+	},
+	
 	{
 		{"master_mirroring_administrator_disable", PGC_POSTMASTER, GP_ARRAY_CONFIGURATION,
 			gettext_noop("Used by gpstart to indicate the standby master was not started by the administrator."),

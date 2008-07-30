@@ -12,18 +12,10 @@
 #include "utils/pg_crc.h"
 
 
-#define AOLARGE_HEADER_LEN 8	// 64 bits.
+#define AO_HEADER_LEN 8	// 64 bits.
 
-#define AOLargeHeader_MaxRowCount 0x3FFF   // 14 bits, or 16,383 (16k – 1).
-#define AOLargeHeader_MaxLength   0x1FFFFF // 21 bits, or 2,097,151 (2 Mb – 1).
-
-
-#define AOSMALL_HEADER_LEN 4	// 32 bits.
-
-#define AOSmallHeader_MaxRowCount 0x3FF    // 10 bits, or 1,023 (1k – 1).
-#define AOSmallHeader_MaxLength   0xFFFF   // 16 bits, or 65,535 (64k – 1).
-
-#define AOHeader_CanBeSmall(r,l) ((r)<= AOSmallHeader_MaxRowCount&&(l)<= AOSmallHeader_MaxLength)
+#define AOBlockHeader_MaxRowCount 0x3FFF   // 14 bits, or 16,383 (16k – 1).
+#define AOBlockHeader_MaxLength   0x1FFFFF // 21 bits, or 2,097,151 (2 Mb – 1).
 
 #define AOStorage_RoundUp(l) ((((l)+3)/4)*4)
 
@@ -37,6 +29,13 @@
 	for (b = len; b < padToLen; b++)\
 		buf[b] = 0;\
 }
+
+typedef enum AoHeaderKind
+{
+	AoHeaderKind_None = 0,
+	AoHeaderKind_Block,
+	MaxAoHeaderKind /* must always be last */
+} AoHeaderKind;
 
 
 typedef enum AOHeaderCheckError
@@ -100,44 +99,41 @@ typedef struct AOTupleId
 
 
 extern int32 AppendOnlyStorage_HeaderLenNeeded(
-	bool			wantLarge,
-	bool			wantChecksum);
+	bool			usingChecksum);
 
-extern void AppendOnlyStorage_MakeLongHeader(
+extern void AppendOnlyStorage_MakeBlockHeader(
 	uint8			*headerPtr,
-	bool			wantChecksum,
-	int				applicationSpecific,
+	bool			usingChecksums,
+	int				executorKind,
 	int				rowCount,
 	int32			dataLength,
 	int32			compressedLength);
 
-extern void AppendOnlyStorage_MakeShortHeader(
-	uint8			*headerPtr,
-	bool			wantChecksum,
-	int				applicationSpecific,
-	int				rowCount,
-	int32			dataLength);
-
-extern void AppendOnlyStorage_LogHeader(
+extern void AppendOnlyStorage_LogBlockHeader(
 	char			*tableName,
 	int				segmentFileNum,
 	int64			headerOffsetInFile,
-	uint8			*headerPtr);
+	uint8			*headerPtr,
+	bool			usingChecksums);
 
-extern AOHeaderCheckError AppendOnlyStorage_GetHeaderInfo(
+extern AOHeaderCheckError AppendOnlyStorage_GetBlockHeaderInfo(
 	uint8			*headerPtr,
 	int				headerLen,
+	bool			usingChecksums,
 	int64			blockLimitLen,
 	int32			*overallBlockLen,
 	int32			*offset,
 	int32			*length,
-	int				*applicationSpecific,
+	int				*executorBlockKind,
 	int				*rowCount,
-	bool			*isFragmented,
-	bool			*hasChecksum,
 	bool			*isCompressed);
 
-extern bool AppendOnlyStorage_VerifyChecksum(
+extern bool AppendOnlyStorage_VerifyHeaderChecksum(
+	uint8			*headerPtr,
+	pg_crc32		*storedChecksum,
+	pg_crc32		*computedChecksum);
+
+extern bool AppendOnlyStorage_VerifyBlockChecksum(
 	uint8			*headerPtr,
 	int32			overallBlockLen,
 	pg_crc32		*storedChecksum,

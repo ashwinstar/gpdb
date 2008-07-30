@@ -22,6 +22,7 @@ CATALOG(pg_appendonly,6105) BKI_WITHOUT_OIDS
 	int2			compresslevel;		/* the (per seg) total number of varblocks */
 	int2			majorversion;		/* major version indicating what's stored in this table  */
 	int2			minorversion;		/* minor version indicating what's stored in this table  */
+	bool			checksum;
 } FormData_pg_appendonly;
 
 
@@ -32,13 +33,14 @@ CATALOG(pg_appendonly,6105) BKI_WITHOUT_OIDS
 */
 typedef FormData_pg_appendonly *Form_pg_appendonly;
 
-#define Natts_pg_appendonly					6
+#define Natts_pg_appendonly					7
 #define Anum_pg_appendonly_relid			1
 #define Anum_pg_appendonly_blocksize		2
 #define Anum_pg_appendonly_safefswritesize	3
 #define Anum_pg_appendonly_compresslevel	4
 #define Anum_pg_appendonly_majorversion		5
 #define Anum_pg_appendonly_minorversion		6
+#define Anum_pg_appendonly_checksum			7
 
 /*
  * Descriptor of a single AO relation.
@@ -51,6 +53,7 @@ typedef struct AppendOnlyEntry
 	int		compresslevel;
 	int		majorversion;
 	int		minorversion;
+	bool	checksum;
 } AppendOnlyEntry;
 
 /* No initial contents. */
@@ -59,7 +62,8 @@ extern void
 InsertAppendOnlyEntry(Oid relid, 
 					  int blocksize, 
 					  int safefswritesize, 
-					  int compresslevel);
+					  int compresslevel,
+					  bool checksum);
 
 extern AppendOnlyEntry *
 GetAppendOnlyEntry(Oid relid);

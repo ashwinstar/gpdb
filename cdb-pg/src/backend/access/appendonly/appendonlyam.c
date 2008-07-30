@@ -71,7 +71,7 @@ static void doCompressAppend(
 							 AppendOnlyInsertDesc 	aoInsertDesc,
 							 uint8					*sourceData,
 							 int32			 		sourceLen,
-							 int					applicationSpecific,
+							 int					executorBlockKind,
 							 int			 		itemCount,
 							 int			 		compressLevel);
 static void doDecompress(AppendOnlyScanDesc scan,
@@ -492,23 +492,22 @@ getNextStorageBlockInFile(
 	int64				*headerOffsetInFile,
 	uint8				**dataBuffer,
 	int32				*dataLen,
-	int					*applicationSpecific,
+	int					*executorBlockKind,
 	int					*rowCount)
 {
-#define PEEK_LEN AOLARGE_HEADER_LEN
 	uint8  				*header;
 	int32				availableLen;
 	int					i;
 	AOHeaderCheckError	checkError;
 	int32				offset;
 	int32				length;
-	bool				isFragmented;
-	bool				hasChecksum;
 	bool				isCompressed;
 	int64				fileRemainderLen;
 	int32				blockLimitLen;
 	int32				overallBlockLen;
 	int32				uncompressedLen;
+	pg_crc32			storedChecksum;
+	pg_crc32			computedChecksum;
 	
 	/*
 	 * Peek ahead just enough so we can see the Append-Only storage
@@ -517,12 +516,12 @@ getNextStorageBlockInFile(
 	 * However, we need to honor the file-system page boundaries here
 	 * since we do not let the length information cross the boundary.
 	 */
-	doSkipPadding(scan, PEEK_LEN);
+	doSkipPadding(scan, scan->headerLen);
 
 	*headerOffsetInFile = BufferedReadNextBufferPosition(&scan->bufferedRead);
 
 	header = BufferedReadGetNextBuffer(&scan->bufferedRead,
-									   PEEK_LEN,
+									   scan->headerLen,
 									   &availableLen);
 	
 	if (header == NULL)
@@ -534,12 +533,12 @@ getNextStorageBlockInFile(
 
 	scan->bufferCount++;
 				
-	if (availableLen != PEEK_LEN)
+	if (availableLen != scan->headerLen)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("Expected %d bytes and got %d bytes in table %s "
 				        "(segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")\n", 
-						PEEK_LEN, 
+						scan->headerLen, 
 						availableLen, 
 					    NameStr(scan->aos_rd->rd_rel->relname),
 					    scan->aos_cur_segno,
@@ -556,7 +555,7 @@ getNextStorageBlockInFile(
 			break;
 
 		i++;
-		if (i >= PEEK_LEN)
+		if (i >= scan->headerLen)
 		{
 			/*
 			 * Skip over zero padding caused when the append command
@@ -570,7 +569,7 @@ getNextStorageBlockInFile(
 			*headerOffsetInFile = BufferedReadNextBufferPosition(&scan->bufferedRead);
 			
 			header = BufferedReadGetNextBuffer(&scan->bufferedRead,
-											   PEEK_LEN,
+											   scan->headerLen,
 											   &availableLen);
 			
 			if (header == NULL)
@@ -580,12 +579,12 @@ getNextStorageBlockInFile(
 				return false;			
 			}
 			
-			if (availableLen != PEEK_LEN)
+			if (availableLen != scan->headerLen)
 				ereport(ERROR,
 						(errcode(ERRCODE_GP_INTERNAL_ERROR),
 						 errmsg("Expected %d bytes and found %d bytes in table %s "
 						 		"(segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")", 
-								PEEK_LEN,
+								scan->headerLen,
 								availableLen,
 							    NameStr(scan->aos_rd->rd_rel->relname),
 							    scan->aos_cur_segno,
@@ -607,19 +606,41 @@ getNextStorageBlockInFile(
 		blockLimitLen = scan->maxBufferLen;
 
 	/*
+	 * Proceed carefully:
+	 * [ 1. Verify header checksum ]
+	 *   2. Examine header.
+	 * [ 3. Verify the block checksum ]
+	 */	
+	if (scan->aos_checksum)
+	{
+		if (!AppendOnlyStorage_VerifyHeaderChecksum(
+												header,
+												&storedChecksum,
+												&computedChecksum))
+			elog(ERROR, 
+			     "Header checksum does not match in table %s.  Expected 0x%X and found 0x%X "
+			     "(segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+			     NameStr(scan->aos_rd->rd_rel->relname),
+			     storedChecksum,
+			     computedChecksum,
+			     scan->aos_cur_segno,
+			     *headerOffsetInFile,
+			     scan->bufferCount);
+		}
+
+	/*
 	 * Check header and extract header information.
 	 */
-	checkError = AppendOnlyStorage_GetHeaderInfo(
+	checkError = AppendOnlyStorage_GetBlockHeaderInfo(
 											header,
-											PEEK_LEN,
+											scan->headerLen,
+											scan->aos_checksum,
 											blockLimitLen,
 											&overallBlockLen,
 											&offset,	// Offset to data.
 											&length,
-											applicationSpecific,
+											executorBlockKind,
 											rowCount,
-											&isFragmented,
-											&hasChecksum,
 											&isCompressed);
 	if (checkError != AOHeaderCheckOk)
 		elog(ERROR, "Bad append-only storage header in table %s "
@@ -630,8 +651,6 @@ getNextStorageBlockInFile(
 					(int)checkError,
 					scan->bufferCount);			
 
-	Assert(!isFragmented);	// UNDONE: Not implemented yet.
-	
 	/*
 	 * Grow the buffer to the full block length to avoid any
 	 * unnecessary copying by BufferedRead.
@@ -657,19 +676,23 @@ getNextStorageBlockInFile(
 					    *headerOffsetInFile,
 						scan->bufferCount)));
 
-	
-	if (hasChecksum)
+
+	// UNDONE: Add more verification here...
+
+	if (scan->aos_checksum &&
+		gp_appendonly_verify_block_checksums)
 	{
-		pg_crc32	storedChecksum;
-		pg_crc32	computedChecksum;
-		
-		if (!AppendOnlyStorage_VerifyChecksum(
-										header,
-										overallBlockLen,
-										&storedChecksum,
-										&computedChecksum))
+		/*
+		 * Now that the header has been verified, verify the block checksum
+		 * in the header with the checksum of the data portion.
+		 */
+		if (!AppendOnlyStorage_VerifyBlockChecksum(
+												header,
+												overallBlockLen,
+												&storedChecksum,
+												&computedChecksum))
 			elog(ERROR, 
-			     "CRC checksum does not match in table %s.  Expected 0x%X and found 0x%X "
+			     "Block checksum does not match in table %s.  Expected 0x%X and found 0x%X "
 			     "(segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
 			     NameStr(scan->aos_rd->rd_rel->relname),
 			     storedChecksum,
@@ -680,11 +703,12 @@ getNextStorageBlockInFile(
 	}
 
 	if (Debug_appendonly_print_storage_headers)
-		AppendOnlyStorage_LogHeader(
+		AppendOnlyStorage_LogBlockHeader(
 							NameStr(scan->aos_rd->rd_rel->relname),
 							scan->aos_cur_segno,
 							*headerOffsetInFile,
-							header);
+							header,
+							scan->aos_checksum);
 		
 	if (!isCompressed)
 	{
@@ -734,10 +758,16 @@ getNextStorageBlockInFile(
 	return true;
 }	
 
+/*
+ * You can think of this routine as get next "executor" AO block.
+ *
+ * It calls up on getNextStorageBlockInFile to get the next AO storage block
+ * and returns pointers to the data inside, which is owned by the executor.
+ */
 static bool
 getNextBlock(
 	AppendOnlyScanDesc 	scan,
-	int					*applicationSpecific)
+	int					*executorBlockKind)
 {
 	int64	headerOffsetInFile;
 	uint8  	*buffer = NULL;
@@ -759,7 +789,7 @@ getNextBlock(
 								&headerOffsetInFile,
 								&buffer,
 								&bufferLen,
-								applicationSpecific,
+								executorBlockKind,
 								&rowCount))
 	{
 		/* done reading the file */
@@ -768,12 +798,12 @@ getNextBlock(
 	}
 
 	/*
-	 * The applicationSpecific value is what the executor -- i.e. the upper
+	 * The executorBlockKind value is what the executor -- i.e. the upper
 	 * part of this appendonlyam module! -- has stored in the Append-Only
 	 * Storage header.  We interpret it here.
 	 */
 
-	switch (*applicationSpecific)
+	switch (*executorBlockKind)
 	{
 	case AoExecutorBlockKind_VarBlock:
 		varBlockCheckError = VarBlockIsValid(buffer, bufferLen);
@@ -821,7 +851,7 @@ getNextBlock(
 		
 	default:
 		elog(ERROR, "Unrecognized append-only executor block kind: %d",
-			*applicationSpecific);
+			*executorBlockKind);
 		break;
 	}	
 
@@ -905,14 +935,14 @@ appendonlygettup(AppendOnlyScanDesc scan,
 				 TupleTableSlot *slot)
 {
 	MemTuple	tuple = &(scan->aos_ctup);
-	int			applicationSpecific;
+	int			executorBlockKind;
 
 	Assert(ScanDirectionIsForward(dir));
 	Assert(scan->maxBufferLen > 0 && scan->largeReadLen == scan->maxBufferLen * 2);
 	
 	for(;;)
 	{
-		applicationSpecific = AoExecutorBlockKind_VarBlock;		// Assume.
+		executorBlockKind = AoExecutorBlockKind_VarBlock;		// Assume.
 		
 		if(scan->bufferDone)
 		{
@@ -921,7 +951,7 @@ appendonlygettup(AppendOnlyScanDesc scan,
 			 * successfully get a block to process, or finished reading
 			 * all the data (all 'segment' files) for this relation.
 			 */
-			while(!getNextBlock(scan, &applicationSpecific))
+			while(!getNextBlock(scan, &executorBlockKind))
 			{
 				/* have we read all this relation's data. done! */
 				if(scan->aos_done_all_segfiles)
@@ -931,7 +961,7 @@ appendonlygettup(AppendOnlyScanDesc scan,
 			scan->bufferDone = false;
 		}	
 
-		switch (applicationSpecific)
+		switch (executorBlockKind)
 		{
 		case AoExecutorBlockKind_VarBlock:
 		
@@ -1009,7 +1039,7 @@ appendonlygettup(AppendOnlyScanDesc scan,
 			
 		default:
 			elog(ERROR, "Unrecognized append-only executor block kind: %d",
-				applicationSpecific);
+				executorBlockKind);
 			break;
 		}
 	}
@@ -1019,11 +1049,6 @@ appendonlygettup(AppendOnlyScanDesc scan,
 static void
 setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 {
-	aoInsertDesc->headerLenNeeded = 
-						AppendOnlyStorage_HeaderLenNeeded(
-												aoInsertDesc->tryingLargeHeader,
-												aoInsertDesc->wantChecksum);
-
 	if(!aoInsertDesc->shouldCompress)
 	{
 		uint8	*header;
@@ -1042,7 +1067,7 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 		 * Storage header.
 		 */
 		VarBlockMakerInit(&aoInsertDesc->varBlockMaker, 
-						  &header[aoInsertDesc->headerLenNeeded], 
+						  &header[aoInsertDesc->headerLen], 
 						  aoInsertDesc->maxDataLen, 
 						  aoInsertDesc->tempSpace, 
 						  aoInsertDesc->tempSpaceLen);	
@@ -1071,11 +1096,11 @@ setupNextWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 static void
 finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 {
-	int		applicationSpecific;
+	int		executorBlockKind;
 	int		itemCount;
 	int32 	dataLen;
 
-	applicationSpecific = AoExecutorBlockKind_VarBlock;
+	executorBlockKind = AoExecutorBlockKind_VarBlock;	// Assume.
 	
 	itemCount = VarBlockMakerItemCount(&aoInsertDesc->varBlockMaker);
 	if (itemCount == 0)
@@ -1094,42 +1119,20 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 	if(!aoInsertDesc->shouldCompress)
 	{
 		uint8 	*nonCompressedHeader;
-		bool	useLargeHeader;
-		int32	headerLen;
 		uint8	*nonCompressedData;
 		int32 	dataRoundedUpLen;
 
 		nonCompressedHeader = aoInsertDesc->nonCompressedHeader;
 
-		/*
-		 * Determine the actual header size needed for our non-compressed data.
-		 */
-		useLargeHeader = !AOHeader_CanBeSmall(itemCount, dataLen);
-		headerLen = AppendOnlyStorage_HeaderLenNeeded(
-											useLargeHeader,
-											aoInsertDesc->wantChecksum);
 			
-		nonCompressedData = &nonCompressedHeader[headerLen];
+		nonCompressedData = &nonCompressedHeader[aoInsertDesc->headerLen];
 		if (itemCount == 1)
 		{
 			dataLen = VarBlockCollapseToSingleItem(
 						   /* target */ nonCompressedData, 
-					       /* source */ &nonCompressedHeader[aoInsertDesc->headerLenNeeded],
+					       /* source */ &nonCompressedHeader[aoInsertDesc->headerLen],
 					       /* sourceLen */ dataLen);
-			applicationSpecific = AoExecutorBlockKind_SingleRow;
-		}
-		else if (useLargeHeader != aoInsertDesc->tryingLargeHeader)
-		{
-			/* 
-			 * Our guess didn't work. Slide data into place. 
-			 *
-			 * Since we have overlapping data, we use memmove which knows how 
-			 * to do that instead of memcpy which isn't guaranteed to do
-			 * that right.
-			 */
-			memmove(nonCompressedData, 
-			        &nonCompressedHeader[aoInsertDesc->headerLenNeeded],		// Original header length.
-			        dataLen);
+			executorBlockKind = AoExecutorBlockKind_SingleRow;
 		}
 		
 		dataRoundedUpLen = AOStorage_RoundUp(dataLen);
@@ -1142,33 +1145,26 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 		/*
 		 * Make the header and compute the checksum if necessary.
 		 */
-		if (!useLargeHeader)
-			AppendOnlyStorage_MakeShortHeader(
-									nonCompressedHeader,
-									aoInsertDesc->wantChecksum,
-									applicationSpecific,
-									itemCount,
-									dataLen);
-		else
-			AppendOnlyStorage_MakeLongHeader(
-									nonCompressedHeader,
-									aoInsertDesc->wantChecksum,
-									applicationSpecific,
-									itemCount,
-									dataLen,
-									/* compressedLength */ 0);
+		AppendOnlyStorage_MakeBlockHeader(
+								nonCompressedHeader,
+								aoInsertDesc->usingChecksum,
+								executorBlockKind,
+								itemCount,
+								dataLen,
+								/* compressedLength */ 0);
 
 
 		if (Debug_appendonly_print_storage_headers)
-			AppendOnlyStorage_LogHeader(
+			AppendOnlyStorage_LogBlockHeader(
 								NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
 								aoInsertDesc->cur_segno,
 								BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend),
-								nonCompressedHeader);
+								nonCompressedHeader,
+								aoInsertDesc->usingChecksum);
 		
 		BufferedAppendFinishBuffer(
 					&aoInsertDesc->bufferedAppend, 
-					headerLen + dataRoundedUpLen);
+					aoInsertDesc->headerLen + dataRoundedUpLen);
 		
 		if (Debug_appendonly_print_insert)
 			elog(LOG,
@@ -1176,7 +1172,7 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 			     "(length = %d, application specific %d, item count %d, block count " INT64_FORMAT ")",
 			     NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
 			     dataLen,
-			     applicationSpecific,
+			     executorBlockKind,
 			     itemCount,
 			     aoInsertDesc->bufferCount);
 	}
@@ -1188,14 +1184,14 @@ finishWriteBlock(AppendOnlyInsertDesc aoInsertDesc)
 							   /* target */ aoInsertDesc->uncompressedBuffer, 
 						       /* source */ aoInsertDesc->uncompressedBuffer,
 						       /* sourceLen */ dataLen);
-			applicationSpecific = AoExecutorBlockKind_SingleRow;
+			executorBlockKind = AoExecutorBlockKind_SingleRow;
 		}
 
 		doCompressAppend(
 					 aoInsertDesc, 
 					 aoInsertDesc->uncompressedBuffer, 
 					 dataLen,
-					 applicationSpecific,
+					 executorBlockKind,
 					 itemCount,
 					 aoInsertDesc->compressLevel);
 	}
@@ -1250,10 +1246,12 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	scan->largeReadLen = 2 * scan->maxBufferLen;
 	scan->aoScanInitContext = CurrentMemoryContext;
 	scan->aos_compressed = (complevel > 0 ? true : false);
+	scan->aos_checksum = aoentry->checksum;
 			
 	/* we only need to set this up once */
 	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
-	
+
+	scan->headerLen = AppendOnlyStorage_HeaderLenNeeded(scan->aos_checksum);
 	scan->uncompressedBuffer = NULL;
 	scan->singleRow = NULL;
 	scan->singleRowLen = 0;
@@ -1385,27 +1383,15 @@ appendonly_insert_init(Relation rel)
 	aoInsertDesc->safefswritesize = aoentry->safefswritesize;
 	aoInsertDesc->compressLevel = aoentry->compresslevel;
 	aoInsertDesc->shouldCompress = (aoInsertDesc->compressLevel > 0 ? true : false);
-	aoInsertDesc->wantChecksum = true;	// UNDONE: For now.
+	aoInsertDesc->usingChecksum = aoentry->checksum;
 
 	aoInsertDesc->maxBufferLen = getLimitedMaxBufferLen(aoentry->blocksize);
+	aoInsertDesc->headerLen = AppendOnlyStorage_HeaderLenNeeded(aoInsertDesc->usingChecksum);
 	aoInsertDesc->maxDataLen = 
 						aoInsertDesc->maxBufferLen -
-		 				AppendOnlyStorage_HeaderLenNeeded(
-										/* wantLarge */ true,
-										aoInsertDesc->wantChecksum);
+		 				aoInsertDesc->headerLen;
 	aoInsertDesc->largeWriteLen = 2 * aoInsertDesc->maxBufferLen;
-	
-	/*
-	 * Ignore the row count and see if the blocksize is compatable with
-	 * small headers.  We must use a long header for compression.
-	 */
-	if (AOHeader_CanBeSmall(1,aoInsertDesc->maxBufferLen) &&
-		!aoInsertDesc->shouldCompress)
-		aoInsertDesc->tryingLargeHeader = false;
-	else
-		aoInsertDesc->tryingLargeHeader = true;
-	
-	aoInsertDesc->headerLenNeeded = 0;
+
 	aoInsertDesc->nonCompressedHeader = NULL;
 	aoInsertDesc->uncompressedBuffer = (uint8 *) palloc(aoInsertDesc->maxBufferLen * sizeof(uint8));
 	aoInsertDesc->tempSpaceLen = aoInsertDesc->maxBufferLen / 8; /* TODO - come up with a more efficient calculation */
@@ -1667,12 +1653,11 @@ doCompressAppend(
 	 AppendOnlyInsertDesc 	aoInsertDesc,
 	 uint8					*sourceData,
 	 int32			 		sourceLen,
-	 int					applicationSpecific,
+	 int					executorBlockKind,
 	 int			 		itemCount,
 	 int			 		compressLevel)
 {
 	BufferedAppend *bufferedAppend = &aoInsertDesc->bufferedAppend;
-	int32			headerLen;
 	uint8			*header;
 	uint8 			*dataBuffer;
 	int 	 		res;
@@ -1682,19 +1667,13 @@ doCompressAppend(
 	Assert(aoInsertDesc->maxBufferLen > 0 && 
 		   aoInsertDesc->largeWriteLen == aoInsertDesc->maxBufferLen * 2);
 
-	/*
-	 * We need the large header length for compression.
-	 */
-	Assert(aoInsertDesc->tryingLargeHeader);
-	headerLen = aoInsertDesc->headerLenNeeded;
-	
 	header = BufferedAppendGetMaxBuffer(&aoInsertDesc->bufferedAppend);
 	if (header == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_INTERNAL_ERROR),
 				 errmsg("We do not expect files to be have a maximum length")));
 	
-	dataBuffer = &header[headerLen];
+	dataBuffer = &header[aoInsertDesc->headerLen];
 
 	// UNDONE: Here is a point where we could look at the sourceLen and
 	// UNDONE: and decide it is too small to compress and go directly
@@ -1726,20 +1705,21 @@ doCompressAppend(
 		/*
 		 * Make the header and compute the checksum if necessary.
 		 */
-		AppendOnlyStorage_MakeLongHeader(
+		AppendOnlyStorage_MakeBlockHeader(
 									header,
-									aoInsertDesc->wantChecksum,
-									applicationSpecific,
+									aoInsertDesc->usingChecksum,
+									executorBlockKind,
 									itemCount,
 									sourceLen,
 									compressedLen);
 		
 		if (Debug_appendonly_print_storage_headers)
-			AppendOnlyStorage_LogHeader(
+			AppendOnlyStorage_LogBlockHeader(
 								NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
 								aoInsertDesc->cur_segno,
 								BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend),
-								header);
+								header,
+								aoInsertDesc->usingChecksum);
 		
 		if (Debug_appendonly_print_insert)
 			elog(LOG,"Append-only insert finished compressed block for table '%s' "
@@ -1759,7 +1739,6 @@ doCompressAppend(
 	}
 	else if (res == Z_BUF_ERROR)
 	{
-		bool	useLargeHeader;
 		int32 	overallBlockLen;
 		
 		/*
@@ -1767,19 +1746,9 @@ doCompressAppend(
 		 * Solution: Indicate in the header we are storing an non-compressed
 		 * block.
 		 */
-
-		useLargeHeader = AOHeader_CanBeSmall(itemCount, sourceLen);
-		if (!useLargeHeader)
-		{
-			headerLen = AppendOnlyStorage_HeaderLenNeeded(
-												/* wantLarge */ false,
-												aoInsertDesc->wantChecksum);
-			dataBuffer = &header[headerLen];
-		}
-
 		dataRoundedUpLen = AOStorage_RoundUp(sourceLen);
 
-		overallBlockLen = headerLen + dataRoundedUpLen;
+		overallBlockLen = aoInsertDesc->headerLen + dataRoundedUpLen;
 
 		/*
 		 * Copy non-compressed data in after the header information.
@@ -1794,28 +1763,21 @@ doCompressAppend(
 		/*
 		 * Make the header and compute the checksum if necessary.
 		 */
-		if (!useLargeHeader)
-			AppendOnlyStorage_MakeShortHeader(
-									header,
-									aoInsertDesc->wantChecksum,
-									applicationSpecific,
-									itemCount,
-									sourceLen);
-		else
-			AppendOnlyStorage_MakeLongHeader(
-									header,
-									aoInsertDesc->wantChecksum,
-									applicationSpecific,
-									itemCount,
-									sourceLen,
-									/* compressedLength */ 0);
+		AppendOnlyStorage_MakeBlockHeader(
+								header,
+								aoInsertDesc->usingChecksum,
+								executorBlockKind,
+								itemCount,
+								sourceLen,
+								/* compressedLength */ 0);
 
 		if (Debug_appendonly_print_storage_headers)
-			AppendOnlyStorage_LogHeader(
+			AppendOnlyStorage_LogBlockHeader(
 								NameStr(aoInsertDesc->aoi_rel->rd_rel->relname),
 							    aoInsertDesc->cur_segno,
 							    BufferedAppendCurrentBufferPosition(&aoInsertDesc->bufferedAppend),
-								header);
+								header,
+								aoInsertDesc->usingChecksum);
 	
 		if (Debug_appendonly_print_insert)
 			elog(LOG,"Append-only insert could not compress block for table '%s' smaller -- non-compressed block stored "
@@ -1842,7 +1804,7 @@ doCompressAppend(
 
 	BufferedAppendFinishBuffer(
 						bufferedAppend,
-						headerLen + dataRoundedUpLen);
+						aoInsertDesc->headerLen + dataRoundedUpLen);
 
 }
 
@@ -1931,10 +1893,15 @@ getLimitedMaxBufferLen(int32 maxBufferLen)
 	/*
 	 * UNDONE: Need to fix parser to use new lower blocksize limit.
 	 */
-	if (maxBufferLen > AOLargeHeader_MaxLength)
-		result = AOLargeHeader_MaxLength;
+	if (maxBufferLen > AOBlockHeader_MaxLength)
+		result = AOBlockHeader_MaxLength;
 	else
 		result = maxBufferLen;
+
+	/*
+	 * Round down to 32-bit boundary.
+	 */
+	result = (result / sizeof(uint32)) * sizeof(uint32);
 	
 	return result;
 }

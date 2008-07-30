@@ -142,6 +142,7 @@ typedef struct AppendOnlyScanDescData
 	int			aos_nkeys;			/* number of scan keys */
 	ScanKey		aos_key;			/* array of scan key descriptors */
 	bool		aos_compressed;		/* is relation stored compressed? */
+	bool		aos_checksum;		/* is relation stored with checksums? */
 	
 	/* file segment scan state */
 	File	    aos_file;			/* the relation file */
@@ -154,6 +155,7 @@ typedef struct AppendOnlyScanDescData
 	VarBlockReader  varBlockReader;
 	MemoryContext	aoScanInitContext; /* mem context at init time */
 
+	int32			headerLen;
 	uint8			*uncompressedBuffer; /* for decompression */
 	int32			maxBufferLen;
 	int32			largeReadLen;

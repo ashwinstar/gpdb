@@ -31,7 +31,8 @@ void
 InsertAppendOnlyEntry(Oid relid, 
 					  int blocksize, 
 					  int safefswritesize, 
-					  int compresslevel)
+					  int compresslevel,
+					  bool checksum)
 {
 	Relation	pg_appendonly_rel;
 	HeapTuple	pg_appendonly_tuple = NULL;
@@ -56,6 +57,7 @@ InsertAppendOnlyEntry(Oid relid,
 	values[Anum_pg_appendonly_compresslevel - 1] = Int32GetDatum(compresslevel);
 	values[Anum_pg_appendonly_majorversion - 1] = Int32GetDatum(majorversion);
 	values[Anum_pg_appendonly_minorversion - 1] = Int32GetDatum(minorversion);
+	values[Anum_pg_appendonly_checksum - 1] = BoolGetDatum(checksum);
 	
 	/*
 	 * form the tuple and insert it
@@ -91,7 +93,8 @@ GetAppendOnlyEntry(Oid relid)
 				compresslevel,
 				majorversion,
 				minorversion;
-	bool		isNull;
+	bool		checksum,
+				isNull;
 	AppendOnlyEntry *aoentry;
 	
 	/*
@@ -179,11 +182,17 @@ GetAppendOnlyEntry(Oid relid)
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("got invalid minor version value: NULL")));	
 	
+	checksum = heap_getattr(tuple, 
+							Anum_pg_appendonly_checksum, 
+							pg_appendonly_rel->rd_att, 
+							&isNull);
+	
 	aoentry->blocksize = DatumGetInt32(blocksize);
 	aoentry->safefswritesize = DatumGetInt32(safefswritesize);
 	aoentry->compresslevel = DatumGetInt16(compresslevel);
 	aoentry->majorversion = DatumGetInt16(majorversion);
 	aoentry->minorversion = DatumGetInt16(minorversion);
+	aoentry->checksum = DatumGetBool(checksum);
 	
 	/* Finish up scan and close appendonly catalog. */
 	systable_endscan(aoscan);

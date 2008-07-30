@@ -13,377 +13,285 @@
 #include "utils/guc.h"
 
 static pg_crc32
-AppendOnlyStorage_ComputeChecksum(
+AppendOnlyStorage_ComputeHeaderChecksum(
+	uint8			*headerPtr,
+	int32			headerLen)
+{
+	pg_crc32	crc;
+	
+	Assert(headerPtr != NULL);
+
+	INIT_CRC32(crc);
+
+	/* 
+	 * Compute CRC of the header. The header length does not include the
+	 * header checksum.
+	 */
+	COMP_CRC32(crc, 
+	           headerPtr, 
+	           headerLen);
+
+	return crc;
+}
+
+static pg_crc32
+AppendOnlyStorage_ComputeBlockChecksum(
 	uint8			*headerPtr,
 	int32			headerLen,
 	int32			overallBlockLen)
 {
-	pg_crc32	*checksumPtr;
+	int32		dataOffset;
 	pg_crc32	crc;
 	
 	Assert(headerPtr != NULL);
 
 	/*
-	 * CRC checksum is first 32 bits after the small or large header.
+	 * The block checksum covers right after the header checksum through
+	 * the end of the whole block.
 	 */
-	checksumPtr = (pg_crc32*)&headerPtr[headerLen];
+	dataOffset = headerLen + sizeof(pg_crc32);
 
 	INIT_CRC32(crc);
 
 	/* Compute CRC of the header. */
 	COMP_CRC32(crc, 
-	           headerPtr, 
-	           headerLen);
-
-	/* Compute CRC of all headers and data after the CRC. */
-	COMP_CRC32(crc, 
-	           &checksumPtr[1], 
-	           overallBlockLen - sizeof(pg_crc32) - headerLen);
+	           headerPtr + dataOffset, 
+	           overallBlockLen - dataOffset);
 
 	return crc;
 }
 
+
 int32 
 AppendOnlyStorage_HeaderLenNeeded(
-	bool			wantLarge,
-	bool			wantChecksum)
+	bool			usingChecksum)
 {
-	return (wantLarge ? AOLARGE_HEADER_LEN : AOSMALL_HEADER_LEN ) +
-		   (wantChecksum ? sizeof(pg_crc32) : 0);
+	return AO_HEADER_LEN +
+		   (usingChecksum ? 2 * sizeof(pg_crc32) : 0);
+}
+
+static void
+AppendOnlyStorage_AddBlockHeaderChecksums(
+	uint8			*headerPtr,
+	bool			isCompressed,
+	int32			dataLength,
+	int32			compressedLength)
+{
+	AOBlockHeader 	*blockHeader = (AOBlockHeader*)headerPtr;
+	
+	int32		headerLen;
+	int32		overallBlockLen;
+	pg_crc32	*blockChecksumPtr;
+	pg_crc32	*headerChecksumPtr;
+
+	headerLen = AO_HEADER_LEN + 
+				sizeof(pg_crc32);			// Block checksum.
+				
+	overallBlockLen = headerLen +
+					  sizeof(pg_crc32) +	// Header checksum.
+	                  AOStorage_RoundUp(
+	                        (isCompressed ? compressedLength : dataLength));
+	
+	/*
+	 * Calculate block checksum first since it is included in the 
+	 * header checksum.
+	 */
+	blockChecksumPtr = (pg_crc32*)&headerPtr[AO_HEADER_LEN];
+	*blockChecksumPtr = AppendOnlyStorage_ComputeBlockChecksum(
+													headerPtr,
+													headerLen, 
+													overallBlockLen);
+	/*
+	 * Now the Header checksum after the whole header.
+	 */
+	headerChecksumPtr = (pg_crc32*)&headerPtr[headerLen];
+	*headerChecksumPtr = AppendOnlyStorage_ComputeHeaderChecksum(
+															headerPtr,
+															headerLen);
+	
+	if (Debug_appendonly_print_storage_headers)
+		elog(LOG,
+			 "Append-Only storage make block header result: block_bytes_0_3 0x%X, block_bytes_4_7 0x%X, "
+			 "header checksum 0x%X, block checksum 0x%X, overallBlockLen %d",
+			 blockHeader->block_bytes_0_3,
+			 blockHeader->block_bytes_4_7,
+			 *headerChecksumPtr,
+			 *blockChecksumPtr,
+			 overallBlockLen);
 }
 
 void
-AppendOnlyStorage_MakeLongHeader(
+AppendOnlyStorage_MakeBlockHeader(
 	uint8			*headerPtr,
-	bool			wantChecksum,
-	int				applicationSpecific,
+	bool			usingChecksums,
+	int				executorKind,
 	int				rowCount,
 	int32			dataLength,
 	int32			compressedLength)
 {
-	AOLargeHeader 	*largeHeader;
+	AOBlockHeader 	*blockHeader;
 	bool			isCompressed;
 
 	Assert(headerPtr != NULL);
 	
-	largeHeader = (AOLargeHeader*)headerPtr;
+	blockHeader = (AOBlockHeader*)headerPtr;
 
 	if (Debug_appendonly_print_storage_headers)
 		elog(LOG,
-			 "Append-Only storage make long header parameters: wantChecksum = %s, applicationSpecific = %d, "
+			 "Append-Only storage make block header parameters: wantChecksum = %s, executorKind = %d, "
 			 "rowCount = %d, dataLength %d, compressedLength %d",
-			 (wantChecksum ? "true" : "false"),
-			 applicationSpecific,
+			 (usingChecksums ? "true" : "false"),
+			 executorKind,
 			 rowCount,
 			 dataLength,
 			 compressedLength);
 	
 	/* Zero out whole header */
-	AOLargeHeaderInit_Init(largeHeader);
+	AOBlockHeaderInit_Init(blockHeader);
 	
-	AOLargeHeaderInit_isLargeheader(largeHeader,true);
-	if (wantChecksum)
-		AOLargeHeaderInit_hasChecksum(largeHeader,true);
-	// UNDONE: kind
-	AOLargeHeaderInit_applicationSpecific(largeHeader,applicationSpecific);
-	AOLargeHeaderInit_rowCount(largeHeader,rowCount);
-	AOLargeHeaderInit_dataLength(largeHeader,dataLength);
+	AOBlockHeaderInit_headerKind(blockHeader,AoHeaderKind_Block);
+	AOBlockHeaderInit_executorBlockKind(blockHeader,executorKind);
+	AOBlockHeaderInit_rowCount(blockHeader,rowCount);
+	AOBlockHeaderInit_dataLength(blockHeader,dataLength);
 
 	isCompressed = (compressedLength > 0);
 	if (isCompressed)
-		AOLargeHeaderInit_compressedLength(largeHeader,compressedLength);
+		AOBlockHeaderInit_compressedLength(blockHeader,compressedLength);
 
-	if (wantChecksum)
+	if (usingChecksums)
 	{
-		int32		overallBlockLen;
-		pg_crc32	*checksumPtr;
-		
-		overallBlockLen = AOLARGE_HEADER_LEN + 
-						  sizeof(pg_crc32) +
-		                  AOStorage_RoundUp(
-		                        (isCompressed ? compressedLength : dataLength));
-		/*
-		 * CRC checksum is first 32 bits after small/large header.
-		 */
-		checksumPtr = (pg_crc32*)&headerPtr[AOLARGE_HEADER_LEN];
-		*checksumPtr = AppendOnlyStorage_ComputeChecksum(
-														headerPtr,
-														AOLARGE_HEADER_LEN,
-														overallBlockLen);
-		if (Debug_appendonly_print_storage_headers)
-			elog(LOG,
-				 "Append-Only storage make long header result: large_bytes_0_3 0x%X, large_bytes_4_7 0x%X, "
-				 "checksum 0x%X, overallBlockLen %d",
-				 largeHeader->large_bytes_0_3,
-				 largeHeader->large_bytes_4_7,
-				 *checksumPtr,
-				 overallBlockLen);
+		AppendOnlyStorage_AddBlockHeaderChecksums(
+											headerPtr,
+											isCompressed,
+											dataLength,
+											compressedLength);
 	}
 	else
 	{
 		if (Debug_appendonly_print_storage_headers)
 			elog(LOG,
-				 "Append-Only storage make long header result: large_bytes_0_3 0x%X, large_bytes_4_7 0x%X",
-				 largeHeader->large_bytes_0_3,
-				 largeHeader->large_bytes_4_7);
+				 "Append-Only storage make block header result: block_bytes_0_3 0x%X, block_bytes_4_7 0x%X",
+				 blockHeader->block_bytes_0_3,
+				 blockHeader->block_bytes_4_7);
 	}
 }
 
 void
-AppendOnlyStorage_MakeShortHeader(
-	uint8			*headerPtr,
-	bool			wantChecksum,
-	int				applicationSpecific,
-	int				rowCount,
-	int32			dataLength)
-{
-	AOSmallHeader 	*smallHeader;
-
-	Assert(headerPtr != NULL);
-	
-	smallHeader = (AOSmallHeader*)headerPtr;
-
-	if (Debug_appendonly_print_storage_headers)
-		elog(LOG,
-			 "Append-Only storage make short header parameters: wantChecksum = %s, applicationSpecific = %d, "
-			 "rowCount = %d, dataLength %d",
-			 (wantChecksum ? "true" : "false"),
-			 applicationSpecific,
-			 rowCount,
-			 dataLength);
-	
-	/* Zero out whole header */
-	AOSmallHeaderInit_Init(smallHeader);
-	// isLarge = false
-	if (wantChecksum)
-		AOSmallHeaderInit_hasChecksum(smallHeader,true);
-	// UNDONE: kind
-	AOSmallHeaderInit_applicationSpecific(smallHeader,applicationSpecific);
-	AOSmallHeaderInit_rowCount(smallHeader,rowCount);
-	AOSmallHeaderInit_dataLength(smallHeader,dataLength);
-
-	if (wantChecksum)
-	{
-		int32		overallBlockLen;
-		pg_crc32	*checksumPtr;
-		
-		overallBlockLen = AOSMALL_HEADER_LEN + 
-						  sizeof(pg_crc32) +
-		                  AOStorage_RoundUp(dataLength);
-		/*
-		 * CRC checksum is first 32 bits after small/large header.
-		 */
-		checksumPtr = (pg_crc32*)&headerPtr[AOSMALL_HEADER_LEN];
-		*checksumPtr = AppendOnlyStorage_ComputeChecksum(
-														headerPtr,
-														AOSMALL_HEADER_LEN,
-														overallBlockLen);
-		if (Debug_appendonly_print_storage_headers)
-			elog(LOG,
-				 "Append-Only storage make small header result: bytes_0_3 0x%X, "
-				 "checksum 0x%X, overallBlockLen %d",
-				 smallHeader->bytes_0_3,
-				 *checksumPtr,
-				 overallBlockLen);
-	}
-	else
-	{
-		if (Debug_appendonly_print_storage_headers)
-			elog(LOG,
-				 "Append-Only storage make small header result: bytes_0_3 0x%X",
-				 smallHeader->bytes_0_3);
-	}
-}
-void
-AppendOnlyStorage_LogHeader(
+AppendOnlyStorage_LogBlockHeader(
 	char			*tableName,
 	int				segmentFileNum,
 	int64			headerOffsetInFile,
-	uint8			*headerPtr)
+	uint8			*headerPtr,
+	bool			usingChecksums)
 {
-	AOLargeHeader 	*largeHeader;
+	AOBlockHeader 	*blockHeader;
 	int32			headerLen;
 	int32			wholeHeaderLen;
 
-	bool		isLarge;
-	int			applicationSpecific;
+	int			executorBlockKind;
 	int			rowCount;
-//	bool		isFragmented;
 	bool		hasChecksum;
 	int32		dataLength;
 	int32		compressedLength;
 	int32		overallBlockLen;
 
-	pg_crc32	*checksumPtr;
-	pg_crc32	checksum;
+	pg_crc32	*blockChecksumPtr = NULL;
+	pg_crc32	blockChecksum;
+	pg_crc32	*headerChecksumPtr = NULL;
+	pg_crc32	headerChecksum;
 
 	Assert(headerPtr != NULL);
 
-	largeHeader = (AOLargeHeader*)headerPtr;
+	blockHeader = (AOBlockHeader*)headerPtr;
 
-	if (!AOLargeHeaderGet_isLargeHeader(largeHeader))
+	headerLen = AO_HEADER_LEN;
+
+	executorBlockKind  = 	AOBlockHeaderGet_executorBlockKind(blockHeader);
+	rowCount = 				AOBlockHeaderGet_rowCount(blockHeader);
+	
+	wholeHeaderLen =		headerLen + 
+							(hasChecksum ? 2 * sizeof(pg_crc32) : 0);
+	
+	dataLength =			AOBlockHeaderGet_dataLength(blockHeader);
+	
+	compressedLength =		AOBlockHeaderGet_compressedLength(blockHeader);
+
+	overallBlockLen =		wholeHeaderLen +
+	                        AOStorage_RoundUp(
+	                        	(compressedLength == 0 ? dataLength : compressedLength));
+
+	if (usingChecksums)
 	{
-		AOSmallHeader *smallHeader;
+		blockChecksumPtr = (pg_crc32*)&headerPtr[headerLen];
+		blockChecksum = *blockChecksumPtr;
 		
-		smallHeader = (AOSmallHeader*)headerPtr;
-		headerLen = AOSMALL_HEADER_LEN;
-		isLarge = false;
+		headerLen += sizeof(pg_crc32);
 		
-		applicationSpecific = 	AOSmallHeaderGet_applicationSpecific(smallHeader);
-		rowCount = 				AOSmallHeaderGet_rowCount(smallHeader);
-//		isFragmented = 			false;
-		hasChecksum = 			AOSmallHeaderGet_hasChecksum(smallHeader);
-
-		// UNDONE: Add extra fragment information length.
-		wholeHeaderLen =		headerLen + 
-								(hasChecksum ? sizeof(pg_crc32) : 0);
-		
-		dataLength =			AOSmallHeaderGet_dataLength(smallHeader);
-
-		compressedLength =		0;
-
-		overallBlockLen =		wholeHeaderLen +
-		                        AOStorage_RoundUp(dataLength);
+		headerChecksumPtr = (pg_crc32*)&headerPtr[headerLen];
+		headerChecksum = *headerChecksumPtr;
 	}
 	else
 	{
-		headerLen = AOLARGE_HEADER_LEN;
-		isLarge = true;
-
-		applicationSpecific = 	AOLargeHeaderGet_applicationSpecific(largeHeader);
-		rowCount = 				AOLargeHeaderGet_rowCount(largeHeader);
-//		isFragmented = 			false;	// UNDONE: For now, we haven't added fragment support for large headers yet...
-		hasChecksum = 			AOLargeHeaderGet_hasChecksum(largeHeader);
-		
-		// UNDONE: Add extra fragment information length.
-		wholeHeaderLen =		headerLen + 
-								(hasChecksum ? sizeof(pg_crc32) : 0);
-		
-		dataLength =			AOLargeHeaderGet_dataLength(largeHeader);
-		
-		compressedLength =		AOLargeHeaderGet_compressedLength(largeHeader);
-
-		if (compressedLength == 0)
-			overallBlockLen =		wholeHeaderLen +
-			                        AOStorage_RoundUp(dataLength);
-		else
-			overallBlockLen =		wholeHeaderLen +
-			                        AOStorage_RoundUp(compressedLength);
+		blockChecksum = 0;
+		headerChecksum = 0;
 	}
 
-	if (hasChecksum)
-	{
-		checksumPtr = (pg_crc32*)&headerPtr[headerLen];
-		checksum = *checksumPtr;
-	}
-	else
-		checksum = 0;
-
-	if (!isLarge)
-		elog(LOG,
-			 "Append-Only storage short header: table %s, segment file #%d, header offset in file " INT64_FORMAT ", "
-			 "large_bytes_0_3 0x%X, large_bytes_4_7 0x%X, "
-			 "applicationSpecific = %d, "
-			 "rowCount = %d, hasChecksum = %s, checksum 0x%X, "
-			 "dataLength %d, overallBlockLen %d",
-			 tableName,
-			 segmentFileNum,
-			 headerOffsetInFile,
-			 largeHeader->large_bytes_0_3,
-			 largeHeader->large_bytes_4_7,
-			 applicationSpecific,
-			 rowCount,
-			 (hasChecksum ? "true" : "false"),
-			 checksum,
-			 dataLength,
-			 overallBlockLen);
-	else
-		elog(LOG,
-			 "Append-Only storage long header: table %s, segment file #%d, header offset in file " INT64_FORMAT ", "
-			 "large_bytes_0_3 0x%X, large_bytes_4_7 0x%X, "
-			 "applicationSpecific = %d, "
-			 "rowCount = %d, hasChecksum = %s, checksum 0x%X, "
-			 "dataLength %d, compressedLength %d, overallBlockLen %d",
-			 tableName,
-			 segmentFileNum,
-			 headerOffsetInFile,
-			 largeHeader->large_bytes_0_3,
-			 largeHeader->large_bytes_4_7,
-			 applicationSpecific,
-			 rowCount,
-			 (hasChecksum ? "true" : "false"),
-			 checksum,
-			 dataLength,
-			 compressedLength,
-			 overallBlockLen);
+	elog(LOG,
+		 "Append-Only storage long header: table %s, segment file #%d, header offset in file " INT64_FORMAT ", "
+		 "block_bytes_0_3 0x%X, block_bytes_4_7 0x%X, "
+		 "executorBlockKind = %d, "
+		 "rowCount = %d, usingChecksums = %s, header checksum 0x%X, block checksum 0x%X, "
+		 "dataLength %d, compressedLength %d, overallBlockLen %d",
+		 tableName,
+		 segmentFileNum,
+		 headerOffsetInFile,
+		 blockHeader->block_bytes_0_3,
+		 blockHeader->block_bytes_4_7,
+		 executorBlockKind,
+		 rowCount,
+		 (usingChecksums ? "true" : "false"),
+		 headerChecksum,
+		 blockChecksum,
+		 dataLength,
+		 compressedLength,
+		 overallBlockLen);
 }
 
 AOHeaderCheckError
-AppendOnlyStorage_GetHeaderInfo(
+AppendOnlyStorage_GetBlockHeaderInfo(
 	uint8			*headerPtr,
 	int				headerLen,
+	bool			usingChecksums,
 	int64			blockLimitLen,
 	int32			*overallBlockLen,
 	int32			*offset,
 	int32			*length,
-	int				*applicationSpecific,
+	int				*executorBlockKind,
 	int				*rowCount,
-	bool			*isFragmented,
-	bool			*hasChecksum,
 	bool			*isCompressed)
 {
-	AOLargeHeader 	*largeHeader;
+	AOBlockHeader 	*blockHeader;
 
 	Assert(headerPtr != NULL);
-	Assert(headerLen == AOLARGE_HEADER_LEN);
 
-	largeHeader = (AOLargeHeader*)headerPtr;
+	blockHeader = (AOBlockHeader*)headerPtr;
 
-	if (largeHeader->large_bytes_0_3 == 0)
+	if (blockHeader->block_bytes_0_3 == 0)
 		return AOHeaderCheckAllZeroes;
-
-	if (!AOLargeHeaderGet_isLargeHeader(largeHeader))
-	{
-		AOSmallHeader *smallHeader;
-		
-		smallHeader = (AOSmallHeader*)headerPtr;
-		
-		// UNDONE: Validation checks
-
-		*applicationSpecific = 	AOSmallHeaderGet_applicationSpecific(smallHeader);
-		*rowCount = 			AOSmallHeaderGet_rowCount(smallHeader);
-		*isFragmented = 		false;
-		*hasChecksum = 			AOSmallHeaderGet_hasChecksum(smallHeader);
-		*isCompressed = 		false;
-
-		// UNDONE: Add extra fragment information length.
-		*offset =				AOSMALL_HEADER_LEN + 
-								(*hasChecksum ? sizeof(pg_crc32) : 0);
-		
-		*length =				AOSmallHeaderGet_dataLength(smallHeader);
-
-		*overallBlockLen =		*offset +
-		                        AOStorage_RoundUp(*length);
-
-		return AOHeaderCheckOk;
-	}
 
 	// UNDONE: Validation checks
 
-	*applicationSpecific = 	AOLargeHeaderGet_applicationSpecific(largeHeader);
-	*rowCount = 			AOLargeHeaderGet_rowCount(largeHeader);
-	*isFragmented = 		false;	// UNDONE: For now, we haven't added fragment support for large headers yet...
-	*hasChecksum = 			AOLargeHeaderGet_hasChecksum(largeHeader);
-	*isCompressed = 		(AOLargeHeaderGet_compressedLength(largeHeader) > 0);
+	*executorBlockKind = 	AOBlockHeaderGet_executorBlockKind(blockHeader);
+	*rowCount = 			AOBlockHeaderGet_rowCount(blockHeader);
+	*isCompressed = 		(AOBlockHeaderGet_compressedLength(blockHeader) > 0);
 	
-	// UNDONE: Add extra fragment information length.
-	*offset =				AOLARGE_HEADER_LEN + 
-							(*hasChecksum ? sizeof(pg_crc32) : 0);
+	*offset =				AO_HEADER_LEN + 
+							(usingChecksums ? 2 * sizeof(pg_crc32) : 0);
 	
 	if (!*isCompressed)
-		*length =			AOLargeHeaderGet_dataLength(largeHeader);
+		*length =			AOBlockHeaderGet_dataLength(blockHeader);
 	else
-		*length =			AOLargeHeaderGet_compressedLength(largeHeader);
+		*length =			AOBlockHeaderGet_compressedLength(blockHeader);
 	
 	*overallBlockLen =		*offset +
 	                        AOStorage_RoundUp(*length);
@@ -395,47 +303,69 @@ int32
 AppendOnlyStorage_GetUncompressedLen(
 	uint8			*headerPtr)
 {
-	AOLargeHeader 	*largeHeader;
+	AOBlockHeader 	*blockHeader;
 
 	Assert(headerPtr != NULL);
-	largeHeader = (AOLargeHeader*)headerPtr;
-	Assert(largeHeader->large_bytes_0_3 != 0);
-	Assert(AOLargeHeaderGet_isLargeHeader(largeHeader));
+	blockHeader = (AOBlockHeader*)headerPtr;
+	Assert(blockHeader->block_bytes_0_3 != 0);
 
-	return AOLargeHeaderGet_dataLength(largeHeader);
+	return AOBlockHeaderGet_dataLength(blockHeader);
 }
 
 bool
-AppendOnlyStorage_VerifyChecksum(
+AppendOnlyStorage_VerifyHeaderChecksum(
+	uint8			*headerPtr,
+	pg_crc32		*storedChecksum,
+	pg_crc32		*computedChecksum)
+{
+	int32			headerLen;
+
+	pg_crc32	*headerChecksumPtr;
+	
+	Assert(headerPtr != NULL);
+	Assert(storedChecksum != NULL);
+	Assert(computedChecksum != NULL);
+	headerLen = AO_HEADER_LEN +
+				sizeof(pg_crc32);		// Block checksum.
+
+	/*
+	 * CRC checksum is first 32 bits after the whole header.
+	 */
+	headerChecksumPtr = (pg_crc32*)&headerPtr[headerLen];
+	*storedChecksum = *headerChecksumPtr;
+	
+	*computedChecksum = AppendOnlyStorage_ComputeHeaderChecksum(
+														headerPtr,
+														headerLen);
+
+	return (*storedChecksum == *computedChecksum);	
+}
+
+bool
+AppendOnlyStorage_VerifyBlockChecksum(
 	uint8			*headerPtr,
 	int32			overallBlockLen,
 	pg_crc32		*storedChecksum,
 	pg_crc32		*computedChecksum)
 {
-	AOLargeHeader 	*largeHeader;
-	int32			headerLen;
-
-	pg_crc32	*checksumPtr;
+	pg_crc32	*blockChecksumPtr;
 	
 	Assert(headerPtr != NULL);
 	Assert(storedChecksum != NULL);
 	Assert(computedChecksum != NULL);
-	largeHeader = (AOLargeHeader*)headerPtr;
-	headerLen = (AOLargeHeaderGet_isLargeHeader(largeHeader) ? 
-													AOLARGE_HEADER_LEN :
-													AOSMALL_HEADER_LEN);
 
 	/*
-	 * CRC checksum is first 32 bits after small/large header.
+	 * Block checksum is first 32 bits after header.
 	 */
-	checksumPtr = (pg_crc32*)&headerPtr[headerLen];
-	*storedChecksum = *checksumPtr;
+	blockChecksumPtr = (pg_crc32*)&headerPtr[AO_HEADER_LEN];
+	*storedChecksum = *blockChecksumPtr;
 	
-	*computedChecksum = AppendOnlyStorage_ComputeChecksum(
-													headerPtr,
-													headerLen,
-													overallBlockLen);
+	*computedChecksum = AppendOnlyStorage_ComputeBlockChecksum(
+														headerPtr,
+														AO_HEADER_LEN + sizeof(pg_crc32),
+														overallBlockLen);
 
 	return (*storedChecksum == *computedChecksum);	
 }
+
 

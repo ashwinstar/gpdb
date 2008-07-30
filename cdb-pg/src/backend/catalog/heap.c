@@ -870,7 +870,8 @@ heap_create_with_catalog(const char *relname,
 	validateAppendOnlyRelOptions(appendOnlyRel, 
 								 stdRdOptions->blocksize, 
 								 safefswritesize,
-								 stdRdOptions->compresslevel, 
+								 stdRdOptions->compresslevel,
+								 stdRdOptions->checksum,
 								 relkind);
 	if(appendOnlyRel)
 		relkind = RELKIND_APPEND_ONLY;
@@ -980,7 +981,8 @@ heap_create_with_catalog(const char *relname,
 		InsertAppendOnlyEntry(relid, 
 							  stdRdOptions->blocksize, 
 							  safefswritesize,
-							  stdRdOptions->compresslevel);
+							  stdRdOptions->compresslevel,
+							  stdRdOptions->checksum);
 	}
 			
 	

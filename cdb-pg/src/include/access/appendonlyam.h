@@ -52,9 +52,8 @@ typedef struct AppendOnlyInsertDescData
 	VarBlockMaker	varBlockMaker;
 	int64			bufferCount;
 	bool			shouldCompress;
-	bool			wantChecksum;
-	bool			tryingLargeHeader;
-	int32			headerLenNeeded;
+	bool			usingChecksum;
+	int32			headerLen;
 	uint8			*nonCompressedHeader;
 	int				compressLevel;  /* compression level 0-9 */
 	uint8			*tempSpace;
