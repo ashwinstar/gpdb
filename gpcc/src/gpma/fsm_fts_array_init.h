@@ -8,6 +8,8 @@ static apr_status_t a_fts_array_config_verify() {
     char dir[1024];
     int port, nprimary, nmirror;
 
+    nprimary = nmirror = 0;
+
     /* name must exist */
     if (! config_get(gpma.cfg, CONFIG_DBNAME_KEY)) {
 	gpcc_log_error("\t- %s missing", CONFIG_DBNAME_KEY);
@@ -72,7 +74,7 @@ static apr_status_t a_fts_array_config_verify() {
     }
 
     if (nprimary != nmirror) {
-	gpcc_log_error("\t- number of primary != number of mirror");
+	gpcc_log_error("\t- number of primary (%d) != number of mirror (%d)", nprimary, nmirror);
 	errcnt++;
     }
     
