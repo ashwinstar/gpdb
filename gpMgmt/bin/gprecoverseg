@@ -38,6 +38,10 @@ Usage: gprecoverseg [--version] [-?qaf] [-D] [-i input_config] [-o output_config
                           force a recovery, even though no instance segments are marked as invalid on the master
                           CAUTION:-USE THIS OPTION WITH CARE!
                           example gprecoverseg -z /dbfast1/segment1:localhost
+          -c        : <failed_segment_instance_dbid>
+                          force a recovery, even though no instance segments are marked as invalid on the master
+                          CAUTION:-USE THIS OPTION WITH CARE!
+                          example gprecoverseg -c 4
           -B        : <number> run this batch of recovery segment processes in parallel [default: 4]
 
           Connection options:
@@ -81,6 +85,7 @@ opt['-l'] = None
 opt['-i'] = None
 opt['-o'] = None
 opt['-D'] = False
+opt['-c'] = 0
 
 arg = {}
 arg['exit'] = 0
@@ -99,7 +104,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?Dqafs:d:z:B:p:l:i:o:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?Dqafs:d:z:B:p:l:i:o:c:', ['version'])
     except Exception, e:
         usage('[ERROR]:-' + str(e))
 
@@ -117,6 +122,7 @@ def parseCommandLine():
         elif (switch == '-i'):        opt[switch] = val
         elif (switch == '-o'):        opt[switch] = val
         elif (switch == '-D'):        opt[switch] = True
+        elif (switch == '-c'):        opt[switch] = int(val)
 
     gpmlib.log_set_module(script_name)
     # set verbose
@@ -147,6 +153,9 @@ def parseCommandLine():
 
     if not os.path.isdir(opt['-d']):
         gpmlib.error('MASTER_DATA_DIRECTORY %s not exists or not a directory' % opt['-d'])
+
+    if opt['-z'] and opt['-c'] > 0:
+        gpmlib.error('option -z and -c cannot specify at the same time')
 
     
 ################
@@ -1138,39 +1147,53 @@ def get_host(db, failed_qe, pri_pool_dir_host_chk_array,
 def force_recover(db):
     global opt
 
-    c = opt['-z'].split(':')
-    if len(c) != 2:
-        gpmlib.fatal('datadir:host expected for -z option')
+    if opt['-z']:
+        c = opt['-z'].split(':')
+        if len(c) != 2:
+            gpmlib.fatal('datadir:host expected for -z option')
 
-    failed_dir = c[0]
-    failed_host = c[1]
+        failed_dir = c[0]
+        failed_host = c[1]
 
-    if failed_dir == '' or failed_host == '' or failed_dir == failed_host:
-        gpmlib.fatal('Option -z string %s incorrect' % opt['-z'])
+        if failed_dir == '' or failed_host == '' or failed_dir == failed_host:
+            gpmlib.fatal('Option -z string %s incorrect' % opt['-z'])
         
-    # Obtain hostname for segment instance directory that is to be recovered
-    db.execute("select count(*) from gp_configuration where datadir=$1 and hostname=$2",
-               failed_dir,
-               failed_host)
-    r = db.read_tuple()
-    failed_instance_count = r[0]
-    if failed_instance_count == 0:
-        gpmlib.error('[FATAL]:- Could not locate %s for host %s' % (failed_dir, failed_host))
+        # Obtain hostname for segment instance directory that is to be recovered
+        db.execute("select count(*) from gp_configuration where datadir=$1 and hostname=$2",
+                   failed_dir,
+                   failed_host)
+        r = db.read_tuple()
+        failed_instance_count = r[0]
+        if failed_instance_count == 0:
+            gpmlib.error('[FATAL]:- Could not locate %s for host %s' % (failed_dir, failed_host))
         if failed_instance_count > 1:
-            gpmlib.error('[FATAL]:- Found multiple records for %s for host %s' (failed_dir, failed_host))
+            gpmlib.error('[FATAL]:- Found multiple records for %s for host %s' % (failed_dir, failed_host))
                 
-    db.execute("select definedprimary, hostname, port, datadir, dbid, content from gp_configuration where datadir=$1 and hostname=$2",
-               failed_dir, failed_host)
-    failed_instance_array = [ x for x in db.iterate_dict() ]
+        db.execute("select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration where datadir=$1 and hostname=$2",
+                   failed_dir, failed_host)
+    else:
+        db.execute("select count(*) from gp_configuration where dbid=$1", opt['-c'])
+        r = db.read_tuple()
+        failed_instance_count = r[0]
+        if failed_instance_count == 0:
+            gpmlib.error('[FATAL]:- Could not locate segment with dbid %d' % opt['-c'])
+        if failed_instance_count > 1:
+            gpmlib.error('[FATAL]:- Found multiple records for dbid %d' % opt['-c'])
+                
+        db.execute("select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration where dbid=$1", opt['-c'])        
 
+    failed_instance_array = [ x for x in db.iterate_dict() ]
     failed_dbids = [ x['dbid'] for x in failed_instance_array]
-    db.execute('''select definedprimary, hostname, port, datadir, dbid, content from gp_configuration 
+    db.execute('''select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration 
                   where dbid<> %d and 
                   content in (select content from gp_configuration where dbid=%d)''' %
                (failed_dbids[0], failed_dbids[0]))
     active_instance_array = [ x for x in db.iterate_dict() ]
     if len(active_instance_array) != 1:
         gpmlib.fatal('Did not locate 1 recovery segment instance, obtained %d active segment' % len(active_instance_array))
+    for x in active_instance_array:
+        if x['valid'] == False:
+            gpmlib.fatal('[FATAL]:- Recovery segment instance (%d) is invalid' % x['dbid'])
 
     opt['-f'] = True
 
@@ -1349,7 +1372,7 @@ def parse_config(db):
                 cfg = failed_qe[0].split(':')
                 if len(cfg) != 3:
                     gpmlib.error('[FATAL]:- config file format error. %s' % line)
-                db.execute('''select definedprimary, hostname, port, datadir, dbid, content from gp_configuration where hostname=$1 and port=$2 and datadir=$3''',
+                db.execute('''select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration where hostname=$1 and port=$2 and datadir=$3''',
                            cfg[0].strip(), int(cfg[1]), cfg[2].strip())
                 r = db.read_dict()
                 if r is None:
@@ -1376,11 +1399,13 @@ def parse_config(db):
     failed_dbids = [ x['dbid'] for x in failed_instance_array]
 
     for failed_dbid in failed_dbids:
-        db.execute('''select definedprimary, hostname, port, datadir, dbid, content from gp_configuration 
+        db.execute('''select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration 
                   where dbid<> %d and 
                   content in (select content from gp_configuration where dbid=%d)''' %
                    (failed_dbid, failed_dbid))  
         r = db.read_dict()
+        if r['valid'] == False:
+            gpmlib.fatal('[FATAL]:- recovery segment instance (%d) is invalid' % r['dbid'])
         active_instance_array.append(r)
 
     update_sql = None
@@ -1479,7 +1504,7 @@ try:
             (failed_dbids, failed_instance_array, active_instance_array, pool_failed_instance_array, update_sql) = parse_config(db)
         else:
 
-            if opt['-z']:
+            if opt['-z'] or opt['-c'] > 0:
                 # Force recovery
                 (failed_dbids, failed_instance_array, active_instance_array) = force_recover(db)
             else:
