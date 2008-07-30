@@ -1466,3 +1466,36 @@ select * from foo;
 select * from bar;
 
 -- XXX: not yet: VALIDATE parameter
+
+
+-- Check for overflow of circular data types like time
+-- Should fail
+CREATE TABLE TIME_TBL_HOUR_2 (f1 time(2)) distributed by (f1)
+partition by range (f1)
+(
+  start (time '00:00') end (time '24:00') EVERY (INTERVAL '1 hour')
+);
+-- Should fail
+CREATE TABLE TIME_TBL_HOUR_2 (f1 time(2)) distributed by (f1)
+partition by range (f1)
+(
+  start (time '00:00') end (time '23:59') EVERY (INTERVAL '1 hour')
+);
+-- Should work
+CREATE TABLE TIME_TBL_HOUR_2 (f1 time(2)) distributed by (f1)
+partition by range (f1)
+(
+  start (time '00:00') end (time '23:00') EVERY (INTERVAL '1 hour')
+);
+drop table TIME_TBL_HOUR_2;
+-- Check for every parameters that just don't make sense
+create table hhh_r1 (a char(1), b date, d char(3)) 
+distributed by (a) partition by range (b)
+(                                                              
+partition aa start (date '2007-01-01') end (date '2008-01-01') 
+      every (interval '0 days')
+);
+
+create table foo (i int) distributed by(i)
+partition by range(i)
+(start (1) end (20) every(0));

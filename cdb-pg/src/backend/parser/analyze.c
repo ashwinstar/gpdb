@@ -4068,7 +4068,7 @@ preprocess_range_spec(partValidationState *vstate)
 	ListCell *lc;
 	List *newelts = NIL;
 	List *plusop = list_make2(makeString("pg_catalog"), makeString("+"));
-	List *leop = list_make2(makeString("pg_catalog"), makeString("<"));
+	List *ltop = list_make2(makeString("pg_catalog"), makeString("<"));
 	PartitionElem *clauses;
 	RegProcedure *sortfuncs;
 	int i;
@@ -4134,6 +4134,7 @@ preprocess_range_spec(partValidationState *vstate)
 			bool lessthan = true;
 			int everycount = 0;
 			List *everyelts = NIL;
+			bool first = true;
 			
 			Assert(pbs->partStart);
 			Assert(pbs->partEnd);
@@ -4147,7 +4148,8 @@ preprocess_range_spec(partValidationState *vstate)
 				PartitionElem *newel;
 				PartitionBoundSpec *newbs;
 				PartitionRangeItem *newri;
-				ListCell *lcstart, *lcend, *lcevery, *lccol;
+				ListCell *lcstart, *lcend, *lcevery, *lccol, *lclastend;
+				List *lastend = NIL;
 				
 				/* 
 				 * Other parts of the parser want to know how many clauses
@@ -4174,11 +4176,13 @@ preprocess_range_spec(partValidationState *vstate)
 				else
 				{
 					start = newend;
+					lastend = newend;
 					newend = NIL;
 				}
 
 				lcevery = list_head(every);
 				lcend = list_head(end);
+				lclastend = list_head(lastend);
 				
 				forboth(lcstart, start, lccol, coltypes)
 				{
@@ -4201,12 +4205,26 @@ preprocess_range_spec(partValidationState *vstate)
 											(Node *)clauseevery,
 											&typid, -1);
 
+
+					/* XXX: typmod ? */
 					myend = makeConst(type->typid, len, res, 
 									  false, typbyval);
-					/* XXX: typmod ? */
 
+					/* make sure res is bigger than the last value */
+					if (lclastend)
+					{
+						Oid typ = InvalidOid;
+						Const *prevval = (Const *)lfirst(lclastend);
+						Datum is_lt = eval_basic_opexpr(pstate, ltop,
+														(Node *)prevval,
+														(Node *)myend,
+														&typ, -1);
+
+						if (!DatumGetBool(is_lt))
+							elog(ERROR, "every interval too small");
+					}
 					restypid = InvalidOid;
-					res = eval_basic_opexpr(pstate, leop, (Node *)myend,
+					res = eval_basic_opexpr(pstate, ltop, (Node *)myend,
 										(Node *)clauseend, &restypid, -1);
 					if (!DatumGetBool(res))
 					{
@@ -4218,6 +4236,8 @@ preprocess_range_spec(partValidationState *vstate)
 
 					lcend = lnext(lcend);
 					lcevery = lnext(lcevery);
+					if (lclastend)
+						lclastend = lnext(lclastend);
 				}
 
 				newel = makeNode(PartitionElem);
@@ -4253,6 +4273,9 @@ preprocess_range_spec(partValidationState *vstate)
 				newbs->everyGenList = pbs->everyGenList;
 				
 				everyelts = lappend(everyelts, newel);
+
+				if (first)
+					first = false;
 			}
 
 			/* add everycount to each EVERY clause */
@@ -5514,7 +5537,6 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 
 	ReleaseSysCache(optup);
 
-	/* args to the function must be Const */
 	lhs = partition_arg_get_val((Node *)linitial(opexpr->args));
 	rhs = partition_arg_get_val((Node *)lsecond(opexpr->args));
 	res = OidFunctionCall2(opexpr->opfuncid, lhs, rhs);
@@ -5554,6 +5576,9 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 	return res;
 }
 
+/*
+ * XXX: this is awful, rewrite
+ */
 static int 
 partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					  char *at_depth)
@@ -5592,6 +5617,8 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 		ListCell			*lc_Every = NULL;
 		List *allNewCols;
 		List *allNewPartns = NIL;
+		List *lastval = NIL;
+		bool do_every_param_test = true;
 
 		pBSpec = NULL;
 		
@@ -5666,6 +5693,8 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 		for ( ; ; ) /* loop until exceed end */
 		{
 			ListCell *coltype = list_head(coltypes);
+			ListCell *lclastval = list_head(lastval);
+			List *curval = NIL;
 
 			int sqlRc = 0;
 			lc_Start = list_head(pRI_Start->partRangeVal);
@@ -5684,7 +5713,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				Node *n1t, *n2t, *n3t;
 				Datum res;
 				Const *c;
-				List *oprmul, *oprplus, *oprcompare;
+				List *oprmul, *oprplus, *oprcompare, *ltop;
 				Oid restypid;
 				Type typ;
 				char *outputstr;
@@ -5700,6 +5729,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				oprmul = lappend(NIL, makeString("*"));
 				oprplus = lappend(NIL, makeString("+"));
 				oprcompare = lappend(NIL, makeString(compare_op));
+				ltop = lappend(NIL, makeString("<"));
 				
 				n1t = transformExpr(pstate, n1);
 				n1t = coerce_type(NULL, n1t, exprType(n1t), coltypid,
@@ -5743,16 +5773,6 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 								  typeByVal(typ));
 					ReleaseSysCache(typ);
 				}
-
-				/* XXX XXX: compare  prev value of 
-				   every_num * (every_cnt * n3t) with current.
-				   Set stop flag if current <= prev
-				   handle MPP-3047.
-
-				   save current as prev
-
-				*/
-
 				
 				/* 
 				 * n1t + (...) 
@@ -5768,6 +5788,77 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				c = makeConst(restypid, typeLen(typ), res, false,
 							  typeByVal(typ));
 
+				/* 
+				 * Now we must detect a few conditions. 
+				 *
+				 * We must reject every() parameters which do not significantly
+				 * increment the starting value. For example:
+				 *
+				 * start ('2008-01-01') end ('2010-01-01') every('0 days')
+				 *
+				 * We'll detect this case on the second iteration by observing
+				 * that the current partition end is no greater than the
+				 * previous.
+				 *
+				 * We must also consider:
+				 *
+				 * start (1) end (10) every(0.5)
+				 * start (1) end (10) every(1.5)
+				 *
+				 * The problem here is that 1.5 and 2.5 will be rounded to 2 and
+				 * 3 respectively. This means they look sane to the code but
+				 * they aren't. So, we must test that:
+				 *
+				 *   cast(1 + 0.5 as int) != (1 + 0.5)::numeric
+				 *
+				 * If we make it past this point, we still might see a current
+				 * value less than the previous value. That would be caused by
+				 * an overflow of the type which is undetected by the type
+				 * itself. Most types detect overflow but time and timetz do
+				 * not. So, if we're beyond the second iteration and detect and
+				 * overflow, error out.
+				 */
+				if (lclastval)
+				{
+					Datum res2;
+					Oid tmptyp = InvalidOid;
+
+					res2 = eval_basic_opexpr(pstate, ltop,
+											 (Node *)lfirst(lclastval),
+											 (Node *)c,
+											 &tmptyp,
+											 ((A_Const *)n3)->location);
+
+					if (!DatumGetBool(res2))
+					{
+						/* 
+						 * Second iteration: parameter hasn't increased the
+						 * current end from the old end.
+						 */
+						if (do_every_param_test)
+						{
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("EVERY parameter too small"),
+									 parser_errposition(pstate,
+													((A_Const *)n3)->location)));
+						}
+						else
+						{
+							/* 
+							 * We got a smaller value but later than we thought
+							 * so it must be an overflow.
+							 */
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("END parameter not reached before type overflows"),
+									 parser_errposition(pstate,
+													((A_Const *)n2)->location)));
+						}
+					}
+				}
+
+				curval = lappend(curval, c);
 
 				/* get the string for the calculated type */
 				{
@@ -5785,6 +5876,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				}
 
 				ReleaseSysCache(typ);
+
 
 				/* the comparison */
 				restypid = InvalidOid;
@@ -5816,6 +5908,9 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				lc_End   = lnext(lc_End);
 				lc_Every = lnext(lc_Every);
 				coltype = lnext(coltype);
+				if (lclastval)
+					lclastval = lnext(lclastval);
+
 				colCnt--;
 			} /* end for all cols */
 
@@ -5832,8 +5927,12 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 			if (!sqlRc)
 				break;
 
-			/* XXX: we're cheating here! */
 			everyCnt->constvalue++;
+			/* if we have lastval set, the every test will have been done */
+			if (lastval)
+				do_every_param_test = false;
+
+			lastval = curval;
 		} /* end loop until exceed end */
 
 	l_EveryLoopEnd:		

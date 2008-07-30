@@ -2691,3 +2691,68 @@ select * from bar;
 (0 rows)
 
 -- XXX: not yet: VALIDATE parameter
+-- Check for overflow of circular data types like time
+-- Should fail
+CREATE TABLE TIME_TBL_HOUR_2 (f1 time(2)) distributed by (f1)
+partition by range (f1)
+(
+  start (time '00:00') end (time '24:00') EVERY (INTERVAL '1 hour')
+);
+ERROR:  END parameter not reached before type overflows
+LINE 4:   start (time '00:00') end (time '24:00') EVERY (INTERVAL '1...
+                                         ^
+-- Should fail
+CREATE TABLE TIME_TBL_HOUR_2 (f1 time(2)) distributed by (f1)
+partition by range (f1)
+(
+  start (time '00:00') end (time '23:59') EVERY (INTERVAL '1 hour')
+);
+ERROR:  END parameter not reached before type overflows
+LINE 4:   start (time '00:00') end (time '23:59') EVERY (INTERVAL '1...
+                                         ^
+-- Should work
+CREATE TABLE TIME_TBL_HOUR_2 (f1 time(2)) distributed by (f1)
+partition by range (f1)
+(
+  start (time '00:00') end (time '23:00') EVERY (INTERVAL '1 hour')
+);
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_1" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_2" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_3" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_4" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_5" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_6" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_7" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_8" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_9" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_10" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_11" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_12" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_13" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_14" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_15" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_16" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_17" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_18" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_19" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_20" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_21" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_22" for table "time_tbl_hour_2"
+NOTICE:  CREATE TABLE will create partition "time_tbl_hour_2_1_prt_23" for table "time_tbl_hour_2"
+drop table TIME_TBL_HOUR_2;
+-- Check for every parameters that just don't make sense
+create table hhh_r1 (a char(1), b date, d char(3)) 
+distributed by (a) partition by range (b)
+(                                                              
+partition aa start (date '2007-01-01') end (date '2008-01-01') 
+      every (interval '0 days')
+);
+ERROR:  EVERY parameter too small
+LINE 5:       every (interval '0 days')
+                              ^
+create table foo (i int) distributed by(i)
+partition by range(i)
+(start (1) end (20) every(0));
+ERROR:  EVERY parameter too small
+LINE 3: (start (1) end (20) every(0));
+                                  ^
