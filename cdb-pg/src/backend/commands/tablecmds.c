@@ -9323,6 +9323,12 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 						break;
 					}
 				}
+				else if (c->constisnull)
+				{
+					/* constant is null but datum isn't so break */
+					matched = false;
+					break;
+				}
 				else
 				{
 					Oid lhsid = tupdesc->attrs[attno - 1]->atttypid;
@@ -9537,7 +9543,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			low = mid + 1;
 			continue;
 		}
-		else if(ret < 0)
+		else if (ret < 0)
 		{
 			high = mid - 1;
 			continue;
