@@ -6,9 +6,9 @@ static apr_status_t a_fts_array_config_verify() {
     char buf[1024];
     char host[1024];
     char dir[1024];
-    int port, nprimary, nmirror;
+    int port, nprimary, nmirror, nsegments;
 
-    nprimary = nmirror = 0;
+    nprimary = nmirror = nsegments = 0;
 
     /* name must exist */
     if (! config_get(gpma.cfg, CONFIG_DBNAME_KEY)) {
@@ -53,7 +53,7 @@ static apr_status_t a_fts_array_config_verify() {
 	sprintf(buf, "seg.%d.1", i);
 	v = config_get(gpma.cfg, buf);
 	if (!v) {
-	    if (i < 2) {
+	    if (i == 1) {
 		gpcc_log_error("\t- %s not set", buf);
 		errcnt++;
 	    }
@@ -68,12 +68,13 @@ static apr_status_t a_fts_array_config_verify() {
     }    
     nmirror = i;
 
-    if (! (2 <= i && i < 512)) {
+    nsegments = nprimary + nmirror;
+    if (! (2 <=  nsegments && nsegments < 512)) {
 	gpcc_log_error("\t- too many segments (max 512)");
 	errcnt++;
     }
 
-    if (nprimary != nmirror) {
+    if (nmirror != 0 && nprimary != nmirror) {
 	gpcc_log_error("\t- number of primary (%d) != number of mirror (%d)", nprimary, nmirror);
 	errcnt++;
     }
