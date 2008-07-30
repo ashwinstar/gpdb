@@ -13,13 +13,13 @@ RUNNING THE GREENPLUM DATABASE INSTALLER
 
 2. Execute the installer using bash:
 
-   /bin/bash greenplum-db-3.1.0.0-<PLATFORM>.bin 
+   /bin/bash greenplum-db-3.2.0.0-<PLATFORM>.bin 
 
 3. When prompted, type 'yes' to accept the license agreement.
 
 4. When prompted, provide an installation path. For example:
 
-   /usr/local/greenplum-db-3.1.0.0
+   /usr/local/greenplum-db-3.2.0.0
 
 
 ***********************************************************
@@ -98,7 +98,7 @@ S<##>gpdb_ndd where <##> is any two numbers:
 POST INSTALLATION STEPS
 ***********************************************************
 
-These are the high-level steps to configure and initialize a 
+These are the high-level steps to configure and initialize a new 
 Greenplum Database instance. For detailed instructions, please 
 see the 'Greenplum Database Administrator Guide' located in
 $GPHOME/docs.
@@ -168,17 +168,9 @@ The following Greenplum Database documentation is available in the
 $GPHOME/docs directory of your Greenplum installation, or you 
 can go to http://gpn.greenplum.com to get the latest documentation:
 
-* GPAdminGuide.pdf - Greenplum Database Administrator Guide 
-  (Installation / Configuration / Management)
+* GPAdminGuide.pdf - Greenplum Database Administrator Guide
 
-* GPUserGuide.pdf - Greenplum Database User Guide 
-  (SQL Commands / Common DBA Tasks)
-
-* GPPerfTuning.pdf - Greenplum Database Performance Tuning Guide
-  (Tips and Strategies for Performance Tuning)
-
-* GPOverview.pdf - Greenplum Database Overview Guide 
-  (Architecture / Concepts) 
+* README - Release notes for this version of Greenplum Database.
 
 
 
