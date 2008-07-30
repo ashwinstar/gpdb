@@ -343,21 +343,22 @@ CHK_DUMP_DIR () {
 			LOG_MSG "[INFO]:-Write test passed on $REPORTFILEDIR/$DUMP_SUB_DIR"
 		fi
 	    fi
-	fi
-	CHK_DIR $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE
-	if [ $EXISTS -ne 0 ]; then
-	    $MKDIR $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE
-	    ERROR_CHK $? "make dump directory $REPORTFILEDIR/$DUMP_SUB_DIR on Master segment" 2
-	else
-		LOG_MSG "[INFO]:-Directory $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE exists on Master segment"
+
+	    CHK_DIR $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE
+	    if [ $EXISTS -ne 0 ]; then
+		$MKDIR $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE
+		ERROR_CHK $? "make dump report directory $REPORTFILEDIR/$DUMP_SUB_DIR on Master segment" 2
+	    else
+		LOG_MSG "[INFO]:-Report directory $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE exists on Master segment"
 		$TOUCH $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE/tmp_file_test
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Cannot write to $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE" 2
+			ERROR_EXIT "[FATAL]:-Cannot write to report directory $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE" 2
 		else
 			$RM -f $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE/tmp_file_test
 			LOG_MSG "[INFO]:-Write test passed on $REPORTFILEDIR/$DUMP_SUB_DIR/$DUMP_DATE"
 		fi	    
+	    fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
