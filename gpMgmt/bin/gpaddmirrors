@@ -22,7 +22,7 @@ Usage: gpaddmirrors [--version] [-?aq] [-D] [-d master_data_dir] [-l log_dir] [-
           -s        : spread mirror mode
           -p        : mirror offset, if not supplied, script will calculate a suitable
                       port offset for the mirror segment instances, range 7000 - 61000
-                      current offset value is 1000
+                      current offset value is 10000
           -m        : mirror data directory config file
           -B        : number of parallel process to spawn to process mirror creation
 
@@ -65,7 +65,7 @@ opt['-a'] = False
 opt['-s'] = False
 opt['-i'] = None
 opt['-o'] = None
-opt['-p'] = 1000
+opt['-p'] = 10000
 opt['-l'] = None
 opt['-D'] = False
 
@@ -133,6 +133,8 @@ def parseCommandLine():
         opt['-d'] = os.getenv('MASTER_DATA_DIRECTORY')
         if not opt['-d']:
             gpmlib.error('MASTER_DATA_DIRECTORY not found')
+    else:
+        os.environ['MASTER_DATA_DIRECTORY'] = opt['-d']
 
     if not os.path.isdir(opt['-d']):
         gpmlib.error('MASTER_DATA_DIRECTORY %s not exists or not a directory' % opt['-d'])

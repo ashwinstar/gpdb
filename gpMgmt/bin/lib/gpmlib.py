@@ -377,7 +377,7 @@ def get_master_port(master_data_dir):
             sys.exit('[FATAL]:-Failed to obtain master port number from %s/postgresql.conf' % master_data_dir)
         master_port = int(out[0])
     else:
-        sys.exit('[FATAL]:-Do not have access to %s/postgres.conf' % master_data_dir)
+        sys.exit('[FATAL]:-Do not have access to %s/postgresql.conf' % master_data_dir)
 
     return master_port
             
