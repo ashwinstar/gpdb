@@ -1801,9 +1801,7 @@ int main(int argc, const char* const argv[])
 	setlinebuf(stdout);
     }
 
-    event_dispatch();
-
-    return 0;
+    return event_dispatch();
 }
 
 static char* path_basename(const char* path, apr_pool_t* pool)
