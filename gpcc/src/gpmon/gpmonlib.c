@@ -92,6 +92,10 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 		GPMON_NTOHLL(p->p_mem);
 		GPMON_NTOHLL(p->p_memmax);
                 GPMON_NTOHLL(p->_cpu_elapsed);
+                GPMON_NTOHLL(p->rows_in);
+                GPMON_NTOHLL(p->rows_out);
+                GPMON_NTOHLL(p->bytes_in);
+                GPMON_NTOHLL(p->bytes_out);
 		GPMON_NTOHL(p->_p_metrics.fd_cnt);
 		GPMON_NTOHLL(p->_p_metrics.mem.size);
 		GPMON_NTOHLL(p->_p_metrics.mem.resident);

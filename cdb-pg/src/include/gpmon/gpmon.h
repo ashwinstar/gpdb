@@ -137,6 +137,8 @@ struct gpmon_qexec_t {
     apr_int32_t tstart, tduration; /* start (wall clock) time and duration.  XXX Leave as 0 for now. */
     apr_int64_t p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */ 
     apr_int64_t _cpu_elapsed; /* CPU elapsed for iter */
+    apr_int64_t rows_in, rows_out;
+    apr_int64_t bytes_in, bytes_out;
     gpmon_proc_metrics_t _p_metrics;
     char  phase[NAMEDATALEN];		/* Spill, ReSpill, etc */ 
     struct {
