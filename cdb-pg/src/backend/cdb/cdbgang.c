@@ -888,6 +888,7 @@ createGang(GangType type, int gang_id, int size, int content, char *portal_name)
 												  newGangDefinition->size);
 
 		disconnectAndDestroyGang(newGangDefinition);
+		CheckForResetSession();
 
 		elog((errorOut ? ERROR : WARNING), "Greenplum Database detected segment failure(s), system is reconnected in %s mode", isFtsReadOnlySet() ? "read-only" : "read-write");
 
@@ -3896,7 +3897,7 @@ CheckForResetSession(void)
 	int 	oldSessionId = 0;
 	int 	newSessionId = 0;
 	Oid		dropTempNamespaceOid;
-	
+
 	if (!NeedResetSession)
 		return;
 
@@ -3905,6 +3906,9 @@ CheckForResetSession(void)
 	 */
 	if (NeedSessionIdChange)
 	{
+		/* If we have gangs, we can't change our session ID. */
+		Assert(!gangsExist());
+
 		oldSessionId = gp_session_id;
 		ProcNewMppSessionId(&newSessionId);
 		
@@ -3919,7 +3923,10 @@ CheckForResetSession(void)
 	}
 
 	if (IsTransactionOrTransactionBlock())
+	{
+		NeedResetSession = false;
 		return;
+	}
 	
 	dropTempNamespaceOid = OldTempNamespace;
 	OldTempNamespace = InvalidOid;	
