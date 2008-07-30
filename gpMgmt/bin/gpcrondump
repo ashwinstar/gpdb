@@ -948,9 +948,9 @@ DELETE_CURRENT_DUMP () {
 DELETE_OLD_DUMPS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Get a list of all dbids
-	DBID_LIST=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1;"`)
+	ALL_DBID_LIST=(`$EXPORT_LIB_PATH;$PSQL -p $MASTER_PORT "$DEFAULTDB" -R" " -A -t -c"select dbid from $GP_PG_VIEW as _gp_pg_view where content<>-1;"`)
 	COUNT=0
-	for DBID in ${DBID_LIST[@]}
+	for DBID in ${ALL_DBID_LIST[@]}
 	do
 		CHK_DATA
 		LOG_MSG "[INFO]:-Processing $DIR_HOST segment directory $DIR" 1
@@ -963,7 +963,7 @@ DELETE_OLD_DUMPS () {
 	done
 			DEL_SET=`$ECHO ${DEL_ARRAY[@]}|$TR ' ' '\n'|$SORT|$HEAD -1`
 	if [ x"" != x"$DEL_SET" ];then
-		for DBID in ${DBID_LIST[@]}
+		for DBID in ${ALL_DBID_LIST[@]}
 		do
 			CHK_DATA
 			LOG_MSG "[INFO]:-Preparing to remove $DEL_SET on $DIR_HOST segment directory $DIR" 1
