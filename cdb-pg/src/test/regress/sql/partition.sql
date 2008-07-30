@@ -1263,3 +1263,206 @@ select * from region where r_regionkey = '7';
 insert into region values(7, 'abc', 'def');
 
 drop table region;
+
+-- exchange
+-- 1) test all sanity checking
+
+-- policies are different
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar (i int, j int) distributed by (j);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+drop table foo;
+drop table bar;
+
+-- random policy vs. hash policy
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar (i int, j int) distributed randomly;
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+drop table foo;
+drop table bar;
+
+-- different number of columns
+create table foo (i int, j int, k text) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar (i int, j int) distributed by (i);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+drop table foo;
+drop table bar;
+
+-- different types
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar (i int, j int8) distributed by (i);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+drop table foo;
+drop table bar;
+
+-- different column names
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar (i int, m int) distributed by (i);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+drop table foo;
+drop table bar;
+
+-- different owner 
+create role part_role;
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar (i int, j int) distributed by (i);
+set session authorization part_role;
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+
+-- back to super user
+\c -
+alter table bar owner to part_role;
+set session authorization part_role;
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+\c -
+
+-- owners should be the same, error out 
+alter table foo exchange partition for(position(6)) with table bar;
+drop table foo;
+drop table bar;
+drop role part_role;
+-- with and without OIDs
+create table foo (i int, j int) with (oids = true) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar (i int, j int) with (oids = false) distributed by (i);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+drop table foo;
+drop table bar;
+
+-- non-partition table involved in inheritance
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+
+create table barparent(i int, j int) distributed by (i);
+create table bar () inherits(barparent);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+drop table foo;
+drop table bar;
+drop table barparent;
+
+-- non-partition table involved in inheritance
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+
+create table bar(i int, j int) distributed by (i);
+create table barchild () inherits(bar);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+drop table foo;
+drop table barchild;
+drop table bar;
+-- XXX not yet: rules on non-partition table
+
+-- XXX: not yet: constraints on non-partition table
+
+-- XXX: not yet: permissions
+
+-- basic test
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar(i int, j int) distributed by (i);
+
+insert into bar values(6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+select * from bar;
+-- test that we got the dependencies right
+drop table bar;
+select * from foo;
+drop table foo;
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar(i int, j int) distributed by (i);
+
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+insert into bar values(10, 10);
+drop table foo;
+select * from bar;
+drop table bar;
+
+-- AO exchange with heap
+create table foo (i int, j int) with(appendonly = true) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar(i int, j int) distributed by (i);
+
+insert into foo values(1, 1), (2, 1), (3, 1);
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+drop table bar;
+drop table foo;
+
+-- other way around
+create table foo (i int, j int) with(appendonly = false) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar(i int, j int) with(appendonly = true) distributed by (i);
+
+insert into foo values(1, 1), (2, 1), (3, 2);
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+drop table bar;
+drop table foo;
+
+-- exchange AO with AO
+create table foo (i int, j int) with(appendonly = true) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar(i int, j int) with(appendonly = true) distributed by (i);
+
+insert into foo values(1, 2), (2, 3), (3, 4);
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+drop table bar;
+drop table foo;
+
+-- exchange same table more than once
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+create table bar(i int, j int) distributed by (i);
+
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+select * from bar;
+
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+select * from bar;
+
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+select * from bar;
+
+-- XXX: not yet: VALIDATE parameter

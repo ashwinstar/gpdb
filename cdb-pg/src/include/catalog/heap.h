@@ -102,5 +102,6 @@ extern Form_pg_attribute SystemAttributeByName(const char *attname,
 extern void CheckAttributeNamesTypes(TupleDesc tupdesc, char relkind);
 
 extern void CheckAttributeType(const char *attname, Oid atttypid);
+extern void SetRelationNumChecks(Relation rel, int numchecks);
 
 #endif   /* HEAP_H */

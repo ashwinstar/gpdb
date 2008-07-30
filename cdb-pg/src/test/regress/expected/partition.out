@@ -2301,3 +2301,393 @@ select * from region where r_regionkey = '7';
 insert into region values(7, 'abc', 'def');
 ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=21220)
 drop table region;
+-- exchange
+-- 1) test all sanity checking
+-- policies are different
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar (i int, j int) distributed by (j);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  distribution policy for "bar" must be the same as that for "foo"
+drop table foo;
+drop table bar;
+-- random policy vs. hash policy
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar (i int, j int) distributed randomly;
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  distribution policy for "bar" must be the same as that for "foo"
+drop table foo;
+drop table bar;
+-- different number of columns
+create table foo (i int, j int, k text) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar (i int, j int) distributed by (i);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  relation "bar" must have the same number columns as relation "foo"
+drop table foo;
+drop table bar;
+-- different types
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar (i int, j int8) distributed by (i);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  type mismatch for attribute "j"
+drop table foo;
+drop table bar;
+-- different column names
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar (i int, m int) distributed by (i);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  relation "bar" must have the same column names and column order as "foo"
+drop table foo;
+drop table bar;
+-- different owner 
+create role part_role;
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar (i int, j int) distributed by (i);
+set session authorization part_role;
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  must be owner of relation foo
+-- back to super user
+\c -
+alter table bar owner to part_role;
+set session authorization part_role;
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  must be owner of relation foo
+\c -
+-- owners should be the same, error out 
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  owner of "bar" must be the same as that of "foo"
+drop table foo;
+drop table bar;
+drop role part_role;
+-- with and without OIDs
+create table foo (i int, j int) with (oids = true) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar (i int, j int) with (oids = false) distributed by (i);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  "foo" and "bar" must have same OIDs setting
+drop table foo;
+drop table bar;
+-- non-partition table involved in inheritance
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table barparent(i int, j int) distributed by (i);
+create table bar () inherits(barparent);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  cannot EXCHANGE table "bar" as it inherits other table(s)
+drop table foo;
+drop table bar;
+drop table barparent;
+-- non-partition table involved in inheritance
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar(i int, j int) distributed by (i);
+create table barchild () inherits(bar);
+-- should fail
+alter table foo exchange partition for(position(6)) with table bar;
+ERROR:  cannot EXCHANGE table "bar" as it has child table(s)
+drop table foo;
+drop table barchild;
+drop table bar;
+-- XXX not yet: rules on non-partition table
+-- XXX: not yet: constraints on non-partition table
+-- XXX: not yet: permissions
+-- basic test
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar(i int, j int) distributed by (i);
+insert into bar values(6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+ i | j 
+---+---
+ 6 |  
+(1 row)
+
+select * from bar;
+ i | j 
+---+---
+(0 rows)
+
+-- test that we got the dependencies right
+drop table bar;
+select * from foo;
+ i | j 
+---+---
+ 6 |  
+(1 row)
+
+drop table foo;
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar(i int, j int) distributed by (i);
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+insert into bar values(10, 10);
+drop table foo;
+select * from bar;
+ i  | j  
+----+----
+ 10 | 10
+(1 row)
+
+drop table bar;
+-- AO exchange with heap
+create table foo (i int, j int) with(appendonly = true) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar(i int, j int) distributed by (i);
+insert into foo values(1, 1), (2, 1), (3, 1);
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+ i | j 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 1
+ 6 | 6
+(4 rows)
+
+drop table bar;
+drop table foo;
+-- other way around
+create table foo (i int, j int) with(appendonly = false) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar(i int, j int) with(appendonly = true) distributed by (i);
+insert into foo values(1, 1), (2, 1), (3, 2);
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+ i | j 
+---+---
+ 1 | 1
+ 2 | 1
+ 3 | 2
+ 6 | 6
+(4 rows)
+
+drop table bar;
+drop table foo;
+-- exchange AO with AO
+create table foo (i int, j int) with(appendonly = true) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar(i int, j int) with(appendonly = true) distributed by (i);
+insert into foo values(1, 2), (2, 3), (3, 4);
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+ i | j 
+---+---
+ 1 | 2
+ 2 | 3
+ 3 | 4
+ 6 | 6
+(4 rows)
+
+drop table bar;
+drop table foo;
+-- exchange same table more than once
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar(i int, j int) distributed by (i);
+insert into bar values(6, 6);
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+ i | j 
+---+---
+ 6 | 6
+(1 row)
+
+select * from bar;
+ i | j 
+---+---
+(0 rows)
+
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+ i | j 
+---+---
+(0 rows)
+
+select * from bar;
+ i | j 
+---+---
+ 6 | 6
+(1 row)
+
+alter table foo exchange partition for(position(6)) with table bar;
+select * from foo;
+ i | j 
+---+---
+ 6 | 6
+(1 row)
+
+select * from bar;
+ i | j 
+---+---
+(0 rows)
+
+-- XXX: not yet: VALIDATE parameter

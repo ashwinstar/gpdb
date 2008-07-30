@@ -82,7 +82,6 @@ static Oid AddNewRelationType(const char *typeName,
 static void RelationRemoveInheritance(Oid relid);
 static void StoreRelCheck(Relation rel, char *ccname, char *ccbin);
 static void StoreConstraints(Relation rel, TupleDesc tupdesc);
-static void SetRelationNumChecks(Relation rel, int numchecks);
 static List *insert_ordered_unique_oid(List *list, Oid datum);
 static void remove_exttable_tuple(Oid relid);
 /* ----------------------------------------------------------------
@@ -2022,7 +2021,7 @@ AddRelationRawConstraints(Relation rel,
  * relcache entries for the rel.  Also, this backend will rebuild its
  * own relcache entry at the next CommandCounterIncrement.
  */
-static void
+void
 SetRelationNumChecks(Relation rel, int numchecks)
 {
 	Relation	relrel;

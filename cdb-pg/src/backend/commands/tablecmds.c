@@ -290,7 +290,7 @@ static void ATExecSetRelOptions(Relation rel, List *defList, bool isReset);
 static void ATExecEnableDisableTrigger(Relation rel, char *trigname,
 						   bool enable, bool skip_system);
 static void ATExecAddInherit(Relation rel, Node *node);
-static void ATExecDropInherit(Relation rel, RangeVar *parent);
+static void ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition);
 
 /* ALTER TABLE ... PARTITION */
 static char *
@@ -352,7 +352,8 @@ static Oid DefineRelation_int(CreateStmt *stmt, char relkind,
 							  struct CdbDispatchCmdThreads **pDispatchThreads);
 static void ATExecPartAddInternal(Relation rel, Node *def);
 static void exchange_part_rule(Oid oldrelid, Oid newrelid);
-static void exchange_part_constraints(Relation oldrel, Relation newrel);
+static void exchange_part_constraints(Partition *part, Oid oldrelid, 
+									  Oid newrelid);
 #if 0
 static bool rel_is_child_partition(Oid relid);
 static bool rel_partition_get_master(Oid relid);
@@ -3155,9 +3156,9 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("distribution policy for \"%s\" "
-									"is differnet to that of \"%s\"",
-								RelationGetRelationName(rel),
-								RelationGetRelationName(newrel))));
+									"must be the same as that for \"%s\"",
+								RelationGetRelationName(newrel),
+								RelationGetRelationName(rel))));
 				}
 			}
 
@@ -3176,12 +3177,6 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				Form_pg_attribute oldatt = oldrel->rd_att->attrs[i];
 				Form_pg_attribute newatt = newrel->rd_att->attrs[i];
 
-				if (oldatt->attisdropped || newatt->attisdropped)
-					ereport(ERROR,
-							(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
-							 errmsg("cannot exchange tables which contain "
-								   	"dropped columns")));
-
 				/* attribute name */
 				if (memcmp(NameStr(oldatt->attname),
 						   NameStr(newatt->attname),
@@ -3189,7 +3184,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("relation \"%s\" must have the same column "
-									"names and order as \"%s\"",
+									"names and column order as \"%s\"",
 									RelationGetRelationName(newrel),
 									RelationGetRelationName(rel))));
 
@@ -3206,7 +3201,10 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			if (oldrel->rd_rel->relowner != newrel->rd_rel->relowner)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("owner must be the same for exchange tables")));
+						 errmsg("owner of \"%s\" must be the same as that "
+								"of \"%s\"",
+								RelationGetRelationName(newrel),
+								RelationGetRelationName(rel))));
 
 
 			/* both tables must have the same OIDs setting */
@@ -3222,14 +3220,14 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("cannot EXCHANGE table \"%s\" as it has "
-								"child tables",
+								"child table(s)",
 								RelationGetRelationName(newrel))));
 
 			if (relation_has_supers(RelationGetRelid(newrel)))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot EXCHANGE table \"%s\" as it has "
-								"inherits parent table(s)",
+						 errmsg("cannot EXCHANGE table \"%s\" as it "
+								"inherits other table(s)",
 								RelationGetRelationName(newrel))));
 
 			heap_close(oldrel, NoLock);
@@ -3512,7 +3510,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			ATExecAddInherit(rel, (Node *) cmd->def);
 			break;
 		case AT_DropInherit:
-			ATExecDropInherit(rel, (RangeVar *) cmd->def);
+			ATExecDropInherit(rel, (RangeVar *) cmd->def, false);
 			break;
 			/* CDB: Partitioned Table commands */
 		case AT_PartAdd:				/* Add */
@@ -8054,7 +8052,7 @@ MergeConstraintsIntoExisting(Relation child_rel, Relation parent_rel)
  * isn't expecting to be dropped which would actually mean data loss.
  */
 static void
-ATExecDropInherit(Relation rel, RangeVar *parent)
+ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 {
 	Relation	parent_rel;
 	Relation	catalogRelation;
@@ -8181,7 +8179,8 @@ ATExecDropInherit(Relation rel, RangeVar *parent)
 		if (dep->refclassid == RelationRelationId &&
 			dep->refobjid == RelationGetRelid(parent_rel) &&
 			dep->refobjsubid == 0 &&
-			dep->deptype == DEPENDENCY_NORMAL)
+			((dep->deptype == DEPENDENCY_NORMAL && !is_partition) ||
+			 (dep->deptype == DEPENDENCY_AUTO && is_partition)))
 			simple_heap_delete(catalogRelation, &depTuple->t_self);
 	}
 
@@ -11294,7 +11293,8 @@ exchange_part_inheritance(Oid oldrelid, Oid newrelid)
 	parent = heap_open(parentid, AccessShareLock); /* should be enough */
 	ATExecDropInherit(oldrel,
 			makeRangeVar(get_namespace_name(parent->rd_rel->relnamespace),
-					     RelationGetRelationName(parent)));
+					     RelationGetRelationName(parent)),
+			true);
 
 	inherit_parent(parent, newrel, true /* it's a partition */);
 	heap_close(parent, NoLock);
@@ -11303,9 +11303,164 @@ exchange_part_inheritance(Oid oldrelid, Oid newrelid)
 }
 
 static void
-exchange_part_constraints(Relation oldrel, Relation newrel)
+exchange_part_constraints(Partition *part, Oid oldrelid, Oid newrelid)
 {
+	Relation catalogRelation;
+	SysScanDesc scan;
+	ScanKeyData key;
+	HeapTuple	constraintTuple;
+	List *constraints;
+	ListCell *lc;
+	Relation newrel;
 
+	/* First gather up the child's constraint definitions */
+	catalogRelation = heap_open(ConstraintRelationId, AccessShareLock);
+
+	ScanKeyInit(&key,
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(oldrelid));
+
+	scan = systable_beginscan(catalogRelation, ConstraintRelidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	constraints = NIL;
+	while (HeapTupleIsValid(constraintTuple = systable_getnext(scan)))
+	{
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(constraintTuple);
+		bool isnull;
+		Datum val;
+		int i;
+		Datum *keys;
+		int nkeys;
+		bool matched = true;
+
+		if (con->contype != CONSTRAINT_CHECK)
+			continue;
+
+		/* only copy constraints which range across our partitioning columns */
+		val = heap_getattr(constraintTuple, Anum_pg_constraint_conkey,
+						   RelationGetDescr(catalogRelation), &isnull);
+		if (isnull)
+			continue;
+
+		deconstruct_array(DatumGetArrayTypeP(val),
+						  INT2OID, 2, true, 's',
+					      &keys, NULL, &nkeys);
+
+		if (nkeys != part->parnatts)
+		{
+			pfree(keys);
+			continue;
+		}
+
+		/* use naive search since number of columns is presmed small */
+		for (i = 0; i < part->parnatts; i++)
+		{
+			int j;
+			bool found = false;
+
+			for (j = 0; j < nkeys; j++)
+			{
+				if (DatumGetInt16(keys[j]) == part->paratts[i])
+				{
+					found = true;
+					break;
+				}
+			}
+
+			if (!found)
+			{
+				matched = false;
+				break;
+			}
+		}
+		pfree(keys);
+
+		if (!matched)
+			continue;
+
+		constraints = lappend(constraints, heap_copytuple(constraintTuple));
+	}
+	systable_endscan(scan);
+
+	foreach (lc, constraints)
+	{
+		HeapTuple tuple = lfirst(lc);
+		Form_pg_constraint con = (Form_pg_constraint)GETSTRUCT(tuple);
+		Datum *dats;
+		int16 *keys;
+		Datum val;
+		bool isnull;
+		Node *n;
+		char *consrc;
+		char *conbin;
+		int nkeys;
+		int i;
+		ObjectAddress conobj;
+
+		val = heap_getattr(tuple, Anum_pg_constraint_conkey,
+						   RelationGetDescr(catalogRelation), &isnull);
+
+		Assert(!isnull);
+
+		deconstruct_array(DatumGetArrayTypeP(val),
+						  INT2OID, 2, true, 's',
+					      &dats, NULL, &nkeys);
+
+		keys = palloc(sizeof(int16) * nkeys);
+		for (i = 0; i < nkeys; i++)
+			keys[i] = DatumGetInt16(dats[i]);
+
+		val = heap_getattr(tuple, Anum_pg_constraint_conbin,
+						   RelationGetDescr(catalogRelation), &isnull);
+
+		Assert(!isnull);
+		conbin = DatumGetCString(DirectFunctionCall1(textout, val));
+		n = stringToNode(conbin);
+
+		val = heap_getattr(tuple, Anum_pg_constraint_consrc,
+						   RelationGetDescr(catalogRelation), &isnull);
+
+		Assert(!isnull);
+		consrc = DatumGetCString(DirectFunctionCall1(textout, val));
+
+		CreateConstraintEntry(NameStr(con->conname),
+							  con->connamespace,
+							  con->contype,
+							  con->condeferrable,
+							  con->condeferred,
+							  newrelid,
+							  keys,
+							  nkeys,
+							  InvalidOid,
+							  InvalidOid,
+							  NULL,
+							  0,
+							  ' ',
+							  ' ',
+							  ' ',
+							  InvalidOid,
+							  n,
+							  conbin,
+							  consrc);
+
+		/* remove old constraint */
+
+		conobj.classId = ConstraintRelationId;
+		conobj.objectId = HeapTupleGetOid(tuple);
+		conobj.objectSubId = 0;
+
+		performDeletion(&conobj, DROP_RESTRICT);
+	}
+	newrel = heap_open(newrelid, AccessExclusiveLock);
+	SetRelationNumChecks(newrel, newrel->rd_rel->relchecks + 
+						 list_length(constraints));
+	heap_close(newrel, NoLock);
+
+	heap_close(catalogRelation, NoLock);
+	RelationForgetRelation(oldrelid);
+	RelationForgetRelation(newrelid);
 }
 
 static void
@@ -11348,6 +11503,7 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 {
 	Oid	oldrelid = InvalidOid;
 	Oid	newrelid = InvalidOid;
+	Partition *part = NULL;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
@@ -11372,6 +11528,8 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 		oldrelrv = makeRangeVar(get_namespace_name(oldrelid), 
 							  get_rel_name(oldrelid));
 		pc->partid = (Node *)oldrelrv;
+		part = prule->pNode->part;
+		pc->arg2 = (Node *)part; /* for execute nodes */
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
@@ -11384,7 +11542,7 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 		newrelrv = (RangeVar *)pc->arg1;
 		oldrelid = RangeVarGetRelid(oldrelrv, false);
 		newrelid = RangeVarGetRelid(newrelrv, false);
-
+		part = (Partition *)pc->arg2;
 	}
 	
 	Assert(OidIsValid(oldrelid));
@@ -11439,7 +11597,7 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 
 		CommandCounterIncrement();
 
-		exchange_part_constraints(oldrel, newrel);
+		exchange_part_constraints(part, oldrelid, newrelid);
 		CommandCounterIncrement();
 
 		/* fix up partitioning rule if we're on the QD*/
