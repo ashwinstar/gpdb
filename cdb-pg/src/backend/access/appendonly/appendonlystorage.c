@@ -190,7 +190,6 @@ AppendOnlyStorage_LogBlockHeader(
 
 	int			executorBlockKind;
 	int			rowCount;
-	bool		hasChecksum;
 	int32		dataLength;
 	int32		compressedLength;
 	int32		overallBlockLen;
@@ -210,7 +209,7 @@ AppendOnlyStorage_LogBlockHeader(
 	rowCount = 				AOBlockHeaderGet_rowCount(blockHeader);
 	
 	wholeHeaderLen =		headerLen + 
-							(hasChecksum ? 2 * sizeof(pg_crc32) : 0);
+							(usingChecksums ? 2 * sizeof(pg_crc32) : 0);
 	
 	dataLength =			AOBlockHeaderGet_dataLength(blockHeader);
 	
