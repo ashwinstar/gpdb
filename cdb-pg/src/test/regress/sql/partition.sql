@@ -1464,6 +1464,8 @@ select * from bar;
 alter table foo exchange partition for(position(6)) with table bar;
 select * from foo;
 select * from bar;
+drop table foo;
+drop table bar;
 
 -- XXX: not yet: VALIDATE parameter
 
@@ -1499,3 +1501,49 @@ partition aa start (date '2007-01-01') end (date '2008-01-01')
 create table foo (i int) distributed by(i)
 partition by range(i)
 (start (1) end (20) every(0));
+
+-- Check for ambiguous EVERY parameters
+-- should fail
+create table foo (i int) distributed by (i)
+partition by range(i)
+(start (1) end (20) every (0.6));
+-- should fail
+create table foo (i int) distributed by (i)
+partition by range(i)
+(start (1) end (20) every (0.3));
+-- should fail
+create table foo (i int) distributed by (i)
+partition by range(i)
+(start (1) end (20) every (1.3));
+
+-- should fail
+create table foo (i int) distributed by (i)
+partition by range(i)
+(start (1) end (20) every (10.9));
+
+-- should fail
+create table foo (i int, j date) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2008-01-01') every (interval '0.5 days'));
+
+-- should fail
+create table foo (i int, j date) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2008-01-01') every (interval '0.5 days'));
+
+-- should fail
+create table foo (i int, j date) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2008-01-01') every (interval '12 hours'));
+
+-- should fail
+create table foo (i int, j date) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2008-01-01') every (interval '1.2 days'));
+
+-- should work
+create table foo (i int, j timestamp) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2007-01-05') every (interval '1.2 days'));
+
+drop table foo;

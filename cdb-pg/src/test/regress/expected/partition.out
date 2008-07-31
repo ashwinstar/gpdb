@@ -2690,6 +2690,8 @@ select * from bar;
 ---+---
 (0 rows)
 
+drop table foo;
+drop table bar;
 -- XXX: not yet: VALIDATE parameter
 -- Check for overflow of circular data types like time
 -- Should fail
@@ -2756,3 +2758,69 @@ partition by range(i)
 ERROR:  EVERY parameter too small
 LINE 3: (start (1) end (20) every(0));
                                   ^
+-- Check for ambiguous EVERY parameters
+-- should fail
+create table foo (i int) distributed by (i)
+partition by range(i)
+(start (1) end (20) every (0.6));
+ERROR:  EVERY parameter produces ambiguous partition rule
+LINE 3: (start (1) end (20) every (0.6));
+                                   ^
+-- should fail
+create table foo (i int) distributed by (i)
+partition by range(i)
+(start (1) end (20) every (0.3));
+ERROR:  EVERY parameter produces ambiguous partition rule
+LINE 3: (start (1) end (20) every (0.3));
+                                   ^
+-- should fail
+create table foo (i int) distributed by (i)
+partition by range(i)
+(start (1) end (20) every (1.3));
+ERROR:  EVERY parameter produces ambiguous partition rule
+LINE 3: (start (1) end (20) every (1.3));
+                                   ^
+-- should fail
+create table foo (i int) distributed by (i)
+partition by range(i)
+(start (1) end (20) every (10.9));
+ERROR:  EVERY parameter produces ambiguous partition rule
+LINE 3: (start (1) end (20) every (10.9));
+                                   ^
+-- should fail
+create table foo (i int, j date) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2008-01-01') every (interval '0.5 days'));
+ERROR:  EVERY parameter produces ambiguous partition rule
+LINE 3: ...('2007-01-01') end ('2008-01-01') every (interval '0.5 days'...
+                                                             ^
+-- should fail
+create table foo (i int, j date) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2008-01-01') every (interval '0.5 days'));
+ERROR:  EVERY parameter produces ambiguous partition rule
+LINE 3: ...('2007-01-01') end ('2008-01-01') every (interval '0.5 days'...
+                                                             ^
+-- should fail
+create table foo (i int, j date) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2008-01-01') every (interval '12 hours'));
+ERROR:  EVERY parameter produces ambiguous partition rule
+LINE 3: ...('2007-01-01') end ('2008-01-01') every (interval '12 hours'...
+                                                             ^
+-- should fail
+create table foo (i int, j date) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2008-01-01') every (interval '1.2 days'));
+ERROR:  EVERY parameter produces ambiguous partition rule
+LINE 3: ...('2007-01-01') end ('2008-01-01') every (interval '1.2 days'...
+                                                             ^
+-- should work
+create table foo (i int, j timestamp) distributed by (i)
+partition by range(j)
+(start ('2007-01-01') end ('2007-01-05') every (interval '1.2 days'));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+drop table foo;

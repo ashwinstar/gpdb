@@ -5713,6 +5713,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				Node *n1t, *n2t, *n3t;
 				Datum res;
 				Const *c;
+				Const *newend;
 				List *oprmul, *oprplus, *oprcompare, *ltop;
 				Oid restypid;
 				Type typ;
@@ -5785,8 +5786,9 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				res = eval_basic_opexpr(pstate, oprplus, n1t, (Node *)c, 
 										&restypid, ((A_Const *)n1)->location);
 				typ = typeidType(restypid);
-				c = makeConst(restypid, typeLen(typ), res, false,
-							  typeByVal(typ));
+				newend = makeConst(restypid, typeLen(typ), res, false,
+								   typeByVal(typ));
+				ReleaseSysCache(typ);
 
 				/* 
 				 * Now we must detect a few conditions. 
@@ -5794,7 +5796,7 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				 * We must reject every() parameters which do not significantly
 				 * increment the starting value. For example:
 				 *
-				 * start ('2008-01-01') end ('2010-01-01') every('0 days')
+				 * 1: start ('2008-01-01') end ('2010-01-01') every('0 days')
 				 *
 				 * We'll detect this case on the second iteration by observing
 				 * that the current partition end is no greater than the
@@ -5802,8 +5804,8 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				 *
 				 * We must also consider:
 				 *
-				 * start (1) end (10) every(0.5)
-				 * start (1) end (10) every(1.5)
+				 * 2: start (1) end (10) every(0.5)
+				 * 3: start (1) end (10) every(1.5)
 				 *
 				 * The problem here is that 1.5 and 2.5 will be rounded to 2 and
 				 * 3 respectively. This means they look sane to the code but
@@ -5818,14 +5820,50 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				 * not. So, if we're beyond the second iteration and detect and
 				 * overflow, error out.
 				 */
+				/* do it on the first iteration */
+					if (!lclastval)
+					{
+						List *opreq = lappend(NIL, makeString("="));
+						Datum uncast;
+						Datum iseq;
+						Const *tmpconst;
+						Oid test_typid = InvalidOid;
+
+						uncast = eval_basic_opexpr(pstate, oprplus, n1t, 
+												   (Node *)c, &test_typid,
+												   ((A_Const *)n1)->location);
+
+						typ = typeidType(test_typid);
+						tmpconst = makeConst(test_typid, typeLen(typ), uncast, 
+											 false, typeByVal(typ));
+						ReleaseSysCache(typ);
+
+						iseq = eval_basic_opexpr(NULL, opreq, (Node *)tmpconst,
+												 (Node *)newend, NULL,
+												 -1);
+
+						if (!DatumGetBool(iseq))
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+									 errmsg("EVERY parameter produces ambiguous partition rule"),
+									 parser_errposition(pstate,
+													((A_Const *)n3)->location)));
+					
+					}
+		
 				if (lclastval)
 				{
 					Datum res2;
 					Oid tmptyp = InvalidOid;
 
+					/* 
+					 * now test for case 2 and 3 above: ensure that 
+					 * the cast value is equal to the uncast value.
+					 */
+
 					res2 = eval_basic_opexpr(pstate, ltop,
 											 (Node *)lfirst(lclastval),
-											 (Node *)c,
+											 (Node *)newend,
 											 &tmptyp,
 											 ((A_Const *)n3)->location);
 
@@ -5856,9 +5894,10 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 													((A_Const *)n2)->location)));
 						}
 					}
-				}
 
-				curval = lappend(curval, c);
+		}
+
+				curval = lappend(curval, newend);
 
 				/* get the string for the calculated type */
 				{
@@ -5875,12 +5914,11 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					outputstr = OutputFunctionCall(&finfo, res);
 				}
 
-				ReleaseSysCache(typ);
 
 
 				/* the comparison */
 				restypid = InvalidOid;
-				res = eval_basic_opexpr(pstate, oprcompare, (Node *)c, n2t,
+				res = eval_basic_opexpr(pstate, oprcompare, (Node *)newend, n2t,
 										&restypid, ((A_Const *)n2)->location);
 
 				/* XXX XXX: also check stop flag.  
@@ -5929,9 +5967,9 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 
 			everyCnt->constvalue++;
 			/* if we have lastval set, the every test will have been done */
+
 			if (lastval)
 				do_every_param_test = false;
-
 			lastval = curval;
 		} /* end loop until exceed end */
 
