@@ -24,8 +24,7 @@ extern void ExecStopMotion(MotionState *node);
 
 enum 
 {
-	GPMON_MOTION_TUPLE = 0,
-	GPMON_MOTION_TOTAL,
+	GPMON_MOTION_TOTAL = GPMON_QEXEC_M_NODE_START,
 };
 
 static inline gpmon_packet_t * GpmonPktFromMotionState(MotionState *node)

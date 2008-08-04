@@ -24,8 +24,7 @@ extern void ExecReScanAppend(AppendState *node, ExprContext *exprCtxt);
 
 enum 
 {
-	GPMON_APPEND_OUTTUPLE = 0,
-	GPMON_APPEND_CURRTABLE,
+	GPMON_APPEND_CURRTABLE = GPMON_QEXEC_M_NODE_START,
 	GPMON_APPEND_TOTAL
 };
 

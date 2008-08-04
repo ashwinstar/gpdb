@@ -23,9 +23,8 @@ extern void ExecEndNestLoop(NestLoopState *node);
 extern void ExecReScanNestLoop(NestLoopState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_NLJ_INNERTUPLE = 0,
+	GPMON_NLJ_INNERTUPLE = GPMON_QEXEC_M_NODE_START, 
 	GPMON_NLJ_OUTERTUPLE,
-	GPMON_NLJ_OUTTUPLE,
 	GPMON_NLJ_TOTAL
 };
 

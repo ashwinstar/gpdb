@@ -742,6 +742,7 @@ ExecMergeJoin(MergeJoinState *node)
 
 				outerTupleSlot = ExecProcNode(outerPlan);
 				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_OuterTupleSlot = outerTupleSlot;
 				if (TupIsNull(outerTupleSlot))
 				{
@@ -791,7 +792,7 @@ ExecMergeJoin(MergeJoinState *node)
 						result = MJFillOuter(node);
 						if (result)
 						{
-							Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTTUPLE);
+							Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
 							return result;
 						}
 					}
@@ -803,6 +804,7 @@ ExecMergeJoin(MergeJoinState *node)
 
 				innerTupleSlot = ExecProcNode(innerPlan);
 				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_InnerTupleSlot = innerTupleSlot;
 				if (TupIsNull(innerTupleSlot))
 				{
@@ -856,7 +858,7 @@ ExecMergeJoin(MergeJoinState *node)
 						result = MJFillInner(node);
 						if (result)
 						{
-							Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTTUPLE);
+							Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
 							return result;
 						}
 					}
@@ -924,7 +926,7 @@ ExecMergeJoin(MergeJoinState *node)
 						 */
 						MJ_printf("ExecMergeJoin: returning tuple\n");
 
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTTUPLE);
+						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
 						return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 					}
 				}
@@ -954,7 +956,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillInner(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTTUPLE);
+						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
 						return result;
 					}
 				}
@@ -966,6 +968,7 @@ ExecMergeJoin(MergeJoinState *node)
 				 */
 				innerTupleSlot = ExecProcNode(innerPlan);
 				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_InnerTupleSlot = innerTupleSlot;
 				MJ_DEBUG_PROC_NODE(innerTupleSlot);
 				node->mj_MatchedInner = false;
@@ -1056,6 +1059,7 @@ ExecMergeJoin(MergeJoinState *node)
 				 */
 				outerTupleSlot = ExecProcNode(outerPlan);
 				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_OuterTupleSlot = outerTupleSlot;
 				MJ_DEBUG_PROC_NODE(outerTupleSlot);
 				node->mj_MatchedOuter = false;
@@ -1328,7 +1332,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillOuter(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTTUPLE);
+						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
 						return result;
 					}
 				}
@@ -1338,6 +1342,7 @@ ExecMergeJoin(MergeJoinState *node)
 				 */
 				outerTupleSlot = ExecProcNode(outerPlan);
 				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTERTUPLE);
+				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_OuterTupleSlot = outerTupleSlot;
 				MJ_DEBUG_PROC_NODE(outerTupleSlot);
 				node->mj_MatchedOuter = false;
@@ -1406,7 +1411,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillInner(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTTUPLE);
+						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT);
 						return result;
 					}
 				}
@@ -1416,6 +1421,7 @@ ExecMergeJoin(MergeJoinState *node)
 				 */
 				innerTupleSlot = ExecProcNode(innerPlan);
 				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_InnerTupleSlot = innerTupleSlot;
 				MJ_DEBUG_PROC_NODE(innerTupleSlot);
 				node->mj_MatchedInner = false;
@@ -1490,7 +1496,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillInner(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTTUPLE);
+						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT);
 						return result;
 					}
 				}
@@ -1500,6 +1506,7 @@ ExecMergeJoin(MergeJoinState *node)
 				 */
 				innerTupleSlot = ExecProcNode(innerPlan);
 				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+				Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 				node->mj_InnerTupleSlot = innerTupleSlot;
 				MJ_DEBUG_PROC_NODE(innerTupleSlot);
 				node->mj_MatchedInner = false;
@@ -1536,7 +1543,7 @@ ExecMergeJoin(MergeJoinState *node)
 					result = MJFillOuter(node);
 					if (result)
 					{
-						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_OUTTUPLE);
+						Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSOUT);
 						return result;
 					}
 				}
@@ -1726,9 +1733,9 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_MERGEJOIN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT,
 			{ "MergeJoin inner side tuples", "Tuples", 0},
 			{ "MergeJoin outer side tuples", "Tuples", 0},
-			{ "MergeJoin output tuples", "Tuples", mergestate->js.ps.plan->plan_rows },
 			{ NULL, NULL, 0}
 		};
 

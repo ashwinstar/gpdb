@@ -23,9 +23,8 @@ extern void ExecEndMergeJoin(MergeJoinState *node);
 extern void ExecReScanMergeJoin(MergeJoinState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_MERGEJOIN_INNERTUPLE = 0,
+	GPMON_MERGEJOIN_INNERTUPLE = GPMON_QEXEC_M_NODE_START,
 	GPMON_MERGEJOIN_OUTERTUPLE,
-	GPMON_MERGEJOIN_OUTTUPLE,
 	GPMON_MERGEJOIN_TOTAL,
 };
 

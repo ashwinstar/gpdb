@@ -18,8 +18,7 @@ extern void ExecEndExternalScan(ExternalScanState *node);
 extern void ExecExternalReScan(ExternalScanState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_EXTSCAN_OUTTUPLE = 0,
-	GPMON_EXTSCAN_TOTAL
+	GPMON_EXTSCAN_TOTAL = GPMON_QEXEC_M_NODE_START,
 };
 
 static inline gpmon_packet_t *GpmonPktFromExtScanState(ExternalScanState *node)

@@ -23,8 +23,7 @@ extern void ExecEndSubqueryScan(SubqueryScanState *node);
 extern void ExecSubqueryReScan(SubqueryScanState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_SUBQUERYSCAN_TUPLE = 0,
-	GPMON_SUBQUERYSCAN_RESCAN, 
+	GPMON_SUBQUERYSCAN_RESCAN = GPMON_QEXEC_M_NODE_START, 
 	GPMON_SUBQUERYSCAN_TOTAL
 };
 

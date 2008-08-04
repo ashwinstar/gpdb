@@ -24,7 +24,7 @@ extern void ExecBitmapIndexReScan(BitmapIndexScanState *node, ExprContext *exprC
 
 enum
 {
-	GPMON_BITMAPINDEXSCAN_TOTAL = 0,
+	GPMON_BITMAPINDEXSCAN_TOTAL = GPMON_QEXEC_M_NODE_START,
 };
 
 static inline gpmon_packet_t * GpmonPktFromBitmapIndexScanState(BitmapIndexScanState *node)

@@ -1086,7 +1086,7 @@ puttuple_common(Tuplesortstate *state, SortTuple *tuple)
 
 	/* gpmon */
 	if(state->gpmon_pkt)
-		Gpmon_M_Incr(state->gpmon_pkt, GPMON_SORT_INTUPLE);
+		Gpmon_M_Incr(state->gpmon_pkt, GPMON_QEXEC_M_ROWSIN); 
 
 	switch (state->status)
 	{

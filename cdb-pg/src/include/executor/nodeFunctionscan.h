@@ -25,8 +25,7 @@ extern void ExecFunctionRestrPos(FunctionScanState *node);
 extern void ExecFunctionReScan(FunctionScanState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_FUNCSCAN_OUTTUPLE = 0,
-	GPMON_FUNCSCAN_TOTAL,
+	GPMON_FUNCSCAN_TOTAL = GPMON_QEXEC_M_NODE_START,
 };
 
 static inline gpmon_packet_t * GpmonPktFromFuncScanState(FunctionScanState *node)

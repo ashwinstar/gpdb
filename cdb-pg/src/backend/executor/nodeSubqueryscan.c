@@ -257,7 +257,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SUBQUERYSCAN_TOTAL+1] = 
 		{
-			{ "SubqueryScan Tuple", "Tuples", (int64) subquerystate->ss.ps.plan->plan_rows },
+			GPMON_QEXEC_M_INIT_ROWS(0, (int64) subquerystate->ss.ps.plan->plan_rows ),
 			{ "SubqueryScan Rescan", "Rescans", 0},
 			{ NULL, NULL, 0},
 		};

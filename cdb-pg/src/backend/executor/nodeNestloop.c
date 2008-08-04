@@ -108,6 +108,7 @@ ExecNestLoop(NestLoopState *node)
 	{
 		innerTupleSlot = ExecProcNode(innerPlan);
 		Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_INNERTUPLE);
+		Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_QEXEC_M_ROWSIN); 
 
 		node->reset_inner = true;
 		econtext->ecxt_innertuple = innerTupleSlot;
@@ -152,6 +153,7 @@ ExecNestLoop(NestLoopState *node)
 				ENL1_printf("getting new outer tuple");
 				outerTupleSlot = ExecProcNode(outerPlan);
 				Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_OUTERTUPLE);
+				Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_QEXEC_M_ROWSIN); 
 			}
 			else
 			{
@@ -250,7 +252,7 @@ ExecNestLoop(NestLoopState *node)
 					 */
 					ENL1_printf("qualification succeeded, projecting tuple");
 
-					Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_OUTTUPLE);
+					Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_QEXEC_M_ROWSOUT); 
 					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 				}
 			}
@@ -292,7 +294,7 @@ ExecNestLoop(NestLoopState *node)
 				 */
 				ENL1_printf("qualification succeeded, projecting tuple");
 
-				Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_NLJ_OUTTUPLE);
+				Gpmon_M_Incr(GpmonPktFromNLJState(node), GPMON_QEXEC_M_ROWSOUT);
 				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 			}
 
@@ -450,9 +452,9 @@ ExecInitNestLoop(NestLoop *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_NLJ_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT_ROWS(0, nlstate->js.ps.plan->plan_rows ),
 			{ "NestloopJoin inner tuples", "Tuples", 0},
 			{ "NestloopJoin outer tuples", "Tuples", 0},
-			{ "NestloopJoni output tuples", "Tuples", nlstate->js.ps.plan->plan_rows },
 			{ NULL, NULL, 0}
 		};
 

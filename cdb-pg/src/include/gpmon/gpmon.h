@@ -115,7 +115,6 @@ struct gpmon_qexeckey_t {
     apr_int16_t zero;		/* unused */
 };
 
-#define GPMON_QEXEC_M_COUNT 16 
 
 /* process metrics ... filled in by gpsmon */
 typedef struct gpmon_proc_metrics_t gpmon_proc_metrics_t;
@@ -127,6 +126,25 @@ struct gpmon_proc_metrics_t {
     } mem;
 };
 
+enum {
+	GPMON_QEXEC_M_ROWSIN = 0,
+	GPMON_QEXEC_M_ROWSOUT,
+#if 0
+	GPMON_QEXEC_M_BYTESIN,
+	GPMON_QEXEC_M_BYTESOUT,
+#endif
+	GPMON_QEXEC_M_NODE_START, 
+	GPMON_QEXEC_M_COUNT = 16
+};
+
+#define GPMON_QEXEC_M_INIT \
+ 	{ "Rows in", "Rows", 0 }, \
+    { "Rows out", "Rows", 0 }  
+
+#define GPMON_QEXEC_M_INIT_ROWS(rowsin_max, rowsout_max) \
+ 	{ "Rows in", "Rows", (rowsin_max) }, \
+    { "Rows out", "Rows", (rowsout_max) } 
+
 struct gpmon_qexec_t {
     /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     gpmon_qexeckey_t key;
@@ -137,8 +155,15 @@ struct gpmon_qexec_t {
     apr_int32_t tstart, tduration; /* start (wall clock) time and duration.  XXX Leave as 0 for now. */
     apr_int64_t p_mem, p_memmax;   /* XXX Aset instrumentation.  Leave as 0 for now. */ 
     apr_int64_t _cpu_elapsed; /* CPU elapsed for iter */
+
+	/* XXX Please remove */
+	/* You should get the measure using 
+	 * m[GPMON_QEXEC_M_ROWSIN/OUT]
+	 */
     apr_int64_t rows_in, rows_out;
     apr_int64_t bytes_in, bytes_out;
+	/* XXX End */
+
     gpmon_proc_metrics_t _p_metrics;
     char  phase[NAMEDATALEN];		/* Spill, ReSpill, etc */ 
     struct {

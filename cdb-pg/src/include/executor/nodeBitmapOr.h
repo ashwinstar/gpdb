@@ -23,7 +23,7 @@ extern void ExecEndBitmapOr(BitmapOrState *node);
 extern void ExecReScanBitmapOr(BitmapOrState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_BITMAPOR_TOTAL = 0,
+	GPMON_BITMAPOR_TOTAL = GPMON_QEXEC_M_NODE_START,
 };
 
 static inline gpmon_packet_t * GpmonPktFromBitmapOrState(BitmapOrState *node)

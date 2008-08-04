@@ -23,8 +23,7 @@ extern void ExecShareInputScanReScan(ShareInputScanState *node, ExprContext *exp
 extern void ExecSliceDependencyShareInputScan(ShareInputScanState *node);
 
 enum {
-	GPMON_SHAREINPUT_OUTTUPLE = 0,
-	GPMON_SHAREINPUT_RESTOREPOS,
+	GPMON_SHAREINPUT_RESTOREPOS = GPMON_QEXEC_M_NODE_START,
 	GPMON_SHAREINPUT_RESCAN,
 	GPMON_SHAREINPUT_TOTAL,
 };

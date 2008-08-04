@@ -25,7 +25,7 @@ extern void ExecTidRestrPos(TidScanState *node);
 extern void ExecTidReScan(TidScanState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_TIDSCAN_TOTAL = 0,
+	GPMON_TIDSCAN_TOTAL = GPMON_QEXEC_M_NODE_START, 
 };
 
 static inline gpmon_packet_t * GpmonPktFromTidScanState(TidScanState *node)

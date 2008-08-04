@@ -23,9 +23,7 @@ extern void ExecEndSetOp(SetOpState *node);
 extern void ExecReScanSetOp(SetOpState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_SETOP_INTUPLE = 0,
-	GPMON_SETOP_OUTTUPLE,
-	GPMON_SETOP_TOTAL,
+	GPMON_SETOP_TOTAL = GPMON_QEXEC_M_NODE_START,
 };
 
 static inline gpmon_packet_t * GpmonPktFromSetOpState(SetOpState *node)

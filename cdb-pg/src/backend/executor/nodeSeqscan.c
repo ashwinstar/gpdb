@@ -153,7 +153,7 @@ ExecSeqScan(SeqScanState *node)
 	 * use SeqNext as access method
 	 */
 	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
-	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_OUTTUPLE);
+	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_QEXEC_M_ROWSOUT); 
 
 	return slot;
 }
@@ -256,7 +256,7 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	/* Set up gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SEQSCAN_TOTAL + 1] = {
-			{ "SeqScan Tuple Stats", "Tuples", (int64) scanstate->ps.plan->plan_rows}, 
+			GPMON_QEXEC_M_INIT_ROWS(0, (int64) scanstate->ps.plan->plan_rows), 
 			{ "SeqScan Page Stats", "Pages", 0 }, 
 			{ "SeqScan Restore Pos", "Restores", 0},
 			{ "SeqScan Rescan", "Rescans", 0},

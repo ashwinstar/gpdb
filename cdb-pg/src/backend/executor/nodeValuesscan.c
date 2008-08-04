@@ -286,6 +286,7 @@ ExecInitValuesScan(ValuesScan *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_NODEVALUESCAN_TOTAL +1] = {
+			GPMON_QEXEC_M_INIT,
 			{ NULL, NULL, 0}
 		};
 

@@ -106,7 +106,7 @@ MultiExecHash(HashState *node)
 		if (TupIsNull(slot))
 			break;
 
-		Gpmon_M_Incr(GpmonPktFromHashState(node), GPMON_HASH_INTUPLE);
+		Gpmon_M_Incr(GpmonPktFromHashState(node), GPMON_QEXEC_M_ROWSIN); 
 
 		/* We have to compute the hash value */
 		econtext->ecxt_innertuple = slot;
@@ -197,10 +197,7 @@ ExecInitHash(Hash *node, EState *estate, int eflags)
 	/* Set up gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_HASH_TOTAL + 1] = {
-			/* GPMON_HASH_INTUPLE */
-			{ "Hash Input Tuples", "Tuples", 0 },
-			/* GPMON_HASH_OUTTUPLE */
-			{ "Hash Output Tuples", "Tuples", (int64) hashstate->ps.plan->plan_rows}, 
+			GPMON_QEXEC_M_INIT_ROWS(0, (int64) hashstate->ps.plan->plan_rows), 
 			/* GPMON_HASH_SPILLBATCH */
 			{ "Hash Spill Batches", "Batches", 0},
 			/* GPMON_HASH_SPILLTUPLE */

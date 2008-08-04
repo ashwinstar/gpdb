@@ -227,7 +227,7 @@ ExecHashJoin(HashJoinState *node)
 				return NULL;
 			}
 
-			Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_HASHJOIN_INTUPLE);
+			Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_QEXEC_M_ROWSIN); 
 
 			node->js.ps.ps_OuterTupleSlot = outerTupleSlot;
 			econtext->ecxt_outertuple = outerTupleSlot;
@@ -297,7 +297,7 @@ ExecHashJoin(HashJoinState *node)
 
 				if (otherqual == NIL || ExecQual(otherqual, econtext, false))
 				{
-					Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_HASHJOIN_OUTTUPLE);
+					Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_QEXEC_M_ROWSOUT); 
 					return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 				}
 
@@ -331,7 +331,7 @@ ExecHashJoin(HashJoinState *node)
 
 			if (ExecQual(otherqual, econtext, false))
 			{
-				Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_HASHJOIN_OUTTUPLE);
+				Gpmon_M_Incr(GpmonPktFromHashJoinState(node), GPMON_QEXEC_M_ROWSOUT);
 
 				return ExecProject(node->js.ps.ps_ProjInfo, NULL);
 			}
@@ -504,10 +504,7 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	/* Set up gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_HASHJOIN_TOTAL + 1] = {
-			/* INTUPLE */
-			{ "Hashjoin Input Tuples", "Tuples", 0},
-			/* OUTTUPLE */
-			{ "Hashjoin Output Tuples", "Tuples", (int64) hjstate->js.ps.plan->plan_rows}, 
+			GPMON_QEXEC_M_INIT_ROWS(0, (int64) hjstate->js.ps.plan->plan_rows), 
 			/* SPILLBATCH */
 			{ "Hashjoin Spill Batches", "Batches", 0 }, 
 			/* SPILLTUPLE */
@@ -652,7 +649,7 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 		 */
 		curbatch = ExecHashJoinNewBatch(hjstate);
 
-		Gpmon_M_Incr(GpmonPktFromHashJoinState(hjstate), GPMON_HASHJOIN_OUTTUPLE);
+		Gpmon_M_Incr(GpmonPktFromHashJoinState(hjstate), GPMON_QEXEC_M_ROWSOUT); 
 		CheckSendPlanStateGpmonPkt(&hjstate->js.ps);
 	}
 

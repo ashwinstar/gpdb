@@ -1063,7 +1063,7 @@ agg_retrieve_direct(AggState *aggstate)
 				 * comparison (in group mode) and for projection.
 				 */
 
-				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_INTUPLE);
+				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSIN); 
 #if 0
 				/*
 				 * XXX BUG BUG:
@@ -1419,7 +1419,7 @@ agg_retrieve_direct(AggState *aggstate)
 				 * and the representative input tuple.	Note we do not support
 				 * aggregates returning sets ...
 				 */
-				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_OUTTUPLE);
+				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSOUT); 
 				CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 
 				return ExecProject(projInfo, NULL);
@@ -1576,7 +1576,7 @@ agg_retrieve_hash_table(AggState *aggstate)
 				 * and the representative input tuple.	Note we do not support
 				 * aggregates returning sets ...
 				 */
-				 Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_OUTTUPLE);
+				 Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSOUT); 
 				 CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 				return ExecProject(projInfo, NULL);
 			}
@@ -2058,10 +2058,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_AGG_TOTAL+1] = {
-			/* GPMON_AGG_INTUPLE */
-			{ "Agg Input Tuples", "Tuples", 0 }, 
-			/* GPMON_AGG_OUTTUPLE */
-			{ "Agg Output Tuples", "Tuples", (int64) aggstate->ss.ps.plan->plan_rows}, 
+			GPMON_QEXEC_M_INIT_ROWS(0, (int64) aggstate->ss.ps.plan->plan_rows), 
 			/* GPMON_AGG_SPILLTUPLE */
 			{ "Agg Total Spill Tuples", "Tuples", 0 },
 			/* GPMON_AGG_SPILLBYTE */

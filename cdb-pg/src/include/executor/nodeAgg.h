@@ -163,9 +163,7 @@ extern Datum invoke_agg_trans_func(FmgrInfo transfn, int numargs,
 								   MemoryManagerContainer *mem_manager);
 
 enum {
-	GPMON_AGG_INTUPLE = 0,
-	GPMON_AGG_OUTTUPLE,
-	GPMON_AGG_SPILLTUPLE,
+	GPMON_AGG_SPILLTUPLE = GPMON_QEXEC_M_NODE_START,
 	GPMON_AGG_SPILLBYTE,
 	GPMON_AGG_SPILLBATCH,
 	GPMON_AGG_SPILLPASS, 

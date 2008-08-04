@@ -24,7 +24,7 @@ extern void ExecReScanBitmapAnd(BitmapAndState *node, ExprContext *exprCtxt);
 
 enum 
 {
-	GPMON_BITMAPAND_TOTAL = 0,
+	GPMON_BITMAPAND_TOTAL = GPMON_QEXEC_M_NODE_START,
 };
 
 static inline gpmon_packet_t *GpmonPktFromBitmapAndState(BitmapAndState *node)

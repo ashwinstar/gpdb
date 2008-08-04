@@ -61,7 +61,7 @@ ExternalNext(ExternalScanState *node)
 	 * get the next tuple from the file access methods
 	 */
 	tuple = file_getnext(scandesc, direction);
-	Gpmon_M_Incr(GpmonPktFromExtScanState(node), GPMON_EXTSCAN_OUTTUPLE);
+	Gpmon_M_Incr(GpmonPktFromExtScanState(node), GPMON_QEXEC_M_ROWSOUT);
 	
 	/*
 	 * save the tuple and the buffer returned to us by the access methods in
@@ -177,7 +177,7 @@ ExecInitExternalScan(ExternalScan *node, EState *estate, int eflags)
 	
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_EXTSCAN_TOTAL +1] = {
-			{ "ExternalScan Tuples", "Tuples", externalstate->ss.ps.plan->plan_rows },
+			GPMON_QEXEC_M_INIT_ROWS(0, externalstate->ss.ps.plan->plan_rows),
 			{ NULL, NULL, 0}
 		};
 

@@ -89,7 +89,7 @@ ExecSetOp(SetOpState *node)
 			!node->subplan_done)
 		{
 			node->ps.ps_OuterTupleSlot = ExecProcNode(outerPlan);
-			Gpmon_M_Incr(GpmonPktFromSetOpState(node), GPMON_SETOP_INTUPLE);
+			Gpmon_M_Incr(GpmonPktFromSetOpState(node), GPMON_QEXEC_M_ROWSIN); 
 
 			if (TupIsNull(node->ps.ps_OuterTupleSlot))
 				node->subplan_done = true;
@@ -204,7 +204,7 @@ ExecSetOp(SetOpState *node)
 	Assert(node->numOutput > 0);
 	node->numOutput--;
 
-	Gpmon_M_Incr(GpmonPktFromSetOpState(node), GPMON_SETOP_OUTTUPLE);
+	Gpmon_M_Incr(GpmonPktFromSetOpState(node), GPMON_QEXEC_M_ROWSOUT); 
 	CheckSendPlanStateGpmonPkt(&node->ps);
 
 	return resultTupleSlot;
@@ -277,8 +277,7 @@ ExecInitSetOp(SetOp *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SETOP_TOTAL + 1] = {
-			{ "SetOpNode input tuples", "Tuples", 0},
-			{ "SetOpNode output tuples", "Tuples", setopstate->ps.plan->plan_rows },
+			GPMON_QEXEC_M_INIT_ROWS(0, setopstate->ps.plan->plan_rows ),
 			{ NULL, NULL, 0}
 		};
 

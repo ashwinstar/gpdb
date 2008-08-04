@@ -23,9 +23,7 @@ extern void ExecEndGroup(GroupState *node);
 extern void ExecReScanGroup(GroupState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_GROUP_INTUPLE = 0,
-	GPMON_GROUP_OUTTUPLE,
-	GPMON_GROUP_TOTAL
+	GPMON_GROUP_TOTAL = GPMON_QEXEC_M_NODE_START,
 };
 
 static inline gpmon_packet_t * GpmonPktFromGroupState(GroupState *node)

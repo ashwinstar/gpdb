@@ -151,7 +151,7 @@ ShareInputNext(ShareInputScanState *node)
 		if(!gotOK)
 			return NULL;
 
-		Gpmon_M_Incr(GpmonPktFromShareInputState(node), GPMON_SHAREINPUT_OUTTUPLE);
+		Gpmon_M_Incr(GpmonPktFromShareInputState(node), GPMON_QEXEC_M_ROWSOUT); 
 		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 
 		return slot;
@@ -227,7 +227,7 @@ ExecInitShareInputScan(ShareInputScan *node, EState *estate, int eflags)
 	
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SHAREINPUT_TOTAL + 1] = {
-			{ "ShareInputScan output tuples", "Tuples", sisstate->ss.ps.plan->plan_rows },
+			GPMON_QEXEC_M_INIT_ROWS(0, sisstate->ss.ps.plan->plan_rows),
 			{ "ShareInputScan restore pos", "Restores", 0},
 			{ "ShareInputScan rescan", "Rescans", 0},
 			{ NULL, NULL, 0 }

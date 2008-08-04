@@ -356,7 +356,7 @@ agg_hash_initial_pass(AggState *aggstate)
 		}
 
 		/* gpmon */
-		Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_INTUPLE); 
+		Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSIN); 
 
 		if (hashslot == NULL)
 		{

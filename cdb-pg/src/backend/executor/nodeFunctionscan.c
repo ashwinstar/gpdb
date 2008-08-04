@@ -140,7 +140,7 @@ FunctionNext(FunctionScanState *node)
         }
     }
 
-	Gpmon_M_Incr(GpmonPktFromFuncScanState(node), GPMON_FUNCSCAN_OUTTUPLE);
+	Gpmon_M_Incr(GpmonPktFromFuncScanState(node), GPMON_QEXEC_M_ROWSOUT); 
 	return slot;
 }
 
@@ -296,7 +296,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate, int eflags)
 
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_FUNCSCAN_TOTAL + 1] = {
-			{ "FunctionScan Tuples", "Tuples", scanstate->ss.ps.plan->plan_rows },
+			GPMON_QEXEC_M_INIT_ROWS(0, scanstate->ss.ps.plan->plan_rows),
 			{ NULL, NULL, 0}
 		};
 

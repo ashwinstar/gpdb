@@ -359,7 +359,7 @@ ExecInitSort(Sort *node, EState *estate, int eflags)
 	/* Gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SORT_TOTAL + 1] = {
-			{ "Sort Input Tuple", "Tuples", (int64) sortstate->ss.ps.plan->plan_rows}, 
+			GPMON_QEXEC_M_INIT_ROWS((int64) sortstate->ss.ps.plan->plan_rows, (int64) sortstate->ss.ps.plan->plan_rows), 
 			{ "Sort Memory Usage", "Bytes", 0 }, 
 			{ "Sort Spill Tuples", "Tuples", 0 },
 			{ "Sort Spill Bytes", "Bytes", 0 },

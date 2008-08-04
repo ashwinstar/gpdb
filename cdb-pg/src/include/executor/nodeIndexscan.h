@@ -37,8 +37,7 @@ extern bool ExecIndexEvalArrayKeys(ExprContext *econtext,
 extern bool ExecIndexAdvanceArrayKeys(IndexArrayKeyInfo *arrayKeys, int numArrayKeys);
 
 enum {
-	GPMON_INDEXSCAN_OUTTUPLE = 0,
-	GPMON_INDEXSCAN_RESTOREPOS,
+	GPMON_INDEXSCAN_RESTOREPOS = GPMON_QEXEC_M_NODE_START,
 	GPMON_INDEXSCAN_RESCAN,
 	GPMON_INDEXSCAN_TOTAL,
 };

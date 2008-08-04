@@ -23,9 +23,7 @@ extern void ExecEndUnique(UniqueState *node);
 extern void ExecReScanUnique(UniqueState *node, ExprContext *exprCtxt);
 
 enum {
-	GPMON_UNIQUE_INTUPLE = 0,
-	GPMON_UNIQUE_OUTTUPLE,
-	GPMON_UNIQUE_TOTAL,
+	GPMON_UNIQUE_TOTAL = GPMON_QEXEC_M_NODE_START,
 };
 
 static inline gpmon_packet_t * GpmonPktFromUniqueState(UniqueState *node) 

@@ -148,6 +148,7 @@ ExecInitAdaptiveNestLoop(AdaptiveNestLoop *node, EState *estate, int eflags)
 	/* Gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_ADAPTIVENL_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT, 
 			{ NULL, NULL, 0 }
 		};
 
