@@ -831,7 +831,8 @@ create table hhh_r1 (a char(1), b date, d char(3))
 distributed by (a)
 partition by range (b)
 (
-partition aa start (date '2007-01-01') end (date '2008-01-01') every (interval '1 month')
+partition aa start (date '2007-01-01') end (date '2008-01-01') 
+             every (interval '1 month')
 );
 
 create table hhh_l1 (a char(1), b date, d char(3))
@@ -873,10 +874,10 @@ alter table hhh_r1 add partition cc start ('2008-02-01') end ('2008-03-01') ;
 alter table hhh_r1 add partition cc start ('2008-04-01') end ('2008-05-01') ;
 -- overlap (fail)
 alter table hhh_r1 add partition dd start ('2008-01-01') end ('2008-05-01') ;
--- new partition in "gap" (fail)
+-- new partition in "gap" (ok)
 alter table hhh_r1 add partition dd start ('2008-03-01') end ('2008-04-01') ;
 -- overlap all partitions (fail)
-alter table hhh_r1 add partition dd start ('2006-01-01') end ('2009-01-01') ;
+alter table hhh_r1 add partition ee start ('2006-01-01') end ('2009-01-01') ;
 -- start before first partition (fail because end in "gap" [and overlaps])
 alter table hhh_r1 add partition yaa start ('2007-05-01') end ('2007-07-01');
 -- start before first partition (fail )

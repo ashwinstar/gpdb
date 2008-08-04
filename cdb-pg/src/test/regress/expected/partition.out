@@ -985,7 +985,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg1 localhost:11003 pid=21221)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg1 localhost:11003 pid=24490)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1269,8 +1269,8 @@ COPY foz FROM stdin DELIMITER '|';
 select * from foz_1_prt_1;
  i |     d      
 ---+------------
- 1 | 01-02-2001
  2 | 10-10-2001
+ 1 | 01-02-2001
 (2 rows)
 
 select * from foz_1_prt_2;
@@ -1293,7 +1293,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3443)
+ERROR:  no partition for partitioning key (execMain.c:3448)
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 -- Same test with append only
@@ -1308,8 +1308,8 @@ COPY foz FROM stdin DELIMITER '|';
 select * from foz_1_prt_1;
  i |     d      
 ---+------------
- 2 | 10-10-2001
  1 | 01-02-2001
+ 2 | 10-10-2001
 (2 rows)
 
 select * from foz_1_prt_2;
@@ -1332,7 +1332,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3443)
+ERROR:  no partition for partitioning key (execMain.c:3448)
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 -- complain if create table as select (CTAS)
@@ -1501,7 +1501,8 @@ create table hhh_r1 (a char(1), b date, d char(3))
 distributed by (a)
 partition by range (b)
 (
-partition aa start (date '2007-01-01') end (date '2008-01-01') every (interval '1 month')
+partition aa start (date '2007-01-01') end (date '2008-01-01') 
+             every (interval '1 month')
 );
 NOTICE:  CREATE TABLE will create partition "hhh_r1_1_prt_aa1" for table "hhh_r1"
 NOTICE:  CREATE TABLE will create partition "hhh_r1_1_prt_aa2" for table "hhh_r1"
@@ -1581,18 +1582,20 @@ NOTICE:  merging column "d" with inherited definition
 alter table hhh_r1 add partition dd start ('2008-01-01') end ('2008-05-01') ;
 NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  new partition overlaps existing partition "bb"
--- new partition in "gap" (fail)
+-- new partition in "gap" (ok)
 alter table hhh_r1 add partition dd start ('2008-03-01') end ('2008-04-01') ;
 NOTICE:  Table has parent, setting distribution columns to match parent table
-ERROR:  cannot add new partition between two existing partitions
+NOTICE:  merging column "a" with inherited definition
+NOTICE:  merging column "b" with inherited definition
+NOTICE:  merging column "d" with inherited definition
 -- overlap all partitions (fail)
-alter table hhh_r1 add partition dd start ('2006-01-01') end ('2009-01-01') ;
+alter table hhh_r1 add partition ee start ('2006-01-01') end ('2009-01-01') ;
 NOTICE:  Table has parent, setting distribution columns to match parent table
 ERROR:  new partition overlaps existing partition
 -- start before first partition (fail because end in "gap" [and overlaps])
 alter table hhh_r1 add partition yaa start ('2007-05-01') end ('2007-07-01');
 NOTICE:  Table has parent, setting distribution columns to match parent table
-ERROR:  new partition overlaps existing partition "aa"
+ERROR:  new partition overlaps existing partition
 -- start before first partition (fail )
 alter table hhh_r1 add partition yaa start ('2007-05-01') 
 end ('2007-10-01') inclusive;
@@ -1602,8 +1605,10 @@ ERROR:  new partition overlaps existing partition "aa"
 alter table hhh_r1 add partition yaa start ('2007-05-01') 
 end ('2007-10-01') exclusive;
 NOTICE:  Table has parent, setting distribution columns to match parent table
-ERROR:  new partition overlaps existing partition "aa"
+ERROR:  new partition overlaps existing partition
 drop table hhh_r1 cascade;
+NOTICE:  drop cascades to table hhh_r1_1_prt_dd
+NOTICE:  drop cascades to constraint hhh_r1_1_prt_dd_check on table hhh_r1_1_prt_dd
 NOTICE:  drop cascades to table hhh_r1_1_prt_cc
 NOTICE:  drop cascades to constraint hhh_r1_1_prt_cc_check on table hhh_r1_1_prt_cc
 NOTICE:  drop cascades to table hhh_r1_1_prt_bb
@@ -1944,7 +1949,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg0 localhost:11002 pid=21220)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg0 localhost:11002 pid=24489)
 select * from d;
  i | j  
 ---+----
@@ -2043,7 +2048,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg0 localhost:11002 pid=21220)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg0 localhost:11002 pid=24489)
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -2083,10 +2088,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg0 localhost:11002 pid=21220)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg0 localhost:11002 pid=24489)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg0 localhost:11002 pid=21220)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg0 localhost:11002 pid=24489)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---
@@ -2128,9 +2133,9 @@ insert into b values(25, '2010-01-22');
 insert into b values(90, '2011-05-04');
 -- shouldn't work
 insert into b values(1, '2019-01-01');
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg0 localhost:11002 pid=21220)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg0 localhost:11002 pid=24489)
 insert into b values(91, '2008-05-05');
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg0 localhost:11002 pid=21220)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg0 localhost:11002 pid=24489)
  
 select * from b_1_prt_1;
  i |     j      
@@ -2182,24 +2187,24 @@ insert into b values(6, 3000, '2007-02-02 16:00:00'::timestamp -
 					'1 second'::interval, 'BBZZZZZZZZZZ');
 -- should fail
 insert into b values(6, 3000, '2007-02-02 15:30:00', 'CCCCCCC');
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg1 localhost:11003 pid=21221)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg1 localhost:11003 pid=24490)
 insert into b values(4, 5000, '2007-01-01 12:00:00', 'BCC');
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg1 localhost:11003 pid=21221)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg1 localhost:11003 pid=24490)
 insert into b values(5, 8000, '2007-01-01 12:00:00', 'ZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg0 localhost:11002 pid=21220)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg0 localhost:11002 pid=24489)
 insert into b values(6, 3000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg1 localhost:11003 pid=21221)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg1 localhost:11003 pid=24490)
 insert into b values(6, 1000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg1 localhost:11003 pid=21221)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg1 localhost:11003 pid=24490)
 insert into b values(6, 3000, '2006-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg1 localhost:11003 pid=21221)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg1 localhost:11003 pid=24490)
 insert into b values(6, 3000, '2007-02-02 00:00:00', 'A');
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg1 localhost:11003 pid=21221)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg1 localhost:11003 pid=24490)
 -- NULL tests
 insert into b default values;
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg0 localhost:11002 pid=21220)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg0 localhost:11002 pid=24489)
 insert into b values(6, 3000, '2007-01-01 12:00:00', NULL);
-ERROR:  no partition for partitioning key (execMain.c:3443)  (seg1 localhost:11003 pid=21221)
+ERROR:  no partition for partitioning key (execMain.c:3448)  (seg1 localhost:11003 pid=24490)
 drop table b;
 -- check that we detect subpartitions partitioning a column that is already
 -- a partitioning target
@@ -2299,7 +2304,7 @@ select * from region where r_regionkey = '7';
 -- tables since we cannot enfoce them. But since this insert maps to a 
 -- single definitive partition, we can detect it.
 insert into region values(7, 'abc', 'def');
-ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=21220)
+ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=24489)
 drop table region;
 -- exchange
 -- 1) test all sanity checking
@@ -2465,6 +2470,7 @@ NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
 create table barparent(i int, j int) distributed by (i);
 create table bar () inherits(barparent);
+NOTICE:  Table has parent, setting distribution columns to match parent table
 -- should fail
 alter table foo exchange partition for(position(6)) with table bar;
 ERROR:  cannot EXCHANGE table "bar" as it inherits other table(s)
@@ -2486,6 +2492,7 @@ NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
 create table bar(i int, j int) distributed by (i);
 create table barchild () inherits(bar);
+NOTICE:  Table has parent, setting distribution columns to match parent table
 -- should fail
 alter table foo exchange partition for(position(6)) with table bar;
 ERROR:  cannot EXCHANGE table "bar" as it has child table(s)
@@ -2575,10 +2582,10 @@ alter table foo exchange partition for(position(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 1 | 1
  2 | 1
- 3 | 1
  6 | 6
+ 1 | 1
+ 3 | 1
 (4 rows)
 
 drop table bar;
@@ -2603,10 +2610,10 @@ alter table foo exchange partition for(position(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 1 | 1
  2 | 1
- 3 | 2
  6 | 6
+ 1 | 1
+ 3 | 2
 (4 rows)
 
 drop table bar;
@@ -2632,8 +2639,8 @@ select * from foo;
  i | j 
 ---+---
  1 | 2
- 2 | 3
  3 | 4
+ 2 | 3
  6 | 6
 (4 rows)
 

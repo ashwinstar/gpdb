@@ -299,7 +299,8 @@ ChoosePartitionName(const char *tablename, int partDepth,
 
 static pg_part_rule *get_part_rule(Relation rel, AlterPartitionId *pid,
 								   bool bExistError, bool bMustExist, 
-								   MemoryContext mcxt);
+								   MemoryContext mcxt,
+								   int *pSearch);
 
 static void atpxPartAddList(AlteredTableInfo *tab,
 							Relation rel, AlterPartitionCmd *pc,
@@ -3114,7 +3115,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			{
 				AlterPartitionId   *pid   = (AlterPartitionId *) pc->partid;
 				prule = get_part_rule(rel, pid, true, true,
-									  CurrentMemoryContext);
+									  CurrentMemoryContext, NULL);
 				if (prule)
 				{
 					/* cannot exchange a hash partition */
@@ -9483,11 +9484,9 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	int mid = 0;
 	bool matched = false;
 	PartitionRule *rule;
+	PartitionNode *pNode = NULL;
 
 	Assert(partnode->part->parkind == 'r');
-
-	if (pSearch)
-		*pSearch = searchpoint;
 
 	*found = InvalidOid;
 
@@ -9532,7 +9531,10 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		rule = (PartitionRule *)list_nth(rules, mid);
 
 		if (isnull[attno - 1])
-			return NULL;
+		{
+			pNode = NULL;
+			goto l_fin_range;
+		}
 
 		ret = range_test(d, tupdesc->attrs[attno - 1]->atttypid,
 						 &(ops[RANGE_OP_LT][0]), &(ops[RANGE_OP_LE][0]),
@@ -9540,6 +9542,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	
 		if (ret > 0)
 		{
+			searchpoint = mid;
 			low = mid + 1;
 			continue;
 		}
@@ -9566,7 +9569,9 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			pfree(ops[RANGE_OP_LE]);
 
 			*found = rule->parchildrelid;
-			return rule->children;
+
+			pNode = rule->children;
+			goto l_fin_range;
 		}
 
 		j = mid;
@@ -9586,7 +9591,10 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 					rule = (PartitionRule *)list_nth(rules, j);
 
 				if (isnull[attno - 1])
-					return NULL;
+				{
+					pNode = NULL;
+					goto l_fin_range;
+				}
 
 				ret = range_test(d, tupdesc->attrs[attno - 1]->atttypid,
 								 &(ops[RANGE_OP_LT][i]), &(ops[RANGE_OP_LE][i]),
@@ -9614,7 +9622,9 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				pfree(ops[RANGE_OP_LE]);
 
 				*found = rule->parchildrelid;
-				return rule->children;
+
+				pNode = rule->children;
+				goto l_fin_range;
 			}
 	
 		}
@@ -9636,7 +9646,10 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				rule = (PartitionRule *)list_nth(rules, j);
 
 				if (isnull[attno - 1])
-					return NULL;
+				{
+					pNode = NULL;
+					goto l_fin_range;
+				}
 
 				ret = range_test(d, tupdesc->attrs[attno - 1]->atttypid,
 								 &(ops[RANGE_OP_LT][i]), &(ops[RANGE_OP_LE][i]),
@@ -9664,14 +9677,23 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				pfree(ops[RANGE_OP_LE]);
 
 				*found = rule->parchildrelid;
-				return rule->children;
+
+				pNode = rule->children;
+				goto l_fin_range;
 			}
 	
 		}
 		while (++j < list_length(rules));
-	}
-	return NULL;
-}
+	} /* end if matched */
+
+	pNode = NULL;
+
+ l_fin_range:
+	if (pSearch)
+		*pSearch = searchpoint;
+
+	return pNode;
+} /* end selectrangepartition */
 
 /* select partition via hash */
 static PartitionNode *
@@ -9720,9 +9742,9 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  * d is an array of datums, isnull tells us which of those is NULL, and 
  * natts the width of d.
  */
-Oid
-selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-				TupleDesc tupdesc)
+static Oid
+selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
+				TupleDesc tupdesc, int *pSearch)
 {
 	Oid relid = InvalidOid;
 	Partition *part = partnode->part;
@@ -9733,7 +9755,7 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	{
 		case 'r': /* range */
 			pn = selectRangePartition(partnode, values, isnull, tupdesc,
-									  &relid, NULL);
+									  &relid, pSearch);
 			break;
 		case 'h': /* hash */
 			pn = selectHashPartition(partnode, values, isnull, tupdesc,
@@ -9750,15 +9772,15 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	}
 
 	if (pn)
-		return selectPartition(pn, values, isnull, tupdesc);
+		return selectPartition1(pn, values, isnull, tupdesc, pSearch);
 	else
 	{
 		/* retry a default */
 		if (partnode->default_part && !OidIsValid(relid))
 		{
 			if (partnode->default_part->children)
-				return selectPartition(partnode->default_part->children, values,
-									   isnull, tupdesc);
+				return selectPartition1(partnode->default_part->children, values,
+									   isnull, tupdesc, pSearch);
 			else
 				return partnode->default_part->parchildrelid;
 		}
@@ -9767,6 +9789,12 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	}
 }
 
+Oid
+selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
+				TupleDesc tupdesc)
+{
+	return selectPartition1(partnode, values, isnull, tupdesc, NULL);
+}
 /*
  * get_part_rule
  *
@@ -9783,7 +9811,7 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 static pg_part_rule*
 get_part_rule(Relation rel, AlterPartitionId *pid, 
 			  bool bExistError, bool bMustExist, 
-			  MemoryContext mcxt)
+			  MemoryContext mcxt, int *pSearch)
 {
 	char		   namBuf[NAMEDATALEN]; /* the real partition name */
 
@@ -9871,7 +9899,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			Datum *d = magic_expr_to_datum(rel, pNode, 
 										   pid->partiddef, &isnull);
 
-			partrelid = selectPartition(pNode, d, isnull, tupledesc);
+			partrelid = selectPartition1(pNode, d, isnull, tupledesc, pSearch);
 			
 		}
 		else if (pid->idtype == AT_AP_IDPosition)
@@ -10120,7 +10148,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 					 errhint("use a named partition")));
 
 	/* NOTE: complain if partition already exists, so prule should be NULL */
-	prule = get_part_rule(rel, pid, true, false, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, true, false, CurrentMemoryContext, NULL);
 
 	if (!prule)
 	{
@@ -10169,8 +10197,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 									RelationGetRelationName(rel))));
 			}
 		}
-		/* XXX XXX DO REAL ADD HERE */
 
+		/* Do the real work for add ... */
 
 		if ('r' == pNode->part->parkind)
 		{
@@ -10191,12 +10219,6 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		}
 
 	}
-
-	if (0)
-    ereport(ERROR,
-            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-             errmsg("cannot ADD PARTITION to relation \"%s\"",
-                    RelationGetRelationName(rel))));
 } /* end ATPExecPartAdd */
 
 static void 
@@ -10342,7 +10364,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 				pid.partiddef = (Node *)makeInteger(-1);
 
 				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext);
+									  CurrentMemoryContext, NULL);
 
 				/* ok if no prior -- just means this is first
 				 * partition (XXX XXX though should always have 1 partition in
@@ -10377,7 +10399,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 				pid.partiddef = (Node *)makeInteger(1);
 
 				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext);
+									  CurrentMemoryContext, NULL);
 
 				/* NOTE: invert all the logic of case of missing partStart */
 
@@ -10414,13 +10436,17 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 			}
 			else
-			{ /* both start and end are specified */
-				PartitionRangeItem *ri;
-				bool bOverlap = false;
-				ParseState *pstate = make_parsestate(NULL);
-				int isMiddle = 0; /* -1 for new first, 1 for new last */
-				bool *isnull;
-				TupleDesc tupledesc = RelationGetDescr(rel);
+			{ 					/* both start and end are specified */
+				PartitionRangeItem 		*ri;
+				bool 					 bOverlap  = false;
+				ParseState 				*pstate    = make_parsestate(NULL);
+				int isMiddle  = 0;	/* -1 for new first, 1 for new last */
+				bool 					*isnull;
+				TupleDesc 		 		 tupledesc = RelationGetDescr(rel);
+				int 			 		 startSearchpoint;
+				int 			 		 endSearchpoint;
+				Datum 					*d_start   = NULL;
+				Datum 					*d_end 	   = NULL;
 
 				/* see if start or end overlaps */
 				pid.idtype = AT_AP_IDValue;					
@@ -10430,16 +10456,75 @@ atpxPartAddList(AlteredTableInfo *tab,
 				ri = (PartitionRangeItem *)pbs->partStart;
 
 				pid.partiddef = (Node *)copyObject(ri->partRangeVal);
-				pid.partiddef = (Node *)transformExpressionList(pstate, (List *)pid.partiddef);
+				pid.partiddef = 
+						(Node *)transformExpressionList(pstate, 
+														(List *)pid.partiddef);
 
 				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext);
+									  CurrentMemoryContext, &startSearchpoint);
 
-				if (prule && (ri->partedge == PART_EDGE_INCLUSIVE))
+				if (prule) /* found match for start value in rules */
 				{
-					bOverlap = true;
-					goto L_end_overlap;
-				}
+					bool bstat;
+					PartitionRule *a_rule = prule->topRule;
+					d_start =
+							magic_expr_to_datum(rel, pNode, 
+												pid.partiddef, &isnull);
+
+					/* if start value was inclusive then it definitely
+					 * overlaps 
+					 */
+					if (ri->partedge == PART_EDGE_INCLUSIVE)
+					{
+						bOverlap = true;
+						goto L_end_overlap;
+					}
+
+					/* not inclusive -- check harder if START really
+					 * overlaps 
+					 */
+					bstat = 
+							compare_partn_opfuncid(pNode,
+												   "pg_catalog",
+												   ">",
+											   (List *)a_rule->parrangeend,
+											   d_start, isnull, tupledesc);
+					if (bstat) 
+					{
+						/* end > new start - overlap */
+						bOverlap = true;
+						goto L_end_overlap;
+					}
+						
+					/* Must be the case that new start == end of
+					 * a_rule (because if the end < new start then how
+					 * could we find it the the interval for prule ?)
+					 * This is ok if they have opposite
+					 * INCLUSIVE/EXCLUSIVE ->  New partition does not
+					 * overlap.
+					 */
+
+					Assert (compare_partn_opfuncid(pNode,
+												   "pg_catalog",
+												   "=",
+											   (List *)a_rule->parrangeend,
+											   d_start, isnull, tupledesc));
+
+					if (a_rule->parrangeendincl == ri->partedge)
+					{
+						/* start and end must be of opposite
+						 * types, else they overlap 
+						 */
+						bOverlap = true;
+						goto L_end_overlap;
+					}
+						
+					/* opposite inclusive/exclusive, so in middle of
+					 * range of existing partitions 
+					 */
+					isMiddle = 0;
+					goto L_check_end;
+				} /* end if prule */
 
 				/* check for basic case of START > last partition */
 				if (pNode && pNode->rules && list_length(pNode->rules))
@@ -10448,7 +10533,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 					PartitionRule *a_rule = /* get last rule */
 						(PartitionRule *)list_nth(pNode->rules, 
 											  list_length(pNode->rules) - 1);
-					Datum *d = 
+					d_start = 
 							magic_expr_to_datum(rel, pNode, 
 												pid.partiddef, &isnull);
 
@@ -10457,7 +10542,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 											   "pg_catalog",
 											   "<",
 											   (List *)a_rule->parrangeend,
-											   d, isnull, tupledesc);
+											   d_start, isnull, tupledesc);
 
 					/* if the new partition start > end of the last
 					 * partition then it is the new final partition.
@@ -10486,7 +10571,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 											   "pg_catalog",
 											   "=",
 											   (List *)a_rule->parrangeend,
-											   d, isnull, tupledesc);
+											   d_start, isnull, tupledesc);
 					if (bstat) 
 					{
 						if (a_rule->parrangeendincl == ri->partedge)
@@ -10521,7 +10606,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 												   "pg_catalog",
 												   ">",
 											   (List *)a_rule->parrangestart,
-												   d, isnull, tupledesc);
+												   d_start, isnull, tupledesc);
 
 						/* if the new partition start < start of the
 						 * first partition then it is the new first
@@ -10564,6 +10649,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 					goto L_end_overlap;
 				}
 
+			L_check_end:
 				/* check the end */
 				/* check for basic case of END < first partition (the
 				   opposite of START > last partition) */
@@ -10571,16 +10657,75 @@ atpxPartAddList(AlteredTableInfo *tab,
 				ri = (PartitionRangeItem *)pbs->partEnd;
 
 				pid.partiddef = (Node *)copyObject(ri->partRangeVal);
-				pid.partiddef = (Node *)transformExpressionList(pstate, (List *)pid.partiddef);
+				pid.partiddef = 
+						(Node *)transformExpressionList(pstate, 
+														(List *)pid.partiddef);
 
 				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext);
+									  CurrentMemoryContext, &endSearchpoint);
 
-				if (prule && (ri->partedge == PART_EDGE_INCLUSIVE))
+				if (prule) /* found match for start value in rules */
 				{
-					bOverlap = true;
-					goto L_end_overlap;
-				}
+					bool bstat;
+					PartitionRule *a_rule = prule->topRule;
+					d_end =
+							magic_expr_to_datum(rel, pNode, 
+												pid.partiddef, &isnull);
+
+					/* if end value was inclusive then it definitely
+					 * overlaps 
+					 */
+					if (ri->partedge == PART_EDGE_INCLUSIVE)
+					{
+						bOverlap = true;
+						goto L_end_overlap;
+					}
+
+					/* not inclusive -- check harder if END really
+					 * overlaps 
+					 */
+					bstat = 
+							compare_partn_opfuncid(pNode,
+												   "pg_catalog",
+												   "<",
+											   (List *)a_rule->parrangestart,
+											   d_end, isnull, tupledesc);
+					if (bstat) 
+					{
+						/* start < new end - overlap */
+						bOverlap = true;
+						goto L_end_overlap;
+					}
+						
+					/* Must be the case that new end = start of
+					 * a_rule (because if the start > new end then how
+					 * could we find it the the interval for prule ?)
+					 * This is ok if they have opposite
+					 * INCLUSIVE/EXCLUSIVE ->  New partition does not
+					 * overlap.
+					 */
+
+					Assert (compare_partn_opfuncid(pNode,
+												   "pg_catalog",
+												   "=",
+											   (List *)a_rule->parrangestart,
+											   d_end, isnull, tupledesc));
+
+					if (a_rule->parrangestartincl == ri->partedge)
+					{
+						/* start and end must be of opposite
+						 * types, else they overlap 
+						 */
+						bOverlap = true;
+						goto L_end_overlap;
+					}
+						
+					/* opposite inclusive/exclusive, so in middle of
+					 * range of existing partitions 
+					 */
+					isMiddle = 0;
+				} /* end if prule */
+
 
 				/* check for case of END < first partition */
 				if (pNode && pNode->rules && list_length(pNode->rules))
@@ -10588,7 +10733,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 					bool bstat;
 					PartitionRule *a_rule = /* get first rule */
 							(PartitionRule *)list_nth(pNode->rules, 0);
-					Datum *d = 
+					d_end =
 							magic_expr_to_datum(rel, pNode, 
 												pid.partiddef, &isnull);
 
@@ -10597,7 +10742,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 											   "pg_catalog",
 											   ">",
 											   (List *)a_rule->parrangestart,
-											   d, isnull, tupledesc);
+											   d_end, isnull, tupledesc);
 
 					/* if the new partition end < start of the first
 					 * partition then it is the new first partition.
@@ -10645,7 +10790,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 											   "pg_catalog",
 											   "=",
 											   (List *)a_rule->parrangestart,
-											   d, isnull, tupledesc);
+											   d_end, isnull, tupledesc);
 					if (bstat) 
 					{
 						if (a_rule->parrangestartincl == ri->partedge)
@@ -10702,7 +10847,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 												   "pg_catalog",
 												   "<",
 											   (List *)a_rule->parrangeend,
-												   d, isnull, tupledesc);
+												   d_end, isnull, tupledesc);
 
 						/* if the new partition end > end of the
 						 * last partition then it is the new last
@@ -10795,13 +10940,60 @@ atpxPartAddList(AlteredTableInfo *tab,
 				 * end > existing end 
 				 */
 
-				/* XXX XXX XXX */
 				if (!bOverlap && (0 == isMiddle))
-					ereport(ERROR,
-							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("cannot add new partition between two existing partitions")));
+				{
+					bOpenGap = true;
 
+					if (startSearchpoint != endSearchpoint)
+					{
+						bOverlap = true;
+						goto L_end_overlap;
+					}
+					
+					while (1)
+					{
+						bool bstat;
+						PartitionRule *a_rule = /* get the rule */
+								(PartitionRule *)list_nth(pNode->rules, 
+														  startSearchpoint);
 
+						bstat = 
+							compare_partn_opfuncid(pNode,
+												   "pg_catalog",
+												   "<=",
+											   (List *)a_rule->parrangeend,
+											   d_start, isnull, tupledesc);
+
+						if (bstat)
+						{
+							startSearchpoint++;
+							Assert(startSearchpoint 
+								   <= list_length(pNode->rules));
+							continue;
+						}
+
+						/* if previous partition was less than
+						   current, then this one should be larger.
+						   if not, then it overlaps...
+						*/
+						if (!compare_partn_opfuncid(pNode,
+													"pg_catalog",
+													">=",
+												(List *)a_rule->parrangestart,
+													d_end, isnull, tupledesc))
+						{
+							prule = NULL; /* could get the right prule... */
+							bOverlap = true;
+							goto L_end_overlap;
+						}
+
+						/* shift a_rule up so new rule has a place to fit */
+						maxpartno = a_rule->parruleord;
+
+						break;
+					} /* end while */
+					
+				} /* end 0 == middle */
 			
 			L_end_overlap:
 				if (bOverlap)
@@ -10843,7 +11035,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 				pid.location  = -1;
 
 				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext);
+									  CurrentMemoryContext, NULL);
 
 				if (prule)
 				{
@@ -10967,7 +11159,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 		 * reach parruleord == maxpartno 
 		 */
 		prule = get_part_rule(rel, &pid, false, false, 
-							  CurrentMemoryContext);
+							  CurrentMemoryContext, NULL);
 
 		Assert(prule && prule->topRule && prule->pNode && prule->pNode->part);
 
@@ -10997,7 +11189,7 @@ ATPExecPartAlter(Relation rel,
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
 	if (prule)
 	{
@@ -11020,7 +11212,7 @@ ATPExecPartCoalesce(Relation rel,
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
 	if (0)
 	{
@@ -11167,7 +11359,8 @@ ATPExecPartDrop(Relation rel,
 		pid->partiddef = (Node *)makeInteger(1);
 	}
 
-	prule = get_part_rule(rel, pid, bCheckMaybe, true, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, bCheckMaybe, true, 
+						  CurrentMemoryContext, NULL);
 
 	if (!prule)
 	{
@@ -11521,7 +11714,8 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 		RangeVar       	   *newrelrv  = (RangeVar *)pc->arg1;
 		RangeVar		   *oldrelrv;
 
-		prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+		prule = get_part_rule(rel, pid, true, true, 
+							  CurrentMemoryContext, NULL);
 
 		if (!prule)
 			return;
@@ -11629,7 +11823,7 @@ ATPExecPartMerge(Relation rel,
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
 
 	if (prule)
@@ -11653,7 +11847,7 @@ ATPExecPartModify(Relation rel,
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
 	if (prule)
 	{
@@ -11678,7 +11872,7 @@ ATPExecPartRename(Relation rel,
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
 	if (prule)
 	{
@@ -11706,7 +11900,7 @@ ATPExecPartRename(Relation rel,
 
 		/* ERROR if exists */
 		prule2 = get_part_rule(rel, &newpid, true, false, 
-							   CurrentMemoryContext);
+							   CurrentMemoryContext, NULL);
 
 		targetrelation = relation_open(prule->topRule->parchildrelid, 
 									   AccessExclusiveLock);
@@ -11736,7 +11930,7 @@ ATPExecPartRename(Relation rel,
 			parent_pid.location = -1;
 
 			prule3 = get_part_rule(rel, &parent_pid, true, true, 
-								   CurrentMemoryContext);
+								   CurrentMemoryContext, NULL);
 
 			parentrelation = RelationIdGetRelation(prule3->topRule->parchildrelid);
 			StrNCpy(parentname, 
@@ -11810,7 +12004,7 @@ ATPExecPartSetTemplate(Relation rel,
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
 
 	if (prule)
@@ -11837,7 +12031,7 @@ ATPExecPartSplit(Relation rel,
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
 
 	if (prule)
@@ -11954,7 +12148,7 @@ ATPExecPartTruncate(Relation rel,
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext);
+	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
 	if (prule)
 	{
