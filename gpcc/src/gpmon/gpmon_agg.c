@@ -70,7 +70,7 @@ static apr_status_t agg_put_qlog(agg_t* agg, const gpmon_qlog_t* qlog,
     node = apr_hash_get(agg->qtab, &qlog->key, sizeof(qlog->key));
     if (node) {
 	node->qlog = *qlog;
-	if (0 != strcmp(qlog->db, "gpmon_1")) {
+	if (0 != strcmp(qlog->db, GPMON_DB)) {
 	    TR2(("agg_put: found %d.%d.%d generation %d recorded %d\n", qlog->key.tmid, 
 		qlog->key.xid, qlog->key.cid, generation, node->recorded));
 	}
@@ -84,7 +84,7 @@ static apr_status_t agg_put_qlog(agg_t* agg, const gpmon_qlog_t* qlog,
 	node->qenode_recorded = 0;
 	node->qenode_list = 0;
 	apr_hash_set(agg->qtab, &node->qlog.key, sizeof(node->qlog.key), node);
-	if (0 != strcmp(qlog->db, "gpmon_1")) {
+	if (0 != strcmp(qlog->db, GPMON_DB)) {
 	    TR2(("agg_put: new %d.%d.%d generation %d recorded %d\n", qlog->key.tmid, 
 		qlog->key.xid, qlog->key.cid, generation, node->recorded));
 	}
@@ -222,7 +222,7 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 
 	/* skip all entries that weren't updated recently */
 	if (dp->last_updated_generation < newagg->generation - 1) {
-	    if (0 != strcmp(dp->qlog.db, "gpmon_1")) {
+	    if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n", 
 		    dp->qlog.key.tmid, dp->qlog.key.xid, dp->qlog.key.cid,
 		    (int) dp->last_updated_generation, 
@@ -231,7 +231,7 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	    continue;
 	}
 
-	if (0 != strcmp(dp->qlog.db, "gpmon_1")) {
+	if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 	    TR2(("agg_dup: add %d.%d.%d, generation %d, recorded %d:\n", 
 		 dp->qlog.key.tmid, dp->qlog.key.xid, 
 		dp->qlog.key.cid, dp->last_updated_generation, dp->recorded));

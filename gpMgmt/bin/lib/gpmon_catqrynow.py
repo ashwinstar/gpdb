@@ -1,6 +1,6 @@
 import os, sys, time
 
-GPMONDIR = 'gpmon.1'
+GPMONDIR = 'gpmon.2'
 
 
 # for each line in queries_now.dat 

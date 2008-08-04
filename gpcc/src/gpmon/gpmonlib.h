@@ -16,7 +16,6 @@
 typedef int SOCKET;
 #endif
 
-#define GPMON_DB "gpmon_1"
 #define GPMON_DBUSER "gpmon"
 
 #define FMT64 APR_INT64_T_FMT
