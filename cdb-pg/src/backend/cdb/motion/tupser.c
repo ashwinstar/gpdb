@@ -956,8 +956,7 @@ CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo * pSerInfo)
 	 * We know roughly how much space we'll need, allocate all in one go.
 	 *
 	 */
-	initStringInfo(&serData);
-	enlargeStringInfo(&serData, tcList->num_chunks * tcList->max_chunk_length);
+	initStringInfoOfSize(&serData, tcList->num_chunks * tcList->max_chunk_length);
 
 	i = 0;
 	do
