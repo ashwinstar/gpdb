@@ -202,15 +202,20 @@ class GPUpgrade:
         Separate from __del__ because that caused weird issues with exit() 
         behavior.
         '''
-        if self.cmd == 'MASTER':
-            olddir = self.oldenv['MASTER_DATA_DIRECTORY']
-            if olddir and os.path.exists('%s/postmaster.pid' % olddir):        
-                self.Log('INFO', 'Shutting down old Greenplum postmaster')
-                subprocess.call('gpstop -a -m', env=self.oldenv, shell=True)
-            newdir = self.newenv['MASTER_DATA_DIRECTORY']
-            if newdir and os.path.exists('%s/postmaster.pid' % newdir):
-                self.Log('INFO', 'Shutting down new Greenplum postmaster')
-                subprocess.call('gpstop -a', env=self.newenv, shell=True)
+        try:
+            if self.cmd == 'MASTER':
+                if (self.oldenv and 'MASTER_DATA_DIRECTORY' in self.oldenv):
+                    olddir = self.oldenv['MASTER_DATA_DIRECTORY']
+                    if olddir and os.path.exists('%s/postmaster.pid' % olddir):        
+                        self.Log('INFO', 'Shutting down old Greenplum postmaster')
+                        subprocess.call('gpstop -a -m', env=self.oldenv, shell=True)
+                if (self.newenv and 'MASTER_DATA_DIRECTORY' in self.newenv):
+                    newdir = self.newenv['MASTER_DATA_DIRECTORY']
+                    if newdir and os.path.exists('%s/postmaster.pid' % newdir):
+                        self.Log('INFO', 'Shutting down new Greenplum postmaster')
+                        subprocess.call('gpstop -a', env=self.newenv, shell=True)
+        except Exception, e:
+            self.Log('FATAL', 'Cleanup failure: ' + str(e))
 
     #------------------------------------------------------------
     def SetState(self, newstate):
@@ -507,7 +512,7 @@ class GPUpgrade:
             try:
                 cmd = 'grep PG_VERSION_STR %s/include/pg_config.h' % home
                 return self.RunCmd(cmd, env=self.oldenv)
-            except:
+            except Exception, e:
                 raise UpgradeError('Unable to determine version of %s: %s'
                                    % (home, str(e)))
 
@@ -589,7 +594,7 @@ tool shipped with that release''')
                 if (not force) and os.path.exists(flag):
                     try:
                         dpid = self.RunCmd('cat ' + flag)
-                    except:
+                    except Exception, e:
                         if not silent:
                             self.Log('WARN', 'Read error on file:  ' + str(e))
                             doerror = True
@@ -664,12 +669,12 @@ tool shipped with that release''')
             if (not os.path.exists(self.tmpdir)):
                 try:
                     os.mkdir(self.tmpdir)
-                    self.RunCmd('chmod %s 700' % self.tmpdir)
+                    self.RunCmd('chmod 700 %s' % self.tmpdir)
                     flag = open('%s/flag' % self.tmpdir, 'w')
                     flag.write('%s\n' % str(self.pid))
                     flag.close()
                     os.mkdir(self.backup)
-                    self.RunCmd('chmod %s 700' % self.backup)
+                    self.RunCmd('chmod 700 %s' % self.backup)
                     flag = open('%s/flag' % self.tmpdir, 'w')
                     flag.write('%s\n' % str(self.pid))
                     flag.close()
