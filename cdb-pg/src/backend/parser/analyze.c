@@ -122,6 +122,7 @@ typedef struct
 	int prevStartEnd;
 	List *allRangeVals;
 	List *allListVals;
+	MemoryContext expr_cxt;
 } partValidationState;
 
 static List *do_parse_analyze(Node *parseTree, ParseState *pstate);
@@ -198,14 +199,18 @@ static int partition_range_compare(ParseState *pstate,
 								   int		partNumber,
 								   char	   *compare_op,
 								   PartitionRangeItem *pRI1,
-								   PartitionRangeItem *pRI2);
+								   PartitionRangeItem *pRI2,
+								   MemoryContext expr_cxt);
 
 static int partition_range_every(ParseState *pstate,
 								 PartitionBy *partitionBy, 	
 								 List *coltypes,
-								 char	   *at_depth);
+								 char *at_depth,
+								 partValidationState *vstate);
 static Datum eval_basic_opexpr(ParseState *pstate, List *oprname, 
-							   Node *leftarg, Node *rightarg, Oid *restypid,
+							   Node *leftarg, Node *rightarg,
+							   bool *typbyval, int16 *typlen,
+							   Oid *restypid, MemoryContext expr_cxt,
 							   int location);
 
 static Node *make_prule_catalog(ParseState *pstate,
@@ -3892,7 +3897,7 @@ partition_range_compare(ParseState *pstate, CreateStmtContext *cxt,
 						char *at_depth, int partNumber,
 						char *compare_op, /* =, <, > only */
 						PartitionRangeItem *pRI1,
-						PartitionRangeItem *pRI2)
+						PartitionRangeItem *pRI2, MemoryContext expr_cxt)
 {
 	int rc = -1;
 	ListCell		*lc1 = NULL;
@@ -3934,7 +3939,8 @@ L_redoLoop:
 		 * types (because it compares things like "location") so do a
 		 * real compare using eval .
 		 */
-		res = eval_basic_opexpr(pstate, cop, n1, n2, NULL, -1);
+		res = eval_basic_opexpr(pstate, cop, n1, n2, NULL, NULL, NULL,
+							   expr_cxt, -1);
 		
 		if (DatumGetBool(res) && strcmp("=", compare_op) == 0)
 		{
@@ -4073,6 +4079,7 @@ preprocess_range_spec(partValidationState *vstate)
 	RegProcedure *sortfuncs;
 	int i;
 	List *coltypes = NIL;
+	MemoryContext oldcxt;
 
 	foreach(lc, vstate->pBy->keys)
 	{
@@ -4102,7 +4109,8 @@ preprocess_range_spec(partValidationState *vstate)
 		coltypes = lappend(coltypes, typname);
 	}
 
-	partition_range_every(pstate, vstate->pBy, coltypes, vstate->at_depth);
+	partition_range_every(pstate, vstate->pBy, coltypes, vstate->at_depth,
+						  vstate);
 
 	/* 
 	 * Iterate over the elements in a given partition specification and
@@ -4113,6 +4121,8 @@ preprocess_range_spec(partValidationState *vstate)
 		PartitionElem *el = lfirst(lc);
 		PartitionBoundSpec *pbs = (PartitionBoundSpec *)el->boundSpec;
 		ListCell *lc2;
+
+		MemoryContextReset(vstate->expr_cxt);
 
 		/* we might not have a boundary spec if user just specified DEFAULT */
 		if (!pbs)
@@ -4201,13 +4211,16 @@ preprocess_range_spec(partValidationState *vstate)
 					clauseevery = lfirst(lcevery);
 					clauseend = lfirst(lcend);
 				
+					oldcxt = MemoryContextSwitchTo(vstate->expr_cxt);
 					res = eval_basic_opexpr(pstate, plusop, (Node *)mystart,
 											(Node *)clauseevery,
-											&typid, -1);
-
+											&typbyval, &len, &typid,
+										   	vstate->expr_cxt, -1);
+					MemoryContextSwitchTo(oldcxt);
 
 					/* XXX: typmod ? */
-					myend = makeConst(type->typid, len, res, 
+					myend = makeConst(type->typid, len,
+									  datumCopy(res, typbyval, len),
 									  false, typbyval);
 
 					/* make sure res is bigger than the last value */
@@ -4218,14 +4231,16 @@ preprocess_range_spec(partValidationState *vstate)
 						Datum is_lt = eval_basic_opexpr(pstate, ltop,
 														(Node *)prevval,
 														(Node *)myend,
-														&typ, -1);
+														NULL, NULL, &typ,
+													   	vstate->expr_cxt, -1);
 
 						if (!DatumGetBool(is_lt))
 							elog(ERROR, "every interval too small");
 					}
 					restypid = InvalidOid;
 					res = eval_basic_opexpr(pstate, ltop, (Node *)myend,
-										(Node *)clauseend, &restypid, -1);
+										(Node *)clauseend, NULL, NULL,
+										&restypid, vstate->expr_cxt, -1);
 					if (!DatumGetBool(res))
 					{
 						newend = end;
@@ -4494,7 +4509,8 @@ validate_range_partition(partValidationState *vstate)
 													vstate->pBy,
 													vstate->at_depth,
 													vstate->partNumber,
-													"<", pRI2,pRI1);
+													"<", pRI2,pRI1,
+													vstate->expr_cxt);
 
 				if (1 != compareRc)
 				{
@@ -4607,7 +4623,7 @@ L_setprevElem:
 										vstate->partNumber,
 										">",
 										pRI1,
-										pRI2);
+										pRI2, vstate->expr_cxt);
 
 		if (0 != compareRc)
 		{
@@ -4628,7 +4644,7 @@ L_setprevElem:
 										vstate->partNumber,
 										"=",
 										pRI1,
-										pRI2);
+										pRI2, vstate->expr_cxt);
 
 		if (0 != compareRc)
 		{
@@ -4666,7 +4682,7 @@ L_setprevElem:
 											vstate->partNumber,
 											"=",
 											pRI1,
-											pRI2);
+											pRI2, vstate->expr_cxt);
 
 		if ((pRI2->partedge == PART_EDGE_INCLUSIVE) &&
 			(pRI1->partedge == PART_EDGE_INCLUSIVE) &&
@@ -4694,7 +4710,7 @@ L_setprevElem:
 										vstate->partNumber,
 										">",
 										pRI1,
-										pRI2);
+										pRI2, vstate->expr_cxt);
 
 		if (1 == compareRc)
 			bAppendRange = 1;
@@ -4765,7 +4781,7 @@ L_setprevElem:
 											vstate->partNumber,
 											"=",
 											pRI1,
-											pRI2);
+											pRI2, vstate->expr_cxt);
 
 				if (-1 == compareRc)
 					break;
@@ -4788,7 +4804,7 @@ L_setprevElem:
 											vstate->partNumber,
 											"<",
 											pRI1,
-											pRI2);
+											pRI2, vstate->expr_cxt);
 
 			}
 			else
@@ -4831,7 +4847,7 @@ L_setprevElem:
 											vstate->partNumber,
 											"=",
 											pRI2,
-											pRI1);
+											pRI1, vstate->expr_cxt);
 				
 				if (-1 == compareRc)
 					break;
@@ -4854,7 +4870,7 @@ L_setprevElem:
 													vstate->partNumber,
 													"<",
 													pRI2,
-													pRI1);
+													pRI1, vstate->expr_cxt);
 
 				if (-1 == compareRc)
 					break;
@@ -4888,7 +4904,7 @@ L_setprevElem:
 												vstate->partNumber,
 												"=",
 												pRI1,
-												pRI2);
+												pRI2, vstate->expr_cxt);
 
 				if (-1 == compareRc)
 					break;
@@ -4912,7 +4928,7 @@ L_setprevElem:
 												vstate->partNumber,
 												"<",
 												pRI1,
-												pRI2);
+												pRI2, vstate->expr_cxt);
 
 				if (-1 == compareRc)
 					break;
@@ -5221,6 +5237,11 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	vstate->pBy = pBy;
 	vstate->at_depth = at_depth;
 	vstate->partNumber = partNumber;
+	vstate->expr_cxt = AllocSetContextCreate(CurrentMemoryContext,
+											 "PartitionExprCxt",
+                                     		 ALLOCSET_DEFAULT_MINSIZE,
+                                     		 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE); 
 	
 	Assert(pBy);
 	pSpec = (PartitionSpec *)pBy->partSpec;
@@ -5423,6 +5444,8 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 		}
 	} /* end foreach(lc, partElts) */
 
+	MemoryContextReset(vstate->expr_cxt);
+
 	if (partNumber > -1 && partno != partNumber)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -5519,14 +5542,20 @@ partition_arg_get_val(Node *node)
  */
 static Datum
 eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg, 
-				  Node *rightarg, Oid *restypid, int location)
+				  Node *rightarg, bool *typbyval, int16 *typlen,
+				  Oid *restypid, MemoryContext expr_cxt, int location)
 {
 	Datum res;
 	Datum lhs;
 	Datum rhs;
 	OpExpr *opexpr;
 	HeapTuple optup;
+	MemoryContext oldcxt;
+	bool byval;
+	int16 len;
+	bool need_typ_info = (PointerIsValid(restypid) && *restypid == InvalidOid);
 	
+	oldcxt = MemoryContextSwitchTo(expr_cxt);
 	opexpr = (OpExpr *)make_op(pstate, oprname, leftarg, rightarg, location);
 	optup = SearchSysCache(OPEROID, ObjectIdGetDatum(opexpr->opno),
 						   0, 0, 0);
@@ -5570,9 +5599,41 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 			}
 		}
 		else
+		{
 			*restypid = opexpr->opresulttype;
+		}
 	}
+	else
+	{
+		/* better by byval! */
+		MemoryContextSwitchTo(oldcxt);
+		return res;
+	}
+
+	if (need_typ_info || !PointerIsValid(typbyval))
+	{
+			Type typ = typeidType(*restypid);
+
+			byval = typeByVal(typ);
+			len = typeLen(typ);
+
+			if (PointerIsValid(typbyval))
+			{
+				Assert(PointerIsValid(typlen));
+				*typbyval = byval;
+				*typlen = len;
+			}
+
+			ReleaseSysCache(typ);
+	}
+	else
+	{
+		byval = *typbyval;
+		len = *typlen;
+	}
+	MemoryContextSwitchTo(oldcxt);
 	
+	res = datumCopy(res, byval, len);
 	return res;
 }
 
@@ -5581,7 +5642,7 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
  */
 static int 
 partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
-					  char *at_depth)
+					  char *at_depth, partValidationState *vstate)
 {
 	PartitionSpec	*pSpec;
 	char			 namBuf[NAMEDATALEN];
@@ -5753,7 +5814,9 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				/* every_cnt * n3t */
 				restypid = InvalidOid;
 				res = eval_basic_opexpr(pstate, oprmul, (Node *)everyCnt, n3t,
-										&restypid, ((A_Const *)n3)->location);
+										NULL, NULL, &restypid,
+										vstate->expr_cxt,
+										((A_Const *)n3)->location);
 				typ = typeidType(restypid);
 				c = makeConst(restypid, typeLen(typ), res, false,
 							  typeByVal(typ));
@@ -5766,7 +5829,8 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					
 					restypid = InvalidOid;
 					res = eval_basic_opexpr(pstate, oprmul, (Node *)c,
-											et, &restypid,
+											et, NULL, NULL, &restypid,
+											vstate->expr_cxt,
 											((A_Const *)pRI_Every->partEveryNum)->location);
 					pfree(c);
 					typ = typeidType(restypid);
@@ -5784,7 +5848,9 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				 */
 				restypid = exprType(n1t);
 				res = eval_basic_opexpr(pstate, oprplus, n1t, (Node *)c, 
-										&restypid, ((A_Const *)n1)->location);
+										NULL, NULL,
+										&restypid, vstate->expr_cxt,
+										((A_Const *)n1)->location);
 				typ = typeidType(restypid);
 				newend = makeConst(restypid, typeLen(typ), res, false,
 								   typeByVal(typ));
@@ -5830,7 +5896,9 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 						Oid test_typid = InvalidOid;
 
 						uncast = eval_basic_opexpr(pstate, oprplus, n1t, 
-												   (Node *)c, &test_typid,
+												   (Node *)c, NULL, NULL,
+												   &test_typid,
+												   vstate->expr_cxt,
 												   ((A_Const *)n1)->location);
 
 						typ = typeidType(test_typid);
@@ -5839,7 +5907,8 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 						ReleaseSysCache(typ);
 
 						iseq = eval_basic_opexpr(NULL, opreq, (Node *)tmpconst,
-												 (Node *)newend, NULL,
+												 (Node *)newend, NULL, NULL,
+												 NULL, vstate->expr_cxt,
 												 -1);
 
 						if (!DatumGetBool(iseq))
@@ -5864,7 +5933,9 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 					res2 = eval_basic_opexpr(pstate, ltop,
 											 (Node *)lfirst(lclastval),
 											 (Node *)newend,
+											 NULL, NULL,
 											 &tmptyp,
+											 vstate->expr_cxt,
 											 ((A_Const *)n3)->location);
 
 					if (!DatumGetBool(res2))
@@ -5919,7 +5990,10 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				/* the comparison */
 				restypid = InvalidOid;
 				res = eval_basic_opexpr(pstate, oprcompare, (Node *)newend, n2t,
-										&restypid, ((A_Const *)n2)->location);
+										NULL, NULL,
+										&restypid,
+										vstate->expr_cxt,
+									   	((A_Const *)n2)->location);
 
 				/* XXX XXX: also check stop flag.  
 				   and free up prev if stop is true or current > end.
@@ -6757,8 +6831,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		curPby = makeNode(PartitionBy);
 
 		{
-			PartitionSpec *tmppspec = copyObject(pBy->partSpec);
-				
+			PartitionSpec *tmppspec = makeNode(PartitionSpec);
+
 			/* selectively copy pBy */
 			curPby->partType = pBy->partType;
 
