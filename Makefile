@@ -2,6 +2,13 @@
 # Makefile for Greenplum Database
 #
 
+# keep the default target above any targets from included makefiles
+all : devel
+
+# tell included makefiles where to find build-top-level resources
+BLD_TOP=$(shell sh -c pwd)
+include Makefile.thirdparty
+
 GPPGDIR=cdb-pg
 GPMGMT=gpMgmt
 GPCC=gpcc
@@ -14,7 +21,7 @@ GPDOCDIR=$(CURDIR)/docs/release
 DEFPORT=5432
 INLINE_FLAGS=-finline-limit=1800
 
-OPTFLAGS="-O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS)"
+OPTFLAGS="-O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS)" 
 
 ifeq (on, ${GPDBGINLINE})
 CFLAGS_INLINE=$(INLINE_FLAGS)
@@ -33,7 +40,7 @@ DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3"
 DISTPATH=$(GPROOT)/$(GPDIR)
 DEVPATH=$(HOME)/$(GPDIR)
 
-CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT)
+CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-includes=$(BLD_THIRDPARTY_INCLUDE_DIR) --with-libraries=$(BLD_THIRDPARTY_LIB_DIR)
 
 ifeq (true, ${PG_LANG})
 CONFIGFLAGS+= --with-perl --with-python
@@ -49,13 +56,16 @@ ifeq (true, ${AUTH})
 CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib" --with-includes="$(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include"
 endif
 
-all : devel
-
 .PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean distprep version
 
 test2 :
 	echo "CWD ="$(CURDIR)
 	echo "RELEASE="$(RELEASE)
+
+test3: INSTLOC=$(DEVPATH)
+test3: HOMEDEP
+	@rm -rf $(INSTLOC)/lib/*
+	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
@@ -216,7 +226,7 @@ mgmtcopy :
 	@rm -rf $(INSTLOC)/bin/lib/CVS
 	@rm -rf $(INSTLOC)/bin/src
 
-copylibs :
+copylibs : thirdparty-dist
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
 	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then cp -p $(CURDIR)/krb5/lib/libk5crypto.so.3 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/krb5/lib/libgssapi_krb5.so.2 ] ; then cp -p $(CURDIR)/krb5/lib/libgssapi_krb5.so.2 $(INSTLOC)/lib ; fi
@@ -228,6 +238,7 @@ copylibs :
 	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.0.dylib $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.0.dylib $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.0.dylib ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.0.dylib $(INSTLOC)/lib ; fi
+	@echo "LD_LIBRARY_PATH is set to '$$LD_LIBRARY_PATH'"
 	if [ `uname -s` = 'Darwin' ] ; then \
 	    for lib in `otool -L $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$1}'`; do \
 	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
@@ -240,6 +251,10 @@ copylibs :
 	        cp -p $$lib $(INSTLOC)/lib ; \
 	    done ; \
 	fi
+
+ignore-me:
+	@echo "Copy third-party shared libraries into place..."
+	(cd $(BLD_THIRDPARTY_LIB_DIR) && gtar cf - *.so*) | (cd $(INSTLOC)/lib && gtar xvf -)
 
 RECONFIG :
 	rm -f $(ISCONFIG)

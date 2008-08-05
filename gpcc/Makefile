@@ -1,3 +1,9 @@
+# prevent included makefiles from stealing default target
+default: all
+
+BLD_TOP=..
+include $(BLD_TOP)/Makefile.thirdparty
+
 SHELL=bash
 CC=gcc
 GPCC=$(CURDIR)
@@ -5,7 +11,7 @@ CDBINCL=-I$(GPCC)/../cdb-pg/src/include
 OPT=-g -O3
 LIBEVENT=libevent-1.4.3-stable
 OPENSSL=openssl-0.9.8h
-INCLUDES=-I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
+INCLUDES=-I$(BLD_THIRDPARTY_INCLUDE_DIR) -I$(GPCC)/ext/include $$($(GPCC)/ext/bin/apr-1-config --includes) -I$(GPCC)/src/include -I. $$($(GPCC)/ext/bin/apu-1-config --includes)
 CFLAGS=$(OPT) $$($(GPCC)/ext/bin/apr-1-config --cflags) -Wall
 APRLIBS=$$($(GPCC)/ext/bin/apr-1-config --link-ld --libs) 
 APULIBS= $$($(GPCC)/ext/bin/apu-1-config --link-ld --libs)
@@ -50,7 +56,7 @@ mkpaxos: mkdir
 mkgpfdist: mkext
 	@echo --- gpfdist --------------------------------------------------
 	(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -lz)
+		-o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -L$(BLD_THIRDPARTY_LIB_DIR) -lz)
 	@mkdir -p build/bin
 	@cp -f src/gpfdist/gpfdist build/bin/
 
