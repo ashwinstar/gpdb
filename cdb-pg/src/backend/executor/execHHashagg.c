@@ -804,6 +804,8 @@ agg_hash_initial_pass(AggState *aggstate)
 			break;
 		}
 
+		Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSIN);
+
 		if (aggstate->hashslot->tts_tupleDescriptor == NULL)
 		{
 			/* Initialize hashslot by cloning input slot. */
@@ -1190,6 +1192,7 @@ spill_hash_table(AggState *aggstate)
 
 	Assert(hashtable->nbuckets > spill_set->num_spill_files);
 
+
 	/* Write each spill file */
 	for (file_no = 0; file_no < spill_set->num_spill_files; file_no++)
 	{
@@ -1212,6 +1215,11 @@ spill_hash_table(AggState *aggstate)
 				SANITY_CHECK_METADATA_SIZE(hashtable);
 #endif
 				hashtable->num_batches++;
+
+				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLBATCH);
+				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BATCH);
+
+				CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 			}
 
 			/* Write all entries in the hash chain. */
@@ -1229,6 +1237,12 @@ spill_hash_table(AggState *aggstate)
 					spill_file->file_info->total_bytes += written_bytes;
 
 					hashtable->num_spill_groups++;
+
+					Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLTUPLE);
+					Gpmon_M_Add(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLBYTE, written_bytes);
+
+					Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_TUPLE);
+					Gpmon_M_Add(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BYTE, written_bytes);
 				}
 			}
 
@@ -1512,6 +1526,9 @@ agg_hash_reload(AggState *aggstate)
 			Assert((hashkey >> spill_file->parent_spill_set->parent_hash_bit) %
 				   spill_file->parent_spill_set->num_spill_files == 
 				   spill_file->index_in_parent);
+
+			Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_READTUPLE);
+			Gpmon_M_Add(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_READBYTE, input_size);
 		}
 
 		else
@@ -1593,6 +1610,8 @@ agg_hash_reload(AggState *aggstate)
 		/* Reset per-input-tuple context after each tuple */
 		ResetExprContext(tmpcontext);
 	}
+
+	CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 
 	if (hashtable->is_spilling)
 	{
@@ -1834,6 +1853,24 @@ void reset_agg_hash_table(AggState *aggstate)
 	mpool_reset(hashtable->group_buf);
 
 	init_agg_hash_iter(hashtable);
+
+	Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLPASS);
+	/* Reset current pass read tuples much be before currentpass spill tuples */
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate),
+			GPMON_AGG_CURRSPILLPASS_READTUPLE, 
+			Gpmon_M_Get(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_TUPLE));
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate),
+			GPMON_AGG_CURRSPILLPASS_READBYTE, 
+			Gpmon_M_Get(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BYTE));
+
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), 
+			GPMON_AGG_CURRSPILLPASS_TUPLE, 0);
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), 
+			GPMON_AGG_CURRSPILLPASS_BYTE, 0);
+	Gpmon_M_Reset(GpmonPktFromAggState(aggstate), 
+			GPMON_AGG_CURRSPILLPASS_BATCH, 0);
+
+	CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
 }
 
 /* Function: destroy_agg_hash_table
