@@ -664,7 +664,7 @@ static double get_cpu_skew(qdnode_t* qdnode)
         apr_pool_destroy(tmp_pool);
         return 0.0f;
     }
-        
+
     cpu_avg = cpu_avg / segcnt;
     TR2(("(SKEW) Avg rusage: %" FMT64 "\n", cpu_avg));
 
@@ -679,9 +679,10 @@ static double get_cpu_skew(qdnode_t* qdnode)
         TR2(("(SKEW) Deviation: %d\n", dev)); 
         var += dev * dev;
     }
+  
     var = sqrt(var / (double)segcnt);
-    
-    TR2(("(SKEW) Variance: %f\n", var));
+  
+    TR2(("(SKEW) CPU variance: %f\n", var));
 
     /* Skew calc */
     apr_pool_destroy(tmp_pool);
@@ -690,12 +691,106 @@ static double get_cpu_skew(qdnode_t* qdnode)
     return (cpu_avg ? (var/(double)cpu_avg) : 0.0f);
 }
 
+static double get_row_skew(qdnode_t* qdnode)
+{
+
+    apr_pool_t* tmp_pool;
+    apr_hash_t* segtab;
+    apr_hash_index_t *hi;
+
+    qenode_t* pqe = NULL;
+
+    apr_int64_t row_in_avg = 0;
+    apr_int64_t* seg_row_in_sum = NULL;
+    void* valptr;
+
+    double var = 0.0f;
+
+    int segcnt = 0;
+    int e;
+
+    if (!qdnode)
+        return 0.0f;
+
+    if (0 != (e = apr_pool_create(&tmp_pool, 0)))
+        gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+
+    segtab = apr_hash_make(tmp_pool);
+    if (!segtab)
+        gpmon_fatal(FLINE, "Out of memory"); 
+
+    /* Calc rows in sum per segment */
+    for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
+    {
+        /* Skip QD */
+        if (pqe->qexec.key.segid == -1)
+            continue;
+        
+        seg_row_in_sum = apr_hash_get(segtab, &pqe->qexec.key.segid,
+                                   sizeof(pqe->qexec.key.segid));
+        
+        if (!seg_row_in_sum) {
+            seg_row_in_sum = apr_palloc(tmp_pool, sizeof(apr_int64_t));
+            *seg_row_in_sum = 0;
+        }
+
+        *seg_row_in_sum += pqe->qexec.m[GPMON_QEXEC_M_ROWSIN].value;
+        TR2(("(SKEW) Iterator data for seg %d.  Rows in: %" FMT64 "\n",
+             pqe->qexec.key.segid, pqe->qexec.m[GPMON_QEXEC_M_ROWSIN].value));
+        apr_hash_set(segtab, &pqe->qexec.key.segid, 
+                     sizeof(pqe->qexec.key.segid), seg_row_in_sum);
+    }
+
+    /* Calc rows in mean across all segments */
+    for (hi = apr_hash_first(NULL, segtab); hi; hi = apr_hash_next(hi))
+    {
+        apr_hash_this(hi, 0, 0, &valptr);
+	seg_row_in_sum = (apr_int64_t*) valptr;
+        row_in_avg += *seg_row_in_sum;
+        segcnt++;
+    }
+
+    if (!segcnt) {
+        TR2(("No segments for CPU skew calculation\n"));
+        apr_pool_destroy(tmp_pool);
+        return 0.0f;
+    }
+
+    row_in_avg = row_in_avg / segcnt;
+
+    TR2(("(SKEW) Avg rows in: %" FMT64 "\n", row_in_avg));
+
+    /* Calc sqrt of dev squared mean */
+    for (hi = apr_hash_first(NULL, segtab); hi; hi = apr_hash_next(hi))
+    {
+        apr_int64_t dev = 0;
+
+        apr_hash_this(hi, NULL, NULL, &valptr);
+	seg_row_in_sum = (apr_int64_t*) valptr;
+        dev = *seg_row_in_sum - row_in_avg;
+        TR2(("(SKEW) Deviation: %d\n", dev)); 
+        var += dev * dev;
+    }
+
+    var = sqrt(var / (double)segcnt);
+    
+    TR2(("(SKEW) Rows in variance: %f\n", var));
+
+    /* Skew calc */
+    apr_pool_destroy(tmp_pool);
+    TR2(("(SKEW) Rows in skew: %f\n", row_in_avg ? var/(double)row_in_avg : 0.0f));
+
+    return (row_in_avg ? (var/(double)row_in_avg) : 0.0f);
+}
+
+
 static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
                       apr_int32_t options)
 {
     char tmstr[24];
     char* p = line;
     double cpu_skew = 0.0f;
+    double row_skew = 0.0f;
     *p = 0;
     sprintf(p += strlen(p), "%s", nowstr);
     sprintf(p += strlen(p), "|%d|%d|%d", qdnode->qlog.key.tmid, 
@@ -718,8 +813,11 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
     sprintf(p += strlen(p), "|%" FMT64 "|%.4f", 
             get_total_cpu_elapsed(qdnode), 0.00f);
     if (options == 1)
+    {
         cpu_skew = get_cpu_skew(qdnode);
-    sprintf(p += strlen(p), "|%f|%.2f", cpu_skew, 0.00f);
+        row_skew = get_row_skew(qdnode);
+    }
+    sprintf(p += strlen(p), "|%f|%.2f", cpu_skew, row_skew);
     return line;
 }
 
