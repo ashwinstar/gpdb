@@ -110,7 +110,8 @@ typedef enum
 	INTERP_HELD,
 	INTERP_TRUSTED,
 	INTERP_UNTRUSTED,
-	INTERP_BOTH
+	INTERP_BOTH,
+	INTERP_ERROR
 } InterpState;
 
 static InterpState interp_state = INTERP_NONE;
@@ -180,13 +181,13 @@ _PG_init(void)
 {
 	/* Be sure we do initialization only once (should be redundant now) */
 	static bool inited = false;
-    HASHCTL     hash_ctl;
+	HASHCTL     hash_ctl;
 
 	if (inited)
 		return;
 
 	DefineCustomBoolVariable("plperl.use_strict",
-	  "If true, will compile trusted and untrusted perl code in strict mode",
+							 "If true, will compile trusted and untrusted perl code in strict mode",
 							 NULL,
 							 &plperl_use_strict,
 							 PGC_USERSET,
@@ -210,9 +211,11 @@ _PG_init(void)
 									&hash_ctl,
 									HASH_ELEM);
 
-	plperl_init_interp();
-
+	/* set inited to true prior to calling init_interp so that errors won't cause
+	   problems trying to re-execute the handlers above */
 	inited = true;
+
+	plperl_init_interp();
 }
 
 /* Each of these macros must represent a single string literal */
@@ -225,6 +228,7 @@ _PG_init(void)
 	"sub ::plperl_die { my $msg = shift; " \
 	"       $msg =~ s/\\(eval \\d+\\) //g; die $msg; } " \
 	"$SIG{__DIE__} = \\&::plperl_die; " \
+	"*CORE::GLOBAL::exit = sub { die 'exited with code ', $_[0] || 0; }; " \
 	"sub ::mkunsafefunc {" \
 	"      my $ret = eval(qq[ sub { $_[0] $_[1] } ]); " \
 	"      $@ =~ s/\\(eval \\d+\\) //g if $@; return $ret; }" \
@@ -310,6 +314,14 @@ _PG_init(void)
 static void 
 check_interp(bool trusted)
 {
+
+	/* previous interp failed, try again */
+	if (interp_state == INTERP_ERROR)
+	{
+		interp_state = INTERP_NONE;
+		plperl_init_interp();
+	}
+	
 	if (interp_state == INTERP_HELD)
 	{
 		if (trusted)
@@ -425,20 +437,44 @@ plperl_init_interp(void)
 
 	plperl_held_interp = perl_alloc();
 	if (!plperl_held_interp)
+	{
+		interp_state = INTERP_ERROR;
 		elog(ERROR, "could not allocate Perl interpreter");
+	}
 
 	perl_construct(plperl_held_interp);
 	perl_parse(plperl_held_interp, plperl_init_shared_libs, 
 			   3, embedding, NULL);
 	perl_run(plperl_held_interp);
 
+	/* Check for a bad perl installation */
+	if (SvTRUE(ERRSV))
+	{
+		interp_state = INTERP_ERROR;
+		perl_destruct(plperl_held_interp);
+		perl_free(plperl_held_interp);
+		plperl_held_interp = NULL;
+		elog(ERROR, "could not initialize Perl interpreter: %s",
+		     SvPV(ERRSV, PL_na));
+	}
+
 	if (interp_state == INTERP_NONE)
 	{
-		SV *res;
+	    SV     *res;
 
-		res = eval_pv(TEST_FOR_MULTI,TRUE);
-		can_run_two = SvIV(res); 
-		interp_state = INTERP_HELD;
+	    res = eval_pv(TEST_FOR_MULTI, FALSE);
+	    if (SvTRUE(ERRSV))
+	    {
+			interp_state = INTERP_ERROR;
+			perl_destruct(plperl_held_interp);
+			perl_free(plperl_held_interp);
+			plperl_held_interp = NULL;
+			elog(ERROR, "could not initialize Perl interpreter: %s",
+				 SvPV(ERRSV, PL_na));
+	    }
+
+	    can_run_two = SvIV(res); 
+	    interp_state = INTERP_HELD;
 	}
 
 #ifdef WIN32
