@@ -1189,6 +1189,9 @@ agg_retrieve_direct(AggState *aggstate)
 						aggstate->agg_done = true;
 						break;
 					}
+
+					Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_QEXEC_M_ROWSIN); 
+
 					/* set up for next advance aggregates call */
 					tmpcontext->ecxt_scantuple = outerslot;
 
