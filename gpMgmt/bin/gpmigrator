@@ -169,7 +169,7 @@ class GPUpgrade:
         if options.pid:
             if self.cmd == 'MASTER':
                 parser.error('INVALID INTERNAL COMMAND: ' + self.cmd)
-            self.pid = options.pid
+            self.pid = int(options.pid)
         self.oldhome   = args[0]
         self.newhome   = args[1]
         if options.datadirs:
@@ -382,7 +382,7 @@ class GPUpgrade:
             conn.execute(qry)
         except Exception, e:
             if conn: conn.close()
-            raise ConnectionError("Error (%s) executing sql: %s", 
+            raise ConnectionError("Error (%s) executing sql: %s" %
                                   (str(e), qry))
 
         rows = []
@@ -403,16 +403,17 @@ class GPUpgrade:
         if utility:  options = '-c gp_session_role=utility'
         else:        options = ''
 
+        conn = None
         try:
-            db = pg8000.Connection(user=self.user, host=self.host,
+            conn = pg8000.Connection(user=self.user, host=self.host,
                                    database=db, options=options,
                                    port=port)
-            db.execute(qry)
+            conn.execute(qry)
         except Exception, e:
-            raise ConnectionError("Error (%s) executing sql: %s", 
+            raise ConnectionError("Error (%s) executing sql: %s" %
                                   (str(e), qry))
         finally:
-            if db: db.close()        
+            if conn: conn.close()
 
     #------------------------------------------------------------
     def CheckDown(self):
@@ -645,7 +646,8 @@ tool shipped with that release''')
                 print '  [X] Cancel upgrade'
                 value = ''
                 while value.upper() not in ['R', 'D', 'X']:
-                    value = raw_input('> ')
+                    try: value = raw_input('> ')
+                    except EOFError: raise UpgradeError('Upgrade Cancelled')
                     value = value.upper()
                     if value == 'R' and not os.path.exists(self.backup):
                         value = ''
@@ -1467,7 +1469,7 @@ try:
         u.Log('INFO', 
 '''
 --------------------------------------------
-Upgrade Sucessful
+Upgrade Successful
 --------------------------------------------
 To complete the environment configuration
 1. Update %s .bashrc to source the file:
@@ -1501,6 +1503,11 @@ To complete the environment configuration
 
 # Any error that can happen
 except UpgradeError, e:
+    u.Log('FATAL', str(e))
+    u.Cleanup()
+    sys.exit(1)
+
+except ConnectionError, e:
     u.Log('FATAL', str(e))
     u.Cleanup()
     sys.exit(1)
