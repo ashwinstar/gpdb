@@ -16,6 +16,7 @@
 #include "access/clog.h"
 #include "access/distributedlog.h"
 #include "access/transam.h"
+#include "cdb/cdbvars.h"                /* Gp_segment */
 
 Datum		gp_distributed_log(PG_FUNCTION_ARGS);
 
@@ -50,14 +51,18 @@ gp_distributed_log(PG_FUNCTION_ARGS)
 
 		/* build tupdesc for result tuples */
 		/* this had better match gp_distributed_log view in system_views.sql */
-		tupdesc = CreateTemplateTupleDesc(4, false);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "distributed_xid",
+		tupdesc = CreateTemplateTupleDesc(6, false);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "segment_id",
+						   INT2OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "dbid",
+						   INT2OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "distributed_xid",
 						   XIDOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "distributed_id",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "distributed_id",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "status",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "status",
 						   TEXTOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "local_transaction",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "local_transaction",
 						   XIDOID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
@@ -89,8 +94,8 @@ gp_distributed_log(PG_FUNCTION_ARGS)
 		DistributedTransactionId 		distribXid;
 		char							distribId[TMGIDSIZE];
 		
-		Datum		values[4];
-		char		nulls[4];
+		Datum		values[6];
+		char		nulls[6];
 		HeapTuple	tuple;
 		Datum		result;
 
@@ -109,23 +114,25 @@ gp_distributed_log(PG_FUNCTION_ARGS)
 		MemSet(values, 0, sizeof(values));
 		MemSet(nulls, ' ', sizeof(nulls));
 
-		values[0] = TransactionIdGetDatum(distribXid);
+		values[0] = Int16GetDatum((int16)Gp_segment);
+		values[1] = Int16GetDatum((int16)GpIdentity.dbid);
+		values[2] = TransactionIdGetDatum(distribXid);
 
 		sprintf(distribId, "%u-%.10u",
 			    distribTimeStamp, distribXid);
 		
-		values[1] = 
+		values[3] = 
 			DirectFunctionCall1(textin,
 				                CStringGetDatum(distribId));
 
 		/*
 		 * For now, we only log committed distributed transactions.
 		 */
-		values[2] = 
+		values[4] = 
 			DirectFunctionCall1(textin,
 				                CStringGetDatum("Committed"));
 
-		values[3] = TransactionIdGetDatum(context->indexXid);
+		values[5] = TransactionIdGetDatum(context->indexXid);
 
 		tuple = heap_formtuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);

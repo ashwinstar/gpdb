@@ -16,6 +16,7 @@
 #include "access/clog.h"
 #include "access/distributedlog.h"
 #include "access/transam.h"
+#include "cdb/cdbvars.h"                /* Gp_segment */
 
 Datum		gp_transaction_log(PG_FUNCTION_ARGS);
 
@@ -50,10 +51,14 @@ gp_transaction_log(PG_FUNCTION_ARGS)
 
 		/* build tupdesc for result tuples */
 		/* this had better match gp_distributed_xacts view in system_views.sql */
-		tupdesc = CreateTemplateTupleDesc(2, false);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "transaction",
+		tupdesc = CreateTemplateTupleDesc(4, false);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "segment_id",
+						   INT2OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "dbid",
+						   INT2OID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "transaction",
 						   XIDOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "status",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "status",
 						   TEXTOID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
@@ -83,8 +88,8 @@ gp_transaction_log(PG_FUNCTION_ARGS)
 	{
 		XidStatus 	status;
 		char 		*statusStr = NULL;
-		Datum		values[2];
-		char		nulls[2];
+		Datum		values[4];
+		char		nulls[4];
 		HeapTuple	tuple;
 		Datum		result;
 
@@ -101,7 +106,9 @@ gp_transaction_log(PG_FUNCTION_ARGS)
 		MemSet(values, 0, sizeof(values));
 		MemSet(nulls, ' ', sizeof(nulls));
 
-		values[0] = TransactionIdGetDatum(context->indexXid);
+		values[0] = Int16GetDatum((int16)Gp_segment);
+		values[1] = Int16GetDatum((int16)GpIdentity.dbid);
+		values[2] = TransactionIdGetDatum(context->indexXid);
 
 		if (status == TRANSACTION_STATUS_IN_PROGRESS)
 			statusStr = "InProgress";
@@ -115,7 +122,7 @@ gp_transaction_log(PG_FUNCTION_ARGS)
 			elog(ERROR, "Unexpected transaction status %d",
 			     status);
 		
-		values[1] = 
+		values[3] = 
 			DirectFunctionCall1(textin,
 				                CStringGetDatum(statusStr));
 		
