@@ -107,6 +107,7 @@ class GPUpgrade:
         self.user      = self.RunCmd('id -un')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
+        self.masterdir.rstrip('/')
         self.ParseInput()
 
         # Extract path from input master directory
