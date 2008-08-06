@@ -3296,6 +3296,7 @@ OptTabSubPartitionTemplate:
                         PartitionSpec *n = makeNode(PartitionSpec); 
                         n->partElem  = $4;
                         n->subSpec   = NULL;
+						n->istemplate  = true;
                         n->location  = @3;
                         $$ = (Node *)n;
 				}

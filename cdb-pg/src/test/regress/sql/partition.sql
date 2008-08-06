@@ -1376,9 +1376,39 @@ alter table foo exchange partition for(position(6)) with table bar;
 drop table foo;
 drop table barchild;
 drop table bar;
--- XXX not yet: rules on non-partition table
+-- rules on non-partition table
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
 
--- XXX: not yet: constraints on non-partition table
+create table bar(i int, j int) distributed by (i);
+create table baz(i int, j int) distributed by (i);
+create rule bar_baz as on insert to bar do instead insert into baz
+  values(NEW.i, NEW.j);
+
+alter table foo exchange partition for(position(2)) with table bar;
+drop table foo, bar, baz;
+
+-- not yet: constraints on non-partition table
+-- should fail, can't have constraints which would conflict with the
+-- partitioning constraints
+-- XXX: not yet
+--create table foo (i int, j int) distributed by (i)
+--partition by range(j)
+--(start(1) end(10) every(1));
+
+--create table bar(i int, j int check (j > 1000)) distributed by (i);
+--alter table foo exchange partition for(position(2)) with table bar;
+--drop table foo, bar;
+-- shouldn't fail: it's fine to have constraints on columns which are not
+-- the subject of partitioning.
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+
+create table bar(i int check (i > 1000), j int) distributed by (i);
+alter table foo exchange partition for(position(2)) with table bar;
+drop table foo, bar;
 
 -- XXX: not yet: permissions
 

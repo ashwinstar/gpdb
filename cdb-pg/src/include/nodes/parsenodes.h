@@ -1470,6 +1470,7 @@ typedef struct PartitionSpec			/* a Partition Specification */
 	NodeTag				type;			
 	List			   *partElem;		/* partition element list */
 	Node			   *subSpec;		/* subpartition spec */
+	bool				istemplate;
 	int					location;		/* token location, or -1 if unknown */
 } PartitionSpec;
 

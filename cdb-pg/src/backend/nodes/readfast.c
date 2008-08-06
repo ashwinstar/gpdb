@@ -1716,6 +1716,7 @@ _readPartitionSpec(const char **str)
 
 	READ_NODE_FIELD(partElem);
 	READ_NODE_FIELD(subSpec);
+	READ_BOOL_FIELD(istemplate);
 	READ_INT_FIELD(location);
 
 	READ_DONE();

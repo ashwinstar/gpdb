@@ -6505,13 +6505,11 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		}
 	}
 
+	/* see if there are any duplicate column references */
 	pcolcxt.cols = NIL;
 	pcolcxt.pstate = pstate;
-	/* see if there are any duplicate column references */
 	partition_col_walker((Node *)pBy, &pcolcxt);
 	
-	lc = NULL;
-
 	if (pBy->partType == PARTTYP_HASH)
 	{
 
@@ -6701,14 +6699,15 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		
 				if (psubBy && psubBy->partSpec)
 				{
+					Assert(((PartitionSpec *)psubBy->partSpec)->istemplate);
+
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-							 errmsg("subpartition specification conflict%s",
-									at_depth),
+							 errmsg("subpartition configuration conflicts "
+									"with subpartition template"),
 							 parser_errposition(pstate, psubBy->location)));
 				}
 		
-				/* XXX: change to copyObject() */
 				newSub = makeNode(PartitionBy);
 		
 				newSub->partType  = psubBy->partType;
@@ -6840,8 +6839,14 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 			curPby->keyopclass = copyObject(pBy->keyopclass);
 			curPby->partNum = copyObject(pBy->partNum);
+
 			if (pElem)
+			{
 				tmppspec->partElem = list_make1(copyObject(pElem));
+				tmppspec->istemplate = 
+					((PartitionSpec *)pBy->partSpec)->istemplate;
+			}
+
 			curPby->partSpec = (Node *)tmppspec;
 			curPby->partDepth = pBy->partDepth;
 			curPby->parentRel = copyObject(pBy->parentRel);

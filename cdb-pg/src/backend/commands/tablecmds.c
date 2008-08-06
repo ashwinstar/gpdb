@@ -353,8 +353,8 @@ static Oid DefineRelation_int(CreateStmt *stmt, char relkind,
 							  struct CdbDispatchCmdThreads **pDispatchThreads);
 static void ATExecPartAddInternal(Relation rel, Node *def);
 static void exchange_part_rule(Oid oldrelid, Oid newrelid);
-static void exchange_part_constraints(Partition *part, Oid oldrelid, 
-									  Oid newrelid);
+static void exchange_part_constraints(Partition *part, Relation oldrel, 
+									  Relation newrel);
 #if 0
 static bool rel_is_child_partition(Oid relid);
 static bool rel_partition_get_master(Oid relid);
@@ -3113,7 +3113,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				elog(ERROR, "EXCHANGE is not supported in utility mode");
 			else if (Gp_role == GP_ROLE_DISPATCH)
 			{
-				AlterPartitionId   *pid   = (AlterPartitionId *) pc->partid;
+				AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
 				prule = get_part_rule(rel, pid, true, true,
 									  CurrentMemoryContext, NULL);
 				if (prule)
@@ -3163,7 +3163,18 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				}
 			}
 
-			/* Same columns, being careful about dropped columns! */
+			if (!((oldrel->rd_rel->relkind == RELKIND_APPEND_ONLY ||
+				   oldrel->rd_rel->relkind == RELKIND_RELATION) ||
+				  (newrel->rd_rel->relkind == RELKIND_APPEND_ONLY ||
+				   newrel->rd_rel->relkind == RELKIND_RELATION)))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot exchange relation which is not a table")));
+			
+
+			}
+
 			if (oldrel->rd_rel->relnatts != newrel->rd_rel->relnatts)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
@@ -3227,9 +3238,15 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			if (relation_has_supers(RelationGetRelid(newrel)))
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("cannot EXCHANGE table \"%s\" as it "
+						 errmsg("cannot exchange table \"%s\" as it "
 								"inherits other table(s)",
 								RelationGetRelationName(newrel))));
+
+			if (newrel->rd_rules || oldrel->rd_rules)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("cannot exchange table which has rules "
+								"defined on it")));
 
 			heap_close(oldrel, NoLock);
 			heap_close(newrel, NoLock);
@@ -3242,9 +3259,6 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartAlter:				/* Alter */
 		case AT_PartCoalesce:			/* Coalesce */
 		case AT_PartDrop:				/* Drop */
-
-			/* AT_PartExchange: Exchange (see above) */
-
 		case AT_PartMerge:				/* Merge */
 		case AT_PartModify:				/* Modify */
 		case AT_PartRename:				/* Rename */
@@ -8319,7 +8333,6 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 	HeapTuple tuple;
 	Relation rel;
 	SysScanDesc scan;
-	bool istemplate = false;
 
 	/* only create partition catalog entries on the master */
 	if (Gp_role == GP_ROLE_EXECUTE) 
@@ -8361,7 +8374,12 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 		part->parrelid = rootrelid;
 		part->parkind = pt;
 		part->parlevel = pby->partDepth;
-		part->paristemplate = istemplate;
+
+		if (pby->partSpec)
+			part->paristemplate = ((PartitionSpec *)pby->partSpec)->istemplate;
+		else
+			part->paristemplate = false;
+
 		part->parnatts = list_length(pby->keys);
 
 		attnums = palloc(list_length(pby->keys) * sizeof(AttrNumber));
@@ -11502,7 +11520,7 @@ exchange_part_inheritance(Oid oldrelid, Oid newrelid)
 }
 
 static void
-exchange_part_constraints(Partition *part, Oid oldrelid, Oid newrelid)
+exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
 {
 	Relation catalogRelation;
 	SysScanDesc scan;
@@ -11510,15 +11528,32 @@ exchange_part_constraints(Partition *part, Oid oldrelid, Oid newrelid)
 	HeapTuple	constraintTuple;
 	List *constraints;
 	ListCell *lc;
-	Relation newrel;
 
 	/* First gather up the child's constraint definitions */
 	catalogRelation = heap_open(ConstraintRelationId, AccessShareLock);
 
+#if 0
+	/* make sure that there are no conflicting constraints */
 	ScanKeyInit(&key,
 				Anum_pg_constraint_conrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(oldrelid));
+				ObjectIdGetDatum(RelationGetRelid(oldrel)));
+
+	scan = systable_beginscan(catalogRelation, ConstraintRelidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+
+
+
+
+
+
+#endif
+
+	ScanKeyInit(&key,
+				Anum_pg_constraint_conrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationGetRelid(oldrel)));
 
 	scan = systable_beginscan(catalogRelation, ConstraintRelidIndexId,
 							  true, SnapshotNow, 1, &key);
@@ -11553,7 +11588,7 @@ exchange_part_constraints(Partition *part, Oid oldrelid, Oid newrelid)
 			continue;
 		}
 
-		/* use naive search since number of columns is presmed small */
+		/* use naive search since number of columns is presumed small */
 		for (i = 0; i < part->parnatts; i++)
 		{
 			int j;
@@ -11629,7 +11664,7 @@ exchange_part_constraints(Partition *part, Oid oldrelid, Oid newrelid)
 							  con->contype,
 							  con->condeferrable,
 							  con->condeferred,
-							  newrelid,
+							  RelationGetRelid(newrel),
 							  keys,
 							  nkeys,
 							  InvalidOid,
@@ -11652,14 +11687,11 @@ exchange_part_constraints(Partition *part, Oid oldrelid, Oid newrelid)
 
 		performDeletion(&conobj, DROP_RESTRICT);
 	}
-	newrel = heap_open(newrelid, AccessExclusiveLock);
+
 	SetRelationNumChecks(newrel, newrel->rd_rel->relchecks + 
 						 list_length(constraints));
-	heap_close(newrel, NoLock);
 
-	heap_close(catalogRelation, NoLock);
-	RelationForgetRelation(oldrelid);
-	RelationForgetRelation(newrelid);
+	heap_close(catalogRelation, AccessShareLock);
 }
 
 static void
@@ -11776,8 +11808,12 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 		oldname = pstrdup(RelationGetRelationName(oldrel));
 
 		exchange_part_inheritance(RelationGetRelid(oldrel), RelationGetRelid(newrel));
+		CommandCounterIncrement();
 
 		snprintf(tmpname, sizeof(tmpname), "pg_temp_%u", oldrelid);
+
+		exchange_part_constraints(part, oldrel, newrel);
+		CommandCounterIncrement();
 
 		heap_close(newrel, NoLock);
 		heap_close(oldrel, NoLock);
@@ -11797,8 +11833,6 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 
 		CommandCounterIncrement();
 
-		exchange_part_constraints(part, oldrelid, newrelid);
-		CommandCounterIncrement();
 
 		/* fix up partitioning rule if we're on the QD*/
 		if (Gp_role == GP_ROLE_DISPATCH)

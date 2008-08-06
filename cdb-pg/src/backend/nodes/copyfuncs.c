@@ -2433,6 +2433,7 @@ _copyPartitionSpec(PartitionSpec *from)
 
 	COPY_NODE_FIELD(partElem);
 	COPY_NODE_FIELD(subSpec);
+	COPY_SCALAR_FIELD(istemplate);
 	COPY_SCALAR_FIELD(location);
 
 	return newnode;

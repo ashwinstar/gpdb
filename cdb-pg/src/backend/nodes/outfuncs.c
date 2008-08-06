@@ -2152,6 +2152,7 @@ _outPartitionSpec(StringInfo str, PartitionSpec *node)
 	WRITE_NODE_TYPE("PARTITIONSPEC");
 	WRITE_NODE_FIELD(partElem);
 	WRITE_NODE_FIELD(subSpec);
+	WRITE_BOOL_FIELD(istemplate);
 	WRITE_INT_FIELD(location);
 }
 

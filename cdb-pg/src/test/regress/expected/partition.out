@@ -2473,7 +2473,7 @@ create table bar () inherits(barparent);
 NOTICE:  Table has parent, setting distribution columns to match parent table
 -- should fail
 alter table foo exchange partition for(position(6)) with table bar;
-ERROR:  cannot EXCHANGE table "bar" as it inherits other table(s)
+ERROR:  cannot exchange table "bar" as it inherits other table(s)
 drop table foo;
 drop table bar;
 drop table barparent;
