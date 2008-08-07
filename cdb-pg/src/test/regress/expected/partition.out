@@ -34,7 +34,7 @@ subpartition by hash (d) subpartition template (subpartition jjj)
 partition aa (subpartition cc, subpartition dd),
 partition bb (subpartition cc, subpartition dd)
 );
-ERROR:  subpartition specification conflict
+ERROR:  subpartition configuration conflicts with subpartition template
 LINE 4: subpartition by hash (d) subpartition template (subpartition...
                         ^
 -- missing subpartition by
@@ -2499,8 +2499,53 @@ ERROR:  cannot EXCHANGE table "bar" as it has child table(s)
 drop table foo;
 drop table barchild;
 drop table bar;
--- XXX not yet: rules on non-partition table
--- XXX: not yet: constraints on non-partition table
+-- rules on non-partition table
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar(i int, j int) distributed by (i);
+create table baz(i int, j int) distributed by (i);
+create rule bar_baz as on insert to bar do instead insert into baz
+  values(NEW.i, NEW.j);
+alter table foo exchange partition for(position(2)) with table bar;
+ERROR:  cannot exchange table which has rules defined on it
+drop table foo, bar, baz;
+-- not yet: constraints on non-partition table
+-- should fail, can't have constraints which would conflict with the
+-- partitioning constraints
+-- XXX: not yet
+--create table foo (i int, j int) distributed by (i)
+--partition by range(j)
+--(start(1) end(10) every(1));
+--create table bar(i int, j int check (j > 1000)) distributed by (i);
+--alter table foo exchange partition for(position(2)) with table bar;
+--drop table foo, bar;
+-- shouldn't fail: it's fine to have constraints on columns which are not
+-- the subject of partitioning.
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_5" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_6" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_7" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_8" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_9" for table "foo"
+create table bar(i int check (i > 1000), j int) distributed by (i);
+alter table foo exchange partition for(position(2)) with table bar;
+drop table foo, bar;
 -- XXX: not yet: permissions
 -- basic test
 create table foo (i int, j int) distributed by (i)
