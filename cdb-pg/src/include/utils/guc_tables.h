@@ -50,6 +50,7 @@ enum config_group
 	CONN_AUTH_SETTINGS,
 	CONN_AUTH_SECURITY,
 	EXTERNAL_TABLES,                    /*CDB*/
+	APPENDONLY_TABLES,                  /*CDB*/
 	RESOURCES,
 	RESOURCES_MEM,
 	RESOURCES_FSM,

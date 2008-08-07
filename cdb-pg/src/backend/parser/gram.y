@@ -2256,8 +2256,10 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list opt_oids
 					n->is_from = $6;
 					n->filename = $7;
 					n->sreh = $11;
-
+					n->partitions = NULL;
+					n->aousesegno = -1;
 					n->options = NIL;
+					
 					/* Concatenate user-supplied flags */
 					if ($2)
 						n->options = lappend(n->options, $2);
@@ -2279,6 +2281,8 @@ CopyStmt:	COPY opt_binary qualified_name opt_column_list opt_oids
 					n->is_from = false;
 					n->filename = $4;
 					n->options = $6;
+					n->partitions = NULL;
+					n->aousesegno = -1;
 					$$ = (Node *)n;
 				}
 		;

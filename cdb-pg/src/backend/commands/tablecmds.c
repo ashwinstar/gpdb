@@ -4007,7 +4007,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			AppendOnlyInsertDesc aoInsertDesc = NULL;
 			
 			if(newrel)
-				aoInsertDesc = appendonly_insert_init(newrel);
+				aoInsertDesc = appendonly_insert_init(newrel, 0 /* TODO: writing into segno 0 only may be a problem */);
 			
 			aoscan = appendonly_beginscan(oldrel, 0, NULL);
 			

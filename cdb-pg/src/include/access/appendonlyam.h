@@ -89,7 +89,7 @@ extern void appendonly_endscan(AppendOnlyScanDesc scan);
 extern MemTuple appendonly_getnext(AppendOnlyScanDesc scan, 
 									ScanDirection direction,
 									TupleTableSlot *slot);
-extern AppendOnlyInsertDesc appendonly_insert_init(Relation rel);
+extern AppendOnlyInsertDesc appendonly_insert_init(Relation rel, int segno);
 extern Oid appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple tup);
 extern void appendonly_insert_finish(AppendOnlyInsertDesc aoInsertDesc);
 extern BlockNumber RelationGuessNumberOfBlocks(double totalbytes);

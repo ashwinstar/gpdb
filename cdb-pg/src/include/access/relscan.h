@@ -16,6 +16,7 @@
 
 #include "access/skey.h"
 #include "access/memtup.h"
+#include "access/aosegfiles.h"
 #include "storage/bufpage.h"
 #include "utils/tqual.h"
 #include "cdb/cdbbufferedread.h"
@@ -146,7 +147,9 @@ typedef struct AppendOnlyScanDescData
 	
 	/* file segment scan state */
 	File	    aos_file;			/* the relation file */
-	BlockNumber aos_cur_segno;		/* the relation file segment number */
+	int			aos_total_segfiles;	/* the relation file segment number */
+	int			aos_segfiles_processed; /* num of segfiles already processed */
+	FileSegInfo *aos_segfile_arr;	/* array of all segfiles information */
 	bool		aos_need_new_segfile;
 	bool		aos_done_all_segfiles;
 	

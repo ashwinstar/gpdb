@@ -182,6 +182,7 @@ _readQuery(const char ** str)
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
 	READ_NODE_FIELD(result_partitions);
+	READ_INT_FIELD(result_aousesegno);
 	READ_NODE_FIELD(returningLists);
 	                     
     READ_OID_FIELD(intoOidInfo.relOid);
@@ -2185,6 +2186,7 @@ _readCopyStmt(const char ** str)
 	READ_NODE_FIELD(options);
 	READ_NODE_FIELD(sreh);
 	READ_NODE_FIELD(partitions);
+	READ_INT_FIELD(aousesegno);
 	
 	READ_DONE();	
 

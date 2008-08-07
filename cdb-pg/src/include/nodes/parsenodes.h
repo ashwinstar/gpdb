@@ -171,7 +171,8 @@ typedef struct Query
 	 */
 	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
 	PartitionNode *result_partitions;
-
+	int			result_aousesegno; /* AO file 'seg' number for resultRelstion to use */
+	
 	/*
 	 * If the query has a returningList then the planner will store a list of
 	 * processed targetlists (one per result relation) here.  We must have a
@@ -1224,8 +1225,9 @@ typedef struct CopyStmt
 	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
 	List	   *options;		/* List of DefElem nodes */
 	Node	   *sreh;			/* Single row error handling info */
-	/* Convenient location for dispatch of partitioning meta data */
+	/* Convenient location for dispatch of misc meta data */
 	PartitionNode *partitions;
+	int			   aousesegno;	/* AO segno to write into */
 } CopyStmt;
 
 /* ----------------------

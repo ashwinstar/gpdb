@@ -270,6 +270,7 @@ _readQuery(void)
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
 	READ_NODE_FIELD(result_partitions);
+	READ_INT_FIELD(result_aousesegno);
 	READ_NODE_FIELD(returningLists);
 	
 	/*

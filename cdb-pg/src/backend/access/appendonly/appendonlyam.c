@@ -59,6 +59,8 @@
 #include <zlib.h>
 #endif
 
+#define SCANNED_SEGNO  (&scan->aos_segfile_arr[scan->aos_segfiles_processed])->segno
+
 typedef enum AoExecutorBlockKind
 {
 	AoExecutorBlockKind_None = 0,
@@ -96,7 +98,7 @@ initscan(AppendOnlyScanDesc scan, ScanKey key)
 		memcpy(scan->aos_key, key, scan->aos_nkeys * sizeof(ScanKeyData));
 
 	scan->aos_file = 0;
-	scan->aos_cur_segno = -1; /* must start with -1, so first segment will be 0 */
+	scan->aos_segfiles_processed = 0;
 	scan->aos_need_new_segfile = true; /* need to assign a file to be scanned */
 	scan->aos_done_all_segfiles = false;
 	scan->bufferDone = true;
@@ -265,8 +267,9 @@ static bool
 SetNextFileSegForRead(AppendOnlyScanDesc scan)
 {
 	Relation		reln = scan->aos_rd;
-	FileSegInfo		*fsinfo;
 	MemoryContext	oldcontext;
+	int				segno;
+	int64			eof;
 	
 	Assert(scan->aos_need_new_segfile);   /* only call me when last segfile completed */
 	Assert(!scan->aos_done_all_segfiles); /* don't call me if I told you to stop */
@@ -318,27 +321,33 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 		scan->aos_bufread_inited = true;
 	}
 	
-	/* for now it's a primitive sequential increment of segment numbers */
-	scan->aos_cur_segno++;
-	
-	/* Get the eof of this relation file from the pg_aoseg_* table */
-	fsinfo = GetFileSegInfo(reln, scan->aos_cur_segno);
-
-	/* If no file segment, we are done */
-	if(!fsinfo)
+	/*
+	 * Do we have more segment files to read or are we done?
+	 */
+	if(scan->aos_segfiles_processed < scan->aos_total_segfiles)
 	{
+		/* still have more segment files to read. get info of the next one */
+		FileSegInfo *fsinfo = &scan->aos_segfile_arr[scan->aos_segfiles_processed];
+		segno = fsinfo->segno;
+		eof = (int64)fsinfo->eof;
+		
+		/* it's safest to increment here. the close file routine can get called more than once */ 
+		scan->aos_segfiles_processed++;
+	}
+	else
+	{
+		/* finished reading all segment files */
 		scan->aos_need_new_segfile = false;
 		scan->aos_done_all_segfiles = true;
-		return false;
+
+		return false;		
 	}
-		
+			
 	/* Open this file 'segment' */
-	scan->aos_file = OpenAOSegmentFile(reln, scan->aos_cur_segno, false);		
+	scan->aos_file = OpenAOSegmentFile(reln, segno, false);		
 		
 	/* Set the file to be read with its eof */
-	BufferedReadSetFile(&scan->bufferedRead, 
-						scan->aos_file, 
-						(int64)fsinfo->eof);
+	BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
 	
 	/* ready to go! */
 	scan->aos_need_new_segfile = false;
@@ -346,13 +355,11 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	if (Debug_appendonly_print_scan)
 		elog(LOG,"Append-only scan initialize for table '%s' segment file %u (compression = %s, maximum buffer length %d, large read length %d)",
 			 NameStr(scan->aos_rd->rd_rel->relname),
-			 scan->aos_cur_segno,
+			 segno,
 			 (scan->aos_compressed ? "true" : "false"),
 		     scan->maxBufferLen,
 		     scan->largeReadLen);
-	
-	pfree(fsinfo);
-	
+		
 	return true;
 }
 
@@ -419,8 +426,8 @@ CloseScannedFileSeg(AppendOnlyScanDesc scan)
 	 * slices don't either, so check first. 
 	 */
 	if(scan->aos_file > 0)
-	{
-		CloseAOSegmentFile(scan->aos_file, scan->aos_rd, scan->aos_cur_segno);
+	{		
+		CloseAOSegmentFile(scan->aos_file, scan->aos_rd, SCANNED_SEGNO);
 		scan->aos_file = 0;
 	}
 	
@@ -542,7 +549,7 @@ getNextStorageBlockInFile(
 						scan->headerLen, 
 						availableLen, 
 					    NameStr(scan->aos_rd->rd_rel->relname),
-					    scan->aos_cur_segno,
+					    SCANNED_SEGNO,
 						*headerOffsetInFile,
 						scan->bufferCount)));			
 
@@ -588,7 +595,7 @@ getNextStorageBlockInFile(
 								scan->headerLen,
 								availableLen,
 							    NameStr(scan->aos_rd->rd_rel->relname),
-							    scan->aos_cur_segno,
+							    SCANNED_SEGNO,
 								*headerOffsetInFile,
 								scan->bufferCount)));			
 			break;
@@ -625,7 +632,7 @@ getNextStorageBlockInFile(
 			     NameStr(scan->aos_rd->rd_rel->relname),
 			     storedChecksum,
 			     computedChecksum,
-			     scan->aos_cur_segno,
+			     SCANNED_SEGNO,
 			     *headerOffsetInFile,
 			     scan->bufferCount);
 		}
@@ -644,7 +651,7 @@ getNextStorageBlockInFile(
 					NameStr(scan->aos_rd->rd_rel->relname),
 					(int)checkError,
 					AppendOnlyStorage_GetHeaderCheckErrorStr(),
-				    scan->aos_cur_segno,
+				    SCANNED_SEGNO,
 					*headerOffsetInFile,
 					scan->bufferCount);		
 
@@ -669,15 +676,15 @@ getNextStorageBlockInFile(
 											&isCompressed);
 	if (checkError != AOHeaderCheckOk)
 		elog(ERROR, "Bad append-only storage block header in table %s "
-		            "(AO header check error %d, detail '%s', "
-				    "segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
-					NameStr(scan->aos_rd->rd_rel->relname),
-					(int)checkError,
-					AppendOnlyStorage_GetHeaderCheckErrorStr(),
-				    scan->aos_cur_segno,
-					*headerOffsetInFile,
-					scan->bufferCount);			
-
+			 "(AO header check error %d, detail '%s', "
+			 "segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+			 NameStr(scan->aos_rd->rd_rel->relname),
+			 (int)checkError,
+			 AppendOnlyStorage_GetHeaderCheckErrorStr(),
+			 SCANNED_SEGNO,
+			 *headerOffsetInFile,
+			 scan->bufferCount);			
+	
 	/*
 	 * Grow the buffer to the full block length to avoid any
 	 * unnecessary copying by BufferedRead.
@@ -699,7 +706,7 @@ getNextStorageBlockInFile(
 					    NameStr(scan->aos_rd->rd_rel->relname),
 						overallBlockLen,
 						availableLen,
-						scan->aos_cur_segno,
+						SCANNED_SEGNO,
 					    *headerOffsetInFile,
 						scan->bufferCount)));
 
@@ -724,7 +731,7 @@ getNextStorageBlockInFile(
 			     NameStr(scan->aos_rd->rd_rel->relname),
 			     storedChecksum,
 			     computedChecksum,
-			     scan->aos_cur_segno,
+			     SCANNED_SEGNO,
 			     *headerOffsetInFile,
 			     scan->bufferCount);
 	}
@@ -732,7 +739,7 @@ getNextStorageBlockInFile(
 	if (Debug_appendonly_print_storage_headers)
 		AppendOnlyStorage_LogBlockHeader(
 							NameStr(scan->aos_rd->rd_rel->relname),
-							scan->aos_cur_segno,
+							SCANNED_SEGNO,
 							*headerOffsetInFile,
 							header,
 							scan->aos_checksum);
@@ -748,7 +755,7 @@ getNextStorageBlockInFile(
 				 "(length = %d, segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")",
 			     NameStr(scan->aos_rd->rd_rel->relname),
 			     length,
-			     scan->aos_cur_segno,
+			     SCANNED_SEGNO,
 			     *headerOffsetInFile,
 			     scan->bufferCount);
 	}
@@ -777,7 +784,7 @@ getNextStorageBlockInFile(
 			     NameStr(scan->aos_rd->rd_rel->relname),
 			     length,
 			     uncompressedLen,
-			     scan->aos_cur_segno,
+			     SCANNED_SEGNO,
 			     *headerOffsetInFile,
 			     scan->bufferCount);
 	}
@@ -820,7 +827,7 @@ getNextBlock(
 								&rowCount))
 	{
 		/* done reading the file */
-		CloseScannedFileSeg(scan);
+		CloseScannedFileSeg(scan); /* TODO: seems like getNextStorageBlockInFile already closed it. it's a redundant call */
 		return false;			
 	}
 
@@ -842,7 +849,7 @@ getNextBlock(
 					        "header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
 							varBlockCheckError,
 							VarBlockGetCheckErrorStr(),
-							scan->aos_cur_segno,
+							SCANNED_SEGNO,
 							headerOffsetInFile,
 							scan->bufferCount)));				
 		/*
@@ -863,7 +870,7 @@ getNextBlock(
 					        "(segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
 							rowCount,
 							scan->readerItemCount,
-							scan->aos_cur_segno,
+							SCANNED_SEGNO,
 							headerOffsetInFile,
 							scan->bufferCount)));				
 		}
@@ -885,7 +892,7 @@ getNextBlock(
 					 errmsg("Row count in append-only storage header %d is not 1 for single row "
 					        "(segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
 							rowCount,
-							scan->aos_cur_segno,
+							SCANNED_SEGNO,
 							headerOffsetInFile,
 							scan->bufferCount)));				
 		}
@@ -951,7 +958,7 @@ doProcessTuple(
 			// UNDONE: could get too big...).
 
 			AOTupleIdInit_Init(aoTupleId);
-			AOTupleIdInit_segmentFileNum(aoTupleId, scan->aos_cur_segno);
+			AOTupleIdInit_segmentFileNum(aoTupleId, SCANNED_SEGNO);
 			AOTupleIdInit_rowNum(aoTupleId, scan->rowNumber);
 		}
 		
@@ -1299,9 +1306,6 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	scan->aos_compressed = (complevel > 0 ? true : false);
 	scan->aos_checksum = aoentry->checksum;
 			
-	/* we only need to set this up once */
-	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
-
 	scan->headerLen = AppendOnlyStorage_HeaderLenNeeded(scan->aos_checksum);
 	scan->maxDataLen = 
 					scan->maxBufferLen -
@@ -1309,10 +1313,13 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	scan->uncompressedBuffer = NULL;
 	scan->singleRow = NULL;
 	scan->singleRowLen = 0;
-			
-	/* we only need to set this up once */
-	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
 
+	/*
+	 * Get information about all the file segments we need to scan
+	 */
+	scan->aos_total_segfiles = GetNumOfSegFiles(relation);
+	scan->aos_segfile_arr = GetAllFileSegInfo(relation, scan->aos_total_segfiles);
+		
 	/*
 	 * we do this here instead of in initscan() because appendonly_rescan also calls
 	 * initscan() and we don't want to allocate memory again
@@ -1410,7 +1417,7 @@ appendonly_getnext(AppendOnlyScanDesc scan, ScanDirection direction, TupleTableS
  * append only tables.
  */
 AppendOnlyInsertDesc
-appendonly_insert_init(Relation rel)
+appendonly_insert_init(Relation rel, int segno)
 {
 	AppendOnlyInsertDesc	aoInsertDesc;
 	AppendOnlyEntry			*aoentry;
@@ -1423,7 +1430,7 @@ appendonly_insert_init(Relation rel)
 	 */
 	aoentry = GetAppendOnlyEntry(RelationGetRelid(rel));
 	Assert(aoentry->majorversion == 1 && aoentry->minorversion == 0);
-	
+
 	/*
 	 * allocate and initialize the insert descriptor
 	 */	
@@ -1433,7 +1440,10 @@ appendonly_insert_init(Relation rel)
 	aoInsertDesc->bufferCount = 0;
 	aoInsertDesc->insertCount = 0;
 	aoInsertDesc->varblockCount = 0;
-		
+	
+	Assert(segno >= 0);
+	aoInsertDesc->cur_segno = segno;
+
 	aoInsertDesc->safefswritesize = aoentry->safefswritesize;
 	aoInsertDesc->compressLevel = aoentry->compresslevel;
 	aoInsertDesc->shouldCompress = (aoInsertDesc->compressLevel > 0 ? true : false);
@@ -1454,11 +1464,6 @@ appendonly_insert_init(Relation rel)
 	aoInsertDesc->toast_tuple_threshold = maxtupsize / 4; /* see tuptoaster.h for more information */
 	aoInsertDesc->toast_tuple_target = maxtupsize / 4;
 	
-	/* 
-	 * TEMP: for now always choose segno 0 to insert into.
-	 */
-	aoInsertDesc->cur_segno = 0;
-
 	memoryLen = BufferedAppendMemoryLen(aoInsertDesc->maxBufferLen, aoInsertDesc->largeWriteLen);
 	memory = (uint8*)palloc(memoryLen);
 	

@@ -36,6 +36,7 @@
 
 #include "access/heapam.h"
 #include "access/appendonlyam.h"
+#include "access/aosegfiles.h"
 #include "access/reloptions.h"
 #include "access/transam.h"
 #include "access/xact.h"
@@ -1160,7 +1161,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		List	   *resultRelations = parseTree->resultRelations;
 		int			numResultRelations;
 		ResultRelInfo *resultRelInfos;
-
+		bool		hasaotable = false;
+		
 		if (resultRelations != NIL)
 		{
 			/*
@@ -1181,7 +1183,14 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 								  operation,
 								  estate->es_instrument,
 								  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
+				
+				/* sneak in a check in this loop - do we have any AO result rels? */
+				if(resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_APPEND_ONLY)
+					hasaotable = true;
+				
 				resultRelInfo++;
+				
+				
 			}
 		}
 		else
@@ -1197,8 +1206,18 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 							  operation,
 							  estate->es_instrument,
 							  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
+			
+			if(resultRelInfos->ri_RelationDesc->rd_rel->relkind == RELKIND_APPEND_ONLY)
+				hasaotable = true;			
 		}
 
+		/*
+		 * In some occasions when inserting data into a target relations we
+		 * need to pass some specific information from the QD to the QEs. 
+		 * we do this information exchange here, via the parseTree. For now 
+		 * this is used for partitioned and append-only tables.
+		 */
+		
 		estate->es_result_relations = resultRelInfos;
 		estate->es_num_result_relations = numResultRelations;
 		/* Initialize to first or only result rel */
@@ -1217,6 +1236,24 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			parseTree->result_partitions = estate->es_result_partitions;
 			heap_close(tmp, NoLock);
 		}
+		
+		/* 
+		 * AO table INSERT operation:
+		 * If QD - choose the segno to be passed down to the QE executor.
+		 * If QE - get the segno that the QD prepared for us to use.
+		 */
+		if(hasaotable)
+		{
+			int knownsegno = (Gp_role == GP_ROLE_EXECUTE ? 
+							  parseTree->result_aousesegno : 
+							  InvalidFileSegNumber);
+			estate->es_result_aousesegno = SetSegnoForWrite(knownsegno);
+			
+			/* set segno in parsetree to be passed down to the QE's */
+			if(Gp_role == GP_ROLE_DISPATCH)
+				parseTree->result_aousesegno = estate->es_result_aousesegno;			
+		}
+			
 	}
 	else
 	{
@@ -1227,6 +1264,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		estate->es_num_result_relations = 0;
 		estate->es_result_relation_info = NULL;
 		estate->es_result_partitions = NULL;
+		estate->es_result_aousesegno = InvalidFileSegNumber;
 	}
 
 	/*
@@ -2170,7 +2208,8 @@ ExecInsert(TupleTableSlot *slot,
 	{
 		if (resultRelInfo->ri_aoInsertDesc == NULL)
 			resultRelInfo->ri_aoInsertDesc = 
-				appendonly_insert_init(resultRelationDesc);
+				appendonly_insert_init(resultRelationDesc, 
+									   estate->es_result_aousesegno);
 		
 		newId = appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple);				
 	}
@@ -3391,7 +3430,7 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 		MemTuple	tuple = ExecCopySlotMemTuple(slot);
 		
 		if (myState->ao_insertDesc == NULL)
-			myState->ao_insertDesc = appendonly_insert_init(into_rel);
+			myState->ao_insertDesc = appendonly_insert_init(into_rel, 0 /* for now */);
 
 		appendonly_insert(myState->ao_insertDesc, tuple);		
 		pfree(tuple);

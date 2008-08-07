@@ -30,6 +30,7 @@
 #include "access/gin.h"
 #include "access/transam.h"
 #include "access/appendonlyam.h"
+#include "access/aosegfiles.h"
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "access/transam.h"
@@ -1804,7 +1805,6 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL,
 		},
 		&gp_enable_gpmon, 
-		false, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -2517,6 +2517,15 @@ static struct config_int ConfigureNamesInt[] =
 		64, 0, INT_MAX, NULL, NULL
 	},
 
+	{
+		{"max_appendonly_tables", PGC_POSTMASTER, APPENDONLY_TABLES,
+			gettext_noop("Maximum number of append only tables."),
+			NULL
+		},
+		&MaxAppendOnlyTables,
+		128, 0, INT_MAX, NULL, NULL
+	},
+	
 	{
 		{"gp_external_max_segs", PGC_USERSET, EXTERNAL_TABLES,
 			gettext_noop("Maximum number of segments that connect to a single gpfdist URL."),

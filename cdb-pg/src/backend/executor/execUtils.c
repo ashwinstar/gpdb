@@ -46,6 +46,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "access/aosegfiles.h"
 #include "catalog/index.h"
 #include "executor/execdebug.h"
 #include "parser/parsetree.h"
@@ -1197,6 +1198,37 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 }
 
 /*
+ * ExecUpdateAOtupCount
+ *		Update the tuple count on the master for an append only relation segfile.
+ */
+static void
+ExecUpdateAOtupCount(ResultRelInfo *result_rels, 
+					 int num_result_rels, 
+					 uint64 processed,
+					 int segnoused)
+{
+	int		i;
+	
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+	
+	for (i = num_result_rels; i > 0; i--)
+	{
+		Relation rel = result_rels->ri_RelationDesc;
+		char relkind = rel->rd_rel->relkind;
+		
+		if(relkind == RELKIND_APPEND_ONLY)
+		{
+			Assert(segnoused != InvalidFileSegNumber);
+			UpdateMasterAosegTotals(result_rels->ri_RelationDesc,
+									segnoused,
+									processed);
+		}
+		
+		result_rels++;
+	}	
+}
+
+/*
  * UpdateChangedParamSet
  *		Add changed parameters to a plan node's chgParam set
  */
@@ -1922,7 +1954,7 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		CdbDispatchResults *pr = estate->primaryResults;
 		CdbDispatchResults *mr = estate->mirrorResults;
 		CdbDispatchCmdThreads  *dThreads = estate->dispatchThreads;
-
+				
 		/*
 		 * If we are finishing a query before all the tuples of the query
 		 * plan were fetched we must call ExecSquelchNode before checking
@@ -1949,6 +1981,12 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		/* sum up rejected rows if any (single row error handling only) */
 		cdbdisp_sumRejectedRows(pr);
 		
+		/* sum up inserted rows into any AO relation */
+		ExecUpdateAOtupCount(estate->es_result_relations, 
+							 estate->es_num_result_relations,
+							 estate->es_processed,
+							 estate->es_result_aousesegno);
+
 		/*
 		 * Check and free the results of all gangs. If any QE had an
 		 * error, report it and exit to our error handler via PG_THROW.

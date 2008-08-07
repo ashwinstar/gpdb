@@ -440,6 +440,9 @@ typedef struct EState
 	/* partitioning info for target relation */
 	PartitionNode *es_result_partitions;
 
+	/* AO fileseg info for target relation */
+	int			es_result_aousesegno;
+	
 	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 
 	Relation	es_into_relation_descriptor;	/* for SELECT INTO */

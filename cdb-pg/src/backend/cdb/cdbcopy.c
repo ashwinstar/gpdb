@@ -54,10 +54,11 @@ makeCdbCopy(bool is_copy_in)
 	c->io_errors = false;
 	c->copy_in = is_copy_in;
 	c->outseglist = NIL;
+	c->partitions = NULL;
+	c->aousesegno = InvalidFileSegNumber;
 	initStringInfo(&(c->err_msg));
 	initStringInfo(&(c->err_context));
 	initStringInfo(&(c->copy_out_buf));	
-	c->partitions = NULL;
 	
 	/* init total_segs */
 	c->total_segs = getgpsegmentCount();
@@ -229,6 +230,9 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 
 	/* add in partitions for dispatch */
 	((CopyStmt *)q->utilityStmt)->partitions = c->partitions;
+	
+	/* add in AO segno for dispatch */
+	((CopyStmt *)q->utilityStmt)->aousesegno = c->aousesegno;
 	
 	MemoryContextSwitchTo(oldcontext);
 

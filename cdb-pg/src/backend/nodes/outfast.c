@@ -2316,6 +2316,7 @@ _outCopyStmt(StringInfo str, CopyStmt *node)
 	WRITE_NODE_FIELD(options);
 	WRITE_NODE_FIELD(sreh);
 	WRITE_NODE_FIELD(partitions);
+	WRITE_INT_FIELD(aousesegno);
 }
 
 
@@ -2526,6 +2527,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(resultRelations);
 	WRITE_NODE_FIELD(result_partitions);
+	WRITE_INT_FIELD(result_aousesegno);
 	WRITE_NODE_FIELD(returningLists); 
 		
 	WRITE_OID_FIELD(intoOidInfo.relOid);

@@ -24,6 +24,7 @@
 
 #include "access/heapam.h"
 #include "access/appendonlyam.h"
+#include "access/aosegfiles.h"
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
@@ -658,10 +659,13 @@ DoCopy(const CopyStmt *stmt)
 		cstate->errMode = ALL_OR_NOTHING; /* default */
 	}
 
-	/* We must be a QE and have received the partitioning config */
+	/* We must be a QE if we received the partitioning config */
 	if (stmt->partitions)
+	{
+		Assert(Gp_role == GP_ROLE_EXECUTE);
 		cstate->partitions = stmt->partitions;
-	
+	}
+
 	/*
 	 * Only single-character delimiter strings are supported.
 	 */
@@ -1043,18 +1047,19 @@ DoCopy(const CopyStmt *stmt)
 	if (is_from)				/* copy from file to database */
 	{			
 		bool		pipe = (cstate->filename == NULL);
-		
+		char		relkind;
 		Assert(cstate->rel);
 		
-		if (cstate->rel->rd_rel->relkind != RELKIND_RELATION &&
-			cstate->rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
+		relkind = cstate->rel->rd_rel->relkind;
+		
+		if (relkind != RELKIND_RELATION && relkind != RELKIND_APPEND_ONLY)
 		{
-			if (cstate->rel->rd_rel->relkind == RELKIND_VIEW)
+			if (relkind == RELKIND_VIEW)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot copy to view \"%s\"",
 								RelationGetRelationName(cstate->rel))));
-			else if (cstate->rel->rd_rel->relkind == RELKIND_SEQUENCE)
+			else if (relkind == RELKIND_SEQUENCE)
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot copy to sequence \"%s\"",
@@ -1070,6 +1075,10 @@ DoCopy(const CopyStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY single row error handling only available for distributed user tables")));		
+		
+		/* set the AO segno to write into */
+		if (relkind == RELKIND_APPEND_ONLY)
+			cstate->aousesegno = SetSegnoForWrite(stmt->aousesegno);
 		
 		if (pipe)
 		{
@@ -2128,7 +2137,8 @@ CopyFromDispatch(CopyState cstate)
 	bool		is_first_col;
 	ListCell   *cur;
 	bool		cur_row_rejected = false;
-
+	char		relkind = cstate->rel->rd_rel->relkind;
+	
 	CdbCopy    *cdbCopy;
 
 	/*
@@ -2272,7 +2282,9 @@ CopyFromDispatch(CopyState cstate)
 
 	/*
 	 * prepare to COPY data into segDBs:
-	 * 1 - get the partitioning policy for this table.
+	 * 1 - set table partitioning information
+	 * 2 - set append only table relevant info (if needed)
+	 * 1 - get the distribution policy for this table.
 	 * 2 - re-construct the orignial COPY command sent from the client.
 	 * 3 - execute a BEGIN DTM transaction.
 	 * 4 - send the COPY command to all segment databases.
@@ -2283,6 +2295,9 @@ CopyFromDispatch(CopyState cstate)
 	if (enable_partition_fast_insert)
 		estate->es_result_partitions = cdbCopy->partitions = 
 			RelationBuildPartitionDesc(cstate->rel);
+	
+	if(relkind == RELKIND_APPEND_ONLY)
+		cdbCopy->aousesegno = cstate->aousesegno;
 	
 	/* add cdbCopy reference to cdbSreh (if needed) */
 	if(cstate->errMode != ALL_OR_NOTHING)
@@ -3186,6 +3201,12 @@ CopyFromDispatch(CopyState cstate)
 	//AfterTriggerEndQuery(estate);
 
 	/*
+	 * If AO table, upate total row count on the master for the segfile we used.
+	 */
+	if(relkind == RELKIND_APPEND_ONLY)
+		UpdateMasterAosegTotals(cstate->rel, cstate->aousesegno, cstate->processed);
+
+	/*
 	 * free all resources besides ones that are needed for error reporting
 	 */
 	pfree(cdbHash);
@@ -3254,7 +3275,8 @@ CopyFrom(CopyState cstate)
 	int			original_lineno_for_qe = 0; /* keep compiler happy (var referenced by macro) */
 	CdbCopy    *cdbCopy = NULL; /* never used... for compiling COPY_HANDLE_ERROR */
 	int			target_seg = -1; /* not used in utility mode */
-
+	char		relkind = cstate->rel->rd_rel->relkind;
+	
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
@@ -3687,19 +3709,18 @@ CopyFrom(CopyState cstate)
 														 tupDesc, estate);
 					estate->es_result_relation_info = resultRelInfo;
 				}
-				if (resultRelInfo->ri_RelationDesc->rd_rel->relkind ==
-					RELKIND_APPEND_ONLY &&
+				if (relkind == RELKIND_APPEND_ONLY &&
 					resultRelInfo->ri_aoInsertDesc == NULL)
 					resultRelInfo->ri_aoInsertDesc = 
-						appendonly_insert_init(resultRelInfo->ri_RelationDesc);
+						appendonly_insert_init(resultRelInfo->ri_RelationDesc,
+											   cstate->aousesegno);
 			
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 
 				/*
 				 * And now we can form the input tuple.
 				 */
-				if (resultRelInfo->ri_RelationDesc->rd_rel->relkind !=
-					RELKIND_APPEND_ONLY)
+				if (relkind != RELKIND_APPEND_ONLY)
 				{
 					/* form a regular heap tuple */
 					tuple = (HeapTuple) heap_form_tuple(tupDesc, values, nulls);	
@@ -3762,8 +3783,7 @@ CopyFrom(CopyState cstate)
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
-					if (resultRelInfo->ri_RelationDesc->rd_rel->relkind != 
-						RELKIND_APPEND_ONLY)
+					if (relkind != RELKIND_APPEND_ONLY)
 					{
 						if (heap_enableHeapInsertDesc)
 						{

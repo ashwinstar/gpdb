@@ -15,6 +15,7 @@
 #ifndef CDBCOPY_H
 #define CDBCOPY_H
 
+#include "access/aosegfiles.h" /* for InvalidFileSegNumber const */ 
 #include "lib/stringinfo.h"
 #include "cdb/cdbgang.h"
 
@@ -53,6 +54,7 @@ typedef struct CdbCopy
 									 * Once a segment gave away all it's data rows
 									 * it is taken out of the list */
 	PartitionNode *partitions;
+	int			   aousesegno;
 } CdbCopy;
 
 
