@@ -850,6 +850,7 @@ Cannot downgrade a database with append only tables     <<<<<
         self.hosts = self.Select(
         '''
            SELECT DISTINCT hostname FROM gp_configuration
+           WHERE content >= 0
         ''')
         self.hosts = map(lambda(x): str(x), self.hosts)
 
