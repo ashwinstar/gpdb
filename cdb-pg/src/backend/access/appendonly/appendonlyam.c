@@ -499,6 +499,7 @@ getNextStorageBlockInFile(
 	int32				availableLen;
 	int					i;
 	AOHeaderCheckError	checkError;
+	AoHeaderKind	    headerKind;
 	int32				offset;
 	int32				length;
 	bool				isCompressed;
@@ -608,8 +609,9 @@ getNextStorageBlockInFile(
 	/*
 	 * Proceed carefully:
 	 * [ 1. Verify header checksum ]
-	 *   2. Examine header.
-	 * [ 3. Verify the block checksum ]
+	 *   2. Examine (basic) header.
+	 *   3. Examine specific header.
+	 * [ 4. Verify the block checksum ]
 	 */	
 	if (scan->aos_checksum)
 	{
@@ -629,7 +631,30 @@ getNextStorageBlockInFile(
 		}
 
 	/*
-	 * Check header and extract header information.
+	 * Check the (basic) header information.
+	 */
+	checkError = AppendOnlyStorage_GetHeaderInfo(
+											header,
+											scan->headerLen,
+											&headerKind);
+	if (checkError != AOHeaderCheckOk)
+		elog(ERROR, "Bad append-only storage header in table %s "
+		            "(AO header check error %d, detail '%s', "
+				    "segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+					NameStr(scan->aos_rd->rd_rel->relname),
+					(int)checkError,
+					AppendOnlyStorage_GetHeaderCheckErrorStr(),
+				    scan->aos_cur_segno,
+					*headerOffsetInFile,
+					scan->bufferCount);		
+
+	/*
+	 * For now, we only have Block headers.
+	 */
+	Assert(headerKind == AoHeaderKind_Block);
+
+	/*
+	 * Check the Block header information.
 	 */
 	checkError = AppendOnlyStorage_GetBlockHeaderInfo(
 											header,
@@ -643,12 +668,14 @@ getNextStorageBlockInFile(
 											rowCount,
 											&isCompressed);
 	if (checkError != AOHeaderCheckOk)
-		elog(ERROR, "Bad append-only storage header in table %s "
-				    "(segment file #%d, header offset in file = " INT64_FORMAT ", check error %d, bufferCount " INT64_FORMAT ")",
-				    NameStr(scan->aos_rd->rd_rel->relname),
+		elog(ERROR, "Bad append-only storage block header in table %s "
+		            "(AO header check error %d, detail '%s', "
+				    "segment file #%d, header offset in file = " INT64_FORMAT ", bufferCount " INT64_FORMAT ")",
+					NameStr(scan->aos_rd->rd_rel->relname),
+					(int)checkError,
+					AppendOnlyStorage_GetHeaderCheckErrorStr(),
 				    scan->aos_cur_segno,
 					*headerOffsetInFile,
-					(int)checkError,
 					scan->bufferCount);			
 
 	/*
@@ -826,7 +853,20 @@ getNextBlock(
 						   bufferLen);
 		
 		scan->currentItemCount = 0;
-		scan->readerItemCount = VarBlockReaderItemCount(&scan->varBlockReader);			
+		scan->readerItemCount = VarBlockReaderItemCount(&scan->varBlockReader);	
+
+		if (rowCount != scan->readerItemCount)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Row count in append-only storage header %d does not match VarBlock item count %d "
+					        "(segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
+							rowCount,
+							scan->readerItemCount,
+							scan->aos_cur_segno,
+							headerOffsetInFile,
+							scan->bufferCount)));				
+		}
 
 		if (Debug_appendonly_print_scan)
 		{
@@ -838,6 +878,17 @@ getNextBlock(
 		break;
 
 	case AoExecutorBlockKind_SingleRow:
+		if (rowCount != 1)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("Row count in append-only storage header %d is not 1 for single row "
+					        "(segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
+							rowCount,
+							scan->aos_cur_segno,
+							headerOffsetInFile,
+							scan->bufferCount)));				
+		}
 		scan->singleRow = buffer;
 		scan->singleRowLen = bufferLen;
 		if (Debug_appendonly_print_scan)
@@ -1252,6 +1303,9 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	//scan->aos_ctup.t_tableOid = RelationGetRelid(relation);
 
 	scan->headerLen = AppendOnlyStorage_HeaderLenNeeded(scan->aos_checksum);
+	scan->maxDataLen = 
+					scan->maxBufferLen -
+	 				scan->headerLen;
 	scan->uncompressedBuffer = NULL;
 	scan->singleRow = NULL;
 	scan->singleRowLen = 0;

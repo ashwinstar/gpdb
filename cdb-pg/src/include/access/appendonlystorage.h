@@ -41,7 +41,13 @@ typedef enum AoHeaderKind
 typedef enum AOHeaderCheckError
 {
 	AOHeaderCheckOk = 0,
-	AOHeaderCheckAllZeroes,
+	AOHeaderCheckFirst32BitsAllZeroes,
+	AOHeaderCheckReservedBit0Not0,
+	AOHeaderCheckInvalidHeaderKindNone,
+	AOHeaderCheckInvalidHeaderKind,
+	AOHeaderCheckRowCountIsZero,
+	AOHeaderCheckInvalidCompressedLen,
+	AOHeaderCheckInvalidOverallBlockLen,
 } AOHeaderCheckError;
 
 
@@ -52,19 +58,16 @@ typedef struct AOTupleId
  * on an 4 byte boundary, so go to bit shifting...
  */
 
-//  unsigned          reserved0:1;  
-//  unsigned          reserved1:1;
-//						  /* Two reserved bits */
 //
 //  unsigned          segmentFileNum:10;  
 //                        /*
 //                         * Which segment file the tuple is in.  
 //						   * Limit: 1023.
 //                         */
-//  unsigned          rowNumber:36;
+//  unsigned          rowNumber:38;
 //                         /* 
 //                          * The row within the segment file.
-//							* Limit: 68 Trillion (2^36) - 1.
+//							* Limit: 274 trillion (2^38) - 1.
 //                          */
 
     uint16            bytes_0_1;
@@ -72,30 +75,26 @@ typedef struct AOTupleId
 
 } AOTupleId;
 
-#define AOTupleIdGet_reserved0(h)             ((h)->bytes_0_1>>15)                 // 1 bit
-#define AOTupleIdGet_reserved1(h)             (((h)->bytes_0_1&0x4000)>>14)       // 1 bit
-#define AOTupleIdGet_segmentFileNum(h)        ((h)->bytes_0_1&0x3FF0>>4)          // 10 bits
+#define AOTupleIdGet_segmentFileNum(h)        ((h)->bytes_0_1&0xFFC0>>6)          // 10 bits
 #define AOTupleIdGet_rowNum(h) \
-          ((((uint64)((h)->bytes_0_1)&0x000F)<<32)|((uint64)(h)->bytes_2_5)
-                         // top 4 bits                   all lower 32 bits          36 bits
+          ((((uint64)((h)->bytes_0_1)&0x003F)<<32)|((uint64)(h)->bytes_2_5)
+                         // top 6 bits                   all lower 32 bits          38 bits
                          
 
 // For single bits, set or clear directly.  Otherwise, use AND to clear field then OR to set.
-#define AOTupleIdSet_reserved0(h,e)  {if(e)(h)->bytes_0_1|=0x8000;else(h)->bytes_0_1&=0x7FFF;} 
-#define AOTupleIdSet_reserved1(h,e)  {if(e)(h)->bytes_0_1|=0x4000;else(h)->bytes_0_1&=0xBFFF;} 
-#define AOTupleIdSet_segmentFileNum(h,e)         {(h)->bytes_0_1&=0xC00F;(h)->bytes_0_1|=((0x03FF&((uint16)(e)))<<4);}
-#define AOTupleIdSet_rowNum(h,e)    {(h)->bytes_0_1&=0xFFF0;(h)->bytes_0_1|=(uint16)((0x0000000F00000000&(e))>>32);\
+#define AOTupleIdSet_segmentFileNum(h,e)         {(h)->bytes_0_1&=0x003F;(h)->bytes_0_1|=((0x03FF&((uint16)(e)))<<6);}
+#define AOTupleIdSet_rowNum(h,e)    {(h)->bytes_0_1&=0xFFC0;(h)->bytes_0_1|=(uint16)((0x0000003F00000000&(e))>>32);\
                                      (h)->bytes_2_5=(uint32)(e);}
 
 // Assume field is initially zero.
 #define AOTupleIdInit_Init(h)                {(h)->bytes_0_1=0;(h)->bytes_2_5=0;} 
 
-#define AOTupleIdInit_reserved0(h,e)  {if(e)(h)->bytes_0_1|=0x8000;} 
-#define AOTupleIdInit_reserved1(h,e)  {if(e)(h)->bytes_0_1|=0x4000;} 
-#define AOTupleIdInit_segmentFileNum(h,e)    {(h)->bytes_0_1|=((0x03FF&((uint16)(e)))<<4);}
+#define AOTupleIdInit_segmentFileNum(h,e)    {(h)->bytes_0_1|=((0x03FF&((uint16)(e)))<<6);}
 #define AOTupleIdInit_rowNum(h,e)            {(h)->bytes_0_1|=(0x000F&((uint16)((e)>>32)));\
                                               (h)->bytes_2_5=(uint32)(e);}
 
+#define AOTupleId_MaxRowNum            274877906943 		// 38 bits, or 274,877,906,943 (274 trillion – 1).
+#define AOTupleId_MaxRowNum_CommaStr  "274,877,906,943"
 
 
 extern int32 AppendOnlyStorage_HeaderLenNeeded(
@@ -116,11 +115,18 @@ extern void AppendOnlyStorage_LogBlockHeader(
 	uint8			*headerPtr,
 	bool			usingChecksums);
 
+extern char *AppendOnlyStorage_GetHeaderCheckErrorStr(void);
+
+extern AOHeaderCheckError AppendOnlyStorage_GetHeaderInfo(
+	uint8			*headerPtr,
+	int				headerLen,
+	AoHeaderKind	*headerKind);
+
 extern AOHeaderCheckError AppendOnlyStorage_GetBlockHeaderInfo(
 	uint8			*headerPtr,
 	int				headerLen,
 	bool			usingChecksums,
-	int64			blockLimitLen,
+	int32			blockLimitLen,
 	int32			*overallBlockLen,
 	int32			*offset,
 	int32			*length,

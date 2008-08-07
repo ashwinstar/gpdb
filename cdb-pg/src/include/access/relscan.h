@@ -158,6 +158,7 @@ typedef struct AppendOnlyScanDescData
 	int32			headerLen;
 	uint8			*uncompressedBuffer; /* for decompression */
 	int32			maxBufferLen;
+	int32			maxDataLen;
 	int32			largeReadLen;
 	int32			safefswritesize;
 

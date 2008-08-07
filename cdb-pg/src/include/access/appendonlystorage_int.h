@@ -22,6 +22,36 @@
  * The remaining 60 bits are header kind specific.
  */
 
+/*
+ * You can think of this struct as the base class for AOBlockHeader, etc.
+ */
+typedef struct AOHeader
+{
+/*
+ * Can't seem to get this to pack nicely to 64 bits so the header is aligned
+ * on an 8 byte boundary, so go to bit shifting...
+ */
+
+//  unsigned          reserved0:1;  
+//                        /*
+//                         * Reserved for future use.
+//                         */
+//  AOHeaderKind 	  headerKind:3;  
+//                        /* 
+//                         * Which kind of header is it?
+//                         */
+//
+// **** Begin Block Header specific 60 bits ****
+//
+
+    uint32            header_bytes_0_3;
+    uint32            header_bytes_4_7;
+
+} AOHeader;
+
+#define AOHeaderGet_reserved0(h)          ((h)->header_bytes_0_3>>31)                  // 1 bit
+#define AOHeaderGet_headerKind(h)         (((h)->header_bytes_0_3&0x70000000)>>28)    // 3 bits
+
 typedef struct AOBlockHeader
 {
 /*

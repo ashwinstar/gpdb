@@ -256,12 +256,74 @@ AppendOnlyStorage_LogBlockHeader(
 		 overallBlockLen);
 }
 
+#define MAX_AOHEADER_CHECK_ERROR_STR 200
+static char AoHeaderCheckErrorStr[MAX_AOHEADER_CHECK_ERROR_STR] = "\0";
+
+/*
+ * Return a string message for the last check error.
+ */
+char *AppendOnlyStorage_GetHeaderCheckErrorStr(void)
+{
+	return AoHeaderCheckErrorStr;
+}
+
+AOHeaderCheckError
+AppendOnlyStorage_GetHeaderInfo(
+	uint8			*headerPtr,
+	int				headerLen,
+	AoHeaderKind	*headerKind)
+{
+	AOHeader 	*header;
+
+	Assert(headerPtr != NULL);
+	Assert(headerKind != NULL);
+
+	header = (AOHeader*)headerPtr;
+
+	if (header->header_bytes_0_3 == 0)
+	{
+		sprintf(AoHeaderCheckErrorStr,
+				"Append-only storage header is invalid -- first 32 bits are all zeroes (header_bytes_0_3 0x%08x, header_bytes_4_7 0x%08x)",
+			    header->header_bytes_0_3, header->header_bytes_4_7);
+		return AOHeaderCheckFirst32BitsAllZeroes;
+	}
+
+	if (AOHeaderGet_reserved0(header) != 0)
+	{
+		sprintf(AoHeaderCheckErrorStr,
+				"Append-only storage header is invalid -- reserved bit 0 of the header is not zero (header_bytes_0_3 0x%08x, header_bytes_4_7 0x%08x)",
+			    header->header_bytes_0_3, header->header_bytes_4_7);
+		return AOHeaderCheckReservedBit0Not0;
+	}
+
+	*headerKind = AOHeaderGet_headerKind(header);
+
+	if (*headerKind == AoHeaderKind_None)
+	{
+		sprintf(AoHeaderCheckErrorStr,
+				"Append-only storage header is invalid -- invalid value 0 (none) for header kind (header_bytes_0_3 0x%08x, header_bytes_4_7 0x%08x)",
+			    header->header_bytes_0_3, header->header_bytes_4_7);
+		return AOHeaderCheckInvalidHeaderKindNone;
+	}
+
+	if (*headerKind >= MaxAoHeaderKind)
+	{
+		sprintf(AoHeaderCheckErrorStr,
+				"Append-only storage header is invalid -- invalid header kind value %d (header_bytes_0_3 0x%08x, header_bytes_4_7 0x%08x)",
+				(int)*headerKind,
+			    header->header_bytes_0_3, header->header_bytes_4_7);
+		return AOHeaderCheckInvalidHeaderKind;
+	}
+	
+	return AOHeaderCheckOk;
+}
+
 AOHeaderCheckError
 AppendOnlyStorage_GetBlockHeaderInfo(
 	uint8			*headerPtr,
 	int				headerLen,
 	bool			usingChecksums,
-	int64			blockLimitLen,
+	int32			blockLimitLen,
 	int32			*overallBlockLen,
 	int32			*offset,
 	int32			*length,
@@ -270,31 +332,65 @@ AppendOnlyStorage_GetBlockHeaderInfo(
 	bool			*isCompressed)
 {
 	AOBlockHeader 	*blockHeader;
+	int32			compressedLen;
+	int32			uncompressedLen = 0;
 
 	Assert(headerPtr != NULL);
 
 	blockHeader = (AOBlockHeader*)headerPtr;
 
-	if (blockHeader->block_bytes_0_3 == 0)
-		return AOHeaderCheckAllZeroes;
-
-	// UNDONE: Validation checks
-
 	*executorBlockKind = 	AOBlockHeaderGet_executorBlockKind(blockHeader);
 	*rowCount = 			AOBlockHeaderGet_rowCount(blockHeader);
-	*isCompressed = 		(AOBlockHeaderGet_compressedLength(blockHeader) > 0);
+	if (*rowCount == 0)
+	{
+		sprintf(AoHeaderCheckErrorStr,
+				"Append-only storage header is invalid -- row count is zero "
+				"(block_bytes_0_3 0x%08x, block_bytes_4_7 0x%08x)",
+			    blockHeader->block_bytes_0_3, blockHeader->block_bytes_4_7);
+		return AOHeaderCheckRowCountIsZero;
+	}
 	
 	*offset =				AO_HEADER_LEN + 
 							(usingChecksums ? 2 * sizeof(pg_crc32) : 0);
+	Assert(*offset == headerLen);
 	
-	if (!*isCompressed)
+	compressedLen = AOBlockHeaderGet_compressedLength(blockHeader);
+	if (compressedLen == 0)
+	{
+		*isCompressed = 	false;
 		*length =			AOBlockHeaderGet_dataLength(blockHeader);
+	}
 	else
-		*length =			AOBlockHeaderGet_compressedLength(blockHeader);
+	{
+		*isCompressed = 	true;
+		*length =			compressedLen;
+		uncompressedLen =   AOBlockHeaderGet_dataLength(blockHeader);
+		if (compressedLen >= uncompressedLen)
+		{
+			sprintf(AoHeaderCheckErrorStr,
+					"Append-only storage header is invalid -- compressed length %d is >= uncompressed length %d "
+					"(block_bytes_0_3 0x%08x, block_bytes_4_7 0x%08x)",
+					compressedLen,
+					uncompressedLen,
+				    blockHeader->block_bytes_0_3, blockHeader->block_bytes_4_7);
+			return AOHeaderCheckInvalidCompressedLen;
+		}
+	}
 	
 	*overallBlockLen =		*offset +
 	                        AOStorage_RoundUp(*length);
 
+	if (*overallBlockLen > blockLimitLen)
+	{
+		sprintf(AoHeaderCheckErrorStr,
+				"Append-only storage header is invalid -- overall block length %d is > block limit length %d "
+				"(block_bytes_0_3 0x%08x, block_bytes_4_7 0x%08x)",
+				*overallBlockLen,
+				blockLimitLen,
+			    blockHeader->block_bytes_0_3, blockHeader->block_bytes_4_7);
+		return AOHeaderCheckInvalidOverallBlockLen;
+	}
+	
 	return AOHeaderCheckOk;
 }
 
