@@ -59,7 +59,7 @@ void *mapred_malloc(int size)
 		XRAISE(MEMORY_ERROR, "Memory allocation failure");
 
 	if (global_debug_flag && global_verbose_flag)
-		fprintf(stderr, "%x\n", m);
+		fprintf(stderr, "%x\n", (unsigned int) m);
 
 	return m;
 }
@@ -68,12 +68,12 @@ void mapred_free(void *ptr)
 {
 	XASSERT(ptr);
 	if (global_debug_flag && global_verbose_flag)
-		fprintf(stderr, "Freeing memory: %x\n", ptr);
+		fprintf(stderr, "Freeing memory: %x\n", (unsigned int) ptr);
 	free(ptr);
 }
 
 /* -------------------------------------------------------------------------- */
-/* Functions that play with buffers
+/* Functions that play with buffers                                           */
 /* -------------------------------------------------------------------------- */
 typedef struct 
 {
@@ -614,7 +614,7 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					PQntuples(result) > 0)
 				{
 					mapred_plist_t *newitem;
-					int i, ntup;
+					int i;
 
 					/* Destroy any previous default values we setup */
 					mapred_destroy_plist(&obj->u.input.columns);
@@ -1109,7 +1109,7 @@ void mapred_destroy_plist(mapred_plist_t **plisth)
 
 
 /* -------------------------------------------------------------------------- */
-/* Functions that get things done
+/* Functions that get things done                                             */
 /* -------------------------------------------------------------------------- */
 void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 {
@@ -1678,7 +1678,6 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				mapred_object_t *input    = obj->u.task.input.object;
 				mapred_object_t *mapper   = obj->u.task.mapper.object;
 				mapred_object_t *reducer  = obj->u.task.reducer.object;
-				mapred_object_t *output   = obj->u.task.output.object;
 				mapred_plist_t  *columns  = NULL;
 				mapred_plist_t  *ingrouping = NULL;
 				mapred_plist_t  *newitem  = NULL;
@@ -2387,7 +2386,6 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 
 void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 {
-	mapred_clist_t *clist    = NULL;
 	mapred_plist_t *plist    = NULL;
 	const char     *ckind    = NULL;
 	buffer_t       *buffer   = NULL;

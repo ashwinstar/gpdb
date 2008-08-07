@@ -108,8 +108,6 @@ void parser_add_document(mapred_parser_t *parser)
 {
 	mapred_olist_t     *newitem;
 	mapred_olist_t     *doclist;
-	mapred_document_t  *doc;
-
 
 	if (!parser->current_doc)
 		return;
@@ -795,7 +793,7 @@ void parser_set_function(mapred_parser_t *parser, char *value)
 
 void parser_set_optimize(mapred_parser_t *parser, char *value)
 {
-/*	printf("     Optimize: %s\n", value);  /* FIXME */
+   /* FIXME */
 }
 
 
@@ -908,7 +906,7 @@ void parser_begin_files(mapred_parser_t *parser)
 	parser->current_obj->u.input.type = MAPRED_INPUT_FILE;
 }
 
-void parser_begin_gpfdist(mapred_parser_t *parser, char *value)
+void parser_begin_gpfdist(mapred_parser_t *parser)
 {
 	XASSERT(parser->current_doc);
 	XASSERT(parser->current_obj);

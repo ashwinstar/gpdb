@@ -19,9 +19,10 @@ PGINCDIR  = ../../include
 PGLIBDIR  = ../../interfaces/libpq 
 
 CFLAGS_DEBUG = -g -D INTERNAL_BUILD
-CFLAGS_DIST  = -O3
+CFLAGS_DIST  = -O3 
 
-CFLAGS    = -I$(PQINCDIR) -I$(PGINCDIR) -I$(INCDIR) -I$(SRCDIR)
+CFLAGS    = -I$(PQINCDIR) -I$(PGINCDIR) -I$(INCDIR) -I$(SRCDIR) 
+CFLAGS   += -Wall -Werror
 LDFLAGS   = -L$(LIBDIR) -lyaml -L$(PGLIBDIR) -lpq
 YACCFLAGS = -d
 FLEXFLAGS = -i

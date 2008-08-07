@@ -135,7 +135,7 @@ main (int argc, char *argv[])
 			 */
 			if (strspn(name, wordchars) != strlen(name))
 			{
-				fprintf(stderr, "bad parameter --%s\n", name, value);
+				fprintf(stderr, "bad parameter --%s\n", name);
 				usage(argv[0]);
 			}
 			else
@@ -182,7 +182,7 @@ main (int argc, char *argv[])
 	{
 		if (xframe.exception)
 			fprintf(stderr, "Error (%d): %s\n", 
-					xframe.errcode, xframe.exception);
+					xframe.errcode, (char *) xframe.exception);
 		else
 			fprintf(stderr, "Unknown Error (%d) at %s:%d\n", 
 					xframe.errcode, xframe.file, xframe.lineno);
@@ -256,7 +256,7 @@ main (int argc, char *argv[])
 		{
 			if (xframe.exception)
 				fprintf(stderr, "Error (%d): %s\n", 
-						xframe.errcode, xframe.exception);
+						xframe.errcode, (char *) xframe.exception);
 			else
 				fprintf(stderr, "Unknown Error (%d) at %s:%d\n", 
 						xframe.errcode, xframe.file, xframe.lineno);

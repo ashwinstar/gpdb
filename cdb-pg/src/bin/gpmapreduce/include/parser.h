@@ -63,7 +63,11 @@ typedef struct mapred_parser_ {
 # define YY_DECL \
 	int yaml_scalar_yylex (mapred_parser_t *parser)
 #endif
+YY_DECL;
+struct yy_buffer_state* yaml_scalar_yy_scan_string (const char *yy_str);
 
+/* Why bison doesn't put this in the header file I do not know... */
+int yaml_yyparse(mapred_parser_t *parser);
 
 /* Given a yaml parser return a list of parsed documents */
 mapred_olist_t* mapred_parse_yaml(yaml_parser_t *parser);
@@ -79,6 +83,7 @@ void        parser_add_run(mapred_parser_t *parser);
 
 /* list functions */
 void      parser_begin_files(mapred_parser_t *parser);
+void    parser_begin_gpfdist(mapred_parser_t *parser);
 void    parser_begin_columns(mapred_parser_t *parser);
 void parser_begin_parameters(mapred_parser_t *parser);
 void    parser_begin_returns(mapred_parser_t *parser);
@@ -104,6 +109,7 @@ void       parser_set_null(mapred_parser_t *parser, char *value);
 void      parser_set_quote(mapred_parser_t *parser, char *value);
 void  parser_set_delimiter(mapred_parser_t *parser, char *value);
 void   parser_set_encoding(mapred_parser_t *parser, char *value);
+void parser_set_error_limit(mapred_parser_t *parser, char *value);
 void       parser_set_mode(mapred_parser_t *parser, char *value);
 void       parser_set_file(mapred_parser_t *parser, char *value);
 void parser_set_transition(mapred_parser_t *parser, char *value);
@@ -117,5 +123,7 @@ void     parser_set_source(mapred_parser_t *parser, char *value);
 void     parser_set_target(mapred_parser_t *parser, char *value);
 void     parser_set_mapper(mapred_parser_t *parser, char *value);
 void    parser_set_reducer(mapred_parser_t *parser, char *value);
+
+
 
 #endif
