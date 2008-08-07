@@ -16,6 +16,26 @@
 %{
 #include <yaml_parse.h>       /* Get the token types */
 #include <parser.h>
+
+/* 
+ * Setup prototypes since we build with -Wmissing-prototypes and flex isn't 
+ * kind enough to generate them.
+ */
+int   yaml_scalar_yyget_lineno(void);
+FILE* yaml_scalar_yyget_in(void);
+FILE* yaml_scalar_yyget_out(void);
+int   yaml_scalar_yyget_leng(void);
+char* yaml_scalar_yyget_text(void);
+
+void  yaml_scalar_yyset_lineno(int);
+void  yaml_scalar_yyset_in(FILE *);
+void  yaml_scalar_yyset_out(FILE *);
+
+int   yaml_scalar_yyget_debug(void);
+void  yaml_scalar_yyset_debug(int);
+
+int     yaml_scalar_yylex_destroy(void);
+
 %}
 
    /* 

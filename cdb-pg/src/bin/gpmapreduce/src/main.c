@@ -12,7 +12,7 @@
 ALLOW_EXCEPTIONS;
 
 static char  VERSION[] = 
-	"Greenplum Map/Reduce Driver 1.00b1";
+	"Greenplum Map/Reduce Driver 1.00b2";
 
 static char *wordchars = 
 	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
@@ -23,17 +23,18 @@ int             global_verbose_flag = 0;
 int             global_debug_flag   = 0;
 mapred_plist_t *global_plist        = NULL;
 
+void usage(char *procname);
+int  main(int argc, char *argv[]);
+void read_password(char *p, size_t len);
+void check_version(PGconn *conn);
+
 void usage(char *procname)
 {
 	fprintf(stderr, "Usage: %s [options] file.yml\n", procname);
 	exit(0);
 }
 
-void read_password(char *p, size_t len);
-void check_version(PGconn *conn);
-
-int
-main (int argc, char *argv[])
+int main (int argc, char *argv[])
 {
 	int                i, j;
 	mapred_olist_t    *documents;

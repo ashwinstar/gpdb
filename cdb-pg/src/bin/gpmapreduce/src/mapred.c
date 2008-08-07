@@ -44,6 +44,25 @@ const char *mapred_kind_name[MAPRED_MAXKIND+1] =
 const char *IN_FAILED_SQL_TRANSACTION = "25P02";
 const char *OBJ_DOES_NOT_EXIST        = "42P01";
 
+/* local prototypes */
+typedef struct 
+{
+	char   *buffer;
+	size_t  bufsize;
+	size_t  position;
+	size_t  grow;
+} buffer_t;
+
+void *mapred_malloc(int size);
+void mapred_free(void *ptr);
+buffer_t *makebuffer(size_t bufsize, size_t grow);
+void bufreset(buffer_t *b);
+void bufcat(buffer_t **bufp, char* str);
+void ignore_notice_handler(void *arg, const PGresult *res);
+void print_notice_handler(void *arg, const PGresult *res);
+void mapred_setup_columns(PGconn *conn, mapred_object_t *obj);
+
+
 
 /* Wrappers around malloc/free to handle error conditions more cleanly */
 void *mapred_malloc(int size)
@@ -75,14 +94,6 @@ void mapred_free(void *ptr)
 /* -------------------------------------------------------------------------- */
 /* Functions that play with buffers                                           */
 /* -------------------------------------------------------------------------- */
-typedef struct 
-{
-	char   *buffer;
-	size_t  bufsize;
-	size_t  position;
-	size_t  grow;
-} buffer_t;
-
 buffer_t *makebuffer(size_t bufsize, size_t grow)
 {
 	buffer_t *b;
@@ -145,8 +156,6 @@ void bufcat(buffer_t **bufp, char* str)
 	b->buffer[b->position] = '\0';
 }
 
-
-void mapred_setup_columns(PGconn *conn, mapred_object_t *obj);
 
 /*
  * Currently we just ignore all warnings, may eventually do something

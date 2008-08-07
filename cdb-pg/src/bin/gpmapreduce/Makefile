@@ -1,65 +1,37 @@
 
-TARGET     = gpmapreduce
-LIBYAML    = libyaml.a
-LIBYAMLDIR = yaml-0.1.1
+subdir = src/bin/gpmapreduce
+top_builddir = ../../..
+include $(top_builddir)/src/Makefile.global
 
-CC        = gcc
-LD        = gcc
-YACC      = bison
-FLEX      = flex
-FIXUP     = ./bin/fixup.pl
-
-SRCDIR    = src
-INCDIR    = include
-LIBDIR    = lib
-TESTDIR   = test
-
-PQINCDIR  = ../../interfaces/libpq
-PGINCDIR  = ../../include 
-PGLIBDIR  = ../../interfaces/libpq 
-
-CFLAGS_DEBUG = -g -D INTERNAL_BUILD
-CFLAGS_DIST  = -O3 
-
-CFLAGS    = -I$(PQINCDIR) -I$(PGINCDIR) -I$(INCDIR) -I$(SRCDIR) 
-CFLAGS   += -Wall -Werror
-LDFLAGS   = -L$(LIBDIR) -lyaml -L$(PGLIBDIR) -lpq
-YACCFLAGS = -d
-FLEXFLAGS = -i
-
-# If a prerelease was given on the make command then adjust the CFLAGS
-ifdef PRERELEASE
-CFLAGS      += -DPRERELEASE="\"$(PRERELEASE)\""
+ifdef srcdir
+INCDIR= $(srcdir)/include
+SRCDIR= $(srcdir)/src
+else
+INCDIR= include
+SRCDIR= src
 endif
+LIBDIR= lib
+LIBYAMLDIR= yaml-0.1.1
+
+override CPPFLAGS := -DFRONTEND -I$(SRCDIR) -I$(INCDIR) -I$(libpq_srcdir) $(CPPFLAGS)
 
 FILES     = main.o mapred.o parse.o yaml_scan.o yaml_parse.o 
 GENFILES  = yaml_parse.h yaml_parse.c yaml_scan.c yaml_scan.h
 
-OBJECTS   = $(addprefix $(SRCDIR)/, $(FILES))
+LIBYAML   = $(LIBDIR)/libyaml.a
+OBJS      = $(addprefix $(SRCDIR)/, $(FILES))
 GENOBJS   = $(addprefix $(SRCDIR)/, $(GENFILES))
 
-all: 
-	$(MAKE) $(TARGET) CFLAGS='$(CFLAGS) $(CFLAGS_DEBUG)'
+FLEXFLAGS = -i
+YACCFLAGS = -d
 
-dist:
-	$(MAKE) clean
-	$(MAKE) $(TARGET) CFLAGS='$(CFLAGS) $(CFLAGS_DIST)'
+all: submake-libpq submake-libyaml gpmapreduce
 
-check: $(TARGET)
-	@cd $(TESTDIR); make
+gpmapreduce: $(OBJS) $(libpq_builddir)/libpq.a $(LIBYAML)
+	$(CC) $(CFLAGS) $(OBJS) $(LIBYAML) $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
 
-clean:
-	$(MAKE) test_clean
-	rm -rf $(GENOBJS)
-	rm -rf $(TARGET) $(SRCDIR)/*.o
-
-test_clean:
-	@cd $(TESTDIR); make clean >/dev/null
-
-$(TARGET): $(LIBDIR)/$(LIBYAML) $(GENOBJS) $(OBJECTS)
-	@echo "[Linking]  $(TARGET)"
-	@$(LD) $(OBJECTS) $(LDFLAGS) -o $(TARGET)
-	@echo 
+check:
+	$(MAKE) -C test
 
 $(LIBDIR):
 	mkdir $(LIBDIR)
@@ -71,36 +43,51 @@ $(LIBDIR)/$(LIBYAML):  $(LIBDIR)
 	@cp $(LIBYAMLDIR)/src/.libs/$(LIBYAML) $(LIBDIR)/$(LIBYAML)
 	@chmod u+w $(LIBDIR)/$(LIBYAML)
 
-%.o: %.c 
-	@echo "[Building] $@"
-	$(CC) $(CFLAGS) -c $*.c -o $@
+$(srcdir)/yaml_scan.c: yaml_scan.l
+ifdef FLEX
+	$(FLEX) $(FLEXFLAGS) -o'$@' $<
+else
+	@$(missing) flex $< $@
+endif
 
-# This is a bit redundant, but it works well enough
-$(SRCDIR)/yaml_scan.c : $(SRCDIR)/yaml_scan.l
-	@echo "[Flex]     $*.l"
-	@cd $(SRCDIR) ; \
+$(SRCDIR)/yaml_scan.c: $(SRCDIR)/yaml_scan.l
+ifdef FLEX
+	cd $(SRCDIR) ; \
 	$(FLEX) $(FLEXFLAGS) yaml_scan.l
+else
+	@$(missing) flex $< $@
+endif
 
-$(SRCDIR)/yaml_scan.h : $(SRCDIR)/yaml_scan.l
-	@echo "[Flex]     $*.l"
-	@cd $(SRCDIR) ; \
-	$(FLEX) $(FLEXFLAGS) yaml_scan.l
-
+$(SRCDIR)/yaml_parse.h: $(SRCDIR)/yaml_parse.c
 $(SRCDIR)/yaml_parse.c: $(SRCDIR)/yaml_parse.y
-	@echo "[Bison]    $*.y"
+ifdef YACC
 	@cd $(SRCDIR) ; \
 	$(YACC) $(YACCFLAGS) yaml_parse.y
+else
+	@$(missing) bison $< $@
+endif
 
-$(SRCDIR)/yaml_parse.h : $(SRCDIR)/yaml_parse.y
-	@echo "[Bison]    $*.y"
-	@cd $(SRCDIR) ; \
-	$(YACC) $(YACCFLAGS) yaml_parse.y
+.PHONY: submake-libyaml
+submake-libyaml:
+	$(MAKE) -C $(LIBYAMLDIR)
+
+install: all installdirs
+	$(INSTALL_PROGRAM) gpmapreduce$(X) '$(DESTDIR)$(bindir)/gpmapreduce$(X)'
+
+installdirs:
+	$(mkinstalldirs) '$(DESTDIR)$(bindir)'
+
+uninstall:
+	rm -f '$(DESTDIR)$(bindir)/gpmapreduce$(X)'
+
+clean distclean maintainer-clean:
+	rm -f gpmapreduce$(X) $(OBJS) $(GENOBJS)
 
 # Other dependencies
-$(SRCDIR)/yaml_parse.c  : $(SRCDIR)/yaml_scan.h
 $(SRCDIR)/yaml_parse.c  : $(INCDIR)/parser.h $(INCDIR)/mapred.h
 $(SRCDIR)/yaml_scan.c   : $(INCDIR)/parser.h $(INCDIR)/mapred.h
 $(SRCDIR)/parse.o       : $(SRCDIR)/yaml_parse.h
 $(SRCDIR)/parse.o       : $(INCDIR)/parser.h $(INCDIR)/mapred.h
 $(SRCDIR)/mapred.o      : $(INCDIR)/parser.h $(INCDIR)/mapred.h
 $(SRCDIR)/main.o        : $(INCDIR)/mapred.h
+

@@ -44,15 +44,12 @@ $(YMLDIR)/%.yml: $(INDIR)/%.yml.in
 	$(FIXUP) $(INDIR)/$*.yml.in
 	@mv $(INDIR)/$*.yml $(YMLDIR)/.
 
-$(OUTDIR)/%.suc: $(MAPRED) $(YMLDIR)/%.yml $(MASTERDIR)/%.out $(MASTERDIR)/%.err $(MASTERDIR)/%.print.out
+$(OUTDIR)/%.suc: $(MAPRED) $(YMLDIR)/%.yml $(MASTERDIR)/%.out $(MASTERDIR)/%.err
 	@echo [TESTING] $(YMLDIR)/$*.yml
 	@rm -f $(OUTDIR)/$*.suc $(OUTDIR)/$*.fail
-	@touch $(OUTDIR)/$*.out $(OUTDIR)/$*.err $(OUTDIR)/$*.print.out $(OUTDIR)/$*.print.err
+	@touch $(OUTDIR)/$*.out $(OUTDIR)/$*.err
 	@cp -f $(MASTERDIR)/DEFAULT.out $(OUTDIR)/$*.out
 	@cp -f $(MASTERDIR)/DEFAULT.err $(OUTDIR)/$*.err
-	@cp -f $(MASTERDIR)/DEFAULT.print.out $(OUTDIR)/$*.print.out
-	@cp -f $(MASTERDIR)/DEFAULT.print.err $(OUTDIR)/$*.print.err
 	@$(MAPRED) $(MFLAGS) $(YMLDIR)/$*.yml >>$(OUTDIR)/$*.out 2>>$(OUTDIR)/$*.err
-	@$(MAPRED) -p $(MFLAGS) $(YMLDIR)/$*.yml >>$(OUTDIR)/$*.print.out 2>>$(OUTDIR)/$*.print.err
 	@$(MRDIFF) $(OUTDIR) $(MASTERDIR) $* > $(OUTDIR)/$*.suc
 	@cd $(OUTDIR); if [ -s $*.suc ] ; then mv $*.suc $*.fail; echo $*.fail >> FAIL ; fi	

@@ -1,6 +1,0 @@
--- start_matchsubs
--- m/mapreduce_\d+_run/
--- s/mapreduce_\d+/mapreduce_DUMMY/
--- end_matchsubs
-WARNING: unset parameter - Uniquify(gap => NULL)
-SELECT * FROM mapreduce_64201_run_1 ORDER BY refind_key, id, date_posted, date_posted_timestamp, first_extract_date, last_extract_date, inter_source_hash, refind_index;
