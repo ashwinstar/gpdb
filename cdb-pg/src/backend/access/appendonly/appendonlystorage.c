@@ -365,10 +365,15 @@ AppendOnlyStorage_GetBlockHeaderInfo(
 		*isCompressed = 	true;
 		*length =			compressedLen;
 		uncompressedLen =   AOBlockHeaderGet_dataLength(blockHeader);
-		if (compressedLen >= uncompressedLen)
+
+		/*
+		 * UNDONE: Fix doCompressAppend to supply slightly less output buffer...
+		 * UNDONE: so we can make this comparison >=.
+		 */
+		if (compressedLen > uncompressedLen)
 		{
 			sprintf(AoHeaderCheckErrorStr,
-					"Append-only storage header is invalid -- compressed length %d is >= uncompressed length %d "
+					"Append-only storage header is invalid -- compressed length %d is > uncompressed length %d "
 					"(block_bytes_0_3 0x%08x, block_bytes_4_7 0x%08x)",
 					compressedLen,
 					uncompressedLen,
