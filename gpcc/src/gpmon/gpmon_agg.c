@@ -72,7 +72,7 @@ static apr_status_t agg_put_qlog(agg_t* agg, const gpmon_qlog_t* qlog,
 	node->qlog = *qlog;
 	if (0 != strcmp(qlog->db, GPMON_DB)) {
 	    TR2(("agg_put: found %d.%d.%d generation %d recorded %d\n", qlog->key.tmid, 
-		qlog->key.xid, qlog->key.cid, generation, node->recorded));
+		qlog->key.ssid, qlog->key.ccnt, generation, node->recorded));
 	}
     }
     else {
@@ -86,7 +86,7 @@ static apr_status_t agg_put_qlog(agg_t* agg, const gpmon_qlog_t* qlog,
 	apr_hash_set(agg->qtab, &node->qlog.key, sizeof(node->qlog.key), node);
 	if (0 != strcmp(qlog->db, GPMON_DB)) {
 	    TR2(("agg_put: new %d.%d.%d generation %d recorded %d\n", qlog->key.tmid, 
-		qlog->key.xid, qlog->key.cid, generation, node->recorded));
+		qlog->key.ssid, qlog->key.ccnt, generation, node->recorded));
 	}
     }
     node->last_updated_generation = generation;
@@ -107,8 +107,8 @@ static apr_status_t agg_put_qexec(agg_t* agg, const gpmon_qexec_t* qexec,
 
     /* find qdnode of this qexec */
     key.tmid = qexec->key.tmid;
-    key.xid = qexec->key.xid;
-    key.cid = qexec->key.cid;
+    key.ssid = qexec->key.ssid;
+    key.ccnt = qexec->key.ccnt;
     dp = apr_hash_get(agg->qtab, &key, sizeof(key));
     if (!dp) {
 	/* not found, make new entry */
@@ -224,7 +224,7 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 	if (dp->last_updated_generation < newagg->generation - 1) {
 	    if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 		TR2(("agg_dup: skip %d.%d.%d generation %d, current generation %d, recorded %d\n", 
-		    dp->qlog.key.tmid, dp->qlog.key.xid, dp->qlog.key.cid,
+		    dp->qlog.key.tmid, dp->qlog.key.ssid, dp->qlog.key.ccnt,
 		    (int) dp->last_updated_generation, 
 		    (int) newagg->generation, dp->recorded));
 	    }
@@ -233,8 +233,8 @@ apr_status_t agg_dup(agg_t** retagg, agg_t* oldagg, apr_pool_t* parent_pool)
 
 	if (0 != strcmp(dp->qlog.db, GPMON_DB)) {
 	    TR2(("agg_dup: add %d.%d.%d, generation %d, recorded %d:\n", 
-		 dp->qlog.key.tmid, dp->qlog.key.xid, 
-		dp->qlog.key.cid, dp->last_updated_generation, dp->recorded));
+		 dp->qlog.key.tmid, dp->qlog.key.ssid, 
+		dp->qlog.key.ccnt, dp->last_updated_generation, dp->recorded));
 	}
 
 	/* dup this entry */
@@ -324,8 +324,8 @@ static void write_qenode_row(FILE* fp, const qenode_t* qenode, const char* nowst
     sprintf(p += strlen(p), "%s", nowstr);
     sprintf(p += strlen(p), "|%d|%d|%d|%d|%d|%d",
 	    qexec->key.tmid,
-	    qexec->key.xid,
-	    qexec->key.cid,
+	    qexec->key.ssid,
+	    qexec->key.ccnt,
 	    qexec->key.segid, 
 	    qexec->key.pid,
 	    qexec->key.nid);
@@ -409,7 +409,7 @@ apr_status_t agg_dump(agg_t* agg)
 		/* TODO: Query text missing */
 		TR1(("queries_tail: %x add query %d.%d.%d, status %d, generation %d, recorded %d\n", 
 		    agg->qtab,
-		    qdnode->qlog.key.tmid, qdnode->qlog.key.xid, qdnode->qlog.key.cid, qdnode->qlog.status,
+		    qdnode->qlog.key.tmid, qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt, qdnode->qlog.status,
 		    qdnode->last_updated_generation, 
 		    qdnode->recorded));
                 write_qlog_full(fp_queries_tail, qdnode, nowstr);
@@ -448,8 +448,8 @@ apr_status_t agg_dump(agg_t* agg)
 	{
 	    char fname[sizeof(GPMON_DIR) + 100];
 	    sprintf(fname, GPMON_DIR "q%d-%d-%d.txt",
-		    qdnode->qlog.key.tmid, qdnode->qlog.key.xid,
-		    qdnode->qlog.key.cid);
+		    qdnode->qlog.key.tmid, qdnode->qlog.key.ssid,
+		    qdnode->qlog.key.ccnt);
 
 	    bloom_set(&bloom, fname);
 	}
@@ -794,7 +794,7 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
     *p = 0;
     sprintf(p += strlen(p), "%s", nowstr);
     sprintf(p += strlen(p), "|%d|%d|%d", qdnode->qlog.key.tmid, 
-            qdnode->qlog.key.xid, qdnode->qlog.key.cid);
+            qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
     sprintf(p += strlen(p), "|%s|%s", qdnode->qlog.user, 
             qdnode->qlog.db);
     sprintf(p += strlen(p), "|%d", qdnode->qlog.cost);
@@ -841,7 +841,7 @@ static void write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nowstr)
     fprintf(fp, "%s", fmt_qlog(line, qdnode, nowstr, 1));
     fprintf(fp, "|");
     sprintf(qfname, GPMON_DIR "q%d-%d-%d.txt", qdnode->qlog.key.tmid, 
-            qdnode->qlog.key.xid, qdnode->qlog.key.cid);
+            qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
     qfptr = fopen(qfname, "r");
     if (qfptr) {
         line[sizeof(line)-1] = 0;

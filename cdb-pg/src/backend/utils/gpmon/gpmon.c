@@ -77,7 +77,7 @@ void gpmon_init(void)
 	gpmon.pid = pid;
 }
 
-void gpmon_record(apr_int32_t tmid, apr_int32_t xid, apr_int32_t cid,
+void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 				  const char* type,
 				  const char* content)
 {
@@ -85,7 +85,7 @@ void gpmon_record(apr_int32_t tmid, apr_int32_t xid, apr_int32_t cid,
 	FILE* fp;
 	int len = strlen(content);
 
-	sprintf(fname, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, xid, cid);
+	sprintf(fname, "%sq%d-%d-%d.txt", GPMON_DIR, tmid, ssid, ccnt);
 
 	fp = fopen(fname, "a");
 	if (!fp)
@@ -98,11 +98,12 @@ void gpmon_record(apr_int32_t tmid, apr_int32_t xid, apr_int32_t cid,
 }
 
 
-void gpmon_getgid(apr_int32_t* tmid, apr_int32_t* xid)
+void gpmon_gettmid(apr_int32_t* tmid)
 {
     char buff[TMGIDSIZE] = {0};
+    apr_int32_t xid;
     getDistributedTransactionIdentifier(buff);
-    sscanf(buff, "%d-%d", tmid, xid);
+    sscanf(buff, "%d-%d", tmid, &xid);
 } 
 
 

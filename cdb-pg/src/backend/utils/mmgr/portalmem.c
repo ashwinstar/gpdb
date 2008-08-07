@@ -268,7 +268,8 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	 */
 
 	/* Gid */
-	gpmon_getgid(&portal->gpmon_pkt.u.qlog.key.tmid, &portal->gpmon_pkt.u.qlog.key.xid);
+	gpmon_gettmid(&portal->gpmon_pkt.u.qlog.key.tmid);
+    	portal->gpmon_pkt.u.qlog.key.ssid = gp_session_id;
 
 	/* Command id is not setup yet */
 	if(gp_enable_gpmon)
@@ -1149,7 +1150,7 @@ void PortalSetStatus(Portal p, PortalStatus s)
 				p->gpmon_pkt.u.qlog.tfin = tv.tv_sec;
 		}
 
-		p->gpmon_pkt.u.qlog.key.cid = gp_command_count;
+		p->gpmon_pkt.u.qlog.key.ccnt = gp_command_count;
 		p->gpmon_pkt.u.qlog.status = gpmon_qlog_status;
 		gpmon_send(&p->gpmon_pkt);
 	}

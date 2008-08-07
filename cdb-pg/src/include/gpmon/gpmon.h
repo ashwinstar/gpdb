@@ -29,13 +29,13 @@ typedef struct gpmon_metrics_t gpmon_metrics_t;
 /* ------------------------------------------------------------------
          INTERFACE
    ------------------------------------------------------------------ */
-extern void gpmon_record(apr_int32_t tmid, apr_int32_t xid, apr_int32_t cid,
+extern void gpmon_record(apr_int32_t tmid, apr_int32_t ssid, apr_int32_t ccnt,
 						 const char* type, /* "qtext", "qplan" */
 						 const char* content /* the query text or plan */
 						 );
 extern void gpmon_send(gpmon_packet_t*);
 
-extern void gpmon_getgid(apr_int32_t*, apr_int32_t*);
+extern void gpmon_gettmid(apr_int32_t*);
 
 /* ------------------------------------------------------------------
          METRICS
@@ -71,8 +71,8 @@ struct gpmon_metrics_t {
 struct gpmon_qlogkey_t {
     /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     apr_int32_t tmid;  /* transaction time */
-    apr_int32_t xid; /* global transaction id */
-    apr_int32_t cid;
+    apr_int32_t ssid; /* session id */
+    apr_int32_t ccnt; /* command count */
 };
 
 #define GPMON_QLOG_STATUS_INVALID -1
@@ -107,8 +107,8 @@ struct gpmon_qlog_t {
 struct gpmon_qexeckey_t {
     /* if you modify this, do not forget to edit gpcc/src/gpmon/gpmonlib.c:gpmon_ntohpkt() */
     apr_int32_t tmid;  /* transaction time */
-    apr_int32_t xid; /* global transaction id */
-    apr_int16_t cid;	/* command id */
+    apr_int32_t ssid; /* session id */
+    apr_int16_t ccnt;	/* command count */
     apr_int16_t segid;	/* segment id */
     apr_int32_t pid; 	/* process id */
     apr_int16_t nid;	/* plan node id */

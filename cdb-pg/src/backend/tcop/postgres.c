@@ -830,7 +830,7 @@ exec_mpp_query(const char *query_string,
 	SliceTable *sliceTable = NULL;
     Slice      *slice = NULL;
 	ParamListInfo paramLI = NULL;
-	apr_int32_t tmid = 0, xid = 0;
+	apr_int32_t tmid = 0;
 
 	Assert(Gp_role == GP_ROLE_EXECUTE);
 
@@ -904,8 +904,8 @@ exec_mpp_query(const char *query_string,
     /* Log immediately if dictated by log_statement */
 	if(gp_enable_gpmon)
 	{
-		gpmon_getgid(&tmid, &xid);
-		gpmon_record(tmid, xid, gp_command_count, 
+		gpmon_gettmid(&tmid);
+		gpmon_record(tmid, gp_session_id, gp_command_count, 
 				"qtext", query_string);
 	}
 
@@ -1384,7 +1384,7 @@ exec_simple_query(const char *query_string)
 	bool		save_log_statement_stats = log_statement_stats;
 	bool		was_logged = false;
 	char		msec_str[32];
-	apr_int32_t	tmid = 0, xid = 0;
+	apr_int32_t	tmid = 0;
 	/*
 	 * Report query to various monitoring facilities.
 	 */
@@ -1437,8 +1437,8 @@ exec_simple_query(const char *query_string)
 
 	if(gp_enable_gpmon)
 	{
-		gpmon_getgid(&tmid, &xid);
-		gpmon_record(tmid, xid, gp_command_count, 
+		gpmon_gettmid(&tmid);
+		gpmon_record(tmid, gp_session_id, gp_command_count, 
 				"qtext", query_string);
 	}
 

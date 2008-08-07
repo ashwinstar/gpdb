@@ -62,9 +62,9 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 	case GPMON_PKTTYPE_QLOG:
 	    {
 		gpmon_qlog_t* p = &pkt->u.qlog;
-    GPMON_NTOHL(p->key.tmid);
-    GPMON_NTOHL(p->key.xid);
-		GPMON_NTOHL(p->key.cid);
+         	GPMON_NTOHL(p->key.tmid);
+         	GPMON_NTOHL(p->key.ssid);
+		GPMON_NTOHL(p->key.ccnt);
 		GPMON_NTOHL(p->cost);
 		GPMON_NTOHL(p->tsubmit);
 		GPMON_NTOHL(p->tstart);
@@ -79,9 +79,9 @@ apr_status_t gpmon_ntohpkt(gpmon_packet_t* pkt)
 	case GPMON_PKTTYPE_QEXEC:
 	    {
 		gpmon_qexec_t* p = &pkt->u.qexec;
-    GPMON_NTOHL(p->key.tmid);
-    GPMON_NTOHL(p->key.xid);
-		GPMON_NTOHS(p->key.cid);
+         	GPMON_NTOHL(p->key.tmid);
+         	GPMON_NTOHL(p->key.ssid);
+		GPMON_NTOHS(p->key.ccnt);
 		GPMON_NTOHS(p->key.segid);
 		GPMON_NTOHL(p->key.pid);
 		GPMON_NTOHS(p->key.nid);

@@ -425,8 +425,9 @@ void InitPlanStateGpmonPkt(PlanState *ps, const char *nodename, Gpmon_NameUnit_M
 	ps->gpmon_pkt.version = GPMON_PACKET_VERSION;
 	ps->gpmon_pkt.pkttype = GPMON_PKTTYPE_QEXEC;
 
-	gpmon_getgid(&ps->gpmon_pkt.u.qexec.key.tmid, &ps->gpmon_pkt.u.qexec.key.xid);
-	ps->gpmon_pkt.u.qexec.key.cid = gp_command_count;
+	gpmon_gettmid(&ps->gpmon_pkt.u.qexec.key.tmid);
+     	ps->gpmon_pkt.u.qexec.key.ssid = gp_session_id;
+	ps->gpmon_pkt.u.qexec.key.ccnt = gp_command_count;
 	ps->gpmon_pkt.u.qexec.key.segid = Gp_segment;
 	ps->gpmon_pkt.u.qexec.key.pid = MyProcPid;
 	ps->gpmon_pkt.u.qexec.key.nid = ps->plan->plan_node_id;
