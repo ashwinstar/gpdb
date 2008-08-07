@@ -29,7 +29,7 @@ def pretty_version(v):
     m = re.compile('Revision: #(\d+)').search(v)
     if m: return str(2 + (float(m.group(1))/100))
     else: return str(v)
-__version__ = pretty_version('$Revision: #1 $')
+__version__ = pretty_version('$Revision: #4 $')
 
 #============================================================
 class ConnectionError(StandardError): pass
@@ -107,11 +107,13 @@ class GPUpgrade:
         self.user      = self.RunCmd('id -un')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
-        self.masterdir.rstrip('/')
         self.ParseInput()
 
         # Extract path from input master directory
         if self.cmd == 'MASTER':
+            if not self.masterdir:
+                raise UpgradeError('MASTER_DATA_DIRECTORY is not defined')
+            self.masterdir.rstrip('/')
             masterpath, masterdir = os.path.split(self.masterdir)
             self.root   = masterpath
             self.tmpdir = os.path.join(masterpath, 'upgrade')
@@ -321,6 +323,7 @@ class GPUpgrade:
         home  = os.environ.get('HOME')
         path  = os.environ.get('PATH')
         lpath = os.environ.get('LD_LIBRARY_PATH')
+        dypath = os.environ.get('DYLD_LIBRARY_PATH')
         if path:
             path = '%s/bin:%s' % (gphome, path)
         else:
@@ -329,6 +332,10 @@ class GPUpgrade:
             lpath = '%s/lib:%s/ext/python/lib:%s' % (gphome, gphome, lpath)
         else:
             lpath = '%s/lib:%s/ext/python/lib' % (gphome, gphome)
+        if dypath:
+            dypath = '%s/lib:%s/ext/python/lib:%s' % (gphome, gphome, dypath)
+        else:
+            dypath = '%s/lib:%s/ext/python/lib' % (gphome, gphome)
 
         env = {}
         env['HOME']    = home
@@ -596,6 +603,7 @@ tool shipped with that release''')
                 if (not force) and os.path.exists(flag):
                     try:
                         dpid = self.RunCmd('cat ' + flag)
+                        dpid = int(dpid)
                     except Exception, e:
                         if not silent:
                             self.Log('WARN', 'Read error on file:  ' + str(e))
