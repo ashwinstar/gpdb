@@ -1,5 +1,5 @@
 
-MAPRED    = ../mapred
+MAPRED    = ../gpmapreduce
 FIXUP     = bin/fixup.pl
 MRDIFF    = bin/mrdiff.pl
 

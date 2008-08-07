@@ -1,5 +1,5 @@
 
-TARGET     = mapred
+TARGET     = gpmapreduce
 LIBYAML    = libyaml.a
 LIBYAMLDIR = yaml-0.1.1
 
