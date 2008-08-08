@@ -2203,7 +2203,6 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 		}
 	}
 
- top:
 	/*
 	 * if the inserting tuple has the value NULL, then the LOV item is
 	 * the first item in the lovBuffer.
@@ -2216,8 +2215,6 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 	else
 	{
  		bool res = false;
-		Snapshot old_snapshot = scanDesc->xs_snapshot;
-		bool dirty_find = false;
 		
 		/*
 		 * Search through the lov heap and index to find the LOV item which
@@ -2232,7 +2229,10 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 		 * guard against a race condition where a concurrent writer is
 		 * inserting the same key as us. So we do another search with
 		 * SnapshotDirty. If such a key is found, we have to wait for
-		 * the other guy, and try again.
+		 * the other guy, and try again. However, this may cause
+		 * distributed deadlock (see MPP-3155). The fix is to use
+		 * FrozenTransactionId for tuples in the LOV heap so that
+		 * all tuples are always visible to any transactions.
 		 *
 		 * The problem is, locking the metapage is pretty heavy handed 
 		 * because the read routines need a read lock on it. There are a
@@ -2244,44 +2244,6 @@ inserttuple(Relation rel, Buffer metabuf, uint64 tidnum,
 		
 		res = _bitmap_findvalue(lovHeap, lovIndex, scanKey, scanDesc, &lovBlock,
 								&blockNull, &lovOffset, &offsetNull);
-
-		if (!res)
-		{
-			index_rescan(scanDesc, NULL);
-
-			scanDesc->xs_snapshot = SnapshotDirty;
-
-			dirty_find = _bitmap_findvalue(lovHeap, lovIndex, scanKey,
-										   scanDesc, &lovBlock,
-										   &blockNull, &lovOffset, &offsetNull);
-
-			elog(DEBUG1, "_bitmap_findvalue: dirty_find=%d, clean_find=%d", dirty_find, res);
-
-			if (dirty_find)
-			{
-				TransactionId xwait =
-					(TransactionIdIsValid(SnapshotDirty->xmin)) ?
-					SnapshotDirty->xmin : SnapshotDirty->xmax;
-
-				elog(DEBUG1, "Transaction %d waiting for transaction %d", GetCurrentTransactionId(),
-					 xwait);
-
-				if (TransactionIdIsValid(xwait))
-				{
-					LockBuffer(metabuf, BUFFER_LOCK_UNLOCK);
-
-					XactLockTableWait(xwait);
-
-					/* restart the scan */
-					index_rescan(scanDesc, NULL);
-
-					scanDesc->xs_snapshot = old_snapshot;
-					goto top;
-				}
-			}
-
-			scanDesc->xs_snapshot = old_snapshot;
-		}
 
 		if(!res)
 		{

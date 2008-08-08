@@ -17,6 +17,7 @@
 #include "access/bitmap.h"
 #include "access/nbtree.h"
 #include "access/xact.h"
+#include "access/transam.h"
 #include "nodes/execnodes.h"
 #include "nodes/primnodes.h"
 #include "nodes/makefuncs.h"
@@ -235,14 +236,7 @@ _bitmap_insert_lov(Relation lovHeap, Relation lovIndex, Datum *datum,
 
 	/* insert this tuple into the heap */
 	tuple = heap_form_tuple(tupDesc, datum, nulls);
-	heap_insert(lovHeap, tuple, GetCurrentCommandId(), 
-				use_wal, true, GetCurrentTransactionId());
-
-	/*
-	 * We must bump the command counter to make the newly-inserted heap
-	 * tuple visible.
-	 */
-	CommandCounterIncrement();
+	frozen_heap_insert(lovHeap, tuple);
 
 	/* insert a new tuple into the index */
 	indexDatum = palloc0((tupDesc->natts - 2) * sizeof(Datum));
