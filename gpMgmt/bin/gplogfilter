@@ -1,62 +1,88 @@
 #!/usr/bin/env python
 #
+# gplogfilter [options] [inputfile]...
+#
 # $Id: $
+# $Change: $
+# $DateTime: $
+# $Author: $
 
-# Standard Python library
-import copy
+# import Python standard library modules
+import gzip
+import locale
 import os
 import os.path
 import re
 import sys
 from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRESS_USAGE
 
-# GPDB
-from lib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
-from lib.logfilter import filterOneLogFile, spiffInterval
+# import GPDB modules
+from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
+from gppylib.logfilter import FilterLogEntries, filterize, spiffInterval
+from gppylib.logfilter import MatchRegex, NoMatchRegex, MatchInFirstLine
 
 
 description = ("""
-Extracts GPDB log entries from inputfile and writes them to stdout
-if they fulfill all of the criteria you specify.  If inputfile is a
-directory, the suffix ".log" is appended to obtain the input file name.
-To read from standard input, specify "-" for inputfile.  To write the
-log entries to a file other than stdout, use the --out option.
+Reads GPDB log file(s), extracts log entries which meet
+all the criteria you specify, and writes them to output
+file(s) or standard output.
 """)
+
+_help = ["""
+If no input file is specified, the value of the MASTER_DATA_DIRECTORY
+environment variable is used, if defined.  If an input file is a
+directory, the suffix ".log" is appended to obtain the input file name.
+To read from standard input, specify input file "-".
+""","""
+To write the extracted log entries to a destination other than stdout,
+use the --out option.  If the destination is a directory, then for each
+input file, a correspondingly named output file is written there;
+otherwise the results from all input files are written to the specified
+--out file or standard output.
+""","""
+In the input file, each log entry starts with a timestamp
+"YYYY-MM-DD HH:MM:SS[.fraction]" at the beginning of a line.
+Any following lines are considered to belong to the same entry,
+up to the next line having a different timestamp.
+""","""
+--begin and --end values can be specified as either
+"YYYY-MM-DD[ HH:MM[:SS]]" or "YYYYMMDD[ HHMM[SS]]".  Between date
+and time, either a space or the letter "T" is required.  When only
+the date is given, 00:00:00 is used for the time.
+Specify --duration as "[hours][:minutes[:seconds]]";
+it is unused if both --begin and --end are given.
+""","""
+The ending date and time can be given by --end, or computed as
+--begin plus --duration.  The beginning date and time can be
+given by --begin, or computed as --end minus --duration, or
+computed as the current date and time minus --duration.
+""","""
+Log entries are skipped unless they fulfill all of the criteria
+you specify.  For example, if you specify two occurrences of the
+--select option, log entries must contain both of the strings.
+""","""
+If the destination specified by --out is a directory, the output file is
+given the same name as the input file (excluding '.gz' suffix if any).
+When writing compressed output, '.gz' is suffixed to the output file name.
+If you specify an output file name ending in '.gz', the output is com
+pressed (-z9) by default.
+""","""
+Example:
+gplogfilter -t -d2 $MASTER_DATA_DIRECTORY
+# view trouble messages timestamped within the past two hours
+"""]
+
+
+#----------------------- Command line option parser ----------------------
 
 class OptParser(OptionParser):
     # OptionParser's help text formatter removes paragraph breaks and
     # preserves excess spaces.  Override its (undocumented) format_help
     # method so our help can have paragraphs.
-    _help = ["""
-        In the input file, each log entry starts with a timestamp
-        "YYYY-MM-DD HH:MM:SS[.fraction]" at the beginning of a line.
-        Any following lines are considered to belong to the same entry,
-        up to the next line having a different timestamp.
-        ""","""
-        --begin and --end values can be specified as either
-        "YYYY-MM-DD[ HH:MM[:SS]]" or "YYYYMMDD[ HHMM[SS]]".  Between date
-        and time, either a space or the letter "T" is required.  When only
-        the date is given, 00:00:00 is used for the time.
-        Specify --duration as "[hours][:minutes[:seconds]]";
-        it is unused if both --begin and --end are given.
-        ""","""
-        The ending date and time can be given by --end, or computed as
-        --begin plus --duration.  The beginning date and time can be
-        given by --begin, or computed as --end minus --duration, or
-        computed as the current date and time minus --duration.
-        ""","""
-        Log entries are skipped unless they fulfill all of the criteria
-        you specify.  For example, if you specify two occurrences of the
-        --select option, log entries must contain both of the strings.
-        ""","""
-        Example:
-        gplogfilter --duration=2 --select=ERROR: $MASTER_DATA_DIRECTORY
-        # view error messages timestamped within the past two hours
-        """]
     def format_help(self, *args):
         msg = OptionParser.format_help(self, *args)
         help = [self.formatter.format_description(' '.join(s.split()))
-                for s in self._help]
+                for s in _help]
         msg = '\n'.join([msg] + help)
         return msg
 
@@ -67,12 +93,14 @@ class OptChecker(Option):
             return str_to_datetime(value)
         except DatetimeValueError, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e.description))
+
     def durationCheck(option, opt, value):
         try:
             return str_to_duration(value, signed=False)
         except DatetimeValueError, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e.description))
     def regexCheck(option, opt, value):
+        # value is a string to be compiled as a regular expression pattern
         global _case
         flags = re.LOCALE
         if _case and _case.startswith('i'):
@@ -81,85 +109,232 @@ class OptChecker(Option):
             return re.compile(value, flags)
         except Exception, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e))
-    def searchCheck(option, opt, value):
+    def literalCheck(option, opt, value):
+        # value is a string to be matched literally; return compiled regex
         return option.regexCheck(opt, re.escape(value))
-    case = 'respect'
-    TYPES = Option.TYPES + ('datetime', 'duration', 'regex', 'search')
-    TYPE_CHECKER = copy.copy(Option.TYPE_CHECKER)
-    TYPE_CHECKER['datetime'] = datetimeCheck
-    TYPE_CHECKER['duration'] = durationCheck
-    TYPE_CHECKER['regex'] = regexCheck
-    TYPE_CHECKER['search'] = searchCheck
+    _addtypes = {'datetime' : datetimeCheck,
+                 'duration' : durationCheck,
+                 'regex'    : regexCheck,
+                 'literal'  : literalCheck}
+    TYPES = Option.TYPES + tuple(_addtypes.keys())
+    TYPE_CHECKER = Option.TYPE_CHECKER.copy()
+    TYPE_CHECKER.update(_addtypes)
+
+    # Teach optparse some additional actions
+    def filterAction(self, dest, value, values, Filter, *args):
+        filters = values.ensure_value(dest, [])
+        filters.append(filterize(Filter, value, *args))
+    def take_action(self, action, dest, opt, value, values, parser):
+        actup = self._addactions.get(action)
+        if actup:
+            actup[0](self, dest, value, values, actup[1], *actup[2:])
+        else:
+            Option.take_action(self, action, dest, opt, value, values, parser)
+    _addactions = {"MatchRegex"   : (filterAction, MatchRegex),
+                   "NoMatchRegex" : (filterAction, NoMatchRegex)}
+    _addactionnames = tuple(_addactions.keys())
+    ACTIONS = Option.ACTIONS + _addactionnames
+    STORE_ACTIONS = Option.STORE_ACTIONS + _addactionnames
+    TYPED_ACTIONS = Option.TYPED_ACTIONS + _addactionnames
 
 _case = 'respect'
 def _setcase(option, opt, value, parser):
     global _case
     _case = value
 
+def parseargs():
+    # Create our OptionParser object
+    parser = OptParser(option_class=OptChecker,
+                       description=' '.join(description.split()))
+    parser.set_usage('%prog [options] [inputfile] ...')
+    parser.remove_option('-h')
 
-# Declare the command line options
-parser = OptParser(option_class=OptChecker,
-                   description=' '.join(description.split()))
-parser.set_usage('%prog [options] inputfile')
-parser.remove_option('-h')
+    # Define the options
+    optgrp = OptionGroup(parser, '\n  Timestamp range',
+                         'Use any two of these options to impose lower and '
+                         'upper bounds on timestamps; or use any one option to '
+                         'bound the timestamp range on just one side. ')
+    optgrp.add_option('-b', '--begin',    type='datetime', metavar='datetime',
+                      help='beginning date and time: "YYYY-MM-DD[ HH:MM[:SS]"')
+    optgrp.add_option('-e', '--end',      type='datetime', metavar='datetime',
+                      help='ending date and time')
+    optgrp.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
+                      help='duration from beginning to end')
+    parser.add_option_group(optgrp)
 
-optgrp = OptionGroup(parser, '\n  Timestamp range',
-                     'Use any two of these options to impose lower and '
-                     'upper bounds on timestamps; or use any one option to '
-                     'bound the timestamp range on just one side. ')
-optgrp.add_option('-b', '--begin',    type='datetime', metavar='datetime',
-                  help='beginning date and time: "YYYY-MM-DD[ HH:MM[:SS]"')
-optgrp.add_option('-e', '--end',      type='datetime', metavar='datetime',
-                  help='ending date and time')
-optgrp.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
-                  help='duration from beginning to end')
-parser.add_option_group(optgrp)
+    optgrp = OptionGroup(parser, 'Pattern and string matching',
+                         'Log entries can be chosen depending on whether '
+                         'they contain a match for a pattern (regular '
+                         'expression) or string. Matching of alphabetic '
+                         'characters is case-sensitive unless preceded '
+                         'by --case=ignore. These options can be used as many '
+                         'times as needed to apply multiple restrictions. '
+                         'Regular expression syntax is documented at '
+                         'http://docs.python.org/lib/re-syntax.html')
+    optgrp.add_option('-s', '--select',   dest='filters', action='MatchRegex', type='literal', metavar='string',
+                      help='omit log entries which do not contain the string')
+    optgrp.add_option('-r', '--reject',   dest='filters', action='NoMatchRegex', type='literal', metavar='string',
+                      help='omit log entries containing the string')
+    optgrp.add_option('-m', '--match',    dest='filters', action='MatchRegex', type='regex', metavar='regex',
+                      help='omit log entries in which the regex does not match')
+    optgrp.add_option('-n', '--nomatch',  dest='filters', action='NoMatchRegex', type='regex', metavar='regex',
+                      help='omit log entries containing a match for the regex')
+    optgrp.add_option('-t', '--trouble',  action='store_true',
+                      help='select log entries having ERROR:, FATAL:, or PANIC: '
+                        'in the first line')
+    parser.add_option_group(optgrp)
 
-optgrp = OptionGroup(parser, 'Pattern and string matching',
-                     'Log entries can be chosen depending on whether '
-                     'they contain a match for a pattern (regular '
-                     'expression) or string. Matching of alphabetic '
-                     'characters is case-sensitive unless preceded '
-                     'by --case=ignore. These options can be used as many '
-                     'times as needed to apply multiple restrictions. '
-                     'Regular expression syntax is documented at '
-                     'http://docs.python.org/lib/re-syntax.html')
-optgrp.add_option('-s', '--select',   dest='match', type='search', action='append', metavar='string',
-                  help='omit log entries which do not contain the string')
-optgrp.add_option('-r', '--reject',   dest='nomatch', type='search', action='append', metavar='string',
-                  help='omit log entries containing the string')
-optgrp.add_option('-m', '--match',    type='regex', action='append', metavar='regex',
-                  help='omit log entries in which the regex does not match')
-optgrp.add_option('-n', '--nomatch',  type='regex', action='append', metavar='regex',
-                  help='omit log entries containing a match for the regex')
-parser.add_option_group(optgrp)
+    optgrp = OptionGroup(parser, 'Mode flags',
+                         'These flags affect the behavior of other options '
+                         'specified to their right.  They can be used '
+                         'as many times as needed.')
+    optgrp.add_option('-c', '--case',     type='choice', choices=['i', 'ignore', 'r', 'respect'],
+                      metavar='i[gnore]| r[espect]',
+                      action='callback', callback=_setcase,
+                      help=('either ignore or respect the distinction '
+                            'between upper and lower case letters in '
+                            'subsequent pattern and string matching options'))
+    parser.add_option_group(optgrp)
 
-optgrp = OptionGroup(parser, 'Mode flags',
-                     'These flags affect the behavior of other options '
-                     'specified to their right.  They can be used '
-                     'as many times as needed.')
-optgrp.add_option('-c', '--case',     type='choice', choices=['i', 'ignore', 'r', 'respect'],
-                  metavar='i[gnore]|r[espect]',
-                  action='callback', callback=_setcase,
-                  help=('either ignore or respect the distinction '
-                        'between upper and lower case letters in '
-                        'subsequent pattern and string matching options'))
-parser.add_option_group(optgrp)
+    optgrp = OptionGroup(parser, 'Input options')
+    optgrp.add_option('-u', '--unzip',    action='store_true',
+                      help='read gzip-compressed input; assumed when inputfile suffix is ".gz"')
+    parser.add_option_group(optgrp)
 
-optgrp = OptionGroup(parser, 'Output options')
-optgrp.add_option('-o', '--out',      type='string', metavar='outputfile',
-                  help='write output to outputfile (default is stdout)')
-optgrp.add_option('-q', '--quiet',    dest='verbose', action='store_false',
-                  help='suppress status messages')
-optgrp.add_option('-h', '--help',     action='help',
-                  help='show this help message and exit')
-parser.add_option_group(optgrp)
+    optgrp = OptionGroup(parser, 'Output options')
+    optgrp.add_option('-o', '--out',      type='string', metavar='outputfile',
+                      help='write output to specified file or directory (instead of stdout)')
+    optgrp.add_option('-z', '--zip',      type='choice', choices=list('0123456789'), metavar='0..9',
+                      help=('compression level (gzip): 0 = no compression; '
+                            '9 = maximum compression'))
+    optgrp.add_option('-a', '--append',    action='store_true',
+                      help="when output file already exists, append to it; don't overwrite")
+    parser.add_option_group(optgrp)
 
-parser.set_defaults(verbose=True)
+    optgrp = OptionGroup(parser, 'Message options')
+    optgrp.add_option('-q', '--quiet',    dest='verbose', action='store_false',
+                      help='suppress status messages')
+    optgrp.add_option('-h', '--help',     action='help',
+                      help='show this help message and exit')
+    parser.add_option_group(optgrp)
 
-# Parse the command line options
-(options, args) = parser.parse_args()
-parser.set_usage(SUPPRESS_USAGE)
+    parser.set_defaults(verbose=True, filters=[])
+
+    # If no args, display help message.
+    if len(sys.argv) <= 1:
+        parser.print_help()
+        parser.exit()
+
+    # Parse the command line arguments
+    (options, args) = parser.parse_args()
+    parser.set_usage(SUPPRESS_USAGE)
+
+    return options, args
+
+
+#-------------------------------------------------------------------------
+
+def openInputFile(ifn, options):
+    filesToClose = []
+    unzip = options.unzip
+
+    # Open input file, unless reading from stdin
+    if ifn == '-':
+        ifn = zname = 'stdin'
+        fileIn = sys.stdin
+    else:
+        ifn = os.path.abspath(ifn)
+        # In case a master or segment instance's data directory name
+        # was given, append '.log' to get the instance's log file name
+        # (gpdb convention).
+        if (os.path.isdir(ifn)):
+            ifn += '.log'
+        zname = os.path.split(ifn)[1]
+        if ifn.endswith('.gz'):
+            unzip = True
+            zname = zname[0:-3]
+            if os.path.splitext(zname)[1] == '':
+                zname += '.log'
+        fileIn = open(ifn, (unzip and 'rb') or 'rU')
+        filesToClose.append(fileIn)
+
+    # Set up input decompression
+    if unzip:
+        fileIn = gzip.GzipFile(zname, 'rb', fileobj=fileIn)
+        filesToClose.insert(0, fileIn)
+
+    return fileIn, filesToClose, ifn, zname
+
+
+def openOutputFile(ifn, zname, options):
+    filesToClose = []
+
+    # append or overwrite?
+    if options.append:
+        omode = 'a'
+    else:
+        omode = 'w'
+
+    # Compressed output file should be opened in binary mode
+    zipout = options.zip and options.zip > '0'
+    if zipout:
+        omode += 'b'
+
+    # Open output file, unless writing to stdout
+    if options.out is None:
+        fileOut = sys.stdout
+    else:
+        # let error messages show full path in case something goes wrong
+        ofn = os.path.abspath(options.out)
+
+        # if ofn refers to a directory, append name of input file
+        if os.path.isdir(ofn):
+            ofn = os.path.join(ofn, zname)
+
+        # append .gz suffix if compressing
+        if zipout and not ofn.endswith('.gz'):
+            ofn += '.gz'
+
+        # error if ofn is a directory now
+        if os.path.isdir(ofn):
+            raise IOError('cannot write output file because there is a '
+                          'directory at the output location: %s' % ofn)
+
+        # make sure we can write to the output directory
+        odn = os.path.split(ofn)[0]
+        if not os.access(odn, os.W_OK):
+            raise IOError('output directory not found or not writable: %s' % odn)
+
+        # open the file
+        fileOut = open(ofn, omode)
+        filesToClose.append(fileOut)
+
+        if options.verbose:
+            if options.append:
+                print >>sys.stderr, ' append to ', ofn
+            else:
+                print >>sys.stderr, ' output to ', ofn
+
+    # Set up output compression
+    if zipout:
+        fileOut = gzip.GzipFile(zname, omode,
+                                compresslevel=int(options.zip),
+                                fileobj=fileOut)
+        filesToClose.insert(0, fileOut)
+
+    return fileOut, filesToClose
+
+
+#------------------------------- Mainline --------------------------------
+
+# Use default locale specified by LANG environment variable
+try:
+    locale.setlocale(locale.LC_ALL, '')
+except Exception:
+    pass
+
+# Parse the command line arguments
+options, args = parseargs()
 
 # Determine timestamp range
 begin, end = spiffInterval(options.begin, options.end, options.duration)
@@ -168,45 +343,85 @@ if begin:
 if end:
     end = end.replace(microsecond=0)
 
-if len(args) <> 1:
-    parser.error('Exactly one input file must be specified (or "-" for stdin).  '
-                 'Use --help for more info.')
+# Insert trouble message filter ahead of other pattern matching filters
+if options.trouble:
+    options.filters.insert(0, filterize(MatchInFirstLine, 'ERROR: |FATAL: |PANIC: '))
+
+# Output suffix .gz implies maximum compression unless overridden by -z
+if (options.zip is None and
+    options.out and
+    options.out.endswith('.gz')):
+    options.zip = '9'
 
 try:
-    fileIn = fileOut = None
+    # If no inputfile arg, try MASTER_DATA_DIRECTORY environment variable
+    if len(args) == 0:
+        s = os.getenv('MASTER_DATA_DIRECTORY')
+        if s:
+            args.append(s)
+        else:
+            raise IOError('specify input file or "-" for standard input')
+
+    inputFilesToClose = outputFilesToClose = []
+    fileOut = None
     try:
-        # Open input file, unless reading from stdin
-        if args[0] <> '-':
-            ifn = os.path.abspath(args[0])
-            # In case a master or segment instance's data directory name
-            # was given, append '.log' to get the instance's log file name
-            # (by gpdb convention).
-            if (not os.path.isfile(ifn) and
-                os.path.isdir(ifn)):
-                ifn += '.log'
-            fileIn = open(ifn, 'rU')
-            if options.verbose:
+        # Output to a directory?
+        outputFilePerInputFile = False
+        if options.out:
+            options.out = os.path.abspath(options.out)
+            if os.path.isdir(options.out):
+                outputFilePerInputFile = True
+
+        if options.verbose:
+            msg = ('requested timestamp range from %s to %s'
+                   % (begin or 'beginning of data', end or 'end of data'))
+            print >>sys.stderr, msg
+
+        # Loop over input files
+        for ifn in args:
+
+            # Open next input file
+            fileIn, inputFilesToClose, ifn, zname = openInputFile(ifn, options)
+
+            # Announce each input file *before* its output file if --out is dir
+            if options.verbose and outputFilePerInputFile:
                 print >>sys.stderr, '---------- ', ifn, '---------- '
 
-        # Open output file, unless writing to stdout
-        if options.out:
-            ofn = os.path.abspath(options.out)
-            if not os.access(ofn, os.W_OK):
-                raise IOError('Unable to write to output location %s' % `ofn`)
-            fileOut = open(ofn, 'w')
+            # Open the output file (once per input file if --out is a directory)
+            if fileOut is None:
+                fileOut, outputFilesToClose = openOutputFile(ifn, zname, options)
 
-        # Copy selected lines from input to output
-        filterOneLogFile(fileIn or sys.stdin,
-                         fileOut=fileOut or sys.stdout,
-                         begin=begin,
-                         end=end,
-                         include=options.match,
-                         exclude=options.nomatch,
-                         verbose=options.verbose)
+            # Announce input files *after* single output file
+            if options.verbose and not outputFilePerInputFile:
+                print >>sys.stderr, '---------- ', ifn, '---------- '
+
+            # Construct the filtering pipeline
+            filteredInput = FilterLogEntries(fileIn,
+                                             msgfile=options.verbose and sys.stderr,
+                                             begin=begin,
+                                             end=end,
+                                             filters=options.filters)
+
+            # Write filtered lines to output file
+            for line in filteredInput:
+                print >>fileOut, line.rstrip()
+
+            # Close input and output files
+            for file in inputFilesToClose:
+                file.close()
+            inputFilesToClose = []
+
+            if outputFilePerInputFile:
+                fileOut = None
+                for file in outputFilesToClose:
+                    file.close()
+                outputFilesToClose = []
+
     finally:
-        if fileIn:
-            fileIn.close()
-        if fileOut:
-            fileOut.close()
+        for file in outputFilesToClose:
+            file.close()
+        for file in inputFilesToClose:
+            file.close()
 except IOError, msg:
-    parser.error(msg)
+    print >>sys.stderr, '%s: %s' % (os.path.basename(sys.argv[0]), msg)
+    sys.exit(2)

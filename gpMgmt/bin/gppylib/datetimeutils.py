@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-#
 # $Id: $
-
+# $Change: $
+# $DateTime: $
+# $Author: $
 """
 Date and time input conversion
 
