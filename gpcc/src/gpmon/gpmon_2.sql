@@ -47,10 +47,10 @@ create external web table _metrics_tail (
 create table queries_history (
        ctime timestamp(0),
        tmid int not null,
-       xid int not null,
-       cid int not null,
-       -- ssid int not null,    -- for 3.2, add gp_session_id
-       -- ccnt int not null,    -- for 3.2, add gp_command_count
+       -- xid int not null, -- REMOVE
+       -- cid int not null, -- REMOVE
+       ssid int not null,    -- gp_session_id
+       ccnt int not null,    -- gp_command_count
        uname varchar(64) not null,
        db varchar(64) not null,
        cost int not null,
@@ -78,10 +78,10 @@ create external web table queries_now (
 create external web table queries_now_fast (
        ctime timestamp(0),
        tmid int,
-       xid int,
-       cid int,
-       -- ssid int,    -- for 3.2, add gp_session_id
-       -- ccnt int,    -- for 3.2, add gp_command_count
+       -- xid int, -- REMOVE
+       -- cid int, -- REMOVE
+       ssid int,    -- gp_session_id
+       ccnt int,    -- gp_command_count
        uname varchar(64),
        db varchar(64),
        cost int,
@@ -115,10 +115,10 @@ create external web table _queries_tail (
 create table iterators_history (
        ctime timestamp(0),
        tmid int not null,
-       xid int not null,
-       cid int not null,
-       -- ssid int not null,    -- for 3.2, add gp_session_id
-       -- ccnt int not null,    -- for 3.2, add gp_command_count
+       -- xid int not null, -- REMOVE
+       -- cid int not null, -- REMOVE
+       ssid int not null,    -- gp_session_id
+       ccnt int not null,    -- gp_command_count
        segid int not null,
        pid int not null,
        nid int not null,
