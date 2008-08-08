@@ -50,8 +50,6 @@ create external web table _metrics_tail (
 create table queries_history (
        ctime timestamp(0),
        tmid int not null,
-       -- xid int not null, -- REMOVE
-       -- cid int not null, -- REMOVE
        ssid int not null,    -- gp_session_id
        ccnt int not null,    -- gp_command_count
        uname varchar(64) not null,
@@ -81,8 +79,6 @@ create external web table queries_now (
 create external web table queries_now_fast (
        ctime timestamp(0),
        tmid int,
-       -- xid int, -- REMOVE
-       -- cid int, -- REMOVE
        ssid int,    -- gp_session_id
        ccnt int,    -- gp_command_count
        uname varchar(64),
@@ -118,8 +114,6 @@ create external web table _queries_tail (
 create table iterators_history (
        ctime timestamp(0),
        tmid int not null,
-       -- xid int not null, -- REMOVE
-       -- cid int not null, -- REMOVE
        ssid int not null,    -- gp_session_id
        ccnt int not null,    -- gp_command_count
        segid int not null,
