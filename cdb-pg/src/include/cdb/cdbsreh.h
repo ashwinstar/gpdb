@@ -81,7 +81,6 @@ typedef struct CdbSreh
 	
 	/* the error table */
 	Relation errtbl;		/* the error table we use (if any) */
-	TransactionId relFrozenXid; /* frozen txn id for this relation */
 	
 	/* error table lifespan */
 	bool	is_keep;		/* if true error table should not get DROP'ed */

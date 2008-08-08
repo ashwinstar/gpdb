@@ -197,6 +197,7 @@ extern bool heap_freeze_tuple(HeapTupleHeader tuple, TransactionId cutoff_xid,
 							  Buffer buf);
 
 extern Oid	simple_heap_insert(Relation relation, HeapTuple tup);
+extern Oid frozen_heap_insert(Relation relation, HeapTuple tup);
 extern void simple_heap_delete(Relation relation, ItemPointer tid);
 extern void simple_heap_update(Relation relation, ItemPointer otid,
 				   HeapTuple tup);

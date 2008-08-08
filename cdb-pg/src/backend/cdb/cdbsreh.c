@@ -72,7 +72,6 @@ makeCdbSreh(bool is_keep, bool reusing_existing_errtable,
 	h->reusing_errtbl = reusing_existing_errtable;
 	h->cdbcopy = NULL;
 	h->errtbl = NULL;
-	h->relFrozenXid = InvalidTransactionId; /* will change to real value later */
 	h->lastsegid = 0;
 	h->consec_csv_err = 0;
 	
@@ -190,8 +189,6 @@ void OpenErrorTable(CdbSreh *cdbsreh, RangeVar *errortable)
 	AclResult		aclresult;
 	AclMode			required_access = ACL_INSERT;
 	Oid				relOid;
-	HeapTuple		tuple;
-	Form_pg_class	classform;
 
 
 	/* Open and lock the error relation, using the appropriate lock type. */
@@ -220,22 +217,6 @@ void OpenErrorTable(CdbSreh *cdbsreh, RangeVar *errortable)
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 				 errmsg("\"%s\" exists in the database but is a non table relation",
 						RelationGetRelationName(cdbsreh->errtbl))));
-
-	/* 
-	 * now get the frozen txn id for this relation to use when inserting 
-	 */
-	tuple = SearchSysCache(RELOID,
-						   ObjectIdGetDatum(relOid),
-						   0, 0, 0);
-	
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "OpenErrorTable: cache lookup failed for relation %u", relOid);
-	
-	classform = (Form_pg_class) GETSTRUCT(tuple);
-	
-	cdbsreh->relFrozenXid = classform->relfrozenxid;
-	
-	ReleaseSysCache(tuple);
 }
 
 /*
@@ -356,12 +337,7 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 	MemoryContextSwitchTo(oldcontext);
 
 	/* store and freeze the tuple */
-	heap_insert(cdbsreh->errtbl, 
-				tuple, 
-				GetCurrentCommandId(), 
-				true, 
-				true,
-				cdbsreh->relFrozenXid);
+	frozen_heap_insert(cdbsreh->errtbl, tuple);
 	
 	heap_freetuple(tuple);
 	
