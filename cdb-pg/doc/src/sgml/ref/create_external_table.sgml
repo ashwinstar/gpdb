@@ -37,6 +37,7 @@ CREATE EXTERNAL WEB TABLE <replaceable class="PARAMETER">table_name</replaceable
       LOCATION ('http://<replaceable class="PARAMETER">webhost</replaceable>[:<replaceable class="PARAMETER">port</replaceable>]<replaceable class="PARAMETER">/path/file</replaceable>' [, ...])
     | EXECUTE '<replaceable class="PARAMETER">command</replaceable>' 
 	                  [ ON ALL 
+					      | MASTER
                           | <replaceable class="PARAMETER">number_of_segments</replaceable> 
                           | HOST ['<replaceable class="PARAMETER">segment_hostname</replaceable>'] 
                           | SEGMENT <replaceable class="PARAMETER">segment_dbid</replaceable> ]
