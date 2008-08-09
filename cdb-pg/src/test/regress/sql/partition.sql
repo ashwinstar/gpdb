@@ -1392,14 +1392,14 @@ drop table foo, bar, baz;
 -- not yet: constraints on non-partition table
 -- should fail, can't have constraints which would conflict with the
 -- partitioning constraints
--- XXX: not yet
---create table foo (i int, j int) distributed by (i)
---partition by range(j)
---(start(1) end(10) every(1));
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
 
---create table bar(i int, j int check (j > 1000)) distributed by (i);
---alter table foo exchange partition for(position(2)) with table bar;
---drop table foo, bar;
+create table bar(i int, j int check (j > 1000)) distributed by (i);
+alter table foo exchange partition for(position(2)) with table bar;
+drop table foo, bar;
+
 -- shouldn't fail: it's fine to have constraints on columns which are not
 -- the subject of partitioning.
 create table foo (i int, j int) distributed by (i)
@@ -1408,6 +1408,19 @@ partition by range(j)
 
 create table bar(i int check (i > 1000), j int) distributed by (i);
 alter table foo exchange partition for(position(2)) with table bar;
+drop table foo, bar;
+
+-- shouldn't fail: check constraint matches rule
+create table foo (i int, j int) distributed by (i)
+partition by range(j)
+(start(1) end(10) every(1));
+
+create table bar(i int check (i > 1000), j int check (j >= 2 and j < 3 ))
+distributed by (i);
+insert into bar values(100000, 2);
+alter table foo exchange partition for(position(2)) with table bar;
+insert into bar values(200000, 2);
+select * from bar;
 drop table foo, bar;
 
 -- XXX: not yet: permissions

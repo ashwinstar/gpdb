@@ -355,6 +355,7 @@ static void ATExecPartAddInternal(Relation rel, Node *def);
 static void exchange_part_rule(Oid oldrelid, Oid newrelid);
 static void exchange_part_constraints(Partition *part, Relation oldrel, 
 									  Relation newrel);
+static List *get_part_constraints(Partition *part, Relation pgcon, Relation rel);
 #if 0
 static bool rel_is_child_partition(Oid relid);
 static bool rel_partition_get_master(Oid relid);
@@ -11519,49 +11520,30 @@ exchange_part_inheritance(Oid oldrelid, Oid newrelid)
 	heap_close(newrel, NoLock);
 }
 
-static void
-exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
+/*
+ * Get CHECK constraints on partitioned columns listed in the partition
+ * configuration.
+ */
+static List *
+get_part_constraints(Partition *part, Relation pgcon, Relation rel)
 {
-	Relation catalogRelation;
+	List 	   *cons;
 	SysScanDesc scan;
 	ScanKeyData key;
-	HeapTuple	constraintTuple;
-	List *constraints;
-	ListCell *lc;
-
-	/* First gather up the child's constraint definitions */
-	catalogRelation = heap_open(ConstraintRelationId, AccessShareLock);
-
-#if 0
-	/* make sure that there are no conflicting constraints */
+	HeapTuple	tuple;
+	
 	ScanKeyInit(&key,
 				Anum_pg_constraint_conrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(oldrel)));
+				ObjectIdGetDatum(RelationGetRelid(rel)));
 
-	scan = systable_beginscan(catalogRelation, ConstraintRelidIndexId,
+	scan = systable_beginscan(pgcon, ConstraintRelidIndexId,
 							  true, SnapshotNow, 1, &key);
 
-
-
-
-
-
-
-#endif
-
-	ScanKeyInit(&key,
-				Anum_pg_constraint_conrelid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(RelationGetRelid(oldrel)));
-
-	scan = systable_beginscan(catalogRelation, ConstraintRelidIndexId,
-							  true, SnapshotNow, 1, &key);
-
-	constraints = NIL;
-	while (HeapTupleIsValid(constraintTuple = systable_getnext(scan)))
+	cons = NIL;
+	while (HeapTupleIsValid(tuple = systable_getnext(scan)))
 	{
-		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(constraintTuple);
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tuple);
 		bool isnull;
 		Datum val;
 		int i;
@@ -11573,8 +11555,8 @@ exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
 			continue;
 
 		/* only copy constraints which range across our partitioning columns */
-		val = heap_getattr(constraintTuple, Anum_pg_constraint_conkey,
-						   RelationGetDescr(catalogRelation), &isnull);
+		val = heap_getattr(tuple, Anum_pg_constraint_conkey,
+						   RelationGetDescr(pgcon), &isnull);
 		if (isnull)
 			continue;
 
@@ -11614,73 +11596,142 @@ exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
 		if (!matched)
 			continue;
 
-		constraints = lappend(constraints, heap_copytuple(constraintTuple));
+		cons = lappend(cons, heap_copytuple(tuple));
 	}
 	systable_endscan(scan);
 
-	foreach (lc, constraints)
+	return cons;
+}
+
+static void
+exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
+{
+	List *oldcons;
+	List *newcons;
+	ListCell *lc;
+	Relation pgcon;
+	bool add_cons = true;
+	
+	pgcon = heap_open(ConstraintRelationId, AccessShareLock);
+
+	oldcons = get_part_constraints(part, pgcon, oldrel);
+	newcons = get_part_constraints(part, pgcon, newrel);
+
+	/* 
+	 * If we found constraints for the new table, they better be identical
+	 * to the partitioning constraints. If they are, we need not add them,
+	 */
+	if (newcons)
+	{
+		foreach(lc, oldcons)
+		{
+			ListCell *lc2;
+			HeapTuple oldtup = lfirst(lc);
+			Datum val;
+			bool isnull;
+	
+			val = heap_getattr(oldtup, Anum_pg_constraint_consrc,
+							   RelationGetDescr(pgcon), &isnull);
+	
+			Assert(!isnull);
+	
+			foreach(lc2, newcons)
+			{
+				HeapTuple newtup = lfirst(lc2);
+				Datum res;
+				Datum newval;
+	
+				newval = heap_getattr(newtup, Anum_pg_constraint_consrc,
+									  RelationGetDescr(pgcon), &isnull);
+				Assert(!isnull);
+	
+				res = DirectFunctionCall2(texteq, val, newval);
+				if (!DatumGetBool(res))
+				{
+					Form_pg_constraint con = 
+						(Form_pg_constraint)GETSTRUCT(newtup);
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("constraint \"%s\" on table \"%s\" "
+									"conflicts with partitioning rule",
+									NameStr(con->conname),
+									RelationGetRelationName(newrel))));
+				}
+	
+			}
+		}
+
+		list_free_deep(newcons);
+		add_cons = false;
+	}
+
+	foreach (lc, oldcons)
 	{
 		HeapTuple tuple = lfirst(lc);
-		Form_pg_constraint con = (Form_pg_constraint)GETSTRUCT(tuple);
-		Datum *dats;
-		int16 *keys;
-		Datum val;
-		bool isnull;
-		Node *n;
-		char *consrc;
-		char *conbin;
-		int nkeys;
-		int i;
 		ObjectAddress conobj;
 
-		val = heap_getattr(tuple, Anum_pg_constraint_conkey,
-						   RelationGetDescr(catalogRelation), &isnull);
-
-		Assert(!isnull);
-
-		deconstruct_array(DatumGetArrayTypeP(val),
-						  INT2OID, 2, true, 's',
-					      &dats, NULL, &nkeys);
-
-		keys = palloc(sizeof(int16) * nkeys);
-		for (i = 0; i < nkeys; i++)
-			keys[i] = DatumGetInt16(dats[i]);
-
-		val = heap_getattr(tuple, Anum_pg_constraint_conbin,
-						   RelationGetDescr(catalogRelation), &isnull);
-
-		Assert(!isnull);
-		conbin = DatumGetCString(DirectFunctionCall1(textout, val));
-		n = stringToNode(conbin);
-
-		val = heap_getattr(tuple, Anum_pg_constraint_consrc,
-						   RelationGetDescr(catalogRelation), &isnull);
-
-		Assert(!isnull);
-		consrc = DatumGetCString(DirectFunctionCall1(textout, val));
-
-		CreateConstraintEntry(NameStr(con->conname),
-							  con->connamespace,
-							  con->contype,
-							  con->condeferrable,
-							  con->condeferred,
-							  RelationGetRelid(newrel),
-							  keys,
-							  nkeys,
-							  InvalidOid,
-							  InvalidOid,
-							  NULL,
-							  0,
-							  ' ',
-							  ' ',
-							  ' ',
-							  InvalidOid,
-							  n,
-							  conbin,
-							  consrc);
+		if (add_cons)
+		{
+			Form_pg_constraint con = (Form_pg_constraint)GETSTRUCT(tuple);
+			Datum *dats;
+			int16 *keys;
+			Datum val;
+			bool isnull;
+			Node *n;
+			char *consrc;
+			char *conbin;
+			int nkeys;
+			int i;
+	
+			val = heap_getattr(tuple, Anum_pg_constraint_conkey,
+							   RelationGetDescr(pgcon), &isnull);
+	
+			Assert(!isnull);
+	
+			deconstruct_array(DatumGetArrayTypeP(val),
+							  INT2OID, 2, true, 's',
+						      &dats, NULL, &nkeys);
+	
+			keys = palloc(sizeof(int16) * nkeys);
+			for (i = 0; i < nkeys; i++)
+				keys[i] = DatumGetInt16(dats[i]);
+	
+			val = heap_getattr(tuple, Anum_pg_constraint_conbin,
+							   RelationGetDescr(pgcon), &isnull);
+	
+			Assert(!isnull);
+			conbin = DatumGetCString(DirectFunctionCall1(textout, val));
+			n = stringToNode(conbin);
+	
+			val = heap_getattr(tuple, Anum_pg_constraint_consrc,
+							   RelationGetDescr(pgcon), &isnull);
+	
+			Assert(!isnull);
+			consrc = DatumGetCString(DirectFunctionCall1(textout, val));
+	
+			CreateConstraintEntry(NameStr(con->conname),
+								  con->connamespace,
+								  con->contype,
+								  con->condeferrable,
+								  con->condeferred,
+								  RelationGetRelid(newrel),
+								  keys,
+								  nkeys,
+								  InvalidOid,
+								  InvalidOid,
+								  NULL,
+								  0,
+								  ' ',
+								  ' ',
+								  ' ',
+								  InvalidOid,
+								  n,
+								  conbin,
+								  consrc);
+	
+		}
 
 		/* remove old constraint */
-
 		conobj.classId = ConstraintRelationId;
 		conobj.objectId = HeapTupleGetOid(tuple);
 		conobj.objectSubId = 0;
@@ -11688,10 +11739,12 @@ exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
 		performDeletion(&conobj, DROP_RESTRICT);
 	}
 
-	SetRelationNumChecks(newrel, newrel->rd_rel->relchecks + 
-						 list_length(constraints));
+	if (add_cons)
+		SetRelationNumChecks(newrel, newrel->rd_rel->relchecks + 
+							 list_length(oldcons));
 
-	heap_close(catalogRelation, AccessShareLock);
+	list_free_deep(oldcons);
+	heap_close(pgcon, AccessShareLock);
 }
 
 static void
