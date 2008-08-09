@@ -63,7 +63,6 @@ all:
 	@(cd tpch; cp -f dbgen ../../build/bin/)
 	@(cd tpch; cp -f dists.dss ../../build/bin/)
 
-	@echo     -- libsigar
 	(cd libsigar; cp -rf include/* ../include)
 	(cd libsigar; $(MAKE); cp -f src/libsigar.a ../lib)
 
