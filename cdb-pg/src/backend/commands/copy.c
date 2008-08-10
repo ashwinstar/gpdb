@@ -1944,6 +1944,7 @@ else \
 	cstate->cdbsreh->is_server_enc = cstate->line_buf_converted; \
 	cstate->cdbsreh->linenumber = cstate->cur_lineno; \
 	cstate->cdbsreh->processed = ++cstate->processed; \
+	cstate->cdbsreh->consec_csv_err = cstate->num_consec_csv_err; \
 \
 	/* set the error message. Use original msg and add column name if availble */ \
 	if (cstate->cur_attname)\
@@ -1994,23 +1995,32 @@ if(IsRejectLimitReached(cstate->cdbsreh)) \
 {\
 	char *rejectmsg_normal = "Segment reject limit reached. Aborting operation. Last error was:";\
 	char *rejectmsg_allbad = "All 1000 first rows in this segment were rejected. Aborting operation regardless of REJECT LIMIT value. Last error was:";\
+	char *rejectmsg_csv_unparsable = "Input includes invalid CSV data that corrupts the ability to parse data rows. This usually means several unescaped embedded QUOTE characters. Data is not parsable.Last error was:";\
 	char *finalmsg;\
 \
-	if(!FIRST_1000_BAD(cstate->cdbsreh))\
-	{\
-		/* the normal case */\
-		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
-									strlen(rejectmsg_normal) + 12 + 1)\
-								   * sizeof(char)); \
- 	    sprintf(finalmsg, "%s %s", rejectmsg_normal, cstate->cdbsreh->errmsg);\
-	}\
-	else\
+	if(FIRST_1000_BAD(cstate->cdbsreh))\
 	{\
 		/* the special "first 1000 are bad" case */\
 		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
 									strlen(rejectmsg_allbad) + 12 + 1)\
-								   * sizeof(char)); \
+									* sizeof(char)); \
 		sprintf(finalmsg, "%s %s", rejectmsg_allbad, cstate->cdbsreh->errmsg);\
+	}\
+	else if(CSV_IS_UNPARSABLE(cstate->cdbsreh))\
+	{\
+		/* the special "csv un-parsable" case */\
+		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_csv_unparsable) + 12 + 1)\
+									* sizeof(char)); \
+		sprintf(finalmsg, "%s %s", rejectmsg_csv_unparsable, cstate->cdbsreh->errmsg);\
+	}\
+	else\
+	{\
+		/* the normal case */\
+		finalmsg = (char *) palloc((strlen(cstate->cdbsreh->errmsg) + \
+									strlen(rejectmsg_normal) + 12 + 1)\
+									* sizeof(char)); \
+		sprintf(finalmsg, "%s %s", rejectmsg_normal, cstate->cdbsreh->errmsg);\
 	}\
 \
 	if(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) \
@@ -2018,8 +2028,8 @@ if(IsRejectLimitReached(cstate->cdbsreh)) \
 \
 	ereport(ERROR, \
 			(errcode(ERRCODE_T_R_GP_REJECT_LIMIT_REACHED), \
-			 (errmsg(finalmsg) \
-			  ))); \
+			(errmsg(finalmsg) \
+			))); \
 }
 
 static bool
@@ -2602,6 +2612,7 @@ CopyFromDispatch(CopyState cstate)
 	{
 		cstate->in_quote = false;
 		cstate->last_was_esc = false;
+		cstate->num_consec_csv_err = 0;
 	}
 
 	cstate->null_print_len = strlen(cstate->null_print);
@@ -3392,6 +3403,7 @@ CopyFrom(CopyState cstate)
 	{
 		cstate->in_quote = false;
 		cstate->last_was_esc = false;
+		cstate->num_consec_csv_err = 0;
 	}
 
 	cstate->null_print_len = strlen(cstate->null_print);
@@ -4149,6 +4161,7 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 	char	   *cvt;
 	char		quotec = '\0',
 				escapec = '\0';
+	bool		csv_is_invalid = false;
 
 	/* mark that encoding conversion hasn't occurred yet */
 	cstate->line_buf_converted = false;
@@ -4260,22 +4273,36 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 			/* end of line only if not in quotes */
 			if (cstate->in_quote)
 			{
+				/* buf done, but still in quote */
+				if (cstate->raw_buf_index >= bytesread)
+					cstate->raw_buf_done = true;
+				
 				cstate->line_done = false;
-
+				
 				/* update file line for error message */
-
+				
 				/*
 				 * TODO: for dos line end we need to do check before
 				 * incrementing!
 				 */
 				cstate->cur_lineno++;
-
-				/* buf done, but still in quote */
-				if (cstate->raw_buf_index >= bytesread)
-				{
-					cstate->raw_buf_done = true;
+				
+				/* 
+				 * If we are still in quotes and linebuf len is extremely large 
+				 * then this file has bad csv and we have to stop the rolling 
+				 * snowball from getting bigger.
+				 */
+				if(cstate->line_buf.len >= MAX_CSV_LINE_LEN)
+				{	
+					csv_is_invalid = true;
+					cstate->in_quote = false;
+					cstate->line_done = true;
+					cstate->num_consec_csv_err++;
 					break;
 				}
+				
+				if (cstate->raw_buf_done)
+					break;
 			}
 			else
 			{
@@ -4352,6 +4379,17 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 	/* indicate that conversion had occured */
 	cstate->line_buf_converted = true;
 
+	/*
+	 * We have a corrupted csv format case. It is already converted to server
+	 * encoding, *which is necessary*. Ok, we can report an error now.
+	 */
+	if(csv_is_invalid)
+		ereport(ERROR,
+				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+				 errmsg("data line too long. likely due to invalid csv data")));
+	else
+		cstate->num_consec_csv_err = 0; /* reset consecutive count */
+	
 	/*
 	 * check if this line is an end marker -- "\."
 	 */
