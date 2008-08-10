@@ -3552,10 +3552,14 @@ slot_get_partition(TupleTableSlot *slot, EState *estate)
 	AttrNumber max_attr;
 	Datum *values;
 	bool *nulls;
+	MemoryContext mxt;
 
 	Assert(PointerIsValid(estate->es_result_partitions));
 
+	mxt = MemoryContextSwitchTo(GetPerTupleExprContext(estate)->ecxt_per_tuple_memory);
 	max_attr = max_partition_attr(estate->es_result_partitions);
+	MemoryContextSwitchTo(mxt);
+
 	slot_getsomeattrs(slot, max_attr);
 	values = slot_get_values(slot);
 	nulls = slot_get_isnull(slot);
