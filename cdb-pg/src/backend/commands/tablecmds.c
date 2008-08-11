@@ -10193,10 +10193,11 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 			   Relation rel,
                AlterPartitionCmd *pc)
 {
-	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	pg_part_rule   *prule = NULL;
-	PartitionNode  *pNode = NULL;
-	char           *parTypName = NULL;
+	AlterPartitionId 	*pid 		= (AlterPartitionId *)pc->partid;
+	pg_part_rule   		*prule 		= NULL;
+	PartitionNode  		*pNode 		= NULL;
+	char           		*parTypName = NULL;
+	char			 	 namBuf[NAMEDATALEN];
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -10227,34 +10228,30 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 			break;
 	} /* end switch */
 
+
+	if (pid->idtype == AT_AP_IDName)
+			snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
+					 strVal(pid->partiddef));
+	else
+			namBuf[0] = '\0';
+
 	if ('h' == pNode->part->parkind)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("cannot add HASH partition to relation \"%s\"",
+				 errmsg("cannot add HASH partition%s to relation \"%s\"",
+						namBuf,
 						RelationGetRelationName(rel)),
 				 errhint("recreate the table to increase the number of partitions")));
 
-	if (pid->idtype == AT_AP_IDNone)				/* no ID */
-	{
-		/* special case for adding partition with no name */
-
-		/* XXX XXX XXX FIX THIS */
-		if (parTypName)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("cannot ADD anonymous %s partition to relation \"%s\"",
-							parTypName,
-							RelationGetRelationName(rel)),
-					 errhint("use a named partition")));
-
-	} /* end NO ID */
 
 	/* partition must have a valid name */
-	if (pid->idtype != AT_AP_IDName)	
+	if ((pid->idtype != AT_AP_IDName)	
+		&& (pid->idtype != AT_AP_IDNone))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("cannot ADD partition to relation \"%s\" by position or value",
-							RelationGetRelationName(rel)),
+				 errmsg("cannot ADD partition%s to relation \"%s\" by position or value",
+						namBuf,
+						RelationGetRelationName(rel)),
 					 errhint("use a named partition")));
 
 	/* NOTE: complain if partition already exists, so prule should be NULL */
@@ -10269,9 +10266,10 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		if (!isDefault && (pNode->default_part))
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("cannot ADD %s partition \"%s\" to relation \"%s\" with DEFAULT partition \"%s\"", 
+				 errmsg("cannot ADD %s partition%s to "
+						"relation \"%s\" with DEFAULT partition \"%s\"", 
 						parTypName,
-						strVal(pid->partiddef),
+						namBuf,
 						RelationGetRelationName(rel),
 						pNode->default_part->parname),
 				 errhint("need to SPLIT partition \"%s\"", 
@@ -10282,16 +10280,18 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 			if ('h' == pNode->part->parkind)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("cannot add a DEFAULT partition to relation \"%s\" of type HASH",
+						 errmsg("cannot add a DEFAULT partition%s "
+								"to relation \"%s\" of type HASH",
+								namBuf,
 								RelationGetRelationName(rel))));
 
 			if (pNode->default_part)
 				ereport(ERROR,
 						(errcode(ERRCODE_DUPLICATE_OBJECT),
-						 errmsg("DEFAULT partition \"%s\" for relation \"%s\" already exists",
+						 errmsg("DEFAULT partition \"%s\" for "
+								"relation \"%s\" already exists",
 								pNode->default_part->parname,
 								RelationGetRelationName(rel))));
-
 
 			/* XXX XXX: move this check to gram.y ? */
 			if (pc2->arg1)
@@ -10302,8 +10302,9 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 							 errmsg("invalid use of boundary specification "
-									"for DEFAULT partition \"%s\" of relation \"%s\"",
-									strVal(pid->partiddef),
+									"for DEFAULT partition%s of "
+									"relation \"%s\"",
+									namBuf,
 									RelationGetRelationName(rel))));
 			}
 		}
@@ -10314,7 +10315,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		{
 			atpxPartAddList(tab, rel, pc, pNode,
 							pc2->arg2, /* utl statement */
-							pid->partiddef, /* partition name */
+							(pid->idtype == AT_AP_IDName) ?
+							pid->partiddef : NULL, /* partition name */
 							isDefault, (PartitionElem *) pc2->arg1,
 							PARTTYP_RANGE);
 
@@ -10323,7 +10325,8 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		{
 			atpxPartAddList(tab, rel, pc, pNode,
 							pc2->arg2, /* utl statement */
-							pid->partiddef, /* partition name */
+							(pid->idtype == AT_AP_IDName) ?
+							pid->partiddef : NULL, /* partition name */
 							isDefault, (PartitionElem *) pc2->arg1,
 							PARTTYP_LIST);
 		}
@@ -10337,7 +10340,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 				AlterPartitionCmd *pc,
 				PartitionNode  *pNode,
 				Node *pUtl,     /* pc2->arg2 */
-				Node *partName, /* pid->partiddef */
+				Node *partName, /* pid->partiddef (or NULL) */
 				bool isDefault,
 				PartitionElem *pelem,
 				PartitionByType part_type) 
@@ -10356,6 +10359,10 @@ atpxPartAddList(AlteredTableInfo *tab,
 	List	   			*old_constraints;
 	int					 parentOidCount;
 	bool 				 bOpenGap  = false;
+	char 				 tmpname[NAMEDATALEN]; /* use if no name, then reset */
+
+	snprintf(tmpname, sizeof(tmpname), "pg_temp_%u", 
+			 RelationGetRelid(rel));
 
 	MemSet(&cxt, 0, sizeof(cxt));
 	MemSet(spec, 0, sizeof(PartitionSpec));
@@ -10377,7 +10384,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	spec->partElem = list_make1(pelem);
 	
-	pelem->partName = copyObject(partName);
+	pelem->partName = partName ? copyObject(partName) : NULL;
 	pelem->isDefault = isDefault;
 	
 	pBy->partType = part_type;
@@ -10458,13 +10465,15 @@ atpxPartAddList(AlteredTableInfo *tab,
 			if (pbs->partEvery)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("cannot specify EVERY when adding RANGE partition to relation \"%s\" ",
+						 errmsg("cannot specify EVERY when adding "
+								"RANGE partition to relation \"%s\" ",
 									RelationGetRelationName(rel))));
 
 			if (!(pbs->partStart || pbs->partEnd ))
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("Need START or END when adding RANGE partition to relation \"%s\" ",
+						 errmsg("Need START or END when adding "
+								"RANGE partition to relation \"%s\" ",
 									RelationGetRelationName(rel))));
 	
 			/* if no START, then START after last partition */
@@ -10477,8 +10486,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 									  CurrentMemoryContext, NULL);
 
 				/* ok if no prior -- just means this is first
-				 * partition (XXX XXX though should always have 1 partition in
-				 * the table...)  
+				 * partition (XXX XXX though should always have 1
+				 * partition in the table...)
 				 */
 
 				if (prule && prule->topRule && prule->topRule->parrangeend)
@@ -10514,8 +10523,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 				/* NOTE: invert all the logic of case of missing partStart */
 
 				/* ok if no successor [?] -- just means this is first
-				 * partition (XXX XXX though should always have 1 partition in
-				 * the table...)  
+				 * partition (XXX XXX though should always have 1
+				 * partition in the table...)
 				 */
 
 				if (prule && prule->topRule && prule->topRule->parrangestart)
@@ -11204,7 +11213,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 			ChoosePartitionName(
 					RelationGetRelationName(rel),
 					pNode->part->parlevel,
-					strVal(pelem->partName),
+					partName ? strVal(pelem->partName) : tmpname,
 					RelationGetNamespace(rel));
 	
 	ct->relation = makeRangeVar(
@@ -11214,6 +11223,47 @@ atpxPartAddList(AlteredTableInfo *tab,
 	ProcessUtility(
 			(((Query *)pUtl)->utilityStmt),
 			NULL, dest, NULL);		
+
+	/* use the new oid from CREATE TABLE as the name if none was
+	 * specified (replace the temporary name).  This is a reasonable
+	 * way to get unique partition table names.
+	 */
+	if (!partName)
+	{
+		RenameStmt 		*renStmt = makeNode(RenameStmt);
+		char 			*newnewname;
+		
+		/* note the "r" - to distinguish from numbered partitions from
+		 * CREATE TABLE 
+		 */
+		snprintf(tmpname, sizeof(tmpname), "r%u", 
+				 ct->oidInfo.relOid);
+
+		newnewname = 
+				ChoosePartitionName(
+					RelationGetRelationName(rel),
+					pNode->part->parlevel,
+					tmpname,
+					RelationGetNamespace(rel));
+		/* does CommandCounterIncrement */
+
+		renStmt->renameType = OBJECT_TABLE;
+		renStmt->relation = makeRangeVar(
+				get_namespace_name(RelationGetNamespace(rel)),
+				newpartname);
+
+		renStmt->subname = NULL;
+		renStmt->newname = newnewname;
+
+		ProcessUtility(
+				(Node *) renStmt,
+				NULL, dest, NULL);		
+
+		CommandCounterIncrement(); /* do again so next cmd can see new name */
+
+		/* reset the name */
+		newpartname = pstrdup(newnewname);
+	}
 
 	if (!(pelem && pelem->isDefault))
 	{
@@ -11241,10 +11291,10 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 		if (pConstraint)
 		{
-			StringInfoData   sid;
-			Constraint *pCon = makeNode(Constraint);
-			AlterTableStmt *ats = makeNode(AlterTableStmt);
-			AlterTableCmd *atc = makeNode(AlterTableCmd);
+			StringInfoData   	 sid;
+			Constraint 			*pCon = makeNode(Constraint);
+			AlterTableStmt 		*ats  = makeNode(AlterTableStmt);
+			AlterTableCmd 		*atc  = makeNode(AlterTableCmd);
 
 			initStringInfo(&sid);
 
@@ -11300,7 +11350,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 					maxpartno,
 					CurrentMemoryContext);	
 	}
-
 
 	add_part_to_catalog(ct->oidInfo.relOid, pBy, &maxpartno); 
 
