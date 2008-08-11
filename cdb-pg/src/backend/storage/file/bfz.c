@@ -43,7 +43,7 @@ bfz_string_to_compression(const char*string)
 static void
 bfz_close_callback(XactEvent event,void*arg)
 {
-    bfz_close(arg);
+    bfz_close(arg, false);
 }
 
 bfz_t*
@@ -72,9 +72,11 @@ bfz_create(bfz_t*thiz,const char*filePrefix,int compress)
 }
 
 void
-bfz_close(bfz_t*thiz)
+bfz_close(bfz_t*thiz, bool unreg) 
 {
-    UnregisterXactCallbackOnce(bfz_close_callback,thiz);
+	if(unreg)
+		UnregisterXactCallbackOnce(bfz_close_callback,thiz);
+
     if (thiz->freeable_stuff)
 	thiz->freeable_stuff->close_ex(thiz);
     if (thiz->fd != -1){

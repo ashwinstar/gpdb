@@ -1452,7 +1452,7 @@ batch_close(HashAggTable *hashtable, unsigned int batch)
 	
 	if (info->file != NULL)
 	{
-		bfz_close(info->file);
+		bfz_close(info->file, true);
 		info->file = NULL;
 	}
 	

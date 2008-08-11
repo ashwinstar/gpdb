@@ -710,7 +710,7 @@ start_over:
 		batch = hashtable->batches[curbatch];
 		if (batch->outerside.bfz)
 		{
-			bfz_close(batch->outerside.bfz);
+			bfz_close(batch->outerside.bfz, true);
 			pfree(batch->outerside.bfz);
 		}
 		batch->outerside.bfz = NULL;
@@ -751,14 +751,14 @@ start_over:
 		/* Release associated temp files right away. */
 		if (batch->innerside.bfz)
 		{
-			bfz_close(batch->innerside.bfz);
+			bfz_close(batch->innerside.bfz, true);
 			pfree(batch->innerside.bfz);
 		}
 		batch->innerside.bfz = NULL;
 
 		if (batch->outerside.bfz)
 		{
-			bfz_close(batch->outerside.bfz);
+			bfz_close(batch->outerside.bfz, true);
 			pfree(batch->outerside.bfz);
 		}
 		batch->outerside.bfz = NULL;
@@ -804,7 +804,7 @@ start_over:
 	     * after we build the hash table, the inner batch file is no longer
 	     * needed
 	     */
-	    bfz_close(batch->innerside.bfz);
+	    bfz_close(batch->innerside.bfz, true);
 	    pfree(batch->innerside.bfz);
 	    batch->innerside.bfz = NULL;
     }

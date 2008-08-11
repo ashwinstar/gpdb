@@ -54,7 +54,7 @@ extern int bfz_string_to_compression(const char*string);
 extern bfz_t*bfz_create(bfz_t*thiz,const char*filePrefix,int compress);
 extern void bfz_append_end(bfz_t*thiz);
 extern void bfz_scan_begin(bfz_t*thiz);
-extern void bfz_close(bfz_t*thiz);
+extern void bfz_close(bfz_t*thiz, bool unreg); 
 
 static inline off_t
 bfz_totalbytes(bfz_t *bfz)

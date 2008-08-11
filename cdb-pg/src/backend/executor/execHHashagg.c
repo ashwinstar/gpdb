@@ -1067,7 +1067,7 @@ closeSpillFile(SpillSet *spill_set, int file_no)
 		if (spill_file->file_info &&
 			spill_file->file_info->bfz != NULL)
 		{
-			bfz_close(spill_file->file_info->bfz);
+			bfz_close(spill_file->file_info->bfz, true);
 			pfree(spill_file->file_info->bfz);
 			spill_file->file_info->bfz = NULL;
 			freedspace += (BATCHFILE_METADATA - sizeof(BatchFileInfo));
