@@ -244,3 +244,32 @@ CREATE TABLE distxact3_3 (a int);
 DROP TABLE distxact3_3;
 
 RESET debug_print_full_dtm;
+
+
+-- Test cursor/serializable interaction.
+-- MPP-3227: pg_dump does this exact sequence.
+-- for each table in a database.
+
+drop table if exists dtmcurse_foo;
+drop table if exists dtmcurse_bar;
+
+create table dtmcurse_foo (a int, b int);
+insert into dtmcurse_foo values (1,2);
+insert into dtmcurse_foo values (2,2);
+
+create table dtmcurse_bar as select * from dtmcurse_foo distributed by (b);
+
+begin;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+DECLARE cursor1 CURSOR FOR SELECT * FROM ONLY dtmcurse_foo;
+fetch 1 from cursor1;
+close cursor1;
+-- MPP-3227: second declare would hang waiting for snapshot,
+-- should work just like the first.
+DECLARE cursor1 CURSOR FOR SELECT * FROM ONLY dtmcurse_bar;
+fetch 1 from cursor1;
+close cursor1;
+abort;
+
+drop table if exists dtmcurse_foo;
+drop table if exists dtmcurse_bar;

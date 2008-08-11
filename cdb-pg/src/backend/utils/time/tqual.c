@@ -1616,7 +1616,16 @@ GetTransactionSnapshot(void)
 	}
 
 	if (IsXactIsoLevelSerializable)
+	{
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Serializable Skip* (gxid = %u, '%s')", 
+			 (SerializableSnapshot == NULL ? 0 : SerializableSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId),
+			 getDistributedTransactionId(),
+			 DtxContextToString(DistributedTransactionContext));
+		
+		UpdateSerializableCommandId();
+		
 		return SerializableSnapshot;
+	}
 
 	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false);
 
