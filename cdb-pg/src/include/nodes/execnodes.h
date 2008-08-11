@@ -420,7 +420,8 @@ typedef struct PartitionState
 	NodeTag type;
 
 	AttrNumber max_partition_attr;
-	void *pstate; /* access method specific lookup */
+	MemoryContext part_cxt;
+	void **amstate; /* access method specific lookup, one for each level */
 } PartitionState;
 
 /* ----------------

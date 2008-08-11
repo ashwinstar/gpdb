@@ -77,4 +77,5 @@ extern Oid selectPartition(PartitionNode *partnode, Datum *values,
 extern PartitionNode *RelationBuildPartitionDesc(Relation rel);
 extern AttrNumber max_partition_attr(PartitionNode *pn);
 extern List *get_partition_attrs(PartitionNode *pn);
+extern int num_partition_levels(PartitionNode *pn);
 #endif   /* TABLECMDS_H */

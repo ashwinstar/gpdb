@@ -2303,8 +2303,20 @@ CopyFromDispatch(CopyState cstate)
 	cdbCopy = makeCdbCopy(true);
 
 	if (enable_partition_fast_insert)
-		estate->es_result_partitions = cdbCopy->partitions = 
-			RelationBuildPartitionDesc(cstate->rel);
+	{
+		Size sz;
+
+		estate->es_result_partitions = cdbCopy->partitions = RelationBuildPartitionDesc(cstate->rel);
+
+		estate->es_partition_state = makeNode(PartitionState);
+
+		sz = num_partition_levels(estate->es_result_partitions);
+		sz *= sizeof(void *);
+		estate->es_partition_state->amstate = palloc0(sz);
+		estate->es_partition_state->max_partition_attr =
+			max_partition_attr(estate->es_result_partitions);
+	}
+
 	
 	if(relkind == RELKIND_APPEND_ONLY)
 		cdbCopy->aousesegno = cstate->aousesegno;
@@ -2522,11 +2534,9 @@ CopyFromDispatch(CopyState cstate)
 
 	if (estate->es_result_partitions)
 	{
-		PartitionNode *n = estate->es_result_partitions;
-
 		/* make sure we parse up to the last partitioning key */
 		cstate->last_hash_field = Max(cstate->last_hash_field,
-										  max_partition_attr(n));
+						estate->es_partition_state->max_partition_attr);
 	}
 	
 
@@ -3314,6 +3324,18 @@ CopyFrom(CopyState cstate)
 	estate->es_num_result_relations = 1;
 	estate->es_result_relation_info = resultRelInfo;
 	estate->es_result_partitions = cstate->partitions; 
+
+	if (estate->es_result_partitions)
+	{
+		Size sz;
+		estate->es_partition_state = makeNode(PartitionState);
+
+		sz = num_partition_levels(estate->es_result_partitions);
+		sz *= sizeof(void *);
+		estate->es_partition_state->amstate = palloc0(sz);
+		estate->es_partition_state->max_partition_attr =
+			max_partition_attr(estate->es_result_partitions);
+	}
 
 	/* Set up a tuple slot too */
 	slot = MakeSingleTupleTableSlot(tupDesc);

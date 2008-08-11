@@ -49,7 +49,6 @@
 #include "commands/trigger.h"
 #include "commands/typecmds.h"
 #include "executor/executor.h"
-#include "executor/spi.h" /* XXX: temporary for PartAddInternal */
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/relation.h"
@@ -202,6 +201,20 @@ typedef struct PartitionRangeState
 	FmgrInfo *lefuncs;
 	bool *leinit;
 } PartitionRangeState;
+
+/* likewise, for list */
+typedef struct PartitionListState
+{
+	FmgrInfo *eqfuncs;
+	bool *eqinit;
+} PartitionListState;
+
+/* likewise, for hash */
+typedef struct PartitionHashState
+{
+	FmgrInfo *hashfuncs;
+	bool *hashinit;
+} PartitionHashState;
 
 static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, bool istemp,
@@ -8948,9 +8961,31 @@ max_partition_attr(PartitionNode *pn)
 
 			n = Max(att, n);
 		}
+		pfree(l);
 	}
-	pfree(l);
 	return n;
+}
+
+int
+num_partition_levels(PartitionNode *pn)
+{
+	PartitionNode *tmp;
+	int level = 0;
+
+	tmp = pn;
+
+	/* just descend one branch of the tree until we hit a leaf */
+	while (tmp)
+	{
+		level++;
+		if (tmp->rules)
+		{
+			PartitionRule *rule = linitial(tmp->rules);
+			tmp = rule->children;
+		}
+	}
+
+	return level;
 }
 
 #if 0
@@ -9301,11 +9336,30 @@ static bool compare_partn_opfuncid(PartitionNode *partnode,
 
 static PartitionNode *
 selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, Oid *found)
+					TupleDesc tupdesc, PartitionState *pstate, Oid *found)
 {
 	ListCell *lc;
 	Partition *part = partnode->part;
-	List *opname = list_make2(makeString("pg_catalog"), makeString("="));
+	MemoryContext oldcxt = NULL;
+	PartitionListState *ls;
+	
+	if (pstate && pstate->amstate[partnode->part->parlevel])
+		ls = (PartitionListState *)pstate->amstate[partnode->part->parlevel];
+	else
+	{
+		int natts = partnode->part->parnatts;
+
+		ls = palloc(sizeof(PartitionListState));
+
+		ls->eqfuncs = palloc(sizeof(FmgrInfo) * natts);
+		ls->eqinit = palloc0(sizeof(bool) * natts);
+
+		if (pstate)
+			pstate->amstate[partnode->part->parlevel] = (void *)ls;
+	}
+
+	if (pstate && pstate->part_cxt)
+		oldcxt = MemoryContextSwitchTo(pstate->part_cxt);
 
 	*found = InvalidOid;
 	
@@ -9360,14 +9414,25 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				}
 				else
 				{
-					Oid lhsid = tupdesc->attrs[attno - 1]->atttypid;
-					Oid rhsid = lhsid;
-					Oid opfuncid;
 					Datum res;
 					Datum d = values[attno - 1];
+					FmgrInfo *finfo;
 
-					opfuncid = get_opfuncid_by_opname(opname, lhsid, rhsid);
-					res = OidFunctionCall2(opfuncid, d, c->constvalue);
+					if (!ls->eqinit[i])
+					{
+						Oid opfuncid;
+						Oid lhsid = tupdesc->attrs[attno - 1]->atttypid;
+						Oid rhsid = lhsid;
+						List *opname = list_make2(makeString("pg_catalog"),
+												  makeString("="));
+			
+			
+						opfuncid = get_opfuncid_by_opname(opname, lhsid, rhsid);
+						fmgr_info(opfuncid, &(ls->eqfuncs[i]));
+					}
+
+					finfo = &(ls->eqfuncs[i]);
+					res = FunctionCall2(finfo, d, c->constvalue);
 
 					if (!DatumGetBool(res))
 					{
@@ -9387,21 +9452,48 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			*found = rule->parchildrelid;
 
 			/* go to the next level */
-			list_free_deep(opname);
+			if (oldcxt)
+				MemoryContextSwitchTo(oldcxt);
 			return rule->children;
 		}
 	}
-	list_free_deep(opname);
+
+	if (oldcxt)
+		MemoryContextSwitchTo(oldcxt);
+
 	return NULL;
 
 }
 
+static void
+get_range_oper(int keyno, PartitionRangeState *rs, Oid typid, bool is_lt)
+{
+	Value *str = is_lt ? makeString("<") : makeString("<=");
+	Value *pub = makeString("pg_catalog");
+	List *opname = list_make2(pub, str);
+	Oid funcid;
+
+	funcid = get_opfuncid_by_opname(opname, typid, typid);
+	list_free_deep(opname);
+
+	if (is_lt)
+	{
+		rs->ltinit[keyno] = true;
+		fmgr_info(funcid, &(rs->ltfuncs[keyno]));
+	}
+	else
+	{
+		rs->leinit[keyno] = true;
+		fmgr_info(funcid, &(rs->lefuncs[keyno]));
+	}
+}
+
 static int
-range_test(Datum tupval, Oid typid, Oid *ltopr, Oid *leopr, int level,
+range_test(Datum tupval, Oid typid, PartitionRangeState *rs, int keyno,
 		   PartitionRule *rule)
 {
 	Const *c = NULL;
-	Oid funcid;
+	FmgrInfo *finfo;
 	Datum res;
 
 	Assert(PointerIsValid(rule->parrangestart) ||
@@ -9411,42 +9503,26 @@ range_test(Datum tupval, Oid typid, Oid *ltopr, Oid *leopr, int level,
 	if (PointerIsValid(rule->parrangestart))
 	{
 		Assert(IsA(rule->parrangestart, List));
-		c = (Const *)list_nth((List *)rule->parrangestart, level);
+		c = (Const *)list_nth((List *)rule->parrangestart, keyno);
 
 		/* is the value in the range? */
 		if (rule->parrangestartincl)
 		{
-			if (!OidIsValid(*leopr))
-			{
-				Value *str = makeString("<=");
-				Value *pub = makeString("pg_catalog");
-				List *opname = list_make2(pub, str);
+			if (!rs->leinit[keyno])
+				get_range_oper(keyno, rs, typid, false);
 
-				*leopr = get_opfuncid_by_opname(opname, typid, typid);
-				pfree(str);
-				pfree(pub);
-				list_free(opname);
-			}
-			funcid = *leopr;
+			finfo = &(rs->lefuncs[keyno]);
 		}
 		else
 		{
-			if (!OidIsValid(*ltopr))
-			{
-				Value *str = makeString("<");
-				Value *pub = makeString("pg_catalog");
+			if (!rs->ltinit[keyno])
+				get_range_oper(keyno, rs, typid, true);
 
-				List *opname = list_make2(pub, str);
-
-				*ltopr = get_opfuncid_by_opname(opname, typid, typid);
-				pfree(str);
-				pfree(pub);
-				list_free(opname);
-			}
-			funcid = *ltopr;
+			finfo = &(rs->ltfuncs[keyno]);
 		}
 
-		res = OidFunctionCall2(funcid, c->constvalue, tupval);
+		res = FunctionCall2(finfo, c->constvalue, tupval);
+
 		if (!DatumGetBool(res))
 			return -1;
 	}
@@ -9454,42 +9530,26 @@ range_test(Datum tupval, Oid typid, Oid *ltopr, Oid *leopr, int level,
 	/* There might be no END value */
 	if (PointerIsValid(rule->parrangeend))
 	{
-		c = (Const *)list_nth((List *)rule->parrangeend, level);
+		c = (Const *)list_nth((List *)rule->parrangeend, keyno);
 
 		/* might be in the range, lets see */
 		if (rule->parrangeendincl)
 		{
-			if (!OidIsValid(*leopr))
-			{
-				Value *str = makeString("<=");
-				Value *pub = makeString("pg_catalog");
+			if (!rs->leinit[keyno])
+				get_range_oper(keyno, rs, typid, false);
 
-				List *opname = list_make2(pub, str);
-
-				*leopr = get_opfuncid_by_opname(opname, typid, typid);
-				pfree(str);
-				pfree(pub);
-				list_free(opname);
-			}
-			funcid = *leopr;
+			finfo = &(rs->lefuncs[keyno]);
 		}
 		else
 		{
-			if (!OidIsValid(*ltopr))
-			{
-				Value *str = makeString("<");
-				Value *pub = makeString("pg_catalog");
-				List *opname = list_make2(pub, str);
+			if (!rs->ltinit[keyno])
+				get_range_oper(keyno, rs, typid, true);
 
-				*ltopr = get_opfuncid_by_opname(opname, typid, typid);
-				pfree(str);
-				pfree(pub);
-				list_free(opname);
-			}
-			funcid = *ltopr;
+			finfo = &(rs->ltfuncs[keyno]);
 		}
 
-		res = OidFunctionCall2(funcid, tupval, c->constvalue);
+		res = FunctionCall2(finfo, tupval, c->constvalue);
+
 		if (!DatumGetBool(res))
 			return 1; 
 	}
@@ -9509,25 +9569,35 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	int high = list_length(rules) - 1;
 	int low = 0;
     int searchpoint = 0;                    
-	Oid *ops[2];
 	int mid = 0;
 	bool matched = false;
 	PartitionRule *rule;
 	PartitionNode *pNode = NULL;
+	PartitionRangeState *rs = NULL;
+	MemoryContext oldcxt = NULL;
 
 	Assert(partnode->part->parkind == 'r');
 
+	if (pstate && pstate->amstate[partnode->part->parlevel])
+		rs = (PartitionRangeState *)pstate->amstate[partnode->part->parlevel];
+	else
+	{
+		int natts = partnode->part->parnatts;
+
+		rs = palloc(sizeof(PartitionRangeState));
+
+		rs->lefuncs = palloc(sizeof(FmgrInfo) * natts);
+
+		rs->ltfuncs = palloc(sizeof(FmgrInfo) * natts);
+		
+		rs->ltinit = palloc0(sizeof(bool) * natts);
+		rs->leinit = palloc0(sizeof(bool) * natts);
+	}
+
+	if (pstate && pstate->part_cxt)
+		oldcxt = MemoryContextSwitchTo(pstate->part_cxt);
+
 	*found = InvalidOid;
-
-	/* 
-	 * If there's a NULL, we're not going to find a match.
-	 */
-
-#define RANGE_OP_LT 0
-#define RANGE_OP_LE 1
-	
-	ops[RANGE_OP_LT] = palloc0(sizeof(Oid) * partnode->part->parnatts);
-	ops[RANGE_OP_LE] = palloc0(sizeof(Oid) * partnode->part->parnatts);
 
 	/* 
 	 * Use a binary search to try and pin point the region within the set of 
@@ -9566,8 +9636,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		}
 
 		ret = range_test(d, tupdesc->attrs[attno - 1]->atttypid,
-						 &(ops[RANGE_OP_LT][0]), &(ops[RANGE_OP_LE][0]),
-						 0, rule);
+						 rs, 0, rule);
 	
 		if (ret > 0)
 		{
@@ -9594,9 +9663,6 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		/* special case, we matched */
 		if (partnode->part->parnatts == 1)
 		{
-			pfree(ops[RANGE_OP_LT]);
-			pfree(ops[RANGE_OP_LE]);
-
 			*found = rule->parchildrelid;
 
 			pNode = rule->children;
@@ -9626,8 +9692,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				}
 
 				ret = range_test(d, tupdesc->attrs[attno - 1]->atttypid,
-								 &(ops[RANGE_OP_LT][i]), &(ops[RANGE_OP_LE][i]),
-								 i, rule);
+								 rs, i, rule);
 				if (ret != 0)
 				{
 					matched = false;
@@ -9645,11 +9710,9 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 
 			if (first_fail)
 				break;
+
 			if (matched)
 			{
-				pfree(ops[RANGE_OP_LT]);
-				pfree(ops[RANGE_OP_LE]);
-
 				*found = rule->parchildrelid;
 
 				pNode = rule->children;
@@ -9681,8 +9744,7 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				}
 
 				ret = range_test(d, tupdesc->attrs[attno - 1]->atttypid,
-								 &(ops[RANGE_OP_LT][i]), &(ops[RANGE_OP_LE][i]),
-								 i, rule);
+								 rs, i, rule);
 				if (ret != 0)
 				{
 					matched = false;
@@ -9702,9 +9764,6 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				break;
 			if (matched)
 			{
-				pfree(ops[RANGE_OP_LT]);
-				pfree(ops[RANGE_OP_LE]);
-
 				*found = rule->parchildrelid;
 
 				pNode = rule->children;
@@ -9721,18 +9780,28 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	if (pSearch)
 		*pSearch = searchpoint;
 
+	if (oldcxt)
+		MemoryContextSwitchTo(oldcxt);
+
+	if (pstate)
+		pstate->amstate[partnode->part->parlevel] = (void *)rs;
+
 	return pNode;
 } /* end selectrangepartition */
 
 /* select partition via hash */
 static PartitionNode *
 selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					TupleDesc tupdesc, Oid *found)
+					TupleDesc tupdesc, PartitionState *pstate, Oid *found)
 {
 	uint32 hash = 0;
 	int i;
 	int part;
 	PartitionRule *rule;
+	MemoryContext oldcxt = NULL;
+	
+	if (pstate && pstate->part_cxt)
+		oldcxt = MemoryContextSwitchTo(pstate->part_cxt);
 	
 	for (i = 0; i < partnode->part->parnatts; i++)
 	{
@@ -9761,6 +9830,10 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	rule = (PartitionRule *)list_nth(partnode->rules, part);
 
 	*found = rule->parchildrelid;
+
+	if (oldcxt)
+		MemoryContextSwitchTo(oldcxt);
+
 	return rule->children;
 }
 
@@ -9789,11 +9862,11 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 			break;
 		case 'h': /* hash */
 			pn = selectHashPartition(partnode, values, isnull, tupdesc,
-									 &relid);
+									 pstate, &relid);
 			break;
 		case 'l': /* list */
 			pn = selectListPartition(partnode, values, isnull, tupdesc,
-									 &relid);
+									 pstate, &relid);
 			break;
 		default:
 			elog(ERROR, "unrecognized partitioning kind '%c'",

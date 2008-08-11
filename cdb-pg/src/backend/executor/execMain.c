@@ -1239,7 +1239,12 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 		if (estate->es_result_partitions)
 		{
+			Size sz;
 			estate->es_partition_state = makeNode(PartitionState);
+
+			sz = num_partition_levels(estate->es_result_partitions);
+			sz *= sizeof(void *);
+			estate->es_partition_state->amstate = palloc0(sz);
 			estate->es_partition_state->max_partition_attr =
 				max_partition_attr(estate->es_result_partitions);
 
@@ -3484,14 +3489,14 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 	Oid targetid;
 	int i;
 	bool found = false;
-	MemoryContext mcxt;
 
-	mcxt = 
-		MemoryContextSwitchTo(GetPerTupleExprContext(estate)->ecxt_per_tuple_memory);
+	/* add a short term memory context if one wasn't assigned already */
+	if (!estate->es_partition_state->part_cxt)
+		estate->es_partition_state->part_cxt = 
+			GetPerTupleExprContext(estate)->ecxt_per_tuple_memory;
 
 	targetid = selectPartition(estate->es_result_partitions, values,
 							   isnull, tupdesc, estate->es_partition_state);
-	MemoryContextSwitchTo(mcxt);
 
 	if (!OidIsValid(targetid))
 		elog(ERROR, "no partition for partitioning key");
