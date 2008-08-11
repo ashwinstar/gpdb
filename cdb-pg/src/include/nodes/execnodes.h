@@ -415,6 +415,14 @@ typedef struct ShareNodeEntry
 	Node *shareState;
 } ShareNodeEntry;
 
+typedef struct PartitionState
+{
+	NodeTag type;
+
+	AttrNumber max_partition_attr;
+	void *pstate; /* access method specific lookup */
+} PartitionState;
+
 /* ----------------
  *	  EState information
  *
@@ -517,6 +525,8 @@ typedef struct EState
 	/* CDB: INSERT state */
 	struct HeapInsertDesc *es_HeapInsertDesc;
 
+	/* CDB: partitioning state info */
+	PartitionState *es_partition_state;
 } EState;
 
 

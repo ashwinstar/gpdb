@@ -1236,6 +1236,16 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			parseTree->result_partitions = estate->es_result_partitions;
 			heap_close(tmp, NoLock);
 		}
+
+		if (estate->es_result_partitions)
+		{
+			estate->es_partition_state = makeNode(PartitionState);
+			estate->es_partition_state->max_partition_attr =
+				max_partition_attr(estate->es_result_partitions);
+
+		}
+		else
+			estate->es_partition_state = NULL;
 		
 		/* 
 		 * AO table INSERT operation:
@@ -3480,7 +3490,7 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 		MemoryContextSwitchTo(GetPerTupleExprContext(estate)->ecxt_per_tuple_memory);
 
 	targetid = selectPartition(estate->es_result_partitions, values,
-							   isnull, tupdesc);
+							   isnull, tupdesc, estate->es_partition_state);
 	MemoryContextSwitchTo(mcxt);
 
 	if (!OidIsValid(targetid))
@@ -3552,13 +3562,10 @@ slot_get_partition(TupleTableSlot *slot, EState *estate)
 	AttrNumber max_attr;
 	Datum *values;
 	bool *nulls;
-	MemoryContext mxt;
 
 	Assert(PointerIsValid(estate->es_result_partitions));
 
-	mxt = MemoryContextSwitchTo(GetPerTupleExprContext(estate)->ecxt_per_tuple_memory);
-	max_attr = max_partition_attr(estate->es_result_partitions);
-	MemoryContextSwitchTo(mxt);
+	max_attr = estate->es_partition_state->max_partition_attr;
 
 	slot_getsomeattrs(slot, max_attr);
 	values = slot_get_values(slot);

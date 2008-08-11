@@ -194,6 +194,15 @@ typedef struct pg_part_rule
 	bool           isName;		/* true if partid is name */
 } pg_part_rule;
 
+/* cache of function lookups for range partition selection */
+typedef struct PartitionRangeState
+{
+	FmgrInfo *ltfuncs;
+	bool *ltinit;
+	FmgrInfo *lefuncs;
+	bool *leinit;
+} PartitionRangeState;
+
 static void truncate_check_rel(Relation rel);
 static List *MergeAttributes(List *schema, List *supers, bool istemp,
 				List **supOids, List **supconstr, int *supOidCount);
@@ -9493,7 +9502,8 @@ range_test(Datum tupval, Oid typid, Oid *ltopr, Oid *leopr, int level,
  */
 static PartitionNode *
 selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
-					 TupleDesc tupdesc, Oid *found, int *pSearch)
+					 TupleDesc tupdesc, PartitionState *pstate,
+					 Oid *found, int *pSearch)
 {
 	List *rules = partnode->rules;
 	int high = list_length(rules) - 1;
@@ -9755,15 +9765,16 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 }
 
 /* 
- * selectPartition()
+ * selectPartition1()
  *
  * Given pdata and prules, try and find a suitable partition for the input key.
- * d is an array of datums, isnull tells us which of those is NULL, and 
- * natts the width of d.
+ * values is an array of datums representing the partitioning key, isnull 
+ * tells us which of those is NULL. pSearch allows the caller to get the
+ * position in the partition range where the key falls (might be hypothetical).
  */
 static Oid
 selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
-				TupleDesc tupdesc, int *pSearch)
+				TupleDesc tupdesc, PartitionState *pstate, int *pSearch)
 {
 	Oid relid = InvalidOid;
 	Partition *part = partnode->part;
@@ -9774,7 +9785,7 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 	{
 		case 'r': /* range */
 			pn = selectRangePartition(partnode, values, isnull, tupdesc,
-									  &relid, pSearch);
+									  pstate, &relid, pSearch);
 			break;
 		case 'h': /* hash */
 			pn = selectHashPartition(partnode, values, isnull, tupdesc,
@@ -9791,15 +9802,16 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 	}
 
 	if (pn)
-		return selectPartition1(pn, values, isnull, tupdesc, pSearch);
+		return selectPartition1(pn, values, isnull, tupdesc, pstate, pSearch);
 	else
 	{
 		/* retry a default */
 		if (partnode->default_part && !OidIsValid(relid))
 		{
 			if (partnode->default_part->children)
-				return selectPartition1(partnode->default_part->children, values,
-									   isnull, tupdesc, pSearch);
+				return selectPartition1(partnode->default_part->children,
+										values, isnull, tupdesc, pstate,
+										pSearch);
 			else
 				return partnode->default_part->parchildrelid;
 		}
@@ -9810,9 +9822,9 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 
 Oid
 selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
-				TupleDesc tupdesc)
+				TupleDesc tupdesc, PartitionState *pstate)
 {
-	return selectPartition1(partnode, values, isnull, tupdesc, NULL);
+	return selectPartition1(partnode, values, isnull, tupdesc, pstate, NULL);
 }
 /*
  * get_part_rule
@@ -9918,7 +9930,8 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			Datum *d = magic_expr_to_datum(rel, pNode, 
 										   pid->partiddef, &isnull);
 
-			partrelid = selectPartition1(pNode, d, isnull, tupledesc, pSearch);
+			partrelid = selectPartition1(pNode, d, isnull, tupledesc, NULL,
+										 pSearch);
 			
 		}
 		else if (pid->idtype == AT_AP_IDPosition)

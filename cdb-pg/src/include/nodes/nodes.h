@@ -42,6 +42,7 @@ typedef enum NodeTag
 	T_Slice,
 	T_SliceTable,
 	T_ShareNodeEntry,
+	T_PartitionState,
 	
 	/*
 	 * TAGS FOR PLAN NODES (plannodes.h)
