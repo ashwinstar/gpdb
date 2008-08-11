@@ -17,6 +17,7 @@
 #define GP_FAULT_USER_RAISE_PANIC 		6 	/* elog a panic */
 #define GP_FAULT_USER_PROCEXIT          7   /* Simply call proc_exit  */
 #define GP_FAULT_USER_ABORT             8   /* Simply call abort */
+#define GP_FAULT_USER_INFINITE_LOOP     9   /* Infinite loop */
 
 /* Fault group 2: From User, cause some fault in MP */
 #define GP_FAULT_USER_MP_CONFIG 		100	/* Show vmem_max guc */

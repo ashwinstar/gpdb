@@ -60,6 +60,14 @@ int64 gp_fault_inject_impl(int32 reason, int64 arg)
 		case GP_FAULT_USER_ABORT:
 			abort();
 
+		case GP_FAULT_USER_INFINITE_LOOP:
+			{
+				do {
+					/* do nothing */
+				} while(true);
+			}
+			break;
+
 		case GP_FAULT_USER_MP_CONFIG:
 		case GP_FAULT_USER_MP_ALLOC:
 		case GP_FAULT_USER_MP_HIGHWM:
