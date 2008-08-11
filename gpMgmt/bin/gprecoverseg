@@ -5,10 +5,10 @@
 Recovers Greenplum segment instances that are marked as invalid, if 
 mirroring is configured and operational
 
-Usage: gprecoverseg [--version] [-?qaf] [-D] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
+Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
            
           General options:
-          --version : print version information
+          -v        : print version information
           -?        : print this help screen
 
           Logging options:
@@ -104,12 +104,13 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?Dqafs:d:z:B:p:l:i:o:S:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?vDqafs:d:z:B:p:l:i:o:S:', ['version'])
     except Exception, e:
         usage('[ERROR]:-' + str(e))
 
     for (switch, val) in options:
         if (switch == '-?'):          usage(0)
+        elif (switch == '-v'):        print_version()
         elif (switch == '-d'):        opt[switch] = val
         elif (switch == '-B'):        opt[switch] = int(val)
         elif (switch == '-z'):        opt[switch] = val

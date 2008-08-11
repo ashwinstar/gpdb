@@ -86,12 +86,13 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?qasi:o:d:m:B:p:l:D', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?vqasi:o:d:m:B:p:l:D', ['version'])
     except Exception, e:
         usage(str(e))
 
     for (switch, val) in options:
         if (switch == '-?'):          usage(0)
+        elif (switch == '-v'):        print_version()
         elif (switch == '-q'):        opt[switch] = True
         elif (switch == '-m'):        opt[switch] = val
         elif (switch == '-B'):        opt[switch] = int(val)
