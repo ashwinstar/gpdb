@@ -618,15 +618,16 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
 
     # start mirror segment in admin mode
     log_info('start segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
-    (ok, out) = run('%s "export LD_LIBRARY_PATH=%s; env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w -D %s -l %s.log -o \\"-i -p %d \\" start"' %
+    (ok, out) = run('%s "export LD_LIBRARY_PATH=%s; env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w -D %s -l %s.log -o \\"-i -p %d \\" start" >> %s 2>&1' %
                     (gplib.ssh_prefix(host=dst_cfg['hostname']),
                      os.environ.get('LD_LIBRARY_PATH'), 
                      os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
-                     dst_cfg['datadir'], dst_cfg['datadir'], dst_cfg['port']))
+                     dst_cfg['datadir'], dst_cfg['datadir'], dst_cfg['port'], logfile))
     if not ok:
         sys.exit('failed to start mirror segment %s:%s in admin mode' % (dst_cfg['hostname'], dst_cfg['datadir']))
 
     # update gp_id table
+    log_info('update gp_id with segment id = %d' % dst_cfg['dbid'])
     db = None
     try:
         try:
@@ -647,15 +648,17 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
 
     if force_stop:
         # stop mirror segment
-        (ok, out) = run('%s "export LD_LIBRARY_PATH=%s; env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w stop -D %s -m smart -l %s.log"' % 
+        log_info('stop segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname'])) 
+        (ok, out) = run('%s "export LD_LIBRARY_PATH=%s; env PGOPTIONS=\\"-c gp_session_role=utility\\" %s -w stop -D %s -m smart -l %s.log" >> %s 2>&1' % 
                         (gplib.ssh_prefix(host=dst_cfg['hostname']),
                          os.environ.get('LD_LIBRARY_PATH'), 
                          os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
-                         dst_cfg['datadir'], dst_cfg['datadir']))
+                         dst_cfg['datadir'], dst_cfg['datadir'], logfile))
         if not ok:
             sys.exit('failed to stop mirror segment %s:%s' % (dst_cfg['hostname'], dst_cfg['datadir']))
     
 
+    log_info('sync segment datadir=%s port=%d on host %s succeeded' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
     return True
 
 #############
