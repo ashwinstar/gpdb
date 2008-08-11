@@ -5,7 +5,7 @@
 Recovers Greenplum segment instances that are marked as invalid, if 
 mirroring is configured and operational
 
-Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-B number]
+Usage: gprecoverseg [-v] [-?qaf] [-D] [-i input_config] [-o output_config] [-d master_data_dir] [-l log_dir] [-p hostname] [-s pri_dir,mir_dir] [-z failed_datadir:failed_host] [-S failed_dbid] [-B number]
            
           General options:
           -v        : print version information
