@@ -157,9 +157,11 @@ static inline bool typid_could_short(int typid)
 #endif
 }
 
+#undef MEMTUPLE_INLINE_CHARTYPE
 /* Determine if an attr should be treated as offset_len in memtuple */
 static inline bool att_bind_as_varoffset(Form_pg_attribute attr)
 {
+#ifdef MEMTUPLE_INLINE_CHARTYPE 
 	return (attr->attlen < 0 /* Varlen type */
 	        && (
 	               attr->atttypid != BPCHAROID /* Any varlen type except char(N) */
@@ -167,6 +169,20 @@ static inline bool att_bind_as_varoffset(Form_pg_attribute attr)
 		       || attr->atttypmod >= 127   /* char(N) that cannot be shorted */
 		       )
 		);
+#else
+	/*
+	 * XXX
+	 * As optimization, one want to make some char(X) type inline, which
+	 * will save 2 bytes.  However, postgres tupdesc is totally messed up
+	 * the lenght of a (var)char(N) type (in typmod).  It just get randomly 
+	 * set to the right thing or -1.  It is really stupid, but it just 
+	 * took too much effort to fix everywhere.
+	 *
+	 * It is a shame.  Disable this for now.
+	 */
+
+	return attr->attlen < 0;
+#endif
 }
 
 /* Create columns binding, depends on islarge, using 2 or 4 bytes for offset_len */
@@ -267,16 +283,18 @@ static void create_col_bind(MemTupleBindingCols *colbind, bool islarge, TupleDes
 			}
 			else if (pass == 3 && (
 						(attr->attlen > 0 && attr->attalign == 'c') 
-						|| (attr->attlen < 0 
-							&& attr->atttypid == BPCHAROID 
-							&& attr->atttypmod > 4 
-							&& attr->atttypmod < 127
-						   )
-					      )
-				)
+						|| (attr->attlen < 0 && !att_bind_as_varoffset(attr))
+						)
+					)
 			{
 				bind->offset = att_align(cur_offset, 'c');
+
+#ifdef MEMTUPLE_INLINE_CHARTYPE 
+				/* Inline CHAR(N) disabled.  See att_bind_as_varoffset */
 				bind->len = attr->attlen > 0 ? attr->attlen : (attr->atttypmod - 3);
+#else
+				bind->len = attr->attlen;
+#endif
 
 				add_null_save(colbind->null_saves, physical_col, 1);
 
