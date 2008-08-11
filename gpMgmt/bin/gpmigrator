@@ -298,7 +298,7 @@ class GPUpgrade:
         exec_cmd += self.oldhome + ' ' + self.newhome
         exec_cmd += ' --internal-command=' + str(cmd)
         exec_cmd += ' --internal-pid=' + str(self.pid)
-        exec_cmd += ' --internal-dirs="%s"' % self.datadirs
+        exec_cmd += ' --internal-dirs=\\"%s\\"' % self.datadirs
         exec_cmd += ' --internal-option="%s"' % option
         exec_cmd += ' --internal-option2="%s"' % option2
 
