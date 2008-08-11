@@ -190,7 +190,8 @@ typedef struct pg_part_rule
 
 	/* a textual representation of the partition id (for error msgs) */
 	char		   partIdStr[(NAMEDATALEN * 2)];
-	bool           isName;		/* true if partid is name */
+	bool           isName;		 /* true if partid is name */
+	int            topRuleRank;	 /* rank/position of topRule */
 } pg_part_rule;
 
 /* cache of function lookups for range partition selection */
@@ -10039,6 +10040,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 	if (pNode)
 	{
 		ListCell *lc;			
+		int rulerank = 1;
 
 		foreach(lc, pNode->rules)
 		{
@@ -10074,9 +10076,11 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 
 				prule->pNode = pNode;
 				prule->topRule = rule;
+				prule->topRuleRank = rulerank; /* 1-based */
 				break;
 			}
-		}
+			rulerank++;
+		} /* end foreach */
 
 		/* if cannot find, check default partition */
 		if (!prule && pNode->default_part)
@@ -10113,6 +10117,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 
 				prule->pNode = pNode;
 				prule->topRule = rule;
+				prule->topRuleRank = 0; /* 1-based -- 0 means no rank */
 			}
 		}
 	} /* end if pnode */
@@ -10588,6 +10593,15 @@ atpxPartAddList(AlteredTableInfo *tab,
 					/* not inclusive -- check harder if START really
 					 * overlaps 
 					 */
+					
+					if (0 == 
+						list_length((List *)a_rule->parrangeend))
+					{
+						/* infinite end > new start - overlap */
+						bOverlap = true;
+						goto L_end_overlap;
+					}
+
 					bstat = 
 							compare_partn_opfuncid(pNode,
 												   "pg_catalog",
@@ -10789,6 +10803,14 @@ atpxPartAddList(AlteredTableInfo *tab,
 					/* not inclusive -- check harder if END really
 					 * overlaps 
 					 */
+					if (0 == 
+						list_length((List *)a_rule->parrangestart))
+					{
+						/* -infinite start < new end - overlap */
+						bOverlap = true;
+						goto L_end_overlap;
+					}
+
 					bstat = 
 							compare_partn_opfuncid(pNode,
 												   "pg_catalog",
@@ -11146,7 +11168,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 				{
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_OBJECT),
-							 errmsg("new partition definition overlaps existing partition%s of relation \"%s\" ",
+							 errmsg("new partition definition overlaps "
+									"existing partition%s of relation \"%s\" ",
 									prule->partIdStr,
 									RelationGetRelationName(rel))));
 	
@@ -11321,17 +11344,6 @@ ATPExecPartCoalesce(Relation rel,
 
 	if (0)
 	{
-		parruleord_reset_rank(
-				prule->pNode->part->partid,
-				prule->pNode->part->parlevel,
-				prule->topRule->parparentoid,
-				prule->topRule->parruleord,
-				CurrentMemoryContext);	
-	}
-
-
-	if (0)
-	{
 
 		parruleord_open_gap(
 				prule->pNode->part->partid,
@@ -11479,7 +11491,8 @@ ATPExecPartDrop(Relation rel,
 			case AT_AP_IDName:				/* IDentify by Name */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition \"%s\" of relation \"%s\" does not exist, skipping",
+					 errmsg("partition \"%s\" of relation \"%s\" does not "
+							"exist, skipping",
 							strVal(pid->partiddef),
 							RelationGetRelationName(rel))));
 
@@ -11487,21 +11500,24 @@ ATPExecPartDrop(Relation rel,
 			case AT_AP_IDValue:				/* IDentifier FOR Value */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition for specified value of relation \"%s\" does not exist, skipping",
+					 errmsg("partition for specified value of "
+							"relation \"%s\" does not exist, skipping",
 							RelationGetRelationName(rel))));
 
 				break;
 			case AT_AP_IDPosition:			/* IDentifier FOR Positition */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition for specified position of relation \"%s\" does not exist, skipping",
+					 errmsg("partition for specified position of "
+							"relation \"%s\" does not exist, skipping",
 							RelationGetRelationName(rel))));
 
 				break;
 			case AT_AP_ID_oid:			/* IDentifier by oid */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition for specified oid of relation \"%s\" does not exist, skipping",
+					 errmsg("partition for specified oid of "
+							"relation \"%s\" does not exist, skipping",
 							RelationGetRelationName(rel))));
 
 				break;
@@ -11529,17 +11545,20 @@ ATPExecPartDrop(Relation rel,
 					 errmsg("cannot drop HASH partition%s of relation \"%s\"",
 							prule->partIdStr,
 							RelationGetRelationName(rel)),
-					 errhint("recreate the table to reduce the number of partitions")));
+					 errhint("recreate the table to reduce the "
+							 "number of partitions")));
 
 
 		/* cannot drop last partition of table */
 		if (numParts <= 1)
 			ereport(ERROR,
 					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-					 errmsg("cannot drop partition%s of relation \"%s\"-- only one remains",
+					 errmsg("cannot drop partition%s of "
+							"relation \"%s\"-- only one remains",
 							prule->partIdStr,
 							RelationGetRelationName(rel)),
-					 errhint("Use DROP TABLE \"%s\" to remove the table and the final partition ", 
+					 errhint("Use DROP TABLE \"%s\" to remove the "
+							 "table and the final partition ", 
 							 RelationGetRelationName(rel))));
 		rel2 = heap_open(prule->topRule->parchildrelid, AccessShareLock);
 
@@ -11871,9 +11890,11 @@ exchange_part_rule(Oid oldrelid, Oid newrelid)
 static void 
 ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 {
-	Oid	oldrelid = InvalidOid;
-	Oid	newrelid = InvalidOid;
-	Partition *part = NULL;
+	Oid					 oldrelid 	= InvalidOid;
+	Oid					 newrelid 	= InvalidOid;
+	Partition 			*part 		= NULL;
+	AlterPartitionId   	*orig_pid 	= NULL;	/* save for NOTICE msg at end... */
+	pg_part_rule   	    *orig_prule = NULL;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
@@ -11890,6 +11911,9 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 
 		if (!prule)
 			return;
+
+		orig_pid = pid;
+		orig_prule = prule;
 
 		oldrelid = prule->topRule->parchildrelid;
 		newrelid = RangeVarGetRelid(newrelrv, false);
@@ -11979,6 +12003,17 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 			exchange_part_rule(oldrelid, newrelid);
 			CommandCounterIncrement();
 		}
+
+		/* Notify of name if did not use name for partition id spec */
+		if (orig_pid && (orig_pid->idtype != AT_AP_IDName)
+			&& orig_prule->isName)
+			ereport(NOTICE,
+					(errmsg("exchanged partition%s of "
+							"relation \"%s\" with relation \"%s\"",
+							orig_prule->partIdStr,
+							RelationGetRelationName(rel),
+							newname)));
+
 	}
 
 
@@ -12009,6 +12044,55 @@ ATPExecPartMerge(Relation rel,
                     RelationGetRelationName(rel))));
 
 }
+
+static bool
+atpxModifyListOverlap (Relation rel,
+					   AlterPartitionId *pid,
+					   pg_part_rule   *prule,
+					   Node *pVal)
+{
+	if (prule->pNode->default_part)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot MODIFY %s partition for "
+						"relation \"%s\" to ADD values -- would "
+						"overlap DEFAULT partition \"%s\"", 
+						"LIST",
+						RelationGetRelationName(rel),
+						prule->pNode->default_part->parname),
+				 errhint("need to SPLIT partition \"%s\"", 
+						 prule->pNode->default_part->parname)));
+
+
+
+
+	return false;
+}
+static bool
+atpxModifyRangeOverlap (Relation rel,
+					   AlterPartitionId *pid,
+					   pg_part_rule   *prule,
+					   Node *pVal)
+{
+
+	if (0 && prule->pNode->default_part)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("cannot MODIFY %s partition for "
+						"relation \"%s\" to ADD values -- would "
+						"overlap DEFAULT partition \"%s\"", 
+						"RANGE",
+						RelationGetRelationName(rel),
+						prule->pNode->default_part->parname),
+				 errhint("need to SPLIT partition \"%s\"", 
+						 prule->pNode->default_part->parname)));
+
+
+
+	return false;
+}
+
+
 /* ALTER TABLE ... MODIFY PARTITION */
 static void 
 ATPExecPartModify(Relation rel,
@@ -12024,8 +12108,97 @@ ATPExecPartModify(Relation rel,
 
 	if (prule)
 	{
+		AlterPartitionCmd 		*pc2 	= (AlterPartitionCmd *)pc->arg1;
+		AlterPartitionCmd 		*pc3 	= (AlterPartitionCmd *)pc2;		
+		DefElem    				*def 	= (DefElem *)pc3->arg1;
+		bool 					 bStart = false;
+		bool 					 bEnd 	= false;
+		bool 					 bAdd 	= false;
+		bool 					 bDrop 	= false;
+		char           *parTypName = NULL;
+		
+		if (0 == strcmp(def->defname, "START"))
+			bStart = true;
+		else if (0 == strcmp(def->defname, "END"))
+			bEnd = true;
+		else if (0 == strcmp(def->defname, "ADD"))
+			bAdd = true;
+		else if (0 == strcmp(def->defname, "DROP"))
+			bDrop = true;
+		else Assert(false);
+
+		switch (prule->pNode->part->parkind)
+		{
+			case 'h': /* hash */
+				parTypName = "HASH";
+				break;
+			case 'r': /* range */
+				parTypName = "RANGE";
+				break;
+			case 'l': /* list */
+				parTypName = "LIST";
+				break;
+			default:
+				elog(ERROR, "unrecognized partitioning kind '%c'",
+					 prule->pNode->part->parkind);
+				Assert(false);
+				break;
+		} /* end switch */
+
+		/* cannot modify default partitions */
+		if (prule->pNode->default_part == prule->topRule)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("cannot MODIFY DEFAULT %s partition%s "
+							"for relation \"%s\"",
+							parTypName,
+							((prule && prule->isName) ? prule->partIdStr : ""),
+							RelationGetRelationName(rel))));
+
+		if ((bStart || bEnd) && ('r' != prule->pNode->part->parkind))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("invalid use of %s boundary specification "
+							"in partition%s of type %s",
+							"RANGE",
+							((prule && prule->isName) ? prule->partIdStr : ""),
+							parTypName
+							 )));
+
+		if ((bAdd || bDrop) && ('l' != prule->pNode->part->parkind))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("invalid use of %s boundary specification "
+							"in partition%s of type %s",
+							"LIST",
+							((prule && prule->isName) ? prule->partIdStr : ""),
+							parTypName
+							 )));
+
+		if (bAdd)
+		{
+			bool stat = atpxModifyListOverlap(rel, pid, prule, 
+											  (Node *)pc3->arg2);
+			stat = false;
+		}
+		if (bStart)
+		{
+			bool stat = atpxModifyRangeOverlap(rel, pid, prule, 
+											   (Node *)pc3->arg2);
+			stat = false;
+		}
+
+
+		if (0)
+		parruleord_reset_rank(
+				prule->pNode->part->partid,
+				prule->pNode->part->parlevel,
+				prule->topRule->parparentoid,
+				prule->topRule->parruleord,
+				CurrentMemoryContext);	
 	}
 
+	if (0)
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
              errmsg("cannot MODIFY PARTITION for relation \"%s\"",
@@ -12157,7 +12330,8 @@ ATPExecPartRename(Relation rel,
 		if ((pid->idtype != AT_AP_IDName)
 			&& prule->isName)
 			ereport(NOTICE,
-					(errmsg("renamed partition%s to \"%s\" for relation \"%s\"",
+					(errmsg("renamed partition%s to \"%s\" for "
+							"relation \"%s\"",
 							prule->partIdStr,
 							newpartname,
 							realrelname)));

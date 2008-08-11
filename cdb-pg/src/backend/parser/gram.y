@@ -1717,22 +1717,39 @@ opt_table_partition_merge_into:
 
 table_partition_modify:
 			TabPartitionBoundarySpecStart
+            OptTabPartitionBoundarySpecEnd
+            OptTabPartitionBoundarySpecEvery  
 				{
                     /* re-use alterpartitioncmd struct here... */
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+                    PartitionBoundSpec *n = makeNode(PartitionBoundSpec); 
+                    n->partStart = $1;
+                    n->partEnd   = $2;
+                    n->partEvery = $3;
+                    n->everyGenList = NIL; 
+                    n->location  = @1;
+
                     pc->partid = NULL;
                     pc->arg1 = (Node *)makeDefElem("START", NULL);
-                    pc->arg2 = $1;
+                    pc->arg2 = (Node *)n;
                     pc->location = @1;
 					$$ = (Node *)pc;
                 }
 			| TabPartitionBoundarySpecEnd
+              OptTabPartitionBoundarySpecEvery	
 				{
                     /* re-use alterpartitioncmd struct here... */
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+                    PartitionBoundSpec *n = makeNode(PartitionBoundSpec); 
+                    n->partStart = NULL;
+                    n->partEnd   = $1;
+                    n->partEvery = $2;
+                    n->everyGenList = NIL; 
+                    n->location  = @1;
+
                     pc->partid = NULL;
                     pc->arg1 = (Node *)makeDefElem("END", NULL);
-                    pc->arg2 = $1;
+                    pc->arg2 = (Node *)n;
                     pc->location = @1;
 					$$ = (Node *)pc;
                 }
@@ -1740,12 +1757,17 @@ table_partition_modify:
 				{
                     /* re-use alterpartitioncmd struct here... */
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+                    PartitionValuesSpec *n = makeNode(PartitionValuesSpec); 
+
+                    n->partValues = $2;
+                    n->location  = @2;
+
                     pc->partid = NULL;
                     if (1 == $1)
                         pc->arg1 = (Node *)makeDefElem("ADD", NULL);
                     else
                         pc->arg1 = (Node *)makeDefElem("DROP", NULL);
-                    pc->arg2 = (Node *)$2;
+                    pc->arg2 = (Node *)n;
                     pc->location = @2;
 					$$ = (Node *)pc;
                 }
