@@ -38,10 +38,10 @@ Usage: gprecoverseg [--version] [-?qaf] [-D] [-i input_config] [-o output_config
                           force a recovery, even though no instance segments are marked as invalid on the master
                           CAUTION:-USE THIS OPTION WITH CARE!
                           example gprecoverseg -z /dbfast1/segment1:localhost
-          -c        : <failed_segment_instance_dbid>
+          -S        : <failed_segment_instance_dbid>
                           force a recovery, even though no instance segments are marked as invalid on the master
                           CAUTION:-USE THIS OPTION WITH CARE!
-                          example gprecoverseg -c 4
+                          example gprecoverseg -S 4
           -B        : <number> run this batch of recovery segment processes in parallel [default: 4]
 
           Connection options:
@@ -85,7 +85,7 @@ opt['-l'] = None
 opt['-i'] = None
 opt['-o'] = None
 opt['-D'] = False
-opt['-c'] = 0
+opt['-S'] = 0
 
 arg = {}
 arg['exit'] = 0
@@ -104,7 +104,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?Dqafs:d:z:B:p:l:i:o:c:', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?Dqafs:d:z:B:p:l:i:o:S:', ['version'])
     except Exception, e:
         usage('[ERROR]:-' + str(e))
 
@@ -122,7 +122,7 @@ def parseCommandLine():
         elif (switch == '-i'):        opt[switch] = val
         elif (switch == '-o'):        opt[switch] = val
         elif (switch == '-D'):        opt[switch] = True
-        elif (switch == '-c'):        opt[switch] = int(val)
+        elif (switch == '-S'):        opt[switch] = int(val)
 
     gpmlib.log_set_module(script_name)
     # set verbose
@@ -156,8 +156,8 @@ def parseCommandLine():
     if not os.path.isdir(opt['-d']):
         gpmlib.error('MASTER_DATA_DIRECTORY %s not exists or not a directory' % opt['-d'])
 
-    if opt['-z'] and opt['-c'] > 0:
-        gpmlib.error('option -z and -c cannot specify at the same time')
+    if opt['-z'] and opt['-S'] > 0:
+        gpmlib.error('option -z and -S cannot specify at the same time')
 
     
 ################
@@ -1174,15 +1174,15 @@ def force_recover(db):
         db.execute("select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration where datadir=$1 and hostname=$2",
                    failed_dir, failed_host)
     else:
-        db.execute("select count(*) from gp_configuration where dbid=$1", opt['-c'])
+        db.execute("select count(*) from gp_configuration where dbid=$1", opt['-S'])
         r = db.read_tuple()
         failed_instance_count = r[0]
         if failed_instance_count == 0:
-            gpmlib.error('[FATAL]:- Could not locate segment with dbid %d' % opt['-c'])
+            gpmlib.error('[FATAL]:- Could not locate segment with dbid %d' % opt['-S'])
         if failed_instance_count > 1:
-            gpmlib.error('[FATAL]:- Found multiple records for dbid %d' % opt['-c'])
+            gpmlib.error('[FATAL]:- Found multiple records for dbid %d' % opt['-S'])
                 
-        db.execute("select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration where dbid=$1", opt['-c'])        
+        db.execute("select definedprimary, hostname, port, datadir, dbid, content, valid from gp_configuration where dbid=$1", opt['-S'])        
 
     failed_instance_array = [ x for x in db.iterate_dict() ]
     failed_dbids = [ x['dbid'] for x in failed_instance_array]
@@ -1506,7 +1506,7 @@ try:
             (failed_dbids, failed_instance_array, active_instance_array, pool_failed_instance_array, update_sql) = parse_config(db)
         else:
 
-            if opt['-z'] or opt['-c'] > 0:
+            if opt['-z'] or opt['-S'] > 0:
                 # Force recovery
                 (failed_dbids, failed_instance_array, active_instance_array) = force_recover(db)
             else:
