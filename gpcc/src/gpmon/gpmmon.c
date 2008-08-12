@@ -603,7 +603,7 @@ static void parse_command_line(int argc, const char* const argv[])
         opt.m = 0;
 
     if (opt.d < 15)
-        usage("Error: -d detailmin value must be greater than 15");
+        usage("Error: -d mindetail value must be greater than 15");
 
     /* See if opt.m changed, but opt.d did not */
     if (opt.m != min_query_time &&
