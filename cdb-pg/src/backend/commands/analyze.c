@@ -1017,6 +1017,10 @@ acquire_sample_ao_rows(Relation onerel, HeapTuple *rows, int targrows,
 	
 	Assert(targrows > 1);
 	
+	/* early exit - no data on the QD */
+	if(Gp_role == GP_ROLE_DISPATCH)
+		return 0;
+	
 	/* get table level statistics from the pg_aoseg table */
 	fstotal = GetSegFilesTotals(onerel);
 	
