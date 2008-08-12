@@ -711,8 +711,6 @@ getNextStorageBlockInFile(
 						scan->bufferCount)));
 
 
-	// UNDONE: Add more verification here...
-
 	if (scan->aos_checksum &&
 		gp_appendonly_verify_block_checksums)
 	{
@@ -866,7 +864,7 @@ getNextBlock(
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Row count in append-only storage header %d does not match VarBlock item count %d "
+					 errmsg("Row count %d in append-only storage header does not match VarBlock item count %d "
 					        "(segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
 							rowCount,
 							scan->readerItemCount,
@@ -889,7 +887,7 @@ getNextBlock(
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
-					 errmsg("Row count in append-only storage header %d is not 1 for single row "
+					 errmsg("Row count %d in append-only storage header is not 1 for single row "
 					        "(segment file #%d, header offset in file = " INT64_FORMAT ", block count " INT64_FORMAT ")\n", 
 							rowCount,
 							SCANNED_SEGNO,
@@ -1574,7 +1572,15 @@ appendonly_insert(AppendOnlyInsertDesc aoInsertDesc, MemTuple instup)
 	 * get space to insert our next item (tuple) 
 	 */
 	itemLen = memtuple_get_size(tup, aoInsertDesc->mt_bind);
-	itemPtr = VarBlockMakerGetNextItemPtr(&aoInsertDesc->varBlockMaker, itemLen);
+
+	/*
+	 * If we are at the limit for append-only storage header's row count,
+	 * force this VarBlock to finish.
+	 */
+	if (VarBlockMakerItemCount(&aoInsertDesc->varBlockMaker) >= AOBlockHeader_MaxRowCount)
+		itemPtr = NULL;
+	else
+		itemPtr = VarBlockMakerGetNextItemPtr(&aoInsertDesc->varBlockMaker, itemLen);
 	
 	/*
 	 * If no more room to place items in the current varblock
