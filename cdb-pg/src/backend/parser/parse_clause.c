@@ -733,7 +733,7 @@ setTargetTable(ParseState *pstate, RangeVar *relation,
 					 errmsg("External tables are read only. Operation not permitted.")));
 	
 	/* Append Only relations are read and insert only */
-	if (pstate->p_target_relation->rd_rel->relkind == RELKIND_APPEND_ONLY &&
+	if (pstate->p_target_relation->rd_rel->relstorage == RELSTORAGE_AO &&
 		requiredPerms != ACL_SELECT && requiredPerms != ACL_INSERT)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),

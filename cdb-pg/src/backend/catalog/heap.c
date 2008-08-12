@@ -74,6 +74,7 @@ static void AddNewRelationTuple(Relation pg_class_desc,
 					Oid new_rel_oid, Oid new_type_oid,
 					Oid relowner,
 					char relkind,
+					char relstorage,
 					Datum reloptions);
 static Oid AddNewRelationType(const char *typeName,
 				   Oid typeNamespace,
@@ -661,6 +662,7 @@ InsertPgClassTuple(Relation pg_class_desc,
 	values[Anum_pg_class_relhasindex - 1] = BoolGetDatum(rd_rel->relhasindex);
 	values[Anum_pg_class_relisshared - 1] = BoolGetDatum(rd_rel->relisshared);
 	values[Anum_pg_class_relkind - 1] = CharGetDatum(rd_rel->relkind);
+	values[Anum_pg_class_relstorage - 1] = CharGetDatum(rd_rel->relstorage);	
 	values[Anum_pg_class_relnatts - 1] = Int16GetDatum(rd_rel->relnatts);
 	values[Anum_pg_class_relchecks - 1] = Int16GetDatum(rd_rel->relchecks);
 	values[Anum_pg_class_reltriggers - 1] = Int16GetDatum(rd_rel->reltriggers);
@@ -709,6 +711,7 @@ AddNewRelationTuple(Relation pg_class_desc,
 					Oid new_type_oid,
 					Oid relowner,
 					char relkind,
+					char relstorage,
 					Datum reloptions)
 {
 	Form_pg_class new_rel_reltup;
@@ -722,7 +725,6 @@ AddNewRelationTuple(Relation pg_class_desc,
 	switch (relkind)
 	{
 		case RELKIND_RELATION:
-		case RELKIND_APPEND_ONLY:
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
@@ -750,7 +752,6 @@ AddNewRelationTuple(Relation pg_class_desc,
 
 	/* Initialize relfrozenxid */
 	if (relkind == RELKIND_RELATION ||
-		relkind == RELKIND_APPEND_ONLY ||
 		relkind == RELKIND_TOASTVALUE ||
 		relkind == RELKIND_AOSEGMENTS)
 	{
@@ -778,7 +779,8 @@ AddNewRelationTuple(Relation pg_class_desc,
 	new_rel_reltup->relowner = relowner;
 	new_rel_reltup->reltype = new_type_oid;
 	new_rel_reltup->relkind = relkind;
-
+	new_rel_reltup->relstorage = relstorage;
+	
 	new_rel_desc->rd_att->tdtypeid = new_type_oid;
 
 	/* Now build and insert the tuple */
@@ -852,7 +854,8 @@ heap_create_with_catalog(const char *relname,
 	bool		appendOnlyRel;
 	StdRdOptions *stdRdOptions;
 	int			safefswritesize = gp_safefswritesize;
-
+	char		relstorage;
+	
 	pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 
 	/*
@@ -861,8 +864,32 @@ heap_create_with_catalog(const char *relname,
 	Assert(IsNormalProcessingMode() || IsBootstrapProcessingMode());
 
 	/*
-	 * Was "appendonly" specified in the relopts? If yes, fix our relkind.
-	 * Also, check for override GUCs.
+	 * set the relation storage kind
+	 */
+	switch(relkind)
+	{
+		case RELKIND_INDEX:
+		case RELKIND_RELATION:
+		case RELKIND_SEQUENCE:
+		case RELKIND_UNCATALOGED:
+		case RELKIND_TOASTVALUE:
+		case RELKIND_AOSEGMENTS:
+			relstorage = RELSTORAGE_HEAP;
+			break;
+		case RELKIND_EXTERNAL:
+		case RELKIND_VIEW:
+		case RELKIND_COMPOSITE_TYPE:
+			relstorage = RELSTORAGE_VIRTUAL;
+			break;
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_GP_INTERNAL_ERROR),
+					 errmsg("unknown relkind \"%c\"", relkind)));
+	}
+	
+	/*
+	 * Was "appendonly" specified in the relopts? If yes, fix our relstorage.
+	 * Also, check for override (debug) GUCs.
 	 */	
 	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
 	heap_test_override_reloptions(relkind, stdRdOptions, &safefswritesize);
@@ -874,7 +901,7 @@ heap_create_with_catalog(const char *relname,
 								 stdRdOptions->checksum,
 								 relkind);
 	if(appendOnlyRel)
-		relkind = RELKIND_APPEND_ONLY;
+		relstorage = RELSTORAGE_AO;
 	
 	CheckAttributeNamesTypes(tupdesc, relkind);
 
@@ -971,6 +998,7 @@ heap_create_with_catalog(const char *relname,
 						new_type_oid,
 						ownerid,
 						relkind,
+						relstorage,
 						reloptions);
 	
 	/*
@@ -1044,7 +1072,7 @@ heap_create_with_catalog(const char *relname,
     if (policy &&
         Gp_role == GP_ROLE_DISPATCH)
     {
-        Assert(relkind == RELKIND_RELATION || relkind == RELKIND_EXTERNAL || relkind == RELKIND_APPEND_ONLY);
+        Assert(relkind == RELKIND_RELATION || relkind == RELKIND_EXTERNAL);
         new_rel_desc->rd_cdbpolicy = GpPolicyCopy(GetMemoryChunkContext(new_rel_desc), policy);
         GpPolicyStore(relid, policy);
     }
@@ -1460,7 +1488,7 @@ heap_drop_with_catalog(Oid relid)
 	 */
 	rel = relation_open(relid, AccessExclusiveLock);
 
-	is_appendonly_table = rel->rd_rel->relkind == RELKIND_APPEND_ONLY;
+	is_appendonly_table = rel->rd_rel->relstorage == RELSTORAGE_AO;
 	is_ext_table = rel->rd_rel->relkind == RELKIND_EXTERNAL;
 	
 	/*
@@ -1471,8 +1499,7 @@ heap_drop_with_catalog(Oid relid)
 		policy->ptype == POLICYTYPE_PARTITIONED &&
 		Gp_role == GP_ROLE_DISPATCH &&
 		(rel->rd_rel->relkind == RELKIND_RELATION || 
-		 rel->rd_rel->relkind == RELKIND_EXTERNAL ||
-		 rel->rd_rel->relkind == RELKIND_APPEND_ONLY))
+		 rel->rd_rel->relkind == RELKIND_EXTERNAL))
 		removePolicy = true;
 
 	/*

@@ -51,6 +51,7 @@ CATALOG(pg_class,1259) BKI_BOOTSTRAP
 	bool		relhasindex;	/* T if has (or has had) any indexes */
 	bool		relisshared;	/* T if shared across databases */
 	char		relkind;		/* see RELKIND_xxx constants below */
+	char		relstorage;		/* see RELSTORAGE_xxx constants below */
 	int2		relnatts;		/* number of user attributes */
 
 	/*
@@ -95,7 +96,7 @@ typedef FormData_pg_class *Form_pg_class;
  * ----------------
  */
 
-#define Natts_pg_class					29
+#define Natts_pg_class					30
 #define Anum_pg_class_relname			1
 #define Anum_pg_class_relnamespace		2
 #define Anum_pg_class_reltype			3
@@ -112,19 +113,20 @@ typedef FormData_pg_class *Form_pg_class;
 #define Anum_pg_class_relhasindex		14
 #define Anum_pg_class_relisshared		15
 #define Anum_pg_class_relkind			16
-#define Anum_pg_class_relnatts			17
-#define Anum_pg_class_relchecks			18
-#define Anum_pg_class_reltriggers		19
-#define Anum_pg_class_relukeys			20
-#define Anum_pg_class_relfkeys			21
-#define Anum_pg_class_relrefs			22
-#define Anum_pg_class_relhasoids		23
-#define Anum_pg_class_relhaspkey		24
-#define Anum_pg_class_relhasrules		25
-#define Anum_pg_class_relhassubclass	26
-#define Anum_pg_class_relfrozenxid		27
-#define Anum_pg_class_relacl			28
-#define Anum_pg_class_reloptions		29
+#define Anum_pg_class_relstorage		17
+#define Anum_pg_class_relnatts			18
+#define Anum_pg_class_relchecks			19
+#define Anum_pg_class_reltriggers		20
+#define Anum_pg_class_relukeys			21
+#define Anum_pg_class_relfkeys			22
+#define Anum_pg_class_relrefs			23
+#define Anum_pg_class_relhasoids		24
+#define Anum_pg_class_relhaspkey		25
+#define Anum_pg_class_relhasrules		26
+#define Anum_pg_class_relhassubclass	27
+#define Anum_pg_class_relfrozenxid		28
+#define Anum_pg_class_relacl			29
+#define Anum_pg_class_reloptions		30
 
 
 /* ----------------
@@ -137,13 +139,13 @@ typedef FormData_pg_class *Form_pg_class;
  */
 
 /* Note: "3" in the relfrozenxid column stands for FirstNormalTransactionId */
-DATA(insert OID = 1247 (  pg_type		PGNSP 71 PGUID 0 1247 0 0 0 0 0 0 0 f f r 23 0 0 0 0 0 t f f f 3 _null_ _null_ ));
+DATA(insert OID = 1247 (  pg_type		PGNSP 71 PGUID 0 1247 0 0 0 0 0 0 0 f f r h 23 0 0 0 0 0 t f f f 3 _null_ _null_ ));
 DESCR("");
-DATA(insert OID = 1249 (  pg_attribute	PGNSP 75 PGUID 0 1249 0 0 0 0 0 0 0 f f r 17 0 0 0 0 0 f f f f 3 _null_ _null_ ));
+DATA(insert OID = 1249 (  pg_attribute	PGNSP 75 PGUID 0 1249 0 0 0 0 0 0 0 f f r h 17 0 0 0 0 0 f f f f 3 _null_ _null_ ));
 DESCR("");
-DATA(insert OID = 1255 (  pg_proc		PGNSP 81 PGUID 0 1255 0 0 0 0 0 0 0 f f r 19 0 0 0 0 0 t f f f 3 _null_ _null_ ));
+DATA(insert OID = 1255 (  pg_proc		PGNSP 81 PGUID 0 1255 0 0 0 0 0 0 0 f f r h 19 0 0 0 0 0 t f f f 3 _null_ _null_ ));
 DESCR("");
-DATA(insert OID = 1259 (  pg_class		PGNSP 83 PGUID 0 1259 0 0 0 0 0 0 0 f f r 29 0 0 0 0 0 t f f f 3 _null_ _null_ ));
+DATA(insert OID = 1259 (  pg_class		PGNSP 83 PGUID 0 1259 0 0 0 0 0 0 0 f f r h 30 0 0 0 0 0 t f f f 3 _null_ _null_ ));
 DESCR("");
 
 #define		  RELKIND_INDEX			  'i'		/* secondary index */
@@ -155,6 +157,19 @@ DESCR("");
 #define		  RELKIND_VIEW			  'v'		/* view */
 #define		  RELKIND_COMPOSITE_TYPE  'c'		/* composite type */
 #define		  RELKIND_EXTERNAL		  'x'		/* external relation */
-#define		  RELKIND_APPEND_ONLY	  'a'		/* append-only relation */
+
+/*
+ * relstorage describes how a relkind is physically stored in the database.
+ *
+ * RELSTORAGE_HEAP    - stored on disk using heap storage.
+ * RELSTORAGE_AO      - stored on disk using append only storage.
+ * RELSTORAGE_VIRTUAL - has virtual storage, meaning, relation has no
+ *						data directly stored forit or data is external (right
+ *						now this relates to views, external tables, and comp
+ *						types).
+ */
+#define		  RELSTORAGE_HEAP		  'h'
+#define		  RELSTORAGE_AO			  'a'
+#define		  RELSTORAGE_VIRTUAL	  'v'
 
 #endif   /* PG_CLASS_H */

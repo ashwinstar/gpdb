@@ -353,7 +353,6 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 	switch (relation->rd_rel->relkind)
 	{
 		case RELKIND_RELATION:
-		case RELKIND_APPEND_ONLY:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
 		case RELKIND_UNCATALOGED:
@@ -379,7 +378,6 @@ RelationParseRelOptions(Relation relation, HeapTuple tuple)
 	switch (relation->rd_rel->relkind)
 	{
 		case RELKIND_RELATION:
-		case RELKIND_APPEND_ONLY:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
 		case RELKIND_UNCATALOGED:
@@ -903,8 +901,7 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
      * initialize Greenplum Database partitioning info
      */
     if ((relation->rd_rel->relkind == RELKIND_RELATION ||
-		 relation->rd_rel->relkind == RELKIND_EXTERNAL ||
-		 relation->rd_rel->relkind == RELKIND_APPEND_ONLY) &&
+		 relation->rd_rel->relkind == RELKIND_EXTERNAL) &&
         !IsSystemRelation(relation))
         relation->rd_cdbpolicy = GpPolicyFetch(CacheMemoryContext, targetRelId);
 
@@ -1356,6 +1353,7 @@ formrdesc(const char *relationName, Oid relationReltype,
 	relation->rd_rel->relpages = 1;
 	relation->rd_rel->reltuples = 1;
 	relation->rd_rel->relkind = RELKIND_RELATION;
+	relation->rd_rel->relstorage = RELSTORAGE_HEAP;
 	relation->rd_rel->relhasoids = hasoids;
 	relation->rd_rel->relnatts = (int16) natts;
 
@@ -2270,6 +2268,7 @@ RelationBuildLocalRelation(const char *relname,
 	rel->rd_rel->relnamespace = relnamespace;
 
 	rel->rd_rel->relkind = RELKIND_UNCATALOGED;
+	rel->rd_rel->relstorage = RELSTORAGE_HEAP;
 	rel->rd_rel->relhasoids = rel->rd_att->tdhasoid;
 	rel->rd_rel->relnatts = natts;
 	rel->rd_rel->reltype = InvalidOid;

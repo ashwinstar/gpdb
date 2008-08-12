@@ -491,7 +491,7 @@ index_reloptions(RegProcedure amoptions, Datum reloptions, bool validate)
  */
 void validateAppendOnlyRelOptions(bool ao, int blocksize, int safewrite, int complevel, bool checksum, char relkind)
 {
-	if(relkind != RELKIND_APPEND_ONLY && relkind != RELKIND_RELATION)
+	if(relkind != RELKIND_RELATION)
 	{
 		if(ao)
 			ereport(ERROR,

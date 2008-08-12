@@ -855,9 +855,9 @@ expand_table_name_patterns(SimpleStringList *patterns, SimpleOidList *oids)
 						  "SELECT c.oid"
 						  "\nFROM pg_catalog.pg_class c"
 						  "\n     LEFT JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
-						  "\nWHERE c.relkind in ('%c', '%c', '%c', '%c', '%c')\n",
+						  "\nWHERE c.relkind in ('%c', '%c', '%c', '%c')\n",
 						  RELKIND_RELATION, RELKIND_SEQUENCE, RELKIND_VIEW,
-						  RELKIND_EXTERNAL, RELKIND_APPEND_ONLY);
+						  RELKIND_EXTERNAL);
 		processSQLNamePattern(g_conn, query, cell->val, true, false,
 							  "n.nspname", "c.relname", NULL,
 							  "pg_catalog.pg_table_is_visible(c.oid)");
@@ -2473,13 +2473,13 @@ getTables(int *numTables)
 					  "d.classid = c.tableoid and d.objid = c.oid and "
 					  "d.objsubid = 0 and "
 					  "d.refclassid = c.tableoid and d.deptype = 'a') "
-					  "where relkind in ('%c', '%c', '%c', '%c', '%c', '%c') "
+					  "where relkind in ('%c', '%c', '%c', '%c', '%c') "
 					  "order by c.oid",
 					  username_subquery,
 					  RELKIND_SEQUENCE,
 					  RELKIND_RELATION, RELKIND_SEQUENCE,
 					  RELKIND_VIEW, RELKIND_COMPOSITE_TYPE,
-					  RELKIND_EXTERNAL, RELKIND_APPEND_ONLY); /* MPP ADDITION */
+					  RELKIND_EXTERNAL); /* MPP ADDITION */
 
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
@@ -2568,8 +2568,7 @@ getTables(int *numTables)
 		 * NOTE: it'd be kinda nice to lock views and sequences too, not only
 		 * plain tables, but the backend doesn't presently allow that.
 		 */
-		if (tblinfo[i].dobj.dump && (tblinfo[i].relkind == RELKIND_RELATION || 
-									 tblinfo[i].relkind == RELKIND_APPEND_ONLY))
+		if (tblinfo[i].dobj.dump && tblinfo[i].relkind == RELKIND_RELATION)
 		{
 			resetPQExpBuffer(lockquery);
 			appendPQExpBuffer(lockquery,

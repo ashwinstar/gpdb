@@ -72,7 +72,10 @@ SetRelationRuleStatus(Oid relationId, bool relHasRules,
 		/* Do the update */
 		classForm->relhasrules = relHasRules;
 		if (relIsBecomingView)
+		{
 			classForm->relkind = RELKIND_VIEW;
+			classForm->relstorage = RELSTORAGE_VIRTUAL;
+		}
 
 		simple_heap_update(relationRelation, &tuple->t_self, tuple);
 

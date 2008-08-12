@@ -686,26 +686,7 @@ get_rel_oids(List *relids, const RangeVar *vacrel, const char *stmttype)
 		}
 
 		heap_endscan(scan);
-		
-		/* Now rescan pgclass for appendonly relations and add to rel list */
-		ScanKeyInit(&key,
-					Anum_pg_class_relkind,
-					BTEqualStrategyNumber, F_CHAREQ,
-					CharGetDatum(RELKIND_APPEND_ONLY));
-				
-		scan = heap_beginscan(pgclass, SnapshotNow, 1, &key);
-		
-		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-		{
-			/* Make a relation list entry for this guy */
-			oldcontext = MemoryContextSwitchTo(vac_context);
-			oid_list = lappend_oid(oid_list, HeapTupleGetOid(tuple));
-			MemoryContextSwitchTo(oldcontext);
-		}
-		
-		heap_endscan(scan);
 		heap_close(pgclass, AccessShareLock);
-		
 	}
 
 	return oid_list;
@@ -1218,18 +1199,14 @@ vacuum_rel(Oid relid, VacuumStmt *vacstmt, char expected_relkind)
 	 */
 	if (onerel->rd_rel->relkind != expected_relkind)
 	{
-		/* ugly hack, allow append only tables in */
-		if(!(expected_relkind == RELKIND_RELATION && onerel->rd_rel->relkind == RELKIND_APPEND_ONLY))
-		{	
-			ereport(WARNING,
-					(errmsg("skipping \"%s\" --- cannot vacuum indexes, views, external tables or special system tables",
-							RelationGetRelationName(onerel))));
-			relation_close(onerel, lmode);
-			CommitTransactionCommand();
-			return;
-		}
+		ereport(WARNING,
+				(errmsg("skipping \"%s\" --- cannot vacuum indexes, views, or special system tables",
+						RelationGetRelationName(onerel))));
+		relation_close(onerel, lmode);
+		CommitTransactionCommand();
+		return;
 	}
-
+	
 	/*
 	 * Silently ignore tables that are temp tables of other backends ---
 	 * trying to vacuum these will lead to great unhappiness, since their
@@ -1354,7 +1331,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	int			nindexes,
 				i;
 	VRelStats  *vacrelstats;
-	char		relkind = onerel->rd_rel->relkind;
+	char		relstorage = onerel->rd_rel->relstorage;
 
 	vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
 						  &OldestXmin, &FreezeLimit);
@@ -1367,7 +1344,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	vacrelstats->rel_tuples = 0;
 	vacrelstats->hasindex = false;
 
-	if(relkind != RELKIND_APPEND_ONLY)
+	if(relstorage != RELSTORAGE_AO)
 	{
 
 		/* scan the heap */

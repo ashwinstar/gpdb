@@ -1436,8 +1436,7 @@ static void
 truncate_check_rel(Relation rel)
 {
 	/* Only allow truncate on regular or append-only tables */
-	if (rel->rd_rel->relkind != RELKIND_RELATION && 
-		rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
+	if (rel->rd_rel->relkind != RELKIND_RELATION)
 	{
 		if (rel->rd_rel->relkind == RELKIND_EXTERNAL)
 			ereport(ERROR,
@@ -2886,7 +2885,7 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	ListCell	*ltab;
 	int			ocount = 0;
 	TableOidInfo * oids = NULL;
-	
+
 	cdb_sync_oid_to_segments();
 
 	/* Phase 1: preliminary examination of commands, create work queue */
@@ -2923,6 +2922,7 @@ ATController(Relation rel, List *cmds, bool recurse, int * oidInfoCount, TableOi
 	ATRewriteTables(&wqueue, ocount, oids);
 	
 	ATAddToastIfNeeded(&wqueue, ocount, oids);
+
 }
 
 static bool
@@ -3187,10 +3187,8 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 				}
 			}
 
-			if (!((oldrel->rd_rel->relkind == RELKIND_APPEND_ONLY ||
-				   oldrel->rd_rel->relkind == RELKIND_RELATION) ||
-				  (newrel->rd_rel->relkind == RELKIND_APPEND_ONLY ||
-				   newrel->rd_rel->relkind == RELKIND_RELATION)))
+			if (!(oldrel->rd_rel->relkind == RELKIND_RELATION ||
+				  newrel->rd_rel->relkind == RELKIND_RELATION))
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
@@ -3364,15 +3362,12 @@ ATRewriteCatalogs(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 
 }
 
-
 static void
 ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 {
 
 	ListCell   *ltab;
 	int			m = 0;
-
-	
 
 	/*
 	 * Check to see if a toast table must be added, if we executed any
@@ -3419,12 +3414,7 @@ ATAddToastIfNeeded(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 					tiOid = oidInfo[m].toastIndexOid;
 					toastComptypeOid = &oidInfo[m].toastComptypeOid;
 					*toastComptypeOid = InvalidOid;
-					elog(DEBUG2,"Pre-allocating toast Oid %ud, %ud",tOid,tiOid);
-					
-					/* we shouldn't worry about aoseg table right now (?) */
-					oidInfo[m].aosegOid = InvalidOid;
-					oidInfo[m].aosegIndexOid = InvalidOid;
-					oidInfo[m].aosegComptypeOid = InvalidOid;
+					elog(DEBUG2,"Pre-allocating toast Oid %ud, %ud",tOid,tiOid);					
 				}
 				
 											
@@ -3678,10 +3668,11 @@ ATRewriteTables(List **wqueue, int oidInfoCount, TableOidInfo * oidInfo)
 			{
 				Assert(m<oidInfoCount);
 				OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace,&oidInfo[m]);
-							 
 			}
 			else
+			{
 				OIDNewHeap = make_new_heap(tab->relid, NewHeapName, NewTableSpace, NULL);
+			}
 
 			/*
 			 * Copy the heap data into the new table with the desired
@@ -3888,7 +3879,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		MemoryContext oldCxt;
 		List	   *dropped_attrs = NIL;
 		ListCell   *lc;
-		char		relkind = oldrel->rd_rel->relkind;
+		char		relstorage = oldrel->rd_rel->relstorage;
 			
 		econtext = GetPerTupleExprContext(estate);
 
@@ -3923,7 +3914,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		 * Scan through the rows, generating a new row if needed and then
 		 * checking all the constraints.
 		 */
-		if(relkind != RELKIND_APPEND_ONLY)
+		if(relstorage == RELSTORAGE_HEAP)
 		{
 			heapscan = heap_beginscan(oldrel, SnapshotNow, 0, NULL);
 			
@@ -4026,10 +4017,10 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			heap_endscan(heapscan);
 			
 		}
-		else
+		else if(relstorage == RELSTORAGE_AO && Gp_role != GP_ROLE_DISPATCH)
 		{
 			AppendOnlyInsertDesc aoInsertDesc = NULL;
-			
+
 			if(newrel)
 				aoInsertDesc = appendonly_insert_init(newrel, 0 /* TODO: writing into segno 0 only may be a problem */);
 			
@@ -4195,8 +4186,7 @@ ATGetQueueEntry(List **wqueue, Relation rel)
 static void
 ATSimplePermissions(Relation rel, bool allowView)
 {
-	if (rel->rd_rel->relkind != RELKIND_RELATION && 
-		rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
+	if (rel->rd_rel->relkind != RELKIND_RELATION)
 	{
 		if (rel->rd_rel->relkind == RELKIND_EXTERNAL)
 		{
@@ -4501,7 +4491,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	 * it ok because the whole table will get re-written in phase 3. Let's
 	 * catch this now before doing any real work.
 	 */
-	if (rel->rd_rel->relkind == RELKIND_APPEND_ONLY && !colDef->raw_default)
+	if (rel->rd_rel->relstorage == RELSTORAGE_AO && !colDef->raw_default)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_GP_FEATURE_NOT_YET),
@@ -7096,7 +7086,6 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 		case RELKIND_RELATION:
 		case RELKIND_VIEW:
 		case RELKIND_EXTERNAL:
-		case RELKIND_APPEND_ONLY:
 			/* ok to change owner */
 			break;
 		case RELKIND_INDEX:
@@ -7232,7 +7221,6 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 		 * table's toast table (if it has one)
 		 */
 		if (tuple_class->relkind == RELKIND_RELATION ||
-			tuple_class->relkind == RELKIND_APPEND_ONLY ||
 			tuple_class->relkind == RELKIND_TOASTVALUE ||
 			tuple_class->relkind == RELKIND_AOSEGMENTS)
 		{
@@ -7249,8 +7237,7 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing)
 			list_free(index_oid_list);
 		}
 
-		if (tuple_class->relkind == RELKIND_RELATION ||
-			tuple_class->relkind == RELKIND_APPEND_ONLY)
+		if (tuple_class->relkind == RELKIND_RELATION)
 		{
 			/* If it has a toast table, recurse to change its ownership */
 			if (tuple_class->reltoastrelid != InvalidOid)
@@ -7449,16 +7436,16 @@ ATExecSetRelOptions(Relation rel, List *defList, bool isReset)
 		case RELKIND_RELATION:
 		case RELKIND_TOASTVALUE:
 		case RELKIND_AOSEGMENTS:
+			if(rel->rd_rel->relstorage == RELSTORAGE_AO)
+				ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("altering reloptions for append only tables is not "
+								"permitted")));			
+			
 			(void) heap_reloptions(rel->rd_rel->relkind, newOptions, true);
 			break;
 		case RELKIND_INDEX:
 			(void) index_reloptions(rel->rd_am->amoptions, newOptions, true);
-			break;
-		case RELKIND_APPEND_ONLY:
-			ereport(ERROR,
-					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("altering reloptions for append only tables is not "
-							"permitted")));			
 			break;
 		default:
 			ereport(ERROR,

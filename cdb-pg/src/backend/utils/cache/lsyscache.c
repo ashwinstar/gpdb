@@ -1223,6 +1223,32 @@ get_rel_relkind(Oid relid)
 }
 
 /*
+ * get_rel_relstorage
+ *
+ *		Returns the relstorage associated with a given relation.
+ */
+char
+get_rel_relstorage(Oid relid)
+{
+	HeapTuple	tp;
+	
+	tp = SearchSysCache(RELOID,
+						ObjectIdGetDatum(relid),
+						0, 0, 0);
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_class reltup = (Form_pg_class) GETSTRUCT(tp);
+		char		result;
+		
+		result = reltup->relstorage;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return '\0';
+}
+
+/*
  * get_rel_tablespace
  *
  *		Returns the pg_tablespace OID associated with a given relation.

@@ -159,7 +159,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	Relation   *Irel;
 	int			nindexes;
 	BlockNumber possibly_freeable;
-	char		relkind = onerel->rd_rel->relkind;
+	char		relstorage = onerel->rd_rel->relstorage;
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -175,7 +175,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	 * Execute the various vaccum operations. Appendonly tables are treated
 	 * differently as they are not heap based and have no indexes.
 	 */
-	if(relkind != RELKIND_APPEND_ONLY)
+	if(relstorage != RELSTORAGE_AO)
 	{
 		vacuum_set_xid_limits(vacstmt, onerel->rd_rel->relisshared,
 							  &OldestXmin, &FreezeLimit);

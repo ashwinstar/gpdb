@@ -163,7 +163,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	if (!onerel)
 		return;
 
-	is_appendonly = (onerel->rd_rel->relkind == RELKIND_APPEND_ONLY ? true : false);
+	is_appendonly = (onerel->rd_rel->relstorage == RELSTORAGE_AO ? true : false);
 
 	/*
 	 * Check permissions --- this should match vacuum's check!

@@ -1685,7 +1685,6 @@ _readCreateStmt(const char ** str)
 			local_node->relKind == RELKIND_TOASTVALUE || 
 			local_node->relKind == RELKIND_VIEW ||
 			local_node->relKind == RELKIND_EXTERNAL || 
-			local_node->relKind == RELKIND_APPEND_ONLY ||
 			local_node->relKind == RELKIND_COMPOSITE_TYPE ||
 		    local_node->relKind == RELKIND_AOSEGMENTS); 
 	Assert(local_node->oncommit <= ONCOMMIT_DROP);

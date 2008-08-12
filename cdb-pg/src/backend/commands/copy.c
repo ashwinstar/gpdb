@@ -845,7 +845,7 @@ DoCopy(const CopyStmt *stmt)
 		/* Open and lock the relation, using the appropriate lock type. */
 		/* XXX for now use exclusive lock for inserts on appendonly tables */
 		cstate->rel = heap_openrv(stmt->relation, NoLock);
-		if(cstate->rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
+		if(cstate->rel->rd_rel->relstorage != RELSTORAGE_AO)
 			LockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock));
 		else
 			CdbLockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock), false);
@@ -1047,12 +1047,15 @@ DoCopy(const CopyStmt *stmt)
 	if (is_from)				/* copy from file to database */
 	{			
 		bool		pipe = (cstate->filename == NULL);
-		char		relkind;
+		char		relkind,
+					relstorage;
+		
 		Assert(cstate->rel);
 		
 		relkind = cstate->rel->rd_rel->relkind;
+		relstorage = cstate->rel->rd_rel->relstorage;
 		
-		if (relkind != RELKIND_RELATION && relkind != RELKIND_APPEND_ONLY)
+		if (relkind != RELKIND_RELATION)
 		{
 			if (relkind == RELKIND_VIEW)
 				ereport(ERROR,
@@ -1077,7 +1080,7 @@ DoCopy(const CopyStmt *stmt)
 					 errmsg("COPY single row error handling only available for distributed user tables")));		
 		
 		/* set the AO segno to write into */
-		if (relkind == RELKIND_APPEND_ONLY)
+		if (relstorage == RELSTORAGE_AO)
 			cstate->aousesegno = SetSegnoForWrite(stmt->aousesegno);
 		
 		if (pipe)
@@ -1173,7 +1176,7 @@ DoCopyTo(CopyState cstate)
 	{
 		char		relkind = cstate->rel->rd_rel->relkind;
 		
-		if (relkind != RELKIND_RELATION && relkind != RELKIND_APPEND_ONLY)
+		if (relkind != RELKIND_RELATION)
 		{
 			if (relkind == RELKIND_VIEW)
 				ereport(ERROR,
@@ -1332,7 +1335,7 @@ CopyTo(CopyState cstate)
 	{
 		Datum	   *values;
 		bool	   *nulls;
-		char		relkind = cstate->rel->rd_rel->relkind;
+		char		relstorage = cstate->rel->rd_rel->relstorage;
 		HeapScanDesc scandesc = NULL;			/* used if heap table */
 		AppendOnlyScanDesc aoscandesc = NULL;	/* used if append only table */
 		
@@ -1340,7 +1343,7 @@ CopyTo(CopyState cstate)
 		nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
 		
 		
-		if(relkind == RELKIND_RELATION)
+		if(relstorage == RELSTORAGE_HEAP)
 		{
 			HeapTuple	tuple;
 			
@@ -1359,7 +1362,7 @@ CopyTo(CopyState cstate)
 			
 			heap_endscan(scandesc);			
 		}
-		else if(relkind == RELKIND_APPEND_ONLY)
+		else if(relstorage == RELSTORAGE_AO)
 		{
 			MemTuple		tuple;
 			TupleTableSlot	*slot = MakeSingleTupleTableSlot(tupDesc);
@@ -2147,7 +2150,7 @@ CopyFromDispatch(CopyState cstate)
 	bool		is_first_col;
 	ListCell   *cur;
 	bool		cur_row_rejected = false;
-	char		relkind = cstate->rel->rd_rel->relkind;
+	char		relstorage = cstate->rel->rd_rel->relstorage;
 	
 	CdbCopy    *cdbCopy;
 
@@ -2318,7 +2321,7 @@ CopyFromDispatch(CopyState cstate)
 	}
 
 	
-	if(relkind == RELKIND_APPEND_ONLY)
+	if(relstorage == RELSTORAGE_AO)
 		cdbCopy->aousesegno = cstate->aousesegno;
 	
 	/* add cdbCopy reference to cdbSreh (if needed) */
@@ -3224,7 +3227,7 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * If AO table, upate total row count on the master for the segfile we used.
 	 */
-	if(relkind == RELKIND_APPEND_ONLY)
+	if(relstorage == RELSTORAGE_AO)
 		UpdateMasterAosegTotals(cstate->rel, cstate->aousesegno, cstate->processed);
 
 	/*
@@ -3296,8 +3299,7 @@ CopyFrom(CopyState cstate)
 	int			original_lineno_for_qe = 0; /* keep compiler happy (var referenced by macro) */
 	CdbCopy    *cdbCopy = NULL; /* never used... for compiling COPY_HANDLE_ERROR */
 	int			target_seg = -1; /* not used in utility mode */
-	char		relkind = cstate->rel->rd_rel->relkind;
-	
+	char		relstorage = cstate->rel->rd_rel->relstorage;
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
@@ -3743,7 +3745,7 @@ CopyFrom(CopyState cstate)
 														 tupDesc, estate);
 					estate->es_result_relation_info = resultRelInfo;
 				}
-				if (relkind == RELKIND_APPEND_ONLY &&
+				if (relstorage == RELSTORAGE_AO &&
 					resultRelInfo->ri_aoInsertDesc == NULL)
 					resultRelInfo->ri_aoInsertDesc = 
 						appendonly_insert_init(resultRelInfo->ri_RelationDesc,
@@ -3754,7 +3756,7 @@ CopyFrom(CopyState cstate)
 				/*
 				 * And now we can form the input tuple.
 				 */
-				if (relkind != RELKIND_APPEND_ONLY)
+				if (relstorage != RELSTORAGE_AO)
 				{
 					/* form a regular heap tuple */
 					tuple = (HeapTuple) heap_form_tuple(tupDesc, values, nulls);	
@@ -3817,7 +3819,7 @@ CopyFrom(CopyState cstate)
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
-					if (relkind != RELKIND_APPEND_ONLY)
+					if (relstorage != RELSTORAGE_AO)
 					{
 						if (heap_enableHeapInsertDesc)
 						{

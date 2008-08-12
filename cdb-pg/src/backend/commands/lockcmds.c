@@ -67,8 +67,7 @@ LockTableCommand(LockStmt *lockstmt)
 			rel = relation_open(reloid, lockstmt->mode);
 
 		/* Currently, we only allow plain tables to be locked */
-		if (rel->rd_rel->relkind != RELKIND_RELATION &&
-			rel->rd_rel->relkind != RELKIND_APPEND_ONLY)
+		if (rel->rd_rel->relkind != RELKIND_RELATION)
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("\"%s\" is not a table",

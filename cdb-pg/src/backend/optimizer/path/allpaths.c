@@ -317,7 +317,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 		set_cheapest(root, rel);
 		return;
 	}
-	else if(get_rel_relkind(rte->relid) == RELKIND_APPEND_ONLY)
+	else if(get_rel_relstorage(rte->relid) == RELSTORAGE_AO)
 	{
 		/*
 		 * If the relation is append-only, create an append-only 

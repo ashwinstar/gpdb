@@ -115,7 +115,7 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 		return false;
 
 	/*
-	 * Check to see whether the table actually needs a TOAST table.
+	 * Check to see whether the table actually needs an aoseg table.
 	 */
 	if (!needs_aoseg_table(rel))
 		return false;
@@ -252,5 +252,5 @@ create_aoseg_table(Relation rel, Oid aosegOid, Oid aosegIndexOid, Oid * comptype
 static bool
 needs_aoseg_table(Relation rel)
 {
-	return (rel->rd_rel->relkind == RELKIND_APPEND_ONLY);
+	return (rel->rd_rel->relstorage == RELSTORAGE_AO);
 }

@@ -1185,7 +1185,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 								  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
 				
 				/* sneak in a check in this loop - do we have any AO result rels? */
-				if(resultRelInfo->ri_RelationDesc->rd_rel->relkind == RELKIND_APPEND_ONLY)
+				if(resultRelInfo->ri_RelationDesc->rd_rel->relstorage == RELSTORAGE_AO)
 					hasaotable = true;
 				
 				resultRelInfo++;
@@ -1207,7 +1207,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 							  estate->es_instrument,
 							  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
 			
-			if(resultRelInfos->ri_RelationDesc->rd_rel->relkind == RELKIND_APPEND_ONLY)
+			if(resultRelInfos->ri_RelationDesc->rd_rel->relstorage == RELSTORAGE_AO)
 				hasaotable = true;			
 		}
 
@@ -1581,7 +1581,7 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
    	{
    		if (operation == CMD_UPDATE || operation == CMD_DELETE ||
 			(operation == CMD_INSERT && 
-			 resultRelationDesc->rd_rel->relkind == RELKIND_APPEND_ONLY))
+			 resultRelationDesc->rd_rel->relstorage == RELSTORAGE_AO))
     		CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
     	else
     		LockRelation(resultRelationDesc, RowExclusiveLock);
@@ -2124,7 +2124,7 @@ ExecInsert(TupleTableSlot *slot,
 	ResultRelInfo *resultRelInfo;
 	Relation	resultRelationDesc;
 	Oid			newId;
-	char		relkind;
+	char		relstorage;
 
 	/*
 	 * get information on the (current) result relation
@@ -2144,13 +2144,13 @@ ExecInsert(TupleTableSlot *slot,
 		resultRelInfo = estate->es_result_relation_info;
 
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
-	relkind = resultRelationDesc->rd_rel->relkind;
+	relstorage = resultRelationDesc->rd_rel->relstorage;
 
 	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a
 	 * writable copy
 	 */
-	if (relkind != RELKIND_APPEND_ONLY)
+	if (relstorage != RELSTORAGE_AO)
 		tuple = (HeapTuple) ExecFetchSlotHeapTuple(slot);
 	else
 		tuple = (MemTuple) ExecFetchSlotMemTuple(slot, false);
@@ -2199,7 +2199,7 @@ ExecInsert(TupleTableSlot *slot,
 	 *
 	 * NOTE: for append-only relations we use the append-only access methods.
 	 */
-	if (relkind != RELKIND_APPEND_ONLY)
+	if (relstorage != RELSTORAGE_AO)
 	{
 		if (heap_enableHeapInsertDesc)
 		{
@@ -2233,7 +2233,7 @@ ExecInsert(TupleTableSlot *slot,
 	(estate->es_processed)++;
 	estate->es_lastoid = newId;
 	
-	if (relkind != RELKIND_APPEND_ONLY)
+	if (relstorage != RELSTORAGE_AO)
 	{
 		setLastTid(&(((HeapTuple)tuple)->t_self));
 		
@@ -3192,6 +3192,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	Relation	intoRelationDesc;
 	char	   *intoName;
 	char		relkind = RELKIND_RELATION;
+	char		relstorage;
 	Oid			namespaceId;
 	Oid			tablespaceId;
 	Datum		reloptions;
@@ -3311,11 +3312,11 @@ OpenIntoRel(QueryDesc *queryDesc)
 	Assert(intoRelationDesc->rd_targblock == InvalidBlockNumber);
 
 	/* 
-	 * This is a bit hacky. change relkind if needed for WAL skipping below 
+	 * skip WAL if AO storage is used 
 	 */
 	stdRdOptions = (StdRdOptions*) heap_reloptions(relkind, reloptions, true);
 	heap_test_override_reloptions(relkind, stdRdOptions, &safefswritesize);
-	relkind = (stdRdOptions->appendonly ? RELKIND_APPEND_ONLY : relkind);
+	relstorage = (stdRdOptions->appendonly ? RELSTORAGE_AO : RELSTORAGE_HEAP);
 	
 	/*
 	 * We can skip WAL-logging the insertions, unless PITR is in use.
@@ -3326,7 +3327,7 @@ OpenIntoRel(QueryDesc *queryDesc)
 	 * transaction commit.	Else the commit might be lost, even though all the
 	 * data is safely fsync'd ...
 	 */
-	estate->es_into_relation_use_wal = (relkind != RELKIND_APPEND_ONLY ? 
+	estate->es_into_relation_use_wal = (relstorage != RELSTORAGE_AO ? 
 										XLogArchivingActive() : false);
 	estate->es_into_relation_descriptor = intoRelationDesc;
 
@@ -3354,10 +3355,10 @@ CloseIntoRel(QueryDesc *queryDesc)
 	/* OpenIntoRel might never have gotten called */
 	if (rel)
 	{
-		char		relkind = rel->rd_rel->relkind;
+		char		relstorage = rel->rd_rel->relstorage;
 
 		/* APPEND_ONLY is closed in the intorel_shutdown */
-		if (relkind != RELKIND_APPEND_ONLY)
+		if (relstorage != RELSTORAGE_AO)
 		{
 			/*
 			 * If we skipped using WAL, and it's not a temp relation, we must
@@ -3423,11 +3424,11 @@ intorel_receive(TupleTableSlot *slot, DestReceiver *self)
 	DR_intorel *myState = (DR_intorel *) self;
 	EState	   *estate = myState->estate;
 	Relation	into_rel = estate->es_into_relation_descriptor;
-	char		relkind = into_rel->rd_rel->relkind;
+	char		relstorage = into_rel->rd_rel->relstorage;
 		
 	Assert(estate->es_result_partitions == NULL);
 
-	if (relkind != RELKIND_APPEND_ONLY)
+	if (relstorage != RELSTORAGE_AO)
 	{
 		HeapTuple	tuple = ExecCopySlotHeapTuple(slot);
 		
@@ -3466,10 +3467,10 @@ intorel_shutdown(DestReceiver *self)
 	DR_intorel *myState = (DR_intorel *) self;
 	EState	   *estate = myState->estate;
 	Relation	into_rel = estate->es_into_relation_descriptor;
-	char		relkind = into_rel->rd_rel->relkind;
+	char		relstorage = into_rel->rd_rel->relstorage;
 
 
-	if (relkind == RELKIND_APPEND_ONLY && myState->ao_insertDesc)
+	if (relstorage == RELSTORAGE_AO && myState->ao_insertDesc)
 		appendonly_insert_finish(myState->ao_insertDesc);	
 }
 

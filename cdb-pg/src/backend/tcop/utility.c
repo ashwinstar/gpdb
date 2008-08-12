@@ -84,12 +84,6 @@ static const struct msgstrings msgstringarray[] = {
 		gettext_noop("table \"%s\" does not exist, skipping"),
 		gettext_noop("\"%s\" is not a base table"),
 	gettext_noop("Use DROP TABLE to remove a table.")},
-	{RELKIND_APPEND_ONLY,
-		ERRCODE_UNDEFINED_TABLE,
-		gettext_noop("append-only table \"%s\" does not exist"),
-		gettext_noop("append-only table \"%s\" does not exist, skipping"),
-		gettext_noop("\"%s\" is not an append-only table"),
-		gettext_noop("Use DROP TABLE to remove an append-only table.")},		
 	{RELKIND_EXTERNAL,
 		ERRCODE_UNDEFINED_TABLE,
 		gettext_noop("external table \"%s\" does not exist"),
@@ -210,10 +204,6 @@ CheckDropPermissions(RangeVar *rel, char rightkind, bool missing_ok)
 		elog(ERROR, "cache lookup failed for relation %u", relOid);
 
 	classform = (Form_pg_class) GETSTRUCT(tuple);
-
-	/* edge case: RELKIND_RELATION and RELKIND_APPEND_ONLY both use DROP TABLE */
-	if (classform->relkind == 'a' && rightkind == RELKIND_RELATION)
-		rightkind = RELKIND_APPEND_ONLY;
 	
 	if (classform->relkind != rightkind)
 		DropErrorMsgWrongType(rel->relname, classform->relkind,

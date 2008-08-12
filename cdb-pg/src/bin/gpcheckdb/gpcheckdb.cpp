@@ -109,6 +109,7 @@ public:
 	bool relhasindex;
 	bool relisshared;
 	char relkind;
+	char relstorage;
 	short relnatts;
 	short relchecks;
 	short reltriggers;
@@ -681,7 +682,8 @@ void read_catalog_info(vector<gp_config_info> & config, dbresult::size_type segd
 			pgc.relhasindex = rp[14].as_bool();
 			pgc.relisshared = rp[15].as_bool();
 			pgc.relkind = rp[16].c_str()[0];
-			pgc.relnatts = rp[17].as_int();
+			pgc.relstorage = rp[17].c_str()[0];
+			pgc.relnatts = rp[18].as_int();
 			config[seg].pg_class[pgc.oid] = pgc;
 		}
 	}
