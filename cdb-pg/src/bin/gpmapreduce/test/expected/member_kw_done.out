@@ -1,0 +1,8 @@
+ member_id |                           text                            | keyword_id |       keyword        | count 
+-----------+-----------------------------------------------------------+------------+----------------------+-------
+         1 | Interested in software development and software profiling |        101 | software development |     1
+(1 row)
+
+DROP TABLE
+DROP TABLE
+DROP TABLE

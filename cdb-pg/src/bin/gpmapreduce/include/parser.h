@@ -108,6 +108,7 @@ void     parser_set_format(mapred_parser_t *parser, char *value);
 void       parser_set_null(mapred_parser_t *parser, char *value);
 void      parser_set_quote(mapred_parser_t *parser, char *value);
 void  parser_set_delimiter(mapred_parser_t *parser, char *value);
+void     parser_set_escape(mapred_parser_t *parser, char *value);
 void   parser_set_encoding(mapred_parser_t *parser, char *value);
 void parser_set_error_limit(mapred_parser_t *parser, char *value);
 void       parser_set_mode(mapred_parser_t *parser, char *value);

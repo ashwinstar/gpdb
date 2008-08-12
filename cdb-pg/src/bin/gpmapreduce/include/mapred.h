@@ -134,6 +134,7 @@ typedef struct {
 	char                  *encoding;
 	char                  *null;
 	char                  *quote;
+	char                  *escape;
 	int                    error_limit;
 } mapred_input_t;
 

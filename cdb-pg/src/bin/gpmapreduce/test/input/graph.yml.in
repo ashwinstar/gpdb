@@ -68,7 +68,8 @@ DEFINE:
       RETURNS:
         - state integer
       FUNCTION:    return state + 1      
-  - REDUCER:
+
+  - REDUCE:
       NAME:        traverse
       INITIALIZE:  0
       TRANSITION:  pcount
@@ -79,14 +80,14 @@ EXECUTE:
 # This counts the number of links coming FROM a page
   - RUN:
       SOURCE:  network
-      REDUCER: traverse
+      REDUCE:  traverse
       TARGET:  out_1
       
 # This counts the number of links going TO a page.  
   - RUN:
       SOURCE:  network
-      MAPPER:  reverse
-      REDUCER: traverse
+      MAP:     reverse
+      REDUCE:  traverse
       TARGET:  out_2
 
   - RUN:

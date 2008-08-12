@@ -1,9 +1,10 @@
 
 MAPRED    = ../gpmapreduce
+PSQL      = psql
 FIXUP     = bin/fixup.pl
 MRDIFF    = bin/mrdiff.pl
 
-MFLAGS    = --key="clar"
+MFLAGS    = --key="clar" --file 
 
 INDIR     = input
 DATADIR   = data
@@ -11,6 +12,7 @@ MASTERDIR = expected
 
 OUTDIR    = output
 YMLDIR    = yml
+SQLDIR    = sql
 
 YMLIN     = $(shell ls $(INDIR)/*.yml.in)
 YML       = $(notdir $(basename $(YMLIN)))
@@ -50,6 +52,13 @@ $(OUTDIR)/%.suc: $(MAPRED) $(YMLDIR)/%.yml $(MASTERDIR)/%.out $(MASTERDIR)/%.err
 	@touch $(OUTDIR)/$*.out $(OUTDIR)/$*.err
 	@cp -f $(MASTERDIR)/DEFAULT.out $(OUTDIR)/$*.out
 	@cp -f $(MASTERDIR)/DEFAULT.err $(OUTDIR)/$*.err
+	@if [ -e $(SQLDIR)/$*_init.sql ] ; \
+	 then $(PSQL) -f $(SQLDIR)/$*_init.sql > $(OUTDIR)/$*_init.out; \
+     fi
 	@$(MAPRED) $(MFLAGS) $(YMLDIR)/$*.yml >>$(OUTDIR)/$*.out 2>>$(OUTDIR)/$*.err
+	@if [ -e $(SQLDIR)/$*_done.sql ] ; \
+	 then $(PSQL) -f $(SQLDIR)/$*_done.sql > $(OUTDIR)/$*_done.out; \
+     fi
 	@$(MRDIFF) $(OUTDIR) $(MASTERDIR) $* > $(OUTDIR)/$*.suc
 	@cd $(OUTDIR); if [ -s $*.suc ] ; then mv $*.suc $*.fail; echo $*.fail >> FAIL ; fi	
+

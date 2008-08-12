@@ -42,5 +42,5 @@ DEFINE:
 EXECUTE:
   - RUN:
       SOURCE:    xml
-      MAPPER:    xml_extract
+      MAP:       xml_extract
       TARGET:    out_1

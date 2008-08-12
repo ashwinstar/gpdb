@@ -481,6 +481,19 @@ void parser_set_delimiter(mapred_parser_t *parser, char *value)
 	}
 }
 
+void parser_set_escape(mapred_parser_t *parser, char *value)
+{
+	XASSERT(parser->current_doc);
+	XASSERT(parser->current_obj);
+	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
+
+	if (parser->current_obj->u.input.delimiter)
+		XRAISE(MAPRED_PARSE_ERROR, 
+			   "Duplicate ESCAPE for INPUT");
+	parser->current_obj->u.input.escape = copyscalar(value);
+}
+
+
 void parser_set_null(mapred_parser_t *parser, char *value)
 {
 	XASSERT(parser->current_doc);

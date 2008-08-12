@@ -31,20 +31,20 @@
 
 /* Keyword tokens */
 %token <keyword>
-  _COLUMNS_     _COMBINER_
+  _COLUMNS_     _CONSOLIDATE_
   _DATABASE_    _DEFINE_      _DELIMITER_
-  _ENCODING_    _ERROR_LIMIT_ _EXEC_        _EXECUTE_
-  _FILE_        _FINALIZER_   _FORMAT_      _FUNCTION_
+  _ENCODING_    _ERROR_LIMIT_ _ESCAPE_      _EXEC_        _EXECUTE_
+  _FILE_        _FINALIZE_    _FORMAT_      _FUNCTION_
   _GPFDIST_
   _HOST_
   _INITIALIZE_  _INPUT_
   _LANGUAGE_
-  _MAP_         _MAPPER_      _MODE_
+  _MAP_         _MODE_
   _NAME_        _NULL_
   _OPTIMIZE_    _OUTPUT_
   _PARAMETERS_  _PORT_ 
   _QUERY_       _QUOTE_
-  _REDUCER_     _RETURNS_     _RUN_
+  _REDUCE_      _RETURNS_     _RUN_
   _SOURCE_
   _TABLE_       _TARGET_      _TASK_        _TRANSITION_ 
   _USER_
@@ -123,15 +123,15 @@ define_item:
         input_map
       | _OUTPUT_     { parser_add_object(parser, MAPRED_OUTPUT); } 
         output_map
-      | _REDUCER_    { parser_add_object(parser, MAPRED_REDUCER); } 
+      | _REDUCE_     { parser_add_object(parser, MAPRED_REDUCER); } 
         reduce_map 
       | _MAP_        { parser_add_object(parser, MAPRED_MAPPER); } 
         function_map
       | _TRANSITION_ { parser_add_object(parser, MAPRED_TRANSITION); } 
         function_map
-      | _COMBINER_   { parser_add_object(parser, MAPRED_COMBINER); } 
+      | _CONSOLIDATE_ { parser_add_object(parser, MAPRED_COMBINER); } 
         function_map
-      | _FINALIZER_  { parser_add_object(parser, MAPRED_FINALIZER); } 
+      | _FINALIZE_   { parser_add_object(parser, MAPRED_FINALIZER); } 
         function_map
       | _TASK_       { parser_add_object(parser, MAPRED_TASK); } 
         task_map
@@ -172,6 +172,7 @@ input_item:
       | _DELIMITER_ scalar    { parser_set_delimiter(parser, $2); }
       | _NULL_ scalar         { parser_set_null(parser, $2); }
       | _QUOTE_ scalar        { parser_set_quote(parser, $2); }
+      | _ESCAPE_ scalar       { parser_set_escape(parser, $2); }
       | _ENCODING_ scalar     { parser_set_encoding(parser, $2); }
       | _ERROR_LIMIT_ _INTEGER_ { parser_set_error_limit(parser, $2); }
 	  | _STRING_     {
@@ -202,8 +203,8 @@ output_item:
 reduce_item:
         _NAME_       _ID_     { parser_set_name(parser, $2); }
       | _TRANSITION_ _ID_     { parser_set_transition(parser, $2); }
-      | _COMBINER_   _ID_     { parser_set_combiner(parser, $2); }
-      | _FINALIZER_  _ID_     { parser_set_finalizer(parser, $2); }
+      | _CONSOLIDATE_ _ID_     { parser_set_combiner(parser, $2); }
+      | _FINALIZE_   _ID_     { parser_set_finalizer(parser, $2); }
       | _INITIALIZE_ scalar   { parser_set_initialize(parser, $2); }
 	  | _STRING_     {
                          char buffer[128];
@@ -236,8 +237,8 @@ function_item:
 task_item:
       _NAME_      _ID_        { parser_set_name(parser, $2); }
       | _SOURCE_  _ID_        { parser_set_source(parser, $2); }
-      | _MAPPER_  _ID_        { parser_set_mapper(parser, $2); }
-      | _REDUCER_ _ID_        { parser_set_reducer(parser, $2); }
+      | _MAP_     _ID_        { parser_set_mapper(parser, $2); }
+      | _REDUCE_  _ID_        { parser_set_reducer(parser, $2); }
 	  | _STRING_     {
                          char buffer[128];
 			             snprintf(buffer, 128, "%s is not a valid TASK attribute", $1);
@@ -251,8 +252,8 @@ run_item:
       _NAME_      _ID_        { parser_set_name(parser, $2); }
       | _SOURCE_  _ID_        { parser_set_source(parser, $2); }
       | _TARGET_  _ID_        { parser_set_target(parser, $2); }
-      | _MAPPER_  _ID_        { parser_set_mapper(parser, $2); }
-      | _REDUCER_ _ID_        { parser_set_reducer(parser, $2); }
+      | _MAP_     _ID_        { parser_set_mapper(parser, $2); }
+      | _REDUCE_  _ID_        { parser_set_reducer(parser, $2); }
 	  | _STRING_     {
                          char buffer[128];
 			             snprintf(buffer, 128, "%s is not a valid RUN attribute", $1);

@@ -48,15 +48,15 @@ DEFINE:
         - state integer
       FUNCTION:     return $_[0] + $_[1];
 
-  - REDUCER:
-      NAME:       myReduce
-      INITIALIZE: '0'
-      TRANSITION: myTransition
-      COMBINER:   myTransition
+  - REDUCE:
+      NAME:        myReduce
+      INITIALIZE:  '0'
+      TRANSITION:  myTransition
+      CONSOLIDATE: myTransition
 
 EXECUTE:
   - RUN:
      SOURCE:   weblog
-     MAPPER:   myMap
-     REDUCER:  myReduce
+     MAP:      myMap
+     REDUCE:   myReduce
      TARGET:   out_1

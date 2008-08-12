@@ -598,7 +598,7 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					   "\n            ) x(i) \n"
 				       "   WHERE    a.attrelid = c.oid \n"
 				       "     AND    a.attnum > 0 \n"
-				       "     AND    c.relkind in ('t', 'v', 'a') \n"
+				       "     AND    c.relkind in ('r', 'v', 'a') \n"
 				       "     AND    c.relnamespace = n.oid \n"
 				       "     AND    c.relname = '");
 
@@ -649,6 +649,15 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 				}
 				else
 				{
+					if (PQresultStatus(result) == PGRES_TUPLES_OK)
+					{
+						char *name;
+						if (obj->u.input.type == MAPRED_INPUT_TABLE)
+							name = obj->u.input.desc;
+						else
+							name = obj->name;
+						fprintf(stderr, "'%s' not found\n", name);
+					}
 					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
 				}
 			}
@@ -1152,15 +1161,69 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 				 */
 				if (output && output->u.output.type == MAPRED_OUTPUT_TABLE)
 				{
-					bufcat(&buffer, "CREATE TABLE");
-					bufcat(&buffer, output->u.output.desc);
-					bufcat(&buffer, " AS ");
+					switch (output->u.output.mode)
+					{
+						case MAPRED_OUTPUT_REPLACE:
+							bufcat(&buffer, "DROP TABLE IF EXISTS ");
+							bufcat(&buffer, output->u.output.desc);
+							result = PQexec(conn, buffer->buffer);
+
+							bufreset(buffer);
+							bufcat(&buffer, "CREATE TABLE ");
+							bufcat(&buffer, output->u.output.desc);
+							bufcat(&buffer, " AS ");
+							break;
+
+						case MAPRED_OUTPUT_APPEND:
+							bufcat(&buffer, "INSERT INTO ");
+							bufcat(&buffer, output->u.output.desc);
+							bufcat(&buffer, " (");
+							break;
+
+						default:
+							XASSERT(false);
+					}
 				}
 				bufcat(&buffer, "SELECT * FROM ");
 				bufcat(&buffer, olist->object->name);
 
-				/* Add the ORDER BY CLAUSE */
-				if (!output || output->u.output.type != MAPRED_OUTPUT_TABLE)
+				/* 
+				 * add the DISTRIBUTED BY clause for output tables
+				 * OR, the ORDER BY clause for other output formats
+				 */
+				if (output && output->u.output.type == MAPRED_OUTPUT_TABLE)
+				{
+					switch (output->u.output.mode)
+					{
+						case MAPRED_OUTPUT_REPLACE:
+							/* 
+							 * If there are no key columns then leave off the
+							 * distributed by clause and let the server choose.
+							 */
+							if (olist->object->u.task.grouping)
+							{						
+								bufcat(&buffer, " DISTRIBUTED BY (");
+								columns = olist->object->u.task.grouping;
+								while (columns)
+								{
+									bufcat(&buffer, columns->name);
+									if (columns->next || olist->object->u.task.returns)
+										bufcat(&buffer, ", ");
+									columns = columns->next;				   
+								}
+								bufcat(&buffer, ")");
+							}
+							break;
+
+						case MAPRED_OUTPUT_APPEND:
+							bufcat(&buffer, ")");
+							break;
+							
+						default:
+							XASSERT(false);
+					}
+				}
+				else
 				{
 					if (olist->object->u.task.returns ||
 						olist->object->u.task.grouping)
@@ -1260,7 +1323,6 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						/* OUTPUT is a table */
 						case PGRES_COMMAND_OK:
 							fprintf(stderr, "CREATED\n");
-							break;
 
 						/* An error of some kind */
 						default:
@@ -1365,6 +1427,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						else
 							bufcat(&buffer, "  FORMAT 'TEXT'");
 						if (obj->u.input.delimiter || 
+							obj->u.input.escape    || 
 							obj->u.input.quote     || 
 							obj->u.input.null)
 						{
@@ -1373,6 +1436,12 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 							{
 								bufcat(&buffer, "DELIMITER '");
 								bufcat(&buffer, obj->u.input.delimiter);
+								bufcat(&buffer, "' ");
+							}
+							if (obj->u.input.escape)
+							{
+								bufcat(&buffer, "ESCAPE '");
+								bufcat(&buffer, obj->u.input.escape);
 								bufcat(&buffer, "' ");
 							}
 							if (obj->u.input.quote)

@@ -25,8 +25,8 @@ DEFINE:
   - TASK:
       NAME:      grep_task
       SOURCE:    inDirectory
-      MAPPER:    grep_map
-      REDUCER:   IDENTITY
+      MAP:       grep_map
+      REDUCE:    IDENTITY
       
 EXECUTE:
   - RUN:

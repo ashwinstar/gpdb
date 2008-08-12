@@ -5,8 +5,8 @@ VERSION: 1.0.0.1
 EXECUTE:
   - RUN:
       SOURCE:  ProductionJobs
-      MAPPER:  extractFields
-      REDUCER: Uniquify
+      MAP:     extractFields
+      REDUCE:  Uniquify
       TARGET:  out_1
       
 DEFINE:
@@ -15,10 +15,10 @@ DEFINE:
       NAME:    out_1
       FILE:    @abs_srcdir@/output/oreilly.1
   
-  - REDUCER:
+  - REDUCE:
       NAME:         Uniquify
       TRANSITION:   Uniquify_transition
-      FINALIZER:    Uniquify_finalize
+      FINALIZE:     Uniquify_finalize
 
   - TRANSITION:
       NAME:         Uniquify_transition
@@ -51,7 +51,7 @@ DEFINE:
         # repickle and return
         return pickle.dumps(oldlist)
 
-  - FINALIZER:
+  - FINALIZE:
       NAME:         Uniquify_finalize
       RETURNS:
         - id                    integer

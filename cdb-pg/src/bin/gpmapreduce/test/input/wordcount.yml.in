@@ -47,11 +47,11 @@ DEFINE:
   - TASK:
       NAME:      email_histogram
       SOURCE:    email
-      MAPPER:    wordsplit_python
-      REDUCER:   SUM
+      MAP:       wordsplit_python
+      REDUCE:    SUM
         
 EXECUTE:
   - RUN:
       SOURCE:    email_histogram
-      MAPPER:    reverse_python
+      MAP:       reverse_python
       TARGET:    out_1

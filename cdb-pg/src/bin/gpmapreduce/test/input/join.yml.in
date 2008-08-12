@@ -47,17 +47,17 @@ DEFINE:
         - value integer
       FUNCTION:     return $_[0] + $_[1];
 
-  - REDUCER:
-      NAME:       myReduce
-      INITIALIZE: '0'
-      TRANSITION: myTransition
-      COMBINER:   myTransition
+  - REDUCE:
+      NAME:        myReduce
+      INITIALIZE:  '0'
+      TRANSITION:  myTransition
+      CONSOLIDATE: myTransition
 
   - TASK:
       NAME:     access_count
       SOURCE:   weblog
-      MAPPER:   myMap
-      REDUCER:  myReduce
+      MAP:      myMap
+      REDUCE:   myReduce
 
 # 2) Network graph
   - INPUT:
@@ -83,7 +83,7 @@ DEFINE:
   - TASK:
       NAME:     reverse_network
       SOURCE:   network
-      MAPPER:   reverse
+      MAP:      reverse
         
 EXECUTE:
   - RUN:

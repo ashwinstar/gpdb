@@ -7,6 +7,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <getopt.h>
 #include <termios.h>
 
 ALLOW_EXCEPTIONS;
@@ -18,148 +19,205 @@ static char *wordchars =
 	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
 
 int             global_print_flag   = 0;
-int             global_explain_flag = 0;
-int             global_verbose_flag = 0;
 int             global_debug_flag   = 0;
+int             global_verbose_flag = 0;
+
 mapred_plist_t *global_plist        = NULL;
 
-void usage(char *procname);
+void usage(char *procname, boolean full);
+void showVersion(char *procname);
 int  main(int argc, char *argv[]);
 void read_password(char *p, size_t len);
 void check_version(PGconn *conn);
 
-void usage(char *procname)
+
+/* usage() - print usage information */
+void usage(char *procname, boolean full)
 {
-	fprintf(stderr, "Usage: %s [options] file.yml\n", procname);
-	exit(0);
+	if (full)
+	{
+		showVersion(procname);
+		printf("\nUsage:\n  ");
+	}
+
+	printf("%s [options] -f file.yml\n", procname);
+
+	if (full)
+	{
+		printf(
+			"\n"
+			"General options:\n"
+			"  -? | --help                   show this help, then exit\n"
+			"  -V | --version                show version information, then exit\n"
+			"  -v | --verbose                verbose output\n"
+			"  -k | --key <name>=<value>     sets a yaml variable\n"
+			"\n"
+			"Connection options:\n"
+			"  -h | --host <hostname>        database server host or socket directory\n"
+			"  -p | --port <port>            database server port\n"
+			"  -U | --username <username>    database user name\n"
+			"  -W | --password               prompt for password\n"
+			);
+	}
+}
+
+void showVersion(char *procname)
+{
+#ifdef PRERELEASE
+	printf("%s - %s (%s Pre-release)\n", procname, VERSION, PRERELEASE);
+#else
+	printf("%s - %s\n", procname, VERSION);
+#endif
 }
 
 int main (int argc, char *argv[])
 {
-	int                i, j;
+	int                c;
+	char              *procname = argv[0];
+	int                needpass = 0;
+	char              *filename = NULL;
+	char              *username = NULL;
+	char              *host     = NULL;
+	char              *port     = NULL;
 	mapred_olist_t    *documents;
 	mapred_olist_t    *doc_item;
-	char              *filename;
 	FILE              *file;
 
-	/* 
-	 * We accept any "--key=value" input, and there is no way to directly
-	 * tell getopt_long about supporting arbitrary 'options', so unfortunately 
-	 * the option parsing must be handled manually...
-	 */
-	filename = NULL;
-	for (i = 1; i < argc; i++)
-	{
-		if (argv[i][0] != '-')
-		{
-			/* If it doesn't begin with a dash then it should be the filename */
-			if (filename)
-				usage(argv[0]);
-			filename = argv[i];
-		}
-		else if (argv[i][1] == '\0')
-		{
-			/* 
-			 * An empty dash should imply reading the yml from stdin.
-			 * This is not currently supported.
-			 */
-			usage(argv[0]);
-		}
-		else if (argv[i][1] != '-')
-		{
-			/* 
-			 * option is a short option
-			 */
-			for (j = 1; j < strlen(argv[i]); j++)
-			{
-				switch (argv[i][j])
-				{
+	/* The long_options structure */
+	static struct option long_options[] = {
+		{"help",     no_argument,       0, '?'},
+		{"version",  no_argument,       0, 'V'},
+		{"verbose",  no_argument,       0, 'v'},
+		{"password", no_argument,       0, 'W'},
+		{"username", required_argument, 0, 'U'},
+		{"host",     required_argument, 0, 'h'},
+		{"port",     required_argument, 0, 'p'},
+		{"file",     required_argument, 0, 'f'},
+		{"key",      required_argument, 0, 'k'},
 #if INTERNAL_BUILD
-					case 'p':
-						global_print_flag = 1;
-						break;
-					case 'e':
-						global_explain_flag = 1;
-						break;
-					case 'd':
-						global_debug_flag = 1;
-						break;
+		{"print",    no_argument,       0, 'P'},
+		{"debug",    no_argument,       0, 'D'},
 #endif
-					case 'V':  /* Version */
-#ifdef PRERELEASE
-						fprintf(stderr, "%s (%s Pre-release)\n",
-								VERSION, PRERELEASE);
-#else
-						fprintf(stderr, "%s\n",VERSION);
-#endif
-						exit(0);
-					
-					case 'v':  /* verbose */
-						global_verbose_flag = 1;
-						break;
-					default:
-						fprintf(stderr, "bad parameter -%c\n", argv[i][j]);
-						usage(argv[0]);  /* unknown option */
-				}
-			}
-		} 
-		else
+		{0, 0, 0, 0}
+	};
+
+	while (1)
+	{
+		int option_index = 0;
+		c = getopt_long(argc, argv, "VvWU:h:p:f:k:?", 
+						long_options, &option_index);
+		if (c == -1)
+			break; /* done processing options */
+		switch (c)
 		{
-			/* option is a long option */
-			char *name  = argv[i]+2;
-			char *value = NULL;
-			char *eq    = strchr(name, '=');
-
-			if (eq)
-			{
-				eq[0] = '\0';
-				value = eq+1;
-			}
-			else
-			{
-				/* 
-				 * If there isn't an '=' then the NEXT parameter should be the 
-				 * value to use for this parameter
-				 */
-				i++;
-				if (i == argc || argv[i][0] == '-')
+			case '?':  /* --help */
+				
+				/* Actual help option given */
+				if (strcmp(argv[optind - 1], "-?") == 0 || 
+					strcmp(argv[optind - 1], "--help") == 0)
 				{
-					fprintf(stderr, "no value specified for --%s\n", name);
-					usage(argv[0]);
+					usage(procname, true);
+					exit(0);
 				}
-				value = argv[i];
-			}
+				
+				/* unknown option reported by getopt */
+				fprintf(stderr, "Try \"%s --help\" for usage information.\n",
+						procname);
+				exit(1);
+				
+			case 'V':  /* --version */
+				showVersion(procname);
+				exit(0);
 
-			/* 
-			 * value can be any string, and is thus guaranteed valid.
-			 * name can only contain word characters
-			 */
-			if (strspn(name, wordchars) != strlen(name))
+			case 'v':  /* --verbose */
+				global_verbose_flag = true;
+				break;
+
+#if INTERNAL_BUILD
+			case 'P':  /* --print (INTERNAL_BUILD only) */
+				global_print_flag = 1;
+				break;
+
+			case 'D':  /* --debug (INTERNAL_BUILD only) */
+				global_debug_flag = 1;
+				break;
+#endif
+
+			case 'W':  /* --password */
+				needpass = 1;
+				break;
+     
+			case 'U':  /* --username */
+				username = optarg;
+				break;
+     
+			case 'h':  /* --host */
+				host = optarg;
+				break;
+     
+			case 'p':  /* --port */
+				port = optarg;
+				break;
+
+			case 'f':  /* --file */
+				filename = optarg;
+				break;
+     
+			case 'k':  /* --key */
 			{
-				fprintf(stderr, "bad parameter --%s\n", name);
-				usage(argv[0]);
-			}
-			else
-			{
+				mapred_plist_t *newitem;
+				char *name = optarg;
+				char *value = NULL;
+				char *eq = strchr(name, '=');
+
+				/* 
+				 * either --key value      : sets parameter named "key"
+				 * or     --key name=value : sets parameter named "name"
+				 */
+				if (eq)
+				{
+					eq[0] = '\0';
+					value = eq+1;
+					
+					/* make sure parameter is a valid name */
+					if (strspn(name, wordchars) != strlen(name))
+					{
+						fprintf(stderr, "bad parameter --key %s\n", name);
+						exit(1);
+					}
+				}
+				else
+				{
+					value = name;
+					name = "key";
+				}
+
 				/* Add the parameter to the global parameter list */
-				mapred_plist_t *newitem = malloc(sizeof(mapred_plist_t));
+				newitem = malloc(sizeof(mapred_plist_t));
 				newitem->name  = name;
 				newitem->type  = value;
 				newitem->next  = global_plist;
 				global_plist   = newitem;
 			}
+			break;
+
+			default:  /* not feasible */
+				fprintf(stderr, "Error processing options\n");
+				exit(1);
 		}
 	}
 
 #ifdef PRERELEASE
-	/* PRE-RELEASE always prints version */
-	fprintf(stderr, "%s (%s Pre-release)\n", VERSION, PRERELEASE);
+	showVersion(procname)
 #endif
 
 	/* open the file */
 	if (!filename)
-		usage(argv[0]);
-	file     = fopen(filename, "rb");
+	{
+		usage(procname, false);
+		exit(1);
+	}
+	file = fopen(filename, "rb");
 	if (!file) 
 	{
 		fprintf(stderr, "Error: Could not open file '%s'\n", filename);
@@ -167,8 +225,16 @@ int main (int argc, char *argv[])
 	}
 
 	if (global_verbose_flag)
+	{
+		mapred_plist_t *param = global_plist;
+		while (param)
+		{
+			fprintf(stderr, "- Parameter: %s=%s\n", 
+					param->name, param->type);
+			param = param->next;
+		}
 		fprintf(stderr, "- Parsing '%s':\n", filename);
-
+	}
 	documents = NULL;
 	XTRY
 	{
@@ -196,37 +262,43 @@ int main (int argc, char *argv[])
 		PGconn   *conn = NULL;
 		char      pwdbuf[100];
 		char      portbuf[11];  /* max int size should be 10 digits */
-		char     *pwd, *port, *options, *tty;
-		boolean   needpass;
+		char     *pwd, *pqport, *options, *tty;
 
 		XTRY
 		{
 			mapred_document_t *doc = &doc_item->object->u.document;
 
-
-			if (doc->port > 0)
+			if (port)
+			{
+				pqport = port;
+			}
+			else if (doc->port > 0)
 			{
 				snprintf(portbuf, sizeof(portbuf), "%d", doc->port);
-				port = portbuf;
+				pqport = portbuf;
 			}
 			else
-				port = NULL;
+			{
+				pqport = NULL;
+			}
 
 			options = NULL;
 			tty     = NULL;
 			pwd     = NULL;
 
 			do {
-				needpass = false;			
-				conn = PQsetdbLogin(doc->host, port, options,tty, 
+				if (needpass)
+				{
+					read_password(pwdbuf, sizeof(pwdbuf));
+					pwd = pwdbuf;
+				}
+				conn = PQsetdbLogin(doc->host, pqport, options,tty, 
 									doc->database, doc->user, pwd);
 				if (PQstatus(conn) == CONNECTION_BAD &&
 					!strcmp(PQerrorMessage(conn), PQnoPasswordSupplied))
 				{
 					PQfinish(conn);
 					needpass = true;
-					read_password(pwdbuf, sizeof(pwdbuf));
-					pwd = pwdbuf;
 				}
 			} while (needpass);
 

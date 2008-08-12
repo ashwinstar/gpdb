@@ -36,6 +36,6 @@ DEFINE:
 EXECUTE:
   - RUN:
       SOURCE:    email
-      MAPPER:    msg_from_to
-      REDUCER:   SUM
+      MAP:       msg_from_to
+      REDUCE:    SUM
       TARGET:    out_1
