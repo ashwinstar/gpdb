@@ -117,8 +117,8 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	AnlIndexData *indexdata;
 	int			targrows,
 				numrows;
-	double		totalrows,
-				totaldeadrows,
+	double		totalrows=0.0,
+				totaldeadrows=0.0,
 				totalbytes = 0.0;
 	HeapTuple  *rows;
 	bool		is_appendonly;
