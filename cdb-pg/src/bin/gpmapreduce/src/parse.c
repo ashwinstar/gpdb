@@ -1444,6 +1444,7 @@ int mapred_verify_object(mapred_object_t *obj)
 
 	/* Verify that all required fields are present and valid */
 	name = obj->name ? obj->name : "unnamed";
+	type = NULL;
 	switch (obj->kind)
 	{
 		case MAPRED_DOCUMENT:
