@@ -12,6 +12,7 @@ Options:
 
 #============================================================
 import sys, os, optparse, tempfile, re, types, subprocess, traceback
+import urllib    # for passing strings across gpssh
 
 EXECNAME = sys.argv[0][sys.argv[0].rfind('/')+1:]
 libdir = sys.path[0] + '/lib'
@@ -158,7 +159,7 @@ class GPUpgrade:
                 sys.exit(0)
 
             if len(args) != 2:
-                parser.error("incorrect number of arguments")
+                parser.error("incorrect number of arguments: %s" % str(args))
 
         except Exception, e:
             raise UpgradeError('Error parsing input: ' + str(e))
@@ -173,12 +174,14 @@ class GPUpgrade:
             if self.cmd == 'MASTER':
                 parser.error('INVALID INTERNAL COMMAND: ' + self.cmd)
             self.pid = int(options.pid)
-        self.oldhome   = args[0]
-        self.newhome   = args[1]
+        self.oldhome   = args[0].rstrip('/')
+        self.newhome   = args[1].rstrip('/')
         if options.datadirs:
-            self.datadirs = options.datadirs.split();
-        self.option   = options.option
-        self.option2  = options.option2
+            self.datadirs = urllib.unquote(options.datadirs).split();
+        if options.option:
+            self.option   = urllib.unquote(options.option)
+        if options.option2:
+            self.option2  = urllib.unquote(options.option2)
         if options.debug:
             self.debug = True
         
@@ -287,20 +290,17 @@ class GPUpgrade:
         for h in self.hosts: 
             exec_cmd += ' -h %s' % h
 
-        # set the path to be the same so that we find the right python
-        exec_cmd += ' PATH=' + os.environ.get('PATH')
-        
         if self.upgrade:
-            exec_cmd += ' %s/bin/%s ' % (self.newhome, EXECNAME)
+            exec_cmd += ' %s/bin/lib/gpenv.sh %s ' % (self.newhome, EXECNAME)
         else:
-            exec_cmd += ' %s/bin/%s ' % (self.oldhome, EXECNAME)
+            exec_cmd += ' %s/bin/lib/gpenv.sh %s ' % (self.oldhome, EXECNAME)
 
         exec_cmd += self.oldhome + ' ' + self.newhome
         exec_cmd += ' --internal-command=' + str(cmd)
         exec_cmd += ' --internal-pid=' + str(self.pid)
-        exec_cmd += ' --internal-dirs=\\"%s\\"' % self.datadirs
-        exec_cmd += ' --internal-option="%s"' % option
-        exec_cmd += ' --internal-option2="%s"' % option2
+        exec_cmd += ' --internal-dirs=%s' % urllib.quote(str(self.datadirs))
+        exec_cmd += ' --internal-option=%s' % urllib.quote(str(option))
+        exec_cmd += ' --internal-option2=%s' % urllib.quote(str(option2))
 
         try:
             result = self.RunCmd(exec_cmd)
