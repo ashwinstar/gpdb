@@ -178,7 +178,7 @@ struct gpmon_hello_t {
 
 
 #define GPMON_MAGIC     0x78ab928d
-#define GPMON_PACKET_VERSION   1
+#define GPMON_PACKET_VERSION   2
 
 enum gpmon_pkttype_t {
     GPMON_PKTTYPE_NONE = 0,
