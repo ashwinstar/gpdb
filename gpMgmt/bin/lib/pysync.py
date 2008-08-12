@@ -146,7 +146,7 @@ class RemotePysync:
     def getData(self,name,offset,size):
 	if not self.socket:
 	    ss = socket.socket()
-	    ss.bind((socket.gethostname(),0))
+	    ss.bind((self.options.host,0))
 	    ss.listen(1)
 	    self.doCommand('connect',ss.getsockname())
 	    self.socket = ss.accept()[0]
@@ -305,6 +305,7 @@ class LocalPysync:
 	self.destDir = dest[i+1:]
 	self.connectAddress = None
 	self.sendData = None
+	self.options.host = socket.gethostbyname(self.userAndHost[self.userAndHost.find('@')+1:])
 
     def usage(self,argv):
 	sys.stderr.write("""usage:
