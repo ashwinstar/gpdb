@@ -42,6 +42,7 @@ struct agg_t {
 };
 
 extern int min_query_time;
+extern int min_detailed_query_time;
 
 static apr_status_t agg_put_metrics(agg_t* agg, const gpmon_metrics_t* met)
 {
@@ -471,7 +472,8 @@ apr_status_t agg_dump(agg_t* agg)
 	    write_qenode_row(fp_iters_now, ep, nowstr);
 	}
 
-	if (qdnode->recorded && !qdnode->qenode_recorded) {
+	if (qdnode->recorded && !qdnode->qenode_recorded && 
+            qdnode->qlog.tfin - qdnode->qlog.tstart >= min_detailed_query_time) {
 	    for (ep = qdnode->qenode_list; ep; ep = ep->next) {
 		write_qenode_row(fp_iters_tail, ep, nowstr);
 	    }

@@ -36,12 +36,14 @@ struct {
     int V;
     int q;
     int m;
+    int d;
 } opt = {0};
 
-int verbose = 0;		/* == opt.v */
-int very_verbose = 0;		/* == opt.V */
-int quantum = 15;		/* == opt.q */
-int min_query_time = 60;	/* == opt.m */
+int verbose = 0;		  /* == opt.v */
+int very_verbose = 0;		  /* == opt.V */
+int quantum = 15;		  /* == opt.q */
+int min_query_time = 60;	  /* == opt.m */
+int min_detailed_query_time = 60; /* == opt.d */ 
 
 #define SET_MAXFD(fd)  if (fd < opt.max_fd) ; else opt.max_fd = fd
 
@@ -59,6 +61,8 @@ static void usage(const char* msg)
     fprintf(stderr, "\t-v         : verbose\n");
     fprintf(stderr, "\t-q quantum : # seconds between updates\n");
     fprintf(stderr, "\t-m minruntime : # seconds minimum query runtime to log\n");
+    fprintf(stderr, "\t-d mindetail : # seconds minimum query runtime to log detailed\n"
+            "\t               query information\n");
     fprintf(stderr, "\t--version  : print version information\n\n");
     if (msg) 
 	fprintf(stderr, "%s\n\n", msg);
@@ -557,6 +561,7 @@ static void parse_command_line(int argc, const char* const argv[])
 	{      NULL, 'v', 0, "slightly verbose" },
 	{      NULL, 'q', 0, "# seconds between updates" },
 	{      NULL, 'm', 1, "minimum query time to log" },
+        {      NULL, 'd', 1, "minimum query time to log details" },
 	{ "version", 256, 0, "print version number" }
     };
     apr_pool_t* pool;
@@ -573,6 +578,7 @@ static void parse_command_line(int argc, const char* const argv[])
 
     opt.q = quantum;
     opt.m = min_query_time;
+    opt.d = min_detailed_query_time;
 
     while (0 == (e = apr_getopt_long(os, option, &ch, &arg))) {
         switch (ch) {
@@ -581,6 +587,7 @@ static void parse_command_line(int argc, const char* const argv[])
         case 'V': opt.v = opt.V = 1; break;
         case 'q': opt.q = atoi(arg); break;
         case 'm': opt.m = atoi(arg); break;
+        case 'd': opt.d = atoi(arg); break;
         case 256: print_version(); break;
         }
     }
@@ -590,15 +597,30 @@ static void parse_command_line(int argc, const char* const argv[])
     
     if (! (10 <= opt.q && opt.q <= 120)) 
         usage("Error: -q quantum value must be between 10 and 60");
-    
+
+    /* check for valid entries */
     if (opt.m < 0)
         opt.m = 0;
+
+    if (opt.d < 15)
+        usage("Error: -d detailmin value must be greater than 15");
+
+    /* See if opt.m changed, but opt.d did not */
+    if (opt.m != min_query_time &&
+        opt.d == min_detailed_query_time )
+    {
+        opt.d = opt.m;
+    }
+
+    if (opt.d < opt.m)
+        opt.d = opt.m;
 
     apr_pool_destroy(pool);
 
     verbose = opt.v;
     very_verbose = opt.V;
     min_query_time = opt.m;
+    min_detailed_query_time = opt.d;
     quantum = opt.q;
 }
 
