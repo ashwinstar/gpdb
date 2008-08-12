@@ -907,7 +907,7 @@ describeOneTableDetails(const char *schemaname,
 				printfPQExpBuffer(&title, _("Table \"%s.%s\""),
 								  schemaname, relationname);
 			else
-				printfPQExpBuffer(&title, _("Table \"%s.%s\" (Append-Only)"),
+				printfPQExpBuffer(&title, _("Append-Only Table \"%s.%s\""),
 								  schemaname, relationname);
 			break;
 		case 'x':
@@ -1784,10 +1784,11 @@ listTables(const char *tabtypes, const char *pattern, bool verbose)
 					  "SELECT n.nspname as \"%s\",\n"
 					  "  c.relname as \"%s\",\n"
 					  "  CASE c.relkind WHEN 'x' THEN '%s' WHEN 'r' THEN '%s' WHEN 'v' THEN '%s' WHEN 'i' THEN '%s' WHEN 'S' THEN '%s' WHEN 's' THEN '%s' END as \"%s\",\n"
-					  "  r.rolname as \"%s\"",
+					  "  CASE c.relstorage WHEN 'h' THEN '%s' WHEN 'a' THEN '%s' WHEN 'v' THEN '%s' END as \"%s\",\n"
+					  "  r.rolname as \"%s\"\n",
 					  _("Schema"), _("Name"),
-					  _("external"), _("table"), _("view"), _("index"), _("sequence"),
-					  _("special"), _("Type"), _("Owner"));
+					  _("external table"), _("table"), _("view"), _("index"), _("sequence"), _("special"), _("Type"), 
+					  _("heap"), _("append only"), _("none"), _("Storage"), _("Owner"));
 
 	if (showIndexes)
 		appendPQExpBuffer(&buf,
