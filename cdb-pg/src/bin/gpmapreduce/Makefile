@@ -27,7 +27,7 @@ YACCFLAGS = -d
 
 all: submake-libpq submake-libyaml gpmapreduce
 
-gpmapreduce: $(OBJS) $(libpq_builddir)/libpq.a $(LIBYAML)
+gpmapreduce: $(LIBYAML) $(OBJS) $(libpq_builddir)/libpq.a
 	$(CC) $(CFLAGS) $(OBJS) $(LIBYAML) $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
 
 check:
@@ -36,12 +36,11 @@ check:
 $(LIBDIR):
 	mkdir $(LIBDIR)
 
-$(LIBDIR)/$(LIBYAML):  $(LIBDIR)
+$(LIBYAML):  $(LIBDIR)
 	@cp $(LIBYAMLDIR)/include/yaml.h $(INCDIR)/.
 	@chmod u+w $(INCDIR)/yaml.h
-	@cd $(LIBYAMLDIR); $(MAKE) 
-	@cp $(LIBYAMLDIR)/src/.libs/$(LIBYAML) $(LIBDIR)/$(LIBYAML)
-	@chmod u+w $(LIBDIR)/$(LIBYAML)
+	@cp $(LIBYAMLDIR)/src/.libs/libyaml.a $(LIBYAML)
+	@chmod u+w $(LIBYAML)
 
 $(srcdir)/yaml_scan.c: yaml_scan.l
 ifdef FLEX
@@ -69,6 +68,7 @@ endif
 
 .PHONY: submake-libyaml
 submake-libyaml:
+	cd $(LIBYAMLDIR) && ./configure
 	$(MAKE) -C $(LIBYAMLDIR)
 
 install: all installdirs
