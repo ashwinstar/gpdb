@@ -854,7 +854,7 @@ heap_create_with_catalog(const char *relname,
 	bool		appendOnlyRel;
 	StdRdOptions *stdRdOptions;
 	int			safefswritesize = gp_safefswritesize;
-	char		relstorage=0;
+	char		relstorage;
 	
 	pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 
@@ -882,6 +882,7 @@ heap_create_with_catalog(const char *relname,
 			relstorage = RELSTORAGE_VIRTUAL;
 			break;
 		default:
+			relstorage = RELSTORAGE_HEAP; /* quieten GCC */
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_INTERNAL_ERROR),
 					 errmsg("unknown relkind \"%c\"", relkind)));
