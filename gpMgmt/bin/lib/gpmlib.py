@@ -82,7 +82,9 @@ def error(msg):
     logs = '%s:%s:%s:%s-[ERROR]:- %s' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'], msg)
     if log['file']:
         run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))    
-    sys.exit(logs)
+    print logs
+    print '%s:%s:%s:%s-[ERROR]:- Program aborted.' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'])
+    sys.exit(1)
 
 ##################
 def fatal(msg):
@@ -91,7 +93,10 @@ def fatal(msg):
     logs = '%s:%s:%s:%s-[FATAL]:- %s' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'], msg)
     if log['file']:
         run('%s "%s" >> %s' % (ENV.ECHO, logs, log['file']))    
-    sys.exit(logs)
+
+    print logs
+    print '%s:%s:%s:%s-[FATAL]:- Program aborted.' % (strftime('%Y%m%d:%H:%M:%S', localtime()), log['module'], log['host'], log['user'])
+    sys.exit(2)
 
 #############
 def findCmdInPath(cmd):
@@ -102,7 +107,7 @@ def findCmdInPath(cmd):
         f = os.path.join(p, cmd)
         if os.path.exists(f):
             return f
-    sys.exit('Command %s not found' % cmd)
+    fatal('Command %s not found' % cmd)
 
 
 #############
@@ -146,7 +151,7 @@ def directory_writable(dir, host=None):
                 f = open(file, 'w')
                 f.close()
             except IOError, e:
-                sys.exit('write file %s error' % file)
+                fatal('write file %s error' % file)
         finally:
             f.close()
             os.remove(file)
@@ -156,7 +161,7 @@ def directory_writable(dir, host=None):
                         (gplib.ssh_prefix(host=host),
                          os.path.join(os.environ.get('GPHOME'), 'bin/lib'), dir))
         if not ok:
-            sys.exit('write file %s error' % file)
+            fatal('write file %s error' % file)
                         
     return True
     
@@ -278,10 +283,10 @@ class Env:
     def chk_environ(self):
         self.GPHOME=os.getenv('GPHOME')
         if not self.GPHOME:
-            sys.exit('GPHOME not found')
+            fatal('GPHOME not found')
         self.USER =os.getenv('USER') or os.getenv('LOGNAME')
         if not self.USER:
-            sys.exit('USER not found')
+            fatal('USER not found')
 
         os.environ['LD_LIBRARY_PATH']='%s/lib:%s' % (self.GPHOME, os.getenv('LD_LIBRARY_PATH'))
         os.environ['PATH']='%s/bin:%s' % (self.GPHOME, os.getenv('PATH'))
@@ -301,7 +306,7 @@ def ping_host(host, fail_exit=False):
         log_info('%s contact established' % host)
     else:
         if fail_exit:
-            sys.exit('[FATAL]:- Unable to contact %s' % host)
+            fatal('Unable to contact %s' % host)
         else:
             log_warn('Unable to contact %s' % host)
 
@@ -370,14 +375,14 @@ def postgres_active(port, host=None):
 def get_master_port(master_data_dir):
     master_port = 0
     if not os.path.exists(master_data_dir):
-        sys.exit('[FATAL]:-No %s directory' % master_data_dir)
+        fatal('No %s directory' % master_data_dir)
     if os.path.exists(os.path.join(master_data_dir, 'postgresql.conf')):
         (ok, out) = run('%s \'split($0,a,"#")>0 && split(a[1],b,"=")>1 {print b[1] " " b[2]}\' %s/postgresql.conf | %s \'$1=="port" {print $2}\' | %s -1' % (ENV.AWK, master_data_dir, ENV.AWK, ENV.TAIL))
         if not ok or out[0].strip() == '':
-            sys.exit('[FATAL]:-Failed to obtain master port number from %s/postgresql.conf' % master_data_dir)
+            fatal('Failed to obtain master port number from %s/postgresql.conf' % master_data_dir)
         master_port = int(out[0])
     else:
-        sys.exit('[FATAL]:-Do not have access to %s/postgresql.conf' % master_data_dir)
+        fatal('Do not have access to %s/postgresql.conf' % master_data_dir)
 
     return master_port
             
@@ -385,9 +390,9 @@ def get_master_port(master_data_dir):
 def chk_db_running(db, chk_dispatch_access):
     master_data_directory = os.getenv('MASTER_DATA_DIRECTORY')
     if not directory_exists(master_data_directory):
-        sys.exit('[FATAL]:-No Master %s directory' % master_data_directory)
+        fatal('No Master %s directory' % master_data_directory)
     if not file_exists('%s/postgresql.conf' % master_data_directory):
-        sys.exit('[FATAL]:-No %s/postgresql.conf file' % master_data_directory)
+        fatal('No %s/postgresql.conf file' % master_data_directory)
     port = get_master_port(master_data_directory)
     
     try:
@@ -415,7 +420,7 @@ def chk_multi_home(hostlist, full=True):
     for host in hosts:
         (ok, out) = run('%s %s' % (gplib.ssh_prefix(host=host), ENV.HOSTNAME))
         if not ok:
-            sys.exit('Error: failed to run hostname on remote host')
+            error('failed to run hostname on remote host')
         hostnames.append(out[0].strip())
 
     hostnames_uniq = unique(hostnames)
@@ -479,7 +484,7 @@ def get_mirror_type(db, multi_home):
                 mir_host = r[0]
                 (ok, out) = run('%s "hostname"' % (gplib.ssh_prefix(host=mir_host)))
                 if not ok:
-                    sys.exit('hostname on %s failed' % mir_host)
+                    error('hostname on %s failed' % mir_host)
                 mir_array.append(out[0])
 
             uniq_cnt = len(unique(mir_array))
@@ -581,7 +586,7 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
                      dst_cfg['datadir'],
                      dst_cfg['datadir']))
     if not ok:
-        sys.exit('mkdir directory %s host %s failed' % (dst_cfg['datadir'], dst_cfg['hostname']))
+        fatal('mkdir directory %s host %s failed' % (dst_cfg['datadir'], dst_cfg['hostname']))
 
     (ok, out) = run('%s "%s -v -x db_dumps %s %s:%s" >> %s 2>&1' % 
                     (gplib.ssh_prefix(host=src_host),
@@ -592,7 +597,7 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
                      logfile))
 
     if not ok:
-        sys.exit('failed to synchronize data from primary segment to mirror segment')
+        fatal('failed to synchronize data from primary segment to mirror segment')
 
     # delete postmaster.pid in case active segment is still running
     postmaster_pid = os.path.join(dst_cfg['datadir'], 'postmaster.pid')
@@ -614,7 +619,7 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
     ok = edit_file(dst_cfg['hostname'], os.path.join(dst_cfg['datadir'], 'postgresql.conf'), 
                    'port=', sub_txt, True)
     if not ok:
-        sys.exit('failed to edit postgresql.conf')
+        fatal('failed to edit postgresql.conf')
 
     # start mirror segment in admin mode
     log_info('start segment datadir=%s port=%d on %s' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
@@ -624,7 +629,7 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
                      os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
                      dst_cfg['datadir'], dst_cfg['datadir'], dst_cfg['port'], logfile))
     if not ok:
-        sys.exit('failed to start mirror segment %s:%s in admin mode' % (dst_cfg['hostname'], dst_cfg['datadir']))
+        fatal('failed to start mirror segment %s:%s in admin mode' % (dst_cfg['hostname'], dst_cfg['datadir']))
 
     # update gp_id table
     log_info('update gp_id with segment id = %d' % dst_cfg['dbid'])
@@ -638,9 +643,9 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
             db.execute('update gp_id set dbid=%d where dbid <> %d' % (dst_cfg['dbid'], dst_cfg['dbid'])) 
             
         except pg8000.errors.InterfaceError, e:
-            sys.exit(e)
+            fatal(e)
         except pg8000.errors.ProgrammingError, e:
-            sys.exit(e)
+            fatal(e)
     finally:
         if db:
             db.close()
@@ -655,7 +660,7 @@ def sync_segment_datadir(src_host, src_dir, dst_cfg, logfile, force_stop=True):
                          os.path.join(ENV.GPHOME, 'bin/pg_ctl'), 
                          dst_cfg['datadir'], dst_cfg['datadir'], logfile))
         if not ok:
-            sys.exit('failed to stop mirror segment %s:%s' % (dst_cfg['hostname'], dst_cfg['datadir']))
+            fatal('failed to stop mirror segment %s:%s' % (dst_cfg['hostname'], dst_cfg['datadir']))
     
 
     log_info('sync segment datadir=%s port=%d on host %s succeeded' % (dst_cfg['datadir'], dst_cfg['port'], dst_cfg['hostname']))
@@ -669,7 +674,7 @@ def append_pg_hba(host, datadir, new_addr):
                         (gplib.ssh_prefix(host=host), 
                          addr, pg_hba))
         if not ok:
-            sys.exit('[ERROR]:- update %s:%s failed' % (host, pg_hba))
+            fatal('update %s:%s failed' % (host, pg_hba))
 
     return True
                         
@@ -684,7 +689,7 @@ def get_gp_prefix(datadir):
 
 ##################
 def group_mirror(pri_qes, mir_datadirs, mir_port_offset, multihome):
-    log_info(' Building group mirror array type %s, please wait...' % (multihome and 'Multi-Home' or 'Single-Home'))
+    log_info('Building group mirror array type %s, please wait...' % (multihome and 'Multi-Home' or 'Single-Home'))
 
     hosts = [ qe['hostname'] for qe in pri_qes ]
     hosts_uniq = unique(hosts)
