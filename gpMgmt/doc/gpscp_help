@@ -7,8 +7,7 @@ SYNOPSIS
 *****************************************************
 
 gpscp { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
-[-p <ssh_port>] [-u <os_user>] [-J <character>] [-v] 
-[[<user>@]<hostname>:]<file_to_copy> [...] 
+[-J <character>] [-v] [[<user>@]<hostname>:]<file_to_copy> [...] 
 [[<user>@]<hostname>:]<copy_to_path>
 
 gpscp -? | --version
@@ -18,37 +17,38 @@ DESCRIPTION
 *****************************************************
 
 
-The gpscp utility allows you to copy one or more files from 
-the specified hosts to other specified hosts in one command 
-using SCP (secure copy). For example, you can copy a file 
-from the Greenplum Database master host to all of the segment 
-hosts at the same time.
+The gpscp utility allows you to copy one or more files from the 
+specified hosts to other specified hosts in one command using 
+SCP (secure copy). For example, you can copy a file from the 
+Greenplum Database master host to all of the segment hosts at 
+the same time.
 
 To specify the hosts involved in the SCP session, use the -f 
 option to specify a file containing a list of host names, or use 
 the -h option to name single host names on the command-line. At 
-least one host name (-h) or a host file (-f) is required. The -J 
-option allows you to specify a single character to substitute for 
-the hostname in the copy from and to destination strings. If 
--J is not specified, the default substitution character is an 
-equal sign (=). For example, the following command will copy 
-.bashrc from the local host to /home/gpadmin on all hosts named 
-in host_file:
+least one host name (-h) or a host file (-f) is required. The 
+-J option allows you to specify a single character to substitute 
+for the hostname in the copy from and to destination strings. 
+If -J is not specified, the default substitution character is 
+an equal sign (=). For example, the following command will 
+copy .bashrc from the local host to /home/gpadmin on all hosts 
+named in host_file:
 
-gpscp -f host_file .bashrc =:/home/gpadmin
+    gpscp -f host_file .bashrc =:/home/gpadmin 
 
-If a user name is not specified in the host list file, with the 
--u option, or with user@ in the file path, gpscp will copy files 
-as the currently logged in user. To determine the currently logged 
-in user, do a whoami command. By default, gpscp goes to $HOME of 
-the session user on the remote hosts after login. To ensure the 
-file is copied to the correct location on the remote hosts, it 
-is recommended that you use absolute paths.
+If a user name is not specified in the host list or with 
+user@ in the file path, gpscp will copy files as the currently 
+logged in user. To determine the currently logged in user, do a 
+whoami command. By default, gpscp goes to $HOME of the session 
+user on the remote hosts after login. To ensure the file is 
+copied to the correct location on the remote hosts, it is 
+recommended that you use absolute paths.
 
 Before using gpscp, you must have a trusted host setup between 
 the hosts involved in the SCP session. You can use the utility 
 gpssh-exkeys to update the known host files and exchange public 
 keys between hosts if you have not done so already.
+
 
 *****************************************************
 OPTIONS
@@ -71,19 +71,6 @@ Specifies a single host name that will participate in this
 SCP session. You can use the -h option multiple times to 
 specify multiple host names.
 
--p <scp_port>
-
-Specifies the default SSH port to use when logging in to a 
-remote host. If not specified, defaults to port 22 (or the 
-port specified in the host file, if any).
-
--u <os_user>
-
-Specifies the default operating system user account to use 
-when copying a file to a remote host. If not specified, 
-defaults to the currently logged in user, the user specified 
-in the host file, or user@ as specified in the file path 
-(if any).
 
 -J <character>
 
@@ -109,7 +96,7 @@ host.
 Required. The path where you want the file(s) to be copied 
 on the named hosts. If an absolute path is not used, the 
 file will be copied relative to $HOME of the session user. You 
-can also use the equal sign ‘=’ (or another character that you 
+can also use the equal sign '=' (or another character that you 
 specify with the -J option) in place of a hostname. This will 
 then substitute in each host name as specified in the supplied 
 host file (-f) or with the -h option.
