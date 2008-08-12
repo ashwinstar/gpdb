@@ -53,7 +53,7 @@ def pg_type_info(typ):
     elif data.get("txt_out"):
         format = 0
     else:
-        raise InternalError("no conversion fuction for type %r" % typ)
+        raise InternalError("no conversion function for type %r" % typ)
     return type_oid, format
 
 def pg_value(v, fc, **kwargs):
@@ -255,10 +255,13 @@ pg_types = {
     20: {"bin_in": int8recv},
     21: {"bin_in": int2recv},
     23: {"bin_in": int4recv},
+    24: {"txt_in": varcharin}, # regproc
     25: {"txt_in": varcharin}, # TEXT type
     26: {"txt_in": numeric_in}, # oid type
+    28: {"txt_in": numeric_in}, # xid type
     700: {"bin_in": float4recv},
     701: {"bin_in": float8recv},
+    1009: {"txt_in": varcharin},
     1042: {"txt_in": varcharin}, # CHAR type
     1043: {"txt_in": varcharin}, # VARCHAR type
     1082: {"txt_in": date_in},
@@ -266,8 +269,6 @@ pg_types = {
     1114: {"txt_in": timestamp_in},
     1184: {"txt_in": timestamptz_in}, # timestamp w/ tz
     1186: {"txt_in": interval_in},
+    1034: {"txt_in": varcharin},
     1700: {"txt_in": numeric_in},
 }
-
-
-
