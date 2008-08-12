@@ -202,14 +202,9 @@ static void harvest(const char* tbl)
 {
     PGconn* conn = 0;
     PGresult* result = 0;
-    char qrybuf[1024*2];
-    char condbuf[100];
-    const char* QRYFMT = "insert into %s_history_%04d%02d select * from _%s_tail where %s;";
+    char qrybuf[1024];
+    const char* QRYFMT = "insert into %s_history select * from _%s_tail;";
     const char* errmsg;
-    apr_time_t now = apr_time_now();
-    apr_time_t past;
-    apr_time_exp_t tm;
-    int e;
 
     TR1(("---- HARVEST %s STARTED ---- \n", tbl));
     
@@ -220,55 +215,13 @@ static void harvest(const char* tbl)
 	return;
     }
 
-    if (0 != (e = apr_time_exp_lt(&tm, now))) {
-	gpmon_fatalx(FLINE, e, "apr_time_exp_lt failed");
-    }
-
-    /* this query is usually successful, unless we violate the partition constraint of the 
-       table we are inserting into (which could happen once a month when we cross month-line */
-    sprintf(qrybuf, QRYFMT, tbl, 1900 + tm.tm_year, tm.tm_mon + 1, tbl, "1=1");
+    sprintf(qrybuf, QRYFMT, tbl);
     errmsg = gpdb_exec(&conn, &result, qrybuf);
-    if (!errmsg) {
-	TR1(("---- HARVEST %s OK ---- \n", tbl));
-	PQclear(result);
-	PQfinish(conn);
-	return;			/* usual case */
-    }
+    if (errmsg)
+	TR1(("---- HARVEST %s FAILED ---- \n", tbl));
+    else
+        TR1(("---- HARVEST %s OK ---- \n", tbl));
 
-    PQclear(result);
-    PQfinish(conn);
-
-    /* if we are here, let's try to do the insert by filtering on yesterday and today dates */
-    TR1(("---- HARVEST %s insert yesterday and today ---\n", tbl));
-
-    /* insert yesterday */
-    past = now - apr_time_from_sec(60 * 60 * 24);
-    if (0 != (e = apr_time_exp_lt(&tm, past))) {
-	gpmon_fatalx(FLINE, e, "apr_time_exp_lt failed");
-    }
-    sprintf(condbuf, "DATE(ctime) = DATE '%04d-%02d-%02d'", 
-	    1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday);
-    sprintf(qrybuf, QRYFMT, tbl, 
-	    1900 + tm.tm_year, tm.tm_mon + 1, 
-	    tbl, condbuf);
-    /* for yesterday, we can ignore error */
-    errmsg = gpdb_exec(&conn, &result, qrybuf);
-    PQclear(result);
-    PQfinish(conn);
-
-    /* insert today */
-    if (0 != (e = apr_time_exp_lt(&tm, now))) {
-	gpmon_fatalx(FLINE, e, "apr_time_exp_lt failed");
-    }
-    sprintf(condbuf, "DATE(ctime) = DATE '%04d-%02d-%02d'", 
-	    1900 + tm.tm_year, tm.tm_mon + 1, tm.tm_mday);
-    sprintf(qrybuf, QRYFMT, tbl, 
-	    1900 + tm.tm_year, tm.tm_mon + 1, 
-	    tbl, condbuf);
-    errmsg = gpdb_exec(&conn, &result, qrybuf);
-    if (errmsg) {
-	gpmon_fatal(FLINE, "GPDB error %s\n\tquery: %s\n", errmsg, qrybuf);
-    }
     PQclear(result);
     PQfinish(conn);
 }

@@ -22,8 +22,8 @@ create table metrics_history (
        net_rp bigint not null, net_wp bigint not null, net_rb bigint not null, net_wb bigint not null
 ) 
 with (fillfactor=100)
-distributed by (ctime);
-
+distributed by (ctime)
+partition by range (ctime)(start (date '2008-07-01') end (date '2010-01-01') EVERY (interval '1 month'));
 
 create external web table metrics_now (
        like metrics_history
@@ -65,7 +65,9 @@ create table queries_history (
        query_plan text not null default ''
 )
 with (fillfactor=100)
-distributed by (ctime);
+distributed by (ctime)
+partition by range (ctime)(start (date '2008-07-01') end (date '2010-01-01') EVERY (interval '1 month'));
+
 
 
 
@@ -198,7 +200,8 @@ create table iterators_history (
        m15_out bigint not null default 0
 )
 with (fillfactor=100)
-distributed by (ctime);
+distributed by (ctime)
+partition by range (ctime)(start (date '2008-07-01') end (date '2010-01-01') EVERY (interval '1 month'));
 
 
 
@@ -222,233 +225,4 @@ create external web table master_data_dir (hostname text, dir text)
 execute E'python -c "import socket, os; print socket.gethostname() + \\"|\\" + os.getcwd()"' on master
 format 'csv' (delimiter '|');
 
-
-CREATE TABLE metrics_history_200806
-	    (CHECK (ctime >= '2008-06-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-07-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200807
-	    (CHECK (ctime >= '2008-07-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-08-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200808
-	    (CHECK (ctime >= '2008-08-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-09-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200809
-	    (CHECK (ctime >= '2008-09-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-10-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200810
-	    (CHECK (ctime >= '2008-10-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-11-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200811
-	    (CHECK (ctime >= '2008-11-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-12-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200812
-	    (CHECK (ctime >= '2008-12-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-01-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200901
-	    (CHECK (ctime >= '2009-01-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-02-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200902
-	    (CHECK (ctime >= '2009-02-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-03-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200903
-	    (CHECK (ctime >= '2009-03-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-04-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200904
-	    (CHECK (ctime >= '2009-04-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-05-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200905
-	    (CHECK (ctime >= '2009-05-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-06-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200906
-	    (CHECK (ctime >= '2009-06-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-07-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200907
-	    (CHECK (ctime >= '2009-07-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-08-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200908
-	    (CHECK (ctime >= '2009-08-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-09-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200909
-	    (CHECK (ctime >= '2009-09-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-10-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200910
-	    (CHECK (ctime >= '2009-10-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-11-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200911
-	    (CHECK (ctime >= '2009-11-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-12-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE metrics_history_200912
-	    (CHECK (ctime >= '2009-12-01:00:00:00'::timestamp without time zone and
-                    ctime < '2010-01-01:00:00:00'::timestamp without time zone))
-            INHERITS (metrics_history);
-CREATE TABLE queries_history_200806
-	    (CHECK (ctime >= '2008-06-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-07-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200807
-	    (CHECK (ctime >= '2008-07-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-08-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200808
-	    (CHECK (ctime >= '2008-08-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-09-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200809
-	    (CHECK (ctime >= '2008-09-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-10-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200810
-	    (CHECK (ctime >= '2008-10-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-11-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200811
-	    (CHECK (ctime >= '2008-11-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-12-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200812
-	    (CHECK (ctime >= '2008-12-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-01-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200901
-	    (CHECK (ctime >= '2009-01-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-02-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200902
-	    (CHECK (ctime >= '2009-02-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-03-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200903
-	    (CHECK (ctime >= '2009-03-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-04-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200904
-	    (CHECK (ctime >= '2009-04-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-05-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200905
-	    (CHECK (ctime >= '2009-05-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-06-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200906
-	    (CHECK (ctime >= '2009-06-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-07-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200907
-	    (CHECK (ctime >= '2009-07-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-08-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200908
-	    (CHECK (ctime >= '2009-08-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-09-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200909
-	    (CHECK (ctime >= '2009-09-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-10-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200910
-	    (CHECK (ctime >= '2009-10-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-11-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200911
-	    (CHECK (ctime >= '2009-11-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-12-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE queries_history_200912
-	    (CHECK (ctime >= '2009-12-01:00:00:00'::timestamp without time zone and
-                    ctime < '2010-01-01:00:00:00'::timestamp without time zone))
-            INHERITS (queries_history);
-CREATE TABLE iterators_history_200806
-	    (CHECK (ctime >= '2008-06-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-07-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200807
-	    (CHECK (ctime >= '2008-07-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-08-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200808
-	    (CHECK (ctime >= '2008-08-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-09-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200809
-	    (CHECK (ctime >= '2008-09-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-10-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200810
-	    (CHECK (ctime >= '2008-10-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-11-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200811
-	    (CHECK (ctime >= '2008-11-01:00:00:00'::timestamp without time zone and
-                    ctime < '2008-12-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200812
-	    (CHECK (ctime >= '2008-12-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-01-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200901
-	    (CHECK (ctime >= '2009-01-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-02-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200902
-	    (CHECK (ctime >= '2009-02-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-03-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200903
-	    (CHECK (ctime >= '2009-03-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-04-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200904
-	    (CHECK (ctime >= '2009-04-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-05-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200905
-	    (CHECK (ctime >= '2009-05-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-06-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200906
-	    (CHECK (ctime >= '2009-06-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-07-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200907
-	    (CHECK (ctime >= '2009-07-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-08-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200908
-	    (CHECK (ctime >= '2009-08-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-09-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200909
-	    (CHECK (ctime >= '2009-09-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-10-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200910
-	    (CHECK (ctime >= '2009-10-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-11-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200911
-	    (CHECK (ctime >= '2009-11-01:00:00:00'::timestamp without time zone and
-                    ctime < '2009-12-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
-CREATE TABLE iterators_history_200912
-	    (CHECK (ctime >= '2009-12-01:00:00:00'::timestamp without time zone and
-                    ctime < '2010-01-01:00:00:00'::timestamp without time zone))
-            INHERITS (iterators_history);
 revoke all on database gpmon_2 from public;
