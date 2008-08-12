@@ -854,7 +854,7 @@ heap_create_with_catalog(const char *relname,
 	bool		appendOnlyRel;
 	StdRdOptions *stdRdOptions;
 	int			safefswritesize = gp_safefswritesize;
-	char		relstorage;
+	char		relstorage=0;
 	
 	pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
 
