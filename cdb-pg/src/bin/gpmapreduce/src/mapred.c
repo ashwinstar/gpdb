@@ -70,15 +70,19 @@ void *mapred_malloc(int size)
 	void *m;
 	XASSERT(size > 0);
 
+#if INTERNAL_BUILD
 	if (global_debug_flag && global_verbose_flag)
 		fprintf(stderr, "Allocating %d bytes: ", size);
+#endif
 
 	m = malloc(size);
 	if (!m)
 		XRAISE(MEMORY_ERROR, "Memory allocation failure");
 
+#if INTERNAL_BUILD
 	if (global_debug_flag && global_verbose_flag)
 		fprintf(stderr, "%x\n", (unsigned int) m);
+#endif
 
 	return m;
 }
@@ -86,8 +90,12 @@ void *mapred_malloc(int size)
 void mapred_free(void *ptr)
 {
 	XASSERT(ptr);
+
+#if INTERNAL_BUILD
 	if (global_debug_flag && global_verbose_flag)
 		fprintf(stderr, "Freeing memory: %x\n", (unsigned int) ptr);
+#endif
+
 	free(ptr);
 }
 
