@@ -1,0 +1,120 @@
+COMMAND NAME: gpdetective
+
+Collects diagnostic information from a running Greenplum Database system.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+
+gpdetective [-h <master_hostname>] [-p <master_port>] 
+[-U <gp_superuser>] [-P <password>] [-f <output_filename>]
+
+gpdetective -? | -v
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpdetective utility collects information from a running 
+Greenplum Database system and creates a bzip2-compressed tar output 
+file. This output file can then be sent to Greenplum Customer Support 
+to help with the diagnosis of Greenplum Database errors or system failures. 
+The gpdetective utility runs the following diagnostic tests:
+
+* Runs gpstate to check the system status
+
+* Runs gpcheckos to make sure the recommended OS settings are 
+  set on all hosts
+
+* Runs pg_dumpall to capture the schema DDL for all databases
+
+* Runs gpcheckcat and gpcheckdb to check the system catalog 
+  tables for inconsistencies
+
+And secures the following information:
+
+* The master and segment postgresql.conf configuration file
+
+* The master and segment server log files
+
+* Core files (if any)
+
+* Array configuration information
+
+* Schema information
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-f <output_filename>
+
+The file name and path location of the gpdetective output file. 
+If not sprecified, a bzip2-compressed tar output file is created 
+in the current directory with a file name of gpdetective<timestamp>.tar.bz2.
+
+
+-h <master_hostname>
+
+The host name of the machine on which the Greenplum master 
+database server is running. If not specified, reads from the environment 
+variable PGHOST or defaults to localhost.
+
+
+-p <master_port>
+
+The TCP port on which the Greenplum master database server is 
+listening for connections. If not specified, reads from the environment 
+variable PGPORT or defaults to 5432.
+
+
+-P <password>
+
+If Greenplum Database is configured to use password authentication, 
+you must also supply the database superuser password. If not specified, 
+reads from ~/.pgpass if it exists.
+
+
+-U <gp_superuser>
+
+The Greenplum database superuser role name to connect as 
+(typically gpadmin). If not specified, reads from the environment 
+variable PGUSER or defaults to the current system user name.
+
+
+-v (show utility version)
+
+Displays the version of this utility.
+
+
+-? (help)
+
+Displays the utility usage and syntax.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Collect diagnostic information for a Greenplum Database system:
+
+gpdetective
+
+Collect diagnostic information for a Greenplum Database system 
+and specify the name and location of the output file
+
+gpdetective -f /var/data/my043008gp.tar
+
+Collect diagnostic information for a Greenplum Database system 
+and supply the required connection information for the master host:
+
+gpdetective -h mdw -p 54320 - U gpadmin -P mypassword
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpstate, gpcheckos, pg_dumpall
