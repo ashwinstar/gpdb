@@ -8,7 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gpssh { -f <host_file> | - h <hostname> [-h <hostname> ...] } 
-      [-p <ssh_port>] [-u <os_user>] [-v] [-e] [<bash_command>]
+[-v] [-e] [<bash_command>]
 
 gpssh -? | --version
 
@@ -41,12 +41,12 @@ can enter a command as you would in a regular bash terminal command-line,
 and the command will be executed on all hosts involved in the session. 
 To end an interactive session, press CTRL+D on the keyboard or type exit.
 
-If a user name is not specified in the host list file or with the 
--u option, gpssh will execute commands as the currently logged in user. 
-To determine the currently logged in user, do a whoami command. By default, 
-gpssh goes to $HOME of the session user on the remote hosts after login. 
-To ensure commands are executed correctly on all remote hosts, you should 
-always enter absolute paths.
+If a user name is not specified in the host list file, gpssh will 
+execute commands as the currently logged in user. To determine the 
+currently logged in user, do a whoami command. By default, gpssh goes 
+to $HOME of the session user on the remote hosts after login. To ensure 
+commands are executed correctly on all remote hosts, you should always 
+enter absolute paths.
 
 
 *****************************************************
@@ -67,21 +67,6 @@ as follows:
 
 Specifies a single host name that will participate in this SSH session. 
 You can use the -h option multiple times to specify multiple host names.
-
-
--p <ssh_port>
-
-Specifies the default SSH port to use when logging in to a remote host. 
-If not specified, defaults to port 22 (or the port specified in the 
-host file, if any).
-
-
--u <os_user>
-
-Specifies the default operating system user account to use when 
-executing commands in this session. If not specified, defaults to 
-the currently logged in user (or the user specified in the 
-host file, if any).
 
 
 -v (verbose mode)
