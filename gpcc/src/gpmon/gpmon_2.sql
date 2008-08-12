@@ -61,6 +61,7 @@ create table queries_history (
        cpu_currpct float not null,
        skew_cpu float not null,
        skew_rows float not null,
+       query_hash bigint not null,
        query_text text not null default '',
        query_plan text not null default ''
 )

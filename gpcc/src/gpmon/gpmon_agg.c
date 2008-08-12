@@ -820,6 +820,7 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
         row_skew = get_row_skew(qdnode);
     }
     sprintf(p += strlen(p), "|%f|%.2f", cpu_skew, row_skew);
+    sprintf(p += strlen(p), "|%" FMT64, 0);
     return line;
 }
 
