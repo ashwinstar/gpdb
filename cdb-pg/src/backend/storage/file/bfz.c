@@ -15,10 +15,6 @@ static const struct{
     {{"zlib",0},bfz_zlib_init},
     {{"threaded_nothing",0},bfz_threaded_nothing_init},
     {{"threaded_zlib","true","yes","on","1",0},bfz_threaded_zlib_init},
-#ifdef WITH_LZO
-    {{"lzop",0},bfz_lzop_init},
-    {{"threaded_lzop",0},bfz_threaded_lzop_init},
-#endif
     {{0}}
 };
 
@@ -159,4 +155,24 @@ bfz_read_ex(bfz_t*thiz,char*buffer,int size)
 	}
     }
     return orig_size-size;
+}
+
+size_t
+readAndRetry(int fd,void*buffer,size_t size)
+{
+    size_t i;
+    do
+	i = read(fd,buffer,size);
+    while (i==-1 && errno==EINTR);
+    return i;
+}
+
+size_t
+writeAndRetry(int fd,const void*buffer,size_t size)
+{
+    size_t i;
+    do
+	i = write(fd,buffer,size);
+    while (i==-1 && errno==EINTR);
+    return i;
 }

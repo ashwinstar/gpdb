@@ -18,12 +18,9 @@ bfz_nothing_read_ex(bfz_t*thiz,char*buffer,int size)
 {
     int orig_size=size;
     while (size){
-	int i=read(thiz->fd,buffer,size);
-	if (i < 0){
-	    if (errno == EINTR)
-		continue;
+	int i=readAndRetry(thiz->fd,buffer,size);
+	if (i < 0)
 	    elog(ERROR,"bfz_nothing_read_ex read failed");
-	}
 	if (i == 0)
 	    break;
 	buffer += i;
@@ -36,12 +33,9 @@ static void
 bfz_nothing_write_ex(bfz_t*bfz,const char*buffer,int size)
 {
     while (size){
-	int i=write(bfz->fd,buffer,size);
-	if (i < 0){
-	    if (errno == EINTR)
-		continue;
+	int i=writeAndRetry(bfz->fd,buffer,size);
+	if (i < 0)
 	    elog(ERROR,"bfz_nothing_write_ex write failed");
-	}
 	buffer += i;
 	size -= i;
     }
@@ -78,7 +72,7 @@ bfz_threaded_nothing_uncompress(void*arg)
     struct bfz_threaded_freeable_stuff*fs=(void*)thiz->freeable_stuff;
     int i;
     char buffer[BFZ_BUFFER_SIZE];
-    while ((i=read(thiz->fd,buffer,sizeof buffer)) > 0)
+    while ((i=readAndRetry(thiz->fd,buffer,sizeof buffer)) > 0)
 	pipe_write(&fs->pipe,buffer,i);
     pipe_done_writing(&fs->pipe);
     return NULL;

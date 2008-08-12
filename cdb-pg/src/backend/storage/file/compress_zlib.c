@@ -15,7 +15,8 @@ bfz_zlib_close_ex(bfz_t*thiz)
 {
     struct bfz_zlib_freeable_stuff*fs=(void*)thiz->freeable_stuff;
     if (fs->f){
-	thiz->fd = dup(thiz->fd);
+	if ((thiz->fd=dup(thiz->fd)) == -1)
+	    elog(ERROR,"dup failed");
 	gzclose(fs->f);
     }
     free(fs);
@@ -94,7 +95,8 @@ bfz_threaded_zlib_compress(void*arg)
 	elog(ERROR,"bfz: gzdopen failed");
     while ((size=pipe_read(&fs->pipe,buf,sizeof buf)) != 0)
 	gzwrite_fully(f,buf,size);
-    thiz->fd = dup(thiz->fd);
+    if ((thiz->fd=dup(thiz->fd)) == -1)
+	elog(ERROR,"dup failed");
     gzclose(f);
     return NULL;
 }
@@ -111,7 +113,8 @@ bfz_threaded_zlib_uncompress(void*arg)
 	elog(ERROR,"bfz: gzdopen failed");
     while ((size=gzread_fully(f,buf,sizeof buf)) != 0)
 	pipe_write(&fs->pipe,buf,size);
-    thiz->fd = dup(thiz->fd);
+    if ((thiz->fd=dup(thiz->fd)) == -1)
+	elog(ERROR,"dup failed");
     gzclose(f);
     pipe_done_writing(&fs->pipe);
     return NULL;

@@ -12,17 +12,12 @@ subdir = src/backend/storage/file
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = fd.o buffile.o bfz.o pipe.o compress_nothing.o compress_zlib.o compress_threaded.o compress_lzop.o
+OBJS = fd.o buffile.o bfz.o pipe.o compress_nothing.o compress_zlib.o compress_threaded.o
 
 all: SUBSYS.o
 
-LZO_LIBS=
-
-#CFLAGS += -DWITH_LZO
-#LZO_LIBS += -llzo2
-
 SUBSYS.o: $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS) $(LZO_LIBS)
+	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
 
 depend dep:
 	$(CC) -MM $(CFLAGS) *.c >depend
