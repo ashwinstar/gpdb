@@ -132,7 +132,7 @@ USAGE () {
 		$ECHO "      -s, <schema name> dump the schema contained within the database name supplied via -x"
 		$ECHO "      -j, run vacuum before dump starts"
 		$ECHO "      -k, run vacuum after dump has completed successfully"
-		$ECHO "      -g, secure master configuration files postgresql.conf pg_ident.conf and pg_hba.conf"
+		$ECHO "      -g, secure master and segment configuration files postgresql.conf pg_ident.conf and pg_hba.conf"
 		$ECHO "          Data will be written in tar format to "
 		$ECHO "          ${DUMP_SUB_DIR}/$DUMP_DATE/$CONFIG_BACKUP_FILE directory on this host"  
 		$ECHO "      -t, <schema.table1> dump the named table only for the database."
@@ -255,6 +255,7 @@ CHK_DATA () {
 		ERROR_CHK $? "obtained host datadir and port for DBID $DBID" 2
 		DIR_HOST=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f1`
 		DIR=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f2`
+		DIR_DATA=$DIR
 		DIR_PORT=`$ECHO $CHK_DIR_TARGET|$CUT -d"|" -f3`
 		GET_DUMP_DIR $DIR
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -770,6 +771,13 @@ PROCESS_DUMP_CONFIG () {
 	CONFIG_BACKUP_FILE=gp_master_config_files_${TIMESTAMP_KEY}.tar
 	$TAR cf ${DIR}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${MASTER_DATA_DIRECTORY}/*.conf  >> $LOG_FILE 2>&1
 	ERROR_CHK $? "dump config files" 1
+	LOG_MSG "[INFO]:-Securing segment configuration files" 1
+	for DBID in ${DBID_LIST[@]}
+	do
+	    CONFIG_BACKUP_FILE=gp_segment_config_files_0_${DBID}_${TIMESTAMP_KEY}.tar
+	    CHK_DATA
+	    RUN_COMMAND_REMOTE ${DIR_HOST} "$TAR cf ${DIR}/${DUMP_SUB_DIR}/${DUMP_DATE}/${CONFIG_BACKUP_FILE} ${DIR_DATA}/*.conf"
+	done
 	DUMP_CONFIG=0
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
