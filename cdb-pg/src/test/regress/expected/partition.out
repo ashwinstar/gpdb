@@ -2910,3 +2910,94 @@ NOTICE:  CREATE TABLE will create partition "foo_1_prt_2" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_3" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_4" for table "foo"
 drop table foo;
+-- test inclusive/exclusive
+CREATE TABLE supplier2(
+                S_SUPPKEY INTEGER,
+                S_NAME CHAR(25),
+                S_ADDRESS VARCHAR(40),
+                S_NATIONKEY INTEGER,
+                S_PHONECHAR char(15),
+                S_ACCTBAL decimal,
+				S_COMMENT VARCHAR(100)
+)
+partition by range (s_nationkey)
+(
+partition p1 start(0) , 
+partition p2 start(12) end(13), 
+partition p3 end(20) inclusive, 
+partition p4 start(20) exclusive , 
+partition p5 start(22) end(25)
+);
+NOTICE:  CREATE TABLE will create partition "supplier2_1_prt_p1" for table "supplier2"
+NOTICE:  CREATE TABLE will create partition "supplier2_1_prt_p2" for table "supplier2"
+NOTICE:  CREATE TABLE will create partition "supplier2_1_prt_p3" for table "supplier2"
+NOTICE:  CREATE TABLE will create partition "supplier2_1_prt_p4" for table "supplier2"
+NOTICE:  CREATE TABLE will create partition "supplier2_1_prt_p5" for table "supplier2"
+-- Make sure they're correctly ordered
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false),
+parrangestartincl,
+pg_get_expr(parrangeend, parchildrelid, false),parrangeendincl 
+from pg_partition_rule  where
+paroid in (select oid from pg_partition where parrelid = 'supplier2'::regclass)
+order by parruleord;
+ parname | parruleord | pg_get_expr | parrangestartincl | pg_get_expr | parrangeendincl 
+---------+------------+-------------+-------------------+-------------+-----------------
+ p1      |          1 | 0           | t                 | 12          | f
+ p2      |          2 | 12          | t                 | 13          | f
+ p3      |          3 | 13          | t                 | 20          | t
+ p4      |          4 | 20          | f                 | 22          | f
+ p5      |          5 | 22          | t                 | 25          | f
+(5 rows)
+
+insert into supplier2 (s_suppkey, s_nationkey) select i, i 
+from generate_series(1, 24) i;
+select * from supplier2_1_prt_p1 order by S_NATIONKEY;
+ s_suppkey | s_name | s_address | s_nationkey | s_phonechar | s_acctbal | s_comment 
+-----------+--------+-----------+-------------+-------------+-----------+-----------
+         1 |        |           |           1 |             |           | 
+         2 |        |           |           2 |             |           | 
+         3 |        |           |           3 |             |           | 
+         4 |        |           |           4 |             |           | 
+         5 |        |           |           5 |             |           | 
+         6 |        |           |           6 |             |           | 
+         7 |        |           |           7 |             |           | 
+         8 |        |           |           8 |             |           | 
+         9 |        |           |           9 |             |           | 
+        10 |        |           |          10 |             |           | 
+        11 |        |           |          11 |             |           | 
+(11 rows)
+
+select * from supplier2_1_prt_p2 order by S_NATIONKEY;
+ s_suppkey | s_name | s_address | s_nationkey | s_phonechar | s_acctbal | s_comment 
+-----------+--------+-----------+-------------+-------------+-----------+-----------
+        12 |        |           |          12 |             |           | 
+(1 row)
+
+select * from supplier2_1_prt_p3 order by S_NATIONKEY;
+ s_suppkey | s_name | s_address | s_nationkey | s_phonechar | s_acctbal | s_comment 
+-----------+--------+-----------+-------------+-------------+-----------+-----------
+        13 |        |           |          13 |             |           | 
+        14 |        |           |          14 |             |           | 
+        15 |        |           |          15 |             |           | 
+        16 |        |           |          16 |             |           | 
+        17 |        |           |          17 |             |           | 
+        18 |        |           |          18 |             |           | 
+        19 |        |           |          19 |             |           | 
+        20 |        |           |          20 |             |           | 
+(8 rows)
+
+select * from supplier2_1_prt_p4 order by S_NATIONKEY;
+ s_suppkey | s_name | s_address | s_nationkey | s_phonechar | s_acctbal | s_comment 
+-----------+--------+-----------+-------------+-------------+-----------+-----------
+        21 |        |           |          21 |             |           | 
+(1 row)
+
+select * from supplier2_1_prt_p5 order by S_NATIONKEY;
+ s_suppkey | s_name | s_address | s_nationkey | s_phonechar | s_acctbal | s_comment 
+-----------+--------+-----------+-------------+-------------+-----------+-----------
+        22 |        |           |          22 |             |           | 
+        23 |        |           |          23 |             |           | 
+        24 |        |           |          24 |             |           | 
+(3 rows)
+
+drop table supplier2;

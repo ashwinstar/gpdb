@@ -1591,3 +1591,39 @@ partition by range(j)
 (start ('2007-01-01') end ('2007-01-05') every (interval '1.2 days'));
 
 drop table foo;
+
+-- test inclusive/exclusive
+CREATE TABLE supplier2(
+                S_SUPPKEY INTEGER,
+                S_NAME CHAR(25),
+                S_ADDRESS VARCHAR(40),
+                S_NATIONKEY INTEGER,
+                S_PHONECHAR char(15),
+                S_ACCTBAL decimal,
+				S_COMMENT VARCHAR(100)
+)
+partition by range (s_nationkey)
+(
+partition p1 start(0) , 
+partition p2 start(12) end(13), 
+partition p3 end(20) inclusive, 
+partition p4 start(20) exclusive , 
+partition p5 start(22) end(25)
+);
+
+-- Make sure they're correctly ordered
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false),
+parrangestartincl,
+pg_get_expr(parrangeend, parchildrelid, false),parrangeendincl 
+from pg_partition_rule  where
+paroid in (select oid from pg_partition where parrelid = 'supplier2'::regclass)
+order by parruleord;
+
+insert into supplier2 (s_suppkey, s_nationkey) select i, i 
+from generate_series(1, 24) i;
+select * from supplier2_1_prt_p1 order by S_NATIONKEY;
+select * from supplier2_1_prt_p2 order by S_NATIONKEY;
+select * from supplier2_1_prt_p3 order by S_NATIONKEY;
+select * from supplier2_1_prt_p4 order by S_NATIONKEY;
+select * from supplier2_1_prt_p5 order by S_NATIONKEY;
+drop table supplier2;
