@@ -827,6 +827,12 @@ alter table hhh drop partition cc restrict;
 
 alter table hhh drop partition if exists cc;
 
+-- fail (mpp-3265)
+alter table hhh drop partition for (position(0));
+alter table hhh drop partition for (position(-55));
+alter table hhh drop partition for ('2001-01-01');
+
+
 create table hhh_r1 (a char(1), b date, d char(3))
 distributed by (a)
 partition by range (b)
@@ -953,6 +959,79 @@ alter table hhh modify partition cc add values ('a');
 alter table hhh modify partition cc drop values ('a');
 alter table hhh modify partition aa add values ('a');
 alter table hhh modify partition aa drop values ('a');
+
+create table mmm_r1 (a char(1), b date, d char(3))
+distributed by (a)
+partition by range (b)
+(
+partition aa start (date '2007-01-01') end (date '2008-01-01')
+             every (interval '1 month')
+);
+
+create table mmm_l1 (a char(1), b char(1), d char(3))
+distributed by (a)
+partition by list (b)
+(
+partition aa values ('a', 'b', 'c'),
+partition bb values ('d', 'e', 'f'),
+partition cc values ('g', 'h', 'i')
+);
+
+alter table mmm_r1 drop partition for ('2007-03-01');
+-- ok
+alter table mmm_r1 add partition bb START ('2007-03-03') END ('2007-03-20');
+
+-- fail
+alter table mmm_r1 modify partition for (position(-55)) start ('2007-03-02');
+alter table mmm_r1 modify partition for ('2001-01-01') start ('2007-03-02');
+alter table mmm_r1 modify partition bb start ('2006-03-02');
+alter table mmm_r1 modify partition bb start ('2011-03-02');
+alter table mmm_r1 modify partition bb end ('2006-03-02');
+alter table mmm_r1 modify partition bb end ('2011-03-02');
+alter table mmm_r1 modify partition bb add values ('2011-03-02');
+alter table mmm_r1 modify partition bb drop values ('2011-03-02');
+
+--ok
+alter table mmm_r1 modify partition bb START ('2007-03-02') END ('2007-03-22');
+alter table mmm_r1 modify partition bb START ('2007-03-01') END ('2007-03-31');
+alter table mmm_r1 modify partition bb START ('2007-03-02') END ('2007-03-22');
+
+-- with default
+alter table mmm_r1 add default partition def1;
+
+-- now fail
+alter table mmm_r1 modify partition bb START ('2007-03-01') END ('2007-03-31');
+
+-- still ok to reduce range
+alter table mmm_r1 modify partition bb START ('2007-03-09') END ('2007-03-10');
+
+-- fail
+alter table mmm_l1 modify partition for (position(1)) drop values ('k');
+alter table mmm_l1 modify partition for ('j') drop values ('k');
+alter table mmm_l1 modify partition for ('a') drop values ('k');
+alter table mmm_l1 modify partition for ('a') drop values ('e');
+alter table mmm_l1 modify partition for ('a') add values ('e');
+
+alter table mmm_l1 modify partition for ('a') START ('2007-03-09') ;
+
+
+--ok
+alter table mmm_l1 modify partition for ('a') drop values ('b');
+alter table mmm_l1 modify partition for ('a') add values ('z');
+
+-- with default
+alter table mmm_l1 add default partition def1;
+-- ok
+alter table mmm_l1 modify partition for ('a') drop values ('c');
+-- now fail
+alter table mmm_l1 modify partition for ('a') add values ('y');
+
+-- XXX XXX: add some data 
+
+drop table mmm_r1 cascade;
+drop table mmm_l1 cascade;
+
+
 
 alter table hhh rename partition cc to aa;
 alter table hhh rename partition aa to aa;

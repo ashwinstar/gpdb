@@ -12376,7 +12376,7 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("cannot MODIFY %s partition%s for "
-								"relation \"%s\" to ADD values -- would "
+								"relation \"%s\" to extend range -- would "
 								"overlap DEFAULT partition \"%s\"", 
 								"RANGE",
 								prule->partIdStr,
@@ -12524,6 +12524,20 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 			 */
 			if (prule2->topRuleRank != prule->topRuleRank)
 			{
+				if (0 == prule2->topRuleRank)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("cannot MODIFY %s partition%s for "
+									"relation \"%s\" to extend range -- would "
+									"overlap DEFAULT partition \"%s\"", 
+									"RANGE",
+									prule->partIdStr,
+									RelationGetRelationName(rel),
+									prule->pNode->default_part->parname),
+							 errhint("need to SPLIT partition \"%s\"", 
+									 prule->pNode->default_part->parname)));
+
+
 				if (ri->partedge == PART_EDGE_INCLUSIVE)
 				{
 					bOverlap = true;
