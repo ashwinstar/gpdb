@@ -1721,13 +1721,22 @@ table_partition_modify:
             OptTabPartitionBoundarySpecEvery  
 				{
                     /* re-use alterpartitioncmd struct here... */
-					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
-                    PartitionBoundSpec *n = makeNode(PartitionBoundSpec); 
-                    n->partStart = $1;
-                    n->partEnd   = $2;
-                    n->partEvery = $3;
-                    n->everyGenList = NIL; 
+					AlterPartitionCmd  *pc = makeNode(AlterPartitionCmd);
+                    PartitionBoundSpec *bs = makeNode(PartitionBoundSpec); 
+                    PartitionElem      *n  = makeNode(PartitionElem); 
+
+                    n->partName  = NULL;
+                    n->boundSpec = (Node *)bs;
+                    n->subSpec   = NULL;
                     n->location  = @1;
+                    n->isDefault = 0;
+                    n->storeAttr = NULL;
+
+                    bs->partStart = $1;
+                    bs->partEnd   = $2;
+                    bs->partEvery = $3;
+                    bs->everyGenList = NIL; 
+                    bs->location  = @1;
 
                     pc->partid = NULL;
                     pc->arg1 = (Node *)makeDefElem("START", NULL);
@@ -1739,13 +1748,22 @@ table_partition_modify:
               OptTabPartitionBoundarySpecEvery	
 				{
                     /* re-use alterpartitioncmd struct here... */
-					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
-                    PartitionBoundSpec *n = makeNode(PartitionBoundSpec); 
-                    n->partStart = NULL;
-                    n->partEnd   = $1;
-                    n->partEvery = $2;
-                    n->everyGenList = NIL; 
+					AlterPartitionCmd  *pc = makeNode(AlterPartitionCmd);
+                    PartitionBoundSpec *bs = makeNode(PartitionBoundSpec); 
+                    PartitionElem      *n  = makeNode(PartitionElem); 
+
+                    n->partName  = NULL;
+                    n->boundSpec = (Node *)bs;
+                    n->subSpec   = NULL;
                     n->location  = @1;
+                    n->isDefault = 0;
+                    n->storeAttr = NULL;
+
+                    bs->partStart = NULL;
+                    bs->partEnd   = $1;
+                    bs->partEvery = $2;
+                    bs->everyGenList = NIL; 
+                    bs->location  = @1;
 
                     pc->partid = NULL;
                     pc->arg1 = (Node *)makeDefElem("END", NULL);
@@ -1756,11 +1774,19 @@ table_partition_modify:
 			| add_drop part_values_clause
 				{
                     /* re-use alterpartitioncmd struct here... */
-					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
-                    PartitionValuesSpec *n = makeNode(PartitionValuesSpec); 
+					AlterPartitionCmd   *pc = makeNode(AlterPartitionCmd);
+                    PartitionValuesSpec *vs = makeNode(PartitionValuesSpec); 
+                    PartitionElem       *n  = makeNode(PartitionElem); 
 
-                    n->partValues = $2;
-                    n->location  = @2;
+                    n->partName  = NULL;
+                    n->boundSpec = (Node *)vs;
+                    n->subSpec   = NULL;
+                    n->location  = @1;
+                    n->isDefault = 0;
+                    n->storeAttr = NULL;
+
+                    vs->partValues = $2;
+                    vs->location  = @2;
 
                     pc->partid = NULL;
                     if (1 == $1)
