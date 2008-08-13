@@ -13,23 +13,33 @@ absPath=`cd $(dirname $0); pwd`
 
 # absPath is $GPHOME/bin/lib, so backup two directories to find $GPHOME
 GPHOME=$(dirname $(dirname $absPath))
+export GPHOME
 
 # get the PATH setup
 PATH=$GPHOME/bin:$GPHOME/ext/python/bin:$PATH
+export PATH
 
 # Add in library paths apropriate for this system
-UNAME=`uname`
-
-case $UNAME in
-  Darwin) DYLD_LIBRARY_PATH=$GPHOME/ext/python/lib:$DYLD_LIBRARY_PATH ;;
-  *) LD_LIBRARY_PATH=$GPHOME/ext/python/lib:$LD_LIBRARY_PATH ;;
+case `uname` in
+  Darwin) 
+     if [ $DYLD_LIBRARY_PATH ]
+     then DYLD_LIBRARY_PATH=$GPHOME/ext/python/lib:$DYLD_LIBRARY_PATH
+     else DYLD_LIBRARY_PATH=$GPHOME/ext/python/lib
+     fi
+     export DYLD_LIBRARY_PATH
+     ;;
+  *) 
+     if [ $LD_LIBRARY_PATH ]
+     then LD_LIBRARY_PATH=$GPHOME/ext/python/lib:$LD_LIBRARY_PATH
+     else LD_LIBRARY_PATH=$GPHOME/ext/python/lib
+     fi
+     export LD_LIBRARY_PATH
+     ;;
 esac
 
-# execute whatever was given to us
 
+# execute whatever was given to us
 if [ "$#" -gt 0 ]
-then
-  $*
-else
-  env
+then $*
+else env
 fi
