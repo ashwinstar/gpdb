@@ -381,7 +381,6 @@ static void session_end(session_t* s, int error);
 static void session_free(session_t* s);
 static void request_end(request_t* r, int error, const char* errmsg);
 static const char* session_get_block(session_t* s, block_t** retblock);
-static char* path_basename(const char* path, apr_pool_t* pool);
 
 
 /* send an error response */
@@ -610,82 +609,6 @@ static void session_end(session_t* s, int error)
     }
 }
 
-static int fpath_compare(const void *a, const void *b)
-{
-    return strcmp(*((char **) a), *((char **) b));
-}
-
-static char** glob(char* path, int* retcnt, apr_pool_t* pool)
-{
-    apr_array_header_t* arr;
-    char** elts;
-    int i, n;
-    char** fpath = 0;
-    char* bname = path_basename(path, pool);
-    char** p;
-
-    if (apr_match_glob(path, &arr, pool)) 
-	return 0;
-    n = arr->nelts;
-    fpath = apr_pcalloc(pool, sizeof(char*) * (n + 1));
-    elts = (char**) arr->elts;
-    p = fpath;
-    for (i = 0; i < n; i++) {
-	if (elts[i][0] == '.') 	/* skip '.' & '..' & '.xxx'  */
-	    continue;
-	if (apr_filepath_merge(p, bname, elts[i], 0, pool))
-	    return 0;
-	p++;
-    }
-    
-    if (retcnt) 
-	*retcnt = p - fpath;
-
-
-    qsort(fpath, *retcnt, sizeof(char *), fpath_compare);
-    return fpath;
-}
-
-static int fpath_all_directories(char **fpath, int n, apr_pool_t *pool)
-{
-    int i;
-
-    for (i = 0 ; i < n ; i++) {
-	/* check if fpath is a directory */
-	apr_finfo_t finfo;
-	if (apr_stat(&finfo, fpath[i], APR_FINFO_TYPE, pool)) {
-	    /* error in stat. assume non-directory */
-	    return 0; 
-	}
-	else if (finfo.filetype != APR_DIR) {
-	    /* not a directory */
-	    return 0; 
-	}
-    }
-    
-    return 1;
-}
-
-static char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, apr_pool_t *p)
-{
-    char **fpath;
-    
-    if (n1 == 0) {
-	*n = n2;
-	return fpath2;
-    }
-
-    if (0 == (fpath = apr_palloc(p, sizeof(char *) * (n1 + n2)))) 
-	gfatal(FLINE, "out of memory");
-
-    *n = n1 + n2;
-
-    memcpy(fpath, fpath1, sizeof(char*) * n1);
-    memcpy(fpath+n1, fpath2, sizeof(char*) * n2);
-
-    return fpath;
-}
-
 
 /* deallocate session, remove from hashtable */
 static void session_free(session_t* s)
@@ -774,8 +697,6 @@ static void session_attach(request_t* r)
     s = apr_hash_get(gcb.session.tab, key, APR_HASH_KEY_STRING);
     if (! s) {
 	/* not in hashtable - create new session */
-	int n = 0;
-	char** fpath = 0;
 	fstream_t* fstream = 0;
 	apr_pool_t* pool;
 
@@ -788,77 +709,8 @@ static void session_attach(request_t* r)
 	    request_end(r, 1, 0);
 	    return;
 	}
-
-	/* do we have a pattern in r->path? */
-	if (! apr_fnmatch_test(r->path)) {
-	    n = 1;
-	    fpath = &r->path;
-	}
-	else {
-	    /* glob for all files matching r->path pattern */
-	    fpath = glob(r->path, &n, pool);
-	    if (!fpath || n == 0) {
-		gwarning(FLINE, "bad path: %s", r->path);
-		http_error(r, 404, "not found");
-		request_end(r, 1, 0);
-		apr_pool_destroy(pool);
-		return;
-	    }
-	    if (opt.v) {
-		int i;
-		const int dlen = strlen(opt.d);
-		gprint("  glob root at %s\n", opt.d);
-		for (i = 0; i < n; i++) {
-		    if (0 == memcmp(opt.d, fpath[i], dlen))
-			gprint("  glob: %s\n", fpath[i] + dlen);
-		    else
-			gprint("  glob: %s\n", fpath[i]);
-		}
-	    }
-	}
-
-				    
-	if (fpath_all_directories(fpath, n, pool)) {
-	    int i;
-	    int nn = 0;
-	    char **ffpath = 0;
-
-	    for (i = 0  ; i < n ; i++) {
-		/* this is a directory - glob for all files in the dir */
-		char* newpath = 0;
-		char **dirfpath = 0;
-		int dirnf = 0;
-		if (apr_filepath_merge(&newpath, fpath[i], "*", 0, pool)) {
-		    gwarning(FLINE, "bad path: %s (filepathmerge)", r->path);
-		    http_error(r, 404, "not found");
-		    request_end(r, 1, 0);
-		    apr_pool_destroy(pool);
-		    return;
-		}
-		dirfpath = glob(newpath, &dirnf, pool);
-		if (!dirfpath || dirnf == 0) {
-		    gwarning(FLINE, "%s is empty directory", fpath[i]);
-		    continue;
-		}
-
-		/* append dirfpath to fpath */
-		ffpath = fpath_merge(ffpath, nn, dirfpath, dirnf, &nn, pool);
-	    }
-
-	    fpath = ffpath;
-	    n = nn;
-
-	    if (n == 0) {
-		gwarning(FLINE, "bad path: %s", r->path);
-		http_error(r, 404, "not found");
-		request_end(r, 1, 0);
-		apr_pool_destroy(pool);
-		return;
-	    }
-	}
-
 	/* try opening the fstream */
-	fstream = fstream_alloc(fpath, n, pool,opt.h);
+	fstream = fstream_alloc(r->path,pool,opt.h);
 	if (! fstream) {
 	    gwarning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
 	    http_error(r, 404, "not found");
@@ -1466,15 +1318,6 @@ int main(int argc, const char* const argv[])
     }
 
     return event_dispatch();
-}
-
-static char* path_basename(const char* path, apr_pool_t* pool)
-{
-    char* idx = strrchr(path, '/');
-    if (! idx) 
-	return apr_pstrdup(pool, ".");
-
-    return apr_pstrndup(pool, path, idx - path);
 }
 
 static APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)

@@ -10,24 +10,20 @@
 #include <apr_general.h>
 #include <apr.h>
 #include <apr_strings.h>
+#include "gfile.h"
 
-#define FLINE __FILE__ ":" APR_STRINGIFY(__LINE__)
+#define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
 #define BLOCKSIZE  (1024 * 32)
 
 #ifndef WIN32
 #define SOCKET int
 #define closesocket(x)   close(x)
-#define O_BINARY 0
 #endif
 
 APR_DECLARE(int) gprint(const char* fmt, ...);
 APR_DECLARE(int) gfatal(const char* fline, const char* fmt, ...);
 APR_DECLARE(int) gwarning(const char* fline, const char* fmt, ...);
 
-typedef struct gfile_t gfile_t;
-APR_DECLARE(gfile_t*) gfile_open(const char *fpath, int oflag, apr_pool_t* pool);
-APR_DECLARE(int) gfile_close(gfile_t*);
-APR_DECLARE(size_t) gfile_read(gfile_t*, void* ptr, int len);
 
 /*  A data block */
 typedef struct blockhdr_t blockhdr_t;
@@ -66,7 +62,7 @@ struct fstream_t {
 
 void block_put(block_t* b);
 block_t*fstream_get_block(fstream_t* fs, apr_pool_t* pool);
-fstream_t*fstream_alloc(char** path, int npath, apr_pool_t* pool,int opth);
+fstream_t*fstream_alloc(const char* path, apr_pool_t* pool,int opth);
 void fstream_free(fstream_t* fs);
 
 #endif

@@ -50,7 +50,7 @@ mkpaxos: mkdir
 mkgpfdist: mkext
 	@echo --- gpfdist --------------------------------------------------
 	(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
-		-o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -lz)
+		-Werror -o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -lz)
 	@mkdir -p build/bin
 	@cp -f src/gpfdist/gpfdist build/bin/
 
