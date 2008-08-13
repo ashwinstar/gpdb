@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <termios.h>
+#include <signal.h>
 
 ALLOW_EXCEPTIONS;
 
@@ -18,11 +19,15 @@ static char  VERSION[] =
 static char *wordchars = 
 	"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
 
+/* Initialize global variables */
 int             global_print_flag   = 0;
 int             global_debug_flag   = 0;
 int             global_verbose_flag = 0;
-
 mapred_plist_t *global_plist        = NULL;
+
+/* libPQ cancel context */
+static PGcancel *volatile cancelConn = NULL;
+
 
 void usage(char *procname, boolean full);
 void showVersion(char *procname);
@@ -30,6 +35,7 @@ int  main(int argc, char *argv[]);
 void read_password(char *p, size_t len);
 void check_version(PGconn *conn);
 
+static void sigint_handler(SIGNAL_ARGS);
 
 /* usage() - print usage information */
 void usage(char *procname, boolean full)
@@ -317,13 +323,29 @@ int main (int argc, char *argv[])
 #ifndef PRERELEASE
 				check_version(conn);
 #endif
+				
+				/* Prepare to receive interupts */
+				cancelConn = PQgetCancel(conn);
+
+				if (signal(SIGINT, sigint_handler) == SIG_IGN)
+					signal(SIGINT, SIG_IGN);
+				if (signal(SIGHUP, sigint_handler) == SIG_IGN)
+					signal(SIGHUP, SIG_IGN);
+				if (signal(SIGTERM, sigint_handler) == SIG_IGN)
+					signal(SIGTERM, SIG_IGN);
+
 				mapred_run_document(conn, doc);
+
 			}
 		}
 		XCATCH(ASSERTION_FAILURE)
 		{
 			fprintf(stderr, "Assertion failure at %s:%d\n",
 					xframe.file, xframe.lineno);	
+		}
+		XCATCH(USER_INTERUPT)
+		{
+			/* Nothing to do... just cleanup and exit */
 		}
 		XCATCH_ANY
 		{
@@ -336,6 +358,13 @@ int main (int argc, char *argv[])
 		}
 		XFINALLY
 		{
+			/* Ignore signals until we exit */
+			signal(SIGINT, SIG_IGN);
+			signal(SIGHUP, SIG_IGN);
+			signal(SIGTERM, SIG_IGN);
+
+			PQfreeCancel(cancelConn);
+			cancelConn = NULL;
 			PQfinish(conn);
 		}
 		XTRY_END;
@@ -448,3 +477,28 @@ void check_version(PGconn *conn)
 }
 
 
+/* 
+ * sigint_handler() -  Interupt handler to cancel active queries 
+ */
+static void sigint_handler(SIGNAL_ARGS)
+{
+	char errbuf[256];
+
+	/* Once we accept an interupt it's best to simply disable the handler */
+	signal(SIGINT, SIG_IGN);
+	signal(SIGHUP, SIG_IGN);
+	signal(SIGTERM, SIG_IGN);
+
+	if (cancelConn != NULL)
+	{
+		if (PQcancel(cancelConn, errbuf, sizeof(errbuf)))
+			fprintf(stderr, "Cancel request sent\n");
+		else
+		{
+			fprintf(stderr, "Could not send cancel request: ");
+			fprintf(stderr, errbuf);
+		}
+	}
+
+	XRAISE(USER_INTERUPT, "SIGINT");
+}

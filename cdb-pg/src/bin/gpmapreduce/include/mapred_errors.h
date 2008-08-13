@@ -19,4 +19,7 @@
 /* Other errors */
 #define MAPRED_SQL_ERROR         200
 
+/* Signals */
+#define USER_INTERUPT          10000   /* SIGINT */
+
 #endif

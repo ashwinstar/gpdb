@@ -1546,10 +1546,10 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						XASSERT(obj->u.input.desc);
 
 						/* 
-						 *  CREATE VIEW <name> AS 
+						 *  CREATE TEMPORARY VIEW <name> AS 
 						 *  <desc>;
 						 */
-						bufcat(&buffer, "CREATE VIEW ");
+						bufcat(&buffer, "CREATE TEMPORARY VIEW ");
 						bufcat(&buffer, obj->name);
 						bufcat(&buffer, " AS\n");
 						bufcat(&buffer, obj->u.input.desc);
@@ -2354,9 +2354,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 
 				/*
 				 * 4) Handle the final transform into the view definition:
-				 *        "CREATE VIEW . AS .;"
+				 *        "CREATE TEMPORARY VIEW . AS .;"
 				 */
-				bufcat(&buffer, "CREATE VIEW ");
+				bufcat(&buffer, "CREATE TEMPORARY VIEW ");
 				bufcat(&buffer, obj->name);
 				bufcat(&buffer, " AS\n");
 				bufcat(&buffer, qbuffer->buffer);
