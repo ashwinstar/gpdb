@@ -562,6 +562,7 @@ static apr_status_t write_metrics(agg_t* agg, const char* nowstr)
     for (hi = apr_hash_first(0, agg->htab); hi; hi = apr_hash_next(hi)) {
 	gpmon_metrics_t* mp;
 	void* valptr = 0;
+        int quantum = gpmmon_quantum();
 	apr_hash_this(hi, 0, 0, (void**) &valptr);
 
 	mp = (gpmon_metrics_t*) valptr;
@@ -577,11 +578,13 @@ static apr_status_t write_metrics(agg_t* agg, const char* nowstr)
 		mp->cpu.user_pct, mp->cpu.sys_pct, mp->cpu.idle_pct);
 	sprintf(p += strlen(p), "|%.4f|%.4f|%.4f",
 		mp->load_avg.value[0], mp->load_avg.value[1], mp->load_avg.value[2]);
+        sprintf(p += strlen(p), "|%d", quantum); 
 	sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64,
-		mp->disk.rcount, mp->disk.wcount, mp->disk.rbytes, mp->disk.wbytes);
+		mp->disk.rcount / quantum, mp->disk.wcount / quantum, 
+                mp->disk.rbytes / quantum, mp->disk.wbytes / quantum);
 	sprintf(p += strlen(p), "|%" FMT64 "|%" FMT64 "|%" FMT64 "|%" FMT64,
-		mp->net.rcount, mp->net.wcount, mp->net.rbytes, mp->net.wbytes);
-
+		mp->net.rcount / quantum, mp->net.wcount / quantum, 
+                mp->net.rbytes / quantum, mp->net.wbytes / quantum);
 	fprintf(fp, "%s\n", line);
 	fprintf(fp2, "%s\n", line);
     }
@@ -820,7 +823,7 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
         row_skew = get_row_skew(qdnode);
     }
     sprintf(p += strlen(p), "|%f|%.2f", cpu_skew, row_skew);
-    sprintf(p += strlen(p), "|%" FMT64, 0);
+    sprintf(p += strlen(p), "|%" FMT64, 0LL);
     return line;
 }
 

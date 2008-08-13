@@ -18,6 +18,7 @@ create table metrics_history (
        swap_page_in bigint not null, swap_page_out bigint not null,
        cpu_user float not null, cpu_sys float not null, cpu_idle float not null,
        load0 float not null, load1 float not null, load2 float not null,
+       quantum int not null,
        disk_ro bigint not null, disk_wo bigint not null, disk_rb bigint not null, disk_wb bigint not null, 
        net_rp bigint not null, net_wp bigint not null, net_rb bigint not null, net_wb bigint not null
 ) 
