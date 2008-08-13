@@ -100,9 +100,9 @@ RESET SESSION AUTHORIZATION;
 REASSIGN OWNED BY regression_user1 TO regression_user2;
 \dt deptest
               List of relations
- Schema |  Name   | Type  |      Owner       
---------+---------+-------+------------------
- public | deptest | table | regression_user2
+ Schema |  Name   | Type  | Storage |      Owner       
+--------+---------+-------+---------+------------------
+ public | deptest | table | heap    | regression_user2
 (1 row)
 
 -- doesn't work: grant still exists
