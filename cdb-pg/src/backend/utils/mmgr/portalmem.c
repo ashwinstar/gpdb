@@ -1152,7 +1152,8 @@ void PortalSetStatus(Portal p, PortalStatus s)
 
 		p->gpmon_pkt.u.qlog.key.ccnt = gp_command_count;
 		p->gpmon_pkt.u.qlog.status = gpmon_qlog_status;
-		gpmon_send(&p->gpmon_pkt);
+                if (gp_enable_gpmon)
+                    gpmon_send(&p->gpmon_pkt);
 	}
 
 	p->portal_status = s;
