@@ -45,6 +45,8 @@ extern char *default_tablespace;
 #include "libpq/libpq-be.h"
 #include "libpq/ip.h"
 
+#include "utils/guc_tables.h"
+
 
 #define MAX_CACHED_1_GANGS 1
 /*
@@ -66,7 +68,7 @@ static Gang *buildGangDefinitionFromConninfo(GpSegmentConnectionInfoSet * connin
 
 static bool isTargetPortal(const char *p1, const char *p2);
 
-static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser);
+static int addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser);
 
 static void resetSessionForPrimaryGangLoss(void);
 
@@ -306,8 +308,18 @@ createDispatchAgents(Portal portal)
 		 */
 		build_gpdaid_params(&buffer);
 	
-		addOptions(&buffer,
+		{
+			int err = addOptions(&buffer,
 				true /* writer? */, q->segindex /* segindex */,true /* primary? */ , superuser());
+
+			if(err <= 0)
+			{
+				struct config_generic **gucs = get_guc_variables();
+				struct config_generic *errguc = gucs[-err];
+				
+				elog(ERROR, "createDispatchAgenets failed to add GUC %s", errguc->name);
+			}
+		}
 	
 	
 		if (!cdbconn_doDispatchAgentConnect(&dispatchagents->db_descriptors[i], buffer.data))
@@ -1472,31 +1484,127 @@ int gp_pthread_create(pthread_t *thread,
 	return pthread_err;
 }
 
-static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser)
+static bool guc_val_is_default(struct config_generic *guc)
 {
-	int		j, start, end;
-	char	*temp;
-	
+	switch(guc->vartype)
+	{
+		case PGC_BOOL:
+			{
+				struct config_bool *bguc = (struct config_bool *) guc;
+				return bguc->reset_val == *(bguc->variable);
+			}
+			break;
+		case PGC_INT:
+			{
+				struct config_int *iguc = (struct config_int *) guc;
+				return iguc->reset_val == *(iguc->variable);
+			}
+			break;
+		case PGC_REAL:
+			{
+				struct config_real *rguc = (struct config_real *) guc;
+				return rguc->reset_val == *(rguc->variable);
+			}
+			break;
+		case PGC_STRING:
+			{
+				struct config_string *sguc = (struct config_string *) guc;
+
+				if(sguc->reset_val==NULL && *(sguc->variable) == NULL)
+					return true;
+				if(sguc->reset_val!=NULL || *(sguc->variable) != NULL)
+					return false;
+				return strcmp(sguc->reset_val, *(sguc->variable)) == 0;
+			}
+		default:
+			Assert(!"Unknown vartype");
+	}
+	return false;
+}
+
+static bool addOneOption(PQExpBufferData *buffer, struct config_generic *guc)
+{
+	Assert(guc && (guc->flags & GUC_GPDB_ADDOPT));
+	switch(guc->vartype)
+	{
+		case PGC_BOOL:
+			{
+				struct config_bool *bguc = (struct config_bool *) guc;
+				appendPQExpBuffer(buffer, " -c %s=%s", guc->name,
+								*(bguc->variable) ? "true" : "false"
+						);
+				return true; 
+			}
+		case PGC_INT:
+			{
+				struct config_int *iguc = (struct config_int *) guc;
+				appendPQExpBuffer(buffer, " -c %s=%d", guc->name, *iguc->variable);
+				return true;
+			}
+		case PGC_REAL:
+			{
+				struct config_real *rguc = (struct config_real *) guc;
+				appendPQExpBuffer(buffer, " -c %s=%f", guc->name, *rguc->variable);
+				return true;
+			}
+		case PGC_STRING:
+			{
+				struct config_string *sguc = (struct config_string *) guc;
+				const char * str = *sguc->variable;
+				int		j, start, end;
+				char	temp[1024];
+
+				end = strlen(str);
+
+				j = 0;
+				for(start = 0; start < end; ++start)
+				{
+					if(str[start] == ' ')
+						continue;
+
+					if(str[start] == '"' || str[start] == '\'')
+						temp[j++] = '\\';
+					temp[j++] = str[start];
+
+					if(j >= 1023)
+						return false;
+				}
+				temp[j] = '\0';
+
+				appendPQExpBuffer(buffer, " -c %s=%s", guc->name, temp);
+				return true;
+			}
+	}
+
+	Assert(!"Invalid guc var type");
+	return false;
+}
+
+/* 
+ * Add GUCs to option string.
+ *
+ * Return 1 (>0) if success.
+ * Return -index (<=0) into get_guc_variables on failure, so that caller
+ * will be able to print a nice error message.
+ */
+static int addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bool isprimary, bool i_am_superuser)
+{
+	struct config_generic **gucs = get_guc_variables();
+	int ngucs = get_num_guc_variables();
+	int i;
+
 	appendPQExpBufferStr(buffer, "options='");
 
+	/* The following gucs are set will function parameter */
 	if (iswriter)
-		appendPQExpBufferStr(buffer, "-c gp_is_writer=true ");
+		appendPQExpBufferStr(buffer, " -c gp_is_writer=true");
 
-	appendPQExpBuffer(buffer,
-					  "-c gp_segment=%d -c gp_max_packet_size=%d",
-					  segindex, Gp_max_packet_size);
+	appendPQExpBuffer(buffer, " -c gp_segment=%d", segindex);
 
 	if (!isprimary)
 		appendPQExpBuffer(buffer, " -c gp_is_primary=false");
-	
-	appendPQExpBuffer(buffer, " -c gp_enable_functions=%d",gp_enable_functions);
-	appendPQExpBuffer(buffer, " -c gp_qd_callback_info=port=%d",PostPortNumber);
-	
-	appendPQExpBuffer(buffer, " -c gp_is_callback=%d",gp_is_callback);
-	appendPQExpBuffer(buffer, " -c gp_qd_proc_offset=%ld",(long)MAKE_OFFSET(MyProc));		
 
-	appendPQExpBuffer(buffer, " -c gp_safefswritesize=%d",gp_safefswritesize);
-
+	/* GUCs need special handling */
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		CdbComponentDatabaseInfo  *qdinfo;
@@ -1513,306 +1621,63 @@ static void addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, bo
 		appendPQExpBuffer(buffer, " -c gp_qd_hostname=%s", qdHostname);
 		appendPQExpBuffer(buffer, " -c gp_qd_port=%d", qdPostmasterPort);
 	}
-	
-	
-	/*
-     * user-settable GUC variables
-     */
-	appendPQExpBuffer(buffer, " -c gp_select_invisible=%s", gp_select_invisible ? "on" : "off");
 
-	appendPQExpBuffer(buffer, " -c gp_debug_linger=%d", gp_debug_linger);
+	appendPQExpBuffer(buffer, " -c gp_qd_callback_info=port=%d", PostPortNumber); 
+	appendPQExpBuffer(buffer, " -c gp_qd_proc_offset=%ld", (long) MAKE_OFFSET(MyProc)); 
 
-	/*
-	 * It doesn't seem to work to quote the entire path,
-	 * so we need to remove any spaces so it's treated as one parameter.
-	 * and remove any quotes surrounding the whole thing.
+	/* 
+	 * Transactions are tricky.
+	 * Here is the copy and pasted code, and we know they are working.
+	 * The problem, is that QE may ends up with different iso level, but
+	 * postgres really does not have read uncommited and repeated read.
+	 * (is this true?) and they are mapped.
 	 *
+	 * Put these two gucs in the generic framework works (pass make installcheck-good)
+	 * if we make assign_defaultxactisolevel and assign_XactIsoLevel correct take 
+	 * string "readcommitted" etc.  (space stripped).  However, I do not 
+	 * want to change this piece of code unless I know it is broken.
 	 */
-
-	j = 0;
-	start = 0;				/* start */
-	end = strlen(namespace_search_path);	/* end */
-	if ((namespace_search_path[0] == '\"' && namespace_search_path[strlen(namespace_search_path) - 1] == '\"') ||
-		(namespace_search_path[0] == '\'' && namespace_search_path[strlen(namespace_search_path) - 1] == '\''))
+	if(DefaultXactIsoLevel != XACT_READ_COMMITTED)
 	{
-		start = 1;
-		end = strlen(namespace_search_path) - 1;
-	}
-
-	temp = malloc(end + 1);
-	if (temp == NULL)
-		elog(ERROR, "Allocation failure: addOptions. (%d bytes)", end + 1);
-	temp[0] = '\0';
-
-	for (; start < end; start++)
-	{
-		if (namespace_search_path[start] != ' ')
-			temp[j++] = namespace_search_path[start];
-	}
-	temp[j] = '\0';
-
-	appendPQExpBuffer(buffer, " -c search_path=%s", temp);
-
-	free(temp);
-
-	switch (client_min_messages)
-	{
-		case DEBUG5:
-			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG5");
-			break;
-		case DEBUG4:
-			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG4");
-			break;
-		case DEBUG3:
-			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG3");
-			break;
-		case DEBUG2:
-			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG2");
-			break;
-		case DEBUG1:
-			appendPQExpBuffer(buffer, " -c client_min_messages=DEBUG1");
-			break;
-		case LOG:
-			appendPQExpBuffer(buffer, " -c client_min_messages=LOG");
-			break;
-		case INFO:
-			appendPQExpBuffer(buffer, " -c client_min_messages=INFO");
-			break;
-		case NOTICE:
-			appendPQExpBuffer(buffer, " -c client_min_messages=NOTICE");
-			break;
-		case WARNING:
-			appendPQExpBuffer(buffer, " -c client_min_messages=WARNING");
-			break;
-		case ERROR:
-			appendPQExpBuffer(buffer, " -c client_min_messages=ERROR");
-			break;
-		case FATAL:
-			appendPQExpBuffer(buffer, " -c client_min_messages=FATAL");
-			break;
-		case PANIC:
-			appendPQExpBuffer(buffer, " -c client_min_messages=PANIC");
-			break;
-		default:;
-	}
-
-	appendPQExpBuffer(buffer, " -c work_mem=%d", work_mem);
-	appendPQExpBuffer(buffer, " -c gp_hashagg_compress_spill_files=%s",bfz_compression_to_string(gp_hashagg_compress_spill_files));
-	appendPQExpBuffer(buffer, " -c gp_disable_tuple_hints=%d", gp_disable_tuple_hints ? 1 : 0);
-	appendPQExpBuffer(buffer, " -c maintenance_work_mem=%d", maintenance_work_mem);
-	appendPQExpBuffer(buffer, " -c temp_buffers=%d", num_temp_buffers);
-    appendPQExpBuffer(buffer, " -c gp_log_interconnect=%s -c gp_interconnect_type=%s",
-					  gpvars_show_gp_log_interconnect(), gpvars_show_gp_interconnect_type());
-
-    if (gp_use_snapshop_during_callback)
-    	appendPQExpBuffer(buffer, " -c gp_use_snapshop_during_callback=true");
-    else
-    	appendPQExpBuffer(buffer, " -c gp_use_snapshop_during_callback=false");
-
-	/* gpmon stuff */
-	if(gp_enable_gpmon)
-		appendPQExpBuffer(buffer, " -c gp_enable_gpmon=true");
-
-	if (StatementTimeout != 0)
-		appendPQExpBuffer(buffer, " -c statement_timeout=%d", StatementTimeout);
-	if (CommitDelay != 0)
-		appendPQExpBuffer(buffer, " -c commit_delay=%d", CommitDelay);
-	if (CommitSiblings != 5)
-		appendPQExpBuffer(buffer, " -c commit_siblings=%d", CommitSiblings);
-	if (interconnect_setup_timeout != 10)
-		appendPQExpBuffer(buffer, " -c gp_interconnect_setup_timeout=%d", interconnect_setup_timeout);
-	if (gp_hashagg_rewrite_limit != 1.0)
-		appendPQExpBuffer(buffer, " -c gp_hashagg_rewrite_limit=%f", gp_hashagg_rewrite_limit);
-	if (gp_hashagg_default_nbatches != 0)
-		appendPQExpBuffer(buffer, " -c gp_hashagg_default_nbatches=%d", gp_hashagg_default_nbatches);
-	if (gp_hashagg_spillbatch_min != 0)
-		appendPQExpBuffer(buffer, " -c gp_hashagg_spillbatch_min=%d", gp_hashagg_spillbatch_min);
-	if (gp_hashagg_spillbatch_max != 0)
-		appendPQExpBuffer(buffer, " -c gp_hashagg_spillbatch_max=%d", gp_hashagg_spillbatch_max);
-	if (gp_hashjoin_bloomfilter != 0)
-		appendPQExpBuffer(buffer, " -c gp_hashjoin_bloomfilter=%d", gp_hashjoin_bloomfilter);
-	if (gp_motion_slice_noop != 0)
-		appendPQExpBuffer(buffer, " -c gp_motion_slice_noop=%d", gp_motion_slice_noop); 
-
-	if (Gp_interconnect_queue_depth != 4)
-		appendPQExpBuffer(buffer, " -c gp_interconnect_queue_depth=%d", Gp_interconnect_queue_depth);
-
-	if (Gp_udp_bufsize_k != 0)
-		appendPQExpBuffer(buffer, " -c gp_udp_bufsize_k=%d", Gp_udp_bufsize_k);
-
-#ifdef USE_ASSERT_CHECKING
-	if (gp_udpic_dropseg != UNDEF_SEGMENT ||
-		gp_udpic_dropacks_percent != 0 || gp_udpic_dropxmit_percent != 0)
-	{
-		appendPQExpBuffer(buffer, " -c gp_udpic_dropseg=%d", gp_udpic_dropseg);
-		appendPQExpBuffer(buffer, " -c gp_udpic_dropacks_percent=%d", gp_udpic_dropacks_percent);
-		appendPQExpBuffer(buffer, " -c gp_udpic_dropxmit_percent=%d", gp_udpic_dropxmit_percent);
-	}
-#endif
-
-	appendPQExpBuffer(buffer, " -c DateStyle=");
-	switch (DateStyle)
-	{
-		case USE_ISO_DATES:
-			appendPQExpBuffer(buffer, "ISO");
-			break;
-		case USE_SQL_DATES:
-			appendPQExpBuffer(buffer, "SQL");
-			break;
-		case USE_GERMAN_DATES:
-			appendPQExpBuffer(buffer, "German");
-			break;
-		default:
-			appendPQExpBuffer(buffer, "Postgres");
-			break;
-	}
-	switch (DateOrder)
-	{
-		case DATEORDER_YMD:
-			appendPQExpBuffer(buffer, ",YMD");
-			break;
-		case DATEORDER_DMY:
-			appendPQExpBuffer(buffer, ",DMY");
-			break;
-		default:
-			appendPQExpBuffer(buffer, ",MDY");
-			break;
-	}
-
-	if (strcmp(show_timezone(), "unknown") != 0)
-	{
-		appendPQExpBuffer(buffer, " -c TimeZone=%s", show_timezone());
-	}
-
-	if (DefaultXactIsoLevel != XACT_READ_COMMITTED)
-	{
-		if (DefaultXactIsoLevel == XACT_SERIALIZABLE)
+		if(DefaultXactIsoLevel == XACT_SERIALIZABLE)
 			appendPQExpBuffer(buffer, " -c default_transaction_isolation=serializable");
-
 	}
-	if (XactIsoLevel != XACT_READ_COMMITTED)
+
+	if(XactIsoLevel != XACT_READ_COMMITTED)
 	{
-		if (XactIsoLevel == XACT_SERIALIZABLE)
+		if(XactIsoLevel == XACT_SERIALIZABLE)
 			appendPQExpBuffer(buffer, " -c transaction_isolation=serializable");
-
 	}
 
-
-	/*
-     * some super-user settable gucs
-     */
-	if (i_am_superuser)
+	/* The following gucs are set if it is
+	 * 		1. GUC_GPDB_ADDOPT,
+	 * 		2. Not same as default,
+	 *		3. !PGC_SUSET || (PGC_SUSET && i_am_superuser) 
+	 */
+	
+	for(i=0; i<ngucs; ++i)
 	{
-		switch (log_min_messages)
+		struct config_generic *guc = gucs[i];
+
+		if((guc->flags & GUC_GPDB_ADDOPT)
+			&&
+			(guc->context != PGC_USERSET
+			 ||
+			 i_am_superuser
+			)
+		  )
 		{
-			case DEBUG5:
-				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG5");
-				break;
-			case DEBUG4:
-				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG4");
-				break;
-			case DEBUG3:
-				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG3");
-				break;
-			case DEBUG2:
-				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG2");
-				break;
-			case DEBUG1:
-				appendPQExpBuffer(buffer, " -c log_min_messages=DEBUG1");
-				break;
-			case LOG:
-				appendPQExpBuffer(buffer, " -c log_min_messages=LOG");
-				break;
-			case INFO:
-				appendPQExpBuffer(buffer, " -c log_min_messages=INFO");
-				break;
-
-			case WARNING:
-				appendPQExpBuffer(buffer, " -c log_min_messages=WARNING");
-				break;
-			case ERROR:
-				appendPQExpBuffer(buffer, " -c log_min_messages=ERROR");
-				break;
-			case FATAL:
-				appendPQExpBuffer(buffer, " -c log_min_messages=FATAL");
-				break;
-			case PANIC:
-				appendPQExpBuffer(buffer, " -c log_min_messages=PANIC");
-				break;
-			default:;
+			if(!guc_val_is_default(guc))
+			{
+				bool fOK = addOneOption(buffer, guc);
+				if(!fOK)
+					return -i;
+			}
 		}
-
-		if (Log_error_verbosity != PGERROR_DEFAULT)
-		{
-			if (Log_error_verbosity == PGERROR_VERBOSE)
-				appendPQExpBuffer(buffer, " -c log_error_verbosity=verbose");
-			if (Log_error_verbosity == PGERROR_TERSE)
-				appendPQExpBuffer(buffer, " -c log_error_verbosity=terse");
-		}
-
-		if (log_duration)
-			appendPQExpBuffer(buffer, " -c log_duration=true");
-		
-		if (log_dispatch_stats)
-			appendPQExpBuffer(buffer, " -c log_dispatch_stats=true");
-		if (log_statement_stats)
-			appendPQExpBuffer(buffer, " -c log_statement_stats=true");
-		if (log_executor_stats)
-			appendPQExpBuffer(buffer, " -c log_executor_stats=true");
-
-		if (log_min_duration_statement >= 0)
-			appendPQExpBuffer(buffer, " -c log_min_duration_statement=%d", log_min_duration_statement);
-
-	    appendPQExpBuffer(buffer, " -c gp_connections_per_thread=%d",gp_connections_per_thread);
-
-
-		switch (log_min_error_statement)
-		{
-			case DEBUG5:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG5");
-				break;
-			case DEBUG4:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG4");
-				break;
-			case DEBUG3:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG3");
-				break;
-			case DEBUG2:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG2");
-				break;
-			case DEBUG1:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=DEBUG1");
-				break;
-			case LOG:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=LOG");
-				break;
-			case INFO:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=INFO");
-				break;
-			case NOTICE:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=NOTICE");
-				break;
-			case WARNING:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=WARNING");
-				break;
-			case ERROR:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=ERROR");
-				break;
-			case FATAL:
-				appendPQExpBuffer(buffer, " -c log_min_error_statement=FATAL");
-				break;
-
-			default:;
-		}
-
-
-
-		if (gp_set_read_only)
-			appendPQExpBuffer(buffer, " -c gp_set_read_only=true");
-
-    }                       /* some super-user settable gucs */
+	}
 
 	appendPQExpBuffer(buffer, "' ");
+	return 1;
 }
 
 /*
@@ -1826,6 +1691,7 @@ thread_DoConnect(void *arg)
 
 	int			db_count;
 	int			i;
+	int 		err;
 
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *q;
@@ -1865,20 +1731,34 @@ thread_DoConnect(void *arg)
 		build_gpqeid_params(&buffer);
 
 
-		addOptions(&buffer,
+		err = addOptions(&buffer,
 				(pParms->type == GANGTYPE_PRIMARY_WRITER || pParms->type == GANGTYPE_MIRROR_WRITER),
 				q->segindex,q->isprimary,pParms->i_am_superuser);
 
-		if (cdbconn_doConnect(segdbDesc, buffer.data))
+		if (err <= 0)
 		{
-			if (segdbDesc->motionListener == -1)
+			struct config_generic **gucs = get_guc_variables();
+			struct config_generic *errguc = gucs[-err];
+
+			segdbDesc->errcode = ERRCODE_GP_INTERNAL_ERROR;
+			appendPQExpBuffer(&segdbDesc->error_message,
+					"Internal error: AddOption %s failed\n", errguc->name);
+			PQfinish(segdbDesc->conn);
+			segdbDesc->conn = NULL;
+		}
+		else
+		{
+			if (cdbconn_doConnect(segdbDesc, buffer.data))
 			{
-				segdbDesc->errcode = ERRCODE_GP_INTERNAL_ERROR;
-				appendPQExpBuffer(&segdbDesc->error_message,
-						  "Internal error: No motion listener port for %s\n",
-								  segdbDesc->whoami);
-				PQfinish(segdbDesc->conn);
-				segdbDesc->conn = NULL;
+				if (segdbDesc->motionListener == -1)
+				{
+					segdbDesc->errcode = ERRCODE_GP_INTERNAL_ERROR;
+					appendPQExpBuffer(&segdbDesc->error_message,
+							"Internal error: No motion listener port for %s\n",
+							segdbDesc->whoami);
+					PQfinish(segdbDesc->conn);
+					segdbDesc->conn = NULL;
+				}
 			}
 		}
 
@@ -3915,7 +3795,7 @@ CheckForResetSession(void)
 		gp_session_id = newSessionId;
 	    gp_command_count = 0;
 		
-		elog(WARNING,"The previous session was reset because its gang was disconnected (session id = %d). "
+		elog(LOG ,"The previous session was reset because its gang was disconnected (session id = %d). "
 			 "The new session id = %d",
 			 oldSessionId, newSessionId);
 		

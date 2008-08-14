@@ -53,11 +53,11 @@ struct StringInfoData;                  /* #include "lib/stringinfo.h" */
 typedef enum
 {
 	PGC_INTERNAL,
-	PGC_POSTMASTER,
+	PGC_POSTMASTER,  	
 	PGC_SIGHUP,
 	PGC_BACKEND,
-	PGC_SUSET,
-	PGC_USERSET
+	PGC_SUSET, 
+	PGC_USERSET,
 } GucContext;
 
 /*

@@ -480,7 +480,7 @@ assign_XactIsoLevel(const char *value, bool doit, GucSource source)
 			XactIsoLevel = XACT_SERIALIZABLE;
 		}
 	}
-	else if (strcmp(value, "repeatable read") == 0)
+	else if (strcmp(value, "repeatable read") == 0) 
 	{
 		if (doit)
 		{
@@ -489,12 +489,12 @@ assign_XactIsoLevel(const char *value, bool doit, GucSource source)
 			XactIsoLevel = XACT_REPEATABLE_READ;
 		}
 	}
-	else if (strcmp(value, "read committed") == 0)
+	else if (strcmp(value, "read committed") == 0)  
 	{
 		if (doit)
 			XactIsoLevel = XACT_READ_COMMITTED;
 	}
-	else if (strcmp(value, "read uncommitted") == 0)
+	else if (strcmp(value, "read uncommitted") == 0) 
 	{
 		if (doit)
 			XactIsoLevel = XACT_READ_UNCOMMITTED;

@@ -153,6 +153,8 @@ struct config_generic
 #define GUC_UNIT_MIN			0x4000	/* value is in minutes */
 #define GUC_UNIT_TIME			0x7000	/* mask for MS, S, MIN */
 
+#define GUC_GPDB_ADDOPT         0x8000  /* Send by cdbgang */
+
 /* bit values in status field */
 #define GUC_HAVE_TENTATIVE	0x0001		/* tentative value is defined */
 #define GUC_HAVE_LOCAL		0x0002		/* a SET LOCAL has been executed */
@@ -226,7 +228,7 @@ extern const char *const GucSource_Names[];
 
 /* get the current set of variables */
 extern struct config_generic **get_guc_variables(void);
+extern int get_num_guc_variables(void);
 
 extern void build_guc_variables(void);
-
 #endif   /* GUC_TABLES_H */

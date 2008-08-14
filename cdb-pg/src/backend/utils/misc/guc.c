@@ -736,7 +736,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"log_duration", PGC_SUSET, LOGGING_WHAT,
 			gettext_noop("Logs the duration of each completed SQL statement."),
-			NULL
+			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&log_duration,
 		false, NULL, NULL
@@ -808,7 +809,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"log_executor_stats", PGC_SUSET, STATS_MONITORING,
 			gettext_noop("Writes executor performance statistics to the server log."),
-			NULL
+			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&log_executor_stats,
 		false, assign_stage_log_stats, NULL
@@ -816,7 +818,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"log_statement_stats", PGC_SUSET, STATS_MONITORING,
 			gettext_noop("Writes cumulative performance statistics to the server log."),
-			NULL
+			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&log_statement_stats,
 		false, assign_log_stats, NULL
@@ -824,7 +827,8 @@ static struct config_bool ConfigureNamesBool[] =
 	{
 		{"log_dispatch_stats", PGC_SUSET, STATS_MONITORING,
 			gettext_noop("Writes dispatcher performance statistics to the server log."),
-			NULL
+			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&log_dispatch_stats,
 		false, assign_dispatch_log_stats, NULL
@@ -1375,7 +1379,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_select_invisible", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Use dummy snapshot for MVCC visibility calculation."),
 		 NULL,
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
 		},
 		&gp_select_invisible,
 		false, NULL, NULL
@@ -1414,7 +1418,8 @@ static struct config_bool ConfigureNamesBool[] =
     {
         {"gp_set_read_only", PGC_SUSET, GP_ARRAY_CONFIGURATION,
             gettext_noop("Sets the system read only"),
-            NULL
+            NULL,
+			GUC_GPDB_ADDOPT
         },
         &gp_set_read_only,
         false, assign_gp_set_read_only, NULL
@@ -1461,7 +1466,8 @@ static struct config_bool ConfigureNamesBool[] =
     {
     	{"gp_enable_functions", PGC_USERSET, CLIENT_CONN_STATEMENT,
     		gettext_noop("Enable functions that must use the callback from the QE to QD."),
-    		NULL
+    		NULL,
+			GUC_GPDB_ADDOPT
     	},
     	&gp_enable_functions,
     	false, NULL, NULL
@@ -1471,7 +1477,7 @@ static struct config_bool ConfigureNamesBool[] =
     	{"gp_use_snapshop_during_callback", PGC_USERSET, CLIENT_CONN_STATEMENT,
     		gettext_noop("For debugging.. If SPI should try to send snapshot on callback to QD."),
     		NULL,
-    		GUC_NOT_IN_SAMPLE
+    		GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
     	},
     	&gp_use_snapshop_during_callback,
     	true, NULL, NULL
@@ -1481,7 +1487,7 @@ static struct config_bool ConfigureNamesBool[] =
     	{"gp_is_callback", PGC_BACKEND, GP_WORKER_IDENTITY,
     		gettext_noop("True in a worker process executing on behalf of a callback from the QE to QD."),
     		NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_GPDB_ADDOPT
     	},
     	&gp_is_callback,
     	false, NULL, NULL
@@ -1742,8 +1748,9 @@ static struct config_bool ConfigureNamesBool[] =
 
 	{
 		{"gp_disable_tuple_hints", PGC_USERSET, DEVELOPER_OPTIONS,
-		 gettext_noop("Specify if reader should set hint bits on tuples."),
-		 NULL
+			gettext_noop("Specify if reader should set hint bits on tuples."),
+			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&gp_disable_tuple_hints,
 		true, NULL, NULL
@@ -1800,9 +1807,10 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"gp_enable_gpmon", PGC_USERSET, LOGGING_WHAT,
+		{"gp_enable_gpmon", PGC_SUSET, LOGGING_WHAT,
 			gettext_noop("Enable gpmon logging."), 
 			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&gp_enable_gpmon, 
 	},
@@ -1956,7 +1964,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"temp_buffers", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum number of temporary buffers used by each session."),
 			NULL,
-			GUC_UNIT_BLOCKS
+			GUC_UNIT_BLOCKS | GUC_GPDB_ADDOPT
 		},
 		&num_temp_buffers,
 		1024, 100, INT_MAX / 2, NULL, show_num_temp_buffers
@@ -2015,7 +2023,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"test_safefswritesize_override", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("For testing purposes, the override value for append only safefswritesize when non-default."),
 			NULL,
-			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&Test_safefswritesize_override,
 		DEFAULT_FS_SAFE_WRITE_SIZE, 0, INT_MAX, NULL, NULL
@@ -2058,7 +2066,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("This much memory may be used by each internal "
 						 "sort operation and hash table before switching to "
 						 "temporary disk files."),
-			GUC_UNIT_KB
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT
 		},
 		&work_mem,
 #ifdef USE_ASSERT_CHECKING      /* allow executor testing with low memory */
@@ -2072,7 +2080,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"maintenance_work_mem", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Sets the maximum memory to be used for maintenance operations."),
 			gettext_noop("This includes operations such as VACUUM and CREATE INDEX."),
-			GUC_UNIT_KB
+			GUC_UNIT_KB | GUC_GPDB_ADDOPT
 		},
 		&maintenance_work_mem,
 		65536, 1024, MAX_KILOBYTES, NULL, NULL
@@ -2197,7 +2205,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"statement_timeout", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the maximum allowed duration (in milliseconds) of any statement."),
 			gettext_noop("A value of 0 turns off the timeout."),
-			GUC_UNIT_MS
+			GUC_UNIT_MS | GUC_GPDB_ADDOPT
 		},
 		&StatementTimeout,
 		0, 0, INT_MAX, NULL, NULL
@@ -2307,7 +2315,8 @@ static struct config_int ConfigureNamesInt[] =
 		{"commit_delay", PGC_USERSET, WAL_CHECKPOINTS,
 			gettext_noop("Sets the delay in microseconds between transaction commit and "
 						 "flushing WAL to disk."),
-			NULL
+			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&CommitDelay,
 		0, 0, 100000, NULL, NULL
@@ -2317,7 +2326,8 @@ static struct config_int ConfigureNamesInt[] =
 		{"commit_siblings", PGC_USERSET, WAL_CHECKPOINTS,
 			gettext_noop("Sets the minimum concurrent open transactions before performing "
 						 "commit_delay."),
-			NULL
+			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&CommitSiblings,
 		5, 1, 1000, NULL, NULL
@@ -2339,7 +2349,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Sets the minimum execution time in milliseconds above which statements will "
 						 "be logged."),
 			gettext_noop("Zero prints all queries. The default is -1 (turning this feature off)."),
-			GUC_UNIT_MS
+			GUC_UNIT_MS | GUC_GPDB_ADDOPT
 		},
 		&log_min_duration_statement,
 		-1, -1, INT_MAX / 1000, NULL, NULL
@@ -2539,6 +2549,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_max_packet_size", PGC_BACKEND, GP_ARRAY_TUNING,
             gettext_noop("Sets the max packet size for the Interconnect."),
             NULL,
+			GUC_GPDB_ADDOPT
         },
         &Gp_max_packet_size,
         DEFAULT_PACKET_SIZE, MIN_PACKET_SIZE, MAX_PACKET_SIZE, NULL, NULL
@@ -2548,6 +2559,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_interconnect_queue_depth", PGC_USERSET, GP_ARRAY_TUNING,
             gettext_noop("Sets the maximum size of the receive queue for each connection in the UDP interconnect"),
             NULL,
+			GUC_GPDB_ADDOPT
         },
         &Gp_interconnect_queue_depth,
         4, 1, 256, NULL, NULL
@@ -2557,7 +2569,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_udp_bufsize_k", PGC_SUSET, GP_ARRAY_TUNING,
             gettext_noop("Sets recv buf size of UDP interconnect, for testing."),
             NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
         },
         &Gp_udp_bufsize_k,
         0, 0, 128, NULL, NULL
@@ -2568,7 +2580,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_udpic_dropseg", PGC_USERSET, GP_ARRAY_TUNING,
             gettext_noop("Specifies a segment to which the dropacks, and dropxmit settings will be applied, for testing. (The default is to apply the dropacks and dropxmit settings to all segments)"),
             NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
         },
         &gp_udpic_dropseg,
         UNDEF_SEGMENT, UNDEF_SEGMENT, INT_MAX, NULL, NULL
@@ -2578,7 +2590,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_udpic_dropacks_percent", PGC_USERSET, GP_ARRAY_TUNING,
             gettext_noop("Sets the percentage of correctly-received acknowledgement packets to synthetically drop, for testing. (affected by gp_udpic_dropseg)"),
             NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
         },
         &gp_udpic_dropacks_percent,
         0, 0, 100, NULL, NULL
@@ -2588,7 +2600,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_udpic_dropxmit_percent", PGC_USERSET, GP_ARRAY_TUNING,
             gettext_noop("Sets the percentage of correctly-received data packets to synthetically drop, for testing. (affected by gp_udpic_dropseg)"),
             NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
         },
         &gp_udpic_dropxmit_percent,
         0, 0, 100, NULL, NULL
@@ -2617,7 +2629,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_connections_per_thread", PGC_SUSET, GP_ARRAY_TUNING,
 			gettext_noop("Sets the number of client connections handled in each thread."),
 			NULL,
-			GUC_NOT_IN_SAMPLE
+			GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_connections_per_thread,
 		512, 0, INT_MAX, assign_gp_connections_per_thread, show_gp_connections_per_thread
@@ -2639,7 +2651,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_debug_linger", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),
 			gettext_noop("Allows an opportunity to debug the backend process before it terminates."),
-			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S
+			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S | GUC_GPDB_ADDOPT
 		},
 		&gp_debug_linger,
 		45, 0, 3600, NULL, NULL
@@ -2647,7 +2659,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_debug_linger", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Number of seconds for QD/QE process to linger upon fatal internal error."),
 			gettext_noop("Allows an opportunity to debug the backend process before it terminates."),
-			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S
+			GUC_NOT_IN_SAMPLE | GUC_NO_RESET_ALL | GUC_UNIT_S | GUC_GPDB_ADDOPT
 		},
 		&gp_debug_linger,
 		0, 0, 3600, NULL, NULL
@@ -2699,7 +2711,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_interconnect_setup_timeout", PGC_USERSET, GP_ARRAY_TUNING,
 			gettext_noop("Timeout (in seconds) on interconnect setup that occurs at query start"),
 			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric."),
-			GUC_UNIT_S
+			GUC_UNIT_S | GUC_GPDB_ADDOPT
 		},
 		&interconnect_setup_timeout,
 		20, 0, INT_MAX, NULL, NULL
@@ -2768,7 +2780,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_default_nbatches", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Default number of batches for hashagg's (re-)spilling phrases"),
 			NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_hashagg_default_nbatches,
 		32, 4, 1000000, NULL, NULL
@@ -2778,7 +2790,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_spillbatch_min", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("(Obsolete) Minimum number of spill batches of HashAgg"), 
 		 gettext_noop("Controlling number of spill batches, if too small, hashagg may respill"),
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
 		},
 		&gp_hashagg_spillbatch_min,
 		0, 0, 1000000, NULL, NULL
@@ -2788,7 +2800,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashagg_spillbatch_max", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("(Obsolete) Maximum number of spill batches of HashAgg"), 
 		 gettext_noop("Controlling number of spill batches, if too big, hashagg spill I/O will be slow"), 
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
 		},
 		&gp_hashagg_spillbatch_max,
 		0, 0, 1000000, NULL, NULL
@@ -2798,7 +2810,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_hashjoin_bloomfilter", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Use bloomfilter in hash join"), 
 		 gettext_noop("Use bloomfilter may speed up hashtable probing"), 
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
 		},
 		&gp_hashjoin_bloomfilter,
 		0, 0, 1, NULL, NULL
@@ -2808,7 +2820,7 @@ static struct config_int ConfigureNamesInt[] =
 		{"gp_motion_slice_noop", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Make motion nodes in certain slices noop"), 
 		 gettext_noop("Make motion nodes noop, to help analyze performace"), 
-		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		 GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL | GUC_GPDB_ADDOPT
 		},
 		&gp_motion_slice_noop,
 		0, 0, INT_MAX, NULL, NULL
@@ -3019,7 +3031,9 @@ static struct config_real ConfigureNamesReal[] =
 	{
 		{"gp_hashagg_rewrite_limit", PGC_USERSET, QUERY_TUNING_OTHER,
             gettext_noop("(Obsolete) Planner will not choose hashed aggregation if "
-                         "expected number of extra passes exceeds limit.")
+                         "expected number of extra passes exceeds limit."),
+			NULL,
+			GUC_GPDB_ADDOPT
 		},
 		&gp_hashagg_rewrite_limit,
 		2.0, 1.0, 100.0, NULL, NULL
@@ -3055,8 +3069,9 @@ static struct config_string ConfigureNamesString[] =
 {
 	{
 		{"gp_hashagg_compress_spill_files", PGC_USERSET, DEVELOPER_OPTIONS,
-		 gettext_noop("Specify if spill files should be compressed."),
-		gettext_noop("Valid values are NOTHING, ZLIB, LZJB, THREADED_NOTHING, THREADED_ZLIB, THREADED_LZJB.")
+			gettext_noop("Specify if spill files should be compressed."),
+			gettext_noop("Valid values are NOTHING, ZLIB, LZJB, THREADED_NOTHING, THREADED_ZLIB, THREADED_LZJB."),
+			GUC_GPDB_ADDOPT
 		},
 		&gp_hashagg_compress_spill_files_str,
 		"nothing", assign_hashagg_compress_spill_files, NULL
@@ -3095,7 +3110,8 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, "
 						 "DEBUG1, LOG, NOTICE, WARNING, and ERROR. Each level includes all the "
 						 "levels that follow it. The later the level, the fewer messages are "
-						 "sent.")
+						 "sent."),
+			GUC_GPDB_ADDOPT
 		},
 		&client_min_messages_str,
 		"notice", assign_client_min_messages, NULL
@@ -3106,7 +3122,8 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Sets the message levels that are logged."),
 			gettext_noop("Valid values are DEBUG5, DEBUG4, DEBUG3, DEBUG2, DEBUG1, "
 			"INFO, NOTICE, WARNING, ERROR, LOG, FATAL, and PANIC. Each level "
-						 "includes all the levels that follow it.")
+						 "includes all the levels that follow it."),
+			GUC_GPDB_ADDOPT
 		},
 		&log_min_messages_str,
 		"notice", assign_log_min_messages, NULL
@@ -3115,7 +3132,8 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"log_error_verbosity", PGC_SUSET, LOGGING_WHEN,
 			gettext_noop("Sets the verbosity of logged messages."),
-			gettext_noop("Valid values are \"terse\", \"default\", and \"verbose\".")
+			gettext_noop("Valid values are \"terse\", \"default\", and \"verbose\"."),
+			GUC_GPDB_ADDOPT
 		},
 		&log_error_verbosity_str,
 		"default", assign_log_error_verbosity, NULL
@@ -3133,7 +3151,8 @@ static struct config_string ConfigureNamesString[] =
 		{"log_min_error_statement", PGC_SUSET, LOGGING_WHEN,
 			gettext_noop("Causes all statements generating error at or above this level to be logged."),
 			gettext_noop("All SQL statements that cause an error of the "
-						 "specified level or a higher level are logged.")
+						 "specified level or a higher level are logged."),
+			GUC_GPDB_ADDOPT
 		},
 		&log_min_error_statement_str,
 		"error", assign_min_error_statement, NULL
@@ -3155,7 +3174,7 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("Sets the display format for date and time values."),
 			gettext_noop("Also controls interpretation of ambiguous "
 						 "date inputs."),
-			GUC_LIST_INPUT | GUC_REPORT
+			GUC_LIST_INPUT | GUC_REPORT | GUC_GPDB_ADDOPT 
 		},
 		&datestyle_string,
 		"ISO, MDY", assign_datestyle, NULL
@@ -3175,7 +3194,7 @@ static struct config_string ConfigureNamesString[] =
 		{"default_transaction_isolation", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the transaction isolation level of each new transaction."),
 			gettext_noop("Each SQL transaction has an isolation level, which "
-						 "can be either \"read uncommitted\", \"read committed\", \"repeatable read\", or \"serializable\".")
+						 "can be either \"read uncommitted\", \"read committed\", \"repeatable read\", or \"serializable\"."),
 		},
 		&default_iso_level_string,
 		"read committed", assign_defaultxactisolevel, NULL
@@ -3322,7 +3341,7 @@ static struct config_string ConfigureNamesString[] =
 		{"search_path", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the schema search order for names that are not schema-qualified."),
 			NULL,
-			GUC_LIST_INPUT | GUC_LIST_QUOTE
+			GUC_LIST_INPUT | GUC_LIST_QUOTE | GUC_GPDB_ADDOPT 
 		},
 		&namespace_search_path,
 		"\"$user\",public", assign_search_path, NULL
@@ -3427,7 +3446,7 @@ static struct config_string ConfigureNamesString[] =
 		{"TimeZone", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("Sets the time zone for displaying and interpreting time stamps."),
 			NULL,
-			GUC_REPORT
+			GUC_REPORT | GUC_GPDB_ADDOPT
 		},
 		&timezone_string,
 		"UNKNOWN", assign_timezone, show_timezone
@@ -3445,7 +3464,7 @@ static struct config_string ConfigureNamesString[] =
 		{"transaction_isolation", PGC_USERSET, CLIENT_CONN_STATEMENT,
 			gettext_noop("Sets the current transaction's isolation level."),
 			NULL,
-			GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+			GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE 
 		},
 		&XactIsoLevel_string,
 		NULL, assign_XactIsoLevel, show_XactIsoLevel
@@ -3591,7 +3610,8 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"gp_log_interconnect", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Sets the verbosity of logged messages pertaining to connections between worker processes."),
-			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\".")
+			gettext_noop("Valid values are \"off\", \"terse\", \"verbose\" and \"debug\"."),
+			GUC_GPDB_ADDOPT
 		},
 		&gp_log_interconnect_str,
 		"terse", gpvars_assign_gp_log_interconnect, gpvars_show_gp_log_interconnect
@@ -3600,7 +3620,8 @@ static struct config_string ConfigureNamesString[] =
 	{
 		{"gp_interconnect_type", PGC_USERSET, GP_ARRAY_TUNING,
 		 gettext_noop("Sets the protocol used for inter-node communication."),
-		 gettext_noop("Valid values are \"tcp\" and \"udp\".")
+		 gettext_noop("Valid values are \"tcp\" and \"udp\"."),
+		 GUC_GPDB_ADDOPT
 		},
 		&gp_interconnect_type_str,
 		"tcp", gpvars_assign_gp_interconnect_type, gpvars_show_gp_interconnect_type
@@ -3819,6 +3840,10 @@ struct config_generic **
 get_guc_variables(void)
 {
 	return guc_variables;
+}
+int get_num_guc_variables(void)
+{
+	return num_guc_variables;
 }
 
 
@@ -7704,17 +7729,17 @@ assign_defaultxactisolevel(const char *newval, bool doit, GucSource source)
 		if (doit)
 			DefaultXactIsoLevel = XACT_SERIALIZABLE;
 	}
-	else if (pg_strcasecmp(newval, "repeatable read") == 0)
+	else if (pg_strcasecmp(newval, "repeatable read") == 0) 
 	{
 		if (doit)
 			DefaultXactIsoLevel = XACT_REPEATABLE_READ;
 	}
-	else if (pg_strcasecmp(newval, "read committed") == 0)
+	else if (pg_strcasecmp(newval, "read committed") == 0) 
 	{
 		if (doit)
 			DefaultXactIsoLevel = XACT_READ_COMMITTED;
 	}
-	else if (pg_strcasecmp(newval, "read uncommitted") == 0)
+	else if (pg_strcasecmp(newval, "read uncommitted") == 0) 
 	{
 		if (doit)
 			DefaultXactIsoLevel = XACT_READ_UNCOMMITTED;
