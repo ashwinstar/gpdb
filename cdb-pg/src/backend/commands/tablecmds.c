@@ -9434,6 +9434,7 @@ selectListPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 			
 						opfuncid = get_opfuncid_by_opname(opname, lhsid, rhsid);
 						fmgr_info(opfuncid, &(ls->eqfuncs[i]));
+						ls->eqinit[i] = true;
 					}
 
 					finfo = &(ls->eqfuncs[i]);
