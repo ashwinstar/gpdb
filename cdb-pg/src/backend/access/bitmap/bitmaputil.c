@@ -68,13 +68,7 @@ _bitmap_formitem(uint64 currTidNumber)
 		bmitem->lov_words_header = 2;
 		bmitem->bm_last_tid_location = numOfFillWords * BM_HRL_WORD_SIZE;
 
-		/*
-		 * If all zeros are too many to fit in one word, then
-		 * we set bm_last_setbit so that the remaining zeros can
-		 * be handled outside.
-		 */
-		if (numOfTotalFillWords > numOfFillWords)
-			bmitem->bm_last_setbit = numOfFillWords*BM_HRL_WORD_SIZE;
+		bmitem->bm_last_setbit = numOfFillWords*BM_HRL_WORD_SIZE;
 	}
 
 	return bmitem;
@@ -795,6 +789,8 @@ _bitmap_log_bitmap_lastwords(Relation rel, Buffer lovBuffer,
 	xlLastwords.bm_last_compword = lovItem->bm_last_compword;
 	xlLastwords.bm_last_word = lovItem->bm_last_word;
 	xlLastwords.lov_words_header = lovItem->lov_words_header;
+	xlLastwords.bm_last_setbit = lovItem->bm_last_setbit;
+	xlLastwords.bm_last_tid_location = lovItem->bm_last_tid_location;
 	xlLastwords.bm_lov_blkno = BufferGetBlockNumber(lovBuffer);
 	xlLastwords.bm_lov_offset = lovOffset;
 
@@ -877,15 +873,15 @@ _bitmap_log_bitmapwords(Relation rel, Buffer bitmapBuffer, Buffer lovBuffer,
 	lastTids_size = buf->curword * sizeof(uint64);
 	cwords_size = buf->curword * sizeof(BM_HRL_WORD);
 	hwords_size = (BM_CALC_H_WORDS(buf->curword)) *
-					sizeof(BM_HRL_WORD);
+		sizeof(BM_HRL_WORD);
 
 	bitmapPage = BufferGetPage(bitmapBuffer);
 	bitmapPageOpaque =
 		(BMBitmapOpaque)PageGetSpecialPointer(bitmapPage);
 
 	xlBitmapWords = (xl_bm_bitmapwords *)
-		palloc0(sizeof(xl_bm_bitmapwords) + lastTids_size +
-				cwords_size + hwords_size);
+		palloc0(MAXALIGN(sizeof(xl_bm_bitmapwords)) + MAXALIGN(lastTids_size) +
+				MAXALIGN(cwords_size) + MAXALIGN(hwords_size));
 
 	xlBitmapWords->bm_node = rel->rd_node;
 	xlBitmapWords->bm_blkno = BufferGetBlockNumber(bitmapBuffer);
@@ -905,22 +901,22 @@ _bitmap_log_bitmapwords(Relation rel, Buffer bitmapBuffer, Buffer lovBuffer,
 	xlBitmapWords->bm_words_written = words_written;
 	xlBitmapWords->bm_num_cwords = buf->curword;
 	lastTids = (uint64*)(((char*)xlBitmapWords) +
-						 sizeof(xl_bm_bitmapwords));
+						 MAXALIGN(sizeof(xl_bm_bitmapwords)));
 	memcpy(lastTids, buf->last_tids,
 		   buf->curword * sizeof(uint64));
 
 	cwords = (BM_HRL_WORD*)(((char*)xlBitmapWords) +
-						 sizeof(xl_bm_bitmapwords) + lastTids_size);
+							MAXALIGN(sizeof(xl_bm_bitmapwords)) + MAXALIGN(lastTids_size));
 	memcpy(cwords, buf->cwords, cwords_size);
 	hwords = (BM_HRL_WORD*)(((char*)xlBitmapWords) +
-						 sizeof(xl_bm_bitmapwords) + lastTids_size +
-						 cwords_size);
+						 MAXALIGN(sizeof(xl_bm_bitmapwords)) + MAXALIGN(lastTids_size) +
+						 MAXALIGN(cwords_size));
 	memcpy(hwords, buf->hwords, hwords_size);
 
 	rdata[0].buffer = InvalidBuffer;
 	rdata[0].data = (char*)xlBitmapWords;
-	rdata[0].len = sizeof(xl_bm_bitmapwords) + lastTids_size +
-					cwords_size + hwords_size;
+	rdata[0].len = MAXALIGN(sizeof(xl_bm_bitmapwords)) + MAXALIGN(lastTids_size) +
+					MAXALIGN(cwords_size) + MAXALIGN(hwords_size);
 	rdata[0].next = NULL;
 
 	recptr = XLogInsert(RM_BITMAP_ID, XLOG_BITMAP_INSERT_WORDS, rdata);

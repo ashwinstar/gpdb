@@ -45,9 +45,9 @@ log_incomplete_insert_bitmapwords(RelFileNode node,
 	lastTids_size = newWords->bm_num_cwords * sizeof(uint64);
 	cwords_size = newWords->bm_num_cwords * sizeof(BM_HRL_WORD);
 	hwords_size = (BM_CALC_H_WORDS(newWords->bm_num_cwords)) *
-					sizeof(BM_HRL_WORD);
-	total_size = sizeof(bm_incomplete_action) + lastTids_size +
-				 cwords_size + hwords_size;
+		sizeof(BM_HRL_WORD);
+	total_size = MAXALIGN(sizeof(bm_incomplete_action)) + MAXALIGN(lastTids_size) +
+		MAXALIGN(cwords_size) + MAXALIGN(hwords_size);
 
 	action = palloc0(total_size);
 	memcpy(action, newWords, total_size);
@@ -244,7 +244,6 @@ _bitmap_xlog_insert_meta(XLogRecPtr lsn, XLogRecord *record)
 	BMMetaPage		metapage;
 
 	reln = XLogOpenRelation(xlrec->bm_node);
-	
 	if (!RelationIsValid(reln))
 		return;
 
@@ -288,6 +287,8 @@ _bitmap_xlog_insert_bitmap_lastwords(XLogRecPtr lsn,
 	xlrec = (xl_bm_bitmap_lastwords *) XLogRecGetData(record);
 
 	reln = XLogOpenRelation(xlrec->bm_node);
+	if (!RelationIsValid(reln))
+		return;
 
 	lovBuffer = XLogReadBuffer(reln, xlrec->bm_lov_blkno, false);
 	if (BufferIsValid(lovBuffer))
@@ -305,7 +306,9 @@ _bitmap_xlog_insert_bitmap_lastwords(XLogRecPtr lsn,
 				lovItem->bm_last_compword = xlrec->bm_last_compword;
 				lovItem->bm_last_word = xlrec->bm_last_word;
 				lovItem->lov_words_header = xlrec->lov_words_header;
-
+				lovItem->bm_last_setbit = xlrec->bm_last_setbit;
+				lovItem->bm_last_tid_location = xlrec->bm_last_tid_location;
+				
 				PageSetLSN(lovPage, lsn);
 				PageSetTLI(lovPage, ThisTimeLineID);
 				_bitmap_wrtbuf(lovBuffer);
@@ -337,6 +340,8 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 	xlrec = (xl_bm_bitmapwords *) XLogRecGetData(record);
 
 	reln = XLogOpenRelation(xlrec->bm_node);
+	if (!RelationIsValid(reln))
+		return;
 
 	bitmapBuffer = XLogReadBuffer(reln, xlrec->bm_blkno, true);
 	bitmapPage = BufferGetPage(bitmapBuffer);
@@ -362,20 +367,20 @@ _bitmap_xlog_insert_bitmapwords(XLogRecPtr lsn, XLogRecord *record)
 		lastTids_size = newWords.curword * sizeof(uint64);
 		cwords_size = newWords.curword * sizeof(BM_HRL_WORD);
 		hwords_size = (BM_CALC_H_WORDS(newWords.curword)) *
-						sizeof(BM_HRL_WORD);
+			sizeof(BM_HRL_WORD);
 
 		newWords.last_tids = (uint64*)palloc0(lastTids_size);
 		newWords.cwords = (BM_HRL_WORD*)palloc0(cwords_size);
 
 		last_tids = 
-			(uint64*)(((char*)xlrec) + sizeof(xl_bm_bitmapwords));
+			(uint64*)(((char*)xlrec) + MAXALIGN(sizeof(xl_bm_bitmapwords)));
 		cwords =
 			(BM_HRL_WORD*)(((char*)xlrec) +
-						 sizeof(xl_bm_bitmapwords) + lastTids_size);
+						 MAXALIGN(sizeof(xl_bm_bitmapwords)) + MAXALIGN(lastTids_size));
 		hwords =
 			(BM_HRL_WORD*)(((char*)xlrec) +
-							 sizeof(xl_bm_bitmapwords) + lastTids_size +
-							 cwords_size);
+						   MAXALIGN(sizeof(xl_bm_bitmapwords)) + MAXALIGN(lastTids_size) +
+						   MAXALIGN(cwords_size));
 		memcpy(newWords.last_tids, last_tids, lastTids_size);
 		memcpy(newWords.cwords, cwords, cwords_size);
 		memcpy(newWords.hwords, hwords, hwords_size);
@@ -492,6 +497,8 @@ _bitmap_xlog_updateword(XLogRecPtr lsn, XLogRecord *record)
 
 	xlrec = (xl_bm_updateword *) XLogRecGetData(record);
 	reln = XLogOpenRelation(xlrec->bm_node);
+	if (!RelationIsValid(reln))
+		return;
 
 	elog(DEBUG1, "_bitmap_xlog_updateword: (blkno, word_no, cword, hword)="
 		 "(%d, %d, %d, %d)", xlrec->bm_blkno,
@@ -539,24 +546,16 @@ _bitmap_xlog_updatewords(XLogRecPtr lsn, XLogRecord *record)
 
 	xlrec = (xl_bm_updatewords *) XLogRecGetData(record);
 	reln = XLogOpenRelation(xlrec->bm_node);
+	if (!RelationIsValid(reln))
+		return;
 
-#ifdef HAVE_LONG_LONG_INT_64
 	elog(DEBUG1, "_bitmap_xlog_updatewords: (first_blkno, num_cwords, last_tid, next_blkno)="
-		 "(%d, %lld, %lld, %d), (second_blkno, num_cwords, last_tid, next_blkno)="
-		 "(%d, %lld, %lld, %d)",
+		 "(%d, " INT64_FORMAT ", " INT64_FORMAT ", %d), (second_blkno, num_cwords, last_tid, next_blkno)="
+		 "(%d, " INT64_FORMAT ", " INT64_FORMAT ", %d)",
 		 xlrec->bm_first_blkno, xlrec->bm_first_num_cwords, xlrec->bm_first_last_tid,
 		 xlrec->bm_two_pages ? xlrec->bm_second_blkno : xlrec->bm_next_blkno,
 		 xlrec->bm_second_blkno, xlrec->bm_second_num_cwords,
 		 xlrec->bm_second_last_tid, xlrec->bm_next_blkno);
-#else
-	elog(DEBUG1, "_bitmap_xlog_updatewords: (first_blkno, num_cwords, last_tid, next_blkno)="
-		 "(%d, %ld, %ld, %d), (second_blkno, num_cwords, last_tid, next_blkno)="
-		 "(%d, %ld, %ld, %d)",
-		 xlrec->bm_first_blkno, xlrec->bm_first_num_cwords, xlrec->bm_first_last_tid,
-		 xlrec->bm_two_pages ? xlrec->bm_second_blkno : xlrec->bm_next_blkno,
-		 xlrec->bm_second_blkno, xlrec->bm_second_num_cwords,
-		 xlrec->bm_second_last_tid, xlrec->bm_next_blkno);
-#endif
 
 	firstBuffer = XLogReadBuffer(reln, xlrec->bm_first_blkno, false);
 	if (BufferIsValid(firstBuffer))
@@ -781,6 +780,9 @@ bitmap_xlog_cleanup(void)
 		bm_incomplete_action *action = (bm_incomplete_action *) lfirst(l);
 
 		reln = XLogOpenRelation(action->bm_node);
+		if (!RelationIsValid(reln))
+			return;
+
 		lovBuffer = XLogReadBuffer(reln, action->bm_lov_blkno, false);
 
 		newWords.num_cwords = action->bm_num_cwords;
@@ -789,17 +791,17 @@ bitmap_xlog_cleanup(void)
 		lastTids_size = newWords.num_cwords * sizeof(uint64);
 		cwords_size = newWords.num_cwords * sizeof(BM_HRL_WORD);
 		hwords_size = (BM_CALC_H_WORDS(newWords.num_cwords)) *
-						sizeof(BM_HRL_WORD);
+			sizeof(BM_HRL_WORD);
 
 		newWords.last_tids =
-			(uint64*)(((char*)action) + sizeof(xl_bm_bitmapwords));
+			(uint64*)(((char*)action) + MAXALIGN(sizeof(xl_bm_bitmapwords)));
 		newWords.cwords =
 			(BM_HRL_WORD*)(((char*)action) +
-						 sizeof(xl_bm_bitmapwords) + lastTids_size);
+						 MAXALIGN(sizeof(xl_bm_bitmapwords)) + MAXALIGN(lastTids_size));
 		hwords =
 			(BM_HRL_WORD*)(((char*)action) +
-							 sizeof(xl_bm_bitmapwords) + lastTids_size +
-							 cwords_size);
+						   MAXALIGN(sizeof(xl_bm_bitmapwords)) + MAXALIGN(lastTids_size) +
+						   MAXALIGN(cwords_size));
 		memcpy(newWords.hwords, hwords, hwords_size);
 
 		newWords.last_compword = action->bm_last_compword;

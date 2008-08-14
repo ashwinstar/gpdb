@@ -674,6 +674,8 @@ typedef struct xl_bm_bitmap_lastwords
 	BM_HRL_WORD		bm_last_compword;
 	BM_HRL_WORD		bm_last_word;
 	uint8			lov_words_header;
+	uint64          bm_last_setbit;
+	uint64          bm_last_tid_location;
 
 	BlockNumber		bm_lov_blkno;
 	OffsetNumber	bm_lov_offset;

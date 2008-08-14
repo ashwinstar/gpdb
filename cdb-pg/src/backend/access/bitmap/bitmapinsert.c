@@ -671,7 +671,13 @@ updatesetbit_inpage(Relation rel, uint64 tidnum,
 	}
 
 	if(!found)
-		elog(ERROR, "bitmap word uninitialized");
+	{
+#ifdef USE_ASSERT_CHECKING
+		*((int *)0) =  100;
+#endif
+		elog(ERROR, "Corrupted bitmap word in LOV block %d offset %d",
+			 BufferGetBlockNumber(lovBuffer), lovOffset);
+	}
 
 	Assert (wordNo <= bitmapOpaque->bm_hrl_words_used);
 
@@ -938,6 +944,9 @@ findbitmappage(Relation rel, BMLOVItem lovitem,
 	 * We can't find such a page. This should not happen.
 	 * So we error out.
 	 */
+#ifdef USE_ASSERT_CHECKING
+	*((int *)0) = 0;
+#endif
 	elog(ERROR, "Can not find the bitmap page containing tid=%lld, nextBlockNo=%d,"
 		 " lov_head=%d, lov_tail=%d, firstTidNumber=%lld, last_tid_location=%lld,"
 		 " last_setbit=%lld, last_compword=%d, last_word=%d, headerbits=%d",
@@ -1633,19 +1642,8 @@ buf_add_tid_with_fill(Relation rel, BMTIDBuffer *buf,
 	/*
 	 * Compute how many zeros between this set bit and the last inserted
 	 * set bit.
-	 *
-	 * If this is the first time to insert a set bit, then
-	 * we assume that the last set bit is
-	 * ((tidnum-1)/BM_HRL_WORD_SIZE)*BM_HRL_WORD_SIZE, because we have
-	 * already inserted these zero bits during creating a new lov item.
 	 */
-	if (buf->last_tid == 0)
-	{
-		zeros = (tidnum-1)% BM_HRL_WORD_SIZE;
-		buf->last_tid = ((tidnum-1)/BM_HRL_WORD_SIZE)*BM_HRL_WORD_SIZE;
-	}
-	else
-		zeros = tidnum - buf->last_tid - 1;
+	zeros = tidnum - buf->last_tid - 1;
 
 	if (zeros > 0)
 	{
@@ -1833,8 +1831,6 @@ static void
 buf_make_space(Relation rel, BMTidBuildBuf *locbuf, bool use_wal)
 {
 	ListCell *cell;
-
-	elog(NOTICE, "making space");
 
 	/*
 	 * Now, we could just pull the head of lov_blocks but there'd be no
