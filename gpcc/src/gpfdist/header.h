@@ -47,7 +47,7 @@ struct block_t {
 typedef struct fstream_t fstream_t;
 struct fstream_t {
     const char** fpath;		/* array of fpath */
-    gfile_t**fd;            /* array of fd */
+    gfile_t*fd;
     int          fn;		/* #elements in ffd[] and fpath[] */
     int		 fidx;		/* current index in ffd[] */
     apr_uint64_t foff;		/* current offset in ffd[fidx] */

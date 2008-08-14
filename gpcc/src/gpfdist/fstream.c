@@ -104,13 +104,9 @@ static const char* scan_rec(const char* p, const char* q, int cnt,fstream_t*fs)
 void
 fstream_free(fstream_t* fs)
 {
-    int i;
-
-    for (i = 0; i < fs->fn; i++) {
-	if (fs->fd[i]) {
-	    gfile_close(fs->fd[i]);
-	    fs->fd[i] = 0;
-	}
+    if (fs->fd) {
+	gfile_close(fs->fd);
+	fs->fd = 0;
     }
     if (fs->fblock) {
 	block_put(fs->fblock);
@@ -257,29 +253,27 @@ fstream_alloc(const char*path, apr_pool_t* pool,int opth)
 
     fs->fn = npath;
     fs->fpath = apr_palloc(pool, sizeof(char*) * npath);
-    fs->fd = apr_palloc(pool, sizeof(gfile_t*) * npath);
-    if (0 == fs->fpath || 0 == fs->fd) 
+    if (0 == fs->fpath)
 	gfatal(FLINE, "out of memory");
 
     memset(fs->fpath, 0, sizeof(char*) * npath);
-    memset(fs->fd, 0, sizeof(gfile_t*) * npath);
 	
     for (i = 0; i < npath; i++) {
+	gfile_t*fd;
 	if (0 == (fs->fpath[i] = apr_pstrdup(pool, fpath[i])))
 	    gfatal(FLINE, "out of memory");
 
 	/* check READ access right */
-	if (0 == (fs->fd[i] = gfile_open(fpath[i],pool))) {
+	if (0 == (fd=gfile_open(fpath[i],pool))) {
 	    gwarning(FLINE, "unable to open file %s", fpath[i]);
 	    fstream_free(fs);
 	    return 0;
 	} 
-	
-	if (i > 0) {
+	if (i > 0) 
 	    /* leave the first file opened */
-	    gfile_close(fs->fd[i]);
-	    fs->fd[i] = 0;
-	}
+	    gfile_close(fd);
+	else
+	    fs->fd = fd;
     }
     fs->fidx = 0;
     fs->foff = 0;
@@ -313,7 +307,7 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
     }
 
     /* on to next file? */
-    if (fs->fd[fs->fidx] == 0) {
+    if (fs->fd == 0) {
 	if (b->bot != b->top) {
 	    /* complete the previous file by returning the last residue block */
 	    return b;
@@ -328,7 +322,7 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	fs->foff = b->hdr.foff = 0;
 	fs->fskip = fs->opth;
 
-	if (0 == (fs->fd[fs->fidx] = gfile_open(fs->fpath[fs->fidx],pool))) {
+	if (0 == (fs->fd = gfile_open(fs->fpath[fs->fidx],pool))) {
 	    gwarning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
 	    fs->ferror = "unable to open file";
 	    block_put(b);
@@ -348,7 +342,7 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
     while (0 != (n = sizeof(b->byte) - b->top)) {
 
 	/* read into b */
-	n = gfile_read(fs->fd[fs->fidx], b->byte + b->top, n);
+	n = gfile_read(fs->fd, b->byte + b->top, n);
 	if (n < 0) {
 	    fs->ferror = "cannot read file";
 	    block_put(b);
@@ -356,8 +350,8 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	}
 	if (n == 0) {  /* current file EOF */
 	    /* close this file */
-	    gfile_close(fs->fd[fs->fidx]);
-	    fs->fd[fs->fidx] = 0;
+	    gfile_close(fs->fd);
+	    fs->fd = 0;
 	    break;
 	}
 	b->top += n;
@@ -386,7 +380,7 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	q = b->byte + b->top;
     }
 
-    if (fs->fd[fs->fidx] == 0) {
+    if (fs->fd == 0) {
 	/* EOF, send the whole buffer */
 	return b;
     }
