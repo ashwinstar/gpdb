@@ -718,11 +718,7 @@ tool shipped with that release''')
                 # Creating directories is an atomic operation, if mkdir 
                 # succeeds then it did not exist previously making it ours
                 p = os.path.join(d, 'upgrade')
-                if not os.path.exists(p):
-                    os.mkdir(p)
-                elif not os.path.isdir(p):
-                    raise Exception('%s exists but not a directory.' % p)
-
+                os.mkdir(p)
                 self.RunCmd('chmod 700 %s' % p)
 
                 # Claim it in the name of our parent process.  We make use of
@@ -733,12 +729,9 @@ tool shipped with that release''')
 
                 # Repeat for the backup directory
                 p = os.path.join(d, 'backup')
-                if not os.path.exists(p):
-                    os.mkdir(p)
-                elif not os.path.isdir(p):
-                    raise Exception('%s exists but not a directory.' % p)
-                    
+                os.mkdir(p)
                 self.RunCmd('chmod 700 %s' % p)
+
                 flag = open('%s/backup/flag' % d, 'w')
                 flag.write('%s\n' % str(self.pid))
                 flag.close()
@@ -774,7 +767,7 @@ tool shipped with that release''')
         if (self.mirrors):
             o.write('MIRROR_PORT_BASE=%s\n'  % self.config['MIRROR_PORT_BASE'])
             o.write('declare -a MIRROR_DATA_DIRECTORY=(%s)\n' % 
-                    self.confing['MIRROR_DATA_DIRECTORY'])
+                    self.config['MIRROR_DATA_DIRECTORY'])
         o.close()
         self.Log('INFO', 'Configuration files generated')
 
@@ -913,14 +906,13 @@ Cannot downgrade a database with append only tables     <<<<<
             self.config['MIRROR_PORT_BASE'] = mirrors[0]['port']-mirrors[0]['content']-1
 
             # MIRROR_DATA_DIRECTORY, use any mirror
-            mirror_data_dir = ' '
+            mirror_data_dir = ''
             for seg in mirrors:
                 if (seg['hostname'] != mirrors[0]['hostname']): 
                     continue
                 newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
-                newdir = self.tmpdir + str(newdir)
                 dirs.add(newdir)
-                mirror_data_dir = mirror_data_dir + self.tmpdir + str(newdir) + ' '
+                mirror_data_dir = mirror_data_dir + str(newdir) + '/upgrade '
             self.config['MIRROR_DATA_DIRECTORY'] = mirror_data_dir
 
         # standby masters (???)
