@@ -37,9 +37,9 @@ struct blockhdr_t {
 
 typedef struct block_t block_t;
 struct block_t {
+    int i;
     blockhdr_t  hdr;
     int         bot, top;
-    block_t*    __next;		/* chaining for freelist */
     char        byte[BLOCKSIZE - sizeof(blockhdr_t) - sizeof(int)*2 - sizeof(block_t*)];
 };
 
@@ -53,15 +53,14 @@ struct fstream_t {
     apr_uint64_t foff;		/* current offset in ffd[fidx] */
     int          opth;		/* reflect opt.h (skip first line) */
     int          fskip;		/* reflect opt.h (skip first line) */
-    block_t*     fblock;	/* residue block */
+    block_t     fblock;	/* residue block */
     char* 	 ferror;	/* error flag */
     int 	 is_csv;	/* is the file csv? */
     char 	 quote;		/* quote char */
     char 	 escape;	/* escape char */
 };
 
-void block_put(block_t* b);
-block_t*fstream_get_block(fstream_t* fs, apr_pool_t* pool);
+int fstream_get_block(fstream_t* fs, apr_pool_t* pool,block_t*block);
 fstream_t*fstream_alloc(const char* path, apr_pool_t* pool,int opth);
 void fstream_free(fstream_t* fs);
 

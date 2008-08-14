@@ -185,7 +185,7 @@ struct request_t {
     } in;
 
     struct {
-	block_t* block;		/* next block to send out */
+	block_t block;		/* next block to send out */
     } out;
 };
 
@@ -380,7 +380,7 @@ static void session_detach(request_t* r);
 static void session_end(session_t* s, int error);
 static void session_free(session_t* s);
 static void request_end(request_t* r, int error, const char* errmsg);
-static const char* session_get_block(session_t* s, block_t** retblock);
+static const char* session_get_block(session_t* s, block_t* retblock);
 
 
 /* send an error response */
@@ -488,12 +488,11 @@ static void request_end(request_t* r, int error, const char* errmsg)
     TR(("[%d] request end\n", r->sock));
 
     /* If we still have a block outstanding, the session is corrupted. */
-    if (r->out.block) {
+    if (r->out.block.i) {
 	gwarning(FLINE, "request failure resulting in session failure");
 	if (s) 
 	    session_end(s, 1);
-	block_put(r->out.block);
-	r->out.block = 0;
+	r->out.block.i = 0;
     }
     else {
 	session_detach(r);
@@ -573,17 +572,14 @@ static void gp1_send_errmsg(request_t* r, const char* errmsg)
 
 
 /* Get a block out of the session. return error string. */
-static const char* session_get_block(session_t* s, block_t** retblock)
+static const char* session_get_block(session_t* s, block_t* retblock)
 {
-    block_t* b;
-
-    *retblock = 0;
+    retblock->i = 0;
     if (s->is_error || 0 == s->fstream) {
 	session_end(s, 0);
 	return 0;
     }
-
-    if (0 == (b = fstream_get_block(s->fstream, s->pool))) {
+    if (fstream_get_block(s->fstream, s->pool,retblock)) {
 	const char* ferror = s->fstream->ferror;
 	if (ferror) {
 	    session_end(s, 1);
@@ -592,7 +588,6 @@ static const char* session_get_block(session_t* s, block_t** retblock)
 	session_end(s, 0);
 	return 0;
     }
-    *retblock = b;
     return 0;
 }
 
@@ -810,23 +805,22 @@ static void do_write(int fd, short event, void* arg)
     /* Loop at most 3 blocks or until we choke on the socket */
     for (i = 0; i < 3; i++) {
 	/* get a block (or find a remaining block) */
-	if (! r->out.block) {
+	if (! r->out.block.i) {
 	    const char* ferror = session_get_block(r->session, &r->out.block);
 	    if (ferror) {
 		request_end(r, 1, ferror);
 		return;
 	    }
-	    if (! r->out.block) {
+	    if (! r->out.block.i) {
 		request_end(r, 0, 0);
 		return;
 	    }
 	}
 
-	b = r->out.block;
+	b = &r->out.block;
 	if (b->bot == b->top) {
 	    /* skip empty file */
-	    block_put(r->out.block);
-	    r->out.block = 0;
+	    r->out.block.i = 0;
 	    continue;
 	}
 	if (r->gp_proto == 1) {
@@ -838,8 +832,7 @@ static void do_write(int fd, short event, void* arg)
 		n = local_send(fd, b->hdr.hbyte + b->hdr.hbot, n);
 		if (n < 0) {
 		    perror("send");
-		    block_put(r->out.block);
-		    r->out.block = 0;
+		    r->out.block.i = 0;
 		    request_end(r, 1, 0);
 		    return;
 		}
@@ -867,8 +860,7 @@ static void do_write(int fd, short event, void* arg)
 	n = local_send(fd, b->byte + b->bot, n);
 	if (n < 0) {
 	    perror("send");
-	    block_put(r->out.block);
-	    r->out.block = 0;
+	    r->out.block.i = 0;
 	    request_end(r, 1, 0);
 	    return;
 	}
@@ -880,8 +872,7 @@ static void do_write(int fd, short event, void* arg)
 	    TR(("[%d] network full\n", fd));
 	    break;
 	}
-	block_put(r->out.block);
-	r->out.block = 0;
+	r->out.block.i = 0;
     }
 
     /* Set up for this routine to be called again */

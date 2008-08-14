@@ -3,8 +3,6 @@
 #include <apr_fnmatch.h>
 #include <apr_tables.h>
 
-static block_t*gcbdotfreelist;
-
 static char* path_basename(const char* path, apr_pool_t* pool)
 {
     char* idx = strrchr(path, '/');
@@ -14,58 +12,37 @@ static char* path_basename(const char* path, apr_pool_t* pool)
     return apr_pstrndup(pool, path, idx - path);
 }
 
-/* Put the block back into freelist */
-void
-block_put(block_t* b)
+static void
+block_get(block_t*b)
 {
-    b->__next = gcbdotfreelist;
-    gcbdotfreelist = b;
-}
-
-/* Get a block from freelist if possible, otherwise, malloc */
-static block_t*
-block_get(void)
-{
-    block_t* b;
-    if (0 != (b = gcbdotfreelist)) {
-	gcbdotfreelist = b->__next;
-    }
-    else {
-	if (! (b = malloc(sizeof(block_t)))) 
-	    gfatal(FLINE, "out of memory");
-    }
-
+    b->i = 1;
     b->bot = b->top = 0;
-    b->__next = 0;
     b->hdr.fname[0] = 0;
     b->hdr.fname_len = 0;
     b->hdr.foff = 0;
     b->hdr.htop = b->hdr.hbot = 0;
-    return b;
 }
 
 /* split the block at byte n (relative to bot). 
  *   b - left side: byte[0:n]
  *   bb - right side: byte[n:]
  */
-static block_t*
-block_split(block_t* b, int n)
+static void
+block_split(block_t*bb,block_t* b, int n)
 {
-    block_t* bb;	       
     int m = b->top - b->bot - n;
     if (m < 0)
 	gfatal(FLINE, "assert failed, n = %d, bot %d, top %d", n, b->bot, b->top);
 
     if (m == 0)
-	return 0;
+	return;
 
-    bb = block_get();
+    block_get(bb);
     memcpy(bb->byte, b->byte + b->bot + n, m);
     strcpy(bb->hdr.fname, b->hdr.fname);
     bb->hdr.foff = b->hdr.foff + n;
     b->top = b->bot + n;
     bb->top = m;
-    return bb;
 }
 
 /* Scan as many record as possible in [p, q), taking quotes and escapes into account. */
@@ -107,10 +84,6 @@ fstream_free(fstream_t* fs)
     if (fs->fd) {
 	gfile_close(fs->fd);
 	fs->fd = 0;
-    }
-    if (fs->fblock) {
-	block_put(fs->fblock);
-	fs->fblock = 0;
     }
 }
 
@@ -285,24 +258,24 @@ fstream_alloc(const char*path, apr_pool_t* pool,int opth)
 
 
 /* get a block from the file stream */
-block_t*
-fstream_get_block(fstream_t* fs, apr_pool_t* pool)
+int
+fstream_get_block(fstream_t* fs, apr_pool_t* pool,block_t*b)
 {
-    block_t* b;
     int n;
     char* p; 
     char* q;
     int skipfirst;
     
     if (fs->ferror || fs->fidx >= fs->fn)
-	return 0;
+	return 1;
 
     /* use residue block if available. otherwise, alloc new block. */
-    if (0 != (b = fs->fblock)) {
-	fs->fblock = 0;
+    if (fs->fblock.i) {
+	*b = fs->fblock;
+	fs->fblock.i = 0;
     }
     else {
-	b = block_get();
+	block_get(b);
 	b->hdr.foff = fs->foff;
     }
 
@@ -310,13 +283,13 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
     if (fs->fd == 0) {
 	if (b->bot != b->top) {
 	    /* complete the previous file by returning the last residue block */
-	    return b;
+	    return 0;
 	}
 
 	fs->fidx++;
 	if (fs->fidx >= fs->fn)  {
-	    block_put(b);
-	    return 0;
+	    b->i = 0;
+	    return 1;
 	}
 
 	fs->foff = b->hdr.foff = 0;
@@ -325,8 +298,8 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	if (0 == (fs->fd = gfile_open(fs->fpath[fs->fidx],pool))) {
 	    gwarning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
 	    fs->ferror = "unable to open file";
-	    block_put(b);
-	    return 0;
+	    b->i = 0;
+	    return 1;
 	}	
     }
 
@@ -345,8 +318,8 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	n = gfile_read(fs->fd, b->byte + b->top, n);
 	if (n < 0) {
 	    fs->ferror = "cannot read file";
-	    block_put(b);
-	    return 0;
+	    b->i = 0;
+	    return 1;
 	}
 	if (n == 0) {  /* current file EOF */
 	    /* close this file */
@@ -382,7 +355,7 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 
     if (fs->fd == 0) {
 	/* EOF, send the whole buffer */
-	return b;
+	return 0;
     }
 
     if (fs->is_csv) {
@@ -402,11 +375,11 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool)
 	gwarning(FLINE, "ERROR: line too long in file %s (%d bytes)", 
 		     fs->fpath[fs->fidx], b->top - b->bot);
 	fs->ferror = "line too long in file";
-	block_put(b);
-	return 0;
+	b->i = 0;
+	return 1;
     }
 
     /* split the block at record boundary */
-    fs->fblock = block_split(b, p - (b->byte + b->bot));
-    return b;
+    block_split(&fs->fblock,b, p - (b->byte + b->bot));
+    return 0;
 }
