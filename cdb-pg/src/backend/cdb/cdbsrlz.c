@@ -25,7 +25,7 @@
 
 
 static char *compress_string(const char *src, int uncompressed_size, int *size);
-static char *uncompress_string(const char *src, int size, int * uncompressed_len );
+static char *uncompress_string(const char *src, int size, int * uncompressed_len);
 
 /*
  * compressBound doesn't exist in older zlibs, so let's use our own
@@ -137,14 +137,15 @@ compress_string(const char *src, int uncompressed_size, int *size)
 	compressed_size = gp_compressBound(uncompressed_size);  /* worst case */
 	
 	result = palloc(compressed_size + sizeof(int));
-	memcpy(result,&uncompressed_size,sizeof(int)); 		/* save the original length */
+	memcpy(result, &uncompressed_size, sizeof(int)); 		/* save the original length */
 	
-	status = compress2(result+4, &compressed_size, (Bytef *)src, uncompressed_size, level);
+	status = compress2(result+sizeof(int), &compressed_size, (Bytef *)src, uncompressed_size, level);
 	if (status != Z_OK)
-		elog(ERROR,"Compression failed: %s (errno=%d)", zError(status), status);
+		elog(ERROR,"Compression failed: %s (errno=%d) uncompressed len %d, compressed %d",
+			 zError(status), status, uncompressed_size, (int)compressed_size);
 		
 	*size = compressed_size + sizeof(int);
-	elog(DEBUG2,"Compressed from %d to %d ",(int)uncompressed_size,(int)*size);
+	elog(DEBUG2,"Compressed from %d to %d ", uncompressed_size, *size);
 
 	return (char *)result;
 }
@@ -153,7 +154,7 @@ compress_string(const char *src, int uncompressed_size, int *size)
  * Uncompress the binary string 
  */
 static char *
-uncompress_string(const char *src, int size, int * uncompressed_len )
+uncompress_string(const char *src, int size, int *uncompressed_len)
 {
 	Bytef * result;
 	unsigned long resultlen;
@@ -165,14 +166,15 @@ uncompress_string(const char *src, int size, int * uncompressed_len )
 		
 	Assert(size >= sizeof(int));
 		
-	memcpy(uncompressed_len,src,sizeof(int));
+	memcpy(uncompressed_len,src, sizeof(int));
 	
 	resultlen = *uncompressed_len;
 	result = palloc(resultlen);
 		
 	status = uncompress(result, &resultlen, (Bytef *)(src+sizeof(int)), size-sizeof(int));
 	if (status != Z_OK)
-		elog(ERROR,"Uncompress failed: %s (errno=%d)", zError(status), status);
+		elog(ERROR,"Uncompress failed: %s (errno=%d compressed len %d, uncompressed %d)",
+			 zError(status), status, size, *uncompressed_len);
 		
 	return (char *)result;
 }
