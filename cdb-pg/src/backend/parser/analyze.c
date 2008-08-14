@@ -3989,6 +3989,15 @@ part_el_cmp(void *a, void *b, void *arg)
 	List *start1 = NIL, *start2 = NIL;
 	ListCell *lc1, *lc2;
 
+	/* 
+	 * We call this function from all over the place so don't assume that
+	 * things are valid.
+	 */
+
+	if (!el1)
+		return -1;
+	else if (!el2)
+		return 1;
 
 	if (el1->isDefault)
 		return -1;
@@ -3998,6 +4007,11 @@ part_el_cmp(void *a, void *b, void *arg)
 
 	bs1 = (PartitionBoundSpec *)el1->boundSpec;
 	bs2 = (PartitionBoundSpec *)el2->boundSpec;
+
+	if (!bs1)
+		return -1;
+	if (!bs2)
+		return 1;
 
 	if (bs1->partStart)
 		start1 = ((PartitionRangeItem *)bs1->partStart)->partRangeVal;
