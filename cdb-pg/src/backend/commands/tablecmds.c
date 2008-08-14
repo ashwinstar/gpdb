@@ -2762,6 +2762,17 @@ CheckTableNotInUse(Relation rel, const char *stmt)
 	int			expected_refcnt;
 
 	expected_refcnt = rel->rd_isnailed ? 2 : 1;
+
+	/*
+	 * XXX For a bitmap index, since vacuum is currently done through
+	 * reindex_index, the reference count could be 2. We set it
+	 * here until vacuum is done properly.
+	 */
+	if (expected_refcnt == 1 &&
+		rel->rd_rel->relam == BITMAP_AM_OID &&
+		rel->rd_refcnt == 2)
+		expected_refcnt = 2;
+	
 	if (rel->rd_refcnt != expected_refcnt)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),

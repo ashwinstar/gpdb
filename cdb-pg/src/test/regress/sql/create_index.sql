@@ -404,3 +404,11 @@ select count(*) from bm_test3 where i = 18;
 drop table bm_test;
 drop table bm_test2;
 drop table bm_test3;
+
+-- MPP-3232
+create table bm_test (i int,j int);
+insert into bm_test values (1, 1), (1, 2);
+create index bm_test_j on bm_test using bitmap(j);
+update bm_test set j=20 where j=1;
+vacuum bm_test;
+drop table bm_test;
