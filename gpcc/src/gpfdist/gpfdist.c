@@ -1184,8 +1184,8 @@ static int setup_read(request_t* r)
     event_del(&r->ev);
     event_set(&r->ev, r->sock, EV_READ, do_read, r);
 
-    r->tm.tv_sec = 0;
-    r->tm.tv_usec = 2000 * 1000;
+    r->tm.tv_sec = 2;
+    r->tm.tv_usec = 0;
     return (event_add(&r->ev, &r->tm));
 }
 
@@ -1286,13 +1286,7 @@ int main(int argc, const char* const argv[])
     */
     apr_signal(SIGTERM, process_signal);
 
-    /* kqueue not so stable in libevent */
-    setenv("EVENT_NOKQUEUE", "1", 1);
-    /* /dev/poll doesn't seem to work for one version of Solaris. */
-    setenv("EVENT_NODEVPOLL", "1", 1);
-    setenv("EVENT_NOEVPORT", "1", 1);
     setenv("EVENT_SHOW_METHOD", "1",1);
-
     
     event_init();
 
