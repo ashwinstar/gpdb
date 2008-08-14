@@ -86,7 +86,7 @@ def print_version():
 def parseCommandLine():
     global opt
     try:
-        (options, args) = getopt.getopt(sys.argv[1:], '?vqasi:o:d:m:B:p:l:D', ['version'])
+        (options, args) = getopt.getopt(sys.argv[1:], '?vqasi:o:d:m:B:p:l:Dc:', ['version'])
     except Exception, e:
         usage(str(e))
 
