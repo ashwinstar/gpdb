@@ -2047,6 +2047,8 @@ heap_insert(Relation relation, HeapTuple tup, CommandId cid,
 	HeapTuple	heaptup;
 	Buffer		buffer;
 
+	Insist(relation->rd_rel->relstorage == RELSTORAGE_HEAP);
+
 	if (relation->rd_rel->relhasoids)
 	{
 #ifdef NOT_USED

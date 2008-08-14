@@ -844,6 +844,7 @@ DoCopy(const CopyStmt *stmt)
 		
 		/* Open and lock the relation, using the appropriate lock type. */
 		/* XXX for now use exclusive lock for inserts on appendonly tables */
+		/* Need to EX lock masters if we have an AO child partition? */
 		cstate->rel = heap_openrv(stmt->relation, NoLock);
 		if(cstate->rel->rd_rel->relstorage != RELSTORAGE_AO)
 			LockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock));
@@ -3299,12 +3300,13 @@ CopyFrom(CopyState cstate)
 	int			original_lineno_for_qe = 0; /* keep compiler happy (var referenced by macro) */
 	CdbCopy    *cdbCopy = NULL; /* never used... for compiling COPY_HANDLE_ERROR */
 	int			target_seg = -1; /* not used in utility mode */
-	char		relstorage = cstate->rel->rd_rel->relstorage;
 	tupDesc = RelationGetDescr(cstate->rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
 	attr_count = list_length(cstate->attnumlist);
 	num_defaults = 0;
+
+#define RelinfoGetStorage(relinfo) relinfo->ri_RelationDesc->rd_rel->relstorage
 
 	/*
 	 * We need a ResultRelInfo so we can use the regular executor's
@@ -3745,7 +3747,7 @@ CopyFrom(CopyState cstate)
 														 tupDesc, estate);
 					estate->es_result_relation_info = resultRelInfo;
 				}
-				if (relstorage == RELSTORAGE_AO &&
+				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO &&
 					resultRelInfo->ri_aoInsertDesc == NULL)
 					resultRelInfo->ri_aoInsertDesc = 
 						appendonly_insert_init(resultRelInfo->ri_RelationDesc,
@@ -3756,7 +3758,7 @@ CopyFrom(CopyState cstate)
 				/*
 				 * And now we can form the input tuple.
 				 */
-				if (relstorage != RELSTORAGE_AO)
+				if (RelinfoGetStorage(resultRelInfo) != RELSTORAGE_AO)
 				{
 					/* form a regular heap tuple */
 					tuple = (HeapTuple) heap_form_tuple(tupDesc, values, nulls);	
@@ -3819,7 +3821,7 @@ CopyFrom(CopyState cstate)
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
-					if (relstorage != RELSTORAGE_AO)
+					if (RelinfoGetStorage(resultRelInfo) != RELSTORAGE_AO)
 					{
 						if (heap_enableHeapInsertDesc)
 						{
