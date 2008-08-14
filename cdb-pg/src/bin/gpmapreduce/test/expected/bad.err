@@ -1,0 +1,188 @@
+-- start_matchsubs
+-- m/mapreduce_\d+_run/
+-- s/mapreduce_\d+/mapreduce_DUMMY/
+-- end_matchsubs
+Error: Greenplum MapReduce document must begin with a YAML MAPPING, at line 8
+Error: Document #1 Missing VERSION, at line 4
+Error: Greenplum MapReduce document must begin with a YAML MAPPING, at line 15
+Error: Document #2 Missing VERSION, at line 11
+Error: Invalid Document Attribute, at line 16
+Error: Invalid Document Attribute, at line 17
+Error: Invalid Document Attribute, at line 18
+Error: Invalid Document Attribute, at line 19
+Error: Invalid Document Attribute, at line 20
+Error: Invalid Document Attribute, at line 21
+Error: Invalid Document Attribute, at line 22
+Error: Document #3 Missing VERSION, at line 15
+Error: Invalid VERSION format, at line 28
+Error: PORT must be an integer value, at line 32
+Error: DEFINE must be a YAML LIST, at line 33
+Error: EXECUTE must be a YAML LIST, at line 34
+Error: Document #4 Missing VERSION, at line 27
+Error: VERSION must be a scalar value, at line 40
+Error: DATABASE must be a scalar value, at line 41
+Error: USER must be a scalar value, at line 42
+Error: HOST must be a scalar value, at line 43
+Error: PORT must be an integer value, at line 44
+Error: Scalar value 'list' found in DEFINE, at line 45
+Error: Scalar value 'list' found in EXECUTE, at line 46
+Error: Document #5 Missing VERSION, at line 39
+Error: VERSION must be a scalar value, at line 50
+Error: DATABASE must be a scalar value, at line 51
+Error: USER must be a scalar value, at line 52
+Error: HOST must be a scalar value, at line 53
+Error: PORT must be an integer value, at line 54
+Error: DEFINE must be a YAML LIST, at line 55
+Error: EXECUTE must be a YAML LIST, at line 56
+Error: Document #6 Missing VERSION, at line 49
+Error: List element found in DEFINE, at line 61
+Error: List element found in EXECUTE, at line 62
+Error: INPUT must contain a YAML MAPPING, at line 68
+Error: INPUT 'unnamed' - Missing NAME, at line 68
+Error: INPUT 'unnamed' - Missing FILE, GPFDIST, TABLE, QUERY, or EXEC, at line 68
+Error: OUTPUT must contain a YAML MAPPING, at line 69
+Error: OUTPUT 'unnamed' - Missing NAME, at line 69
+Error: OUTPUT 'unnamed' - Missing FILE or TABLE, at line 69
+Error: FUNCTION must contain a YAML MAPPING, at line 70
+Error: MAP 'unnamed' - Missing NAME, at line 70
+Error: MAP 'unnamed' - Missing LANGUAGE, at line 70
+Error: MAP 'unnamed' - Missing FUNCTION, at line 70
+Error: REDUCE must contain a YAML MAPPING, at line 71
+Error: REDUCER 'unnamed' - Missing NAME, at line 71
+Error: REDUCER 'unnamed' - Missing TRANSITION, at line 71
+Error: FUNCTION must contain a YAML MAPPING, at line 72
+Error: TRANSITION 'unnamed' - Missing NAME, at line 72
+Error: TRANSITION 'unnamed' - Missing LANGUAGE, at line 72
+Error: TRANSITION 'unnamed' - Missing FUNCTION, at line 72
+Error: FUNCTION must contain a YAML MAPPING, at line 73
+Error: COMBINER 'unnamed' - Missing NAME, at line 73
+Error: COMBINER 'unnamed' - Missing LANGUAGE, at line 73
+Error: COMBINER 'unnamed' - Missing FUNCTION, at line 73
+Error: FUNCTION must contain a YAML MAPPING, at line 74
+Error: FINALIZER 'unnamed' - Missing NAME, at line 74
+Error: FINALIZER 'unnamed' - Missing LANGUAGE, at line 74
+Error: FINALIZER 'unnamed' - Missing FUNCTION, at line 74
+Error: TASK must contain a YAML MAPPING, at line 75
+Error: TASK 'unnamed' - Missing NAME, at line 75
+Error: TASK 'unnamed' - Missing SOURCE, at line 75
+Error: RUN must contain a YAML MAPPING, at line 77
+Error: RUN 'unnamed' - Missing SOURCE, at line 77
+Error: INPUT must contain a YAML MAPPING, at line 84
+Error: INPUT 'unnamed' - Missing NAME, at line 84
+Error: INPUT 'unnamed' - Missing FILE, GPFDIST, TABLE, QUERY, or EXEC, at line 84
+Error: OUTPUT must contain a YAML MAPPING, at line 85
+Error: OUTPUT 'unnamed' - Missing NAME, at line 85
+Error: OUTPUT 'unnamed' - Missing FILE or TABLE, at line 85
+Error: FUNCTION must contain a YAML MAPPING, at line 86
+Error: MAP 'unnamed' - Missing NAME, at line 86
+Error: MAP 'unnamed' - Missing LANGUAGE, at line 86
+Error: MAP 'unnamed' - Missing FUNCTION, at line 86
+Error: REDUCE must contain a YAML MAPPING, at line 87
+Error: REDUCER 'unnamed' - Missing NAME, at line 87
+Error: REDUCER 'unnamed' - Missing TRANSITION, at line 87
+Error: FUNCTION must contain a YAML MAPPING, at line 88
+Error: TRANSITION 'unnamed' - Missing NAME, at line 88
+Error: TRANSITION 'unnamed' - Missing LANGUAGE, at line 88
+Error: TRANSITION 'unnamed' - Missing FUNCTION, at line 88
+Error: FUNCTION must contain a YAML MAPPING, at line 89
+Error: COMBINER 'unnamed' - Missing NAME, at line 89
+Error: COMBINER 'unnamed' - Missing LANGUAGE, at line 89
+Error: COMBINER 'unnamed' - Missing FUNCTION, at line 89
+Error: FUNCTION must contain a YAML MAPPING, at line 90
+Error: FINALIZER 'unnamed' - Missing NAME, at line 90
+Error: FINALIZER 'unnamed' - Missing LANGUAGE, at line 90
+Error: FINALIZER 'unnamed' - Missing FUNCTION, at line 90
+Error: TASK must contain a YAML MAPPING, at line 91
+Error: TASK 'unnamed' - Missing NAME, at line 91
+Error: TASK 'unnamed' - Missing SOURCE, at line 91
+Error: RUN must contain a YAML MAPPING, at line 93
+Error: RUN 'unnamed' - Missing SOURCE, at line 93
+Error: Invalid DEFINE Attribute, at line 99
+Error: 'id' is not a valid DEFINE element, at line 100
+Error: '100' is not a valid DEFINE element, at line 101
+Error: '1.0.0.1' is not a valid DEFINE element, at line 102
+Error: 'a string' is not a valid DEFINE element, at line 103
+Error: YAML LIST element found in DEFINE, at line 104
+Error: YAML MAPPING element found in DEFINE, at line 105
+Error: Invalid EXECUTE Attribute, at line 107
+Error: 'id' is not a valid EXECUTE element, at line 108
+Error: '100' is not a valid EXECUTE element, at line 109
+Error: '1.0.0.1' is not a valid EXECUTE element, at line 110
+Error: 'a string' is not a valid EXECUTE element, at line 111
+Error: YAML LIST element found in EXECUTE, at line 112
+Error: YAML MAPPING element found in EXECUTE, at line 113
+Error: Invalid INPUT Attribute, at line 120
+Error: id is not a valid INPUT attribute, at line 121
+Error: 100 is not a valid INPUT attribute, at line 122
+Error: 1.0.0.1 is not a valid INPUT attribute, at line 123
+Error: a string is not a valid INPUT attribute, at line 124
+Error: YAML LIST element found in INPUT, at line 125
+Error: YAML MAPPING element found in INPUT, at line 126
+Error: Invalid OUTPUT Attribute, at line 128
+Error: id is not a valid OUTPUT attribute, at line 129
+Error: 100 is not a valid OUTPUT attribute, at line 130
+Error: 1.0.0.1 is not a valid OUTPUT attribute, at line 131
+Error: a string is not a valid OUTPUT attribute, at line 132
+Error: YAML LIST element found in OUTPUT, at line 133
+Error: YAML MAPPING element found in OUTPUT, at line 134
+Error: Invalid FUNCTION Attribute, at line 136
+Error: id is not a valid FUNCTION attribute, at line 137
+Error: 100 is not a valid FUNCTION attribute, at line 138
+Error: 1.0.0.1 is not a valid FUNCTION attribute, at line 139
+Error: a string is not a valid FUNCTION attribute, at line 140
+Error: YAML LIST element found in FUNCTION, at line 141
+Error: YAML MAPPING element found in FUNCTION, at line 142
+Error: Invalid REDUCE Attribute, at line 144
+Error: id is not a valid REDUCER attribute, at line 145
+Error: 100 is not a valid REDUCER attribute, at line 146
+Error: 1.0.0.1 is not a valid REDUCER attribute, at line 147
+Error: a string is not a valid REDUCER attribute, at line 148
+Error: YAML LIST element found in REDUCE, at line 149
+Error: YAML MAPPING element found in REDUCE, at line 150
+Error: Invalid FUNCTION Attribute, at line 152
+Error: id is not a valid FUNCTION attribute, at line 153
+Error: 100 is not a valid FUNCTION attribute, at line 154
+Error: 1.0.0.1 is not a valid FUNCTION attribute, at line 155
+Error: a string is not a valid FUNCTION attribute, at line 156
+Error: YAML LIST element found in FUNCTION, at line 157
+Error: YAML MAPPING element found in FUNCTION, at line 158
+Error: Invalid FUNCTION Attribute, at line 160
+Error: id is not a valid FUNCTION attribute, at line 161
+Error: 100 is not a valid FUNCTION attribute, at line 162
+Error: 1.0.0.1 is not a valid FUNCTION attribute, at line 163
+Error: a string is not a valid FUNCTION attribute, at line 164
+Error: YAML LIST element found in FUNCTION, at line 165
+Error: YAML MAPPING element found in FUNCTION, at line 166
+Error: Invalid FUNCTION Attribute, at line 168
+Error: id is not a valid FUNCTION attribute, at line 169
+Error: 100 is not a valid FUNCTION attribute, at line 170
+Error: 1.0.0.1 is not a valid FUNCTION attribute, at line 171
+Error: a string is not a valid FUNCTION attribute, at line 172
+Error: YAML LIST element found in FUNCTION, at line 173
+Error: YAML MAPPING element found in FUNCTION, at line 174
+Error: Invalid TASK Attribute, at line 176
+Error: id is not a valid TASK attribute, at line 177
+Error: 100 is not a valid TASK attribute, at line 178
+Error: 1.0.0.1 is not a valid TASK attribute, at line 179
+Error: a string is not a valid TASK attribute, at line 180
+Error: YAML LIST element found in TASK, at line 181
+Error: YAML MAPPING element found in TASK, at line 182
+Error: Invalid RUN Attribute, at line 185
+Error: id is not a valid RUN attribute, at line 186
+Error: 100 is not a valid RUN attribute, at line 187
+Error: 1.0.0.1 is not a valid RUN attribute, at line 188
+Error: a string is not a valid RUN attribute, at line 189
+Error: YAML LIST element found in RUN, at line 190
+Error: YAML MAPPING element found in RUN, at line 191
+Error: Invalid object NAME, at line 198
+Error: Invalid object NAME, at line 199
+Error: Invalid object NAME, at line 200
+Error: Invalid object NAME, at line 201
+Error: Invalid TABLE name, at line 202
+Error: Invalid TABLE name, at line 203
+Error: Invalid TABLE name, at line 204
+Error: Invalid TABLE name, at line 205
+Error: YAML LIST element found in QUERY, at line 206
+Error: YAML_MAPPING element found in QUERY, at line 207
+Error: INPUT 'unnamed' - Missing NAME, at line 197
+Error: INPUT 'unnamed' - Missing FILE, GPFDIST, TABLE, QUERY, or EXEC, at line 197

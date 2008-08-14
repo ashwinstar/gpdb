@@ -250,7 +250,7 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 			 * If we looped through the list, we are not done, and no progress
 			 * was made then we have an infinite cycle and should probably stop.
 			 */
-			if (!progress)
+			if (!done && !progress)
 			{
 				/* FIXME - produce better error message */
 				XRAISE(MAPRED_PARSE_ERROR, 

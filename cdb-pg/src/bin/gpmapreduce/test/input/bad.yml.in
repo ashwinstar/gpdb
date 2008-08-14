@@ -1,0 +1,209 @@
+# This test checks valid YAML documents that do not conform to
+# the Greenplum MapReduce YAML schema.
+
+%YAML 1.1
+
+# Document 1, scalar context
+---
+scalar
+
+# Document 2, list context
+---  
+- list
+
+# Document 3, invalid top level attributes
+---
+ENCODING:         a keyword token
+id:               valid name
+100:              integer
+1.0.0.1:          version string
+a string:         arbitrary string
+[list]:           a list as the mapping key 
+{mapping: scalar}: a mapping as the mapping key
+
+# Document 4, top level attributes are scalar context
+#   + This is valid context for everything except DEFINE and EXECUTE
+#   + the scalar value is invalid for VERSION and PORT
+---  
+VERSION:         scalar
+DATABASE:        scalar
+USER:            scalar
+HOST:            scalar
+PORT:            scalar
+DEFINE:          scalar
+EXECUTE:         scalar
+
+# Document 5, top level attributes are list context
+#  + This is a valid context for DEFINE and EXECUTE
+#    But the scalar value 'list' is not a valid item for them
+---  
+VERSION:        [list]
+DATABASE:       [list]
+USER:           [list]
+HOST:           [list]
+PORT:           [list]
+DEFINE:         [list]
+EXECUTE:        [list]
+
+# Document 6, top level attributes are map context
+---  
+VERSION:        {mapping: mapping}
+DATABASE:       {mapping: mapping}
+USER:           {mapping: mapping}
+HOST:           {mapping: mapping}
+PORT:           {mapping: mapping}
+DEFINE:         {mapping: mapping}
+EXECUTE:        {mapping: mapping}
+
+# Document 7, list of lists in DEFINE/EXECUTE
+---
+VERSION:         1.0.0.1
+DEFINE:          [[list]]
+EXECUTE:         [[list]]
+  
+# Document 8, scalar context for DEFINE/RUN elements
+---
+VERSION:         1.0.0.1
+DEFINE:
+  - INPUT:       scalar
+  - OUTPUT:      scalar
+  - MAP:         scalar
+  - REDUCE:      scalar
+  - TRANSITION:  scalar
+  - CONSOLIDATE: scalar
+  - FINALIZE:    scalar
+  - TASK:        scalar
+EXECUTE:
+  - RUN:         scalar
+
+
+# Document 9, list context for DEFINE/RUN elements
+---
+VERSION:         1.0.0.1
+DEFINE:
+  - INPUT:       [list]
+  - OUTPUT:      [list]
+  - MAP:         [list]
+  - REDUCE:      [list]
+  - TRANSITION:  [list]
+  - CONSOLIDATE: [list]
+  - FINALIZE:    [list]
+  - TASK:        [list]
+EXECUTE:
+  - RUN:         [list]
+
+# Document 9, Invalid items in DEFINE/RUN
+---
+VERSION:         1.0.0.1
+DEFINE:
+  - ENCODING:     scalar
+  - id:          scalar
+  - 100:         scalar
+  - 1.0.0.1:     scalar
+  - a string:    scalar
+  - [a list]:            scalar
+  - {mapping: mapping}:  scalar
+EXECUTE:
+  - ENCODING:     scalar
+  - id:          scalar
+  - 100:         scalar
+  - 1.0.0.1:     scalar
+  - a string:    scalar
+  - [a list]:            scalar
+  - {mapping: mapping}:  scalar
+
+# Document 10, Invalid items in objects
+---
+VERSION:         1.0.0.1
+DEFINE:
+  - INPUT:
+      VERSION:   a keyword token
+      id:        valid name
+      100:       integer
+      1.0.0.1:   version string
+      a string:  arbitrary string
+      [list]:    a list as the mapping key 
+      {mapping: scalar}: a mapping as the mapping key    
+  - OUTPUT:
+      VERSION:   a keyword token
+      id:        valid name
+      100:       integer
+      1.0.0.1:   version string
+      a string:  arbitrary string
+      [list]:    a list as the mapping key 
+      {mapping: scalar}: a mapping as the mapping key
+  - MAP:
+      VERSION:   a keyword token
+      id:        valid name
+      100:       integer
+      1.0.0.1:   version string
+      a string:  arbitrary string
+      [list]:    a list as the mapping key 
+      {mapping: scalar}: a mapping as the mapping key
+  - REDUCE:
+      VERSION:   a keyword token
+      id:        valid name
+      100:       integer
+      1.0.0.1:   version string
+      a string:  arbitrary string
+      [list]:    a list as the mapping key 
+      {mapping: scalar}: a mapping as the mapping key
+  - TRANSITION:
+      VERSION:   a keyword token
+      id:        valid name
+      100:       integer
+      1.0.0.1:   version string
+      a string:  arbitrary string
+      [list]:    a list as the mapping key 
+      {mapping: scalar}: a mapping as the mapping key
+  - CONSOLIDATE:
+      VERSION:   a keyword token
+      id:        valid name
+      100:       integer
+      1.0.0.1:   version string
+      a string:  arbitrary string
+      [list]:    a list as the mapping key 
+      {mapping: scalar}: a mapping as the mapping key
+  - FINALIZE:
+      VERSION:   a keyword token
+      id:        valid name
+      100:       integer
+      1.0.0.1:   version string
+      a string:  arbitrary string
+      [list]:    a list as the mapping key 
+      {mapping: scalar}: a mapping as the mapping key
+  - TASK:
+      VERSION:   a keyword token
+      id:        valid name
+      100:       integer
+      1.0.0.1:   version string
+      a string:  arbitrary string
+      [list]:    a list as the mapping key 
+      {mapping: scalar}: a mapping as the mapping key
+EXECUTE:
+  - RUN:
+      VERSION:   a keyword token
+      id:        valid name
+      100:       integer
+      1.0.0.1:   version string
+      a string:  arbitrary string
+      [list]:    a list as the mapping key 
+      {mapping: scalar}: a mapping as the mapping key
+
+# Document 11, Invalid values for object attributes
+---
+VERSION:         1.0.0.1
+DEFINE:
+  - INPUT:
+      NAME:      arbitrary string
+      NAME:      100
+      NAME:      [list]
+      NAME:      {mapping: scalar}
+      TABLE:     arbitrary string
+      TABLE:     100
+      TABLE:     [list]
+      TABLE:     {mapping: scalar}
+      QUERY:     [list]
+      QUERY:     {mapping: scalar}
+#      FILE:      {mapping: scalar}
+#      GPFDIST:   {mapping: scalar}      

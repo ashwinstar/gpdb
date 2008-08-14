@@ -7,13 +7,16 @@
 #include <yaml.h>
 
 
+int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj);
+
 static int 
-error_missing(const char *type, const char *name, const char *missing)
+error_missing(const char *type, const char *name, int line, 
+			  const char *missing)
 {
 	if (global_verbose_flag)
 		fprintf(stderr, "    - ");
-	fprintf(stderr, "Error: %s '%s' - Missing %s.\n",
-				type, name, missing);
+	fprintf(stderr, "Error: %s '%s' - Missing %s, at line %d\n",
+			type, name, missing, line);
 	return MAPRED_PARSE_ERROR;
 }
 
@@ -108,6 +111,7 @@ void parser_add_document(mapred_parser_t *parser)
 {
 	mapred_olist_t     *newitem;
 	mapred_olist_t     *doclist;
+	int                 error;
 
 	if (!parser->current_doc)
 		return;
@@ -116,7 +120,9 @@ void parser_add_document(mapred_parser_t *parser)
 	parser_add_object(parser, MAPRED_NO_KIND);
 
 	/* Verify the completed document */
-	mapred_verify_object(parser->current_doc);
+	error = mapred_verify_object(parser, parser->current_doc);
+	if (error != NO_ERROR)
+		parser->current_doc->u.document.flags |= mapred_document_error;
 	
 	if (parser->current_doc->u.document.flags & mapred_document_error)
 	{
@@ -149,6 +155,7 @@ void parser_begin_document(mapred_parser_t *parser)
 	memset(parser->current_doc, 0, sizeof(mapred_object_t));
 	parser->current_doc->kind = MAPRED_DOCUMENT;
 	parser->current_doc->u.document.id = ++parser->doc_number;
+	parser->current_doc->line = (int) parser->event.start_mark.line+1;
 
 	if (global_verbose_flag)
 		fprintf(stderr, "  - Parsing YAML Document %d:\n", parser->doc_number);
@@ -254,7 +261,7 @@ void parser_add_object(mapred_parser_t *parser, mapred_kind_t kind)
 		mapred_olist_t *objlist;
 
 		/* Validate the finished object */
-		error = mapred_verify_object(parser->current_obj);
+		error = mapred_verify_object(parser, parser->current_obj);
 		if (error != NO_ERROR)
 		{
 			mapred_destroy_object(&parser->current_obj);
@@ -310,6 +317,7 @@ void parser_add_object(mapred_parser_t *parser, mapred_kind_t kind)
 	parser->current_obj = malloc(sizeof(mapred_object_t));
 	memset(parser->current_obj, 0, sizeof(mapred_object_t));
 	parser->current_obj->kind = kind;
+	parser->current_obj->line = (int) parser->event.start_mark.line+1;
 }
 
 
@@ -1435,7 +1443,7 @@ void mapred_dump_yaml(mapred_object_t *obj)
 
 
 	
-int mapred_verify_object(mapred_object_t *obj)
+int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 {
 	char *name, *type;
 	int error = NO_ERROR;
@@ -1449,7 +1457,14 @@ int mapred_verify_object(mapred_object_t *obj)
 	{
 		case MAPRED_DOCUMENT:
 			if (!obj->u.document.version)
-				XRAISE(MAPRED_PARSE_ERROR, "Missing VERSION for Document");
+			{
+				if (global_verbose_flag)
+					fprintf(stderr, "    - ");
+				fprintf(stderr,
+						"Error: Document #%d Missing VERSION, at line %d\n",
+						parser->doc_number, obj->line);
+				error = MAPRED_PARSE_ERROR;
+			}
 
 			/* FIXME: Check version contents */
 
@@ -1460,9 +1475,9 @@ int mapred_verify_object(mapred_object_t *obj)
 
 			/* Validate required fields */
 			if (!obj->name)
-				error = error_missing(type, name, "NAME");
+				error = error_missing(type, name, obj->line, "NAME");
 			if (obj->u.input.type == MAPRED_INPUT_NONE)
-				error = error_missing(type, name, 
+				error = error_missing(type, name, obj->line,
 									  "FILE, GPFDIST, TABLE, QUERY, or EXEC");
 
 			/* set default values */
@@ -1482,20 +1497,21 @@ int mapred_verify_object(mapred_object_t *obj)
 			type = "OUTPUT";
 
 			if (!obj->name)
-				error = error_missing(type, name, "NAME");
+				error = error_missing(type, name, obj->line, "NAME");
 			if (obj->u.output.type == MAPRED_OUTPUT_NONE)
-				error = error_missing(type, name, "FILE or TABLE");
+				error = error_missing(type, name, obj->line, 
+									  "FILE or TABLE");
 			break;
 
 		case MAPRED_MAPPER:
 			type = "MAP";
 
 			if (!obj->name)
-				error = error_missing(type, name, "NAME");
+				error = error_missing(type, name, obj->line, "NAME");
 			if (!obj->u.function.language)
-				error = error_missing(type, name, "LANGUAGE");
+				error = error_missing(type, name, obj->line, "LANGUAGE");
 			if (!obj->u.function.body)
-				error = error_missing(type, name, "FUNCTION");
+				error = error_missing(type, name, obj->line, "FUNCTION");
 
 			/*
 			 * Good idea, but perl doesn't support it (yet)
@@ -1535,11 +1551,11 @@ int mapred_verify_object(mapred_object_t *obj)
 			type = "TRANSITION";
 
 			if (!obj->name)
-				error = error_missing(type, name, "NAME");
+				error = error_missing(type, name, obj->line, "NAME");
 			if (!obj->u.function.language)
-				error = error_missing(type, name, "LANGUAGE");
+				error = error_missing(type, name, obj->line, "LANGUAGE");
 			if (!obj->u.function.body)
-				error = error_missing(type, name, "FUNCTION");
+				error = error_missing(type, name, obj->line, "FUNCTION");
 
 			/* set default values */
 			if (error == NO_ERROR)
@@ -1568,11 +1584,11 @@ int mapred_verify_object(mapred_object_t *obj)
 			type = "COMBINER";
 
 			if (!obj->name)
-				error = error_missing(type, name, "NAME");
+				error = error_missing(type, name, obj->line, "NAME");
 			if (!obj->u.function.language)
-				error = error_missing(type, name, "LANGUAGE");
+				error = error_missing(type, name, obj->line, "LANGUAGE");
 			if (!obj->u.function.body)
-				error = error_missing(type, name, "FUNCTION");
+				error = error_missing(type, name, obj->line, "FUNCTION");
 
 			/* set default values */
 			if (error == NO_ERROR)
@@ -1601,11 +1617,11 @@ int mapred_verify_object(mapred_object_t *obj)
 			type = "FINALIZER";
 
 			if (!obj->name)
-				error = error_missing(type, name, "NAME");
+				error = error_missing(type, name, obj->line, "NAME");
 			if (!obj->u.function.language)
-				error = error_missing(type, name, "LANGUAGE");
+				error = error_missing(type, name, obj->line, "LANGUAGE");
 			if (!obj->u.function.body)
-				error = error_missing(type, name, "FUNCTION");
+				error = error_missing(type, name, obj->line, "FUNCTION");
 
 			/* set default values */
 			if (error == NO_ERROR)
@@ -1631,9 +1647,9 @@ int mapred_verify_object(mapred_object_t *obj)
 			type = "REDUCER";
 
 			if (!obj->name)
-				error = error_missing(type, name, "NAME");
+				error = error_missing(type, name, obj->line, "NAME");
 			if (!obj->u.reducer.transition.name)
-				error = error_missing(type, name, "TRANSITION");
+				error = error_missing(type, name, obj->line, "TRANSITION");
 			/* 
 			 * Will verify that functions are valid for reducer input after we
 			 * have resolved the pointers.
@@ -1643,7 +1659,7 @@ int mapred_verify_object(mapred_object_t *obj)
 		case MAPRED_TASK:
 			type = "TASK";
 			if (!obj->name)
-				error = error_missing(type, name, "NAME");
+				error = error_missing(type, name, obj->line, "NAME");
 
 			/* Fallthrough */
 
@@ -1652,7 +1668,7 @@ int mapred_verify_object(mapred_object_t *obj)
 				type = "RUN";
 			
 			if (!obj->u.task.input.name)
-				error = error_missing(type, name, "SOURCE");
+				error = error_missing(type, name, obj->line, "SOURCE");
 			
 			/* IDENTITY Mappers and Reducers */
 			if (obj->u.task.mapper.name && 

@@ -37,6 +37,7 @@ typedef struct mapred_parser_ {
 	mapred_parser_state_t     state;
 	mapred_parser_context_t   context[MAX_CONTEXT_DEPTH];
 	int                       frame;
+	yaml_event_t              event;
 	yaml_parser_t            *yparser;
 	mapred_olist_t           *doclist;
 	mapred_object_t          *current_doc;

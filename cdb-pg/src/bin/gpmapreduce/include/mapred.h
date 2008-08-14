@@ -221,6 +221,7 @@ typedef struct {
 struct mapred_object_ {
 	mapred_kind_t           kind;
 	char                   *name;
+	int                     line;
 	boolean                 created;
 	union {
 		mapred_document_t   document;
@@ -245,8 +246,6 @@ void mapred_destroy_object(mapred_object_t **obj);
 void mapred_destroy_olist(mapred_olist_t **olist);
 void mapred_destroy_plist(mapred_plist_t **plisth);
 void mapred_destroy_clist(mapred_clist_t **clist);
-
-int mapred_verify_object(mapred_object_t *obj);
 
 void mapred_resolve_dependencies(PGconn *conn, mapred_document_t *doc);
 void mapred_resolve_object(PGconn *conn, mapred_document_t *doc, 
