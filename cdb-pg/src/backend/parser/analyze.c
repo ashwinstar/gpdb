@@ -3999,16 +3999,6 @@ part_el_cmp(void *a, void *b, void *arg)
 	bs1 = (PartitionBoundSpec *)el1->boundSpec;
 	bs2 = (PartitionBoundSpec *)el2->boundSpec;
 
-#if 0
-	/* First case would be a syntax error, but it's handled later */
-	if (!bs1->partStart && !bs2->partStart)
-		return 0;
-	else if (!bs1->partStart)
-		return -1;
-	else if (!bs2->partStart)
-		return 1;
-#endif
-
 	if (bs1->partStart)
 		start1 = ((PartitionRangeItem *)bs1->partStart)->partRangeVal;
 	if (bs2->partStart)
@@ -4104,52 +4094,8 @@ part_el_cmp(void *a, void *b, void *arg)
 	}
 	else if (start1 && !start2)
 	{
-		/* other way around */
-		PartitionRangeItem *pri1 = (PartitionRangeItem *)bs1->partStart;
-		PartitionRangeItem *pri2 = (PartitionRangeItem *)bs2->partEnd;
-		List *end2 = pri1->partRangeVal;
-		PartitionEdgeBounding pe1 = pri1->partedge;
-		PartitionEdgeBounding pe2 = pri2->partedge;
-
-		Assert(pe1 != PART_EDGE_UNSPECIFIED);
-		Assert(pe2 != PART_EDGE_UNSPECIFIED);
-
-		i = 0;
-		forboth(lc1, start1, lc2, end2)
-		{
-			Const *c1 = lfirst(lc1);
-			Const *c2 = lfirst(lc2);
-			RegProcedure sortFunction;
-		   
-			sortFunction = sortfuncs[0][i];
-
-			/* try < first */
-			if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue, 
-											  c2->constvalue)))
-				return -1;
-
-			/* see if they're equal */
-			sortFunction = sortfuncs[1][i];
-
-			if (DatumGetBool(OidFunctionCall2(sortFunction, c1->constvalue,
-											  c2->constvalue)))
-			{
-				/* equal, but that might actually mean < */
-				if (pe2 == PART_EDGE_EXCLUSIVE &&
-					pe1 == PART_EDGE_INCLUSIVE)
-					return 1; /* start == end + 1 */
-				else if (pe2 == PART_EDGE_INCLUSIVE &&
-						 pe1 == PART_EDGE_EXCLUSIVE)
-					return 1; /* it's less than */
-
-				/* otherwise, they're equal */
-			}
-			else
-				return 1;
-
-			i++;
-		}
-		return 0;
+		/* opposite of above */
+		return -part_el_cmp(b, a, arg);
 	}
 	else
 	{

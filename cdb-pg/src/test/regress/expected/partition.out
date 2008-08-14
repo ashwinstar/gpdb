@@ -3126,3 +3126,85 @@ select * from supplier2_1_prt_p5 order by S_NATIONKEY;
 (3 rows)
 
 drop table supplier2;
+-- mpp3238
+create table foo (i int) partition by range (i)
+(
+ partition p1 start('1') ,
+ partition p2 start('2639161') ,
+ partition p3 start('5957166') ,
+ partition p4 start('5981976') end('5994376') inclusive,
+ partition p5 end('6000001')
+);
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p2" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p4" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p5" for table "foo"
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
+ start, pg_get_expr(parrangeend, parchildrelid, false) as end,
+ pg_get_expr(parlistvalues, parchildrelid, false) as list from 
+ pg_partition_rule
+ r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and 
+ p.parrelid = 'foo'::regclass order by 1;
+ parname | parruleord |  start  |   end   | list 
+---------+------------+---------+---------+------
+ p1      |          1 | 1       | 2639161 | 
+ p2      |          2 | 2639161 | 5957166 | 
+ p3      |          3 | 5957166 | 5981976 | 
+ p4      |          4 | 5981976 | 5994376 | 
+ p5      |          5 | 5994376 | 6000001 | 
+(5 rows)
+
+insert into foo values(5994400);
+insert into foo values(1);
+insert into foo values(6000002);
+ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+insert into foo values(5994376);
+drop table foo;
+create table foo (i int) 
+partition by range(i)
+(partition p1 start(1) end(5),
+ partition p2 start(10),
+ partition p3 end(10) exclusive);
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p2" for table "foo"
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
+ start, pg_get_expr(parrangeend, parchildrelid, false) as end,
+  pg_get_expr(parlistvalues, parchildrelid, false) as list from
+   pg_partition_rule
+    r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and
+	 p.parrelid = 'foo'::regclass order by 1;
+ parname | parruleord | start | end | list 
+---------+------------+-------+-----+------
+ p1      |          1 | 1     | 5   | 
+ p2      |          3 | 10    |     | 
+ p3      |          2 | 5     | 10  | 
+(3 rows)
+
+drop table foo;
+create table foo (i int) 
+partition by range(i)
+(partition p1 start(1) end(5),
+ partition p2 start(10) exclusive,
+ partition p3 end(10) inclusive);
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p1" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p3" for table "foo"
+NOTICE:  CREATE TABLE will create partition "foo_1_prt_p2" for table "foo"
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
+ start, parrangestartincl,
+ pg_get_expr(parrangeend, parchildrelid, false) as end,
+ parrangeendincl,
+  pg_get_expr(parlistvalues, parchildrelid, false) as list from
+   pg_partition_rule
+    r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and
+	 p.parrelid = 'foo'::regclass order by 1;
+ parname | parruleord | start | parrangestartincl | end | parrangeendincl | list 
+---------+------------+-------+-------------------+-----+-----------------+------
+ p1      |          1 | 1     | t                 | 5   | f               | 
+ p2      |          3 | 10    | f                 |     | f               | 
+ p3      |          2 | 5     | t                 | 10  | t               | 
+(3 rows)
+
+insert into foo values(1), (5), (10);
+drop table foo;

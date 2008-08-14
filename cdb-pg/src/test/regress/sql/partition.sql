@@ -1706,3 +1706,56 @@ select * from supplier2_1_prt_p3 order by S_NATIONKEY;
 select * from supplier2_1_prt_p4 order by S_NATIONKEY;
 select * from supplier2_1_prt_p5 order by S_NATIONKEY;
 drop table supplier2;
+
+-- mpp3238
+create table foo (i int) partition by range (i)
+(
+ partition p1 start('1') ,
+ partition p2 start('2639161') ,
+ partition p3 start('5957166') ,
+ partition p4 start('5981976') end('5994376') inclusive,
+ partition p5 end('6000001')
+);
+
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
+ start, pg_get_expr(parrangeend, parchildrelid, false) as end,
+ pg_get_expr(parlistvalues, parchildrelid, false) as list from 
+ pg_partition_rule
+ r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and 
+ p.parrelid = 'foo'::regclass order by 1;
+
+insert into foo values(5994400);
+insert into foo values(1);
+insert into foo values(6000002);
+insert into foo values(5994376);
+drop table foo;
+
+create table foo (i int) 
+partition by range(i)
+(partition p1 start(1) end(5),
+ partition p2 start(10),
+ partition p3 end(10) exclusive);
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
+ start, pg_get_expr(parrangeend, parchildrelid, false) as end,
+  pg_get_expr(parlistvalues, parchildrelid, false) as list from
+   pg_partition_rule
+    r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and
+	 p.parrelid = 'foo'::regclass order by 1;
+
+drop table foo;
+create table foo (i int) 
+partition by range(i)
+(partition p1 start(1) end(5),
+ partition p2 start(10) exclusive,
+ partition p3 end(10) inclusive);
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
+ start, parrangestartincl,
+ pg_get_expr(parrangeend, parchildrelid, false) as end,
+ parrangeendincl,
+  pg_get_expr(parlistvalues, parchildrelid, false) as list from
+   pg_partition_rule
+    r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and
+	 p.parrelid = 'foo'::regclass order by 1;
+
+insert into foo values(1), (5), (10);
+drop table foo;
