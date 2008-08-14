@@ -1759,3 +1759,39 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 
 insert into foo values(1), (5), (10);
 drop table foo;
+
+-- MPP-3264
+-- mix AO with master HEAP and see if copy works
+create table foo (i int)
+partition by list(i)
+(partition p1 values(1, 2, 3) with (appendonly = true),
+ partition p2 values(4)
+);
+
+copy foo from stdin;
+1
+2
+3
+4
+\.
+select * from foo;
+select * from foo_1_prt_p1;
+select * from foo_1_prt_p2;
+drop table foo;
+-- other way around
+create table foo (i int) with(appendonly = true)
+partition by list(i)
+(partition p1 values(1, 2, 3) with (appendonly = false),
+ partition p2 values(4)
+);
+
+copy foo from stdin;
+1
+2
+3
+4
+\.
+select * from foo;
+select * from foo_1_prt_p1;
+select * from foo_1_prt_p2;
+drop table foo;
