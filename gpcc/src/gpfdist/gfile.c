@@ -1,8 +1,9 @@
 #include "gfile.h"
 #include "header.h"
-#include <zlib.h>
-#include <fcntl.h>
 #include <apr_file_io.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <zlib.h>
 #ifdef WIN32
 #include <io.h>
 #else
