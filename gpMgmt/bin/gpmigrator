@@ -190,6 +190,8 @@ class GPUpgrade:
             if self.masterdir == None:
                 self.Log('FATAL', 'MASTER_DATA_DIRECTORY parameter not set')
                 raise UpgradeError('Initialization failed')
+            else:
+                os.environ['MASTER_DATA_DIRECTORY'] = self.masterdir
             if not os.path.exists(self.masterdir):
                 self.Log('FATAL', 'MASTER_DATA_DIRECTORY: %s not found'
                          % self.masterdir)
@@ -715,8 +717,13 @@ tool shipped with that release''')
 
                 # Creating directories is an atomic operation, if mkdir 
                 # succeeds then it did not exist previously making it ours
-                os.mkdir(d+'/upgrade')
-                self.RunCmd('chmod 700 %s/upgrade' % d)
+                p = os.path.join(d, 'upgrade')
+                if not os.path.exists(p):
+                    os.mkdir(p)
+                elif not os.path.isdir(p):
+                    raise Exception('%s exists but not a directory.' % p)
+
+                self.RunCmd('chmod 700 %s' % p)
 
                 # Claim it in the name of our parent process.  We make use of
                 # this flag during tear down to confirm that we created it.
@@ -725,8 +732,13 @@ tool shipped with that release''')
                 flag.close()
 
                 # Repeat for the backup directory
-                os.mkdir(d+'/backup')
-                self.RunCmd('chmod 700 %s/backup' % d)
+                p = os.path.join(d, 'backup')
+                if not os.path.exists(p):
+                    os.mkdir(p)
+                elif not os.path.isdir(p):
+                    raise Exception('%s exists but not a directory.' % p)
+                    
+                self.RunCmd('chmod 700 %s' % p)
                 flag = open('%s/backup/flag' % d, 'w')
                 flag.write('%s\n' % str(self.pid))
                 flag.close()
