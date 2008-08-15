@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
+#include <math.h>
 #include "apr_getopt.h"
 #include "apr_env.h"
 #include "apr_time.h"
@@ -191,9 +192,8 @@ static void send_machine_metrics(SOCKET sock)
     const char** netname;
     sigar_net_interface_stat_t netstat;
     int cpu_total_diff;
-    
-    sigar_cpu_list_t cpulist;
-    int cpu_count = 1;
+
+    float cpu_norm = 0.0f;
 
     memset(&mem, 0, sizeof(mem));
     sigar_mem_get(gx.sigar, &mem);
@@ -211,14 +211,6 @@ static void send_machine_metrics(SOCKET sock)
     TR2(("cpu user: %" FMT64 " sys: %" FMT64 " idle: %" FMT64 " wait: %" FMT64 
 	 " total: %" FMT64 "\n",
 	 cpu.user, cpu.sys, cpu.idle, cpu.wait, cpu.total));
-
-    sigar_cpu_list_get(gx.sigar, &cpulist);
-    TR2(("Found %d CPUs\n", cpulist.number));
-    cpu_count = cpulist.number;
-    sigar_cpu_list_destroy(gx.sigar, &cpulist);
-    if (cpu_count <= 0)
-        cpu_count = 1;
-
 
     memset(&loadavg, 0, sizeof(loadavg));
     sigar_loadavg_get(gx.sigar, &loadavg);
@@ -272,9 +264,13 @@ static void send_machine_metrics(SOCKET sock)
     pkt.u.metrics.swap.page_out = swap.page_out - pswap.page_out;
     cpu_total_diff = cpu.total - pcpu.total;
     if (cpu_total_diff) {
-        pkt.u.metrics.cpu.user_pct = ((float) (cpu.user - pcpu.user) * 100 / cpu_total_diff) / (float)cpu_count;
-        pkt.u.metrics.cpu.sys_pct = ((float) (cpu.sys - pcpu.sys) * 100 / cpu_total_diff) / (float)cpu_count;
-        pkt.u.metrics.cpu.idle_pct = ((float) (cpu.idle - pcpu.idle) * 100 / cpu_total_diff) / (float) cpu_count;
+        cpu_norm = round((((float) (cpu.user - pcpu.user) * 100 / cpu_total_diff) +
+                          ((float) (cpu.sys - pcpu.sys) * 100 / cpu_total_diff) + 
+                          ((float) (cpu.idle - pcpu.idle) * 100 / cpu_total_diff)) / 100.0f);
+
+        pkt.u.metrics.cpu.user_pct = ((float) (cpu.user - pcpu.user) * 100 / cpu_total_diff) / cpu_norm;
+        pkt.u.metrics.cpu.sys_pct = ((float) (cpu.sys - pcpu.sys) * 100 / cpu_total_diff) / cpu_norm;
+        pkt.u.metrics.cpu.idle_pct = ((float) (cpu.idle - pcpu.idle) * 100 / cpu_total_diff) / cpu_norm;
     }
     else {
 	pkt.u.metrics.cpu.user_pct = 0;
