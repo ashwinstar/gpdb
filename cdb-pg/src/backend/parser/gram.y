@@ -3285,9 +3285,9 @@ partition_hash_keyword: 			HASH
                     */
 
                     if (!gp_enable_hash_partitioned_tables)
-                    {
-                        yyerror("syntax error");
-                    }
+                        ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("PARTITION BY must specify RANGE or LIST")));
 
                     $$ = 1;
                 }

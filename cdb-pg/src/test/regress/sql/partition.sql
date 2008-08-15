@@ -1,5 +1,7 @@
 set enable_partition_fast_insert = true;
 set enable_partition_rules = false;
+set gp_enable_hash_partitioned_tables = true;
+
 -- missing subpartition by
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -65,6 +67,22 @@ partition bb (subpartition cc, subpartition dd)
 );
 
 drop table ggg cascade;
+
+-- disable hash partitions
+set gp_enable_hash_partitioned_tables = false;
+
+create table ggg (a char(1), b char(2), d char(3))
+distributed by (a)
+partition by hash (b)
+subpartition by hash (d) 
+(
+partition aa (subpartition cc, subpartition dd),
+partition bb (subpartition cc, subpartition dd)
+);
+
+drop table ggg cascade;
+
+set gp_enable_hash_partitioned_tables = true;
 
 -- should work
 create table ggg (a char(1), b char(2), d char(3), e int)

@@ -1,5 +1,6 @@
 set enable_partition_fast_insert = true;
 set enable_partition_rules = false;
+set gp_enable_hash_partitioned_tables = true;
 -- missing subpartition by
 create table ggg (a char(1), b char(2), d char(3))
 distributed by (a)
@@ -89,6 +90,20 @@ NOTICE:  CREATE TABLE will create partition "ggg_1_prt_aa_2_prt_dd" for table "g
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb_2_prt_cc" for table "ggg_1_prt_bb"
 NOTICE:  CREATE TABLE will create partition "ggg_1_prt_bb_2_prt_dd" for table "ggg_1_prt_bb"
 drop table ggg cascade;
+-- disable hash partitions
+set gp_enable_hash_partitioned_tables = false;
+create table ggg (a char(1), b char(2), d char(3))
+distributed by (a)
+partition by hash (b)
+subpartition by hash (d) 
+(
+partition aa (subpartition cc, subpartition dd),
+partition bb (subpartition cc, subpartition dd)
+);
+ERROR:  PARTITION BY must specify RANGE or LIST
+drop table ggg cascade;
+ERROR:  table "ggg" does not exist
+set gp_enable_hash_partitioned_tables = true;
 -- should work
 create table ggg (a char(1), b char(2), d char(3), e int)
 distributed by (a)
@@ -221,7 +236,7 @@ partition bb start ('2008'), end ('2009')
 );
 ERROR:  invalid use of mixed named and unnamed RANGE boundary specifications
 LINE 5: partition aa start ('2007'), end ('2008'),
-                     ^
+                                     ^
 create table ggg (a char(1), b int)
 distributed by (a)
 partition by range(b)
@@ -230,7 +245,7 @@ partition aa start ('2007'), end ('2008')
 );
 ERROR:  invalid use of mixed named and unnamed RANGE boundary specifications
 LINE 5: partition aa start ('2007'), end ('2008')
-                     ^
+                                     ^
 drop table ggg cascade;
 ERROR:  table "ggg" does not exist
 create table ggg (a char(1), b date, d char(3))
@@ -985,7 +1000,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=7067)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=10515)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1308,8 +1323,8 @@ COPY foz FROM stdin DELIMITER '|';
 select * from foz_1_prt_1;
  i |     d      
 ---+------------
- 1 | 01-02-2001
  2 | 10-10-2001
+ 1 | 01-02-2001
 (2 rows)
 
 select * from foz_1_prt_2;
@@ -1668,16 +1683,16 @@ insert into rank values (10, 1, date '2005-05-15', 'F');
 select * from rank ;
  id | rank |    year    | gender 
 ----+------+------------+--------
+  2 |    1 | 02-15-2002 | M
+  5 |    1 | 05-15-2005 | M
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
   1 |    1 | 01-15-2001 | M
   3 |    1 | 03-15-2003 | M
   4 |    1 | 04-15-2004 | M
   6 |    1 | 01-15-2001 | F
   8 |    1 | 03-15-2003 | F
   9 |    1 | 04-15-2004 | F
-  2 |    1 | 02-15-2002 | M
-  5 |    1 | 05-15-2005 | M
-  7 |    1 | 02-15-2002 | F
- 10 |    1 | 05-15-2005 | F
 (10 rows)
 
 alter table rank DROP partition boys restrict;
@@ -2062,7 +2077,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=7066)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=10514)
 select * from d;
  i | j  
 ---+----
@@ -2161,7 +2176,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=7066)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=10514)
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -2201,10 +2216,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=7066)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=10514)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=7066)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=10514)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---
@@ -2246,9 +2261,9 @@ insert into b values(25, '2010-01-22');
 insert into b values(90, '2011-05-04');
 -- shouldn't work
 insert into b values(1, '2019-01-01');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=7066)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=10514)
 insert into b values(91, '2008-05-05');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=7066)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=10514)
  
 select * from b_1_prt_1;
  i |     j      
@@ -2300,24 +2315,24 @@ insert into b values(6, 3000, '2007-02-02 16:00:00'::timestamp -
 					'1 second'::interval, 'BBZZZZZZZZZZ');
 -- should fail
 insert into b values(6, 3000, '2007-02-02 15:30:00', 'CCCCCCC');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=7067)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=10515)
 insert into b values(4, 5000, '2007-01-01 12:00:00', 'BCC');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=7067)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=10515)
 insert into b values(5, 8000, '2007-01-01 12:00:00', 'ZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=7066)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=10514)
 insert into b values(6, 3000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=7067)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=10515)
 insert into b values(6, 1000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=7067)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=10515)
 insert into b values(6, 3000, '2006-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=7067)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=10515)
 insert into b values(6, 3000, '2007-02-02 00:00:00', 'A');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=7067)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=10515)
 -- NULL tests
 insert into b default values;
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=7066)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=10514)
 insert into b values(6, 3000, '2007-01-01 12:00:00', NULL);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=7067)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=10515)
 drop table b;
 -- check that we detect subpartitions partitioning a column that is already
 -- a partitioning target
@@ -2417,7 +2432,7 @@ select * from region where r_regionkey = '7';
 -- tables since we cannot enfoce them. But since this insert maps to a 
 -- single definitive partition, we can detect it.
 insert into region values(7, 'abc', 'def');
-ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=7066)
+ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=10514)
 drop table region;
 -- exchange
 -- 1) test all sanity checking
@@ -2774,10 +2789,10 @@ alter table foo exchange partition for(position(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 1 | 1
- 3 | 1
  2 | 1
  6 | 6
+ 1 | 1
+ 3 | 1
 (4 rows)
 
 drop table bar;
@@ -3135,11 +3150,23 @@ create table foo (i int) partition by range (i)
  partition p4 start('5981976') end('5994376') inclusive,
  partition p5 end('6000001')
 );
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p1" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p2" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p3" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p4" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p5" for table "foo"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
  start, pg_get_expr(parrangeend, parchildrelid, false) as end,
  pg_get_expr(parlistvalues, parchildrelid, false) as list from 
@@ -3158,7 +3185,7 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 insert into foo values(5994400);
 insert into foo values(1);
 insert into foo values(6000002);
-ERROR:  no partition for partitioning key (SOMEFILE:SOMEFUNC)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=10523)
 insert into foo values(5994376);
 drop table foo;
 create table foo (i int) 
@@ -3166,9 +3193,17 @@ partition by range(i)
 (partition p1 start(1) end(5),
  partition p2 start(10),
  partition p3 end(10) exclusive);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p1" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p3" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p2" for table "foo"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
  start, pg_get_expr(parrangeend, parchildrelid, false) as end,
   pg_get_expr(parlistvalues, parchildrelid, false) as list from
@@ -3188,9 +3223,17 @@ partition by range(i)
 (partition p1 start(1) end(5),
  partition p2 start(10) exclusive,
  partition p3 end(10) inclusive);
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p1" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p3" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p2" for table "foo"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
  start, parrangestartincl,
  pg_get_expr(parrangeend, parchildrelid, false) as end,
@@ -3215,23 +3258,29 @@ partition by list(i)
 (partition p1 values(1, 2, 3) with (appendonly = true),
  partition p2 values(4)
 );
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p1" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p2" for table "foo"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 copy foo from stdin;
 select * from foo;
  i 
 ---
  1
- 2
  3
+ 2
  4
 (4 rows)
 
 select * from foo_1_prt_p1;
  i 
 ---
- 1
  2
+ 1
  3
 (3 rows)
 
@@ -3248,15 +3297,21 @@ partition by list(i)
 (partition p1 values(1, 2, 3) with (appendonly = false),
  partition p2 values(4)
 );
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p1" for table "foo"
 NOTICE:  CREATE TABLE will create partition "foo_1_prt_p2" for table "foo"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 copy foo from stdin;
 select * from foo;
  i 
 ---
  1
- 2
  3
+ 2
  4
 (4 rows)
 
@@ -3264,8 +3319,8 @@ select * from foo_1_prt_p1;
  i 
 ---
  1
- 2
  3
+ 2
 (3 rows)
 
 select * from foo_1_prt_p2;
