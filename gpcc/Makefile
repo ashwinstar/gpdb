@@ -41,7 +41,7 @@ mkgpmon:
     $(LIBPQLIBS) -lpq -levent -lm)
 	(cd src/gpmon; $(CC) $(INCLUDES) $(CDBINCL) $(CPPFLAGS) $(CFLAGS) \
 		-o gpsmon gpsmon.c gpmonlib.c $(APULIBS) $(APRLIBS) -levent \
-		$(GPSMON_LDFLAGS) -lsigar  )
+		$(GPSMON_LDFLAGS) -lsigar -lm )
 	@mkdir -p build/bin
 	@mkdir -p build/lib
 	@cp -f src/gpmon/gpmmon src/gpmon/gpsmon build/bin/
