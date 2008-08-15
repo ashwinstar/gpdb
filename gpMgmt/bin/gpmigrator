@@ -667,22 +667,6 @@ tool shipped with that release''')
                     self.Log('WARN', ' %s: File exists' % self.backup)
                     backup_exist = True
 
-            # checking data directories
-            for d in self.datadirs:
-                if d == '': continue
-
-                upgradepath = os.path.join(d, 'upgrade')                
-                backuppath = os.path.join(d, 'backup')
-
-                if (os.path.exists(upgradepath) or
-                    os.path.exists(backuppath)):
-                    dirs_exist = True
-                    if os.path.exists(upgradepath):
-                        self.Log('WARN', '%s: File exists' % self.upgradepath)
-                    if os.path.exists(backuppath):
-                        self.Log('WARN', '%s: File exists' % self.backuppath)
-                        backup_exist = True
-
             if dirs_exist:
                 if backup_exist:
                     print '  [R] Revert to Backup'
@@ -744,6 +728,50 @@ tool shipped with that release''')
         else:
             if self.cmd != 'MKDIR': 
                 raise Exception(self.cmd + ' != MKDIR]')
+
+
+            # checking data directories
+            backup_exist = False
+            dirs_exist = False
+            for d in self.datadirs:
+                if d == '': continue
+
+                upgradepath = os.path.join(d, 'upgrade')                
+                backuppath = os.path.join(d, 'backup')
+
+                if (os.path.exists(upgradepath) or
+                    os.path.exists(backuppath)):
+                    dirs_exist = True
+                    if os.path.exists(upgradepath):
+                        self.Log('WARN', '%s: File exists' % self.upgradepath)
+                    if os.path.exists(backuppath):
+                        self.Log('WARN', '%s: File exists' % self.backuppath)
+                        backup_exist = True
+
+            if dirs_exist:
+                if backup_exist:
+                    print '  [R] Revert to Backup'
+                print '  [D] Delete old files and continue'
+                print '  [X] Cancel upgrade'
+                value = ''
+                while value.upper() not in ['R', 'D', 'X']:
+                    try: value = raw_input('> ')
+                    except EOFError: raise UpgradeError('Upgrade Cancelled')
+                    value = value.upper()
+                    if value == 'R' and not backup_exist:
+                        value = ''
+                    if value not in ['R', 'D', 'X']:
+                        print 'Invalid input'
+                if value == 'X':
+                    raise UpgradeError('Upgrade Cancelled')
+                if value == 'R':
+                    self.Shutdown(self.oldenv, True)
+                    self.Revert()
+                self.RemoveDirectories(force=True)
+                self.CreateDirectories()
+                return
+
+
 
             for d in self.datadirs:
 
