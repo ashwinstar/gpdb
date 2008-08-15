@@ -301,21 +301,21 @@ default_reloptions(Datum reloptions, bool validate,
 		
 		blocksize = pg_atoi(values[2], sizeof(int32), 0);
 		
-		if (blocksize < MIN_VARBLOCK_SIZE || blocksize > MAX_VARBLOCK_SIZE ||
-			blocksize % MIN_VARBLOCK_SIZE != 0)
+		if (blocksize < MIN_APPENDONLY_BLOCK_SIZE || blocksize > MAX_APPENDONLY_BLOCK_SIZE ||
+			blocksize % MIN_APPENDONLY_BLOCK_SIZE != 0)
 		{	
 			if (validate)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						 errmsg("block size must be between 8KB and 8MB and "
+						 errmsg("block size must be between 8KB and 2MB and "
 								"be an 8KB multiple. Got %d", blocksize)));
 			
-			blocksize = DEFAULT_VARBLOCK_SIZE;
+			blocksize = DEFAULT_APPENDONLY_BLOCK_SIZE;
 		}
 		
 	}
 	else
-		blocksize = DEFAULT_VARBLOCK_SIZE;
+		blocksize = DEFAULT_APPENDONLY_BLOCK_SIZE;
 		
 	/* compression level */
 	if(values[3] != NULL)
@@ -409,7 +409,7 @@ heap_test_override_reloptions(char relkind, StdRdOptions *stdRdOptions, int *saf
 	 * Normally, appendonly tables are created with the default 32KB block
 	 * size. If the override has a different value - use the override value.
 	 */
-	if (Test_blocksize_override != DEFAULT_VARBLOCK_SIZE)
+	if (Test_blocksize_override != DEFAULT_APPENDONLY_BLOCK_SIZE)
 	{
 		stdRdOptions->blocksize = Test_blocksize_override;
 	}
@@ -511,14 +511,14 @@ void validateAppendOnlyRelOptions(bool ao, int blocksize, int safewrite, int com
 						complevel)));	
 	
 	
-	if (blocksize < MIN_VARBLOCK_SIZE || blocksize > MAX_VARBLOCK_SIZE ||
-	    blocksize % MIN_VARBLOCK_SIZE != 0)
+	if (blocksize < MIN_APPENDONLY_BLOCK_SIZE || blocksize > MAX_APPENDONLY_BLOCK_SIZE ||
+	    blocksize % MIN_APPENDONLY_BLOCK_SIZE != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("block size must be between 8KB and 8MB and "
+				 errmsg("block size must be between 8KB and 2MB and "
 						"be an 8KB multiple, Got %d", blocksize)));
 
-	if (safewrite > MAX_VARBLOCK_SIZE || safewrite % 8 != 0)
+	if (safewrite > MAX_APPENDONLY_BLOCK_SIZE || safewrite % 8 != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("safefswrite size must be less than 8MB and "
