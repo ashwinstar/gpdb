@@ -73,6 +73,7 @@ class GPUpgrade:
         
     # Enviornment and system info
         self.masterdir = None     # Master Data Directory
+        self.masterport = 5432    # Master Port
         self.datadirs  = None     # Set of all data and mirror directories
         self.oldhome   = None     # Old gphome/bin directory
         self.newhome   = None     # New gphome/bin directory
@@ -115,6 +116,16 @@ class GPUpgrade:
             if not self.masterdir:
                 raise UpgradeError('MASTER_DATA_DIRECTORY is not defined')
             self.masterdir.rstrip('/')
+            port_re = re.compile('^\s*port=(\d+)')
+            # Find the port for this segment:
+            port_str = self.RunCmd('grep port= %s/postgresql.conf' % self.masterdir)
+            match = port_re.search(port_str)
+            if match:
+                self.masterport = int(match.group(1))
+            else:
+                raise UpgradeError(
+                    'Could not determine master port from %s/postgresql.conf' % dir)
+
             masterpath, masterdir = os.path.split(self.masterdir)
             self.root   = masterpath
             self.tmpdir = os.path.join(masterpath, 'upgrade')
@@ -190,8 +201,6 @@ class GPUpgrade:
             if self.masterdir == None:
                 self.Log('FATAL', 'MASTER_DATA_DIRECTORY parameter not set')
                 raise UpgradeError('Initialization failed')
-            else:
-                os.environ['MASTER_DATA_DIRECTORY'] = self.masterdir
             if not os.path.exists(self.masterdir):
                 self.Log('FATAL', 'MASTER_DATA_DIRECTORY: %s not found'
                          % self.masterdir)
@@ -348,6 +357,7 @@ class GPUpgrade:
         env['LD_LIBRARY_PATH'] = lpath
         if masterdir:
             env['MASTER_DATA_DIRECTORY'] = masterdir
+            env['PGPORT'] = str(self.masterport)
         return env
 
     #------------------------------------------------------------
@@ -731,7 +741,6 @@ tool shipped with that release''')
                 p = os.path.join(d, 'backup')
                 os.mkdir(p)
                 self.RunCmd('chmod 700 %s' % p)
-
                 flag = open('%s/backup/flag' % d, 'w')
                 flag.write('%s\n' % str(self.pid))
                 flag.close()
@@ -783,7 +792,7 @@ tool shipped with that release''')
         '''
            SELECT hostname, datadir FROM gp_configuration
            WHERE not valid
-        ''')
+        ''', port=self.masterport)
         if len(invalid) > 0:
             for item in invalid:
                 self.Log('FATAL', 'INVALID SEGMENT: %s:/%s' % item)
@@ -800,10 +809,10 @@ tool shipped with that release''')
                 '''
                    SELECT datname from pg_database
                    WHERE datname != 'template0'
-                ''')
+                ''', port=self.masterport)
             c = 0            
             for db in databases:
-                c = self.Select('SELECT COUNT(*) FROM pg_partition', db=db)
+                c = self.Select('SELECT COUNT(*) FROM pg_partition', db=db, port=self.masterport)
                 if c[0] > 0:
                     raise UpgradeError(
 '''
@@ -812,7 +821,7 @@ Cannot downgrade a database with 3.2 style partitioning     <<<<<
 -------------------------------------------------------
 ''')
                 c = self.Select(
-                    "SELECT COUNT(*) FROM pg_class WHERE relkind = 'a'", db=db)
+                    "SELECT COUNT(*) FROM pg_class WHERE relkind = 'a'", db=db, port=self.masterport)
                 if c[0] > 0:
                     raise UpgradeError(
 '''
@@ -827,7 +836,7 @@ Cannot downgrade a database with append only tables     <<<<<
         '''
            SELECT content, definedprimary, dbid, hostname, port, datadir 
            FROM gp_configuration 
-        ''');
+        ''', port=self.masterport);
         master = filter(lambda(x): x['content'] < 0 and 
                                    x['definedprimary'], gp_config);
         standbymaster = filter(lambda(x): x['content'] < 0 and 
@@ -856,7 +865,7 @@ Cannot downgrade a database with append only tables     <<<<<
         '''
            SELECT DISTINCT hostname FROM gp_configuration
            WHERE content >= 0
-        ''')
+        ''', port=self.masterport)
         self.hosts = map(lambda(x): str(x), self.hosts)
 
         # Determine the SEG_PREFIX, use any old segment
@@ -894,10 +903,10 @@ Cannot downgrade a database with append only tables     <<<<<
         self.config['TRUSTED_SHELL'] = 'ssh'
 
         # CHECK_POINT_SEGMENTS 
-        self.config['CHECK_POINT_SEGMENTS'] = self.Select('show checkpoint_segments')[0]
+        self.config['CHECK_POINT_SEGMENTS'] = self.Select('show checkpoint_segments', port=self.masterport)[0]
 
         # ENCODING
-        self.config['ENCODING'] = self.Select('show client_encoding')[0]
+        self.config['ENCODING'] = self.Select('show client_encoding', port=self.masterport)[0]
 
         # Handle mirrors, if present
         if self.mirrors:
@@ -906,13 +915,14 @@ Cannot downgrade a database with append only tables     <<<<<
             self.config['MIRROR_PORT_BASE'] = mirrors[0]['port']-mirrors[0]['content']-1
 
             # MIRROR_DATA_DIRECTORY, use any mirror
-            mirror_data_dir = ''
+            mirror_data_dir = ' '
             for seg in mirrors:
                 if (seg['hostname'] != mirrors[0]['hostname']): 
                     continue
                 newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
+                newdir = self.tmpdir + str(newdir)
                 dirs.add(newdir)
-                mirror_data_dir = mirror_data_dir + str(newdir) + '/upgrade '
+                mirror_data_dir = mirror_data_dir + self.tmpdir + str(newdir) + ' '
             self.config['MIRROR_DATA_DIRECTORY'] = mirror_data_dir
 
         # standby masters (???)
@@ -1030,7 +1040,7 @@ Cannot downgrade a database with append only tables     <<<<<
                SELECT datname FROM pg_database
                WHERE datname != 'template0'
                ORDER by oid
-            ''')
+            ''', port=self.masterport)
         for db in databases:
             self.RunCmd('gpcheckcat -p %s %s' % (self.config['MASTER_PORT'],db), 
                         env=env)
@@ -1042,8 +1052,8 @@ Cannot downgrade a database with append only tables     <<<<<
         Run on the master in utility mode.
         '''
         self.oldenv['PGOPTIONS'] = '-c gp_session_role=utility'
-        subprocess.call('pg_dumpall --schema-only --gp-syntax > %s/pgdump.sql' %
-                        self.tmpdir, env=self.oldenv, shell=True)
+        subprocess.call('pg_dumpall -p %d --schema-only --gp-syntax > %s/pgdump.sql' %
+                        (self.masterport, self.tmpdir), env=self.oldenv, shell=True)
 
 
     #------------------------------------------------------------
@@ -1055,8 +1065,8 @@ Cannot downgrade a database with append only tables     <<<<<
         self.CheckDown()
         subprocess.call('gpinitsystem -a -c %s/gp_init_config' % self.tmpdir,
                         env=self.newenv, shell=True)
-        self.Update('vacuum freeze', db='postgres')
-        self.Update('vacuum freeze', db='template1')
+        self.Update('vacuum freeze', db='postgres', port=self.masterport)
+        self.Update('vacuum freeze', db='template1', port=self.masterport)
         self.Shutdown(u.newenv, False)
 
     #------------------------------------------------------------
@@ -1144,7 +1154,7 @@ Cannot downgrade a database with append only tables     <<<<<
             '''
             SELECT datname FROM pg_database 
             WHERE datname != 'template0'
-            ''')
+            ''', port=self.masterport)
         for db in databases:
             subprocess.call('psql -c "vacuum freeze" %s' % db,
                             env=self.newenv, shell=True)
@@ -1344,7 +1354,7 @@ Cannot downgrade a database with append only tables     <<<<<
          '''
             UPDATE gp_configuration 
               SET datadir=regexp_replace(datadir, 'upgrade/([^/]*)$', E'\\\\1')
-         ''')
+         ''', port=self.masterport)
         self.Shutdown(self.newenv, True)
         self.newenv['MASTER_DATA_DIRECTORY'] = \
             self.oldenv['MASTER_DATA_DIRECTORY']
