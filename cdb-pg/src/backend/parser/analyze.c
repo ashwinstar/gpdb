@@ -4383,7 +4383,27 @@ preprocess_range_spec(partValidationState *vstate)
 				}
 
 				newel = makeNode(PartitionElem);
-				newel->partName = copyObject(el->partName);
+				
+				/* generate the new name, which is parname + every count */
+				if (el->partName)
+				{
+					char newname[sizeof(NameData) + 10];
+
+					snprintf(newname, sizeof(newname),
+							 "%s%u", strVal(el->partName),
+							 everycount);
+
+					if (strlen(newname) > NAMEDATALEN)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("partition name \"%s\" too long",
+										strVal(el->partName)),
+						 parser_errposition(vstate->pstate, el->location)));
+
+					newel->partName = (Node *)makeString(pstrdup(newname));
+				}
+			
+
 				newel->subSpec = copyObject(el->subSpec);
 				newel->location = el->location;
 
@@ -5452,11 +5472,11 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 
 			if (pElem->partName)
 			{
-				bool doit = false;
+				bool doit = true;
 
 				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
 						 strVal(pElem->partName));
-
+#if 0
 				if (pBy->partType == PARTTYP_RANGE && pBSpec && 
 					pBSpec->partEvery)
 				{
@@ -5467,7 +5487,7 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 				}
 				else
 					doit = true;
-
+#endif
 				/*
 				 * We might have expanded an EVERY clause here. If so, just
 				 * add the first partition name.
@@ -6742,10 +6762,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 				 */
 				char *pName = strVal(pElem->partName);
 
-				if (everyno)
-					snprintf(prtstr, sizeof(prtstr), "prt_%s%d", pName, everyno);
-				else
-					snprintf(prtstr, sizeof(prtstr), "prt_%s", pName);
+				snprintf(prtstr, sizeof(prtstr), "prt_%s", pName);
 			}
 			else
 			{
