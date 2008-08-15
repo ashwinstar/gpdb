@@ -655,13 +655,36 @@ tool shipped with that release''')
         if self.cmd == 'MASTER':
 
             self.Log('INFO', 'Creating temporary directories')
+            backup_exist = False
+            dirs_exist = False
 
             # Before calling slaves check to see if self.tmpdir exists
             if os.path.exists(self.tmpdir) or os.path.exists(self.backup):
+                dirs_exist = True
                 if os.path.exists(self.tmpdir) and not os.path.exists(self.backup):
                     self.Log('WARN', ' %s: File exists' % self.tmpdir)
                 if os.path.exists(self.backup):
                     self.Log('WARN', ' %s: File exists' % self.backup)
+                    backup_exist = True
+
+            # checking data directories
+            for d in self.datadirs:
+                if d == '': continue
+
+                upgradepath = os.path.join(d, 'upgrade')                
+                backuppath = os.path.join(d, 'backup')
+
+                if (os.path.exists(upgradepath) or
+                    os.path.exists(backuppath)):
+                    dirs_exist = True
+                    if os.path.exists(upgradepath):
+                        self.Log('WARN', '%s: File exists' % self.upgradepath)
+                    if os.path.exists(backuppath):
+                        self.Log('WARN', '%s: File exists' % self.backuppath)
+                        backup_exist = True
+
+            if dirs_exist:
+                if backup_exist:
                     print '  [R] Revert to Backup'
                 print '  [D] Delete old files and continue'
                 print '  [X] Cancel upgrade'
@@ -670,7 +693,7 @@ tool shipped with that release''')
                     try: value = raw_input('> ')
                     except EOFError: raise UpgradeError('Upgrade Cancelled')
                     value = value.upper()
-                    if value == 'R' and not os.path.exists(self.backup):
+                    if value == 'R' and not backup_exist:
                         value = ''
                     if value not in ['R', 'D', 'X']:
                         print 'Invalid input'
@@ -723,13 +746,14 @@ tool shipped with that release''')
                 raise Exception(self.cmd + ' != MKDIR]')
 
             for d in self.datadirs:
+
                 if d == '': continue
 
                 # Creating directories is an atomic operation, if mkdir 
                 # succeeds then it did not exist previously making it ours
-                p = os.path.join(d, 'upgrade')
-                os.mkdir(p)
-                self.RunCmd('chmod 700 %s' % p)
+                upgradepath = os.path.join(d, 'upgrade')                
+                os.mkdir(upgradepath)
+                self.RunCmd('chmod 700 %s' % upgradepath)
 
                 # Claim it in the name of our parent process.  We make use of
                 # this flag during tear down to confirm that we created it.
@@ -738,13 +762,13 @@ tool shipped with that release''')
                 flag.close()
 
                 # Repeat for the backup directory
-                p = os.path.join(d, 'backup')
-                os.mkdir(p)
-                self.RunCmd('chmod 700 %s' % p)
+                backuppath = os.path.join(d, 'backup')
+                os.mkdir(backuppath)
+                self.RunCmd('chmod 700 %s' % backuppath)
                 flag = open('%s/backup/flag' % d, 'w')
                 flag.write('%s\n' % str(self.pid))
                 flag.close()
-        
+                        
 
     #------------------------------------------------------------
     def GenerateConfigFiles(self):
