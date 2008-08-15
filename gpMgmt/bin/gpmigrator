@@ -329,14 +329,18 @@ class GPUpgrade:
 
     #------------------------------------------------------------
     def CheckDirectories(self):
-
+        err = False
         for d in self.datadirs:
             p = os.path.join(d, 'upgrade')
             if os.path.exists(p):
-                raise UpgradeError('%s : File exists' % p)
+                self.Log('WARN', '%s : File exists' % p)
+                err = True
             p = os.path.join(d, 'backup')
             if os.path.exists(p):
-                raise UpgradeError('%s : File exists' % p)
+                self.Log('WARN', '%s : File exists' % p)
+                err = True
+        if err:
+            raise UpgradeError('Directories exist')
             
     #------------------------------------------------------------
     def SetupEnv(self, gphome, masterdir):
