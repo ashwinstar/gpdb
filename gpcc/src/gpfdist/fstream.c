@@ -1,7 +1,32 @@
-#include "header.h"
+#include "fstream.h"
+#include "gfile.h"
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+// We need to get rid of apr.
 #include <apr_file_info.h>
 #include <apr_fnmatch.h>
+#include <apr_strings.h>
 #include <apr_tables.h>
+
+struct fstream_t {
+    const char** fpath;		/* array of fpath */
+    gfile_t*fd;
+    int          fn;		/* #elements in ffd[] and fpath[] */
+    int		 fidx;		/* current index in ffd[] */
+    apr_uint64_t foff;		/* current offset in ffd[fidx] */
+    int          fskip;		/* reflect opt.h (skip first line) */
+    block_t     fblock;	/* residue block */
+    const char*ferror;	/* error string */
+    struct fstream_options options;
+};
+
+const char*
+fstream_get_error(fstream_t*fs)
+{
+    return fs->ferror;
+}
 
 static char* path_basename(const char* path, apr_pool_t* pool)
 {
@@ -31,8 +56,7 @@ static void
 block_split(block_t*bb,block_t* b, int n)
 {
     int m = b->top - b->bot - n;
-    if (m < 0)
-	gfatal(FLINE, "assert failed, n = %d, bot %d, top %d", n, b->bot, b->top);
+    assert(m>=0);
 
     if (m == 0)
 	return;
@@ -50,8 +74,8 @@ static const char* scan_rec(const char* p, const char* q, int cnt,fstream_t*fs)
 {
     int in_quote = 0, last_was_esc = 0;
     const char* last_complete = 0;
-    int qc=fs->quote;
-    int xc=fs->escape;
+    int qc=fs->options.quote;
+    int xc=fs->options.escape;
     int ch;
     
     if (xc == qc) 
@@ -77,9 +101,9 @@ static const char* scan_rec(const char* p, const char* q, int cnt,fstream_t*fs)
 }
 
 
-/* free the file stream */
+/* close the file stream */
 void
-fstream_free(fstream_t* fs)
+fstream_close(fstream_t* fs)
 {
     if (fs->fd) {
 	gfile_close(fs->fd);
@@ -152,8 +176,10 @@ static char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, 
 	return fpath2;
     }
 
-    if (0 == (fpath = apr_palloc(p, sizeof(char *) * (n1 + n2)))) 
-	gfatal(FLINE, "out of memory");
+    if (0 == (fpath = apr_palloc(p, sizeof(char *) * (n1 + n2)))) {
+	fprintf(stderr,"fstream out of memory\n");
+	return 0;
+    }
 
     *n = n1 + n2;
 
@@ -166,16 +192,19 @@ static char **fpath_merge(char **fpath1, int n1, char **fpath2, int n2, int *n, 
 
 /* alloc a new file stream */
 fstream_t*
-fstream_alloc(const char*path, apr_pool_t* pool,int opth)
+fstream_open(const char*path, apr_pool_t* pool,const struct fstream_options*options)
 {
     int i,npath;
     fstream_t* fs;
     char**fpath;
 
-    if (0 == (fs = apr_palloc(pool, sizeof(fstream_t))))
-	gfatal(FLINE, "out of memory");
+    if (0 == (fs = apr_palloc(pool, sizeof(fstream_t)))){
+	fprintf(stderr,"fstream out of memory\n");
+	return 0;
+    }
     
     memset(fs, 0, sizeof(*fs));
+    fs->options = *options;
 
 	/* do we have a pattern in path? */
 	if (! apr_fnmatch_test(path)) {
@@ -186,7 +215,7 @@ fstream_alloc(const char*path, apr_pool_t* pool,int opth)
 	    /* glob for all files matching path pattern */
 	    fpath = glob(path, &npath, pool);
 	    if (!fpath || npath == 0) {
-		gwarning(FLINE, "bad path: %s", path);
+		fprintf(stderr,"fstream bad path: %s\n",path);
 		return 0;
 	    }
 	}
@@ -201,24 +230,26 @@ fstream_alloc(const char*path, apr_pool_t* pool,int opth)
 		char **dirfpath = 0;
 		int dirnf = 0;
 		if (apr_filepath_merge(&newpath, fpath[i], "*", 0, pool)) {
-		    gwarning(FLINE, "bad path: %s (filepathmerge)", path);
+		    fprintf(stderr,"fstream bad path: %s (filepathmerge)\n",path);
 		    return 0;
 		}
 		dirfpath = glob(newpath, &dirnf, pool);
 		if (!dirfpath || dirnf == 0) {
-		    gwarning(FLINE, "%s is empty directory", fpath[i]);
+		    fprintf(stderr,"fstream %s is empty directory\n",fpath[i]);
 		    continue;
 		}
 
 		/* append dirfpath to fpath */
 		ffpath = fpath_merge(ffpath, nn, dirfpath, dirnf, &nn, pool);
+		if (!ffpath)
+		    return 0;
 	    }
 
 	    fpath = ffpath;
 	    npath = nn;
 
 	    if (npath == 0) {
-		gwarning(FLINE, "bad path: %s", path);
+		fprintf(stderr,"fstream bad path: %s\n",path);
 		return 0;
 	    }
 	}
@@ -226,20 +257,24 @@ fstream_alloc(const char*path, apr_pool_t* pool,int opth)
 
     fs->fn = npath;
     fs->fpath = apr_palloc(pool, sizeof(char*) * npath);
-    if (0 == fs->fpath)
-	gfatal(FLINE, "out of memory");
+    if (0 == fs->fpath){
+	fprintf(stderr,"fstream out of memory\n");
+	return 0;
+    }
 
     memset(fs->fpath, 0, sizeof(char*) * npath);
 	
     for (i = 0; i < npath; i++) {
 	gfile_t*fd;
-	if (0 == (fs->fpath[i] = apr_pstrdup(pool, fpath[i])))
-	    gfatal(FLINE, "out of memory");
+	if (0 == (fs->fpath[i] = apr_pstrdup(pool, fpath[i]))){
+	    fprintf(stderr,"fstream out of memory\n");
+	    return 0;
+	}
 
 	/* check READ access right */
-	if (0 == (fd=gfile_open(fpath[i],pool))) {
-	    gwarning(FLINE, "unable to open file %s", fpath[i]);
-	    fstream_free(fs);
+	if (0 == (fd=gfile_open(fpath[i]))) {
+	    fprintf(stderr,"fstream unable to open file %s\n",fpath[i]);
+	    fstream_close(fs);
 	    return 0;
 	} 
 	if (i > 0) 
@@ -250,7 +285,7 @@ fstream_alloc(const char*path, apr_pool_t* pool,int opth)
     }
     fs->fidx = 0;
     fs->foff = 0;
-    fs->fskip = fs->opth = opth;
+    fs->fskip = fs->options.header;
 
     return fs;
 }
@@ -259,7 +294,7 @@ fstream_alloc(const char*path, apr_pool_t* pool,int opth)
 
 /* get a block from the file stream */
 int
-fstream_get_block(fstream_t* fs, apr_pool_t* pool,block_t*b)
+fstream_read(fstream_t* fs, apr_pool_t* pool,block_t*b)
 {
     int n;
     char* p; 
@@ -293,10 +328,10 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool,block_t*b)
 	}
 
 	fs->foff = b->hdr.foff = 0;
-	fs->fskip = fs->opth;
+	fs->fskip = fs->options.header;
 
-	if (0 == (fs->fd = gfile_open(fs->fpath[fs->fidx],pool))) {
-	    gwarning(FLINE, "unable to open file %s", fs->fpath[fs->fidx]);
+	if (0 == (fs->fd = gfile_open(fs->fpath[fs->fidx]))) {
+	    fprintf(stderr,"fstream unable to open file %s\n",fs->fpath[fs->fidx]);
 	    fs->ferror = "unable to open file";
 	    b->i = 0;
 	    return 1;
@@ -305,11 +340,7 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool,block_t*b)
 
     strncpy(b->hdr.fname, fs->fpath[fs->fidx], sizeof(b->hdr.fname) - 1);
     b->hdr.fname[sizeof(b->hdr.fname)-1] = 0;
-    if (b->hdr.foff + (b->top - b->bot) != fs->foff) {
-	gfatal(FLINE, "internal error: offset mismatch %" 
-	       APR_INT64_T_FMT " + (%d - %d) != %" APR_INT64_T_FMT, 
-	       b->hdr.foff, b->top, b->bot, fs->foff);
-    }
+    assert(b->hdr.foff + (b->top - b->bot) == fs->foff);
 
     /* fill up b */
     while (0 != (n = sizeof(b->byte) - b->top)) {
@@ -339,7 +370,7 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool,block_t*b)
     q = b->byte + b->top;
     if (skipfirst && p < q) {
 	/* first record is header - skip it. */
-	if (fs->is_csv) 
+	if (fs->options.is_csv) 
 	    p = (char*) scan_rec(p, q, 1,fs);
 	else {
 	    for ( ; p < q && *p != '\n'; p++);
@@ -358,7 +389,7 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool,block_t*b)
 	return 0;
     }
 
-    if (fs->is_csv) {
+    if (fs->options.is_csv) {
 	/* go slow, scan byte-by-byte for record boundary */
 	p = (char*) scan_rec(p, q, sizeof(b->byte) /*artificial max */,fs);
     }
@@ -372,7 +403,7 @@ fstream_get_block(fstream_t* fs, apr_pool_t* pool,block_t*b)
     /* no record boundary 
        -> record larger than BLOCKSIZE? unacceptable!! */
     if (!p) {
-	gwarning(FLINE, "ERROR: line too long in file %s (%d bytes)", 
+	fprintf(stderr,"fstream ERROR: line too long in file %s (%d bytes)\n", 
 		     fs->fpath[fs->fidx], b->top - b->bot);
 	fs->ferror = "line too long in file";
 	b->i = 0;

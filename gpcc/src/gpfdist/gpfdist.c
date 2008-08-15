@@ -18,6 +18,7 @@
 
 #include <signal.h>
 #include <apr_signal.h>
+#include <apr_strings.h>
 #include <apr_getopt.h>
 #include <apr_hash.h>
 #include <apr_file_info.h>
@@ -25,7 +26,20 @@
 /*#include <apr_uri.h>*/
 #include <apr_env.h>
 #include <apr_fnmatch.h>
-#include "header.h"
+#include "fstream.h"
+
+#include <apr.h>
+
+#define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
+
+int gprint(const char* fmt, ...);
+int gfatal(const char* fline, const char* fmt, ...);
+int gwarning(const char* fline, const char* fmt, ...);
+
+#ifndef WIN32
+#define SOCKET int
+#define closesocket(x)   close(x)
+#endif
 
 /**************
 
@@ -579,8 +593,8 @@ static const char* session_get_block(session_t* s, block_t* retblock)
 	session_end(s, 0);
 	return 0;
     }
-    if (fstream_get_block(s->fstream, s->pool,retblock)) {
-	const char* ferror = s->fstream->ferror;
+    if (fstream_read(s->fstream, s->pool,retblock)) {
+	const char* ferror = fstream_get_error(s->fstream);
 	if (ferror) {
 	    session_end(s, 1);
 	    return ferror;
@@ -599,7 +613,7 @@ static void session_end(session_t* s, int error)
 	s->is_error = error;
 
     if (s->fstream) {
-	fstream_free(s->fstream);
+	fstream_close(s->fstream);
 	s->fstream = 0;
     }
 }
@@ -612,7 +626,7 @@ static void session_free(session_t* s)
 	gprint("free session %s\n", s->key);
 
     if (s->fstream) {
-	fstream_free(s->fstream);
+	fstream_close(s->fstream);
 	s->fstream = 0;
     }
 
@@ -694,6 +708,7 @@ static void session_attach(request_t* r)
 	/* not in hashtable - create new session */
 	fstream_t* fstream = 0;
 	apr_pool_t* pool;
+	struct fstream_options fstream_options;
 
 	/* remove any outdated sessions*/
 	sessions_cleanup();
@@ -704,27 +719,30 @@ static void session_attach(request_t* r)
 	    request_end(r, 1, 0);
 	    return;
 	}
+	/* parse csvopt header */
+	memset(&fstream_options,0,sizeof fstream_options);
+	fstream_options.header = opt.h;
+	fstream_options.verbose = opt.v;
+	{
+	    const char*a;
+	    for (a=r->csvopt; *a; a++)
+		if (*a=='q' && a[1]){
+		    fstream_options.quote = *++a;
+		    fstream_options.is_csv = 1;
+		}else if (*a=='x' && a[1]){
+		    fstream_options.escape = *++a;
+		    fstream_options.is_csv = 1;
+		}else
+		    assert(0);
+	}
 	/* try opening the fstream */
-	fstream = fstream_alloc(r->path,pool,opt.h);
+	fstream = fstream_open(r->path,pool,&fstream_options);
 	if (! fstream) {
 	    gwarning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
 	    http_error(r, 404, "not found");
 	    request_end(r, 1, 0);
 	    apr_pool_destroy(pool);
 	    return;
-	}
-	/* parse csvopt header */
-	{
-	    const char*a;
-	    for (a=r->csvopt; *a; a++)
-		if (*a=='q' && a[1]){
-		    fstream->quote = *++a;
-		    fstream->is_csv = 1;
-		}else if (*a=='x' && a[1]){
-		    fstream->escape = *++a;
-		    fstream->is_csv = 1;
-		}else
-		    assert(0);
 	}
 	/* allocate session */
 	if (0 == (s = apr_palloc(pool, sizeof(session_t))))
@@ -1287,6 +1305,7 @@ int main(int argc, const char* const argv[])
     apr_signal(SIGTERM, process_signal);
 
     setenv("EVENT_SHOW_METHOD", "1",1);
+    setenv("EVENT_NOKQUEUE", "1",1);
     
     event_init();
 

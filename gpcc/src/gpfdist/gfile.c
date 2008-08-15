@@ -1,7 +1,9 @@
 #include "gfile.h"
-#include "header.h"
-#include <apr_file_io.h>
 #include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <zlib.h>
 #ifdef WIN32
@@ -37,7 +39,7 @@ static int
 txt_file_open(gfile_t*fd,const char*fpath) 
 {
     if (-1 == (fd->u.txt=open(fpath,O_RDONLY|O_BINARY))) {
-	gwarning(FLINE,"unable to open file %s",fpath);
+	fprintf(stderr,"gfile open failed %s\n",fpath);
 	return 1;
     }
     fd->read = txt_file_read;
@@ -63,7 +65,7 @@ static int
 gz_file_open(gfile_t*fd,const char*fpath)
 {
     if (!(fd->u.gz=gzopen(fpath,"rb"))){
-	gwarning(FLINE, "unable to open gzfp\n", fpath);
+	fprintf(stderr,"gfile gzopen failed %s\n",fpath);
 	return 1;
     }
     fd->read = gz_file_read;
@@ -72,29 +74,32 @@ gz_file_open(gfile_t*fd,const char*fpath)
 }
 
 gfile_t*
-gfile_open(const char*fpath,apr_pool_t*pool)
+gfile_open(const char*fpath)
 {
     const char*s=strrchr(fpath,'.');
-    apr_finfo_t finfo;
+    struct stat sta;
     gfile_t*fd;
     int e=1;
-    if (apr_stat(&finfo,fpath,APR_FINFO_TYPE,pool)){
-	gwarning(FLINE,"stat %s failure",fpath);
+
+    if (stat(fpath,&sta)){
+	fprintf(stderr,"gfile stat %s failure\n",fpath);
 	return 0;
     }
-    if (finfo.filetype == APR_DIR){
-	gwarning(FLINE,"%s is a directory",fpath);
+    if (S_ISDIR(sta.st_mode)){
+	fprintf(stderr,"gfile %s is a directory\n",fpath);
 	return 0;
     }
-    if (!(fd=malloc(sizeof*fd)))
-	gfatal(FLINE,"out of memory");
+    if (!(fd=malloc(sizeof*fd))){
+	fprintf(stderr,"gfile out of memory\n");
+	return 0;
+    }
     memset(fd,0,sizeof*fd);
-    if (s&&apr_strnatcasecmp(s,".gz")==0)
+    if (s&&strcasecmp(s,".gz")==0)
 	e = gz_file_open(fd,fpath);
-    else if (s&&apr_strnatcasecmp(s,".z") == 0)
-	gwarning(FLINE,"compression .z file is not supported");
-    else if (s&&apr_strnatcasecmp(s,".zip") == 0)
-	gwarning(FLINE,"compression zip is not supported");
+    else if (s&&strcasecmp(s,".z") == 0)
+	fprintf(stderr,"gfile compression .z file is not supported\n");
+    else if (s&&strcasecmp(s,".zip") == 0)
+	fprintf(stderr,"gfile compression zip is not supported\n");
     else
 	e = txt_file_open(fd,fpath);
     if (e){
@@ -113,11 +118,11 @@ gfile_close(gfile_t*fd)
 }
 
 size_t
-gfile_read(gfile_t*fd,void*ptr,int len)
+gfile_read(gfile_t*fd,void*ptr,size_t len)
 {
-    int olen=len;
+    size_t olen=len;
     while (len){
-	int i=fd->read(fd,ptr,len);
+	size_t i=fd->read(fd,ptr,len);
 	if (i < 0)
 	    return i;
 	if (i == 0)
