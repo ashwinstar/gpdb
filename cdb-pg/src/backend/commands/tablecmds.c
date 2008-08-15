@@ -191,7 +191,7 @@ typedef struct pg_part_rule
 	/* a textual representation of the partition id (for error msgs) */
 	char		   partIdStr[(NAMEDATALEN * 2)];
 	bool           isName;		 /* true if partid is name */
-	int            topRuleRank;	 /* rank/position of topRule */
+	int            topRuleRank;	 /* rank of topRule */
 } pg_part_rule;
 
 /* cache of function lookups for range partition selection */
@@ -9229,11 +9229,11 @@ magic_expr_to_datum(Relation rel, PartitionNode *partnode,
 
 /*
  * Assume the partition rules are in the "correct" order and return
- * the nth rule (1-based).  If posn is negative start from the end, ie
+ * the nth rule (1-based).  If rnk is negative start from the end, ie
  * -1 is the last rule.
  */
 static Oid
-selectPartitionByPosition(PartitionNode *partnode, int posn)
+selectPartitionByRank(PartitionNode *partnode, int rnk)
 {
 	Oid   relid = InvalidOid;
 	List *rules = partnode->rules;
@@ -9241,27 +9241,27 @@ selectPartitionByPosition(PartitionNode *partnode, int posn)
 
 	Assert(partnode->part->parkind == 'r');
 
-	if (posn > list_length(rules))
+	if (rnk > list_length(rules))
 		return relid;
 
-	if (posn == 0)
+	if (rnk == 0)
 		return relid;
 
-	if (posn > 0)
-		posn--; /* list_nth is zero-based, not one-based */
-	else if (posn < 0)
+	if (rnk > 0)
+		rnk--; /* list_nth is zero-based, not one-based */
+	else if (rnk < 0)
 	{
-		posn = list_length(rules) + posn; /* if negative go from end */
+		rnk = list_length(rules) + rnk; /* if negative go from end */
 		
 		/* mpp-3265 */
-		if (posn < 0) /* oops -- too negative */
+		if (rnk < 0) /* oops -- too negative */
 			return relid;			
 	}
 
-	rule = (PartitionRule *)list_nth(rules, posn);
+	rule = (PartitionRule *)list_nth(rules, rnk);
 
 	return rule->parchildrelid;
-} /* end selectPartitionByPosition */
+} /* end selectPartitionByRank */
 
 static bool compare_partn_opfuncid(PartitionNode *partnode,
 								   char *pub, char *compare_op, 
@@ -9931,7 +9931,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 	pg_part_rule  *prule = NULL;
 	PartitionNode *pNode = NULL;
 	Oid partrelid = InvalidOid;
-	int idposn = 0; /* only set for range partitions by position */
+	int idrank = 0; /* only set for range partitions by rank */
 
 	if (!pid)
 		ereport(ERROR,
@@ -9942,7 +9942,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 	namBuf[0] = 0;
 
 	/* build the partition "id string" for error messages as a
-	 * partition name, value, or position.  
+	 * partition name, value, or rank.  
 	 *
 	 * Later on, if we discover
 	 *   the partition exists and 
@@ -9965,20 +9965,20 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 		case AT_AP_IDValue:				/* IDentifier FOR Value */
 			snprintf(partIdStr, sizeof(partIdStr), " for specified value");
 			break;
-		case AT_AP_IDPosition:			/* IDentifier FOR Positition */
+		case AT_AP_IDRank:				/* IDentifier FOR Rank */
 		{
-			snprintf(partIdStr, sizeof(partIdStr), " for specified position");
+			snprintf(partIdStr, sizeof(partIdStr), " for specified rank");
 
 			if (IsA(pid->partiddef, Integer))
-				idposn = intVal(pid->partiddef);
+				idrank = intVal(pid->partiddef);
 			else if (IsA(pid->partiddef, Float))
-				idposn = round(floatVal(pid->partiddef));
+				idrank = round(floatVal(pid->partiddef));
 			else
 				Assert(false);
 
 			snprintf(partIdStr, sizeof(partIdStr), 
-					 " for position %d",
-					 idposn); 
+					 " for rank %d",
+					 idrank); 
 		}
 			break;
 		case AT_AP_ID_oid:				/* IDentifier by oid */
@@ -9997,7 +9997,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 
 	/* XXX XXX fix later */
 
-	/* if id is a value or position, get the relid of the partition if
+	/* if id is a value or rank, get the relid of the partition if
 	 * it exists */
 	if (pNode)
 	{
@@ -10034,7 +10034,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			}
 
 		}
-		else if (pid->idtype == AT_AP_IDPosition)
+		else if (pid->idtype == AT_AP_IDRank)
 		{
 			char *parTypName = "UNKNOWN";
 			
@@ -10052,14 +10052,14 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 
 				ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						 errmsg("cannot find partition by POSITION -- "
+						 errmsg("cannot find partition by RANK -- "
 								"relation \"%s\" is %s partitioned",
 								RelationGetRelationName(rel),
 								parTypName)));
 
 			}
 			
-			partrelid =	selectPartitionByPosition(pNode,  idposn);
+			partrelid =	selectPartitionByRank(pNode, idrank);
 		}
 	}
 
@@ -10075,7 +10075,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			bool foundit = false;
 
 			if ((pid->idtype == AT_AP_IDValue)
-				|| (pid->idtype == AT_AP_IDPosition))
+				|| (pid->idtype == AT_AP_IDRank))
 			{
 				if ((partrelid != InvalidOid)
 					&& (partrelid == rule->parchildrelid))
@@ -10116,7 +10116,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			bool foundit = false;
 
 			if ((pid->idtype == AT_AP_IDValue)
-				|| (pid->idtype == AT_AP_IDPosition))
+				|| (pid->idtype == AT_AP_IDRank))
 			{
 				if ((partrelid != InvalidOid)
 					&& (partrelid == rule->parchildrelid))
@@ -10152,7 +10152,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 	/* if the partition exists, set the "id string" in prule and
 	 * indicate whether it is the partition name.  The ATPExec
 	 * commands will notify users of the "real" name if the original
-	 * specification was by value or position
+	 * specification was by value or rank
 	 */
 	if (prule)
 	{
@@ -10173,7 +10173,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				break;
 			case AT_AP_IDName:				/* IDentify by Name */
 			case AT_AP_IDValue:				/* IDentifier FOR Value */
-			case AT_AP_IDPosition:			/* IDentifier FOR Positition */
+			case AT_AP_IDRank:				/* IDentifier FOR Rank */
 			case AT_AP_ID_oid:				/* IDentifier by oid */
 				ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -10193,7 +10193,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				break;
 			case AT_AP_IDName:				/* IDentify by Name */
 			case AT_AP_IDValue:				/* IDentifier FOR Value */
-			case AT_AP_IDPosition:			/* IDentifier FOR Positition */
+			case AT_AP_IDRank:				/* IDentifier FOR Rank */
 			case AT_AP_ID_oid:				/* IDentifier by oid */
 				ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -10276,7 +10276,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		&& (pid->idtype != AT_AP_IDNone))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("cannot ADD partition%s to relation \"%s\" by position or value",
+				 errmsg("cannot ADD partition%s to relation \"%s\" by rank or value",
 						namBuf,
 						RelationGetRelationName(rel)),
 					 errhint("use a named partition")));
@@ -10370,15 +10370,16 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 
 static int
 atpxPart_validate_spec(
-		PartitionBy 		*pBy,
-		CreateStmtContext   *pcxt,
-		Relation 		 rel,
-		CreateStmt 		*ct,
-		PartitionElem 	*pelem,
-		PartitionNode 	*pNode,
-		Node 			*partName,
-		bool 			 isDefault,
-		PartitionByType  part_type) 
+		PartitionBy 			*pBy,
+		CreateStmtContext   	*pcxt,
+		Relation 		 		 rel,
+		CreateStmt 				*ct,
+		PartitionElem 			*pelem,
+		PartitionNode 			*pNode,
+		Node 					*partName,
+		bool 			 		 isDefault,
+		PartitionByType  		 part_type,
+		char 					*partDesc) 
 {
 	PartitionSpec 		*spec  	= makeNode(PartitionSpec); 
 	ParseState 			*pstate = make_parsestate(NULL); 
@@ -10406,6 +10407,7 @@ atpxPart_validate_spec(
 
 	pelem->partName = partName ? copyObject(partName) : NULL; 
 	pelem->isDefault = isDefault; 
+	pelem->AddPartDesc = pstrdup(partDesc);
 	
  	pBy->partType = part_type; 
 	pBy->keys     = NULL; 
@@ -10505,7 +10507,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 			MemSet(&pid, 0, sizeof(AlterPartitionId));
 
-			pid.idtype = AT_AP_IDPosition;
+			pid.idtype = AT_AP_IDRank;
 			pid.location  = -1;
 
 			Assert (IsA(pelem->boundSpec, PartitionBoundSpec));
@@ -11204,7 +11206,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 									pNode,
 									partName,
 									isDefault,
-									part_type);
+									part_type,
+									"");
 
 	if (pelem && pelem->boundSpec)
 	{
@@ -11393,7 +11396,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 		AlterPartitionId 	 pid;
 		pg_part_rule   	*prule = NULL;
 
-		pid.idtype = AT_AP_IDPosition;
+		pid.idtype = AT_AP_IDRank;
 		pid.partiddef = (Node *)makeInteger(-1);
 		pid.location  = -1;
 
@@ -11585,7 +11588,7 @@ ATPExecPartDrop(Relation rel,
 					 errmsg("missing name or value for DROP")));
 		
 		/* if a range partition, and not specified, just get the first one */
-		pid->idtype = AT_AP_IDPosition;
+		pid->idtype = AT_AP_IDRank;
 		pid->partiddef = (Node *)makeInteger(1);
 	}
 
@@ -11618,15 +11621,15 @@ ATPExecPartDrop(Relation rel,
 							RelationGetRelationName(rel))));
 
 				break;
-			case AT_AP_IDPosition:			/* IDentifier FOR Positition */
+			case AT_AP_IDRank:				/* IDentifier FOR Rank */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition for specified position of "
+					 errmsg("partition for specified rank of "
 							"relation \"%s\" does not exist, skipping",
 							RelationGetRelationName(rel))));
 
 				break;
-			case AT_AP_ID_oid:			/* IDentifier by oid */
+			case AT_AP_ID_oid:				/* IDentifier by oid */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("partition for specified oid of "
@@ -12202,7 +12205,8 @@ atpxModifyListOverlap (Relation rel,
 										(pid->idtype == AT_AP_IDName) ? 
 										pid->partiddef : NULL,
 										false,		 /* isDefault */
-										PARTTYP_LIST /*	part_type */);
+										PARTTYP_LIST, /* part_type */
+										prule->partIdStr);
 
 		pVSpec = (PartitionValuesSpec *)pelem->boundSpec;
 
@@ -12412,7 +12416,7 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 
 				MemSet(&pid2, 0, sizeof(AlterPartitionId));				
 				
-				pid2.idtype = AT_AP_IDPosition;
+				pid2.idtype = AT_AP_IDRank;
 				pid2.partiddef = (Node *)makeInteger(prule->topRuleRank - 1);
 				pid2.location  = -1;
 
@@ -12475,7 +12479,7 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 
 				MemSet(&pid2, 0, sizeof(AlterPartitionId));				
 				
-				pid2.idtype = AT_AP_IDPosition;
+				pid2.idtype = AT_AP_IDRank;
 				pid2.partiddef = (Node *)makeInteger(prule->topRuleRank + 1);
 				pid2.location  = -1;
 
@@ -12701,7 +12705,8 @@ atpxModifyRangeOverlap (Relation 		 		 rel,
 										(pid->idtype == AT_AP_IDName) ? 
 										pid->partiddef : NULL,
 										false,		 /* isDefault */
-										PARTTYP_RANGE /* part_type */);
+										PARTTYP_RANGE, /* part_type */
+										prule->partIdStr);
 	}
 
 

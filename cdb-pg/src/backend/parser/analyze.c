@@ -4405,6 +4405,8 @@ preprocess_range_spec(partValidationState *vstate)
 			
 
 				newel->subSpec = copyObject(el->subSpec);
+				newel->storeAttr = copyObject(el->storeAttr);
+				newel->AddPartDesc = copyObject(el->AddPartDesc);
 				newel->location = el->location;
 
 				newbs = makeNode(PartitionBoundSpec);
@@ -5509,10 +5511,20 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 				}
 			}
 			else
-				snprintf(namBuf, sizeof(namBuf), " number %d", partno);
+			{
+				if (pElem->AddPartDesc)
+					snprintf(namBuf, sizeof(namBuf), "%s", pElem->AddPartDesc);
+				else
+					snprintf(namBuf, sizeof(namBuf), " number %d", partno);
+			}
 		}
 		else
-			snprintf(namBuf, sizeof(namBuf), " number %d", partno);
+		{
+			if (pElem->AddPartDesc)
+				snprintf(namBuf, sizeof(namBuf), "%s", pElem->AddPartDesc);
+			else
+				snprintf(namBuf, sizeof(namBuf), " number %d", partno);
+		}
 
 		/* don't have to validate default partition boundary specs */
 		if (pElem->isDefault)

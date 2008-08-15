@@ -1067,7 +1067,7 @@ typedef enum AlterPartitionIdType
 	AT_AP_IDNone,				/* no ID */
 	AT_AP_IDName,				/* IDentify by Name */
 	AT_AP_IDValue,				/* IDentifier FOR Value */
-	AT_AP_IDPosition,			/* IDentifier FOR Positition */
+	AT_AP_IDRank,				/* IDentifier FOR Rank */
 	AT_AP_ID_oid				/* IDentifier by oid (for internal use only) */
 } AlterPartitionIdType;
 
@@ -1425,6 +1425,7 @@ typedef struct PartitionElem
 	Node			   *subSpec;	/* subpartition spec */
 	bool                isDefault;	/* TRUE if default partition declaration */
 	Node			   *storeAttr;	/* storage clause attributes */		
+	char			   *AddPartDesc;/* set by tablecmds.c:atpxAddPart */
 	int					partno;		/* number of the partition element */
 	int					location;	/* token location, or -1 if unknown */
 } PartitionElem;

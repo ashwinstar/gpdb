@@ -1730,6 +1730,7 @@ table_partition_modify:
                     n->location  = @1;
                     n->isDefault = 0;
                     n->storeAttr = NULL;
+                    n->AddPartDesc = NULL;
 
                     bs->partStart = $1;
                     bs->partEnd   = $2;
@@ -1757,6 +1758,7 @@ table_partition_modify:
                     n->location  = @1;
                     n->isDefault = 0;
                     n->storeAttr = NULL;
+                    n->AddPartDesc = NULL;
 
                     bs->partStart = NULL;
                     bs->partEnd   = $1;
@@ -1783,6 +1785,7 @@ table_partition_modify:
                     n->location  = @1;
                     n->isDefault = 0;
                     n->storeAttr = NULL;
+                    n->AddPartDesc = NULL;
 
                     vs->partValues = $2;
                     vs->location  = @2;
@@ -1826,7 +1829,7 @@ alter_table_partition_id_spec:
             | FOR '(' POSITION'(' NumericOnly ')' ')'	
 				{
 					AlterPartitionId *n = makeNode(AlterPartitionId);
-					n->idtype = AT_AP_IDPosition;
+					n->idtype = AT_AP_IDRank;
                     n->partiddef = (Node *)$5;
                     n->location  = @5;
 					$$ = (Node *)n;
@@ -1834,7 +1837,7 @@ alter_table_partition_id_spec:
             | FOR '(' function_name '(' NumericOnly ')' ')'	
 				{
 					AlterPartitionId *n = makeNode(AlterPartitionId);
-					n->idtype = AT_AP_IDPosition;
+					n->idtype = AT_AP_IDRank;
                     n->partiddef = (Node *)$5;
                     n->location  = @5;
 
@@ -1876,6 +1879,7 @@ alter_table_partition_cmd:
                     pelem->location  = @4;
                     pelem->isDefault = 0;
                     pelem->storeAttr = $6;
+                    pelem->AddPartDesc = NULL;
 
                     pc2->arg1 = (Node *)pelem;
                     pc2->arg2 = ct;
@@ -1914,6 +1918,7 @@ alter_table_partition_cmd:
                     pelem->location  = @5;
                     pelem->isDefault = $2;
                     pelem->storeAttr = $7;
+                    pelem->AddPartDesc = NULL;
 
                     pc2->arg1 = (Node *)pelem;
                     pc2->arg2 = ct;
@@ -3182,6 +3187,7 @@ TabPartitionElem:
                         n->location  = @1;
                         n->isDefault = 0;
                         n->storeAttr = $4;
+                        n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
 /* allow boundary spec for default partition in parser, but complain later */
@@ -3208,6 +3214,7 @@ TabPartitionElem:
                         n->location  = @1;
                         n->isDefault = 0;
                         n->storeAttr = $3;
+                        n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
             ;
@@ -3223,6 +3230,7 @@ TabSubPartitionElem:
                         n->location  = @1;
                         n->isDefault = 0;
                         n->storeAttr = $3;
+                        n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
 /* allow boundary spec for default partition in parser, but complain later */
@@ -3236,6 +3244,7 @@ TabSubPartitionElem:
                         n->location  = @1;
                         n->isDefault = true;
                         n->storeAttr = $3;
+                        n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
 			| TabPartitionBoundarySpec 	
@@ -3248,6 +3257,7 @@ TabSubPartitionElem:
                         n->location  = @1;
                         n->isDefault = 0;
                         n->storeAttr = $2;
+                        n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
             ;
