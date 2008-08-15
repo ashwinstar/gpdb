@@ -109,7 +109,6 @@ static void insertSelectOptions(SelectStmt *stmt,
 static Node *makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg);
 static Node *doNegate(Node *n, int location);
 static void doNegateFloat(Value *v);
-
 %}
 
 %name-prefix="base_yy"
@@ -1824,12 +1823,26 @@ alter_table_partition_id_spec:
 					$$ = (Node *)n;
 				}
 /* XXX XXX: note that the POSITION function here is not the string operator */
-            | FOR '(' POSITION '(' NumericOnly ')' ')'	
+            | FOR '(' POSITION'(' NumericOnly ')' ')'	
 				{
 					AlterPartitionId *n = makeNode(AlterPartitionId);
 					n->idtype = AT_AP_IDPosition;
                     n->partiddef = (Node *)$5;
                     n->location  = @5;
+					$$ = (Node *)n;
+				}
+            | FOR '(' function_name '(' NumericOnly ')' ')'	
+				{
+					AlterPartitionId *n = makeNode(AlterPartitionId);
+					n->idtype = AT_AP_IDPosition;
+                    n->partiddef = (Node *)$5;
+                    n->location  = @5;
+
+                    /* allow POSITION or RANK */
+					if (!((strcmp($3, "position") == 0)
+                          ||(strcmp($3, "rank") == 0)))
+                        yyerror("syntax error");
+
 					$$ = (Node *)n;
 				}
 		;
