@@ -504,6 +504,117 @@ def addRemove(seg, line):
         Remove[seg] = []
     Remove[seg].append(line)
 
+def getSysCat(seg, table, cols, namespace, key):
+	db = connect2(GV.cfg[seg])
+
+	w = ''
+	if namespace:
+		w = 'WHERE %s ' % namespace
+		w += '''NOT IN (select oid from pg_namespace WHERE nspname 
+				LIKE 'pg_temp%' OR nspname LIKE 'pg_toast%')'''
+		 
+	s = ','.join(set(cols + key))
+
+	qry = 'SELECT %s FROM pg_catalog.%s %s' % (s, table, w)
+
+	rows = {}
+	db.execute(qry)
+	for row in db.iterate_dict():
+		atts = [ str(row[o]) for o in key ]
+
+		k = ';'.join(atts)
+
+		rows[k] = row
+
+	return rows
+
+def row2str(row):
+	keys = row.keys()
+	keys.sort()
+
+	l = [ "%s: '%s'" % (key, str(row[key])) for key in keys ]
+	strout = ', '.join(l)
+	return strout
+
+def crossDbCheck():
+	print '-----------------------------------'
+	print 'Performing cross database object comparison'
+	# 1: get catalog from every node
+	pg_classes = {}
+	pg_attributes = {}
+	pg_types = {}
+	pg_namespaces = {}
+
+	for dbid in GV.cfg:
+		pg_classes[dbid] = getSysCat(dbid, 'pg_class', ['oid', 'relname',
+									 'relnamespace', 'reltype', 'relowner',
+									 'relam', 'relfilenode', 'reltablespace',
+									 'relnatts'],
+									 'relnamespace', ['oid'])
+		pg_attributes[dbid] = getSysCat(dbid, 'pg_attribute',
+										['attrelid', 'attname', 'atttypid',
+										 'attstattarget', 'attlen',
+										 'attnum', 'attndims'],
+										 None,
+										['attrelid', 'attname'])
+		pg_types[dbid] = getSysCat(dbid, 'pg_type',
+								   ['oid', 'typname', 'typnamespace',
+								    'typowner', 'typlen', 'typbyval',
+									'typtype', 'typisdefined', 'typdelim',
+									'typrelid', 'typelem'],
+									'typnamespace', ['oid'])
+		pg_namespaces[dbid] = getSysCat(dbid, 'pg_namespace',
+										['oid', 'nspname', 'nspowner'],
+										'oid',
+										['oid']) 
+		
+	st = {'pg_class': pg_classes, 'pg_attribute': pg_attributes,
+		  'pg_type': pg_types, 'pg_namespace': pg_namespaces}
+
+	# 2: compare size of pg_namespace, pg_class, pg_attribute, pg_type
+	for n in st:
+		error = False
+		print 'Comparing %s on master to all segments' % n
+		v = st[n]
+		for dbid in v:
+			# master = 1
+			slen = len(v[dbid])
+			mlen = len(v[1])
+			if slen != mlen:
+				print '[ERROR] %s has differences: %i rows on master, %i on seg %i' % (n, mlen, slen, dbid)
+				error = True
+
+			for (key) in (v[1]):
+				row = v[1][key]
+				if not v[dbid].has_key(key):
+					error = True
+					print '[ERROR] row from master not on seg %i' % dbid
+					print row2str(row)
+
+				elif v[dbid][key] != row:
+					error = True
+					print '[ERROR] row difference'
+					print 'master'
+					print row2str(row)
+					print 'seg %i' % dbid
+					print row2str(v[dbid][key])
+
+			for (key) in (v[dbid]):
+				if not v[1].has_key(key):
+					error = True
+					print '[ERROR] row from seg %i not on master' % dbid
+					print row2str(v[dbid][key])
+
+				elif v[dbid][key] != v[1][key]:
+					error = True
+					print '[ERROR] row difference'
+					print 'master'
+					print row2str(v[1][key])
+					print 'seg %i' % dbid
+					print row2str(v[dbid][key])
+
+		if error == False:
+				print '[OK]'
 
 #############
 if __name__ == '__main__':
@@ -516,6 +627,7 @@ if __name__ == '__main__':
     checkPGExtTable()
     checkPGClassToast()
     checkPGNamespace()
+    crossDbCheck()
     
     if GV.opt['-g'] != None:
         try:
