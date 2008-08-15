@@ -215,7 +215,7 @@ static void harvest(const char* tbl)
 	return;
     }
 
-    sprintf(qrybuf, QRYFMT, tbl);
+    sprintf(qrybuf, QRYFMT, tbl, tbl);
     errmsg = gpdb_exec(&conn, &result, qrybuf);
     if (errmsg)
 	TR1(("---- HARVEST %s FAILED ---- \n", tbl));
