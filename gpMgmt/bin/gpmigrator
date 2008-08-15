@@ -53,10 +53,11 @@ class GPUpgrade:
     #   MASTER    - default, run on master, [not included in list]
     #   MKDIR     - Create directories, run on every host
     #   RMDIR     - Remove directories, run on every host
+    #   CHKDIR    - Check directories, run on every host
     #   RESETXLOG - Syncronize xlogs
     #   REMAPOID  - Link newdb to old oids, run on every host
     #   DEEPLINK  - Recursive hardlink
-    commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'RESETXLOG', 'MAPPINGS',
+    commands = ['SETSTATE', 'MKDIR', 'RMDIR', 'CHKDIR', 'RESETXLOG', 'MAPPINGS',
                 'REMAPOID', 'DEEPLINK']
 
     #------------------------------------------------------------
@@ -326,6 +327,17 @@ class GPUpgrade:
         if self.debug: 
             print '[GPSSH] ' + result
 
+    #------------------------------------------------------------
+    def CheckDirectories(self):
+
+        for d in self.datadirs:
+            p = os.path.join(d, 'upgrade')
+            if os.path.exists(p):
+                raise UpgradeError('%s : File exists' % p)
+            p = os.path.join(d, 'backup')
+            if os.path.exists(p):
+                raise UpgradeError('%s : File exists' % p)
+            
     #------------------------------------------------------------
     def SetupEnv(self, gphome, masterdir):
         '''
@@ -666,6 +678,11 @@ tool shipped with that release''')
                 if os.path.exists(self.backup):
                     self.Log('WARN', ' %s: File exists' % self.backup)
                     backup_exist = True
+    
+            try:
+                self.CallSlaves('CHKDIR')
+            except UpgradeError, e:
+                dirs_exist = True
 
             if dirs_exist:
                 if backup_exist:
@@ -729,52 +746,7 @@ tool shipped with that release''')
             if self.cmd != 'MKDIR': 
                 raise Exception(self.cmd + ' != MKDIR]')
 
-
-            # checking data directories
-            backup_exist = False
-            dirs_exist = False
-            for d in self.datadirs:
-                if d == '': continue
-
-                upgradepath = os.path.join(d, 'upgrade')                
-                backuppath = os.path.join(d, 'backup')
-
-                if (os.path.exists(upgradepath) or
-                    os.path.exists(backuppath)):
-                    dirs_exist = True
-                    if os.path.exists(upgradepath):
-                        self.Log('WARN', '%s: File exists' % self.upgradepath)
-                    if os.path.exists(backuppath):
-                        self.Log('WARN', '%s: File exists' % self.backuppath)
-                        backup_exist = True
-
-            if dirs_exist:
-                if backup_exist:
-                    print '  [R] Revert to Backup'
-                print '  [D] Delete old files and continue'
-                print '  [X] Cancel upgrade'
-                value = ''
-                while value.upper() not in ['R', 'D', 'X']:
-                    try: value = raw_input('> ')
-                    except EOFError: raise UpgradeError('Upgrade Cancelled')
-                    value = value.upper()
-                    if value == 'R' and not backup_exist:
-                        value = ''
-                    if value not in ['R', 'D', 'X']:
-                        print 'Invalid input'
-                if value == 'X':
-                    raise UpgradeError('Upgrade Cancelled')
-                if value == 'R':
-                    self.Shutdown(self.oldenv, True)
-                    self.Revert()
-                self.RemoveDirectories(force=True)
-                self.CreateDirectories()
-                return
-
-
-
-            for d in self.datadirs:
-
+            for d in filter(os.path.exists, self.datadirs):
                 if d == '': continue
 
                 # Creating directories is an atomic operation, if mkdir 
@@ -1559,6 +1531,8 @@ To complete the environment configuration
 # The rest of the options are executed on a per-host basis
     elif u.cmd == 'SETSTATE':
         u.SetState(u.option)
+    elif u.cmd == 'CHKDIR':
+        u.CheckDirectories()
     elif u.cmd == 'MKDIR':
         u.CreateDirectories()
     elif u.cmd == 'RMDIR':
