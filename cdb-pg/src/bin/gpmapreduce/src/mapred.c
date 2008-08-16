@@ -29,9 +29,9 @@ const char *mapred_kind_name[MAPRED_MAXKIND+1] =
 	"OUTPUT",
 	"MAP",
 	"TRANSITION",
-	"COMBINER",
-	"FINALIZER",
-	"REDUCER",
+	"CONSOLIDATE",
+	"FINALIZE",
+	"REDUCE",
 	"TASK",
 	"RUN",
 	"INTERNAL"
@@ -475,7 +475,7 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 								fprintf(stderr, "Error: RUN '%s' ", obj->name);
 							else
 								fprintf(stderr, "Error: TASK '%s' ", obj->name);
-							fprintf(stderr, "MAPPER '%s' is not a MAP object\n",
+							fprintf(stderr, "MAP '%s' is not a MAP object\n",
 									obj->u.task.mapper.name);
 							XRAISE(MAPRED_PARSE_ERROR, NULL);
 					}
@@ -501,7 +501,7 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 						fprintf(stderr, "Error: RUN '%s' ", obj->name);
 					else
 						fprintf(stderr, "Error: TASK '%s' ", obj->name);
-					fprintf(stderr, " REDUCER '%s' is not a REDUCER object.\n",
+					fprintf(stderr, " REDUCE '%s' is not a REDUCE object.\n",
 							obj->u.task.reducer.name);
 					XRAISE(MAPRED_PARSE_ERROR, NULL);
 				}
@@ -1695,11 +1695,11 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					 !obj->u.reducer.finalizer.object->created))
 				{
 					if (global_print_flag && global_debug_flag)
-						printf("-- defering REDUCER %s\n", obj->name);
+						printf("-- defering REDUCE %s\n", obj->name);
 					break;
 				}
 				if (global_print_flag || global_debug_flag)
-					printf("-- REDUCER %s\n", obj->name);
+					printf("-- REDUCE %s\n", obj->name);
 
 				/* Now, set things up to create the thing */
 				mapred_setup_columns(conn, obj);
@@ -1812,8 +1812,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 
 				/* 
 				 * 1) Handle the INPUT, two cases:
-				 *   1a) There is no MAPPER/REDUCER:  "SELECT * FROM <input>"
-				 *   1b) There is a MAPPER and/or REDUCER:  "<input>"
+				 *   1a) There is no MAP/REDUCE:  "SELECT * FROM <input>"
+				 *   1b) There is a MAP and/or REDUCE:  "<input>"
 				 */
 				mapred_setup_columns(conn, obj);
 				if (!obj->u.task.mapper.name && !obj->u.task.reducer.name)

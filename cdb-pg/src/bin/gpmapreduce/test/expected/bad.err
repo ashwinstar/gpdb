@@ -48,20 +48,20 @@ Error: MAP 'unnamed' - Missing NAME, at line 70
 Error: MAP 'unnamed' - Missing LANGUAGE, at line 70
 Error: MAP 'unnamed' - Missing FUNCTION, at line 70
 Error: REDUCE must contain a YAML MAPPING, at line 71
-Error: REDUCER 'unnamed' - Missing NAME, at line 71
-Error: REDUCER 'unnamed' - Missing TRANSITION, at line 71
+Error: REDUCE 'unnamed' - Missing NAME, at line 71
+Error: REDUCE 'unnamed' - Missing TRANSITION, at line 71
 Error: FUNCTION must contain a YAML MAPPING, at line 72
 Error: TRANSITION 'unnamed' - Missing NAME, at line 72
 Error: TRANSITION 'unnamed' - Missing LANGUAGE, at line 72
 Error: TRANSITION 'unnamed' - Missing FUNCTION, at line 72
 Error: FUNCTION must contain a YAML MAPPING, at line 73
-Error: COMBINER 'unnamed' - Missing NAME, at line 73
-Error: COMBINER 'unnamed' - Missing LANGUAGE, at line 73
-Error: COMBINER 'unnamed' - Missing FUNCTION, at line 73
+Error: CONSOLIDATE 'unnamed' - Missing NAME, at line 73
+Error: CONSOLIDATE 'unnamed' - Missing LANGUAGE, at line 73
+Error: CONSOLIDATE 'unnamed' - Missing FUNCTION, at line 73
 Error: FUNCTION must contain a YAML MAPPING, at line 74
-Error: FINALIZER 'unnamed' - Missing NAME, at line 74
-Error: FINALIZER 'unnamed' - Missing LANGUAGE, at line 74
-Error: FINALIZER 'unnamed' - Missing FUNCTION, at line 74
+Error: FINALIZE 'unnamed' - Missing NAME, at line 74
+Error: FINALIZE 'unnamed' - Missing LANGUAGE, at line 74
+Error: FINALIZE 'unnamed' - Missing FUNCTION, at line 74
 Error: TASK must contain a YAML MAPPING, at line 75
 Error: TASK 'unnamed' - Missing NAME, at line 75
 Error: TASK 'unnamed' - Missing SOURCE, at line 75
@@ -78,20 +78,20 @@ Error: MAP 'unnamed' - Missing NAME, at line 86
 Error: MAP 'unnamed' - Missing LANGUAGE, at line 86
 Error: MAP 'unnamed' - Missing FUNCTION, at line 86
 Error: REDUCE must contain a YAML MAPPING, at line 87
-Error: REDUCER 'unnamed' - Missing NAME, at line 87
-Error: REDUCER 'unnamed' - Missing TRANSITION, at line 87
+Error: REDUCE 'unnamed' - Missing NAME, at line 87
+Error: REDUCE 'unnamed' - Missing TRANSITION, at line 87
 Error: FUNCTION must contain a YAML MAPPING, at line 88
 Error: TRANSITION 'unnamed' - Missing NAME, at line 88
 Error: TRANSITION 'unnamed' - Missing LANGUAGE, at line 88
 Error: TRANSITION 'unnamed' - Missing FUNCTION, at line 88
 Error: FUNCTION must contain a YAML MAPPING, at line 89
-Error: COMBINER 'unnamed' - Missing NAME, at line 89
-Error: COMBINER 'unnamed' - Missing LANGUAGE, at line 89
-Error: COMBINER 'unnamed' - Missing FUNCTION, at line 89
+Error: CONSOLIDATE 'unnamed' - Missing NAME, at line 89
+Error: CONSOLIDATE 'unnamed' - Missing LANGUAGE, at line 89
+Error: CONSOLIDATE 'unnamed' - Missing FUNCTION, at line 89
 Error: FUNCTION must contain a YAML MAPPING, at line 90
-Error: FINALIZER 'unnamed' - Missing NAME, at line 90
-Error: FINALIZER 'unnamed' - Missing LANGUAGE, at line 90
-Error: FINALIZER 'unnamed' - Missing FUNCTION, at line 90
+Error: FINALIZE 'unnamed' - Missing NAME, at line 90
+Error: FINALIZE 'unnamed' - Missing LANGUAGE, at line 90
+Error: FINALIZE 'unnamed' - Missing FUNCTION, at line 90
 Error: TASK must contain a YAML MAPPING, at line 91
 Error: TASK 'unnamed' - Missing NAME, at line 91
 Error: TASK 'unnamed' - Missing SOURCE, at line 91
@@ -118,6 +118,8 @@ Error: 1.0.0.1 is not a valid INPUT attribute, at line 123
 Error: a string is not a valid INPUT attribute, at line 124
 Error: YAML LIST element found in INPUT, at line 125
 Error: YAML MAPPING element found in INPUT, at line 126
+Error: INPUT 'unnamed' - Missing NAME, at line 119
+Error: INPUT 'unnamed' - Missing FILE, GPFDIST, TABLE, QUERY, or EXEC, at line 119
 Error: Invalid OUTPUT Attribute, at line 128
 Error: id is not a valid OUTPUT attribute, at line 129
 Error: 100 is not a valid OUTPUT attribute, at line 130
@@ -125,6 +127,8 @@ Error: 1.0.0.1 is not a valid OUTPUT attribute, at line 131
 Error: a string is not a valid OUTPUT attribute, at line 132
 Error: YAML LIST element found in OUTPUT, at line 133
 Error: YAML MAPPING element found in OUTPUT, at line 134
+Error: OUTPUT 'unnamed' - Missing NAME, at line 127
+Error: OUTPUT 'unnamed' - Missing FILE or TABLE, at line 127
 Error: Invalid FUNCTION Attribute, at line 136
 Error: id is not a valid FUNCTION attribute, at line 137
 Error: 100 is not a valid FUNCTION attribute, at line 138
@@ -132,6 +136,9 @@ Error: 1.0.0.1 is not a valid FUNCTION attribute, at line 139
 Error: a string is not a valid FUNCTION attribute, at line 140
 Error: YAML LIST element found in FUNCTION, at line 141
 Error: YAML MAPPING element found in FUNCTION, at line 142
+Error: MAP 'unnamed' - Missing NAME, at line 135
+Error: MAP 'unnamed' - Missing LANGUAGE, at line 135
+Error: MAP 'unnamed' - Missing FUNCTION, at line 135
 Error: Invalid REDUCE Attribute, at line 144
 Error: id is not a valid REDUCER attribute, at line 145
 Error: 100 is not a valid REDUCER attribute, at line 146
@@ -139,6 +146,8 @@ Error: 1.0.0.1 is not a valid REDUCER attribute, at line 147
 Error: a string is not a valid REDUCER attribute, at line 148
 Error: YAML LIST element found in REDUCE, at line 149
 Error: YAML MAPPING element found in REDUCE, at line 150
+Error: REDUCE 'unnamed' - Missing NAME, at line 143
+Error: REDUCE 'unnamed' - Missing TRANSITION, at line 143
 Error: Invalid FUNCTION Attribute, at line 152
 Error: id is not a valid FUNCTION attribute, at line 153
 Error: 100 is not a valid FUNCTION attribute, at line 154
@@ -146,6 +155,9 @@ Error: 1.0.0.1 is not a valid FUNCTION attribute, at line 155
 Error: a string is not a valid FUNCTION attribute, at line 156
 Error: YAML LIST element found in FUNCTION, at line 157
 Error: YAML MAPPING element found in FUNCTION, at line 158
+Error: TRANSITION 'unnamed' - Missing NAME, at line 151
+Error: TRANSITION 'unnamed' - Missing LANGUAGE, at line 151
+Error: TRANSITION 'unnamed' - Missing FUNCTION, at line 151
 Error: Invalid FUNCTION Attribute, at line 160
 Error: id is not a valid FUNCTION attribute, at line 161
 Error: 100 is not a valid FUNCTION attribute, at line 162
@@ -153,6 +165,9 @@ Error: 1.0.0.1 is not a valid FUNCTION attribute, at line 163
 Error: a string is not a valid FUNCTION attribute, at line 164
 Error: YAML LIST element found in FUNCTION, at line 165
 Error: YAML MAPPING element found in FUNCTION, at line 166
+Error: CONSOLIDATE 'unnamed' - Missing NAME, at line 159
+Error: CONSOLIDATE 'unnamed' - Missing LANGUAGE, at line 159
+Error: CONSOLIDATE 'unnamed' - Missing FUNCTION, at line 159
 Error: Invalid FUNCTION Attribute, at line 168
 Error: id is not a valid FUNCTION attribute, at line 169
 Error: 100 is not a valid FUNCTION attribute, at line 170
@@ -160,6 +175,9 @@ Error: 1.0.0.1 is not a valid FUNCTION attribute, at line 171
 Error: a string is not a valid FUNCTION attribute, at line 172
 Error: YAML LIST element found in FUNCTION, at line 173
 Error: YAML MAPPING element found in FUNCTION, at line 174
+Error: FINALIZE 'unnamed' - Missing NAME, at line 167
+Error: FINALIZE 'unnamed' - Missing LANGUAGE, at line 167
+Error: FINALIZE 'unnamed' - Missing FUNCTION, at line 167
 Error: Invalid TASK Attribute, at line 176
 Error: id is not a valid TASK attribute, at line 177
 Error: 100 is not a valid TASK attribute, at line 178
@@ -167,6 +185,8 @@ Error: 1.0.0.1 is not a valid TASK attribute, at line 179
 Error: a string is not a valid TASK attribute, at line 180
 Error: YAML LIST element found in TASK, at line 181
 Error: YAML MAPPING element found in TASK, at line 182
+Error: TASK 'unnamed' - Missing NAME, at line 175
+Error: TASK 'unnamed' - Missing SOURCE, at line 175
 Error: Invalid RUN Attribute, at line 185
 Error: id is not a valid RUN attribute, at line 186
 Error: 100 is not a valid RUN attribute, at line 187
@@ -174,6 +194,7 @@ Error: 1.0.0.1 is not a valid RUN attribute, at line 188
 Error: a string is not a valid RUN attribute, at line 189
 Error: YAML LIST element found in RUN, at line 190
 Error: YAML MAPPING element found in RUN, at line 191
+Error: RUN 'unnamed' - Missing SOURCE, at line 184
 Error: Invalid object NAME, at line 198
 Error: Invalid object NAME, at line 199
 Error: Invalid object NAME, at line 200
@@ -184,5 +205,8 @@ Error: Invalid TABLE name, at line 204
 Error: Invalid TABLE name, at line 205
 Error: YAML LIST element found in QUERY, at line 206
 Error: YAML_MAPPING element found in QUERY, at line 207
+Error: YAML_MAPPING element found in file list, at line 208
+Error: INPUT may only specify one of FILE, GPFDIST, TABLE, QUERY, EXEC
+Error: YAML_MAPPING element found in file list, at line 209
 Error: INPUT 'unnamed' - Missing NAME, at line 197
-Error: INPUT 'unnamed' - Missing FILE, GPFDIST, TABLE, QUERY, or EXEC, at line 197
+Error parsing file

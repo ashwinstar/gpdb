@@ -92,7 +92,7 @@ DEFINE:
 EXECUTE:
   - RUN:         [list]
 
-# Document 9, Invalid items in DEFINE/RUN
+# Document 10, Invalid items in DEFINE/RUN
 ---
 VERSION:         1.0.0.1
 DEFINE:
@@ -112,7 +112,7 @@ EXECUTE:
   - [a list]:            scalar
   - {mapping: mapping}:  scalar
 
-# Document 10, Invalid items in objects
+# Document 11, Invalid items in objects
 ---
 VERSION:         1.0.0.1
 DEFINE:
@@ -190,7 +190,7 @@ EXECUTE:
       [list]:    a list as the mapping key 
       {mapping: scalar}: a mapping as the mapping key
 
-# Document 11, Invalid values for object attributes
+# Document 12, Invalid values for object attributes
 ---
 VERSION:         1.0.0.1
 DEFINE:
@@ -205,5 +205,5 @@ DEFINE:
       TABLE:     {mapping: scalar}
       QUERY:     [list]
       QUERY:     {mapping: scalar}
-#      FILE:      {mapping: scalar}
-#      GPFDIST:   {mapping: scalar}      
+      FILE:      {mapping: scalar}
+      GPFDIST:   {mapping: scalar}      

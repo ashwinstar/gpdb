@@ -56,14 +56,16 @@
 %token <token> _VERSION_STRING_
 %token <token> _ID_
 %token <token> _STRING_
-
+%type  <token>        scalar
 
 /* YAML State tokens */
 %token START_STREAM   END_STREAM
 %token START_DOCUMENT END_DOCUMENT
 %token START_LIST     END_LIST
 %token START_MAP      END_MAP
-%type  <token>        scalar
+
+/* and the special "ERROR" token */
+%token ERROR
 
 %% /* Grammar rules and actions follow */
 
@@ -71,8 +73,14 @@
 stream:
     START_STREAM 
     document_list 
-    END_STREAM
-    | error END_STREAM             /* Fallback for error recovery */
+    END_STREAM       
+    { 
+      if (parser->current_doc &&
+		  parser->current_doc->u.document.flags & mapred_document_error)
+	  {
+		  YYABORT;  /* If we found an error, return error */
+	  }
+	}
     ;
 
 /* 
@@ -113,7 +121,6 @@ keyword:
     _NAME_|doc_keywords|obj_keywords|func_keywords|io_keywords|misc_keywords ;
 
 document_list: 
-      document
     | document_list document
     ;
 
@@ -147,14 +154,14 @@ doc_item:
     | _DEFINE_    doc_define
     | _EXECUTE_   doc_execute
 
-	| _NAME_           valid_yaml { yaml_yyerror(parser, "Invalid Document Attribute"); }
-	| obj_keywords     valid_yaml { yaml_yyerror(parser, "Invalid Document Attribute"); }
-	| func_keywords    valid_yaml { yaml_yyerror(parser, "Invalid Document Attribute"); }
-	| io_keywords      valid_yaml { yaml_yyerror(parser, "Invalid Document Attribute"); }
-	| misc_keywords    valid_yaml { yaml_yyerror(parser, "Invalid Document Attribute"); }
-	| scalar           valid_yaml { yaml_yyerror(parser, "Invalid Document Attribute"); }
-	| valid_yaml_list  valid_yaml { yaml_yyerror(parser, "Invalid Document Attribute"); }
-	| valid_yaml_map   valid_yaml { yaml_yyerror(parser, "Invalid Document Attribute"); }
+	| _NAME_           { yaml_yyerror(parser, "Invalid Document Attribute"); } valid_yaml
+	| obj_keywords     { yaml_yyerror(parser, "Invalid Document Attribute"); } valid_yaml
+	| func_keywords    { yaml_yyerror(parser, "Invalid Document Attribute"); } valid_yaml
+	| io_keywords      { yaml_yyerror(parser, "Invalid Document Attribute"); } valid_yaml
+	| misc_keywords    { yaml_yyerror(parser, "Invalid Document Attribute"); } valid_yaml
+	| scalar           { yaml_yyerror(parser, "Invalid Document Attribute"); } valid_yaml
+	| valid_yaml_list  { yaml_yyerror(parser, "Invalid Document Attribute"); } valid_yaml
+	| valid_yaml_map   { yaml_yyerror(parser, "Invalid Document Attribute"); } valid_yaml
     ;
 
 doc_version:
@@ -248,73 +255,75 @@ execute_item:
         _RUN_        { parser_add_run(parser); }       
         run_map
 
-      | _NAME_          valid_yaml  { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); }
-      | def_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); }
-	  | func_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); }
-	  | io_keywords     valid_yaml  { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); }
-	  | misc_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); }
-	  | valid_yaml_list valid_yaml  { yaml_yyerror(parser, "YAML LIST element found in EXECUTE"); }
-  	  | valid_yaml_map  valid_yaml  { yaml_yyerror(parser, "YAML MAPPING element found in EXECUTE"); }
-	  | scalar          valid_yaml
+      | _NAME_           { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); } valid_yaml
+      | def_keywords     { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); } valid_yaml
+	  | func_keywords    { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); } valid_yaml
+	  | io_keywords      { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); } valid_yaml
+	  | misc_keywords    { yaml_yyerror(parser, "Invalid EXECUTE Attribute"); } valid_yaml
+	  | valid_yaml_list  { yaml_yyerror(parser, "YAML LIST element found in EXECUTE"); } valid_yaml
+  	  | valid_yaml_map   { yaml_yyerror(parser, "YAML MAPPING element found in EXECUTE"); } valid_yaml
+	  | scalar          
         {
 			char buffer[128];
 			snprintf(buffer, sizeof(buffer), "'%s' is not a valid EXECUTE element", $1);
 			yaml_yyerror(parser, buffer); 
-		}
+		} 
+        valid_yaml
       ;
 
 define_list:
-    /* empty */
-    | define_list     
-      START_MAP 
-      define_item 
-      END_MAP
+      /* empty */
+      | define_list     
+        START_MAP 
+        define_item
+  	    more_define_items           /* errors if there actually is something */
+        END_MAP
 
-    | valid_yaml_list             { yaml_yyerror(parser, "List element found in DEFINE"); }
-    | scalar 
-      {
-		  char buffer[128];
-		  snprintf(buffer, sizeof(buffer), "Scalar value '%s' found in DEFINE", $1);
-		  yaml_yyerror(parser, buffer);
-	  }
-    ;
+      | valid_yaml_list             { yaml_yyerror(parser, "List element found in DEFINE"); }
+      | scalar 
+        {
+			char buffer[128];
+			snprintf(buffer, sizeof(buffer), "Scalar value '%s' found in DEFINE", $1);
+			yaml_yyerror(parser, buffer);
+		}
+      ;
+
+more_define_items:
+       /* only good second item is one that doesn't exist */
+	  | keyword    { yaml_yyerror(parser, "Multiple objects in one list element"); } valid_yaml
+	    more_define_items
+      | valid_yaml { yaml_yyerror(parser, "Multiple objects in one list element"); } valid_yaml
+	    more_define_items
+
 
 define_item:
-        _INPUT_      { parser_add_object(parser, MAPRED_INPUT); } 
-        input_map
-      | _OUTPUT_     { parser_add_object(parser, MAPRED_OUTPUT); } 
-        output_map
-      | _REDUCE_     { parser_add_object(parser, MAPRED_REDUCER); } 
-        reduce_map 
-      | _MAP_        { parser_add_object(parser, MAPRED_MAPPER); } 
-        function_map
-      | _TRANSITION_ { parser_add_object(parser, MAPRED_TRANSITION); } 
-        function_map
-      | _CONSOLIDATE_ { parser_add_object(parser, MAPRED_COMBINER); } 
-        function_map
-      | _FINALIZE_   { parser_add_object(parser, MAPRED_FINALIZER); } 
-        function_map
-      | _TASK_       { parser_add_object(parser, MAPRED_TASK); } 
-        task_map
+        _INPUT_      { parser_add_object(parser, MAPRED_INPUT); }       input_map
+      | _OUTPUT_     { parser_add_object(parser, MAPRED_OUTPUT); }      output_map
+      | _REDUCE_     { parser_add_object(parser, MAPRED_REDUCER); }     reduce_map 
+      | _MAP_        { parser_add_object(parser, MAPRED_MAPPER); }      function_map
+      | _TRANSITION_ { parser_add_object(parser, MAPRED_TRANSITION); }  function_map
+      | _CONSOLIDATE_ { parser_add_object(parser, MAPRED_COMBINER); }   function_map
+      | _FINALIZE_   { parser_add_object(parser, MAPRED_FINALIZER); }   function_map
+      | _TASK_       { parser_add_object(parser, MAPRED_TASK); }        task_map
 
 
-	  | _NAME_          valid_yaml  { yaml_yyerror(parser, "Invalid DEFINE Attribute"); }
-	  | exec_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid DEFINE Attribute"); }
-      | func_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid DEFINE Attribute"); }
-      | io_keywords     valid_yaml  { yaml_yyerror(parser, "Invalid DEFINE Attribute"); }
-      | misc_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid DEFINE Attribute"); }
-  	  | valid_yaml_list valid_yaml  { yaml_yyerror(parser, "YAML LIST element found in DEFINE"); }
-  	  | valid_yaml_map  valid_yaml  { yaml_yyerror(parser, "YAML MAPPING element found in DEFINE"); }
-	  | scalar          valid_yaml
+	  | _NAME_          { yaml_yyerror(parser, "Invalid DEFINE Attribute"); } valid_yaml
+	  | exec_keywords   { yaml_yyerror(parser, "Invalid DEFINE Attribute"); } valid_yaml
+      | func_keywords   { yaml_yyerror(parser, "Invalid DEFINE Attribute"); } valid_yaml
+      | io_keywords     { yaml_yyerror(parser, "Invalid DEFINE Attribute"); } valid_yaml
+      | misc_keywords   { yaml_yyerror(parser, "Invalid DEFINE Attribute"); } valid_yaml
+  	  | valid_yaml_list { yaml_yyerror(parser, "YAML LIST element found in DEFINE"); } valid_yaml
+  	  | valid_yaml_map  { yaml_yyerror(parser, "YAML MAPPING element found in DEFINE"); } valid_yaml
+	  | scalar
         {
 			char buffer[128];
 			snprintf(buffer, sizeof(buffer), "'%s' is not a valid DEFINE element", $1);
 			yaml_yyerror(parser, buffer); 
-		}
+		} valid_yaml
       ;
 
-input_map:        
-      START_MAP input_item_map END_MAP 
+input_map:
+      START_MAP input_item_map END_MAP
 
 	  | valid_yaml_list  { yaml_yyerror(parser, "INPUT must contain a YAML MAPPING"); }
       | scalar           { yaml_yyerror(parser, "INPUT must contain a YAML MAPPING"); }
@@ -380,20 +389,19 @@ input_item:
       | _ENCODING_  scalar      { parser_set_encoding(parser, $2); }
       | _ERROR_LIMIT_ _INTEGER_ { parser_set_error_limit(parser, $2); }
 
-
-	  | doc_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid INPUT Attribute"); }
-	  | obj_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid INPUT Attribute"); }
-      | func_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid INPUT Attribute"); }
-      | misc_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid INPUT Attribute"); }
-  	  | valid_yaml_list valid_yaml  { yaml_yyerror(parser, "YAML LIST element found in INPUT"); }
-  	  | valid_yaml_map  valid_yaml  { yaml_yyerror(parser, "YAML MAPPING element found in INPUT"); }
-	  | _STRING_        valid_yaml
+    /* Error recovery */
+	  | doc_keywords      { yaml_yyerror(parser, "Invalid INPUT Attribute"); } valid_yaml
+	  | obj_keywords      { yaml_yyerror(parser, "Invalid INPUT Attribute"); } valid_yaml
+      | func_keywords     { yaml_yyerror(parser, "Invalid INPUT Attribute"); } valid_yaml
+      | misc_keywords     { yaml_yyerror(parser, "Invalid INPUT Attribute"); } valid_yaml
+  	  | valid_yaml_list   { yaml_yyerror(parser, "YAML LIST element found in INPUT"); } valid_yaml
+  	  | valid_yaml_map    { yaml_yyerror(parser, "YAML MAPPING element found in INPUT"); } valid_yaml
+	  | scalar
        {
 		   char buffer[128];
 		   snprintf(buffer, 128, "%s is not a valid INPUT attribute", $1);
 		   yaml_yyerror(parser, buffer); 
-		   mapred_destroy_object(&parser->current_obj);
-	   }
+	   } valid_yaml
       ;
 
 
@@ -405,19 +413,24 @@ output_item:
       | _DELIMITER_ scalar    { parser_set_delimiter(parser, $2); }
       | _MODE_ scalar         { parser_set_mode(parser, $2); }
 
-	  | doc_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); }
-	  | obj_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); }
-      | func_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); }
-      | misc_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); }
-  	  | valid_yaml_list valid_yaml  { yaml_yyerror(parser, "YAML LIST element found in OUTPUT"); }
-  	  | valid_yaml_map  valid_yaml  { yaml_yyerror(parser, "YAML MAPPING element found in OUTPUT"); }
-	  | _STRING_        valid_yaml
+    /* Error recovery */
+	  | doc_keywords          { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
+	  | obj_keywords          { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
+	  | _FUNCTION_            { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
+	  | _LANGUAGE_            { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
+	  | _OPTIMIZE_            { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
+	  | _PARAMETERS_          { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
+	  | _RETURNS_             { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
+      | misc_keywords         { yaml_yyerror(parser, "Invalid OUTPUT Attribute"); } valid_yaml
+  	  | valid_yaml_list       { yaml_yyerror(parser, "YAML LIST element found in OUTPUT"); } valid_yaml
+  	  | valid_yaml_map        { yaml_yyerror(parser, "YAML MAPPING element found in OUTPUT"); } valid_yaml
+
+	  | _STRING_            
        {
 		   char buffer[128];
 		   snprintf(buffer, 128, "%s is not a valid OUTPUT attribute", $1);
 		   yaml_yyerror(parser, buffer);
-		   mapred_destroy_object(&parser->current_obj);
-	   }
+	   } valid_yaml
       ;
 
 reduce_item:
@@ -427,26 +440,26 @@ reduce_item:
       | _FINALIZE_   _ID_     { parser_set_finalizer(parser, $2); }
       | _INITIALIZE_ scalar   { parser_set_initialize(parser, $2); }
 
-	  | _INPUT_         valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-	  | _OUTPUT_        valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-	  | _MAP_           valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-	  | _REDUCE_        valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-	  | _TASK_          valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-	  | _SOURCE_        valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-	  | _TARGET_        valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-	  | doc_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-	  | exec_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-	  | func_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-      | io_keywords     valid_yaml  { yaml_yyerror(parser, "Invalid REDUCE Attribute"); }
-  	  | valid_yaml_list valid_yaml  { yaml_yyerror(parser, "YAML LIST element found in REDUCE"); }
-  	  | valid_yaml_map  valid_yaml  { yaml_yyerror(parser, "YAML MAPPING element found in REDUCE"); }
-	  | _STRING_        valid_yaml
+    /* Error recovery */
+	  | _INPUT_               { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+	  | _OUTPUT_              { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+	  | _MAP_                 { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+	  | _REDUCE_              { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+	  | _TASK_                { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+	  | _SOURCE_              { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+	  | _TARGET_              { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+	  | doc_keywords          { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+	  | exec_keywords         { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+	  | func_keywords         { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+      | io_keywords           { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
+  	  | valid_yaml_list       { yaml_yyerror(parser, "YAML LIST element found in REDUCE"); } valid_yaml
+  	  | valid_yaml_map        { yaml_yyerror(parser, "YAML MAPPING element found in REDUCE"); } valid_yaml
+	  | _STRING_            
         {
 			char buffer[128];
 			snprintf(buffer, 128, "%s is not a valid REDUCER attribute", $1);
 			yaml_yyerror(parser, buffer); 
-			mapred_destroy_object(&parser->current_obj);
-		}
+		} valid_yaml
       ;
 
 function_item:
@@ -460,19 +473,19 @@ function_item:
       | _RETURNS_             { parser_begin_returns(parser); }
            return_list
 
-	  | doc_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); }
-	  | obj_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); }
-      | io_keywords     valid_yaml  { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); }
-      | misc_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); }
-  	  | valid_yaml_list valid_yaml  { yaml_yyerror(parser, "YAML LIST element found in FUNCTION"); }
-  	  | valid_yaml_map  valid_yaml  { yaml_yyerror(parser, "YAML MAPPING element found in FUNCTION"); }
-	  | _STRING_        valid_yaml
+    /* Error recovery */
+	  | doc_keywords          { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
+	  | obj_keywords          { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
+      | io_keywords           { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
+      | misc_keywords         { yaml_yyerror(parser, "Invalid FUNCTION Attribute"); } valid_yaml
+  	  | valid_yaml_list       { yaml_yyerror(parser, "YAML LIST element found in FUNCTION"); } valid_yaml
+  	  | valid_yaml_map        { yaml_yyerror(parser, "YAML MAPPING element found in FUNCTION"); } valid_yaml
+	  | _STRING_            
         {
 			char buffer[128];
 			snprintf(buffer, 128, "%s is not a valid FUNCTION attribute", $1);
 			yaml_yyerror(parser, buffer); 
-			mapred_destroy_object(&parser->current_obj);
-		}
+		} valid_yaml
       ;
 
 task_item:
@@ -481,19 +494,25 @@ task_item:
       | _MAP_     _ID_        { parser_set_mapper(parser, $2); }
       | _REDUCE_  _ID_        { parser_set_reducer(parser, $2); }
 
-	  | doc_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid TASK Attribute"); }
-	  | obj_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid TASK Attribute"); }
-      | io_keywords     valid_yaml  { yaml_yyerror(parser, "Invalid TASK Attribute"); }
-      | misc_keywords   valid_yaml  { yaml_yyerror(parser, "Invalid TASK Attribute"); }
-  	  | valid_yaml_list valid_yaml  { yaml_yyerror(parser, "YAML LIST element found in TASK"); }
-  	  | valid_yaml_map  valid_yaml  { yaml_yyerror(parser, "YAML MAPPING element found in TASK"); }
-	  | _STRING_        valid_yaml
+    /* Error recovery */
+	  | doc_keywords          { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+	  | exec_keywords         { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+	  | _TRANSITION_          { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+	  | _CONSOLIDATE_         { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+	  | _FINALIZE_            { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+	  | _INPUT_               { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+	  | _OUTPUT_              { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+      | io_keywords           { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+      | _INITIALIZE_          { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+      | _TARGET_              { yaml_yyerror(parser, "Invalid TASK Attribute"); } valid_yaml
+  	  | valid_yaml_list       { yaml_yyerror(parser, "YAML LIST element found in TASK"); } valid_yaml
+  	  | valid_yaml_map        { yaml_yyerror(parser, "YAML MAPPING element found in TASK"); } valid_yaml
+	  | _STRING_            
         {
 			char buffer[128];
 			snprintf(buffer, 128, "%s is not a valid TASK attribute", $1);
 			yaml_yyerror(parser, buffer); 
-			mapred_destroy_object(&parser->current_obj);
-		}
+		} valid_yaml
       ;
 
 run_item:
@@ -503,19 +522,24 @@ run_item:
       | _MAP_     _ID_        { parser_set_mapper(parser, $2); }
       | _REDUCE_  _ID_        { parser_set_reducer(parser, $2); }
 
-      | _INITIALIZE_    valid_yaml  { yaml_yyerror(parser, "Invalid RUN Attribute"); }
-	  | doc_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid RUN Attribute"); }
-	  | obj_keywords    valid_yaml  { yaml_yyerror(parser, "Invalid RUN Attribute"); }
-      | io_keywords     valid_yaml  { yaml_yyerror(parser, "Invalid RUN Attribute"); }
-  	  | valid_yaml_list valid_yaml  { yaml_yyerror(parser, "YAML LIST element found in RUN"); }
-  	  | valid_yaml_map  valid_yaml  { yaml_yyerror(parser, "YAML MAPPING element found in RUN"); }
-	  | _STRING_        valid_yaml 
+    /* Error recovery */
+      | _INITIALIZE_          { yaml_yyerror(parser, "Invalid RUN Attribute"); } valid_yaml
+	  | doc_keywords          { yaml_yyerror(parser, "Invalid RUN Attribute"); } valid_yaml
+	  | exec_keywords         { yaml_yyerror(parser, "Invalid RUN Attribute"); } valid_yaml
+	  | _TRANSITION_          { yaml_yyerror(parser, "Invalid RUN Attribute"); } valid_yaml
+	  | _CONSOLIDATE_         { yaml_yyerror(parser, "Invalid RUN Attribute"); } valid_yaml
+	  | _FINALIZE_            { yaml_yyerror(parser, "Invalid RUN Attribute"); } valid_yaml
+	  | _INPUT_               { yaml_yyerror(parser, "Invalid RUN Attribute"); } valid_yaml
+	  | _OUTPUT_              { yaml_yyerror(parser, "Invalid RUN Attribute"); } valid_yaml
+      | io_keywords           { yaml_yyerror(parser, "Invalid RUN Attribute"); } valid_yaml
+  	  | valid_yaml_list       { yaml_yyerror(parser, "YAML LIST element found in RUN"); } valid_yaml
+  	  | valid_yaml_map        { yaml_yyerror(parser, "YAML MAPPING element found in RUN"); } valid_yaml
+	  | _STRING_             
         {
 			char buffer[128];
 			snprintf(buffer, 128, "%s is not a valid RUN attribute", $1);
 			yaml_yyerror(parser, buffer); 
-			mapred_destroy_object(&parser->current_obj);
-		}
+		} valid_yaml
       ;
 
 
@@ -523,31 +547,31 @@ run_item:
 obj_name:
       _ID_                        { parser_set_name(parser, $1); }
 
-    | valid_yaml_list             { yaml_yyerror(parser, "Invalid object NAME"); }
-    | valid_yaml_map              { yaml_yyerror(parser, "Invalid object NAME"); }
-    | _STRING_                    { yaml_yyerror(parser, "Invalid object NAME"); }
-    | _INTEGER_                   { yaml_yyerror(parser, "Invalid object NAME"); }
-    | _VERSION_STRING_            { yaml_yyerror(parser, "Invalid object NAME"); }
-    | error           
-      {
+    /* Error recovery */
+    | { yaml_yyerror(parser, "Invalid object NAME"); }  _STRING_
+    | { yaml_yyerror(parser, "Invalid object NAME"); }  _INTEGER_
+    | { yaml_yyerror(parser, "Invalid object NAME"); }  _VERSION_STRING_
+    | { yaml_yyerror(parser, "Invalid object NAME"); }  valid_yaml_list             
+    | { yaml_yyerror(parser, "Invalid object NAME"); }  valid_yaml_map
+    | {
 		  yaml_yyerror(parser, "Invalid object NAME");
 		  YYERROR;   /* Can't recover from unknown error */
-	  }
+	  } error
     ;
 
 io_table:
       _ID_                        { parser_set_table(parser, $1); }
 
-    | valid_yaml_list             { yaml_yyerror(parser, "Invalid TABLE name"); }
-    | valid_yaml_map              { yaml_yyerror(parser, "Invalid TABLE name"); }
-    | _STRING_                    { yaml_yyerror(parser, "Invalid TABLE name"); }
-    | _INTEGER_                   { yaml_yyerror(parser, "Invalid TABLE name"); }
-    | _VERSION_STRING_            { yaml_yyerror(parser, "Invalid TABLE name"); }
-    | error           
-      {
-		  yaml_yyerror(parser, "Invalid object NAME");
+    /* Error recovery */
+    | { yaml_yyerror(parser, "Invalid TABLE name"); }  valid_yaml_list             
+    | { yaml_yyerror(parser, "Invalid TABLE name"); }  valid_yaml_map
+    | { yaml_yyerror(parser, "Invalid TABLE name"); }  _STRING_
+    | { yaml_yyerror(parser, "Invalid TABLE name"); }  _INTEGER_
+    | { yaml_yyerror(parser, "Invalid TABLE name"); }  _VERSION_STRING_
+    | {
+		  yaml_yyerror(parser, "Invalid TABLE name");
 		  YYERROR;   /* Can't recover from unknown error */
-	  }
+	  } error
     ;
 
 input_query:
@@ -591,42 +615,63 @@ io_format:
 file_list:
         scalar                { parser_add_file(parser, $1); }
       | START_LIST file_list_2 END_LIST
+	  
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in file list"); }
       ;
 
 file_list_2:
       /* empty */
       | file_list_2 scalar    { parser_add_file(parser, $2); }
+
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in file list"); }
+	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in file list"); }
       ;
 
 column_list:
         scalar                { parser_add_column(parser, $1); }
       | START_LIST column_list_2 END_LIST
+
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in column list"); }
       ;
 
 column_list_2:
       /* empty */
       | column_list_2 scalar  { parser_add_column(parser, $2); }
+
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in column list"); }
+	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in column list"); }
       ;
 
 parameter_list:
         scalar                { parser_add_parameter(parser, $1); }
       | START_LIST parameter_list_2 END_LIST
+
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in parameter list"); }
       ;
+
 
 parameter_list_2:
       /* empty */
       | parameter_list_2 scalar { parser_add_parameter(parser, $2); }
+
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in parameter list"); }
+	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in parameter list"); }
       ;
 
 
 return_list:
         scalar                { parser_add_return(parser, $1); }
       | START_LIST return_list_2 END_LIST
+
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in return list"); }
 	  ;
 
 return_list_2:
       /* empty */
       | return_list_2 scalar    { parser_add_return(parser, $2); }
+
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in return list"); }
+	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in return list"); }
       ;
 
 scalar:
@@ -661,6 +706,7 @@ valid_yaml_map_item:
 
 %%
 
+static const char EMPTY_STRING[1] = "";
 
 
 /* Called by yyparse on error.  */
@@ -678,8 +724,19 @@ void yaml_yyerror (mapred_parser_t *parser, char const *s)
 		if (global_verbose_flag)
 			fprintf(stderr, "  - ");
 	}
-	fprintf(stderr, "Error: %s, at line %d\n", 
-			s, (int) parser->event.start_mark.line+1);
+
+	if (parser->yparser->error != YAML_NO_ERROR)
+	{
+		fprintf(stderr, "Error: YAML syntax error - %s %s, at line %d\n",
+				parser->yparser->problem,
+				parser->yparser->context,
+				(int) parser->yparser->problem_mark.line+1);
+	}
+	else 
+	{
+		fprintf(stderr, "Error: %s, at line %d\n", s,
+				(int) parser->event.start_mark.line+1);
+	}
 }
 
 #if 0
@@ -747,13 +804,13 @@ yaml_yylex (YYSTYPE *lvalp, mapred_parser_t *parser)
 	if (parser->state != STATE_YAML_PARSE)
 	{
 		parser->state = STATE_DONE;
-		return END_STREAM;   /* should be an error */
+		return ERROR;
 	}
 
 	if (!yaml_parser_parse(parser->yparser, &parser->event))
 	{
 		parser->state = STATE_DONE;
-		return END_STREAM;   /* should be an error */
+		return ERROR;
 	}
 
 #if 0
@@ -834,15 +891,20 @@ yaml_yylex (YYSTYPE *lvalp, mapred_parser_t *parser)
 				lvalp->token = value;
 
 				/* Switch to the scalar scanner and continue */
-				parser->state = STATE_SCALAR_LEX;
+				if (value[0] == '\0')
+					token = _STRING_;
+				else
+				{
+					parser->state = STATE_SCALAR_LEX;
 
 #if USE_FLEX_REENTRANT
-				parser->yscan_buffer = 
-					yaml_scalar_yy_scan_string(value, parser->yscanner);
+					parser->yscan_buffer = 
+						yaml_scalar_yy_scan_string(value, parser->yscanner);
 #else
-				yaml_scalar_yy_scan_string(value);
+					yaml_scalar_yy_scan_string(value);
 #endif
-				token = yaml_yylex(lvalp, parser);
+					token = yaml_yylex(lvalp, parser);
+				}
 
 				/* 
 				 * If we are in a hash context then we switch between the
@@ -883,6 +945,8 @@ yaml_yylex (YYSTYPE *lvalp, mapred_parser_t *parser)
 				return END_LIST;
 				
 			case YAML_MAPPING_END_EVENT:
+			{
+				/* Pop the parser frame stack */
 				if (--parser->frame < -1)
 					parser->frame = -1;
 
@@ -896,6 +960,7 @@ yaml_yylex (YYSTYPE *lvalp, mapred_parser_t *parser)
 
 				DEBUG_TOKEN("YAML_MAPPING_END");
 				return END_MAP;
+			}
 				
 			case YAML_DOCUMENT_END_EVENT:
 				DEBUG_TOKEN("YAML_DOCUMENT_END");

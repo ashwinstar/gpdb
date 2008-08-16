@@ -6,8 +6,36 @@
 #include <yaml_parse.h>
 #include <yaml.h>
 
+#include <stdarg.h>
 
 int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj);
+
+int mapred_parse_error(mapred_parser_t *parser, char *fmt, ...);
+
+/* -------------------------------------------------------------------------- */
+int mapred_parse_error(mapred_parser_t *parser, char *fmt, ...)
+{
+	va_list arg;
+	int done;
+
+	if (parser && parser->current_doc)
+	{
+		if (global_verbose_flag)
+			fprintf(stderr, "    - ");
+		parser->current_doc->u.document.flags |= mapred_document_error;
+	}
+	else if (global_verbose_flag)
+		fprintf(stderr, "  - ");
+
+	fprintf(stderr, "Error: ");
+	va_start(arg, fmt);
+	done = vfprintf(stderr, fmt, arg);
+	va_end(arg);
+	fprintf(stderr, "\n");
+	
+	return done;
+}
+
 
 static int 
 error_missing(const char *type, const char *name, int line, 
@@ -35,7 +63,7 @@ mapred_olist_t* mapred_parse_string(unsigned char *yaml)
 	yaml_parser_t    parser;
 	
 	XASSERT(yaml);
-	if (!yaml_parser_initialize(&parser)) 
+	if (!yaml_parser_initialize(&parser))
 		XRAISE(MAPRED_PARSE_INTERNAL, 
 			   "YAML parser initialization failed");
 
@@ -83,19 +111,14 @@ mapred_olist_t* mapred_parse_yaml(yaml_parser_t *yparser)
 	/* Call into the parser */
 	error = yaml_yyparse(&parser);
 
+	/* finalize final document */
+	parser_add_document(&parser);
+
 	if (error)
 	{
-		mapred_destroy_object(&parser.current_obj);
-		mapred_destroy_object(&parser.current_doc);
-
 		if (global_verbose_flag)
 			fprintf(stderr, "  - ");
 		fprintf(stderr, "Error parsing file\n");
-	}
-	else
-	{
-		/* finalize final document */
-		parser_add_document(&parser);
 	}
 
 	/* Cleanup and return */
@@ -170,8 +193,11 @@ void parser_begin_define(mapred_parser_t *parser)
 	 * define list.
 	 */
 	if (parser->current_doc->u.document.flags & mapred_document_defines)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate EXECUTE list in DOCUMENT");
+	{
+		mapred_parse_error(parser, "Duplicate DEFINE list in DOCUMENT");
+		return;
+	}
+			   
 	parser->current_doc->u.document.flags |= mapred_document_defines;
 }
 
@@ -184,8 +210,11 @@ void parser_begin_execute(mapred_parser_t *parser)
 	 * execution list.
 	 */
 	if (parser->current_doc->u.document.flags & mapred_document_executes)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate EXECUTE list in DOCUMENT");
+	{
+		mapred_parse_error(parser, "Duplicate EXECUTE list in DOCUMENT");
+		return;
+	}
+
 	parser->current_doc->u.document.flags |= mapred_document_executes;
 }
 
@@ -194,7 +223,10 @@ void parser_set_version(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_doc);
 
 	if (parser->current_doc->u.document.version)
-		error1("Duplicate Version:", value);
+	{
+		mapred_parse_error(parser, "Duplicate Version: %s", value);
+		return;
+	}
 
 	/* 
 	 * We have already assured that the value matches a good regex,
@@ -208,7 +240,10 @@ void parser_set_database(mapred_parser_t *parser, char *value)
 {
 	XASSERT(parser->current_doc);
 	if (parser->current_doc->u.document.database)
-		error1("Duplicate Database:", value);
+	{
+		mapred_parse_error(parser, "Duplicate Database: %s", value);
+		return;
+	}
 	parser->current_doc->u.document.database = copyscalar(value);
 }
 
@@ -216,7 +251,10 @@ void parser_set_user(mapred_parser_t *parser, char *value)
 {
 	XASSERT(parser->current_doc);
 	if (parser->current_doc->u.document.user)
-		error1("Duplicate User:", value);
+	{
+		mapred_parse_error(parser, "Duplicate User: %s", value);
+		return;
+	}
 	parser->current_doc->u.document.user = copyscalar(value);
 }
 
@@ -224,7 +262,10 @@ void parser_set_host(mapred_parser_t *parser, char *value)
 {
 	XASSERT(parser->current_doc);
 	if (parser->current_doc->u.document.host)
-		error1("Duplicate Host:", value);
+	{
+		mapred_parse_error(parser, "Duplicate Host: %s", value);
+		return;
+	}
 	parser->current_doc->u.document.host = copyscalar(value);
 }
 
@@ -232,7 +273,10 @@ void parser_set_port(mapred_parser_t *parser, char *value)
 {
 	XASSERT(parser->current_doc);
 	if (parser->current_doc->u.document.port > 0)
-		error1("Duplicate Port:", value);
+	{
+		mapred_parse_error(parser, "Duplicate Port: %s", value);
+		return;
+	}
 
 	/* 
 	 * The parse has already assured that the value consists of a sequence
@@ -355,21 +399,29 @@ void parser_set_name(mapred_parser_t *parser, char *value)
 		switch (parser->current_obj->kind)
 		{
 			case MAPRED_INPUT:
-				error1("Duplicate name for INPUT:", value);
+				mapred_parse_error(parser, "Duplicate name for INPUT: %s", value);
+				return;
 			case MAPRED_OUTPUT:
-				error1("Duplicate name for OUTPUT:", value);
+				mapred_parse_error(parser, "Duplicate name for OUTPUT: %s", value);
+				return;
 			case MAPRED_MAPPER:
-				error1("Duplicate name for MAP:", value);
+				mapred_parse_error(parser, "Duplicate name for MAP: %s", value);
+				return;
 			case MAPRED_TRANSITION:
-				error1("Duplicate name for TRANSITION:", value);
+				mapred_parse_error(parser, "Duplicate name for TRANSITION: %s", value);
+				return;
 			case MAPRED_COMBINER:
-				error1("Duplicate name for COMBINER:", value);
+				mapred_parse_error(parser, "Duplicate name for COMBINE: %s", value);
+				return;
 			case MAPRED_FINALIZER:
-				error1("Duplicate name for FINALIZER:", value);
+				mapred_parse_error(parser, "Duplicate name for FINALIZE: %s", value);
+				return;
 			case MAPRED_REDUCER:
-				error1("Duplicate name for REDUCER:", value);
+				mapred_parse_error(parser, "Duplicate name for REDUCE: %s", value);
+				return;
 			case MAPRED_TASK:
-				error1("Duplicate name for TASK:", value);
+				mapred_parse_error(parser, "Duplicate name for TASK: %s", value);
+				return;
 			default:
 				XASSERT(false);
 		}
@@ -389,10 +441,16 @@ void parser_set_table(mapred_parser_t *parser, char *value)
 		if (parser->current_obj->u.input.type != MAPRED_INPUT_NONE)
 		{
 			if (parser->current_obj->u.input.type == MAPRED_INPUT_TABLE)
-				XRAISE(MAPRED_PARSE_ERROR,
-					   "Duplicate TABLE for INPUT");
-			XRAISE(MAPRED_PARSE_ERROR,
-				   "INPUT may only specify one of FILE, GPFDIST, TABLE, QUERY, EXEC");
+			{
+				mapred_parse_error(parser,"Duplicate TABLE for INPUT");
+				return;
+			}
+			else
+			{
+				mapred_parse_error(parser, "INPUT may only specify one of "
+								   "FILE, GPFDIST, TABLE, QUERY, EXEC");
+				return;
+			}
 		}
 		parser->current_obj->u.input.type = MAPRED_INPUT_TABLE;
 		parser->current_obj->u.input.desc = copyscalar(value);
@@ -402,10 +460,16 @@ void parser_set_table(mapred_parser_t *parser, char *value)
 		if (parser->current_obj->u.output.type != MAPRED_OUTPUT_NONE)
 		{
 			if (parser->current_obj->u.input.type == MAPRED_INPUT_TABLE)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate TABLE for OUTPUT");
-			XRAISE(MAPRED_PARSE_ERROR,
-				   "OUTPUT may only specify one of FILE, TABLE");
+			{
+				mapred_parse_error(parser, "Duplicate TABLE for OUTPUT");
+				return;
+			}
+			else
+			{
+				mapred_parse_error(parser, "OUTPUT may only specify one of "
+								   "FILE, TABLE");
+				return;
+			}
 		}
 		parser->current_obj->u.output.type = MAPRED_OUTPUT_TABLE;
 		parser->current_obj->u.output.desc = copyscalar(value);
@@ -421,10 +485,16 @@ void parser_set_query(mapred_parser_t *parser, char *value)
 	if (parser->current_obj->u.input.type != MAPRED_INPUT_NONE)
 	{
 		if (parser->current_obj->u.input.type == MAPRED_INPUT_QUERY)
-			XRAISE(MAPRED_PARSE_ERROR,
-				   "Duplicate QUERY for INPUT");
-		XRAISE(MAPRED_PARSE_ERROR,
-			   "INPUT may only specify one of FILE, GPFDIST, TABLE, QUERY, EXEC");
+		{
+			mapred_parse_error(parser, "Duplicate QUERY for INPUT");
+			return;
+		}
+		else
+		{
+			mapred_parse_error(parser, "INPUT may only specify one of "
+							   "FILE, GPFDIST, TABLE, QUERY, EXEC");
+			return;
+		}
 	}
 	parser->current_obj->u.input.type = MAPRED_INPUT_QUERY;
 	parser->current_obj->u.input.desc = copyscalar(value);
@@ -439,10 +509,16 @@ void parser_set_exec(mapred_parser_t *parser, char *value)
 	if (parser->current_obj->u.input.type != MAPRED_INPUT_NONE)
 	{
 		if (parser->current_obj->u.input.type == MAPRED_INPUT_EXEC)
-			XRAISE(MAPRED_PARSE_ERROR, 
-				   "Duplicate EXEC for INPUT");
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "INPUT may only specify one of FILE, GPFDIST, TABLE, QUERY, EXEC");
+		{
+			mapred_parse_error(parser, "Duplicate EXEC for INPUT");
+			return;
+		}
+		else
+		{
+			mapred_parse_error(parser, "INPUT may only specify one of "
+							   "FILE, GPFDIST, TABLE, QUERY, EXEC");
+			return;
+		}
 	}
 	parser->current_obj->u.input.type = MAPRED_INPUT_EXEC;
 	parser->current_obj->u.input.desc = copyscalar(value);
@@ -455,15 +531,20 @@ void parser_set_format(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
 
 	if (parser->current_obj->u.input.format != MAPRED_FORMAT_NONE)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate FORMAT for INPUT");
+	{
+		mapred_parse_error(parser, "Duplicate FORMAT for INPUT");
+		return;
+	}
 	
 	if (!strcasecmp(value, "text"))
 		parser->current_obj->u.input.format = MAPRED_FORMAT_TEXT;
 	else if (!strcasecmp(value, "csv"))
 		parser->current_obj->u.input.format = MAPRED_FORMAT_CSV;
 	else
-		error1("Invalid INPUT FORMAT:", value);
+	{
+		mapred_parse_error(parser, "Invalid INPUT FORMAT: %s", value);
+		return;
+	}
 }
 
 void parser_set_delimiter(mapred_parser_t *parser, char *value)
@@ -476,15 +557,19 @@ void parser_set_delimiter(mapred_parser_t *parser, char *value)
 	if (parser->current_obj->kind == MAPRED_INPUT)
 	{
 		if (parser->current_obj->u.input.delimiter)
-			XRAISE(MAPRED_PARSE_ERROR, 
-				   "Duplicate DELIMITER for INPUT");
+		{
+			mapred_parse_error(parser, "Duplicate DELIMITER for INPUT");
+			return;
+		}
 		parser->current_obj->u.input.delimiter = copyscalar(value);
 	}
 	else
 	{
 		if (parser->current_obj->u.output.delimiter)
-			XRAISE(MAPRED_PARSE_ERROR, 
-				   "Duplicate DELIMITER for OUTPUT");
+		{
+			mapred_parse_error(parser, "Duplicate DELIMITER for OUTPUT");
+			return;
+		}
 		parser->current_obj->u.output.delimiter = copyscalar(value);
 	}
 }
@@ -496,8 +581,10 @@ void parser_set_escape(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
 
 	if (parser->current_obj->u.input.delimiter)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate ESCAPE for INPUT");
+	{
+		mapred_parse_error(parser, "Duplicate ESCAPE for INPUT");
+		return;
+	}
 	parser->current_obj->u.input.escape = copyscalar(value);
 }
 
@@ -509,8 +596,10 @@ void parser_set_null(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
 
 	if (parser->current_obj->u.input.null)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate NULL for INPUT");
+	{
+		mapred_parse_error(parser, "Duplicate NULL for INPUT");
+		return;
+	}
 	parser->current_obj->u.input.null = copyscalar(value);
 }
 
@@ -521,8 +610,10 @@ void parser_set_quote(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
 
 	if (parser->current_obj->u.input.quote)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate QUOTE for INPUT");
+	{
+		mapred_parse_error(parser, "Duplicate QUOTE for INPUT");
+		return;
+	}
 	parser->current_obj->u.input.quote = copyscalar(value);
 }
 
@@ -534,8 +625,10 @@ void parser_set_encoding(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
 
 	if (parser->current_obj->u.input.encoding)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate ENCODING for INPUT");
+	{
+		mapred_parse_error(parser, "Duplicate ENCODING for INPUT");
+		return;
+	}
 	parser->current_obj->u.input.encoding = copyscalar(value);
 }
 
@@ -546,8 +639,10 @@ void parser_set_error_limit(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
 
 	if (parser->current_obj->u.input.error_limit > 0)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate ERROR_LIMIT for INPUT");		
+	{
+		mapred_parse_error(parser, "Duplicate ERROR_LIMIT for INPUT");
+		return;
+	}
 
 	/* 
 	 * The parse has already assured that the value consists of a sequence
@@ -567,8 +662,10 @@ void parser_set_mode(mapred_parser_t *parser, char *value)
 	{
 		case MAPRED_MAPPER:
 			if (parser->current_obj->u.function.mode != MAPRED_NO_MODE)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate MODE for MAPPER");
+			{
+				mapred_parse_error(parser, "Duplicate MODE for MAP");
+				return;
+			}
 			if (!strcasecmp(value, "single"))
 				parser->current_obj->u.function.mode = MAPRED_SINGLE_MODE;
 			else if (!strcasecmp(value, "multi"))
@@ -578,14 +675,18 @@ void parser_set_mode(mapred_parser_t *parser, char *value)
             else if (!strcasecmp(value, "windowed"))
 				parser->current_obj->u.function.mode = MAPRED_WINDOWED_MODE;
 			else
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Unknown MODE for MAPPER");
+			{
+				mapred_parse_error(parser, "Unknown MODE for MAP");
+				return;
+			}
 			break;
 
 		case MAPRED_TRANSITION:
 			if (parser->current_obj->u.function.mode != MAPRED_NO_MODE)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate MODE for TRANSITION");
+			{
+				mapred_parse_error(parser, "Duplicate MODE for TRANSITION");
+				return;
+			}
 			if (!strcasecmp(value, "single"))
 				parser->current_obj->u.function.mode = MAPRED_SINGLE_MODE;
 			else if (!strcasecmp(value, "multi"))
@@ -595,14 +696,18 @@ void parser_set_mode(mapred_parser_t *parser, char *value)
             else if (!strcasecmp(value, "windowed"))
 				parser->current_obj->u.function.mode = MAPRED_WINDOWED_MODE;
 			else
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Unknown MODE for TRANSITION");
+			{
+				mapred_parse_error(parser, "Unknown MODE for TRANSITION");
+				return;
+			}
 			break;
 
 		case MAPRED_COMBINER:
 			if (parser->current_obj->u.function.mode != MAPRED_NO_MODE)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate MODE for COMBINER");
+			{
+				mapred_parse_error(parser, "Duplicate MODE for CONSOLIDATE");
+				return;
+			}
 			if (!strcasecmp(value, "single"))
 				parser->current_obj->u.function.mode = MAPRED_SINGLE_MODE;
 			else if (!strcasecmp(value, "multi"))
@@ -612,14 +717,18 @@ void parser_set_mode(mapred_parser_t *parser, char *value)
             else if (!strcasecmp(value, "windowed"))
 				parser->current_obj->u.function.mode = MAPRED_WINDOWED_MODE;
 			else
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Unknown MODE for COMBINER");
+			{
+				mapred_parse_error(parser, "Unknown MODE for CONSOLIDATE");
+				return;
+			}
 			break;
 
 		case MAPRED_FINALIZER:
 			if (parser->current_obj->u.function.mode != MAPRED_NO_MODE)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate MODE for FINALIZER");
+			{
+				mapred_parse_error(parser, "Duplicate MODE for FINALIZE");
+				return;
+			}
 			if (!strcasecmp(value, "single"))
 				parser->current_obj->u.function.mode = MAPRED_SINGLE_MODE;
 			else if (!strcasecmp(value, "multi"))
@@ -629,21 +738,27 @@ void parser_set_mode(mapred_parser_t *parser, char *value)
             else if (!strcasecmp(value, "windowed"))
 				parser->current_obj->u.function.mode = MAPRED_WINDOWED_MODE;
 			else
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Unknown MODE for FINALIZER");
+			{
+				mapred_parse_error(parser, "Unknown MODE for FINALIZE");
+				return;
+			}
 			break;
 
 		case MAPRED_OUTPUT:
 			if (parser->current_obj->u.output.mode != MAPRED_OUTPUT_NO_MODE)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate MODE for FINALIZER");
+			{
+				mapred_parse_error(parser, "Duplicate MODE for FINALIZE");
+				return;
+			}
 			if (!strcasecmp(value, "replace"))
 				parser->current_obj->u.output.mode = MAPRED_OUTPUT_REPLACE;
 			else if (!strcasecmp(value, "append"))
 				parser->current_obj->u.output.mode = MAPRED_OUTPUT_APPEND;
 			else
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Unknown MODE for OUTPUT");
+			{
+				mapred_parse_error(parser, "Unknown MODE for OUTPUT");
+				return;
+			}
 			break;
 
 		default:
@@ -669,12 +784,17 @@ void parser_set_file(mapred_parser_t *parser, char *value)
 			break;
 
 		case MAPRED_OUTPUT_FILE:
-			XRAISE(MAPRED_PARSE_ERROR, 
-				   "Duplicate FILE for OUTPUT");
+		{
+			mapred_parse_error(parser, "Duplicate FILE for OUTPUT");
+			return;
+		}
 
 		case MAPRED_OUTPUT_TABLE:
-			XRAISE(MAPRED_PARSE_ERROR, 
-				   "OUTPUT may only specify one of FILE, TABLE");
+		{
+			mapred_parse_error(parser, "OUTPUT may only specify one of "
+							   "FILE, TABLE");
+			return;
+		}
 			
 		default:
 			XASSERT(false);
@@ -688,8 +808,10 @@ void parser_set_transition(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_REDUCER);
 
 	if (parser->current_obj->u.reducer.transition.name)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate TRANSITION for REDUCER");
+	{
+		mapred_parse_error(parser, "Duplicate TRANSITION for REDUCE");
+		return;
+	}
 	parser->current_obj->u.reducer.transition.name = copyscalar(value);
 }
 
@@ -700,8 +822,10 @@ void parser_set_combiner(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_REDUCER);
 
 	if (parser->current_obj->u.reducer.combiner.name)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate COMBINER for REDUCER");
+	{
+		mapred_parse_error(parser, "Duplicate CONSOLIDATE for REDUCE");
+		return;
+	}
 	parser->current_obj->u.reducer.combiner.name = copyscalar(value);
 }
 
@@ -712,8 +836,10 @@ void parser_set_finalizer(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_REDUCER);
 
 	if (parser->current_obj->u.reducer.finalizer.name)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate FINALIZER for REDUCER");
+	{
+		mapred_parse_error(parser, "Duplicate FINALIZE for REDUCE");
+		return;
+	}
 	parser->current_obj->u.reducer.finalizer.name = copyscalar(value);
 }
 
@@ -724,8 +850,10 @@ void parser_set_initialize(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_REDUCER);
 
 	if (parser->current_obj->u.reducer.initialize)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate INITIALIZE for REDUCER");
+	{
+		mapred_parse_error(parser, "Duplicate INITIALIZE for REDUCE");
+		return;
+	}
 	parser->current_obj->u.reducer.initialize = copyscalar(value);
 }
 
@@ -740,29 +868,37 @@ void parser_set_language(mapred_parser_t *parser, char *value)
 	{
 		case MAPRED_MAPPER:
 			if (parser->current_obj->u.function.language)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate LANGUAGE for MAPPER");
+			{
+				mapred_parse_error(parser, "Duplicate LANGUAGE for MAP");
+				return;
+			}
 			parser->current_obj->u.function.language = copyscalar(value);
 			break;
 
 		case MAPRED_TRANSITION:
 			if (parser->current_obj->u.function.language)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate LANGUAGE for TRANSITION");
+			{
+				mapred_parse_error(parser, "Duplicate LANGUAGE for TRANSITION");
+				return;
+			}
 			parser->current_obj->u.function.language = copyscalar(value);
 			break;
 
 		case MAPRED_COMBINER:
 			if (parser->current_obj->u.function.language)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate LANGUAGE for COMBINER");
+			{
+				mapred_parse_error(parser, "Duplicate LANGUAGE for CONSOLIDATE");
+				return;
+			}
 			parser->current_obj->u.function.language = copyscalar(value);
 			break;
 
 		case MAPRED_FINALIZER:
 			if (parser->current_obj->u.function.language)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate LANGUAGE for FINALIZER");
+			{
+				mapred_parse_error(parser, "Duplicate LANGUAGE for FINALIZE");
+				return;
+			}
 			parser->current_obj->u.function.language = copyscalar(value);
 			break;
 
@@ -781,29 +917,37 @@ void parser_set_function(mapred_parser_t *parser, char *value)
 	{
 		case MAPRED_MAPPER:
 			if (parser->current_obj->u.function.body)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate FUNCTION for MAPPER");
+			{
+				mapred_parse_error(parser, "Duplicate FUNCTION for MAP");
+				return;
+			}
 			parser->current_obj->u.function.body = copyscalar(value);
 			break;
 
 		case MAPRED_TRANSITION:
 			if (parser->current_obj->u.function.body)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate FUNCTION for TRANSITION");
+			{
+				mapred_parse_error(parser, "Duplicate FUNCTION for TRANSITION");
+				return;
+			}
 			parser->current_obj->u.function.body = copyscalar(value);
 			break;
 
 		case MAPRED_COMBINER:
 			if (parser->current_obj->u.function.body)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate FUNCTION for COMBINER");
+			{
+				mapred_parse_error(parser, "Duplicate FUNCTION for CONSOLIDATE");
+				return;
+			}
 			parser->current_obj->u.function.body = copyscalar(value);
 			break;
 
 		case MAPRED_FINALIZER:
 			if (parser->current_obj->u.function.body)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate FUNCTION for FINALIZER");
+			{
+				mapred_parse_error(parser, "Duplicate FUNCTION for FINALIZE");
+				return;
+			}
 			parser->current_obj->u.function.body = copyscalar(value);
 			break;
 
@@ -827,15 +971,19 @@ void parser_set_source(mapred_parser_t *parser, char *value)
 	{
 		case MAPRED_TASK:
 			if (parser->current_obj->u.task.input.name)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate SOURCE for TASK");
+			{
+				mapred_parse_error(parser, "Duplicate SOURCE for TASK");
+				return;
+			}
 			parser->current_obj->u.task.input.name = copyscalar(value);
 			break;
 
 		case MAPRED_EXECUTION:
 			if (parser->current_obj->u.task.input.name)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate SOURCE for RUN");
+			{
+				mapred_parse_error(parser, "Duplicate SOURCE for RUN");
+				return;
+			}
 			parser->current_obj->u.task.input.name = copyscalar(value);
 			break;
 
@@ -851,7 +999,10 @@ void parser_set_target(mapred_parser_t *parser, char *value)
 	XASSERT(parser->current_obj->kind == MAPRED_EXECUTION);
 
 	if (parser->current_obj->u.task.output.name)
-		XRAISE(MAPRED_PARSE_ERROR, "Duplicate TARGET for RUN");
+	{
+		mapred_parse_error(parser, "Duplicate TARGET for RUN");
+		return;
+	}
 	parser->current_obj->u.task.output.name = copyscalar(value);
 }
 
@@ -864,15 +1015,19 @@ void parser_set_mapper(mapred_parser_t *parser, char *value)
 	{
 		case MAPRED_TASK:
 			if (parser->current_obj->u.task.mapper.name)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate MAPPER for TASK");
+			{
+				mapred_parse_error(parser, "Duplicate MAP for TASK");
+				return;
+			}
 			parser->current_obj->u.task.mapper.name = copyscalar(value);
 			break;
 
 		case MAPRED_EXECUTION:
 			if (parser->current_obj->u.task.mapper.name)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate MAPPER for RUN");
+			{
+				mapred_parse_error(parser, "Duplicate MAP for RUN");
+				return;
+			}
 			parser->current_obj->u.task.mapper.name = copyscalar(value);
 			break;
 
@@ -890,15 +1045,19 @@ void parser_set_reducer(mapred_parser_t *parser, char *value)
 	{
 		case MAPRED_TASK:
 			if (parser->current_obj->u.task.reducer.name)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate REDUCER for TASK");
+			{
+				mapred_parse_error(parser, "Duplicate REDUCE for TASK");
+				return;
+			}
 			parser->current_obj->u.task.reducer.name = copyscalar(value);
 			break;
 
 		case MAPRED_EXECUTION:
 			if (parser->current_obj->u.task.reducer.name)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate REDUCER for RUN");
+			{
+				mapred_parse_error(parser, "Duplicate REDUCE for RUN");
+				return;
+			}
 			parser->current_obj->u.task.reducer.name = copyscalar(value);
 			break;
 
@@ -917,10 +1076,16 @@ void parser_begin_files(mapred_parser_t *parser)
 	if (parser->current_obj->u.input.type != MAPRED_INPUT_NONE)
 	{
 		if (parser->current_obj->u.input.type == MAPRED_INPUT_FILE)
-			XRAISE(MAPRED_PARSE_ERROR, 
-				   "Duplicate FILE for INPUT");
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "INPUT may only specify one of FILE, GPFDIST, TABLE, QUERY, EXEC");
+		{
+			mapred_parse_error(parser, "Duplicate FILE for INPUT");
+			return;
+		}
+		else
+		{
+			mapred_parse_error(parser, "INPUT may only specify one of "
+							   "FILE, GPFDIST, TABLE, QUERY, EXEC");
+			return;
+		}
 	}
 
 	/* files will be added individually */
@@ -936,10 +1101,16 @@ void parser_begin_gpfdist(mapred_parser_t *parser)
 	if (parser->current_obj->u.input.type != MAPRED_INPUT_NONE)
 	{
 		if (parser->current_obj->u.input.type == MAPRED_INPUT_GPFDIST)
-			XRAISE(MAPRED_PARSE_ERROR, 
-				   "Duplicate GPFDIST for INPUT");
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "INPUT may only specify one of FILE, GPFDIST, TABLE, QUERY, EXEC");
+		{
+			mapred_parse_error(parser, "Duplicate GPFDIST for INPUT");
+			return;
+		}
+		else
+		{
+			mapred_parse_error(parser, "INPUT may only specify one of "
+							   "FILE, GPFDIST, TABLE, QUERY, EXEC");
+			return;
+		}
 	}
 	parser->current_obj->u.input.type = MAPRED_INPUT_GPFDIST;
 }
@@ -950,8 +1121,10 @@ void parser_begin_columns(mapred_parser_t *parser)
 	XASSERT(parser->current_obj);
 	XASSERT(parser->current_obj->kind == MAPRED_INPUT);
 	if (parser->current_obj->u.input.columns)
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Duplicate COLUMNS for INPUT");
+	{
+		mapred_parse_error(parser, "Duplicate COLUMNS for INPUT");
+		return;
+	}
 }
 
 void parser_begin_parameters(mapred_parser_t *parser)
@@ -962,26 +1135,34 @@ void parser_begin_parameters(mapred_parser_t *parser)
 	{
 		case MAPRED_MAPPER:
 			if (parser->current_obj->u.function.parameters)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate PARAMETERS for MAPPER");
+			{
+				mapred_parse_error(parser, "Duplicate PARAMETERS for MAP");
+				return;
+			}
 			break;
 
 		case MAPRED_TRANSITION:
 			if (parser->current_obj->u.function.parameters)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate PARAMETERS for TRANSITION");
+			{
+				mapred_parse_error(parser, "Duplicate PARAMETERS for TRANSITION");
+				return;
+			}
 			break;
 
 		case MAPRED_COMBINER:
 			if (parser->current_obj->u.function.parameters)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate PARAMETERS for COMBINER");
+			{
+				mapred_parse_error(parser, "Duplicate PARAMETERS for CONSOLIDATE");
+				return;
+			}
 			break;
 
 		case MAPRED_FINALIZER:
 			if (parser->current_obj->u.function.parameters)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate PARAMETERS for FINALIZER");
+			{
+				mapred_parse_error(parser, "Duplicate PARAMETERS for FINALIZE");
+				return;
+			}
 			break;
 
 		default:
@@ -997,26 +1178,34 @@ void parser_begin_returns(mapred_parser_t *parser)
 	{
 		case MAPRED_MAPPER:
 			if (parser->current_obj->u.function.returns)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate RETURNS for MAPPER");
+			{
+				mapred_parse_error(parser, "Duplicate RETURNS for MAP");
+				return;
+			}
 			break;
 
 		case MAPRED_TRANSITION:
 			if (parser->current_obj->u.function.returns)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate RETURNS for TRANSITION");
+			{
+				mapred_parse_error(parser, "Duplicate RETURNS for TRANSITION");
+				return;
+			}
 			break;
 
 		case MAPRED_COMBINER:
 			if (parser->current_obj->u.function.returns)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate RETURNS for COMBINER");
+			{
+				mapred_parse_error(parser, "Duplicate RETURNS for CONSOLIDATE");
+				return;
+			}
 			break;
 
 		case MAPRED_FINALIZER:
 			if (parser->current_obj->u.function.returns)
-				XRAISE(MAPRED_PARSE_ERROR, 
-					   "Duplicate RETURNS for FINALIZER");
+			{
+				mapred_parse_error(parser, "Duplicate RETURNS for FINALIZE");
+				return;
+			}
 			break;
 
 		default:
@@ -1076,8 +1265,10 @@ void parser_add_column(mapred_parser_t *parser, char *value)
 	
     /* double check that there's nothing else */
 	if (strtok_r(NULL, " \t\r", &tokenizer))
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Invalid Column specification");
+	{
+		mapred_parse_error(parser, "Invalid Column specification");
+		return;
+	}
 
 	/* Allocate the new list item */
 	newitem = malloc(sizeof(mapred_plist_t));
@@ -1121,8 +1312,10 @@ void parser_add_parameter(mapred_parser_t *parser, char *value)
 	
     /* double check that there's nothing else */
 	if (strtok_r(NULL, " \t\r", &tokenizer))
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Invalid Parameter specification");
+	{
+		mapred_parse_error(parser, "Invalid Parameter specification");
+		return;
+	}
 
 	/* Allocate the new list item */
 	newitem = malloc(sizeof(mapred_plist_t));
@@ -1166,8 +1359,10 @@ void parser_add_return(mapred_parser_t *parser, char *value)
 	
     /* double check that there's nothing else */
 	if (strtok_r(NULL, " \t\r", &tokenizer))
-		XRAISE(MAPRED_PARSE_ERROR, 
-			   "Invalid Return specification");
+	{
+		mapred_parse_error(parser, "Invalid Return specification");
+		return;
+	}
 
 	/* Allocate the new list item */
 	newitem = malloc(sizeof(mapred_plist_t));
@@ -1333,12 +1528,12 @@ void mapred_dump_yaml(mapred_object_t *obj)
 
 		case MAPRED_COMBINER:
 			if (!ckind)
-				ckind = "COMBINER";
+				ckind = "CONSOLIDATE";
 			/* fallthrough */
 
 		case MAPRED_FINALIZER:
 			if (!ckind)
-				ckind = "FINALIZER";
+				ckind = "FINALIZE";
 
 			printf("  - %s:\n", ckind);
 			if (obj->name)
@@ -1399,17 +1594,17 @@ void mapred_dump_yaml(mapred_object_t *obj)
 			break;
 
 		case MAPRED_REDUCER:
-			printf("  - REDUCER:\n");
+			printf("  - REDUCE:\n");
 			if (obj->name)
 				printf("      NAME:       %s\n", obj->name);
 			if (obj->u.reducer.transition.name)
 				printf("      TRANSITION: %s\n", 
 					   obj->u.reducer.transition.name);
 			if (obj->u.reducer.combiner.name)
-				printf("      COMBINER:   %s\n", 
+				printf("      CONSOLIDATE:   %s\n", 
 					   obj->u.reducer.combiner.name);
 			if (obj->u.reducer.finalizer.name)
-				printf("      FINALIZER:  %s\n", 
+				printf("      FINALIZE:  %s\n", 
 					   obj->u.reducer.finalizer.name);
 			if (obj->u.reducer.initialize)
 				printf("      INITIALIZE: %s\n", 
@@ -1427,9 +1622,9 @@ void mapred_dump_yaml(mapred_object_t *obj)
 			if (obj->u.task.input.name)
 				printf("      SOURCE:     %s\n", obj->u.task.input.name);
 			if (obj->u.task.mapper.name)
-				printf("      MAPPER:     %s\n", obj->u.task.mapper.name);
+				printf("      MAP:     %s\n", obj->u.task.mapper.name);
 			if (obj->u.task.reducer.name)
-				printf("      REDUCER:    %s\n", obj->u.task.reducer.name);
+				printf("      REDUCE:    %s\n", obj->u.task.reducer.name);
 			if (obj->u.task.output.name)
 				printf("      TARGET:     %s\n", obj->u.task.output.name);
 			break;
@@ -1581,7 +1776,7 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 			break;
 
 		case MAPRED_COMBINER:
-			type = "COMBINER";
+			type = "CONSOLIDATE";
 
 			if (!obj->name)
 				error = error_missing(type, name, obj->line, "NAME");
@@ -1614,7 +1809,7 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 			break;
 
 		case MAPRED_FINALIZER:
-			type = "FINALIZER";
+			type = "FINALIZE";
 
 			if (!obj->name)
 				error = error_missing(type, name, obj->line, "NAME");
@@ -1644,7 +1839,7 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 			break;
 
 		case MAPRED_REDUCER:
-			type = "REDUCER";
+			type = "REDUCE";
 
 			if (!obj->name)
 				error = error_missing(type, name, obj->line, "NAME");
