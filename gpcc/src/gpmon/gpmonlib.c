@@ -229,7 +229,7 @@ const char* gpmon_qlog_status_string(int gpmon_qlog_status)
     case GPMON_QLOG_STATUS_SUBMIT: return "submit";
     case GPMON_QLOG_STATUS_START: return "start";
     case GPMON_QLOG_STATUS_DONE: return "done";
-    case GPMON_QLOG_STATUS_ERROR: return "error";
+    case GPMON_QLOG_STATUS_ERROR: return "abort";
     }
     return "unknown";
 }
