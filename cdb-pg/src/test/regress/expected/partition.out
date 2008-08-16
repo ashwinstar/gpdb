@@ -3330,3 +3330,52 @@ select * from foo_1_prt_p2;
 (1 row)
 
 drop table foo;
+-- MPP-3283
+CREATE TABLE PARTSUPP (
+PS_PARTKEY INTEGER,
+PS_SUPPKEY INTEGER,
+PS_AVAILQTY integer,
+PS_SUPPLYCOST decimal,
+PS_COMMENT VARCHAR(199)
+)
+partition by range (ps_suppkey)
+subpartition by range (ps_partkey)
+,subpartition by range (ps_supplycost) subpartition template (start('1')
+end('1001') every(500))
+(
+partition p1 start('1') end('10001') every(5000)
+(subpartition sp1 start('1') end('200001') every(66666)
+)
+);
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11" for table "partsupp"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12" for table "partsupp"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp11" for table "partsupp_1_prt_p11"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp12" for table "partsupp_1_prt_p11"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp13" for table "partsupp_1_prt_p11"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp14" for table "partsupp_1_prt_p11"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp11_3_prt_1" for table "partsupp_1_prt_p11_2_prt_sp11"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp11_3_prt_2" for table "partsupp_1_prt_p11_2_prt_sp11"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp12_3_prt_1" for table "partsupp_1_prt_p11_2_prt_sp12"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp12_3_prt_2" for table "partsupp_1_prt_p11_2_prt_sp12"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp13_3_prt_1" for table "partsupp_1_prt_p11_2_prt_sp13"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp13_3_prt_2" for table "partsupp_1_prt_p11_2_prt_sp13"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp14_3_prt_1" for table "partsupp_1_prt_p11_2_prt_sp14"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p11_2_prt_sp14_3_prt_2" for table "partsupp_1_prt_p11_2_prt_sp14"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp11" for table "partsupp_1_prt_p12"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp12" for table "partsupp_1_prt_p12"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp13" for table "partsupp_1_prt_p12"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp14" for table "partsupp_1_prt_p12"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp11_3_prt_1" for table "partsupp_1_prt_p12_2_prt_sp11"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp11_3_prt_2" for table "partsupp_1_prt_p12_2_prt_sp11"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp12_3_prt_1" for table "partsupp_1_prt_p12_2_prt_sp12"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp12_3_prt_2" for table "partsupp_1_prt_p12_2_prt_sp12"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp13_3_prt_1" for table "partsupp_1_prt_p12_2_prt_sp13"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp13_3_prt_2" for table "partsupp_1_prt_p12_2_prt_sp13"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp14_3_prt_1" for table "partsupp_1_prt_p12_2_prt_sp14"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p12_2_prt_sp14_3_prt_2" for table "partsupp_1_prt_p12_2_prt_sp14"
+insert into partsupp values(1,2,3325,771.64,', even theodolites. regular, final
+theodolites eat after the carefully pending foxes. furiously regular deposits
+sleep slyly. carefully bold realms above the ironic dependencies haggle
+careful');
+copy partsupp from stdin with delimiter '|';
+drop table partsupp;

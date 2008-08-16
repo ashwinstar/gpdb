@@ -4290,6 +4290,7 @@ preprocess_range_spec(partValidationState *vstate)
 				ListCell *lcstart, *lcend, *lcevery, *lccol, *lclastend;
 				List *lastend = NIL;
 				
+
 				/* 
 				 * Other parts of the parser want to know how many clauses
 				 * we expanded here.
@@ -4299,17 +4300,25 @@ preprocess_range_spec(partValidationState *vstate)
 				if (start == NIL)
 				{
 					start = ((PartitionRangeItem *)pbs->partStart)->partRangeVal;
+
+					lcend = list_head(end);
 					/* coerce to target type */
 					forboth(lcstart, start, lccol, coltypes)
 					{
-						Node *mystart = lfirst(lcstart);
 						TypeName *typ = lfirst(lccol);
 						Node *newnode;
 
-						newnode = coerce_partition_value(mystart, typ,
+						newnode = coerce_partition_value(lfirst(lcstart), typ,
 														 PARTTYP_RANGE);
 
 						lfirst(lcstart) = newnode;
+
+						/* be sure we coerce the end value */
+						newnode = coerce_partition_value(lfirst(lcend),
+														 typ,
+														 PARTTYP_RANGE);
+						lfirst(lcend) = newnode;
+						lcend = lnext(lcend);
 					}
 				}
 				else
@@ -4319,10 +4328,10 @@ preprocess_range_spec(partValidationState *vstate)
 					newend = NIL;
 				}
 
-				lcevery = list_head(every);
 				lcend = list_head(end);
+				lcevery = list_head(every);
 				lclastend = list_head(lastend);
-				
+
 				forboth(lcstart, start, lccol, coltypes)
 				{
 					Const *mystart = lfirst(lcstart);
@@ -4340,6 +4349,7 @@ preprocess_range_spec(partValidationState *vstate)
 					clauseevery = lfirst(lcevery);
 					clauseend = lfirst(lcend);
 				
+					/* add the every value to the start */
 					res = eval_basic_opexpr(pstate, plusop, (Node *)mystart,
 											(Node *)clauseevery,
 											&typbyval, &len, &typid,
@@ -5478,18 +5488,6 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 
 				snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
 						 strVal(pElem->partName));
-#if 0
-				if (pBy->partType == PARTTYP_RANGE && pBSpec && 
-					pBSpec->partEvery)
-				{
-					PartitionRangeItem *ri =
-						(PartitionRangeItem *)pBSpec->partEvery;
-
-					doit = ri->everycount == 1;
-				}
-				else
-					doit = true;
-#endif
 				/*
 				 * We might have expanded an EVERY clause here. If so, just
 				 * add the first partition name.

@@ -1813,3 +1813,28 @@ select * from foo;
 select * from foo_1_prt_p1;
 select * from foo_1_prt_p2;
 drop table foo;
+-- MPP-3283
+CREATE TABLE PARTSUPP (
+PS_PARTKEY INTEGER,
+PS_SUPPKEY INTEGER,
+PS_AVAILQTY integer,
+PS_SUPPLYCOST decimal,
+PS_COMMENT VARCHAR(199)
+)
+partition by range (ps_suppkey)
+subpartition by range (ps_partkey)
+,subpartition by range (ps_supplycost) subpartition template (start('1')
+end('1001') every(500))
+(
+partition p1 start('1') end('10001') every(5000)
+(subpartition sp1 start('1') end('200001') every(66666)
+)
+);
+insert into partsupp values(1,2,3325,771.64,', even theodolites. regular, final
+theodolites eat after the carefully pending foxes. furiously regular deposits
+sleep slyly. carefully bold realms above the ironic dependencies haggle
+careful');
+copy partsupp from stdin with delimiter '|';
+1|2|3325|771.64|, even theodolites. regular, final theodolites eat after the
+\.
+drop table partsupp;
