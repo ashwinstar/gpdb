@@ -14,8 +14,8 @@
 
 #define AO_HEADER_LEN 8	// 64 bits.
 
-#define AOBlockHeader_MaxRowCount 0x3FFF   // 14 bits, or 16,383 (16k – 1).
-#define AOBlockHeader_MaxLength   0x1FFFFF // 21 bits, or 2,097,151 (2 Mb – 1).
+#define AOBlockHeader_MaxRowCount 0x3FFF   // 14 bits, or 16,383 (16k  1).
+#define AOBlockHeader_MaxLength   0x1FFFFF // 21 bits, or 2,097,151 (2 Mb  1).
 
 #define AOStorage_RoundUp(l) ((((l)+3)/4)*4)
 
@@ -93,7 +93,7 @@ typedef struct AOTupleId
 #define AOTupleIdInit_rowNum(h,e)            {(h)->bytes_0_1|=(0x000F&((uint16)((e)>>32)));\
                                               (h)->bytes_2_5=(uint32)(e);}
 
-#define AOTupleId_MaxRowNum            274877906943 		// 38 bits, or 274,877,906,943 (274 trillion – 1).
+#define AOTupleId_MaxRowNum            INT64CONST(274877906943) 		// 38 bits, or 274,877,906,943 (274 trillion  1).
 #define AOTupleId_MaxRowNum_CommaStr  "274,877,906,943"
 
 
