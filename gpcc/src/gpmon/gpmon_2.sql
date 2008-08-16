@@ -19,8 +19,8 @@ create table metrics_history (
        cpu_user float not null, cpu_sys float not null, cpu_idle float not null,
        load0 float not null, load1 float not null, load2 float not null,
        quantum int not null,
-       disk_ro bigint not null, disk_wo bigint not null, disk_rb bigint not null, disk_wb bigint not null, 
-       net_rp bigint not null, net_wp bigint not null, net_rb bigint not null, net_wb bigint not null
+       disk_ro_rate bigint not null, disk_wo_rate bigint not null, disk_rb_rate bigint not null, disk_wb_rate bigint not null, 
+       net_rp_rate bigint not null, net_wp_rate bigint not null, net_rb_rate bigint not null, net_wb_rate bigint not null
 ) 
 with (fillfactor=100)
 distributed by (ctime)
