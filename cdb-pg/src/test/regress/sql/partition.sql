@@ -1838,3 +1838,31 @@ copy partsupp from stdin with delimiter '|';
 1|2|3325|771.64|, even theodolites. regular, final theodolites eat after the
 \.
 drop table partsupp;
+--MPP-3285
+CREATE TABLE LINEITEM (
+                L_ORDERKEY INT8,
+                L_PARTKEY INTEGER,
+                L_SUPPKEY INTEGER,
+                L_LINENUMBER integer,
+                L_QUANTITY decimal,
+                L_EXTENDEDPRICE decimal,
+                L_DISCOUNT decimal,
+                L_TAX decimal,
+                L_RETURNFLAG CHAR(1),
+                L_LINESTATUS CHAR(1),
+                L_SHIPDATE date,
+                L_COMMITDATE date,
+                L_RECEIPTDATE date,
+                L_SHIPINSTRUCT CHAR(25),
+                L_SHIPMODE CHAR(10),
+                L_COMMENT VARCHAR(44)
+                )
+partition by range (l_commitdate)
+(
+partition p1 start('1992-01-31') end('1998-11-01') every(interval '20 months')
+
+);
+copy lineitem from stdin with delimiter '|';
+18182|5794|3295|4|9|15298.11|0.04|0.01|N|O|1995-07-04|1995-05-30|1995-08-03|DELIVER IN PERSON|RAIL|y special platelets
+\.
+drop table lineitem;

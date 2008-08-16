@@ -3379,3 +3379,33 @@ sleep slyly. carefully bold realms above the ironic dependencies haggle
 careful');
 copy partsupp from stdin with delimiter '|';
 drop table partsupp;
+--MPP-3285
+CREATE TABLE LINEITEM (
+                L_ORDERKEY INT8,
+                L_PARTKEY INTEGER,
+                L_SUPPKEY INTEGER,
+                L_LINENUMBER integer,
+                L_QUANTITY decimal,
+                L_EXTENDEDPRICE decimal,
+                L_DISCOUNT decimal,
+                L_TAX decimal,
+                L_RETURNFLAG CHAR(1),
+                L_LINESTATUS CHAR(1),
+                L_SHIPDATE date,
+                L_COMMITDATE date,
+                L_RECEIPTDATE date,
+                L_SHIPINSTRUCT CHAR(25),
+                L_SHIPMODE CHAR(10),
+                L_COMMENT VARCHAR(44)
+                )
+partition by range (l_commitdate)
+(
+partition p1 start('1992-01-31') end('1998-11-01') every(interval '20 months')
+);
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p11" for table "lineitem"
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p12" for table "lineitem"
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p13" for table "lineitem"
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p14" for table "lineitem"
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p15" for table "lineitem"
+copy lineitem from stdin with delimiter '|';
+drop table lineitem;

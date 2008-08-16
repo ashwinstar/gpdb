@@ -226,8 +226,6 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 		 char *exprBuf,
 		 Node *pWhere							
 		);
-
-static A_Const *make_a_const(A_Const *pValConst, char *val_str);
 static Node *coerce_partition_value(Node *node, TypeName *type,
 									 PartitionByType partype);
 
@@ -2898,6 +2896,7 @@ deparse_partition_rule(Node *pNode, char *outbuf, size_t outsize)
 	return 1;
 }
 
+#if 0
 static A_Const *
 make_a_const(A_Const *pValConst, char *val_str)
 {
@@ -2941,6 +2940,7 @@ make_a_const(A_Const *pValConst, char *val_str)
 	
 	return (pNewValConst);
 } /* end make_a_const */
+#endif
 
 static Node *
 make_prule_catalog(ParseState *pstate,
@@ -3728,28 +3728,6 @@ make_partition_rules(ParseState *pstate,
 						pValConst = aconst;
 					}
 
-					/* if have an EVERY, and not the first START or
-					 * last END, then use the generated, stringified
-					 * value from partition_range_every to build a new
-					 * a_const in the expression.
-					 */
-					if (((0 == range_idx)
-						 && (everyOffset > 1))
-						|| ((1 == range_idx)
-							&& (everyOffset+1 < maxEveryOffset))
-							)
-					{
-						char *val_str;
-						A_Const *pNewValConst;
-
-						val_str = lfirst(lc_every_val);
-
-						pNewValConst = make_a_const(pValConst, val_str);
-
-						pValConst = pNewValConst;
-					} /* end redo work for EVERY */
-
-					/* equality expression: column = value */
 					pEq = (Node *) makeSimpleA_Expr(AEXPR_OP,
 													expr_op,
 													(Node *)pCRef,
