@@ -12,6 +12,7 @@ Module contents:
     FilterLogEntries() - the one-stop filter shop
 
     ---- Identity filters which observe a stream without altering it
+    Count() - count items fetched from a stream
     TimestampSpy() - count lines and note timestamp range
 
     ---- Grouping and ungrouping filters
@@ -19,11 +20,22 @@ Module contents:
     Ungroup() - decompose groups into lines
     EnumerateUngroup() - number the groups and decompose into lines
 
-    ---- Selection filters
+    ---- Pattern matching filters
     MatchRegex() - select lines or groups in which a regular expr is matched
     NoMatchRegex() - select lines or groups in which a regular expr has no match
     MatchInFirstLine() - select groups in which regex has a match in first line
     NoMatchInFirstLine() - select groups in which regex doesn't match in first line
+
+    ---- Slicing filters
+    Slice() - select items in Pythonesque slice of stream[begin:end]
+    FirstNItems() - select the first n items of a stream
+    LastNItems() - select the last n items of a finite stream
+    SkipNItems() - select all but the first n items of a stream
+    SkipLastNItems() - select all but the last n items of a finite stream
+    IntersectionOfHeadAndTail() - select items within first m and last n
+
+    ---- Miscellaneous filters
+    NotNull() - drop items which are equivalent to False
 
     ---- Utilities for setting up filter parameters
     filterize() - wrap a filter for use in FilterLogEntries filter list
@@ -32,21 +44,25 @@ Module contents:
 
 from datetime import date, datetime, time, timedelta
 import re
+import sys
 import time
 
+timestampPattern = re.compile(r'\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d(\.\d*)?')
 # This pattern matches the date and time stamp at the beginning of a line
 # in a GPDB log file.  The timestamp format is: YYYY-MM-DD HH:MM:SS[.frac]
 # A timezone specifier may follow the timestamp, but we ignore that.
-timestampPattern = re.compile(r'\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d(\.\d*)?')
 
 
 def FilterLogEntries(iterable,
-                     msgfile=None,
-                     begin=None,
-                     end=None,
+                     msgfile=sys.stderr,
+                     verbose=False,
+                     beginstamp=None,
+                     endstamp=None,
                      include=None,
                      exclude=None,
-                     filters=[]):
+                     filters=[],
+                     ibegin=0,
+                     jend=None):
     """
     Generator to consume the lines of a GPDB log file from iterable,
     yield the lines which satisfy the given criteria, and skip the rest.
@@ -54,20 +70,21 @@ def FilterLogEntries(iterable,
     iterable should be a sequence of strings, an already-open input file,
     or some object which supports iteration and yields strings.
 
-    msgfile should be an already-open output file to which status messages
-    are to be written; or None.
+    verbose, if True, causes status messages to be written to msgfile,
+    which should be an already-open output file.
 
     For our purposes, a log entry consists of a line which starts with a
     timestamp in YYYY-MM-DD HH:MM:SS[.fraction] format, followed by zero
     or more lines having the same timestamp or no timestamp.
 
-    begin should be a datetime.datetime or datetime.date object, or None.
+    beginstamp should be a datetime.datetime or datetime.date object, or None.
     Log entries are skipped if their timestamp is less than the specified
     date and time.  Fractional seconds and timezones are ignored.  If a
     date object is given, it is converted to a datetime with time 00:00:00.
 
-    end is like begin, except that it causes log entries to be skipped if
-    their timestamp is greater than or equal to the specified date and time.
+    endstamp is like beginstamp, except that it causes log entries to be
+    skipped if their timestamp is greater than or equal to the specified
+    date and time.
 
     include should be a regular expression object returned by the re.compile()
     method; or a string specifying a regular expression according to the rules
@@ -86,92 +103,187 @@ def FilterLogEntries(iterable,
     downstream of the begin/end/include/exclude filters.  For example,
     this filter selects log entries with 'DEBUGn:' in the first line...
         lambda(iterable): MatchInFirstLine(iterable, r'DEBUG\d:')
+    The filterize() function, defined later in this module, is useful for
+    building the list of filters.
+
+    ibegin and jend should be integers or None.  They can be specified like
+    the bounds of a Python slice, to select a subrange of the log entries
+    which satisfy all the preceding criteria.  Values >= 0 are counted from
+    the beginning of the stream; values < 0 are counted from the end of the
+    stream.  0 is before the first qualifying log entry; 1 is after the first
+    and before the second; -1 is before the last.  Entries coming before the
+    ibegin point or after the jend point are skipped.  For example, jend=3
+    to select only the first 3 qualifying log entries; or ibegin=-3 to
+    extract the last 3 entries.
 
     Regular expression syntax is at http://docs.python.org/lib/re-syntax.html
 
     At the beginning of a log file before the first timestamped line there
-    could be some lines with no timestamp.  If begin or end is not None, any
-    such lines are skipped.  Otherwise they are grouped together and treated
-    as one log entry.
+    could be some lines with no timestamp.  If beginstamp or endstamp
+    is not None, any such lines are skipped.  Otherwise they are grouped
+    together and treated as one log entry.
     """
     iterable = iter(iterable)
-    spyMid = None
+    spyIn = countIn = spyMid = spyMatch = countOut = None
+    if jend is not None and jend == sys.maxint:
+        jend = None
 
-    if msgfile:
+    # Collect unfiltered input statistics
+    if verbose:
         iterable = spyIn = TimestampSpy(iterable)
 
-    # Select log entries such that begin <= timestamp < end
-    if begin or end:
-        iterable = TimestampInBounds(iterable, begin, end)
-        if msgfile:
-            iterable = spyMid = TimestampSpy(iterable)
-
-    if include or exclude or filters:
+    # Build filter pipeline
+    if include or exclude or filters or ibegin or (jend is not None):
         # We want patterns to be tested entry-by-entry rather than line-by-line,
         # so group together the lines of each entry.
         iterable = GroupByTimestamp(iterable)
 
+        # Count the unfiltered log entries
+        if verbose:
+            iterable = countIn = Count(iterable)
+
+        # Select log entries such that beginstamp <= timestamp < endstamp
+        if beginstamp or endstamp:
+            iterable = TimestampInBounds(iterable, beginstamp, endstamp)
+            if verbose:
+                iterable = spyMid = TimestampSpy(iterable)
+
         # Include matching log entries.
-        if (isinstance(include, basestring) or
-            hasattr(include, 'search')):     # one string or compiled regex
-            iterable = MatchRegex(iterable, include)
-        elif include:                        # a list: all must match
+        if (isinstance(include, basestring) or   # one string
+            hasattr(include, 'search')):         # or compiled regex
+            include = [include]
+        if include:
             for regex in include:
                 iterable = MatchRegex(iterable, regex)
 
         # Exclude non-matching log entries.
-        if (isinstance(exclude, basestring) or
-            hasattr(exclude, 'search')):     # one string or compiled regex
-            iterable = NoMatchRegex(iterable, exclude)
-        elif exclude:                        # a list: all must fail to match
+        if (isinstance(exclude, basestring) or   # one string
+            hasattr(exclude, 'search')):         # or compiled regex
+            exclude = [exclude]
+        if exclude:
             for regex in exclude:
                 iterable = NoMatchRegex(iterable, regex)
 
-        # Apply filters.
+        # Append caller's filters to the pipeline.
         for filter in filters:
             iterable = filter(iterable)
+
+        # Collect match/filter statistics
+        if verbose and iterable is not (spyMid or countIn):
+            iterable = spyMatch = TimestampSpy(iterable)
+
+        # After all other filtering, extract slice of qualifying log entries.
+        if ibegin or jend is not None:
+            iterable = Slice(iterable, ibegin, jend)
+
+        # Count final output log entries
+        if verbose:
+            iterable = countOut = Count(iterable)
 
         # Break the groups back down into lines for output.
         iterable = Ungroup(iterable)
 
-    if msgfile:
-        iterable = spyOut = TimestampSpy(iterable)
+        # Collect final statistics
+        if verbose:
+            iterable = spyOut = TimestampSpy(iterable)
 
+    elif beginstamp or endstamp:
+        # Select log entries such that beginstamp <= timestamp < endstamp
+        iterable = TimestampInBounds(iterable, beginstamp, endstamp)
+
+        # Collect final statistics
+        if verbose:
+            iterable = spyOut = spyMid = TimestampSpy(iterable)
+
+    else:
+        # Caller didn't request any filtering.
+        spyOut = spyIn
+
+    # Pull filtered lines out of the pipeline and yield them to caller
     for line in iterable:
         yield line
 
-    if msgfile:
-        str_rangeIn = spyIn.str_range()
-        str_rangeMid = (spyMid and spyMid.str_range()) or ''
-        str_rangeOut = spyOut.str_range()
+    # Display statistics if requested
+    if verbose:
+        # Did we even try to read any input?
+        if spyIn.items == 0 and spyOut.items == 0 and not spyIn.eod:
+            print >>msgfile, ('%7d lines processed; an unsatisfiable condition '
+                              'was specified' % 0)
+            return
 
         # Unfiltered input statistics
-        if str_rangeIn:
-            print >>msgfile, ('%7d lines in;  timestamps from %s to %s'
-                              % (spyIn.lines, str_rangeIn[0], str_rangeIn[1]))
+        range = spyIn.str_range()
+        msg = '       in: %7d lines' % spyIn.lines
+        if countIn:
+            msg += ', %7d log entries' % countIn.count()
+        if range:
+            msg += '; timestamps from %s to %s' % range
         else:
-            print >>msgfile, ('%7d lines in;  no timestamps found'
-                              % spyIn.lines)
+            msg += '; no timestamps found'
+        if not spyIn.eod:
+            msg += '; stopped before end of input'
+        print >>msgfile, msg
 
-        # Log entries where begin <= timestamp < end, before any other filtering
-        if str_rangeMid:
-            print >>msgfile, ('%7d in range;  timestamps from %s to %s'
-                              % (spyMid.lines, str_rangeMid[0], str_rangeMid[1]))
-        elif begin or end:
-            print >>msgfile, '%7d in range' % spyMid.lines
+        # Entries where begin <= timestamp < end
+        if spyMid:
+            range = spyMid.str_range()
+            msg = '  time ok: %7d lines' % spyMid.lines
+            if spyMid.groups:
+                msg += ', %7d log entries' % spyMid.groups
+            if range:
+                msg += '; timestamps from %s to %s' % range
+            print >>msgfile, msg
 
-        # Filtered output statistics
-        if str_rangeOut:
-            print >>msgfile, ('%7d lines out; timestamps from %s to %s'
-                              % (spyOut.lines, str_rangeOut[0], str_rangeOut[1]))
-        else:
-            print >>msgfile, '%7d lines out' % spyOut.lines
+        # After applying include/exclude/filters
+        if spyMatch:
+            range = spyMatch.str_range()
+            msg = '    match: %7d lines' % spyMatch.lines
+            if spyMatch.groups:
+                msg += ', %7d log entries' % spyMatch.groups
+            if range:
+                msg += '; timestamps from %s to %s' % range
+            print >>msgfile, msg
+
+        # Final output statistics
+        range = spyOut.str_range()
+        msg = '      out: %7d lines' % spyOut.lines
+        if countOut:
+            msg += ', %7d log entries' % countOut.count()
+        if range:
+            msg += '; timestamps from %s to %s' % range
+        print >>msgfile, msg
+
+
+#------------------------------- Spying --------------------------------
+
+class Count(object):
+    """
+    Iterator to pass through a stream of items while counting them.
+
+    Count(iterable) -> iterator
+        iterable -- a sequence, iterator, file, or other object which
+            supports iteration, yielding items of any type.
+    """
+    def __init__(self, iterable):
+        self.source = iter(iterable)
+        self.n = 0
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        item = self.source.next()
+        self.n += 1
+        return item
+
+    def count(self):
+        return self.n
 
 
 class TimestampSpy(object):
     """
     Iterator to pass through a stream of GPDB log entries while noting the
-    lowest and highest timestamps.
+    lowest and highest timestamps, the number of lines and groups, etc.
 
     TimestampSpy(iterable) -> iterator
         iterable -- a sequence, iterator, file, or other object which
@@ -187,12 +299,17 @@ class TimestampSpy(object):
         self.items = 0
         self.lines = 0
         self.groups = 0
+        self.eod = False
 
     def __iter__(self):
         return self
 
     def next(self):
-        item = self.source.next()
+        try:
+            item = self.source.next()
+        except StopIteration, e:
+            self.eod = True
+            raise e
         self.items += 1
 
         if isinstance(item, basestring):     # ungrouped input
@@ -228,9 +345,10 @@ class TimestampSpy(object):
         maxstruct = time.strptime(self.maxstamp, '%Y-%m-%d %H:%M:%S')[:6]
         return (datetime(*minstruct), datetime(*maxstruct))
 
-#-------------------------------------------------------------------------
 
-def GroupByTimestamp(iterable):
+#------------------------------- Grouping --------------------------------
+
+def GroupByTimestamp(iterable, skipnull=True):
     """
     Generator to consume lines of a GPDB log and group them into lists.
     A new group is started whenever the timestamp changes.
@@ -242,10 +360,11 @@ def GroupByTimestamp(iterable):
 
     The inverse of GroupByTimestamp is Ungroup.
 
-    GroupByTimestamp(iterable) -> iterator
+    GroupByTimestamp(iterable, skipnull) -> iterator
         iterable -- a sequence, iterator, file, or other object which
             supports iteration.  Each item returned by its next() method
             must be a string.
+        skipnull -- True to omit the first group if it is empty.
 
     Example:
         # Print log entries from stdin having 'ERROR:' in the first line.
@@ -257,25 +376,26 @@ def GroupByTimestamp(iterable):
                     print line
     """
     source = iter(iterable)
+    more = True
 
     # Build list of lines preceding the first timestamped line, and yield
     # it as the first group (could be empty).
     lines = []
-    while True:
+    while more:
         try:
             s = source.next()
         except StopIteration:
-            yield lines
-            return
+            more = False
+            break
         tsmatch = timestampPattern.match(s)
         if tsmatch:
             break
         lines.append(s)
 
-    while True:
-        # Previous group is finished... output it
+    if lines or not skipnull:
         yield lines
 
+    while more:
         # Start a new group.  Save timestamp from its first line.
         lines = [s]
         timestamp = tsmatch.group(0)
@@ -286,13 +406,16 @@ def GroupByTimestamp(iterable):
             try:
                 s = source.next()
             except StopIteration:            # end of data
-                yield lines                  # output the final group
-                return
+                more = False
+                break
             if not s.startswith(timestamp):
                 tsmatch = timestampPattern.match(s)
                 if tsmatch:                  # line has a different timestamp
                     break
             lines.append(s)
+
+        # Current group is finished... output it
+        yield lines
 
 
 def Ungroup(iterable):
@@ -300,6 +423,7 @@ def Ungroup(iterable):
     Generator which takes a stream of groups and flattens it by one level,
     yielding the elements of the groups.  Here, the term 'group' means
     a sequence, iterator, or some object which supports iteration.
+    Empty groups are skipped.
 
     Ungroup(iterable) -> iterator
         iterable -- a sequence, iterator, or some object which supports
@@ -323,6 +447,7 @@ def EnumerateUngroup(iterable):
     yielding pairs (i, e) where i is a group counter (from zero) and
     e is an element of the i'th group.  Here, the term 'group' means
     a sequence, iterator, or some object which supports iteration.
+    Empty groups are counted and skipped.
 
     EnumerateUngroup(iterable) -> iterator
         iterable -- a sequence, iterator, or some object which supports
@@ -334,6 +459,7 @@ def EnumerateUngroup(iterable):
         for item in group:
             yield i, item
         i += 1
+
 
 #-------------------------------------------------------------------------
 
@@ -380,6 +506,10 @@ def TimestampInBounds(iterable, begin, end):
     else:
         end = end.strftime('%Y-%m-%d')
 
+    # Quit immediately if there cannot be timestamps within the interval.
+    if begin >= end:
+        return
+
     # Fetch first item from input stream.
     source = iter(iterable)
     item = source.next()
@@ -408,6 +538,8 @@ def TimestampInBounds(iterable, begin, end):
             yield item
         item = source.next()
 
+
+#--------------------------- Pattern Matching ----------------------------
 
 def MatchRegex(iterable, regex):
     """
@@ -531,6 +663,206 @@ def NoMatchInFirstLine(iterable, regex):
         if (len(group) == 0 or
             regex.search(group[0]) is None):
             yield group
+
+
+#-------------------------------- Slicing --------------------------------
+
+def Slice(iterable, begin=0, end=None):
+    """
+    Generator yielding the items of iterable[begin:end], like a Python slice.
+
+    Slice(iterable, begin, end) -> iterator
+        iterable -- a sequence, iterator, or some object which supports
+            iteration, yielding items of any type.  If begin or end is
+            negative, the iteration must be finite.
+        begin -- integer or None.  If >=0, number of initial items to skip.
+            If <0, skip items preceding this number of final items.
+        end -- integer or None.  If >=0, maximum number of items to be
+            fetched from the head of the input iterable.  If <0, number
+            of items to be excluded at the end of the input stream.
+    """
+    if begin is None:
+        begin = 0
+    if begin >= 0:
+        iterable = SkipNItems(iterable, begin)
+        if end is None or end == sys.maxint:
+            pass
+        elif end >= 0:
+            iterable = FirstNItems(iterable, end-begin)
+        else:
+            iterable = SkipLastNItems(iterable, -end)
+    elif end is None or end == sys.maxint:
+        iterable = LastNItems(iterable, -begin)
+    elif end < 0:
+        iterable = LastNItems(iterable, -begin, -end)
+    else:
+        iterable = IntersectionOfHeadAndTail(iterable, end, -begin)
+    return iterable
+
+
+def FirstNItems(iterable, n):
+    """
+    Generator yielding the first n items of a stream.
+
+    FirstNItems(iterable, n) -> iterator
+        iterable -- a sequence, iterator, or some object which supports
+            iteration, yielding items of any type.
+        n -- an integer or None
+
+    Example:
+        # Read and print 5 lines from standard input
+        for s in FirstNItems(sys.stdin, 5):
+            print s,
+    """
+    def FNI(iterable, n):
+        source = iter(iterable)
+        while n > 0:
+            yield source.next()
+            n -= 1
+
+    if n is None:
+        pass
+    elif n <= 0:
+        iterable = []
+    else:
+        iterable = FNI(iterable, n)
+    return iterable
+
+
+def LastNItems(iterable, n, dropLastN=0):
+    """
+    Generator yielding the final n items of a finite stream.  Of those
+    final items, the last dropLastN items are omitted if dropLastN > 0.
+
+    The number of items yielded is max(0, min(n, N) - dropLastN)) where
+    N is the number of items yielded by the input iterable.
+
+    LastNItems(iterable, n) -> iterator
+        iterable -- a sequence, iterator, or some object which supports
+            iteration, yielding items of any type.
+        n -- integer or None
+        dropLastN -- integer
+
+    Example:
+        # Read a file and print its last 5 lines
+        f = open(filename1, 'r')
+        for line in LastNItems(f, 5):
+            print line.rstrip()
+
+        # Read the last 5 lines of a file.  Print them, excluding the last 3.
+        f = open(filename2, 'r')
+        for line in LastNItems(f, 5, 3):
+            print line.rstrip()
+    """
+    def listOfLastNItems(iterable, n):
+        items = []
+        for item in iterable:
+            if len(items) == n:
+                del items[:1]
+            items.append(item)
+        return items
+
+    def LNI(iterable, n, dropLastN):
+        items = listOfLastNItems(iterable, n)
+        if dropLastN > 0:
+            del items[-dropLastN:]
+        while items:
+            yield items.pop(0)
+
+    if n is None:
+        pass
+    elif n <= 0 or n <= dropLastN:
+        iterable = []
+    else:
+        iterable = LNI(iterable, n, dropLastN)
+    return iterable
+
+
+def SkipNItems(iterable, n):
+    """
+    Generator yielding all but the first n items of a stream.
+
+    SkipNItems(iterable, n) -> iterator
+        iterable -- a sequence, iterator, or some object which supports
+            iteration, yielding items of any type.
+        n -- an integer or None
+
+    Example:
+        # Read and print lines 5 and 6 of a file
+        f = open(filename, 'r')
+        for line in FirstNItems(SkipNItems(f, 4), 2):
+            print line.rstrip()
+    """
+    def SNI(iterable, n):
+        source = iter(iterable)
+        while n > 0:
+            source.next()
+            n -= 1
+        while True:
+            yield source.next()
+
+    if n and n > 0:
+        iterable = SNI(iterable, n)
+    return iterable
+
+
+def SkipLastNItems(iterable, n):
+    """
+    Generator yielding all but the final n items of a finite stream.
+
+    SkipLastNItems(iterable, n) -> iterator
+        iterable -- a sequence, iterator, or some object which supports
+            iteration, yielding items of any type.
+        n -- an integer or None
+    """
+    def SLNI(iterable, n):
+        items = list(iterable)[:-n]
+        while items:
+            yield items.pop(0)
+
+    if n and n > 0:
+        iterable = SLNI(iterable, n)
+    return iterable
+
+
+def IntersectionOfHeadAndTail(iterable, nhead, ntail):
+    """
+    Generator yielding those items of a finite stream which belong to both
+    the first 'nhead' items and the last 'ntail' items of the stream.
+    """
+    def IHT(iterable, nhead, ntail):
+        items = []
+        n = 0
+        for item in iterable:
+            if n < nhead:
+                items.append(item)
+            if n >= ntail:
+                del items[:1]
+                if not items:
+                    break
+            n += 1
+        while items:
+            yield items.pop(0)
+
+    if nhead <= 0 or ntail <= 0:
+        iterable = []
+    else:
+        iterable = IHT(iterable, nhead, ntail)
+    return iterable
+
+
+#------------------------ Miscellaneous Filters ------------------------
+
+def NotNull(iterable):
+    """
+    Generator to filter out items which are equivalent to False, such as
+    empty groups.
+
+    NotNull(iterable) -> iterator
+        iterable -- a sequence, iterator, or some object which supports
+            iteration, yielding items of any type.
+    """
+    return (item for item in iterable if item)
 
 
 #-------------------------- Utility Functions --------------------------

@@ -18,8 +18,7 @@ from optparse import Option, OptionGroup, OptionParser, OptionValueError, SUPPRE
 
 # import GPDB modules
 from gppylib.datetimeutils import str_to_datetime, str_to_duration, DatetimeValueError
-from gppylib.logfilter import FilterLogEntries, filterize, spiffInterval
-from gppylib.logfilter import MatchRegex, NoMatchRegex, MatchInFirstLine
+from gppylib.logfilter import *
 
 
 description = ("""
@@ -41,12 +40,12 @@ otherwise the results from all input files are written to the specified
 --out file or standard output.
 ""","""
 In the input file, each log entry starts with a timestamp
-"YYYY-MM-DD HH:MM:SS[.fraction]" at the beginning of a line.
+"yyyy-mm-dd hh:mm:ss[.fraction]" at the beginning of a line.
 Any following lines are considered to belong to the same entry,
 up to the next line having a different timestamp.
 ""","""
---begin and --end values can be specified as either
-"YYYY-MM-DD[ HH:MM[:SS]]" or "YYYYMMDD[ HHMM[SS]]".  Between date
+--begin and --end timestamp values can be specified as either
+"yyyy-mm-dd[ hh:mm[:ss]]" or "yyyymmdd[ hhmm[ss]]".  Between date
 and time, either a space or the letter "T" is required.  When only
 the date is given, 00:00:00 is used for the time.
 Specify --duration as "[hours][:minutes[:seconds]]";
@@ -57,9 +56,9 @@ The ending date and time can be given by --end, or computed as
 given by --begin, or computed as --end minus --duration, or
 computed as the current date and time minus --duration.
 ""","""
-Log entries are skipped unless they fulfill all of the criteria
+Log entries are skipped unless they fulfill all of the conditions
 you specify.  For example, if you specify two occurrences of the
---select option, log entries must contain both of the strings.
+--find option, log entries must contain both of the strings.
 ""","""
 If the destination specified by --out is a directory, the output file is
 given the same name as the input file (excluding '.gz' suffix if any).
@@ -68,7 +67,7 @@ If you specify an output file name ending in '.gz', the output is com
 pressed (-z9) by default.
 ""","""
 Example:
-gplogfilter -t -d2 $MASTER_DATA_DIRECTORY
+gplogfilter -t -d2
 # view trouble messages timestamped within the past two hours
 """]
 
@@ -87,13 +86,12 @@ class OptParser(OptionParser):
         return msg
 
 class OptChecker(Option):
-    # Teach optparse to accept types 'datetime', 'duration', 'regex', 'search'
+    # Teach optparse to accept types 'datetime', 'duration', 'regex', 'literal'
     def datetimeCheck(option, opt, value):
         try:
             return str_to_datetime(value)
         except DatetimeValueError, e:
             raise OptionValueError('"%s %s" ... %s' % (opt, value, e.description))
-
     def durationCheck(option, opt, value):
         try:
             return str_to_duration(value, signed=False)
@@ -121,17 +119,29 @@ class OptChecker(Option):
     TYPE_CHECKER.update(_addtypes)
 
     # Teach optparse some additional actions
-    def filterAction(self, dest, value, values, Filter, *args):
-        filters = values.ensure_value(dest, [])
-        filters.append(filterize(Filter, value, *args))
+    def filterAction(self, dest, opt, value, values, parser, Filter, *args):
+        filterlist = values.ensure_value(dest, [])
+        filterlist.append(filterize(Filter, value, *args))
+    def optionalSecondArgAction(self, dest, opt, value, values, parser, *args):
+        # If the next arg converts successfully to the proper type, consume it.
+        # Store pair (value, 2nd value or None) into the destination.
+        value2 = None
+        if parser.rargs:
+            nextarg = parser.rargs.pop(0)
+            try:
+                value2 = self.convert_value(opt, nextarg)
+            except Exception:
+                parser.rargs.insert(0, nextarg)
+        setattr(values, dest, (value, value2))
     def take_action(self, action, dest, opt, value, values, parser):
         actup = self._addactions.get(action)
         if actup:
-            actup[0](self, dest, value, values, actup[1], *actup[2:])
+            actup[0](self, dest, opt, value, values, parser, actup[1], *actup[2:])
         else:
             Option.take_action(self, action, dest, opt, value, values, parser)
-    _addactions = {"MatchRegex"   : (filterAction, MatchRegex),
-                   "NoMatchRegex" : (filterAction, NoMatchRegex)}
+    _addactions = {"MatchRegex"        : (filterAction, MatchRegex),
+                   "NoMatchRegex"      : (filterAction, NoMatchRegex),
+                   "optionalSecondArg" : (optionalSecondArgAction, None)}
     _addactionnames = tuple(_addactions.keys())
     ACTIONS = Option.ACTIONS + _addactionnames
     STORE_ACTIONS = Option.STORE_ACTIONS + _addactionnames
@@ -146,7 +156,7 @@ def parseargs():
     # Create our OptionParser object
     parser = OptParser(option_class=OptChecker,
                        description=' '.join(description.split()))
-    parser.set_usage('%prog [options] [inputfile] ...')
+    parser.set_usage('%prog [--help] [options] [inputfile]...')
     parser.remove_option('-h')
 
     # Define the options
@@ -155,7 +165,7 @@ def parseargs():
                          'upper bounds on timestamps; or use any one option to '
                          'bound the timestamp range on just one side. ')
     optgrp.add_option('-b', '--begin',    type='datetime', metavar='datetime',
-                      help='beginning date and time: "YYYY-MM-DD[ HH:MM[:SS]"')
+                      help='beginning date and time: "yyyy-mm-dd[ hh:mm[:ss]"')
     optgrp.add_option('-e', '--end',      type='datetime', metavar='datetime',
                       help='ending date and time')
     optgrp.add_option('-d', '--duration', type='duration', metavar='[h][:m[:s]]',
@@ -171,14 +181,18 @@ def parseargs():
                          'times as needed to apply multiple restrictions. '
                          'Regular expression syntax is documented at '
                          'http://docs.python.org/lib/re-syntax.html')
-    optgrp.add_option('-s', '--select',   dest='filters', action='MatchRegex', type='literal', metavar='string',
-                      help='omit log entries which do not contain the string')
-    optgrp.add_option('-r', '--reject',   dest='filters', action='NoMatchRegex', type='literal', metavar='string',
-                      help='omit log entries containing the string')
-    optgrp.add_option('-m', '--match',    dest='filters', action='MatchRegex', type='regex', metavar='regex',
-                      help='omit log entries in which the regex does not match')
-    optgrp.add_option('-n', '--nomatch',  dest='filters', action='NoMatchRegex', type='regex', metavar='regex',
-                      help='omit log entries containing a match for the regex')
+    optgrp.add_option('-f', '--find',     type='literal', metavar='string',
+                      dest='filters', action='MatchRegex',
+                      help='select log entries containing string')
+    optgrp.add_option('-F', '--!find',    type='literal', metavar='string',
+                      dest='filters', action='NoMatchRegex',
+                      help='reject log entries containing string')
+    optgrp.add_option('-m', '--match',    type='regex', metavar='regex',
+                      dest='filters', action='MatchRegex',
+                      help='select log entries where a match for the regex is found')
+    optgrp.add_option('-M', '--!match',   type='regex', metavar='regex',
+                      dest='filters', action='NoMatchRegex',
+                      help='reject log entries where a match for the regex is found')
     optgrp.add_option('-t', '--trouble',  action='store_true',
                       help='select log entries having ERROR:, FATAL:, or PANIC: '
                         'in the first line')
@@ -189,11 +203,23 @@ def parseargs():
                          'specified to their right.  They can be used '
                          'as many times as needed.')
     optgrp.add_option('-c', '--case',     type='choice', choices=['i', 'ignore', 'r', 'respect'],
-                      metavar='i[gnore]| r[espect]',
+                      metavar='i[gnore]|r[espect]',
                       action='callback', callback=_setcase,
-                      help=('either ignore or respect the distinction '
-                            'between upper and lower case letters in '
-                            'subsequent pattern and string matching options'))
+                      help=('ignore or respect the distinction between '
+                            'upper and lower case letters in pattern and '
+                            'string matching options after this'))
+    parser.add_option_group(optgrp)
+
+    optgrp = OptionGroup(parser, 'Final selection',
+                         'Limit the output to a subsequence of the '
+                         'qualifying log entries from each input file. '
+                         'Use at most one of these options.')
+    optgrp.add_option('-n', '--tail',     type='int', metavar='N',
+                      help=('select the last N qualifying log entries'))
+    optgrp.add_option('-s', '--slice',    type='int', metavar='I [J]',
+                      action='optionalSecondArg',
+                      help=('select qualifying log entries I <= i < J '
+                            '(0 is first; <0 is relative to the end)'))
     parser.add_option_group(optgrp)
 
     optgrp = OptionGroup(parser, 'Input options')
@@ -207,7 +233,7 @@ def parseargs():
     optgrp.add_option('-z', '--zip',      type='choice', choices=list('0123456789'), metavar='0..9',
                       help=('compression level (gzip): 0 = no compression; '
                             '9 = maximum compression'))
-    optgrp.add_option('-a', '--append',    action='store_true',
+    optgrp.add_option('-a', '--append',   action='store_true',
                       help="when output file already exists, append to it; don't overwrite")
     parser.add_option_group(optgrp)
 
@@ -218,7 +244,7 @@ def parseargs():
                       help='show this help message and exit')
     parser.add_option_group(optgrp)
 
-    parser.set_defaults(verbose=True, filters=[])
+    parser.set_defaults(verbose=True, filters=[], slice=(None, None))
 
     # If no args, display help message.
     if len(sys.argv) <= 1:
@@ -227,7 +253,6 @@ def parseargs():
 
     # Parse the command line arguments
     (options, args) = parser.parse_args()
-    parser.set_usage(SUPPRESS_USAGE)
 
     return options, args
 
@@ -278,6 +303,11 @@ def openOutputFile(ifn, zname, options):
     # Compressed output file should be opened in binary mode
     zipout = options.zip and options.zip > '0'
     if zipout:
+        omode += 'b'
+
+    # Open output file in binary mode so as not to disturb the
+    # original line ending control characters.
+    else:
         omode += 'b'
 
     # Open output file, unless writing to stdout
@@ -345,7 +375,16 @@ if end:
 
 # Insert trouble message filter ahead of other pattern matching filters
 if options.trouble:
-    options.filters.insert(0, filterize(MatchInFirstLine, 'ERROR: |FATAL: |PANIC: '))
+    options.filters.insert(0, filterize(MatchInFirstLine,
+                                        'ERROR: |FATAL: |PANIC: '))
+
+# Limit output to last N entries if requested.  Let --tail override --slice.
+if options.tail is None:
+    sliceBegin, sliceEnd = options.slice
+elif options.tail > 0:
+    sliceBegin, sliceEnd = -options.tail, None
+else:
+    sliceBegin, sliceEnd = 0, 0
 
 # Output suffix .gz implies maximum compression unless overridden by -z
 if (options.zip is None and
@@ -397,14 +436,17 @@ try:
 
             # Construct the filtering pipeline
             filteredInput = FilterLogEntries(fileIn,
-                                             msgfile=options.verbose and sys.stderr,
-                                             begin=begin,
-                                             end=end,
-                                             filters=options.filters)
+                                             verbose=options.verbose,
+                                             beginstamp=begin,
+                                             endstamp=end,
+                                             filters=options.filters,
+                                             ibegin=sliceBegin,
+                                             jend=sliceEnd)
 
-            # Write filtered lines to output file
+            # Write filtered lines to output file.  Don't append \n to
+            # each line, because the original line ends are still there.
             for line in filteredInput:
-                print >>fileOut, line.rstrip()
+                print >>fileOut, line,
 
             # Close input and output files
             for file in inputFilesToClose:
