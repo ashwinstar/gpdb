@@ -750,7 +750,7 @@ tool shipped with that release''')
             if self.cmd != 'MKDIR': 
                 raise Exception(self.cmd + ' != MKDIR]')
 
-            for d in filter(os.path.exists, self.datadirs):
+            for d in self.datadirs:
                 if d == '': continue
 
                 # Creating directories is an atomic operation, if mkdir 
@@ -943,14 +943,13 @@ Cannot downgrade a database with append only tables     <<<<<
             self.config['MIRROR_PORT_BASE'] = mirrors[0]['port']-mirrors[0]['content']-1
 
             # MIRROR_DATA_DIRECTORY, use any mirror
-            mirror_data_dir = ' '
+            mirror_data_dir = ''
             for seg in mirrors:
                 if (seg['hostname'] != mirrors[0]['hostname']): 
                     continue
                 newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
-                newdir = self.tmpdir + str(newdir)
                 dirs.add(newdir)
-                mirror_data_dir = mirror_data_dir + self.tmpdir + str(newdir) + ' '
+                mirror_data_dir = mirror_data_dir + str(newdir) + '/upgrade '
             self.config['MIRROR_DATA_DIRECTORY'] = mirror_data_dir
 
         # standby masters (???)
