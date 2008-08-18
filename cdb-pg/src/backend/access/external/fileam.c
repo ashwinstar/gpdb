@@ -163,12 +163,22 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 		/* this is the normal path for most ext tables */
 		Value *v;
 
-		v = (Value *)list_nth(uriList, segindex);
+		/* 
+		 * Segindex may be -1, for the following case.
+		 * A slice is executed on entry db, (for example, gp_configuration),
+		 * then external table is executed on another slice.
+		 * Entry db slice will still call ExecInitExternalScan (probably we
+		 * should fix this?), then segindex = -1 will bomb out here.
+		 */
+		if(segindex != -1)
+		{
+			v = (Value *)list_nth(uriList, segindex);
 
-		if (v->type == T_Null)
-			uri = NULL;
-		else
-			uri = (char *) strVal(v);	
+			if (v->type == T_Null)
+				uri = NULL;
+			else
+				uri = (char *) strVal(v);	
+		}
 	}
 	else if(Gp_role == GP_ROLE_DISPATCH && isMasterOnly)
 	{
