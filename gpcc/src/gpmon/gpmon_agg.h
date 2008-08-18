@@ -11,4 +11,7 @@ extern void agg_destroy(agg_t* agg);
 extern apr_status_t agg_put(agg_t* agg, const gpmon_packet_t* pkt);
 extern apr_status_t agg_dump(agg_t* agg);
 
+#define GPMON_AGG_QLOG_RUNNING 0
+#define GPMON_AGG_QLOG_DONE    1
+
 #endif

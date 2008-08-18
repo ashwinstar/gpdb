@@ -604,9 +604,75 @@ static apr_int64_t get_total_cpu_elapsed(qdnode_t* qdnode)
     return total_cpu_elapsed;
 }
 
+static float get_cpu_current_perc(qdnode_t* qdnode)
+{
+    apr_pool_t* tmp_pool;
+    apr_hash_t* segtab;
+    apr_hash_index_t *hi;
+
+    qenode_t* pqe = NULL;
+
+    void* valptr;
+
+    float* seg_cpu_current, cpu_avg = 0.0f;
+    int segcnt = 0;
+    int e;
+    
+    if (!qdnode)
+        return 0.0f;
+
+    if (0 != (e = apr_pool_create(&tmp_pool, 0)))
+        gpmon_fatalx(FLINE, e, "apr_pool_create failed");
+
+    segtab = apr_hash_make(tmp_pool);
+    if (!segtab)
+        gpmon_fatal(FLINE, "Out of memory"); 
+
+    /* Calc mean per segment */
+    for (pqe = qdnode->qenode_list; pqe; pqe = pqe->next)
+    {
+        /* Skip QD */
+        if (pqe->qexec.key.segid == -1)
+            continue;
+
+        seg_cpu_current = apr_hash_get(segtab, &pqe->qexec.key.segid,
+                                       sizeof(pqe->qexec.key.segid));
+        
+        if (!seg_cpu_current) {
+            seg_cpu_current = apr_palloc(tmp_pool, sizeof(float));
+            *seg_cpu_current = 0;
+        }
+
+        *seg_cpu_current += pqe->qexec._p_metrics.cpu_pct;
+
+        apr_hash_set(segtab, &pqe->qexec.key.segid, 
+                     sizeof(pqe->qexec.key.segid), seg_cpu_current);
+    }
+
+    /* Calc mean across all segments */
+    for (hi = apr_hash_first(NULL, segtab); hi; hi = apr_hash_next(hi))
+    {
+        apr_hash_this(hi, 0, 0, &valptr);
+	seg_cpu_current = (float*) valptr;
+        cpu_avg += *seg_cpu_current;
+        segcnt++;
+    }
+    
+    if (!segcnt) {
+        TR2(("No segments for CPU current calculation\n"));
+        apr_pool_destroy(tmp_pool);
+        return 0.0f;
+    }
+
+    cpu_avg = cpu_avg / (float)segcnt;
+
+    apr_pool_destroy(tmp_pool);
+
+    return cpu_avg;
+}
+
 static double get_cpu_skew(qdnode_t* qdnode)
 {
-
     apr_pool_t* tmp_pool;
     apr_hash_t* segtab;
     apr_hash_index_t *hi;
@@ -796,6 +862,9 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
     char* p = line;
     double cpu_skew = 0.0f;
     double row_skew = 0.0f;
+    apr_int64_t cpu_elapsed = 0;
+    float cpu_current = 0.0f;
+
     *p = 0;
     sprintf(p += strlen(p), "%s", nowstr);
     sprintf(p += strlen(p), "|%d|%d|%d", qdnode->qlog.key.tmid, 
@@ -815,9 +884,11 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
     sprintf(p += strlen(p), "|%s", 
             gpmon_qlog_status_string(qdnode->qlog.status));
     sprintf(p += strlen(p), "|%" FMT64, qdnode->qlog.rows_out);
+    cpu_elapsed = get_total_cpu_elapsed(qdnode);
+    cpu_current = get_cpu_current_perc(qdnode);
     sprintf(p += strlen(p), "|%" FMT64 "|%.4f", 
-            get_total_cpu_elapsed(qdnode), 0.00f);
-    if (options == 1)
+            cpu_elapsed, cpu_current);
+    if (options == GPMON_AGG_QLOG_DONE)
     {
         cpu_skew = get_cpu_skew(qdnode);
         row_skew = get_row_skew(qdnode);
@@ -831,7 +902,7 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
 static void write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr)
 {
     char line[1024];
-    char* p = fmt_qlog(line, qdnode, nowstr, 0);
+    char* p = fmt_qlog(line, qdnode, nowstr, GPMON_AGG_QLOG_RUNNING);
     /* Query text "joined" by python script */
     fprintf(fp, "%s||\n", p);
 }
@@ -844,7 +915,7 @@ static void write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nowstr)
     FILE* qfptr = 0;
     int qtextlen = 0;
     
-    fprintf(fp, "%s", fmt_qlog(line, qdnode, nowstr, 1));
+    fprintf(fp, "%s", fmt_qlog(line, qdnode, nowstr, GPMON_AGG_QLOG_DONE));
     fprintf(fp, "|");
     sprintf(qfname, GPMON_DIR "q%d-%d-%d.txt", qdnode->qlog.key.tmid, 
             qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
