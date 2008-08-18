@@ -5832,6 +5832,53 @@ flatten_reloptions(Oid relid)
 	return result;
 }
 
+static void
+deparse_part_param(deparse_context *c, List *dat)
+{
+	ListCell *lc;
+	bool first = true;
+
+	foreach(lc, dat)
+	{
+		if (!first)
+			appendStringInfo(c->buf, ", ");
+		else
+			first = false;
+
+		get_const_expr(lfirst(lc), c, 0);
+	}
+}
+
+static void
+partition_rule_range(deparse_context *c, List *start, List *end, List *every)
+{
+	List *l1;
+
+	l1 = start;
+	if (l1)
+	{
+		appendStringInfoString(c->buf, "start (");
+		deparse_part_param(c, l1);
+		appendStringInfoString(c->buf, ")");
+	}
+
+	l1 = end;
+	if (l1)
+	{
+		appendStringInfoString(c->buf, " end (");
+		deparse_part_param(c, l1);
+		appendStringInfoString(c->buf, ")");
+	}
+
+	l1 = every;
+	if (l1)
+	{
+		appendStringInfoString(c->buf, " every (");
+		deparse_part_param(c, l1);
+		appendStringInfoString(c->buf, ")");
+	}
+}
+
 static char *
 partition_rule_def(PartitionRule *rule, Partition *part, int prettyFlags)
 {
@@ -5861,33 +5908,10 @@ partition_rule_def(PartitionRule *rule, Partition *part, int prettyFlags)
 			return str.data;
 		case 'r':
 			{
-				List *l1;
-
-
-				l1 = (List *)rule->parrangestart;
-				if (l1)
-				{
-					appendStringInfoString(&str, "start (");
-					get_const_expr((Const *)linitial(l1), &c, 0);
-					appendStringInfoString(&str, ") ");
-				}
-
-				l1 = (List *)rule->parrangeend;
-				if (l1)
-				{
-					appendStringInfoString(&str, "end (");
-					get_const_expr((Const *)linitial(l1), &c, 0);
-					appendStringInfoString(&str, ") ");
-				}
-
-				if (rule->parrangeevery)
-				{
-					appendStringInfoString(&str, "every (");
-
-					l1 = (List *)rule->parrangeevery;
-					get_const_expr((Const *)linitial(l1), &c, 0);
-					appendStringInfoString(&str, ") ");
-				}
+				Assert(!PointerIsValid(rule->parrangeevery));
+				partition_rule_range(&c, (List *)rule->parrangestart, 
+									 (List *)rule->parrangeend,
+									 NIL);
 			}
 			break;
 		case 'l':
@@ -5922,6 +5946,7 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 	StringInfoData head;
 	StringInfoData body;
 	bool seenpart = false;
+	bool needheadcomma = false;
 
 	if (!pn)
 		return NULL;
@@ -5935,10 +5960,22 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 		ListCell *lc;
 		int i;
 		Node *prevevery = NULL;
+		Node *mystart = NULL;
+		Node *myend = NULL;
+		Node *myevery = NULL;
 		bool needcomma = false;
+		StringInfoData tmp;
+
+		initStringInfo(&tmp);
+
+		if (needheadcomma)
+		{
+			appendStringInfoString(&head, ", ");
+			needheadcomma = false;
+		}
 
 		if (seenpart)
-			appendStringInfoString(&head, "SUB");
+			appendStringInfoString(&head, " SUB");
 		else
 			seenpart = true;
 
@@ -5981,27 +6018,86 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 
 			if (pn->part->parkind == 'r')
 			{
+				bool push_every = false;
+
 				if (rule->parrangeevery)
 				{
-					if (equal(prevevery, rule->parrangeevery))
-						continue;
+					if (!mystart)
+					{
+						mystart = rule->parrangestart;
+						myend = rule->parrangeend;
+						myevery = rule->parrangeevery;
+					}
+
+					/* same rule as before */
+					if (prevevery)
+					{
+						if (equal(prevevery, rule->parrangeevery))
+						{
+							myend = rule->parrangeend;
+							if (lnext(lc))
+								continue;
+							else
+								push_every = true;
+						}
+						else
+						{
+							/* different one */
+							if (mystart)
+								push_every = true;
+
+							prevevery = rule->parrangeevery;
+						}
+					}
 					else
 						prevevery = rule->parrangeevery;
 				}
+				else
+				{
+					if (mystart)
+						push_every = true;
+				}
+
+				if (push_every)
+				{
+					deparse_context c;
+
+					if (needcomma)
+						appendStringInfoChar(&tmp, ',');
+
+					if (rule->parname && strlen(rule->parname))
+						appendStringInfo(&tmp, "partition %s", rule->parname);
+
+
+					c.buf = &tmp;
+					c.prettyFlags = prettyFlags;
+					c.indentLevel = PRETTYINDENT_STD;
+
+					partition_rule_range(&c, (List *)mystart,
+										 (List *)myend, (List *)myevery);
+
+					mystart = rule->parrangestart;
+					myend = rule->parrangeend;
+
+					continue;
+				}
+				else if (rule->parrangeevery)
+					continue;
+
 			}
 
 
 			if (needcomma)
 			{
-				appendStringInfoChar(&body, ',');
+				appendStringInfoChar(&tmp, ',');
 				needcomma = false;
 			}
 
 		   	str = partition_rule_def(rule, pn->part, prettyFlags);
 			if (str && strlen(str))
 			{
-				appendStringInfoString(&body, " ");
-				appendStringInfoString(&body, str);
+				appendStringInfoString(&tmp, " ");
+				appendStringInfoString(&tmp, str);
 				needcomma = true;
 			}
 			pfree(str);
@@ -6011,15 +6107,28 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 		{
 			char *str;
 
-			if (pn->rules && strlen(body.data))
-				appendStringInfoChar(&body, ',');
+			if (pn->rules && strlen(tmp.data))
+				appendStringInfoChar(&tmp, ',');
 
 			str = partition_rule_def(pn->default_part, pn->part, prettyFlags);
 
-			appendStringInfoString(&body, " ");
-			appendStringInfoString(&body, str);
+			appendStringInfoString(&tmp, " ");
+			appendStringInfoString(&tmp, str);
 			pfree(str);
 		}
+
+		if (pn->part->paristemplate)
+		{
+			appendStringInfo(&head, " SUBPARTITION TEMPLATE (%s)", tmp.data);
+			needheadcomma = true;
+		}
+		else
+		{
+			needheadcomma = false;
+			appendStringInfoString(&body, tmp.data);
+		}
+
+		pfree(tmp.data);
 
 		Assert(PointerIsValid(rule));
 		pn = rule->children;
@@ -6027,7 +6136,7 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 
 	heap_close(rel, NoLock);
 	if (strlen(body.data))
-		appendStringInfo(&head, "(%s)", body.data);
+		appendStringInfo(&head, " (%s)", body.data);
 	pfree(body.data);
 	return head.data;
 }
