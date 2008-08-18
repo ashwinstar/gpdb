@@ -4378,7 +4378,7 @@ preprocess_range_spec(partValidationState *vstate)
 					char newname[sizeof(NameData) + 10];
 
 					snprintf(newname, sizeof(newname),
-							 "%s%u", strVal(el->partName),
+							 "%s_%u", strVal(el->partName),
 							 everycount);
 
 					if (strlen(newname) > NAMEDATALEN)

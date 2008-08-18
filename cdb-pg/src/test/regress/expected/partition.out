@@ -766,7 +766,7 @@ partition by range (b)
 partition aa start (date '2007-01-01') end (date '2008-01-01') inclusive,
 partition bb start (date '2008-01-01') end (date '2009-01-01') 
 every (interval '10 days'));
-ERROR:  starting value of partition "bb1" overlaps previous range
+ERROR:  starting value of partition "bb_1" overlaps previous range
 LINE 6: partition bb start (date '2008-01-01') end (date '2009-01-01...
                      ^
 drop table ggg cascade;
@@ -1622,7 +1622,7 @@ ERROR:  new partition overlaps existing partition
 alter table hhh_r1 add partition yaa start ('2007-05-01') 
 end ('2007-10-01') inclusive;
 NOTICE:  Table has parent, setting distribution columns to match parent table
-ERROR:  new partition overlaps existing partition "aa10"
+ERROR:  new partition overlaps existing partition "aa_10"
 -- start before first partition (fail because end overlaps)
 alter table hhh_r1 add partition yaa start ('2007-05-01') 
 end ('2007-10-01') exclusive;
@@ -1781,13 +1781,13 @@ ERROR:  partition for rank -55 of relation "mmm_r1" does not exist
 alter table mmm_r1 modify partition for ('2001-01-01') start ('2007-03-02');
 ERROR:  partition for value ('2001-01-01') of relation "mmm_r1" does not exist
 alter table mmm_r1 modify partition bb start ('2006-03-02');
-ERROR:  cannot MODIFY RANGE partition "bb" for relation "mmm_r1" -- would overlap existing partition "aa2"
+ERROR:  cannot MODIFY RANGE partition "bb" for relation "mmm_r1" -- would overlap existing partition "aa_2"
 alter table mmm_r1 modify partition bb start ('2011-03-02');
 ERROR:  START greater than END for partition "bb"
 alter table mmm_r1 modify partition bb end ('2006-03-02');
 ERROR:  START greater than END for partition "bb"
 alter table mmm_r1 modify partition bb end ('2011-03-02');
-ERROR:  cannot MODIFY RANGE partition "bb" for relation "mmm_r1" -- would overlap existing partition "aa4"
+ERROR:  cannot MODIFY RANGE partition "bb" for relation "mmm_r1" -- would overlap existing partition "aa_4"
 alter table mmm_r1 modify partition bb add values ('2011-03-02');
 ERROR:  invalid use of LIST boundary specification in partition "bb" of type RANGE
 alter table mmm_r1 modify partition bb drop values ('2011-03-02');
