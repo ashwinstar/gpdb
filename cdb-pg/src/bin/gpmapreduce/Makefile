@@ -11,36 +11,29 @@ INCDIR= include
 SRCDIR= src
 endif
 LIBDIR= lib
-LIBYAMLDIR= yaml-0.1.1
 
 override CPPFLAGS := -DFRONTEND -I$(SRCDIR) -I$(INCDIR) -I$(libpq_srcdir) $(CPPFLAGS)
+override LDFLAGS += -lyaml
 
 FILES     = main.o mapred.o parse.o yaml_scan.o yaml_parse.o 
 GENFILES  = yaml_parse.h yaml_parse.c yaml_scan.c yaml_scan.h
 
-LIBYAML   = $(LIBDIR)/libyaml.a
 OBJS      = $(addprefix $(SRCDIR)/, $(FILES))
 GENOBJS   = $(addprefix $(SRCDIR)/, $(GENFILES))
 
 FLEXFLAGS = -i
 YACCFLAGS = -d
 
-all: submake-libpq submake-libyaml gpmapreduce
+all: submake-libpq gpmapreduce
 
-gpmapreduce: $(LIBYAML) $(OBJS) $(libpq_builddir)/libpq.a
-	$(CC) $(CFLAGS) $(OBJS) $(LIBYAML) $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
+gpmapreduce: $(OBJS) $(libpq_builddir)/libpq.a
+	$(CC) $(CFLAGS) $(OBJS) $(libpq_pgport) $(LDFLAGS) $(LIBS) -o $@$(X)
 
 check:
 	$(MAKE) -C test
 
 $(LIBDIR):
 	mkdir $(LIBDIR)
-
-$(LIBYAML):  $(LIBDIR)
-	@cp $(LIBYAMLDIR)/include/yaml.h $(INCDIR)/.
-	@chmod u+w $(INCDIR)/yaml.h
-	@cp $(LIBYAMLDIR)/src/.libs/libyaml.a $(LIBYAML)
-	@chmod u+w $(LIBYAML)
 
 $(srcdir)/yaml_scan.c: yaml_scan.l
 ifdef FLEX
@@ -65,11 +58,6 @@ ifdef YACC
 else
 	@$(missing) bison $< $@
 endif
-
-.PHONY: submake-libyaml
-submake-libyaml:
-	cd $(LIBYAMLDIR) && ./configure
-	$(MAKE) -C $(LIBYAMLDIR)
 
 install: all installdirs
 	$(INSTALL_PROGRAM) gpmapreduce$(X) '$(DESTDIR)$(bindir)/gpmapreduce$(X)'

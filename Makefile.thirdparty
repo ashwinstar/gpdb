@@ -90,6 +90,7 @@ BLD_THIRDPARTY_LIBS_BASE_TO_REMOVE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE_TO_REM
 # --------------------------------------------------------------------------------
 define tmpBLD_THIRDPARTY_LIBS_BASE
 	zlib/1.2.3
+	yaml/0.1.1
 endef
 BLD_THIRDPARTY_LIBS_BASE:=$(strip $(tmpBLD_THIRDPARTY_LIBS_BASE))
 
