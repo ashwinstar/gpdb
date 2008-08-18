@@ -3402,10 +3402,27 @@ partition by range (l_commitdate)
 (
 partition p1 start('1992-01-31') end('1998-11-01') every(interval '20 months')
 );
-NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p11" for table "lineitem"
-NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p12" for table "lineitem"
-NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p13" for table "lineitem"
-NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p14" for table "lineitem"
-NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p15" for table "lineitem"
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p1_1" for table "lineitem"
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p1_2" for table "lineitem"
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p1_3" for table "lineitem"
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p1_4" for table "lineitem"
+NOTICE:  CREATE TABLE will create partition "lineitem_1_prt_p1_5" for table "lineitem"
 copy lineitem from stdin with delimiter '|';
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
+ start, parrangestartincl,
+ pg_get_expr(parrangeend, parchildrelid, false) as end,
+ parrangeendincl,
+  pg_get_expr(parlistvalues, parchildrelid, false) as list from
+   pg_partition_rule
+    r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and
+	 p.parrelid = 'lineitem'::regclass order by 1;
+ parname | parruleord |       start        | parrangestartincl |        end         | parrangeendincl | list 
+---------+------------+--------------------+-------------------+--------------------+-----------------+------
+ p1_1    |          1 | '01-31-1992'::date | t                 | '09-30-1993'::date | f               | 
+ p1_2    |          2 | '09-30-1993'::date | t                 | '05-31-1995'::date | f               | 
+ p1_3    |          3 | '05-31-1995'::date | t                 | '01-31-1997'::date | f               | 
+ p1_4    |          4 | '01-31-1997'::date | t                 | '09-30-1998'::date | f               | 
+ p1_5    |          5 | '09-30-1998'::date | t                 | '11-01-1998'::date | f               | 
+(5 rows)
+
 drop table lineitem;

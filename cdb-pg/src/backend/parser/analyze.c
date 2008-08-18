@@ -4244,19 +4244,25 @@ preprocess_range_spec(partValidationState *vstate)
 		{
 			/* the start expression might come from a previous end expression */
 			List *start = NIL;
+			List *curstart = NIL;
 			List *end = ((PartitionRangeItem *)pbs->partEnd)->partRangeVal;
 			List *newend = NIL;
 			List *every = 
 				(List *)((PartitionRangeItem *)pbs->partEvery)->partRangeVal;
+			List *everyinc;
 			bool lessthan = true;
 			int everycount = 0;
 			List *everyelts = NIL;
 			bool first = true;
+			List *everytypes = NIL;
 			
 			Assert(pbs->partStart);
 			Assert(pbs->partEnd);
 			Assert(IsA(end, List));
 			Assert(IsA(every, List));
+
+			/* we modify every, so copy it */
+			everyinc = copyObject(every);
 
 			while (lessthan)
 			{
@@ -4265,10 +4271,10 @@ preprocess_range_spec(partValidationState *vstate)
 				PartitionElem *newel;
 				PartitionBoundSpec *newbs;
 				PartitionRangeItem *newri;
+				ListCell *lctypes, *lceveryinc;
 				ListCell *lcstart, *lcend, *lcevery, *lccol, *lclastend;
 				List *lastend = NIL;
 				
-
 				/* 
 				 * Other parts of the parser want to know how many clauses
 				 * we expanded here.
@@ -4298,16 +4304,24 @@ preprocess_range_spec(partValidationState *vstate)
 						lfirst(lcend) = newnode;
 						lcend = lnext(lcend);
 					}
+
+					curstart = copyObject(start);
+					foreach(lcevery, every)
+					{
+						everytypes = lappend_oid(everytypes,
+												 exprType(lfirst(lcevery)));
+
+					}
 				}
 				else
 				{
-					start = newend;
+					curstart = newend;
 					lastend = newend;
 					newend = NIL;
 				}
 
 				lcend = list_head(end);
-				lcevery = list_head(every);
+				lcevery = list_head(everyinc);
 				lclastend = list_head(lastend);
 
 				forboth(lcstart, start, lccol, coltypes)
@@ -4370,6 +4384,26 @@ preprocess_range_spec(partValidationState *vstate)
 						lclastend = lnext(lclastend);
 				}
 
+				lctypes = list_head(everytypes);
+				forboth(lcevery, every, lceveryinc, everyinc)
+				{
+					Oid typid = lfirst_oid(lctypes);
+					bool byval = get_typbyval(typid);
+					int16 typlen = get_typlen(typid);
+					Const *c;
+
+					/* increment every */
+					res = eval_basic_opexpr(pstate, plusop,
+											(Node *)lfirst(lcevery),
+											(Node *)lfirst(lceveryinc),
+											NULL, NULL,
+											&typid, -1);
+
+					c = makeConst(typid, typlen, res, false, byval);
+					pfree(lfirst(lceveryinc));
+					lfirst(lceveryinc) = c;
+				}
+
 				newel = makeNode(PartitionElem);
 				
 				/* generate the new name, which is parname + every count */
@@ -4407,7 +4441,7 @@ preprocess_range_spec(partValidationState *vstate)
 					((PartitionRangeItem *)pbs->partStart)->partedge;
 				newri->location =
 					((PartitionRangeItem *)pbs->partStart)->location;
-				newri->partRangeVal = start;
+				newri->partRangeVal = curstart;
 				newbs->partStart = (Node *)newri;
 				
 				/* end */
@@ -5714,19 +5748,19 @@ eval_basic_opexpr(ParseState *pstate, List *oprname, Node *leftarg,
 
 	if (need_typ_info || !PointerIsValid(typbyval))
 	{
-			Type typ = typeidType(*restypid);
+		Type typ = typeidType(*restypid);
 
-			byval = typeByVal(typ);
-			len = typeLen(typ);
+		byval = typeByVal(typ);
+		len = typeLen(typ);
 
-			if (PointerIsValid(typbyval))
-			{
-				Assert(PointerIsValid(typlen));
-				*typbyval = byval;
-				*typlen = len;
-			}
+		if (PointerIsValid(typbyval))
+		{
+			Assert(PointerIsValid(typlen));
+			*typbyval = byval;
+			*typlen = len;
+		}
 
-			ReleaseSysCache(typ);
+		ReleaseSysCache(typ);
 	}
 	else
 	{

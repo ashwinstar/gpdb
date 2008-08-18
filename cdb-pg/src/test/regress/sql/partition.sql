@@ -1865,4 +1865,14 @@ partition p1 start('1992-01-31') end('1998-11-01') every(interval '20 months')
 copy lineitem from stdin with delimiter '|';
 18182|5794|3295|4|9|15298.11|0.04|0.01|N|O|1995-07-04|1995-05-30|1995-08-03|DELIVER IN PERSON|RAIL|y special platelets
 \.
+
+select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
+ start, parrangestartincl,
+ pg_get_expr(parrangeend, parchildrelid, false) as end,
+ parrangeendincl,
+  pg_get_expr(parlistvalues, parchildrelid, false) as list from
+   pg_partition_rule
+    r, pg_partition p where r.paroid = p.oid and p.parlevel = 0 and
+	 p.parrelid = 'lineitem'::regclass order by 1;
+
 drop table lineitem;
