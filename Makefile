@@ -53,7 +53,7 @@ endif
 endif
 
 ifeq (true, ${AUTH})
-CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib" --with-includes="$(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include"
+CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib $(BLD_THIRDPARTY_LIB_DIR)" --with-includes="$(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include $(BLD_THIRDPARTY_INCLUDE_DIR) "
 endif
 
 .PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean distprep version
