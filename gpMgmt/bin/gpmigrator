@@ -12,6 +12,7 @@ Options:
 
 #============================================================
 import sys, os, optparse, tempfile, re, types, subprocess, traceback
+from datetime import date
 import urllib    # for passing strings across gpssh
 
 EXECNAME = sys.argv[0][sys.argv[0].rfind('/')+1:]
@@ -110,6 +111,9 @@ class GPUpgrade:
         self.user      = self.RunCmd('id -un')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
+        logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
+        self.logfile = os.path.join(logdir, '%s_%s.log' % (os.path.split(__file__)[-1], date.today().strftime('%Y%m%d')))
+
         self.ParseInput()
 
         # Extract path from input master directory
@@ -1186,7 +1190,7 @@ Cannot downgrade a database with append only tables     <<<<<
     def ImportSchema(self):
         self.CheckUp()
         self.Log('INFO', 'Importing old schema')
-        subprocess.call('psql -f %s/pgdump.sql template1 > /dev/null 2>&1' % self.tmpdir,
+        subprocess.call('psql -f %s/pgdump.sql template1 >> %s 2>&1' % (self.tmpdir, self.logfile),
                         env=self.newenv, shell=True)
         databases = self.Select(
             '''
