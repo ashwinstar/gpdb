@@ -608,6 +608,7 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
 {
     apr_pool_t* tmp_pool;
     apr_hash_t* segtab;
+    apr_hash_t* segpidtab;
     apr_hash_index_t *hi;
 
     qenode_t* pqe = NULL;
@@ -617,7 +618,9 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
     float* seg_cpu_current, cpu_avg = 0.0f;
     int segcnt = 0;
     int e;
-    
+    char key[32];
+    int dummyval = 1;
+
     if (!qdnode)
         return 0.0f;
 
@@ -626,6 +629,10 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
 
     segtab = apr_hash_make(tmp_pool);
     if (!segtab)
+        gpmon_fatal(FLINE, "Out of memory");
+ 
+    segpidtab = apr_hash_make(tmp_pool);
+    if (!segpidtab)
         gpmon_fatal(FLINE, "Out of memory"); 
 
     /* Calc mean per segment */
@@ -635,27 +642,32 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
         if (pqe->qexec.key.segid == -1)
             continue;
 
-        seg_cpu_current = apr_hash_get(segtab, &pqe->qexec.key.segid,
-                                       sizeof(pqe->qexec.key.segid));
+        memset(key, 0, 32);
+        snprintf(key, 32, "%d%d", pqe->qexec.key.segid, pqe->qexec.key.pid); 
+
+        seg_cpu_current = apr_hash_get(segpidtab, key, sizeof(key));
         
-        if (!seg_cpu_current) {
+        if (!seg_cpu_current) 
+        {
             seg_cpu_current = apr_palloc(tmp_pool, sizeof(float));
-            *seg_cpu_current = 0;
+            *seg_cpu_current = pqe->qexec._p_metrics.cpu_pct;
+            apr_hash_set(segpidtab, key, sizeof(key), seg_cpu_current);
+
+            valptr = apr_hash_get(segtab, &pqe->qexec.key.segid, sizeof(pqe->qexec.key.segid));
+            if (valptr == NULL)
+            {
+                segcnt++;
+                apr_hash_set(segtab, &pqe->qexec.key.segid, 
+                             sizeof(pqe->qexec.key.segid), &dummyval);
+            }
         }
-
-        *seg_cpu_current += pqe->qexec._p_metrics.cpu_pct;
-
-        apr_hash_set(segtab, &pqe->qexec.key.segid, 
-                     sizeof(pqe->qexec.key.segid), seg_cpu_current);
     }
-
     /* Calc mean across all segments */
-    for (hi = apr_hash_first(NULL, segtab); hi; hi = apr_hash_next(hi))
+    for (hi = apr_hash_first(NULL, segpidtab); hi; hi = apr_hash_next(hi))
     {
         apr_hash_this(hi, 0, 0, &valptr);
-	seg_cpu_current = (float*) valptr;
+        seg_cpu_current = (float*) valptr;
         cpu_avg += *seg_cpu_current;
-        segcnt++;
     }
     
     if (!segcnt) {
@@ -667,7 +679,7 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
     cpu_avg = cpu_avg / (float)segcnt;
 
     apr_pool_destroy(tmp_pool);
-
+    
     return cpu_avg;
 }
 
@@ -894,7 +906,7 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
         row_skew = get_row_skew(qdnode);
     }
     sprintf(p += strlen(p), "|%f|%.2f", cpu_skew, row_skew);
-    sprintf(p += strlen(p), "|%" FMT64, 0LL);
+    sprintf(p += strlen(p), "|%" FMT64, 0L);
     return line;
 }
 
