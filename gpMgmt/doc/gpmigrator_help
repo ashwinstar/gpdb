@@ -1,0 +1,138 @@
+COMMAND NAME: gpmigrator
+
+Upgrades an existing Greenplum Database 3.x system to 3.2.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+gpmigrator [-C] <old_GPHOME_path> <new_GPHOME_path> 
+[-d <master_data_directory>] [-l <logfile_directory>] [-q]
+
+gpmigrator -R <old_GPHOME_path>
+
+gpmigrator --version | --help
+
+
+*****************************************************
+PREREQUISITES
+*****************************************************
+
+The following are required prior to running this upgrade utility:
+
+* Check for and recover any failed segments in your current 
+  Greenplum Database system.
+
+* Make sure both the old and new versions of the Greenplum Database 
+  software are installed on all hosts (master and segments).
+
+* Shut down your current Greenplum Database system.
+
+* Make sure you are logged in to the master host as the 
+  Greenplum Database superuser (gpadmin).
+
+* Set $GPHOME to point to the new Greenplum Database software 
+  version before running this utility.
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The gpmigrator utility upgrades an existing Greenplum Database 
+3.x system to 3.2. It can also be used to downgrade a 3.2 system 
+back to 3.1 or 3.0. This utility updates the system catalog and 
+internal version number, but not the actual software binaries.
+
+If your Greenplum Database system has a standby master host 
+configured, the gpmigrator utility will not upgrade the standby 
+master. It will remove the standby master from your system 
+configuration and then you must re-add it back to your 
+system after the upgrade is complete.
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+<old_GPHOME_path>
+
+Required. The absolute path to the current version of 
+Greenplum Database software you want to migrate away from.
+
+
+<new_GPHOME_path>
+
+Required. The absolute path to the new version of Greenplum 
+Database software you want to migrate to.
+
+
+-C (check compatibility)
+
+Verifies upgrade or downgrade compatibility between the 
+two Greenplum Database software versions supplied, but does 
+not do the upgrade or downgrade.
+
+
+-d <master_data_directory>
+
+Optional. The master host data directory. If not specified, 
+the value set for $MASTER_DATA_DIRECTORY will be used.
+
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/gpAdminLogs.
+
+
+-q (quiet mode)
+
+Run in quiet mode. Command output is not displayed on the screen, 
+but is still written to the log file.
+
+
+-R (revert)
+
+If the upgrade utility encounters an error and exits before 
+it can finish, running it with the -R option will revert back 
+to the old version of Greenplum Database.
+
+
+--help
+
+Displays the online help.
+
+
+--version
+
+Displays the version of this utility. 
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+First make sure you are using the 3.2 version of the Greenplum 
+utilities:
+
+export GPHOME=/usr/local/greenplum-db-3.2.0.0
+
+
+Upgrade to version 3.2 from version 3.1.1.5:
+
+gpmigrator /usr/local/greenplum-db-3.1.1.5 /usr/local/greenplum-db-3.2.0.0
+
+
+Check for catalog compatability before downgrading from 3.2 to 3.1.1.5:
+
+gpmigrator -C /usr/local/greenplum-db-3.2.0.0 /usr/local/greenplum-db-3.1.1.5 
+
+
+Revert to the prior database version after a failed upgrade:
+
+gpmigrator /usr/local/greenplum-db-3.1.1.5 -R
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+gpstop, gpstate
