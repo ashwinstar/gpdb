@@ -865,6 +865,17 @@ Cannot downgrade a database with append only tables     <<<<<
            SELECT content, definedprimary, dbid, hostname, port, datadir 
            FROM gp_configuration 
         ''', port=self.masterport);
+
+        # check multi-home and get the hostname
+        h = {}
+        for x in gp_config:
+            if x['hostname'] not in h:
+                cmd = 'ssh %s hostname' % x['hostname']
+                x['host'] = self.RunCmd(cmd)
+                h[x['hostname']] = x['host']
+            else:
+                x['host'] = h[x['hostname']]
+                
         master = filter(lambda(x): x['content'] < 0 and 
                                    x['definedprimary'], gp_config);
         standbymaster = filter(lambda(x): x['content'] < 0 and 
@@ -911,11 +922,11 @@ Cannot downgrade a database with append only tables     <<<<<
         dirs = set();
         data_dir = ''
         for seg in segments:
-            if (seg['hostname'] != segments[0]['hostname']): 
+            if (seg['host'] != segments[0]['host']): 
                 continue
             newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
             dirs.add(newdir)
-            data_dir = data_dir + str(newdir) + '/upgrade '
+            data_dir = data_dir + os.path.join(str(newdir), 'upgrade') + ' '
         self.config['DATA_DIRECTORY'] = data_dir
 
         # MASTER_HOSTNAME, super easy
@@ -945,11 +956,11 @@ Cannot downgrade a database with append only tables     <<<<<
             # MIRROR_DATA_DIRECTORY, use any mirror
             mirror_data_dir = ''
             for seg in mirrors:
-                if (seg['hostname'] != mirrors[0]['hostname']): 
+                if (seg['host'] != mirrors[0]['host']): 
                     continue
                 newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
                 dirs.add(newdir)
-                mirror_data_dir = mirror_data_dir + str(newdir) + '/upgrade '
+                mirror_data_dir = mirror_data_dir + os.path.join(str(newdir), 'upgrade') + ' '
             self.config['MIRROR_DATA_DIRECTORY'] = mirror_data_dir
 
         # standby masters (???)
