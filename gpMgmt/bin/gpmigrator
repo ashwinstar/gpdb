@@ -1186,7 +1186,7 @@ Cannot downgrade a database with append only tables     <<<<<
     def ImportSchema(self):
         self.CheckUp()
         self.Log('INFO', 'Importing old schema')
-        subprocess.call('psql -f %s/pgdump.sql template1' % self.tmpdir,
+        subprocess.call('psql -f %s/pgdump.sql template1 > /dev/null 2>&1' % self.tmpdir,
                         env=self.newenv, shell=True)
         databases = self.Select(
             '''
