@@ -56,7 +56,7 @@ ifeq (true, ${AUTH})
 CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib $(BLD_THIRDPARTY_LIB_DIR)" --with-includes="$(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include $(BLD_THIRDPARTY_INCLUDE_DIR) "
 endif
 
-.PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean distprep version
+.PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean distprep version greenplum_path
 
 test2 :
 	echo "CWD ="$(CURDIR)
@@ -87,6 +87,7 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
 devel_faultinj : INSTLOC=$(DEVPATH)
@@ -98,6 +99,7 @@ devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 
 forceplan : INSTCFLAGS=$(DEBUGFLAGS)
@@ -110,6 +112,7 @@ forceplan : HOMEDEP $(ISCONFIG)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
@@ -121,6 +124,7 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist_faultinj : INSTCFLAGS=$(OPTFLAGS)
 dist_faultinj : INSTLOC=$(DISTPATH)
@@ -133,6 +137,7 @@ dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 
 #
@@ -264,6 +269,9 @@ copylibs : thirdparty-dist
 	        cp -p $$lib $(INSTLOC)/lib ; \
 	    done ; \
 	fi
+
+greenplum_path:
+	releng/generate-greenplum-path.sh > $(INSTLOC)/greenplum_path.sh
 
 RECONFIG :
 	rm -f $(ISCONFIG)

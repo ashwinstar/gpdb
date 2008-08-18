@@ -1,0 +1,67 @@
+#!/bin/bash
+
+PLAT=`uname -s`
+if [ $? -ne 0 ] ; then
+    echo "Error executing uname -s"
+    exit 1
+fi
+
+cat << EOF
+GPHOME=\`pwd\`
+# Replace with symlink path if it is present and correct
+if [ -L \${GPHOME}/../greenplum-db ]; then
+    GPHOME_BY_SYMLINK=\`(cd \${GPHOME}/../greenplum-db/ && pwd -P)\`
+    if [ x"\${GPHOME_BY_SYMLINK}" = x"\${GPHOME}" ]; then
+        GPHOME=\`(cd \${GPHOME}/../greenplum-db/ && pwd -L)\`
+    fi
+    unset GPHOME_BY_SYMLINK
+fi
+EOF
+
+# OSX does not need JAVA_HOME 
+if [ "${PLAT}" = "Darwin" ] ; then
+cat << EOF
+PATH=\$GPHOME/bin:\$GPHOME/ext/python/bin:\$PATH
+DYLD_LIBRARY_PATH=\$GPHOME/lib:\$GPHOME/ext/python/lib:\$DYLD_LIBRARY_PATH
+EOF
+fi
+
+# Solaris needs amd64 in PATH for java to work
+if [ "${PLAT}" = "SunOS" ] ; then
+cat <<EOF
+PATH=\$GPHOME/bin:\$GPHOME/ext/python/bin:\$PATH
+EOF
+else
+cat <<EOF
+PATH=\$GPHOME/bin:\$GPHOME/ext/python/bin:\$PATH
+EOF
+fi
+
+# OS X does not have LD_LIBRARY_PATH
+if [ "${PLAT}" != "Darwin" ] ; then
+    #Solaris needs /usr/sfw/lib in order for groupsession to work 
+    if [ "${PLAT}" = "SunOS" ] ; then
+    cat <<EOF
+LD_LIBRARY_PATH=\$GPHOME/lib:\$GPHOME/ext/python/lib:/usr/sfw/lib:\$LD_LIBRARY_PATH
+EOF
+    else
+    cat <<EOF
+LD_LIBRARY_PATH=\$GPHOME/lib:\$GPHOME/ext/python/lib:\$LD_LIBRARY_PATH
+EOF
+    fi
+fi
+
+cat <<EOF
+export GPHOME
+export PATH
+EOF
+
+if [ "${PLAT}" != "Darwin" ] ; then
+cat <<EOF
+export LD_LIBRARY_PATH
+EOF
+else
+cat <<EOF
+export DYLD_LIBRARY_PATH
+EOF
+fi
