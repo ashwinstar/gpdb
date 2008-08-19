@@ -433,18 +433,21 @@ class GPUpgrade:
             prefix = ':'.join(
                 [strftime('%Y%m%d:%H:%M:%S', localtime()), EXECNAME, self.host, self.user, '[%s]' % type, '-'])
 
-        for m in msg.splitlines():
-            if m.strip() == '': 
-                continue
-            if type == 'FATAL':
-                sys.stderr.write('%s%s\n' % (prefix, m))
-                if self.quiet:
-                    subprocess.call('echo "%s%s" >> %s' % (prefix, m, self.logfile), shell=True)
-            else:
-                if self.quiet:
-                    subprocess.call('echo "%s%s" >> %s' % (prefix, m, self.logfile), shell=True)
+        try:
+            for m in msg.splitlines():
+                if m.strip() == '': 
+                    continue
+                if type == 'FATAL':
+                    sys.stderr.write('%s%s\n' % (prefix, m))
+                    if self.quiet:
+                        subprocess.call('echo "%s%s" >> %s' % (prefix, m, self.logfile), shell=True)
                 else:
-                    sys.stdout.write('%s%s\n' % (prefix, m))
+                    if self.quiet:
+                        subprocess.call('echo "%s%s" >> %s' % (prefix, m, self.logfile), shell=True)
+                    else:
+                        sys.stdout.write('%s%s\n' % (prefix, m))
+        except:
+            pass
 
     #------------------------------------------------------------
     def Select(self, qry, db='template1', utility=True, port=5432):
