@@ -192,6 +192,7 @@ typedef struct pg_part_rule
 	char		   partIdStr[(NAMEDATALEN * 2)];
 	bool           isName;		 /* true if partid is name */
 	int            topRuleRank;	 /* rank of topRule */
+	char          *relname;
 } pg_part_rule;
 
 /* cache of function lookups for range partition selection */
@@ -9853,11 +9854,16 @@ selectHashPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  */
 static Oid
 selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
-				TupleDesc tupdesc, PartitionState *pstate, int *pSearch)
+				TupleDesc tupdesc, PartitionState *pstate, 
+				 int *pSearch,
+				 PartitionNode *pn_out)
 {
 	Oid relid = InvalidOid;
 	Partition *part = partnode->part;
 	PartitionNode *pn = NULL;
+
+	if (pn_out)
+		pn_out = NULL;
 
 	/* what kind of partition? */
 	switch (part->parkind)
@@ -9881,16 +9887,31 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 	}
 
 	if (pn)
-		return selectPartition1(pn, values, isnull, tupdesc, pstate, pSearch);
+	{
+		if (pn_out)
+		{
+			pn_out = pn;
+			return relid;
+		}
+		return selectPartition1(pn, values, isnull, tupdesc, pstate, 
+								pSearch, pn_out);
+	}
 	else
 	{
 		/* retry a default */
 		if (partnode->default_part && !OidIsValid(relid))
 		{
 			if (partnode->default_part->children)
+			{
+				if (pn_out)
+				{
+					pn_out = partnode->default_part->children;
+					return relid;
+				}
 				return selectPartition1(partnode->default_part->children,
 										values, isnull, tupdesc, pstate,
-										pSearch);
+										pSearch, pn_out);
+			}
 			else
 				return partnode->default_part->parchildrelid;
 		}
@@ -9903,8 +9924,10 @@ Oid
 selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
 				TupleDesc tupdesc, PartitionState *pstate)
 {
-	return selectPartition1(partnode, values, isnull, tupdesc, pstate, NULL);
+	return selectPartition1(partnode, values, isnull, tupdesc, pstate, 
+							NULL, NULL);
 }
+
 /*
  * get_part_rule
  *
@@ -9919,25 +9942,29 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  * 
  */
 static pg_part_rule*
-get_part_rule(Relation rel, AlterPartitionId *pid, 
+get_part_rule1(Relation rel, AlterPartitionId *pid, 
 			  bool bExistError, bool bMustExist, 
-			  MemoryContext mcxt, int *pSearch)
+			  MemoryContext mcxt, int *pSearch,
+			   PartitionNode 		*pNode,
+			   char *relname,
+			   PartitionNode 		**ppNode
+			   )
 {
 	char		   namBuf[NAMEDATALEN]; /* the real partition name */
 
 	/* a textual representation of the partition id (for error msgs) */
 	char		   partIdStr[(NAMEDATALEN * 2)];
 
-	pg_part_rule  *prule = NULL;
-	PartitionNode *pNode = NULL;
-	Oid partrelid = InvalidOid;
-	int idrank = 0; /* only set for range partitions by rank */
+	pg_part_rule  		*prule 	   = NULL;
+
+	Oid 			 	 partrelid = InvalidOid;
+	int 			 	 idrank    = 0;	/* only set for range partns by rank */
 
 	if (!pid)
 		ereport(ERROR,
 				(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				 errmsg("No partition id specified for relation \"%s\"",
-                    RelationGetRelationName(rel))));
+				 errmsg("No partition id specified for %s",
+						relname)));
 
 	namBuf[0] = 0;
 
@@ -9945,8 +9972,8 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 	 * partition name, value, or rank.  
 	 *
 	 * Later on, if we discover
-	 *   the partition exists and 
-	 *   it has a name 
+	 *   (the partition exists) and 
+	 *   (it has a name) 
 	 * then we update the partIdStr to the name
 	 */
 	switch (pid->idtype)
@@ -9985,17 +10012,16 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			snprintf(partIdStr, sizeof(partIdStr), " for oid %u",
 					 *((Oid *)(pid->partiddef)));
 			break;
-	}
+		default: /* XXX XXX */
+			Assert(false);
 
-	pNode = RelationBuildPartitionDesc(rel); 
+	}
 
 	if (bExistError && !pNode)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("relation \"%s\" is not partitioned",
-						RelationGetRelationName(rel))));
-
-	/* XXX XXX fix later */
+				 errmsg("%s is not partitioned",
+						relname)));
 
 	/* if id is a value or rank, get the relid of the partition if
 	 * it exists */
@@ -10010,7 +10036,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 										   pid->partiddef, &isnull);
 
 			partrelid = selectPartition1(pNode, d, isnull, tupledesc, NULL,
-										 pSearch);
+										 pSearch, (ppNode ? *ppNode : NULL));
 
 			/* build a string rep for the value */
 			{
@@ -10053,8 +10079,8 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 						 errmsg("cannot find partition by RANK -- "
-								"relation \"%s\" is %s partitioned",
-								RelationGetRelationName(rel),
+								"%s is %s partitioned",
+								relname,
 								parTypName)));
 
 			}
@@ -10104,6 +10130,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				prule->pNode = pNode;
 				prule->topRule = rule;
 				prule->topRuleRank = rulerank; /* 1-based */
+				prule->relname = relname;
 				break;
 			}
 			rulerank++;
@@ -10145,6 +10172,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				prule->pNode = pNode;
 				prule->topRule = rule;
 				prule->topRuleRank = 0; /* 1-based -- 0 means no rank */
+				prule->relname = relname;
 			}
 		}
 	} /* end if pnode */
@@ -10177,10 +10205,13 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			case AT_AP_ID_oid:				/* IDentifier by oid */
 				ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition%s of relation \"%s\" does not exist",
+					 errmsg("partition%s of %s does not exist",
 							partIdStr,
-							RelationGetRelationName(rel))));
+							relname)));
 				break;
+			default: /* XXX XXX */
+				Assert(false);
+
 		}
 	}
 	else if (!bMustExist && prule)
@@ -10197,10 +10228,13 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 			case AT_AP_ID_oid:				/* IDentifier by oid */
 				ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition%s of relation \"%s\" already exists",
+					 errmsg("partition%s of %s already exists",
 							partIdStr,
-							RelationGetRelationName(rel))));
+							relname)));
 				break;
+			default: /* XXX XXX */
+				Assert(false);
+
 		}
 
 	}
@@ -10208,7 +10242,122 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
  L_fin_partrule:
 
 	return prule;
-}
+} /* end get_part_rule1 */
+
+static pg_part_rule*
+get_part_rule(Relation rel, AlterPartitionId *pid, 
+			  bool bExistError, bool bMustExist, 
+			  MemoryContext mcxt, int *pSearch)
+{
+	PartitionNode 		*pNode 	= NULL;
+	PartitionNode 		*pNode2 = NULL;
+	char 				 relnamBuf[(NAMEDATALEN * 2)];
+
+	snprintf(relnamBuf, sizeof(relnamBuf), "relation \"%s\"", 
+			 RelationGetRelationName(rel));
+
+	pNode = RelationBuildPartitionDesc(rel);
+
+	if (pid && ((pid->idtype != AT_AP_IDList) 
+				&& (pid->idtype != AT_AP_IDRule)))
+		return get_part_rule1(rel,
+							  pid,
+							  bExistError, bMustExist,
+							  mcxt, pSearch, pNode, relnamBuf, NULL);
+
+	if (!pid)
+		return NULL;
+
+	if (pid->idtype == AT_AP_IDRule) 
+	{
+		List *l1 = (List *)pid->partiddef;
+		ListCell *lc;			
+		AlterPartitionId *pid2 = NULL;
+		pg_part_rule* prule2 = NULL;
+		StringInfoData      sid1, sid2;
+	
+		initStringInfo(&sid1);
+		initStringInfo(&sid2);
+
+		lc = list_head(l1);
+		prule2 = (pg_part_rule*) lfirst(lc);
+		if (prule2 && prule2->topRule && prule2->topRule->children)
+				pNode = prule2->topRule->children;
+
+		truncateStringInfo(&sid1, 0);
+		appendStringInfo(&sid1, "%s", prule2->relname);
+
+		lc = lnext(lc);
+
+		{
+
+			pid2 = (AlterPartitionId *)lfirst(lc);
+
+			prule2 = get_part_rule1(rel,
+									pid2,
+									bExistError, bMustExist,
+									mcxt, pSearch, pNode, sid1.data, &pNode2);
+
+			pNode = pNode2;
+
+			if (!pNode)
+			{
+				if (prule2 && prule2->topRule && prule2->topRule->children)
+						pNode = prule2->topRule->children;
+			}
+
+			appendStringInfo(&sid2, "partition%s of %s", 
+							 prule2->partIdStr, sid1.data);
+			truncateStringInfo(&sid1, 0);
+			appendStringInfo(&sid1, "%s", sid2.data);
+			truncateStringInfo(&sid2, 0);
+		} 
+
+		return prule2;
+	}
+
+	if (pid->idtype == AT_AP_IDList) 
+	{
+		List *l1 = (List *)pid->partiddef;
+		ListCell *lc;			
+		AlterPartitionId *pid2 = NULL;
+		pg_part_rule* prule2 = NULL;
+		StringInfoData      sid1, sid2;
+	
+		initStringInfo(&sid1);
+		initStringInfo(&sid2);
+		appendStringInfo(&sid1, relnamBuf);
+
+		foreach(lc, l1)
+		{
+
+			pid2 = (AlterPartitionId *)lfirst(lc);
+
+			prule2 = get_part_rule1(rel,
+									pid2,
+									bExistError, bMustExist,
+									mcxt, pSearch, pNode, sid1.data, &pNode2);
+
+			pNode = pNode2;
+
+			if (!pNode)
+			{
+				if (prule2 && prule2->topRule && prule2->topRule->children)
+						pNode = prule2->topRule->children;
+			}
+
+			appendStringInfo(&sid2, "partition%s of %s", 
+							 prule2->partIdStr, sid1.data);
+			truncateStringInfo(&sid1, 0);
+			appendStringInfo(&sid1, "%s", sid2.data);
+			truncateStringInfo(&sid2, 0);
+		} /* end foreach */
+
+		return prule2;
+	}
+	return NULL;
+} /* end get_part_rule */
+
 
 /*
  * ALTER TABLE ... ADD PARTITION 
@@ -10387,8 +10536,6 @@ atpxPart_validate_spec(
 	List	   			*inheritOids;
 	List	   			*old_constraints;
 	int					 parentOidCount;
-
-	MemSet(spec, 0, sizeof(PartitionSpec));
 
 	/* get the table column defs */
 	schema = 
@@ -11427,24 +11574,75 @@ static void
 ATPExecPartAlter(Relation rel,
                  AlterPartitionCmd *pc)
 {
-	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	pg_part_rule   *prule = NULL;
+	AlterPartitionId 	*pid   	= (AlterPartitionId *)pc->partid;
+	AlterTableCmd 		*atc   	= (AlterTableCmd *)pc->arg1;
+	pg_part_rule   		*prule 	= NULL;
+	List 				*pidlst = NIL;
+	AlterPartitionId 	*pid2 = makeNode(AlterPartitionId);
+	AlterPartitionCmd *pc2 = NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
-
-	if (prule)
+	while (1)
 	{
+		pidlst = lappend(pidlst, pid);
+
+		if (atc->subtype != AT_PartAlter)
+			break;
+		pc2 = (AlterPartitionCmd *)atc->def;
+		pid = (AlterPartitionId *)pc2->partid;
+		atc = (AlterTableCmd *)pc2->arg1;
 	}
 
-    ereport(ERROR,
-            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-             errmsg("cannot ALTER PARTITION for relation \"%s\"",
-                    RelationGetRelationName(rel))));
+	switch(atc->subtype)
+	{
+			/* no ADD, EXCHANGE yet... */
+		case AT_PartCoalesce:			/* Coalesce */
+		case AT_PartDrop:				/* Drop */
+		case AT_PartMerge:				/* Merge */
+		case AT_PartModify:				/* Modify */
+		case AT_PartRename:				/* Rename */
+		case AT_PartSetTemplate:		/* Set Subpartition Template */
+		case AT_PartSplit:				/* Split */
+		case AT_PartTruncate:			/* Truncate */
+				break;
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot ALTER PARTITION for relation \"%s\"",
+							RelationGetRelationName(rel))));
+	}
 
-}
+	pid2->idtype = AT_AP_IDList;
+	pid2->partiddef = (Node *)pidlst;
+	pid2->location  = -1;
+
+	prule = get_part_rule(rel, pid2, true, true, CurrentMemoryContext, NULL);
+
+	if (!prule)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("cannot ALTER PARTITION for relation \"%s\"",
+						RelationGetRelationName(rel))));
+
+
+	{
+		pc2 = (AlterPartitionCmd *) atc->def;
+		pid = (AlterPartitionId *)pc2->partid;
+
+		pid2->idtype = AT_AP_IDRule;
+		pid2->partiddef = (Node *)list_make2((Node *)prule, pid);
+		pid2->location  = -1;
+
+		pc2->partid = (Node *)pid2;
+
+		/* execute the command */
+		ATExecCmd(NULL, rel, atc);
+	}
+} /* end ATPExecPartAlter */
+
+
 /* ALTER TABLE ... COALESCE PARTITION */
 static void 
 ATPExecPartCoalesce(Relation rel,
@@ -11637,6 +11835,8 @@ ATPExecPartDrop(Relation rel,
 							RelationGetRelationName(rel))));
 
 				break;
+			default: /* XXX XXX */
+				Assert(false);
 		}
 		return;
 	}
@@ -12027,6 +12227,14 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 
 		if (!prule)
 			return;
+
+		if (prule && prule->topRule && prule->topRule->children)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("cannot EXCHANGE PARTITION for "
+							"relation \"%s\" -- partition has children",
+							RelationGetRelationName(rel))));
+
 
 		orig_pid = pid;
 		orig_prule = prule;

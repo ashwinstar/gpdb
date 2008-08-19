@@ -20,7 +20,7 @@
 
 #include "cdb/cdbcat.h"
 
-typedef struct PartitionNode PartitionNode;
+typedef struct PartitionNode PartitionNode; /* see relation.h */
 
 /* Possible sources of a Query */
 typedef enum QuerySource
@@ -1068,7 +1068,9 @@ typedef enum AlterPartitionIdType
 	AT_AP_IDName,				/* IDentify by Name */
 	AT_AP_IDValue,				/* IDentifier FOR Value */
 	AT_AP_IDRank,				/* IDentifier FOR Rank */
-	AT_AP_ID_oid				/* IDentifier by oid (for internal use only) */
+	AT_AP_ID_oid,				/* IDentifier by oid (for internal use only) */
+	AT_AP_IDList,				/* List of IDentifier(for internal use only) */
+	AT_AP_IDRule				/* partition rule (for internal use only) */
 } AlterPartitionIdType;
 
 typedef struct AlterPartitionId /* Identify a partition by name, val, pos */
