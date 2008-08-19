@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-Usage: gp_migrator [options] old-gphome new-gphome
+Usage: gpmigrator [options] old-gphome new-gphome
 
 Options:
   -h, --help            show this help message and exit
