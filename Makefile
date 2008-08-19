@@ -40,7 +40,7 @@ DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3"
 DISTPATH=$(GPROOT)/$(GPDIR)
 DEVPATH=$(HOME)/$(GPDIR)
 
-CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT) --with-includes=$(BLD_THIRDPARTY_INCLUDE_DIR) --with-libraries=$(BLD_THIRDPARTY_LIB_DIR)
+CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT)
 
 ifeq (true, ${PG_LANG})
 CONFIGFLAGS+= --with-perl --with-python
@@ -52,9 +52,16 @@ CONFIGFLAGS+= --with-r
 endif
 endif
 
+CONFIG_INCLUDES=$(BLD_THIRDPARTY_INCLUDE_DIR)
+CONFIG_LIBRARIES=$(BLD_THIRDPARTY_LIB_DIR)
+
 ifeq (true, ${AUTH})
-CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap --with-libraries="$(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib $(BLD_THIRDPARTY_LIB_DIR)" --with-includes="$(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include $(BLD_THIRDPARTY_INCLUDE_DIR) "
+CONFIGFLAGS+= --with-openssl --with-pam --with-krb5 --with-ldap
+CONFIG_INCLUDES+= $(CURDIR)/curl/include $(CURDIR)/openldap/include $(CURDIR)/openssl/include $(CURDIR)/krb5/include
+CONFIG_LIBRARIES+= $(CURDIR)/curl/lib $(CURDIR)/openldap/lib $(CURDIR)/openssl/lib $(CURDIR)/krb5/lib
 endif
+
+CONFIGFLAGS+= --with-includes="$(CONFIG_INCLUDES)" --with-libraries="$(CONFIG_LIBRARIES)"
 
 .PHONY : RECONFIG GPROOTDEP HOMEDEP clean distclean distprep version greenplum_path
 
