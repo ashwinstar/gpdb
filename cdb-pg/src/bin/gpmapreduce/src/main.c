@@ -46,7 +46,7 @@ void usage(char *procname, boolean full)
 		printf("\nUsage:\n  ");
 	}
 
-	printf("%s [options] -f file.yml\n", procname);
+	printf("%s [options] -f file.yml [dbname [username]]\n", procname);
 
 	if (full)
 	{
@@ -83,7 +83,8 @@ int main (int argc, char *argv[])
 	int                needpass = 0;
 	char              *filename = NULL;
 	char              *username = NULL;
-	char              *host     = NULL;
+	char              *database = NULL;
+	char              *hostname = NULL;
 	char              *port     = NULL;
 	mapred_olist_t    *documents;
 	mapred_olist_t    *doc_item;
@@ -158,7 +159,7 @@ int main (int argc, char *argv[])
 				break;
      
 			case 'h':  /* --host */
-				host = optarg;
+				hostname = optarg;
 				break;
      
 			case 'p':  /* --port */
@@ -223,11 +224,28 @@ int main (int argc, char *argv[])
 		usage(procname, false);
 		exit(1);
 	}
+
 	file = fopen(filename, "rb");
 	if (!file) 
 	{
 		fprintf(stderr, "Error: Could not open file '%s'\n", filename);
 		exit(1);
+	}
+
+	/*
+	 * Handle additional arguments as would psql:
+	 *   - First argument is database
+	 *   - Second argument is username, if not specified via -U
+	 *   - All other arguments generate warnings
+	 */
+	if (optind < argc && !database)
+		database = argv[optind++];
+	if (optind < argc && !username)
+		username = argv[optind++];
+	while (optind < argc)
+	{
+		fprintf(stderr, "%s: warning: extra command-line argument \"%s\" ignored\n",
+				procname, argv[optind++]);
 	}
 
 	if (global_verbose_flag)
@@ -268,7 +286,7 @@ int main (int argc, char *argv[])
 		PGconn   *conn = NULL;
 		char      pwdbuf[100];
 		char      portbuf[11];  /* max int size should be 10 digits */
-		char     *pwd, *pqport, *options, *tty;
+		char     *user, *db, *host, *pwd, *pqport, *options, *tty;
 
 		XTRY
 		{
@@ -287,6 +305,18 @@ int main (int argc, char *argv[])
 			{
 				pqport = NULL;
 			}
+			if (database)
+				db = database;
+			else
+				db = doc->database;
+			if (username)
+				user = username;
+			else
+				user = doc->user;
+			if (hostname)
+				host = hostname;
+			else
+				host = doc->host;
 
 			options = NULL;
 			tty     = NULL;
@@ -298,8 +328,7 @@ int main (int argc, char *argv[])
 					read_password(pwdbuf, sizeof(pwdbuf));
 					pwd = pwdbuf;
 				}
-				conn = PQsetdbLogin(doc->host, pqport, options,tty, 
-									doc->database, doc->user, pwd);
+				conn = PQsetdbLogin(host, pqport, options, tty, db, user, pwd);
 				if (PQstatus(conn) == CONNECTION_BAD &&
 					!strcmp(PQerrorMessage(conn), PQnoPasswordSupplied))
 				{

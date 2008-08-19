@@ -10,10 +10,9 @@ else
 INCDIR= include
 SRCDIR= src
 endif
-LIBDIR= lib
 
-override CPPFLAGS := -DFRONTEND -I$(SRCDIR) -I$(INCDIR) -I$(libpq_srcdir) $(CPPFLAGS)
-override LDFLAGS += -lyaml
+override CPPFLAGS += -DFRONTEND -I$(SRCDIR) -I$(INCDIR) -I$(libpq_srcdir)
+override LDFLAGS  += -lyaml
 
 FILES     = main.o mapred.o parse.o yaml_scan.o yaml_parse.o 
 GENFILES  = yaml_parse.h yaml_parse.c yaml_scan.c yaml_scan.h
@@ -31,9 +30,6 @@ gpmapreduce: $(OBJS) $(libpq_builddir)/libpq.a
 
 check:
 	$(MAKE) -C test
-
-$(LIBDIR):
-	mkdir $(LIBDIR)
 
 $(srcdir)/yaml_scan.c: yaml_scan.l
 ifdef FLEX
