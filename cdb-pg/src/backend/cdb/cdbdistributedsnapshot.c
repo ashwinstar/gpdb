@@ -63,7 +63,7 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 		 * performance, too.
 		 */
 		if (distribXid == InvalidDistributedTransactionId)
-			return DISTRIBUTEDSNAPSHOT_COMMITTED_LOCAL;
+			return DISTRIBUTEDSNAPSHOT_COMMITTED_IGNORE;
 
 		// Fall below and evaluate the committed distributed transaction against
 		// the distributed snapshot.
@@ -102,7 +102,7 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 				 * weeded out.
 				 */
 				if (checkDistribTimeStamp != header->distribTransactionTimeStamp)
-					return DISTRIBUTEDSNAPSHOT_COMMITTED_DIFFERENTSTART;
+					return DISTRIBUTEDSNAPSHOT_COMMITTED_IGNORE;
 			}
 			else
 			{
@@ -116,7 +116,7 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 												dslm->header.distribTransactionTimeStamp,
 												/* distribXid */ InvalidDistributedTransactionId);
 				
-				return DISTRIBUTEDSNAPSHOT_COMMITTED_LOCAL;
+				return DISTRIBUTEDSNAPSHOT_COMMITTED_IGNORE;
 			}
 		}
 	}
@@ -134,6 +134,18 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 										localXid, 
 										dslm->header.distribTransactionTimeStamp,
 										distribXid);
+
+	if (header->xminAllDistributedSnapshots != InvalidDistributedTransactionId)
+	{
+		/*
+		 * If this distributed transaction is older than all the distributed
+		 * snapshots, then we can ignore it from now on.
+		 */
+		Assert(header->xmin >= header->xminAllDistributedSnapshots);
+		
+		if (distribXid < dslm->header.xminAllDistributedSnapshots)
+			return DISTRIBUTEDSNAPSHOT_COMMITTED_IGNORE;
+	}
 
 	/* Any xid < xmin is not in-progress */
 	if (distribXid < header->xmin)
@@ -173,7 +185,8 @@ DistributedSnapshot_Reset(DistributedSnapshot *distributedSnapshot)
 {
 	DistributedSnapshotHeader *header = &distributedSnapshot->header;
 	
-	header->distribTransactionTimeStamp = 0;		
+	header->distribTransactionTimeStamp = 0;
+	header->xminAllDistributedSnapshots = InvalidDistributedTransactionId;		
 	header->distribSnapshotId = 0;		
 	header->xmin = InvalidDistributedTransactionId;		
 	header->xmax = InvalidDistributedTransactionId;		
@@ -235,6 +248,7 @@ DistributedSnapshot_Copy(
 	}
 
 	target->header.distribTransactionTimeStamp = source->header.distribTransactionTimeStamp;
+	target->header.xminAllDistributedSnapshots = source->header.xminAllDistributedSnapshots;
 	target->header.distribSnapshotId = source->header.distribSnapshotId;
 
 	target->header.xmin = source->header.xmin;
@@ -259,11 +273,8 @@ DistributedSnapshotCommittedToString(
 	case DISTRIBUTEDSNAPSHOT_COMMITTED_VISIBLE:
 		return "Visible";
 
-	case DISTRIBUTEDSNAPSHOT_COMMITTED_LOCAL:
-		return "Local";
-
-	case DISTRIBUTEDSNAPSHOT_COMMITTED_DIFFERENTSTART:
-		return "Different Start";
+	case DISTRIBUTEDSNAPSHOT_COMMITTED_IGNORE:
+		return "Ignore";
 
 	default:
 		return "Unknown";

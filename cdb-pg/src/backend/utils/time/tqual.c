@@ -86,7 +86,10 @@ TransactionId RecentXmin = InvalidTransactionId;
 TransactionId RecentGlobalXmin = InvalidTransactionId;
 
 /* local functions */
-static bool XidInSnapshot(TransactionId xid, Snapshot snapshot);
+static bool XidInSnapshot(
+	TransactionId xid, Snapshot snapshot, 
+    bool distributedSnapshotIgnore, bool *setDistributedSnapshotIgnore);
+static bool XidInSnapshot_Local(TransactionId xid, Snapshot snapshot);
 
 /* MPP Addition. Distributed Snapshot that gets sent in from the QD to processes
  * running in EXECUTE mode.
@@ -1258,6 +1261,8 @@ HeapTupleSatisfiesSnapshot(HeapTupleHeader tuple, Snapshot snapshot,
 						   Buffer buffer)
 {
 	const bool disableTupleHints = gp_disable_tuple_hints;
+	bool inSnapshot = false;
+	bool setDistributedSnapshotIgnore = false;
 
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
@@ -1352,7 +1357,18 @@ HeapTupleSatisfiesSnapshot(HeapTupleHeader tuple, Snapshot snapshot,
 	 * By here, the inserting transaction has committed - have to check
 	 * when...
 	 */
-	if (XidInSnapshot(HeapTupleHeaderGetXmin(tuple), snapshot))
+	inSnapshot = XidInSnapshot(
+					HeapTupleHeaderGetXmin(tuple), 
+					snapshot,
+					((tuple->t_infomask2 & HEAP_XMIN_DISTRIBUTED_SNAPSHOT_IGNORE) != 0), 
+					&setDistributedSnapshotIgnore);
+	if (setDistributedSnapshotIgnore)
+	{
+		tuple->t_infomask2 |= HEAP_XMIN_DISTRIBUTED_SNAPSHOT_IGNORE;
+		markDirty(buffer, disableTupleHints);
+	}
+
+	if (inSnapshot)
 		return false;			/* treat as still in progress */
 
 	if (tuple->t_infomask & HEAP_XMAX_INVALID)	/* xid invalid or aborted */
@@ -1397,7 +1413,18 @@ HeapTupleSatisfiesSnapshot(HeapTupleHeader tuple, Snapshot snapshot,
 	/*
 	 * OK, the deleting transaction committed too ... but when?
 	 */
-	if (XidInSnapshot(HeapTupleHeaderGetXmax(tuple), snapshot))
+	inSnapshot = XidInSnapshot(
+					HeapTupleHeaderGetXmax(tuple), 
+					snapshot,
+					((tuple->t_infomask2 & HEAP_XMAX_DISTRIBUTED_SNAPSHOT_IGNORE) != 0), 
+					&setDistributedSnapshotIgnore);
+	if (setDistributedSnapshotIgnore)
+	{
+		tuple->t_infomask2 |= HEAP_XMAX_DISTRIBUTED_SNAPSHOT_IGNORE;
+		markDirty(buffer, disableTupleHints);
+	}
+
+	if (inSnapshot)
 		return true;			/* treat as still in progress */
 
 	return false;
@@ -1860,17 +1887,16 @@ mpp_global_xid_map(PG_FUNCTION_ARGS)
 
 /*
  * XidInSnapshot
- *		Is the given XID still-in-progress according to the snapshot?
- *
- * Note: GetSnapshotData never stores either top xid or subxids of our own
- * backend into a snapshot, so these xids will not be reported as "running"
- * by this function.  This is OK for current uses, because we actually only
- * apply this for known-committed XIDs.
+ *		Is the given XID still-in-progress according to the distributed
+ *      and local snapshots?
  */
 static bool
-XidInSnapshot(TransactionId xid, Snapshot snapshot)
+XidInSnapshot(
+	TransactionId xid, Snapshot snapshot, 
+    bool distributedSnapshotIgnore, bool *setDistributedSnapshotIgnore)
 {
-	uint32		i;
+	Assert (setDistributedSnapshotIgnore != NULL);
+	*setDistributedSnapshotIgnore = false;
 
 	/*
 	 * If we have a distributed snapshot, it takes precedence over the local
@@ -1878,7 +1904,7 @@ XidInSnapshot(TransactionId xid, Snapshot snapshot)
 	 * transactions and also the correct future view of in-progress distributed
 	 * transactions that may yet arrive.
 	 */
-	if (snapshot->haveDistribSnapshot)
+	if (snapshot->haveDistribSnapshot && !distributedSnapshotIgnore)
 	{
 		DistributedSnapshotCommitted	distributedSnapshotCommitted;
 		
@@ -1900,8 +1926,12 @@ XidInSnapshot(TransactionId xid, Snapshot snapshot)
 		case DISTRIBUTEDSNAPSHOT_COMMITTED_VISIBLE:
 			return false;
 
-		case DISTRIBUTEDSNAPSHOT_COMMITTED_LOCAL:
-		case DISTRIBUTEDSNAPSHOT_COMMITTED_DIFFERENTSTART:
+		case DISTRIBUTEDSNAPSHOT_COMMITTED_IGNORE:
+			/*
+			 * We can safely skip both of these in the future for distributed
+			 * snapshots.
+			 */
+			*setDistributedSnapshotIgnore = true;
 			break;
 		
 		default:
@@ -1910,6 +1940,23 @@ XidInSnapshot(TransactionId xid, Snapshot snapshot)
 			break;
 		}
 	}
+
+	return XidInSnapshot_Local(xid, snapshot);
+}
+
+/*
+ * XidInSnapshot_Local
+ *		Is the given XID still-in-progress according to the local snapshot?
+ *
+ * Note: GetSnapshotData never stores either top xid or subxids of our own
+ * backend into a snapshot, so these xids will not be reported as "running"
+ * by this function.  This is OK for current uses, because we actually only
+ * apply this for known-committed XIDs.
+ */
+static bool
+XidInSnapshot_Local(TransactionId xid, Snapshot snapshot)
+{
+	uint32		i;
 				
 	/*
 	 * Make a quick range check to eliminate most XIDs without looking at the

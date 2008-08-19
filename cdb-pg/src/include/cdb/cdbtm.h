@@ -169,6 +169,7 @@ typedef struct TmControlBlock
 	int							SegmentCount;
 	int							SegmentsStatesByteLen;
 	uint32						NextSnapshotId;
+	DistributedTransactionId	xminAllDistributedSnapshots;
 	int							num_active_xacts;
 	int							currentPhase1Count;
 									/* Current count of how many DTX 

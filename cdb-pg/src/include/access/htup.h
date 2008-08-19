@@ -187,7 +187,16 @@ typedef HeapTupleHeaderData *HeapTupleHeader;
  * information stored in t_infomask2:
  */
 #define HEAP_NATTS_MASK			0x7FF	/* 11 bits for number of attributes */
-/* bits 0xF800 are currently unused */
+
+#define HEAP_XMIN_DISTRIBUTED_SNAPSHOT_IGNORE		0x0800	
+										/* t_xmin is either an old committed 
+										 * distributed transaction or local.
+										 * They can be ignored for distributed
+										 * snapshots.
+										 */
+#define HEAP_XMAX_DISTRIBUTED_SNAPSHOT_IGNORE		0x1000
+										/* t_xmax same as above. */
+/* bits 0xE000 are currently unused */
 
 /*
  * HeapTupleHeader accessor macros

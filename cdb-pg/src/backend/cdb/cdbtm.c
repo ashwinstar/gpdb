@@ -56,6 +56,7 @@ static int	ControlLockCount = 0;
 int 		*shmSegmentCount;
 int 		*shmSegmentStatesByteLen;
 
+DistributedTransactionId *shmXminAllDistributedSnapshots;
 uint32 					 *shmNextSnapshotId;
 
 bool 		*shmDtmStarted;
@@ -1278,6 +1279,7 @@ tmShmemInit(void)
 	shmDtmStarted = &shared->DtmStarted;
 	shmSegmentCount = &shared->SegmentCount;
 	shmSegmentStatesByteLen = &shared->SegmentsStatesByteLen;
+	shmXminAllDistributedSnapshots = &shared->xminAllDistributedSnapshots;
 	shmNextSnapshotId = &shared->NextSnapshotId;
 	shmNumGxacts = &shared->num_active_xacts;
 	shmCurrentPhase1Count = &shared->currentPhase1Count;
@@ -2032,6 +2034,7 @@ createDtxSnapshot(
 	DistributedTransactionId	xmax;
 	DistributedTransactionId	inProgressXid;
 	DistributedSnapshotId		distribSnapshotId;
+	DistributedTransactionId	xminAllDistributedSnapshots;
 
 	DistributedSnapshotMapEntry 	*inProgressEntryArray;
 	
@@ -2138,6 +2141,8 @@ createDtxSnapshot(
 	
 	distribSnapshotId = (*shmNextSnapshotId)++;
 
+	xminAllDistributedSnapshots = *shmXminAllDistributedSnapshots;
+
 	releaseTmLock();
 
 	/*
@@ -2155,6 +2160,7 @@ createDtxSnapshot(
 	 * the distributed snapshot.
 	 */
 	distribSnapshotWithLocalMapping->header.distribTransactionTimeStamp = *shmDistribTimeStamp;
+	distribSnapshotWithLocalMapping->header.xminAllDistributedSnapshots = xminAllDistributedSnapshots;
 	distribSnapshotWithLocalMapping->header.distribSnapshotId = distribSnapshotId;
 	distribSnapshotWithLocalMapping->header.xmin = xmin;
 	distribSnapshotWithLocalMapping->header.xmax = xmax;
@@ -2271,17 +2277,45 @@ releaseGxact_UnderLocks(void)
 	/* find slot of current transaction */
 
 	/*
-	 * When we see the current one, we note its index.
+	 * To maintain shmXminAllDistributedSnapshots we need to re-calculate,
+	 * so we must scan the whole array for that purpose.  When we see
+	 * the current one, we note its index and exclude it from the xmin
+	 * calculation.
 	 */
 	curr = *shmNumGxacts;	// A bad value we can safely test.
+	*shmXminAllDistributedSnapshots = InvalidDistributedTransactionId;
 	for (i = 0; i < *shmNumGxacts; i++)
 	{
 		if (shmGxactArray[i] == currentGxact)
 		{
 			curr = i;
-			break;
+		}
+		else
+		{
+			DistributedTransactionId xminDistributedSnapshot = shmGxactArray[i]->xminDistributedSnapshot;
+
+			if (xminDistributedSnapshot != InvalidDistributedTransactionId)
+			{
+				/*
+				 * Check for minimum.
+				 */
+				if (*shmXminAllDistributedSnapshots == InvalidDistributedTransactionId)
+				{
+					/*
+					 * Always set first one other than current being released.
+					 */
+					*shmXminAllDistributedSnapshots = xminDistributedSnapshot;
+				}
+				else if (xminDistributedSnapshot < *shmXminAllDistributedSnapshots)
+				{
+					*shmXminAllDistributedSnapshots = xminDistributedSnapshot;
+				}
+			}
 		}
 	}
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),"releaseGxact re-calculated all distributed snapshots xmin = %u for %d global transactions.",
+		 *shmXminAllDistributedSnapshots, *shmNumGxacts-1);
 
 	/* move this to the next available slot */
 	(*shmNumGxacts)--;

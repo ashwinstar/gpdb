@@ -24,7 +24,8 @@ DtxContextInfo_CopyDistributedSnapshot(
 {
 	int i;
 
-	ds->header.distribTransactionTimeStamp = dslm->header.distribTransactionTimeStamp;		
+	ds->header.distribTransactionTimeStamp = dslm->header.distribTransactionTimeStamp;	
+	ds->header.xminAllDistributedSnapshots = dslm->header.xminAllDistributedSnapshots;		
 	ds->header.distribSnapshotId = dslm->header.distribSnapshotId;		
 	ds->header.xmin = dslm->header.xmin;		
 	ds->header.xmax = dslm->header.xmax;		
@@ -119,8 +120,9 @@ DtxContextInfo_CreateOnMaster(
 		 	getDistributedTransactionId());
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
 			 "DtxContextInfo_CreateOnMaster distributedXid = %u, "
-		     "distributedSnapshotHeader (xmin = %u, xmax = %u, count = %d, maxCount %d)",
-			 dtxContextInfo->distributedXid, 
+		     "distributedSnapshotHeader (xminAllDistributedSnapshots %u, xmin = %u, xmax = %u, count = %d, maxCount %d)",
+			 dtxContextInfo->distributedXid,
+			 ds->header.xminAllDistributedSnapshots,
 			 ds->header.xmin, 
 			 ds->header.xmax,
 			 ds->header.count,
@@ -151,6 +153,7 @@ DistributedHeader_SerializeSize(
 	DistributedSnapshotHeader 	*dsh)
 {
 	return sizeof(DistributedTransactionTimeStamp) +	// distributedTransactionTimeStamp
+		   sizeof(DistributedTransactionId) +			// xminAllDistributedSnapshots
 		   sizeof(DistributedSnapshotId) +				// distributedSnapshotId
 	       2 * sizeof(DistributedTransactionId) +		// xmin, xmax
 	       2 * sizeof(int32);							// count, maxCount
@@ -220,6 +223,8 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 	{
 		memcpy(p, &ds->header.distribTransactionTimeStamp, sizeof(DistributedTransactionTimeStamp)); 
 			p += sizeof(DistributedTransactionTimeStamp);
+		memcpy(p, &ds->header.xminAllDistributedSnapshots, sizeof(DistributedTransactionId)); 
+			p += sizeof(DistributedTransactionId);
 		memcpy(p, &ds->header.distribSnapshotId, sizeof(DistributedSnapshotId)); 
 			p += sizeof(DistributedSnapshotId);
 		memcpy(p, &ds->header.xmin,sizeof(DistributedTransactionId)); 
@@ -250,7 +255,8 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 		if (dtxContextInfo->haveDistributedSnapshot)
 		{
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),
-			    "distributedSnapshotHeader (xmin = %u, xmax = %u, count = %d, maxCount = %d)",
+			    "distributedSnapshotHeader (xminAllDistributedSnapshots %u, xmin = %u, xmax = %u, count = %d, maxCount = %d)",
+			    ds->header.xminAllDistributedSnapshots,
 				ds->header.xmin, 
 				ds->header.xmax,
 				ds->header.count,
@@ -324,9 +330,10 @@ DtxContextInfo_Copy(
 
 	if (target->haveDistributedSnapshot)
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
-			 "distributed snapshot header {timestamp %u, snapshot id %d, "
+			 "distributed snapshot header {timestamp %u, xminAllDistributedSnapshots %u, snapshot id %d, "
 			 "xmin %u, count %d, xmax %u}",
 			 target->distributedSnapshot.header.distribTransactionTimeStamp,
+			 target->distributedSnapshot.header.xminAllDistributedSnapshots,
 			 target->distributedSnapshot.header.distribSnapshotId,
 			 target->distributedSnapshot.header.xmin,
 			 target->distributedSnapshot.header.count,
@@ -376,6 +383,8 @@ DtxContextInfo_Deserialize(
 		{
 			memcpy(&ds->header.distribTransactionTimeStamp,p,sizeof(DistributedTransactionTimeStamp)); 	
 				p+=sizeof(DistributedTransactionTimeStamp);	
+			memcpy(&ds->header.xminAllDistributedSnapshots, p, sizeof(DistributedTransactionId)); 
+				p += sizeof(DistributedTransactionId);
 			memcpy(&ds->header.distribSnapshotId,p,sizeof(DistributedSnapshotId)); 	
 				p+=sizeof(DistributedSnapshotId);	
 			memcpy(&ds->header.xmin,p,sizeof(DistributedTransactionId)); 	p+=sizeof(DistributedTransactionId);		
@@ -451,7 +460,8 @@ DtxContextInfo_Deserialize(
 			if (dtxContextInfo->haveDistributedSnapshot)
 			{
 				elog((Debug_print_full_dtm ? LOG : DEBUG5),
-				     "distributedSnapshotHeader (xmin = %u, xmax = %u, count = %d, maxCount = %d)",
+				     "distributedSnapshotHeader (xminAllDistributedSnapshots %u, xmin = %u, xmax = %u, count = %d, maxCount = %d)",
+				     ds->header.xminAllDistributedSnapshots,
 					 ds->header.xmin, 
 					 ds->header.xmax,
 					 ds->header.count,

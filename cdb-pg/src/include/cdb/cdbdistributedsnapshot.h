@@ -32,6 +32,12 @@ typedef struct DistributedSnapshotHeader
 										 * all of the distributed transactions
 										 * in this snapshot.
 										 */
+
+	DistributedTransactionId		xminAllDistributedSnapshots;
+										/*
+										 * The lowest distributed transaction
+										 * being used for distributed snapshots.
+										 */
 	
 	DistributedSnapshotId			distribSnapshotId;
 										/* 
@@ -93,8 +99,7 @@ typedef enum
 	DISTRIBUTEDSNAPSHOT_COMMITTED_NONE = 0,		
 	DISTRIBUTEDSNAPSHOT_COMMITTED_INPROGRESS,
 	DISTRIBUTEDSNAPSHOT_COMMITTED_VISIBLE,
-	DISTRIBUTEDSNAPSHOT_COMMITTED_LOCAL,
-	DISTRIBUTEDSNAPSHOT_COMMITTED_DIFFERENTSTART
+	DISTRIBUTEDSNAPSHOT_COMMITTED_IGNORE
 	
 } DistributedSnapshotCommitted;
 
