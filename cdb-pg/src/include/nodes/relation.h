@@ -1236,4 +1236,17 @@ typedef struct PartitionRule
 	struct PartitionNode *children; /* sub partition */
 } PartitionRule;
 
+typedef struct PgPartRule
+{
+	NodeTag type;
+	PartitionNode 		*pNode;	
+	PartitionRule 		*topRule;	/* the rule for the specified partition */
+
+	/* a textual representation of the partition id (for error msgs) */
+	char		*partIdStr;
+	bool         isName;		/* true if partid is name */
+	int          topRuleRank;	/* rank of topRule */
+	char        *relname; 		/* the error msg formatted "relname" */
+} PgPartRule;
+
 #endif   /* RELATION_H */

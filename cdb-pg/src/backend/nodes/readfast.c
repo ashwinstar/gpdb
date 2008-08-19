@@ -1827,6 +1827,21 @@ _readPartitionNode(const char **str)
 	READ_DONE();
 }
 
+static PgPartRule *
+_readPgPartRule(const char **str)
+{
+	READ_LOCALS(PgPartRule);
+
+	READ_NODE_FIELD(pNode);
+	READ_NODE_FIELD(topRule);
+	READ_STRING_FIELD(partIdStr);
+	READ_BOOL_FIELD(isName);
+	READ_INT_FIELD(topRuleRank);
+	READ_STRING_FIELD(relname);
+
+	READ_DONE();
+}
+
 static ExtTableTypeDesc *
 _readExtTableTypeDesc(const char ** str)
 {
@@ -3514,6 +3529,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_PartitionNode:
 				return_value = _readPartitionNode(str);
+				break;
+			case T_PgPartRule:
+				return_value = _readPgPartRule(str);
 				break;
 			case T_PartitionRule:
 				return_value = _readPartitionRule(str);

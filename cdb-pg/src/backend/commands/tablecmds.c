@@ -183,18 +183,6 @@ typedef struct NewColumnValue
 	ExprState  *exprstate;		/* execution state */
 } NewColumnValue;
 
-typedef struct pg_part_rule
-{
-	PartitionNode *pNode;	
-	PartitionRule *topRule;	/* the rule for the specified partition */
-
-	/* a textual representation of the partition id (for error msgs) */
-	char		   partIdStr[(NAMEDATALEN * 2)];
-	bool           isName;		 /* true if partid is name */
-	int            topRuleRank;	 /* rank of topRule */
-	char          *relname;
-} pg_part_rule;
-
 /* cache of function lookups for range partition selection */
 typedef struct PartitionRangeState
 {
@@ -321,7 +309,7 @@ static char *
 ChoosePartitionName(const char *tablename, int partDepth,
 					const char *partname, Oid namespace);
 
-static pg_part_rule *get_part_rule(Relation rel, AlterPartitionId *pid,
+static PgPartRule *get_part_rule(Relation rel, AlterPartitionId *pid,
 								   bool bExistError, bool bMustExist, 
 								   MemoryContext mcxt,
 								   int *pSearch);
@@ -3140,7 +3128,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartExchange:			/* Exchange */
 		{
 			AlterPartitionCmd  *pc    = (AlterPartitionCmd *) cmd->def;
-			pg_part_rule   	   *prule = NULL;
+			PgPartRule   	   *prule = NULL;
 			Relation			oldrel = NULL;
 			Relation			newrel = NULL;
 			int					i;
@@ -9934,14 +9922,14 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  * find PartitionNode and the PartitionRule for a partition if it
  * exists.
  *
- * If bExistError is not set, just return the pg_part_rule.
+ * If bExistError is not set, just return the PgPartRule.
  * If bExistError is set, return an error message based upon
  * bMustExist.  That is, if the table does not exist and
  * bMustExist=true then return an error.  Conversely, if the table
  * *does* exist and bMustExist=false then return an error.
  * 
  */
-static pg_part_rule*
+static PgPartRule*
 get_part_rule1(Relation rel, AlterPartitionId *pid, 
 			  bool bExistError, bool bMustExist, 
 			  MemoryContext mcxt, int *pSearch,
@@ -9955,7 +9943,7 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 	/* a textual representation of the partition id (for error msgs) */
 	char		   partIdStr[(NAMEDATALEN * 2)];
 
-	pg_part_rule  		*prule 	   = NULL;
+	PgPartRule  		*prule 	   = NULL;
 
 	Oid 			 	 partrelid = InvalidOid;
 	int 			 	 idrank    = 0;	/* only set for range partns by rank */
@@ -10125,7 +10113,7 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 
 			if (foundit)
 			{
-				prule = (pg_part_rule *) palloc0(sizeof(pg_part_rule));
+				prule = makeNode(PgPartRule);
 
 				prule->pNode = pNode;
 				prule->topRule = rule;
@@ -10167,7 +10155,7 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 
 			if (foundit)
 			{
-				prule = (pg_part_rule *) palloc0(sizeof(pg_part_rule));
+				prule = makeNode(PgPartRule);
 
 				prule->pNode = pNode;
 				prule->topRule = rule;
@@ -10184,7 +10172,7 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 	 */
 	if (prule)
 	{
-		StrNCpy(prule->partIdStr, partIdStr, sizeof(partIdStr));
+		prule->partIdStr = pstrdup(partIdStr);
 		prule->isName = (strlen(namBuf) > 0);
 	}
 
@@ -10244,17 +10232,20 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 	return prule;
 } /* end get_part_rule1 */
 
-static pg_part_rule*
+static PgPartRule*
 get_part_rule(Relation rel, AlterPartitionId *pid, 
 			  bool bExistError, bool bMustExist, 
 			  MemoryContext mcxt, int *pSearch)
 {
 	PartitionNode 		*pNode 	= NULL;
 	PartitionNode 		*pNode2 = NULL;
-	char 				 relnamBuf[(NAMEDATALEN * 2)];
+	char 				relnamBuf[(NAMEDATALEN * 2)];
+	char *relname;
 
 	snprintf(relnamBuf, sizeof(relnamBuf), "relation \"%s\"", 
 			 RelationGetRelationName(rel));
+
+	relname = pstrdup(relnamBuf);
 
 	pNode = RelationBuildPartitionDesc(rel);
 
@@ -10263,7 +10254,7 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 		return get_part_rule1(rel,
 							  pid,
 							  bExistError, bMustExist,
-							  mcxt, pSearch, pNode, relnamBuf, NULL);
+							  mcxt, pSearch, pNode, relname, NULL);
 
 	if (!pid)
 		return NULL;
@@ -10273,14 +10264,14 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 		List *l1 = (List *)pid->partiddef;
 		ListCell *lc;			
 		AlterPartitionId *pid2 = NULL;
-		pg_part_rule* prule2 = NULL;
+		PgPartRule* prule2 = NULL;
 		StringInfoData      sid1, sid2;
 	
 		initStringInfo(&sid1);
 		initStringInfo(&sid2);
 
 		lc = list_head(l1);
-		prule2 = (pg_part_rule*) lfirst(lc);
+		prule2 = (PgPartRule*) lfirst(lc);
 		if (prule2 && prule2->topRule && prule2->topRule->children)
 				pNode = prule2->topRule->children;
 
@@ -10318,11 +10309,11 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 
 	if (pid->idtype == AT_AP_IDList) 
 	{
-		List *l1 = (List *)pid->partiddef;
-		ListCell *lc;			
-		AlterPartitionId *pid2 = NULL;
-		pg_part_rule* prule2 = NULL;
-		StringInfoData      sid1, sid2;
+		List 					*l1 	= (List *)pid->partiddef;
+		ListCell 				*lc;			
+		AlterPartitionId 		*pid2 	= NULL;
+		PgPartRule* 			 prule2 = NULL;
+		StringInfoData      	 sid1, sid2;
 	
 		initStringInfo(&sid1);
 		initStringInfo(&sid2);
@@ -10370,7 +10361,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
                AlterPartitionCmd *pc)
 {
 	AlterPartitionId 	*pid 		= (AlterPartitionId *)pc->partid;
-	pg_part_rule   		*prule 		= NULL;
+	PgPartRule   		*prule 		= NULL;
 	PartitionNode  		*pNode 		= NULL;
 	char           		*parTypName = NULL;
 	char			 	 namBuf[NAMEDATALEN];
@@ -10649,7 +10640,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 		if (PARTTYP_RANGE == part_type) 
 		{
 			PartitionBoundSpec *pbs = NULL;
-			pg_part_rule   	*prule = NULL;
+			PgPartRule   	*prule = NULL;
 			AlterPartitionId 	 pid;
 
 			MemSet(&pid, 0, sizeof(AlterPartitionId));
@@ -11373,7 +11364,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 			foreach(lc, spec->partValues)
 			{
 				List			*vals  = lfirst(lc);
-				pg_part_rule   	*prule = NULL;
+				PgPartRule   	*prule = NULL;
 
 				pid.idtype = AT_AP_IDValue;
 				pid.partiddef = (Node *)vals;
@@ -11541,7 +11532,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 	if (bOpenGap) /* might need a gap to insert the new partition */
 	{
 		AlterPartitionId 	 pid;
-		pg_part_rule   	*prule = NULL;
+		PgPartRule   	*prule = NULL;
 
 		pid.idtype = AT_AP_IDRank;
 		pid.partiddef = (Node *)makeInteger(-1);
@@ -11576,7 +11567,7 @@ ATPExecPartAlter(Relation rel,
 {
 	AlterPartitionId 	*pid   	= (AlterPartitionId *)pc->partid;
 	AlterTableCmd 		*atc   	= (AlterTableCmd *)pc->arg1;
-	pg_part_rule   		*prule 	= NULL;
+	PgPartRule   		*prule 	= NULL;
 	List 				*pidlst = NIL;
 	AlterPartitionId 	*pid2 = makeNode(AlterPartitionId);
 	AlterPartitionCmd *pc2 = NULL;
@@ -11649,7 +11640,7 @@ ATPExecPartCoalesce(Relation rel,
                     AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	pg_part_rule   *prule = NULL;
+	PgPartRule   *prule = NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -11767,7 +11758,7 @@ ATPExecPartDrop(Relation rel,
                 AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	pg_part_rule   *prule = NULL;
+	PgPartRule   *prule = NULL;
 	DropStmt *ds = (DropStmt *)pc->arg1;
 	bool bCheckMaybe = !(ds->missing_ok);
 
@@ -11887,12 +11878,20 @@ ATPExecPartDrop(Relation rel,
 		RemoveRelation(relation, DROP_CASCADE);
 
 		/* Notify of name if did not use name for partition id spec */
-		if ((pid->idtype != AT_AP_IDName)
-			&& prule->isName)
+		if (prule && prule->topRule && prule->topRule->children 
+			&& (ds->behavior != DROP_CASCADE ))
+		{
 			ereport(NOTICE,
-					(errmsg("dropped partition%s for relation \"%s\"",
+					(errmsg("dropped partition%s for %s and its children",
 							prule->partIdStr,
-							RelationGetRelationName(rel))));
+							prule->relname)));
+		}
+		else if ((pid->idtype != AT_AP_IDName)
+				 && prule->isName)
+				ereport(NOTICE,
+						(errmsg("dropped partition%s for %s",
+								prule->partIdStr,
+								prule->relname)));
 	}
 
 } /* end ATPExecPartDrop */
@@ -12210,7 +12209,7 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 	Oid					 newrelid 	= InvalidOid;
 	Partition 			*part 		= NULL;
 	AlterPartitionId   	*orig_pid 	= NULL;	/* save for NOTICE msg at end... */
-	pg_part_rule   	    *orig_prule = NULL;
+	PgPartRule   	    *orig_prule = NULL;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
@@ -12218,7 +12217,7 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
 		AlterPartitionId   *pid   = (AlterPartitionId *)pc->partid;
-		pg_part_rule   	   *prule = NULL;
+		PgPartRule   	   *prule = NULL;
 		RangeVar       	   *newrelrv  = (RangeVar *)pc->arg1;
 		RangeVar		   *oldrelrv;
 
@@ -12350,7 +12349,7 @@ ATPExecPartMerge(Relation rel,
                  AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	pg_part_rule   *prule = NULL;
+	PgPartRule   *prule = NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -12372,7 +12371,7 @@ ATPExecPartMerge(Relation rel,
 static bool
 atpxModifyListOverlap (Relation rel,
 					   AlterPartitionId *pid,
-					   pg_part_rule   	*prule,
+					   PgPartRule   	*prule,
 					   PartitionElem 	*pelem,
 					   bool bAdd)
 {
@@ -12421,7 +12420,7 @@ atpxModifyListOverlap (Relation rel,
 		foreach(lc, pVSpec->partValues)
 		{
 			List			*vals  = lfirst(lc);
-			pg_part_rule   	*prule2 = NULL;
+			PgPartRule   	*prule2 = NULL;
 				
 			pid2.idtype = AT_AP_IDValue;
 			pid2.partiddef = (Node *)vals;
@@ -12497,10 +12496,10 @@ atpxModifyListOverlap (Relation rel,
 static bool
 atpxModifyRangeOverlap (Relation 		 		 rel,
 						AlterPartitionId 		*pid,
-						pg_part_rule   			*prule,
+						PgPartRule   			*prule,
 						PartitionElem 			*pelem)
 {
-	pg_part_rule   		*prule2 	 = NULL;
+	PgPartRule   		*prule2 	 = NULL;
 	AlterPartitionId 	 pid2;
 	PartitionNode 		*pNode 		 = prule->pNode;
 	bool 				 bCheckStart = true;
@@ -12928,7 +12927,7 @@ ATPExecPartModify(Relation rel,
                   AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	pg_part_rule   *prule = NULL;
+	PgPartRule   *prule = NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -13042,7 +13041,7 @@ ATPExecPartRename(Relation rel,
                   AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	pg_part_rule   *prule = NULL;
+	PgPartRule   *prule = NULL;
 	char		    realrelname[NAMEDATALEN];
 
 	if (Gp_role != GP_ROLE_DISPATCH)
@@ -13053,7 +13052,7 @@ ATPExecPartRename(Relation rel,
 	if (prule)
 	{
 		AlterPartitionId		newpid;
-		pg_part_rule   		   *prule2 = NULL;
+		PgPartRule   		   *prule2 = NULL;
 		Relation			 	targetrelation;
 		char        		 	targetrelname[NAMEDATALEN];
 		Relation			 	parentrelation;
@@ -13100,7 +13099,7 @@ ATPExecPartRename(Relation rel,
 				/* XXX XXX XXX does this work ???? */
 
 			AlterPartitionId parent_pid;
-			pg_part_rule   *prule3 = NULL;
+			PgPartRule   *prule3 = NULL;
 			parent_pid.idtype = AT_AP_ID_oid;
 			parent_pid.partiddef = (Node *)&(prule->topRule->parparentoid);
 			parent_pid.location = -1;
@@ -13176,7 +13175,7 @@ ATPExecPartSetTemplate(Relation rel,
                        AlterPartitionCmd *pc)
 {
 /*	AlterPartitionId *pid = (AlterPartitionId *)pc->partid; 
-	pg_part_rule   *prule = NULL;
+	PgPartRule   *prule = NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -13203,7 +13202,7 @@ ATPExecPartSplit(Relation rel,
                  AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	pg_part_rule   *prule = NULL;
+	PgPartRule   *prule = NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -13319,8 +13318,7 @@ ATPExecPartTruncate(Relation rel,
                     AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	pg_part_rule   *prule = NULL;
-	char		    realrelname[NAMEDATALEN];
+	PgPartRule   *prule = NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -13340,8 +13338,6 @@ ATPExecPartTruncate(Relation rel,
 
 		rv->location = pc->location;
 
-		StrNCpy(realrelname, RelationGetRelationName(rel), NAMEDATALEN);
-
 		if (prule->topRule->children)
 		{
 			List *l1 = atpxTruncateList(rel2, prule->topRule->children);
@@ -13358,12 +13354,20 @@ ATPExecPartTruncate(Relation rel,
 				NULL, dest, NULL);		
 
 		/* Notify of name if did not use name for partition id spec */
-		if ((pid->idtype != AT_AP_IDName)
-			&& prule->isName)
+		if (prule && prule->topRule && prule->topRule->children 
+			&& (ts->behavior != DROP_CASCADE ))
+		{
 			ereport(NOTICE,
-					(errmsg("truncated partition%s for relation \"%s\"",
+					(errmsg("truncated partition%s for %s and its children",
 							prule->partIdStr,
-							realrelname)));
+							prule->relname)));
+		}
+		else if ((pid->idtype != AT_AP_IDName)
+				 && prule->isName)
+				ereport(NOTICE,
+						(errmsg("truncated partition%s for %s",
+								prule->partIdStr,
+								prule->relname)));
 	}
 
 } /* end ATPExecPartTruncate */

@@ -1917,6 +1917,21 @@ _readPartitionNode(const char **str)
 	READ_DONE();
 }
 
+static PgPartRule *
+_readPgPartRule(const char **str)
+{
+	READ_LOCALS(PgPartRule);
+
+	READ_NODE_FIELD(pNode);
+	READ_NODE_FIELD(topRule);
+	READ_STRING_FIELD(partIdStr);
+	READ_BOOL_FIELD(isName);
+	READ_INT_FIELD(topRuleRank);
+	READ_STRING_FIELD(relname);
+
+	READ_DONE();
+}
+
 static ExtTableTypeDesc *
 _readExtTableTypeDesc(void)
 {
@@ -3262,6 +3277,7 @@ static ParseNodeInfo infoAr[] =
 	{"PARAM", (ReadFn)_readParam},
 	{"PARTITION", (ReadFn)_readPartition},
 	{"PARTITIONNODE", (ReadFn)_readPartitionNode},
+	{"PGPARTRULE", (ReadFn)_readPgPartRule},
 	{"PARTITIONRULE", (ReadFn)_readPartitionRule},
 	{"PLAN", (ReadFn)_readPlan},
 	{"PRIVGRANTEE", (ReadFn)_readPrivGrantee},

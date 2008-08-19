@@ -2245,6 +2245,19 @@ _outPartitionNode(StringInfo str, PartitionNode *node)
 	WRITE_NODE_FIELD(part);
 	WRITE_NODE_FIELD(rules);
 }
+
+static void
+_outPgPartRule(StringInfo str, PgPartRule *node)
+{
+	WRITE_NODE_TYPE("PGPARTRULE");
+
+	WRITE_NODE_FIELD(pNode);
+	WRITE_NODE_FIELD(topRule);
+	WRITE_STRING_FIELD(partIdStr);
+	WRITE_BOOL_FIELD(isName);
+	WRITE_INT_FIELD(topRuleRank);
+	WRITE_STRING_FIELD(relname);
+}
 	
 static void
 _outDefineStmt(StringInfo str, DefineStmt *node)
@@ -3542,6 +3555,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_PartitionNode:
 				_outPartitionNode(str, obj);
+				break;
+			case T_PgPartRule:
+				_outPgPartRule(str, obj);
 				break;
 			case T_PartitionValuesSpec:
 				_outPartitionValuesSpec(str, obj);
