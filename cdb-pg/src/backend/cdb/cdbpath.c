@@ -37,11 +37,10 @@ extern "C" {
 #undef small                    /*  but I want it for a variable name */
 #endif
 
-
 /* Globals */
-Cost        cdbpath_motion_cost_per_row = 0.0;
-int         cdbpath_segments = 1;
-
+int         cdbpath_segments = 1; /* subquery_planner() updates this
+								   * based on getgpsegmentCount() and
+								   * gp_segments_for_planner */
 
 /*
  * cdbpath_cost_motion
@@ -786,7 +785,7 @@ cdbpath_motion_for_join(PlannerInfo    *root,
 
         /* Replicate single rel if cheaper than redistributing both rels. */
         else if (single->ok_to_replicate &&
-                 single->bytes * getgpsegmentCount() < single->bytes + other->bytes)
+                 single->bytes * cdbpath_segments < single->bytes + other->bytes)
             CdbPathLocus_MakeReplicated(&single->move_to);
 
         /* Redistribute both rels on equijoin cols. */

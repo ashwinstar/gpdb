@@ -15,7 +15,6 @@
 #include "cdb/cdbvars.h"        /* getgpsegmentCount, gp_opt_segments, etc */
 
 /* Globals */
-extern Cost     cdbpath_motion_cost_per_row;
 extern int      cdbpath_segments;
 
 void
