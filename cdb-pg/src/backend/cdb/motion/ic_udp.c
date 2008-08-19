@@ -1249,7 +1249,7 @@ SetupUDPInterconnect(EState *estate)
 	 */
 	while (outgoing_count < expectedTotalOutgoing)
 	{
-		int		index, timeout;
+		int		timeout;
         int		timeout_ms = 20*60*1000;
 		struct pollfd nfd;
 
@@ -1262,13 +1262,9 @@ SetupUDPInterconnect(EState *estate)
 		/* loop over outbound connections sending registration messages as needed */
 		n = sendingChunkTransportState ? sendingChunkTransportState->numConns : 0;
 
-		index = Max(0, Gp_segment); /* entry-db has -1. */
-		for (i = 0; i < n; i++, index++)
+		for (i = 0; i < n; i++)
 		{                       /* loop to set up outgoing connections */
-			if (index >= n)
-				index = 0;
-
-			conn = &sendingChunkTransportState->conns[index];
+			conn = &sendingChunkTransportState->conns[i];
 
 			if (conn->state == mcsStarted)
 				continue;
@@ -2464,7 +2460,7 @@ SendEosUDP(MotionLayerState *mlStates,
 {
 	ChunkTransportStateEntry *pEntry = NULL;
 	MotionConn *conn;
-	int			i, index;
+	int			i;
 	bool		stopRace=false;
 
 	Insist(transportStates && (transportStates->activated || transportStates->teardownActive));
@@ -2487,13 +2483,9 @@ SendEosUDP(MotionLayerState *mlStates,
 	doBroadcast(mlStates, transportStates, pEntry, tcItem);
 
 	/* now flush all of the buffers. */
-	index = Max(0, Gp_segment); /* entry-db has -1. */
-	for (i = 0; i < pEntry->numConns; i++, index++)
+	for (i = 0; i < pEntry->numConns; i++)
 	{
-		if (index >= pEntry->numConns)
-			index = 0;
-
-		conn = pEntry->conns + index;
+		conn = pEntry->conns + i;
 
 #ifdef AMS_VERBOSE_LOGGING
 		elog(LOG, "SendEosUDP: %d, flags %d %s %s %d",
