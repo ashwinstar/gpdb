@@ -10297,11 +10297,12 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 						pNode = prule2->topRule->children;
 			}
 
-			appendStringInfo(&sid2, "partition%s of %s", 
+/*			appendStringInfo(&sid2, "partition%s of %s", 
 							 prule2->partIdStr, sid1.data);
 			truncateStringInfo(&sid1, 0);
 			appendStringInfo(&sid1, "%s", sid2.data);
 			truncateStringInfo(&sid2, 0);
+*/
 		} 
 
 		return prule2;
