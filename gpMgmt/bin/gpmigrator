@@ -4,15 +4,16 @@ Usage: gp_migrator [options] old-gphome new-gphome
 
 Options:
   -h, --help            show this help message and exit
-  --version             show the program's version number and exit
+  -v, --version         show the program's version number and exit
+  -q                    quiet mode
   -d DIRECTORY          the master host data directory
   -l DIRECTORY          log file directory
-  -R                    revert to pre-upgrade state (if available)
 '''
 
 #============================================================
 import sys, os, optparse, tempfile, re, types, subprocess, traceback
 from datetime import date
+from time import localtime, strftime
 import urllib    # for passing strings across gpssh
 
 EXECNAME = sys.argv[0][sys.argv[0].rfind('/')+1:]
@@ -32,6 +33,23 @@ def pretty_version(v):
     if m: return str(2 + (float(m.group(1))/100))
     else: return str(v)
 __version__ = pretty_version('$Revision: #4 $')
+
+#============================================================
+def cli_help():
+    help_path = os.path.join(sys.path[0], '..', 'docs', 'cli_help', EXECNAME + '_help');
+    f = None
+    try:
+        try:
+            f = open(help_path);
+            return f.read(-1)
+        except:
+            return ''
+    finally:
+        if f: f.close()
+
+#============================================================
+def usage():
+    print cli_help() or __doc__
 
 #============================================================
 class ConnectionError(StandardError): pass
@@ -87,6 +105,7 @@ class GPUpgrade:
 
     # Upgrade information and state
         self.debug      = False
+        self.quiet      = False
         self.oldversion = None
         self.newversion = None
         self.root       = None     # directory: masterdir/..
@@ -111,8 +130,6 @@ class GPUpgrade:
         self.user      = self.RunCmd('id -un')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
-        logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
-        self.logfile = os.path.join(logdir, '%s_%s.log' % (os.path.split(__file__)[-1], date.today().strftime('%Y%m%d')))
 
         self.ParseInput()
 
@@ -149,13 +166,19 @@ class GPUpgrade:
         '''
 
         try:
-
-            parser = optparse.OptionParser(
-                '%prog [options] old-gphome new-gphome')
+            parser = optparse.OptionParser(usage=(cli_help() or __doc__), add_help_option=False)
             parser.add_option('-v', '--version', action='store_true',
-                              help="show the program's version number and exit")
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('-h', '--help', action='store_true',
+                              help=optparse.SUPPRESS_HELP)
             parser.add_option('-d', dest='directory', 
-                              help='the master host data directory')
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('-l', dest='logdir',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('-q', dest='quiet', action='store_true',
+                              help=optparse.SUPPRESS_HELP)
+            parser.add_option('-R', dest='revert',
+                              help=optparse.SUPPRESS_HELP)
             parser.add_option('--debug', action='store_true',
                               help=optparse.SUPPRESS_HELP)
             parser.add_option('--internal-command', dest='command',
@@ -174,11 +197,20 @@ class GPUpgrade:
                 print EXECNAME + ' ' + __version__
                 sys.exit(0)
 
+            if options.help:
+                usage()
+                sys.exit(0)
+
             if len(args) != 2:
+                usage()
                 parser.error("incorrect number of arguments: %s" % str(args))
 
         except Exception, e:
+            usage()
             raise UpgradeError('Error parsing input: ' + str(e))
+
+        if options.revert:
+            raise UpgradeError('Option -R to revert to pre-upgrade state is not available in this version')
 
         if options.directory:
             self.masterdir = options.directory
@@ -200,7 +232,16 @@ class GPUpgrade:
             self.option2  = urllib.unquote(options.option2)
         if options.debug:
             self.debug = True
-        
+        if options.quiet:
+            self.quiet = True
+        logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
+        if options.logdir and os.path.isdir(options.logdir):
+            logdir = options.logdir
+        self.logfile = os.path.join(logdir, '%s_%s.log' % (EXECNAME, date.today().strftime('%Y%m%d')))
+        if not os.path.exists(self.logfile):
+            subprocess.call('touch %s' % self.logfile, shell=True)
+
+
         if self.cmd == 'MASTER':
             self.pid = os.getpid()
             if self.masterdir == None:
@@ -230,12 +271,12 @@ class GPUpgrade:
                     olddir = self.oldenv['MASTER_DATA_DIRECTORY']
                     if olddir and os.path.exists('%s/postmaster.pid' % olddir):        
                         self.Log('INFO', 'Shutting down old Greenplum postmaster')
-                        subprocess.call('gpstop -a -m', env=self.oldenv, shell=True)
+                        subprocess.call('gpstop -a -m >> %s 2>&1' % self.logfile, env=self.oldenv, shell=True)
                 if (self.newenv and 'MASTER_DATA_DIRECTORY' in self.newenv):
                     newdir = self.newenv['MASTER_DATA_DIRECTORY']
                     if newdir and os.path.exists('%s/postmaster.pid' % newdir):
                         self.Log('INFO', 'Shutting down new Greenplum postmaster')
-                        subprocess.call('gpstop -a', env=self.newenv, shell=True)
+                        subprocess.call('gpstop -a >> %s 2>&1' % self.logfile, env=self.newenv, shell=True)
         except Exception, e:
             self.Log('FATAL', 'Cleanup failure: ' + str(e))
 
@@ -268,7 +309,7 @@ class GPUpgrade:
         '''
 
         if self.debug and not supressDebug: 
-            print "CMD: " + cmd
+            self.Log('DEBUG', "CMD: " + cmd)
 
         # If utility mode has been specified add role to env
         if utility:
@@ -329,7 +370,7 @@ class GPUpgrade:
             raise UpgradeError('Fatal Segment Error')
         
         if self.debug: 
-            print '[GPSSH] ' + result
+            self.Log('DEBUG', '[GPSSH] %s' % result)
 
     #------------------------------------------------------------
     def CheckDirectories(self):
@@ -383,23 +424,27 @@ class GPUpgrade:
     #------------------------------------------------------------
     def Log(self, type, msg):
 
-        if type not in ['NONE', 'INFO', 'WARN', 'FATAL']:
-            self.Log('WARN', 'Odd log type: ' + str(type))
+        if type not in ['NONE', 'INFO', 'WARN', 'FATAL', 'DEBUG']:
+            print '[WARN] Odd log type: %s' % str(type)
         
         if type == 'NONE':
             prefix = ''
         else:
-            time = self.RunCmd('date +%Y%m%d:%H:%M:%S', supressDebug=True)
             prefix = ':'.join(
-                [time, EXECNAME, self.host, self.user, '[%s]' % type, '-'])
+                [strftime('%Y%m%d:%H:%M:%S', localtime()), EXECNAME, self.host, self.user, '[%s]' % type, '-'])
 
         for m in msg.splitlines():
             if m.strip() == '': 
                 continue
             if type == 'FATAL':
                 sys.stderr.write('%s%s\n' % (prefix, m))
+                if self.quiet:
+                    subprocess.call('echo "%s%s" >> %s' % (prefix, m, self.logfile), shell=True)
             else:
-                sys.stdout.write('%s%s\n' % (prefix, m))
+                if self.quiet:
+                    subprocess.call('echo "%s%s" >> %s' % (prefix, m, self.logfile), shell=True)
+                else:
+                    sys.stdout.write('%s%s\n' % (prefix, m))
 
     #------------------------------------------------------------
     def Select(self, qry, db='template1', utility=True, port=5432):
@@ -497,9 +542,9 @@ class GPUpgrade:
         else:
             self.Log('INFO', 'Starting new Greenplum postmaster')
         if utility:
-            subprocess.call('gpstart -a -m', env=env, shell=True)
+            subprocess.call('gpstart -a -m >> %s 2>&1' % self.logfile, env=env, shell=True)
         else:
-            subprocess.call('gpstart -a', env=env, shell=True)
+            subprocess.call('gpstart -a >> %s 2>&1' % self.logfile, env=env, shell=True)
         self.CheckUp();
 
     #------------------------------------------------------------
@@ -512,9 +557,9 @@ class GPUpgrade:
         else:
             self.Log('INFO', 'Shutting down new Greenplum postmaster')
         if utility:
-            subprocess.call('gpstop -a -m', env=env, shell=True)
+            subprocess.call('gpstop -a -m >> %s 2>&1' % self.logfile, env=env, shell=True)
         else:
-            subprocess.call('gpstop -a', env=env, shell=True)
+            subprocess.call('gpstop -a >> %s 2>&1' % self.logfile, env=env, shell=True)
         self.CheckDown();
 
     #------------------------------------------------------------
@@ -1105,7 +1150,7 @@ Cannot downgrade a database with append only tables     <<<<<
         '''
         self.Log('INFO', 'Initializing upgraded cluster')
         self.CheckDown()
-        subprocess.call('gpinitsystem -a -c %s/gp_init_config' % self.tmpdir,
+        subprocess.call('gpinitsystem -a -c %s/gp_init_config >> %s 2>&1' % (self.tmpdir, self.logfile),
                         env=self.newenv, shell=True)
         self.Update('vacuum freeze', db='postgres', port=self.masterport)
         self.Update('vacuum freeze', db='template1', port=self.masterport)
@@ -1198,7 +1243,7 @@ Cannot downgrade a database with append only tables     <<<<<
             WHERE datname != 'template0'
             ''', port=self.masterport)
         for db in databases:
-            subprocess.call('psql -c "vacuum freeze" %s' % db,
+            subprocess.call('psql -c "vacuum freeze" %s >> %s 2>&1' % (db, self.logfile),
                             env=self.newenv, shell=True)
 
     #------------------------------------------------------------
