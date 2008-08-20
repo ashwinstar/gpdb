@@ -1876,3 +1876,13 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 	 p.parrelid = 'lineitem'::regclass order by 1;
 
 drop table lineitem;
+
+-- Make sure ADD creates dependencies
+create table i (i int) partition by range(i) (start (1) end(3) every(1));
+alter table i add partition foo2 start(40) end (50);
+drop table i;
+
+create table i (i int) partition by range(i) (start (1) end(3) every(1));
+alter table i add partition foo2 start(40) end (50);
+alter table i drop partition foo2;
+drop table i;

@@ -10620,6 +10620,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 	char 				 tmpname[NAMEDATALEN]; /* use if no name, then reset */
 	PartitionBy 		*pBy   	= makeNode(PartitionBy); 
 	CreateStmtContext    cxt;
+	List				*utils = (List *)pUtl;
+	ListCell			*lc;
 
 	MemSet(&cxt, 0, sizeof(cxt));
 
@@ -10628,10 +10630,9 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	Assert( (PARTTYP_LIST == part_type) || (PARTTYP_RANGE == part_type) );
 
-	Assert(IsA(pUtl, Query));
-	Assert(((Query *)pUtl)->commandType == CMD_UTILITY);
+	Assert(IsA(pUtl, List));
 	
-	ct = (CreateStmt *)((Query *)pUtl)->utilityStmt;
+	ct = (CreateStmt *)((Query *)linitial(utils))->utilityStmt;
 	Assert(IsA(ct, CreateStmt));
 
 	/* XXX XXX: handle case of missing boundary spec for range with EVERY */
@@ -11409,7 +11410,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 	}
 
 	/* create the partition */
-	
 	newpartname = 
 			ChoosePartitionName(
 					RelationGetRelationName(rel),
@@ -11421,9 +11421,20 @@ atpxPartAddList(AlteredTableInfo *tab,
 			get_namespace_name(RelationGetNamespace(rel)),
 			newpartname);
 
-	ProcessUtility(
-			(((Query *)pUtl)->utilityStmt),
-			NULL, dest, NULL);		
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		/* update child name for ALTER TABLE INHERITS */
+		AlterTableStmt *ats = 
+			(AlterTableStmt *)((Query *)lsecond(utils))->utilityStmt;
+
+		ats->relation = copyObject(ct->relation);
+	}
+
+	foreach(lc, utils)
+	{
+		Query *q = lfirst(lc);
+		ProcessUtility(q->utilityStmt, NULL, dest, NULL);
+	}
 
 	/* use the new oid from CREATE TABLE as the name if none was
 	 * specified (replace the temporary name).  This is a reasonable

@@ -9163,16 +9163,28 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 				AlterPartitionCmd 		*pc  = (AlterPartitionCmd *) cmd->def;
 				AlterPartitionCmd 		*pc2 = (AlterPartitionCmd *) pc->arg2;
 				AlterPartitionId  		*pid = (AlterPartitionId *)pc->partid;
-				CreateStmt 				*ct  = (CreateStmt *) pc2->arg2;
-				InhRelation 			*inh = makeNode(InhRelation);
-	
+				CreateStmt 				*ct;
+				InhRelation				*inh = makeNode(InhRelation);
+				Query					*q;
+				AlterTableCmd  			*atc = makeNode(AlterTableCmd);
+				AlterTableStmt 			*ats = makeNode(AlterTableStmt);
+				InheritPartitionCmd 	*ipc = makeNode(InheritPartitionCmd);
+				List					*cl = NIL;
+
+				Assert(IsA(pc2->arg2, List));
+				ct = (CreateStmt *)linitial((List *)pc2->arg2);
+
 				inh->relation = copyObject(stmt->relation);
 				inh->options = list_make2_int(
 						CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
 						CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
-				/* NOTE: 
+				/* 
+				 * NOTE: 
+				 *
 				 * CREATE_TABLE_LIKE_INCLUDING_INDEXES is not
 				 * implemented...  :-( 
+				 *
+				 * XXX: available in 8.3, gotta merge it.
 				 */
 
 				/* 
@@ -9181,11 +9193,30 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 				 * inherits from it 
 				 */
 				ct->tableElts = list_make1(inh);
-				ct->inhRelations = list_make1(copyObject(stmt->relation));
 
-				pc2->arg2 = (Node *)transformCreateStmt(pstate, ct,
-														extras_before, 
-														extras_after);
+				q = transformCreateStmt(pstate, ct, extras_before, 
+										extras_after);
+
+				cl = list_make1(q);
+
+				/* 
+				 * Add an alter table inherits() clause so that our new
+				 * partition inherits from its parent.
+				 */
+				atc->subtype = AT_AddInherit;
+				ipc->parent = copyObject(stmt->relation);
+
+				atc->def = (Node *)ipc; 
+				ats->relation = NULL; /* for now */
+				ats->cmds 	  = list_make1((Node *)atc);
+				ats->relkind  = OBJECT_TABLE;
+
+				q = transformAlterTableStmt(pstate, ats, extras_before,
+											extras_after);
+
+				cl = lappend(cl, q);
+
+				pc2->arg2 = (Node *)cl;
 
 				if (pid && (pid->idtype == AT_AP_IDValue))
 				{
