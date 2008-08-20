@@ -6153,24 +6153,15 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 	return head.data;
 }
 
-Datum
-pg_get_partition_rule_def(PG_FUNCTION_ARGS)
+static char *
+get_rule_def_common(Oid relid, int prettyFlags)
 {
-	Oid relid = PG_GETARG_OID(0);
-	bool pretty;
-	int prettyFlags;
 	Relation rel;
 	ScanKeyData key;
 	SysScanDesc scan;
 	HeapTuple tuple;
 	PartitionRule *rule;
 	Partition *part;
-
-	if (PG_ARGISNULL(1))
-		pretty = false;
-	else
-		pretty = PG_GETARG_BOOL(1);
-	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
 
 	/* lookup pg_partition_rule by parchildrelid */
 	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
@@ -6185,7 +6176,7 @@ pg_get_partition_rule_def(PG_FUNCTION_ARGS)
 
 	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
-		PG_RETURN_NULL();
+		return NULL;
 
 
 	rule = ruleMakePartitionRule(tuple, RelationGetDescr(rel), 
@@ -6206,7 +6197,7 @@ pg_get_partition_rule_def(PG_FUNCTION_ARGS)
 
 	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
-		PG_RETURN_NULL();
+		return NULL;
 
 	part = partMakePartition(tuple, RelationGetDescr(rel),
 							 CurrentMemoryContext);
@@ -6214,21 +6205,66 @@ pg_get_partition_rule_def(PG_FUNCTION_ARGS)
 	systable_endscan(scan);
 	heap_close(rel, AccessShareLock);
 
-	PG_RETURN_TEXT_P(string_to_text(partition_rule_def_worker(rule, part, prettyFlags)));
+	return partition_rule_def_worker(rule, part, prettyFlags);
+}
+
+Datum
+pg_get_partition_rule_def(PG_FUNCTION_ARGS)
+{
+	Oid relid = PG_GETARG_OID(0);
+	char *str;
+
+	str = get_rule_def_common(relid, 0);
+	if (!str)
+		PG_RETURN_NULL();
+	PG_RETURN_TEXT_P(string_to_text(str));
+}
+
+Datum
+pg_get_partition_rule_def_ext(PG_FUNCTION_ARGS)
+{
+	Oid relid = PG_GETARG_OID(0);
+	bool pretty = PG_GETARG_BOOL(1);
+	int prettyFlags;
+	char *str;
+
+	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
+
+	str = get_rule_def_common(relid, prettyFlags);
+	if (!str)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(string_to_text(str));
 }
 
 Datum
 pg_get_partition_def(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
-	bool		pretty;
+	char 	   *str;
+
+	str = pg_get_partition_def_worker(relid, 0);
+
+	if (!str)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(string_to_text(str));
+}
+
+Datum
+pg_get_partition_def_ext(PG_FUNCTION_ARGS)
+{
+	Oid			relid = PG_GETARG_OID(0);
+	bool		pretty = PG_GETARG_BOOL(1);
 	int			prettyFlags;
+	char	   *str;
 
-	if (PG_ARGISNULL(1))
-		pretty = false;
-	else
-		pretty = PG_GETARG_BOOL(1);
 	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
-	PG_RETURN_TEXT_P(string_to_text(pg_get_partition_def_worker(relid, prettyFlags)));
 
+	str = pg_get_partition_def_worker(relid, prettyFlags);
+	
+	if (!str)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(string_to_text(str));
 }
