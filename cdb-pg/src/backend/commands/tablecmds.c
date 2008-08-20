@@ -11629,7 +11629,7 @@ ATPExecPartAlter(Relation rel,
 		case AT_PartDrop:				/* Drop */
 		case AT_PartMerge:				/* Merge */
 		case AT_PartModify:				/* Modify */
-/*		case AT_PartRename:	 */			/* Rename */
+/*		case AT_PartRename:	*/ 			/* Rename */
 		case AT_PartSetTemplate:		/* Set Subpartition Template */
 		case AT_PartSplit:				/* Split */
 		case AT_PartTruncate:			/* Truncate */
@@ -11797,7 +11797,7 @@ ATPExecPartDrop(Relation rel,
 	PgPartRule   		*prule 		 = NULL;
 	DropStmt 			*ds 		 = (DropStmt *)pc->arg1;
 	bool 				 bCheckMaybe = !(ds->missing_ok);
-	AlterPartitionId 	*locPid 	 = pid; /* local pid if IDRule */
+	AlterPartitionId 	*locPid 	 = pid;  /* local pid if IDRule */
 	PgPartRule* 		 prule2 	 = NULL; /* prule for parent if IDRule */
 
 	if (Gp_role != GP_ROLE_DISPATCH)
@@ -11925,6 +11925,7 @@ ATPExecPartDrop(Relation rel,
 	{
 		char* prelname;
 		int   numParts = list_length(prule->pNode->rules);
+		DestReceiver 	*dest = None_Receiver;
 		Relation rel2;
 		RangeVar *relation;
 		char *namespace_name;
@@ -11973,11 +11974,27 @@ ATPExecPartDrop(Relation rel,
 
 		prelname = pstrdup(RelationGetRelationName(rel2));
 		namespace_name = get_namespace_name(rel2->rd_rel->relnamespace);
+
+		/* XXX XXX : don't need "relation" unless fix to use removerelation */
+		relation = makeRangeVar(namespace_name, prelname);
+		relation->location = pc->location;
+
 		heap_close(rel2, NoLock);
 
-		relation = makeRangeVar(namespace_name, prelname);
+		ds->removeType = OBJECT_TABLE;
 
-		RemoveRelation(relation, DROP_CASCADE);
+		if (prule->topRule->children)
+		{
+			List *l1 = atpxDropList(rel2, prule->topRule->children);
+
+			ds->objects = lappend(l1, list_make1(makeString(prelname)));
+		}
+		else
+			ds->objects = list_make1(list_make1(makeString(prelname)));
+
+		ProcessUtility(
+				(Node *) ds,
+				NULL, dest, NULL);		
 
 		/* Notify of name if did not use name for partition id spec */
 		if (prule && prule->topRule && prule->topRule->children 
