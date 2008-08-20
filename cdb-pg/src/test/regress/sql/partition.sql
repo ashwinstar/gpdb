@@ -1886,3 +1886,46 @@ create table i (i int) partition by range(i) (start (1) end(3) every(1));
 alter table i add partition foo2 start(40) end (50);
 alter table i drop partition foo2;
 drop table i;
+
+-- dumpability of partition info
+create table i5 (i int) partition by RANGE(i) (start(1) exclusive end(10)
+inclusive);
+select mastertablename, partitiontablename,
+partitionboundary from pg_partitions where
+mastertablename = 'i5';
+select pg_get_partition_def('i5'::regclass, true);
+drop table i5;
+
+CREATE TABLE PARTSUPP (
+PS_PARTKEY INTEGER,
+PS_SUPPKEY INTEGER,
+PS_AVAILQTY integer,
+PS_SUPPLYCOST decimal,
+PS_COMMENT VARCHAR(199)
+)
+partition by range (ps_suppkey)
+subpartition by range (ps_partkey)
+,subpartition by range (ps_supplycost) subpartition template (start('1')
+end('1001') every(500))
+(
+partition p1 start('1') end('10001') every(5000)
+(subpartition sp1 start('1') end('200001') every(66666)
+)
+);
+
+select mastertablename, partitiontablename,
+partitionboundary from pg_partitions where
+mastertablename = 'partsupp';
+select pg_get_partition_def('partsupp'::regclass, true);
+drop table partsupp;
+set gp_enable_hash_partitioned_tables = true;
+create table i5 (i int, g text) partition by list(g) 
+  subpartition by hash(i) subpartitions 3
+(partition p1 values('foo', 'bar'), partition p2 values('foz')
+);
+select mastertablename, partitiontablename,
+partitionboundary from pg_partitions where
+mastertablename = 'i5';
+select pg_get_partition_def('i5'::regclass, true);
+drop table i5;
+set gp_enable_hash_partitioned_tables = false;

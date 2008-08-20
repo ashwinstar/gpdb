@@ -398,3 +398,98 @@ CREATE VIEW pg_max_external_files AS
     AND      isprimary
     GROUP BY hostname;
 
+-- partitioning
+create view pg_partitions as
+select 
+ schemaname,
+mastertablename, 
+partitiontablename,
+partitionname,
+parentpartitiontablename,
+parentpartitioname,
+partitiontype, 
+partitionlevel,
+-- if not a range partition, no partition rank
+-- for range partitions, the parruleord of the default partition is zero,
+-- so if no_default (min of parruleord) > 0 then there is no default partition
+-- so return the normal rank.  However, if there is a default partition, it
+-- is rank 1, so skip it, and decrement remaining ranks by 1 so the first
+-- non-default partition starts at 1
+--
+case when (partitiontype != 'range') then NULL
+	 when (partition_no_default > 0) then partitionrank
+	 when (partitionrank = 1) then NULL
+	 else  partitionrank - 1
+end as partitionrank,
+partitionposition,
+partitionlistvalues,
+partitionrangestart,
+case when (partitiontype = 'range') then partitionstartinclusive
+	 else NULL
+end as partitionstartinclusive,
+partitionrangeend,
+case when (partitiontype = 'range') then partitionendinclusive
+	else NULL
+end as partitionendinclusive,
+partitioneveryclause,
+parisdefault as partitionisdefault,
+partitionboundary
+from
+(
+select
+n.nspname as schemaname,
+cl.relname as mastertablename, 
+cl2.relname as partitiontablename,
+pr1.parname as partitionname,
+cl3.relname as parentpartitiontablename,
+pr2.parname as parentpartitioname,
+case when pp.parkind = 'h' then 'hash' when pp.parkind = 'r' then 'range'
+	 when pp.parkind = 'l' then 'list' else null end as partitiontype, 
+pp.parlevel as partitionlevel,
+ pr1.parruleord
+as partitionposition,
+rank() over (partition by pp.oid, cl.relname, pp.parlevel, cl3.relname 
+	order by pr1.parruleord) as partitionrank,
+pg_get_expr(pr1.parlistvalues, pr1.parchildrelid) as partitionlistvalues,
+pg_get_expr(pr1.parrangestart, pr1.parchildrelid) as partitionrangestart,
+pr1.parrangestartincl as partitionstartinclusive,
+pg_get_expr(pr1.parrangeend, pr1.parchildrelid) as partitionrangeend,
+pr1.parrangeendincl as partitionendinclusive,
+pg_get_expr(pr1.parrangeevery, pr1.parchildrelid) as partitioneveryclause,
+min(pr1.parruleord) over (partition by cl.relname, pp.parlevel, cl3.relname 
+	order by pr1.parruleord) as partition_no_default,
+pr1.parisdefault,
+pg_get_partition_rule_def(pr1.parchildrelid, true) as partitionboundary
+from 
+pg_namespace n,
+pg_class cl,
+pg_class cl2, 
+pg_partition pp,
+pg_partition_rule pr1 left outer join pg_partition_rule pr2 
+   on(pr1.parparentrule = pr2.oid)
+left outer join pg_class cl3 on (pr2.parchildrelid = cl3.oid)
+where 
+ pp.parrelid = cl.oid and 
+ pr1.paroid = pp.oid and
+ cl2.oid = pr1.parchildrelid and
+ cl.relnamespace = n.oid
+) as p1;
+
+create view pg_partition_columns as											 
+select																		  
+n.nspname as schemaname,														
+c.relname as tablename,														 
+a.attname as columnname,														
+p.parlevel as partitionlevel,												   
+p.i + 1 as position_in_partition_key											
+from pg_namespace n,															
+pg_class c,																	 
+pg_attribute a,																 
+(select p.parrelid, p.parlevel, p.paratts[i] as attnum, i from pg_partition p,  
+ generate_series(0,															 
+				 (select max(array_upper(paratts, 1)) from pg_partition)																   
+				) i
+		where paratts[i] is not null
+) p
+where p.parrelid = c.oid and c.relnamespace = n.oid and
+   p.attnum = a.attnum and a.attrelid = c.oid;

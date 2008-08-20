@@ -16,6 +16,8 @@
 #include "catalog/pg_authid.h"
 #include "catalog/pg_constraint.h"
 #include "catalog/pg_depend.h"
+#include "catalog/pg_partition.h"
+#include "catalog/pg_partition_rule.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_trigger.h"
@@ -5850,37 +5852,40 @@ deparse_part_param(deparse_context *c, List *dat)
 }
 
 static void
-partition_rule_range(deparse_context *c, List *start, List *end, List *every)
+partition_rule_range(deparse_context *c, List *start, bool startinc, 
+					 List *end, bool endinc, List *every)
 {
 	List *l1;
 
 	l1 = start;
 	if (l1)
 	{
-		appendStringInfoString(c->buf, "start (");
+		appendStringInfoString(c->buf, "START (");
 		deparse_part_param(c, l1);
-		appendStringInfoString(c->buf, ")");
+		appendStringInfo(c->buf, ")%s",
+						 startinc == false ? " EXCLUSIVE" : "");
 	}
 
 	l1 = end;
 	if (l1)
 	{
-		appendStringInfoString(c->buf, " end (");
+		appendStringInfoString(c->buf, " END (");
 		deparse_part_param(c, l1);
-		appendStringInfoString(c->buf, ")");
+		appendStringInfo(c->buf, ")%s",
+						 endinc == true ? " INCLUSIVE" : "");
 	}
 
 	l1 = every;
 	if (l1)
 	{
-		appendStringInfoString(c->buf, " every (");
+		appendStringInfoString(c->buf, " EVERY (");
 		deparse_part_param(c, l1);
 		appendStringInfoString(c->buf, ")");
 	}
 }
 
 static char *
-partition_rule_def(PartitionRule *rule, Partition *part, int prettyFlags)
+partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 {
 	StringInfoData str;
 	deparse_context c;
@@ -5908,10 +5913,11 @@ partition_rule_def(PartitionRule *rule, Partition *part, int prettyFlags)
 			return str.data;
 		case 'r':
 			{
-				Assert(!PointerIsValid(rule->parrangeevery));
 				partition_rule_range(&c, (List *)rule->parrangestart, 
+									 rule->parrangestartincl,
 									 (List *)rule->parrangeend,
-									 NIL);
+									 rule->parrangeendincl,
+									 (List *)rule->parrangeevery);
 			}
 			break;
 		case 'l':
@@ -6066,15 +6072,18 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 						appendStringInfoChar(&tmp, ',');
 
 					if (rule->parname && strlen(rule->parname))
-						appendStringInfo(&tmp, "partition %s", rule->parname);
+						appendStringInfo(&tmp, "PARTITION %s", rule->parname);
 
 
 					c.buf = &tmp;
 					c.prettyFlags = prettyFlags;
 					c.indentLevel = PRETTYINDENT_STD;
 
-					partition_rule_range(&c, (List *)mystart,
-										 (List *)myend, (List *)myevery);
+					partition_rule_range(&c, (List *)mystart, 
+										 rule->parrangestartincl,
+										 (List *)myend,
+										 rule->parrangeendincl,
+										 (List *)myevery);
 
 					mystart = rule->parrangestart;
 					myend = rule->parrangeend;
@@ -6093,10 +6102,12 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 				needcomma = false;
 			}
 
-		   	str = partition_rule_def(rule, pn->part, prettyFlags);
+		   	str = partition_rule_def_worker(rule, pn->part, prettyFlags);
 			if (str && strlen(str))
 			{
-				appendStringInfoString(&tmp, " ");
+				if (strlen(tmp.data))
+					appendStringInfoString(&tmp, " ");
+
 				appendStringInfoString(&tmp, str);
 				needcomma = true;
 			}
@@ -6110,7 +6121,8 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 			if (pn->rules && strlen(tmp.data))
 				appendStringInfoChar(&tmp, ',');
 
-			str = partition_rule_def(pn->default_part, pn->part, prettyFlags);
+			str = partition_rule_def_worker(pn->default_part, pn->part,
+											prettyFlags);
 
 			appendStringInfoString(&tmp, " ");
 			appendStringInfoString(&tmp, str);
@@ -6142,12 +6154,80 @@ pg_get_partition_def_worker(Oid relid, int prettyFlags)
 }
 
 Datum
+pg_get_partition_rule_def(PG_FUNCTION_ARGS)
+{
+	Oid relid = PG_GETARG_OID(0);
+	bool pretty;
+	int prettyFlags;
+	Relation rel;
+	ScanKeyData key;
+	SysScanDesc scan;
+	HeapTuple tuple;
+	PartitionRule *rule;
+	Partition *part;
+
+	if (PG_ARGISNULL(1))
+		pretty = false;
+	else
+		pretty = PG_GETARG_BOOL(1);
+	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
+
+	/* lookup pg_partition_rule by parchildrelid */
+	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
+
+	ScanKeyInit(&key,
+				Anum_pg_partition_rule_parchildrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+
+	scan = systable_beginscan(rel, PartitionRuleParchildrelidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+	if (!HeapTupleIsValid(tuple))
+		PG_RETURN_NULL();
+
+
+	rule = ruleMakePartitionRule(tuple, RelationGetDescr(rel), 
+								 CurrentMemoryContext);
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+
+	/* lookup pg_partition by oid */
+	rel = heap_open(PartitionRelationId, AccessShareLock);
+
+	ScanKeyInit(&key,
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(rule->paroid));
+
+	scan = systable_beginscan(rel, PartitionOidIndexId,
+							  true, SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+	if (!HeapTupleIsValid(tuple))
+		PG_RETURN_NULL();
+
+	part = partMakePartition(tuple, RelationGetDescr(rel),
+							 CurrentMemoryContext);
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+
+	PG_RETURN_TEXT_P(string_to_text(partition_rule_def_worker(rule, part, prettyFlags)));
+}
+
+Datum
 pg_get_partition_def(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
-	bool		pretty = PG_GETARG_BOOL(1);
+	bool		pretty;
 	int			prettyFlags;
 
+	if (PG_ARGISNULL(1))
+		pretty = false;
+	else
+		pretty = PG_GETARG_BOOL(1);
 	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
 	PG_RETURN_TEXT_P(string_to_text(pg_get_partition_def_worker(relid, prettyFlags)));
 

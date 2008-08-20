@@ -3438,3 +3438,140 @@ NOTICE:  CREATE TABLE will create partition "i_1_prt_2" for table "i"
 alter table i add partition foo2 start(40) end (50);
 alter table i drop partition foo2;
 drop table i;
+-- dumpability of partition info
+create table i5 (i int) partition by RANGE(i) (start(1) exclusive end(10)
+inclusive);
+NOTICE:  CREATE TABLE will create partition "i5_1_prt_1" for table "i5"
+select mastertablename, partitiontablename,
+partitionboundary from pg_partitions where
+mastertablename = 'i5';
+ mastertablename | partitiontablename |           partitionboundary            
+-----------------+--------------------+----------------------------------------
+ i5              | i5_1_prt_1         | START (1) EXCLUSIVE END (10) INCLUSIVE
+(1 row)
+
+select pg_get_partition_def('i5'::regclass, true);
+                      pg_get_partition_def                      
+----------------------------------------------------------------
+ PARTITION BY RANGE(i) (START (1) EXCLUSIVE END (10) INCLUSIVE)
+(1 row)
+
+drop table i5;
+CREATE TABLE PARTSUPP (
+PS_PARTKEY INTEGER,
+PS_SUPPKEY INTEGER,
+PS_AVAILQTY integer,
+PS_SUPPLYCOST decimal,
+PS_COMMENT VARCHAR(199)
+)
+partition by range (ps_suppkey)
+subpartition by range (ps_partkey)
+,subpartition by range (ps_supplycost) subpartition template (start('1')
+end('1001') every(500))
+(
+partition p1 start('1') end('10001') every(5000)
+(subpartition sp1 start('1') end('200001') every(66666)
+)
+);
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1" for table "partsupp"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2" for table "partsupp"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_1" for table "partsupp_1_prt_p1_1"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_2" for table "partsupp_1_prt_p1_1"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_3" for table "partsupp_1_prt_p1_1"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_4" for table "partsupp_1_prt_p1_1"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_1" for table "partsupp_1_prt_p1_1_2_prt_sp1_1"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_2" for table "partsupp_1_prt_p1_1_2_prt_sp1_1"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_1" for table "partsupp_1_prt_p1_1_2_prt_sp1_2"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_2" for table "partsupp_1_prt_p1_1_2_prt_sp1_2"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_1" for table "partsupp_1_prt_p1_1_2_prt_sp1_3"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_2" for table "partsupp_1_prt_p1_1_2_prt_sp1_3"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_1" for table "partsupp_1_prt_p1_1_2_prt_sp1_4"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_2" for table "partsupp_1_prt_p1_1_2_prt_sp1_4"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_1" for table "partsupp_1_prt_p1_2"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_2" for table "partsupp_1_prt_p1_2"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_3" for table "partsupp_1_prt_p1_2"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_4" for table "partsupp_1_prt_p1_2"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_1" for table "partsupp_1_prt_p1_2_2_prt_sp1_1"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_2" for table "partsupp_1_prt_p1_2_2_prt_sp1_1"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_1" for table "partsupp_1_prt_p1_2_2_prt_sp1_2"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_2" for table "partsupp_1_prt_p1_2_2_prt_sp1_2"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_1" for table "partsupp_1_prt_p1_2_2_prt_sp1_3"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_2" for table "partsupp_1_prt_p1_2_2_prt_sp1_3"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_1" for table "partsupp_1_prt_p1_2_2_prt_sp1_4"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_2" for table "partsupp_1_prt_p1_2_2_prt_sp1_4"
+select mastertablename, partitiontablename,
+partitionboundary from pg_partitions where
+mastertablename = 'partsupp';
+ mastertablename |           partitiontablename            |                     partitionboundary                     
+-----------------+-----------------------------------------+-----------------------------------------------------------
+ partsupp        | partsupp_1_prt_p1_1                     | partition p1_1 START (1) END (5001) EVERY (5000)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_1         | partition sp1_1 START (1) END (66667) EVERY (66666)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_2         | partition sp1_2 START (66667) END (133333) EVERY (66666)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_3         | partition sp1_3 START (133333) END (199999) EVERY (66666)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_4         | partition sp1_4 START (199999) END (200001) EVERY (66666)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_2                     | partition p1_2 START (5001) END (10001) EVERY (5000)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_1         | partition sp1_1 START (1) END (66667) EVERY (66666)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_2         | partition sp1_2 START (66667) END (133333) EVERY (66666)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_3         | partition sp1_3 START (133333) END (199999) EVERY (66666)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_4         | partition sp1_4 START (199999) END (200001) EVERY (66666)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+(26 rows)
+
+select pg_get_partition_def('partsupp'::regclass, true);
+                                                                                                                                  pg_get_partition_def                                                                                                                                  
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ PARTITION BY RANGE(ps_suppkey) SUBPARTITION BY RANGE(ps_partkey) SUBPARTITION BY RANGE(ps_supplycost) SUBPARTITION TEMPLATE (START (1::numeric) END (1001::numeric) EVERY (500)) (PARTITION p1_2START (1) END (10001) EVERY (5000)PARTITION sp1_4START (1) END (200001) EVERY (66666))
+(1 row)
+
+drop table partsupp;
+set gp_enable_hash_partitioned_tables = true;
+create table i5 (i int, g text) partition by list(g) 
+  subpartition by hash(i) subpartitions 3
+(partition p1 values('foo', 'bar'), partition p2 values('foz')
+);
+NOTICE:  CREATE TABLE will create partition "i5_1_prt_p1" for table "i5"
+NOTICE:  CREATE TABLE will create partition "i5_1_prt_p2" for table "i5"
+NOTICE:  CREATE TABLE will create partition "i5_1_prt_p1_2_prt_1" for table "i5_1_prt_p1"
+NOTICE:  CREATE TABLE will create partition "i5_1_prt_p1_2_prt_2" for table "i5_1_prt_p1"
+NOTICE:  CREATE TABLE will create partition "i5_1_prt_p1_2_prt_3" for table "i5_1_prt_p1"
+NOTICE:  CREATE TABLE will create partition "i5_1_prt_p2_2_prt_1" for table "i5_1_prt_p2"
+NOTICE:  CREATE TABLE will create partition "i5_1_prt_p2_2_prt_2" for table "i5_1_prt_p2"
+NOTICE:  CREATE TABLE will create partition "i5_1_prt_p2_2_prt_3" for table "i5_1_prt_p2"
+select mastertablename, partitiontablename,
+partitionboundary from pg_partitions where
+mastertablename = 'i5';
+ mastertablename | partitiontablename  |         partitionboundary          
+-----------------+---------------------+------------------------------------
+ i5              | i5_1_prt_p1         | partition p1 values('foo', 'bar') 
+ i5              | i5_1_prt_p1_2_prt_1 | 
+ i5              | i5_1_prt_p1_2_prt_2 | 
+ i5              | i5_1_prt_p1_2_prt_3 | 
+ i5              | i5_1_prt_p2         | partition p2 values('foz') 
+ i5              | i5_1_prt_p2_2_prt_1 | 
+ i5              | i5_1_prt_p2_2_prt_2 | 
+ i5              | i5_1_prt_p2_2_prt_3 | 
+(8 rows)
+
+select pg_get_partition_def('i5'::regclass, true);
+                                                      pg_get_partition_def                                                       
+---------------------------------------------------------------------------------------------------------------------------------
+ PARTITION BY LIST(g) SUBPARTITION BY HASH(i) SUBPARTITIONS 3  (partition p1 values('foo', 'bar') , partition p2 values('foz') )
+(1 row)
+
+drop table i5;
+set gp_enable_hash_partitioned_tables = false;

@@ -8698,12 +8698,151 @@ parruleord_open_gap(Oid partid, int2 level, Oid parent, int2 ruleord,
 	heap_close(rel, AccessShareLock);
 } /* end parruleord_open_gap */
 
+/*
+ * Build up a PartitionRule based on a tuple from pg_partition_rule
+ * Exported for ruleutils.c
+ */
+PartitionRule *
+ruleMakePartitionRule(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
+{
+	Form_pg_partition_rule rule_desc =
+		(Form_pg_partition_rule)GETSTRUCT(tuple);
+	text *rule_text;
+	char *rule_str;
+	Datum rule_datum;
+	bool isnull;
+	MemoryContext oldcxt;
+	PartitionRule *rule;
+		
+	oldcxt = MemoryContextSwitchTo(mcxt);
+	rule = makeNode(PartitionRule);
+	MemoryContextSwitchTo(oldcxt);
+
+	rule->parruleid = HeapTupleGetOid(tuple);
+	rule->paroid = rule_desc->paroid;
+	rule->parchildrelid = rule_desc->parchildrelid;
+	rule->parparentoid = rule_desc->parparentrule;
+	rule->parisdefault = rule_desc->parisdefault;
+
+	rule->parname = MemoryContextStrdup(mcxt, NameStr(rule_desc->parname)); 
+
+	rule->parruleord = rule_desc->parruleord;
+	rule->parrangestartincl = rule_desc->parrangestartincl;
+	rule->parrangeendincl = rule_desc->parrangeendincl;
+
+	/* start range */
+	rule_datum = heap_getattr(tuple,
+							  Anum_pg_partition_rule_parrangestart,
+							  tupdesc,
+							  &isnull);
+	Assert(!isnull);
+	rule_text = DatumGetTextP(rule_datum);
+	rule_str = DatumGetCString(DirectFunctionCall1(textout,
+					PointerGetDatum(rule_text)));
+
+	oldcxt = MemoryContextSwitchTo(mcxt);
+	rule->parrangestart = stringToNode(rule_str);
+	MemoryContextSwitchTo(oldcxt);
+
+	pfree(rule_str);
+
+	/* end range */
+	rule_datum = heap_getattr(tuple,
+							  Anum_pg_partition_rule_parrangeend,
+							  tupdesc,
+							  &isnull);
+	Assert(!isnull);
+	rule_text = DatumGetTextP(rule_datum);
+	rule_str = DatumGetCString(DirectFunctionCall1(textout,
+					PointerGetDatum(rule_text)));
+
+	oldcxt = MemoryContextSwitchTo(mcxt);
+	rule->parrangeend = stringToNode(rule_str);
+	MemoryContextSwitchTo(oldcxt);
+
+	pfree(rule_str);
+
+	/* every */
+	rule_datum = heap_getattr(tuple,
+							  Anum_pg_partition_rule_parrangeevery,
+							  tupdesc,
+							  &isnull);
+	Assert(!isnull);
+	rule_text = DatumGetTextP(rule_datum);
+	rule_str = DatumGetCString(DirectFunctionCall1(textout,
+					PointerGetDatum(rule_text)));
+
+	oldcxt = MemoryContextSwitchTo(mcxt);
+	rule->parrangeevery = stringToNode(rule_str);
+	MemoryContextSwitchTo(oldcxt);
+
+	/* list values */
+	rule_datum = heap_getattr(tuple,
+							  Anum_pg_partition_rule_parlistvalues,
+							  tupdesc,
+							  &isnull);
+	Assert(!isnull);
+	rule_text = DatumGetTextP(rule_datum);
+	rule_str = DatumGetCString(DirectFunctionCall1(textout,
+					PointerGetDatum(rule_text)));
+
+	oldcxt = MemoryContextSwitchTo(mcxt);
+	rule->parlistvalues = stringToNode(rule_str);
+	MemoryContextSwitchTo(oldcxt);
+
+	pfree(rule_str);
+
+	if (rule->parlistvalues)
+		Assert(IsA(rule->parlistvalues, List));
+
+	return rule;
+}
+
+Partition *
+partMakePartition(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
+{
+	oidvector *oids;
+	int2vector *atts;
+	bool isnull;
+	Form_pg_partition partrow = (Form_pg_partition)GETSTRUCT(tuple);
+	MemoryContext oldcxt;
+	Partition *p;
+	
+	oldcxt = MemoryContextSwitchTo(mcxt);
+	p = makeNode(Partition);
+	MemoryContextSwitchTo(oldcxt);
+
+	p->partid = HeapTupleGetOid(tuple);
+	p->parrelid = partrow->parrelid;
+	p->parkind = partrow->parkind;
+	p->parlevel = partrow->parlevel;
+	p->paristemplate = partrow->paristemplate;
+	p->parnatts = partrow->parnatts;
+
+	atts = DatumGetPointer(heap_getattr(tuple, Anum_pg_partition_paratts,
+										tupdesc, &isnull));
+	Assert(!isnull);
+	oids = DatumGetPointer(heap_getattr(tuple, Anum_pg_partition_parclass,
+										tupdesc, &isnull));
+	Assert(!isnull);
+	
+	oldcxt = MemoryContextSwitchTo(mcxt);
+	p->paratts = palloc(sizeof(int2) * p->parnatts);
+	p->parclass = palloc(sizeof(Oid) * p->parnatts);
+	MemoryContextSwitchTo(oldcxt);
+
+	memcpy(p->paratts, atts->values, sizeof(int2) * p->parnatts);
+	memcpy(p->parclass, oids->values, sizeof(Oid) * p->parnatts);
+
+	return p;
+}
+
+
 /* XXX: just here for now */
 static PartitionNode *
 get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 {
 	PartitionNode *n;
-	Partition *p;
 	MemoryContext oldcxt;
 	ScanKeyData key[2];
 	HeapTuple tuple;
@@ -8729,37 +8868,8 @@ get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 
 	if (HeapTupleIsValid(tuple))
 	{
-		oidvector *oids;
-		int2vector *atts;
-		bool isnull;
-		Form_pg_partition partrow = (Form_pg_partition)GETSTRUCT(tuple);
-		
-		oldcxt = MemoryContextSwitchTo(mcxt);
 		n = makeNode(PartitionNode);
-		n->part = p = makeNode(Partition);
-		MemoryContextSwitchTo(oldcxt);
-
-		p->partid = HeapTupleGetOid(tuple);
-		p->parrelid = partrow->parrelid;
-		p->parkind = partrow->parkind;
-		p->parlevel = partrow->parlevel;
-		p->paristemplate = partrow->paristemplate;
-		p->parnatts = partrow->parnatts;
-
-		atts = DatumGetPointer(heap_getattr(tuple, Anum_pg_partition_paratts,
-											RelationGetDescr(rel), &isnull));
-		Assert(!isnull);
-		oids = DatumGetPointer(heap_getattr(tuple, Anum_pg_partition_parclass,
-											RelationGetDescr(rel), &isnull));
-		Assert(!isnull);
-		
-		oldcxt = MemoryContextSwitchTo(mcxt);
-		p->paratts = palloc(sizeof(int2) * p->parnatts);
-		p->parclass = palloc(sizeof(Oid) * p->parnatts);
-		MemoryContextSwitchTo(oldcxt);
-
-		memcpy(p->paratts, atts->values, sizeof(int2) * p->parnatts);
-		memcpy(p->parclass, oids->values, sizeof(Oid) * p->parnatts);
+		n->part = partMakePartition(tuple, RelationGetDescr(rel), mcxt);
 	}
 	else
 	{
@@ -8776,7 +8886,7 @@ get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 	ScanKeyInit(&key[0],
 				Anum_pg_partition_rule_paroid,
 				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(p->partid));
+				ObjectIdGetDatum(n->part->partid));
 	ScanKeyInit(&key[1],
 				Anum_pg_partition_rule_parparentrule,
 				BTEqualStrategyNumber, F_INT2EQ,
@@ -8788,94 +8898,8 @@ get_parts(Oid relid, int2 level, Oid parent, MemoryContext mcxt)
 	while ((tuple = systable_getnext(scan)))
 	{
 		PartitionRule *rule;
-		Form_pg_partition_rule rule_desc =
-			(Form_pg_partition_rule)GETSTRUCT(tuple);
-		text *rule_text;
-		char *rule_str;
-		Datum rule_datum;
-		bool isnull;
-			
-		oldcxt = MemoryContextSwitchTo(mcxt);
-		rule = makeNode(PartitionRule);
-		MemoryContextSwitchTo(oldcxt);
 
-		rule->parruleid = HeapTupleGetOid(tuple);
-		rule->paroid = rule_desc->paroid;
-		rule->parchildrelid = rule_desc->parchildrelid;
-		rule->parparentoid = rule_desc->parparentrule;
-		rule->parisdefault = rule_desc->parisdefault;
-
-		rule->parname = MemoryContextStrdup(mcxt, NameStr(rule_desc->parname)); 
-
-		rule->parruleord = rule_desc->parruleord;
-		rule->parrangestartincl = rule_desc->parrangestartincl;
-		rule->parrangeendincl = rule_desc->parrangeendincl;
-
-		/* start range */
-        rule_datum = heap_getattr(tuple,
-                                  Anum_pg_partition_rule_parrangestart,
-                                  RelationGetDescr(rel),
-                                  &isnull);
-        Assert(!isnull);
-        rule_text = DatumGetTextP(rule_datum);
-        rule_str = DatumGetCString(DirectFunctionCall1(textout,
-						PointerGetDatum(rule_text)));
-
-		oldcxt = MemoryContextSwitchTo(mcxt);
-		rule->parrangestart = stringToNode(rule_str);
-		MemoryContextSwitchTo(oldcxt);
-
-		pfree(rule_str);
-
-		/* end range */
-        rule_datum = heap_getattr(tuple,
-                                  Anum_pg_partition_rule_parrangeend,
-                                  RelationGetDescr(rel),
-                                  &isnull);
-        Assert(!isnull);
-        rule_text = DatumGetTextP(rule_datum);
-        rule_str = DatumGetCString(DirectFunctionCall1(textout,
-						PointerGetDatum(rule_text)));
-
-		oldcxt = MemoryContextSwitchTo(mcxt);
-		rule->parrangeend = stringToNode(rule_str);
-		MemoryContextSwitchTo(oldcxt);
-
-		pfree(rule_str);
-
-		/* every */
-        rule_datum = heap_getattr(tuple,
-                                  Anum_pg_partition_rule_parrangeevery,
-                                  RelationGetDescr(rel),
-                                  &isnull);
-        Assert(!isnull);
-        rule_text = DatumGetTextP(rule_datum);
-        rule_str = DatumGetCString(DirectFunctionCall1(textout,
-						PointerGetDatum(rule_text)));
-
-		oldcxt = MemoryContextSwitchTo(mcxt);
-		rule->parrangeevery = stringToNode(rule_str);
-		MemoryContextSwitchTo(oldcxt);
-
-		/* list values */
-        rule_datum = heap_getattr(tuple,
-                                  Anum_pg_partition_rule_parlistvalues,
-                                  RelationGetDescr(rel),
-                                  &isnull);
-        Assert(!isnull);
-        rule_text = DatumGetTextP(rule_datum);
-        rule_str = DatumGetCString(DirectFunctionCall1(textout,
-						PointerGetDatum(rule_text)));
-
-		oldcxt = MemoryContextSwitchTo(mcxt);
-		rule->parlistvalues = stringToNode(rule_str);
-		MemoryContextSwitchTo(oldcxt);
-
-		pfree(rule_str);
-
-		if (rule->parlistvalues)
-			Assert(IsA(rule->parlistvalues, List));
-
+		rule = ruleMakePartitionRule(tuple, RelationGetDescr(rel), mcxt);
 		rule->children = get_parts(relid, level + 1, rule->parruleid, mcxt);
 
 		if (rule->parisdefault)

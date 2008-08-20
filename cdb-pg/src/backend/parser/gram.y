@@ -1921,7 +1921,7 @@ alter_table_partition_cmd:
                     pelem->AddPartDesc = NULL;
 
                     pc2->arg1 = (Node *)pelem;
-                    pc2->arg2 = ct;
+                    pc2->arg2 = (Node *)list_make1(ct);
                     pc2->location = @5;
 
                     pc->arg1 = (Node *)makeInteger($2);

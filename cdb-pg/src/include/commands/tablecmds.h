@@ -78,4 +78,10 @@ extern PartitionNode *RelationBuildPartitionDesc(Relation rel);
 extern AttrNumber max_partition_attr(PartitionNode *pn);
 extern List *get_partition_attrs(PartitionNode *pn);
 extern int num_partition_levels(PartitionNode *pn);
+extern PartitionRule *ruleMakePartitionRule(HeapTuple tuple, 
+											TupleDesc tupdesc, 
+											MemoryContext mcxt);
+extern Partition *partMakePartition(HeapTuple tuple, 
+									TupleDesc tupdesc, 
+									MemoryContext mcxt);
 #endif   /* TABLECMDS_H */
