@@ -21,7 +21,7 @@ all:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd libevent; $(MAKE) install >> out)
+	@(cd libevent; $(MAKE) install >> make.out)
 	@echo     -- json
 	@rm -f json; ln -s $(JSON) json
 	@if ! [ -a json/Makefile ]; then \
@@ -30,14 +30,14 @@ all:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd json; $(MAKE) all; $(MAKE) install >> out)
+	@(cd json; $(MAKE) all; $(MAKE) install >> make.out)
 	@echo     -- openssl
 	@rm -f openssl; ln -s $(OPENSSL) openssl
 	@if ! [ -a openssl/Makefile ]; then \
 		gzip -d -c $(OPENSSL).tar.gz | tar xvf - ;\
 		(cd openssl; ./config no-shared threads --prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd openssl; $(MAKE)  all install >> out 2>&1)
+	@(cd openssl; $(MAKE)  all install >> make.out 2>&1)
 	@echo     -- apr
 	@rm -f apr; ln -s $(APR) apr
 	@if ! [ -a apr/Makefile ]; then \
@@ -46,7 +46,7 @@ all:
 			--enable-static=yes --enable-threads \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd apr; $(MAKE) all install >> out)
+	@(cd apr; $(MAKE) all install >> make.out)
 	@echo     -- apu
 	@rm -f apu; ln -s $(APU) apu
 	@if ! [ -a apu/Makefile ]; then \
@@ -56,10 +56,10 @@ all:
 			--with-apr=../apr \
 			--prefix=$(GPCC)/ext) ;\
 	fi
-	@(cd apu; $(MAKE) all install >> out)
+	@(cd apu; $(MAKE) all install >> make.out)
 
 	@echo     -- dbgen
-	@(cd tpch; $(MAKE) >> out)
+	@(cd tpch; $(MAKE) >> make.out)
 	@(cd tpch; cp -f dbgen ../../build/bin/)
 	@(cd tpch; cp -f dists.dss ../../build/bin/)
 
@@ -74,10 +74,10 @@ veryclean:
 
 clean:
 	rm -rf lib bin include build1 share ssl build-1
-	@(cd apr; $(MAKE) clean)
-	@(cd apu; $(MAKE) clean)
-	@(cd json; $(MAKE) clean)
-	@(cd libevent; $(MAKE) clean)
-	@(cd openssl; $(MAKE) clean)
+	@(cd apr; $(MAKE) clean; rm -f make.out)
+	@(cd apu; $(MAKE) clean; rm -f make.out)
+	@(cd json; $(MAKE) clean; rm -f make.out)
+	@(cd libevent; $(MAKE) clean; rm -f make.out)
+	@(cd openssl; $(MAKE) clean; rm -f make.out)
 	@(cd libsigar; $(MAKE) clean)
 
