@@ -30,6 +30,21 @@
 
 #include <apr.h>
 
+/*  A data block */
+typedef struct blockhdr_t blockhdr_t;
+struct blockhdr_t{
+    char	hbyte[280];
+    int         hbot,htop;
+};
+
+typedef struct block_t block_t;
+struct block_t {
+    int i;
+    blockhdr_t  hdr;
+    int         bot, top;
+    char        byte[FSTREAM_BLOCKSIZE];
+};
+
 #define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
 
 int gprint(const char* fmt, ...);
@@ -108,45 +123,42 @@ static struct {
 
 #define TR(x)  if (!opt.V) ; else printf x
 
-static void block_fill_header(block_t* b)
+static void
+block_fill_header(block_t*b,const struct fstream_filename_and_offset*fos)
 {
-    blockhdr_t* h = &b->hdr;
+    blockhdr_t*h = &b->hdr;
     apr_int32_t len;
     apr_int64_t len8;
-    char* p;
-
-    h->hbot = h->htop = 0;
-    if (h->fname_len == 0) 
-	h->fname_len = strlen(h->fname);
-
-    p = h->hbyte;
+    char*p=h->hbyte;
+    int fname_len=strlen(fos->fname);
+    h->hbot = 0;
     /* 'F' + len + fname */
-    *p = 'F';                              p++;
-    len = htonl(h->fname_len);
-    memcpy(p, &len, 4);                    p += 4;
-    memcpy(p, h->fname, h->fname_len);     p += h->fname_len;
-    TR(("F %d %s\n", ntohl(len), h->fname));
-    
+    *p++ = 'F';
+    len = htonl(fname_len);
+    memcpy(p,&len,4);
+    p += 4;
+    memcpy(p,fos->fname,fname_len);
+    p += fname_len;
+    TR(("F %d %s\n",ntohl(len),fos->fname));
     /* 'O' + len + foff */
-    *p = 'O';                              p++;
+    *p++ = 'O';
     len = htonl(8);
-    len8 = local_htonll(h->foff);
-    memcpy(p, &len, 4);                    p += 4;
-    memcpy(p, &len8, 8);                   p += 8;
-    TR(("O %d\n", (int) local_ntohll(len8)));
-    
+    len8 = local_htonll(fos->foff);
+    memcpy(p,&len,4);
+    p += 4;
+    memcpy(p,&len8,8);
+    p += 8;
+    TR(("O %d\n",(int)local_ntohll(len8)));
     /* 'D' + len */
-    *p = 'D';                              p++;
-    len = htonl(b->top - b->bot);
-    memcpy(p, &len, 4);                    p += 4;
-    TR(("D %d\n", ntohl(len)));
-
-    h->htop = (p - h->hbyte);
-    if (h->htop > sizeof(h->hbyte)) {
-	gfatal(FLINE, "assert failed, h->htop = %d, max = %d\n", h->htop, sizeof(h->hbyte));
-    }
-
-    TR(("header size: %d\n", h->htop - h->hbot));
+    *p++ = 'D';
+    len = htonl(b->top-b->bot);
+    memcpy(p,&len,4);
+    p += 4;
+    TR(("D %d\n",ntohl(len)));
+    h->htop = p-h->hbyte;
+    if (h->htop > sizeof(h->hbyte))
+	gfatal(FLINE,"assert failed, h->htop = %d, max = %d\n",h->htop,sizeof(h->hbyte));
+    TR(("header size: %d\n",h->htop-h->hbot));
 }
 
 /*  Global constrol block */
@@ -394,7 +406,6 @@ static void session_detach(request_t* r);
 static void session_end(session_t* s, int error);
 static void session_free(session_t* s);
 static void request_end(request_t* r, int error, const char* errmsg);
-static const char* session_get_block(session_t* s, block_t* retblock);
 
 
 /* send an error response */
@@ -586,22 +597,30 @@ static void gp1_send_errmsg(request_t* r, const char* errmsg)
 
 
 /* Get a block out of the session. return error string. */
-static const char* session_get_block(session_t* s, block_t* retblock)
+static const char*
+session_get_block(session_t* s, block_t* retblock)
 {
+    int size;
+    struct fstream_filename_and_offset fos;
     retblock->i = 0;
     if (s->is_error || 0 == s->fstream) {
 	session_end(s, 0);
 	return 0;
     }
-    if (fstream_read(s->fstream, s->pool,retblock)) {
-	const char* ferror = fstream_get_error(s->fstream);
-	if (ferror) {
-	    session_end(s, 1);
-	    return ferror;
-	}
+    size = fstream_read(s->fstream,retblock->byte,sizeof retblock->byte,&fos,1);
+    if (size < 0){
+	const char*ferror=fstream_get_error(s->fstream);
+	session_end(s, 1);
+	return ferror;
+    }
+    if (size == 0){
 	session_end(s, 0);
 	return 0;
     }
+    retblock->i = 1;
+    retblock->bot = 0;
+    retblock->top = size;
+    block_fill_header(retblock,&fos);
     return 0;
 }
 
@@ -736,7 +755,7 @@ static void session_attach(request_t* r)
 		    assert(0);
 	}
 	/* try opening the fstream */
-	fstream = fstream_open(r->path,pool,&fstream_options);
+	fstream = fstream_open(r->path,&fstream_options);
 	if (! fstream) {
 	    gwarning(FLINE, "reject request from %s, path %s\n", r->peer, r->path);
 	    http_error(r, 404, "not found");
@@ -842,9 +861,6 @@ static void do_write(int fd, short event, void* arg)
 	    continue;
 	}
 	if (r->gp_proto == 1) {
-	    if (b->hdr.htop == 0) 
-		block_fill_header(b);
-
 	    n = b->hdr.htop - b->hdr.hbot;
 	    if (n > 0) {
 		n = local_send(fd, b->hdr.hbyte + b->hdr.hbot, n);
@@ -864,10 +880,6 @@ static void do_write(int fd, short event, void* arg)
 		    break;	/* network chocked */
 	    }
 	}
-
-	if (b->hdr.htop != b->hdr.hbot) 
-	    gfatal(FLINE, "internal error: hbot != htop");
-
 	/* write out the block */
 	n = b->top - b->bot;
 	/*
@@ -882,9 +894,9 @@ static void do_write(int fd, short event, void* arg)
 	    request_end(r, 1, 0);
 	    return;
 	}
-	TR(("[%d] send data bytes off %" APR_INT64_T_FMT "  buf %d .. %d (top %d)\n", 
-	    fd, b->hdr.foff, b->bot, b->bot + n, b->top));
-	b->bot += n, b->hdr.foff += n;
+	TR(("[%d] send data bytes off buf %d .. %d (top %d)\n", 
+	    fd, b->bot, b->bot + n, b->top));
+	b->bot += n;
 
 	if (b->top != b->bot) {	/* network chocked */
 	    TR(("[%d] network full\n", fd));
