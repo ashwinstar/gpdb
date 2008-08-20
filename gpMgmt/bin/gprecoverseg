@@ -556,7 +556,10 @@ def get_free_port(db, failed_qe, host, min_port, max_port, port_in_use):
 
             if free_count == 0 and not found:
                 free_port = p
-        
+                gpmlib.log_info('Free port value current set at %d' % free_port)
+                return free_port
+
+    gpmlib.log_info('Free port value current set at %d' % free_port)        
     return free_port
 
 
