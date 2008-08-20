@@ -125,6 +125,6 @@ veryclean: clean
 	$(MAKE) -C ext veryclean
 
 clean: 
-	$(MAKE) -C ext clean
+	$(MAKE) -C ext veryclean
 	rm -rf src/build
 	find src -name '*.o' -exec rm -f {} \;
