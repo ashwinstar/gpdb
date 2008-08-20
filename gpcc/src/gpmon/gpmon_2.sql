@@ -10,17 +10,23 @@ create database gpmon_2;
 --
 
 create table metrics_history (
-       ctime timestamp(0) not null,
-       hostname varchar(64) not null,
-       mem_total bigint not null, mem_used bigint not null,
-       mem_actual_used bigint not null, mem_actual_free bigint not null,
-       swap_total bigint not null, swap_used bigint not null, 
-       swap_page_in bigint not null, swap_page_out bigint not null,
-       cpu_user float not null, cpu_sys float not null, cpu_idle float not null,
-       load0 float not null, load1 float not null, load2 float not null,
-       quantum int not null,
-       disk_ro_rate bigint not null, disk_wo_rate bigint not null, disk_rb_rate bigint not null, disk_wb_rate bigint not null, 
-       net_rp_rate bigint not null, net_wp_rate bigint not null, net_rb_rate bigint not null, net_wb_rate bigint not null
+       ctime timestamp(0) not null, -- record creation time
+       hostname varchar(64) not null, -- hostname of system this metric belongs to
+       mem_total bigint not null, mem_used bigint not null, -- total system memory
+       mem_actual_used bigint not null, mem_actual_free bigint not null, -- memory used
+       swap_total bigint not null, swap_used bigint not null, -- total swap space
+       swap_page_in bigint not null, swap_page_out bigint not null, -- swap pages in
+       cpu_user float not null, cpu_sys float not null, cpu_idle float not null, -- cpu usage
+       load0 float not null, load1 float not null, load2 float not null, -- cpu load avgs
+       quantum int not null, -- interval between metric collection for this entry
+       disk_ro_rate bigint not null, -- system disk read ops per second
+       disk_wo_rate bigint not null, -- system disk write ops per second
+       disk_rb_rate bigint not null, -- system disk read bytes per second
+       disk_wb_rate bigint not null, -- system disk write bytes per second
+       net_rp_rate bigint not null,  -- system net read packets per second
+       net_wp_rate bigint not null,  -- system net write packets per second
+       net_rb_rate bigint not null,  -- system net read bytes per second
+       net_wb_rate bigint not null   -- system net write bytes per second
 ) 
 with (fillfactor=100)
 distributed by (ctime)
@@ -46,25 +52,25 @@ create external web table _metrics_tail (
 --
 
 create table queries_history (
-       ctime timestamp(0),
-       tmid int not null,
-       ssid int not null,    -- gp_session_id
-       ccnt int not null,    -- gp_command_count
-       uname varchar(64) not null,
-       db varchar(64) not null,
-       cost int not null,
-       tsubmit timestamp(0) not null, 
-       tstart timestamp(0) not null, 
-       tfin timestamp(0) not null,
-       status varchar(64) not null,
-       rows_out bigint not null,
-       cpu_elapsed bigint not null,
-       cpu_currpct float not null,
-       skew_cpu float not null,
-       skew_rows float not null,
-       query_hash bigint not null,
-       query_text text not null default '',
-       query_plan text not null default ''
+       ctime timestamp(0), -- record creation time
+       tmid int not null,  -- time id
+       ssid int not null,    -- session id
+       ccnt int not null,    -- command count in session
+       uname varchar(64) not null, -- username that issued the query
+       db varchar(64) not null, -- database name for the query
+       cost int not null, -- query cost (not implemented)
+       tsubmit timestamp(0) not null, -- query submit time
+       tstart timestamp(0) not null,  -- query start time
+       tfin timestamp(0) not null,    -- query end time
+       status varchar(64) not null,   -- query status (start, end, abort)
+       rows_out bigint not null, -- rows out for query
+       cpu_elapsed bigint not null, -- cpu usage for query across all segments
+       cpu_currpct float not null, -- current cpu percent avg for all processes executing query
+       skew_cpu float not null,    -- coefficient of variance for cpu_elapsed of iterators across segments for query
+       skew_rows float not null,   -- coefficient of variance for rows_in of iterators across segments for query
+       query_hash bigint not null, -- (not implemented)
+       query_text text not null default '', -- query text
+       query_plan text not null default ''  -- query plan (not implemented)
 )
 with (fillfactor=100)
 distributed by (ctime)
@@ -113,33 +119,33 @@ create external web table _queries_tail (
 --
 
 create table iterators_history (
-       ctime timestamp(0),
-       tmid int not null,
-       ssid int not null,    -- gp_session_id
-       ccnt int not null,    -- gp_command_count
-       segid int not null,
-       pid int not null,
-       nid int not null,
-       pnid int not null,
+       ctime timestamp(0), -- record creation time
+       tmid int not null,  -- time id
+       ssid int not null,    -- session id
+       ccnt int not null,    -- command count for session
+       segid int not null,   -- segment id
+       pid int not null, -- pid of process executing iterator
+       nid int not null, -- node id
+       pnid int not null,-- parent node id
        hostname varchar(64) not null,
-       ntype varchar(64) not null,
-       nstatus varchar(64) not null,
-       tstart timestamp(0) not null,
-       tduration int not null,
-       pmemsize bigint not null,
+       ntype varchar(64) not null, -- node type
+       nstatus varchar(64) not null, -- node status
+       tstart timestamp(0) not null, -- time started
+       tduration int not null, -- duration of execution
+       pmemsize bigint not null, -- TODO: fill in these
        pmemmax bigint not null,
-       memsize bigint not null,
+       memsize bigint not null, 
        memresid bigint not null,
        memshare bigint not null,
-       pagefaults bigint not null,
-       pagefaults_elapsed bigint not null,
-       cpu_elapsed bigint not null,
-       cpu_currpct float not null,
-       phase varchar(64) not null,
-       m0_name varchar(64) not null default '',
-       m0_unit varchar(64) not null default '',
-       m0_in bigint not null default 0,
-       m0_out bigint not null default 0,
+       pagefaults bigint not null, -- process page faults 
+       pagefaults_elapsed bigint not null, -- total process page faults
+       cpu_elapsed bigint not null, -- process cpu usage total
+       cpu_currpct float not null, -- process current cpu percentage
+       phase varchar(64) not null, -- iterator phase
+       m0_name varchar(64) not null default '', -- iterator metric name
+       m0_unit varchar(64) not null default '', -- iterator metric unit (rows, bytes, etc.)
+       m0_in bigint not null default 0,         -- metric in value
+       m0_out bigint not null default 0,        -- metric out value
        m1_name varchar(64) not null default '',
        m1_unit varchar(64) not null default '',
        m1_in bigint not null default 0,
