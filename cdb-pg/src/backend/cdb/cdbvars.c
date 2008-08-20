@@ -235,7 +235,7 @@ bool		gp_enable_tablespaces = FALSE;
 bool		gp_enable_tablespace_auto_mkdir = FALSE;
 
 /* Disable setting of tuple hints while reading */
-bool		gp_disable_tuple_hints = true;
+bool		gp_disable_tuple_hints = false;
 int		gp_hashagg_compress_spill_files = 0;
 
 /* Gpmon */
