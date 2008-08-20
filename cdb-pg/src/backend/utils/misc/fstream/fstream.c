@@ -10,7 +10,7 @@ struct fstream_t{
     glob_t glob;
     gfile_t*fd;
     int fidx;		/* current index in ffd[] */
-    off_t foff;		/* current offset in ffd[fidx] */
+    int64_t foff;		/* current offset in ffd[fidx] */
     int fskip;		/* reflect opt.h (skip first line) */
     const char*ferror;	/* error string */
     struct fstream_options options;

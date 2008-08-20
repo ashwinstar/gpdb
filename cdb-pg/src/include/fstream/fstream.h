@@ -18,7 +18,7 @@ struct fstream_options{
 
 struct fstream_filename_and_offset{
     char fname[256];
-    off_t foff;
+    int64_t foff;
 };
 
 int fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offset*fos,int read_whole_lines);
