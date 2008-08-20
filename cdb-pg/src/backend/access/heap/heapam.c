@@ -1053,6 +1053,26 @@ heap_beginscan(Relation relation, Snapshot snapshot,
 	return scan;
 }
 
+static void release_all_buffers(HeapScanDesc scan)
+{
+	int i;
+	/*
+	 * unpin scan buffers
+	 */
+	if (BufferIsValid(scan->rs_cbuf)) {
+		ReleaseBuffer(scan->rs_cbuf);
+		scan->rs_cbuf = InvalidBuffer;
+	}
+	for (i = 0; i < lengthof(scan->rs_rahead); i++)  {
+		if (BufferIsValid(scan->rs_rahead[i].buffer)) {
+			ReleaseBuffer(scan->rs_rahead[i].buffer);
+			scan->rs_rahead[i].buffer = InvalidBuffer;
+		}
+	}
+}
+
+
+
 /* ----------------
  *		heap_rescan		- restart a relation scan
  * ----------------
@@ -1061,15 +1081,10 @@ void
 heap_rescan(HeapScanDesc scan,
 			ScanKey key)
 {
-	int i;
 	/*
 	 * unpin scan buffers
 	 */
-	if (BufferIsValid(scan->rs_cbuf))
-		ReleaseBuffer(scan->rs_cbuf);
-	for (i = 0; i < lengthof(scan->rs_rahead); i++) 
-		if (BufferIsValid(scan->rs_rahead[i].buffer)) 
-			ReleaseBuffer(scan->rs_rahead[i].buffer);
+	release_all_buffers(scan);
 
 	/*
 	 * reinitialize scan descriptor
@@ -1087,17 +1102,12 @@ heap_rescan(HeapScanDesc scan,
 void
 heap_endscan(HeapScanDesc scan)
 {
-	int i;
 	/* Note: no locking manipulations needed */
 
 	/*
 	 * unpin scan buffers
 	 */
-	if (BufferIsValid(scan->rs_cbuf))
-		ReleaseBuffer(scan->rs_cbuf);
-	for (i = 0; i < lengthof(scan->rs_rahead); i++) 
-		if (BufferIsValid(scan->rs_rahead[i].buffer)) 
-			ReleaseBuffer(scan->rs_rahead[i].buffer);
+	release_all_buffers(scan);
 	/*
 	 * decrement relation reference count and free scan descriptor storage
 	 */
@@ -1133,6 +1143,8 @@ heap_endscan(HeapScanDesc scan)
 #endif   /* !defined(HEAPDEBUGALL) */
 
 
+
+
 HeapTuple
 heap_getnext(HeapScanDesc scan, ScanDirection direction)
 {
@@ -1148,6 +1160,7 @@ heap_getnext(HeapScanDesc scan, ScanDirection direction)
 
 	if (scan->rs_ctup.t_data == NULL)
 	{
+		release_all_buffers(scan);
 		HEAPDEBUG_2;			/* heap_getnext returning EOS */
 		return NULL;
 	}
@@ -1203,6 +1216,7 @@ heap_getnextx(HeapScanDesc scan, ScanDirection dir,
 
 	if (NULL == (t = scan->rs_ctup.t_data ? &scan->rs_ctup : 0))
 	{
+		release_all_buffers(scan);
 		*tdatacnt = 0, *seen_EOS = 1;
 		return;
 	}
@@ -3696,8 +3710,7 @@ heap_restrpos(HeapScanDesc scan)
 		/*
 		 * unpin scan buffers
 		 */
-		if (BufferIsValid(scan->rs_cbuf))
-			ReleaseBuffer(scan->rs_cbuf);
+		release_all_buffers(scan);
 		scan->rs_cbuf = InvalidBuffer;
 		scan->rs_cblock = InvalidBlockNumber;
 		scan->rs_inited = false;
