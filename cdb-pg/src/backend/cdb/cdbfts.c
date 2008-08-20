@@ -305,14 +305,15 @@ QDMirroringFormatTime(char *logTimeStr, int logTimeStrMax,
 							  struct timeval *lastLogTimeVal)
 {
 	char msbuf[8];
+	pg_time_t stamp_time = (pg_time_t) lastLogTimeVal->tv_sec;
 	
 	/*
 	 * The following code is copied from log_line_prefix.
 	 */
-	strftime(logTimeStr, logTimeStrMax,
+	pg_strftime(logTimeStr, logTimeStrMax,
 	/* leave room for microseconds... */
 			 "%Y-%m-%d %H:%M:%S        %Z",
-			 localtime(&lastLogTimeVal->tv_sec));
+			 pg_localtime(&stamp_time, default_timezone));
 
 	/* 'paste' milliseconds into place... */
 	sprintf(msbuf, ".%06d", (int) (lastLogTimeVal->tv_usec));

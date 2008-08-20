@@ -4150,6 +4150,12 @@ InitializeGUCOptions(void)
 	long		stack_rlimit;
 
 	/*
+	 * Before log_line_prefix could possibly receive a nonempty setting,
+	 * make sure that default_timezone is set.
+	 */
+	pg_timezone_pre_initialize();
+
+	/*
 	 * Build sorted array of all GUC variables.
 	 */
 	build_guc_variables();

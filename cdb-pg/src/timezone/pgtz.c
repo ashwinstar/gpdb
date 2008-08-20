@@ -30,6 +30,8 @@
 /* Current global timezone */
 pg_tz	   *global_timezone = NULL;
 
+/* Default timezone */
+pg_tz      *default_timezone = NULL;
 
 static char tzdir[MAXPGPATH];
 static bool done_tzdir = false;
@@ -1252,6 +1254,10 @@ set_global_timezone(const char *tzname)
 		return false;
 
 	global_timezone = tznew;
+
+	/* Set default timezone if it is not set */
+	if (default_timezone == NULL)
+		default_timezone = global_timezone;
 	return true;
 }
 
@@ -1284,6 +1290,20 @@ select_default_timezone(void)
 			(errmsg("could not select a suitable default timezone"),
 			 errdetail("It appears that your GMT time zone uses leap seconds. PostgreSQL does not support leap seconds.")));
 	return NULL;				/* keep compiler quiet */
+}
+
+/*
+ * Pre-initialize timezone library.
+ *
+ * This is called before GUC variable initialization begins. Its purpose is
+ * to ensure that elog.c has a pgtz variable to format timestamps with,
+ * in case log_line_prefix is set to a value requiring that. We did not set
+ * default_timezone yet.
+ */
+void
+pg_timezone_pre_initialize(void)
+{
+	select_default_timezone();
 }
 
 /*

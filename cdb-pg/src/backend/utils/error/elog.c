@@ -1894,29 +1894,26 @@ log_line_prefix(StringInfo buf)
 			case 'm':
 				{
 					/*
-					 * Note: for %m, %t, and %s we deliberately use the C
-					 * library's strftime/localtime, and not the equivalent
-					 * functions from src/timezone.  This ensures that all
-					 * backends will report log entries in the same timezone,
-					 * namely whatever C-library setting they inherit from the
-					 * postmaster.	If we used src/timezone then local
-					 * settings of the TimeZone GUC variable would confuse the
-					 * log.
+					 * It is not safe to call strftime since it is not async-safe, and it
+					 * is expensive to call strftime to get timezone everytime, we use
+					 * pg_strftime, but stick on a fixed timezone (default_timezone)
+					 * instead a settable timezone as PostgreSQL does, since we want all
+					 * log messages to have the same time format. See MPP-2591.
 					 */
-					time_t		stamp_time;
+					pg_time_t		stamp_time;
 					char		strfbuf[128],
 								msbuf[8];
 					struct timeval tv;
 
 					gettimeofday(&tv, NULL);
-					stamp_time = tv.tv_sec;
+					stamp_time = (pg_time_t)tv.tv_sec;
 
 					/*
 					 * GP: Save the time of the last log line.
 					 */
 					LastLogTimeVal = tv;
 
-					strftime(strfbuf, sizeof(strfbuf),
+					pg_strftime(strfbuf, sizeof(strfbuf),
 					/* leave room for microseconds... */
 					/* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
@@ -1924,7 +1921,7 @@ log_line_prefix(StringInfo buf)
 #else
 							 "%Y-%m-%d %H:%M:%S        ",
 #endif
-							 localtime(&stamp_time));
+							 pg_localtime(&stamp_time, default_timezone));
 
 					/* 'paste' milliseconds into place... */
 					sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
@@ -1935,7 +1932,7 @@ log_line_prefix(StringInfo buf)
 				break;
 			case 't':
 				{
-					time_t		stamp_time = time(NULL);
+					pg_time_t		stamp_time = (pg_time_t)time(NULL);
 					char		strfbuf[128];
 
 					/*
@@ -1944,14 +1941,14 @@ log_line_prefix(StringInfo buf)
 					LastLogTimeVal.tv_sec = stamp_time;
 					LastLogTimeVal.tv_usec = 0;
 					
-					strftime(strfbuf, sizeof(strfbuf),
+					pg_strftime(strfbuf, sizeof(strfbuf),
 					/* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
 							 "%Y-%m-%d %H:%M:%S %Z",
 #else
 							 "%Y-%m-%d %H:%M:%S",
 #endif
-							 localtime(&stamp_time));
+							 pg_localtime(&stamp_time, default_timezone));
 					appendStringInfoString(buf, strfbuf);
 				}
 				break;
@@ -1959,15 +1956,16 @@ log_line_prefix(StringInfo buf)
 				if (MyProcPort)
 				{
 					char		strfbuf[128];
+					pg_time_t   stamp_time = (pg_time_t)MyProcPort->session_start;
 
-					strftime(strfbuf, sizeof(strfbuf),
+					pg_strftime(strfbuf, sizeof(strfbuf),
 					/* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
 							 "%Y-%m-%d %H:%M:%S %Z",
 #else
 							 "%Y-%m-%d %H:%M:%S",
 #endif
-							 localtime(&MyProcPort->session_start));
+							 pg_localtime(&stamp_time, default_timezone));
 					appendStringInfoString(buf, strfbuf);
 				}
 				break;

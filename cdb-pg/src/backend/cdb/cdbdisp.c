@@ -216,14 +216,14 @@ write_eventlog(int level, const char *line)
 
 static void get_timestamp(char * strfbuf)
 {
-	time_t		stamp_time;
+	pg_time_t		stamp_time;
 	char			msbuf[8];
 	struct timeval tv;
 
 	gettimeofday(&tv, NULL);
 	stamp_time = tv.tv_sec;
 
-	strftime(strfbuf, 127,
+	pg_strftime(strfbuf, 127,
 	/* leave room for microseconds... */
 	/* Win32 timezone names are too long so don't print them */
 #ifndef WIN32
@@ -231,7 +231,7 @@ static void get_timestamp(char * strfbuf)
 #else
 			 "%Y-%m-%d %H:%M:%S        ",
 #endif
-			 localtime(&stamp_time));
+			 pg_localtime(&stamp_time, default_timezone));
 
 	/* 'paste' milliseconds into place... */
 	sprintf(msbuf, ".%06d", (int) (tv.tv_usec));
