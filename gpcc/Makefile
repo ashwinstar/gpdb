@@ -55,7 +55,7 @@ mkpaxos: mkdir
 
 mkgpfdist: mkext
 	@echo --- gpfdist --------------------------------------------------
-	(cd src/gpfdist; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
+	(cd src/gpfdist;ln -sf ../../../cdb-pg/src/backend/utils/misc/fstream/*.c .;mkdir -p include;ln -sf ../../../cdb-pg/src/include/fstream fstream; $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) \
 		-Werror -o gpfdist *.c $(APULIBS) $(APRLIBS) -ljson -levent -L$(BLD_THIRDPARTY_LIB_DIR) -lz -lbz2)
 	@mkdir -p build/bin
 	@cp -f src/gpfdist/gpfdist build/bin/

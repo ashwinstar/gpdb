@@ -1,5 +1,5 @@
-#include "fstream.h"
-#include "gfile.h"
+#include <fstream/fstream.h>
+#include <fstream/gfile.h>
 #include <assert.h>
 #include <glob.h>
 #include <stdio.h>
