@@ -404,7 +404,7 @@ SysLoggerMain(int argc, char *argv[])
 
 		if (pipe_eof_seen)
 		{
-			ereport(LOG,
+			ereport(DEBUG1,
 					(errmsg("logger shutting down")));
 
 			/*

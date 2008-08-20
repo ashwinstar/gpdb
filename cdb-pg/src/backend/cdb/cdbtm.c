@@ -1267,12 +1267,12 @@ tmShmemInit(void)
 		if (postmasterDtxStartTime != 0)
 		{
 			*shmDistribTimeStamp = postmasterDtxStartTime;
-			elog(LOG, "Preserving DTM start timestamp %u", *shmDistribTimeStamp);
+			elog(DEBUG1, "Preserving DTM start timestamp %u", *shmDistribTimeStamp);
 		}
 		else
 		{
 			*shmDistribTimeStamp = (DistributedTransactionTimeStamp)t;
-			elog(LOG, "DTM start timestamp %u", *shmDistribTimeStamp);
+			elog(DEBUG1, "DTM start timestamp %u", *shmDistribTimeStamp);
 		}
 		*shmGIDSeq = FirstDistributedTransactionId;
 	}

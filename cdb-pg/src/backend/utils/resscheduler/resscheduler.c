@@ -139,7 +139,7 @@ InitResScheduler(void)
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("not enough shared memory for resource scheduler")));
 
-	elog(LOG, "initialized resource scheduler");
+	elog(DEBUG1, "initialized resource scheduler");
 	
 
 	return;
@@ -163,7 +163,7 @@ InitResPortalIncrementHash(void)
 	if (!result)
 		elog(FATAL, "could not initialize portal increment hash");
 
-	elog(LOG, "initialized portal increment hash");
+	elog(DEBUG1, "initialized portal increment hash");
 }
 
 
