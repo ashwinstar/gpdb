@@ -3127,11 +3127,11 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			/* CDB: Partitioned Table commands */
 		case AT_PartExchange:			/* Exchange */
 		{
-			AlterPartitionCmd  *pc    = (AlterPartitionCmd *) cmd->def;
-			PgPartRule   	   *prule = NULL;
-			Relation			oldrel = NULL;
-			Relation			newrel = NULL;
-			int					i;
+			AlterPartitionCmd  	*pc    	= (AlterPartitionCmd *) cmd->def;
+			PgPartRule   	   	*prule 	= NULL;
+			Relation			 oldrel = NULL;
+			Relation			 newrel = NULL;
+			int					 i;
 
 			if (Gp_role == GP_ROLE_UTILITY)
 				elog(ERROR, "EXCHANGE is not supported in utility mode");
@@ -10285,11 +10285,11 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 
 	if (pid->idtype == AT_AP_IDRule) 
 	{
-		List *l1 = (List *)pid->partiddef;
-		ListCell *lc;			
-		AlterPartitionId *pid2 = NULL;
-		PgPartRule* prule2 = NULL;
-		StringInfoData      sid1, sid2;
+		List 					*l1 	= (List *)pid->partiddef;
+		ListCell 				*lc;			
+		AlterPartitionId 		*pid2 	= NULL;
+		PgPartRule* 			 prule2 = NULL;
+		StringInfoData      	 sid1, sid2;
 	
 		initStringInfo(&sid1);
 		initStringInfo(&sid2);
@@ -11629,7 +11629,7 @@ ATPExecPartAlter(Relation rel,
 		case AT_PartDrop:				/* Drop */
 		case AT_PartMerge:				/* Merge */
 		case AT_PartModify:				/* Modify */
-		case AT_PartRename:				/* Rename */
+/*		case AT_PartRename:	 */			/* Rename */
 		case AT_PartSetTemplate:		/* Set Subpartition Template */
 		case AT_PartSplit:				/* Split */
 		case AT_PartTruncate:			/* Truncate */
@@ -11793,17 +11793,19 @@ static void
 ATPExecPartDrop(Relation rel,
                 AlterPartitionCmd *pc)
 {
-	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	PgPartRule   *prule = NULL;
-	DropStmt *ds = (DropStmt *)pc->arg1;
-	bool bCheckMaybe = !(ds->missing_ok);
+	AlterPartitionId 	*pid 		 = (AlterPartitionId *)pc->partid;
+	PgPartRule   		*prule 		 = NULL;
+	DropStmt 			*ds 		 = (DropStmt *)pc->arg1;
+	bool 				 bCheckMaybe = !(ds->missing_ok);
+	AlterPartitionId 	*locPid 	 = pid; /* local pid if IDRule */
+	PgPartRule* 		 prule2 	 = NULL; /* prule for parent if IDRule */
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	/* missing partition id only ok for range partitions -- just get
 	 * first one */
-	if (AT_AP_IDNone == pid->idtype)
+	if (AT_AP_IDNone == locPid->idtype)
 	{
 		PartitionNode *pNode = RelationBuildPartitionDesc(rel); 
 
@@ -11813,8 +11815,44 @@ ATPExecPartDrop(Relation rel,
 					 errmsg("missing name or value for DROP")));
 		
 		/* if a range partition, and not specified, just get the first one */
-		pid->idtype = AT_AP_IDRank;
-		pid->partiddef = (Node *)makeInteger(1);
+		locPid->idtype = AT_AP_IDRank;
+		locPid->partiddef = (Node *)makeInteger(1);
+	}
+	else if (AT_AP_IDRule == locPid->idtype)
+	{
+		List 			*l1    = (List *)pid->partiddef;
+		ListCell 		*lc;			
+		PartitionNode 	*pNode = NULL;
+
+		lc = list_head(l1);
+		prule2 = (PgPartRule*) lfirst(lc);
+
+		if (prule2 && prule2->topRule && prule2->topRule->children)
+			pNode = prule2->topRule->children;
+
+		lc = lnext(lc);
+
+		locPid = (AlterPartitionId *)lfirst(lc);
+		
+		Assert(locPid);
+
+		if (pNode && locPid)
+		{
+			if (AT_AP_IDNone == locPid->idtype)
+			{
+				if (pNode && pNode->part && (pNode->part->parkind != 'r'))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("missing name or value for DROP for %s",
+									prule2->relname
+									)));
+		
+				/* if a range partition, and not specified, just get
+				 * the first one */
+				locPid->idtype = AT_AP_IDRank;
+				locPid->partiddef = (Node *)makeInteger(1);
+			}
+		}
 	}
 
 	prule = get_part_rule(rel, pid, bCheckMaybe, true, 
@@ -11822,8 +11860,20 @@ ATPExecPartDrop(Relation rel,
 
 	if (!prule)
 	{
+		char *lrelname;
+
+		if (prule2) 
+			lrelname = prule2->relname;
+		else
+		{
+			lrelname = palloc0(NAMEDATALEN*2);
+			snprintf(lrelname, NAMEDATALEN*2, 
+					 "relation \"%s\"",
+					 RelationGetRelationName(rel));
+		}
+
 		Assert(ds->missing_ok);
-		switch (pid->idtype)
+		switch (locPid->idtype)
 		{
 			case AT_AP_IDNone:				/* no ID */
 				/* should never happen */
@@ -11832,34 +11882,38 @@ ATPExecPartDrop(Relation rel,
 			case AT_AP_IDName:				/* IDentify by Name */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("partition \"%s\" of relation \"%s\" does not "
+					 errmsg("partition \"%s\" of %s does not "
 							"exist, skipping",
-							strVal(pid->partiddef),
-							RelationGetRelationName(rel))));
+							strVal(locPid->partiddef),
+							lrelname
+							)));
 
 				break;
 			case AT_AP_IDValue:				/* IDentifier FOR Value */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("partition for specified value of "
-							"relation \"%s\" does not exist, skipping",
-							RelationGetRelationName(rel))));
+							"%s does not exist, skipping",
+							lrelname
+							 )));
 
 				break;
 			case AT_AP_IDRank:				/* IDentifier FOR Rank */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("partition for specified rank of "
-							"relation \"%s\" does not exist, skipping",
-							RelationGetRelationName(rel))));
+							"%s does not exist, skipping",
+							lrelname
+							 )));
 
 				break;
 			case AT_AP_ID_oid:				/* IDentifier by oid */
 				ereport(NOTICE,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("partition for specified oid of "
-							"relation \"%s\" does not exist, skipping",
-							RelationGetRelationName(rel))));
+							"%s does not exist, skipping",
+							lrelname
+							 )));
 
 				break;
 			default: /* XXX XXX */
@@ -11885,24 +11939,36 @@ ATPExecPartDrop(Relation rel,
 		if ('h' == prule->pNode->part->parkind)
 			ereport(ERROR,
 					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-					 errmsg("cannot drop HASH partition%s of relation \"%s\"",
+					 errmsg("cannot drop HASH partition%s of %s",
 							prule->partIdStr,
-							RelationGetRelationName(rel)),
+							prule->relname),
 					 errhint("recreate the table to reduce the "
 							 "number of partitions")));
 
-
 		/* cannot drop last partition of table */
 		if (numParts <= 1)
-			ereport(ERROR,
-					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
-					 errmsg("cannot drop partition%s of "
-							"relation \"%s\"-- only one remains",
-							prule->partIdStr,
-							RelationGetRelationName(rel)),
-					 errhint("Use DROP TABLE \"%s\" to remove the "
-							 "table and the final partition ", 
-							 RelationGetRelationName(rel))));
+		{
+			if (AT_AP_IDRule != pid->idtype)				
+				ereport(ERROR,
+						(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+						 errmsg("cannot drop partition%s of "
+								"%s -- only one remains",
+								prule->partIdStr,
+								prule->relname),
+						 errhint("Use DROP TABLE \"%s\" to remove the "
+								 "table and the final partition ", 
+								 RelationGetRelationName(rel))));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+						 errmsg("cannot drop partition%s of "
+								"%s -- only one remains",
+								prule->partIdStr,
+								prule->relname),
+						 errhint("DROP the parent partition to remove the "
+								 "final partition ")));
+
+		}
 		rel2 = heap_open(prule->topRule->parchildrelid, AccessShareLock);
 
 		prelname = pstrdup(RelationGetRelationName(rel2));
@@ -12267,9 +12333,9 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cannot EXCHANGE PARTITION for "
-							"relation \"%s\" -- partition has children",
-							RelationGetRelationName(rel))));
-
+							"%s -- partition has children",
+							prule->relname
+							 )));
 
 		orig_pid = pid;
 		orig_prule = prule;
@@ -12368,9 +12434,9 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 			&& orig_prule->isName)
 			ereport(NOTICE,
 					(errmsg("exchanged partition%s of "
-							"relation \"%s\" with relation \"%s\"",
+							"%s with relation \"%s\"",
 							orig_prule->partIdStr,
-							RelationGetRelationName(rel),
+							orig_prule->relname,
 							newname)));
 
 	}

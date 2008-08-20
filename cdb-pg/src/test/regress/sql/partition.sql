@@ -1929,3 +1929,76 @@ mastertablename = 'i5';
 select pg_get_partition_def('i5'::regclass, true);
 drop table i5;
 set gp_enable_hash_partitioned_tables = false;
+
+-- ALTER TABLE ALTER PARTITION tests
+
+CREATE TABLE rank2 (id int, rank int,
+year date, gender char(1),
+usstate char(2))
+DISTRIBUTED BY (id, gender, year, usstate)
+partition by list (gender)
+subpartition by range (year)
+subpartition template (
+subpartition jan01 start (date '2001-01-01'),
+subpartition jan02 start (date '2002-01-01'),
+subpartition jan03 start (date '2003-01-01'),
+subpartition jan04 start (date '2004-01-01'),
+subpartition jan05 start (date '2005-01-01')
+),
+subpartition by list (usstate)
+subpartition template (
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+)
+(
+  partition boys values ('M'),
+  partition girls values ('F')
+);
+
+-- ok
+alter table rank2 truncate partition girls;
+alter table rank2 alter partition girls truncate partition for (rank(1));
+alter table rank2 alter partition girls alter partition 
+for (rank(1)) truncate partition mass;
+
+-- don't NOTIFY of children if cascade
+alter table rank2 truncate partition girls cascade;
+
+-- fail - no rank 100
+alter table rank2 alter partition girls truncate partition for (rank(100));
+
+-- fail - no funky
+alter table rank2 alter partition girls alter partition 
+for (rank(1)) truncate partition "funky";
+
+-- fail - no funky (drop)
+alter table rank2 alter partition girls alter partition 
+for (rank(1)) drop partition "funky";
+
+-- fail - missing name
+alter table rank2 alter partition girls alter partition 
+for (rank(1)) drop partition ;
+
+-- ok
+alter table rank2 alter partition girls drop partition 
+for (rank(1)) ;
+
+-- ok , skipping
+alter table rank2 alter partition girls drop partition if exists jan01;
+
+-- ok until run out of partitions
+alter table rank2 alter partition girls drop partition ;
+alter table rank2 alter partition girls drop partition ;
+alter table rank2 alter partition girls drop partition ;
+alter table rank2 alter partition girls drop partition ;
+alter table rank2 alter partition girls drop partition ;
+
+-- ok, skipping
+alter table rank2 alter partition girls drop partition if exists for (rank(5));
+
+-- not ok
+alter table rank2 alter partition girls rename partition jan05 
+to "funky fresh";
+
+drop table rank2 cascade;
