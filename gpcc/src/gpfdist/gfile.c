@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <bzlib.h>
 #include <zlib.h>
 #ifdef WIN32
 #include <io.h>
@@ -17,6 +18,7 @@ struct gfile_t{
     int(*close)(gfile_t*);
     union{
 	gzFile gz;
+	BZFILE*bz;
 	int txt;
     }u;
 };
@@ -44,6 +46,31 @@ txt_file_open(gfile_t*fd,const char*fpath)
     }
     fd->read = txt_file_read;
     fd->close = txt_file_close;
+    return 0;
+}
+
+static size_t
+bz_file_read(gfile_t*fd,void*ptr,size_t len)
+{
+    return BZ2_bzread(fd->u.bz,ptr,len);
+}
+
+static int
+bz_file_close(gfile_t *fd)
+{
+    BZ2_bzclose(fd->u.bz);
+    return 0;
+}
+
+static int
+bz_file_open(gfile_t*fd,const char*fpath)
+{
+    if (!(fd->u.bz=BZ2_bzopen(fpath,"rb"))){
+	fprintf(stderr,"gfile gzopen failed %s\n",fpath);
+	return 1;
+    }
+    fd->read = bz_file_read;
+    fd->close = bz_file_close;
     return 0;
 }
 
@@ -96,6 +123,8 @@ gfile_open(const char*fpath)
     memset(fd,0,sizeof*fd);
     if (s&&strcasecmp(s,".gz")==0)
 	e = gz_file_open(fd,fpath);
+    else if (s&&strcasecmp(s,".bz2")==0)
+	e = bz_file_open(fd,fpath);
     else if (s&&strcasecmp(s,".z") == 0)
 	fprintf(stderr,"gfile compression .z file is not supported\n");
     else if (s&&strcasecmp(s,".zip") == 0)
