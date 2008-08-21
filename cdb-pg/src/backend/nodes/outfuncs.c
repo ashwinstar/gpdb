@@ -1431,6 +1431,14 @@ _outAppendPath(StringInfo str, AppendPath *node)
 }
 
 static void
+_outAppendOnlyPath(StringInfo str, AppendOnlyPath *node)
+{
+	WRITE_NODE_TYPE("APPENDONLYPATH");
+
+	_outPathInfo(str, (Path *) node);
+}
+
+static void
 _outResultPath(StringInfo str, ResultPath *node)
 {
 	WRITE_NODE_TYPE("RESULTPATH");
@@ -2860,6 +2868,8 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 	WRITE_BOOL_FIELD(inFromCl);
 	WRITE_UINT_FIELD(requiredPerms);
 	WRITE_OID_FIELD(checkAsUser);
+
+	WRITE_BOOL_FIELD(forceDistRandom);
 }
 
 static void
@@ -3462,6 +3472,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_AppendPath:
 				_outAppendPath(str, obj);
+				break;
+			case T_AppendOnlyPath:
+				_outAppendOnlyPath(str, obj);
 				break;
 			case T_ResultPath:
 				_outResultPath(str, obj);
