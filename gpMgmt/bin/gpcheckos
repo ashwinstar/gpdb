@@ -357,9 +357,9 @@ system.rlim_fd_cur			int	= 65536
 system.shmsys:shminfo_shmmax		int	>= 0x2000000
 system.semsys:seminfo_semmni		int	= 1024
 solaris.release				str	= Solaris 10 8/07 s10x_u4wos_12b X86
-platform.version				str	contains Generic_127112-05
+platform.version				str	contains Generic_127112-11
 solaris.patch				str	contains 125370-06
-solaris.patch                       str   contains 127112-05
+solaris.patch                       str   contains 127112-11
 solaris.patch                       str   contains 125205-07
 solaris.patch                       str   contains 121431-20
 solaris.patch                       str   contains 125417-04
