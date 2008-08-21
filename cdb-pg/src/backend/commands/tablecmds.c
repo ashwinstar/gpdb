@@ -11629,7 +11629,7 @@ ATPExecPartAlter(Relation rel,
 		case AT_PartDrop:				/* Drop */
 		case AT_PartMerge:				/* Merge */
 		case AT_PartModify:				/* Modify */
-/*		case AT_PartRename:	*/ 			/* Rename */
+		case AT_PartRename:	 			/* Rename */
 		case AT_PartSetTemplate:		/* Set Subpartition Template */
 		case AT_PartSplit:				/* Split */
 		case AT_PartTruncate:			/* Truncate */
@@ -11798,7 +11798,7 @@ ATPExecPartDrop(Relation rel,
 	DropStmt 			*ds 		 = (DropStmt *)pc->arg1;
 	bool 				 bCheckMaybe = !(ds->missing_ok);
 	AlterPartitionId 	*locPid 	 = pid;  /* local pid if IDRule */
-	PgPartRule* 		 prule2 	 = NULL; /* prule for parent if IDRule */
+	PgPartRule* 		 par_prule 	 = NULL; /* prule for parent if IDRule */
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -11825,10 +11825,10 @@ ATPExecPartDrop(Relation rel,
 		PartitionNode 	*pNode = NULL;
 
 		lc = list_head(l1);
-		prule2 = (PgPartRule*) lfirst(lc);
+		par_prule = (PgPartRule*) lfirst(lc);
 
-		if (prule2 && prule2->topRule && prule2->topRule->children)
-			pNode = prule2->topRule->children;
+		if (par_prule && par_prule->topRule && par_prule->topRule->children)
+			pNode = par_prule->topRule->children;
 
 		lc = lnext(lc);
 
@@ -11844,7 +11844,7 @@ ATPExecPartDrop(Relation rel,
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("missing name or value for DROP for %s",
-									prule2->relname
+									par_prule->relname
 									)));
 		
 				/* if a range partition, and not specified, just get
@@ -11862,8 +11862,8 @@ ATPExecPartDrop(Relation rel,
 	{
 		char *lrelname;
 
-		if (prule2) 
-			lrelname = prule2->relname;
+		if (par_prule) 
+			lrelname = par_prule->relname;
 		else
 		{
 			lrelname = palloc0(NAMEDATALEN*2);
@@ -13155,46 +13155,225 @@ ATPExecPartModify(Relation rel,
 }
 
 /* ALTER TABLE ... RENAME PARTITION */
+static List *
+atpxRenameList(Relation rel, PartitionNode *pNode, 
+			   char *old_parentname, char *new_parentname)
+{
+	List *l1 = NIL;
+	ListCell *lc;			
+
+	if (!pNode)
+		return l1;
+
+	/* add entries for rules at current level */
+	foreach(lc, pNode->rules)
+	{
+		PartitionRule 	*rule = lfirst(lc);
+		RangeVar 		*rv;
+		Relation		 rel;
+		char *relname = NULL;
+		char newRelNameBuf[NAMEDATALEN];
+
+		rel = heap_open(rule->parchildrelid, AccessShareLock);
+
+		relname = pstrdup(RelationGetRelationName(rel));
+
+		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+						  relname);
+
+		heap_close(rel, NoLock);
+
+		/* the child name should contain the old parent name as a
+		 * prefix - check the length and compare to make sure.  
+		 *
+		 * To build the new child name, just use the new name as a
+		 * prefix, and use the remainder of the child name (the part
+		 * after the old parent name prefix) as the suffix.
+		 */
+
+		Assert(strlen(old_parentname) <= strlen(relname));
+
+		if (strlen(old_parentname) > strlen(relname))
+			goto l_loop_skip;
+
+		Assert(0 == strncmp(old_parentname, relname, strlen(old_parentname)));
+
+		if (0 != (strncmp(old_parentname, relname, strlen(old_parentname))))
+			goto l_loop_skip;
+
+		snprintf(newRelNameBuf, sizeof(newRelNameBuf), "%s%s",
+				 new_parentname, relname + strlen(old_parentname));
+
+		if (l1)
+			l1 = lappend(l1, list_make2(rv, pstrdup(newRelNameBuf)));
+		else
+			l1 = list_make1( list_make2(rv, pstrdup(newRelNameBuf)));
+
+		/* add the child lists next (not first) */
+		{
+			List *l2 = NIL;
+
+			if (rule->children)
+				l2 = atpxRenameList(rel, rule->children, 
+									relname, newRelNameBuf);
+			else
+				l2 = NIL;
+
+			if (l2)
+			{
+				if (l1)
+					l1 = list_concat(l1, l2);
+				else
+					l1 = l2;	
+			}
+		}
+
+	l_loop_skip:
+		rule = NULL; /* need a dummy place to hang the label */
+
+	} /* end foreach */
+
+	/* and the default partition */
+	if (pNode->default_part)
+	{
+		PartitionRule 	*rule = pNode->default_part;
+		RangeVar 		*rv;
+		Relation		 rel;
+		char *relname = NULL;
+		char newRelNameBuf[NAMEDATALEN];
+
+		rel = heap_open(rule->parchildrelid, AccessShareLock);
+
+		relname = pstrdup(RelationGetRelationName(rel));
+
+		rv = makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
+						  relname);
+
+		heap_close(rel, NoLock);
+
+		if (strlen(old_parentname) < strlen(relname))
+			goto l_fin_rename;
+
+		Assert(strncmp(old_parentname, relname, strlen(old_parentname)));
+
+		if (0 != (strncmp(old_parentname, relname, strlen(old_parentname))))
+			goto l_fin_rename;
+
+		snprintf(newRelNameBuf, sizeof(newRelNameBuf), "%s%s",
+				 new_parentname, relname + strlen(old_parentname));
+
+		if (l1)
+			l1 = lappend(l1, list_make2(rv, pstrdup(newRelNameBuf)));
+		else
+			l1 = list_make1( list_make2(rv, pstrdup(newRelNameBuf)));
+
+		{
+			List *l2 = NIL;
+
+			if (rule->children)
+				l2 = atpxRenameList(rel, rule->children, 
+									relname, newRelNameBuf);
+			else
+				l2 = NIL;
+
+			if (l2)
+			{
+				if (l1)
+					l1 = list_concat(l1, l2);
+				else
+					l1 = l2;	
+			}
+		}
+
+
+	}
+
+	l_fin_rename:
+
+	return l1;
+} /* end atpxRenameList */
+
 static void 
 ATPExecPartRename(Relation rel,
                   AlterPartitionCmd *pc)
 {
 	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
 	PgPartRule   *prule = NULL;
-	char		    realrelname[NAMEDATALEN];
+	AlterPartitionId 	*locPid 	 = pid;  /* local pid if IDRule */
+	PgPartRule* 		 par_prule 	 = NULL; /* prule for parent if IDRule */
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
+
+	if (AT_AP_IDRule == locPid->idtype)
+	{
+		List 			*l1    = (List *)pid->partiddef;
+		ListCell 		*lc;			
+
+		lc = list_head(l1);
+		par_prule = (PgPartRule*) lfirst(lc);
+
+		lc = lnext(lc);
+
+		locPid = (AlterPartitionId *)lfirst(lc);
+		
+		Assert(locPid);
+	}
 
 	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
 	if (prule)
 	{
-		AlterPartitionId		newpid;
-		PgPartRule   		   *prule2 = NULL;
-		Relation			 	targetrelation;
-		char        		 	targetrelname[NAMEDATALEN];
-		Relation			 	parentrelation;
-		Oid						namespaceId;
-		char	   			   *newpartname = strVal(pc->arg1);
-		char	   			   *relname;
-		char	  			 	parentname[NAMEDATALEN];
-		int 				 	partDepth = prule->pNode->part->parlevel;
-		RenameStmt 			   *renStmt = makeNode(RenameStmt);
-		DestReceiver 		   *dest  = None_Receiver;
-		Relation				part_rel;
-		SysScanDesc				scan;
-		ScanKeyData				key;
-		HeapTuple				tuple;
-		Form_pg_partition_rule	pgrule;
+		AlterPartitionId		 newpid;
+		PgPartRule   		   	*prule2 	 = NULL;
+		Relation			 	 targetrelation;
+		char        		 	 targetrelname[NAMEDATALEN];
+		Relation			 	 parentrelation;
+		Oid						 namespaceId;
+		char	   			   	*newpartname = strVal(pc->arg1);
+		char	   			   	*relname;
+		char	  			 	 parentname[NAMEDATALEN];
+		int 				 	 partDepth 	 = prule->pNode->part->parlevel;
+		RenameStmt 			   	*renStmt 	 = makeNode(RenameStmt);
+		DestReceiver 		   	*dest  		 = None_Receiver;
+		Relation				 part_rel;
+		SysScanDesc				 scan;
+		ScanKeyData				 key;
+		HeapTuple				 tuple;
+		Form_pg_partition_rule	 pgrule;
+		PartitionNode 			*pNode 		 = NULL;
+		char 					*top_relname = NULL;
+		List 					*renList 	 = NIL;
 
 		newpid.idtype = AT_AP_IDName;
 		newpid.partiddef = pc->arg1;
 		newpid.location = -1;
 
+		if (par_prule)
+		{
+			top_relname = par_prule->relname;
+
+			if (par_prule && par_prule->topRule && 
+				par_prule->topRule->children)
+					pNode = par_prule->topRule->children;
+		}
+		else
+		{
+			char relnamBuf[(NAMEDATALEN * 2)];
+
+			snprintf(relnamBuf, sizeof(relnamBuf), "relation \"%s\"", 
+					 RelationGetRelationName(rel));
+
+			top_relname = pstrdup(relnamBuf);
+			pNode = RelationBuildPartitionDesc(rel); 
+		}
+
 		/* ERROR if exists */
-		prule2 = get_part_rule(rel, &newpid, true, false, 
-							   CurrentMemoryContext, NULL);
+		prule2 = get_part_rule1(rel, &newpid, true, false, 
+								CurrentMemoryContext, NULL,
+								pNode,
+								top_relname,
+								NULL);
 
 		targetrelation = relation_open(prule->topRule->parchildrelid, 
 									   AccessExclusiveLock);
@@ -13206,8 +13385,6 @@ ATPExecPartRename(Relation rel,
 
 		relation_close(targetrelation, AccessExclusiveLock);
 
-		StrNCpy(realrelname, RelationGetRelationName(rel), NAMEDATALEN);
-
 		if (0 == prule->topRule->parparentoid)
 		{
 			StrNCpy(parentname, 
@@ -13215,21 +13392,16 @@ ATPExecPartRename(Relation rel,
 		}
 		else
 		{
-				/* XXX XXX XXX does this work ???? */
-
-			AlterPartitionId parent_pid;
-			PgPartRule   *prule3 = NULL;
-			parent_pid.idtype = AT_AP_ID_oid;
-			parent_pid.partiddef = (Node *)&(prule->topRule->parparentoid);
-			parent_pid.location = -1;
-
-			prule3 = get_part_rule(rel, &parent_pid, true, true, 
-								   CurrentMemoryContext, NULL);
-
-			parentrelation = RelationIdGetRelation(prule3->topRule->parchildrelid);
-			StrNCpy(parentname, 
-					RelationGetRelationName(parentrelation), NAMEDATALEN);
-			RelationClose(parentrelation);
+			Assert(par_prule);
+			if (par_prule)
+			{
+				/* look in the parent prule */
+				parentrelation = 
+					RelationIdGetRelation(par_prule->topRule->parchildrelid);
+				StrNCpy(parentname, 
+						RelationGetRelationName(parentrelation), NAMEDATALEN);
+				RelationClose(parentrelation);
+			}
 		}
 
 		relname = ChoosePartitionName(parentname,
@@ -13244,6 +13416,13 @@ ATPExecPartRename(Relation rel,
 
 		renStmt->subname = NULL;
 		renStmt->newname = relname;
+
+		if (prule && prule->topRule && prule->topRule->children)
+				pNode = prule->topRule->children;
+		else
+				pNode = NULL;
+
+		renList = atpxRenameList(rel, pNode, targetrelname, relname);
 
 		part_rel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
 
@@ -13274,15 +13453,37 @@ ATPExecPartRename(Relation rel,
 				(Node *) renStmt,
 				NULL, dest, NULL);		
 
+		/* process children if there are any */
+		if (renList)
+		{
+			ListCell 		*lc;			
+
+			foreach(lc, renList)
+			{
+				ListCell 		*lc2;			
+				List  			*lpair = lfirst(lc);
+
+				lc2 = list_head(lpair);
+
+				renStmt->relation = (RangeVar *)lfirst(lc2);
+				lc2 = lnext(lc2);
+				renStmt->newname = (char *)lfirst(lc2);
+
+				ProcessUtility(
+						(Node *) renStmt,
+						NULL, dest, NULL);		
+			}
+		}
+		
+
 		/* Notify of name if did not use name for partition id spec */
 		if ((pid->idtype != AT_AP_IDName)
 			&& prule->isName)
 			ereport(NOTICE,
-					(errmsg("renamed partition%s to \"%s\" for "
-							"relation \"%s\"",
+					(errmsg("renamed partition%s to \"%s\" for %s",
 							prule->partIdStr,
 							newpartname,
-							realrelname)));
+							prule->relname)));
 	}
 
 } /* end ATPExecPartRename */

@@ -1000,7 +1000,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=492)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=4136)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1323,8 +1323,8 @@ COPY foz FROM stdin DELIMITER '|';
 select * from foz_1_prt_1;
  i |     d      
 ---+------------
- 2 | 10-10-2001
  1 | 01-02-2001
+ 2 | 10-10-2001
 (2 rows)
 
 select * from foz_1_prt_2;
@@ -2043,7 +2043,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=491)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=4135)
 select * from d;
  i | j  
 ---+----
@@ -2142,7 +2142,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=491)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=4135)
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -2182,10 +2182,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=491)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=4135)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=491)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=4135)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---
@@ -2227,9 +2227,9 @@ insert into b values(25, '2010-01-22');
 insert into b values(90, '2011-05-04');
 -- shouldn't work
 insert into b values(1, '2019-01-01');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=491)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=4135)
 insert into b values(91, '2008-05-05');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=491)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=4135)
  
 select * from b_1_prt_1;
  i |     j      
@@ -2281,24 +2281,24 @@ insert into b values(6, 3000, '2007-02-02 16:00:00'::timestamp -
 					'1 second'::interval, 'BBZZZZZZZZZZ');
 -- should fail
 insert into b values(6, 3000, '2007-02-02 15:30:00', 'CCCCCCC');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=492)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=4136)
 insert into b values(4, 5000, '2007-01-01 12:00:00', 'BCC');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=492)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=4136)
 insert into b values(5, 8000, '2007-01-01 12:00:00', 'ZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=491)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=4135)
 insert into b values(6, 3000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=492)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=4136)
 insert into b values(6, 1000, '2007-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=492)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=4136)
 insert into b values(6, 3000, '2006-02-02 16:00:00', 'ABZZZZZZZZZZ');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=492)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=4136)
 insert into b values(6, 3000, '2007-02-02 00:00:00', 'A');
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=492)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=4136)
 -- NULL tests
 insert into b default values;
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=491)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=4135)
 insert into b values(6, 3000, '2007-01-01 12:00:00', NULL);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=492)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=4136)
 drop table b;
 -- check that we detect subpartitions partitioning a column that is already
 -- a partitioning target
@@ -2398,7 +2398,7 @@ select * from region where r_regionkey = '7';
 -- tables since we cannot enfoce them. But since this insert maps to a 
 -- single definitive partition, we can detect it.
 insert into region values(7, 'abc', 'def');
-ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=491)
+ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=4135)
 drop table region;
 -- exchange
 -- 1) test all sanity checking
@@ -2783,10 +2783,10 @@ alter table foo exchange partition for(position(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 2 | 1
- 6 | 6
  1 | 1
  3 | 2
+ 2 | 1
+ 6 | 6
 (4 rows)
 
 drop table bar;
@@ -2811,10 +2811,10 @@ alter table foo exchange partition for(position(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 2 | 3
- 6 | 6
  1 | 2
  3 | 4
+ 2 | 3
+ 6 | 6
 (4 rows)
 
 drop table bar;
@@ -3151,7 +3151,7 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 insert into foo values(5994400);
 insert into foo values(1);
 insert into foo values(6000002);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=500)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=4144)
 insert into foo values(5994376);
 drop table foo;
 create table foo (i int) 
@@ -3236,18 +3236,18 @@ copy foo from stdin;
 select * from foo;
  i 
 ---
- 2
- 4
  1
  3
+ 2
+ 4
 (4 rows)
 
 select * from foo_1_prt_p1;
  i 
 ---
- 2
  1
  3
+ 2
 (3 rows)
 
 select * from foo_1_prt_p2;
@@ -3275,10 +3275,10 @@ copy foo from stdin;
 select * from foo;
  i 
 ---
- 1
- 3
  2
  4
+ 1
+ 3
 (4 rows)
 
 select * from foo_1_prt_p1;
@@ -3814,5 +3814,5 @@ NOTICE:  partition for specified rank of partition "girls" of relation "rank2" d
 -- not ok
 alter table rank2 alter partition girls rename partition jan05 
 to "funky fresh";
-ERROR:  cannot ALTER PARTITION for relation "rank2"
+NOTICE:  renamed partition "jan05" to "funky fresh" for partition "girls" of relation "rank2"
 drop table rank2 cascade;
