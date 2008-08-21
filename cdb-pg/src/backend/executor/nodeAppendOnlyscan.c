@@ -78,7 +78,9 @@ ExecAppendOnlyScan(AppendOnlyScanState *node)
 	/*
 	 * use AppendOnlyNext as access method
 	 */
-	return ExecScan((ScanState *) node, (ExecScanAccessMtd) AppendOnlyNext);
+	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) AppendOnlyNext);
+	Gpmon_M_Incr(GpmonPktFromAppOnlyScanState(node), GPMON_QEXEC_M_ROWSOUT);
+	return slot;
 }
 
 
@@ -147,6 +149,17 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 	ExecAssignResultTypeFromTL(&appendonlystate->ss.ps);
 	ExecAssignScanProjectionInfo(&appendonlystate->ss);
 
+	{
+		Gpmon_NameUnit_MaxVal m[GPMON_APPONLYSCAN_TOTAL + 1] = {
+			GPMON_QEXEC_M_INIT, 
+			{ "AppendOnlyScan Rescan", "Rescans", 0},
+			{ NULL, NULL, 0 }
+		};
+
+		Assert(GPMON_APPONLYSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
+		InitPlanStateGpmonPkt(&appendonlystate->ss.ps, "AppendOnly Scan", m);
+	}
+
 	return appendonlystate;
 }
 
@@ -196,6 +209,8 @@ ExecEndAppendOnlyScan(AppendOnlyScanState *node)
 	 * close the heap relation.
 	 */
 	ExecCloseScanRelation(relation);
+
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------
@@ -231,4 +246,7 @@ ExecAppendOnlyReScan(AppendOnlyScanState *node, ExprContext *exprCtxt)
 
 	appendonly_rescan(scan,			/* scan desc */
 					  NULL);		/* new scan keys */
+
+	Gpmon_M_Incr(GpmonPktFromAppOnlyScanState(node), GPMON_APPONLYSCAN_RESCAN);
+	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 }

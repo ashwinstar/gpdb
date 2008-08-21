@@ -19,4 +19,14 @@ extern TupleTableSlot *ExecAppendOnlyScan(AppendOnlyScanState *node);
 extern void ExecEndAppendOnlyScan(AppendOnlyScanState *node);
 extern void ExecAppendOnlyReScan(AppendOnlyScanState *node, ExprContext *exprCtxt);
 
+enum 
+{
+	GPMON_APPONLYSCAN_RESCAN = GPMON_QEXEC_M_NODE_START,
+	GPMON_APPONLYSCAN_TOTAL,
+};
+
+static inline gpmon_packet_t * GpmonPktFromAppOnlyScanState (AppendOnlyScanState *node)
+{
+	return &node->ss.ps.gpmon_pkt;
+}
 #endif   /* NODEAPPENDONLYSCAN_H */
