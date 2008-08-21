@@ -1997,8 +1997,22 @@ alter table rank2 alter partition girls drop partition ;
 -- ok, skipping
 alter table rank2 alter partition girls drop partition if exists for (rank(5));
 
--- not ok
+-- ok
 alter table rank2 alter partition girls rename partition jan05 
 to "funky fresh";
+alter table rank2 alter partition girls rename partition "funky fresh"
+to jan05;
+
+-- fail , not exist
+alter table rank2 alter partition girls alter partition jan05 rename
+partition jan01 to foo;
+
+-- fail not exist
+alter table rank2 alter partition girls alter partition jan05 alter
+partition cali rename partition foo to bar;
+
+-- fail not partitioned
+alter table rank2 alter partition girls alter partition jan05 alter
+partition cali alter partition foo drop partition bar;
 
 drop table rank2 cascade;
