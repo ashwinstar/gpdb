@@ -1,4 +1,5 @@
 #include <fstream/gfile.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,7 +29,11 @@ struct gfile_t{
 static size_t
 txt_file_read(gfile_t*fd,void*ptr,size_t size) 
 {
-    return read(fd->u.txt,ptr,size);
+    size_t i;
+    do
+	i = read(fd->u.txt,ptr,size);
+    while (i<0 && errno==EAGAIN);
+    return i;
 }
 
 static int
