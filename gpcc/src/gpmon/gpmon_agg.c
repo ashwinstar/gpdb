@@ -771,7 +771,7 @@ static double get_cpu_skew(qdnode_t* qdnode)
     apr_pool_destroy(tmp_pool);
     TR2(("(SKEW) CPU Skew: %f\n", cpu_avg ? var/(double)cpu_avg : 0.0f));
 
-    return (cpu_avg ? (var/(double)cpu_avg) : 0.0f);
+    return (cpu_avg ? (var/(double)cpu_avg) * 100.0f : 0.0f);
 }
 
 static double get_row_skew(qdnode_t* qdnode)
@@ -863,12 +863,11 @@ static double get_row_skew(qdnode_t* qdnode)
     apr_pool_destroy(tmp_pool);
     TR2(("(SKEW) Rows in skew: %f\n", row_in_avg ? var/(double)row_in_avg : 0.0f));
 
-    return (row_in_avg ? (var/(double)row_in_avg) : 0.0f);
+    return (row_in_avg ? (var/(double)row_in_avg) * 100.0f : 0.0f);
 }
 
 
-static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
-                      apr_int32_t options)
+static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr)
 {
     char tmstr[24];
     char* p = line;
@@ -900,11 +899,10 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
     cpu_current = get_cpu_current_perc(qdnode);
     sprintf(p += strlen(p), "|%" FMT64 "|%.4f", 
             cpu_elapsed, cpu_current);
-    if (options == GPMON_AGG_QLOG_DONE)
-    {
-        cpu_skew = get_cpu_skew(qdnode);
-        row_skew = get_row_skew(qdnode);
-    }
+
+    cpu_skew = get_cpu_skew(qdnode);
+    row_skew = get_row_skew(qdnode);
+
     sprintf(p += strlen(p), "|%f|%.2f", cpu_skew, row_skew);
     sprintf(p += strlen(p), "|%" FMT64, 0L);
     return line;
@@ -914,7 +912,7 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr,
 static void write_qlog(FILE* fp, qdnode_t *qdnode, const char* nowstr)
 {
     char line[1024];
-    char* p = fmt_qlog(line, qdnode, nowstr, GPMON_AGG_QLOG_RUNNING);
+    char* p = fmt_qlog(line, qdnode, nowstr);
     /* Query text "joined" by python script */
     fprintf(fp, "%s||\n", p);
 }
@@ -927,7 +925,7 @@ static void write_qlog_full(FILE* fp, qdnode_t *qdnode, const char* nowstr)
     FILE* qfptr = 0;
     int qtextlen = 0;
     
-    fprintf(fp, "%s", fmt_qlog(line, qdnode, nowstr, GPMON_AGG_QLOG_DONE));
+    fprintf(fp, "%s", fmt_qlog(line, qdnode, nowstr));
     fprintf(fp, "|");
     sprintf(qfname, GPMON_DIR "q%d-%d-%d.txt", qdnode->qlog.key.tmid, 
             qdnode->qlog.key.ssid, qdnode->qlog.key.ccnt);
