@@ -1306,3 +1306,29 @@ create domain wintestd as int default count(*) over (order by i);
 create domain wintestd as int check (value < count(*) over (order by i));
 
 drop table wintest;
+
+-- MPP-3295
+-- begin equivalent
+select cn,vn,rank() over (partition by cn order by vn) as rank
+from sale group by cn,vn order by rank; --mvd 1->3
+
+select cn,vn,rank() over (partition by cn order by vn) as rank
+from (select cn,vn from sale group by cn,vn) sale order by rank; --mvd 1->3
+
+-- end equivalent
+
+-- begin equivalent
+select cn,vn, 1+rank() over (partition by cn order by vn) as rank
+from sale group by cn,vn order by rank; --mvd 1->3
+
+select cn,vn, 1+rank() over(partition by cn order by vn) as rank
+from (select cn,vn from sale group by cn,vn) sale order by rank; --mvd 1->3
+-- end equivalent
+
+-- begin equivalent
+select cn,vn, sum(qty), 1+rank() over (partition by cn order by vn) as rank
+from sale group by cn,vn order by rank; --mvd 1->3
+
+select cn,vn, sum, 1+rank() over (partition by cn order by vn) as rank
+from (select cn,vn,sum(qty) as sum from sale group by cn, vn) sale order by rank; --mvd 1->3
+-- end equivalent

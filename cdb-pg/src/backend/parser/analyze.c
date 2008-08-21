@@ -7506,15 +7506,15 @@ wingroupmutator(Node *node, void *context)
 		result = wingroupmutator((Node *)te->expr, context);
 
 		/*
-		 * If this target entry is a grouping column, but not
-		 * Aggrefs/GroupingFunc/Groupid, let it
+		 * If this target entry is a grouping column (ressortgroupref
+		 * is set but the target entry expression does not
+		 * contain Agg clause or Window clause), let it
 		 * be pushed down to the subtlist. We construct
 		 * a new Var with a new attno to replace this entry.
 		 */
 		if (ctx->step == 1 &&
-			(!IsA(te->expr, Aggref) &&
-			 !IsA(te->expr, GroupingFunc) &&
-			 !IsA(te->expr, GroupId)) &&
+			(!contain_agg_clause((Node *)te->expr) &&
+			 !contain_window_functions((Node *)te->expr)) &&
 			te->ressortgroupref > 0)
 		{
 			TargetEntry *subte = te;
