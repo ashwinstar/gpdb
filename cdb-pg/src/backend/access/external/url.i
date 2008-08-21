@@ -2,6 +2,7 @@
  * Portions Copyright (c) 2007-2008, Greenplum inc
  */
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
@@ -11,7 +12,7 @@
 
 #include <curl/curl.h>
 
-#include "storage/fd.h"
+#include "fstream/fstream.h"
 #ifndef FALSE
 #define FALSE 0
 #endif
@@ -59,7 +60,7 @@ struct URL_FILE
 	char* url;
     union {
 		struct {
-			FILE *fp;
+			fstream_t*fp;
 		} file;
 
 		curlctl_t curl;
@@ -515,6 +516,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
     else if (IS_FILE_URI(url))
     {
 		char* path = strchr(url + strlen(PROTOCOL_FILE), '/');
+		static const struct fstream_options fo;
 		if (!path) 
 		{
 			elog(ERROR, "External Table error opening file: '%s'", url);
@@ -522,7 +524,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev)
 		}
 
 		file->type = CFTYPE_FILE; /* marked as local FILE */
-		file->u.file.fp = AllocateFile(path, operation);
+		file->u.file.fp = fstream_open(path,&fo);
 		
 		/* couldn't open local file. return NULL to display proper error */
 		if (!file->u.file.fp)
@@ -699,7 +701,7 @@ url_fclose(URL_FILE *file)
     switch (file->type)
     {
 		case CFTYPE_FILE:
-			ret=FreeFile(file->u.file.fp); /* passthrough */
+			fstream_close(file->u.file.fp);
 			break;
 
 		case CFTYPE_EXEC:
@@ -749,7 +751,7 @@ url_feof(URL_FILE *file)
     switch (file->type)
     {
     case CFTYPE_FILE:
-		ret = feof(file->u.file.fp);
+		ret = fstream_eof(file->u.file.fp);
 		break;
 
     case CFTYPE_EXEC:
@@ -776,7 +778,7 @@ int url_ferror(URL_FILE * file)
 	switch (file->type)
 	{
     case CFTYPE_FILE:
-		ret = ferror(file->u.file.fp);
+		ret = fstream_get_error(file->u.file.fp)!=0;
 		break;
 
     case CFTYPE_EXEC:
@@ -997,7 +999,8 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
     switch (file->type)
     {
     case CFTYPE_FILE:
-		want = fread(ptr, size, nmemb, file->u.file.fp);
+		assert(size==1);
+		want = fstream_read(file->u.file.fp,ptr,nmemb,0,0);
 		break;
 
     case CFTYPE_EXEC:
@@ -1031,7 +1034,7 @@ url_rewind(URL_FILE *file)
     switch(file->type)
     {
     case CFTYPE_FILE:
-        rewind(file->u.file.fp);
+        fstream_rewind(file->u.file.fp);
         break;
        
     case CFTYPE_EXEC:

@@ -155,59 +155,74 @@ fstream_open(const char*path,const struct fstream_options*options)
     return fs;
 }
 
-int
-fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offset*fos,int read_whole_lines)
+static void
+fillFo(fstream_t*fs,struct fstream_filename_and_offset**fo)
 {
+    if (*fo){
+	(*fo)->foff = fs->foff;
+	strncpy((*fo)->fname,fs->glob.gl_pathv[fs->fidx],sizeof (*fo)->fname);
+	(*fo)->fname[sizeof (*fo)->fname-1] = 0;
+	*fo = 0;
+    }
+}
+
+static void
+nextFile(fstream_t*fs)
+{
+    gfile_close(fs->fd);
+    fs->fd = 0;
+    fs->foff = 0;
+    fs->fidx++;
+    if (fs->fidx < fs->glob.gl_pathc){
+	fs->fskip = fs->options.header;
+	if (0 == (fs->fd=gfile_open(fs->glob.gl_pathv[fs->fidx]))){
+	    fprintf(stderr,"fstream unable to open file %s\n",fs->glob.gl_pathv[fs->fidx]);
+	    fs->ferror = "unable to open file";
+	}
+    }
+}
+
+int
+fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offset*fo,int read_whole_lines)
+{
+    int osize=size;
     size_t s;
-    if (fs->ferror)
-	return -1;
-    if (fs->fidx==fs->glob.gl_pathc)
-	return 0;
-    for (;;){
+    while (size && fs->fidx!=fs->glob.gl_pathc && !fs->ferror){
 	char*p,*q;
-	assert(fs->buffer_size < sizeof fs->buffer);
-	s = gfile_read(fs->fd,fs->buffer+fs->buffer_size,sizeof fs->buffer-fs->buffer_size);
-	if (s < 0){
-	    fs->ferror = "cannot read file";
-	    return -1;
-	}
-	fs->buffer_size += s;
-	p = fs->buffer;
-	q = fs->buffer+fs->buffer_size;
-	if (fs->fskip){
-	    if (fs->options.is_csv)
-		p = scan_rec(p,q,1,fs);
-	    else {
-		for (; p<q&&*p!='\n'; p++);
-		p = p<q?p+1:0;
+	if (read_whole_lines || fs->fskip){
+	    assert(fs->buffer_size < sizeof fs->buffer);
+	    s = gfile_read(fs->fd,fs->buffer+fs->buffer_size,sizeof fs->buffer-fs->buffer_size);
+	    if (s < 0){
+		fs->ferror = "cannot read file";
+		break;
 	    }
-	    if (!p){
-		if (fs->buffer_size == sizeof fs->buffer){
-		    fprintf(stderr,"fstream ERROR: header too long in file %s\n",fs->glob.gl_pathv[fs->fidx]);
-		    fs->ferror = "line too long in file";
-		    return -1;
+	    fs->buffer_size += s;
+	    p = fs->buffer;
+	    q = fs->buffer+fs->buffer_size;
+	    if (fs->fskip){
+		if (fs->options.is_csv)
+		    p = scan_rec(p,q,1,fs);
+		else {
+		    for (; p<q&&*p!='\n'; p++);
+		    p = p<q?p+1:0;
 		}
-		p = q;
+		if (!p){
+		    if (fs->buffer_size == sizeof fs->buffer){
+			fprintf(stderr,"fstream ERROR: header too long in file %s\n",fs->glob.gl_pathv[fs->fidx]);
+			fs->ferror = "line too long in file";
+			break;
+		    }
+		    p = q;
+		}
+		fs->foff += p-fs->buffer;
+		memmove(fs->buffer,p,fs->buffer_size=q-p);
+		fs->fskip = 0;
+		continue;
 	    }
-	    fs->foff += p-fs->buffer;
-	    memmove(fs->buffer,p,fs->buffer_size=q-p);
-	    fs->fskip = 0;
-	    continue;
-	}
-	if (!fs->buffer_size){
-	    gfile_close(fs->fd);
-	    fs->fd = 0;
-	    fs->fidx++;
-	    if (fs->fidx == fs->glob.gl_pathc)
-		return 0;
-	    fs->foff = 0;
-	    fs->fskip = fs->options.header;
-	    if (0 == (fs->fd=gfile_open(fs->glob.gl_pathv[fs->fidx]))){
-		fprintf(stderr,"fstream unable to open file %s\n",fs->glob.gl_pathv[fs->fidx]);
-		fs->ferror = "unable to open file";
-		return -1;
-	    }	
-	    continue;
+	    if (!fs->buffer_size){
+		nextFile(fs);
+		continue;
+	    }
 	}
 	if (read_whole_lines){
 	    assert(size>=FSTREAM_BLOCKSIZE);
@@ -224,23 +239,71 @@ fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offse
 		if (fs->buffer_size == sizeof fs->buffer){
 		    fprintf(stderr,"fstream ERROR: line too long in file %s (%lld bytes)\n",fs->glob.gl_pathv[fs->fidx],(long long)fs->foff);
 		    fs->ferror = "line too long in file";
-		    return -1;
+		    break;
 		}
 		p = fs->buffer+fs->buffer_size;
 	    }
-	}else
-	    p = fs->buffer+fs->buffer_size;
-	if (fos){
-	    fos->foff = fs->foff;
-	    strncpy(fos->fname,fs->glob.gl_pathv[fs->fidx],sizeof fos->fname);
-	    fos->fname[sizeof fos->fname-1] = 0;
+	    fillFo(fs,&fo);
+	    s = p-fs->buffer;
+	    if (s > size)
+		s = size;
+	    memcpy(buffer,fs->buffer,s);
+	    fs->foff += s;
+	    memmove(fs->buffer,fs->buffer+s,fs->buffer_size-=s);
+	    size -= s;
+	    if (size < FSTREAM_BLOCKSIZE)
+		break;
+	}else if (fs->buffer_size){
+	    fillFo(fs,&fo);
+	    s = fs->buffer_size;
+	    if (s > size)
+		s = size;
+	    memcpy(buffer,fs->buffer,s);
+	    buffer = (char*)buffer+s;
+	    size -= s;
+	    memmove(fs->buffer,fs->buffer+s,fs->buffer_size-=s);
+	    fs->foff += s;
+	}else{
+	    s = gfile_read(fs->fd,buffer,size);
+	    if (s < 0){
+		fs->ferror = "cannot read file";
+		break;
+	    }
+	    if (s == 0)
+		nextFile(fs);
+	    else{
+		fillFo(fs,&fo);
+		fs->foff += s;
+		buffer = (char*)buffer+s;
+		size -= s;
+	    }
 	}
-	s = p-fs->buffer;
-	if (s > size)
-	    s = size;
-	memcpy(buffer,fs->buffer,s);
-	fs->foff += s;
-	memmove(fs->buffer,fs->buffer+s,fs->buffer_size-=s);
-	return s;
     }
+    if (fs->ferror)
+	return -1;
+    return osize-size;
+}
+
+int
+fstream_eof(fstream_t*fs)
+{
+    return fs->fidx==fs->glob.gl_pathc;
+}
+
+int
+fstream_rewind(fstream_t*fs)
+{
+    fs->fidx = 0;
+    fs->foff = 0;
+    fs->ferror = 0;
+    fs->fskip = fs->options.header;
+    fs->buffer_size = 0;
+    if (fs->fd)
+	gfile_close(fs->fd);
+    if (0 == (fs->fd=gfile_open(fs->glob.gl_pathv[0]))){
+	fprintf(stderr,"fstream unable to open file %s\n",fs->glob.gl_pathv[0]);
+	fs->ferror = "unable to open file";
+	return -1;
+    }	
+    return 0;
 }

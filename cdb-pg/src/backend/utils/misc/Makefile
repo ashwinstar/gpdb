@@ -12,6 +12,9 @@ subdir = src/backend/utils/misc
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
+SUBDIRS     := fstream
+SUBDIROBJS  := $(SUBDIRS:%=%/SUBSYS.o)
+
 override CPPFLAGS := -I$(srcdir) $(CPPFLAGS)
 
 OBJS = guc.o help_config.o pg_rusage.o ps_status.o superuser.o tzparser.o uriparser.o
@@ -25,8 +28,13 @@ endif
 
 all: SUBSYS.o
 
-SUBSYS.o: $(OBJS)
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
+SUBSYS.o: $(OBJS) $(SUBDIROBJS)
+	$(LD) $(LDREL) $(LDOUT) $@ $^
+
+$(SUBDIROBJS): $(SUBDIRS:%=%-recursive) ;
+.PHONY: $(SUBDIRS:%=%-recursive)
+$(SUBDIRS:%=%-recursive):
+	$(MAKE) -C $(subst -recursive,,$@) SUBSYS.o
 
 # guc-file is compiled as part of guc
 guc.o: $(srcdir)/guc-file.c
@@ -41,10 +49,12 @@ endif
 # Note: guc-file.c is not deleted by 'make clean',
 # since we want to ship it in distribution tarballs.
 clean: 
+	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
 	rm -f SUBSYS.o $(OBJS)
 	@rm -f lex.yy.c
 
 depend dep:
+	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
 	$(CC) -MM $(CFLAGS) *.c >depend
 
 ifeq (depend,$(wildcard depend))

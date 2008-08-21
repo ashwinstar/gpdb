@@ -21,7 +21,9 @@ struct fstream_filename_and_offset{
     int64_t foff;
 };
 
-int fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offset*fos,int read_whole_lines);
+int fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offset*fo,int read_whole_lines);
+int fstream_eof(fstream_t*fs);
+int fstream_rewind(fstream_t*fs);
 const char*fstream_get_error(fstream_t*fs);
 fstream_t*fstream_open(const char*path,const struct fstream_options*options);
 void fstream_close(fstream_t*fs);

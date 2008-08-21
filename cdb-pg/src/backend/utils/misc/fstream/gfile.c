@@ -156,7 +156,7 @@ gfile_read(gfile_t*fd,void*ptr,size_t len)
 	    return i;
 	if (i == 0)
 	    break;
-	ptr += i;
+	ptr = (char*)ptr+i;
 	len -= i;
     }
     return olen-len;
