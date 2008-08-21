@@ -1825,15 +1825,6 @@ alter_table_partition_id_spec:
                     n->location  = @3;
 					$$ = (Node *)n;
 				}
-/* XXX XXX: note that the POSITION function here is not the string operator */
-            | FOR '(' POSITION'(' NumericOnly ')' ')'	
-				{
-					AlterPartitionId *n = makeNode(AlterPartitionId);
-					n->idtype = AT_AP_IDRank;
-                    n->partiddef = (Node *)$5;
-                    n->location  = @5;
-					$$ = (Node *)n;
-				}
             | FOR '(' function_name '(' NumericOnly ')' ')'	
 				{
 					AlterPartitionId *n = makeNode(AlterPartitionId);
@@ -1841,9 +1832,8 @@ alter_table_partition_id_spec:
                     n->partiddef = (Node *)$5;
                     n->location  = @5;
 
-                    /* allow POSITION or RANK */
-					if (!((strcmp($3, "position") == 0)
-                          ||(strcmp($3, "rank") == 0)))
+                    /* allow RANK only */
+					if (!(strcmp($3, "rank") == 0))
                         yyerror("syntax error");
 
 					$$ = (Node *)n;
@@ -2980,11 +2970,41 @@ OptTabPartitionStorageAttr: OptWith OptTableSpace
                 }
 		;
 
-OptTabPartitionsNumber: PARTITIONS IntegerOnly 		{ $$ = makeAConst($2, @2); }
+OptTabPartitionsNumber: PARTITIONS IntegerOnly 		
+				{
+                    /* special rule to disable the use of HASH partitioned
+                       tables with nice syntax error.  
+
+                       XXX XXX REMOVE when HASH partitions are in
+                       production 
+                    */
+
+                    if (!gp_enable_hash_partitioned_tables)
+                    {
+                        yyerror("syntax error");
+                    }
+                    
+                    $$ = makeAConst($2, @2); 
+				}
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-OptTabSubPartitionsNumber: SUBPARTITIONS IntegerOnly { $$ = makeAConst($2, @2); }
+OptTabSubPartitionsNumber: SUBPARTITIONS IntegerOnly 
+				{
+                    /* special rule to disable the use of HASH partitioned
+                       tables with nice syntax error.  
+
+                       XXX XXX REMOVE when HASH partitions are in
+                       production 
+                    */
+
+                    if (!gp_enable_hash_partitioned_tables)
+                    {
+                        yyerror("syntax error");
+                    }
+                    
+                    $$ = makeAConst($2, @2); 
+                }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 

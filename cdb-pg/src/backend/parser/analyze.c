@@ -6532,7 +6532,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("%sPARTITIONS clause requires a HASH partition%s",
-							pBy->partDepth != 1 ? "SUB" : "", at_depth),
+							pBy->partDepth != 0 ? "SUB" : "", at_depth),
 					 parser_errposition(pstate, pBy->location)));
 		}
 
@@ -6541,7 +6541,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					 errmsg("%sPARTITIONS cannot be less than one%s",
-							pBy->partDepth != 1 ? "SUB" : "", at_depth),
+							pBy->partDepth != 0 ? "SUB" : "", at_depth),
 					 parser_errposition(pstate, pBy->location)));
 		}
 	}
@@ -6551,6 +6551,15 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	 * sub partition rule, the opclass may have been looked up already.
 	 */
 	lookup_opclass = list_length(pBy->keyopclass) == 0;
+
+	if ((list_length(pBy->keys) > 1) && (pBy->partType == PARTTYP_RANGE))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("too many columns for RANGE partition%s -- only one column is allowed.",
+						at_depth),
+				 parser_errposition(pstate, pBy->location)));
+	}
 
 	/* validate keys */
 	foreach(lc, pBy->keys)

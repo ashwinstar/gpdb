@@ -808,7 +808,7 @@ partition j2 end (date '2009-01-01'));
 
 -- must have a name
 alter table jjj add default partition;
-alter table jjj add default partition for (position(1));
+alter table jjj add default partition for (rank(1));
 -- cannot have boundary spec
 alter table jjj add default partition j3 end (date '2010-01-01');
 
@@ -846,8 +846,8 @@ alter table hhh drop partition cc restrict;
 alter table hhh drop partition if exists cc;
 
 -- fail (mpp-3265)
-alter table hhh drop partition for (position(0));
-alter table hhh drop partition for (position(-55));
+alter table hhh drop partition for (rank(0));
+alter table hhh drop partition for (rank(-55));
 alter table hhh drop partition for ('2001-01-01');
 
 
@@ -1000,7 +1000,7 @@ alter table mmm_r1 drop partition for ('2007-03-01');
 alter table mmm_r1 add partition bb START ('2007-03-03') END ('2007-03-20');
 
 -- fail
-alter table mmm_r1 modify partition for (position(-55)) start ('2007-03-02');
+alter table mmm_r1 modify partition for (rank(-55)) start ('2007-03-02');
 alter table mmm_r1 modify partition for ('2001-01-01') start ('2007-03-02');
 alter table mmm_r1 modify partition bb start ('2006-03-02');
 alter table mmm_r1 modify partition bb start ('2011-03-02');
@@ -1024,7 +1024,7 @@ alter table mmm_r1 modify partition bb START ('2007-03-01') END ('2007-03-31');
 alter table mmm_r1 modify partition bb START ('2007-03-09') END ('2007-03-10');
 
 -- fail
-alter table mmm_l1 modify partition for (position(1)) drop values ('k');
+alter table mmm_l1 modify partition for (rank(1)) drop values ('k');
 alter table mmm_l1 modify partition for ('j') drop values ('k');
 alter table mmm_l1 modify partition for ('a') drop values ('k');
 alter table mmm_l1 modify partition for ('a') drop values ('e');
@@ -1371,7 +1371,7 @@ partition by range(j)
 (start(1) end(10) every(1));
 create table bar (i int, j int) distributed by (j);
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
 drop table bar;
 
@@ -1381,7 +1381,7 @@ partition by range(j)
 (start(1) end(10) every(1));
 create table bar (i int, j int) distributed randomly;
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
 drop table bar;
 
@@ -1391,7 +1391,7 @@ partition by range(j)
 (start(1) end(10) every(1));
 create table bar (i int, j int) distributed by (i);
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
 drop table bar;
 
@@ -1401,7 +1401,7 @@ partition by range(j)
 (start(1) end(10) every(1));
 create table bar (i int, j int8) distributed by (i);
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
 drop table bar;
 
@@ -1411,7 +1411,7 @@ partition by range(j)
 (start(1) end(10) every(1));
 create table bar (i int, m int) distributed by (i);
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
 drop table bar;
 
@@ -1423,18 +1423,18 @@ partition by range(j)
 create table bar (i int, j int) distributed by (i);
 set session authorization part_role;
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 
 -- back to super user
 \c -
 alter table bar owner to part_role;
 set session authorization part_role;
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 \c -
 
 -- owners should be the same, error out 
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
 drop table bar;
 drop role part_role;
@@ -1444,7 +1444,7 @@ partition by range(j)
 (start(1) end(10) every(1));
 create table bar (i int, j int) with (oids = false) distributed by (i);
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
 drop table bar;
 
@@ -1456,7 +1456,7 @@ partition by range(j)
 create table barparent(i int, j int) distributed by (i);
 create table bar () inherits(barparent);
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
 drop table bar;
 drop table barparent;
@@ -1469,7 +1469,7 @@ partition by range(j)
 create table bar(i int, j int) distributed by (i);
 create table barchild () inherits(bar);
 -- should fail
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 drop table foo;
 drop table barchild;
 drop table bar;
@@ -1483,7 +1483,7 @@ create table baz(i int, j int) distributed by (i);
 create rule bar_baz as on insert to bar do instead insert into baz
   values(NEW.i, NEW.j);
 
-alter table foo exchange partition for(position(2)) with table bar;
+alter table foo exchange partition for(rank(2)) with table bar;
 drop table foo, bar, baz;
 
 -- not yet: constraints on non-partition table
@@ -1494,7 +1494,7 @@ partition by range(j)
 (start(1) end(10) every(1));
 
 create table bar(i int, j int check (j > 1000)) distributed by (i);
-alter table foo exchange partition for(position(2)) with table bar;
+alter table foo exchange partition for(rank(2)) with table bar;
 drop table foo, bar;
 
 -- shouldn't fail: it's fine to have constraints on columns which are not
@@ -1504,7 +1504,7 @@ partition by range(j)
 (start(1) end(10) every(1));
 
 create table bar(i int check (i > 1000), j int) distributed by (i);
-alter table foo exchange partition for(position(2)) with table bar;
+alter table foo exchange partition for(rank(2)) with table bar;
 drop table foo, bar;
 
 -- shouldn't fail: check constraint matches rule
@@ -1515,7 +1515,7 @@ partition by range(j)
 create table bar(i int check (i > 1000), j int check (j >= 2 and j < 3 ))
 distributed by (i);
 insert into bar values(100000, 2);
-alter table foo exchange partition for(position(2)) with table bar;
+alter table foo exchange partition for(rank(2)) with table bar;
 insert into bar values(200000, 2);
 select * from bar;
 drop table foo, bar;
@@ -1529,7 +1529,7 @@ partition by range(j)
 create table bar(i int, j int) distributed by (i);
 
 insert into bar values(6);
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
 select * from bar;
 -- test that we got the dependencies right
@@ -1542,7 +1542,7 @@ partition by range(j)
 create table bar(i int, j int) distributed by (i);
 
 insert into bar values(6, 6);
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 insert into bar values(10, 10);
 drop table foo;
 select * from bar;
@@ -1556,7 +1556,7 @@ create table bar(i int, j int) distributed by (i);
 
 insert into foo values(1, 1), (2, 1), (3, 1);
 insert into bar values(6, 6);
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
 drop table bar;
 drop table foo;
@@ -1569,7 +1569,7 @@ create table bar(i int, j int) with(appendonly = true) distributed by (i);
 
 insert into foo values(1, 1), (2, 1), (3, 2);
 insert into bar values(6, 6);
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
 drop table bar;
 drop table foo;
@@ -1582,7 +1582,7 @@ create table bar(i int, j int) with(appendonly = true) distributed by (i);
 
 insert into foo values(1, 2), (2, 3), (3, 4);
 insert into bar values(6, 6);
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
 drop table bar;
 drop table foo;
@@ -1594,15 +1594,15 @@ partition by range(j)
 create table bar(i int, j int) distributed by (i);
 
 insert into bar values(6, 6);
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
 select * from bar;
 
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
 select * from bar;
 
-alter table foo exchange partition for(position(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
 select * from bar;
 drop table foo;

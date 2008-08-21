@@ -13172,7 +13172,7 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 		RangeVar 		*rv;
 		Relation		 rel;
 		char *relname = NULL;
-		char newRelNameBuf[NAMEDATALEN];
+		char newRelNameBuf[(NAMEDATALEN*2)];
 
 		rel = heap_open(rule->parchildrelid, AccessShareLock);
 
@@ -13203,6 +13203,14 @@ atpxRenameList(Relation rel, PartitionNode *pNode,
 
 		snprintf(newRelNameBuf, sizeof(newRelNameBuf), "%s%s",
 				 new_parentname, relname + strlen(old_parentname));
+
+		if (strlen(newRelNameBuf) > NAMEDATALEN)
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("relation name \"%s\" for child partition "
+							"is too long",
+							newRelNameBuf)));
+
 
 		if (l1)
 			l1 = lappend(l1, list_make2(rv, pstrdup(newRelNameBuf)));
@@ -13422,6 +13430,7 @@ ATPExecPartRename(Relation rel,
 		else
 				pNode = NULL;
 
+		/* rename the children as well */
 		renList = atpxRenameList(rel, pNode, targetrelname, relname);
 
 		part_rel = heap_open(PartitionRuleRelationId, RowExclusiveLock);
