@@ -3,6 +3,7 @@
 #include <mapred_errors.h>
 
 #include <stdio.h>
+#include <stdarg.h>
 #include <errno.h>
 
 #define error1(x,y)									\
@@ -55,6 +56,9 @@ typedef struct
 
 void *mapred_malloc(int size);
 void mapred_free(void *ptr);
+
+int mapred_obj_error(mapred_object_t *obj, char *fmt, ...);
+
 buffer_t *makebuffer(size_t bufsize, size_t grow);
 void bufreset(buffer_t *b);
 void bufcat(buffer_t **bufp, char* str);
@@ -63,14 +67,13 @@ void print_notice_handler(void *arg, const PGresult *res);
 void mapred_setup_columns(PGconn *conn, mapred_object_t *obj);
 
 
-
 /* Wrappers around malloc/free to handle error conditions more cleanly */
 void *mapred_malloc(int size)
 {
 	void *m;
 	XASSERT(size > 0);
 
-#if INTERNAL_BUILD
+#ifdef INTERNAL_BUILD
 	if (global_debug_flag && global_verbose_flag)
 		fprintf(stderr, "Allocating %d bytes: ", size);
 #endif
@@ -79,7 +82,7 @@ void *mapred_malloc(int size)
 	if (!m)
 		XRAISE(MEMORY_ERROR, "Memory allocation failure");
 
-#if INTERNAL_BUILD
+#ifdef INTERNAL_BUILD
 	if (global_debug_flag && global_verbose_flag)
 		fprintf(stderr, "%x\n", (unsigned int) m);
 #endif
@@ -91,13 +94,40 @@ void mapred_free(void *ptr)
 {
 	XASSERT(ptr);
 
-#if INTERNAL_BUILD
+#ifdef INTERNAL_BUILD
 	if (global_debug_flag && global_verbose_flag)
 		fprintf(stderr, "Freeing memory: %x\n", (unsigned int) ptr);
 #endif
 
 	free(ptr);
 }
+
+int mapred_obj_error(mapred_object_t *obj, char *fmt, ...)
+{
+	va_list arg;
+	int done;
+
+	if (global_verbose_flag)
+		fprintf(stderr, "    - ");
+
+	fprintf(stderr, "Error: ");
+	if (obj && obj->name)
+		fprintf(stderr, "%s '%s': ", mapred_kind_name[obj->kind], obj->name);
+	if (obj && !obj->name)
+		fprintf(stderr, "%s: ", mapred_kind_name[obj->kind]);
+
+	va_start(arg, fmt);
+	done = vfprintf(stderr, fmt, arg);
+	va_end(arg);
+	if (obj->line > 0)
+		fprintf(stderr, ", at line %d\n", obj->line);
+	else
+		fprintf(stderr, "\n");
+	
+	return done;
+}
+
+
 
 /* -------------------------------------------------------------------------- */
 /* Functions that play with buffers                                           */
@@ -176,6 +206,8 @@ void ignore_notice_handler(void *arg, const PGresult *res)
 
 void print_notice_handler(void *arg, const PGresult *res) 
 {
+	if (global_verbose_flag)
+		fprintf(stderr, "   - ");
 	fprintf(stderr, PQresultErrorMessage(res));
 }
 
@@ -194,6 +226,8 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 	 * a database connection could be available to look up any
 	 * dependencies that are not defined within the YAML document.
 	 */
+	if (global_verbose_flag)
+		fprintf(stderr, "  - Resolving Dependencies:\n");
 	mapred_resolve_dependencies(conn, doc);
 
 	XTRY
@@ -264,6 +298,8 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 	}
 	XCATCH(MAPRED_SQL_ERROR)
 	{
+		if (global_verbose_flag)
+			fprintf(stderr, "    - ");
 		fprintf(stderr, PQerrorMessage(conn));
 		XRERAISE();
 	}
@@ -284,7 +320,11 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 		 */
 		result = PQexec(conn, "COMMIT TRANSACTION");
 		if (PQresultStatus(result) != PGRES_COMMAND_OK)
+		{
+			if (global_verbose_flag)
+				fprintf(stderr, "    - ");
 			fprintf(stderr, PQerrorMessage(conn));
+		}
 	}
 	XTRY_END;
 }
@@ -304,7 +344,9 @@ void mapred_resolve_dependencies(PGconn *conn, mapred_document_t *doc)
 void mapred_resolve_object(PGconn *conn, mapred_document_t *doc, 
 						   mapred_object_t *obj, int *exec_count)
 {
+	mapred_olist_t  *newlist;
 	mapred_object_t *sub;   /* sub-object */
+	size_t           len;
 
 	switch (obj->kind)
 	{
@@ -325,9 +367,7 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 			 */
 			if (obj->u.function.returns->next)
 			{
-				mapred_olist_t  *newlist;
 				mapred_object_t *rtype;
-				size_t           len;
 
 				rtype = mapred_malloc(sizeof(mapred_object_t));
 				memset(rtype, 0, sizeof(mapred_object_t));
@@ -356,10 +396,66 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 
 		case MAPRED_REDUCER:
 		{
+			/*
+			 * If we have a function, but no object then we assume that it is
+			 * a database function.  Create a dummy object to handle this case.
+			 */
 			mapred_resolve_ref(doc->objects, &obj->u.reducer.transition);
+			if (obj->u.reducer.transition.name &&
+				!obj->u.reducer.transition.object)
+			{
+				len = strlen(obj->u.reducer.transition.name) + 1;
+				sub = mapred_malloc(sizeof(mapred_object_t));
+				memset(sub, 0, sizeof(mapred_object_t));
+				sub->kind = MAPRED_TRANSITION;
+				sub->name = mapred_malloc(len);
+				sub->line = obj->line;
+				strncpy(sub->name, obj->u.reducer.transition.name, len);
+
+				
+				newlist = mapred_malloc(sizeof(mapred_olist_t));
+				newlist->object = sub;
+				newlist->next = doc->objects;
+				doc->objects = newlist;
+				obj->u.reducer.transition.object = sub;
+			}
 			mapred_resolve_ref(doc->objects, &obj->u.reducer.combiner);
+			if (obj->u.reducer.combiner.name &&
+				!obj->u.reducer.combiner.object)
+			{
+				len = strlen(obj->u.reducer.combiner.name) + 1;
+				sub = mapred_malloc(sizeof(mapred_object_t));
+				memset(sub, 0, sizeof(mapred_object_t));
+				sub->kind = MAPRED_COMBINER;
+				sub->name = mapred_malloc(len);
+				sub->line = obj->line;
+				strncpy(sub->name, obj->u.reducer.combiner.name, len);
+				
+				newlist = mapred_malloc(sizeof(mapred_olist_t));
+				newlist->object = sub;
+				newlist->next = doc->objects;
+				doc->objects = newlist;
+				obj->u.reducer.combiner.object = sub;
+			}
 			mapred_resolve_ref(doc->objects, &obj->u.reducer.finalizer);
-			/* FIXME: validate dependencies */
+			if (obj->u.reducer.finalizer.name &&
+				!obj->u.reducer.finalizer.object)
+			{
+				len = strlen(obj->u.reducer.finalizer.name) + 1;
+				sub = mapred_malloc(sizeof(mapred_object_t));
+				memset(sub, 0, sizeof(mapred_object_t));
+				sub->kind = MAPRED_FINALIZER;
+				sub->name = mapred_malloc(len);
+				sub->line = obj->line;
+				strncpy(sub->name, obj->u.reducer.finalizer.name, len);
+				
+				newlist = mapred_malloc(sizeof(mapred_olist_t));
+				newlist->object = sub;
+				newlist->next = doc->objects;
+				doc->objects = newlist;
+				obj->u.reducer.finalizer.object = sub;
+			}
+
 			break;
 		}
 
@@ -394,10 +490,8 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 			/* Check for infinite recursion */
 			if (obj->u.task.flags & mapred_task_resolving)
 			{
-				fprintf(stderr, 
-						"Error: Infinite recursion detected trying to "
-						"resolve TASK '%s'.\n", 
-						obj->name);
+				mapred_obj_error(obj, "Infinite recursion detected while "
+								 "trying to resove TASK");
 				XRAISE(MAPRED_PARSE_ERROR, NULL);
 			}
 			obj->u.task.flags |= mapred_task_resolving;
@@ -412,13 +506,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				if (!sub)
 				{
 					/* Can't find INPUT object */
-					if (obj->u.task.execute)
-						fprintf(stderr, "Error: RUN '%s'", obj->name);
-					else
-						fprintf(stderr, "Error: TASK '%s'", obj->name);
-					fprintf(stderr, " SOURCE '%s' not found in document\n",
-							obj->u.task.input.name);
-					XRAISE(MAPRED_PARSE_ERROR, NULL);
+					mapred_obj_error(obj, "SOURCE '%s' not found in document",
+									 obj->u.task.input.name);
+					XRAISE(MAPRED_PARSE_ERROR, "Object Resolution Failure");
 				}
 
 				/* 
@@ -438,14 +528,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 					default:
 
 						/* SOURCE wasn't an INPUT */
-						if (obj->u.task.execute)
-							fprintf(stderr, "Error: RUN '%s'", obj->name);
-						else
-							fprintf(stderr, "Error: TASK '%s'", obj->name);
-						fprintf(stderr, 
-								" SOURCE '%s' is neither an INPUT nor a TASK\n",
-								obj->u.task.input.name);
-						XRAISE(MAPRED_PARSE_ERROR, NULL);
+						mapred_obj_error(obj, "SOURCE '%s' is neither an INPUT nor a TASK",
+										 obj->u.task.input.name);	
+						XRAISE(MAPRED_PARSE_ERROR, "Object Resolution Failure");
 				}
 			}
 			
@@ -456,8 +541,20 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				
 				if (!sub)
 				{
-					/* FIXME: Lookup function in database */
-					/* for now... do nothing */
+					/* Create an internal map function */
+					len = strlen(obj->u.task.mapper.name) + 1;
+					sub = mapred_malloc(sizeof(mapred_object_t));
+					memset(sub, 0, sizeof(mapred_object_t));
+					sub->kind = MAPRED_MAPPER;
+					sub->name = mapred_malloc(len);
+					sub->line = obj->line;
+					strncpy(sub->name, obj->u.task.mapper.name, len);
+
+					newlist = mapred_malloc(sizeof(mapred_olist_t));
+					newlist->object = sub;
+					newlist->next = doc->objects;
+					doc->objects = newlist;
+					obj->u.task.mapper.object = sub;
 				}
 				else
 				{
@@ -471,13 +568,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 							break;
 
 						default:
-							if (obj->u.task.execute)
-								fprintf(stderr, "Error: RUN '%s' ", obj->name);
-							else
-								fprintf(stderr, "Error: TASK '%s' ", obj->name);
-							fprintf(stderr, "MAP '%s' is not a MAP object\n",
-									obj->u.task.mapper.name);
-							XRAISE(MAPRED_PARSE_ERROR, NULL);
+							mapred_obj_error(obj, "MAP '%s' is not a MAP object",
+											 obj->u.task.mapper.name);
+							XRAISE(MAPRED_PARSE_ERROR, "Object Resolution Failure");
 					}
 				}
 			}
@@ -497,13 +590,9 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				}
 				else 
 				{   /* It's an object, but not a REDUCER */
-					if (obj->u.task.execute)
-						fprintf(stderr, "Error: RUN '%s' ", obj->name);
-					else
-						fprintf(stderr, "Error: TASK '%s' ", obj->name);
-					fprintf(stderr, " REDUCE '%s' is not a REDUCE object.\n",
-							obj->u.task.reducer.name);
-					XRAISE(MAPRED_PARSE_ERROR, NULL);
+					mapred_obj_error(obj, "REDUCE '%s' is not a REDUCE object",
+									 obj->u.task.reducer.name);
+					XRAISE(MAPRED_PARSE_ERROR, "Object Resolution Failure");
 				}
 			}
 
@@ -512,29 +601,18 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				mapred_resolve_ref(doc->objects, &obj->u.task.output);
 
 				sub = obj->u.task.output.object;
-				if (!sub)
+				if (sub && sub->kind != MAPRED_OUTPUT)
 				{
-					if (obj->u.task.execute)
-						fprintf(stderr, "Error: RUN '%s' ", obj->name);
-					else
-						fprintf(stderr, "Error: TASK '%s' ", obj->name);
-					fprintf(stderr, "OUTPUT '%s' is not defined in document.\n",
-							obj->u.task.reducer.name);
-					XRAISE(MAPRED_PARSE_ERROR, NULL);
+					mapred_obj_error(obj, "TARGET '%s' is not an OUTPUT object",
+									 obj->u.task.output.name);
+					XRAISE(MAPRED_PARSE_ERROR, "Object Resolution Failure");
 				}
-				else if (sub->kind == MAPRED_OUTPUT)
+				if (!sub && obj->u.task.output.name)
 				{
-					/* nothin' special */
-				}
-				else
-				{
-					if (obj->u.task.execute)
-						fprintf(stderr, "Error: RUN '%s' ", obj->name);
-					else
-						fprintf(stderr, "Error: TASK '%s' ", obj->name);
-					fprintf(stderr, "OUTPUT '%s' is not an OUTPUT object.\n",
-							obj->u.task.output.name);
-					XRAISE(MAPRED_PARSE_ERROR, NULL);
+					mapred_obj_error(obj, "TARGET '%s' is not defined in "
+									 "document",
+									 obj->u.task.output.name);
+					XRAISE(MAPRED_PARSE_ERROR, "Object Resolution Failure");
 				}
 			}
 	
@@ -660,13 +738,15 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					if (PQresultStatus(result) == PGRES_TUPLES_OK)
 					{
 						char *name;
+
 						if (obj->u.input.type == MAPRED_INPUT_TABLE)
 							name = obj->u.input.desc;
 						else
 							name = obj->name;
-						fprintf(stderr, "'%s' not found\n", name);
+
+						mapred_obj_error(obj, "Table '%s' not found", name);
 					}
-					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
+					XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
 				}
 			}
 			break;
@@ -695,7 +775,8 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 			}
 			else
 			{
-				fprintf(stderr, "FIXME - bad reducer parameters\n");
+				/* FIXME: bad reducer parameters */
+				mapred_obj_error(obj, "bad reducer parameters");
 			}
 
 			/* 
@@ -1139,11 +1220,12 @@ void mapred_destroy_plist(mapred_plist_t **plisth)
 /* -------------------------------------------------------------------------- */
 void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 {
-	PGresult        *result;
 	mapred_olist_t  *olist;
 	mapred_plist_t  *columns;
 	mapred_object_t *output;
-	buffer_t        *buffer = NULL;
+	PGresult        *result  = NULL;
+	FILE            *outfile = stdout;
+	buffer_t        *buffer  = NULL;
 
 	XTRY 
 	{
@@ -1268,18 +1350,14 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 				/* But we only execute it if we are not in "print-only" mode */
 				if (!global_print_flag)
 				{
-					FILE *outfile;
-
 					/* If we have an output file, open it for write now */
 					if (output && output->u.output.type == MAPRED_OUTPUT_FILE)
 					{
 						outfile = fopen(output->u.output.desc, "wb");
 						if (!outfile)
 						{
-							fprintf(stderr, 
-									"Error (%d): could not open file '%s' "
-									"for write.\n", 
-									errno, output->u.output.desc);
+							mapred_obj_error(output, "could not open file '%s' for write",
+											 output->u.output.desc);
 							continue;
 						}
 					}
@@ -1320,8 +1398,8 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 							}
 							else
 							{
-								/* is "|" the best default delimiter? */
-								options.fieldSep  = "|";
+								/* "\t" is our default delimiter */
+								options.fieldSep  = "\t";
 							}
 						
 							PQprint(outfile, result, &options);
@@ -1331,21 +1409,35 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 						/* OUTPUT is a table */
 						case PGRES_COMMAND_OK:
 							fprintf(stderr, "CREATED\n");
+							break;
 
 						/* An error of some kind */
 						default:
-							fprintf(stderr, PQerrorMessage(conn));
+							XRAISE(MAPRED_SQL_ERROR, "Execution Failure");
 					}
 					PQclear(result);
-					
+					result = NULL;
+
 					if (outfile != stdout)
+					{
 						fclose(outfile);
+						outfile = stdout;
+					}
 				}
 			}
 		}
 	}
 	XFINALLY
 	{
+		if (result)
+			PQclear(result);
+					
+		if (outfile != stdout)
+		{
+			fclose(outfile);
+			outfile = stdout;
+		}
+
 		if (buffer)
 			mapred_free(buffer);
 	}
@@ -1585,15 +1677,80 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 			case MAPRED_FINALIZER:
 				ckind = mapred_kind_name[obj->kind];
 
+				XASSERT(obj->name);
+
 				/*
 				 * 'kind' specific initialization accomplished above, now handle
 				 * the generic function creation.
 				 */
 				if (global_print_flag || global_debug_flag)
 					printf("-- %s %s\n", ckind, obj->name);
+
+				/* 
+				 * If there is no function body then this is a definition of an
+				 * internal function, see if we can resolve it in the catalog
+				 */
+				if (!obj->u.function.body)
+				{
+					obj->internal = true;
+					
+					/* Lookup the function in the catalog */
+					bufcat(&buffer, 
+						   "SELECT proname, proretset, proargnames, \n"
+						   "       proargmodes, proargtypes::regtype[], \n"
+						   "       proallargtypes::regtype[], \n"
+						   "       prorettype::regtype \n"
+						   "FROM   pg_proc \n"
+						   "WHERE  not proisagg and not proiswin \n"
+						   "  and  proname = lower('");
+					bufcat(&buffer, obj->name);
+					bufcat(&buffer, "')\n");
+
+					if (global_print_flag || global_debug_flag)
+						printf("%s", buffer->buffer);
+					result = PQexec(conn, buffer->buffer);
+					bufreset(buffer);
+
+					if (PQresultStatus(result) == PGRES_TUPLES_OK)
+					{
+						if (PQntuples(result) == 0)
+						{
+							mapred_obj_error(obj, "No such function");
+							XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+						}
+						else if (PQntuples(result) > 1)
+						{
+							mapred_obj_error(obj, "Ambiguous function, supply "
+											 "a function prototype for "
+											 "disambiguation");
+							XRAISE(MAPRED_PARSE_ERROR, "Object creation Failure");
+						}
+						else
+						{
+							/* 
+							 * One function... just right.
+							 * Now check that we can use the function prototype
+							 */
+							obj->created = true;
+						}
+					}
+					else
+					{
+						fprintf(stderr, PQresultErrorMessage(result));
+					}
+
+					if (obj->u.function.language)
+					{
+						if (global_verbose_flag)
+							fprintf(stderr, "       ");
+						fprintf(stderr, 
+								"WARNING: language specification ignored "
+								" for empty function '%s'", obj->name);
+					}
+					break;
+				}
 			
 				/* We should have already been verified */
-				XASSERT(obj->name);
 				XASSERT(obj->u.function.body);
 				XASSERT(obj->u.function.language);
 
@@ -1856,17 +2013,18 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					
 						if (!columns)
 						{
-							fprintf(stderr, 
-									"Error: Unable to determine return columns "
-									"for TASK '%s'\n",
-									obj->u.task.input.name);
+							mapred_obj_error(obj, "Unable to determine return "
+											 "columns for TASK '%s'",
+											 obj->u.task.input.name);
 							XRAISE(MAPRED_PARSE_INTERNAL, NULL);
 						}
 						break;
 
 					default:
-						XRAISE(MAPRED_PARSE_ERROR,
-							   "Bad SOURCE object, not an INPUT");
+						mapred_obj_error(obj, "SOURCE '%s' is not an INPUT or "
+										 "TASK object",
+										 obj->u.task.input.name);
+						XRAISE(MAPRED_PARSE_ERROR, "Object Creation Error");
 						break;
 				}
 				XASSERT(columns);
@@ -2441,12 +2599,12 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					strcmp(error, OBJ_DOES_NOT_EXIST))
 				{
 					if (global_verbose_flag)
-						fprintf(stderr, "       ");
+						fprintf(stderr, "     - ");
 					fprintf(stderr, PQresultErrorMessage(result));
 					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
 				}
 				if (global_verbose_flag)
-					fprintf(stderr, "       %s", PQresultErrorMessage(result));
+					fprintf(stderr, "     - %s", PQresultErrorMessage(result));
 			}
 		}
 
@@ -2478,8 +2636,14 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 
 
 	/* If the object wasn't created, then do nothing */
-//	if (!obj->created)
-//		return;
+	if (!obj->created)
+		return;
+
+	if (obj->internal)
+	{
+		obj->created = false;
+		return;
+	}
 
 	XTRY
 	{
@@ -2627,12 +2791,16 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 				 */
 				if (strcmp(error, IN_FAILED_SQL_TRANSACTION))
 				{
+					if (global_verbose_flag)
+						fprintf(stderr, "    - ");
 					if (obj->name)
 						fprintf(stderr, 
 								"[WARNING] Error dropping '%s'\n", obj->name);
 					else
 						fprintf(stderr, 
 								"[WARNING] Error dropping unnamed object\n");
+					if (global_verbose_flag)
+						fprintf(stderr, "    - ");
 					fprintf(stderr, PQerrorMessage(conn));
 				}
 			}

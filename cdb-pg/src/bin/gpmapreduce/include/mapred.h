@@ -223,6 +223,7 @@ struct mapred_object_ {
 	char                   *name;
 	int                     line;
 	boolean                 created;
+	boolean                 internal;
 	union {
 		mapred_document_t   document;
 		mapred_input_t      input;

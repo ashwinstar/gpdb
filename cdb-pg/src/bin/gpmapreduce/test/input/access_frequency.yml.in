@@ -9,11 +9,12 @@ DEFINE:
       FILE:
         - @hostname@:@abs_srcdir@/data/access_log
         - @hostname@:@abs_srcdir@/data/access_log2
-
+        
   - OUTPUT:
       NAME:     out_1
       FILE:     @abs_srcdir@/output/access_frequency.1
-
+      DELIMITER: '|'
+      
   - MAP:
       NAME:     myMap
       LANGUAGE: perl

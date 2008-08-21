@@ -9,10 +9,11 @@ DEFINE:
       NAME:      email
       FILE:
         - @hostname@:@abs_srcdir@/data/email/mailfiles
-
+        
   - OUTPUT:
       NAME:     out_1
       FILE:     @abs_srcdir@/output/network.1
+      DELIMITER: '|'
 
   - MAP:
       NAME:      msg_from_to

@@ -101,18 +101,24 @@ int main (int argc, char *argv[])
 		{"port",     required_argument, 0, 'p'},
 		{"file",     required_argument, 0, 'f'},
 		{"key",      required_argument, 0, 'k'},
-#if INTERNAL_BUILD
+#ifdef INTERNAL_BUILD
 		{"print",    no_argument,       0, 'P'},
 		{"debug",    no_argument,       0, 'D'},
 #endif
 		{0, 0, 0, 0}
 	};
 
+#ifdef INTERNAL_BUILD
+	static char* short_options = "VvWU:h:p:f:k:?PD";
+#else
+	static char* short_options = "VvWU:h:p:f:k:?";
+#endif
+
 	while (1)
 	{
 		int option_index = 0;
-		c = getopt_long(argc, argv, "VvWU:h:p:f:k:?", 
-						long_options, &option_index);
+		c = getopt_long(argc, argv, short_options, long_options, 
+						&option_index);
 		if (c == -1)
 			break; /* done processing options */
 		switch (c)
@@ -140,7 +146,7 @@ int main (int argc, char *argv[])
 				global_verbose_flag = true;
 				break;
 
-#if INTERNAL_BUILD
+#ifdef INTERNAL_BUILD
 			case 'P':  /* --print (INTERNAL_BUILD only) */
 				global_print_flag = 1;
 				break;
@@ -272,8 +278,7 @@ int main (int argc, char *argv[])
 	XCATCH_ANY
 	{
 		if (xframe.exception)
-			fprintf(stderr, "Error (%d): %s\n", 
-					xframe.errcode, (char *) xframe.exception);
+			fprintf(stderr, "Error: %s\n", (char *) xframe.exception);
 		else
 			fprintf(stderr, "Unknown Error (%d) at %s:%d\n", 
 					xframe.errcode, xframe.file, xframe.lineno);
@@ -291,6 +296,11 @@ int main (int argc, char *argv[])
 		XTRY
 		{
 			mapred_document_t *doc = &doc_item->object->u.document;
+
+			if (global_verbose_flag)
+			{
+				fprintf(stderr, "- Executing Document %d:\n", doc->id);
+			}
 
 			if (port)
 			{
@@ -378,9 +388,10 @@ int main (int argc, char *argv[])
 		}
 		XCATCH_ANY
 		{
+			if (global_verbose_flag)
+				fprintf(stderr, "  - ");
 			if (xframe.exception)
-				fprintf(stderr, "Error (%d): %s\n", 
-						xframe.errcode, (char *) xframe.exception);
+				fprintf(stderr, "Error: %s\n", (char *) xframe.exception);
 			else
 				fprintf(stderr, "Unknown Error (%d) at %s:%d\n", 
 						xframe.errcode, xframe.file, xframe.lineno);

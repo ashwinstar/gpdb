@@ -6,7 +6,9 @@ USER:      @db_user@
 DEFINE:
   - INPUT:
       NAME:      weblog
-      FILE:      @hostname@:@abs_srcdir@/data/access_log_fake
+      FILE:
+        - @hostname@:@abs_srcdir@/data/access_log
+        - @hostname@:@abs_srcdir@/data/access_log2
       COLUMNS:
         - ip       text
         - rfc      text
@@ -18,12 +20,13 @@ DEFINE:
         - protocol text
         - status   integer
         - bytes    integer
-      DELIMITER: '|'
+      DELIMITER: ' '
         
   - OUTPUT:
       NAME:     out_1
       FILE:     @abs_srcdir@/output/columns.1
-        
+      DELIMITER: '|'
+      
   - MAP:
       NAME:     myMap
       LANGUAGE: perl

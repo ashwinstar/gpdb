@@ -9,10 +9,12 @@ DEFINE:
       FILE:
         - @hostname@:@abs_srcdir@/data/access_log
         - @hostname@:@abs_srcdir@/data/access_log2
+      DELIMITER: '|'
 
   - OUTPUT:
       NAME:     out_1
       FILE:     @abs_srcdir@/output/grep.1
+      DELIMITER: '|'
       
   - MAP:
       NAME:      grep_map
