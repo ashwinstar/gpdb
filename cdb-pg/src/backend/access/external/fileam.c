@@ -162,6 +162,7 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 	{
 		/* this is the normal path for most ext tables */
 		Value *v;
+		int idx = segindex;
 
 		/* 
 		 * Segindex may be -1, for the following case.
@@ -170,9 +171,12 @@ file_beginscan(Relation relation, Index scanrelid, uint32 scancounter,
 		 * Entry db slice will still call ExecInitExternalScan (probably we
 		 * should fix this?), then segindex = -1 will bomb out here.
 		 */
-		if(segindex != -1)
+		if(isMasterOnly && idx == -1)
+			idx = 0;
+
+		if(idx >= 0) 
 		{
-			v = (Value *)list_nth(uriList, segindex);
+			v = (Value *)list_nth(uriList, idx); 
 
 			if (v->type == T_Null)
 				uri = NULL;
