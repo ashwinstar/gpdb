@@ -130,6 +130,8 @@ extern const char *show_gp_role(void);
 
 extern bool gp_reraise_signal; /* try to force a core dump ?*/
 
+extern bool gp_version_mismatch_error;	/* Enforce same-version on QD&QE. */
+
 extern bool gp_set_proc_affinity; /* try to bind postmaster to a processor */
 
 /* Parameter gp_is_primary
@@ -471,6 +473,9 @@ gpvars_verbosity_to_string(GpVars_Verbosity verbosity);
 
 /* Enable single-slice single-row inserts. */
 extern bool gp_enable_fast_sri;
+
+/* Name of pseudo-function to access any table as if it was randomly distributed. */
+#define GP_DIST_RANDOM_NAME "GP_DIST_RANDOM"
 
 /*
  * gp_log_gang (string)

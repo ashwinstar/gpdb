@@ -1532,6 +1532,16 @@ static struct config_bool ConfigureNamesBool[] =
     },
 
 	{
+		{"gp_version_mismatch_error", PGC_USERSET, QUERY_TUNING_OTHER,
+			gettext_noop("QD/QE version string mismatches reported as an error"),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
+		},
+		&gp_version_mismatch_error,
+		true, NULL, NULL
+    },
+
+	{
 		{"gp_external_grant_privileges", PGC_POSTMASTER, EXTERNAL_TABLES,
 			gettext_noop("Enable non superusers to create http or gpfdist external tables."),
 			NULL

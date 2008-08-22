@@ -1968,12 +1968,14 @@ freePGconn(PGconn *conn)
 	if (conn->krbsrvname)
 		free(conn->krbsrvname);
 #endif
-    if (conn->gpqeid)          /* CDB */
+    if (conn->gpqeid)			/* CDB */
         free(conn->gpqeid);
-    if (conn->gpqdid)          /* CDB */
+    if (conn->gpqdid)			/* CDB */
         free(conn->gpqdid);
-    if (conn->gpdaid)          /* CDB */
+    if (conn->gpdaid)			/* CDB */
         free(conn->gpdaid);
+    if (conn->qe_version)		/* CDB */
+        free(conn->qe_version);
 
 	/* Note that conn->Pfdebug is not ours to close or free */
 	if (conn->last_query)
@@ -3332,21 +3334,20 @@ PQoptions(const PGconn *conn)
 	return conn->pgoptions;
 }
 
-/* CDB added function. */
-int	PQmotionListener( PGconn *conn)
+/* GPDB function to retrieve QE-backend details (motion listener) */
+int	PQgetQEdetail(PGconn *conn)
 {
 	if (!conn)
 		return -1;
 	
 	/* return it immediately if we've already fetched it. */
-	if( conn->motion_listener != 0 )
+	if (conn->motion_listener != 0)
 		return conn->motion_listener;
 	
 	/* send a request to fetch the motion listener port. */
-	pqPacketSend( conn, 'W', NULL, 0 );
-	
-	conn->asyncStatus = PGASYNC_BUSY;
-	
+	pqPacketSend(conn, 'W', NULL, 0 );
+
+	conn->asyncStatus = PGASYNC_BUSY;	
 	
 	/* wait for a response. */
 	if (PG_PROTOCOL_MAJOR(conn->pversion) >= 3)
@@ -3354,9 +3355,9 @@ int	PQmotionListener( PGconn *conn)
 	else
 		return -1;
 	
-	while( conn->motion_listener == 0 )
+	while (conn->motion_listener == 0)
 	{
-		pqWait(TRUE, FALSE, conn );
+		pqWait(TRUE, FALSE, conn);
 		pqReadData(conn);
 		
 		if (PG_PROTOCOL_MAJOR(conn->pversion) >= 3)

@@ -361,6 +361,7 @@ struct pg_conn
 	int			be_key;			/* key of backend --- needed for cancels */
 	
 	int			motion_listener; /* CDB tcp port for the interconnect listener. */
+	char		*qe_version;
 	
 	char		md5Salt[4];		/* password salt received from backend */
 	char		cryptSalt[2];	/* password salt received from backend */

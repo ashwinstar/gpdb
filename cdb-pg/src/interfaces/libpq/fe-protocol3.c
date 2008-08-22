@@ -308,9 +308,20 @@ pqParseInput3(PGconn *conn)
 					if (pqGetInt(&(conn->be_key), 4, conn))
 						return;
 					break;
-				case 'w':  /* get the Cdb Motion Listener. */
-					if (pqGetInt(&(conn->motion_listener), 4, conn))
-						return;	
+				case 'w':  /* get the GPDB QE details (Motion Listener) */
+					{
+						int version_len=0;
+
+						if (pqGetInt(&(conn->motion_listener), 4, conn))
+							return;
+						if (pqGetInt(&version_len, 4, conn))
+							return;
+						conn->qe_version = malloc(version_len);
+						if (conn->qe_version == NULL)
+							return;
+						if (pqGetnchar(conn->qe_version, version_len, conn))
+							return;
+					}
 					conn->asyncStatus = PGASYNC_IDLE;
 					break;
 				case 'T':		/* Row Description */

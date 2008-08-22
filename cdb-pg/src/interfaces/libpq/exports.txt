@@ -136,7 +136,7 @@ PQdescribePrepared        133
 PQdescribePortal          134
 PQsendDescribePrepared    135
 PQsendDescribePortal      136
-PQmotionListener	  200
+PQgetQEdetail		  200
 PQbuildGpQueryString     201
 PQsendGpQuery_shared     202
 truncatePQExpBuffer       203 
