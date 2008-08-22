@@ -2016,3 +2016,19 @@ alter table rank2 alter partition girls alter partition jan05 alter
 partition cali alter partition foo drop partition bar;
 
 drop table rank2 cascade;
+
+-- Test casting
+create table f (i int) partition by range (i) (start(1::int) end(10::int));
+drop table f;
+create table f (i bigint) partition by range (i) (start(1::int8)
+end(1152921504606846976::int8) every(576460752303423488));
+drop table f;
+create table f (n numeric(20, 2)) partition by range(n) (start(1::bigint)
+end(10000::bigint));
+drop table f;
+create table f (n numeric(20, 2)) partition by range(n) (start(1::bigint)
+end(10000::text));
+drop table f;
+--should fail. bool -> numeric makes no sense
+create table f (n numeric(20, 2)) partition by range(n) (start(1::bigint)
+end('f'::bool));

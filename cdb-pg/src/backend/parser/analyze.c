@@ -5157,7 +5157,7 @@ coerce_partition_value(Node *node, TypeName *type, PartitionByType partype)
 								 COERCE_IMPLICIT_CAST);
 
 	if (!out)
-		elog(ERROR, "cannot coerce VALUES field to table type");
+		elog(ERROR, "cannot coerce partition parameter to table type");
 
 	/* explicit coerce */
 	if (IsA(out, FuncExpr))
@@ -5603,6 +5603,44 @@ validate_partition_spec(ParseState *pstate, CreateStmtContext *cxt,
 	return partno;
 } /* end validate_partition_spec */
 
+static Const *
+flatten_partition_val(Node *node, Oid target_type)
+{
+	if (IsA(node, Const))
+		return (Const *)node;
+	else
+	{
+		Datum res;
+		Oid curtyp;
+		Const *c;
+		Type typ = typeidType(target_type);
+		int32 typmod = ((Form_pg_type)typ)->typtypmod;
+		int16 typlen = ((Form_pg_type)typ)->typlen;
+		bool typbyval = ((Form_pg_type)typ)->typbyval;
+
+		ReleaseSysCache(typ);
+
+		curtyp = exprType(node);
+		Assert(OidIsValid(curtyp));
+
+		if (curtyp != target_type && OidIsValid(target_type))
+		{
+			node = coerce_type(NULL, node, curtyp, target_type, typmod,
+							   COERCION_EXPLICIT,
+							   COERCE_IMPLICIT_CAST);
+
+			if (!PointerIsValid(node))
+				elog(ERROR, "could not coerce partitioning parameter");
+		}
+		
+		res = partition_arg_get_val(node);
+		c = makeConst(target_type, typlen, res, false, typbyval);
+
+		return c;
+	}
+
+}
+
 /* 
  * Get the actual value from the expression. There are only a limited range
  * of cases we must cover because the parser guarantees constant input.
@@ -5932,13 +5970,16 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				n1t = coerce_type(NULL, n1t, exprType(n1t), coltypid,
 								  type->typmod,
 								  COERCION_IMPLICIT, COERCE_IMPLICIT_CAST);
+				n1t = (Node *)flatten_partition_val(n1t, coltypid);
 
 				n2t = transformExpr(pstate, n2);
 				n2t = coerce_type(NULL, n2t, exprType(n2t), coltypid,
 								  type->typmod,
 								  COERCION_IMPLICIT, COERCE_IMPLICIT_CAST);
+				n2t = (Node *)flatten_partition_val(n2t, coltypid);
 
 				n3t = transformExpr(pstate, n3);
+				n3t = (Node *)flatten_partition_val(n3t, InvalidOid);
 
 				Assert(IsA(n3t, Const));
 				Assert(IsA(n2t, Const));

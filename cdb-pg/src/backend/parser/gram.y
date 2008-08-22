@@ -376,7 +376,7 @@ static void doNegateFloat(Value *v);
 %type <list>    OptDistributedBy
 %type <ival>	TabPartitionByType OptTabPartitionRangeInclusive
 %type <node>	OptTabPartitionBy TabSubPartitionBy 
-				OptTabSubPartitionBy OptTabSubSubPartitionBy
+				OptTabSubPartitionBy OptTabSubSubPartitionBy tab_part_val
 %type <list>	opt_check_option
 %type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber 
 %type <node>	OptTabPartitionSpec OptTabSubPartitionSpec OptTabSubPartitionTemplate      /* PartitionSpec */
@@ -3042,10 +3042,21 @@ TabSubPartitionElemList:
               TabSubPartitionElem					{ $$ = lappend($1, $3); }
 		;
 
+tab_part_val: AexprConst { $$ = $1; }
+			| CAST '(' AexprConst AS Typename ')'
+				{ 
+					$$ = makeTypeCast($3, $5);
+				}
+			| AexprConst TYPECAST Typename
+				{ 
+					$$ = makeTypeCast($1, $3); 
+				}
+		
+
 TabPartitionBoundarySpecValList:
-              AexprConst						{ $$ = list_make1($1); }
+              tab_part_val						{ $$ = list_make1($1); }
 			| TabPartitionBoundarySpecValList ',' 
-              AexprConst						{ $$ = lappend($1, $3); }
+              tab_part_val						{ $$ = lappend($1, $3); }
 		;
 
 /* only optional for START and END in ALTER TABLE...MODIFY PARTITION */
