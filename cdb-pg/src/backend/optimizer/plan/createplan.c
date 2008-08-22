@@ -2540,6 +2540,7 @@ create_mergejoin_plan(CreatePlanContext *ctx,
 				/* need to add slack. */
 				mat = make_material(inner_plan);
 				mat->cdb_strict = true;
+				inner_plan = (Plan *)mat;
 			}
 		}
 	}
