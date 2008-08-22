@@ -7,22 +7,22 @@ SYNOPSIS
 *****************************************************
 
 gpstate [-d <master_data_directory>] [-B <parallel_processes>] 
-            [-s | -b] [-m] [-c] [-p] [-n] 
+            [-s | -b | -Q] [-m] [-c] [-p] [-n] 
             {[-e] [-r <number>] [-g "<search_string>" [| "<search_string>"]]} 
-            [-i] [-f] [-q] [-l <log_directory>] [-D] [-t | -? | -v]
+            [-i] [-f] [-q] [-l <log_directory>] [-D] 
+
+gpstate [-t | -? | -v]
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The gpstate script is analogous to functionality offered by the 
-PostgreSQL pg_controldata command, which displays information about a 
-running database server instance. There is additional information you 
-may want to know about a Greenplum Database system, since it is comprised 
-of multiple PostgreSQL database instances spanning multiple machines. 
-The gpstate script provides additional status information for a 
-Greenplum Database system, such as:
+The gpstate utility displays information about a running database server 
+instance. There is additional information you may want to know about a 
+Greenplum Database system, since it is comprised of multiple PostgreSQL 
+database instances spanning multiple machines. The gpstate utility provides 
+additional status information for a Greenplum Database system, such as:
 
 * Which segments are down (invalid status).
 
@@ -47,7 +47,7 @@ $MASTER_DATA_DIRECTORY will be used.
 
 -B <parallel_processes>
 
-The number of segments to check in parallel. If not specified, the script 
+The number of segments to check in parallel. If not specified, the utility 
 will start up to 60 parallel processes depending on how many segment 
 instances it needs to check.
 
@@ -62,6 +62,12 @@ system.
 
 Optional. Display a brief summary of the state of the Greenplum Database 
 system. This is the default option.
+
+
+-Q (quick status)
+
+Optional. Checks segment status in the system catalog on the master host. 
+Does not poll the segments for status.
 
 
 -m (list mirrors)
@@ -91,7 +97,7 @@ Display the end of the log file for the master instance and each segment
 instance.
 
 
--r number_of_log_lines
+-r <number_of_log_lines>
 
 Used in combination with the -e option, retrieves the specified number of 
 log lines. The default is to retrieve the last 10 lines of the log files.
@@ -120,7 +126,7 @@ Run in quiet mode. Command output is not displayed on the screen, but is
 still written to the log file.
 
 
--l logfile_directory
+-l <logfile_directory>
 
 The directory to write the log file. Defaults to ~/gpAdminLogs.
 
@@ -130,9 +136,9 @@ The directory to write the log file. Defaults to ~/gpAdminLogs.
 Sets logging level to debug.
 
 
--t (show default script settings)
+-t (show default utility settings)
 
-Display the default settings used by the gpstate script such as the 
+Display the default settings used by the gpstate utility such as the 
 master data directory and port.
 
 
@@ -141,9 +147,9 @@ master data directory and port.
 Displays the online help.
 
 
--v (show script version)
+-v (show utility version)
 
-Displays the version, status, last updated date, and check sum of this script.
+Displays the version, status, last updated date, and check sum of this utility.
 
 
 *****************************************************
@@ -152,12 +158,12 @@ EXAMPLES
 
 Show the complete status information of a Greenplum Database system:
 
-gpstate
+gpstate -s
 
 
-Show the status summary of a Greenplum Database system:
+Do a quick check for invalid segments in the master host system catalog:
 
-gpstate -b
+gpstate -Q
 
 
 Show information about mirror segment instances:
@@ -170,14 +176,14 @@ Show information about the standby master configuration:
 gpstate -f
 
 
-Show the last log file message for all segment instances:
+Show the last 5 lines of each segment instance log file:
 
-gpstate -e
+gpstate -e -r 5
 
 
-Display the online help for the gpstate script:
+Display the Greenplum software version information:
 
-gpstate -?
+gpstate -i
 
 
 *****************************************************
