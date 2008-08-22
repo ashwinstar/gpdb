@@ -507,7 +507,7 @@ extern int gpmmon_quantum(void);
 static void delete_old_files(bloom_t* bloom)
 {
     FILE* fp = popen("ls -1 " GPMON_DIR "q*-*.txt 2> /dev/null", "r");
-    time_t cutoff = time(0) - gpmmon_quantum() * 2;
+    time_t cutoff = time(0) - gpmmon_quantum() * 3;
     if (fp) {
 	for (;;) {
 	    char line[1024];
@@ -903,8 +903,8 @@ static char* fmt_qlog(char* line, qdnode_t* qdnode, const char* nowstr)
     cpu_skew = get_cpu_skew(qdnode);
     row_skew = get_row_skew(qdnode);
 
-    sprintf(p += strlen(p), "|%f|%.2f", cpu_skew, row_skew);
-    sprintf(p += strlen(p), "|%" FMT64, 0L);
+    sprintf(p += strlen(p), "|%.2f|%.2f", cpu_skew, row_skew);
+    sprintf(p += strlen(p), "|%d", 0);
     return line;
 }
 
