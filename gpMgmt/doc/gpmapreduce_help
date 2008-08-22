@@ -7,7 +7,7 @@ Runs Greenplum MapReduce jobs as defined in a YAML specification document.
 SYNOPSIS
 *****************************************************
 
-gpmapreduce [<options> ...] -f <yaml_file>
+gpmapreduce [options ...] -f yaml_file [dbname [username]]
 
 
 *****************************************************
@@ -18,10 +18,11 @@ The following are required prior to running this program:
 
 * You must have your MapReduce job defined in a YAML document.
 
-* If output is to be directed to a table in the database, that 
-  table must exist before the job is run.
+* You must be a Greenplum Database superuser to run MapReduce 
+jobs written in untrusted perl or python.
 
-* You must be a Greenplum Database superuser to run MapReduce jobs.
+* Certain inputs to MapReduce jobs (EXEC, FILE and GPFDIST) 
+require superuser permissions.
 
 
 *****************************************************
