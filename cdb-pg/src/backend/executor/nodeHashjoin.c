@@ -95,61 +95,68 @@ ExecHashJoin(HashJoinState *node)
 	 */
 	if (hashtable == NULL)
 	{
-		/* MPP-989: for MPP reading from the outer here causes a
-		 * deadlock hazard. We need to fix this properly at some point
-		 * -- so that we'll be able to avoid building the hash table
-		 * when we have an empty outer relation */
-#if 0 /* MPP-989 */
 		/*
-		 * If the outer relation is completely empty, we can quit without
-		 * building the hash table.  However, for an inner join it is only a
-		 * win to check this when the outer relation's startup cost is less
-		 * than the projected cost of building the hash table.	Otherwise it's
-		 * best to build the hash table first and see if the inner relation is
-		 * empty.  (When it's an outer join, we should always make this check,
-		 * since we aren't going to be able to skip the join on the strength
-		 * of an empty inner relation anyway.)
-		 *
-		 * If we are rescanning the join, we make use of information gained on
-		 * the previous scan: don't bother to try the prefetch if the previous
-		 * scan found the outer relation nonempty.	This is not 100% reliable
-		 * since with new parameters the outer relation might yield different
-		 * results, but it's a good heuristic.
-		 *
-		 * The only way to make the check is to try to fetch a tuple from the
-		 * outer plan node.  If we succeed, we have to stash it away for later
-		 * consumption by ExecHashJoinOuterGetTuple.
+		 * MPP-3300: we can relax the MPP-989 restriction, all join
+		 * types have the option of descending the left branch first,
+		 * but only if it is safe: it is safe if only one subtree
+		 * contains a motion-hazard -- if both contain motion-hazards we
+		 * *must* descend inner-first (build the hashtable).
 		 */
-		if (node->js.jointype == JOIN_LEFT ||
-			(outerNode->plan->startup_cost < hashNode->ps.plan->total_cost &&
-			 !node->hj_OuterNotEmpty))
+		if (!node->prefetch_inner)
 		{
-			TupleTableSlot *slot;
-
-			if (node->outer_q != NULL)
-				slot = dequeueTQ(node->outer_q);
-			else
-				slot = ExecProcNode(outerNode);
-
-			node->hj_FirstOuterTupleSlot = slot;
-			if (TupIsNull(node->hj_FirstOuterTupleSlot))
+			/*
+			 * If the outer relation is completely empty, we can quit without
+			 * building the hash table.  However, for an inner join it is only a
+			 * win to check this when the outer relation's startup cost is less
+			 * than the projected cost of building the hash table.	Otherwise it's
+			 * best to build the hash table first and see if the inner relation is
+			 * empty.  (When it's an outer join, we should always make this check,
+			 * since we aren't going to be able to skip the join on the strength
+			 * of an empty inner relation anyway.)
+			 *
+			 * If we are rescanning the join, we make use of information gained on
+			 * the previous scan: don't bother to try the prefetch if the previous
+			 * scan found the outer relation nonempty.	This is not 100% reliable
+			 * since with new parameters the outer relation might yield different
+			 * results, but it's a good heuristic.
+			 *
+			 * The only way to make the check is to try to fetch a tuple from the
+			 * outer plan node.  If we succeed, we have to stash it away for later
+			 * consumption by ExecHashJoinOuterGetTuple.
+			 */
+			if (node->js.jointype == JOIN_LEFT ||
+				(outerNode->plan->startup_cost < hashNode->ps.plan->total_cost &&
+				 !node->hj_OuterNotEmpty))
 			{
-				node->hj_OuterNotEmpty = false;
+				TupleTableSlot *slot;
 
-                /* CDB: Tell inner subtree that its data will not be needed. */
-			    ExecSquelchNode((PlanState *)hashNode);
+				if (node->outer_q != NULL)
+					slot = dequeueTQ(node->outer_q);
+				else
+					slot = ExecProcNode(outerNode);
 
-				return NULL;
+				node->hj_FirstOuterTupleSlot = slot;
+				if (TupIsNull(node->hj_FirstOuterTupleSlot))
+				{
+					node->hj_OuterNotEmpty = false;
+
+					/* CDB: Tell inner subtree that its data will not be needed. */
+					ExecSquelchNode((PlanState *)hashNode);
+
+					return NULL;
+				}
+				else
+					node->hj_OuterNotEmpty = true;
 			}
 			else
-				node->hj_OuterNotEmpty = true;
+				node->hj_FirstOuterTupleSlot = NULL;
 		}
 		else
+		{
+			/* see MPP-989 comment above, for now we assume that we have
+			 * at least one row on the outer. */
 			node->hj_FirstOuterTupleSlot = NULL;
-#endif
-		/* see MPP-989 comment above, for now we assume that we have
-		 * at least one row on the outer. */
-		node->hj_FirstOuterTupleSlot = NULL;
+		}
 
 		/*
 		 * create the hash table
@@ -276,8 +283,8 @@ ExecHashJoin(HashJoinState *node)
 			 * we've got a match, but still need to test non-hashed quals
 			 */
 			inntuple = ExecStoreMemTuple(HJTUPLE_MINTUPLE(curtuple),
-											 node->hj_HashTupleSlot,
-											 false);	/* don't pfree */
+										 node->hj_HashTupleSlot,
+										 false);	/* don't pfree */
 			econtext->ecxt_innertuple = inntuple;
 
 			/* reset temp memory each time to avoid leaks from qual expr */
@@ -391,6 +398,10 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	hjstate->hashclauses = (List *)
 		ExecInitExpr((Expr *) node->hashclauses,
 					 (PlanState *) hjstate);
+
+	/* MPP-3300, we only pre-build hashtable if we need to (this is
+	 * relaxing the fix to MPP-989) */
+	hjstate->prefetch_inner = node->join.prefetch_inner;
 
 	/*
 	 * initialize child nodes

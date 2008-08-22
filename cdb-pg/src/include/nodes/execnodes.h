@@ -1541,6 +1541,8 @@ typedef struct MergeJoinState
 	TupleTableSlot *mj_NullInnerTupleSlot;
 	ExprContext *mj_OuterEContext;
 	ExprContext *mj_InnerEContext;
+	bool		prefetch_inner; /* MPP-3300 */
+	bool		mj_squelchInner; /* MPP-3300 */
 } MergeJoinState;
 
 /* ----------------
@@ -1589,6 +1591,7 @@ typedef struct HashJoinState
 	bool		hj_NeedNewOuter;
 	bool		hj_MatchedOuter;
 	bool		hj_OuterNotEmpty;
+	bool		prefetch_inner;
 
 	executorTupleQueue *outer_q;
 } HashJoinState;

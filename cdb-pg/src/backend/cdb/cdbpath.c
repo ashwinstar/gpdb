@@ -237,22 +237,11 @@ cdbpath_create_motion_path(PlannerInfo     *root __attribute__((unused)) ,
     if (IsA(subpath, MaterialPath))
         subpath = ((MaterialPath *)subpath)->subpath;
 
-    /* Materialize before motion if needed to avoid deadlock hazard.
-     * Tell Material operator to read and store all input tuples
-     * before yielding first output tuple.
-     * Execution might deadlock if a Merge Receive is fed by a lower
-     * Motion operator, unless the two are decoupled by an intervening
-     * slackening operator such as Hash or Sort.
-     * MPP TODO: A less heavy-handed solution is needed.
-     */
-    if (pathkeys &&
-        subpath->motionHazard)
-    {
-        MaterialPath *mtlpath = create_material_path(subpath->parent, subpath);
-        mtlpath->cdb_strict = true;
-        mtlpath->path.motionHazard = false;
-        subpath = (Path *)mtlpath;
-    }
+	/*
+	 * MPP-3300: materialize *before* motion can never help us, motion
+	 * pushes data. other nodes pull. We relieve motion deadlocks by
+	 * adding materialize nodes on top of motion nodes
+	 */
 
     /* Create CdbMotionPath node. */
     pathnode = makeNode(CdbMotionPath);

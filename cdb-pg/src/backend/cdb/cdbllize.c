@@ -1062,7 +1062,8 @@ motion_sanity_walker(Node *node, int *result)
 						  * materializes its inner before switching to
 						  * its outer. */
 			branch_label = "HJ";
-			deadlock_safe = true;
+			if (((HashJoin *)node)->join.prefetch_inner)
+				deadlock_safe = true;
 			break;
 		case T_AdaptiveNestLoop:
 			branch_label = "ANL";
@@ -1075,6 +1076,8 @@ motion_sanity_walker(Node *node, int *result)
 			break;
 		case T_MergeJoin:
 			branch_label = "MJ";
+			if (((MergeJoin *)node)->join.prefetch_inner)
+				deadlock_safe = true;
 			break;
 		default:
 			branch_label = NULL;
@@ -1102,6 +1105,8 @@ motion_sanity_walker(Node *node, int *result)
 		case T_Hash:
 		case T_SetOp:
 		case T_Limit:
+		case T_Sort:
+		case T_Material:
 			if (plan_tree_walker(node, motion_sanity_walker, result))
 				return true;
 			break;
@@ -1111,20 +1116,6 @@ motion_sanity_walker(Node *node, int *result)
 				return true;
 			*result |= SANITY_MOTION;
 			elog(DEBUG5, "   found motion");
-			break;
-
-		case T_Sort:
-			if (plan_tree_walker(node, motion_sanity_walker, result))
-				return true;
-
-			/* sort internally materializes */
-			*result &= ~SANITY_MOTION;
-			break;
-
-		case T_Material:
-			/* discover any deadlocks below */
-			if (plan_tree_walker(node, motion_sanity_walker, result))
-				return true;
 			break;
 
 		case T_HashJoin:

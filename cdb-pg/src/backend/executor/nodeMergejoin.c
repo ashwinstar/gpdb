@@ -717,6 +717,20 @@ ExecMergeJoin(MergeJoinState *node)
 	 */
 	ResetExprContext(econtext);
 
+	if (node->prefetch_inner)
+	{
+		innerTupleSlot = ExecProcNode(innerPlan);
+		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_MERGEJOIN_INNERTUPLE);
+		Gpmon_M_Incr(GpmonPktFromMergeJoinState(node), GPMON_QEXEC_M_ROWSIN); 
+		node->mj_InnerTupleSlot = innerTupleSlot;
+
+		ExecReScan(innerPlan, econtext);
+		ResetExprContext(econtext);
+
+		node->mj_squelchInner = false; /* we will never need to Squelch the inner, we've fetched it all */
+		node->prefetch_inner = false;
+	}
+
 	/*
 	 * ok, everything is setup.. let's go to work
 	 */
@@ -765,7 +779,8 @@ ExecMergeJoin(MergeJoinState *node)
 					 * clog up the pipeline with our never-to-be-consumed
 					 * data.
 					 */
-					ExecSquelchNode(innerPlan);
+					if (node->mj_squelchInner)
+						ExecSquelchNode(innerPlan);
 
 					/* Otherwise we're done. */
 					return NULL;
@@ -1088,7 +1103,7 @@ ExecMergeJoin(MergeJoinState *node)
 					 * clog up the pipeline with our never-to-be-consumed
 					 * data.
 					 */
-					if (!TupIsNull(innerTupleSlot))
+					if (!TupIsNull(innerTupleSlot) && node->mj_squelchInner)
 						ExecSquelchNode(innerPlan);
 
 					/* Otherwise we're done. */
@@ -1371,7 +1386,7 @@ ExecMergeJoin(MergeJoinState *node)
 					 * clog up the pipeline with our never-to-be-consumed
 					 * data.
 					 */
-					if (!TupIsNull(innerTupleSlot))
+					if (!TupIsNull(innerTupleSlot) && node->mj_squelchInner)
 						ExecSquelchNode(innerPlan);
 
 					/* Otherwise we're done. */
@@ -1626,6 +1641,10 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate, int eflags)
 	mergestate->js.joinqual = (List *)
 		ExecInitExpr((Expr *) node->join.joinqual,
 					 (PlanState *) mergestate);
+
+	mergestate->prefetch_inner = node->join.prefetch_inner;
+	mergestate->mj_squelchInner = true;
+
 	/* mergeclauses are handled below */
 
 	/*

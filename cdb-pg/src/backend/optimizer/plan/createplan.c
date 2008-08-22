@@ -2448,6 +2448,7 @@ create_mergejoin_plan(CreatePlanContext *ctx,
 	List	   *mergeclauses;
     Sort       *sort;
 	MergeJoin  *join_plan;
+	bool		prefetch=false;
 
 	/* Get the join qual clauses (in plain expression form) */
 	/* Any pseudoconstant clauses are ignored here */
@@ -2516,6 +2517,34 @@ create_mergejoin_plan(CreatePlanContext *ctx,
 	}
 
 	/*
+	 * MPP-3300: very similar to the nested-loop join motion deadlock cases. But we may have already
+	 * put some slackening operators below (e.g. a sort).
+	 *
+	 * We need some kind of strict slackening operator (something which consumes all of its
+	 * input before producing a row of output) for our inner. And we need to prefetch that side
+	 * first.
+	 */
+	if (best_path->jpath.outerjoinpath->motionHazard && best_path->jpath.innerjoinpath->motionHazard)
+	{
+		prefetch = true;
+		if (!IsA(inner_plan, Sort))
+		{
+			if (IsA(inner_plan, Material))
+			{
+				((Material *)inner_plan)->cdb_strict = true;
+			}
+			else
+			{
+				Material *mat;
+
+				/* need to add slack. */
+				mat = make_material(inner_plan);
+				mat->cdb_strict = true;
+			}
+		}
+	}
+
+	/*
 	 * Now we can build the mergejoin node.
 	 */
 	join_plan = make_mergejoin(tlist,
@@ -2525,6 +2554,8 @@ create_mergejoin_plan(CreatePlanContext *ctx,
 							   outer_plan,
 							   inner_plan,
 							   best_path->jpath.jointype);
+
+	join_plan->join.prefetch_inner = prefetch;
 
 	copy_path_costsize(&join_plan->join.plan, &best_path->jpath.path);
 
@@ -2595,6 +2626,18 @@ create_hashjoin_plan(CreatePlanContext *ctx,
 							  outer_plan,
 							  (Plan *) hash_plan,
 							  best_path->jpath.jointype);
+
+	/*
+	 * MPP-3300: unify motion-deadlock prevention for all join types.
+	 * This allows us to undo the MPP-989 changes in nodeHashjoin.c
+	 * (allowing us to check the outer for rows before building the
+	 * hash-table).
+	 */
+	if (best_path->jpath.outerjoinpath->motionHazard &&
+		best_path->jpath.innerjoinpath->motionHazard)
+	{
+		join_plan->join.prefetch_inner = true;
+	}
 
 	copy_path_costsize(&join_plan->join.plan, &best_path->jpath.path);
 
