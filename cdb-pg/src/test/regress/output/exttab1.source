@@ -237,7 +237,7 @@ DROP EXTERNAL TABLE EXT_REGION;
 -- gpfdist in csv (mpp-1519, etc)
 --
 CREATE EXTERNAL WEB TABLE gpfdist_csv_start (x text)
-execute E'((@gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data  -q \'"\' -h  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
+execute E'((@gpwhich_gpfdist@ -p 7070 -d @abs_srcdir@/data  </dev/null >/dev/null 2>&1 &); sleep 2; echo "starting...") '
 on SEGMENT 0
 FORMAT 'text' (delimiter '|');
 -- 
@@ -371,9 +371,9 @@ rec_path			varchar(512),
 raw_record			text
 )
 location ('gpfdist://@hostname@:7070/whois.csv' )
-format 'csv' ( quote as '"');
+format 'csv' ( quote as '"' header);
+NOTICE:  HEADER means that each one of the data files has a header row.
 -- "
--- no header option because we specified it for gpfdist_csv...
 select count(*) from ext_whois;
  count 
 -------

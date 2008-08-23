@@ -69,7 +69,7 @@ struct extvar_t
 	char GP_SEG_PORT[10];
 	char GP_SESSION_ID[10];  /* session id */
  	char GP_SEGMENT_COUNT[6]; /* total number of (primary) segs in the system */
- 	char GP_CSVOPT[5]; /* "q.x." former -q and -x options for gpfdist.*/
+ 	char GP_CSVOPT[13]; /* "m.x...q...h." former -q, -h and -x options for gpfdist.*/
 };
 
 #include "url.i"
@@ -995,7 +995,7 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 	 * null
 	 * escape
 	 * quote (if csv)
-	 * header (if csv)
+	 * header
 	 *
 	 * NOTE: Eventually when we support user defined types
 	 * the user will supply a function that will know how
@@ -1054,19 +1054,19 @@ initParseState(CopyState pstate, Relation relation, List *fmtOpts, bool isText,
 		FILEAM_GET_CHAR(value, "quote");
 
 		pstate->quote = value;
-
-		/*
-		 * HEADER
-		 */
-		clause = strtok(NULL, " ");
-
-		if (clause)
-		{
-			FILEAM_VERIFY_CLAUSE(clause, "header");
-			pstate->header_line = true;
-		}
-
 	}
+
+	/*
+	 * HEADER
+	 */
+	clause = strtok(NULL, " ");
+
+	if (clause)
+	{
+		FILEAM_VERIFY_CLAUSE(clause, "header");
+		pstate->header_line = true;
+	}
+
 
 	/*
 	 * elog(NOTICE, "delim %s null %s escape %s quote %s %s", pstate->delim,
@@ -1118,8 +1118,7 @@ open_external_file(FileScanDesc scan)
 	/* set up extvar */
 
 	memset(&extvar, 0, sizeof(extvar));
- 	if (scan->fs_pstate->csv_mode)
- 	    sprintf(extvar.GP_CSVOPT,"q%cx%c",*scan->fs_pstate->quote,*scan->fs_pstate->escape);
+	sprintf(extvar.GP_CSVOPT,"m%dx%dq%dh%d",scan->fs_pstate->csv_mode?1:0,scan->fs_pstate->escape?255&*scan->fs_pstate->escape:0,scan->fs_pstate->quote?255&*scan->fs_pstate->quote:0,scan->fs_pstate->header_line?1:0);
 	extvar.GP_MASTER_HOST = qdHostname;
 	
 	pg_itoa(qdPostmasterPort, result);
@@ -1147,7 +1146,7 @@ open_external_file(FileScanDesc scan)
     /*
      * Open the url with url_open().
      */
-    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R, &extvar);
+    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R, &extvar,scan);
 
 	if (scan->fs_file == NULL)
 	{

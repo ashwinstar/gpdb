@@ -14839,20 +14839,10 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("delimiter cannot be backslash")));
 	
-	/* Check header */
-	if (!csv_mode && header_line)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("HEADER available only in CSV mode")));
-	
 	if(header_line && Gp_role == GP_ROLE_DISPATCH)
 		ereport(NOTICE,
 				(errmsg("HEADER means that each one of the data files "
-				        "has a header row. Also, if you are using a file "
-						"distribution utility such as gpfdist re-create "
-						"this table without HEADER and specify the header "
-						"option in the utility itself (since the header row "
-						"will be distributed to only one segment database)")));
+				        "has a header row.")));
 	
 	/*
 	 * Check quote
@@ -14919,8 +14909,9 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 	
 	if (formattype == 'c')
 		len +=	1 +								/* space			*/
-			5 + 1 + 3 +							/* "quote 'x'"		*/
-			(header_line ? 1 + 6 : 0);			/* " header"		*/
+			5 + 1 + 3							/* "quote 'x'"		*/;
+
+	len += header_line ? 1 + 6 : 0;			/* " header"		*/
 	
 	/* +1 leaves room for sprintf's trailing null */
 	format_str = (char *) palloc(len + 1);
@@ -14928,8 +14919,8 @@ static Datum transformFormatOpts(char formattype, List *formatOpts)
 	switch(formattype)
 	{
 		case 't':
-			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s'", 
-					delim, null_print, escape);			
+			sprintf((char *) format_str, "delimiter '%s' null '%s' escape '%s'%s", 
+					delim, null_print, escape,header_line?" header":"");
 			break;	
 			
 		case 'c':

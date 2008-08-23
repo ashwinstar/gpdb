@@ -106,11 +106,10 @@ static struct {
     int p;			/* port */
     int v;			/* verbose */
     int V;			/* very verbose */
-    int h;			/* skip first-row header */
     const char* d;		/* directory */
     const char* l;              /* log filename */
     int g;			/* gp_proto (0 or 1) (internal, not documented) */
-} opt = { 8080, 0, 0, 0, ".", 0, -1 };
+} opt = { 8080, 0, 0, ".", 0, -1 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -250,8 +249,7 @@ static void usage(const char* msg)
 		"                    Default to '.'\n"
 		"        -q qchar  : deprecated and ignored\n"
 		"        -x xchar  : deprecated and ignored\n"
-		"        -h        : flag indicates first data row in all files is\n"
-		"                    a header row. skip it.\n"
+		"        -h        : deprecated and ignored\n"
 		"        -l logfn  : log filename\n"
 		"        --version : print version information.\n\n");
     }
@@ -268,10 +266,10 @@ static void print_version(void)
     exit(0);
 }
 
-static void print_q_x_deprecated(void)
+static void print_q_x_h_deprecated(void)
 {
-    fprintf(stderr,"-q and -x are deprecated.  Please specify these as in this example:\n");
-    fprintf(stderr,"create external table a (a int) location ('gpfdist://...') format 'csv' (quote as '\"' escape as '\"');\n");
+    fprintf(stderr,"-q, -h and -x are deprecated.  Please specify these as in this example:\n");
+    fprintf(stderr,"create external table a (a int) location ('gpfdist://...') format 'csv' (escape as '\"' quote as '\"' header);\n");
 }
 
 
@@ -290,7 +288,7 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	{      NULL, 'd', 1, "serve files under this directory" },
 	{      NULL, 'q', 1, "deprecated and ignored" },
 	{      NULL, 'x', 1, "deprecated and ignored" },
-	{      NULL, 'h', 0, "flag to skip first row in data files" },
+	{      NULL, 'h', 0, "deprecated and ignored" },
 	{      NULL, 'l', 1, "log filename" },
 	{      NULL, 'g', 1, "internal - gp_proto number" },
 	{ "version", 256, 0, "print version number" }
@@ -305,10 +303,10 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	case '?': usage(0); break;
 	case 'v': opt.v = 1; break;
 	case 'V': opt.v = opt.V = 1; break;
-	case 'h': opt.h = 1; break;
+	case 'h': print_q_x_h_deprecated(); break;
 	case 'd': opt.d = arg; break;
-	case 'q': print_q_x_deprecated(); break;
-	case 'x': print_q_x_deprecated(); break;
+	case 'q': print_q_x_h_deprecated(); break;
+	case 'x': print_q_x_h_deprecated(); break;
 	case 'p': opt.p = atoi(arg); break;
 	case 'l': opt.l = arg; break;
 	case 'g': opt.g = atoi(arg); break;
@@ -739,19 +737,12 @@ static void session_attach(request_t* r)
 	}
 	/* parse csvopt header */
 	memset(&fstream_options,0,sizeof fstream_options);
-	fstream_options.header = opt.h;
 	fstream_options.verbose = opt.v;
 	{
-	    const char*a;
-	    for (a=r->csvopt; *a; a++)
-		if (*a=='q' && a[1]){
-		    fstream_options.quote = *++a;
-		    fstream_options.is_csv = 1;
-		}else if (*a=='x' && a[1]){
-		    fstream_options.escape = *++a;
-		    fstream_options.is_csv = 1;
-		}else
-		    assert(0);
+	    int quote=0,escape=0;
+	    sscanf(r->csvopt,"m%dx%dq%dh%d",&fstream_options.is_csv,&escape,&quote,&fstream_options.header);
+	    fstream_options.quote = quote;
+	    fstream_options.escape = escape;
 	}
 	/* try opening the fstream */
 	fstream = fstream_open(r->path,&fstream_options);

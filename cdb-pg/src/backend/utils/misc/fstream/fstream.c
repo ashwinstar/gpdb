@@ -11,7 +11,7 @@ struct fstream_t{
     gfile_t*fd;
     int fidx;		/* current index in ffd[] */
     int64_t foff;		/* current offset in ffd[fidx] */
-    int fskip;		/* reflect opt.h (skip first line) */
+    int fskip;		/* skip first line */
     const char*ferror;	/* error string */
     struct fstream_options options;
     int buffer_size;
@@ -151,7 +151,7 @@ fstream_open(const char*path,const struct fstream_options*options)
 	else
 	    fs->fd = fd;
     }
-    fs->fskip = fs->options.header;
+    fs->fskip = options->header;
     return fs;
 }
 
