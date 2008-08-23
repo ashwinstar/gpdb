@@ -314,12 +314,12 @@ static PgPartRule *get_part_rule(Relation rel, AlterPartitionId *pid,
 								   MemoryContext mcxt,
 								   int *pSearch);
 
-static void atpxPartAddList(AlteredTableInfo *tab,
-							Relation rel, AlterPartitionCmd *pc,
-							PartitionNode *pNode, Node *pUtl, 
-							Node *partName, bool isDefault,
-							PartitionElem *pelem,
-							PartitionByType part_type);
+static Node *atpxPartAddList(AlteredTableInfo *tab,
+							 Relation rel, AlterPartitionCmd *pc,
+							 PartitionNode *pNode, Node *pUtl, 
+							 Node *partName, bool isDefault,
+							 PartitionElem *pelem,
+							 PartitionByType part_type);
 
 static void ATPExecPartAdd(AlteredTableInfo *tab,
 						   Relation rel,
@@ -10380,6 +10380,54 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
  *
  */
 
+static 	AlterPartitionId *
+wack_pid_relname(AlterPartitionId 		 *pid,
+				 PartitionNode  		**ppNode,
+				 Relation 				  rel,
+				 PgPartRule 			**ppar_prule,
+				 char 					**plrelname,
+				 char 					 *lRelNameBuf)
+{
+	AlterPartitionId 	*locPid = pid;	/* local pid if IDRule */
+
+	if (!pid)
+		return NULL;
+
+	if (AT_AP_IDRule == locPid->idtype)
+	{
+		List 			*l1    = (List *)pid->partiddef;
+		ListCell 		*lc;			
+		PgPartRule 			*par_prule = NULL;
+
+		lc = list_head(l1);
+		*ppar_prule = (PgPartRule*) lfirst(lc);
+
+		par_prule = *ppar_prule;
+
+		*plrelname = par_prule->relname;
+
+		if (par_prule && par_prule->topRule && par_prule->topRule->children)
+			*ppNode = par_prule->topRule->children;
+
+		lc = lnext(lc);
+
+		locPid = (AlterPartitionId *)lfirst(lc);
+		
+		Assert(locPid);
+	}
+	else
+	{
+		*ppNode = RelationBuildPartitionDesc(rel);
+
+		snprintf(lRelNameBuf, (NAMEDATALEN*2),
+					 "relation \"%s\"",
+					 RelationGetRelationName(rel));
+		*plrelname = lRelNameBuf;
+	}
+
+	return locPid;
+}
+
 static void
 ATPExecPartAdd(AlteredTableInfo *tab,
 			   Relation rel,
@@ -10390,17 +10438,28 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 	PartitionNode  		*pNode 		= NULL;
 	char           		*parTypName = NULL;
 	char			 	 namBuf[NAMEDATALEN];
+	AlterPartitionId 	*locPid 	= pid;	/* local pid if IDRule */
+	PgPartRule* 		 par_prule 	= NULL;	/* prule for parent if IDRule */
+	char 		 		 lRelNameBuf[(NAMEDATALEN*2)];
+	char 				*lrelname;
+	Node 				*pSubSpec 	= NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	pNode = RelationBuildPartitionDesc(rel);
+	locPid =
+			wack_pid_relname(pid,
+							 &pNode,
+							 rel,
+							 &par_prule,
+							 &lrelname,
+							 lRelNameBuf);
 
 	if (!pNode)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("relation \"%s\" is not partitioned",
-						RelationGetRelationName(rel))));
+				 errmsg("%s is not partitioned",
+						lrelname)));
 
 	switch (pNode->part->parkind)
 	{
@@ -10421,7 +10480,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 	} /* end switch */
 
 
-	if (pid->idtype == AT_AP_IDName)
+	if (locPid->idtype == AT_AP_IDName)
 			snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
 					 strVal(pid->partiddef));
 	else
@@ -10430,20 +10489,21 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 	if ('h' == pNode->part->parkind)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("cannot add HASH partition%s to relation \"%s\"",
+				 errmsg("cannot add HASH partition%s to %s",
 						namBuf,
-						RelationGetRelationName(rel)),
-				 errhint("recreate the table to increase the number of partitions")));
+						lrelname),
+				 errhint("recreate the table to increase the "
+						 "number of partitions")));
 
 
 	/* partition must have a valid name */
-	if ((pid->idtype != AT_AP_IDName)	
-		&& (pid->idtype != AT_AP_IDNone))
+	if ((locPid->idtype != AT_AP_IDName)	
+		&& (locPid->idtype != AT_AP_IDNone))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("cannot ADD partition%s to relation \"%s\" by rank or value",
+				 errmsg("cannot ADD partition%s to %s by rank or value",
 						namBuf,
-						RelationGetRelationName(rel)),
+						lrelname),
 					 errhint("use a named partition")));
 
 	/* NOTE: complain if partition already exists, so prule should be NULL */
@@ -10459,10 +10519,10 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot ADD %s partition%s to "
-						"relation \"%s\" with DEFAULT partition \"%s\"", 
+						"%s with DEFAULT partition \"%s\"", 
 						parTypName,
 						namBuf,
-						RelationGetRelationName(rel),
+						lrelname,
 						pNode->default_part->parname),
 				 errhint("need to SPLIT partition \"%s\"", 
 						 pNode->default_part->parname)));
@@ -10473,17 +10533,17 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 						 errmsg("cannot add a DEFAULT partition%s "
-								"to relation \"%s\" of type HASH",
+								"to %s of type HASH",
 								namBuf,
-								RelationGetRelationName(rel))));
+								lrelname)));
 
 			if (pNode->default_part)
 				ereport(ERROR,
 						(errcode(ERRCODE_DUPLICATE_OBJECT),
 						 errmsg("DEFAULT partition \"%s\" for "
-								"relation \"%s\" already exists",
+								"%s already exists",
 								pNode->default_part->parname,
-								RelationGetRelationName(rel))));
+								lrelname)));
 
 			/* XXX XXX: move this check to gram.y ? */
 			if (pc2->arg1)
@@ -10494,10 +10554,9 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 							 errmsg("invalid use of boundary specification "
-									"for DEFAULT partition%s of "
-									"relation \"%s\"",
+									"for DEFAULT partition%s of %s",
 									namBuf,
-									RelationGetRelationName(rel))));
+									lrelname)));
 			}
 		}
 
@@ -10505,6 +10564,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 
 		if ('r' == pNode->part->parkind)
 		{
+			pSubSpec =
 			atpxPartAddList(tab, rel, pc, pNode,
 							pc2->arg2, /* utl statement */
 							(pid->idtype == AT_AP_IDName) ?
@@ -10515,6 +10575,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 		}
 		else if ('l' == pNode->part->parkind)
 		{
+			pSubSpec =
 			atpxPartAddList(tab, rel, pc, pNode,
 							pc2->arg2, /* utl statement */
 							(pid->idtype == AT_AP_IDName) ?
@@ -10577,7 +10638,7 @@ atpxPart_validate_spec(
 	pBy->partNum  = 0;
 	pBy->subPart  = NULL;
 	pBy->partSpec = (Node *)spec;
-	pBy->partDepth = 0; /* XXX XXX: change if recursive ... */
+	pBy->partDepth = pNode->part->parlevel;
 	pBy->parentRel =
 			makeRangeVar(get_namespace_name(RelationGetNamespace(rel)),
 						 pstrdup(RelationGetRelationName(rel)));
@@ -10624,7 +10685,7 @@ atpxPart_validate_spec(
 	return validate_partition_spec(pstate, pcxt, ct, pBy, "", -1);
 } /* end atpxPart_validate_spec */
 
-static void 
+static Node *
 atpxPartAddList(AlteredTableInfo *tab,
 				Relation rel,
 				AlterPartitionCmd *pc,
@@ -10641,11 +10702,12 @@ atpxPartAddList(AlteredTableInfo *tab,
 	int 				 partno    = 0;
 	int 				 maxpartno = 0;
 	bool 				 bOpenGap  = false;
-	char 				 tmpname[NAMEDATALEN]; /* use if no name, then reset */
-	PartitionBy 		*pBy   	= makeNode(PartitionBy); 
+	char 				 tmpname[NAMEDATALEN];/* use if no name, then reset */
+	PartitionBy 		*pBy   	   = makeNode(PartitionBy); 
 	CreateStmtContext    cxt;
-	List				*utils = (List *)pUtl;
+	List				*utils 	   = (List *)pUtl;
 	ListCell			*lc;
+	Node 				*pSubSpec  = NULL;	/* return the subpartition spec */
 
 	MemSet(&cxt, 0, sizeof(cxt));
 
@@ -10665,8 +10727,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 	{
 		if (PARTTYP_RANGE == part_type) 
 		{
-			PartitionBoundSpec *pbs = NULL;
-			PgPartRule   	*prule = NULL;
+			PartitionBoundSpec 	*pbs   = NULL;
+			PgPartRule   		*prule = NULL;
 			AlterPartitionId 	 pid;
 
 			MemSet(&pid, 0, sizeof(AlterPartitionId));
@@ -10677,6 +10739,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 			Assert (IsA(pelem->boundSpec, PartitionBoundSpec));
 
 			pbs = (PartitionBoundSpec *)pelem->boundSpec;
+			pSubSpec = pelem->subSpec; /* look for subpartition spec */
 
 			/* no EVERY */
 			if (pbs->partEvery)
@@ -11594,6 +11657,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	add_part_to_catalog(ct->oidInfo.relOid, pBy, &maxpartno); 
 
+	return pSubSpec;
 } /* end atpxPartAddList */
 
 /* ALTER TABLE ... ALTER PARTITION */
@@ -11605,8 +11669,8 @@ ATPExecPartAlter(Relation rel,
 	AlterTableCmd 		*atc   	= (AlterTableCmd *)pc->arg1;
 	PgPartRule   		*prule 	= NULL;
 	List 				*pidlst = NIL;
-	AlterPartitionId 	*pid2 = makeNode(AlterPartitionId);
-	AlterPartitionCmd *pc2 = NULL;
+	AlterPartitionId 	*pid2 	= makeNode(AlterPartitionId);
+	AlterPartitionCmd 	*pc2 	= NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -11624,13 +11688,22 @@ ATPExecPartAlter(Relation rel,
 
 	switch(atc->subtype)
 	{
-			/* no ADD, EXCHANGE yet... */
+			/* no ADD yet... */
 		case AT_PartCoalesce:			/* Coalesce */
 		case AT_PartDrop:				/* Drop */
+		case AT_PartExchange:			/* Exchange */
 		case AT_PartMerge:				/* Merge */
 		case AT_PartModify:				/* Modify */
 		case AT_PartRename:	 			/* Rename */
+
+				/* XXX XXX: treat set subpartition template special: 
+				   
+				need to pass the pNode to ATPExecPartSetTemplate and bypass 
+				ATExecCmd ...
+
+				*/
 		case AT_PartSetTemplate:		/* Set Subpartition Template */
+
 		case AT_PartSplit:				/* Split */
 		case AT_PartTruncate:			/* Truncate */
 				break;
@@ -11795,64 +11868,46 @@ ATPExecPartDrop(Relation rel,
 {
 	AlterPartitionId 	*pid 		 = (AlterPartitionId *)pc->partid;
 	PgPartRule   		*prule 		 = NULL;
+	PartitionNode  		*pNode  	 = NULL;
 	DropStmt 			*ds 		 = (DropStmt *)pc->arg1;
 	bool 				 bCheckMaybe = !(ds->missing_ok);
 	AlterPartitionId 	*locPid 	 = pid;  /* local pid if IDRule */
 	PgPartRule* 		 par_prule 	 = NULL; /* prule for parent if IDRule */
+	char 		 		 lRelNameBuf[(NAMEDATALEN*2)];
+	char 				*lrelname;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
 	/* missing partition id only ok for range partitions -- just get
 	 * first one */
+
+	locPid =
+			wack_pid_relname(pid,
+							 &pNode,
+							 rel,
+							 &par_prule,
+							 &lrelname,
+							 lRelNameBuf);
+
 	if (AT_AP_IDNone == locPid->idtype)
 	{
-		PartitionNode *pNode = RelationBuildPartitionDesc(rel); 
-
 		if (pNode && pNode->part && (pNode->part->parkind != 'r'))
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("missing name or value for DROP")));
-		
+		{
+			if (strlen(lrelname))
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("missing name or value for DROP for %s",
+								lrelname)));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("missing name or value for DROP")));
+		}
+
 		/* if a range partition, and not specified, just get the first one */
 		locPid->idtype = AT_AP_IDRank;
 		locPid->partiddef = (Node *)makeInteger(1);
-	}
-	else if (AT_AP_IDRule == locPid->idtype)
-	{
-		List 			*l1    = (List *)pid->partiddef;
-		ListCell 		*lc;			
-		PartitionNode 	*pNode = NULL;
-
-		lc = list_head(l1);
-		par_prule = (PgPartRule*) lfirst(lc);
-
-		if (par_prule && par_prule->topRule && par_prule->topRule->children)
-			pNode = par_prule->topRule->children;
-
-		lc = lnext(lc);
-
-		locPid = (AlterPartitionId *)lfirst(lc);
-		
-		Assert(locPid);
-
-		if (pNode && locPid)
-		{
-			if (AT_AP_IDNone == locPid->idtype)
-			{
-				if (pNode && pNode->part && (pNode->part->parkind != 'r'))
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("missing name or value for DROP for %s",
-									par_prule->relname
-									)));
-		
-				/* if a range partition, and not specified, just get
-				 * the first one */
-				locPid->idtype = AT_AP_IDRank;
-				locPid->partiddef = (Node *)makeInteger(1);
-			}
-		}
 	}
 
 	prule = get_part_rule(rel, pid, bCheckMaybe, true, 
@@ -11860,18 +11915,6 @@ ATPExecPartDrop(Relation rel,
 
 	if (!prule)
 	{
-		char *lrelname;
-
-		if (par_prule) 
-			lrelname = par_prule->relname;
-		else
-		{
-			lrelname = palloc0(NAMEDATALEN*2);
-			snprintf(lrelname, NAMEDATALEN*2, 
-					 "relation \"%s\"",
-					 RelationGetRelationName(rel));
-		}
-
 		Assert(ds->missing_ok);
 		switch (locPid->idtype)
 		{
@@ -13305,28 +13348,24 @@ static void
 ATPExecPartRename(Relation rel,
                   AlterPartitionCmd *pc)
 {
-	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	PgPartRule   *prule = NULL;
-	AlterPartitionId 	*locPid 	 = pid;  /* local pid if IDRule */
-	PgPartRule* 		 par_prule 	 = NULL; /* prule for parent if IDRule */
+	AlterPartitionId 	*pid 	   = (AlterPartitionId *)pc->partid;
+	PgPartRule   		*prule 	   = NULL;
+	PartitionNode  		*pNode     = NULL;
+	AlterPartitionId 	*locPid    = pid;	/* local pid if IDRule */
+	PgPartRule* 		 par_prule = NULL;	/* prule for parent if IDRule */
+	char 		 		 lRelNameBuf[(NAMEDATALEN*2)];
+	char 				*lrelname;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
 
-	if (AT_AP_IDRule == locPid->idtype)
-	{
-		List 			*l1    = (List *)pid->partiddef;
-		ListCell 		*lc;			
-
-		lc = list_head(l1);
-		par_prule = (PgPartRule*) lfirst(lc);
-
-		lc = lnext(lc);
-
-		locPid = (AlterPartitionId *)lfirst(lc);
-		
-		Assert(locPid);
-	}
+	locPid =
+			wack_pid_relname(pid,
+							 &pNode,
+							 rel,
+							 &par_prule,
+							 &lrelname,
+							 lRelNameBuf);
 
 	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL);
 
@@ -13349,38 +13388,17 @@ ATPExecPartRename(Relation rel,
 		ScanKeyData				 key;
 		HeapTuple				 tuple;
 		Form_pg_partition_rule	 pgrule;
-		PartitionNode 			*pNode 		 = NULL;
-		char 					*top_relname = NULL;
 		List 					*renList 	 = NIL;
 
 		newpid.idtype = AT_AP_IDName;
 		newpid.partiddef = pc->arg1;
 		newpid.location = -1;
 
-		if (par_prule)
-		{
-			top_relname = par_prule->relname;
-
-			if (par_prule && par_prule->topRule && 
-				par_prule->topRule->children)
-					pNode = par_prule->topRule->children;
-		}
-		else
-		{
-			char relnamBuf[(NAMEDATALEN * 2)];
-
-			snprintf(relnamBuf, sizeof(relnamBuf), "relation \"%s\"", 
-					 RelationGetRelationName(rel));
-
-			top_relname = pstrdup(relnamBuf);
-			pNode = RelationBuildPartitionDesc(rel); 
-		}
-
 		/* ERROR if exists */
 		prule2 = get_part_rule1(rel, &newpid, true, false, 
 								CurrentMemoryContext, NULL,
 								pNode,
-								top_relname,
+								lrelname,
 								NULL);
 
 		targetrelation = relation_open(prule->topRule->parchildrelid, 
@@ -13484,7 +13502,6 @@ ATPExecPartRename(Relation rel,
 			}
 		}
 		
-
 		/* Notify of name if did not use name for partition id spec */
 		if ((pid->idtype != AT_AP_IDName)
 			&& prule->isName)

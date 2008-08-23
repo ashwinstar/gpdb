@@ -1550,7 +1550,7 @@ NOTICE:  CREATE TABLE will create partition "hhh_l1_1_prt_bb" for table "hhh_l1"
 NOTICE:  CREATE TABLE will create partition "hhh_l1_1_prt_cc" for table "hhh_l1"
 -- must have name or value for list partition
 alter table hhh_l1 drop partition;
-ERROR:  missing name or value for DROP
+ERROR:  missing name or value for DROP for relation "hhh_l1"
 alter table hhh_l1 drop partition aa;
 alter table hhh_l1 drop partition for ('2008-01-01');
 NOTICE:  dropped partition "bb" for relation "hhh_l1"
