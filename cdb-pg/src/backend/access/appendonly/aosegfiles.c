@@ -20,6 +20,8 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "cdb/cdbvars.h"
+#include "executor/spi.h"
+#include "nodes/makefuncs.h"
 #include "optimizer/geqo_random.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
@@ -618,5 +620,187 @@ AOHashTableInit(void)
 		return false;
 	
 	return true;
+}
+
+#define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
+
+/*
+ * gp_update_ao_master_stats
+ *
+ * This function is mainly created to handle cases that our product allowed
+ * loading data into an append only table in utility mode, and as a result
+ * the QD gets out of sync as to the number of rows in this table for each
+ * segment. An example for this scenario is gp_restore. running this function
+ * puts the QD aoseg table back in sync.
+ *
+ * TODO: update the hash table as well.
+ */
+PG_FUNCTION_INFO_V1(gp_update_ao_master_stats__);
+int
+gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
+{
+	StringInfoData 	sqlstmt;
+	RangeVar		*parentrv;	
+	Relation		parentrel;
+	bool 			connected = false;
+	char			aoseg_relname[32];
+	char			*namespace = NULL;
+	char			*relname = NULL;
+	char			relstorage;
+    short			nargs = PG_NARGS();
+	int 			proc;
+    int 			ret;
+	float8			total_count = 0;
+	
+	Assert(Gp_role == GP_ROLE_DISPATCH);
+	
+	/* this check may be redundant. error is caught beforehand */
+	if(nargs != 2)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("gp_update_ao_master_stats called with %d arguments", 
+						nargs),
+				 errhint("arguments should be (schemaname, tablename)")));
+	}
+	
+	if (!PG_ARGISNULL(0))
+		namespace = GET_STR(PG_GETARG_TEXT_P(0));
+	
+	if (PG_ARGISNULL(1))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("gp_update_ao_master_stats called with NULL relname")));
+	
+	relname = GET_STR(PG_GETARG_TEXT_P(1));
+	
+	parentrv = makeRangeVar(namespace, relname);
+	
+	/*
+	 * get the relid of the parent (main) relation
+	 */
+	parentrel = heap_openrv(parentrv, ExclusiveLock);
+	
+	relstorage = parentrel->rd_rel->relstorage;
+	if(relstorage != RELSTORAGE_AO)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("gp_update_ao_master_stats called with non append "
+						"only relation (rel '%s', storage '%c')", 
+						relname, relstorage)));
+	
+	sprintf(aoseg_relname, "pg_aoseg_%d", RelationGetRelid(parentrel));
+	
+	/*
+	 * assemble our query string
+	 */
+	initStringInfo(&sqlstmt);
+	appendStringInfo(&sqlstmt, "select segno,sum(tupcount) " 
+					 "from gp_dist_random(pg_aoseg.%s) "
+					 "group by (segno)", aoseg_relname);
+	
+	
+	PG_TRY();
+	{
+		
+		if (SPI_OK_CONNECT != SPI_connect())
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Unable to obtain AO relation information from segment databases."),
+							errdetail("SPI_connect failed in gp_update_ao_master_stats")));
+		}
+		connected = true;
+		
+		/* Do the query. */
+		ret = SPI_execute(sqlstmt.data, false, 0);
+		proc = SPI_processed;
+		
+		
+	    if (ret > 0 && SPI_tuptable != NULL)
+	    {
+	        TupleDesc tupdesc = SPI_tuptable->tupdesc;
+	        SPITupleTable *tuptable = SPI_tuptable;
+	        int i;
+	        
+		    /*
+		     * Iterate through each result tuple
+		     */
+	        for (i = 0; i < proc; i++)
+	        {
+	            HeapTuple 	tuple = tuptable->vals[i];
+	            FileSegInfo *fsinfo = NULL;
+	            int			qe_segno;
+	            float8 		qe_tupcount;
+	            char 		*val_segno;
+	            char 		*val_tupcount;
+	            
+	            /*
+	             * Get totals from QE's for a specific segment
+	             */
+	            val_segno = SPI_getvalue(tuple, tupdesc, 1);
+	            val_tupcount = SPI_getvalue(tuple, tupdesc, 2);
+	            
+	            /*
+	             * Convert to desired data type
+	             */
+	            qe_segno = pg_atoi(val_segno, sizeof(int32), 0);
+	            qe_tupcount = DatumGetFloat8(DirectFunctionCall1(float8in, 
+															     CStringGetDatum(val_tupcount)));
+				
+	            total_count += qe_tupcount;
+	            
+	            /*
+	             * Get the numbers on the QD for this segment
+	             */
+	            fsinfo = GetFileSegInfo(parentrel, qe_segno);
+	            
+	        	if(!fsinfo)
+	        	{
+	        		/* QD has no idea about this segno. Insert a record for it */
+	        		InsertFileSegInfo(parentrel, qe_segno, 0, qe_tupcount, 0);
+	        	}
+	        	else
+	        	{
+	        		/* QD knows about this segno. check if numbers match.
+	        		 * NOTE: proper way is to use float8eq() but since we 
+	        		 * don't expect any NAN's in here better do it directly */
+	        		if(fsinfo->tupcount != qe_tupcount)
+	        		{
+	        			elog(DEBUG3, "gp_update_ao_master_stats: updating " 
+							 "segno %d with tupcount %d", qe_segno, 
+							 (int)qe_tupcount);
+	        			
+	        			/* QD tup count !=  QE tup count. update QD count */
+	        			UpdateFileSegInfo(parentrel, qe_segno, 0, qe_tupcount, 0);
+	        		}
+	        		else
+	        			elog(DEBUG3, "gp_update_ao_master_stats: no need to " 
+							 "update segno %d. it is synced", qe_segno);
+	        		
+	        		pfree(fsinfo);
+	        	}
+	        }
+	    }
+		
+		connected = false;
+		SPI_finish();
+	}
+	
+	/* Clean up in case of error. */
+	PG_CATCH();
+	{
+		if (connected)
+			SPI_finish();
+		
+		/* Carry on with error handling. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+	
+	
+	pfree(sqlstmt.data);
+	heap_close(parentrel,ExclusiveLock);
+	
+	return total_count;
 }
 

@@ -4678,6 +4678,9 @@ DESCR("window final function");
 DATA(insert OID = 7305 (  ntile_final   PGNSP PGUID 12 f f t f i 2 20 f "1016 20" _null_ _null_ _null_ ntile_final - _null_ ));
 DESCR("window final function");
 
+DATA(insert OID = 7156 (  gp_update_ao_master_stats    PGNSP PGUID 12 f f f f v 2 23 f "25 25" _null_ _null_ _null_ gp_update_ao_master_stats__  - _null_  ));
+DESCR("append only tables utility function");
+
 /* GIN array support */
 DATA(insert OID = 2743 (  ginarrayextract	 PGNSP PGUID 12 f f t f i 2 2281 f "2277 2281" _null_ _null_ _null_	ginarrayextract - _null_ ));
 DESCR("GIN array support");

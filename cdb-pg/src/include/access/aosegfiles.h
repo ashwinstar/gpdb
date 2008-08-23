@@ -134,4 +134,7 @@ SetSegnoForWrite(int existingsegno);
 extern bool
 AOHashTableInit(void);
 
+extern int 
+gp_update_ao_master_stats__(PG_FUNCTION_ARGS);
+
 #endif   /* AOSEGFILES_H */
