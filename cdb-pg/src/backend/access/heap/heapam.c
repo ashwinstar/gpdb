@@ -2224,6 +2224,11 @@ heap_delete(Relation relation, ItemPointer tid,
 
 	Assert(ItemPointerIsValid(tid));
 
+	if (relation->rd_rel->relstorage == RELSTORAGE_AO)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Append-only tables are not updatable. Operation not permitted.")));
+
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(tid));
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
 
@@ -2537,6 +2542,11 @@ heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
 	bool		iscombo;
 
 	Assert(ItemPointerIsValid(otid));
+
+	if (relation->rd_rel->relstorage == RELSTORAGE_AO)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Append-only tables are not updatable. Operation not permitted.")));
 
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(otid));
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
