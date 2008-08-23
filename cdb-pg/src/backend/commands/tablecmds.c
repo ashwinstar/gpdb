@@ -10441,7 +10441,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 	AlterPartitionId 	*locPid 	= pid;	/* local pid if IDRule */
 	PgPartRule* 		 par_prule 	= NULL;	/* prule for parent if IDRule */
 	char 		 		 lRelNameBuf[(NAMEDATALEN*2)];
-	char 				*lrelname;
+	char 				*lrelname=NULL;
 	Node 				*pSubSpec 	= NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
@@ -11874,7 +11874,7 @@ ATPExecPartDrop(Relation rel,
 	AlterPartitionId 	*locPid 	 = pid;  /* local pid if IDRule */
 	PgPartRule* 		 par_prule 	 = NULL; /* prule for parent if IDRule */
 	char 		 		 lRelNameBuf[(NAMEDATALEN*2)];
-	char 				*lrelname;
+	char 				*lrelname=NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
@@ -13354,7 +13354,7 @@ ATPExecPartRename(Relation rel,
 	AlterPartitionId 	*locPid    = pid;	/* local pid if IDRule */
 	PgPartRule* 		 par_prule = NULL;	/* prule for parent if IDRule */
 	char 		 		 lRelNameBuf[(NAMEDATALEN*2)];
-	char 				*lrelname;
+	char 				*lrelname=NULL;
 
 	if (Gp_role != GP_ROLE_DISPATCH)
 		return;
