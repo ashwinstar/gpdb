@@ -17,6 +17,7 @@
 #include "access/heapam.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/tablespace.h"
@@ -337,11 +338,14 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 }
 
 
+/* TODO: remove when appendonlywriter.h is merged into main - it's defined there */
+#define MAX_AOREL_CONCURRENCY 128
+
 /*
  * calculate size of a relation
  */
 static int64
-calculate_relation_size(RelFileNode *rfn)
+calculate_relation_size(RelFileNode *rfn, char relstorage)
 {
 	int64		totalsize = 0;
 	char	   *relationpath;
@@ -350,27 +354,66 @@ calculate_relation_size(RelFileNode *rfn)
 
 	relationpath = relpath(*rfn);
 
-	for (segcount = 0;; segcount++)
+	if(relstorage != RELSTORAGE_AO)
 	{
-		struct stat fst;
-
-		if (segcount == 0)
-			snprintf(pathname, MAXPGPATH, "%s",
-					 relationpath);
-		else
-			snprintf(pathname, MAXPGPATH, "%s.%u",
-					 relationpath, segcount);
-
-		if (stat(pathname, &fst) < 0)
+		for (segcount = 0;; segcount++)
 		{
-			if (errno == ENOENT)
-				break;
+			struct stat fst;
+			
+			if (segcount == 0)
+				snprintf(pathname, MAXPGPATH, "%s",
+						 relationpath);
 			else
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("could not stat file \"%s\": %m", pathname)));
+				snprintf(pathname, MAXPGPATH, "%s.%u",
+						 relationpath, segcount);
+			
+			if (stat(pathname, &fst) < 0)
+			{
+				if (errno == ENOENT)
+					break;
+				else
+					ereport(ERROR,
+							(errcode_for_file_access(),
+							 errmsg("could not stat file \"%s\": %m", pathname)));
+			}
+			totalsize += fst.st_size;
 		}
-		totalsize += fst.st_size;
+		
+	}
+	else
+	{
+		/* 
+		 * Append only file segments may not be sequential in existance. 
+		 * Loop through all of the possible seg file numbers, ignoring non
+		 * existing ones.
+		 */
+		for (segcount = 0; segcount < MAX_AOREL_CONCURRENCY; segcount++)
+		{
+			struct stat fst;
+			
+			if (segcount == 0)
+				snprintf(pathname, MAXPGPATH, "%s",
+						 relationpath);
+			else
+				snprintf(pathname, MAXPGPATH, "%s.%u",
+						 relationpath, segcount);
+			
+			if (stat(pathname, &fst) < 0)
+			{
+				if (errno == ENOENT)
+				{
+					/* non existing file seg. that's ok. move to the next */
+					continue;
+				}
+				else
+				{
+					ereport(ERROR,
+							(errcode_for_file_access(),
+							 errmsg("could not stat file \"%s\": %m", pathname)));					
+				}
+			}
+			totalsize += fst.st_size;
+		}
 	}
 
 	return totalsize;
@@ -388,7 +431,7 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 	if (relOid == 0 || rel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(&(rel->rd_node));
+		size = calculate_relation_size(&(rel->rd_node), rel->rd_rel->relstorage);
 
 	relation_close(rel, AccessShareLock);
 	
@@ -450,7 +493,7 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 	if (rel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(&(rel->rd_node));
+		size = calculate_relation_size(&(rel->rd_node), rel->rd_rel->relstorage);
 
 	relation_close(rel, AccessShareLock);
 	
@@ -497,7 +540,7 @@ calculate_total_relation_size(Oid Relid)
 	if (Relid == 0 || heapRel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(&(heapRel->rd_node));
+		size = calculate_relation_size(&(heapRel->rd_node), heapRel->rd_rel->relstorage);
 
 	/* Include any dependent indexes */
 	if (heapRel->rd_rel->relhasindex)
@@ -511,7 +554,7 @@ calculate_total_relation_size(Oid Relid)
 
 			iRel = relation_open(idxOid, AccessShareLock);
 
-			size += calculate_relation_size(&(iRel->rd_node));
+			size += calculate_relation_size(&(iRel->rd_node), iRel->rd_rel->relstorage);
 
 			relation_close(iRel, AccessShareLock);
 		}
