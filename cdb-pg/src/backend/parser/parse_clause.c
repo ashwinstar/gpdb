@@ -1098,8 +1098,8 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 
 			if (IsA(linitial(fc->args), ColumnRef))
 			{
-				char *schemaname;
-				char *tablename;
+				char *schemaname=NULL;
+				char *tablename=NULL;
 				ColumnRef *cr;
 
 				/* schema.table will parse into cr-list with two
