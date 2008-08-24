@@ -270,6 +270,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	MemoryContext	oldcontext;
 	int				segno;
 	int64			eof;
+	bool			finished_all_files = true; /* assume */
 	
 	Assert(scan->aos_need_new_segfile);   /* only call me when last segfile completed */
 	Assert(!scan->aos_done_all_segfiles); /* don't call me if I told you to stop */
@@ -299,7 +300,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 		oldcontext = MemoryContextSwitchTo(scan->aoScanInitContext);
 
 		memory = (uint8*)palloc(memoryLen);
-				
+
 		if (memory == NULL)
 			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
 							errmsg("Cannot allocate memory %d bytes",
@@ -324,17 +325,30 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	/*
 	 * Do we have more segment files to read or are we done?
 	 */
-	if(scan->aos_segfiles_processed < scan->aos_total_segfiles)
+	while(scan->aos_segfiles_processed < scan->aos_total_segfiles)
 	{
 		/* still have more segment files to read. get info of the next one */
 		FileSegInfo *fsinfo = &scan->aos_segfile_arr[scan->aos_segfiles_processed];
 		segno = fsinfo->segno;
 		eof = (int64)fsinfo->eof;
 		
-		/* it's safest to increment here. the close file routine can get called more than once */ 
 		scan->aos_segfiles_processed++;
+		
+		/* 
+		 * special case: we are the QD reading from an AO table in utility mode
+		 * (gp_dump). We see entries in the aoseg table but no files or data
+		 * actually exist. If we try to open this file we'll get an error, so
+		 * we must skip to the next. For now, we can test if the file exists by 
+		 * looking at the eof value - it's always 0 on the QD.
+		 */
+		if(eof > 0)
+		{
+			finished_all_files = false;
+			break;
+		}
 	}
-	else
+	
+	if(finished_all_files)
 	{
 		/* finished reading all segment files */
 		scan->aos_need_new_segfile = false;
@@ -342,10 +356,10 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 
 		return false;		
 	}
-			
+
 	/* Open this file 'segment' */
 	scan->aos_file = OpenAOSegmentFile(reln, segno, false);		
-		
+
 	/* Set the file to be read with its eof */
 	BufferedReadSetFile(&scan->bufferedRead, scan->aos_file, eof);
 	
@@ -359,7 +373,7 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 			 (scan->aos_compressed ? "true" : "false"),
 		     scan->maxBufferLen,
 		     scan->largeReadLen);
-		
+
 	return true;
 }
 
