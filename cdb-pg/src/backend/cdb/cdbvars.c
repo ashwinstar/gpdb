@@ -222,9 +222,11 @@ int 	 	gp_hashjoin_bloomfilter = 0;
 int 		gp_motion_slice_noop = 0;
 
 /* Greenplum Database Experimental Feature GUCs */
-bool		gp_enable_agg_distinct = false;
-bool		gp_enable_dqa_pruning = FALSE;
+bool		gp_enable_agg_distinct = true;
+bool		gp_enable_dqa_pruning = true;
 bool		gp_eager_dqa_pruning = FALSE;
+bool		gp_eager_one_phase_agg = FALSE;
+bool		gp_eager_two_phase_agg = FALSE;
 bool		gp_enable_explain_allstat = FALSE;
 bool		gp_enable_sort_limit = FALSE;
 bool		gp_enable_sort_distinct = FALSE;
@@ -244,6 +246,12 @@ int		gp_hashagg_compress_spill_files = 0;
 bool gp_enable_gpmon = false;
 /* Enable single-slice single-row inserts ?*/
 bool		gp_enable_fast_sri=true;
+
+/* --------------------------------------------------------------------------------------------------
+ * Miscellaneous developer use
+ */
+
+bool  gp_dev_notice_agg_cost = false;
 
 /* --------------------------------------------------------------------------------------------------
  * Server debugging

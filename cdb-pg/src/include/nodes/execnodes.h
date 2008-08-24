@@ -1566,6 +1566,7 @@ typedef struct MergeJoinState
  *		hj_NeedNewOuter			true if need new outer tuple on next call
  *		hj_MatchedOuter			true if found a join match for current outer
  *		hj_OuterNotEmpty		true if outer relation known not empty
+ *		hj_nonequijoin			true to force hash table to keep nulls
  * ----------------
  */
 
@@ -1592,6 +1593,7 @@ typedef struct HashJoinState
 	bool		hj_MatchedOuter;
 	bool		hj_OuterNotEmpty;
 	bool		prefetch_inner;
+	bool		hj_nonequijoin;
 
 	executorTupleQueue *outer_q;
 } HashJoinState;

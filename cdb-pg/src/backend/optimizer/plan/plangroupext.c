@@ -333,6 +333,8 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	double current_numGroups;
 	uint64 grouping = 0;
 	double numGroups = *context->p_dNumGroups; /* make a copy of the original number */
+	/* The query has a non-empty set group clause */
+	bool has_groups = (root->parse->groupClause != NIL);
 
 	TargetEntry *tle;
 	uint64    input_grouping = 0;
@@ -395,35 +397,6 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 	prelimGroupColIdx[context->numGroupCols - 1] = list_length(tlist2);
 	prelimGroupColIdx[context->numGroupCols - 2] = list_length(tlist2) - 1;
 
-#if 0
-	/*
-	 * XXX The sortgrouprefs for current_lefttree->targetlist may not be accurate
-	 * anymore since context->grpColIdx may be different with orig_grpColIdx.
-	 * However, we don't really use this information during planner here.
-	 * I comment this out for now.
-	 */
-	{
-		ListCell *lc;
-
-		/*
-		 * Set ressortgroupref in all target entries in current_lefttree->targtlist
-		 * solely based on existing grpColidx.
-		 */
-		foreach (lc, current_lefttree->targetlist)
-		{
-			int group_no;
-			TargetEntry *grp_tle = (TargetEntry *)lfirst(lc);
-			for (group_no=0; group_no<context->numGroupCols; group_no++)
-			{
-				if (grp_tle->resno == context->grpColIdx[group_no])
-				{
-					grp_tle->ressortgroupref = group_no + 1;
-				}
-			}
-		}
-	}
-#endif
-	
 	/*
 	 * Find the index position for the last rollup level.
 	 */
@@ -490,7 +463,8 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 			context->aggstrategy = aggstrategy;
 
 			if (current_lefttree->flow != NULL &&
-				current_lefttree->flow->flotype == FLOW_SINGLETON)
+				current_lefttree->flow->flotype == FLOW_SINGLETON &&
+				has_groups)
 				need_finalagg = false;
 
 			if (!need_finalagg && group_no == last_group_no)
@@ -615,9 +589,9 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 
 
 	/*
-	 * If we need to bring back aggregate results from different segments,
-	 * we redistribute the data and add the last Agg node to do the
-	 * final stage of aggregation.
+	 * If we need an additional Agg node, we add it here. If the flow
+	 * is not a SINGLETON, we redistribute the data and add the last
+	 * Agg node to do the final stage of aggregation.
 	 */
 	if (need_finalagg)
 	{
@@ -628,20 +602,24 @@ make_list_aggs_for_rollup(PlannerInfo *root,
 		Path dummy_path;
 		RelOptInfo dummy_parent;
 
-		double motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
-			gp_motion_cost_per_row :
-			2.0 * cpu_tuple_cost;
-
-		/* Build the redistribution hash keys */
-		for (key_no=0; key_no<context->numGroupCols; key_no++)
+		if (agg_node->flow != NULL &&
+			agg_node->flow->flotype != FLOW_SINGLETON)
 		{
-			TargetEntry *tle = get_tle_by_resno(agg_node->targetlist,
-												prelimGroupColIdx[key_no]);
-			groupExprs = lappend(groupExprs, copyObject(tle->expr));
-		}
+			double motion_cost_per_row = (gp_motion_cost_per_row > 0.0) ?
+				gp_motion_cost_per_row :
+				2.0 * cpu_tuple_cost;
+
+			/* Build the redistribution hash keys */
+			for (key_no=0; key_no<context->numGroupCols; key_no++)
+			{
+				TargetEntry *tle = get_tle_by_resno(agg_node->targetlist,
+													prelimGroupColIdx[key_no]);
+				groupExprs = lappend(groupExprs, copyObject(tle->expr));
+			}
 		
-		agg_node = (Plan *)make_motion_hash(root, agg_node, groupExprs);
-		agg_node->total_cost += motion_cost_per_row * agg_node->plan_rows;
+			agg_node = (Plan *)make_motion_hash(root, agg_node, groupExprs);
+			agg_node->total_cost += motion_cost_per_row * agg_node->plan_rows;
+		}
 
 		/*
 		 * Determine if we want to use hash-based aggregation or

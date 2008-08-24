@@ -567,8 +567,10 @@ extern double   gp_motion_cost_per_row;
 extern int      gp_segments_for_planner;
 
 /*
+ * "gp_enable_multiphase_agg"
+ *
  * Unlike some other enable... vars, enable_agg_restruct is not cost based.
- * When set to false, the planner will not use two-stage aggregation.
+ * When set to false, the planner will not use multi-phase aggregation.
  */
 extern bool enable_agg_restruct;
 
@@ -616,32 +618,59 @@ extern bool gp_selectivity_damping_sigsort;
 
 /* ----- Experimental Features ----- */
 
-/* May Greenplum redistribute on the argument of a lone aggregate distinct in
+/*
+ * "gp_enable_agg_distinct"
+ *
+ * May Greenplum redistribute on the argument of a lone aggregate distinct in
  * order to use 2-phase aggregation?
  *
- * The code does not currently use planner estimates for this.  If enabled,
- * the tactic is used whenever possible.
+ * The code does uses planner estimates to decide whether to use this feature,
+ * when enabled.
  */
 extern bool gp_enable_agg_distinct;
 
-/* May Greenplum use grouping in the first phase of 2-phase aggregation to 
+/* 
+ * "gp_enable_agg_distinct_pruning"
+ *
+ * May Greenplum use grouping in the first phases of 3-phase aggregation to 
  * prune values from DISTINCT-qualified aggregate function arguments?
  *
- * The code does not currently use planner estimates for this.  If enabled,
- * the tactic is used whenever possible.  Not that when this tactic is 
- * specified, the setting of gp_enable_agg_distinct is ignored.
+ * The code uses planner estimates to decide whether to use this feature,
+ * when enabled.  See, however, gp_eager_dqa_pruning.
  */
 extern bool gp_enable_dqa_pruning;
 
-/* Should Greenplum use grouping in the first phase of 2-phase aggregation to 
- * prune values from DISTINCT-qualified aggregate function arguments without
- * regard to cost estimates?
+/*
+ * "gp_eager_agg_distinct_pruning"
  *
- * The code does not currently use planner estimates for this, however, when
- * it does, if enabled,  the tactic is used whenever possible.  Note that
- * this has effect only when gp_enable_dqa_pruning it true.
+ * Should Greenplum bias planner estimates so as to favor the use of grouping 
+ * in the first phases of 3-phase aggregation to prune values from DISTINCT-
+ * qualified aggregate function arguments?
+ *
+ * Note that this has effect only when gp_enable_dqa_pruning it true.  It
+ * provided to facilitate testing and is not a tuning parameter.
  */
 extern bool gp_eager_dqa_pruning;
+
+/*
+ * "gp_eager_one_phase_agg"
+ *
+ * Should Greenplum bias planner estimates so as to favor the use of one
+ * phase aggregation?
+ *
+ * It is provided to facilitate testing and is not a tuning parameter.
+ */
+extern bool gp_eager_one_phase_agg;
+
+/*
+ * "gp_eager_two_phase_agg"
+ *
+ * Should Greenplum bias planner estimates so as to favor the use of two
+ * phase aggregation?
+ *
+ * It is provided to facilitate testing and is not a tuning parameter.
+ */
+extern bool gp_eager_two_phase_agg;
 
 /* May Greenplum apply Unique operator (and possibly a Sort) in parallel prior
  * to the collocation motion for a Unique operator?  The idea is to reduce
@@ -757,6 +786,21 @@ extern bool gp_disable_tuple_hints;
 /* Enable gpmon */
 extern bool gp_enable_gpmon;
 extern int gp_hashagg_compress_spill_files;
+
+/* --------------------------------------------------------------------------------------------------
+ * Miscellaneous developer use
+ */
+
+/*
+ * gp_dev_notice_agg_cost (bool)
+ *
+ * Issue aggregation optimizer cost estimates as NOTICE level messages
+ * during GPDB aggregation planning.  This is intended to facilitate
+ * tuning the cost algorithm.  The presence of this switch should not
+ * be published.  The name is intended to suggest that it is for developer
+ * use only.
+ */
+extern bool  gp_dev_notice_agg_cost;
 
 /* --------------------------------------------------------------------------------------------------
  * Server debugging

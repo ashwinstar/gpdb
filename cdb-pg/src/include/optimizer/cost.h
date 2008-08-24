@@ -116,6 +116,12 @@ extern void set_function_size_estimates(PlannerInfo *root, RelOptInfo *rel);
 extern void set_rel_width(PlannerInfo *root, RelOptInfo *rel);
 extern void set_values_size_estimates(PlannerInfo *root, RelOptInfo *rel);
 
+/* Additional costsize.c prototypes for CDB incremental cost functions. */
+extern Cost incremental_hashjoin_cost(double rows, 
+									  int inner_width, int outer_width, 
+									  List *hashclauses);
+extern Cost incremental_mergejoin_cost(double rows, List *mergeclauses);
+
 /*
  * prototypes for clausesel.c
  *	  routines to compute clause selectivities

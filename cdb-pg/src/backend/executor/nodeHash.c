@@ -110,7 +110,8 @@ MultiExecHash(HashState *node)
 
 		/* We have to compute the hash value */
 		econtext->ecxt_innertuple = slot;
-		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, false,
+		if (ExecHashGetHashValue(hashtable, econtext, hashkeys, 
+								 ((HashJoinState*)outerNode)->hj_nonequijoin,
 								 &hashvalue))
 		{
 			ExecHashTableInsert(&node->ps, hashtable, slot, hashvalue);

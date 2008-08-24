@@ -1167,8 +1167,8 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"enable_agg_restructure", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the planner's use of two-stage parallel aggregation plans."),
+		{"gp_enable_multiphase_agg", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of two- or three-stage parallel aggregation plans."),
 			gettext_noop("Allows partial aggregation before motion.")
 		},
 		&enable_agg_restruct,
@@ -1249,31 +1249,61 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_enable_agg_distinct", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enable 2-phase aggregation to compute a single distinct-qualified aggregate."),
 			NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_agg_distinct,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
 		{"gp_enable_agg_distinct_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enable 3-phase aggregation and join to compute distinct-qualified aggregates."),
 			NULL,
-            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_enable_dqa_pruning,
 		false, NULL, NULL
 	},
 
 	{
-		{"gp_eager_agg_distinct_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Prefer 3-phase aggregation and join to compute distinct-qualified aggregates."),
-			gettext_noop("The planner will use 3-phase aggregation and join to compute "
-						 "distinct-qualified aggregates whenever enables and possible"
+		{"gp_eager_agg_distinct_pruning", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Prefer 3-phase aggregation [and join] to compute distinct-qualified aggregates."),
+			gettext_noop("The planner will prefer to use 3-phase aggregation and join to compute "
+						 "distinct-qualified aggregates whenever enabled and possible"
 						 "regardless of cost estimates."),
             GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&gp_eager_dqa_pruning,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_eager_one_phase_agg", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Prefer 1-phase aggregation."),
+			gettext_noop("The planner will prefer to use 1-phase aggregation whenever possible"
+						 "regardless of cost estimates."),
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_eager_one_phase_agg,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_eager_two_phase_agg", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Prefer 2-phase aggregation."),
+			gettext_noop("The planner will prefer to use 2-phase aggregation whenever"
+						 "enabled and possible regardless of cost estimates."),
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_eager_two_phase_agg,
+		false, NULL, NULL
+	},
+
+	{
+		{"gp_dev_notice_agg_cost", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Trace aggregate costing decisions as NOTICEs."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_dev_notice_agg_cost,
 		false, NULL, NULL
 	},
 

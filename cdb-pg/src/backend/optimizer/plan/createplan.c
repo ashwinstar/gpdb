@@ -146,12 +146,6 @@ make_adaptivenestloop(List     *tlist,
 					  Plan     *lefttree,
 					  Plan     *righttree,
                       int       outer_lookahead_rows);
-static HashJoin *make_hashjoin(List *tlist,
-			  List *joinclauses, List *otherclauses,
-			  List *hashclauses,
-			  Plan *lefttree, Plan *righttree,
-			  JoinType jointype);
-static Hash *make_hash(Plan *lefttree);
 static Sort *make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators);
 
@@ -3388,7 +3382,7 @@ make_adaptivenestloop(List     *tlist,
 	return node;
 }
 
-static HashJoin *
+HashJoin *
 make_hashjoin(List *tlist,
 			  List *joinclauses,
 			  List *otherclauses,
@@ -3412,7 +3406,7 @@ make_hashjoin(List *tlist,
 	return node;
 }
 
-static Hash *
+Hash *
 make_hash(Plan *lefttree)
 {
 	Hash	   *node = makeNode(Hash);
@@ -3470,15 +3464,9 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 {
 	Sort	   *node = makeNode(Sort);
 	Plan	   *plan = &node->plan;
-	Path		sort_path;		/* dummy for result of cost_sort */
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
-	cost_sort(&sort_path, root, NIL,
-			  lefttree->total_cost,
-			  lefttree->plan_rows,
-			  lefttree->plan_width);
-	plan->startup_cost = sort_path.startup_cost;
-	plan->total_cost = sort_path.total_cost;
+	lefttree = add_sort_cost(root, lefttree, numCols, sortColIdx, sortOperators);
 	plan->targetlist = cdbpullup_targetlist(lefttree,
                             cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
 	plan->qual = NIL;
@@ -3498,6 +3486,29 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 	node->nsharer_xslice = 0; 
 
 	return node;
+}
+
+/*
+ * add_sort_cost --- basic routine to accumulate Sort cost into a
+ * plan node representing the input cost.
+ *
+ * Unused arguments (e.g., sortColIdx and sortOperators arrays) are 
+ * included to allow for future improvements to sort costing.  Note 
+ * that root may be NULL (e.g. when called outside make_sort).
+ */
+Plan *
+add_sort_cost(PlannerInfo *root, Plan *input, int numCols, AttrNumber *sortColIdx, Oid *sortOperators)
+{
+	Path		sort_path;		/* dummy for result of cost_sort */
+
+	cost_sort(&sort_path, root, NIL,
+			  input->total_cost,
+			  input->plan_rows,
+			  input->plan_width);
+	input->startup_cost = sort_path.startup_cost;
+	input->total_cost = sort_path.total_cost;
+
+	return input;
 }
 
 /*
@@ -3969,10 +3980,6 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 {
 	Agg		   *node = makeNode(Agg);
 	Plan	   *plan = &node->plan;
-	Path		agg_path;		/* dummy for result of cost_agg */
-	QualCost	qual_cost;
-
-	HashAggTableSizes   hash_info;
 
 	node->aggstrategy = aggstrategy;
 	node->numCols = numGroupCols;
@@ -3989,13 +3996,46 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 
 	copy_plan_costsize(plan, lefttree); /* only care about copying size */
 
+	add_agg_cost(root, plan, tlist, qual, aggstrategy, streaming, 
+				 numGroupCols, grpColIdx,
+				 numGroups, num_nullcols,
+				 numAggs, transSpace);
+
+	plan->qual = qual;
+	plan->targetlist = tlist;
+	plan->lefttree = lefttree;
+	plan->righttree = NULL;
+
+	return node;
+}
+
+/* add_agg_cost -- basic routine to accumulate Agg cost into a
+ * plan node representing the input cost.
+ *
+ * Unused arguments (e.g., streaming, grpColIdx, num_nullcols)
+ * are included to allow for future improvements to aggregate
+ * costing.  Note that root may be NULL (e.g., when called from
+ * outside make_agg).
+ */
+Plan *add_agg_cost(PlannerInfo *root, Plan *plan, 
+		 List *tlist, List *qual,
+		 AggStrategy aggstrategy, 
+		 bool streaming, 
+		 int numGroupCols, AttrNumber *grpColIdx,
+		 long numGroups, int num_nullcols,
+		 int numAggs, int transSpace)
+{
+	Path		agg_path;		/* dummy for result of cost_agg */
+	QualCost	qual_cost;
+	HashAggTableSizes   hash_info;
+
 	if (aggstrategy == AGG_HASHED)
 	{
 		if (!calcHashAggTableSizes(1024.0 * (double)work_mem,
 								   numGroups,
 								   numAggs,
 								   /* The following estimate is very rough but good enough for planning. */
-								   sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + lefttree->plan_width,
+								   sizeof(HeapTupleData) + sizeof(HeapTupleHeaderData) + plan->plan_width,
 								   transSpace,
 								   true,
 								   &hash_info))
@@ -4006,18 +4046,19 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 		cost_agg(&agg_path, root,
 				 aggstrategy, numAggs,
 				 numGroupCols, numGroups,
-				 lefttree->startup_cost,
-				 lefttree->total_cost,
-				 lefttree->plan_rows, hash_info.workmem_per_entry,
+				 plan->startup_cost,
+				 plan->total_cost,
+				 plan->plan_rows, hash_info.workmem_per_entry,
 				 hash_info.nbatches, hash_info.hashentry_width, streaming);
 	}
 	else
 		cost_agg(&agg_path, root,
 				 aggstrategy, numAggs,
 				 numGroupCols, numGroups,
-				 lefttree->startup_cost,
-				 lefttree->total_cost,
-				 lefttree->plan_rows, 0.0, 0.0, 0.0, false);
+				 plan->startup_cost,
+				 plan->total_cost,
+				 plan->plan_rows, 0.0, 0.0,
+				 0.0, false);
 
 	plan->startup_cost = agg_path.startup_cost;
 	plan->total_cost = agg_path.total_cost;
@@ -4053,12 +4094,7 @@ make_agg(PlannerInfo *root, List *tlist, List *qual,
 	plan->total_cost += qual_cost.startup;
 	plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
 
-	plan->qual = qual;
-	plan->targetlist = tlist;
-	plan->lefttree = lefttree;
-	plan->righttree = NULL;
-
-	return node;
+	return plan;
 }
 
 Group *

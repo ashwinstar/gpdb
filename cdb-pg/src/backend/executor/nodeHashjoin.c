@@ -33,6 +33,7 @@ static TupleTableSlot *ExecHashJoinGetSavedTuple(HashJoinBatchSide *side,
 						  uint32 *hashvalue,
 						  TupleTableSlot *tupleSlot);
 static int	ExecHashJoinNewBatch(HashJoinState *hjstate);
+static bool isNotDistinctJoin(List *qualList);
 
 
 /* ----------------------------------------------------------------
@@ -381,6 +382,8 @@ ExecInitHashJoin(HashJoin *node, EState *estate, int eflags)
 	ExecAssignExprContext(estate, &hjstate->js.ps);
 
 	hjstate->outer_q = NULL;
+	
+	hjstate->hj_nonequijoin = isNotDistinctJoin(node->hashclauses); /* CDB */
 
 	/*
 	 * initialize child expressions
@@ -1053,4 +1056,30 @@ void releaseTQ(executorTupleQueue *tq)
 	{
 		ExecClearTuple(tts);
 	}
+}
+
+/* Is this an IS-NOT-DISTINCT-join qual list (as opposed the an equijoin)?
+ *
+ * XXX We perform an abbreviated test based on the assumptions that 
+ *     these are the only possibilities and that all conjuncts are 
+ *     alike in this regard.
+ */
+bool isNotDistinctJoin(List *qualList)
+{
+	ListCell *lc;
+	
+	foreach (lc, qualList)
+	{
+		BoolExpr *bex = (BoolExpr*)lfirst(lc);
+		DistinctExpr *dex;
+		
+		if ( IsA(bex, BoolExpr) && bex->boolop == NOT_EXPR )
+		{
+			dex = (DistinctExpr*)linitial(bex->args);
+			
+			if ( IsA(dex, DistinctExpr) )
+				return true; /* We assume the rest follow suit! */
+		}
+	}
+	return false;
 }

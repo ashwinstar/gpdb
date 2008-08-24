@@ -105,6 +105,12 @@ extern Group *make_group(PlannerInfo *root, List *tlist, List *qual,
 						 uint64 inputGrouping,  uint64 grouping,
 						 int rollupGSTimes,
 						 Plan *lefttree);
+extern HashJoin *make_hashjoin(List *tlist,
+			  List *joinclauses, List *otherclauses,
+			  List *hashclauses,
+			  Plan *lefttree, Plan *righttree,
+			  JoinType jointype);
+extern Hash *make_hash(Plan *lefttree);
 extern NestLoop *make_nestloop(List *tlist,
 							   List *joinclauses, List *otherclauses,
 							   Plan *lefttree, Plan *righttree,
@@ -129,6 +135,16 @@ extern bool is_projection_capable_plan(Plan *plan);
 extern Sort *make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree,
                                      List *pathkeys, Relids relids,
                                      bool add_keys_to_targetlist);
+extern Plan *add_sort_cost(PlannerInfo *root, Plan *input, 
+						   int numCols, 
+						   AttrNumber *sortColIdx, Oid *sortOperators);
+extern Plan *add_agg_cost(PlannerInfo *root, Plan *plan, 
+		 List *tlist, List *qual,
+		 AggStrategy aggstrategy, 
+		 bool streaming, 
+		 int numGroupCols, AttrNumber *grpColIdx,
+		 long numGroups, int num_nullcols,
+		 int numAggs, int transSpace);
 extern Plan *plan_pushdown_tlist(Plan *plan, List *tlist);      /*CDB*/
 
 /*
