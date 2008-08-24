@@ -261,12 +261,12 @@ create table dtmcurse_bar as select * from dtmcurse_foo distributed by (b);
 
 begin;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-DECLARE cursor1 CURSOR FOR SELECT * FROM ONLY dtmcurse_foo;
+DECLARE cursor1 CURSOR FOR SELECT * FROM ONLY dtmcurse_foo order by a;
 fetch 1 from cursor1;
 close cursor1;
 -- MPP-3227: second declare would hang waiting for snapshot,
 -- should work just like the first.
-DECLARE cursor1 CURSOR FOR SELECT * FROM ONLY dtmcurse_bar;
+DECLARE cursor1 CURSOR FOR SELECT * FROM ONLY dtmcurse_bar order by a;
 fetch 1 from cursor1;
 close cursor1;
 abort;

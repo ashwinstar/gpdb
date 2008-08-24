@@ -568,6 +568,10 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	double		tuple_fraction;
 	List	   *pathkeys;
 	List	   *subquery_pathkeys;
+	bool	   forceDistRand;
+	Path	   *subquery_path;
+
+	forceDistRand = rte->forceDistRandom;
 
 	/* CDB: Could be a preplanned subquery from window_planner. */
 	if ( rte->subquery_plan == NULL )
@@ -700,7 +704,12 @@ set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	pathkeys = convert_subquery_pathkeys(root, rel, subquery_pathkeys);
 
 	/* Generate appropriate path */
-	add_path(root, rel, create_subqueryscan_path(root, rel, pathkeys));
+	subquery_path = create_subqueryscan_path(root, rel, pathkeys);
+
+	if (forceDistRand)
+		CdbPathLocus_MakeStrewn(&subquery_path->locus);
+
+	add_path(root, rel, subquery_path);
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(root, rel);

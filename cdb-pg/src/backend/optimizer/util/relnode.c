@@ -110,6 +110,15 @@ build_simple_rel(PlannerInfo *root, int relid, RelOptKind reloptkind)
 				get_external_relation_info(root, rte->relid, rte->inh, rel);
 			
 			get_relation_info(root, rte->relid, rte->inh, rel);
+
+			/* if we've been asked to, force the dist-policy to be partitioned-randomly. */
+			if (rte->forceDistRandom)
+			{
+				rel->cdbpolicy = (GpPolicy *) palloc(sizeof(GpPolicy));
+				rel->cdbpolicy->ptype = POLICYTYPE_PARTITIONED;
+				rel->cdbpolicy->nattrs = 0;
+				rel->cdbpolicy->attrs[0] = 1;
+			}
 			break;
 		case RTE_SUBQUERY:
 		case RTE_FUNCTION:

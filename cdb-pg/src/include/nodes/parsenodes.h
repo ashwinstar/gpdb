@@ -648,6 +648,11 @@ typedef struct RangeTblEntry
 	JoinType	jointype;		/* type of join */
 	List	   *joinaliasvars;	/* list of alias-var expansions */
 
+	/* GPDB: Valid for base-relations, true if GP_DIST_RANDOM
+	 * pseudo-function was specified as modifier in FROM-clause
+	 */
+	bool		forceDistRandom;
+
 	/*
 	 * Fields valid in all RTEs:
 	 */

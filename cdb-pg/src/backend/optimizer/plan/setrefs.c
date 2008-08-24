@@ -648,7 +648,7 @@ set_subqueryscan_references(SubqueryScan *plan, set_plan_ref_context* ctxt)
 		sp->rtable = ctxt->rtable;
 	}
 
-	if (trivial_subqueryscan(plan))
+	if (trivial_subqueryscan(plan) && !rte->forceDistRandom)
 	{
 		/*
 		 * We can omit the SubqueryScan node and just pull up the subplan. We

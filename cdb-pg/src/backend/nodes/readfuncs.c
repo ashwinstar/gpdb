@@ -1823,6 +1823,8 @@ _readRangeTblEntry(void)
 	READ_UINT_FIELD(requiredPerms);
 	READ_OID_FIELD(checkAsUser);
 
+	READ_BOOL_FIELD(forceDistRandom);
+
 	READ_DONE();
 }
 

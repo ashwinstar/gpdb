@@ -134,7 +134,7 @@ pull_up_subqueries(PlannerInfo *root, Node *jtnode,
 		 * If we are looking at an append-relation member, we can't pull it up
 		 * unless is_safe_append_member says so.
 		 */
-		if (rte->rtekind == RTE_SUBQUERY &&
+		if (rte->rtekind == RTE_SUBQUERY && !rte->forceDistRandom &&
 			is_simple_subquery(rte->subquery) &&
 			(!below_outer_join || has_nullable_targetlist(rte->subquery)) &&
 			(!append_rel_member || is_safe_append_member(rte->subquery)))
