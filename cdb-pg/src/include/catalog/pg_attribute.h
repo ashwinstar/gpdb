@@ -278,13 +278,6 @@ DATA(insert ( 1247 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1247 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1247 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1247 gp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1247 gp_dbid         23 0  4  -9 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1247 gp_infomask     21 0  2  -10 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1247 gp_infomask2    21 0  2  -11 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1247 gp_xmin_status    25 0  -1  -12 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1247 gp_xmax_status    25 0  -1  -13 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1247 gp_xmin_clog_status    25 0  -1  -14 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1247 gp_xmax_clog_status    25 0  -1  -15 0 -1 -1 t x i t f f t 0));
 
 /* ----------------
  *		pg_proc
@@ -338,13 +331,6 @@ DATA(insert ( 1255 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 gp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1255 gp_dbid         23 0  4  -9 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1255 gp_infomask     21 0  2  -10 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1255 gp_infomask2    21 0  2  -11 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1255 gp_xmin_status    25 0  -1  -12 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1255 gp_xmax_status    25 0  -1  -13 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1255 gp_xmin_clog_status    25 0  -1  -14 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1255 gp_xmax_clog_status    25 0  -1  -15 0 -1 -1 t x i t f f t 0));
 
 /* ----------------
  *		pg_attribute
@@ -394,13 +380,6 @@ DATA(insert ( 1249 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1249 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1249 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1249 gp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1249 gp_dbid         23 0  4  -9 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1249 gp_infomask     21 0  2  -10 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1249 gp_infomask2    21 0  2  -11 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1249 gp_xmin_status    25 0  -1  -12 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1249 gp_xmax_status    25 0  -1  -13 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1249 gp_xmin_clog_status    25 0  -1  -14 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1249 gp_xmax_clog_status    25 0  -1  -15 0 -1 -1 t x i t f f t 0));
 
 /* ----------------
  *		pg_class
@@ -476,13 +455,6 @@ DATA(insert ( 1259 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 gp_segment_id   23 0  4  -8 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1259 gp_dbid         23 0  4  -9 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1259 gp_infomask     21 0  2  -10 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1259 gp_infomask2    21 0  2  -11 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1259 gp_xmin_status    25 0  -1  -12 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1259 gp_xmax_status    25 0  -1  -13 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1259 gp_xmin_clog_status    25 0  -1  -14 0 -1 -1 t x i t f f t 0));
-DATA(insert ( 1259 gp_xmax_clog_status    25 0  -1  -15 0 -1 -1 t x i t f f t 0));
 
 /* ----------------
  *		pg_index

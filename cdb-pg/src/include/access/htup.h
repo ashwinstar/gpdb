@@ -369,14 +369,7 @@ do { \
 #define MaxCommandIdAttributeNumber				(-6)
 #define TableOidAttributeNumber					(-7)
 #define gpsegmentIdAttributeNumber			    (-8)    /*CDB*/
-#define gpDbIdAttributeNumber			        (-9)    /*GP*/
-#define GpInfoMaskAttributeNumber			    (-10)    /*GP*/
-#define GpInfoMask2AttributeNumber			    (-11)   /*GP*/
-#define GpXminStatusAttributeNumber			    (-12)   /*GP*/
-#define GpXmaxStatusAttributeNumber			    (-13)   /*GP*/
-#define GpXminClogStatusAttributeNumber			(-14)   /*GP*/
-#define GpXmaxClogStatusAttributeNumber			(-15)   /*GP*/
-#define FirstLowInvalidHeapAttributeNumber		(-16)
+#define FirstLowInvalidHeapAttributeNumber		(-9)
 
 /*
  * HeapTupleData is an in-memory data structure that points to a tuple.
