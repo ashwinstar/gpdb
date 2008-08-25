@@ -86,4 +86,14 @@ extern Partition *partMakePartition(HeapTuple tuple,
 									TupleDesc tupdesc, 
 									MemoryContext mcxt);
 extern List *all_partition_relids(PartitionNode *pn);
+
+PgPartRule*
+get_part_rule1(Relation rel, AlterPartitionId *pid, 
+			   bool bExistError, bool bMustExist, 
+			   MemoryContext mcxt, int *pSearch,
+			   PartitionNode 		*pNode,
+			   char *relname,
+			   PartitionNode 		**ppNode
+		);
+
 #endif   /* TABLECMDS_H */

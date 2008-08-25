@@ -319,7 +319,9 @@ static Node *atpxPartAddList(AlteredTableInfo *tab,
 							 PartitionNode *pNode, Node *pUtl, 
 							 Node *partName, bool isDefault,
 							 PartitionElem *pelem,
-							 PartitionByType part_type);
+							 PartitionByType part_type,
+							 PgPartRule* par_prule,
+							 char *lrelname);
 
 static void ATPExecPartAdd(AlteredTableInfo *tab,
 						   Relation rel,
@@ -10074,7 +10076,7 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  * *does* exist and bMustExist=false then return an error.
  * 
  */
-static PgPartRule*
+PgPartRule*
 get_part_rule1(Relation rel, AlterPartitionId *pid, 
 			  bool bExistError, bool bMustExist, 
 			  MemoryContext mcxt, int *pSearch,
@@ -10441,13 +10443,6 @@ get_part_rule(Relation rel, AlterPartitionId *pid,
 				if (prule2 && prule2->topRule && prule2->topRule->children)
 						pNode = prule2->topRule->children;
 			}
-
-/*			appendStringInfo(&sid2, "partition%s of %s", 
-							 prule2->partIdStr, sid1.data);
-			truncateStringInfo(&sid1, 0);
-			appendStringInfo(&sid1, "%s", sid2.data);
-			truncateStringInfo(&sid2, 0);
-*/
 		} 
 
 		return prule2;
@@ -10603,7 +10598,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 
 	if (locPid->idtype == AT_AP_IDName)
 			snprintf(namBuf, sizeof(namBuf), " \"%s\"", 
-					 strVal(pid->partiddef));
+					 strVal(locPid->partiddef));
 	else
 			namBuf[0] = '\0';
 
@@ -10689,10 +10684,12 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 			pSubSpec =
 			atpxPartAddList(tab, rel, pc, pNode,
 							pc2->arg2, /* utl statement */
-							(pid->idtype == AT_AP_IDName) ?
-							pid->partiddef : NULL, /* partition name */
+							(locPid->idtype == AT_AP_IDName) ?
+							locPid->partiddef : NULL, /* partition name */
 							isDefault, (PartitionElem *) pc2->arg1,
-							PARTTYP_RANGE);
+							PARTTYP_RANGE,
+							par_prule,
+							lrelname);
 
 		}
 		else if ('l' == pNode->part->parkind)
@@ -10700,10 +10697,12 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 			pSubSpec =
 			atpxPartAddList(tab, rel, pc, pNode,
 							pc2->arg2, /* utl statement */
-							(pid->idtype == AT_AP_IDName) ?
-							pid->partiddef : NULL, /* partition name */
+							(locPid->idtype == AT_AP_IDName) ?
+							locPid->partiddef : NULL, /* partition name */
 							isDefault, (PartitionElem *) pc2->arg1,
-							PARTTYP_LIST);
+							PARTTYP_LIST,
+							par_prule,
+							lrelname);
 		}
 
 	}
@@ -10816,7 +10815,9 @@ atpxPartAddList(AlteredTableInfo *tab,
 				Node *partName, /* pid->partiddef (or NULL) */
 				bool isDefault,
 				PartitionElem *pelem,
-				PartitionByType part_type) 
+				PartitionByType part_type,
+				PgPartRule* par_prule,
+				char *lrelname) 
 {
 	CreateStmt 			*ct    	   = NULL;
 	DestReceiver 		*dest  	   = None_Receiver; 
@@ -10830,11 +10831,17 @@ atpxPartAddList(AlteredTableInfo *tab,
 	List				*utils 	   = (List *)pUtl;
 	ListCell			*lc;
 	Node 				*pSubSpec  = NULL;	/* return the subpartition spec */
+	Relation par_rel = rel;
+
+/* get the relation for the parent of the new partition */
+	if (par_prule && par_prule->topRule)
+		par_rel = 
+				heap_open(par_prule->topRule->parchildrelid, AccessShareLock);
 
 	MemSet(&cxt, 0, sizeof(cxt));
 
 	snprintf(tmpname, sizeof(tmpname), "pg_temp_%u", 
-			 RelationGetRelid(rel));
+			 RelationGetRelid(par_rel));
 
 	Assert( (PARTTYP_LIST == part_type) || (PARTTYP_RANGE == part_type) );
 
@@ -10868,15 +10875,15 @@ atpxPartAddList(AlteredTableInfo *tab,
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("cannot specify EVERY when adding "
-								"RANGE partition to relation \"%s\" ",
-									RelationGetRelationName(rel))));
+								"RANGE partition to %s",
+								lrelname)));
 
 			if (!(pbs->partStart || pbs->partEnd ))
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
 						 errmsg("Need START or END when adding "
-								"RANGE partition to relation \"%s\" ",
-									RelationGetRelationName(rel))));
+								"RANGE partition to %s",
+								lrelname)));
 	
 			/* if no START, then START after last partition */
 
@@ -10884,8 +10891,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 			{
 				pid.partiddef = (Node *)makeInteger(-1);
 
-				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext, NULL, false);
+				prule = get_part_rule1(rel, &pid, false, false, 
+									   CurrentMemoryContext, NULL,
+									   pNode,
+									   lrelname,
+									   NULL);
 
 				/* ok if no prior -- just means this is first
 				 * partition (XXX XXX though should always have 1
@@ -10919,8 +10929,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 				 * START of this partition is before first partition ... */
 				pid.partiddef = (Node *)makeInteger(1);
 
-				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext, NULL, false);
+				prule = get_part_rule1(rel, &pid, false, false, 
+									   CurrentMemoryContext, NULL,
+									   pNode,
+									   lrelname,
+									   NULL);
 
 				/* NOTE: invert all the logic of case of missing partStart */
 
@@ -10981,9 +10994,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 						(Node *)transformExpressionList(pstate, 
 														(List *)pid.partiddef);
 
-				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext, &startSearchpoint,
-									  false);
+				prule = get_part_rule1(rel, &pid, false, false, 
+									   CurrentMemoryContext, &startSearchpoint,
+									   pNode,
+									   lrelname,
+									   NULL);
 
 				if (prule) /* found match for start value in rules */
 				{
@@ -11192,9 +11207,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 						(Node *)transformExpressionList(pstate, 
 														(List *)pid.partiddef);
 
-				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext, &endSearchpoint,
-									  false);
+				prule = get_part_rule1(rel, &pid, false, false, 
+									   CurrentMemoryContext, &endSearchpoint,
+									   pNode,
+									   lrelname,
+									   NULL);
 
 				if (prule) /* found match for start value in rules */
 				{
@@ -11583,21 +11600,19 @@ atpxPartAddList(AlteredTableInfo *tab,
 				pid.partiddef = (Node *)vals;
 				pid.location  = -1;
 
-				prule = get_part_rule(rel, &pid, false, false, 
-									  CurrentMemoryContext, NULL,
-									  false);
+				prule = get_part_rule1(rel, &pid, false, false, 
+									   CurrentMemoryContext, NULL,
+									   pNode,
+									   lrelname,
+									   NULL);
 
 				if (prule)
-				{
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_OBJECT),
 							 errmsg("new partition definition overlaps "
-									"existing partition%s of relation \"%s\" ",
+									"existing partition%s of %s",
 									prule->partIdStr,
-									RelationGetRelationName(rel))));
-	
-
-				}
+									lrelname)));
 
 			} /* end foreach */
 
@@ -11624,22 +11639,33 @@ atpxPartAddList(AlteredTableInfo *tab,
 	/* create the partition */
 	newpartname = 
 			ChoosePartitionName(
-					RelationGetRelationName(rel),
+					RelationGetRelationName(par_rel),
 					pNode->part->parlevel,
 					partName ? strVal(pelem->partName) : tmpname,
-					RelationGetNamespace(rel));
+					RelationGetNamespace(par_rel));
 	
 	ct->relation = makeRangeVar(
-			get_namespace_name(RelationGetNamespace(rel)),
+			get_namespace_name(RelationGetNamespace(par_rel)),
 			newpartname);
+
+	/* fix up the inherited relation for CREATE TABLE */
 
 	if (Gp_role == GP_ROLE_DISPATCH)
 	{
+		InheritPartitionCmd *ipc;
+		AlterTableCmd 		*atc;
+
 		/* update child name for ALTER TABLE INHERITS */
 		AlterTableStmt *ats = 
 			(AlterTableStmt *)((Query *)lsecond(utils))->utilityStmt;
 
+		/* update the parent name as well */
 		ats->relation = copyObject(ct->relation);
+		atc = (AlterTableCmd *)linitial(ats->cmds);
+		ipc = (InheritPartitionCmd *)atc->def;
+		ipc->parent = makeRangeVar(
+			get_namespace_name(RelationGetNamespace(par_rel)),
+			RelationGetRelationName(par_rel));
 	}
 
 	foreach(lc, utils)
@@ -11669,15 +11695,15 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 		newnewname = 
 				ChoosePartitionName(
-					RelationGetRelationName(rel),
+					RelationGetRelationName(par_rel),
 					pNode->part->parlevel,
 					tmpname,
-					RelationGetNamespace(rel));
+					RelationGetNamespace(par_rel));
 		/* does CommandCounterIncrement */
 
 		renStmt->renameType = OBJECT_TABLE;
 		renStmt->relation = makeRangeVar(
-				get_namespace_name(RelationGetNamespace(rel)),
+				get_namespace_name(RelationGetNamespace(par_rel)),
 				newpartname);
 
 		renStmt->subname = NULL;
@@ -11741,7 +11767,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 			atc->def = pConstraint;
 
 			ats->relation = makeRangeVar(
-					get_namespace_name(RelationGetNamespace(rel)),
+					get_namespace_name(RelationGetNamespace(par_rel)),
 					newpartname);
 			ats->relkind = OBJECT_TABLE;
 			ats->cmds = list_make1(atc);
@@ -11755,8 +11781,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	if (bOpenGap) /* might need a gap to insert the new partition */
 	{
-		AlterPartitionId 	 pid;
-		PgPartRule   	*prule = NULL;
+		AlterPartitionId 	 	 pid;
+		PgPartRule   			*prule = NULL;
 
 		pid.idtype = AT_AP_IDRank;
 		pid.partiddef = (Node *)makeInteger(-1);
@@ -11765,8 +11791,11 @@ atpxPartAddList(AlteredTableInfo *tab,
 		/* get the last rule, and increment each parruleord until
 		 * reach parruleord == maxpartno 
 		 */
-		prule = get_part_rule(rel, &pid, false, false, 
-							  CurrentMemoryContext, NULL, false);
+		prule = get_part_rule1(rel, &pid, false, false, 
+							   CurrentMemoryContext, NULL,
+							   pNode,
+							   lrelname,
+							   NULL);
 
 		Assert(prule && prule->topRule && prule->pNode && prule->pNode->part);
 
@@ -11813,7 +11842,7 @@ ATPExecPartAlter(Relation rel,
 
 	switch(atc->subtype)
 	{
-			/* no ADD yet... */
+		case AT_PartAdd:				/* Add */
 		case AT_PartCoalesce:			/* Coalesce */
 		case AT_PartDrop:				/* Drop */
 		case AT_PartExchange:			/* Exchange */
