@@ -197,12 +197,21 @@ mkgpcc:
 copydocs :
 	@if [ ! -d $($INSTLOC)/docs ] ; then mkdir -p $(INSTLOC)/docs; fi
 	@if [ ! -d $(GPDOCDIR) ] ; then \
-	echo " Error Copying Documentation: $(GPDOCDIR) is not present"; \
+	    echo "Error Copying Documentation: $(GPDOCDIR) is not present"; \
 	else  echo "Copying Documentation" ;  \
-	echo "Copying  $(GPDOCDIR)/README "; \
-	cp $(GPDOCDIR)/README $(INSTLOC)/docs/README ; \
-	echo "Copying $(GPDOCDIR)/pdf/GP*.pdf " ; \
-	cp $(GPDOCDIR)/pdf/GP*.pdf $(INSTLOC)/docs/; \
+	    echo "Copying $(GPDOCDIR)/README"; \
+	    cp $(GPDOCDIR)/README $(INSTLOC)/docs/README ; \
+	    echo "Copying $(GPDOCDIR)/pdf/GP*.pdf" ; \
+	    cp $(GPDOCDIR)/pdf/GP*.pdf $(INSTLOC)/docs/; \
+	    if [ -d $(INSTLOC)/doc/postgresql/contrib ] ; then \
+	        mkdir -p $(INSTLOC)/docs/contrib ; \
+	        echo "Copying postgresql contrib documentation" ; \
+		cp -r $(INSTLOC)/doc/postgresql/contrib/* $(INSTLOC)/docs/contrib ; \
+	    fi \
+	fi
+	@if [ -d $(INSTLOC)/doc ] ; then \
+	    echo "Removing $(INSTLOC)/doc" ; \
+	    rm -rf $(INSTLOC)/doc ; \
 	fi
 
 
