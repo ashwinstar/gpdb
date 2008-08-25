@@ -127,7 +127,7 @@ class GPUpgrade:
         '''
 
         # Set defaults 
-        self.user      = self.RunCmd('id -un')
+        self.user      = os.environ.get('USER') or os.environ.get('LOGNAME')
         self.host      = self.RunCmd('hostname')
         self.masterdir = os.environ.get('MASTER_DATA_DIRECTORY')
 
