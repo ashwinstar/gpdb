@@ -1890,9 +1890,9 @@ drop table i;
 -- dumpability of partition info
 create table i5 (i int) partition by RANGE(i) (start(1) exclusive end(10)
 inclusive);
-select mastertablename, partitiontablename,
+select tablename, partitiontablename,
 partitionboundary from pg_partitions where
-mastertablename = 'i5';
+tablename = 'i5';
 select pg_get_partition_def('i5'::regclass, true);
 drop table i5;
 
@@ -1913,9 +1913,9 @@ partition p1 start('1') end('10001') every(5000)
 )
 );
 
-select mastertablename, partitiontablename,
+select tablename, partitiontablename,
 partitionboundary from pg_partitions where
-mastertablename = 'partsupp';
+tablename = 'partsupp';
 select pg_get_partition_def('partsupp'::regclass, true);
 drop table partsupp;
 set gp_enable_hash_partitioned_tables = true;
@@ -1923,9 +1923,9 @@ create table i5 (i int, g text) partition by list(g)
   subpartition by hash(i) subpartitions 3
 (partition p1 values('foo', 'bar'), partition p2 values('foz')
 );
-select mastertablename, partitiontablename,
+select tablename, partitiontablename,
 partitionboundary from pg_partitions where
-mastertablename = 'i5';
+tablename = 'i5';
 select pg_get_partition_def('i5'::regclass, true);
 drop table i5;
 set gp_enable_hash_partitioned_tables = false;

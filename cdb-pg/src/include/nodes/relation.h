@@ -1233,6 +1233,7 @@ typedef struct PartitionRule
 	Node *parrangeevery;
 	List *parlistvalues;
 	int2 parruleord;
+	List *parreloptions;
 	struct PartitionNode *children; /* sub partition */
 } PartitionRule;
 

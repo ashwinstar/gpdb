@@ -2242,6 +2242,7 @@ _outPartitionRule(StringInfo str, PartitionRule *node)
 	WRITE_NODE_FIELD(parrangeevery);
 	WRITE_NODE_FIELD(parlistvalues);
 	WRITE_INT_FIELD(parruleord);
+	WRITE_NODE_FIELD(parreloptions);
 	WRITE_NODE_FIELD(children);
 }
 

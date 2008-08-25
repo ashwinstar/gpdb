@@ -128,6 +128,7 @@ typedef struct CopyStateData
 	Relation	rel;			/* relation to copy to or from */
 	QueryDesc  *queryDesc;		/* executable query to copy from */
 	List	   *attnumlist;		/* integer list of attnums to copy */
+	List	   *attnamelist;	/* list of attributes by name */
 	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
 	bool		binary;			/* binary format? */
 	bool		oids;			/* include OIDs? */

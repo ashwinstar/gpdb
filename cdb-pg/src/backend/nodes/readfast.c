@@ -1812,6 +1812,7 @@ _readPartitionRule(const char **str)
 	READ_NODE_FIELD(parrangeevery);
 	READ_NODE_FIELD(parlistvalues);
 	READ_BINARY_FIELD(parruleord, sizeof(int2));
+	READ_NODE_FIELD(parreloptions);
 	READ_NODE_FIELD(children);
 
 	READ_DONE();

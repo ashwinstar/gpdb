@@ -5889,6 +5889,8 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 {
 	StringInfoData str;
 	deparse_context c;
+	char *reloptions = flatten_reloptions(rule->parchildrelid);
+	bool needspace = false;
 
 	initStringInfo(&str);
 
@@ -5898,19 +5900,26 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 
 	if (rule->parisdefault)
 	{
-		appendStringInfo(&str, "default partition %s",
+		appendStringInfo(&str, "DEFAULT %sPARTITION %s ",
+						 part->parlevel > 0 ? "SUB" : "",
 						 rule->parname);
+
+		if (reloptions)
+			appendStringInfo(&str, " WITH (%s)", reloptions);
+
 		return str.data;
 	}
 
 	if (rule->parname && rule->parname[0] != '\0')
-			appendStringInfo(&str, "partition %s ",
-							 rule->parname);
+		appendStringInfo(&str, "%sPARTITION %s ",
+						 part->parlevel > 0 ? "SUB" : "",
+						 rule->parname);
 			
 	switch (part->parkind)
 	{
 		case 'h':
-			return str.data;
+			break;
+
 		case 'r':
 			{
 				partition_rule_range(&c, (List *)rule->parrangestart, 
@@ -5918,6 +5927,7 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 									 (List *)rule->parrangeend,
 									 rule->parrangeendincl,
 									 (List *)rule->parrangeevery);
+				needspace = true;
 			}
 			break;
 		case 'l':
@@ -5925,7 +5935,7 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 				ListCell *lc;
 				List *l1;
 
-				appendStringInfo(&str, "values(");
+				appendStringInfo(&str, "VALUES(");
 
 				l1 = (List *)rule->parlistvalues;
 				foreach(lc, l1)
@@ -5937,224 +5947,196 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 
 					get_const_expr(con, &c, -1);
 				}
-				appendStringInfoString(&str, ") ");
+				appendStringInfoString(&str, ")");
+				needspace = true;
 			}
 			break;
 	}
+
+	if (reloptions)
+		appendStringInfo(&str, "%sWITH (%s)",
+						 needspace ? " " : "",
+						 reloptions);
+
 	return str.data;
+}
+
+static void
+get_partition_recursive(PartitionNode *pn, deparse_context *head,
+						deparse_context *body,
+						int16 *leveldone)
+{
+	PartitionRule *rule = NULL;
+	ListCell *lc;
+	int i;
+	bool needcomma = false;
+	bool first_rule = true;
+
+	if (!pn)
+		return;
+
+	if (*leveldone < pn->part->parlevel)
+	{
+		if (pn->part->parlevel == 0)
+			appendStringInfoString(head->buf, "PARTITION BY ");
+		else if (pn->part->parlevel > 0)
+			appendContextKeyword(head, "SUBPARTITION BY ",
+								 PRETTYINDENT_STD, 0, 2);
+
+		switch (pn->part->parkind)
+		{
+			case 'h': appendStringInfoString(head->buf, "HASH"); break;
+			case 'l': appendStringInfoString(head->buf, "LIST"); break;
+			case 'r': appendStringInfoString(head->buf, "RANGE"); break;
+			default: 
+				  elog(ERROR, "unknown partitioning kind '%c'",
+					   pn->part->parkind);
+				  break;
+		}
+	
+		appendStringInfoChar(head->buf, '(');
+		for (i = 0; i < pn->part->parnatts; i++)
+		{
+			char *attname = get_relid_attribute_name(pn->part->parrelid,
+													 pn->part->paratts[i]);
+	
+			if (i)
+				appendStringInfo(head->buf, ", ");
+	
+			appendStringInfoString(head->buf, quote_identifier(attname));
+			pfree(attname);
+		}
+		appendStringInfoChar(head->buf, ')');
+	
+		if (pn->part->parkind == 'h')
+			appendStringInfo(head->buf, " %sPARTITIONS %i ",
+							 pn->part->parlevel > 0 ? "SUB" : "",
+							 list_length(pn->rules));
+		(*leveldone)++;
+	}
+
+	if (pn->part->parlevel > 0)
+		appendStringInfoChar(body->buf, ' ');
+	if (pn->rules)
+		appendContextKeyword(body, "(", PRETTYINDENT_STD, 0, 2);
+
+	foreach(lc, pn->rules)
+	{
+		char *str;
+		bool rule_done = false;
+
+		rule = lfirst(lc);
+
+		/* 
+		 * If we're doing hash partitioning and the first rule doesn't have
+		 * a parname, none will so error stop
+		 */
+
+		/* XXX: what about sub partitions? */
+		if (pn->part->parkind == 'h' && !strlen(rule->parname))
+			break;
+
+		if (!rule_done)
+		{
+			if (!first_rule)
+			{
+				appendStringInfoString(body->buf, ", ");
+				needcomma = false;
+			}
+			if (PRETTY_INDENT(body))
+			{
+				appendStringInfoChar(body->buf, '\n');
+				appendStringInfoSpaces(body->buf, 
+									   Max(body->indentLevel, 0) + 2);
+			}
+	
+		   	str = partition_rule_def_worker(rule, pn->part,
+											body->prettyFlags);
+			if (str && strlen(str))
+			{
+				if (strlen(body->buf->data) && !first_rule && 
+					!PRETTY_INDENT(body))
+					appendStringInfoString(body->buf, " ");
+
+				appendStringInfoString(body->buf, str);
+				needcomma = true;
+			}
+			pfree(str);
+		}
+
+		get_partition_recursive(rule->children, head, body, leveldone);
+
+		if (first_rule)
+			first_rule = false;
+	}
+
+	if (pn->default_part)
+	{
+		char *str;
+
+		if (pn->rules && strlen(body->buf->data))
+			appendStringInfoChar(body->buf, ',');
+
+		str = partition_rule_def_worker(pn->default_part, pn->part,
+										body->prettyFlags);
+
+		appendStringInfoString(body->buf, " ");
+		appendStringInfoString(body->buf, str);
+		pfree(str);
+	}
+
+#if 0
+	if (pn->part->paristemplate && 0)
+	{
+		appendStringInfo(head, " SUBPARTITION TEMPLATE (%s)", head->data);
+	}
+#endif
+
+	if (pn->rules)
+		appendContextKeyword(body, ")", 0, -PRETTYINDENT_STD, 2);
 }
 
 static char *
 pg_get_partition_def_worker(Oid relid, int prettyFlags)
 {
 	Relation rel = heap_open(relid, AccessShareLock);
-	PartitionNode *pn = RelationBuildPartitionDesc(rel);
+	PartitionNode *pn = RelationBuildPartitionDesc(rel, false);
 	StringInfoData head;
 	StringInfoData body;
-	bool seenpart = false;
-	bool needheadcomma = false;
+	int16 leveldone = -1;
+	deparse_context headc;
+	deparse_context bodyc;
 
 	if (!pn)
-		return NULL;
-
-	initStringInfo(&head);
-	initStringInfo(&body);
-
-	while (pn != NULL)
 	{
-		PartitionRule *rule = NULL;
-		ListCell *lc;
-		int i;
-		Node *prevevery = NULL;
-		Node *mystart = NULL;
-		Node *myend = NULL;
-		Node *myevery = NULL;
-		bool needcomma = false;
-		StringInfoData tmp;
-
-		initStringInfo(&tmp);
-
-		if (needheadcomma)
-		{
-			appendStringInfoString(&head, ", ");
-			needheadcomma = false;
-		}
-
-		if (seenpart)
-			appendStringInfoString(&head, " SUB");
-		else
-			seenpart = true;
-
-		appendStringInfoString(&head, "PARTITION BY ");
-
-		switch (pn->part->parkind)
-		{
-			case 'h': appendStringInfoString(&head, "HASH"); break;
-			case 'l': appendStringInfoString(&head, "LIST"); break;
-			case 'r': appendStringInfoString(&head, "RANGE"); break;
-			default: 
-					  elog(ERROR, "unknown partitioning kind '%c'", 
-						  pn->part->parkind);
-					  break;
-		}
-
-		appendStringInfoChar(&head, '(');
-		for (i = 0; i < pn->part->parnatts; i++)
-		{
-			char *attname = get_relid_attribute_name(pn->part->parrelid,
-													 pn->part->paratts[i]);
-
-			if (i)
-				appendStringInfo(&head, ", ");
-
-			appendStringInfoString(&head, quote_identifier(attname));
-			pfree(attname);
-		}
-		appendStringInfoChar(&head, ')');
-
-		if (pn->part->parkind == 'h')
-			appendStringInfo(&head, " %sPARTITIONS %i ",
-							 seenpart ? "SUB" : "",
-							 list_length(pn->rules));
-
-		foreach(lc, pn->rules)
-		{
-			char *str;
-			rule = lfirst(lc);
-
-			if (pn->part->parkind == 'r')
-			{
-				bool push_every = false;
-
-				if (rule->parrangeevery)
-				{
-					if (!mystart)
-					{
-						mystart = rule->parrangestart;
-						myend = rule->parrangeend;
-						myevery = rule->parrangeevery;
-					}
-
-					/* same rule as before */
-					if (prevevery)
-					{
-						if (equal(prevevery, rule->parrangeevery))
-						{
-							myend = rule->parrangeend;
-							if (lnext(lc))
-								continue;
-							else
-								push_every = true;
-						}
-						else
-						{
-							/* different one */
-							if (mystart)
-								push_every = true;
-
-							prevevery = rule->parrangeevery;
-						}
-					}
-					else
-						prevevery = rule->parrangeevery;
-				}
-				else
-				{
-					if (mystart)
-						push_every = true;
-				}
-
-				if (push_every)
-				{
-					deparse_context c;
-
-					if (needcomma)
-						appendStringInfoChar(&tmp, ',');
-
-					if (rule->parname && strlen(rule->parname))
-						appendStringInfo(&tmp, "PARTITION %s", rule->parname);
-
-
-					c.buf = &tmp;
-					c.prettyFlags = prettyFlags;
-					c.indentLevel = PRETTYINDENT_STD;
-
-					partition_rule_range(&c, (List *)mystart, 
-										 rule->parrangestartincl,
-										 (List *)myend,
-										 rule->parrangeendincl,
-										 (List *)myevery);
-
-					mystart = rule->parrangestart;
-					myend = rule->parrangeend;
-
-					continue;
-				}
-				else if (rule->parrangeevery)
-					continue;
-
-			}
-
-
-			if (needcomma)
-			{
-				appendStringInfoChar(&tmp, ',');
-				needcomma = false;
-			}
-
-		   	str = partition_rule_def_worker(rule, pn->part, prettyFlags);
-			if (str && strlen(str))
-			{
-				if (strlen(tmp.data))
-					appendStringInfoString(&tmp, " ");
-
-				appendStringInfoString(&tmp, str);
-				needcomma = true;
-			}
-			pfree(str);
-		}
-
-		if (pn->default_part)
-		{
-			char *str;
-
-			if (pn->rules && strlen(tmp.data))
-				appendStringInfoChar(&tmp, ',');
-
-			str = partition_rule_def_worker(pn->default_part, pn->part,
-											prettyFlags);
-
-			appendStringInfoString(&tmp, " ");
-			appendStringInfoString(&tmp, str);
-			pfree(str);
-		}
-
-		if (pn->part->paristemplate)
-		{
-			appendStringInfo(&head, " SUBPARTITION TEMPLATE (%s)", tmp.data);
-			needheadcomma = true;
-		}
-		else
-		{
-			needheadcomma = false;
-			appendStringInfoString(&body, tmp.data);
-		}
-
-		pfree(tmp.data);
-
-		Assert(PointerIsValid(rule));
-		pn = rule->children;
+		heap_close(rel, AccessShareLock);
+		return NULL;
 	}
 
+	initStringInfo(&head);
+	headc.buf = &head;
+	headc.prettyFlags = prettyFlags;
+	headc.indentLevel = 0;
+
+	initStringInfo(&body);
+	bodyc.buf = &body;
+	bodyc.prettyFlags = prettyFlags;
+	bodyc.indentLevel = 0;
+
+	get_partition_recursive(pn, &headc, &bodyc, &leveldone);
+
 	heap_close(rel, NoLock);
+
 	if (strlen(body.data))
-		appendStringInfo(&head, " (%s)", body.data);
+		appendStringInfo(&head, " %s", body.data);
+
 	pfree(body.data);
+
 	return head.data;
 }
 
 static char *
-get_rule_def_common(Oid relid, int prettyFlags)
+get_rule_def_common(Oid partid, int prettyFlags)
 {
 	Relation rel;
 	ScanKeyData key;
@@ -6163,20 +6145,23 @@ get_rule_def_common(Oid relid, int prettyFlags)
 	PartitionRule *rule;
 	Partition *part;
 
-	/* lookup pg_partition_rule by parchildrelid */
 	rel = heap_open(PartitionRuleRelationId, AccessShareLock);
 
 	ScanKeyInit(&key,
-				Anum_pg_partition_rule_parchildrelid,
+				ObjectIdAttributeNumber,
 				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(relid));
+				ObjectIdGetDatum(partid));
 
-	scan = systable_beginscan(rel, PartitionRuleParchildrelidIndexId,
+	scan = systable_beginscan(rel, PartitionRuleOidIndexId,
 							  true, SnapshotNow, 1, &key);
 
 	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
+	{
+		systable_endscan(scan);
+		heap_close(rel, AccessShareLock);
 		return NULL;
+	}
 
 
 	rule = ruleMakePartitionRule(tuple, RelationGetDescr(rel), 
@@ -6197,7 +6182,12 @@ get_rule_def_common(Oid relid, int prettyFlags)
 
 	tuple = systable_getnext(scan);
 	if (!HeapTupleIsValid(tuple))
+	{
+		systable_endscan(scan);
+		heap_close(rel, AccessShareLock);
+
 		return NULL;
+	}
 
 	part = partMakePartition(tuple, RelationGetDescr(rel),
 							 CurrentMemoryContext);
@@ -6211,10 +6201,10 @@ get_rule_def_common(Oid relid, int prettyFlags)
 Datum
 pg_get_partition_rule_def(PG_FUNCTION_ARGS)
 {
-	Oid relid = PG_GETARG_OID(0);
+	Oid ruleid = PG_GETARG_OID(0);
 	char *str;
 
-	str = get_rule_def_common(relid, 0);
+	str = get_rule_def_common(ruleid, 0);
 	if (!str)
 		PG_RETURN_NULL();
 	PG_RETURN_TEXT_P(string_to_text(str));
@@ -6223,14 +6213,14 @@ pg_get_partition_rule_def(PG_FUNCTION_ARGS)
 Datum
 pg_get_partition_rule_def_ext(PG_FUNCTION_ARGS)
 {
-	Oid relid = PG_GETARG_OID(0);
+	Oid partid = PG_GETARG_OID(0);
 	bool pretty = PG_GETARG_BOOL(1);
 	int prettyFlags;
 	char *str;
 
 	prettyFlags = pretty ? PRETTYFLAG_PAREN | PRETTYFLAG_INDENT : 0;
 
-	str = get_rule_def_common(relid, prettyFlags);
+	str = get_rule_def_common(partid, prettyFlags);
 	if (!str)
 		PG_RETURN_NULL();
 

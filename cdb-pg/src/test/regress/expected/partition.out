@@ -1002,7 +1002,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=29275)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:12003 pid=18656)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1679,11 +1679,11 @@ NOTICE:  dropped partition "boys" for relation "rank" and its children
 select * from rank ;
  id | rank |    year    | gender 
 ----+------+------------+--------
-  7 |    1 | 02-15-2002 | F
- 10 |    1 | 05-15-2005 | F
   6 |    1 | 01-15-2001 | F
   8 |    1 | 03-15-2003 | F
   9 |    1 | 04-15-2004 | F
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
 (5 rows)
 
 alter table rank DROP partition if exists neuter;
@@ -2045,7 +2045,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=29274)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:12002 pid=18655)
 select * from d;
  i | j  
 ---+----
@@ -2144,7 +2144,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=29274)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:12002 pid=18655)
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -2184,10 +2184,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=29274)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:12002 pid=18655)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:11002 pid=29274)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg0 localhost:12002 pid=18655)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---
@@ -2403,7 +2403,7 @@ select * from region where r_regionkey = '7';
 -- tables since we cannot enfoce them. But since this insert maps to a 
 -- single definitive partition, we can detect it.
 insert into region values(7, 'abc', 'def');
-ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=29274)
+ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:12002 pid=18655)
 drop table region;
 -- exchange
 -- 1) test all sanity checking
@@ -2760,10 +2760,10 @@ alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 1 | 1
- 3 | 1
  2 | 1
  6 | 6
+ 1 | 1
+ 3 | 1
 (4 rows)
 
 drop table bar;
@@ -3156,7 +3156,7 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 insert into foo values(5994400);
 insert into foo values(1);
 insert into foo values(6000002);
-ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:11003 pid=29283)
+ERROR:  no partition for partitioning key (execMain.c:3503)  (seg1 localhost:12003 pid=18664)
 insert into foo values(5994376);
 drop table foo;
 create table foo (i int) 
@@ -3241,18 +3241,18 @@ copy foo from stdin;
 select * from foo;
  i 
 ---
- 2
- 4
  1
  3
+ 2
+ 4
 (4 rows)
 
 select * from foo_1_prt_p1;
  i 
 ---
- 2
  1
  3
+ 2
 (3 rows)
 
 select * from foo_1_prt_p2;
@@ -3497,18 +3497,21 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 NOTICE:  CREATE TABLE will create partition "i5_1_prt_1" for table "i5"
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-select mastertablename, partitiontablename,
+select tablename, partitiontablename,
 partitionboundary from pg_partitions where
-mastertablename = 'i5';
- mastertablename | partitiontablename |           partitionboundary            
------------------+--------------------+----------------------------------------
- i5              | i5_1_prt_1         | START (1) EXCLUSIVE END (10) INCLUSIVE
+tablename = 'i5';
+ tablename | partitiontablename |           partitionboundary            
+-----------+--------------------+----------------------------------------
+ i5        | i5_1_prt_1         | START (1) EXCLUSIVE END (10) INCLUSIVE
 (1 row)
 
 select pg_get_partition_def('i5'::regclass, true);
-                      pg_get_partition_def                      
-----------------------------------------------------------------
- PARTITION BY RANGE(i) (START (1) EXCLUSIVE END (10) INCLUSIVE)
+               pg_get_partition_def               
+--------------------------------------------------
+ PARTITION BY RANGE(i) 
+           (
+           START (1) EXCLUSIVE END (10) INCLUSIVE
+           )
 (1 row)
 
 drop table i5;
@@ -3608,43 +3611,93 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'ps_pa
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'ps_partkey' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-select mastertablename, partitiontablename,
+select tablename, partitiontablename,
 partitionboundary from pg_partitions where
-mastertablename = 'partsupp';
- mastertablename |           partitiontablename            |                     partitionboundary                     
------------------+-----------------------------------------+-----------------------------------------------------------
- partsupp        | partsupp_1_prt_p1_1                     | partition p1_1 START (1) END (5001) EVERY (5000)
- partsupp        | partsupp_1_prt_p1_2                     | partition p1_2 START (5001) END (10001) EVERY (5000)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_1         | partition sp1_1 START (1) END (66667) EVERY (66666)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_2         | partition sp1_2 START (66667) END (133333) EVERY (66666)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_3         | partition sp1_3 START (133333) END (199999) EVERY (66666)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_4         | partition sp1_4 START (199999) END (200001) EVERY (66666)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_1         | partition sp1_1 START (1) END (66667) EVERY (66666)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_2         | partition sp1_2 START (66667) END (133333) EVERY (66666)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_3         | partition sp1_3 START (133333) END (199999) EVERY (66666)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_4         | partition sp1_4 START (199999) END (200001) EVERY (66666)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
- partsupp        | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+tablename = 'partsupp';
+ tablename |           partitiontablename            |                      partitionboundary                       
+-----------+-----------------------------------------+--------------------------------------------------------------
+ partsupp  | partsupp_1_prt_p1_1                     | PARTITION p1_1 START (1) END (5001) EVERY (5000)
+ partsupp  | partsupp_1_prt_p1_2                     | PARTITION p1_2 START (5001) END (10001) EVERY (5000)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_1         | SUBPARTITION sp1_1 START (1) END (66667) EVERY (66666)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_2         | SUBPARTITION sp1_2 START (66667) END (133333) EVERY (66666)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_3         | SUBPARTITION sp1_3 START (133333) END (199999) EVERY (66666)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_4         | SUBPARTITION sp1_4 START (199999) END (200001) EVERY (66666)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_1         | SUBPARTITION sp1_1 START (1) END (66667) EVERY (66666)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_2         | SUBPARTITION sp1_2 START (66667) END (133333) EVERY (66666)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_3         | SUBPARTITION sp1_3 START (133333) END (199999) EVERY (66666)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_4         | SUBPARTITION sp1_4 START (199999) END (200001) EVERY (66666)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_1_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_1_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_2_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_3_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_1 | START (1::numeric) END (501::numeric) EVERY (500)
+ partsupp  | partsupp_1_prt_p1_2_2_prt_sp1_4_3_prt_2 | START (501::numeric) END (1001::numeric) EVERY (500)
 (26 rows)
 
 select pg_get_partition_def('partsupp'::regclass, true);
-                                                                                                                                  pg_get_partition_def                                                                                                                                  
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- PARTITION BY RANGE(ps_suppkey) SUBPARTITION BY RANGE(ps_partkey) SUBPARTITION BY RANGE(ps_supplycost) SUBPARTITION TEMPLATE (START (1::numeric) END (1001::numeric) EVERY (500)) (PARTITION p1_2START (1) END (10001) EVERY (5000)PARTITION sp1_4START (1) END (200001) EVERY (66666))
+                              pg_get_partition_def                               
+---------------------------------------------------------------------------------
+ PARTITION BY RANGE(ps_suppkey)
+           SUBPARTITION BY RANGE(ps_partkey)
+                   SUBPARTITION BY RANGE(ps_supplycost) 
+           (
+           PARTITION p1_1 START (1) END (5001) EVERY (5000) 
+                   (
+                   SUBPARTITION sp1_1 START (1) END (66667) EVERY (66666) 
+                           (
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
+                           ), 
+                   SUBPARTITION sp1_2 START (66667) END (133333) EVERY (66666) 
+                           (
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
+                           ), 
+                   SUBPARTITION sp1_3 START (133333) END (199999) EVERY (66666) 
+                           (
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
+                           ), 
+                   SUBPARTITION sp1_4 START (199999) END (200001) EVERY (66666) 
+                           (
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
+                           )
+                   ), 
+           PARTITION p1_2 START (5001) END (10001) EVERY (5000) 
+                   (
+                   SUBPARTITION sp1_1 START (1) END (66667) EVERY (66666) 
+                           (
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
+                           ), 
+                   SUBPARTITION sp1_2 START (66667) END (133333) EVERY (66666) 
+                           (
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
+                           ), 
+                   SUBPARTITION sp1_3 START (133333) END (199999) EVERY (66666) 
+                           (
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
+                           ), 
+                   SUBPARTITION sp1_4 START (199999) END (200001) EVERY (66666) 
+                           (
+                           START (1::numeric) END (501::numeric) EVERY (500), 
+                           START (501::numeric) END (1001::numeric) EVERY (500)
+                           )
+                   )
+           )
 (1 row)
 
 drop table partsupp;
@@ -3679,25 +3732,34 @@ NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-select mastertablename, partitiontablename,
+select tablename, partitiontablename,
 partitionboundary from pg_partitions where
-mastertablename = 'i5';
- mastertablename | partitiontablename  |         partitionboundary          
------------------+---------------------+------------------------------------
- i5              | i5_1_prt_p1         | partition p1 values('foo', 'bar') 
- i5              | i5_1_prt_p2         | partition p2 values('foz') 
- i5              | i5_1_prt_p1_2_prt_1 | 
- i5              | i5_1_prt_p1_2_prt_2 | 
- i5              | i5_1_prt_p1_2_prt_3 | 
- i5              | i5_1_prt_p2_2_prt_1 | 
- i5              | i5_1_prt_p2_2_prt_2 | 
- i5              | i5_1_prt_p2_2_prt_3 | 
+tablename = 'i5';
+ tablename | partitiontablename  |         partitionboundary         
+-----------+---------------------+-----------------------------------
+ i5        | i5_1_prt_p1         | PARTITION p1 VALUES('foo', 'bar')
+ i5        | i5_1_prt_p2         | PARTITION p2 VALUES('foz')
+ i5        | i5_1_prt_p1_2_prt_1 | 
+ i5        | i5_1_prt_p1_2_prt_2 | 
+ i5        | i5_1_prt_p1_2_prt_3 | 
+ i5        | i5_1_prt_p2_2_prt_1 | 
+ i5        | i5_1_prt_p2_2_prt_2 | 
+ i5        | i5_1_prt_p2_2_prt_3 | 
 (8 rows)
 
 select pg_get_partition_def('i5'::regclass, true);
-                                                      pg_get_partition_def                                                       
----------------------------------------------------------------------------------------------------------------------------------
- PARTITION BY LIST(g) SUBPARTITION BY HASH(i) SUBPARTITIONS 3  (partition p1 values('foo', 'bar') , partition p2 values('foz') )
+                pg_get_partition_def                 
+-----------------------------------------------------
+ PARTITION BY LIST(g)
+           SUBPARTITION BY HASH(i) SUBPARTITIONS 3  
+           (
+           PARTITION p1 VALUES('foo', 'bar') 
+                   (
+                   ), 
+           PARTITION p2 VALUES('foz') 
+                   (
+                   )
+           )
 (1 row)
 
 drop table i5;
@@ -3838,22 +3900,42 @@ ERROR:  partition "cali" of partition "jan05" of partition "girls" of relation "
 drop table rank2 cascade;
 -- Test casting
 create table f (i int) partition by range (i) (start(1::int) end(10::int));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "f_1_prt_1" for table "f"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 drop table f;
 create table f (i bigint) partition by range (i) (start(1::int8)
 end(1152921504606846976::int8) every(576460752303423488));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "f_1_prt_1" for table "f"
 NOTICE:  CREATE TABLE will create partition "f_1_prt_2" for table "f"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 drop table f;
 create table f (n numeric(20, 2)) partition by range(n) (start(1::bigint)
 end(10000::bigint));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'n' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "f_1_prt_1" for table "f"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'n' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 drop table f;
 create table f (n numeric(20, 2)) partition by range(n) (start(1::bigint)
 end(10000::text));
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'n' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 NOTICE:  CREATE TABLE will create partition "f_1_prt_1" for table "f"
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'n' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 drop table f;
 --should fail. bool -> numeric makes no sense
 create table f (n numeric(20, 2)) partition by range(n) (start(1::bigint)
 end('f'::bool));
-ERROR:  cannot coerce partition parameter to table type (SOMEFILE:SOMEFUNC)
+NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'n' as the Greenplum Database data distribution key for this table.
+HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
+ERROR:  cannot coerce partition parameter to table type (analyze.c:5160)

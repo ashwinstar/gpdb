@@ -247,15 +247,15 @@ DECLARE_UNIQUE_INDEX(pg_appendonly_relid_index, 5007, on pg_appendonly using btr
 
 DECLARE_UNIQUE_INDEX(pg_partition_oid_index, 5012, on pg_partition using btree(oid oid_ops));
 #define PartitionOidIndexId 5012
-DECLARE_UNIQUE_INDEX(pg_partition_parrelid_parlevel_index, 5017, on pg_partition using btree(parrelid oid_ops, parlevel int2_ops));
-#define PartitionParrelidParlevelIndexId 5017
+DECLARE_INDEX(pg_partition_parrelid_parlevel_istemplate_index, 5017, on pg_partition using btree(parrelid oid_ops, parlevel int2_ops, paristemplate bool_ops));
+#define PartitionParrelidParlevelParistemplateIndexId 5017
 DECLARE_INDEX(pg_partition_parrelid_index, 5013, on pg_partition using btree(parrelid oid_ops));
 #define PartitionParrelidIndexId 5013
 DECLARE_UNIQUE_INDEX(pg_partition_rule_oid_index, 5014, on pg_partition_rule using btree(oid oid_ops));
 #define PartitionRuleOidIndexId 5014
-DECLARE_UNIQUE_INDEX(pg_partition_rule_parchildrelid_parparentrule_parruleord_index, 5015, on pg_partition_rule using btree(parchildrelid oid_ops, parparentrule oid_ops, parruleord int2_ops));
+DECLARE_INDEX(pg_partition_rule_parchildrelid_parparentrule_parruleord_index, 5015, on pg_partition_rule using btree(parchildrelid oid_ops, parparentrule oid_ops, parruleord int2_ops));
 #define PartitionRuleParchildParentRuleordIndexId 5015
-DECLARE_UNIQUE_INDEX(pg_partition_rule_parchildrelid_index, 5016, on pg_partition_rule using btree(parchildrelid oid_ops));
+DECLARE_INDEX(pg_partition_rule_parchildrelid_index, 5016, on pg_partition_rule using btree(parchildrelid oid_ops));
 #define PartitionRuleParchildrelidIndexId 5016
 DECLARE_INDEX(pg_partition_rule_paroid_parentrule_ruleord_index, 5026, on pg_partition_rule using btree(paroid oid_ops, parparentrule oid_ops, parruleord int2_ops));
 #define PartitionRuleParoidParentRuleOrdIndexId 5026

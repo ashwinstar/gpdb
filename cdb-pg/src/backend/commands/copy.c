@@ -959,6 +959,7 @@ DoCopy(const CopyStmt *stmt)
 		tupDesc = cstate->queryDesc->tupDesc;
 	}
 	
+	cstate->attnamelist = attnamelist;
 	/* Generate or convert list of attributes to process */
 	cstate->attnumlist = CopyGetAttnums(tupDesc, cstate->rel, attnamelist);
 	
@@ -1259,11 +1260,32 @@ CopyTo(CopyState cstate)
 	int			num_phys_attrs;
 	Form_pg_attribute *attr;
 	ListCell   *cur;
+	List *target_rels = NIL;
+	ListCell *lc;
 	
 	if (cstate->rel)
+	{
+		if (cstate->partitions)
+		{
+			ListCell *lc;
+			List *relids = all_partition_relids(cstate->partitions);
+
+			foreach(lc, relids)
+			{
+				Oid relid = lfirst_oid(lc);
+				Relation rel = heap_open(relid, AccessShareLock);
+
+				target_rels = lappend(target_rels, rel);
+			}
+		}
+		else
+			target_rels = lappend(target_rels, cstate->rel);
+
 		tupDesc = RelationGetDescr(cstate->rel);
+	}
 	else
 		tupDesc = cstate->queryDesc->tupDesc;
+
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
 	cstate->null_print_client = cstate->null_print;		/* default */
@@ -1271,20 +1293,22 @@ CopyTo(CopyState cstate)
 	/* We use fe_msgbuf as a per-row buffer regardless of copy_dest */
 	cstate->fe_msgbuf = makeStringInfo();
 
+	cstate->out_functions = 
+		(FmgrInfo *) palloc(num_phys_attrs * sizeof(FmgrInfo));
+
 	/* Get info about the columns we need to process. */
-	cstate->out_functions = (FmgrInfo *) palloc(num_phys_attrs * sizeof(FmgrInfo));
 	foreach(cur, cstate->attnumlist)
 	{
 		int			attnum = lfirst_int(cur);
 		Oid			out_func_oid;
 		bool		isvarlena;
-		
+
 		getTypeOutputInfo(attr[attnum - 1]->atttypid,
 						  &out_func_oid,
 						  &isvarlena);
 		fmgr_info(out_func_oid, &cstate->out_functions[attnum - 1]);
 	}
-	
+
 	/*
 	 * Create a temporary memory context that we can reset once per row to
 	 * recover palloc'd memory.  This avoids any problems with leaks inside
@@ -1334,64 +1358,81 @@ CopyTo(CopyState cstate)
 	
 	if (cstate->rel)
 	{
-		Datum	   *values;
-		bool	   *nulls;
-		char		relstorage = cstate->rel->rd_rel->relstorage;
-		HeapScanDesc scandesc = NULL;			/* used if heap table */
-		AppendOnlyScanDesc aoscandesc = NULL;	/* used if append only table */
-		
-		values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
-		nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
-		
-		
-		if(relstorage == RELSTORAGE_HEAP)
+		foreach(lc, target_rels)
 		{
-			HeapTuple	tuple;
-			
-			scandesc = heap_beginscan(cstate->rel, ActiveSnapshot, 0, NULL);
+			Relation rel = lfirst(lc);
+			Datum	   *values;
+			bool	   *nulls;
+			char		relstorage = rel->rd_rel->relstorage;
+			HeapScanDesc scandesc = NULL;			/* used if heap table */
+			AppendOnlyScanDesc aoscandesc = NULL;	/* append only table */
 
-			while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+			tupDesc = RelationGetDescr(rel);
+			num_phys_attrs = tupDesc->natts;
+
+			/*
+			 * We need to update attnumlist because different partition
+			 * entries might have dropped tables.
+			 */
+			cstate->attnumlist = 
+				CopyGetAttnums(tupDesc, rel, cstate->attnamelist);
+
+
+			values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
+			nulls = (bool *) palloc(num_phys_attrs * sizeof(bool));
+			
+			if (relstorage == RELSTORAGE_HEAP)
 			{
-				CHECK_FOR_INTERRUPTS();
+				HeapTuple	tuple;
 				
-				/* Deconstruct the tuple ... faster than repeated heap_getattr */
-				heap_deform_tuple(tuple, tupDesc, values, nulls);
+				scandesc = heap_beginscan(rel, ActiveSnapshot, 0, NULL);
+				while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
+				{
+					CHECK_FOR_INTERRUPTS();
+					
+					/* Deconstruct the tuple ... faster than repeated heap_getattr */
+					heap_deform_tuple(tuple, tupDesc, values, nulls);
+					
+					/* Format and send the data */
+					CopyOneRowTo(cstate, HeapTupleGetOid(tuple), values, nulls);
+				}
 				
-				/* Format and send the data */
-				CopyOneRowTo(cstate, HeapTupleGetOid(tuple), values, nulls);
+				heap_endscan(scandesc);			
 			}
-			
-			heap_endscan(scandesc);			
-		}
-		else if(relstorage == RELSTORAGE_AO)
-		{
-			MemTuple		tuple;
-			TupleTableSlot	*slot = MakeSingleTupleTableSlot(tupDesc);
-			MemTupleBinding *mt_bind = create_memtuple_binding(tupDesc);
-			
-			aoscandesc = appendonly_beginscan(cstate->rel, 0, NULL);
-			
-			while ((tuple = appendonly_getnext(aoscandesc, ForwardScanDirection, slot)) != NULL)
+			else if(relstorage == RELSTORAGE_AO)
 			{
-				CHECK_FOR_INTERRUPTS();
+				MemTuple		tuple;
+				TupleTableSlot	*slot = MakeSingleTupleTableSlot(tupDesc);
+				MemTupleBinding *mt_bind = create_memtuple_binding(tupDesc);
 				
-				/* Extract all the values of the  tuple */
-				slot_getallattrs(slot);
-				values = slot_get_values(slot); 
-				nulls = slot_get_isnull(slot);
-								
-				/* Format and send the data */
-				CopyOneRowTo(cstate, MemTupleGetOid(tuple, mt_bind), values, nulls);
+				aoscandesc = appendonly_beginscan(rel, 0, NULL);
+				
+				while ((tuple = appendonly_getnext(aoscandesc, ForwardScanDirection, slot)) != NULL)
+				{
+					CHECK_FOR_INTERRUPTS();
+					
+					/* Extract all the values of the  tuple */
+					slot_getallattrs(slot);
+					values = slot_get_values(slot); 
+					nulls = slot_get_isnull(slot);
+									
+					/* Format and send the data */
+					CopyOneRowTo(cstate, MemTupleGetOid(tuple, mt_bind), values, nulls);
+				}
+				
+				ExecDropSingleTupleTableSlot(slot);
+				
+				appendonly_endscan(aoscandesc);			
 			}
-			
-			ExecDropSingleTupleTableSlot(slot);
-			
-			appendonly_endscan(aoscandesc);			
-		}
-		else
-		{
-			/* should never get here */
-			Assert(false); 
+			else
+			{
+				/* should never get here */
+				Assert(false); 
+			}
+
+			/* partition table, so close */
+			if (cstate->partitions)
+				heap_close(rel, NoLock);
 		}
 	}
 	else
@@ -1532,6 +1573,11 @@ CopyToDispatch(CopyState cstate)
 	 */
 	
 	cdbCopy = makeCdbCopy(false);
+	
+	if (enable_partition_fast_insert)
+		cdbCopy->partitions = RelationBuildPartitionDesc(cstate->rel, false);
+
+	/* XXX: lock all partitions */
 	
 	/* allocate memory for error and copy strings */
 	initStringInfo(&cdbcopy_err);
@@ -2310,7 +2356,8 @@ CopyFromDispatch(CopyState cstate)
 	{
 		Size sz;
 
-		estate->es_result_partitions = cdbCopy->partitions = RelationBuildPartitionDesc(cstate->rel);
+		estate->es_result_partitions = cdbCopy->partitions = 
+			RelationBuildPartitionDesc(cstate->rel, false);
 
 		estate->es_partition_state = makeNode(PartitionState);
 

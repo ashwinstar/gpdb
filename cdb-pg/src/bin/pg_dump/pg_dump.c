@@ -2473,13 +2473,16 @@ getTables(int *numTables)
 					  "d.classid = c.tableoid and d.objid = c.oid and "
 					  "d.objsubid = 0 and "
 					  "d.refclassid = c.tableoid and d.deptype = 'a') "
-					  "where relkind in ('%c', '%c', '%c', '%c', '%c') "
+					  "where relkind in ('%c', '%c', '%c', '%c', '%c') %s"
 					  "order by c.oid",
 					  username_subquery,
 					  RELKIND_SEQUENCE,
 					  RELKIND_RELATION, RELKIND_SEQUENCE,
 					  RELKIND_VIEW, RELKIND_COMPOSITE_TYPE,
-					  RELKIND_EXTERNAL); /* MPP ADDITION */
+					  RELKIND_EXTERNAL, /* MPP ADDITION */
+					  g_fout->remoteVersion >= 80209 ?
+						  "AND c.oid NOT IN (select parchildrelid from "
+						  "pg_partition_rule)" : "");
 
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
@@ -6563,6 +6566,31 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			
 			PQclear(res);
 		}
+
+		/* lets see about partitioning */
+		resetPQExpBuffer(query);
+		appendPQExpBuffer(query, "SELECT "
+						  "pg_get_partition_def('%u'::pg_catalog.oid, true) ",
+						  tbinfo->dobj.catId.oid);
+			
+		res = PQexec(g_conn, query->data);
+		check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+			
+		if (PQntuples(res) != 1)
+		{
+			if (PQntuples(res) < 1)
+				write_msg(NULL, "query to obtain definition of table \"%s\" returned no data\n",
+						  tbinfo->dobj.name);
+			else
+				write_msg(NULL, "query to obtain definition of table \"%s\" returned more than one definition\n",
+						  tbinfo->dobj.name);
+			exit_nicely();
+		}
+		if (!PQgetisnull(res, 0, 0))
+			appendPQExpBuffer(q, " %s", PQgetvalue(res, 0, 0));
+
+		PQclear(res);
+
 		/* END MPP ADDITION */
 		
 		appendPQExpBuffer(q, ";\n");

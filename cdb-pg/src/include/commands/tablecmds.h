@@ -74,7 +74,8 @@ extern void AtEOSubXact_on_commit_actions(bool isCommit,
 extern Oid selectPartition(PartitionNode *partnode, Datum *values,
 						   bool *isnull, TupleDesc tupdesc,
 						   PartitionState *pstate);
-extern PartitionNode *RelationBuildPartitionDesc(Relation rel);
+extern PartitionNode *RelationBuildPartitionDesc(Relation rel,
+												 bool inctemplate);
 extern AttrNumber max_partition_attr(PartitionNode *pn);
 extern List *get_partition_attrs(PartitionNode *pn);
 extern int num_partition_levels(PartitionNode *pn);
@@ -84,4 +85,5 @@ extern PartitionRule *ruleMakePartitionRule(HeapTuple tuple,
 extern Partition *partMakePartition(HeapTuple tuple, 
 									TupleDesc tupdesc, 
 									MemoryContext mcxt);
+extern List *all_partition_relids(PartitionNode *pn);
 #endif   /* TABLECMDS_H */

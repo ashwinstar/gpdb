@@ -1232,7 +1232,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 									 NoLock);
 			if (enable_partition_fast_insert)
 				estate->es_result_partitions =
-					RelationBuildPartitionDesc(tmp);
+					RelationBuildPartitionDesc(tmp, false);
 			parseTree->result_partitions = estate->es_result_partitions;
 			heap_close(tmp, NoLock);
 		}

@@ -78,11 +78,31 @@ SubqueryNext(SubqueryScanState *node)
     {
         HeapTuple   tuple = ExecFetchSlotHeapTuple(slot); 
 
-        /* Increment 48-bit row count */
-        node->cdb_fake_ctid.ip_posid++;
-        if (node->cdb_fake_ctid.ip_posid == 0)
-            ItemPointerSetBlockNumber(&node->cdb_fake_ctid,
-                                      1 + ItemPointerGetBlockNumber(&node->cdb_fake_ctid));
+		/* uninitialised */
+		if (!ItemPointerIsValid(&node->cdb_fake_ctid))
+		{
+			ItemPointerSetBlockNumber(&node->cdb_fake_ctid, 0);
+			ItemPointerSetOffsetNumber(&node->cdb_fake_ctid, FirstOffsetNumber);
+		}
+		else
+		{
+			/* would we overflow? */
+			if (ItemPointerGetOffsetNumber(&node->cdb_fake_ctid) == 
+				MaxOffsetNumber - 1)
+			{
+				/* How can we overflow 2^46? */
+				Assert(ItemPointerGetBlockNumber(&node->cdb_fake_ctid) !=
+					   MaxBlockNumber - 1);
+				ItemPointerSetBlockNumber(&node->cdb_fake_ctid,
+						ItemPointerGetBlockNumber(&node->cdb_fake_ctid) + 1);
+				ItemPointerSetOffsetNumber(&node->cdb_fake_ctid, 
+										   FirstOffsetNumber);
+			}
+			else
+				ItemPointerSetOffsetNumber(&node->cdb_fake_ctid,
+					ItemPointerGetOffsetNumber(&node->cdb_fake_ctid) + 1);
+
+		}
 
         tuple->t_self = node->cdb_fake_ctid;
         tuple->t_tableOid = node->cdb_fake_tableoid;
@@ -167,7 +187,7 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate, int eflags)
                                                          node->scan.scanrelid,
                                                          SelfItemPointerAttributeNumber,
                                                          0);
-    ItemPointerSet(&subquerystate->cdb_fake_ctid, 0, 0);
+	ItemPointerSetInvalid(&subquerystate->cdb_fake_ctid);
     subquerystate->cdb_fake_tableoid = (Oid)node->scan.scanrelid;
 
 #define SUBQUERYSCAN_NSLOTS 2
