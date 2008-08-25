@@ -16,7 +16,7 @@ from datetime import date
 from time import localtime, strftime
 import urllib    # for passing strings across gpssh
 
-EXECNAME = sys.argv[0][sys.argv[0].rfind('/')+1:]
+EXECNAME = os.path.split(__file__)[-1]
 libdir = sys.path[0] + '/lib'
 sys.path.append(libdir)
 try: 
