@@ -85,10 +85,10 @@ class PreparedStatement(object):
     # parameter to be ignored.O
     row_cache_size = 100
 
-    def __init__(self, connection, statement, *types):
+    def __init__(self, connection, statement, *types, **kwargs):
         self.c = connection.c
         self._portal_name = "pg8000_portal_%s_%s" % (id(self.c), id(self))
-        self._statement_name = "pg8000_statement_%s_%s" % (id(self.c), id(self))
+        self._statement_name = kwargs.get("statement_name", "pg8000_statement_%s_%s" % (id(self.c), id(self)))
         self._row_desc = None
         self._cached_rows = []
         self._ongoing_row_count = 0
@@ -101,7 +101,8 @@ class PreparedStatement(object):
         # cleanup.  It only really needs to be called right away if the same
         # object id (and therefore the same statement name) might be reused
         # soon, and clearly that wouldn't happen in a GC situation.
-        self.c.close_statement(self._statement_name)
+        if self._statement_name != "": # don't close unnamed statement
+            self.c.close_statement(self._statement_name)
 
     row_description = property(lambda self: self._getRowDescription())
     def _getRowDescription(self):
@@ -122,7 +123,7 @@ class PreparedStatement(object):
                 self._ongoing_row_count = 0
                 self.c.close_portal(self._portal_name)
             self._command_complete = False
-            self._row_desc = self.c.bind(self._portal_name, self._statement_name, args, self._parse_row_desc)
+            self._row_desc, cmd = self.c.bind(self._portal_name, self._statement_name, args, self._parse_row_desc)
             if self._row_desc:
                 # We execute our cursor right away to fill up our cache.  This
                 # prevents the cursor from being destroyed, apparently, by a rogue
@@ -130,6 +131,11 @@ class PreparedStatement(object):
                 # data will be read from us right away anyways, this seems a safe
                 # move for now.
                 self._fill_cache()
+            else:
+                self._command_complete = True
+                self._ongoing_row_count = -1
+                if cmd != None and cmd.rows != None:
+                    self._ongoing_row_count = cmd.rows
         finally:
             self._lock.release()
 
@@ -146,6 +152,8 @@ class PreparedStatement(object):
             self._lock.release()
 
     def _fetch(self):
+        if not self._row_desc:
+            raise ProgrammingError("no result set")
         self._lock.acquire()
         try:
             if not self._cached_rows:
@@ -164,17 +172,21 @@ class PreparedStatement(object):
             self._lock.release()
 
     ##
-    # Return a count of the number of rows currently being read.  If possible,
-    # please avoid using this function.  It requires reading the entire result
-    # set from the database to determine the number of rows being returned.
+    # Return a count of the number of rows relevant to the executed statement.
+    # For a SELECT, this is the number of rows returned.  For UPDATE or DELETE,
+    # this the number of rows affected.  For INSERT, the number of rows
+    # inserted.  This property may have a value of -1 to indicate that there
+    # was no row count.
+    # <p>
+    # During a result-set query (eg. SELECT, or INSERT ... RETURNING ...),
+    # accessing this property requires reading the entire result-set into
+    # memory, as reading the data to completion is the only way to determine
+    # the total number of rows.  Avoid using this property in with
+    # result-set queries, as it may cause unexpected memory usage.
     # <p>
     # Stability: Added in v1.03, stability guaranteed for v1.xx.
-    # Implementation currently requires caching entire result set into memory,
-    # avoid using this property.
     row_count = property(lambda self: self._get_row_count())
     def _get_row_count(self):
-        if not self._row_desc:
-            return 0
         self._lock.acquire()
         try:
             if not self._command_complete:
@@ -212,10 +224,7 @@ class PreparedStatement(object):
     # <p>
     # Stability: Added in v1.00, stability guaranteed for v1.xx.
     def read_tuple(self):
-        row = self._fetch()
-        if row == None:
-            return row
-        return row
+        return self._fetch()
 
     ##
     # Return an iterator for the output of this statement.  The iterator will
@@ -267,8 +276,12 @@ class Cursor(object):
     # Stability: Added in v1.00, stability guaranteed for v1.xx.
     # @param query      The SQL statement to execute.
     def execute(self, query, *args):
-        self._stmt = PreparedStatement(self.connection, query, *[type(x) for x in args])
-        self._stmt.execute(*args)
+        self.connection._unnamed_prepared_statement_lock.acquire()
+        try:
+            self._stmt = PreparedStatement(self.connection, query, statement_name="", *[type(x) for x in args])
+            self._stmt.execute(*args)
+        finally:
+            self.connection._unnamed_prepared_statement_lock.release()
 
     ##
     # Return a count of the number of rows currently being read.  If possible,
@@ -372,6 +385,7 @@ class Cursor(object):
 #
 # @keyparam ssl     Use SSL encryption for TCP/IP socket.  Defaults to False.
 class Connection(Cursor):
+    # ERIC options for connection in utility mode
     def __init__(self, user, host=None, unix_sock=None, port=5432, database=None, password=None, socket_timeout=60, ssl=False, options=None):
         self._row_desc = None
         try:
@@ -383,6 +397,51 @@ class Connection(Cursor):
         self._begin = PreparedStatement(self, "BEGIN TRANSACTION")
         self._commit = PreparedStatement(self, "COMMIT TRANSACTION")
         self._rollback = PreparedStatement(self, "ROLLBACK TRANSACTION")
+        self._unnamed_prepared_statement_lock = threading.RLock()
+
+    ##
+    # An event handler that is fired when NOTIFY occurs for a notification that
+    # has been LISTEN'd for.  The value of this property is a
+    # util.MulticastDelegate.  A callback can be added by using
+    # connection.NotificationReceived += SomeMethod.  The method will be called
+    # with a single argument, an object that has properties: backend_pid,
+    # condition, and additional_info.  Callbacks can be removed with the -=
+    # operator.
+    # <p>
+    # Stability: Added in v1.03, stability guaranteed for v1.xx.
+    NotificationReceived = property(
+            lambda self: getattr(self.c, "NotificationReceived"),
+            lambda self, value: setattr(self.c, "NotificationReceived", value)
+    )
+
+    ##
+    # An event handler that is fired when the database server issues a notice.
+    # The value of this property is a util.MulticastDelegate.  A callback can
+    # be added by using connection.NotificationReceived += SomeMethod.  The
+    # method will be called with a single argument, an object that has
+    # properties: severity, code, msg, and possibly others (detail, hint,
+    # position, where, file, line, and routine).  Callbacks can be removed with
+    # the -= operator.
+    # <p>
+    # Stability: Added in v1.03, stability guaranteed for v1.xx.
+    NoticeReceived = property(
+            lambda self: getattr(self.c, "NoticeReceived"),
+            lambda self, value: setattr(self.c, "NoticeReceived", value)
+    )
+
+    ##
+    # An event handler that is fired when a runtime configuration option is
+    # changed on the server.  The value of this property is a
+    # util.MulticastDelegate.  A callback can be added by using
+    # connection.NotificationReceived += SomeMethod.  Callbacks can be removed
+    # with the -= operator.  The method will be called with a single argument,
+    # an object that has properties "key" and "value".
+    # <p>
+    # Stability: Added in v1.03, stability guaranteed for v1.xx.
+    ParameterStatusReceived = property(
+            lambda self: getattr(self.c, "ParameterStatusReceived"),
+            lambda self, value: setattr(self.c, "ParameterStatusReceived", value)
+    )
 
     ##
     # Begins a new transaction.
