@@ -1096,46 +1096,7 @@ transformRangeFunction(ParseState *pstate, RangeFunction *r)
 			if (list_length(fc->args) != 1)
 				elog(ERROR, "Invalid %s syntax.", GP_DIST_RANDOM_NAME);
 
-			if (IsA(linitial(fc->args), ColumnRef))
-			{
-				char *schemaname=NULL;
-				char *tablename=NULL;
-				ColumnRef *cr;
-
-				/* schema.table will parse into cr-list with two
-				 * elements */
-				cr = linitial(fc->args);
-				switch (list_length(cr->fields))
-				{
-					case 1: /* only a tablename */
-						schemaname = NULL;
-						if (!IsA(linitial(cr->fields), String))
-							elog(ERROR, "Invalid %s syntax.", GP_DIST_RANDOM_NAME);
-						tablename = strVal(linitial(cr->fields));
-						break;
-					case 2: /* tablename with schema */
-						if (!IsA(linitial(cr->fields), String) ||
-							!IsA(lsecond(cr->fields), String))
-							elog(ERROR, "Invalid %s syntax.", GP_DIST_RANDOM_NAME);
-						schemaname = strVal(linitial(cr->fields));
-						tablename = strVal(lsecond(cr->fields));
-						break;
-					default:
-						elog(ERROR, "Invalid %s syntax.", GP_DIST_RANDOM_NAME);
-				}
-
-				/* Got the name of the table, now we need to build the RTE for the table. */
-				rel = makeRangeVar(schemaname, tablename);
-				rel->location = cr->location;
-
-				rte = addRangeTableEntry(pstate, rel, r->alias, false, true);
-
-				/* Now we set our special attribute in the rte. */
-				rte->forceDistRandom = true;
-
-				return rte;
-			}
-			else if (IsA(linitial(fc->args), A_Const))
+			if (IsA(linitial(fc->args), A_Const))
 			{
 				A_Const *arg_val;
 				char *schemaname;
