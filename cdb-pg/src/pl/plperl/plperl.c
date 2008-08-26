@@ -1279,7 +1279,10 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		 */
 		if (prodesc->fn_retisset)
 		{
+			TupleDesc	  td;
 			MemoryContext multi_call_ctx;
+			MemoryContext oldcontext;
+
 			multi_call_ctx = AllocSetContextCreate(fcinfo->flinfo->fn_mcxt,
 												   "plperl multi-call context",
 												   ALLOCSET_SMALL_MINSIZE,
@@ -1288,34 +1291,35 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 			call_data = (plperl_call_data*)
 				MemoryContextAllocZero(multi_call_ctx, sizeof(plperl_call_data));
 			call_data->multi_call_ctx = multi_call_ctx;
+			oldcontext = MemoryContextSwitchTo(call_data->multi_call_ctx);
 
 			/* save the call context for cross call use */
 			fcinfo->flinfo->fn_extra = call_data;
 
+			if (prodesc->fn_retisset &&
+				get_call_result_type(fcinfo, NULL, &td) == TYPEFUNC_COMPOSITE)
+			{
+				call_data->attinmeta = TupleDescGetAttInMetadata(td);
+			}
+
+			MemoryContextSwitchTo(oldcontext);
+			
 			/* register cleanup if exprcontext is not run to completion */
 			
 		}
 		else
 		{
+			TupleDesc	  td;
 			call_data = palloc0(sizeof(plperl_call_data));
+
+			if (prodesc->fn_retisset &&
+				get_call_result_type(fcinfo, NULL, &td) == TYPEFUNC_COMPOSITE)
+			{
+				call_data->attinmeta = TupleDescGetAttInMetadata(td);
+			}
+
 		}
 		call_data->prodesc = prodesc;
-
-		/* Get the tuple meta data for tuple returning functions */
-		if (prodesc->fn_retistuple)
-		{
-			TupleDesc	  td;
-			MemoryContext oldcontext;
-
-			if (prodesc->fn_retisset)
-				oldcontext = MemoryContextSwitchTo(call_data->multi_call_ctx);
-
-			if (get_call_result_type(fcinfo, NULL, &td) == TYPEFUNC_COMPOSITE)
-				call_data->attinmeta = TupleDescGetAttInMetadata(td);
-
-			if (prodesc->fn_retisset)
-				MemoryContextSwitchTo(oldcontext);
-		}
 
 		/* Connect to SPI, run the perl code, disconnect from SPI */
 		current_call_data = call_data;
