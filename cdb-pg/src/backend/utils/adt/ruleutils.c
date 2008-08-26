@@ -5794,6 +5794,26 @@ string_to_text(char *str)
 	return result;
 }
 
+static char *
+reloptions_to_string(Datum reloptions)
+{
+	char	   *result;
+	Datum		sep,
+				txt;
+
+	/*
+	 * We want to use array_to_text(reloptions, ', ') --- but
+	 * DirectFunctionCall2(array_to_text) does not work, because
+	 * array_to_text() relies on flinfo to be valid.  So use
+	 * OidFunctionCall2.
+	 */
+	sep = DirectFunctionCall1(textin, CStringGetDatum(", "));
+	txt = OidFunctionCall2(F_ARRAY_TO_TEXT, reloptions, sep);
+	result = DatumGetCString(DirectFunctionCall1(textout, txt));
+
+	return result;
+}
+
 /*
  * Generate a C string representing a relation's reloptions, or NULL if none.
  */
@@ -5814,20 +5834,7 @@ flatten_reloptions(Oid relid)
 	reloptions = SysCacheGetAttr(RELOID, tuple,
 								 Anum_pg_class_reloptions, &isnull);
 	if (!isnull)
-	{
-		Datum		sep,
-					txt;
-
-		/*
-		 * We want to use array_to_text(reloptions, ', ') --- but
-		 * DirectFunctionCall2(array_to_text) does not work, because
-		 * array_to_text() relies on flinfo to be valid.  So use
-		 * OidFunctionCall2.
-		 */
-		sep = DirectFunctionCall1(textin, CStringGetDatum(", "));
-		txt = OidFunctionCall2(F_ARRAY_TO_TEXT, reloptions, sep);
-		result = DatumGetCString(DirectFunctionCall1(textout, txt));
-	}
+		result = reloptions_to_string(reloptions);
 
 	ReleaseSysCache(tuple);
 
@@ -5889,8 +5896,36 @@ partition_rule_def_worker(PartitionRule *rule, Partition *part, int prettyFlags)
 {
 	StringInfoData str;
 	deparse_context c;
-	char *reloptions = flatten_reloptions(rule->parchildrelid);
+	char *reloptions = NULL;
 	bool needspace = false;
+
+	if (OidIsValid(rule->parchildrelid))
+		reloptions = flatten_reloptions(rule->parchildrelid);
+	else if(PointerIsValid(rule->parreloptions))
+	{
+		ListCell *lc;
+		List *opts;
+		StringInfoData buf;
+
+		initStringInfo(&buf);
+
+		Assert(part->paristemplate);
+
+		opts = rule->parreloptions;
+		foreach(lc, opts)
+		{
+			DefElem *e = lfirst(lc);
+
+			if (lc != list_head(opts))
+				appendStringInfo(&buf, ", ");
+
+			appendStringInfoString(&buf, e->defname);
+
+			if (e->arg)
+				appendStringInfo(&buf, "=%s", strVal(e->arg));
+		}
+		reloptions = buf.data;
+	}
 
 	initStringInfo(&str);
 
