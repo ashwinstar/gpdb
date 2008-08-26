@@ -151,6 +151,7 @@ typedef struct AlteredTableInfo
 	List	   *newvals;		/* List of NewColumnValue */
 	bool		new_notnull;	/* T if we added new NOT NULL constraints */
 	Oid			newTableSpace;	/* new tablespace; 0 means no change */
+	Oid			exchange_relid;	/* for EXCHANGE, the exchanged in rel */
 	/* Objects to rebuild after completing ALTER TYPE operations */
 	List	   *changedConstraintOids;	/* OIDs of constraints to rebuild */
 	List	   *changedConstraintDefs;	/* string definitions of same */
@@ -332,7 +333,8 @@ static void ATPExecPartCoalesce(Relation rel,
                                 AlterPartitionCmd *pc);		/* Coalesce */
 static void ATPExecPartDrop(Relation rel,
                             AlterPartitionCmd *pc);			/* Drop */
-static void ATPExecPartExchange(Relation rel,
+static void ATPExecPartExchange(AlteredTableInfo *tab,
+								Relation rel,
                                 AlterPartitionCmd *pc);		/* Exchange */
 static void ATPExecPartMerge(Relation rel,
                              AlterPartitionCmd *pc);		/* Merge */
@@ -367,8 +369,8 @@ static Oid DefineRelation_int(CreateStmt *stmt, char relkind,
 							  struct CdbDispatchCmdThreads **pDispatchThreads);
 static void ATExecPartAddInternal(Relation rel, Node *def);
 static void exchange_part_rule(Oid oldrelid, Oid newrelid);
-static void exchange_part_constraints(Partition *part, Relation oldrel, 
-									  Relation newrel);
+static List * exchange_part_constraints(Partition *part, Relation oldrel, 
+										Relation newrel, bool validate);
 static List *get_part_constraints(Partition *part, Relation pgcon, Relation rel);
 #if 0
 static bool rel_is_child_partition(Oid relid);
@@ -3557,7 +3559,7 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
             ATPExecPartDrop(rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartExchange:			/* Exchange */
-            ATPExecPartExchange(rel, (AlterPartitionCmd *) cmd->def);
+            ATPExecPartExchange(tab, rel, (AlterPartitionCmd *) cmd->def);
             break;
 		case AT_PartMerge:				/* Merge */
             ATPExecPartMerge(rel, (AlterPartitionCmd *) cmd->def);
@@ -3790,7 +3792,11 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 	 * Open the relation(s).  We have surely already locked the existing
 	 * table.
 	 */
-	oldrel = heap_open(tab->relid, NoLock);
+	if (OidIsValid(tab->exchange_relid))
+		oldrel = heap_open(tab->exchange_relid, NoLock);
+	else
+		oldrel = heap_open(tab->relid, NoLock);
+
 	oldTupDesc = tab->oldDesc;
 	newTupDesc = RelationGetDescr(oldrel);		/* includes all mods */
 
@@ -12344,14 +12350,16 @@ get_part_constraints(Partition *part, Relation pgcon, Relation rel)
 	return cons;
 }
 
-static void
-exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
+static List *
+exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel,
+						  bool validate)
 {
 	List *oldcons;
 	List *newcons;
 	ListCell *lc;
 	Relation pgcon;
 	bool add_cons = true;
+	List *outcons = NIL;
 	
 	pgcon = heap_open(ConstraintRelationId, AccessShareLock);
 
@@ -12410,7 +12418,6 @@ exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
 	{
 		HeapTuple tuple = lfirst(lc);
 		ObjectAddress conobj;
-
 		if (add_cons)
 		{
 			Form_pg_constraint con = (Form_pg_constraint)GETSTRUCT(tuple);
@@ -12423,7 +12430,7 @@ exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
 			char *conbin;
 			int nkeys;
 			int i;
-	
+
 			val = heap_getattr(tuple, Anum_pg_constraint_conkey,
 							   RelationGetDescr(pgcon), &isnull);
 	
@@ -12469,7 +12476,20 @@ exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
 								  n,
 								  conbin,
 								  consrc);
-	
+
+			if (validate)
+			{
+				NewConstraint *newcon;
+				newcon = (NewConstraint *) palloc0(sizeof(NewConstraint));
+				newcon->name = pstrdup(NameStr(con->conname));
+				newcon->contype = CONSTR_CHECK;
+				Assert(con->contype == CONSTRAINT_CHECK);
+
+				/* ExecQual wants implicit-AND format */
+				newcon->qual = (Node *)make_ands_implicit((Expr *)n);
+
+				outcons = lappend(outcons, newcon);
+			}
 		}
 
 		/* remove old constraint */
@@ -12484,8 +12504,11 @@ exchange_part_constraints(Partition *part, Relation oldrel, Relation newrel)
 		SetRelationNumChecks(newrel, newrel->rd_rel->relchecks + 
 							 list_length(oldcons));
 
+
 	list_free_deep(oldcons);
 	heap_close(pgcon, AccessShareLock);
+
+	return outcons;
 }
 
 static void
@@ -12522,15 +12545,91 @@ exchange_part_rule(Oid oldrelid, Oid newrelid)
 	heap_close(catalogRelation, NoLock);
 }
 
+static void
+exchange_permissions(Oid oldrelid, Oid newrelid)
+{
+	HeapTuple oldtuple;
+	HeapTuple newtuple;
+	Datum save;
+	bool saveisnull;
+	Datum values[Natts_pg_class];
+	char nulls[Natts_pg_class];
+	char replaces[Natts_pg_class];
+	HeapTuple replace_tuple;
+	bool isnull;
+	Relation rel = heap_open(RelationRelationId, RowExclusiveLock);
+
+	oldtuple = SearchSysCache(RELOID, ObjectIdGetDatum(oldrelid),
+							  0, 0, 0);
+	if (!HeapTupleIsValid(oldtuple))
+		elog(ERROR, "cache lookup failed for relation %u", oldrelid);
+
+	save = SysCacheGetAttr(RELOID, oldtuple, Anum_pg_class_relacl,
+						   &saveisnull);
+
+	newtuple = SearchSysCache(RELOID, ObjectIdGetDatum(newrelid),
+							  0, 0, 0);
+	if (!HeapTupleIsValid(newtuple))
+		elog(ERROR, "cache lookup failed for relation %u", newrelid);
+
+	/* finished building new ACL value, now insert it */
+	MemSet(values, 0, sizeof(values));
+	MemSet(nulls, ' ', sizeof(nulls));
+	MemSet(replaces, ' ', sizeof(replaces));
+
+	replaces[Anum_pg_class_relacl - 1] = 'r';
+	values[Anum_pg_class_relacl - 1] = SysCacheGetAttr(RELOID, newtuple, 
+													   Anum_pg_class_relacl,
+													   &isnull);
+	if (isnull)
+		nulls[Anum_pg_class_relacl - 1] = 'n';
+
+	replace_tuple = heap_modifytuple(oldtuple, RelationGetDescr(rel),
+									 values, nulls, replaces);
+
+	simple_heap_update(rel, &replace_tuple->t_self, replace_tuple);
+
+	/* keep the catalog indexes up to date */
+	CatalogUpdateIndexes(rel, replace_tuple);
+
+	/* XXX: Update the shared dependency ACL info */
+
+	/* finished building new ACL value, now insert it */
+	MemSet(values, 0, sizeof(values));
+	MemSet(nulls, ' ', sizeof(nulls));
+	MemSet(replaces, ' ', sizeof(replaces));
+
+	replaces[Anum_pg_class_relacl - 1] = 'r';
+	values[Anum_pg_class_relacl - 1] = save;
+
+	if (saveisnull)
+		nulls[Anum_pg_class_relacl - 1] = 'n';
+
+	replace_tuple = heap_modifytuple(newtuple, RelationGetDescr(rel),
+									 values, nulls, replaces);
+
+	simple_heap_update(rel, &replace_tuple->t_self, replace_tuple);
+
+	/* keep the catalog indexes up to date */
+	CatalogUpdateIndexes(rel, replace_tuple);
+
+	/* update shared dependency */
+
+	ReleaseSysCache(oldtuple);
+	ReleaseSysCache(newtuple);
+	heap_close(rel, NoLock);
+}
+
 /* ALTER TABLE ... EXCHANGE PARTITION */
 static void 
-ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
+ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 {
 	Oid					 oldrelid 	= InvalidOid;
 	Oid					 newrelid 	= InvalidOid;
 	Partition 			*part 		= NULL;
 	AlterPartitionId   	*orig_pid 	= NULL;	/* save for NOTICE msg at end... */
 	PgPartRule   	    *orig_prule = NULL;
+	AlterPartitionCmd  *pc2;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
@@ -12568,7 +12667,8 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 							  get_rel_name(oldrelid));
 		pc->partid = (Node *)oldrelrv;
 		part = prule->pNode->part;
-		pc->arg2 = (Node *)part; /* for execute nodes */
+		pc2 = (AlterPartitionCmd *)pc->arg2;
+		pc2->arg2 = (Node *)part; /* for execute nodes */
 	}
 	else if (Gp_role == GP_ROLE_EXECUTE)
 	{
@@ -12581,7 +12681,8 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 		newrelrv = (RangeVar *)pc->arg1;
 		oldrelid = RangeVarGetRelid(oldrelrv, false);
 		newrelid = RangeVarGetRelid(newrelrv, false);
-		part = (Partition *)pc->arg2;
+		pc2 = (AlterPartitionCmd *)pc->arg2;
+		part = (Partition *)pc2->arg2;
 	}
 	
 	Assert(OidIsValid(oldrelid));
@@ -12607,6 +12708,8 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 		char *oldname;
 		Relation newrel;
 		Relation oldrel;
+		List *newcons;
+		bool validate = intVal(pc2->arg1) ? true : false;
 
 		newrel = heap_open(newrelid, AccessExclusiveLock);
 		oldrel = heap_open(oldrelid, AccessExclusiveLock);
@@ -12619,7 +12722,11 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 
 		snprintf(tmpname, sizeof(tmpname), "pg_temp_%u", oldrelid);
 
-		exchange_part_constraints(part, oldrel, newrel);
+		newcons = exchange_part_constraints(part, oldrel, newrel, validate);
+		tab->constraints = list_concat(tab->constraints, newcons);
+		CommandCounterIncrement();
+		exchange_permissions(RelationGetRelid(oldrel),
+							 RelationGetRelid(newrel));
 		CommandCounterIncrement();
 
 		heap_close(newrel, NoLock);
@@ -12640,7 +12747,6 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 
 		CommandCounterIncrement();
 
-
 		/* fix up partitioning rule if we're on the QD*/
 		if (Gp_role == GP_ROLE_DISPATCH)
 		{
@@ -12659,8 +12765,7 @@ ATPExecPartExchange(Relation rel, AlterPartitionCmd *pc)
 							newname)));
 
 	}
-
-
+	tab->exchange_relid = newrelid;
 #endif
 }
 
