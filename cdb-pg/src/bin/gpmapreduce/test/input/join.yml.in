@@ -36,8 +36,8 @@ DEFINE:
         - key   text
         - value integer
       FUNCTION:     |
-        return {} unless ($_[0] =~ m/GET ([^ ?,]+)/);
-        return {"key" => $1, "value" => 1}
+        return [] unless ($_[0] =~ m/GET ([^ ?,]+)/);
+        return [{"key" => $1, "value" => 1}]
 
   - TRANSITION:
       NAME:     myTransition
@@ -81,7 +81,8 @@ DEFINE:
         - value integer
       FUNCTION:     |
         return {'key': value, 'value': key}
-
+      MODE:     SINGLE
+        
   - TASK:
       NAME:     reverse_network
       SOURCE:   network

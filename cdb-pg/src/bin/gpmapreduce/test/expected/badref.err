@@ -1,6 +1,8 @@
 -- start_matchsubs
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
+-- m/\(\w+.\w+:[0-9]+\)$/
+-- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
 -- end_matchsubs
 mapreduce_27126_run_1
 ERROR:  Could not assign a segment database for "file://invalidhost/path/to/file". There isn't a valid primary segment database on host "invalidhost"

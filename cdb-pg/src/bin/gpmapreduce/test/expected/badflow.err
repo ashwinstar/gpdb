@@ -1,6 +1,8 @@
 -- start_matchsubs
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
+-- m/\(\w+.\w+:[0-9]+\)$/
+-- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
 -- end_matchsubs
 Error: Invalid object NAME, at line 27
 Error: INPUT 'unnamed' - Missing NAME, at line 25

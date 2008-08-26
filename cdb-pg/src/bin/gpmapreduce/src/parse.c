@@ -690,11 +690,20 @@ void parser_set_mode(mapred_parser_t *parser, char *value)
 			if (!strcasecmp(value, "single"))
 				parser->current_obj->u.function.mode = MAPRED_SINGLE_MODE;
 			else if (!strcasecmp(value, "multi"))
-				parser->current_obj->u.function.mode = MAPRED_MULTI_MODE;
+			{
+				mapred_parse_error(parser, "MULTI MODE not supported for TRANSITION");
+				return;
+			}
 			else if (!strcasecmp(value, "accumulated"))
-				parser->current_obj->u.function.mode = MAPRED_ACCUMULATED_MODE;
+			{
+				mapred_parse_error(parser, "ACCUMULATED MODE not supported for TRANSITION");
+				return;
+			}
             else if (!strcasecmp(value, "windowed"))
-				parser->current_obj->u.function.mode = MAPRED_WINDOWED_MODE;
+			{
+				mapred_parse_error(parser, "WINDOWED MODE not supported for TRANSITION");
+				return;
+			}
 			else
 			{
 				mapred_parse_error(parser, "Unknown MODE for TRANSITION");
@@ -711,11 +720,20 @@ void parser_set_mode(mapred_parser_t *parser, char *value)
 			if (!strcasecmp(value, "single"))
 				parser->current_obj->u.function.mode = MAPRED_SINGLE_MODE;
 			else if (!strcasecmp(value, "multi"))
-				parser->current_obj->u.function.mode = MAPRED_MULTI_MODE;
+			{
+				mapred_parse_error(parser, "MULTI MODE not supported for CONSOLIDATE");
+				return;
+			}
 			else if (!strcasecmp(value, "accumulated"))
-				parser->current_obj->u.function.mode = MAPRED_ACCUMULATED_MODE;
+			{
+				mapred_parse_error(parser, "ACCUMULATED MODE not supported for CONSOLIDATE");
+				return;
+			}
             else if (!strcasecmp(value, "windowed"))
-				parser->current_obj->u.function.mode = MAPRED_WINDOWED_MODE;
+			{
+				mapred_parse_error(parser, "WINDOWED MODE not supported for CONSOLIDATE");
+				return;
+			}
 			else
 			{
 				mapred_parse_error(parser, "Unknown MODE for CONSOLIDATE");
@@ -1739,6 +1757,8 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 					obj->u.function.returns->next->type = copyscalar("text");
 					obj->u.function.returns->next->next = NULL;
 				}
+				if (obj->u.function.mode == MAPRED_NO_MODE)
+					obj->u.function.mode = MAPRED_MULTI_MODE;
 			}
 			break;
 
@@ -1773,6 +1793,8 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 					obj->u.function.returns->next = NULL;
 				}
 			}
+			if (obj->u.function.mode == MAPRED_NO_MODE)
+				obj->u.function.mode = MAPRED_SINGLE_MODE;
 			break;
 
 		case MAPRED_COMBINER:
@@ -1806,6 +1828,8 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 					obj->u.function.returns->next = NULL;
 				}
 			}
+			if (obj->u.function.mode == MAPRED_NO_MODE)
+				obj->u.function.mode = MAPRED_SINGLE_MODE;
 			break;
 
 		case MAPRED_FINALIZER:
@@ -1835,6 +1859,8 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 					obj->u.function.returns->type = copyscalar("text");
 					obj->u.function.returns->next = NULL;
 				}
+				if (obj->u.function.mode == MAPRED_NO_MODE)
+					obj->u.function.mode = MAPRED_MULTI_MODE;
 			}
 			break;
 

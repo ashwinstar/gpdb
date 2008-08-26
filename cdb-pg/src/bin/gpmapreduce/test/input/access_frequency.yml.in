@@ -19,8 +19,8 @@ DEFINE:
       NAME:     myMap
       LANGUAGE: perl
       FUNCTION:     |
-        return {} unless ($_[1] =~ m/GET ([^ ?,]+)/);
-        return {"key" => $1, "value" => 1}
+        return [] unless ($_[1] =~ m/GET ([^ ?,]+)/);
+        return [{"key" => $1, "value" => 1}]
 
   - TRANSITION:
       NAME:     myTransition

@@ -126,6 +126,7 @@ DEFINE:
   - FINALIZE:
       NAME:      term_finalizer
       LANGUAGE:  python
+      MODE:      SINGLE
       RETURNS:
         - count integer
       FUNCTION:  |

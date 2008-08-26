@@ -38,8 +38,8 @@ DEFINE:
         - ip text
         - count integer
       FUNCTION:     |
-        return {} unless ($_[2] =~ m/$_[0]/);
-        return {"ip" => $_[1], "count" => 1}
+        return [] unless ($_[2] =~ m/$_[0]/);
+        return [{"ip" => $_[1], "count" => 1}]
 
   - TRANSITION:
       NAME:      myTransition

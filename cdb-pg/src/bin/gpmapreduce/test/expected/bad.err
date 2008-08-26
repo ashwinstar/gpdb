@@ -1,6 +1,8 @@
 -- start_matchsubs
 -- m/mapreduce_\d+_run/
 -- s/mapreduce_\d+/mapreduce_DUMMY/
+-- m/\(\w+.\w+:[0-9]+\)$/
+-- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
 -- end_matchsubs
 Error: Greenplum MapReduce document must begin with a YAML MAPPING, at line 8
 Error: Document #1 Missing VERSION, at line 4

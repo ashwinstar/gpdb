@@ -29,7 +29,6 @@ DEFINE:
         return map(lambda(x): [x, 1], words)
       LANGUAGE:   python
       OPTIMIZE:   STRICT IMMUTABLE
-      MODE:       MULTI
       PARAMETERS: value text
       RETURNS:
         - key text
@@ -40,7 +39,8 @@ DEFINE:
       FUNCTION:  |
         return (value, key)
       LANGUAGE:  python
-      OPTIMIZE:   STRICT IMMUTABLE      
+      OPTIMIZE:  STRICT IMMUTABLE
+      MODE:      SINGLE
       RETURNS:
         - key integer
         - value text
