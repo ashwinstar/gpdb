@@ -12629,7 +12629,7 @@ ATPExecPartExchange(AlteredTableInfo *tab, Relation rel, AlterPartitionCmd *pc)
 	Partition 			*part 		= NULL;
 	AlterPartitionId   	*orig_pid 	= NULL;	/* save for NOTICE msg at end... */
 	PgPartRule   	    *orig_prule = NULL;
-	AlterPartitionCmd  *pc2;
+	AlterPartitionCmd	*pc2 = NULL;
 
 	if (Gp_role == GP_ROLE_UTILITY)
 		return;
