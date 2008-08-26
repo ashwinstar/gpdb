@@ -311,6 +311,20 @@ else:
 
 '''
 
+def get_solaris_update():
+    if not os.path.exists('/etc/release'):
+        return False
+    f = open('/etc/release')
+    lines = f.readlines();
+    f.close();
+    for i in lines:
+	i = i.strip()
+        if i.startswith('Solaris 10'):
+            res = ((i.split())[3])[6]
+            return res
+    return ""
+
+
 script_name = os.path.split(__file__)[-1]
 opt = {}
 opt['-v'] = False
@@ -344,7 +358,7 @@ ulimit.nproc				int	>= 131072
 '''
 
 
-sunosconf = '''
+sunosconf10u4 = '''
 zfs.health                         str          = ONLINE
 zfs.checksum                       str          = on 
 ndd.tcp_conn_req_max_q			int	= 4096
@@ -365,6 +379,44 @@ solaris.patch                       str   contains 121431-20
 solaris.patch                       str   contains 125417-04
 solaris.patch                       str   contains 127729-07
 solaris.patch                       str   contains 137889-04 
+
+'''
+
+sunosconf10u5 = '''
+zfs.health                         str          = ONLINE
+zfs.checksum                       str          = on 
+ndd.tcp_conn_req_max_q			int	= 4096
+ndd.tcp_conn_req_max_q0			int	= 4096
+ndd.tcp_largest_anon_port		int	= 65535
+ndd.tcp_smallest_anon_port		int	= 4096
+ndd.tcp_time_wait_interval		int	between 500 1000
+system.rlim_fd_max			int	= 262144
+system.rlim_fd_cur			int	= 65536
+system.shmsys:shminfo_shmmax		int	>= 0x2000000
+system.semsys:seminfo_semmni		int	= 1024
+solaris.release				str	= Solaris 10 5/08 s10x_u5wos_10 X86
+platform.version				str	contains Generic_127128-11
+solaris.patch				str	contains 138158-01
+solaris.patch				str	contains 138307-01
+solaris.patch				str	contains 128401-01
+solaris.patch				str	contains 138049-01
+solaris.patch				str	contains 121005-04
+solaris.patch				str	contains 138053-01
+solaris.patch				str	contains 126654-02
+solaris.patch				str	contains 127867-03
+solaris.patch				str	contains 126134-03
+solaris.patch				str	contains 138043-01
+solaris.patch				str	contains 138076-01
+solaris.patch				str	contains 138047-01
+solaris.patch				str	contains 127965-05
+solaris.patch				str	contains 138065-01
+solaris.patch				str	contains 138057-01
+solaris.patch				str	contains 127891-03
+solaris.patch				str	contains 118825-02
+solaris.patch				str	contains 138160-01
+solaris.patch				str	contains 128307-04
+solaris.patch				str	contains IDR138594-01
+
 
 '''
 
@@ -874,6 +926,17 @@ try:
         if v.find('5.10') != 0:
             perr(p0.x_peer, 'Solaris version (version %s should be >= 5.10)' % v)
         elif match(session, key, v):
+
+            sunosupdate = get_solaris_update()
+            sunosconf = None
+            if (sunosupdate == ""):
+                perr(p0.x_peer, "Invalid Solaris version in /etc/release. Assuming Solaris 10u5")
+                sunosupdate = "5"
+            if sunosupdate == "4":
+                sunosconf = sunosconf10u4
+            elif sunosupdate == "5":
+                sunosconf = sunosconf10u5
+            
             conf.loads(sunosconf, overwrite=False)
             matchConfig(session, conf)
             print_fix()
