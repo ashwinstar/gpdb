@@ -40,7 +40,10 @@ CREATE OR REPLACE FUNCTION perl_set_int(int) RETURNS SETOF INTEGER AS $$
 return undef;
 $$ LANGUAGE plperl;
 SELECT perl_set_int(5);
-ERROR:  set-valued function called in context that cannot accept a set
+ perl_set_int 
+--------------
+(0 rows)
+
 SELECT * FROM perl_set_int(5);
  perl_set_int 
 --------------
@@ -50,7 +53,16 @@ CREATE OR REPLACE FUNCTION perl_set_int(int) RETURNS SETOF INTEGER AS $$
 return [0..$_[0]];
 $$ LANGUAGE plperl;
 SELECT perl_set_int(5);
-ERROR:  set-valued function called in context that cannot accept a set
+ perl_set_int 
+--------------
+            0
+            1
+            2
+            3
+            4
+            5
+(6 rows)
+
 SELECT * FROM perl_set_int(5);
  perl_set_int 
 --------------
@@ -97,7 +109,10 @@ CREATE OR REPLACE FUNCTION perl_set() RETURNS SETOF testrowperl AS $$
     return undef;
 $$  LANGUAGE plperl;
 SELECT perl_set();
-ERROR:  set-valued function called in context that cannot accept a set
+ perl_set 
+----------
+(0 rows)
+
 SELECT * FROM perl_set();
  f1 | f2 | f3 
 ----+----+----
@@ -111,9 +126,9 @@ CREATE OR REPLACE FUNCTION perl_set() RETURNS SETOF testrowperl AS $$
     ];
 $$  LANGUAGE plperl;
 SELECT perl_set();
-ERROR:  set-valued function called in context that cannot accept a set
+ERROR:  function returning set of rows cannot return null value
 SELECT * FROM perl_set();
-ERROR:  setof-composite-returning Perl function must call return_next with reference to hash
+ERROR:  function returning set of rows cannot return null value
 CREATE OR REPLACE FUNCTION perl_set() RETURNS SETOF testrowperl AS $$
     return [
         { f1 => 1, f2 => 'Hello', f3 =>  'World' },
@@ -122,7 +137,13 @@ CREATE OR REPLACE FUNCTION perl_set() RETURNS SETOF testrowperl AS $$
     ];
 $$  LANGUAGE plperl;
 SELECT perl_set();
-ERROR:  set-valued function called in context that cannot accept a set
+       perl_set       
+----------------------
+ (1,Hello,World)
+ (2,Hello,PostgreSQL)
+ (3,Hello,PL/Perl)
+(3 rows)
+
 SELECT * FROM perl_set();
  f1 |  f2   |     f3     
 ----+-------+------------
@@ -165,7 +186,10 @@ CREATE OR REPLACE FUNCTION perl_record_set() RETURNS SETOF record AS $$
     return undef;
 $$  LANGUAGE plperl;
 SELECT perl_record_set();
-ERROR:  set-valued function called in context that cannot accept a set
+ perl_record_set 
+-----------------
+(0 rows)
+
 SELECT * FROM perl_record_set();
 ERROR:  a column definition list is required for functions returning "record"
 SELECT * FROM perl_record_set() AS (f1 integer, f2 text, f3 text);
@@ -181,11 +205,11 @@ CREATE OR REPLACE FUNCTION perl_record_set() RETURNS SETOF record AS $$
     ];
 $$  LANGUAGE plperl;
 SELECT perl_record_set();
-ERROR:  set-valued function called in context that cannot accept a set
+ERROR:  function returning record called in context that cannot accept type record
 SELECT * FROM perl_record_set();
 ERROR:  a column definition list is required for functions returning "record"
 SELECT * FROM perl_record_set() AS (f1 integer, f2 text, f3 text);
-ERROR:  setof-composite-returning Perl function must call return_next with reference to hash
+ERROR:  function returning set of rows cannot return null value
 CREATE OR REPLACE FUNCTION perl_record_set() RETURNS SETOF record AS $$
     return [
         { f1 => 1, f2 => 'Hello', f3 =>  'World' },
@@ -194,7 +218,7 @@ CREATE OR REPLACE FUNCTION perl_record_set() RETURNS SETOF record AS $$
     ];
 $$  LANGUAGE plperl;
 SELECT perl_record_set();
-ERROR:  set-valued function called in context that cannot accept a set
+ERROR:  function returning record called in context that cannot accept type record
 SELECT * FROM perl_record_set();
 ERROR:  a column definition list is required for functions returning "record"
 SELECT * FROM perl_record_set() AS (f1 integer, f2 text, f3 text);
@@ -237,7 +261,13 @@ RETURNS SETOF record AS $$
     ];
 $$  LANGUAGE plperl;
 SELECT perl_out_params_set();
-ERROR:  set-valued function called in context that cannot accept a set
+ perl_out_params_set  
+----------------------
+ (1,Hello,World)
+ (2,Hello,PostgreSQL)
+ (3,Hello,PL/Perl)
+(3 rows)
+
 SELECT * FROM perl_out_params_set();
  f1 |  f2   |     f3     
 ----+-------+------------
@@ -247,7 +277,13 @@ SELECT * FROM perl_out_params_set();
 (3 rows)
 
 SELECT (perl_out_params_set()).f3;
-ERROR:  set-valued function called in context that cannot accept a set
+     f3     
+------------
+ World
+ PostgreSQL
+ PL/Perl
+(3 rows)
+
 --
 -- Check behavior with erroneous return values
 --
@@ -428,7 +464,7 @@ CREATE OR REPLACE FUNCTION  array_of_text() RETURNS TEXT[][]
 LANGUAGE plperl as $$ 
     return [['a"b',undef,'c,d'],['e\\f',undef,'g']]; 
 $$;
-SELECT array_of_text(); 
+SELECT array_of_text();
              array_of_text             
 ---------------------------------------
  {{"a\"b",NULL,"c,d"},{"e\\f",NULL,g}}

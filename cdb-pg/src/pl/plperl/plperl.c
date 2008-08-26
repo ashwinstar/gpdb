@@ -71,12 +71,11 @@ typedef struct plperl_proc_entry
  */
 typedef struct plperl_call_data
 {
+	MemoryContext     multi_call_ctx;
+	AttInMetadata    *attinmeta;
 	plperl_proc_desc *prodesc;
-	FunctionCallInfo fcinfo;
-	Tuplestorestate *tuple_store;
-	TupleDesc	ret_tdesc;
-	AttInMetadata *attinmeta;
-	MemoryContext tmp_cxt;
+	SV               *perlret;
+	int               nrows;
 } plperl_call_data;
 
 /**********************************************************************
@@ -129,6 +128,7 @@ static bool plperl_use_strict = false;
 
 /* this is saved and restored by plperl_call_handler */
 static plperl_call_data *current_call_data = NULL;
+
 
 /**********************************************************************
  * Forward declarations
@@ -230,11 +230,11 @@ _PG_init(void)
 	"$SIG{__DIE__} = \\&::plperl_die; " \
 	"*CORE::GLOBAL::exit = sub { die 'exited with code ', $_[0] || 0; }; " \
 	"sub ::mkunsafefunc {" \
-	"      my $ret = eval(qq[ sub { $_[0] $_[1] } ]); " \
+	"      my $ret = eval(qq[ sub { $_[0] $_[1] $_[2] } ]); " \
 	"      $@ =~ s/\\(eval \\d+\\) //g if $@; return $ret; }" \
 	"use strict; " \
 	"sub ::mk_strict_unsafefunc {" \
-	"      my $ret = eval(qq[ sub { use strict; $_[0] $_[1] } ]); " \
+	"      my $ret = eval(qq[ sub { use strict; $_[0] $_[1] $_[2] } ]); " \
 	"      $@ =~ s/\\(eval \\d+\\) //g if $@; return $ret; } " \
 	"sub ::_plperl_to_pg_array {" \
 	"  my $arg = shift; ref $arg eq 'ARRAY' || return $arg; " \
@@ -267,18 +267,18 @@ _PG_init(void)
 	"use vars qw($PLContainer); $PLContainer = new Safe('PLPerl');" \
 	"$PLContainer->permit_only(':default');" \
 	"$PLContainer->permit(qw[:base_math !:base_io sort time]);" \
-	"$PLContainer->share(qw[&elog &spi_exec_query &return_next " \
+	"$PLContainer->share(qw[&elog &spi_exec_query " \
 	"&spi_query &spi_fetchrow &spi_cursor_close " \
 	"&spi_prepare &spi_exec_prepared &spi_query_prepared &spi_freeplan " \
 	"&_plperl_to_pg_array " \
 	"&DEBUG &LOG &INFO &NOTICE &WARNING &ERROR %_SHARED ]);" \
 	"sub ::mksafefunc {" \
-	"      my $ret = $PLContainer->reval(qq[sub { $_[0] $_[1] }]); " \
+	"      my $ret = $PLContainer->reval(qq[sub { $_[0] $_[1] $_[2] }]); " \
 	"      $@ =~ s/\\(eval \\d+\\) //g if $@; return $ret; }" \
 	"$PLContainer->permit(qw[require caller]); $PLContainer->reval('use strict;');" \
 	"$PLContainer->deny(qw[require caller]); " \
 	"sub ::mk_strict_safefunc {" \
-	"      my $ret = $PLContainer->reval(qq[sub { BEGIN { strict->import(); } $_[0] $_[1] }]); " \
+	"      my $ret = $PLContainer->reval(qq[sub { BEGIN { strict->import(); } $_[0] $_[1] $_[2] }]); " \
 	"      $@ =~ s/\\(eval \\d+\\) //g if $@; return $ret; }"
 
 #define SAFE_BAD \
@@ -297,6 +297,25 @@ _PG_init(void)
 	"$Config{usemultiplicity} eq 'define' or "  \
     "($Config{usethreads} eq 'define' " \
 	" and $Config{useithreads} eq 'define')"
+
+/* 
+ * Every user function gets wrapped in a second layer so that we can 
+ * accumulate values returned by "return_next", this also gives the
+ * function the "$_TD" which is the tuple description of the expected
+ */
+#define USER_FUNCTION_START \
+	"our $_TD; local $_TD = shift; " \
+	"our @_RV; local @_RV = ();" \
+	"sub return_next($) { push @_RV, $_[0] };" \
+	"my  $user_function = sub {" 
+
+#define USER_FUNCTION_END \
+    "}; " \
+	"my @rv = &$user_function(@_);" \
+	"return wantarray ? @rv : $rv[0] if ($#_RV < 0);" \
+	"return [@_RV] if ($#rv < 0 || $#rv == 0 && !$rv[0]);" \
+	"return [@_RV, @{$rv[0]}] if ($#rv == 0 && ref($rv[0]) eq 'ARRAY');" \
+	"elog(ERROR, 'return must return an array referece when used with return_next');"
 
 
 /********************************************************************
@@ -978,8 +997,9 @@ plperl_create_sub(char *s, bool trusted)
 	ENTER;
 	SAVETMPS;
 	PUSHMARK(SP);
-	XPUSHs(sv_2mortal(newSVstring("our $_TD; local $_TD=$_[0]; shift;")));
+	XPUSHs(sv_2mortal(newSVstring(USER_FUNCTION_START)));
 	XPUSHs(sv_2mortal(newSVstring(s)));
+	XPUSHs(sv_2mortal(newSVstring(USER_FUNCTION_END)));
 	PUTBACK;
 
 	/*
@@ -1219,105 +1239,163 @@ plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo,
 static Datum
 plperl_func_handler(PG_FUNCTION_ARGS)
 {
-	plperl_proc_desc *prodesc;
-	SV		   *perlret;
-	Datum		retval;
-	ReturnSetInfo *rsi;
-	SV		   *array_ret = NULL;
-	bool       oldcontext = trusted_context;
-
-	/*
-	 * Create the call_data beforing connecting to SPI, so that it is not
-	 * allocated in the SPI memory context
-	 */
-	current_call_data = (plperl_call_data *) palloc0(sizeof(plperl_call_data));
-	current_call_data->fcinfo = fcinfo;
-
-	if (SPI_connect() != SPI_OK_CONNECT)
-		elog(ERROR, "could not connect to SPI manager");
-
-	prodesc = compile_plperl_function(fcinfo->flinfo->fn_oid, false);
-	current_call_data->prodesc = prodesc;
+	plperl_call_data *call_data;
+	ReturnSetInfo    *rsi;
+	SV		         *perlret;
+	Datum		      retval;
 
 	rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+	call_data = (plperl_call_data*) fcinfo->flinfo->fn_extra;
+	if (call_data == NULL)
+	{ /* First call */
+		plperl_proc_desc *prodesc;
 
-	if (prodesc->fn_retisset)
-	{
-		/* Check context before allowing the call to go through */
-		if (!rsi || !IsA(rsi, ReturnSetInfo) ||
-			(rsi->allowedModes & SFRM_Materialize) == 0 ||
-			rsi->expectedDesc == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("set-valued function called in context that "
-							"cannot accept a set")));
-	}
+		prodesc = compile_plperl_function(fcinfo->flinfo->fn_oid, false);
 
-	check_interp(prodesc->lanpltrusted);
-
-	perlret = plperl_call_perl_func(prodesc, fcinfo);
-
-	/************************************************************
-	 * Disconnect from SPI manager and then create the return
-	 * values datum (if the input function does a palloc for it
-	 * this must not be allocated in the SPI memory context
-	 * because SPI_finish would free it).
-	 ************************************************************/
-	if (SPI_finish() != SPI_OK_FINISH)
-		elog(ERROR, "SPI_finish() failed");
-
-	if (prodesc->fn_retisset)
-	{
-		/*
-		 * If the Perl function returned an arrayref, we pretend that it
-		 * called return_next() for each element of the array, to handle old
-		 * SRFs that didn't know about return_next(). Any other sort of return
-		 * value is an error, except undef which means return an empty set.
-		 */
-		if (SvOK(perlret) &&
-			SvTYPE(perlret) == SVt_RV &&
-			SvTYPE(SvRV(perlret)) == SVt_PVAV)
+		if (prodesc->fn_retisset)
 		{
-			int			i = 0;
-			SV		  **svp = 0;
-			AV		   *rav = (AV *) SvRV(perlret);
+			rsi = (ReturnSetInfo *) fcinfo->resultinfo;
 
-			while ((svp = av_fetch(rav, i, FALSE)) != NULL)
+			/* Check context before allowing the call to go through */
+			if (!rsi || !IsA(rsi, ReturnSetInfo) ||
+				(rsi->allowedModes & SFRM_ValuePerCall) == 0)
 			{
-				plperl_return_next(*svp);
-				i++;
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("set-valued function called in context that "
+								"cannot accept a set")));
 			}
 		}
-		else if (SvOK(perlret))
+
+		check_interp(prodesc->lanpltrusted);
+
+		/* 
+		 * we are in a context that can return what we want to return, go ahead
+		 * and allocate the call_data.  For a single function call we simply
+		 * palloc, for a set-returning we must allocate a memory context.
+		 *
+		 * Either way we want to create the call_data before connecting to SPI
+		 * so that it is not allocated in the SPI memory context.
+		 */
+		if (prodesc->fn_retisset)
 		{
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("set-returning Perl function must return "
-							"reference to array or use return_next")));
+			MemoryContext multi_call_ctx;
+			multi_call_ctx = AllocSetContextCreate(fcinfo->flinfo->fn_mcxt,
+												   "plperl multi-call context",
+												   ALLOCSET_SMALL_MINSIZE,
+												   ALLOCSET_SMALL_INITSIZE,
+												   ALLOCSET_SMALL_MAXSIZE);
+			call_data = (plperl_call_data*)
+				MemoryContextAllocZero(multi_call_ctx, sizeof(plperl_call_data));
+			call_data->multi_call_ctx = multi_call_ctx;
+
+			/* save the call context for cross call use */
+			fcinfo->flinfo->fn_extra = call_data;
+
+			/* register cleanup if exprcontext is not run to completion */
+			
+		}
+		else
+		{
+			call_data = palloc0(sizeof(plperl_call_data));
+		}
+		call_data->prodesc = prodesc;
+
+		/* Get the tuple meta data for tuple returning functions */
+		if (prodesc->fn_retistuple)
+		{
+			TupleDesc	  td;
+			MemoryContext oldcontext;
+
+			if (prodesc->fn_retisset)
+				oldcontext = MemoryContextSwitchTo(call_data->multi_call_ctx);
+
+			if (get_call_result_type(fcinfo, NULL, &td) == TYPEFUNC_COMPOSITE)
+				call_data->attinmeta = TupleDescGetAttInMetadata(td);
+
+			if (prodesc->fn_retisset)
+				MemoryContextSwitchTo(oldcontext);
 		}
 
-		rsi->returnMode = SFRM_Materialize;
-		if (current_call_data->tuple_store)
+		/* Connect to SPI, run the perl code, disconnect from SPI */
+		current_call_data = call_data;
+		if (SPI_connect() != SPI_OK_CONNECT)
+			elog(ERROR, "could not connect to SPI manager");
+
+		/* Evaluate the perl function */
+		call_data->perlret = plperl_call_perl_func(call_data->prodesc, fcinfo);
+
+		/************************************************************
+		 * Disconnect from SPI manager and then create the return
+		 * values datum (if the input function does a palloc for it
+		 * this must not be allocated in the SPI memory context
+		 * because SPI_finish would free it).
+		 ************************************************************/
+		if (SPI_finish() != SPI_OK_FINISH)
+			elog(ERROR, "SPI_finish() failed");
+		current_call_data = NULL;
+
+		/* 
+		 * If we are returning a set double check that a valid value has
+		 * been returned: undef of an array ref.
+		 */
+		if (prodesc->fn_retisset)
 		{
-			rsi->setResult = current_call_data->tuple_store;
-			rsi->setDesc = current_call_data->ret_tdesc;
+			if (SvOK(call_data->perlret) &&
+				(SvTYPE(call_data->perlret) != SVt_RV ||
+				 SvTYPE(SvRV(call_data->perlret)) != SVt_PVAV))
+			{
+				/* Not an arrayref */
+				ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("set-returning Perl function must return "
+								"reference to array or use return_next")));
+			}			
 		}
-		retval = (Datum) 0;
 	}
-	else if (!SvOK(perlret))
+
+	perlret = call_data->perlret;
+
+	if (SvOK(perlret) && call_data->prodesc->fn_retisset)
+	{
+		SV **svp = NULL;
+		AV *pla  = NULL;
+			
+		/* Get the next value from the array, then fall through */
+		pla = (AV *) SvRV(call_data->perlret);
+		svp = av_fetch(pla, call_data->nrows++, FALSE);
+		if (svp)
+		{
+			rsi->isDone = ExprMultipleResult;
+			perlret = *svp;
+			if (!SvOK(perlret))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+						 errmsg("function returning set of rows cannot return null value")));
+			}
+		}
+		else
+		{
+			SvREFCNT_dec(call_data->perlret);
+			fcinfo->flinfo->fn_extra = NULL;
+			rsi->isDone = ExprEndResult;
+			PG_RETURN_NULL();
+		}
+	}
+
+	if (!SvOK(perlret))
 	{
 		/* Return NULL if Perl code returned undef */
 		if (rsi && IsA(rsi, ReturnSetInfo))
 			rsi->isDone = ExprEndResult;
-		retval = InputFunctionCall(&prodesc->result_in_func, NULL,
-								   prodesc->result_typioparam, -1);
+		retval = InputFunctionCall(&call_data->prodesc->result_in_func, NULL,
+								   call_data->prodesc->result_typioparam, -1);
 		fcinfo->isnull = true;
 	}
-	else if (prodesc->fn_retistuple)
+	else if (call_data->prodesc->fn_retistuple)
 	{
 		/* Return a perl hash converted to a Datum */
-		TupleDesc	td;
-		AttInMetadata *attinmeta;
 		HeapTuple	tup;
 
 		if (!SvOK(perlret) || SvTYPE(perlret) != SVt_RV ||
@@ -1329,8 +1407,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 							"must return reference to hash")));
 		}
 
-		/* XXX should cache the attinmeta data instead of recomputing */
-		if (get_call_result_type(fcinfo, NULL, &td) != TYPEFUNC_COMPOSITE)
+		if (!call_data->attinmeta)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1338,8 +1415,8 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 							"that cannot accept type record")));
 		}
 
-		attinmeta = TupleDescGetAttInMetadata(td);
-		tup = plperl_build_tuple_result((HV *) SvRV(perlret), attinmeta);
+		tup = plperl_build_tuple_result((HV *) SvRV(perlret), 
+										call_data->attinmeta);
 		retval = HeapTupleGetDatum(tup);
 	}
 	else
@@ -1347,25 +1424,22 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 		/* Return a perl string converted to a Datum */
 		char	   *val;
 
-		if (prodesc->fn_retisarray && SvROK(perlret) &&
+		if (call_data->prodesc->fn_retisarray && SvROK(perlret) &&
 			SvTYPE(SvRV(perlret)) == SVt_PVAV)
 		{
-			array_ret = plperl_convert_to_pg_array(perlret);
-			SvREFCNT_dec(perlret);
+			SV *array_ret = array_ret = plperl_convert_to_pg_array(perlret);
+			if (!call_data->prodesc->fn_retisset)
+				SvREFCNT_dec(perlret);
 			perlret = array_ret;
 		}
 
 		val = SvPV(perlret, PL_na);
 
-		retval = InputFunctionCall(&prodesc->result_in_func, val,
-								   prodesc->result_typioparam, -1);
+		retval = InputFunctionCall(&call_data->prodesc->result_in_func, val,
+								   call_data->prodesc->result_typioparam, -1);
 	}
 
-	if (array_ret == NULL)
-		SvREFCNT_dec(perlret);
-
-	current_call_data = NULL;
-	restore_context(oldcontext);
+	restore_context(trusted_context);
 
 	return retval;
 }
@@ -1379,14 +1453,12 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 	Datum		retval;
 	SV		   *svTD;
 	HV		   *hvTD;
-	bool       oldcontext = trusted_context;
 
 	/*
 	 * Create the call_data beforing connecting to SPI, so that it is not
 	 * allocated in the SPI memory context
 	 */
 	current_call_data = (plperl_call_data *) palloc0(sizeof(plperl_call_data));
-	current_call_data->fcinfo = fcinfo;
 
 	/* Connect to SPI manager */
 	if (SPI_connect() != SPI_OK_CONNECT)
@@ -1468,7 +1540,7 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 		SvREFCNT_dec(perlret);
 
 	current_call_data = NULL;
-	restore_context(oldcontext);
+	restore_context(trusted_context);
 	return retval;
 }
 
@@ -1483,7 +1555,6 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 	int			i;
 	plperl_proc_entry *hash_entry;
 	bool found;
-	bool oldcontext = trusted_context;
 
 	/* We'll need the pg_proc tuple in any case... */
 	procTup = SearchSysCache(PROCOID,
@@ -1705,7 +1776,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 
 		prodesc->reference = plperl_create_sub(proc_source, prodesc->lanpltrusted);
 
-		restore_context(oldcontext);
+		restore_context(trusted_context);
 
 		pfree(proc_source);
 		if (!prodesc->reference)	/* can this happen? */
@@ -1793,8 +1864,11 @@ plperl_spi_exec(char *query, int limit)
 	PG_TRY();
 	{
 		int			spi_rv;
+		plperl_call_data *call_data;
 
-		spi_rv = SPI_execute(query, current_call_data->prodesc->fn_readonly,
+		call_data = current_call_data;
+
+		spi_rv = SPI_execute(query, call_data->prodesc->fn_readonly,
 							 limit);
 		ret_hv = plperl_spi_execute_fetch_result(SPI_tuptable, SPI_processed,
 												 spi_rv);
@@ -1876,132 +1950,6 @@ plperl_spi_execute_fetch_result(SPITupleTable *tuptable, int processed,
 
 	return result;
 }
-
-
-/*
- * Note: plperl_return_next is called both in Postgres and Perl contexts.
- * We report any errors in Postgres fashion (via ereport).	If called in
- * Perl context, it is SPI.xs's responsibility to catch the error and
- * convert to a Perl error.  We assume (perhaps without adequate justification)
- * that we need not abort the current transaction if the Perl code traps the
- * error.
- */
-void
-plperl_return_next(SV *sv)
-{
-	plperl_proc_desc *prodesc;
-	FunctionCallInfo fcinfo;
-	ReturnSetInfo *rsi;
-	MemoryContext old_cxt;
-	HeapTuple	tuple;
-
-	if (!sv)
-		return;
-
-	prodesc = current_call_data->prodesc;
-	fcinfo = current_call_data->fcinfo;
-	rsi = (ReturnSetInfo *) fcinfo->resultinfo;
-
-	if (!prodesc->fn_retisset)
-		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("cannot use return_next in a non-SETOF function")));
-
-	if (prodesc->fn_retistuple &&
-		!(SvOK(sv) && SvTYPE(sv) == SVt_RV && SvTYPE(SvRV(sv)) == SVt_PVHV))
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("setof-composite-returning Perl function "
-						"must call return_next with reference to hash")));
-
-	if (!current_call_data->ret_tdesc)
-	{
-		TupleDesc	tupdesc;
-
-		Assert(!current_call_data->tuple_store);
-		Assert(!current_call_data->attinmeta);
-
-		/*
-		 * This is the first call to return_next in the current PL/Perl
-		 * function call, so memoize some lookups
-		 */
-		if (prodesc->fn_retistuple)
-			(void) get_call_result_type(fcinfo, NULL, &tupdesc);
-		else
-			tupdesc = rsi->expectedDesc;
-
-		/*
-		 * Make sure the tuple_store and ret_tdesc are sufficiently
-		 * long-lived.
-		 */
-		old_cxt = MemoryContextSwitchTo(rsi->econtext->ecxt_per_query_memory);
-
-		current_call_data->ret_tdesc = CreateTupleDescCopy(tupdesc);
-		current_call_data->tuple_store =
-			tuplestore_begin_heap(true, false, work_mem);
-		if (prodesc->fn_retistuple)
-		{
-			current_call_data->attinmeta =
-				TupleDescGetAttInMetadata(current_call_data->ret_tdesc);
-		}
-
-		MemoryContextSwitchTo(old_cxt);
-	}
-
-	/*
-	 * Producing the tuple we want to return requires making plenty of
-	 * palloc() allocations that are not cleaned up. Since this function can
-	 * be called many times before the current memory context is reset, we
-	 * need to do those allocations in a temporary context.
-	 */
-	if (!current_call_data->tmp_cxt)
-	{
-		current_call_data->tmp_cxt =
-			AllocSetContextCreate(rsi->econtext->ecxt_per_tuple_memory,
-								  "PL/Perl return_next temporary cxt",
-								  ALLOCSET_DEFAULT_MINSIZE,
-								  ALLOCSET_DEFAULT_INITSIZE,
-								  ALLOCSET_DEFAULT_MAXSIZE);
-	}
-
-	old_cxt = MemoryContextSwitchTo(current_call_data->tmp_cxt);
-
-	if (prodesc->fn_retistuple)
-	{
-		tuple = plperl_build_tuple_result((HV *) SvRV(sv),
-										  current_call_data->attinmeta);
-	}
-	else
-	{
-		Datum		ret;
-		bool		isNull;
-
-		if (SvOK(sv))
-		{
-			char	   *val = SvPV(sv, PL_na);
-
-			ret = InputFunctionCall(&prodesc->result_in_func, val,
-									prodesc->result_typioparam, -1);
-			isNull = false;
-		}
-		else
-		{
-			ret = InputFunctionCall(&prodesc->result_in_func, NULL,
-									prodesc->result_typioparam, -1);
-			isNull = true;
-		}
-
-		tuple = heap_form_tuple(current_call_data->ret_tdesc, &ret, &isNull);
-	}
-
-	/* Make sure to store the tuple in a long-lived memory context */
-	MemoryContextSwitchTo(rsi->econtext->ecxt_per_query_memory);
-	tuplestore_puttuple(current_call_data->tuple_store, tuple);
-	MemoryContextSwitchTo(old_cxt);
-
-	MemoryContextReset(current_call_data->tmp_cxt);
-}
-
 
 SV *
 plperl_spi_query(char *query)
@@ -2311,6 +2259,7 @@ plperl_spi_exec_prepared(char *query, HV *attr, int argc, SV **argv)
 	Datum	   *argvalues;
 	plperl_query_desc *qdesc;
 	plperl_query_entry *hash_entry;
+	plperl_call_data *call_data;
 
 	/*
 	 * Execute the query inside a sub-transaction, so we can cope with errors
@@ -2318,6 +2267,8 @@ plperl_spi_exec_prepared(char *query, HV *attr, int argc, SV **argv)
 	 */
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ResourceOwner oldowner = CurrentResourceOwner;
+
+	call_data = current_call_data;
 
 	BeginInternalSubTransaction(NULL);
 	/* Want to run inside function's memory context */
@@ -2391,7 +2342,7 @@ plperl_spi_exec_prepared(char *query, HV *attr, int argc, SV **argv)
 		 * go
 		 ************************************************************/
 		spi_rv = SPI_execute_plan(qdesc->plan, argvalues, nulls,
-							 current_call_data->prodesc->fn_readonly, limit);
+								  call_data->prodesc->fn_readonly, limit);
 		ret_hv = plperl_spi_execute_fetch_result(SPI_tuptable, SPI_processed,
 												 spi_rv);
 		if (argc > 0)
@@ -2453,6 +2404,7 @@ plperl_spi_query_prepared(char *query, int argc, SV **argv)
 	plperl_query_entry *hash_entry;
 	SV		   *cursor;
 	Portal		portal = NULL;
+	plperl_call_data *call_data;
 
 	/*
 	 * Execute the query inside a sub-transaction, so we can cope with errors
@@ -2460,6 +2412,8 @@ plperl_spi_query_prepared(char *query, int argc, SV **argv)
 	 */
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ResourceOwner oldowner = CurrentResourceOwner;
+
+	call_data = current_call_data;
 
 	BeginInternalSubTransaction(NULL);
 	/* Want to run inside function's memory context */
@@ -2522,7 +2476,7 @@ plperl_spi_query_prepared(char *query, int argc, SV **argv)
 		 * go
 		 ************************************************************/
 		portal = SPI_cursor_open(NULL, qdesc->plan, argvalues, nulls,
-								 current_call_data->prodesc->fn_readonly);
+								 call_data->prodesc->fn_readonly);
 		if (argc > 0)
 		{
 			pfree(argvalues);

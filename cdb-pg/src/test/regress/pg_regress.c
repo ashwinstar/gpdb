@@ -494,7 +494,7 @@ convert_sourcefiles_in(char *source, char *dest, char *suffix)
 		{
 			char		cmd[MAXPGPATH * 3];
 			snprintf(cmd, sizeof(cmd),
-					 SYSTEMQUOTE "./gpstringsubs.pl %s" SYSTEMQUOTE, destfile);
+					 SYSTEMQUOTE "gpstringsubs.pl %s" SYSTEMQUOTE, destfile);
 			if (run_diff(cmd, destfile) != 0)
 			{
 				fprintf(stderr, _("%s: could not convert %s\n"),
@@ -1189,7 +1189,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 
 	/* OK, run the diff */
 	snprintf(cmd, sizeof(cmd),
-			 SYSTEMQUOTE "./gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
+			 SYSTEMQUOTE "gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
 			 basic_diff_opts, expectfile, resultsfile, diff);
 
 	/* Is the diff file empty? */
@@ -1212,7 +1212,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 			continue;
 
 		snprintf(cmd, sizeof(cmd),
-				 SYSTEMQUOTE "./gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
+				 SYSTEMQUOTE "gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
 				 basic_diff_opts, alt_expectfile, resultsfile, diff);
 
 		if (run_diff(cmd, diff) == 0)
@@ -1239,7 +1239,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	if (platform_expectfile)
 	{
 		snprintf(cmd, sizeof(cmd),
-				 SYSTEMQUOTE "./gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
+				 SYSTEMQUOTE "gpdiff.pl %s \"%s\" \"%s\" > \"%s\"" SYSTEMQUOTE,
 				 basic_diff_opts, default_expectfile, resultsfile, diff);
 
 		if (run_diff(cmd, diff) == 0)
@@ -1263,7 +1263,7 @@ results_differ(const char *testname, const char *resultsfile, const char *defaul
 	 * append to the diffs summary file.
 	 */
 	snprintf(cmd, sizeof(cmd),
-			 SYSTEMQUOTE "./gpdiff.pl %s \"%s\" \"%s\" >> \"%s\"" SYSTEMQUOTE,
+			 SYSTEMQUOTE "gpdiff.pl %s \"%s\" \"%s\" >> \"%s\"" SYSTEMQUOTE,
 			 pretty_diff_opts, best_expect_file, resultsfile, difffilename);
 	run_diff(cmd, difffilename);
 
