@@ -10833,7 +10833,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 	Node 				*pSubSpec  = NULL;	/* return the subpartition spec */
 	Relation par_rel = rel;
 
-/* get the relation for the parent of the new partition */
+	/* get the relation for the parent of the new partition */
 	if (par_prule && par_prule->topRule)
 		par_rel = 
 				heap_open(par_prule->topRule->parchildrelid, AccessShareLock);
@@ -11810,6 +11810,9 @@ atpxPartAddList(AlteredTableInfo *tab,
 	}
 
 	add_part_to_catalog(ct->oidInfo.relOid, pBy, &maxpartno); 
+
+	if (par_prule && par_prule->topRule)
+		heap_close(par_rel, NoLock);
 
 	return pSubSpec;
 } /* end atpxPartAddList */
