@@ -1,0 +1,12 @@
+$def with (dgen)
+<?xml version="1.0"?>
+<system>
+$ keys = None
+$for row in dgen:
+    <host name='$row['hostname']'>
+            $if not keys:
+            $    keys = row.keys()
+	    $    keys.sort()
+            $for k in keys: <${k}>${row[k]}</${k}>
+    </host>
+</system>
