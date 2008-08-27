@@ -2095,12 +2095,12 @@ log_line_prefix(StringInfo buf)
 					if (localXid != InvalidTransactionId)
 					{
 						if (distribXid >= FirstDistributedTransactionId)
-						    appendStringInfo(buf, "dxid %u, ", distribXid);
+						    appendStringInfo(buf, "dx%u, ", distribXid);
 						
-					    appendStringInfo(buf, "xid %u", localXid);
+					    appendStringInfo(buf, "x%u", localXid);
 						
 						if (subXid >= FirstNormalTransactionId)
-						    appendStringInfo(buf, ", subxid %u, ", subXid);
+						    appendStringInfo(buf, ", sx%u, ", subXid);
 					}
 				}
 				break;	
