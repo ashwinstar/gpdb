@@ -376,10 +376,11 @@ static void doNegateFloat(Value *v);
 %type <list>    OptDistributedBy
 %type <ival>	TabPartitionByType OptTabPartitionRangeInclusive
 %type <node>	OptTabPartitionBy TabSubPartitionBy 
-				OptTabSubPartitionBy OptTabSubSubPartitionBy tab_part_val
+				tab_part_val
+%type <node>	list_subparts opt_list_subparts
 %type <list>	opt_check_option
 %type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber 
-%type <node>	OptTabPartitionSpec OptTabSubPartitionSpec OptTabSubPartitionTemplate      /* PartitionSpec */
+%type <node>	OptTabPartitionSpec OptTabSubPartitionSpec TabSubPartitionTemplate      /* PartitionSpec */
 %type <list>	TabPartitionElemList TabSubPartitionElemList /* list of PartitionElem */
 
 %type <node> 	TabPartitionElem TabSubPartitionElem  /* PartitionElem */
@@ -396,6 +397,7 @@ static void doNegateFloat(Value *v);
 				opt_table_partition_merge_into 
 				table_partition_modify
 				opt_table_partition_split_into
+%type <boolean>	opt_comma
 %type <node> 	OptTabPartitionStorageAttr
 
 /*
@@ -3377,7 +3379,7 @@ OptTabPartitionBy:
 			PARTITION BY 
             TabPartitionByType '(' columnList ')' 
             OptTabPartitionsNumber 
-            OptTabSubPartitionBy
+			opt_list_subparts
             OptTabPartitionSpec						
 				{
                         PartitionBy *n = makeNode(PartitionBy); 
@@ -3385,7 +3387,7 @@ OptTabPartitionBy:
                         n->partType = $3;
                         n->keys     = $5; 
                         n->partNum  = $7;
-                        n->subPart  = $8;
+						n->subPart  = $8;
                         n->partSpec = $9;
                         n->partDepth = 0;
                         n->location  = @3;
@@ -3395,7 +3397,7 @@ OptTabPartitionBy:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-OptTabSubPartitionTemplate:
+TabSubPartitionTemplate:
 			SUBPARTITION TEMPLATE 
             '(' TabSubPartitionElemList ')' 
 				{
@@ -3406,39 +3408,65 @@ OptTabSubPartitionTemplate:
                         n->location  = @3;
                         $$ = (Node *)n;
 				}
-			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-/* subpartitions of subpartitions */
-OptTabSubSubPartitionBy:
-            ','  TabSubPartitionBy 					{ $$ = $2; }
-			| /*EMPTY*/								{ $$ = NULL; }
+opt_list_subparts: list_subparts { $$ = $1; }
+			| /*EMPTY*/ { $$ = NULL; }
 		;
 
-OptTabSubPartitionBy:
-            TabSubPartitionBy						{ $$ = $1; }
-			| /*EMPTY*/								{ $$ = NULL; }
+opt_comma: ',' { $$ = true; }
+			| /*EMPTY*/ { $$ = false; }
+		;
+
+list_subparts: TabSubPartitionBy { $$ = $1; }
+			| list_subparts opt_comma TabSubPartitionBy
+				{
+					PartitionBy *pby = (PartitionBy *)$1;
+					$$ = $1;
+
+					while (pby->subPart)
+						pby = (PartitionBy *)pby->subPart;
+
+					if (IsA($3, PartitionSpec))
+					{
+						Assert(((PartitionSpec *)$3)->istemplate);
+						Assert(IsA(pby, PartitionBy));
+
+						/* find deepesh subpart and add it there */
+						if (((PartitionBy *)pby)->partSpec != NULL)
+						{
+							elog_node_display(NOTICE, "f",
+											  ((PartitionBy *)$$)->partSpec,
+											  true);
+							elog(ERROR, "syntax error: template template");
+						}
+						((PartitionBy *)pby)->partSpec = $3;
+					}
+					else
+						((PartitionBy *)pby)->subPart = $3;
+				}
 		;
 
 TabSubPartitionBy:
 			SUBPARTITION BY 
             TabPartitionByType '(' columnList ')' 
             OptTabSubPartitionsNumber 
-            OptTabSubPartitionTemplate
-            OptTabSubSubPartitionBy
 				{
                         PartitionBy *n = makeNode(PartitionBy); 
                         n->partType = $3;
                         n->keys     = $5; 
                         n->partNum  = $7;
-                        n->subPart  = $9;
-                        n->partSpec = $8;
+                        n->subPart  = NULL;
+                        n->partSpec = NULL;
                         n->partDepth = 0;
                         n->location  = @3;
                         n->partDefault = NULL;
                         $$ = (Node *)n;
 				}
-
+			| TabSubPartitionTemplate
+				{
+					$$ = $1;
+				}
 		;
 /* END PARTITION RULES */
 
