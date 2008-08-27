@@ -86,7 +86,7 @@ extern Partition *partMakePartition(HeapTuple tuple,
 									TupleDesc tupdesc, 
 									MemoryContext mcxt);
 extern List *all_partition_relids(PartitionNode *pn);
-
+extern bool rel_is_partitioned(Oid relid);
 PgPartRule*
 get_part_rule1(Relation rel, AlterPartitionId *pid, 
 			   bool bExistError, bool bMustExist, 

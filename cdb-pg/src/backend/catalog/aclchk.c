@@ -34,6 +34,7 @@
 #include "catalog/pg_tablespace.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
+#include "commands/tablecmds.h"
 #include "miscadmin.h"
 #include "parser/parse_func.h"
 #include "utils/acl.h"
@@ -247,6 +248,7 @@ ExecuteGrantStmt(GrantStmt *stmt)
 	ListCell   *cell;
 	char	   *errormsg;
 	AclMode		all_privileges;
+	List	   *objs = NIL;
 
 	/*
 	 * Turn the regular GrantStmt into the InternalGrant form.
@@ -254,6 +256,23 @@ ExecuteGrantStmt(GrantStmt *stmt)
 	istmt.is_grant = stmt->is_grant;
 	istmt.objtype = stmt->objtype;
 	istmt.objects = objectNamesToOids(stmt->objtype, stmt->objects);
+
+	foreach(cell, istmt.objects)
+	{
+		Oid relid = lfirst_oid(cell);
+		Relation rel = heap_open(relid, AccessShareLock);
+
+		if (rel_is_partitioned(relid))
+		{
+			PartitionNode *pn = RelationBuildPartitionDesc(rel, false);
+			objs = list_concat(objs, all_partition_relids(pn));
+		}
+
+		heap_close(rel, NoLock);
+		objs = lappend_oid(objs, relid);
+	}
+	istmt.objects = objs;
+
 	/* all_privs to be filled below */
 	/* privileges to be filled below */
 	istmt.grantees = NIL;

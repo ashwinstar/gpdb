@@ -3077,9 +3077,12 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			pass = AT_PASS_ALTER_TYPE;
 			break;
 		case AT_ChangeOwner:	/* ALTER OWNER */
-			/* This command never recurses */
-			/* No command-specific prep needed */
-			pass = AT_PASS_MISC;
+			{
+				if (rel_is_partitioned(RelationGetRelid(rel)))
+					ATSimpleRecursion(wqueue, rel, cmd, recurse);
+
+				pass = AT_PASS_MISC;
+			}
 			break;
 		case AT_ClusterOn:		/* CLUSTER ON */
 		case AT_DropCluster:	/* SET WITHOUT CLUSTER */
@@ -9129,8 +9132,34 @@ all_partition_relids(PartitionNode *pn)
 	}
 }
 
+bool
+rel_is_partitioned(Oid relid)
+{
+	Relation rel = heap_open(PartitionRelationId, AccessShareLock);
+	ScanKeyData key;
+	SysScanDesc scan;
+	HeapTuple tuple;
+	bool found = false;
+
+	ScanKeyInit(&key,
+				Anum_pg_partition_parrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+	scan = systable_beginscan(rel, PartitionParrelidIndexId, true,
+							  SnapshotNow, 1, &key);
+
+	tuple = systable_getnext(scan);
+
+	if (HeapTupleIsValid(tuple))
+		found = true;
+
+	systable_endscan(scan);
+	heap_close(rel, AccessShareLock);
+	return found;
+}
+
 #if 0
-static bool
+static Oid
 rel_partition_get_master(Oid relid)
 {
 	Relation rel = heap_open(PartitionRuleRelationId, AccessShareLock);
