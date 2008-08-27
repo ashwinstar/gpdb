@@ -10190,6 +10190,10 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 			snprintf(partIdStr, sizeof(partIdStr), " for oid %u",
 					 *((Oid *)(pid->partiddef)));
 			break;
+		case AT_AP_IDDefault:			/* IDentify DEFAULT partition */
+			snprintf(partIdStr, sizeof(partIdStr), " for DEFAULT");
+			break;
+
 		default: /* XXX XXX */
 			Assert(false);
 
@@ -10273,6 +10277,11 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 		ListCell *lc;			
 		int rulerank = 1;
 
+		/* set up the relid for the default partition if necessary */
+		if ((pid->idtype == AT_AP_IDDefault)
+			&& pNode->default_part)
+				partrelid = pNode->default_part->parchildrelid;
+
 		foreach(lc, pNode->rules)
 		{
 			PartitionRule *rule = lfirst(lc);
@@ -10321,7 +10330,8 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 			bool foundit = false;
 
 			if ((pid->idtype == AT_AP_IDValue)
-				|| (pid->idtype == AT_AP_IDRank))
+				|| (pid->idtype == AT_AP_IDRank)
+				|| (pid->idtype == AT_AP_IDDefault))
 			{
 				if ((partrelid != InvalidOid)
 					&& (partrelid == rule->parchildrelid))
@@ -10387,6 +10397,12 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 							partIdStr,
 							relname)));
 				break;
+			case AT_AP_IDDefault:			/* IDentify DEFAULT partition */
+				ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("DEFAULT partition of %s does not exist",
+							relname)));
+				break;
 			default: /* XXX XXX */
 				Assert(false);
 
@@ -10408,6 +10424,14 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("partition%s of %s already exists",
 							partIdStr,
+							relname)));
+				break;
+			case AT_AP_IDDefault:			/* IDentify DEFAULT partition */
+				ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("DEFAULT partition%s of %s already exists",
+							prule->isName ?
+							partIdStr : "",
 							relname)));
 				break;
 			default: /* XXX XXX */
@@ -12159,7 +12183,14 @@ ATPExecPartDrop(Relation rel,
 							"%s does not exist, skipping",
 							lrelname
 							 )));
-
+				break;
+			case AT_AP_IDDefault:			/* IDentify DEFAULT partition */
+				ereport(NOTICE,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("DEFAULT partition for "
+							"%s does not exist, skipping",
+							lrelname
+							 )));
 				break;
 			default: /* XXX XXX */
 				Assert(false);

@@ -1075,7 +1075,8 @@ typedef enum AlterPartitionIdType
 	AT_AP_IDRank,				/* IDentifier FOR Rank */
 	AT_AP_ID_oid,				/* IDentifier by oid (for internal use only) */
 	AT_AP_IDList,				/* List of IDentifier(for internal use only) */
-	AT_AP_IDRule				/* partition rule (for internal use only) */
+	AT_AP_IDRule,				/* partition rule (for internal use only) */
+	AT_AP_IDDefault				/* IDentify DEFAULT partition */
 } AlterPartitionIdType;
 
 typedef struct AlterPartitionId /* Identify a partition by name, val, pos */

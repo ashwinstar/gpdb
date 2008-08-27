@@ -9317,63 +9317,67 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 				{
 					case AT_PartAdd:				/* Add */
 					{
-					AlterPartitionCmd 		*pc2 = 
-							(AlterPartitionCmd *) pci->arg2;
-					CreateStmt 				*ct;
-					InhRelation				*inh = makeNode(InhRelation);
-					Query					*q;
-					AlterTableCmd  			*atc = makeNode(AlterTableCmd);
-					AlterTableStmt 			*ats = makeNode(AlterTableStmt);
-					InheritPartitionCmd 	*ipc = 
-							makeNode(InheritPartitionCmd);
-					List					*cl = NIL;
+						AlterPartitionCmd 		*pc2 = 
+								(AlterPartitionCmd *) pci->arg2;
+						CreateStmt 				*ct;
+						InhRelation				*inh = makeNode(InhRelation);
+						Query					*q;
+						AlterTableCmd  			*atc = 
+								makeNode(AlterTableCmd);
+						AlterTableStmt 			*ats = 
+								makeNode(AlterTableStmt);
+						InheritPartitionCmd 	*ipc = 
+								makeNode(InheritPartitionCmd);
+						List					*cl = NIL;
+						
+						Assert(IsA(pc2->arg2, List));
+						ct = (CreateStmt *)linitial((List *)pc2->arg2);
 
-					Assert(IsA(pc2->arg2, List));
-					ct = (CreateStmt *)linitial((List *)pc2->arg2);
+						inh->relation = copyObject(rv);
+						inh->options = list_make2_int(
+								CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
+								CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
+						/* 
+						 * NOTE: 
+						 *
+						 * CREATE_TABLE_LIKE_INCLUDING_INDEXES is not
+						 * implemented...  :-( 
+						 *
+						 * XXX: available in 8.3, gotta merge it.
+						 */
 
-					inh->relation = copyObject(rv);
-					inh->options = list_make2_int(
-							CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
-							CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
-					/* 
-					 * NOTE: 
-					 *
-					 * CREATE_TABLE_LIKE_INCLUDING_INDEXES is not
-					 * implemented...  :-( 
-					 *
-					 * XXX: available in 8.3, gotta merge it.
-					 */
+						/* 
+						 * fill in remaining fields from parse time (gram.y):
+						 * the new partition is LIKE the parent and it
+						 * inherits from it 
+						 */
+						ct->tableElts = list_make1(inh);
 
-					/* 
-					 * fill in remaining fields from parse time (gram.y):
-					 * the new partition is LIKE the parent and it
-					 * inherits from it 
-					 */
-					ct->tableElts = list_make1(inh);
-
-					q = transformCreateStmt(pstate, ct, extras_before, 
-											extras_after);
-
-					cl = list_make1(q);
-
-					/* 
-					 * Add an alter table inherits() clause so that our new
-					 * partition inherits from its parent.
-					 */
-					atc->subtype = AT_AddInherit;
-					ipc->parent = copyObject(stmt->relation);
-
-					atc->def = (Node *)ipc; 
-					ats->relation = NULL; /* for now */
-					ats->cmds 	  = list_make1((Node *)atc);
-					ats->relkind  = OBJECT_TABLE;
-
-					q = transformAlterTableStmt(pstate, ats, extras_before,
+						q = transformCreateStmt(pstate, ct, extras_before, 
 												extras_after);
 
-					cl = lappend(cl, q);
+						cl = list_make1(q);
 
-					pc2->arg2 = (Node *)cl;
+						/* 
+						 * Add an alter table inherits() clause so
+						 * that our new partition inherits from its
+						 * parent.
+						 */
+						atc->subtype = AT_AddInherit;
+						ipc->parent = copyObject(stmt->relation);
+
+						atc->def = (Node *)ipc; 
+						ats->relation = NULL; /* for now */
+						ats->cmds 	  = list_make1((Node *)atc);
+						ats->relkind  = OBJECT_TABLE;
+
+						q = transformAlterTableStmt(pstate, ats, 
+													extras_before,
+													extras_after);
+						
+						cl = lappend(cl, q);
+
+						pc2->arg2 = (Node *)cl;
 					}
 					case AT_PartCoalesce:			/* Coalesce */
 					case AT_PartDrop:				/* Drop */

@@ -90,7 +90,7 @@ static bool QueryIsRule = FALSE;
  */
 /*#define __YYSCLASS*/
 
-static Node *makeAddPartitionCreateStmt(Node *n);
+static Node *makeAddPartitionCreateStmt(Node *n, Node *subSpec);
 static Node *makeColumnRef(char *relname, List *indirection, int location);
 static Node *makeTypeCast(Node *arg, TypeName *typname);
 static Node *makeStringConst(char *str, TypeName *typname, int location);
@@ -182,6 +182,7 @@ static void doNegateFloat(Value *v);
 
 %type <node>	alter_table_cmd alter_rel_cmd alter_table_partition_id_spec
 				alter_table_partition_cmd
+				alter_table_partition_id_spec_with_opt_default
 %type <list>	alter_table_cmds alter_rel_cmds 
 				part_values_clause multi_spec_value_list part_values_single
 %type <ival>	opt_table_partition_exchange_validate partition_hash_keyword
@@ -1684,32 +1685,31 @@ alter_table_cmd:
 		;
 
 opt_table_partition_split_into: 
-			INTO '(' PARTITION 
-            alter_table_partition_id_spec ','
-            PARTITION 
-            alter_table_partition_id_spec ')'	
+			INTO '(' 
+            alter_table_partition_id_spec_with_opt_default ','
+            alter_table_partition_id_spec_with_opt_default ')'	
 				{
                     /* re-use alterpartitioncmd struct here... */
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
-                    pc->partid = (Node *)$4;
-                    pc->arg1 = (Node *)$6;
+                    pc->partid = (Node *)$3;
+                    pc->arg1 = (Node *)$5;
                     pc->arg2 = NULL;
-                    pc->location = @6;
+                    pc->location = @5;
 					$$ = (Node *)pc;
                 }
 			| /* EMPTY */					{ $$ = NULL; /* default */ }
 		;
 
 opt_table_partition_merge_into: 
-			INTO PARTITION 
-            alter_table_partition_id_spec	
+			INTO 
+            alter_table_partition_id_spec_with_opt_default
 				{
                     /* re-use alterpartitioncmd struct here... */
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
-                    pc->partid = (Node *)$3;
+                    pc->partid = (Node *)$2;
                     pc->arg1 = NULL;
                     pc->arg2 = NULL;
-                    pc->location = @3;
+                    pc->location = @2;
 					$$ = (Node *)pc;
                 }
 
@@ -1842,6 +1842,30 @@ alter_table_partition_id_spec:
 				}
 		;
 
+alter_table_partition_id_spec_with_opt_default:
+			PARTITION alter_table_partition_id_spec
+				{
+					AlterPartitionId *n = (AlterPartitionId*)$2;
+                    $$ = (Node *)n;
+				}
+			| DEFAULT PARTITION alter_table_partition_id_spec
+				{
+					ereport(ERROR,
+                            (errcode(ERRCODE_SYNTAX_ERROR),
+                             errmsg("Cannot specify a name, rank, "
+                                    "or value for a DEFAULT partition "
+                                    "in this context")));
+				}
+			| DEFAULT PARTITION 
+				{
+					AlterPartitionId *n = makeNode(AlterPartitionId);
+					n->idtype = AT_AP_IDDefault;
+                    n->partiddef = NULL;
+                    n->location  = @1;
+					$$ = (Node *)n;
+				}
+
+
 alter_table_partition_cmd:
 			ADD_P opt_default PARTITION 
             OptTabPartitionBoundarySpec	OptTabSubPartitionSpec
@@ -1851,7 +1875,7 @@ alter_table_partition_cmd:
 					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
 					AlterPartitionCmd *pc2   = makeNode(AlterPartitionCmd);
 					AlterTableCmd     *n     = makeNode(AlterTableCmd);
-                    Node              *ct    = makeAddPartitionCreateStmt($6);
+                    Node              *ct    = makeAddPartitionCreateStmt($6, $5);
                     PartitionElem     *pelem = makeNode(PartitionElem); 
 
                     if ($2)
@@ -1894,7 +1918,7 @@ alter_table_partition_cmd:
 					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
 					AlterPartitionCmd *pc2   = makeNode(AlterPartitionCmd);
 					AlterTableCmd     *n     = makeNode(AlterTableCmd);
-                    Node              *ct    = makeAddPartitionCreateStmt($7);
+                    Node              *ct    = makeAddPartitionCreateStmt($7, $6);
                     PartitionElem     *pelem = makeNode(PartitionElem); 
 
                     if (pid->idtype != AT_AP_IDName)
@@ -1924,8 +1948,8 @@ alter_table_partition_cmd:
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| ALTER PARTITION 
-            alter_table_partition_id_spec 
+			| ALTER 
+            alter_table_partition_id_spec_with_opt_default
             alter_table_cmd
 				{
                     /* NOTE: only allow a subset of valid ALTER TABLE
@@ -1935,10 +1959,10 @@ alter_table_partition_cmd:
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-                    pc->partid = (Node *)$3;
-                    pc->arg1 = (Node *)$4;
+                    pc->partid = (Node *)$2;
+                    pc->arg1 = (Node *)$3;
                     pc->arg2 = NULL;
-                    pc->location = @4;
+                    pc->location = @3;
 
 					n->subtype = AT_PartAlter;
 					n->def = (Node *)pc;
@@ -2010,16 +2034,20 @@ alter_table_partition_cmd:
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| DROP PARTITION 
-            alter_table_partition_id_spec	 
+			| DROP DEFAULT PARTITION IF_P EXISTS 
             opt_drop_behavior
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					DropStmt *ds = makeNode(DropStmt);
+					AlterPartitionId *pid = makeNode(AlterPartitionId);
 
-					ds->missing_ok = FALSE;
-					ds->behavior = $4;
+					pid->idtype = AT_AP_IDDefault;
+                    pid->partiddef = NULL;
+                    pid->location  = @2;
+
+					ds->missing_ok = TRUE;
+					ds->behavior = $6;
 
                     /* 
                        build an (incomplete) drop statement for arg1: 
@@ -2027,10 +2055,36 @@ alter_table_partition_cmd:
                        validated
                     */
 
-                    pc->partid = (Node *)$3;
+                    pc->partid = (Node *)pid;
                     pc->arg1 = (Node *)ds;
                     pc->arg2 = NULL;
                     pc->location = @3;
+
+					n->subtype = AT_PartDrop;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| DROP 
+            alter_table_partition_id_spec_with_opt_default
+            opt_drop_behavior
+				{
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					DropStmt *ds = makeNode(DropStmt);
+
+					ds->missing_ok = FALSE;
+					ds->behavior = $3;
+
+                    /* 
+                       build an (incomplete) drop statement for arg1: 
+                       fill in the rest after the partition id spec is
+                       validated
+                    */
+
+                    pc->partid = (Node *)$2;
+                    pc->arg1 = (Node *)ds;
+                    pc->arg2 = NULL;
+                    pc->location = @2;
 
 					n->subtype = AT_PartDrop;
 					n->def = (Node *)pc;
@@ -2065,8 +2119,8 @@ alter_table_partition_cmd:
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| EXCHANGE PARTITION 
-            alter_table_partition_id_spec 
+			| EXCHANGE 
+            alter_table_partition_id_spec_with_opt_default 
             WITH TABLE qualified_name
             opt_table_partition_exchange_validate	
 				{
@@ -2074,59 +2128,59 @@ alter_table_partition_cmd:
 					AlterPartitionCmd *pc2 = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-                    pc->partid = (Node *)$3;
-                    pc->arg1 = (Node *)$6;
+                    pc->partid = (Node *)$2;
+                    pc->arg1 = (Node *)$5;
                     pc->arg2 = (Node *)pc2;
-                    pc2->arg1 = (Node *)makeInteger($7);
-                    pc->location = @6;
+                    pc2->arg1 = (Node *)makeInteger($6);
+                    pc->location = @5;
 
 					n->subtype = AT_PartExchange;
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| MERGE PARTITION 
-            alter_table_partition_id_spec ','
-            PARTITION alter_table_partition_id_spec 
+			| MERGE 
+            alter_table_partition_id_spec_with_opt_default ','
+            alter_table_partition_id_spec_with_opt_default
             opt_table_partition_merge_into	
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-                    pc->partid = (Node *)$3;
-                    pc->arg1 = (Node *)$6;
-                    pc->arg2 = (Node *)$7;
-                    pc->location = @6;
+                    pc->partid = (Node *)$2;
+                    pc->arg1 = (Node *)$4;
+                    pc->arg2 = (Node *)$5;
+                    pc->location = @4;
 
 					n->subtype = AT_PartMerge;
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| MODIFY PARTITION 
-            alter_table_partition_id_spec 
+			| MODIFY 
+            alter_table_partition_id_spec_with_opt_default
             table_partition_modify
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-                    pc->partid = (Node *)$3;
-                    pc->arg1 = (Node *)$4;
+                    pc->partid = (Node *)$2;
+                    pc->arg1 = (Node *)$3;
                     pc->arg2 = NULL;
-                    pc->location = @4;
+                    pc->location = @3;
 
 					n->subtype = AT_PartModify;
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| RENAME PARTITION 
-            alter_table_partition_id_spec TO IDENT	
+			| RENAME 
+            alter_table_partition_id_spec_with_opt_default TO IDENT	
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-                    pc->partid = (Node *)$3;
-                    pc->arg1 = (Node *)makeString($5);
+                    pc->partid = (Node *)$2;
+                    pc->arg1 = (Node *)makeString($4);
                     pc->arg2 = NULL;
-                    pc->location = @5;
+                    pc->location = @4;
 
 					n->subtype = AT_PartRename;
 					n->def = (Node *)pc;
@@ -2162,25 +2216,25 @@ alter_table_partition_cmd:
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| SPLIT PARTITION 
-            alter_table_partition_id_spec AT 
+			| SPLIT 
+            alter_table_partition_id_spec_with_opt_default AT 
             '(' TabPartitionBoundarySpecValList ')'	
             opt_table_partition_split_into	
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 
-                    pc->partid = (Node *)$3;
-                    pc->arg1 = (Node *)$6;
-                    pc->arg2 = (Node *)$8;
-                    pc->location = @6;
+                    pc->partid = (Node *)$2;
+                    pc->arg1 = (Node *)$5;
+                    pc->arg2 = (Node *)$7;
+                    pc->location = @5;
 
 					n->subtype = AT_PartSplit;
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| TRUNCATE PARTITION 
-            alter_table_partition_id_spec	 
+			| TRUNCATE 
+            alter_table_partition_id_spec_with_opt_default
             opt_drop_behavior
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
@@ -2193,12 +2247,12 @@ alter_table_partition_cmd:
                        validated
                     */
 					ts->relations = NULL;
-					ts->behavior = $4;
+					ts->behavior = $3;
 
-                    pc->partid = (Node *)$3;
+                    pc->partid = (Node *)$2;
                     pc->arg1 = (Node *)ts;
                     pc->arg2 = NULL;
-                    pc->location = @3;
+                    pc->location = @2;
 
 					n->subtype = AT_PartTruncate;
 					n->def = (Node *)pc;
@@ -10831,10 +10885,11 @@ SpecialRuleRelation:
 %%
 
 static Node *
-makeAddPartitionCreateStmt(Node *n)
+makeAddPartitionCreateStmt(Node *n, Node *subSpec)
 {
     AlterPartitionCmd *pc_StAttr = (AlterPartitionCmd *)n;
 	CreateStmt        *ct        = makeNode(CreateStmt);
+    PartitionBy       *pBy       = NULL;
 
     ct->relation = makeRangeVar(NULL, "fake_partition_name");
 
@@ -10859,8 +10914,19 @@ makeAddPartitionCreateStmt(Node *n)
     else
         ct->tablespacename = NULL;
 
+    if (subSpec) /* treat subspec as partition by... */
+	{
+        PartitionBy *pBy = makeNode(PartitionBy); 
+
+        pBy->partSpec = subSpec;
+        pBy->partDepth = 0;
+        pBy->location  = -1;
+        pBy->partDefault = NULL;
+        pBy->parentRel = copyObject(ct->relation);
+    }
+
     ct->distributedBy = NULL;
-    ct->partitionBy = NULL;
+    ct->partitionBy = (Node *)pBy;
     ct->oidInfo.relOid = 0;
     ct->oidInfo.comptypeOid = 0;
     ct->oidInfo.toastOid = 0;
