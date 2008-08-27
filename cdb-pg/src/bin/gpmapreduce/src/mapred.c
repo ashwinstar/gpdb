@@ -1257,8 +1257,10 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 							bufcat(&buffer, "DROP TABLE IF EXISTS ");
 							bufcat(&buffer, output->u.output.desc);
 							result = PQexec(conn, buffer->buffer);
-
 							bufreset(buffer);
+							/* fallthrough */
+
+						case MAPRED_OUTPUT_NO_MODE:
 							bufcat(&buffer, "CREATE TABLE ");
 							bufcat(&buffer, output->u.output.desc);
 							bufcat(&buffer, " AS ");
@@ -1285,6 +1287,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 				{
 					switch (output->u.output.mode)
 					{
+						case MAPRED_OUTPUT_NO_MODE:
 						case MAPRED_OUTPUT_REPLACE:
 							/* 
 							 * If there are no key columns then leave off the
