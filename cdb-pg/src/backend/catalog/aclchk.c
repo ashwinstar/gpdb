@@ -257,19 +257,23 @@ ExecuteGrantStmt(GrantStmt *stmt)
 	istmt.objtype = stmt->objtype;
 	istmt.objects = objectNamesToOids(stmt->objtype, stmt->objects);
 
-	foreach(cell, istmt.objects)
+	/* If this is a GRANT/REVOKE on a table, expand partition references */
+	if (istmt.objtype == ACL_OBJECT_RELATION)
 	{
-		Oid relid = lfirst_oid(cell);
-		Relation rel = heap_open(relid, AccessShareLock);
-
-		if (rel_is_partitioned(relid))
+		foreach(cell, istmt.objects)
 		{
-			PartitionNode *pn = RelationBuildPartitionDesc(rel, false);
-			objs = list_concat(objs, all_partition_relids(pn));
-		}
+			Oid relid = lfirst_oid(cell);
+			Relation rel = heap_open(relid, AccessShareLock);
 
-		heap_close(rel, NoLock);
-		objs = lappend_oid(objs, relid);
+			if (rel_is_partitioned(relid))
+			{
+				PartitionNode *pn = RelationBuildPartitionDesc(rel, false);
+				objs = list_concat(objs, all_partition_relids(pn));
+			}
+
+			heap_close(rel, NoLock);
+			objs = lappend_oid(objs, relid);
+		}
 	}
 	istmt.objects = objs;
 
