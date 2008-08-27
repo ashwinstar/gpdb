@@ -875,7 +875,8 @@ tool shipped with that release''')
         ''', port=self.masterport)
         if len(invalid) > 0:
             for item in invalid:
-                self.Log('FATAL', 'INVALID SEGMENT: %s:/%s' % item)
+                self.Log('FATAL', 'INVALID SEGMENT: %s:/%s' % 
+                         (item['hostname'], item['datadir']));
             raise UpgradeError('Cannot upgrade database with invalid segments')
         self.Log('INFO', 'All segments valid')
 
@@ -1476,41 +1477,47 @@ try:
 
         # Startup the old database in utility mode
         u.Startup(u.oldenv, False)
+        try:
 
-        # Get configuration and catalog information
-        # + Requires running old db on master host
-        u.ExtractInfo()
+            # Get configuration and catalog information
+            # + Requires running old db on master host
+            u.ExtractInfo()
 
-        # Check the catalog
-        # + Requires running db on all hosts
-        # + Requires configuration info collected in ExtractInfo
-        u.CheckCatalog(u.oldenv)
+            # Check the catalog
+            # + Requires running db on all hosts
+            # + Requires configuration info collected in ExtractInfo
+            u.CheckCatalog(u.oldenv)
 
-        # Create working directories on all hosts
-        # + Requires configuration info collected in ExtractInfo
-        # + Requires Execution on all hosts
-        u.CreateDirectories()
-        u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
+            # Create working directories on all hosts
+            # + Requires configuration info collected in ExtractInfo
+            # + Requires Execution on all hosts
+            u.CreateDirectories()
+            u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
 
-        # Build up Source database OID/relfile mappings
-        # + Requires running old db on all hosts
-        # + Requires created directories so we can store the mapping file
-        # + Requires execution on all hosts
-        u.BuildMappings()
+            # Build up Source database OID/relfile mappings
+            # + Requires running old db on all hosts
+            # + Requires created directories so we can store the mapping file
+            # + Requires execution on all hosts
+            u.BuildMappings()
 
-        # Write configuration files for new db
-        # + Requires configuration info collected in ExtractInfo
-        # + Requires working directory on master node
-        u.GenerateConfigFiles()
+            # Write configuration files for new db
+            # + Requires configuration info collected in ExtractInfo
+            # + Requires working directory on master node
+            u.GenerateConfigFiles()
 
-        # Call pg_dumpall and put results in a file
-        # + Requires running old db
-        # + Requires working directory on master node
-        u.DumpSchema()
+            # Call pg_dumpall and put results in a file
+            # + Requires running old db
+            # + Requires working directory on master node
+            u.DumpSchema()
 
-        # All information collected, shutdown old database
-        u.Shutdown(u.oldenv, False)
+        except Exception, e:
+            u.Log('FATAL', str(e))
+            raise e
 
+        finally:
+            # All information collected, shutdown old database
+            u.Shutdown(u.oldenv, False)
+            
         # Initalize the new database
         # + Requires working directories on all nodes
         # + Requires generated configuration file
