@@ -1520,7 +1520,35 @@ insert into bar values(200000, 2);
 select * from bar;
 drop table foo, bar;
 
--- XXX: not yet: permissions
+-- permissions
+create role part_role;
+create table foo (i int) partition by range(i)
+(start(1) end(10) every(1));
+create table bar (i int);
+grant select on foo to part_role;
+revoke all on bar from part_role;
+select has_table_privilege('part_role', 'foo_1_prt_6'::regclass, 'select');
+select has_table_privilege('part_role', 'bar'::regclass, 'select');
+alter table foo exchange partition for(rank(6)) with table bar;
+select has_table_privilege('part_role', 'foo_1_prt_6'::regclass, 'select');
+select has_table_privilege('part_role', 'bar'::regclass, 'select');
+drop table foo;
+drop table bar;
+drop role part_role;
+
+-- validation
+create table foo (i int) partition by range(i)
+(start(1) end(10) every(1));
+create table bar (i int);
+
+insert into bar values(6);
+insert into bar values(100);
+-- should fail
+alter table foo exchange partition for(rank(6)) with table bar;
+alter table foo exchange partition for(rank(6)) with table bar without
+validation;
+select * from foo;
+drop table foo, bar;
 
 -- basic test
 create table foo (i int, j int) distributed by (i)
@@ -2032,3 +2060,111 @@ drop table f;
 --should fail. bool -> numeric makes no sense
 create table f (n numeric(20, 2)) partition by range(n) (start(1::bigint)
 end('f'::bool));
+
+-- see that grant and revoke cascade to children
+create role part_role;
+create table granttest (i int, j int) partition by range(i) 
+subpartition by list(j) subpartition template (values(1, 2, 3))
+(start(1) end(4) every(1));
+
+select has_table_privilege('part_role', 'granttest'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_1'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_2'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_3'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_1_2_prt_1'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_2_2_prt_1'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_3_2_prt_1'::regclass,'select');
+grant select on granttest to part_role;
+select has_table_privilege('part_role', 'granttest'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_1'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_2'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_3'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_1_2_prt_1'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_2_2_prt_1'::regclass,'select');
+select has_table_privilege('part_role', 'granttest_1_prt_3_2_prt_1'::regclass,'select');
+grant insert on granttest to part_role;
+select has_table_privilege('part_role', 'granttest'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_1'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_2'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_3'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_1_2_prt_1'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_2_2_prt_1'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_3_2_prt_1'::regclass,'insert');
+
+revoke all on granttest from part_role;
+select has_table_privilege('part_role', 'granttest'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_1'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_2'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_3'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_1_2_prt_1'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_2_2_prt_1'::regclass,'insert');
+select has_table_privilege('part_role', 'granttest_1_prt_3_2_prt_1'::regclass,'insert');
+
+drop table granttest;
+drop role part_role;
+
+-- deep inline + optional subpartition comma:
+CREATE TABLE partsupp (
+    ps_partkey integer,
+    ps_suppkey integer,
+    ps_availqty integer,
+    ps_supplycost numeric,
+    ps_comment character varying(199)
+) distributed by (ps_partkey) PARTITION BY RANGE(ps_suppkey)
+          SUBPARTITION BY RANGE(ps_partkey)
+                  SUBPARTITION BY RANGE(ps_supplycost) 
+          (
+          PARTITION p1_1 START (1) END (1666667) EVERY (1666666) 
+                  (
+                  START (1) END (19304783) 
+                          (
+                          START (1::numeric) END (501::numeric) EVERY (500), 
+                          START (501::numeric) END (1001::numeric) EVERY (500)
+                          ), 
+                  START (19304783) END (100000001) 
+                          (
+                          START (1::numeric) END (501::numeric) EVERY (500), 
+                          START (501::numeric) END (1001::numeric) EVERY (500)
+                          )
+                  ), 
+          PARTITION p1_2 START (1666667) END (3333333) EVERY (1666666) 
+                  (
+                  START (1) END (19304783) 
+                          (
+                          START (1::numeric) END (501::numeric) EVERY (500), 
+                          START (501::numeric) END (1001::numeric) EVERY (500)
+                          ), 
+                  START (19304783) END (100000001) 
+                          (
+                          START (1::numeric) END (501::numeric) EVERY (500), 
+                          START (501::numeric) END (1001::numeric) EVERY (500)
+                          )
+                  ), 
+          PARTITION p1_3 START (3333333) END (4999999) EVERY (1666666) 
+                  (
+                  START (1) END (19304783) 
+                          (
+                          START (1::numeric) END (501::numeric) EVERY (500), 
+                          START (501::numeric) END (1001::numeric) EVERY (500)
+                          ), 
+                  START (19304783) END (100000001) 
+                          (
+                          START (1::numeric) END (501::numeric) EVERY (500), 
+                          START (501::numeric) END (1001::numeric) EVERY (500)
+                          )
+                  ), 
+          PARTITION p1_4 START (4999999) END (5000001) EVERY (1666666) 
+                  (
+                  START (1) END (19304783) 
+                          (
+                          START (1::numeric) END (501::numeric) EVERY (500), 
+                          START (501::numeric) END (1001::numeric) EVERY (500)
+                          ), 
+                  START (19304783) END (100000001) 
+                          (
+                          START (1::numeric) END (501::numeric) EVERY (500), 
+                          START (501::numeric) END (1001::numeric) EVERY (500)
+                          )
+                  )
+          );
+

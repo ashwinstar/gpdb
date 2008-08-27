@@ -4001,10 +4001,18 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 					{
 						case CONSTR_CHECK:
 							if (!ExecQual(con->qualstate, econtext, true))
-								ereport(ERROR,
-										(errcode(ERRCODE_CHECK_VIOLATION),
-										 errmsg("check constraint \"%s\" is violated by some row",
+							{
+								if (OidIsValid(tab->exchange_relid))
+									ereport(ERROR,
+											(errcode(ERRCODE_CHECK_VIOLATION),
+											 errmsg("exchange table contains a row which violates the partitioning specification of \"%s\"",
+													get_rel_name(tab->relid))));
+								else
+									ereport(ERROR,
+											(errcode(ERRCODE_CHECK_VIOLATION),
+											 errmsg("check constraint \"%s\" is violated by some row",
 												con->name)));
+							}
 							break;
 						case CONSTR_FOREIGN:
 							/* Nothing to do here */
