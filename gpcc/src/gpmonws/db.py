@@ -11,7 +11,10 @@ pgport = int(pgport)
 pghost = os.environ.get('PGHOST', 'localhost')
 conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60)
 
-def metrics_now():
-    conn.execute('select * from metrics_now order by hostname');
+def metrics_now(host):
+    if host:
+        conn.execute("select * from metrics_now where hostname='%s'" % host)
+    else:
+        conn.execute('select * from metrics_now order by hostname');
     return conn.iterate_dict()
 

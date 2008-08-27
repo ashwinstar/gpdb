@@ -44,7 +44,7 @@ class system:
     def GET(self, ses=None):
         i = web.input(start='', end='', host='', interval='', sd='')
         if i.start.lower() == 'last':
-            dgen = db.metrics_now()
+            dgen = db.metrics_now(i.host)
             hosts = [h for h in dgen]
             if hosts:
                 ctime = hosts[0]['ctime']
