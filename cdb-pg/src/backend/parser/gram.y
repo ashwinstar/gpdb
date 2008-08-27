@@ -3022,11 +3022,11 @@ OptTabPartitionSpec: '(' TabPartitionElemList ')'
 		;
 
 OptTabSubPartitionSpec: 
-            '(' TabSubPartitionElemList OptTabSubPartitionSpec ')' 
+            '(' TabSubPartitionElemList ')' 
 				{
                         PartitionSpec *n = makeNode(PartitionSpec); 
                         n->partElem  = $2;
-                        n->subSpec   = $3;
+                        n->subSpec   = NULL;
                         n->location  = @2;
                         $$ = (Node *)n;
 				}
@@ -3254,42 +3254,42 @@ TabPartitionElem:
 
 TabSubPartitionElem: 
             TabSubPartitionNameDecl OptTabPartitionBoundarySpec	
-            OptTabPartitionStorageAttr
+            OptTabSubPartitionSpec OptTabPartitionStorageAttr
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
-                        n->subSpec   = NULL;
+                        n->subSpec   = $3;
                         n->location  = @1;
                         n->isDefault = 0;
-                        n->storeAttr = $3;
+                        n->storeAttr = $4;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
 /* allow boundary spec for default partition in parser, but complain later */
 			| TabSubPartitionDefaultNameDecl OptTabPartitionBoundarySpec	
-              OptTabPartitionStorageAttr
+              OptTabSubPartitionSpec OptTabPartitionStorageAttr
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = $1;
                         n->boundSpec = $2;
-                        n->subSpec   = NULL;
+                        n->subSpec   = $3;
                         n->location  = @1;
                         n->isDefault = true;
-                        n->storeAttr = $3;
+                        n->storeAttr = $4;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
-			| TabPartitionBoundarySpec 	
+			| TabPartitionBoundarySpec OptTabSubPartitionSpec	
               OptTabPartitionStorageAttr
 				{
                         PartitionElem *n = makeNode(PartitionElem); 
                         n->partName  = NULL;
                         n->boundSpec = $1;
-                        n->subSpec   = NULL;
+                        n->subSpec   = $2;
                         n->location  = @1;
-                        n->isDefault = 0;
-                        n->storeAttr = $2;
+                        n->isDefault = false;
+                        n->storeAttr = $3;
                         n->AddPartDesc = NULL;
                         $$ = (Node *)n;
 				}
@@ -3387,7 +3387,7 @@ OptTabPartitionBy:
                         n->partType = $3;
                         n->keys     = $5; 
                         n->partNum  = $7;
-						n->subPart  = $8;
+                        n->subPart  = $8;
                         n->partSpec = $9;
                         n->partDepth = 0;
                         n->location  = @3;
@@ -3407,6 +3407,28 @@ TabSubPartitionTemplate:
 						n->istemplate  = true;
                         n->location  = @3;
                         $$ = (Node *)n;
+
+						/* a little (temporary?) syntax check on templates */
+						if (n->partElem)
+						{
+							List *elems;
+							ListCell *lc;
+							Assert(IsA(n->partElem, List));
+
+							elems = (List *)n->partElem;
+							foreach(lc, elems)
+							{
+								PartitionElem *e = lfirst(lc);
+
+								if (e->subSpec)
+									ereport(ERROR,
+											(errcode(ERRCODE_SYNTAX_ERROR),
+											errmsg("template cannot contain "
+												   "specification for child "
+												   "partition")));
+							}
+
+						}
 				}
 		;
 
@@ -3434,12 +3456,8 @@ list_subparts: TabSubPartitionBy { $$ = $1; }
 
 						/* find deepesh subpart and add it there */
 						if (((PartitionBy *)pby)->partSpec != NULL)
-						{
-							elog_node_display(NOTICE, "f",
-											  ((PartitionBy *)$$)->partSpec,
-											  true);
-							elog(ERROR, "syntax error: template template");
-						}
+							yyerror("syntax error");
+
 						((PartitionBy *)pby)->partSpec = $3;
 					}
 					else
