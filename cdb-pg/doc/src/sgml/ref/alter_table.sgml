@@ -29,6 +29,17 @@ ALTER TABLE <replaceable class="PARAMETER">name</replaceable>
 ALTER TABLE <replaceable class="PARAMETER">name</replaceable>
     SET SCHEMA <replaceable class="PARAMETER">new_schema</replaceable>
 
+ALTER TABLE <replaceable>parent_table_name</replaceable> 
+  [ ALTER PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) } [...] ]
+  | DROP PARTITION [IF EXISTS] { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) } [CASCADE]
+  | TRUNCATE PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) }
+  | RENAME PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) }
+  | ADD DEFAULT PARTITION <replaceable>name</replaceable>
+  | ADD PARTITION [name] <replaceable>partition_element</replaceable>
+         [ ( <replaceable>subpartition_specification</replaceable> ) ]
+  | EXCHANGE PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) } 
+         WITH <replaceable>table_name</replaceable> [ WITH | WITHOUT VALIDATION ]
+
 where <replaceable class="PARAMETER">action</replaceable> is one of:
 
     ADD [ COLUMN ] <replaceable class="PARAMETER">column</replaceable> <replaceable class="PARAMETER">type</replaceable> [ <replaceable class="PARAMETER">column_constraint</replaceable> [ ... ] ]
@@ -52,6 +63,32 @@ where <replaceable class="PARAMETER">action</replaceable> is one of:
     NO INHERIT <replaceable class="PARAMETER">parent_table</replaceable>
     OWNER TO <replaceable class="PARAMETER">new_owner</replaceable>
     SET TABLESPACE <replaceable class="PARAMETER">new_tablespace</replaceable>
+
+where <replaceable>partition_element</replaceable> is:
+    VALUES (<replaceable>list_value</replaceable> [,...] )
+  | START ([<replaceable>datatype</replaceable>] '<replaceable>start_value</replaceable>') [INCLUSIVE | EXCLUSIVE]
+     [ END ([<replaceable>datatype</replaceable>] '<replaceable>end_value</replaceable>') [INCLUSIVE | EXCLUSIVE] ]
+  | END ([<replaceable>datatype</replaceable>] '<replaceable>end_value</replaceable>') [INCLUSIVE | EXCLUSIVE]
+[ WITH ( <replaceable>partition_storage_parameter</replaceable>=<replaceable>value</replaceable> [, ... ] ) ]
+[ TABLESPACE <replaceable>tablespace</replaceable> ]
+
+where <replaceable>subpartition_specification</replaceable> is:
+
+<replaceable>subpartition_element</replaceable> [, ...]
+
+and <replaceable>subpartition_element</replaceable> is:
+   DEFAULT SUBPARTITION <replaceable>name</replaceable>
+  | [SUBPARTITION <replaceable>name</replaceable>] VALUES (<replaceable>list_value</replaceable> [,...] )
+  | [SUBPARTITION <replaceable>name</replaceable>] 
+     START ([<replaceable>datatype</replaceable>] '<replaceable>start_value</replaceable>') [INCLUSIVE | EXCLUSIVE]
+     [ END ([<replaceable>datatype</replaceable>] '<replaceable>end_value</replaceable>') [INCLUSIVE | EXCLUSIVE] ]
+     [ EVERY ([<replaceable>datatype</replaceable>] [<replaceable>number</replaceable> | INTERVAL] '<replaceable>interval_value</replaceable>') ]
+  | [SUBPARTITION <replaceable>name</replaceable>] 
+     END ([<replaceable>datatype</replaceable>] '<replaceable>end_value</replaceable>') [INCLUSIVE | EXCLUSIVE]
+     [ EVERY ([<replaceable>datatype</replaceable>] [<replaceable>number</replaceable> | INTERVAL] '<replaceable>interval_value</replaceable>') ]
+[ WITH ( <replaceable>partition_storage_parameter</replaceable>=<replaceable>value</replaceable> [, ... ] ) ]
+[ TABLESPACE <replaceable>tablespace</replaceable> ]
+
 </synopsis>
  </refsynopsisdiv>
 
