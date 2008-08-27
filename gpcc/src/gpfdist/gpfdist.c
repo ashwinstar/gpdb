@@ -1,12 +1,23 @@
-#include <assert.h>
+#include <apr_env.h>
+#include <apr_file_info.h>
+#include <apr_getopt.h>
+#include <apr_hash.h>
+#include <apr_pools.h>
+#include <apr_signal.h>
+#include <apr_strings.h>
+#include <apr_time.h>
+#include <event.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <strings.h>
 #ifndef WIN32
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
+#define SOCKET int
+#define closesocket(x)   close(x)
 #else
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
@@ -15,19 +26,7 @@
 #define SHUT_WR SD_SEND
 #define SHUT_RD SD_RECEIVE
 #endif
-
-#include <signal.h>
-#include <apr_signal.h>
-#include <apr_strings.h>
-#include <apr_getopt.h>
-#include <apr_hash.h>
-#include <apr_file_info.h>
-#include <apr_time.h>
-#include <apr_env.h>
-#include <apr_fnmatch.h>
 #include <fstream/fstream.h>
-
-#include <apr.h>
 
 /*  A data block */
 typedef struct blockhdr_t blockhdr_t;
@@ -38,7 +37,6 @@ struct blockhdr_t{
 
 typedef struct block_t block_t;
 struct block_t {
-    int i;
     blockhdr_t  hdr;
     int         bot, top;
     char        byte[FSTREAM_BLOCKSIZE];
@@ -47,13 +45,8 @@ struct block_t {
 #define FLINE		__FILE__":"APR_STRINGIFY(__LINE__)
 
 int gprint(const char* fmt, ...);
-int gfatal(const char* fline, const char* fmt, ...);
+void gfatal(const char* fline, const char* fmt, ...);
 int gwarning(const char* fline, const char* fmt, ...);
-
-#ifndef WIN32
-#define SOCKET int
-#define closesocket(x)   close(x)
-#endif
 
 /**************
 
@@ -89,11 +82,8 @@ struct gnet_request_t {
     char* hvalue[50];
 };
 
-static APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_pool_t* pool);
-static APR_DECLARE(char*) gstring_trim(char* s);
-
-
-#include <event.h>
+static gnet_request_t*gnet_parse_request(const char* buf, int* len, apr_pool_t* pool);
+static char*gstring_trim(char* s);
 
 #ifndef GP_VERSION
 #define GP_VERSION unknown
@@ -119,7 +109,7 @@ static struct {
 #define local_ntohll(n)  ((((apr_uint64_t) ntohl(n)) << 32LL) | (apr_uint32_t) ntohl(((apr_uint64_t)n) >> 32LL))
 #endif
 
-#define TR(x)  if (!opt.V) ; else printf x
+#define TR(x)  while (!opt.V){printf x;break;}
 
 static void
 block_fill_header(block_t*b,const struct fstream_filename_and_offset*fos)
@@ -164,14 +154,11 @@ static struct {
     apr_pool_t* pool;
     SOCKET listen_sock;
     struct event listen_event;
-    
     struct {
 	int gen;
 	apr_hash_t* tab;
     } session;
-} gcb = {0};
-
-
+}gcb;
 
 /*  A session */
 typedef struct session_t session_t;
@@ -185,7 +172,6 @@ struct session_t {
     int         nrequest;	/* # requests attached to this session */
     apr_time_t  mtime;		/* time when nrequest was modified */
 };
-
 
 /*  A http request */
 typedef struct request_t request_t;
@@ -208,9 +194,7 @@ struct request_t {
 	gnet_request_t* req; /* a parsed HTTP request, NULL if still incomplete. */
     } in;
 
-    struct {
-	block_t block;		/* next block to send out */
-    } out;
+    block_t out;		/* next block to send out */
 };
 
 
@@ -391,7 +375,6 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	usage("Error: illegal arguments");
 }
 
-
 /* send gp-proto==1 ctl info */
 static void gp1_send_eof(request_t* r);
 static void gp1_send_errmsg(request_t* r, const char* msg);
@@ -403,7 +386,6 @@ static void session_detach(request_t* r);
 static void session_end(session_t* s, int error);
 static void session_free(session_t* s);
 static void request_end(request_t* r, int error, const char* errmsg);
-
 
 /* send an error response */
 static void http_error(request_t* r, int code, const char* msg)
@@ -426,23 +408,17 @@ static void http_error(request_t* r, int code, const char* msg)
 /* send an empty response */
 static void http_empty(request_t* r)
 {
-    const char* buf = "HTTP/1.0 200 ok\r\n"
+    static const char buf[]="HTTP/1.0 200 ok\r\n"
 	"Content-type: text/plain\r\n"
 	"Content-length: 0\r\n"
 	"Expires: 0\r\n"
 	"X-GPFDIST-VERSION: " GP_VERSIONX "\r\n"
 	"Cache-Control: no-cache\r\n"
 	"Connection: close\r\n\r\n";
-
-    static int n = 0;
     int m;
-
     gprint("%s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-
-    if (n == 0) 
-	n = strlen(buf);
-    m = send(r->sock, buf, n, 0);
-    if (m != n) 
+    m = send(r->sock, buf, sizeof buf-1, 0);
+    if (m != sizeof buf-1) 
 	gfatal(FLINE, "assert failed");
 }
 
@@ -476,21 +452,6 @@ static apr_status_t http_ok(request_t* r)
     return 0;
 }
 
-#if 0
-// Unused function.
-static void print_request(gnet_request_t* r)
-{
-    int i;
-    for (i = 0; i < r->argc; i++) {
-        gprint("  arg[%d] = %s\n", i, r->argv[i]);
-    }
-
-    for (i = 0; i < r->hc; i++) {
-        gprint("  hdr[%s] = %s\n", r->hname[i], r->hvalue[i]);
-    }
-}
-#endif
-
 /* Finished a request. Close socket and cleanup. 
    Note: ending a request does not mean that the session is ended.
    Maybe there is a request out there (of the same session), that still 
@@ -510,11 +471,10 @@ static void request_end(request_t* r, int error, const char* errmsg)
     TR(("[%d] request end\n", r->sock));
 
     /* If we still have a block outstanding, the session is corrupted. */
-    if (r->out.block.i) {
+    if (r->out.top != r->out.bot) {
 	gwarning(FLINE, "request failure resulting in session failure");
 	if (s) 
 	    session_end(s, 1);
-	r->out.block.i = 0;
     }
     else {
 	session_detach(r);
@@ -526,8 +486,8 @@ static void request_end(request_t* r, int error, const char* errmsg)
     apr_pool_destroy(r->pool);
 }
 
-
-static int local_send(int fd, const char* buf, int buflen)
+static int
+local_send(int fd, const char* buf, int buflen)
 {
     int n = send(fd, buf, buflen, 0);
     if (n < 0) {
@@ -543,55 +503,44 @@ static int local_send(int fd, const char* buf, int buflen)
     return n;
 }
 
-static void gp1_send_eof(request_t* r)
+static int
+local_sendall(int fd, const char* buf, int buflen)
 {
-    static char EOFSTR[5] = { 'D', 0, 0, 0, 0 };
-    char* p = EOFSTR;
-    char* q = EOFSTR + sizeof(EOFSTR);
-    while (p < q) {
-	int n = q - p;
-	n = local_send(r->sock, p, n);
-	if (n < 0) 
-	    return;
-	p += n;
+    int oldlen=buflen;
+    while (buflen){
+	int i=local_send(fd,buf,buflen);
+	if (i < 0)
+	    return i;
+	buf += i;
+	buflen -= i;
     }
-    TR(("[%d] sent EOF\n", r->sock));
+    return oldlen;
 }
 
-
-static void gp1_send_errmsg(request_t* r, const char* errmsg)
+static int
+gp1_send_header(request_t*r,char letter,int length)
 {
     char hdr[5];
-    apr_int32_t len = strlen(errmsg);
-    const char* p;
-    const char* q;
-    
-    hdr[0] = 'E';
-    len = htonl(len);
-    memcpy(&hdr[1], &len, 4);
-
-    p = hdr;
-    q = p + sizeof(hdr);
-    while (p < q) {
-	int n = q - p;
-	n = local_send(r->sock, p, n);
-	if (n < 0) 
-	    return;
-	p += n;
-    }
-
-    p = errmsg;
-    q = p + strlen(p);
-    while (p < q) {
-	int n = q - p;
-	n = local_send(r->sock, p, n);
-	if (n < 0) 
-	    return;
-	p += n;
-    }
+    const char*p=hdr;
+    hdr[0] = letter;
+    length = htonl(length);
+    memcpy(hdr+1,&length,4);
+    return local_sendall(r->sock,p,5)<0?-1:0;
 }
 
+static void gp1_send_eof(request_t* r)
+{
+    if (!gp1_send_header(r,'D',0))
+	TR(("[%d] sent EOF\n", r->sock));
+}
 
+static void
+gp1_send_errmsg(request_t* r, const char* errmsg)
+{
+    apr_int32_t len=strlen(errmsg);
+    if (!gp1_send_header(r,'E',len))
+	local_sendall(r->sock,errmsg,len);
+}
 
 /* Get a block out of the session. return error string. */
 static const char*
@@ -599,7 +548,7 @@ session_get_block(session_t* s, block_t* retblock)
 {
     int size;
     struct fstream_filename_and_offset fos;
-    retblock->i = 0;
+    retblock->bot = retblock->top = 0;
     if (s->is_error || 0 == s->fstream) {
 	session_end(s, 0);
 	return 0;
@@ -614,8 +563,6 @@ session_get_block(session_t* s, block_t* retblock)
 	session_end(s, 0);
 	return 0;
     }
-    retblock->i = 1;
-    retblock->bot = 0;
     retblock->top = size;
     block_fill_header(retblock,&fos);
     return 0;
@@ -806,13 +753,8 @@ static void session_attach(request_t* r)
     r->session = s;
 
     /* finally, tell peer that we are ready to send data */
-    if (0 != http_ok(r)) {
+    if (0 != http_ok(r))
 	request_end(r, 1, 0);
-	return;
-    }
-
-
-    return;
 }
 
 
@@ -832,31 +774,25 @@ static void do_write(int fd, short event, void* arg)
     /* Loop at most 3 blocks or until we choke on the socket */
     for (i = 0; i < 3; i++) {
 	/* get a block (or find a remaining block) */
-	if (! r->out.block.i) {
-	    const char* ferror = session_get_block(r->session, &r->out.block);
+	if (r->out.top == r->out.bot) {
+	    const char* ferror = session_get_block(r->session, &r->out);
 	    if (ferror) {
 		request_end(r, 1, ferror);
 		return;
 	    }
-	    if (! r->out.block.i) {
+	    if (! r->out.top) {
 		request_end(r, 0, 0);
 		return;
 	    }
 	}
 
-	b = &r->out.block;
-	if (b->bot == b->top) {
-	    /* skip empty file */
-	    r->out.block.i = 0;
-	    continue;
-	}
+	b = &r->out;
 	if (r->gp_proto == 1) {
 	    n = b->hdr.htop - b->hdr.hbot;
 	    if (n > 0) {
 		n = local_send(fd, b->hdr.hbyte + b->hdr.hbot, n);
 		if (n < 0) {
 		    perror("send");
-		    r->out.block.i = 0;
 		    request_end(r, 1, 0);
 		    return;
 		}
@@ -880,7 +816,6 @@ static void do_write(int fd, short event, void* arg)
 	n = local_send(fd, b->byte + b->bot, n);
 	if (n < 0) {
 	    perror("send");
-	    r->out.block.i = 0;
 	    request_end(r, 1, 0);
 	    return;
 	}
@@ -892,13 +827,11 @@ static void do_write(int fd, short event, void* arg)
 	    TR(("[%d] network full\n", fd));
 	    break;
 	}
-	r->out.block.i = 0;
     }
 
     /* Set up for this routine to be called again */
     if (setup_write(r)) 
 	request_end(r, 1, 0);
-    return;
 }
 
 
@@ -1041,18 +974,15 @@ static void do_read(int fd, short event, void* arg)
     *p = 0;
 
     /*   - remove / prefixes */
-    for (p = r->path; *p == '/'; p++);
-    r->path = p;
+    for (;*r->path=='/';r->path++);
 
     /*   - forbid .. dot dot  */
-    for (p = r->path; 0 != (p = strchr(p, '.')); p++) {
-        if (p[1] == '.') {
-            gwarning(FLINE, "reject invalid request from %s [%s %s]",
-                         r->peer, r->in.req->argv[0], r->in.req->argv[1]);
-            http_error(r, 400, "invalid request");
-            request_end(r, 1, 0);
-            return;
-        }
+    if (strstr(r->path,"..")){
+	gwarning(FLINE, "reject invalid request from %s [%s %s]",
+		     r->peer, r->in.req->argv[0], r->in.req->argv[1]);
+	http_error(r, 400, "invalid request");
+	request_end(r, 1, 0);
+	return;
     }
     
     /*   - make the new path relative to opt.d */
@@ -1077,10 +1007,8 @@ static void do_read(int fd, short event, void* arg)
 	    else if (0 == strcmp("X-GP-PROTO", r->in.req->hname[i]))
 		gp_proto = r->in.req->hvalue[i];
 
-	    if (r->in.req->hname[i][0] == 'X') {
+	    if (r->in.req->hname[i][0] == 'X')
 		TR(("%s: %s\n", r->in.req->hname[i], r->in.req->hvalue[i]));
-	    }
-
 	}
 	r->gp_proto = strtol(gp_proto, 0, 0);
 	if (r->gp_proto != 0 && r->gp_proto != 1) {
@@ -1326,7 +1254,7 @@ int main(int argc, const char* const argv[])
     return event_dispatch();
 }
 
-static APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
+static gnet_request_t*gnet_parse_request(const char* buf, int* len, apr_pool_t* pool)
 {
     int n = *len;
     const char* p;
@@ -1411,7 +1339,7 @@ static APR_DECLARE(gnet_request_t*) gnet_parse_request(const char* buf, int* len
 }
 
 
-static APR_DECLARE(char*) gstring_trim(char* s)
+static char*gstring_trim(char* s)
 {
     char* p;
     s += strspn(s, " \t\r\n");
@@ -1435,7 +1363,8 @@ static char* datetime(void)
     return buf;
 }
 
-APR_DECLARE(int) gprint(const char* fmt, ...)
+int
+gprint(const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1445,7 +1374,8 @@ APR_DECLARE(int) gprint(const char* fmt, ...)
 }
 
 
-APR_DECLARE(int) gfatal(const char* fline, const char* fmt, ...)
+void
+gfatal(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
@@ -1453,11 +1383,11 @@ APR_DECLARE(int) gfatal(const char* fline, const char* fmt, ...)
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n          ... exiting\n"); 
     exit(1);
-    return 0;
 }
 
 
-APR_DECLARE(int) gwarning(const char* fline, const char* fmt, ...)
+int
+gwarning(const char* fline, const char* fmt, ...)
 {
     va_list ap;
     va_start(ap, fmt);
