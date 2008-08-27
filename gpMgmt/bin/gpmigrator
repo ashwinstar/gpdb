@@ -901,7 +901,7 @@ Cannot downgrade a database with 3.2 style partitioning     <<<<<
 -------------------------------------------------------
 ''')
                 c = self.Select(
-                    "SELECT COUNT(*) FROM pg_class WHERE relkind = 'a'", db=db, port=self.masterport)
+                    "SELECT COUNT(*) FROM pg_appendonly", db=db, port=self.masterport)
                 if c[0] > 0:
                     raise UpgradeError(
 '''
