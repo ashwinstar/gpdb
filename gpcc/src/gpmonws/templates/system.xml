@@ -1,8 +1,8 @@
-$def with (dgen)
+$def with (ctime, hosts)
 <?xml version="1.0"?>
-<system>
+<system start="$ctime" end="$ctime">
 $ keys = None
-$for row in dgen:
+$for row in hosts:
     <host name='$row['hostname']'>
             $if not keys:
             $    keys = row.keys()

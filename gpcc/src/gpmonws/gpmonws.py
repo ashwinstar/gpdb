@@ -1,4 +1,4 @@
-import os, sys
+import os, sys, datetime
 
 gphome = os.environ.get('GPHOME')
 if not gphome:
@@ -35,7 +35,9 @@ if not datadir:
 if not os.path.isdir(datadir):
     sys.exit('MASTER_DATA_DIRECTORY "%s" is not valid' % datadir)
 
-            
+
+
+
 
 class system:
     #@access()
@@ -43,7 +45,14 @@ class system:
         i = web.input(start='', end='', host='', interval='', sd='')
         if i.start.lower() == 'last':
             dgen = db.metrics_now()
-            return render.system(dgen)
+            hosts = [h for h in dgen]
+            if hosts:
+                ctime = hosts[0]['ctime']
+            else: 
+                ctime = datetime.datetime.now().replace(microsecond=0).isoformat(' ')
+
+            return render.system(ctime, hosts)
+
         sys.stderr.write("system\n")
         sys.stderr.write('start=%s\n' % str(i.start))
         sys.stderr.write('host=%s\n' % str(i.host))
