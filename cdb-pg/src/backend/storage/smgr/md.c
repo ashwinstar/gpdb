@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <sys/file.h>
 
+#include "access/aosegfiles.h"  /* MAX_AOREL_CONCURRENCY */
 #include "catalog/catalog.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"
@@ -274,7 +275,16 @@ mdunlink(RelFileNode rnode, bool isRedo)
 	}
 
 #ifndef LET_OS_MANAGE_FILESIZE
-	/* Delete the additional segments, if any */
+	
+	/* 
+	 * Delete the additional segments, if any. 
+	 * 
+	 * This is done by sequentially incrementing the segment number and checking
+	 * for file existance. Before AO tables we would quit if we reach a non
+	 * existing segment file. However since AO segment files are non sequential
+	 * in number, and so we must check for all possibly existing AO relfiles
+	 * and remove them as well (0 >= segno < MAX_AOREL_CONCURRENCY)
+	 */
 	if (status)
 	{
 		char	   *segpath = (char *) palloc(strlen(path) + 12);
@@ -295,7 +305,15 @@ mdunlink(RelFileNode rnode, bool isRedo)
 					status = false;
 					save_errno = errno;
 				}
-				break;
+				else
+				{
+					/* got ENOENT */
+					if(segno >= MAX_AOREL_CONCURRENCY)
+						break;
+					else
+						continue;
+				}
+				
 			}
 		}
 		pfree(segpath);
