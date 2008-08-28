@@ -32,21 +32,28 @@ txt_file_read(gfile_t*fd,void*ptr,size_t size)
     size_t i;
     do
 	i = read(fd->u.txt,ptr,size);
-    while (i<0 && errno==EAGAIN);
+    while (i<0 && errno==EINTR);
     return i;
 }
 
 static int
 txt_file_close(gfile_t*fd)
 {
-    return close(fd->u.txt);
+    int i;
+    do
+	i = close(fd->u.txt);
+    while (i<0 && errno==EINTR);
+    return i;
 }
 
 static int
 txt_file_open(gfile_t*fd,const char*fpath) 
 {
-    if (-1 == (fd->u.txt=open(fpath,O_RDONLY|O_BINARY))) {
-	fprintf(stderr,"gfile open failed %s\n",fpath);
+    do
+	fd->u.txt = open(fpath,O_RDONLY|O_BINARY);
+    while (fd->u.txt<0 && errno==EINTR);
+    if (-1 == fd->u.txt) {
+	gfile_printf_then_putc_newline("gfile open failed %s",fpath);
 	return 1;
     }
     fd->read = txt_file_read;
@@ -71,7 +78,7 @@ static int
 bz_file_open(gfile_t*fd,const char*fpath)
 {
     if (!(fd->u.bz=BZ2_bzopen(fpath,"rb"))){
-	fprintf(stderr,"gfile gzopen failed %s\n",fpath);
+	gfile_printf_then_putc_newline("gfile gzopen failed %s",fpath);
 	return 1;
     }
     fd->read = bz_file_read;
@@ -97,7 +104,7 @@ static int
 gz_file_open(gfile_t*fd,const char*fpath)
 {
     if (!(fd->u.gz=gzopen(fpath,"rb"))){
-	fprintf(stderr,"gfile gzopen failed %s\n",fpath);
+	gfile_printf_then_putc_newline("gfile gzopen failed %s",fpath);
 	return 1;
     }
     fd->read = gz_file_read;
@@ -114,15 +121,15 @@ gfile_open(const char*fpath)
     int e=1;
 
     if (stat(fpath,&sta)){
-	fprintf(stderr,"gfile stat %s failure\n",fpath);
+	gfile_printf_then_putc_newline("gfile stat %s failure",fpath);
 	return 0;
     }
     if (S_ISDIR(sta.st_mode)){
-	fprintf(stderr,"gfile %s is a directory\n",fpath);
+	gfile_printf_then_putc_newline("gfile %s is a directory",fpath);
 	return 0;
     }
-    if (!(fd=malloc(sizeof*fd))){
-	fprintf(stderr,"gfile out of memory\n");
+    if (!(fd=gfile_malloc(sizeof*fd))){
+	gfile_printf_then_putc_newline("gfile out of memory");
 	return 0;
     }
     memset(fd,0,sizeof*fd);
@@ -131,13 +138,13 @@ gfile_open(const char*fpath)
     else if (s&&strcasecmp(s,".bz2")==0)
 	e = bz_file_open(fd,fpath);
     else if (s&&strcasecmp(s,".z") == 0)
-	fprintf(stderr,"gfile compression .z file is not supported\n");
+	gfile_printf_then_putc_newline("gfile compression .z file is not supported");
     else if (s&&strcasecmp(s,".zip") == 0)
-	fprintf(stderr,"gfile compression zip is not supported\n");
+	gfile_printf_then_putc_newline("gfile compression zip is not supported");
     else
 	e = txt_file_open(fd,fpath);
     if (e){
-	free(fd);
+	gfile_free(fd);
 	return 0;
     }
     return fd;
@@ -147,7 +154,7 @@ int
 gfile_close(gfile_t*fd)
 {
     int e=fd->close(fd);
-    free(fd);
+    gfile_free(fd);
     return e;
 }
 

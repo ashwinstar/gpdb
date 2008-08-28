@@ -28,6 +28,7 @@
 
 #include "postgres.h"
 
+#include <stdarg.h>
 #include <sys/stat.h>
 
 #include "access/fileam.h"
@@ -49,7 +50,7 @@
 #include "cdb/cdbvars.h"
 #include "postmaster/postmaster.h"  /*postmaster port*/
 #include <arpa/inet.h>
-
+#include <fstream/gfile.h>
 
 
 typedef struct extvar_t extvar_t;
@@ -1301,4 +1302,35 @@ void readHeaderLine(CopyState pstate)
 void AtAbort_ExtTables(void)
 {
     close_external_file(g_dataSource, g_dataSourceName);
+}
+void
+gfile_printf_then_putc_newline(const char*format,...)
+{
+    char*a;
+    va_list va;
+    int i;
+    va_start(va,format);
+    i = vsnprintf(0,0,format,va);
+    va_end(va);
+    if (i < 0)
+	elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed.");
+    else if (!(a=palloc(i+1)))
+	elog(NOTICE,"gfile_printf_then_putc_newline palloc failed.");
+    else{
+	va_start(va,format);
+	vsnprintf(a,i+1,format,va);
+	va_end(va);
+	elog(NOTICE,"%s",a);
+	pfree(a);
+    }
+}
+void*
+gfile_malloc(size_t size)
+{
+    return palloc(size);
+}
+void
+gfile_free(void*a)
+{
+    pfree(a);
 }

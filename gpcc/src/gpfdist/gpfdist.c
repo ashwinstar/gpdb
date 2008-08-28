@@ -1370,6 +1370,7 @@ gprint(const char* fmt, ...)
     va_start(ap, fmt);
     fprintf(stdout, "[%s] ", datetime());
     vfprintf(stdout, fmt, ap);
+    va_end(ap);
     return 0;
 }
 
@@ -1381,6 +1382,7 @@ gfatal(const char* fline, const char* fmt, ...)
     va_start(ap, fmt);
     fprintf(stderr, "[%s] [INTERNAL ERROR %s] ", datetime(), fline);
     vfprintf(stderr, fmt, ap);
+    va_end(ap);
     fprintf(stderr, "\n          ... exiting\n"); 
     exit(1);
 }
@@ -1393,6 +1395,27 @@ gwarning(const char* fline, const char* fmt, ...)
     va_start(ap, fmt);
     fprintf(stderr, "[%s] [WRN %s] ", datetime(), fline); 
     vfprintf(stderr, fmt, ap);
+    va_end(ap);
     fprintf(stderr, "\n");
     return 0;
+}
+
+void
+gfile_printf_then_putc_newline(const char*format,...)
+{
+    va_list va;
+    va_start(va,format);
+    vfprintf(stderr,format,va);
+    va_end(va);
+    putc('\n',stderr);
+}
+void*
+gfile_malloc(size_t size)
+{
+    return malloc(size);
+}
+void
+gfile_free(void*a)
+{
+    free(a);
 }

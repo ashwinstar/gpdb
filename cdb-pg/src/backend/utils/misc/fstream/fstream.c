@@ -59,7 +59,7 @@ fstream_close(fstream_t* fs)
     globfree(&fs->glob);
     if (fs->fd)
 	gfile_close(fs->fd);
-    free(fs);
+    gfile_free(fs);
 }
 
 static int
@@ -81,9 +81,9 @@ expand_directories(fstream_t*fs)
     int f=0,i,j,ret=0;
     for (i=0; i<g.gl_pathc; i++){
 	const char*a=g.gl_pathv[i];
-	char*b=malloc(2*strlen(a)+2),*c;
+	char*b=gfile_malloc(2*strlen(a)+2),*c;
 	if (!b){
-	    fprintf(stderr,"fstream out of memory\n");
+	    gfile_printf_then_putc_newline("fstream out of memory");
 	    ret = 1;
 	    break;
 	}
@@ -95,11 +95,11 @@ expand_directories(fstream_t*fs)
 	*c++ = '*';
 	*c++ = 0;
 	j = glob(b,f,0,&fs->glob);
-	free(b);
+	gfile_free(b);
 	if (j == GLOB_NOMATCH)
-	    fprintf(stderr,"fstream %s is empty directory\n",g.gl_pathv[i]);
+	    gfile_printf_then_putc_newline("fstream %s is empty directory",g.gl_pathv[i]);
 	else if (j){
-	    fprintf(stderr,"fstream glob failed\n");
+	    gfile_printf_then_putc_newline("fstream glob failed");
 	    ret = 1;
 	    break;
 	}
@@ -116,14 +116,14 @@ fstream_open(const char*path,const struct fstream_options*options)
 {
     int i;
     fstream_t*fs;
-    if (0 == (fs=malloc(sizeof*fs))){
-	fprintf(stderr,"fstream out of memory\n");
+    if (0 == (fs=gfile_malloc(sizeof*fs))){
+	gfile_printf_then_putc_newline("fstream out of memory");
 	return 0;
     }
     memset(fs,0,sizeof*fs);
     fs->options = *options;
     if (glob(path,GLOB_MARK|GLOB_NOCHECK,0,&fs->glob)){
-	fprintf(stderr,"fstream glob failed\n");
+	gfile_printf_then_putc_newline("fstream glob failed");
 	fstream_close(fs);
 	return 0;
     }
@@ -133,7 +133,7 @@ fstream_open(const char*path,const struct fstream_options*options)
 	    return 0;
 	}
     if (fs->glob.gl_pathc == 0){
-	fprintf(stderr,"fstream bad path: %s\n",path);
+	gfile_printf_then_putc_newline("fstream bad path: %s",path);
 	fstream_close(fs);
 	return 0;
     }
@@ -141,7 +141,7 @@ fstream_open(const char*path,const struct fstream_options*options)
 	gfile_t*fd;
 	/* check READ access right */
 	if (0 == (fd=gfile_open(fs->glob.gl_pathv[i]))) {
-	    fprintf(stderr,"fstream unable to open file %s\n",fs->glob.gl_pathv[i]);
+	    gfile_printf_then_putc_newline("fstream unable to open file %s",fs->glob.gl_pathv[i]);
 	    fstream_close(fs);
 	    return 0;
 	} 
@@ -176,7 +176,7 @@ nextFile(fstream_t*fs)
     if (fs->fidx < fs->glob.gl_pathc){
 	fs->fskip = fs->options.header;
 	if (0 == (fs->fd=gfile_open(fs->glob.gl_pathv[fs->fidx]))){
-	    fprintf(stderr,"fstream unable to open file %s\n",fs->glob.gl_pathv[fs->fidx]);
+	    gfile_printf_then_putc_newline("fstream unable to open file %s",fs->glob.gl_pathv[fs->fidx]);
 	    fs->ferror = "unable to open file";
 	}
     }
@@ -208,7 +208,7 @@ fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offse
 		}
 		if (!p){
 		    if (fs->buffer_size == sizeof fs->buffer){
-			fprintf(stderr,"fstream ERROR: header too long in file %s\n",fs->glob.gl_pathv[fs->fidx]);
+			gfile_printf_then_putc_newline("fstream ERROR: header too long in file %s",fs->glob.gl_pathv[fs->fidx]);
 			fs->ferror = "line too long in file";
 			break;
 		    }
@@ -237,7 +237,7 @@ fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offse
 	    }
 	    if (!p){
 		if (fs->buffer_size == sizeof fs->buffer){
-		    fprintf(stderr,"fstream ERROR: line too long in file %s (%lld bytes)\n",fs->glob.gl_pathv[fs->fidx],(long long)fs->foff);
+		    gfile_printf_then_putc_newline("fstream ERROR: line too long in file %s (%lld bytes)",fs->glob.gl_pathv[fs->fidx],(long long)fs->foff);
 		    fs->ferror = "line too long in file";
 		    break;
 		}
@@ -301,7 +301,7 @@ fstream_rewind(fstream_t*fs)
     if (fs->fd)
 	gfile_close(fs->fd);
     if (0 == (fs->fd=gfile_open(fs->glob.gl_pathv[0]))){
-	fprintf(stderr,"fstream unable to open file %s\n",fs->glob.gl_pathv[0]);
+	gfile_printf_then_putc_newline("fstream unable to open file %s",fs->glob.gl_pathv[0]);
 	fs->ferror = "unable to open file";
 	return -1;
     }	
