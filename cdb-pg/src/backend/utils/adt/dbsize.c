@@ -17,7 +17,6 @@
 #include "access/heapam.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_class.h"
 #include "catalog/pg_tablespace.h"
 #include "commands/dbcommands.h"
 #include "commands/tablespace.h"
@@ -343,9 +342,15 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 
 /*
  * calculate size of a relation
+ * 
+ * This is done by sequentially incrementing the segment number and checking
+ * for file existance. Before AO tables we would quit if we reach a non
+ * existing segment file. However since AO segment files are non sequential
+ * in number, and so we must check for all possibly existing AO relfiles
+ * and calculate their size as well (0 >= segno < MAX_AOREL_CONCURRENCY)
  */
-static int64
-calculate_relation_size(RelFileNode *rfn, char relstorage)
+ static int64
+calculate_relation_size(RelFileNode *rfn)
 {
 	int64		totalsize = 0;
 	char	   *relationpath;
@@ -354,68 +359,37 @@ calculate_relation_size(RelFileNode *rfn, char relstorage)
 
 	relationpath = relpath(*rfn);
 
-	if(relstorage != RELSTORAGE_AO)
+	for (segcount = 0;; segcount++)
 	{
-		for (segcount = 0;; segcount++)
+		struct stat fst;
+		
+		if (segcount == 0)
+			snprintf(pathname, MAXPGPATH, "%s",
+					 relationpath);
+		else
+			snprintf(pathname, MAXPGPATH, "%s.%u",
+					 relationpath, segcount);
+		
+		if (stat(pathname, &fst) < 0)
 		{
-			struct stat fst;
 			
-			if (segcount == 0)
-				snprintf(pathname, MAXPGPATH, "%s",
-						 relationpath);
-			else
-				snprintf(pathname, MAXPGPATH, "%s.%u",
-						 relationpath, segcount);
-			
-			if (stat(pathname, &fst) < 0)
+			if (errno == ENOENT)
 			{
-				if (errno == ENOENT)
+				if(segcount >= MAX_AOREL_CONCURRENCY)
 					break;
 				else
-					ereport(ERROR,
-							(errcode_for_file_access(),
-							 errmsg("could not stat file \"%s\": %m", pathname)));
-			}
-			totalsize += fst.st_size;
-		}
-		
-	}
-	else
-	{
-		/* 
-		 * Append only file segments may not be sequential in existance. 
-		 * Loop through all of the possible seg file numbers, ignoring non
-		 * existing ones.
-		 */
-		for (segcount = 0; segcount < MAX_AOREL_CONCURRENCY; segcount++)
-		{
-			struct stat fst;
-			
-			if (segcount == 0)
-				snprintf(pathname, MAXPGPATH, "%s",
-						 relationpath);
-			else
-				snprintf(pathname, MAXPGPATH, "%s.%u",
-						 relationpath, segcount);
-			
-			if (stat(pathname, &fst) < 0)
-			{
-				if (errno == ENOENT)
-				{
-					/* non existing file seg. that's ok. move to the next */
 					continue;
-				}
-				else
-				{
-					ereport(ERROR,
-							(errcode_for_file_access(),
-							 errmsg("could not stat file \"%s\": %m", pathname)));					
-				}
 			}
-			totalsize += fst.st_size;
+			else
+			{
+				ereport(ERROR,
+						(errcode_for_file_access(),
+						 errmsg("could not stat file \"%s\": %m", pathname)));				
+			}
 		}
+		totalsize += fst.st_size;
 	}
-
+		
 	return totalsize;
 }
 
@@ -431,7 +405,7 @@ pg_relation_size_oid(PG_FUNCTION_ARGS)
 	if (relOid == 0 || rel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(&(rel->rd_node), rel->rd_rel->relstorage);
+		size = calculate_relation_size(&(rel->rd_node));
 
 	relation_close(rel, AccessShareLock);
 	
@@ -493,7 +467,7 @@ pg_relation_size_name(PG_FUNCTION_ARGS)
 	if (rel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(&(rel->rd_node), rel->rd_rel->relstorage);
+		size = calculate_relation_size(&(rel->rd_node));
 
 	relation_close(rel, AccessShareLock);
 	
@@ -540,7 +514,7 @@ calculate_total_relation_size(Oid Relid)
 	if (Relid == 0 || heapRel->rd_node.relNode == 0)
 		size = 0;
 	else
-		size = calculate_relation_size(&(heapRel->rd_node), heapRel->rd_rel->relstorage);
+		size = calculate_relation_size(&(heapRel->rd_node));
 
 	/* Include any dependent indexes */
 	if (heapRel->rd_rel->relhasindex)
@@ -554,7 +528,7 @@ calculate_total_relation_size(Oid Relid)
 
 			iRel = relation_open(idxOid, AccessShareLock);
 
-			size += calculate_relation_size(&(iRel->rd_node), iRel->rd_rel->relstorage);
+			size += calculate_relation_size(&(iRel->rd_node));
 
 			relation_close(iRel, AccessShareLock);
 		}
