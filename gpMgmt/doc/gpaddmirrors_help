@@ -9,8 +9,8 @@ SYNOPSIS
 *****************************************************
 
 gpaddmirrors [-d <master_data_directory>] [-p <port_offset>] [-s] 
-[-a] [-m <mirror_config_file>] [-B parallel_processes] 
-[-l <logfile_directory>] [-D] 
+[-a] [-i <mirror_config_file> | -m <datadir_config_file>] 
+[-B parallel_processes] [-l <logfile_directory>] [-D] 
 
 gpaddmirrors -o <output_sample_mirror_config>
 
@@ -108,7 +108,7 @@ Run in quiet mode - do not prompt the user to enter information.
 Must supply a configuration file with -m if this option is used.
 
 
--m <mirror_config_file>
+-i <mirror_config_file>
 
 A configuration file containing one line for each mirror segment you 
 want to create. You must have the same number of mirror hosts and segments 
@@ -120,6 +120,17 @@ mirror database listener port, and mirror data directory location in the
 format of:
 
      mirror[<content_id>]=<hostname>:<port>:<datadir_location>
+
+
+-m <datadir_config_file>
+A configuration file containing a list of data directory locations. 
+The number of locations specified must correspond to the number of 
+segments per host. Each line in the file specifies a data directory 
+location. For example:
+/gpdata/m1
+/gpdata/m2
+/gpdata/m3
+/gpdata/m4
 
 
 -o <output_sample_mirror_config>
