@@ -63,7 +63,7 @@ where <replaceable>storage_parameter</replaceable> is:
 
    APPENDONLY={TRUE|FALSE}
    [COMPRESSLEVEL={0-9}]
-   [BLOCKSIZE={8192-8388608}]
+   [BLOCKSIZE={8192-2097152}]
    [FILLFACTOR={10-100}]
 
 where <replaceable>column_constraint</replaceable> is:
