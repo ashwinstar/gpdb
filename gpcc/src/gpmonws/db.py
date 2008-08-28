@@ -11,6 +11,11 @@ pgport = int(pgport)
 pghost = os.environ.get('PGHOST', 'localhost')
 conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60)
 
+def start_date(): 
+	conn.execute('select min(ctime) from metrics_history') 
+	for r in conn.iterate_dict():
+			time = r['min']
+	return time
 
 def _metrics_consolidate(rows):
     td = {}   #time dimension
