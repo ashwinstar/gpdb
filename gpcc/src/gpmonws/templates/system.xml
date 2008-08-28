@@ -9,7 +9,7 @@ $for h in hkeys:
 	    $ v = tab[(h, t)]
 	    $if not v: v = {}
 	    $ v = v.get(c, '#')
-	    ${v}:
+	    ${loop.index != 1 and ',' or ''} ${v}
         </$c>
     </host>
 </system>

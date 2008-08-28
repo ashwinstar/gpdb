@@ -1,41 +1,33 @@
-import os, sys, datetime
+import os, sys, datetime, tempfile
 
 gphome = os.environ.get('GPHOME')
 if not gphome:
     sys.exit('GPHOME env not set')
-
-sys.path.append(os.path.join(sys.path[0], 'lib'))
-sys.path.append(os.path.join(gphome, 'bin', 'lib'))
-import pg8000
-import web
-import session
-import db
-
-urls = ('/system', 'system', '/system/', 'system')
-
-UNUSED = '''
-def access(role = None):
-    def decorator(func):
-        def proxyfunc(self, *args, **kw):
-            s = session.get(role)
-            if None == s:
-                return web.seeother('/error')
-            kw['ses'] = s
-            ret = func(self, *args, **kw)
-            s.save();
-            return ret;
-        return proxyfunc
-    return decorator
-'''
-
-render = web.template.render('./templates/', cache=False)
 datadir = os.getenv('MASTER_DATA_DIRECTORY', None)
 if not datadir:
     sys.exit('MASTER_DATA_DIRECTORY env not set')
 if not os.path.isdir(datadir):
     sys.exit('MASTER_DATA_DIRECTORY "%s" is not valid' % datadir)
 
+sys.path.append(os.path.join(sys.path[0], 'lib'))
+sys.path.append(os.path.join(gphome, 'bin', 'lib'))
+import pg8000
+import web
+import db
 
+web.webapi.internalerror = web.debugerror
+web.config.session_parameters.timeout = 1800
+
+urls = ('/system', 'system', '/system/', 'system')
+app = web.application(urls, locals(), web.reloader)
+session = web.session.Session(app, 
+                              web.session.DiskStore(tempfile.mkdtemp()), 
+                              initializer={'user': '', 'role': {}})
+render = web.template.render('./templates/', cache=False)
+
+
+def chkrole(role):
+    return not (role and (not session.user or not session.role[role]))
 
 def error(msg):
     return render.error(web.ctx.fullpath, msg)
@@ -45,9 +37,11 @@ def timenow():
 
 
 class system:
-    #@access()
-    def GET(self, ses=None):
+    def GET(self):
         web.header('Content-Type', 'text/xml')
+
+        # if not chkrole('user'): return error('not authorized')
+
         i = web.input(start='last', end='', host='', interval='', sd='')
         i.start = i.start.lower()
         i.end = i.end.lower()
@@ -76,7 +70,5 @@ class system:
         return render.system(stime, etime, tkeys, hkeys, ckeys, tab)
 
 if __name__ == '__main__':
-    web.webapi.internalerror = web.debugerror
-    app = web.application(urls, globals(), web.reloader)
     app.run()
 
