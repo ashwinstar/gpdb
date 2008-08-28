@@ -37,27 +37,43 @@ if not os.path.isdir(datadir):
 
 
 
+def error(msg):
+    return render.error(web.ctx.fullpath, msg)
+
+def timenow():
+    return datetime.datetime.now().replace(microsecond=0).isoformat(' ')
 
 
 class system:
     #@access()
     def GET(self, ses=None):
-        i = web.input(start='', end='', host='', interval='', sd='')
+        web.header('Content-Type', 'text/xml')
+        i = web.input(start='last', end='', host='', interval='', sd='')
+        i.start = i.start.lower()
+        i.end = i.end.lower()
+        res = None
         if i.start.lower() == 'last':
-            dgen = db.metrics_now(i.host)
-            hosts = [h for h in dgen]
-            if hosts:
-                ctime = hosts[0]['ctime']
-            else: 
-                ctime = datetime.datetime.now().replace(microsecond=0).isoformat(' ')
+            res = db.metrics_now(i.host)
+            if not res:
+                return error('db.metrics_now failed')
 
-            return render.system(ctime, hosts)
+        elif i.end.lower() == 'last':
+            res = db.metrics_upto_now(i.host, i.start)
+            if not res:
+                return error('db.metrics_upto_now failed')
 
-        sys.stderr.write("system\n")
-        sys.stderr.write('start=%s\n' % str(i.start))
-        sys.stderr.write('host=%s\n' % str(i.host))
-        sys.stderr.write('interval=%s\n' % str(i.interval))
-        return 'system'
+        else:
+            res = db.metrics_history(i.host, i.start, i.end)
+            if not res:
+                return error('db.metrics_history failed')
+
+        (tkeys, hkeys, ckeys, tab) = res
+        if tkeys:
+            stime = tkeys[0]; etime = tkeys[-1]
+        else:
+            stime = timenow(); etime = stime
+
+        return render.system(stime, etime, tkeys, hkeys, ckeys, tab)
 
 if __name__ == '__main__':
     web.webapi.internalerror = web.debugerror

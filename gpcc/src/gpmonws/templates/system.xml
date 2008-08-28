@@ -1,12 +1,15 @@
-$def with (ctime, hosts)
+$def with (stime, etime, tkeys, hkeys, ckeys, tab)
 <?xml version="1.0"?>
-<system start="$ctime" end="$ctime">
-$ keys = None
-$for row in hosts:
-    <host name='$row['hostname']'>
-            $if not keys:
-            $    keys = row.keys()
-	    $    keys.sort()
-            $for k in keys: <${k}>${row[k]}</${k}>
+<system start="$stime" end="$etime">
+$for h in hkeys:
+    <host name="$h">
+    $for c in ckeys:
+        <$c>
+        $for t in tkeys:
+	    $ v = tab[(h, t)]
+	    $if not v: v = {}
+	    $ v = v.get(c, '#')
+	    ${v}:
+        </$c>
     </host>
 </system>
