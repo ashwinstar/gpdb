@@ -1900,7 +1900,7 @@ alter_table_partition_cmd:
                     pelem->AddPartDesc = NULL;
 
                     pc2->arg1 = (Node *)pelem;
-                    pc2->arg2 = ct;
+                    pc2->arg2 = (Node *)list_make1(ct);
                     pc2->location = @4;
 
                     pc->arg1 = (Node *)makeInteger(FALSE); /* not default */
@@ -10928,7 +10928,7 @@ makeAddPartitionCreateStmt(Node *n, Node *subSpec)
 
     if (subSpec) /* treat subspec as partition by... */
 	{
-        PartitionBy *pBy = makeNode(PartitionBy); 
+        pBy = makeNode(PartitionBy); 
 
         pBy->partSpec = subSpec;
         pBy->partDepth = 0;

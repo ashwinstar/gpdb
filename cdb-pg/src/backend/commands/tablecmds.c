@@ -8949,7 +8949,7 @@ partMakePartition(HeapTuple tuple, TupleDesc tupdesc, MemoryContext mcxt)
 	return p;
 }
 
-static PartitionNode *
+PartitionNode *
 get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 		  MemoryContext mcxt)
 {
@@ -10117,6 +10117,12 @@ selectPartition(PartitionNode *partnode, Datum *values, bool *isnull,
  * bMustExist.  That is, if the table does not exist and
  * bMustExist=true then return an error.  Conversely, if the table
  * *does* exist and bMustExist=false then return an error.
+ *
+ * If pSearch is set, return a ptr to the position where the pid
+ * *might* be.  For get_part_rule1, pNode is the position to start at
+ * (ie not necessarily at the top).  relname is a char string to
+ * describe the current relation/partition for error messages, eg
+ * 'relation "foo"' or 'partition "baz" of relation "foo"'.
  * 
  */
 PgPartRule*

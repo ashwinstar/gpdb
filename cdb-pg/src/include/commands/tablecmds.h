@@ -76,6 +76,12 @@ extern Oid selectPartition(PartitionNode *partnode, Datum *values,
 						   PartitionState *pstate);
 extern PartitionNode *RelationBuildPartitionDesc(Relation rel,
 												 bool inctemplate);
+
+/* RelationBuildPartitionDesc is built from get_parts */
+extern PartitionNode *
+get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
+		  MemoryContext mcxt);
+
 extern AttrNumber max_partition_attr(PartitionNode *pn);
 extern List *get_partition_attrs(PartitionNode *pn);
 extern int num_partition_levels(PartitionNode *pn);

@@ -9077,6 +9077,280 @@ transformReturningList(ParseState *pstate, List *returningList)
 }
 
 /*
+ * transformAlterTable_all_PartitionStmt -
+ *	transform an Alter Table Statement for some Partition operation
+ */
+static AlterTableCmd *
+transformAlterTable_all_PartitionStmt(
+		ParseState *pstate, 
+		AlterTableStmt *stmt,
+		CreateStmtContext *pCxt,
+		AlterTableCmd *cmd,
+		List **extras_before,
+		List **extras_after)
+{
+	AlterPartitionCmd 	*pc   	   = (AlterPartitionCmd *) cmd->def;
+	AlterPartitionId  	*pid  	   = (AlterPartitionId *)pc->partid;
+	AlterPartitionCmd 	*pci  	   = pc;
+	AlterTableCmd 		*atc1 	   = cmd;
+	RangeVar 			*rv   	   = stmt->relation;
+	PartitionNode 		*pNode 	   = NULL;
+	PartitionNode 		*prevNode  = NULL;
+	int 			 	 partDepth = 0;
+	Oid 			 	 par_oid   = InvalidOid;
+
+	if (atc1->subtype == AT_PartAlter)
+	{
+		PgPartRule* 	 prule = NULL;
+		StringInfoData   sid1, sid2;
+		char 			*lrelname;
+		Relation 		 rel   = heap_openrv(rv, AccessShareLock);
+		
+		initStringInfo(&sid1);
+		initStringInfo(&sid2);
+		
+		appendStringInfo(&sid1, "relation \"%s\"", 
+						 RelationGetRelationName(rel));
+		
+		lrelname = sid1.data;
+		
+		pNode = RelationBuildPartitionDesc(rel, false);
+		
+		if (!pNode)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("%s is not partitioned",
+							lrelname)));
+			
+			/* Processes nested ALTER (if it exists) */
+			while (1)
+			{
+				AlterPartitionId  	*pid2;
+					
+				if (atc1->subtype != AT_PartAlter)
+				{
+					rv = makeRangeVar(
+							get_namespace_name(
+									RelationGetNamespace(rel)),
+							pstrdup(RelationGetRelationName(rel)));
+					heap_close(rel, NoLock);
+					break;
+				}
+					
+				partDepth++;
+					
+				pid2 = (AlterPartitionId *)pci->partid;
+				
+				if (pid2 && (pid2->idtype == AT_AP_IDValue))
+				{
+						List *vallist = (List *)pid2->partiddef;
+						pid2->partiddef = 
+								(Node *)transformExpressionList(
+										pstate, vallist);
+				}
+					
+				if (!pNode)
+					prule = NULL;
+				else
+					prule = get_part_rule1(rel,
+										   pid2,
+										   false, true,
+										   CurrentMemoryContext,
+										   NULL,
+										   pNode, 
+										   sid1.data, NULL);
+					
+				if (prule && prule->topRule && 
+					prule->topRule->children)
+				{
+					prevNode = pNode;
+					pNode = prule->topRule->children;
+					par_oid = RelationGetRelid(rel);
+					
+					heap_close(rel, NoLock);
+					rel = heap_open(prule->topRule->parchildrelid, 
+									AccessShareLock);
+					
+					appendStringInfo(&sid2, "partition%s of %s", 
+									 prule->partIdStr, sid1.data);
+					truncateStringInfo(&sid1, 0);
+					appendStringInfo(&sid1, "%s", sid2.data);
+					truncateStringInfo(&sid2, 0);
+				}
+				else
+				{
+					prevNode = pNode;
+					pNode = NULL;
+				}
+					
+				atc1 = (AlterTableCmd *)pci->arg1;
+				pci = (AlterPartitionCmd *)atc1->def;
+					
+			} /* end while */
+	} /* end if alter */
+	
+	switch (atc1->subtype)
+	{
+		case AT_PartAdd:				/* Add */
+		{
+			AlterPartitionCmd 	*pc2 = (AlterPartitionCmd *) pci->arg2;
+			CreateStmt 			*ct;
+			InhRelation			*inh = makeNode(InhRelation);
+			Query				*q;
+			AlterTableCmd  		*atc = makeNode(AlterTableCmd);
+			AlterTableStmt 		*ats = makeNode(AlterTableStmt);
+			InheritPartitionCmd *ipc = makeNode(InheritPartitionCmd);
+			List				*cl  = NIL;
+					
+			Assert(IsA(pc2->arg2, List));
+			ct = (CreateStmt *)linitial((List *)pc2->arg2);
+					
+			inh->relation = copyObject(rv);
+			inh->options = list_make2_int(
+					CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
+					CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
+			/* 
+			 * NOTE: 
+			 *
+			 * CREATE_TABLE_LIKE_INCLUDING_INDEXES is not
+			 * implemented...  :-( 
+			 *
+			 * XXX: available in 8.3, gotta merge it.
+			 */
+			
+			/* 
+			 * fill in remaining fields from parse time (gram.y):
+			 * the new partition is LIKE the parent and it
+			 * inherits from it 
+			 */
+			ct->tableElts = list_make1(inh);
+
+			if (0)
+			{
+				Relation  rel   = 
+						heap_openrv(stmt->relation, 
+									AccessShareLock);
+					
+				pNode = get_parts(RelationGetRelid(rel), 
+								  partDepth+1,
+								  par_oid,
+								  false,
+								  CurrentMemoryContext
+						);
+							
+				if (!ct->partitionBy)
+				{
+					PartitionBy *prevPBy = NULL;
+					PartitionBy *pBy =  makeNode(PartitionBy);
+									
+					ct->partitionBy = (Node *)pBy;
+					
+					while (pNode)
+					{
+						PartitionElem *pElem = 
+								makeNode(PartitionElem); 
+						PartitionSpec *pSpec = 
+								makeNode(PartitionSpec); 
+											
+						pElem->partName = (Node *)
+								makeString("_default_");
+						pElem->isDefault = true;
+						pElem->location = -1;
+						
+						pSpec->partElem = list_make1(pElem);
+						pSpec->location = -1;
+											
+						if (prevPBy)
+							prevPBy->subPart = (Node *)pBy;
+											
+						pBy->partSpec = (Node *)pSpec;
+						pBy->partDepth = partDepth+1;
+						pBy->partType = 
+								(pNode->part->parkind == 'r')
+								? PARTTYP_RANGE :
+								((pNode->part->parkind == 'l') ?
+								 PARTTYP_LIST : PARTTYP_HASH);
+						
+						Assert(pBy->partType != PARTTYP_HASH);
+						
+						par_oid = pNode->part->parrelid;
+						
+						partDepth++;
+						
+						pNode = get_parts(RelationGetRelid(rel), 
+										  partDepth+1,
+										  par_oid,
+										  false,
+										  CurrentMemoryContext
+								);
+						if (pNode)
+						{
+							prevPBy = pBy;
+							pBy =  makeNode(PartitionBy);
+						}
+						
+					} /* end while pnode */
+				}
+				else
+				{
+					PartitionBy *pBy = (PartitionBy *)ct->partitionBy;
+					
+					pBy->partDepth = partDepth+1;
+					
+				}
+				heap_close(rel, NoLock);
+			}
+					
+			q = transformCreateStmt(pstate, ct, extras_before, 
+									extras_after);
+			
+			cl = list_make1(q);
+					
+			/* 
+			 * Add an alter table inherits() clause so
+			 * that our new partition inherits from its
+			 * parent.
+			 */
+			atc->subtype = AT_AddInherit;
+			ipc->parent = copyObject(stmt->relation);
+			
+			atc->def = (Node *)ipc; 
+			ats->relation = NULL; /* for now */
+			ats->cmds 	  = list_make1((Node *)atc);
+			ats->relkind  = OBJECT_TABLE;
+			
+			q = transformAlterTableStmt(pstate, ats, 
+										extras_before,
+										extras_after);
+			
+			cl = lappend(cl, q);
+			
+			pc2->arg2 = (Node *)cl;
+			}
+			case AT_PartCoalesce:			/* Coalesce */
+			case AT_PartDrop:				/* Drop */
+			case AT_PartExchange:			/* Exchange */
+			case AT_PartMerge:				/* Merge */
+			case AT_PartModify:				/* Modify */
+			case AT_PartRename:				/* Rename */
+			case AT_PartSetTemplate:		/* Set Subpartn Template */
+			case AT_PartSplit:				/* Split */
+			case AT_PartTruncate:			/* Truncate */
+				if (pid && (pid->idtype == AT_AP_IDValue))
+				{
+						List *vallist = (List *)pid->partiddef;
+						pid->partiddef = 
+								(Node *)transformExpressionList(
+										pstate, vallist);
+				}
+			default:
+					break;
+	}
+	/* transform boundary specifications at execute time */
+	return cmd;
+} /* end transformAlterTable_all_PartitionStmt */
+
+/*
  * transformAlterTableStmt -
  *	transform an Alter Table Statement
  */
@@ -9220,185 +9494,14 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
             case AT_PartSplit:				/* Split */
             case AT_PartTruncate:			/* Truncate */
 			{
-				AlterPartitionCmd 		*pc   = (AlterPartitionCmd *) cmd->def;
-				AlterPartitionId  		*pid  = (AlterPartitionId *)pc->partid;
-				AlterPartitionCmd 		*pci  = pc;
-				AlterTableCmd 			*atc1 = cmd;
-				RangeVar 				*rv   = stmt->relation;
+				cmd = transformAlterTable_all_PartitionStmt(
+						pstate, 
+						stmt,
+						&cxt,
+						cmd,
+						extras_before,
+						extras_after);
 
-				if (atc1->subtype == AT_PartAlter)
-				{
-					PgPartRule* 		 prule = NULL;
-					PartitionNode 		*pNode = NULL;
-					StringInfoData      	 sid1, sid2;
-					char 				*lrelname;
-					Relation 			 rel   = 
-							heap_openrv(rv, AccessShareLock);
-
-					initStringInfo(&sid1);
-					initStringInfo(&sid2);
-
-					appendStringInfo(&sid1, "relation \"%s\"", 
-							 RelationGetRelationName(rel));
-
-					lrelname = sid1.data;
-
-					pNode = RelationBuildPartitionDesc(rel, false);
-
-					if (!pNode)
-						ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								 errmsg("%s is not partitioned",
-										lrelname)));
-
-
-					/* Processes nested ALTER (if it exists) */
-					while (1)
-					{
-						AlterPartitionId  	*pid2;
-
-						if (atc1->subtype != AT_PartAlter)
-						{
-							rv = makeRangeVar(
-										get_namespace_name(
-												RelationGetNamespace(rel)),
-										pstrdup(RelationGetRelationName(rel)));
-							heap_close(rel, NoLock);
-							break;
-						}
-
-						pid2 = (AlterPartitionId *)pci->partid;
-						
-						if (pid2 && (pid2->idtype == AT_AP_IDValue))
-						{
-							List *vallist = (List *)pid2->partiddef;
-							pid2->partiddef = 
-									(Node *)transformExpressionList(
-											pstate, vallist);
-						}
-
-						if (!pNode)
-							prule = NULL;
-						else
-							prule = get_part_rule1(rel,
-												   pid2,
-												   false, true,
-												   CurrentMemoryContext,
-												   NULL,
-												   pNode, 
-												   sid1.data, NULL);
-
-						if (prule && prule->topRule && 
-							prule->topRule->children)
-						{
-							pNode = prule->topRule->children;
-							heap_close(rel, NoLock);
-							rel = heap_open(prule->topRule->parchildrelid, 
-											AccessShareLock);
-
-							appendStringInfo(&sid2, "partition%s of %s", 
-											 prule->partIdStr, sid1.data);
-							truncateStringInfo(&sid1, 0);
-							appendStringInfo(&sid1, "%s", sid2.data);
-							truncateStringInfo(&sid2, 0);
-						}
-						else
-						{
-							pNode = NULL;
-						}
-
-						atc1 = (AlterTableCmd *)pci->arg1;
-						pci = (AlterPartitionCmd *)atc1->def;
-
-					}
-				}
-
-				switch (atc1->subtype)
-				{
-					case AT_PartAdd:				/* Add */
-					{
-						AlterPartitionCmd 		*pc2 = 
-								(AlterPartitionCmd *) pci->arg2;
-						CreateStmt 				*ct;
-						InhRelation				*inh = makeNode(InhRelation);
-						Query					*q;
-						AlterTableCmd  			*atc = 
-								makeNode(AlterTableCmd);
-						AlterTableStmt 			*ats = 
-								makeNode(AlterTableStmt);
-						InheritPartitionCmd 	*ipc = 
-								makeNode(InheritPartitionCmd);
-						List					*cl = NIL;
-						
-						Assert(IsA(pc2->arg2, List));
-						ct = (CreateStmt *)linitial((List *)pc2->arg2);
-
-						inh->relation = copyObject(rv);
-						inh->options = list_make2_int(
-								CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
-								CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
-						/* 
-						 * NOTE: 
-						 *
-						 * CREATE_TABLE_LIKE_INCLUDING_INDEXES is not
-						 * implemented...  :-( 
-						 *
-						 * XXX: available in 8.3, gotta merge it.
-						 */
-
-						/* 
-						 * fill in remaining fields from parse time (gram.y):
-						 * the new partition is LIKE the parent and it
-						 * inherits from it 
-						 */
-						ct->tableElts = list_make1(inh);
-
-						q = transformCreateStmt(pstate, ct, extras_before, 
-												extras_after);
-
-						cl = list_make1(q);
-
-						/* 
-						 * Add an alter table inherits() clause so
-						 * that our new partition inherits from its
-						 * parent.
-						 */
-						atc->subtype = AT_AddInherit;
-						ipc->parent = copyObject(stmt->relation);
-
-						atc->def = (Node *)ipc; 
-						ats->relation = NULL; /* for now */
-						ats->cmds 	  = list_make1((Node *)atc);
-						ats->relkind  = OBJECT_TABLE;
-
-						q = transformAlterTableStmt(pstate, ats, 
-													extras_before,
-													extras_after);
-						
-						cl = lappend(cl, q);
-
-						pc2->arg2 = (Node *)cl;
-					}
-					case AT_PartCoalesce:			/* Coalesce */
-					case AT_PartDrop:				/* Drop */
-					case AT_PartExchange:			/* Exchange */
-					case AT_PartMerge:				/* Merge */
-					case AT_PartModify:				/* Modify */
-					case AT_PartRename:				/* Rename */
-					case AT_PartSetTemplate:		/* Set Subpartn Template */
-					case AT_PartSplit:				/* Split */
-					case AT_PartTruncate:			/* Truncate */
-					if (pid && (pid->idtype == AT_AP_IDValue))
-					{
-						List *vallist = (List *)pid->partiddef;
-						pid->partiddef = 
-								(Node *)transformExpressionList(
-										pstate, vallist);
-					}
-					default:
-						break;
-					/* transform boundary specifications at execute time */
-				}
 				newcmds = lappend(newcmds, cmd);
 				break;
 			}

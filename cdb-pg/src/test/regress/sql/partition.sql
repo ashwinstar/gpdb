@@ -791,6 +791,9 @@ alter table hhh add partition cc start ('2010-01-01') end ('2009-01-01');
 --alter table hhh add partition cc start ('2009-01-01') end ('2010-01-01');
 alter table hhh add partition cc end ('2010-01-01');
 
+-- works - anonymous partition MPP-3350
+alter table hhh add partition end ('2010-02-01');
+
 -- hash partitions cannot have default partitions
 create table jjj (aa int, bb int) 
 partition by hash(bb) 
