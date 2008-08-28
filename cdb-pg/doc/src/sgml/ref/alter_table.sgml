@@ -38,7 +38,7 @@ ALTER TABLE <replaceable>parent_table_name</replaceable>
   | ADD PARTITION [name] <replaceable>partition_element</replaceable>
          [ ( <replaceable>subpartition_specification</replaceable> ) ]
   | EXCHANGE PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) } 
-         WITH <replaceable>table_name</replaceable> [ WITH | WITHOUT VALIDATION ]
+         WITH TABLE <replaceable>table_name</replaceable> [ WITH | WITHOUT VALIDATION ]
 
 where <replaceable class="PARAMETER">action</replaceable> is one of:
 
