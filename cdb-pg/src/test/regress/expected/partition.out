@@ -4343,3 +4343,11 @@ NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_4_1_2_prt_1_3_prt
 NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_4_1_2_prt_1_3_prt_2" for table "partsupp_1_prt_p1_4_1_2_prt_1"
 NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_4_1_2_prt_2_3_prt_1" for table "partsupp_1_prt_p1_4_1_2_prt_2"
 NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1_4_1_2_prt_2_3_prt_2" for table "partsupp_1_prt_p1_4_1_2_prt_2"
+drop table partsupp;
+-- Accept negative values trivially:
+create table g (i int) partition by range(i) (start((-1)) end(10));
+NOTICE:  CREATE TABLE will create partition "g_1_prt_1" for table "g"
+drop table g;
+create table g (i int) partition by range(i) (start(-1) end(10));
+NOTICE:  CREATE TABLE will create partition "g_1_prt_1" for table "g"
+drop table g;

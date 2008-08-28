@@ -3107,6 +3107,9 @@ tab_part_val: AexprConst { $$ = $1; }
 				{ 
 					$$ = makeTypeCast($1, $3); 
 				}
+			| '-' AexprConst { $$ = doNegate($2, @1); }
+			| '(' tab_part_val ')' { $$ = $2; }
+		; 
 		
 
 TabPartitionBoundarySpecValList:

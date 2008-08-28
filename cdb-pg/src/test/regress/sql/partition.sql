@@ -2167,4 +2167,10 @@ CREATE TABLE partsupp (
                           )
                   )
           );
+drop table partsupp;
 
+-- Accept negative values trivially:
+create table g (i int) partition by range(i) (start((-1)) end(10));
+drop table g;
+create table g (i int) partition by range(i) (start(-1) end(10));
+drop table g;
