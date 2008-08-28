@@ -18,12 +18,14 @@ import db
 web.webapi.internalerror = web.debugerror
 web.config.session_parameters.timeout = 1800
 
-urls = ('/system', 'system', '/system/', 'system')
+urls = ('/startdate', 'startdate', '/system', 'system', '/system/', 'system')
+
 app = web.application(urls, locals(), web.reloader)
 session = web.session.Session(app, 
                               web.session.DiskStore(tempfile.mkdtemp()), 
                               initializer={'user': '', 'role': {}})
 render = web.template.render('./templates/', cache=False)
+
 
 
 def chkrole(role):
@@ -35,6 +37,16 @@ def error(msg):
 def timenow():
     return datetime.datetime.now().replace(microsecond=0).isoformat(' ')
 
+class startdate:
+	stime = None
+
+	def GET(self, ses=None):
+		web.header('Content-Type', 'text/xml')
+		if startdate.stime == None:
+			# retrieve the first date that monitoring was turned on.
+			startdate.stime = db.start_date()
+		# return start time
+		return render.startdate(startdate.stime)
 
 class system:
     def GET(self):
