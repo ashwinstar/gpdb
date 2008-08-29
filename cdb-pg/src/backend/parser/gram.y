@@ -377,7 +377,7 @@ static void doNegateFloat(Value *v);
 %type <list>    OptDistributedBy
 %type <ival>	TabPartitionByType OptTabPartitionRangeInclusive
 %type <node>	OptTabPartitionBy TabSubPartitionBy 
-				tab_part_val
+				tab_part_val tab_part_val_no_paran
 %type <node>	list_subparts opt_list_subparts
 %type <list>	opt_check_option
 %type <node>	OptTabPartitionsNumber OptTabSubPartitionsNumber 
@@ -387,7 +387,7 @@ static void doNegateFloat(Value *v);
 %type <node> 	TabPartitionElem TabSubPartitionElem  /* PartitionElem */
 
 %type <node> 	TabPartitionBoundarySpec OptTabPartitionBoundarySpec  /* PartitionBoundSpec */
-%type <list> 	TabPartitionBoundarySpecValList        /* list of AexprConst */
+%type <list> 	TabPartitionBoundarySpecValList
 				OptTabPartitionBoundarySpecValList
 %type <node> 	TabPartitionBoundarySpecStart TabPartitionBoundarySpecEnd
 				OptTabPartitionBoundarySpecEnd        /* PartitionRangeItem */
@@ -3155,24 +3155,31 @@ TabSubPartitionElemList:
               TabSubPartitionElem					{ $$ = lappend($1, $3); }
 		;
 
-tab_part_val: AexprConst { $$ = $1; }
-			| CAST '(' AexprConst AS Typename ')'
+tab_part_val_no_paran: AexprConst { $$ = $1; }
+			| CAST '(' tab_part_val AS Typename ')'
 				{ 
 					$$ = makeTypeCast($3, $5);
 				}
-			| AexprConst TYPECAST Typename
+			| tab_part_val_no_paran TYPECAST Typename
 				{ 
 					$$ = makeTypeCast($1, $3); 
 				}
-			| '-' AexprConst { $$ = doNegate($2, @1); }
-			| '(' tab_part_val ')' { $$ = $2; }
+			| '-' tab_part_val_no_paran { $$ = doNegate($2, @1); }
+		;
+
+tab_part_val: tab_part_val_no_paran { $$ = $1; }
+			| '(' tab_part_val_no_paran ')' { $$ = $2; }
+			| '(' tab_part_val_no_paran ')' TYPECAST Typename
+				{ 
+					$$ = makeTypeCast($2, $5); 
+				}
 		; 
 		
 
 TabPartitionBoundarySpecValList:
-              tab_part_val						{ $$ = list_make1($1); }
+              tab_part_val				{ $$ = list_make1($1); }
 			| TabPartitionBoundarySpecValList ',' 
-              tab_part_val						{ $$ = lappend($1, $3); }
+              tab_part_val				{ $$ = lappend($1, $3); }
 		;
 
 /* only optional for START and END in ALTER TABLE...MODIFY PARTITION */
@@ -3288,22 +3295,33 @@ OptTabPartitionBoundarySpec:
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
-multi_spec_value_list: '(' TabPartitionBoundarySpecValList ')'
+multi_spec_value_list: '(' part_values_single ')'
 				{
-					/* make it a List of Lists, for easier parsing later */
-					$$ = list_make1($2);
+					ListCell *lc;
+					List *out = NIL;
+
+					foreach(lc, $2)
+						out = lappend(out, linitial(lfirst(lc)));
+
+					$$ = list_make1(out);
 				}
-			| multi_spec_value_list ',' '(' TabPartitionBoundarySpecValList ')'
+			| multi_spec_value_list ',' '(' part_values_single ')'
 				{
-					$$ = lappend($1, $4);
+					ListCell *lc;
+					List *out = NIL;
+
+					foreach(lc, $4)
+						out = lappend(out, linitial(lfirst(lc)));
+
+					$$ = lappend($1, out);
 				}
 		;
 
-part_values_single: AexprConst
+part_values_single: tab_part_val_no_paran
 				{
 					$$ = list_make1(list_make1($1));
 				}
-			| part_values_single ',' AexprConst
+			| part_values_single ',' tab_part_val_no_paran
 				{
 					$$ = lappend($1, list_make1($3));
 				}

@@ -4635,3 +4635,29 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'o_orderkey' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 drop table orders;
+-- grammar bug: MPP-3361
+create table i2 (i int) partition by range(i) (start(-2::int) end(20));
+NOTICE:  CREATE TABLE will create partition "i2_1_prt_1" for table "i2"
+drop table i2;
+create table i2 (i int) partition by range(i) (start((-2)::int) end(20));
+NOTICE:  CREATE TABLE will create partition "i2_1_prt_1" for table "i2"
+drop table i2;
+create table i2 (i int) partition by range(i) (start(cast ((-2)::bigint as int))
+end(20));
+NOTICE:  CREATE TABLE will create partition "i2_1_prt_1" for table "i2"
+drop table i2;
+CREATE TABLE partsupp (
+    ps_partkey integer,
+    ps_suppkey integer,
+    ps_availqty integer,
+    ps_supplycost numeric,
+    ps_comment character varying(199)
+) PARTITION BY RANGE(ps_supplycost)
+          (
+          PARTITION newpart START ((-10000)::numeric) EXCLUSIVE END (1::numeric)
+,
+          PARTITION p1 START (1::numeric) END (1001::numeric)
+          );
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_newpart" for table "partsupp"
+NOTICE:  CREATE TABLE will create partition "partsupp_1_prt_p1" for table "partsupp"
+drop table partsupp;

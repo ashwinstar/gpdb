@@ -2280,3 +2280,25 @@ WITH (appendonly=true, checksum=true, blocksize=368640, compresslevel=9) PARTITI
                   )
           );
 drop table orders;
+
+-- grammar bug: MPP-3361
+create table i2 (i int) partition by range(i) (start(-2::int) end(20));
+drop table i2;
+create table i2 (i int) partition by range(i) (start((-2)::int) end(20));
+drop table i2;
+create table i2 (i int) partition by range(i) (start(cast ((-2)::bigint as int))
+end(20));
+drop table i2;
+CREATE TABLE partsupp (
+    ps_partkey integer,
+    ps_suppkey integer,
+    ps_availqty integer,
+    ps_supplycost numeric,
+    ps_comment character varying(199)
+) PARTITION BY RANGE(ps_supplycost)
+          (
+          PARTITION newpart START ((-10000)::numeric) EXCLUSIVE END (1::numeric)
+,
+          PARTITION p1 START (1::numeric) END (1001::numeric)
+          );
+drop table partsupp;

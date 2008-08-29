@@ -5160,7 +5160,7 @@ coerce_partition_value(Node *node, TypeName *type, PartitionByType partype)
 		elog(ERROR, "cannot coerce partition parameter to table type");
 
 	/* explicit coerce */
-	if (IsA(out, FuncExpr))
+	if (IsA(out, FuncExpr) || IsA(out, OpExpr))
 	{
 		Datum d = partition_arg_get_val(out);
 		Const *c;
@@ -5686,6 +5686,35 @@ partition_arg_get_val(Node *node)
 						elog(ERROR, "unexpected number of coercion function "
 							 "arguments: %d", list_length(fe->args));
 						break;
+				}
+				return d;
+			}
+			break;
+		case T_OpExpr:
+			{
+				OpExpr *op = (OpExpr *)node;
+				Datum d;
+
+				if (!OidIsValid(op->opfuncid))
+					op->opfuncid = get_opcode(op->opno);
+
+				switch (list_length(op->args))
+				{
+					case 1: 
+						{
+							Datum d1 = partition_arg_get_val(linitial(op->args));
+							d = OidFunctionCall1(op->opfuncid, d1);
+						}
+						break;
+					case 2:
+						{
+							Datum d1 = partition_arg_get_val(linitial(op->args));
+							Datum d2 = partition_arg_get_val(lsecond(op->args));
+							d = OidFunctionCall2(op->opfuncid, d1, d2);
+						}
+						break;
+					default:
+						elog(ERROR, "unexpected number of arguments for operator function: %d", list_length(op->args));
 				}
 				return d;
 			}
