@@ -1867,7 +1867,7 @@ alter_table_partition_id_spec_with_opt_default:
 
 
 alter_table_partition_cmd:
-			ADD_P opt_default PARTITION 
+			ADD_P PARTITION 
             OptTabPartitionBoundarySpec
  			OptTabPartitionStorageAttr
 			OptTabSubPartitionSpec
@@ -1877,13 +1877,8 @@ alter_table_partition_cmd:
 					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
 					AlterPartitionCmd *pc2   = makeNode(AlterPartitionCmd);
 					AlterTableCmd     *n     = makeNode(AlterTableCmd);
-                    Node              *ct    = makeAddPartitionCreateStmt($5, $6);
+                    Node              *ct    = makeAddPartitionCreateStmt($4, $5);
                     PartitionElem     *pelem = makeNode(PartitionElem); 
-
-                    if ($2)
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("Can only ADD a DEFAULT partition by name")));
 
                     pid->idtype = AT_AP_IDNone;
                     pid->location = @3;
@@ -1892,26 +1887,26 @@ alter_table_partition_cmd:
                     pc->partid = (Node *)pid;
 
                     pelem->partName  = NULL;
-                    pelem->boundSpec = $4;
-                    pelem->subSpec   = $6;
-                    pelem->location  = @4;
+                    pelem->boundSpec = $3;
+                    pelem->subSpec   = $5;
+                    pelem->location  = @3;
                     pelem->isDefault = 0;
-                    pelem->storeAttr = $5;
+                    pelem->storeAttr = $4;
                     pelem->AddPartDesc = NULL;
 
                     pc2->arg1 = (Node *)pelem;
                     pc2->arg2 = (Node *)list_make1(ct);
-                    pc2->location = @4;
+                    pc2->location = @3;
 
                     pc->arg1 = (Node *)makeInteger(FALSE); /* not default */
                     pc->arg2 = (Node *)pc2;
-                    pc->location = @4;
+                    pc->location = @3;
 
 					n->subtype = AT_PartAdd;
 					n->def = (Node *)pc;
 					$$ = (Node *)n;
 				}
-			| ADD_P opt_default PARTITION 
+			| ADD_P DEFAULT PARTITION 
             alter_table_partition_id_spec 
             OptTabPartitionBoundarySpec
             OptTabPartitionStorageAttr
@@ -1935,7 +1930,7 @@ alter_table_partition_cmd:
                     pelem->boundSpec = $5;
                     pelem->subSpec   = $7;
                     pelem->location  = @5;
-                    pelem->isDefault = $2;
+                    pelem->isDefault = true;
                     pelem->storeAttr = $6;
                     pelem->AddPartDesc = NULL;
 
@@ -1943,9 +1938,49 @@ alter_table_partition_cmd:
                     pc2->arg2 = (Node *)list_make1(ct);
                     pc2->location = @5;
 
-                    pc->arg1 = (Node *)makeInteger($2);
+                    pc->arg1 = (Node *)makeInteger(true);
                     pc->arg2 = (Node *)pc2;
                     pc->location = @5;
+
+					n->subtype = AT_PartAdd;
+					n->def = (Node *)pc;
+					$$ = (Node *)n;
+				}
+			| ADD_P PARTITION 
+            alter_table_partition_id_spec 
+            OptTabPartitionBoundarySpec
+            OptTabPartitionStorageAttr
+			OptTabSubPartitionSpec 
+				{
+					AlterPartitionId  *pid   = (AlterPartitionId *)$3;
+					AlterPartitionCmd *pc    = makeNode(AlterPartitionCmd);
+					AlterPartitionCmd *pc2   = makeNode(AlterPartitionCmd);
+					AlterTableCmd     *n     = makeNode(AlterTableCmd);
+                    Node              *ct    = makeAddPartitionCreateStmt($5, $6);
+                    PartitionElem     *pelem = makeNode(PartitionElem); 
+
+                    if (pid->idtype != AT_AP_IDName)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("Can only ADD a partition by name")));
+
+                    pc->partid = (Node *)pid;
+
+                    pelem->partName  = NULL;
+                    pelem->boundSpec = $4;
+                    pelem->subSpec   = $6;
+                    pelem->location  = @4;
+                    pelem->isDefault = false;
+                    pelem->storeAttr = $5;
+                    pelem->AddPartDesc = NULL;
+
+                    pc2->arg1 = (Node *)pelem;
+                    pc2->arg2 = (Node *)list_make1(ct);
+                    pc2->location = @4;
+
+                    pc->arg1 = (Node *)makeInteger(false);
+                    pc->arg2 = (Node *)pc2;
+                    pc->location = @4;
 
 					n->subtype = AT_PartAdd;
 					n->def = (Node *)pc;
@@ -3009,13 +3044,13 @@ OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
 
 /* START PARTITION RULES */
 
-OptTabPartitionStorageAttr: OptWith OptTableSpace
+OptTabPartitionStorageAttr: WITH definition TABLESPACE name 
 				{
                     /* re-use alterpartitioncmd struct here... */
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
                     pc->partid = NULL;
-                    pc->arg1 = (Node *)$1;
-                    pc->arg2 = (Node *)$2;
+                    pc->arg1 = (Node *)$2;
+                    pc->arg2 = (Node *)$4;
                     pc->location = @1;
 					$$ = (Node *)pc;
 
@@ -3027,6 +3062,25 @@ OptTabPartitionStorageAttr: OptWith OptTableSpace
                     }
 
                 }
+			| WITH definition
+				{
+                    /* re-use alterpartitioncmd struct here... */
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+                    pc->partid = NULL;
+                    pc->arg1 = (Node *)$2;
+                    pc->arg2 = NULL;
+                    pc->location = @1;
+					$$ = (Node *)pc;
+
+                    if (pc->arg2 && !gp_enable_tablespaces)
+                    {
+                        ereport(ERROR,
+                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                                 errmsg("TABLESPACE not supported")));
+                    }
+
+				}
+			| /*EMPTY*/ { $$ = NULL; }
 		;
 
 OptTabPartitionsNumber: PARTITIONS IntegerOnly 		
