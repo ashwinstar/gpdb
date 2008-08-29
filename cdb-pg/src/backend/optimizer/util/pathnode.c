@@ -1839,8 +1839,8 @@ create_unique_path(PlannerInfo *root,
 		 *  (NB: Must not reset motionHazard when sort is eliminated due to
 		 *  existing ordering; but Unique sort is never optimized away at present.)
 		 */
-		pathnode->path.motionHazard = false;
-	
+		pathnode->path.motionHazard = subpath->motionHazard;
+
 		/* Same reasoning applies to rescanablilty.  If no actual sort is placed
 		 * in the plan, then rescannable is set correctly to the subpath value.
 		 * If sort intervenes, it should be set to true.  We depend
@@ -2018,11 +2018,10 @@ create_limit1_path(PlannerInfo *root, Path *subpath)
         subpath = cdbpath_create_motion_path(root, (Path *)uniquepath, NIL,
                                              false, singleQE);
 
-        /* Assume no motion deadlock hazard when limited to 1 row. */
-        subpath->motionHazard = false;
-
         /* Add another LIMIT 1 on top. */
         uniquepath = make_limit1_path(subpath);
+
+		uniquepath->path.motionHazard = subpath->motionHazard;
     }
 	return uniquepath;
 }                               /* create_limit1_path */
@@ -2044,9 +2043,6 @@ make_limit1_path(Path *subpath)
 
     /* Cost to get a single row is same as startup cost (from subpath). */
     uniquepath->path.total_cost = uniquepath->path.startup_cost;
-
-    /* Assume LIMIT 1 breaks motion deadlock cycle. */
-    uniquepath->path.motionHazard = false;
 
     return uniquepath;
 }                               /* make_limit1_path */
