@@ -1070,25 +1070,22 @@ closeSpillFile(SpillSet *spill_set, int file_no)
 		freedspace += closeSpillFiles(spill_file->spill_set);
 	}
 		
-	else
+	if (spill_file->file_info &&
+		spill_file->file_info->bfz != NULL)
 	{
-		
-		if (spill_file->file_info &&
-			spill_file->file_info->bfz != NULL)
-		{
-			bfz_close(spill_file->file_info->bfz, true);
-			pfree(spill_file->file_info->bfz);
-			spill_file->file_info->bfz = NULL;
-			freedspace += (BATCHFILE_METADATA - sizeof(BatchFileInfo));
-		}
-
-		if (spill_file->file_info)
-		{
-			pfree(spill_file->file_info);
-			spill_file->file_info = NULL;
-			freedspace += sizeof(BatchFileInfo);
-		}
+		bfz_close(spill_file->file_info->bfz, true);
+		pfree(spill_file->file_info->bfz);
+		spill_file->file_info->bfz = NULL;
+		freedspace += (BATCHFILE_METADATA - sizeof(BatchFileInfo));
 	}
+
+	if (spill_file->file_info)
+	{
+		pfree(spill_file->file_info);
+		spill_file->file_info = NULL;
+		freedspace += sizeof(BatchFileInfo);
+	}
+
 	return freedspace;
 }
 
