@@ -1688,6 +1688,7 @@ _outPartitionElem(StringInfo str, PartitionElem *node)
 	WRITE_BOOL_FIELD(isDefault);
 	WRITE_NODE_FIELD(storeAttr);
 	WRITE_INT_FIELD(partno);
+	WRITE_LONG_FIELD(rrand);
 	WRITE_INT_FIELD(location);
 }
 

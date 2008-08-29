@@ -1735,6 +1735,7 @@ _readPartitionElem(const char **str)
 	READ_BOOL_FIELD(isDefault);
 	READ_NODE_FIELD(storeAttr);
 	READ_INT_FIELD(partno);
+	READ_LONG_FIELD(rrand);
 	READ_INT_FIELD(location);
 
 	READ_DONE();

@@ -2171,6 +2171,10 @@ _outPartitionElem(StringInfo str, PartitionElem *node)
 	WRITE_NODE_FIELD(partName);
 	WRITE_NODE_FIELD(boundSpec);
 	WRITE_NODE_FIELD(subSpec);
+	WRITE_BOOL_FIELD(isDefault);
+	WRITE_NODE_FIELD(storeAttr);
+	WRITE_INT_FIELD(partno);
+	WRITE_LONG_FIELD(rrand);
 	WRITE_INT_FIELD(location);
 }
 

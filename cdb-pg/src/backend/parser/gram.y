@@ -3080,6 +3080,24 @@ OptTabPartitionStorageAttr: WITH definition TABLESPACE name
                     }
 
 				}
+			| TABLESPACE name 
+				{
+                    /* re-use alterpartitioncmd struct here... */
+					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
+                    pc->partid = NULL;
+                    pc->arg1 = NULL;
+                    pc->arg2 = (Node *)$2;
+                    pc->location = @1;
+					$$ = (Node *)pc;
+
+                    if (pc->arg2 && !gp_enable_tablespaces)
+                    {
+                        ereport(ERROR,
+                                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                                 errmsg("TABLESPACE not supported")));
+                    }
+
+				}
 			| /*EMPTY*/ { $$ = NULL; }
 		;
 

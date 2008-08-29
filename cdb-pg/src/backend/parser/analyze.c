@@ -148,8 +148,6 @@ static Query *transformDeclareCursorStmt(ParseState *pstate,
 						   DeclareCursorStmt *stmt);
 static Query *transformPrepareStmt(ParseState *pstate, PrepareStmt *stmt);
 static Query *transformExecuteStmt(ParseState *pstate, ExecuteStmt *stmt);
-static Query *transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
-					List **extras_before, List **extras_after);
 static Query *transformCreateExternalStmt(ParseState *pstate, CreateExternalStmt *stmt,
 										  List **extras_before, List **extras_after);
 static Query *transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
@@ -387,12 +385,13 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 		tmp = list_concat(tmp, parse_sub_analyze(lfirst(l), pstate));
 
 	/* 
-	 * If this is the top level query and it is a CreateStmt and it has a
-	 * partition by clause, reorder the expanded extras_after so that AlterTable
-	 * is able to build the partitioning hierarchy better. The problem with the
-	 * existing list is that for subpartitioned tables, the subpartitions will
-	 * be added to the hierarchy before the root, which means we cannot get the
-	 * parent oid of rules.
+	 * If this is the top level query and it is a CreateStmt and it
+	 * has a partition by clause, reorder the expanded extras_after so
+	 * that AlterTable is able to build the partitioning hierarchy
+	 * better. The problem with the existing list is that for
+	 * subpartitioned tables, the subpartitions will be added to the
+	 * hierarchy before the root, which means we cannot get the parent
+	 * oid of rules.
 	 */
 	if (pstate->parentParseState == NULL && query->utilityStmt && 
 		IsA(query->utilityStmt, CreateStmt) && 
@@ -1183,7 +1182,7 @@ transformInsertRow(ParseState *pstate, List *exprlist,
  *	   then expand those into multiple IndexStmt blocks.
  *	  - thomas 1997-12-02
  */
-static Query *
+Query *
 transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 					List **extras_before, List **extras_after)
 {
@@ -6871,7 +6870,12 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 				 * For the case where we don't have a partition name, don't
 				 * worry about EVERY.
 				 */
-				snprintf(prtstr, sizeof(prtstr), "prt_%d", partno + 1);
+				if (pElem->rrand)
+					/* make a random name for ALTER TABLE ... ADD PARTITION */
+					snprintf(prtstr, sizeof(prtstr), "prt_r%lu", 
+							 pElem->rrand + partno + 1);
+				else
+					snprintf(prtstr, sizeof(prtstr), "prt_%d", partno + 1);
 			}
 	
 			if (pElem->subSpec)
@@ -9172,10 +9176,10 @@ transformAlterTable_all_PartitionStmt(
 				
 				if (pid2 && (pid2->idtype == AT_AP_IDValue))
 				{
-						List *vallist = (List *)pid2->partiddef;
-						pid2->partiddef = 
-								(Node *)transformExpressionList(
-										pstate, vallist);
+					List *vallist = (List *)pid2->partiddef;
+					pid2->partiddef = 
+							(Node *)transformExpressionList(
+									pstate, vallist);
 				}
 					
 				if (!pNode)
@@ -9225,10 +9229,6 @@ transformAlterTable_all_PartitionStmt(
 			AlterPartitionCmd 	*pc2 = (AlterPartitionCmd *) pci->arg2;
 			CreateStmt 			*ct;
 			InhRelation			*inh = makeNode(InhRelation);
-			Query				*q;
-			AlterTableCmd  		*atc = makeNode(AlterTableCmd);
-			AlterTableStmt 		*ats = makeNode(AlterTableStmt);
-			InheritPartitionCmd *ipc = makeNode(InheritPartitionCmd);
 			List				*cl  = NIL;
 					
 			Assert(IsA(pc2->arg2, List));
@@ -9253,107 +9253,9 @@ transformAlterTable_all_PartitionStmt(
 			 * inherits from it 
 			 */
 			ct->tableElts = list_make1(inh);
-
-			if (0)
-			{
-				Relation  rel   = 
-						heap_openrv(stmt->relation, 
-									AccessShareLock);
-					
-				pNode = get_parts(RelationGetRelid(rel), 
-								  partDepth+1,
-								  par_oid,
-								  false,
-								  CurrentMemoryContext
-						);
-							
-				if (!ct->partitionBy)
-				{
-					PartitionBy *prevPBy = NULL;
-					PartitionBy *pBy =  makeNode(PartitionBy);
-									
-					ct->partitionBy = (Node *)pBy;
-					
-					while (pNode)
-					{
-						PartitionElem *pElem = 
-								makeNode(PartitionElem); 
-						PartitionSpec *pSpec = 
-								makeNode(PartitionSpec); 
-											
-						pElem->partName = (Node *)
-								makeString("_default_");
-						pElem->isDefault = true;
-						pElem->location = -1;
-						
-						pSpec->partElem = list_make1(pElem);
-						pSpec->location = -1;
-											
-						if (prevPBy)
-							prevPBy->subPart = (Node *)pBy;
-											
-						pBy->partSpec = (Node *)pSpec;
-						pBy->partDepth = partDepth+1;
-						pBy->partType = 
-								(pNode->part->parkind == 'r')
-								? PARTTYP_RANGE :
-								((pNode->part->parkind == 'l') ?
-								 PARTTYP_LIST : PARTTYP_HASH);
-						
-						Assert(pBy->partType != PARTTYP_HASH);
-						
-						par_oid = pNode->part->parrelid;
-						
-						partDepth++;
-						
-						pNode = get_parts(RelationGetRelid(rel), 
-										  partDepth+1,
-										  par_oid,
-										  false,
-										  CurrentMemoryContext
-								);
-						if (pNode)
-						{
-							prevPBy = pBy;
-							pBy =  makeNode(PartitionBy);
-						}
-						
-					} /* end while pnode */
-				}
-				else
-				{
-					PartitionBy *pBy = (PartitionBy *)ct->partitionBy;
-					
-					pBy->partDepth = partDepth+1;
-					
-				}
-				heap_close(rel, NoLock);
-			}
-					
-			q = transformCreateStmt(pstate, ct, extras_before, 
-									extras_after);
 			
-			cl = list_make1(q);
+			cl = list_make1(ct);
 					
-			/* 
-			 * Add an alter table inherits() clause so
-			 * that our new partition inherits from its
-			 * parent.
-			 */
-			atc->subtype = AT_AddInherit;
-			ipc->parent = copyObject(stmt->relation);
-			
-			atc->def = (Node *)ipc; 
-			ats->relation = NULL; /* for now */
-			ats->cmds 	  = list_make1((Node *)atc);
-			ats->relkind  = OBJECT_TABLE;
-			
-			q = transformAlterTableStmt(pstate, ats, 
-										extras_before,
-										extras_after);
-			
-			cl = lappend(cl, q);
-			
 			pc2->arg2 = (Node *)cl;
 			}
 			case AT_PartCoalesce:			/* Coalesce */
@@ -9367,10 +9269,10 @@ transformAlterTable_all_PartitionStmt(
 			case AT_PartTruncate:			/* Truncate */
 				if (pid && (pid->idtype == AT_AP_IDValue))
 				{
-						List *vallist = (List *)pid->partiddef;
-						pid->partiddef = 
-								(Node *)transformExpressionList(
-										pstate, vallist);
+					List *vallist = (List *)pid->partiddef;
+					pid->partiddef = 
+							(Node *)transformExpressionList(
+									pstate, vallist);
 				}
 			default:
 					break;

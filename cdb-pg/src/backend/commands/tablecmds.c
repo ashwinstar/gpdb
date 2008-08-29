@@ -10826,6 +10826,12 @@ atpxPart_validate_spec(
 	pelem->partName = partName ? copyObject(partName) : NULL; 
 	pelem->isDefault = isDefault; 
 	pelem->AddPartDesc = pstrdup(partDesc);
+
+	/* generate a random name for the partition relation if necessary */
+	if (partName)
+		pelem->rrand = 0;
+	else
+		pelem->rrand = random();
 	
  	pBy->partType = part_type; 
 	pBy->keys     = NULL; 
@@ -10902,9 +10908,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 	PartitionBy 		*pBy   	   = makeNode(PartitionBy); 
 	CreateStmtContext    cxt;
 	List				*utils 	   = (List *)pUtl;
-	ListCell			*lc;
 	Node 				*pSubSpec  = NULL;	/* return the subpartition spec */
-	Relation par_rel = rel;
+	Relation 			 par_rel   = rel;
 
 	/* get the relation for the parent of the new partition */
 	if (par_prule && par_prule->topRule)
@@ -10920,7 +10925,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	Assert(IsA(pUtl, List));
 	
-	ct = (CreateStmt *)((Query *)linitial(utils))->utilityStmt;
+	ct = (CreateStmt *)linitial(utils);
 	Assert(IsA(ct, CreateStmt));
 
 	/* XXX XXX: handle case of missing boundary spec for range with EVERY */
@@ -11711,40 +11716,128 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	/* create the partition */
 	newpartname = 
-			ChoosePartitionName(
-					RelationGetRelationName(par_rel),
-					pNode->part->parlevel,
-					partName ? strVal(pelem->partName) : tmpname,
-					RelationGetNamespace(par_rel));
+			partName ? strVal(pelem->partName) : tmpname;
 	
 	ct->relation = makeRangeVar(
 			get_namespace_name(RelationGetNamespace(par_rel)),
-			newpartname);
-
-	/* fix up the inherited relation for CREATE TABLE */
-
-	if (Gp_role == GP_ROLE_DISPATCH)
-	{
-		InheritPartitionCmd *ipc;
-		AlterTableCmd 		*atc;
-
-		/* update child name for ALTER TABLE INHERITS */
-		AlterTableStmt *ats = 
-			(AlterTableStmt *)((Query *)lsecond(utils))->utilityStmt;
-
-		/* update the parent name as well */
-		ats->relation = copyObject(ct->relation);
-		atc = (AlterTableCmd *)linitial(ats->cmds);
-		ipc = (InheritPartitionCmd *)atc->def;
-		ipc->parent = makeRangeVar(
-			get_namespace_name(RelationGetNamespace(par_rel)),
 			RelationGetRelationName(par_rel));
+
+	if (bOpenGap) /* might need a gap to insert the new partition */
+	{
+		AlterPartitionId 	 	 pid;
+		PgPartRule   			*prule = NULL;
+
+		pid.idtype = AT_AP_IDRank;
+		pid.partiddef = (Node *)makeInteger(-1);
+		pid.location  = -1;
+
+		/* get the last rule, and increment each parruleord until
+		 * reach parruleord == maxpartno 
+		 */
+		prule = get_part_rule1(rel, &pid, false, false, 
+							   CurrentMemoryContext, NULL,
+							   pNode,
+							   lrelname,
+							   NULL);
+
+		Assert(prule && prule->topRule && prule->pNode && prule->pNode->part);
+
+		if (prule && prule->topRule && prule->pNode && prule->pNode->part)
+			parruleord_open_gap(
+					prule->pNode->part->partid,
+					prule->pNode->part->parlevel,
+					prule->topRule->parparentoid,
+					prule->topRule->parruleord,
+					maxpartno,
+					CurrentMemoryContext);	
 	}
 
-	foreach(lc, utils)
 	{
-		Query *q = lfirst(lc);
+		List *l1;
+		ListCell *lc;
+		int 			 ii = 0;
+
+		ct->partitionBy = (Node *)pBy;
+
+		l1 = parse_analyze((Node *)ct, NULL, NULL, 0);
+
+		/* skip the first cell because the table already exists --
+		 * don't recreate it 
+		 */
+		lc = list_head(l1);
+
+		for_each_cell(lc, lnext(lc))
+		{
+			Query *q = lfirst(lc);
+
+			if (1 == ii)
+			{
+				PartitionSpec 	*spec = NULL;
+				AlterTableStmt *ats;
+				AlterTableCmd  *atc;
+				List *cmds;
+
+				ats = (AlterTableStmt *)q->utilityStmt;
+				Assert(IsA(ats, AlterTableStmt));
+
+				cmds = ats->cmds;
+
+				Assert(cmds && (list_length(cmds) > 1));
+
+				atc = (AlterTableCmd *)lsecond(cmds);
+
+				Assert(atc->def);
+				
+				pBy = (PartitionBy *)atc->def;
+
+				Assert(IsA(pBy, PartitionBy));
+
+				spec = (PartitionSpec *)pBy->partSpec;
+
+				if (spec)
+				{
+					List *l2 = spec->partElem;
+					PartitionElem 			*pel;
+
+					if (l2 && list_length(l2))
+					{
+						pel = (PartitionElem *)linitial(l2);
+
+						pel->partno = maxpartno;
+					}
+					
+				}
+
+			}
+
+			ProcessUtility(q->utilityStmt, NULL, dest, NULL);
+			ii++;
+		} /* end for each cell */
+
+	}
+
+	if (0)
+	{
+		Query			*q;
+		ParseState 		*pstate    	   = make_parsestate(NULL);
+		List 			*extras_before = NIL,
+						*extras_after  = NIL;
+
+		ct->partitionBy = (Node *)pBy;
+
+
+		q = transformCreateStmt(pstate, ct,
+								&extras_before, &extras_after);
+
+
 		ProcessUtility(q->utilityStmt, NULL, dest, NULL);
+
+		ct = (CreateStmt *)q->utilityStmt;
+
+		q = linitial(extras_after);
+
+		ProcessUtility(q->utilityStmt, NULL, dest, NULL);
+
 	}
 
 	/* use the new oid from CREATE TABLE as the name if none was
@@ -11755,7 +11848,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 	 * the relid's could change.  So the upgrade should rename
 	 * "unnamed" partitions to the proper "unique" name (ie new relid).
 	 */
-	if (!partName)
+	if (0 && !partName)
 	{
 		RenameStmt 		*renStmt = makeNode(RenameStmt);
 		char 			*newnewname;
@@ -11792,7 +11885,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 		newpartname = pstrdup(newnewname);
 	}
 
-	if (!(pelem && pelem->isDefault))
+	if (0 && !(pelem && pelem->isDefault))
 	{
 		ParseState 		*pstate    	 = make_parsestate(NULL);
 		ListCell 		*lc_anp   	 = NULL;
@@ -11845,6 +11938,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 			ats->relkind = OBJECT_TABLE;
 			ats->cmds = list_make1(atc);
 
+			if (0)
 			ProcessUtility(
 					(Node *)ats,
 					NULL, dest, NULL);		
@@ -11852,36 +11946,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	}
 
-	if (bOpenGap) /* might need a gap to insert the new partition */
-	{
-		AlterPartitionId 	 	 pid;
-		PgPartRule   			*prule = NULL;
-
-		pid.idtype = AT_AP_IDRank;
-		pid.partiddef = (Node *)makeInteger(-1);
-		pid.location  = -1;
-
-		/* get the last rule, and increment each parruleord until
-		 * reach parruleord == maxpartno 
-		 */
-		prule = get_part_rule1(rel, &pid, false, false, 
-							   CurrentMemoryContext, NULL,
-							   pNode,
-							   lrelname,
-							   NULL);
-
-		Assert(prule && prule->topRule && prule->pNode && prule->pNode->part);
-
-		if (prule && prule->topRule && prule->pNode && prule->pNode->part)
-			parruleord_open_gap(
-					prule->pNode->part->partid,
-					prule->pNode->part->parlevel,
-					prule->topRule->parparentoid,
-					prule->topRule->parruleord,
-					maxpartno,
-					CurrentMemoryContext);	
-	}
-
+	if (0)
 	add_part_to_catalog(ct->oidInfo.relOid, pBy, &maxpartno); 
 
 	if (par_prule && par_prule->topRule)

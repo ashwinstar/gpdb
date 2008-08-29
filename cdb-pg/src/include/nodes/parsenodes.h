@@ -1435,6 +1435,7 @@ typedef struct PartitionElem
 	Node			   *storeAttr;	/* storage clause attributes */		
 	char			   *AddPartDesc;/* set by tablecmds.c:atpxAddPart */
 	int					partno;		/* number of the partition element */
+	long				rrand;		/* if not zero, "random" id for relname */
 	int					location;	/* token location, or -1 if unknown */
 } PartitionElem;
 
