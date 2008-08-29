@@ -909,7 +909,7 @@ exec_mpp_query(const char *query_string,
 				"qtext", query_string);
 	}
 
-	if (log_statement != LOGSTMT_NONE)
+	if (log_statement != LOGSTMT_NONE && !gp_mapreduce_define)
 	{
 		/*
 		 * TODO need to log SELECT INTO as DDL
@@ -1435,19 +1435,23 @@ exec_simple_query(const char *query_string)
 	 */
 	parsetree_list = pg_parse_query(query_string);
 
-	if(gp_enable_gpmon)
+	/* Disable statement logging during mapreduce */
+	if (!gp_mapreduce_define)
 	{
-		gpmon_gettmid(&tmid);
-		gpmon_record(tmid, gp_session_id, gp_command_count, 
-				"qtext", query_string);
-	}
+		if(gp_enable_gpmon)
+		{
+			gpmon_gettmid(&tmid);
+			gpmon_record(tmid, gp_session_id, gp_command_count, 
+						 "qtext", query_string);
+		}
 
-	/* Log immediately if dictated by log_statement */
-	if (check_log_statement_raw(parsetree_list))
-	{
-		ereport(LOG, (errmsg("statement: %s", query_string),
+		/* Log immediately if dictated by log_statement */
+		if (check_log_statement_raw(parsetree_list))
+		{
+			ereport(LOG, (errmsg("statement: %s", query_string),
 				          errdetail_execute(parsetree_list) ));
-		was_logged = true;
+			was_logged = true;
+		}
 	}
 
 	/*
@@ -1655,17 +1659,20 @@ exec_simple_query(const char *query_string)
 	/*
 	 * Emit duration logging if appropriate.
 	 */
-	switch (check_log_duration(msec_str, was_logged))
+	if (!gp_mapreduce_define)
 	{
-		case 1:
-			ereport(LOG,
-					(errmsg("duration: %s ms", msec_str)));
-			break;
-		case 2:
-			ereport(LOG, (errmsg("duration: %s ms  statement: %s",
-					             msec_str, query_string),
-				          errdetail_execute(parsetree_list) ));
-			break;
+		switch (check_log_duration(msec_str, was_logged))
+		{
+			case 1:
+				ereport(LOG,
+						(errmsg("duration: %s ms", msec_str)));
+				break;
+			case 2:
+				ereport(LOG, (errmsg("duration: %s ms  statement: %s",
+									 msec_str, query_string),
+							  errdetail_execute(parsetree_list) ));
+				break;
+		}
 	}
 
 	if (save_log_statement_stats)

@@ -1844,6 +1844,16 @@ static struct config_bool ConfigureNamesBool[] =
 		&gp_enable_gpmon,
 	},
 
+	{
+		{"gp_mapreduce_define", PGC_USERSET, DEVELOPER_OPTIONS,
+		 gettext_noop("Prepare mapreduce object creation"),  /* turn off statement logging */
+		 NULL,
+		 GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE | GUC_GPDB_ADDOPT
+		},
+		&gp_mapreduce_define,
+		false, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
