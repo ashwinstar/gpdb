@@ -228,8 +228,6 @@ typedef struct JunkFilter
  *
  *		RangeTableIndex			result relation's range table index
  *		RelationDesc			relation descriptor for result relation
- *		HeapInsertDesc			context for relation buffered INSERT.
- *		osInsertDesc			context for appendonly relation buffered INSERT.
  *		NumIndices				# of indices existing on result relation
  *		IndexRelationDescs		array of relation descriptors for indices
  *		IndexRelationInfo		array of key/attr info for indices
@@ -239,6 +237,8 @@ typedef struct JunkFilter
  *		ConstraintExprs			array of constraint-checking expr states
  *		junkFilter				for removing junk attributes from tuples
  *		projectReturning		for computing a RETURNING list
+ *		aoInsertDesc			context for appendonly relation buffered INSERT.
+ *		ao_segno				the AO segfile we inserted into.
  * ----------------
  */
 typedef struct ResultRelInfo
@@ -256,6 +256,7 @@ typedef struct ResultRelInfo
 	JunkFilter *ri_junkFilter;
 	ProjectionInfo *ri_projectReturning;
 	AppendOnlyInsertDescData *ri_aoInsertDesc;
+	int			ri_aosegno;
 } ResultRelInfo;
 
 /* ----------------
@@ -450,7 +451,7 @@ typedef struct EState
 	PartitionNode *es_result_partitions;
 
 	/* AO fileseg info for target relation */
-	int			es_result_aousesegno;
+	List		*es_result_aosegnos;
 	
 	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 

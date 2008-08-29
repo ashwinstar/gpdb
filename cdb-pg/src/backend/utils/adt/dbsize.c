@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 
 #include "access/heapam.h"
+#include "access/appendonlywriter.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_tablespace.h"
@@ -335,10 +336,6 @@ pg_tablespace_size_name(PG_FUNCTION_ARGS)
 	}
 	PG_RETURN_INT64(size);
 }
-
-
-/* TODO: remove when appendonlywriter.h is merged into main - it's defined there */
-#define MAX_AOREL_CONCURRENCY 128
 
 /*
  * calculate size of a relation

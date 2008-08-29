@@ -22,20 +22,10 @@
 #include "cdb/cdbvars.h"
 #include "executor/spi.h"
 #include "nodes/makefuncs.h"
-#include "optimizer/geqo_random.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "utils/fmgroids.h"
 
-/*
- * Global Variables
- */
-static HTAB *AppendOnlyHash;			/* Hash of AO tables */
-
-/*
- * GUC variables
- */
-int		MaxAppendOnlyTables;		/* Max # of tables */
 
 
 /* ------------------------------------------------------------------------
@@ -237,7 +227,7 @@ GetFileSegInfo(Relation parentrel, int segno)
  * AppendOnly table. This is basically a physical snapshot that a
  * scanner can use to scan all the data in a local segment database.
  */
-FileSegInfo *GetAllFileSegInfo(Relation parentrel, int totalsegs)
+FileSegInfo *GetAllFileSegInfo(Relation parentrel, int *totalsegs)
 {
 	
 	Relation		pg_aoseg_rel;
@@ -251,14 +241,32 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, int totalsegs)
 					tupcount,
 					varblockcount;
 	bool			isNull;
-	int				totalcount = 0;
-	
-	allseginfo = (FileSegInfo *) palloc0(sizeof(FileSegInfo) * totalsegs);
-	oneseginfo = allseginfo;
-	
+			
 	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
 	
+	/*
+	 * Get number of segment files for this relation
+	 */
+	aoscan = heap_beginscan(pg_aoseg_rel, SnapshotNow, 0, NULL);
+	
+	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
+	{
+		(*totalsegs)++;
+	}
+	
+	heap_endscan(aoscan);			
+	
+	/*
+	 * Initialize the segment file information array according to the seg count
+	 */
+	allseginfo = (FileSegInfo *) palloc0(sizeof(FileSegInfo) * (*totalsegs));
+	oneseginfo = allseginfo;
+	
+	/*
+	 * Now get the actual segfile information 
+	 * (TODO: should combine both scans to 1. since they are very short it's ok for now).
+	 */
 	aoscan = heap_beginscan(pg_aoseg_rel, SnapshotNow, 0, NULL);
 	
 	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
@@ -278,20 +286,16 @@ FileSegInfo *GetAllFileSegInfo(Relation parentrel, int totalsegs)
 				 oneseginfo->segno,
 				 (int64)oneseginfo->eof,
 			     NameStr(parentrel->rd_rel->relname),
-				 totalsegs);
+				 *totalsegs);
 		
 		oneseginfo++;
-		totalcount++;
 		
 		CHECK_FOR_INTERRUPTS();
 	}
 	
 	heap_endscan(aoscan);			
 	heap_close(pg_aoseg_rel, AccessShareLock);
-	
-	/* make sure our caller didn't lie */ 
-	Assert(totalcount == totalsegs);
-	
+		
 	return allseginfo;
 }
 
@@ -423,34 +427,6 @@ UpdateFileSegInfo(Relation parentrel,
 }
 
 /*
- * TEMPORARY FUNCTION: until we have a process that manages the 'segment'
- * concurrency we just call this guy to find the total number of segnos on
- * this local segdb.
- */
-int GetNumOfSegFiles(Relation parentrel)
-{
-	
-	Relation		pg_aoseg_rel;
-	HeapTuple		tuple;
-	HeapScanDesc	aoscan;
-	int32			numsegs = 0;
-	
-	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
-	aoscan = heap_beginscan(pg_aoseg_rel, SnapshotNow, 0, NULL);
-				
-	while ((tuple = heap_getnext(aoscan, ForwardScanDirection)) != NULL)
-	{
-		numsegs++; /* as long as numbers are consecutive we're ok */
-		CHECK_FOR_INTERRUPTS();
-	}
-	
-	heap_endscan(aoscan);			
-	heap_close(pg_aoseg_rel, AccessShareLock);
-	
-	return numsegs;
-}
-
-/*
  * GetSegFilesTotals
  *
  * Get the total bytes, tuples, and varblocks for a specific AO table
@@ -494,132 +470,6 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel)
 	heap_close(pg_aoseg_rel, AccessShareLock);
 	
 	return result;
-}
-
-/*
- * UpdateMasterAosegTotals
- *
- * Update the aoseg table on the master node with the updated row count of
- * the whole distributed relation. We use this information later on to keep
- * track of file 'segments' and their EOF's and decide which segno to use in
- * future writes into the table.
- */
-void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
-{
-	FileSegInfo		*fsinfo;
-	float8			tupcount_float8;
-	
-	Assert(Gp_role == GP_ROLE_DISPATCH);
-	Assert(segno >= 0);
-	
-	/* 
-	 * convert the tup count to float8 
-	 */
-	if((int64) tupcount < 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-				 errmsg("int64 out of range")));
-	
-	tupcount_float8 = DatumGetFloat8(DirectFunctionCall1(i8tod, 
-														 (int64) tupcount));
-		
-	/* get the information for the file segment we inserted into */
-	fsinfo = GetFileSegInfo(parentrel, segno);
-			
-	/* 
-	 * Update the master AO segment info table with correct tuple count total
-	 */
-	if(!fsinfo)
-	{
-		/* insert the first entry into pg_aoseg_* with our new tup count */
-		InsertFileSegInfo(parentrel, segno, 0, tupcount_float8, 0);
-	}
-	else
-	{
-		/* update the existing pg_aoseg_* with our added tupcount */
-		UpdateFileSegInfo(parentrel, segno, 0, tupcount_float8, 0);
-		pfree(fsinfo);
-	}
-	
-	
-}
-
-/* ------------------------------------------------------------------------
- *
- * FUNCTIONS FOR SUPPORTING AO CONCURRENT WRITES (VIA SHARED MEM HASH TBL)
- *
- * ------------------------------------------------------------------------
- */
-
-/*
- * SetSegnoForWrite
- *
- * Depending on the gp role and existingsegno make a decision on which
- * segment nubmer should be used to write into during the COPY or INSERT
- * operation we're executing.
- *
- * 'existingsegno' may or may not be valid. If we are a QE it must be a valid
- * segment number sent to us from the QD and we must use it. Otherwize, it must
- * be invalid since we haven't yet assigned any.
- */
-int SetSegnoForWrite(int existingsegno)
-{
-	switch(Gp_role)
-	{
-		/* find a seg number to tell the QE's to use */ 
-		case GP_ROLE_DISPATCH:
-			Assert(existingsegno == InvalidFileSegNumber);
-			return geqo_randint(0, 10); /* TEMP... replace me with func call! */
-			
-		/* use the seg number the QD sent us */
-		case GP_ROLE_EXECUTE:
-			Assert(existingsegno != InvalidFileSegNumber);
-			return existingsegno;
-			
-		/* always use seg number 0 in utility mode */
-		case GP_ROLE_UTILITY:
-			Assert(existingsegno == InvalidFileSegNumber);
-			return 0;
-			
-		/* fix this for dispatch agent. for now it's broken anyway. */
-		default:
-			Assert(false);
-			return InvalidFileSegNumber;
-	}
-	
-}
-
-/*
- * AOHashTableInit
- * 
- * initialize the hash table of AO rels and their fileseg entries.
- */
-bool
-AOHashTableInit(void)
-{
-	
-	HASHCTL			info;
-	int				hash_flags;
-	
-	/* Set key and entry sizes. */
-	MemSet(&info, 0, sizeof(info));
-	info.keysize = sizeof(Oid);
-	info.entrysize = sizeof(AORelHashEntry);
-	info.hash = tag_hash;
-	hash_flags = (HASH_ELEM | HASH_FUNCTION);
-	
-	elog(DEBUG1, "Creating hash table for %d append only tables", MaxAppendOnlyTables);
-
-	AppendOnlyHash = ShmemInitHash("Append Only Hash",
-								   MaxAppendOnlyTables,
-								   MaxAppendOnlyTables,
-								   &info,
-								   hash_flags);
-	
-	if (!AppendOnlyHash)
-		return false;
-	
-	return true;
 }
 
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))

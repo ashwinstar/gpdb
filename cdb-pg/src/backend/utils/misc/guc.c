@@ -112,7 +112,6 @@ extern char *default_tablespace;
 extern bool fullPageWrites;
 
 extern bool enable_partition_rules;
-extern bool enable_partition_fast_insert;
 
 /* GUC lists for gp_guc_list_show().  (List of struct config_generic) */
 List       *gp_guc_list_for_explain;
@@ -1837,16 +1836,6 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"enable_partition_fast_insert", PGC_USERSET, DEVELOPER_OPTIONS,
-			gettext_noop("Enable fast-insert code for partitions"),
-			NULL,
-			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&enable_partition_fast_insert,
-		true, NULL, NULL
-	},
-
-	{
 		{"gp_enable_gpmon", PGC_SUSET, LOGGING_WHAT,
 			gettext_noop("Enable gpmon logging."),
 			NULL,
@@ -2569,11 +2558,11 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"max_appendonly_tables", PGC_POSTMASTER, APPENDONLY_TABLES,
-			gettext_noop("Maximum number of append only tables."),
+			gettext_noop("Maximum number of append only tables that can be active concurrently."),
 			NULL
 		},
 		&MaxAppendOnlyTables,
-		128, 0, INT_MAX, NULL, NULL
+		256, 0, INT_MAX, NULL, NULL
 	},
 
 	{

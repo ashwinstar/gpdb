@@ -20,6 +20,7 @@
 #include "access/subtrans.h"
 #include "access/twophase.h"
 #include "access/distributedlog.h"
+#include "access/appendonlywriter.h"
 #include "cdb/cdblocaldistribxact.h"
 #include "cdb/cdbvars.h"
 #include "miscadmin.h"
@@ -116,10 +117,15 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 												 sizeof(ShmemIndexEnt)));
 		size = add_size(size, BufferShmemSize());
 		size = add_size(size, LockShmemSize());
-		if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
+		if (Gp_role == GP_ROLE_DISPATCH)
 		{
-			size = add_size(size, ResSchedulerShmemSize());
-			size = add_size(size, ResPortalIncrementShmemSize());
+			size = add_size(size, AppendOnlyWriterShmemSize());
+			
+			if(ResourceScheduler)
+			{
+				size = add_size(size, ResSchedulerShmemSize());
+				size = add_size(size, ResPortalIncrementShmemSize());				
+			}
 		}
 		size = add_size(size, ProcGlobalShmemSize());
 		size = add_size(size, LocalDistribXact_ShmemSize());
@@ -222,6 +228,12 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	InitLocks();
 
 	/*
+	 * Set up append only writer
+	 */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		InitAppendOnlyWriter();
+	
+	/*
 	 * Set up resource schedular
 	 */
 	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
@@ -229,6 +241,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		InitResScheduler();
 		InitResPortalIncrementHash();
 	}
+
 
 	if (!IsUnderPostmaster)
 	{

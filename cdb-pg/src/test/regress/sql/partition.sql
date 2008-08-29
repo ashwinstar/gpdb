@@ -1,4 +1,3 @@
-set enable_partition_fast_insert = true;
 set enable_partition_rules = false;
 set gp_enable_hash_partitioned_tables = true;
 

@@ -25,6 +25,7 @@
 #include "access/heapam.h"
 #include "access/appendonlyam.h"
 #include "access/aosegfiles.h"
+#include "access/appendonlywriter.h"
 #include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
@@ -58,8 +59,6 @@
 #include "cdb/cdbrelsize.h"
 #include "cdb/cdbvarblock.h"
 #include "cdb/cdbbufferedappend.h"
-
-extern bool enable_partition_fast_insert;
 
 /* DestReceiver for COPY (SELECT) TO */
 typedef struct
@@ -843,13 +842,8 @@ DoCopy(const CopyStmt *stmt)
 		cstate->queryDesc = NULL;
 		
 		/* Open and lock the relation, using the appropriate lock type. */
-		/* XXX for now use exclusive lock for inserts on appendonly tables */
-		/* Need to EX lock masters if we have an AO child partition? */
 		cstate->rel = heap_openrv(stmt->relation, NoLock);
-		if(cstate->rel->rd_rel->relstorage != RELSTORAGE_AO)
 			LockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock));
-		else
-			CdbLockRelation(cstate->rel, (is_from ? RowExclusiveLock : AccessShareLock), false);
 
 		/* Check relation permissions. */
 		aclresult = pg_class_aclcheck(RelationGetRelid(cstate->rel),
@@ -1049,6 +1043,9 @@ DoCopy(const CopyStmt *stmt)
 	if (is_from)				/* copy from file to database */
 	{			
 		bool		pipe = (cstate->filename == NULL);
+		bool		shouldDispatch = ((Gp_role == GP_ROLE_DISPATCH || 
+									   Gp_role == GP_ROLE_DISPATCHAGENT) 
+									   && cstate->rel->rd_cdbpolicy != NULL);
 		char		relkind,
 					relstorage;
 		
@@ -1080,11 +1077,7 @@ DoCopy(const CopyStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_GP_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY single row error handling only available for distributed user tables")));		
-		
-		/* set the AO segno to write into */
-		if (relstorage == RELSTORAGE_AO)
-			cstate->aousesegno = SetSegnoForWrite(stmt->aousesegno);
-		
+				
 		if (pipe)
 		{
 			if (whereToSendOutput == DestRemote)
@@ -1113,14 +1106,75 @@ DoCopy(const CopyStmt *stmt)
 						 errmsg("\"%s\" is a directory", cstate->filename)));
 			}
 		}
+
 		
-		if ((Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_DISPATCHAGENT) 
-			&& cstate->rel->rd_cdbpolicy != NULL)
-			/* data needs to get dispatched to segment databases */
-			CopyFromDispatch(cstate);
+		/*
+		 * Append Only Tables.
+		 * 
+		 * If QD, build a list of all the relations (relids) that may get data
+		 * inserted into them as a part of this operation. This includes
+		 * the relation specified in the COPY command, plus any partitions
+		 * that it may have. Then, call assignPerRelSegno to assign a segfile 
+		 * number to insert into each of the Append Only relations that exists 
+		 * in this global list. We generate the list now and save it in cstate. 
+		 * 
+		 * If QE - get the QD generated list from CopyStmt and each relation can
+		 * find it's assigned segno by looking at it (during CopyFrom).
+		 * 
+		 * Utility mode always builds a one single mapping.
+		 */
+		if(shouldDispatch)
+		{
+			Oid relid = RelationGetRelid(cstate->rel);
+			List *all_relids = NIL;
+			
+			all_relids = lappend_oid(all_relids, relid);
+			
+			if (rel_is_partitioned(relid))
+			{
+				PartitionNode *pn = RelationBuildPartitionDesc(cstate->rel, false);
+				all_relids = list_concat(all_relids, all_partition_relids(pn));
+			}
+		
+			cstate->ao_segnos = assignPerRelSegno(all_relids);
+		}
 		else
+		{
+			if (stmt->ao_segnos)
+			{
+				/* We must be a QE if we received the aosegnos config */
+				Assert(Gp_role == GP_ROLE_EXECUTE);
+				cstate->ao_segnos = stmt->ao_segnos;
+			}
+			else
+			{
+				/* 
+				 * utility mode (or dispatch mode for no policy table). 
+				 * create a one entry map for our one and only relation
+				 */
+				if(relstorage == RELSTORAGE_AO)
+				{
+					SegfileMapNode *n = makeNode(SegfileMapNode);
+					n->relid = RelationGetRelid(cstate->rel);
+					n->segno = SetSegnoForWrite(InvalidFileSegNumber, n->relid);					
+					cstate->ao_segnos = lappend(cstate->ao_segnos, n);
+				}
+			}
+		}
+
+		/*
+		 * Set up is done. Get to work!
+		 */
+		if (shouldDispatch)
+		{
+			/* data needs to get dispatched to segment databases */
+			CopyFromDispatch(cstate);			
+		}
+		else
+		{
 			/* data needs to get inserted locally */
-			CopyFrom(cstate);
+			CopyFrom(cstate);			
+		}
 		
 		if (!pipe)
 		{
@@ -1574,8 +1628,7 @@ CopyToDispatch(CopyState cstate)
 	
 	cdbCopy = makeCdbCopy(false);
 	
-	if (enable_partition_fast_insert)
-		cdbCopy->partitions = RelationBuildPartitionDesc(cstate->rel, false);
+	cdbCopy->partitions = RelationBuildPartitionDesc(cstate->rel, false);
 
 	/* XXX: lock all partitions */
 	
@@ -2196,11 +2249,10 @@ CopyFromDispatch(CopyState cstate)
 	bool		no_more_data = false;
 	bool		is_first_col;
 	ListCell   *cur;
-	bool		cur_row_rejected = false;
-	char		relstorage = cstate->rel->rd_rel->relstorage;
-	
+	bool		cur_row_rejected = false;	
 	CdbCopy    *cdbCopy;
-
+	Size 		sz;
+	
 	/*
 	 * This stringInfo will contain 2 types of error messages:
 	 *
@@ -2277,6 +2329,7 @@ CopyFromDispatch(CopyState cstate)
 		resultRelInfo->ri_TrigFunctions = (FmgrInfo *)
             palloc0(resultRelInfo->ri_TrigDesc->numtriggers * sizeof(FmgrInfo));
     resultRelInfo->ri_TrigInstrument = NULL;
+    ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
 
 	ExecOpenIndices(resultRelInfo);
 
@@ -2343,42 +2396,34 @@ CopyFromDispatch(CopyState cstate)
 	/*
 	 * prepare to COPY data into segDBs:
 	 * 1 - set table partitioning information
-	 * 2 - set append only table relevant info (if needed)
-	 * 1 - get the distribution policy for this table.
-	 * 2 - re-construct the orignial COPY command sent from the client.
-	 * 3 - execute a BEGIN DTM transaction.
-	 * 4 - send the COPY command to all segment databases.
-	 * 5 - prepare cdbhash for hashing on row values.
+	 * 2 - set append only table relevant info for dispatch.
+	 * 3 - get the distribution policy for this table.
+	 * 4 - re-construct the orignial COPY command sent from the client.
+	 * 5 - execute a BEGIN DTM transaction.
+	 * 6 - send the COPY command to all segment databases.
+	 * 7 - prepare cdbhash for hashing on row values.
 	 */
 	cdbCopy = makeCdbCopy(true);
 
-	if (enable_partition_fast_insert)
-	{
-		Size sz;
+	estate->es_result_partitions = cdbCopy->partitions = 
+		RelationBuildPartitionDesc(cstate->rel, false);
 
-		estate->es_result_partitions = cdbCopy->partitions = 
-			RelationBuildPartitionDesc(cstate->rel, false);
+	estate->es_partition_state = makeNode(PartitionState);
 
-		estate->es_partition_state = makeNode(PartitionState);
-
-		sz = num_partition_levels(estate->es_result_partitions);
-		sz *= sizeof(void *);
-		estate->es_partition_state->amstate = palloc0(sz);
-		estate->es_partition_state->max_partition_attr =
-			max_partition_attr(estate->es_result_partitions);
-	}
-
+	sz = num_partition_levels(estate->es_result_partitions);
+	sz *= sizeof(void *);
+	estate->es_partition_state->amstate = palloc0(sz);
+	estate->es_partition_state->max_partition_attr =
+		max_partition_attr(estate->es_result_partitions);
 	
-	if(relstorage == RELSTORAGE_AO)
-		cdbCopy->aousesegno = cstate->aousesegno;
+	if(list_length(cstate->ao_segnos) > 0)
+		cdbCopy->ao_segnos = cstate->ao_segnos;
 	
 	/* add cdbCopy reference to cdbSreh (if needed) */
 	if(cstate->errMode != ALL_OR_NOTHING)
 		cstate->cdbsreh->cdbcopy = cdbCopy;
 	
-	/*
-	 * get the CDB policy for this table and prepare for hashing.
-	 */
+	/* get the CDB policy for this table and prepare for hashing */
 	policy = GpPolicyCopy(CurrentMemoryContext, cstate->rel->rd_cdbpolicy);
 	
 	/* policy should be PARTITIONED (normal tables) or ENTRY (no column tables) */
@@ -3273,12 +3318,6 @@ CopyFromDispatch(CopyState cstate)
 	//AfterTriggerEndQuery(estate);
 
 	/*
-	 * If AO table, upate total row count on the master for the segfile we used.
-	 */
-	if(relstorage == RELSTORAGE_AO)
-		UpdateMasterAosegTotals(cstate->rel, cstate->aousesegno, cstate->processed);
-
-	/*
 	 * free all resources besides ones that are needed for error reporting
 	 */
 	pfree(cdbHash);
@@ -3302,6 +3341,19 @@ CopyFromDispatch(CopyState cstate)
 	resultRelInfo = estate->es_result_relations;
     for (i = estate->es_num_result_relations; i > 0; i--)
     {
+    	/* AO table? update row count on the master for the segfile we used */
+    	if(RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO)
+    	{
+    		/* find out which segnos the result rels in the QE's used */
+    	    ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
+    	    
+         	/* TODO (Gavin): we need to replace cstate->processed (total overall
+        	 * count) with a per resultrelinfo count. */
+    		UpdateMasterAosegTotals(resultRelInfo->ri_RelationDesc, 
+									resultRelInfo->ri_aosegno, 
+									cstate->processed /* WRONG if partitioned! */);
+
+    	}
         /* Close indices and then the relation itself */
         ExecCloseIndices(resultRelInfo);
         heap_close(resultRelInfo->ri_RelationDesc, NoLock);
@@ -3353,8 +3405,6 @@ CopyFrom(CopyState cstate)
 	attr_count = list_length(cstate->attnumlist);
 	num_defaults = 0;
 
-#define RelinfoGetStorage(relinfo) relinfo->ri_RelationDesc->rd_rel->relstorage
-
 	/*
 	 * We need a ResultRelInfo so we can use the regular executor's
 	 * index-entry-making machinery.  (There used to be a huge amount of
@@ -3368,8 +3418,9 @@ CopyFrom(CopyState cstate)
 		resultRelInfo->ri_TrigFunctions = (FmgrInfo *)
             palloc0(resultRelInfo->ri_TrigDesc->numtriggers * sizeof(FmgrInfo));
     resultRelInfo->ri_TrigInstrument = NULL;
-
-	ExecOpenIndices(resultRelInfo);
+    ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
+        
+    ExecOpenIndices(resultRelInfo);
 
 	estate->es_result_relations = resultRelInfo;
 	estate->es_num_result_relations = 1;
@@ -3796,9 +3847,13 @@ CopyFrom(CopyState cstate)
 				}
 				if (RelinfoGetStorage(resultRelInfo) == RELSTORAGE_AO &&
 					resultRelInfo->ri_aoInsertDesc == NULL)
+				{
+					ResultRelInfoSetSegno(resultRelInfo, cstate->ao_segnos);
 					resultRelInfo->ri_aoInsertDesc = 
 						appendonly_insert_init(resultRelInfo->ri_RelationDesc,
-											   cstate->aousesegno);
+											   resultRelInfo->ri_aosegno);
+
+				}
 			
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
 

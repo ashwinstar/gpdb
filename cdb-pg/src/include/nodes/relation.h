@@ -1250,4 +1250,20 @@ typedef struct PgPartRule
 	char        *relname; 		/* the error msg formatted "relname" */
 } PgPartRule;
 
+/*
+ * A Mapping created by the QD during data loading that maps a
+ * relation id to the segfile number that is should be inserting
+ * into (in cases of inserting into a partitioned table the QD
+ * assigns a segno for each possible partition child relation).
+ * 
+ * It is a node because it needs to get serialized as a part of 
+ * CopyStmt.
+ */
+typedef struct SegfileMapNode
+{
+	NodeTag 	type;
+	Oid			relid;
+	int			segno;
+} SegfileMapNode;
+
 #endif   /* RELATION_H */

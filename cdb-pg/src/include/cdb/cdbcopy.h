@@ -54,7 +54,7 @@ typedef struct CdbCopy
 									 * Once a segment gave away all it's data rows
 									 * it is taken out of the list */
 	PartitionNode *partitions;
-	int			   aousesegno;
+	List		  *ao_segnos;
 } CdbCopy;
 
 

@@ -46,7 +46,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "access/aosegfiles.h"
+#include "access/appendonlywriter.h"
 #include "catalog/index.h"
 #include "executor/execdebug.h"
 #include "parser/parsetree.h"
@@ -1204,13 +1204,12 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 static void
 ExecUpdateAOtupCount(ResultRelInfo *result_rels, 
 					 int num_result_rels, 
-					 uint64 processed,
-					 int segnoused)
+					 uint64 processed)
 {
 	int		i;
 	
 	Assert(Gp_role == GP_ROLE_DISPATCH);
-	
+
 	for (i = num_result_rels; i > 0; i--)
 	{
 		Relation rel = result_rels->ri_RelationDesc;
@@ -1218,10 +1217,10 @@ ExecUpdateAOtupCount(ResultRelInfo *result_rels,
 		
 		if(relstorage == RELSTORAGE_AO)
 		{
-			Assert(segnoused != InvalidFileSegNumber);
+			Assert(result_rels->ri_aosegno != InvalidFileSegNumber);
 			UpdateMasterAosegTotals(result_rels->ri_RelationDesc,
-									segnoused,
-									processed);
+									result_rels->ri_aosegno,
+									processed /* WRONG if partitioned! */);
 		}
 		
 		result_rels++;
@@ -1982,10 +1981,17 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 		cdbdisp_sumRejectedRows(pr);
 		
 		/* sum up inserted rows into any AO relation */
+		/* TODO (Gavin): 
+		 * 1) unlike in COPY (end of CopyFromDispatch) where the QD has access
+		 * to *all* the result relations that are a part of a partitioned table,
+		 * in here the QD only has 1 - the result rel of the master. So, since
+		 * es_num_result_relations=1 ExecUpdateAOtupCount only updates the master
+		 * partition table
+		 * 1) passing es_processed is wrong. we need to find the per
+		 * partition totals inside of ExecUpdateAOtupCount and update each */
 		ExecUpdateAOtupCount(estate->es_result_relations, 
 							 estate->es_num_result_relations,
-							 estate->es_processed,
-							 estate->es_result_aousesegno);
+							 estate->es_processed);
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an

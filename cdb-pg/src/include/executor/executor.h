@@ -64,6 +64,7 @@ struct ChunkTransportState;             /* #include "cdb/cdbinterconnect.h" */
 #define ExecEvalExpr(expr, econtext, isNull, isDone) \
 	((*(expr)->evalfunc) (expr, econtext, isNull, isDone))
 
+#define RelinfoGetStorage(relinfo) relinfo->ri_RelationDesc->rd_rel->relstorage
 
 /*
  * prototypes from functions in execAmi.c
@@ -324,6 +325,9 @@ extern void UnregisterExprContextCallback(ExprContext *econtext,
 
 /* Share input utilities defined in execUtils.c */
 extern ShareNodeEntry * ExecGetShareNodeEntry(EState *estate, int shareid, bool fCreate);
+
+/* ResultRelInfo and Append Only segment assignment */
+void ResultRelInfoSetSegno(ResultRelInfo *resultRelInfo, List *mapping);
 
 /* Additions for MPP Slice table utilities defined in execUtils.c */
 extern void InitSliceTable(EState *estate, int nMotions, int nSubplans);

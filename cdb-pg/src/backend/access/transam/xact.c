@@ -20,6 +20,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "access/appendonlywriter.h"
 #include "access/multixact.h"
 #include "access/subtrans.h"
 #include "access/transam.h"
@@ -2141,6 +2142,10 @@ CommitTransaction(void)
 	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 		AtCommit_ResScheduler();
 
+	/* Perform any AO table commit processing */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		AtCommit_AppendOnly();
+		
 	/*
 	 * Let ON COMMIT management do its thing (must happen after closing
 	 * cursors, to avoid dangling-reference problems)
@@ -2708,6 +2713,10 @@ AbortTransaction(void)
 	if (Gp_role == GP_ROLE_DISPATCH && ResourceScheduler)
 		AtAbort_ResScheduler();
 		
+	/* Perform any AO table abort processing */
+	if (Gp_role == GP_ROLE_DISPATCH)
+		AtAbort_AppendOnly();
+
 	AtAbort_ExtTables();
 
 	AtEOXact_LargeObject(false);	/* 'false' means it's abort */

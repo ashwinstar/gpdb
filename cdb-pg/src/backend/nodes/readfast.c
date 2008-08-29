@@ -182,7 +182,7 @@ _readQuery(const char ** str)
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
 	READ_NODE_FIELD(result_partitions);
-	READ_INT_FIELD(result_aousesegno);
+	READ_NODE_FIELD(result_aosegnos);
 	READ_NODE_FIELD(returningLists);
 	                     
     READ_OID_FIELD(intoOidInfo.relOid);
@@ -1845,6 +1845,17 @@ _readPgPartRule(const char **str)
 	READ_DONE();
 }
 
+static SegfileMapNode *
+_readSegfileMapNode(const char **str)
+{
+	READ_LOCALS(SegfileMapNode);
+
+	READ_OID_FIELD(relid);
+	READ_INT_FIELD(segno);
+
+	READ_DONE();
+}
+
 static ExtTableTypeDesc *
 _readExtTableTypeDesc(const char ** str)
 {
@@ -2203,7 +2214,7 @@ _readCopyStmt(const char ** str)
 	READ_NODE_FIELD(options);
 	READ_NODE_FIELD(sreh);
 	READ_NODE_FIELD(partitions);
-	READ_INT_FIELD(aousesegno);
+	READ_NODE_FIELD(ao_segnos);
 	
 	READ_DONE();	
 
@@ -3538,6 +3549,9 @@ readNodeBinary(const char ** str)
 				break;
 			case T_PartitionRule:
 				return_value = _readPartitionRule(str);
+				break;
+			case T_SegfileMapNode:
+				return_value = _readSegfileMapNode(str);
 				break;
 			case T_ExtTableTypeDesc:
 				return_value = _readExtTableTypeDesc(str);

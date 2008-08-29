@@ -18,7 +18,7 @@
 #include <fcntl.h>
 #include <sys/file.h>
 
-#include "access/aosegfiles.h"  /* MAX_AOREL_CONCURRENCY */
+#include "access/appendonlywriter.h" 
 #include "catalog/catalog.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"

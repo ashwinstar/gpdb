@@ -227,6 +227,7 @@ typedef enum NodeTag
 	T_PartitionRule,
 	T_PartitionNode,
 	T_PgPartRule,
+	T_SegfileMapNode,
 
     /* Tags for MPP planner nodes (relation.h) */
     T_CdbMotionPath = 580,

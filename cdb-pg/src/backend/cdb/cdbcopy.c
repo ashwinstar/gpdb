@@ -55,7 +55,7 @@ makeCdbCopy(bool is_copy_in)
 	c->copy_in = is_copy_in;
 	c->outseglist = NIL;
 	c->partitions = NULL;
-	c->aousesegno = InvalidFileSegNumber;
+	c->ao_segnos = NIL;
 	initStringInfo(&(c->err_msg));
 	initStringInfo(&(c->err_context));
 	initStringInfo(&(c->copy_out_buf));	
@@ -231,8 +231,8 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 	/* add in partitions for dispatch */
 	((CopyStmt *)q->utilityStmt)->partitions = c->partitions;
 	
-	/* add in AO segno for dispatch */
-	((CopyStmt *)q->utilityStmt)->aousesegno = c->aousesegno;
+	/* add in AO segno map for dispatch */
+	((CopyStmt *)q->utilityStmt)->ao_segnos = c->ao_segnos;
 	
 	MemoryContextSwitchTo(oldcontext);
 

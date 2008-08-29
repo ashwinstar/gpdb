@@ -65,6 +65,7 @@ typedef enum LWLockId
 	DistributedLogControlLock,
 	TemporarySerializePreparesLock,
 	SeqServerControlLock,
+	AppendOnlyLock,
 	FirstBufMappingLock,
 	FirstLockMgrLock = FirstBufMappingLock + NUM_BUFFER_PARTITIONS,
 	ResQueueLock = FirstLockMgrLock + NUM_LOCK_PARTITIONS,

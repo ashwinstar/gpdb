@@ -37,6 +37,7 @@
 #include "access/heapam.h"
 #include "access/appendonlyam.h"
 #include "access/aosegfiles.h"
+#include "access/appendonlywriter.h"
 #include "access/reloptions.h"
 #include "access/transam.h"
 #include "access/xact.h"
@@ -80,7 +81,6 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdboidsync.h"
 
-bool enable_partition_fast_insert = true;
 extern bool isFtsReadOnlySet(void);
 extern void FtsEvaluateTransientState(void);
 
@@ -1161,7 +1161,6 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		List	   *resultRelations = parseTree->resultRelations;
 		int			numResultRelations;
 		ResultRelInfo *resultRelInfos;
-		bool		hasaotable = false;
 		
 		if (resultRelations != NIL)
 		{
@@ -1183,14 +1182,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 								  operation,
 								  estate->es_instrument,
 								  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
-				
-				/* sneak in a check in this loop - do we have any AO result rels? */
-				if(resultRelInfo->ri_RelationDesc->rd_rel->relstorage == RELSTORAGE_AO)
-					hasaotable = true;
-				
+								
 				resultRelInfo++;
-				
-				
 			}
 		}
 		else
@@ -1206,12 +1199,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 							  operation,
 							  estate->es_instrument,
 							  (Gp_role != GP_ROLE_EXECUTE || Gp_is_writer));
-			
-			if(resultRelInfos->ri_RelationDesc->rd_rel->relstorage == RELSTORAGE_AO)
-				hasaotable = true;			
 		}
 
-		/*
+		/* 
 		 * In some occasions when inserting data into a target relations we
 		 * need to pass some specific information from the QD to the QEs. 
 		 * we do this information exchange here, via the parseTree. For now 
@@ -1224,17 +1214,33 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		estate->es_result_relation_info = resultRelInfos;
 
 		if (Gp_role == GP_ROLE_EXECUTE)
+		{
 			estate->es_result_partitions = parseTree->result_partitions;
+			estate->es_result_aosegnos = parseTree->result_aosegnos;
+		}
 		else
 		{
-			Relation tmp = heap_open(getrelid(parseTree->resultRelation,
-											  rangeTable),
-									 NoLock);
-			if (enable_partition_fast_insert)
-				estate->es_result_partitions =
-					RelationBuildPartitionDesc(tmp, false);
+			Oid 	 relid = getrelid(parseTree->resultRelation, rangeTable);
+			Relation tmp = heap_open(relid, NoLock);
+			List 	*all_relids = NIL;
+			
+			estate->es_result_partitions = RelationBuildPartitionDesc(tmp, false);
+			
+			/* 
+			 * list all the relids that may take part in this insert operation 
+			 */
+			all_relids = lappend_oid(all_relids, relid);
+			all_relids = list_concat(all_relids, 
+							all_partition_relids(estate->es_result_partitions));
+			
+			estate->es_result_aosegnos = assignPerRelSegno(all_relids);
+			
 			parseTree->result_partitions = estate->es_result_partitions;
+			parseTree->result_aosegnos = estate->es_result_aosegnos;
 			heap_close(tmp, NoLock);
+			
+			/* Set the QD rel segno, just in case. The others set in ExecInsert() */
+			ResultRelInfoSetSegno(resultRelInfos, estate->es_result_aosegnos);
 		}
 
 		if (estate->es_result_partitions)
@@ -1250,25 +1256,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 
 		}
 		else
-			estate->es_partition_state = NULL;
-		
-		/* 
-		 * AO table INSERT operation:
-		 * If QD - choose the segno to be passed down to the QE executor.
-		 * If QE - get the segno that the QD prepared for us to use.
-		 */
-		if(hasaotable)
-		{
-			int knownsegno = (Gp_role == GP_ROLE_EXECUTE ? 
-							  parseTree->result_aousesegno : 
-							  InvalidFileSegNumber);
-			estate->es_result_aousesegno = SetSegnoForWrite(knownsegno);
-			
-			/* set segno in parsetree to be passed down to the QE's */
-			if(Gp_role == GP_ROLE_DISPATCH)
-				parseTree->result_aousesegno = estate->es_result_aousesegno;			
-		}
-			
+			estate->es_partition_state = NULL;		
 	}
 	else
 	{
@@ -1279,7 +1267,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		estate->es_num_result_relations = 0;
 		estate->es_result_relation_info = NULL;
 		estate->es_result_partitions = NULL;
-		estate->es_result_aousesegno = InvalidFileSegNumber;
+		estate->es_result_aosegnos = NIL;
 	}
 
 	/*
@@ -1579,13 +1567,8 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
     /* CDB: Only the root slice needs to get the locks, because only the root slice will do updating */
     if (needLock)
    	{
-   		if (operation == CMD_UPDATE || operation == CMD_DELETE ||
-			(operation == CMD_INSERT && 
-			 resultRelationDesc->rd_rel->relstorage == RELSTORAGE_AO))
-    		CdbLockRelation(resultRelationDesc, RowExclusiveLock, false);
-    	else
+   		if (operation == CMD_UPDATE || operation == CMD_DELETE)
     		LockRelation(resultRelationDesc, RowExclusiveLock);
-    		
    	}
 	
 	switch (resultRelationDesc->rd_rel->relkind)
@@ -1645,7 +1628,9 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	resultRelInfo->ri_ConstraintExprs = NULL;
 	resultRelInfo->ri_junkFilter = NULL;
 	resultRelInfo->ri_projectReturning = NULL;
-
+	resultRelInfo->ri_aoInsertDesc = NULL;
+	resultRelInfo->ri_aosegno = InvalidFileSegNumber;
+	
 	/*
 	 * If there are indices on the result relation, open them and save
 	 * descriptors in the result relation info, so that we can add new index
@@ -1656,6 +1641,56 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 	if (resultRelationDesc->rd_rel->relhasindex &&
 		operation != CMD_DELETE)
 		ExecOpenIndices(resultRelInfo);
+}
+
+/*
+ * ResultRelInfoSetSegno
+ * 
+ * based on a list of relid->segno mapping, look for our own resultRelInfo
+ * relid in the mapping and find the segfile number that this resultrel should
+ * use if it is inserting into an AO relation. for any non AO relation this is
+ * irrelevant and will return early. 
+ * 
+ * Note that we rely on the fact that the caller has a well constructed mapping
+ * and that it includes all the relids of *any* AO relation that may insert
+ * data during this transaction. For non partitioned tables the mapping list
+ * will have only one element - our table. for partitioning it may have 
+ * multiple (depending on how many partitions are AO).
+ * 
+ */
+void
+ResultRelInfoSetSegno(ResultRelInfo *resultRelInfo, List *mapping)
+{
+   	ListCell *relid_to_segno;
+   	bool	  found = false;
+   	
+	/* only relevant for AO relations */
+	if(RelinfoGetStorage(resultRelInfo) != RELSTORAGE_AO)
+		return;
+	
+	Assert(mapping);
+	Assert(resultRelInfo->ri_RelationDesc);
+	
+   	/* lookup the segfile # to write into, according to my relid */
+    	
+   	foreach(relid_to_segno, mapping)
+   	{
+		SegfileMapNode *n = (SegfileMapNode *)lfirst(relid_to_segno);
+		Oid myrelid = RelationGetRelid(resultRelInfo->ri_RelationDesc);
+		if(n->relid == myrelid)
+		{
+			Assert(n->segno != InvalidFileSegNumber);
+			resultRelInfo->ri_aosegno = n->segno;
+			
+			if (Debug_appendonly_print_insert)
+				elog(LOG, "Appendonly: setting pre-assigned segno %d in result "
+						  "relation with relid %d", n->segno, n->relid);
+			
+			found = true;
+		}
+	}
+	
+	Assert(found);
 }
 
 /*
@@ -2145,7 +2180,7 @@ ExecInsert(TupleTableSlot *slot,
 
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 	relstorage = resultRelationDesc->rd_rel->relstorage;
-
+	
 	/*
 	 * get the heap tuple out of the tuple table slot, making sure we have a
 	 * writable copy
@@ -2222,9 +2257,15 @@ ExecInsert(TupleTableSlot *slot,
 	else
 	{
 		if (resultRelInfo->ri_aoInsertDesc == NULL)
+		{
+			/* Set the pre-assigned fileseg number to insert into */
+			ResultRelInfoSetSegno(resultRelInfo, estate->es_result_aosegnos);
+
 			resultRelInfo->ri_aoInsertDesc = 
 				appendonly_insert_init(resultRelationDesc, 
-									   estate->es_result_aousesegno);
+									   resultRelInfo->ri_aosegno);
+
+		}
 		
 		newId = appendonly_insert(resultRelInfo->ri_aoInsertDesc, tuple);				
 	}

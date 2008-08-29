@@ -270,7 +270,7 @@ _readQuery(void)
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
 	READ_NODE_FIELD(result_partitions);
-	READ_INT_FIELD(result_aousesegno);
+	READ_NODE_FIELD(result_aosegnos);
 	READ_NODE_FIELD(returningLists);
 	
 	/*
@@ -1934,6 +1934,17 @@ _readPgPartRule(const char **str)
 	READ_DONE();
 }
 
+static SegfileMapNode *
+_readSegfileMapNode(const char **str)
+{
+	READ_LOCALS(SegfileMapNode);
+
+	READ_OID_FIELD(relid);
+	READ_INT_FIELD(segno);
+
+	READ_DONE();
+}
+
 static ExtTableTypeDesc *
 _readExtTableTypeDesc(void)
 {
@@ -3299,6 +3310,7 @@ static ParseNodeInfo infoAr[] =
 	{"RULESTMT", (ReadFn)_readRuleStmt},
 	{"SCALARARRAYOPEXPR", (ReadFn)_readScalarArrayOpExpr},
 	{"SCAN", (ReadFn)_readScan},
+	{"SEGFILEMAPNODE", (ReadFn)_readSegfileMapNode},
 	{"SEQSCAN", (ReadFn)_readSeqScan},
 	{"SETOP", (ReadFn)_readSetOp},
 	{"SETOPERATIONSTMT", (ReadFn)_readSetOperationStmt},

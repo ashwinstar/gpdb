@@ -171,7 +171,7 @@ typedef struct Query
 	 */
 	List	   *resultRelations;	/* integer list of RT indexes, or NIL */
 	PartitionNode *result_partitions;
-	int			result_aousesegno; /* AO file 'seg' number for resultRelstion to use */
+	List	   *result_aosegnos; /* AO file 'seg' numbers for resultRels to use */
 	
 	/*
 	 * If the query has a returningList then the planner will store a list of
@@ -1235,7 +1235,7 @@ typedef struct CopyStmt
 	Node	   *sreh;			/* Single row error handling info */
 	/* Convenient location for dispatch of misc meta data */
 	PartitionNode *partitions;
-	int			   aousesegno;	/* AO segno to write into */
+	List		*ao_segnos;		/* AO segno map */
 } CopyStmt;
 
 /* ----------------------

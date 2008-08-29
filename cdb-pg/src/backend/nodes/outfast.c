@@ -1780,6 +1780,15 @@ _outPgPartRule(StringInfo str, PgPartRule *node)
 }
 
 static void
+_outSegfileMapNode(StringInfo str, SegfileMapNode *node)
+{
+	WRITE_NODE_TYPE("SEGFILEMAPNODE");
+
+	WRITE_OID_FIELD(relid);
+	WRITE_INT_FIELD(segno);
+}
+
+static void
 _outExtTableTypeDesc(StringInfo str, ExtTableTypeDesc *node)
 {
 	WRITE_NODE_TYPE("EXTTABLETYPEDESC");
@@ -2338,7 +2347,7 @@ _outCopyStmt(StringInfo str, CopyStmt *node)
 	WRITE_NODE_FIELD(options);
 	WRITE_NODE_FIELD(sreh);
 	WRITE_NODE_FIELD(partitions);
-	WRITE_INT_FIELD(aousesegno);
+	WRITE_NODE_FIELD(ao_segnos);
 }
 
 
@@ -2549,7 +2558,7 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(resultRelations);
 	WRITE_NODE_FIELD(result_partitions);
-	WRITE_INT_FIELD(result_aousesegno);
+	WRITE_NODE_FIELD(result_aosegnos);
 	WRITE_NODE_FIELD(returningLists); 
 		
 	WRITE_OID_FIELD(intoOidInfo.relOid);
@@ -3409,6 +3418,10 @@ _outNode(StringInfo str, void *obj)
 				_outPgPartRule(str, obj);
 				break;
 
+			case T_SegfileMapNode:
+				_outSegfileMapNode(str, obj);
+				break;
+				
 			case T_ExtTableTypeDesc:
 				_outExtTableTypeDesc(str, obj);
 				break;

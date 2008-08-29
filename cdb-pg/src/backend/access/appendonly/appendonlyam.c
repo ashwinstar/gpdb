@@ -1329,8 +1329,7 @@ appendonly_beginscan(Relation relation, int nkeys, ScanKey key)
 	/*
 	 * Get information about all the file segments we need to scan
 	 */
-	scan->aos_total_segfiles = GetNumOfSegFiles(relation);
-	scan->aos_segfile_arr = GetAllFileSegInfo(relation, scan->aos_total_segfiles);
+	scan->aos_segfile_arr = GetAllFileSegInfo(relation, &scan->aos_total_segfiles);
 		
 	/*
 	 * we do this here instead of in initscan() because appendonly_rescan also calls
