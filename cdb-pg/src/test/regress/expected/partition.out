@@ -2522,14 +2522,14 @@ create table bar (i int, j int) distributed by (i);
 set session authorization part_role;
 -- should fail
 alter table foo exchange partition for(rank(6)) with table bar;
-ERROR:  relation "foo" does not exist
+ERROR:  must be owner of relation foo
 -- back to super user
 \c -
 alter table bar owner to part_role;
 set session authorization part_role;
 -- should fail
 alter table foo exchange partition for(rank(6)) with table bar;
-ERROR:  relation "foo" does not exist
+ERROR:  must be owner of relation foo
 \c -
 -- owners should be the same, error out 
 alter table foo exchange partition for(rank(6)) with table bar;

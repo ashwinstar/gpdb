@@ -274,8 +274,8 @@ ExecuteGrantStmt(GrantStmt *stmt)
 			heap_close(rel, NoLock);
 			objs = lappend_oid(objs, relid);
 		}
+		istmt.objects = objs;
 	}
-	istmt.objects = objs;
 
 	/* all_privs to be filled below */
 	/* privileges to be filled below */
