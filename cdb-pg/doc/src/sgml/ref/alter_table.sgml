@@ -30,14 +30,14 @@ ALTER TABLE <replaceable class="PARAMETER">name</replaceable>
     SET SCHEMA <replaceable class="PARAMETER">new_schema</replaceable>
 
 ALTER TABLE <replaceable>parent_table_name</replaceable> 
-  [ ALTER PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) } [...] ]
-  | DROP PARTITION [IF EXISTS] { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) } [CASCADE]
-  | TRUNCATE PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) }
-  | RENAME PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) TO <replaceable>new_name</replaceable>}
+  [ ALTER PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR ('<replaceable>value</replaceable>) } [...] ]
+  | DROP PARTITION [IF EXISTS] { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>') } [CASCADE]
+  | TRUNCATE PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR ('<replaceable>value</replaceable>') }
+  | RENAME PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR ('<replaceable>value</replaceable>') TO <replaceable>new_name</replaceable>}
   | ADD DEFAULT PARTITION <replaceable>name</replaceable>
   | ADD PARTITION [name] <replaceable>partition_element</replaceable>
          [ ( <replaceable>subpartition_specification</replaceable> ) ]
-  | EXCHANGE PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR (<replaceable>value</replaceable>) } 
+  | EXCHANGE PARTITION { <replaceable>partition_name</replaceable> | FOR (RANK(<replaceable>number</replaceable>)) | FOR ('<replaceable>value</replaceable>') } 
          WITH TABLE <replaceable>table_name</replaceable> [ WITH | WITHOUT VALIDATION ]
 
 where <replaceable class="PARAMETER">action</replaceable> is one of:
