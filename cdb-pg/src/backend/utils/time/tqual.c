@@ -1654,6 +1654,11 @@ GetTransactionSnapshot(void)
 		return SerializableSnapshot;
 	}
 
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] (gxid = %u, '%s')", 
+		 (LatestSnapshot == NULL ? 0 : LatestSnapshot->distribSnapshotWithLocalMapping.header.distribSnapshotId),
+		 getDistributedTransactionId(),
+		 DtxContextToString(DistributedTransactionContext));
+
 	LatestSnapshot = GetSnapshotData(&LatestSnapshotData, false);
 
 	return LatestSnapshot;

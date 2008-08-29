@@ -151,9 +151,15 @@ DistributedSnapshotWithLocalMapping_CommittedTest(
 	if (distribXid < header->xmin)
 		return DISTRIBUTEDSNAPSHOT_COMMITTED_VISIBLE;
 
-	/* Any xid >= xmax is in-progress */
-	if (distribXid >= header->xmax)
+	/* Any xid >= xmax is in-progress, distributed xmax points to the
+	 * committer, so it must be visible, so ">" instead of ">=" */
+	if (distribXid > header->xmax)
+	{
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
+			 "distributedsnapshot committed but invisible: distribXid %d header->xmax %d header->xmin %d header->distribSnapshotId %d",
+			 distribXid, header->xmax, header->xmin, header->distribSnapshotId);
 		return DISTRIBUTEDSNAPSHOT_COMMITTED_INPROGRESS;
+	}
 
 	for (i = 0; i < count; i++)
 	{

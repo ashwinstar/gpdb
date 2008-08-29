@@ -2045,7 +2045,12 @@ createDtxSnapshot(
 	}
 
 	xmin = LastDistributedTransactionId;
-	xmax = 0;
+	/*
+	 * This is analogous to the code in GetSnapshotData() (which calls
+	 * ReadNewTransactionId(), the distributed-xmax of a transaction
+	 * is the last distributed-xmax available
+	 */
+	xmax = LocalDistribXact_GetMaxDistributedXid();
 	count = 0;
 	inProgressEntryArray = distribSnapshotWithLocalMapping->inProgressEntryArray;
 	
@@ -3394,7 +3399,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 		break;
 
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
-//		elog(NOTICE, "We should have left this transistion state '%s' at the end of the previous command...",
+//		elog(NOTICE, "We should have left this transition state '%s' at the end of the previous command...",
 //			 DtxContextToString(DistributedTransactionContext));
 		Assert (IsTransactionOrTransactionBlock());
 		
@@ -3405,7 +3410,7 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 		break;
 		
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
-		elog(ERROR, "We should have left this transistion state '%s' at the end of the previous command",
+		elog(ERROR, "We should have left this transition state '%s' at the end of the previous command",
 			 DtxContextToString(DistributedTransactionContext));
 		break;
 		
