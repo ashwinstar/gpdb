@@ -4,12 +4,12 @@ $def with (stime, etime, tkeys, hkeys, ckeys, tab)
 $for h in hkeys:
     <host name="$h">
     $for c in ckeys:
-        <$c>
+        <$c> \
         $for t in tkeys:
 	    $ v = tab[(h, t)]
 	    $if not v: v = {}
 	    $ v = v.get(c, '#')
-	    ${loop.index != 1 and '|' or ''} ${v}
+	    ${loop.index != 1 and '|' or ''} ${v} \
         </$c>
     </host>
 </system>
