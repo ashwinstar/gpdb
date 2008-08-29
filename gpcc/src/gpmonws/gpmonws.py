@@ -18,7 +18,9 @@ import db
 web.webapi.internalerror = web.debugerror
 web.config.session_parameters.timeout = 1800
 
-urls = ('/startdate', 'startdate', '/system', 'system', '/system/', 'system')
+urls = ('/startdate', 'startdate', 
+		'/hosts', 'hosts',
+		'/system', 'system', '/system/', 'system')
 
 app = web.application(urls, locals(), web.reloader)
 session = web.session.Session(app, 
@@ -47,6 +49,17 @@ class startdate:
 			startdate.stime = db.start_date()
 		# return start time
 		return render.startdate(startdate.stime)
+
+class hosts:
+	nodes = None
+
+	def GET(self, ses=None):
+		web.header('Content-Type', 'text/xml')
+		if hosts.nodes == None:
+			# retrieve the list of nodes in the GP DB system
+			hosts.nodes = db.hosts()
+		# return start time
+		return render.hosts(hosts.nodes)
 
 class system:
     def GET(self):
