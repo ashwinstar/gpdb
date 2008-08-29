@@ -1155,7 +1155,7 @@ void updateAppendOnlyStats(PGconn* pConn)
 	
 	/* query that updates all ao tables in the database */
 	PQExpBuffer update_query = createPQExpBuffer();
-	PGresult   *update_res;
+	PGresult   *update_res = NULL;
 	int			update_ntups = 0;
 	
 	/* misc */
