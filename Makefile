@@ -22,6 +22,7 @@ DEFPORT=5432
 INLINE_FLAGS=-finline-limit=1800
 
 OPTFLAGS="-O3 -funroll-loops -fargument-noalias-global $(COPTX) -g $(INLINE_FLAGS)" 
+PROFFLAGS="-O3 -funroll-loops -fargument-noalias-global -fno-omit-frame-pointer $(COPTX) -g $(INLINE_FLAGS)" 
 
 ifeq (on, ${GPDBGINLINE})
 CFLAGS_INLINE=$(INLINE_FLAGS)
@@ -124,6 +125,18 @@ forceplan : HOMEDEP $(ISCONFIG)
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
+	@rm -rf $(INSTLOC)
+	@cd $(GPPGDIR) && $(MAKE) install
+	@$(MAKE) groupSession
+	@$(MAKE) mkgpcc
+	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
+	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
+	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
+
+dist_prof : INSTCFLAGS=$(PROFFLAGS)
+dist_prof : INSTLOC=$(DISTPATH)
+dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
 	@$(MAKE) groupSession

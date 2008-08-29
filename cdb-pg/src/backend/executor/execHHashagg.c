@@ -32,6 +32,8 @@
 #include "utils/lsyscache.h"
 #include "utils/elog.h"
 
+#include "access/hash.h"
+
 #define HHA_MSG_LVL DEBUG2
 
 
@@ -133,12 +135,19 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 		bool isnull = false;
 		Datum value = slot_getattr(inputslot, att, &isnull);
 
-		/* rotate hashkey left 1 bit at each step */
-		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
-
 		if (!isnull)			/* treat nulls as having hash key 0 */
 		{
-			hashkey ^= DatumGetUInt32(FunctionCall1(info, value));
+			/* 
+			 * Why do we do this.
+			 *
+			 * The hash function we are using is not randomize int2/4/8
+			 * enough.  This will cause more than necessary collision in
+			 * hash table and bloom filter.  However, it is too late to
+			 * change the hash function itself, because the segment/motion
+			 * stuff.  So we randomize it again here, using hash_any.
+			 */
+			uint32 x = DatumGetUInt32(FunctionCall1(info, value));
+			hashkey ^= (uint32) hash_any((unsigned char *) &x, 4);
 		}
 	}
 
@@ -397,7 +406,7 @@ lookup_agg_hash_entry(AggState *aggstate,
 
 	oldcxt = MemoryContextSwitchTo(tmpcontext->ecxt_per_tuple_memory);
 	bucket_idx = (hashkey >> parent_hash_bit) % (hashtable->nbuckets);
-	bloomval = ((uint64)1) << ((hashkey >> 13) & 0x3f);
+	bloomval = ((uint64)1) << ((hashkey >> 23) & 0x3f);
 	entry = (0 == (hashtable->bloom[bucket_idx] & bloomval) ? NULL :
 			 hashtable->buckets[bucket_idx]);
 

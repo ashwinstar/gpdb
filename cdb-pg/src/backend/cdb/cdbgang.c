@@ -1649,19 +1649,13 @@ static int addOptions(PQExpBufferData * buffer, bool iswriter, int segindex, boo
 			appendPQExpBuffer(buffer, " -c transaction_isolation=serializable");
 	}
 
-	/* The following gucs are set if it is
-	 * 		1. GUC_GPDB_ADDOPT,
-	 * 		2. Not same as default,
-	 *		3. !PGC_SUSET || (PGC_SUSET && i_am_superuser) 
-	 */
-	
 	for(i=0; i<ngucs; ++i)
 	{
 		struct config_generic *guc = gucs[i];
 
 		if((guc->flags & GUC_GPDB_ADDOPT)
 			&&
-			(guc->context != PGC_USERSET
+			(guc->context == PGC_USERSET
 			 ||
 			 i_am_superuser
 			)
