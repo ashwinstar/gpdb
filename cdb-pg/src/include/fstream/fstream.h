@@ -18,6 +18,7 @@ struct fstream_options{
 
 struct fstream_filename_and_offset{
     char fname[256];
+    int64_t line_number;
     int64_t foff;
 };
 

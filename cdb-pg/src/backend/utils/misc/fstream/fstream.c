@@ -11,6 +11,7 @@ struct fstream_t{
     gfile_t*fd;
     int fidx;		/* current index in ffd[] */
     int64_t foff;		/* current offset in ffd[fidx] */
+    int64_t line_number;
     int fskip;		/* skip first line */
     const char*ferror;	/* error string */
     struct fstream_options options;
@@ -26,7 +27,7 @@ fstream_get_error(fstream_t*fs)
 
 /* Scan as many record as possible in [p, q), taking quotes and escapes into account. */
 static char*
-scan_rec(char*p,char*q,int cnt,fstream_t*fs)
+scan_rec(char*p,char*q,int cnt,fstream_t*fs,int64_t*line_number)
 {
     int in_quote=0,last_was_esc=0;
     char*last_complete=0;
@@ -34,6 +35,8 @@ scan_rec(char*p,char*q,int cnt,fstream_t*fs)
     int xc=fs->options.escape;
     while (p<q && cnt){
 	int ch=*p++;
+	if (ch=='\n')
+	    ++*line_number;
 	if (in_quote){
 	    if (!last_was_esc){
 		if (ch == qc) 
@@ -151,6 +154,7 @@ fstream_open(const char*path,const struct fstream_options*options)
 	else
 	    fs->fd = fd;
     }
+    fs->line_number = 1;
     fs->fskip = options->header;
     return fs;
 }
@@ -160,6 +164,7 @@ fillFo(fstream_t*fs,struct fstream_filename_and_offset**fo)
 {
     if (*fo){
 	(*fo)->foff = fs->foff;
+	(*fo)->line_number = fs->line_number;
 	strncpy((*fo)->fname,fs->glob.gl_pathv[fs->fidx],sizeof (*fo)->fname);
 	(*fo)->fname[sizeof (*fo)->fname-1] = 0;
 	*fo = 0;
@@ -172,6 +177,7 @@ nextFile(fstream_t*fs)
     gfile_close(fs->fd);
     fs->fd = 0;
     fs->foff = 0;
+    fs->line_number = 1;
     fs->fidx++;
     if (fs->fidx < fs->glob.gl_pathc){
 	fs->fskip = fs->options.header;
@@ -201,10 +207,11 @@ fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offse
 	    q = fs->buffer+fs->buffer_size;
 	    if (fs->fskip){
 		if (fs->options.is_csv)
-		    p = scan_rec(p,q,1,fs);
+		    p = scan_rec(p,q,1,fs,&fs->line_number);
 		else {
 		    for (; p<q&&*p!='\n'; p++);
 		    p = p<q?p+1:0;
+		    fs->line_number++;
 		}
 		if (!p){
 		    if (fs->buffer_size == sizeof fs->buffer){
@@ -226,14 +233,16 @@ fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offse
 	}
 	if (read_whole_lines){
 	    assert(size>=FSTREAM_BLOCKSIZE);
+	    fillFo(fs,&fo);
 	    if (fs->options.is_csv)
 		/* go slow, scan byte-by-byte for record boundary */
-		p = scan_rec(p,q,sizeof(fs->buffer)/*artificial max*/,fs);
+		p = scan_rec(p,q,sizeof(fs->buffer)/*artificial max*/,fs,&fs->line_number);
 	    else{
 		/* go fast, scan for \n for record boundary */
 		/* find the last \n from the back */
 		for (p=q; fs->buffer<=--p&&*p!='\n';);
 		p = fs->buffer<=p?p+1:0;
+		fs->line_number = 0;
 	    }
 	    if (!p){
 		if (fs->buffer_size == sizeof fs->buffer){
@@ -243,16 +252,12 @@ fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offse
 		}
 		p = fs->buffer+fs->buffer_size;
 	    }
-	    fillFo(fs,&fo);
 	    s = p-fs->buffer;
-	    if (s > size)
-		s = size;
 	    memcpy(buffer,fs->buffer,s);
 	    fs->foff += s;
 	    memmove(fs->buffer,fs->buffer+s,fs->buffer_size-=s);
 	    size -= s;
-	    if (size < FSTREAM_BLOCKSIZE)
-		break;
+	    break;
 	}else if (fs->buffer_size){
 	    fillFo(fs,&fo);
 	    s = fs->buffer_size;
@@ -263,6 +268,8 @@ fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offse
 	    size -= s;
 	    memmove(fs->buffer,fs->buffer+s,fs->buffer_size-=s);
 	    fs->foff += s;
+	    fs->line_number = 0;
+	    break;
 	}else{
 	    s = gfile_read(fs->fd,buffer,size);
 	    if (s < 0){
@@ -274,8 +281,10 @@ fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offse
 	    else{
 		fillFo(fs,&fo);
 		fs->foff += s;
+		fs->line_number = 0;
 		buffer = (char*)buffer+s;
 		size -= s;
+		break;
 	    }
 	}
     }
@@ -295,6 +304,7 @@ fstream_rewind(fstream_t*fs)
 {
     fs->fidx = 0;
     fs->foff = 0;
+    fs->line_number = 1;
     fs->ferror = 0;
     fs->fskip = fs->options.header;
     fs->buffer_size = 0;

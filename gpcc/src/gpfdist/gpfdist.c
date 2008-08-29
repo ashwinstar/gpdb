@@ -31,7 +31,7 @@
 /*  A data block */
 typedef struct blockhdr_t blockhdr_t;
 struct blockhdr_t{
-    char	hbyte[280];
+    char	hbyte[293];
     int         hbot,htop;
 };
 
@@ -132,6 +132,12 @@ block_fill_header(block_t*b,const struct fstream_filename_and_offset*fos)
     *p++ = 'O';
     len = htonl(8);
     len8 = local_htonll(fos->foff);
+    memcpy(p,&len,4);
+    p += 4;
+    memcpy(p,&len8,8);
+    p += 8;
+    *p++ = 'L';
+    len8 = local_htonll(fos->line_number);
     memcpy(p,&len,4);
     p += 4;
     memcpy(p,&len8,8);

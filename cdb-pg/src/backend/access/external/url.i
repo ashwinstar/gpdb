@@ -925,6 +925,19 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
 			//elog(NOTICE, "O %d", (int) curl->block.foff);
 			continue;
 		}
+		if (type == 'L') {
+			if (len != 8) {
+				elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len);
+				return -1;
+			}
+			if (-1 == fill_buffer(file, len)) {
+				elog(ERROR, "gpfdist error: stream ends suddenly");
+				return -1;
+			}
+			curl->buf.bot += 8;
+			Assert(curl->buf.bot <= curl->buf.top);
+			continue;
+		}
 
 		if (type == 'D') {
 			curl->block.datalen = len;
