@@ -17,6 +17,13 @@ def start_date():
 			time = r['min']
 	return time
 
+def hosts(): 
+	conn.execute('select distinct(hostname) from metrics_now') 
+	rows = []
+	for r in conn.iterate_dict():
+		rows.append(r['hostname'])
+	return rows
+
 def _metrics_consolidate(rows):
     td = {}   #time dimension
     hd = {}   #host dimension
