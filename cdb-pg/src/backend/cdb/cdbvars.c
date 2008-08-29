@@ -247,6 +247,9 @@ bool gp_enable_gpmon = false;
 /* Enable single-slice single-row inserts ?*/
 bool		gp_enable_fast_sri=true;
 
+/* Disable logging while creating mapreduce objects */
+bool        gp_mapreduce_define=false;
+
 /* --------------------------------------------------------------------------------------------------
  * Miscellaneous developer use
  */

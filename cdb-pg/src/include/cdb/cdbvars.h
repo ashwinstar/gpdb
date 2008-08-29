@@ -787,6 +787,9 @@ extern bool gp_disable_tuple_hints;
 extern bool gp_enable_gpmon;
 extern int gp_hashagg_compress_spill_files;
 
+/* Disable logging while creating mapreduce views */
+extern bool gp_mapreduce_define;
+
 /* --------------------------------------------------------------------------------------------------
  * Miscellaneous developer use
  */
