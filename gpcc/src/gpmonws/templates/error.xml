@@ -1,6 +1,7 @@
-$def with (req, msg)
+$def with (req, code, msg)
 <?xml version="1.0"?>
 <error>
    <req>$req</req>
+   <code>$code</code>
    <msg>$msg</msg>
 </error>

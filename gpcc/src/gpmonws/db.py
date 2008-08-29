@@ -12,10 +12,10 @@ pghost = os.environ.get('PGHOST', 'localhost')
 conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60)
 
 def start_date(): 
-	conn.execute('select min(ctime) from metrics_history') 
-	for r in conn.iterate_dict():
-			time = r['min']
-	return time
+    conn.execute('select min(ctime) from metrics_history') 
+    for r in conn.iterate_dict():
+        return r['min']
+    return time = '2008-01-01 00:00:00'
 
 def hosts(): 
 	conn.execute('select distinct(hostname) from metrics_now') 
@@ -45,6 +45,26 @@ def _metrics_consolidate(rows):
     return (tkeys, hkeys, ckeys, tab)
 
 
+def metrics_next(prev, host):
+    if host:
+        conn.execute("select *, now() as curtime from metrics_now where hostname='%s'" % host)
+    else:
+        conn.execute('select *, now() as curtime from metrics_now');
+
+    rows = [r for r in conn.iterate_dict()]
+    ctime = rows['ctime']
+    if ctime != prev:
+        return _metrics_consolidate(rows)
+
+    try:
+	ctime = datetime.datetime.strptime(ctime, '%Y-%m-%d %H:%M:%S')
+	curtime = datetime.datetime.strptime(rows['curtime'], '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        return _metrics_consolidate(rows)
+
+    
+
+
 def metrics_now(host):
     if host:
         conn.execute("select * from metrics_now where hostname='%s'" % host)
@@ -53,6 +73,8 @@ def metrics_now(host):
     
     rows = [r for r in conn.iterate_dict()]
     return _metrics_consolidate(rows)
+
+
 
 
 def metrics_upto_now(host, stime):
@@ -82,8 +104,9 @@ def metrics_history(host, stime, etime):
 select * from metrics_history %s
 union all 
 select * from metrics_tail %s
-''' % (filter*3)
+''' % (filter, filter)
 
     sys.stderr.write('%s\n' % query)
     conn.execute(query)
-    return _metrics_consolidate(row)
+    rows = [r for r in conn.iterate_dict()]
+    return _metrics_consolidate(rows)
