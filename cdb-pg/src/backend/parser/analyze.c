@@ -5693,7 +5693,7 @@ partition_arg_get_val(Node *node)
 		case T_OpExpr:
 			{
 				OpExpr *op = (OpExpr *)node;
-				Datum d;
+				Datum d = 0;
 
 				if (!OidIsValid(op->opfuncid))
 					op->opfuncid = get_opcode(op->opno);
