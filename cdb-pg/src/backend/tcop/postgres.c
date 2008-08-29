@@ -1967,6 +1967,8 @@ exec_bind_message(StringInfo input_message)
 	portal_name = pq_getmsgstring(input_message);
 	stmt_name = pq_getmsgstring(input_message);
 
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "Bind: portal %s stmt_name %s", portal_name, stmt_name);
+
 	ereport(DEBUG2,
 			(errmsg("bind %s to %s",
 					*portal_name ? portal_name : "<unnamed>",
@@ -2270,8 +2272,16 @@ exec_bind_message(StringInfo input_message)
 	 * dispatch a SET query that will do it for us. (This is also done in 
 	 * performOpenCursor() for the simple query protocol).
 	 */
-	if(portal->is_cursor)
-		verify_shared_snapshot_ready();
+	if (portal->is_cursor)
+	{
+		/*
+		 * If we're about to open an explicit transaction, we don't
+		 * need to do the verify (and, in fact, the verify will get in
+		 * the way).
+		 */
+		if (strncmp(pstmt->query_string, "BEGIN", strlen("BEGIN")) != 0)
+			verify_shared_snapshot_ready();
+	}
 	
 	PortalStart(portal, params, InvalidSnapshot);
 
