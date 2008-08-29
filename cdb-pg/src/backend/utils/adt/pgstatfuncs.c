@@ -736,7 +736,7 @@ pg_renice_session(PG_FUNCTION_ARGS)
 		elog(ERROR, "nice values must be between -20 and 20");
 	
 	if (gp_session_id != session_id)
-	
+	  if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 			  (errmsg("only superuser can renice another user's session"))));
