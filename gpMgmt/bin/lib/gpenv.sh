@@ -23,15 +23,15 @@ export PATH
 case `uname` in
   Darwin) 
      if [ $DYLD_LIBRARY_PATH ]
-     then DYLD_LIBRARY_PATH=$GPHOME/ext/python/lib:$DYLD_LIBRARY_PATH
-     else DYLD_LIBRARY_PATH=$GPHOME/ext/python/lib
+     then DYLD_LIBRARY_PATH=$GPHOME/lib:$GPHOME/ext/python/lib:$DYLD_LIBRARY_PATH
+     else DYLD_LIBRARY_PATH=$GPHOME/lib:$GPHOME/ext/python/lib
      fi
      export DYLD_LIBRARY_PATH
      ;;
   *) 
      if [ $LD_LIBRARY_PATH ]
-     then LD_LIBRARY_PATH=$GPHOME/ext/python/lib:$LD_LIBRARY_PATH
-     else LD_LIBRARY_PATH=$GPHOME/ext/python/lib
+     then LD_LIBRARY_PATH=$GPHOME/lib:$GPHOME/ext/python/lib:$LD_LIBRARY_PATH
+     else LD_LIBRARY_PATH=$GPHOME/lib:$GPHOME/ext/python/lib
      fi
      export LD_LIBRARY_PATH
      ;;
