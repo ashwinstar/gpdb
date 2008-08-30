@@ -10845,41 +10845,99 @@ atpxPart_validate_spec(
 	pBy->location  = -1;
 	pBy->partDefault = NULL;
 
-	{ /* find the partitioning keys (for this level, not recursively) */
+	{ /* find the partitioning keys (recursively) */
 
-		/* XXX XXX: should be recursive to get pieces for
-		 * subpartitions, eh? Need to thing about this... 
-		 */
+		PartitionBy 			*pBy2 = pBy;
+		PartitionBy 			*parent_pBy2 = NULL;
+		PartitionNode 			*pNode2 = pNode;
 
 		int 			 ii;
 		TupleDesc		 tupleDesc 		= RelationGetDescr(rel);
 		List 			*pbykeys   		= NIL;
 		List 			*pbyopclass 	= NIL;
 		Oid 			 accessMethodId = BTREE_AM_OID; 
-
-		for (ii = 0; ii < pNode->part->parnatts; ii++)
+		
+		while (pNode2)
 		{
-			AttrNumber 			 attno 		   = pNode->part->paratts[ii];
-			Form_pg_attribute 	 attribute 	   = tupleDesc->attrs[attno - 1];
-			char	   			*attributeName = NameStr(attribute->attname);
-			Oid 				 opclass 	   = InvalidOid;
+			pbykeys    = NIL;
+			pbyopclass = NIL;
 
-			opclass = GetDefaultOpClass(attribute->atttypid, accessMethodId);
-
-			if (pbykeys)
+			for (ii = 0; ii < pNode2->part->parnatts; ii++)
 			{
-				pbykeys = lappend(pbykeys, makeString(attributeName));
-				pbyopclass = lappend_oid(pbyopclass, opclass);
+				AttrNumber 		 	 attno 		   = 
+						pNode2->part->paratts[ii];
+				Form_pg_attribute 	 attribute 	   = 
+						tupleDesc->attrs[attno - 1];
+				char	   			*attributeName = 
+						NameStr(attribute->attname);
+				Oid 				 opclass 	   = 
+						InvalidOid;
+
+				opclass = 
+						GetDefaultOpClass(attribute->atttypid, accessMethodId);
+
+				if (pbykeys)
+				{
+					pbykeys = lappend(pbykeys, makeString(attributeName));
+					pbyopclass = lappend_oid(pbyopclass, opclass);
+				}
+				else
+				{
+					pbykeys = list_make1(makeString(attributeName));
+					pbyopclass = list_make1_oid(opclass);
+				}
+			} /* end for */
+
+			pBy2->keys = pbykeys;
+			pBy2->keyopclass = pbyopclass;
+
+			if (parent_pBy2)
+				parent_pBy2->subPart = (Node *)pBy2;
+			
+			parent_pBy2 = pBy2;
+
+			if (pNode2 && (pNode2->rules || pNode2->default_part))
+			{
+				PartitionRule *prule;
+
+				if (pNode2->default_part)
+					prule = pNode2->default_part;
+				else
+					prule = linitial(pNode2->rules);
+
+				if (prule && prule->children)
+				{
+					pNode2 = prule->children;
+
+					Assert(
+							('l' == pNode2->part->parkind) ||
+							('r' == pNode2->part->parkind));
+
+					pBy2 = makeNode(PartitionBy);
+					pBy2->partType 	= 
+							('r' == pNode2->part->parkind) ?
+							PARTTYP_RANGE : 			
+							PARTTYP_LIST;
+					pBy2->keys     	= NULL; 
+					pBy2->partNum  	= 0;
+					pBy2->subPart  	= NULL;
+					pBy2->partSpec 	= NULL;
+					pBy2->partDepth = pNode2->part->parlevel;
+					pBy2->parentRel = 
+							makeRangeVar(
+									get_namespace_name(
+											RelationGetNamespace(rel)),
+									pstrdup(RelationGetRelationName(rel)));
+					pBy2->location  = -1;
+					pBy2->partDefault = NULL;
+				}
+				else
+					pNode2 = NULL;
 			}
 			else
-			{
-				pbykeys = list_make1(makeString(attributeName));
-				pbyopclass = list_make1_oid(opclass);
-			}
-		} /* end for */
+				pNode2 = NULL;
 
-		pBy->keys = pbykeys;
-		pBy->keyopclass = pbyopclass;
+		} /* end while */
 	}
 	
 	return validate_partition_spec(pstate, pcxt, ct, pBy, "", -1);
@@ -10900,11 +10958,9 @@ atpxPartAddList(AlteredTableInfo *tab,
 {
 	CreateStmt 			*ct    	   = NULL;
 	DestReceiver 		*dest  	   = None_Receiver; 
-	char 				*newpartname;
 	int 				 partno    = 0;
 	int 				 maxpartno = 0;
 	bool 				 bOpenGap  = false;
-	char 				 tmpname[NAMEDATALEN];/* use if no name, then reset */
 	PartitionBy 		*pBy   	   = makeNode(PartitionBy); 
 	CreateStmtContext    cxt;
 	List				*utils 	   = (List *)pUtl;
@@ -10917,9 +10973,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 				heap_open(par_prule->topRule->parchildrelid, AccessShareLock);
 
 	MemSet(&cxt, 0, sizeof(cxt));
-
-	snprintf(tmpname, sizeof(tmpname), "pg_temp_%u", 
-			 RelationGetRelid(par_rel));
 
 	Assert( (PARTTYP_LIST == part_type) || (PARTTYP_RANGE == part_type) );
 
@@ -11715,8 +11768,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 	}
 
 	/* create the partition */
-	newpartname = 
-			partName ? strVal(pelem->partName) : tmpname;
 	
 	ct->relation = makeRangeVar(
 			get_namespace_name(RelationGetNamespace(par_rel)),
@@ -11756,6 +11807,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 		List *l1;
 		ListCell *lc;
 		int 			 ii = 0;
+		bool bFixFirstATS = true;
 
 		ct->partitionBy = (Node *)pBy;
 
@@ -11770,12 +11822,15 @@ atpxPartAddList(AlteredTableInfo *tab,
 		{
 			Query *q = lfirst(lc);
 
-			if (1 == ii)
+			if (bFixFirstATS && q && q->utilityStmt 
+				&& IsA(q->utilityStmt, AlterTableStmt))
 			{
 				PartitionSpec 	*spec = NULL;
-				AlterTableStmt *ats;
-				AlterTableCmd  *atc;
-				List *cmds;
+				AlterTableStmt 	*ats;
+				AlterTableCmd  	*atc;
+				List 			*cmds;
+
+				bFixFirstATS = false;
 
 				ats = (AlterTableStmt *)q->utilityStmt;
 				Assert(IsA(ats, AlterTableStmt));
@@ -11796,8 +11851,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 				if (spec)
 				{
-					List *l2 = spec->partElem;
-					PartitionElem 			*pel;
+					List 				*l2 = spec->partElem;
+					PartitionElem 		*pel;
 
 					if (l2 && list_length(l2))
 					{
@@ -11840,51 +11895,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	}
 
-	/* use the new oid from CREATE TABLE as the name if none was
-	 * specified (replace the temporary name).  This is a reasonable
-	 * way to get unique partition table names.
-	 *
-	 * XXX XXX: however, this strategy fails after an upgrade, where
-	 * the relid's could change.  So the upgrade should rename
-	 * "unnamed" partitions to the proper "unique" name (ie new relid).
-	 */
-	if (0 && !partName)
-	{
-		RenameStmt 		*renStmt = makeNode(RenameStmt);
-		char 			*newnewname;
-		
-		/* note the "r" - to distinguish from numbered partitions from
-		 * CREATE TABLE 
-		 */
-		snprintf(tmpname, sizeof(tmpname), "r%u", 
-				 ct->oidInfo.relOid);
-
-		newnewname = 
-				ChoosePartitionName(
-					RelationGetRelationName(par_rel),
-					pNode->part->parlevel,
-					tmpname,
-					RelationGetNamespace(par_rel));
-		/* does CommandCounterIncrement */
-
-		renStmt->renameType = OBJECT_TABLE;
-		renStmt->relation = makeRangeVar(
-				get_namespace_name(RelationGetNamespace(par_rel)),
-				newpartname);
-
-		renStmt->subname = NULL;
-		renStmt->newname = newnewname;
-
-		ProcessUtility(
-				(Node *) renStmt,
-				NULL, dest, NULL);		
-
-		CommandCounterIncrement(); /* do again so next cmd can see new name */
-
-		/* reset the name */
-		newpartname = pstrdup(newnewname);
-	}
-
 	if (0 && !(pelem && pelem->isDefault))
 	{
 		ParseState 		*pstate    	 = make_parsestate(NULL);
@@ -11892,6 +11902,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 		char  			*at_depth 	 = NULL;
 		ListCell 		*lc_rule  	 = NULL;
 		Node			*pConstraint = NULL;
+		char *newpartname = "foo";
 
 		/* get the check constraint (if not default) */
 
