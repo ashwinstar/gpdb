@@ -146,14 +146,13 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 			 * change the hash function itself, because the segment/motion
 			 * stuff.  So we randomize it again here, using hash_any.
 			 */
-			uint32 x = DatumGetUInt32(FunctionCall1(info, value));
-			hashkey ^= (uint32) hash_any((unsigned char *) &x, 4);
+			uint32 x = DatumGetUInt32(FunctionCall1(info, value)) + i;
+			hashkey ^= x;
 		}
 	}
 
 	MemoryContextSwitchTo(oldContext);
-
-	return hashkey;
+	return (uint32) hash_any((unsigned char *) &hashkey, 4);
 }
 
 /* Function: adjustInputGroup

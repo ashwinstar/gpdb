@@ -38,7 +38,6 @@
 #include "utils/debugbreak.h"
 
 #include "cdb/cdbvars.h"
-#include "access/hash.h"
 
 static void ExecHashIncreaseNumBatches(HashJoinTable hashtable);
 static void ExecHashTableExplainEnd(PlanState *planstate, struct StringInfoData *buf);
@@ -50,7 +49,7 @@ ExecHashTableExplainBatches(HashJoinTable   hashtable,
                             const char     *title);
 
 
-#define BLOOMVAL(hk)  (((uint64)1) << (((hk) >> 23) & 0x3f))
+#define BLOOMVAL(hk)  (((uint64)1) << (((hk) >> 13) & 0x3f))
 
 /* ----------------------------------------------------------------
  *		ExecHash
@@ -839,6 +838,9 @@ ExecHashGetHashValue(HashJoinTable hashtable,
 		Datum		keyval;
 		bool		isNull;
 
+		/* rotate hashkey left 1 bit at each step */
+		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
+
 		/*
 		 * Get the join attribute value of the tuple
 		 */
@@ -870,9 +872,10 @@ ExecHashGetHashValue(HashJoinTable hashtable,
 		{
 			/* Compute the hash function */
 			uint32		hkey;
+
 			hkey = DatumGetUInt32(FunctionCall1(&hashtable->hashfunctions[i],
 												keyval));
-			hashkey ^= (uint32) hash_any((unsigned char *)&hkey, 4);
+			hashkey ^= hkey;
 		}
 
 		i++;
