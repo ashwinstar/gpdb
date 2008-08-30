@@ -22,6 +22,7 @@ struct fstream_filename_and_offset{
     int64_t foff;
 };
 
+// If read_whole_lines, then size must be at least FSTREAM_BLOCKSIZE. */
 int fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offset*fo,int read_whole_lines);
 int fstream_eof(fstream_t*fs);
 int fstream_rewind(fstream_t*fs);

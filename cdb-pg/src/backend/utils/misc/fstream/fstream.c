@@ -27,16 +27,16 @@ fstream_get_error(fstream_t*fs)
 
 /* Scan as many record as possible in [p, q), taking quotes and escapes into account. */
 static char*
-scan_rec(char*p,char*q,int cnt,fstream_t*fs,int64_t*line_number)
+scan_rec(char*p,char*q,int one,fstream_t*fs)
 {
     int in_quote=0,last_was_esc=0;
     char*last_complete=0;
     int qc=fs->options.quote;
     int xc=fs->options.escape;
-    while (p<q && cnt){
+    while (p<q){
 	int ch=*p++;
 	if (ch=='\n')
-	    ++*line_number;
+	    fs->line_number++;
 	if (in_quote){
 	    if (!last_was_esc){
 		if (ch == qc) 
@@ -46,8 +46,9 @@ scan_rec(char*p,char*q,int cnt,fstream_t*fs,int64_t*line_number)
 	    }else
 		last_was_esc = 0;
 	}else if (ch=='\n'){
-	    --cnt;
 	    last_complete = p;
+	    if (one)
+		break;
 	}else if (ch == qc)
 	    in_quote = 1;
     }
@@ -160,18 +161,17 @@ fstream_open(const char*path,const struct fstream_options*options)
 }
 
 static void
-fillFo(fstream_t*fs,struct fstream_filename_and_offset**fo)
+fillFo(fstream_t*fs,struct fstream_filename_and_offset*fo)
 {
-    if (*fo){
-	(*fo)->foff = fs->foff;
-	(*fo)->line_number = fs->line_number;
-	strncpy((*fo)->fname,fs->glob.gl_pathv[fs->fidx],sizeof (*fo)->fname);
-	(*fo)->fname[sizeof (*fo)->fname-1] = 0;
-	*fo = 0;
+    if (fo){
+	fo->foff = fs->foff;
+	fo->line_number = fs->line_number;
+	strncpy(fo->fname,fs->glob.gl_pathv[fs->fidx],sizeof fo->fname);
+	fo->fname[sizeof fo->fname-1] = 0;
     }
 }
 
-static void
+static int
 nextFile(fstream_t*fs)
 {
     gfile_close(fs->fd);
@@ -184,113 +184,120 @@ nextFile(fstream_t*fs)
 	if (0 == (fs->fd=gfile_open(fs->glob.gl_pathv[fs->fidx]))){
 	    gfile_printf_then_putc_newline("fstream unable to open file %s",fs->glob.gl_pathv[fs->fidx]);
 	    fs->ferror = "unable to open file";
+	    return 1;
 	}
     }
+    return 0;
 }
 
 int
 fstream_read(fstream_t*fs,void*buffer,int size,struct fstream_filename_and_offset*fo,int read_whole_lines)
 {
-    int osize=size;
-    size_t s;
-    while (size && fs->fidx!=fs->glob.gl_pathc && !fs->ferror){
-	char*p,*q;
-	if (read_whole_lines || fs->fskip){
+    if (fs->ferror)
+	return -1;
+    for (;;){
+	size_t s,t;
+	if (!size || fs->fidx==fs->glob.gl_pathc)
+	    return 0;
+	if (fs->fskip){
+	    char*p=fs->buffer,*q=p+fs->buffer_size;
 	    assert(fs->buffer_size < sizeof fs->buffer);
-	    s = gfile_read(fs->fd,fs->buffer+fs->buffer_size,sizeof fs->buffer-fs->buffer_size);
+	    s = gfile_read(fs->fd,q,sizeof fs->buffer-fs->buffer_size);
 	    if (s < 0){
 		fs->ferror = "cannot read file";
-		break;
+		return -1;
 	    }
 	    fs->buffer_size += s;
-	    p = fs->buffer;
-	    q = fs->buffer+fs->buffer_size;
-	    if (fs->fskip){
-		if (fs->options.is_csv)
-		    p = scan_rec(p,q,1,fs,&fs->line_number);
-		else {
-		    for (; p<q&&*p!='\n'; p++);
-		    p = p<q?p+1:0;
-		    fs->line_number++;
-		}
-		if (!p){
-		    if (fs->buffer_size == sizeof fs->buffer){
-			gfile_printf_then_putc_newline("fstream ERROR: header too long in file %s",fs->glob.gl_pathv[fs->fidx]);
-			fs->ferror = "line too long in file";
-			break;
-		    }
-		    p = q;
-		}
-		fs->foff += p-fs->buffer;
-		memmove(fs->buffer,p,fs->buffer_size=q-p);
-		fs->fskip = 0;
-		continue;
-	    }
-	    if (!fs->buffer_size){
-		nextFile(fs);
-		continue;
-	    }
-	}
-	if (read_whole_lines){
-	    assert(size>=FSTREAM_BLOCKSIZE);
-	    fillFo(fs,&fo);
+	    q += s;
 	    if (fs->options.is_csv)
-		/* go slow, scan byte-by-byte for record boundary */
-		p = scan_rec(p,q,sizeof(fs->buffer)/*artificial max*/,fs,&fs->line_number);
+		p = scan_rec(p,q,1,fs);
 	    else{
-		/* go fast, scan for \n for record boundary */
-		/* find the last \n from the back */
-		for (p=q; fs->buffer<=--p&&*p!='\n';);
-		p = fs->buffer<=p?p+1:0;
-		fs->line_number = 0;
+		for (; p<q&&*p!='\n'; p++);
+		p = p<q?p+1:0;
+		fs->line_number++;
 	    }
 	    if (!p){
 		if (fs->buffer_size == sizeof fs->buffer){
-		    gfile_printf_then_putc_newline("fstream ERROR: line too long in file %s (%lld bytes)",fs->glob.gl_pathv[fs->fidx],(long long)fs->foff);
+		    gfile_printf_then_putc_newline("fstream ERROR: header too long in file %s",fs->glob.gl_pathv[fs->fidx]);
 		    fs->ferror = "line too long in file";
-		    break;
+		    return -1;
 		}
-		p = fs->buffer+fs->buffer_size;
+		p = q;
 	    }
-	    s = p-fs->buffer;
-	    memcpy(buffer,fs->buffer,s);
-	    fs->foff += s;
-	    memmove(fs->buffer,fs->buffer+s,fs->buffer_size-=s);
-	    size -= s;
-	    break;
-	}else if (fs->buffer_size){
-	    fillFo(fs,&fo);
+	    fs->foff += p-fs->buffer;
+	    memmove(fs->buffer,p,fs->buffer_size=q-p);
+	    fs->fskip = 0;
+	}
+	if (read_whole_lines){
+	    char*p;
+	    assert(size>=FSTREAM_BLOCKSIZE);
+	    s = fs->buffer_size;
+	    if (s){
+		fs->buffer_size = 0;
+		fillFo(fs,fo);
+		memcpy(buffer,fs->buffer,s);
+	    }
+	    t = gfile_read(fs->fd,(char*)buffer+s,size-s);
+	    if (t<0){
+		fs->ferror = "cannot read file";
+		return -1;
+	    }
+	    if (t<size-s){
+		if (s==0){
+		    if (t==0){
+			if (nextFile(fs))
+			    return -1;
+			continue;
+		    }
+		    fillFo(fs,fo);
+		}
+		return nextFile(fs)?-1:s+t;
+	    }
+	    fillFo(fs,fo);
+	    if (fs->options.is_csv)
+		/* go slow, scan byte-by-byte for record boundary */
+		p = scan_rec(buffer,(char*)buffer+size,0,fs);
+	    else{
+		/* go fast, scan for \n for record boundary */
+		/* find the last \n from the back */
+		for (p=(char*)buffer+size; (char*)buffer<=--p&&*p!='\n';);
+		p = (char*)buffer<=p?p+1:0;
+		fs->line_number = 0;
+	    }
+	    if (!p || (char*)buffer+size>=p+FSTREAM_BLOCKSIZE){
+		gfile_printf_then_putc_newline("fstream ERROR: line too long in file %s near (%lld bytes)",fs->glob.gl_pathv[fs->fidx],(long long)fs->foff);
+		fs->ferror = "line too long in file";
+		return -1;
+	    }
+	    memcpy(fs->buffer,p,fs->buffer_size=(char*)buffer+size-p);
+	    fs->foff += p-(char*)buffer;
+	    return p-(char*)buffer;
+	}
+	if (fs->buffer_size){
+	    fillFo(fs,fo);
 	    s = fs->buffer_size;
 	    if (s > size)
 		s = size;
 	    memcpy(buffer,fs->buffer,s);
-	    buffer = (char*)buffer+s;
-	    size -= s;
 	    memmove(fs->buffer,fs->buffer+s,fs->buffer_size-=s);
 	    fs->foff += s;
 	    fs->line_number = 0;
-	    break;
-	}else{
-	    s = gfile_read(fs->fd,buffer,size);
-	    if (s < 0){
-		fs->ferror = "cannot read file";
-		break;
-	    }
-	    if (s == 0)
-		nextFile(fs);
-	    else{
-		fillFo(fs,&fo);
-		fs->foff += s;
-		fs->line_number = 0;
-		buffer = (char*)buffer+s;
-		size -= s;
-		break;
-	    }
+	    return s;
 	}
+	s = gfile_read(fs->fd,buffer,size);
+	if (s < 0){
+	    fs->ferror = "cannot read file";
+	    return -1;
+	}
+	if (s){
+	    fillFo(fs,fo);
+	    fs->foff += s;
+	    fs->line_number = 0;
+	    return s;
+	}
+	if (nextFile(fs))
+	    return -1;
     }
-    if (fs->ferror)
-	return -1;
-    return osize-size;
 }
 
 int
