@@ -10034,14 +10034,14 @@ static Oid
 selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 				TupleDesc tupdesc, PartitionState *pstate, 
 				 int *pSearch,
-				 PartitionNode *pn_out)
+				 PartitionNode **ppn_out)
 {
 	Oid relid = InvalidOid;
 	Partition *part = partnode->part;
 	PartitionNode *pn = NULL;
 
-	if (pn_out)
-		pn_out = NULL;
+	if (ppn_out)
+		*ppn_out = NULL;
 
 	/* what kind of partition? */
 	switch (part->parkind)
@@ -10066,13 +10066,13 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 
 	if (pn)
 	{
-		if (pn_out)
+		if (ppn_out)
 		{
-			pn_out = pn;
+			*ppn_out = pn;
 			return relid;
 		}
 		return selectPartition1(pn, values, isnull, tupdesc, pstate, 
-								pSearch, pn_out);
+								pSearch, ppn_out);
 	}
 	else
 	{
@@ -10081,14 +10081,14 @@ selectPartition1(PartitionNode *partnode, Datum *values, bool *isnull,
 		{
 			if (partnode->default_part->children)
 			{
-				if (pn_out)
+				if (ppn_out)
 				{
-					pn_out = partnode->default_part->children;
+					*ppn_out = partnode->default_part->children;
 					return relid;
 				}
 				return selectPartition1(partnode->default_part->children,
 										values, isnull, tupdesc, pstate,
-										pSearch, pn_out);
+										pSearch, ppn_out);
 			}
 			else
 				return partnode->default_part->parchildrelid;
@@ -10224,7 +10224,7 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 										   pid->partiddef, &isnull);
 
 			partrelid = selectPartition1(pNode, d, isnull, tupledesc, NULL,
-										 pSearch, (ppNode ? *ppNode : NULL));
+										 pSearch, ppNode);
 
 			/* build a string rep for the value */
 			{
@@ -10966,6 +10966,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 	List				*utils 	   = (List *)pUtl;
 	Node 				*pSubSpec  = NULL;	/* return the subpartition spec */
 	Relation 			 par_rel   = rel;
+	PartitionNode 		 pNodebuf; 
+	PartitionNode 		*pNode2 = &pNodebuf;
 
 	/* get the relation for the parent of the new partition */
 	if (par_prule && par_prule->topRule)
@@ -11026,7 +11028,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 									   CurrentMemoryContext, NULL,
 									   pNode,
 									   lrelname,
-									   NULL);
+									   &pNode2);
 
 				/* ok if no prior -- just means this is first
 				 * partition (XXX XXX though should always have 1
@@ -11064,7 +11066,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 									   CurrentMemoryContext, NULL,
 									   pNode,
 									   lrelname,
-									   NULL);
+									   &pNode2);
 
 				/* NOTE: invert all the logic of case of missing partStart */
 
@@ -11129,7 +11131,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 									   CurrentMemoryContext, &startSearchpoint,
 									   pNode,
 									   lrelname,
-									   NULL);
+									   &pNode2);
 
 				if (prule) /* found match for start value in rules */
 				{
@@ -11342,7 +11344,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 									   CurrentMemoryContext, &endSearchpoint,
 									   pNode,
 									   lrelname,
-									   NULL);
+									   &pNode2);
 
 				if (prule) /* found match for start value in rules */
 				{
@@ -11735,7 +11737,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 									   CurrentMemoryContext, NULL,
 									   pNode,
 									   lrelname,
-									   NULL);
+									   &pNode2);
 
 				if (prule)
 					ereport(ERROR,
@@ -11789,7 +11791,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 							   CurrentMemoryContext, NULL,
 							   pNode,
 							   lrelname,
-							   NULL);
+							   &pNode2);
 
 		Assert(prule && prule->topRule && prule->pNode && prule->pNode->part);
 
