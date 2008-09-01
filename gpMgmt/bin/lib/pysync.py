@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+import sys
+if sys.hexversion<0x2050000:
+    sys.stderr.write("pysync.py needs python version at least 2.5.\n")
+    sys.exit(1)
+
 import subprocess
 
 bootstrapSource="""
@@ -8,14 +13,15 @@ exec(sys.stdin.read(int(sys.stdin.readline())))
 """
 
 pysyncSource="""
-
+if sys.hexversion<0x2050000:
+    sys.stderr.write("pysync.py needs python version at least 2.5 on the remote computer.\\n")
+    sys.exit(1)
 import cPickle
 from datetime import datetime
 import md5
 import os
 import socket
 import stat
-import sys
 import time
 import zlib
 
@@ -396,7 +402,7 @@ class LocalPysync:
 		self.sendData = None
 
     def run(self):
-	self.p = subprocess.Popen(["ssh"]+self.options.sshargs+[self.userAndHost,"python -u -c '%s'"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+	self.p = subprocess.Popen(["ssh"]+self.options.sshargs+[self.userAndHost,"if test -d \"$GPHOME\";then PATH=\"$GPHOME/ext/python/bin:$PATH\" LD_LIBRARY_PATH=\"$GPHOME/ext/python/lib:$LD_LIBRARY_PATH\" python -u -c '%s';else echo>&2 'GPHOME is not set or is not a directory.';fi"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
 	try:
 	    self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
 	    self.work()
