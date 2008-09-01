@@ -6,8 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct{
+    int gl_pathc;
+    char**gl_pathv;
+}glob_and_copy_t;
+
 struct fstream_t{
-    glob_t glob;
+    glob_and_copy_t glob;
     gfile_t*fd;
     int fidx;		/* current index in ffd[] */
     int64_t foff;		/* current offset in ffd[fidx] */
@@ -18,6 +23,50 @@ struct fstream_t{
     int buffer_size;
     char buffer[FSTREAM_BLOCKSIZE];
 };
+
+static int
+glob_and_copy(const char*pattern,int flags,int(*errfunc)(const char*epath,int eerno),glob_and_copy_t*pglob)
+{
+    glob_t g;
+    int i=glob(pattern,flags,errfunc,&g),j;
+    if (!i){
+	char**a=gfile_malloc(sizeof*a*(pglob->gl_pathc+g.gl_pathc));
+	if (!a)
+	    i = GLOB_NOSPACE;
+	else{
+	    for (j=0; j<pglob->gl_pathc; j++)
+		a[j] = pglob->gl_pathv[j];
+	    if (pglob->gl_pathv)
+		gfile_free(pglob->gl_pathv);
+	    pglob->gl_pathv = a;
+	    a += pglob->gl_pathc;
+	    for (j=0; j<g.gl_pathc; j++){
+		char*b=g.gl_pathv[j];
+		if (!(*a=gfile_malloc(strlen(b)+1))){
+		    i = GLOB_NOSPACE;
+		    break;
+		}
+		strcpy(*a++,b);
+		pglob->gl_pathc++;
+	    }
+	}
+	globfree(&g);
+    }
+    return i;
+}
+
+static void
+glob_and_copyfree(glob_and_copy_t*pglob)
+{
+    if (pglob->gl_pathv){
+	int i;
+	for (i=0; i<pglob->gl_pathc; i++)
+	    gfile_free(pglob->gl_pathv[i]);
+	gfile_free(pglob->gl_pathv);
+	pglob->gl_pathc = 0;
+	pglob->gl_pathv = 0;
+    }
+}
 
 const char*
 fstream_get_error(fstream_t*fs)
@@ -60,14 +109,14 @@ scan_rec(char*p,char*q,int one,fstream_t*fs)
 void
 fstream_close(fstream_t* fs)
 {
-    globfree(&fs->glob);
+    glob_and_copyfree(&fs->glob);
     if (fs->fd)
 	gfile_close(fs->fd);
     gfile_free(fs);
 }
 
 static int
-fpath_all_directories(const glob_t*glob)
+fpath_all_directories(const glob_and_copy_t*glob)
 {
     int i;
     for (i=0; i<glob->gl_pathc; i++) {
@@ -81,15 +130,16 @@ fpath_all_directories(const glob_t*glob)
 static int
 expand_directories(fstream_t*fs)
 {
-    glob_t g=fs->glob;
-    int f=0,i,j,ret=0;
-    for (i=0; i<g.gl_pathc; i++){
-	const char*a=g.gl_pathv[i];
+    glob_and_copy_t g;
+    int i,j;
+    memset(&g,0,sizeof g);
+    for (i=0; i<fs->glob.gl_pathc; i++){
+	const char*a=fs->glob.gl_pathv[i];
 	char*b=gfile_malloc(2*strlen(a)+2),*c;
 	if (!b){
 	    gfile_printf_then_putc_newline("fstream out of memory");
-	    ret = 1;
-	    break;
+	    glob_and_copyfree(&g);
+	    return 1;
 	}
 	for (c=b; *a; a++){
 	    if (*a=='?' || *a=='*' || *a=='[')
@@ -98,20 +148,19 @@ expand_directories(fstream_t*fs)
 	}
 	*c++ = '*';
 	*c++ = 0;
-	j = glob(b,f,0,&fs->glob);
+	j = glob_and_copy(b,0,0,&g);
 	gfile_free(b);
 	if (j == GLOB_NOMATCH)
-	    gfile_printf_then_putc_newline("fstream %s is empty directory",g.gl_pathv[i]);
+	    gfile_printf_then_putc_newline("fstream %s is empty directory",fs->glob.gl_pathv[i]);
 	else if (j){
 	    gfile_printf_then_putc_newline("fstream glob failed");
-	    ret = 1;
-	    break;
+	    glob_and_copyfree(&g);
+	    return 1;
 	}
-	f = GLOB_APPEND;
     }
-    if (f)
-	globfree(&g);
-    return ret;
+    glob_and_copyfree(&fs->glob);
+    fs->glob = g;
+    return 0;
 }
 
 /* alloc a new file stream */
@@ -126,7 +175,7 @@ fstream_open(const char*path,const struct fstream_options*options)
     }
     memset(fs,0,sizeof*fs);
     fs->options = *options;
-    if (glob(path,GLOB_MARK|GLOB_NOCHECK,0,&fs->glob)){
+    if (glob_and_copy(path,GLOB_MARK|GLOB_NOCHECK,0,&fs->glob)){
 	gfile_printf_then_putc_newline("fstream glob failed");
 	fstream_close(fs);
 	return 0;
