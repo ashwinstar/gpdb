@@ -17,7 +17,7 @@ log = {}
 log['verbose'] = True
 log['module'] = ''
 log['host'] = socket.gethostname().split('.')[0]
-log['user'] = os.environ.get('USER')
+log['user'] = os.environ.get('USER') or os.environ.get('LOGNAME')
 log['file'] = None
 ##################
 def log_set_module(module):
