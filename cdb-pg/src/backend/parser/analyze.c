@@ -324,10 +324,45 @@ alter_cmp(const void *a, const void *b)
 	Query *qb = *(Query **)b;
 	AlterTableStmt *stmta = (AlterTableStmt *)qa->utilityStmt;
 	AlterTableStmt *stmtb = (AlterTableStmt *)qb->utilityStmt;
+	PartitionBy *pbya = NULL;
+	PartitionBy *pbyb = NULL;
 	int len1, len2;
-
+	ListCell *lc;
+	
 	Assert(IsA(stmta, AlterTableStmt));
 	Assert(IsA(stmtb, AlterTableStmt));
+
+	foreach(lc, stmta->cmds)
+	{
+		AlterTableCmd *cmd = lfirst(lc);
+
+		if (cmd->subtype == AT_PartAddInternal)
+		{
+			pbya = (PartitionBy *)cmd->def;
+			break;
+		}
+	}
+
+	foreach(lc, stmtb->cmds)
+	{
+		AlterTableCmd *cmd = lfirst(lc);
+
+		if (cmd->subtype == AT_PartAddInternal)
+		{
+			pbyb = (PartitionBy *)cmd->def;
+			break;
+		}
+	}
+
+	if (pbya && pbyb)
+	{
+		if (pbya->partDepth < pbyb->partDepth)
+			return -1;
+		else if (pbya->partDepth > pbyb->partDepth)
+			return 1;
+		else
+			return 0;
+	}
 
 	len1 = strlen(stmta->relation->relname);
 	len2 = strlen(stmtb->relation->relname);
@@ -4254,6 +4289,7 @@ preprocess_range_spec(partValidationState *vstate)
 			List *everyelts = NIL;
 			bool first = true;
 			List *everytypes = NIL;
+			int i;
 			
 			Assert(pbs->partStart);
 			Assert(pbs->partEnd);
@@ -4404,27 +4440,6 @@ preprocess_range_spec(partValidationState *vstate)
 				}
 
 				newel = makeNode(PartitionElem);
-				
-				/* generate the new name, which is parname + every count */
-				if (el->partName)
-				{
-					char newname[sizeof(NameData) + 10];
-
-					snprintf(newname, sizeof(newname),
-							 "%s_%u", strVal(el->partName),
-							 everycount);
-
-					if (strlen(newname) > NAMEDATALEN)
-						ereport(ERROR,
-								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-								 errmsg("partition name \"%s\" too long",
-										strVal(el->partName)),
-						 parser_errposition(vstate->pstate, el->location)));
-
-					newel->partName = (Node *)makeString(pstrdup(newname));
-				}
-			
-
 				newel->subSpec = copyObject(el->subSpec);
 				newel->storeAttr = copyObject(el->storeAttr);
 				newel->AddPartDesc = copyObject(el->AddPartDesc);
@@ -4464,6 +4479,7 @@ preprocess_range_spec(partValidationState *vstate)
 			}
 
 			/* add everycount to each EVERY clause */
+			i = 0;
 			foreach(lc2, everyelts)
 			{
 				PartitionElem *el2 = lfirst(lc2);
@@ -4471,6 +4487,32 @@ preprocess_range_spec(partValidationState *vstate)
 				PartitionRangeItem *ri = (PartitionRangeItem *)pbs->partEvery;
 
 				ri->everycount = everycount;
+
+				/* 
+				 * Generate the new name, which is parname + every count
+				 * but only if every expands to more than one partition.
+				*/
+				if (el->partName)
+				{
+					char newname[sizeof(NameData) + 10];
+
+					if (list_length(everyelts) > 1)
+						snprintf(newname, sizeof(newname),
+								 "%s_%u", strVal(el->partName),
+								 ++i);
+					else
+						snprintf(newname, sizeof(newname),
+								 "%s", strVal(el->partName));
+
+					if (strlen(newname) > NAMEDATALEN)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("partition name \"%s\" too long",
+										strVal(el->partName)),
+						 parser_errposition(vstate->pstate, el->location)));
+
+					el2->partName = (Node *)makeString(pstrdup(newname));
+				}
 			}
 
 			newelts = list_concat(newelts, everyelts);

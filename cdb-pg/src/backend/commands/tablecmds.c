@@ -8264,7 +8264,7 @@ add_partition(Partition *part)
 	oidvector *opclass;
 	int2vector *attnums;
 
-	MemSet(isnull, 0, sizeof(bool) * Natts_pg_partition_rule);
+	MemSet(isnull, 0, sizeof(bool) * Natts_pg_partition);
 
 	values[Anum_pg_partition_parrelid - 1] = ObjectIdGetDatum(part->parrelid);
 	values[Anum_pg_partition_parkind - 1] = CharGetDatum(part->parkind);
@@ -8288,8 +8288,6 @@ add_partition(Partition *part)
 	/* Update indexes */
 	CatalogUpdateIndexes(partrel, tup);
 
-	/* XXX: dependencies */
-	
 	heap_close(partrel, NoLock);
 }
 
