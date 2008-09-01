@@ -795,7 +795,7 @@ def chk_on_passive_standby(master_port):
     (ok, pid) = postgres_active(master_port)
     postmaster_opts = os.path.join(os.environ.get('MASTER_DATA_DIRECTORY'), 'postmaster.opts')
     if os.path.isfile(postmaster_opts):
-        (okok, out) = run('%s -c gpysnc %s' % (ENV.GREP, postmaster_opts))
+        (okok, out) = run('%s -c gpsync %s' % (ENV.GREP, postmaster_opts))
         gpysnc_count = int(out[0])
 
     if ok and gpsync_count != 0:
