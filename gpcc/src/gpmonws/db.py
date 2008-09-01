@@ -38,7 +38,8 @@ def _metrics_consolidate(rows):
 
     ckeys = None
     if x: 
-        ckeys = x.keys(); ckeys.sort()
+        ckeys = filter(lambda i: i != 'hostname', x.keys())
+	ckeys.sort()
 
     tkeys = td.keys(); tkeys.sort()
     hkeys = hd.keys(); hkeys.sort()
