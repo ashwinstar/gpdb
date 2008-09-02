@@ -102,6 +102,7 @@ class GPUpgrade:
         self.user      = None     # db admin user
         self.host      = None     # master hostname
         self.upgrade   = None     # True for upgrade, False for downgrade
+        self.logfile   = None
 
     # Upgrade information and state
         self.debug      = False
@@ -237,12 +238,13 @@ class GPUpgrade:
         logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
         if options.logdir and os.path.isdir(options.logdir):
             logdir = options.logdir
-        self.logfile = os.path.join(logdir, '%s_%s.log' % (EXECNAME, date.today().strftime('%Y%m%d')))
-        if not os.path.exists(self.logfile):
-            subprocess.call('touch %s' % self.logfile, shell=True)
 
 
         if self.cmd == 'MASTER':
+            today = date.today().strftime('%Y%m%d')
+            logname = os.path.join(logdir, '%s_%s.log' % (EXECNAME, today))
+            self.logfile = open(logname, 'a')
+
             self.pid = os.getpid()
             if self.masterdir == None:
                 self.Log('FATAL', 'MASTER_DATA_DIRECTORY parameter not set')
@@ -269,14 +271,18 @@ class GPUpgrade:
             if self.cmd == 'MASTER':
                 if (self.oldenv and 'MASTER_DATA_DIRECTORY' in self.oldenv):
                     olddir = self.oldenv['MASTER_DATA_DIRECTORY']
-                    if olddir and os.path.exists('%s/postmaster.pid' % olddir):        
-                        self.Log('INFO', 'Shutting down old Greenplum postmaster')
-                        subprocess.call('gpstop -a -m >> %s 2>&1' % self.logfile, env=self.oldenv, shell=True)
+                    if olddir and os.path.exists('%s/postmaster.pid' % olddir):
+                        self.Log('INFO', 
+                                 'Shutting down old Greenplum postmaster')
+                        subprocess.call('gpstop -a -m', env=self.oldenv, shell=True, 
+                                        stdout=self.logfile, stderr=self.logfile)
                 if (self.newenv and 'MASTER_DATA_DIRECTORY' in self.newenv):
                     newdir = self.newenv['MASTER_DATA_DIRECTORY']
                     if newdir and os.path.exists('%s/postmaster.pid' % newdir):
-                        self.Log('INFO', 'Shutting down new Greenplum postmaster')
-                        subprocess.call('gpstop -a >> %s 2>&1' % self.logfile, env=self.newenv, shell=True)
+                        self.Log('INFO', 
+                                 'Shutting down new Greenplum postmaster')
+                        subprocess.call('gpstop -a', env=self.newenv, shell=True, 
+                                        stdout=self.logfile, stderr=self.logfile)
         except Exception, e:
             self.Log('FATAL', 'Cleanup failure: ' + str(e))
 
@@ -437,14 +443,12 @@ class GPUpgrade:
             for m in msg.splitlines():
                 if m.strip() == '': 
                     continue
-                if type == 'FATAL':
+
+                if (self.logfile):
+                    self.logfile.write('%s%s\n' % (prefix, m))
+
+                if type == 'FATAL' or !self.quiet:
                     sys.stderr.write('%s%s\n' % (prefix, m))
-                    if self.quiet:
-                        subprocess.call('echo "%s%s" >> %s' % (prefix, m, self.logfile), shell=True)
-                else:
-                    if self.quiet:
-                        subprocess.call('echo "%s%s" >> %s' % (prefix, m, self.logfile), shell=True)
-                    else:
                         sys.stdout.write('%s%s\n' % (prefix, m))
         except:
             pass
@@ -545,9 +549,11 @@ class GPUpgrade:
         else:
             self.Log('INFO', 'Starting new Greenplum postmaster')
         if utility:
-            subprocess.call('gpstart -a -m >> %s 2>&1' % self.logfile, env=env, shell=True)
+            subprocess.call('gpstart -a -m' %, env=env, shell=True,
+                            stdout=self.logfile, stderr=self.logfile)
         else:
-            subprocess.call('gpstart -a >> %s 2>&1' % self.logfile, env=env, shell=True)
+            subprocess.call('gpstart -a', env=env, shell=True
+                            stdout=self.logfile, stderr=self.logfile)
         self.CheckUp();
 
     #------------------------------------------------------------
@@ -560,9 +566,11 @@ class GPUpgrade:
         else:
             self.Log('INFO', 'Shutting down new Greenplum postmaster')
         if utility:
-            subprocess.call('gpstop -a -m >> %s 2>&1' % self.logfile, env=env, shell=True)
+            subprocess.call('gpstop -a -m', env=env, shell=True
+                            stdout=self.logfile, stderr=self.logfile)
         else:
-            subprocess.call('gpstop -a >> %s 2>&1' % self.logfile, env=env, shell=True)
+            subprocess.call('gpstop -a', env=env, shell=True,
+                            stdout=self.logfile, stderr=self.logfile)
         self.CheckDown();
 
     #------------------------------------------------------------
@@ -1154,8 +1162,9 @@ Cannot downgrade a database with append only tables     <<<<<
         '''
         self.Log('INFO', 'Initializing upgraded cluster')
         self.CheckDown()
-        subprocess.call('gpinitsystem -a -c %s/gp_init_config >> %s 2>&1' % (self.tmpdir, self.logfile),
-                        env=self.newenv, shell=True)
+        subprocess.call('gpinitsystem -a -c %s/gp_init_config' % self.tmpdir,
+                        env=self.newenv, shell=True,
+                        stdout=self.logfile, stderr=self.logfile)
         self.Update('vacuum freeze', db='postgres', port=self.masterport)
         self.Update('vacuum freeze', db='template1', port=self.masterport)
         self.Shutdown(u.newenv, False)
@@ -1239,16 +1248,18 @@ Cannot downgrade a database with append only tables     <<<<<
     def ImportSchema(self):
         self.CheckUp()
         self.Log('INFO', 'Importing old schema')
-        subprocess.call('psql -f %s/pgdump.sql template1 >> %s 2>&1' % (self.tmpdir, self.logfile),
-                        env=self.newenv, shell=True)
+        subprocess.call('psql -f %s/pgdump.sql template1' % self.tmpdir,
+                        env=self.newenv, shell=True,
+                        stdout=self.logfile, stderr=self.logfile)
         databases = self.Select(
             '''
             SELECT datname FROM pg_database 
             WHERE datname != 'template0'
             ''', port=self.masterport)
         for db in databases:
-            subprocess.call('psql -c "vacuum freeze" %s >> %s 2>&1' % (db, self.logfile),
-                            env=self.newenv, shell=True)
+            subprocess.call('psql -c "vacuum freeze" %s' % db,
+                            env=self.newenv, shell=True,
+                            stdout=self.logfile, stderr=self.logfile)
 
     #------------------------------------------------------------
     def RemapOID(self):
