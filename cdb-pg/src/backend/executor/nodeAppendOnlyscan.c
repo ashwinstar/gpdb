@@ -134,7 +134,7 @@ ExecInitAppendOnlyScan(AppendOnlyScan *node, EState *estate, int eflags)
 	 * get the relation object id from the relid'th entry in the range table
 	 * and open that relation.
 	 */
-	currentRelation = ExecOpenScanAppendOnlyRelation(estate, node->scan.scanrelid);	
+	currentRelation = ExecOpenScanRelation(estate, node->scan.scanrelid);	
 	
 	currentScanDesc = appendonly_beginscan(currentRelation, 0,NULL);
 	

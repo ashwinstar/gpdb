@@ -943,24 +943,6 @@ ExecOpenScanExternalRelation(EState *estate, Index scanrelid)
 	return relation_open(reloid, NoLock);
 }
 
-/*
- * same as above, but for appendonly table scans.
- */
-Relation
-ExecOpenScanAppendOnlyRelation(EState *estate, Index scanrelid)
-{
-	RangeTblEntry *rtentry;
-	Oid			reloid;
-	LOCKMODE	lockmode;
-	
-	lockmode = NoLock;
-	
-	rtentry = rt_fetch(scanrelid, estate->es_range_table);
-	reloid = rtentry->relid;
-	
-	return relation_open(reloid, NoLock);
-}
-
 /* ----------------------------------------------------------------
  *		ExecCloseScanRelation
  *
