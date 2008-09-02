@@ -256,13 +256,10 @@ mgmtcopy :
 	@perl putversion \
 		$(INSTLOC)/bin/gpactivatestandby \
 		$(INSTLOC)/bin/gpaddmirrors \
-		$(INSTLOC)/bin/gpaddpart \
 		$(INSTLOC)/bin/gpcheckos \
 		$(INSTLOC)/bin/gpcheckperf \
-		$(INSTLOC)/bin/gpcreatepart \
 		$(INSTLOC)/bin/gpcrondump \
 		$(INSTLOC)/bin/gpdbrestore \
-		$(INSTLOC)/bin/gpdeletepart \
 		$(INSTLOC)/bin/gpdeletesystem \
 		$(INSTLOC)/bin/gpinitstandby \
 		$(INSTLOC)/bin/gpinitsystem \
