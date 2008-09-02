@@ -294,10 +294,14 @@ gplcopy :
 	cp -f $(GPCC)/src/gpmon/gpmon_2.sql $(GPLINSTLOC)
 	chmod 555 $(GPLINSTLOC)/gpmon_2.sql
 
+libcopy=(cd $(1) && gtar cf - $(2)) | (cd $(3) && gtar xvf -)
+
 copylibs : thirdparty-dist
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
-	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then cp -p $(CURDIR)/krb5/lib/libk5crypto.so.3 $(INSTLOC)/lib ; fi
-	if [ -f $(CURDIR)/krb5/lib/libgssapi_krb5.so.2 ] ; then cp -p $(CURDIR)/krb5/lib/libgssapi_krb5.so.2 $(INSTLOC)/lib ; fi
+	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libk5crypto.so*,$(INSTLOC)/lib) ; fi
+	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5.so*,$(INSTLOC)/lib) ; fi
+	if [ -f $(CURDIR)/krb5/lib/libk5crypto.so.3 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libkrb5support.so*,$(INSTLOC)/lib) ; fi
+	if [ -f $(CURDIR)/krb5/lib/libgssapi_krb5.so.2 ] ; then $(call libcopy,$(CURDIR)/krb5/lib,libgssapi_krb5.so*,$(INSTLOC)/lib) ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap_r-2.3.so.0 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/libldap-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/libldap-2.3.so.0 $(INSTLOC)/lib ; fi
 	if [ -f $(CURDIR)/openldap/lib/liblber-2.3.so.0 ] ; then cp -p $(CURDIR)/openldap/lib/liblber-2.3.so.0 $(INSTLOC)/lib ; fi
@@ -315,7 +319,7 @@ copylibs : thirdparty-dist
 	    done ; \
 	fi
 	@if [ `uname -s` != 'Darwin' ] ; then \
-	    for lib in `ldd $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|libkrb5|curl|readline|numa' | awk '{print $$3}' | sort -u`; do \
+	    for lib in `ldd $(INSTLOC)/bin/psql | egrep 'libssl|libcrypto|libcom_err|curl|readline|numa' | awk '{print $$3}' | sort -u`; do \
 	        if [ x"`dirname $$lib`" = x"$(INSTLOC)/lib" ]; then continue; fi; \
 	        if [ -f $(INSTLOC)/lib/`basename $$lib` -a ! -w $(INSTLOC)/lib/`basename $$lib` ]; then chmod u+w $(INSTLOC)/lib/`basename $$lib`; fi; \
 	        echo "cp -p $$lib $(INSTLOC)/lib" ; \
