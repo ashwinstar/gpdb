@@ -447,7 +447,7 @@ class GPUpgrade:
                 if (self.logfile):
                     self.logfile.write('%s%s\n' % (prefix, m))
 
-                if type == 'FATAL' or !self.quiet:
+                if type == 'FATAL' or not self.quiet:
                     sys.stderr.write('%s%s\n' % (prefix, m))
                         sys.stdout.write('%s%s\n' % (prefix, m))
         except:
