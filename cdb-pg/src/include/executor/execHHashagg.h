@@ -187,6 +187,9 @@ typedef struct HashAggTable
 	int curr_bucket_idx;
 	HashAggEntry *next_entry;
 
+	/* buffer for calculating the hashkey */
+	HashKey *hashkey_buf;
+
 	/* GPDB: Statistics for EXPLAIN ANALYZE */
 	HashAggTableSizes   hats;
 

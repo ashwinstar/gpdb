@@ -102,7 +102,7 @@ static void spill_hash_table(AggState *aggstate);
 static void init_agg_hash_iter(HashAggTable* ht);
 static HashAggEntry *lookup_agg_hash_entry(AggState *aggstate, void *input_record,
 										   InputRecordType input_type, int32 input_size,
-										   uint32 hashkey, bool *p_isnew);
+										   uint32 hashkey, unsigned parent_hash_bit, bool *p_isnew);
 static void agg_hash_table_stat_upd(HashAggTable *ht);
 static void reset_agg_hash_table(AggState *aggstate);
 static bool agg_hash_reload(AggState *aggstate);
@@ -120,9 +120,9 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 	Agg *agg;
 	ExprContext *econtext;
 	MemoryContext oldContext;
-	uint32		hashkey = 0;
 	int			i;
 	FmgrInfo* info = aggstate->hashfunctions;
+	HashAggTable *hashtable = aggstate->hhashtable;
 	
 	agg = (Agg*)aggstate->ss.ps.plan;
 	econtext = aggstate->tmpcontext; /* short-lived, per-input-tuple */
@@ -137,22 +137,16 @@ calc_hash_value(AggState* aggstate, TupleTableSlot *inputslot)
 
 		if (!isnull)			/* treat nulls as having hash key 0 */
 		{
-			/* 
-			 * Why do we do this.
-			 *
-			 * The hash function we are using is not randomize int2/4/8
-			 * enough.  This will cause more than necessary collision in
-			 * hash table and bloom filter.  However, it is too late to
-			 * change the hash function itself, because the segment/motion
-			 * stuff.  So we randomize it again here, using hash_any.
-			 */
-			uint32 x = DatumGetUInt32(FunctionCall1(info, value)) + i;
-			hashkey ^= x;
+			hashtable->hashkey_buf[i] = DatumGetUInt32(FunctionCall1(info, value));
 		}
+		
+		else
+			hashtable->hashkey_buf[i] = 0xdeadbeef;
+		
 	}
 
 	MemoryContextSwitchTo(oldContext);
-	return (uint32) hash_any((unsigned char *) &hashkey, 4);
+	return (uint32) hash_any((unsigned char *) hashtable->hashkey_buf, agg->numCols * sizeof(HashKey));
 }
 
 /* Function: adjustInputGroup
@@ -378,12 +372,10 @@ static HashAggEntry *
 lookup_agg_hash_entry(AggState *aggstate,
 					  void *input_record,
 					  InputRecordType input_type, int32 input_size,
-					  uint32 hashkey, bool *p_isnew)
+					  uint32 hashkey, unsigned parent_hash_bit, bool *p_isnew)
 {
 	HashAggEntry *entry;
 	HashAggTable *hashtable = aggstate->hhashtable;
-	unsigned parent_hash_bit = 0;
-	int level = 0;
 	MemTupleBinding *mt_bind = aggstate->hashslot->tts_mt_bind;
 	ExprContext *tmpcontext = aggstate->tmpcontext; /* per input tuple context */
 	Agg *agg = (Agg*)aggstate->ss.ps.plan;
@@ -391,15 +383,6 @@ lookup_agg_hash_entry(AggState *aggstate,
 	unsigned int bucket_idx;
 	uint64 bloomval;			/* bloom filter value */
    
-	if (hashtable->curr_spill_file != NULL)
-	{
-		SpillSet *parent_spill_set = hashtable->curr_spill_file->parent_spill_set;
-		Assert(parent_spill_set != NULL);
-		parent_hash_bit = parent_spill_set->parent_hash_bit +
-			(unsigned)ceil(log(parent_spill_set->num_spill_files)/log(2));
-		level = parent_spill_set->level;
-	}
-	
 	if (p_isnew != NULL)
 		*p_isnew = false;
 
@@ -449,7 +432,7 @@ lookup_agg_hash_entry(AggState *aggstate,
 			}
 
 			entry_datum = memtuple_getattr(mtup, mt_bind, att, &entry_isNull);
-			
+
 			if ( !input_isNull && !entry_isNull &&
 				 (DatumGetBool(FunctionCall2(&aggstate->eqfunctions[i],
 											 input_datum,
@@ -742,7 +725,7 @@ create_agg_hash_table(AggState *aggstate)
 	hashtable->prev_slot = NULL;
 
 	MemSet(padding_dummy, 0, MAXIMUM_ALIGNOF);
-
+	
 	init_agg_hash_iter(hashtable);
 
 	return hashtable;
@@ -816,10 +799,17 @@ agg_hash_initial_pass(AggState *aggstate)
 
 		if (aggstate->hashslot->tts_tupleDescriptor == NULL)
 		{
+			int size;
+							
 			/* Initialize hashslot by cloning input slot. */
 			ExecSetSlotDescriptor(aggstate->hashslot, outerslot->tts_tupleDescriptor); 
 			ExecStoreAllNullTuple(aggstate->hashslot);
 			mt_bind = aggstate->hashslot->tts_mt_bind;
+
+			size = ((Agg *)aggstate->ss.ps.plan)->numCols * sizeof(HashKey);
+			
+			hashtable->hashkey_buf = (HashKey *)palloc0(size);
+			hashtable->mem_for_metadata += size;
 		}
 
 		/* set up for advance_aggregates call */
@@ -828,7 +818,8 @@ agg_hash_initial_pass(AggState *aggstate)
 		/* Find or (if there's room) build a hash table entry for the
 		 * input tuple's group. */
 		hashkey = calc_hash_value(aggstate, outerslot);
-		entry = lookup_agg_hash_entry(aggstate, (void *)outerslot, INPUT_RECORD_TUPLE, 0, hashkey, &isNew);
+		entry = lookup_agg_hash_entry(aggstate, (void *)outerslot,
+									  INPUT_RECORD_TUPLE, 0, hashkey, 0, &isNew);
 		
 		if (entry == NULL)
 		{
@@ -859,7 +850,7 @@ agg_hash_initial_pass(AggState *aggstate)
 			spill_hash_table(aggstate);
 
 			entry = lookup_agg_hash_entry(aggstate, (void *)outerslot,
-										  INPUT_RECORD_TUPLE, 0, hashkey, &isNew);
+										  INPUT_RECORD_TUPLE, 0, hashkey, 0, &isNew);
 		}
 
 		setGroupAggs(hashtable, mt_bind, entry);
@@ -1068,7 +1059,7 @@ closeSpillFile(SpillSet *spill_set, int file_no)
 	{
 		freedspace += closeSpillFiles(spill_file->spill_set);
 	}
-		
+	
 	if (spill_file->file_info &&
 		spill_file->file_info->bfz != NULL)
 	{
@@ -1076,8 +1067,8 @@ closeSpillFile(SpillSet *spill_set, int file_no)
 		pfree(spill_file->file_info->bfz);
 		spill_file->file_info->bfz = NULL;
 		freedspace += (BATCHFILE_METADATA - sizeof(BatchFileInfo));
+		
 	}
-
 	if (spill_file->file_info)
 	{
 		pfree(spill_file->file_info);
@@ -1501,12 +1492,16 @@ agg_hash_reload(AggState *aggstate)
 	ExprContext *tmpcontext = aggstate->tmpcontext; /* per input tuple context */
 	bool has_tuples = false;
 	SpillFile *spill_file = hashtable->curr_spill_file;
+	int parent_hash_bit;
 
 	Assert(spill_file != NULL && spill_file->parent_spill_set != NULL);
 
 	hashtable->is_spilling = false;
 	hashtable->num_reloads++;
 	hashtable->total_buckets += hashtable->nbuckets;
+
+	parent_hash_bit = spill_file->parent_spill_set->parent_hash_bit +
+		(unsigned)ceil(log(spill_file->parent_spill_set->num_spill_files)/log(2));
 
 	if (spill_file->file_info != NULL &&
 		spill_file->file_info->bfz != NULL)
@@ -1548,7 +1543,7 @@ agg_hash_reload(AggState *aggstate)
 		tmpcontext->ecxt_scantuple = aggstate->hashslot;
 
 		entry = lookup_agg_hash_entry(aggstate, input, INPUT_RECORD_GROUP_AND_AGGS, input_size,
-									  hashkey, &isNew);
+									  hashkey, parent_hash_bit, &isNew);
 		
 		if (entry == NULL)
 		{
@@ -1570,7 +1565,7 @@ agg_hash_reload(AggState *aggstate)
 			spill_hash_table(aggstate);
 
 			entry = lookup_agg_hash_entry(aggstate, input, INPUT_RECORD_GROUP_AND_AGGS, input_size,
-										  hashkey, &isNew);
+										  hashkey, parent_hash_bit, &isNew);
 		}
 
 		if (!isNew)
@@ -1899,6 +1894,8 @@ void destroy_agg_hash_table(AggState *aggstate)
 		/* destroy_batches(aggstate->hhashtable); */
 		pfree(aggstate->hhashtable->buckets);
 		pfree(aggstate->hhashtable->bloom);
+		if (aggstate->hhashtable->hashkey_buf)
+			pfree(aggstate->hhashtable->hashkey_buf);
 
 		closeSpillFiles(aggstate->hhashtable->spill_set);
 
