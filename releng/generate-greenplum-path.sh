@@ -1,5 +1,11 @@
 #!/bin/bash
 
+if [ x$1 != x ] ; then
+    GPHOME_PATH=$1
+else
+    GPHOME_PATH="\`pwd\`"
+fi
+
 PLAT=`uname -s`
 if [ $? -ne 0 ] ; then
     echo "Error executing uname -s"
@@ -7,7 +13,7 @@ if [ $? -ne 0 ] ; then
 fi
 
 cat << EOF
-GPHOME=\`pwd\`
+GPHOME=${GPHOME_PATH}
 # Replace with symlink path if it is present and correct
 if [ -L \${GPHOME}/../greenplum-db ]; then
     GPHOME_BY_SYMLINK=\`(cd \${GPHOME}/../greenplum-db/ && pwd -P)\`

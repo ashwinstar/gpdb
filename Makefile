@@ -324,7 +324,7 @@ copylibs : thirdparty-dist
 	fi
 
 greenplum_path:
-	releng/generate-greenplum-path.sh > $(INSTLOC)/greenplum_path.sh
+	releng/generate-greenplum-path.sh $(INSTLOC) > $(INSTLOC)/greenplum_path.sh
 
 RECONFIG :
 	rm -f $(ISCONFIG)
