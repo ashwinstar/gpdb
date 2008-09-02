@@ -559,7 +559,7 @@ static void parse_command_line(int argc, const char* const argv[])
 	{      NULL, '?', 0, "print help screen" },
 	{      NULL, 'V', 0, "very verbose" },
 	{      NULL, 'v', 0, "slightly verbose" },
-	{      NULL, 'q', 0, "# seconds between updates" },
+	{      NULL, 'q', 1, "# seconds between updates" },
 	{      NULL, 'm', 1, "minimum query time to log" },
         {      NULL, 'd', 1, "minimum query time to log details" },
 	{ "version", 256, 0, "print version number" }
