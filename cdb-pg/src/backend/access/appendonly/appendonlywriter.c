@@ -37,7 +37,6 @@ static AORelHashEntry AppendOnlyRelHashNew(Oid relid, bool *exists);
 static AORelHashEntry AORelGetHashEntry(Oid relid);
 static AORelHashEntry AORelLookupHashEntry(Oid relid);
 static bool AORelCreateHashEntry(Oid relid);
-static bool AORelRemoveHashEntry(Oid relid);
 
 /*
  * AppendOnlyWriterShmemSize -- estimate size the append only writer structures
@@ -184,11 +183,11 @@ AORelCreateHashEntry(Oid relid)
 	/*
 	 * Segment file number 0 is reserved for utility mode operations.
 	 */
-	aoentry->relsegfiles[RESERVED_SEGNO_FOR_UTILITY].inuse = true;
-	aoentry->relsegfiles[RESERVED_SEGNO_FOR_UTILITY].xid = InvalidTransactionId;
-	aoentry->relsegfiles[RESERVED_SEGNO_FOR_UTILITY].isfull = true;
-	aoentry->relsegfiles[RESERVED_SEGNO_FOR_UTILITY].tupcount = 0;
-	aoentry->relsegfiles[RESERVED_SEGNO_FOR_UTILITY].tupsadded = 0;
+	aoentry->relsegfiles[RESERVED_SEGNO].inuse = true;
+	aoentry->relsegfiles[RESERVED_SEGNO].xid = InvalidTransactionId;
+	aoentry->relsegfiles[RESERVED_SEGNO].isfull = true;
+	aoentry->relsegfiles[RESERVED_SEGNO].tupcount = 0;
+	aoentry->relsegfiles[RESERVED_SEGNO].tupsadded = 0;
 
 	/*
 	 * Now get all the segment files information for this relation
@@ -230,7 +229,7 @@ AORelCreateHashEntry(Oid relid)
  *	The append only lightweight lock (AppendOnlyLock) *must* be held for
  *	this operation.
  */
-static bool
+bool
 AORelRemoveHashEntry(Oid relid)
 {
 	bool				found;
@@ -422,7 +421,7 @@ float8  segfileMaxRowThreshold(void)
  * ROLE_EXECUTE  - we need to use the segment file number that the QD decided
  *				   on and sent to us. it is the passed in parameter - use it.
  *
- * ROLE_UTILITY  - always use the reserved segno RESERVED_SEGNO_FOR_UTILITY
+ * ROLE_UTILITY  - always use the reserved segno RESERVED_SEGNO
  *
  */
 int SetSegnoForWrite(int existingsegno, Oid relid)
@@ -439,13 +438,13 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 		case GP_ROLE_EXECUTE:
 
 			Assert(existingsegno != InvalidFileSegNumber);
-			Assert(existingsegno != RESERVED_SEGNO_FOR_UTILITY);
+			Assert(existingsegno != RESERVED_SEGNO);
 			return existingsegno;
 
 		case GP_ROLE_UTILITY:
 
 			Assert(existingsegno == InvalidFileSegNumber);
-			return RESERVED_SEGNO_FOR_UTILITY;
+			return RESERVED_SEGNO;
 
 		case GP_ROLE_DISPATCH:
 
@@ -510,7 +509,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 				}				
 			}
 
-			Insist(usesegno != RESERVED_SEGNO_FOR_UTILITY);
+			Insist(usesegno != RESERVED_SEGNO);
 			Insist(usesegno != -1);
 			
 			/* mark this segno as in use */
@@ -520,7 +519,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			LWLockRelease(AppendOnlyLock);
 
 			Assert(usesegno >= 0);
-			Assert(usesegno != RESERVED_SEGNO_FOR_UTILITY);
+			Assert(usesegno != RESERVED_SEGNO);
 
 			if (Debug_appendonly_print_insert)
 				elog(LOG,"Segno chosen for append-only relation %d is %d", 

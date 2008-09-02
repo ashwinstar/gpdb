@@ -16,6 +16,7 @@
 #include "postgres.h"
 
 #include "access/appendonlyam.h"
+#include "access/appendonlywriter.h"
 #include "access/genam.h"
 #include "access/hash.h"
 #include "access/heapam.h"
@@ -4038,10 +4039,16 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		}
 		else if(relstorage == RELSTORAGE_AO && Gp_role != GP_ROLE_DISPATCH)
 		{
-			AppendOnlyInsertDesc aoInsertDesc = NULL;
+			/*
+			 * When rewriting an appendonly table we choose to always insert
+			 * into the segfile reserved for special purposes (segno #0). 
+			 */
+			int 					segno = RESERVED_SEGNO;
+			AppendOnlyInsertDesc 	aoInsertDesc = NULL;
+			
 
 			if(newrel)
-				aoInsertDesc = appendonly_insert_init(newrel, 0 /* TODO: writing into segno 0 only may be a problem */);
+				aoInsertDesc = appendonly_insert_init(newrel, segno);
 			
 			aoscan = appendonly_beginscan(oldrel, 0, NULL);
 			
@@ -4152,6 +4159,26 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 			if(newrel)
 				appendonly_insert_finish(aoInsertDesc);
 		}
+		else if(relstorage == RELSTORAGE_AO && Gp_role == GP_ROLE_DISPATCH)
+		{
+			/*
+			 * All we want to do on the QD during an AO table rewrite is to drop
+			 * the shared memory hash table entry for this table if it exists. We
+			 * must do so since before the rewrite we probably have few non-zero 
+			 * segfile entries for this table while after the rewrite only segno
+			 * zero will be full and the others will be empty. By dropping the hash
+			 * entry we force refreshing the entry from the catalog the next time
+			 * a write into this AO table comes along.
+			 * 
+			 * Note that ALTER already took an exclusive lock on the old relation
+			 * so we are guaranteed to not drop the hash entry from under any 
+			 * concurrent operation.
+			 */
+			LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
+			AORelRemoveHashEntry(RelationGetRelid(oldrel));
+			LWLockRelease(AppendOnlyLock);
+		}
+
 		
 		ExecDropSingleTupleTableSlot(oldslot);
 		ExecDropSingleTupleTableSlot(newslot);

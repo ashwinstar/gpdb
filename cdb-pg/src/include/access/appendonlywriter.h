@@ -28,10 +28,12 @@
 #define MAX_AOREL_CONCURRENCY 128
 
 /*
- * This segfile number may only be used for write operations
- * done in UTILITY mode, for example, gp_restore.
+ * This segfile number may only be used for special case write operations.
+ * Currently these include:
+ *   - UTILITY mode, for example, gp_restore.
+ *   - Table rewrites that are sometimes done as a part of ALTER TABLE.
  */
-#define RESERVED_SEGNO_FOR_UTILITY 0
+#define RESERVED_SEGNO 0
 
 /*
  * GUC variables
@@ -102,11 +104,12 @@ extern AppendOnlyWriterData	*AppendOnlyWriter;
 extern Size AppendOnlyWriterShmemSize(void);
 extern void InitAppendOnlyWriter(void);
 extern Size AppendOnlyWriterShmemSize(void);
-extern int SetSegnoForWrite(int existingsegno, Oid relid);
+extern int  SetSegnoForWrite(int existingsegno, Oid relid);
 extern List *assignPerRelSegno(List *all_rels);
 extern void UpdateMasterAosegTotals(Relation parentrel, 
 									int segno, 
 									uint64 tupcount);
+extern bool AORelRemoveHashEntry(Oid relid);
 extern void AtCommit_AppendOnly(void);
 extern void AtAbort_AppendOnly(void);
 
