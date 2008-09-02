@@ -203,7 +203,7 @@ typedef struct {
 
 
 typedef struct {
-	char           *version;  /* FIXME */
+	char           *version;
 	char           *database;
 	char           *user;
 	char           *host;
@@ -215,6 +215,7 @@ typedef struct {
 #define mapred_document_executes 0x00000002
 #define mapred_document_error    0x10000000
 	int             id;
+	char           *prefix;
 } mapred_document_t;
 
 /* Union of all mapred object types */
@@ -242,21 +243,10 @@ mapred_olist_t* mapred_parse_string(unsigned char *yaml);
 
 void mapred_dump_yaml(mapred_object_t *obj);
 
-
 void mapred_destroy_object(mapred_object_t **obj);
 void mapred_destroy_olist(mapred_olist_t **olist);
 void mapred_destroy_plist(mapred_plist_t **plisth);
 void mapred_destroy_clist(mapred_clist_t **clist);
-
-void mapred_resolve_dependencies(PGconn *conn, mapred_document_t *doc);
-void mapred_resolve_object(PGconn *conn, mapred_document_t *doc, 
-						   mapred_object_t *obj, int *exec_count);
-void mapred_resolve_ref(mapred_olist_t *olist, mapred_reference_t *ref);
-
-void      mapred_run_queries(PGconn *conn, mapred_document_t *doc);
-boolean mapred_create_object(PGconn *conn, mapred_object_t *obj);
-void    mapred_remove_object(PGconn *conn, mapred_object_t *obj);
-
 
 /* Global variables, defined in main.c */
 extern int global_verbose_flag;

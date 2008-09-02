@@ -6,12 +6,6 @@
 #include <stdarg.h>
 #include <errno.h>
 
-#define error1(x,y)									\
-	do {											\
-		fprintf(stderr, "Error: %s %s\n", x, y);	\
-		exit(1);									\
-	} while (0)
-
 #define scalarfree(x)							\
 	do {										\
 		if (x) {								\
@@ -54,17 +48,28 @@ typedef struct
 	size_t  grow;
 } buffer_t;
 
-void *mapred_malloc(int size);
-void mapred_free(void *ptr);
+void *         mapred_malloc(int size);
+void             mapred_free(void *ptr);
 
-int mapred_obj_error(mapred_object_t *obj, char *fmt, ...);
+int         mapred_obj_error(mapred_object_t *obj, char *fmt, ...);
 
-buffer_t *makebuffer(size_t bufsize, size_t grow);
-void bufreset(buffer_t *b);
-void bufcat(buffer_t **bufp, char* str);
-void ignore_notice_handler(void *arg, const PGresult *res);
-void print_notice_handler(void *arg, const PGresult *res);
-void mapred_setup_columns(PGconn *conn, mapred_object_t *obj);
+buffer_t *        makebuffer(size_t bufsize, size_t grow);
+void                bufreset(buffer_t *b);
+void                  bufcat(buffer_t **bufp, char* fmt);
+void   ignore_notice_handler(void *arg, const PGresult *res);
+void    print_notice_handler(void *arg, const PGresult *res);
+void    mapred_setup_columns(PGconn *conn, mapred_object_t *obj);
+
+boolean mapred_create_object(PGconn *conn, mapred_document_t *doc, 
+							 mapred_object_t *obj);
+void    mapred_remove_object(PGconn *conn, mapred_document_t *doc,
+							 mapred_object_t *obj);
+void      mapred_run_queries(PGconn *conn, mapred_document_t *doc);
+
+void mapred_resolve_dependencies(PGconn *conn, mapred_document_t *doc);
+void mapred_resolve_ref(mapred_olist_t *olist, mapred_reference_t *ref);
+void mapred_resolve_object(PGconn *conn, mapred_document_t *doc, 
+						   mapred_object_t *obj, int *exec_count);
 
 
 /* Wrappers around malloc/free to handle error conditions more cleanly */
@@ -217,9 +222,15 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 	PGresult       *result;
 	mapred_olist_t *olist;
 	boolean         done;
+	boolean         executes;
 
 	/* Ignore NOTICE messages from database */
 	PQsetNoticeReceiver(conn, ignore_notice_handler, NULL);
+
+	/* Establish a name-prefix for temporary objects */
+	doc->prefix = mapred_malloc(64);
+	snprintf(doc->prefix, 64, "mapreduce_%d_", PQbackendPID(conn));
+	
 
 	/*
 	 * Resolution of dependecies was defered until now so that
@@ -229,6 +240,8 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 	if (global_verbose_flag)
 		fprintf(stderr, "  - Resolving Dependencies:\n");
 	mapred_resolve_dependencies(conn, doc);
+	if (global_verbose_flag)
+		fprintf(stderr, "    - DONE\n");
 
 	XTRY
 	{
@@ -260,6 +273,12 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 		/* With dependencies resolved we can now try creating objects */
 		if (global_verbose_flag)
 			fprintf(stderr, "  - Creating Objects\n");
+
+		/* 
+		 * we don't try to create any executes until all non-executes are 
+		 * successfully created 
+		 */
+		executes = false;
 		do
 		{
 			boolean progress = false;
@@ -274,21 +293,33 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 			for (olist = doc->objects; olist; olist = olist->next)
 			{
 				mapred_object_t *obj = olist->object;
-				if (!obj->created)
+				if (!obj->created && 
+					(executes || obj->kind != MAPRED_EXECUTION))
 				{
-					if (global_verbose_flag)
+					if (global_verbose_flag && obj->kind != MAPRED_ADT)
 					{
 						fprintf(stderr, "    - %s:\n", 
 								mapred_kind_name[obj->kind]);
 						fprintf(stderr, "       NAME: %s\n", obj->name);
 					}
 
-					if (!mapred_create_object(conn, obj))
+					if (!mapred_create_object(conn, doc, obj))
 						done = false;
 					else
 						progress = true;
 				}
 			}
+			
+			/*
+			 * If all non-execute objects have been created then switch over
+			 * and start creating the execution jobs 
+			 */
+			if (done && !executes)
+			{
+				executes = true;
+				done = false;
+			}
+
 			
 			/* 
 			 * If we looped through the list, we are not done, and no progress
@@ -336,7 +367,7 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 		if (global_print_flag || global_debug_flag)
 			printf("\n");
 		for (olist = doc->objects; olist; olist = olist->next)
-			mapred_remove_object(conn, olist->object);
+			mapred_remove_object(conn, doc, olist->object);
 		if (global_print_flag || global_debug_flag)
 			printf("\n");
 
@@ -378,9 +409,54 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 	switch (obj->kind)
 	{
 		/* Objects with no dependencies */
-		case MAPRED_INPUT:
 		case MAPRED_OUTPUT:
 			break;
+
+			
+		case MAPRED_INPUT:
+			/* 
+			 * For FILE/GPFDIST/EXEC inputs we will create a name-prefixed
+			 * version of the object to prevent name collisions, and then
+			 * create a second temporary view over the external table to
+			 * support access to the input by "name".  This involves creating
+			 * a second copy of the input which we place directly after the
+			 * original input in the document object list.
+			 */
+			if (obj->u.input.type == MAPRED_INPUT_GPFDIST ||
+				obj->u.input.type == MAPRED_INPUT_FILE    ||
+				obj->u.input.type == MAPRED_INPUT_EXEC)
+			{
+				mapred_object_t *newinput;
+				mapred_olist_t  *parent;
+
+				newinput = mapred_malloc(sizeof(mapred_object_t));
+				memset(newinput, 0, sizeof(mapred_object_t));
+				newinput->kind = MAPRED_INPUT;
+				len = strlen(obj->name) + 1;
+				newinput->name = mapred_malloc(len);
+				sprintf(newinput->name, obj->name);
+				newinput->u.input.type = MAPRED_INPUT_QUERY;
+				len = strlen(doc->prefix) + strlen(obj->name) + 16;
+				newinput->u.input.desc = mapred_malloc(len);
+				snprintf(newinput->u.input.desc, len,
+						 "select * from %s%s",
+						 doc->prefix, obj->name);
+				
+				/* 
+				 * Find parent input in the doclist and add the new object 
+				 * immediately after it.
+				 */
+				for (parent = doc->objects;
+					 parent && parent->object != obj;
+					 parent = parent->next);
+				XASSERT(parent);
+				newlist = mapred_malloc(sizeof(mapred_olist_t));
+				newlist->object = newinput;
+				newlist->next = parent->next;
+				parent->next = newlist;
+			}
+			break;
+
 
 		case MAPRED_MAPPER:
 		case MAPRED_TRANSITION:
@@ -399,9 +475,10 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 				rtype = mapred_malloc(sizeof(mapred_object_t));
 				memset(rtype, 0, sizeof(mapred_object_t));
 				rtype->kind = MAPRED_ADT;
-				len = strlen(obj->name) + 7;
+				len = strlen(doc->prefix) + strlen(obj->name) + 7;
 				rtype->name = mapred_malloc(len);
-				snprintf(rtype->name, len, "%s_rtype", obj->name);
+				snprintf(rtype->name, len, "%s%s_rtype", 
+						 doc->prefix, obj->name);
 				rtype->u.adt.returns = obj->u.function.returns;
 				
 				obj->u.function.rtype.name = rtype->name;
@@ -502,16 +579,15 @@ void mapred_resolve_object(PGconn *conn, mapred_document_t *doc,
 			/* Assign a name to anonymous executions */
 			if (!obj->name)
 			{
-				int        pid = PQbackendPID(conn);
 				size_t     len;
 
 				XASSERT(obj->u.task.execute);
 
-				/* 10 characters for max int digits */
-				len = 10 + 10 + strlen("mapreduce__run_") + 1;
+				/* 10 characters for max int digits, 4 for "run_" */
+				len = strlen(doc->prefix) + 16;
 				obj->name = mapred_malloc(len);
-				snprintf(obj->name, len, "mapreduce_%d_run_%d",
-						 pid, ++(*exec_count));
+				snprintf(obj->name, len, "%srun_%d",
+						 doc->prefix, ++(*exec_count));
 			}
 
 			/* Check for infinite recursion */
@@ -713,7 +789,7 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 				       "     AND    a.attnum > 0 \n"
 				       "     AND    c.relkind in ('r', 'v', 'a') \n"
 				       "     AND    c.relnamespace = n.oid \n"
-				       "     AND    c.relname = '");
+				       "     AND    c.relname = lower('");
 
 				if (obj->u.input.type == MAPRED_INPUT_TABLE)
 					bufcat(&buffer, obj->u.input.desc);
@@ -721,7 +797,7 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					bufcat(&buffer, obj->name);
 
 				bufcat(&buffer, 
-					   "' \n"
+					   "') \n"
 					   "     AND    n.nspname = (current_schemas(true))[i] \n"
 					   "  ) subq \n"
 					   "WHERE rank = 1 \n"
@@ -1477,7 +1553,8 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 
 
 
-boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
+boolean mapred_create_object(PGconn *conn, mapred_document_t *doc, 
+							 mapred_object_t *obj)
 {
 	mapred_clist_t *clist    = NULL;
 	mapred_plist_t *plist    = NULL;
@@ -1514,6 +1591,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 
 						/* Allocate and produce buffer */
 						bufcat(&buffer, "CREATE EXTERNAL TABLE ");
+						bufcat(&buffer, doc->prefix);
 						bufcat(&buffer, obj->name);
 						bufcat(&buffer, "(");
 						for (plist = obj->u.input.columns; 
@@ -1606,6 +1684,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						XASSERT(obj->u.input.desc);
 
 						bufcat(&buffer, "CREATE EXTERNAL WEB TABLE ");
+						bufcat(&buffer, doc->prefix);
 						bufcat(&buffer, obj->name);
 						bufcat(&buffer, "(");
 						for (plist = obj->u.input.columns; 
@@ -1799,6 +1878,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				 *     
 				 */
 				bufcat(&buffer, "CREATE FUNCTION ");
+				bufcat(&buffer, doc->prefix);
 				bufcat(&buffer, obj->name);
 				bufcat(&buffer, "(");
 
@@ -1864,6 +1944,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 			case MAPRED_REDUCER:
 			{
 				mapred_object_t *transition = obj->u.reducer.transition.object;
+				mapred_object_t *combiner   = obj->u.reducer.combiner.object;
+				mapred_object_t *finalizer  = obj->u.reducer.finalizer.object;
 				char *state;
 
 				XASSERT(obj->name);
@@ -1874,12 +1956,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				 * If the reducer depends on an object that hasn't be created
 				 * then return false, it will be resolved during a second pass
 				 */
-				if ((obj->u.reducer.transition.object && 
-					 !obj->u.reducer.transition.object->created) ||
-					(obj->u.reducer.combiner.object && 
-					 !obj->u.reducer.combiner.object->created) ||
-					(obj->u.reducer.finalizer.object && 
-					 !obj->u.reducer.finalizer.object->created))
+				if ((transition && !transition->created) ||
+					(combiner   && !combiner->created)   ||
+					(finalizer  && !finalizer->created))
 				{
 					if (global_print_flag && global_debug_flag)
 						printf("-- defering REDUCE %s\n", obj->name);
@@ -1894,8 +1973,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				XASSERT(plist);          /* state */
 				XASSERT(plist->next);    /* parameters */
 
-
 				bufcat(&buffer, "CREATE AGGREGATE ");
+				bufcat(&buffer, doc->prefix);
 				bufcat(&buffer, obj->name);
 				bufcat(&buffer, " (");
 
@@ -1921,11 +2000,15 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					bufcat(&buffer, "'");
 				}
 				bufcat(&buffer, ",\n  sfunc = ");
+				if (!transition->internal)
+					bufcat(&buffer, doc->prefix);
 				bufcat(&buffer, transition->name);
-				if (obj->u.reducer.combiner.name)
+				if (combiner)
 				{
 					bufcat(&buffer, ",\n  prefunc = ");
-					bufcat(&buffer, obj->u.reducer.combiner.name);
+					if (!combiner->internal)
+						bufcat(&buffer, doc->prefix);
+					bufcat(&buffer, combiner->name);
 				}
 
 				/*
@@ -1972,12 +2055,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				 * If the task depends on an object that hasn't be created then
 				 * return false, it will be resolved during a second pass
 				 */
-				if ((obj->u.task.input.object && 
-					 !obj->u.task.input.object->created) ||
-					(obj->u.task.mapper.object && 
-					 !obj->u.task.mapper.object->created) ||
-					(obj->u.task.reducer.object && 
-					 !obj->u.task.reducer.object->created))
+				if ((input   && !input->created)  ||
+					(mapper  && !mapper->created) ||
+					(reducer && !reducer->created))
 				{
 					if (global_print_flag && global_debug_flag)
 					{
@@ -2067,10 +2147,9 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 				 *  2b) The Mapper returns a single column:
 				 *           "SELECT <map>(...) FROM <input>"
 				 */
-				if (obj->u.task.mapper.name)
+				XASSERT(mapper || !obj->u.task.mapper.name);
+				if (mapper)
 				{
-					XASSERT(mapper);  /* FIXME */
-
 					plist = mapper->u.function.returns;
 					XASSERT(plist);
 
@@ -2089,6 +2168,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 
 					/* shared code */
 					bufcat(&buffer, "SELECT ");
+					if (!mapper->internal)
+						bufcat(&buffer, doc->prefix);
 					bufcat(&buffer, mapper->name);
 					bufcat(&buffer, "(");
 					plist = mapper->u.function.parameters;
@@ -2254,6 +2335,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					}
 				
 					/* Call the aggregation function */
+					if (reducer && !reducer->internal)
+						bufcat(&buffer, doc->prefix);
 					bufcat(&buffer, obj->u.task.reducer.name);
 					bufcat(&buffer, "(");
 
@@ -2404,7 +2487,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 						bufcat(&buffer, "value");
 					}
 					bufcat(&buffer, "\nFROM ");
-					if (obj->u.task.mapper.name)
+					if (mapper)
 					{
 						bufcat(&buffer, "(");
 						bufcat(&buffer, qbuffer->buffer);
@@ -2508,6 +2591,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 							bufcat(&buffer, ", ");
 						}
 
+						if (!finalizer->internal)
+							bufcat(&buffer, doc->prefix);
 						bufcat(&buffer, finalizer->name);
 						bufcat(&buffer, "(r) as ");
 
@@ -2571,8 +2656,12 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 			case MAPRED_ADT:
 				XASSERT(obj->name);
 				mapred_setup_columns(conn, obj);
-
-				bufcat(&buffer, "CREATE TYPE ");
+				
+				/* 
+				 * ADT's have generated names that already include the 
+				 * document prefix 
+				 */
+				bufcat(&buffer, "CREATE TYPE ");				
 				bufcat(&buffer, obj->name);
 				bufcat(&buffer, " as (");
 				for (plist = obj->u.adt.returns; plist; plist = plist->next)
@@ -2634,7 +2723,8 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
 				}
 				if (global_verbose_flag)
-					fprintf(stderr, "     - %s", PQresultErrorMessage(result));
+					fprintf(stderr, "       ERROR: %s\n", 
+							PQresultErrorField(result, PG_DIAG_MESSAGE_PRIMARY));
 			}
 		}
 
@@ -2658,7 +2748,7 @@ boolean mapred_create_object(PGconn *conn, mapred_object_t *obj)
 }
 
 
-void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
+void mapred_remove_object(PGconn *conn, mapred_document_t *doc, mapred_object_t *obj)
 {
 	mapred_plist_t *plist    = NULL;
 	const char     *ckind    = NULL;
@@ -2695,6 +2785,7 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 					case MAPRED_INPUT_GPFDIST:
 					case MAPRED_INPUT_EXEC:
 						bufcat(&buffer, "DROP EXTERNAL TABLE IF EXISTS ");
+						bufcat(&buffer, doc->prefix);
 						bufcat(&buffer, obj->name);
 						bufcat(&buffer, " CASCADE;\n");
 						break;
@@ -2728,6 +2819,8 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 				ckind = mapred_kind_name[obj->kind];
 
 				bufcat(&buffer, "DROP FUNCTION IF EXISTS ");
+				if (!obj->internal)
+					bufcat(&buffer, doc->prefix);
 				bufcat(&buffer, obj->name);
 				bufcat(&buffer, "(");
 				for (plist = obj->u.function.parameters; 
@@ -2754,6 +2847,8 @@ void mapred_remove_object(PGconn *conn, mapred_object_t *obj)
 				XASSERT(transition->u.function.parameters);
 
 				bufcat(&buffer, "DROP AGGREGATE IF EXISTS ");
+				if (!obj->internal)
+					bufcat(&buffer, doc->prefix);
 				bufcat(&buffer, obj->name);
 				bufcat(&buffer, "(");
 

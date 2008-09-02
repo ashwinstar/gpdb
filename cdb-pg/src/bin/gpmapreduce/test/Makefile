@@ -24,20 +24,28 @@ TESTS     = $(addprefix $(OUTDIR)/,$(addsuffix .suc, $(basename $(YML))))
 MAILDATA  = $(addprefix $(shell pwd)/,$(DATADIR)/email/mailfiles)
 
 all: setup $(YMLDIR) $(OUTDIR) $(YMLOUT) $(MAILDATA) $(TESTS)
-	@if [ -s $(OUTDIR)/FAIL ] ; then                          \
-       export nfailed=`cat $(OUTDIR)/FAIL | wc -l`;           \
+	@printf "\n=======================\n"
+	@if [ -s $(OUTDIR)/FAIL ] ; then \
+       export nfailed=`cat $(OUTDIR)/FAIL | wc -l`; \
        export ntotal=`ls -1 $(OUTDIR)/*.suc $(OUTDIR)/*.fail | wc -l`;  \
-	   echo [FAIL] $$nfailed /$$ntotal tests failed;           \
-	   rm -rf $(OUTDIR)/FAIL;                                 \
-	 else                                                     \
-       echo [SUCCESS] ;                                       \
+       printf " %d of %d tests failed. " $$nfailed $$ntotal; \
+	 else \
+       export ntotal=`ls -1 $(OUTDIR)/*.suc | wc -l`;  \
+	   printf " All %d tests passed. " $$ntotal; \
      fi
+	@printf "\n=======================\n"
+
 
 setup:
-	@dropdb $(DB) >/dev/null 2>&1 || echo > /dev/null
-	@createdb $(DB)
-	@createlang -d $(DB) plperl 
-	@createlang -d $(DB) plpythonu
+	@printf "============== dropping database \"$(DB)\"     ==============\n"
+	@psql -c "drop database $(DB)" template1 2>/dev/null || echo "DROP DATABASE"
+	@printf "============== creating database \"$(DB)\"     ==============\n"
+	@psql -c "create database $(DB)" template1
+	@printf "============== installing plperl/plpython             ==============\n"
+	@psql -c "create language plperl" -d $(DB) 
+	@psql -c "create language plpythonu" -d $(DB) 
+	@printf "============== running mapreduce tests                ==============\n"
+	@rm -rf $(OUTDIR)/FAIL
 
 clean:
 	rm -rf $(YMLDIR)
@@ -49,21 +57,21 @@ clean:
 %.test: $(OUTDIR)/%.suc
 
 $(OUTDIR):
-	mkdir $(OUTDIR)
+	@mkdir $(OUTDIR)
 
 $(MAILDATA):
-	ls -1 $(dir $(MAILDATA))*.txt > $(MAILDATA)
+	@ls -1 $(dir $(MAILDATA))*.txt > $(MAILDATA)
 	@chmod u+w $(MAILDATA)
 
 $(YMLDIR):
-	mkdir $(YMLDIR)
+	@mkdir $(YMLDIR)
 
 $(YMLDIR)/%.yml: $(INDIR)/%.yml.in
-	$(FIXUP) $(INDIR)/$*.yml.in
+	@$(FIXUP) $(INDIR)/$*.yml.in
 	@mv $(INDIR)/$*.yml $(YMLDIR)/.
 
 $(OUTDIR)/%.suc: $(MAPRED) $(YMLDIR)/%.yml $(MASTERDIR)/%.out $(MASTERDIR)/%.err
-	@echo $(MAPRED) $(MFLAGS) $(YMLDIR)/$*.yml
+	@printf 'test %-20s ... ' $*
 	@rm -f $(OUTDIR)/$*.suc $(OUTDIR)/$*.fail
 	@touch $(OUTDIR)/$*.out $(OUTDIR)/$*.err
 	@cp -f $(MASTERDIR)/DEFAULT.out $(OUTDIR)/$*.out
@@ -74,5 +82,7 @@ $(OUTDIR)/%.suc: $(MAPRED) $(YMLDIR)/%.yml $(MASTERDIR)/%.out $(MASTERDIR)/%.err
 	@if [ -e $(SQLDIR)/$*_done.sql ] ; \
 	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_done.sql > $(OUTDIR)/$*_done.out; fi
 	@$(MRDIFF) $(OUTDIR) $(MASTERDIR) $* > $(OUTDIR)/$*.suc
+	@psql -c "\d" $(DB) | \
+        perl -e "while (<>) {s/No relations found.\\n$$//; print}" > $(OUTDIR)/$*.suc
 	@cd $(OUTDIR); if [ -s $*.suc ] ; then \
-	    mv $*.suc $*.fail; echo $*.fail; echo $*.fail >> FAIL ; fi
+	    mv $*.suc $*.fail; echo FAILED; echo $*.fail >> FAIL ; else echo ok; fi
