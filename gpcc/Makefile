@@ -44,7 +44,10 @@ mkgpmon:
 		$(GPSMON_LDFLAGS) -lsigar -lm )
 	@mkdir -p build/bin
 	@mkdir -p build/lib
-	@cp -f src/gpmon/gpmmon src/gpmon/gpsmon build/bin/
+	@cp -f src/gpmon/gpmmon build/bin/
+	@mkdir -p gpl/bin
+	@mkdir -p gpl/lib
+	@cp -f src/gpmon/gpsmon gpl/bin/
 
 mkpaxos: mkdir
 	(cd src/paxos;sh build)

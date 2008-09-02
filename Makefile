@@ -16,6 +16,7 @@ ISCONFIG=$(GPPGDIR)/GNUmakefile
 
 RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
+GPLDIR=greenplum-db$(RELEASE)-gpl
 GPDOCDIR=$(CURDIR)/docs/release
 
 DEFPORT=5432
@@ -39,7 +40,9 @@ endif
 DEBUGFLAGS="$(CFLAGS_INLINE) $(CFLAGS_OPT) -g3"
 
 DISTPATH=$(GPROOT)/$(GPDIR)
+GPLDISTPATH=$(GPROOT)/$(GPLDIR)
 DEVPATH=$(HOME)/$(GPDIR)
+GPLDEVPATH=$(HOME)/$(GPLDIR)
 
 CONFIGFLAGS=--enable-thread-safety --enable-integer-datetimes --with-pgport=$(DEFPORT)
 
@@ -87,6 +90,7 @@ opt:
 
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
+devel : GPLINSTLOC=$(GPLDEVPATH)
 devel : CONFIGFLAGS+= --enable-cassert --enable-debug
 devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
@@ -95,10 +99,12 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
 devel_faultinj : INSTLOC=$(DEVPATH)
+devel_faultinj : GPLINSTLOC=$(GPLDEVPATH)
 devel_faultinj : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-faultinjection --enable-debugbreak
 devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
@@ -107,11 +113,13 @@ devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 
 forceplan : INSTCFLAGS=$(DEBUGFLAGS)
 forceplan : INSTLOC=$(DEVPATH)
+forceplan : GPLINSTLOC=$(GPLDEVPATH)
 forceplan : CONFIGFLAGS+= --enable-cassert --enable-debug --enable-forceplan --enable-debugbreak --enable-debugntuplestore
 forceplan : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
@@ -120,10 +128,12 @@ forceplan : HOMEDEP $(ISCONFIG)
 	@$(MAKE) mkgpcc
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
+dist : GPLINSTLOC=$(GPLDISTPATH)
 dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -132,10 +142,12 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist_prof : INSTCFLAGS=$(PROFFLAGS)
 dist_prof : INSTLOC=$(DISTPATH)
+dist_prof : GPLINSTLOC=$(GPLDISTPATH)
 dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(GPPGDIR) && $(MAKE) install
@@ -144,10 +156,12 @@ dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist_faultinj : INSTCFLAGS=$(OPTFLAGS)
 dist_faultinj : INSTLOC=$(DISTPATH)
+dist_faultinj : GPLINSTLOC=$(GPLDISTPATH)
 dist_faultinj : CONFIGFLAGS+= --enable-faultinjection --enable-debugbreak
 dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
@@ -157,6 +171,7 @@ dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
+	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 
@@ -269,6 +284,15 @@ mgmtcopy :
 	@rm -rf $(INSTLOC)/bin/Makefile
 	@rm -rf $(INSTLOC)/bin/lib/CVS
 	@rm -rf $(INSTLOC)/bin/src
+
+gplcopy :
+	rm -rf $(GPLINSTLOC)
+	mkdir -p $(GPLINSTLOC)/bin
+	cp -r $(GPCC)/gpl/bin $(GPLINSTLOC)
+	chmod 755 $(GPLINSTLOC)/bin
+	chmod 555 $(GPLINSTLOC)/bin/*
+	cp -f $(GPCC)/src/gpmon/gpmon_2.sql $(GPLINSTLOC)
+	chmod 555 $(GPLINSTLOC)/gpmon_2.sql
 
 copylibs : thirdparty-dist
 	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi	
