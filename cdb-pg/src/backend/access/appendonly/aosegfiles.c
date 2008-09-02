@@ -529,7 +529,7 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 	/*
 	 * get the relid of the parent (main) relation
 	 */
-	parentrel = heap_openrv(parentrv, ExclusiveLock);
+	parentrel = heap_openrv(parentrv, RowExclusiveLock);
 	
 	relstorage = parentrel->rd_rel->relstorage;
 	if(relstorage != RELSTORAGE_AO)
@@ -629,6 +629,17 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 	        		
 	        		pfree(fsinfo);
 	        	}
+	        	
+	        	/*
+	        	 * TODO: if an entry exists for this rel in the AO hash table
+	        	 * need to also update that entry in shared memory. Need to
+	        	 * figure out how to do this safely when concurrent operations
+	        	 * are in progress. note that if no entry exists we are ok.
+	        	 * 
+	        	 * At this point this doesn't seem too urgent as we generally
+	        	 * only expect this function to update segno 0 only and the QD
+	        	 * never cares about segment 0 anyway.
+	        	 */
 	        }
 	    }
 		
@@ -649,7 +660,7 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 	
 	
 	pfree(sqlstmt.data);
-	heap_close(parentrel,ExclusiveLock);
+	heap_close(parentrel, RowExclusiveLock);
 	
 	return total_count;
 }
