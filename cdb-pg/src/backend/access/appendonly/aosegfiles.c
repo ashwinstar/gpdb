@@ -546,7 +546,7 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 	 */
 	initStringInfo(&sqlstmt);
 	appendStringInfo(&sqlstmt, "select segno,sum(tupcount) " 
-					 "from gp_dist_random(pg_aoseg.%s) "
+					 "from gp_dist_random('pg_aoseg.%s') "
 					 "group by (segno)", aoseg_relname);
 	
 	
