@@ -492,6 +492,7 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 	StringInfoData 	sqlstmt;
 	RangeVar		*parentrv;	
 	Relation		parentrel;
+	Relation		aosegrel;
 	bool 			connected = false;
 	char			aoseg_relname[32];
 	char			*namespace = NULL;
@@ -539,7 +540,12 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 						"only relation (rel '%s', storage '%c')", 
 						relname, relstorage)));
 	
-	sprintf(aoseg_relname, "pg_aoseg_%d", RelationGetRelid(parentrel));
+	/*
+	 * get the name of the aoseg relation
+	 */
+	aosegrel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+	sprintf(aoseg_relname, "%s", RelationGetRelationName(aosegrel));
+	heap_close(aosegrel, AccessShareLock);
 	
 	/*
 	 * assemble our query string
