@@ -402,11 +402,15 @@ class LocalPysync:
 		self.sendData = None
 
     def run(self):
-	self.p = subprocess.Popen(["ssh"]+self.options.sshargs+[self.userAndHost,"if test -d \"$GPHOME\";then PATH=\"$GPHOME/ext/python/bin:$PATH\" LD_LIBRARY_PATH=\"$GPHOME/ext/python/lib:$LD_LIBRARY_PATH\" python -u -c '%s';else echo>&2 'GPHOME is not set or is not a directory.';fi"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+	self.p = subprocess.Popen(["ssh"]+self.options.sshargs+[self.userAndHost,"GPHOME=\"$GPHOME\" PATH=\"$GPHOME/ext/python/bin:$PATH\" LD_LIBRARY_PATH=\"$GPHOME/ext/python/lib:$LD_LIBRARY_PATH\" python -u -c '%s'"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
 	try:
 	    self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
 	    self.work()
 	finally:
 	    os.kill(self.p.pid,9)
+
+if os.environ.get('GPHOME') is None:
+    print '[FATAL]:- Please specify environment variable GPHOME'
+    sys.exit(1)
 
 LocalPysync(sys.argv).run()
