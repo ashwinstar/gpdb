@@ -1,25 +1,30 @@
 #!/usr/bin/env python
 
-import sys
+import os,sys
 if sys.hexversion<0x2050000:
     sys.stderr.write("pysync.py needs python version at least 2.5.\n")
+    sys.stderr.write("You are using %s\n"%sys.version)
+    sys.stderr.write("Here is a guess at where the python executable is--\n")
+    os.system("/bin/sh -c 'type python>&2'");
     sys.exit(1)
 
 import subprocess
 
 bootstrapSource="""
-import sys
+import os,sys
 exec(sys.stdin.read(int(sys.stdin.readline())))
 """
 
 pysyncSource="""
 if sys.hexversion<0x2050000:
     sys.stderr.write("pysync.py needs python version at least 2.5 on the remote computer.\\n")
+    sys.stderr.write("You are using %s\\n"%sys.version)
+    sys.stderr.write("Here is a guess at where the python executable is--\\n")
+    os.system("/bin/sh -c 'type python>&2'");
     sys.exit(1)
 import cPickle
 from datetime import datetime
 import md5
-import os
 import socket
 import stat
 import time
