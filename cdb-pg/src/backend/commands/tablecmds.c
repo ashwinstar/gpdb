@@ -4162,17 +4162,19 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		else if(relstorage == RELSTORAGE_AO && Gp_role == GP_ROLE_DISPATCH)
 		{
 			/*
-			 * All we want to do on the QD during an AO table rewrite is to drop
-			 * the shared memory hash table entry for this table if it exists. We
-			 * must do so since before the rewrite we probably have few non-zero 
-			 * segfile entries for this table while after the rewrite only segno
-			 * zero will be full and the others will be empty. By dropping the hash
-			 * entry we force refreshing the entry from the catalog the next time
-			 * a write into this AO table comes along.
+			 * All we want to do on the QD during an AO table rewrite
+			 * is to drop the shared memory hash table entry for this
+			 * table if it exists. We must do so since before the
+			 * rewrite we probably have few non-zero segfile entries
+			 * for this table while after the rewrite only segno zero
+			 * will be full and the others will be empty. By dropping
+			 * the hash entry we force refreshing the entry from the
+			 * catalog the next time a write into this AO table comes
+			 * along.
 			 * 
-			 * Note that ALTER already took an exclusive lock on the old relation
-			 * so we are guaranteed to not drop the hash entry from under any 
-			 * concurrent operation.
+			 * Note that ALTER already took an exclusive lock on the
+			 * old relation so we are guaranteed to not drop the hash
+			 * entry from under any concurrent operation.
 			 */
 			LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
 			AORelRemoveHashEntry(RelationGetRelid(oldrel));
@@ -10869,6 +10871,8 @@ atpxPart_validate_spec(
 						 pstrdup(RelationGetRelationName(rel)));
 	pBy->location  = -1;
 	pBy->partDefault = NULL;
+	pBy->bKeepMe = true; /* nefarious */
+	
 
 	{ /* find the partitioning keys (recursively) */
 
@@ -11241,7 +11245,14 @@ atpxPartAddList(AlteredTableInfo *tab,
 							magic_expr_to_datum(rel, pNode, 
 												pid.partiddef, &isnull);
 
-					bstat = 
+					if (0 == 
+						list_length((List *)a_rule->parrangeend))
+					{
+						/* infinite end > new start */
+						bstat = false;
+					}
+					else
+						bstat = 
 						compare_partn_opfuncid(pNode,
 											   "pg_catalog",
 											   "<",
@@ -11270,7 +11281,14 @@ atpxPartAddList(AlteredTableInfo *tab,
 					 * final partition for this case 
 					 */
 
-					bstat = 
+					if (0 == 
+						list_length((List *)a_rule->parrangeend))
+					{
+						/* infinite end > new start */
+						bstat = false;
+					}
+					else
+						bstat = 
 						compare_partn_opfuncid(pNode,
 											   "pg_catalog",
 											   "=",
@@ -11305,6 +11323,13 @@ atpxPartAddList(AlteredTableInfo *tab,
 						a_rule = /* get first rule */
 								(PartitionRule *)list_nth(pNode->rules, 0);
 
+					if (0 == 
+						list_length((List *)a_rule->parrangestart))
+					{
+						/* new start > negative infinite start */
+						bstat = false;
+					}
+					else
 						bstat = 
 							compare_partn_opfuncid(pNode,
 												   "pg_catalog",
@@ -11452,6 +11477,13 @@ atpxPartAddList(AlteredTableInfo *tab,
 							magic_expr_to_datum(rel, pNode, 
 												pid.partiddef, &isnull);
 
+					if (0 == 
+						list_length((List *)a_rule->parrangestart))
+					{
+						/* new end > negative infinite start */
+						bstat = false;
+					}
+					else
 					bstat = 
 						compare_partn_opfuncid(pNode,
 											   "pg_catalog",
@@ -11500,6 +11532,13 @@ atpxPartAddList(AlteredTableInfo *tab,
 					 * first partition for this case 
 					 */
 
+					if (0 == 
+						list_length((List *)a_rule->parrangestart))
+					{
+						/* new end > negative infinite start */
+						bstat = false;
+					}
+					else
 					bstat = 
 						compare_partn_opfuncid(pNode,
 											   "pg_catalog",
@@ -11556,6 +11595,13 @@ atpxPartAddList(AlteredTableInfo *tab,
 						a_rule = /* get last rule */
 							(PartitionRule *)list_nth(pNode->rules, 
 											  list_length(pNode->rules) - 1);
+					if (0 == 
+						list_length((List *)a_rule->parrangeend))
+					{
+						/* new end < infinite end */
+						bstat = false;
+					}
+					else
 
 						bstat = 
 							compare_partn_opfuncid(pNode,

@@ -1418,6 +1418,7 @@ typedef struct PartitionBy			/* the Partition By clause */
 	Node			   *partDefault;/* DEFAULT partition (if exists) */
 	int				    partDepth;	/* depth (starting at zero) */  
 	RangeVar		   *parentRel;	/* parent relation */
+	bool				bKeepMe;    /* keep the top-level pby [nefarious] */
 	int					location;	/* token location, or -1 if unknown */
 } PartitionBy;
 

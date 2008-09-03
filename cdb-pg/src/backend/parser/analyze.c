@@ -7120,7 +7120,7 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	}
 
 
-	if (pBy->partDepth > 0)
+	if ((pBy->partDepth > 0) && (pBy->bKeepMe != true))
 	{
 		/* we don't need this any more */
 		stmt->partitionBy = NULL;
