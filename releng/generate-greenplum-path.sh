@@ -18,7 +18,7 @@ GPHOME=${GPHOME_PATH}
 if [ -L \${GPHOME}/../greenplum-db ]; then
     GPHOME_BY_SYMLINK=\`(cd \${GPHOME}/../greenplum-db/ && pwd -P)\`
     if [ x"\${GPHOME_BY_SYMLINK}" = x"\${GPHOME}" ]; then
-        GPHOME=\`(cd \${GPHOME}/../greenplum-db/ && pwd -L)\`
+        GPHOME=\`(cd \${GPHOME}/../greenplum-db/ && pwd -L)\`/.
     fi
     unset GPHOME_BY_SYMLINK
 fi
