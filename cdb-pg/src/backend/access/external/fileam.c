@@ -1249,7 +1249,7 @@ file_scan_error_callback(void *arg)
 		limit_printout_length(&cstate->attribute_buf);
 
 		errcontext("External table %s, line %lld of %s, column %s",
-				   cstate->cur_relname, cstate->cur_lineno, cstate->filename,
+				   cstate->cur_relname,(long long)cstate->cur_lineno, cstate->filename,
 				   cstate->cur_attname);
 	}
 	else
@@ -1261,7 +1261,7 @@ file_scan_error_callback(void *arg)
 			truncateEol(&copy_of_line_buf, cstate->eol_type);
 			limit_printout_length(&copy_of_line_buf);
 
-			errcontext("External table %s, line %lld of %s: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->filename, copy_of_line_buf.data);
+			errcontext("External table %s, line %lld of %s: \"%s\"", cstate->cur_relname,(long long)cstate->cur_lineno, cstate->filename, copy_of_line_buf.data);
 		}
 		else
 		{
@@ -1273,7 +1273,7 @@ file_scan_error_callback(void *arg)
 			 * to regurgitate it without conversion.  So we have to punt
 			 * and just report the line number.
 			 */
-			errcontext("External table %s, line %lld of file %s", cstate->cur_relname, cstate->cur_lineno, cstate->filename);
+			errcontext("External table %s, line %lld of file %s", cstate->cur_relname,(long long)cstate->cur_lineno, cstate->filename);
 		}
 	}
 

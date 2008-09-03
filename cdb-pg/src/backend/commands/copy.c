@@ -1889,7 +1889,7 @@ copy_in_error_callback(void *arg)
 
 		if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
 			errcontext("COPY %s, line %lld, column %s",
-					   cstate->cur_relname, cstate->cur_lineno, cstate->cur_attname);
+					   cstate->cur_relname,(long long)cstate->cur_lineno, cstate->cur_attname);
 	}
 	else
 	{
@@ -1901,7 +1901,7 @@ copy_in_error_callback(void *arg)
 			limit_printout_length(&copy_of_line_buf);
 
 			if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
-				errcontext("COPY %s, line %lld: \"%s\"", cstate->cur_relname, cstate->cur_lineno, copy_of_line_buf.data);
+				errcontext("COPY %s, line %lld: \"%s\"", cstate->cur_relname,(long long)cstate->cur_lineno, copy_of_line_buf.data);
 		}
 		else
 		{
@@ -1914,7 +1914,7 @@ copy_in_error_callback(void *arg)
 			 * and just report the line number.
 			 */
 			if(!cstate->error_on_executor)
-				errcontext("COPY %s, line %lld", cstate->cur_relname, cstate->cur_lineno);
+				errcontext("COPY %s, line %lld", cstate->cur_relname,(long long)cstate->cur_lineno);
 		}
 	}	
 }
