@@ -16,6 +16,8 @@ all: SUBSYS.o
 SUBSYS.o: $(OBJS)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(OBJS)
 
+fileam.o: fileam.c url.i
+
 depend dep:
 	$(CC) -MM $(CFLAGS) *.c >depend
 

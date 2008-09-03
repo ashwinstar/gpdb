@@ -75,10 +75,7 @@ makeCdbSreh(bool is_keep, bool reusing_existing_errtable,
 	h->lastsegid = 0;
 	h->consec_csv_err = 0;
 	
-	if(filename)
-		h->filename = pstrdup(filename);
-	else
-		h->filename = "<stdin>";
+	snprintf(h->filename,sizeof h->filename,"%s",filename?filename:"<stdin>");
 	
 	
 	/* error table was specified open it (and create it first if necessary) */
@@ -294,8 +291,11 @@ void InsertIntoErrorTable(CdbSreh *cdbsreh)
 	nulls[errtable_cmdtime - 1] = ' ';
 		
 	/* line number */
-	values[errtable_linenum - 1] = Int32GetDatum(cdbsreh->linenumber);
-	nulls[errtable_linenum - 1] = ' ';
+	if (cdbsreh->linenumber > 0)
+	{
+		values[errtable_linenum - 1] = Int64GetDatum(cdbsreh->linenumber);
+		nulls[errtable_linenum - 1] = ' ';
+	}
 
 	if(cdbsreh->is_server_enc)
 	{

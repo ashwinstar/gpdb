@@ -78,7 +78,7 @@ URL_FILE *url_fopen(char *url, const char *operation, extvar_t* ev,FileScanDesc 
 int url_fclose(URL_FILE *file);
 int url_feof(URL_FILE *file);
 int url_ferror(URL_FILE *file);
-size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file);
+size_t url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file,CopyState pstate);
 void url_rewind(URL_FILE *file);
 
 /* we use a global one for convenience */
@@ -830,7 +830,7 @@ static size_t gp_proto0_read(char* buf, int bufsz, URL_FILE* file)
 }
 
 
-static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
+static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file,CopyState pstate)
 {
 	char type;
 	int  n, len;
@@ -926,6 +926,7 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
 			continue;
 		}
 		if (type == 'L') {
+			int64_t line_number;
 			if (len != 8) {
 				elog(ERROR, "gpfdist error: line number not of length 8 (%d)", len);
 				return -1;
@@ -934,6 +935,9 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
 				elog(ERROR, "gpfdist error: stream ends suddenly");
 				return -1;
 			}
+			memcpy(&line_number,curl->buf.ptr+curl->buf.bot,len);
+			line_number = local_ntohll(line_number);
+			pstate->cur_lineno = line_number?line_number-1:(int64_t)-1<<63;
 			curl->buf.bot += 8;
 			Assert(curl->buf.bot <= curl->buf.top);
 			continue;
@@ -973,7 +977,7 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file)
 }
 
 
-static size_t curl_fread(char* buf, int bufsz, URL_FILE* file)
+static size_t curl_fread(char* buf, int bufsz, URL_FILE* file,CopyState pstate)
 {
 	curlctl_t* curl = &file->u.curl;
 	char* p = buf;
@@ -990,7 +994,7 @@ static size_t curl_fread(char* buf, int bufsz, URL_FILE* file)
 		if (gp_proto == 0)
 			n = gp_proto0_read(p, q - p, file);
 		else 
-			n = gp_proto1_read(p, q - p, file);
+			n = gp_proto1_read(p, q - p, file,pstate);
 		
 		//elog(NOTICE, "curl_fread %d bytes", n);
 
@@ -1011,7 +1015,7 @@ static size_t curl_fread(char* buf, int bufsz, URL_FILE* file)
 
 
 size_t
-url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
+url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file,CopyState pstate)
 {
     size_t want;
 	int n;
@@ -1019,17 +1023,25 @@ url_fread(void *ptr, size_t size, size_t nmemb, URL_FILE *file)
     switch (file->type)
     {
     case CFTYPE_FILE:
+    {
+		struct fstream_filename_and_offset fo;
 		assert(size==1);
-		want = fstream_read(file->u.file.fp,ptr,nmemb,0,0);
+		want = fstream_read(file->u.file.fp,ptr,nmemb,&fo,0);
+		if (want>0 && fo.line_number)
+		{
+			pstate->cur_lineno = fo.line_number-1;
+			if (pstate->cdbsreh)
+				snprintf(pstate->cdbsreh->filename,sizeof pstate->cdbsreh->filename,"%s [%s]",pstate->filename,fo.fname);
+		}
 		break;
-
+    }
     case CFTYPE_EXEC:
 		want = fread(ptr, size, nmemb, file->u.exec.fp);
         break;
     	
     case CFTYPE_CURL:
 		
-		n = curl_fread(ptr, nmemb * size, file);
+		n = curl_fread(ptr, nmemb * size, file,pstate);
 		/* number of items - nb correct op - checked
                                  * with glibc code*/
 		want = n / size;

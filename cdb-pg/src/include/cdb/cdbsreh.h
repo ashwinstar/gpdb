@@ -67,9 +67,8 @@ typedef struct CdbSreh
 	/* bad row information */
 	char	*errmsg;		/* the error message for this bad data row */
 	char	*rawdata;		/* the bad data row */
-	char	*filename;		/* file where data comes from */
 	char	*relname;		/* target relation */
-	int		linenumber;		/* line number of error in original file */
+	int64_t		linenumber;		/* line number of error in original file */
 	uint64  processed;      /* num logical input rows processed so far */
 	bool	is_server_enc;	/* was bad row converted to server encoding? */
 	int		consec_csv_err; /* # of consecutive invalid csv errors */
@@ -92,6 +91,7 @@ typedef struct CdbSreh
 	int		lastsegid;		/* last QE COPY segid that QD COPY sent bad row to */
 	
 	MemoryContext badrowcontext;	/* per-badrow evaluation context */
+	char	   filename[256];		/* "uri [filename]" */
 
 } CdbSreh;
 

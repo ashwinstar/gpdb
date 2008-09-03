@@ -1203,7 +1203,7 @@ file_getdata(URL_FILE *extfile, CopyState pstate, int maxread)
  		- failing to do so will result in skipping the last line.
  	*/
  
-	bytesread = url_fread((void *) pstate->raw_buf, 1, maxread, extfile);
+	bytesread = url_fread((void *) pstate->raw_buf, 1, maxread, extfile,pstate);
  
  	if (url_feof(extfile)) 
  	{
@@ -1248,7 +1248,7 @@ file_scan_error_callback(void *arg)
 		/* error is relevant to a particular column */
 		limit_printout_length(&cstate->attribute_buf);
 
-		errcontext("External table %s, line %d of %s, column %s",
+		errcontext("External table %s, line %lld of %s, column %s",
 				   cstate->cur_relname, cstate->cur_lineno, cstate->filename,
 				   cstate->cur_attname);
 	}
@@ -1261,7 +1261,7 @@ file_scan_error_callback(void *arg)
 			truncateEol(&copy_of_line_buf, cstate->eol_type);
 			limit_printout_length(&copy_of_line_buf);
 
-			errcontext("External table %s, line %d of %s: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->filename, copy_of_line_buf.data);
+			errcontext("External table %s, line %lld of %s: \"%s\"", cstate->cur_relname, cstate->cur_lineno, cstate->filename, copy_of_line_buf.data);
 		}
 		else
 		{
@@ -1273,7 +1273,7 @@ file_scan_error_callback(void *arg)
 			 * to regurgitate it without conversion.  So we have to punt
 			 * and just report the line number.
 			 */
-			errcontext("External table %s, line %d of file %s", cstate->cur_relname, cstate->cur_lineno, cstate->filename);
+			errcontext("External table %s, line %lld of file %s", cstate->cur_relname, cstate->cur_lineno, cstate->filename);
 		}
 	}
 
