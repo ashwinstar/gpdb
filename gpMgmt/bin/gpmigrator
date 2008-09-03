@@ -449,7 +449,6 @@ class GPUpgrade:
 
                 if type == 'FATAL' or not self.quiet:
                     sys.stderr.write('%s%s\n' % (prefix, m))
-                        sys.stdout.write('%s%s\n' % (prefix, m))
         except:
             pass
 
@@ -549,10 +548,10 @@ class GPUpgrade:
         else:
             self.Log('INFO', 'Starting new Greenplum postmaster')
         if utility:
-            subprocess.call('gpstart -a -m' %, env=env, shell=True,
+            subprocess.call('gpstart -a -m', env=env, shell=True,
                             stdout=self.logfile, stderr=self.logfile)
         else:
-            subprocess.call('gpstart -a', env=env, shell=True
+            subprocess.call('gpstart -a', env=env, shell=True,
                             stdout=self.logfile, stderr=self.logfile)
         self.CheckUp();
 
@@ -566,7 +565,7 @@ class GPUpgrade:
         else:
             self.Log('INFO', 'Shutting down new Greenplum postmaster')
         if utility:
-            subprocess.call('gpstop -a -m', env=env, shell=True
+            subprocess.call('gpstop -a -m', env=env, shell=True,
                             stdout=self.logfile, stderr=self.logfile)
         else:
             subprocess.call('gpstop -a', env=env, shell=True,
