@@ -2045,6 +2045,48 @@ partition cali rename partition foo to bar;
 alter table rank2 alter partition girls alter partition jan05 alter
 partition cali alter partition foo drop partition bar;
 
+-- works
+alter table rank2
+add partition neuter values ('N')
+    (subpartition foo
+         start ('2001-01-01') end ('2002-01-01')
+         every (interval '1 month')
+            (subpartition bar values ('AZ')));
+
+-- fail , no subpartition spec
+alter table rank2 alter partition boys
+add partition jan00 start ('2000-01-01') end ('2001-01-01');
+
+-- work - create subpartition
+alter table rank2 alter partition boys
+add partition jan00 start ('2000-01-01') end ('2001-01-01')
+  (subpartition ariz values ('AZ'));
+
+alter table rank2 alter partition boys
+alter partition jan00 
+add partition haw values ('HI');
+
+alter table rank2 drop partition neuter;
+
+-- fail , no subpartition spec
+alter table rank2
+add default partition neuter ;
+
+alter table rank2
+add default partition neuter 
+    (subpartition foo
+         start ('2001-01-01') end ('2002-01-01')
+         every (interval '1 month')
+            (subpartition ariz values ('AZ')));
+
+alter table rank2
+alter default partition add default partition def1 
+(subpartition haw values ('HI'));
+alter table rank2
+alter default partition alter default partition 
+add default partition def2;
+
+
 drop table rank2 cascade;
 
 -- Test casting

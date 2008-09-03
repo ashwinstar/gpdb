@@ -427,6 +427,8 @@ do_parse_analyze(Node *parseTree, ParseState *pstate)
 	 * subpartitioned tables, the subpartitions will be added to the
 	 * hierarchy before the root, which means we cannot get the parent
 	 * oid of rules.
+	 *
+	 * nefarious: special KeepMe case in tablecmds.c:atpxPart_validate_spec
 	 */
 	if (pstate->parentParseState == NULL && query->utilityStmt && 
 		IsA(query->utilityStmt, CreateStmt) && 
@@ -7119,7 +7121,12 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			lc = lnext(lc);
 	}
 
-
+	/* nefarious: we need to keep the "top"
+	 * partition by statement because
+	 * analyze.c:do_parse_analyze needs to find
+	 * it to re-order the ALTER statements.
+	 * (see tablecmds.c:atpxPart_validate_spec)
+	 */
 	if ((pBy->partDepth > 0) && (pBy->bKeepMe != true))
 	{
 		/* we don't need this any more */

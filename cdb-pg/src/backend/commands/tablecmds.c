@@ -10767,7 +10767,7 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 			{
 				PartitionElem *pelem = (PartitionElem *) pc2->arg1;
 
-				if (pelem->boundSpec || pelem->subSpec)
+				if (pelem->boundSpec)
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 							 errmsg("invalid use of boundary specification "
@@ -10871,8 +10871,11 @@ atpxPart_validate_spec(
 						 pstrdup(RelationGetRelationName(rel)));
 	pBy->location  = -1;
 	pBy->partDefault = NULL;
-	pBy->bKeepMe = true; /* nefarious */
-	
+	pBy->bKeepMe = true; /* nefarious: we need to keep the "top"
+						  * partition by statement because
+						  * analyze.c:do_parse_analyze needs to find
+						  * it to re-order the ALTER statements 
+						  */
 
 	{ /* find the partitioning keys (recursively) */
 
