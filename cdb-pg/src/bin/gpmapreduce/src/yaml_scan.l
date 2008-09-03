@@ -89,6 +89,7 @@ int     yaml_scalar_yylex_destroy(void);
 <kw>host         return _HOST_;
 <kw>initialize   return _INITIALIZE_;
 <kw>input        return _INPUT_;
+<kw>keys         return _KEYS_;
 <kw>language     return _LANGUAGE_;
 <kw>map          return _MAP_;
 <kw>mode         return _MODE_;

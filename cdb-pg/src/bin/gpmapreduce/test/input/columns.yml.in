@@ -26,6 +26,13 @@ DEFINE:
       NAME:     out_1
       FILE:     @abs_srcdir@/output/columns.1
       DELIMITER: '|'
+      MODE:     REPLACE
+
+  - OUTPUT:
+      NAME:     out_2
+      FILE:     @abs_srcdir@/output/columns.1
+      DELIMITER: '|'
+      MODE:     APPEND
       
   - MAP:
       NAME:     myMap
@@ -36,11 +43,21 @@ DEFINE:
         - url text
       RETURNS:
         - ip text
+        - url text
         - count integer
-      FUNCTION:     |
-        return [] unless ($_[2] =~ m/$_[0]/);
-        return [{"ip" => $_[1], "count" => 1}]
-
+      FUNCTION: |
+        my ($key, $ip, $url) = @_;
+        return [] unless ($url =~ m/$key/);
+        return [{"ip" => $ip, "url" => $url, "count" => 1}]
+        
+# test both "keys" and built in transition/consolidate functions
+#  - REDUCE:
+#      NAME:        myReduce
+#      INITIALIZE:  '0'
+#      TRANSITION:  int4_sum
+#      CONSOLIDATE: int8pl
+#      KEYS:        [ip]
+        
   - TRANSITION:
       NAME:      myTransition
       LANGUAGE:  perl
@@ -56,10 +73,18 @@ DEFINE:
       INITIALIZE:  '0'
       TRANSITION:  myTransition
       CONSOLIDATE: myTransition
+      KEYS:        [ip]
 
 EXECUTE:
   - RUN:
      SOURCE:   weblog
      MAP:      myMap
-     REDUCE:   myReduce
      TARGET:   out_1
+
+  - RUN:
+     SOURCE:   weblog
+     MAP:      myMap
+     REDUCE:   myReduce
+     TARGET:   out_2
+     
+     

@@ -38,6 +38,7 @@
   _GPFDIST_
   _HOST_
   _INITIALIZE_  _INPUT_
+  _KEYS_
   _LANGUAGE_
   _MAP_         _MODE_
   _NAME_        _NULL_
@@ -114,7 +115,7 @@ io_keywords:
     ;
 
 misc_keywords:
-    _INITIALIZE_|_SOURCE_|_TARGET_
+    _INITIALIZE_|_KEYS_|_SOURCE_|_TARGET_
     ;
 
 keyword:
@@ -436,9 +437,11 @@ output_item:
 reduce_item:
         _NAME_       obj_name
       | _TRANSITION_ _ID_     { parser_set_transition(parser, $2); }
-      | _CONSOLIDATE_ _ID_     { parser_set_combiner(parser, $2); }
+      | _CONSOLIDATE_ _ID_    { parser_set_combiner(parser, $2); }
       | _FINALIZE_   _ID_     { parser_set_finalizer(parser, $2); }
       | _INITIALIZE_ scalar   { parser_set_initialize(parser, $2); }
+      | _KEYS_                { parser_begin_keys(parser); }
+           key_list
 
     /* Error recovery */
 	  | _INPUT_               { yaml_yyerror(parser, "Invalid REDUCE Attribute"); } valid_yaml
@@ -673,6 +676,24 @@ return_list_2:
 	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in return list"); }
 	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in return list"); }
       ;
+
+key_list:
+        scalar                { parser_add_key(parser, $1); }
+      | START_LIST key_list_2 END_LIST
+
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in key list"); }
+	  ;
+
+key_list_2:
+      /* empty */
+      | key_list_2 scalar     { parser_add_key(parser, $2); }
+
+	  | valid_yaml_map        { yaml_yyerror(parser, "YAML_MAPPING element found in key list"); }
+	  | valid_yaml_list       { yaml_yyerror(parser, "YAML_LIST element found in key list"); }
+      ;
+
+
+
 
 scalar:
       _STRING_

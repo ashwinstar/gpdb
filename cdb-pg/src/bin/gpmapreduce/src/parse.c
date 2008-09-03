@@ -1231,6 +1231,18 @@ void parser_begin_returns(mapred_parser_t *parser)
 	}
 }
 
+void parser_begin_keys(mapred_parser_t *parser)
+{
+	XASSERT(parser->current_doc);
+	XASSERT(parser->current_obj);
+	XASSERT(parser->current_obj->kind == MAPRED_REDUCER);
+	if (parser->current_obj->u.reducer.keys)
+	{
+		mapred_parse_error(parser, "Duplicate KEYS for REDUCER");
+		return;
+	}
+}
+
 void parser_add_file(mapred_parser_t *parser, char *value)
 {
 	mapred_clist_t *newitem;
@@ -1396,6 +1408,31 @@ void parser_add_return(mapred_parser_t *parser, char *value)
 		plist->next = newitem;
 	else
 		parser->current_obj->u.function.returns = newitem;
+}
+
+
+void parser_add_key(mapred_parser_t *parser, char *value)
+{
+	mapred_clist_t *newitem;
+	mapred_clist_t *clist;
+
+	XASSERT(parser->current_doc);
+	XASSERT(parser->current_obj);
+	XASSERT(parser->current_obj->kind == MAPRED_REDUCER);
+
+	/* Allocate the new list item */
+	newitem = malloc(sizeof(mapred_clist_t));
+	newitem->value = copyscalar(value);
+	newitem->next  = (mapred_clist_t *) NULL;
+
+	/* Add the new item into the last slot of the list */
+	clist = parser->current_obj->u.reducer.keys;
+	while (clist && clist->next)
+		clist = clist->next;
+	if (clist)
+		clist->next = newitem;
+	else
+		parser->current_obj->u.reducer.keys = newitem;
 }
 
 
@@ -1875,6 +1912,17 @@ int mapred_verify_object(mapred_parser_t *parser, mapred_object_t *obj)
 			 * Will verify that functions are valid for reducer input after we
 			 * have resolved the pointers.
 			 */
+
+			/* Setup default "keys" */
+			if (!obj->u.reducer.keys)
+			{
+				obj->u.reducer.keys = malloc(sizeof(mapred_clist_t));
+				obj->u.reducer.keys->value = copyscalar("key");
+				obj->u.reducer.keys->next = malloc(sizeof(mapred_clist_t));				
+				obj->u.reducer.keys->next->next = NULL;
+				obj->u.reducer.keys->next->value = copyscalar("*");
+			}
+
 			break;
 
 		case MAPRED_TASK:

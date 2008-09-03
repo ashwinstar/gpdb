@@ -80,9 +80,9 @@ $(OUTDIR)/%.suc: $(MAPRED) $(YMLDIR)/%.yml $(MASTERDIR)/%.out $(MASTERDIR)/%.err
 	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_init.sql > $(OUTDIR)/$*_init.out; fi
 	@$(MAPRED) $(MFLAGS) $(YMLDIR)/$*.yml >>$(OUTDIR)/$*.out 2>>$(OUTDIR)/$*.err
 	@if [ -e $(SQLDIR)/$*_done.sql ] ; \
-	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_done.sql > $(OUTDIR)/$*_done.out; fi
+	 then $(PSQL) $(PFLAGS) $(SQLDIR)/$*_done.sql > $(OUTDIR)/$*_done.out 2>&1; fi
 	@$(MRDIFF) $(OUTDIR) $(MASTERDIR) $* > $(OUTDIR)/$*.suc
 	@psql -c "\d" $(DB) | \
-        perl -e "while (<>) {s/No relations found.\\n$$//; print}" > $(OUTDIR)/$*.suc
+        perl -e "while (<>) {s/No relations found.\\n$$//; print}" >> $(OUTDIR)/$*.suc
 	@cd $(OUTDIR); if [ -s $*.suc ] ; then \
 	    mv $*.suc $*.fail; echo FAILED; echo $*.fail >> FAIL ; else echo ok; fi

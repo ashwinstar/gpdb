@@ -173,6 +173,7 @@ typedef struct {
 	char                *initialize;
 	mapred_plist_t      *parameters;     /* points into transition plist */
 	mapred_plist_t      *returns;
+	mapred_clist_t      *keys;
 } mapred_reducer_t;
 
 typedef struct {
@@ -201,6 +202,13 @@ typedef struct {
 	mapred_plist_t     *returns;
 } mapred_adt_t;
 
+typedef struct 
+{
+	char   *buffer;
+	size_t  bufsize;
+	size_t  position;
+	size_t  grow;
+} buffer_t;
 
 typedef struct {
 	char           *version;
@@ -216,6 +224,7 @@ typedef struct {
 #define mapred_document_error    0x10000000
 	int             id;
 	char           *prefix;
+	buffer_t       *errors;
 } mapred_document_t;
 
 /* Union of all mapred object types */

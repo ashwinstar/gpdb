@@ -4,4 +4,5 @@
 -- m/\(\w+.\w+:[0-9]+\)$/
 -- s/\(\w+.\w+:[0-9]+\)$/\(file:line\)/
 -- end_matchsubs
-mapreduce_28542_run_1
+mapreduce_8356_run_1
+mapreduce_8356_run_2

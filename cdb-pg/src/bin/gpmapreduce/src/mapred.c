@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <unistd.h>     /* for file "access" test */
 #include <errno.h>
 
 #define scalarfree(x)							\
@@ -40,14 +41,6 @@ const char *IN_FAILED_SQL_TRANSACTION = "25P02";
 const char *OBJ_DOES_NOT_EXIST        = "42P01";
 
 /* local prototypes */
-typedef struct 
-{
-	char   *buffer;
-	size_t  bufsize;
-	size_t  position;
-	size_t  grow;
-} buffer_t;
-
 void *         mapred_malloc(int size);
 void             mapred_free(void *ptr);
 
@@ -283,6 +276,16 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 		{
 			boolean progress = false;
 
+			/*
+			 * We keep a buffer of errors during parsing, and display them at
+			 * the end if they haven't been resolved.
+			 */
+			if (!doc->errors)
+				doc->errors = makebuffer(1024, 1024);
+			else
+				bufreset(doc->errors);
+			
+
 			/* 
 			 * Loop through the objects, creating each in turn.
 			 * If an object has dependencies that have not been created yet
@@ -327,7 +330,8 @@ void mapred_run_document(PGconn *conn, mapred_document_t *doc)
 			 */
 			if (!done && !progress)
 			{
-				/* FIXME - produce better error message */
+				if (doc->errors && doc->errors->position > 0)
+					fprintf(stderr, doc->errors->buffer);
 				XRAISE(MAPRED_PARSE_ERROR, 
 					   "Unable to make forward progress creating objects\n");
 			}
@@ -1010,6 +1014,7 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 
 			if (obj->u.task.reducer.name)
 			{
+				mapred_clist_t *keys;
 				mapred_plist_t *source;
 
 				/* 
@@ -1063,34 +1068,93 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 				{
 					/* Validate Reducer */					
 					XASSERT(sub->kind == MAPRED_REDUCER);
-					while (source)
+
+					/* 
+					 * source is the set of input columns that the reducer has
+					 * to work with.  
+					 *
+					 * Loop the reducer "keys" clause to determine what keys are
+					 * present.  
+					 */
+					for (keys = sub->u.reducer.keys; keys; keys = keys->next)
 					{
-						for (scan = sub->u.reducer.parameters; 
-							 scan; 
-							 scan = scan->next)
+						/*
+						 * If there is a '*' in the keys then it catches all
+						 * unreferenced columns.
+						 */
+						if (keys->value[0] == '*' && keys->value[1] == '\0')
 						{
-							if (!strcasecmp(source->name, scan->name))
-								break;
+							/* 
+							 * Add all sources not found in either parameters, 
+							 * or explicitly mentioned in keys
+							 */
+							for (scan = source; scan; scan = scan->next)
+							{
+								mapred_plist_t *pscan;
+								mapred_clist_t *kscan;
+
+								for (pscan = sub->u.reducer.parameters; 
+									 pscan; 
+									 pscan = pscan->next)
+								{
+									if (!strcasecmp(scan->name, pscan->name))
+										break;
+								}
+								if (pscan)
+									continue;   /* found in parameters */
+								for (kscan = sub->u.reducer.keys; 
+									 kscan; 
+									 kscan = kscan->next)
+								{
+									if (!strcasecmp(scan->name, kscan->value))
+										break;
+								}
+								if (kscan)
+									continue;   /* found in keys */
+
+								/* we have an unmatched source, add to grouping */
+								if (!last)
+								{
+									obj->u.task.grouping = 
+										mapred_malloc(sizeof(mapred_plist_t));
+									last = obj->u.task.grouping;
+								}
+								else
+								{
+									last->next = 
+										mapred_malloc(sizeof(mapred_plist_t));
+									last = last->next;
+								}
+								last->name = scan->name;
+								last->type = scan->type;
+								last->next = NULL;
+							}
 						}
-						if (!scan || !strcasecmp(source->name, "key"))
+						else
 						{
-							if (!last)
-							{
-								obj->u.task.grouping = 
-									mapred_malloc(sizeof(mapred_plist_t));
-								last = obj->u.task.grouping;
-							}
-							else
-							{
-								last->next = 
-									mapred_malloc(sizeof(mapred_plist_t));
-								last = last->next;
-							}
-							last->name = source->name;
-							last->type = source->type;
-							last->next = NULL;
+							/* Look for the referenced key in the source list */
+							for (scan = source; scan; scan = scan->next)
+								if (!strcasecmp(keys->value, scan->name))
+								{
+									/* we have a match, add the key to grouping */
+									if (!last)
+									{
+										obj->u.task.grouping = 
+											mapred_malloc(sizeof(mapred_plist_t));
+										last = obj->u.task.grouping;
+									}
+									else
+									{
+										last->next = 
+											mapred_malloc(sizeof(mapred_plist_t));
+										last = last->next;
+									}
+									last->name = scan->name;
+									last->type = scan->type;
+									last->next = NULL;
+									break;
+								}
 						}
-						source = source->next;
 					}
 				}
 			}
@@ -1431,7 +1495,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 							bufcat(&buffer, columns->name);
 							if (columns->next || olist->object->u.task.returns)
 								bufcat(&buffer, ", ");
-							columns = columns->next;				   
+							columns = columns->next;	   
 						}
 						columns = olist->object->u.task.returns;
 						while (columns)
@@ -1439,7 +1503,7 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 							bufcat(&buffer, columns->name);
 							if (columns->next)
 								bufcat(&buffer, ", ");
-							columns = columns->next;				   
+							columns = columns->next;			   
 						}
 					}
 				}
@@ -1459,7 +1523,30 @@ void mapred_run_queries(PGconn *conn, mapred_document_t *doc)
 					/* If we have an output file, open it for write now */
 					if (output && output->u.output.type == MAPRED_OUTPUT_FILE)
 					{
-						outfile = fopen(output->u.output.desc, "wb");
+						switch (output->u.output.mode)
+						{
+							case MAPRED_OUTPUT_NO_MODE:
+								/* check if the file exists */
+								if (access(output->u.output.desc, F_OK) == 0)
+								{
+									mapred_obj_error(output, "file '%s' already exists",
+													 output->u.output.desc);
+									continue;
+								}
+								/* Fallthrough */
+
+							case MAPRED_OUTPUT_REPLACE:
+								outfile = fopen(output->u.output.desc, "wb");
+								break;
+
+							case MAPRED_OUTPUT_APPEND:
+								outfile = fopen(output->u.output.desc, "ab");
+								break;
+
+							default:
+								XASSERT(false);
+						}
+
 						if (!outfile)
 						{
 							mapred_obj_error(output, "could not open file '%s' for write",
@@ -2723,8 +2810,36 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 					XRAISE(MAPRED_SQL_ERROR, "Object creation Failure");
 				}
 				if (global_verbose_flag)
-					fprintf(stderr, "       ERROR: %s\n", 
+					fprintf(stderr, "       Error: %s\n", 
 							PQresultErrorField(result, PG_DIAG_MESSAGE_PRIMARY));
+
+				/* 
+				 * If it is an error that we think we can recover from then we don't
+				 * log the error immediately, but write it to a buffer in the event 
+				 * that recovery wasn't successful.
+				 */
+				if (doc->errors)
+				{
+					if (global_verbose_flag)
+						bufcat(&doc->errors, "  - ");
+					bufcat(&doc->errors, "Error: ");
+					bufcat(&doc->errors, (char*) mapred_kind_name[obj->kind]);
+					if (obj->name)
+					{
+						bufcat(&doc->errors, " '");
+						bufcat(&doc->errors, obj->name);
+						bufcat(&doc->errors, "'");
+					}
+					bufcat(&doc->errors, ": ");
+					bufcat(&doc->errors, PQresultErrorField(result, PG_DIAG_MESSAGE_PRIMARY));
+					if (obj->line > 0)
+					{
+						char numbuf[64];
+						sprintf(numbuf, ", at line %d", obj->line);
+						bufcat(&doc->errors, numbuf);
+					}
+					bufcat(&doc->errors, "\n");
+				}
 			}
 		}
 
