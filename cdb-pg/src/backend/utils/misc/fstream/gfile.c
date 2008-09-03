@@ -128,7 +128,7 @@ gfile_open(const char*fpath)
 	gfile_printf_then_putc_newline("gfile %s is a directory",fpath);
 	return 0;
     }
-    if (!(fd=gfile_malloc(sizeof*fd))){
+    if (!(fd=malloc(sizeof*fd))){
 	gfile_printf_then_putc_newline("gfile out of memory");
 	return 0;
     }
@@ -144,7 +144,7 @@ gfile_open(const char*fpath)
     else
 	e = txt_file_open(fd,fpath);
     if (e){
-	gfile_free(fd);
+	free(fd);
 	return 0;
     }
     return fd;
@@ -154,7 +154,7 @@ int
 gfile_close(gfile_t*fd)
 {
     int e=fd->close(fd);
-    gfile_free(fd);
+    free(fd);
     return e;
 }
 

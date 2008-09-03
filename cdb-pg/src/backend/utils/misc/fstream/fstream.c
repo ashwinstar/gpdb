@@ -30,19 +30,19 @@ glob_and_copy(const char*pattern,int flags,int(*errfunc)(const char*epath,int ee
     glob_t g;
     int i=glob(pattern,flags,errfunc,&g),j;
     if (!i){
-	char**a=gfile_malloc(sizeof*a*(pglob->gl_pathc+g.gl_pathc));
+	char**a=malloc(sizeof*a*(pglob->gl_pathc+g.gl_pathc));
 	if (!a)
 	    i = GLOB_NOSPACE;
 	else{
 	    for (j=0; j<pglob->gl_pathc; j++)
 		a[j] = pglob->gl_pathv[j];
 	    if (pglob->gl_pathv)
-		gfile_free(pglob->gl_pathv);
+		free(pglob->gl_pathv);
 	    pglob->gl_pathv = a;
 	    a += pglob->gl_pathc;
 	    for (j=0; j<g.gl_pathc; j++){
 		char*b=g.gl_pathv[j];
-		if (!(*a=gfile_malloc(strlen(b)+1))){
+		if (!(*a=malloc(strlen(b)+1))){
 		    i = GLOB_NOSPACE;
 		    break;
 		}
@@ -61,8 +61,8 @@ glob_and_copyfree(glob_and_copy_t*pglob)
     if (pglob->gl_pathv){
 	int i;
 	for (i=0; i<pglob->gl_pathc; i++)
-	    gfile_free(pglob->gl_pathv[i]);
-	gfile_free(pglob->gl_pathv);
+	    free(pglob->gl_pathv[i]);
+	free(pglob->gl_pathv);
 	pglob->gl_pathc = 0;
 	pglob->gl_pathv = 0;
     }
@@ -112,7 +112,7 @@ fstream_close(fstream_t* fs)
     glob_and_copyfree(&fs->glob);
     if (fs->fd)
 	gfile_close(fs->fd);
-    gfile_free(fs);
+    free(fs);
 }
 
 static int
@@ -135,7 +135,7 @@ expand_directories(fstream_t*fs)
     memset(&g,0,sizeof g);
     for (i=0; i<fs->glob.gl_pathc; i++){
 	const char*a=fs->glob.gl_pathv[i];
-	char*b=gfile_malloc(2*strlen(a)+2),*c;
+	char*b=malloc(2*strlen(a)+2),*c;
 	if (!b){
 	    gfile_printf_then_putc_newline("fstream out of memory");
 	    glob_and_copyfree(&g);
@@ -149,7 +149,7 @@ expand_directories(fstream_t*fs)
 	*c++ = '*';
 	*c++ = 0;
 	j = glob_and_copy(b,0,0,&g);
-	gfile_free(b);
+	free(b);
 	if (j == GLOB_NOMATCH)
 	    gfile_printf_then_putc_newline("fstream %s is empty directory",fs->glob.gl_pathv[i]);
 	else if (j){
@@ -169,7 +169,7 @@ fstream_open(const char*path,const struct fstream_options*options)
 {
     int i;
     fstream_t*fs;
-    if (0 == (fs=gfile_malloc(sizeof*fs))){
+    if (0 == (fs=malloc(sizeof*fs))){
 	gfile_printf_then_putc_newline("fstream out of memory");
 	return 0;
     }

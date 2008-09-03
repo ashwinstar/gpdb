@@ -1324,13 +1324,3 @@ gfile_printf_then_putc_newline(const char*format,...)
 	pfree(a);
     }
 }
-void*
-gfile_malloc(size_t size)
-{
-    return malloc(size);
-}
-void
-gfile_free(void*a)
-{
-    free(a);
-}
