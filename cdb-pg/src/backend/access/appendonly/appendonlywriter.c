@@ -161,9 +161,17 @@ AORelCreateHashEntry(Oid relid)
 	if(exists)
 		return true;
 
-	/* If the new aoentry pointer is NULL, then we are out of allowed # of tables */
-	if (!aoentry || AppendOnlyWriter->num_existing_aorels >= MaxAppendOnlyTables)
+	/* 
+	 * If the new aoentry pointer is NULL, then we are out of allowed # of 
+	 * AO tables used for write concurrently, and don't have any unused entries
+	 * to free
+	 */
+	if (!aoentry)
+	{
+		Assert(AppendOnlyWriter->num_existing_aorels >= MaxAppendOnlyTables);
 		return false;
+	}
+		
 
 	Insist(aoentry->relid == relid);
 	
@@ -305,72 +313,89 @@ AORelGetHashEntry(Oid relid)
 static AORelHashEntry
 AppendOnlyRelHashNew(Oid relid, bool *exists)
 {
-	AORelHashEntryData	*aorelentry;
+	AORelHashEntryData	*aorelentry = NULL;
 
 	Insist(Gp_role == GP_ROLE_DISPATCH);
 
+	/*
+	 * We do not want to exceed the max number of allowed entries since we don't
+	 * drop entries when we're done with them (so we could reuse them). Note 
+	 * that the hash table will allow going past max_size (it's not a hard 
+	 * limit) so we do the check ourselves.
+	 * 
+	 * Therefore, check for this condition first and deal with it if exists.
+	 */
+	if(AppendOnlyWriter->num_existing_aorels >= MaxAppendOnlyTables)
+	{
+		/* see if there's already an existing entry for this relid */
+		aorelentry = AORelLookupHashEntry(relid);
+		
+		/*
+		 * already have an entry for this rel? reuse it.
+		 * don't have? try to drop an unused entry and create our entry there
+		 */
+		if(aorelentry)
+		{
+			*exists = true; /* reuse */
+			return NULL;
+		}
+		else
+		{
+			HASH_SEQ_STATUS status;
+			AORelHashEntryData	*hentry;
+			
+			Assert(AppendOnlyWriter->num_existing_aorels == MaxAppendOnlyTables);
+						
+			/*
+			 * loop through all entries looking for an unused one
+			 */			
+			hash_seq_init(&status, AppendOnlyHash);
+
+			while ((hentry = (AORelHashEntryData *) hash_seq_search(&status)) != NULL)
+			{
+				if(hentry->txns_using_rel == 0)
+				{
+					if (Debug_appendonly_print_insert)
+						elog(LOG, "Appendonly Writer removing an unused entry "
+								  "(rel %d) to make room for a new one (rel %d)",
+								  hentry->relid, relid);
+
+					/* remove this unused entry */
+					/* TODO: remove the LRU entry, not just any unused one */ 
+					AORelRemoveHashEntry(hentry->relid);
+					hash_seq_term(&status);
+					
+					/* we now have room for a new entry, create it */
+					aorelentry = (AORelHashEntryData *) hash_search(AppendOnlyHash,
+																	(void *) &relid,
+																	HASH_ENTER_NULL,
+																	exists);
+
+					Insist(aorelentry);					
+					return (AORelHashEntry) aorelentry;
+				}
+				
+			}
+
+			/*
+			 * No room for a new entry. give up.
+			 */
+			return NULL;
+		}
+		
+	}
+	
+	/*
+	 * We don't yet have a full hash table. Create a new entry if not exists
+	 */
 	aorelentry = (AORelHashEntryData *) hash_search(AppendOnlyHash,
 													(void *) &relid,
 													HASH_ENTER_NULL,
 													exists);
-	
-	/*
-	 * have we reached the max allowed number of entries? try to drop an
-	 * unused entry and create our entry there.
-	 */
-	if (!aorelentry)
-	{
-		HASH_SEQ_STATUS status;
-		AORelHashEntryData	*hentry;
-		
-		Assert(AppendOnlyWriter->num_existing_aorels == MaxAppendOnlyTables);
-					
-		/*
-		 * loop through all entries looking for an unused one
-		 */
-		LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
-		
-		hash_seq_init(&status, AppendOnlyHash);
-
-		while ((hentry = (AORelHashEntryData *) hash_seq_search(&status)) != NULL)
-		{
-			if(hentry->txns_using_rel == 0)
-			{
-				if (Debug_appendonly_print_insert)
-					elog(LOG, "Appendonly Writer removing an unused entry "
-							  "(rel %d) to make room for a new one (rel %d)",
-							  hentry->relid, relid);
-
-				/* remove this unused entry */
-				/* TODO: remove the LRU entry, not just any unused one */ 
-				AORelRemoveHashEntry(hentry->relid);
-				hash_seq_term(&status);
-				
-				/* we now have room for a new entry, create it */
-				aorelentry = (AORelHashEntryData *) hash_search(AppendOnlyHash,
-																(void *) &relid,
-																HASH_ENTER_NULL,
-																exists);
-
-				Insist(aorelentry);
-				
-				LWLockRelease(AppendOnlyLock);
-				
-				return (AORelHashEntry) aorelentry;
-			}
-			
-		}
-
-		/*
-		 * No room for a new entry. give up.
-		 */
-		return NULL;
-	}
 
 	/* caller should check "exists" to know if relid entry exists already */
 	if(*exists)
 		return NULL;
-
 
 	return (AORelHashEntry) aorelentry;
 }
@@ -459,7 +484,12 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			if(!AORelCreateHashEntry(relid))
 			{
 				LWLockRelease(AppendOnlyLock);
-				elog(ERROR, "more than max concurrent AO tables are active");
+				elog(ERROR, "can't have more than %d different append-only "
+						    "tables open for writing data at the same time. "
+						    "if tables are heavily partitioned or if your "
+						    "workload requires, increase the value of "
+						    "max_appendonly_tables and retry", 
+						    MaxAppendOnlyTables);
 			}
 
 			/* get the hash entry for this relation (must exist) */
