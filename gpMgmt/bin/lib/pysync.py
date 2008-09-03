@@ -407,10 +407,18 @@ class LocalPysync:
 		self.sendData = None
 
     def run(self):
-	self.p = subprocess.Popen(["ssh"]+self.options.sshargs+[self.userAndHost,"GPHOME=\"$GPHOME\" PATH=\"$GPHOME/ext/python/bin:$PATH\" LD_LIBRARY_PATH=\"$GPHOME/ext/python/lib:$LD_LIBRARY_PATH\" python -u -c '%s'"%bootstrapSource],stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+        cmd = '''bash -c "GPHOME=%s PATH=%s/ext/python/bin:$PATH LD_LIBRARY_PATH=%s/ext/python/lib:$LD_LIBRARY_PATH python -u -c '%s'"''' % (os.environ.get('GPHOME'), os.environ.get('GPHOME'), os.environ.get('GPHOME'), bootstrapSource)
+        args = []
+        args.append('ssh')
+        args.extend(self.options.sshargs)
+        args.append(self.userAndHost)
+        args.append(cmd)
+	self.p = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE)
 	try:
 	    self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
 	    self.work()
+        except OSError, e:
+            sys.stderr.write(str(e))
 	finally:
 	    os.kill(self.p.pid,9)
 
