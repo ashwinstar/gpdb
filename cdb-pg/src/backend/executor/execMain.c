@@ -1239,8 +1239,16 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			parseTree->result_aosegnos = estate->es_result_aosegnos;
 			heap_close(tmp, NoLock);
 			
-			/* Set the QD rel segno, just in case. The others set in ExecInsert() */
-			ResultRelInfoSetSegno(resultRelInfos, estate->es_result_aosegnos);
+			/* Set any QD resultrels segno, just in case. The QEs set their own in ExecInsert(). */
+			{
+				int relno = 0;
+				ResultRelInfo* relinfo;
+				for (relno = 0; relno < numResultRelations; relno ++)
+				{
+					relinfo = &(resultRelInfos[relno]);
+					ResultRelInfoSetSegno(relinfo, estate->es_result_aosegnos);
+				}
+			}
 		}
 
 		if (estate->es_result_partitions)

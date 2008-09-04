@@ -2343,3 +2343,15 @@ CREATE TABLE partsupp (
           PARTITION p1 START (1::numeric) END (1001::numeric)
           );
 drop table partsupp;
+
+-- MPP-3379
+drop table if exists tmp_nation;
+CREATE TABLE tmp_nation (N_NATIONKEY INTEGER, N_NAME CHAR(25), N_REGIONKEY INTEGER, N_COMMENT VARCHAR(152))  
+partition by range (n_nationkey) 
+ (
+partition p1 start('0')  WITH (appendonly=true,checksum=true,blocksize=1998848,compresslevel=4),  
+partition p2 start('11') end('15') inclusive WITH (checksum=false,appendonly=true,blocksize=655360,compresslevel=4),
+partition p3 start('15') exclusive end('19'), partition p4 start('19')  WITH (compresslevel=8,appendonly=true,checksum=false,blocksize=884736), 
+partition p5 start('20')
+);
+delete from tmp_nation;
