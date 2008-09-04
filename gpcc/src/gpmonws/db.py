@@ -15,7 +15,7 @@ def start_date():
     conn.execute('select min(ctime) from metrics_history') 
     for r in conn.iterate_dict():
         return r['min']
-    return time = '2008-01-01 00:00:00'
+    return '2008-01-01 00:00:00'
 
 def hosts(): 
 	conn.execute('select distinct(hostname) from metrics_now') 
