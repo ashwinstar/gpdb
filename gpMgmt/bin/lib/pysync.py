@@ -407,20 +407,30 @@ class LocalPysync:
 		self.sendData = None
 
     def run(self):
-        cmd = '''bash -c "GPHOME=%s PATH=%s/ext/python/bin:$PATH LD_LIBRARY_PATH=%s/ext/python/lib:$LD_LIBRARY_PATH python -u -c '%s'"''' % (os.environ.get('GPHOME'), os.environ.get('GPHOME'), os.environ.get('GPHOME'), bootstrapSource)
+        PATH = os.environ.get('PATH') or '.'
+        LIBPATH = os.environ.get('LD_LIBRARY_PATH') or '.'
+        
+        cmd = '''bash -c "GPHOME=%s PATH=%s/ext/python/bin:%s LD_LIBRARY_PATH=%s/ext/python/lib:%s python -u -c '%s'"''' % (os.environ.get('GPHOME'), 
+                                                                                                                            os.environ.get('GPHOME'), 
+                                                                                                                            PATH, 
+                                                                                                                            os.environ.get('GPHOME'), 
+                                                                                                                            LIBPATH,
+                                                                                                                            bootstrapSource)
         args = []
         args.append('ssh')
         args.extend(self.options.sshargs)
         args.append(self.userAndHost)
         args.append(cmd)
-	self.p = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+        self.p = None
 	try:
+            self.p = subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE)
 	    self.p.stdin.write("%d\n%s"%(len(pysyncSource),pysyncSource))
 	    self.work()
         except OSError, e:
             sys.stderr.write(str(e))
 	finally:
-	    os.kill(self.p.pid,9)
+	    if self.p:
+                os.kill(self.p.pid,9)
 
 if os.environ.get('GPHOME') is None:
     print '[FATAL]:- Please specify environment variable GPHOME'
