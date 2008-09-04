@@ -1296,7 +1296,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 			/* save the call context for cross call use */
 			fcinfo->flinfo->fn_extra = call_data;
 
-			if (prodesc->fn_retisset &&
+			if (prodesc->fn_retistuple &&
 				get_call_result_type(fcinfo, NULL, &td) == TYPEFUNC_COMPOSITE)
 			{
 				call_data->attinmeta = TupleDescGetAttInMetadata(td);
@@ -1312,7 +1312,7 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 			TupleDesc	  td;
 			call_data = palloc0(sizeof(plperl_call_data));
 
-			if (prodesc->fn_retisset &&
+			if (prodesc->fn_retistuple &&
 				get_call_result_type(fcinfo, NULL, &td) == TYPEFUNC_COMPOSITE)
 			{
 				call_data->attinmeta = TupleDescGetAttInMetadata(td);
