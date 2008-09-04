@@ -2568,7 +2568,7 @@ static struct config_int ConfigureNamesInt[] =
 
 	{
 		{"max_appendonly_tables", PGC_POSTMASTER, APPENDONLY_TABLES,
-			gettext_noop("Maximum number of append only tables that can be active concurrently."),
+			gettext_noop("Maximum number of different (unrelated) append only tables that can participate in writing data concurrently."),
 			NULL
 		},
 		&MaxAppendOnlyTables,
