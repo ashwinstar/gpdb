@@ -9,20 +9,39 @@ pgpass = os.environ.get('PGPASSWORD', '')
 pgport = os.environ.get('PGPORT', '5432')
 pgport = int(pgport)
 pghost = os.environ.get('PGHOST', 'localhost')
-conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60)
+
+try:
+    conn = pg8000.Connection(user=pguser, password=pgpass, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60)
+except pg8000.errors.InterfaceError:
+    sys.stderr.write('GPDB connection failure: database unavailable\n')
+    sys.exit()
+except pg8000.errors.InternalError:
+    sys.stderr.write('GPDB connection failure: invalid user or password\n')
+    sys.exit()
+except:
+    sys.stderr.write('GPDB connection failure: %s\n' % sys.exc_info()[0])
+    conn = None
 
 def start_date(): 
+    # check  connection to database 
+    if conn = None:
+        return None
+
     conn.execute('select min(ctime) from metrics_history') 
     for r in conn.iterate_dict():
         return r['min']
     return '2008-01-01 00:00:00'
 
 def hosts(): 
-	conn.execute('select distinct(hostname) from metrics_now') 
-	rows = []
-	for r in conn.iterate_dict():
-		rows.append(r['hostname'])
-	return rows
+    # check  connection to database 
+    if conn = None:
+        return None
+
+    conn.execute('select distinct(hostname) from metrics_now') 
+    rows = []
+    for r in conn.iterate_dict():
+        rows.append(r['hostname'])
+
 
 def _metrics_consolidate(rows):
     td = {}   #time dimension
@@ -47,6 +66,10 @@ def _metrics_consolidate(rows):
 
 
 def metrics_next(prev, host):
+    # check  connection to database 
+    if conn = None:
+        return None
+
     if host:
         conn.execute("select *, now() as curtime from metrics_now where hostname='%s'" % host)
     else:
@@ -67,6 +90,10 @@ def metrics_next(prev, host):
 
 
 def metrics_now(host):
+    # check  connection to database 
+    if conn = None:
+        return None
+
     if host:
         conn.execute("select * from metrics_now where hostname='%s'" % host)
     else:
