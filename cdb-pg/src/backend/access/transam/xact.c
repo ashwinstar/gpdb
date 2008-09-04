@@ -524,7 +524,6 @@ GetCurrentTransactionNestLevel(void)
 	return s->nestingLevel;
 }
 
-
 /*
  *	TransactionIdIsCurrentTransactionId
  */
@@ -560,8 +559,7 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 		 * state.  The Writer copies the active subtransactions information
 		 * into the shared snapshot.
 		 */
-
-		if (TransactionIdEquals(xid,TopTransactionStateData.transactionId))
+		if (TransactionIdEquals(xid, TopTransactionStateData.transactionId))
 		{
 			isCurrentTransactionId = true;
 		    elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
@@ -576,7 +574,8 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 
 		return isCurrentTransactionId;
 	}
-
+	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_READER);
+	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_ENTRY_DB_SINGLETON);
 
 	/*
 	 * We will return true for the Xid of the current subtransaction, any of
@@ -1590,7 +1589,7 @@ SetSharedTransactionId(void)
 	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec WRITER setting shared xid to: %u (distributedXid %u)", 
+		elog((Debug_print_full_dtm ? LOG : DEBUG3), "qExec WRITER setting shared xid to: %u (distributedXid %u)", 
 		     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
 
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
@@ -1940,8 +1939,6 @@ StartTransaction(void)
 			 * we want to get our XID from the shared snapshot and not
 			 * generate one ourselves
 			 */
-
-
 			elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec reader: distributedXid %d sharedlocalsnapshot->QDxid %d sharedsnapshots: %s",
 				 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, 
 				 SharedSnapshotDump());
@@ -1951,14 +1948,14 @@ StartTransaction(void)
 				Assert(SharedLocalSnapshotSlot != NULL);
 
 				elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Reader Match?* gxid %u == %u allow currcid %d ~~ %d (StartTransaction, gxid = %u, slot #%d, '%s')", 
-					QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
-					QEDtxContextInfo.distributedXid,
-					SharedLocalSnapshotSlot->QDxid,
-					QEDtxContextInfo.curcid,
-					SharedLocalSnapshotSlot->QDcid,
-					getDistributedTransactionId(),
-					SharedLocalSnapshotSlot->slotid,
-					DtxContextToString(DistributedTransactionContext));
+					 QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
+					 QEDtxContextInfo.distributedXid,
+					 SharedLocalSnapshotSlot->QDxid,
+					 QEDtxContextInfo.curcid,
+					 SharedLocalSnapshotSlot->QDcid,
+					 getDistributedTransactionId(),
+					 SharedLocalSnapshotSlot->slotid,
+					 DtxContextToString(DistributedTransactionContext));
 				
 				/*
 				 * If the QDxid in the SharedLocalSnapshotSlot is the same
@@ -1967,6 +1964,8 @@ StartTransaction(void)
 				 */
 				if (QEDtxContextInfo.distributedXid == SharedLocalSnapshotSlot->QDxid)
 				{
+					if (SharedLocalSnapshotSlot->xid == InvalidTransactionId)
+						elog(LOG, "qExec reader: Updating shared-xid to *invalid* xid");
 					s->transactionId = SharedLocalSnapshotSlot->xid;
 					xactStartTimestamp = SharedLocalSnapshotSlot->startTimestamp;
 					done = true;
@@ -2969,12 +2968,24 @@ StartTransactionCommand(void)
 			 */
 		case TBLOCK_INPROGRESS:
 		case TBLOCK_SUBINPROGRESS:
-			/* There may be reader gangs waiting for us to update the
+			/*
+			 * There may be reader gangs waiting for us to update the
 			 * QDSentXID -- make sure the state of the sharedsnapshot
-			 * slot properly tracks the qd-xid */
+			 * slot properly tracks the qd-xid
+			 */
 			if (Gp_role == GP_ROLE_EXECUTE && Gp_is_writer && SharedLocalSnapshotSlot != NULL)
 			{
-				SharedLocalSnapshotSlot->xid = s->transactionId;
+				/*
+				 * MPP-3228: For a subtransaction, the transactionId
+				 * may not have been assigned, we can't change the
+				 * shared copy to InvalidTransactionId (the unassigned
+				 * value) since the reader may *need* it).
+				 */
+				if (TransactionIdIsValid(s->transactionId))
+				{
+					elog(DEBUG3, "qExec WRITER updating shared xid: %u -> %u", SharedLocalSnapshotSlot->xid, s->transactionId);
+					SharedLocalSnapshotSlot->xid = s->transactionId;
+				}
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
 				SharedLocalSnapshotSlot->QDxid = QEDtxContextInfo.distributedXid;
 			}
