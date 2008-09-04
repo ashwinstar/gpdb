@@ -96,6 +96,7 @@ static char *scanTextLine(CopyState cstate, const char *s, char c, size_t len);
 static char *scanCSVLine(CopyState cstate, const char *s, char c1, char c2, char c3, size_t len);
 
 static int CopyExtractLineNum(CopyState cstate);
+static void preProcessDataLine(CopyState cstate);
 static void concatenateEol(CopyState cstate);
 static char *escape_quotes(const char *src);
 
@@ -3648,7 +3649,7 @@ CopyFrom(CopyState cstate)
 							}
 							PG_CATCH();
 							{
-								/* got here? encoding conversion/check error occured */
+								/* got here? encoding conversion/check error occurred */
 								COPY_HANDLE_ERROR;
 							}
 							PG_END_TRY();					
@@ -4042,7 +4043,6 @@ bool
 CopyReadLineText(CopyState cstate, size_t bytesread)
 {
 	int			linesize;
-	char	   *cvt;
 	char		escapec = '\0';
 
 	/* mark that encoding conversion hasn't occurred yet */
@@ -4099,6 +4099,8 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 					cstate->raw_buf_index++;
 					cstate->begloc++;
 					cstate->cr_in_prevbuf = false;
+					preProcessDataLine(cstate);
+
 					return true;
 				}
 			}
@@ -4188,46 +4190,10 @@ CopyReadLineText(CopyState cstate, size_t bytesread)
 		}						/* end of found eol_ch */
 	}
 
-	/*
-	 * Done reading a complete data line. Set input row number for error report 
-	 * purposes and convert it to server encoding if transcoding is needed.
-	 */
+	/* Done reading a complete line. Do pre processing of the raw input data */
 	if (cstate->line_done)
-	{
-		/*
-		 * Increment line count by 1 if we have access to all the original
-		 * data rows and can count them reliably (ROWNUM_ORIGINAL). However 
-		 * if we have ROWNUM_EMBEDDED the original row number for this row
-		 * was sent to us with the data (courtesy of the data distributor), so 
-		 * get that number instead.
-		 */
-		if(cstate->err_loc_type == ROWNUM_ORIGINAL)
-			cstate->cur_lineno++; 
-		else if(cstate->err_loc_type == ROWNUM_EMBEDDED)
-			cstate->cur_lineno = CopyExtractLineNum(cstate);
-		else
-			Assert(false); /* byte offset not yet supported */
-		
-		if (cstate->need_transcoding)
-		{
-			cvt = (char *) pg_custom_client_to_server(cstate->line_buf.data,
-													  cstate->line_buf.len,
-													  cstate->client_encoding,
-													  cstate->to_server_enc_proc);
-			if (cvt != cstate->line_buf.data)
-			{
-				/* transfer converted data back to line_buf */
-				RESET_LINEBUF;
-				appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
-				pfree(cvt);
-			}
-		}
-
-	}
+		preProcessDataLine(cstate);
 						
-	/* indicate that conversion had occured */
-	cstate->line_buf_converted = true;
-
 	/*
 	 * check if this line is an end marker -- "\."
 	 */
@@ -4286,7 +4252,6 @@ bool
 CopyReadLineCSV(CopyState cstate, size_t bytesread)
 {
 	int			linesize;
-	char	   *cvt;
 	char		quotec = '\0',
 				escapec = '\0';
 	bool		csv_is_invalid = false;
@@ -4345,11 +4310,11 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 					appendBinaryStringInfo(&cstate->line_buf, cstate->begloc, 1);
 					cstate->raw_buf_index++;
 					cstate->begloc++;
-
 					cstate->line_done = true;
+					preProcessDataLine(cstate);
 					cstate->cr_in_prevbuf = false;
 
-					return cstate->line_done;
+					return true;
 				}
 			}
 
@@ -4469,43 +4434,9 @@ CopyReadLineCSV(CopyState cstate, size_t bytesread)
 	}
 
 
-	/*
-	 * Done reading a complete data line. Set input row number for error report 
-	 * purposes and convert it to server encoding if transcoding is needed.
-	 */
+	/* Done reading a complete line. Do pre processing of the raw input data */
 	if (cstate->line_done)
-	{
-		/*
-		 * Increment line count by 1 if we have access to all the original
-		 * data rows and can count them reliably (ROWNUM_ORIGINAL). However 
-		 * if we have ROWNUM_EMBEDDED the original row number for this row
-		 * was sent to us with the data (courtesy of the data distributor), so 
-		 * get that number instead.
-		 */
-		if(cstate->err_loc_type == ROWNUM_ORIGINAL)
-			cstate->cur_lineno++; 
-		else if(cstate->err_loc_type == ROWNUM_EMBEDDED)
-			cstate->cur_lineno = CopyExtractLineNum(cstate);
-		else
-			Assert(false); /* byte offset not yet supported */
-		
-		if (cstate->need_transcoding)
-		{
-			cvt = (char *) pg_custom_client_to_server(cstate->line_buf.data,
-													  cstate->line_buf.len,
-													  cstate->client_encoding,
-													  cstate->to_server_enc_proc);
-			if (cvt != cstate->line_buf.data)
-			{
-				/* transfer converted data back to line_buf */
-				RESET_LINEBUF;
-				appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
-			}
-		}
-	}
-
-	/* indicate that conversion had occured */
-	cstate->line_buf_converted = true;
+		preProcessDataLine(cstate);
 
 	/*
 	 * We have a corrupted csv format case. It is already converted to server
@@ -5642,8 +5573,7 @@ int CopyExtractLineNum(CopyState cstate)
 
 	/* reposition line buf cursor to see real data (skip target_seg) */
 	cstate->line_buf.cursor += lineno_str_len;
-
-			
+	
 	return lineno;
 }
 
@@ -6349,4 +6279,50 @@ void setEncodingConversionProc(CopyState cstate, int client_encoding)
 		/* no conversion function (both encodings are probably the same) */
 		cstate->to_server_enc_proc = NULL;
 	}
+}
+
+/*
+ * preProcessDataLine
+ * 
+ * When Done reading a complete data line set input row number for error report 
+ * purposes (this also removes any metadata that was concatenated to the data
+ * by the QD during COPY) and convert it to server encoding if transcoding is 
+ * needed.
+ */
+static
+void preProcessDataLine(CopyState cstate)
+{
+	char	   *cvt;
+
+	/*
+	 * Increment line count by 1 if we have access to all the original
+	 * data rows and can count them reliably (ROWNUM_ORIGINAL). However 
+	 * if we have ROWNUM_EMBEDDED the original row number for this row
+	 * was sent to us with the data (courtesy of the data distributor), so 
+	 * get that number instead.
+	 */
+	if(cstate->err_loc_type == ROWNUM_ORIGINAL)
+		cstate->cur_lineno++; 
+	else if(cstate->err_loc_type == ROWNUM_EMBEDDED)
+		cstate->cur_lineno = CopyExtractLineNum(cstate);
+	else
+		Assert(false); /* byte offset not yet supported */
+	
+	if (cstate->need_transcoding)
+	{
+		cvt = (char *) pg_custom_client_to_server(cstate->line_buf.data,
+												  cstate->line_buf.len,
+												  cstate->client_encoding,
+												  cstate->to_server_enc_proc);
+		if (cvt != cstate->line_buf.data)
+		{
+			/* transfer converted data back to line_buf */
+			RESET_LINEBUF;
+			appendBinaryStringInfo(&cstate->line_buf, cvt, strlen(cvt));
+			pfree(cvt);
+		}
+	}
+	
+	/* indicate that line buf is in server encoding */
+	cstate->line_buf_converted = true;
 }
