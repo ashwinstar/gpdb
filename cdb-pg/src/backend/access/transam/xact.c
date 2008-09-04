@@ -574,8 +574,10 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 
 		return isCurrentTransactionId;
 	}
+#if 0
 	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_READER);
 	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_ENTRY_DB_SINGLETON);
+#endif
 
 	/*
 	 * We will return true for the Xid of the current subtransaction, any of
