@@ -312,9 +312,9 @@ ChoosePartitionName(const char *tablename, int partDepth,
 					const char *partname, Oid namespace);
 
 static PgPartRule *get_part_rule(Relation rel, AlterPartitionId *pid,
-								   bool bExistError, bool bMustExist, 
-								   MemoryContext mcxt,
-								   int *pSearch, bool inctemplate);
+								 bool bExistError, bool bMustExist, 
+								 MemoryContext mcxt,
+								 int *pSearch, bool inctemplate);
 
 static Node *atpxPartAddList(AlteredTableInfo *tab,
 							 Relation rel, AlterPartitionCmd *pc,
@@ -377,6 +377,10 @@ static List *get_part_constraints(Partition *part, Relation pgcon, Relation rel)
 static bool rel_is_child_partition(Oid relid);
 static bool rel_partition_get_master(Oid relid);
 #endif
+
+#define parkindIsHash(c)   ((c) == 'h')
+#define parkindIsRange(c)  ((c) == 'r')
+#define parkindIsList(c)   ((c) == 'r')
 
 /* ----------------------------------------------------------------
  *		DefineRelation
@@ -8287,6 +8291,54 @@ parttype_to_char(PartitionByType type)
 	return c;
 }
 
+#ifdef NEVER_EVER
+
+static char*
+parttypeGetName(PartitionByType type)
+{
+	char *pName;
+		
+	switch (type)
+	{
+		case PARTTYP_HASH:  pName = pstrdup("HASH"); break;
+		case PARTTYP_RANGE: pName = pstrdup("RANGE"); break;
+		case PARTTYP_LIST:  pName = pstrdup("LIST"); break;
+		default:
+			/* should never happen */
+			elog(ERROR, "unknown partitioning type %i", type);
+			Assert(false);
+	}
+	return pName;
+}
+
+static PartitionByType
+char_to_parttype(char c)
+{
+	PartitionByType pt;
+
+	switch(c)
+	{
+		case 'h': /* hash */
+			pt = PARTTYP_HASH;
+			break;
+		case 'r': /* range */
+			pt = PARTTYP_RANGE;
+			break;
+		case 'l': /* list */
+			pt = PARTTYP_LIST;
+			break;
+		default:
+			elog(ERROR, "unrecognized partitioning kind '%c'",
+				 c);
+			Assert(false);
+			break;
+	} /* end switch */
+
+return pt;
+}
+
+#endif
+
 static void
 add_partition(Partition *part)
 {
@@ -9059,7 +9111,7 @@ get_parts(Oid relid, int2 level, Oid parent, bool inctemplate,
 			MemoryContextSwitchTo(oldcxt);
 		}
 	}
-	Assert(list_length(rules) || n->default_part); 
+	Assert(inctemplate || list_length(rules) || n->default_part); 
 	n->rules = rules;
 
 	systable_endscan(scan);
@@ -10838,6 +10890,7 @@ atpxPart_validate_spec(
 	List	   			*inheritOids;
 	List	   			*old_constraints;
 	int					 parentOidCount;
+	PartitionNode 		*pNode_tmpl = NULL;
 
 	/* get the table column defs */
 	schema = 
@@ -10881,6 +10934,25 @@ atpxPart_validate_spec(
 						  * it to re-order the ALTER statements 
 						  */
 
+	/* fixup the pnode_tmpl to get the right parlevel */
+	if (pNode && (pNode->rules || pNode->default_part))
+	{
+		PartitionRule *prule;
+
+		if (pNode->default_part)
+			prule = pNode->default_part;
+		else
+			prule = linitial(pNode->rules);
+
+		pNode_tmpl = get_parts(
+				pNode->part->parrelid,
+				pNode->part->parlevel + 1, 
+				InvalidOid, /* no parent for template */
+				true,
+				CurrentMemoryContext				
+				);
+	}
+
 	{ /* find the partitioning keys (recursively) */
 
 		PartitionBy 			*pBy2 = pBy;
@@ -10892,6 +10964,7 @@ atpxPart_validate_spec(
 		List 			*pbykeys   		= NIL;
 		List 			*pbyopclass 	= NIL;
 		Oid 			 accessMethodId = BTREE_AM_OID; 
+		PartitionElem *el_templ = NULL; /* the template partition element */
 		
 		while (pNode2)
 		{
@@ -10935,6 +11008,7 @@ atpxPart_validate_spec(
 			if (pNode2 && (pNode2->rules || pNode2->default_part))
 			{
 				PartitionRule *prule;
+				PartitionElem *el = NULL; /* for the subpartn template */
 
 				if (pNode2->default_part)
 					prule = pNode2->default_part;
@@ -10944,6 +11018,8 @@ atpxPart_validate_spec(
 				if (prule && prule->children)
 				{
 					pNode2 = prule->children;
+
+					/* XXX XXX: make this work for HASH at some point */
 
 					Assert(
 							('l' == pNode2->part->parkind) ||
@@ -10966,6 +11042,138 @@ atpxPart_validate_spec(
 									pstrdup(RelationGetRelationName(rel)));
 					pBy2->location  = -1;
 					pBy2->partDefault = NULL;
+
+					el = NULL;
+
+					/* build the template (if it exists) */
+					if (0 && pNode_tmpl)
+					{
+						PartitionSpec *spec_tmpl = makeNode(PartitionSpec); 
+						ListCell *lc;			
+
+						spec_tmpl->istemplate = true;
+
+						foreach(lc, pNode_tmpl->rules)
+						{
+							PartitionRule *rule_tmpl = lfirst(lc);
+
+							el = makeNode(PartitionElem);
+
+							if (rule_tmpl->parname && 
+								strlen(rule_tmpl->parname))
+								el->partName = 
+										(Node*)makeString(rule_tmpl->parname);
+							
+							el->isDefault = rule_tmpl->parisdefault;
+							
+							/* LIST */
+							if (rule_tmpl->parlistvalues)
+							{
+								PartitionValuesSpec *vspec =
+										makeNode(PartitionValuesSpec);
+
+								el->boundSpec = (Node*)vspec;
+
+								vspec->partValues = rule_tmpl->parlistvalues;
+							}
+
+							/* RANGE */
+							if (rule_tmpl->parrangestart ||
+								rule_tmpl->parrangeend)
+							{
+								PartitionBoundSpec *bspec =
+										makeNode(PartitionBoundSpec);
+								PartitionRangeItem *ri;
+
+								if (rule_tmpl->parrangestart)
+								{
+									ri =
+										makeNode(PartitionRangeItem);
+
+									ri->partedge = 
+											rule_tmpl->parrangestartincl ?
+											PART_EDGE_INCLUSIVE :
+											PART_EDGE_EXCLUSIVE ;
+
+									ri->partRangeVal = 
+											(List *)rule_tmpl->parrangestart;
+
+									bspec->partStart = (Node*)ri;
+
+								}
+								if (rule_tmpl->parrangeend)
+								{
+									ri =
+										makeNode(PartitionRangeItem);
+									
+									ri->partedge = 
+											rule_tmpl->parrangeendincl ?
+											PART_EDGE_INCLUSIVE :
+											PART_EDGE_EXCLUSIVE ;
+
+									ri->partRangeVal = 
+											(List *)rule_tmpl->parrangeend;
+
+									bspec->partEnd = (Node*)ri;
+
+								}
+								if (rule_tmpl->parrangeevery)
+								{
+									ri =
+										makeNode(PartitionRangeItem);
+									
+									ri->partRangeVal = 
+											(List *)rule_tmpl->parrangeevery;
+
+									bspec->partEvery = (Node*)ri;
+
+								}
+
+								el->boundSpec = (Node*)bspec;
+
+							} /* end if RANGE */
+
+							spec_tmpl->partElem = lappend(spec_tmpl->partElem,
+														  el);
+						} /* end foreach */
+
+						/* the PartitionElem should hang off the pby
+						 * partspec, and subsequent templates should
+						 * hang off the subspec for the prior
+						 * PartitionElem.
+						 */
+						
+						if (el_templ)
+							el_templ->subSpec = (Node *)spec_tmpl;
+						else
+							pBy2->partSpec 	= (Node *)spec_tmpl;
+							
+						el_templ = el;
+					} /* end if pnode_tmpl */
+					else
+					{
+						el_templ = el;
+					}
+
+					/* fixup the pnode_tmpl to get the right parlevel */
+					if (pNode2 && (pNode2->rules || pNode2->default_part))
+					{
+						PartitionRule *prule66;
+
+						if (pNode2->default_part)
+							prule66 = pNode2->default_part;
+						else
+							prule66 = linitial(pNode2->rules);
+
+						pNode_tmpl = get_parts(
+								pNode2->part->parrelid,
+								pNode2->part->parlevel + 1, 
+								InvalidOid, /* no parent for template */
+								true,
+								CurrentMemoryContext				
+								);
+					}
+
 				}
 				else
 					pNode2 = NULL;
@@ -11902,6 +12110,10 @@ atpxPartAddList(AlteredTableInfo *tab,
 		{
 			Query *q = lfirst(lc);
 
+
+			/* XXX XXX: fix the first Alter Table Statement to have
+			 * the correct maxpartno.  Whoohoo!! 
+			 */
 			if (bFixFirstATS && q && q->utilityStmt 
 				&& IsA(q->utilityStmt, AlterTableStmt))
 			{
