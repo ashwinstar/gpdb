@@ -1483,6 +1483,7 @@ RelationIdGetRelation(Oid relationId)
 	rd = RelationBuildDesc(relationId, NULL);
 	if (RelationIsValid(rd))
 		RelationIncrementReferenceCount(rd);
+
 	return rd;
 }
 
@@ -2046,6 +2047,22 @@ AtEOXact_RelationCache(bool isCommit)
 #endif
 
 		/*
+		 * QE-readers aren't properly enrolled in transactions, they
+		 * just get the snapshot which corresponds -- so here, where
+		 * we are maintaining their relcache, we want to just clean
+		 * up (almost as if we had aborted). (MPP-3338)
+		 */
+		if (DistributedTransactionContext == DTX_CONTEXT_QE_READER)
+		{
+			elog(DEBUG3, "AtEOXact_RelationCache(): %s cache %u node %u",
+				 (isCommit ? "commit" : "abort"),
+				 relation->rd_id, relation->rd_node.relNode);
+
+			RelationClearRelation(relation, false);
+			continue;
+		}
+
+		/*
 		 * Is it a relation created in the current transaction?
 		 *
 		 * During commit, reset the flag to zero, since we are now out of the
@@ -2121,6 +2138,7 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 				relation->rd_createSubid = parentSubid;
 			else
 			{
+				/* MPP-3338: Note that subtransaction does the right thing (clears cache for abort). */
 				Assert(RelationHasReferenceCountZero(relation));
 				RelationClearRelation(relation, false);
 				continue;

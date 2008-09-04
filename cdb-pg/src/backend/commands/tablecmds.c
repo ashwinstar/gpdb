@@ -1314,9 +1314,11 @@ ExecuteTruncate(TruncateStmt *stmt)
 			new_toast_oids = lappend_oid(new_toast_oids, new_toast_oid);
 			new_aoseg_oids = lappend_oid(new_aoseg_oids, new_aoseg_oid);
 			
-			elog(DEBUG5, "Truncate in DISPATCH mode: new heap oid %u, new "
-				 "toast oid %u aoseg oid %u", new_heap_oid, new_toast_oid,
-				 new_aoseg_oid);
+			elog(DEBUG5, "Truncate in DISPATCH mode: old heap oid %u "
+				 "toast %u aoseg %u new heap oid %u, new toast oid %u "
+				 "aoseg oid %u",
+				 heap_relid, toast_relid, aoseg_relid,
+				 new_heap_oid, new_toast_oid, new_aoseg_oid);
 			
 			/*
 			 * Reconstruct the indexes to match, and we're done.
@@ -1405,9 +1407,11 @@ ExecuteTruncate(TruncateStmt *stmt)
 				heap_close(rel, NoLock);
 			}
 			
-			elog(DEBUG5, "Truncate in EXECUTE mode: new heap oid %u, new "
-				 "toast oid %u new AO segment list oid %u", new_heap_oid, 
-				 new_toast_oid, new_aoseg_oid);
+			elog(DEBUG5, "Truncate in EXECUTE mode: old heap oid %u "
+				 "toast %u aoseg %u new heap oid %u, new toast oid %u "
+				 "aoseg oid %u",
+				 heap_relid, toast_relid, aoseg_relid,
+				 new_heap_oid, new_toast_oid, new_aoseg_oid);
 			
 			/*
 			 * Reconstruct the indexes to match, and we're done.
