@@ -22,6 +22,31 @@ DEFINE:
         - bytes    integer
       DELIMITER: ' '
         
+  - MAP:
+      NAME:     myMap
+      LANGUAGE: perl
+      PARAMETERS:
+        - key text
+        - ip text
+        - url text
+      RETURNS:
+        - ip text
+        - url text
+        - value integer
+      FUNCTION: |
+        my ($key, $ip, $url) = @_;
+        return [] unless ($url =~ m/$key/);
+        return [{"ip" => $ip, "url" => $url, "value" => 1}]
+        
+# myReduce is exactly the same as SUM except for the grouping keys and
+# the non-null initialization.
+  - REDUCE:
+      NAME:        myReduce
+      INITIALIZE:  '0'
+      TRANSITION:  int4_sum
+      CONSOLIDATE: int8pl
+      KEYS:        [ip]
+
   - OUTPUT:
       NAME:     out_1
       FILE:     @abs_srcdir@/output/columns.1
@@ -34,57 +59,18 @@ DEFINE:
       DELIMITER: '|'
       MODE:     APPEND
       
-  - MAP:
-      NAME:     myMap
-      LANGUAGE: perl
-      PARAMETERS:
-        - key text
-        - ip text
-        - url text
-      RETURNS:
-        - ip text
-        - url text
-        - count integer
-      FUNCTION: |
-        my ($key, $ip, $url) = @_;
-        return [] unless ($url =~ m/$key/);
-        return [{"ip" => $ip, "url" => $url, "count" => 1}]
-        
-# test both "keys" and built in transition/consolidate functions
-#  - REDUCE:
-#      NAME:        myReduce
-#      INITIALIZE:  '0'
-#      TRANSITION:  int4_sum
-#      CONSOLIDATE: int8pl
-#      KEYS:        [ip]
-        
-  - TRANSITION:
-      NAME:      myTransition
-      LANGUAGE:  perl
-      PARAMETERS:
-        - state integer
-        - count integer
-      RETURNS:
-        - state integer
-      FUNCTION:     return $_[0] + $_[1];
-
-  - REDUCE:
-      NAME:        myReduce
-      INITIALIZE:  '0'
-      TRANSITION:  myTransition
-      CONSOLIDATE: myTransition
-      KEYS:        [ip]
-
 EXECUTE:
+
+# built in SUM groups by all columns not "value" 
   - RUN:
      SOURCE:   weblog
      MAP:      myMap
+     REDUCE:   SUM
      TARGET:   out_1
 
+# myReduce is defined with "keys" specified as just the "ip" column     
   - RUN:
      SOURCE:   weblog
      MAP:      myMap
      REDUCE:   myReduce
      TARGET:   out_2
-     
-     

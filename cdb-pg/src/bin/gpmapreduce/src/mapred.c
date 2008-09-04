@@ -875,16 +875,10 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 		{
 			mapred_object_t *transition = obj->u.reducer.transition.object;
 
-			if (transition && transition->u.function.parameters)
-			{
-				obj->u.reducer.parameters = 
-					transition->u.function.parameters->next;
-			}
-			else
-			{
-				/* FIXME: bad reducer parameters */
-				mapred_obj_error(obj, "bad reducer parameters");
-			}
+			XASSERT(transition);
+			XASSERT(transition->u.function.parameters);
+			obj->u.reducer.parameters = 
+				transition->u.function.parameters->next;
 
 			/* 
 			 * Use the return result of:
@@ -901,11 +895,12 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 			else if (obj->u.reducer.combiner.name)
 				sub = obj->u.reducer.combiner.object;
 			else
-				sub = obj->u.reducer.transition.object;					 
+				sub = obj->u.reducer.transition.object;			 
 					
 			if (sub)
 				obj->u.reducer.returns = sub->u.function.returns;
-			else
+
+			if (!obj->u.reducer.returns)
 			{
 				/* 
 				 * If unable to determine the returns based on the reducer 
@@ -1076,6 +1071,7 @@ void mapred_setup_columns(PGconn *conn, mapred_object_t *obj)
 					 * Loop the reducer "keys" clause to determine what keys are
 					 * present.  
 					 */
+					last = NULL;
 					for (keys = sub->u.reducer.keys; keys; keys = keys->next)
 					{
 						/*
@@ -1892,7 +1888,7 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 					
 					/* Lookup the function in the catalog */
 					bufcat(&buffer, 
-						   "SELECT proname, proretset, proargnames, \n"
+						   "SELECT proname, proretset, pronargs, proargnames, \n"
 						   "       proargmodes, proargtypes::regtype[], \n"
 						   "       proallargtypes::regtype[], \n"
 						   "       prorettype::regtype \n"
@@ -1923,10 +1919,121 @@ boolean mapred_create_object(PGconn *conn, mapred_document_t *doc,
 						}
 						else
 						{
+							char		*value;
+							int          len;
+							boolean		 retset;
+							int          nargs;
+							char		*argnames	 = NULL;
+							char		*argmodes	 = NULL;
+							char		*argtypes	 = NULL;
+							char		*allargtypes = NULL;
+							char		*rettype	 = NULL;
+
 							/* 
 							 * One function... just right.
 							 * Now check that we can use the function prototype
 							 */
+							value  = PQgetvalue(result, 0, 1);
+							retset = (value[0] == 't');
+							value  = PQgetvalue(result, 0, 2);
+							nargs  = (int) strtol(value, (char **) NULL, 10);
+
+							/* 
+							 * Arrays are formated as:
+							 *  "[0:nargs]={...}" 
+							 * of which we only want "..." 
+							 * so find the part of the string between the braces
+							 */
+							if (!PQgetisnull(result, 0, 3))
+							{
+								value = PQgetvalue(result, 0, 3);
+								argnames = strchr(value, '{') + 1;
+								len = strlen(argnames);
+								if (len > 0)
+									argnames[len-1] = '\0';
+							}
+							if (!PQgetisnull(result, 0, 4))
+							{
+								value = PQgetvalue(result, 0, 4);
+								argmodes = strchr(value, '{') + 1;
+								len = strlen(argmodes);
+								if (len > 0)
+									argmodes[len-1] = '\0';
+							}
+							if (!PQgetisnull(result, 0, 5))
+							{
+								value = PQgetvalue(result, 0, 5);
+								argtypes = strchr(value, '{') + 1;
+								len = strlen(argtypes);
+								if (len > 0)
+									argtypes[len-1] = '\0';
+							}
+							if (!PQgetisnull(result, 0, 6))
+							{
+								value = PQgetvalue(result, 0, 6);
+								allargtypes = strchr(value, '{') + 1;
+								len = strlen(allargtypes);
+								if (len > 0)
+									allargtypes[len-1] = '\0';
+							}
+							if (!PQgetisnull(result, 0, 7))
+							{
+								rettype = PQgetvalue(result, 0, 7);
+							}
+
+							if (obj->u.function.parameters)
+							{
+								/* check that we match */
+
+							}
+							else
+							{
+								char *pname, *ptype, *toktype;
+
+								/* create the returns as specified */
+								pname = "key";
+								ptype = strtok_r(argtypes, ",", &toktype);
+								plist = mapred_malloc(sizeof(mapred_plist_t));
+
+								plist->name = mapred_malloc(strlen(pname)+1);
+								strcpy(plist->name, pname);
+								plist->type = mapred_malloc(strlen(ptype)+1);
+								strcpy(plist->type, ptype);
+								plist->next = NULL;
+
+								obj->u.function.parameters = plist;
+
+								pname = "value";
+								ptype = strtok_r(NULL, ",", &toktype);
+
+								plist = mapred_malloc(sizeof(mapred_plist_t));
+								plist->name = mapred_malloc(strlen(pname)+1);
+								strcpy(plist->name, pname);
+								plist->type = mapred_malloc(strlen(ptype)+1);
+								strcpy(plist->type, ptype);
+								plist->next = NULL;								
+
+								obj->u.function.parameters->next = plist;
+							}
+
+
+							if (obj->u.function.returns)
+							{
+								/* check that we match */
+							}
+							else
+							{
+								/* always returns a column named "value" */
+								plist = mapred_malloc(sizeof(mapred_plist_t));
+								plist->name = mapred_malloc(strlen("value")+1);
+								strcpy(plist->name, "value");
+
+								plist->type = mapred_malloc(strlen(rettype)+1);
+								strcpy(plist->type, rettype);
+								plist->next = NULL;
+								obj->u.function.returns = plist;
+							}
+
 							obj->created = true;
 						}
 					}
