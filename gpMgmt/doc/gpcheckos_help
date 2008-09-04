@@ -8,7 +8,7 @@ SYNOPSIS
 *****************************************************
 
 gpcheckos { [-m] -f <host_file> | - h <hostname> [-h <hostname> ...] } 
-[-u <os_user>] [-p <ssh_port>] [-c <config_file>] [-v]
+[-c <config_file>] [-v]
 
 gpcheckos -? | --version
 
@@ -68,15 +68,6 @@ OPTIONS
    the correct version of Python is installed. These checks are only 
    relevant for the master host (or standby master).
 
--u <os_user>
-   Specifies the OS user to use when logging in to a remote 
-   host. If not specified, defaults to the current user (or 
-   the user specified in the host file, if any).
-
--p <ssh_port>
-   Specifies the default SSH port to use when logging in 
-   to a remote host. If not specified, defaults to port 22 
-   (or the port specified in the host file, if any).
 
 -c <config_file>
    Specifies a configuration file that defines additional 
