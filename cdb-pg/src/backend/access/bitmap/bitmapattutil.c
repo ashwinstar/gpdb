@@ -63,38 +63,68 @@ _bitmap_create_lov_heapandindex(Relation rel,
 
 	Assert(rel != NULL);
 
-	/*
-	 * If there are no given lovHeapOid and lovIndexOid, then this is
-	 * happening during re-indexing. We allocate new lovHeapOid and new
-	 * lovIndexOid for the new index.
-	 *
-	 * XXX Each segment db may have different lovHeapOid and lovIndexOid,
-	 * which should not be an issue now. Ideally, we would like each segment
-	 * db use the same oids.
-	 */
-	if (!OidIsValid(*lovHeapOid))
-	{
-		Relation pg_type;
-		
-		Assert(!OidIsValid(*lovIndexOid) && !OidIsValid(lovComptypeOid));
-		*lovHeapOid = GetNewRelFileNode(rel->rd_rel->reltablespace,
-										rel->rd_rel->relisshared,
-										NULL);
-		*lovIndexOid = GetNewRelFileNode(rel->rd_rel->reltablespace,
-										rel->rd_rel->relisshared,
-										NULL);
-		pg_type = heap_open(TypeRelationId, RowExclusiveLock);
-		lovComptypeOid = GetNewOid(pg_type);
-		heap_close(pg_type, NoLock);		
-
-		Assert(OidIsValid(*lovHeapOid) && OidIsValid(*lovIndexOid) && OidIsValid(lovComptypeOid));
-	}
-
 	/* create the new names for the new lov heap and index */
 	snprintf(lovHeapName, sizeof(lovHeapName), 
-			 "pg_bm_%u_%u", RelationGetRelid(rel), *lovHeapOid); 
+			 "pg_bm_%u", RelationGetRelid(rel)); 
 	snprintf(lovIndexName, sizeof(lovIndexName), 
-			 "pg_bm_%u_%u_index", RelationGetRelid(rel), *lovHeapOid); 
+			 "pg_bm_%u_index", RelationGetRelid(rel)); 
+
+
+	heapid = get_relname_relid(lovHeapName, PG_BITMAPINDEX_NAMESPACE);
+
+	/*
+	 * If heapid exists, then this is happening during re-indexing.
+	 * We allocate new relfilenodes for lov heap and lov index.
+	 *
+	 * XXX Each segment db may have different relfilenodes for lov heap and
+	 * lov index, which should not be an issue now. Ideally, we would like each
+	 * segment db use the same oids.
+	 */
+	if (OidIsValid(heapid))
+	{
+		Relation lovHeap;
+		Relation lovIndex;
+		Buffer btree_metabuf;
+		Page   btree_metapage;
+
+		*lovHeapOid = heapid;
+
+		idxid = get_relname_relid(lovIndexName, PG_BITMAPINDEX_NAMESPACE);
+		Assert(OidIsValid(idxid));
+		*lovIndexOid = idxid;
+
+		lovComptypeOid = get_rel_type_id(heapid);
+		Assert(OidIsValid(lovComptypeOid));
+
+		lovHeap = heap_open(heapid, AccessExclusiveLock);
+		lovIndex = index_open(idxid, AccessExclusiveLock);
+
+		setNewRelfilenode(lovHeap);
+		setNewRelfilenode(lovIndex);
+
+		/*
+		 * After creating the new relfilenode for a btee index, this is not
+		 * a btree anymore. We create the new metapage for this btree.
+		 */
+		btree_metabuf = _bt_getbuf(lovIndex, P_NEW, BT_WRITE);
+		Assert (BTREE_METAPAGE == BufferGetBlockNumber(btree_metabuf));
+		btree_metapage = BufferGetPage(btree_metabuf);
+		_bt_initmetapage(btree_metapage, P_NONE, 0);
+
+		/* This cache value is not valid anymore. */
+		if (lovIndex->rd_amcache)
+		{
+			pfree(lovIndex->rd_amcache);
+			lovIndex->rd_amcache = NULL;
+		}
+		MarkBufferDirty(btree_metabuf);
+		_bt_relbuf(lovIndex, btree_metabuf);
+
+		index_close(lovIndex, NoLock);
+		heap_close(lovHeap, NoLock);
+
+		return;
+	}
 
 	/*
 	 * create a new empty heap to store all attribute values with their
