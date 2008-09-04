@@ -8301,6 +8301,11 @@ assign_debug_dtm_action(const char *newval,
 		if (doit)
 			Debug_dtm_action = DEBUG_DTM_ACTION_NONE;
 	}
+	else if (pg_strcasecmp(newval, "delay") == 0)
+	{
+		if (doit)
+			Debug_dtm_action = DEBUG_DTM_ACTION_DELAY;
+	}
 	else if (pg_strcasecmp(newval, "fail_begin_command") == 0)
 	{
 		if (doit)
