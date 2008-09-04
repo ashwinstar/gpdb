@@ -24,7 +24,7 @@ except:
 
 def start_date(): 
     # check  connection to database 
-    if conn = None:
+    if conn == None:
         return None
 
     conn.execute('select min(ctime) from metrics_history') 
@@ -34,13 +34,15 @@ def start_date():
 
 def hosts(): 
     # check  connection to database 
-    if conn = None:
+    if conn == None:
         return None
 
     conn.execute('select distinct(hostname) from metrics_now') 
     rows = []
     for r in conn.iterate_dict():
         rows.append(r['hostname'])
+
+    return rows
 
 
 def _metrics_consolidate(rows):
@@ -67,7 +69,7 @@ def _metrics_consolidate(rows):
 
 def metrics_next(prev, host):
     # check  connection to database 
-    if conn = None:
+    if conn == None:
         return None
 
     if host:
@@ -91,7 +93,7 @@ def metrics_next(prev, host):
 
 def metrics_now(host):
     # check  connection to database 
-    if conn = None:
+    if conn == None:
         return None
 
     if host:
