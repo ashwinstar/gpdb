@@ -1341,6 +1341,6 @@ linenumber_atoi(char buffer[20],int64_t linenumber)
 {
 	if (linenumber < 0)
 		return "N/A";
-	snprintf(buffer,20,"%lld",(long long)linenumber);
+	snprintf(buffer,20,INT64_FORMAT,linenumber);
 	return buffer;
 }
