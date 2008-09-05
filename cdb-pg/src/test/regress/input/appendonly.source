@@ -135,6 +135,42 @@ SELECT count(*) FROM tenk_ao1;
 SELECT count(*) FROM tenk_ao2;
 SELECT count(*) FROM tenk_ao3;
 
+-------------------- 
+-- transactionality
+--------------------
+
+-- rollback
+BEGIN;
+INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
+SELECT count(*) FROM tenk_ao1; -- should show new count
+ROLLBACK;
+SELECT count(*) FROM tenk_ao1; -- should show previous count
+
+-- commit
+BEGIN;
+INSERT INTO tenk_ao1 SELECT * FROM tenk_heap;
+SELECT count(*) FROM tenk_ao1; -- should show new count
+COMMIT;
+SELECT count(*) FROM tenk_ao1; -- should show new count
+
+-- same txn inserts
+BEGIN;
+INSERT INTO tenk_ao1(unique1) VALUES(12345678);
+INSERT INTO tenk_ao1(unique1) VALUES(12345678);
+INSERT INTO tenk_ao1(unique1) VALUES(12345678);
+INSERT INTO tenk_ao1(unique1) VALUES(12345678);
+INSERT INTO tenk_ao1(unique1) VALUES(12345678);
+ROLLBACK;
+BEGIN;
+INSERT INTO tenk_ao1(unique1) VALUES(87654321);
+INSERT INTO tenk_ao1(unique1) VALUES(87654321);
+INSERT INTO tenk_ao1(unique1) VALUES(87654321);
+INSERT INTO tenk_ao1(unique1) VALUES(87654321);
+INSERT INTO tenk_ao1(unique1) VALUES(87654321);
+COMMIT;
+SELECT count(*) FROM tenk_ao1 WHERE unique1 = 12345678; -- should be 0
+SELECT count(*) FROM tenk_ao1 WHERE unique1 = 87654321; -- should be 5
+
 -- DROP
 DROP TABLE tenk_ao1;
 DROP TABLE tenk_ao2;
