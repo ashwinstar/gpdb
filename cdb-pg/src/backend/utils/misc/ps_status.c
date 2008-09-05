@@ -98,6 +98,9 @@ static size_t last_status_len;  /* use to minimize length of clobber */
 #endif   /* PS_USE_CLOBBER_ARGV */
 
 static size_t ps_buffer_fixed_size;		/* size of the constant prefix */
+#if (defined(sun) && !defined(BSD))
+static size_t ps_argument_size; /* size for the first argument */
+#endif
 
 static size_t   ps_host_info_size;		/*CDB*/
 static char     ps_host_info[64];       /*CDB*/
@@ -143,6 +146,10 @@ save_ps_display_args(int argc, char **argv)
 		char	  **new_environ;
 		int			i;
 
+#if (defined(sun) && !defined(BSD))
+		ps_argument_size = 0;
+#endif
+		
 		/*
 		 * check for contiguous argv strings
 		 */
@@ -159,6 +166,10 @@ save_ps_display_args(int argc, char **argv)
 			return argv;
 		}
 
+#if (defined(sun) && !defined(BSD))
+		ps_argument_size = strlen(argv[0]);
+#endif
+		
 		/*
 		 * check for contiguous environ strings following argv
 		 */
@@ -418,9 +429,30 @@ set_ps_display(const char *activity, bool force)
 #ifdef PS_USE_CLOBBER_ARGV
     {
         int         buflen;
+#if (defined(sun) && !defined(BSD))
+		int         request_buflen = 2 * ps_argument_size + 1;
+#endif
 
         /* pad unused memory */
         buflen = strlen(ps_buffer);
+
+#if (defined(sun) && !defined(BSD))
+		/*
+		 * In Solaris, to properly show the ps status display, it requires the length of
+		 * the status at least twice of the original arguments. We pad the '.'s
+		 * if buflen is not big enough. Note that using spaces to pad does not work, 
+		 * and I don't know why.
+		 */
+		if (buflen < request_buflen)
+		{
+			int pad_len = request_buflen - buflen;
+			if (ps_buffer_size < request_buflen)
+				pad_len = ps_buffer_size - buflen;
+			MemSet(ps_buffer + buflen, '.', pad_len);
+			buflen += pad_len;
+		}
+#endif
+
 		if (last_status_len > buflen)
 			MemSet(ps_buffer + buflen, PS_PADDING, last_status_len - buflen);
 		last_status_len = buflen;
