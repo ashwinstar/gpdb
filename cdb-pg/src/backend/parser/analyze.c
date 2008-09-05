@@ -6626,7 +6626,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		psubBy = (PartitionBy *)pBy->subPart;
 		psubBy->partDepth = partDepth;
 		if (((PartitionBy *)pBy->subPart)->parentRel == NULL)
-			((PartitionBy *)pBy->subPart)->parentRel = copyObject(pBy->parentRel);
+			((PartitionBy *)pBy->subPart)->parentRel = 
+					copyObject(pBy->parentRel);
 	}
 
 	/* 
@@ -6669,7 +6670,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("too many columns for RANGE partition%s -- only one column is allowed.",
+				 errmsg("too many columns for RANGE partition%s -- "
+						"only one column is allowed.",
 						at_depth),
 				 parser_errposition(pstate, pBy->location)));
 	}
@@ -6774,9 +6776,9 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 				 		 parser_errposition(pstate, pBy->location)));
 
 			/* 
-			 * Users don't have to specify a partition specification for HASH.
-			 * If they didn't, create one so that the rest of the code can 
-			 * generate some valid partition children.
+			 * Users don't have to specify a partition specification
+			 * for HASH.  If they didn't, create one so that the rest
+			 * of the code can generate some valid partition children.
 	 		 */
 			expand_hash_partition_spec(pBy);
 		}
@@ -6815,9 +6817,9 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 
 		/* 
 		 * If the current specification has a subSpec, then that is
-		 * the specification for the child, so we'd better have a SUBPARTITION
-		 * BY clause for the child. The sub specification cannot contain a 
-		 * partition specification of its own.
+		 * the specification for the child, so we'd better have a
+		 * SUBPARTITION BY clause for the child. The sub specification
+		 * cannot contain a partition specification of its own.
 		 */
 		if (subSpec)
 		{
@@ -6911,8 +6913,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 			else
 			{
 				/* 
-				 * For the case where we don't have a partition name, don't
-				 * worry about EVERY.
+				 * For the case where we don't have a partition name,
+				 * don't worry about EVERY.
 				 */
 				if (pElem->rrand)
 					/* make a random name for ALTER TABLE ... ADD PARTITION */
@@ -6996,8 +6998,8 @@ transformPartitionBy(ParseState *pstate, CreateStmtContext *cxt,
 		if (!(pElem && pElem->isDefault))
 		{
 			ListCell *lc_rule = NULL;
-			int everycount = every ? ((PartitionRangeItem *)every)->everycount :
-				0;
+			int everycount = every ? 
+					((PartitionRangeItem *)every)->everycount : 0;
 			List *allRules =
 					make_partition_rules(pstate,
 										 cxt, stmt,

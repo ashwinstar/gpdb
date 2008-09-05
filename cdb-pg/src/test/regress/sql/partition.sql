@@ -1986,6 +1986,84 @@ subpartition ohio values ('OH')
   partition girls values ('F')
 );
 
+-- and without subpartition templates...
+CREATE TABLE rank3 (id int, rank int,
+year date, gender char(1),
+usstate char(2))
+DISTRIBUTED BY (id, gender, year, usstate)
+partition by list (gender)
+subpartition by range (year),
+subpartition by list (usstate)
+(
+  partition boys values ('M') 
+(
+subpartition jan01 start (date '2001-01-01') 
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan02 start (date '2002-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan03 start (date '2003-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan04 start (date '2004-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan05 start (date '2005-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+)
+)
+,
+  partition girls values ('F')
+(
+subpartition jan01 start (date '2001-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan02 start (date '2002-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan03 start (date '2003-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan04 start (date '2004-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan05 start (date '2005-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+)
+)
+);
+
 -- ok
 alter table rank2 truncate partition girls;
 alter table rank2 alter partition girls truncate partition for (rank(1));
@@ -2045,31 +2123,51 @@ partition cali rename partition foo to bar;
 alter table rank2 alter partition girls alter partition jan05 alter
 partition cali alter partition foo drop partition bar;
 
--- works
+-- ADD PARTITION, with and without templates
+
+-- fails for rank2 (due to template), works for rank3
 alter table rank2
 add partition neuter values ('N')
     (subpartition foo
          start ('2001-01-01') end ('2002-01-01')
          every (interval '1 month')
             (subpartition bar values ('AZ')));
+alter table rank3
+add partition neuter values ('N')
+    (subpartition foo
+         start ('2001-01-01') end ('2002-01-01')
+         every (interval '1 month')
+            (subpartition bar values ('AZ')));
 
--- fail , no subpartition spec
+-- fail , no subpartition spec for rank3, works for rank2
 alter table rank2 alter partition boys
 add partition jan00 start ('2000-01-01') end ('2001-01-01');
+alter table rank3 alter partition boys
+add partition jan00 start ('2000-01-01') end ('2001-01-01');
 
--- work - create subpartition
+-- work - create subpartition for rank3, fail for rank2
 alter table rank2 alter partition boys
+add partition jan99 start ('1999-01-01') end ('2000-01-01')
+  (subpartition ariz values ('AZ'));
+alter table rank3 alter partition boys
 add partition jan00 start ('2000-01-01') end ('2001-01-01')
   (subpartition ariz values ('AZ'));
 
+-- works for both -- adding leaf partition doesn't conflict with template
 alter table rank2 alter partition boys
+alter partition jan00 
+add partition haw values ('HI');
+alter table rank3 alter partition boys
 alter partition jan00 
 add partition haw values ('HI');
 
 alter table rank2 drop partition neuter;
+alter table rank3 drop partition neuter;
 
--- fail , no subpartition spec
+-- fail , no subpartition spec for rank3, work for rank2
 alter table rank2
+add default partition neuter ;
+alter table rank3
 add default partition neuter ;
 
 alter table rank2
@@ -2078,16 +2176,42 @@ add default partition neuter
          start ('2001-01-01') end ('2002-01-01')
          every (interval '1 month')
             (subpartition ariz values ('AZ')));
+alter table rank3
+add default partition neuter 
+    (subpartition foo
+         start ('2001-01-01') end ('2002-01-01')
+         every (interval '1 month')
+            (subpartition ariz values ('AZ')));
 
+-- fail
 alter table rank2
 alter default partition add default partition def1 
 (subpartition haw values ('HI'));
+-- fail
+alter table rank2
+alter default partition alter default partition 
+add default partition def2;
+-- work
+alter table rank2
+alter default partition add default partition def1;
 alter table rank2
 alter default partition alter default partition 
 add default partition def2;
 
 
-drop table rank2 cascade;
+
+alter table rank3
+alter default partition add default partition def1 
+(subpartition haw values ('HI'));
+alter table rank3
+alter default partition alter default partition 
+add default partition def2;
+
+
+drop table rank2 ;
+drop table rank3 ;
+
+-- **END** ALTER TABLE ALTER PARTITION tests
 
 -- Test casting
 create table f (i int) partition by range (i) (start(1::int) end(10::int));

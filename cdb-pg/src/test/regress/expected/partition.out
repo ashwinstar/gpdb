@@ -1000,7 +1000,7 @@ insert into ggg values (7, 7);
 insert into ggg values (8, 8);
 insert into ggg values (9, 9);
 insert into ggg values (10, 10);
-ERROR:  no partition for partitioning key (execMain.c:3544)  (seg1 localhost:11003 pid=28742)
+ERROR:  no partition for partitioning key (execMain.c:3552)  (seg1 localhost:11003 pid=20019)
 select * from ggg order by 1, 2;
  id | a 
 ----+---
@@ -1308,7 +1308,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3544)
+ERROR:  no partition for partitioning key (execMain.c:3552)
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 -- Same test with append only
@@ -1323,8 +1323,8 @@ COPY foz FROM stdin DELIMITER '|';
 select * from foz_1_prt_1;
  i |     d      
 ---+------------
- 1 | 01-02-2001
  2 | 10-10-2001
+ 1 | 01-02-2001
 (2 rows)
 
 select * from foz_1_prt_2;
@@ -1347,7 +1347,7 @@ select * from foz_1_prt_4;
 
 -- Check behaviour of key for which there is no partition
 COPY foz FROM stdin DELIMITER '|';
-ERROR:  no partition for partitioning key (execMain.c:3544)
+ERROR:  no partition for partitioning key (execMain.c:3552)
 CONTEXT:  COPY foz, line 1: "6|2010-01-01"
 drop table foz cascade;
 -- complain if create table as select (CTAS)
@@ -1427,7 +1427,7 @@ NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution 
 -- works - anonymous partition MPP-3350
 alter table hhh add partition end ('2010-02-01');
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "hhh_1_prt_r104637744" for table "hhh"
+NOTICE:  CREATE TABLE will create partition "hhh_1_prt_r213135695" for table "hhh"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 -- hash partitions cannot have default partitions
 create table jjj (aa int, bb int) 
@@ -1662,16 +1662,16 @@ insert into rank values (10, 1, date '2005-05-15', 'F');
 select * from rank ;
  id | rank |    year    | gender 
 ----+------+------------+--------
-  7 |    1 | 02-15-2002 | F
- 10 |    1 | 05-15-2005 | F
-  5 |    1 | 05-15-2005 | M
-  2 |    1 | 02-15-2002 | M
   6 |    1 | 01-15-2001 | F
   8 |    1 | 03-15-2003 | F
   9 |    1 | 04-15-2004 | F
   4 |    1 | 04-15-2004 | M
   1 |    1 | 01-15-2001 | M
   3 |    1 | 03-15-2003 | M
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
+  5 |    1 | 05-15-2005 | M
+  2 |    1 | 02-15-2002 | M
 (10 rows)
 
 alter table rank DROP partition boys restrict;
@@ -1679,11 +1679,11 @@ NOTICE:  dropped partition "boys" for relation "rank" and its children
 select * from rank ;
  id | rank |    year    | gender 
 ----+------+------------+--------
-  7 |    1 | 02-15-2002 | F
- 10 |    1 | 05-15-2005 | F
   6 |    1 | 01-15-2001 | F
   8 |    1 | 03-15-2003 | F
   9 |    1 | 04-15-2004 | F
+  7 |    1 | 02-15-2002 | F
+ 10 |    1 | 05-15-2005 | F
 (5 rows)
 
 alter table rank DROP partition if exists neuter;
@@ -2028,8 +2028,8 @@ insert into foz values(2, '2010-04-01');
 select * from foz;
  i |     d      
 ---+------------
- 2 | 04-01-2010
  1 | 04-01-2003
+ 2 | 04-01-2010
 (2 rows)
 
 select * from foz_1_prt_dsf;
@@ -2051,7 +2051,7 @@ insert into d values(1, 10);
 insert into d values(1, 11);
 insert into d values(1, 55);
 insert into d values(1, 70);
-ERROR:  no partition for partitioning key (execMain.c:3544)  (seg0 localhost:11002 pid=28741)
+ERROR:  no partition for partitioning key (execMain.c:3552)  (seg0 localhost:11002 pid=20018)
 select * from d;
  i | j  
 ---+----
@@ -2150,7 +2150,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 insert into d values (1, 1);
 insert into d values (1, 2);
 insert into d values (1, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3544)  (seg0 localhost:11002 pid=28741)
+ERROR:  no partition for partitioning key (execMain.c:3552)  (seg0 localhost:11002 pid=20018)
 drop table  d cascade;
 -- allow NULLs into the default partition
 create table d (i int,  j int) partition by range(j)
@@ -2190,10 +2190,10 @@ insert into d values(1, 1, 2);
 insert into d values(1, 3, 4);
 insert into d values(1, 100, 20);
 insert into d values(1, 100, 2000);
-ERROR:  no partition for partitioning key (execMain.c:3544)  (seg0 localhost:11002 pid=28741)
+ERROR:  no partition for partitioning key (execMain.c:3552)  (seg0 localhost:11002 pid=20018)
 insert into d values(1, '1000', '1001'), (1, '1001', '1002'), (1, '1003', '1004');
 insert into d values(1, 100, NULL);
-ERROR:  no partition for partitioning key (execMain.c:3544)  (seg0 localhost:11002 pid=28741)
+ERROR:  no partition for partitioning key (execMain.c:3552)  (seg0 localhost:11002 pid=20018)
 select * from d_1_prt_a;
  a | b | c 
 ---+---+---
@@ -2409,7 +2409,7 @@ select * from region where r_regionkey = '7';
 -- tables since we cannot enfoce them. But since this insert maps to a 
 -- single definitive partition, we can detect it.
 insert into region values(7, 'abc', 'def');
-ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=28741)
+ERROR:  duplicate key violates unique constraint "region_1_prt_p1_2_prt_sp1_3_prt_1_pkey"  (seg0 localhost:11002 pid=20018)
 drop table region;
 -- exchange
 -- 1) test all sanity checking
@@ -2790,7 +2790,7 @@ insert into bar values(6);
 insert into bar values(100);
 -- should fail
 alter table foo exchange partition for(rank(6)) with table bar;
-ERROR:  exchange table contains a row which violates the partitioning specification of "foo"  (seg1 localhost:11003 pid=28750)
+ERROR:  exchange table contains a row which violates the partitioning specification of "foo"  (seg1 localhost:11003 pid=20027)
 alter table foo exchange partition for(rank(6)) with table bar without
 validation;
 select * from foo;
@@ -2881,10 +2881,10 @@ alter table foo exchange partition for(rank(6)) with table bar;
 select * from foo;
  i | j 
 ---+---
- 1 | 1
- 3 | 1
  2 | 1
  6 | 6
+ 1 | 1
+ 3 | 1
 (4 rows)
 
 drop table bar;
@@ -3277,7 +3277,7 @@ select parname, parruleord, pg_get_expr(parrangestart, parchildrelid, false) as
 insert into foo values(5994400);
 insert into foo values(1);
 insert into foo values(6000002);
-ERROR:  no partition for partitioning key (execMain.c:3544)  (seg1 localhost:11003 pid=28750)
+ERROR:  no partition for partitioning key (execMain.c:3552)  (seg1 localhost:11003 pid=20027)
 insert into foo values(5994376);
 drop table foo;
 create table foo (i int) 
@@ -3362,18 +3362,18 @@ copy foo from stdin;
 select * from foo;
  i 
 ---
- 2
- 4
  1
  3
+ 2
+ 4
 (4 rows)
 
 select * from foo_1_prt_p1;
  i 
 ---
- 2
  1
  3
+ 2
 (3 rows)
 
 select * from foo_1_prt_p2;
@@ -3955,6 +3955,125 @@ NOTICE:  CREATE TABLE will create partition "rank2_1_prt_girls_2_prt_jan04_3_prt
 NOTICE:  CREATE TABLE will create partition "rank2_1_prt_girls_2_prt_jan05_3_prt_mass" for table "rank2_1_prt_girls_2_prt_jan05"
 NOTICE:  CREATE TABLE will create partition "rank2_1_prt_girls_2_prt_jan05_3_prt_cali" for table "rank2_1_prt_girls_2_prt_jan05"
 NOTICE:  CREATE TABLE will create partition "rank2_1_prt_girls_2_prt_jan05_3_prt_ohio" for table "rank2_1_prt_girls_2_prt_jan05"
+-- and without subpartition templates...
+CREATE TABLE rank3 (id int, rank int,
+year date, gender char(1),
+usstate char(2))
+DISTRIBUTED BY (id, gender, year, usstate)
+partition by list (gender)
+subpartition by range (year),
+subpartition by list (usstate)
+(
+  partition boys values ('M') 
+(
+subpartition jan01 start (date '2001-01-01') 
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan02 start (date '2002-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan03 start (date '2003-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan04 start (date '2004-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan05 start (date '2005-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+)
+)
+,
+  partition girls values ('F')
+(
+subpartition jan01 start (date '2001-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan02 start (date '2002-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan03 start (date '2003-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan04 start (date '2004-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+),
+subpartition jan05 start (date '2005-01-01')
+(
+subpartition mass values ('MA'),
+subpartition cali values ('CA'),
+subpartition ohio values ('OH')
+)
+)
+);
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys" for table "rank3"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls" for table "rank3"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan01" for table "rank3_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan02" for table "rank3_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan03" for table "rank3_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan04" for table "rank3_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan05" for table "rank3_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan01_3_prt_mass" for table "rank3_1_prt_boys_2_prt_jan01"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan01_3_prt_cali" for table "rank3_1_prt_boys_2_prt_jan01"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan01_3_prt_ohio" for table "rank3_1_prt_boys_2_prt_jan01"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan02_3_prt_mass" for table "rank3_1_prt_boys_2_prt_jan02"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan02_3_prt_cali" for table "rank3_1_prt_boys_2_prt_jan02"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan02_3_prt_ohio" for table "rank3_1_prt_boys_2_prt_jan02"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan03_3_prt_mass" for table "rank3_1_prt_boys_2_prt_jan03"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan03_3_prt_cali" for table "rank3_1_prt_boys_2_prt_jan03"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan03_3_prt_ohio" for table "rank3_1_prt_boys_2_prt_jan03"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan04_3_prt_mass" for table "rank3_1_prt_boys_2_prt_jan04"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan04_3_prt_cali" for table "rank3_1_prt_boys_2_prt_jan04"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan04_3_prt_ohio" for table "rank3_1_prt_boys_2_prt_jan04"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan05_3_prt_mass" for table "rank3_1_prt_boys_2_prt_jan05"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan05_3_prt_cali" for table "rank3_1_prt_boys_2_prt_jan05"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan05_3_prt_ohio" for table "rank3_1_prt_boys_2_prt_jan05"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan01" for table "rank3_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan02" for table "rank3_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan03" for table "rank3_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan04" for table "rank3_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan05" for table "rank3_1_prt_girls"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan01_3_prt_mass" for table "rank3_1_prt_girls_2_prt_jan01"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan01_3_prt_cali" for table "rank3_1_prt_girls_2_prt_jan01"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan01_3_prt_ohio" for table "rank3_1_prt_girls_2_prt_jan01"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan02_3_prt_mass" for table "rank3_1_prt_girls_2_prt_jan02"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan02_3_prt_cali" for table "rank3_1_prt_girls_2_prt_jan02"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan02_3_prt_ohio" for table "rank3_1_prt_girls_2_prt_jan02"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan03_3_prt_mass" for table "rank3_1_prt_girls_2_prt_jan03"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan03_3_prt_cali" for table "rank3_1_prt_girls_2_prt_jan03"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan03_3_prt_ohio" for table "rank3_1_prt_girls_2_prt_jan03"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan04_3_prt_mass" for table "rank3_1_prt_girls_2_prt_jan04"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan04_3_prt_cali" for table "rank3_1_prt_girls_2_prt_jan04"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan04_3_prt_ohio" for table "rank3_1_prt_girls_2_prt_jan04"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan05_3_prt_mass" for table "rank3_1_prt_girls_2_prt_jan05"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan05_3_prt_cali" for table "rank3_1_prt_girls_2_prt_jan05"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_girls_2_prt_jan05_3_prt_ohio" for table "rank3_1_prt_girls_2_prt_jan05"
 -- ok
 alter table rank2 truncate partition girls;
 NOTICE:  truncated partition "girls" for relation "rank2" and its children
@@ -4022,7 +4141,8 @@ ERROR:  partition "foo" of partition "cali" of partition "jan05" of partition "g
 alter table rank2 alter partition girls alter partition jan05 alter
 partition cali alter partition foo drop partition bar;
 ERROR:  partition "cali" of partition "jan05" of partition "girls" of relation "rank2" is not partitioned
--- works
+-- ADD PARTITION, with and without templates
+-- fails for rank2 (due to template), works for rank3
 alter table rank2
 add partition neuter values ('N')
     (subpartition foo
@@ -4030,85 +4150,173 @@ add partition neuter values ('N')
          every (interval '1 month')
             (subpartition bar values ('AZ')));
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter" for table "rank2"
+ERROR:  subpartition configuration conflicts with subpartition template
+alter table rank3
+add partition neuter values ('N')
+    (subpartition foo
+         start ('2001-01-01') end ('2002-01-01')
+         every (interval '1 month')
+            (subpartition bar values ('AZ')));
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_1" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_2" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_3" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_4" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_5" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_6" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_7" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_8" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_9" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_10" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_11" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_12" for table "rank2_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter" for table "rank3"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_1_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_1"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_1" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_2" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_3" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_4" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_5" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_6" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_7" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_8" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_9" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_10" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_11" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_12" for table "rank3_1_prt_neuter"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_2_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_2"
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_3_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_3"
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_4_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_4"
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_5_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_5"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_1_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_1"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_6_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_6"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_2_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_2"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_7_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_7"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_3_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_3"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_8_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_8"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_4_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_4"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_9_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_9"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_5_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_5"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_10_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_10"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_6_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_6"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_11_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_11"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_7_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_7"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_12_3_prt_bar" for table "rank2_1_prt_neuter_2_prt_foo_12"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_8_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_8"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
--- fail , no subpartition spec
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_9_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_9"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_10_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_10"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_11_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_11"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_12_3_prt_bar" for table "rank3_1_prt_neuter_2_prt_foo_12"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+-- fail , no subpartition spec for rank3, works for rank2
 alter table rank2 alter partition boys
 add partition jan00 start ('2000-01-01') end ('2001-01-01');
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "rank2_1_prt_boys_2_prt_jan00" for table "rank2_1_prt_boys"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_boys_2_prt_jan00_3_prt_mass" for table "rank2_1_prt_boys_2_prt_jan00"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_boys_2_prt_jan00_3_prt_cali" for table "rank2_1_prt_boys_2_prt_jan00"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_boys_2_prt_jan00_3_prt_ohio" for table "rank2_1_prt_boys_2_prt_jan00"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+alter table rank3 alter partition boys
+add partition jan00 start ('2000-01-01') end ('2001-01-01');
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan00" for table "rank3_1_prt_boys"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 ERROR:  no partitions specified at depth 3
--- work - create subpartition
+-- work - create subpartition for rank3, fail for rank2
 alter table rank2 alter partition boys
+add partition jan99 start ('1999-01-01') end ('2000-01-01')
+  (subpartition ariz values ('AZ'));
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+ERROR:  subpartition configuration conflicts with subpartition template
+alter table rank3 alter partition boys
 add partition jan00 start ('2000-01-01') end ('2001-01-01')
   (subpartition ariz values ('AZ'));
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_boys_2_prt_jan00" for table "rank2_1_prt_boys"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan00" for table "rank3_1_prt_boys"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_boys_2_prt_jan00_3_prt_ariz" for table "rank2_1_prt_boys_2_prt_jan00"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan00_3_prt_ariz" for table "rank3_1_prt_boys_2_prt_jan00"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+-- works for both -- adding leaf partition doesn't conflict with template
 alter table rank2 alter partition boys
 alter partition jan00 
 add partition haw values ('HI');
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "rank2_1_prt_boys_2_prt_jan00_3_prt_haw" for table "rank2_1_prt_boys_2_prt_jan00"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+alter table rank3 alter partition boys
+alter partition jan00 
+add partition haw values ('HI');
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_boys_2_prt_jan00_3_prt_haw" for table "rank3_1_prt_boys_2_prt_jan00"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 alter table rank2 drop partition neuter;
-NOTICE:  dropped partition "neuter" for relation "rank2" and its children
--- fail , no subpartition spec
+ERROR:  partition "neuter" of relation "rank2" does not exist
+alter table rank3 drop partition neuter;
+NOTICE:  dropped partition "neuter" for relation "rank3" and its children
+-- fail , no subpartition spec for rank3, work for rank2
 alter table rank2
 add default partition neuter ;
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter" for table "rank2"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan01" for table "rank2_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan02" for table "rank2_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan03" for table "rank2_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan04" for table "rank2_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan05" for table "rank2_1_prt_neuter"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan01_3_prt_mass" for table "rank2_1_prt_neuter_2_prt_jan01"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan01_3_prt_cali" for table "rank2_1_prt_neuter_2_prt_jan01"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan01_3_prt_ohio" for table "rank2_1_prt_neuter_2_prt_jan01"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan01_3_prt_haw" for table "rank2_1_prt_neuter_2_prt_jan01"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan02_3_prt_mass" for table "rank2_1_prt_neuter_2_prt_jan02"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan02_3_prt_cali" for table "rank2_1_prt_neuter_2_prt_jan02"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan02_3_prt_ohio" for table "rank2_1_prt_neuter_2_prt_jan02"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan02_3_prt_haw" for table "rank2_1_prt_neuter_2_prt_jan02"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan03_3_prt_mass" for table "rank2_1_prt_neuter_2_prt_jan03"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan03_3_prt_cali" for table "rank2_1_prt_neuter_2_prt_jan03"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan03_3_prt_ohio" for table "rank2_1_prt_neuter_2_prt_jan03"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan03_3_prt_haw" for table "rank2_1_prt_neuter_2_prt_jan03"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan04_3_prt_mass" for table "rank2_1_prt_neuter_2_prt_jan04"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan04_3_prt_cali" for table "rank2_1_prt_neuter_2_prt_jan04"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan04_3_prt_ohio" for table "rank2_1_prt_neuter_2_prt_jan04"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan04_3_prt_haw" for table "rank2_1_prt_neuter_2_prt_jan04"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan05_3_prt_mass" for table "rank2_1_prt_neuter_2_prt_jan05"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan05_3_prt_cali" for table "rank2_1_prt_neuter_2_prt_jan05"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan05_3_prt_ohio" for table "rank2_1_prt_neuter_2_prt_jan05"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_jan05_3_prt_haw" for table "rank2_1_prt_neuter_2_prt_jan05"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+alter table rank3
+add default partition neuter ;
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter" for table "rank3"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 ERROR:  no partitions specified at depth 2
 alter table rank2
@@ -4117,64 +4325,88 @@ add default partition neuter
          start ('2001-01-01') end ('2002-01-01')
          every (interval '1 month')
             (subpartition ariz values ('AZ')));
+ERROR:  partition "neuter" of relation "rank2" already exists
+alter table rank3
+add default partition neuter 
+    (subpartition foo
+         start ('2001-01-01') end ('2002-01-01')
+         every (interval '1 month')
+            (subpartition ariz values ('AZ')));
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter" for table "rank2"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter" for table "rank3"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_1" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_2" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_3" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_4" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_5" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_6" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_7" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_8" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_9" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_10" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_11" for table "rank2_1_prt_neuter"
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_12" for table "rank2_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_1" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_2" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_3" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_4" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_5" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_6" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_7" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_8" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_9" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_10" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_11" for table "rank3_1_prt_neuter"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_12" for table "rank3_1_prt_neuter"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_1_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_1"
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_2_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_2"
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_3_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_3"
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_4_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_4"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_1_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_1"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_5_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_5"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_2_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_2"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_6_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_6"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_3_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_3"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_7_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_7"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_4_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_4"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_8_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_8"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_5_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_5"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_9_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_9"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_6_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_6"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_10_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_10"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_7_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_7"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_11_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_11"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_8_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_8"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_foo_12_3_prt_ariz" for table "rank2_1_prt_neuter_2_prt_foo_12"
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_9_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_9"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_10_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_10"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_11_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_11"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_foo_12_3_prt_ariz" for table "rank3_1_prt_neuter_2_prt_foo_12"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+-- fail
 alter table rank2
 alter default partition add default partition def1 
 (subpartition haw values ('HI'));
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+ERROR:  subpartition configuration conflicts with subpartition template
+-- fail
+alter table rank2
+alter default partition alter default partition 
+add default partition def2;
+ERROR:  DEFAULT partition of partition "neuter" of relation "rank2" does not exist
+-- work
+alter table rank2
+alter default partition add default partition def1;
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_def1" for table "rank2_1_prt_neuter"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_def1_3_prt_mass" for table "rank2_1_prt_neuter_2_prt_def1"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_def1_3_prt_cali" for table "rank2_1_prt_neuter_2_prt_def1"
+NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_def1_3_prt_ohio" for table "rank2_1_prt_neuter_2_prt_def1"
 NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_def1_3_prt_haw" for table "rank2_1_prt_neuter_2_prt_def1"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 alter table rank2
 alter default partition alter default partition 
@@ -4182,7 +4414,23 @@ add default partition def2;
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
 NOTICE:  CREATE TABLE will create partition "rank2_1_prt_neuter_2_prt_def1_3_prt_def2" for table "rank2_1_prt_neuter_2_prt_def1"
 NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
-drop table rank2 cascade;
+alter table rank3
+alter default partition add default partition def1 
+(subpartition haw values ('HI'));
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_def1" for table "rank3_1_prt_neuter"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_def1_3_prt_haw" for table "rank3_1_prt_neuter_2_prt_def1"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+alter table rank3
+alter default partition alter default partition 
+add default partition def2;
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+NOTICE:  CREATE TABLE will create partition "rank3_1_prt_neuter_2_prt_def1_3_prt_def2" for table "rank3_1_prt_neuter_2_prt_def1"
+NOTICE:  Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table
+drop table rank2 ;
+drop table rank3 ;
+-- **END** ALTER TABLE ALTER PARTITION tests
 -- Test casting
 create table f (i int) partition by range (i) (start(1::int) end(10::int));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'i' as the Greenplum Database data distribution key for this table.
@@ -4845,6 +5093,7 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 drop table partsupp;
 -- MPP-3379
 drop table if exists tmp_nation;
+NOTICE:  table "tmp_nation" does not exist, skipping
 CREATE TABLE tmp_nation (N_NATIONKEY INTEGER, N_NAME CHAR(25), N_REGIONKEY INTEGER, N_COMMENT VARCHAR(152))  
 partition by range (n_nationkey) 
  (

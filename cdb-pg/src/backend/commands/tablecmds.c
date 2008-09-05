@@ -8480,7 +8480,7 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 	PartitionSpec *spec;
 	Oid paroid = InvalidOid;
 	Oid rootrelid = InvalidOid;
-	ScanKeyData key[1];
+	ScanKeyData key[3];
 	HeapTuple tuple;
 	Relation rel;
 	SysScanDesc scan;
@@ -8677,15 +8677,46 @@ add_part_to_catalog(Oid relid, PartitionBy *pby, int *pMaxpartno)
 			Assert(HeapTupleIsValid(tuple));
 
 			parentoid = HeapTupleGetOid(tuple);
-			/* only do it for the first rule */
-			if (((Form_pg_partition_rule)GETSTRUCT(tuple))->parruleord == 1)
-				add_temp = true;
 
 			systable_endscan(scan);
 			heap_close(rel, NoLock);
 		}
 		else
 			add_temp = true;
+
+		/* we still might have to add template rules */
+		if (!add_temp && OidIsValid(parttemplid))
+		{
+			rel = heap_open(PartitionRuleRelationId, AccessShareLock);
+			ScanKeyInit(&key[0],
+						Anum_pg_partition_rule_paroid,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(parttemplid));
+
+			ScanKeyInit(&key[1],
+						Anum_pg_partition_rule_parparentrule,
+						BTEqualStrategyNumber, F_OIDEQ,
+						ObjectIdGetDatum(InvalidOid));
+
+			ScanKeyInit(&key[2],
+						Anum_pg_partition_rule_parruleord,
+						BTEqualStrategyNumber, F_OIDEQ,
+						Int16GetDatum(parruleord));
+
+			scan = systable_beginscan(rel,
+									  PartitionRuleParoidParentRuleOrdIndexId,
+									  true, SnapshotAny, 3, key);
+
+			tuple = systable_getnext(scan);
+			if (HeapTupleIsValid(tuple))
+				Assert(
+     ((Form_pg_partition_rule)GETSTRUCT(tuple))->parchildrelid == InvalidOid);
+			else
+				add_temp = true;
+
+			systable_endscan(scan);
+			heap_close(rel, AccessShareLock);
+		}
 
 		rule->paroid = paroid;
 		rule->parchildrelid = relid;
@@ -11046,7 +11077,7 @@ atpxPart_validate_spec(
 					el = NULL;
 
 					/* build the template (if it exists) */
-					if (0 && pNode_tmpl)
+					if (pNode_tmpl)
 					{
 						PartitionSpec *spec_tmpl = makeNode(PartitionSpec); 
 						ListCell *lc;			
@@ -11143,9 +11174,9 @@ atpxPart_validate_spec(
 						 * PartitionElem.
 						 */
 						
-						if (el_templ)
+/*						if (el_templ)
 							el_templ->subSpec = (Node *)spec_tmpl;
-						else
+							else */
 							pBy2->partSpec 	= (Node *)spec_tmpl;
 							
 						el_templ = el;
@@ -12162,95 +12193,6 @@ atpxPartAddList(AlteredTableInfo *tab,
 		} /* end for each cell */
 
 	}
-
-	if (0)
-	{
-		Query			*q;
-		ParseState 		*pstate    	   = make_parsestate(NULL);
-		List 			*extras_before = NIL,
-						*extras_after  = NIL;
-
-		ct->partitionBy = (Node *)pBy;
-
-
-		q = transformCreateStmt(pstate, ct,
-								&extras_before, &extras_after);
-
-
-		ProcessUtility(q->utilityStmt, NULL, dest, NULL);
-
-		ct = (CreateStmt *)q->utilityStmt;
-
-		q = linitial(extras_after);
-
-		ProcessUtility(q->utilityStmt, NULL, dest, NULL);
-
-	}
-
-	if (0 && !(pelem && pelem->isDefault))
-	{
-		ParseState 		*pstate    	 = make_parsestate(NULL);
-		ListCell 		*lc_anp   	 = NULL;
-		char  			*at_depth 	 = NULL;
-		ListCell 		*lc_rule  	 = NULL;
-		Node			*pConstraint = NULL;
-		char *newpartname = "foo";
-
-		/* get the check constraint (if not default) */
-
-		List *allRules =
-				make_partition_rules(pstate,
-									 &cxt, ct,
-									 (Node *)pBy, pelem, at_depth,
-									 newpartname, 
-									 1, 1,
-									 0, 0,
-									 &lc_anp, false);
-
-		if (allRules)
-			lc_rule = list_head(allRules);
-
-		if (lc_rule)
-			pConstraint = lfirst(lc_rule);
-
-		if (pConstraint)
-		{
-			StringInfoData   	 sid;
-			Constraint 			*pCon = makeNode(Constraint);
-			AlterTableStmt 		*ats  = makeNode(AlterTableStmt);
-			AlterTableCmd 		*atc  = makeNode(AlterTableCmd);
-
-			initStringInfo(&sid);
-
-			appendStringInfo(&sid, "%s_%s", newpartname, "check");
-			
-			pCon->contype = CONSTR_CHECK;
-			pCon->name = sid.data;
-			pCon->raw_expr = pConstraint;
-			pCon->cooked_expr = NULL;
-			pCon->indexspace = NULL;
-
-			pConstraint = (Node *)pCon;
-
-			atc->subtype = AT_AddConstraint;
-			atc->def = pConstraint;
-
-			ats->relation = makeRangeVar(
-					get_namespace_name(RelationGetNamespace(par_rel)),
-					newpartname);
-			ats->relkind = OBJECT_TABLE;
-			ats->cmds = list_make1(atc);
-
-			if (0)
-			ProcessUtility(
-					(Node *)ats,
-					NULL, dest, NULL);		
-		}
-
-	}
-
-	if (0)
-	add_part_to_catalog(ct->oidInfo.relOid, pBy, &maxpartno); 
 
 	if (par_prule && par_prule->topRule)
 		heap_close(par_rel, NoLock);
