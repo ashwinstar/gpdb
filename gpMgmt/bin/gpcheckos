@@ -937,8 +937,11 @@ try:
             elif sunosupdate == "5":
                 sunosconf = sunosconf10u5
             
-            conf.loads(sunosconf, overwrite=False)
-            matchConfig(session, conf)
+	    if sunosconf == None:
+		perr(p0.x_peer, 'Invalid Solaris version. Should be either Solaris 10 update 4 or update 5')
+	    else:
+            	conf.loads(sunosconf, overwrite=False)
+            	matchConfig(session, conf)
             print_fix()
     elif value == 'darwin' and match(session, key, 'darwin'):
         matchConfig(session, conf)
@@ -950,3 +953,5 @@ try:
 
 except KeyboardInterrupt:
     sys.exit('\nInterrupted ...')
+
+
