@@ -156,22 +156,10 @@ GetFileSegInfo(Relation parentrel, int segno)
 	
 	if (!HeapTupleIsValid(tuple))
 	{
-		/* 
-		 * TEMP HACK: we should really show an error here (the one commented out 
-		 * below) - however, until we have the fileseg manager process that
-		 * knows which fileseg entries exists for a given relation we just
-		 * return NULL and let the caller deal with it gracefully.
-		 */
 		index_endscan(aoscan);
 		index_close(pg_aoseg_idx, AccessShareLock);
 		heap_close(pg_aoseg_rel, AccessShareLock);
 		return NULL;
-				
-		/* ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("append-only table \"%s\" file segment \"%d\" entry " 
-						"does not exist.", RelationGetRelationName(parentrel),
-						segno)));*/
 	}	
 	
 	fsinfo = (FileSegInfo *) palloc(sizeof(FileSegInfo));
@@ -482,8 +470,6 @@ FileSegTotals *GetSegFilesTotals(Relation parentrel)
  * the QD gets out of sync as to the number of rows in this table for each
  * segment. An example for this scenario is gp_restore. running this function
  * puts the QD aoseg table back in sync.
- *
- * TODO: update the hash table as well.
  */
 PG_FUNCTION_INFO_V1(gp_update_ao_master_stats__);
 int
