@@ -1496,7 +1496,7 @@ static struct config_bool ConfigureNamesBool[] =
     	{"gp_enable_functions", PGC_USERSET, CLIENT_CONN_STATEMENT,
     		gettext_noop("Enable functions that must use the callback from the QE to QD."),
     		NULL,
-			GUC_GPDB_ADDOPT
+				GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
     	},
     	&gp_enable_functions,
     	false, NULL, NULL
@@ -1506,7 +1506,7 @@ static struct config_bool ConfigureNamesBool[] =
     	{"gp_use_snapshop_during_callback", PGC_USERSET, CLIENT_CONN_STATEMENT,
     		gettext_noop("For debugging.. If SPI should try to send snapshot on callback to QD."),
     		NULL,
-    		GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
+    		GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
     	},
     	&gp_use_snapshop_during_callback,
     	true, NULL, NULL
