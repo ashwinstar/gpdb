@@ -3050,10 +3050,10 @@ static struct config_real ConfigureNamesReal[] =
 		{"gp_process_memory_cutoff", PGC_USERSET, RESOURCES_MEM,
 			gettext_noop("Virtual memory limit per process, in kilobytes."),
 			gettext_noop("0 for no limit.  Process is terminated if limit is exceeded."),
-			GUC_UNIT_KB
+			GUC_UNIT_KB | GUC_NO_SHOW_ALL
 		},
 		&gp_process_memory_cutoff,
-		0, 0, SIZE_MAX/2/1024, cdbvars_assign_gp_process_memory_cutoff, NULL
+		0, 0, SIZE_MAX/2/1024, NULL, NULL, 
 	},
 
 	{

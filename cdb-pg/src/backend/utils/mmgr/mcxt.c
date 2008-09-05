@@ -53,10 +53,6 @@
 #endif
 
 
-static void
-MemoryContextCutoff(MemoryContext top, Size held, MemoryContext allocContext, Size allocBytes);
-
-
 /*****************************************************************************
  *	  GLOBAL MEMORY															 *
  *****************************************************************************/
@@ -368,11 +364,10 @@ MemoryContextIsEmpty(MemoryContext context)
 void
 MemoryContextNoteAlloc(MemoryContext context, Size nbytes)
 {
-    MemoryContext   allocContext = context;
     Size            held;
 
-	AssertArg(MemoryContextIsValid(context));
-	AssertArg(AllocSizeIsValid(nbytes));
+    AssertArg(MemoryContextIsValid(context));
+    AssertArg(AllocSizeIsValid(nbytes));
 
     for (;;)
     {
@@ -389,11 +384,6 @@ MemoryContextNoteAlloc(MemoryContext context, Size nbytes)
             break;
         context = context->parent;
     }
-
-    /* Limit total memory held by top memory context plus all descendants. */
-    if (context->maxBytesHeld > gp_process_memory_warning_bytes &&
-        gp_process_memory_warning_bytes > 0)
-        MemoryContextCutoff(context, held, allocContext, nbytes);
 }                               /* MemoryContextNoteAlloc */
 
 /*
@@ -425,91 +415,6 @@ MemoryContextNoteFree(MemoryContext context, Size nbytes)
         context = context->parent;
     }
 }                               /* MemoryContextNoteFree */
-
-/*
- * MemoryContextCutoff
- *		Called by MemoryContextNoteAlloc() to enforce limit on total allocation.
- */
-void
-MemoryContextCutoff(MemoryContext top, Size held, MemoryContext allocContext, Size allocBytes)
-{
-    /* Keep quiet while updating shared memory, handling errors, etc. */
-    if (CritSectionCount > 0 ||
-        InterruptHoldoffCount > 0 ||
-        elog_geterrcode() != 0 ||
-        !IsNormalProcessingMode())
-        return;
-
-    /*
-     * Terminate process in case of runaway memory usage.
-     */
-    if (held > gp_process_memory_cutoff_bytes)
-    {
-        const char *fate = _("process terminated");
-
-        if (Gp_role == GP_ROLE_EXECUTE)
-            fate = _("worker process terminated");
-        else if (Gp_role == GP_ROLE_DISPATCH)
-            fate = _("session terminated");
-
-        MemoryContextStats(top);
-        ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-                        errmsg("Virtual memory limit exceeded; "
-                               "%s.  "
-                               "%.0fkB in use.  "
-                               "gp_process_memory_cutoff=%.0fkB",
-                               fate,
-                               (double)held/1024,
-                               (double)gp_process_memory_cutoff_bytes/1024),
-                        errdetail("Last allocation was %.0f bytes in "
-                                  "context '%s'.  (%s:%d)",
-                                  (double)allocBytes,
-                                  allocContext->name,
-                                  CDB_MCXT_WHERE(allocContext)),
-                        errhint("This limit protects against runaway "
-                                "memory usage that could adversely affect "
-                                "other users and processes.")
-                ));
-    }
-
-    /*
-     * Warn if getting close to the memory limit.  After a warning,
-     * don't warn again until memory usage drops well below the
-     * warning level and then rises higher than before.
-     */
-    if (held > gp_process_memory_warning_bytes &&
-        top->localMinHeld < gp_process_memory_warning_bytes -
-            (gp_process_memory_cutoff_bytes - gp_process_memory_warning_bytes))
-    {
-        const char *who = _("Process");
-
-        if (Gp_role == GP_ROLE_EXECUTE)
-            who = _("Worker process");
-        else if (Gp_role == GP_ROLE_DISPATCH)
-            who = _("Server process");
-
-        MemoryContextStats(top);
-        ereport(WARNING, (errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-                          errmsg("%s has grown to "
-                                 "%.0f%% of its virtual memory limit.  "
-                                 "%.0fkB in use.  "
-                                 "gp_process_memory_cutoff=%.0fkB",
-                                 who,
-                                 (double)held / gp_process_memory_cutoff_bytes * 100,
-                                 (double)held / 1024,
-                                 (double)gp_process_memory_cutoff_bytes / 1024),
-                          errdetail("Last allocation was %.0f bytes in "
-                                    "context '%s'.  (%s:%d)",
-                                    (double)allocBytes,
-                                    allocContext->name,
-                                    CDB_MCXT_WHERE(allocContext))
-                ));
-
-        /* Raise low-water mark to current level. */
-        top->localMinHeld = held;
-    }
-}                               /* MemoryContextCutoff */
-
 
 /*
  * MemoryContextError
