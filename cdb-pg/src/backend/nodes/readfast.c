@@ -3100,7 +3100,7 @@ _readValue(const char ** str, NodeTag nt)
 	Node * result = NULL;
 	if (nt == T_Integer)
 	{
-		int ival;
+		long ival;
 		memcpy(&ival, *str, sizeof(long)); (*str)+=sizeof(long);
 		result = (Node *) makeInteger(ival);
 	}
