@@ -83,6 +83,7 @@ static void open_external_file(FileScanDesc scan);
 static int	file_getdata(URL_FILE *extfile, CopyState pstate, int maxread);
 static void file_scan_error_callback(void *arg);
 void readHeaderLine(CopyState pstate);
+static void close_external_file(FILE *dataSource, char *dataSourceName);
 
 
 /* ----------------------------------------------------------------
@@ -1147,7 +1148,7 @@ open_external_file(FileScanDesc scan)
     /*
      * Open the url with url_open().
      */
-    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R, &extvar,scan);
+    scan->fs_file = (FILE*) url_fopen(scan->fs_uri, PG_BINARY_R, &extvar,scan->fs_pstate);
 
 	if (scan->fs_file == NULL)
 	{
@@ -1171,7 +1172,7 @@ open_external_file(FileScanDesc scan)
 /*
  * close the external file.
  */
-void
+static void
 close_external_file(FILE *dataSource, char *dataSourceName)
 {
 	
@@ -1301,26 +1302,36 @@ void readHeaderLine(CopyState pstate)
  */
 void AtAbort_ExtTables(void)
 {
-    close_external_file(g_dataSource, g_dataSourceName);
+	close_external_file(g_dataSource, g_dataSourceName);
 }
 void
 gfile_printf_then_putc_newline(const char*format,...)
 {
-    char*a;
-    va_list va;
-    int i;
-    va_start(va,format);
-    i = vsnprintf(0,0,format,va);
-    va_end(va);
-    if (i < 0)
-	elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed.");
-    else if (!(a=palloc(i+1)))
-	elog(NOTICE,"gfile_printf_then_putc_newline palloc failed.");
-    else{
+	char*a;
+	va_list va;
+	int i;
 	va_start(va,format);
-	vsnprintf(a,i+1,format,va);
+	i = vsnprintf(0,0,format,va);
 	va_end(va);
-	elog(NOTICE,"%s",a);
+	if (i < 0)
+		elog(NOTICE,"gfile_printf_then_putc_newline vsnprintf failed.");
+	else if (!(a=palloc(i+1)))
+		elog(NOTICE,"gfile_printf_then_putc_newline palloc failed.");
+	else{
+		va_start(va,format);
+		vsnprintf(a,i+1,format,va);
+		va_end(va);
+		elog(NOTICE,"%s",a);
+		pfree(a);
+	}
+}
+void*
+fstream_malloc(size_t size)
+{
+	return palloc(size);
+}
+void
+fstream_free(void*a)
+{
 	pfree(a);
-    }
 }

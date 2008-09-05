@@ -12,7 +12,7 @@
 
 #include <curl/curl.h>
 
-#include "fstream/fstream.h"
+#include <fstream/fstream.h>
 #ifndef FALSE
 #define FALSE 0
 #endif
@@ -74,7 +74,7 @@ struct URL_FILE
 
 
 /* exported functions */
-URL_FILE *url_fopen(char *url, const char *operation, extvar_t* ev,FileScanDesc scan);
+URL_FILE *url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate);
 int url_fclose(URL_FILE *file);
 int url_feof(URL_FILE *file);
 int url_ferror(URL_FILE *file);
@@ -469,7 +469,7 @@ static int make_url(const char* url, extvar_t* ev, char* buf)
 
 
 URL_FILE *
-url_fopen(char *url, const char *operation, extvar_t* ev,FileScanDesc scan)
+url_fopen(char *url, const char *operation, extvar_t* ev,CopyState pstate)
 {
     /* this code checks for URLs or types in the 'url' and
      * basicly use the real fopen() for standard files, or
@@ -525,11 +525,11 @@ url_fopen(char *url, const char *operation, extvar_t* ev,FileScanDesc scan)
 		}
 
 		file->type = CFTYPE_FILE; /* marked as local FILE */
-		fo.is_csv = scan->fs_pstate->csv_mode;
-		fo.quote = scan->fs_pstate->quote?*scan->fs_pstate->quote:0;
-		fo.escape = scan->fs_pstate->escape?*scan->fs_pstate->escape:0;
-		fo.header = scan->fs_pstate->header_line;
-		scan->fs_pstate->header_line = 0;
+		fo.is_csv = pstate->csv_mode;
+		fo.quote = pstate->quote?*pstate->quote:0;
+		fo.escape = pstate->escape?*pstate->escape:0;
+		fo.header = pstate->header_line;
+		pstate->header_line = 0;
 		file->u.file.fp = fstream_open(path,&fo);
 		
 		/* couldn't open local file. return NULL to display proper error */
@@ -558,7 +558,7 @@ url_fopen(char *url, const char *operation, extvar_t* ev,FileScanDesc scan)
 			/* replace gpfdist:// with http:// */
 			file->u.curl.curl_url += 3;
 			memcpy(file->u.curl.curl_url, "http", 4);
-			scan->fs_pstate->header_line = 0;
+			pstate->header_line = 0;
 		}
 
         if (! (file->u.curl.handle = curl_easy_init()))
@@ -1071,6 +1071,7 @@ url_rewind(URL_FILE *file)
        
     case CFTYPE_EXEC:
     	/* we'll need to execute the command again */
+	assert(0); /* There is no way the following code is right. */
     	url_fclose(file);
 
     	/* most of these are null fo us. */

@@ -29,5 +29,7 @@ int fstream_rewind(fstream_t*fs);
 const char*fstream_get_error(fstream_t*fs);
 fstream_t*fstream_open(const char*path,const struct fstream_options*options);
 void fstream_close(fstream_t*fs);
+void*fstream_malloc(size_t size);
+void fstream_free(void*a);
 
 #endif

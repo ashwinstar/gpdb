@@ -6,23 +6,11 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <bzlib.h>
-#include <zlib.h>
 #ifdef WIN32
 #include <io.h>
 #else
 #define O_BINARY 0
 #endif
-
-struct gfile_t{
-    size_t(*read)(gfile_t*,void*,size_t);
-    int(*close)(gfile_t*);
-    union{
-	gzFile gz;
-	BZFILE*bz;
-	int txt;
-    }u;
-};
 
 /* TEXT */
 
@@ -112,49 +100,42 @@ gz_file_open(gfile_t*fd,const char*fpath)
     return 0;
 }
 
-gfile_t*
-gfile_open(const char*fpath)
+int
+gfile_open(gfile_t*fd,const char*fpath)
 {
     const char*s=strrchr(fpath,'.');
     struct stat sta;
-    gfile_t*fd;
-    int e=1;
-
     if (stat(fpath,&sta)){
 	gfile_printf_then_putc_newline("gfile stat %s failure",fpath);
-	return 0;
+	return 1;
     }
     if (S_ISDIR(sta.st_mode)){
 	gfile_printf_then_putc_newline("gfile %s is a directory",fpath);
-	return 0;
-    }
-    if (!(fd=malloc(sizeof*fd))){
-	gfile_printf_then_putc_newline("gfile out of memory");
-	return 0;
+	return 1;
     }
     memset(fd,0,sizeof*fd);
     if (s&&strcasecmp(s,".gz")==0)
-	e = gz_file_open(fd,fpath);
+	return gz_file_open(fd,fpath);
     else if (s&&strcasecmp(s,".bz2")==0)
-	e = bz_file_open(fd,fpath);
+	return bz_file_open(fd,fpath);
     else if (s&&strcasecmp(s,".z") == 0)
 	gfile_printf_then_putc_newline("gfile compression .z file is not supported");
     else if (s&&strcasecmp(s,".zip") == 0)
 	gfile_printf_then_putc_newline("gfile compression zip is not supported");
     else
-	e = txt_file_open(fd,fpath);
-    if (e){
-	free(fd);
-	return 0;
-    }
-    return fd;
+	return txt_file_open(fd,fpath);
+    return 1;
 }
 
 int
 gfile_close(gfile_t*fd)
 {
-    int e=fd->close(fd);
-    free(fd);
+    int e=1;
+    if (fd->close){
+	e = fd->close(fd);
+	fd->read = 0;
+	fd->close = 0;
+    }
     return e;
 }
 

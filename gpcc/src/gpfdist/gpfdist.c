@@ -1415,3 +1415,13 @@ gfile_printf_then_putc_newline(const char*format,...)
     va_end(va);
     putc('\n',stderr);
 }
+void*
+fstream_malloc(size_t size)
+{
+    return malloc(size);
+}
+void
+fstream_free(void*a)
+{
+    free(a);
+}

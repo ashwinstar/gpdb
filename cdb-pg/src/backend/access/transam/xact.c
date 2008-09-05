@@ -2708,6 +2708,7 @@ AbortTransaction(void)
 	 * do abort processing
 	 */
 	AfterTriggerEndXact(false);
+	AtAbort_ExtTables();
 	AtAbort_Portals();
 
 	/* Perform any Resource Scheduler abort procesing. */
@@ -2717,8 +2718,6 @@ AbortTransaction(void)
 	/* Perform any AO table abort processing */
 	if (Gp_role == GP_ROLE_DISPATCH)
 		AtAbort_AppendOnly();
-
-	AtAbort_ExtTables();
 
 	AtEOXact_LargeObject(false);	/* 'false' means it's abort */
 	AtAbort_Notify();
