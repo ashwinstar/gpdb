@@ -1789,7 +1789,7 @@ static struct config_bool ConfigureNamesBool[] =
 		{"gp_disable_tuple_hints", PGC_USERSET, DEVELOPER_OPTIONS,
 			gettext_noop("Specify if reader should set hint bits on tuples."),
 			NULL,
-			GUC_GPDB_ADDOPT
+			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE | GUC_GPDB_ADDOPT
 		},
 		&gp_disable_tuple_hints,
 		false, NULL, NULL
