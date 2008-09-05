@@ -22,6 +22,7 @@
 #include <arpa/inet.h>
 #include <sys/file.h>
 
+#include "access/fileam.h"
 #include "access/heapam.h"
 #include "access/appendonlyam.h"
 #include "access/aosegfiles.h"
@@ -1836,6 +1837,7 @@ copy_in_error_callback(void *arg)
 	 * won't corrupt our data in line_buf.
 	 */
 	StringInfoData copy_of_line_buf;
+	char buffer[20];
 				
 	initStringInfo(&copy_of_line_buf);
 	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
@@ -1889,8 +1891,8 @@ copy_in_error_callback(void *arg)
 		limit_printout_length(&cstate->attribute_buf);
 
 		if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
-			errcontext("COPY %s, line %lld, column %s",
-					   cstate->cur_relname,(long long)cstate->cur_lineno, cstate->cur_attname);
+			errcontext("COPY %s, line %s, column %s",
+					   cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->cur_attname);
 	}
 	else
 	{
@@ -1902,7 +1904,7 @@ copy_in_error_callback(void *arg)
 			limit_printout_length(&copy_of_line_buf);
 
 			if(!cstate->error_on_executor) /* don't print out context if error wasn't local */
-				errcontext("COPY %s, line %lld: \"%s\"", cstate->cur_relname,(long long)cstate->cur_lineno, copy_of_line_buf.data);
+				errcontext("COPY %s, line %s: \"%s\"", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), copy_of_line_buf.data);
 		}
 		else
 		{
@@ -1915,7 +1917,7 @@ copy_in_error_callback(void *arg)
 			 * and just report the line number.
 			 */
 			if(!cstate->error_on_executor)
-				errcontext("COPY %s, line %lld", cstate->cur_relname,(long long)cstate->cur_lineno);
+				errcontext("COPY %s, line %s", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno));
 		}
 	}	
 }

@@ -1240,6 +1240,7 @@ file_scan_error_callback(void *arg)
 	 * won't corrupt our data in line_buf.
 	 */
 	StringInfoData copy_of_line_buf;
+	char buffer[20];
 				
 	initStringInfo(&copy_of_line_buf);
 	appendStringInfoString(&copy_of_line_buf, cstate->line_buf.data);
@@ -1249,8 +1250,8 @@ file_scan_error_callback(void *arg)
 		/* error is relevant to a particular column */
 		limit_printout_length(&cstate->attribute_buf);
 
-		errcontext("External table %s, line %lld of %s, column %s",
-				   cstate->cur_relname,(long long)cstate->cur_lineno, cstate->filename,
+		errcontext("External table %s, line %s of %s, column %s",
+				   cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->filename,
 				   cstate->cur_attname);
 	}
 	else
@@ -1262,7 +1263,7 @@ file_scan_error_callback(void *arg)
 			truncateEol(&copy_of_line_buf, cstate->eol_type);
 			limit_printout_length(&copy_of_line_buf);
 
-			errcontext("External table %s, line %lld of %s: \"%s\"", cstate->cur_relname,(long long)cstate->cur_lineno, cstate->filename, copy_of_line_buf.data);
+			errcontext("External table %s, line %s of %s: \"%s\"", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->filename, copy_of_line_buf.data);
 		}
 		else
 		{
@@ -1274,7 +1275,7 @@ file_scan_error_callback(void *arg)
 			 * to regurgitate it without conversion.  So we have to punt
 			 * and just report the line number.
 			 */
-			errcontext("External table %s, line %lld of file %s", cstate->cur_relname,(long long)cstate->cur_lineno, cstate->filename);
+			errcontext("External table %s, line %s of file %s", cstate->cur_relname,linenumber_atoi(buffer,cstate->cur_lineno), cstate->filename);
 		}
 	}
 
@@ -1334,4 +1335,12 @@ void
 fstream_free(void*a)
 {
 	pfree(a);
+}
+char*
+linenumber_atoi(char buffer[20],int64_t linenumber)
+{
+	if (linenumber < 0)
+		return "N/A";
+	snprintf(buffer,20,"%lld",linenumber);
+	return buffer;
 }

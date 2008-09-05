@@ -29,5 +29,6 @@ extern void file_rescan(FileScanDesc scan);
 extern void file_endscan(FileScanDesc scan);
 extern HeapTuple file_getnext(FileScanDesc scan, ScanDirection direction);
 extern void AtAbort_ExtTables(void);
+char*linenumber_atoi(char buffer[20],int64_t linenumber);
 
 #endif   /* FILEAM_H */
