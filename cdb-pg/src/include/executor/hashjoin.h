@@ -16,7 +16,11 @@
 #define HASHJOIN_H
 
 #include "fmgr.h"
+#ifdef HJ_USE_BFZ
 #include "storage/bfz.h"
+#else
+#include "storage/buffile.h"
+#endif
 
 #include "cdb/cdbexplain.h"                 /* CdbExplain_Agg */
 
@@ -121,7 +125,11 @@ typedef struct HashJoinBatchSide
 	 * batch never has files, since we will process rather than dump
 	 * out any tuples of batch zero.
 	 */
+#ifdef HJ_USE_BFZ
 	bfz_t  *bfz; 	/* buffered temp file */
+#else
+	BufFile *bufFile; 
+#endif
 } HashJoinBatchSide;
 
 
