@@ -214,11 +214,13 @@ def calc_mirror_port_base(db):
 
 
 ################
-def chk_mirror_config(qes, mirrors):
+def chk_mirror_config(db, qes, mirrors):
     if len(qes) != len(mirrors):
         gpmlib.error('number of mirror segments must be equal to number of primary segments')
 
-    max_dbid = max([ qe['dbid'] for qe in qes ])
+    db.execute('select max(dbid) from gp_configuration')
+    row = db.read_tuple()
+    max_dbid = row[0]
     dbid = max_dbid + 1
     gp_prefix = gpmlib.get_gp_prefix(os.environ.get('MASTER_DATA_DIRECTORY'))
     if not gp_prefix:
@@ -566,7 +568,7 @@ try:
         else:
             mirrors = generate_mirrors(db, qes, multi_home)
 
-        (mirrors, new_addr) = chk_mirror_config(qes, mirrors)
+        (mirrors, new_addr) = chk_mirror_config(db, qes, mirrors)
 
     except pg8000.errors.InterfaceError, e:
         gpmlib.error(e)
