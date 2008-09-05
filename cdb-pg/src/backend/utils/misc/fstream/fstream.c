@@ -82,10 +82,11 @@ scan_rec(char*p,char*q,int one,fstream_t*fs)
     char*last_complete=0;
     int qc=fs->options.quote;
     int xc=fs->options.escape;
+    int64_t line_number=fs->line_number;
     while (p<q){
 	int ch=*p++;
 	if (ch=='\n')
-	    fs->line_number++;
+	    line_number++;
 	if (in_quote){
 	    if (!last_was_esc){
 		if (ch == qc) 
@@ -96,6 +97,7 @@ scan_rec(char*p,char*q,int one,fstream_t*fs)
 		last_was_esc = 0;
 	}else if (ch=='\n'){
 	    last_complete = p;
+	    fs->line_number = line_number;
 	    if (one)
 		break;
 	}else if (ch == qc)

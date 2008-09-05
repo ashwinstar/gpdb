@@ -46,8 +46,6 @@ struct curlctl_t {
 	int error, eof;				/* error & eof flags */
 	int gp_proto;
 	struct {
-		char* fname;	/* current filename */
-		int64 foff;		/* current file offset */
 		int   datalen;  /* remaining datablock length */
 	} block;
 };
@@ -730,9 +728,6 @@ url_fclose(URL_FILE *file)
 			/* free any allocated buffer space */
 			if (file->u.curl.buf.ptr)
 				free(file->u.curl.buf.ptr);
-			if (file->u.curl.block.fname)
-				free(file->u.curl.block.fname);
-
 			file->u.curl.gp_proto = 0;
 			file->u.curl.error = file->u.curl.eof = 0;
 			memset(&file->u.curl.buf, 0, sizeof(file->u.curl.buf));
@@ -830,7 +825,7 @@ static size_t gp_proto0_read(char* buf, int bufsz, URL_FILE* file)
 }
 
 
-static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file,CopyState pstate)
+static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file,CopyState pstate,char*buf2)
 {
 	char type;
 	int  n, len;
@@ -885,6 +880,10 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file,CopyState psta
 		}
 
 		if (type == 'F') {
+			if (buf != buf2){
+				curl->buf.bot -= 5;
+				return 0;
+			}
 			if (len > 256) {
 				elog(ERROR, "gpfdist error: filename too long (%d)", len);
 				return -1;
@@ -893,19 +892,15 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file,CopyState psta
 				elog(ERROR, "gpfdist error: stream ends suddenly");
 				return -1;
 			}
-			if (curl->block.fname) 
-				free(curl->block.fname);
-			curl->block.fname = malloc(len + 1);
-			if (! curl->block.fname) {
-				elog(ERROR, "out of memory");
-				return -1;
+
+			if (pstate->cdbsreh) {
+				char fname[257];
+				memcpy(fname,curl->buf.ptr+curl->buf.bot,len);
+				fname[len] = 0;
+				snprintf(pstate->cdbsreh->filename,sizeof pstate->cdbsreh->filename,"%s [%s]",pstate->filename,fname);
 			}
-			memcpy(curl->block.fname, curl->buf.ptr + curl->buf.bot, len);
-			curl->block.fname[len] = 0;
 			curl->buf.bot += len;
 			Assert(curl->buf.bot <= curl->buf.top);
-			curl->block.foff = 0;
-			//elog(NOTICE, "F %s", curl->block.fname);
 			continue;
 		}
 
@@ -918,11 +913,8 @@ static size_t gp_proto1_read(char* buf, int bufsz, URL_FILE* file,CopyState psta
 				elog(ERROR, "gpfdist error: stream ends suddenly");
 				return -1;
 			}
-			memcpy(&curl->block.foff, curl->buf.ptr + curl->buf.bot, len);
-			curl->block.foff = local_ntohll(curl->block.foff);
 			curl->buf.bot += 8;
 			Assert(curl->buf.bot <= curl->buf.top);
-			//elog(NOTICE, "O %d", (int) curl->block.foff);
 			continue;
 		}
 		if (type == 'L') {
@@ -990,26 +982,17 @@ static size_t curl_fread(char* buf, int bufsz, URL_FILE* file,CopyState pstate)
 		return 0;
 	}
 
-	for (n = 0; p < q; p += n) {
+	for (; p < q; p += n) {
 		if (gp_proto == 0)
 			n = gp_proto0_read(p, q - p, file);
-		else 
-			n = gp_proto1_read(p, q - p, file,pstate);
+		else
+			n = gp_proto1_read(p, q - p, file,pstate,buf);
 		
 		//elog(NOTICE, "curl_fread %d bytes", n);
 
 		if (n <= 0)
 			break;
 	}
-
-#if 0
-	{
-		FILE* fp = fopen("/tmp/t", "a");
-		fwrite(buf, 1, p - buf, fp);
-		fclose(fp);
-	}
-#endif
-
 	return p - buf;
 }
 
@@ -1088,9 +1071,6 @@ url_rewind(URL_FILE *file)
         /* ditch buffer - write will recreate - resets stream pos*/
         if (file->u.curl.buf.ptr)
             free(file->u.curl.buf.ptr);
-
-		if (file->u.curl.block.fname) 
-			free(file->u.curl.block.fname);
 
 		file->u.curl.gp_proto = 0;
 		file->u.curl.error = file->u.curl.eof = 0;

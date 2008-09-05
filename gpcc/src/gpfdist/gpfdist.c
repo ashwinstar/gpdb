@@ -109,7 +109,7 @@ static struct {
 #define local_ntohll(n)  ((((apr_uint64_t) ntohl(n)) << 32LL) | (apr_uint32_t) ntohl(((apr_uint64_t)n) >> 32LL))
 #endif
 
-#define TR(x)  while (!opt.V){printf x;break;}
+#define TR(x)  while (opt.V){printf x;break;}
 
 static void
 block_fill_header(block_t*b,const struct fstream_filename_and_offset*fos)
@@ -136,13 +136,14 @@ block_fill_header(block_t*b,const struct fstream_filename_and_offset*fos)
     p += 4;
     memcpy(p,&len8,8);
     p += 8;
+    TR(("O %d\n",(int)local_ntohll(len8)));
     *p++ = 'L';
     len8 = local_htonll(fos->line_number);
     memcpy(p,&len,4);
     p += 4;
     memcpy(p,&len8,8);
     p += 8;
-    TR(("O %d\n",(int)local_ntohll(len8)));
+    TR(("L %d\n",(int)local_ntohll(len8)));
     /* 'D' + len */
     *p++ = 'D';
     len = htonl(b->top-b->bot);
