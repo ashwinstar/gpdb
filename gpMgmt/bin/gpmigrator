@@ -11,7 +11,8 @@ Options:
 '''
 
 #============================================================
-import sys, os, optparse, tempfile, re, types, subprocess, traceback
+import sys, os, signal, subprocess, types
+import optparse, tempfile, re, traceback
 from datetime import date
 from time import localtime, strftime
 import urllib    # for passing strings across gpssh
@@ -23,6 +24,7 @@ try:
     import pg8000
 except ImportError, e:
     sys.exit('Error: unable to import module: ' + str(e))
+
 
 #============================================================
 def pretty_version(v):
@@ -102,6 +104,7 @@ class GPUpgrade:
         self.user      = None     # db admin user
         self.host      = None     # master hostname
         self.upgrade   = None     # True for upgrade, False for downgrade
+        self.logdir    = None
         self.logfile   = None
 
     # Upgrade information and state
@@ -119,6 +122,8 @@ class GPUpgrade:
         self.hosts      = []       # list of hosts
         self.segments   = []       # list of segments
         self.mirrors    = None     # list of mirrors
+        self.dbup       = None
+        self.interupted = False    # SIGINT recieved
 
     #------------------------------------------------------------
     def Setup(self):
@@ -211,7 +216,9 @@ class GPUpgrade:
             raise UpgradeError('Error parsing input: ' + str(e))
 
         if options.revert:
-            raise UpgradeError('Option -R to revert to pre-upgrade state is not available in this version')
+            raise UpgradeError(
+                'Option -R to revert to pre-upgrade state ' +
+                'is not available in this version')
 
         if options.directory:
             self.masterdir = options.directory
@@ -235,14 +242,15 @@ class GPUpgrade:
             self.debug = True
         if options.quiet:
             self.quiet = True
-        logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
         if options.logdir and os.path.isdir(options.logdir):
-            logdir = options.logdir
+            self.logdir = options.logdir
+        else:
+            self.logdir = os.path.join(os.environ['HOME'], 'gpAdminLogs')
 
 
         if self.cmd == 'MASTER':
             today = date.today().strftime('%Y%m%d')
-            logname = os.path.join(logdir, '%s_%s.log' % (EXECNAME, today))
+            logname = os.path.join(self.logdir, '%s_%s.log' % (EXECNAME, today))
             self.logfile = open(logname, 'a')
 
             self.pid = os.getpid()
@@ -269,20 +277,7 @@ class GPUpgrade:
         '''
         try:
             if self.cmd == 'MASTER':
-                if (self.oldenv and 'MASTER_DATA_DIRECTORY' in self.oldenv):
-                    olddir = self.oldenv['MASTER_DATA_DIRECTORY']
-                    if olddir and os.path.exists('%s/postmaster.pid' % olddir):
-                        self.Log('INFO', 
-                                 'Shutting down old Greenplum postmaster')
-                        subprocess.call('gpstop -a -m', env=self.oldenv, shell=True, 
-                                        stdout=self.logfile, stderr=self.logfile)
-                if (self.newenv and 'MASTER_DATA_DIRECTORY' in self.newenv):
-                    newdir = self.newenv['MASTER_DATA_DIRECTORY']
-                    if newdir and os.path.exists('%s/postmaster.pid' % newdir):
-                        self.Log('INFO', 
-                                 'Shutting down new Greenplum postmaster')
-                        subprocess.call('gpstop -a', env=self.newenv, shell=True, 
-                                        stdout=self.logfile, stderr=self.logfile)
+                self.Shutdown()
         except Exception, e:
             self.Log('FATAL', 'Cleanup failure: ' + str(e))
 
@@ -446,6 +441,7 @@ class GPUpgrade:
 
                 if (self.logfile):
                     self.logfile.write('%s%s\n' % (prefix, m))
+                    self.logfile.flush()
 
                 if type == 'FATAL' or not self.quiet:
                     sys.stderr.write('%s%s\n' % (prefix, m))
@@ -519,7 +515,7 @@ class GPUpgrade:
                                "%s/postmaster.pid" % olddir)
 
         if newdir and os.path.exists('%s/postmaster.pid' % newdir):
-            raise UpgradeError("Old Master instance process running: " +
+            raise UpgradeError("New Master instance process running: " +
                                "%s/postmaster.pid" % newdir)
         return True
 
@@ -543,33 +539,142 @@ class GPUpgrade:
         '''
         Starts up the specified database
         '''
+
+        if self.dbup:
+            raise UpgradeError('database already started')
+        self.dbup = [env, utility]
+
         if (env == self.oldenv):
             self.Log('INFO', 'Starting old Greenplum postmaster')
         else:
             self.Log('INFO', 'Starting new Greenplum postmaster')
-        if utility:
-            subprocess.call('gpstart -a -m', env=env, shell=True,
-                            stdout=self.logfile, stderr=self.logfile)
-        else:
-            subprocess.call('gpstart -a', env=env, shell=True,
-                            stdout=self.logfile, stderr=self.logfile)
+        try:
+
+            if utility:  cmd = 'gpstart -a -m'
+            else:        cmd = 'gpstart -a'
+            pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
+                                   env=env, shell=True,
+                                   stdout=self.logfile, 
+                                   stderr=self.logfile)
+
+            # Ignore interupt requests until startup is done
+            error = None
+            retcode = None
+            while retcode == None:
+                try: 
+                    retcode = pid.wait();
+
+                except KeyboardInterrupt, e:
+                    if not self.interupted:
+                        self.Log('FATAL', '***************************************')
+                        self.Log('FATAL', 'SIGINT-: Upgrade Aborted')
+                        self.Log('FATAL', '***************************************')
+                        self.Log('INFO',  'Performing clean abort')
+                        self.interupted = True
+                        error = e
+                    else:
+                        self.Log('INFO',  'SIGINT-: Still processing shutdown')
+
+            if retcode < 0:
+                raise UpgradeError("Startup terminated by signal");
+
+            today = date.today().strftime('%Y%m%d')
+            logname = os.path.join(self.logdir, 'gpstart_%s.log' % today)
+            if retcode == 1:
+                self.Log('WARN', '***************************************')
+                self.Log('WARN', 'Warnings generated starting server')
+                self.Log('WARN', 'Check %s for detailed warnings' % logname)
+                self.Log('WARN', '***************************************')
+            if retcode > 1:
+                self.Log('FATAL', '***************************************')
+                self.Log('FATAL', 'Startup failed with error code %d' % retcode)
+                self.Log('FATAL', 'Check %s for detailed warnings' % logname)
+                self.Log('FATAL', '***************************************')
+                raise UpgradeError('Startup failed')
+
+            # If we recieved an interupt, resignal it now that the startup is done
+            if error: 
+                raise error
+
+        except OSError, e:
+            self.Log('FATAL', str(e))
+            raise UpgradeError('Startup failed')
+
         self.CheckUp();
 
+
     #------------------------------------------------------------
-    def Shutdown(self, env, utility):
+    def Shutdown(self):
         '''
         Stops the specified database
         '''
+        if not self.dbup:
+            return
+        [env, utility] = self.dbup
+        self.dbup = None
+
+        dir = env['MASTER_DATA_DIRECTORY']
+        if not os.path.exists('%s/postmaster.pid' % dir):
+            self.Log('WARN', 
+                     'Shutdown skipped - %s/postmaster.pid not found' % dir)
+            return
+
         if (env == self.oldenv):
             self.Log('INFO', 'Shutting down old Greenplum postmaster')
         else:
             self.Log('INFO', 'Shutting down new Greenplum postmaster')
-        if utility:
-            subprocess.call('gpstop -a -m', env=env, shell=True,
-                            stdout=self.logfile, stderr=self.logfile)
-        else:
-            subprocess.call('gpstop -a', env=env, shell=True,
-                            stdout=self.logfile, stderr=self.logfile)
+
+        try:
+
+            if utility:  cmd = 'gpstop -a -m'
+            else:        cmd = 'gpstop -a'
+            pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
+                                   env=env, shell=True,
+                                   stdout=self.logfile, 
+                                   stderr=self.logfile)
+
+            # Ignore interupt requests until startup is done
+            error = None
+            retcode = None
+            while retcode == None:
+                try: 
+                    retcode = pid.wait();
+
+                except KeyboardInterrupt, e:
+                    if not self.interupted:
+                        self.Log('FATAL', '***************************************')
+                        self.Log('FATAL', 'SIGINT-: Upgrade Aborted')
+                        self.Log('FATAL', '***************************************')
+                        self.Log('INFO',  'Performing clean abort')
+                        self.interupted = True
+                        error = e
+                    else:
+                        self.Log('INFO',  'SIGINT-: Still processing shutdown')
+
+            if retcode < 0:
+                raise UpgradeError("Shutdown terminated by signal");
+            today = date.today().strftime('%Y%m%d')
+            logname = os.path.join(self.logdir, 'gpstop_%s.log' % today)
+            if retcode == 1:
+                self.Log('WARN', '***************************************')
+                self.Log('WARN', 'Warnings generated starting server')
+                self.Log('WARN', 'Check %s for detailed warnings' % logname)
+                self.Log('WARN', '***************************************')
+            if retcode > 1:
+                self.Log('FATAL', '***************************************')
+                self.Log('FATAL', 'Shutdown failed with error code %d' % retcode)
+                self.Log('FATAL', 'Check %s for detailed error' % logname)
+                self.Log('FATAL', '***************************************')
+                raise UpgradeError('Shutdown failed')
+
+            # If we recieved an interupt, resignal it now that the startup is done
+            if error: 
+                raise error
+
+        except OSError, e:
+            self.Log('FATAL', str(e))
+            raise UpgradeError('Shutdown failed')
+
         self.CheckDown();
 
     #------------------------------------------------------------
@@ -764,7 +869,7 @@ tool shipped with that release''')
                 if value == 'X':
                     raise UpgradeError('Upgrade Cancelled')
                 if value == 'R':
-                    self.Shutdown(self.oldenv, True)
+                    self.Shutdown()
                     self.Revert()
                 self.RemoveDirectories(force=True)
                 self.CreateDirectories()
@@ -929,6 +1034,8 @@ Cannot downgrade a database with append only tables     <<<<<
         # check multi-home and get the hostname
         h = {}
         for x in gp_config:
+            if x['content'] < 0: continue
+
             if x['hostname'] not in h:
                 cmd = 'ssh %s hostname' % x['hostname']
                 x['host'] = self.RunCmd(cmd)
@@ -960,12 +1067,14 @@ Cannot downgrade a database with append only tables     <<<<<
         self.config['ARRAY_NAME'] = 'Greenplum Upgrade'
 
         # HOSTS can be used to build a MACHINE_LIST_FILE
-        self.hosts = self.Select(
-        '''
-           SELECT DISTINCT hostname FROM gp_configuration
-           WHERE content >= 0
-        ''', port=self.masterport)
-        self.hosts = map(lambda(x): str(x), self.hosts)
+        # In 3.2 and later gpinitsystem can gracefully handle multiple
+        # hostnames per host, but in 3.1 we have to generate a config
+        # file with a single hostname per host - which means that we
+        # will lose any NIC information during downgrade.
+        if self.upgrade:
+            self.hosts = h.keys()
+        else:
+            self.hosts = list(set(h.values()))
 
         # Determine the SEG_PREFIX, use any old segment
         datadir = str(segments[0]['datadir'])
@@ -982,7 +1091,7 @@ Cannot downgrade a database with append only tables     <<<<<
         dirs = set();
         data_dir = ''
         for seg in segments:
-            if (seg['host'] != segments[0]['host']): 
+            if (h[seg['host']] != h[segments[0]['host']]): 
                 continue
             newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
             dirs.add(newdir)
@@ -1002,12 +1111,15 @@ Cannot downgrade a database with append only tables     <<<<<
         self.config['TRUSTED_SHELL'] = 'ssh'
 
         # CHECK_POINT_SEGMENTS 
-        self.config['CHECK_POINT_SEGMENTS'] = self.Select('show checkpoint_segments', port=self.masterport)[0]
+        self.config['CHECK_POINT_SEGMENTS'] = \
+            self.Select('show checkpoint_segments', port=self.masterport)[0]
 
         # ENCODING
-        self.config['ENCODING'] = self.Select('show client_encoding', port=self.masterport)[0]
+        self.config['ENCODING'] = \
+            self.Select('show client_encoding', port=self.masterport)[0]
 
         # Handle mirrors, if present
+        mirror_dirs = set();
         if self.mirrors:
 
             # MIRROR_PORT_BASE (??? this is wrong ???)
@@ -1016,10 +1128,17 @@ Cannot downgrade a database with append only tables     <<<<<
             # MIRROR_DATA_DIRECTORY, use any mirror
             mirror_data_dir = ''
             for seg in mirrors:
-                if (seg['host'] != mirrors[0]['host']): 
+                if (h[seg['host']] != h[mirrors[0]['host']]): 
                     continue
                 newdir = seg['datadir'][0:seg['datadir'].rindex('/')]
-                dirs.add(newdir)
+                if newdir in dirs:
+                    raise UpgradeError(
+'''
+Conflict between data directory and mirror data directory.
+     (%s)
+This issue must be resolved before upgrade can complete.
+''' % newdir)
+                mirror_dirs.add(newdir)
                 mirror_data_dir = mirror_data_dir + os.path.join(str(newdir), 'upgrade') + ' '
             self.config['MIRROR_DATA_DIRECTORY'] = mirror_data_dir
 
@@ -1028,7 +1147,7 @@ Cannot downgrade a database with append only tables     <<<<<
         # We collected a set of data and mirror directories, convert it back
         # to a string.
         self.datadirs = ''
-        for d in dirs:
+        for d in dirs | mirror_dirs:
             self.datadirs = '%s%s ' % (self.datadirs, d)
         self.datadirs = self.datadirs.strip()
 
@@ -1161,12 +1280,58 @@ Cannot downgrade a database with append only tables     <<<<<
         '''
         self.Log('INFO', 'Initializing upgraded cluster')
         self.CheckDown()
-        subprocess.call('gpinitsystem -a -c %s/gp_init_config' % self.tmpdir,
-                        env=self.newenv, shell=True,
-                        stdout=self.logfile, stderr=self.logfile)
+        try:
+            self.dbup = [self.newenv, False]
+            cmd = 'gpinitsystem -a -c %s/gp_init_config' % self.tmpdir
+            pid = subprocess.Popen(cmd, preexec_fn=os.setpgrp,
+                                   env=self.newenv, shell=True,
+                                   stdout=self.logfile, 
+                                   stderr=self.logfile)
+
+            # Ignore interupt requests until startup is done
+            error = None
+            retcode = None
+            while retcode == None:
+                try: 
+                    retcode = pid.wait();
+
+                except KeyboardInterrupt, e:
+                    if not self.interupted:
+                        self.Log('FATAL', '***************************************')
+                        self.Log('FATAL', 'SIGINT-: Upgrade Aborted')
+                        self.Log('FATAL', '***************************************')
+                        self.Log('INFO',  'Performing clean abort')
+                        self.interupted = True
+                        error = e
+                    else:
+                        self.Log('INFO',  'SIGINT-: Still processing shutdown')                    
+
+            # If we recieved an interupt, resignal it now that the startup is done
+            if error: 
+                raise error
+
+            if retcode < 0:
+                raise UpgradeError("gpinitsystem terminated by signal");
+            today = date.today().strftime('%Y%m%d')
+            logname = os.path.join(self.logdir, 'gpinitsystem_%s.log' % today)
+            if retcode == 1:
+                self.Log('WARN', '***************************************')
+                self.Log('WARN', 'Warnings generated initializing serever')
+                self.Log('WARN', 'Check %s for detailed warnings' % logname)
+                self.Log('WARN', '***************************************')
+            if retcode > 1:
+                self.Log('FATAL', '***************************************')
+                self.Log('FATAL', 'gpinitsystem failed with error code %d' % retcode)
+                self.Log('FATAL', 'Check %s for detailed error' % logname)
+                self.Log('FATAL', '***************************************')
+                raise UpgradeError('gpinitsystem failed')
+        except OSError, e:
+            self.Log('FATAL', str(e))
+            raise UpgradeError('gpinitsystem failed')
+
         self.Update('vacuum freeze', db='postgres', port=self.masterport)
         self.Update('vacuum freeze', db='template1', port=self.masterport)
-        self.Shutdown(u.newenv, False)
+        self.Shutdown()
 
     #------------------------------------------------------------
     def ResetXLogs(self):
@@ -1456,7 +1621,7 @@ Cannot downgrade a database with append only tables     <<<<<
             UPDATE gp_configuration 
               SET datadir=regexp_replace(datadir, 'upgrade/([^/]*)$', E'\\\\1')
          ''', port=self.masterport)
-        self.Shutdown(self.newenv, True)
+        self.Shutdown()
         self.newenv['MASTER_DATA_DIRECTORY'] = \
             self.oldenv['MASTER_DATA_DIRECTORY']
 
@@ -1487,59 +1652,57 @@ try:
 
         # Startup the old database in utility mode
         u.Startup(u.oldenv, False)
-        try:
 
-            # Get configuration and catalog information
-            # + Requires running old db on master host
-            u.ExtractInfo()
+        # Get configuration and catalog information
+        # + Requires running old db on master host
+        u.ExtractInfo()
 
-            # Check the catalog
-            # + Requires running db on all hosts
-            # + Requires configuration info collected in ExtractInfo
-            u.CheckCatalog(u.oldenv)
+        # Check the catalog
+        # + Requires running db on all hosts
+        # + Requires configuration info collected in ExtractInfo
+        u.CheckCatalog(u.oldenv)
 
-            # Create working directories on all hosts
-            # + Requires configuration info collected in ExtractInfo
-            # + Requires Execution on all hosts
-            u.CreateDirectories()
-            u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
+        # Create working directories on all hosts
+        # + Requires configuration info collected in ExtractInfo
+        # + Requires Execution on all hosts
+        u.CreateDirectories()
+        u.SetState('BOOTSTRAP: ' + u.RunCmd('date +%Y%m%d:%H:%M:%S'))
 
-            # Build up Source database OID/relfile mappings
-            # + Requires running old db on all hosts
-            # + Requires created directories so we can store the mapping file
-            # + Requires execution on all hosts
-            u.BuildMappings()
+        # Build up Source database OID/relfile mappings
+        # + Requires running old db on all hosts
+        # + Requires created directories so we can store the mapping file
+        # + Requires execution on all hosts
+        u.BuildMappings()
 
-            # Write configuration files for new db
-            # + Requires configuration info collected in ExtractInfo
-            # + Requires working directory on master node
-            u.GenerateConfigFiles()
+        # Write configuration files for new db
+        # + Requires configuration info collected in ExtractInfo
+        # + Requires working directory on master node
+        u.GenerateConfigFiles()
 
-            # Call pg_dumpall and put results in a file
-            # + Requires running old db
-            # + Requires working directory on master node
-            u.DumpSchema()
+        # Call pg_dumpall and put results in a file
+        # + Requires running old db
+        # + Requires working directory on master node
+        u.DumpSchema()
 
-        except Exception, e:
-            u.Log('FATAL', str(e))
-            raise e
-
-        finally:
-            # All information collected, shutdown old database
-            u.Shutdown(u.oldenv, False)
+        # All information collected, shutdown old database
+        u.Shutdown()
             
         # Initalize the new database
         # + Requires working directories on all nodes
         # + Requires generated configuration file
         u.InitNewDB()
-        try:
-            u.Startup(u.newenv, False)
-            u.ImportSchema()
-            u.CheckCatalog(u.newenv)
-            u.BuildMappings()
-        finally:
-            u.Shutdown(u.newenv, False)
+        u.Startup(u.newenv, False)
+        u.ImportSchema()
+        u.CheckCatalog(u.newenv)
+        u.BuildMappings()
+        u.Shutdown()
+
+        u.Startup(u.newenv, True)  # debug
+        u.Shutdown()               #
         u.ResetXLogs()
+        u.Startup(u.newenv, True)  # debug
+        u.Shutdown()               #
+
 
         # Remap oids for the new database
         # + Requires working directories on all hosts
@@ -1579,6 +1742,12 @@ try:
         # => Adjust new pg_configuration to point to DATA_DIR
         u.DeepLink('INSTALL')
         u.FixConfig()
+
+        # Validate upgraded instance
+        u.Log('INFO', 'Validating upgraded instance')
+        u.Startup(u.newenv, False)
+        u.CheckCatalog(u.newenv)
+        u.Shutdown()
         u.SetState('INSTALL VALID')
 
         # --------
@@ -1635,20 +1804,35 @@ To complete the environment configuration
         raise Exception('Unknown cmd: ' + str(u.cmd))
 
 # Any error that can happen
-except UpgradeError, e:
-    u.Log('FATAL', str(e))
-    u.Cleanup()
+except KeyboardInterrupt:
+    try:    u.Cleanup()
+    except Exception, e2: 
+        u.Log('FATAL', str(e2))
+    u.Log('FATAL', '***************************************')
+    u.Log('FATAL', '==  Upgrade interupted by user ==        <<<<< ')
+    u.Log('FATAL', '***************************************')
     sys.exit(1)
 
 except ConnectionError, e:
+    try:   u.Cleanup()
+    except Exception, e2: 
+        u.Log('FATAL', str(e2))
     u.Log('FATAL', str(e))
-    u.Cleanup()
+    sys.exit(1)
+
+except UpgradeError, e:
+    try:   u.Cleanup()
+    except Exception, e2: 
+        u.Log('FATAL', str(e2))
+    u.Log('FATAL', str(e))
     sys.exit(1)
 
 # Shouldn't get any of these, if they occur it is probably a bug in
 # the upgrader.
 except Exception, e:
+    try:   u.Cleanup()
+    except Exception, e2: 
+        u.Log('FATAL', str(e2))
     u.Log('FATAL', str(e))
-    u.Cleanup()
     sys.stderr.write(traceback.format_exc())
     sys.exit(1)
