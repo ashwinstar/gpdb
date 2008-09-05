@@ -221,11 +221,9 @@ static void usage(const char* msg)
     }
     
     if (fp) {
-	char buf[1000];
-	while (0 != fgets(buf, sizeof(buf) - 1, fp)) {
-	    buf[sizeof(buf)-1] = 0;
-	    puts(buf);
-	}
+	int i;
+	while ((i=getc(fp)) != EOF)
+	    putchar(i);
 	fclose(fp);
     }
     else {
