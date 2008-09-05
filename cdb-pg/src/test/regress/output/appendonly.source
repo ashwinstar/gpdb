@@ -251,6 +251,81 @@ SELECT count(*) FROM tenk_ao1 WHERE unique1 = 87654321; -- should be 5
      5
 (1 row)
 
+--------------------
+-- cursors (basic)
+--------------------
+BEGIN;
+DECLARE foo1 CURSOR FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4;
+DECLARE foo2 CURSOR FOR SELECT * FROM tenk_ao2 ORDER BY 1,2,3,4;
+FETCH 1 in foo1;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+FETCH 2 in foo2;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(2 rows)
+
+FETCH 1 in foo1;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+FETCH 2 in foo2;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(2 rows)
+
+CLOSE foo1;
+CLOSE foo2;
+END;
+BEGIN;
+DECLARE foo3 NO SCROLL CURSOR FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4;
+FETCH 1 FROM foo3;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+FETCH BACKWARD 1 FROM foo3; -- should fail
+ERROR:  backward scan is not supported in this version of Greenplum Database
+END;
+-- Cursors outside transaction blocks
+BEGIN;
+DECLARE foo4 CURSOR WITH HOLD FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4;
+FETCH FROM foo4;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+FETCH FROM foo4;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+COMMIT;
+FETCH FROM foo4;
+ unique1 | unique2 | two | four | ten | twenty | hundred | thousand | twothousand | fivethous | tenthous | odd | even | stringu1 | stringu2 | string4 
+---------+---------+-----+------+-----+--------+---------+----------+-------------+-----------+----------+-----+------+----------+----------+---------
+       0 |    9998 |   0 |    0 |   0 |      0 |       0 |        0 |           0 |         0 |        0 |   0 |    1 | AAAAAA   | OUOAAA   | OOOOxx
+(1 row)
+
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
+ name |                                 statement                                  | is_holdable | is_binary | is_scrollable 
+------+----------------------------------------------------------------------------+-------------+-----------+---------------
+ foo4 | DECLARE foo4 CURSOR WITH HOLD FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4; | t           | f         | f
+(1 row)
+
+CLOSE foo4;
 -- DROP
 DROP TABLE tenk_ao1;
 DROP TABLE tenk_ao2;

@@ -171,6 +171,37 @@ COMMIT;
 SELECT count(*) FROM tenk_ao1 WHERE unique1 = 12345678; -- should be 0
 SELECT count(*) FROM tenk_ao1 WHERE unique1 = 87654321; -- should be 5
 
+--------------------
+-- cursors (basic)
+--------------------
+BEGIN;
+
+DECLARE foo1 CURSOR FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4;
+DECLARE foo2 CURSOR FOR SELECT * FROM tenk_ao2 ORDER BY 1,2,3,4;
+FETCH 1 in foo1;
+FETCH 2 in foo2;
+FETCH 1 in foo1;
+FETCH 2 in foo2;
+CLOSE foo1;
+CLOSE foo2;
+END;
+
+BEGIN;
+DECLARE foo3 NO SCROLL CURSOR FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4;
+FETCH 1 FROM foo3;
+FETCH BACKWARD 1 FROM foo3; -- should fail
+END;
+
+-- Cursors outside transaction blocks
+BEGIN;
+DECLARE foo4 CURSOR WITH HOLD FOR SELECT * FROM tenk_ao1 ORDER BY 1,2,3,4;
+FETCH FROM foo4;
+FETCH FROM foo4;
+COMMIT;
+FETCH FROM foo4;
+SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors ORDER BY name;
+CLOSE foo4;
+
 -- DROP
 DROP TABLE tenk_ao1;
 DROP TABLE tenk_ao2;
