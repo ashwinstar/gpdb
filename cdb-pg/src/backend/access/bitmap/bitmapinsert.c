@@ -2339,7 +2339,7 @@ _bitmap_doinsert(Relation rel, ItemPointerData ht_ctid, Datum *attdata,
 		}
 	}
 
-	scanDesc = index_beginscan(lovHeap, lovIndex, GetTransactionSnapshot(),
+	scanDesc = index_beginscan(lovHeap, lovIndex, ActiveSnapshot,
 							   tupDesc->natts, scanKeys);
 
 	/* insert this new tuple into the bitmap index. */
