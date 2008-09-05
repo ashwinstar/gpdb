@@ -6170,6 +6170,18 @@ StartupXLOG(void)
 
 	ereport(LOG,
 			(errmsg("database system is ready")));
+	
+	{
+		char version[512];
+
+		strcpy(version, PG_VERSION_STR " compiled on " __DATE__ " " __TIME__);
+		
+#ifdef USE_ASSERT_CHECKING
+		strcat(version, " (with assert checking)");
+#endif 
+		ereport(LOG,(errmsg(version)));
+		
+	}
 
 	/* Shut down readFile facility, free space */
 	if (readFile >= 0)
