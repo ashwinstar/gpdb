@@ -66,22 +66,18 @@ UPDATE_PGHBA () {
 	STANDBY_IP_ADDRESS=(`$ECHO $IP_ADDRESS_LIST|$TR '~' ' '`)
 	for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
 	do
-		CHK_COUNT=`$TRUSTED_SHELL $QE_NAME "$GREP -c \"${STANDBY_IP}/32\" ${GP_BASE_DIR}/$PG_HBA"`
-		if [ $? -ne 0 ];then
-			$ECHO "FAILED:${QE_LINE}:CHK_COUNT" >> $PARALLEL_STATUS_FILE
-			ERROR_EXIT "Failed to obtain IP address check count $QE_NAME ${GP_BASE_DIR}/$PG_HBA" 2
-		fi
+		CHK_COUNT=`$TRUSTED_SHELL $QE_NAME "$GREP -c \"${STANDBY_IP}/32\" ${QE_BASE_DIR}/$PG_HBA"`
 		if [ $CHK_COUNT -eq 0 ];then
-			LOG_MSG "[INFO][$INST_COUNT]:-Adding standby IP address $QE_NAME ${GP_BASE_DIR}/$PG_HBA file"
-			$TRUSTED_SHELL $QE_NAME "$ECHO host  all     $USER     ${STANDBY_IP}/32        trust >> ${GP_BASE_DIR}/$PG_HBA"
+			LOG_MSG "[INFO][$INST_COUNT]:-Adding standby IP address $QE_NAME ${QE_BASE_DIR}/$PG_HBA file" 1
+			$TRUSTED_SHELL $QE_NAME "$ECHO host  all     all     ${STANDBY_IP}/32        trust >> ${QE_BASE_DIR}/$PG_HBA"
 			if [ $? -ne 0 ];then
 				$ECHO "FAILED:${QE_LINE}:ADD_IP" >> $PARALLEL_STATUS_FILE
-				ERROR_EXIT "Failed to add standby IP address $QE_NAME ${GP_BASE_DIR}/$PG_HBA file" 2
+				ERROR_EXIT "Failed to add standby IP address $QE_NAME ${QE_BASE_DIR}/$PG_HBA file" 2
 			else
-				LOG_MSG "[INFO][$INST_COUNT]:-Added standby IP address $QE_NAME ${GP_BASE_DIR}/$PG_HBA file"
+				LOG_MSG "[INFO][$INST_COUNT]:-Added standby IP address $QE_NAME ${QE_BASE_DIR}/$PG_HBA file" 1
 			fi
 		else
-			LOG_MSG "[INFO][$INST_COUNT]:-IP address $QE_NAME ${GP_BASE_DIR}/$PG_HBA already there, no update required"
+			LOG_MSG "[INFO][$INST_COUNT]:-IP address $QE_NAME ${QE_BASE_DIR}/$PG_HBA already there, no update required" 1
 		fi
 	done
 	LOG_MSG "[INFO][$INST_COUNT]:-End Function $FUNCNAME"
@@ -105,7 +101,7 @@ INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
 LOG_FILE=$1;shift		#Central utility log file
 QE_NAME=$1;shift
 QE_BASE_DIR=$1;shift
-IP_ADDRESSES=$1;shift
+IP_ADDRESS_LIST=$1;shift
 PARALLEL_STATUS_FILE=$1;shift
 QE_LINE=${QE_NAME}:${QE_BASE_DIR}
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
