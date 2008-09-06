@@ -66,6 +66,10 @@ GPSEGSTART=$WORKDIR/lib/gpsegstart.sh
 WAIT_LIMIT=1800
 DISPLAY_ERROR=0
 INVALID_START_COUNT=0
+unset RESTRICTED_MODE
+unset RESTRICTED_MODE_CONNS
+unset RESTRICTED_MODE_INFO
+unset MAX_CONNECTIONS
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -104,6 +108,7 @@ USAGE () {
 		$ECHO "      -e, switch segment instance log files, moves current logfile to <log file>.YYYYMMDD"
 		$ECHO "          not applicable in master maintenance mode startup"
 		$ECHO "      -B, <number> run this batch of start segment processes in parallel [default $BATCH_DEFAULT]"
+		$ECHO "      -R, start in restricted mode. Only users with superuser privilege are allowed to connect."
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -255,6 +260,9 @@ GET_DETAILS () {
 		LC_NUMERIC=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show lc_numeric;"`	
 		ERROR_CHK $? "obtain lc_numeric info" 1
 		LOG_MSG "[INFO]:-Master lc_numeric=$LC_NUMERIC"
+		MAX_CONNECTIONS=`${EXPORT_LIB_PATH};env PGOPTIONS="-c gp_session_role=utility" $PSQL -q -p $MASTER_PORT "$QD_DBNAME" -A -t -c"show max_connections;"`
+		ERROR_CHK $? "obtain max_connections info" 1
+		LOG_MSG "[INFO]:-Master max_connections=$MAX_CONNECTIONS"
 		#Shutdown the QD database
 		LOG_MSG "[INFO]:-Shutting down Master instance" 1
 		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE	 >/dev/null 2>&1
@@ -498,7 +506,12 @@ PROCESS_STARTUP () {
 	fi
 	CHK_START_ERROR_TXT
 	$RM -f $PARALLEL_STATUS_FILE
-	LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY" 1
+	if [ x"" != x"$RESTRICTED_MODE" ]; then
+	    # configure all connections to be reserved to allow only super user access
+	    RESTRICTED_MODE_CONNS="--superuser_reserved_connections=$MAX_CONNECTIONS"
+	    RESTRICTED_MODE_INFO="in RESTRICTED mode"
+	fi
+	LOG_MSG "[INFO]:-Starting Master instance $QD_NAME directory $MASTER_DATA_DIRECTORY $RESTRICTED_MODE_INFO" 1
 	export PGPORT=${MASTER_PORT}
 	export PGPATH=${APP_PATH}
 	if [ x"" == x"$START_SYNC" ];then
@@ -506,7 +519,7 @@ PROCESS_STARTUP () {
 	else 
 	    MASTER_MIRRORING_ADMINISTRATOR_DISABLE=""
 	fi
-	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "$MASTER_MIRRORING_ADMINISTRATOR_DISABLE -i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
+	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "$RESTRICTED_MODE_CONNS $MASTER_MIRRORING_ADMINISTRATOR_DISABLE -i -E -p $MASTER_PORT " start -m $MODE  > /dev/null 2>&1
 	ERROR_CHK $? "startup Master instance" 2
 	RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 	RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
@@ -531,7 +544,7 @@ PROCESS_STARTUP () {
 #******************************************************************************
 trap '$RM -f $PARALLEL_STATUS_FILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'aqysmbl:d:e!DB:" opt;do
+		while getopts ":vt'?'aqysmbl:d:e!DB:R" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -549,6 +562,7 @@ if [ $# -ne 0 ]; then
 						! ) SCRIPT_USAGE=1
 						    USAGE ;;
 						D ) DEBUG_LEVEL=1 ;;
+						R ) RESTRICTED_MODE=1;;
 						* ) USAGE ;;
 				esac
 		done	

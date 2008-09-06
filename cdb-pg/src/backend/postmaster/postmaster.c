@@ -795,7 +795,7 @@ PostmasterMain(int argc, char *argv[])
 		ExitPostmaster(1);
 	}
 
-	if (ReservedBackends >= MaxBackends)
+	if (ReservedBackends > MaxBackends)
 	{
 		write_stderr("%s: superuser_reserved_connections must be less than max_connections\n", progname);
 		ExitPostmaster(1);
