@@ -229,18 +229,15 @@ static void usage(const char* msg)
     }
     else {
 	fprintf(stderr, "gpfdist -- file distribution web server\n\n");
-	fprintf(stderr, "usage: gpfdist [-?v] [-p port] [-d dir] [-q qchar] [-x xchar] [-h] [-l logfn]\n\n");
+	fprintf(stderr, "usage: gpfdist [-?] [--version] [-v] [-V] [-p port] [-d dir] [-l logfn]\n\n");
 	fprintf(stderr, 
 		"        -?        : print this screen\n"
 		"        -v        : verbose mode\n"
-		"        -p port   : which port to serve HTTP. Default to 8080.\n"
-		"        -d dir    : serve files under the specified directory.\n"
-		"                    Default to '.'\n"
-		"        -q qchar  : deprecated and ignored\n"
-		"        -x xchar  : deprecated and ignored\n"
-		"        -h        : deprecated and ignored\n"
+		"        -V        : more verbose\n"
+		"        -p port   : port to serve HTTP, default is 8080\n"
+		"        -d dir    : serve files under the specified directory,  default is '.'\n"
 		"        -l logfn  : log filename\n"
-		"        --version : print version information.\n\n");
+		"        --version : print version information\n\n");
     }
 
     if (msg)
