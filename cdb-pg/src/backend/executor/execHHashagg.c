@@ -1677,7 +1677,7 @@ reCalcNumberBatches(HashAggTable *hashtable, SpillFile *spill_file)
 	    nbatches = 4;
 
 	/* Set the number batches to the power of 2 */
-	nbatches = (((unsigned)1) << (unsigned)ceil((unsigned)(log(nbatches) / log(2))));
+	nbatches = (((unsigned)1) << (unsigned)ceil(log(nbatches) / log(2)));
 
 	/*
 	 * We limit the number of batches to the default one.
