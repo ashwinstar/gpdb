@@ -189,8 +189,8 @@
 #enable_tidscan = on
 
 #enable_hashjoin = on
-enable_mergejoin = off
-enable_nestloop = off
+#enable_mergejoin = off
+#enable_nestloop = off
 #gp_enable_adaptive_nestloop = on
 
 #gp_enable_multiphase_agg = on
@@ -199,8 +199,8 @@ enable_nestloop = off
 #gp_enable_agg_distinct_pruning = on
 #enable_groupagg = on
 #enable_hashagg = on
-gp_selectivity_damping_for_scans = on
-gp_selectivity_damping_for_joins = off
+#gp_selectivity_damping_for_scans = on
+#gp_selectivity_damping_for_joins = off
 
 
 #gp_enable_sequential_window_plans = off

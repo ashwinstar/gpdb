@@ -569,7 +569,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_nestloop,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	{
 		{"enable_mergejoin", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -577,7 +577,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_mergejoin,
-		true, NULL, NULL
+		false, NULL, NULL
 	},
 	{
 		{"enable_hashjoin", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -1371,7 +1371,7 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE | GUC_NO_SHOW_ALL
   		},
 		&gp_selectivity_damping_for_scans,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{
