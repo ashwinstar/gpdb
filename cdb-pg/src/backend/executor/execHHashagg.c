@@ -993,10 +993,8 @@ getSpillFile(SpillSet *set, int file_no, int *p_alloc_size)
 		spill_file->file_info = (BatchFileInfo *)palloc(sizeof(BatchFileInfo));
 		spill_file->file_info->total_bytes = 0;
 		spill_file->file_info->ntuples = 0;
-		spill_file->file_info->bfz = palloc0(sizeof(bfz_t));
 		spill_file->file_info->bfz =
-			bfz_create(spill_file->file_info->bfz, tmpprefix,
-					   gp_hashagg_compress_spill_files);
+			bfz_create(tmpprefix, gp_hashagg_compress_spill_files);
 
 		elog(HHA_MSG_LVL, "HashAgg: create %d level batch file %d",
 			 set->level, file_no);
@@ -1064,7 +1062,6 @@ closeSpillFile(SpillSet *spill_set, int file_no)
 		spill_file->file_info->bfz != NULL)
 	{
 		bfz_close(spill_file->file_info->bfz, true);
-		pfree(spill_file->file_info->bfz);
 		spill_file->file_info->bfz = NULL;
 		freedspace += (BATCHFILE_METADATA - sizeof(BatchFileInfo));
 		

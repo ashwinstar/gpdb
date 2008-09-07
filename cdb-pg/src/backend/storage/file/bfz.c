@@ -7,6 +7,8 @@
 #include <miscadmin.h>
 #include <access/xact.h>
 
+#include "utils/memutils.h"   /* For MemoryContext stuff */
+
 static const struct{
     const char*name[6];
     void(*init)(bfz_t*thiz);
@@ -17,6 +19,9 @@ static const struct{
     {{"threaded_zlib","true","yes","on","1",0},bfz_threaded_zlib_init},
     {{0}}
 };
+
+static bfz_t*
+bfz_create_internal(bfz_t *thiz, const char* filePrefix, int compress);
 
 const char*
 bfz_compression_to_string(int compress)
@@ -42,8 +47,28 @@ bfz_close_callback(XactEvent event,void*arg)
     bfz_close(arg, false);
 }
 
-bfz_t*
-bfz_create(bfz_t*thiz,const char*filePrefix,int compress)
+bfz_t *
+bfz_create(const char* filePrefix, int compress)
+{
+	bfz_t *thiz;
+	MemoryContext oldcxt;
+	
+	/*
+	 * Create bfz_t in the TopMemoryContext since this memory context
+	 * is still available when calling the transaction callback at the
+	 * time when the transaction aborts. See MPP-3396.
+	 */
+	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+	thiz = palloc0(sizeof(bfz_t));
+
+	bfz_create_internal(thiz, filePrefix, compress);
+	MemoryContextSwitchTo(oldcxt);
+
+	return thiz;
+}
+
+static bfz_t*
+bfz_create_internal(bfz_t *thiz, const char* filePrefix, int compress)
 {
     char name[MAXPGPATH];
     struct bfz_freeable_stuff*fs;
@@ -80,6 +105,7 @@ bfz_close(bfz_t*thiz, bool unreg)
 	thiz->fd = -1;
     }
     thiz->mode = BFZ_MODE_CLOSED;
+	pfree(thiz);
 }
 
 void

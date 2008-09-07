@@ -40,7 +40,6 @@ struct BatchFileInfo
 {
 	long ntuples;
 	bfz_t* file;
-	bfz_t  bfz;
 };
 
 typedef struct BatchTupleHeader BatchTupleHeader;
@@ -1314,7 +1313,7 @@ batch_put_tuple(AggState *aggstate,
 		int compress = gp_hashagg_compress_spill_files;
 		snprintf(tmpprefix, 50, "slice%d_hashagg", currentSliceId);
 
-		file = bfz_create(&info->bfz, tmpprefix, compress);
+		file = bfz_create(tmpprefix, compress);
 		info->file = file;
 		info->ntuples = 0L;
 

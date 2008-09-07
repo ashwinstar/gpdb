@@ -726,7 +726,6 @@ start_over:
 		if (batch->outerside.bfz)
 		{
 			bfz_close(batch->outerside.bfz, true);
-			pfree(batch->outerside.bfz);
 		}
 		batch->outerside.bfz = NULL;
 #else
@@ -795,14 +794,12 @@ start_over:
 		if (batch->innerside.bfz)
 		{
 			bfz_close(batch->innerside.bfz, true);
-			pfree(batch->innerside.bfz);
 		}
 		batch->innerside.bfz = NULL;
 
 		if (batch->outerside.bfz)
 		{
 			bfz_close(batch->outerside.bfz, true);
-			pfree(batch->outerside.bfz);
 		}
 		batch->outerside.bfz = NULL;
 #else
@@ -867,7 +864,6 @@ start_over:
 	     */
 #ifdef HJ_USE_BFZ
 	    bfz_close(batch->innerside.bfz, true);
-	    pfree(batch->innerside.bfz);
 	    batch->innerside.bfz = NULL;
 #else
 	    BufFileClose(batch->innerside.bufFile);
@@ -933,8 +929,7 @@ ExecHashJoinSaveTuple(PlanState *ps, MemTuple tuple, uint32 hashvalue,
 		snprintf(tmpprefix, 50, "HashJoin_Slice%d", currentSliceId);
 		
 #ifdef HJ_USE_BFZ
-		batchside->bfz = palloc(sizeof(bfz_t));
-		batchside->bfz = bfz_create(batchside->bfz, tmpprefix, gp_hashagg_compress_spill_files);
+		batchside->bfz = bfz_create(tmpprefix, gp_hashagg_compress_spill_files);
 #else
 		batchside->bufFile = BufFileCreateTemp(tmpprefix, false);
 #endif
