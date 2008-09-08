@@ -1255,15 +1255,15 @@ def stop_database(failed_instance_array):
         # stop the failed segment
         for failed_qe in failed_instance_array:
             gpmlib.log_info('Forcing shutdown of %s for port=%d' % (failed_qe['hostname'], failed_qe['port']))
-            (ok, out) = gpmlib.run('%s "LD_LIBRARY_PATH=%s && export LD_LIBRARY_PATH && env PGOPTIONS=\\"-c gp_session_role\\" %s -W stop -D %s -m immediate -l %s.log 2> /dev/null"' %
-                                   (gplib.ssh_prefix(host=failed_qe['hostname']),
-                                    os.environ.get('LD_LIBRARY_PATH'),
-                                    os.path.join(os.environ.get('GPHOME'), 'bin/pg_ctl'),
-                                    failed_qe['datadir'],
-                                    failed_qe['datadir']))
-            if not ok:
-                gpmlib.log_warn('Issue with force shutdown of %s on %s' % (failed_qe['datadir'], failed_qe['hostname']))
-            gpmlib.log_info('Checking for postmaster proces on %s port %d' % (failed_qe['hostname'], failed_qe['port']))
+#            (ok, out) = gpmlib.run('%s "LD_LIBRARY_PATH=%s && export LD_LIBRARY_PATH && env PGOPTIONS=\\"-c gp_session_role\\" %s -W stop -D %s -m immediate -l %s.log 2> /dev/null"' %
+#                                   (gplib.ssh_prefix(host=failed_qe['hostname']),
+#                                    os.environ.get('LD_LIBRARY_PATH'),
+#                                    os.path.join(os.environ.get('GPHOME'), 'bin/pg_ctl'),
+#                                    failed_qe['datadir'],
+#                                    failed_qe['datadir']))
+#            if not ok:
+#                gpmlib.log_warn('Issue with force shutdown of %s on %s' % (failed_qe['datadir'], failed_qe['hostname']))
+            gpmlib.log_info('Checking for postmaster process on %s port %d' % (failed_qe['hostname'], failed_qe['port']))
         
             (ok, pid) = gpmlib.postgres_active(failed_qe['port'], failed_qe['hostname'])
             if ok:
