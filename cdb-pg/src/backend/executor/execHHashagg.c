@@ -1175,6 +1175,7 @@ spill_hash_table(AggState *aggstate)
 	int bucket_no;
 	int file_no;
 	MemoryContext oldcxt;
+	uint64 old_num_spill_groups = hashtable->num_spill_groups;
 
 	spill_set = obtain_spill_set(hashtable);
 	
@@ -1185,36 +1186,39 @@ spill_hash_table(AggState *aggstate)
 
 	Assert(hashtable->nbuckets > spill_set->num_spill_files);
 
-
-	/* Write each spill file */
-	for (file_no = 0; file_no < spill_set->num_spill_files; file_no++)
+	/*
+	 * Write each spill file. Write the last spill file first, since it will
+	 * be processed the last.
+	 */
+	for (file_no = spill_set->num_spill_files - 1; file_no >= 0; file_no--)
 	{
+		int alloc_size = 0;
+
+		spill_file = getSpillFile(spill_set, file_no, &alloc_size);
+		Assert(spill_file != NULL);
+			
+		hashtable->mem_for_metadata += alloc_size;
+		if (alloc_size > 0)
+		{
+#ifdef USE_ASSERT_CHECKING
+			SANITY_CHECK_METADATA_SIZE(hashtable);
+#endif
+			hashtable->num_batches++;
+			
+			Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLBATCH);
+			Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BATCH);
+			
+			CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
+		}
+
 		for (bucket_no = file_no; bucket_no < hashtable->nbuckets;
 			 bucket_no += spill_set->num_spill_files)
 		{
 			HashAggEntry *entry = hashtable->buckets[bucket_no];
-			int alloc_size = 0;
 			
 			/* Ignore empty chains. */
 			if (entry == NULL) continue;
 			
-			spill_file = getSpillFile(spill_set, file_no, &alloc_size);
-			Assert(spill_file != NULL);
-			
-			hashtable->mem_for_metadata += alloc_size;
-			if (alloc_size > 0)
-			{
-#ifdef USE_ASSERT_CHECKING
-				SANITY_CHECK_METADATA_SIZE(hashtable);
-#endif
-				hashtable->num_batches++;
-
-				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_SPILLBATCH);
-				Gpmon_M_Incr(GpmonPktFromAggState(aggstate), GPMON_AGG_CURRSPILLPASS_BATCH);
-
-				CheckSendPlanStateGpmonPkt(&aggstate->ss.ps);
-			}
-
 			/* Write all entries in the hash chain. */
 			while ( entry  != NULL )
 			{
@@ -1246,6 +1250,9 @@ spill_hash_table(AggState *aggstate)
 	/* Reset the buffer */
 	CdbCellBuf_Reset(&(hashtable->entry_buf));
 	mpool_reset(hashtable->group_buf);
+
+	elog(HHA_MSG_LVL, "HashAgg: spill " INT64_FORMAT " groups",
+		 hashtable->num_spill_groups - old_num_spill_groups);
 
 	MemoryContextSwitchTo(oldcxt);
 }
