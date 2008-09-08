@@ -224,7 +224,7 @@ static Node *make_prule_rulestmt(ParseState *pstate,
 		 char *exprBuf,
 		 Node *pWhere							
 		);
-static Node *coerce_partition_value(Node *node, TypeName *type,
+static Node *coerce_partition_value(Node *node, Oid typid, int32 typmod,
 									 PartitionByType partype);
 
 /*
@@ -4329,14 +4329,17 @@ preprocess_range_spec(partValidationState *vstate)
 						TypeName *typ = lfirst(lccol);
 						Node *newnode;
 
-						newnode = coerce_partition_value(lfirst(lcstart), typ,
+						newnode = coerce_partition_value(lfirst(lcstart),
+														 typ->typid,
+														 typ->typmod,
 														 PARTTYP_RANGE);
 
 						lfirst(lcstart) = newnode;
 
 						/* be sure we coerce the end value */
 						newnode = coerce_partition_value(lfirst(lcend),
-														 typ,
+														 typ->typid,
+														 typ->typmod,
 														 PARTTYP_RANGE);
 						lfirst(lcend) = newnode;
 						lcend = lnext(lcend);
@@ -4535,7 +4538,9 @@ preprocess_range_spec(partValidationState *vstate)
 					TypeName *typ = lfirst(lccol);
 					Node *newnode;
 
-					newnode = coerce_partition_value(mystart, typ,
+					newnode = coerce_partition_value(mystart,
+													 typ->typid,
+													 typ->typmod,
 													 PARTTYP_RANGE);
 
 					lfirst(lcstart) = newnode;
@@ -4555,7 +4560,9 @@ preprocess_range_spec(partValidationState *vstate)
 					TypeName *typ = lfirst(lccol);
 					Node *newnode;
 
-					newnode = coerce_partition_value(myend, typ,
+					newnode = coerce_partition_value(myend,
+													 typ->typid,
+													 typ->typmod,
 													 PARTTYP_RANGE);
 
 					lfirst(lcend) = newnode;
@@ -5173,7 +5180,8 @@ L_setprevElem:
 }
 
 static Node *
-coerce_partition_value(Node *node, TypeName *type, PartitionByType partype)
+coerce_partition_value(Node *node, Oid typid, int32 typmod,
+					   PartitionByType partype)
 {
 	Node *out;
 
@@ -5184,7 +5192,7 @@ coerce_partition_value(Node *node, TypeName *type, PartitionByType partype)
 
 		if (c->constisnull)
 		{
-			c->consttype = type->typid;
+			c->consttype = typid;
 			return node;
 		}
 	}
@@ -5195,23 +5203,23 @@ coerce_partition_value(Node *node, TypeName *type, PartitionByType partype)
 	 * unnecessarily expensive to do it every time.
 	 */
 	out = coerce_to_target_type(NULL, node, exprType(node), 
-								 type->typid, type->typmod,
-								 COERCION_EXPLICIT,
-								 COERCE_IMPLICIT_CAST);
+								typid, typmod,
+								COERCION_EXPLICIT,
+								COERCE_IMPLICIT_CAST);
 
 	if (!out)
-		elog(ERROR, "cannot coerce partition parameter to table type");
+		elog(ERROR, "cannot coerce partition parameter to column type");
 
 	/* explicit coerce */
 	if (IsA(out, FuncExpr) || IsA(out, OpExpr))
 	{
 		Datum d = partition_arg_get_val(out);
 		Const *c;
-		Type typ = typeidType(type->typid);
+		Type typ = typeidType(typid);
 
 		pfree(out);
 
-		c = makeConst(type->typid, typeLen(typ), d, false,
+		c = makeConst(typid, typeLen(typ), d, false,
 					  typeByVal(typ));
 		ReleaseSysCache(typ);
 		out = (Node *)c;
@@ -5322,7 +5330,8 @@ validate_list_partition(partValidationState *vstate)
 										   (Node *)lfirst(lc_val));
 				TypeName *type = lfirst(llc2);
 
-				node = coerce_partition_value(node, type, PARTTYP_LIST);
+				node = coerce_partition_value(node, type->typid, type->typmod,
+											  PARTTYP_LIST);
 
 				tvals = lappend(tvals, node);
 
@@ -9276,57 +9285,150 @@ transformAlterTable_all_PartitionStmt(
 	switch (atc1->subtype)
 	{
 		case AT_PartAdd:				/* Add */
-		{
-			AlterPartitionCmd 	*pc2 = (AlterPartitionCmd *) pci->arg2;
-			CreateStmt 			*ct;
-			InhRelation			*inh = makeNode(InhRelation);
-			List				*cl  = NIL;
-					
-			Assert(IsA(pc2->arg2, List));
-			ct = (CreateStmt *)linitial((List *)pc2->arg2);
-					
-			inh->relation = copyObject(rv);
-			inh->options = list_make2_int(
-					CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
-					CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
-			/* 
-			 * NOTE: 
-			 *
-			 * CREATE_TABLE_LIKE_INCLUDING_INDEXES is not
-			 * implemented...  :-( 
-			 *
-			 * XXX: available in 8.3, gotta merge it.
-			 */
-			
-			/* 
-			 * fill in remaining fields from parse time (gram.y):
-			 * the new partition is LIKE the parent and it
-			 * inherits from it 
-			 */
-			ct->tableElts = list_make1(inh);
-			
-			cl = list_make1(ct);
-					
-			pc2->arg2 = (Node *)cl;
+			{
+				AlterPartitionCmd 	*pc2 = (AlterPartitionCmd *) pci->arg2;
+				CreateStmt 			*ct;
+				InhRelation			*inh = makeNode(InhRelation);
+				List				*cl  = NIL;
+						
+				Assert(IsA(pc2->arg2, List));
+				ct = (CreateStmt *)linitial((List *)pc2->arg2);
+						
+				inh->relation = copyObject(rv);
+				inh->options = list_make2_int(
+						CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
+						CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
+				/* 
+				 * NOTE: 
+				 *
+				 * CREATE_TABLE_LIKE_INCLUDING_INDEXES is not
+				 * implemented...  :-( 
+				 *
+				 * XXX: available in 8.3, gotta merge it.
+				 */
+				
+				/* 
+				 * fill in remaining fields from parse time (gram.y):
+				 * the new partition is LIKE the parent and it
+				 * inherits from it 
+				 */
+				ct->tableElts = list_make1(inh);
+				
+				cl = list_make1(ct);
+						
+				pc2->arg2 = (Node *)cl;
 			}
-			case AT_PartCoalesce:			/* Coalesce */
-			case AT_PartDrop:				/* Drop */
-			case AT_PartExchange:			/* Exchange */
-			case AT_PartMerge:				/* Merge */
-			case AT_PartModify:				/* Modify */
-			case AT_PartRename:				/* Rename */
-			case AT_PartSetTemplate:		/* Set Subpartn Template */
-			case AT_PartSplit:				/* Split */
-			case AT_PartTruncate:			/* Truncate */
-				if (pid && (pid->idtype == AT_AP_IDValue))
+		case AT_PartCoalesce:			/* Coalesce */
+		case AT_PartDrop:				/* Drop */
+		case AT_PartExchange:			/* Exchange */
+		case AT_PartMerge:				/* Merge */
+		case AT_PartModify:				/* Modify */
+		case AT_PartRename:				/* Rename */
+		case AT_PartSetTemplate:		/* Set Subpartn Template */
+		case AT_PartTruncate:			/* Truncate */
+		case AT_PartSplit:				/* Split */
+			if (pid && (pid->idtype == AT_AP_IDValue))
+			{
+				List *vallist = (List *)pid->partiddef;
+				pid->partiddef = 
+						(Node *)transformExpressionList(
+								pstate, vallist);
+			}
+			if (atc1->subtype == AT_PartSplit)
+			{
+				bool rollup_vals = false;
+				AlterPartitionId *pid = (AlterPartitionId *) pci->partid;
+				List *l1 = (List *)pci->arg1;
+				ListCell *lc;
+				Relation rel = heap_openrv(rv, AccessShareLock);
+				PgPartRule *prule = get_part_rule(rel, pid, true, true,
+												  CurrentMemoryContext, NULL,
+												  false);
+				
+				if (prule->pNode->part->parkind == 'h')
+					ereport(ERROR,
+							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+							 errmsg("SPLIT is not supported for HASH partitions")));
+			
+				if (prule->pNode->part->parkind == 'r' ||
+					IsA(linitial(l1), A_Const))
 				{
-					List *vallist = (List *)pid->partiddef;
-					pid->partiddef = 
-							(Node *)transformExpressionList(
-									pstate, vallist);
+					List *new = NIL;
+					ListCell *lc;
+
+					foreach(lc, l1)
+						new = lappend(new, list_make1(lfirst(lc)));
+
+					l1 = new;
+					rollup_vals = true;
 				}
-			default:
-					break;
+
+				foreach(lc, l1)
+				{
+					List *vals = lfirst(lc);
+					ListCell *lc2;
+					int i = 0;
+
+					if (prule->pNode->part->parnatts != list_length(vals))
+					{
+						AttrNumber parnatts = prule->pNode->part->parnatts;
+						int location = parse_expr_location((Expr *)linitial(vals));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("partition being split has %i column%s but AT parameter has %i column%s",
+										parnatts,
+										parnatts > 1 ? "s" : "", 
+										list_length(vals),
+										list_length(vals) > 1 ? "s" : ""),
+										parser_errposition(pstate, location)));
+					}
+
+					vals = (List *)transformExpressionList(pstate, vals);
+
+					foreach(lc2, vals)
+					{
+						Node *n = lfirst(lc2);
+						AttrNumber attnum = prule->pNode->part->paratts[i];
+						Oid typid = rel->rd_att->attrs[attnum - 1]->atttypid;
+						int32 typmod = rel->rd_att->attrs[attnum - 1]->atttypmod;
+						char parkind = prule->pNode->part->parkind;
+						PartitionByType t = (parkind == 'r') ?
+											 PARTTYP_RANGE : PARTTYP_LIST;
+
+						n = coerce_partition_value(n, typid, typmod, t);
+
+						lfirst(lc2) = n;
+
+						i++;
+					}
+					lfirst(lc) = vals;
+				}
+			
+				if (rollup_vals)
+				{
+					/* now, unroll */
+					if (prule->pNode->part->parkind == 'r')
+					{
+						List *new = NIL;
+						ListCell *lc;
+
+						foreach(lc, l1)
+							new = lappend(new, linitial(lfirst(lc)));
+
+						pci->arg1 = (Node *)new;
+					}
+					else
+					{
+						/* for LIST, leave it as is */
+						pci->arg1 = (Node *)l1;
+					}
+				}
+
+				heap_close(rel, NoLock);
+			}
+			break;
+		default:
+			break;
 	}
 	/* transform boundary specifications at execute time */
 	return cmd;
@@ -9464,6 +9566,7 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
 				break;
 
 			/* CDB: Partitioned Tables */
+            case AT_PartSplit:				/* Split */
             case AT_PartAlter:				/* Alter */
             case AT_PartAdd:				/* Add */
             case AT_PartCoalesce:			/* Coalesce */
@@ -9473,7 +9576,6 @@ transformAlterTableStmt(ParseState *pstate, AlterTableStmt *stmt,
             case AT_PartModify:				/* Modify */
             case AT_PartRename:				/* Rename */
             case AT_PartSetTemplate:		/* Set Subpartition Template */
-            case AT_PartSplit:				/* Split */
             case AT_PartTruncate:			/* Truncate */
 			{
 				cmd = transformAlterTable_all_PartitionStmt(

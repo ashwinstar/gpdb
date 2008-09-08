@@ -1493,7 +1493,7 @@ alter table jjj add default partition j4 ;
 ERROR:  DEFAULT partition "j3" for relation "jjj" already exists
 -- cannot add if have default, must split
 alter table jjj add partition j5 end (date '2010-01-01');
-ERROR:  cannot ADD RANGE partition "j5" to relation "jjj" with DEFAULT partition "j3"
+ERROR:  cannot add RANGE partition "j5" to relation "jjj" with DEFAULT partition "j3"
 HINT:  need to SPLIT partition "j3"
 drop table jjj cascade;
 alter table hhh alter partition cc set tablespace foo;
@@ -1709,7 +1709,7 @@ ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh merge partition cc, partition dd into partition ee;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh merge partition aa, partition dd into partition ee;
-ERROR:  cannot MERGE PARTITION for relation "hhh"
+ERROR:  partition "dd" of relation "hhh" does not exist
 alter table hhh modify partition cc add values ('a');
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh modify partition cc drop values ('a');
@@ -1835,7 +1835,7 @@ ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh split partition cc at ('a') into (partition gg, partition hh);
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh split partition aa at ('a');
-ERROR:  cannot SPLIT PARTITION for relation "hhh"
+ERROR:  invalid input syntax for type date: "a"
 alter table hhh truncate partition cc;
 ERROR:  partition "cc" of relation "hhh" does not exist
 alter table hhh truncate partition aa;
@@ -4471,7 +4471,7 @@ create table f (n numeric(20, 2)) partition by range(n) (start(1::bigint)
 end('f'::bool));
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'n' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
-ERROR:  cannot coerce partition parameter to table type (analyze.c:5203)
+ERROR:  cannot coerce partition parameter to column type (analyze.c:5211)
 -- see that grant and revoke cascade to children
 create role part_role;
 create table granttest (i int, j int) partition by range(i) 
@@ -5120,3 +5120,296 @@ HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sur
 NOTICE:  Table doesn't have 'DISTRIBUTED BY' clause -- Using column named 'n_nationkey' as the Greenplum Database data distribution key for this table.
 HINT:  The 'DISTRIBUTED BY' clause determines the distribution of data. Make sure column(s) chosen are the optimal data distribution key to minimize skew.
 delete from tmp_nation;
+-- SPLIT tests
+-- basic sanity tests. All should pass.
+create table k (i int) partition by range(i) (start(1) end(10) every(2), 
+default partition mydef);
+NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_2" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_3" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_4" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_5" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_6" for table "k"
+insert into k select i from generate_series(1, 100) i;
+alter table k split partition mydef at (20) into (partition foo, partition
+mydef);
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_603110"
+NOTICE:  dropped partition "mydef" for relation "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
+select * from k_1_prt_foo order by 1;
+ i  
+----
+ 10
+ 11
+ 12
+ 13
+ 14
+ 15
+ 16
+ 17
+ 18
+ 19
+(10 rows)
+
+select * from k_1_prt_mydef order by 1;
+  i  
+-----
+  20
+  21
+  22
+  23
+  24
+  25
+  26
+  27
+  28
+  29
+  30
+  31
+  32
+  33
+  34
+  35
+  36
+  37
+  38
+  39
+  40
+  41
+  42
+  43
+  44
+  45
+  46
+  47
+  48
+  49
+  50
+  51
+  52
+  53
+  54
+  55
+  56
+  57
+  58
+  59
+  60
+  61
+  62
+  63
+  64
+  65
+  66
+  67
+  68
+  69
+  70
+  71
+  72
+  73
+  74
+  75
+  76
+  77
+  78
+  79
+  80
+  81
+  82
+  83
+  84
+  85
+  86
+  87
+  88
+  89
+  90
+  91
+  92
+  93
+  94
+  95
+  96
+  97
+  98
+  99
+ 100
+(81 rows)
+
+drop table k;
+create table k (i int) partition by range(i) (start(1) end(10) every(2), 
+default partition mydef);
+NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_2" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_3" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_4" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_5" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_6" for table "k"
+insert into k select i from generate_series(1, 100) i;
+alter table k split partition mydef at (20) into (partition mydef, 
+partition foo);
+NOTICE:  exchanged partition "mydef" of relation "k" with relation "pg_temp_603468"
+NOTICE:  dropped partition "mydef" for relation "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_foo" for table "k"
+select * from k_1_prt_foo order by 1;
+  i  
+-----
+  20
+  21
+  22
+  23
+  24
+  25
+  26
+  27
+  28
+  29
+  30
+  31
+  32
+  33
+  34
+  35
+  36
+  37
+  38
+  39
+  40
+  41
+  42
+  43
+  44
+  45
+  46
+  47
+  48
+  49
+  50
+  51
+  52
+  53
+  54
+  55
+  56
+  57
+  58
+  59
+  60
+  61
+  62
+  63
+  64
+  65
+  66
+  67
+  68
+  69
+  70
+  71
+  72
+  73
+  74
+  75
+  76
+  77
+  78
+  79
+  80
+  81
+  82
+  83
+  84
+  85
+  86
+  87
+  88
+  89
+  90
+  91
+  92
+  93
+  94
+  95
+  96
+  97
+  98
+  99
+ 100
+(81 rows)
+
+select * from k_1_prt_mydef order by 1;
+ i  
+----
+ 10
+ 11
+ 12
+ 13
+ 14
+ 15
+ 16
+ 17
+ 18
+ 19
+(10 rows)
+
+drop table k;
+create table j (i int) partition by list(i) (partition a values(1, 2, 3, 4),
+partition b values(5, 6, 7, 8));
+NOTICE:  CREATE TABLE will create partition "j_1_prt_a" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_b" for table "j"
+insert into j select i from generate_series(1, 8) i;
+alter table j split partition for(1) at (2, 3) into (partition fa, partition
+fb);
+NOTICE:  exchanged partition "a" of relation "j" with relation "pg_temp_603826"
+NOTICE:  dropped partition "a" for relation "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_fa" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_fb" for table "j"
+select * from j_1_prt_fa;
+ i 
+---
+ 1
+ 4
+(2 rows)
+
+select * from j_1_prt_fb;
+ i 
+---
+ 2
+ 3
+(2 rows)
+
+alter table j split partition for(5) at (6);
+NOTICE:  exchanged partition "b" of relation "j" with relation "pg_temp_603826"
+NOTICE:  dropped partition "b" for relation "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_r548658394" for table "j"
+NOTICE:  CREATE TABLE will create partition "j_1_prt_r1100198566" for table "j"
+select * from j;
+ i 
+---
+ 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+(8 rows)
+
+drop table j;
+create table k (i int) partition by range(i) (start(1) end(10) every(2), 
+default partition mydef);
+NOTICE:  CREATE TABLE will create partition "k_1_prt_mydef" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_2" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_3" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_4" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_5" for table "k"
+NOTICE:  CREATE TABLE will create partition "k_1_prt_6" for table "k"
+-- should fail
+alter table k split partition mydef at (20) into (partition mydef, partition mydef);
+ERROR:  invalid into specification
+alter table k split partition for(3) at (20);
+ERROR:  AT value not in range (SOMEFILE:SOMEFUNC)

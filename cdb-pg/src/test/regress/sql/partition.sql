@@ -2479,3 +2479,38 @@ partition p3 start('15') exclusive end('19'), partition p4 start('19')  WITH (co
 partition p5 start('20')
 );
 delete from tmp_nation;
+
+-- SPLIT tests
+-- basic sanity tests. All should pass.
+create table k (i int) partition by range(i) (start(1) end(10) every(2), 
+default partition mydef);
+insert into k select i from generate_series(1, 100) i;
+alter table k split partition mydef at (20) into (partition foo, partition
+mydef);
+select * from k_1_prt_foo order by 1;
+select * from k_1_prt_mydef order by 1;
+drop table k;
+
+create table k (i int) partition by range(i) (start(1) end(10) every(2), 
+default partition mydef);
+insert into k select i from generate_series(1, 100) i;
+alter table k split partition mydef at (20) into (partition mydef, 
+partition foo);
+select * from k_1_prt_foo order by 1;
+select * from k_1_prt_mydef order by 1;
+drop table k;
+create table j (i int) partition by list(i) (partition a values(1, 2, 3, 4),
+partition b values(5, 6, 7, 8));
+insert into j select i from generate_series(1, 8) i;
+alter table j split partition for(1) at (2, 3) into (partition fa, partition
+fb);
+select * from j_1_prt_fa;
+select * from j_1_prt_fb;
+alter table j split partition for(5) at (6);
+select * from j;
+drop table j;
+create table k (i int) partition by range(i) (start(1) end(10) every(2), 
+default partition mydef);
+-- should fail
+alter table k split partition mydef at (20) into (partition mydef, partition mydef);
+alter table k split partition for(3) at (20);

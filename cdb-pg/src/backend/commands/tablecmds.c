@@ -20,6 +20,7 @@
 #include "access/genam.h"
 #include "access/hash.h"
 #include "access/heapam.h"
+#include "access/nbtree.h"
 #include "access/reloptions.h"
 #include "access/xact.h"
 #include "access/transam.h"
@@ -310,11 +311,6 @@ static void ATExecDropInherit(Relation rel, RangeVar *parent, bool is_partition)
 static char *
 ChoosePartitionName(const char *tablename, int partDepth,
 					const char *partname, Oid namespace);
-
-static PgPartRule *get_part_rule(Relation rel, AlterPartitionId *pid,
-								 bool bExistError, bool bMustExist, 
-								 MemoryContext mcxt,
-								 int *pSearch, bool inctemplate);
 
 static Node *atpxPartAddList(AlteredTableInfo *tab,
 							 Relation rel, AlterPartitionCmd *pc,
@@ -3292,18 +3288,353 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			pass = AT_PASS_MISC;
 			break;
 		}
+		case AT_PartMerge:
+		{
+			AlterPartitionCmd  *pc    	= (AlterPartitionCmd *) cmd->def;
+			PgPartRule   	   *prule1	= NULL;
+			PgPartRule		   *prule2	= NULL;
+			PgPartRule		   *prule3	= NULL;
+			ListCell		   *lc;
+			List			   *source_rels = NIL;
+			Relation			target = NULL;
 
+			if (Gp_role == GP_ROLE_UTILITY)
+				elog(ERROR, "MERGE is not supported in utility mode");
+			else if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				Relation srel;
+				AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
+
+				prule1 = get_part_rule(rel, pid, true, true,
+									   CurrentMemoryContext, NULL, false);
+
+				prule2 = get_part_rule(rel, (AlterPartitionId *)pc->arg1,
+									   true, true,
+									   CurrentMemoryContext, NULL, false);
+
+				if (pc->arg2)
+				{
+					AlterPartitionCmd *pc2 = (AlterPartitionCmd *)pc->arg2;
+
+					prule3 = get_part_rule(rel, (AlterPartitionId *)pc2->partid,
+										   true, true,
+										   CurrentMemoryContext, NULL, false);
+				}
+
+				if (prule1)
+				{
+					/* cannot exchange a hash partition */
+					if ('h' == prule1->pNode->part->parkind)
+						ereport(ERROR,
+								(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+								 errmsg("cannot merge HASH partition%s "
+									    "of relation \"%s\"", prule1->partIdStr,
+										RelationGetRelationName(rel))));
+				}
+
+				srel = heap_open(prule1->topRule->parchildrelid,
+								 AccessExclusiveLock);
+				source_rels = lappend(source_rels, srel);
+
+				srel = heap_open(prule2->topRule->parchildrelid,
+								 AccessExclusiveLock);
+				if (prule3)
+				{
+					source_rels = lappend(source_rels, srel);
+					target = heap_open(prule3->topRule->parchildrelid,
+									   AccessExclusiveLock);
+				}
+				else
+					target = srel;
+			}
+			else
+			{
+				Relation srel;
+				srel = heap_openrv((RangeVar *)pc->partid,
+								   AccessExclusiveLock);
+				source_rels = lappend(source_rels, srel);
+
+				srel = heap_openrv((RangeVar *)pc->arg1, AccessExclusiveLock);
+				
+				if (pc->arg2)
+				{
+					source_rels = lappend(source_rels, srel);
+					target = heap_openrv((RangeVar *)pc->arg2,
+										 AccessExclusiveLock);
+				}
+				else
+					target = heap_openrv((RangeVar *)pc->arg1,
+										 AccessExclusiveLock);
+			}
+
+			ATSimplePermissions(rel, false);
+
+			foreach(lc, source_rels)
+				ATSimplePermissions(lfirst(lc), false);
+
+			ATSimplePermissions(target, false);
+
+			foreach(lc, source_rels)
+				heap_close(lfirst(lc), NoLock);
+
+			heap_close(target, NoLock);
+
+			pass = AT_PASS_MISC;
+			break;
+		}
+
+		case AT_PartSplit:				/* Split */
+		{
+			AlterPartitionCmd  *pc    	= (AlterPartitionCmd *) cmd->def;
+			PgPartRule   	   *prule1	= NULL;
+			PgPartRule		   *prule2	= NULL;
+			PgPartRule		   *prule3	= NULL;
+			Relation			target = NULL;
+
+			if (Gp_role == GP_ROLE_UTILITY)
+				elog(ERROR, "MERGE is not supported in utility mode");
+			else if (Gp_role == GP_ROLE_DISPATCH)
+			{
+				AlterPartitionId *pid = (AlterPartitionId *) pc->partid;
+				AlterPartitionCmd *cmd2;
+				Node *at;
+
+				/*
+				 * Need to do a bunch of validation:
+				 * 0) Target exists
+				 * 1) The usual permissions checks
+				 * 2) Not called on HASH
+				 * 3) AT () parameter falls into constraint specified
+				 * 4) INTO partitions don't exist
+				 */
+
+				/* We'll error out if it doesn't exist */
+				prule1 = get_part_rule(rel, pid, true, true,
+									   CurrentMemoryContext, NULL, false);
+
+				target = heap_open(prule1->topRule->parchildrelid,
+								   AccessExclusiveLock);
+
+
+				at = pc->arg1;
+				if (prule1->pNode->part->parkind == 'l')
+				{
+
+					if (prule1->topRule->parisdefault)
+					{
+
+					}
+					else
+					{
+						/* all elements in at must match */
+						ListCell *lcat;
+						List *lv = (List *)prule1->topRule->parlistvalues;
+						int16 nkeys = prule1->pNode->part->parnatts;
+						List *atlist = (List *)at;
+
+						foreach(lcat, atlist)
+						{
+							List *cols = lfirst(lcat);
+							ListCell *parvals = list_head(lv);
+							bool found = false;
+	
+							Assert(list_length(cols) == nkeys);
+	
+							while (parvals)
+							{
+								List *vals = lfirst(parvals);
+								ListCell *lcv = list_head(vals);
+								ListCell *lcc = list_head(cols);
+								int parcol;
+								bool matched = true;
+	
+								for (parcol = 0; parcol < nkeys; parcol++)
+								{
+									Oid opclass = 
+										prule1->pNode->part->parclass[parcol];
+									Oid funcid = get_opclass_proc(opclass, 0,
+																  BTORDER_PROC);
+									Const *v = lfirst(lcv);
+									Const *c = lfirst(lcc);
+									Datum d;
+	
+									if (v->constisnull && c->constisnull)
+										continue;
+									else if (v->constisnull || c->constisnull)
+									{
+										matched = false;
+										break;
+									}
+	
+									d = OidFunctionCall2(funcid, c->constvalue,
+														 v->constvalue);
+	
+									if (DatumGetInt32(d) != 0)
+									{
+										matched = false;
+										break;
+									}
+	
+									lcv = lnext(lcv);
+									lcc = lnext(lcc);
+								}
+								
+								if (!matched)
+								{
+									parvals = lnext(parvals);
+									continue;
+								}
+								else
+								{
+									found = true;
+									break;
+								}
+							}
+							if (!found)
+								elog(ERROR, "param no exist");
+						}
+					}
+				}
+				else
+				{
+					/* XXX: handle split of default */
+					if (prule1->topRule->parisdefault)
+					{
+					}
+					else
+					{
+						/* at must be in range */
+						Const *start = NULL;
+						Const *end = NULL;
+						Const *atval = NULL;
+						Oid opclass = prule1->pNode->part->parclass[0];
+						Oid funcid = get_opclass_proc(opclass, 0, BTORDER_PROC);
+						Node *n;
+						Datum res;
+						int32 ret;
+						bool in_range = true;
+	
+						n = (Node *)linitial((List *)at);
+	
+						Assert(IsA(n, Const));
+	
+						atval = (Const *)n;
+	
+						/* XXX: ignore composite key range for now */
+						if (prule1->topRule->parrangestart)
+							start = linitial((List *)prule1->topRule->parrangestart);
+	
+						Insist(exprType((Node *)n) == exprType((Node *)start));
+						res = OidFunctionCall2(funcid, start->constvalue,
+											   atval->constvalue);
+	
+						ret = DatumGetInt32(res);
+	
+						if (ret > 0)
+							in_range = false;
+						else if (ret == 0)
+						{
+							if (!prule1->topRule->parrangestartincl)
+								in_range = false;
+						}
+						else
+						{
+							/* in the range, test end */
+							if (prule1->topRule->parrangeend)
+							{
+								end = linitial((List *)prule1->topRule->parrangeend);
+								res = OidFunctionCall2(funcid, atval->constvalue,
+											   		   end->constvalue);
+	
+								ret = DatumGetInt32(res);
+								
+								if (ret > 0)
+									in_range = false;
+								else if (ret == 0)
+									if (!prule1->topRule->parrangeendincl)
+										in_range = false;
+							}
+						}
+	
+						if (!in_range)
+						{
+							elog(ERROR, "AT value not in range");
+						}
+					}
+				}
+
+				/* 
+				 * pc->partid == target
+				 * pc->arg1 == AT
+				 * pc->arg2 == AlterPartitionCmd (partid == 1, arg1 = 2)
+				 */
+				if (PointerIsValid(pc->arg2))
+				{
+					cmd2 = (AlterPartitionCmd *)pc->arg2;
+
+					prule2 = get_part_rule(rel, (AlterPartitionId *)cmd2->partid,
+										   false, false, CurrentMemoryContext,
+										   NULL, false);
+
+					/* 
+					 * Only permitted if we're splitting a default and
+					 * this is the default rule
+					 */
+					if (prule2)
+					{
+						if (!(prule2->topRule->parchildrelid ==
+							  prule1->topRule->parchildrelid &&
+						  	  prule1->topRule->parisdefault))
+							ereport(ERROR,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+								 errmsg("partition \"%s\" already exists",
+								get_rel_name(prule2->topRule->parchildrelid))));
+					}
+
+					prule3 = get_part_rule(rel, (AlterPartitionId *)cmd2->arg1,
+										   false, false, CurrentMemoryContext,
+										   NULL, false);
+					if (prule3)
+					{
+						if (!(prule3->topRule->parchildrelid ==
+						  	  prule1->topRule->parchildrelid &&
+						  	  prule1->topRule->parisdefault))
+							ereport(ERROR,
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+								 errmsg("partition \"%s\" already exists",
+								get_rel_name(prule3->topRule->parchildrelid))));
+					}
+
+					/* both can't exist */
+					if (prule2 && prule3)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("invalid into specification")));
+					}
+				}
+				ATSimplePermissions(target, false);
+				heap_close(target, NoLock);
+			}
+			else
+			{
+				Insist(IsA(pc->partid, RangeVar));
+				Insist(IsA(pc->arg1, RangeVar));
+				Insist(IsA(pc->arg2, RangeVar));
+			}
+			pass = AT_PASS_MISC;
+			break;
+		}
+		break;
 		case AT_PartAdd:				/* Add */
 		case AT_PartAlter:				/* Alter */
 		case AT_PartCoalesce:			/* Coalesce */
 		case AT_PartDrop:				/* Drop */
-		case AT_PartMerge:				/* Merge */
-		case AT_PartModify:				/* Modify */
 		case AT_PartRename:				/* Rename */
 		case AT_PartSetTemplate:		/* Set Subpartition Template */
-		case AT_PartSplit:				/* Split */
 		case AT_PartTruncate:			/* Truncate */
 		case AT_PartAddInternal:		/* internal partition creation */
+		case AT_PartModify:             /* Modify */
 			ATSimplePermissions(rel, false);
 				/* XXX XXX XXX */
 			/* This command never recurses */
@@ -10566,7 +10897,7 @@ get_part_rule1(Relation rel, AlterPartitionId *pid,
 	return prule;
 } /* end get_part_rule1 */
 
-static PgPartRule*
+PgPartRule *
 get_part_rule(Relation rel, AlterPartitionId *pid, 
 			  bool bExistError, bool bMustExist, 
 			  MemoryContext mcxt, int *pSearch, bool inctemplate)
@@ -10817,12 +11148,13 @@ ATPExecPartAdd(AlteredTableInfo *tab,
 	{
 		AlterPartitionCmd *pc2 = (AlterPartitionCmd *)pc->arg2;
 		bool isDefault = intVal(pc->arg1);
+		bool is_split = PointerIsValid(pc2->partid);
 
 		/* DEFAULT checks */
-		if (!isDefault && (pNode->default_part))
+		if (!isDefault && (pNode->default_part) && !is_split)
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				 errmsg("cannot ADD %s partition%s to "
+				 errmsg("cannot add %s partition%s to "
 						"%s with DEFAULT partition \"%s\"", 
 						parTypName,
 						namBuf,
@@ -11243,6 +11575,8 @@ atpxPartAddList(AlteredTableInfo *tab,
 	Relation 			 par_rel   = rel;
 	PartitionNode 		 pNodebuf; 
 	PartitionNode 		*pNode2 = &pNodebuf;
+	AlterPartitionCmd	*pc2 = (AlterPartitionCmd *)pc->arg2;
+	bool is_split = PointerIsValid(pc2->partid);
 
 	/* get the relation for the parent of the new partition */
 	if (par_prule && par_prule->topRule)
@@ -11260,7 +11594,7 @@ atpxPartAddList(AlteredTableInfo *tab,
 
 	/* XXX XXX: handle case of missing boundary spec for range with EVERY */
 
-	if (pelem && pelem->boundSpec)
+	if (pelem && pelem->boundSpec && !is_split)
 	{
 		if (PARTTYP_RANGE == part_type) 
 		{
@@ -12041,30 +12375,34 @@ atpxPartAddList(AlteredTableInfo *tab,
 			
 			spec = (PartitionValuesSpec *)pelem->boundSpec;
 
-			foreach(lc, spec->partValues)
+			/* only check this if we aren't doing split */
+			if (!is_split)
 			{
-				List			*vals  = lfirst(lc);
-				PgPartRule   	*prule = NULL;
-
-				pid.idtype = AT_AP_IDValue;
-				pid.partiddef = (Node *)vals;
-				pid.location  = -1;
-
-				prule = get_part_rule1(rel, &pid, false, false, 
-									   CurrentMemoryContext, NULL,
-									   pNode,
-									   lrelname,
-									   &pNode2);
-
-				if (prule)
-					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_OBJECT),
-							 errmsg("new partition definition overlaps "
-									"existing partition%s of %s",
-									prule->partIdStr,
-									lrelname)));
-
-			} /* end foreach */
+				foreach(lc, spec->partValues)
+				{
+					List			*vals  = lfirst(lc);
+					PgPartRule   	*prule = NULL;
+	
+					pid.idtype = AT_AP_IDValue;
+					pid.partiddef = (Node *)vals;
+					pid.location  = -1;
+	
+					prule = get_part_rule1(rel, &pid, false, false, 
+										   CurrentMemoryContext, NULL,
+										   pNode,
+										   lrelname,
+										   &pNode2);
+	
+					if (prule)
+						ereport(ERROR,
+								(errcode(ERRCODE_UNDEFINED_OBJECT),
+								 errmsg("new partition definition overlaps "
+										"existing partition%s of %s",
+										prule->partIdStr,
+										lrelname)));
+	
+				} /* end foreach */
+			}
 
 			/* give a new maxpartno for the list partition */
 			if (pNode && pNode->rules && list_length(pNode->rules))
@@ -13158,19 +13496,100 @@ static void
 ATPExecPartMerge(Relation rel,
                  AlterPartitionCmd *pc)
 {
-	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	PgPartRule   *prule = NULL;
+	Relation source = NULL;
+	Relation target = NULL;
 
-	if (Gp_role != GP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_UTILITY)
 		return;
-
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL,
-						  false);
-
-
-	if (prule)
+	else if (Gp_role == GP_ROLE_DISPATCH)
 	{
+		AlterPartitionId   *pid   = (AlterPartitionId *)pc->partid;
+		PgPartRule   	   *prule1 = NULL;
+		PgPartRule   	   *prule2 = NULL;
+		PgPartRule   	   *prule3 = NULL;
+		RangeVar		   *relrv1, *relrv2;
+		Relation			r1, r2;
+
+		prule1 = get_part_rule(rel, pid, true, true, 
+							   CurrentMemoryContext, NULL, false);
+
+		relrv1 = makeRangeVar(
+					get_namespace_name(prule1->topRule->parchildrelid), 
+					get_rel_name(prule1->topRule->parchildrelid));
+
+		r1 = heap_openrv(relrv1, AccessExclusiveLock);
+
+		prule2 = get_part_rule(rel, (AlterPartitionId *)pc->arg1, 
+							   true, true, 
+							   CurrentMemoryContext, NULL, false);
+
+		relrv2 = makeRangeVar(
+					get_namespace_name(prule2->topRule->parchildrelid), 
+					get_rel_name(prule2->topRule->parchildrelid));
+
+		r2 = heap_openrv(relrv2, AccessExclusiveLock);
+
+		if (pc->arg2)
+		{
+			AlterPartitionCmd *pc2 = (AlterPartitionCmd *)pc->arg2;
+
+			prule3 = get_part_rule(rel, (AlterPartitionId *)pc2->partid, 
+								   true, true, CurrentMemoryContext, 
+								   NULL, false);
+
+			Assert(PointerIsValid(prule3));
+
+			if (prule3->topRule->parchildrelid == prule1->topRule->parchildrelid)
+			{
+				source = r1;
+				pc->partid = (Node *)relrv1;
+				target = r2;
+				pc->arg1 = (Node *)relrv2;
+			}
+			else if (prule3->topRule->parchildrelid == prule2->topRule->parchildrelid)
+			{
+				source = r2;
+				pc->partid = (Node *)relrv2;
+				target = r1;
+				pc->arg1 = (Node *)relrv1;
+			}
+			else
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("target of MERGE must be either \"%s\" or "
+								"\"%s\"",
+								get_rel_name(prule1->topRule->parchildrelid),
+								get_rel_name(prule2->topRule->parchildrelid))));
+
+			}
+		}
+		else
+		{
+			source = r1;
+			target = r2;
+			pc->partid = (Node *)relrv1;
+			pc->arg1 = (Node *)relrv2;
+		}
 	}
+	else if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		RangeVar *relrv;
+
+		Assert(IsA(pc->partid, RangeVar));
+		Assert(IsA(pc->arg1, RangeVar));
+
+		relrv = (RangeVar *)pc->partid;
+		source = heap_openrv(relrv, AccessExclusiveLock);
+
+		relrv = (RangeVar *)pc->arg1;
+		target = heap_openrv(relrv, AccessExclusiveLock);
+	}
+
+	elog(NOTICE, "merging");
+	elog(NOTICE, "%s", RelationGetRelationName(source));
+
+	elog(NOTICE, "with %s", RelationGetRelationName(target));
 
     ereport(ERROR,
             (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -14193,30 +14612,560 @@ ATPExecPartSetTemplate(Relation rel,
                     RelationGetRelationName(rel))));
 
 }
+
 /* ALTER TABLE ... SPLIT PARTITION */
 static void 
 ATPExecPartSplit(Relation rel,
                  AlterPartitionCmd *pc)
 {
-	AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
-	PgPartRule   *prule = NULL;
+	Relation temprel = NULL;
+	Relation intoa = NULL;
+	Relation intob = NULL;
+	EState *estate;
+	TupleTableSlot *tts;
+	Oid temprelid;
+	ExprState *achk = NULL;
+	ExprState *bchk = NULL;
+	HeapScanDesc heapscan = NULL;
+	AppendOnlyScanDesc aoscan = NULL;
+	MemoryContext oldCxt;
 
-	if (Gp_role != GP_ROLE_DISPATCH)
+	if (Gp_role == GP_ROLE_DISPATCH)
+	{
+		CreateStmt *ct = makeNode(CreateStmt);
+		char tmpname[NAMEDATALEN];
+		InhRelation *inh = makeNode(InhRelation);
+		DestReceiver *dest = None_Receiver;
+		Node *at = pc->arg1;
+		AlterPartitionCmd *pc2 = (AlterPartitionCmd *)pc->arg2;
+		AlterPartitionId *pid = (AlterPartitionId *)pc->partid;
+		AlterTableStmt *ats = makeNode(AlterTableStmt);
+		RangeVar *rv;
+		AlterTableCmd *cmd = makeNode(AlterTableCmd);
+		AlterPartitionCmd *mypc = makeNode(AlterPartitionCmd);
+		AlterPartitionCmd *mypc2 = makeNode(AlterPartitionCmd);
+		AlterPartitionId *idpid = makeNode(AlterPartitionId);
+		RangeVar *tmprv;
+		PgPartRule *prule;
+		DropStmt *ds = makeNode(DropStmt);
+		List *parsetrees;
+		Query *q;
+		char *nspname = get_namespace_name(RelationGetNamespace(rel));
+		char *relname = get_rel_name(RelationGetRelid(rel));
+		Oid relid = RelationGetRelid(rel);
+		RangeVar *rva = NULL;
+		RangeVar *rvb = NULL;
+		int into_exists = 0; /* which into partition exists? */
+		int i;
+	
+		/*
+		 * In order to implement SPLIT, we do the following:
+		 *
+		 * 1) Build a temporary table T on all nodes.
+		 * 2) Exchange that table with the target partition P
+		 *    Now, T has all the data or P
+		 * 3) Drop partition P
+		 * 4) Create two new parwtitions in the place of the old one
+		 */
+
+		/* look up into info, if the user supplied it */
+		if (pc2)
+		{
+			prule = get_part_rule(rel, (AlterPartitionId *)pc2->partid, false, 
+								  false, CurrentMemoryContext, NULL, false);
+
+			if (prule)
+				into_exists = 1;
+
+			prule = get_part_rule(rel, (AlterPartitionId *)pc2->arg1, false, 
+								  false, CurrentMemoryContext, NULL, false);
+			if (prule)
+			{
+				Insist(into_exists == 0);
+				into_exists = 2;
+			}
+		}
+
+		/* 1) Create temp table */
+		rv = makeRangeVar(nspname, relname);
+		inh->relation = copyObject(rv);
+        inh->options = list_make2_int(CREATE_TABLE_LIKE_INCLUDING_DEFAULTS,
+									  CREATE_TABLE_LIKE_INCLUDING_CONSTRAINTS);
+		ct->tableElts = list_make1(inh);
+
+		/* should be unique enough */
+		snprintf(tmpname, NAMEDATALEN, "pg_temp_%u", relid);
+		tmprv = makeRangeVar(nspname, tmpname);
+		ct->relation = tmprv;
+		ct->relKind = RELKIND_RELATION;
+		parsetrees = parse_analyze((Node *)ct, NULL, NULL, 0);
+		Assert(list_length(parsetrees) == 1);
+		q = (Query *)linitial(parsetrees);
+		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+		CommandCounterIncrement();
+		
+		/* Get target meta data */
+		prule = get_part_rule(rel, pid, true, true,
+							  CurrentMemoryContext, NULL, false);
+		idpid->idtype = AT_AP_IDRule;
+		idpid->partiddef = (Node *)list_make2((Node *)prule, pid);
+		idpid->location  = -1;
+
+		/* 2) EXCHANGE temp with target */
+		ats->relation = copyObject(rv);
+		ats->relkind = OBJECT_TABLE;
+
+		cmd->subtype = AT_PartExchange;
+		
+		mypc->partid = (Node *)idpid;
+		mypc->arg1 = (Node *)tmprv;
+		mypc->arg2 = (Node *)mypc2;
+
+		mypc2->arg1 = (Node *)makeInteger(0);
+		cmd->def = (Node *)mypc;
+		ats->cmds = list_make1(cmd);
+		parsetrees = parse_analyze((Node *)ats, NULL, NULL, 0);
+		Assert(list_length(parsetrees) == 1);
+		q = (Query *)linitial(parsetrees);
+
+		heap_close(rel, NoLock);
+		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+		rel = heap_open(relid, AccessExclusiveLock);
+		CommandCounterIncrement();
+
+		/* refresh prule, out of date due to EXCHANGE */
+		prule = get_part_rule(rel, pid, true, true,
+							  CurrentMemoryContext, NULL, false);
+		idpid = makeNode(AlterPartitionId);
+		idpid->idtype = AT_AP_IDRule;
+		idpid->partiddef = (Node *)list_make2((Node *)prule, pid);
+		idpid->location  = -1;
+
+		/* 3) drop the old partition */
+		cmd->subtype = AT_PartDrop;
+
+		ds->missing_ok = false;
+		ds->behavior = DROP_RESTRICT;
+		ds->removeType = OBJECT_TABLE;
+
+		mypc->partid = (Node *)idpid;
+		mypc->arg1 = (Node *)ds;
+		mypc->arg2 = NULL;
+
+		cmd->def = (Node *)mypc;
+		parsetrees = parse_analyze((Node *)ats, NULL, NULL, 0);
+		Assert(list_length(parsetrees) == 1);
+		q = (Query *)linitial(parsetrees);
+
+		heap_close(rel, NoLock);
+		ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+		rel = heap_open(relid, AccessExclusiveLock);
+		CommandCounterIncrement();
+
+		/* Add two new partitions */
+		elog(DEBUG5, "Split partition: adding two new partitions");
+
+		/* 4) add two new partitions, via a loop to reduce code duplication */
+		for (i = 1; i <= 2; i++)
+		{
+			/* build up commands for adding two. */
+			AlterPartitionId *mypid = makeNode(AlterPartitionId);
+			CreateStmt *mycs = makeNode(CreateStmt);
+			char *parname = NULL;
+			PgPartRule *tmprule;
+			AlterPartitionId *intopid = NULL;
+			PartitionElem *pelem = makeNode(PartitionElem);
+
+			if (pc2)
+			{
+				if (i == 1)
+					intopid = (AlterPartitionId *)pc2->partid;
+				else
+					intopid = (AlterPartitionId *)pc2->arg1;
+			}
+
+			mycs->relation = makeRangeVar(NULL, "fake_partition_name");
+			mycs->relKind = RELKIND_RELATION;
+			mypid->idtype = AT_AP_IDNone;
+			mypid->location = -1;
+			mypid->partiddef = NULL;
+
+			mypc->partid = (Node *)mypid;
+
+			if (intopid)
+				parname = strVal(intopid->partiddef);
+
+			if (prule->topRule->parisdefault && i == into_exists)
+			{
+				/* nothing to do */
+			}
+			else
+			{
+				if (prule->pNode->part->parkind == 'r')
+				{
+					PartitionBoundSpec *a = makeNode(PartitionBoundSpec);
+	
+					if (prule->topRule->parisdefault)
+					{
+						PartitionRangeItem *ri;
+
+						ri = makeNode(PartitionRangeItem);
+						ri->location = -1;
+						ri->partRangeVal = copyObject(at);
+
+						/* 
+						 * if default named first, it's a start, otherwise
+						 * it's the end
+						 */
+						Assert(into_exists > 0);
+
+						if (into_exists == 2 && i == 1)
+						{
+							ri->partedge = PART_EDGE_EXCLUSIVE;
+							a->partEnd = (Node *)ri;
+						}
+						else
+						{
+							ri->partedge = PART_EDGE_INCLUSIVE;
+							a->partStart = (Node *)ri;
+						}
+					}
+					else
+					{
+						PartitionRangeItem *ri;
+						ri = makeNode(PartitionRangeItem);
+						ri->location = -1;
+						ri->everycount = 0;
+						ri->partRangeVal = copyObject(prule->topRule->parrangestart);
+						ri->partedge = prule->topRule->parrangestartincl;
+		
+						a->partStart = (Node *)ri;
+	
+						ri = makeNode(PartitionRangeItem);
+						ri->location = -1;
+						ri->everycount = 0;
+						ri->partRangeVal = copyObject(at);
+						ri->partedge = PART_EDGE_EXCLUSIVE;
+	
+						a->partEnd = (Node *)ri;
+					}
+					pelem->boundSpec = (Node *)a;
+				}
+				else
+				{
+
+					if (into_exists == i || (into_exists == 0 && i == 2))
+					{
+						PartitionValuesSpec *valuesspec = 
+							makeNode(PartitionValuesSpec);
+
+						valuesspec->partValues = copyObject(at);
+						valuesspec->location = -1;
+						pelem->boundSpec = (Node *)valuesspec;
+					}
+					else
+					{
+						PartitionValuesSpec *valuesspec = 
+							makeNode(PartitionValuesSpec);
+						List *lv = prule->topRule->parlistvalues;
+						List *newvals = NIL;
+						ListCell *lc;
+						List *atlist = (List *)at;
+	
+						/* must be LIST */
+						Assert(prule->pNode->part->parkind == 'l');
+	
+						/* 
+						 * Iterate through list of existing constraints and
+						 * pick out those not in AT() clause
+						 */
+						foreach(lc, lv)
+						{
+							List *cols = lfirst(lc);
+							ListCell *parvals = list_head(atlist);
+							int16 nkeys = prule->pNode->part->parnatts;
+							bool found = false;
+	
+							while (parvals)
+							{
+								List *vals = lfirst(parvals);
+								ListCell *lcv = list_head(vals);
+								ListCell *lcc = list_head(cols);
+								int parcol;
+								bool matched = true;
+		
+								for (parcol = 0; parcol < nkeys; parcol++)
+								{
+									Oid opclass = 
+										prule->pNode->part->parclass[parcol];
+									Oid funcid = get_opclass_proc(opclass, 0,
+																  BTORDER_PROC);
+									Const *v = lfirst(lcv);
+									Const *c = lfirst(lcc);
+									Datum d;
+		
+									if (v->constisnull && c->constisnull)
+										continue;
+									else if (v->constisnull || c->constisnull)
+									{
+										matched = false;
+										break;
+									}
+		
+									d = OidFunctionCall2(funcid, c->constvalue,
+														 v->constvalue);
+		
+									if (DatumGetInt32(d) != 0)
+									{
+										matched = false;
+										break;
+									}
+		
+									lcv = lnext(lcv);
+									lcc = lnext(lcc);
+								}
+								
+								if (matched)
+								{
+									found = true;
+									break;
+								}
+	
+								parvals = lnext(parvals);
+							}
+							if (!found)
+							{
+								/* Not in AT() clause, so keep it */
+								newvals = lappend(newvals,
+										copyObject((Node *)cols));
+							}
+						}
+						valuesspec->partValues = newvals;
+						valuesspec->location = -1;
+						pelem->boundSpec = (Node *)valuesspec;
+					}
+				}
+			}
+
+			/* 
+			 * We always want to create a partition name because we
+			 * need to recall the partition details below.
+			 */
+			if (!parname)
+			{
+				char n[NAMEDATALEN];
+
+				snprintf(n, NAMEDATALEN, "r%lu", random());
+				parname = pstrdup(n);
+
+			}
+
+			pelem->partName = (Node *)makeString(parname);
+			mypid->partiddef = pelem->partName;
+			mypid->idtype = AT_AP_IDName;
+
+			pelem->location  = -1;
+			pelem->isDefault = (into_exists && into_exists == i) ? true : false;
+			
+			/* tell add we're doing a split */
+			mypc2->partid = (Node *)makeInteger(1);
+
+			mypc2->arg1 = (Node *)pelem;
+			mypc2->arg2 = (Node *)list_make1(mycs);
+			mypc2->location = -1;
+
+			mypc->arg1 = (Node *)makeInteger(into_exists && into_exists == i);
+			mypc->arg2 = (Node *)mypc2;
+			mypc->location = -1;
+
+			cmd->subtype = AT_PartAdd;
+			cmd->def = (Node *)mypc;
+			parsetrees = parse_analyze((Node *)ats, NULL, NULL, 0);
+			Assert(list_length(parsetrees) == 1);
+			q = (Query *)linitial(parsetrees);
+
+			heap_close(rel, NoLock);
+			ProcessUtility((Node *)q->utilityStmt, NULL, dest, NULL);
+			rel = heap_open(relid, AccessExclusiveLock);
+
+			/* get the rule back which ADD PARTITION just created */
+			tmprule = get_part_rule(rel, mypid, true, true,
+							  CurrentMemoryContext, NULL, false);
+
+			Assert(PointerIsValid(tmprule));
+
+			if (i == 1)
+			{
+				intoa = heap_open(tmprule->topRule->parchildrelid,
+								  AccessExclusiveLock);
+
+				rva = makeRangeVar(
+							get_namespace_name(RelationGetNamespace(intoa)),
+						    get_rel_name(RelationGetRelid(intoa)));
+			}
+			else
+			{
+				intob = heap_open(tmprule->topRule->parchildrelid,
+								  AccessExclusiveLock);
+
+				rvb = makeRangeVar(
+							get_namespace_name(RelationGetNamespace(intob)),
+						    get_rel_name(RelationGetRelid(intob)));
+		
+			}
+		}
+
+		temprel = heap_openrv(tmprv, AccessExclusiveLock);
+
+		/* update parse tree with info for the QEs */
+		Assert(PointerIsValid(tmprv));
+		Assert(PointerIsValid(rva));
+		Assert(PointerIsValid(rvb));
+
+		/* update for consumption by QEs */
+		pc->partid = (Node *)copyObject(tmprv);
+		pc->arg1 = (Node *)copyObject(rva);
+		pc->arg2 = (Node *)copyObject(rvb);
+	}
+	else if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		RangeVar *tmprv;
+		RangeVar *rva;
+		RangeVar *rvb;
+
+		tmprv = (RangeVar *)pc->partid;
+		temprel = heap_openrv(tmprv, AccessExclusiveLock);
+		rva = (RangeVar *)pc->arg1;
+		intoa = heap_openrv(rva, AccessExclusiveLock);
+		rvb = (RangeVar *)pc->arg2;
+		intob = heap_openrv(rvb, AccessExclusiveLock);
+	}
+	else
 		return;
 
-	prule = get_part_rule(rel, pid, true, true, CurrentMemoryContext, NULL,
-						  false);
+	/* 
+	 * Now, on every node, scan the exchanged out table, splitting data 
+	 * between two new partitions.
+	 *
+	 * To do this, we use the CHECK constraints we just created on the
+	 * tables via ADD PARTITION.
+	 */
+	estate = CreateExecutorState();
+	tts = MakeSingleTupleTableSlot(temprel->rd_att);
 
-
-	if (prule)
+	/* constr might not be defined if this is a default partition */
+	if (intoa->rd_att->constr)
 	{
+		Node *bin = (Node *)make_ands_implicit(
+				(Expr *)stringToNode(intoa->rd_att->constr->check[0].ccbin));
+		achk = ExecPrepareExpr((Expr *)bin, estate);
 	}
 
-    ereport(ERROR,
-            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-             errmsg("cannot SPLIT PARTITION for relation \"%s\"",
-                    RelationGetRelationName(rel))));
+	if (intob->rd_att->constr)
+	{
+		Node *bin = (Node *)make_ands_implicit(
+				(Expr *)stringToNode(intob->rd_att->constr->check[0].ccbin));
+		bchk = ExecPrepareExpr((Expr *)bin, estate);
+	}
 
+	/* be careful about AO vs. normal heap tables */
+	if (temprel->rd_rel->relstorage == RELSTORAGE_HEAP)
+		heapscan = heap_beginscan(temprel, SnapshotNow, 0, NULL);
+	else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
+		aoscan = appendonly_beginscan(temprel, 0, NULL);
+
+	oldCxt = MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
+
+	while(1)
+	{
+		ExprContext *econtext = GetPerTupleExprContext(estate);
+
+		if (temprel->rd_rel->relstorage == RELSTORAGE_HEAP)
+		{
+			HeapTuple tuple;
+
+			tuple = heap_getnext(heapscan, ForwardScanDirection);
+			if (!HeapTupleIsValid(tuple))
+				break;
+
+			ExecStoreHeapTuple(tuple, tts, InvalidBuffer, false);
+		}
+		else if (temprel->rd_rel->relstorage == RELSTORAGE_HEAP)
+		{
+			MemTuple mtuple;
+
+			mtuple = appendonly_getnext(aoscan, ForwardScanDirection, NULL);
+			if (!PointerIsValid(mtuple))
+				break;
+
+			ExecStoreMemTuple(mtuple, tts, false);
+		}
+
+		econtext->ecxt_scantuple = tts;
+
+		if (achk)
+		{
+			if (ExecQual((List *)achk, econtext, true))
+			{
+				/* insert into intoa */
+				HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
+
+				simple_heap_insert(intoa, tuple);
+			}
+			else
+			{
+				/* belongs in intob */
+				HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
+
+				simple_heap_insert(intob, tuple);
+
+			}
+		}
+		else
+		{
+			Assert(PointerIsValid(bchk));
+
+			if (ExecQual((List *)bchk, econtext, true))
+			{
+				/* insert into intob */
+				HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
+
+				simple_heap_insert(intob, tuple);
+			}
+			else
+			{
+				/* belongs in intoa */
+				HeapTuple tuple = ExecFetchSlotHeapTuple(tts);
+
+				simple_heap_insert(intoa, tuple);
+			}
+		}
+		ResetExprContext(econtext);
+	}
+
+	MemoryContextSwitchTo(oldCxt);
+	ExecDropSingleTupleTableSlot(tts);
+
+	if (temprel->rd_rel->relstorage == RELSTORAGE_HEAP)
+		heap_endscan(heapscan);
+	else if (temprel->rd_rel->relstorage == RELSTORAGE_AO)
+		appendonly_endscan(aoscan);
+
+	temprelid = RelationGetRelid(temprel);
+	heap_close(temprel, NoLock);
+
+	/* drop temp table */
+	{
+		ObjectAddress addr;
+		addr.classId = RelationRelationId;
+		addr.objectId = temprelid;
+		addr.objectSubId = 0;
+
+		performDeletion(&addr, DROP_RESTRICT);
+	}
+
+	heap_close(intoa, NoLock);
+	heap_close(intob, NoLock);
 }
 
 /* ALTER TABLE ... TRUNCATE PARTITION */

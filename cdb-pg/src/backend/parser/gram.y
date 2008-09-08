@@ -389,6 +389,7 @@ static void doNegateFloat(Value *v);
 %type <node> 	TabPartitionBoundarySpec OptTabPartitionBoundarySpec  /* PartitionBoundSpec */
 %type <list> 	TabPartitionBoundarySpecValList
 				OptTabPartitionBoundarySpecValList
+				part_values_or_spec_list
 %type <node> 	TabPartitionBoundarySpecStart TabPartitionBoundarySpecEnd
 				OptTabPartitionBoundarySpecEnd        /* PartitionRangeItem */
 %type <node> 	OptTabPartitionBoundarySpecEvery      /* PartitionRangeItem */
@@ -2256,7 +2257,7 @@ alter_table_partition_cmd:
 				}
 			| SPLIT 
             alter_table_partition_id_spec_with_opt_default AT 
-            '(' TabPartitionBoundarySpecValList ')'	
+            '(' part_values_or_spec_list ')'	
             opt_table_partition_split_into	
 				{
 					AlterPartitionCmd *pc = makeNode(AlterPartitionCmd);
@@ -2361,8 +2362,6 @@ alter_using:
 			USING a_expr				{ $$ = $2; }
 			| /* EMPTY */				{ $$ = NULL; }
 		;
-
-
 
 /*****************************************************************************
  *
@@ -3356,6 +3355,9 @@ part_values_clause:
 				}
 		;
 
+part_values_or_spec_list: TabPartitionBoundarySpecValList { $$ = $1; }
+			| part_values_clause { $$ = $1; }
+		;
 
 /* a "Partition Element" closely corresponds to a "Partition Declaration" */
 TabPartitionElem: 
