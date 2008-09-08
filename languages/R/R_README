@@ -1,0 +1,43 @@
+
+This package contains the following pre-built non-Greenplum software:
+
+  R        - http://www.r-project.org/
+
+  Each of which are covered by their own licenses.
+
+
+
+The following commands show how to install the packages in this zip file.
+
+All commands listed below are to be run as the gpadmin user on the master
+host.
+
+Stop the database:
+gpstop -a
+
+Run this script to modify where R will find it's libraries (The R install location must be provided):
+./modify-R-startup-path.sh <R-install-location>
+
+Install "R" on all segment hosts into a directory (<R-install-location>):
+gpscp -rf <host-file> R =:<R-install-location>
+
+Edit the file $GPHOME/greenplum_path.sh and append the following line:
+export R_HOME=<R-install-location/lib>
+ 
+Distribute changes to all segments
+gpscp $GPHOME/greenplum_path.sh =:$GPHOME
+ 
+Source the new greenplum_path.sh
+. $GPHOME/greenplum_path.sh
+ 
+Start the database:
+gpstart -a
+ 
+Connect to the database you wish to install to
+psql <database-name>
+ 
+Install PL/R:
+!!!!!!!!!!!!!!!!!!!!!!!
+CHANGEME: The path of plr.sql needs to reflect where the file is in $GPHOME
+!!!!!!!!!!!!!!!!!!!!!!!
+\i sql/plr.sql
