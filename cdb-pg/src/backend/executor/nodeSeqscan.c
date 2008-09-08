@@ -33,6 +33,9 @@
 #include "miscadmin.h"
 
 static void InitScanRelation(SeqScanState *node, EState *estate);
+static void OpenScanRelation(SeqScanState *node);
+static void CloseScanRelation(SeqScanState *node);
+
 static TupleTableSlot *SeqNext(SeqScanState *node);
 
 /* ----------------------------------------------------------------
@@ -55,14 +58,16 @@ SeqNext(SeqScanState *node)
 	ScanDirection direction;
 	TupleTableSlot *slot;
 
+	Assert(node->fRelOpen);
+
 	/*
 	 * get information from the estate and scan state
 	 */
-	estate = node->ps.state;
-	scandesc = node->ss_currentScanDesc;
-	scanrelid = ((SeqScan *) node->ps.plan)->scanrelid;
+	estate = node->ss.ps.state;
+	scandesc = node->ss.ss_currentScanDesc;
+	scanrelid = ((SeqScan *) node->ss.ps.plan)->scanrelid;
 	direction = estate->es_direction;
-	slot = node->ss_ScanTupleSlot;
+	slot = node->ss.ss_ScanTupleSlot;
 
 	/*
 	 * Check if we are evaluating PlanQual for tuple of this relation.
@@ -93,28 +98,28 @@ SeqNext(SeqScanState *node)
 	 * get the next tuple from the access methods
 	 */
 	/* CKTAN- */
-	if (node->ss_heapTupleData.bot == node->ss_heapTupleData.top 
-		&& !node->ss_heapTupleData.seen_EOS)
+	if (node->ss.ss_heapTupleData.bot == node->ss.ss_heapTupleData.top 
+		&& !node->ss.ss_heapTupleData.seen_EOS)
 	{
-		node->ss_heapTupleData.last = NULL;
-		node->ss_heapTupleData.bot = 0;
-		node->ss_heapTupleData.top = lengthof(node->ss_heapTupleData.item);
-		heap_getnextx(scandesc, direction, node->ss_heapTupleData.item,
-					  &node->ss_heapTupleData.top, 
-					  &node->ss_heapTupleData.seen_EOS);
+		node->ss.ss_heapTupleData.last = NULL;
+		node->ss.ss_heapTupleData.bot = 0;
+		node->ss.ss_heapTupleData.top = lengthof(node->ss.ss_heapTupleData.item);
+		heap_getnextx(scandesc, direction, node->ss.ss_heapTupleData.item,
+					  &node->ss.ss_heapTupleData.top, 
+					  &node->ss.ss_heapTupleData.seen_EOS);
 
 		/* Gpmon */
 		if(scandesc->rs_pageatatime)
 			Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_PAGE);
 
-		CheckSendPlanStateGpmonPkt(&node->ps);
+		CheckSendPlanStateGpmonPkt(&node->ss.ps);
 	}
 
-	node->ss_heapTupleData.last = 
-		((node->ss_heapTupleData.bot < node->ss_heapTupleData.top) 
-		 ? &node->ss_heapTupleData.item[node->ss_heapTupleData.bot++]
+	node->ss.ss_heapTupleData.last = 
+		((node->ss.ss_heapTupleData.bot < node->ss.ss_heapTupleData.top) 
+		 ? &node->ss.ss_heapTupleData.item[node->ss.ss_heapTupleData.bot++]
 		 : 0);
-	tuple = node->ss_heapTupleData.last;
+	tuple = node->ss.ss_heapTupleData.last;
 
 	/*
 	 * save the tuple and the buffer returned to us by the access methods in
@@ -149,11 +154,19 @@ SeqNext(SeqScanState *node)
 TupleTableSlot *
 ExecSeqScan(SeqScanState *node)
 {
+	TupleTableSlot *slot;
+
+	if(!node->fRelOpen)
+		OpenScanRelation(node);
 	/*
 	 * use SeqNext as access method
 	 */
-	TupleTableSlot *slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
+	slot = ExecScan((ScanState *) node, (ExecScanAccessMtd) SeqNext);
 	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_QEXEC_M_ROWSOUT); 
+
+	/* Only close if we have not a marked pos, and at the end of scan. */
+	if(!node->fHasMarkPos && TupIsNull(slot))
+		CloseScanRelation(node);
 
 	return slot;
 }
@@ -169,30 +182,53 @@ static void
 InitScanRelation(SeqScanState *node, EState *estate)
 {
 	Relation	currentRelation;
-	HeapScanDesc currentScanDesc;
 
 	/*
 	 * get the relation object id from the relid'th entry in the range table,
 	 * open that relation and acquire appropriate lock on it.
 	 */
-	currentRelation = ExecOpenScanRelation(estate,
-									 ((SeqScan *) node->ps.plan)->scanrelid);
+	currentRelation = ExecOpenScanRelation(estate, ((SeqScan *) node->ss.ps.plan)->scanrelid);
 
-	currentScanDesc = heap_beginscan(currentRelation,
-									 estate->es_snapshot,
-									 0,
-									 NULL);
+	node->ss.ss_currentRelation = currentRelation;
 
-	node->ss_currentRelation = currentRelation;
-	node->ss_currentScanDesc = currentScanDesc;
-	/* CKTAN- */
-	node->ss_heapTupleData.bot = node->ss_heapTupleData.top 
-		= node->ss_heapTupleData.seen_EOS = 0;
-	node->ss_heapTupleData.last = NULL;
-
-	ExecAssignScanType(node, RelationGetDescr(currentRelation));
+	ExecAssignScanType(&node->ss, RelationGetDescr(currentRelation));
 }
 
+static void
+OpenScanRelation(SeqScanState *node) 
+{
+	Assert(!node->fRelOpen);
+	Assert(!node->ss.ss_currentScanDesc);
+
+	node->ss.ss_currentScanDesc = heap_beginscan(
+				node->ss.ss_currentRelation,
+				node->ss.ps.state->es_snapshot, 
+				0,
+				NULL);
+
+	/* CKTAN- */
+	node->ss.ss_heapTupleData.bot = node->ss.ss_heapTupleData.top 
+		= node->ss.ss_heapTupleData.seen_EOS = 0;
+	node->ss.ss_heapTupleData.last = NULL;
+
+	node->fRelOpen = true;
+}
+
+static void
+CloseScanRelation(SeqScanState *node)
+{
+	/*
+	 * close heap scan
+	 */
+	heap_endscan(node->ss.ss_currentScanDesc); 
+	/* CKTAN */
+	node->ss.ss_heapTupleData.bot = node->ss.ss_heapTupleData.top = 0;
+	node->ss.ss_heapTupleData.seen_EOS = 1;
+	node->ss.ss_heapTupleData.last = NULL;
+
+	node->ss.ss_currentScanDesc = NULL;
+	node->fRelOpen = false;
+}
 
 /* ----------------------------------------------------------------
  *		ExecInitSeqScan
@@ -214,23 +250,23 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	 * create state structure
 	 */
 	scanstate = makeNode(SeqScanState);
-	scanstate->ps.plan = (Plan *) node;
-	scanstate->ps.state = estate;
+	scanstate->ss.ps.plan = (Plan *) node;
+	scanstate->ss.ps.state = estate;
 
 	/*
 	 * Miscellaneous initialization
 	 *
 	 * create expression context for node
 	 */
-	ExecAssignExprContext(estate, &scanstate->ps);
+	ExecAssignExprContext(estate, &scanstate->ss.ps);
 
 	/*
 	 * initialize child expressions
 	 */
-	scanstate->ps.targetlist = (List *)
+	scanstate->ss.ps.targetlist = (List *)
 		ExecInitExpr((Expr *) node->plan.targetlist,
 					 (PlanState *) scanstate);
-	scanstate->ps.qual = (List *)
+	scanstate->ss.ps.qual = (List *)
 		ExecInitExpr((Expr *) node->plan.qual,
 					 (PlanState *) scanstate);
 
@@ -239,8 +275,8 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	/*
 	 * tuple table initialization
 	 */
-	ExecInitResultTupleSlot(estate, &scanstate->ps);
-	ExecInitScanTupleSlot(estate, scanstate);
+	ExecInitResultTupleSlot(estate, &scanstate->ss.ps);
+	ExecInitScanTupleSlot(estate, &scanstate->ss);
 
 	/*
 	 * initialize scan relation
@@ -250,13 +286,13 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 	/*
 	 * Initialize result tuple type and projection info.
 	 */
-	ExecAssignResultTypeFromTL(&scanstate->ps);
-	ExecAssignScanProjectionInfo(scanstate);
+	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
+	ExecAssignScanProjectionInfo(&scanstate->ss);
 
 	/* Set up gpmon */
 	{
 		Gpmon_NameUnit_MaxVal m[GPMON_SEQSCAN_TOTAL + 1] = {
-			GPMON_QEXEC_M_INIT_ROWS(0, (int64) scanstate->ps.plan->plan_rows), 
+			GPMON_QEXEC_M_INIT_ROWS(0, (int64) scanstate->ss.ps.plan->plan_rows), 
 			{ "SeqScan Page Stats", "Pages", 0 }, 
 			{ "SeqScan Restore Pos", "Restores", 0},
 			{ "SeqScan Rescan", "Rescans", 0},
@@ -264,7 +300,7 @@ ExecInitSeqScan(SeqScan *node, EState *estate, int eflags)
 		};
 
 		Assert(GPMON_SEQSCAN_TOTAL <= GPMON_QEXEC_M_COUNT);
-		InitPlanStateGpmonPkt(&scanstate->ps, "Sequential Scan", m); 
+		InitPlanStateGpmonPkt(&scanstate->ss.ps, "Sequential Scan", m); 
 	}
 
 	return scanstate;
@@ -288,41 +324,32 @@ void
 ExecEndSeqScan(SeqScanState *node)
 {
 	Relation	relation;
-	HeapScanDesc scanDesc;
 
 	/*
 	 * get information from node
 	 */
-	relation = node->ss_currentRelation;
-	scanDesc = node->ss_currentScanDesc;
+	relation = node->ss.ss_currentRelation;
 
 	/*
 	 * Free the exprcontext
 	 */
-	ExecFreeExprContext(&node->ps);
+	ExecFreeExprContext(&node->ss.ps);
 
 	/*
 	 * clean out the tuple table
 	 */
-	ExecClearTuple(node->ps.ps_ResultTupleSlot);
-	ExecClearTuple(node->ss_ScanTupleSlot);
+	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
-	/*
-	 * close heap scan
-	 */
-	heap_endscan(scanDesc);
-	/* CKTAN */
-	node->ss_heapTupleData.bot = node->ss_heapTupleData.top = 0;
-	node->ss_heapTupleData.seen_EOS = 1;
-	node->ss_heapTupleData.last = NULL;
-
+	if(node->fRelOpen)
+		CloseScanRelation(node);
 	/*
 	 * close the heap relation.
 	 */
 	ExecCloseScanRelation(relation);
 
 	/* gpmon */
-	EndPlanStateGpmonPkt(&node->ps);
+	EndPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------
@@ -343,8 +370,8 @@ ExecSeqReScan(SeqScanState *node, ExprContext *exprCtxt)
 	Index		scanrelid;
 	HeapScanDesc scan;
 
-	estate = node->ps.state;
-	scanrelid = ((SeqScan *) node->ps.plan)->scanrelid;
+	estate = node->ss.ps.state;
+	scanrelid = ((SeqScan *) node->ss.ps.plan)->scanrelid;
 
 	/*node->ps.ps_TupFromTlist = false;*/
 
@@ -356,17 +383,20 @@ ExecSeqReScan(SeqScanState *node, ExprContext *exprCtxt)
 		return;
 	}
 
-	scan = node->ss_currentScanDesc;
+	if(!node->fRelOpen)
+		OpenScanRelation(node);
+
+	scan = node->ss.ss_currentScanDesc;
 
 	heap_rescan(scan,			/* scan desc */
 				NULL);			/* new scan keys */
 	/* CKTAN */
-	node->ss_heapTupleData.bot = node->ss_heapTupleData.top 
-		= node->ss_heapTupleData.seen_EOS = 0;
-	node->ss_heapTupleData.last = NULL;
+	node->ss.ss_heapTupleData.bot = node->ss.ss_heapTupleData.top 
+		= node->ss.ss_heapTupleData.seen_EOS = 0;
+	node->ss.ss_heapTupleData.last = NULL;
 
 	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_RESCAN);
-	CheckSendPlanStateGpmonPkt(&node->ps);
+	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* ----------------------------------------------------------------
@@ -378,12 +408,15 @@ ExecSeqReScan(SeqScanState *node, ExprContext *exprCtxt)
 void
 ExecSeqMarkPos(SeqScanState *node)
 {
-	HeapScanDesc scan = node->ss_currentScanDesc;
+	HeapScanDesc scan = node->ss.ss_currentScanDesc;
+
+	Assert(node->fRelOpen);
 
 	/* CKTAN
 	heap_markpos(scan);
 	*/
-	heap_markposx(scan, node->ss_heapTupleData.last);
+	heap_markposx(scan, node->ss.ss_heapTupleData.last);
+	node->fHasMarkPos = true;
 }
 
 /* ----------------------------------------------------------------
@@ -395,7 +428,9 @@ ExecSeqMarkPos(SeqScanState *node)
 void
 ExecSeqRestrPos(SeqScanState *node)
 {
-	HeapScanDesc scan = node->ss_currentScanDesc;
+	HeapScanDesc scan = node->ss.ss_currentScanDesc;
+
+	Assert(node->fRelOpen && node->fHasMarkPos);
 
 	/*
 	 * Clear any reference to the previously returned tuple.  This is needed
@@ -403,11 +438,11 @@ ExecSeqRestrPos(SeqScanState *node)
 	 * heap_restrpos will change; we'd have an internally inconsistent slot if
 	 * we didn't do this.
 	 */
-	ExecClearTuple(node->ss_ScanTupleSlot);
+	ExecClearTuple(node->ss.ss_ScanTupleSlot);
 
 	heap_restrpos(scan);
 	Gpmon_M_Incr(GpmonPktFromSeqScanState(node), GPMON_SEQSCAN_RESTOREPOS);
-	CheckSendPlanStateGpmonPkt(&node->ps);
+	CheckSendPlanStateGpmonPkt(&node->ss.ps);
 }
 
 /* Gpmon helpers. */

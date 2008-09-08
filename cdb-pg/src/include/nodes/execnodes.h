@@ -1221,14 +1221,14 @@ typedef struct ScanState
 		HeapTuple last;
 		int seen_EOS;
 	} ss_heapTupleData;
-	
 } ScanState;
 
-/*
- * SeqScan uses a bare ScanState as its state node, since it needs
- * no additional fields.
- */
-typedef ScanState SeqScanState;
+typedef struct SeqScanState 
+{
+	ScanState ss;
+	bool fHasMarkPos;
+	bool fRelOpen; 
+} SeqScanState;
 
 /*
  * These structs store information about index quals that don't have simple

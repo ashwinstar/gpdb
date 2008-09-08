@@ -35,7 +35,7 @@ enum
 
 static inline gpmon_packet_t * GpmonPktFromSeqScanState(SeqScanState *node)
 {
-	return &node->ps.gpmon_pkt;
+	return &node->ss.ps.gpmon_pkt;
 }
 
 #endif   /* NODESEQSCAN_H */
