@@ -142,6 +142,8 @@ def parseCommandLine():
 
     if not GV.opt['-D']:
         GV.opt['-h'] = hostlist.filterMultiHomedHosts()
+    else:
+        GV.opt['-h'] = hostlist.get()
 
     if len(GV.opt['-h']) == 0:
         usage('Error: missing hosts in -h and/or -f arguments')
