@@ -84,6 +84,8 @@ mpool_alloc(MPool *mpool, Size size)
 {
 	void *alloc_space;
 	
+	size = MAXALIGN(size);
+
 	if (mpool->start == NULL ||
 		(char *)mpool->end - (char *)mpool->start < size)
 	{
