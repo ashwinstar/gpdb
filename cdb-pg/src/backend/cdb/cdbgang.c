@@ -4100,7 +4100,7 @@ detectFailedConnections(void)
 CdbComponentDatabases *
 getComponentDatabases(void)
 {
-	Assert(Gp_role == GP_ROLE_DISPATCH);
+	Assert(Gp_role == GP_ROLE_DISPATCH || Gp_role == GP_ROLE_UTILITY);
 	return (cdb_component_dbs == NULL) ? getCdbComponentDatabases() : cdb_component_dbs;
 }
 
