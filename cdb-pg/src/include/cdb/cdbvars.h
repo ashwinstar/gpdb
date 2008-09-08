@@ -219,6 +219,12 @@ extern int			gp_reject_percent_threshold;
  */
 extern bool           gp_select_invisible;
 
+/*
+ * In order to facilitate testing of reader-gang/writer-gang synchronization
+ * it is very handy to slow down the writer (opens important race-window).
+ */
+extern bool           gp_enable_slow_writer_testmode;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter

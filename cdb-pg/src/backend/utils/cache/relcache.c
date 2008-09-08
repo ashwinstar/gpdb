@@ -2054,10 +2054,6 @@ AtEOXact_RelationCache(bool isCommit)
 		 */
 		if (DistributedTransactionContext == DTX_CONTEXT_QE_READER)
 		{
-			elog(DEBUG3, "AtEOXact_RelationCache(): %s cache %u node %u",
-				 (isCommit ? "commit" : "abort"),
-				 relation->rd_id, relation->rd_node.relNode);
-
 			RelationClearRelation(relation, false);
 			continue;
 		}

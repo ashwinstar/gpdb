@@ -22,6 +22,7 @@
 #include "storage/shmem.h"
 #include "storage/ipc.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdtxcontextinfo.h"
 
 #include "cdb/cdbvars.h"
 #include "libpq-fe.h"
@@ -3080,6 +3081,12 @@ void verify_shared_snapshot_ready(void)
 		strcpy(cmdbuf, "set gp_write_shared_snapshot=true" );
 		
 		CdbDoCommand(cmdbuf, true, true, true, true);
+
+		/*
+		 * To keep our readers in sync (since they will be dispatched
+		 * separately) we need to rewind the segmate synchronizer.
+		 */
+		DtxContextInfo_RewindSegmateSync();
 	}
 }
 
@@ -3257,13 +3264,13 @@ setupQEDtxContext (DtxContextInfo *dtxContextInfo)
 		}
 		if (isSharedLocalSnapshotSlotPresent)
 		{
-			elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupQEDtxContext inputs (part 2b):  shared local snapshot xid = %u (xmin: %u xmax: %u xcnt: %u) curcid: %d, QDxid = %u, QDcid = %u", 
+			elog((Debug_print_full_dtm ? LOG : DEBUG5), "setupQEDtxContext inputs (part 2b):  shared local snapshot xid = %u (xmin: %u xmax: %u xcnt: %u) curcid: %d, QDxid = %u/%u, QDcid = %u", 
 				 SharedLocalSnapshotSlot->xid,
 				 SharedLocalSnapshotSlot->snapshot.xmin,
 				 SharedLocalSnapshotSlot->snapshot.xmax,
 	 			 SharedLocalSnapshotSlot->snapshot.xcnt,
 				 SharedLocalSnapshotSlot->snapshot.curcid,
-				 SharedLocalSnapshotSlot->QDxid,
+				 SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
 				 SharedLocalSnapshotSlot->QDcid);
 		}
 	}

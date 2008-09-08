@@ -102,6 +102,14 @@ int			gp_reject_percent_threshold; /* SREH reject % kicks off only after *
 bool          gp_select_invisible=false; /* debug mode to allow select to see "invisible" rows */
 
 /*
+ * gp_enable_slow_writer_testmode
+ *
+ * In order facilitate testing of reader-gang/writer-gang synchronization,
+ * this inserts a pg_usleep call at the start of writer-gang processing.
+ */
+bool	gp_enable_slow_writer_testmode = false;
+
+/*
  * TCP port the Interconnect listens on for incoming connections from other
  * backends.  Assigned by initMotionLayerIPC() at process startup.  This port
  * is used for the duration of this process and should never change.
@@ -223,7 +231,7 @@ bool        gp_mapreduce_define=false;
  * Miscellaneous developer use
  */
 
-bool  gp_dev_notice_agg_cost = false;
+bool	gp_dev_notice_agg_cost = false;
 
 /* --------------------------------------------------------------------------------------------------
  * Server debugging
@@ -237,7 +245,6 @@ bool  gp_dev_notice_agg_cost = false;
  * termination, to let the user attach a debugger.
  */
 int  gp_debug_linger = 30;
-
 
 /* ----------------
  * Non-GUC globals

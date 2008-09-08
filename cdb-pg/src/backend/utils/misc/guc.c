@@ -1415,6 +1415,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"gp_enable_slow_writer_testmode", PGC_USERSET, DEVELOPER_OPTIONS,
+			gettext_noop("Slow down writer gangs -- to facilitate race-condition testing."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&gp_enable_slow_writer_testmode,
+		false, NULL, NULL
+	},
+
+	{
 		{"gp_appendonly_verify_block_checksums", PGC_USERSET, DEVELOPER_OPTIONS,
 		 gettext_noop("Verify the append-only block checksum when reading."),
 		 NULL,

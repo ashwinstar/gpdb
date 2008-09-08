@@ -321,6 +321,7 @@ retry:
 	slot->startTimestamp = 0;
 	slot->QDxid = 0;
 	slot->QDcid = 0;
+	slot->segmateSync = 0;
 	
 	LWLockRelease(SharedSnapshotLock);
 	
@@ -344,7 +345,7 @@ SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
 	SharedSnapshotSlot *slot = NULL;
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
 	int index;
-	
+
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
 	
 	for (index=0; index < arrayP->maxSlots; index++)
@@ -403,6 +404,7 @@ SharedSnapshotRemove(volatile SharedSnapshotSlot *slot,
 	slot->startTimestamp = 0;
 	slot->QDxid = 0;
 	slot->QDcid = 0;
+	slot->segmateSync = 0;
 	
 	sharedSnapshotArray->numSlots--;
 	

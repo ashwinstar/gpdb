@@ -27,6 +27,7 @@ typedef struct DtxContextInfo
 
 	int 							distributedTxnOptions;
 
+	uint32							segmateSync;
 } DtxContextInfo;
 	
 
@@ -45,5 +46,7 @@ extern void DtxContextInfo_Deserialize(const char *serializedSnapshot, int seria
 extern void DtxContextInfo_Copy(
 	DtxContextInfo *target, 
 	DtxContextInfo *source);
+
+extern void DtxContextInfo_RewindSegmateSync(void);
 
 #endif   /* CDBDTXCONTEXTINFO_H */

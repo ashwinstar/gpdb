@@ -409,6 +409,7 @@ AssignSubTransactionId(TransactionState s)
 	 * the Xid as "running".  See GetNewTransactionId.
 	 */
 	s->transactionId = GetNewTransactionId(true, true);
+	elog((Debug_print_full_dtm ? LOG : DEBUG5), "AssignSubTransactionId(): assigned xid %u", s->transactionId);
 
 	SubTransSetParent(s->transactionId, s->parent->transactionId);
 
@@ -550,34 +551,68 @@ TransactionIdIsCurrentTransactionId(TransactionId xid)
 		return false;
 
     if ((DistributedTransactionContext == DTX_CONTEXT_QE_READER ||
-		 DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON) &&
-		SharedLocalSnapshotSlot != NULL && 
-		SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId)
+		 DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON))
 	{
 		/*
-		 * In qExec Readers, we do not have real transaction and subtransaction
-		 * state.  The Writer copies the active subtransactions information
-		 * into the shared snapshot.
+		 * Naively, it seems like these should be Asserts()
+		 * (Assert(SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId));
+		 * but they can't be: this code is run in cursors where the writer is *supposed*
+		 * to race ahead and modify SharedLocalSnapshotSlot.
+		 *
+		 * We should be able to tell the difference though, if our QEDtxContextInfo.segmateSync
+		 * still matches the SharedLocalSnapshotSlot->segmateSync, then our xid should match the
+		 * shared-xid.
 		 */
-		if (TransactionIdEquals(xid, TopTransactionStateData.transactionId))
+		if (SharedLocalSnapshotSlot != NULL && 
+			SharedLocalSnapshotSlot->xid == TopTransactionStateData.transactionId)
 		{
-			isCurrentTransactionId = true;
-		    elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
+			/*
+			 * In qExec Readers, we do not have real transaction and subtransaction
+			 * state.  The Writer copies the active subtransactions information
+			 * into the shared snapshot.
+			 */
+			if (TransactionIdEquals(xid, TopTransactionStateData.transactionId))
+			{
+				isCurrentTransactionId = true;
+				elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = true -- TOP", xid);
+			}
+			else
+			{
+				isCurrentTransactionId = CheckSharedSnapshotForSubtransaction(xid);
+				elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = %s -- Subtransaction",
+					 xid, (isCurrentTransactionId ? "true" : "false"));
+			}
+			return isCurrentTransactionId;
 		}
 		else
 		{
-	    	isCurrentTransactionId = CheckSharedSnapshotForSubtransaction(xid);
-		    elog((Debug_print_full_dtm ? LOG : DEBUG5),"qExec Reader CheckSharedSnapshotForSubtransaction(xid = %u) = %s -- Subtransaction",
-				 xid, (isCurrentTransactionId ? "true" : "false"));
+			if (SharedLocalSnapshotSlot == NULL)
+				elog(DEBUG1, "qExec Reader: snapshot slot is NULL");
+			else
+				elog(DEBUG1, "qExec Reader: snapshot slot xid is %u distXid %u/%u (toptrans is %u)",
+					 SharedLocalSnapshotSlot->xid,
+					 SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
+					 TopTransactionStateData.transactionId);
 		}
-		
 
-		return isCurrentTransactionId;
+		/*
+		 * If we don't think we're supposed to have the writer ahead
+		 * of us, throw an error: note that cursor-based readers
+		 * should have either a ready-flag mismatch, or a segmateSync
+		 * mismatch; so will not throw this error.
+		 */
+		if (SharedLocalSnapshotSlot != NULL && SharedLocalSnapshotSlot->ready &&
+			SharedLocalSnapshotSlot->segmateSync == QEDtxContextInfo.segmateSync &&
+			SharedLocalSnapshotSlot->xid != TopTransactionStateData.transactionId)
+		{
+			/* We aren't in a cursor, the writer appears to have raced
+			 * ahead for some unknown reason ? */
+			elog(ERROR, "qExec Reader: writer gang raced ahead, invalid snapshot xid %u distXid %u/%u",
+				 SharedLocalSnapshotSlot->xid,
+				 SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync);
+		}
+			
 	}
-#if 0
-	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_READER);
-	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_ENTRY_DB_SINGLETON);
-#endif
 
 	/*
 	 * We will return true for the Xid of the current subtransaction, any of
@@ -1591,9 +1626,9 @@ SetSharedTransactionId(void)
 	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
-		elog((Debug_print_full_dtm ? LOG : DEBUG3), "qExec WRITER setting shared xid to: %u (distributedXid %u)", 
-		     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
-
+		elog(LOG, "qExec WRITER updating shared xid %u -> %u (distributedXid %u)", 
+		     SharedLocalSnapshotSlot->xid, TopTransactionStateData.transactionId,
+			 QEDtxContextInfo.distributedXid);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
 		break;
 		
@@ -1602,8 +1637,8 @@ SetSharedTransactionId(void)
 		TopTransactionStateData.transactionId = SharedLocalSnapshotSlot->xid;
 		currentCommandId = SharedLocalSnapshotSlot->snapshot.curcid;
 
-		elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec READER setting local xid to: %u (distributedXid %u)", 
-		     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid);
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec READER setting local xid to: %u (distributedXid %u/%u)", 
+		     TopTransactionStateData.transactionId, QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync);
 		break;
 
 	case DTX_CONTEXT_LOCAL_ONLY:
@@ -1834,6 +1869,15 @@ StartTransaction(void)
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
 		{
+			/* If we're running in test-mode insert a delay in writer. */
+			if (gp_enable_slow_writer_testmode)
+				pg_usleep(500000);
+
+			if (SharedLocalSnapshotSlot != NULL)
+			{
+				SharedLocalSnapshotSlot->ready = false;
+			}
+
 			/*
 			 * MPP: we're a QE Writer.
 			 */
@@ -1877,19 +1921,18 @@ StartTransaction(void)
 			  	 */
 			  	xactStartTimestamp = stmtStartTimestamp;
 
-				elog((Debug_print_full_dtm ? LOG : DEBUG5),
-					 "qExec writer setting distributedXid: %d ready: false", 
-					 QEDtxContextInfo.distributedXid);
-
 				if (SharedLocalSnapshotSlot != NULL)
 				{
+					elog((Debug_print_full_dtm ? LOG : DEBUG5),
+						 "qExec writer setting distributedXid: %d sharedQDxid %d (shared xid %u -> %u) ready %s", 
+						 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->xid, s->transactionId,
+						 SharedLocalSnapshotSlot->ready ? "true" : "false");
+
 					SharedLocalSnapshotSlot->xid = s->transactionId;
 					SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
 					SharedLocalSnapshotSlot->QDxid = QEDtxContextInfo.distributedXid;
 
 					SharedLocalSnapshotSlot->pid = MyProc->pid;
-
-					SharedLocalSnapshotSlot->ready = false;
 				}
 			}
 			else
@@ -1921,8 +1964,6 @@ StartTransaction(void)
 	case DTX_CONTEXT_QE_ENTRY_DB_SINGLETON:
 	case DTX_CONTEXT_QE_READER:
 		{
-			bool	done = false;
-			
 			/* the pg_usleep() call below is in units of us (microsseconds), interconnect
 			 * timeout is in seconds.  Start with 1 millisecond. */
 			uint32     sleep_per_check_us = 1 * 1000;
@@ -1945,7 +1986,7 @@ StartTransaction(void)
 				 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid, 
 				 SharedSnapshotDump());
 
-			while (!done)
+			for (;;)
 			{
 				Assert(SharedLocalSnapshotSlot != NULL);
 
@@ -1963,14 +2004,30 @@ StartTransaction(void)
 				 * If the QDxid in the SharedLocalSnapshotSlot is the same
 				 * one that the QD sent us... then we know we are both on
 				 * the same page.
+				 *
+				 * NOTE: The xid we end up getting here may be changed
+				 * later on if we wind up needing a snapshot. There is
+				 * a reason we have a two-phase wait (first phase
+				 * here, second phase in GetSnapshotData()): Some
+				 * statements call StartTransaction, but *don't* ever
+				 * get a snapshot. "SET" statements are a simple
+				 * example. For that case, we just need *some*
+				 * relevant xid, that we may update the xid when we do
+				 * a full sync with our writer shouldn't matter (since
+				 * we will do that before ever using a snapshot).
 				 */
 				if (QEDtxContextInfo.distributedXid == SharedLocalSnapshotSlot->QDxid)
 				{
-					if (SharedLocalSnapshotSlot->xid == InvalidTransactionId)
-						elog(LOG, "qExec reader: Updating shared-xid to *invalid* xid");
+					elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
+						 "qExec reader: shared-xid to xid %u (%u %u) (%u %u)",
+						 SharedLocalSnapshotSlot->xid,
+						 QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
+						 QEDtxContextInfo.segmateSync, SharedLocalSnapshotSlot->segmateSync);
+
 					s->transactionId = SharedLocalSnapshotSlot->xid;
 					xactStartTimestamp = SharedLocalSnapshotSlot->startTimestamp;
-					done = true;
+
+					break; /* done with for (;;) waitloop */
 				}
 				else
 				{
@@ -1995,14 +2052,15 @@ StartTransaction(void)
 						ereport(ERROR,
 								(errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
 								 errmsg("StartTransaction timed out waiting for Writer to set the shared snapshot."),
-								 errdetail("We are waiting for the shared snapshot to have XID: %d but the value "
-							     "is currently: %d. Our slotindex is: %d \n"
-							     "DistributedTransactionContext = %s."
-							     "Dump of all sharedsnapshots in shmem: %s",
-							     QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
-							     SharedLocalSnapshotSlot->slotindex, 
-							     DtxContextToString(DistributedTransactionContext),
-							     SharedSnapshotDump())));
+								 errdetail("We are waiting for the shared snapshot to have XID: %d/%u but the value "
+										   "is currently: %d/%u. Our slotindex is: %d \n"
+										   "DistributedTransactionContext = %s."
+										   "Dump of all sharedsnapshots in shmem: %s",
+										   QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync,
+										   SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
+										   SharedLocalSnapshotSlot->slotindex, 
+										   DtxContextToString(DistributedTransactionContext),
+										   SharedSnapshotDump())));
 					}
 					else if (warning_sleep_time_us > 1000 * 1000)
 					{
@@ -2010,12 +2068,13 @@ StartTransaction(void)
 						 * Every second issue warning.
 						 */
 						elog(LOG,"StartTransaction did not find shared local snapshot information. "
-								 "We are waiting for the shared snapshot to have XID: %d but the value "
-							     "is currently: %d. Our slotindex is: %d. "
-							     "DistributedTransactionContext = %s.",
-							     QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
-							     SharedLocalSnapshotSlot->slotindex,
-							     DtxContextToString(DistributedTransactionContext));
+							 "We are waiting for the shared snapshot to have XID: %d/%u but the value "
+							 "is currently: %d/%u. Our slotindex is: %d. "
+							 "DistributedTransactionContext = %s.",
+							 QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync,
+							 SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
+							 SharedLocalSnapshotSlot->slotindex,
+							 DtxContextToString(DistributedTransactionContext));
 						warning_sleep_time_us = 0;
 					}
 
@@ -2984,9 +3043,10 @@ StartTransactionCommand(void)
 				 */
 				if (TransactionIdIsValid(s->transactionId))
 				{
-					elog(DEBUG3, "qExec WRITER updating shared xid: %u -> %u", SharedLocalSnapshotSlot->xid, s->transactionId);
+					elog((Debug_print_full_dtm ? LOG : DEBUG3), "qExec WRITER updating shared xid: %u -> %u (StartTransactionCommand)", SharedLocalSnapshotSlot->xid, s->transactionId);
 					SharedLocalSnapshotSlot->xid = s->transactionId;
 				}
+
 				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
 				SharedLocalSnapshotSlot->QDxid = QEDtxContextInfo.distributedXid;
 			}

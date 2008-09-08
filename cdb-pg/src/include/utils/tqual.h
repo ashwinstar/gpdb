@@ -108,6 +108,7 @@ typedef struct SharedSnapshotSlot
 	volatile TransactionId   QDxid;
 	volatile CommandId		QDcid;
 	volatile bool			ready;
+	volatile uint32			segmateSync;
 	uint32		    subcnt;		/* # of subtransaction ids in subxids[] */
 	TransactionId   subxids[MaxGpSavePoints];
 	uint32			combocidcnt;

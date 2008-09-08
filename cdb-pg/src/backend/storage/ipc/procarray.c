@@ -484,7 +484,7 @@ GetOldestXmin(bool allDbs, bool ignoreVacuum)
 	return result;
 }
 
-char* DebugGetSnapshotString(const Snapshot snapshot)
+char *DebugGetSnapshotString(const Snapshot snapshot)
 {
 	static char buffer[200];
 
@@ -517,9 +517,11 @@ void
 updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, char* debugCaller)
 {
 	int combocidSize;
+
 	Assert(SharedLocalSnapshotSlot != NULL);
+
 	Assert(snapshot != NULL);
-	
+
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "updateSharedLocalSnapshot for DistributedTransactionContext = '%s' passed local snapshot (xmin: %u xmax: %u xcnt: %u) curcid: %d", 
 		 DtxContextToString(DistributedTransactionContext),
 		 snapshot->xmin,
@@ -531,7 +533,6 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	SharedLocalSnapshotSlot->snapshot.xmax = snapshot->xmax;
 	SharedLocalSnapshotSlot->snapshot.xcnt = snapshot->xcnt;
 
-
 	// UNDONE: Are xip and subxids broken in the SharedLocalSnapshotSlot?
 
 	/*
@@ -541,7 +542,10 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
     GetSubtransactionsForSharedSnapshot(
     	(uint32 *)&SharedLocalSnapshotSlot->subcnt,
     	(TransactionId *)SharedLocalSnapshotSlot->subxids);
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),"updateSharedLocalSnapshot count of subtransaction ids %u",SharedLocalSnapshotSlot->subcnt);
+
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "updateSharedLocalSnapshot count of subtransaction ids %u",
+		 SharedLocalSnapshotSlot->subcnt);
 
 	if (snapshot->xcnt > 0)
 	{
@@ -604,6 +608,9 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	SharedLocalSnapshotSlot->QDxid = dtxContextInfo->distributedXid;
 		
 	SharedLocalSnapshotSlot->ready = true;
+
+	SharedLocalSnapshotSlot->segmateSync = dtxContextInfo->segmateSync;
+
 	elog((Debug_print_full_dtm ? LOG : DEBUG5), "updateSharedLocalSnapshot for DistributedTransactionContext = '%s' setting shared local snapshot xid = %u (xmin: %u xmax: %u xcnt: %u) curcid: %d, QDxid = %u, QDcid = %u", 
 		 DtxContextToString(DistributedTransactionContext),
 		 SharedLocalSnapshotSlot->xid,
@@ -614,7 +621,7 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 		 SharedLocalSnapshotSlot->QDxid,
 		 SharedLocalSnapshotSlot->QDcid);
 
-	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Writer Set Shared* gxid %u, currcid %d (gxid = %u, slot #%d, '%s', '%s')", 
+	elog((Debug_print_snapshot_dtm ? LOG : DEBUG5), "[Distributed Snapshot #%u] *Writer Set Shared* gxid %u, currcid %d (gxid = %u, slot #%d, '%s', '%s')", 
 		QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
 		SharedLocalSnapshotSlot->QDxid,
 		SharedLocalSnapshotSlot->QDcid,
@@ -805,7 +812,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 {
 	ProcArrayStruct *arrayP = procArray;
 	TransactionId xmin,
-				xmax;
+		xmax;
 	TransactionId globalxmin;
 	int			index;
 	int			count = 0;
@@ -838,18 +845,37 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		
 		
 		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Start Reader Match* gxid = %u and currcid %d (%s)", 
-			QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
-			QEDtxContextInfo.distributedXid,
-			QEDtxContextInfo.curcid,
-			DtxContextToString(DistributedTransactionContext));
-		
+			 QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
+			 QEDtxContextInfo.distributedXid,
+			 QEDtxContextInfo.curcid,
+			 DtxContextToString(DistributedTransactionContext));
+
+		/*
+		 * This is the second phase of the handshake we started in
+		 * StartTransaction().  Here we get a "good" snapshot from our
+		 * writer. In the process it is possible that we will change
+		 * our transaction's xid (see phase-one in StartTransaction()).
+		 *
+		 * Here we depend on the absolute correctness of our
+		 * writer-gang's info. We need the segmateSync to match *as
+		 * well* as the distributed-xid since the QD may send multiple
+		 * statements with the same distributed-xid/cid but
+		 * *different* local-xids (MPP-3228). The dispatcher will
+		 * distinguish such statements by the segmateSync.
+		 *
+		 * I believe that we still want the older sync mechanism ("ready" flag).
+		 * since it tells the code in TransactionIdIsCurrentTransactionId() that the
+		 * writer may be changing the local-xid (otherwise it would be possible for
+		 * cursor reader gangs to get confused).
+		 */
 		for (;;)
 		{
 			if (SharedLocalSnapshotSlot == NULL)
 				elog(ERROR, "SharedLocalSnapshotSlot is NULL");
 
 			if (QEDtxContextInfo.distributedXid == SharedLocalSnapshotSlot->QDxid &&
-				QEDtxContextInfo.curcid== SharedLocalSnapshotSlot->QDcid &&
+				QEDtxContextInfo.curcid == SharedLocalSnapshotSlot->QDcid &&
+				QEDtxContextInfo.segmateSync == SharedLocalSnapshotSlot->segmateSync &&
 				SharedLocalSnapshotSlot->ready)
 			{
 				/*
@@ -886,7 +912,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				{
 					ShowSubtransactionsForSharedSnapshot(SharedLocalSnapshotSlot->subcnt,(const TransactionId *)SharedLocalSnapshotSlot->subxids);
 				}
-	
+
 				return snapshot;
 			}
 			else
@@ -927,26 +953,27 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 					 * Every second issue warning.
 					 */
 					elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *No Match* gxid %u = %u and currcid %d = %d (%s)", 
-						QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
-						QEDtxContextInfo.distributedXid,
-						SharedLocalSnapshotSlot->QDxid,
-						QEDtxContextInfo.curcid,
-						SharedLocalSnapshotSlot->QDcid,
-						DtxContextToString(DistributedTransactionContext));
+						 QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
+						 QEDtxContextInfo.distributedXid,
+						 SharedLocalSnapshotSlot->QDxid,
+						 QEDtxContextInfo.curcid,
+						 SharedLocalSnapshotSlot->QDcid,
+						 DtxContextToString(DistributedTransactionContext));
 
 
 					elog(LOG,"GetSnapshotData did not find shared local snapshot information. "
-							 "We are waiting for the shared snapshot to have XID: %d but the value "
-												   "is currently: %d." 
-												   " waiting for cid to be %d but is currently %d.  ready=%d."
-												   " Our slotindex is: %d \n"
-												   "DistributedTransactionContext = %s.",
-												   QEDtxContextInfo.distributedXid, SharedLocalSnapshotSlot->QDxid,
-												   QEDtxContextInfo.curcid,
-												   SharedLocalSnapshotSlot->QDcid,
-												   SharedLocalSnapshotSlot->ready,
-												   SharedLocalSnapshotSlot->slotindex,
-												   DtxContextToString(DistributedTransactionContext));
+						 "We are waiting for the shared snapshot to have XID: %d/%u but the value "
+						 "is currently: %d/%u." 
+						 " waiting for cid to be %d but is currently %d.  ready=%d."
+						 " Our slotindex is: %d \n"
+						 "DistributedTransactionContext = %s.",
+						 QEDtxContextInfo.distributedXid, QEDtxContextInfo.segmateSync,
+						 SharedLocalSnapshotSlot->QDxid, SharedLocalSnapshotSlot->segmateSync,
+						 QEDtxContextInfo.curcid,
+						 SharedLocalSnapshotSlot->QDcid,
+						 SharedLocalSnapshotSlot->ready,
+						 SharedLocalSnapshotSlot->slotindex,
+						 DtxContextToString(DistributedTransactionContext));
 					warning_sleep_time_us = 0;
 				}
 
@@ -955,6 +982,10 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 			}
 		}
 	}
+
+	/* We must not be a reader. */
+	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_READER);
+	Assert(DistributedTransactionContext != DTX_CONTEXT_QE_ENTRY_DB_SINGLETON);
 
 	/* Serializable snapshot must be computed before any other... */
 	elog((Debug_print_full_dtm ? LOG : DEBUG5),
@@ -1014,12 +1045,9 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		{
 			snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray = 
 				(DistributedSnapshotMapEntry *)
-						malloc(maxCount * sizeof(DistributedSnapshotMapEntry));
+				malloc(maxCount * sizeof(DistributedSnapshotMapEntry));
 			if (snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray == NULL)
 				elog(ERROR, "out of memory");
-//				ereport(ERROR,
-//						(errcode(ERRCODE_OUT_OF_MEMORY),
-//						 errmsg("out of memory")));
 			snapshot->distribSnapshotWithLocalMapping.header.maxCount = maxCount;
 		}
 	}
@@ -1211,7 +1239,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	if ((DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
 		 DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
 		 DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT) &&
-		 SharedLocalSnapshotSlot != NULL)
+		SharedLocalSnapshotSlot != NULL)
 	{
 		updateSharedLocalSnapshot(&QEDtxContextInfo, snapshot, "GetSnapshotData");
 	}
@@ -1253,6 +1281,7 @@ void UpdateSerializableCommandId(void)
 
 		SharedLocalSnapshotSlot->snapshot.curcid = SerializableSnapshot->curcid;
 		SharedLocalSnapshotSlot->QDcid = QEDtxContextInfo.curcid;
+		SharedLocalSnapshotSlot->segmateSync = QEDtxContextInfo.segmateSync;
 
 		SharedLocalSnapshotSlot->ready = true;
 	}
