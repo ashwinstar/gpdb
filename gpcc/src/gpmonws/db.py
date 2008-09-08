@@ -140,3 +140,15 @@ select * from metrics_tail %s
     conn.execute(query)
     rows = [r for r in conn.iterate_dict()]
     return _metrics_consolidate(rows)
+
+
+
+def queries_now():
+    conn.execute('select * from queries_now')
+    rows = [r for r in conn.iterate_dict()]
+    for r in rows:
+        for k in r:
+            r[k] = str(r[k])
+            if k == 'query_text':
+                if len(r[k]) > 50: r[k] = r[k][:50]
+    return rows
