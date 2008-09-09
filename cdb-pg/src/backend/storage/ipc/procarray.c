@@ -598,8 +598,7 @@ updateSharedLocalSnapshot(DtxContextInfo *dtxContextInfo, Snapshot snapshot, cha
 	SharedLocalSnapshotSlot->combocidcnt = combocidSize;	
 	memcpy((void *)SharedLocalSnapshotSlot->combocids, comboCids,
 		   combocidSize * sizeof(ComboCidKeyData));
-	
-	
+
 	SharedLocalSnapshotSlot->snapshot.curcid = snapshot->curcid;
 
 	SetSharedTransactionId();
@@ -899,9 +898,12 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
 
 				/* combocid */
-				usedComboCids = ((SharedLocalSnapshotSlot->combocidcnt < MaxComboCids) ? SharedLocalSnapshotSlot->combocidcnt : MaxComboCids  );
+				usedComboCids = ((SharedLocalSnapshotSlot->combocidcnt < MaxComboCids) ? SharedLocalSnapshotSlot->combocidcnt : MaxComboCids);
 				sizeComboCids = MaxComboCids;
-				comboCids = (ComboCidKeyData *)SharedLocalSnapshotSlot->combocids;								
+				comboCids = (ComboCidKeyData *)SharedLocalSnapshotSlot->combocids;
+
+				elog((Debug_print_snapshot_dtm ? LOG : DEBUG5), "Reader qExec usedComboCids: %d shared %d size %d",
+					 usedComboCids, SharedLocalSnapshotSlot->combocidcnt, sizeComboCids);
 				
 				SetSharedTransactionId();
 
@@ -1258,6 +1260,8 @@ void UpdateSerializableCommandId(void)
 		 SharedLocalSnapshotSlot != NULL &&
 		 SerializableSnapshot != NULL)
 	{
+		int combocidSize;
+
 		if (SharedLocalSnapshotSlot->QDxid != QEDtxContextInfo.distributedXid)
 		{
 			elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Can't Update Serializable Command Id* QDxid = %u (gxid = %u, '%s')", 
@@ -1268,7 +1272,8 @@ void UpdateSerializableCommandId(void)
 			return;
 		}
 
-		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),"[Distributed Snapshot #%u] *Update Serializable Command Id* QE currcid = %d, QDcid = %d, SerializableSnapshot currcid = %d, Shared currcid = %d (gxid = %u, '%s')", 
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
+			 "[Distributed Snapshot #%u] *Update Serializable Command Id* QE currcid = %d, QDcid = %d, SerializableSnapshot currcid = %d, Shared currcid = %d (gxid = %u, '%s')", 
 		 	  QEDtxContextInfo.distributedSnapshot.header.distribSnapshotId,
 		 	  QEDtxContextInfo.curcid,
 		 	  SharedLocalSnapshotSlot->QDcid,
@@ -1278,6 +1283,15 @@ void UpdateSerializableCommandId(void)
 		 	  DtxContextToString(DistributedTransactionContext));
 
 		SharedLocalSnapshotSlot->ready = false;
+
+		elog((Debug_print_snapshot_dtm ? LOG : DEBUG5),
+			 "serializable writer updating combocid: used combocids %d shared %d", usedComboCids, SharedLocalSnapshotSlot->combocidcnt);
+
+		combocidSize = ((usedComboCids < MaxComboCids) ? usedComboCids : MaxComboCids );
+
+		SharedLocalSnapshotSlot->combocidcnt = combocidSize;	
+		memcpy((void *)SharedLocalSnapshotSlot->combocids, comboCids,
+			   combocidSize * sizeof(ComboCidKeyData));
 
 		SharedLocalSnapshotSlot->snapshot.curcid = SerializableSnapshot->curcid;
 		SharedLocalSnapshotSlot->QDcid = QEDtxContextInfo.curcid;

@@ -192,8 +192,14 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 	ComboCidKeyData key;
 	ComboCidEntry entry;
 	bool found;
-	if( Gp_segment == -1 && Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer )
-		elog( ERROR, "Reader qExec tried to allocate a Combo Command Id");
+
+	if (Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+	{
+		if (Gp_segment == -1)
+			elog(ERROR, "EntryReader qExec tried to allocate a Combo Command Id");
+		else
+			elog(ERROR, "Reader qExec tried to allocate a Combo Command Id");
+	}
 	
 	/*
 	 * Create the hash table and array the first time we need to use
@@ -266,7 +272,7 @@ static CommandId
 GetRealCmin(CommandId combocid)
 {
 	if (combocid >= usedComboCids)
-		elog(ERROR, "Too many updates/deletes within transaction. Reader gang not able to provide correct visibility %u/%u",
+		elog(ERROR, "Too many updates/deletes within transaction (cmin). Reader gang not able to provide correct visibility %u/%u",
 			  combocid, usedComboCids);
 	
 	Assert(combocid < usedComboCids);
@@ -278,8 +284,9 @@ GetRealCmax(CommandId combocid)
 {
 
 	if (combocid >= usedComboCids)
-		elog(ERROR, "Too many updates/deletes within transaction. Reader gang not able to provide correct visibility %u/%u",
+		elog(ERROR, "Too many updates/deletes within transaction (cmax). Reader gang not able to provide correct visibility %u/%u",
 			 combocid, usedComboCids);
+
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmax;
 }
