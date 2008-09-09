@@ -453,7 +453,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 {
 	/* these vars are used in GP_ROLE_DISPATCH only */
 	int					i, usesegno = -1;
-	float8				mincount;
+	bool				segno_chosen = false;
 	AORelHashEntryData	*aoentry = NULL;
 	TransactionId 		CurrentXid = GetCurrentTransactionId();
 
@@ -496,12 +496,9 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 			aoentry = AORelGetHashEntry(relid);
 			aoentry->txns_using_rel++;
 
-			mincount = segfileMaxRowThreshold(); /* init to a high number */
-
 			/*
 			 * Now pick a segment that is not in use and is not over the
-			 * allowed size threshold (90% full). In fact, pick the segment
-			 * number with the lowest row count.
+			 * allowed size threshold (90% full).
 			 * 
 			 * However, if we already picked a segno for a previous statement
 			 * in this very same transaction we are still in (explicit txn) we
@@ -513,11 +510,17 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 				
 				if(!segfilestat->isfull)
 				{
-					if(!segfilestat->inuse && segfilestat->tupcount < mincount)
+					if(!segfilestat->inuse && !segno_chosen)
 					{
-						/* segno is avaiable, and has the lowest tupcount so far */
+						/* 
+						 * this segno is avaiable and not full. use it.
+						 * 
+						 * Notice that we don't break out of the loop quite yet.
+						 * We still need to check the rest of the segnos, if our
+						 * txn is already using one of them. see below.
+						 */
 						usesegno = i;
-						mincount = segfilestat->tupcount;
+						segno_chosen = true;
 					}
 					
 					if(segfilestat->xid == CurrentXid)
@@ -525,6 +528,7 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 						/* we already used this segno in our txn. use it again */
 						Assert(segfilestat->inuse);
 						usesegno = i;
+						segno_chosen = true;
 						
 						if (Debug_appendonly_print_insert)
 							elog(LOG,"reusing segno %d for append-only relation "
@@ -532,15 +536,14 @@ int SetSegnoForWrite(int existingsegno, Oid relid)
 									 "added to it from previous operations "
 									 "in this not yet committed txn",
 									 usesegno, relid, (int64) segfilestat->tupsadded);
-
+						
 						break;
 					}
-
 				}				
 			}
 
+			Insist(segno_chosen);
 			Insist(usesegno != RESERVED_SEGNO);
-			Insist(usesegno != -1);
 			
 			/* mark this segno as in use */
 			aoentry->relsegfiles[usesegno].inuse = true;
