@@ -11,7 +11,7 @@ case "`uname -s`" in
         BLD_ARCH_HOST=rhel4_x86_32
         ;;
         *)
-        BLD_ARCH_HOST="rhel`cat /etc/redhat-release | sed -e 's/Red Hat Enterprise Linux WS/RedHat/' | awk '{print $3}' | awk -F. '{print $1}'`_`uname -p | sed -e s/i686/x86_32/`"
+        BLD_ARCH_HOST="rhel`cat /etc/redhat-release | sed -e 's/Red Hat Enterprise Linux WS/RedHat/' -e 's/Red Hat Enterprise Linux Server/RedHat/' | awk '{print $3}' | awk -F. '{print $1}'`_`uname -p | sed -e s/i686/x86_32/`"
         ;;
     esac
     ;;
