@@ -265,8 +265,9 @@ GetComboCommandId(CommandId cmin, CommandId cmax)
 static CommandId
 GetRealCmin(CommandId combocid)
 {
-	if( combocid >= usedComboCids)
-		elog( ERROR, "Too many updates/deletes within transaction. Reader gang not able to provide correct visibility");
+	if (combocid >= usedComboCids)
+		elog(ERROR, "Too many updates/deletes within transaction. Reader gang not able to provide correct visibility %u/%u",
+			  combocid, usedComboCids);
 	
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmin;
@@ -276,8 +277,9 @@ static CommandId
 GetRealCmax(CommandId combocid)
 {
 
-	if( combocid >= usedComboCids)
-		elog( ERROR, "Too many updates/deletes within transaction. Reader gang not able to provide correct visibility");
+	if (combocid >= usedComboCids)
+		elog(ERROR, "Too many updates/deletes within transaction. Reader gang not able to provide correct visibility %u/%u",
+			 combocid, usedComboCids);
 	Assert(combocid < usedComboCids);
 	return comboCids[combocid].cmax;
 }

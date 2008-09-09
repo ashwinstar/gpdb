@@ -1626,7 +1626,7 @@ SetSharedTransactionId(void)
 	case DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER:
 	case DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER:
 	case DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT:
-		elog(LOG, "qExec WRITER updating shared xid %u -> %u (distributedXid %u)", 
+		elog((Debug_print_full_dtm ? LOG : DEBUG5), "qExec WRITER updating shared xid %u -> %u (distributedXid %u)", 
 		     SharedLocalSnapshotSlot->xid, TopTransactionStateData.transactionId,
 			 QEDtxContextInfo.distributedXid);
 		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
