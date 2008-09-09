@@ -474,7 +474,7 @@ NOTICE:  Query uses system column "syscoltest.ctid"
 DETAIL:  To uniquely identify a row within a distributed table, use the "gp_segment_id" system column together with the "ctid" column.
  ctid  
 -------
- (0,1)
+ (4194304,1)
 (1 row)
 
 DROP TABLE syscoltest;
