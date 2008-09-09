@@ -256,6 +256,7 @@ static void print_q_x_h_deprecated(void)
 {
     fprintf(stderr,"-q, -h and -x are deprecated.  Please specify these as in this example:\n");
     fprintf(stderr,"create external table a (a int) location ('gpfdist://...') format 'csv' (escape as '\"' quote as '\"' header);\n");
+    exit(1);
 }
 
 
@@ -272,9 +273,9 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	{      NULL, 'v', 0, "verbose mode" },
 	{      NULL, 'p', 1, "which port to serve HTTP" },
 	{      NULL, 'd', 1, "serve files under this directory" },
-	{      NULL, 'q', 1, "deprecated and ignored" },
-	{      NULL, 'x', 1, "deprecated and ignored" },
-	{      NULL, 'h', 0, "deprecated and ignored" },
+	{      NULL, 'q', 0, "deprecated" },
+	{      NULL, 'x', 0, "deprecated" },
+	{      NULL, 'h', 0, "deprecated" },
 	{      NULL, 'l', 1, "log filename" },
 	{      NULL, 'g', 1, "internal - gp_proto number" },
 	{ "version", 256, 0, "print version number" }
@@ -1235,8 +1236,8 @@ int main(int argc, const char* const argv[])
     apr_signal(SIGINT, process_signal);
     */
     apr_signal(SIGTERM, process_signal);
-
-    setenv("EVENT_SHOW_METHOD", "1",1);
+    if (opt.V)
+	setenv("EVENT_SHOW_METHOD", "1",1);
     setenv("EVENT_NOKQUEUE", "1",1);
     
     event_init();
