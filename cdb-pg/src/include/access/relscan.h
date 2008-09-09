@@ -169,6 +169,7 @@ typedef struct AppendOnlyScanDescData
 	int				readerItemCount;
 	int				currentItemCount;
 	int64			rowNumber;
+	int64			rowNumberInSegmentFile;
 
 	uint8			*singleRow;
 	int32			singleRowLen;

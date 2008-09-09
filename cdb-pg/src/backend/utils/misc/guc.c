@@ -206,7 +206,6 @@ bool		Debug_print_control_checkpoints = false;
 bool 		Debug_appendonly_print_insert = false;
 bool 		Debug_appendonly_print_scan = false;
 bool 		Debug_appendonly_print_storage_headers = false;
-bool 		Debug_appendonly_use_new_tid = false;
 bool 		Test_appendonly_override = false;
 bool 		Test_checksum_override = false;
 int         Test_compresslevel_override = 0;
@@ -1732,16 +1731,6 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&Debug_appendonly_print_scan,
-		false, NULL, NULL
-	},
-
-	{
-		{"debug_appendonly_use_new_tid", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Use the new append-only tuple id format for scans."),
-			NULL,
-			GUC_SUPERUSER_ONLY |  GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
-		},
-		&Debug_appendonly_use_new_tid,
 		false, NULL, NULL
 	},
 

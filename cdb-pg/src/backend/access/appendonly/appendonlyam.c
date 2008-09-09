@@ -59,7 +59,8 @@
 #include <zlib.h>
 #endif
 
-#define SCANNED_SEGNO  (&scan->aos_segfile_arr[scan->aos_segfiles_processed])->segno
+#define SCANNED_SEGNO  (&scan->aos_segfile_arr[ \
+					(scan->aos_segfiles_processed == 0 ? 0 : scan->aos_segfiles_processed - 1)])->segno
 
 typedef enum AoExecutorBlockKind
 {
@@ -365,6 +366,8 @@ SetNextFileSegForRead(AppendOnlyScanDesc scan)
 	
 	/* ready to go! */
 	scan->aos_need_new_segfile = false;
+
+	scan->rowNumberInSegmentFile = 0;
 	
 	if (Debug_appendonly_print_scan)
 		elog(LOG,"Append-only scan initialize for table '%s' segment file %u (compression = %s, maximum buffer length %d, large read length %d)",
@@ -937,42 +940,25 @@ doProcessTuple(
 	TupleTableSlot 		*slot)
 {
 	bool	valid = true;	// Assume for HeapKeyTestUsingSlot define.
+	AOTupleId *aoTupleId = (AOTupleId*)&scan->cdb_fake_ctid;
+	int segmentFileNum = SCANNED_SEGNO;
 
 	/*
 	 * The row number, regardless of whether it qualifies to be returned.
 	 * The count is initialized to 0; the first row is 1.
 	 */
 	scan->rowNumber++;
+	scan->rowNumberInSegmentFile++;
+
+	AOTupleIdInit_Init(aoTupleId);
+	AOTupleIdInit_segmentFileNum(aoTupleId, segmentFileNum);
+	AOTupleIdInit_rowNum(aoTupleId, scan->rowNumberInSegmentFile);
 	
 	if(slot)
 	{
 		ExecStoreMemTuple(tuple, slot, false);
 
-		if (!Debug_appendonly_use_new_tid)
-		{
-			/* Create a synthetic ctid. Some queries will need it */
-			scan->cdb_fake_ctid.ip_posid++;
-			if (scan->cdb_fake_ctid.ip_posid == 0) /* posid overflowed */
-			{
-				scan->cdb_fake_ctid.ip_posid++;
-				ItemPointerSetBlockNumber(&scan->cdb_fake_ctid,
-										  1 + ItemPointerGetBlockNumber(&scan->cdb_fake_ctid));
-			}
-			
-			slot->tts_synthetic_ctid = scan->cdb_fake_ctid;
-		}
-		else
-		{
-			AOTupleId *aoTupleId = (AOTupleId*)&scan->cdb_fake_ctid;
-			
-			// UNDONE: When we have the concurrent append-only change
-			// UNDONE: we can use this (but for now, the segment file #
-			// UNDONE: could get too big...).
-
-			AOTupleIdInit_Init(aoTupleId);
-			AOTupleIdInit_segmentFileNum(aoTupleId, SCANNED_SEGNO);
-			AOTupleIdInit_rowNum(aoTupleId, scan->rowNumber);
-		}
+		slot->tts_synthetic_ctid = scan->cdb_fake_ctid;
 		
 		slot->tts_tableOid = scan->cdb_fake_tableoid;
 	}
