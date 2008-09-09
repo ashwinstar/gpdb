@@ -1996,7 +1996,14 @@ void mppExecutorFinishup(QueryDesc *queryDesc)
 	/* Teardown the Interconnect */
 	if(estate->es_interconnect_is_setup)
 	{
-		TeardownInterconnect(estate->interconnect_context, estate->motionlayer_context, false);
+		/* 
+		 * MPP-3413: If we got here during cancellation of a cursor,
+		 * we need to set the "forceEos" argument correctly --
+		 * otherwise we potentially hang (cursors cancel on the QEs,
+		 * mark the estate to "cancelUnfinished" and then try to do a
+		 * normal interconnect teardown).
+		 */
+		TeardownInterconnect(estate->interconnect_context, estate->motionlayer_context, estate->cancelUnfinished);
 		estate->es_interconnect_is_setup = false;		
 	}
 }
