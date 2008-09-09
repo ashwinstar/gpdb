@@ -7,8 +7,7 @@ make sure the configuration is compatible with Greenplum Database.
 SYNOPSIS
 *****************************************************
 
-gpcheckos { [-m] -f <host_file> | - h <hostname> [-h <hostname> ...] } 
-[-c <config_file>] [-v]
+gpcheckos { [-m] -f <host_file> | - h <hostname> [-h <hostname> ...] } [-v]
 
 gpcheckos -? | --version
 
@@ -67,24 +66,6 @@ OPTIONS
    to make sure the $GPHOME environment variable is set and that 
    the correct version of Python is installed. These checks are only 
    relevant for the master host (or standby master).
-
-
--c <config_file>
-   Specifies a configuration file that defines additional 
-   checks or overrides existing checks. Additional checks 
-   are restricted to the parameter values already retrieved 
-   from all the hosts. You can see these values by running 
-   gpcheckos with the -v option. Check criteria is defined as 
-   follows with one check criteria per line and white space 
-   (space, tab) to separate fields:
-   <parameter_to_check> <parameter_type> <operator> <value>
-   where parameter_type is int, intlist, or str, 
-   operator is =, >=, <=, >, or < , and value is the 
-   parameter value you want to verify. 
-   For example:
-    system.shmsys:shminfo_shmmax int >= 0x2000000
-    sysctl.kernel.sem intlist = 250 64000 100 512
-    solaris.release str = Solaris 10 8/07 s10x_u4wos_12b X86
 
 -v (verbose)
    Verbose mode shows progress and status messages of 
