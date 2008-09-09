@@ -15,8 +15,14 @@ Usage: gpssh [--version] [-?v] [-h host] [-f hostfile] [cmd]
           cmd       : the command to execute. If not present, 
                       go into interactive mode
 '''
-
 import os, sys
+
+progname = os.path.split(sys.argv[0])[-1]
+
+if sys.version_info < (2, 5, 0):
+    sys.exit(
+'''Error: %s is supported on Python versions 2.5 or greater
+Please upgrade python installed on this machine.''' % progname)
 
 sys.path.append(sys.path[0] + '/lib')
 try:
@@ -30,7 +36,7 @@ except ImportError, e:
 #
 # all the command line options
 #
-class Global():
+class Global:
     script_name = os.path.split(__file__)[-1]
     USER = os.environ.get('LOGNAME') or os.environ.get('USER')
     opt = {}
