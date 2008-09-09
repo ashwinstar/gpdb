@@ -167,13 +167,13 @@ datumCopyWithMemManager(Datum oldvalue, Datum value, bool typByVal, int typLen,
 			return PointerGetDatum(NULL);
 
 		if (DatumGetPointer(oldvalue) != NULL)
-			old_realSize = datumGetSize(oldvalue, typByVal, typLen);
+			old_realSize = MAXALIGN(datumGetSize(oldvalue, typByVal, typLen));
 		
-		realSize = datumGetSize(value, typByVal, typLen);
+		realSize = MAXALIGN(datumGetSize(value, typByVal, typLen));
 
 		if (old_realSize == 0 || old_realSize < realSize)
 		{
-			int alloc_size = mem_manager->realloc_ratio * old_realSize;
+			int alloc_size = MAXALIGN(mem_manager->realloc_ratio * old_realSize);
 			if (alloc_size < realSize)
 				alloc_size = realSize;
 			
