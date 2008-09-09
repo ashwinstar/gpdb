@@ -46,9 +46,9 @@ typedef struct input_options
 } InputOptions;
 
 /* issues either a listen or notify command on connection pConn */
-extern void DoCancelNotifyListen( PGconn* pConn, bool bListen, 
-								const char* pszCDBDumpKey, 
-								int CDBInstID, 
+extern void DoCancelNotifyListen( PGconn* pConn, bool bListen,
+								const char* pszCDBDumpKey,
+								int CDBInstID,
 								int CDBSegID,
 								int target_db_id,
 								const char* pszSuffix);
@@ -57,11 +57,11 @@ extern void FreeInputOptions( InputOptions* pInputOpts );
 /* Generates a 14 digit timestamp key */
 extern char* GenerateTimestampKey(void);
 /* gets an int from a regex match */
-extern int GetMatchInt(regmatch_t* pMatch, char* pszInput );								
+extern int GetMatchInt(regmatch_t* pMatch, char* pszInput );
 /* gets an stringt from a regex match */
-extern char* GetMatchString(regmatch_t* pMatch, char* pszInput );								
+extern char* GetMatchString(regmatch_t* pMatch, char* pszInput );
 /* creates a formatted time string with the current time */
-extern char* GetTimeNow(void);
+extern char* GetTimeNow(char *szTimeNow);
 /* creates a connection where the password may be prompted for */
 extern PGconn* GetMasterConnection(const char* progName, const char* pszDBName, const char* pszPGHost,
 								   const char* pszPGPort, const char* pszUserName,
@@ -77,7 +77,7 @@ extern char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirector
 /* returns strdup if not NULL, NULL otherwise */
 extern char* Safe_strdup( const char* s);
 /* returns the string if not null, otherwise the default */
-extern const char* StringNotNull( const char* pszInput, const char* pszDefault );							
+extern const char* StringNotNull( const char* pszInput, const char* pszDefault );
 /* writes a formatted message to stderr */
 extern void mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...);
 /* writes a formatted message to stderr and caches it in a static var for later use */
@@ -94,8 +94,8 @@ extern char* get_early_error(void);
 /* Base64 Encoding and Decoding Routines */
 /* Base64 Data is assumed to be in a NULL terminated string */
 /* Data is just assumed to be an array of chars, with a length */
-extern char* DataToBase64(char* pszIn, unsigned int InLen ); 
-extern char* Base64ToData(char* pszIn, unsigned int* pOutLen ); 
+extern char* DataToBase64(char* pszIn, unsigned int InLen );
+extern char* Base64ToData(char* pszIn, unsigned int* pOutLen );
 extern char* nextToken(register char **stringp, register const char *delim);
 extern int  parseDbidSet(int *dbidset, char *dump_set);
 
