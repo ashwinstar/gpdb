@@ -596,7 +596,7 @@ static void parse_command_line(int argc, const char* const argv[])
         usage("Error: illegal arguments");
     
     if (! (10 <= opt.q && opt.q <= 120)) 
-        usage("Error: -q quantum value must be between 10 and 60");
+        usage("Error: -q quantum value must be between 10 and 120");
 
     /* check for valid entries */
     if (opt.m < 0)
@@ -613,7 +613,11 @@ static void parse_command_line(int argc, const char* const argv[])
     }
 
     if (opt.d < opt.m)
+    {
         opt.d = opt.m;
+        printf("Minimum query detail cannot be less than minimum query time");
+        printf("Setting minimum query detail equal to minimum query time");
+    }
 
     apr_pool_destroy(pool);
 
