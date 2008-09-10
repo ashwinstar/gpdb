@@ -820,6 +820,64 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	Assert(snapshot != NULL);
 
 	/*
+	 * Allocating space for maxProcs xids is usually overkill; numProcs would
+	 * be sufficient.  But it seems better to do the malloc while not holding
+	 * the lock, so we can't look at numProcs.  Likewise, we allocate much
+	 * more subxip storage than is probably needed.
+	 *
+	 * This does open a possibility for avoiding repeated malloc/free: since
+	 * maxProcs does not change at runtime, we can simply reuse the previous
+	 * xip arrays if any.  (This relies on the fact that all callers pass
+	 * static SnapshotData structs.)
+	 */
+	if (snapshot->xip == NULL)
+	{
+		/*
+		 * First call for this snapshot
+		 */
+		snapshot->xip = (TransactionId *)
+			malloc(arrayP->maxProcs * sizeof(TransactionId));
+		if (snapshot->xip == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+		Assert(snapshot->subxip == NULL);
+		snapshot->subxip = (TransactionId *)
+			malloc(arrayP->maxProcs * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
+		if (snapshot->subxip == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+
+	}
+
+	/*
+	 * GP: Distributed snapshot.
+	 */
+	elog((Debug_print_full_dtm ? LOG : DEBUG5),
+		 "GetSnapshotData maxCount %d, inProgressEntryArray %p", 
+	 	 snapshot->distribSnapshotWithLocalMapping.header.maxCount,
+	 	 snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray);
+	
+	if (snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray == NULL)
+	{
+		int maxCount;
+		
+		maxCount = GetDistributedSnapshotMaxCount();
+		if (maxCount > 0)
+		{
+			snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray = 
+				(DistributedSnapshotMapEntry *)
+						malloc(maxCount * sizeof(DistributedSnapshotMapEntry));
+			if (snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+						 errmsg("out of memory")));
+			snapshot->distribSnapshotWithLocalMapping.header.maxCount = maxCount;
+		}
+	}
+
+	/*
 	 * MPP Addition.  if we are in EXECUTE mode and not the writer... then we
 	 * want to just get the shared snapshot and make it our own.
 	 *
@@ -906,6 +964,11 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 					 usedComboCids, SharedLocalSnapshotSlot->combocidcnt, sizeComboCids);
 				
 				SetSharedTransactionId();
+
+				/*
+				 * Make a copy of the distributed snapshot information.
+				 */
+			 	FillInDistributedSnapshot(snapshot);
 
 				elog(DEBUG5, "Reader qExec setting shared local snapshot to: xmin: %d xmax: %d curcid: %d",
 					 snapshot->xmin, snapshot->xmax, snapshot->curcid);
@@ -997,62 +1060,6 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	Assert(serializable ?
 		   !TransactionIdIsValid(MyProc->xmin) :
 		   TransactionIdIsValid(MyProc->xmin));
-
-	/*
-	 * Allocating space for maxProcs xids is usually overkill; numProcs would
-	 * be sufficient.  But it seems better to do the malloc while not holding
-	 * the lock, so we can't look at numProcs.  Likewise, we allocate much
-	 * more subxip storage than is probably needed.
-	 *
-	 * This does open a possibility for avoiding repeated malloc/free: since
-	 * maxProcs does not change at runtime, we can simply reuse the previous
-	 * xip arrays if any.  (This relies on the fact that all callers pass
-	 * static SnapshotData structs.)
-	 */
-	if (snapshot->xip == NULL)
-	{
-		/*
-		 * First call for this snapshot
-		 */
-		snapshot->xip = (TransactionId *)
-			malloc(arrayP->maxProcs * sizeof(TransactionId));
-		if (snapshot->xip == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-		Assert(snapshot->subxip == NULL);
-		snapshot->subxip = (TransactionId *)
-			malloc(arrayP->maxProcs * PGPROC_MAX_CACHED_SUBXIDS * sizeof(TransactionId));
-		if (snapshot->subxip == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-
-	}
-
-	/*
-	 * GP: Distributed snapshot.
-	 */
-	elog((Debug_print_full_dtm ? LOG : DEBUG5),
-		 "GetSnapshotData maxCount %d, inProgressEntryArray %p", 
-	 	 snapshot->distribSnapshotWithLocalMapping.header.maxCount,
-	 	 snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray);
-	
-	if (snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray == NULL)
-	{
-		int maxCount;
-		
-		maxCount = GetDistributedSnapshotMaxCount();
-		if (maxCount > 0)
-		{
-			snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray = 
-				(DistributedSnapshotMapEntry *)
-				malloc(maxCount * sizeof(DistributedSnapshotMapEntry));
-			if (snapshot->distribSnapshotWithLocalMapping.inProgressEntryArray == NULL)
-				elog(ERROR, "out of memory");
-			snapshot->distribSnapshotWithLocalMapping.header.maxCount = maxCount;
-		}
-	}
 
 	globalxmin = xmin = GetTopTransactionId();
 
