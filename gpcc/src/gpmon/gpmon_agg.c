@@ -643,7 +643,7 @@ static float get_cpu_current_perc(qdnode_t* qdnode)
             continue;
 
         memset(key, 0, 32);
-        snprintf(key, 32, "%d%d", pqe->qexec.key.segid, pqe->qexec.key.pid); 
+        snprintf(key, 32, "%d-%d", pqe->qexec.key.segid, pqe->qexec.key.pid); 
 
         seg_cpu_current = apr_hash_get(segpidtab, key, sizeof(key));
         
