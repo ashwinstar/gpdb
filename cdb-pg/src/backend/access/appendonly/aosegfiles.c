@@ -112,6 +112,7 @@ GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 	Datum			eof, tupcount, varbcount;
 	bool			isNull;
 	FileSegInfo 	*fsinfo;
+	LOCKMODE		lockmode = (forupdate ? RowExclusiveLock : AccessShareLock);
 	
 	Buffer			buffer;
 	ItemPointerData update_ctid;
@@ -125,9 +126,9 @@ GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 	 * Check the pg_aoseg relation to be certain the ao table 
 	 * is there. 
 	 */
-	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, AccessShareLock);
+	pg_aoseg_rel = heap_open(parentrel->rd_rel->relaosegrelid, lockmode);
 	pg_aoseg_dsc = pg_aoseg_rel->rd_att;
-	pg_aoseg_idx = index_open(pg_aoseg_rel->rd_rel->relaosegidxid, AccessShareLock);
+	pg_aoseg_idx = index_open(pg_aoseg_rel->rd_rel->relaosegidxid, lockmode);
 	
 	/* 
 	 * Setup a scan key to fetch from the index by segno.
@@ -148,8 +149,8 @@ GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 		/* aoseg tuple for this segno doesn't exist */
 		
 		index_endscan(aoscan);
-		index_close(pg_aoseg_idx, AccessShareLock);
-		heap_close(pg_aoseg_rel, AccessShareLock);
+		index_close(pg_aoseg_idx, lockmode);
+		heap_close(pg_aoseg_rel, lockmode);
 	
 		if(forupdate)
 		{
@@ -200,58 +201,62 @@ GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 	 * NOTE: this piece of code is largely borrowed from ExecutePlan() or
 	 * ExecuteUpdate() and is basically identical to SELECT FOR UPDATE.
 	 */
-lmark:	;
-	tupdata = *tuple;
-	Assert(ItemPointerIsValid(&tupdata.t_self));
-	
-	test = heap_lock_tuple(pg_aoseg_rel, &tupdata, &buffer,
-						   &update_ctid, &update_xmax,
-						   GetCurrentCommandId() /* TODO: is that right? */, 
-						   LockTupleExclusive, 
-						   false);
-	ReleaseBuffer(buffer);
-	switch (test)
+	if(forupdate)
 	{
-		case HeapTupleSelfUpdated:
-			/* treat it as deleted; do not process */
-			Assert(false); /* can this happen? */ 
-			break;
-			
-		case HeapTupleMayBeUpdated:
-			break;
-
-		case HeapTupleUpdated:
-			if (IsXactIsoLevelSerializable)
-				ereport(ERROR,
-				 (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-				  errmsg("could not serialize access due to concurrent update")));
-			
-			if (!ItemPointerEquals(&update_ctid, &tupdata.t_self))
-			{
-				/* updated, so look at updated version */
+lmark:	;
+		tupdata = *tuple;
+		Assert(ItemPointerIsValid(&tupdata.t_self));
+		
+		test = heap_lock_tuple(pg_aoseg_rel, &tupdata, &buffer,
+							   &update_ctid, &update_xmax,
+							   GetCurrentCommandId() /* TODO: is that right? */, 
+							   LockTupleExclusive, 
+							   false);
+		ReleaseBuffer(buffer);
+		switch (test)
+		{
+			case HeapTupleSelfUpdated:
+				/* treat it as deleted; do not process */
+				Assert(false); /* can this happen? */ 
+				break;
 				
-				HeapTuple updatedtup;
-				
-				updatedtup = GetUpdatedTuple_Int(pg_aoseg_rel,
-												 &update_ctid,
-												 update_xmax,
-												 GetCurrentCommandId());
+			case HeapTupleMayBeUpdated:
+				break;
 
-				if (updatedtup)
+			case HeapTupleUpdated:
+				if (IsXactIsoLevelSerializable)
+					ereport(ERROR,
+					 (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+					  errmsg("could not serialize access due to concurrent update")));
+				
+				if (!ItemPointerEquals(&update_ctid, &tupdata.t_self))
 				{
-					tuple = updatedtup;
-					goto lmark;
-				}
-			}
-			else
-			{
-				/* no aoseg tuple should ever get deleted */
-				Insist(false);
-			}
+					/* updated, so look at updated version */
+					
+					HeapTuple updatedtup;
+					
+					updatedtup = GetUpdatedTuple_Int(pg_aoseg_rel,
+													 &update_ctid,
+													 update_xmax,
+													 GetCurrentCommandId());
 
-		default:
-			elog(ERROR, "unrecognized heap_lock_tuple status: %u", test);
-			return NULL;
+					if (updatedtup)
+					{
+						tuple = updatedtup;
+						goto lmark;
+					}
+				}
+				else
+				{
+					/* no aoseg tuple should ever get deleted */
+					Insist(false);
+				}
+
+			default:
+				elog(ERROR, "unrecognized heap_lock_tuple status: %u", test);
+				return NULL;
+		}
+		
 	}
 
 	fsinfo = (FileSegInfo *) palloc(sizeof(FileSegInfo));
@@ -293,8 +298,8 @@ lmark:	;
 	
 	/* Finish up scan and close appendonly catalog. */
 	index_endscan(aoscan);
-	index_close(pg_aoseg_idx, AccessShareLock);
-	heap_close(pg_aoseg_rel, AccessShareLock);
+	index_close(pg_aoseg_idx, lockmode);
+	heap_close(pg_aoseg_rel, lockmode);
 	
 	return fsinfo;
 }
