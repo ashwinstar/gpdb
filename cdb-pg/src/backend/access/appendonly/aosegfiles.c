@@ -36,38 +36,15 @@
  */
 
 /*
- * GetBlankFileSegInfo
- *
- * get a blank file segment entry. usually called as a workaround for non
- * existing entry (this is a temporary workaround, this function will probably
- * be removed in the near future).
- */
-FileSegInfo *
-GetBlankFileSegInfo(void)
-{	
-	FileSegInfo *fsinfo = (FileSegInfo *) palloc(sizeof(FileSegInfo));
-
-	/* initial file segment */
-	fsinfo->segno = 0;
-	fsinfo->eof = 0;
-	fsinfo->tupcount = 0;
-	fsinfo->varblockcount = 0;
-	
-	return fsinfo;
-}
-
-/*
  * InsertFileSegInfo
  *
  * Adds an entry into the pg_aoseg_*  table for this Append 
- * Only relation
+ * Only relation. Use use frozen_heap_insert so the tuple is
+ * frozen on insert.
  */
 void
-InsertFileSegInfo(Relation parentrel, 
-				  int segno, 
-				  float8 eof,
-				  float8 tupcount,
-				  float8 varblockcount)
+InsertInitialSegnoEntry(Relation parentrel, 
+						int segno)
 {
 	Relation	pg_aoseg_rel;
 	Relation	pg_aoseg_idx;
@@ -90,9 +67,9 @@ InsertFileSegInfo(Relation parentrel,
 	pg_aoseg_idx = index_open(pg_aoseg_rel->rd_rel->relaosegidxid, RowExclusiveLock);
 		
 	values[Anum_pg_aoseg_segno - 1] = ObjectIdGetDatum(segno);
-	values[Anum_pg_aoseg_eof - 1] = Float8GetDatum(eof);
-	values[Anum_pg_aoseg_tupcount - 1] = Float8GetDatum(tupcount);
-	values[Anum_pg_aoseg_varblockcount - 1] = Float8GetDatum(varblockcount);
+	values[Anum_pg_aoseg_eof - 1] = Float8GetDatum(0);
+	values[Anum_pg_aoseg_tupcount - 1] = Float8GetDatum(0);
+	values[Anum_pg_aoseg_varblockcount - 1] = Float8GetDatum(0);
 	
 	/*
 	 * form the tuple and insert it
@@ -101,7 +78,7 @@ InsertFileSegInfo(Relation parentrel,
 	if (!HeapTupleIsValid(pg_aoseg_tuple))
 		elog(ERROR, "failed to build AO file segment tuple");
 
-	simple_heap_insert(pg_aoseg_rel, pg_aoseg_tuple);
+	frozen_heap_insert(pg_aoseg_rel, pg_aoseg_tuple);
 	CatalogUpdateIndexes(pg_aoseg_rel, pg_aoseg_tuple);
 	
 	heap_freetuple(pg_aoseg_tuple);
@@ -117,21 +94,33 @@ InsertFileSegInfo(Relation parentrel,
  * pg_aoseg_* relation that belongs to the currently used 
  * AppendOnly table.
  *
+ * if a caller intends to update this file segment entry they must
+ * pass true for 'forupdate'. Otherwise, pass false for read only. When
+ * we intend to update an entry we lock it for the duration of the operation.
  */
 FileSegInfo *
-GetFileSegInfo(Relation parentrel, int segno)
+GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 {
 	
-	Relation	pg_aoseg_rel;
-	Relation	pg_aoseg_idx;
-	TupleDesc	pg_aoseg_dsc;
-	HeapTuple	tuple;
-	ScanKeyData	key;
+	Relation		pg_aoseg_rel;
+	Relation		pg_aoseg_idx;
+	TupleDesc		pg_aoseg_dsc;
+	HeapTuple		tuple;
+	HeapTupleData 	tupdata;
+	ScanKeyData		key;
 	IndexScanDesc	aoscan;
-	Datum		eof, tupcount, varbcount;
-	bool		isNull;
-	FileSegInfo *fsinfo;
-		
+	Datum			eof, tupcount, varbcount;
+	bool			isNull;
+	FileSegInfo 	*fsinfo;
+	
+	Buffer			buffer;
+	ItemPointerData update_ctid;
+	TransactionId 	update_xmax;
+	HTSU_Result 	test;
+
+	if(forupdate)
+		LWLockAcquire(AppendOnlyLock, LW_EXCLUSIVE);
+	
 	/*
 	 * Check the pg_aoseg relation to be certain the ao table 
 	 * is there. 
@@ -156,12 +145,115 @@ GetFileSegInfo(Relation parentrel, int segno)
 	
 	if (!HeapTupleIsValid(tuple))
 	{
+		/* aoseg tuple for this segno doesn't exist */
+		
 		index_endscan(aoscan);
 		index_close(pg_aoseg_idx, AccessShareLock);
 		heap_close(pg_aoseg_rel, AccessShareLock);
-		return NULL;
+	
+		if(forupdate)
+		{
+		    /*
+		     * This operation intends to update the aoseg record for 'segno'.
+		     * But no entry exists yet for 'segno' in the aoseg table. This 
+		     * is unacceptable since we want to lock this aoseg entry tuple 
+		     * until the end of operation (see lock note below). Therefore we 
+		     * must create an empty entry. We insert the blank entry and 
+		     * freeze it and recursively call ourselves. The next time around 
+		     * the aoseg entry will exist.
+		     */
+			if(Gp_role == GP_ROLE_EXECUTE && !Gp_is_writer)
+				elog(ERROR,"Internal Error: AO INSERT must be executed by a "
+						   "writer gang");
+
+			InsertInitialSegnoEntry(parentrel, segno);
+			LWLockRelease(AppendOnlyLock);
+			return GetFileSegInfo(parentrel, segno, true); /* recurse */			
+		}
+		else
+		{
+			return NULL;	
+		}
 	}	
 	
+	if(forupdate)
+		LWLockRelease(AppendOnlyLock);
+	
+	Assert(HeapTupleIsValid(tuple));
+	
+	/*
+	 * Lock aoseg tuple for update
+	 * 
+	 * The update lock would protect us from 2 situations: 
+	 * 
+	 * 1) concurrent utility mode writers. Since UTILITY mode always uses the
+	 * same reseved segno and doesn't go through the QD AO concurrency logic, 
+	 * we must not allow concurrency in utility mode. serialize the updates.
+	 * 
+	 * 2) avoid the situation where a distributed transaction that aborted in 
+	 * the master and is being ignored by a segment because it is too busy still 
+	 * writing some segment file for that aborted transaction.  
+	 * 
+	 * Both are obviously very bad and must be prevented or will mix data in 
+	 * one segment file and be corrupted.
+	 * 
+	 * NOTE: this piece of code is largely borrowed from ExecutePlan() or
+	 * ExecuteUpdate() and is basically identical to SELECT FOR UPDATE.
+	 */
+lmark:	;
+	tupdata = *tuple;
+	Assert(ItemPointerIsValid(&tupdata.t_self));
+	
+	test = heap_lock_tuple(pg_aoseg_rel, &tupdata, &buffer,
+						   &update_ctid, &update_xmax,
+						   GetCurrentCommandId() /* TODO: is that right? */, 
+						   LockTupleExclusive, 
+						   false);
+	ReleaseBuffer(buffer);
+	switch (test)
+	{
+		case HeapTupleSelfUpdated:
+			/* treat it as deleted; do not process */
+			Assert(false); /* can this happen? */ 
+			break;
+			
+		case HeapTupleMayBeUpdated:
+			break;
+
+		case HeapTupleUpdated:
+			if (IsXactIsoLevelSerializable)
+				ereport(ERROR,
+				 (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+				  errmsg("could not serialize access due to concurrent update")));
+			
+			if (!ItemPointerEquals(&update_ctid, &tupdata.t_self))
+			{
+				/* updated, so look at updated version */
+				
+				HeapTuple updatedtup;
+				
+				updatedtup = GetUpdatedTuple_Int(pg_aoseg_rel,
+												 &update_ctid,
+												 update_xmax,
+												 GetCurrentCommandId());
+
+				if (updatedtup)
+				{
+					tuple = updatedtup;
+					goto lmark;
+				}
+			}
+			else
+			{
+				/* no aoseg tuple should ever get deleted */
+				Insist(false);
+			}
+
+		default:
+			elog(ERROR, "unrecognized heap_lock_tuple status: %u", test);
+			return NULL;
+	}
+
 	fsinfo = (FileSegInfo *) palloc(sizeof(FileSegInfo));
 	
 	/* get the eof */
@@ -312,8 +404,8 @@ UpdateFileSegInfo(Relation parentrel,
 	char				new_record_repl[Natts_pg_aoseg];
 	bool				isNull;
 	
-	/* overflow sanity checks */
-	Assert(tuples_added >= 0);
+	/* overflow sanity checks. don't check the same for tuples_added,
+	 * it may be coming as a negative diff from gp_update_ao_master_stats */
 	Assert(varblocks_added >= 0);
 	Assert(eof >= 0);
 	
@@ -594,33 +686,35 @@ gp_update_ao_master_stats__(PG_FUNCTION_ARGS)
 	            /*
 	             * Get the numbers on the QD for this segment
 	             */
-	            fsinfo = GetFileSegInfo(parentrel, qe_segno);
+	            fsinfo = GetFileSegInfo(parentrel, qe_segno, true);
 	            
-	        	if(!fsinfo)
-	        	{
-	        		/* QD has no idea about this segno. Insert a record for it */
-	        		InsertFileSegInfo(parentrel, qe_segno, 0, qe_tupcount, 0);
-	        	}
-	        	else
-	        	{
-	        		/* QD knows about this segno. check if numbers match.
-	        		 * NOTE: proper way is to use float8eq() but since we 
-	        		 * don't expect any NAN's in here better do it directly */
-	        		if(fsinfo->tupcount != qe_tupcount)
-	        		{
-	        			elog(DEBUG3, "gp_update_ao_master_stats: updating " 
-							 "segno %d with tupcount %d", qe_segno, 
-							 (int)qe_tupcount);
-	        			
-	        			/* QD tup count !=  QE tup count. update QD count */
-	        			UpdateFileSegInfo(parentrel, qe_segno, 0, qe_tupcount, 0);
-	        		}
-	        		else
-	        			elog(DEBUG3, "gp_update_ao_master_stats: no need to " 
-							 "update segno %d. it is synced", qe_segno);
-	        		
-	        		pfree(fsinfo);
-	        	}
+	            /* since we passed 'true' a segfile record must exist now */
+	        	Assert(fsinfo);
+	        	
+	        	/* 
+	        	 * check if numbers match.
+	        	 * NOTE: proper way is to use float8eq() but since we 
+	        	 * don't expect any NAN's in here better do it directly 
+	        	 */
+				if(fsinfo->tupcount != qe_tupcount)
+				{
+					float8 	diff = qe_tupcount - fsinfo->tupcount;
+					
+					elog(DEBUG3, "gp_update_ao_master_stats: updating " 
+						 "segno %d with tupcount %d", qe_segno, 
+						 (int)qe_tupcount);
+					
+					/* 
+					 * QD tup count !=  QE tup count. update QD count by 
+					 * passing in the diff (may be negative sometimes).
+					 */
+					UpdateFileSegInfo(parentrel, qe_segno, 0, diff, 0);
+				}
+				else
+					elog(DEBUG3, "gp_update_ao_master_stats: no need to " 
+						 "update segno %d. it is synced", qe_segno);
+				
+				pfree(fsinfo);
 	        	
 	        	/*
 	        	 * TODO: if an entry exists for this rel in the AO hash table

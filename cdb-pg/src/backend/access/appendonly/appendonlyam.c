@@ -397,19 +397,11 @@ SetCurrentFileSegForWrite(AppendOnlyInsertDesc aoInsertDesc)
 	
 	/* get the information for the file segment we insert into */
 	fsinfo = GetFileSegInfo(aoInsertDesc->aoi_rel, 
-							aoInsertDesc->cur_segno);
+							aoInsertDesc->cur_segno,
+							true);
 	
-	/* If no entry exists yet, use a blank one */
-	if(!fsinfo)
-	{
-		fsinfo = GetBlankFileSegInfo();
-		aoInsertDesc->is_new_segno = true;
-	}
-	else
-	{
-		aoInsertDesc->is_new_segno = false;
-	}
-		
+	Assert(fsinfo);
+			
 	/* Seek to the starting point (current eof from catalog) */
 	eof = (int64) lseek(appendFile, (off_t) fsinfo->eof, SEEK_SET);
 	
@@ -473,26 +465,13 @@ CloseWritableFileSeg(AppendOnlyInsertDesc aoInsertDesc)
 	fileLen = BufferedAppendFileLen(&aoInsertDesc->bufferedAppend);
 	
 	/* 
-	 * Update the AO segment info table 
+	 * Update the AO segment info table with our new eof
 	 */
-	if(aoInsertDesc->is_new_segno)
-	{
-		/* insert the first entry into pg_aoseg_* with our new eof */
-		InsertFileSegInfo(aoInsertDesc->aoi_rel, 
-						  aoInsertDesc->cur_segno,
-						  fileLen, 
-						  aoInsertDesc->insertCount,
-						  aoInsertDesc->varblockCount);
-	}
-	else
-	{
-		/* update the existing pg_aoseg_* with our new eof */
-		UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
-						  aoInsertDesc->cur_segno,
-						  fileLen, 
-						  aoInsertDesc->insertCount,
-						  aoInsertDesc->varblockCount);
-	}
+	UpdateFileSegInfo(aoInsertDesc->aoi_rel, 
+					  aoInsertDesc->cur_segno,
+					  fileLen, 
+					  aoInsertDesc->insertCount,
+					  aoInsertDesc->varblockCount);
 	
 	/* done with the rel file, close it */
 	BufferedAppendCompleteFile(&aoInsertDesc->bufferedAppend);

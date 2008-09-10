@@ -3208,6 +3208,146 @@ EvalPlanQualStop(evalPlanQual *epq)
 	epq->planstate = NULL;
 }
 
+/*
+ * GetUpdatedTuple_Int
+ * 
+ * This function is an extraction of interesting parts of EvalPlanQual (and
+ * therefore it presents some code duplication, probably should clean up at
+ * some point if possible). We use it instead of EvalPlanQual when we are
+ * scanning a local relation and using heap_lock_tuple to lock entries for 
+ * update, but we don't have access to the executor state and any RTE's.
+ * 
+ * The inputs to this function is the old tuple tid the relation it's in, and
+ * the output is the actual updated relation.
+ */
+HeapTuple
+GetUpdatedTuple_Int(Relation relation,
+					ItemPointer tid, 
+					TransactionId priorXmax, 
+					CommandId curCid)
+{
+	HeapTupleData tuple;
+	HeapTuple	copyTuple = NULL;
+
+	/*
+	 * fetch tid tuple
+	 *
+	 * Loop here to deal with updated or busy tuples
+	 */
+	tuple.t_self = *tid;
+	for (;;)
+	{
+		Buffer		buffer;
+
+		if (heap_fetch(relation, SnapshotDirty, &tuple, &buffer, true, NULL))
+		{
+			/*
+			 * If xmin isn't what we're expecting, the slot must have been
+			 * recycled and reused for an unrelated tuple.	This implies that
+			 * the latest version of the row was deleted, so we need do
+			 * nothing.  (Should be safe to examine xmin without getting
+			 * buffer's content lock, since xmin never changes in an existing
+			 * tuple.)
+			 */
+			if (!TransactionIdEquals(HeapTupleHeaderGetXmin(tuple.t_data),
+									 priorXmax))
+			{
+				ReleaseBuffer(buffer);
+				return NULL;
+			}
+
+			/* otherwise xmin should not be dirty... */
+			if (TransactionIdIsValid(SnapshotDirty->xmin))
+				elog(ERROR, "t_xmin is uncommitted in tuple to be updated");
+
+			/*
+			 * If tuple is being updated by other transaction then we have to
+			 * wait for its commit/abort.
+			 */
+			if (TransactionIdIsValid(SnapshotDirty->xmax))
+			{
+				ReleaseBuffer(buffer);
+				XactLockTableWait(SnapshotDirty->xmax);
+				continue;		/* loop back to repeat heap_fetch */
+			}
+
+			/*
+			 * If tuple was inserted by our own transaction, we have to check
+			 * cmin against curCid: cmin >= curCid means our command cannot
+			 * see the tuple, so we should ignore it.  Without this we are
+			 * open to the "Halloween problem" of indefinitely re-updating the
+			 * same tuple.	(We need not check cmax because
+			 * HeapTupleSatisfiesDirty will consider a tuple deleted by our
+			 * transaction dead, regardless of cmax.)  We just checked that
+			 * priorXmax == xmin, so we can test that variable instead of
+			 * doing HeapTupleHeaderGetXmin again.
+			 */
+			if (TransactionIdIsCurrentTransactionId(priorXmax) &&
+				HeapTupleHeaderGetCmin(tuple.t_data) >= curCid)
+			{
+				ReleaseBuffer(buffer);
+				return NULL;
+			}
+
+			/*
+			 * We got tuple - now copy it for use by recheck query.
+			 */
+			copyTuple = heap_copytuple(&tuple);
+			ReleaseBuffer(buffer);
+			break;
+		}
+
+		/*
+		 * If the referenced slot was actually empty, the latest version of
+		 * the row must have been deleted, so we need do nothing.
+		 */
+		if (tuple.t_data == NULL)
+		{
+			ReleaseBuffer(buffer);
+			return NULL;
+		}
+
+		/*
+		 * As above, if xmin isn't what we're expecting, do nothing.
+		 */
+		if (!TransactionIdEquals(HeapTupleHeaderGetXmin(tuple.t_data),
+								 priorXmax))
+		{
+			ReleaseBuffer(buffer);
+			return NULL;
+		}
+
+		/*
+		 * If we get here, the tuple was found but failed SnapshotDirty.
+		 * Assuming the xmin is either a committed xact or our own xact (as it
+		 * certainly should be if we're trying to modify the tuple), this must
+		 * mean that the row was updated or deleted by either a committed xact
+		 * or our own xact.  If it was deleted, we can ignore it; if it was
+		 * updated then chain up to the next version and repeat the whole
+		 * test.
+		 *
+		 * As above, it should be safe to examine xmax and t_ctid without the
+		 * buffer content lock, because they can't be changing.
+		 */
+		if (ItemPointerEquals(&tuple.t_self, &tuple.t_data->t_ctid))
+		{
+			/* deleted, so forget about it */
+			ReleaseBuffer(buffer);
+			return NULL;
+		}
+
+		/* updated, so look at the updated row */
+		tuple.t_self = tuple.t_data->t_ctid;
+		/* updated row should have xmin matching this xmax */
+		priorXmax = HeapTupleHeaderGetXmax(tuple.t_data);
+		ReleaseBuffer(buffer);
+		/* loop back to fetch next in chain */
+	}
+
+	//*tid = tuple.t_self;
+
+	return copyTuple;
+}
 
 /*
  * Support for SELECT INTO (a/k/a CREATE TABLE AS)

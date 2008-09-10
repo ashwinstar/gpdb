@@ -139,6 +139,10 @@ extern void ExecConstraints(ResultRelInfo *resultRelInfo,
 				TupleTableSlot *slot, EState *estate);
 extern TupleTableSlot *EvalPlanQual(EState *estate, Index rti,
 			 ItemPointer tid, TransactionId priorXmax, CommandId curCid);
+extern HeapTuple GetUpdatedTuple_Int(Relation relation,
+									 ItemPointer tid, 
+									 TransactionId priorXmax, 
+									 CommandId curCid);
 extern DestReceiver *CreateIntoRelDestReceiver(void);
 
 /*

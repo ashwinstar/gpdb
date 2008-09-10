@@ -648,22 +648,14 @@ void UpdateMasterAosegTotals(Relation parentrel, int segno, uint64 tupcount)
 				RelationGetRelid(parentrel), tupcount, segno);
 
 	/* get the information for the file segment we inserted into */
-	fsinfo = GetFileSegInfo(parentrel, segno);
-
+	fsinfo = GetFileSegInfo(parentrel, segno, true);
+	Assert(fsinfo);
+	
 	/*
 	 * Update the master AO segment info table with correct tuple count total
 	 */
-	if(!fsinfo)
-	{
-		/* insert the first entry into pg_aoseg_* with our new tup count */
-		InsertFileSegInfo(parentrel, segno, 0, tupcount_float8, 0);
-	}
-	else
-	{
-		/* update the existing pg_aoseg_* with our added tupcount */
-		UpdateFileSegInfo(parentrel, segno, 0, tupcount_float8, 0);
-		pfree(fsinfo);
-	}
+	UpdateFileSegInfo(parentrel, segno, 0, tupcount_float8, 0);
+	pfree(fsinfo);
 
 	/*
 	 * Now, update num of tups added in the hash table. This pending count will

@@ -47,7 +47,6 @@ typedef struct AppendOnlyInsertDescData
 	float8			insertCount;
 	float8			varblockCount;
 	BlockNumber		cur_segno;
-	bool			is_new_segno;
 	BufferedAppend	bufferedAppend;
 	VarBlockMaker	varBlockMaker;
 	int64			bufferCount;

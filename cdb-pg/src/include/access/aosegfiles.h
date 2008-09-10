@@ -51,18 +51,11 @@ typedef struct FileSegTotals
 	float8		totalvarblocks;	/* the sum of all 'varblockcount' values */	
 } FileSegTotals;
 
-extern FileSegInfo *
-GetBlankFileSegInfo(void);
-
 extern void 
-InsertFileSegInfo(Relation parentrel, 
-				  int segno, 
-				  float8 eof,
-				  float8 tupcount,
-				  float8 varblockcount);
+InsertInitialSegnoEntry(Relation parentrel, int segno);
 
 extern FileSegInfo *
-GetFileSegInfo(Relation parentrel, int segno);
+GetFileSegInfo(Relation parentrel, int segno, bool forupdate);
 
 extern FileSegInfo *
 GetAllFileSegInfo(Relation parentrel, int *totalsegs);
