@@ -2188,45 +2188,47 @@ order by
 	supp_nation,
 	cust_nation,
 	l_year;
-                                                                                                                QUERY PLAN                                                                                                                 
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice6)  (cost=10456417.84..10456692.58 rows=12211 width=72)
-   Merge Key: n1.n_name, n2.n_name, l_year
-   ->  Sort  (cost=10456417.84..10456692.58 rows=12211 width=72)
-         Sort Key: n1.n_name, n2.n_name, l_year
-         ->  HashAggregate  (cost=10457521.46..10457551.99 rows=12211 width=72)
-               Group By: n1.n_name, n2.n_name, "?column6?"
-               ->  Redistribute Motion 2:2  (slice5)  (cost=8589483.45..10456284.98 rows=13286 width=72)
-                     Hash Key: n1.n_name, n2.n_name, "?column6?"
-                     ->  Hash Join  (cost=8589483.45..10456019.25 rows=13286 width=72)
-                           Hash Cond: n2.n_nationkey = customer.c_nationkey AND orders.o_custkey = customer.c_custkey
-                           ->  Redistribute Motion 2:2  (slice4)  (cost=8289830.95..10134471.15 rows=1099175 width=80)
-                                 Hash Key: orders.o_custkey
-                                 ->  Hash Join  (cost=8289830.95..10112487.64 rows=1099175 width=80)
-                                       Hash Cond: orders.o_orderkey = lineitem.l_orderkey
-                                       ->  Seq Scan on orders  (cost=0.00..1364901.00 rows=93754800 width=12)
-                                       ->  Hash  (cost=8272468.26..8272468.26 rows=1099175 width=84)
-                                             ->  Hash Join  (cost=35013.46..8272468.26 rows=1099175 width=84)
-                                                   Hash Cond: lineitem.l_suppkey = supplier.s_suppkey
-                                                   ->  Seq Scan on lineitem  (cost=0.00..7505970.12 rows=113981163 width=32)
-                                                         Filter: l_shipdate >= '01-01-1995'::date AND l_shipdate <= '12-31-1996'::date
-                                                   ->  Hash  (cost=23338.94..23338.94 rows=775001 width=60)
-                                                         ->  Broadcast Motion 2:2  (slice3)  (cost=11.73..23338.94 rows=775001 width=60)
-                                                               ->  Hash Join  (cost=11.73..15104.55 rows=48438 width=60)
-                                                                     Hash Cond: supplier.s_nationkey = n1.n_nationkey
-                                                                     ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=625001 width=8)
-                                                                     ->  Hash  (cost=11.07..11.07 rows=53 width=60)
-                                                                           ->  Broadcast Motion 2:2  (slice2)  (cost=1.78..11.07 rows=53 width=60)
-                                                                                 ->  Nested Loop  (cost=1.78..10.50 rows=3 width=60)
-                                                                                       Join Filter: (n1.n_name = 'ALGERIA'::bpchar AND n2.n_name = 'ROMANIA'::bpchar) OR (n1.n_name = 'ROMANIA'::bpchar AND n2.n_name = 'ALGERIA'::bpchar)
-                                                                                       ->  Seq Scan on nation n1  (cost=0.00..1.04 rows=4 width=30)
-                                                                                       ->  Materialize  (cost=1.78..2.42 rows=64 width=30)
-                                                                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1.72 rows=64 width=30)
-                                                                                                   ->  Seq Scan on nation n2  (cost=0.00..1.04 rows=4 width=30)
-                           ->  Hash  (cost=149864.60..149864.60 rows=9375460 width=8)
-                                 ->  Seq Scan on customer  (cost=0.00..149864.60 rows=9375460 width=8)
+                                                                                                                   QUERY PLAN                                                                                                                    
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice6)  (cost=10456762.66..10456915.30 rows=12211 width=72)
+   Merge Key: partial_aggregation.supp_nation, partial_aggregation.cust_nation, partial_aggregation.unnamed_attr_3
+   ->  Sort  (cost=10456762.66..10456915.30 rows=12211 width=72)
+         Sort Key: partial_aggregation.supp_nation, partial_aggregation.cust_nation, partial_aggregation.unnamed_attr_3
+         ->  HashAggregate  (cost=10457744.18..10457774.71 rows=12211 width=72)
+               Group By: n1.n_name, n2.n_name, "?column3?"
+               ->  Redistribute Motion 2:2  (slice5)  (cost=10456152.11..10456518.44 rows=12211 width=72)
+                     Hash Key: n1.n_name, n2.n_name, unnamed_attr_3
+                     ->  HashAggregate  (cost=10456152.11..10456274.22 rows=12211 width=72)
+                           Group By: n1.n_name, n2.n_name, date_part('year'::text, lineitem.l_shipdate::timestamp without time zone)
+                           ->  Hash Join  (cost=8589483.45..10456019.25 rows=13286 width=72)
+                                 Hash Cond: n2.n_nationkey = customer.c_nationkey AND orders.o_custkey = customer.c_custkey
+                                 ->  Redistribute Motion 2:2  (slice4)  (cost=8289830.95..10134471.15 rows=1099175 width=80)
+                                       Hash Key: orders.o_custkey
+                                       ->  Hash Join  (cost=8289830.95..10112487.64 rows=1099175 width=80)
+                                             Hash Cond: orders.o_orderkey = lineitem.l_orderkey
+                                             ->  Seq Scan on orders  (cost=0.00..1364901.00 rows=93754800 width=12)
+                                             ->  Hash  (cost=8272468.26..8272468.26 rows=1099175 width=84)
+                                                   ->  Hash Join  (cost=35013.46..8272468.26 rows=1099175 width=84)
+                                                         Hash Cond: lineitem.l_suppkey = supplier.s_suppkey
+                                                         ->  Seq Scan on lineitem  (cost=0.00..7505970.12 rows=113981163 width=32)
+                                                               Filter: l_shipdate >= '01-01-1995'::date AND l_shipdate <= '12-31-1996'::date
+                                                         ->  Hash  (cost=23338.94..23338.94 rows=775001 width=60)
+                                                               ->  Broadcast Motion 2:2  (slice3)  (cost=11.73..23338.94 rows=775001 width=60)
+                                                                     ->  Hash Join  (cost=11.73..15104.55 rows=48438 width=60)
+                                                                           Hash Cond: supplier.s_nationkey = n1.n_nationkey
+                                                                           ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=625001 width=8)
+                                                                           ->  Hash  (cost=11.07..11.07 rows=53 width=60)
+                                                                                 ->  Broadcast Motion 2:2  (slice2)  (cost=1.78..11.07 rows=53 width=60)
+                                                                                       ->  Nested Loop  (cost=1.78..10.50 rows=3 width=60)
+                                                                                             Join Filter: (n1.n_name = 'ALGERIA'::bpchar AND n2.n_name = 'ROMANIA'::bpchar) OR (n1.n_name = 'ROMANIA'::bpchar AND n2.n_name = 'ALGERIA'::bpchar)
+                                                                                             ->  Seq Scan on nation n1  (cost=0.00..1.04 rows=4 width=30)
+                                                                                             ->  Materialize  (cost=1.78..2.42 rows=64 width=30)
+                                                                                                   ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1.72 rows=64 width=30)
+                                                                                                         ->  Seq Scan on nation n2  (cost=0.00..1.04 rows=4 width=30)
+                                 ->  Hash  (cost=149864.60..149864.60 rows=9375460 width=8)
+                                       ->  Seq Scan on customer  (cost=0.00..149864.60 rows=9375460 width=8)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(36 rows)
+(38 rows)
 
 --
 --
@@ -2280,57 +2282,61 @@ order by
 	o_year;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice8)  (cost=7099678.57..9009835.55 rows=43 width=46)
-   Merge Key: o_year
-   ->  GroupAggregate  (cost=7099678.57..9009835.55 rows=43 width=46)
-         Group By: "?column5?"
-         ->  Sort  (cost=7099678.57..9009833.72 rows=44 width=46)
-               Sort Key: "?column5?"
-               ->  Redistribute Motion 2:2  (slice7)  (cost=9009834.91..9009835.02 rows=44 width=46)
-                     Hash Key: "?column5?"
-                     ->  Hash Join  (cost=7099678.57..9009832.84 rows=44 width=46)
-                           Hash Cond: lineitem.l_suppkey = supplier.s_suppkey
-                           ->  Redistribute Motion 2:2  (slice5)  (cost=7082139.52..8992287.54 rows=2198 width=24)
-                                 Hash Key: lineitem.l_suppkey
-                                 ->  Hash Join  (cost=7082139.52..8992243.58 rows=2198 width=24)
-                                       Hash Cond: orders.o_custkey = customer.c_custkey
-                                       ->  Redistribute Motion 2:2  (slice2)  (cost=6847750.94..8757486.61 rows=136364 width=28)
-                                             Hash Key: orders.o_custkey
-                                             ->  Hash Join  (cost=6847750.94..8754759.33 rows=136364 width=28)
-                                                   Hash Cond: orders.o_orderkey = lineitem.l_orderkey
-                                                   ->  Seq Scan on orders  (cost=0.00..1833675.00 rows=28651539 width=16)
-                                                         Filter: o_orderdate >= '01-01-1995'::date AND o_orderdate <= '12-31-1996'::date
-                                                   ->  Hash  (cost=6842173.23..6842173.23 rows=446216 width=28)
-                                                         ->  Hash Join  (cost=251449.82..6842173.23 rows=446216 width=28)
-                                                               Hash Cond: lineitem.l_partkey = part.p_partkey
-                                                               ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=375023008 width=32)
-                                                               ->  Hash  (cost=234782.76..234782.76 rows=1333365 width=4)
-                                                                     ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..234782.76 rows=1333365 width=4)
-                                                                           ->  Seq Scan on part  (cost=0.00..220615.75 rows=83335 width=4)
-                                                                                 Filter: p_type::text = 'ECONOMY BRUSHED COPPER'::text
-                                       ->  Hash  (cost=228138.28..228138.28 rows=500025 width=4)
-                                             ->  Hash Join  (cost=3.42..228138.28 rows=500025 width=4)
-                                                   Hash Cond: customer.c_nationkey = n1.n_nationkey
-                                                   ->  Seq Scan on customer  (cost=0.00..149864.60 rows=9375460 width=8)
-                                                   ->  Hash  (cost=2.76..2.76 rows=53 width=4)
-                                                         ->  Broadcast Motion 2:2  (slice4)  (cost=1.02..2.76 rows=53 width=4)
-                                                               ->  Hash Join  (cost=1.02..2.19 rows=3 width=4)
-                                                                     Hash Cond: n1.n_regionkey = region.r_regionkey
-                                                                     ->  Redistribute Motion 2:2  (slice3)  (cost=0.00..1.12 rows=4 width=8)
-                                                                           Hash Key: n1.n_regionkey
-                                                                           ->  Seq Scan on nation n1  (cost=0.00..1.04 rows=4 width=8)
-                                                                     ->  Hash  (cost=1.01..1.01 rows=1 width=4)
-                                                                           ->  Seq Scan on region  (cost=0.00..1.01 rows=1 width=4)
-                                                                                 Filter: r_name = 'EUROPE'::bpchar
-                           ->  Hash  (cost=16289.04..16289.04 rows=100000 width=30)
-                                 ->  Hash Join  (cost=2.52..16289.04 rows=100000 width=30)
-                                       Hash Cond: supplier.s_nationkey = n2.n_nationkey
-                                       ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=625001 width=8)
-                                       ->  Hash  (cost=1.72..1.72 rows=64 width=30)
-                                             ->  Broadcast Motion 2:2  (slice6)  (cost=0.00..1.72 rows=64 width=30)
-                                                   ->  Seq Scan on nation n2  (cost=0.00..1.04 rows=4 width=30)
+ Gather Motion 2:1  (slice8)  (cost=7099678.57..9009836.93 rows=43 width=46)
+   Merge Key: partial_aggregation.unnamed_attr_1
+   ->  GroupAggregate  (cost=7099678.57..9009836.93 rows=43 width=46)
+         Group By: "?column1?"
+         ->  Sort  (cost=7099678.57..9009835.43 rows=43 width=46)
+               Sort Key: unnamed_attr_1
+               ->  Redistribute Motion 2:2  (slice7)  (cost=9009836.59..9009836.70 rows=43 width=46)
+                     Hash Key: "?column1?"
+                     ->  GroupAggregate  (cost=7099678.57..9009834.57 rows=43 width=46)
+                           Group By: "?column5?"
+                           ->  Sort  (cost=7099678.57..9009832.84 rows=44 width=46)
+                                 Sort Key: "?column5?"
+                                 ->  Hash Join  (cost=9009834.03..9009834.14 rows=44 width=46)
+                                       Hash Cond: lineitem.l_suppkey = supplier.s_suppkey
+                                       ->  Redistribute Motion 2:2  (slice5)  (cost=7082139.52..8992287.54 rows=2198 width=24)
+                                             Hash Key: lineitem.l_suppkey
+                                             ->  Hash Join  (cost=7082139.52..8992243.58 rows=2198 width=24)
+                                                   Hash Cond: orders.o_custkey = customer.c_custkey
+                                                   ->  Redistribute Motion 2:2  (slice2)  (cost=6847750.94..8757486.61 rows=136364 width=28)
+                                                         Hash Key: orders.o_custkey
+                                                         ->  Hash Join  (cost=6847750.94..8754759.33 rows=136364 width=28)
+                                                               Hash Cond: orders.o_orderkey = lineitem.l_orderkey
+                                                               ->  Seq Scan on orders  (cost=0.00..1833675.00 rows=28651539 width=16)
+                                                                     Filter: o_orderdate >= '01-01-1995'::date AND o_orderdate <= '12-31-1996'::date
+                                                               ->  Hash  (cost=6842173.23..6842173.23 rows=446216 width=28)
+                                                                     ->  Hash Join  (cost=251449.82..6842173.23 rows=446216 width=28)
+                                                                           Hash Cond: lineitem.l_partkey = part.p_partkey
+                                                                           ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=375023008 width=32)
+                                                                           ->  Hash  (cost=234782.76..234782.76 rows=1333365 width=4)
+                                                                                 ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..234782.76 rows=1333365 width=4)
+                                                                                       ->  Seq Scan on part  (cost=0.00..220615.75 rows=83335 width=4)
+                                                                                             Filter: p_type::text = 'ECONOMY BRUSHED COPPER'::text
+                                                   ->  Hash  (cost=228138.28..228138.28 rows=500025 width=4)
+                                                         ->  Hash Join  (cost=3.42..228138.28 rows=500025 width=4)
+                                                               Hash Cond: customer.c_nationkey = n1.n_nationkey
+                                                               ->  Seq Scan on customer  (cost=0.00..149864.60 rows=9375460 width=8)
+                                                               ->  Hash  (cost=2.76..2.76 rows=53 width=4)
+                                                                     ->  Broadcast Motion 2:2  (slice4)  (cost=1.02..2.76 rows=53 width=4)
+                                                                           ->  Hash Join  (cost=1.02..2.19 rows=3 width=4)
+                                                                                 Hash Cond: n1.n_regionkey = region.r_regionkey
+                                                                                 ->  Redistribute Motion 2:2  (slice3)  (cost=0.00..1.12 rows=4 width=8)
+                                                                                       Hash Key: n1.n_regionkey
+                                                                                       ->  Seq Scan on nation n1  (cost=0.00..1.04 rows=4 width=8)
+                                                                                 ->  Hash  (cost=1.01..1.01 rows=1 width=4)
+                                                                                       ->  Seq Scan on region  (cost=0.00..1.01 rows=1 width=4)
+                                                                                             Filter: r_name = 'EUROPE'::bpchar
+                                       ->  Hash  (cost=16289.04..16289.04 rows=100000 width=30)
+                                             ->  Hash Join  (cost=2.52..16289.04 rows=100000 width=30)
+                                                   Hash Cond: supplier.s_nationkey = n2.n_nationkey
+                                                   ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=625001 width=8)
+                                                   ->  Hash  (cost=1.72..1.72 rows=64 width=30)
+                                                         ->  Broadcast Motion 2:2  (slice6)  (cost=0.00..1.72 rows=64 width=30)
+                                                               ->  Seq Scan on nation n2  (cost=0.00..1.04 rows=4 width=30)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(50 rows)
+(54 rows)
 
 --set enable_nestloop=on;
 --
@@ -2379,47 +2385,51 @@ order by
 	o_year desc;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice7)  (cost=7853179.05..9452468.02 rows=4 width=61)
-   Merge Key: nation.n_name, o_year
-   ->  GroupAggregate  (cost=7853179.05..9452468.02 rows=4 width=61)
-         Group By: nation.n_name, "?column7?"
-         ->  Sort  (cost=7853179.05..9452467.88 rows=4 width=61)
-               Sort Key: nation.n_name, "?column7?"
-               ->  Redistribute Motion 2:2  (slice6)  (cost=9452467.93..9452467.94 rows=4 width=61)
-                     Hash Key: nation.n_name, "?column7?"
-                     ->  Hash Join  (cost=7853179.05..9452467.80 rows=4 width=61)
-                           Hash Cond: supplier.s_nationkey = nation.n_nationkey
-                           ->  Redistribute Motion 2:2  (slice5)  (cost=7853177.96..9452466.59 rows=19 width=39)
-                                 Hash Key: supplier.s_nationkey
-                                 ->  Hash Join  (cost=7853177.96..9452466.20 rows=19 width=39)
-                                       Hash Cond: orders.o_orderkey = lineitem.l_orderkey
-                                       ->  Seq Scan on orders  (cost=0.00..1364901.00 rows=93754800 width=12)
-                                       ->  Hash  (cost=7853177.72..7853177.72 rows=19 width=43)
-                                             ->  Redistribute Motion 2:2  (slice4)  (cost=6827715.64..7853177.72 rows=19 width=43)
-                                                   Hash Key: lineitem.l_orderkey
-                                                   ->  Hash Join  (cost=6827715.64..7853177.33 rows=19 width=43)
-                                                         Hash Cond: partsupp.ps_partkey = part.p_partkey AND partsupp.ps_suppkey = lineitem.l_suppkey
-                                                         ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=50003900 width=16)
-                                                         ->  Hash  (cost=6827448.01..6827448.01 rows=17842 width=51)
-                                                               ->  Redistribute Motion 2:2  (slice3)  (cost=248060.25..6827448.01 rows=17842 width=51)
-                                                                     Hash Key: lineitem.l_partkey
-                                                                     ->  Hash Join  (cost=248060.25..6827091.18 rows=17842 width=51)
-                                                                           Hash Cond: lineitem.l_suppkey = supplier.s_suppkey
-                                                                           ->  Redistribute Motion 2:2  (slice2)  (cost=230523.73..6808973.18 rows=143384 width=43)
-                                                                                 Hash Key: lineitem.l_suppkey
-                                                                                 ->  Hash Join  (cost=230523.73..6806105.51 rows=143384 width=43)
-                                                                                       Hash Cond: lineitem.l_partkey = part.p_partkey
-                                                                                       ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=375023008 width=39)
-                                                                                       ->  Hash  (cost=225168.07..225168.07 rows=428453 width=4)
-                                                                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..225168.07 rows=428453 width=4)
-                                                                                                   ->  Seq Scan on part  (cost=0.00..220615.75 rows=26778 width=4)
-                                                                                                         Filter: p_name::text ~~ '%seashell%'::text
-                                                                           ->  Hash  (cost=9724.01..9724.01 rows=625001 width=8)
-                                                                                 ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=625001 width=8)
-                           ->  Hash  (cost=1.04..1.04 rows=4 width=30)
-                                 ->  Seq Scan on nation  (cost=0.00..1.04 rows=4 width=30)
+ Gather Motion 2:1  (slice7)  (cost=7853179.05..9452468.14 rows=4 width=61)
+   Merge Key: partial_aggregation.nation, partial_aggregation.unnamed_attr_2
+   ->  GroupAggregate  (cost=7853179.05..9452468.14 rows=4 width=61)
+         Group By: nation.n_name, "?column2?"
+         ->  Sort  (cost=7853179.05..9452468.02 rows=4 width=61)
+               Sort Key: nation.n_name, unnamed_attr_2
+               ->  Redistribute Motion 2:2  (slice6)  (cost=9452468.06..9452468.07 rows=4 width=61)
+                     Hash Key: nation.n_name, "?column2?"
+                     ->  GroupAggregate  (cost=7853179.05..9452467.94 rows=4 width=61)
+                           Group By: nation.n_name, "?column7?"
+                           ->  Sort  (cost=7853179.05..9452467.80 rows=4 width=61)
+                                 Sort Key: nation.n_name, "?column7?"
+                                 ->  Hash Join  (cost=9452467.84..9452467.85 rows=4 width=61)
+                                       Hash Cond: supplier.s_nationkey = nation.n_nationkey
+                                       ->  Redistribute Motion 2:2  (slice5)  (cost=7853177.96..9452466.59 rows=19 width=39)
+                                             Hash Key: supplier.s_nationkey
+                                             ->  Hash Join  (cost=7853177.96..9452466.20 rows=19 width=39)
+                                                   Hash Cond: orders.o_orderkey = lineitem.l_orderkey
+                                                   ->  Seq Scan on orders  (cost=0.00..1364901.00 rows=93754800 width=12)
+                                                   ->  Hash  (cost=7853177.72..7853177.72 rows=19 width=43)
+                                                         ->  Redistribute Motion 2:2  (slice4)  (cost=6827715.64..7853177.72 rows=19 width=43)
+                                                               Hash Key: lineitem.l_orderkey
+                                                               ->  Hash Join  (cost=6827715.64..7853177.33 rows=19 width=43)
+                                                                     Hash Cond: partsupp.ps_partkey = part.p_partkey AND partsupp.ps_suppkey = lineitem.l_suppkey
+                                                                     ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=50003900 width=16)
+                                                                     ->  Hash  (cost=6827448.01..6827448.01 rows=17842 width=51)
+                                                                           ->  Redistribute Motion 2:2  (slice3)  (cost=248060.25..6827448.01 rows=17842 width=51)
+                                                                                 Hash Key: lineitem.l_partkey
+                                                                                 ->  Hash Join  (cost=248060.25..6827091.18 rows=17842 width=51)
+                                                                                       Hash Cond: lineitem.l_suppkey = supplier.s_suppkey
+                                                                                       ->  Redistribute Motion 2:2  (slice2)  (cost=230523.73..6808973.18 rows=143384 width=43)
+                                                                                             Hash Key: lineitem.l_suppkey
+                                                                                             ->  Hash Join  (cost=230523.73..6806105.51 rows=143384 width=43)
+                                                                                                   Hash Cond: lineitem.l_partkey = part.p_partkey
+                                                                                                   ->  Seq Scan on lineitem  (cost=0.00..5630855.08 rows=375023008 width=39)
+                                                                                                   ->  Hash  (cost=225168.07..225168.07 rows=428453 width=4)
+                                                                                                         ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..225168.07 rows=428453 width=4)
+                                                                                                               ->  Seq Scan on part  (cost=0.00..220615.75 rows=26778 width=4)
+                                                                                                                     Filter: p_name::text ~~ '%seashell%'::text
+                                                                                       ->  Hash  (cost=9724.01..9724.01 rows=625001 width=8)
+                                                                                             ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=625001 width=8)
+                                       ->  Hash  (cost=1.04..1.04 rows=4 width=30)
+                                             ->  Seq Scan on nation  (cost=0.00..1.04 rows=4 width=30)
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(40 rows)
+(44 rows)
 
 --
 --
@@ -2854,33 +2864,35 @@ order by
 	p_brand, 
 	p_type, 
 	p_size;
-                                                                                          QUERY PLAN                                                                                          
-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Gather Motion 2:1  (slice3)  (cost=412408.71..1781512.45 rows=25049 width=40)
-   Merge Key: supplier_cnt, part.p_brand, part.p_type, part.p_size
-   ->  Sort  (cost=412408.71..1781512.45 rows=25049 width=40)
-         Sort Key: supplier_cnt, part.p_brand, part.p_type, part.p_size
-         ->  GroupAggregate  (cost=1783342.59..1783405.21 rows=25049 width=40)
-               Group By: part.p_brand, part.p_type, part.p_size
-               ->  Sort  (cost=412408.71..1714397.00 rows=6680234 width=40)
-                     Sort Key: part.p_brand, part.p_type, part.p_size
-                     ->  Redistribute Motion 2:2  (slice2)  (cost=3143622.53..3160323.11 rows=6680234 width=40)
+                                                                                             QUERY PLAN                                                                                             
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Gather Motion 2:1  (slice3)  (cost=2294807.56..2295120.67 rows=25049 width=40)
+   Merge Key: supplier_cnt, partial_aggregation.p_brand, partial_aggregation.p_type, partial_aggregation.p_size
+   ->  Sort  (cost=2294807.56..2295120.67 rows=25049 width=40)
+         Sort Key: supplier_cnt, partial_aggregation.p_brand, partial_aggregation.p_type, partial_aggregation.p_size
+         ->  HashAggregate  (cost=2296950.81..2297013.43 rows=25049 width=40)
+               Group By: partial_aggregation.p_brand, partial_aggregation.p_type, partial_aggregation.p_size
+               ->  HashAggregate  (cost=2054704.03..2161202.88 rows=6680234 width=40)
+                     Group By: part.p_brand, part.p_type, part.p_size, partsupp.ps_suppkey
+                     ->  Redistribute Motion 2:2  (slice2)  (cost=1664295.24..1881402.85 rows=6680234 width=40)
                            Hash Key: part.p_brand, part.p_type, part.p_size
-                           ->  Hash Left Join  (cost=412408.71..1580792.32 rows=6680234 width=40)
-                                 Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey
-                                 Filter: supplier.s_suppkey IS NULL
-                                 ->  Hash Join  (cost=401006.10..1485886.78 rows=6680234 width=40)
-                                       Hash Cond: partsupp.ps_partkey = part.p_partkey
-                                       ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=50003900 width=8)
-                                       ->  Hash  (cost=376869.50..376869.50 rows=1669968 width=40)
-                                             ->  Seq Scan on part  (cost=0.00..376869.50 rows=1669968 width=40)
-                                                   Filter: p_brand <> 'Brand#15'::bpchar AND p_type::text !~~ 'LARGE BRUSHED%'::text AND (p_size = ANY ('{4,41,17,9,15,2,25,34}'::integer[]))
-                                 ->  Hash  (cost=11339.85..11339.85 rows=5020 width=4)
-                                       ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..11339.85 rows=5020 width=4)
-                                             ->  Seq Scan on supplier  (cost=0.00..11286.51 rows=314 width=4)
-                                                   Filter: s_comment::text ~~ '%Customer%Complaints%'::text
+                           ->  HashAggregate  (cost=1664295.24..1747798.17 rows=6680234 width=40)
+                                 Group By: part.p_brand, part.p_type, part.p_size, partsupp.ps_suppkey
+                                 ->  Hash Left Join  (cost=412408.71..1580792.32 rows=6680234 width=40)
+                                       Hash Cond: partsupp.ps_suppkey = supplier.s_suppkey
+                                       Filter: supplier.s_suppkey IS NULL
+                                       ->  Hash Join  (cost=401006.10..1485886.78 rows=6680234 width=40)
+                                             Hash Cond: partsupp.ps_partkey = part.p_partkey
+                                             ->  Seq Scan on partsupp  (cost=0.00..775442.00 rows=50003900 width=8)
+                                             ->  Hash  (cost=376869.50..376869.50 rows=1669968 width=40)
+                                                   ->  Seq Scan on part  (cost=0.00..376869.50 rows=1669968 width=40)
+                                                         Filter: p_brand <> 'Brand#15'::bpchar AND p_type::text !~~ 'LARGE BRUSHED%'::text AND (p_size = ANY ('{4,41,17,9,15,2,25,34}'::integer[]))
+                                       ->  Hash  (cost=11339.85..11339.85 rows=5020 width=4)
+                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..11339.85 rows=5020 width=4)
+                                                   ->  Seq Scan on supplier  (cost=0.00..11286.51 rows=314 width=4)
+                                                         Filter: s_comment::text ~~ '%Customer%Complaints%'::text
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(24 rows)
+(26 rows)
 
 --
 --
@@ -3225,54 +3237,56 @@ order by
 LIMIT 100;
                                                                                        QUERY PLAN                                                                                       
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Limit  (cost=99085579.98..99131016.02 rows=100 width=38)
-   ->  Gather Motion 2:1  (slice4)  (cost=99085579.98..99131016.02 rows=100 width=38)
-         Merge Key: numwait, supplier.s_name
-         ->  Limit  (cost=99085579.98..99131014.02 rows=100 width=38)
-               ->  Sort  (cost=99085579.98..383048787.44 rows=625001 width=38)
-                     Sort Key (Limit): numwait, supplier.s_name
-                     ->  GroupAggregate  (cost=383171836.22..383173398.72 rows=625001 width=38)
-                           Group By: supplier.s_name
-                           ->  Sort  (cost=99085579.98..339764855.24 rows=8654286436 width=38)
-                                 Sort Key: supplier.s_name
-                                 ->  Redistribute Motion 2:2  (slice3)  (cost=4379686720.04..4401322436.13 rows=8654286436 width=38)
+ Limit  (cost=509253488.21..509255234.70 rows=100 width=38)
+   ->  Gather Motion 2:1  (slice4)  (cost=509253488.21..509255234.70 rows=100 width=38)
+         Merge Key: numwait, partial_aggregation.s_name
+         ->  Limit  (cost=509253488.21..509255232.70 rows=100 width=38)
+               ->  Sort  (cost=509253488.21..520156553.94 rows=625001 width=38)
+                     Sort Key (Limit): numwait, partial_aggregation.s_name
+                     ->  HashAggregate  (cost=520279602.72..520281165.22 rows=625001 width=38)
+                           Group By: partial_aggregation.s_name
+                           ->  HashAggregate  (cost=417518268.31..466145980.29 rows=2147483647 width=38)
+                                 Group By: supplier.s_name, "?column2?"
+                                 ->  Redistribute Motion 2:2  (slice3)  (cost=231586274.79..358153138.10 rows=2147483647 width=38)
                                        Hash Key: supplier.s_name
-                                       ->  Merge Join  (cost=99085579.98..166679126.52 rows=8654286436 width=38)
-                                             Merge Cond: l1.l_orderkey = orders.o_orderkey
-                                             Join Filter: l2.l_suppkey <> l1.l_suppkey
-                                             ->  Sort  (cost=8290134.42..16256917.07 rows=60884217 width=42)
-                                                   Sort Key: l1.l_orderkey
-                                                   ->  Hash Left Join  (cost=37142854.85..37295065.39 rows=60884217 width=42)
-                                                         Hash Cond: l1.l_orderkey = l3.l_orderkey
-                                                         Join Filter: l3.l_suppkey <> l1.l_suppkey
-                                                         Filter: l3.l_orderkey IS NULL
-                                                         ->  Hash Join  (cost=21787.95..6933829.64 rows=622198 width=42)
-                                                               Hash Cond: l1.l_suppkey = supplier.s_suppkey
-                                                               ->  Seq Scan on lineitem l1  (cost=0.00..6568412.60 rows=125007669 width=16)
-                                                                     Filter: l_receiptdate > l_commitdate
-                                                               ->  Hash  (cost=16787.94..16787.94 rows=400001 width=30)
-                                                                     ->  Broadcast Motion 2:2  (slice2)  (cost=1.42..16787.94 rows=400001 width=30)
-                                                                           ->  Hash Join  (cost=1.42..12537.93 rows=25000 width=30)
-                                                                                 Hash Cond: supplier.s_nationkey = nation.n_nationkey
-                                                                                 ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=625001 width=34)
-                                                                                 ->  Hash  (cost=1.22..1.22 rows=16 width=4)
-                                                                                       ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1.22 rows=16 width=4)
-                                                                                             ->  Seq Scan on nation  (cost=0.00..1.05 rows=1 width=4)
-                                                                                                   Filter: n_name = 'SAUDI ARABIA'::bpchar
-                                                         ->  Hash  (cost=6568412.60..6568412.60 rows=125007669 width=12)
-                                                               ->  Seq Scan on lineitem l3  (cost=0.00..6568412.60 rows=125007669 width=12)
-                                                                     Filter: l_receiptdate > l_commitdate
-                                             ->  Sort  (cost=2211077.80..11917699.63 rows=181588018 width=20)
-                                                   Sort Key: l2.l_orderkey
-                                                   ->  Hash Join  (cost=61942725.13..62396695.18 rows=181588018 width=20)
-                                                         Hash Cond: l2.l_orderkey = orders.o_orderkey
-                                                         ->  Seq Scan on lineitem l2  (cost=0.00..5630855.08 rows=375023008 width=12)
-                                                               Filter: l_orderkey IS NOT NULL
-                                                         ->  Hash  (cost=1599288.00..1599288.00 rows=45396544 width=8)
-                                                               ->  Seq Scan on orders  (cost=0.00..1599288.00 rows=45396544 width=8)
-                                                                     Filter: o_orderstatus = 'F'::bpchar
+                                       ->  HashAggregate  (cost=231586274.79..315203465.16 rows=2147483647 width=38)
+                                             Group By: supplier.s_name, l1.l_orderkey::text || l1.l_linenumber::text
+                                             ->  Merge Join  (cost=99085579.98..166679126.52 rows=8654286436 width=38)
+                                                   Merge Cond: l1.l_orderkey = orders.o_orderkey
+                                                   Join Filter: l2.l_suppkey <> l1.l_suppkey
+                                                   ->  Sort  (cost=8290134.42..16256917.07 rows=60884217 width=42)
+                                                         Sort Key: l1.l_orderkey
+                                                         ->  Hash Left Join  (cost=37142854.85..37295065.39 rows=60884217 width=42)
+                                                               Hash Cond: l1.l_orderkey = l3.l_orderkey
+                                                               Join Filter: l3.l_suppkey <> l1.l_suppkey
+                                                               Filter: l3.l_orderkey IS NULL
+                                                               ->  Hash Join  (cost=21787.95..6933829.64 rows=622198 width=42)
+                                                                     Hash Cond: l1.l_suppkey = supplier.s_suppkey
+                                                                     ->  Seq Scan on lineitem l1  (cost=0.00..6568412.60 rows=125007669 width=16)
+                                                                           Filter: l_receiptdate > l_commitdate
+                                                                     ->  Hash  (cost=16787.94..16787.94 rows=400001 width=30)
+                                                                           ->  Broadcast Motion 2:2  (slice2)  (cost=1.42..16787.94 rows=400001 width=30)
+                                                                                 ->  Hash Join  (cost=1.42..12537.93 rows=25000 width=30)
+                                                                                       Hash Cond: supplier.s_nationkey = nation.n_nationkey
+                                                                                       ->  Seq Scan on supplier  (cost=0.00..9724.01 rows=625001 width=34)
+                                                                                       ->  Hash  (cost=1.22..1.22 rows=16 width=4)
+                                                                                             ->  Broadcast Motion 2:2  (slice1)  (cost=0.00..1.22 rows=16 width=4)
+                                                                                                   ->  Seq Scan on nation  (cost=0.00..1.05 rows=1 width=4)
+                                                                                                         Filter: n_name = 'SAUDI ARABIA'::bpchar
+                                                               ->  Hash  (cost=6568412.60..6568412.60 rows=125007669 width=12)
+                                                                     ->  Seq Scan on lineitem l3  (cost=0.00..6568412.60 rows=125007669 width=12)
+                                                                           Filter: l_receiptdate > l_commitdate
+                                                   ->  Sort  (cost=2211077.80..11917699.63 rows=181588018 width=20)
+                                                         Sort Key: l2.l_orderkey
+                                                         ->  Hash Join  (cost=61942725.13..62396695.18 rows=181588018 width=20)
+                                                               Hash Cond: l2.l_orderkey = orders.o_orderkey
+                                                               ->  Seq Scan on lineitem l2  (cost=0.00..5630855.08 rows=375023008 width=12)
+                                                                     Filter: l_orderkey IS NOT NULL
+                                                               ->  Hash  (cost=1599288.00..1599288.00 rows=45396544 width=8)
+                                                                     ->  Seq Scan on orders  (cost=0.00..1599288.00 rows=45396544 width=8)
+                                                                           Filter: o_orderstatus = 'F'::bpchar
  Settings:  enable_mergejoin=on; enable_nestloop=on; gp_enable_agg_distinct=off; gp_segments_for_planner=16; gp_selectivity_damping_for_joins=off; gp_selectivity_damping_for_scans=off
-(47 rows)
+(49 rows)
 
 --
 --

@@ -1164,6 +1164,16 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 
+    {
+		{"enable_agg_restructure", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Deprecated: use gp_enable_multiphase_agg."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
+		},
+		&enable_agg_restruct,
+		true, NULL, NULL
+ 	},
+
 	{
 		{"gp_enable_multiphase_agg", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enables the planner's use of two- or three-stage parallel aggregation plans."),
@@ -1258,7 +1268,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL,
 		},
 		&gp_enable_dqa_pruning,
-		false, NULL, NULL
+		true, NULL, NULL
 	},
 
 	{

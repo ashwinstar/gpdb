@@ -272,10 +272,16 @@ static const Index dqa_base_varno = 3; /* refers to one of the dref_tlists */
  * or, perhaps, replacements for the gp_eager_... series.  We wouldn't 
  * need these if our statistics and cost calculations were correct, but
  * as of 3.2, they not.
+ *
+ * Early testing suggested that (1.0, 0.45, 1.7) was about right, but the
+ * risk of introducing skew in the initial redistribution of a 1-phase plan
+ * is great (especially given the 3.2 tendency to way underestimate the
+ * cardinality of joins), so we penalize 1-phase and normalize to the 
+ * 2-phase cost (approximately).
  */
-static const double gp_coefficient_1phase_agg = 1.0; /* this cost seems pretty good */
-static const double gp_coefficient_2phase_agg = 0.45; /* this cost seems high, so reduce it to 45% */
-static const double gp_coefficient_3phase_agg = 1.7; /* this cost seems low, so increase it by 70% */
+static const double gp_coefficient_1phase_agg = 20.0; /* penalty */
+static const double gp_coefficient_2phase_agg = 1.0; /* normalized */
+static const double gp_coefficient_3phase_agg = 3.3; /* increase systematic under estimate */
 
 /* Forward declarations */
 
@@ -662,7 +668,6 @@ cdb_grouping_planner(PlannerInfo* root,
 		 * keys.  Order the output array of DqaInfo structures (in the 
 		 * context) according to how they should be joined.
 		 */
-//		planDqaJoinOrder(root, &ctx, plan_1p.input_path->parent->rows);
 		planDqaJoinOrder(root, &ctx, plan_3p.input_path->parent->rows);
 		
 		/* Plan the post-Motion portions of each coplan in two ways: one to
@@ -672,7 +677,6 @@ cdb_grouping_planner(PlannerInfo* root,
 		 */
 		for ( i = 0; i < ctx.numDistinctCols; i++ )
 		{
-//			set_coplan_strategies(root, &ctx, &ctx.dqaArgs[i], plan_1p.input_path);
 			set_coplan_strategies(root, &ctx, &ctx.dqaArgs[i], plan_3p.input_path);
 		}
 	}
@@ -3883,7 +3887,8 @@ Cost cost_1phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 	info->join_strategy = DqaJoinNone;
 	info->use_sharing = false;
 	
-	return gp_coefficient_1phase_agg * info->plan_cost;
+	info->plan_cost *= gp_coefficient_1phase_agg;
+	return info->plan_cost;
 }
 
 
@@ -4054,7 +4059,8 @@ Cost cost_2phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 	info->join_strategy = DqaJoinNone;
 	info->use_sharing = false;
 
-	return gp_coefficient_2phase_agg * info->plan_cost;
+	info->plan_cost *= gp_coefficient_2phase_agg;
+	return info->plan_cost;
 }
 
 
@@ -4205,7 +4211,8 @@ Cost cost_3phase_aggregation(PlannerInfo *root, MppGroupContext *ctx, AggPlanInf
 	info->join_strategy = join_strategy;
 	info->use_sharing = use_sharing;
 
-	return gp_coefficient_3phase_agg * info->plan_cost;
+	info->plan_cost *= gp_coefficient_3phase_agg;
+	return info->plan_cost;
 }
 
 
