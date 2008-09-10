@@ -1504,6 +1504,9 @@ try:
 
         if fault_action == 'continue':
             opt['-f'] = True
+        else:
+            # MPP-3460 new gprecoverseg doesn't shutdown array if fts_mode set to readonly
+            opt['-f'] = True
 
         # generate list of failed instances, active instances and failed dbids
         if opt['-i']:
