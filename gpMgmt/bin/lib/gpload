@@ -1,0 +1,95 @@
+#!/usr/bin/env python
+
+import sys
+if sys.hexversion<0x2050000:
+    sys.stderr.write("gpload needs python version at least 2.5.\n")
+    sys.exit(2)
+
+try:
+    import yaml
+except ImportError:
+    sys.stderr.write("gpload needs pyyaml.  You can get it from http://pyyaml.org.\n")
+    sys.exit(2)
+ 
+import os,signal,socket,subprocess,traceback
+
+class gpload:
+
+    def __init__(self,config):
+	self.config = config
+	self.logfile = None
+	self.subprocesses = []
+	logfile = self.getconfig('gpload.logfile',str)
+	if logfile!=None:
+	    self.logfile = open(logfile,'a')
+
+    def log(self,a):
+	a += '\n'
+	if self.logfile:
+	    self.logfile.write(a)
+	sys.stdout.write(a)
+
+    def getconfig(self,a,typ=None,default='error'):
+	s = a.split('.')
+	b = []
+	c = self.config
+	for i in xrange(len(s)):
+	    if type(c)!=dict or s[i] not in c:
+		if default=='error':
+		    self.log("Configuration must contain--")
+		    for j in xrange(i+1):
+			self.log('    '*j+s[j]+':')
+		    sys.exit(2)
+		return default
+	    c = c[s[i]]
+	if typ!=None and type(c)!=typ:
+	    if typ==list:
+		self.log("This configuration must be a sequence--")
+	    elif typ==dict:
+		self.log("This configuration must be a mapping--")
+	    elif typ==str:
+		self.log("This configuration must be a scalar--")
+	    else:
+		assert 0
+	    for j in xrange(i+1):
+		self.log('    '*j+s[j]+':')
+	    sys.exit(2)
+	return c
+
+    def start_gpfdists(self):
+	sources = self.getconfig('gpload.from.source')
+	if type(sources)!=list:
+	    sources = [sources]
+	for source in sources:
+	    ipaddr = source.get('ipaddr',socket.gethostname())
+	    if type(ipaddr)!=list:
+		ipaddr = [ipaddr]
+	    print ipaddr
+
+    def run2(self):
+	self.start_gpfdists()
+
+    def run(self):
+	try:
+	    self.run2()
+	except Exception,a:
+	    if self.logfile:
+		traceback.print_exc(file=self.logfile)
+	    raise
+	finally:
+	    for a in self.subprocesses:
+		try:
+		    os.kill(a.pid,signal.SIGTERM)
+		except OSError:
+		    pass
+
+def usage():
+    sys.stderr.write("%s configfile\n"%sys.argv[0])
+    sys.exit(2)
+
+if len(sys.argv)!=2:
+    usage()
+f = open(sys.argv[1],'r')
+g = gpload(yaml.load(f.read()))
+f.close()
+g.run()
