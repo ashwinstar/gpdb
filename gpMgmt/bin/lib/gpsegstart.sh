@@ -71,6 +71,15 @@ PING_CHK () {
         fi
 }
 
+QE_VERSION_CHK() {
+    POSTGRES_VERSION_CHK $QE_NAME
+    if [ $VERSION_MATCH -ne 1 ]; then
+	$ECHO "FAILED:${QE_LINE}:VERSION_NOT_MATCH" >> $PARALLEL_STATUS_FILE
+	LOG_MSG "[INFO][$INST_COUNT]:-End Main"
+	exit 1
+    fi
+}
+
 QE_DIR_CHK () {
 	CHK_DIR ${QE_DIR} $QE_NAME
 	if [ $EXISTS -ne 0 ];then
@@ -261,6 +270,7 @@ QE_LINE="${QE_NAME}:${QE_PORT}:${QE_DIR}"
 LOG_MSG "[INFO][$INST_COUNT]:-Start Main"
 LOG_MSG "[INFO][$INST_COUNT]:-Command line options passed to utility = $*"
 PING_CHK
+QE_VERSION_CHK
 QE_DIR_CHK
 START_SEG
 $ECHO "COMPLETED:$QE_LINE" >> $PARALLEL_STATUS_FILE

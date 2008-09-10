@@ -313,34 +313,6 @@ def chk_mirror_config(qes, mirrors):
     return (config, new_addr)
 
 ################
-def chk_mirror_dir(qes, mirrors):
-    for i in range(len(qes)):
-        pri_host = qes[i]['hostname']
-        mirror_host = mirrors[i]['hostname']
-        mirror_datadir = mirrors[i]['datadir']
-
-        # check datadir exist
-        if gpmlib.directory_exists(mirror_datadir, mirror_host):
-            gpmlib.error('Directory %s already exists on %s' % (mirror_datadir, mirror_host))
-
-        # check write access of the parent datadir
-        dir = os.path.dirname(mirror_datadir)
-        tmpfile = os.path.join(dir, 'gptmpfile')
-        (ok, out) = gpmlib.run('%s "%s %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.TOUCH, tmpfile))
-        if ok:
-            (ok, out) = gpmlib.run('%s "%s -f %s"' % (gplib.ssh_prefix(host=mirror_host), ENV.RM, tmpfile))            
-        else:
-            gpmlib.error('Cannot write to %s on segment host %s' % (dir, mirror_host))
-
-        # check access from primary host to mirror host
-        (ok, out) = gpmlib.run('%s \'%s ls /tmp\'' % (gplib.ssh_prefix(host=pri_host),
-                                                       gplib.ssh_prefix(host=mirror_host)))
-        if not ok:
-            gpmlib.error('Check inter host ssh access from %s to %s failed' % (pri_host, mirror_host))
-
-    gpmlib.log_info('Completed host and directory checks')
-        
-################
 #
 #  opt['-p']
 #
@@ -592,7 +564,6 @@ class SyncDataThread(Thread):
                                  self.failed_qe['datadir'],
                                  self.failed_qe['hostname']))
             
-
         # sychronize pool_array
         gpmlib.log_info('Start to synchronize data between primary segment (%s:%s) and mirror segment (%s:%s)' % 
                         (self.active_qe['hostname'], self.active_qe['datadir'], 
@@ -1216,6 +1187,11 @@ def test_access(failed_instance_array, active_instance_array):
 
         gpmlib.log_info('Test cycle %d of %d' % (i+1, len(failed_instance_array)))
         gpmlib.log_info('--------------------------------------')
+
+        # check postgres version
+        if not gpmlib.chk_postgres_version(failed_qe['hostname']):
+            gpmlib.error('Postgres version does not match with recovering host %s' % failed_qe['hostname'])
+
         gpmlib.log_info('Test 1, create temporary file on %s' % failed_qe['hostname'])
         
         tmpfile1 = '/tmp/remote_test1.$$'
@@ -1595,7 +1571,7 @@ try:
         db = None
 
     # test access
-    test_access(failed_instance_array, active_instance_array)
+    test_access(failed_array, active_instance_array)
     
     # stop database or failed instances
     stop_database(failed_instance_array)

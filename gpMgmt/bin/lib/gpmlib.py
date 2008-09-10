@@ -322,7 +322,25 @@ def ping_host(host, fail_exit=False):
 
     return ok
 
-                        
+def chk_postgres_version(host):
+    cmd = makeCommand('%s --version' % os.path.join(os.environ.get('GPHOME'), 'bin/postgres'))
+    (ok, out) = run(cmd)
+    if not ok:
+        log_error('Unable to get postgres version')
+        return False
+    current = out[0].strip()
+
+    (ok, out) = run('ssh %s "%s"' % (host, cmd))
+    if not ok:
+        log_error('Unable to get postgres version on remote host %s' % host)
+        return False
+    remote = out[0].strip()
+    
+    if current != remote:
+        log_error('postgres versions do not match. %s != %s' % (current, remote))
+        return False
+    return True
+    
 
 #############
 def postgres_active(port, host=None):

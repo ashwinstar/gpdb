@@ -319,6 +319,34 @@ LOG_MSG () {
 		fi
 }
 
+POSTGRES_VERSION_CHK() {
+    LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+    HOST=$1;shift
+
+    CURRENT_VERSION=`$EXPORT_GPHOME; $EXPORT_LIB_PATH; $GPHOME/bin/postgres --version`
+    VERSION_MATCH=0
+
+    VER=`$TRUSTED_SHELL $HOST "$EXPORT_GPHOME; $EXPORT_LIB_PATH; $GPHOME/bin/postgres --version"`
+    if [ $? -ne 0 ] ; then
+	LOG_MSG "[WARN]:- Failed to obtain postgres version on $HOST" 1
+	EXIT_STATUS=1
+	VERSION_MATCH=0
+    fi
+    LOG_MSG "[INFO]:- Current postgres version = $CURRENT_VERSION"
+    LOG_MSG "[INFO]:- postgres version on $HOST = $VER"
+
+    if [ x"$VER" != x"$CURRENT_VERSION" ] ; then
+	LOG_MSG "[WARN]:-Postgres version does not match. [$CURRENT_VERSION != $VER]" 1
+	VERSION_MATCH=0
+	EXIT_STATUS=1
+    else
+	VERSION_MATCH=1
+    fi
+    
+
+    LOG_MSG "[INFO]:-End Function $FUNCNAME"
+
+}
 
 ERROR_EXIT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"

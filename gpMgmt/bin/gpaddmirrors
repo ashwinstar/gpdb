@@ -260,6 +260,10 @@ def chk_mirror_dir(qes, mirrors):
         mirror_host = mirrors[i]['hostname']
         mirror_datadir = mirrors[i]['datadir']
 
+        # check postgres version
+        if not gpmlib.chk_postgres_version(mirror_host):
+            gpmlib.error('Postgres version does not match with mirror host %s' % mirror_host)
+
         # check datadir exist
         if gpmlib.directory_exists(mirror_datadir, mirror_host):
             gpmlib.error('Directory %s already exists on %s' % (mirror_datadir, mirror_host))
@@ -295,6 +299,7 @@ class SyncDataThread(Thread):
         self.timeout = datetime.today() + timedelta(seconds=timeout)
 
     def run(self):
+        # sync data directory
         gpmlib.log_info('Start to synchronize data between primary segment (%s:%s) and mirror segment (%s:%s)' % (self.pri_host, self.pri_datadir, self.mir_cfg['hostname'], self.mir_cfg['datadir']))
 
         if not gpmlib.sync_segment_datadir(self.pri_host, self.pri_datadir, self.mir_cfg, self.logfile):

@@ -69,6 +69,15 @@ PING_CHK () {
         fi
 }
 
+QE_VERSION_CHK() {
+    POSTGRES_VERSION_CHK $QE_NAME
+    if [ $VERSION_MATCH -ne 1 ]; then
+	$ECHO "FAILED:${QE_LINE}:VERSION_NOT_MATCH" >> $PARALLEL_STATUS_FILE
+	LOG_MSG "[INFO][$INST_COUNT]:-End Main"
+	exit 1
+    fi
+}
+
 FORCE_CLEAR () {
         LOG_MSG "[INFO][$INST_COUNT]:-Start Function $FUNCNAME"
         LOG_MSG "[INFO][$INST_COUNT]:-Killing postmaster process on $QE_NAME for port=$QE_PORT" 1
@@ -172,6 +181,7 @@ INST_COUNT=$1;shift		#Unique number for this parallel script, starts at 0
 LOG_FILE=$1;shift
 QE_LINE="${QE_NAME}:${QE_PORT}:${QE_DIR}"
 PING_CHK
+QE_VERSION_CHK
 STOP_SEG
 $ECHO "COMPLETED:$QE_LINE" >> $PARALLEL_STATUS_FILE
 LOG_MSG "[INFO][$INST_COUNT]:-End Main"

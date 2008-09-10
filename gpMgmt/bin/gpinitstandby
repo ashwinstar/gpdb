@@ -598,6 +598,11 @@ GET_QD_DB_NAME
 if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
 	ERROR_EXIT "[FATAL]:-Must supply master standby hostname location with -s option" 2
 fi
+POSTGRES_VERSION_CHK $MASTER_STANDBY_HOSTNAME
+if [ $VERSION_MATCH -ne 1 ] ; then
+    ERROR_EXIT "[FATAL]:- Postgres version does not match." 2
+fi
+
 MASTER_STANDBY_DATA_DIRECTORY=$MASTER_DATA_DIRECTORY
 MASTER_STANDBY_PORT=$MASTER_PORT
 CHECK_PARAM

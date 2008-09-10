@@ -562,6 +562,10 @@ CHK_QES () {
 				GET_IP_ADDRESS 
 				CHK_LOCALE_KNOWN $QE_ID
 				CHK_OPEN_FILES $GP_HOSTNAME
+				POSTGRES_VERSION_CHK $GP_HOSTNAME
+				if [ $VERSION_MATCH -ne 1 ] ; then
+				   ERROR_EXIT "Postgres version does not match" 2
+				fi
 				#Check to ensure have required QE directories
 				for DIR in "${DATA_DIRECTORY[@]}"
 				do
