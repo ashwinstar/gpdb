@@ -94,12 +94,13 @@ static char*gstring_trim(char* s);
 /*  Struct of command line options */
 static struct {
     int p;			/* port */
+    int last_port;
     int v;			/* verbose */
     int V;			/* very verbose */
     const char* d;		/* directory */
     const char* l;              /* log filename */
     int g;			/* gp_proto (0 or 1) (internal, not documented) */
-} opt = { 8080, 0, 0, ".", 0, -1 };
+} opt = { 8080,8080, 0, 0, ".", 0, -1 };
 
 #if APR_IS_BIGENDIAN
 #define local_htonll(n)  (n)
@@ -252,9 +253,9 @@ static void print_version(void)
     exit(0);
 }
 
-static void print_q_x_h_deprecated(void)
+static void print_q_x_h_are_gone(void)
 {
-    fprintf(stderr,"-q, -h and -x are deprecated.  Please specify these as in this example:\n");
+    fprintf(stderr,"The -q, -h and -x options are gone.  Please specify these as in this example:\n");
     fprintf(stderr,"create external table a (a int) location ('gpfdist://...') format 'csv' (escape as '\"' quote as '\"' header);\n");
     exit(1);
 }
@@ -273,9 +274,9 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	{      NULL, 'v', 0, "verbose mode" },
 	{      NULL, 'p', 1, "which port to serve HTTP" },
 	{      NULL, 'd', 1, "serve files under this directory" },
-	{      NULL, 'q', 0, "deprecated" },
-	{      NULL, 'x', 0, "deprecated" },
-	{      NULL, 'h', 0, "deprecated" },
+	{      NULL, 'q', 0, "gone" },
+	{      NULL, 'x', 0, "gone" },
+	{      NULL, 'h', 0, "gone" },
 	{      NULL, 'l', 1, "log filename" },
 	{      NULL, 'g', 1, "internal - gp_proto number" },
 	{ "version", 256, 0, "print version number" }
@@ -290,11 +291,12 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
 	case '?': usage(0); break;
 	case 'v': opt.v = 1; break;
 	case 'V': opt.v = opt.V = 1; break;
-	case 'h': print_q_x_h_deprecated(); break;
+	case 'h': print_q_x_h_are_gone(); break;
 	case 'd': opt.d = arg; break;
-	case 'q': print_q_x_h_deprecated(); break;
-	case 'x': print_q_x_h_deprecated(); break;
-	case 'p': opt.p = atoi(arg); break;
+	case 'q': print_q_x_h_are_gone(); break;
+	case 'x': print_q_x_h_are_gone(); break;
+	case 'p': opt.last_port = opt.p = atoi(arg); break;
+	case 'P': opt.last_port = atoi(arg); break;
 	case 'l': opt.l = arg; break;
 	case 'g': opt.g = atoi(arg); break;
 	case 256: print_version(); break;
@@ -1151,7 +1153,6 @@ static void http_setup(void)
 
     /* create socket */
     a.sin_addr.s_addr = htonl(INADDR_ANY);
-    a.sin_port = htons(opt.p);
     a.sin_family = AF_INET;
 
     f = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -1175,9 +1176,15 @@ static void http_setup(void)
     linger.l_linger = 5;
     setsockopt(f, SOL_SOCKET, SO_LINGER, (void*) &linger, sizeof(linger));
 
+    for (;;){
+	a.sin_port = htons(opt.p);
     /* bind */
-    if (bind(f, (void*) &a, sizeof(a))) 
-	gfatal(FLINE, "cannot create socket on port %d", opt.p);
+	if (!bind(f, (void*) &a, sizeof(a))) 
+	    break;
+	if (opt.p >= opt.last_port)
+	    gfatal(FLINE, "cannot create socket on port %d", opt.p);
+	opt.p++;
+    }
 
     /* listen with a big queue */
     if (listen(f, 256)) 

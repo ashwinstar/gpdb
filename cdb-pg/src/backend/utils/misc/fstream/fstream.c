@@ -164,6 +164,29 @@ expand_directories(fstream_t*fs)
     return 0;
 }
 
+static int
+glob_path(fstream_t*fs,const char*path)
+{
+    char*path2=fstream_malloc(strlen(path)+1);
+    if (!path2){
+	gfile_printf_then_putc_newline("fstream out of memory");
+	return 1;
+    }
+    path = strcpy(path2,path);
+    do{
+	char*p=strchr(path,'\n');
+	if (p)
+	    *p++ = 0;
+	if (glob_and_copy(path,GLOB_MARK|GLOB_NOCHECK,0,&fs->glob)){
+	    gfile_printf_then_putc_newline("fstream glob failed");
+	    return 1;
+	}
+	path = p;
+    }while (path);
+    fstream_free(path2);
+    return 0;
+}
+
 /* alloc a new file stream */
 fstream_t*
 fstream_open(const char*path,const struct fstream_options*options)
@@ -176,8 +199,7 @@ fstream_open(const char*path,const struct fstream_options*options)
     }
     memset(fs,0,sizeof*fs);
     fs->options = *options;
-    if (glob_and_copy(path,GLOB_MARK|GLOB_NOCHECK,0,&fs->glob)){
-	gfile_printf_then_putc_newline("fstream glob failed");
+    if (glob_path(fs,path)){
 	fstream_close(fs);
 	return 0;
     }
