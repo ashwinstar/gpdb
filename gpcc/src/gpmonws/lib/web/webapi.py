@@ -42,7 +42,10 @@ class HTTPError(Exception):
         for k, v in headers.items():
             header(k, v)
         self.data = data
-        Exception.__init__(self, status)
+        if data == "":
+            Exception.__init__(self, status)
+        else:
+            Exception.__init__(self, data)
 
 class BadRequest(HTTPError):
     """`400 Bad Request` error."""
@@ -63,6 +66,22 @@ class NotFound(HTTPError):
         HTTPError.__init__(self, status, headers, data)
 
 notfound = NotFound
+
+class AccessDenied(HTTPError):
+    """`403 Access Denied` error."""
+    def __init__(self):
+        status = '403 Access Denied'
+        headers = {'Content-Type': 'text/html'}
+        data = 'access denied'
+        HTTPError.__init__(self, status, headers, data)
+
+    def __init__(self, errordata, contenttype):
+        status = '403 Access Denied'
+        headers = {'Content-Type': contenttype}
+        data = errordata
+        HTTPError.__init__(self, status, headers, data)
+
+accessdenied = AccessDenied
 
 class Gone(HTTPError):
     """`410 Gone` error."""

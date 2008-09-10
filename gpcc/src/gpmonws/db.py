@@ -22,6 +22,21 @@ except:
     sys.stderr.write('GPDB connection failure: %s\n' % sys.exc_info()[0])
     conn = None
 
+def getrole(username, password):
+    res = (False, False)
+    try:
+        auth_conn = pg8000.Connection(user=username, password=password, host=pghost, port=pgport, database=pgdatabase, socket_timeout=8*60*60)
+
+        auth_conn.execute('select rolsuper from pg_roles where rolname = current_user')
+        for r in auth_conn.iterate_dict():
+            res = (True, r['rolsuper'])
+            
+        auth_conn.close()
+    except:
+        sys.stderr.write('Exception connecting')
+
+    return res
+
 def start_date(): 
     # check  connection to database 
     if conn == None:

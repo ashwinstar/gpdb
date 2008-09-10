@@ -20,16 +20,26 @@ web.config.session_parameters.timeout = 1800
 
 urls = ('/startdate', 'startdate', 
         '/hosts', 'hosts',
-        '/system', 'system')
+        '/system', 'system',
+        '/logon', 'logon',
+        '/logoff', 'logoff'
+)
 
 
-app = web.application(urls, locals(), web.reloader)
+app = web.application(urls, locals())
 session = web.session.Session(app, 
                               web.session.DiskStore(tempfile.mkdtemp()), 
-                              initializer={'user': '', 'role': {}})
+                              initializer={'user': '', 'role': {}, 
+                                           'loggedin': 0})
 render = web.template.render('./templates/', cache=False)
 
-
+def authrole(username, password):
+    (valid, issuper) = db.getrole(username, password)
+    if valid:
+        session.user = username
+        session.role['superuser'] = issuper
+        session.role['user'] = True
+        session.loggedin = True
 
 def chkrole(role):
     return not (role and (not session.user or not session.role[role]))
@@ -43,7 +53,11 @@ def timenow():
 class startdate:
     stime = None
 
-    def GET(self, ses=None):
+    def GET(self):
+#        if not session.loggedin: 
+#            web.webapi.accessdenied()
+            
+
         web.header('Content-Type', 'text/xml')
         if startdate.stime == None:
             # retrieve the first date that monitoring was turned on.
@@ -52,11 +66,45 @@ class startdate:
         # return start time
         return render.startdate(startdate.stime)
 
+class logon:
+    def GET(self):
+        if session.loggedin:
+            session.kill()
+
+        i = web.input()
+        username = ''
+        password = ''
+        if i.has_key('username'):
+            username = i['username']
+        if i.has_key('password'):
+            password = i['password']
+
+        authrole(username, password)
+        if not session.loggedin:
+            authdata = render.logon(username, 'FAIL', 'None')
+            return web.webapi.accessdenied(authdata, 'text/xml')
+        
+        role = ''
+        if session.role['superuser']:
+            role = 'superuser, user'
+        else:
+            role = 'user'
+
+        return render.logon(username, 'SUCCESS', role)
+
+class logoff:
+    def GET(self):
+        logoffdata = render.logoff(session.user, 'SUCCESS')
+        session.kill()
+        return logoffdata
 
 class hosts:
     nodes = None
 
     def GET(self, ses=None):
+        if not session.loggedin:
+            return web.webapi.accessdenied()
+
         web.header('Content-Type', 'text/xml')
         if hosts.nodes == None:
             # retrieve the list of nodes in the GP DB system
@@ -68,9 +116,10 @@ class hosts:
 
 class system:
     def GET(self):
-        web.header('Content-Type', 'text/xml')
+#        if not session.loggedin:
+#            return web.webapi.accessdenied()
 
-        # if not chkrole('user'): return error('not authorized')
+        web.header('Content-Type', 'text/xml')
 
         i = web.input(start='last', end='', prev='', host='', interval='', sd='')
         i.start = i.start.lower()
