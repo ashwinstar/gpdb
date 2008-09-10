@@ -234,3 +234,6 @@ execute E'python -c "import socket, os; print socket.gethostname() + \\"|\\" + o
 format 'csv' (delimiter '|');
 
 revoke all on database gpmon_2 from public;
+
+-- for web ui auth everyone needs connect permissions
+grant connect on database gpmon_2 to public;
