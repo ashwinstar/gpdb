@@ -17,6 +17,7 @@ ISCONFIG=$(GPPGDIR)/GNUmakefile
 RELEASE=$(shell $(CURDIR)/releasetag)
 GPDIR=greenplum-db$(RELEASE)
 GPLDIR=greenplum-db$(RELEASE)-gpl
+PLRDIR=greenplum-db$(RELEASE)-plr
 GPDOCDIR=$(CURDIR)/docs/release
 
 DEFPORT=5432
@@ -100,6 +101,7 @@ devel : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 devel_faultinj : INSTCFLAGS=$(DEBUGFLAGS)
@@ -114,6 +116,7 @@ devel_faultinj : gccVersionCheck version HOMEDEP $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 
@@ -129,6 +132,7 @@ forceplan : HOMEDEP $(ISCONFIG)
 	@$(MAKE) mgmtcopy INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
@@ -143,6 +147,7 @@ dist : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist_prof : INSTCFLAGS=$(PROFFLAGS)
@@ -157,6 +162,7 @@ dist_prof : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 dist_faultinj : INSTCFLAGS=$(OPTFLAGS)
@@ -172,6 +178,7 @@ dist_faultinj : gccVersionCheck version GPROOTDEP RECONFIG $(ISCONFIG)
 	@$(MAKE) copydocs INSTLOC=$(INSTLOC)
 	@$(MAKE) copylibs INSTLOC=$(INSTLOC)
 	@$(MAKE) gplcopy GPLINSTLOC=$(GPLINSTLOC)
+	@$(MAKE) pkgplr INSTLOC=$(INSTLOC)
 	@$(MAKE) greenplum_path INSTLOC=$(INSTLOC)
 
 
@@ -290,6 +297,26 @@ gplcopy :
 	chmod 555 $(GPLINSTLOC)/bin/*
 	cp -f $(GPCC)/src/gpmon/gpmon_2.sql $(GPLINSTLOC)
 	chmod 555 $(GPLINSTLOC)/gpmon_2.sql
+
+
+pkgplr: 
+	@if [ -f $(INSTLOC)/lib/postgresql/plr.so ] ; then \
+	    echo "" ; \
+	    echo "`date` -- INFO: Found plr.so, creating PL/R package" ; \
+	    mkdir -p $(PLRDIR)/lib ; \
+	    mkdir -p $(PLRDIR)/contrib ; \
+	    cp -p $(INSTLOC)/lib/postgresql/plr.so $(PLRDIR)/lib ; \
+	    cp -p $(INSTLOC)/share/postgresql/contrib/plr.sql $(PLRDIR)/contrib ; \
+	    echo "" ; \
+	    echo "`date` -- INFO: Cleaning up $(INSTLOC) of plr components" ; \
+	    rm -f $(INSTLOC)/share/postgresql/contrib/plr.sql ; \
+	    rm -f $(INSTLOC)/lib/postgresql/plr.so ; \
+	    echo "" ; \
+	    echo "`date` -- INFO: Creating .zip" ; \
+	    zip -q -r $(INSTLOC)-plr-pkg.zip $(INSTLOC)-plr-pkg ; \
+	    echo "" ; \
+	fi
+
 
 libcopy=(cd $(1) && gtar cf - $(2)) | (cd $(3) && gtar xvf -)
 
