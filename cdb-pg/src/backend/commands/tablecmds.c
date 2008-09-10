@@ -9557,6 +9557,13 @@ num_partition_levels(PartitionNode *pn)
 			PartitionRule *rule = linitial(tmp->rules);
 			tmp = rule->children;
 		}
+		else if (tmp->default_part)
+		{
+			PartitionRule *rule = tmp->default_part;
+			tmp = rule->children;
+		}
+		else
+			tmp = NULL;
 	}
 
 	return level;
