@@ -102,8 +102,8 @@ class hosts:
     nodes = None
 
     def GET(self, ses=None):
-        if not session.loggedin:
-            return web.webapi.accessdenied()
+#        if not session.loggedin:
+#            return web.webapi.accessdenied()
 
         web.header('Content-Type', 'text/xml')
         if hosts.nodes == None:
