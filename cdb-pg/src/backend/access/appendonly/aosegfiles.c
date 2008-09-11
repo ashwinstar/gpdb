@@ -113,7 +113,7 @@ GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 	bool			isNull;
 	FileSegInfo 	*fsinfo;
 	LOCKMODE		lockmode = (forupdate ? RowExclusiveLock : AccessShareLock);
-	
+	Snapshot 		usesnapshot = (forupdate ? SnapshotDirty : GetTransactionSnapshot());
 	Buffer			buffer;
 	ItemPointerData update_ctid;
 	TransactionId 	update_xmax;
@@ -139,8 +139,7 @@ GetFileSegInfo(Relation parentrel, int segno, bool forupdate)
 				F_OIDEQ,
 				ObjectIdGetDatum(segno));
 	
-	aoscan = index_beginscan(pg_aoseg_rel, pg_aoseg_idx,
-							 GetTransactionSnapshot(), 1, &key);
+	aoscan = index_beginscan(pg_aoseg_rel, pg_aoseg_idx, usesnapshot, 1, &key);
 	
     tuple = index_getnext(aoscan, ForwardScanDirection);
 	
@@ -400,6 +399,7 @@ UpdateFileSegInfo(Relation parentrel,
 	ScanKeyData			key;
 	IndexScanDesc		aoscan;
 	HeapTuple			tuple, new_tuple;
+	Snapshot	 		usesnapshot = SnapshotDirty;
 	Datum				filetupcount;
 	Datum				filevarblockcount;
 	Datum				new_tuple_count;
@@ -432,8 +432,7 @@ UpdateFileSegInfo(Relation parentrel,
 				F_OIDEQ,
 				ObjectIdGetDatum(segno));
 	
-	aoscan = index_beginscan(pg_aoseg_rel, pg_aoseg_idx,
-							 GetTransactionSnapshot(), 1, &key);
+	aoscan = index_beginscan(pg_aoseg_rel, pg_aoseg_idx, usesnapshot, 1, &key);
 	
     tuple = index_getnext(aoscan, ForwardScanDirection);
 	

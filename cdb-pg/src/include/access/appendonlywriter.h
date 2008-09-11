@@ -112,8 +112,7 @@ extern void UpdateMasterAosegTotals(Relation parentrel,
 extern bool AORelRemoveHashEntry(Oid relid);
 extern void AtCommit_AppendOnly(void);
 extern void AtAbort_AppendOnly(void);
-
-
+extern void AtEOXact_AppendOnly(void);
 
 
 

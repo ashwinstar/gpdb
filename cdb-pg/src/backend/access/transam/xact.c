@@ -2405,6 +2405,7 @@ CommitTransaction(void)
 	/* Check we've released all catcache entries */
 	AtEOXact_CatCache(true);
 
+	AtEOXact_AppendOnly();
 	AtEOXact_GUC(true, false);
 	AtEOXact_SPI(true);
 	AtEOXact_on_commit_actions(true);
@@ -2886,6 +2887,7 @@ AbortTransaction(void)
 						 false, true);
 	AtEOXact_CatCache(false);
 
+	AtEOXact_AppendOnly();
 	AtEOXact_GUC(false, false);
 	AtEOXact_SPI(false);
 	AtEOXact_on_commit_actions(false);
