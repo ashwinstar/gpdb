@@ -193,6 +193,8 @@ typedef struct PartitionRangeState
 	bool *ltinit;
 	FmgrInfo *lefuncs;
 	bool *leinit;
+	int last_rule; /* cache offset to the last rule and test if it matches */
+	PartitionRule **rules;
 } PartitionRangeState;
 
 /* likewise, for list */
@@ -10140,7 +10142,11 @@ range_test(Datum tupval, Oid typid, PartitionRangeState *rs, int keyno,
 	if (PointerIsValid(rule->parrangestart))
 	{
 		Assert(IsA(rule->parrangestart, List));
+#if NOT_YET
 		c = (Const *)list_nth((List *)rule->parrangestart, keyno);
+#else
+		c = (Const *)linitial((List *)rule->parrangestart);
+#endif
 
 		/* is the value in the range? */
 		if (rule->parrangestartincl)
@@ -10167,7 +10173,11 @@ range_test(Datum tupval, Oid typid, PartitionRangeState *rs, int keyno,
 	/* There might be no END value */
 	if (PointerIsValid(rule->parrangeend))
 	{
+#if NOT_YET
 		c = (Const *)list_nth((List *)rule->parrangeend, keyno);
+#else
+		c = (Const *)linitial((List *)rule->parrangeend);
+#endif
 
 		/* might be in the range, lets see */
 		if (rule->parrangeendincl)
@@ -10221,14 +10231,32 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 	{
 		int natts = partnode->part->parnatts;
 
+		/* 
+		 * We're still in our caller's memory context so
+		 * the memory will persist long enough for us.
+		 */
 		rs = palloc(sizeof(PartitionRangeState));
-
 		rs->lefuncs = palloc(sizeof(FmgrInfo) * natts);
-
 		rs->ltfuncs = palloc(sizeof(FmgrInfo) * natts);
-		
 		rs->ltinit = palloc0(sizeof(bool) * natts);
 		rs->leinit = palloc0(sizeof(bool) * natts);
+
+		/* 
+		 * Unrolling the rules into an array currently works for the
+		 * top level partition only
+		 */
+		if (partnode->part->parlevel == 0)
+		{
+			int i = 0;
+			ListCell *lc;
+
+			rs->rules = palloc(sizeof(PartitionRule *) * list_length(rules));
+
+			foreach(lc, rules)
+				rs->rules[i++] = (PartitionRule *)lfirst(lc);
+		}
+		else
+			rs->rules = NULL;
 	}
 
 	if (pstate && pstate->part_cxt)
@@ -10264,7 +10292,11 @@ selectRangePartition(PartitionNode *partnode, Datum *values, bool *isnull,
 		int ret;
 
 		mid = low + (high - low)/2;
-		rule = (PartitionRule *)list_nth(rules, mid);
+
+		if (rs->rules)
+			rule = rs->rules[mid];
+		else	
+			rule = (PartitionRule *)list_nth(rules, mid);
 
 		if (isnull[attno - 1])
 		{

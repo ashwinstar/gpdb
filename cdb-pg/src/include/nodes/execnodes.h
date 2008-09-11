@@ -421,6 +421,8 @@ typedef struct PartitionState
 	NodeTag type;
 
 	AttrNumber max_partition_attr;
+	int result_partition_array_size; /* max elements of result relation array */
+	HTAB *result_partition_hash;
 	MemoryContext part_cxt;
 	void **amstate; /* access method specific lookup, one for each level */
 } PartitionState;

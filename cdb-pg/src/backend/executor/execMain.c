@@ -1261,6 +1261,8 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 			estate->es_partition_state->amstate = palloc0(sz);
 			estate->es_partition_state->max_partition_attr =
 				max_partition_attr(estate->es_result_partitions);
+			estate->es_partition_state->result_partition_array_size =
+				estate->es_num_result_relations;
 
 		}
 		else
@@ -3677,8 +3679,11 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 {
 	ResultRelInfo *resultRelInfo;
 	Oid targetid;
-	int i;
-	bool found = false;
+	bool found;
+	struct {
+		Oid targetid;
+		int offset;
+	} *entry;
 
 	/* add a short term memory context if one wasn't assigned already */
 	if (!estate->es_partition_state->part_cxt)
@@ -3691,35 +3696,60 @@ get_part(EState *estate, Datum *values, bool *isnull, TupleDesc tupdesc)
 	if (!OidIsValid(targetid))
 		elog(ERROR, "no partition for partitioning key");
 
-	resultRelInfo = estate->es_result_relations;
-	/* XXX: improve, provide lookup */
-	for (i = 0; i < estate->es_num_result_relations; i++)
+	if (estate->es_partition_state->result_partition_hash == NULL)
 	{
-		Relation resultRelationDesc = resultRelInfo->ri_RelationDesc;
+		HASHCTL ctl;
+		long num_buckets;
 
-		if (RelationGetRelid(resultRelationDesc) == targetid)
-		{
-			found = true;
-			break;
-		}
-		resultRelInfo++;
+		/* reasonable assumption? */
+		num_buckets = 
+			list_length(all_partition_relids(estate->es_result_partitions));
+		num_buckets /= num_partition_levels(estate->es_result_partitions);
+
+		ctl.keysize = sizeof(Oid);
+		ctl.entrysize = sizeof(*entry);
+
+		estate->es_partition_state->result_partition_hash =
+			hash_create("Partition Result Relation Hash",
+						num_buckets,
+						&ctl,
+						HASH_ELEM);
 	}
 
-	if (!found)
+	entry = hash_search(estate->es_partition_state->result_partition_hash,
+						&targetid,
+						HASH_ENTER,
+						&found);
+
+	if (found)
 	{
+		resultRelInfo = estate->es_result_relations;
+		resultRelInfo += entry->offset;
+	}
+	else
+	{
+		int result_array_size = 
+			estate->es_partition_state->result_partition_array_size;
 		RangeTblEntry *rte = makeNode(RangeTblEntry);
 		List *rangeTable;
 
-		/* 
-		 * XXX: updating es_result_relation_info /should/ be okay since it
-		 * is only changed by Append... but it's still ugly. Find a better way
-		 */
-		estate->es_result_relation_info = estate->es_result_relations = 
-			(ResultRelInfo *)repalloc(estate->es_result_relations,
-									  (estate->es_num_result_relations + 1)
-								 	  * sizeof(ResultRelInfo));
+		if (estate->es_num_result_relations + 1 >= result_array_size)
+		{
+			int32 sz = result_array_size * 2;
+
+			/* we shouldn't be able to overflow */
+			Insist((int)sz > result_array_size);
+
+			estate->es_result_relation_info = estate->es_result_relations = 
+					(ResultRelInfo *)repalloc(estate->es_result_relations,
+										 	  sz * sizeof(ResultRelInfo));
+			estate->es_partition_state->result_partition_array_size = (int)sz;
+		}
+
 		resultRelInfo = estate->es_result_relations;
 		resultRelInfo += estate->es_num_result_relations;
+		entry->offset = estate->es_num_result_relations;
+
 		estate->es_num_result_relations++;
 
 		rte->relid = targetid; /* all we need */
