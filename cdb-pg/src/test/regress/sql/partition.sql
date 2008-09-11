@@ -2521,3 +2521,14 @@ CREATE TABLE myINT2_TBL(q1 int2)
  (start (1) end (3) every (1));
 insert into myint2_tbl values(1), (2);
 drop table myint2_tbl;
+
+-- check that we don't allow updates of tuples such that they would move
+-- between partitions
+create table v (i int, j int) partition by range(j) (start(1) end(5)
+ every(2));
+insert into v values(1, 1) ;
+-- should work
+update v set j = 2;
+-- should fail
+update v set j = 3;
+drop table v;

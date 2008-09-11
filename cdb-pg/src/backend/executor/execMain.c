@@ -2480,6 +2480,41 @@ ExecUpdate(TupleTableSlot *slot,
 	resultRelInfo = estate->es_result_relation_info;
 	resultRelationDesc = resultRelInfo->ri_RelationDesc;
 
+	/* see if this update would move the tuple to a different partition */
+	if (estate->es_result_partitions)
+	{
+		AttrNumber max_attr;
+		Datum *values;
+		bool *nulls;
+		Oid targetid;
+
+		if (!estate->es_partition_state->part_cxt)
+			estate->es_partition_state->part_cxt = 
+				GetPerTupleExprContext(estate)->ecxt_per_tuple_memory;
+
+
+		Assert(PointerIsValid(estate->es_result_partitions));
+
+		max_attr = estate->es_partition_state->max_partition_attr;
+
+		slot_getsomeattrs(slot, max_attr);
+		values = slot_get_values(slot);
+		nulls = slot_get_isnull(slot);
+
+		targetid = selectPartition(estate->es_result_partitions, values,
+								   nulls, slot->tts_tupleDescriptor, 
+								   estate->es_partition_state);
+
+		if (RelationGetRelid(resultRelationDesc) != targetid)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("moving tuple from partition \"%s\" to partition \"%s\" not supported",
+							get_rel_name(RelationGetRelid(resultRelationDesc)),
+							get_rel_name(targetid))));
+		}
+	}
+
 	/* BEFORE ROW UPDATE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
 		resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_UPDATE] > 0)
