@@ -288,6 +288,8 @@ mgmtcopy :
 	@rm -rf $(INSTLOC)/bin/Makefile
 	@rm -rf $(INSTLOC)/bin/lib/CVS
 	@rm -rf $(INSTLOC)/bin/src
+	@echo "`date` -- INFO: Removing $(INSTLOC)/bin/gpexpandsystem"
+	rm -f $(INSTLOC)/bin/gpexpandsystem
 
 gplcopy :
 	rm -rf $(GPLINSTLOC)
