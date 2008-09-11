@@ -589,6 +589,7 @@ RecvTupleFrom(MotionLayerState *mlStates,
 	MotionNodeEntry *pMNEntry;
 	ChunkSorterEntry *pCSEntry;
 	ReceiveReturnCode recvRC = END_OF_STREAM;
+	htup_fifo ReadyList;
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "RecvTupleFrom( motNodeID = %d, srcRoute = %d )", motNodeID, srcRoute);
@@ -600,6 +601,8 @@ RecvTupleFrom(MotionLayerState *mlStates,
 	{
 		Assert(pMNEntry->preserve_order == 0);
 		pCSEntry = NULL;
+
+		ReadyList = pMNEntry->ready_tuples;
 	}
 	else
 	{
@@ -609,13 +612,11 @@ RecvTupleFrom(MotionLayerState *mlStates,
 		 * tuple-store we should use.
 		 */
 		pCSEntry = getChunkSorterEntry(mlStates, pMNEntry, srcRoute);
+		ReadyList = pCSEntry->ready_tuples;
 	}
 
 	/* Get the next HeapTuple, if one is available! */
-	if (srcRoute == ANY_ROUTE)
-		*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
-	else
-		*tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
+	*tup_i = htfifo_gettuple(ReadyList);
 
 	if (*tup_i != NULL)
 	{

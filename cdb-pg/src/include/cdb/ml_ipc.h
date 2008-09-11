@@ -243,6 +243,39 @@ extern void  ml_put_rx_buffer(ChunkTransportState *transportStates, int motNodeI
 		do {if (!teardownActive && InterruptPending) CHECK_FOR_INTERRUPTS(); } while (0)
 
 
+/* doBroadcast() is used to send a TupleChunk to all recipients.
+ *
+ * PARAMETERS
+ *   mlStates - motion-layer state ptr.
+ *   transportStates - IC-instance ptr. 
+ *	 pEntry - ChunkTransportState context that contains everything we need to send.
+ *	 tcItem - TupleChunk to send.
+ */
+#define doBroadcast(mlStates, transportStates, pEntry, tcItem, inactiveCountPtr) \
+	do { \
+		MotionConn *conn; \
+		int			*p_inactive = inactiveCountPtr; \
+		int			i, index, inactive = 0; \
+		/* add our tcItem to each of the outgoing buffers. */ \
+		index = Max(0, Gp_segment); /* entry-db has -1 */ \
+		for (i = 0; i < pEntry->numConns; i++, index++) \
+		{ \
+			if (index >= pEntry->numConns) \
+				index = 0; \
+			conn = pEntry->conns + index; \
+			/* only send to still interested receivers. */ \
+			if (conn->stillActive) \
+			{ \
+				transportStates->SendChunk(mlStates, transportStates, pEntry, conn, tcItem, pEntry->motNodeId); \
+				if (!conn->stillActive) \
+					inactive++; \
+			} \
+		} \
+		if (p_inactive != NULL)					\
+			*p_inactive = (inactive ? 1 : 0);	\
+	} while (0)
+
+
 extern ChunkTransportStateEntry *createChunkTransportState(ChunkTransportState *transportStates,
 														   Slice *sendSlice,
 														   Slice *recvSlice,
@@ -260,9 +293,6 @@ extern void InitMotionTCP(int *listenerSocketFd, uint16 *listenerPort);
 extern void InitMotionUDP(int *listenerSocketFd, uint16 *listenerPort);
 
 extern TupleChunkListItem RecvTupleChunk(MotionConn *conn, bool inTeardown);
-
-extern int doBroadcast(MotionLayerState *mlStates, ChunkTransportState *transportStates,
-					   ChunkTransportStateEntry *pEntry, TupleChunkListItem tcItem);
 
 extern void markUDPConnInactive(MotionConn *conn);
 

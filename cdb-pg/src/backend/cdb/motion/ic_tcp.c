@@ -2513,7 +2513,7 @@ SendEosTCP(MotionLayerState *mlStates,
 	/* we want to add our tcItem onto each of the outgoing buffers --
 	 * this is guaranteed to leave things in a state where a flush is
 	 * *required*. */
-	doBroadcast(mlStates, transportStates, pEntry, tcItem);
+	doBroadcast(mlStates, transportStates, pEntry, tcItem, NULL);
 
 	/* now flush all of the buffers. */
 	for (i = 0; i < pEntry->numConns; i++)

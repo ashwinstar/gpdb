@@ -1830,7 +1830,9 @@ receiveChunksUDP(ChunkTransportState *pTransportStates, ChunkTransportStateEntry
 		else if (!directed && main_thread_waiting_route != ANY_ROUTE)
 		{
 			rxconn = pEntry->conns + main_thread_waiting_route;
+#ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG3, "receiveChunksUDP: non-directed rx woke on route %d (%p)", main_thread_waiting_route, rxconn->pBuff);
+#endif
 		}
 
 		if (rxconn != NULL)
@@ -2480,7 +2482,7 @@ SendEosUDP(MotionLayerState *mlStates,
 	 * this is guaranteed to leave things in a state where a flush is
 	 * *required*. 
 	 */
-	doBroadcast(mlStates, transportStates, pEntry, tcItem);
+	doBroadcast(mlStates, transportStates, pEntry, tcItem, NULL);
 
 	/* now flush all of the buffers. */
 	for (i = 0; i < pEntry->numConns; i++)

@@ -116,7 +116,7 @@ WSAPoll(
 #endif
 
 /*
-#define AMS_VERBOSE_LOGGING
+  #define AMS_VERBOSE_LOGGING
 */
 
 /*=========================================================================
@@ -156,35 +156,6 @@ static void setupSeqServerConnection(char *hostname, int port);
 static void	dumpEntryConnections(int elevel, ChunkTransportStateEntry *pEntry);
 static void	print_connection(ChunkTransportState *transportStates, int fd, const char *msg);
 #endif
-
-/* Function doBroadcast() is used to send a TupleChunk to all recipients.
- *
- * PARAMETERS
- *	 pEntry - ChunkTransportState context that contains everything we need to send.
- *	 tcItem - TupleChunk to send.
- */
-int
-doBroadcast(MotionLayerState *mlStates, ChunkTransportState *transportStates, ChunkTransportStateEntry *pEntry, TupleChunkListItem tcItem)
-{
-	MotionConn *conn;
-	int			i, inactive = 0;
-
-	/* add our tcItem to each of the outgoing buffers. */
-	for (i = 0; i < pEntry->numConns; i++)
-	{
-		conn = pEntry->conns + i;
-		/* only send to still interested receivers. */
-		if (conn->stillActive)
-		{
-			transportStates->SendChunk(mlStates, transportStates, pEntry, conn, tcItem, pEntry->motNodeId);
-
-			if (!conn->stillActive)
-				inactive++;
-		}
-	}
-
-	return inactive;
-}
 
 TupleChunkListItem
 RecvTupleChunk(MotionConn *conn, bool inTeardown)
@@ -228,9 +199,9 @@ RecvTupleChunk(MotionConn *conn, bool inTeardown)
 
 		/* sanity check */
 		if (tcSize > Gp_max_packet_size)
-				ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
-								errmsg("Interconnect error parsing message"),
-								errdetail("tcSize %d > max %d", tcSize, Gp_max_packet_size)));
+			ereport(ERROR, (errcode(ERRCODE_GP_INTERCONNECTION_ERROR),
+							errmsg("Interconnect error parsing message"),
+							errdetail("tcSize %d > max %d", tcSize, Gp_max_packet_size)));
 			
 
 		/* we only check for interrupts here when we don't have a guaranteed full-message */
@@ -376,8 +347,7 @@ SendTupleChunkToAMS(MotionLayerState *mlStates,
 
 		if (targetRoute == BROADCAST_SEGIDX)
 		{
-			if (doBroadcast(mlStates, transportStates, pEntry, currItem) != 0)
-				recount = 1;
+			doBroadcast(mlStates, transportStates, pEntry, currItem, &recount);
 		}
 		else
 		{
