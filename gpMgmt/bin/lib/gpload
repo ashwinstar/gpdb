@@ -20,15 +20,7 @@ except ImportError:
 import os,signal,socket,subprocess,threading,traceback
 
 def quote(a):
-    b = ["'"]
-    for c in a:
-	if c=="'":
-	    b.append("''")
-	else:
-	    b.append(c)
-    b.append("'")
-    return "".join(b)
-		
+    return "'"+"".join(map(lambda x:x=="'" and "''" or x,a))+"'"
 
 class CatThread(threading.Thread):
     def __init__(self,gpload,fd):
@@ -149,7 +141,7 @@ class gpload:
 	    infile = source.get('infile')
 	    if type(infile)!=list:
 		infile = [infile]
-	    a = subprocess.Popen("gpfdist -p %d -P %d"%(startPort,endPort),shell=True,stdout=subprocess.PIPE)
+	    a = subprocess.Popen(['gpfdist','-p',str(startPort),'-P',str(endPort)],stdout=subprocess.PIPE)
 	    self.subprocesses.append(a)
 	    while 1:
 		line = a.stdout.readline()
@@ -170,37 +162,48 @@ class gpload:
     def read_columns(self):
 	columns = self.getconfig('gpload.from.columns',list,None)
 	if columns!=None:
-	    self.column_name = []
-	    self.column_type = []
+	    self.from_column_name = []
+	    self.from_column_type = []
 	    for d in columns:
 		key = d.keys()[0]
-		self.column_name.append(key)
-		self.column_type.append(d[key])
+		self.from_column_name.append(key)
+		self.from_column_type.append(d[key])
+	else:
+	    self.from_column_name = self.into_column_name
+	    self.from_column_type = self.into_column_type
+	self.log('from columns are--')
+	for i in xrange(len(self.from_column_name)):
+	    self.log('%s: %s'%(self.from_column_name[i],self.from_column_type[i]))
+	self.log('')
 
     def read_table_metadata(self):
 	self.pg8000.execute("select * from information_schema.columns where table_name=%s order by ordinal_position"%quote(self.table))
 	count = 0
-	self.column_name = []
-	self.column_type = []
+	self.into_column_name = []
+	self.into_column_type = []
 	for row in self.pg8000.iterate_dict():
 	    count += 1
 	    ct = row['data_type']
 	    if row['character_maximum_length']!=None:
 		ct += '(%s)'%row['character_maximum_length']
-	    self.column_name.append(row['column_name'])
-	    self.column_type.append(ct)
+	    self.into_column_name.append(row['column_name'])
+	    self.into_column_type.append(ct)
 	if count==0:
-	    self.log('Table %s does not seem to exist.'%self.table)
+	    self.log('Table %s does not exist.'%self.table)
 	    sys.exit(2)
-	self.log('Metadata for table %s is--'%self.table)
-	for i in xrange(len(self.column_name)):
-	    self.log('%s: %s'%(self.column_name[i],self.column_type[i]))
+	self.log('table %s columns are--'%self.table)
+	for i in xrange(len(self.into_column_name)):
+	    self.log('%s: %s'%(self.into_column_name[i],self.into_column_type[i]))
 	self.log('')
+
+    def make_default_mapping(self):
+	pass
 
     def read_mapping(self):
 	mapping = self.getconfig('gpload.into.mapping',dict,None)
-	if mapping!=None:
-	    pass
+	if mapping==None:
+	    self.make_default_mapping()
+	    return
 
     def run2(self):
 	self.read_config()
