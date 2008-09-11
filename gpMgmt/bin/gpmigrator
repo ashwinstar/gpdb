@@ -417,6 +417,7 @@ class GPUpgrade:
         env['GPHOME']  = gphome
         env['PATH']    = path
         env['LD_LIBRARY_PATH'] = lpath
+        env['DYLD_LIBRARY_PATH'] = dypath
         if masterdir:
             env['MASTER_DATA_DIRECTORY'] = masterdir
             env['PGPORT'] = str(self.masterport)
