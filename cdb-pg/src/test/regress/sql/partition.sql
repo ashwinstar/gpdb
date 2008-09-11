@@ -2514,3 +2514,10 @@ default partition mydef);
 -- should fail
 alter table k split partition mydef at (20) into (partition mydef, partition mydef);
 alter table k split partition for(3) at (20);
+
+-- Check that we support int2
+CREATE TABLE myINT2_TBL(q1 int2)
+ partition by range (q1)
+ (start (1) end (3) every (1));
+insert into myint2_tbl values(1), (2);
+drop table myint2_tbl;

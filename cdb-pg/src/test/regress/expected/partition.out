@@ -5413,3 +5413,11 @@ alter table k split partition mydef at (20) into (partition mydef, partition myd
 ERROR:  invalid into specification
 alter table k split partition for(3) at (20);
 ERROR:  AT value not in range (SOMEFILE:SOMEFUNC)
+-- Check that we support int2
+CREATE TABLE myINT2_TBL(q1 int2)
+ partition by range (q1)
+ (start (1) end (3) every (1));
+NOTICE:  CREATE TABLE will create partition "myint2_tbl_1_prt_1" for table "myint2_tbl"
+NOTICE:  CREATE TABLE will create partition "myint2_tbl_1_prt_2" for table "myint2_tbl"
+insert into myint2_tbl values(1), (2);
+drop table myint2_tbl;

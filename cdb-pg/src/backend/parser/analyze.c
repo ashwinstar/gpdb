@@ -6050,13 +6050,13 @@ partition_range_every(ParseState *pstate, PartitionBy *pBy, List *coltypes,
 				n1t = transformExpr(pstate, n1);
 				n1t = coerce_type(NULL, n1t, exprType(n1t), coltypid,
 								  type->typmod,
-								  COERCION_IMPLICIT, COERCE_IMPLICIT_CAST);
+								  COERCION_EXPLICIT, COERCE_IMPLICIT_CAST);
 				n1t = (Node *)flatten_partition_val(n1t, coltypid);
 
 				n2t = transformExpr(pstate, n2);
 				n2t = coerce_type(NULL, n2t, exprType(n2t), coltypid,
 								  type->typmod,
-								  COERCION_IMPLICIT, COERCE_IMPLICIT_CAST);
+								  COERCION_EXPLICIT, COERCE_IMPLICIT_CAST);
 				n2t = (Node *)flatten_partition_val(n2t, coltypid);
 
 				n3t = transformExpr(pstate, n3);
