@@ -69,13 +69,8 @@ notfound = NotFound
 
 class AccessDenied(HTTPError):
     """`403 Access Denied` error."""
-    def __init__(self):
-        status = '403 Access Denied'
-        headers = {'Content-Type': 'text/html'}
-        data = 'access denied'
-        HTTPError.__init__(self, status, headers, data)
 
-    def __init__(self, errordata, contenttype):
+    def __init__(self, errordata="access denied", contenttype="text/html"):
         status = '403 Access Denied'
         headers = {'Content-Type': contenttype}
         data = errordata
