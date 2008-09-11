@@ -268,11 +268,12 @@ static void parse_command_line(int argc, const char* const argv[], apr_pool_t* p
     int ch;
     const char* arg;
     int e;
-    static apr_getopt_option_t option[11] = {
+    static const apr_getopt_option_t option[] = {
 	{      NULL, '?', 0, "print help screen" },
 	{      NULL, 'V', 0, "very verbose" },
 	{      NULL, 'v', 0, "verbose mode" },
 	{      NULL, 'p', 1, "which port to serve HTTP" },
+	{      NULL, 'P', 1, "last port of range of ports to serve HTTP" },
 	{      NULL, 'd', 1, "serve files under this directory" },
 	{      NULL, 'q', 0, "gone" },
 	{      NULL, 'x', 0, "gone" },
@@ -451,7 +452,6 @@ static apr_status_t http_ok(request_t* r)
 	gprint("%s - socket error\n", r->peer);
 	return APR_EGENERAL;
     }
-
     gprint("%s %s %s - OK\n", r->peer, r->in.req->argv[0], r->in.req->argv[1]);
 
     return 0;
@@ -590,8 +590,7 @@ static void session_end(session_t* s, int error)
 /* deallocate session, remove from hashtable */
 static void session_free(session_t* s)
 {
-    if (opt.v) 
-	gprint("free session %s\n", s->key);
+    gprint("free session %s\n", s->key);
 
     if (s->fstream) {
 	fstream_close(s->fstream);
@@ -649,8 +648,7 @@ static void sessions_cleanup(void)
     }
 
     for (i = 0 ; i < n ; i++) {
-	if (opt.v) 
-	    gprint("remove out-dated session %s\n", session[i]->key);
+	gprint("remove out-dated session %s\n", session[i]->key);
 	session_free(session[i]);
 	session[i] = 0;
     }
@@ -722,8 +720,7 @@ static void session_attach(request_t* r)
 	/* insert into hashtable */
 	apr_hash_set(gcb.session.tab, s->key, APR_HASH_KEY_STRING, s);
 
-	if (opt.v) 
-	    gprint("new session (%s, %s)\n", s->path, s->tid);
+	gprint("new session (%s, %s)\n", s->path, s->tid);
     }
 
     /* found a session in hashtable*/
@@ -742,8 +739,7 @@ static void session_attach(request_t* r)
 	return;
     }
 
-    if (opt.v) 
-	gprint("joined session (%s, %s)\n", s->path, s->tid);
+    gprint("joined session (%s, %s)\n", s->path, s->tid);
 
     /* setup so receive EV_WRITE events to write to socket */
     if (setup_write(r)) {
@@ -909,8 +905,7 @@ static void do_read(int fd, short event, void* arg)
     }
 
     /* Hurray, got a request !!! */
-    if (opt.v) 
-	gprint("%s requests %s\n", 
+    gprint("%s requests %s\n", 
 	       r->peer, r->in.req->argv[1] ? r->in.req->argv[1] : "(none)");
 
     /* we don't need to read from the socket anymore */
@@ -1252,6 +1247,7 @@ int main(int argc, const char* const argv[])
     http_setup();
 
     printf("Serving HTTP on port %d, directory %s\n", opt.p, opt.d);
+    fflush(stdout);
 
     /* redirect stderr and stdout to log */
     if (opt.l) {
@@ -1377,10 +1373,12 @@ int
 gprint(const char* fmt, ...)
 {
     va_list ap;
-    va_start(ap, fmt);
-    fprintf(stdout, "[%s] ", datetime());
-    vfprintf(stdout, fmt, ap);
-    va_end(ap);
+    if (opt.v){
+	va_start(ap, fmt);
+	fprintf(stdout, "[%s] ", datetime());
+	vfprintf(stdout, fmt, ap);
+	va_end(ap);
+    }
     return 0;
 }
 
