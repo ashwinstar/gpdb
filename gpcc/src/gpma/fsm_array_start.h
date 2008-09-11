@@ -11,6 +11,7 @@ static apr_status_t a_array_start_display_param(gpcc_event_t *ev, void *_cmdslot
     gpcc_log_info("Master standby start     =    %s", (cmdslot->u.array_start.nostandbyqd ? "False" : "True"));
     gpcc_log_info("Master switch log file   =    %s", (cmdslot->u.array_start.rotate_qd_log ? "True" : "False"));
     gpcc_log_info("Segment switch log file  =    %s", (cmdslot->u.array_start.rotate_qes_log ? "True": "False"));
+    gpcc_log_info("Restricted access        =    %s", (cmdslot->u.array_start.restricted ? "True": "False"));
     gpcc_log_info("");
 
     gpcc_log_info("----------------------------------------");
@@ -118,6 +119,9 @@ static apr_status_t a_array_start_utility_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].isprimary = seginfo->isprimary;
     p->u.start.req[0].valid = seginfo->valid;
     p->u.start.req[0].reply = 0;
+    p->u.start.req[0].restricted = 0;
+    p->u.start.req[0].nostandbyqd = 0;
+    p->u.start.req[0].rotate_log = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);
@@ -157,6 +161,20 @@ static apr_status_t a_array_start_gpconf(gpcc_event_t *ev, void *_cmdslot)
 	    gpcc_evqueue_put(gpma.evq, evt);
 	    return 0;
 	}
+    }
+
+    if (cmdslot->u.array_start.restricted) {
+	/* check for max_connections */
+	if ((e = gpcc_proc_psql(&proc, seginfo->host, seginfo->port, "template1", 
+				"show max_connections", 
+				1, 1, cmdslot->pool)) != 0) {
+	    evt = gpcc_event_alloc(FAILURE_EVENT, cmdslot->cmdidx, 0);
+	    gpcc_evqueue_put(gpma.evq, evt);
+	    return 0;
+	}
+    
+	apr_file_gets(line, sizeof(line), proc.out);
+	cmdslot->u.array_start.restricted = atoi(line);
     }
 
     /* check for valid segment */
@@ -266,6 +284,8 @@ static apr_status_t a_array_start_qes(gpcc_event_t *ev, void *_cmdslot)
 		p->u.start.req[j].unit = apr_pstrdup(p->pool, info->name);
 		p->u.start.req[j].mode = "normal";
 		p->u.start.req[j].rotate_log = cmdslot->u.array_start.rotate_qes_log;
+		p->u.start.req[j].restricted = cmdslot->u.array_start.restricted;
+		p->u.start.req[j].nostandbyqd = cmdslot->u.array_start.nostandbyqd;
 		p->u.start.req[j].host = apr_pstrdup(p->pool, info->host);
 		p->u.start.req[j].port = info->port;
 		p->u.start.req[j].datadir = apr_pstrdup(p->pool, info->dir);
@@ -312,6 +332,8 @@ static apr_status_t a_array_start_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].unit = apr_pstrdup(p->pool, seginfo->name);
     p->u.start.req[0].mode = "normal";
     p->u.start.req[0].rotate_log = cmdslot->u.array_start.rotate_qd_log;
+    p->u.start.req[0].restricted = cmdslot->u.array_start.restricted;
+    p->u.start.req[0].nostandbyqd = cmdslot->u.array_start.nostandbyqd;
     p->u.start.req[0].host = apr_pstrdup(p->pool, seginfo->host);
     p->u.start.req[0].port = seginfo->port;
     p->u.start.req[0].datadir = apr_pstrdup(p->pool, seginfo->dir);
@@ -357,6 +379,9 @@ static apr_status_t a_array_start_standby_qd(gpcc_event_t *ev, void *_cmdslot)
     p->u.start.req[0].isprimary = seginfo->isprimary;
     p->u.start.req[0].valid = seginfo->valid;
     p->u.start.req[0].reply = 0;
+    p->u.start.req[0].restricted = 0;
+    p->u.start.req[0].nostandbyqd = 0;
+    p->u.start.req[0].rotate_log = 0;
 
     evt = gpcc_event_alloc(INIT_EVENT, p->cmdidx, 0);
     gpcc_evqueue_put(gpma.evq, evt);

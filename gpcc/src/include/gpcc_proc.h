@@ -132,13 +132,16 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start(apr_proc_t *proc, const char *h
  *  @param proc process handle
  *  @param port gpdb port number
  *  @param data_dir data directory
+ *  @param utility utility mode
+ *  @param restricted_conn  superuser_restricted_connections
+ *  @param nostandbyqd  no standby qd will be started
  *  @param wait flag to indicate pg_ctl wait until finish or not
  *  @param blocking flag to indicate blocking or non-blocking
  *  @param pool memory pool
  *  @return APR_SUCCESS if success otherwise failure
  */
 APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, const char *host, int port, const char *data_dir, 
-							int utility, int wait, int blocking, apr_pool_t *p);
+							int utility, int restricted_conn, int nostandbyqd, int wait, int blocking, apr_pool_t *p);
 
 
 /**

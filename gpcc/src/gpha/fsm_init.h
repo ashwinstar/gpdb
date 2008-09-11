@@ -366,7 +366,7 @@ static apr_status_t seg_initdb_wait(gpcc_event_t* ev, void *_cmdslot)
 							    0,
 							    cmdslot->u.request.port,
 							    cmdslot->u.request.data_dir,
-							    1, 1, 0,
+							    1, 0, 0, 1, 0,
 							    cmdslot->pool))) {
 		    seg_request_error(FLINE, ev, _cmdslot, SEG_INITDB_FAIL1_EVENT, e, "pg_ctl start failure");
 		    return 0;

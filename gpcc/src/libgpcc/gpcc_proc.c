@@ -343,13 +343,21 @@ APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_segment(apr_proc_t *proc, const
  * pg_ctl start master in admin mode
  */
 APR_DECLARE(apr_status_t) gpcc_proc_pg_ctl_start_master(apr_proc_t *proc, const char *host, int port, const char *data_dir, 
-							int utility, int wait, int blocking, apr_pool_t *p)
+							int utility, int restricted_conn, int nostandbyqd, 
+							int wait, int blocking, apr_pool_t *p)
 {
     char option[128];
+    *option = 0;
+    if (restricted_conn > 0) {
+	sprintf(option, "--superuser_reserved_connections=%d ", restricted_conn);
+    }
+    if (nostandbyqd) {
+	strcat(option, "-y ");
+    }
     if (utility) {
-	sprintf(option, "-i -p %d -c gp_role=utility", port);
+	sprintf(option, "%s -i -p %d -c gp_role=utility", option, port);
     } else {
-	sprintf(option, "-i -E -p %d", port);
+	sprintf(option, "%s -i -E -p %d", option, port);
     }
     return gpcc_proc_pg_ctl_start(proc, host, port, data_dir, option, wait, blocking, p);
 }

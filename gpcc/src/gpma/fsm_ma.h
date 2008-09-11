@@ -400,7 +400,7 @@ static apr_status_t a_lma_sync_config(gpcc_event_t *ev, void *arg, char *master)
 			    1, 1, p)) != 0) {
 
 	/* start master QD in admin mode */
-	if ((e = gpcc_proc_pg_ctl_start_master(&proc, master_host, master_port, master_datadir, 1, 1, 1, p)) != 0) {
+	if ((e = gpcc_proc_pg_ctl_start_master(&proc, master_host, master_port, master_datadir, 1, 0, 0, 1, 1, p)) != 0) {
 	    gpcc_log_error("start master QD failure");
 	    goto bail;
 	}

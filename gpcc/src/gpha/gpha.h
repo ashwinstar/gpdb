@@ -65,6 +65,8 @@ struct cmdslot_t {
 	    char *mode;
 	    char *data_dir;
 	    char *rotate_log;
+	    int  restricted;
+	    char *nostandbyqd;
 	    char *reason;
 	    int retry;
 	    apr_proc_t proc;

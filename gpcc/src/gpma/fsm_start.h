@@ -41,6 +41,12 @@ static apr_status_t a_start_do(gpcc_event_t *ev, void *_cmdslot)
 	if (cmdslot->u.start.req[i].rotate_log)
 	    json_object_object_add(obj, "rotate_log", json_object_new_string("t"));
 
+	if (cmdslot->u.start.req[i].restricted > 0)
+	    json_object_object_add(obj, "restricted", json_object_new_int(cmdslot->u.start.req[i].restricted));
+
+	if (cmdslot->u.start.req[i].nostandbyqd)
+	    json_object_object_add(obj, "nostandbyqd", json_object_new_string("t"));
+
 	msg = json_object_to_json_string(obj);
 	len = strlen(msg) + 1;	
 

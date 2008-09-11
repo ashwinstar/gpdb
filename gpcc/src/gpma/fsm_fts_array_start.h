@@ -8,9 +8,9 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
     gpcc_event_t *evt;
     struct json_object *obj;
     gpcc_net_uri_t *uri;
-    char *y, *R, *r;
+    char *y, *R, *r, *x;
 
-    y = R = r = 0;
+    y = R = r = x = 0;
     memcpy(&conn, ev->pdata, sizeof(gpcc_net_conn_t));
     url = ev->pdata + sizeof(gpcc_net_conn_t);
 
@@ -40,6 +40,7 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 	y = gpcc_net_uri_param(uri, "y");
 	R = gpcc_net_uri_param(uri, "R");
 	r = gpcc_net_uri_param(uri, "r");
+	x = gpcc_net_uri_param(uri, "x");
     }
 
     p = cmdslot_alloc("ARRAY_START", FTS_ARRAY_START_CMDSTATE);
@@ -51,6 +52,8 @@ static apr_status_t a_fts_array_start(gpcc_event_t *ev, void *_cmdslot)
 	p->u.array_start.rotate_qd_log = 1;
     if (r && *r == 't')
 	p->u.array_start.rotate_qes_log = 1;
+    if (x && *x == 't')
+	p->u.array_start.restricted = 1;
 
     cmdslot->u.fts.active_cmdidx = p->cmdidx;
     

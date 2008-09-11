@@ -122,6 +122,8 @@ struct cmdslot_t {
 		char  isprimary;
 		char  valid;
 		int   rotate_log;  /* rotate log or not */
+		int   restricted;  /* restricted mode */
+		int   nostandbyqd; /* no standby qd */
 		/* other stuff here */
 		char* reply;	/* reply from the start command */
 	    } *req;		/* one for each unit, total of ntotal units */
@@ -208,6 +210,8 @@ struct cmdslot_t {
 	    int nostandbyqd;
 	    int rotate_qd_log;
 	    int rotate_qes_log;
+	    int restricted;
+	    int max_connections;
 	} array_start;
 
 	struct {

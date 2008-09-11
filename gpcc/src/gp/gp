@@ -226,25 +226,30 @@ class Command():
 
 ####################
 class StartCmd(Command):
-    '''Usage: gp start [-s seg] [-y] [-R] [-r] [-a]
+    '''Usage: gp start [-s seg] [-y] [-R] [-r] [-a] [-x]
           -s seg     :  start the named segment
           -y         :  start the array without starting the standby master
           -R         :  rolls over the master log file
           -r         :  rolls over the segment log files
-          -a         :  non-interactive mode'''
+          -a         :  non-interactive mode
+          -x         :  restricted access'''
+
     def __init__(self, gopt, argv):
-        Command.__init__(self, gopt, argv, 'yRras:', self.__doc__)
+        Command.__init__(self, gopt, argv, 'yRraxs:', self.__doc__)
         self.opt['-s'] = None
         self.opt['-y'] = False
         self.opt['-R'] = False
         self.opt['-r'] = False
         self.opt['-a'] = False
+        self.opt['-x'] = False
+        
         for (switch, val) in self.options:
             if switch == '-s': self.opt[switch] = val
             if switch == '-y': self.opt[switch] = True
             if switch == '-R': self.opt[switch] = True
             if switch == '-r': self.opt[switch] = True
             if switch == '-a': self.opt[switch] = True
+            if switch == '-x': self.opt[switch] = True
 
         if self.sid is None:
             print '''[ERROR] you are not logged on.  Please do 'gp login' to log on.'''
@@ -257,6 +262,7 @@ class StartCmd(Command):
         if (self.opt['-y']): param['y'] = 't'
         if (self.opt['-R']): param['R'] = 't'
         if (self.opt['-r']): param['r'] = 't'
+        if (self.opt['-x']): param['x'] = 't'
 
         packet = self._httpGet('/gpcc/start', param)
         self.raw(packet)

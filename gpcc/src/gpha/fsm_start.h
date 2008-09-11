@@ -21,6 +21,9 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
     cmdslot->u.request.data_dir = gpcc_json_object_get_string(obj, "dir", 0);
     cmdslot->u.request.isprimary = gpcc_json_object_get_string(obj, "isprimary", 0);
     cmdslot->u.request.rotate_log = gpcc_json_object_get_string(obj, "rotate_log", 0);
+    cmdslot->u.request.restricted = gpcc_json_object_get_int(obj, "restricted", 0);
+    cmdslot->u.request.nostandbyqd = gpcc_json_object_get_string(obj, "nostandbyqd", 0);
+    
 
     if (cmdslot->u.request.port == 0 ||
 	cmdslot->u.request.mode == 0 ||
@@ -78,6 +81,8 @@ static apr_status_t seg_start(gpcc_event_t* ev, void *_cmdslot)
 							cmdslot->u.request.port,
 							cmdslot->u.request.data_dir,
 							utility,
+							cmdslot->u.request.restricted,
+							(cmdslot->u.request.nostandbyqd && *cmdslot->u.request.nostandbyqd == 't' ? 1 : 0),
 							1, 
 							0, 
 							cmdslot->pool))) {
